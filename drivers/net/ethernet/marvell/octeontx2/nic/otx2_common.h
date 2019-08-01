@@ -235,7 +235,8 @@ struct otx2_nic {
 	u16			tx_chan_base;
 	u8			cq_time_wait;
 	u16			cq_qcount_wait;
-	u32			cq_ecount_wait;
+	u16			cq_ecount_wait;
+	u16			rq_skid;
 	u32			msg_enable;
 	struct work_struct	reset_task;
 	u64			reset_count;
@@ -285,8 +286,14 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 
 	hw->hw_tso = true;
 
-	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev))
+	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev)) {
 		hw->hw_tso = false;
+	/* Due to HW issue previous silicons required minimum 600
+	 * unused CQE to avoid CQ overflow.
+	 */
+		pfvf->rq_skid = 600;
+		pfvf->qset.rqe_cnt = Q_COUNT(Q_SIZE_1K);
+	}
 	if (is_96xx_A0(pfvf->pdev))
 		pfvf->cq_qcount_wait = 0x0;
 }

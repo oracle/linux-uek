@@ -542,8 +542,8 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 /* RED and drop levels of CQ on packet reception.
  * For CQ level is measure of emptiness ( 0x0 = full, 255 = empty).
  */
-#define RQ_PASS_LVL_CQ(skid, qsize)	(((skid + 48) * 256) / qsize)
-#define RQ_DROP_LVL_CQ(skid, qsize)	((skid * 256) / qsize)
+#define RQ_PASS_LVL_CQ(skid, qsize)	((((skid) + 16) * 256) / (qsize))
+#define RQ_DROP_LVL_CQ(skid, qsize)	(((skid) * 256) / (qsize))
 
 /* RED and drop levels of AURA for packet reception.
  * For AURA level is measure of fullness (0x0 = empty, 255 = full).
@@ -557,14 +557,10 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 /* Send skid of 2000 packets required for CQ size of 4K CQEs. */
 #define SEND_CQ_SKID	2000
 
-/* Receive skid of 600 packets required for CQ size of 1K CQEs. */
-#define RX_CQ_SKID	600
-
 static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 {
 	struct otx2_qset *qset = &pfvf->qset;
 	struct nix_aq_enq_req *aq;
-	int skid = 0;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
@@ -581,16 +577,8 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	aq->rq.qint_idx = 0;
 	aq->rq.lpb_drop_ena = 1; /* Enable RED dropping for AURA */
 	aq->rq.xqe_drop_ena = 1; /* Enable RED dropping for CQ/SSO */
-	/* Due to HW errata #34873 minimum 600 unused CQE need to maintaine to
-	 * avoid CQ overflow. Eg: For CQ size 1K, for pass/drop levels 162/150.
-	 * HW accepts accepts the pkts if unused CQE >= 648.
-	 * RED accepts pkts if unused CQE > 600 & <= 648.
-	 * Drops pkts if unused CQE <= 600.
-	 */
-	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev))
-		skid = RX_CQ_SKID;
-	aq->rq.xqe_pass = RQ_PASS_LVL_CQ(skid, qset->rqe_cnt);
-	aq->rq.xqe_drop = RQ_DROP_LVL_CQ(skid, qset->rqe_cnt);
+	aq->rq.xqe_pass = RQ_PASS_LVL_CQ(pfvf->rq_skid, qset->rqe_cnt);
+	aq->rq.xqe_drop = RQ_DROP_LVL_CQ(pfvf->rq_skid, qset->rqe_cnt);
 	aq->rq.lpb_aura_pass = RQ_PASS_LVL_AURA;
 	aq->rq.lpb_aura_drop = RQ_DROP_LVL_AURA;
 
@@ -682,9 +670,9 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 {
 	struct otx2_qset *qset = &pfvf->qset;
-	int err, pool_id, skid = 0;
 	struct nix_aq_enq_req *aq;
 	struct otx2_cq_queue *cq;
+	int err, pool_id;
 
 	cq = &qset->cq[qidx];
 	cq->cqe_cnt = (qidx < pfvf->hw.rx_queues) ? qset->rqe_cnt
@@ -726,9 +714,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->cq.avg_level = 255;
 
 	if (qidx < pfvf->hw.rx_queues) {
-		if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev))
-			skid = RX_CQ_SKID;
-		aq->cq.drop = RQ_DROP_LVL_CQ(skid, cq->cqe_cnt);
+		aq->cq.drop = RQ_DROP_LVL_CQ(pfvf->rq_skid, cq->cqe_cnt);
 		aq->cq.drop_ena = 1;
 
 		/* Enable receive CQ backpressure */
@@ -736,7 +722,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 		aq->cq.bpid = pfvf->bpid[0];
 
 		/* Set backpressure level is same as cq pass level */
-		aq->cq.bp = RQ_PASS_LVL_CQ(skid, qset->rqe_cnt);
+		aq->cq.bp = RQ_PASS_LVL_CQ(pfvf->rq_skid, qset->rqe_cnt);
 	}
 
 	/* Fill AQ info */
