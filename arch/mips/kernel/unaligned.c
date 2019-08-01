@@ -1408,6 +1408,10 @@ fault:
 	return;
 
 sigbus:
+	/* Did we have an exception handler installed? */
+	if (fixup_exception(regs))
+		return;
+
 	die_if_kernel("Unhandled kernel unaligned access", regs);
 	force_sig(SIGBUS);
 
