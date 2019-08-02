@@ -104,6 +104,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 #build kernel with 4k & 64k page size for aarch64
 %define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
 %define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
+# build embedded kernel
+%define with_embedded %{?_with_embedded: 1} %{?!_with_embedded: 0}
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -252,6 +254,11 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifnarch aarch64
 %define with_4k_ps      0
 %define with_4k_ps_debug 0
+%endif
+
+# only do embedded kernels on aarch64
+%ifnarch aarch64
+%define with_embedded 0
 %endif
 
 # only package docs noarch
@@ -432,6 +439,11 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_pae_debug 0
 %if %{with_pae}
 %define with_pae_debug %{with_debug}
+%endif
+
+%define with_embedded_debug 0
+%if %{with_embedded}
+%define with_embedded_debug %{with_debug}
 %endif
 
 # Architectures we build tools/cpupower on
@@ -617,6 +629,8 @@ Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-mips64-embedded
 Source1010: config-mips64-embedded-debug
+Source1011: config-aarch64-embedded
+Source1012: config-aarch64-embedded-debug
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -980,6 +994,16 @@ This package includes 4k page size for aarch64 kernel.
 %description 4kdebug
 This package include debug kernel for 4k page size.
 
+%define variant_summary A kernel for embedded platform.
+%kernel_variant_package emb
+%description emb
+This package includes embedded kernel.
+
+%define variant_summary A kernel for embedded platform with extra debugging enabled.
+%kernel_variant_package embdebug
+%description embdebug
+This package includes debug embedded kernel.
+
 %prep
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
@@ -1168,6 +1192,8 @@ mkdir -p configs
 %ifarch aarch64
 	cp %{SOURCE1008} configs/config-debug
 	cp %{SOURCE1007} configs/config
+	cp %{SOURCE1011} configs/config-emb
+	cp %{SOURCE1012} configs/config-emb-debug
 %endif #ifarch aarch64
 
 %ifarch mips64
@@ -1254,6 +1280,10 @@ BuildKernel() {
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
+    elif [ "$Flavour" == "emb" ]; then
+	cp configs/config-emb .config
+    elif [ "$Flavour" == "embdebug" ]; then
+	cp configs/config-emb-debug .config
     else
 	cp configs/config .config
     fi
@@ -1568,6 +1598,9 @@ BuildKernel %make_target %kernel_image debug
 %if %{with_pae}
 BuildKernel %make_target %kernel_image PAEdebug
 %endif
+%if %{with_embedded}
+BuildKernel %make_target %kernel_image embdebug
+%endif
 %endif
 
 %if %{with_pae}
@@ -1592,6 +1625,10 @@ BuildKernel %make_target %kernel_image 4k
 
 %if %{with_4k_ps_debug}
 BuildKernel %make_target %kernel_image 4kdebug
+%endif
+
+%if %{with_embedded}
+BuildKernel %make_target %kernel_image emb
 %endif
 
 %global perf_make \
@@ -1636,7 +1673,7 @@ make -j1 htmldocs || %{doc_build_fail}
       mv certs/signing_key.x509.sign.PAE certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAE/ %{dgst} \
     fi \
-    if [ "%{with_debug}" != "0" ]; then \
+    if [ "%{with_debug}" != "0" && "%{with_up}" != "0" ]; then \
       mv certs/signing_key.pem.sign.debug certs/signing_key.pem \
       mv certs/signing_key.x509.sign.debug certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.debug/ %{dgst} \
@@ -1978,6 +2015,14 @@ fi\
 %kernel_variant_preun 4k
 %kernel_variant_post -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
 
+%kernel_variant_pre emb
+%kernel_variant_preun emb
+%kernel_variant_post -v emb -r (kernel%{variant}|kernel%{variant}-debug)
+
+%kernel_variant_pre embdebug
+%kernel_variant_preun embdebug
+%kernel_variant_post -v embdebug -r (kernel-emb|kernel-embdebug)
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2163,5 +2208,8 @@ fi
 
 %kernel_variant_files %{with_4k_ps} 4k
 %kernel_variant_files %{with_4k_ps_debug} 4kdebug
+
+%kernel_variant_files %{with_embedded} emb
+%kernel_variant_files %{with_embedded_debug} embdebug
 
 %changelog
