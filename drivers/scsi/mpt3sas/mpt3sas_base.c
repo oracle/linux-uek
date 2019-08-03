@@ -8195,6 +8195,13 @@ mpt3sas_base_attach(struct MPT3SAS_ADAPTER *ioc)
 	memcpy(&ioc->prev_fw_facts, &ioc->facts,
 	    sizeof(struct mpt3sas_facts));
 
+	/*
+	 * Copy current copy of IOCFacts in prev_fw_facts
+	 * and it will be used during online firmware upgrade.
+	 */
+	memcpy(&ioc->prev_fw_facts, &ioc->facts,
+	    sizeof(struct mpt3sas_facts));
+
 	ioc->non_operational_loop = 0;
 	ioc->ioc_coredump_loop = 0;
 	ioc->got_task_abort_from_ioctl = 0;
