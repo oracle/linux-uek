@@ -1309,6 +1309,7 @@ struct gendisk *alloc_disk_node(int minors, int node_id)
 			return NULL;
 		}
 		disk->part_tbl->part[0] = &disk->part0;
+		mutex_init(&disk->part_lock);
 
 		/*
 		 * set_capacity() and get_capacity() currently don't use
@@ -1383,6 +1384,7 @@ void set_disk_ro(struct gendisk *disk, int flag)
 	struct disk_part_iter piter;
 	struct hd_struct *part;
 
+	mutex_lock(&disk->part_lock);
 	if (disk->part0.policy != flag) {
 		set_disk_ro_uevent(disk, flag);
 		disk->part0.policy = flag;
@@ -1392,6 +1394,7 @@ void set_disk_ro(struct gendisk *disk, int flag)
 	while ((part = disk_part_iter_next(&piter)))
 		part->policy = flag;
 	disk_part_iter_exit(&piter);
+	mutex_unlock(&disk->part_lock);
 }
 
 EXPORT_SYMBOL(set_disk_ro);

@@ -203,6 +203,7 @@ struct gendisk {
 	int node_id;
 #ifndef __GENKSYMS__
 	struct badblocks *bb;
+	struct mutex part_lock;
 #endif
 };
 
