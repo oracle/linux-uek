@@ -228,7 +228,7 @@ struct gendisk {
 	struct badblocks *bb;
 	struct lockdep_map lockdep_map;
  
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, struct mutex *part_lock)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
