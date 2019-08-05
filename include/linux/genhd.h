@@ -210,6 +210,7 @@ struct gendisk {
 	struct badblocks *bb;
 #ifndef __GENKSYMS__
 	const struct attribute_group **attr_groups;
+	struct mutex part_lock;
 #endif
 };
 
