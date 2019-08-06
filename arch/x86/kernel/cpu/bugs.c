@@ -139,6 +139,9 @@ EXPORT_SYMBOL_GPL(mds_user_clear);
 DEFINE_STATIC_KEY_FALSE(mds_idle_clear);
 EXPORT_SYMBOL_GPL(mds_idle_clear);
 
+static enum spectre_v2_mitigation spectre_v2_enabled __ro_after_init =
+	SPECTRE_V2_NONE;
+
 void __init check_bugs(void)
 {
 	identify_boot_cpu();
@@ -248,6 +251,57 @@ void __init check_bugs(void)
 		set_memory_4k((unsigned long)__va(0), 1);
 #endif
 }
+
+void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
+{
+	u64 host;
+
+	if (context != SPEC_CTRL_INITIAL &&
+	    x86_spec_ctrl_priv == x86_spec_ctrl_base)
+		return;
+
+	switch (context) {
+	case SPEC_CTRL_INITIAL:
+		/*
+		 * Initial write of the MSR on this CPU.  Done to turn on SSBD
+		 * if it is always enabled in privileged mode
+		 * (spec_store_bypass_disable=on). If enhanced IBRS is in use,
+		 * its bit has been set by an earlier write to the MSR on all
+		 * the cpus, and it must be preserved by this MSR write.
+		 * Otherwise use only the base bits (x86_spec_ctrl_base) to
+		 * avoid basic IBRS needlessly being enabled before userspace
+		 * is running.
+		 */
+		host = x86_spec_ctrl_base |
+		       (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED ?
+			SPEC_CTRL_IBRS : 0);
+		break;
+	case SPEC_CTRL_IDLE_ENTER:
+		/*
+		 * If IBRS/SSBD are in use, disable them to avoid performance impact
+		 * during idle.
+		 */
+		host = x86_spec_ctrl_base & ~SPEC_CTRL_SSBD;
+		break;
+	case SPEC_CTRL_IDLE_EXIT:
+		host = x86_spec_ctrl_priv;
+		break;
+	default:
+		WARN_ONCE(1, "unknown spec_ctrl_set_context %#x\n", context);
+		return;
+	}
+
+	/*
+	 * Note that when MSR_IA32_SPEC_CTRL is not available both
+	 * per_cpu(x86_spec_ctrl_priv_cpu ) and x86_spec_ctrl_base
+	 * are zero. Therefore we don't need to explicitly check for
+	 * MSR presence.
+	 * And for SPEC_CTRL_INITIAL we are only called when we know
+	 * the MSR exists.
+	 */
+	wrmsrl(MSR_IA32_SPEC_CTRL, host);
+}
+EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
 void
 x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
@@ -565,9 +619,6 @@ early_param("nospectre_v1", nospectre_v1_cmdline);
 
 #undef pr_fmt
 #define pr_fmt(fmt)     "Spectre V2 : " fmt
-
-static enum spectre_v2_mitigation spectre_v2_enabled __ro_after_init =
-	SPECTRE_V2_NONE;
 
 static enum spectre_v2_user_mitigation spectre_v2_user __ro_after_init =
 	SPECTRE_V2_USER_NONE;
@@ -1346,7 +1397,8 @@ static void __init ssb_init(void)
 		} else {
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
 			x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
-			wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+
+			x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
 		}
 	}
 
@@ -1533,7 +1585,7 @@ int arch_prctl_spec_ctrl_get(struct task_struct *task, unsigned long which)
 void x86_spec_ctrl_setup_ap(void)
 {
 	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL))
-		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+		x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
 		x86_amd_ssb_disable();

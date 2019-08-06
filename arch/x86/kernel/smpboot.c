@@ -80,6 +80,7 @@
 #include <asm/cpu_device_id.h>
 #include <asm/spec-ctrl.h>
 #include <asm/hw_irq.h>
+#include <asm/spec_ctrl.h>
 
 /* representing HT siblings of each logical CPU */
 DEFINE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_sibling_map);
@@ -1741,9 +1742,13 @@ void native_play_dead(void)
 	play_dead_common();
 	tboot_shutdown(TB_SHUTDOWN_WFS);
 
+	x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
+
 	mwait_play_dead();	/* Only returns on failure */
 	if (cpuidle_play_dead())
 		hlt_play_dead();
+
+	x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
 }
 
 #else /* ... !CONFIG_HOTPLUG_CPU */

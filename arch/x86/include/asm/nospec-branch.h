@@ -235,6 +235,14 @@ enum ssb_mitigation {
 	SPEC_STORE_BYPASS_USERSPACE,
 };
 
+enum spec_ctrl_set_context {
+	SPEC_CTRL_INITIAL,	/* boottime and CPU hotplug */
+	SPEC_CTRL_IDLE_ENTER,
+	SPEC_CTRL_IDLE_EXIT,
+};
+
+extern void x86_spec_ctrl_set(enum spec_ctrl_set_context);
+
 extern char __indirect_thunk_start[];
 extern char __indirect_thunk_end[];
 
