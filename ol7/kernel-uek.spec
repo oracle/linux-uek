@@ -546,7 +546,7 @@ AutoReq: no\
 AutoProv: yes\
 %{nil}
 
-%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
 Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
