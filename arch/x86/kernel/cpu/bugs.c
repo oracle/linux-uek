@@ -1215,6 +1215,7 @@ enum ssb_mitigation_cmd {
 	SPEC_STORE_BYPASS_CMD_ON,
 	SPEC_STORE_BYPASS_CMD_PRCTL,
 	SPEC_STORE_BYPASS_CMD_SECCOMP,
+	SPEC_STORE_BYPASS_CMD_USERSPACE /* Deprecated */
 };
 
 static const char * const ssb_strings[] = {
@@ -1233,6 +1234,7 @@ static const struct {
 	{ "off",	SPEC_STORE_BYPASS_CMD_NONE },    /* Don't touch Speculative Store Bypass */
 	{ "prctl",	SPEC_STORE_BYPASS_CMD_PRCTL },   /* Disable Speculative Store Bypass via prctl */
 	{ "seccomp",	SPEC_STORE_BYPASS_CMD_SECCOMP }, /* Disable Speculative Store Bypass via prctl and seccomp */
+	{ "userspace",	SPEC_STORE_BYPASS_CMD_USERSPACE }, /* Disable Speculative Store Bypass for userspace (deprecated) */
 };
 
 static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
@@ -1298,6 +1300,12 @@ static enum ssb_mitigation __init ssb_select_mitigation(void)
 		break;
 	case SPEC_STORE_BYPASS_CMD_PRCTL:
 		mode = SPEC_STORE_BYPASS_PRCTL;
+		break;
+	case SPEC_STORE_BYPASS_CMD_USERSPACE:
+		pr_warn("spec_store_bypass_disable=userspace is deprecated. "
+			"Disabling Speculative Store Bypass\n");
+		if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
+			mode = SPEC_STORE_BYPASS_DISABLE;
 		break;
 	case SPEC_STORE_BYPASS_CMD_NONE:
 		break;

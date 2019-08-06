@@ -4561,6 +4561,9 @@
 				  is inherited on fork.
 			seccomp - Same as "prctl" above, but all seccomp threads
 				  will disable SSB unless they explicitly opt out.
+			userspace
+				- Disable Speculative Store Bypass when entering
+				  userspace. Deprecated.
 
 			Default mitigations:
 			X86:	If CONFIG_SECCOMP=y "seccomp", otherwise "prctl"
