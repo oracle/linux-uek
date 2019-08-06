@@ -58,6 +58,14 @@ EXPORT_SYMBOL(use_ibrs);
 DEFINE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
 EXPORT_SYMBOL(ibrs_firmware_enabled_key);
 
+/*
+ * IBPB Variables
+ *
+ * IBPB support is indicated by the X86_FEATURE_IBPB cpu capability.
+ * use_ibpb indicates if IBPB should be selected at boot time.
+ */
+static bool use_ibpb = true;
+
 /* mutex to serialize IBRS & IBPB control changes */
 DEFINE_MUTEX(spec_ctrl_mutex);
 EXPORT_SYMBOL(spec_ctrl_mutex);
@@ -114,8 +122,10 @@ u64 __ro_after_init x86_amd_ls_cfg_ssbd_mask;
 DEFINE_STATIC_KEY_FALSE(switch_to_cond_stibp);
 /* Control conditional IBPB in switch_mm() */
 DEFINE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
+EXPORT_SYMBOL(switch_mm_cond_ibpb);
 /* Control unconditional IBPB in switch_mm() */
 DEFINE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
+EXPORT_SYMBOL(switch_mm_always_ibpb);
 
 /* Control MDS CPU buffer clear before returning to user space */
 DEFINE_STATIC_KEY_FALSE(mds_user_clear);
@@ -166,6 +176,17 @@ void __init check_bugs(void)
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 	} else {
 		pr_info("FEATURE SPEC_CTRL Not Present\n");
+	}
+
+	if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		pr_info_once("FEATURE IBPB Present%s\n",
+			     xen_pv_domain() ? " but ignored (Xen)" : "");
+	} else {
+		pr_info("FEATURE IBPB Not Present\n");
+	}
+
+	if (xen_pv_domain()) {
+		clear_cpu_cap(&boot_cpu_data, X86_FEATURE_IBPB);
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
@@ -744,9 +765,7 @@ spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 		mode = SPECTRE_V2_USER_STRICT_PREFERRED;
 
 	/* Initialize Indirect Branch Prediction Barrier */
-	if (boot_cpu_has(X86_FEATURE_IBPB)) {
-		setup_force_cpu_cap(X86_FEATURE_USE_IBPB);
-
+	if (boot_cpu_has(X86_FEATURE_IBPB) && use_ibpb) {
 		switch (cmd) {
 		case SPECTRE_V2_USER_CMD_FORCE:
 		case SPECTRE_V2_USER_CMD_PRCTL_IBPB:
@@ -820,6 +839,9 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 
 	if (cmdline_find_option_bool(boot_command_line, "noibrs"))
 		set_ibrs_disabled();
+
+	if (cmdline_find_option_bool(boot_command_line, "noibpb"))
+		use_ibpb = false;
 
 	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2") ||
 	    cpu_mitigations_off())

@@ -2991,6 +2991,11 @@
 			feature when running in secure environment,
 			to avoid performance overhead.
 
+	noibpb		[X86]
+			Don't use indirect branch prediction barrier (IBPB)
+			feature when running in secure environment,
+			to avoid performance overhead.
+
 	nosmap		[X86,PPC]
 			Disable SMAP (Supervisor Mode Access Prevention)
 			even if it is supported by processor.

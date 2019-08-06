@@ -258,22 +258,13 @@ static inline void vmexit_fill_RSB(void)
 #endif
 }
 
-static __always_inline
-void alternative_msr_write(unsigned int msr, u64 val, unsigned int feature)
-{
-	asm volatile(ALTERNATIVE("", "wrmsr", %c[feature])
-		: : "c" (msr),
-		    "a" ((u32)val),
-		    "d" ((u32)(val >> 32)),
-		    [feature] "i" (feature)
-		: "memory");
-}
+DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
+DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 
 static inline void indirect_branch_prediction_barrier(void)
 {
-	u64 val = PRED_CMD_IBPB;
-
-	alternative_msr_write(MSR_IA32_PRED_CMD, val, X86_FEATURE_USE_IBPB);
+	if (static_branch_likely(&switch_mm_always_ibpb) || static_branch_likely(&switch_mm_cond_ibpb))
+		wrmsrl(MSR_IA32_PRED_CMD, PRED_CMD_IBPB);
 }
 
 /* The Intel SPEC CTRL MSR base value cache */
