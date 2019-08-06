@@ -969,6 +969,10 @@ bool xen_set_default_idle(void);
 
 void stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
+void retpoline_enable(void);
+void retpoline_disable(void);
+bool retpoline_enabled(void);
+void refresh_set_spectre_v2_enabled(void);
 void microcode_check(void);
 
 enum l1tf_mitigations {

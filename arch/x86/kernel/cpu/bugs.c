@@ -139,8 +139,7 @@ EXPORT_SYMBOL_GPL(mds_user_clear);
 DEFINE_STATIC_KEY_FALSE(mds_idle_clear);
 EXPORT_SYMBOL_GPL(mds_idle_clear);
 
-static enum spectre_v2_mitigation spectre_v2_enabled __ro_after_init =
-	SPECTRE_V2_NONE;
+static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
 void __init check_bugs(void)
 {
@@ -758,6 +757,17 @@ static void __init retpoline_activate(enum spectre_v2_mitigation mode)
 	retpoline_enable();
 	/* IBRS is unnecessary with retpoline mitigation. */
 	disable_ibrs_and_friends();
+}
+
+void refresh_set_spectre_v2_enabled(void)
+{
+	if (retpoline_enabled())
+		spectre_v2_enabled = retpoline_mode;
+	else if (check_ibrs_inuse())
+		spectre_v2_enabled = (check_basic_ibrs_inuse() ?
+			SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
+	else
+		spectre_v2_enabled = SPECTRE_V2_NONE;
 }
 
 static enum spectre_v2_user_cmd __init
