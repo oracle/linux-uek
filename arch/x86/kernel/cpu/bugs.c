@@ -50,6 +50,9 @@ static void __init spectre_v1_select_mitigation(void);
 unsigned int use_ibrs;
 EXPORT_SYMBOL(use_ibrs);
 
+DEFINE_PER_CPU(unsigned int, cpu_ibrs) = 0;
+EXPORT_PER_CPU_SYMBOL(cpu_ibrs);
+
 /*
  * IBRS Firmware Variables
  *
@@ -158,6 +161,11 @@ EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
  */
 u64 x86_spec_ctrl_priv;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_priv);
+DEFINE_PER_CPU(u64, x86_spec_ctrl_priv_cpu) = 0;
+EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_priv_cpu);
+
+DEFINE_PER_CPU(u64, x86_spec_ctrl_restore) = 0;
+EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
 
 /*
  * The vendor and possibly platform specific bits which can be modified in
@@ -197,6 +205,8 @@ DEFINE_STATIC_KEY_FALSE(switch_mm_cond_l1d_flush);
 
 void __init check_bugs(void)
 {
+	int cpu;
+
 	identify_boot_cpu();
 
 	/*
@@ -235,6 +245,7 @@ void __init check_bugs(void)
 			x86_spec_ctrl_base &= ~(SPEC_CTRL_IBRS | SPEC_CTRL_SSBD);
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
+		update_cpu_spec_ctrl_all();
 	} else {
 		pr_info("FEATURE SPEC_CTRL Not Present\n");
 	}
@@ -246,8 +257,15 @@ void __init check_bugs(void)
 		pr_info("FEATURE IBPB Not Present\n");
 	}
 
-	if (xen_pv_domain()) {
-		clear_cpu_cap(&boot_cpu_data, X86_FEATURE_IBPB);
+	for_each_online_cpu(cpu) {
+		if (!xen_pv_domain()) {
+			mutex_lock(&spec_ctrl_mutex);
+			update_cpu_ibrs(&cpu_data(cpu));
+			update_cpu_spec_ctrl(cpu);
+			mutex_unlock(&spec_ctrl_mutex);
+		} else {
+			clear_cpu_cap(&cpu_data(cpu), X86_FEATURE_IBPB);
+		}
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
@@ -326,12 +344,12 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		 * modifiable bits in the host base value and or the
 		 * modifiable bits from the guest value.
 		 */
-		if (use_ibrs)
+		if (cpu_ibrs_inuse_any())
 			/*
 			 * Except on IBRS we don't want to use host base value
 			 * but rather the privilege value which has IBRS set.
 			 */
-			hostval = x86_spec_ctrl_priv;
+			hostval = this_cpu_read(x86_spec_ctrl_priv_cpu);
 
 		guestval = hostval & ~x86_spec_ctrl_mask;
 		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
@@ -867,7 +885,7 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 	u64 host;
 
 	if (context != SPEC_CTRL_INITIAL &&
-	    x86_spec_ctrl_priv == x86_spec_ctrl_base)
+	    this_cpu_read(x86_spec_ctrl_priv_cpu) == x86_spec_ctrl_base)
 		return;
 
 	switch (context) {
@@ -894,7 +912,7 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		host = x86_spec_ctrl_base & ~SPEC_CTRL_SSBD;
 		break;
 	case SPEC_CTRL_IDLE_EXIT:
-		host = x86_spec_ctrl_priv;
+		host = this_cpu_read(x86_spec_ctrl_priv_cpu);
 		break;
 	default:
 		WARN_ONCE(1, "unknown spec_ctrl_set_context %#x\n", context);
@@ -1304,7 +1322,12 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 static void __init disable_ibrs_and_friends(void)
 {
 	set_ibrs_disabled();
-	rsb_overwrite_disable();
+	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
+		rsb_overwrite_disable();
+		/* Disable IBRS on all cpus */
+		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+			x86_spec_ctrl_base & ~SPEC_CTRL_IBRS);
+	}
 }
 
 static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
@@ -1428,6 +1451,10 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 			 */
 			pr_info("Spectre v2 mitigation: Filling RSB on underflow conditions\n");
 		}
+	} else if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED) {
+		/* If enhanced IBRS mode is selected, enable it in all cpus */
+		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+			x86_spec_ctrl_base | SPEC_CTRL_IBRS);
 	}
 
 	/*
@@ -1756,6 +1783,7 @@ static void __init ssb_init(void)
 			x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
 
 			x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
+			update_cpu_spec_ctrl_all();
 		}
 	}
 
