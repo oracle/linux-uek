@@ -4482,6 +4482,16 @@
 			Not specifying this option is equivalent to
 			spectre_v2=auto.
 
+	spectre_v2_heuristics=
+			[X86] Control Spectre_v2 variant heuristics.
+
+			off		- disable all heuristics (see below)
+			skylake=off	- do not use IBRS if present on Skylake
+					  instead of retpoline (this is equivalant
+					  to spectre_v2=retpoline,generic).
+			ssbd=off	- do not activate the Speculative Store Bypass
+					  mitigation if doing IBRS.
+
 	spectre_v2_user=
 			[X86] Control mitigation of Spectre variant 2
 		        (indirect branch speculation) vulnerability between

@@ -94,6 +94,47 @@ EXPORT_SYMBOL(rsb_overwrite_key);
 static bool is_skylake_era(void);
 static void __init disable_ibrs_and_friends(void);
 
+int __init spectre_v2_heuristics_setup(char *p)
+{
+	ssize_t len;
+
+	while (*p) {
+		/* Disable all heuristics. */
+		if (!strncmp(p, "off", 3)) {
+			use_ibrs_on_skylake = false;
+			use_ibrs_with_ssbd = false;
+			break;
+		}
+		len = strlen("skylake");
+		if (!strncmp(p, "skylake", len)) {
+			p += len;
+			if (*p == '=')
+				++p;
+			if (*p == '\0')
+				break;
+			if (!strncmp(p, "off", 3))
+				use_ibrs_on_skylake = false;
+		}
+		len = strlen("ssbd");
+		if (!strncmp(p, "ssbd", len)) {
+			p += len;
+			if (*p == '=')
+				++p;
+			if (*p == '\0')
+				break;
+			if (!strncmp(p, "off", 3))
+				use_ibrs_with_ssbd = false;
+		}
+
+		p = strpbrk(p, ",");
+		if (!p)
+			break;
+		p++; /* skip ',' */
+	}
+	return 1;
+}
+__setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
+
 static void __init spectre_v2_select_mitigation(void);
 static enum ssb_mitigation __init ssb_select_mitigation(void);
 static void __init ssb_init(void);
