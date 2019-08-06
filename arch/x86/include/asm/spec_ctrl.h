@@ -185,6 +185,7 @@ extern u64 x86_spec_ctrl_base;
  */
 extern unsigned int use_ibrs;
 DECLARE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
+extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
 
 DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
@@ -233,6 +234,8 @@ static inline void set_ibrs_inuse(void)
 		/* Basic IBRS is available */
 		use_ibrs |= SPEC_CTRL_BASIC_IBRS_INUSE;
 
+	/* Update what sysfs shows */
+	sysctl_ibrs_enabled = true;
 	/* When entering kernel */
 	x86_spec_ctrl_priv |= SPEC_CTRL_IBRS;
 }
@@ -240,6 +243,8 @@ static inline void set_ibrs_inuse(void)
 static inline void clear_ibrs_inuse(void)
 {
 	use_ibrs &= ~(SPEC_CTRL_BASIC_IBRS_INUSE | SPEC_CTRL_ENHCD_IBRS_INUSE);
+	/* Update what sysfs shows. */
+	sysctl_ibrs_enabled = false;
 	/*
 	 * This is stricly not needed as the use_ibrs guards against the
 	 * the use of the MSR so these values wouldn't be touched.
