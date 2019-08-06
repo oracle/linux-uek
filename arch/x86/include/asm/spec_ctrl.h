@@ -22,7 +22,97 @@
 #define SPEC_CTRL_ENHCD_IBRS_SUPPORTED	(1<<4)  /* System supports enhanced IBRS */
 #define SPEC_CTRL_ENHCD_IBRS_INUSE	(1<<5)  /* OS enables enhanced IBRS usage */
 
-#ifndef __ASSEMBLY__
+#ifdef __ASSEMBLY__
+
+.extern use_ibrs
+.extern x86_spec_ctrl_priv
+
+.macro PUSH_MSR_REGS
+	pushq %rax
+	pushq %rcx
+	pushq %rdx
+.endm
+
+.macro POP_MSR_REGS
+	popq %rdx
+	popq %rcx
+	popq %rax
+.endm
+
+.macro WRMSR_ASM msr_nr:req eax_val:req
+	movl	\msr_nr, %ecx
+	movl	$0, %edx
+	movl	\eax_val, %eax
+	wrmsr
+.endm
+
+.macro ENABLE_IBRS
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	jz	.Lskip_\@
+	PUSH_MSR_REGS
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
+	POP_MSR_REGS
+	jmp	.Ldone_\@
+.Lskip_\@:
+	 lfence
+.Ldone_\@:
+.endm
+
+.macro DISABLE_IBRS
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	jz	.Lskip_\@
+	PUSH_MSR_REGS
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base
+	POP_MSR_REGS
+.Lskip_\@:
+.endm
+
+.macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	jz	.Lskip_\@
+
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+	rdmsr
+	movl	%eax, \save_reg
+
+	movl	$0, %edx
+	movl	x86_spec_ctrl_priv, %eax
+	wrmsr
+	jmp	.Ldone_\@
+.Lskip_\@:
+	movl	x86_spec_ctrl_priv, \save_reg
+	lfence
+.Ldone_\@:
+.endm
+
+.macro RESTORE_IBRS_CLOBBER save_reg:req
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	jz	.Lskip_\@
+
+	cmp	\save_reg, x86_spec_ctrl_priv
+	je	.Lskip_\@
+
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+	movl	$0, %edx
+	movl	\save_reg, %eax
+	wrmsr
+	jmp	.Ldone_\@
+.Lskip_\@:
+	lfence
+.Ldone_\@:
+.endm
+
+.macro ENABLE_IBRS_CLOBBER
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	jz	.Lskip_\@
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
+	jmp	.Ldone_\@
+.Lskip_\@:
+	 lfence
+.Ldone_\@:
+.endm
+
+#else /* __ASSEMBLY__ */
 
 #include <linux/cpu.h>
 

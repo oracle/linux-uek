@@ -33,6 +33,7 @@
 #include <asm/percpu.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
+#include <asm/spec_ctrl.h>
 #include <asm/pgtable_types.h>
 #include <asm/export.h>
 #include <asm/frame.h>
@@ -105,6 +106,8 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	pushq	%rax					/* pt_regs->orig_ax */
 
 	PUSH_AND_CLEAR_REGS rax=$-ENOSYS
+
+	ENABLE_IBRS
 
 	/* IRQs are off. */
 	movq	%rsp, %rdi
@@ -189,6 +192,7 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	 * perf profiles. Nothing jumps here.
 	 */
 syscall_return_via_sysret:
+	DISABLE_IBRS
 	/* rcx and r11 are already restored (see code above) */
 	POP_REGS pop_rdi=0 skip_r11rcx=1
 
@@ -575,6 +579,7 @@ SYM_INNER_LABEL(swapgs_restore_regs_and_return_to_usermode, SYM_L_GLOBAL)
 1:
 #endif
 	POP_REGS pop_rdi=0
+	DISABLE_IBRS
 
 	/*
 	 * The stack is now user RDI, orig_ax, RIP, CS, EFLAGS, RSP, SS.
@@ -864,6 +869,7 @@ SYM_CODE_START_LOCAL(paranoid_entry)
 	 * be retrieved from a kernel internal table.
 	 */
 	SAVE_AND_SWITCH_TO_KERNEL_CR3 scratch_reg=%rax save_reg=%r14
+	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d /* Clobbers: %[rax,rcx,rdx] */
 
 	/*
 	 * Handling GSBASE depends on the availability of FSGSBASE.
@@ -959,6 +965,7 @@ SYM_CODE_START_LOCAL(paranoid_exit)
 	jnz		restore_regs_and_return_to_kernel
 
 	/* We are returning to a context with user GSBASE */
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
 	swapgs
 	jmp		restore_regs_and_return_to_kernel
 SYM_CODE_END(paranoid_exit)
@@ -982,6 +989,7 @@ SYM_CODE_START_LOCAL(error_entry)
 	FENCE_SWAPGS_USER_ENTRY
 	/* We have user CR3.  Change to kernel CR3. */
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
+	ENABLE_IBRS_CLOBBER
 
 .Lerror_entry_from_usermode_after_swapgs:
 	/* Put us onto the real thread stack. */
@@ -1036,6 +1044,7 @@ SYM_CODE_START_LOCAL(error_entry)
 	SWAPGS
 	FENCE_SWAPGS_USER_ENTRY
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
+	ENABLE_IBRS
 
 	/*
 	 * Pretend that the exception came from user mode: set up pt_regs
@@ -1129,6 +1138,7 @@ SYM_CODE_START(asm_exc_nmi)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdx
 	movq	%rsp, %rdx
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+	ENABLE_IBRS
 	UNWIND_HINT_IRET_REGS base=%rdx offset=8
 	pushq	5*8(%rdx)	/* pt_regs->ss */
 	pushq	4*8(%rdx)	/* pt_regs->rsp */
@@ -1361,6 +1371,8 @@ end_repeat_nmi:
 	movq	%rsp, %rdi
 	movq	$-1, %rsi
 	call	exc_nmi
+
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
 
 	/* Always restore stashed CR3 value (see paranoid_entry) */
 	RESTORE_CR3 scratch_reg=%r15 save_reg=%r14
