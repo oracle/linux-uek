@@ -69,6 +69,15 @@ static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
 
+/*
+ * RSB stuffing dynamic keys to activate the STUFF_RSB macro,
+ * and indicate if this macro should overwrite the RSB.
+ */
+DEFINE_STATIC_KEY_FALSE(rsb_stuff_key);
+EXPORT_SYMBOL(rsb_stuff_key);
+DEFINE_STATIC_KEY_FALSE(rsb_overwrite_key);
+EXPORT_SYMBOL(rsb_overwrite_key);
+
 static void __init disable_ibrs_and_friends(void);
 
 static void __init spectre_v2_select_mitigation(void);
@@ -867,6 +876,9 @@ static void __init ibrs_select(enum spectre_v2_mitigation *mode)
 	if (boot_cpu_has(X86_FEATURE_SMEP))
 		return;
 
+	/* IBRS without SMEP needs RSB overwrite */
+	rsb_overwrite_enable();
+
 	if (*mode == SPECTRE_V2_IBRS_ENHANCED)
 		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
 }
@@ -893,6 +905,7 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 static void __init disable_ibrs_and_friends(void)
 {
 	set_ibrs_disabled();
+	rsb_overwrite_disable();
 }
 
 static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
