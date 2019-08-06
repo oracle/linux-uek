@@ -70,6 +70,9 @@ static bool use_ibpb = true;
 DEFINE_MUTEX(spec_ctrl_mutex);
 EXPORT_SYMBOL(spec_ctrl_mutex);
 
+bool use_ibrs_on_skylake = true;
+EXPORT_SYMBOL(use_ibrs_on_skylake);
+
 bool use_ibrs_with_ssbd = true;
 
 /*
@@ -88,6 +91,7 @@ EXPORT_SYMBOL(rsb_stuff_key);
 DEFINE_STATIC_KEY_FALSE(rsb_overwrite_key);
 EXPORT_SYMBOL(rsb_overwrite_key);
 
+static bool is_skylake_era(void);
 static void __init disable_ibrs_and_friends(void);
 
 static void __init spectre_v2_select_mitigation(void);
@@ -714,10 +718,19 @@ bool retpoline_enabled(void)
 void retpoline_enable(void)
 {
 	static_branch_enable(&retpoline_enabled_key);
+	if (is_skylake_era()) {
+		/*
+		 * With retpoline, Skylake era CPUs should also fill RSB on any
+		 * condition that might empty the RSB.
+		 */
+		rsb_stuff_enable();
+	}
 }
 
 void retpoline_disable(void)
 {
+	if (is_skylake_era() && !static_key_enabled(&rsb_overwrite_key))
+		rsb_stuff_disable();
 	static_branch_disable(&retpoline_enabled_key);
 }
 
@@ -1024,6 +1037,23 @@ static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
 	return false;
 }
 
+/* Check for Skylake-like CPUs (for RSB handling) */
+static bool is_skylake_era(void)
+{
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL &&
+	    boot_cpu_data.x86 == 6) {
+		switch (boot_cpu_data.x86_model) {
+		case INTEL_FAM6_SKYLAKE_L:
+		case INTEL_FAM6_SKYLAKE:
+		case INTEL_FAM6_SKYLAKE_X:
+		case INTEL_FAM6_KABYLAKE_L:
+		case INTEL_FAM6_KABYLAKE:
+			return true;
+		}
+	}
+	return false;
+}
+
 /*
  * Based on the cmd parsed from the kernel arguments and the capabilities of
  * the system, determine which spectre v2 mitigation will be employed and
@@ -1061,6 +1091,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	/*
 	 * The default mitigation preference is:
 	 * IBRS(enhanced) --> retpoline --> IBRS(basic)
+	 * Except for Skylake cpus where we prefer basic IBRS over retpoline.
 	 */
 	if (eibrs_supported && !ibrs_disabled) {
 		/*
@@ -1072,6 +1103,15 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 		BUG_ON(auto_mode != SPECTRE_V2_IBRS_ENHANCED);
 		return auto_mode;
 	} else if (IS_ENABLED(CONFIG_RETPOLINE)) {
+		/* On Skylake, basic IBRS is preferred over retpoline */
+		if (ibrs_supported && !ibrs_disabled) {
+			if (is_skylake_era() && use_ibrs_on_skylake) {
+				/* Start the engine! */
+				ibrs_select(&auto_mode);
+				BUG_ON(auto_mode != SPECTRE_V2_IBRS);
+				return auto_mode;
+			}
+		}
 		/* retpoline mode has been initialized by retpoline_init() */
 		return retpoline_mode;
 	} else {
@@ -1099,6 +1139,13 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	/* Activate the selected mitigation if necessary. */
 	if (retpoline_mode_selected(spectre_v2_enabled)) {
 		retpoline_activate(spectre_v2_enabled);
+		if (is_skylake_era()) {
+			/*
+			 * Indicate that Skylake+ CPUs also enable RSB stuffing
+			 * from the above call to retpoline_activate().
+			 */
+			pr_info("Spectre v2 mitigation: Filling RSB on underflow conditions\n");
+		}
 	}
 
 	/*
