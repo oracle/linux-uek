@@ -458,8 +458,10 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 		msr |= stibp_tif_to_spec_ctrl(tifn);
 	}
 
-	if (updmsr)
+	if (updmsr) {
+		this_cpu_write(x86_spec_ctrl_restore,  msr);
 		wrmsrl(MSR_IA32_SPEC_CTRL, msr);
+	}
 }
 
 static unsigned long speculation_ctrl_update_tif(struct task_struct *tsk)

@@ -47,10 +47,10 @@
 .endm
 
 .macro ENABLE_IBRS
-	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
@@ -59,16 +59,16 @@
 .endm
 
 .macro DISABLE_IBRS
-	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_restore)
 	POP_MSR_REGS
 .Lskip_\@:
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
-	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
@@ -76,20 +76,20 @@
 	movl	%eax, \save_reg
 
 	movl	$0, %edx
-	movl	x86_spec_ctrl_priv, %eax
+	movl	PER_CPU_VAR(x86_spec_ctrl_priv_cpu), %eax
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
-	movl	x86_spec_ctrl_priv, \save_reg
+	movl	PER_CPU_VAR(x86_spec_ctrl_priv_cpu), \save_reg
 	lfence
 .Ldone_\@:
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
-	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 
-	cmp	\save_reg, x86_spec_ctrl_priv
+	cmp	\save_reg, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
 	je	.Lskip_\@
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
@@ -103,9 +103,9 @@
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
 	jmp	.Ldone_\@
 .Lskip_\@:
 	 lfence
@@ -175,15 +175,23 @@
 
 /* Defined in bugs.c */
 extern u64 x86_spec_ctrl_priv;
+DECLARE_PER_CPU(u64, x86_spec_ctrl_priv_cpu);
+DECLARE_PER_CPU(u64, x86_spec_ctrl_restore);
 extern u64 x86_spec_ctrl_base;
 
 /*
  * Indicate usage of IBRS to control execution speculation.
  *
- * IBRS usage is defined globally with the use_ibrs variable.
- * During the boot, the boot cpu will set the initial value of use_ibrs.
+ * IBRS usage is defined globally with the use_ibrs variable, and
+ * per-cpu with the per-cpu variable cpu_ibrs. During the boot,
+ * the boot cpu will set the initial value of use_ibrs and the
+ * per-cpu value of all online cpus which support IBRS. If, after
+ * that, a cpu comes online or has its microcode updated, it will
+ * set its own per-cpu value based on the value of use_ibrs and
+ * the IBRS capability of the cpu.
  */
 extern unsigned int use_ibrs;
+DECLARE_PER_CPU(unsigned int, cpu_ibrs);
 DECLARE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
 extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
@@ -220,6 +228,50 @@ static inline void rsb_stuff_disable(void)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
 #define eibrs_supported		(use_ibrs & SPEC_CTRL_ENHCD_IBRS_SUPPORTED)
 
+static inline void spec_ctrl_flush_all_cpus(u32 msr_nr, u64 val)
+{
+	int cpu;
+	get_online_cpus();
+	for_each_online_cpu(cpu)
+		wrmsrl_on_cpu(cpu, msr_nr, val);
+	put_online_cpus();
+}
+
+static inline void update_cpu_spec_ctrl(int cpu)
+{
+	per_cpu(x86_spec_ctrl_priv_cpu, cpu) = x86_spec_ctrl_priv;
+	per_cpu(x86_spec_ctrl_restore, cpu) = x86_spec_ctrl_base;
+}
+
+static inline void update_cpu_spec_ctrl_all(void)
+{
+	int cpu_index;
+
+	for_each_online_cpu(cpu_index)
+		update_cpu_spec_ctrl(cpu_index);
+}
+
+static inline void update_cpu_ibrs(struct cpuinfo_x86 *cpu)
+{
+	struct cpuinfo_x86 *cpu_info;
+
+	/*
+	 * IBRS can be set at boot time while cpu capabilities
+	 * haven't been copied from boot_cpu_data yet.
+	 */
+	cpu_info = (cpu->initialized) ? cpu : &boot_cpu_data;
+	per_cpu(cpu_ibrs, cpu->cpu_index) =
+	    cpu_has(cpu_info, X86_FEATURE_SPEC_CTRL) ? use_ibrs : 0;
+}
+
+static inline void update_cpu_ibrs_all(void)
+{
+	int cpu_index;
+
+	for_each_online_cpu(cpu_index)
+		update_cpu_ibrs(&cpu_data(cpu_index));
+}
+
 static inline void set_ibrs_inuse(void)
 {
 	if (!ibrs_supported || ibrs_disabled)
@@ -234,15 +286,20 @@ static inline void set_ibrs_inuse(void)
 		/* Basic IBRS is available */
 		use_ibrs |= SPEC_CTRL_BASIC_IBRS_INUSE;
 
+	/* Propagate the change to each cpu */
+	update_cpu_ibrs_all();
 	/* Update what sysfs shows */
 	sysctl_ibrs_enabled = true;
 	/* When entering kernel */
 	x86_spec_ctrl_priv |= SPEC_CTRL_IBRS;
+	/* Update per-cpu spec_ctrl */
+	update_cpu_spec_ctrl_all();
 }
 
 static inline void clear_ibrs_inuse(void)
 {
 	use_ibrs &= ~(SPEC_CTRL_BASIC_IBRS_INUSE | SPEC_CTRL_ENHCD_IBRS_INUSE);
+	update_cpu_ibrs_all();
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = false;
 	/*
@@ -250,6 +307,7 @@ static inline void clear_ibrs_inuse(void)
 	 * the use of the MSR so these values wouldn't be touched.
 	 */
 	x86_spec_ctrl_priv &= ~(SPEC_CTRL_IBRS);
+	update_cpu_spec_ctrl_all();
 }
 
 static inline int check_basic_ibrs_inuse(void)
@@ -281,6 +339,12 @@ static inline int check_ibrs_inuse(void)
 	/* rmb to prevent wrong speculation for security */
 	rmb();
 	return 0;
+}
+
+static inline int cpu_ibrs_inuse_any(void)
+{
+	return (this_cpu_read(cpu_ibrs) &
+	    (SPEC_CTRL_BASIC_IBRS_INUSE | SPEC_CTRL_ENHCD_IBRS_INUSE)) ? 1 : 0;
 }
 
 static inline void set_ibrs_supported(void)
