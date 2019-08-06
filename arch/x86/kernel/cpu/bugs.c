@@ -310,12 +310,19 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 	struct thread_info *ti = current_thread_info();
 
 	/* Is MSR_SPEC_CTRL implemented ? */
-	if (static_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
+	if (ibrs_supported) {
 		/*
 		 * Restrict guest_spec_ctrl to supported values. Clear the
 		 * modifiable bits in the host base value and or the
 		 * modifiable bits from the guest value.
 		 */
+		if (use_ibrs)
+			/*
+			 * Except on IBRS we don't want to use host base value
+			 * but rather the privilege value which has IBRS set.
+			 */
+			hostval = x86_spec_ctrl_priv;
+
 		guestval = hostval & ~x86_spec_ctrl_mask;
 		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
 
@@ -328,7 +335,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		if (static_branch_unlikely(&switch_to_cond_stibp))
 			hostval |= stibp_tif_to_spec_ctrl(ti->flags);
 
-		if (hostval != guestval) {
+		if (hostval != guestval || check_basic_ibrs_inuse()) {
 			msrval = setguest ? guestval : hostval;
 			wrmsrl(MSR_IA32_SPEC_CTRL, msrval);
 		}
@@ -1083,6 +1090,14 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	if (retpoline_mode_selected(spectre_v2_enabled)) {
 		retpoline_activate(spectre_v2_enabled);
 	}
+
+	/*
+	 * Overwrite the RSB after a VM exit to ensure that guest behavior
+	 * cannot control it. Only enhanced IBRS with SMEP can avoid this.
+	 */
+	if (spectre_v2_enabled != SPECTRE_V2_IBRS_ENHANCED ||
+	    !boot_cpu_has(X86_FEATURE_SMEP))
+		setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
 
 	/*
 	 * If spectre v2 protection has been enabled, unconditionally fill

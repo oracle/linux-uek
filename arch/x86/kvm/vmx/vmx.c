@@ -42,6 +42,7 @@
 #include <asm/mmu_context.h>
 #include <asm/mshyperv.h>
 #include <asm/spec-ctrl.h>
+#include <asm/spec_ctrl.h>
 #include <asm/virtext.h>
 #include <asm/vmx.h>
 
@@ -6595,8 +6596,10 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	 * If the L02 MSR bitmap does not intercept the MSR, then we need to
 	 * save it.
 	 */
-	if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
-		vmx->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
+	if (ibrs_supported) {
+		if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
+			vmx->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
+	}
 
 	x86_spec_ctrl_restore_host(vmx->spec_ctrl, 0);
 
