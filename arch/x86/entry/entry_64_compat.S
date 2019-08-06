@@ -14,6 +14,7 @@
 #include <asm/irqflags.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
+#include <asm/spec_ctrl.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -54,6 +55,8 @@ ENTRY(entry_SYSENTER_compat)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp
 
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+
+	ENABLE_IBRS
 
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
@@ -140,6 +143,7 @@ ENTRY(entry_SYSENTER_compat)
 	/* XEN PV guests always use IRET path */
 	ALTERNATIVE "testl %eax, %eax; jz .Lsyscall_32_done", \
 		    "jmp .Lsyscall_32_done", X86_FEATURE_XENPV
+	DISABLE_IBRS
 	jmp	sysret32_from_system_call
 
 .Lsysenter_fix_flags:
@@ -247,6 +251,8 @@ GLOBAL(entry_SYSCALL_compat_after_hwframe)
 	pushq   $0			/* pt_regs->r15 = 0 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 
+	ENABLE_IBRS
+
 	/*
 	 * User mode is traced as though IRQs are on, and SYSENTER
 	 * turned them off.
@@ -267,6 +273,7 @@ sysret32_from_system_call:
 	 */
 	STACKLEAK_ERASE
 	TRACE_IRQS_ON			/* User mode traces as IRQs on. */
+	DISABLE_IBRS
 	movq	RBX(%rsp), %rbx		/* pt_regs->rbx */
 	movq	RBP(%rsp), %rbp		/* pt_regs->rbp */
 	movq	EFLAGS(%rsp), %r11	/* pt_regs->flags (in r11) */
@@ -373,6 +380,8 @@ ENTRY(entry_INT80_compat)
 	pushq	1*8(%rdi)		/* regs->orig_ax */
 	pushq	(%rdi)			/* pt_regs->di */
 .Lint80_keep_stack:
+
+	ENABLE_IBRS
 
 	pushq	%rsi			/* pt_regs->si */
 	xorl	%esi, %esi		/* nospec   si */
