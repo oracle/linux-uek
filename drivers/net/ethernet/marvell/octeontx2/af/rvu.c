@@ -717,7 +717,7 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 	}
 }
 
-static void rvu_fwdata_init(struct rvu *rvu)
+static int rvu_fwdata_init(struct rvu *rvu)
 {
 	u64 fwdbase;
 	int err;
@@ -725,15 +725,21 @@ static void rvu_fwdata_init(struct rvu *rvu)
 	/* Get firmware data base address */
 	err = cgx_get_fwdata_base(&fwdbase);
 	if (err)
-		return;
+		goto fail;
 	rvu->fwdata = ioremap_wc(fwdbase, sizeof(struct rvu_fwdata));
 	if (!rvu->fwdata)
-		return;
+		goto fail;
 	if (!is_rvu_fwdata_valid(rvu)) {
+		dev_err(rvu->dev,
+			"Mismatch in 'fwdata' struct btw kernel and firmware\n");
 		iounmap(rvu->fwdata);
 		rvu->fwdata = NULL;
-		return;
+		return -EINVAL;
 	}
+	return 0;
+fail:
+	dev_err(rvu->dev, "Unable to fetch 'fwdata' from firmware\n");
+	return -EIO;
 }
 
 static void rvu_fwdata_exit(struct rvu *rvu)
@@ -920,7 +926,9 @@ init:
 		rvu_scan_block(rvu, block);
 	}
 
-	rvu_fwdata_init(rvu);
+	err = rvu_fwdata_init(rvu);
+	if (err)
+		goto msix_err;
 
 	err = rvu_npc_init(rvu);
 	if (err)
@@ -1007,8 +1015,10 @@ int rvu_aq_alloc(struct rvu *rvu, struct admin_queue **ad_queue,
 int rvu_mbox_handler_ready(struct rvu *rvu, struct msg_req *req,
 			   struct ready_msg_rsp *rsp)
 {
-	rsp->rclk_freq = rvu->fwdata->rclk;
-	rsp->sclk_freq = rvu->fwdata->sclk;
+	if (rvu->fwdata) {
+		rsp->rclk_freq = rvu->fwdata->rclk;
+		rsp->sclk_freq = rvu->fwdata->sclk;
+	}
 	return 0;
 }
 
@@ -2776,8 +2786,11 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	rvu->ptp = ptp_get();
 	if (IS_ERR(rvu->ptp)) {
 		err = PTR_ERR(rvu->ptp);
-		if (err == -EPROBE_DEFER)
+		if (err == -EPROBE_DEFER) {
+			dev_err(dev,
+				"PTP driver not loaded, deferring probe\n");
 			goto err_release_regions;
+		}
 		rvu->ptp = NULL;
 	}
 
