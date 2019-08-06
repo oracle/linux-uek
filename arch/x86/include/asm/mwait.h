@@ -7,6 +7,7 @@
 
 #include <asm/cpufeature.h>
 #include <asm/nospec-branch.h>
+#include <asm/spec_ctrl.h>
 
 #define MWAIT_SUBSTATE_MASK		0xf
 #define MWAIT_CSTATE_MASK		0xf
@@ -113,9 +114,13 @@ static inline void mwait_idle_with_hints(unsigned long eax, unsigned long ecx)
 			mb();
 		}
 
+		x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
+
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched())
 			__mwait(eax, ecx);
+
+		x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
 	}
 	current_clr_polling();
 }
