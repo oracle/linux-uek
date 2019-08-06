@@ -70,6 +70,8 @@ static bool use_ibpb = true;
 DEFINE_MUTEX(spec_ctrl_mutex);
 EXPORT_SYMBOL(spec_ctrl_mutex);
 
+bool use_ibrs_with_ssbd = true;
+
 /*
  * Retpoline variables.
  */
@@ -89,10 +91,13 @@ EXPORT_SYMBOL(rsb_overwrite_key);
 static void __init disable_ibrs_and_friends(void);
 
 static void __init spectre_v2_select_mitigation(void);
-static void __init ssb_select_mitigation(void);
+static enum ssb_mitigation __init ssb_select_mitigation(void);
+static void __init ssb_init(void);
 static void __init l1tf_select_mitigation(void);
 static void __init mds_select_mitigation(void);
 static void __init taa_select_mitigation(void);
+
+static enum ssb_mitigation ssb_mode __ro_after_init = SPEC_STORE_BYPASS_NONE;
 
 /* The base value of the SPEC_CTRL MSR that always has to be preserved. */
 u64 x86_spec_ctrl_base;
@@ -168,10 +173,10 @@ void __init check_bugs(void)
 		}
 
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
-		if (x86_spec_ctrl_base & SPEC_CTRL_IBRS) {
-			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS set "
-				"during boot, clearing it.", x86_spec_ctrl_base);
-			x86_spec_ctrl_base &= ~SPEC_CTRL_IBRS;
+		if (x86_spec_ctrl_base & (SPEC_CTRL_IBRS | SPEC_CTRL_SSBD)) {
+			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS and/or "
+				"SSBD set during boot, clearing it.", x86_spec_ctrl_base);
+			x86_spec_ctrl_base &= ~(SPEC_CTRL_IBRS | SPEC_CTRL_SSBD);
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 	} else {
@@ -193,10 +198,19 @@ void __init check_bugs(void)
 	if (boot_cpu_has(X86_FEATURE_STIBP))
 		x86_spec_ctrl_mask |= SPEC_CTRL_STIBP;
 
-	/* Select the proper CPU mitigations before patching alternatives: */
+	/*
+	 * Select proper mitigation for any exposure to the Speculative Store
+	 * Bypass vulnerability.  Required by spectre_v2_select_mitigation.
+	 */
+	ssb_mode = ssb_select_mitigation();
+
+	/* Select the proper spectre mitigation before patching alternatives */
 	spectre_v1_select_mitigation();
 	spectre_v2_select_mitigation();
-	ssb_select_mitigation();
+
+	/* Relies on the result of spectre_v2_select_mitigation. */
+	ssb_init();
+
 	l1tf_select_mitigation();
 	mds_select_mitigation();
 	taa_select_mitigation();
@@ -1194,8 +1208,6 @@ void cpu_bugs_smt_update(void)
 #undef pr_fmt
 #define pr_fmt(fmt)	"Speculative Store Bypass: " fmt
 
-static enum ssb_mitigation ssb_mode __ro_after_init = SPEC_STORE_BYPASS_NONE;
-
 /* The kernel command line selection */
 enum ssb_mitigation_cmd {
 	SPEC_STORE_BYPASS_CMD_NONE,
@@ -1255,7 +1267,7 @@ static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
 	return cmd;
 }
 
-static enum ssb_mitigation __init __ssb_select_mitigation(void)
+static enum ssb_mitigation __init ssb_select_mitigation(void)
 {
 	enum ssb_mitigation mode = SPEC_STORE_BYPASS_NONE;
 	enum ssb_mitigation_cmd cmd;
@@ -1291,6 +1303,18 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 		break;
 	}
 
+	return mode;
+}
+
+static void __init ssb_init(void)
+{
+	/*
+	 * We have three CPU feature flags that are in play here:
+	 *  - X86_BUG_SPEC_STORE_BYPASS - CPU is susceptible.
+	 *  - X86_FEATURE_SSBD - CPU is able to turn off speculative store bypass
+	 *  - X86_FEATURE_SPEC_STORE_BYPASS_DISABLE - engage the mitigation
+	 */
+
 	/*
 	 * If SSBD is controlled by the SPEC_CTRL MSR, then set the proper
 	 * bit in the mask to allow guests to use the mitigation even in the
@@ -1301,14 +1325,9 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 		x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 	}
 
-	/*
-	 * We have three CPU feature flags that are in play here:
-	 *  - X86_BUG_SPEC_STORE_BYPASS - CPU is susceptible.
-	 *  - X86_FEATURE_SSBD - CPU is able to turn off speculative store bypass
-	 *  - X86_FEATURE_SPEC_STORE_BYPASS_DISABLE - engage the mitigation
-	 */
-	if (mode == SPEC_STORE_BYPASS_DISABLE) {
+	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
 		setup_force_cpu_cap(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE);
+
 		/*
 		 * Intel uses the SPEC CTRL MSR Bit(2) for this, while AMD may
 		 * use a completely different MSR and bit dependent on family.
@@ -1318,16 +1337,10 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 			x86_amd_ssb_disable();
 		} else {
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
+			x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
 			wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
 		}
 	}
-
-	return mode;
-}
-
-static void ssb_select_mitigation(void)
-{
-	ssb_mode = __ssb_select_mitigation();
 
 	if (boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS))
 		pr_info("%s\n", ssb_strings[ssb_mode]);
