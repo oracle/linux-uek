@@ -131,6 +131,32 @@ DECLARE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
 extern struct mutex spec_ctrl_mutex;
 
 DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
+DECLARE_STATIC_KEY_FALSE(rsb_stuff_key);
+DECLARE_STATIC_KEY_FALSE(rsb_overwrite_key);
+
+static inline void rsb_overwrite_enable(void)
+{
+	static_branch_enable(&rsb_stuff_key);
+	static_branch_enable(&rsb_overwrite_key);
+}
+
+static inline void rsb_overwrite_disable(void)
+{
+	if (static_key_enabled(&rsb_overwrite_key)) {
+		static_branch_disable(&rsb_stuff_key);
+		static_branch_disable(&rsb_overwrite_key);
+	}
+}
+
+static inline void rsb_stuff_enable(void)
+{
+	static_branch_enable(&rsb_stuff_key);
+}
+
+static inline void rsb_stuff_disable(void)
+{
+	static_branch_disable(&rsb_stuff_key);
+}
 
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
