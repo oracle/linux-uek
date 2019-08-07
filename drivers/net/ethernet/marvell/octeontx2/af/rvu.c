@@ -63,7 +63,6 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 
 	hw->cap.nix_tx_aggr_lvl = NIX_TXSCH_LVL_TL1;
 	hw->cap.nix_fixed_txschq_mapping = false;
-	hw->cap.nix_express_traffic = true;
 	hw->cap.nix_shaping = true;
 	hw->cap.nix_tx_link_bp = true;
 	hw->cap.nix_rx_multicast = true;
@@ -73,7 +72,6 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 		hw->cap.nix_txsch_per_cgx_lmac = 4;
 		hw->cap.nix_txsch_per_lbk_lmac = 132;
 		hw->cap.nix_txsch_per_sdp_lmac = 76;
-		hw->cap.nix_express_traffic = false;
 		hw->cap.nix_shaping = false;
 		hw->cap.nix_tx_link_bp = false;
 		if (is_rvu_96xx_A0(rvu) || is_rvu_95xx_A0(rvu))
@@ -1524,7 +1522,6 @@ int rvu_mbox_handler_get_hw_cap(struct rvu *rvu, struct msg_req *req,
 	struct rvu_hwinfo *hw = rvu->hw;
 
 	rsp->nix_fixed_txschq_mapping = hw->cap.nix_fixed_txschq_mapping;
-	rsp->nix_express_traffic = hw->cap.nix_express_traffic;
 	rsp->nix_shaping = hw->cap.nix_shaping;
 
 	return 0;
