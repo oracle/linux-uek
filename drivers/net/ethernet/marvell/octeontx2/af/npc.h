@@ -40,6 +40,12 @@ enum npc_kpu_lb_ltype {
 	NPC_LT_LB_BTAG,
 	NPC_LT_LB_QINQ,
 	NPC_LT_LB_ITAG,
+	NPC_LT_LB_DSA,
+	NPC_LT_LB_DSA_VLAN,
+	NPC_LT_LB_EDSA,
+	NPC_LT_LB_EDSA_VLAN,
+	NPC_LT_LB_EXDSA,
+	NPC_LT_LB_EXDSA_VLAN,
 };
 
 enum npc_kpu_lc_ltype {
