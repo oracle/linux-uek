@@ -46,6 +46,7 @@
 #include <linux/virtio_scsi.h>
 #include <linux/llist.h>
 #include <linux/bitmap.h>
+#include <linux/highmem.h>
 
 #include "vhost.h"
 
@@ -70,6 +71,11 @@ struct vhost_scsi_inflight {
 	struct kref kref;
 };
 
+struct vhost_scsi_iter {
+	const void *iov_addr;
+	struct iov_iter iter;
+};
+
 struct vhost_scsi_cmd {
 	/* Descriptor from vhost_get_vq_desc() for virt_queue segment */
 	int tvc_vq_desc;
@@ -88,6 +94,9 @@ struct vhost_scsi_cmd {
 	u32 tvc_prot_sgl_count;
 	/* Saved unpacked SCSI LUN for vhost_scsi_submission_work() */
 	u32 tvc_lun;
+	/* Iterators for copy data back on read requests */
+	struct vhost_scsi_iter tvc_prot_iter;
+	struct vhost_scsi_iter tvc_data_iter;
 	/* Pointer to the SGL formatted memory from virtio-scsi */
 	struct scatterlist *tvc_sgl;
 	struct scatterlist *tvc_prot_sgl;
@@ -222,11 +231,21 @@ struct vhost_scsi_ctx {
 	struct iov_iter out_iter;
 };
 
+static int zcopy = 1;
+module_param(zcopy, int, 0444);
+MODULE_PARM_DESC(zcopy, "Enable Zero Copy; 1 - Enable; 0 - Disable");
+
 static struct workqueue_struct *vhost_scsi_workqueue;
 
 /* Global spinlock to protect vhost_scsi TPG list for vhost IOCTL access */
 static DEFINE_MUTEX(vhost_scsi_mutex);
 static LIST_HEAD(vhost_scsi_list);
+
+static int iov_num_pages(void __user *iov_base, size_t iov_len)
+{
+	return (PAGE_ALIGN((unsigned long)iov_base + iov_len) -
+		((unsigned long)iov_base & PAGE_MASK)) >> PAGE_SHIFT;
+}
 
 static void vhost_scsi_done_inflight(struct kref *kref)
 {
@@ -281,6 +300,14 @@ static void vhost_scsi_put_inflight(struct vhost_scsi_inflight *inflight)
 	kref_put(&inflight->kref, vhost_scsi_done_inflight);
 }
 
+static void vhost_scsi_put_page(struct page *page)
+{
+	if (zcopy)
+		put_page(page);
+	else
+		__free_page(page);
+}
+
 static int vhost_scsi_check_true(struct se_portal_group *se_tpg)
 {
 	return 1;
@@ -329,11 +356,13 @@ static void vhost_scsi_release_cmd(struct se_cmd *se_cmd)
 
 	if (tv_cmd->tvc_sgl_count) {
 		for (i = 0; i < tv_cmd->tvc_sgl_count; i++)
-			put_page(sg_page(&tv_cmd->tvc_sgl[i]));
+			vhost_scsi_put_page(sg_page(&tv_cmd->tvc_sgl[i]));
+		kfree(tv_cmd->tvc_data_iter.iov_addr);
 	}
 	if (tv_cmd->tvc_prot_sgl_count) {
 		for (i = 0; i < tv_cmd->tvc_prot_sgl_count; i++)
-			put_page(sg_page(&tv_cmd->tvc_prot_sgl[i]));
+			vhost_scsi_put_page(sg_page(&tv_cmd->tvc_prot_sgl[i]));
+		kfree(tv_cmd->tvc_prot_iter.iov_addr);
 	}
 
 	vhost_scsi_put_inflight(tv_cmd->inflight);
@@ -370,6 +399,23 @@ static void vhost_scsi_complete_cmd(struct vhost_scsi_cmd *cmd)
 
 	vhost_work_queue(&vs->dev, &vs->vs_completion_work);
 }
+
+static int vhost_scsi_copy_from_sgl(struct vhost_scsi_cmd *cmd,
+				    struct vhost_scsi_iter *copy_iter,
+				    struct scatterlist *sg, int sg_count)
+{
+	struct scatterlist *p = sg;
+	struct iov_iter *it = &copy_iter->iter;
+
+	while (iov_iter_count(it) > 0 && ((p - sg) < sg_count)) {
+		if (copy_to_iter(sg_virt(p), p->length, it) != p->length)
+			return -EFAULT;
+		p++;
+	}
+
+	return 0;
+}
+
 
 static int vhost_scsi_queue_data_in(struct se_cmd *se_cmd)
 {
@@ -544,6 +590,22 @@ static void vhost_scsi_complete_cmd_work(struct vhost_work *work)
 		memcpy(v_rsp.sense, cmd->tvc_sense_buf,
 		       se_cmd->scsi_sense_length);
 
+		if (!zcopy && (cmd->tvc_data_direction == DMA_FROM_DEVICE)) {
+			/* vhost_scsi_copy_from_sgl checks for iov count and sgl */
+			ret = vhost_scsi_copy_from_sgl(cmd, &cmd->tvc_data_iter,
+						cmd->tvc_sgl, cmd->tvc_sgl_count);
+			if (ret)
+				goto copy_err;
+
+			ret = vhost_scsi_copy_from_sgl(cmd,
+						&cmd->tvc_prot_iter,
+						cmd->tvc_prot_sgl,
+						cmd->tvc_prot_sgl_count);
+copy_err:
+			if (ret)
+				v_rsp.response = VIRTIO_SCSI_S_BAD_TARGET;
+		}
+
 		iov_iter_init(&iov_iter, READ, &cmd->tvc_resp_iov,
 			      cmd->tvc_in_iovs, sizeof(v_rsp));
 		ret = copy_to_iter(&v_rsp, sizeof(v_rsp), &iov_iter);
@@ -614,6 +676,67 @@ vhost_scsi_get_tag(struct vhost_virtqueue *vq, struct vhost_scsi_tpg *tpg,
 }
 
 /*
+ * Copy a user memory range into a scatterlist with host allocated pages
+ *
+ * Returns the number of scatterlist entries used or -errno on error.
+ */
+static int
+vhost_scsi_copy_to_sgl(struct vhost_scsi_cmd *cmd, struct iov_iter *iter,
+		       struct scatterlist *sgl, bool write)
+{
+	void __user *ptr = iter->iov->iov_base + iter->iov_offset;
+	size_t len = iter->iov->iov_len - iter->iov_offset;
+	unsigned int npages = 0, offset, nbytes, i;
+	struct page **pages = cmd->tvc_upages;
+	struct scatterlist *sg = sgl;
+	struct page *page;
+
+	npages = iov_num_pages(ptr, len);
+	if (npages > VHOST_SCSI_PREALLOC_UPAGES) {
+		pr_err("vhost_scsi_map_to_sgl() pages_nr: %u greater than"
+		       " preallocated VHOST_SCSI_PREALLOC_UPAGES: %u\n",
+			npages, VHOST_SCSI_PREALLOC_UPAGES);
+		return -ENOBUFS;
+	}
+
+	for (i = 0; i < npages; i++) {
+		page = alloc_page(GFP_KERNEL);
+		if (!page)
+			goto err;
+
+		pages[i] = page;
+	}
+
+	npages = 0;
+	while (len > 0) {
+		offset = (uintptr_t)ptr & ~PAGE_MASK;
+		nbytes = min_t(unsigned int, PAGE_SIZE - offset, len);
+		page = pages[npages];
+
+		if ((cmd->tvc_data_direction == DMA_TO_DEVICE) &&
+		    (copy_from_user(page_address(page) + offset,
+				    ptr, nbytes))) {
+			goto err;
+		}
+
+		iov_iter_advance(iter, nbytes);
+
+		sg_set_page(sg, page, nbytes, offset);
+		ptr += nbytes;
+		len -= nbytes;
+		sg++;
+		npages++;
+	}
+
+	return npages;
+
+err:
+	while (i > 0)
+		__free_page(pages[--i]);
+	return -ENOMEM;
+}
+
+/*
  * Map a user memory range into a scatterlist
  *
  * Returns the number of scatterlist entries used or -errno on error.
@@ -669,24 +792,35 @@ vhost_scsi_calc_sgls(struct iov_iter *iter, size_t bytes, int max_sgls)
 
 static int
 vhost_scsi_iov_to_sgl(struct vhost_scsi_cmd *cmd, bool write,
+		      struct vhost_scsi_iter *copy_iter,
 		      struct iov_iter *iter,
 		      struct scatterlist *sg, int sg_count)
 {
 	struct scatterlist *p = sg;
+	const void *addr = NULL;
 	int ret;
 
+	if (!zcopy && write)
+		addr = dup_iter(&copy_iter->iter, iter, GFP_KERNEL);
+
 	while (iov_iter_count(iter)) {
-		ret = vhost_scsi_map_to_sgl(cmd, iter, sg, write);
+		if (zcopy)
+			ret = vhost_scsi_map_to_sgl(cmd, iter, sg, write);
+		else
+			ret = vhost_scsi_copy_to_sgl(cmd, iter, sg, write);
+
 		if (ret < 0) {
 			while (p < sg) {
 				struct page *page = sg_page(p++);
 				if (page)
-					put_page(page);
+					vhost_scsi_put_page(page);
 			}
+			kfree(addr);
 			return ret;
 		}
 		sg += ret;
 	}
+	copy_iter->iov_addr = addr;
 	return 0;
 }
 
@@ -709,7 +843,8 @@ vhost_scsi_mapal(struct vhost_scsi_cmd *cmd,
 		pr_debug("%s prot_sg %p prot_sgl_count %u\n", __func__,
 			 cmd->tvc_prot_sgl, cmd->tvc_prot_sgl_count);
 
-		ret = vhost_scsi_iov_to_sgl(cmd, write, prot_iter,
+		ret = vhost_scsi_iov_to_sgl(cmd, write,
+					    &cmd->tvc_prot_iter, prot_iter,
 					    cmd->tvc_prot_sgl,
 					    cmd->tvc_prot_sgl_count);
 		if (ret < 0) {
@@ -727,7 +862,8 @@ vhost_scsi_mapal(struct vhost_scsi_cmd *cmd,
 	pr_debug("%s data_sg %p data_sgl_count %u\n", __func__,
 		  cmd->tvc_sgl, cmd->tvc_sgl_count);
 
-	ret = vhost_scsi_iov_to_sgl(cmd, write, data_iter,
+	ret = vhost_scsi_iov_to_sgl(cmd, write,
+				    &cmd->tvc_data_iter, data_iter,
 				    cmd->tvc_sgl, cmd->tvc_sgl_count);
 	if (ret < 0) {
 		cmd->tvc_sgl_count = 0;
