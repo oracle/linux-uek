@@ -2986,6 +2986,11 @@
 			noexec=on: enable non-executable mappings (default)
 			noexec=off: disable non-executable mappings
 
+	noibrs		[X86]
+			Don't use indirect branch restricted speculation (IBRS)
+			feature when running in secure environment,
+			to avoid performance overhead.
+
 	nosmap		[X86,PPC]
 			Disable SMAP (Supervisor Mode Access Prevention)
 			even if it is supported by processor.
@@ -4466,6 +4471,8 @@
 			retpoline	  - replace indirect branches
 			retpoline,generic - google's original retpoline
 			retpoline,amd     - AMD-specific minimal thunk
+			ibrs		  - Use IBRS (if microcode is available).
+					    otherwise will fallback to lfence
 
 			Not specifying this option is equivalent to
 			spectre_v2=auto.
