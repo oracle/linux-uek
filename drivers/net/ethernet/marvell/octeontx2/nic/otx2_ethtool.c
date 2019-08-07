@@ -336,9 +336,9 @@ static void otx2_get_ringparam(struct net_device *netdev,
 	struct otx2_qset *qs = &pfvf->qset;
 
 	ring->rx_max_pending = Q_COUNT(Q_SIZE_MAX);
-	ring->rx_pending = qs->rqe_cnt;
+	ring->rx_pending = qs->rqe_cnt ? qs->rqe_cnt : Q_COUNT(Q_SIZE_256);
 	ring->tx_max_pending = Q_COUNT(Q_SIZE_MAX);
-	ring->tx_pending = qs->sqe_cnt;
+	ring->tx_pending = qs->sqe_cnt ? qs->sqe_cnt : Q_COUNT(Q_SIZE_4K);
 }
 
 static int otx2_set_ringparam(struct net_device *netdev,
@@ -348,36 +348,37 @@ static int otx2_set_ringparam(struct net_device *netdev,
 	bool if_up = netif_running(netdev);
 	struct otx2_qset *qs = &pfvf->qset;
 	u32 rx_count, tx_count;
-	u32 tx_size, rx_size;
 
 	if (ring->rx_mini_pending || ring->rx_jumbo_pending)
 		return -EINVAL;
 
+	/* Permitted lengths are 16 64 256 1K 4K 16K 64K 256K 1M  */
 	rx_count = clamp_t(u32, ring->rx_pending,
 			   Q_COUNT(Q_SIZE_MIN), Q_COUNT(Q_SIZE_MAX));
+	/* On some silicon variants a skid or reserved CQEs are
+	 * needed to avoid CQ overflow.
+	 */
+	if (rx_count < pfvf->rq_skid)
+		rx_count =  pfvf->rq_skid;
+	rx_count = Q_COUNT(Q_SIZE(rx_count, 3));
+
+	/* Due pipelining impact minimum 2000 unused SQ CQE's
+	 * need to maintain to avoid CQ overflow, hence the
+	 * minimum 4K size.
+	 */
 	tx_count = clamp_t(u32, ring->tx_pending,
-			   Q_COUNT(Q_SIZE_MIN), Q_COUNT(Q_SIZE_MAX));
+			   Q_COUNT(Q_SIZE_4K), Q_COUNT(Q_SIZE_MAX));
+	tx_count = Q_COUNT(Q_SIZE(tx_count, 3));
 
 	if (tx_count == qs->sqe_cnt && rx_count == qs->rqe_cnt)
-		return 0;
-
-	/* Permitted lengths are 16 64 256 1K 4K 16K 64K 256K 1M  */
-	tx_size = Q_SIZE(tx_count, 3);
-	rx_size = Q_SIZE(rx_count, 3);
-
-	/* Due to HW errata #34934 & #34873 RQ.CQ.size >= 1K
-	 * and SQ.CQ.size >= 4K to avoid CQ overflow.
-	 */
-	if ((is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev)) &&
-	    (tx_size < 0x4 || rx_size < 0x3))
 		return 0;
 
 	if (if_up)
 		otx2_stop(netdev);
 
 	/* Assigned to the nearest possible exponent. */
-	qs->sqe_cnt = Q_COUNT(tx_size);
-	qs->rqe_cnt = Q_COUNT(rx_size);
+	qs->sqe_cnt = tx_count;
+	qs->rqe_cnt = rx_count;
 
 	if (if_up)
 		otx2_open(netdev);
