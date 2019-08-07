@@ -636,6 +636,19 @@ static void otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 		ext->tstmp = 1;
 	}
 
+#define OTX2_VLAN_PTR_OFFSET     (ETH_HLEN - ETH_TLEN)
+	if (skb_vlan_tag_present(skb)) {
+		if (skb->vlan_proto == htons(ETH_P_8021Q)) {
+			ext->vlan1_ins_ena = 1;
+			ext->vlan1_ins_ptr = OTX2_VLAN_PTR_OFFSET;
+			ext->vlan1_ins_tci = skb_vlan_tag_get(skb);
+		} else if (skb->vlan_proto == htons(ETH_P_8021AD)) {
+			ext->vlan0_ins_ena = 1;
+			ext->vlan0_ins_ptr = OTX2_VLAN_PTR_OFFSET;
+			ext->vlan0_ins_tci = skb_vlan_tag_get(skb);
+		}
+	}
+
 	*offset += sizeof(*ext);
 }
 
@@ -674,6 +687,9 @@ static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		sqe_hdr->ol3ptr = skb_network_offset(skb);
 		sqe_hdr->ol4ptr = skb_transport_offset(skb);
+		/* get vlan protocol Ethertype */
+		if (eth_type_vlan(skb->protocol))
+			skb->protocol = vlan_get_protocol(skb);
 
 		if (skb->protocol == htons(ETH_P_IP)) {
 			proto = ip_hdr(skb)->protocol;
@@ -939,6 +955,9 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 	}
 
 	if (skb_shinfo(skb)->gso_size && !is_hw_tso_supported(pfvf, skb)) {
+		/* Insert vlan tag before giving pkt to tso */
+		if (skb_vlan_tag_present(skb))
+			skb = __vlan_hwaccel_push_inside(skb);
 		otx2_sq_append_tso(pfvf, sq, skb, qidx);
 		return true;
 	}
