@@ -1995,6 +1995,13 @@ static int otx2_get_vf_config(struct net_device *netdev, int vf,
 	return 0;
 }
 
+static netdev_features_t
+otx2_features_check(struct sk_buff *skb, struct net_device *dev,
+		    netdev_features_t features)
+{
+	return features;
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
@@ -2010,6 +2017,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_set_vf_mac		= otx2_set_vf_mac,
 	.ndo_set_vf_vlan	= otx2_set_vf_vlan,
 	.ndo_get_vf_config	= otx2_get_vf_config,
+	.ndo_features_check     = otx2_features_check,
 };
 
 static int otx2_check_pf_usable(struct otx2_nic *nic)
@@ -2165,6 +2173,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			       NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
 			       NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6);
 	netdev->features |= netdev->hw_features;
+	/* Support TSO on tag interface */
+	netdev->vlan_features |= netdev->features;
+	netdev->features  |= NETIF_F_HW_VLAN_CTAG_TX |
+			     NETIF_F_HW_VLAN_STAG_TX;
 
 	netdev->hw_features |= NETIF_F_LOOPBACK | NETIF_F_NTUPLE |
 			       NETIF_F_RXALL;
