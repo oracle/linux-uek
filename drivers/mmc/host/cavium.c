@@ -122,9 +122,17 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{0, 0}		/* CMD63 */
 };
 
-static int tapdance = 2;
+static int tapdance;
 module_param(tapdance, int, 0644);
 MODULE_PARM_DESC(tapdance, "adjust bus-timing: (0=mid-eye, positive=Nth_fastest_tap)");
+
+static int clk_scale = 100;
+module_param(clk_scale, int, 0644);
+MODULE_PARM_DESC(clk_scale, "percent scale data_/cmd_out taps (default 100)");
+
+static bool fixed_timing;
+module_param(fixed_timing, bool, 0444);
+MODULE_PARM_DESC(fixed_timing, "use fixed data_/cmd_out taps");
 
 static bool ddr_cmd_taps;
 module_param(ddr_cmd_taps, bool, 0644);
@@ -148,6 +156,40 @@ static void cvm_mmc_set_timing(struct cvm_mmc_slot *slot)
 	writeq(slot->taps, slot->host->base + MIO_EMM_TIMING(slot->host));
 }
 
+static int tout(struct cvm_mmc_slot *slot, int ps, int hint)
+{
+	struct cvm_mmc_host *host = slot->host;
+	struct mmc_host *mmc = slot->mmc;
+	int tap_ps = host->per_tap_delay;
+	int timing = mmc->ios.timing;
+	static int old_scale;
+	int taps;
+
+	if (fixed_timing)
+		return hint;
+
+	if (!hint)
+		hint = 63;
+
+	if (!tap_ps)
+		return hint;
+
+	taps = min((int)(ps * clk_scale) / (tap_ps * 100), 63);
+
+	/* when modparam is adjusted, re-announce timing */
+	if (old_scale != clk_scale) {
+		host->delay_logged = 0;
+		old_scale = clk_scale;
+	}
+
+	if (!test_and_set_bit(timing,
+			&host->delay_logged))
+		dev_info(host->dev, "mmc%d.ios_timing:%d %dpS hint:%d taps:%d\n",
+			mmc->index, timing, ps, hint, taps);
+
+	return taps;
+}
+
 static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 {
 	struct cvm_mmc_host *host = slot->host;
@@ -165,40 +207,46 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 		int din = FIELD_GET(MIO_EMM_TIMING_DATA_IN, slot->taps);
 		int cout, dout;
 
+		if (!host->calibrated && host->calibrate)
+			host->calibrate(host);
+
 		if (!slot->taps)
 			cin = din = half;
 		/*
 		 * EMM_CMD hold time from rising edge of EMMC_CLK.
-		 * Typically 5.0 ns at frequencies < 26 MHz.
-		 * Typically 2.5 ns at frequencies <= 52 MHz.
-		 * Typically 0.4 ns at frequencies > 52 MHz.
+		 * Typically 3.0 ns at frequencies < 26 MHz.
+		 * Typically 3.0 ns at frequencies <= 52 MHz SDR.
+		 * Typically 2.5 ns at frequencies <= 52 MHz DDR.
+		 * Typically 0.8 ns at frequencies > 52 MHz SDR.
+		 * Typically 0.4 ns at frequencies > 52 MHz DDR.
 		 */
 		switch (mmc->ios.timing) {
 		case MMC_TIMING_LEGACY:
 		default:
-			cout = 63;
 			if (mmc->card && mmc_card_mmc(mmc->card))
-				cout = 39;
+				cout = tout(slot, 5000, 39);
+			else
+				cout = tout(slot, 8000, 63);
 			break;
 		case MMC_TIMING_UHS_SDR12:
-			cout = 39;
+			cout = tout(slot, 3000, 39);
 			break;
 		case MMC_TIMING_MMC_HS:
-			cout = 32;
+			cout = tout(slot, 2500, 32);
 			break;
 		case MMC_TIMING_SD_HS:
 		case MMC_TIMING_UHS_SDR25:
 		case MMC_TIMING_UHS_SDR50:
-			cout = 26;
+			cout = tout(slot, 2000, 26);
 			break;
 		case MMC_TIMING_UHS_DDR50:
 		case MMC_TIMING_MMC_DDR52:
-			cout = 20;
+			cout = tout(slot, 1500, 20);
 			break;
 		case MMC_TIMING_UHS_SDR104:
 		case MMC_TIMING_MMC_HS200:
 		case MMC_TIMING_MMC_HS400:
-			cout = 10;
+			cout = tout(slot, 800, 10);
 			break;
 		}
 
@@ -210,7 +258,7 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 			else
 				dout = cout / 2;
 		} else
-			dout = 10;
+			dout = tout(slot, 800, 10);
 
 		slot->taps =
 			FIELD_PREP(MIO_EMM_TIMING_CMD_IN, cin) |
@@ -1525,6 +1573,9 @@ static int cvm_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	int clk_period, hz;
 
 	int ret;
+
+	if (host->calibrate)
+		host->calibrate(host);
 
 	do {
 		u64 emm_switch =
