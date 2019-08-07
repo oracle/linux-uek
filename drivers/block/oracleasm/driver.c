@@ -66,6 +66,7 @@
 #include <linux/slab.h>
 #include <linux/blkdev.h>
 #include <linux/mount.h>
+#include <linux/pseudo_fs.h>
 #include <linux/parser.h>
 #include <linux/backing-dev.h>
 #include <linux/compat.h>
@@ -333,16 +334,21 @@ static struct super_operations asmdisk_sops = {
 };
 
 
-static struct dentry * asmdisk_mount(struct file_system_type *fs_type, int flags,
-			      const char *dev_name, void *data)
+static int asmdisk_init_fs_context(struct fs_context *fc)
 {
-	return mount_pseudo(fs_type, "asmdisk:", &asmdisk_sops, NULL, 0x61736D64);
+	struct pseudo_fs_context *ctx = init_pseudo(fc, 0x61736D64);
+
+	if (!ctx)
+		return -ENOMEM;
+	ctx->ops = &asmdisk_sops;
+
+	return 0;
 }
 
 static struct file_system_type asmdisk_type = {
 	.name		= "asmdisk",
-	.mount		= asmdisk_mount,
 	.kill_sb	= kill_anon_super,
+	.init_fs_context = asmdisk_init_fs_context,
 };
 
 static struct vfsmount *asmdisk_mnt;
