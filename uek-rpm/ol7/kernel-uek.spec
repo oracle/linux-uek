@@ -139,6 +139,9 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # Only build the smp kernel (--with smponly):
 %define with_smponly   %{?_with_smponly:      1} %{?!_with_smponly:      0}
 
+# Only build the embedded kernel (--with embeddedonly):
+%define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
+
 # should we do C=1 builds with sparse
 %define with_sparse	%{?_with_sparse:      1} %{?!_with_sparse:      0}
 
@@ -403,6 +406,18 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_headers   1
 %define with_perf 1
 %define with_tools 1
+%endif
+
+# if requested, only build emb kernel
+%if %{with_embeddedonly}
+%define with_up        0
+%define with_smp       0
+%define with_kdump     0
+%define with_doc       0
+%define with_headers   0
+%define with_dtrace    0
+%define with_perf      0
+%define with_tools     0
 %endif
 
 %if %{nopatches}
@@ -1018,6 +1033,11 @@ exit 1
 echo "Cannot build --with smponly, smp build is disabled"
 exit 1
 %endif
+%endif
+
+%if %{with_embeddedonly} && !%{with_embedded}
+echo "Cannot build --with embeddedonly, embedded build is disabled"
+exit 1
 %endif
 
 patch_command='patch -p1 -F1 -s'
