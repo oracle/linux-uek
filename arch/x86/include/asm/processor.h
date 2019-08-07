@@ -185,6 +185,8 @@ extern void identify_boot_cpu(void);
 extern void identify_secondary_cpu(struct cpuinfo_x86 *);
 extern void print_cpu_info(struct cpuinfo_x86 *);
 void print_cpu_msr(struct cpuinfo_x86 *);
+extern void init_speculation_control(struct cpuinfo_x86 *c);
+extern void get_cpu_cap(struct cpuinfo_x86 *c);
 
 #ifdef CONFIG_X86_32
 extern int have_cpuid_p(void);
@@ -973,7 +975,7 @@ void retpoline_enable(void);
 void retpoline_disable(void);
 bool retpoline_enabled(void);
 void refresh_set_spectre_v2_enabled(void);
-void microcode_check(void);
+bool microcode_check(void);
 
 enum l1tf_mitigations {
 	L1TF_MITIGATION_OFF,

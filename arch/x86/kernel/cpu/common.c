@@ -833,8 +833,16 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 	}
 }
 
-static void init_speculation_control(struct cpuinfo_x86 *c)
+void init_speculation_control(struct cpuinfo_x86 *c)
 {
+	if (cpu_has(c, X86_FEATURE_ARCH_CAPABILITIES)) {
+		u64 cap;
+
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
+		if (cap & ARCH_CAP_IBRS_ALL) /* IBRS all the time */
+			set_cpu_cap(c, X86_FEATURE_IBRS_ENHANCED);
+	}
+
 	/*
 	 * The Intel SPEC_CTRL CPUID bit implies IBRS and IBPB support,
 	 * and they also have a different bit for STIBP support. Also,
@@ -964,8 +972,6 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 		c->x86_capability[CPUID_8000_000A_EDX] = cpuid_edx(0x8000000a);
 
 	init_scattered_cpuid_features(c);
-	init_speculation_control(c);
-	init_cqm(c);
 
 	/*
 	 * Clear/Set all flags overridden by options, after probe.
@@ -973,6 +979,13 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 	 * several times during CPU initialization.
 	 */
 	apply_forced_caps(c);
+
+	/*
+	 * MUST be done after we apply the forced CPU flags as the boot_cpu_has
+	 * has been memset so we may re-enable the bits.
+	 */
+	init_speculation_control(c);
+	init_cqm(c);
 }
 
 void get_cpu_address_sizes(struct cpuinfo_x86 *c)
@@ -1967,7 +1980,7 @@ void cpu_init(void)
  * only when microcode has been updated. Caller holds microcode_mutex and CPU
  * hotplug lock.
  */
-void microcode_check(void)
+bool microcode_check(void)
 {
 	struct cpuinfo_x86 info;
 
@@ -1986,10 +1999,12 @@ void microcode_check(void)
 	get_cpu_cap(&info);
 
 	if (!memcmp(&info.x86_capability, &boot_cpu_data.x86_capability, sizeof(info.x86_capability)))
-		return;
+		return false;
 
 	pr_warn("x86/CPU: CPU features have changed after loading microcode, but might not take effect.\n");
 	pr_warn("x86/CPU: Please consider either early loading through initrd/built-in or a potential BIOS update.\n");
+
+	return true;
 }
 
 /*
