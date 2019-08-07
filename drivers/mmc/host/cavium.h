@@ -112,6 +112,7 @@ struct cvm_mmc_host {
 	bool powered;
 	bool use_vqmmc; /* must disable slots over switch */
 	bool big_dma_addr;
+	bool calibrated;
 	bool need_irq_handler_lock;
 	spinlock_t irq_handler_lock;
 	struct semaphore mmc_serializer;
@@ -123,6 +124,7 @@ struct cvm_mmc_host {
 	struct platform_device *slot_pdev[CAVIUM_MAX_MMC];
 	/* octtx2 specific */
 	unsigned int per_tap_delay; /* per tap delay in pico second */
+	unsigned long delay_logged; /* per-ios.timing bitmask */
 
 	void (*set_shared_power)(struct cvm_mmc_host *, int);
 	void (*acquire_bus)(struct cvm_mmc_host *);
@@ -132,6 +134,7 @@ struct cvm_mmc_host {
 	void (*dmar_fixup)(struct cvm_mmc_host *, struct mmc_command *,
 			   struct mmc_data *, u64);
 	void (*dmar_fixup_done)(struct cvm_mmc_host *);
+	void (*calibrate)(struct cvm_mmc_host *host);
 };
 
 struct cvm_mmc_slot {
