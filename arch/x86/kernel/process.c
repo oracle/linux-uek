@@ -40,6 +40,7 @@
 #include <asm/desc.h>
 #include <asm/prctl.h>
 #include <asm/spec-ctrl.h>
+#include <asm/spec_ctrl.h>
 #include <asm/io_bitmap.h>
 #include <asm/proto.h>
 #include <asm/frame.h>
@@ -558,7 +559,8 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 						      unsigned long tifn)
 {
 	unsigned long tif_diff = tifp ^ tifn;
-	u64 msr = x86_spec_ctrl_base;
+	u64 msr = x86_spec_ctrl_base | (check_enhanced_ibrs_inuse() ?
+					SPEC_CTRL_IBRS : 0);
 	bool updmsr = false;
 
 	lockdep_assert_irqs_disabled();
