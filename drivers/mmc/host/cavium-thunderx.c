@@ -59,8 +59,9 @@ static int thunder_mmc_register_interrupts(struct cvm_mmc_host *host,
 /* calibration evaluates the per tap delay */
 void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 {
-	u64 emm_cfg, tap;
-	u32 retries = 10, tap_delay;
+	u32 retries = 10;
+	u32 tap_delay = 4;
+	const char *how = "default";
 
 	if (is_mmc_8xxx(host))
 		return;
@@ -74,29 +75,33 @@ void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 		 * steps that establish the tap delays and instead assuming
 		 * that MIO_EMM_TAP[DELAY] returns 0x4 indicating 78 pS/tap.
 		 */
-		tap_delay = 4;
 	} else {
 		/* MIO_EMM_CFG[BUS_ENA] must be zero for calibration */
-		emm_cfg = readq(host->base + MIO_EMM_CFG(host));
-		if (emm_cfg & MIO_EMM_CFG_BUS_ENA) {
-			pr_err("failure: bus is not disabled\n");
-			return;
-		}
+		u64 tap;
+		u64 emm_cfg = readq(host->base + MIO_EMM_CFG(host));
+		bool stopped = !(emm_cfg & MIO_EMM_CFG_BUS_ENA);
 
-		/* Start calibration */
-		writeq(START_CALIBRATION, host->base + MIO_EMM_CALB(host));
+		if (stopped) {
+			/* Start calibration */
+			writeq(START_CALIBRATION,
+				host->base + MIO_EMM_CALB(host));
+			how = "calibrated";
+		}
 
 		do {
 			/* wait for approximately 300 coprocessor clock */
 			udelay(5);
 			tap = readq(host->base + MIO_EMM_TAP(host));
-		} while (!tap && retries--);
+		} while (stopped && !tap && retries--);
 
-		if (!retries)
-			pr_debug("retries exhausted, calibration failed\n");
-
-		/* calculate the per-tap delay */
-		tap_delay = tap & MIO_EMM_TAP_DELAY;
+		if (retries <= 0) {
+			how = "fallback";
+		} else {
+			/* calculate the per-tap delay */
+			tap_delay = tap & MIO_EMM_TAP_DELAY;
+			if (!stopped)
+				how = "inherited";
+		}
 	}
 
 	/*
@@ -105,8 +110,8 @@ void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 	 * delay in pico second. The nominal value is 125 ps per tap.
 	 */
 	host->per_tap_delay =  (tap_delay * PS_10000) / TOTAL_NO_OF_TAPS;
-	pr_debug("tap_delay %d per_tap_delay %d\n",
-		tap_delay, host->per_tap_delay);
+	pr_info("mmc %s tap_delay %d per_tap_delay %dpS\n",
+		how, tap_delay, host->per_tap_delay);
 }
 
 static int thunder_mmc_probe(struct pci_dev *pdev,
