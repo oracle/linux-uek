@@ -188,16 +188,13 @@ static void rvu_nix_scan_tl2_link_mapping(struct rvu *rvu,
 		chan = link_cfg & 0x3F;
 		tx_stall->tl2_link_map[tl2] = chan << LINK_CHAN_SHIFT;
 
-		/* Check for normal or express link */
-		link_cfg = rvu_rd64(rvu, blkaddr, NIX_AF_SMQX_CFG(smq)) &
-				    BIT_ULL(48);
-		tx_stall->tl2_link_map[tl2] |=
-			(link & 0x7F) | (link_cfg ? (1 << LINK_TYPE_SHIFT) : 0);
+		/* Save link info */
+		tx_stall->tl2_link_map[tl2] |= (link & 0x7F);
 
 		/* Workaround assumes TL2 transmits to only one link.
 		 * So assume the first link enabled is the only one.
 		 */
-		continue;
+		break;
 	}
 }
 
@@ -491,7 +488,6 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 			       int blkaddr, int tl2)
 {
 	struct nix_tx_stall *tx_stall = nix_hw->tx_stall;
-	struct rvu_hwinfo *hw = rvu->hw;
 	struct nix_txsch *tl2_txsch;
 	int tl, link;
 
@@ -532,9 +528,6 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	/* Restore link credits */
 	rvu_wr64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link),
 		 tx_stall->nlink_credits[link]);
-	if (hw->cap.nix_express_traffic)
-		rvu_wr64(rvu, blkaddr, NIX_AF_TX_LINKX_EXPR_CREDIT(link),
-			 tx_stall->nlink_credits[link]);
 
 	/* Toggle SW_XOFF of every scheduler queue at every level
 	 * which points to this TL2.
@@ -606,10 +599,7 @@ static bool is_link_backpressured(struct nix_tx_stall *tx_stall,
 	if (link >= rvu->hw->cgx_links)
 		return false;
 
-	if (EXPR_LINK(tx_stall->tl2_link_map[tl2]))
-		cfg = rvu_rd64(rvu, blkaddr, NIX_AF_TX_LINKX_EXPR_CREDIT(link));
-	else
-		cfg = rvu_rd64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link));
+	cfg = rvu_rd64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link));
 
 	/* Check if current credits or pkt count is -ve or simply
 	 * morethan what is configured.
