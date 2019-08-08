@@ -2456,6 +2456,12 @@ static int __split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	WARN_ON(vma->vm_start >= addr);
 	WARN_ON(vma->vm_end <= addr);
 
+	/*
+	 * Clear any lingering NORELINK flag for reserved VA so it does
+	 * not prevent vma splitting.
+	 */
+	vm_flags_clear(vma, VM_RSVD_NORELINK);
+
 	if (vma->vm_ops && vma->vm_ops->may_split) {
 		err = vma->vm_ops->may_split(vma, addr);
 		if (err)
@@ -2535,6 +2541,159 @@ static int split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 		return -ENOMEM;
 
 	return __split_vma(vmi, vma, addr, new_below);
+}
+
+#if VM_RSVD_VA
+#define VA_RSVD_RETAIN (VM_RSVD_VA | VM_DONTEXPAND | VM_PFNMAP)
+#else
+#define VA_RSVD_RETAIN 0
+#endif
+
+static const char *rsvd_va_mapping_name(struct vm_area_struct *vma)
+{
+	return ((char *)"[rsvd]");
+}
+
+static const struct vm_operations_struct rsvd_va_mapping_vmops = {
+	.name = rsvd_va_mapping_name,
+};
+
+int install_rsvd_mapping(struct mm_struct *mm, unsigned long addr,
+				unsigned long len)
+{
+#if VM_RSVD_VA
+	int ret;
+	struct vm_area_struct *vma = NULL, *prev, *next;
+	unsigned long end = addr + len;
+	unsigned long merge_start, merge_end;
+	pgoff_t pglen = len >> PAGE_SHIFT;
+	pgoff_t vm_pgoff;
+	VMA_ITERATOR(vmi, mm, addr);
+
+	/*
+	 * Check if an existing reserved range can be expanded
+	 */
+	merge_start = addr;
+	merge_end = end;
+	next = vma_next(&vmi);
+	prev = vma_prev(&vmi);
+	if (next && next->vm_start == end && next->vm_flags == VA_RSVD_RETAIN) {
+		merge_end = next->vm_end;
+		vma = next;
+		vm_pgoff = next->vm_pgoff - pglen;
+	}
+
+	if (prev && prev->vm_end == addr && prev->vm_flags == VA_RSVD_RETAIN) {
+		merge_start = prev->vm_start;
+		vma = prev;
+		vm_pgoff = prev->vm_pgoff;
+	} else if (prev) {
+		vma_iter_next_range(&vmi);
+	}
+
+	if (vma &&
+	    !vma_expand(&vmi, vma, merge_start, merge_end, vm_pgoff, next))
+		return 0;
+
+	vma = vm_area_alloc(mm);
+	if (unlikely(vma == NULL))
+		return -ENOMEM;
+
+	vma_set_range(vma, addr, end, addr >> PAGE_SHIFT);
+	vm_flags_init(vma, VA_RSVD_RETAIN);
+	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
+
+	vma->vm_ops = &rsvd_va_mapping_vmops;
+
+	ret = insert_vm_struct(mm, vma);
+	if (ret)
+		goto out;
+
+	return 0;
+out:
+	vm_area_free(vma);
+	return ret;
+#else
+	return 0;
+#endif
+}
+
+/*
+ * When mapping a range over over one or more reserved va vmas the
+ * range must be entirely contained within a reserved va vma or a
+ * contiguous set of reserved va vmas.
+ * This limitation is imposed to ensure that if mmap_region() fails
+ * after unmapping existing mappings that it will install a
+ * reserved va placeholder vma no larger than previous existing
+ * reserved va vma(s). It also ensures that mmap_region() need only
+ * check if the first existing vma in the range is reserved in order
+ * to suppress the reinstall of placeholder vma(s) when unmapping
+ * the existing mappings.
+ */
+static int check_rsvd_range(struct mm_struct *mm, unsigned long addr,
+			    unsigned long end)
+{
+#if VM_RSVD_VA
+	struct vma_iterator vmi;
+	struct vm_area_struct *vma;
+	unsigned long last_vma_end;
+	bool is_rsvd = false;
+
+	vma = find_vma_intersection(mm, addr, end);
+	if (!vma)
+		return 0;
+
+	if (vma->vm_flags & VM_RSVD_VA)
+		is_rsvd = true;
+
+	if (is_rsvd && vma->vm_start > addr)
+		return 1;
+
+	last_vma_end = vma->vm_end;
+
+	/* Check remaining vmas in range, if any. */
+	vma_iter_init(&vmi, mm, last_vma_end);
+	for_each_vma_range(vmi, vma, end) {
+		bool next_is_rsvd;
+
+		if (vma->vm_start >= end)
+			break;
+
+		next_is_rsvd = vma->vm_flags & VM_RSVD_VA;
+		if (is_rsvd ^ next_is_rsvd)
+			return 1;
+
+		if (is_rsvd && last_vma_end != vma->vm_start)
+			return 1;
+
+		last_vma_end = vma->vm_end;
+	}
+
+	if (is_rsvd && end > last_vma_end)
+		return 1;
+#endif
+	return 0;
+}
+
+/*
+ * Process a list of VMAs that are being unmapped and install reserved va
+ * placeholders as needed.
+ */
+static inline void fixup_rsvd_va(struct mm_struct *mm, struct ma_state *mas)
+{
+	struct vm_area_struct *vma;
+
+	mas_for_each(mas, vma, ULONG_MAX) {
+		unsigned long addr, len;
+
+		if (!(vma->vm_flags & VM_RSVD_VA))
+			continue;
+
+		addr = vma->vm_start;
+		len = vma->vm_end - addr;
+		install_rsvd_mapping(mm, addr, len);
+	}
+	validate_mm(mm);
 }
 
 /*
@@ -2637,9 +2796,20 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	int count = 0;
 	int error = -ENOMEM;
 	unsigned long locked_vm = 0;
+	bool has_rsvd_va = false;
+	bool rsvd_va_norelink = false;
 	MA_STATE(mas_detach, &mt_detach, 0, 0);
 	mt_init_flags(&mt_detach, vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
 	mt_on_stack(mt_detach);
+
+	/*
+	 * Save the state of VM_RSVD_NORELINK flag and clear it so it
+	 * does not propagate to any split vma.
+	 */
+	if (vma->vm_flags & VM_RSVD_NORELINK) {
+		rsvd_va_norelink = true;
+		vm_flags_clear(vma, VM_RSVD_NORELINK);
+	}
 
 	/*
 	 * If we need to split any vma, do it now to save pain later.
@@ -2671,6 +2841,9 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	 */
 	next = vma;
 	do {
+		if (next->vm_flags & VM_RSVD_VA)
+			has_rsvd_va = true;
+
 		/* Does it split the end? */
 		if (next->vm_end > end) {
 			error = __split_vma(vmi, next, end, 0);
@@ -2738,6 +2911,13 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	/* Point of no return */
 	mm->locked_vm -= locked_vm;
 	mm->map_count -= count;
+
+	/* Reinstall any reserved VA mappings that need to be reinstated */
+	if (has_rsvd_va && !rsvd_va_norelink) {
+		mas_set(&mas_detach, 0);
+		fixup_rsvd_va(mm, &mas_detach);
+	}
+
 	if (unlock)
 		mmap_write_downgrade(mm);
 
@@ -2860,6 +3040,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	bool writable_file_mapping = false;
 	pgoff_t vm_pgoff;
 	int error;
+	int rsvd_va = 0;
 	VMA_ITERATOR(vmi, mm, addr);
 
 	/* Check against address space limit. */
@@ -2877,6 +3058,28 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 			return -ENOMEM;
 	}
 
+#if VA_RSVD_RETAIN
+	if ((vm_flags & MAP_FIXED) && check_rsvd_range(mm, addr, end))
+		return -EINVAL;
+
+	/*
+	 * Before clearing old mappings check if the first existing mapping
+	 * is part of a reserved VA range. If it is then set VM_RSVD_NORELINK
+	 * to indicate that the old mappings must not be replaced
+	 * with placeholder reserved VA mappings when they are unmapped since
+	 * new mappings are about to be created in their place.
+	 * The flag is only set for the first VMA since the check above
+	 * ensures that any other VMAs in the range are also in-use or
+	 * placeholder reserved VA VMAs.
+	 */
+	vma = find_vma_intersection(mm, addr, end);
+	if (vma && (vma->vm_flags & VM_RSVD_VA)) {
+		rsvd_va = 1;
+		vm_flags_set(vma, VM_RSVD_NORELINK);
+	}
+	vma = NULL;
+#endif
+
 	/* Unmap any existing mapping in the area */
 	error = do_vmi_munmap(&vmi, mm, addr, len, uf, false);
 	if (error == -EPERM)
@@ -2889,8 +3092,15 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	 */
 	if (accountable_mapping(file, vm_flags)) {
 		charged = len >> PAGE_SHIFT;
-		if (security_vm_enough_memory_mm(mm, charged))
+		if (security_vm_enough_memory_mm(mm, charged)) {
+			/*
+			 * reinstall reserved VA mapping if this was one
+			 * originally
+			 */
+			if (rsvd_va)
+				install_rsvd_mapping(mm, addr, len);
 			return -ENOMEM;
+		}
 		vm_flags |= VM_ACCOUNT;
 	}
 
@@ -2950,6 +3160,10 @@ cannot_expand:
 	vma_iter_config(&vmi, addr, end);
 	vma_set_range(vma, addr, end, pgoff);
 	vm_flags_init(vma, vm_flags);
+	if (rsvd_va)
+		vm_flags_init(vma, vm_flags | VM_RSVD_VA);
+	else
+		vm_flags_init(vma, vm_flags);
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 
 	if (file) {
@@ -3092,6 +3306,9 @@ free_vma:
 unacct_error:
 	if (charged)
 		vm_unacct_memory(charged);
+	/* reinstall reserved VA mapping if this was one originally */
+	if (rsvd_va)
+		install_rsvd_mapping(mm, addr, len);
 	validate_mm(mm);
 	return error;
 }
@@ -3607,6 +3824,10 @@ bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 
 void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
 {
+#if VA_RSVD_RETAIN
+	if (unlikely((flags & VA_RSVD_RETAIN) == VA_RSVD_RETAIN))
+		return;
+#endif
 	WRITE_ONCE(mm->total_vm, READ_ONCE(mm->total_vm)+npages);
 
 	if (is_exec_mapping(flags))

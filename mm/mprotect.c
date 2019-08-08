@@ -707,7 +707,7 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	end = start + len;
 	if (end <= start)
 		return -ENOMEM;
-	if (!arch_validate_prot(prot, start))
+	if (!arch_validate_prot(prot & ~PROT_RESERVED, start))
 		return -EINVAL;
 
 	reqprot = prot;
@@ -726,6 +726,18 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	vma_iter_init(&vmi, current->mm, start);
 	vma = vma_find(&vmi, end);
 	error = -ENOMEM;
+	if ((!vma) && (prot & PROT_RESERVED)) {
+		/*
+		 * Make sure address range is valid userspace address
+		 * range and if it is, install a new vma reserving
+		 * the address range
+		 */
+		if (access_ok((const void *)start, len))
+			error = install_rsvd_mapping(current->mm, start, len);
+		else
+			error = -EINVAL;
+		goto out;
+	}
 	if (!vma)
 		goto out;
 
