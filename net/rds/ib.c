@@ -131,6 +131,8 @@ static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
 		ib_dereg_mr(rds_ibdev->mr);
 	if (rds_ibdev->pd)
 		ib_dealloc_pd(rds_ibdev->pd);
+	if (rds_ibdev->rid_hdrs_pool)
+		dma_pool_destroy(rds_ibdev->rid_hdrs_pool);
 out:
 	mutex_unlock(&rds_ibdev->free_dev_lock);
 }
@@ -570,6 +572,12 @@ void rds_ib_add_one(struct ib_device *device)
 		rds_ibdev->pd = NULL;
 		goto put_dev;
 	}
+	rds_ibdev->rid_hdrs_pool = dma_pool_create(device->name,
+						   device->dma_device,
+						   sizeof(struct rds_header),
+						   L1_CACHE_BYTES, 0);
+	if (!rds_ibdev->rid_hdrs_pool)
+		goto put_dev;
 
 	rds_ibdev->vector_load = kzalloc(sizeof(int) *
 					device->num_comp_vectors, GFP_KERNEL);
