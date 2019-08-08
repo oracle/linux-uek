@@ -552,6 +552,7 @@ int otx2_change_mtu(struct net_device *netdev, int new_mtu);
 int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
 void otx2_tx_timeout(struct net_device *netdev);
 void otx2_get_mac_from_af(struct net_device *netdev);
+void otx2_config_irq_coalescing(struct otx2_nic *pfvf, int qidx);
 
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
