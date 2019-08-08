@@ -441,6 +441,10 @@ fail:
 	return error;
 }
 
+extern int install_rsvd_mapping(struct mm_struct *mm,
+				struct vm_area_struct *prev, unsigned long addr,
+				unsigned long len);
+
 /*
  * pkey==-1 when doing a legacy mprotect()
  */
@@ -466,7 +470,7 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	end = start + len;
 	if (end <= start)
 		return -ENOMEM;
-	if (!arch_validate_prot(prot))
+	if (!arch_validate_prot(prot & ~PROT_RESERVED))
 		return -EINVAL;
 
 	reqprot = prot;
@@ -487,6 +491,17 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	if (!vma)
 		goto out;
 	prev = vma->vm_prev;
+	if ((vma->vm_start > end) && (prot & PROT_RESERVED)) {
+		unsigned long end = start + len;
+
+		/* Make sure address range is valid userspace address range */
+		if (end > user_addr_max())
+			error = -EINVAL;
+		else
+			error = install_rsvd_mapping(current->mm, prev,
+							start, len);
+		goto out;
+	}
 	if (unlikely(grows & PROT_GROWSDOWN)) {
 		if (vma->vm_start >= end)
 			goto out;

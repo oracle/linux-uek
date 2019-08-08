@@ -51,6 +51,11 @@
 #define user_siginfo_t siginfo_t
 #endif
 
+extern int install_rsvd_mapping(struct mm_struct *mm,
+				struct vm_area_struct *prev, unsigned long addr,
+				unsigned long len);
+
+
 static int load_elf_binary(struct linux_binprm *bprm);
 static unsigned long elf_map(struct file *, unsigned long, struct elf_phdr *,
 				int, int, unsigned long);
@@ -76,6 +81,8 @@ static int elf_core_dump(struct coredump_params *cprm);
 #else
 #define ELF_MIN_ALIGN	PAGE_SIZE
 #endif
+
+#define MAX_FILE_NOTE_SIZE (4*1024*1024)
 
 #ifndef ELF_CORE_EFLAGS
 #define ELF_CORE_EFLAGS	0
@@ -269,6 +276,7 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 	if (bprm->interp_flags & BINPRM_FLAGS_EXECFD) {
 		NEW_AUX_ENT(AT_EXECFD, bprm->interp_data);
 	}
+	NEW_AUX_ENT(AT_VA_RESERVATION, 1);
 #undef NEW_AUX_ENT
 	/* AT_NULL is zero; clear the rest too */
 	memset(&elf_info[ei_index], 0,
@@ -676,6 +684,105 @@ static unsigned long randomize_stack_top(unsigned long stack_top)
 #endif
 }
 
+#define MAX_RSVD_VA_RANGES	64
+#define RSVD_VA_STRING		"Reserved VA"
+#define SZ_RSVD_VA_STRING	sizeof(RSVD_VA_STRING)
+
+static int reserve_va_range(struct elf_phdr *elf_ppnt,
+				struct linux_binprm *bprm)
+{
+	char *note_seg = NULL;
+	struct elf_note *note;
+	loff_t pos = elf_ppnt->p_offset;
+	int retval = 0;
+	size_t note_size = elf_ppnt->p_filesz;
+
+	note_seg = kvmalloc(note_size, GFP_KERNEL);
+	if (!note_seg) {
+		retval = -ENOMEM;
+		return retval;
+	}
+
+	retval = kernel_read(bprm->file, note_seg, note_size, &pos);
+	if (retval != note_size) {
+		if (retval >= 0)
+			retval = -EIO;
+		goto out;
+	}
+
+	note = (struct elf_note *)note_seg;
+	while ((char *)note + sizeof(struct elf_note) <
+	       (char *)(note_seg + note_size)) {
+		char *name;
+		unsigned long *val;
+		unsigned long nentry, i;
+
+		if (note->n_type != 0x07c10001)
+			goto cont_loop;
+
+		/* Sanity check for malformed note entry */
+		if (note->n_namesz > SZ_RSVD_VA_STRING) {
+			retval = -ENOEXEC;
+			goto out;
+		}
+
+		name = (char *)note + sizeof(struct elf_note);
+		if (strncmp(name, RSVD_VA_STRING, SZ_RSVD_VA_STRING) == 0) {
+			nentry = note->n_descsz/sizeof(void *);
+			val = (unsigned long *)(name +
+						roundup(note->n_namesz, 4));
+			/*
+			 * Check if right number of address
+			 * entries exist in note section
+			 */
+			if (((nentry % 2) != 0) ||
+				((nentry % 2) > MAX_RSVD_VA_RANGES)) {
+				retval = -ENOEXEC;
+				goto out;
+			}
+			for (i = 0 ; i < nentry; i += 2) {
+				unsigned long range1, range2;
+				struct mm_struct *mm = current->mm;
+
+				/*
+				 * Ensure we can access two address entries
+				 * in this note segment safely
+				 */
+				if ((char *)(val + 1) >=
+					((char *)note_seg + note_size)) {
+					retval = -ENOEXEC;
+					goto out;
+				}
+				range1 = PAGE_ALIGN((*val++) - PAGE_SIZE + 1);
+				range2 = PAGE_ALIGN(*val++);
+
+				/* Validate the address range being reserved */
+				if ((range2 <= range1) ||
+					(range2 > user_addr_max())) {
+					retval = -ENOEXEC;
+					goto out;
+				}
+
+				down_write(&mm->mmap_sem);
+				retval = install_rsvd_mapping(mm, NULL, range1,
+							      (range2-range1));
+				up_write(&mm->mmap_sem);
+				if (retval < 0)
+					goto out;
+			}
+		}
+cont_loop:
+		note = (struct elf_note *)((char *)note +
+						sizeof(struct elf_note) +
+						roundup(note->n_namesz, 4) +
+						roundup(note->n_descsz, 4));
+	}
+
+out:
+	kvfree(note_seg);
+	return retval;
+}
+
 static int load_elf_binary(struct linux_binprm *bprm)
 {
 	struct file *interpreter = NULL; /* to shut gcc up */
@@ -876,6 +983,24 @@ static int load_elf_binary(struct linux_binprm *bprm)
 		goto out_free_dentry;
 	
 	current->mm->start_stack = bprm->p;
+
+	/*
+	 * Read the notes segment to find notes to reserve address space
+	 */
+	elf_ppnt = elf_phdata;
+	for (i = 0; i < loc->elf_ex.e_phnum; i++, elf_ppnt++)
+		if (elf_ppnt->p_type == PT_NOTE) {
+			/* Sanity check for bogus note segment */
+			if ((elf_ppnt->p_filesz > MAX_FILE_NOTE_SIZE) ||
+				(elf_ppnt->p_filesz < sizeof(struct elf_note))) {
+				retval = -ENOEXEC;
+				goto out_free_ph;
+			}
+			retval = reserve_va_range(elf_ppnt, bprm);
+			if (retval < 0)
+				goto out_free_ph;
+		}
+
 
 	/* Now we do a little grungy work by mmapping the ELF image into
 	   the correct location in memory. */
@@ -1565,7 +1690,6 @@ static void fill_siginfo_note(struct memelfnote *note, user_siginfo_t *csigdata,
 	fill_note(note, "CORE", NT_SIGINFO, sizeof(*csigdata), csigdata);
 }
 
-#define MAX_FILE_NOTE_SIZE (4*1024*1024)
 /*
  * Format of NT_FILE note:
  *
