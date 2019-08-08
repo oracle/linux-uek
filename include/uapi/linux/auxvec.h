@@ -32,6 +32,7 @@
 #define AT_HWCAP2 26	/* extension of AT_HWCAP */
 #define AT_RSEQ_FEATURE_SIZE	27	/* rseq supported feature size */
 #define AT_RSEQ_ALIGN		28	/* rseq allocation alignment */
+#define AT_VA_RESERVATION	30	/* VA reservation support */
 
 #define AT_EXECFN  31	/* filename of program */
 

@@ -34,6 +34,7 @@ config X86_64
 	select SWIOTLB
 	select ARCH_HAS_ELFCORE_COMPAT
 	select ZONE_DMA32
+	select ARCH_USES_HIGH_VMA_FLAGS
 
 config FORCE_DYNAMIC_FTRACE
 	def_bool y
