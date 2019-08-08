@@ -55,8 +55,7 @@ static struct mlx5_core_rsc_common *mlx5_get_rsc(struct mlx5_core_dev *dev,
 	spin_unlock_irqrestore(&table->lock, flags);
 
 	if (!common) {
-		mlx5_core_warn(dev, "Async event for bogus resource 0x%x\n",
-			       rsn);
+		mlx5_core_dbg(dev, "Async event for unknown resource 0x%x\n", rsn);
 		return NULL;
 	}
 	return common;
