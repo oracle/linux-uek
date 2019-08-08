@@ -37,6 +37,7 @@ extern u64 x86_spec_ctrl_base;
  * During the boot, the boot cpu will set the initial value of use_ibrs.
  */
 extern unsigned int use_ibrs;
+DECLARE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
 extern struct mutex spec_ctrl_mutex;
 
 DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
@@ -119,6 +120,22 @@ static inline void set_ibrs_disabled(void)
 static inline void set_ibrs_enhanced(void)
 {
 	use_ibrs |= SPEC_CTRL_ENHCD_IBRS_SUPPORTED;
+}
+
+static inline bool ibrs_firmware_enabled(void)
+{
+	return static_key_enabled(&ibrs_firmware_enabled_key);
+}
+
+static inline void ibrs_firmware_enable(void)
+{
+	if (ibrs_supported)
+		static_branch_enable(&ibrs_firmware_enabled_key);
+}
+
+static inline void ibrs_firmware_disable(void)
+{
+	static_branch_disable(&ibrs_firmware_enabled_key);
 }
 
 static inline void clear_ibrs_disabled(void)
