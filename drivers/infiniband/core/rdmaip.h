@@ -377,8 +377,7 @@ enum {
 	RDMAIP_EVENT_INETADDR
 };
 
-#define pcidev_to_node(pcidev)	pcibus_to_node(pcidev->bus)
-#define ibdev_to_rdmaipdev(ibdev) pcidev_to_node(to_pci_dev(ibdev->dma_device))
+#define ibdev_to_rdmaipdev(ibdev) dev_to_node((ibdev)->dev.parent)
 
 enum {
 	RDMAIP_DEBUG_L1		= 1 << 0,	/* 0x1    */
