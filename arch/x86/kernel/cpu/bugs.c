@@ -40,6 +40,8 @@ static void __init spectre_v1_select_mitigation(void);
  * Retpoline variables.
  */
 static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
+DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
+EXPORT_SYMBOL(retpoline_enabled_key);
 
 static void __init spectre_v2_select_mitigation(void);
 static void __init ssb_select_mitigation(void);
@@ -547,6 +549,21 @@ static void __init spec_v2_user_print_cond(const char *reason, bool secure)
 		pr_info("spectre_v2_user=%s forced on command line.\n", reason);
 }
 
+bool retpoline_enabled(void)
+{
+	return static_key_enabled(&retpoline_enabled_key);
+}
+
+void retpoline_enable(void)
+{
+	static_branch_enable(&retpoline_enabled_key);
+}
+
+void retpoline_disable(void)
+{
+	static_branch_disable(&retpoline_enabled_key);
+}
+
 static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 {
 	if (cmd == SPECTRE_V2_CMD_NONE)
@@ -578,6 +595,10 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 	}
 }
 
+static void __init retpoline_activate(enum spectre_v2_mitigation mode)
+{
+	retpoline_enable();
+}
 
 static enum spectre_v2_user_cmd __init
 spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
@@ -768,6 +789,18 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 	return cmd;
 }
 
+static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
+{
+	switch (mode) {
+	case SPECTRE_V2_RETPOLINE_GENERIC:
+	case SPECTRE_V2_RETPOLINE_AMD:
+		return true;
+	default:
+		return false;
+	}
+	return false;
+}
+
 /*
  * Based on the cmd parsed from the kernel arguments and the capabilities of
  * the system, determine which spectre v2 mitigation will be employed and
@@ -836,6 +869,11 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 
 	if (spectre_v2_enabled == SPECTRE_V2_NONE)
 		return;
+
+	/* Activate the selected mitigation if necessary. */
+	if (retpoline_mode_selected(spectre_v2_enabled)) {
+		retpoline_activate(spectre_v2_enabled);
+	}
 
 	/*
 	 * If spectre v2 protection has been enabled, unconditionally fill
