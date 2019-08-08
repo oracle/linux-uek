@@ -390,10 +390,10 @@ static int otx2_get_coalesce(struct net_device *netdev,
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 
-	cmd->rx_coalesce_usecs = pfvf->cq_time_wait / 10;
-	cmd->rx_max_coalesced_frames = pfvf->cq_ecount_wait + 1;
-	cmd->tx_coalesce_usecs = pfvf->cq_time_wait / 10;
-	cmd->tx_max_coalesced_frames = pfvf->cq_ecount_wait + 1;
+	cmd->rx_coalesce_usecs = pfvf->cq_time_wait;
+	cmd->rx_max_coalesced_frames = pfvf->cq_ecount_wait;
+	cmd->tx_coalesce_usecs = pfvf->cq_time_wait;
+	cmd->tx_max_coalesced_frames = pfvf->cq_ecount_wait;
 
 	return 0;
 }
@@ -402,7 +402,7 @@ static int otx2_set_coalesce(struct net_device *netdev,
 			     struct ethtool_coalesce *ec)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	bool if_up = netif_running(netdev);
+	int qidx;
 
 	if (ec->use_adaptive_rx_coalesce || ec->use_adaptive_tx_coalesce ||
 	    ec->rx_coalesce_usecs_irq || ec->rx_max_coalesced_frames_irq ||
@@ -418,52 +418,38 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	if (!ec->rx_max_coalesced_frames || !ec->tx_max_coalesced_frames)
 		return 0;
 
-	if (if_up)
-		otx2_stop(netdev);
-
-	/* RQ and SQ are tied to CQ setting, so any of the below
-	 * values reflects on CQ.
-	 * cq_time_wait is in multiple of 100ns, rx_coalesce_usecs is in usecs
-	 * hence cq_time_wait should be 10 times of rx/tx_coalesce_usecs.
+	/* 'cq_time_wait' is 8bit and is in multiple of 100ns,
+	 * so clamp the user given value to the range of 1 to 25usec.
 	 */
-	if (ec->rx_coalesce_usecs >= CQ_TIMER_THRESH_MAX)
-		ec->rx_coalesce_usecs = CQ_TIMER_THRESH_MAX;
-	if (ec->tx_coalesce_usecs >= CQ_TIMER_THRESH_MAX)
-		ec->tx_coalesce_usecs = CQ_TIMER_THRESH_MAX;
+	ec->rx_coalesce_usecs = clamp_t(u8, ec->rx_coalesce_usecs,
+					1, CQ_TIMER_THRESH_MAX);
+	ec->tx_coalesce_usecs = clamp_t(u8, ec->tx_coalesce_usecs,
+					1, CQ_TIMER_THRESH_MAX);
 
-	if (ec->tx_coalesce_usecs == ec->rx_coalesce_usecs) {
-		pfvf->cq_time_wait = (u8)ec->rx_coalesce_usecs * 10;
-	} else {
-		/* If both the values are supplied and is different from
-		 * previously set values arbitrarly taking the rx_coalesce_usecs
-		 * if any of the value is same as previous value the different
-		 * value is taken.
-		 */
-		pfvf->cq_time_wait = (pfvf->cq_time_wait ==
-				      (u8)ec->rx_coalesce_usecs * 10) ?
-			(u8)ec->tx_coalesce_usecs * 10 :
-			(u8)ec->rx_coalesce_usecs * 10;
-	}
-
-	/* @rx_max_coalesced_frames: Maximum number of packets to receive
-	 * before an RX interrupt.
-	 * A completion interrupt is generated when
-	 * NIX_LF_CINT(0..63)_CNT[ECOUNT] > NIX_LF_CINT(0..63)_WAIT[ECOUNT_WAIT]
-	 * after either  value is updated. So cq_ecount_wait =
-	 * rx/tx_max_coalesced frames -1
+	/* Rx and Tx are mapped to same CQ, check which one
+	 * is changed, if both then choose the min.
 	 */
-	if (ec->rx_max_coalesced_frames == ec->tx_max_coalesced_frames) {
-		pfvf->cq_ecount_wait = ec->rx_max_coalesced_frames - 1;
-	} else {
-		/* same as above */
-		pfvf->cq_ecount_wait = (pfvf->cq_ecount_wait ==
-				      ec->rx_max_coalesced_frames - 1) ?
-			 ec->tx_max_coalesced_frames - 1 :
-			 ec->rx_max_coalesced_frames - 1;
-	}
+	if (pfvf->cq_time_wait == ec->rx_coalesce_usecs)
+		pfvf->cq_time_wait = ec->tx_coalesce_usecs;
+	else if (pfvf->cq_time_wait == ec->tx_coalesce_usecs)
+		pfvf->cq_time_wait = ec->rx_coalesce_usecs;
+	else
+		pfvf->cq_time_wait = min_t(u8, ec->rx_coalesce_usecs,
+					   ec->tx_coalesce_usecs);
 
-	if (if_up)
-		otx2_open(netdev);
+	/* Rx and Tx are mapped to same CQ, check which one
+	 * is changed, if both then choose the min.
+	 */
+	if (pfvf->cq_ecount_wait == ec->rx_max_coalesced_frames)
+		pfvf->cq_ecount_wait = ec->tx_max_coalesced_frames;
+	else if (pfvf->cq_ecount_wait == ec->tx_max_coalesced_frames)
+		pfvf->cq_ecount_wait = ec->rx_max_coalesced_frames;
+	else
+		pfvf->cq_ecount_wait = min_t(u8, ec->rx_max_coalesced_frames,
+					     ec->tx_max_coalesced_frames);
+
+	for (qidx = 0; qidx < pfvf->hw.cint_cnt; qidx++)
+		otx2_config_irq_coalescing(pfvf, qidx);
 
 	return 0;
 }

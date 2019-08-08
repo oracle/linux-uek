@@ -343,6 +343,20 @@ int otx2_rss_init(struct otx2_nic *pfvf)
 	return otx2_set_flowkey_cfg(pfvf);
 }
 
+void otx2_config_irq_coalescing(struct otx2_nic *pfvf, int qidx)
+{
+	/* Configure CQE interrupt coalescing parameters
+	 *
+	 * HW triggers an irq when ECOUNT > cq_ecount_wait, hence
+	 * set 1 less than cq_ecount_wait. And cq_time_wait is in
+	 * usecs, convert that to 100ns count.
+	 */
+	otx2_write64(pfvf, NIX_LF_CINTX_WAIT(qidx),
+		     ((u64)(pfvf->cq_time_wait * 10) << 48) |
+		     ((u64)pfvf->cq_qcount_wait << 32) |
+		     (pfvf->cq_ecount_wait - 1));
+}
+
 dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 			   gfp_t gfp)
 {
