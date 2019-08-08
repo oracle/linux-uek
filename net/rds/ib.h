@@ -210,8 +210,8 @@ struct rds_ib_connection {
 	/* tx */
 	struct rds_ib_work_ring	i_send_ring;
 	struct rm_data_op	*i_data_op;
-	struct rds_header	*i_send_hdrs;
-	u64			i_send_hdrs_dma;
+	struct rds_header	**i_send_hdrs;
+	dma_addr_t		*i_send_hdrs_dma;
 	struct rds_ib_send_work *i_sends;
 	atomic_t		i_signaled_sends;
 
@@ -221,8 +221,8 @@ struct rds_ib_connection {
 	struct rds_ib_work_ring	i_recv_ring;
 	struct rds_ib_incoming	*i_ibinc;
 	u32			i_recv_data_rem;
-	struct rds_header	*i_recv_hdrs;
-	u64			i_recv_hdrs_dma;
+	struct rds_header	**i_recv_hdrs;
+	dma_addr_t		*i_recv_hdrs_dma;
 	struct rds_ib_recv_work *i_recvs;
 	u64			i_ack_recv;	/* last ACK received */
 	struct rds_ib_refill_cache i_cache_incs;
@@ -307,8 +307,8 @@ struct rds_ib_srq {
 	struct ib_event_handler    s_event_handler;
 	struct rds_ib_recv_work    *s_recvs;
 	u32                        s_n_wr;
-	struct rds_header          *s_recv_hdrs;
-	u64                        s_recv_hdrs_dma;
+	struct rds_header          **s_recv_hdrs;
+	dma_addr_t                 *s_recv_hdrs_dma;
 	atomic_t                   s_num_posted;
 	unsigned long              s_refill_gate;
 	struct delayed_work        s_refill_w;
@@ -337,6 +337,7 @@ struct rds_ib_device {
 	struct list_head	conn_list;
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
+	struct dma_pool		*rid_hdrs_pool; /* RDS headers DMA pool */
 
 	bool			use_fastreg;
 	int			fastreg_cq_vector;
@@ -592,6 +593,11 @@ u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
 #if IS_ENABLED(CONFIG_IPV6)
 u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
 #endif
+struct rds_header **rds_dma_hdrs_alloc(struct ib_device *ibdev,
+				       struct dma_pool *pool,
+				       dma_addr_t **dma_addrs, u32 num_hdrs);
+void rds_dma_hdrs_free(struct dma_pool *pool, struct rds_header **hdrs,
+		       dma_addr_t *dma_addrs, u32 num_hdrs);
 
 /* ib_rdma.c */
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
