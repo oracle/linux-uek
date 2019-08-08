@@ -31,6 +31,7 @@ config X86_64
 	select NEED_DMA_MAP_STATE
 	select SWIOTLB
 	select ARCH_HAS_SYSCALL_WRAPPER
+	select ARCH_USES_HIGH_VMA_FLAGS
 
 config FORCE_DYNAMIC_FTRACE
 	def_bool y

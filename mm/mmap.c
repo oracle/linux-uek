@@ -1155,7 +1155,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	 * We later require that vma->vm_flags == vm_flags,
 	 * so this tests vma->vm_flags & VM_SPECIAL, too.
 	 */
-	if (vm_flags & VM_SPECIAL)
+	if ((vm_flags & VM_SPECIAL) && !(vm_flags & VM_RSVD_VA))
 		return NULL;
 
 	if (prev)
@@ -1718,6 +1718,73 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 	return (vm_flags & (VM_NORESERVE | VM_SHARED | VM_WRITE)) == VM_WRITE;
 }
 
+static const char *rsvd_va_mapping_name(struct vm_area_struct *vma)
+{
+	return ((char *)"[rsvd]");
+}
+
+static void rsvd_va_mapping_open(struct vm_area_struct *vma)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	unsigned long len = vma->vm_end - vma->vm_start;
+
+	mm->total_vm += len >> PAGE_SHIFT;
+}
+
+static const struct vm_operations_struct rsvd_va_mapping_vmops = {
+	.open = rsvd_va_mapping_open,
+	.name = rsvd_va_mapping_name,
+};
+
+#if VM_RSVD_VA
+#define VA_RSVD_RETAIN	(VM_RSVD_VA | VM_DONTEXPAND | VM_PFNMAP)
+#else
+#define VA_RSVD_RETAIN	0
+#endif
+
+int install_rsvd_mapping(struct mm_struct *mm, struct vm_area_struct *prev,
+			 unsigned long addr, unsigned long len)
+{
+#if VM_RSVD_VA
+	int ret;
+	struct vm_area_struct *vma;
+
+	if (prev) {
+		vma = vma_merge(mm, prev, addr, addr+len, VA_RSVD_RETAIN,
+				NULL, NULL, (addr >> PAGE_SHIFT), NULL,
+				NULL_VM_UFFD_CTX);
+		if (vma != NULL)
+			return 0;
+	}
+
+	vma = vm_area_alloc(mm);
+	if (unlikely(vma == NULL))
+		return -ENOMEM;
+
+	INIT_LIST_HEAD(&vma->anon_vma_chain);
+	vma->vm_mm = mm;
+	vma->vm_start = addr;
+	vma->vm_end = addr + len;
+
+	vma->vm_flags = VA_RSVD_RETAIN;
+	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
+
+	vma->vm_ops = &rsvd_va_mapping_vmops;
+	vma->vm_private_data = NULL;
+
+	ret = insert_vm_struct(mm, vma);
+	if (ret)
+		goto out;
+
+	return 0;
+out:
+	vm_area_free(vma);
+	return ret;
+#else
+	return 0;
+#endif
+}
+
 unsigned long mmap_region(struct file *file, unsigned long addr,
 		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
 		struct list_head *uf)
@@ -1725,6 +1792,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma, *prev;
 	int error;
+	int rsvd_va = 0;
 	struct rb_node **rb_link, *rb_parent;
 	unsigned long charged = 0;
 
@@ -1746,6 +1814,14 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	/* Clear old maps */
 	while (find_vma_links(mm, addr, addr + len, &prev, &rb_link,
 			      &rb_parent)) {
+#if VA_RSVD_RETAIN
+		vma = find_vma(mm, addr);
+		if (vma && ((vma->vm_flags & VA_RSVD_RETAIN) ==
+				VA_RSVD_RETAIN)) {
+			rsvd_va = 1;
+			vma->vm_flags |= VM_RSVD_NORELINK;
+		}
+#endif
 		if (do_munmap(mm, addr, len, uf))
 			return -ENOMEM;
 	}
@@ -1755,8 +1831,17 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	 */
 	if (accountable_mapping(file, vm_flags)) {
 		charged = len >> PAGE_SHIFT;
-		if (security_vm_enough_memory_mm(mm, charged))
+		if (security_vm_enough_memory_mm(mm, charged)) {
+			/*
+			 * reinstall reserved VA mapping if this was one
+			 * originally
+			 */
+			if (rsvd_va) {
+				find_vma_prev(mm, addr, &prev);
+				install_rsvd_mapping(mm, prev, addr, len);
+			}
 			return -ENOMEM;
+		}
 		vm_flags |= VM_ACCOUNT;
 	}
 
@@ -1781,7 +1866,10 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 
 	vma->vm_start = addr;
 	vma->vm_end = addr + len;
-	vma->vm_flags = vm_flags;
+	if (rsvd_va)
+		vma->vm_flags = vm_flags | VM_RSVD_VA;
+	else
+		vma->vm_flags = vm_flags;
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = pgoff;
 
@@ -1881,6 +1969,11 @@ free_vma:
 unacct_error:
 	if (charged)
 		vm_unacct_memory(charged);
+	/* reinstall reserved VA mapping if this was one originally */
+	if (rsvd_va) {
+		find_vma_prev(mm, addr, &prev);
+		install_rsvd_mapping(mm, prev, addr, len);
+	}
 	return error;
 }
 
@@ -2669,6 +2762,11 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct vm_area_struct *new;
 	int err;
 
+	/*
+	 * Clear any lingering NORELINK flag for reserved VA so it does
+	 * not prevent vma splitting.
+	 */
+	vma->vm_flags &= ~VM_RSVD_NORELINK;
 	if (vma->vm_ops && vma->vm_ops->split) {
 		err = vma->vm_ops->split(vma, addr);
 		if (err)
@@ -2744,7 +2842,7 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		struct list_head *uf, bool downgrade)
 {
-	unsigned long end;
+	unsigned long end, rsvd_va, rsvd_start, rsvd_end;
 	struct vm_area_struct *vma, *prev, *last;
 
 	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
@@ -2772,6 +2870,18 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	/* if it doesn't overlap, we have nothing.. */
 	if (vma->vm_start >= end)
 		return 0;
+
+	/*
+	 * Save the state of VM_RSVD_NORELINK flag and clear it so it
+	 * does not propagate to any split vma.
+	 */
+	if ((vma->vm_flags & VM_RSVD_VA) &&
+		!(vma->vm_flags & VM_RSVD_NORELINK)) {
+		rsvd_va = 1;
+	} else {
+		rsvd_va = 0;
+		vma->vm_flags &= ~VM_RSVD_NORELINK;
+	}
 
 	/*
 	 * If we need to split any vma, do it now to save pain later.
@@ -2821,6 +2931,11 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 			return error;
 	}
 
+	if (rsvd_va) {
+		rsvd_start = vma->vm_start;
+		rsvd_end = vma->vm_end;
+	}
+
 	/*
 	 * unlock any mlock()ed ranges before detaching vmas
 	 */
@@ -2846,6 +2961,9 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 
 	/* Fix up all other VM information */
 	remove_vma_list(mm, vma);
+	if (rsvd_va)
+		install_rsvd_mapping(mm, prev, rsvd_start,
+					(rsvd_end - rsvd_start));
 
 	return downgrade ? 1 : 0;
 }
