@@ -4258,7 +4258,14 @@ static bool pci_quirk_cavium_acs_match(struct pci_dev *dev)
 	 * bits of device ID are used to indicate which subdevice is used
 	 * within the SoC.
 	 */
-	return (pci_is_pcie(dev) && ((dev->device & 0xf800) == 0xa000));
+	bool dev_acs_en = false;
+	/* Set acs for CGX and BGX devices */
+	if (dev->device == 0xa059 || dev->device == 0xa026)
+		dev_acs_en = true;
+
+	return (pci_is_pcie(dev) &&
+		((pci_pcie_type(dev) == PCI_EXP_TYPE_ROOT_PORT) ||
+		 dev_acs_en) && ((dev->device & 0xf800) == 0xa000));
 }
 
 static int pci_quirk_cavium_acs(struct pci_dev *dev, u16 acs_flags)
