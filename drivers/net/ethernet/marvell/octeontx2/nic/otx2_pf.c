@@ -1564,11 +1564,7 @@ int otx2_open(struct net_device *netdev)
 		}
 		vec++;
 
-		/* Configure CQE interrupt coalescing parameters */
-		otx2_write64(pf, NIX_LF_CINTX_WAIT(qidx),
-			     ((u64)pf->cq_time_wait << 48) |
-			     ((u64)pf->cq_qcount_wait << 32) |
-			     pf->cq_ecount_wait);
+		otx2_config_irq_coalescing(pf, qidx);
 
 		/* Enable CQ IRQ */
 		otx2_write64(pf, NIX_LF_CINTX_INT(qidx), BIT_ULL(0));
