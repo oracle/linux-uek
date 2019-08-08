@@ -29,6 +29,7 @@ config X86_64
 	select HAVE_ARCH_SOFT_DIRTY
 	select MODULES_USE_ELF_RELA
 	select X86_DEV_DMA_OPS
+	select ARCH_USES_HIGH_VMA_FLAGS
 
 #
 # Arch settings
