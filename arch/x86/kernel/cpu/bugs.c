@@ -49,6 +49,15 @@ static void __init spectre_v1_select_mitigation(void);
 unsigned int use_ibrs;
 EXPORT_SYMBOL(use_ibrs);
 
+/*
+ * IBRS Firmware Variables
+ *
+ * ibrs_firmware_enabled_key controls if IBRS is effectively enabled
+ * for firmware calls.
+ */
+DEFINE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
+EXPORT_SYMBOL(ibrs_firmware_enabled_key);
+
 /* mutex to serialize IBRS & IBPB control changes */
 DEFINE_MUTEX(spec_ctrl_mutex);
 EXPORT_SYMBOL(spec_ctrl_mutex);
@@ -998,7 +1007,7 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	 * enable IBRS around firmware calls.
 	 */
 	if (ibrs_supported && mode != SPECTRE_V2_IBRS_ENHANCED) {
-		setup_force_cpu_cap(X86_FEATURE_USE_IBRS_FW);
+		ibrs_firmware_enable();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
 
@@ -1738,7 +1747,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 	case X86_BUG_SPECTRE_V2:
 		return sprintf(buf, "%s%s%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
 			       ibpb_state(),
-			       boot_cpu_has(X86_FEATURE_USE_IBRS_FW) ? ", IBRS_FW" : "",
+			       ibrs_firmware_enabled() ? ", IBRS_FW" : "",
 			       stibp_state(),
 			       boot_cpu_has(X86_FEATURE_RSB_CTXSW) ? ", RSB filling" : "",
 			       spectre_v2_module_string());

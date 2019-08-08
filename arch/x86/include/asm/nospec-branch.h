@@ -285,21 +285,20 @@ extern u64 x86_spec_ctrl_base;
  *
  * (Implemented as CPP macros due to header hell.)
  */
+DECLARE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
+
 #define firmware_restrict_branch_speculation_start()			\
 do {									\
-	u64 val = x86_spec_ctrl_base | SPEC_CTRL_IBRS;			\
-									\
 	preempt_disable();						\
-	alternative_msr_write(MSR_IA32_SPEC_CTRL, val,			\
-			      X86_FEATURE_USE_IBRS_FW);			\
+	if (static_branch_likely(&ibrs_firmware_enabled_key))		\
+		wrmsrl(MSR_IA32_SPEC_CTRL,				\
+		       x86_spec_ctrl_base | SPEC_CTRL_IBRS);		\
 } while (0)
 
 #define firmware_restrict_branch_speculation_end()			\
 do {									\
-	u64 val = x86_spec_ctrl_base;					\
-									\
-	alternative_msr_write(MSR_IA32_SPEC_CTRL, val,			\
-			      X86_FEATURE_USE_IBRS_FW);			\
+	if (static_branch_likely(&ibrs_firmware_enabled_key))		\
+		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);		\
 	preempt_enable();						\
 } while (0)
 
