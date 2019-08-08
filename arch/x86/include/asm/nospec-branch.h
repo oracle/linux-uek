@@ -62,6 +62,7 @@
 
 #ifdef __ASSEMBLY__
 
+.extern retpoline_enabled_key
 
 /*
  * JMP_NOSPEC and CALL_NOSPEC macros can be used instead of a simple
@@ -70,9 +71,12 @@
  */
 .macro JMP_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
-	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *%\reg), \
-		      __stringify(jmp __x86_indirect_thunk_\reg), X86_FEATURE_RETPOLINE, \
-		      __stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg), X86_FEATURE_RETPOLINE_AMD
+	STATIC_JUMP_IF_TRUE .Lretpoline_jmp_\@, retpoline_enabled_key, def=0
+	ANNOTATE_RETPOLINE_SAFE
+	jmp	*%\reg
+.Lretpoline_jmp_\@:
+	ALTERNATIVE __stringify(jmp __x86_indirect_thunk_\reg), \
+		    __stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg), X86_FEATURE_RETPOLINE_AMD
 #else
 	jmp	*%\reg
 #endif
@@ -80,9 +84,14 @@
 
 .macro CALL_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
-	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; call *%\reg), \
-		      __stringify(call __x86_indirect_thunk_\reg), X86_FEATURE_RETPOLINE, \
-		      __stringify(lfence; ANNOTATE_RETPOLINE_SAFE; call *%\reg), X86_FEATURE_RETPOLINE_AMD
+	STATIC_JUMP_IF_TRUE .Lretpoline_call_\@, retpoline_enabled_key, def=0
+	ANNOTATE_RETPOLINE_SAFE
+	call	*%\reg
+	jmp	.Ldone_call_\@
+.Lretpoline_call_\@:
+	ALTERNATIVE __stringify(call __x86_indirect_thunk_\reg), \
+		    __stringify(lfence; ANNOTATE_RETPOLINE_SAFE; call *%\reg), X86_FEATURE_RETPOLINE_AMD
+.Ldone_call_\@:
 #else
 	call	*%\reg
 #endif
@@ -110,16 +119,25 @@
  * which is ensured when CONFIG_RETPOLINE is defined.
  */
 # define CALL_NOSPEC						\
-	ALTERNATIVE_2(						\
+	"901: .byte " __stringify(BYTES_NOP5) "\n"		\
+	".pushsection __jump_table, \"aw\"\n"			\
+	_ASM_ALIGN "\n"						\
+	".long 901b - ., 902f - .\n"				\
+	_ASM_PTR "retpoline_enabled_key - .\n"			\
+	".popsection\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
-	"call *%[thunk_target]\n",				\
-	"call __x86_indirect_thunk_%V[thunk_target]\n",		\
-	X86_FEATURE_RETPOLINE,					\
+	"	call *%[thunk_target]\n"			\
+	"	jmp  903f\n"					\
+	"	.align 16\n"					\
+	"902:"							\
+	ANNOTATE_NOSPEC_ALTERNATIVE				\
+	ALTERNATIVE(						\
+	"call __x86_indirect_thunk_%V[thunk_target];\n",	\
 	"lfence;\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
 	"call *%[thunk_target]\n",				\
-	X86_FEATURE_RETPOLINE_AMD)
-
+	X86_FEATURE_RETPOLINE_AMD)				\
+	"903:"
 # define THUNK_TARGET(addr) [thunk_target] "r" (addr)
 
 #else /* CONFIG_X86_32 */
@@ -129,10 +147,18 @@
  * here, anyway.
  */
 # define CALL_NOSPEC						\
-	ALTERNATIVE_2(						\
+	"910: .byte " __stringify(BYTES_NOP5) "\n"		\
+	".pushsection __jump_table, \"aw\"\n"			\
+	_ASM_ALIGN "\n"						\
+	_ASM_PTR "910b, 911f, retpoline_enabled_key\n"		\
+	".popsection\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
-	"call *%[thunk_target]\n",				\
-	"       jmp    904f;\n"					\
+	"	call *%[thunk_target];\n"			\
+	"	jmp   912f;\n"					\
+	"       .align 16\n"					\
+	"911:"							\
+	ALTERNATIVE(						\
+	"	jmp   904f;\n"					\
 	"       .align 16\n"					\
 	"901:	call   903f;\n"					\
 	"902:	pause;\n"					\
@@ -144,11 +170,11 @@
 	"       ret;\n"						\
 	"       .align 16\n"					\
 	"904:	call   901b;\n",				\
-	X86_FEATURE_RETPOLINE,					\
 	"lfence;\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
 	"call *%[thunk_target]\n",				\
-	X86_FEATURE_RETPOLINE_AMD)
+	X86_FEATURE_RETPOLINE_AMD)				\
+	"912:"
 
 # define THUNK_TARGET(addr) [thunk_target] "rm" (addr)
 #endif
