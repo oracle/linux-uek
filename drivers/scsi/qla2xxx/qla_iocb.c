@@ -292,6 +292,26 @@ void qla2x00_build_scsi_iocbs_64(srb_t *sp, cmd_entry_t *cmd_pkt,
 	}
 }
 
+/*
+ * Find the first handle that is not in use, starting from
+ * req->current_outstanding_cmd + 1. The caller must hold the lock that is
+ * associated with @req.
+ */
+uint32_t qla2xxx_get_next_handle(struct req_que *req)
+{
+	uint32_t index, handle = req->current_outstanding_cmd;
+
+	for (index = 1; index < req->num_outstanding_cmds; index++) {
+		handle++;
+		if (handle == req->num_outstanding_cmds)
+			handle = 1;
+		if (!req->outstanding_cmds[handle])
+			return handle;
+	}
+
+	return 0;
+}
+
 /**
  * qla2x00_start_scsi() - Send a SCSI command to the ISP
  * @sp: command to send to the ISP
@@ -306,7 +326,6 @@ qla2x00_start_scsi(srb_t *sp)
 	scsi_qla_host_t	*vha;
 	struct scsi_cmnd *cmd;
 	uint32_t	*clr_ptr;
-	uint32_t        index;
 	uint32_t	handle;
 	cmd_entry_t	*cmd_pkt;
 	uint16_t	cnt;
@@ -339,16 +358,8 @@ qla2x00_start_scsi(srb_t *sp)
 	/* Acquire ring specific lock */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 
-	/* Check for room in outstanding command list. */
-	handle = req->current_outstanding_cmd;
-	for (index = 1; index < req->num_outstanding_cmds; index++) {
-		handle++;
-		if (handle == req->num_outstanding_cmds)
-			handle = 1;
-		if (!req->outstanding_cmds[handle])
-			break;
-	}
-	if (index == req->num_outstanding_cmds)
+	handle = qla2xxx_get_next_handle(req);
+	if (handle == 0)
 		goto queuing_error;
 
 	/* Map the sg table so we have an accurate count of sg entries needed */
@@ -1585,7 +1596,6 @@ qla24xx_start_scsi(srb_t *sp)
 	int		nseg;
 	unsigned long   flags;
 	uint32_t	*clr_ptr;
-	uint32_t        index;
 	uint32_t	handle;
 	struct cmd_type_7 *cmd_pkt;
 	uint16_t	cnt;
@@ -1613,16 +1623,8 @@ qla24xx_start_scsi(srb_t *sp)
 	/* Acquire ring specific lock */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 
-	/* Check for room in outstanding command list. */
-	handle = req->current_outstanding_cmd;
-	for (index = 1; index < req->num_outstanding_cmds; index++) {
-		handle++;
-		if (handle == req->num_outstanding_cmds)
-			handle = 1;
-		if (!req->outstanding_cmds[handle])
-			break;
-	}
-	if (index == req->num_outstanding_cmds)
+	handle = qla2xxx_get_next_handle(req);
+	if (handle == 0)
 		goto queuing_error;
 
 	/* Map the sg table so we have an accurate count of sg entries needed */
@@ -1725,7 +1727,6 @@ qla24xx_dif_start_scsi(srb_t *sp)
 	int			nseg;
 	unsigned long		flags;
 	uint32_t		*clr_ptr;
-	uint32_t		index;
 	uint32_t		handle;
 	uint16_t		cnt;
 	uint16_t		req_cnt = 0;
@@ -1766,17 +1767,8 @@ qla24xx_dif_start_scsi(srb_t *sp)
 	/* Acquire ring specific lock */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 
-	/* Check for room in outstanding command list. */
-	handle = req->current_outstanding_cmd;
-	for (index = 1; index < req->num_outstanding_cmds; index++) {
-		handle++;
-		if (handle == req->num_outstanding_cmds)
-			handle = 1;
-		if (!req->outstanding_cmds[handle])
-			break;
-	}
-
-	if (index == req->num_outstanding_cmds)
+	handle = qla2xxx_get_next_handle(req);
+	if (handle == 0)
 		goto queuing_error;
 
 	/* Compute number of required data segments */
@@ -1921,7 +1913,6 @@ qla2xxx_start_scsi_mq(srb_t *sp)
 	int		nseg;
 	unsigned long   flags;
 	uint32_t	*clr_ptr;
-	uint32_t        index;
 	uint32_t	handle;
 	struct cmd_type_7 *cmd_pkt;
 	uint16_t	cnt;
@@ -1952,16 +1943,8 @@ qla2xxx_start_scsi_mq(srb_t *sp)
 		vha->marker_needed = 0;
 	}
 
-	/* Check for room in outstanding command list. */
-	handle = req->current_outstanding_cmd;
-	for (index = 1; index < req->num_outstanding_cmds; index++) {
-		handle++;
-		if (handle == req->num_outstanding_cmds)
-			handle = 1;
-		if (!req->outstanding_cmds[handle])
-			break;
-	}
-	if (index == req->num_outstanding_cmds)
+	handle = qla2xxx_get_next_handle(req);
+	if (handle == 0)
 		goto queuing_error;
 
 	/* Map the sg table so we have an accurate count of sg entries needed */
@@ -2065,7 +2048,6 @@ qla2xxx_dif_start_scsi_mq(srb_t *sp)
 	int			nseg;
 	unsigned long		flags;
 	uint32_t		*clr_ptr;
-	uint32_t		index;
 	uint32_t		handle;
 	uint16_t		cnt;
 	uint16_t		req_cnt = 0;
@@ -2120,17 +2102,8 @@ qla2xxx_dif_start_scsi_mq(srb_t *sp)
 		vha->marker_needed = 0;
 	}
 
-	/* Check for room in outstanding command list. */
-	handle = req->current_outstanding_cmd;
-	for (index = 1; index < req->num_outstanding_cmds; index++) {
-		handle++;
-		if (handle == req->num_outstanding_cmds)
-			handle = 1;
-		if (!req->outstanding_cmds[handle])
-			break;
-	}
-
-	if (index == req->num_outstanding_cmds)
+	handle = qla2xxx_get_next_handle(req);
+	if (handle == 0)
 		goto queuing_error;
 
 	/* Compute number of required data segments */
@@ -2277,7 +2250,7 @@ __qla2x00_alloc_iocbs(struct qla_qpair *qpair, srb_t *sp)
 	struct qla_hw_data *ha = vha->hw;
 	struct req_que *req = qpair->req;
 	device_reg_t *reg = ISP_QUE_REG(ha, req->id);
-	uint32_t index, handle;
+	uint32_t handle;
 	request_t *pkt;
 	uint16_t cnt, req_cnt;
 
@@ -2317,16 +2290,8 @@ __qla2x00_alloc_iocbs(struct qla_qpair *qpair, srb_t *sp)
 		goto queuing_error;
 
 	if (sp) {
-		/* Check for room in outstanding command list. */
-		handle = req->current_outstanding_cmd;
-		for (index = 1; index < req->num_outstanding_cmds; index++) {
-			handle++;
-			if (handle == req->num_outstanding_cmds)
-				handle = 1;
-			if (!req->outstanding_cmds[handle])
-				break;
-		}
-		if (index == req->num_outstanding_cmds) {
+		handle = qla2xxx_get_next_handle(req);
+		if (handle == 0) {
 			ql_log(ql_log_warn, vha, 0x700b,
 			    "No room on outstanding cmd array.\n");
 			goto queuing_error;
@@ -3113,7 +3078,6 @@ qla82xx_start_scsi(srb_t *sp)
 	unsigned long   flags;
 	struct scsi_cmnd *cmd;
 	uint32_t	*clr_ptr;
-	uint32_t        index;
 	uint32_t	handle;
 	uint16_t	cnt;
 	uint16_t	req_cnt;
@@ -3153,16 +3117,8 @@ qla82xx_start_scsi(srb_t *sp)
 	/* Acquire ring specific lock */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 
-	/* Check for room in outstanding command list. */
-	handle = req->current_outstanding_cmd;
-	for (index = 1; index < req->num_outstanding_cmds; index++) {
-		handle++;
-		if (handle == req->num_outstanding_cmds)
-			handle = 1;
-		if (!req->outstanding_cmds[handle])
-			break;
-	}
-	if (index == req->num_outstanding_cmds)
+	handle = qla2xxx_get_next_handle(req);
+	if (handle == 0)
 		goto queuing_error;
 
 	/* Map the sg table so we have an accurate count of sg entries needed */
@@ -3770,7 +3726,6 @@ qla2x00_start_bidir(srb_t *sp, struct scsi_qla_host *vha, uint32_t tot_dsds)
 	struct qla_hw_data *ha = vha->hw;
 	unsigned long flags;
 	uint32_t handle;
-	uint32_t index;
 	uint16_t req_cnt;
 	uint16_t cnt;
 	uint32_t *clr_ptr;
@@ -3795,17 +3750,8 @@ qla2x00_start_bidir(srb_t *sp, struct scsi_qla_host *vha, uint32_t tot_dsds)
 	/* Acquire ring specific lock */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 
-	/* Check for room in outstanding command list. */
-	handle = req->current_outstanding_cmd;
-	for (index = 1; index < req->num_outstanding_cmds; index++) {
-		handle++;
-		if (handle == req->num_outstanding_cmds)
-			handle = 1;
-		if (!req->outstanding_cmds[handle])
-			break;
-	}
-
-	if (index == req->num_outstanding_cmds) {
+	handle = qla2xxx_get_next_handle(req);
+	if (handle == 0) {
 		rval = EXT_STATUS_BUSY;
 		goto queuing_error;
 	}
