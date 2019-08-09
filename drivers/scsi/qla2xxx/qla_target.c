@@ -5799,7 +5799,7 @@ static void qlt_handle_abts_completion(struct scsi_qla_host *vha,
 			    entry->error_subcode2);
 			ha->tgt.tgt_ops->free_mcmd(mcmd);
 		}
-	} else {
+	} else if (mcmd) {
 		ha->tgt.tgt_ops->free_mcmd(mcmd);
 	}
 }
