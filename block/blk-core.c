@@ -1640,12 +1640,17 @@ static void part_round_stats_single(struct request_queue *q, int cpu,
 				    struct hd_struct *part, unsigned long now,
 				    unsigned int inflight)
 {
+	unsigned long stamp = READ_ONCE(part->stamp);
+	unsigned long delta = now > stamp ? now - stamp : 0;
+
+	if (!delta || unlikely(cmpxchg(&part->stamp, stamp, now) != stamp))
+		return;
+
 	if (inflight) {
-		__part_stat_add(cpu, part, time_in_queue,
-				inflight * (now - part->stamp));
-		__part_stat_add(cpu, part, io_ticks, (now - part->stamp));
+		__part_stat_add(cpu, part, time_in_queue, inflight * delta);
+		__part_stat_add(cpu, part, io_ticks, delta);
 	}
-	part->stamp = now;
+
 }
 
 /**
