@@ -431,6 +431,9 @@ int otx2_destroy_ntuple_flows(struct otx2_nic *pfvf)
 	struct otx2_flow *iter, *tmp;
 	int err;
 
+	if (!pfvf->entries_alloc)
+		return 0;
+
 	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
 	if (!req) {
@@ -440,7 +443,7 @@ int otx2_destroy_ntuple_flows(struct otx2_nic *pfvf)
 
 	req->start = pfvf->entry_list[NTUPLE_OFFSET];
 	req->end   = pfvf->entry_list[NTUPLE_OFFSET +
-				      OTX2_MAX_NTUPLE_FLOWS - 1];
+				      pfvf->ntuple_max_flows - 1];
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	otx2_mbox_unlock(&pfvf->mbox);
 
