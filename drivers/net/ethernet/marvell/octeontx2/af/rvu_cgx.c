@@ -613,8 +613,10 @@ static void cgx_notify_up_ptp_info(struct rvu *rvu, int pf, bool enable)
 
 	/* Send mbox message to PF */
 	msg = otx2_mbox_alloc_msg_cgx_ptp_rx_info(rvu, pf);
-	if (!msg)
-		dev_err(rvu->dev, "failed to alloc message\n");
+	if (!msg) {
+		dev_err(rvu->dev, "ptp notification to pf %d failed\n", pf);
+		return;
+	}
 
 	msg->ptp_en = enable;
 	otx2_mbox_msg_send(&rvu->afpf_wq_info.mbox_up, pf);
@@ -931,6 +933,8 @@ int rvu_cgx_nix_cuml_stats(struct rvu *rvu, void *cgxd, int lmac_id,
 	 */
 	pcifunc = pf << RVU_PFVF_PF_SHIFT;
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return 0;
 	block = &rvu->hw->block[blkaddr];
 
 	*stat = 0;
