@@ -38,8 +38,9 @@ static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 static void npc_mcam_free_all_counters(struct rvu *rvu, struct npc_mcam *mcam,
 				       u16 pcifunc);
 
-int npc_mcam_verify_pf_func(struct rvu *rvu, struct mcam_entry *entry_data,
-			    u8 intf, u16 pcifunc)
+static int npc_mcam_verify_pf_func(struct rvu *rvu,
+				   struct mcam_entry *entry_data,
+				   u8 intf, u16 pcifunc)
 {
 	u16 pf_func, pf_func_mask;
 
