@@ -104,7 +104,7 @@ static void otx2_flr_handler(struct work_struct *work)
 	req->hdr.pcifunc |= (vf + 1) & RVU_PFVF_FUNC_MASK;
 
 	if (!otx2_sync_mbox_msg(&pf->mbox)) {
-		if (vf > 64) {
+		if (vf >= 64) {
 			reg = 1;
 			vf = vf - 64;
 		}
