@@ -555,7 +555,7 @@ static int write_npa_ctx(struct rvu *rvu, bool all,
 			 int npalf, int id, int ctype)
 {
 	struct rvu_pfvf *pfvf;
-	int max_id;
+	int max_id = 0;
 	u16 pcifunc;
 
 	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc))
@@ -2002,7 +2002,7 @@ static int read_sso_pc(struct rvu *rvu)
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_AW_READ_ARB);
 	pr_info("SSO XAQ reads outstanding		%lld\n",
-		(reg & 0x3F) >> 24);
+		(reg >> 24) & 0x3F);
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_XAQ_REQ_PC);
 	pr_info("SSO XAQ reads requests			%lld\n", reg);
@@ -2012,13 +2012,13 @@ static int read_sso_pc(struct rvu *rvu)
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_AW_WE);
 	pr_info("SSO IAQ reserved			%lld\n",
-		(reg & 0x3FFF) >> 16);
+		(reg >> 16) & 0x3FFF);
 	pr_info("SSO IAQ total				%lld\n", reg & 0x3FFF);
 	pr_info("\n");
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_TAQ_CNT);
 	pr_info("SSO TAQ reserved			%lld\n",
-		(reg & 0x7FF) >> 16);
+		(reg >> 16) & 0x7FF);
 	pr_info("SSO TAQ total				%lld\n", reg & 0x7FF);
 	pr_info("\n");
 
@@ -2408,13 +2408,13 @@ static ssize_t rvu_dbg_sso_cmd_parser(struct file *filp,
 	char *cmd_buf;
 	int lf = 0;
 
-	if (*ppos != 0)
-		return 0;
+	if ((*ppos != 0) || !count)
+		return -EINVAL;
 
 	cmd_buf = kzalloc(count + 1, GFP_KERNEL);
+	if (!cmd_buf)
+		return -ENOSPC;
 
-	if (!cmd_buf || !count)
-		return count;
 	if (parse_sso_cmd_buffer(cmd_buf, &count, buffer,
 				 &lf, &all) < 0) {
 		pr_info("Usage: echo [<%s>/all] > %s\n", lf_type, file_nm);
@@ -2614,16 +2614,13 @@ static ssize_t rvu_dbg_cpt_cmd_parser(struct file *filp,
 	char *cmd_buf;
 	int ret = 0;
 
-	if (*ppos != 0)
+	if ((*ppos != 0) || !count)
 		return -EINVAL;
 
 	cmd_buf = kzalloc(count + 1, GFP_KERNEL);
 	if (!cmd_buf)
 		return -ENOSPC;
-	if (!count) {
-		kfree(cmd_buf);
-		return count;
-	}
+
 	if (parse_cpt_cmd_buffer(cmd_buf, &count, buffer,
 				 rvu->rvu_dbg.cpt_ctx.e_type) < 0)
 		ret = -EINVAL;

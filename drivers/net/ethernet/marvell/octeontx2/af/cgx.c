@@ -261,7 +261,7 @@ int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index)
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
 
 	/* Validate the index */
-	if (index < 0 || index >= lmac->mac_to_index_bmap.max)
+	if (index >= lmac->mac_to_index_bmap.max)
 		return -EINVAL;
 
 	/* Skip deletion for reserved index i.e. index 0 */
@@ -464,7 +464,7 @@ int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 }
 EXPORT_SYMBOL(cgx_get_tx_stats);
 
-int cgx_set_fec_stats_count(struct cgx_link_user_info *linfo)
+static int cgx_set_fec_stats_count(struct cgx_link_user_info *linfo)
 {
 	if (linfo->fec) {
 		switch (linfo->lmac_type_id) {
@@ -869,7 +869,7 @@ static inline bool cgx_cmdresp_is_linkevent(u64 event)
 	id = FIELD_GET(EVTREG_ID, event);
 	if (id == CGX_CMD_LINK_BRING_UP ||
 	    id == CGX_CMD_LINK_BRING_DOWN ||
-	    CGX_CMD_MODE_CHANGE)
+	    id == CGX_CMD_MODE_CHANGE)
 		return true;
 	else
 		return false;
