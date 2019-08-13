@@ -567,13 +567,14 @@ EXPORT_SYMBOL_GPL(rds_conn_destroy);
 
 static void __rds_inc_msg_cp(struct rds_incoming *inc,
 			     struct rds_info_iterator *iter,
-			     void *saddr, void *daddr, int flip, bool isv6)
+			     struct in6_addr *saddr, struct in6_addr *daddr,
+			     int flip, bool isv6)
 {
 	if (isv6)
 		rds6_inc_info_copy(inc, iter, saddr, daddr, flip);
 	else
-		rds_inc_info_copy(inc, iter, *(__be32 *)saddr,
-				  *(__be32 *)daddr, flip);
+		rds_inc_info_copy(inc, iter, saddr->s6_addr32[3],
+				  daddr->s6_addr32[3], flip);
 }
 
 static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
@@ -602,6 +603,9 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			struct rds_conn_path *cp;
 			int npaths;
+
+			if (!isv6 && conn->c_isv6)
+				continue;
 
 			npaths = (conn->c_trans->t_mp_capable ?
 				 RDS_MPATH_WORKERS : 1);
