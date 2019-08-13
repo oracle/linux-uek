@@ -1741,7 +1741,7 @@ if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
 fi\
-/bin/kernel-install add %{KVERREL}%{?1:+%{1}} /lib/modules/%{KVERREL}%{?1:+%{1}}/vmlinuz || exit $?\
+/bin/kernel-install add %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
 %{nil}
 
 #
@@ -1769,7 +1769,7 @@ fi\
 #
 %define kernel_variant_preun() \
 %{expand:%%preun %{?1}}\
-/bin/kernel-install remove %{KVERREL}%{?1:+%{1}} /lib/modules/%{KVERREL}%{?1:+%{1}}/vmlinuz || exit $?\
+/bin/kernel-install remove %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --remove-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
