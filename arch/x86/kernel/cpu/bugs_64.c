@@ -708,12 +708,13 @@ void refresh_set_spectre_v2_enabled(void)
 {
 	if (retpoline_enabled()) {
 		/*
-		 * If retpoline is enabled and a non-retpoline module is
-		 * loaded then set spectre_v2_enabled to SPECTRE_V2_NONE
-		 * to indicate that the system is vulnerable.
+		 * If retpoline is enabled and a non-retpoline module has been
+		 * loaded since the last reboot (tainting the kernel), then
+		 * the retpoline mitigation is still active but a warning is
+		 * shown in sysfs to indicate that the system is potentially
+		 * vulnerable.
 		 */
-		spectre_v2_enabled = test_taint(TAINT_NO_RETPOLINE) ?
-			SPECTRE_V2_NONE : retpoline_mode;
+		spectre_v2_enabled = retpoline_mode;
 	} else if (check_ibrs_inuse()) {
 		spectre_v2_enabled = (check_basic_ibrs_inuse() ?
 			SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
@@ -1737,9 +1738,13 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 		return sprintf(buf, "%s\n", spectre_v1_strings[spectre_v1_mitigation]);
 
 	case X86_BUG_SPECTRE_V2:
-		return sprintf(buf, "%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
-			       ibrs_firmware ? ", IBRS_FW" : "",
-			       ibpb_inuse ? ", IBPB" : "");
+		return sprintf(buf, "%s%s%s%s\n",
+		    spectre_v2_strings[spectre_v2_enabled],
+		    (test_taint(TAINT_NO_RETPOLINE) &&
+		    retpoline_mode_selected(spectre_v2_enabled) ?
+		    " (non-retpoline module(s) has been loaded)" : ""),
+		    ibrs_firmware ? ", IBRS_FW" : "",
+		    ibpb_inuse ? ", IBPB" : "");
 
 	case X86_BUG_SPEC_STORE_BYPASS:
 		return sprintf(buf, "%s\n", ssb_strings[ssb_mode]);
