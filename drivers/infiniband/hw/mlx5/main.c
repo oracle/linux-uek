@@ -4628,6 +4628,7 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.req_notify_cq	= mlx5_ib_arm_cq;
 	dev->ib_dev.get_dma_mr		= mlx5_ib_get_dma_mr;
 	dev->ib_dev.reg_user_mr		= mlx5_ib_reg_user_mr;
+	dev->ib_dev.fill_res_entry	= mlx5_ib_fill_res_entry;
 	dev->ib_dev.rereg_user_mr	= mlx5_ib_rereg_user_mr;
 	dev->ib_dev.dereg_mr		= mlx5_ib_dereg_mr;
 	dev->ib_dev.attach_mcast	= mlx5_ib_mcg_attach;

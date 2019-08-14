@@ -495,11 +495,20 @@ out:
 	return -EMSGSIZE;
 }
 
+static bool fill_res_entry(struct ib_device *dev, struct sk_buff *msg,
+			   struct rdma_restrack_entry *res)
+{
+	if (!dev->fill_res_entry)
+		return false;
+
+	return dev->fill_res_entry(msg, res);
+}
+
 static int fill_res_mr_entry(struct sk_buff *msg, struct netlink_callback *cb,
 			     struct rdma_restrack_entry *res, uint32_t port)
 {
 	struct ib_mr *mr = container_of(res, struct ib_mr, res);
-	struct rdma_restrack_root *resroot = &mr->pd->device->res;
+	struct ib_device *dev = mr->pd->device;
 	struct nlattr *entry_attr;
 
 	entry_attr = nla_nest_start(msg, RDMA_NLDEV_ATTR_RES_MR_ENTRY);
@@ -526,7 +535,7 @@ static int fill_res_mr_entry(struct sk_buff *msg, struct netlink_callback *cb,
 	if (fill_res_name_pid(msg, res))
 		goto err;
 
-	if (resroot->fill_res_entry(msg, res))
+	if (fill_res_entry(dev, msg, res))
 		goto err;
 
 	nla_nest_end(msg, entry_attr);
@@ -1101,9 +1110,21 @@ static const struct rdma_nl_cbs nldev_cb_table[RDMA_NLDEV_NUM_OPS] = {
 	},
 };
 
+int rdma_nl_put_driver_string(struct sk_buff *msg, const char *name,
+			      const char *str)
+{
+	if (put_driver_name_print_type(msg, name,
+				       RDMA_NLDEV_PRINT_TYPE_UNSPEC))
+		return -EMSGSIZE;
+	if (nla_put_string(msg, RDMA_NLDEV_ATTR_DRIVER_STRING, str))
+		return -EMSGSIZE;
 
-static int put_driver_name_print_type(struct sk_buff *msg, const char *name,
-				      enum rdma_nldev_print_type print_type)
+	return 0;
+}
+EXPORT_SYMBOL(rdma_nl_put_driver_string);
+
+int put_driver_name_print_type(struct sk_buff *msg, const char *name,
+			       enum rdma_nldev_print_type print_type)
 {
 	if (nla_put_string(msg, RDMA_NLDEV_ATTR_DRIVER_STRING, name))
 		return -EMSGSIZE;

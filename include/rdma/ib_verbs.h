@@ -2478,6 +2478,9 @@ struct ib_device {
 	struct ib_fmr *	           (*alloc_fmr)(struct ib_pd *pd,
 						int mr_access_flags,
 						struct ib_fmr_attr *fmr_attr);
+	int (*fill_res_entry)	   (struct sk_buff *msg,
+				    struct rdma_restrack_entry *res);
+
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	struct ib_fast_reg_page_list * (*alloc_fast_reg_page_list)(struct ib_device *device,
