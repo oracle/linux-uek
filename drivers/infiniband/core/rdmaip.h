@@ -55,6 +55,9 @@
 
 #define RDMAIP_100MSECS			100
 
+#define RDMAIP_DEV_TYPE_IB		0x1
+#define RDMAIP_DEV_TYPE_ETHER		0x2
+
 static int rdmaip_init_flag;
 
 struct list_head rdmaip_devlist_head;
@@ -315,6 +318,7 @@ struct rdmaip_ip6_port_addr {
 
 struct rdmaip_port {
 	struct rdmaip_device	*rdmaip_dev;
+	u32			device_type;
 	unsigned int		failover_group;
 	struct net_device	*netdev;
 	unsigned int            port_state;
@@ -440,6 +444,10 @@ unsigned long rdmaip_active_bonding_failback_min_jiffies = HZ;
 unsigned long rdmaip_active_bonding_failback_max_jiffies = HZ * 100;
 unsigned long rdmaip_sysctl_active_bonding_failback_ms = 10000;
 
+unsigned long rdmaip_roce_active_bonding_failback_min_ms = 1000;
+unsigned long rdmaip_roce_active_bonding_failback_max_ms = 60000;
+unsigned long rdmaip_sysctl_roce_active_bonding_failback_ms = 20000;
+
 static struct ctl_table_header *rdmaip_sysctl_hdr;
 
 static struct ctl_table rdmaip_sysctl_table[] = {
@@ -472,6 +480,15 @@ static struct ctl_table rdmaip_sysctl_table[] = {
 		.maxlen         = sizeof(rdmaip_sysctl_active_bonding),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "roce_active_bonding_failback_ms",
+		.data           = &rdmaip_sysctl_roce_active_bonding_failback_ms,
+		.maxlen         = sizeof(rdmaip_sysctl_roce_active_bonding_failback_ms),
+		.mode           = 0644,
+		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
+		.extra1		= &rdmaip_roce_active_bonding_failback_min_ms,
+		.extra2		= &rdmaip_roce_active_bonding_failback_max_ms,
 	},
 	{ }
 };

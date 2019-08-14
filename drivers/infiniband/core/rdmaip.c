@@ -246,9 +246,12 @@ rdmaip_port_all_layers_up(struct rdmaip_port *rdmaip_port)
 }
 
 static unsigned long
-rdmaip_get_failback_sync_jiffies(void)
+rdmaip_get_failback_sync_jiffies(u8 port)
 {
-	return msecs_to_jiffies(rdmaip_sysctl_active_bonding_failback_ms);
+	if (ip_config[port].device_type == RDMAIP_DEV_TYPE_IB)
+		return msecs_to_jiffies(rdmaip_sysctl_active_bonding_failback_ms);
+	else
+		return msecs_to_jiffies(rdmaip_sysctl_roce_active_bonding_failback_ms);
 }
 
 /*
@@ -835,6 +838,11 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 	ip_config[next_port_idx].port_state = RDMAIP_PORT_INIT;
 	ip_config[next_port_idx].port_layerflags = 0x0; /* all clear to begin */
 
+	if (net_dev->type == ARPHRD_INFINIBAND)
+		ip_config[next_port_idx].device_type = RDMAIP_DEV_TYPE_IB;
+	else
+		ip_config[next_port_idx].device_type = RDMAIP_DEV_TYPE_ETHER;
+
 	rdmaip_update_port_status_all_layers(next_port_idx,
 					     RDMAIP_EVENT_NONE, 0);
 
@@ -1364,7 +1372,7 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 			RDMAIP_DBG2("Schedule failback\n");
 			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
 			queue_delayed_work(rdmaip_wq, &work->work,
-					   rdmaip_get_failback_sync_jiffies());
+					   rdmaip_get_failback_sync_jiffies(port));
 		} else
 			kfree(work);
 	} else {
