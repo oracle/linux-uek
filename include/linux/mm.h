@@ -1898,8 +1898,18 @@ extern void mm_drop_all_locks(struct mm_struct *mm);
 extern void set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file);
 extern struct file *get_mm_exe_file(struct mm_struct *mm);
 
-extern bool may_expand_vm(struct mm_struct *, vm_flags_t, unsigned long npages);
-extern void vm_stat_account(struct mm_struct *, vm_flags_t, long npages);
+/*
+ * For keep kabi compatibility of may_expand_vm()
+ */
+#define KABI_PATTERN_VAL	0xFAF1F2FB
+struct mm_bind_flags {
+	unsigned long pat_val;
+	struct mm_struct *mm;
+	vm_flags_t vm_flags;
+};
+
+extern int may_expand_vm(struct mm_struct *, unsigned long npages);
+extern void vm_stat_account(struct mm_struct *, vm_flags_t, struct file *file, long npages);
 
 extern struct vm_area_struct *_install_special_mapping(struct mm_struct *mm,
 				   unsigned long addr, unsigned long len,

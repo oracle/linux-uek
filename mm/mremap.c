@@ -323,7 +323,7 @@ static unsigned long move_vma(struct vm_area_struct *vma,
 	 * If this were a serious issue, we'd add a flag to do_munmap().
 	 */
 	hiwater_vm = mm->hiwater_vm;
-	vm_stat_account(mm, vma->vm_flags, new_len >> PAGE_SHIFT);
+	vm_stat_account(mm, vma->vm_flags, NULL, new_len >> PAGE_SHIFT);
 
 	if (do_munmap(mm, old_addr, old_len) < 0) {
 		/* OOM: unable to split vma, just get accounts right */
@@ -352,6 +352,7 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma = find_vma(mm, addr);
+	struct mm_bind_flags mbf = {KABI_PATTERN_VAL, mm, vma->vm_flags};
 
 	if (!vma || vma->vm_start > addr)
 		return ERR_PTR(-EFAULT);
@@ -384,7 +385,7 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 			return ERR_PTR(-EAGAIN);
 	}
 
-	if (!may_expand_vm(mm, vma->vm_flags,
+	if (!may_expand_vm((struct mm_struct *)&mbf,
 				(new_len - old_len) >> PAGE_SHIFT))
 		return ERR_PTR(-ENOMEM);
 
@@ -552,7 +553,7 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 				goto out;
 			}
 
-			vm_stat_account(mm, vma->vm_flags, pages);
+			vm_stat_account(mm, vma->vm_flags, NULL, pages);
 			if (vma->vm_flags & VM_LOCKED) {
 				mm->locked_vm += pages;
 				locked = true;

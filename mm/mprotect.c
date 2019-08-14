@@ -326,6 +326,8 @@ mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 	pgoff_t pgoff;
 	int error;
 	int dirty_accountable = 0;
+	struct mm_bind_flags mbf_new = {KABI_PATTERN_VAL, mm, 0};
+	struct mm_bind_flags mbf_old = {KABI_PATTERN_VAL, mm, 0};
 
 	if (newflags == oldflags) {
 		*pprev = vma;
@@ -353,8 +355,10 @@ mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 	 */
 	if (newflags & VM_WRITE) {
 		/* Check space limits when area turns into data. */
-		if (!may_expand_vm(mm, newflags, nrpages) &&
-				may_expand_vm(mm, oldflags, nrpages))
+		mbf_new.vm_flags = newflags;
+		mbf_old.vm_flags = oldflags;
+		if (!may_expand_vm((struct mm_struct *)&mbf_new, nrpages) &&
+				may_expand_vm((struct mm_struct *)&mbf_old, nrpages))
 			return -ENOMEM;
 		if (!(oldflags & (VM_ACCOUNT|VM_WRITE|VM_HUGETLB|
 						VM_SHARED|VM_NORESERVE))) {
@@ -403,8 +407,8 @@ success:
 	change_protection(vma, start, end, vma->vm_page_prot,
 			  dirty_accountable, 0);
 
-	vm_stat_account(mm, oldflags, -nrpages);
-	vm_stat_account(mm, newflags, nrpages);
+	vm_stat_account(mm, oldflags, NULL, -nrpages);
+	vm_stat_account(mm, newflags, NULL, nrpages);
 	perf_event_mmap(vma);
 	return 0;
 

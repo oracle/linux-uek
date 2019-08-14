@@ -1580,9 +1580,10 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	int error;
 	struct rb_node **rb_link, *rb_parent;
 	unsigned long charged = 0;
+	struct mm_bind_flags mbf = {KABI_PATTERN_VAL, mm, vm_flags};
 
 	/* Check against address space limit. */
-	if (!may_expand_vm(mm, vm_flags, len >> PAGE_SHIFT)) {
+	if (!may_expand_vm((struct mm_struct *)&mbf, len >> PAGE_SHIFT)) {
 		unsigned long nr_pages;
 
 		/*
@@ -1594,7 +1595,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 
 		nr_pages = count_vma_pages_range(mm, addr, addr + len);
 
-		if (!may_expand_vm(mm, vm_flags,
+		if (!may_expand_vm((struct mm_struct *)&mbf,
 					(len >> PAGE_SHIFT) - nr_pages))
 			return -ENOMEM;
 	}
@@ -1695,7 +1696,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 out:
 	perf_event_mmap(vma);
 
-	vm_stat_account(mm, vm_flags, len >> PAGE_SHIFT);
+	vm_stat_account(mm, vm_flags, NULL, len >> PAGE_SHIFT);
 	if (vm_flags & VM_LOCKED) {
 		if (!((vm_flags & VM_SPECIAL) || is_vm_hugetlb_page(vma) ||
 					vma == get_gate_vma(current->mm)))
@@ -2146,9 +2147,10 @@ static int acct_stack_growth(struct vm_area_struct *vma,
 	struct mm_struct *mm = vma->vm_mm;
 	struct rlimit *rlim = current->signal->rlim;
 	unsigned long new_start;
+	struct mm_bind_flags mbf = {KABI_PATTERN_VAL, mm, vma->vm_flags};
 
 	/* address space limit tests */
-	if (!may_expand_vm(mm, vma->vm_flags, grow))
+	if (!may_expand_vm((struct mm_struct *)&mbf, grow))
 		return -ENOMEM;
 
 	/* Stack limit test */
@@ -2250,7 +2252,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 				spin_lock(&mm->page_table_lock);
 				if (vma->vm_flags & VM_LOCKED)
 					mm->locked_vm += grow;
-				vm_stat_account(mm, vma->vm_flags, grow);
+				vm_stat_account(mm, vma->vm_flags, NULL, grow);
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_end = address;
 				anon_vma_interval_tree_post_update_vma(vma);
@@ -2334,7 +2336,7 @@ int expand_downwards(struct vm_area_struct *vma,
 				spin_lock(&mm->page_table_lock);
 				if (vma->vm_flags & VM_LOCKED)
 					mm->locked_vm += grow;
-				vm_stat_account(mm, vma->vm_flags, grow);
+				vm_stat_account(mm, vma->vm_flags, NULL, grow);
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_start = address;
 				vma->vm_pgoff -= grow;
@@ -2437,7 +2439,7 @@ static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
 
 		if (vma->vm_flags & VM_ACCOUNT)
 			nr_accounted += nrpages;
-		vm_stat_account(mm, vma->vm_flags, -nrpages);
+		vm_stat_account(mm, vma->vm_flags, NULL, -nrpages);
 		vma = remove_vma(vma);
 	} while (vma);
 	vm_unacct_memory(nr_accounted);
@@ -2801,6 +2803,7 @@ static unsigned long do_brk(unsigned long addr, unsigned long len)
 	struct rb_node **rb_link, *rb_parent;
 	pgoff_t pgoff = addr >> PAGE_SHIFT;
 	int error;
+	struct mm_bind_flags mbf = {KABI_PATTERN_VAL, mm, 0};
 
 	len = PAGE_ALIGN(len);
 	if (!len)
@@ -2832,7 +2835,8 @@ static unsigned long do_brk(unsigned long addr, unsigned long len)
 	}
 
 	/* Check against address space limits *after* clearing old maps... */
-	if (!may_expand_vm(mm, flags, len >> PAGE_SHIFT))
+	mbf.vm_flags = flags;
+	if (!may_expand_vm((struct mm_struct *)&mbf, len >> PAGE_SHIFT))
 		return -ENOMEM;
 
 	if (mm->map_count > sysctl_max_map_count)
@@ -2867,7 +2871,7 @@ static unsigned long do_brk(unsigned long addr, unsigned long len)
 out:
 	perf_event_mmap(vma);
 	mm->total_vm += len >> PAGE_SHIFT;
-	mm->data_vm += len >> PAGE_SHIFT;
+	mm->shared_vm += len >> PAGE_SHIFT;
 	if (flags & VM_LOCKED)
 		mm->locked_vm += (len >> PAGE_SHIFT);
 	vma->vm_flags |= VM_SOFTDIRTY;
@@ -3057,21 +3061,39 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
  * Return true if the calling process may expand its vm space by the passed
  * number of pages
  */
-bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
+int may_expand_vm(struct mm_struct *mm, unsigned long npages)
 {
+	vm_flags_t flags = 0;
+	struct mm_bind_flags *pmbf = (struct mm_bind_flags *)mm;
+
+	if (pmbf->pat_val == KABI_PATTERN_VAL) {
+		mm = pmbf->mm;
+		flags = pmbf->vm_flags;
+	}
+
+	/* If there is some third-party module that use the old interface(without
+	 * flags, mm points to mm_struct instance), because flags is inited to 0,
+	 * is_data_mapping() will fail, and the effect of the whole may_expand_vm()
+	 * will actually be equivalent to:
+	 *
+	 * return mm->total_vm + npages <= rlimit(RLIMIT_AS) >> PAGE_SHIFT;
+	 *
+	 * This is the same case as when these patches were not introduced before.
+	 */
+
 	if (mm->total_vm + npages > rlimit(RLIMIT_AS) >> PAGE_SHIFT)
 		return false;
 
 	if (is_data_mapping(flags) &&
-	    mm->data_vm + npages > rlimit(RLIMIT_DATA) >> PAGE_SHIFT) {
+	    mm->shared_vm + npages > rlimit(RLIMIT_DATA) >> PAGE_SHIFT) {
 		/* Workaround for Valgrind */
 		if (rlimit(RLIMIT_DATA) == 0 &&
-		    mm->data_vm + npages <= rlimit_max(RLIMIT_DATA) >> PAGE_SHIFT)
+		    mm->shared_vm + npages <= rlimit_max(RLIMIT_DATA) >> PAGE_SHIFT)
 			return true;
 
 		pr_warn_once("%s (%d): VmData %lu exceed data ulimit %lu. Update limits%s.\n",
 			     current->comm, current->pid,
-			     (mm->data_vm + npages) << PAGE_SHIFT,
+			     (mm->shared_vm + npages) << PAGE_SHIFT,
 			     rlimit(RLIMIT_DATA),
 			     ignore_rlimit_data ? "" : " or use boot option ignore_rlimit_data");
 
@@ -3082,7 +3104,7 @@ bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 	return true;
 }
 
-void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
+void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, struct file *file, long npages)
 {
 	mm->total_vm += npages;
 
@@ -3091,7 +3113,7 @@ void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
 	else if (is_stack_mapping(flags))
 		mm->stack_vm += npages;
 	else if (is_data_mapping(flags))
-		mm->data_vm += npages;
+		mm->shared_vm += npages;
 }
 
 static int special_mapping_fault(struct vm_area_struct *vma,
@@ -3181,7 +3203,7 @@ static struct vm_area_struct *__install_special_mapping(
 	if (ret)
 		goto out;
 
-	vm_stat_account(mm, vma->vm_flags, len >> PAGE_SHIFT);
+	vm_stat_account(mm, vma->vm_flags, NULL, len >> PAGE_SHIFT);
 
 	perf_event_mmap(vma);
 
