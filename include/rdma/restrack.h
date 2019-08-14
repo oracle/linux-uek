@@ -196,4 +196,8 @@ int rdma_nl_put_driver_u32_hex(struct sk_buff *msg, const char *name,
 int rdma_nl_put_driver_u64(struct sk_buff *msg, const char *name, u64 value);
 int rdma_nl_put_driver_u64_hex(struct sk_buff *msg, const char *name,
 			       u64 value);
+int rdma_nl_put_driver_string(struct sk_buff *msg, const char *name,
+			      const char *str);
+int put_driver_name_print_type(struct sk_buff *msg, const char *name,
+			       enum rdma_nldev_print_type print_type);
 #endif /* _RDMA_RESTRACK_H_ */

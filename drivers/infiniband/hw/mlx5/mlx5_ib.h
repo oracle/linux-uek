@@ -533,6 +533,7 @@ struct mlx5_ib_mr {
 	wait_queue_head_t       q_leaf_free;
 	atomic_t		num_pending_prefetch;
 	struct ib_odp_counters	odp_stats;
+	bool			is_odp_implicit;
 };
 
 static inline bool is_odp_mr(struct mlx5_ib_mr *mr)
@@ -1118,6 +1119,8 @@ struct mlx5_core_dev *mlx5_ib_get_native_port_mdev(struct mlx5_ib_dev *dev,
 						   u8 *native_port_num);
 void mlx5_ib_put_native_port_mdev(struct mlx5_ib_dev *dev,
 				  u8 port_num);
+int mlx5_ib_fill_res_entry(struct sk_buff *msg,
+			   struct rdma_restrack_entry *res);
 
 static inline void init_query_mad(struct ib_smp *mad)
 {
