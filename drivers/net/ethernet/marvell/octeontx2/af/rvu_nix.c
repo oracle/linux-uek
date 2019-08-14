@@ -205,6 +205,11 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf)
 		break;
 	case NIX_INTF_TYPE_LBK:
 		vf = (pcifunc & RVU_PFVF_FUNC_MASK) - 1;
+
+		/* Note that AF's VFs work in pairs and talk over consecutive
+		 * loopback channels.Therefore if odd number of AF VFs are
+		 * enabled then the last VF remains with no pair.
+		 */
 		pfvf->rx_chan_base = NIX_CHAN_LBK_CHX(0, vf);
 		pfvf->tx_chan_base = vf & 0x1 ? NIX_CHAN_LBK_CHX(0, vf - 1) :
 						NIX_CHAN_LBK_CHX(0, vf + 1);
