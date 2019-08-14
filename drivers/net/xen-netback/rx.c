@@ -95,8 +95,9 @@ void xenvif_rx_queue_tail(struct xenvif_queue *queue, struct sk_buff *skb)
 static struct sk_buff *xenvif_rx_dequeue(struct xenvif_queue *queue)
 {
 	struct sk_buff *skb;
+	unsigned long flags;
 
-	spin_lock_irq(&queue->rx_queue.lock);
+	spin_lock_irqsave(&queue->rx_queue.lock, flags);
 
 	skb = __skb_dequeue(&queue->rx_queue);
 	if (skb) {
@@ -109,7 +110,7 @@ static struct sk_buff *xenvif_rx_dequeue(struct xenvif_queue *queue)
 		}
 	}
 
-	spin_unlock_irq(&queue->rx_queue.lock);
+	spin_unlock_irqrestore(&queue->rx_queue.lock, flags);
 
 	return skb;
 }
