@@ -1663,6 +1663,7 @@ lpfc_rcv_logo_reglogin_issue(struct lpfc_vport *vport,
 	LPFC_MBOXQ_t	  *mb;
 	LPFC_MBOXQ_t	  *nextmb;
 	struct lpfc_dmabuf *mp;
+	struct lpfc_nodelist *ns_ndlp;
 
 	cmdiocb = (struct lpfc_iocbq *) arg;
 
@@ -1694,6 +1695,13 @@ lpfc_rcv_logo_reglogin_issue(struct lpfc_vport *vport,
 		}
 	}
 	spin_unlock_irq(&phba->hbalock);
+
+	/* software abort if any GID_FT is outstanding */
+	if (vport->cfg_enable_fc4_type != LPFC_ENABLE_FCP) {
+		ns_ndlp = lpfc_findnode_did(vport, NameServer_DID);
+		if (ns_ndlp && NLP_CHK_NODE_ACT(ns_ndlp))
+			lpfc_els_abort(phba, ns_ndlp);
+	}
 
 	lpfc_rcv_logo(vport, ndlp, cmdiocb, ELS_CMD_LOGO);
 	return ndlp->nlp_state;
