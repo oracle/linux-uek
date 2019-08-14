@@ -266,7 +266,7 @@ struct otx2_nic {
 
 static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
 {
-	return (pdev->device ==  PCI_DEVID_OCTEONTX2_RVU_AFVF);
+	return pdev->device == PCI_DEVID_OCTEONTX2_RVU_AFVF;
 }
 
 static inline bool is_96xx_A0(struct pci_dev *pdev)

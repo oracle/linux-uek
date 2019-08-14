@@ -359,7 +359,7 @@ static int otx2vf_open(struct net_device *netdev)
 
 	/* LBKs do not receive link events so tell everyone we are up here */
 	vf = netdev_priv(netdev);
-	if (vf->tx_chan_base < SDP_CHAN_BASE) {
+	if (is_otx2_lbkvf(vf->pdev)) {
 		pr_info("%s NIC Link is UP\n", netdev->name);
 		netif_carrier_on(netdev);
 		netif_tx_start_all_queues(netdev);
@@ -370,18 +370,7 @@ static int otx2vf_open(struct net_device *netdev)
 
 static int otx2vf_stop(struct net_device *netdev)
 {
-	struct otx2_nic *vf;
-	int err;
-
-	err = otx2_stop(netdev);
-	if (err)
-		return err;
-
-	vf = netdev_priv(netdev);
-	if (vf->tx_chan_base < SDP_CHAN_BASE)
-		pr_info("%s NIC Link is DOWN\n", netdev->name);
-
-	return 0;
+	return otx2_stop(netdev);
 }
 
 static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
@@ -570,7 +559,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	INIT_WORK(&vf->reset_task, otx2vf_reset_task);
 
-	if (id->device == PCI_DEVID_OCTEONTX2_RVU_AFVF) {
+	if (is_otx2_lbkvf(vf->pdev)) {
 		n = (vf->pcifunc >> RVU_PFVF_FUNC_SHIFT) & RVU_PFVF_FUNC_MASK;
 		/* Need to subtract 1 to get proper VF number */
 		n -= 1;
