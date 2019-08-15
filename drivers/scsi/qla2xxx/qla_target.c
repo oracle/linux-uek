@@ -926,7 +926,6 @@ static void qlt_free_session_done(struct work_struct *work)
 	struct qla_hw_data *ha = vha->hw;
 	unsigned long flags;
 	bool logout_started = false;
-	struct event_arg ea;
 	scsi_qla_host_t *base_vha;
 
 	ql_dbg(ql_dbg_tgt_mgt, vha, 0xf084,
@@ -1065,12 +1064,6 @@ static void qlt_free_session_done(struct work_struct *work)
 	if (test_bit(PFLG_DRIVER_REMOVING, &base_vha->pci_flags))
 		return;
 
-	if (!tgt || !tgt->tgt_stop) {
-		memset(&ea, 0, sizeof(ea));
-		ea.event = FCME_DELETE_DONE;
-		ea.fcport = sess;
-		qla2x00_fcport_event_handler(vha, &ea);
-	}
 }
 
 /* ha->tgt.sess_lock supposed to be held on entry */
@@ -1149,6 +1142,7 @@ void qlt_schedule_sess_for_deletion(struct fc_port *sess,
 	bool immediate)
 {
 	struct qla_tgt *tgt = sess->tgt;
+	unsigned long flags;
 
 	if (sess->disc_state == DSC_DELETE_PEND)
 		return;
@@ -1163,13 +1157,16 @@ void qlt_schedule_sess_for_deletion(struct fc_port *sess,
 			!sess->plogi_link[QLT_PLOGI_LINK_CONFLICT])
 			return;
 	}
+	spin_lock_irqsave(&sess->vha->work_lock, flags);
+        if (sess->deleted == QLA_SESS_DELETION_IN_PROGRESS) {
+                spin_unlock_irqrestore(&sess->vha->work_lock, flags);
+                return;
+        }
+        sess->deleted = QLA_SESS_DELETION_IN_PROGRESS;
+        spin_unlock_irqrestore(&sess->vha->work_lock, flags);
 
 	sess->disc_state = DSC_DELETE_PEND;
 
-	if (sess->deleted == QLA_SESS_DELETED)
-		sess->logout_on_delete = 0;
-
-	sess->deleted = QLA_SESS_DELETION_IN_PROGRESS;
 	qla24xx_chk_fcp_state(sess);
 
 	ql_dbg(ql_dbg_tgt, sess->vha, 0xe001,
