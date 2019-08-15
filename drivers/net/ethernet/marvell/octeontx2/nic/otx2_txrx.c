@@ -464,6 +464,11 @@ process_cqe:
 	if (tx_pkts) {
 		txq = netdev_get_tx_queue(pfvf->netdev, cq->cint_idx);
 		netdev_tx_completed_queue(txq, tx_pkts, tx_bytes);
+		/* Check if queue was stopped earlier due to ring full */
+		smp_mb();
+		if (netif_carrier_ok(pfvf->netdev) &&
+		    netif_tx_queue_stopped(txq))
+			netif_tx_wake_queue(txq);
 	}
 
 	if (!cq->pool_ptrs)

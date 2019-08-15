@@ -115,11 +115,11 @@ struct otx2_cq_queue {
 } ____cacheline_aligned_in_smp;
 
 struct otx2_qset {
+	u32			rqe_cnt;
+	u32			sqe_cnt; /* Keep these two at top */
 #define OTX2_MAX_CQ_CNT		64
 	u16			cq_cnt;
 	u16			xqe_size;
-	u32			rqe_cnt;
-	u32			sqe_cnt;
 	struct otx2_pool	*pool;
 	struct otx2_cq_poll	*napi;
 	struct otx2_cq_queue	*cq;
