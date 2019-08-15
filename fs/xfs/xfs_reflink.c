@@ -1342,11 +1342,11 @@ err:
 }
 
 /*
- * Grab the exclusive iolock for a data copy from src to dest, making
- * sure to abide vfs locking order (lowest pointer value goes first) and
- * breaking the pnfs layout leases on dest before proceeding.  The loop
- * is needed because we cannot call the blocking break_layout() with the
- * src iolock held, and therefore have to back out both locks.
+ * Grab the exclusive iolock for a data copy from src to dest, making sure to
+ * abide vfs locking order (lowest pointer value goes first) and breaking the
+ * layout leases before proceeding.  The loop is needed because we cannot call
+ * the blocking break_layout() with the iolocks held, and therefore have to
+ * back out both locks.
  */
 static int
 xfs_iolock_two_inodes_and_break_layout(
@@ -1355,33 +1355,44 @@ xfs_iolock_two_inodes_and_break_layout(
 {
 	int			error;
 
-retry:
-	if (src < dest) {
-		inode_lock_shared(src);
-		inode_lock_nested(dest, I_MUTEX_NONDIR2);
-	} else {
-		/* src >= dest */
-		inode_lock(dest);
-	}
+	if (src > dest)
+		swap(src, dest);
 
-	error = break_layout(dest, false);
-	if (error == -EWOULDBLOCK) {
-		inode_unlock(dest);
-		if (src < dest)
-			inode_unlock_shared(src);
+retry:
+	/* Wait to break both inodes' layouts before we start locking. */
+	error = break_layout(src, true);
+	if (error)
+		return error;
+	if (src != dest) {
 		error = break_layout(dest, true);
 		if (error)
 			return error;
-		goto retry;
 	}
+
+	/* Lock one inode and make sure nobody got in and leased it. */
+	inode_lock(src);
+	error = break_layout(src, false);
 	if (error) {
-		inode_unlock(dest);
-		if (src < dest)
-			inode_unlock_shared(src);
+		inode_unlock(src);
+		if (error == -EWOULDBLOCK)
+			goto retry;
 		return error;
 	}
-	if (src > dest)
-		inode_lock_shared_nested(src, I_MUTEX_NONDIR2);
+
+	if (src == dest)
+		return 0;
+
+	/* Lock the other inode and make sure nobody got in and leased it. */
+	inode_lock_nested(dest, I_MUTEX_NONDIR2);
+	error = break_layout(dest, false);
+	if (error) {
+		inode_unlock(src);
+		inode_unlock(dest);
+		if (error == -EWOULDBLOCK)
+			goto retry;
+		return error;
+	}
+
 	return 0;
 }
 
@@ -1399,10 +1410,10 @@ xfs_reflink_remap_unlock(
 
 	xfs_iunlock(dest, XFS_MMAPLOCK_EXCL);
 	if (!same_inode)
-		xfs_iunlock(src, XFS_MMAPLOCK_SHARED);
+		xfs_iunlock(src, XFS_MMAPLOCK_EXCL);
 	inode_unlock(inode_out);
 	if (!same_inode)
-		inode_unlock_shared(inode_in);
+		inode_unlock(inode_in);
 }
 
 /*
@@ -1454,7 +1465,7 @@ xfs_reflink_remap_prep(
 	if (same_inode)
 		xfs_ilock(src, XFS_MMAPLOCK_EXCL);
 	else
-		xfs_lock_two_inodes(src, XFS_MMAPLOCK_SHARED, dest,
+		xfs_lock_two_inodes(src, XFS_MMAPLOCK_EXCL, dest,
 				XFS_MMAPLOCK_EXCL);
 
 	/* Check file eligibility and prepare for block sharing. */
