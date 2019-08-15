@@ -1431,17 +1431,19 @@ static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
 
 	sq = &pf->qset.sq[qidx];
 
-	if (!netif_tx_queue_stopped(txq) &&
-	    !otx2_sq_append_skb(netdev, sq, skb, qidx)) {
+	if (netif_tx_queue_stopped(txq)) {
+		dev_kfree_skb(skb);
+	} else if (!otx2_sq_append_skb(netdev, sq, skb, qidx)) {
 		netif_tx_stop_queue(txq);
 
-		/* Barrier, for stop_queue to be visible on other cpus */
+		/* Check again, incase SQBs got freed up */
 		smp_mb();
-		if ((sq->num_sqbs - *sq->aura_fc_addr) > 1)
-			netif_tx_start_queue(txq);
+		if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb)
+							> sq->sqe_thresh)
+			netif_tx_wake_queue(txq);
 		else
 			netdev_warn(netdev,
-				    "%s: No free SQE/SQB, stopping SQ%d\n",
+				    "%s: Transmit ring full, stopping SQ%d\n",
 				     netdev->name, qidx);
 
 		return NETDEV_TX_BUSY;
@@ -1573,11 +1575,11 @@ int otx2_open(struct net_device *netdev)
 
 	otx2_set_cints_affinity(pf);
 
+	pf->intf_down = false;
+
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
 		goto err_free_cints;
-
-	pf->intf_down = false;
 
 	/* we have already received link status notification */
 	if (pf->linfo.link_up && !(pf->pcifunc & RVU_PFVF_FUNC_MASK))
@@ -1620,15 +1622,15 @@ int otx2_stop(struct net_device *netdev)
 	struct otx2_qset *qset = &pf->qset;
 	int qidx, vec, wrk;
 
-	/* First stop packet Rx/Tx */
-	otx2_rxtx_enable(pf, false);
+	netif_carrier_off(netdev);
+	netif_tx_stop_all_queues(netdev);
 
 	pf->intf_down = true;
 	/* 'intf_down' may be checked on any cpu */
 	smp_wmb();
 
-	netif_carrier_off(netdev);
-	netif_tx_stop_all_queues(netdev);
+	/* First stop packet Rx/Tx */
+	otx2_rxtx_enable(pf, false);
 
 	/* Cleanup Queue IRQ */
 	vec = pci_irq_vector(pf->pdev,
@@ -1667,7 +1669,9 @@ int otx2_stop(struct net_device *netdev)
 	kfree(qset->cq);
 	kfree(qset->rq);
 	kfree(qset->napi);
-	memset(qset, 0, sizeof(*qset));
+	/* Do not clear RQ/SQ ringsize settings */
+	memset(qset + offsetof(struct otx2_qset, sqe_cnt), 0,
+	       sizeof(*qset) - offsetof(struct otx2_qset, sqe_cnt));
 	return 0;
 }
 EXPORT_SYMBOL(otx2_stop);

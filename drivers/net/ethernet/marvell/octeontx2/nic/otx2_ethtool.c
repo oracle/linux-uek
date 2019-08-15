@@ -421,9 +421,9 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	/* 'cq_time_wait' is 8bit and is in multiple of 100ns,
 	 * so clamp the user given value to the range of 1 to 25usec.
 	 */
-	ec->rx_coalesce_usecs = clamp_t(u8, ec->rx_coalesce_usecs,
+	ec->rx_coalesce_usecs = clamp_t(u32, ec->rx_coalesce_usecs,
 					1, CQ_TIMER_THRESH_MAX);
-	ec->tx_coalesce_usecs = clamp_t(u8, ec->tx_coalesce_usecs,
+	ec->tx_coalesce_usecs = clamp_t(u32, ec->tx_coalesce_usecs,
 					1, CQ_TIMER_THRESH_MAX);
 
 	/* Rx and Tx are mapped to same CQ, check which one
@@ -437,6 +437,14 @@ static int otx2_set_coalesce(struct net_device *netdev,
 		pfvf->cq_time_wait = min_t(u8, ec->rx_coalesce_usecs,
 					   ec->tx_coalesce_usecs);
 
+	/* Max ecount_wait supported is 16bit,
+	 * so clamp the user given value to the range of 1 to 64k.
+	 */
+	ec->rx_max_coalesced_frames = clamp_t(u32, ec->rx_max_coalesced_frames,
+					      1, U16_MAX);
+	ec->tx_max_coalesced_frames = clamp_t(u32, ec->tx_max_coalesced_frames,
+					      1, U16_MAX);
+
 	/* Rx and Tx are mapped to same CQ, check which one
 	 * is changed, if both then choose the min.
 	 */
@@ -445,7 +453,7 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	else if (pfvf->cq_ecount_wait == ec->tx_max_coalesced_frames)
 		pfvf->cq_ecount_wait = ec->rx_max_coalesced_frames;
 	else
-		pfvf->cq_ecount_wait = min_t(u8, ec->rx_max_coalesced_frames,
+		pfvf->cq_ecount_wait = min_t(u16, ec->rx_max_coalesced_frames,
 					     ec->tx_max_coalesced_frames);
 
 	for (qidx = 0; qidx < pfvf->hw.cint_cnt; qidx++)
