@@ -789,7 +789,6 @@ CONFIG_CPUFREQ_DT_PLATDEV=y
 CONFIG_ACPI_CPPC_CPUFREQ=m
 # CONFIG_QORIQ_CPUFREQ is not set
 CONFIG_NET=y
-CONFIG_COMPAT_NETLINK_MESSAGES=y
 CONFIG_NET_INGRESS=y
 CONFIG_NET_EGRESS=y
 
@@ -1407,13 +1406,8 @@ CONFIG_NET_DROP_MONITOR=y
 CONFIG_STREAM_PARSER=y
 CONFIG_FIB_RULES=y
 CONFIG_WIRELESS=y
-CONFIG_WIRELESS_EXT=y
-CONFIG_WEXT_CORE=y
-CONFIG_WEXT_PROC=y
-CONFIG_WEXT_PRIV=y
 # CONFIG_CFG80211 is not set
-CONFIG_LIB80211=m
-# CONFIG_LIB80211_DEBUG is not set
+# CONFIG_LIB80211 is not set
 
 #
 # CFG80211 needs to be enabled for MAC80211
@@ -4499,173 +4493,7 @@ CONFIG_VIRTIO_MMIO=m
 # Microsoft Hyper-V guest support
 #
 # CONFIG_HYPERV_TSCPAGE is not set
-CONFIG_STAGING=y
-CONFIG_IRDA=m
-
-#
-# IrDA protocols
-#
-CONFIG_IRLAN=m
-CONFIG_IRNET=m
-CONFIG_IRCOMM=m
-# CONFIG_IRDA_ULTRA is not set
-
-#
-# IrDA options
-#
-CONFIG_IRDA_CACHE_LAST_LSAP=y
-CONFIG_IRDA_FAST_RR=y
-# CONFIG_IRDA_DEBUG is not set
-
-#
-# Infrared-port device drivers
-#
-
-#
-# SIR device drivers
-#
-CONFIG_IRTTY_SIR=m
-
-#
-# Dongle support
-#
-CONFIG_DONGLE=y
-CONFIG_ESI_DONGLE=m
-CONFIG_ACTISYS_DONGLE=m
-CONFIG_TEKRAM_DONGLE=m
-CONFIG_TOIM3232_DONGLE=m
-CONFIG_LITELINK_DONGLE=m
-CONFIG_MA600_DONGLE=m
-CONFIG_GIRBIL_DONGLE=m
-CONFIG_MCP2120_DONGLE=m
-CONFIG_OLD_BELKIN_DONGLE=m
-CONFIG_ACT200L_DONGLE=m
-CONFIG_KINGSUN_DONGLE=m
-CONFIG_KSDAZZLE_DONGLE=m
-CONFIG_KS959_DONGLE=m
-
-#
-# FIR device drivers
-#
-CONFIG_USB_IRDA=m
-CONFIG_SIGMATEL_FIR=m
-CONFIG_VLSI_FIR=m
-CONFIG_MCS_FIR=m
-# CONFIG_COMEDI is not set
-# CONFIG_RTL8192U is not set
-CONFIG_RTLLIB=m
-CONFIG_RTLLIB_CRYPTO_CCMP=m
-CONFIG_RTLLIB_CRYPTO_TKIP=m
-CONFIG_RTLLIB_CRYPTO_WEP=m
-CONFIG_RTL8192E=m
-CONFIG_R8712U=m
-# CONFIG_RTS5208 is not set
-
-#
-# IIO staging drivers
-#
-
-#
-# Accelerometers
-#
-# CONFIG_ADIS16201 is not set
-# CONFIG_ADIS16203 is not set
-# CONFIG_ADIS16209 is not set
-# CONFIG_ADIS16240 is not set
-
-#
-# Analog to digital converters
-#
-# CONFIG_AD7606 is not set
-# CONFIG_AD7780 is not set
-# CONFIG_AD7816 is not set
-# CONFIG_AD7192 is not set
-# CONFIG_AD7280 is not set
-
-#
-# Analog digital bi-direction converters
-#
-# CONFIG_ADT7316 is not set
-
-#
-# Capacitance to digital converters
-#
-# CONFIG_AD7150 is not set
-# CONFIG_AD7152 is not set
-# CONFIG_AD7746 is not set
-
-#
-# Direct Digital Synthesis
-#
-# CONFIG_AD9832 is not set
-# CONFIG_AD9834 is not set
-
-#
-# Digital gyroscope sensors
-#
-# CONFIG_ADIS16060 is not set
-
-#
-# Network Analyzer, Impedance Converters
-#
-# CONFIG_AD5933 is not set
-
-#
-# Light sensors
-#
-# CONFIG_TSL2x7x is not set
-
-#
-# Active energy metering IC
-#
-# CONFIG_ADE7753 is not set
-# CONFIG_ADE7754 is not set
-# CONFIG_ADE7758 is not set
-# CONFIG_ADE7759 is not set
-# CONFIG_ADE7854 is not set
-
-#
-# Resolver to digital converters
-#
-# CONFIG_AD2S90 is not set
-# CONFIG_AD2S1200 is not set
-# CONFIG_AD2S1210 is not set
-
-#
-# Triggers - standalone
-#
-# CONFIG_FB_SM750 is not set
-# CONFIG_FB_XGI is not set
-
-#
-# Speakup console speech
-#
-# CONFIG_SPEAKUP is not set
-CONFIG_STAGING_MEDIA=y
-
-#
-# Android
-#
-# CONFIG_STAGING_BOARD is not set
-# CONFIG_LTE_GDM724X is not set
-# CONFIG_MTD_SPINAND_MT29F is not set
-# CONFIG_LNET is not set
-# CONFIG_DGNC is not set
-# CONFIG_GS_FPGABOOT is not set
-# CONFIG_COMMON_CLK_XLNX_CLKWZRD is not set
-# CONFIG_FB_TFT is not set
-# CONFIG_MOST is not set
-# CONFIG_KS7010 is not set
-# CONFIG_GREYBUS is not set
-# CONFIG_CRYPTO_DEV_CCREE is not set
-
-#
-# USB Power Delivery and Type-C drivers
-#
-CONFIG_TYPEC_TCPM=m
-CONFIG_TYPEC_TCPCI=m
-CONFIG_TYPEC_FUSB302=m
-# CONFIG_PI433 is not set
+# CONFIG_STAGING is not set
 # CONFIG_GOLDFISH is not set
 CONFIG_CHROME_PLATFORMS=y
 CONFIG_CROS_EC_CHARDEV=m
@@ -6058,7 +5886,7 @@ CONFIG_CRYPTO_GHASH=y
 # CONFIG_CRYPTO_POLY1305 is not set
 CONFIG_CRYPTO_MD4=m
 CONFIG_CRYPTO_MD5=y
-CONFIG_CRYPTO_MICHAEL_MIC=m
+# CONFIG_CRYPTO_MICHAEL_MIC is not set
 CONFIG_CRYPTO_RMD128=m
 CONFIG_CRYPTO_RMD160=m
 CONFIG_CRYPTO_RMD256=m
