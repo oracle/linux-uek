@@ -75,7 +75,7 @@ void ACPI_INTERNAL_VAR_XFACE
 acpi_ut_predefined_warning(const char *module_name,
 			   u32 line_number,
 			   char *pathname,
-			   u8 node_flags, const char *format, ...)
+			   u16 node_flags, const char *format, ...)
 {
 	va_list arg_list;
 
@@ -117,7 +117,7 @@ acpi_ut_predefined_warning(const char *module_name,
 void ACPI_INTERNAL_VAR_XFACE
 acpi_ut_predefined_info(const char *module_name,
 			u32 line_number,
-			char *pathname, u8 node_flags, const char *format, ...)
+			char *pathname, u16 node_flags, const char *format, ...)
 {
 	va_list arg_list;
 
@@ -160,7 +160,7 @@ void ACPI_INTERNAL_VAR_XFACE
 acpi_ut_predefined_bios_error(const char *module_name,
 			      u32 line_number,
 			      char *pathname,
-			      u8 node_flags, const char *format, ...)
+			      u16 node_flags, const char *format, ...)
 {
 	va_list arg_list;
 
