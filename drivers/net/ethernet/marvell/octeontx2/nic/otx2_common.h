@@ -325,17 +325,10 @@ static inline u64 otx2_read64(struct otx2_nic *nic, u64 offset)
 #define otx2_low(high, low)    (low)
 #endif
 
-static inline void otx2_write128(__uint128_t val, void __iomem *addr)
+static inline void otx2_write128(u64 lo, u64 hi, void __iomem *addr)
 {
-	__uint128_t *__addr = (__force __uint128_t *)addr;
-	u64 h, l;
-
-	otx2_low(h, l) = (__force u64)cpu_to_le64(val);
-	otx2_high(h, l) = (__force u64)cpu_to_le64(val >> 64);
-
-	asm volatile("stp %x[x0], %x[x1], %x[p1]"
-		: [p1]"=Ump"(*__addr)
-		: [x0]"r"(l), [x1]"r"(h));
+	asm volatile("stp %x[x0], %x[x1], [%x[p1],#0]!"
+		::[x0]"r"(lo), [x1]"r"(hi), [p1]"r"(addr));
 }
 
 static inline __uint128_t otx2_read128(const void __iomem *addr)
@@ -365,12 +358,8 @@ static inline u64 otx2_aura_allocptr(struct otx2_nic *pfvf, int aura)
 static inline void otx2_aura_freeptr(struct otx2_nic *pfvf,
 				     int aura, s64 buf)
 {
-	__uint128_t val;
-
-	val = (__uint128_t)buf;
-	val |= ((__uint128_t)aura | BIT_ULL(63)) << 64;
-
-	otx2_write128(val, pfvf->reg_base + NPA_LF_AURA_OP_FREE0);
+	otx2_write128((u64)buf, (u64)aura | BIT_ULL(63),
+		      pfvf->reg_base + NPA_LF_AURA_OP_FREE0);
 }
 
 /* Update page ref count */
