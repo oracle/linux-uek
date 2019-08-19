@@ -1903,18 +1903,16 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 			mutex_unlock(&rvu->rsrc_lock);
 		}
 
-		rvu_write64(rvu, blkaddr, reg, regval);
-
-		/* Check for SMQ flush, if so, poll for its completion */
+		/* SMQ flush is special hence split register writes such
+		 * that flush first and write rest of the bits later.
+		 */
 		if (schq_regbase == NIX_AF_SMQX_CFG(0) &&
 		    (regval & BIT_ULL(49))) {
-			err = rvu_poll_reg(rvu, blkaddr,
-					   reg, BIT_ULL(49), true);
-			if (err) {
-				rvu_nix_txsch_unlock(nix_hw);
-				return NIX_AF_SMQ_FLUSH_FAILED;
-			}
+			schq = TXSCHQ_IDX(reg, TXSCHQ_IDX_SHIFT);
+			nix_smq_flush(rvu, blkaddr, schq, pcifunc, nixlf);
+			regval &= ~BIT_ULL(49);
 		}
+		rvu_write64(rvu, blkaddr, reg, regval);
 	}
 
 	rvu_nix_txsch_config_changed(nix_hw);
