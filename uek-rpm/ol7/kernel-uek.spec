@@ -1625,10 +1625,13 @@ make -j1 htmldocs || %{doc_build_fail}
   fi \
 %{nil}
 
+## Compress ca. 2000 modules
+# We force xz to single-threaded mode because xargs is used to control
+# the amount of parallelization.
 %define __modcompress_install_post \
   if [ "%{with_compression}" == "1" ]; then \
      find $RPM_BUILD_ROOT/lib/modules/ -type f -name '*.ko' -print0 | \
-	xargs -0r -P 0 -n 1 /usr/bin/xz -T 0 -f \
+	xargs -0r -P$( nproc ) -n1 /usr/bin/xz -T1 -f \
   fi \
 %{nil}
 
