@@ -179,18 +179,15 @@ static void add_umem_to_per_mm(struct ib_umem_odp *umem_odp)
 	struct ib_ucontext_per_mm *per_mm = umem_odp->per_mm;
 
 	down_write(&per_mm->umem_rwsem);
-	if (likely(ib_umem_start(umem_odp) != ib_umem_end(umem_odp))) {
-		/*
-		 * Note that the representation of the intervals in the
-		 * interval tree considers the ending point as contained in
-		 * the interval, while the function ib_umem_end returns the
-		 * first address which is not contained in the umem.
-		 */
-		umem_odp->interval_tree.start = ib_umem_start(umem_odp);
-		umem_odp->interval_tree.last = ib_umem_end(umem_odp) - 1;
-		interval_tree_insert(&umem_odp->interval_tree,
-				     &per_mm->umem_tree);
-	}
+	/*
+	 * Note that the representation of the intervals in the interval tree
+	 * considers the ending point as contained in the interval, while the
+	 * function ib_umem_end returns the first address which is not
+	 * contained in the umem.
+	 */
+	umem_odp->interval_tree.start = ib_umem_start(umem_odp);
+	umem_odp->interval_tree.last = ib_umem_end(umem_odp) - 1;
+	interval_tree_insert(&umem_odp->interval_tree, &per_mm->umem_tree);
 	up_write(&per_mm->umem_rwsem);
 }
 
@@ -199,11 +196,8 @@ static void remove_umem_from_per_mm(struct ib_umem_odp *umem_odp)
 	struct ib_ucontext_per_mm *per_mm = umem_odp->per_mm;
 
 	down_write(&per_mm->umem_rwsem);
-	if (likely(ib_umem_start(umem_odp) != ib_umem_end(umem_odp)))
-		interval_tree_remove(&umem_odp->interval_tree,
-				     &per_mm->umem_tree);
+	interval_tree_remove(&umem_odp->interval_tree, &per_mm->umem_tree);
 	complete_all(&umem_odp->notifier_completion);
-
 	up_write(&per_mm->umem_rwsem);
 }
 
@@ -323,6 +317,9 @@ struct ib_umem_odp *ib_alloc_odp_umem(struct ib_umem_odp *root,
 	int pages = size >> PAGE_SHIFT;
 	int ret;
 
+	if (!size)
+		return ERR_PTR(-EINVAL);
+
 	odp_data = kzalloc(sizeof(*odp_data), GFP_KERNEL);
 	if (!odp_data)
 		return ERR_PTR(-ENOMEM);
@@ -382,6 +379,9 @@ int ib_umem_odp_get(struct ib_umem_odp *umem_odp, int access)
 	struct mm_struct *mm = umem->owning_mm;
 	int ret_val;
 
+	if (umem_odp->umem.address == 0 && umem_odp->umem.length == 0)
+		umem_odp->is_implicit_odp = 1;
+
 	umem_odp->page_shift = PAGE_SHIFT;
 	if (access & IB_ACCESS_HUGETLB) {
 		struct vm_area_struct *vma;
@@ -402,7 +402,10 @@ int ib_umem_odp_get(struct ib_umem_odp *umem_odp, int access)
 
 	init_completion(&umem_odp->notifier_completion);
 
-	if (ib_umem_odp_num_pages(umem_odp)) {
+	if (!umem_odp->is_implicit_odp) {
+		if (!ib_umem_odp_num_pages(umem_odp))
+			return -EINVAL;
+
 		umem_odp->page_list = vzalloc(ib_umem_odp_num_pages(umem_odp) *
 					      sizeof(*umem_odp->page_list));
 		if (!umem_odp->page_list)
@@ -419,7 +422,9 @@ int ib_umem_odp_get(struct ib_umem_odp *umem_odp, int access)
 	ret_val = get_per_mm(umem_odp);
 	if (ret_val)
 		goto out_dma_list;
-	add_umem_to_per_mm(umem_odp);
+
+	if (!umem_odp->is_implicit_odp)
+		add_umem_to_per_mm(umem_odp);
 
 	return 0;
 
@@ -438,13 +443,14 @@ void ib_umem_odp_release(struct ib_umem_odp *umem_odp)
 	 * It is the driver's responsibility to ensure, before calling us,
 	 * that the hardware will not attempt to access the MR any more.
 	 */
-	ib_umem_odp_unmap_dma_pages(umem_odp, ib_umem_start(umem_odp),
-				    ib_umem_end(umem_odp));
-
-	remove_umem_from_per_mm(umem_odp);
+	if (!umem_odp->is_implicit_odp) {
+		ib_umem_odp_unmap_dma_pages(umem_odp, ib_umem_start(umem_odp),
+					    ib_umem_end(umem_odp));
+		remove_umem_from_per_mm(umem_odp);
+		vfree(umem_odp->dma_list);
+		vfree(umem_odp->page_list);
+	}
 	put_per_mm(umem_odp);
-	vfree(umem_odp->dma_list);
-	vfree(umem_odp->page_list);
 }
 
 /*
