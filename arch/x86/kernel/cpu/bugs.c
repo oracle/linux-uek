@@ -35,6 +35,12 @@
 #include "cpu.h"
 
 static void __init spectre_v1_select_mitigation(void);
+
+/*
+ * Retpoline variables.
+ */
+static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
+
 static void __init spectre_v2_select_mitigation(void);
 static void __init ssb_select_mitigation(void);
 static void __init l1tf_select_mitigation(void);
@@ -541,6 +547,38 @@ static void __init spec_v2_user_print_cond(const char *reason, bool secure)
 		pr_info("spectre_v2_user=%s forced on command line.\n", reason);
 }
 
+static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
+{
+	if (cmd == SPECTRE_V2_CMD_NONE)
+		return;
+
+	/*
+	 * Set the retpoline capability to advertise that that retpoline
+	 * is available.
+	 */
+	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+
+	switch (cmd) {
+	case SPECTRE_V2_CMD_AUTO:
+	case SPECTRE_V2_CMD_RETPOLINE:
+		if (boot_cpu_data.x86_vendor != X86_VENDOR_AMD &&
+		    boot_cpu_data.x86_vendor != X86_VENDOR_HYGON)
+			break;
+	case SPECTRE_V2_CMD_RETPOLINE_AMD:
+		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
+			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+			retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
+			return;
+		}
+		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
+	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
+		retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
+	default:
+		break;
+	}
+}
+
+
 static enum spectre_v2_user_cmd __init
 spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
 {
@@ -730,10 +768,15 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 	return cmd;
 }
 
-static void __init spectre_v2_select_mitigation(void)
+/*
+ * Based on the cmd parsed from the kernel arguments and the capabilities of
+ * the system, determine which spectre v2 mitigation will be employed and
+ * return it.
+ */
+static enum spectre_v2_mitigation
+select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 {
-	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
-	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
+	enum spectre_v2_mitigation auto_mode = SPECTRE_V2_NONE;
 
 	/*
 	 * If the CPU is not affected and the command line mode is NONE or AUTO
@@ -741,60 +784,58 @@ static void __init spectre_v2_select_mitigation(void)
 	 */
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
 	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO))
-		return;
+		return auto_mode;
 
-	switch (cmd) {
-	case SPECTRE_V2_CMD_NONE:
-		return;
+	pr_info("Options: %s%s\n",
+		boot_cpu_has(X86_FEATURE_IBPB) ? "IBPB " : "",
+		IS_ENABLED(CONFIG_RETPOLINE) ? "retpoline" : "");
 
-	case SPECTRE_V2_CMD_FORCE:
-	case SPECTRE_V2_CMD_AUTO:
-		if (boot_cpu_has(X86_FEATURE_IBRS_ENHANCED)) {
-			mode = SPECTRE_V2_IBRS_ENHANCED;
-			/* Force it so VMEXIT will restore correctly */
-			x86_spec_ctrl_base |= SPEC_CTRL_IBRS;
-			wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
-			goto specv2_set_mode;
-		}
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_auto;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE_AMD:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_amd;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_generic;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_auto;
-		break;
+	/*
+	 * On AMD, if we have retpoline then favor it over IBRS.
+	 * AMD plans to have a CPUID Function(8000_0008, EBX[18]=1)
+	 * that indicates the processor prefers using IBRS over software
+	 * mitigations such as retpoline. When that is available, this check
+	 * should be adjusted accordingly.
+	 */
+	if ((IS_ENABLED(CONFIG_RETPOLINE)) &&
+	    (retpoline_mode == SPECTRE_V2_RETPOLINE_AMD)) {
+		return retpoline_mode;
 	}
-	pr_err("Spectre mitigation: kernel not compiled with retpoline; no mitigation available!");
-	return;
 
-retpoline_auto:
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD ||
-	    boot_cpu_data.x86_vendor == X86_VENDOR_HYGON) {
-	retpoline_amd:
-		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-			pr_err("Spectre mitigation: LFENCE not serializing, switching to generic retpoline\n");
-			goto retpoline_generic;
-		}
-		mode = SPECTRE_V2_RETPOLINE_AMD;
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+	/*
+	 * The default mitigation preference is:
+	 * IBRS(enhanced) --> retpoline
+	 */
+	if (boot_cpu_has(X86_FEATURE_IBRS_ENHANCED)) {
+		/*
+		 * Enhanced IBRS supports an 'always on' model in which IBRS is
+		 * enabled once and never disabled. Calling ibrs_select() now to
+		 * set the correct mode and update the ibrs state variables.
+		 */
+		auto_mode = SPECTRE_V2_IBRS_ENHANCED;
+		/* Force it so VMEXIT will restore correctly */
+		x86_spec_ctrl_base |= SPEC_CTRL_IBRS;
+		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+		return auto_mode;
+	} else if (IS_ENABLED(CONFIG_RETPOLINE)) {
+		/* retpoline mode has been initialized by retpoline_init() */
+		return retpoline_mode;
 	} else {
-	retpoline_generic:
-		mode = SPECTRE_V2_RETPOLINE_GENERIC;
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+		pr_err("Spectre mitigation: no mitigation available!");
+		return SPECTRE_V2_NONE;
 	}
+}
 
-specv2_set_mode:
+/*
+ * Activate the selected spectre v2 mitigation
+ */
+static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum spectre_v2_mitigation_cmd cmd)
+{
 	spectre_v2_enabled = mode;
-	pr_info("%s\n", spectre_v2_strings[mode]);
+	pr_info("%s\n", spectre_v2_strings[spectre_v2_enabled]);
+
+	if (spectre_v2_enabled == SPECTRE_V2_NONE)
+		return;
 
 	/*
 	 * If spectre v2 protection has been enabled, unconditionally fill
@@ -825,6 +866,38 @@ specv2_set_mode:
 
 	/* Set up IBPB and STIBP depending on the general spectre V2 command */
 	spectre_v2_user_select_mitigation(cmd);
+}
+
+static void __init spectre_v2_select_mitigation(void)
+{
+	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
+	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
+
+	if (IS_ENABLED(CONFIG_RETPOLINE))
+		retpoline_init(cmd);
+
+	switch (cmd) {
+	case SPECTRE_V2_CMD_NONE:
+		return;
+
+	case SPECTRE_V2_CMD_FORCE:
+	case SPECTRE_V2_CMD_AUTO:
+		mode = select_auto_mitigation_mode(cmd);
+		break;
+
+	case SPECTRE_V2_CMD_RETPOLINE:
+	case SPECTRE_V2_CMD_RETPOLINE_AMD:
+	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
+		/*
+		 * These options are sanitized by spectre_v2_parse_cmdline().
+		 * If they were received here, it means CONFIG_RETPOLINE is
+		 * enabled, so there is no need to check again.
+		 */
+		mode = retpoline_mode;
+		break;
+	}
+
+	activate_spectre_v2_mitigation(mode, cmd);
 }
 
 static void update_stibp_msr(void * __unused)
