@@ -1250,6 +1250,7 @@ u64 kvm_get_arch_capabilities(void)
 
 	return data;
 }
+
 EXPORT_SYMBOL_GPL(kvm_get_arch_capabilities);
 
 static int kvm_get_msr_feature(struct kvm_msr_entry *msr)
