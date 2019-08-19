@@ -415,7 +415,6 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_kdump     0
 %define with_doc       0
 %define with_headers   0
-%define with_dtrace    0
 %define with_perf      0
 %define with_tools     0
 %endif
@@ -1322,7 +1321,9 @@ BuildKernel() {
 %endif
 
 %if %{with_dtrace}
-    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+   if [ "$Flavour" != "emb" ] ; then
+       make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+   fi
 %endif
 
     # Start installing the results
@@ -2166,7 +2167,7 @@ fi
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-%if %{with_dtrace}\
+%if %{with_dtrace} && "%{2}" != "emb"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
