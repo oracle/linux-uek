@@ -142,7 +142,7 @@ int otx2_mbox_wait_for_rsp(struct otx2_mbox *mbox, int devid)
 		msleep(sleep);
 		timeout += sleep;
 		if (timeout >= MBOX_RSP_TIMEOUT) {
-			dev_err(sender, "timed out while waiting for rsp\n");
+			dev_dbg(sender, "timed out while waiting for rsp\n");
 			return -EIO;
 		}
 	}
