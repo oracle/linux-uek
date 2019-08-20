@@ -1026,6 +1026,13 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	if (err || (!req->default_rule && !pfvf->def_rule))
 		enable = false;
 
+	/* Packets reaching NPC in Tx path implies that a
+	 * NIXLF is properly setup and transmitting.
+	 * Hence rules can be enabled for Tx.
+	 */
+	if (req->intf == NIX_INTF_TX)
+		enable = true;
+
 	/* Do not allow requests from uninitialized VFs */
 	if (from_vf && !enable)
 		return -EINVAL;
