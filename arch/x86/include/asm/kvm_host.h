@@ -279,6 +279,7 @@ struct kvm_rmap_head {
 struct kvm_mmu_page {
 	struct list_head link;
 	struct hlist_node hash_link;
+	struct list_head lpage_disallowed_link;
 
 	/*
 	 * The following two entries are used to key the shadow page in the
@@ -791,6 +792,7 @@ struct kvm_arch {
 	 * Hash table of struct kvm_mmu_page.
 	 */
 	struct list_head active_mmu_pages;
+	struct list_head lpage_disallowed_mmu_pages;
 	struct list_head zapped_obsolete_pages;
 	struct kvm_page_track_notifier_node mmu_sp_tracker;
 	struct kvm_page_track_notifier_head track_notifier_head;
@@ -860,6 +862,7 @@ struct kvm_arch {
 
 	bool x2apic_format;
 	bool x2apic_broadcast_quirk_disabled;
+	struct task_struct *nx_lpage_recovery_thread;
 };
 
 struct kvm_vm_stat {
