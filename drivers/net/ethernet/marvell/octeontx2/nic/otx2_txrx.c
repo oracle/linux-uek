@@ -274,6 +274,10 @@ static inline bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
 		}
 	} else {
 		atomic_inc(&stats->rx_other_errs);
+		/* For now ignore all the NPC parser errors and
+		 * pass the packets to stack.
+		 */
+		return false;
 	}
 
 	start = cqe + sizeof(struct nix_cqe_hdr_s) + sizeof(*parse);
