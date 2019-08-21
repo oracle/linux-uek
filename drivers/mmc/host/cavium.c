@@ -195,6 +195,8 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 	struct cvm_mmc_host *host = slot->host;
 	struct mmc_host *mmc = slot->mmc;
 
+	pr_debug("slot%d.configure_delay\n", slot->bus_id);
+
 	if (is_mmc_8xxx(host)) {
 		/* MIO_EMM_SAMPLE is till T83XX */
 		u64 emm_sample =
@@ -206,9 +208,6 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 		int cin = FIELD_GET(MIO_EMM_TIMING_CMD_IN, slot->taps);
 		int din = FIELD_GET(MIO_EMM_TIMING_DATA_IN, slot->taps);
 		int cout, dout;
-
-		if (!host->calibrated && host->calibrate)
-			host->calibrate(host);
 
 		if (!slot->taps)
 			cin = din = half;
@@ -266,7 +265,7 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 			FIELD_PREP(MIO_EMM_TIMING_DATA_IN, din) |
 			FIELD_PREP(MIO_EMM_TIMING_DATA_OUT, dout);
 
-		pr_debug("taps %llx\n", slot->taps);
+		pr_debug("slot%d.taps %llx\n", slot->bus_id, slot->taps);
 		cvm_mmc_set_timing(slot);
 	}
 
@@ -1573,9 +1572,6 @@ static int cvm_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	int clk_period, hz;
 
 	int ret;
-
-	if (host->calibrate)
-		host->calibrate(host);
 
 	do {
 		u64 emm_switch =

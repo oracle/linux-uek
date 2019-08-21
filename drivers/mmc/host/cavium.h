@@ -112,7 +112,6 @@ struct cvm_mmc_host {
 	bool powered;
 	bool use_vqmmc; /* must disable slots over switch */
 	bool big_dma_addr;
-	bool calibrated;
 	bool need_irq_handler_lock;
 	spinlock_t irq_handler_lock;
 	struct semaphore mmc_serializer;
@@ -134,7 +133,6 @@ struct cvm_mmc_host {
 	void (*dmar_fixup)(struct cvm_mmc_host *, struct mmc_command *,
 			   struct mmc_data *, u64);
 	void (*dmar_fixup_done)(struct cvm_mmc_host *);
-	void (*calibrate)(struct cvm_mmc_host *host);
 };
 
 struct cvm_mmc_slot {
@@ -290,7 +288,6 @@ struct cvm_mmc_cr_mods {
 irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id);
 int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host);
 int cvm_mmc_of_slot_remove(struct cvm_mmc_slot *slot);
-void calibrate_mmc(struct cvm_mmc_host *host);
 
 extern const char *cvm_mmc_irq_names[];
 
