@@ -861,7 +861,6 @@ int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
 	otx2_handle_link_event(pf);
 	return 0;
 }
-EXPORT_SYMBOL(otx2_mbox_up_handler_cgx_link_event);
 
 static int otx2_process_mbox_msg_up(struct otx2_nic *pf,
 				    struct mbox_msghdr *req)
@@ -1670,7 +1669,7 @@ int otx2_stop(struct net_device *netdev)
 	kfree(qset->rq);
 	kfree(qset->napi);
 	/* Do not clear RQ/SQ ringsize settings */
-	memset(qset + offsetof(struct otx2_qset, sqe_cnt), 0,
+	memset((void *)qset + offsetof(struct otx2_qset, sqe_cnt), 0,
 	       sizeof(*qset) - offsetof(struct otx2_qset, sqe_cnt));
 	return 0;
 }
