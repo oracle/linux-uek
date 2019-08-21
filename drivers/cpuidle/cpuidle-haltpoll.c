@@ -11,6 +11,7 @@
  */
 
 #include <linux/init.h>
+#include <linux/cpu.h>
 #include <linux/cpuidle.h>
 #include <linux/module.h>
 #include <linux/sched/clock.h>
@@ -38,6 +39,7 @@ static bool guest_halt_poll_allow_shrink __read_mostly = true;
 module_param(guest_halt_poll_allow_shrink, bool, 0644);
 
 static DEFINE_PER_CPU(unsigned int, halt_poll_ns);
+static struct cpuidle_device __percpu *haltpoll_cpuidle_devices;
 
 static void adjust_haltpoll_ns(unsigned int block_ns,
 			       unsigned int *cpu_halt_poll_ns)
@@ -130,6 +132,48 @@ static struct cpuidle_driver haltpoll_driver = {
 	.state_count = 2,
 };
 
+static int haltpoll_cpu_online(unsigned int cpu)
+{
+	struct cpuidle_device *dev;
+
+	dev = per_cpu_ptr(haltpoll_cpuidle_devices, cpu);
+	if (!dev->registered) {
+		dev->cpu = cpu;
+		if (cpuidle_register_device(dev)) {
+			pr_notice("cpuidle_register_device %d failed!\n", cpu);
+			return -EIO;
+		}
+		arch_haltpoll_enable(cpu);
+	}
+
+	return 0;
+}
+
+static void haltpoll_uninit(void)
+{
+	unsigned int cpu;
+
+	cpus_read_lock();
+
+	for_each_online_cpu(cpu) {
+		struct cpuidle_device *dev =
+			per_cpu_ptr(haltpoll_cpuidle_devices, cpu);
+
+		if (!dev->registered)
+			continue;
+
+		arch_haltpoll_disable(cpu);
+		cpuidle_unregister_device(dev);
+	}
+
+	cpuidle_unregister(&haltpoll_driver);
+
+	free_percpu(haltpoll_cpuidle_devices);
+	haltpoll_cpuidle_devices = NULL;
+
+	cpus_read_unlock();
+}
+
 static int __init haltpoll_init(void)
 {
 	struct cpuidle_driver *drv = &haltpoll_driver;
@@ -140,22 +184,30 @@ static int __init haltpoll_init(void)
 
 	cpuidle_poll_state_init(drv);
 
-	ret = cpuidle_register(drv, NULL);
+	ret = cpuidle_register_driver(drv);
+	if (ret < 0)
+		return ret;
 
- 	if (ret == 0)
- 		arch_haltpoll_enable();
- 
- 	return ret;
+	haltpoll_cpuidle_devices = alloc_percpu(struct cpuidle_device);
+	if (haltpoll_cpuidle_devices == NULL) {
+		cpuidle_unregister_driver(drv);
+		return -ENOMEM;
+	}
+
+	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "idle/haltpoll:online",
+				haltpoll_cpu_online, NULL);
+	if (ret < 0)
+		haltpoll_uninit();
+
+	return ret;
 }
 
 static void __exit haltpoll_exit(void)
 {
-	arch_haltpoll_disable();
-	cpuidle_unregister(&haltpoll_driver);
+	haltpoll_uninit();
 }
 
 module_init(haltpoll_init);
 module_exit(haltpoll_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Marcelo Tosatti <mtosatti@redhat.com>");
-
