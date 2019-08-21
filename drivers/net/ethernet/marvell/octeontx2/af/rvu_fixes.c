@@ -999,6 +999,11 @@ bool is_parse_nibble_config_valid(struct rvu *rvu,
 	return true;
 }
 
+void __weak otx2smqvf_xmit(void)
+{
+	/* Nothing to do */
+}
+
 void rvu_smqvf_xmit(struct rvu *rvu)
 {
 	if (is_rvu_95xx_A0(rvu) || is_rvu_96xx_A0(rvu)) {
