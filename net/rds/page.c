@@ -43,60 +43,6 @@ struct rds_page_remainder {
 DEFINE_PER_CPU(struct rds_page_remainder, rds_page_remainders) ____cacheline_aligned;
 
 /*
- * returns 0 on success or -errno on failure.
- *
- * We don't have to worry about flush_dcache_page() as this only works
- * with private pages.  If, say, we were to do directed receive to pinned
- * user pages we'd have to worry more about cache coherence.  (Though
- * the flush_dcache_page() in get_user_pages() would probably be enough).
- */
-int rds_page_copy_user(struct page *page, unsigned long offset,
-		       void __user *ptr, unsigned long bytes,
-		       int to_user)
-{
-	unsigned long ret;
-	void *addr;
-
-	/* AA:  can this be removed as sometimes it gives false negative - this doesn't
-	 * exist in the OFA 1.5.3 code line */
-#if 0
-	if (to_user)
-		ret = access_ok(VERIFY_WRITE, ptr, bytes);
-	else
-		ret = access_ok(VERIFY_READ, ptr, bytes);
-
-	if (!ret)
-		return -EFAULT;
-#endif
-
-	if (to_user)
-		rds_stats_add(s_copy_to_user, bytes);
-	else
-		rds_stats_add(s_copy_from_user, bytes);
-
-	addr = kmap_atomic(page);
-	if (to_user)
-		ret = __copy_to_user_inatomic(ptr, addr + offset, bytes);
-	else
-		ret = __copy_from_user_inatomic(addr + offset, ptr, bytes);
-	kunmap_atomic(addr);
-
-	if (ret) {
-		addr = kmap(page);
-		if (to_user)
-			ret = copy_to_user(ptr, addr + offset, bytes);
-		else
-			ret = copy_from_user(addr + offset, ptr, bytes);
-		kunmap(page);
-		if (ret)
-			return -EFAULT;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(rds_page_copy_user);
-
-/*
  * Message allocation uses this to build up regions of a message.
  *
  * @bytes - the number of bytes needed.
