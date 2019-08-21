@@ -68,10 +68,11 @@ void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 	if (is_mmc_8xxx(host))
 		return;
 
-	if (is_mmc_otx2_A0(host)) {
-		/* set _DEBUG[CLK_ON]=1 as workaround for clock issue */
+	/* set _DEBUG[CLK_ON]=1 as workaround for clock issue */
+	if (is_mmc_otx2_A0(host) || is_mmc_95xx(host))
 		writeq(1, host->base + MIO_EMM_DEBUG(host));
 
+	if (is_mmc_otx2_A0(host)) {
 		/*
 		 * Operation of up to 100 MHz may be achieved by skipping the
 		 * steps that establish the tap delays and instead assuming
