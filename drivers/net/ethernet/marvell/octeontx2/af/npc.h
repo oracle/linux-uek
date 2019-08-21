@@ -36,9 +36,8 @@ enum npc_kpu_la_ltype {
 enum npc_kpu_lb_ltype {
 	NPC_LT_LB_ETAG = 1,
 	NPC_LT_LB_CTAG,
-	NPC_LT_LB_STAG,
+	NPC_LT_LB_STAG_QINQ,
 	NPC_LT_LB_BTAG,
-	NPC_LT_LB_QINQ,
 	NPC_LT_LB_ITAG,
 	NPC_LT_LB_DSA,
 	NPC_LT_LB_DSA_VLAN,
