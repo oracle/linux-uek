@@ -166,7 +166,6 @@ void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 		host->per_tap_delay = ps;
 		host->delay_logged = 0;
 	}
-	host->calibrated = true;
 }
 
 static int thunder_mmc_probe(struct pci_dev *pdev,
@@ -248,7 +247,6 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	 * used to evaluate values. These values would be programmed in
 	 * MIO_EMM_TIMING.
 	 */
-	host->calibrate = thunder_calibrate_mmc;
 	thunder_calibrate_mmc(host);
 
 	for_each_available_child_of_node(node, child_node) {
