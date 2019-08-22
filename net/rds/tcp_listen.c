@@ -220,6 +220,7 @@ int rds_tcp_accept_one(struct socket *sock)
 	} else {
 		rds_tcp_set_callbacks(new_sock, cp);
 		rds_connect_path_complete(cp, RDS_CONN_CONNECTING);
+		wake_up(&cp->cp_up_waitq);
 	}
 	new_sock = NULL;
 	ret = 0;

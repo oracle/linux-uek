@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -172,6 +172,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	mutex_init(&cp->cp_cm_lock);
 	cp->cp_flags = 0;
 	atomic_set(&cp->cp_rdma_map_pending, 0);
+	init_waitqueue_head(&cp->cp_up_waitq);
 }
 
 /*
@@ -1072,7 +1073,7 @@ void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
-	if (rds_conn_path_state(cp) == RDS_CONN_DOWN) {
+	if (rds_conn_path_down(cp)) {
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
 			    "calling rds_queue_reconnect, conn %p, <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr, &conn->c_faddr,
