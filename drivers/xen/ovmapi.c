@@ -1115,8 +1115,9 @@ static int __init ovmapi_init(void)
 		return ret;
 	}
 
-	name_cache = kmem_cache_create("name_cache", OVMM_MAX_NAME_LEN,
-				       0, 0, NULL);
+	name_cache = kmem_cache_create_usercopy("name_cache",
+						OVMM_MAX_NAME_LEN, 0, 0,
+						0, OVMM_MAX_NAME_LEN, NULL);
 	value_cache = kmem_cache_create("value_cache", OVMM_MAX_VALUE_LEN,
 					0, 0, NULL);
 	parameter_cache = kmem_cache_create("parameter_cache",
