@@ -207,6 +207,7 @@ static inline void __flush_tlb_pgtable(struct mm_struct *mm,
 	__tlbi(vae1is, addr);
 	__tlbi_user(vae1is, addr);
 	dsb(ish);
+	isb();
 }
 
 #endif
