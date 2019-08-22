@@ -300,6 +300,8 @@ struct rds_conn_path {
 
 	unsigned char		cp_acl_init;
 	unsigned char		cp_acl_en;
+
+	wait_queue_head_t	cp_up_waitq;	/* start up waitq */
 };
 
 struct rds_connection {
@@ -777,10 +779,11 @@ struct rds_sock {
 	struct rds_transport    *rs_transport;
 
 	/*
-	 * rds_sendmsg caches the conn it used the last time around.
-	 * This helps avoid costly lookups.
+	 * rds_sendmsg caches the conn and conn_path it used the last time
+	 * around. This helps avoid costly lookups.
 	 */
 	struct rds_connection	*rs_conn;
+	struct rds_conn_path	*rs_conn_path;
 
 	/* flag indicating we were congested or not */
 	int			rs_congested;
@@ -1088,6 +1091,12 @@ static inline int
 rds_conn_path_up(struct rds_conn_path *cp)
 {
 	return atomic_read(&cp->cp_state) == RDS_CONN_UP;
+}
+
+static inline int
+rds_conn_path_down(struct rds_conn_path *cp)
+{
+	return atomic_read(&cp->cp_state) == RDS_CONN_DOWN;
 }
 
 static inline int
