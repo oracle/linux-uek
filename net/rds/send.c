@@ -1246,15 +1246,15 @@ static inline int rds_rdma_bytes(struct msghdr *msg, size_t *rdma_bytes)
 
 static int rds_send_mprds_hash(struct rds_sock *rs, struct rds_connection *conn)
 {
+	struct rds_conn_path *cp;
 	int hash;
 
 	if (conn->c_npaths == 0)
 		hash = RDS_MPATH_HASH(rs, RDS_MPATH_WORKERS);
 	else
 		hash = RDS_MPATH_HASH(rs, conn->c_npaths);
-	if (conn->c_npaths == 0 && hash != 0) {
-		rds_send_ping(conn, 0);
-
+	cp = &conn->c_path[hash];
+	if (!conn->c_npaths && rds_conn_path_down(cp)) {
 		/* The underlying connection is not up yet.  Need to wait
 		 * until it is up to be sure that the non-zero c_path can be
 		 * used.  But if we are interrupted, we have to use the zero
@@ -1263,9 +1263,18 @@ static int rds_send_mprds_hash(struct rds_sock *rs, struct rds_connection *conn)
 		if (conn->c_npaths == 0)
 			if (wait_event_interruptible(conn->c_hs_waitq,
 						     conn->c_npaths != 0))
-				hash = 0;
+				return 0;
 		if (conn->c_npaths == 1)
 			hash = 0;
+
+		/* Wait until the chosen path is up.  If it is interrupted,
+		 * just return as this is an optimization to make sure that
+		 * the message is sent.
+		 */
+		cp = &conn->c_path[hash];
+		if (rds_conn_path_down(cp))
+			wait_event_interruptible(cp->cp_up_waitq,
+						 !rds_conn_path_down(cp));
 	}
 	return hash;
 }
@@ -1485,9 +1494,10 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	/* rds_conn_create has a spinlock that runs with IRQ off.
 	 * Caching the conn in the socket helps a lot. */
 	if (rs->rs_conn && ipv6_addr_equal(&rs->rs_conn->c_faddr, &daddr) &&
-	    rs->rs_tos == rs->rs_conn->c_tos)
+	    rs->rs_tos == rs->rs_conn->c_tos) {
 		conn = rs->rs_conn;
-	else {
+		cpath = rs->rs_conn_path;
+	} else {
 		conn = rds_conn_create_outgoing(sock_net(sock->sk),
 						&rs->rs_bound_addr, &daddr,
 						rs->rs_transport, rs->rs_tos,
@@ -1497,13 +1507,29 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			ret = PTR_ERR(conn);
 			goto out;
 		}
+		if (conn->c_trans->t_mp_capable) {
+			/* c_npaths == 0 if we have not talked to this peer
+			 * before.  Initiate a connection request to the
+			 * peer right away.
+			 */
+			if (!conn->c_npaths &&
+			    rds_conn_path_down(&conn->c_path[0])) {
+				/* rds_connd_queue_reconnect_work() ensures
+				 * that only one request is queued.  And
+				 * rds_send_ping() ensures that only one ping
+				 * is outstanding.
+				 */
+				rds_cond_queue_reconnect_work(&conn->c_path[0],
+							      0);
+				rds_send_ping(conn, 0);
+			}
+			cpath = &conn->c_path[rds_send_mprds_hash(rs, conn)];
+		} else {
+			cpath = &conn->c_path[0];
+		}
 		rs->rs_conn = conn;
+		rs->rs_conn_path = cpath;
 	}
-
-	if (conn->c_trans->t_mp_capable)
-		cpath = &conn->c_path[rds_send_mprds_hash(rs, conn)];
-	else
-		cpath = &conn->c_path[0];
 
 	rm->m_conn_path = cpath;
 
@@ -1543,11 +1569,11 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		goto out;
 	}
 
-	if (rds_conn_path_state(cpath) == RDS_CONN_DOWN)
+	if (rds_conn_path_down(cpath)) {
 		rds_rtd(RDS_RTD_CM_EXT, "checking conn in down state %p\n",
 			conn);
-
-	rds_conn_path_connect_if_down(cpath);
+		rds_conn_path_connect_if_down(cpath);
+	}
 
 	ret = rds_cong_wait(conn->c_fcong, dport, nonblock, rs);
 	if (ret) {
