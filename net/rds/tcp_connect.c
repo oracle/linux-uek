@@ -67,6 +67,7 @@ void rds_tcp_state_change(struct sock *sk)
 			rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE);
 		} else {
 			rds_connect_path_complete(cp, RDS_CONN_CONNECTING);
+			wake_up(&cp->cp_up_waitq);
 		}
 		break;
 	case TCP_CLOSE_WAIT:
