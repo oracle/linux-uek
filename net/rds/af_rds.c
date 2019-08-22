@@ -963,6 +963,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->poison = 0xABABABAB;
 	rs->rs_tos = 0;
 	rs->rs_conn = NULL;
+	rs->rs_conn_path = NULL;
 	rs->rs_netfilter_enabled = 0;
 	rs->rs_rx_traces = 0;
 
