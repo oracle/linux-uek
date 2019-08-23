@@ -72,6 +72,7 @@ static int rdmaip_inetaddr_event(struct notifier_block *,
 static int rdmaip_inet6addr_event(struct notifier_block *,
 				  unsigned long, void *);
 static void rdmaip_impl_inetaddr_event(struct work_struct *);
+static void rdmaip_inetaddr_unregister(void);
 
 static DECLARE_DELAYED_WORK(riif_dlywork, rdmaip_initial_failovers);
 /*
@@ -1687,13 +1688,13 @@ static void rdmaip_register_inetaddr_handlers(void)
 			inet6 = true;
 	}
 
-	if (inet4) {
+	if (inet4 && !(rdmaip_init_flag & RDMAIP_REG_INETADDR_NOTIFIER)) {
 		RDMAIP_DBG2("Registering ipv4 inetaddr notifier\n");
 		register_inetaddr_notifier(&rdmaip_inetaddr_nb);
 		rdmaip_init_flag |= RDMAIP_REG_INETADDR_NOTIFIER;
 	}
 
-	if (inet6) {
+	if (inet6 && !(rdmaip_init_flag & RDMAIP_REG_INET6ADDR_NOTIFIER)) {
 		RDMAIP_DBG2("Registering ipv6 inetaddr notifier\n");
 		register_inet6addr_notifier(&rdmaip_inet6addr_nb);
 		rdmaip_init_flag |= RDMAIP_REG_INET6ADDR_NOTIFIER;
@@ -2301,76 +2302,6 @@ static void rdmaip_update_ip_config(void)
 	read_unlock(&dev_base_lock);
 }
 
-static void rdmaip_portstate_delayed_initswitch(struct work_struct *_work)
-{
-	struct rdmaip_port_ud_work      *work =
-		container_of(_work, struct rdmaip_port_ud_work, work.work);
-	u8 port = work->port;
-
-	if (ip_config[port].port_state != RDMAIP_PORT_INIT) {
-		/*
-		 * We moved out of INIT state likely in NETDEV_CHANGE handler
-		 * processing after initialization workqueue triggered by
-		 * NETDEV_UP processing after a added interface!
-		 * Nothing to do - we are done!
-		 */
-		kfree(work);
-		return;
-	}
-
-	/*
-	 * We get here when we had a "perfect race" in a narrow
-	 * window when both netdev notifier callback and workqueue
-	 * execute simultaneously on separate threads.
-	 *
-	 * (a) The NETDEV_CHANGE handler ran ahead
-	 * of or during workqueue executed initializaion
-	 * (but missed the new interface)
-	 * (b) The workqueue initialization code missed detecting
-	 *     the link layer UP state!
-	 *
-	 * Maintain layer flags for port still in INIT state
-	 */
-
-	/* Paranoia assertion and NETDEV layer */
-	if (!(ip_config[port].netdev->flags & IFF_UP) ||
-	    !((ip_config[port].port_layerflags & RDMAIP_PORT_STATUS_NETDEVUP)
-	      == RDMAIP_PORT_STATUS_NETDEVUP)) {
-		pr_warn("rdmaip: Device %s flag NOT marked UP in delayed INIT transition processing!\n",
-			ip_config[port].netdev->name);
-		/* init port layer flag after warning! */
-		if (ip_config[port].netdev->flags & IFF_UP)
-			ip_config[port].port_layerflags |=
-				RDMAIP_PORT_STATUS_NETDEVUP;
-		else
-			ip_config[port].port_layerflags &=
-				~RDMAIP_PORT_STATUS_NETDEVUP;
-	}
-	/* Check on link (and hw) layers */
-	if (rdmaip_is_link_layer_up(ip_config[port].netdev)) {
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_LINKUP;
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_HWPORTUP;
-	} else {
-		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_LINKUP;
-	}
-
-	/*
-	 * Mark the port state UP or DOWN
-	 */
-	if (rdmaip_port_all_layers_up(&ip_config[port])) {
-		ip_config[port].port_state = RDMAIP_PORT_UP;
-		pr_notice("rdmaip: delayed INIT transition: port index %u interface %s transitioned from INIT to UP state(portlayers 0x%x)\n",
-			  port, ip_config[port].netdev->name,
-			  ip_config[port].port_layerflags);
-	} else {
-		ip_config[port].port_state = RDMAIP_PORT_DOWN;
-		pr_notice("rdmaip: delayed INIT transition: port index %u interface %s transitioned from INIT to DOWN state(portlayers 0x%x)\n",
-			  port, ip_config[port].netdev->name,
-			  ip_config[port].port_layerflags);
-	}
-	kfree(work);
-}
-
 static int rdmaip_get_port_index(struct net_device *ndev)
 {
 	int i;
@@ -2384,7 +2315,30 @@ static int rdmaip_get_port_index(struct net_device *ndev)
 	return 0;
 }
 
-static void rdmaip_addintf_after_initscripts(struct work_struct *_work)
+/*
+ * rdmaip_impl_netdev_callback() schedules this function when
+ * 1) NETDEV_UP received for a netdev associated with RDMA adapter
+ *    and
+ * 2) ip_config does not have an entry for the netdev
+ *
+ * This happens if netdev was not present at the initialization
+ * and netdev was created after that. For example, if network
+ * service that creates VNIC's runs after the Resilient RDMAIP
+ * was done with the ip_config initialization.
+ *
+ * This functions:
+ *	- Initializes new IP config entry
+ *	- If IP addresses assigned to the netdev, then it reads the
+ *		IP addresses and does failover if needed.
+ *	- If IP addresses are not assigned, then it will register
+ *		IPv4 and/or IPv6 inetaddr notifiers.
+ *	- IPv4/IPv6 inetaddr notifier callbacks will be invoked by
+ *		the network stack whenever an IP address is assigned
+ *		newly added netdev. The notifier callbacks, initializes
+ *		ip_config and does failover if needed.
+ */
+
+static void rdmaip_add_new_rdmaip_port_handler(struct work_struct *_work)
 {
 	struct rdmaip_port_ud_work      *work =
 		container_of(_work, struct rdmaip_port_ud_work, work.work);
@@ -2394,126 +2348,51 @@ static void rdmaip_addintf_after_initscripts(struct work_struct *_work)
 	struct rdmaip_device    *rdmaip_dev;
 	u8                      port_num;
 	u8                      port = 0;
+	u16 pkey_vid = 0;
 
-	read_lock(&dev_base_lock);
 	in_dev = in_dev_get(ndev);
-
 	if (rdmaip_inet6_socket)
 		in6_dev = in6_dev_get(ndev);
 	else
 		in6_dev = NULL;
 
-	if (((in_dev && !in_dev->ifa_list) ||
-	     (in6_dev && list_empty(&in6_dev->addr_list))) &&
-	     work->timeout > 0) {
+	rdmaip_dev = rdmaip_get_rdmaip_dev(ndev, &pkey_vid, &port_num);
+	if (!rdmaip_dev) {
+		RDMAIP_DBG2("netdevice %s has no associated port\n",
+			    ndev->name);
+		goto out;
+	}
 
-		INIT_DELAYED_WORK(&work->work,
-				  rdmaip_addintf_after_initscripts);
-		work->timeout -= msecs_to_jiffies(100);
-		queue_delayed_work(rdmaip_wq, &work->work,
-				   msecs_to_jiffies(100));
-	} else if ((in_dev && in_dev->ifa_list) ||
-		(in6_dev && !list_empty(&in6_dev->addr_list))) {
+	if (rdmaip_get_port_index(ndev)) {
+		RDMAIP_DBG2("rdmaip: Port already exists in ip_config\n");
+		goto out;
+	}
 
-		u16 pkey_vid = 0;
+	port = rdmaip_init_port(rdmaip_dev, ndev, port_num,
+				pkey_vid, in_dev, in6_dev);
+	if (port > 0) {
+		RDMAIP_DBG2("rdmaip: New Port Created netdev %s port idx %d\n",
+			    ndev->name, port);
 
-		rdmaip_dev = rdmaip_get_rdmaip_dev(ndev, &pkey_vid, &port_num);
-		if (!rdmaip_dev)
-			RDMAIP_DBG2("netdevice %s has no associated port\n",
-				    ndev->name);
-		else {
-
-			if (rdmaip_get_port_index(ndev)) {
-				RDMAIP_DBG2("rdmaip: Port already exists in ip_config\n");
-				goto out;
-			}
-
-			port = rdmaip_init_port(rdmaip_dev, ndev, port_num,
-						pkey_vid, in_dev, in6_dev);
-			if (port > 0) {
-
-				/*
-				 * We just added a new interface, which is in
-				 * INIT state and it needs to go to UP or DOWN
-				 * depending on various layers being UP or down
-				 * (layerflags will be clear in the newly added
-				 *  port entry!)
-				 *
-				 * (1) This routine processing triggered by a
-				 *     NETDEV_UP event so we can safely mark
-				 *     that layer UP. (Note: No
-				 *     failback/failover processing done for
-				 *     this initial NETDEV_UP event for a new
-				 *     device!)
-				 */
-				ip_config[port].port_layerflags |=
-					RDMAIP_PORT_STATUS_NETDEVUP;
-				if (!(ip_config[port].netdev->flags & IFF_UP)) {
-					pr_warn("rdmaip: Device %s flag NOT marked UP in "
-						"NETDEV_UP(addintf after initscripts) processing!\n",
-						ip_config[port].netdev->name);
-				}
-				/*
-				 * (2) Note:
-				 *   While we were scheduled and run from
-				 *   workqueue link layer may have come up and
-				 *   NETDEV_CHANGE event processing missed us.
-				 *   (If NETDEV_CHANGE processing happens later
-				 *   we will have updates in the netdev callback
-				 *   handler). If link layer is UP, we can set
-				 *   the flags sooner rather than later.
-				 *    (As usual we can mark HW layer UP if
-				 *   link layer is up)
-				 */
-				if (rdmaip_is_link_layer_up(
-						ip_config[port].netdev)) {
-					ip_config[port].port_layerflags |=
-						RDMAIP_PORT_STATUS_LINKUP;
-					ip_config[port].port_layerflags |=
-						RDMAIP_PORT_STATUS_HWPORTUP;
-				}
-				/*
-				 * Mark the port state UP sooner if we can!
-				 */
-				if (rdmaip_port_all_layers_up(&ip_config[port]))
-					ip_config[port].port_state =
-						RDMAIP_PORT_UP;
-
-				/*
-				 * We could have missed NETDEV_CHANGE processing
-				 * and link layer coming up still while
-				 * executing rest of this function. We will
-				 * schedule something for later to fix port
-				 * state if needed.
-				 */
-			}
-		}
 		rdmaip_ip_failover_groups_init();
-		/*
-		 * If port is still in INIT state, schedule
-		 * a call to check back later.
-		 */
+		rdmaip_register_inetaddr_handlers();
 
-		if (port && ip_config[port].port_state == RDMAIP_PORT_INIT) {
-			work->port = port;
-			INIT_DELAYED_WORK(&work->work,
-					  rdmaip_portstate_delayed_initswitch);
-			/* check after 10 seconds */
-			queue_delayed_work(rdmaip_wq, &work->work,
-					   msecs_to_jiffies(10000));
-		} else {
-			kfree(work);
+		if (rdmaip_update_ip_addrs(port)) {
+			RDMAIP_DBG2_PTR("New IPs are found: netdev %s\n",
+					ip_config[port].if_name);
+			rdmaip_process_async_event(port,
+						   RDMAIP_EVENT_NET, NETDEV_UP);
+			rdmaip_inetaddr_unregister();
 		}
-	} else if (!work->timeout)
-		kfree(work);
+		ip_config[port].port_state = RDMAIP_PORT_DOWN;
+	}
 
 out:
+	kfree(work);
 	if (in_dev)
 		in_dev_put(in_dev);
 	if (in6_dev)
 		in6_dev_put(in6_dev);
-
-	read_unlock(&dev_base_lock);
 }
 
 static void rdmaip_add_new_rdmaip_port(struct net_device *netdev)
@@ -2530,7 +2409,7 @@ static void rdmaip_add_new_rdmaip_port(struct net_device *netdev)
 			work->netdev = netdev;
 			work->timeout = msecs_to_jiffies(10000);
 			INIT_DELAYED_WORK(&work->work,
-				  rdmaip_addintf_after_initscripts);
+					  rdmaip_add_new_rdmaip_port_handler);
 			queue_delayed_work(rdmaip_wq, &work->work,
 					msecs_to_jiffies(100));
 		} else
