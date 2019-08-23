@@ -273,6 +273,20 @@ static u8 rdmaip_get_failover_port(u8 port)
 		}
 	}
 
+	/*
+	 * Log ip_config information if there is no matching port found
+	 */
+	for (i = 1; i <= ip_port_cnt; i++) {
+		RDMAIP_DBG2("rdmaip: Failed to find failover port %s/port_%d/%s: IPv4 %pI4/%pI4/%pI4  Link Status: %s port_layers: 0x%x active port# %d pkey: 0x%x group: %d port index: %d\n",
+			    ip_config[i].if_name, ip_config[i].port_num,
+			    ip_config[i].if_name, &ip_config[i].ip_addr,
+			    &ip_config[i].ip_bcast, &ip_config[i].ip_mask,
+			    rdmaip_portstate2name(ip_config[i].port_state),
+			    ip_config[i].port_layerflags,
+			    ip_config[i].ip_active_port,
+			    ip_config[i].pkey_vlan,
+			    ip_config[i].failover_group, i);
+	}
 	return 0;
 }
 
