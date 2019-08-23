@@ -2698,8 +2698,19 @@ static void rdmaip_restore_ip_addresses(void)
  * Unregisters the inet address event handlers. This is called
  * in the thread context.
  */
-static void rdmaip_inetaddr_unregister(bool inet4, bool inet6)
+static void rdmaip_inetaddr_unregister(void)
 {
+	bool	inet4 = true;
+	bool	inet6 = true;
+	int	port;
+
+	for (port = 1; port <= ip_port_cnt; port++) {
+		if (!RDMAIP_IPV4_ADDR_SET(port))
+			inet4 = false;
+		if (!RDMAIP_IPV6_ADDR_SET(port))
+			inet6 = false;
+	}
+
 	if (inet6 && (rdmaip_init_flag & RDMAIP_REG_INET6ADDR_NOTIFIER)) {
 		RDMAIP_DBG2("unregistering ipv6 inetaddr notifier\n");
 		unregister_inet6addr_notifier(&rdmaip_inet6addr_nb);
@@ -2779,8 +2790,6 @@ static int rdmaip_inet6addr_event(struct notifier_block *this,
 static void rdmaip_impl_inetaddr_event(struct work_struct *_work)
 {
 	int				port;
-	bool				remove_inet4_nb;
-	bool				remove_inet6_nb;
 	struct rdmaip_port_ud_work	*work =
 		container_of(_work, struct rdmaip_port_ud_work, work.work);
 
@@ -2797,15 +2806,7 @@ static void rdmaip_impl_inetaddr_event(struct work_struct *_work)
 		rdmaip_process_async_event(port, RDMAIP_EVENT_NET, NETDEV_UP);
 	}
 
-	remove_inet4_nb = true;
-	remove_inet6_nb = true;
-	for (port = 1; port <= ip_port_cnt; port++) {
-		if (!RDMAIP_IPV4_ADDR_SET(port))
-			remove_inet4_nb = false;
-		if (!RDMAIP_IPV6_ADDR_SET(port))
-			remove_inet6_nb = false;
-	}
-	rdmaip_inetaddr_unregister(remove_inet4_nb, remove_inet6_nb);
+	rdmaip_inetaddr_unregister();
 	kfree(work);
 }
 
