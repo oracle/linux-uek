@@ -1545,12 +1545,13 @@ static bool rdmaip_update_ip_addrs(int port)
 	struct inet6_dev  *in6_dev;
 	struct net_device *ndev;
 	struct in_device *in_dev;
-	bool ips_updated = false;
+	bool ip4_updated = false;
+	bool ip6_updated = false;
 
 	ndev = ip_config[port].netdev;
 	if (!ndev) {
 		RDMAIP_DBG2("netdev is NULL\n");
-		return ips_updated;
+		return false;
 	}
 
 	/*
@@ -1563,7 +1564,7 @@ static bool rdmaip_update_ip_addrs(int port)
 	if (!RDMAIP_IPV4_ADDR_SET(port)) {
 		in_dev = in_dev_get(ndev);
 		if (in_dev) {
-			ips_updated = rdmaip_init_ip4_addrs(ndev,
+			ip4_updated = rdmaip_init_ip4_addrs(ndev,
 							    in_dev, port);
 			in_dev_put(in_dev);
 		}
@@ -1572,13 +1573,13 @@ static bool rdmaip_update_ip_addrs(int port)
 	if (!RDMAIP_IPV6_ADDR_SET(port)) {
 		in6_dev = in6_dev_get(ndev);
 		if (in6_dev) {
-			ips_updated = rdmaip_init_ip6_addrs(ndev,
+			ip6_updated = rdmaip_init_ip6_addrs(ndev,
 							    in6_dev, port);
 			in6_dev_put(in6_dev);
 		}
 	}
 
-	return ips_updated;
+	return (ip4_updated || ip6_updated);
 }
 
 static void rdmaip_do_initial_failovers(void)
