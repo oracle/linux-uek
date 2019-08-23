@@ -2516,12 +2516,11 @@ out:
 	read_unlock(&dev_base_lock);
 }
 
-static void rdmaip_add_new_rdmaip_port(struct net_device *netdev, u8 port)
+static void rdmaip_add_new_rdmaip_port(struct net_device *netdev)
 {
 	struct rdmaip_port_ud_work *work;
 
-	RDMAIP_DBG2("Adding to new netdev %s port%d to ip_config\n",
-		    netdev->name, port);
+	RDMAIP_DBG2("Adding to new netdev %s interface\n", netdev->name);
 
 	if ((netdev->flags & IFF_UP) && !(netdev->flags & IFF_SLAVE) &&
 	   !(netdev->flags & IFF_MASTER)) {
@@ -2572,7 +2571,7 @@ static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 		 * New port. Schedule new port initialization
 		 * and bail out from here.
 		 */
-		rdmaip_add_new_rdmaip_port(ndev, port);
+		rdmaip_add_new_rdmaip_port(ndev);
 		kfree(work);
 		return;
 	}
