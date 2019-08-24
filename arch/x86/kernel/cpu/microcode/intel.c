@@ -134,6 +134,7 @@ static int apply_microcode_intel(int cpu)
 	unsigned int val[2];
 	int cpu_num = raw_smp_processor_id();
 	struct cpuinfo_x86 *c = &cpu_data(cpu_num);
+	bool bsp = c->cpu_index == boot_cpu_data.cpu_index;
 	u32 rev;
 
 	uci = ucode_cpu_info + cpu;
@@ -182,11 +183,12 @@ static int apply_microcode_intel(int cpu)
 		       cpu_num, mc_intel->hdr.rev);
 		return -1;
 	}
-	pr_info("CPU%d updated to revision 0x%x, date = %04x-%02x-%02x\n",
-		cpu_num, val[1],
-		mc_intel->hdr.date & 0xffff,
-		mc_intel->hdr.date >> 24,
-		(mc_intel->hdr.date >> 16) & 0xff);
+	if (bsp)
+		pr_info("updated to revision 0x%x, date = %04x-%02x-%02x\n",
+			val[1],
+			mc_intel->hdr.date & 0xffff,
+			mc_intel->hdr.date >> 24,
+			(mc_intel->hdr.date >> 16) & 0xff);
 
 	uci->cpu_sig.rev = val[1];
 	c->microcode = val[1];
