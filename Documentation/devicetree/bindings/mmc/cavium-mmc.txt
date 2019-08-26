@@ -17,8 +17,8 @@ Required properties:
  - clocks : phandle
 
 Optional properties:
- - for cd, bus-width and additional generic mmc parameters
-   please refer to mmc.txt within this directory
+ - for cd, bus-width, vmmc-supply, vqmmc-supply, and additional generic
+   mmc parameters please refer to mmc.txt within this directory
  - cavium,cmd-clk-skew : number of coprocessor clocks before sampling command
  - cavium,dat-clk-skew : number of coprocessor clocks before sampling data
 
@@ -40,7 +40,8 @@ Examples:
 			compatible = "mmc-slot";
 			reg = <0>;
 			vmmc-supply = <&mmc_supply_3v3>;
-			max-frequency = <42000000>;
+			vqmmc-supply = <&vqmmc_3v3>;
+			max-frequency = <52000000>;
 			bus-width = <4>;
 			cap-sd-highspeed;
 		};
@@ -49,7 +50,8 @@ Examples:
 			compatible = "mmc-slot";
 			reg = <1>;
 			vmmc-supply = <&mmc_supply_3v3>;
-			max-frequency = <42000000>;
+			vqmmc-supply = <&vqmmc_1v8>;
+			max-frequency = <100000000>;
 			bus-width = <8>;
 			cap-mmc-highspeed;
 			non-removable;
