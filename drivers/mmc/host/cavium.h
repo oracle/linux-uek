@@ -111,6 +111,7 @@ struct cvm_mmc_host {
 	bool use_sg;
 	bool has_ciu3;
 	bool powered;
+	bool use_vqmmc; /* must disable slots over switch */
 	bool big_dma_addr;
 	bool need_irq_handler_lock;
 	spinlock_t irq_handler_lock;
