@@ -16,6 +16,7 @@
 #include <linux/of_platform.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
+#include <linux/bitfield.h>
 #include "cavium.h"
 
 static void thunder_mmc_acquire_bus(struct cvm_mmc_host *host)
@@ -59,32 +60,65 @@ static int thunder_mmc_register_interrupts(struct cvm_mmc_host *host,
 /* calibration evaluates the per tap delay */
 static void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 {
-	u64 emm_cfg, tap;
-	u32 retries = 10, tap_delay;
+	u32 retries = 10;
+	u32 delay = 4;
+	unsigned int ps;
+	const char *how = "default";
 
-	if (!is_mmc_otx2(host))
+	if (is_mmc_8xxx(host))
 		return;
 
-	if (is_mmc_otx2(host)) {
-		/* set _DEBUG[CLK_ON]=1 as workaround for clock issue */
+	/* set _DEBUG[CLK_ON]=1 as workaround for clock issue */
+	if (is_mmc_otx2_A0(host) || is_mmc_95xx(host))
 		writeq(1, host->base + MIO_EMM_DEBUG(host));
 
+	if (is_mmc_otx2_A0(host)) {
 		/*
 		 * Operation of up to 100 MHz may be achieved by skipping the
 		 * steps that establish the tap delays and instead assuming
 		 * that MIO_EMM_TAP[DELAY] returns 0x4 indicating 78 pS/tap.
 		 */
-		tap_delay = 4;
 	} else {
-		/* MIO_EMM_CFG[BUS_ENA] must be zero for calibration */
-		emm_cfg = readq(host->base + MIO_EMM_CFG(host));
-		if (emm_cfg & MIO_EMM_CFG_BUS_ENA) {
-			pr_err("failure: bus is not disabled\n");
-			return;
-		}
+		u64 tap;
+		u64 emm_cfg = readq(host->base + MIO_EMM_CFG(host));
+		u64 tcfg;
+		u64 emm_io_ctl;
+		u64 emm_switch;
+		u64 emm_wdog;
+		u64 emm_sts_mask;
+		u64 emm_debug;
+		u64 emm_timing;
+		u64 emm_rca;
+
+		/*
+		 * MIO_EMM_CFG[BUS_ENA] must be zero for calibration,
+		 * but that resets whole host, so save state.
+		 */
+		emm_io_ctl = readq(host->base + MIO_EMM_IO_CTL(host));
+		emm_switch = readq(host->base + MIO_EMM_SWITCH(host));
+		emm_wdog = readq(host->base + MIO_EMM_WDOG(host));
+		emm_sts_mask =
+			readq(host->base + MIO_EMM_STS_MASK(host));
+		emm_debug = readq(host->base + MIO_EMM_DEBUG(host));
+		emm_timing = readq(host->base + MIO_EMM_TIMING(host));
+		emm_rca = readq(host->base + MIO_EMM_RCA(host));
+
+		/* reset controller */
+		tcfg = emm_cfg;
+		tcfg &= ~MIO_EMM_CFG_BUS_ENA;
+		writeq(tcfg, host->base + MIO_EMM_CFG(host));
+		udelay(1);
+
+		/* restart with phantom slot 3 */
+		tcfg |= FIELD_PREP(MIO_EMM_CFG_BUS_ENA, 1ull << 3);
+		writeq(tcfg, host->base + MIO_EMM_CFG(host));
+		mdelay(1);
 
 		/* Start calibration */
+		writeq(0, host->base + MIO_EMM_CALB(host));
+		udelay(5);
 		writeq(START_CALIBRATION, host->base + MIO_EMM_CALB(host));
+		udelay(5);
 
 		do {
 			/* wait for approximately 300 coprocessor clock */
@@ -92,21 +126,46 @@ static void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 			tap = readq(host->base + MIO_EMM_TAP(host));
 		} while (!tap && retries--);
 
-		if (!retries)
-			pr_debug("retries exhausted, calibration failed\n");
+		/* leave calibration mode */
+		writeq(0, host->base + MIO_EMM_CALB(host));
+		udelay(5);
 
-		/* calculate the per-tap delay */
-		tap_delay = tap & MIO_EMM_TAP_DELAY;
+		if (retries <= 0 || !tap) {
+			how = "fallback";
+		} else {
+			/* calculate the per-tap delay */
+			delay = tap & MIO_EMM_TAP_DELAY;
+			how = "calibrated";
+		}
+
+		/* restore old state */
+		writeq(emm_cfg, host->base + MIO_EMM_CFG(host));
+		mdelay(1);
+		writeq(emm_rca, host->base + MIO_EMM_RCA(host));
+		writeq(emm_timing, host->base + MIO_EMM_TIMING(host));
+		writeq(emm_debug, host->base + MIO_EMM_DEBUG(host));
+		writeq(emm_sts_mask,
+			host->base + MIO_EMM_STS_MASK(host));
+		writeq(emm_wdog, host->base + MIO_EMM_WDOG(host));
+		writeq(emm_switch, host->base + MIO_EMM_SWITCH(host));
+		writeq(emm_io_ctl, host->base + MIO_EMM_IO_CTL(host));
+		mdelay(1);
+
 	}
 
 	/*
+	 * Scale measured/guessed calibration value to pS:
 	 * The delay value should be multiplied by 10 ns(or 10000 ps)
 	 * and then divided by no of taps to determine the estimated
 	 * delay in pico second. The nominal value is 125 ps per tap.
 	 */
-	host->per_tap_delay =  (tap_delay * PS_10000) / TOTAL_NO_OF_TAPS;
-	pr_debug("tap_delay %d per_tap_delay %d\n",
-		tap_delay, host->per_tap_delay);
+	ps = (delay * PS_10000) / TOTAL_NO_OF_TAPS;
+	if (host->per_tap_delay != ps) {
+		dev_info(host->dev, "%s delay:%d per_tap_delay:%dpS\n",
+			how, delay, ps);
+		host->per_tap_delay = ps;
+		host->delay_logged = 0;
+	}
 }
 
 static int thunder_mmc_probe(struct pci_dev *pdev,
