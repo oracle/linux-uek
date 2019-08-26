@@ -124,6 +124,7 @@ struct cvm_mmc_host {
 	struct platform_device *slot_pdev[CAVIUM_MAX_MMC];
 	/* octtx2 specific */
 	unsigned int per_tap_delay; /* per tap delay in pico second */
+	unsigned long delay_logged; /* per-ios.timing bitmask */
 
 	void (*set_shared_power)(struct cvm_mmc_host *, int);
 	void (*acquire_bus)(struct cvm_mmc_host *);
@@ -288,7 +289,7 @@ struct cvm_mmc_cr_mods {
 irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id);
 int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host);
 int cvm_mmc_of_slot_remove(struct cvm_mmc_slot *slot);
-void calibrate_mmc(struct cvm_mmc_host *host);
+
 
 extern const char *cvm_mmc_irq_names[];
 
