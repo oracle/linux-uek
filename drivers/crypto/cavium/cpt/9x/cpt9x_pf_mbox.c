@@ -11,6 +11,8 @@
 #include "rvu_reg.h"
 #include "cpt9x_mbox_common.h"
 
+#define CPT_INLINE_RX_OPCODE  (0x26 | (1 << 6))
+
 static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
 {
 	u16 pf_id, vf_id;
@@ -21,6 +23,302 @@ static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
 	pr_debug("MBOX opcode %s received from (PF%d/VF%d), size %d, rc %d",
 		 cpt_get_mbox_opcode_str(msg->id), pf_id, vf_id, size, msg->rc);
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 16, 2, msg, size, false);
+}
+
+static void free_instruction_queues(struct cptlfs_info *lfs)
+{
+	int i;
+
+	for (i = 0; i < lfs->lfs_num; i++) {
+		if (lfs->lf[i].iqueue.real_vaddr)
+			dma_free_coherent(&lfs->pdev->dev,
+					  lfs->lf[i].iqueue.size,
+					  lfs->lf[i].iqueue.real_vaddr,
+					  lfs->lf[i].iqueue.real_dma_addr);
+		lfs->lf[i].iqueue.real_vaddr = NULL;
+		lfs->lf[i].iqueue.vaddr = NULL;
+	}
+}
+
+static int alloc_instruction_queues(struct cptlfs_info *lfs)
+{
+	int ret = 0, i;
+
+	if (!lfs->lfs_num)
+		return -EINVAL;
+
+	for (i = 0; i < lfs->lfs_num; i++) {
+
+		lfs->lf[i].iqueue.size = CPT_INST_QLEN_BYTES + CPT_Q_FC_LEN +
+					 CPT_INST_GRP_QLEN_BYTES +
+					 CPT_INST_Q_ALIGNMENT;
+		lfs->lf[i].iqueue.real_vaddr =
+			(u8 *) dma_zalloc_coherent(&lfs->pdev->dev,
+					lfs->lf[i].iqueue.size,
+					&lfs->lf[i].iqueue.real_dma_addr,
+					GFP_KERNEL);
+		if (!lfs->lf[i].iqueue.real_vaddr) {
+			dev_err(&lfs->pdev->dev,
+				"Inst queue allocation failed for LF %d\n", i);
+			ret = -ENOMEM;
+			goto error;
+		}
+		lfs->lf[i].iqueue.vaddr = lfs->lf[i].iqueue.real_vaddr +
+					  CPT_INST_GRP_QLEN_BYTES;
+		lfs->lf[i].iqueue.dma_addr = lfs->lf[i].iqueue.real_dma_addr +
+					     CPT_INST_GRP_QLEN_BYTES;
+
+		/* Align pointers */
+		lfs->lf[i].iqueue.vaddr =
+			(uint8_t *) PTR_ALIGN(lfs->lf[i].iqueue.vaddr,
+					      CPT_INST_Q_ALIGNMENT);
+		lfs->lf[i].iqueue.dma_addr =
+			(dma_addr_t) PTR_ALIGN(lfs->lf[i].iqueue.dma_addr,
+					       CPT_INST_Q_ALIGNMENT);
+	}
+
+	return 0;
+error:
+	free_instruction_queues(lfs);
+	return ret;
+}
+
+static void cptlf_set_iqueues_base_addr(struct cptlfs_info *lfs)
+{
+	union cptx_lf_q_base lf_q_base;
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++) {
+		lf_q_base.u = lfs->lf[slot].iqueue.dma_addr;
+		cpt_write64(lfs->reg_base, BLKADDR_CPT0, slot, CPT_LF_Q_BASE,
+			    lf_q_base.u);
+	}
+}
+
+static void cptlf_do_set_iqueue_size(struct cptlf_info *lf)
+{
+	union cptx_lf_q_size lf_q_size = { .u = 0x0 };
+
+	lf_q_size.s.size_div40 = CPT_SIZE_DIV40;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_Q_SIZE,
+		    lf_q_size.u);
+}
+
+static void cptlf_set_iqueues_size(struct cptlfs_info *lfs)
+{
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++)
+		cptlf_do_set_iqueue_size(&lfs->lf[slot]);
+}
+
+static void cptlf_do_disable_iqueue(struct cptlf_info *lf)
+{
+	union cptx_lf_ctl lf_ctl = { .u = 0x0 };
+	union cptx_lf_inprog lf_inprog;
+	int timeout = 20;
+
+	/* Disable instructions enqueuing */
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
+		    lf_ctl.u);
+
+	/* Wait for instruction queue to become empty */
+	do {
+		lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0,
+					 lf->slot, CPT_LF_INPROG);
+		if (!lf_inprog.s.inflight)
+			break;
+
+		usleep_range(10000, 20000);
+		if (timeout-- < 0) {
+			dev_err(&lf->lfs->pdev->dev,
+				"Error LF %d is still busy.\n", lf->slot);
+			break;
+		}
+
+	} while (1);
+
+	/* Disable executions in the LF's queue,
+	 * the queue should be empty at this point
+	 */
+	lf_inprog.s.eena = 0x0;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
+		    lf_inprog.u);
+}
+
+static void cptlf_disable_iqueues(struct cptlfs_info *lfs)
+{
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++)
+		cptlf_do_disable_iqueue(&lfs->lf[slot]);
+}
+
+static void cptlf_set_iqueue_enq(struct cptlf_info *lf, bool enable)
+{
+	union cptx_lf_ctl lf_ctl;
+
+	lf_ctl.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+			      CPT_LF_CTL);
+
+	/* Set iqueue's enqueuing */
+	lf_ctl.s.ena = enable ? 0x1 : 0x0;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
+		    lf_ctl.u);
+}
+
+static void cptlf_enable_iqueue_enq(struct cptlf_info *lf)
+{
+	cptlf_set_iqueue_enq(lf, true);
+}
+
+static void cptlf_set_iqueue_exec(struct cptlf_info *lf, bool enable)
+{
+	union cptx_lf_inprog lf_inprog;
+
+	lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+				 CPT_LF_INPROG);
+
+	/* Set iqueue's execution */
+	lf_inprog.s.eena = enable ? 0x1 : 0x0;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
+		    lf_inprog.u);
+}
+
+static void cptlf_enable_iqueue_exec(struct cptlf_info *lf)
+{
+	cptlf_set_iqueue_exec(lf, true);
+}
+
+static void cptlf_enable_iqueues(struct cptlfs_info *lfs)
+{
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++) {
+		cptlf_enable_iqueue_exec(&lfs->lf[slot]);
+		cptlf_enable_iqueue_enq(&lfs->lf[slot]);
+	}
+}
+
+static int cptlf_set_pri(struct pci_dev *pdev, struct cptlf_info *lf, int pri)
+{
+	union cptx_af_lf_ctrl lf_ctrl;
+	int ret = 0;
+
+	ret = cpt_read_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), &lf_ctrl.u);
+	if (ret)
+		goto err;
+
+	lf_ctrl.s.pri = pri ? 1 : 0;
+
+	ret = cpt_write_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), lf_ctrl.u);
+	if (ret)
+		goto err;
+err:
+	return ret;
+}
+
+static int cptlf_set_eng_grps_mask(struct pci_dev *pdev, struct cptlf_info *lf,
+				   int eng_grps_mask)
+{
+	union cptx_af_lf_ctrl lf_ctrl;
+	int ret = 0;
+
+	ret = cpt_read_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), &lf_ctrl.u);
+	if (ret)
+		goto err;
+
+	lf_ctrl.s.grp = eng_grps_mask;
+
+	ret = cpt_write_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), lf_ctrl.u);
+	if (ret)
+		goto err;
+err:
+	return ret;
+}
+
+static int cptlf_set_grp_and_pri(struct pci_dev *pdev, struct cptlfs_info *lfs,
+				 int eng_grp_mask, int pri)
+{
+	int slot, ret = 0;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++) {
+		ret = cptlf_set_pri(pdev, &lfs->lf[slot], pri);
+		if (ret)
+			goto err;
+
+		ret = cptlf_set_eng_grps_mask(pdev, &lfs->lf[slot],
+					      eng_grp_mask);
+		if (ret)
+			goto err;
+	}
+err:
+	return ret;
+}
+
+static void cptpf_lf_cleanup(struct cptlfs_info *lfs)
+{
+	cptlf_disable_iqueues(lfs);
+	free_instruction_queues(lfs);
+	cpt_detach_rscrs_msg(lfs->pdev);
+	lfs->lfs_num = 0;
+}
+
+static int cptpf_lf_init(struct cptpf_dev *cptpf, void *reg_base,
+			 struct cptlfs_info *lfs, int lfs_num)
+{
+	struct pci_dev *pdev = cptpf->pdev;
+	int ret = 0, slot;
+
+	lfs->reg_base = reg_base;
+	lfs->lfs_num = lfs_num;
+	lfs->pdev = pdev;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++) {
+		lfs->lf[slot].lfs = lfs;
+		lfs->lf[slot].slot = slot;
+	}
+
+	if (cptpf->limits.cpt < lfs_num) {
+		dev_err(&pdev->dev, "Not enough CPT LFs\n");
+		ret = -ENOENT;
+		goto cpt_err;
+	}
+
+	ret = cpt_attach_rscrs_msg(pdev);
+	if (ret)
+		goto cpt_err;
+
+	ret = alloc_instruction_queues(lfs);
+	if (ret) {
+		dev_err(&pdev->dev,
+			"Allocating instruction queues failed\n");
+		goto cpt_err_detach;
+	}
+	cptlf_disable_iqueues(lfs);
+
+	cptlf_set_iqueues_base_addr(lfs);
+
+	cptlf_set_iqueues_size(lfs);
+
+	cptlf_enable_iqueues(lfs);
+	/* Allow each LF to execute requests destined to any of 8 engine
+	 * groups and set queue priority of each LF to high
+	 */
+	ret = cptlf_set_grp_and_pri(pdev, lfs, ALL_ENG_GRPS_MASK,
+				    QUEUE_HI_PRIO);
+	if (ret)
+		goto cpt_err_free_iqueue;
+
+	return 0;
+
+cpt_err_free_iqueue:
+	cptlf_disable_iqueues(lfs);
+	free_instruction_queues(lfs);
+cpt_err_detach:
+	cpt_detach_rscrs_msg(pdev);
+cpt_err:
+	return ret;
 }
 
 static int forward_to_af(struct cptpf_dev *cptpf, struct cptvf_info *vf,
@@ -178,7 +476,103 @@ static int reply_eng_grp_num_msg(struct cptpf_dev *cptpf,
 	}
 
 	mutex_unlock(&cptpf->eng_grps.lock);
+
 	return 0;
+}
+
+static int rx_inline_ipsec_lf_cfg(struct cptpf_dev *cptpf, u16 sso_pf_func,
+				  bool enable)
+{
+	struct cpt_inline_ipsec_cfg_msg *req;
+	struct nix_inline_ipsec_cfg *nix_req;
+	struct pci_dev *pdev = cptpf->pdev;
+	struct engine_group_info *grp;
+	int ret = 0, i;
+
+	nix_req = (struct nix_inline_ipsec_cfg *)
+			otx2_mbox_alloc_msg_rsp(&cptpf->afpf_mbox, 0,
+						sizeof(*nix_req),
+						sizeof(struct msg_rsp));
+	if (nix_req == NULL) {
+		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+		ret =  -EFAULT;
+		goto cpt_err;
+	}
+	memset(nix_req, 0, sizeof(*nix_req));
+	nix_req->hdr.id = MBOX_MSG_NIX_INLINE_IPSEC_CFG;
+	nix_req->hdr.sig = OTX2_MBOX_REQ_SIG;
+	nix_req->enable = enable;
+	nix_req->cpt_credit = CPT_INST_QLEN_MSGS - 1;
+
+	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+		grp = &cptpf->eng_grps.grp[i];
+		if (!grp->is_enabled)
+			continue;
+
+		if (cpt_eng_grp_has_eng_type(grp, IE_TYPES)) {
+			nix_req->gen_cfg.egrp = i;
+			break;
+		}
+	}
+	nix_req->gen_cfg.opcode = CPT_INLINE_RX_OPCODE;
+	nix_req->inst_qsel.cpt_pf_func = RVU_PFFUNC(cptpf->pf_id, 0);
+	nix_req->inst_qsel.cpt_slot = 0;
+	ret = cpt_send_mbox_msg(pdev);
+	if (ret)
+		goto cpt_err;
+
+	req = (struct cpt_inline_ipsec_cfg_msg *)
+			otx2_mbox_alloc_msg_rsp(&cptpf->afpf_mbox, 0,
+						sizeof(*req),
+						sizeof(struct msg_rsp));
+	if (req == NULL) {
+		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+		ret  = -EFAULT;
+		goto cpt_err;
+	}
+	memset(req, 0, sizeof(*req));
+	req->hdr.id = MBOX_MSG_CPT_INLINE_IPSEC_CFG;
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;
+	req->hdr.pcifunc = RVU_PFFUNC(cptpf->pf_id, 0);
+	req->dir = CPT_INLINE_INBOUND;
+	req->slot = 0;
+	req->sso_pf_func_ovrd = cptpf->sso_pf_func_ovrd;
+	req->sso_pf_func = sso_pf_func;
+	req->enable = enable;
+	ret = cpt_send_mbox_msg(pdev);
+	if (ret)
+		goto cpt_err;
+
+cpt_err:
+	return ret;
+}
+
+static int rx_inline_ipsec_lf_enable(struct cptpf_dev *cptpf,
+				     struct mbox_msghdr *req)
+{
+	struct rx_inline_lf_cfg *cfg_req = (struct rx_inline_lf_cfg *)req;
+	int ret = 0;
+
+	if (cptpf->lfs.lfs_num) {
+		dev_err(&cptpf->pdev->dev,
+			"LF is already configured for RX inline ipsec.\n");
+		ret = -EEXIST;
+		goto cpt_err;
+	}
+	ret = cptpf_lf_init(cptpf, cptpf->reg_base, &cptpf->lfs, 1);
+	if (ret)
+		goto cpt_err;
+
+	ret = rx_inline_ipsec_lf_cfg(cptpf, cfg_req->sso_pf_func, true);
+	if (ret)
+		goto cpt_err_lf_cleanup;
+
+	return ret;
+
+cpt_err_lf_cleanup:
+	cptpf_lf_cleanup(&cptpf->lfs);
+cpt_err:
+	return ret;
 }
 
 static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
@@ -206,7 +600,9 @@ static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 	case MBOX_MSG_GET_ENG_GRP_NUM:
 		err = reply_eng_grp_num_msg(cptpf, vf, req);
 		break;
-
+	case MBOX_MSG_RX_INLINE_IPSEC_LF_CFG:
+		err = rx_inline_ipsec_lf_enable(cptpf, req);
+		break;
 	default:
 		err = forward_to_af(cptpf, vf, req, size);
 		break;
@@ -411,6 +807,18 @@ void cptpf_afpf_mbox_handler(struct work_struct *work)
 					cptpf->crypto_eng_grp = 1;
 				break;
 
+			case MBOX_MSG_ATTACH_RESOURCES:
+				if (!msg->rc)
+					cptpf->lfs.are_lfs_attached = 1;
+				break;
+
+			case MBOX_MSG_DETACH_RESOURCES:
+				if (!msg->rc)
+					cptpf->lfs.are_lfs_attached = 0;
+				break;
+			case MBOX_MSG_CPT_INLINE_IPSEC_CFG:
+			case MBOX_MSG_NIX_INLINE_IPSEC_CFG:
+				break;
 			default:
 				dev_err(&cptpf->pdev->dev,
 					"Unsupported msg %d received.\n",
