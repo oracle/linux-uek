@@ -1492,6 +1492,7 @@ struct cpt_inline_ipsec_cfg_msg {
 	u8 enable;
 	u8 slot;
 	u8 dir;
+	u8 sso_pf_func_ovrd;
 	u16 sso_pf_func; /* inbound path SSO_PF_FUNC */
 	u16 nix_pf_func; /* outbound path NIX_PF_FUNC */
 };

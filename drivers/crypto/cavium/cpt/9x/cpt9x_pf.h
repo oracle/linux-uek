@@ -45,7 +45,6 @@ struct cptpf_dev {
 	struct free_rsrcs_rsp limits;   /* Maximum limits for all VFs and PF */
 	struct cpt_limits vf_limits;	/* Limits for each VF */
 	struct engine_groups eng_grps;	/* Engine groups information */
-	struct cpt_kvf_limits kvf_limits; /* Kernel vf limits */
 
 	/* AF <=> PF mbox */
 	struct otx2_mbox	afpf_mbox;
@@ -61,6 +60,8 @@ struct cptpf_dev {
 	u8 max_vfs;		/* Maximum number of VFs supported by CPT */
 	u8 enabled_vfs;		/* Number of enabled VFs */
 	u8 crypto_eng_grp;	/* Symmetric crypto engine group number */
+	u8 sso_pf_func_ovrd; /* SSO PF_FUNC override bit */
+	u8 kvf_limits;  /* Kernel VF limits */
 };
 
 irqreturn_t cptpf_afpf_mbox_intr(int irq, void *arg);
