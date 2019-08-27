@@ -17,6 +17,7 @@
 #define INVALID_CRYPTO_ENG_GRP		0xFF
 /* Take mbox id from end of CPT mbox range in AF (range 0xA00 - 0xBFF) */
 #define MBOX_MSG_GET_ENG_GRP_NUM	0xBFF
+#define MBOX_MSG_RX_INLINE_IPSEC_LF_CFG	0xBFE
 
 /*
  * Message request and response to get engine group number
@@ -32,6 +33,17 @@ struct eng_grp_num_rsp {
 	struct mbox_msghdr hdr;
 	u8 eng_type;
 	u8 eng_grp_num;
+};
+
+/*
+ * Message request and response to config cpt lf for inline
+ * inbound ipsec.
+ * This messages are only used between CPT PF <-> CPT VF
+ */
+
+struct rx_inline_lf_cfg {
+	struct mbox_msghdr hdr;
+	u16 sso_pf_func;
 };
 
 static inline struct cptlfs_info *get_lfs_info(struct pci_dev *pdev)
