@@ -10,6 +10,7 @@
 
 #include "cpt_reqmgr.h"
 #include "cpt9x_mbox_common.h"
+#include "cpt9x_reqmgr.h"
 
 static void cpt9x_fill_inst(union cpt_inst_s *cptinst,
 			    struct cpt_info_buffer *info,

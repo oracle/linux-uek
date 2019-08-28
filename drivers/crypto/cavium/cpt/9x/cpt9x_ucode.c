@@ -181,8 +181,8 @@ error:
 	return ret;
 }
 
-void cpt9x_print_engines_mask(struct engine_group_info *eng_grp, void *obj,
-			      char *buf, int size)
+static void cpt9x_print_engines_mask(struct engine_group_info *eng_grp,
+				void *obj, char *buf, int size)
 {
 	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
 	struct bitmap bmap;

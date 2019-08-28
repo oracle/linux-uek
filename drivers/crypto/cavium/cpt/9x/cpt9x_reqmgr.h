@@ -7,7 +7,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
 #ifndef __CPT9X_REQUEST_MANAGER_H
 #define __CPT9X_REQUEST_MANAGER_H
 

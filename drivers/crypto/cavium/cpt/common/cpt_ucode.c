@@ -931,7 +931,8 @@ static void update_requested_engs(struct engine_group_info *mirrored_eng_grp,
 	}
 }
 
-struct engine_group_info *find_mirrored_eng_grp(struct engine_group_info *grp)
+static struct engine_group_info *find_mirrored_eng_grp(
+					struct engine_group_info *grp)
 {
 	struct engine_groups *eng_grps = grp->g;
 	int i;
@@ -952,7 +953,8 @@ struct engine_group_info *find_mirrored_eng_grp(struct engine_group_info *grp)
 	return NULL;
 }
 
-struct engine_group_info *find_unused_eng_grp(struct engine_groups *eng_grps)
+static struct engine_group_info *find_unused_eng_grp(
+					struct engine_groups *eng_grps)
 {
 	int i;
 

@@ -90,7 +90,7 @@ static void cpt_mbox_send_ack(struct cpt_device *cpt, int vf,
 }
 
 /* NACKs VF's mailbox message that PF is not able to complete the action */
-void cptpf_mbox_send_nack(struct cpt_device *cpt,  int vf,
+static void cptpf_mbox_send_nack(struct cpt_device *cpt,  int vf,
 			  struct cpt_mbox *mbx)
 {
 	mbx->data = 0ull;
