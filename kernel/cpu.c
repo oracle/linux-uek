@@ -360,7 +360,7 @@ EXPORT_SYMBOL_GPL(cpu_smt_control);
 
 static bool cpu_smt_available __read_mostly;
 
-void __init cpu_smt_disable(bool force)
+void cpu_smt_disable(bool force)
 {
 	if (cpu_smt_control == CPU_SMT_FORCE_DISABLED ||
 		cpu_smt_control == CPU_SMT_NOT_SUPPORTED)
