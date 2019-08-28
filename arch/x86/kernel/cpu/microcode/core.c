@@ -567,6 +567,7 @@ static int __wait_for_cpus(atomic_t *t, long long timeout)
 static int __reload_late(void *info)
 {
 	int cpu = smp_processor_id();
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	enum ucode_state err;
 	int ret = 0;
 
@@ -589,8 +590,11 @@ static int __reload_late(void *info)
 		ret = 1;
 	}
 
-	if (ret > 0)
-		get_cpu_cap(&cpu_data(cpu));
+	if (ret > 0) {
+		get_cpu_cap(c);
+		if (c->cpu_index == boot_cpu_data.cpu_index)
+			memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
+	}
 
 	/*
 	 * Increase the wait timeout to a safe value here since we're
@@ -623,6 +627,8 @@ static int microcode_reload_late(void)
 	return ret;
 }
 
+void check_bugs(void);
+
 static ssize_t reload_store(struct device *dev,
 			    struct device_attribute *attr,
 			    const char *buf, size_t size)
@@ -651,6 +657,7 @@ static ssize_t reload_store(struct device *dev,
 
 	mutex_lock(&microcode_mutex);
 	ret = microcode_reload_late();
+	check_bugs();
 	mutex_unlock(&microcode_mutex);
 
 put:

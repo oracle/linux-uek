@@ -200,17 +200,23 @@ void __ref check_bugs(void)
 {
 	int cpu;
 
-	identify_boot_cpu();
-
 	/*
-	 * identify_boot_cpu() initialized SMT support information, let the
-	 * core code know.
-	 */
-	cpu_smt_check_topology();
+	 * If we are late loading the microcode, all the stuff bellow cannot
+	 * be executed because they are related to early init of the machine.
+	*/
+	if (system_state != SYSTEM_RUNNING) {
+		identify_boot_cpu();
 
-	if (!IS_ENABLED(CONFIG_SMP)) {
-		pr_info("CPU: ");
-		print_cpu_info(&boot_cpu_data);
+		/*
+		 * identify_boot_cpu() initialized SMT support information, let the
+		 * core code know.
+		 */
+		cpu_smt_check_topology();
+
+		if (!IS_ENABLED(CONFIG_SMP)) {
+			pr_info("CPU: ");
+			print_cpu_info(&boot_cpu_data);
+		}
 	}
 
 	/*
@@ -274,6 +280,13 @@ void __ref check_bugs(void)
 	ssb_init();
 	l1tf_select_mitigation();
 	mds_select_mitigation();
+
+	/*
+	 * If we are late loading the microcode, all the stuff bellow cannot
+	 * be executed because they are related to early init of the machine.
+	*/
+	if (system_state == SYSTEM_RUNNING)
+		return;
 
 	arch_smt_update();
 
