@@ -517,13 +517,22 @@ static int ocfs2_direct_IO_get_blocks(struct inode *inode, sector_t iblock,
 {
 	int ret;
 	u32 cpos = 0;
-	int alloc_locked = 0;
 	u64 p_blkno, inode_blocks, contig_blocks;
 	unsigned int ext_flags;
 	unsigned char blocksize_bits = inode->i_sb->s_blocksize_bits;
 	unsigned long max_blocks = bh_result->b_size >> inode->i_blkbits;
 	unsigned long len = bh_result->b_size;
 	unsigned int clusters_to_alloc = 0;
+
+	ret = ocfs2_inode_lock(inode, NULL, !!create);
+	if (ret) {
+		mlog_errno(ret);
+		return ret;
+	}
+	if (create)
+		down_write(&OCFS2_I(inode)->ip_alloc_sem);
+	else
+		down_read(&OCFS2_I(inode)->ip_alloc_sem);
 
 	cpos = ocfs2_blocks_to_clusters(inode->i_sb, iblock);
 
@@ -549,14 +558,6 @@ static int ocfs2_direct_IO_get_blocks(struct inode *inode, sector_t iblock,
 
 	/* allocate blocks if no p_blkno is found, and create == 1 */
 	if (!p_blkno && create) {
-		ret = ocfs2_inode_lock(inode, NULL, 1);
-		if (ret < 0) {
-			mlog_errno(ret);
-			goto bail;
-		}
-
-		alloc_locked = 1;
-
 		/* fill hole, allocate blocks can't be larger than the size
 		 * of the hole */
 		clusters_to_alloc = ocfs2_clusters_for_bytes(inode->i_sb, len);
@@ -598,8 +599,11 @@ static int ocfs2_direct_IO_get_blocks(struct inode *inode, sector_t iblock,
 		contig_blocks = max_blocks;
 	bh_result->b_size = contig_blocks << blocksize_bits;
 bail:
-	if (alloc_locked)
-		ocfs2_inode_unlock(inode, 1);
+	if (create)
+		up_write(&OCFS2_I(inode)->ip_alloc_sem);
+	else
+		up_read(&OCFS2_I(inode)->ip_alloc_sem);
+	ocfs2_inode_unlock(inode, !!create);
 	return ret;
 }
 
@@ -839,6 +843,7 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 			mlog_errno(ret);
 			goto clean_orphan;
 		}
+		down_write(&OCFS2_I(inode)->ip_alloc_sem);
 
 		/* zeroing out the previously allocated cluster tail
 		 * that but not zeroed */
@@ -850,6 +855,7 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 					offset);
 		if (ret < 0) {
 			mlog_errno(ret);
+			up_write(&OCFS2_I(inode)->ip_alloc_sem);
 			ocfs2_inode_unlock(inode, 1);
 			goto clean_orphan;
 		}
@@ -857,10 +863,12 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 		is_overwrite = ocfs2_is_overwrite(osb, inode, offset);
 		if (is_overwrite < 0) {
 			mlog_errno(is_overwrite);
+			up_write(&OCFS2_I(inode)->ip_alloc_sem);
 			ocfs2_inode_unlock(inode, 1);
 			goto clean_orphan;
 		}
 
+		up_write(&OCFS2_I(inode)->ip_alloc_sem);
 		ocfs2_inode_unlock(inode, 1);
 	}
 
@@ -908,12 +916,14 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 			mlog_errno(ret);
 			goto clean_orphan;
 		}
+		down_read(&OCFS2_I(inode)->ip_alloc_sem);
 
 		ret = ocfs2_get_clusters(inode, v_cpos, &p_cpos,
 				&num_clusters, &ext_flags);
 		if (ret < 0) {
-			mlog_errno(ret);
+			up_read(&OCFS2_I(inode)->ip_alloc_sem);
 			ocfs2_inode_unlock(inode, 0);
+			mlog_errno(ret);
 			goto clean_orphan;
 		}
 
@@ -925,6 +935,7 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 		if (ret < 0)
 			mlog_errno(ret);
 
+		up_read(&OCFS2_I(inode)->ip_alloc_sem);
 		ocfs2_inode_unlock(inode, 0);
 	}
 
