@@ -11,6 +11,9 @@
 #include "cpt8x_vf.h"
 #include "cpt_algs.h"
 
+static void cpt8x_send_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
+				    void *obj) __attribute__((unused));
+
 static void cpt8x_fill_inst(union cpt_inst_s *cptinst,
 			    struct cpt_info_buffer *info,
 			    struct cpt_iq_command *iq_cmd)
@@ -136,7 +139,8 @@ static void cpt8x_send_cmd(union cpt_inst_s *cptinst, u32 db_count, void *obj)
 	cptvf_write_vq_doorbell(cptvf, db_count);
 }
 
-void cpt8x_send_cmds_in_batch(union cpt_inst_s *cptinst, u32 num, void *obj)
+static void cpt8x_send_cmds_in_batch(union cpt_inst_s *cptinst,
+						u32 num, void *obj)
 {
 	struct cpt_vf *cptvf = (struct cpt_vf *) obj;
 	int i;
@@ -147,7 +151,7 @@ void cpt8x_send_cmds_in_batch(union cpt_inst_s *cptinst, u32 num, void *obj)
 	cptvf_write_vq_doorbell(cptvf, num);
 }
 
-void cpt8x_send_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
+static void cpt8x_send_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
 				    void *obj)
 {
 	cpt8x_send_cmds_in_batch(cptinst, num, obj);

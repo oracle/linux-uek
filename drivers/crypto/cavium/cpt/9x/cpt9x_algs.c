@@ -10,6 +10,7 @@
 
 #include "cpt9x_mbox_common.h"
 #include "cpt_reqmgr.h"
+#include "cpt9x_reqmgr.h"
 #include "cpt_algs.h"
 
 static int cpt9x_get_kcrypto_eng_grp_num(struct pci_dev *pdev)
