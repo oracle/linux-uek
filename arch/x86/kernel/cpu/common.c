@@ -1052,7 +1052,7 @@ static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #define VULNWL_HYGON(family, whitelist)		\
 	VULNWL(HYGON, family, X86_MODEL_ANY, whitelist)
 
-static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
+static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 	VULNWL(ANY,	4, X86_MODEL_ANY,	NO_SPECULATION),
 	VULNWL(CENTAUR,	5, X86_MODEL_ANY,	NO_SPECULATION),
 	VULNWL(INTEL,	5, X86_MODEL_ANY,	NO_SPECULATION),
@@ -1103,7 +1103,7 @@ static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 	{}
 };
 
-static bool __init cpu_matches(unsigned long which)
+static bool cpu_matches(unsigned long which)
 {
 	const struct x86_cpu_id *m = x86_match_cpu(cpu_vuln_whitelist);
 
