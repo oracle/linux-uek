@@ -11,6 +11,11 @@
 #include <linux/delay.h>
 #include "cpt8x_vf.h"
 
+static void cptvf_mbox_send_ack(struct cpt_vf *cptvf,
+				struct cpt_mbox *mbx) __attribute__((unused));
+static void cptvf_mbox_send_nack(struct cpt_vf *cptvf,
+				struct cpt_mbox *mbx) __attribute__((unused));
+
 static char *get_mbox_opcode_str(int msg_opcode)
 {
 	char *str = "Unknown";
@@ -80,7 +85,7 @@ static void cptvf_send_msg_to_pf(struct cpt_vf *cptvf, struct cpt_mbox *mbx)
 
 /* ACKs PF's mailbox message
  */
-void cptvf_mbox_send_ack(struct cpt_vf *cptvf, struct cpt_mbox *mbx)
+static void cptvf_mbox_send_ack(struct cpt_vf *cptvf, struct cpt_mbox *mbx)
 {
 	mbx->msg = CPT_MSG_ACK;
 	cptvf_send_msg_to_pf(cptvf, mbx);
@@ -89,7 +94,7 @@ void cptvf_mbox_send_ack(struct cpt_vf *cptvf, struct cpt_mbox *mbx)
 /* NACKs PF's mailbox message that VF is not able to
  * complete the action
  */
-void cptvf_mbox_send_nack(struct cpt_vf *cptvf, struct cpt_mbox *mbx)
+static void cptvf_mbox_send_nack(struct cpt_vf *cptvf, struct cpt_mbox *mbx)
 {
 	mbx->msg = CPT_MSG_NACK;
 	cptvf_send_msg_to_pf(cptvf, mbx);

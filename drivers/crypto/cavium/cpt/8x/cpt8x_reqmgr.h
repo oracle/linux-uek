@@ -14,7 +14,4 @@
 void cpt8x_post_process(struct cptvf_wqe *wqe);
 struct reqmgr_ops cpt8x_get_reqmgr_ops(void);
 void cpt8x_send_cmds_in_batch(union cpt_inst_s *cptinst, u32 num, void *obj);
-void cpt8x_send_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
-				    void *obj);
-
 #endif /* __CPT8X_REQUEST_MANAGER_H */

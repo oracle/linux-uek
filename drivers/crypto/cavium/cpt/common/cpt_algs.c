@@ -300,17 +300,17 @@ static inline int cvm_enc_dec(struct ablkcipher_request *req, u32 enc)
 	return status;
 }
 
-int cvm_encrypt(struct ablkcipher_request *req)
+static int cvm_encrypt(struct ablkcipher_request *req)
 {
 	return cvm_enc_dec(req, true);
 }
 
-int cvm_decrypt(struct ablkcipher_request *req)
+static int cvm_decrypt(struct ablkcipher_request *req)
 {
 	return cvm_enc_dec(req, false);
 }
 
-int cvm_xts_setkey(struct crypto_ablkcipher *cipher, const u8 *key,
+static int cvm_xts_setkey(struct crypto_ablkcipher *cipher, const u8 *key,
 		   u32 keylen)
 {
 	struct crypto_tfm *tfm = crypto_ablkcipher_tfm(cipher);
@@ -413,7 +413,7 @@ static int cvm_ecb_des3_setkey(struct crypto_ablkcipher *cipher, const u8 *key,
 	return cvm_setkey(cipher, key, keylen, DES3_ECB);
 }
 
-int cvm_enc_dec_init(struct crypto_tfm *tfm)
+static int cvm_enc_dec_init(struct crypto_tfm *tfm)
 {
 	struct cvm_enc_ctx *ctx = crypto_tfm_ctx(tfm);
 
@@ -521,7 +521,7 @@ static int cvm_aead_gcm_aes_init(struct crypto_aead *tfm)
 	return cvm_aead_init(tfm, AES_GCM, MAC_NULL);
 }
 
-void cvm_aead_exit(struct crypto_aead *tfm)
+static void cvm_aead_exit(struct crypto_aead *tfm)
 {
 	struct cvm_aead_ctx *ctx = crypto_aead_ctx(tfm);
 
@@ -741,7 +741,7 @@ calc_fail:
 	return -ENOMEM;
 }
 
-int cvm_aead_cbc_aes_sha_setkey(struct crypto_aead *cipher,
+static int cvm_aead_cbc_aes_sha_setkey(struct crypto_aead *cipher,
 				const unsigned char *key,
 				unsigned int keylen)
 {
@@ -802,7 +802,7 @@ badkey:
 	return status;
 }
 
-int cvm_aead_ecb_null_sha_setkey(struct crypto_aead *cipher,
+static int cvm_aead_ecb_null_sha_setkey(struct crypto_aead *cipher,
 				 const unsigned char *key,
 				 unsigned int keylen)
 {
@@ -840,7 +840,7 @@ badkey:
 	return -EINVAL;
 }
 
-int cvm_aead_gcm_aes_setkey(struct crypto_aead *cipher,
+static int cvm_aead_gcm_aes_setkey(struct crypto_aead *cipher,
 			    const unsigned char *key,
 			    unsigned int keylen)
 {
@@ -1124,7 +1124,7 @@ error:
 	return status;
 }
 
-u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
+static u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 {
 	struct crypto_aead *tfm = crypto_aead_reqtfm(req);
 	struct cvm_req_ctx *rctx = aead_request_ctx(req);

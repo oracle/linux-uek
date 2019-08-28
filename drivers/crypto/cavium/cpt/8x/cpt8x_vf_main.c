@@ -619,12 +619,11 @@ static void cptvf_set_irq_affinity(struct cpt_vf *cptvf, int vec)
 static void cptvf_write_vq_saddr(struct cpt_vf *cptvf, u64 val)
 {
 	union cptx_vqx_saddr vqx_saddr;
-
 	vqx_saddr.u = val;
 	writeq(vqx_saddr.u, cptvf->reg_base + CPT_VQX_SADDR(0));
 }
 
-void cptvf_device_init(struct cpt_vf *cptvf)
+static void cptvf_device_init(struct cpt_vf *cptvf)
 {
 	u64 base_addr = 0;
 

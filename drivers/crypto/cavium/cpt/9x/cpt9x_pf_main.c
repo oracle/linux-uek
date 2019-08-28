@@ -15,7 +15,7 @@
 #define DRV_NAME	"octeontx2-cpt"
 #define DRV_VERSION	"1.0"
 
-void cptpf_enable_vf_flr_intrs(struct cptpf_dev *cptpf)
+static void cptpf_enable_vf_flr_intrs(struct cptpf_dev *cptpf)
 {
 	/* Clear interrupt if any */
 	cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(0),
@@ -30,7 +30,7 @@ void cptpf_enable_vf_flr_intrs(struct cptpf_dev *cptpf)
 		    RVU_PF_VFFLR_INT_ENA_W1SX(1), ~0x0ULL);
 }
 
-void cptpf_disable_vf_flr_intrs(struct cptpf_dev *cptpf)
+static void cptpf_disable_vf_flr_intrs(struct cptpf_dev *cptpf)
 {
 	/* Disable VF FLR interrupts */
 	cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,

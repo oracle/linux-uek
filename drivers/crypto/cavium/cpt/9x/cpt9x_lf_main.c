@@ -56,7 +56,7 @@ static void cptlf_do_set_done_num_wait(struct cptlf_info *lf, int num_wait)
 		    done_wait.u);
 }
 
-void cptlf_set_done_time_wait(struct cptlfs_info *lfs, int time_wait)
+static void cptlf_set_done_time_wait(struct cptlfs_info *lfs, int time_wait)
 {
 	int slot;
 
@@ -64,7 +64,7 @@ void cptlf_set_done_time_wait(struct cptlfs_info *lfs, int time_wait)
 		cptlf_do_set_done_time_wait(&lfs->lf[slot], time_wait);
 }
 
-void cptlf_set_done_num_wait(struct cptlfs_info *lfs, int num_wait)
+static void cptlf_set_done_num_wait(struct cptlfs_info *lfs, int num_wait)
 {
 	int slot;
 
