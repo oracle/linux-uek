@@ -92,7 +92,7 @@ DEFINE_STATIC_KEY_FALSE(rsb_overwrite_key);
 EXPORT_SYMBOL(rsb_overwrite_key);
 
 static bool is_skylake_era(void);
-static void __init disable_ibrs_and_friends(void);
+static void disable_ibrs_and_friends(void);
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -135,12 +135,12 @@ int __init spectre_v2_heuristics_setup(char *p)
 }
 __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 
-static void __init spectre_v1_select_mitigation(void);
-static void __init spectre_v2_select_mitigation(void);
-static enum ssb_mitigation __init ssb_select_mitigation(void);
-static void __init ssb_init(void);
-static void __init l1tf_select_mitigation(void);
-static void __init mds_select_mitigation(void);
+static void spectre_v1_select_mitigation(void);
+static void spectre_v2_select_mitigation(void);
+static enum ssb_mitigation ssb_select_mitigation(void);
+static void ssb_init(void);
+static void l1tf_select_mitigation(void);
+static void mds_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
@@ -164,14 +164,14 @@ EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
  * The vendor and possibly platform specific bits which can be modified in
  * x86_spec_ctrl_base.
  */
-static u64 __ro_after_init x86_spec_ctrl_mask = SPEC_CTRL_IBRS;
+static u64 x86_spec_ctrl_mask = SPEC_CTRL_IBRS;
 
 /*
  * AMD specific MSR info for Speculative Store Bypass control.
  * x86_amd_ls_cfg_ssbd_mask is initialized in identify_boot_cpu().
  */
-u64 __ro_after_init x86_amd_ls_cfg_base;
-u64 __ro_after_init x86_amd_ls_cfg_ssbd_mask;
+u64 x86_amd_ls_cfg_base;
+u64 x86_amd_ls_cfg_ssbd_mask;
 
 /* Control conditional STIPB in switch_to() */
 DEFINE_STATIC_KEY_FALSE(switch_to_cond_stibp);
@@ -196,7 +196,7 @@ EXPORT_SYMBOL_GPL(mds_user_clear);
 DEFINE_STATIC_KEY_FALSE(mds_idle_clear);
 EXPORT_SYMBOL_GPL(mds_idle_clear);
 
-void __init check_bugs(void)
+void __ref check_bugs(void)
 {
 	int cpu;
 
@@ -445,7 +445,7 @@ static void update_mds_branch_idle(void);
 
 /* Default mitigation for MDS-affected CPUs */
 static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
-static bool mds_nosmt __ro_after_init = false;
+static bool mds_nosmt = false;
 
 bool mds_user_clear_enabled(void)
 {
@@ -499,7 +499,7 @@ static const char * const mds_strings[] = {
 	[MDS_MITIGATION_VMWERV]	= "Vulnerable: Clear CPU buffers attempted, no microcode",
 };
 
-static void __init mds_select_mitigation(void)
+static void mds_select_mitigation(void)
 {
 	if (!boot_cpu_has_bug(X86_BUG_MDS) || cpu_mitigations_off()) {
 		mds_mitigation = MDS_MITIGATION_OFF;
@@ -584,7 +584,7 @@ static bool smap_works_speculatively(void)
 	return true;
 }
 
-static void __init spectre_v1_select_mitigation(void)
+static void spectre_v1_select_mitigation(void)
 {
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V1) || cpu_mitigations_off()) {
 		spectre_v1_mitigation = SPECTRE_V1_MITIGATION_NONE;
@@ -642,7 +642,7 @@ early_param("nospectre_v1", nospectre_v1_cmdline);
 #undef pr_fmt
 #define pr_fmt(fmt)     "Spectre V2 : " fmt
 
-static enum spectre_v2_user_mitigation spectre_v2_user __ro_after_init =
+static enum spectre_v2_user_mitigation spectre_v2_user =
        SPECTRE_V2_USER_NONE;
 
 #ifdef CONFIG_RETPOLINE
@@ -711,7 +711,7 @@ static void retpoline_init(void)
 	retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
 }
 
-static void __init retpoline_activate(enum spectre_v2_mitigation mode)
+static void retpoline_activate(enum spectre_v2_mitigation mode)
 {
 	retpoline_enable();
 	/* IBRS is unnecessary with retpoline mitigation. */
@@ -769,7 +769,7 @@ static const struct {
 	const char			*option;
 	enum spectre_v2_user_cmd	cmd;
 	bool				secure;
-} v2_user_options[] __initconst = {
+} v2_user_options[] = {
 	{ "auto",		SPECTRE_V2_USER_CMD_AUTO,		false },
 	{ "off",		SPECTRE_V2_USER_CMD_NONE,		false },
 	{ "on",			SPECTRE_V2_USER_CMD_FORCE,		true  },
@@ -779,13 +779,13 @@ static const struct {
 	{ "seccomp,ibpb",	SPECTRE_V2_USER_CMD_SECCOMP_IBPB,	false },
 };
 
-static void __init spec_v2_user_print_cond(const char *reason, bool secure)
+static void spec_v2_user_print_cond(const char *reason, bool secure)
 {
 	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2) != secure)
 		pr_info("spectre_v2_user=%s forced on command line.\n", reason);
 }
 
-static enum spectre_v2_user_cmd __init
+static enum spectre_v2_user_cmd
 spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
 {
 	char arg[20];
@@ -817,7 +817,7 @@ spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
 	return SPECTRE_V2_USER_CMD_AUTO;
 }
 
-static void __init
+static void
 spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 {
 	enum spectre_v2_user_mitigation mode = SPECTRE_V2_USER_NONE;
@@ -914,7 +914,7 @@ static const struct {
 	const char *option;
 	enum spectre_v2_mitigation_cmd cmd;
 	bool secure;
-} mitigation_options[] __initdata = {
+} mitigation_options[] = {
 	{ "off",               SPECTRE_V2_CMD_NONE,              false },
 	{ "on",                SPECTRE_V2_CMD_FORCE,             true },
 	{ "retpoline",         SPECTRE_V2_CMD_RETPOLINE,         false },
@@ -924,13 +924,13 @@ static const struct {
 	{ "ibrs",              SPECTRE_V2_CMD_IBRS,              false },
 };
 
-static void __init spec_v2_print_cond(const char *reason, bool secure)
+static void spec_v2_print_cond(const char *reason, bool secure)
 {
 	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2) != secure)
 		pr_info("%s selected on command line.\n", reason);
 }
 
-static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
+static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 {
 	enum spectre_v2_mitigation_cmd cmd = SPECTRE_V2_CMD_AUTO;
 	char arg[20];
@@ -1005,7 +1005,7 @@ static bool is_skylake_era(void)
 	return false;
 }
 
-static void __init ibrs_select(enum spectre_v2_mitigation *mode)
+static void ibrs_select(enum spectre_v2_mitigation *mode)
 {
 	/* Turn it on (if possible) */
 	set_ibrs_inuse();
@@ -1027,7 +1027,7 @@ static void __init ibrs_select(enum spectre_v2_mitigation *mode)
 		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
 }
 
-static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
+static void select_ibrs_variant(enum spectre_v2_mitigation *mode)
 {
 	/* Attempt to start IBRS */
 	ibrs_select(mode);
@@ -1046,7 +1046,7 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 			"no mitigation available!");
 }
 
-static void __init disable_ibrs_and_friends(void)
+static void disable_ibrs_and_friends(void)
 {
 	set_ibrs_disabled();
 	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
@@ -1057,7 +1057,7 @@ static void __init disable_ibrs_and_friends(void)
 	}
 }
 
-static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
+static bool retpoline_mode_selected(enum spectre_v2_mitigation mode)
 {
 	switch (mode) {
 	case SPECTRE_V2_RETPOLINE_GENERIC:
@@ -1144,7 +1144,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 /*
  * Activate the selected spectre v2 mitigation
  */
-static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum spectre_v2_mitigation_cmd cmd)
+static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum spectre_v2_mitigation_cmd cmd)
 {
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[spectre_v2_enabled]);
@@ -1201,7 +1201,7 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	spectre_v2_user_select_mitigation(cmd);
 }
 
-static void __init spectre_v2_select_mitigation(void)
+static void spectre_v2_select_mitigation(void)
 {
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
 	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
@@ -1359,7 +1359,7 @@ static const char * const ssb_strings[] = {
 static const struct {
 	const char *option;
 	enum ssb_mitigation_cmd cmd;
-} ssb_mitigation_options[] __initdata = {
+} ssb_mitigation_options[] = {
 	{ "auto",	SPEC_STORE_BYPASS_CMD_AUTO },    /* Platform decides */
 	{ "on",		SPEC_STORE_BYPASS_CMD_ON },      /* Disable Speculative Store Bypass */
 	{ "off",	SPEC_STORE_BYPASS_CMD_NONE },    /* Don't touch Speculative Store Bypass */
@@ -1368,7 +1368,7 @@ static const struct {
 	{ "userspace",	SPEC_STORE_BYPASS_CMD_USERSPACE }, /* Disable Speculative Store Bypass for userspace (deprecated) */
 };
 
-static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
+static enum ssb_mitigation_cmd ssb_parse_cmdline(void)
 {
 	enum ssb_mitigation_cmd cmd = SPEC_STORE_BYPASS_CMD_AUTO;
 	char arg[20];
@@ -1400,7 +1400,7 @@ static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
 	return cmd;
 }
 
-static enum ssb_mitigation __init ssb_select_mitigation(void)
+static enum ssb_mitigation ssb_select_mitigation(void)
 {
 	enum ssb_mitigation mode = SPEC_STORE_BYPASS_NONE;
 	enum ssb_mitigation_cmd cmd;
@@ -1445,7 +1445,7 @@ static enum ssb_mitigation __init ssb_select_mitigation(void)
 	return mode;
 }
 
-static void __init ssb_init(void)
+static void ssb_init(void)
 {
 	/*
 	 * We have three CPU feature flags that are in play here:
@@ -1671,7 +1671,7 @@ void x86_spec_ctrl_setup_ap(void)
 #define pr_fmt(fmt)	"L1TF: " fmt
 
 /* Default mitigation for L1TF-affected CPUs */
-enum l1tf_mitigations l1tf_mitigation __ro_after_init = L1TF_MITIGATION_FLUSH;
+enum l1tf_mitigations l1tf_mitigation = L1TF_MITIGATION_FLUSH;
 #if IS_ENABLED(CONFIG_KVM_INTEL)
 EXPORT_SYMBOL_GPL(l1tf_mitigation);
 #endif
@@ -1717,7 +1717,7 @@ static void override_cache_bits(struct cpuinfo_x86 *c)
 	}
 }
 
-static void __init l1tf_select_mitigation(void)
+static void l1tf_select_mitigation(void)
 {
 	u64 half_pa;
 
