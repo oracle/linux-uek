@@ -854,7 +854,7 @@ static void disable_ibrs_and_friends(bool disable_ibpb)
 	}
 }
 
-static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
+static bool retpoline_mode_selected(enum spectre_v2_mitigation mode)
 {
 	switch (mode) {
 	case SPECTRE_V2_RETPOLINE_GENERIC:
