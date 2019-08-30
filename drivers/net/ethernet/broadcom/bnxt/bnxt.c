@@ -4189,6 +4189,32 @@ void bnxt_hwrm_cmd_hdr_init(struct bnxt *bp, void *request, u16 req_type,
 		req->resp_addr = cpu_to_le64(bp->hwrm_cmd_resp_dma_addr);
 }
 
+static int bnxt_hwrm_to_stderr(u32 hwrm_err)
+{
+	switch (hwrm_err) {
+	case HWRM_ERR_CODE_SUCCESS:
+		return 0;
+	case HWRM_ERR_CODE_RESOURCE_ACCESS_DENIED:
+		return -EACCES;
+	case HWRM_ERR_CODE_RESOURCE_ALLOC_ERROR:
+		return -ENOSPC;
+	case HWRM_ERR_CODE_INVALID_PARAMS:
+	case HWRM_ERR_CODE_INVALID_FLAGS:
+	case HWRM_ERR_CODE_INVALID_ENABLES:
+	case HWRM_ERR_CODE_UNSUPPORTED_TLV:
+	case HWRM_ERR_CODE_UNSUPPORTED_OPTION_ERR:
+		return -EINVAL;
+	case HWRM_ERR_CODE_NO_BUFFER:
+		return -ENOMEM;
+	case HWRM_ERR_CODE_HOT_RESET_PROGRESS:
+		return -EAGAIN;
+	case HWRM_ERR_CODE_CMD_NOT_SUPPORTED:
+		return -EOPNOTSUPP;
+	default:
+		return -EIO;
+	}
+}
+
 static int bnxt_hwrm_do_send_msg(struct bnxt *bp, void *msg, u32 msg_len,
 				 int timeout, bool silent)
 {
@@ -4357,7 +4383,7 @@ static int bnxt_hwrm_do_send_msg(struct bnxt *bp, void *msg, u32 msg_len,
 		netdev_err(bp->dev, "hwrm req_type 0x%x seq id 0x%x error 0x%x\n",
 			   le16_to_cpu(resp->req_type),
 			   le16_to_cpu(resp->seq_id), rc);
-	return rc;
+	return bnxt_hwrm_to_stderr(rc);
 }
 
 int _hwrm_send_message(struct bnxt *bp, void *msg, u32 msg_len, int timeout)
@@ -4461,14 +4487,9 @@ int bnxt_hwrm_func_drv_rgtr(struct bnxt *bp, unsigned long *bmap, int bmap_size,
 
 	mutex_lock(&bp->hwrm_cmd_lock);
 	rc = _hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
-	if (!rc) {
-		set_bit(BNXT_STATE_DRV_REGISTERED, &bp->state);
-		if (resp->flags &
-		    cpu_to_le32(FUNC_DRV_RGTR_RESP_FLAGS_IF_CHANGE_SUPPORTED))
-			bp->fw_cap |= BNXT_FW_CAP_IF_CHANGE;
-	} else {
-		rc = -EIO;
-	}
+	if (!rc && (resp->flags &
+		    cpu_to_le32(FUNC_DRV_RGTR_RESP_FLAGS_IF_CHANGE_SUPPORTED)))
+		bp->fw_cap |= BNXT_FW_CAP_IF_CHANGE;
 	mutex_unlock(&bp->hwrm_cmd_lock);
 	return rc;
 }
@@ -4968,7 +4989,7 @@ static int bnxt_hwrm_vnic_set_rss_p5(struct bnxt *bp, u16 vnic_id, bool set_rss)
 		req.rss_ctx_idx = cpu_to_le16(vnic->fw_rss_cos_lb_ctx[i]);
 		rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
 		if (rc)
-			return -EIO;
+			return rc;
 	}
 	return 0;
 }
@@ -5738,7 +5759,7 @@ static int bnxt_hwrm_get_rings(struct bnxt *bp)
 	rc = _hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
 	if (rc) {
 		mutex_unlock(&bp->hwrm_cmd_lock);
-		return -EIO;
+		return rc;
 	}
 
 	hw_resc->resv_tx_rings = le16_to_cpu(resp->alloc_tx_rings);
@@ -5902,7 +5923,7 @@ bnxt_hwrm_reserve_pf_rings(struct bnxt *bp, int tx_rings, int rx_rings,
 
 	rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
 	if (rc)
-		return -ENOMEM;
+		return rc;
 
 	if (bp->hwrm_spec_code < 0x10601)
 		bp->hw_resc.resv_tx_rings = tx_rings;
@@ -5927,7 +5948,7 @@ bnxt_hwrm_reserve_vf_rings(struct bnxt *bp, int tx_rings, int rx_rings,
 				     cp_rings, stats, vnics);
 	rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
 	if (rc)
-		return -ENOMEM;
+		return rc;
 
 	rc = bnxt_hwrm_get_rings(bp);
 	return rc;
@@ -6147,9 +6168,7 @@ static int bnxt_hwrm_check_vf_rings(struct bnxt *bp, int tx_rings, int rx_rings,
 
 	req.flags = cpu_to_le32(flags);
 	rc = hwrm_send_message_silent(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
-	if (rc)
-		return -ENOMEM;
-	return 0;
+	return rc;
 }
 
 static int bnxt_hwrm_check_pf_rings(struct bnxt *bp, int tx_rings, int rx_rings,
@@ -6177,9 +6196,7 @@ static int bnxt_hwrm_check_pf_rings(struct bnxt *bp, int tx_rings, int rx_rings,
 
 	req.flags = cpu_to_le32(flags);
 	rc = hwrm_send_message_silent(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
-	if (rc)
-		return -ENOMEM;
-	return 0;
+	return rc;
 }
 
 static int bnxt_hwrm_check_rings(struct bnxt *bp, int tx_rings, int rx_rings,
@@ -6752,8 +6769,6 @@ static int bnxt_hwrm_func_backing_store_cfg(struct bnxt *bp, u32 enables)
 	}
 	req.flags = cpu_to_le32(flags);
 	rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
-	if (rc)
-		rc = -EIO;
 	return rc;
 }
 
@@ -7023,10 +7038,8 @@ int bnxt_hwrm_func_resc_qcaps(struct bnxt *bp, bool all)
 	mutex_lock(&bp->hwrm_cmd_lock);
 	rc = _hwrm_send_message_silent(bp, &req, sizeof(req),
 				       HWRM_CMD_TIMEOUT);
-	if (rc) {
-		rc = -EIO;
+	if (rc)
 		goto hwrm_func_resc_qcaps_exit;
-	}
 
 	hw_resc->max_tx_sch_inputs = le16_to_cpu(resp->max_tx_scheduler_inputs);
 	if (!all)
@@ -7646,8 +7659,6 @@ static int bnxt_hwrm_set_br_mode(struct bnxt *bp, u16 br_mode)
 	else
 		return -EINVAL;
 	rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
-	if (rc)
-		rc = -EIO;
 	return rc;
 }
 
@@ -7667,8 +7678,6 @@ static int bnxt_hwrm_set_cache_line_size(struct bnxt *bp, int size)
 		req.options = FUNC_CFG_REQ_OPTIONS_CACHE_LINESIZE_SIZE_128;
 
 	rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
-	if (rc)
-		rc = -EIO;
 	return rc;
 }
 
