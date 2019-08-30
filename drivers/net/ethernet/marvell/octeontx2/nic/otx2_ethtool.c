@@ -456,8 +456,10 @@ static int otx2_set_coalesce(struct net_device *netdev,
 		pfvf->cq_ecount_wait = min_t(u16, ec->rx_max_coalesced_frames,
 					     ec->tx_max_coalesced_frames);
 
-	for (qidx = 0; qidx < pfvf->hw.cint_cnt; qidx++)
-		otx2_config_irq_coalescing(pfvf, qidx);
+	if (netif_running(netdev)) {
+		for (qidx = 0; qidx < pfvf->hw.cint_cnt; qidx++)
+			otx2_config_irq_coalescing(pfvf, qidx);
+	}
 
 	return 0;
 }
