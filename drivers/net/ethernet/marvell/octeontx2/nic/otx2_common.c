@@ -875,6 +875,32 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	return rsp->hdr.rc;
 }
 
+void otx2_sq_free_sqbs(struct otx2_nic *pfvf)
+{
+	struct otx2_qset *qset = &pfvf->qset;
+	struct otx2_hw *hw = &pfvf->hw;
+	struct otx2_snd_queue *sq;
+	int sqb, qidx;
+	u64 iova, pa;
+
+	for (qidx = 0; qidx < hw->tx_queues; qidx++) {
+		sq = &qset->sq[qidx];
+		if (!sq->sqb_ptrs)
+			continue;
+		for (sqb = 0; sqb < sq->sqb_count; sqb++) {
+			if (!sq->sqb_ptrs[sqb])
+				continue;
+			iova = sq->sqb_ptrs[sqb];
+			pa = otx2_iova_to_phys(pfvf->iommu_domain, iova);
+			dma_unmap_page_attrs(pfvf->dev, iova, hw->sqb_size,
+					     DMA_FROM_DEVICE,
+					     DMA_ATTR_SKIP_CPU_SYNC);
+			put_page(virt_to_page(phys_to_virt(pa)));
+		}
+		sq->sqb_count = 0;
+	}
+}
+
 void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 {
 	int pool_id, pool_start = 0, pool_end = 0, size = 0;
@@ -1033,9 +1059,10 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 
 int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 {
-	int sq, pool_id, stack_pages, num_sqbs;
+	int qidx, pool_id, stack_pages, num_sqbs;
 	struct otx2_qset *qset = &pfvf->qset;
 	struct otx2_hw *hw = &pfvf->hw;
+	struct otx2_snd_queue *sq;
 	struct otx2_pool *pool;
 	int err, ptr;
 	s64 bufptr;
@@ -1052,8 +1079,8 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 	stack_pages =
 		(num_sqbs + hw->stack_pg_ptrs - 1) / hw->stack_pg_ptrs;
 
-	for (sq = 0; sq < hw->tx_queues; sq++) {
-		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, sq);
+	for (qidx = 0; qidx < hw->tx_queues; qidx++) {
+		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, qidx);
 		/* Initialize aura context */
 		err = otx2_aura_init(pfvf, pool_id, pool_id, num_sqbs);
 		if (err)
@@ -1072,14 +1099,22 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 		goto fail;
 
 	/* Allocate pointers and free them to aura/pool */
-	for (sq = 0; sq < hw->tx_queues; sq++) {
-		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, sq);
+	for (qidx = 0; qidx < hw->tx_queues; qidx++) {
+		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, qidx);
 		pool = &pfvf->qset.pool[pool_id];
+
+		sq = &qset->sq[qidx];
+		sq->sqb_count = 0;
+		sq->sqb_ptrs = kcalloc(num_sqbs, sizeof(u64 *), GFP_KERNEL);
+		if (!sq->sqb_ptrs)
+			return -ENOMEM;
+
 		for (ptr = 0; ptr < num_sqbs; ptr++) {
 			bufptr = otx2_alloc_rbuf(pfvf, pool, GFP_KERNEL);
 			if (bufptr <= 0)
 				return bufptr;
 			otx2_aura_freeptr(pfvf, pool_id, bufptr);
+			sq->sqb_ptrs[sq->sqb_count++] = (u64)bufptr;
 		}
 		otx2_get_page(pool);
 	}

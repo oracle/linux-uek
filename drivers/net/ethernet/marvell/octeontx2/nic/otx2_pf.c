@@ -1247,11 +1247,14 @@ static void otx2_free_sq_res(struct otx2_nic *pf)
 
 	/* Disable SQs */
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_SQ, false);
+	/* Free SQB pointers */
+	otx2_sq_free_sqbs(pf);
 	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
 		sq = &qset->sq[qidx];
 		qmem_free(pf->dev, sq->sqe);
 		qmem_free(pf->dev, sq->tso_hdrs);
 		kfree(sq->sg);
+		kfree(sq->sqb_ptrs);
 		qmem_free(pf->dev, sq->timestamps);
 	}
 }
@@ -1327,7 +1330,7 @@ err_free_nix_queues:
 err_free_txsch:
 	otx2_txschq_stop(pf);
 err_free_sq_ptrs:
-	otx2_free_aura_ptr(pf, AURA_NIX_SQ);
+	otx2_sq_free_sqbs(pf);
 err_free_rq_ptrs:
 	otx2_free_aura_ptr(pf, AURA_NIX_RQ);
 	otx2_ctx_disable(mbox, NPA_AQ_CTYPE_POOL, true);
@@ -1371,9 +1374,6 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	otx2_mbox_unlock(mbox);
 
 	otx2_free_sq_res(pf);
-
-	/* Free SQB pointers */
-	otx2_free_aura_ptr(pf, AURA_NIX_SQ);
 
 	/* Disable RQs */
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_RQ, false);
