@@ -556,6 +556,7 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf);
 int otx2_rq_aura_pool_init(struct otx2_nic *pfvf);
 void otx2_aura_pool_free(struct otx2_nic *pfvf);
 void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type);
+void otx2_sq_free_sqbs(struct otx2_nic *pfvf);
 int otx2_config_nix(struct otx2_nic *pfvf);
 int otx2_config_nix_queues(struct otx2_nic *pfvf);
 int otx2_txschq_config(struct otx2_nic *pfvf, int lvl);
