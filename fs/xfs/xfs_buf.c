@@ -2204,3 +2204,37 @@ void xfs_buf_set_ref(struct xfs_buf *bp, int lru_ref)
 
 	atomic_set(&bp->b_lru_ref, lru_ref);
 }
+
+/* Estimate the amount of parallelism available for a given device. */
+unsigned int
+xfs_buftarg_guess_threads(
+	struct xfs_buftarg	*btp)
+{
+	int			iomin;
+	int			ioopt;
+
+	/*
+	 * The device tells us that it is non-rotational, and we take that to
+	 * mean there are no moving parts and that the device can handle all
+	 * the CPUs throwing IO requests at it.
+	 */
+	if (blk_queue_nonrot(btp->bt_bdev->bd_queue))
+		return num_online_cpus();
+
+	/*
+	 * The device has a preferred and minimum IO size that suggest a RAID
+	 * setup, so infer the number of disks and assume that the parallelism
+	 * is equal to the disk count.
+	 */
+	iomin = bdev_io_min(btp->bt_bdev);
+	ioopt = bdev_io_opt(btp->bt_bdev);
+	if (iomin > 0 && ioopt > iomin)
+		return ioopt / iomin;
+
+	/*
+	 * The device did not indicate that it has any capabilities beyond that
+	 * of a rotating disk with a single drive head, so we estimate no
+	 * parallelism at all.
+	 */
+	return 1;
+}
