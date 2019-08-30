@@ -510,5 +510,6 @@ extern struct kmem_zone	*xfs_inode_zone;
 
 bool xfs_inode_verify_forks(struct xfs_inode *ip);
 int xfs_has_eofblocks(struct xfs_inode *ip, bool *has);
+bool xfs_inode_needs_inactivation(struct xfs_inode *ip);
 
 #endif	/* __XFS_INODE_H__ */
