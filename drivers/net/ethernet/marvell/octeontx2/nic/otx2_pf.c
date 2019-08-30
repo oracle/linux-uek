@@ -1575,6 +1575,8 @@ int otx2_open(struct net_device *netdev)
 	otx2_set_cints_affinity(pf);
 
 	pf->intf_down = false;
+	/* 'intf_down' may be checked on any cpu */
+	smp_wmb();
 
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
