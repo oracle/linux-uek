@@ -536,7 +536,7 @@ struct cgx_set_link_mode_args {
 	u8 duplex;
 	u8 an;
 	u8 ports;
-	u8 flags;
+	u64 mode;
 };
 
 struct cgx_set_link_mode_req {
