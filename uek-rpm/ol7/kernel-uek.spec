@@ -274,7 +274,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_perf 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
-%define all_arch_configs kernel-%{version}-*.config
 %endif
 
 # bootwrapper is only on ppc
@@ -297,14 +296,12 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch %{all_x86}
 %define asmarch x86
 %define hdrarch i386
-%define all_arch_configs kernel-%{version}-i?86*.config
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
 %endif
 
 %ifarch x86_64
 %define asmarch x86
-#%define all_arch_configs kernel-%{version}-x86_64*.config
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
 %define with_tools 1
@@ -313,7 +310,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch ppc64
 %define asmarch powerpc
 %define hdrarch powerpc
-%define all_arch_configs kernel-%{version}-ppc64*.config
 %define image_install_path boot
 %define make_target vmlinux
 %define kernel_image vmlinux
@@ -323,7 +319,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch s390x
 %define asmarch s390
 %define hdrarch s390
-%define all_arch_configs kernel-%{version}-s390x.config
 %define image_install_path boot
 %define make_target image
 %define kernel_image arch/s390/boot/image
@@ -335,7 +330,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %ifarch sparc64
 %define asmarch sparc
-%define all_arch_configs kernel-%{version}-sparc64*.config
 %define make_target image
 %define kernel_image arch/sparc/boot/image
 %define image_install_path boot
@@ -344,7 +338,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch ppc
 %define asmarch powerpc
 %define hdrarch powerpc
-%define all_arch_configs kernel-%{version}-ppc{-,.}*config
 %define image_install_path boot
 %define make_target vmlinux
 %define kernel_image vmlinux
@@ -352,21 +345,18 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 %ifarch ia64
-%define all_arch_configs kernel-%{version}-ia64*.config
 %define image_install_path boot/efi/EFI/redhat
 %define make_target compressed
 %define kernel_image vmlinux.gz
 %endif
 
 %ifarch alpha alphaev56
-%define all_arch_configs kernel-%{version}-alpha*.config
 %define image_install_path boot
 %define make_target vmlinux
 %define kernel_image vmlinux
 %endif
 
 %ifarch %{arm}
-%define all_arch_configs kernel-%{version}-arm*.config
 %define image_install_path boot
 %define hdrarch arm
 %define make_target vmlinux
@@ -374,7 +364,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 %ifarch aarch64
-%define all_arch_configs kernel-%{version}-aarch64*.config
 %define image_install_path boot
 %define asmarch arm64
 %define hdrarch arm64
@@ -1309,7 +1298,7 @@ hwcap 0 nosegneg"
 # build tools/perf:
     if [ -d tools/perf ]; then
 	cd tools/perf
-	make NO_LIBPERL=1 all
+	make %{?_smp_mflags} NO_LIBPERL=1 all
 # and install it:
 #	mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
 	mkdir -p $RPM_BUILD_ROOT/usr/libexec/
@@ -1322,7 +1311,7 @@ hwcap 0 nosegneg"
 # build tools/power/x86/x86_energy_perf_policy:
     if [ -d tools/power/x86/x86_energy_perf_policy ]; then
        cd tools/power/x86/x86_energy_perf_policy
-       make
+       make %{?_smp_mflags}
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
@@ -1331,7 +1320,7 @@ hwcap 0 nosegneg"
 # build tools/power/x86/turbostat:
     if [ -d tools/power/x86/turbostat ]; then
        cd tools/power/x86/turbostat
-       make
+       make %{?_smp_mflags}
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 turbostat $RPM_BUILD_ROOT/usr/libexec/turbostat.$KernelVer
