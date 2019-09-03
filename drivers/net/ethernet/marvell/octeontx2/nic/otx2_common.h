@@ -253,6 +253,7 @@ struct otx2_nic {
 	u32                     ntuple_max_flows;
 #define OTX2_NTUPLE_FILTER_CAPABLE		0
 #define OTX2_UNICAST_FILTER_CAPABLE		1
+#define OTX2_RX_VLAN_OFFLOAD_CAPABLE		2
 	unsigned long           priv_flags;
 	u16			entry_list[NPC_MAX_NONCONTIG_ENTRIES];
 	struct list_head	flows;
@@ -626,6 +627,7 @@ int otx2_add_flow(struct otx2_nic *pfvf,
 int otx2_remove_flow(struct otx2_nic *pfvf, u32 location);
 int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 			      struct npc_install_flow_req *req);
+int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable);
 int otx2smqvf_probe(struct otx2_nic *vf);
 int otx2smqvf_remove(struct otx2_nic *vf);
 
