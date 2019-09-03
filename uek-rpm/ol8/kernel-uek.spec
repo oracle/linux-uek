@@ -132,7 +132,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 
 %if %{fancy_debuginfo}
 BuildRequires: rpm-build >= 4.4.2.1-4
-%define debuginfo_args --strict-build-id
+%define _find_debuginfo_opts --strict-build-id
 %endif
 
 # Additional options for user-friendly one-off kernel building:
@@ -573,6 +573,22 @@ BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
 %endif # with_tools
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
+%if %{with_debuginfo}
+BuildRequires: rpm-build, elfutils
+BuildConflicts: rpm < 4.13.0.1-19
+
+## See /usr/lib/rpm/macros on OL8 for macro descriptions.
+%undefine _include_minidebuginfo
+%undefine _find_debuginfo_dwz_opts
+%undefine _unique_build_ids
+%undefine _unique_debug_names
+%undefine _unique_debug_srcs
+%undefine _debugsource_packages
+%undefine _debuginfo_subpackages
+%undefine _missing_build_ids_terminate_build
+%undefine _no_recompute_build_ids
+%endif
+
 Source0: linux-%{kversion}.tar.bz2
 
 %if %{signkernel}%{signmodules}
@@ -601,8 +617,6 @@ Source26: Module.kabi_x86_64
 
 Source200: kabi_whitelist_x86_64debug
 Source201: kabi_whitelist_x86_64
-
-Source300: find-debuginfo.sh.ol8.diff
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -645,7 +659,7 @@ Patch00: patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
-%ifnarch aarch64
+%ifnarch aarch64 x86_64
 # Override find_provides to use a script that provides "kernel(symbol) = hash".
 # Pass path of the RPM temp dir containing kabideps to find-provides script.
 %global _use_internal_dependency_generator 0
@@ -771,7 +785,7 @@ This package provides debug information for package kernel-tools.
 # symlinks because of the trailing nonmatching alternation and
 # the leading .*, because of find-debuginfo.sh's buggy handling
 # of matching the pattern against the symlinks file.
-%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_bindir}/centrino-decode(\.debug)?|.*%%{_bindir}/powernow-k8-decode(\.debug)?|.*%%{_bindir}/cpupower(\.debug)?|.*%%{_libdir}/libcpupower.*|.*%%{_bindir}/turbostat(\.debug)?|.*%%{_bindir}/x86_energy_perf_policy(\.debug)?|.*%%{_bindir}/tmon(\.debug)?|.*%%{_bindir}/lsgpio(\.debug)?|.*%%{_bindir}/gpio-hammer(\.debug)?|.*%%{_bindir}/gpio-event-mon(\.debug)?|.*%%{_bindir}/iio_event_monitor(\.debug)?|.*%%{_bindir}/iio_generic_buffer(\.debug)?|.*%%{_bindir}/lsiio(\.debug)?|XXX' -o kernel-tools-debuginfo.list}
+%{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '.*%%{_bindir}/centrino-decode(\.debug)?|.*%%{_bindir}/powernow-k8-decode(\.debug)?|.*%%{_bindir}/cpupower(\.debug)?|.*%%{_libdir}/libcpupower.*|.*%%{_bindir}/turbostat(\.debug)?|.*%%{_bindir}/x86_energy_perf_policy(\.debug)?|.*%%{_bindir}/tmon(\.debug)?|.*%%{_bindir}/lsgpio(\.debug)?|.*%%{_bindir}/gpio-hammer(\.debug)?|.*%%{_bindir}/gpio-event-mon(\.debug)?|.*%%{_bindir}/iio_event_monitor(\.debug)?|.*%%{_bindir}/iio_generic_buffer(\.debug)?|.*%%{_bindir}/lsiio(\.debug)?|XXX' -o kernel-tools-debuginfo.list}
 
 %endif # with_tools
 
@@ -789,7 +803,7 @@ AutoReqProv: no\
 %description -n %{name}%{?1:-%{1}}-debuginfo\
 This package provides debug information for package %{name}%{?1:-%{1}}.\
 This is required to use SystemTap with %{name}%{?1:-%{1}}-%{KVERREL}.\
-%{expand:%%global debuginfo_args %{?debuginfo_args} -p '/.*/%%{KVERREL}%{?1:\.%{1}}/.*|/.*%%{KVERREL}%{?1:\.%{1}}(\.debug)?' -o debuginfo%{?1}.list}\
+%{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '/.*/%%{KVERREL}%{?1:\.%{1}}/.*|/.*%%{KVERREL}%{?1:\.%{1}}(\.debug)?' -o debuginfo%{?1}.list}\
 %{nil}
 
 #
@@ -1069,13 +1083,6 @@ ApplyPatch %{stable_patch_00}
 %if 0%{?stable_rc}
 ApplyPatch %{stable_patch_01}
 %endif
-
-# Copy the RPM find-debuginfo.sh into the buildroot and patch it.
-# (This is a patch of *RPM*, not of the kernel, so it is not governed
-# by nopatches.)
-cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir} && \
-    patch %{_builddir}/find-debuginfo.sh %{SOURCE300}
-chmod +x %{_builddir}/find-debuginfo.sh
 
 # only deal with configs if we are going to build for the arch
 # %ifnarch %nobuildarches
@@ -1572,10 +1579,6 @@ make -j1 htmldocs || %{doc_build_fail}
 %define debug_package %{nil}
 
 %if %{with_debuginfo}
-
-%define __debug_install_post \
-  %{_builddir}/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
-%{nil}
 
 %ifnarch noarch
 %global __debug_package 1
