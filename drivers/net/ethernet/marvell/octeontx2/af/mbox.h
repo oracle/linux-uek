@@ -647,6 +647,18 @@ enum nix_af_status {
 	NIX_AF_ERR_TX_VTAG_NOSPC    = -421,
 };
 
+/* For NIX RX vtag action  */
+enum nix_rx_vtag0_type {
+	NIX_AF_LFX_RX_VTAG_TYPE0, /* reserved for rx vlan offload */
+	NIX_AF_LFX_RX_VTAG_TYPE1,
+	NIX_AF_LFX_RX_VTAG_TYPE2,
+	NIX_AF_LFX_RX_VTAG_TYPE3,
+	NIX_AF_LFX_RX_VTAG_TYPE4,
+	NIX_AF_LFX_RX_VTAG_TYPE5,
+	NIX_AF_LFX_RX_VTAG_TYPE6,
+	NIX_AF_LFX_RX_VTAG_TYPE7,
+};
+
 /* For NIX LF context alloc and init */
 struct nix_lf_alloc_req {
 	struct mbox_msghdr hdr;

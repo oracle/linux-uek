@@ -1577,6 +1577,9 @@ int otx2_open(struct net_device *netdev)
 	if (pf->linfo.link_up && !(pf->pcifunc & RVU_PFVF_FUNC_MASK))
 		otx2_handle_link_event(pf);
 
+	if (otx2_nic_is_feature_enabled(pf, OTX2_RX_VLAN_OFFLOAD_CAPABLE))
+		otx2_enable_rxvlan(pf, true);
+
 	/* When reinitializing enable time stamping if it is enabled before */
 	if (pf->hw_tx_tstamp) {
 		pf->hw_tx_tstamp = 0;
@@ -1745,6 +1748,10 @@ static int otx2_set_features(struct net_device *netdev,
 	if ((changed & NETIF_F_LOOPBACK) && netif_running(netdev))
 		return otx2_cgx_config_loopback(pf,
 						features & NETIF_F_LOOPBACK);
+
+	if ((changed & NETIF_F_HW_VLAN_CTAG_RX) && netif_running(netdev))
+		return otx2_enable_rxvlan(pf,
+					  features & NETIF_F_HW_VLAN_CTAG_RX);
 
 	if ((changed & NETIF_F_NTUPLE) && !ntuple)
 		otx2_destroy_ntuple_flows(pf);
@@ -2179,8 +2186,13 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	netdev->features |= netdev->hw_features;
 	/* Support TSO on tag interface */
 	netdev->vlan_features |= netdev->features;
-	netdev->features  |= NETIF_F_HW_VLAN_CTAG_TX |
-			     NETIF_F_HW_VLAN_STAG_TX;
+
+	netdev->hw_features  |= NETIF_F_HW_VLAN_CTAG_TX |
+				NETIF_F_HW_VLAN_STAG_TX |
+				NETIF_F_HW_VLAN_CTAG_RX |
+				NETIF_F_HW_VLAN_STAG_RX;
+
+	netdev->features |= netdev->hw_features;
 
 	netdev->hw_features |= NETIF_F_LOOPBACK | NETIF_F_NTUPLE |
 			       NETIF_F_RXALL;
