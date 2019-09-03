@@ -58,7 +58,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 4.14.%{base_sublevel}%{?stablerev}
+%define rpmversion 5.2.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -180,8 +180,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 # The kernel tarball/base version
-#%define kversion 4.1
-%define kversion 4.14.%{base_sublevel}
+%define kversion 5.2.%{base_sublevel}
 
 %define make_target bzImage
 
@@ -278,7 +277,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_tools 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
-%define all_arch_configs kernel-%{version}-*.config
 %endif
 
 # bootwrapper is only on ppc
@@ -301,14 +299,12 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch %{all_x86}
 %define asmarch x86
 %define hdrarch i386
-%define all_arch_configs kernel-%{version}-i?86*.config
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
 %endif
 
 %ifarch x86_64
 %define asmarch x86
-#%define all_arch_configs kernel-%{version}-x86_64*.config
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
 %define with_tools 1
@@ -317,7 +313,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch ppc64
 %define asmarch powerpc
 %define hdrarch powerpc
-%define all_arch_configs kernel-%{version}-ppc64*.config
 %define image_install_path boot
 %define make_target vmlinux
 %define kernel_image vmlinux
@@ -327,7 +322,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch s390x
 %define asmarch s390
 %define hdrarch s390
-%define all_arch_configs kernel-%{version}-s390x.config
 %define image_install_path boot
 %define make_target image
 %define kernel_image arch/s390/boot/image
@@ -339,7 +333,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %ifarch sparc64
 %define asmarch sparc
-%define all_arch_configs kernel-%{version}-sparc64*.config
 %define make_target image
 %define kernel_image arch/sparc/boot/image
 %define image_install_path boot
@@ -348,7 +341,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch ppc
 %define asmarch powerpc
 %define hdrarch powerpc
-%define all_arch_configs kernel-%{version}-ppc{-,.}*config
 %define image_install_path boot
 %define make_target vmlinux
 %define kernel_image vmlinux
@@ -356,21 +348,18 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 %ifarch ia64
-%define all_arch_configs kernel-%{version}-ia64*.config
 %define image_install_path boot/efi/EFI/redhat
 %define make_target compressed
 %define kernel_image vmlinux.gz
 %endif
 
 %ifarch alpha alphaev56
-%define all_arch_configs kernel-%{version}-alpha*.config
 %define image_install_path boot
 %define make_target vmlinux
 %define kernel_image vmlinux
 %endif
 
 %ifarch %{arm}
-%define all_arch_configs kernel-%{version}-arm*.config
 %define image_install_path boot
 %define hdrarch arm
 %define make_target vmlinux
@@ -378,7 +367,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 %ifarch aarch64
-%define all_arch_configs kernel-%{version}-aarch64*.config
 %define image_install_path boot
 %define asmarch arm64
 %define hdrarch arm64
@@ -403,7 +391,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 # We don't build a kernel on i386; we only do kernel-headers there,
 # and we no longer build for 31bit S390. Same for 32bit sparc and arm.
-##%define nobuildarches i386 s390 sparc %{arm}
 %define nobuildarches s390 sparc %{arm}
 
 %ifarch %nobuildarches
@@ -443,7 +430,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # problems with the newer kernel or lack certain things that make
 # integration in the distro harder than needed.
 #
-##%define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, iwl4965-firmware < 228.57.2, selinux-policy-targeted < 1.25.3-14, squashfs-tools < 4.0, wireless-tools < 29-3
 %define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14, device-mapper-multipath < 0.4.9-64, dracut < 004-303.0.3
 
 #
@@ -678,6 +664,7 @@ Summary: Various documentation bits found in the kernel source
 Group: Documentation
 Obsoletes: kernel-doc
 Provides: kernel-doc
+AutoReq: no
 %description doc
 This package contains documentation files from the kernel
 source. Various bits of information about the Linux kernel and the
@@ -695,6 +682,7 @@ Conflicts: glibc-kernheaders
 Conflicts: kernel-headers
 Provides: kernel-headers
 Provides: glibc-kernheaders = 3.0-46
+AutoReq: no
 %description headers
 Kernel-headers includes the C header files that specify the interface
 between the Linux kernel and userspace libraries and programs.  The
@@ -715,6 +703,7 @@ files combining both kernel and initial ramdisk.
 Summary: Kernel source files used by %{name}-debuginfo packages
 Group: Development/Debug
 Provides: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+AutoReq: no
 %description debuginfo-common
 This package is required by %{name}-debuginfo subpackages.
 It provides the kernel source files common to all builds.
@@ -1257,7 +1246,7 @@ hwcap 0 nosegneg"
 # build tools/perf:
     if [ -d tools/perf ]; then
 	cd tools/perf
-	make NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
+	make %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
 # and install it:
 #	mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
 	mkdir -p $RPM_BUILD_ROOT/usr/libexec/
@@ -1270,7 +1259,7 @@ hwcap 0 nosegneg"
 # build tools/power/x86/x86_energy_perf_policy:
     if [ -d tools/power/x86/x86_energy_perf_policy ]; then
        cd tools/power/x86/x86_energy_perf_policy
-       make EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       make %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
@@ -1279,7 +1268,7 @@ hwcap 0 nosegneg"
 # build tools/power/x86/turbostat:
     if [ -d tools/power/x86/turbostat ]; then
        cd tools/power/x86/turbostat
-       make EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       make %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 turbostat $RPM_BUILD_ROOT/usr/libexec/turbostat.$KernelVer
@@ -1573,7 +1562,7 @@ make -j1 htmldocs || %{doc_build_fail}
 ### Special hacks for debuginfo subpackages.
 ###
 
-# This macro is used by %%install, so we must redefine it before that.
+# This macro is used by install, so we must redefine it before that.
 # TEMPORARY HACK: use the debuginfo in the build tree, passing it -g1 so as
 # to strip out only debugging sections.
 %define debug_package %{nil}
@@ -1923,7 +1912,7 @@ fi
 %endif # cpupowerarchs
 %endif # with_tools
 
-# only some architecture builds need kernel%{variant}-doc
+# only some architecture builds need kernel-doc
 %if %{with_doc}
 %files doc
 %defattr(-,root,root)
@@ -1931,7 +1920,7 @@ fi
 %dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
 %endif
 
-# This is %{image_install_path} on an arch where that includes ELF files,
+# This is image_install_path on an arch where that includes ELF files,
 # or empty otherwise.
 %define elf_image_install_path %{?kernel_image_elf:%{image_install_path}}
 
