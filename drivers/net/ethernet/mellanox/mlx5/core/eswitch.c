@@ -1927,6 +1927,15 @@ static void mlx5_eswitch_event_handlers_unregister(struct mlx5_eswitch *esw)
 	flush_workqueue(esw->work_queue);
 }
 
+static void mlx5_eswitch_clear_vf_vports_info(struct mlx5_eswitch *esw)
+{
+	struct mlx5_vport *vport;
+	int i;
+
+	mlx5_esw_for_each_vf_vport(esw, i, vport, esw->esw_funcs.num_vfs)
+		memset(&vport->info, 0, sizeof(vport->info));
+}
+
 /* Public E-Switch API */
 #define ESW_ALLOWED(esw) ((esw) && MLX5_ESWITCH_MANAGER((esw)->dev))
 
@@ -2042,7 +2051,7 @@ abort:
 	return err;
 }
 
-void mlx5_eswitch_disable(struct mlx5_eswitch *esw)
+void mlx5_eswitch_disable(struct mlx5_eswitch *esw, bool clear_vf)
 {
 	int old_mode;
 
@@ -2069,6 +2078,8 @@ void mlx5_eswitch_disable(struct mlx5_eswitch *esw)
 
 	if (old_mode == MLX5_ESWITCH_OFFLOADS)
 		mlx5_rescan_drivers(esw->dev);
+	if (clear_vf)
+		mlx5_eswitch_clear_vf_vports_info(esw);
 }
 
 int mlx5_eswitch_init(struct mlx5_core_dev *dev)
