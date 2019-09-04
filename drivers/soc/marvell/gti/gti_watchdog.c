@@ -194,12 +194,6 @@ static int gti_wdog_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto enable_failed;
 	}
 
-	err = pci_request_regions(pdev, DRV_NAME);
-	if (err) {
-		dev_err(&pdev->dev, "PCI request regions failed 0x%x\n", err);
-		goto map_failed;
-	}
-
 	pci_set_master(pdev);
 
 	/*
@@ -225,8 +219,6 @@ static int gti_wdog_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	return 0;
 
 misc_register_fail:
-	pci_release_regions(pdev);
-map_failed:
 	pci_disable_device(pdev);
 enable_failed:
 
@@ -235,7 +227,6 @@ enable_failed:
 
 static void gti_wdog_remove(struct pci_dev *pdev)
 {
-	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	misc_deregister(&gti_wdog_miscdevice);
 }
