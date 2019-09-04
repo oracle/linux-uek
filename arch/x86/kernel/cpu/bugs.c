@@ -36,6 +36,8 @@
 #include <asm/e820/api.h>
 #include <asm/spec_ctrl.h>
 
+#include <xen/xen.h>
+
 #include "cpu.h"
 
 /*

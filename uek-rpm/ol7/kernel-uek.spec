@@ -213,6 +213,9 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %define with_pae 0
 
+# securelaunch (with embedded uroot initramfs)
+%define with_securelaunch %{?_with_securelaunch: 1} %{?!_with_securelaunch: 1}
+
 # if requested, only build base kernel
 %if %{with_baseonly}
 %define with_smp 0
@@ -225,6 +228,23 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_up 0
 %define with_kdump 0
 %define with_debug 0
+%endif
+
+# if requested, only build SL kernel
+%if %{with_securelaunch}
+%define with_up 0
+%define with_smp 0
+%define with_kdump 0
+%define with_debug 0
+%define with_kabichk 0
+%define with_headers 0
+%define with_debug 0
+%define with_debuginfo 0
+%define with_tools 0
+%define with_perf 0
+%define with_dtrace 0
+%define with_fips 0
+%define with_doc 0
 %endif
 
 %define all_x86 i386 i686
@@ -271,6 +291,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # don't build noarch kernels or headers (duh)
 %ifarch noarch
 %define with_up 0
+%define with_securelaunch 0
 %define with_compression 0
 %define with_headers 0
 %define with_tools 0
@@ -292,7 +313,9 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 # Enable dtrace
 %ifarch x86_64 aarch64
+%if !%{with_securelaunch}
 %define with_dtrace 1
+%endif
 %endif
 
 # Per-arch tweaks
@@ -310,7 +333,9 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 #%define all_arch_configs kernel-%{version}-x86_64*.config
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
+%if !%{with_securelaunch}
 %define with_tools 1
+%endif
 %endif
 
 %ifarch ppc64
@@ -435,6 +460,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_up 0
 %define with_smp 0
 %define with_pae 0
+%define with_securelaunch 0
 %define with_kdump 0
 %define with_debuginfo 0
 %define with_perf 0
@@ -489,8 +515,10 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define kernel_PAE_provides kernel-xen = %{rpmversion}-%{pkg_release}
 
 %ifarch x86_64
+%if !%{with_securelaunch}
 %define kernel_obsoletes kernel-xen <= 2.6.27-0.2.rc0.git6.fc10
 %define kernel_provides kernel%{?variant}-xen = %{rpmversion}-%{pkg_release}
+%endif
 %endif
 
 # We moved the drm include files into kernel-headers, make sure there's
@@ -511,13 +539,13 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 # macros defined above.
 # -e flag denotes an embedded package
 #
-%define kernel_reqprovconf(e) \
-Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
-Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
-Provides: kernel%{?variant}-drm = 4.3.0\
-Provides: kernel%{?variant}-drm-nouveau = 12\
-Provides: kernel%{?variant}-modeset = 1\
-Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
+%define kernel_reqprovconf(s) \
+Provides: kernel%{?variant}%{?-s:-SL} = %{rpmversion}-%{pkg_release}\
+Provides: kernel%{?variant}%{?-s:-SL}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
+Provides: kernel%{?variant}%{?-s:-SL}-drm = 4.3.0\
+Provides: kernel%{?variant}%{?-s:-SL}-drm-nouveau = 12\
+Provides: kernel%{?variant}%{?-s:-SL}-modeset = 1\
+Provides: kernel%{?variant}%{?-s:-SL}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
 %ifnarch sparc64 aarch64 mips64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
@@ -615,6 +643,10 @@ BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
 %endif # with_tools
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
+%if %{with_securelaunch}
+BuildRequires: u-root
+%endif
+
 Source0: linux-%{kversion}.tar.bz2
 
 %if %{signmodules}
@@ -644,6 +676,11 @@ Source1011: config-aarch64-embedded
 Source1012: config-aarch64-embedded-debug
 Source1013: config-mips64-embedded-kdump
 Source1014: config-aarch64-embedded2
+
+%if %{with_securelaunch}
+Source1015: config-x86_64-sl
+Source1016: config-x86_64-sl-debug
+%endif
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -708,6 +745,15 @@ The kernel package contains the Linux kernel (vmlinuz), the core of any
 Linux operating system.  The kernel handles the basic functions
 of the operating system: memory allocation, process allocation, device
 input and output, etc.
+
+%package SL
+Summary: The Linux kernel compiled for Secure Launch support
+Group: System Environment/Kernel
+%kernel_reqprovconf -s
+%description SL
+This package includes a version of the Linux kernel with support for Secure Launch.
+A Secure Launch kernel provides TPM measurement/attestation support as part of the
+Trenchboot architecture.
 
 %package doc
 Summary: Various documentation bits found in the kernel source
@@ -1057,7 +1103,7 @@ This package includes embedded kernel.
 %prep
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
-%if !%{with_up}%{with_pae}
+%if !%{with_up}%{with_pae}%{with_securelaunch}
 echo "Cannot build --with baseonly, up build is disabled"
 exit 1
 %endif
@@ -1235,8 +1281,13 @@ chmod +x %{_builddir}/find-debuginfo.sh
 
 mkdir -p configs
 %ifarch x86_64
+%if %{with_securelaunch}
+	cp %{SOURCE1016} configs/config-debug
+	cp %{SOURCE1015} configs/config
+%else
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
+%endif # with_securelaunch
 %endif #ifarch x86_64
 
 %ifarch i686
@@ -1353,7 +1404,10 @@ BuildKernel() {
     echo USING ARCH=$Arch
     make -s ARCH=$Arch %{oldconfig_target} > /dev/null
     make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
+# Secure Launch kernel does not use modules
+%if !%{with_securelaunch}
     make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
+%endif
 
 %ifarch %{arm} aarch64
    mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
@@ -1399,7 +1453,9 @@ BuildKernel() {
 %endif
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
+%if !%{with_securelaunch}
     make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
+%endif
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
@@ -1675,6 +1731,14 @@ BuildKernel %make_target %kernel_image emb-debug
 BuildKernel %make_target %kernel_image PAE
 %endif
 
+%if %{with_securelaunch}
+# copy/gzip over the initramfs provided by the u-root package (for inclusion into kernel)
+gzip -c /boot/uroot-initramfs.cpio >> ./uroot-initramfs.cpio.gz
+# copy over the policy file provided by the u-root package and version it.
+cp /boot/securelaunch.policy $RPM_BUILD_ROOT/boot/securelaunch.policy-%{KVERREL}.SL
+BuildKernel %make_target %kernel_image SL
+%endif
+
 %if %{with_up}
 BuildKernel %make_target %kernel_image
 %endif
@@ -1751,6 +1815,11 @@ make -j1 htmldocs || %{doc_build_fail}
       mv certs/signing_key.pem.sign.PAEdebug certs/signing_key.pem \
       mv certs/signing_key.x509.sign.PAEdebug certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAEdebug/ %{dgst} \
+    fi \
+    if [ "%{with_securelaunch}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.SL certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.SL certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.SL/ %{dgst} \
     fi \
     if [ "%{with_up}" != "0" ]; then \
       mv certs/signing_key.pem.sign certs/signing_key.pem \
@@ -2023,6 +2092,34 @@ fi\
 %{nil}
 
 #
+# This macro defines a %%post and %% posttrans script for SL kernel package
+#
+%define kernel_variant_SL_post() \
+%posttrans SL\
+/sbin/new-kernel-pkg --package kernel-SL --update %{KVERREL}.SL || exit $?\
+/sbin/new-kernel-pkg --package kernel-SL --rpmposttrans %{KVERREL}.SL || exit $?\
+\
+%post SL\
+if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
+   [ -f /etc/sysconfig/kernel ]; then\
+  /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-SL/' /etc/sysconfig/kernel || exit $?\
+fi\
+if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
+  sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
+fi\
+[ -f /etc/default/grub ] && . /etc/default/grub\
+DIST_DTFILE="/boot/dtb-%{KVERREL}.SL/$GRUB_DEFAULT_DTB"\
+if [ -f "$DIST_DTFILE" ]; then\
+    %{_sbindir}/new-kernel-pkg --package kernel-SL --install %{KVERREL}.SL "--devtree=$DIST_DTFILE" || exit $?\
+else\
+    %{_sbindir}/new-kernel-pkg --package kernel-SL --install %{KVERREL}.SL || exit $?\
+fi\
+if [ ! -f /boot/securelaunch.policy ]; then\
+cp /boot/securelaunch.policy-%{KVERREL}.SL /boot/securelaunch.policy\
+fi\
+%{nil}
+
+#
 # This macro defines a %%preun script for a kernel package.
 #	%%kernel_variant_preun [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
@@ -2036,6 +2133,10 @@ then\
 fi\
 %{nil}
 
+%define kernel_variant_SL_preun() \
+%preun SL\
+%{_sbindir}/new-kernel-pkg --remove %{KVERREL}.SL || exit $?\
+%{nil}
 #
 # This macro defines a %%pre script for a kernel package.
 #	%%kernel_variant_pre [-o] <subpackage>
@@ -2114,6 +2215,10 @@ fi\
 %kernel_variant_preun PAEdebug
 %kernel_variant_postun PAEdebug
 %kernel_variant_pre PAEdebug
+
+%kernel_variant_pre SL
+%kernel_variant_SL_preun
+%kernel_variant_SL_post
 
 %kernel_variant_pre 4k
 %kernel_variant_preun 4k
@@ -2257,6 +2362,9 @@ fi
 /boot/System.map-%{KVERREL}%{?2:.%{2}}\
 /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 /boot/config-%{KVERREL}%{?2:.%{2}}\
+%if %{with_securelaunch}\
+/boot/securelaunch.policy-%{KVERREL}.SL\
+%else\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 %if %{with_dtrace} && "%{2}" != "emb" && "%{2}" != "emb2"\
@@ -2289,6 +2397,7 @@ fi
 %dir /usr/src/kernels\
 %verify(not mtime) /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
+%endif\
 %if %{with_debuginfo}\
 %ifnarch noarch\
 %if %{fancy_debuginfo}\
@@ -2317,6 +2426,7 @@ fi
 %endif
 %kernel_variant_files %{with_pae} PAE
 %kernel_variant_files %{with_pae_debug} PAEdebug
+%kernel_variant_files %{with_securelaunch} SL
 %kernel_variant_files %{with_kdump} kdump
 
 %kernel_variant_files %{with_4k_ps} 4k
