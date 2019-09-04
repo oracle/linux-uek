@@ -10711,7 +10711,7 @@ static struct npc_kpu_profile_action kpu8_action_entries[] = {
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		12, 16, 20, 2, 0,
 		NPC_S_KPU11_TU_ETHER, 8, 1,
-		NPC_LID_LD, NPC_LT_LD_GRE,
+		NPC_LID_LD, NPC_LT_LD_NVGRE,
 		NPC_F_LD_L_GRE_NVGRE,
 		0, 0, 0, 0,
 	},
