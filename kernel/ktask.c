@@ -530,6 +530,7 @@ int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 
 	return kt.kt_error;
 }
+EXPORT_SYMBOL(__ktask_run_numa);
 
 /*
  * Initialize internal limits on work items queued.  Work items submitted to
@@ -643,3 +644,4 @@ void *ktask_iter_range(void *position, size_t size)
 {
 	return (char *)position + size;
 }
+EXPORT_SYMBOL(ktask_iter_range);
