@@ -307,8 +307,7 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			    "ADDR_CHANGE: calling rds_conn_drop conn %p <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
-		if (!rds_conn_self_loopback_passive(conn))
-			rds_conn_drop(conn, DR_IB_ADDR_CHANGE);
+		rds_conn_drop(conn, DR_IB_ADDR_CHANGE);
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
