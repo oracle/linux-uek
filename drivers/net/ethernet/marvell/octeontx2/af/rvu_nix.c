@@ -2648,7 +2648,7 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->lid = NPC_LID_LD;
 			field->hdr_offset = 4; /* VSID offset */
 			field->bytesm1 = 2;
-			field->ltype_match = NPC_LT_LD_GRE;
+			field->ltype_match = NPC_LT_LD_NVGRE;
 			field->ltype_mask = 0xF;
 			break;
 		case NIX_FLOW_KEY_TYPE_VXLAN:
