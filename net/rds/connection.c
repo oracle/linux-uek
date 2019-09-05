@@ -1062,6 +1062,23 @@ void rds_conn_drop(struct rds_connection *conn, int reason)
 {
 	WARN_ON(conn->c_trans->t_mp_capable);
 	rds_conn_path_drop(&conn->c_path[0], reason);
+
+	/*
+	 * See if we can find the loop-back peer. We exclude same-port
+	 * connections. Use wildcard as interface index when looking
+	 * up the peer, in order to be forward compatible with IPv6
+	 * loop-back connections. */
+	if (conn->c_loopback && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr)) {
+		struct rds_connection *peer;
+
+		/* Note the swapped d/saddr */
+		peer = rds_conn_find(rds_conn_net(conn),
+				     &conn->c_faddr, &conn->c_laddr,
+				     conn->c_trans, conn->c_tos,
+				     0);
+		if (peer)
+			rds_conn_path_drop(peer->c_path + 0, reason);
+	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);
 
