@@ -127,9 +127,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 %define fancy_debuginfo 0
 %endif
 
-# Control whether we build the hmac for fips mode.
-%define with_fips      %{?_without_fips:      0} %{?!_without_fips:      1}
-
 %if %{fancy_debuginfo}
 BuildRequires: rpm-build >= 4.4.2.1-4
 %define _find_debuginfo_opts --strict-build-id
@@ -548,9 +545,6 @@ BuildRequires: pesign >= 0.10-4
 %endif
 %endif
 
-%if %{with_fips}
-BuildRequires: hmaccalc
-%endif
 %if %{with_dtrace}
 BuildRequires: libdtrace-ctf-devel >= 1.1.0
 %endif
@@ -1180,11 +1174,11 @@ BuildKernel() {
     make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
     make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
 
+    mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
+    mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
 %ifarch %{arm} aarch64
-   mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
-   mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
-   make -s ARCH=$Arch V=1 dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
-   find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
+    make -s ARCH=$Arch V=1 dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
+    find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
 %if %{with_dtrace}
@@ -1211,13 +1205,13 @@ BuildKernel() {
     $CopyKernel $KernelImage \
 		$RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
     chmod 755 $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
+    cp $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer $RPM_BUILD_ROOT/lib/modules/$KernelVer/$InstallName
 
-%if %{with_fips}
     # hmac sign the kernel for FIPS
     echo "Creating hmac file: $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac"
     ls -l $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
     sha512hmac $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer | sed -e "s,$RPM_BUILD_ROOT,," > $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac;
-%endif
+    cp $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz.hmac
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
     make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
@@ -1933,10 +1927,10 @@ fi
 %if %{1}\
 %{expand:%%files %{?2}}\
 %defattr(-,root,root)\
-/%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
-%if %{with_fips} \
-/%{image_install_path}/.vmlinuz-%{KVERREL}%{?2:.%{2}}.hmac \
-%endif \
+/lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
+%ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz.hmac \
+%ghost /%{image_install_path}/.vmlinuz-%{KVERREL}%{?2:.%{2}}.hmac \
 /boot/System.map-%{KVERREL}%{?2:.%{2}}\
 /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 /boot/config-%{KVERREL}%{?2:.%{2}}\
