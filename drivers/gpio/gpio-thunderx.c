@@ -233,8 +233,7 @@ static void cleanup_el3_irqs(struct task_struct *task)
 	for (i = 0; i < MAX_GPIO; i++) {
 		if (gpio_installed[i] &&
 		    gpio_installed_tasks[i] &&
-		    ((gpio_installed_tasks[i] == task) ||
-			(gpio_installed_tasks[i] == task->group_leader))) {
+		    (gpio_installed_tasks[i] == task)) {
 			pr_alert("Exiting, removing handler for GPIO %d\n",
 				 i);
 			__remove_el3_inthandler(i);
