@@ -586,6 +586,7 @@ Source20: x86_energy_perf_policy
 Source21: securebootca.cer
 Source22: secureboot.cer
 Source23: turbostat
+Source43: generate_bls_conf.sh
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -1447,6 +1448,16 @@ fi
       cp arch/$Arch/kernel/module.lds $RPM_BUILD_ROOT/$DevelDir/arch/$Arch/kernel/module.lds || :
     fi
     ln -sf $DevelDir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
+
+    # prune junk from kernel-devel
+    find $RPM_BUILD_ROOT/usr/src/kernels -name ".*.cmd" -exec rm -f {} \;
+
+    # build a BLS config for this kernel
+    %{SOURCE43} "$KernelVer" "$RPM_BUILD_ROOT" "%{?variant}"
+
+    # UEFI Secure Boot CA cert, which can be used to authenticate the kernel
+    mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
+    install -m 0644 %{SOURCE21} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing-ca.cer
 }
 
 ###
@@ -1910,7 +1921,8 @@ fi
 %if %{with_doc}
 %files doc
 %defattr(-,root,root)
-%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/*
+%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/Documentation/*
+%dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/Documentation
 %dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
 %endif
 
@@ -1944,6 +1956,8 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/weak-updates\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/bls.conf\
+%{_datadir}/doc/kernel-keys/%{KVERREL}%{?2:.%{2}}/kernel-signing-ca.cer\
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
 /etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
