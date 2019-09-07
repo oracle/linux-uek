@@ -860,8 +860,10 @@ static void __flush_eth_arp_entry(struct arpreq *r)
 		for (port = 1; port <= ibdev->phys_port_cnt; ++port) {
 			struct net_device *ndev = ibdev->get_netdev(ibdev, port);
 
-			if (ndev)
+			if (ndev) {
 				__flush_arp_entry(r, ndev->name);
+				dev_put(ndev);
+			}
 		}
 	}
 	up_read(&rds_ib_devices_lock);
