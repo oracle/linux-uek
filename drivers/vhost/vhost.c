@@ -1088,8 +1088,10 @@ static int translate_desc(struct vhost_virtqueue *vq, u64 addr, u32 len,
 		_iov = iov + ret;
 		size = reg->memory_size - addr + reg->guest_phys_addr;
 		_iov->iov_len = min((u64)len - s, size);
-		_iov->iov_base = (void __user *)(unsigned long)
-			(reg->userspace_addr + addr - reg->guest_phys_addr);
+		_iov->iov_base = (void __user *)
+			((unsigned long)reg->userspace_addr +
+			 array_index_nospec((unsigned long)(addr - reg->guest_phys_addr),
+					   reg->memory_size));
 		s += size;
 		addr += size;
 		++ret;
