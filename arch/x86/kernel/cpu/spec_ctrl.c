@@ -228,11 +228,15 @@ static int __init debugfs_spec_ctrl(void)
 			    arch_debugfs_dir, NULL, &fops_ibpb_enabled);
 	debugfs_create_file("retpoline_fallback", S_IRUSR | S_IWUSR,
 			     arch_debugfs_dir, NULL, &fops_retpoline_fallback);
+
+#ifdef CONFIG_RETPOLINE
 	if (IS_ENABLED(CONFIG_RETPOLINE)) {
 		debugfs_create_file("retpoline_enabled",
 				    0600, arch_debugfs_dir, NULL,
 				    &fops_retpoline_enabled);
 	}
+#endif /* CONFIG_RETPOLINE */
+
         return 0;
 }
 late_initcall(debugfs_spec_ctrl);
