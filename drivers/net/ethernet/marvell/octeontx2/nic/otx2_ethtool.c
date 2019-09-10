@@ -41,6 +41,9 @@ struct otx2_stat {
 	.index = offsetof(struct otx2_dev_stats, stat) / sizeof(u64), \
 }
 
+#define OTX2_ETHTOOL_SUPPORTED_MODES 0x630CC23 //110001100001100110000100011
+#define OTX2_ETHTOOL_ALL_MODES (BIT_ULL(__ETHTOOL_LINK_MODE_LAST) - 1)
+
 static const struct otx2_stat otx2_dev_stats[] = {
 	OTX2_DEV_STAT(rx_bytes),
 	OTX2_DEV_STAT(rx_frames),
@@ -918,6 +921,61 @@ static void otx2_get_fec_info(u64 index, int mode, struct ethtool_link_ksettings
 	}
 }
 
+static void otx2_get_link_mode_info(u64 index, int mode,
+				    struct ethtool_link_ksettings
+				    *link_ksettings)
+{
+	u64 ethtool_link_mode = 0;
+	int bit_position = 0;
+	u64 link_modes = 0;
+
+	int cgx_link_mode[29] = {0,
+		ETHTOOL_LINK_MODE_1000baseX_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseT_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseR_FEC_BIT,
+		ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
+		ETHTOOL_LINK_MODE_20000baseMLD2_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseCR_Full_BIT,
+		ETHTOOL_LINK_MODE_25000baseSR_Full_BIT,
+		ETHTOOL_LINK_MODE_20000baseKR2_Full_BIT,
+		ETHTOOL_LINK_MODE_25000baseCR_Full_BIT,
+		ETHTOOL_LINK_MODE_25000baseKR_Full_BIT,
+		ETHTOOL_LINK_MODE_40000baseSR4_Full_BIT,
+		ETHTOOL_LINK_MODE_40000baseLR4_Full_BIT,
+		ETHTOOL_LINK_MODE_40000baseCR4_Full_BIT,
+		ETHTOOL_LINK_MODE_40000baseKR4_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseSR_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseSR2_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseLR_Full_BIT,
+		ETHTOOL_LINK_MODE_56000baseKR4_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseCR2_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseKR2_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseLRM_Full_BIT,
+		ETHTOOL_LINK_MODE_100000baseSR4_Full_BIT,
+		ETHTOOL_LINK_MODE_100000baseLR4_ER4_Full_BIT,
+		ETHTOOL_LINK_MODE_100000baseCR4_Full_BIT,
+		ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT
+	};
+		link_modes = index & OTX2_ETHTOOL_SUPPORTED_MODES;
+
+	for (bit_position = 0; link_modes; bit_position++, link_modes >>= 1) {
+		if (!(link_modes & 1))
+			continue;
+
+		if (bit_position ==  0)
+			ethtool_link_mode = 0x3F;
+
+		ethtool_link_mode |= 1 << cgx_link_mode[bit_position];
+		if (mode)
+			*link_ksettings->link_modes.advertising |=
+							ethtool_link_mode;
+		else
+			*link_ksettings->link_modes.supported |=
+							ethtool_link_mode;
+	}
+}
+
 static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
 {
 	struct cgx_fw_data *rsp = NULL;
@@ -978,8 +1036,8 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 				   struct ethtool_link_ksettings *cmd)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	u32 supported = 0, advertising = 0;
 	struct cgx_fw_data *rsp = NULL;
+	u32 supported = 0;
 
 	cmd->base.duplex = pfvf->linfo.full_duplex;
 	cmd->base.speed = pfvf->linfo.speed;
@@ -992,12 +1050,12 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 
 	if (rsp->fwdata.supported_an)
 		supported |= SUPPORTED_Autoneg;
-	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.advertising,
-						advertising);
-	otx2_get_fec_info(rsp->fwdata.advertised_fec, 1, cmd);
-
 	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.supported,
 						supported);
+	otx2_get_link_mode_info(rsp->fwdata.advertised_link_modes, 1, cmd);
+	otx2_get_fec_info(rsp->fwdata.advertised_fec, 1, cmd);
+
+	otx2_get_link_mode_info(rsp->fwdata.supported_link_modes, 0, cmd);
 	otx2_get_fec_info(rsp->fwdata.supported_fec, 0, cmd);
 
 	return 0;
@@ -1006,6 +1064,7 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 static int otx2_set_link_ksettings(struct net_device *netdev,
 				   const struct ethtool_link_ksettings *cmd)
 {
+	unsigned long advertising = 0;
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	struct cgx_set_link_mode_req *req;
 	struct cgx_set_link_mode_rsp *rsp;
@@ -1017,18 +1076,15 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 		otx2_mbox_unlock(&pfvf->mbox);
 		return -EAGAIN;
 	}
-	req->args.speed = cmd->base.speed;
-	/*The full_duplex variable in linkinfo takes 1 for full duplex and 0
-	 * for half duplex. But the set_link_mode command in atf requires the
-	 * argument to map 1 for half duplex and 0 for full duplex. Toggling to
-	 * the current value in linkinfo for the purpose.
-	 */
-	if (cmd->base.duplex == DUPLEX_UNKNOWN)
-		req->args.duplex = pfvf->linfo.full_duplex ^ 0x1;
-	else
-		req->args.duplex = cmd->base.duplex ^ 0x1;
-	req->args.an =  cmd->base.autoneg;
 
+	advertising = (*cmd->link_modes.advertising) & (OTX2_ETHTOOL_ALL_MODES);
+	if (!(advertising & (advertising - 1)) &&
+	    (advertising <= BIT_ULL(ETHTOOL_LINK_MODE_10000baseLRM_Full_BIT))) {
+		req->args.mode = advertising;
+	} else {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return -EINVAL;
+	}
 	err =  otx2_sync_mbox_msg(&pfvf->mbox);
 	if (!err) {
 		rsp = (struct cgx_set_link_mode_rsp *)
