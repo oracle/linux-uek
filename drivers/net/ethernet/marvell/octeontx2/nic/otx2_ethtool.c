@@ -918,14 +918,6 @@ static void otx2_get_fec_info(u64 index, int mode, struct ethtool_link_ksettings
 	}
 }
 
-static u32 otx2_get_link_mode_info(u64 index)
-{
-	int link_modes = 0;
-
-	/************  TO DO *********/
-	return link_modes;
-}
-
 static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
 {
 	struct cgx_fw_data *rsp = NULL;
@@ -1000,13 +992,10 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 
 	if (rsp->fwdata.supported_an)
 		supported |= SUPPORTED_Autoneg;
-	advertising |= otx2_get_link_mode_info
-			(rsp->fwdata.advertised_link_modes);
 	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.advertising,
 						advertising);
 	otx2_get_fec_info(rsp->fwdata.advertised_fec, 1, cmd);
 
-	supported |= otx2_get_link_mode_info(rsp->fwdata.supported_link_modes);
 	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.supported,
 						supported);
 	otx2_get_fec_info(rsp->fwdata.supported_fec, 0, cmd);
@@ -1039,8 +1028,6 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 	else
 		req->args.duplex = cmd->base.duplex ^ 0x1;
 	req->args.an =  cmd->base.autoneg;
-	req->args.ports = cmd->base.port;
-	req->args.flags = 0;
 
 	err =  otx2_sync_mbox_msg(&pfvf->mbox);
 	if (!err) {
