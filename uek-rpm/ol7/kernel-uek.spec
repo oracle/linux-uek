@@ -807,11 +807,11 @@ This package provides debug information for the perf python bindings.
 %endif # with_perf
 
 %if %{with_tools}
-%package -n kernel-uek-tools
+%package -n kernel-luci-tools
 Summary: Assortment of tools for the Linux kernel
 Group: Development/System
 License: GPLv2
-Provides: kernel-uek-tools
+Provides: kernel-luci-tools
 Provides: kernel-tools
 Obsoletes: qemu-kvm-tools
 Obsoletes: qemu-kvm-tools-ev
@@ -825,47 +825,47 @@ Provides:  cpufrequtils = 1:009-0.6.p1
 Obsoletes: cpufreq-utils < 1:009-0.6.p1
 Obsoletes: cpufrequtils < 1:009-0.6.p1
 Obsoletes: cpuspeed < 1:1.5-16
-Requires: kernel-uek-tools-libs = %{version}-%{release}
+Requires: kernel-luci-tools-libs = %{version}-%{release}
 %endif # cpupowerarchs
 %define __requires_exclude ^%{_bindir}/python
-%description -n kernel-uek-tools
+%description -n kernel-luci-tools
 This package contains the tools/ directory from the kernel source
 and the supporting documentation.
 
-%package -n kernel-uek-tools-libs
+%package -n kernel-luci-tools-libs
 Summary: Libraries for the kernels-tools
 Group: Development/System
 License: GPLv2
-Provides: kernel-uek-tools-libs
+Provides: kernel-luci-tools-libs
 Provides: kernel-tools-libs
-%description -n kernel-uek-tools-libs
+%description -n kernel-luci-tools-libs
 This package contains the libraries built from the tools/ directory
 from the kernel source.
 
-%package -n kernel-uek-tools-libs-devel
+%package -n kernel-luci-tools-libs-devel
 Summary: Assortment of tools for the Linux kernel
 Group: Development/System
 License: GPLv2
-Requires: kernel-uek-tools = %{version}-%{release}
+Requires: kernel-luci-tools = %{version}-%{release}
 Provides:  cpupowerutils-devel = 1:009-0.6.p1
 Obsoletes: cpupowerutils-devel < 1:009-0.6.p1
-Requires: kernel-uek-tools-libs = %{version}-%{release}
-Provides: kernel-uek-tools-devel
-Provides: kernel-uek-tools-libs-devel
+Requires: kernel-luci-tools-libs = %{version}-%{release}
+Provides: kernel-luci-tools-devel
+Provides: kernel-luci-tools-libs-devel
 Provides: kernel-tools-devel
 Provides: kernel-tools-libs-devel
-%description -n kernel-uek-tools-libs-devel
+%description -n kernel-luci-tools-libs-devel
 This package contains the development files for the tools/ directory from
 the kernel source.
 
-%package -n kernel-uek-tools-debuginfo
+%package -n kernel-luci-tools-debuginfo
 Summary: Debug information for package kernel-tools
 Group: Development/Debug
 Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
 AutoReqProv: no
-Provides: kernel-uek-tools-debuginfo
+Provides: kernel-luci-tools-debuginfo
 Provides: kernel-tools-debuginfo
-%description -n kernel-uek-tools-debuginfo
+%description -n kernel-luci-tools-debuginfo
 This package provides debug information for package kernel-tools.
 
 # Note that this pattern only works right to match the .build-id
@@ -1891,10 +1891,10 @@ rm -rf $RPM_BUILD_ROOT
 ###
 
 %if %{with_tools}
-%post -n kernel-uek-tools-libs
+%post -n kernel-luci-tools-libs
 /sbin/ldconfig
 
-%postun -n kernel-uek-tools-libs
+%postun -n kernel-luci-tools-libs
 /sbin/ldconfig
 %endif # with_tools
 
@@ -2129,7 +2129,7 @@ fi
 
 %if %{with_tools}
 %ifarch %{cpupowerarchs}
-%files -n kernel-uek-tools -f cpupower.lang
+%files -n kernel-luci-tools -f cpupower.lang
 %defattr(-,root,root)
 %{_bindir}/cpupower
 %{_unitdir}/cpupower.service
@@ -2147,23 +2147,23 @@ fi
 %endif # cpupowerarchs
 
 %ifarch x86_64
-%files -n kernel-uek-tools
+%files -n kernel-luci-tools
 %defattr(-,root,root)
 %{_mandir}/man1/kvm_stat*
 %{_bindir}/kvm_stat
 %endif
 
 %if %{with_debuginfo}
-%files -f kernel-tools-debuginfo.list -n kernel-uek-tools-debuginfo
+%files -f kernel-tools-debuginfo.list -n kernel-luci-tools-debuginfo
 %defattr(-,root,root)
 %endif
 
 %ifarch %{cpupowerarchs}
-%files -n kernel-uek-tools-libs
+%files -n kernel-luci-tools-libs
 %{_libdir}/libcpupower.so.0
 %{_libdir}/libcpupower.so.0.0.1
 
-%files -n kernel-uek-tools-libs-devel
+%files -n kernel-luci-tools-libs-devel
 %{_libdir}/libcpupower.so
 %{_includedir}/cpufreq.h
 %endif # cpupowerarchs
