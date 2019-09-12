@@ -2559,10 +2559,8 @@ typedef struct fc_port {
 	struct dentry *dfs_rport_dir;
 } fc_port_t;
 
-enum {
-	FC4_PRIORITY_NVME = 1,
-	FC4_PRIORITY_FCP  = 2,
-};
+#define FC4_PRIORITY_NVME	0
+#define FC4_PRIORITY_FCP	1
 
 #define QLA_FCPORT_SCAN		1
 #define QLA_FCPORT_FOUND	2

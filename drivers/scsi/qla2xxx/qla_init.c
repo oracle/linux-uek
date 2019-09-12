@@ -744,7 +744,7 @@ static void qla24xx_handle_gnl_done_event(scsi_qla_host_t *vha,
 
 		loop_id = le16_to_cpu(e->nport_handle);
 		loop_id = (loop_id & 0x7fff);
-		if  (fcport->fc4f_nvme)
+		if (NVME_TARGET(vha->hw, fcport))
 			current_login_state = e->current_login_state >> 4;
 		else
 			current_login_state = e->current_login_state & 0xf;
@@ -1931,7 +1931,7 @@ qla24xx_handle_prli_done_event(struct scsi_qla_host *vha, struct event_arg *ea)
 			else
 				ea->fcport->fc4_type &= ~FS_FC4TYPE_FCP;
 			qla24xx_post_prli_work(vha, ea->fcport);
-			return;
+			break;
 		}
 
 		/* at this point both PRLI NVME & PRLI FCP failed */
@@ -8678,6 +8678,11 @@ qla81xx_nvram_config(scsi_qla_host_t *vha)
 
 	/* Determine NVMe/FCP priority for target ports */
 	ha->fc4_type_priority = qla2xxx_get_fc4_priority(vha);
+
+	/* Determine NVMe/FCP priority for target ports */
+	ha->fc4_type_priority = qla2xxx_get_fc4_priority(vha);
+	ql_log(ql_log_info, vha, 0xffff, "FC4 priority set to %s\n",
+	    ha->fc4_type_priority & BIT_0 ? "FCP" : "NVMe");
 
 	if (rval) {
 		ql_log(ql_log_warn, vha, 0x0076,
