@@ -1388,8 +1388,7 @@ void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc)
 		queue_work(rds_wq, &rds_ibdev->fastreg_reset_w);
 	}
 
-	if (ibmr->fr_state == MR_IS_VALID)
-		atomic_add(2, &rds_ibdev->fastreg_wrs);
+	atomic_add(2, &rds_ibdev->fastreg_wrs);
 	complete(&ibmr->wr_comp);
 }
 
@@ -1413,7 +1412,6 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 		ibmr->fr_state = MR_IS_STALE;
 	}
 
-	if (ibmr->fr_state == MR_IS_VALID)
-		atomic_add(2, &ic->i_fastreg_wrs);
+	atomic_add(2, &ic->i_fastreg_wrs);
 	complete(&ibmr->wr_comp);
 }
