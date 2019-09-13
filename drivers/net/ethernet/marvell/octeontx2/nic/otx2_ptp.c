@@ -8,19 +8,8 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/ptp_clock_kernel.h>
-
 #include "otx2_common.h"
 #include "otx2_ptp.h"
-
-struct otx2_ptp {
-	struct ptp_clock_info ptp_info;
-	struct ptp_clock *ptp_clock;
-	struct otx2_nic *nic;
-
-	struct cyclecounter cycle_counter;
-	struct timecounter time_counter;
-};
 
 static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 {
