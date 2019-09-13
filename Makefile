@@ -861,7 +861,7 @@ KBUILD_CFLAGS += $(call cc-option, -flive-patching=inline-clone)
 endif
 
 ifdef CONFIG_KSPLICE
-ifeq ($(ARCH),arm64)
+ifeq ($(ARCH),$(filter $(ARCH),arm64 mips))
 KBUILD_CFLAGS	+= $(call cc-option,-ffunction-sections,)
 KBUILD_CFLAGS	+= $(call cc-option,-fdata-sections,)
 endif
