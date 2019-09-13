@@ -883,7 +883,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	struct rds_conn_path *cp;
 	unsigned long flags;
 	LIST_HEAD(list);
-	int conn_dropped = 0;
+	char *conn_dropped;
 
 	/* get all the messages we're dropping under the rs lock */
 	spin_lock_irqsave(&rs->rs_lock, flags);
@@ -947,7 +947,10 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 
 	rds_wake_sk_sleep(rs);
 
+	conn_dropped = kzalloc(BIT(sizeof(conn->c_tos)), GFP_KERNEL);
 	while (!list_empty(&list)) {
+		bool has_been_dropped;
+
 		rm = list_entry(list.next, struct rds_message, m_sock_item);
 		list_del_init(&rm->m_sock_item);
 
@@ -955,10 +958,13 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		 * For a paticular dest and for a sock,	all the rms cancelled
 		 * belong to the same connection.
 		 */
-		if (conn && !conn_dropped && dest &&
+		conn = rm->m_inc.i_conn;
+		has_been_dropped = conn_dropped ? conn_dropped[conn->c_tos] : false;
+		if (conn && !has_been_dropped && dest &&
 		    test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
 			rds_conn_drop(conn, DR_SOCK_CANCEL);
-			conn_dropped = 1;
+			if (conn_dropped)
+				conn_dropped[conn->c_tos] = 1;
 		}
 		rds_message_wait(rm);
 
@@ -979,6 +985,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 
 		rds_message_put(rm);
 	}
+	kfree(conn_dropped);
 }
 
 /*
