@@ -878,6 +878,27 @@ int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
 	return 0;
 }
 
+int otx2_mbox_up_handler_cgx_ptp_rx_info(struct otx2_nic *pf,
+					 struct cgx_ptp_rx_info_msg *msg,
+					 struct msg_rsp *rsp)
+{
+	int i;
+
+	pf->ptp->ptp_en = msg->ptp_en;
+
+	/* notify VFs about ptp event */
+	for (i = 0; i < pci_num_vf(pf->pdev); i++) {
+		struct otx2_vf_config *config = &pf->vf_configs[i];
+		struct delayed_work *dwork = &config->ptp_info_work;
+
+		if (config->intf_down)
+			continue;
+
+		schedule_delayed_work(dwork, msecs_to_jiffies(100));
+	}
+	return 0;
+}
+
 static int otx2_process_mbox_msg_up(struct otx2_nic *pf,
 				    struct mbox_msghdr *req)
 {
@@ -2298,6 +2319,34 @@ static void otx2_vf_link_event_task(struct work_struct *work)
 	otx2_sync_mbox_up_msg(&pf->mbox_pfvf[0], vf_idx);
 }
 
+static void otx2_vf_ptp_info_task(struct work_struct *work)
+{
+	struct cgx_ptp_rx_info_msg *req;
+	struct otx2_vf_config *config;
+	struct mbox_msghdr *msghdr;
+	struct otx2_nic *pf;
+	int vf_idx;
+
+	config = container_of(work, struct otx2_vf_config,
+			      ptp_info_work.work);
+	vf_idx = config - config->pf->vf_configs;
+	pf = config->pf;
+
+	msghdr = otx2_mbox_alloc_msg_rsp(&pf->mbox_pfvf[0].mbox_up, vf_idx,
+					 sizeof(*req), sizeof(struct msg_rsp));
+	if (!msghdr) {
+		dev_err(pf->dev, "Failed to create VF%d link event\n", vf_idx);
+		return;
+	}
+
+	req = (struct cgx_ptp_rx_info_msg *)msghdr;
+	req->hdr.id = MBOX_MSG_CGX_PTP_RX_INFO;
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;
+	req->ptp_en = pf->ptp->ptp_en;
+
+	otx2_sync_mbox_up_msg(&pf->mbox_pfvf[0], vf_idx);
+}
+
 static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
@@ -2328,6 +2377,8 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 		pf->vf_configs[i].intf_down = true;
 		INIT_DELAYED_WORK(&pf->vf_configs[i].link_event_work,
 				  otx2_vf_link_event_task);
+		INIT_DELAYED_WORK(&pf->vf_configs[i].ptp_info_work,
+				  otx2_vf_ptp_info_task);
 	}
 
 	ret = otx2_pf_flr_init(pf, numvfs);
@@ -2368,8 +2419,10 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 
 	pci_disable_sriov(pdev);
 
-	for (i = 0; i < pci_num_vf(pdev); i++)
+	for (i = 0; i < pci_num_vf(pdev); i++) {
 		cancel_delayed_work_sync(&pf->vf_configs[i].link_event_work);
+		cancel_delayed_work_sync(&pf->vf_configs[i].ptp_info_work);
+	}
 	kfree(pf->vf_configs);
 
 	otx2_disable_flr_me_intr(pf);
