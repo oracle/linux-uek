@@ -940,11 +940,11 @@ static irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 	struct otx2_nic *pf = (struct otx2_nic *)pf_irq;
 	struct mbox *mbox;
 
-	mbox = &pf->mbox;
-	otx2_queue_work(mbox, pf->mbox_wq, 0, 1, 1, TYPE_PFAF);
-
 	/* Clear the IRQ */
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
+
+	mbox = &pf->mbox;
+	otx2_queue_work(mbox, pf->mbox_wq, 0, 1, 1, TYPE_PFAF);
 
 	return IRQ_HANDLED;
 }
