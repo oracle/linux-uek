@@ -196,10 +196,22 @@ EXPORT_SYMBOL_GPL(mds_user_clear);
 DEFINE_STATIC_KEY_FALSE(mds_idle_clear);
 EXPORT_SYMBOL_GPL(mds_idle_clear);
 
+
+void update_percpu_mitigations(void)
+{
+	/*
+	 * No need to check for availability of IBRS since the values updated
+	 * by update_cpu_ibrs_all() are based on @use_ibrs which incorporates
+	 * knowledge about IBRS status.
+	 */
+	mutex_lock(&spec_ctrl_mutex);
+	update_cpu_ibrs_all();
+	update_cpu_spec_ctrl_all();
+	mutex_unlock(&spec_ctrl_mutex);
+}
+
 void __ref check_bugs(void)
 {
-	int cpu;
-
 	/*
 	 * If we are late loading the microcode, all the stuff bellow cannot
 	 * be executed because they are related to early init of the machine.
@@ -254,17 +266,6 @@ void __ref check_bugs(void)
 			     xen_pv_domain() ? " but ignored (Xen)" : "");
 	} else {
 		pr_info("FEATURE IBPB Not Present\n");
-	}
-
-	for_each_online_cpu(cpu) {
-		if (!xen_pv_domain()) {
-			mutex_lock(&spec_ctrl_mutex);
-			update_cpu_ibrs(&cpu_data(cpu));
-			update_cpu_spec_ctrl(cpu);
-			mutex_unlock(&spec_ctrl_mutex);
-		} else {
-			clear_cpu_cap(&cpu_data(cpu), X86_FEATURE_IBPB);
-		}
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
