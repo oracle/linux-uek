@@ -526,7 +526,7 @@ static int rdmaip_addr_exist(struct net_device *ndev,
 	return found;
 }
 
-static void rdmaip_notify_addr_change(__be32 addr)
+static void rdmaip_notify_addr_change_v4(__be32 addr)
 {
 	struct sockaddr_in sin;
 
@@ -534,8 +534,20 @@ static void rdmaip_notify_addr_change(__be32 addr)
 	sin.sin_addr.s_addr = addr;
 	sin.sin_port = 0;
 	if (rdma_notify_addr_change((struct sockaddr *)&sin))
-		pr_err("rdmaip: %pI4 address change notification failed\n",
-		       &addr);
+		RDMAIP_DBG2_PTR("rdmaip: %pI4 address change notification failed\n",
+				&addr);
+}
+
+static void rdmaip_notify_addr_change_v6(struct in6_addr *addr)
+{
+	struct sockaddr_in6 sin6;
+
+	sin6.sin6_family = AF_INET6;
+	sin6.sin6_addr = *addr;
+	sin6.sin6_port = 0;
+	if (rdma_notify_addr_change((struct sockaddr *)&sin6))
+		RDMAIP_DBG2_PTR("rdmaip: %pI6c address change notification failed\n",
+				addr);
 }
 
 /*
@@ -601,6 +613,7 @@ static void rdmaip_move_ip6(u8 from_port, u8 to_port, bool failover)
 			       addr, ip_config[from_port].ifindex, prefix_len,
 			       ip_config[from_port].if_name, from_port,
 			       ip_config[to_port].if_name, to_port);
+			rdmaip_notify_addr_change_v6(addr);
 		}
 	}
 }
@@ -741,7 +754,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 			RDMAIP_DBG3("rdmaip_dev is NULL\n");
 			goto out;
 		}
-		rdmaip_notify_addr_change(addr);
+		rdmaip_notify_addr_change_v4(addr);
 	}
 
 out:

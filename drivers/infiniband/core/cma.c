@@ -3180,6 +3180,31 @@ int rdma_set_reuseaddr(struct rdma_cm_id *id, int reuse)
 }
 EXPORT_SYMBOL(rdma_set_reuseaddr);
 
+static inline bool _sockaddr_eq(struct sockaddr *a, struct sockaddr *b)
+{
+	if (a->sa_family != b->sa_family)
+		return false;
+
+	switch (a->sa_family) {
+	case AF_INET:
+		if (((struct sockaddr_in *)a)->sin_addr.s_addr !=
+		    ((struct sockaddr_in *)b)->sin_addr.s_addr)
+			return false;
+		break;
+
+	case AF_INET6:
+		if (!ipv6_addr_equal(&((struct sockaddr_in6 *)a)->sin6_addr,
+				     &((struct sockaddr_in6 *)b)->sin6_addr))
+			return false;
+		break;
+
+	default:
+		return false;
+	}
+
+	return true;
+}
+
 int rdma_notify_addr_change(struct sockaddr *addr)
 {
 	struct cma_device *cma_dev;
@@ -3192,10 +3217,7 @@ int rdma_notify_addr_change(struct sockaddr *addr)
 	list_for_each_entry(cma_dev, &dev_list, list) {
 		list_for_each_entry(id_priv, &cma_dev->id_list, list) {
 			src_addr = (struct sockaddr *) &id_priv->id.route.addr.src_addr;
-			if (addr->sa_family == AF_INET &&
-			    addr->sa_family == src_addr->sa_family &&
-			    ((struct sockaddr_in *) addr)->sin_addr.s_addr ==
-			    ((struct sockaddr_in *) src_addr)->sin_addr.s_addr) {
+			if (_sockaddr_eq(addr, src_addr)) {
 				work = kzalloc(sizeof(*work), GFP_ATOMIC);
 				if (!work) {
 					ret = -ENOMEM;
