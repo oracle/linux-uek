@@ -35,6 +35,7 @@
 #include <linux/fs.h>
 #include <linux/mm.h>
 
+#include <asm/bugs.h>
 #include <asm/microcode_intel.h>
 #include <asm/cpu_device_id.h>
 #include <asm/microcode_amd.h>
@@ -627,8 +628,6 @@ static int microcode_reload_late(void)
 	return ret;
 }
 
-void check_bugs(void);
-
 static ssize_t reload_store(struct device *dev,
 			    struct device_attribute *attr,
 			    const char *buf, size_t size)
@@ -658,6 +657,7 @@ static ssize_t reload_store(struct device *dev,
 	mutex_lock(&microcode_mutex);
 	ret = microcode_reload_late();
 	check_bugs();
+	update_percpu_mitigations();
 	mutex_unlock(&microcode_mutex);
 
 put:
