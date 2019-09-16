@@ -258,6 +258,8 @@ void __ref check_bugs(void)
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 		update_cpu_spec_ctrl_all();
 	} else {
+		/* Update those for late microcode update */
+		x86_spec_ctrl_base = x86_spec_ctrl_priv = 0;
 		pr_info("FEATURE SPEC_CTRL Not Present\n");
 	}
 
