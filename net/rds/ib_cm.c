@@ -183,6 +183,7 @@ static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 	}
 
 	ic->i_frag_pages =  ceil(ic->i_frag_sz, PAGE_SIZE);
+	ic->i_frag_cache_inx = ilog2(ic->i_frag_pages);
 
 	pr_debug("RDS/IB: conn <%pI6c, %pI6c,%d>, Frags <init,ic,dp>: {%d,%d,%d}, updated {%d -> %d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
@@ -333,10 +334,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 */
 	rds_ib_send_init_ring(ic);
 
-	if (!rds_ib_srq_enabled) {
-		rds_ib_recv_rebuild_caches(ic);
+	if (!rds_ib_srq_enabled)
 		rds_ib_recv_init_ring(ic);
-	}
 
 	/* Post receive buffers - as a side effect, this will update
 	 * the posted credit count. */
@@ -1614,18 +1613,11 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 {
 	struct rds_ib_connection *ic;
 	unsigned long flags;
-	int ret;
 
 	/* XXX too lazy? */
 	ic = kzalloc(sizeof(struct rds_ib_connection), gfp);
 	if (!ic)
 		return -ENOMEM;
-
-	ret = rds_ib_recv_alloc_caches(ic, gfp);
-	if (ret) {
-		kfree(ic);
-		return ret;
-	}
 
 	INIT_LIST_HEAD(&ic->ib_node);
 	tasklet_init(&ic->i_stasklet, rds_ib_tasklet_fn_send, (unsigned long) ic);
@@ -1689,8 +1681,6 @@ void rds_ib_conn_free(void *arg)
 	spin_lock_irq(lock_ptr);
 	list_del(&ic->ib_node);
 	spin_unlock_irq(lock_ptr);
-
-	rds_ib_recv_free_caches(ic);
 
 	if (ic->i_rcq) {
 		if (ic->rds_ibdev)
