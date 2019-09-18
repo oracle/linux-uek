@@ -95,6 +95,8 @@
 #include <asm/perf_event.h>
 #include <asm/spec_ctrl.h>
 
+#include "../cpu.h"
+
 MODULE_DESCRIPTION("Microcode Update Driver");
 MODULE_AUTHOR("Tigran Aivazian <tigran@aivazian.fsnet.co.uk>");
 MODULE_LICENSE("GPL");
@@ -124,6 +126,7 @@ struct ucode_cpu_info		ucode_cpu_info[NR_CPUS];
 EXPORT_SYMBOL_GPL(ucode_cpu_info);
 
 extern void microcode_late_select_mitigation(void);
+extern void cpu_clear_bug_bits(struct cpuinfo_x86 *c);
 
 /*
  * Operations that are run on a target cpu:
@@ -166,46 +169,6 @@ static int collect_cpu_info(int cpu)
 		uci->valid = 1;
 
 	return ret;
-}
-
-static void microcode_late_eval_cpuid(void *arg)
-{
-	/*
-	 * First we clear the bugs that are not fully connected with
-	 * CPU model and can be modified after a microcode loading
-	 * and than re-evealuate CPU bugs. We are using CPU 0 as all
-	 * of these are stored in boot_cpu_data.
-	 */
-	if(smp_processor_id() == 0) {
-		setup_clear_cpu_cap(X86_BUG_SPEC_STORE_BYPASS);
-		setup_clear_cpu_cap(X86_BUG_CPU_MELTDOWN);
-		setup_clear_cpu_cap(X86_BUG_L1TF);
-		setup_clear_cpu_cap(X86_BUG_MDS);
-		setup_clear_cpu_cap(X86_BUG_MSBDS_ONLY);
-		cpu_set_bug_bits(&cpu_data(smp_processor_id()));
-
-		/* If CPU is not susceptible to L1TF, clean-up the L1TF_PTEINV cap. */
-		if (!boot_cpu_has(X86_BUG_L1TF))
-			setup_clear_cpu_cap(X86_FEATURE_L1TF_PTEINV);
-	}
-
-	init_scattered_cpuid_features(&cpu_data(smp_processor_id()),
-	    GET_CPU_CAP_FULL);
-}
-
-static void microcode_late_eval_cpuid_all(void)
-{
-	int cpu;
-	/*
-	 * Evaluate CPU features after microcode loading.
-	 * This needs to be done on each CPU.
-	 */
-	for_each_online_cpu(cpu) {
-		if (cpu == 0)
-			continue;
-		smp_call_function_single(cpu, microcode_late_eval_cpuid, NULL, 1);
-	}
-	smp_call_function_single(0, microcode_late_eval_cpuid, NULL, 1);
 }
 
 struct apply_microcode_ctx {
@@ -278,8 +241,6 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 
 	if (ret > 0) {
 		perf_check_microcode();
-		microcode_late_eval_cpuid_all();
-		microcode_late_select_mitigation();
 	}
 
 	mutex_unlock(&microcode_mutex);
@@ -395,8 +356,9 @@ static int __wait_for_cpus(atomic_t *t, long long timeout)
 static int __reload_late(void *info)
 {
 	int cpu = smp_processor_id();
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	enum ucode_state err;
-	int ret = 0;
+	int ret;
 
 	/*
 	 * Wait for all CPUs to arrive. A load will not be attempted unless all
@@ -424,6 +386,13 @@ static int __reload_late(void *info)
 		ret = 1;
 	}
 
+	/* Populate boot_cpu_data with the current info. */
+	if (ret > 0 && cpu == boot_cpu_data.cpu_index) {
+		cpu_clear_bug_bits(c);
+		get_cpu_cap(c, GET_CPU_CAP_FULL);
+		memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
+		cpu_set_bug_bits(c);
+	}
 wait_for_siblings:
 	if (__wait_for_cpus(&late_cpus_out, NSEC_PER_SEC))
 		panic("Timeout during microcode update!\n");
@@ -436,6 +405,11 @@ wait_for_siblings:
 	 */
 	if (cpumask_first(cpu_sibling_mask(cpu)) != cpu)
 		apply_microcode_local(&err);
+
+	if (ret > 0 && c->cpu_index != boot_cpu_data.cpu_index) {
+		cpu_clear_bug_bits(c);
+		get_cpu_cap(c, GET_CPU_CAP_FULL);
+	}
 
 	return ret;
 }
@@ -492,7 +466,6 @@ static ssize_t reload_store(struct device *dev,
 
 	if (ret >= 0) {
 		perf_check_microcode();
-		microcode_late_eval_cpuid_all();
 		microcode_late_select_mitigation();
 	}
 
@@ -775,7 +748,6 @@ static int __init microcode_init(void)
 	error = subsys_interface_register(&mc_cpu_interface);
 	if (!error) {
 		perf_check_microcode();
-		microcode_late_eval_cpuid_all();
 	}
 
 	mutex_unlock(&microcode_mutex);

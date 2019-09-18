@@ -883,6 +883,33 @@ static bool cpu_matches(unsigned long which)
 	return m && !!(m->driver_data & which);
 }
 
+void cpu_clear_bug_bits(struct cpuinfo_x86 *c)
+{
+	clear_cpu_cap(c, X86_BUG_SPECTRE_V1);
+	clear_cpu_cap(c, X86_BUG_SPECTRE_V2);
+	clear_cpu_cap(c, X86_BUG_SPEC_STORE_BYPASS);
+	clear_cpu_cap(c, X86_BUG_MDS);
+	clear_cpu_cap(c, X86_BUG_MSBDS_ONLY);
+	clear_cpu_cap(c, X86_BUG_SWAPGS);
+	clear_cpu_cap(c, X86_BUG_TAA);
+	clear_cpu_cap(c, X86_BUG_CPU_MELTDOWN);
+	clear_cpu_cap(c, X86_BUG_L1TF);
+
+	/* Clear forced CPU bugs. */
+	if(c->cpu_index == boot_cpu_data.cpu_index) {
+		setup_clear_cpu_cap(X86_BUG_SPECTRE_V1);
+		setup_clear_cpu_cap(X86_BUG_SPECTRE_V2);
+		setup_clear_cpu_cap(X86_BUG_SPEC_STORE_BYPASS);
+		setup_clear_cpu_cap(X86_BUG_MDS);
+		setup_clear_cpu_cap(X86_BUG_MSBDS_ONLY);
+		setup_clear_cpu_cap(X86_BUG_SWAPGS);
+		setup_clear_cpu_cap(X86_BUG_TAA);
+		setup_clear_cpu_cap(X86_BUG_CPU_MELTDOWN);
+		setup_clear_cpu_cap(X86_BUG_L1TF);
+
+	}
+}
+
 u64 x86_read_arch_cap_msr(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = 0;
