@@ -44,6 +44,7 @@ unsigned int rds_ib_srq_max_wr = RDS_IB_DEFAULT_SRQ_MAX_WR;
 unsigned int rds_ib_srq_hwm_refill = RDS_IB_DEFAULT_SRQ_HWM_REFILL;
 unsigned int rds_ib_srq_lwm_refill = RDS_IB_DEFAULT_SRQ_LWM_REFILL;
 unsigned int rds_ib_srq_enabled = 0;
+unsigned int rds_ib_cache_max_percpu = 1024;
 
 module_param(rds_ib_srq_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_srq_enabled, "Set to enabled SRQ");
@@ -53,10 +54,12 @@ module_param(rds_ib_srq_hwm_refill, int, 0444);
 MODULE_PARM_DESC(rds_ib_srq_hwm_refill, "SRQ HWM refill");
 module_param(rds_ib_srq_lwm_refill, int, 0444);
 MODULE_PARM_DESC(rds_ib_srq_lwm_refill, "SRQ LWM refill");
+module_param(rds_ib_cache_max_percpu, int, 0444);
+MODULE_PARM_DESC(rds_ib_cache_max_percpu, "Max entries in percpu-cache");
 
-static struct kmem_cache *rds_ib_incoming_slab;
-static struct kmem_cache *rds_ib_frag_slab;
-static atomic_t	rds_ib_allocation = ATOMIC_INIT(0);
+struct kmem_cache *rds_ib_incoming_slab;
+struct kmem_cache *rds_ib_frag_slab;
+atomic_t rds_ib_allocation = ATOMIC_INIT(0);
 
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 {
@@ -90,88 +93,8 @@ void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 	}
 }
 
-/*
- * The entire 'from' list, including the from element itself, is put on
- * to the tail of the 'to' list.
- */
-static void list_splice_entire_tail(struct list_head *from,
-				    struct list_head *to)
-{
-	struct list_head *from_last = from->prev;
-
-	list_splice_tail(from_last, to);
-	list_add_tail(from_last, to);
-}
-
-static void rds_ib_cache_xfer_to_ready(struct rds_ib_refill_cache *cache)
-{
-	struct list_head *tmp;
-
-	tmp = xchg(&cache->xfer, NULL);
-	if (tmp) {
-		if (cache->ready)
-			list_splice_entire_tail(tmp, cache->ready);
-		else
-			cache->ready = tmp;
-	}
-}
-
-static int rds_ib_recv_alloc_cache(struct rds_ib_refill_cache *cache, gfp_t gfp)
-{
-	struct rds_ib_cache_head *head;
-	int cpu;
-
-	cache->percpu = alloc_percpu_gfp(struct rds_ib_cache_head, gfp);
-	if (!cache->percpu)
-		return -ENOMEM;
-
-	for_each_possible_cpu(cpu) {
-		head = per_cpu_ptr(cache->percpu, cpu);
-		head->first = NULL;
-		head->count = 0;
-	}
-	cache->xfer = NULL;
-	cache->ready = NULL;
-
-	return 0;
-}
-
-int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic, gfp_t gfp)
-{
-	int ret;
-
-	ret = rds_ib_recv_alloc_cache(&ic->i_cache_incs, gfp);
-	if (!ret) {
-		ret = rds_ib_recv_alloc_cache(&ic->i_cache_frags, gfp);
-		if (ret)
-			free_percpu(ic->i_cache_incs.percpu);
-	}
-
-	return ret;
-}
-
-static void rds_ib_cache_splice_all_lists(struct rds_ib_refill_cache *cache,
-					  struct list_head *caller_list)
-{
-	struct rds_ib_cache_head *head;
-	int cpu;
-
-	for_each_possible_cpu(cpu) {
-		head = per_cpu_ptr(cache->percpu, cpu);
-		if (head->first) {
-			list_splice_entire_tail(head->first, caller_list);
-			head->first = NULL;
-		}
-	}
-
-	if (cache->ready) {
-		list_splice_entire_tail(cache->ready, caller_list);
-		cache->ready = NULL;
-	}
-}
-
 /* Detach and free frags */
-static void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent)
+void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent)
 {
 	struct scatterlist *s;
 	int i;
@@ -182,90 +105,24 @@ static void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent)
 		__free_pages(sg_page(s), get_order(s->length));
 	}
 }
-
-void rds_ib_recv_free_caches(struct rds_ib_connection *ic)
-{
-	struct rds_ib_incoming *inc;
-	struct rds_ib_incoming *inc_tmp;
-	struct rds_page_frag *frag;
-	struct rds_page_frag *frag_tmp;
-	LIST_HEAD(list);
-
-	rds_ib_cache_xfer_to_ready(&ic->i_cache_incs);
-	rds_ib_cache_splice_all_lists(&ic->i_cache_incs, &list);
-	free_percpu(ic->i_cache_incs.percpu);
-
-	list_for_each_entry_safe(inc, inc_tmp, &list, ii_cache_entry) {
-		list_del(&inc->ii_cache_entry);
-		WARN_ON(!list_empty(&inc->ii_frags));
-		kmem_cache_free(rds_ib_incoming_slab, inc);
-	}
-
-	rds_ib_cache_xfer_to_ready(&ic->i_cache_frags);
-	rds_ib_cache_splice_all_lists(&ic->i_cache_frags, &list);
-	free_percpu(ic->i_cache_frags.percpu);
-
-	list_for_each_entry_safe(frag, frag_tmp, &list, f_cache_entry) {
-		int cache_frag_pages = ceil(ic->i_frag_cache_sz, PAGE_SIZE);
-
-		list_del(&frag->f_cache_entry);
-		WARN_ON(!list_empty(&frag->f_item));
-		rds_ib_recv_free_frag(frag, cache_frag_pages);
-		atomic_sub(cache_frag_pages, &rds_ib_allocation);
-		kmem_cache_free(rds_ib_frag_slab, frag);
-		atomic_sub(ic->i_frag_cache_sz / 1024, &ic->i_cache_allocs);
-		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_cache_sz);
-
-	}
-}
-
-/* Called form rds_ib_conn_complete() and takes action only
- * if new connection needs different frag size than what is used.
- */
-void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic)
-{
-	/* init it with the used frag size */
-	if (!ic->i_frag_cache_sz) {
-		ic->i_frag_cache_sz = ic->i_frag_sz;
-		pr_debug("RDS/IB: assigning caches for ic %p i_cm_id %p, frag{%d->%d}\n",
-			 ic, ic->i_cm_id, ic->i_frag_cache_sz, ic->i_frag_sz);
-		return;
-	}
-
-	/* check if existing cache can be re-used */
-	if ((ic->i_frag_cache_sz == ic->i_frag_sz) &&
-		!(ic->i_flags & RDS_IB_CLEAN_CACHE))
-			return;
-
-	ic->i_flags &= ~RDS_IB_CLEAN_CACHE;
-
-	/* Now re-build the caches */
-	rds_ib_recv_free_caches(ic);
-	rds_ib_recv_alloc_caches(ic, GFP_KERNEL);
-
-	pr_debug("RDS/IB: Rebuild caches for ic %p i_cm_id %p, frag{%d->%d}\n",
-		 ic, ic->i_cm_id, ic->i_frag_cache_sz, ic->i_frag_sz);
-	ic->i_frag_cache_sz = ic->i_frag_sz;
-}
-
 /* fwd decl */
-static void rds_ib_recv_cache_put(struct list_head *new_item,
-				  struct rds_ib_refill_cache *cache);
-static struct list_head *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache);
-
+static void rds_ib_recv_cache_put(struct lfstack_el *new_item_first,
+				  struct lfstack_el *new_item_last,
+				  struct rds_ib_refill_cache *cache,
+				  int count);
+static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache);
 
 /* Recycle frag and attached recv buffer f_sg */
 static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			     struct rds_page_frag *frag)
 {
-	struct scatterlist *sg;
-	int i = 0;
+	rds_ib_recv_cache_put(&frag->f_cache_entry,
+			      &frag->f_cache_entry,
+			      frag->rds_ibdev->i_cache_frags +
+			      ic->i_frag_cache_inx,
+			      1);
 
-	for_each_sg(frag->f_sg, sg, ic->i_frag_pages, i)
-		rdsdebug("frag %p page %p\n", frag, sg_page(sg));
-
-	rds_ib_recv_cache_put(&frag->f_cache_entry, &ic->i_cache_frags);
-	atomic_add(ic->i_frag_sz/1024, &ic->i_cache_allocs);
+	atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 	rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
 }
 
@@ -287,23 +144,47 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	struct rds_page_frag *frag;
 	struct rds_page_frag *pos;
 	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
+	int count = 0;
+
+	struct rds_page_frag *first_frag  = NULL;
+	struct rds_page_frag *p_frag = NULL;
 
 	ibinc = container_of(inc, struct rds_ib_incoming, ii_inc);
-
 	/* Free attached frags */
 	list_for_each_entry_safe(frag, pos, &ibinc->ii_frags, f_item) {
+		count++;
 		if (sg_total_lens(frag->f_sg) != ic->i_frag_sz) {
 			rds_ib_recv_free_frag(frag, sg_total_lens(frag->f_sg) / PAGE_SIZE);
 			kmem_cache_free(rds_ib_frag_slab, frag);
 		} else {
 			list_del_init(&frag->f_item);
-			rds_ib_frag_free(ic, frag);
 		}
+		if (!first_frag)
+			first_frag = frag;
+
+		if (p_frag)
+			lfstack_link(&p_frag->f_cache_entry, &frag->f_cache_entry);
+
+		atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+
+		p_frag = frag;
 	}
+	rdsdebug("first_frag %p frag %p p_frag %p count %d inc %p\n", first_frag, p_frag, frag, count, inc);
+	if (first_frag)
+		rds_ib_recv_cache_put(&first_frag->f_cache_entry,
+				      &p_frag->f_cache_entry,
+				      first_frag->rds_ibdev->i_cache_frags +
+				      ic->i_frag_cache_inx,
+				      count);
+
 	BUG_ON(!list_empty(&ibinc->ii_frags));
 
 	rdsdebug("freeing ibinc %p inc %p\n", ibinc, inc);
-	rds_ib_recv_cache_put(&ibinc->ii_cache_entry, &ic->i_cache_incs);
+	rds_ib_recv_cache_put(&ibinc->ii_cache_entry,
+			      &ibinc->ii_cache_entry,
+			      &ibinc->rds_ibdev->i_cache_incs,
+			      1);
 }
 
 static void rds_ib_recv_clear_one(struct rds_ib_connection *ic,
@@ -333,9 +214,9 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 						     gfp_t slab_mask)
 {
 	struct rds_ib_incoming *ibinc;
-	struct list_head *cache_item;
+	struct lfstack_el *cache_item;
 
-	cache_item = rds_ib_recv_cache_get(&ic->i_cache_incs);
+	cache_item = rds_ib_recv_cache_get(&ic->rds_ibdev->i_cache_incs);
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 	} else {
@@ -346,6 +227,7 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 	}
 	INIT_LIST_HEAD(&ibinc->ii_frags);
 	rds_inc_init(&ibinc->ii_inc, ic->conn, &ic->conn->c_faddr);
+	ibinc->rds_ibdev = ic->rds_ibdev;
 
 	return ibinc;
 }
@@ -354,14 +236,15 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 						    gfp_t slab_mask, gfp_t page_mask)
 {
 	struct rds_page_frag *frag;
-	struct list_head *cache_item;
+	struct lfstack_el *cache_item;
 	struct scatterlist *sg;
 	struct scatterlist *s;
 	int ret;
 	int i;
 	int j;
 
-	cache_item = rds_ib_recv_cache_get(&ic->i_cache_frags);
+	cache_item = rds_ib_recv_cache_get(ic->rds_ibdev->i_cache_frags +
+					   ic->i_frag_cache_inx);
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		atomic_sub(ic->i_frag_sz/1024, &ic->i_cache_allocs);
@@ -401,6 +284,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	}
 
 	INIT_LIST_HEAD(&frag->f_item);
+	frag->rds_ibdev = ic->rds_ibdev;
 
 	return frag;
 }
@@ -420,11 +304,6 @@ static int rds_ib_recv_refill_one(struct rds_connection *conn,
 		slab_mask = GFP_KERNEL;
 		page_mask = GFP_HIGHUSER;
 	}
-
-	if (!ic->i_cache_incs.ready)
-		rds_ib_cache_xfer_to_ready(&ic->i_cache_incs);
-	if (!ic->i_cache_frags.ready)
-		rds_ib_cache_xfer_to_ready(&ic->i_cache_frags);
 
 	/*
 	 * ibinc was taken from recv if recv contained the start of a message.
@@ -492,10 +371,6 @@ static int rds_ib_srq_refill_one(struct rds_ib_srq *srq,
 	gfp_t slab_mask = GFP_NOWAIT;
 	gfp_t page_mask = GFP_NOWAIT;
 
-	if (!ic->i_cache_incs.ready)
-		rds_ib_cache_xfer_to_ready(&ic->i_cache_incs);
-	if (!ic->i_cache_frags.ready)
-		rds_ib_cache_xfer_to_ready(&ic->i_cache_frags);
 
 	/*
 	* ibinc was taken from recv if recv contained the start of a message.
@@ -774,65 +649,44 @@ release_out:
  * the recyclee, as well as the cache to put it on.
  *
  * First, we put the memory on a percpu list. When this reaches a certain size,
- * We move it to an intermediate non-percpu list in a lockless manner, with some
- * xchg/compxchg wizardry.
- *
- * N.B. Instead of a list_head as the anchor, we use a single pointer, which can
- * be NULL and xchg'd. The list is actually empty when the pointer is NULL, and
- * list_empty() will return true with one element is actually present.
+ * we put the memory on  an intermediate non-percpu list.
  */
-static void rds_ib_recv_cache_put(struct list_head *new_item,
-				 struct rds_ib_refill_cache *cache)
+static void rds_ib_recv_cache_put(struct lfstack_el *new_item_first,
+				  struct lfstack_el *new_item_last,
+				  struct rds_ib_refill_cache *cache,
+				  int count)
 {
-	unsigned long flags;
-	struct rds_ib_cache_head *chp;
-	struct list_head *old;
+	if (!cache->percpu)
+		return;
 
-	local_irq_save(flags);
+	if (this_cpu_read(cache->percpu->count)  < rds_ib_cache_max_percpu) {
+		struct lfstack *stack = this_cpu_ptr(&cache->percpu->stack);
 
-	chp = per_cpu_ptr(cache->percpu, smp_processor_id());
-	if (!chp->first)
-		INIT_LIST_HEAD(new_item);
-	else /* put on front */
-		list_add_tail(new_item, chp->first);
-	chp->first = new_item;
-	chp->count++;
-
-	if (chp->count < RDS_IB_RECYCLE_BATCH_COUNT)
-		goto end;
-
-	/*
-	 * Return our per-cpu first list to the cache's xfer by atomically
-	 * grabbing the current xfer list, appending it to our per-cpu list,
-	 * and then atomically returning that entire list back to the
-	 * cache's xfer list as long as it's still empty.
-	 */
-	do {
-		old = xchg(&cache->xfer, NULL);
-		if (old)
-			list_splice_entire_tail(old, chp->first);
-		old = cmpxchg(&cache->xfer, NULL, chp->first);
-	} while (old);
-
-	chp->first = NULL;
-	chp->count = 0;
-end:
-	local_irq_restore(flags);
-}
-
-static struct list_head *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache)
-{
-	struct list_head *head = cache->ready;
-
-	if (head) {
-		if (!list_empty(head)) {
-			cache->ready = head->next;
-			list_del_init(head);
-		} else
-			cache->ready = NULL;
+		this_cpu_add(cache->percpu->count, count);
+		lfstack_push_many(stack, new_item_first, new_item_last);
+		return;
 	}
 
-	return head;
+	lfstack_push_many(&cache->ready, new_item_first, new_item_last);
+}
+
+static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache)
+{
+	struct lfstack_el *item;
+	struct lfstack *stack;
+
+	if (!cache->percpu)
+		return NULL;
+	stack = this_cpu_ptr(&cache->percpu->stack);
+	item = lfstack_pop(stack);
+	if (item) {
+		this_cpu_dec(cache->percpu->count);
+		return item;
+	}
+
+	item = lfstack_pop(&cache->ready);
+
+	return item;
 }
 
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
