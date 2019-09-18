@@ -155,8 +155,11 @@ static void exit_to_usermode_loop(struct pt_regs *regs, u32 cached_flags)
 			klp_update_patch_state(current);
 
 		/* deal with pending signal delivery */
-		if (cached_flags & _TIF_SIGPENDING)
+		if (cached_flags & _TIF_SIGPENDING) {
+			set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 			do_signal(regs);
+			clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+		}
 
 		if (cached_flags & _TIF_NOTIFY_RESUME) {
 			clear_thread_flag(TIF_NOTIFY_RESUME);

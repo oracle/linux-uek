@@ -79,6 +79,7 @@ void arch_release_task_struct(struct task_struct *tsk);
 #define TIF_SSBD		25	/* Wants SSB mitigation */
 #define TIF_TAGGED_ADDR		26	/* Allow tagged user addresses */
 #define TIF_KSPLICE_FREEZING	27
+#define TIF_KSPLICE_FROM_ENTRY_CODE 28
 
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
@@ -95,6 +96,7 @@ void arch_release_task_struct(struct task_struct *tsk);
 #define _TIF_32BIT		(1 << TIF_32BIT)
 #define _TIF_SVE		(1 << TIF_SVE)
 #define _TIF_KSPLICE_FREEZING	(1 << TIF_KSPLICE_FREEZING)
+#define _TIF_KSPLICE_FROM_ENTRY_CODE (1 << TIF_KSPLICE_FROM_ENTRY_CODE)
 
 #define _TIF_WORK_MASK		(_TIF_NEED_RESCHED | _TIF_SIGPENDING | \
 				 _TIF_NOTIFY_RESUME | _TIF_FOREIGN_FPSTATE | \
