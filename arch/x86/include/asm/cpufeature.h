@@ -302,6 +302,7 @@
 #define X86_BUG_MDS			X86_BUG(19) /* CPU is affected by Microarchitectural data sampling */
 #define X86_BUG_MSBDS_ONLY		X86_BUG(20) /* CPU is only affected by the  MSDBS variant of BUG_MDS */
 #define X86_BUG_SWAPGS			X86_BUG(21) /* CPU is affected by speculation through SWAPGS */
+#define X86_BUG_ITLB_MULTIHIT		X86_BUG(22) /* CPU may incur MCE during certain page attribute changes */
 
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 
