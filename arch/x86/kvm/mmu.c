@@ -2586,13 +2586,13 @@ done:
 	return ret;
 }
 
-static bool mmu_set_spte(struct kvm_vcpu *vcpu, u64 *sptep, unsigned pte_access,
-			 int write_fault, int level, gfn_t gfn, pfn_t pfn,
-			 bool speculative, bool host_writable)
+static int mmu_set_spte(struct kvm_vcpu *vcpu, u64 *sptep, unsigned pte_access,
+			int write_fault, int level, gfn_t gfn, pfn_t pfn,
+		       	bool speculative, bool host_writable)
 {
 	int was_rmapped = 0;
 	int rmap_count;
-	bool emulate = false;
+	int ret = RET_PF_RETRY;
 
 	pgprintk("%s: spte %llx write_fault %d gfn %llx\n", __func__,
 		 *sptep, write_fault, gfn);
@@ -2622,12 +2622,12 @@ static bool mmu_set_spte(struct kvm_vcpu *vcpu, u64 *sptep, unsigned pte_access,
 	if (set_spte(vcpu, sptep, pte_access, level, gfn, pfn, speculative,
 	      true, host_writable)) {
 		if (write_fault)
-			emulate = true;
+			ret = RET_PF_EMULATE;
 		kvm_make_request(KVM_REQ_TLB_FLUSH, vcpu);
 	}
 
 	if (unlikely(is_mmio_spte(*sptep)))
-		emulate = true;
+		ret = RET_PF_EMULATE;
 
 	pgprintk("%s: setting spte %llx\n", __func__, *sptep);
 	pgprintk("instantiating %s PTE (%s) at %llx (%llx) addr %p\n",
@@ -2647,7 +2647,7 @@ static bool mmu_set_spte(struct kvm_vcpu *vcpu, u64 *sptep, unsigned pte_access,
 
 	kvm_release_pfn_clean(pfn);
 
-	return emulate;
+	return ret;
 }
 
 static pfn_t pte_prefetch_gfn_to_pfn(struct kvm_vcpu *vcpu, gfn_t gfn,
@@ -2786,14 +2786,13 @@ static int kvm_handle_bad_page(struct kvm_vcpu *vcpu, gfn_t gfn, pfn_t pfn)
 	 * Do not cache the mmio info caused by writing the readonly gfn
 	 * into the spte otherwise read access on readonly gfn also can
 	 * caused mmio page fault and treat it as mmio access.
-	 * Return 1 to tell kvm to emulate it.
 	 */
 	if (pfn == KVM_PFN_ERR_RO_FAULT)
-		return 1;
+		return RET_PF_EMULATE;
 
 	if (pfn == KVM_PFN_ERR_HWPOISON) {
 		kvm_send_hwpoison_signal(gfn_to_hva(vcpu->kvm, gfn), current);
-		return 0;
+		return RET_PF_RETRY;
 	}
 
 	return -EFAULT;
@@ -3024,13 +3023,13 @@ static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, u32 error_code,
 		level = PT_PAGE_TABLE_LEVEL;
 
 	if (fast_page_fault(vcpu, v, level, error_code))
-		return 0;
+		return RET_PF_RETRY;
 
 	mmu_seq = vcpu->kvm->mmu_notifier_seq;
 	smp_rmb();
 
 	if (try_async_pf(vcpu, prefault, gfn, v, &pfn, write, &map_writable))
-		return 0;
+		return RET_PF_RETRY;
 
 	if (handle_abnormal_pfn(vcpu, v, gfn, pfn, ACC_ALL, &r))
 		return r;
@@ -3051,7 +3050,7 @@ static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, u32 error_code,
 out_unlock:
 	spin_unlock(&vcpu->kvm->mmu_lock);
 	kvm_release_pfn_clean(pfn);
-	return 0;
+	return RET_PF_RETRY;
 }
 
 
@@ -3339,7 +3338,7 @@ int handle_mmio_page_fault_common(struct kvm_vcpu *vcpu, u64 addr, bool direct)
 	u64 spte;
 
 	if (quickly_check_mmio_pf(vcpu, addr, direct))
-		return RET_MMIO_PF_EMULATE;
+		return RET_PF_EMULATE;
 
 	spte = walk_shadow_page_get_mmio_spte(vcpu, addr);
 
@@ -3348,21 +3347,21 @@ int handle_mmio_page_fault_common(struct kvm_vcpu *vcpu, u64 addr, bool direct)
 		unsigned access = get_mmio_spte_access(spte);
 
 		if (!check_mmio_spte(vcpu->kvm, spte))
-			return RET_MMIO_PF_INVALID;
+			return RET_PF_INVALID;
 
 		if (direct)
 			addr = 0;
 
 		trace_handle_mmio_page_fault(addr, gfn, access);
 		vcpu_cache_mmio_info(vcpu, addr, gfn, access);
-		return RET_MMIO_PF_EMULATE;
+		return RET_PF_EMULATE;
 	}
 
 	/*
 	 * If the page table is zapped by other cpus, let CPU fault again on
 	 * the address.
 	 */
-	return RET_MMIO_PF_RETRY;
+	return RET_PF_RETRY;
 }
 EXPORT_SYMBOL_GPL(handle_mmio_page_fault_common);
 
@@ -3372,7 +3371,7 @@ static int handle_mmio_page_fault(struct kvm_vcpu *vcpu, u64 addr,
 	int ret;
 
 	ret = handle_mmio_page_fault_common(vcpu, addr, direct);
-	WARN_ON(ret == RET_MMIO_PF_BUG);
+	WARN_ON(ret == RET_PF_BUG);
 	return ret;
 }
 
@@ -3387,7 +3386,7 @@ static int nonpaging_page_fault(struct kvm_vcpu *vcpu, gva_t gva,
 	if (unlikely(error_code & PFERR_RSVD_MASK)) {
 		r = handle_mmio_page_fault(vcpu, gva, error_code, true);
 
-		if (likely(r != RET_MMIO_PF_INVALID))
+		if (likely(r != RET_PF_INVALID))
 			return r;
 	}
 
@@ -3466,7 +3465,7 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 	if (unlikely(error_code & PFERR_RSVD_MASK)) {
 		r = handle_mmio_page_fault(vcpu, gpa, error_code, true);
 
-		if (likely(r != RET_MMIO_PF_INVALID))
+		if (likely(r != RET_PF_INVALID))
 			return r;
 	}
 
@@ -3482,13 +3481,13 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 		level = PT_PAGE_TABLE_LEVEL;
 
 	if (fast_page_fault(vcpu, gpa, level, error_code))
-		return 0;
+		return RET_PF_RETRY;
 
 	mmu_seq = vcpu->kvm->mmu_notifier_seq;
 	smp_rmb();
 
 	if (try_async_pf(vcpu, prefault, gfn, gpa, &pfn, write, &map_writable))
-		return 0;
+		return RET_PF_RETRY;
 
 	if (handle_abnormal_pfn(vcpu, 0, gfn, pfn, ACC_ALL, &r))
 		return r;
@@ -3508,7 +3507,7 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 out_unlock:
 	spin_unlock(&vcpu->kvm->mmu_lock);
 	kvm_release_pfn_clean(pfn);
-	return 0;
+	return RET_PF_RETRY;
 }
 
 static void nonpaging_init_context(struct kvm_vcpu *vcpu,
