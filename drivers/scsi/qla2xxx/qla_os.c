@@ -3060,6 +3060,10 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (ha->mqenable) {
 		base_vha->qps_hint = alloc_percpu(struct qla_percpu_qp_hint);
 		ha->wq = alloc_workqueue("qla2xxx_wq", WQ_MEM_RECLAIM, 1);
+		if (unlikely(!ha->wq)) {
+			ret = -ENOMEM;
+			goto probe_failed;
+		}
 		/* Create start of day qpairs for Block MQ */
 		if (shost_use_blk_mq(host)) {
 			cpumask_clear(&cpu_mask);
