@@ -63,7 +63,7 @@
 #define INTEL_FAM6_ATOM_GOLDMONT	0x5C
 #define INTEL_FAM6_ATOM_DENVERTON	0x5F /* Goldmont Microserver */
 #define INTEL_FAM6_ATOM_GEMINI_LAKE	0x7A
-
+#define INTEL_FAM6_ATOM_TREMONT_X	0x86
 /* Xeon Phi */
 
 #define INTEL_FAM6_XEON_PHI_KNL		0x57 /* Knights Landing */
