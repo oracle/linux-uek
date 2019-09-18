@@ -227,13 +227,13 @@ struct kvm_mmu_page {
 	/* hold the gfn of each spte inside spt */
 	gfn_t *gfns;
 	bool unsync;
+	bool lpage_disallowed; /* Can't be replaced by an equiv large page */
 	int root_count;          /* Currently serving as active root */
 	unsigned int unsync_children;
 	unsigned long parent_ptes;	/* Reverse mapping for parent_pte */
 
 	/* The page is obsolete if mmu_valid_gen != kvm->arch.mmu_valid_gen.  */
 	unsigned long mmu_valid_gen;
-
 	DECLARE_BITMAP(unsync_child_bitmap, 512);
 
 #ifdef CONFIG_X86_32
@@ -656,6 +656,7 @@ struct kvm_vm_stat {
 	u32 mmu_unsync;
 	u32 remote_tlb_flush;
 	u32 lpages;
+	u32 nx_lpage_splits;
 };
 
 struct kvm_vcpu_stat {

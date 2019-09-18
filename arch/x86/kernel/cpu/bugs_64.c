@@ -1544,6 +1544,9 @@ static void mds_select_mitigation(void)
 	pr_info("%s\n", mds_strings[mds_mitigation]);
 }
 
+bool itlb_multihit_kvm_mitigation;
+EXPORT_SYMBOL_GPL(itlb_multihit_kvm_mitigation);
+
 #undef pr_fmt
 #define pr_fmt(fmt) fmt
 
@@ -1579,8 +1582,25 @@ static ssize_t l1tf_show_state(char *buf)
 
 static ssize_t itlb_multihit_show_state(char *buf)
 {
+	if (itlb_multihit_kvm_mitigation)
+		return sprintf(buf, "KVM: Mitigation: Split huge pages\n");
+	else
+		return sprintf(buf, "KVM: Vulnerable\n");
+}
+
+#else
+
+static ssize_t l1tf_show_state(char *buf)
+{
+	return sprintf(buf, "%s\n", L1TF_DEFAULT_MSG);
+}
+
+static ssize_t itlb_multihit_show_state(char *buf)
+{
 	return sprintf(buf, "Processor vulnerable\n");
 }
+
+#endif
 
 static ssize_t mds_show_state(char *buf)
 {
@@ -1598,12 +1618,6 @@ static ssize_t mds_show_state(char *buf)
 	return sprintf(buf, "%s; SMT %s\n", mds_strings[mds_mitigation],
 		(cpu_smt_control == CPU_SMT_ENABLED) ? "vulnerable" : "disabled");
 }
-#else
-static ssize_t l1tf_show_state(char *buf)
-{
-	return sprintf(buf, "%s\n", L1TF_DEFAULT_MSG);
-}
-#endif
 
 /*
  * This function replicates at runtime what check_bugs would do at init time.
