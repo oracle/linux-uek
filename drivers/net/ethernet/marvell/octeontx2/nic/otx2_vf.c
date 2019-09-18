@@ -628,6 +628,7 @@ static struct pci_driver otx2vf_driver = {
 	.id_table = otx2_vf_id_table,
 	.probe = otx2vf_probe,
 	.remove = otx2vf_remove,
+	.shutdown = otx2vf_remove,
 };
 
 static int __init otx2vf_init_module(void)
