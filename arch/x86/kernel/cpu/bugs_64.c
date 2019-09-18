@@ -1577,6 +1577,11 @@ static ssize_t l1tf_show_state(char *buf)
 		       cpu_smt_control == CPU_SMT_ENABLED ? "vulnerable" : "disabled");
 }
 
+static ssize_t itlb_multihit_show_state(char *buf)
+{
+	return sprintf(buf, "Processor vulnerable\n");
+}
+
 static ssize_t mds_show_state(char *buf)
 {
 	if (cpu_has_hypervisor) {
@@ -1758,6 +1763,9 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 		return mds_show_state(buf);
 		break;
 
+	case X86_BUG_ITLB_MULTIHIT:
+		return itlb_multihit_show_state(buf);
+
 	default:
 		break;
 	}
@@ -1797,5 +1805,10 @@ ssize_t cpu_show_l1tf(struct device *dev, struct device_attribute *attr, char *b
 ssize_t cpu_show_mds(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return cpu_show_common(dev, attr, buf, X86_BUG_MDS);
+}
+
+ssize_t cpu_show_itlb_multihit(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return cpu_show_common(dev, attr, buf, X86_BUG_ITLB_MULTIHIT);
 }
 #endif
