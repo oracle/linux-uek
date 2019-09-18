@@ -896,9 +896,17 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 						struct rds_ib_mr,
 						pool_list);
 			list_del_init(&ibmr->pool_list);
-			*ibmr_ret = ibmr;
 		}
 		spin_unlock_irqrestore(&pool->clean_lock, flags);
+
+		/* add ibmr to busy_list before handing over */
+		if (ibmr_ret) {
+			spin_lock_bh(&pool->busy_lock);
+			list_add(&ibmr->pool_list, &pool->busy_list);
+			spin_unlock_bh(&pool->busy_lock);
+
+			*ibmr_ret = ibmr;
+		}
 	}
 
 	atomic_sub(unpinned, &pool->free_pinned);
