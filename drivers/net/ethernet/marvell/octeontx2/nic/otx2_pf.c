@@ -2423,6 +2423,7 @@ static struct pci_driver otx2_pf_driver = {
 	.name = DRV_NAME,
 	.id_table = otx2_pf_id_table,
 	.probe = otx2_probe,
+	.shutdown = otx2_remove,
 	.remove = otx2_remove,
 	.sriov_configure = otx2_sriov_configure
 };
