@@ -36,6 +36,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_link.h>
 #include <linux/mlx5/device.h>
+#include "kcompat.h"
 
 #define MLX5_MAX_UC_PER_VPORT(dev) \
 	(1 << MLX5_CAP_GEN(dev, log_max_current_uc_list))
@@ -153,5 +154,8 @@ int mlx5_eswitch_set_vport_vlan(struct mlx5_eswitch *esw,
 				int vport, u16 vlan, u8 qos);
 int mlx5_eswitch_get_vport_config(struct mlx5_eswitch *esw,
 				  int vport, struct ifla_vf_info *ivi);
+int mlx5_eswitch_get_vport_stats(struct mlx5_eswitch *esw,
+				 int vport,
+				 struct ifla_vf_stats *vf_stats);
 
 #endif /* __MLX5_ESWITCH_H__ */
