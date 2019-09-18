@@ -93,6 +93,145 @@ static struct ib_mr *rds_ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags)
 	return mr;
 }
 
+static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
+{
+	struct rds_ib_cache_head *head;
+	int cpu;
+
+	cache->percpu = alloc_percpu_gfp(struct rds_ib_cache_head, GFP_KERNEL);
+	if (!cache->percpu)
+		return -ENOMEM;
+
+	for_each_possible_cpu(cpu) {
+		head = per_cpu_ptr(cache->percpu, cpu);
+		lfstack_init(&head->stack);
+		head->count = 0;
+	}
+	lfstack_init(&cache->ready);
+
+	return 0;
+}
+
+static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
+{
+	struct rds_ib_cache_head *head;
+	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		head = per_cpu_ptr(cache->percpu, cpu);
+		lfstack_free(&head->stack);
+		head->count = 0;
+	}
+	lfstack_free(&cache->ready);
+	free_percpu(cache->percpu);
+	cache->percpu = NULL;
+}
+
+static int rds_ib_alloc_caches(struct rds_ib_device *rds_ibdev)
+{
+	int i, j;
+	int ret;
+
+	ret = rds_ib_alloc_cache(&rds_ibdev->i_cache_incs);
+	if (ret)
+		goto out;
+
+	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++) {
+		ret = rds_ib_alloc_cache(rds_ibdev->i_cache_frags + i);
+		if (ret) {
+			rds_ib_free_cache(&rds_ibdev->i_cache_incs);
+			for (j = 0; j < i; j++)
+				rds_ib_free_cache(rds_ibdev->i_cache_frags + j);
+			goto out;
+		}
+	}
+out:
+	return ret;
+}
+
+static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz)
+{
+	struct rds_ib_cache_head *head;
+	int cpu;
+	struct lfstack_el *cache_item;
+	struct rds_page_frag *frag;
+	size_t cache_sz_k =  cache_sz / 1024;
+	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
+
+	for_each_possible_cpu(cpu) {
+		head = per_cpu_ptr(cache->percpu, cpu);
+		while ((cache_item = lfstack_pop(&head->stack))) {
+			frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
+			frag->f_cache_entry.next = NULL;
+			WARN_ON(!list_empty(&frag->f_item));
+			rds_ib_recv_free_frag(frag, cache_frag_pages);
+			atomic_sub(cache_frag_pages, &rds_ib_allocation);
+			kmem_cache_free(rds_ib_frag_slab, frag);
+			atomic_sub(cache_sz_k,
+				   &frag->ic->i_cache_allocs);
+		}
+		lfstack_free(&head->stack);
+		head->count = 0;
+	}
+	while ((cache_item = lfstack_pop(&cache->ready))) {
+		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
+		frag->f_cache_entry.next = NULL;
+		WARN_ON(!list_empty(&frag->f_item));
+		rds_ib_recv_free_frag(frag, cache_frag_pages);
+		atomic_sub(cache_frag_pages, &rds_ib_allocation);
+		kmem_cache_free(rds_ib_frag_slab, frag);
+		atomic_sub(cache_sz_k,
+			   &frag->ic->i_cache_allocs);
+	}
+	lfstack_free(&cache->ready);
+	free_percpu(cache->percpu);
+}
+
+static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
+{
+	struct rds_ib_cache_head *head;
+	int cpu;
+	struct lfstack_el *cache_item;
+	struct rds_ib_incoming *inc;
+
+	for_each_possible_cpu(cpu) {
+		head = per_cpu_ptr(cache->percpu, cpu);
+		while ((cache_item = lfstack_pop(&head->stack))) {
+			inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
+			inc->ii_cache_entry.next = 0;
+			WARN_ON(!list_empty(&inc->ii_frags));
+			kmem_cache_free(rds_ib_incoming_slab, inc);
+		}
+		lfstack_free(&head->stack);
+		head->count =  0;
+	}
+	while ((cache_item = lfstack_pop(&cache->ready))) {
+		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
+		inc->ii_cache_entry.next = 0;
+		WARN_ON(!list_empty(&inc->ii_frags));
+		kmem_cache_free(rds_ib_incoming_slab, inc);
+	}
+	lfstack_free(&cache->ready);
+	free_percpu(cache->percpu);
+}
+
+static void rds_ib_free_caches(struct rds_ib_device *rds_ibdev)
+{
+	int i;
+
+	rds_ib_free_inc_cache(&rds_ibdev->i_cache_incs);
+	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++) {
+		size_t cache_sz = (1 << i) * PAGE_SIZE;
+
+		rds_ib_free_frag_cache(rds_ibdev->i_cache_frags + i, cache_sz);
+	}
+
+	/* If there is only 1 IB device, rds_ib_allocation should be 0
+	 * after the rds recv cache is freed.
+	 */
+	WARN_ON(atomic_read(&rds_ib_allocation));
+}
+
 void rds_ib_nodev_connect(void)
 {
 	struct rds_ib_connection *ic;
@@ -232,6 +371,7 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 		return;
 	}
 
+	rds_ib_free_caches(rds_ibdev);
 	rds_rtd(RDS_RTD_ACT_BND,
 		"calling rds_ib_dev_shutdown, ib_device %p, rds_ibdev %p\n",
 		device, rds_ibdev);
@@ -660,6 +800,9 @@ void rds_ib_add_one(struct ib_device *device)
 	}
 
 	if (rds_ib_srq_init(rds_ibdev))
+		goto put_dev;
+
+	if (rds_ib_alloc_caches(rds_ibdev))
 		goto put_dev;
 
 	down_write(&rds_ib_devices_lock);
