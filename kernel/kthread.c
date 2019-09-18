@@ -172,6 +172,8 @@ void kthread_parkme(void)
 	__kthread_parkme(to_kthread(current));
 }
 
+EXPORT_SYMBOL(kthread_parkme);
+
 static int kthread(void *_create)
 {
 	/* Copy data: it's on kthread's stack */
@@ -441,6 +443,8 @@ int kthread_park(struct task_struct *k)
 	}
 	return ret;
 }
+
+EXPORT_SYMBOL(kthread_park);
 
 /**
  * kthread_stop - stop a thread created by kthread_create().
