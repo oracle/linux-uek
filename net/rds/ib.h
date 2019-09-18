@@ -8,6 +8,7 @@
 #include "rds.h"
 #include "rdma_transport.h"
 #include "rds_single_path.h"
+#include "lfstack.h"
 
 #define RDS_FMR_1M_POOL_SIZE		(8192 * 3 / 4)
 #define RDS_FMR_1M_MSG_SIZE		256  /* 1M */
@@ -35,8 +36,6 @@
 #define RDS_IB_DEFAULT_TIMEOUT          16 /* 4.096 * 2 ^ 16 = 260 msec */
 
 #define RDS_IB_SUPPORTED_PROTOCOLS	0x00000003	/* minor versions supported */
-
-#define RDS_IB_RECYCLE_BATCH_COUNT	32
 
 #define RDS_IB_SRQ_POST_BATCH_COUNT     64
 
@@ -70,25 +69,28 @@ extern struct list_head rds_ib_devices;
  */
 struct rds_page_frag {
 	struct list_head	f_item;
-	struct list_head	f_cache_entry;
+	struct lfstack_el	f_cache_entry;
+	struct llist_node	f_alloc;
 	struct scatterlist	f_sg[NUM_RDS_RECV_SG];
+	struct rds_ib_device	*rds_ibdev;
+	struct rds_ib_connection *ic;
 };
 
 struct rds_ib_incoming {
 	struct list_head	ii_frags;
-	struct list_head	ii_cache_entry;
+	struct lfstack_el	ii_cache_entry;
 	struct rds_incoming	ii_inc;
+	struct rds_ib_device	*rds_ibdev;
 };
 
 struct rds_ib_cache_head {
-	struct list_head *first;
-	unsigned long count;
+	struct lfstack		stack;
+	unsigned long		count;
 };
 
 struct rds_ib_refill_cache {
-	struct rds_ib_cache_head *percpu;
-	struct list_head	 *xfer;
-	struct list_head	 *ready;
+	struct rds_ib_cache_head __percpu *percpu;
+	struct lfstack		ready;
 };
 
 struct rds_ib_conn_priv_cmn {
@@ -225,8 +227,6 @@ struct rds_ib_connection {
 	u64			i_recv_hdrs_dma;
 	struct rds_ib_recv_work *i_recvs;
 	u64			i_ack_recv;	/* last ACK received */
-	struct rds_ib_refill_cache i_cache_incs;
-	struct rds_ib_refill_cache i_cache_frags;
 
 	/* sending acks */
 	unsigned long		i_ack_flags;
@@ -258,6 +258,7 @@ struct rds_ib_connection {
 	u16			i_frag_cache_sz;
 	u8			i_frag_pages;
 	u8			i_flags;
+	u16			i_frag_cache_inx;
 	u16			i_hca_sge;
 
 	/* Batched completions */
@@ -331,6 +332,8 @@ enum {
 	RDS_IB_MR_1M_POOL,
 };
 
+#define RDS_FRAG_CACHE_ENTRIES (ilog2(RDS_MAX_FRAG_SIZE / PAGE_SIZE) + 1)
+
 struct rds_ib_device {
 	struct list_head	list;
 	struct list_head	ipaddr_list;
@@ -376,6 +379,8 @@ struct rds_ib_device {
 	atomic_t		free_dev;
 	/* wait until freeing work is done */
 	struct mutex		free_dev_lock;
+	struct rds_ib_refill_cache i_cache_incs;
+	struct rds_ib_refill_cache i_cache_frags[RDS_FRAG_CACHE_ENTRIES];
 };
 
 #define ibdev_to_node(ibdev) dev_to_node((ibdev)->dev.parent)
@@ -620,12 +625,16 @@ void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc);
 void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc);
 
 /* ib_recv.c */
+extern struct kmem_cache *rds_ib_incoming_slab;
+extern struct kmem_cache *rds_ib_frag_slab;
+extern atomic_t rds_ib_allocation;
 int rds_ib_recv_init(void);
 void rds_ib_recv_exit(void);
 int rds_ib_recv_path(struct rds_conn_path *cp);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic, gfp_t gfp);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic);
+void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent);
 void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
 void rds_ib_inc_free(struct rds_incoming *inc);
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
