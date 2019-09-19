@@ -398,8 +398,8 @@ static void rds6_ib_ic_info(struct socket *sock, unsigned int len,
  * allowed to influence which paths have priority.  We could call userspace
  * asserting this policy "routing".
  */
-static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
-			      __u32 scope_id)
+static int rds_ib_laddr_check_cm(struct net *net, const struct in6_addr *addr,
+				 __u32 scope_id)
 {
 	int ret;
 	struct rds_ib_connection dummy_ic;
@@ -499,6 +499,20 @@ out:
 	rds_ib_rdma_destroy_id(cm_id);
 
 	return ret;
+}
+
+static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
+			      __u32 scope_id)
+{
+	struct rds_ib_device *rds_ibdev = rds_ib_get_device(addr);
+
+	if (rds_ibdev) {
+		rds_ib_dev_put(rds_ibdev);
+
+		return 0;
+	}
+
+	return rds_ib_laddr_check_cm(net, addr, scope_id);
 }
 
 /* Detect possible link-layers in order to flush ARP correctly */
