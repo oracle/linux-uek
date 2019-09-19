@@ -570,8 +570,7 @@ static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
 	else
 		rds_ib_stats_inc(s_ib_rdma_mr_1m_alloc);
 
-	if (atomic_read(&pool->item_count) > atomic_read(&pool->max_items_soft))
-		atomic_inc(&pool->max_items_soft);
+	atomic_add_unless(&pool->max_items_soft, 1, pool->max_items);
 
 	return ibmr;
 
