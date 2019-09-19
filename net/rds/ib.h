@@ -601,6 +601,7 @@ void rds_dma_hdrs_free(struct dma_pool *pool, struct rds_header **hdrs,
 		       dma_addr_t *dma_addrs, u32 num_hdrs);
 
 /* ib_rdma.c */
+struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
 			 struct in6_addr *ipaddr);
 void rds_ib_add_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn);
