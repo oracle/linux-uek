@@ -515,24 +515,40 @@ static int nicvf_set_ringparam(struct net_device *netdev,
 static int nicvf_get_rss_hash_opts(struct nicvf *nic,
 				   struct ethtool_rxnfc *info)
 {
+	u64 rss_cfg = nicvf_reg_read(nic, NIC_VNIC_RSS_CFG);
+
 	info->data = 0;
+
+	if (!(rss_cfg & BIT_ULL(RSS_HASH_IP)))
+		return 0;
+
+	info->data = RXH_IP_SRC | RXH_IP_DST;
 
 	switch (info->flow_type) {
 	case TCP_V4_FLOW:
 	case TCP_V6_FLOW:
+		if (rss_cfg & BIT_ULL(RSS_HASH_TCP))
+			info->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		break;
 	case UDP_V4_FLOW:
 	case UDP_V6_FLOW:
+		if (rss_cfg & BIT_ULL(RSS_HASH_UDP))
+			info->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		break;
 	case SCTP_V4_FLOW:
 	case SCTP_V6_FLOW:
-		info->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+	case AH_ESP_V4_FLOW:
+	case AH_V4_FLOW:
+	case ESP_V4_FLOW:
 	case IPV4_FLOW:
+	case AH_ESP_V6_FLOW:
+	case AH_V6_FLOW:
+	case ESP_V6_FLOW:
 	case IPV6_FLOW:
-		info->data |= RXH_IP_SRC | RXH_IP_DST;
 		break;
 	default:
 		return -EINVAL;
 	}
-
 	return 0;
 }
 
@@ -593,19 +609,6 @@ static int nicvf_set_rss_hash_opts(struct nicvf *nic,
 			break;
 		case (RXH_L4_B_0_1 | RXH_L4_B_2_3):
 			rss_cfg |= (1ULL << RSS_HASH_UDP);
-			break;
-		default:
-			return -EINVAL;
-		}
-		break;
-	case SCTP_V4_FLOW:
-	case SCTP_V6_FLOW:
-		switch (info->data & (RXH_L4_B_0_1 | RXH_L4_B_2_3)) {
-		case 0:
-			rss_cfg &= ~(1ULL << RSS_HASH_L4ETC);
-			break;
-		case (RXH_L4_B_0_1 | RXH_L4_B_2_3):
-			rss_cfg |= (1ULL << RSS_HASH_L4ETC);
 			break;
 		default:
 			return -EINVAL;
