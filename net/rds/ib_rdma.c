@@ -126,7 +126,7 @@ static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 static void rds_frwr_clean_worker(struct work_struct *work);
 static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool all);
 
-static struct rds_ib_device *rds_ib_get_device(struct in6_addr *ipaddr)
+struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr)
 {
 	struct rds_ib_device *rds_ibdev;
 	struct rds_ib_ipaddr *i_ipaddr;
