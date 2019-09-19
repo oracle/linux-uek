@@ -480,7 +480,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 # problems with the newer kernel or lack certain things that make
 # integration in the distro harder than needed.
 #
-##%define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, iwl4965-firmware < 228.57.2, selinux-policy-targeted < 1.25.3-14, squashfs-tools < 4.0, wireless-tools < 29-3
+## %% define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, iwl4965-firmware < 228.57.2, selinux-policy-targeted < 1.25.3-14, squashfs-tools < 4.0, wireless-tools < 29-3
 %define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14, device-mapper-multipath < 0.4.9-64, dracut < 004-303.0.3
 
 #
@@ -537,7 +537,9 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
 %ifnarch mips64\
+%if !%{with_embedded}\
 Requires(pre): linux-firmware >= 999:20190627-999.2.git7ae3a09d\
+%endif\
 %endif\
 Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
