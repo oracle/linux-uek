@@ -696,21 +696,25 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 			continue;
 		/* Assign MAC address to PF */
 		pfvf = &rvu->pf[pf];
-		mac = &rvu->fwdata->pf_macs[pf];
-		if (rvu->fwdata && pf < PF_MACNUM_MAX && *mac)
-			u64_to_ether_addr(*mac, pfvf->mac_addr);
-		else
+		if (rvu->fwdata && pf < PF_MACNUM_MAX) {
+			mac = &rvu->fwdata->pf_macs[pf];
+			if (*mac)
+				u64_to_ether_addr(*mac, pfvf->mac_addr);
+		} else {
 			eth_random_addr(pfvf->mac_addr);
+		}
 
 		/* Assign MAC address to VFs*/
 		rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvf);
 		for (vf = 0; vf < numvfs; vf++, hwvf++) {
 			pfvf =  &rvu->hwvf[hwvf];
-			mac = &rvu->fwdata->vf_macs[hwvf];
-			if (rvu->fwdata && hwvf < VF_MACNUM_MAX && *mac)
-				u64_to_ether_addr(*mac, pfvf->mac_addr);
-			else
+			if (rvu->fwdata && hwvf < VF_MACNUM_MAX) {
+				mac = &rvu->fwdata->vf_macs[hwvf];
+				if (*mac)
+					u64_to_ether_addr(*mac, pfvf->mac_addr);
+			} else {
 				eth_random_addr(pfvf->mac_addr);
+			}
 		}
 	}
 }
@@ -924,9 +928,7 @@ init:
 		rvu_scan_block(rvu, block);
 	}
 
-	err = rvu_fwdata_init(rvu);
-	if (err)
-		goto msix_err;
+	rvu_fwdata_init(rvu);
 
 	err = rvu_npc_init(rvu);
 	if (err)
