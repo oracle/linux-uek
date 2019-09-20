@@ -194,6 +194,10 @@ cflags-y += $(call cc-option,-march=octeon3) -Wa,--trap
 ifeq (,$(findstring march=octeon3, $(cflags-y)))
 cflags-y += -Wa,-march=octeon3
 endif
+ifndef CONFIG_VIRUTALIZATION
+# This removes a lot of warnings
+cflags-y += -Wa,-mno-virt
+endif
 else
 ifdef CONFIG_CAVIUM_OCTEON2
 cflags-y += $(call cc-option,-march=octeon2) -Wa,--trap
