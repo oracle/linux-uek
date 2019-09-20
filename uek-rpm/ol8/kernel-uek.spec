@@ -1111,9 +1111,14 @@ BuildKernel() {
     mkdir -p $RPM_BUILD_ROOT%{debuginfodir}/%{image_install_path}
 %endif
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
+    mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
     install -m 644 .config $RPM_BUILD_ROOT/boot/config-$KernelVer
+    install -m 644 .config $RPM_BUILD_ROOT/lib/modules/$KernelVer/config
     install -m 644 System.map $RPM_BUILD_ROOT/boot/System.map-$KernelVer
+    install -m 644 System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/System.map
+
     touch $RPM_BUILD_ROOT/boot/initramfs-$KernelVer.img
+
     if [ -f arch/$Arch/boot/zImage.stub ]; then
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
@@ -1220,6 +1225,7 @@ fi
     # create the kABI metadata for use in packaging
     echo "**** GENERATING kernel ABI metadata ****"
     gzip -c9 < Module.symvers > $RPM_BUILD_ROOT/boot/symvers-$KernelVer.gz
+    cp $RPM_BUILD_ROOT/boot/symvers-$KernelVer.gz $RPM_BUILD_ROOT/lib/modules/$KernelVer/symvers.gz
     chmod 0755 %_sourcedir/kabitool
     if [ -e $RPM_SOURCE_DIR/kabi_whitelist_%{_target_cpu}$Flavour ]; then
        cp $RPM_SOURCE_DIR/kabi_whitelist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/kabi_whitelist
@@ -1766,9 +1772,12 @@ fi
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz.hmac \
 %ghost /%{image_install_path}/.vmlinuz-%{KVERREL}%{?2:.%{2}}.hmac \
-/boot/System.map-%{KVERREL}%{?2:.%{2}}\
-/boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
-/boot/config-%{KVERREL}%{?2:.%{2}}\
+%attr(600,root,root) /lib/modules/%{KVERREL}%{?2:.%{2}}/System.map\
+%ghost /boot/System.map-%{KVERREL}%{?2:.%{2}}\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/symvers.gz\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/config\
+%ghost /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
+%ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 %if %{with_dtrace}\
