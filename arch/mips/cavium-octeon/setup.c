@@ -1373,6 +1373,7 @@ void __init device_tree_init(void)
 		fill_mac = true;
 	}
 
+	early_init_dt_scan((void *)fdt);
 	initial_boot_params = (void *)fdt;
 
 	if (do_prune) {
