@@ -38,9 +38,6 @@ enum {
 	RVU_VF_INT_VEC_MBOX = 0x0,
 };
 
-static int otx2vf_open(struct net_device *netdev);
-static int otx2vf_stop(struct net_device *netdev);
-
 static int otx2vf_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	bool if_up = netif_running(netdev);
@@ -369,7 +366,7 @@ exit:
 	return err;
 }
 
-static int otx2vf_open(struct net_device *netdev)
+int otx2vf_open(struct net_device *netdev)
 {
 	struct otx2_nic *vf;
 	int err;
@@ -388,11 +385,13 @@ static int otx2vf_open(struct net_device *netdev)
 
 	return 0;
 }
+EXPORT_SYMBOL(otx2vf_open);
 
-static int otx2vf_stop(struct net_device *netdev)
+int otx2vf_stop(struct net_device *netdev)
 {
 	return otx2_stop(netdev);
 }
+EXPORT_SYMBOL(otx2vf_stop);
 
 static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
