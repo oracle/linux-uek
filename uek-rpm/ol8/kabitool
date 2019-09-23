@@ -40,11 +40,17 @@ def load_symbols(filename):
 
 	while true:
 		line = ksyms.readline()
+		count = len(line.split())
+
 		if line == "":
 			break;
 		if line == "\n":
 			continue
-		checksum,symbol,path,license = line.split()
+
+		if count == 4:
+			checksum,symbol,path,license = line.split()
+		elif count == 5:
+			checksum,symbol,namespace,path,license = line.split()
 
 		symbols[symbol] = dict(checksum=checksum,
 				       path=path,
