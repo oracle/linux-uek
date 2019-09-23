@@ -38,6 +38,27 @@ enum {
 	RVU_VF_INT_VEC_MBOX = 0x0,
 };
 
+static int otx2vf_open(struct net_device *netdev);
+static int otx2vf_stop(struct net_device *netdev);
+
+static int otx2vf_change_mtu(struct net_device *netdev, int new_mtu)
+{
+	bool if_up = netif_running(netdev);
+	int err = 0;
+
+	if (if_up)
+		otx2vf_stop(netdev);
+
+	netdev_info(netdev, "Changing MTU from %d to %d\n",
+		    netdev->mtu, new_mtu);
+	netdev->mtu = new_mtu;
+
+	if (if_up)
+		err = otx2vf_open(netdev);
+
+	return err;
+}
+
 static void otx2vf_process_vfaf_mbox_msg(struct otx2_nic *vf,
 					 struct mbox_msghdr *msg)
 {
@@ -431,7 +452,7 @@ static const struct net_device_ops otx2vf_netdev_ops = {
 	.ndo_stop = otx2vf_stop,
 	.ndo_start_xmit = otx2vf_xmit,
 	.ndo_set_mac_address = otx2_set_mac_address,
-	.ndo_change_mtu = otx2_change_mtu,
+	.ndo_change_mtu = otx2vf_change_mtu,
 	.ndo_get_stats64 = otx2_get_stats64,
 	.ndo_tx_timeout = otx2_tx_timeout,
 	.ndo_features_check = otx2_features_check,
