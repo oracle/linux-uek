@@ -607,6 +607,8 @@ void otx2vf_set_ethtool_ops(struct net_device *netdev);
 
 int otx2_open(struct net_device *netdev);
 int otx2_stop(struct net_device *netdev);
+int otx2vf_open(struct net_device *netdev);
+int otx2vf_stop(struct net_device *netdev);
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues);
 /* MCAM filter related APIs */

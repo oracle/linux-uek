@@ -1155,9 +1155,10 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 	/* CQ */
 	for (qidx = 0; qidx < pf->qset.cq_cnt; qidx++) {
 		ptr = pf->reg_base + NIX_LF_CQ_OP_INT;
-		val = atomic64_fetch_add_relaxed((qidx << 44) |
-						 NIX_CQERRINT_BITS, ptr);
+		val = atomic64_fetch_add_relaxed((qidx << 44), ptr);
 
+		otx2_write64(pf, NIX_LF_CQ_OP_INT, (qidx << 44) |
+			     (val & NIX_CQERRINT_BITS));
 		if (!(val & (NIX_CQERRINT_BITS | BIT_ULL(42))))
 			continue;
 
@@ -1179,8 +1180,10 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 	/* SQ */
 	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
 		ptr = pf->reg_base + NIX_LF_SQ_OP_INT;
-		val = atomic64_fetch_add_relaxed((qidx << 44) | NIX_SQINT_BITS,
-						 ptr);
+		val = atomic64_fetch_add_relaxed((qidx << 44), ptr);
+		otx2_write64(pf, NIX_LF_SQ_OP_INT, (qidx << 44) |
+			     (val & NIX_SQINT_BITS));
+
 		if (!(val & (NIX_SQINT_BITS | BIT_ULL(42))))
 			continue;
 
@@ -1191,13 +1194,20 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 			if (val & BIT_ULL(NIX_SQINT_LMT_ERR))
 				dev_err(pf->dev, "SQ%lld: LMT store error",
 					qidx);
-			if (val & BIT_ULL(NIX_SQINT_MNQ_ERR))
-				dev_err(pf->dev, "SQ%lld: Meta-descriptor enqueue error",
-					qidx);
-			if (val & BIT_ULL(NIX_SQINT_SEND_ERR))
+			if (val & BIT_ULL(NIX_SQINT_MNQ_ERR)) {
+				dev_err(pf->dev, "SQ%lld: Meta-descriptor enqueue error NIX_LF_MNQ_ERR_DGB:0x%llx\n",
+					qidx,
+					otx2_read64(pf, NIX_LF_MNQ_ERR_DBG));
+				otx2_write64(pf, NIX_LF_MNQ_ERR_DBG,
+					     BIT_ULL(44));
+			}
+			if (val & BIT_ULL(NIX_SQINT_SEND_ERR)) {
 				dev_err(pf->dev, "SQ%lld: Send error, NIX_LF_SEND_ERR_DBG 0x%llx",
 					qidx,
 					otx2_read64(pf, NIX_LF_SEND_ERR_DBG));
+				otx2_write64(pf, NIX_LF_SEND_ERR_DBG,
+					     BIT_ULL(44));
+			}
 			if (val & BIT_ULL(NIX_SQINT_SQB_ALLOC_FAIL))
 				dev_err(pf->dev, "SQ%lld: SQB allocation failed",
 					qidx);

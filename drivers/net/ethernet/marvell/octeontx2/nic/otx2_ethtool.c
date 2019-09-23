@@ -84,6 +84,26 @@ static const unsigned int otx2_n_dev_stats = ARRAY_SIZE(otx2_dev_stats);
 static const unsigned int otx2_n_drv_stats = ARRAY_SIZE(otx2_drv_stats);
 static const unsigned int otx2_n_queue_stats = ARRAY_SIZE(otx2_queue_stats);
 
+static void otx2_dev_open(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	if (pfvf->pcifunc & RVU_PFVF_FUNC_MASK)
+		otx2vf_open(netdev);
+	else
+		otx2_open(netdev);
+}
+
+static void otx2_dev_stop(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	if (pfvf->pcifunc & RVU_PFVF_FUNC_MASK)
+		otx2vf_stop(netdev);
+	else
+		otx2_stop(netdev);
+}
+
 static void otx2_get_drvinfo(struct net_device *netdev,
 			     struct ethtool_drvinfo *info)
 {
@@ -275,7 +295,7 @@ static int otx2_set_channels(struct net_device *dev,
 		return -EINVAL;
 
 	if (if_up)
-		otx2_stop(dev);
+		otx2_dev_stop(dev);
 
 	pfvf->hw.rx_queues = channel->rx_count;
 	pfvf->hw.tx_queues = channel->tx_count;
@@ -286,7 +306,7 @@ static int otx2_set_channels(struct net_device *dev,
 		return err;
 
 	if (if_up)
-		otx2_open(dev);
+		otx2_dev_open(dev);
 
 	netdev_info(dev, "Setting num Tx rings to %d, Rx rings to %d success\n",
 		    pfvf->hw.tx_queues, pfvf->hw.rx_queues);
@@ -377,14 +397,14 @@ static int otx2_set_ringparam(struct net_device *netdev,
 		return 0;
 
 	if (if_up)
-		otx2_stop(netdev);
+		otx2_dev_stop(netdev);
 
 	/* Assigned to the nearest possible exponent. */
 	qs->sqe_cnt = tx_count;
 	qs->rqe_cnt = rx_count;
 
 	if (if_up)
-		otx2_open(netdev);
+		otx2_dev_open(netdev);
 	return 0;
 }
 
