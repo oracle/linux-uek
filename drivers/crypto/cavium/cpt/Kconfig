@@ -16,7 +16,7 @@ config CRYPTO_DEV_OCTEONTX_CPT
 		block found in OcteonTX series of processors.
 
 		To compile this driver as modules, choose M here:
-		the modules will be called cptpf8x and cptvf8x.
+		the modules will be called octeontx-cpt and octeontx-cptvf.
 
 config CRYPTO_DEV_OCTEONTX2_CPT
 	tristate "Support for OcteonTX2 CPT driver"
@@ -29,4 +29,4 @@ config CRYPTO_DEV_OCTEONTX2_CPT
 		block found in OcteonTX2 series of processors.
 
 		To compile this driver as modules, choose M here:
-		the modules will be called cptpf9x and cptvf9x.
+		the modules will be called octeontx2-cpt and octeontx2-cptvf.
