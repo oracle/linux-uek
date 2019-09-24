@@ -607,18 +607,17 @@ static enum mmc_blk_status mmc_finalize_areq(struct mmc_host *host)
  */
 void mmc_wait_for_oops_req(struct mmc_host *host, struct mmc_request *mrq)
 {
-	DECLARE_WAITQUEUE(wait, current);
-
 	mmc_start_request(host, mrq);
 
-	spin_lock_irq(&host->wq.lock);
-	init_waitqueue_head(&host->wq);
+	if (mrq->data)
+		mdelay(mrq->data->timeout_ns / NSEC_PER_MSEC);
 
-	add_wait_queue_exclusive(&host->wq, &wait);
-	set_current_state(TASK_UNINTERRUPTIBLE);
-
-	mdelay(mrq->data->timeout_ns / NSEC_PER_MSEC);
-	spin_unlock_irq(&host->wq.lock);
+	/*
+	 * Enabling local irq (earlier handled by spin_unlock_irq) is needed
+	 * to unlock sdhci interrupt handler required for finalising mmc
+	 * request.
+	 */
+	local_irq_enable();
 }
 #endif
 
