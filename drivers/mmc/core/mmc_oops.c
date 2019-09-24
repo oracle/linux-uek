@@ -31,6 +31,8 @@
 
 #define RECORD_SIZE		10240UL
 
+#define PART_TYPE		0
+
 static int dump_oops = 1;
 module_param(dump_oops, int, 0600);
 MODULE_PARM_DESC(dump_oops,
@@ -94,6 +96,51 @@ static void mmc_panic_write(struct mmcoops_context *cxt,
 	cxt->count = (cxt->count + 1) % cxt->max_count;
 }
 
+static void mmcoops_part_switch(struct mmcoops_context *cxt)
+{
+	struct mmc_card *card = cxt->card;
+	struct mmc_command cmd = {};
+	struct mmc_host *host = card->host;
+	bool use_r1b_resp = true;
+	unsigned int timeout_ms = card->ext_csd.part_time;
+	struct mmc_request mrq = {};
+
+	if (timeout_ms && host->max_busy_timeout &&
+		(timeout_ms > host->max_busy_timeout))
+		use_r1b_resp = false;
+
+	cmd.opcode = MMC_SWITCH;
+
+	cmd.arg = (MMC_SWITCH_MODE_WRITE_BYTE << 24) |
+		  (EXT_CSD_PART_CONFIG << 16) |
+		  (PART_TYPE << 8) |
+		  EXT_CSD_CMD_SET_NORMAL;
+
+	cmd.flags = MMC_CMD_AC;
+	if (use_r1b_resp) {
+		cmd.flags |= MMC_RSP_SPI_R1B | MMC_RSP_R1B;
+		/*
+		 * A busy_timeout of zero means the host can decide to use
+		 * whatever value it finds suitable.
+		 */
+		cmd.busy_timeout = timeout_ms;
+	} else {
+		cmd.flags |= MMC_RSP_SPI_R1 | MMC_RSP_R1;
+	}
+
+	memset(cmd.resp, 0, sizeof(cmd.resp));
+	cmd.retries = MMC_CMD_RETRIES;
+
+	mrq.cmd = &cmd;
+	cmd.data = NULL;
+
+	mmc_wait_for_oops_req(host, &mrq);
+	mdelay(card->ext_csd.part_time);
+
+	if (cmd.error)
+		pr_err("%s: cmd error %d\n", __func__, cmd.error);
+}
+
 static void mmcoops_do_dump(struct kmsg_dumper *dumper,
 		enum kmsg_dump_reason reason)
 {
@@ -107,6 +154,9 @@ static void mmcoops_do_dump(struct kmsg_dumper *dumper,
 		return;
 
 	mmc_claim_host(card->host);
+
+	if (mmc_card_mmc(card))
+		mmcoops_part_switch(cxt);
 
 	/* Only dump oopses if dump_oops is set */
 	if (reason == KMSG_DUMP_OOPS && !dump_oops)
