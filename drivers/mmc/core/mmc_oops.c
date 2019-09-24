@@ -29,8 +29,6 @@
 #define MMCOOPS_KERNMSG_HDR	"===="
 #define MMCOOPS_HEADER_SIZE	(5 + sizeof(struct timeval))
 
-#define RECORD_SIZE		10240UL
-
 #define PART_TYPE		0
 
 static int dump_oops = 1;
@@ -48,8 +46,6 @@ static struct mmcoops_context {
 	unsigned long		size;
 	struct device		*dev;
 	struct platform_device	*pdev;
-	int			count;
-	int			max_count;
 	void			*virt_addr;
 } oops_cxt;
 
@@ -91,9 +87,6 @@ static void mmc_panic_write(struct mmcoops_context *cxt,
 		pr_info("%s: cmd error %d\n", __func__, mrq->cmd->error);
 	if (mrq->data->error)
 		pr_info("%s: data error %d\n", __func__, mrq->data->error);
-	/* wait busy */
-
-	cxt->count = (cxt->count + 1) % cxt->max_count;
 }
 
 static void mmcoops_part_switch(struct mmcoops_context *cxt)
@@ -147,7 +140,6 @@ static void mmcoops_do_dump(struct kmsg_dumper *dumper,
 	struct mmcoops_context *cxt = container_of(dumper,
 			struct mmcoops_context, dump);
 	struct mmc_card *card = cxt->card;
-	unsigned int count = 0;
 	char *buf;
 
 	if (!card)
@@ -162,14 +154,14 @@ static void mmcoops_do_dump(struct kmsg_dumper *dumper,
 	if (reason == KMSG_DUMP_OOPS && !dump_oops)
 		return;
 
-	buf = (char *)(cxt->virt_addr + (cxt->count * RECORD_SIZE));
-	memset(buf, '\0', RECORD_SIZE);
-	count = sprintf(buf + count, "%s", MMCOOPS_KERNMSG_HDR);
+	buf = (char *)(cxt->virt_addr);
+	memset(buf, '\0', cxt->size);
+	sprintf(buf, "%s", MMCOOPS_KERNMSG_HDR);
 
 	kmsg_dump_get_buffer(dumper, true, buf + MMCOOPS_HEADER_SIZE,
-			RECORD_SIZE - MMCOOPS_HEADER_SIZE, NULL);
+			(cxt->size << 9) - MMCOOPS_HEADER_SIZE, NULL);
 
-	mmc_panic_write(cxt, buf, cxt->start + (cxt->count * 8), cxt->size);
+	mmc_panic_write(cxt, buf, cxt->start, cxt->size);
 }
 
 int  mmc_oops_card_set(struct mmc_card *card)
@@ -251,6 +243,12 @@ static int mmcoops_parse_dt(struct mmcoops_context *cxt)
 		return ret;
 	}
 
+	if (size > 128) {
+		pr_warn("%s: Max dump size is 64KB (128 * 512B) - truncating\n",
+			__func__);
+		size = 128;
+	}
+
 	cxt->start = start_offset;
 	cxt->size = size;
 
@@ -299,7 +297,6 @@ static int __init mmcoops_probe(struct platform_device *pdev)
 		return err;
 
 	cxt->card = NULL;
-	cxt->count = 0;
 	cxt->dev = &pdev->dev;
 
 	err = mmcoops_parse_dt(cxt);
@@ -307,8 +304,6 @@ static int __init mmcoops_probe(struct platform_device *pdev)
 		pr_err("mmcoops: parsing mmcoops property failed");
 		return err;
 	}
-
-	cxt->max_count = (cxt->size << 9) / RECORD_SIZE;
 
 	cxt->virt_addr = kmalloc((cxt->size << 9), GFP_KERNEL);
 	if (!cxt->virt_addr)
