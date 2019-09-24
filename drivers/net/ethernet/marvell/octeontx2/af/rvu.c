@@ -739,7 +739,7 @@ static int rvu_fwdata_init(struct rvu *rvu)
 	}
 	return 0;
 fail:
-	dev_err(rvu->dev, "Unable to fetch 'fwdata' from firmware\n");
+	dev_info(rvu->dev, "Unable to fetch 'fwdata' from firmware\n");
 	return -EIO;
 }
 
