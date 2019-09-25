@@ -400,15 +400,16 @@ static int reply_free_rsrc_cnt(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 static int reply_ready_msg(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 			   struct mbox_msghdr *req)
 {
-	struct mbox_msghdr *rsp;
+	struct ready_msg_rsp *rsp;
 
-	rsp = otx2_mbox_alloc_msg(&cptpf->vfpf_mbox, vf->vf_id, sizeof(*rsp));
+	rsp = (struct ready_msg_rsp *)
+	       otx2_mbox_alloc_msg(&cptpf->vfpf_mbox, vf->vf_id, sizeof(*rsp));
 	if (!rsp)
 		return -ENOMEM;
 
-	rsp->id = MBOX_MSG_READY;
-	rsp->sig = OTX2_MBOX_RSP_SIG;
-	rsp->pcifunc = req->pcifunc;
+	rsp->hdr.id = MBOX_MSG_READY;
+	rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
+	rsp->hdr.pcifunc = req->pcifunc;
 
 	return 0;
 }
