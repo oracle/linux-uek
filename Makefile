@@ -1034,7 +1034,7 @@ export INSTALL_FW_PATH
 PHONY += firmware_install
 firmware_install: FORCE
 	@mkdir -p $(objtree)/firmware
-	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.fwinst obj=$(objtree)/firmware __fw_install
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.fwinst obj=firmware __fw_install
 
 # ---------------------------------------------------------------------------
 # Kernel headers

@@ -6,8 +6,7 @@
 # ==========================================================================
 
 INSTALL := install
-src := $(srctree)
-obj := $(objtree)
+src := $(obj)
 
 # For modules_install installing firmware, we want to see .config
 # But for firmware_install, we don't care, but don't want to require it.
@@ -29,7 +28,7 @@ ifneq ($(KBUILD_SRC),)
 # Create output directory if not already present
 _dummy := $(shell [ -d $(obj) ] || mkdir -p $(obj))
 
-firmware-dirs := $(sort $(addprefix $(obj)/,$(dir $(fw-external-y) $(fw-shipped-all))))
+firmware-dirs := $(sort $(addprefix $(objtree)/$(obj)/,$(dir $(fw-external-y) $(fw-shipped-all))))
 # Create directories for firmware in subdirectories
 _dummy := $(foreach d,$(firmware-dirs), $(shell [ -d $(d) ] || mkdir -p $(d)))
 endif
