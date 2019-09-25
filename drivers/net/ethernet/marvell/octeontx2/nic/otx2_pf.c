@@ -44,6 +44,24 @@ enum {
 	TYPE_PFVF,
 };
 
+static int otx2_change_mtu(struct net_device *netdev, int new_mtu)
+{
+	bool if_up = netif_running(netdev);
+	int err = 0;
+
+	if (if_up)
+		otx2_stop(netdev);
+
+	netdev_info(netdev, "Changing MTU from %d to %d\n",
+		    netdev->mtu, new_mtu);
+	netdev->mtu = new_mtu;
+
+	if (if_up)
+		err = otx2_open(netdev);
+
+	return err;
+}
+
 static void otx2_disable_flr_me_intr(struct otx2_nic *pf)
 {
 	int irq, vfs = pf->total_vfs;

@@ -213,23 +213,6 @@ int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu)
 	return err;
 }
 
-int otx2_change_mtu(struct net_device *netdev, int new_mtu)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	int err;
-
-	if (netif_running(netdev)) {
-		err = otx2_hw_set_mtu(pfvf, new_mtu);
-		if (err)
-			return err;
-	}
-	netdev_info(netdev, "Changing MTU from %d to %d\n",
-		    netdev->mtu, new_mtu);
-	netdev->mtu = new_mtu;
-	return 0;
-}
-EXPORT_SYMBOL(otx2_change_mtu);
-
 int otx2_set_flowkey_cfg(struct otx2_nic *pfvf)
 {
 	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
