@@ -1002,7 +1002,6 @@ static void npc_config_rx_ldata_extract(struct rvu *rvu, int blkaddr)
 
 static void npc_config_ldata_extract(struct rvu *rvu, int blkaddr)
 {
-	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int lid, ltype;
 	int lid_count;
 	u64 cfg;
@@ -1027,7 +1026,9 @@ static void npc_config_ldata_extract(struct rvu *rvu, int blkaddr)
 		}
 	}
 
-	if (mcam->keysize != NPC_MCAM_KEY_X2)
+	cfg = (rvu_read64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(0)) >> 32) & 0x07;
+	/* Default profile works with key size NPC_MCAM_KEY_X2 */
+	if (cfg != NPC_MCAM_KEY_X2)
 		return;
 
 	/* Config RX ldata extract */
