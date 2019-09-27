@@ -836,7 +836,9 @@ static void blk_mq_check_expired(struct blk_mq_hw_ctx *hctx,
 			return;
 		if (!blk_mark_rq_complete(rq))
 			blk_mq_rq_timed_out(rq, reserved);
-		if (refcount_dec_and_test(&rq->ref))
+		if (is_flush_rq(rq, hctx))
+			rq->end_io(rq, 0);
+		else if (refcount_dec_and_test(&rq->ref))
 			__blk_mq_free_request(rq);
 	} else if (!data->next_set || time_after(data->next, rq->deadline)) {
 		data->next = rq->deadline;
