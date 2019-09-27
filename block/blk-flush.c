@@ -225,11 +225,22 @@ static void flush_end_io(struct request *flush_rq, blk_status_t error)
 	unsigned long flags = 0;
 	struct blk_flush_queue *fq = blk_get_flush_queue(q, flush_rq->mq_ctx);
 
+	if (q->mq_ops)
+		spin_lock_irqsave(&fq->mq_flush_lock, flags);
+
+	if (!refcount_dec_and_test(&flush_rq->ref)) {
+		fq->rq_status = error;
+		if (q->mq_ops)
+			spin_unlock_irqrestore(&fq->mq_flush_lock, flags);
+		return;
+	}
+
+	if (fq->rq_status != BLK_STS_OK)
+		error = fq->rq_status;
 	if (q->mq_ops) {
 		struct blk_mq_hw_ctx *hctx;
 
 		/* release the tag's ownership to the req cloned from */
-		spin_lock_irqsave(&fq->mq_flush_lock, flags);
 		hctx = blk_mq_map_queue(q, flush_rq->mq_ctx->cpu);
 		if (!q->elevator) {
 			blk_mq_tag_set_rq(hctx, flush_rq->tag, fq->orig_rq);
