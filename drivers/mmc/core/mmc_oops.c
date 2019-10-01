@@ -156,9 +156,10 @@ static void mmcoops_do_dump(struct kmsg_dumper *dumper,
 	struct mmcoops_context *cxt = container_of(dumper,
 			struct mmcoops_context, dump);
 	struct mmc_card *card = cxt->card;
+	static int runonce;
 	char *buf;
 
-	if (!card)
+	if (!card || runonce++)
 		return;
 
 	mmc_claim_host(card->host);
