@@ -134,19 +134,17 @@ EXPORT_SYMBOL(otx2_mbox_init);
 
 int otx2_mbox_wait_for_rsp(struct otx2_mbox *mbox, int devid)
 {
+	unsigned long timeout = jiffies + usecs_to_jiffies(MBOX_RSP_TIMEOUT);
 	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
 	struct device *sender = &mbox->pdev->dev;
-	int timeout = 0, sleep = 1;
 
-	while (mdev->num_msgs != mdev->msgs_acked) {
-		msleep(sleep);
-		timeout += sleep;
-		if (timeout >= MBOX_RSP_TIMEOUT) {
-			dev_dbg(sender, "timed out while waiting for rsp\n");
-			return -EIO;
-		}
+	while (!time_after(jiffies, timeout)) {
+		if (mdev->num_msgs == mdev->msgs_acked)
+			return 0;
+		usleep_range(800, 1000);
 	}
-	return 0;
+	dev_dbg(sender, "timed out while waiting for rsp\n");
+	return -EIO;
 }
 EXPORT_SYMBOL(otx2_mbox_wait_for_rsp);
 
