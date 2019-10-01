@@ -28,8 +28,26 @@
 /* TODO Unify the oops header, mmtoops, ramoops, mmcoops */
 #define MMCOOPS_KERNMSG_HDR	"===="
 #define MMCOOPS_HEADER_SIZE	(5 + sizeof(struct timeval))
+#define DEFAULT_RECORD_SIZE	20 /* default 20KB: 20 * 512B */
+#define DEFAULT_START_OFFSET	14680064 /* default 7GB: 14680064 * 512B */
+#define MAX_RECORD_SIZE		128 /* 64KB: 128 * 512  */
 
 #define PART_TYPE		0
+
+static unsigned long start_offset = DEFAULT_START_OFFSET;
+module_param(start_offset, ulong, 0400);
+MODULE_PARM_DESC(start_offset,
+		"block-start_offset for start (default: DEFAULT_START_OFFSET)");
+
+static unsigned long record_size = DEFAULT_RECORD_SIZE;
+module_param(record_size, ulong, 0400);
+MODULE_PARM_DESC(record_size,
+		"the number of block to write oopses and panics (default: DEFAULT_RECORD_SIZE");
+
+static char mmcdev[80];
+module_param_string(mmcdev, mmcdev, 80, 0400);
+MODULE_PARM_DESC(mmcdev,
+		"name of the MMC device to use");
 
 static int dump_oops = 1;
 module_param(dump_oops, int, 0600);
@@ -42,8 +60,6 @@ static struct mmcoops_context {
 	struct kmsg_dumper	dump;
 	struct mmc_request	*mrq;
 	struct mmc_card		*card;
-	unsigned long		start;
-	unsigned long		size;
 	struct device		*dev;
 	struct platform_device	*pdev;
 	void			*virt_addr;
@@ -155,18 +171,21 @@ static void mmcoops_do_dump(struct kmsg_dumper *dumper,
 		return;
 
 	buf = (char *)(cxt->virt_addr);
-	memset(buf, '\0', cxt->size);
+	memset(buf, '\0', record_size);
 	sprintf(buf, "%s", MMCOOPS_KERNMSG_HDR);
 
 	kmsg_dump_get_buffer(dumper, true, buf + MMCOOPS_HEADER_SIZE,
-			(cxt->size << 9) - MMCOOPS_HEADER_SIZE, NULL);
+			(record_size << 9) - MMCOOPS_HEADER_SIZE, NULL);
 
-	mmc_panic_write(cxt, buf, cxt->start, cxt->size);
+	mmc_panic_write(cxt, buf, start_offset, record_size);
 }
 
 int  mmc_oops_card_set(struct mmc_card *card)
 {
 	struct mmcoops_context *cxt = &oops_cxt;
+
+	if (strcmp(mmc_hostname(card->host), mmcdev))
+		return 0;
 
 	if (!mmc_card_mmc(card) && !mmc_card_sd(card))
 		return -ENODEV;
@@ -223,38 +242,6 @@ static struct mmc_driver mmc_driver = {
 	.remove		= mmc_oops_remove,
 };
 
-/* Parsing dt node */
-static int mmcoops_parse_dt(struct mmcoops_context *cxt)
-{
-	struct device_node *np = cxt->dev->of_node;
-	u32 start_offset = 0;
-	u32 size = 0;
-	int ret = 0;
-
-	ret = of_property_read_u32(np, "start-offset", &start_offset);
-	if (ret) {
-		pr_err("%s: Start offset can't set..\n", __func__);
-		return ret;
-	}
-
-	ret = of_property_read_u32(np, "size", &size);
-	if (ret) {
-		pr_err("%s: Size can't set..\n", __func__);
-		return ret;
-	}
-
-	if (size > 128) {
-		pr_warn("%s: Max dump size is 64KB (128 * 512B) - truncating\n",
-			__func__);
-		size = 128;
-	}
-
-	cxt->start = start_offset;
-	cxt->size = size;
-
-	return 0;
-}
-
 static int mmc_alloc_req_resources(struct platform_device *pdev,
 				   struct mmcoops_context *cxt)
 {
@@ -299,13 +286,13 @@ static int __init mmcoops_probe(struct platform_device *pdev)
 	cxt->card = NULL;
 	cxt->dev = &pdev->dev;
 
-	err = mmcoops_parse_dt(cxt);
-	if (err) {
-		pr_err("mmcoops: parsing mmcoops property failed");
-		return err;
+	if (record_size > MAX_RECORD_SIZE || record_size <= 0) {
+		pr_warn("%s: wrong record size - forcing max record size %d\n",
+			__func__, MAX_RECORD_SIZE);
+		record_size = MAX_RECORD_SIZE;
 	}
 
-	cxt->virt_addr = kmalloc((cxt->size << 9), GFP_KERNEL);
+	cxt->virt_addr = kmalloc((record_size << 9), GFP_KERNEL);
 	if (!cxt->virt_addr)
 		goto kmalloc_failed;
 
