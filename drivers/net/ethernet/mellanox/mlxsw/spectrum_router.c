@@ -8120,7 +8120,8 @@ static void __mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp)
 	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rgcr), rgcr_pl);
 }
 
-int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
+int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp,
+			 struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_router *router;
 	int err;
