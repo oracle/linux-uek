@@ -356,6 +356,13 @@ static void refill_local(struct rds_ib_mr_pool *pool, struct xlist_head *xl,
 	struct xlist_head *ibmr_xl;
 	ibmr_xl = xlist_del_head_fast(xl);
 	*ibmr_ret = list_entry(ibmr_xl, struct rds_ib_mr, xlist);
+
+	/* add ibmr to busy_list before handing over */
+	if (*ibmr_ret) {
+		spin_lock_bh(&pool->busy_lock);
+		list_add(&((*ibmr_ret)->pool_list), &pool->busy_list);
+		spin_unlock_bh(&pool->busy_lock);
+	}
 }
 
 static inline struct rds_ib_mr *rds_ib_reuse_fmr(struct rds_ib_mr_pool *pool)
