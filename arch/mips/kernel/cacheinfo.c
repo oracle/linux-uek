@@ -3,6 +3,28 @@
  * MIPS cacheinfo support
  */
 #include <linux/cacheinfo.h>
+#ifdef CONFIG_CAVIUM_OCTEON_SOC
+/*
+ * This matches what arch/mips/cavium-octeon/cacheinfo.c
+ * would do to populate shared_cpu_map. Without this
+ * /sys/devices/system/cpu/cpu0/cache/index0/shared_cpu_map
+ * will be missing and things that want or need it, like
+ * lscpu, won't function.
+ *
+ * arch/mips/cavium-octeon/cacheinfo.c didn't run because
+ * it was incompatible with the current architecture.
+ */
+static inline void populate_shared_cpu_map(uint cpu, struct cacheinfo *leaf)
+{
+	if (leaf->level == 1)
+		cpumask_set_cpu(cpu, &leaf->shared_cpu_map);
+	if (leaf->level == 2)
+		cpumask_copy(&leaf->shared_cpu_map, cpu_possible_mask);
+}
+#else
+static inline void populate_shared_cpu_map(uint cpu, struct cacheinfo *leaf)
+{}
+#endif
 
 /* Populates leaf and increments to next leaf */
 #define populate_cache(cache, leaf, c_level, c_type)		\
