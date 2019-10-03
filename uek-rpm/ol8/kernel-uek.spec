@@ -545,6 +545,11 @@ BuildRequires: pesign >= 0.10-4
 %endif
 %endif
 
+%if %{with_doc}
+BuildRequires: python3-sphinx >= 1.7.9
+BuildRequires: fontconfig >= 2.13.0
+%endif
+
 %if %{with_dtrace}
 BuildRequires: libdtrace-ctf-devel >= 1.1.0
 %endif
@@ -1523,7 +1528,7 @@ popd
 
 %if %{with_doc}
 # Make the HTML pages.
-make -j1 htmldocs || %{doc_build_fail}
+make %{?_smp_mflags} htmldocs || %{doc_build_fail}
 %endif
 
 %define dgst $((grep '^CONFIG_MODULE_SIG_SHA512=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha512\"$' .config >/dev/null && echo sha512) || (grep '^CONFIG_MODULE_SIG_SHA256=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha256\"$' .config >/dev/null && echo sha256))
@@ -1921,8 +1926,6 @@ fi
 %if %{with_doc}
 %files doc
 %defattr(-,root,root)
-%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/Documentation/*
-%dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/Documentation
 %dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
 %endif
 
