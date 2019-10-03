@@ -130,14 +130,21 @@ static const signed short ff3_joystick_ac[] = {
 
 int lg3ff_init(struct hid_device *hid)
 {
-	struct hid_input *hidinput = list_entry(hid->inputs.next, struct hid_input, list);
+	struct hid_input *hidinput;
 	struct list_head *report_list = &hid->report_enum[HID_OUTPUT_REPORT].report_list;
-	struct input_dev *dev = hidinput->input;
+	struct input_dev *dev;
 	struct hid_report *report;
 	struct hid_field *field;
 	const signed short *ff_bits = ff3_joystick_ac;
 	int error;
 	int i;
+
+	if (list_empty(&hid->inputs)) {
+		hid_err(hid, "no inputs found\n");
+		return -ENODEV;
+	}
+	hidinput = list_entry(hid->inputs.next, struct hid_input, list);
+	dev = hidinput->input;
 
 	/* Find the report to use */
 	if (list_empty(report_list)) {
