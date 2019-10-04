@@ -35,6 +35,7 @@
 #include <linux/pstore_ram.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/libnvdimm.h>
 
 #define RAMOOPS_KERNMSG_HDR "===="
 #define MIN_MEM_SIZE 4096UL
@@ -452,6 +453,8 @@ static int notrace ramoops_pstore_write(struct pstore_record *record)
 	persistent_ram_write(prz, record->buf, size);
 
 	cxt->dump_write_cnt = (cxt->dump_write_cnt + 1) % cxt->max_dump_cnt;
+
+	arch_wb_cache_pmem(prz->buffer, prz->size);
 
 	return 0;
 }
