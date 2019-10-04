@@ -54,13 +54,10 @@ module_param(dump_oops, int, 0600);
 MODULE_PARM_DESC(dump_oops,
 		"set to 1 to dump oopses, 0 to only dump panics (default 1)");
 
-#define dev_to_mmc_card(d)	container_of(d, struct mmc_card, dev)
-
 static struct mmcoops_context {
 	struct kmsg_dumper	dump;
 	struct mmc_request	*mrq;
 	struct mmc_card		*card;
-	struct device		*dev;
 	struct platform_device	*pdev;
 	void			*virt_addr;
 } oops_cxt;
@@ -243,49 +240,23 @@ static struct mmc_driver mmc_driver = {
 	.remove		= mmc_oops_remove,
 };
 
-static int mmc_alloc_req_resources(struct platform_device *pdev,
-				   struct mmcoops_context *cxt)
+static int __init mmcoops_init(void)
 {
+	struct mmcoops_context *cxt = &oops_cxt;
 	struct mmc_request *mrq;
 	struct mmc_command *cmd, *stop;
 	struct mmc_data *data;
-
-	mrq = devm_kzalloc(&pdev->dev, sizeof(struct mmc_request), GFP_KERNEL);
-	if (!mrq)
-		return -ENOMEM;
-
-	cmd = devm_kzalloc(&pdev->dev, sizeof(struct mmc_command), GFP_KERNEL);
-	if (!cmd)
-		return -ENOMEM;
-
-	stop = devm_kzalloc(&pdev->dev, sizeof(struct mmc_command), GFP_KERNEL);
-	if (!stop)
-		return -ENOMEM;
-
-	data = devm_kzalloc(&pdev->dev, sizeof(struct mmc_data), GFP_KERNEL);
-	if (!mrq)
-		return -ENOMEM;
-
-	mrq->cmd = cmd;
-	mrq->data = data;
-	mrq->stop = stop;
-
-	cxt->mrq = mrq;
-
-	return 0;
-}
-
-static int __init mmcoops_probe(struct platform_device *pdev)
-{
-	struct mmcoops_context *cxt = &oops_cxt;
 	int err = -EINVAL;
+
+	/* If no mmcdev specify exit silently */
+	if (strlen(mmcdev) == 0)
+		return -ENODEV;
 
 	err = mmc_register_driver(&mmc_driver);
 	if (err)
 		return err;
 
 	cxt->card = NULL;
-	cxt->dev = &pdev->dev;
 
 	if (record_size > MAX_RECORD_SIZE || record_size <= 0) {
 		pr_warn("%s: wrong record size - forcing max record size %d\n",
@@ -297,11 +268,28 @@ static int __init mmcoops_probe(struct platform_device *pdev)
 	if (!cxt->virt_addr)
 		goto kmalloc_failed;
 
-	err = mmc_alloc_req_resources(pdev, cxt);
-	if (err) {
-		pr_err("%s: failed to allocate req resources\n", __func__);
-		return err;
-	}
+	/* alloc resources needed for mmc request */
+	mrq = kzalloc(sizeof(struct mmc_request), GFP_KERNEL);
+	if (!mrq)
+		goto kmalloc_mrq_failed;
+
+	cmd = kzalloc(sizeof(struct mmc_command), GFP_KERNEL);
+	if (!cmd)
+		goto kmalloc_cmd_failed;
+
+	stop = kzalloc(sizeof(struct mmc_command), GFP_KERNEL);
+	if (!stop)
+		goto kmalloc_stop_failed;
+
+	data = kzalloc(sizeof(struct mmc_data), GFP_KERNEL);
+	if (!data)
+		goto kmalloc_data;
+
+	mrq->cmd = cmd;
+	mrq->data = data;
+	mrq->stop = stop;
+
+	cxt->mrq = mrq;
 
 	cxt->dump.dump = mmcoops_do_dump;
 
@@ -315,6 +303,14 @@ static int __init mmcoops_probe(struct platform_device *pdev)
 	return err;
 
 kmsg_dump_register_failed:
+	kfree(data);
+kmalloc_data:
+	kfree(stop);
+kmalloc_stop_failed:
+	kfree(cmd);
+kmalloc_cmd_failed:
+	kfree(mrq);
+kmalloc_mrq_failed:
 	kfree(cxt->virt_addr);
 kmalloc_failed:
 	mmc_unregister_driver(&mmc_driver);
@@ -322,38 +318,20 @@ kmalloc_failed:
 	return err;
 }
 
-static int mmcoops_remove(struct platform_device *pdev)
+static void __exit mmcoops_exit(void)
 {
 	struct mmcoops_context *cxt = &oops_cxt;
 
 	if (kmsg_dump_unregister(&cxt->dump) < 0)
 		pr_warn("mmcoops: colud not unregister kmsg dumper");
+
 	kfree(cxt->virt_addr);
+	kfree(cxt->mrq->data);
+	kfree(cxt->mrq->stop);
+	kfree(cxt->mrq->cmd);
+	kfree(cxt->mrq);
+
 	mmc_unregister_driver(&mmc_driver);
-
-	return 0;
-}
-
-static const struct of_device_id mmcoops_match[] = {
-	{ .compatible = "mmcoops", },
-};
-
-static struct platform_driver mmcoops_driver = {
-	.remove			= mmcoops_remove,
-	.driver			= {
-		.name		= "mmcoops",
-		.of_match_table	= mmcoops_match,
-	},
-};
-
-static int __init mmcoops_init(void)
-{
-	return platform_driver_probe(&mmcoops_driver, mmcoops_probe);
-}
-
-static void __exit mmcoops_exit(void)
-{
-	platform_driver_unregister(&mmcoops_driver);
 }
 
 module_init(mmcoops_init);
