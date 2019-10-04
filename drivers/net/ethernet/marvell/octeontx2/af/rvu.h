@@ -391,7 +391,8 @@ struct rvu_fwdata {
 	u64 rclk;
 	u64 mcam_addr;
 	u64 mcam_sz;
-#define FWDATA_RESERVED_MEM 1024
+	u64 msixtr_base;
+#define FWDATA_RESERVED_MEM 1023
 	u64 reserved[FWDATA_RESERVED_MEM];
 	/* Do not add new fields below this line */
 #define CGX_MAX         4
