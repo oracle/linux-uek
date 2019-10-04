@@ -617,7 +617,10 @@ setup_vfmsix:
 	 */
 	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
 	max_msix = cfg & 0xFFFFF;
-	phy_addr = rvu_read64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE);
+	if (rvu->fwdata && rvu->fwdata->msixtr_base)
+		phy_addr = rvu->fwdata->msixtr_base;
+	else
+		phy_addr = rvu_read64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE);
 	/* Register save */
 	rvu->msixtr_base_phy = phy_addr;
 	iova = dma_map_resource(rvu->dev, phy_addr,
@@ -904,6 +907,8 @@ init:
 
 	mutex_init(&rvu->rsrc_lock);
 
+	rvu_fwdata_init(rvu);
+
 	err = rvu_setup_msix_resources(rvu);
 	if (err)
 		return err;
@@ -926,8 +931,6 @@ init:
 		 */
 		rvu_scan_block(rvu, block);
 	}
-
-	rvu_fwdata_init(rvu);
 
 	err = rvu_npc_init(rvu);
 	if (err)
