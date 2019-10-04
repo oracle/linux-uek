@@ -248,17 +248,6 @@ void __init check_bugs(void)
 		pr_info("FEATURE IBPB Not Present\n");
 	}
 
-	for_each_online_cpu(cpu) {
-		if (!xen_pv_domain()) {
-			mutex_lock(&spec_ctrl_mutex);
-			update_cpu_ibrs(&cpu_data(cpu));
-			update_cpu_spec_ctrl(cpu);
-			mutex_unlock(&spec_ctrl_mutex);
-		} else {
-			clear_cpu_cap(&cpu_data(cpu), X86_FEATURE_IBPB);
-		}
-	}
-
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
 	if (boot_cpu_has(X86_FEATURE_STIBP))
 		x86_spec_ctrl_mask |= SPEC_CTRL_STIBP;
