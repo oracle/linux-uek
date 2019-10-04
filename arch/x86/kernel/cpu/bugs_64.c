@@ -30,8 +30,6 @@ void __init check_bugs(void)
 	printk(KERN_INFO "CPU: ");
 	print_cpu_info(&boot_cpu_data);
 #endif
-	alternative_instructions();
-
 	/*
 	 * Make sure the first 2MB area is not mapped by huge pages
 	 * There are typically fixed size MTRRs in there and overlapping
@@ -48,6 +46,8 @@ void __init check_bugs(void)
 	l1tf_select_mitigation();
 	mds_select_mitigation();
 	taa_select_mitigation();
+
+	alternative_instructions();
 }
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
