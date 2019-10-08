@@ -32,11 +32,12 @@ Related CVEs
 
 The following CVE entries are related to the MDS vulnerability:
 
-   ==============  =====  ==============================================
+   ==============  =====  ===================================================
    CVE-2018-12126  MSBDS  Microarchitectural Store Buffer Data Sampling
    CVE-2018-12130  MFBDS  Microarchitectural Fill Buffer Data Sampling
    CVE-2018-12127  MLPDS  Microarchitectural Load Port Data Sampling
-   ==============  =====  ==============================================
+   CVE-2019-11091  MDSUM  Microarchitectural Data Sampling Uncacheable Memory
+   ==============  =====  ===================================================
 
 Problem
 -------
@@ -94,22 +95,19 @@ mitigations are active. The relevant sysfs file is:
 
 The possible values in this file are:
 
-  =========================================   =================================
-  'Not affected'				The processor is not vulnerable
+  .. list-table::
 
-  'Vulnerable'					The processor is vulnerable,
-						but no mitigation enabled
+     * - 'Not affected'
+       - The processor is not vulnerable
+     * - 'Vulnerable'
+       - The processor is vulnerable, but no mitigation enabled
+     * - 'Vulnerable: Clear CPU buffers attempted, no microcode'
+       - The processor is vulnerable but microcode is not updated.
 
-  'Vulnerable: Clear CPU buffers attempted'	The processor is vulnerable but
-						microcode is not updated.
-						The mitigation is enabled on a
-						best effort basis.
-						See :ref:`vmwerv`
-
-  'Mitigation: CPU buffer clear'		The processor is vulnerable and the
-						CPU buffer clearing mitigation is
-						enabled.
-  =========================================   =================================
+         The mitigation is enabled on a best effort basis. See :ref:`vmwerv`
+     * - 'Mitigation: Clear CPU buffers'
+       - The processor is vulnerable and the CPU buffer clearing mitigation is
+         enabled.
 
 If the processor is vulnerable then the following information is appended
 to the above information:
