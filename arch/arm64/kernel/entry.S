@@ -420,6 +420,9 @@ alternative_else_nop_endif
 	add	sp, sp, #S_FRAME_SIZE		// restore sp
 	.endif
 
+#ifdef CONFIG_MRVL_ERRATUM_37119
+alternative_insn "nop", "tlbi aside1, xzr", ARM64_WORKAROUND_MRVL_37119
+#endif
 	.if	\el == 0
 alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0

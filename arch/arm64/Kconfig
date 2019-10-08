@@ -576,6 +576,18 @@ config CAVIUM_ERRATUM_36890
 
 	  If unsure, say Y.
 
+config MRVL_ERRATUM_37234
+	bool "Marvell erratum 37234"
+	default y
+	help
+	  Enable workaround for erratum 37234.  On some OcteonTX2 chips,
+	  there is an interaction between when an ASID/VMID changes and the
+	  core receives a broadcast TLBI from another core.  When this
+	  happens the ASID/VMID changes does not go into effect.
+	  To workaround this erratum, IPI based TLBIs are used instead.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
