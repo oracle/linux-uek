@@ -149,18 +149,28 @@ static const struct {
 		.speed      = 1000,
 	},
 	[MLX5E_25GBASE_CR]   = {
+		.supported  = SUPPORTED_20000baseMLD2_Full | SUPPORTED_20000baseKR2_Full,
+		.advertised = ADVERTISED_20000baseMLD2_Full | ADVERTISED_20000baseKR2_Full,
 		.speed      = 25000,
 	},
 	[MLX5E_25GBASE_KR]   = {
+		.supported  = SUPPORTED_20000baseMLD2_Full | SUPPORTED_20000baseKR2_Full,
+		.advertised = ADVERTISED_20000baseMLD2_Full | ADVERTISED_20000baseKR2_Full,
 		.speed      = 25000,
 	},
 	[MLX5E_25GBASE_SR]   = {
+		.supported  = SUPPORTED_20000baseMLD2_Full | SUPPORTED_20000baseKR2_Full,
+		.advertised = ADVERTISED_20000baseMLD2_Full | ADVERTISED_20000baseKR2_Full,
 		.speed      = 25000,
 	},
 	[MLX5E_50GBASE_CR2]  = {
+		.supported  = SUPPORTED_56000baseCR4_Full,
+		.advertised = ADVERTISED_56000baseCR4_Full,
 		.speed      = 50000,
 	},
 	[MLX5E_50GBASE_KR2]  = {
+		.supported  = SUPPORTED_56000baseKR4_Full,
+		.advertised = ADVERTISED_56000baseKR4_Full,
 		.speed      = 50000,
 	},
 };
@@ -443,7 +453,6 @@ static u32 ptys2ethtool_supported_link(u32 eth_proto_cap)
 {
 	int i;
 	u32 supported_modes = 0;
-
 	for (i = 0; i < MLX5E_LINK_MODES_NUMBER; ++i) {
 		if (eth_proto_cap & MLX5E_PROT_MASK(i))
 			supported_modes |= ptys2ethtool_table[i].supported;
