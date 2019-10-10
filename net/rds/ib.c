@@ -855,16 +855,12 @@ static void __flush_neigh_conn(struct net *net,
 			       struct rds_connection *conn)
 {
 	struct sockaddr_nl nlsa = { .nl_family = AF_NETLINK };
-	static struct in6_addr last_laddr = { { { 0 } } };
-	static struct in6_addr last_faddr = { { { 0 } } };
-	static DEFINE_SPINLOCK(last_lock);
+	u64 timenow = jiffies_to_msecs(get_jiffies_64());
 	u8 buf[flush_buf_len], *sndbuf;
 	const struct in6_addr *laddr;
 	const struct in6_addr *faddr;
-	static u64 last_jiffies = 1;
 	struct msghdr msg = { 0 };
 	struct nlmsghdr *nlh;
-	unsigned long flags;
 	struct nlattr *nla;
 	struct ndmsg *ndm;
 	bool isv4, alloc;
@@ -874,30 +870,21 @@ static void __flush_neigh_conn(struct net *net,
 	int ret;
 	int idx;
 
-	laddr = &conn->c_laddr;
-	faddr = &conn->c_faddr;
-
 	/* Should not flush the same cache again and again.  This can happen
 	 * when an interface is brought down so that all the connections
 	 * (say with different TOS hence same local/peer address pair) using
-	 * that interface are notified.  This is just a small optimization as
-	 * only the last flushed pair is remembered.
+	 * that interface are notified.
 	 */
-	spin_lock_irqsave(&last_lock, flags);
-	if (ipv6_addr_equal(laddr, &last_laddr) &&
-	    ipv6_addr_equal(faddr, &last_faddr) &&
-	    jiffies_to_msecs(get_jiffies_64() - last_jiffies) <
-	    neigh_flush_interval) {
-		spin_unlock_irqrestore(&last_lock, flags);
-		return;
+	if (conn->c_base_conn) {
+		if ((timenow - READ_ONCE(conn->c_base_conn->last_flush_ms)) <
+		    neigh_flush_interval)
+			return;
+		WRITE_ONCE(conn->c_base_conn->last_flush_ms, timenow);
 	}
-
-	last_laddr = *laddr;
-	last_faddr = *faddr;
-	last_jiffies = get_jiffies_64();
-	spin_unlock_irqrestore(&last_lock, flags);
-
+	laddr = &conn->c_laddr;
+	faddr = &conn->c_faddr;
 	isv4 = ipv6_addr_v4mapped(faddr);
+
 	/* Use our local address to find the right interface to flush the
 	 * neighbor address. If we are unable to find the interface, this is
 	 * likely because the IP-address moved due to failover/failback, so
@@ -920,7 +907,6 @@ static void __flush_neigh_conn(struct net *net,
 		flush_buf_len = buflen;
 		sndbuf = kmalloc(buflen, GFP_ATOMIC);
 		if (!sndbuf) {
-			last_jiffies = 1;
 			pr_err("%s: failed: buflen %zd idx %d %pI6c,%pI6c\n",
 			       __func__, buflen, idx, laddr, faddr);
 			return;
