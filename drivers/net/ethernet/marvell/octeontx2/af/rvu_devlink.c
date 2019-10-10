@@ -461,7 +461,8 @@ static int rvu_nix_report_show(struct devlink_fmsg *fmsg, void *ctx,
 }
 
 static int rvu_hw_nix_intr_dump(struct devlink_health_reporter *reporter,
-				struct devlink_fmsg *fmsg, void *ctx)
+				struct devlink_fmsg *fmsg, void *ctx,
+				struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -474,7 +475,7 @@ static int rvu_hw_nix_intr_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_nix_intr_recover(struct devlink_health_reporter *reporter,
-				   void *ctx)
+				   void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_nix_event_ctx *nix_event_ctx = ctx;
@@ -491,7 +492,8 @@ static int rvu_hw_nix_intr_recover(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_nix_gen_dump(struct devlink_health_reporter *reporter,
-			       struct devlink_fmsg *fmsg, void *ctx)
+			       struct devlink_fmsg *fmsg, void *ctx,
+			       struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -504,7 +506,7 @@ static int rvu_hw_nix_gen_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_nix_gen_recover(struct devlink_health_reporter *reporter,
-				  void *ctx)
+				  void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_nix_event_ctx *nix_event_ctx = ctx;
@@ -521,7 +523,8 @@ static int rvu_hw_nix_gen_recover(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_nix_err_dump(struct devlink_health_reporter *reporter,
-			       struct devlink_fmsg *fmsg, void *ctx)
+			       struct devlink_fmsg *fmsg, void *ctx,
+			       struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -534,7 +537,7 @@ static int rvu_hw_nix_err_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_nix_err_recover(struct devlink_health_reporter *reporter,
-				  void *ctx)
+				  void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_nix_event_ctx *nix_event_ctx = ctx;
@@ -551,7 +554,8 @@ static int rvu_hw_nix_err_recover(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_nix_ras_dump(struct devlink_health_reporter *reporter,
-			       struct devlink_fmsg *fmsg, void *ctx)
+			       struct devlink_fmsg *fmsg, void *ctx,
+			       struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -564,7 +568,7 @@ static int rvu_hw_nix_ras_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_nix_ras_recover(struct devlink_health_reporter *reporter,
-				  void *ctx)
+				  void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_nix_event_ctx *nix_event_ctx = ctx;
@@ -1099,7 +1103,8 @@ static int rvu_npa_report_show(struct devlink_fmsg *fmsg, void *ctx,
 }
 
 static int rvu_hw_npa_intr_dump(struct devlink_health_reporter *reporter,
-				struct devlink_fmsg *fmsg, void *ctx)
+				struct devlink_fmsg *fmsg, void *ctx,
+				struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -1112,7 +1117,7 @@ static int rvu_hw_npa_intr_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_npa_intr_recover(struct devlink_health_reporter *reporter,
-				   void *ctx)
+				   void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_npa_event_ctx *npa_event_ctx = ctx;
@@ -1129,7 +1134,8 @@ static int rvu_hw_npa_intr_recover(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_npa_gen_dump(struct devlink_health_reporter *reporter,
-			       struct devlink_fmsg *fmsg, void *ctx)
+			       struct devlink_fmsg *fmsg, void *ctx,
+			       struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -1142,7 +1148,7 @@ static int rvu_hw_npa_gen_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_npa_gen_recover(struct devlink_health_reporter *reporter,
-				  void *ctx)
+				  void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_npa_event_ctx *npa_event_ctx = ctx;
@@ -1159,7 +1165,8 @@ static int rvu_hw_npa_gen_recover(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_npa_err_dump(struct devlink_health_reporter *reporter,
-			       struct devlink_fmsg *fmsg, void *ctx)
+			       struct devlink_fmsg *fmsg, void *ctx,
+			       struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -1172,7 +1179,7 @@ static int rvu_hw_npa_err_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_npa_err_recover(struct devlink_health_reporter *reporter,
-				  void *ctx)
+				  void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_npa_event_ctx *npa_event_ctx = ctx;
@@ -1189,7 +1196,8 @@ static int rvu_hw_npa_err_recover(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_npa_ras_dump(struct devlink_health_reporter *reporter,
-			       struct devlink_fmsg *fmsg, void *ctx)
+			       struct devlink_fmsg *fmsg, void *ctx,
+			       struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
@@ -1202,7 +1210,7 @@ static int rvu_hw_npa_ras_dump(struct devlink_health_reporter *reporter,
 }
 
 static int rvu_hw_npa_ras_recover(struct devlink_health_reporter *reporter,
-				  void *ctx)
+				  void *ctx, struct netlink_ext_ack *netlink_extack)
 {
 	struct rvu *rvu = devlink_health_reporter_priv(reporter);
 	struct rvu_npa_event_ctx *npa_event_ctx = ctx;

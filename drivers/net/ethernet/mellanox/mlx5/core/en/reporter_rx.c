@@ -165,7 +165,8 @@ static int mlx5e_rx_reporter_recover_from_ctx(struct mlx5e_err_ctx *err_ctx)
 }
 
 static int mlx5e_rx_reporter_recover(struct devlink_health_reporter *reporter,
-				     void *context)
+				     void *context,
+				     struct netlink_ext_ack *extack)
 {
 	struct mlx5e_priv *priv = devlink_health_reporter_priv(reporter);
 	struct mlx5e_err_ctx *err_ctx = context;
@@ -305,7 +306,8 @@ static int mlx5e_rx_reporter_build_diagnose_output(struct mlx5e_rq *rq,
 }
 
 static int mlx5e_rx_reporter_diagnose(struct devlink_health_reporter *reporter,
-				      struct devlink_fmsg *fmsg)
+				      struct devlink_fmsg *fmsg,
+				      struct netlink_ext_ack *extack)
 {
 	struct mlx5e_priv *priv = devlink_health_reporter_priv(reporter);
 	struct mlx5e_params *params = &priv->channels.params;
@@ -542,12 +544,8 @@ static int mlx5e_rx_reporter_dump_from_ctx(struct mlx5e_priv *priv,
 }
 
 static int mlx5e_rx_reporter_dump(struct devlink_health_reporter *reporter,
-#ifdef DEVLINK_HEALTH_REPORTER_OPS_DUMP_4_ARGS
 				  struct devlink_fmsg *fmsg, void *context,
 				  struct netlink_ext_ack *extack)
-#else
-				  struct devlink_fmsg *fmsg, void *context)
-#endif
 {
 	struct mlx5e_priv *priv = devlink_health_reporter_priv(reporter);
 	struct mlx5e_err_ctx *err_ctx = context;
