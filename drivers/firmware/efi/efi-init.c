@@ -19,6 +19,7 @@
 #include <linux/of_fdt.h>
 #include <linux/platform_device.h>
 #include <linux/screen_info.h>
+#include <linux/security.h>
 
 #include <asm/efi.h>
 
@@ -233,6 +234,13 @@ void __init efi_init(void)
 		efi_memmap_unmap();
 		return;
 	}
+
+	efi_set_secure_boot(efi_get__secure_boot());
+
+#ifdef CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT
+	if (efi_enabled(EFI_SECURE_BOOT))
+		security_lock_kernel_down("EFI Secure Boot mode", LOCKDOWN_INTEGRITY_MAX);
+#endif
 
 	reserve_regions();
 	/*
