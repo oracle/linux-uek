@@ -1108,6 +1108,15 @@ enum efi_secureboot_mode efi_get_secureboot_mode(efi_get_variable_t *get_var)
 	return efi_secureboot_mode_enabled;
 }
 
+#ifdef CONFIG_EFI_PARAMS_FROM_FDT
+u32 __init efi_get__secure_boot(void);
+#else
+static inline u32 efi_get__secure_boot(void)
+{
+	return efi_secureboot_mode_unset;
+};
+#endif
+
 #ifdef CONFIG_EFI_EMBEDDED_FIRMWARE
 void efi_check_for_embedded_firmwares(void);
 #else
