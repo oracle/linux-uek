@@ -127,6 +127,25 @@ struct rds_cong_map {
 	unsigned long		m_page_addrs[RDS_CONG_MAP_PAGES];
 };
 
+/* This is used to track flushing of the neighbor cache entry for a base
+ * connection, (a combination of local and foreign address) to avoid superfluous
+ * flushing when several connections having the same base connection
+ * experience events that needs flushing of the neighbor cache.
+ *
+ * All connections with the same local and foreign address will point
+ * to the same rds_base_conn block, and a reference counter is used
+ * to free the block when all connections with that base connection
+ * are freed.
+ *
+ * Note: If allocation of this struct fails, c_base_conn of the connection
+ * might be NULL. This is acceptable, as this struct is only used for
+ * optimalizations, but all code referencing c_base_conn for a connections
+ * need to check for NULL before using it.
+ */
+struct rds_base_conn {
+	struct kref		kref;
+	u64			last_flush_ms;
+};
 
 /*
  * This is how we will track the connection state:
@@ -322,6 +341,8 @@ struct rds_connection {
 
 	struct rds_cong_map	*c_lcong;
 	struct rds_cong_map	*c_fcong;
+
+	struct rds_base_conn    *c_base_conn;
 
 	struct list_head	c_map_item;
 
