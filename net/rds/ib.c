@@ -879,14 +879,8 @@ static unsigned int neigh_flush_interval = 750;
 /* Should be large enough to hold the flush message. */
 static unsigned int flush_buf_len = 48;
 
-/* Given an rds_connection, flush the peer address' neighbor cache entry.
- * If the peer is not in the same network as us, nothing will be flushed.
- *
- * @net: the connection's namespace
- * @conn: pointer to the connection
- */
-void rds_ib_flush_neigh(struct net *net,
-			struct rds_connection *conn)
+static void __flush_neigh_conn(struct net *net,
+			       struct rds_connection *conn)
 {
 	struct sockaddr_nl nlsa = { .nl_family = AF_NETLINK };
 	u64 timenow = jiffies_to_msecs(get_jiffies_64());
@@ -980,6 +974,32 @@ void rds_ib_flush_neigh(struct net *net,
 
 	if (alloc)
 		kfree(sndbuf);
+}
+
+/* Given an rds_connection, flush the peer address' neighbor cache entry.
+ * If the peer is not in the same network as us, nothing will be flushed.
+ *
+ * @net: the connection's namespace
+ * @conn: pointer to the connection
+ * @flush_local_peer: Flush neighbor for the peer, if it is local, instead
+ * of conn
+ */
+void rds_ib_flush_neigh(struct net *net,
+			struct rds_connection *conn, bool flush_local_peer)
+{
+	if (flush_local_peer && conn->c_loopback) {
+		struct rds_connection *peer;
+
+		/* Note the swapped d/saddr */
+		peer = rds_conn_find(rds_conn_net(conn),
+				     &conn->c_faddr, &conn->c_laddr,
+				     conn->c_trans, conn->c_tos,
+				     0);
+		if (peer)
+			__flush_neigh_conn(net, peer);
+	} else {
+		__flush_neigh_conn(net, conn);
+	}
 }
 
 MODULE_LICENSE("GPL");
