@@ -134,7 +134,7 @@ EXPORT_SYMBOL(otx2_mbox_init);
 
 int otx2_mbox_wait_for_rsp(struct otx2_mbox *mbox, int devid)
 {
-	unsigned long timeout = jiffies + usecs_to_jiffies(MBOX_RSP_TIMEOUT);
+	unsigned long timeout = jiffies + msecs_to_jiffies(MBOX_RSP_TIMEOUT);
 	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
 	struct device *sender = &mbox->pdev->dev;
 
