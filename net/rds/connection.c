@@ -122,6 +122,47 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 	rcu_read_unlock();
 }
 
+static void base_conn_release(struct kref *kref)
+{
+	struct rds_base_conn *base_conn;
+
+	base_conn = container_of(kref, struct rds_base_conn, kref);
+	kfree(base_conn);
+}
+
+static struct rds_base_conn *get_base_conn(const struct in6_addr *laddr,
+					   const struct in6_addr *faddr,
+					   gfp_t gfp)
+{
+	struct rds_connection *lconn, *conn = NULL;
+	struct hlist_head *head;
+	struct rds_base_conn *base_conn;
+	int i;
+
+	rcu_read_lock();
+	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
+	     i++, head++) {
+		hlist_for_each_entry_rcu(lconn, head, c_hash_node)
+			if (ipv6_addr_equal(&lconn->c_faddr, faddr) &&
+			    ipv6_addr_equal(&lconn->c_laddr, laddr) &&
+			    lconn->c_base_conn) {
+				conn = lconn;
+				break;
+			}
+	}
+	rcu_read_unlock();
+	if (conn) {
+		base_conn = conn->c_base_conn;
+		kref_get(&base_conn->kref);
+	} else {
+		base_conn = kzalloc(sizeof(*base_conn), gfp);
+		if (!base_conn)
+			return base_conn;
+		kref_init(&base_conn->kref);
+	}
+	return base_conn;
+}
+
 /*
  * This is called by transports as they're bringing down a connection.
  * It clears partial message state so that the transport can start sending
@@ -330,6 +371,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			conn = parent->c_passive;
 		} else {
 			parent->c_passive = conn;
+			conn->c_base_conn = get_base_conn(laddr, faddr, gfp);
 			rds_cong_add_conn(conn);
 			rds_conn_count++;
 		}
@@ -358,6 +400,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		} else {
 			conn->c_my_gen_num = rds_gen_num;
 			conn->c_peer_gen_num = 0;
+			conn->c_base_conn = get_base_conn(laddr, faddr, gfp);
 			hlist_add_head_rcu(&conn->c_hash_node, head);
 			rds_cong_add_conn(conn);
 			rds_conn_count++;
@@ -565,6 +608,8 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
 	hlist_del_init_rcu(&conn->c_hash_node);
+	if (conn->c_base_conn)
+		kref_put(&conn->c_base_conn->kref, base_conn_release);
 	spin_unlock_irq(&rds_conn_lock);
 	synchronize_rcu();
 
