@@ -73,4 +73,6 @@ int parse_crashkernel_high(char *cmdline, unsigned long long system_ram,
 int parse_crashkernel_low(char *cmdline, unsigned long long system_ram,
 		unsigned long long *crash_size, unsigned long long *crash_base);
 
+void trace_extern_vmcoreinfo_setup(void);
+
 #endif /* LINUX_CRASH_CORE_H */
