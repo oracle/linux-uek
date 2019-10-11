@@ -40,6 +40,9 @@ struct modversion_info {
 
 struct module;
 struct exception_table_entry;
+#ifdef CONFIG_CRASH_CORE
+extern struct list_head *vmcore_modules;
+#endif
 
 struct module_kobject {
 	struct kobject kobj;
