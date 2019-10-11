@@ -84,6 +84,16 @@ static const unsigned int otx2_n_dev_stats = ARRAY_SIZE(otx2_dev_stats);
 static const unsigned int otx2_n_drv_stats = ARRAY_SIZE(otx2_drv_stats);
 static const unsigned int otx2_n_queue_stats = ARRAY_SIZE(otx2_queue_stats);
 
+int __weak otx2vf_open(struct net_device *netdev)
+{
+	return 0;
+}
+
+int __weak otx2vf_stop(struct net_device *netdev)
+{
+	return 0;
+}
+
 static void otx2_dev_open(struct net_device *netdev)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
