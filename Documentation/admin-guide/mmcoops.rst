@@ -6,22 +6,30 @@ Introduction
 
 Mmcoops is an oops/panic logger that write its logs to MMC before the system crashes.
 Introduction and concept are similar to other oops loggers.
-(Refer to Documentation/ramoops.txt)
+(Refer to Documentation/admin-guide/ramoops.rst)
 
-Required Properties:
---------------------
+Setting the parameters
+----------------------
 
-* compatible: should be "mmcoops"
-* ``start-offset``: block-offset for start.
-* ``size``: the number of block to write oopses and panics.
+The mmcoops uses module parameters for variables that can be configured.
+Currently there are 3 customizable parameters:
+
+* ``mmcdev``: specifies on which mmcdev the dump will be stored.
+* ``start-offset``: block-offset for start. Default 14680064 (7GB = 14680064 * 512).
+* ``size``: the number of block to write oopses and panics. Default 20 (20 * 512B = 10KiB).
+
+Only ``mmcdev`` is mandatory and has to be specified via bootargs. Wrong or
+missing value will not activate mmc_oops dumper. Setting start_offset and
+record_size parameters are optional if not set default values will be used.
 
 Example::
 
-	mmcoops {
-		compatible = "mmcoops";
-		start-offset = <14680064>;	/* 14680064 * 512B = 7GB */
-		size = <20>;			/* 20 * 512B = 10KiB */
-	};
+
+        mmc_oops.mmcdev=mmc0 mmc_oops.start-offset=2097152 mmc_oops.size=30
+
+or minimum example with default start-offset and size::
+
+        mmc_oops.mmcdev=mmc1
 
 
 Dump format
@@ -37,8 +45,8 @@ After reboot, the last log can be gathered with bellow command::
 
  #dd if=/dev/mmcblk0 of=/tmp/dump.log skip=14680064 count=20; cat /tmp/dump.log
 
-- skip is the ``start-offset`` declared in device tree
-- count is the ``size`` value declared in device tree
+- skip is the ``start-offset`` specify by module parameter
+- count is the ``size`` specify by module parameter
 
 
 Choosing mmcblk used for dumps via sysfs
