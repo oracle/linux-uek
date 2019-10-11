@@ -106,6 +106,10 @@ static LIST_HEAD(modules);
 struct list_head *dtrace_modules = &modules;
 #endif /* CONFIG_DTRACE */
 
+#ifdef CONFIG_CRASH_CORE
+struct list_head *vmcore_modules = &modules;
+#endif
+
 #ifdef CONFIG_MODULES_TREE_LOOKUP
 
 /*
