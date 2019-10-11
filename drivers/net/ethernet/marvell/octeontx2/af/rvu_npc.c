@@ -182,8 +182,8 @@ static bool is_mcam_entry_enabled(struct rvu *rvu, struct npc_mcam *mcam,
 	return (cfg & 1);
 }
 
-static void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
-				  int blkaddr, int index, bool enable)
+void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
+			   int blkaddr, int index, bool enable)
 {
 	int bank = npc_get_bank(mcam, index);
 	int actbank = bank;
@@ -2600,15 +2600,18 @@ int rvu_mbox_handler_npc_get_kex_cfg(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
-			       u16 pcifunc, u8 intf, struct mcam_entry *entry)
+bool rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
+				u16 pcifunc, u8 intf, struct mcam_entry *entry,
+				int *index)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	int index;
+	bool enable;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
-					 nixlf, NIXLF_UCAST_ENTRY);
-	npc_config_mcam_entry(rvu, mcam, blkaddr, index, intf, entry, true);
+	*index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+					  nixlf, NIXLF_UCAST_ENTRY);
+	/* dont force enable unicast entry  */
+	enable = is_mcam_entry_enabled(rvu, mcam, blkaddr, *index);
+	npc_config_mcam_entry(rvu, mcam, blkaddr, *index, intf, entry, enable);
 
-	return index;
+	return enable;
 }

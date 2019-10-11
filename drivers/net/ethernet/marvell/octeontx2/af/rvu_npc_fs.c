@@ -900,15 +900,17 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 			npc_update_flow(rvu, entry, missing_features,
 					&def_rule->packet, &def_rule->mask,
 					&dummy, req->intf);
-		entry_index = rvu_npc_write_default_rule(rvu, blkaddr,
-							 nixlf, target,
-							 NIX_INTF_RX, entry);
+		enable = rvu_npc_write_default_rule(rvu, blkaddr,
+						    nixlf, target,
+						    NIX_INTF_RX, entry,
+						    &entry_index);
 		installed_features = req->features | missing_features;
 	} else if (req->default_rule && !req->append) {
 		/* overwrite default rule */
-		entry_index = rvu_npc_write_default_rule(rvu, blkaddr,
-							 nixlf, target,
-							 NIX_INTF_RX, entry);
+		enable = rvu_npc_write_default_rule(rvu, blkaddr,
+						    nixlf, target,
+						    NIX_INTF_RX, entry,
+						    &entry_index);
 	} else if (msg_from_vf) {
 		/* normal rule - include default rule also to it for VF */
 		npc_update_flow(rvu, entry, missing_features, &def_rule->packet,
@@ -1143,6 +1145,13 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 	list_for_each_entry(rule, &mcam->mcam_rules, list) {
 		if (rule->intf == NIX_INTF_RX &&
 		    rule->rx_action.pf_func == target && !rule->enable) {
+			if (rule->default_rule) {
+				npc_enable_mcam_entry(rvu, mcam, blkaddr,
+						      rule->entry, true);
+				rule->enable = true;
+				continue;
+			}
+
 			if (rule->rx_action.op == NIX_RX_ACTION_DEFAULT) {
 				if (!pfvf->def_rule)
 					continue;
