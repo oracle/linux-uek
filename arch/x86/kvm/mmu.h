@@ -170,4 +170,8 @@ static inline bool permission_fault(struct kvm_vcpu *vcpu, struct kvm_mmu *mmu,
 }
 
 void kvm_mmu_invalidate_zap_all_pages(struct kvm *kvm);
+
+int kvm_mmu_post_init_vm(struct kvm *kvm);
+void kvm_mmu_pre_destroy_vm(struct kvm *kvm);
+
 #endif
