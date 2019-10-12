@@ -226,6 +226,8 @@ struct kvm_mmu_page {
 	u64 *spt;
 	/* hold the gfn of each spte inside spt */
 	gfn_t *gfns;
+	struct list_head lpage_disallowed_link;
+
 	bool unsync;
 	bool lpage_disallowed; /* Can't be replaced by an equiv large page */
 	int root_count;          /* Currently serving as active root */
@@ -588,6 +590,7 @@ struct kvm_arch {
 	 */
 	struct list_head active_mmu_pages;
 	struct list_head zapped_obsolete_pages;
+	struct list_head lpage_disallowed_mmu_pages;
 
 	struct list_head assigned_dev_head;
 	struct iommu_domain *iommu_domain;
@@ -643,6 +646,7 @@ struct kvm_arch {
 	#endif
 
 	bool boot_vcpu_runs_old_kvmclock;
+	struct task_struct *nx_lpage_recovery_thread;
 };
 
 struct kvm_vm_stat {

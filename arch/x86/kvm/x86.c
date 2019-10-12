@@ -7553,6 +7553,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	INIT_HLIST_HEAD(&kvm->arch.mask_notifier_list);
 	INIT_LIST_HEAD(&kvm->arch.active_mmu_pages);
 	INIT_LIST_HEAD(&kvm->arch.zapped_obsolete_pages);
+	INIT_LIST_HEAD(&kvm->arch.lpage_disallowed_mmu_pages);
 	INIT_LIST_HEAD(&kvm->arch.assigned_dev_head);
 	atomic_set(&kvm->arch.noncoherent_dma_count, 0);
 
@@ -7575,6 +7576,11 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 		return kvm_x86_ops->vm_init(kvm);
 
 	return 0;
+}
+
+int kvm_arch_post_init_vm(struct kvm *kvm)
+{
+	return kvm_mmu_post_init_vm(kvm);
 }
 
 static void kvm_unload_vcpu_mmu(struct kvm_vcpu *vcpu)
@@ -7615,6 +7621,11 @@ void kvm_arch_sync_events(struct kvm *kvm)
 	cancel_delayed_work_sync(&kvm->arch.kvmclock_update_work);
 	kvm_free_all_assigned_devices(kvm);
 	kvm_free_pit(kvm);
+}
+
+void kvm_arch_pre_destroy_vm(struct kvm *kvm)
+{
+	kvm_mmu_pre_destroy_vm(kvm);
 }
 
 void kvm_arch_destroy_vm(struct kvm *kvm)
