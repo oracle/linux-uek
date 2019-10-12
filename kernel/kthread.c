@@ -414,6 +414,8 @@ void kthread_unpark(struct task_struct *k)
 		__kthread_unpark(k, kthread);
 }
 
+EXPORT_SYMBOL_GPL(kthread_unpark);
+
 /**
  * kthread_park - park a thread created by kthread_create().
  * @k: thread created by kthread_create().
