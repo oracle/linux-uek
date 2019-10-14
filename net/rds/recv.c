@@ -680,14 +680,23 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 	cp->cp_next_rx_seq = inc_hdr_h_sequence + 1;
 
 	if (rds_sysctl_ping_enable && inc->i_hdr.h_dport == 0) {
-		if (inc->i_hdr.h_sport == 0) {
+		bool is_hb_ping = (inc->i_hdr.h_flags & RDS_FLAG_ANY_HB) == RDS_FLAG_HB_PING;
+		bool is_hb_pong = (inc->i_hdr.h_flags & RDS_FLAG_ANY_HB) == RDS_FLAG_HB_PONG;
+
+		if (inc->i_hdr.h_len) {
+			rdsdebug("ignore ping with non-zero length from %pI6c\n", &saddr);
+			goto out;
+		}
+
+		/* One and only one of the heart-beat flags must be set */
+		if (inc->i_hdr.h_sport == 0 && !(is_hb_ping ^ is_hb_pong)) {
 			rdsdebug("ignore ping with 0 sport from %pI6c\n",
 				 &saddr);
 			goto out;
 		}
-		if (inc->i_hdr.h_flags & RDS_FLAG_HB_PING) {
+		if (is_hb_ping) {
 			rds_send_hb(conn, 1);
-		} else if (inc->i_hdr.h_flags & RDS_FLAG_HB_PONG) {
+		} else if (is_hb_pong) {
 			cp->cp_hb_start = 0;
 		} else {
 			rds_stats_inc(s_recv_ping);
