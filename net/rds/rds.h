@@ -251,6 +251,11 @@ enum rds_conn_drop_src {
 	DR_TCP_SEND_FAIL,
 };
 
+enum rds_hb_state {
+	HB_PING_SENT,
+	HB_PONG_RCVD,
+};
+
 #define IS_CANONICAL(laddr, faddr) (htonl(laddr) < htonl(faddr))
 
 /* Per mpath connection state */
@@ -311,6 +316,7 @@ struct rds_conn_path {
 	unsigned int		cp_pending_flush;
 
 	unsigned long           cp_hb_start;
+	enum rds_hb_state	cp_hb_state;
 
 	unsigned int		cp_rdsinfo_pending;
 

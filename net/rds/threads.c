@@ -38,7 +38,10 @@
 
 static unsigned int rds_conn_hb_timeout = 0;
 module_param(rds_conn_hb_timeout, int, 0444);
-MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout");
+MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout (seconds)");
+static unsigned int rds_conn_hb_interval = 10;
+module_param(rds_conn_hb_interval, int, 0444);
+MODULE_PARM_DESC(rds_conn_hb_interval, " Connection heartbeat interval (seconds)");
 
 
 /*
@@ -129,9 +132,10 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	rds_cond_queue_send_work(cp, 0);
 	rds_clear_queued_recv_work_bit(cp);
 	rds_cond_queue_recv_work(cp, 0);
+	cp->cp_hb_start = 0;
+	cp->cp_hb_state = HB_PONG_RCVD;
 	queue_delayed_work(cp->cp_wq, &cp->cp_hb_w, 0);
 	cancel_delayed_work(&cp->cp_reconn_w);
-	cp->cp_hb_start = 0;
 
 	rds_update_avg_connect_time(cp);
 	cp->cp_connection_start = get_seconds();
@@ -336,6 +340,7 @@ void rds_hb_worker(struct work_struct *work)
 						struct rds_conn_path,
 						cp_hb_w.work);
 	unsigned long now = get_seconds();
+	unsigned long delay = HZ;
 	int ret;
 	struct rds_connection *conn = cp->cp_conn;
 
@@ -344,8 +349,26 @@ void rds_hb_worker(struct work_struct *work)
 		return;
 
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
-		if (!cp->cp_hb_start) {
+		switch (cp->cp_hb_state) {
+		case HB_PING_SENT:
+			if (!cp->cp_hb_start) {
+				cp->cp_hb_state = HB_PONG_RCVD;
+				/* Pseudo random from 50% to 150% of interval */
+				delay = msecs_to_jiffies(rds_conn_hb_interval * 1000 / 2) +
+					msecs_to_jiffies(prandom_u32() % rds_conn_hb_interval * 1000);
+			} else if (now - cp->cp_hb_start > rds_conn_hb_timeout) {
+				rds_rtd_ptr(RDS_RTD_CM,
+					    "RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
+					    &conn->c_laddr, &conn->c_faddr,
+					    conn->c_tos, cp->cp_hb_start, now);
+				rds_conn_path_drop(cp, DR_HB_TIMEOUT);
+				return;
+			}
+			break;
+
+		case HB_PONG_RCVD:
 			ret = rds_send_hb(cp->cp_conn, 0);
+
 			if (ret) {
 				rds_rtd(RDS_RTD_ERR_EXT,
 					"RDS/IB: rds_hb_worker: failed %d\n",
@@ -353,15 +376,11 @@ void rds_hb_worker(struct work_struct *work)
 				return;
 			}
 			cp->cp_hb_start = now;
-		} else if (now - cp->cp_hb_start > rds_conn_hb_timeout) {
-			rds_rtd_ptr(RDS_RTD_CM,
-				    "RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
-				    &conn->c_laddr, &conn->c_faddr,
-				    conn->c_tos, cp->cp_hb_start, now);
-			rds_conn_path_drop(cp, DR_HB_TIMEOUT);
-			return;
+			cp->cp_hb_state = HB_PING_SENT;
+			break;
 		}
-		queue_delayed_work(cp->cp_wq, &cp->cp_hb_w, HZ);
+
+		queue_delayed_work(cp->cp_wq, &cp->cp_hb_w, delay);
 	}
 }
 
