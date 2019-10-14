@@ -402,6 +402,7 @@ void rds_conn_net_set(struct rds_connection *conn, struct net *net)
 #define RDS_FLAG_RETRANSMITTED		0x04
 #define RDS_FLAG_HB_PING		0x08
 #define RDS_FLAG_HB_PONG		0x10
+#define RDS_FLAG_ANY_HB			(RDS_FLAG_HB_PING | RDS_FLAG_HB_PONG)
 #define RDS_FLAG_EXTHDR_EXTENSION	0x20
 #define RDS_MAX_ADV_CREDIT		127
 
