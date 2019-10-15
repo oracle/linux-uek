@@ -699,7 +699,7 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 			rds_send_hb(conn, 1);
 		} else if (is_hb_pong) {
 			rds_stats_inc(s_recv_hb_pong);
-			cp->cp_hb_start = 0;
+			WRITE_ONCE(cp->cp_hb_start, 0);
 		} else {
 			if (be16_to_cpu(inc->i_hdr.h_sport) == RDS_FLAG_PROBE_PORT)
 				rds_stats_inc(s_recv_mprds_ping);
