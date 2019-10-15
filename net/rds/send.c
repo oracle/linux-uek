@@ -1523,12 +1523,12 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			    rds_conn_path_down(&conn->c_path[0])) {
 				/* rds_connd_queue_reconnect_work() ensures
 				 * that only one request is queued.  And
-				 * rds_send_ping() ensures that only one ping
+				 * rds_send_hs_ping() ensures that only one ping
 				 * is outstanding.
 				 */
 				rds_cond_queue_reconnect_work(&conn->c_path[0],
 							      0);
-				rds_send_ping(conn, 0);
+				rds_send_hs_ping(conn, 0);
 			}
 			cpath = &conn->c_path[rds_send_mprds_hash(rs, conn)];
 		} else {
@@ -1803,7 +1803,7 @@ out:
 }
 
 /*
- * send out a probe. Can be shared by rds_send_ping,
+ * send out a probe. Can be shared by rds_send_hs_ping,
  * rds_send_pong, rds_send_hb.
  */
 static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
@@ -1903,8 +1903,9 @@ rds_send_pong(struct rds_conn_path *cp, __be16 dport)
 	return rds_send_probe(cp, 0, dport, 0);
 }
 
+/* Send a hand-shake ping */
 void
-rds_send_ping(struct rds_connection *conn, int cp_index)
+rds_send_hs_ping(struct rds_connection *conn, int cp_index)
 {
 	unsigned long flags;
 	struct rds_conn_path *cp = &conn->c_path[cp_index];
@@ -1920,4 +1921,4 @@ rds_send_ping(struct rds_connection *conn, int cp_index)
 	rds_stats_inc(s_send_mprds_ping);
 	rds_send_probe(cp, cpu_to_be16(RDS_FLAG_PROBE_PORT), 0, 0);
 }
-EXPORT_SYMBOL_GPL(rds_send_ping);
+EXPORT_SYMBOL_GPL(rds_send_hs_ping);
