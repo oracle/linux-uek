@@ -225,7 +225,7 @@ int rds_tcp_accept_one(struct socket *sock)
 	new_sock = NULL;
 	ret = 0;
 	if (conn->c_npaths == 0)
-		rds_send_ping(cp->cp_conn, cp->cp_index);
+		rds_send_hs_ping(cp->cp_conn, cp->cp_index);
 	goto out;
 rst_nsk:
 	/* reset the newly returned accept sock and bail.
