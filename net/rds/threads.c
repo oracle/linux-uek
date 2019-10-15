@@ -36,14 +36,6 @@
 
 #include "rds.h"
 
-static unsigned int rds_conn_hb_timeout = 0;
-module_param(rds_conn_hb_timeout, int, 0444);
-MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout (seconds)");
-static unsigned int rds_conn_hb_interval = 10;
-module_param(rds_conn_hb_interval, int, 0444);
-MODULE_PARM_DESC(rds_conn_hb_interval, " Connection heartbeat interval (seconds)");
-
-
 /*
  * All of connection management is simplified by serializing it through
  * work queues that execute in a connection managing thread.
@@ -344,7 +336,7 @@ void rds_hb_worker(struct work_struct *work)
 	int ret;
 	struct rds_connection *conn = cp->cp_conn;
 
-	if (!rds_conn_hb_timeout || conn->c_loopback ||
+	if (!rds_sysctl_conn_hb_timeout || conn->c_loopback ||
 	    conn->c_trans->t_type == RDS_TRANS_TCP)
 		return;
 
@@ -354,9 +346,9 @@ void rds_hb_worker(struct work_struct *work)
 			if (!cp->cp_hb_start) {
 				cp->cp_hb_state = HB_PONG_RCVD;
 				/* Pseudo random from 50% to 150% of interval */
-				delay = msecs_to_jiffies(rds_conn_hb_interval * 1000 / 2) +
-					msecs_to_jiffies(prandom_u32() % rds_conn_hb_interval * 1000);
-			} else if (now - cp->cp_hb_start > rds_conn_hb_timeout) {
+				delay = msecs_to_jiffies(rds_sysctl_conn_hb_interval * 1000 / 2) +
+					msecs_to_jiffies(prandom_u32() % rds_sysctl_conn_hb_interval * 1000);
+			} else if (now - cp->cp_hb_start > rds_sysctl_conn_hb_timeout) {
 				rds_rtd_ptr(RDS_RTD_CM,
 					    "RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
 					    &conn->c_laddr, &conn->c_faddr,
