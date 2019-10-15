@@ -1628,6 +1628,9 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	 */
 	rds_stats_inc(s_send_queued);
 
+	if (!dport)
+		rds_stats_inc(s_send_ping);
+
 	ret = rds_send_xmit(cpath);
 	if (ret == -ENOMEM || ret == -EAGAIN)
 		rds_cond_queue_send_work(cpath, 1);
@@ -1850,7 +1853,6 @@ static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 	spin_unlock_irqrestore(&cp->cp_lock, flags);
 
 	rds_stats_inc(s_send_queued);
-	rds_stats_inc(s_send_pong);
 
 	if (!test_bit(RDS_LL_SEND_FULL, &cp->cp_flags))
 		rds_cond_queue_send_work(cp, 0);
@@ -1872,10 +1874,13 @@ rds_send_hb(struct rds_connection *conn, int response)
 	if (conn->c_trans->t_type == RDS_TRANS_TCP)
 		return 0;
 
-	if (response)
+	if (response) {
 		flags |= RDS_FLAG_HB_PONG;
-	else
+		rds_stats_inc(s_send_hb_pong);
+	} else {
 		flags |= RDS_FLAG_HB_PING;
+		rds_stats_inc(s_send_hb_ping);
+	}
 	flags |= RDS_FLAG_ACK_REQUIRED;
 
 	rds_send_probe(&conn->c_path[0], 0, 0, flags);
@@ -1886,6 +1891,11 @@ rds_send_hb(struct rds_connection *conn, int response)
 int
 rds_send_pong(struct rds_conn_path *cp, __be16 dport)
 {
+	if (be16_to_cpu(dport) == RDS_FLAG_PROBE_PORT)
+		rds_stats_inc(s_send_mprds_pong);
+	else
+		rds_stats_inc(s_send_pong);
+
 	return rds_send_probe(cp, 0, dport, 0);
 }
 
@@ -1901,7 +1911,9 @@ rds_send_ping(struct rds_connection *conn, int cp_index)
 		return;
 	}
 	conn->c_ping_triggered = 1;
+
 	spin_unlock_irqrestore(&cp->cp_lock, flags);
+	rds_stats_inc(s_send_mprds_ping);
 	rds_send_probe(cp, cpu_to_be16(RDS_FLAG_PROBE_PORT), 0, 0);
 }
 EXPORT_SYMBOL_GPL(rds_send_ping);
