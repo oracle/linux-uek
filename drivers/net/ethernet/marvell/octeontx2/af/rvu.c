@@ -703,6 +703,8 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 			mac = &rvu->fwdata->pf_macs[pf];
 			if (*mac)
 				u64_to_ether_addr(*mac, pfvf->mac_addr);
+			else
+				eth_random_addr(pfvf->mac_addr);
 		} else {
 			eth_random_addr(pfvf->mac_addr);
 		}
@@ -715,6 +717,8 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 				mac = &rvu->fwdata->vf_macs[hwvf];
 				if (*mac)
 					u64_to_ether_addr(*mac, pfvf->mac_addr);
+				else
+					eth_random_addr(pfvf->mac_addr);
 			} else {
 				eth_random_addr(pfvf->mac_addr);
 			}
