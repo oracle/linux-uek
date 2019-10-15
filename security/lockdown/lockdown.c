@@ -13,6 +13,9 @@
 #include <linux/security.h>
 #include <linux/export.h>
 #include <linux/lsm_hooks.h>
+#include <linux/efi.h>
+#include <asm/setup.h>
+#include <asm/bootparam.h>
 
 static enum lockdown_reason kernel_locked_down;
 
@@ -106,6 +109,9 @@ static int __init lockdown_lsm_init(void)
 	lock_kernel_down("Kernel configuration", LOCKDOWN_INTEGRITY_MAX);
 #elif defined(CONFIG_LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY)
 	lock_kernel_down("Kernel configuration", LOCKDOWN_CONFIDENTIALITY_MAX);
+#elif defined(CONFIG_LOCK_DOWN_KERNEL_SECUREBOOT_FORCE_INTEGRITY)
+	if (boot_params.secure_boot == efi_secureboot_mode_enabled)
+		lock_kernel_down("EFI Secure Boot", LOCKDOWN_INTEGRITY_MAX);
 #endif
 	security_add_hooks(lockdown_hooks, ARRAY_SIZE(lockdown_hooks),
 			   "lockdown");
