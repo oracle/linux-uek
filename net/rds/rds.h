@@ -909,6 +909,11 @@ struct rds_statistics {
 	uint64_t	s_recv_ack_required;
 	uint64_t	s_recv_rdma_bytes;
 	uint64_t	s_recv_ping;
+	uint64_t	s_recv_pong;
+	uint64_t	s_recv_hb_ping;
+	uint64_t	s_recv_hb_pong;
+	uint64_t	s_recv_mprds_ping;
+	uint64_t	s_recv_mprds_pong;
 	uint64_t	s_send_queue_empty;
 	uint64_t	s_send_queue_full;
 	uint64_t	s_send_lock_contention;
@@ -920,7 +925,12 @@ struct rds_statistics {
 	uint64_t	s_send_queued;
 	uint64_t	s_send_rdma;
 	uint64_t	s_send_rdma_bytes;
+	uint64_t	s_send_ping;
 	uint64_t	s_send_pong;
+	uint64_t	s_send_hb_ping;
+	uint64_t	s_send_hb_pong;
+	uint64_t	s_send_mprds_ping;
+	uint64_t	s_send_mprds_pong;
 	uint64_t	s_page_remainder_hit;
 	uint64_t	s_page_remainder_miss;
 	uint64_t	s_copy_to_user;
