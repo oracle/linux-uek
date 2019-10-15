@@ -2882,6 +2882,7 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 				      struct nix_set_mac_addr *req,
 				      struct msg_rsp *rsp)
 {
+	bool from_vf = !!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK);
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
 	struct rvu_pfvf *pfvf;
@@ -2896,7 +2897,10 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 	if (nixlf < 0)
 		return NIX_AF_ERR_AF_LF_INVALID;
 
-	ether_addr_copy(pfvf->mac_addr, req->mac_addr);
+	/* Skip updating mac addr if request is from vf */
+	if (!from_vf)
+		ether_addr_copy(pfvf->mac_addr, req->mac_addr);
+
 
 	rvu_npc_install_ucast_entry(rvu, pcifunc, nixlf,
 				    pfvf->rx_chan_base, req->mac_addr);
