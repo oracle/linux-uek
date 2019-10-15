@@ -695,11 +695,17 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 			goto out;
 		}
 		if (is_hb_ping) {
+			rds_stats_inc(s_recv_hb_ping);
 			rds_send_hb(conn, 1);
 		} else if (is_hb_pong) {
+			rds_stats_inc(s_recv_hb_pong);
 			cp->cp_hb_start = 0;
 		} else {
-			rds_stats_inc(s_recv_ping);
+			if (be16_to_cpu(inc->i_hdr.h_sport) == RDS_FLAG_PROBE_PORT)
+				rds_stats_inc(s_recv_mprds_ping);
+			else
+				rds_stats_inc(s_recv_ping);
+
 			rds_send_pong(cp, inc->i_hdr.h_sport);
 			/* if this is a handshake ping,
 			 * start multipath if necessary
@@ -716,12 +722,16 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 	if (conn->c_trans->t_mp_capable &&
 	    be16_to_cpu(inc->i_hdr.h_dport) ==  RDS_FLAG_PROBE_PORT &&
 	    inc->i_hdr.h_sport == 0) {
+		rds_stats_inc(s_recv_mprds_pong);
 		rds_recv_hs_exthdrs(&inc->i_hdr, cp->cp_conn);
 		/* if this is a handshake pong, start multipath if necessary */
 		rds_start_mprds(cp->cp_conn);
 		wake_up(&cp->cp_conn->c_hs_waitq);
 		goto out;
 	}
+
+	if (!inc->i_hdr.h_sport)
+		rds_stats_inc(s_recv_pong);
 
 	if (!rs)
 		rs = rds_find_bound(daddr, inc->i_hdr.h_dport,
