@@ -1312,6 +1312,8 @@ extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
 extern unsigned int  rds_sysctl_passive_connect_delay_percent;
+extern unsigned int  rds_sysctl_conn_hb_timeout;
+extern unsigned int  rds_sysctl_conn_hb_interval;
 
 /* threads.c */
 int rds_threads_init(void);
