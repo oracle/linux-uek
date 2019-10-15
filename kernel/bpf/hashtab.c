@@ -1208,6 +1208,7 @@ int bpf_percpu_hash_copy(struct bpf_map *map, void *key, void *value)
 		goto out;
 	if (htab_is_lru(htab))
 		bpf_lru_node_set_ref(&l->lru_node);
+
 	pptr = htab_elem_get_ptr(l, map->key_size);
 	for_each_possible_cpu(cpu) {
 		bpf_long_memcpy(value + off,
