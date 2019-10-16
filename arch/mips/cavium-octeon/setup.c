@@ -184,6 +184,7 @@ static void octeon_shutdown(void)
 		cpu_relax();
 		mdelay(1);
 	}
+	cvmx_bootmem_phy_list_restore();
 #endif
 }
 
@@ -689,6 +690,7 @@ void __init prom_init(void)
 	octeon_boot_desc_ptr = (struct octeon_boot_descriptor *)fw_arg3;
 	octeon_bootinfo = phys_to_virt(octeon_boot_desc_ptr->cvmx_desc_vaddr);
 	cvmx_bootmem_init(octeon_bootinfo->phy_mem_desc_addr);
+	cvmx_bootmem_phy_list_save();
 
 	sysinfo = cvmx_sysinfo_get();
 	memset(sysinfo, 0, sizeof(*sysinfo));
@@ -1156,7 +1158,6 @@ void __init plat_mem_setup(void)
 			add_memory_region(block_begin, block_size, BOOT_MEM_RAM);
 			total += block_size;
 		}
-		goto mem_alloc_done;
 	}
 
 	if (mem_alloc_size > max_memory)
@@ -1209,8 +1210,6 @@ void __init plat_mem_setup(void)
 		}
 	}
 	cvmx_bootmem_unlock();
-
-mem_alloc_done:
 
 	/*
 	 * Now that we've allocated the kernel memory it is safe to

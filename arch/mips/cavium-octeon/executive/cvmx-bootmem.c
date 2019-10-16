@@ -1059,6 +1059,85 @@ void cvmx_bootmem_phy_list_print(void)
 	cvmx_printf("\n\n");
 }
 
+#define CVMX_BOOTMEM_SAVELIST_SIZE 32
+
+
+struct cvmx_bootmem_phy_save_list{
+	uint64_t next;
+	uint64_t size;
+};
+
+static
+struct cvmx_bootmem_phy_save_list cvmx_bootmem_phy_save_list[CVMX_BOOTMEM_SAVELIST_SIZE];
+static uint64_t saved_head_addr;
+
+void cvmx_bootmem_phy_list_save(void)
+{
+	uint64_t addr;
+	int      i, j;
+
+	__cvmx_bootmem_lock(0);
+	addr = CVMX_BOOTMEM_DESC_GET_FIELD(head_addr);
+	saved_head_addr = addr;
+	if (CVMX_BOOTMEM_DESC_GET_FIELD(major_version) > 3)
+		cvmx_dprintf("Warning: Bootmem descriptor version is newer than expected\n");
+
+	for (i = 0; i < CVMX_BOOTMEM_SAVELIST_SIZE; ++i) {
+		if (!addr)
+			break;
+
+		cvmx_bootmem_phy_save_list[i].next = cvmx_bootmem_phy_get_next(addr);
+		cvmx_bootmem_phy_save_list[i].size = cvmx_bootmem_phy_get_size(addr);
+		addr = cvmx_bootmem_phy_get_next(addr);
+	}
+	if (i == CVMX_BOOTMEM_SAVELIST_SIZE) {
+		cvmx_dprintf("Warning: Unable to save entire bootmem list\n");
+		cvmx_bootmem_phy_save_list[i-1].next = 0; /* Make sure of termination */
+	}
+
+	/*
+	 * Align addresses to page boundaries where possible. u-boot and the kernel
+	 * don't agree on whether the memory following the kernel is free or not.
+	 * u-boot may place a free memory block header behind the kernel, which
+	 * may be over-written by the kexec process because the kernel assumes it
+	 * owns the memory to the next page boundary.
+	 */
+	for (j = 0; j < i; ++j) {
+		uint64_t aligned_next;
+		uint64_t size_adj = 0;
+
+		aligned_next = PFN_ALIGN(cvmx_bootmem_phy_save_list[j].next);
+		size_adj = aligned_next - cvmx_bootmem_phy_save_list[j].next;
+		if (size_adj && size_adj < (cvmx_bootmem_phy_save_list[j+1].size-16)) {
+			cvmx_bootmem_phy_save_list[j].next = aligned_next;
+			cvmx_bootmem_phy_save_list[j+1].size -= size_adj;
+		}
+	}
+	__cvmx_bootmem_unlock(0);
+}
+
+void cvmx_bootmem_phy_list_restore(void)
+{
+	uint64_t addr;
+	int      i;
+
+	__cvmx_bootmem_lock(0);
+	addr = saved_head_addr;
+	CVMX_BOOTMEM_DESC_SET_FIELD(head_addr, addr);
+	if (CVMX_BOOTMEM_DESC_GET_FIELD(major_version) > 3)
+		cvmx_dprintf("Warning: Bootmem descriptor version is newer than expected\n");
+
+	for (i = 0; i < CVMX_BOOTMEM_SAVELIST_SIZE; ++i) {
+		if (!addr)
+			break;
+
+		cvmx_bootmem_phy_set_next(addr, cvmx_bootmem_phy_save_list[i].next);
+		cvmx_bootmem_phy_set_size(addr, cvmx_bootmem_phy_save_list[i].size);
+		addr = cvmx_bootmem_phy_save_list[i].next;;
+	}
+	__cvmx_bootmem_unlock(0);
+}
+
 uint64_t cvmx_bootmem_phy_available_mem(uint64_t min_block_size)
 {
 	uint64_t addr;
