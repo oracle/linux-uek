@@ -20,6 +20,7 @@
 #endif
 
 struct bpf_verifier_env;
+struct bpf_verifier_log;
 struct perf_event;
 struct bpf_prog;
 struct bpf_map;
@@ -305,6 +306,7 @@ enum bpf_reg_type {
 #ifndef __GENKSYMS__
 	PTR_TO_MEM,		 /* reg points to valid memory region */
 	PTR_TO_MEM_OR_NULL,	 /* reg points to valid memory region or NULL */
+	PTR_TO_BTF_ID,		 /* reg points to kernel struct */
 #endif
 };
 
@@ -313,7 +315,11 @@ enum bpf_reg_type {
  */
 struct bpf_insn_access_aux {
 	enum bpf_reg_type reg_type;
-	int ctx_field_size;
+	union {
+		int ctx_field_size;
+		u32 btf_id;
+	};
+	struct bpf_verifier_log *log; /* for verbose logs */
 };
 
 static inline void
@@ -508,6 +514,7 @@ struct bpf_event_entry {
 
 bool bpf_prog_array_compatible(struct bpf_array *array, const struct bpf_prog *fp);
 int bpf_prog_calc_tag(struct bpf_prog *fp);
+const char *kernel_type_name(u32 btf_type_id);
 
 const struct bpf_func_proto *bpf_get_trace_printk_proto(void);
 
@@ -783,6 +790,13 @@ static inline bool unprivileged_ebpf_enabled(void)
 {
 	return !sysctl_unprivileged_bpf_disabled;
 }
+bool btf_ctx_access(int off, int size, enum bpf_access_type type,
+		    const struct bpf_prog *prog,
+		    struct bpf_insn_access_aux *info);
+int btf_struct_access(struct bpf_verifier_log *log,
+		      const struct btf_type *t, int off, int size,
+		      enum bpf_access_type atype,
+		      u32 *next_btf_id);
 
 #else /* !CONFIG_BPF_SYSCALL */
 static inline struct bpf_prog *bpf_prog_get(u32 ufd)
