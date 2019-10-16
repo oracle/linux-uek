@@ -441,6 +441,7 @@ struct bpf_prog_aux {
 	 * main prog always has linfo_idx == 0
 	 */
 	u32 linfo_idx;
+	UEK_KABI_FILL_HOLE(__u32 attach_btf_id) /* in-kernel BTF type id to attach to */
 	struct bpf_prog_stats __percpu *stats;
 	union {
 		struct work_struct work;
