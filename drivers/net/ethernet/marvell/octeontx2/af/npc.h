@@ -137,6 +137,13 @@ enum npc_kpu_lh_ltype {
 	NPC_LT_LH_CUSTOM1 = 0xF,
 };
 
+enum npc_pkind_type {
+	NPC_TX_HIGIG_PKIND = 60ULL,
+	NPC_RX_HIGIG_PKIND,
+	NPC_RX_EDSA_PKIND,
+	NPC_TX_DEF_PKIND,
+};
+
 struct npc_kpu_profile_cam {
 	u8 state;
 	u8 state_mask;
