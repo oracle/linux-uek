@@ -2615,3 +2615,55 @@ bool rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
 
 	return enable;
 }
+
+int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
+				   struct npc_set_pkind *req,
+				   struct msg_rsp *rsp)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
+	int pf = rvu_get_pf(req->hdr.pcifunc);
+	int blkaddr, nixlf, rc;
+	u64 rxpkind, txpkind;
+	u8 cgx_id, lmac_id;
+
+	/* use default pkind to disable edsa/higig */
+	rxpkind = rvu_npc_get_pkind(rvu, pf);
+	txpkind = NPC_TX_DEF_PKIND;
+
+	if (req->mode & OTX2_PRIV_FLAGS_EDSA) {
+		rxpkind = NPC_RX_EDSA_PKIND;
+	} else if (req->mode & OTX2_PRIV_FLAGS_HIGIG) {
+		rxpkind = NPC_RX_HIGIG_PKIND;
+		txpkind = NPC_TX_HIGIG_PKIND;
+	} else if (req->mode & OTX2_PRIV_FLAGS_CUSTOM) {
+		rxpkind = req->pkind;
+		txpkind = req->pkind;
+	}
+
+	if (req->dir & PKIND_RX) {
+		/* rx pkind set req valid only for cgx mapped PFs */
+		if (!is_cgx_config_permitted(rvu, req->hdr.pcifunc))
+			return -EPERM;
+		rvu_get_cgx_lmac_id(pfvf->cgx_lmac, &cgx_id, &lmac_id);
+
+		rc = cgx_set_pkind(rvu_cgx_pdata(cgx_id, rvu),
+				   lmac_id, rxpkind);
+		if (rc)
+			return rc;
+	}
+
+	if (req->dir & PKIND_TX) {
+		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, req->hdr.pcifunc);
+
+		/* tx pkind set req valid if NIXLF attached */
+		if (!pfvf->nixlf || blkaddr < 0)
+			return NIX_AF_ERR_AF_LF_INVALID;
+
+		nixlf = rvu_get_lf(rvu, &rvu->hw->block[blkaddr],
+				   req->hdr.pcifunc, 0);
+
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_TX_PARSE_CFG(nixlf),
+			    txpkind);
+	}
+	return 0;
+}
