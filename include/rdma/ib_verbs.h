@@ -2249,6 +2249,11 @@ struct rdma_netdev_alloc_params {
 				      struct net_device *netdev, void *param);
 };
 
+struct ib_odp_counters {
+	atomic64_t faults;
+	atomic64_t invalidations;
+};
+
 struct ib_counters {
 	struct ib_device	*device;
 	struct ib_uobject	*uobject;
