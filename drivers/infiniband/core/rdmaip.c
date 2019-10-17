@@ -332,7 +332,10 @@ static void rdmaip_garp_work_handler(struct work_struct *_work)
 static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 				       unsigned char *dev_addr, __be32 ip_addr)
 {
-	struct rdmaip_dly_work_req *garps = kmalloc(sizeof(*garps), GFP_ATOMIC);
+	struct rdmaip_dly_work_req *garps;
+
+	if (!out_dev)
+		return;
 
 	if (rdmaip_active_bonding_arps == 0) {
 		RDMAIP_DBG2("rdmaip_active_bonding_arps is set to zero\n");
@@ -346,16 +349,6 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 		rdmaip_active_bonding_arps = RDMAIP_DEFAULT_NUM_ARPS;
 	}
 
-	if (!garps) {
-		RDMAIP_DBG1_PTR("kmalloc failed. Cannot send garps for %s %pI4\n",
-				out_dev->name, &ip_addr);
-		return;
-	}
-
-	if (out_dev)
-		RDMAIP_DBG2_PTR("Sending GARP message for adding IP addr %pI4 on %s\n",
-			       (void *)&ip_addr, out_dev->name);
-
 	/*
 	 * If module unload in progress, dont queue the work request to the
 	 * rdmaip_garps_wq.
@@ -368,6 +361,16 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 		return;
 	}
 	mutex_unlock(&rdmaip_global_flag_lock);
+
+	garps = kmalloc(sizeof(*garps), GFP_ATOMIC);
+	if (!garps) {
+		RDMAIP_DBG1_PTR("kmalloc failed. Cannot send garps for %s %pI4\n",
+				out_dev->name, &ip_addr);
+		return;
+	}
+
+	RDMAIP_DBG2_PTR("Sending GARP message for adding IP addr %pI4 on %s\n",
+			(void *)&ip_addr, out_dev->name);
 
 	if (rdmaip_active_bonding_arps_gap_ms == 0 ||
 	    rdmaip_active_bonding_arps_gap_ms > 100) {
