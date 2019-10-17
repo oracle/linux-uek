@@ -2272,7 +2272,7 @@ static void rdmaip_device_add(struct ib_device *device)
 	ib_register_event_handler(&rdmaip_dev->event_handler);
 
 	for (i = 1; i <= device->phys_port_cnt; i++) {
-		ret = ib_query_port(device, device->phys_port_cnt, &port_attr);
+		ret = ib_query_port(device, i, &port_attr);
 		if (ret) {
 			RDMAIP_DBG2("ib_query_port failed %d\n", ret);
 			rdmaip_dev->pinfo[i - 1].gid_tbl_len =
