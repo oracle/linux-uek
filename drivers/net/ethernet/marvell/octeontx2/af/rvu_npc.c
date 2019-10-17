@@ -897,6 +897,11 @@ static void npc_config_tx_ldata_extract(struct rvu *rvu, int blkaddr)
 	cfg = KEX_LD_CFG(0x01, 0x0, 0x1, 0x0, 0x4);
 	SET_KEX_LD(NIX_INTF_TX, NPC_LID_LA, NPC_LT_LA_IH_NIX_ETHER, 0, cfg);
 
+	/* PF_FUNC incase of higig2 */
+	cfg = KEX_LD_CFG(0x01, 0x0, 0x1, 0x0, 0x4);
+	SET_KEX_LD(NIX_INTF_TX, NPC_LID_LA, NPC_LT_LA_IH_NIX_HIGIG2_ETHER, 0,
+		   cfg);
+
 	/* Layer B: Single VLAN (CTAG) */
 	/* CTAG VLAN[2..3] KW0[63:48] */
 	cfg = KEX_LD_CFG(0x01, 0x2, 0x1, 0x0, 0x6);
@@ -918,6 +923,11 @@ static void npc_config_tx_ldata_extract(struct rvu *rvu, int blkaddr)
 	/* DMAC: 6 bytes, KW1[63:16] */
 	cfg = KEX_LD_CFG(0x05, 0x8, 0x1, 0x0, 0xa);
 	SET_KEX_LD(NIX_INTF_TX, NPC_LID_LA, NPC_LT_LA_IH_NIX_ETHER, 1, cfg);
+
+	/* clasification in higig2 header */
+	cfg = KEX_LD_CFG(0x01, 0x10, 0x1, 0x0, 0xa);
+	SET_KEX_LD(NIX_INTF_TX, NPC_LID_LA, NPC_LT_LA_IH_NIX_HIGIG2_ETHER, 1,
+		   cfg);
 
 	/* Layer C: IPv4 */
 	/* SIP+DIP: 8 bytes, KW2[63:0] */
@@ -957,6 +967,14 @@ static void npc_config_rx_ldata_extract(struct rvu *rvu, int blkaddr)
 	/* Ethertype: 2 bytes, KW0[47:32] */
 	cfg = KEX_LD_CFG(0x01, 0xc, 0x1, 0x0, 0x4);
 	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LA, NPC_LT_LA_ETHER, 1, cfg);
+
+	/* Classification in higig2 header */
+	cfg = KEX_LD_CFG(0x01, 0x8, 0x1, 0x0, NPC_PARSE_RESULT_DMAC_OFFSET);
+	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LA, NPC_LT_LA_HIGIG2_ETHER, 0, cfg);
+
+	/* Vid in higig2 header */
+	cfg = KEX_LD_CFG(0x01, 0xc, 0x1, 0x0, NPC_PARSE_RESULT_DMAC_OFFSET + 2);
+	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LA, NPC_LT_LA_HIGIG2_ETHER, 1, cfg);
 
 	/* Layer B: Single VLAN (CTAG) */
 	/* CTAG VLAN[2..3] + Ethertype, 4 bytes, KW0[63:32] */
