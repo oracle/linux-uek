@@ -15,3 +15,16 @@ config CRYPTO_DEV_MARVELL_CESA
 	  Security Accelerator (CESA) which can be found on MVEBU and ORION
 	  platforms.
 	  This driver supports CPU offload through DMA transfers.
+
+config CRYPTO_DEV_OCTEONTX_ZIP
+	tristate "OcteonTX ZIP driver"
+	depends on ARCH_THUNDER || COMPILE_TEST
+	depends on PCI_MSI && 64BIT
+	select CRYPTO_DEV_MARVELL
+	default m
+	help
+	  Select this option to enable ZIP driver.
+	  ZIP provides hardware compression/decompression support.
+	  Support for Compression/Decompression unit (ZIP) block found
+	  in OcteonTX and OcteonTX2 series of processors.
+	  To compile this driver as modules, choose M.
