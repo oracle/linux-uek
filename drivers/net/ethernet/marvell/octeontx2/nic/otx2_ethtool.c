@@ -996,7 +996,7 @@ static void otx2_get_link_mode_info(u64 index, int mode,
 		if (bit_position ==  0)
 			ethtool_link_mode = 0x3F;
 
-		ethtool_link_mode |= 1 << cgx_link_mode[bit_position];
+		ethtool_link_mode |= 1ULL << cgx_link_mode[bit_position];
 		if (mode)
 			*link_ksettings->link_modes.advertising |=
 							ethtool_link_mode;
