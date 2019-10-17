@@ -96,8 +96,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_headers   1
 # dtrace
 %define with_dtrace    0
-# tools
-%define with_tools     0
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
@@ -271,7 +269,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_up 0
 %define with_compression 0
 %define with_headers 0
-%define with_tools 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
 %endif
@@ -304,7 +301,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define asmarch x86
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
-%define with_tools 1
 %endif
 
 %ifarch ppc64
@@ -370,7 +366,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
 %define with_headers   1
-%define with_tools 1
 %endif
 
 %if %{nopatches}
@@ -396,7 +391,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_pae 0
 %define with_kdump 0
 %define with_debuginfo 0
-%define with_tools 0
 %define _enable_debug_packages 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
@@ -406,9 +400,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %if %{with_pae}
 %define with_pae_debug %{with_debug}
 %endif
-
-# Architectures we build tools/cpupower on
-%define cpupowerarchs aarch64
 
 #
 # Three sets of minimum package version requirements in the form of Conflicts:
@@ -553,9 +544,6 @@ BuildRequires: fontconfig >= 2.13.0
 %if %{with_dtrace}
 BuildRequires: libdtrace-ctf-devel >= 1.1.0
 %endif
-%if %{with_tools}
-BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
-%endif # with_tools
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 %if %{with_debuginfo}
@@ -603,10 +591,6 @@ Source26: Module.kabi_x86_64
 
 Source200: kabi_whitelist_x86_64debug
 Source201: kabi_whitelist_x86_64
-
-# Sources for kernel-tools
-Source2000: cpupower.service
-Source2001: cpupower.config
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -707,76 +691,6 @@ AutoReq: no
 %description debuginfo-common
 This package is required by %{name}-debuginfo subpackages.
 It provides the kernel source files common to all builds.
-
-%if %{with_tools}
-%package -n kernel-uek-tools
-Summary: Assortment of tools for the Linux kernel
-Group: Development/System
-License: GPLv2
-Provides: kernel-uek-tools
-Provides: kernel-tools
-Obsoletes: qemu-kvm-tools
-Obsoletes: qemu-kvm-tools-ev
-Provides: qemu-kvm-tools
-%ifarch %{cpupowerarchs}
-Provides:  cpupowerutils = 1:009-0.6.p1
-Obsoletes: cpupowerutils < 1:009-0.6.p1
-Provides:  cpufreq-utils = 1:009-0.6.p1
-Provides:  cpufrequtils = 1:009-0.6.p1
-Obsoletes: cpufreq-utils < 1:009-0.6.p1
-Obsoletes: cpufrequtils < 1:009-0.6.p1
-Obsoletes: cpuspeed < 1:1.5-16
-Requires: kernel-uek-tools-libs = %{version}-%{release}
-%endif # cpupowerarchs
-%define __requires_exclude ^%{_bindir}/python
-%define __requires_exclude ^%{_bindir}/python3
-%description -n kernel-uek-tools
-This package contains the tools/ directory from the kernel source
-and the supporting documentation.
-
-%package -n kernel-uek-tools-libs
-Summary: Libraries for the kernels-tools
-Group: Development/System
-License: GPLv2
-Provides: kernel-uek-tools-libs
-Provides: kernel-tools-libs
-%description -n kernel-uek-tools-libs
-This package contains the libraries built from the tools/ directory
-from the kernel source.
-
-%package -n kernel-uek-tools-libs-devel
-Summary: Assortment of tools for the Linux kernel
-Group: Development/System
-License: GPLv2
-Requires: kernel-uek-tools = %{version}-%{release}
-Provides:  cpupowerutils-devel = 1:009-0.6.p1
-Obsoletes: cpupowerutils-devel < 1:009-0.6.p1
-Requires: kernel-uek-tools-libs = %{version}-%{release}
-Provides: kernel-uek-tools-devel
-Provides: kernel-uek-tools-libs-devel
-Provides: kernel-tools-devel
-Provides: kernel-tools-libs-devel
-%description -n kernel-uek-tools-libs-devel
-This package contains the development files for the tools/ directory from
-the kernel source.
-
-%package -n kernel-uek-tools-debuginfo
-Summary: Debug information for package kernel-tools
-Group: Development/Debug
-Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
-AutoReqProv: no
-Provides: kernel-uek-tools-debuginfo
-Provides: kernel-tools-debuginfo
-%description -n kernel-uek-tools-debuginfo
-This package provides debug information for package kernel-tools.
-
-# Note that this pattern only works right to match the .build-id
-# symlinks because of the trailing nonmatching alternation and
-# the leading .*, because of find-debuginfo.sh's buggy handling
-# of matching the pattern against the symlinks file.
-%{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '.*%%{_bindir}/centrino-decode(\.debug)?|.*%%{_bindir}/powernow-k8-decode(\.debug)?|.*%%{_bindir}/cpupower(\.debug)?|.*%%{_libdir}/libcpupower.*|.*%%{_bindir}/turbostat(\.debug)?|.*%%{_bindir}/x86_energy_perf_policy(\.debug)?|.*%%{_bindir}/tmon(\.debug)?|.*%%{_bindir}/lsgpio(\.debug)?|.*%%{_bindir}/gpio-hammer(\.debug)?|.*%%{_bindir}/gpio-event-mon(\.debug)?|.*%%{_bindir}/iio_event_monitor(\.debug)?|.*%%{_bindir}/iio_generic_buffer(\.debug)?|.*%%{_bindir}/lsiio(\.debug)?|XXX' -o kernel-tools-debuginfo.list}
-
-%endif # with_tools
 
 #
 # This macro creates a kernel-<subpackage>-debuginfo package.
@@ -1508,24 +1422,6 @@ BuildKernel %make_target %kernel_image 4k
 BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
-%if %{with_tools}
-%ifarch %{cpupowerarchs}
-# cpupower
-# make sure version-gen.sh is executable.
-chmod +x tools/power/cpupower/utils/version-gen.sh
-make %{?_smp_mflags} -C tools/power/cpupower CPUFREQ_BENCH=false
-%endif # cpupowerarchs
-pushd tools/thermal/tmon/
-make
-popd
-pushd tools/iio/
-make
-popd
-pushd tools/gpio/
-make
-popd
-%endif # with_tools
-
 %if %{with_doc}
 # Make the HTML pages.
 make %{?_smp_mflags} htmldocs || %{doc_build_fail}
@@ -1665,32 +1561,6 @@ rm -f $RPM_BUILD_ROOT/usr/include/asm*/irq.h
 rm -rf $RPM_BUILD_ROOT/usr/include/drm
 %endif
 
-%if %{with_tools}
-%ifarch %{cpupowerarchs}
-make -C tools/power/cpupower DESTDIR=$RPM_BUILD_ROOT libdir=%{_libdir} mandir=%{_mandir} CPUFREQ_BENCH=false install
-rm -f %{buildroot}%{_libdir}/*.{a,la}
-%find_lang cpupower
-mv cpupower.lang ../
-chmod 0755 %{buildroot}%{_libdir}/libcpupower.so*
-mkdir -p %{buildroot}%{_unitdir} %{buildroot}%{_sysconfdir}/sysconfig
-install -m644 %{SOURCE2000} %{buildroot}%{_unitdir}/cpupower.service
-install -m644 %{SOURCE2001} %{buildroot}%{_sysconfdir}/sysconfig/cpupower
-%endif # cpupowerarchs
-pushd tools/thermal/tmon
-make INSTALL_ROOT=%{buildroot} install
-popd
-pushd tools/iio
-make DESTDIR=%{buildroot} install
-popd
-pushd tools/gpio
-make DESTDIR=%{buildroot} install
-popd
-pushd tools/kvm/kvm_stat
-make INSTALL_ROOT=%{buildroot} install-tools
-make INSTALL_ROOT=%{buildroot} install-man || %{doc_build_fail}
-popd
-%endif # with_tools
-
 %if %{with_bootwrapper}
 make DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kernel-wrapper WRAPPER_DTSDIR=%{_libdir}/kernel-wrapper/dts
 %endif
@@ -1705,14 +1575,6 @@ rm -rf $RPM_BUILD_ROOT
 ###
 ### scripts
 ###
-
-%if %{with_tools}
-%post -n kernel-uek-tools-libs
-/sbin/ldconfig
-
-%postun -n kernel-uek-tools-libs
-/sbin/ldconfig
-%endif # with_tools
 
 #
 # This macro defines a %%post script for a kernel*-devel package.
@@ -1879,48 +1741,6 @@ fi
 /usr/sbin/*
 %{_libdir}/kernel-wrapper
 %endif
-
-%if %{with_tools}
-%ifarch %{cpupowerarchs}
-%files -n kernel-uek-tools -f cpupower.lang
-%defattr(-,root,root)
-%{_bindir}/cpupower
-%{_unitdir}/cpupower.service
-%{_mandir}/man[1-8]/cpupower*
-%config(noreplace) %{_sysconfdir}/sysconfig/cpupower
-%{_bindir}/tmon
-%{_bindir}/iio_event_monitor
-%{_bindir}/iio_generic_buffer
-%{_bindir}/lsiio
-%{_bindir}/lsgpio
-%{_bindir}/gpio-hammer
-%{_bindir}/gpio-event-mon
-%{_mandir}/man1/kvm_stat*
-%{_bindir}/kvm_stat
-%endif # cpupowerarchs
-
-%ifarch x86_64
-%files -n kernel-uek-tools
-%defattr(-,root,root)
-%{_mandir}/man1/kvm_stat*
-%{_bindir}/kvm_stat
-%endif
-
-%if %{with_debuginfo}
-%files -f kernel-tools-debuginfo.list -n kernel-uek-tools-debuginfo
-%defattr(-,root,root)
-%endif
-
-%ifarch %{cpupowerarchs}
-%files -n kernel-uek-tools-libs
-%{_libdir}/libcpupower.so.0
-%{_libdir}/libcpupower.so.0.0.1
-
-%files -n kernel-uek-tools-libs-devel
-%{_libdir}/libcpupower.so
-%{_includedir}/cpufreq.h
-%endif # cpupowerarchs
-%endif # with_tools
 
 # only some architecture builds need kernel-doc
 %if %{with_doc}
