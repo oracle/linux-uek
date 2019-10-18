@@ -1114,6 +1114,7 @@ int pci_save_state(struct pci_dev *dev)
 		return i;
 
 	pci_save_dpc_state(dev);
+	pci_save_aer_state(dev);
 	return pci_save_vc_state(dev);
 }
 EXPORT_SYMBOL(pci_save_state);
@@ -1222,6 +1223,7 @@ void pci_restore_state(struct pci_dev *dev)
 	pci_restore_dpc_state(dev);
 
 	pci_cleanup_aer_error_status_regs(dev);
+	pci_restore_aer_state(dev);
 
 	pci_restore_config_space(dev);
 
