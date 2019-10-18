@@ -182,6 +182,10 @@ static int __init haltpoll_init(void)
 	if (!kvm_para_available())
 		return 0;
 
+	/* Do not load haltpoll if idle= is passed */
+	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
+		return -ENODEV;
+
 	cpuidle_poll_state_init(drv);
 
 	ret = cpuidle_register_driver(drv);
