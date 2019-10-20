@@ -50,7 +50,7 @@ GCOV_PROFILE := n
 
 quiet_cmd_vdsold = VDSO    $@
       cmd_vdsold = $(CC) $(c_flags) $(VDSO_LDFLAGS) \
-                   -Wl,-T $(filter %.lds,$^) $(filter %.o,$^) -o $@
+                   -Wl,-n -Wl,-T $(filter %.lds,$^) $(filter %.o,$^) -o $@
 
 quiet_cmd_vdsoas_o_S = AS       $@
       cmd_vdsoas_o_S = $(CC) $(a_flags) -c -o $@ $<
