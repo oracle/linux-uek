@@ -30,7 +30,7 @@ static inline u64 otx2_nix_cq_op_status(struct otx2_nic *pfvf, int cq_idx)
 	atomic64_t *ptr;
 	u64 status;
 
-	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_CQ_OP_STATUS);
+	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_CQ_OP_STATUS);
 
 	status = atomic64_fetch_add_relaxed(incr, ptr);
 
