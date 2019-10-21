@@ -303,15 +303,41 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 		pfvf->cq_qcount_wait = 0x0;
 }
 
+static inline void __iomem *otx2_get_regaddr(struct otx2_nic *nic, u64 offset)
+{
+	u64 blkaddr;
+
+	switch ((offset >> RVU_FUNC_BLKADDR_SHIFT) & RVU_FUNC_BLKADDR_MASK) {
+	case BLKTYPE_NIX:
+		blkaddr = BLKADDR_NIX0;
+		break;
+	case BLKTYPE_NPA:
+		blkaddr = BLKADDR_NPA;
+		break;
+	default:
+		blkaddr = BLKADDR_RVUM;
+		break;
+	};
+
+	offset &= ~(RVU_FUNC_BLKADDR_MASK << RVU_FUNC_BLKADDR_SHIFT);
+	offset |= (blkaddr << RVU_FUNC_BLKADDR_SHIFT);
+
+	return nic->reg_base + offset;
+}
+
 /* Register read/write APIs */
 static inline void otx2_write64(struct otx2_nic *nic, u64 offset, u64 val)
 {
-	writeq(val, nic->reg_base + offset);
+	void __iomem *addr = otx2_get_regaddr(nic, offset);
+
+	writeq(val, addr);
 }
 
 static inline u64 otx2_read64(struct otx2_nic *nic, u64 offset)
 {
-	return readq(nic->reg_base + offset);
+	void __iomem *addr = otx2_get_regaddr(nic, offset);
+
+	return readq(addr);
 }
 
 /* With the absence of API for 128-bit IO memory access for arm64,
@@ -347,8 +373,8 @@ static inline __uint128_t otx2_read128(const void __iomem *addr)
 /* Alloc pointer from pool/aura */
 static inline u64 otx2_aura_allocptr(struct otx2_nic *pfvf, int aura)
 {
-	atomic64_t *ptr = (__force atomic64_t *)(pfvf->reg_base
-				+ NPA_LF_AURA_OP_ALLOCX(0));
+	atomic64_t *ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf,
+			   NPA_LF_AURA_OP_ALLOCX(0));
 	u64 incr = (u64)aura | BIT_ULL(63);
 
 	return atomic64_fetch_add_relaxed(incr, ptr);
@@ -359,7 +385,7 @@ static inline void otx2_aura_freeptr(struct otx2_nic *pfvf,
 				     int aura, s64 buf)
 {
 	otx2_write128((u64)buf, (u64)aura | BIT_ULL(63),
-		      pfvf->reg_base + NPA_LF_AURA_OP_FREE0);
+		      otx2_get_regaddr(pfvf, NPA_LF_AURA_OP_FREE0));
 }
 
 /* Update page ref count */

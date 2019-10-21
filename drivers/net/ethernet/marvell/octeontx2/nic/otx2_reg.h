@@ -58,8 +58,11 @@
 #define RVU_VF_MSIX_VECX_CTL(a)             (0x008 | (a) << 4)
 #define RVU_VF_MSIX_PBAX(a)                 (0xF0000 | (a) << 3)
 
+#define RVU_FUNC_BLKADDR_SHIFT		20
+#define RVU_FUNC_BLKADDR_MASK		0x1FULL
+
 /* NPA LF registers */
-#define NPA_LFBASE			(BLKADDR_NPA << 20)
+#define NPA_LFBASE			(BLKTYPE_NPA << RVU_FUNC_BLKADDR_SHIFT)
 #define NPA_LF_AURA_OP_ALLOCX(a)	(NPA_LFBASE | 0x10 | (a) << 3)
 #define NPA_LF_AURA_OP_FREE0            (NPA_LFBASE | 0x20)
 #define NPA_LF_AURA_OP_FREE1            (NPA_LFBASE | 0x28)
@@ -90,7 +93,7 @@
 #define NPA_LF_QINTX_ENA_W1C(a)         (NPA_LFBASE | 0x330 | (a) << 12)
 
 /* NIX LF registers */
-#define	NIX_LFBASE			(BLKADDR_NIX0 << 20)
+#define	NIX_LFBASE			(BLKTYPE_NIX << RVU_FUNC_BLKADDR_SHIFT)
 #define	NIX_LF_RX_SECRETX(a)		(NIX_LFBASE | 0x0 | (a) << 3)
 #define	NIX_LF_CFG			(NIX_LFBASE | 0x100)
 #define	NIX_LF_GINT			(NIX_LFBASE | 0x200)
@@ -148,7 +151,7 @@
 #define NIX_AF_TL3_TL2X_LINKX_CFG(a, b)	(0x1700 | (a) << 16 | (b) << 3)
 
 /* LMT LF registers */
-#define LMT_LFBASE			BIT_ULL(20)
+#define LMT_LFBASE			BIT_ULL(RVU_FUNC_BLKADDR_SHIFT)
 #define LMT_LF_LMTLINEX(a)		(LMT_LFBASE | 0x000 | (a) << 12)
 #define LMT_LF_LMTCANCEL		(LMT_LFBASE | 0x400)
 
