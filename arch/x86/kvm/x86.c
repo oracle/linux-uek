@@ -828,12 +828,8 @@ EXPORT_SYMBOL_GPL(kvm_lmsw);
 void kvm_load_guest_xcr0(struct kvm_vcpu *vcpu)
 {
 	if (kvm_read_cr4_bits(vcpu, X86_CR4_OSXSAVE) &&
-			!vcpu->guest_xcr0_loaded) {
-		/* kvm_set_xcr() also depends on this */
-		if (vcpu->arch.xcr0 != host_xcr0)
-			xsetbv(XCR_XFEATURE_ENABLED_MASK, vcpu->arch.xcr0);
-		vcpu->guest_xcr0_loaded = 1;
-	}
+	    vcpu->arch.xcr0 != host_xcr0)
+		xsetbv(XCR_XFEATURE_ENABLED_MASK, vcpu->arch.xcr0);
 
 	if (static_cpu_has(X86_FEATURE_PKU) &&
 	    (kvm_read_cr4_bits(vcpu, X86_CR4_PKE) ||
@@ -853,11 +849,9 @@ void kvm_put_guest_xcr0(struct kvm_vcpu *vcpu)
 			__write_pkru(vcpu->arch.host_pkru);
 	}
 
-	if (vcpu->guest_xcr0_loaded) {
-		if (vcpu->arch.xcr0 != host_xcr0)
-			xsetbv(XCR_XFEATURE_ENABLED_MASK, host_xcr0);
-		vcpu->guest_xcr0_loaded = 0;
-	}
+	if (kvm_read_cr4_bits(vcpu, X86_CR4_OSXSAVE) &&
+	    vcpu->arch.xcr0 != host_xcr0)
+		xsetbv(XCR_XFEATURE_ENABLED_MASK, host_xcr0);
 }
 EXPORT_SYMBOL_GPL(kvm_put_guest_xcr0);
 
