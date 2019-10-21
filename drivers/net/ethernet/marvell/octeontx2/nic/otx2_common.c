@@ -629,7 +629,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	sq->aura_id = sqb_aura;
 	sq->aura_fc_addr = pool->fc_addr->base;
 	sq->lmt_addr = (__force u64 *)(pfvf->reg_base + LMT_LF_LMTLINEX(qidx));
-	sq->io_addr = (__force u64)(pfvf->reg_base + NIX_LF_OP_SENDX(0));
+	sq->io_addr = (__force u64)otx2_get_regaddr(pfvf, NIX_LF_OP_SENDX(0));
 
 	sq->stats.bytes = 0;
 	sq->stats.pkts = 0;
@@ -1312,10 +1312,10 @@ static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
 	u64 incr = (u64)qidx << 32;
 	atomic64_t *ptr;
 
-	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_RQ_OP_OCTS);
+	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_OCTS);
 	stats->bytes = atomic64_fetch_add_relaxed(incr, ptr);
 
-	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_RQ_OP_PKTS);
+	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_PKTS);
 	stats->pkts = atomic64_fetch_add_relaxed(incr, ptr);
 }
 
@@ -1325,10 +1325,10 @@ static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
 	u64 incr = (u64)qidx << 32;
 	atomic64_t *ptr;
 
-	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_SQ_OP_OCTS);
+	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_OCTS);
 	stats->bytes = atomic64_fetch_add_relaxed(incr, ptr);
 
-	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_SQ_OP_PKTS);
+	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_PKTS);
 	stats->pkts = atomic64_fetch_add_relaxed(incr, ptr);
 }
 
