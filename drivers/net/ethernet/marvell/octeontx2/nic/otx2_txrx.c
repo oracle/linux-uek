@@ -497,10 +497,7 @@ int otx2_napi_handler(struct napi_struct *napi, int budget)
 	/* Clear the IRQ */
 	otx2_write64(pfvf, NIX_LF_CINTX_INT(cq_poll->cint_idx), BIT_ULL(0));
 
-	if (workdone < budget) {
-		/* Exit polling */
-		napi_complete(napi);
-
+	if (workdone < budget && napi_complete_done(napi, workdone)) {
 		/* If interface is going down, don't re-enable IRQ */
 		if (pfvf->intf_down)
 			return workdone;
