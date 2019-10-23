@@ -1411,9 +1411,11 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	struct otx2_qset *qset = &pf->qset;
 	struct nix_lf_free_req *free_req;
 	struct mbox *mbox = &pf->mbox;
+	struct napi_struct *napi;
 	struct otx2_cq_queue *cq;
-	int err, qidx, cqe_count;
 	struct msg_req *req;
+	int qidx, err;
+	u64 cqe_count;
 
 	/* Stop transmission */
 	err = otx2_txschq_stop(pf);
@@ -1436,8 +1438,13 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 		cq = &qset->cq[qidx];
 		cqe_count = otx2_read64(pf, NIX_LF_CINTX_CNT(cq->cint_idx));
 		cqe_count &= 0xFFFFFFFF;
-		if (cqe_count)
-			otx2_napi_handler(cq, pf, cqe_count);
+		napi = &qset->napi[cq->cint_idx].napi;
+		if (cqe_count) {
+			if (cq->cq_type == CQ_RX)
+				otx2_rx_napi_handler(pf, napi, cq, cqe_count);
+			else
+				otx2_tx_napi_handler(pf, cq, cqe_count);
+		}
 	}
 
 	/* Free RQ buffer pointers*/
@@ -1557,13 +1564,13 @@ int otx2_open(struct net_device *netdev)
 		 * 'cq_ids[0]' points to RQ's CQ and
 		 * 'cq_ids[1]' points to SQ's CQ and
 		 */
-		cq_poll->cq_ids[0] =
+		cq_poll->cq_ids[CQ_RX] =
 			(qidx <  pf->hw.rx_queues) ? qidx : CINT_INVALID_CQ;
-		cq_poll->cq_ids[1] = (qidx < pf->hw.tx_queues) ?
+		cq_poll->cq_ids[CQ_TX] = (qidx < pf->hw.tx_queues) ?
 				      qidx + pf->hw.rx_queues : CINT_INVALID_CQ;
 		cq_poll->dev = (void *)pf;
 		netif_napi_add(netdev, &cq_poll->napi,
-			       otx2_poll, NAPI_POLL_WEIGHT);
+			       otx2_napi_handler, NAPI_POLL_WEIGHT);
 		napi_enable(&cq_poll->napi);
 	}
 
