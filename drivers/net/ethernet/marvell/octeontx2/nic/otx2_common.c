@@ -675,8 +675,16 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	int err, pool_id;
 
 	cq = &qset->cq[qidx];
-	cq->cqe_cnt = (qidx < pfvf->hw.rx_queues) ? qset->rqe_cnt
-			: qset->sqe_cnt;
+	cq->cq_idx = qidx;
+	if (qidx < pfvf->hw.rx_queues) {
+		cq->cq_type = CQ_RX;
+		cq->cint_idx = qidx;
+		cq->cqe_cnt = qset->rqe_cnt;
+	} else {
+		cq->cq_type = CQ_TX;
+		cq->cint_idx = qidx - pfvf->hw.rx_queues;
+		cq->cqe_cnt = qset->sqe_cnt;
+	}
 	cq->cqe_size = pfvf->qset.xqe_size;
 
 	/* Allocate memory for CQEs */
@@ -689,11 +697,9 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	/* In case where all RQs auras point to single pool,
 	 * all CQs receive buffer pool also point to same pool.
 	 */
-	pool_id = ((qidx < pfvf->hw.rx_queues) &&
+	pool_id = ((cq->cq_type == CQ_RX) &&
 		   (pfvf->hw.rqpool_cnt != pfvf->hw.rx_queues)) ? 0 : qidx;
 	cq->rbpool = &qset->pool[pool_id];
-
-	cq->cq_idx = qidx;
 	cq->refill_task_sched = false;
 
 	/* Get memory to put this msg */
@@ -705,10 +711,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->cq.qsize = Q_SIZE(cq->cqe_cnt, 4);
 	aq->cq.caching = 1;
 	aq->cq.base = cq->cqe->iova;
-	aq->cq.cint_idx = (qidx < pfvf->hw.rx_queues) ? qidx
-				: (qidx - pfvf->hw.rx_queues);
-	cq->cint_idx = aq->cq.cint_idx;
-
+	aq->cq.cint_idx = cq->cint_idx;
 	aq->cq.cq_err_int_ena = NIX_CQERRINT_BITS;
 	aq->cq.qint_idx = 0;
 	aq->cq.avg_level = 255;

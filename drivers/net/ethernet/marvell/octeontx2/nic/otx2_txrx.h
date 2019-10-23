@@ -83,12 +83,17 @@ struct otx2_snd_queue {
 	u64			*sqb_ptrs;
 } ____cacheline_aligned_in_smp;
 
+enum cq_type {
+	CQ_RX,
+	CQ_TX,
+	CQS_PER_CINT = 2, /* RQ + SQ */
+};
+
 struct otx2_cq_poll {
 	void			*dev;
 #define CINT_INVALID_CQ		255
-#define MAX_CQS_PER_CNT		2 /* RQ + SQ */
 	u8			cint_idx;
-	u8			cq_ids[MAX_CQS_PER_CNT];
+	u8			cq_ids[CQS_PER_CINT];
 	struct napi_struct	napi;
 };
 
@@ -101,16 +106,18 @@ struct otx2_pool {
 	struct page		*page;
 };
 
+#define CQ_OP_ERROR	BIT_ULL(63)
+#define CQ_CQ_ERROR	BIT_ULL(46)
+
 struct otx2_cq_queue {
 	u8			cq_idx;
+	u8			cq_type;
 	u8			cint_idx; /* CQ interrupt id */
 	u8			refill_task_sched;
 	u16			cqe_size;
 	u16			pool_ptrs;
 	u32			cqe_cnt;
 	u32			cq_head;
-	u32			cq_tail;
-	u32			pend_cqe;
 	void			*cqe_base;
 	struct qmem		*cqe;
 	struct otx2_pool	*rbpool;
@@ -133,12 +140,12 @@ struct otx2_qset {
 static inline u64 otx2_iova_to_phys(void *iommu_domain, dma_addr_t dma_addr)
 {
 	/* Translation is installed only when IOMMU is present */
-	if (iommu_domain)
+	if (likely(iommu_domain))
 		return iommu_iova_to_phys(iommu_domain, dma_addr);
 	return dma_addr;
 }
 
-int otx2_poll(struct napi_struct *napi, int budget);
+int otx2_napi_handler(struct napi_struct *napi, int budget);
 bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 			struct sk_buff *skb, u16 qidx);
 #endif /* OTX2_TXRX_H */
