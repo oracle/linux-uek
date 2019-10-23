@@ -26,6 +26,8 @@ extern bool pcie_ports_native;
 
 #define PCIE_PORT_DEVICE_MAXSERVICES   4
 
+extern bool pcie_ports_dpc_native;
+
 #ifdef CONFIG_PCIEAER
 int pcie_aer_init(void);
 #else
