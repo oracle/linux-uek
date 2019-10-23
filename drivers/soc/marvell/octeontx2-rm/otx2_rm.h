@@ -21,6 +21,7 @@
 /* 12 CGX PFs + max HWVFs - VFs used for domains */
 #define RM_MAX_PORTS		(12 + 256 - MAX_DOM_VFS)
 #define NAME_SIZE		32
+#define RM_MAX_CPT_VFS		1
 
 #define RVU_PFVF_PF_SHIFT	10
 #define RVU_PFVF_PF_MASK	0x3F
@@ -61,7 +62,6 @@ struct rvu_limits {
 	struct quotas	*ssow;
 	struct quotas	*npa;
 	struct quotas	*tim;
-	struct quotas	*cpt;
 };
 
 struct rm_dev {

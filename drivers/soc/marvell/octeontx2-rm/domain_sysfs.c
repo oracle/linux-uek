@@ -20,7 +20,6 @@
 DP(ssow, int, "%d")	\
 DP(sso, int, "%d")	\
 DP(npa, int, "%d")	\
-DP(cpt, int, "%d")	\
 DP(tim, int, "%d")	\
 DP(dpi, int, "%d")
 
@@ -31,7 +30,16 @@ struct domain_params {
 DOM_PARAM_SPEC
 #undef DP
 	const char *ports[RM_MAX_PORTS];
+	const char *cpt[RM_MAX_CPT_VFS];
 	u16 port_cnt;
+	u16  cpt_count;
+};
+
+struct rvu_cpt {
+	/* handle in global list of ports associated to all domains */
+	struct list_head	list;
+	struct pci_dev		*pdev;
+	struct domain		*domain;
 };
 
 struct domain {
@@ -40,10 +48,12 @@ struct domain {
 	struct kobj_attribute	domain_in_use;
 	/* List of all ports attached to the domain */
 	struct rvu_port		*ports;
+	struct rvu_cpt		*cpt;
 	struct kobject		*kobj;
 	struct rvu_vf		*rvf;
 	int			port_count;
 	bool			in_use;
+	bool			cpt_count;
 };
 
 struct rvu_port {
@@ -79,6 +89,7 @@ struct domain_sysfs {
 	 * domain creation doesn't want to take an already taken port.
 	 */
 	struct list_head	ports;
+	struct list_head	cpt;
 	struct rm_dev		*rdev;
 	struct kobject		*parent;
 	struct domain		*domains;
@@ -124,6 +135,11 @@ static int do_destroy_domain(struct domain_sysfs *lsfs, struct domain *domain)
 				  pci_name(domain->ports[i].pdev));
 	}
 
+	for (i = 0; i < domain->cpt_count; i++) {
+		sysfs_remove_link(domain->kobj,
+				  pci_name(domain->cpt[i].pdev));
+	}
+
 	for (i = 0; i < lsfs->dpi_info.num_vfs; i++) {
 		struct dpi_vf *dpivf_ptr = NULL;
 
@@ -146,7 +162,6 @@ static int do_destroy_domain(struct domain_sysfs *lsfs, struct domain *domain)
 	lsfs->rdev->vf_limits.sso->a[domain->rvf->vf_id].val = 0;
 	lsfs->rdev->vf_limits.ssow->a[domain->rvf->vf_id].val = 0;
 	lsfs->rdev->vf_limits.npa->a[domain->rvf->vf_id].val = 0;
-	lsfs->rdev->vf_limits.cpt->a[domain->rvf->vf_id].val = 0;
 	lsfs->rdev->vf_limits.tim->a[domain->rvf->vf_id].val = 0;
 	mutex_unlock(&lsfs->rdev->lock);
 
@@ -156,6 +171,12 @@ static int do_destroy_domain(struct domain_sysfs *lsfs, struct domain *domain)
 		list_del(&domain->ports[i].list);
 		pci_dev_put(domain->ports[i].pdev);
 	}
+
+	for (i = 0; i < domain->cpt_count; i++) {
+		list_del(&domain->cpt[i].list);
+		pci_dev_put(domain->cpt[i].pdev);
+	}
+	domain->cpt_count = 0;
 	kfree(domain->ports);
 	domain->ports = NULL;
 	domain->port_count = 0;
@@ -172,9 +193,10 @@ do_create_domain(struct domain_sysfs *lsfs, struct domain_params *dparams)
 	struct device *dev = &lsfs->rdev->pdev->dev;
 	struct domain *domain = NULL;
 	struct rvu_port *ports = NULL, *cur;
+	struct rvu_cpt *cpt = NULL, *cpt_cur;
 	u32 dom, bus, slot, fn;
-	int old_sso, old_ssow, old_npa, old_cpt, old_tim, device;
-	int res = 0, i;
+	int old_sso, old_ssow, old_npa, old_tim, device;
+	int res = 0, i, domain_index;
 
 	/* Validate parameters */
 	if (dparams == NULL)
@@ -204,8 +226,10 @@ do_create_domain(struct domain_sysfs *lsfs, struct domain_params *dparams)
 		}
 		if (lsfs->domains[i].in_use == false &&
 		    lsfs->domains[i].rvf->in_use == false) {
-			if (domain == NULL)
+			if (domain == NULL) {
 				domain = &lsfs->domains[i];
+				domain_index = i;
+			}
 		}
 	}
 	if (domain == NULL) {
@@ -224,6 +248,7 @@ do_create_domain(struct domain_sysfs *lsfs, struct domain_params *dparams)
 		res = -ENOMEM;
 		goto err_ports;
 	}
+
 	for (i = 0; i < dparams->port_cnt; i++) {
 		if (sscanf(dparams->ports[i], PCI_SCAN_FMT, &dom, &bus, &slot,
 		    &fn) != 4) {
@@ -269,13 +294,50 @@ do_create_domain(struct domain_sysfs *lsfs, struct domain_params *dparams)
 	domain->ports = ports;
 	domain->port_count = dparams->port_cnt;
 skip_ports:
+	if (dparams->cpt_count == 0)
+		goto skip_cpt;
+	cpt = kcalloc(dparams->cpt_count, sizeof(struct rvu_cpt), GFP_KERNEL);
+	for (i = 0; i < dparams->cpt_count; i++) {
+		if (sscanf(dparams->cpt[i], PCI_SCAN_FMT, &dom, &bus, &slot,
+			    &fn) != 4) {
+			dev_err(dev, "Invalid cpt device: %s.\n",
+				dparams->cpt[i]);
+			res = -EINVAL;
+			goto err_ports;
+		}
+		cpt[i].pdev =
+			pci_get_domain_bus_and_slot(dom, bus,
+					    PCI_DEVFN(slot, fn));
+		if (cpt[i].pdev == NULL) {
+			dev_err(dev, "Unknown cpt device: %s.\n",
+				dparams->cpt[i]);
+			res = -ENODEV;
+			goto err_cpt;
+		}
+		device = cpt[i].pdev->device;
+		list_for_each_entry(cur, &lsfs->cpt, list) {
+			if (cur->pdev != cpt[i].pdev)
+				continue;
+			dev_err(dev,
+				"cpt %s already assigned to domain %s.\n",
+				dparams->cpt[i], cur->domain->name);
+			res = -EBUSY;
+			goto err_cpt;
+		}
+	}
+	for (i = 0; i < dparams->cpt_count; i++) {
+		cpt[i].domain = domain;
+		list_add(&cpt[i].list, &lsfs->cpt);
+	}
+	domain->cpt = cpt;
+	domain->cpt_count = dparams->cpt_count;
+skip_cpt:
 	mutex_unlock(&domain_sysfs_lock);
 	/* Check domain spec against limits for the parent RVU. */
 	mutex_lock(&lsfs->rdev->lock);
 	old_sso = lsfs->rdev->vf_limits.sso->a[domain->rvf->vf_id].val;
 	old_ssow = lsfs->rdev->vf_limits.ssow->a[domain->rvf->vf_id].val;
 	old_npa = lsfs->rdev->vf_limits.npa->a[domain->rvf->vf_id].val;
-	old_cpt = lsfs->rdev->vf_limits.cpt->a[domain->rvf->vf_id].val;
 	old_tim = lsfs->rdev->vf_limits.tim->a[domain->rvf->vf_id].val;
 #define CHECK_LIMITS(_ls, _val, _n, _idx) do {				    \
 	if (quotas_get_sum(_ls) + _val - _ls->a[_idx].val > _ls->max_sum) { \
@@ -291,8 +353,6 @@ skip_ports:
 	CHECK_LIMITS(lsfs->rdev->vf_limits.ssow, dparams->ssow, "SSOW",
 		     domain->rvf->vf_id);
 	CHECK_LIMITS(lsfs->rdev->vf_limits.npa, dparams->npa, "NPA",
-		     domain->rvf->vf_id);
-	CHECK_LIMITS(lsfs->rdev->vf_limits.cpt, dparams->cpt, "CPT",
 		     domain->rvf->vf_id);
 	CHECK_LIMITS(lsfs->rdev->vf_limits.tim, dparams->tim, "TIM",
 		     domain->rvf->vf_id);
@@ -310,7 +370,6 @@ skip_ports:
 	lsfs->rdev->vf_limits.sso->a[domain->rvf->vf_id].val = dparams->sso;
 	lsfs->rdev->vf_limits.ssow->a[domain->rvf->vf_id].val = dparams->ssow;
 	lsfs->rdev->vf_limits.npa->a[domain->rvf->vf_id].val = dparams->npa;
-	lsfs->rdev->vf_limits.cpt->a[domain->rvf->vf_id].val = dparams->cpt;
 	lsfs->rdev->vf_limits.tim->a[domain->rvf->vf_id].val = dparams->tim;
 	lsfs->dpi_info.vfs_free -= dparams->dpi;
 	mutex_unlock(&lsfs->rdev->lock);
@@ -339,6 +398,17 @@ skip_ports:
 				domain->name);
 			res = -ENOMEM;
 			goto err_dom_port_symlink;
+		}
+	}
+	for (i = 0; i < dparams->cpt_count; i++) {
+		res = sysfs_create_link(domain->kobj, &cpt[i].pdev->dev.kobj,
+						pci_name(cpt[i].pdev));
+		if (res < 0) {
+			dev_err(dev,
+				"Failed to create dev links for domain %s.\n",
+				domain->name);
+			res = -ENOMEM;
+			goto err_dom_cpt_symlink;
 		}
 	}
 	/* Create symlinks for dpi vfs in domain */
@@ -413,6 +483,10 @@ err_dpi_symlink:
 			dpivf_ptr->domain_kobj = NULL;
 		}
 	}
+err_dom_cpt_symlink:
+	for (i = 0; i < dparams->cpt_count; i++)
+		sysfs_remove_link(domain->kobj, pci_name(cpt[i].pdev));
+	sysfs_remove_link(domain->kobj, pci_name(domain->rvf->pdev));
 err_dom_port_symlink:
 	for (i = 0; i < dparams->port_cnt; i++)
 		sysfs_remove_link(domain->kobj, pci_name(ports[i].pdev));
@@ -426,11 +500,18 @@ err_limits:
 	lsfs->rdev->vf_limits.sso->a[domain->rvf->vf_id].val = old_sso;
 	lsfs->rdev->vf_limits.ssow->a[domain->rvf->vf_id].val = old_ssow;
 	lsfs->rdev->vf_limits.npa->a[domain->rvf->vf_id].val = old_npa;
-	lsfs->rdev->vf_limits.cpt->a[domain->rvf->vf_id].val = old_cpt;
 	lsfs->rdev->vf_limits.tim->a[domain->rvf->vf_id].val = old_tim;
 	lsfs->dpi_info.vfs_free += dparams->dpi;
 	mutex_unlock(&lsfs->rdev->lock);
 	mutex_lock(&domain_sysfs_lock);
+err_cpt:
+	for (i = 0; i < dparams->cpt_count; i++) {
+		if (cpt[i].pdev == NULL)
+			break;
+		if (cpt[i].domain != NULL)
+			list_del(&cpt[i].list);
+		pci_dev_put(cpt[i].pdev);
+	}
 err_ports:
 	// FREE ALL allocated ports
 	for (i = 0; i < dparams->port_cnt; i++) {
@@ -563,7 +644,12 @@ create_domain_store(struct kobject *kobj, struct kobj_attribute *attr,
 		}
 		DOM_PARAM_SPEC
 		#undef DP
-		else {
+		else if (!strncmp(strim(start), "cpt", sizeof("cpt") - 1)) {
+			strsep(&start, ":");
+			if (dparams->cpt_count > RM_MAX_CPT_VFS)
+				goto error;
+			dparams->cpt[dparams->cpt_count++] = strim(start);
+		} else {
 			res = -EINVAL;
 			goto error;
 		}
@@ -736,6 +822,7 @@ int domain_sysfs_create(struct rm_dev *rm)
 	}
 
 	INIT_LIST_HEAD(&lsfs->ports);
+	INIT_LIST_HEAD(&lsfs->cpt);
 	lsfs->rdev = rm;
 	lsfs->domains_len = rm->num_vfs;
 	lsfs->domains =

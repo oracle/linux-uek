@@ -289,9 +289,9 @@ reply_free_rsrc_cnt(struct rm_dev *rm, struct rvu_vf *vf,
 	rsp->sso = rm->vf_limits.sso->a[vf->vf_id].val;
 	rsp->ssow = rm->vf_limits.ssow->a[vf->vf_id].val;
 	rsp->npa = rm->vf_limits.npa->a[vf->vf_id].val;
-	rsp->cpt = rm->vf_limits.cpt->a[vf->vf_id].val;
 	rsp->tim = rm->vf_limits.tim->a[vf->vf_id].val;
 	rsp->nix = 0;
+	rsp->cpt = 0;
 	mutex_unlock(&rm->lock);
 	return 0;
 }
@@ -308,7 +308,6 @@ check_attach_rsrcs_req(struct rm_dev *rm, struct rvu_vf *vf,
 	    rsrc_req->ssow > rm->vf_limits.ssow->a[vf->vf_id].val ||
 	    rsrc_req->npalf > rm->vf_limits.npa->a[vf->vf_id].val ||
 	    rsrc_req->timlfs > rm->vf_limits.tim->a[vf->vf_id].val ||
-	    rsrc_req->cptlfs > rm->vf_limits.cpt->a[vf->vf_id].val ||
 	    rsrc_req->nixlf > 0) {
 		dev_err(&rm->pdev->dev,
 			"Invalid ATTACH_RESOURCES request from %s\n",
@@ -897,12 +896,10 @@ static void vf_sysfs_destroy(struct pci_dev *pdev)
 	quotas_free(rm->vf_limits.sso);
 	quotas_free(rm->vf_limits.ssow);
 	quotas_free(rm->vf_limits.npa);
-	quotas_free(rm->vf_limits.cpt);
 	quotas_free(rm->vf_limits.tim);
 	rm->vf_limits.sso = NULL;
 	rm->vf_limits.ssow = NULL;
 	rm->vf_limits.npa = NULL;
-	rm->vf_limits.cpt = NULL;
 	rm->vf_limits.tim = NULL;
 
 	for (i = 0; i < rm->num_vfs; i++) {
@@ -979,15 +976,6 @@ static int vf_sysfs_create(struct pci_dev *pdev)
 		err = -EFAULT;
 		goto error;
 	}
-	rm->vf_limits.cpt = quotas_alloc(rm->num_vfs, rm->limits.cpt,
-					 rm->limits.cpt, 0, &rm->lock,
-					 &vf_limit_ops);
-	if (rm->vf_limits.cpt == NULL) {
-		dev_err(&pdev->dev,
-			"Failed to allocate cpt limits structures.\n");
-		err = -EFAULT;
-		goto error;
-	}
 	rm->vf_limits.tim = quotas_alloc(rm->num_vfs, rm->limits.tim,
 					 rm->limits.tim, 0, &rm->lock,
 					 &vf_limit_ops);
@@ -1031,14 +1019,6 @@ static int vf_sysfs_create(struct pci_dev *pdev)
 				       &rm->vf_limits.npa->a[i], vf) != 0) {
 			dev_err(&pdev->dev,
 				"Failed to create npa limits sysfs for %s\n",
-				pci_name(vdev));
-			err = -EFAULT;
-			goto error;
-		}
-		if (quota_sysfs_create("cpt", vf->limits_kobj, &vdev->dev,
-				       &rm->vf_limits.cpt->a[i], vf) != 0) {
-			dev_err(&pdev->dev,
-				"Failed to create cpt limits sysfs for %s\n",
 				pci_name(vdev));
 			err = -EFAULT;
 			goto error;
