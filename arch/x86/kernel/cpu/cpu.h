@@ -50,4 +50,6 @@ extern int detect_extended_topology_early(struct cpuinfo_x86 *c);
 extern int detect_ht_early(struct cpuinfo_x86 *c);
 extern void x86_spec_ctrl_setup_ap(void);
 
+extern u64 x86_read_arch_cap_msr(struct cpuinfo_x86 *c);
+
 #endif /* ARCH_X86_CPU_H */
