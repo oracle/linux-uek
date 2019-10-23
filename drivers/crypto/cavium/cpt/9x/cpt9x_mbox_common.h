@@ -36,11 +36,9 @@ struct eng_grp_num_rsp {
 };
 
 /*
- * Message request and response to config cpt lf for inline
- * inbound ipsec.
- * This messages are only used between CPT PF <-> CPT VF
+ * Message request to config cpt lf for inline inbound ipsec.
+ * This message is only used between CPT PF <-> CPT VF
  */
-
 struct rx_inline_lf_cfg {
 	struct mbox_msghdr hdr;
 	u16 sso_pf_func;

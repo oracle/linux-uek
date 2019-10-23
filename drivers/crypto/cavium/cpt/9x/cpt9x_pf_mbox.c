@@ -11,6 +11,7 @@
 #include "rvu_reg.h"
 #include "cpt9x_mbox_common.h"
 
+/* Fastpath ipsec opcode with inplace processing */
 #define CPT_INLINE_RX_OPCODE  (0x26 | (1 << 6))
 
 static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
@@ -25,235 +26,106 @@ static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 16, 2, msg, size, false);
 }
 
-static void free_instruction_queues(struct cptlfs_info *lfs)
+static int get_eng_grp(struct cptpf_dev *cptpf, u8 eng_type)
 {
+	int eng_grp_num = INVALID_CRYPTO_ENG_GRP;
+	struct engine_group_info *grp;
 	int i;
 
-	for (i = 0; i < lfs->lfs_num; i++) {
-		if (lfs->lf[i].iqueue.real_vaddr)
-			dma_free_coherent(&lfs->pdev->dev,
-					  lfs->lf[i].iqueue.size,
-					  lfs->lf[i].iqueue.real_vaddr,
-					  lfs->lf[i].iqueue.real_dma_addr);
-		lfs->lf[i].iqueue.real_vaddr = NULL;
-		lfs->lf[i].iqueue.vaddr = NULL;
-	}
-}
 
-static int alloc_instruction_queues(struct cptlfs_info *lfs)
-{
-	int ret = 0, i;
+	mutex_lock(&cptpf->eng_grps.lock);
 
-	if (!lfs->lfs_num)
-		return -EINVAL;
+	switch (eng_type) {
+	case SE_TYPES:
+		/* Find engine group for kernel crypto functionality, select
+		 * first engine group which is configured and has only
+		 * SE engines attached
+		 */
+		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+			grp = &cptpf->eng_grps.grp[i];
+			if (!grp->is_enabled)
+				continue;
 
-	for (i = 0; i < lfs->lfs_num; i++) {
-
-		lfs->lf[i].iqueue.size = CPT_INST_QLEN_BYTES + CPT_Q_FC_LEN +
-					 CPT_INST_GRP_QLEN_BYTES +
-					 CPT_INST_Q_ALIGNMENT;
-		lfs->lf[i].iqueue.real_vaddr =
-			(u8 *) dma_zalloc_coherent(&lfs->pdev->dev,
-					lfs->lf[i].iqueue.size,
-					&lfs->lf[i].iqueue.real_dma_addr,
-					GFP_KERNEL);
-		if (!lfs->lf[i].iqueue.real_vaddr) {
-			dev_err(&lfs->pdev->dev,
-				"Inst queue allocation failed for LF %d\n", i);
-			ret = -ENOMEM;
-			goto error;
+			if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
+			    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
+			    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
+				eng_grp_num = i;
+				break;
+			}
 		}
-		lfs->lf[i].iqueue.vaddr = lfs->lf[i].iqueue.real_vaddr +
-					  CPT_INST_GRP_QLEN_BYTES;
-		lfs->lf[i].iqueue.dma_addr = lfs->lf[i].iqueue.real_dma_addr +
-					     CPT_INST_GRP_QLEN_BYTES;
+		break;
 
-		/* Align pointers */
-		lfs->lf[i].iqueue.vaddr =
-			(uint8_t *) PTR_ALIGN(lfs->lf[i].iqueue.vaddr,
-					      CPT_INST_Q_ALIGNMENT);
-		lfs->lf[i].iqueue.dma_addr =
-			(dma_addr_t) PTR_ALIGN(lfs->lf[i].iqueue.dma_addr,
-					       CPT_INST_Q_ALIGNMENT);
-	}
+	case AE_TYPES:
+	case IE_TYPES:
+		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+			grp = &cptpf->eng_grps.grp[i];
+			if (!grp->is_enabled)
+				continue;
 
-	return 0;
-error:
-	free_instruction_queues(lfs);
-	return ret;
-}
-
-static void cptlf_set_iqueues_base_addr(struct cptlfs_info *lfs)
-{
-	union cptx_lf_q_base lf_q_base;
-	int slot;
-
-	for (slot = 0; slot < lfs->lfs_num; slot++) {
-		lf_q_base.u = lfs->lf[slot].iqueue.dma_addr;
-		cpt_write64(lfs->reg_base, BLKADDR_CPT0, slot, CPT_LF_Q_BASE,
-			    lf_q_base.u);
-	}
-}
-
-static void cptlf_do_set_iqueue_size(struct cptlf_info *lf)
-{
-	union cptx_lf_q_size lf_q_size = { .u = 0x0 };
-
-	lf_q_size.s.size_div40 = CPT_SIZE_DIV40;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_Q_SIZE,
-		    lf_q_size.u);
-}
-
-static void cptlf_set_iqueues_size(struct cptlfs_info *lfs)
-{
-	int slot;
-
-	for (slot = 0; slot < lfs->lfs_num; slot++)
-		cptlf_do_set_iqueue_size(&lfs->lf[slot]);
-}
-
-static void cptlf_do_disable_iqueue(struct cptlf_info *lf)
-{
-	union cptx_lf_ctl lf_ctl = { .u = 0x0 };
-	union cptx_lf_inprog lf_inprog;
-	int timeout = 20;
-
-	/* Disable instructions enqueuing */
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
-		    lf_ctl.u);
-
-	/* Wait for instruction queue to become empty */
-	do {
-		lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0,
-					 lf->slot, CPT_LF_INPROG);
-		if (!lf_inprog.s.inflight)
-			break;
-
-		usleep_range(10000, 20000);
-		if (timeout-- < 0) {
-			dev_err(&lf->lfs->pdev->dev,
-				"Error LF %d is still busy.\n", lf->slot);
-			break;
+			if (cpt_eng_grp_has_eng_type(grp, eng_type)) {
+				eng_grp_num = i;
+				break;
+			}
 		}
+		break;
 
-	} while (1);
-
-	/* Disable executions in the LF's queue,
-	 * the queue should be empty at this point
-	 */
-	lf_inprog.s.eena = 0x0;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
-		    lf_inprog.u);
-}
-
-static void cptlf_disable_iqueues(struct cptlfs_info *lfs)
-{
-	int slot;
-
-	for (slot = 0; slot < lfs->lfs_num; slot++)
-		cptlf_do_disable_iqueue(&lfs->lf[slot]);
-}
-
-static void cptlf_set_iqueue_enq(struct cptlf_info *lf, bool enable)
-{
-	union cptx_lf_ctl lf_ctl;
-
-	lf_ctl.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
-			      CPT_LF_CTL);
-
-	/* Set iqueue's enqueuing */
-	lf_ctl.s.ena = enable ? 0x1 : 0x0;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
-		    lf_ctl.u);
-}
-
-static void cptlf_enable_iqueue_enq(struct cptlf_info *lf)
-{
-	cptlf_set_iqueue_enq(lf, true);
-}
-
-static void cptlf_set_iqueue_exec(struct cptlf_info *lf, bool enable)
-{
-	union cptx_lf_inprog lf_inprog;
-
-	lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
-				 CPT_LF_INPROG);
-
-	/* Set iqueue's execution */
-	lf_inprog.s.eena = enable ? 0x1 : 0x0;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
-		    lf_inprog.u);
-}
-
-static void cptlf_enable_iqueue_exec(struct cptlf_info *lf)
-{
-	cptlf_set_iqueue_exec(lf, true);
-}
-
-static void cptlf_enable_iqueues(struct cptlfs_info *lfs)
-{
-	int slot;
-
-	for (slot = 0; slot < lfs->lfs_num; slot++) {
-		cptlf_enable_iqueue_exec(&lfs->lf[slot]);
-		cptlf_enable_iqueue_enq(&lfs->lf[slot]);
+	default:
+		dev_err(&cptpf->pdev->dev, "Invalid engine type %d", eng_type);
 	}
+	mutex_unlock(&cptpf->eng_grps.lock);
+
+	return eng_grp_num;
 }
 
 static int cptlf_set_pri(struct pci_dev *pdev, struct cptlf_info *lf, int pri)
 {
 	union cptx_af_lf_ctrl lf_ctrl;
-	int ret = 0;
+	int ret;
 
 	ret = cpt_read_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), &lf_ctrl.u);
 	if (ret)
-		goto err;
+		return ret;
 
 	lf_ctrl.s.pri = pri ? 1 : 0;
 
 	ret = cpt_write_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), lf_ctrl.u);
-	if (ret)
-		goto err;
-err:
+
 	return ret;
 }
 
 static int cptlf_set_eng_grps_mask(struct pci_dev *pdev, struct cptlf_info *lf,
-				   int eng_grps_mask)
+				   u8 eng_grp_mask)
 {
 	union cptx_af_lf_ctrl lf_ctrl;
-	int ret = 0;
+	int ret;
 
 	ret = cpt_read_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), &lf_ctrl.u);
 	if (ret)
-		goto err;
+		return ret;
 
-	lf_ctrl.s.grp = eng_grps_mask;
+	lf_ctrl.s.grp = eng_grp_mask;
 
 	ret = cpt_write_af_reg(pdev, CPT_AF_LFX_CTL(lf->slot), lf_ctrl.u);
-	if (ret)
-		goto err;
-err:
+
 	return ret;
 }
 
 static int cptlf_set_grp_and_pri(struct pci_dev *pdev, struct cptlfs_info *lfs,
-				 int eng_grp_mask, int pri)
+				 u8 eng_grp_mask, int pri)
 {
-	int slot, ret = 0;
+	int slot, ret;
 
 	for (slot = 0; slot < lfs->lfs_num; slot++) {
 		ret = cptlf_set_pri(pdev, &lfs->lf[slot], pri);
 		if (ret)
-			goto err;
+			return ret;
 
 		ret = cptlf_set_eng_grps_mask(pdev, &lfs->lf[slot],
 					      eng_grp_mask);
 		if (ret)
-			goto err;
+			return ret;
 	}
-err:
-	return ret;
+	return 0;
 }
 
 static void cptpf_lf_cleanup(struct cptlfs_info *lfs)
@@ -264,13 +136,14 @@ static void cptpf_lf_cleanup(struct cptlfs_info *lfs)
 	lfs->lfs_num = 0;
 }
 
-static int cptpf_lf_init(struct cptpf_dev *cptpf, void *reg_base,
-			 struct cptlfs_info *lfs, int lfs_num)
+static int cptpf_lf_init(struct cptpf_dev *cptpf, u8 eng_grp_mask, int pri,
+			 int lfs_num)
 {
+	struct cptlfs_info *lfs = &cptpf->lfs;
 	struct pci_dev *pdev = cptpf->pdev;
-	int ret = 0, slot;
+	int ret, slot;
 
-	lfs->reg_base = reg_base;
+	lfs->reg_base = cptpf->reg_base;
 	lfs->lfs_num = lfs_num;
 	lfs->pdev = pdev;
 
@@ -302,11 +175,8 @@ static int cptpf_lf_init(struct cptpf_dev *cptpf, void *reg_base,
 	cptlf_set_iqueues_size(lfs);
 
 	cptlf_enable_iqueues(lfs);
-	/* Allow each LF to execute requests destined to any of 8 engine
-	 * groups and set queue priority of each LF to high
-	 */
-	ret = cptlf_set_grp_and_pri(pdev, lfs, ALL_ENG_GRPS_MASK,
-				    QUEUE_HI_PRIO);
+
+	ret = cptlf_set_grp_and_pri(pdev, lfs, eng_grp_mask, pri);
 	if (ret)
 		goto cpt_err_free_iqueue;
 
@@ -318,6 +188,7 @@ cpt_err_free_iqueue:
 cpt_err_detach:
 	cpt_detach_rscrs_msg(pdev);
 cpt_err:
+	lfs->lfs_num = 0;
 	return ret;
 }
 
@@ -419,9 +290,7 @@ static int reply_eng_grp_num_msg(struct cptpf_dev *cptpf,
 				 struct mbox_msghdr *req)
 {
 	struct eng_grp_num_msg *grp_req = (struct eng_grp_num_msg *)req;
-	struct engine_group_info *grp;
 	struct eng_grp_num_rsp *rsp;
-	int i;
 
 	rsp = (struct eng_grp_num_rsp *)
 			      otx2_mbox_alloc_msg(&cptpf->vfpf_mbox, vf->vf_id,
@@ -433,62 +302,18 @@ static int reply_eng_grp_num_msg(struct cptpf_dev *cptpf,
 	rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
 	rsp->hdr.pcifunc = req->pcifunc;
 	rsp->eng_type = grp_req->eng_type;
-	rsp->eng_grp_num = INVALID_CRYPTO_ENG_GRP;
-
-	mutex_lock(&cptpf->eng_grps.lock);
-
-	switch (grp_req->eng_type) {
-	case SE_TYPES:
-		/* Find engine group for kernel crypto functionality, select
-		 * first engine group which is configured and has only
-		 * SE engines attached
-		 */
-		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
-			grp = &cptpf->eng_grps.grp[i];
-			if (!grp->is_enabled)
-				continue;
-
-			if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
-			    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
-			    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
-				rsp->eng_grp_num = i;
-				break;
-			}
-		}
-	break;
-
-	case AE_TYPES:
-	case IE_TYPES:
-		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
-			grp = &cptpf->eng_grps.grp[i];
-			if (!grp->is_enabled)
-				continue;
-
-			if (cpt_eng_grp_has_eng_type(grp, grp_req->eng_type)) {
-				rsp->eng_grp_num = i;
-				break;
-			}
-		}
-	break;
-
-	default:
-		dev_err(&cptpf->pdev->dev, "Invalid engine type %d",
-			grp_req->eng_type);
-	}
-
-	mutex_unlock(&cptpf->eng_grps.lock);
+	rsp->eng_grp_num = get_eng_grp(cptpf, grp_req->eng_type);
 
 	return 0;
 }
 
-static int rx_inline_ipsec_lf_cfg(struct cptpf_dev *cptpf, u16 sso_pf_func,
-				  bool enable)
+static int rx_inline_ipsec_lf_cfg(struct cptpf_dev *cptpf, u8 egrp,
+				  u16 sso_pf_func, bool enable)
 {
 	struct cpt_inline_ipsec_cfg_msg *req;
 	struct nix_inline_ipsec_cfg *nix_req;
 	struct pci_dev *pdev = cptpf->pdev;
-	struct engine_group_info *grp;
-	int ret = 0, i;
+	int ret;
 
 	nix_req = (struct nix_inline_ipsec_cfg *)
 			otx2_mbox_alloc_msg_rsp(&cptpf->afpf_mbox, 0,
@@ -496,31 +321,20 @@ static int rx_inline_ipsec_lf_cfg(struct cptpf_dev *cptpf, u16 sso_pf_func,
 						sizeof(struct msg_rsp));
 	if (nix_req == NULL) {
 		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
-		ret =  -EFAULT;
-		goto cpt_err;
+		return -EFAULT;
 	}
 	memset(nix_req, 0, sizeof(*nix_req));
 	nix_req->hdr.id = MBOX_MSG_NIX_INLINE_IPSEC_CFG;
 	nix_req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	nix_req->enable = enable;
 	nix_req->cpt_credit = CPT_INST_QLEN_MSGS - 1;
-
-	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
-		grp = &cptpf->eng_grps.grp[i];
-		if (!grp->is_enabled)
-			continue;
-
-		if (cpt_eng_grp_has_eng_type(grp, IE_TYPES)) {
-			nix_req->gen_cfg.egrp = i;
-			break;
-		}
-	}
+	nix_req->gen_cfg.egrp = egrp;
 	nix_req->gen_cfg.opcode = CPT_INLINE_RX_OPCODE;
 	nix_req->inst_qsel.cpt_pf_func = RVU_PFFUNC(cptpf->pf_id, 0);
 	nix_req->inst_qsel.cpt_slot = 0;
 	ret = cpt_send_mbox_msg(pdev);
 	if (ret)
-		goto cpt_err;
+		return ret;
 
 	req = (struct cpt_inline_ipsec_cfg_msg *)
 			otx2_mbox_alloc_msg_rsp(&cptpf->afpf_mbox, 0,
@@ -528,8 +342,7 @@ static int rx_inline_ipsec_lf_cfg(struct cptpf_dev *cptpf, u16 sso_pf_func,
 						sizeof(struct msg_rsp));
 	if (req == NULL) {
 		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
-		ret  = -EFAULT;
-		goto cpt_err;
+		return -EFAULT;
 	}
 	memset(req, 0, sizeof(*req));
 	req->hdr.id = MBOX_MSG_CPT_INLINE_IPSEC_CFG;
@@ -541,10 +354,7 @@ static int rx_inline_ipsec_lf_cfg(struct cptpf_dev *cptpf, u16 sso_pf_func,
 	req->sso_pf_func = sso_pf_func;
 	req->enable = enable;
 	ret = cpt_send_mbox_msg(pdev);
-	if (ret)
-		goto cpt_err;
 
-cpt_err:
 	return ret;
 }
 
@@ -552,7 +362,8 @@ static int rx_inline_ipsec_lf_enable(struct cptpf_dev *cptpf,
 				     struct mbox_msghdr *req)
 {
 	struct rx_inline_lf_cfg *cfg_req = (struct rx_inline_lf_cfg *)req;
-	int ret = 0;
+	u8 egrp;
+	int ret;
 
 	if (cptpf->lfs.lfs_num) {
 		dev_err(&cptpf->pdev->dev,
@@ -560,11 +371,16 @@ static int rx_inline_ipsec_lf_enable(struct cptpf_dev *cptpf,
 		ret = -EEXIST;
 		goto cpt_err;
 	}
-	ret = cptpf_lf_init(cptpf, cptpf->reg_base, &cptpf->lfs, 1);
+	/* Allow LFs to execute requests destined to only grp IE_TYPES and
+	 * set queue priority of each LF to high
+	 */
+	egrp = get_eng_grp(cptpf, IE_TYPES);
+
+	ret = cptpf_lf_init(cptpf, 1 << egrp, QUEUE_HI_PRIO, 1);
 	if (ret)
 		goto cpt_err;
 
-	ret = rx_inline_ipsec_lf_cfg(cptpf, cfg_req->sso_pf_func, true);
+	ret = rx_inline_ipsec_lf_cfg(cptpf, egrp, cfg_req->sso_pf_func, true);
 	if (ret)
 		goto cpt_err_lf_cleanup;
 

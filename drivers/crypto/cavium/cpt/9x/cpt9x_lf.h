@@ -116,6 +116,186 @@ struct cptlfs_info {
 	u8 lfs_num;		/* Number of CPT LFs */
 };
 
+static inline void free_instruction_queues(struct cptlfs_info *lfs)
+{
+	int i;
+
+	for (i = 0; i < lfs->lfs_num; i++) {
+		if (lfs->lf[i].iqueue.real_vaddr)
+			dma_free_coherent(&lfs->pdev->dev,
+					  lfs->lf[i].iqueue.size,
+					  lfs->lf[i].iqueue.real_vaddr,
+					  lfs->lf[i].iqueue.real_dma_addr);
+		lfs->lf[i].iqueue.real_vaddr = NULL;
+		lfs->lf[i].iqueue.vaddr = NULL;
+	}
+}
+
+static inline int alloc_instruction_queues(struct cptlfs_info *lfs)
+{
+	int ret = 0, i;
+
+	if (!lfs->lfs_num)
+		return -EINVAL;
+
+	for (i = 0; i < lfs->lfs_num; i++) {
+
+		lfs->lf[i].iqueue.size = CPT_INST_QLEN_BYTES + CPT_Q_FC_LEN +
+					 CPT_INST_GRP_QLEN_BYTES +
+					 CPT_INST_Q_ALIGNMENT;
+		lfs->lf[i].iqueue.real_vaddr =
+			(u8 *) dma_zalloc_coherent(&lfs->pdev->dev,
+					lfs->lf[i].iqueue.size,
+					&lfs->lf[i].iqueue.real_dma_addr,
+					GFP_KERNEL);
+		if (!lfs->lf[i].iqueue.real_vaddr) {
+			dev_err(&lfs->pdev->dev,
+				"Inst queue allocation failed for LF %d\n", i);
+			ret = -ENOMEM;
+			goto error;
+		}
+		lfs->lf[i].iqueue.vaddr = lfs->lf[i].iqueue.real_vaddr +
+					  CPT_INST_GRP_QLEN_BYTES;
+		lfs->lf[i].iqueue.dma_addr = lfs->lf[i].iqueue.real_dma_addr +
+					     CPT_INST_GRP_QLEN_BYTES;
+
+		/* Align pointers */
+		lfs->lf[i].iqueue.vaddr =
+			(uint8_t *) PTR_ALIGN(lfs->lf[i].iqueue.vaddr,
+					      CPT_INST_Q_ALIGNMENT);
+		lfs->lf[i].iqueue.dma_addr =
+			(dma_addr_t) PTR_ALIGN(lfs->lf[i].iqueue.dma_addr,
+					       CPT_INST_Q_ALIGNMENT);
+	}
+
+	return 0;
+error:
+	free_instruction_queues(lfs);
+	return ret;
+}
+
+static inline void cptlf_set_iqueues_base_addr(struct cptlfs_info *lfs)
+{
+	union cptx_lf_q_base lf_q_base;
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++) {
+		lf_q_base.u = lfs->lf[slot].iqueue.dma_addr;
+		cpt_write64(lfs->reg_base, BLKADDR_CPT0, slot, CPT_LF_Q_BASE,
+			    lf_q_base.u);
+	}
+}
+
+static inline void cptlf_do_set_iqueue_size(struct cptlf_info *lf)
+{
+	union cptx_lf_q_size lf_q_size = { .u = 0x0 };
+
+	lf_q_size.s.size_div40 = CPT_SIZE_DIV40;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_Q_SIZE,
+		    lf_q_size.u);
+}
+
+static inline void cptlf_set_iqueues_size(struct cptlfs_info *lfs)
+{
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++)
+		cptlf_do_set_iqueue_size(&lfs->lf[slot]);
+}
+
+static inline void cptlf_do_disable_iqueue(struct cptlf_info *lf)
+{
+	union cptx_lf_ctl lf_ctl = { .u = 0x0 };
+	union cptx_lf_inprog lf_inprog;
+	int timeout = 20;
+
+	/* Disable instructions enqueuing */
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
+		    lf_ctl.u);
+
+	/* Wait for instruction queue to become empty */
+	do {
+		lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0,
+					 lf->slot, CPT_LF_INPROG);
+		if (!lf_inprog.s.inflight)
+			break;
+
+		usleep_range(10000, 20000);
+		if (timeout-- < 0) {
+			dev_err(&lf->lfs->pdev->dev,
+				"Error LF %d is still busy.\n", lf->slot);
+			break;
+		}
+
+	} while (1);
+
+	/* Disable executions in the LF's queue,
+	 * the queue should be empty at this point
+	 */
+	lf_inprog.s.eena = 0x0;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
+		    lf_inprog.u);
+}
+
+static inline void cptlf_disable_iqueues(struct cptlfs_info *lfs)
+{
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++)
+		cptlf_do_disable_iqueue(&lfs->lf[slot]);
+}
+
+static inline void cptlf_set_iqueue_enq(struct cptlf_info *lf, bool enable)
+{
+	union cptx_lf_ctl lf_ctl;
+
+	lf_ctl.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+			      CPT_LF_CTL);
+
+	/* Set iqueue's enqueuing */
+	lf_ctl.s.ena = enable ? 0x1 : 0x0;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
+		    lf_ctl.u);
+}
+
+static inline void cptlf_enable_iqueue_enq(struct cptlf_info *lf)
+{
+	cptlf_set_iqueue_enq(lf, true);
+}
+
+static inline void cptlf_set_iqueue_exec(struct cptlf_info *lf, bool enable)
+{
+	union cptx_lf_inprog lf_inprog;
+
+	lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+				 CPT_LF_INPROG);
+
+	/* Set iqueue's execution */
+	lf_inprog.s.eena = enable ? 0x1 : 0x0;
+	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
+		    lf_inprog.u);
+}
+
+static inline void cptlf_enable_iqueue_exec(struct cptlf_info *lf)
+{
+	cptlf_set_iqueue_exec(lf, true);
+}
+
+static inline void cptlf_disable_iqueue_exec(struct cptlf_info *lf)
+{
+	cptlf_set_iqueue_exec(lf, false);
+}
+
+static inline void cptlf_enable_iqueues(struct cptlfs_info *lfs)
+{
+	int slot;
+
+	for (slot = 0; slot < lfs->lfs_num; slot++) {
+		cptlf_enable_iqueue_exec(&lfs->lf[slot]);
+		cptlf_enable_iqueue_enq(&lfs->lf[slot]);
+	}
+}
+
 int cptlf_init(struct pci_dev *pdev, void __iomem *reg_base,
 	       struct cptlfs_info *lfs, int lfs_num);
 int cptlf_shutdown(struct pci_dev *pdev, struct cptlfs_info *lfs);
