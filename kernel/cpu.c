@@ -500,9 +500,17 @@ enum cpuhp_smt_control cpu_smt_control __read_mostly = CPU_SMT_ENABLED;
 EXPORT_SYMBOL_GPL(cpu_smt_control);
 
 static bool cpu_smt_available __read_mostly;
+static int cpuhp_smt_disable(enum cpuhp_smt_control ctrlval);
 
-void __init cpu_smt_disable(bool force)
+void cpu_smt_disable(bool force)
 {
+	if (system_state == SYSTEM_RUNNING) {
+		if (force)
+			return cpuhp_smt_disable(CPU_SMT_FORCE_DISABLED);
+		else
+			return cpuhp_smt_disable(CPU_SMT_DISABLED);
+	}
+
 	if (cpu_smt_control == CPU_SMT_FORCE_DISABLED ||
 		cpu_smt_control == CPU_SMT_NOT_SUPPORTED)
 		return;

@@ -126,7 +126,7 @@ static DEFINE_MUTEX(microcode_mutex);
 struct ucode_cpu_info		ucode_cpu_info[NR_CPUS];
 EXPORT_SYMBOL_GPL(ucode_cpu_info);
 
-extern void microcode_late_select_mitigation(void);
+extern void check_bugs(void);
 extern void cpu_clear_bug_bits(struct cpuinfo_x86 *c);
 
 /*
@@ -467,7 +467,7 @@ static ssize_t reload_store(struct device *dev,
 
 	if (ret >= 0) {
 		perf_check_microcode();
-		microcode_late_select_mitigation();
+		check_bugs();
 		update_percpu_mitigations();
 	}
 

@@ -61,8 +61,6 @@ EXPORT_SYMBOL(use_ibrs_on_skylake);
 
 bool use_ibrs_with_ssbd = true;
 
-bool microcode_had_ibrs = false;
-
 /*
  * retpoline_fallback flags:
  * SPEC_CTRL_USE_RETPOLINE_FALLBACK	pick retpoline fallback mitigation
@@ -143,13 +141,13 @@ int __init spectre_v2_heuristics_setup(char *p)
 }
 __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 
-static void __init spectre_v1_select_mitigation(void);
-static void __init spectre_v2_select_mitigation(void);
-static enum ssb_mitigation __init ssb_select_mitigation(void);
-static void __init ssb_init(void);
-static void __init l1tf_select_mitigation(void);
-static void __init mds_select_mitigation(void);
-static void __init taa_select_mitigation(void);
+static void spectre_v1_select_mitigation(void);
+static void spectre_v2_select_mitigation(void);
+static enum ssb_mitigation ssb_select_mitigation(void);
+static void ssb_init(void);
+static void l1tf_select_mitigation(void);
+static void mds_select_mitigation(void);
+static void taa_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
@@ -199,21 +197,31 @@ static inline bool spectre_v2_eibrs_enabled(void)
 	return spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED;
 }
 
-void __init check_bugs(void)
+void __ref check_bugs(void)
 {
-	identify_boot_cpu();
-
 	/*
-	 * identify_boot_cpu() initialized SMT support information, let the
-	 * core code know.
+	 * If we are late loading the microcode, all the stuff bellow cannot
+	 * be executed because they are related to early init of the machine.
 	 */
-	cpu_smt_check_topology_early();
+	if (system_state != SYSTEM_RUNNING) {
+
+		identify_boot_cpu();
+
+		/*
+		 * identify_boot_cpu() initialized SMT support information, let the
+		 * core code know.
+		 */
+		cpu_smt_check_topology_early();
 
 #if !defined(CONFIG_SMP)
-	printk(KERN_INFO "CPU: ");
-	print_cpu_info(&boot_cpu_data);
+		printk(KERN_INFO "CPU: ");
+		print_cpu_info(&boot_cpu_data);
 #endif
+	}
+
 	/*
+	 * Print the status of SPEC_CTRL feature on this machine.
+	 *
 	 * Read the SPEC_CTRL MSR to account for reserved bits which may
 	 * have unknown values. AMD64_LS_CFG MSR is cached in the early AMD
 	 * init code as it is not enumerated and depends on the family.
@@ -248,7 +256,6 @@ void __init check_bugs(void)
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 		update_cpu_spec_ctrl_all();
-		microcode_had_ibrs = true;
 	} else {
 		printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
 	}
@@ -277,6 +284,13 @@ void __init check_bugs(void)
 	l1tf_select_mitigation();
 	mds_select_mitigation();
 	taa_select_mitigation();
+
+	/*
+	 * If we are late loading the microcode, all the stuff bellow cannot
+	 * be executed because they are related to early init of the machine.
+	*/
+	if (system_state == SYSTEM_RUNNING)
+		return;
 
 	alternative_instructions();
 
@@ -346,12 +360,12 @@ static bool smap_works_speculatively(void)
 	return true;
 }
 
-static void __init spectre_v1_select_mitigation(void)
+static void spectre_v1_select_mitigation(void)
 {
 	spectre_v1_mitigation = SPECTRE_V1_MITIGATION_AUTO;
 
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V1) || cpu_mitigations_off() ||
-	    cmdline_find_option_bool (boot_command_line, "nospectre_v1")) {
+	    cmdline_find_option_bool (saved_command_line, "nospectre_v1")) {
 		spectre_v1_mitigation = SPECTRE_V1_MITIGATION_NONE;
 	}
 
@@ -618,7 +632,7 @@ static void retpoline_init(void)
 	retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
 }
 
-static void __init retpoline_activate(enum spectre_v2_mitigation mode)
+static void retpoline_activate(enum spectre_v2_mitigation mode)
 {
 	retpoline_enable();
 	/* IBRS is unnecessary with retpoline mitigation. */
@@ -760,13 +774,13 @@ void refresh_set_spectre_v2_enabled(void)
 	}
 }
 
-static void __init spec2_print_if_insecure(const char *reason)
+static void spec2_print_if_insecure(const char *reason)
 {
 	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		pr_info("%s\n", reason);
 }
 
-static void __init spec2_print_if_secure(const char *reason)
+static void spec2_print_if_secure(const char *reason)
 {
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		pr_info("%s\n", reason);
@@ -779,20 +793,20 @@ static inline bool match_option(const char *arg, int arglen, const char *opt)
 	return len == arglen && !strncmp(arg, opt, len);
 }
 
-static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
+static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 {
 	char arg[20];
 	int ret;
 
-	if (cmdline_find_option_bool(boot_command_line, "noibrs")) {
+	if (cmdline_find_option_bool(saved_command_line, "noibrs")) {
 		set_ibrs_disabled();
 	}
 
-	if (cmdline_find_option_bool(boot_command_line, "noibpb")) {
+	if (cmdline_find_option_bool(saved_command_line, "noibpb")) {
 		set_ibpb_disabled();
 	}
 
-	ret = cmdline_find_option(boot_command_line, "spectre_v2", arg,
+	ret = cmdline_find_option(saved_command_line, "spectre_v2", arg,
 				  sizeof(arg));
 	if (ret > 0)  {
 		if (match_option(arg, ret, "off")) {
@@ -820,7 +834,7 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 		}
 	}
 
-	if (!cmdline_find_option_bool(boot_command_line, "nospectre_v2") &&
+	if (!cmdline_find_option_bool(saved_command_line, "nospectre_v2") &&
 	    !cpu_mitigations_off())
 		return SPECTRE_V2_CMD_AUTO;
 disable:
@@ -850,7 +864,7 @@ static void ibrs_select(enum spectre_v2_mitigation *mode)
 		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
 }
 
-static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
+static void select_ibrs_variant(enum spectre_v2_mitigation *mode)
 {
 	/* Attempt to start IBRS */
 	ibrs_select(mode);
@@ -1034,7 +1048,7 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode)
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 }
 
-static void __init spectre_v2_select_mitigation(void)
+static void spectre_v2_select_mitigation(void)
 {
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
 	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
@@ -1109,17 +1123,17 @@ static const struct {
 	{ "userspace",	SPEC_STORE_BYPASS_CMD_USERSPACE }, /* Disable Speculative Store Bypass for userspace (deprecated) */
 };
 
-static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
+static enum ssb_mitigation_cmd ssb_parse_cmdline(void)
 {
 	enum ssb_mitigation_cmd cmd = SPEC_STORE_BYPASS_CMD_AUTO;
 	char arg[20];
 	int ret, i;
 
-	if (cmdline_find_option_bool(boot_command_line, "nospec_store_bypass_disable") ||
+	if (cmdline_find_option_bool(saved_command_line, "nospec_store_bypass_disable") ||
 	    cpu_mitigations_off()) {
 		return SPEC_STORE_BYPASS_CMD_NONE;
 	} else {
-		ret = cmdline_find_option(boot_command_line, "spec_store_bypass_disable",
+		ret = cmdline_find_option(saved_command_line, "spec_store_bypass_disable",
 					  arg, sizeof(arg));
 		if (ret < 0)
 			return SPEC_STORE_BYPASS_CMD_AUTO;
@@ -1141,7 +1155,7 @@ static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
 	return cmd;
 }
 
-static enum ssb_mitigation __init ssb_select_mitigation(void)
+static enum ssb_mitigation ssb_select_mitigation(void)
 {
 	enum ssb_mitigation mode = SPEC_STORE_BYPASS_NONE;
 	enum ssb_mitigation_cmd cmd;
@@ -1186,7 +1200,7 @@ static enum ssb_mitigation __init ssb_select_mitigation(void)
        return mode;
 }
 
-static void __init ssb_init(void)
+static void ssb_init(void)
 {
 	/*
 	 * We have three CPU feature flags that are in play here:
@@ -1341,12 +1355,12 @@ EXPORT_SYMBOL_GPL(l1tf_mitigation);
 enum vmx_l1d_flush_state l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_AUTO;
 EXPORT_SYMBOL_GPL(l1tf_vmx_mitigation);
 
-static void __init parse_l1tf_cmdline(void)
+static void parse_l1tf_cmdline(void)
 {
 	char arg[12];
 	int ret;
 
-	ret = cmdline_find_option(boot_command_line, "l1tf", arg,
+	ret = cmdline_find_option(saved_command_line, "l1tf", arg,
 				  sizeof(arg));
 	if (ret <= 0)
 		return;
@@ -1406,7 +1420,7 @@ static void override_cache_bits(struct cpuinfo_x86 *c)
 	}
 }
 
-static void __init l1tf_select_mitigation(void)
+static void l1tf_select_mitigation(void)
 {
 	u64 half_pa;
 
@@ -1551,7 +1565,7 @@ static void mds_select_mitigation(void)
 		return;
 	}
 
-        ret = cmdline_find_option(boot_command_line, "mds", arg,
+        ret = cmdline_find_option(saved_command_line, "mds", arg,
                                   sizeof(arg));
         if (ret > 0) {
 	        if (match_option(arg, ret, "off"))
@@ -1798,123 +1812,6 @@ void update_percpu_mitigations(void)
 	update_cpu_ibrs_all();
 	update_cpu_spec_ctrl_all();
 	mutex_unlock(&spec_ctrl_mutex);
-}
-
-/*
- * This function replicates at runtime what check_bugs would do at init time.
- * As we will be using default mitigations everywhere, essentially we have
- * dropped the logic of parsing boot_command_line which either was not
- * possible.
- */
-void microcode_late_select_mitigation(void)
-{
-	enum spectre_v2_mitigation mode;
-	bool microcode_added_ssbd  = false;
-	/*
-	 * In late loading we will use default mitigation which is
-	 * secomp or prctl. We will do this ONLY if these bits were
-	 * not present at init time and were added by microcode late
-	 * loading.
-	 */
-	if (cpu_has(&cpu_data(smp_processor_id()), X86_FEATURE_SSBD) &&
-	    !static_cpu_has(X86_FEATURE_SSBD)) {
-		setup_force_cpu_cap(X86_FEATURE_SSBD);
-		microcode_added_ssbd = true;
-	}
-	if (cpu_has(&cpu_data(smp_processor_id()), X86_FEATURE_AMD_SSBD) &&
-	    !static_cpu_has(X86_FEATURE_AMD_SSBD)) {
-		setup_force_cpu_cap(X86_FEATURE_AMD_SSBD);
-		microcode_added_ssbd = true;
-	}
-
-	if (boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS)) {
-		if (microcode_added_ssbd) {
-			if (IS_ENABLED(CONFIG_SECCOMP))
-				ssb_mode = SPEC_STORE_BYPASS_SECCOMP;
-			else
-				ssb_mode = SPEC_STORE_BYPASS_PRCTL;
-			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
-		}
-#undef pr_fmt
-#define pr_fmt(fmt)	"Speculative Store Bypass late loading: " fmt
-		pr_info("%s\n", ssb_strings[ssb_mode]);
-
-	} else {
-		ssb_mode = SPEC_STORE_BYPASS_NONE;
-	}
-
-	/*
-	 * Select SpectreV2 mitigation and enable it. First we clear the
-	 * ibrs_disabled flag in order to be able to pick it up for Skylake.
-	 * Also we re-check SpectreV2 if we did not support IBRS at boot time.
-	 * If so we do not do anything to not break command line user preference.
-	 */
-	if (!microcode_had_ibrs) {
-		clear_ibrs_disabled();
-		mode = select_auto_mitigation_mode(SPECTRE_V2_CMD_AUTO);
-		activate_spectre_v2_mitigation(mode);
-
-		/*
-		 * Mark microcode_had_ibrs so at the second
-		 * update we won't trigger this check again.
-		 */
-		if (boot_cpu_has(X86_FEATURE_IBRS))
-			microcode_had_ibrs = true;
-	}
-
-#undef pr_fmt
-#define pr_fmt(fmt)	"MDS late loading: " fmt
-	/*
-	 * If the CPU does not have the X86_BUG_MDS bug means that the microcode
-	 * solved this issue and we just turn off mds_mitigation.
-	 * If the CPU has X86_BUG_MDS bug, we check to see if the microcode has
-	 * added X86_FEATURE_MD_CLEAR.
-	 */
-	if (boot_cpu_has_bug(X86_BUG_MDS)) {
-		/*
-		 * If mds_mitigation is off, it means that the user selected
-		 * this using cmdline option and we do not do anything.
-		 */
-		if (mds_mitigation == MDS_MITIGATION_OFF)
-			goto out_bug_mds;
-
-		/*
-		 * If mds_mitigation is idle, it means that the user selected
-		 * this using cmdline option and we just update_mds_branch_idle.
-		 */
-		if (mds_mitigation == MDS_MITIGATION_IDLE) {
-			update_mds_branch_idle();
-			goto out_bug_mds;
-		}
-
-		/*
-		 * If we have MDS_MITIGATION_VMWERV, jump back to
-		 * MDS_MITIGATION_FULL and re-assess.
-		 */
-		if (mds_mitigation == MDS_MITIGATION_VMWERV)
-			mds_mitigation = MDS_MITIGATION_FULL;
-
-		if (cpu_has(&cpu_data(smp_processor_id()), X86_FEATURE_MD_CLEAR) &&
-		    !static_cpu_has(X86_FEATURE_MD_CLEAR)) {
-			setup_force_cpu_cap(X86_FEATURE_MD_CLEAR);
-		}
-
-		if (!boot_cpu_has(X86_FEATURE_MD_CLEAR))
-			mds_mitigation = MDS_MITIGATION_VMWERV;
-
-		static_branch_enable(&mds_user_clear);
-
-		update_mds_branch_idle();
-
-out_bug_mds:
-		pr_info("%s\n", mds_strings[mds_mitigation]);
-	} else if (mds_mitigation != MDS_MITIGATION_OFF) {
-		mds_mitigation = MDS_MITIGATION_OFF;
-		static_branch_disable(&mds_user_clear);
-		static_branch_disable(&mds_idle_clear);
-
-		pr_info("Not affected\n");
-	}
 }
 
 static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
