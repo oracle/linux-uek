@@ -39,7 +39,8 @@
 #include <linux/if_link.h>
 
 #define DRIVER_NAME "mlx5_core"
-#define DRIVER_VERSION "3.0-1"
+/* UEK driver version, driver refresh from UEK5 */
+#define DRIVER_VERSION "3.0-1.1-UEK"
 #define DRIVER_RELDATE  "January 2015"
 
 extern int mlx5_core_debug_mask;
