@@ -15,10 +15,13 @@
 #include <asm/cmdline.h>
 #include <asm/e820.h>
 
+#include "cpu.h"
+
 static void __init spectre_v1_select_mitigation(void);
 static void __init spectre_v2_parse_cmdline(void);
 static void __init l1tf_select_mitigation(void);
 static void mds_select_mitigation(void);
+static void taa_select_mitigation(void);
 
 void __init check_bugs(void)
 {
@@ -44,6 +47,7 @@ void __init check_bugs(void)
 	spectre_v1_select_mitigation();
 	l1tf_select_mitigation();
 	mds_select_mitigation();
+	taa_select_mitigation();
 }
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
@@ -155,6 +159,80 @@ static void mds_select_mitigation(void)
 			mds_mitigation = MDS_MITIGATION_VMWERV;
 	}
 	pr_info("%s\n", mds_strings[mds_mitigation]);
+}
+
+#undef pr_fmt
+#define pr_fmt(fmt)	"TAA: " fmt
+
+/* Default mitigation for TAA-affected CPUs */
+static enum taa_mitigations taa_mitigation = TAA_MITIGATION_VERW;
+
+static const char * const taa_strings[] = {
+	[TAA_MITIGATION_OFF]		= "Vulnerable",
+	[TAA_MITIGATION_UCODE_NEEDED]	= "Vulnerable: Clear CPU buffers attempted, no microcode",
+	[TAA_MITIGATION_VERW]		= "Mitigation: Clear CPU buffers",
+	[TAA_MITIGATION_TSX_DISABLED]	= "Mitigation: TSX disabled",
+};
+
+static void taa_select_mitigation(void)
+{
+	char arg[12] = {};
+	u64 ia32_cap;
+	int ret;
+
+	if (!boot_cpu_has(X86_BUG_TAA)) {
+		taa_mitigation = TAA_MITIGATION_OFF;
+		return;
+	}
+
+	/* TSX previously disabled by tsx=off */
+	if (!boot_cpu_has(X86_FEATURE_RTM)) {
+		taa_mitigation = TAA_MITIGATION_TSX_DISABLED;
+		goto out;
+	}
+
+	ret = cmdline_find_option(boot_command_line, "tsx_async_abort", arg,
+				  sizeof(arg));
+
+	if (ret > 0) {
+		if (match_option(arg, ret, "off"))
+			taa_mitigation = TAA_MITIGATION_OFF;
+		else if (match_option(arg, ret, "full"))
+			taa_mitigation = TAA_MITIGATION_VERW;
+		else
+			pr_warn("tsx_async_abort: unknown option %s\n", arg);
+	}
+
+	/* TAA mitigation is turned off from cmdline (tsx_async_abort=off) */
+	if (taa_mitigation == TAA_MITIGATION_OFF)
+		goto out;
+
+	if (boot_cpu_has(X86_FEATURE_MD_CLEAR))
+		taa_mitigation = TAA_MITIGATION_VERW;
+	else
+		taa_mitigation = TAA_MITIGATION_UCODE_NEEDED;
+
+	/*
+	 * VERW doesn't clear the CPU buffers when MD_CLEAR=1 and MDS_NO=1.
+	 * A microcode update fixes this behavior to clear CPU buffers.
+	 * Microcode update also adds support for MSR_IA32_TSX_CTRL which
+	 * is enumerated by ARCH_CAP_TSX_CTRL_MSR bit.
+	 *
+	 * On MDS_NO=1 CPUs if ARCH_CAP_TSX_CTRL_MSR is not set, microcode
+	 * update is required.
+	 */
+	ia32_cap = x86_read_arch_cap_msr();
+	if ((ia32_cap & ARCH_CAP_MDS_NO) &&
+	   !(ia32_cap & ARCH_CAP_TSX_CTRL_MSR))
+		taa_mitigation = TAA_MITIGATION_UCODE_NEEDED;
+
+	/*
+	 * TSX is enabled, select alternate mitigation for TAA which is
+	 * same as MDS. The MDS mitigation is always on, so do nothing.
+	 */
+
+out:
+	pr_info("%s\n", taa_strings[taa_mitigation]);
 }
 
 #undef pr_fmt

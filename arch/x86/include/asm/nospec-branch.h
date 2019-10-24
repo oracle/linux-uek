@@ -31,7 +31,7 @@
 #include <asm/segment.h>
 
 /**
- * mds_clear_cpu_buffers - Mitigation for MDS vulnerability
+ * mds_clear_cpu_buffers - Mitigation for MDS and TAA vulnerability
  *
  * This uses the otherwise unused and obsolete VERW instruction in
  * combination with microcode which triggers a CPU buffer flush when the
