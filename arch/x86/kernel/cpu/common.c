@@ -831,8 +831,20 @@ static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
 	return true;
 }
 
+u64 x86_read_arch_cap_msr(void)
+{
+	u64 ia32_cap = 0;
+
+	if (boot_cpu_has(X86_FEATURE_ARCH_CAPABILITIES))
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, ia32_cap);
+
+	return ia32_cap;
+}
+
 static void __cpuinit cpu_set_bug_bits(struct cpuinfo_x86 *c)
 {
+	u64 ia32_cap = x86_read_arch_cap_msr();
+
 	if (cpu_matches(NO_SPECULATION))
 		return;
 
