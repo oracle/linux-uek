@@ -621,11 +621,8 @@ dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable);
 void otx2_ctx_disable(struct mbox *mbox, int type, bool npa);
 int otx2_nix_config_bp(struct otx2_nic *pfvf, bool enable);
-
-int otx2_rx_napi_handler(struct otx2_nic *pfvf, struct napi_struct *napi,
-			 struct otx2_cq_queue *cq, int budget);
-int otx2_tx_napi_handler(struct otx2_nic *pfvf,
-			 struct otx2_cq_queue *cq, int budget);
+void otx2_cleanup_rx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq);
+void otx2_cleanup_tx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq);
 
 /* RSS configuration APIs*/
 int otx2_rss_init(struct otx2_nic *pfvf);
