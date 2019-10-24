@@ -1,0 +1,34 @@
+* ARM SMMU-V3 PMU (Performance Monitor Extension)
+
+Required properties:
+
+- compatible:	(standard compatible string) should be:
+		"arm,smmu-pmu-v3"
+
+- reg: 		(standard registers property) physical address and
+		size of the configuration registers blocks.
+
+		SMMU-V3 PMU can have one or more Performance monitor
+		counter Group (PMCG). Each PMCG have one 4K page and
+		additional optional one more 4K page
+
+- msi-parent: 	See the generic MSI binding described in
+		devicetree/bindings/interrupt-controller/msi.txt
+		for a description of the msi-parent property.
+Example:
+
+	smmupmcg0@30100000 {
+		compatible = "arm,smmu-pmu-v3";
+
+		/* Single configuration register page */
+		reg = <0x30100000 0x1000>;
+		msi-parent = <&its 0x10>;
+	};
+
+	smmupmcg0@830000100000 {
+		compatible = "arm,smmu-pmu-v3";
+
+		/* Additional optional configuration register page */
+		reg = <0x30100000 0x1000>, <0x30110000 0x1000>;
+		msi-parent = <&its 0x11>;
+	};
