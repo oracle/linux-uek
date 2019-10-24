@@ -265,8 +265,13 @@ static int smmu_pmu_apply_event_filter(struct smmu_pmu *smmu_pmu,
 
 	/* Requested settings same as current global settings*/
 	if (span == smmu_pmu->global_filter_span &&
-	    sid == smmu_pmu->global_filter_sid)
+	    sid == smmu_pmu->global_filter_sid) {
+		if (idx == 0)
+			smmu_pmu_set_event_filter(event, idx, span, sid);
+		else
+			smmu_pmu_set_event_filter(event, idx, 0, 0);
 		return 0;
+	}
 
 	if (!bitmap_empty(smmu_pmu->used_counters, num_ctrs))
 		return -EAGAIN;
