@@ -11,6 +11,7 @@
 
 #include <asm/cpucaps.h>
 #include <asm/fpsimd.h>
+#include <asm/cputype.h>
 #include <asm/hwcap.h>
 #include <asm/sigcontext.h>
 #include <asm/sysreg.h>
@@ -307,8 +308,7 @@ struct arm64_cpu_capabilities {
 	void (*cpu_enable)(const struct arm64_cpu_capabilities *cap);
 	union {
 		struct {	/* To be used for erratum handling only */
-			u32 midr_model;
-			u32 midr_range_min, midr_range_max;
+			struct midr_range midr_range;
 		};
 
 		struct {	/* Feature register checking */
