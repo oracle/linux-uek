@@ -3059,6 +3059,16 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			there may be unknown security risks associated with leaving
 			it enabled.
 
+			auto -	Disable TSX if the CPU is affected by the TSX
+				Async Abort (TAA) vulnerability and microcode provides
+				a special MSR - TSX_CTRL_MSR - which provides the required
+				TSX control knobs. On MDS-affected parts where VERW takes
+				care of the TAA vulnerability, that controlling MSR is
+				not present and thus TSX cannot be disabled there
+
+			More details on X86_BUG_TAA are here:
+			Documentation/admin-guide/hw-vuln/tsx_async_abort.rst
+
 			Not specifying this option is equivalent to tsx=off.
 
 	turbografx.map[2|3]=	[HW,JOY]
