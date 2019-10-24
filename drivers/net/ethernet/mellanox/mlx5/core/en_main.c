@@ -65,6 +65,7 @@
 #include "en/hv_vhca_stats.h"
 #include "en/devlink.h"
 #include "lib/mlx5.h"
+#include "fpga/ipsec.h"
 
 static bool expose_pf_phys_port_name = false;
 module_param(expose_pf_phys_port_name, bool, 0444);
@@ -552,7 +553,8 @@ static int mlx5e_alloc_rq(struct mlx5e_channel *c,
 		rq->dealloc_wqe = mlx5e_dealloc_rx_wqe;
 
 #ifdef CONFIG_MLX5_EN_IPSEC
-		if (c->priv->ipsec)
+		if ((mlx5_fpga_ipsec_device_caps(mdev) & MLX5_ACCEL_IPSEC_CAP_DEVICE) &&
+		    c->priv->ipsec)
 			rq->handle_rx_cqe = mlx5e_ipsec_handle_rx_cqe;
 		else
 #endif
