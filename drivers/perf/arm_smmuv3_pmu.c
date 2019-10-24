@@ -35,6 +35,7 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/of.h>
 #include <linux/bitfield.h>
 #include <linux/bitops.h>
 #include <linux/cpuhotplug.h>
@@ -794,9 +795,16 @@ static void smmu_pmu_shutdown(struct platform_device *pdev)
 	smmu_pmu_disable(&smmu_pmu->pmu);
 }
 
+static const struct of_device_id smmu_pmu_of_match[] = {
+	{ .compatible = "arm,smmu-pmu-v3", },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, smmu_pmu_of_match);
+
 static struct platform_driver smmu_pmu_driver = {
 	.driver = {
 		.name = "arm-smmu-v3-pmcg",
+		.of_match_table	= of_match_ptr(smmu_pmu_of_match),
 	},
 	.probe = smmu_pmu_probe,
 	.remove = smmu_pmu_remove,
