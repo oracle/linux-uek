@@ -1411,11 +1411,9 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	struct otx2_qset *qset = &pf->qset;
 	struct nix_lf_free_req *free_req;
 	struct mbox *mbox = &pf->mbox;
-	struct napi_struct *napi;
 	struct otx2_cq_queue *cq;
 	struct msg_req *req;
 	int qidx, err;
-	u64 cqe_count;
 
 	/* Stop transmission */
 	err = otx2_txschq_stop(pf);
@@ -1436,15 +1434,10 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	/*Dequeue all CQEs */
 	for (qidx = 0; qidx < qset->cq_cnt; qidx++) {
 		cq = &qset->cq[qidx];
-		cqe_count = otx2_read64(pf, NIX_LF_CINTX_CNT(cq->cint_idx));
-		cqe_count &= 0xFFFFFFFF;
-		napi = &qset->napi[cq->cint_idx].napi;
-		if (cqe_count) {
-			if (cq->cq_type == CQ_RX)
-				otx2_rx_napi_handler(pf, napi, cq, cqe_count);
-			else
-				otx2_tx_napi_handler(pf, cq, cqe_count);
-		}
+		if (cq->cq_type == CQ_RX)
+			otx2_cleanup_rx_cqes(pf, cq);
+		else
+			otx2_cleanup_tx_cqes(pf, cq);
 	}
 
 	/* Free RQ buffer pointers*/
