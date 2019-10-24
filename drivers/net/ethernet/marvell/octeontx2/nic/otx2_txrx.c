@@ -382,9 +382,9 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	napi_gro_receive(napi, skb);
 }
 
-int otx2_rx_napi_handler(struct otx2_nic *pfvf,
-			 struct napi_struct *napi,
-			 struct otx2_cq_queue *cq, int budget)
+static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
+				       struct napi_struct *napi,
+				       struct otx2_cq_queue *cq, int budget)
 {
 	struct otx2_pool *rbpool = cq->rbpool;
 	struct nix_cqe_hdr_s *cqe_hdr;
@@ -438,8 +438,8 @@ int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 	return processed_cqe;
 }
 
-int otx2_tx_napi_handler(struct otx2_nic *pfvf,
-			 struct otx2_cq_queue *cq, int budget)
+static inline int otx2_tx_napi_handler(struct otx2_nic *pfvf,
+				       struct otx2_cq_queue *cq, int budget)
 {
 	struct nix_cqe_hdr_s *cqe_hdr;
 	int tx_pkts = 0, tx_bytes = 0;
@@ -980,6 +980,84 @@ fail:
 	return false;
 }
 EXPORT_SYMBOL(otx2_sq_append_skb);
+
+void otx2_cleanup_rx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
+{
+	struct nix_cqe_hdr_s *cqe_hdr;
+	struct nix_rx_parse_s *parse;
+	struct nix_rx_sg_s *sg;
+	int processed_cqe = 0;
+	void *start, *end;
+	u64 *iova, pa;
+	int seg;
+
+	/* Make sure HW writes to CQ are done */
+	dma_rmb();
+	while ((cqe_hdr = otx2_get_next_cqe(cq))) {
+		parse = (struct nix_rx_parse_s *)
+				((void *)cqe_hdr + sizeof(*cqe_hdr));
+		start = (void *)parse + sizeof(*parse);
+		end = start + ((parse->desc_sizem1 + 1) * 16);
+		while ((start + sizeof(*sg)) < end) {
+			sg = (struct nix_rx_sg_s *)start;
+			iova = (void *)sg + sizeof(*sg);
+			for (seg = 0; seg < sg->segs; seg++) {
+				/* Free IOVA */
+				*iova -= OTX2_HEAD_ROOM;
+				pa = otx2_iova_to_phys(pfvf->iommu_domain,
+						       *iova);
+				dma_unmap_page_attrs(pfvf->dev, *iova,
+						     RCV_FRAG_LEN,
+						     DMA_FROM_DEVICE,
+						     DMA_ATTR_SKIP_CPU_SYNC);
+				put_page(virt_to_page(phys_to_virt(pa)));
+				iova++;
+			}
+			start += sizeof(*sg);
+			start += (sg->segs == 1) ?
+				  sizeof(u64) : 3 * sizeof(u64);
+		}
+		cqe_hdr->cqe_type = NIX_XQE_TYPE_INVALID;
+		processed_cqe++;
+	}
+
+	/* Free CQEs to HW */
+	otx2_write64(pfvf, NIX_LF_CQ_OP_DOOR,
+		     ((u64)cq->cq_idx << 32) | processed_cqe);
+}
+
+void otx2_cleanup_tx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
+{
+	struct nix_send_comp_s *snd_comp;
+	struct nix_cqe_hdr_s *cqe_hdr;
+	struct sk_buff *skb = NULL;
+	struct otx2_snd_queue *sq;
+	int processed_cqe = 0;
+	struct sg_list *sg;
+
+	sq = &pfvf->qset.sq[cq->cint_idx];
+
+	/* Make sure HW writes to CQ are done */
+	dma_rmb();
+	while ((cqe_hdr = otx2_get_next_cqe(cq))) {
+		snd_comp = (struct nix_send_comp_s *)
+				((void *)cqe_hdr + sizeof(*cqe_hdr));
+		sg = &sq->sg[snd_comp->sqe_id];
+		skb = (struct sk_buff *)sg->skb;
+		if (skb) {
+			otx2_dma_unmap_skb_frags(pfvf, sg);
+			dev_kfree_skb_any(skb);
+			sg->skb = (u64)NULL;
+		}
+
+		cqe_hdr->cqe_type = NIX_XQE_TYPE_INVALID;
+		processed_cqe++;
+	}
+
+	/* Free CQEs to HW */
+	otx2_write64(pfvf, NIX_LF_CQ_OP_DOOR,
+		     ((u64)cq->cq_idx << 32) | processed_cqe);
+}
 
 int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable)
 {
