@@ -995,7 +995,7 @@ static void otx2_disable_mbox_intr(struct otx2_nic *pf)
 	free_irq(vector, pf);
 }
 
-static int otx2_register_mbox_intr(struct otx2_nic *pf)
+static int otx2_register_mbox_intr(struct otx2_nic *pf, bool probe_af)
 {
 	struct otx2_hw *hw = &pf->hw;
 	struct msg_req *req;
@@ -1018,6 +1018,9 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 	 */
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
 	otx2_write64(pf, RVU_PF_INT_ENA_W1S, BIT_ULL(0));
+
+	if (!probe_af)
+		return 0;
 
 	/* Check mailbox communication with AF */
 	req = otx2_mbox_alloc_msg_ready(&pf->mbox);
@@ -2101,6 +2104,30 @@ static int otx2_check_pf_usable(struct otx2_nic *nic)
 	return 0;
 }
 
+static int otx2_realloc_msix_vectors(struct otx2_nic *pf)
+{
+	struct otx2_hw *hw = &pf->hw;
+	int num_vec, err;
+
+	num_vec = hw->nix_msixoff;
+	num_vec += NIX_LF_CINT_VEC_START + hw->max_queues;
+
+	otx2_disable_mbox_intr(pf);
+	pci_free_irq_vectors(hw->pdev);
+	pci_free_irq_vectors(hw->pdev);
+	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
+	if (err < 0) {
+		dev_err(pf->dev, "%s: Failed to realloc %d IRQ vectors\n",
+			__func__, num_vec);
+		return err;
+	}
+
+	err = otx2_register_mbox_intr(pf, false);
+	if (err)
+		return err;
+	return 0;
+}
+
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
@@ -2183,7 +2210,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_free_netdev;
 
-	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
+	err = pci_alloc_irq_vectors(hw->pdev, RVU_PF_INT_VEC_CNT,
+				    RVU_PF_INT_VEC_CNT, PCI_IRQ_MSIX);
 	if (err < 0) {
 		dev_err(dev, "%s: Failed to alloc %d IRQ vectors\n",
 			__func__, num_vec);
@@ -2196,7 +2224,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_free_irq_vectors;
 
 	/* Register mailbox interrupt */
-	err = otx2_register_mbox_intr(pf);
+	err = otx2_register_mbox_intr(pf, true);
 	if (err)
 		goto err_mbox_destroy;
 
@@ -2206,6 +2234,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = otx2_attach_npa_nix(pf);
 	if (err)
 		goto err_disable_mbox_intr;
+
+	err = otx2_realloc_msix_vectors(pf);
+	if (err)
+		goto err_mbox_destroy;
 
 	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
 	if (err)
