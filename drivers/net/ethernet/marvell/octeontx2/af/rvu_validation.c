@@ -16,6 +16,7 @@
 #define	PCI_DEVID_OCTEONTX2_SSO_RVU_PF	0xA0F9
 #define	PCI_DEVID_OCTEONTX2_NPA_RVU_PF	0xA0FB
 #define	PCI_DEVID_OCTEONTX2_CPT_RVU_PF	0xA0FD
+#define	PCI_DEVID_OCTEONTX2_SDP_RVU_PF	0xA0F6
 
 static u64 quotas_get_sum(struct rvu_quotas *quotas)
 {
@@ -463,7 +464,8 @@ static void rvu_set_default_limits(struct rvu *rvu)
 		if (rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_SSO_RVU_PF)
 			sso_rvus++;
 		if (rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_RVU_PF ||
-		    rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_RVU_AF)
+		    rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_RVU_AF ||
+		    rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_SDP_RVU_PF)
 			nix_rvus++;
 	}
 
@@ -529,6 +531,24 @@ static void rvu_set_default_limits(struct rvu *rvu)
 		case PCI_DEVID_OCTEONTX2_CPT_RVU_PF:
 			rvu->pf_limits.cpt->a[i].val = num_online_cpus();
 			rvu->pf_limits.npa->a[i].val = 1;
+			break;
+		case PCI_DEVID_OCTEONTX2_SDP_RVU_PF:
+			rvu->pf_limits.nix->a[i].val = 1 + totalvfs;
+			rvu->pf_limits.npa->a[i].val = 1 + totalvfs;
+			if (rvu->hw->cap.nix_fixed_txschq_mapping)
+				break;
+			rvu->pf_limits.smq->a[i].val =
+				nix_hw->txsch[NIX_TXSCH_LVL_SMQ].schq.max /
+				nix_rvus;
+			rvu->pf_limits.tl4->a[i].val =
+				nix_hw->txsch[NIX_TXSCH_LVL_TL4].schq.max /
+				nix_rvus;
+			rvu->pf_limits.tl3->a[i].val =
+				nix_hw->txsch[NIX_TXSCH_LVL_TL3].schq.max /
+				nix_rvus;
+			rvu->pf_limits.tl2->a[i].val =
+				nix_hw->txsch[NIX_TXSCH_LVL_TL2].schq.max /
+				nix_rvus;
 			break;
 		}
 	}
