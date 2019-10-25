@@ -259,7 +259,7 @@ static void otx2vf_disable_mbox_intr(struct otx2_nic *vf)
 	free_irq(vector, vf);
 }
 
-static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
+static int otx2vf_register_mbox_intr(struct otx2_nic *vf, bool probe_pf)
 {
 	struct otx2_hw *hw = &vf->hw;
 	struct msg_req *req;
@@ -282,6 +282,9 @@ static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 	 */
 	otx2_write64(vf, RVU_VF_INT, BIT_ULL(0));
 	otx2_write64(vf, RVU_VF_INT_ENA_W1S, BIT_ULL(0));
+
+	if (!probe_pf)
+		return 0;
 
 	/* Check mailbox communication with PF */
 	req = otx2_mbox_alloc_msg_ready(&vf->mbox);
@@ -458,6 +461,30 @@ static const struct net_device_ops otx2vf_netdev_ops = {
 	.ndo_features_check = otx2_features_check,
 };
 
+static int otx2vf_realloc_msix_vectors(struct otx2_nic *vf)
+{
+	struct otx2_hw *hw = &vf->hw;
+	int num_vec, err;
+
+	num_vec = hw->nix_msixoff;
+	num_vec += NIX_LF_CINT_VEC_START + hw->max_queues;
+
+	otx2vf_disable_mbox_intr(vf);
+	pci_free_irq_vectors(hw->pdev);
+	pci_free_irq_vectors(hw->pdev);
+	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
+	if (err < 0) {
+		dev_err(vf->dev, "%s: Failed to realloc %d IRQ vectors\n",
+			__func__, num_vec);
+		return err;
+	}
+
+	err = otx2vf_register_mbox_intr(vf, false);
+	if (err)
+		return err;
+	return 0;
+}
+
 static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
@@ -544,7 +571,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_free_irq_vectors;
 
 	/* Register mailbox interrupt */
-	err = otx2vf_register_mbox_intr(vf);
+	err = otx2vf_register_mbox_intr(vf, true);
 	if (err)
 		goto err_mbox_destroy;
 
@@ -552,6 +579,10 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = otx2_attach_npa_nix(vf);
 	if (err)
 		goto err_disable_mbox_intr;
+
+	err = otx2vf_realloc_msix_vectors(vf);
+	if (err)
+		goto err_mbox_destroy;
 
 	err = otx2_set_real_num_queues(netdev, qcount, qcount);
 	if (err)
