@@ -1182,15 +1182,15 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 			continue;
 
 		if (val & BIT_ULL(42)) {
-			dev_err(pf->dev, "CQ%lld: error reading NIX_LF_CQ_OP_INT, NIX_LF_ERR_INT 0x%llx\n",
-				qidx, otx2_read64(pf, NIX_LF_ERR_INT));
+			netdev_err(pf->netdev, "CQ%lld: error reading NIX_LF_CQ_OP_INT, NIX_LF_ERR_INT 0x%llx\n",
+				   qidx, otx2_read64(pf, NIX_LF_ERR_INT));
 		} else {
 			if (val & BIT_ULL(NIX_CQERRINT_DOOR_ERR))
-				dev_err(pf->dev, "CQ%lld: Doorbell error",
-					qidx);
+				netdev_err(pf->netdev, "CQ%lld: Doorbell error",
+					   qidx);
 			if (val & BIT_ULL(NIX_CQERRINT_CQE_FAULT))
-				dev_err(pf->dev, "CQ%lld: Memory fault on CQE write to LLC/DRAM",
-					qidx);
+				netdev_err(pf->netdev, "CQ%lld: Memory fault on CQE write to LLC/DRAM",
+					   qidx);
 		}
 
 		schedule_work(&pf->reset_task);
@@ -1207,29 +1207,35 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 			continue;
 
 		if (val & BIT_ULL(42)) {
-			dev_err(pf->dev, "SQ%lld: error reading NIX_LF_SQ_OP_INT, NIX_LF_ERR_INT 0x%llx\n",
-				qidx, otx2_read64(pf, NIX_LF_ERR_INT));
+			netdev_err(pf->netdev, "SQ%lld: error reading NIX_LF_SQ_OP_INT, NIX_LF_ERR_INT 0x%llx\n",
+				   qidx, otx2_read64(pf, NIX_LF_ERR_INT));
 		} else {
-			if (val & BIT_ULL(NIX_SQINT_LMT_ERR))
-				dev_err(pf->dev, "SQ%lld: LMT store error",
-					qidx);
+			if (val & BIT_ULL(NIX_SQINT_LMT_ERR)) {
+				netdev_err(pf->netdev, "SQ%lld: LMT store error NIX_LF_SQ_OP_ERR_DBG:0x%llx",
+					   qidx,
+					   otx2_read64(pf,
+						       NIX_LF_SQ_OP_ERR_DBG));
+				otx2_write64(pf, NIX_LF_SQ_OP_ERR_DBG,
+					     BIT_ULL(44));
+			}
 			if (val & BIT_ULL(NIX_SQINT_MNQ_ERR)) {
-				dev_err(pf->dev, "SQ%lld: Meta-descriptor enqueue error NIX_LF_MNQ_ERR_DGB:0x%llx\n",
-					qidx,
-					otx2_read64(pf, NIX_LF_MNQ_ERR_DBG));
+				netdev_err(pf->netdev, "SQ%lld: Meta-descriptor enqueue error NIX_LF_MNQ_ERR_DGB:0x%llx\n",
+					   qidx,
+					   otx2_read64(pf, NIX_LF_MNQ_ERR_DBG));
 				otx2_write64(pf, NIX_LF_MNQ_ERR_DBG,
 					     BIT_ULL(44));
 			}
 			if (val & BIT_ULL(NIX_SQINT_SEND_ERR)) {
-				dev_err(pf->dev, "SQ%lld: Send error, NIX_LF_SEND_ERR_DBG 0x%llx",
-					qidx,
-					otx2_read64(pf, NIX_LF_SEND_ERR_DBG));
+				netdev_err(pf->netdev, "SQ%lld: Send error, NIX_LF_SEND_ERR_DBG 0x%llx",
+					   qidx,
+					   otx2_read64(pf,
+						       NIX_LF_SEND_ERR_DBG));
 				otx2_write64(pf, NIX_LF_SEND_ERR_DBG,
 					     BIT_ULL(44));
 			}
 			if (val & BIT_ULL(NIX_SQINT_SQB_ALLOC_FAIL))
-				dev_err(pf->dev, "SQ%lld: SQB allocation failed",
-					qidx);
+				netdev_err(pf->netdev, "SQ%lld: SQB allocation failed",
+					   qidx);
 		}
 
 		schedule_work(&pf->reset_task);
@@ -1469,8 +1475,8 @@ static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
 	int qidx = skb_get_queue_mapping(skb);
 	struct netdev_queue *txq = netdev_get_tx_queue(netdev, qidx);
 
-	/* Check for minimum packet length */
-	if (skb->len <= ETH_HLEN) {
+	/* Check for minimum and maximum packet length */
+	if (skb->len <= ETH_HLEN || (skb->len > netdev->mtu + OTX2_ETH_HLEN)) {
 		dev_kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}
@@ -2247,7 +2253,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	netdev->netdev_ops = &otx2_netdev_ops;
 
-	/* MTU range: 68 - 9190 */
+	/* MTU range: 64 - 9190 */
 	netdev->min_mtu = OTX2_MIN_MTU;
 	netdev->max_mtu = OTX2_MAX_MTU;
 
