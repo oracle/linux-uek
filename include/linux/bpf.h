@@ -463,6 +463,11 @@ struct bpf_prog_aux {
 	};
 	UEK_KABI_EXTEND(u32 num_exentries)
 	UEK_KABI_EXTEND(struct exception_table_entry *extable)
+	UEK_KABI_EXTEND(bool attach_btf_trace) /* true if attaching to BTF-enabled raw tp */
+	/* BTF_KIND_FUNC_PROTO for valid attach_btf_id */
+	UEK_KABI_EXTEND(const struct btf_type *attach_func_proto)
+        /* function name for valid attach_btf_id */
+        UEK_KABI_EXTEND(const char *attach_func_name)
 };
 
 struct bpf_array {
