@@ -6,9 +6,7 @@
 #include <linux/elf.h>
 #include <linux/kallsyms.h>
 #include <linux/crash_core.h>
-#include "trace.h"
 
-#ifdef CONFIG_CRASH_CORE
 void trace_extern_vmcoreinfo_setup(void)
 {
 	/*
@@ -28,4 +26,3 @@ void trace_extern_vmcoreinfo_setup(void)
 	VMCOREINFO_OFFSET(elf64_sym, st_info);
 	VMCOREINFO_OFFSET(elf64_sym, st_value);
 }
-#endif
