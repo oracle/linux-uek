@@ -1476,7 +1476,8 @@ static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
 	struct netdev_queue *txq = netdev_get_tx_queue(netdev, qidx);
 
 	/* Check for minimum and maximum packet length */
-	if (skb->len <= ETH_HLEN || (skb->len > netdev->mtu + OTX2_ETH_HLEN)) {
+	if (skb->len <= ETH_HLEN ||
+	    (!skb_shinfo(skb)->gso_size && skb->len > pf->max_frs)) {
 		dev_kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}
@@ -1642,6 +1643,11 @@ int otx2_open(struct net_device *netdev)
 		pf->hw_rx_tstamp = 0;
 		otx2_config_hw_rx_tstamp(pf, true);
 	}
+
+	/* Set NPC parsing mode */
+	err = otx2_set_npc_parse_mode(pf);
+	if (err)
+		goto err_free_cints;
 
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
