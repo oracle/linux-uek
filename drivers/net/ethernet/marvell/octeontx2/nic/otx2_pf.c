@@ -1967,7 +1967,7 @@ static int otx2_do_set_vf_mac(struct otx2_nic *pf, int vf, const u8 *mac)
 	ether_addr_copy(req->packet.dmac, mac);
 	u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
 	req->features = BIT_ULL(NPC_DMAC);
-	req->channel = pf->rx_chan_base;
+	req->channel = pf->hw.rx_chan_base;
 	req->intf = NIX_INTF_RX;
 	req->default_rule = 1;
 	req->append = 1;
@@ -2013,7 +2013,7 @@ static int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos)
 	req->packet.vlan_tci = htons(vlan);
 	req->mask.vlan_tci = htons(VLAN_VID_MASK);
 	req->features = BIT_ULL(NPC_OUTER_VID);
-	req->channel = pf->rx_chan_base;
+	req->channel = pf->hw.rx_chan_base;
 	req->intf = NIX_INTF_RX;
 	req->default_rule = 1;
 	req->append = 1;
