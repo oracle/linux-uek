@@ -392,8 +392,8 @@ static int otx2_set_ringparam(struct net_device *netdev,
 	/* On some silicon variants a skid or reserved CQEs are
 	 * needed to avoid CQ overflow.
 	 */
-	if (rx_count < pfvf->rq_skid)
-		rx_count =  pfvf->rq_skid;
+	if (rx_count < pfvf->hw.rq_skid)
+		rx_count =  pfvf->hw.rq_skid;
 	rx_count = Q_COUNT(Q_SIZE(rx_count, 3));
 
 	/* Due pipelining impact minimum 2000 unused SQ CQE's
@@ -423,11 +423,12 @@ static int otx2_get_coalesce(struct net_device *netdev,
 			     struct ethtool_coalesce *cmd)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct otx2_hw *hw = &pfvf->hw;
 
-	cmd->rx_coalesce_usecs = pfvf->cq_time_wait;
-	cmd->rx_max_coalesced_frames = pfvf->cq_ecount_wait;
-	cmd->tx_coalesce_usecs = pfvf->cq_time_wait;
-	cmd->tx_max_coalesced_frames = pfvf->cq_ecount_wait;
+	cmd->rx_coalesce_usecs = hw->cq_time_wait;
+	cmd->rx_max_coalesced_frames = hw->cq_ecount_wait;
+	cmd->tx_coalesce_usecs = hw->cq_time_wait;
+	cmd->tx_max_coalesced_frames = hw->cq_ecount_wait;
 
 	return 0;
 }
@@ -436,6 +437,7 @@ static int otx2_set_coalesce(struct net_device *netdev,
 			     struct ethtool_coalesce *ec)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct otx2_hw *hw = &pfvf->hw;
 	int qidx;
 
 	if (ec->use_adaptive_rx_coalesce || ec->use_adaptive_tx_coalesce ||
@@ -463,13 +465,13 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	/* Rx and Tx are mapped to same CQ, check which one
 	 * is changed, if both then choose the min.
 	 */
-	if (pfvf->cq_time_wait == ec->rx_coalesce_usecs)
-		pfvf->cq_time_wait = ec->tx_coalesce_usecs;
-	else if (pfvf->cq_time_wait == ec->tx_coalesce_usecs)
-		pfvf->cq_time_wait = ec->rx_coalesce_usecs;
+	if (hw->cq_time_wait == ec->rx_coalesce_usecs)
+		hw->cq_time_wait = ec->tx_coalesce_usecs;
+	else if (hw->cq_time_wait == ec->tx_coalesce_usecs)
+		hw->cq_time_wait = ec->rx_coalesce_usecs;
 	else
-		pfvf->cq_time_wait = min_t(u8, ec->rx_coalesce_usecs,
-					   ec->tx_coalesce_usecs);
+		hw->cq_time_wait = min_t(u8, ec->rx_coalesce_usecs,
+					 ec->tx_coalesce_usecs);
 
 	/* Max ecount_wait supported is 16bit,
 	 * so clamp the user given value to the range of 1 to 64k.
@@ -482,13 +484,13 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	/* Rx and Tx are mapped to same CQ, check which one
 	 * is changed, if both then choose the min.
 	 */
-	if (pfvf->cq_ecount_wait == ec->rx_max_coalesced_frames)
-		pfvf->cq_ecount_wait = ec->tx_max_coalesced_frames;
-	else if (pfvf->cq_ecount_wait == ec->tx_max_coalesced_frames)
-		pfvf->cq_ecount_wait = ec->rx_max_coalesced_frames;
+	if (hw->cq_ecount_wait == ec->rx_max_coalesced_frames)
+		hw->cq_ecount_wait = ec->tx_max_coalesced_frames;
+	else if (hw->cq_ecount_wait == ec->tx_max_coalesced_frames)
+		hw->cq_ecount_wait = ec->rx_max_coalesced_frames;
 	else
-		pfvf->cq_ecount_wait = min_t(u16, ec->rx_max_coalesced_frames,
-					     ec->tx_max_coalesced_frames);
+		hw->cq_ecount_wait = min_t(u16, ec->rx_max_coalesced_frames,
+					   ec->tx_max_coalesced_frames);
 
 	if (netif_running(netdev)) {
 		for (qidx = 0; qidx < pfvf->hw.cint_cnt; qidx++)

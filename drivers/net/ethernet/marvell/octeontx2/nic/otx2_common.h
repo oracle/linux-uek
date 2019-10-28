@@ -153,8 +153,6 @@ struct  mbox {
 struct otx2_hw {
 	struct pci_dev		*pdev;
 	struct otx2_rss_info	rss_info;
-	struct otx2_dev_stats	dev_stats;
-	struct otx2_drv_stats	drv_stats;
 	u16                     rx_queues;
 	u16                     tx_queues;
 	u16			max_queues;
@@ -167,20 +165,32 @@ struct otx2_hw {
 	u32			stack_pg_bytes; /* Size of stack page */
 	u16			sqb_size;
 
-	/* MSI-X*/
-	u16			npa_msixoff; /* Offset of NPA vectors */
-	u16			nix_msixoff; /* Offset of NIX vectors */
-	char			*irq_name;
-	cpumask_var_t           *affinity_mask;
-
-	u8			cint_cnt; /* CQ interrupt count */
+	/* NIX */
 	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
+
+	/* HW settings, coalescing etc */
+	u16			rx_chan_base;
+	u16			tx_chan_base;
+	u16			cq_qcount_wait;
+	u16			cq_ecount_wait;
+	u16			rq_skid;
+	u8			cq_time_wait;
 
 	/* For TSO segmentation */
 	u8			lso_tsov4_idx;
 	u8			lso_tsov6_idx;
 	u8			hw_tso;
 
+	/* MSI-X*/
+	u8			cint_cnt; /* CQ interrupt count */
+	u16			npa_msixoff; /* Offset of NPA vectors */
+	u16			nix_msixoff; /* Offset of NIX vectors */
+	char			*irq_name;
+	cpumask_var_t           *affinity_mask;
+
+	/* Stats */
+	struct otx2_dev_stats	dev_stats;
+	struct otx2_drv_stats	drv_stats;
 	u64			cgx_rx_stats[CGX_RX_STATS_COUNT];
 	u64			cgx_tx_stats[CGX_TX_STATS_COUNT];
 	u64			cgx_fec_corr_blks;
@@ -249,34 +259,30 @@ struct otx2_nic {
 	struct workqueue_struct *mbox_wq;
 	struct workqueue_struct *mbox_pfvf_wq;
 
-	u16			pcifunc;
-	u16			rx_chan_base;
-	u16			tx_chan_base;
-	u8			cq_time_wait;
-	u16			cq_qcount_wait;
-	u16			cq_ecount_wait;
-	u16			rq_skid;
-	u32			msg_enable;
-	struct work_struct	reset_task;
-	u64			reset_count;
 	u8			total_vfs;
+	u16			pcifunc; /* RVU PF_FUNC */
 	u16			bpid[NIX_MAX_BPID_CHAN];
+	struct otx2_ptp		*ptp;
 	struct otx2_vf_config	*vf_configs;
 	struct cgx_link_user_info linfo;
-	struct otx2_ptp		*ptp;
 
 	/* NPC MCAM */
 	u32			nr_flows;
 	u32                     ntuple_max_flows;
 	u16			entry_list[NPC_MAX_NONCONTIG_ENTRIES];
 	struct list_head	flows;
+	struct otx2_mac_table	*mac_table;
 
+	u64			reset_count;
+	struct work_struct	reset_task;
 	struct workqueue_struct	*flr_wq;
 	struct flr_work		*flr_wrk;
 	struct refill_work	*refill_wrk;
-	struct otx2_mac_table	*mac_table;
-	struct workqueue_struct	*otx2_ndo_wq;
 	struct work_struct	otx2_rx_mode_work;
+	struct workqueue_struct	*otx2_ndo_wq;
+
+	/* Ethtool stuff */
+	u32			msg_enable;
 
 #define OTX2_PRIV_FLAG_PAM4			BIT(0)
 #define OTX2_PRIV_FLAG_EDSA_HDR			BIT(1)
@@ -316,9 +322,9 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 {
 	struct otx2_hw *hw = &pfvf->hw;
 
-	pfvf->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
-	pfvf->cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
-	pfvf->cq_qcount_wait = CQ_QCOUNT_DEFAULT;
+	pfvf->hw.cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
+	pfvf->hw.cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
+	pfvf->hw.cq_qcount_wait = CQ_QCOUNT_DEFAULT;
 
 	hw->hw_tso = true;
 
@@ -327,11 +333,11 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 	/* Due to HW issue previous silicons required minimum 600
 	 * unused CQE to avoid CQ overflow.
 	 */
-		pfvf->rq_skid = 600;
+		pfvf->hw.rq_skid = 600;
 		pfvf->qset.rqe_cnt = Q_COUNT(Q_SIZE_1K);
 	}
 	if (is_96xx_A0(pfvf->pdev))
-		pfvf->cq_qcount_wait = 0x0;
+		pfvf->hw.cq_qcount_wait = 0x0;
 }
 
 static inline void __iomem *otx2_get_regaddr(struct otx2_nic *nic, u64 offset)
