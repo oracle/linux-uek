@@ -42,6 +42,7 @@
 #include <trace/events/sched.h>
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
+EXPORT_SYMBOL_GPL(runqueues);
 DEFINE_PER_CPU_SHARED_ALIGNED(int, next_cpu);
 
 /*

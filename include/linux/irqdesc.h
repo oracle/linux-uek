@@ -105,6 +105,8 @@ struct irq_desc {
 	const char		*name;
 } ____cacheline_internodealigned_in_smp;
 
+extern struct mutex sparse_irq_lock;
+
 #ifdef CONFIG_SPARSE_IRQ
 extern void irq_lock_sparse(void);
 extern void irq_unlock_sparse(void);
