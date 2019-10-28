@@ -534,7 +534,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	vf->pdev = pdev;
 	vf->dev = dev;
 	vf->iommu_domain = iommu_get_domain_for_dev(dev);
-	vf->intf_down = true;
+	vf->flags |= OTX2_FLAG_INTF_DOWN;
 	hw = &vf->hw;
 	hw->pdev = vf->pdev;
 	hw->rx_queues = qcount;
