@@ -184,7 +184,7 @@ static inline void otx2_set_rxtstamp(struct otx2_nic *pfvf,
 	u64 tsns;
 	int err;
 
-	if (!pfvf->hw_rx_tstamp)
+	if (!(pfvf->flags & OTX2_FLAG_RX_TSTAMP_ENABLED))
 		return;
 
 	/* The first 8 bytes is the timestamp */
@@ -499,7 +499,7 @@ int otx2_napi_handler(struct napi_struct *napi, int budget)
 
 	if (workdone < budget && napi_complete_done(napi, workdone)) {
 		/* If interface is going down, don't re-enable IRQ */
-		if (pfvf->intf_down)
+		if (pfvf->flags & OTX2_FLAG_INTF_DOWN)
 			return workdone;
 
 		/* Re-enable interrupts */
