@@ -1268,6 +1268,7 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 			"RVUPF: Invalid MSIX vector offset for NPA/NIX\n");
 		return -EINVAL;
 	}
+
 	return 0;
 }
 EXPORT_SYMBOL(otx2_attach_npa_nix);
