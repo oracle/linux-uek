@@ -228,6 +228,8 @@ struct otx2_nic {
 	struct device		*dev;
 	struct net_device	*netdev;
 	void			*iommu_domain;
+	u16			xtra_hdr;
+	u16			max_frs;
 
 	struct otx2_qset	qset;
 	struct otx2_hw		hw;
@@ -264,6 +266,7 @@ struct otx2_nic {
 #define OTX2_UNICAST_FILTER_CAPABLE		1
 #define OTX2_RX_VLAN_OFFLOAD_CAPABLE		2
 	unsigned long           priv_flags;
+
 	u16			entry_list[NPC_MAX_NONCONTIG_ENTRIES];
 	struct list_head	flows;
 	struct workqueue_struct	*flr_wq;
@@ -272,6 +275,22 @@ struct otx2_nic {
 	struct otx2_mac_table	*mac_table;
 	struct workqueue_struct	*otx2_ndo_wq;
 	struct work_struct	otx2_rx_mode_work;
+
+#define OTX2_PRIV_FLAG_PAM4			BIT(0)
+#define OTX2_PRIV_FLAG_EDSA_HDR			BIT(1)
+#define OTX2_PRIV_FLAG_HIGIG2_HDR		BIT(2)
+#define OTX2_IS_EDSA_ENABLED(flags)		((flags) &              \
+						 OTX2_PRIV_FLAG_EDSA_HDR)
+#define OTX2_IS_HIGIG2_ENABLED(flags)		((flags) &              \
+						 OTX2_PRIV_FLAG_HIGIG2_HDR)
+	u32		        ethtool_flags;
+
+	/* extended DSA and EDSA  header lengths are 8/16 bytes
+	 * so take max length 16 bytes here
+	 */
+#define OTX2_EDSA_HDR_LEN			16
+#define OTX2_HIGIG2_HDR_LEN			16
+	u32			addl_mtu;
 };
 
 static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
@@ -646,6 +665,8 @@ int otx2vf_open(struct net_device *netdev);
 int otx2vf_stop(struct net_device *netdev);
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues);
+int otx2_set_npc_parse_mode(struct otx2_nic *pfvf);
+
 /* MCAM filter related APIs */
 void otx2_do_set_rx_mode(struct work_struct *work);
 int otx2_add_macfilter(struct net_device *netdev, const u8 *mac);

@@ -400,8 +400,9 @@ static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 	struct otx2_nic *vf = netdev_priv(netdev);
 	struct otx2_snd_queue *sq;
 
-	/* Check for minimum packet length */
-	if (skb->len <= ETH_HLEN) {
+	/* Check for minimum and maximum packet length */
+	if (skb->len <= ETH_HLEN ||
+	    (!skb_shinfo(skb)->gso_size && skb->len > vf->max_frs)) {
 		dev_kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}

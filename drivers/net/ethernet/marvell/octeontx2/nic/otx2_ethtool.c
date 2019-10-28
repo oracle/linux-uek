@@ -26,8 +26,9 @@
 #define OTX2_DEFAULT_ACTION	0x1
 
 static const char otx2_priv_flags_strings[][ETH_GSTRING_LEN] = {
-#define OTX2_PRIV_FLAGS_PAM4 BIT(0)
 	"pam4",
+	"edsa",
+	"higig2",
 };
 
 struct otx2_stat {
@@ -1213,6 +1214,172 @@ end:	otx2_mbox_unlock(&pfvf->mbox);
 	return err;
 }
 
+static u32 otx2_get_priv_flags(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+
+	rsp = otx2_get_fwdata(pfvf);
+
+	if (IS_ERR(rsp)) {
+		pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_PAM4;
+	} else {
+		if (rsp->fwdata.phy.mod_type)
+			pfvf->ethtool_flags |= OTX2_PRIV_FLAG_PAM4;
+		else
+			pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_PAM4;
+	}
+
+	return pfvf->ethtool_flags;
+}
+
+static int otx2_set_phy_mod_type(struct net_device *netdev, bool enable)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_phy_mod_type *req;
+	struct cgx_fw_data *fwd;
+	int rc = -EAGAIN;
+
+	fwd = otx2_get_fwdata(pfvf);
+	if (IS_ERR(fwd))
+		return -EAGAIN;
+
+	/* ret here if phy does not support this feature */
+	if (!fwd->fwdata.phy.can_change_mod_type)
+		return -EOPNOTSUPP;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_cgx_set_phy_mod_type(&pfvf->mbox);
+	if (!req)
+		goto end;
+
+	req->mod = enable;
+
+	if (!otx2_sync_mbox_msg(&pfvf->mbox))
+		rc = 0;
+end:
+	otx2_mbox_unlock(&pfvf->mbox);
+	return rc;
+}
+
+int otx2_set_npc_parse_mode(struct otx2_nic *pfvf)
+{
+	struct npc_set_pkind *req;
+	int rc = -EAGAIN;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_npc_set_pkind(&pfvf->mbox);
+	if (!req)
+		goto end;
+
+	if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
+		req->mode = OTX2_PRIV_FLAGS_HIGIG;
+	else if (OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))
+		req->mode = OTX2_PRIV_FLAGS_EDSA;
+	else
+		req->mode = OTX2_PRIV_FLAGS_DEFAULT;
+
+	req->dir  = PKIND_RX;
+
+	/* req AF to change pkind on both the dir */
+	if (req->mode == OTX2_PRIV_FLAGS_HIGIG)
+		req->dir |= PKIND_TX;
+
+	if (!otx2_sync_mbox_msg(&pfvf->mbox))
+		rc = 0;
+end:
+	otx2_mbox_unlock(&pfvf->mbox);
+	return rc;
+}
+
+static int otx2_enable_addl_header(struct net_device *netdev, int bitpos,
+				   u32 len, bool enable)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	bool if_up = netif_running(netdev);
+
+	if (enable) {
+		pfvf->ethtool_flags |= BIT(bitpos);
+	} else {
+		pfvf->ethtool_flags &= ~BIT(bitpos);
+		len = 0;
+	}
+
+	if (if_up)
+		otx2_stop(netdev);
+
+	/* Update max FRS so that additional hdrs are considered */
+	pfvf->addl_mtu = len;
+
+	/* Incase HIGIG2 mode is set packet will have 16 bytes of
+	 * extra header at start of packet which stack does not need.
+	 */
+	if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
+		pfvf->xtra_hdr = 16;
+	else
+		pfvf->xtra_hdr = 0;
+
+	/* NPC parse mode will be updated here */
+	if (if_up)
+		otx2_open(netdev);
+
+	return 0;
+}
+
+static int otx2_set_priv_flags(struct net_device *netdev, u32 new_flags)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	bool enable = false;
+	int bitnr, rc = 0;
+	u32 chg_flags;
+
+	/* Get latest PAM4 settings */
+	otx2_get_priv_flags(netdev);
+
+	chg_flags =  new_flags ^ pfvf->ethtool_flags;
+	if (!chg_flags)
+		return 0;
+
+	/* Some are mutually exclusive, so allow only change at a time */
+	if (hweight32(chg_flags) != 1)
+		return -EINVAL;
+
+	bitnr = ffs(chg_flags) - 1;
+	if (new_flags & BIT(bitnr))
+		enable = true;
+
+	switch (BIT(bitnr)) {
+	case OTX2_PRIV_FLAG_PAM4:
+		rc = otx2_set_phy_mod_type(netdev, enable);
+		break;
+	case OTX2_PRIV_FLAG_EDSA_HDR:
+		/* HIGIG & EDSA  are mutual exclusive */
+		if (enable && OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
+			return -EINVAL;
+		return otx2_enable_addl_header(netdev, bitnr,
+					       OTX2_EDSA_HDR_LEN, enable);
+		break;
+	case OTX2_PRIV_FLAG_HIGIG2_HDR:
+		if (enable && OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))
+			return -EINVAL;
+		return otx2_enable_addl_header(netdev, bitnr,
+					       OTX2_HIGIG2_HDR_LEN, enable);
+		break;
+	default:
+		break;
+	}
+
+	/* save the change */
+	if (!rc) {
+		if (enable)
+			pfvf->ethtool_flags |= BIT(bitnr);
+		else
+			pfvf->ethtool_flags &= ~BIT(bitnr);
+	}
+
+	return rc;
+}
+
 static struct ethtool_ops otx2_ethtool_ops = {
 	.get_link		= otx2_get_link,
 	.get_drvinfo		= otx2_get_drvinfo,
@@ -1242,69 +1409,12 @@ static struct ethtool_ops otx2_ethtool_ops = {
 	.set_fecparam		= otx2_set_fecparam,
 	.get_module_info	= otx2_get_module_info,
 	.get_module_eeprom	= otx2_get_module_eeprom,
+	.get_priv_flags		= otx2_get_priv_flags,
+	.set_priv_flags		= otx2_set_priv_flags,
 };
-
-static int otx2_set_priv_flags(struct net_device *netdev, u32 priv_flags)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct cgx_phy_mod_type *req, *rsp;
-	int rc = 0;
-
-	otx2_mbox_lock(&pfvf->mbox);
-	req = otx2_mbox_alloc_msg_cgx_set_phy_mod_type(&pfvf->mbox);
-	if (!req) {
-		rc = -EAGAIN;
-		goto end;
-	}
-	req->mod = priv_flags & OTX2_PRIV_FLAGS_PAM4;
-	rc = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (rc)
-		goto end;
-
-	rsp = (struct cgx_phy_mod_type *)otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0,
-							   &req->hdr);
-	if (IS_ERR(rsp)) {
-		rc = PTR_ERR(rsp);
-		goto end;
-	}
-	if (rsp->hdr.rc) {
-		rc = rsp->hdr.rc;
-		goto end;
-	}
-
-end:	otx2_mbox_unlock(&pfvf->mbox);
-	return rc;
-}
-
-static u32 otx2_get_priv_flags(struct net_device *netdev)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct cgx_fw_data *rsp;
-	u32 priv_flags = 0;
-
-	rsp = otx2_get_fwdata(pfvf);
-
-	if (IS_ERR(rsp))
-		return 0;
-
-	if (rsp->fwdata.phy.mod_type)
-		priv_flags |= OTX2_PRIV_FLAGS_PAM4;
-
-	return priv_flags;
-}
 
 void otx2_set_ethtool_ops(struct net_device *netdev)
 {
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct cgx_fw_data *rsp;
-
-	rsp = otx2_get_fwdata(pfvf);
-
-	if (!IS_ERR(rsp) && rsp->fwdata.phy.can_change_mod_type) {
-		otx2_ethtool_ops.set_priv_flags = otx2_set_priv_flags;
-		otx2_ethtool_ops.get_priv_flags = otx2_get_priv_flags;
-	}
-
 	netdev->ethtool_ops = &otx2_ethtool_ops;
 }
 
