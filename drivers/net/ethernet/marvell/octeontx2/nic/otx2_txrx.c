@@ -345,6 +345,7 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 				 */
 				if (parse->laptr)
 					otx2_set_rxtstamp(pfvf, skb);
+				skb_pull(skb, pfvf->xtra_hdr);
 			} else {
 				otx2_skb_add_frag(pfvf, skb, *iova, len);
 			}
