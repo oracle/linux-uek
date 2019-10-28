@@ -923,7 +923,7 @@ int __init microcode_init(void)
 	/* Xen is responsible for loading microcode on sus/resume and hotplug */
 	if (!xen_domain()) {
 		register_syscore_ops(&mc_syscore_ops);
-		cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN,
+		cpuhp_setup_state_nocalls(CPUHP_AP_MICROCODE_LOADER,
 					  "x86/microcode:online",
 					  mc_cpu_online, mc_cpu_down_prep);
 	}
