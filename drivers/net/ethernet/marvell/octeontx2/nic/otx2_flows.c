@@ -161,7 +161,7 @@ static int otx2_do_add_macfilter(struct otx2_nic *pf, const u8 *mac)
 	ether_addr_copy(req->packet.dmac, mac);
 	u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
 	req->features = BIT_ULL(NPC_DMAC);
-	req->channel = pf->rx_chan_base;
+	req->channel = pf->hw.rx_chan_base;
 	req->intf = NIX_INTF_RX;
 	req->op = NIX_RX_ACTION_DEFAULT;
 	req->set_cntr = 1;
@@ -313,7 +313,7 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	req->entry = flow->entry;
 	req->intf = NIX_INTF_RX;
 	req->set_cntr = 1;
-	req->channel = pfvf->rx_chan_base;
+	req->channel = pfvf->hw.rx_chan_base;
 	if (ring_cookie == RX_CLS_FLOW_DISC) {
 		req->op = NIX_RX_ACTIONOP_DROP;
 	} else {
@@ -522,7 +522,7 @@ static int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
 	req->intf = NIX_INTF_RX;
 	ether_addr_copy(req->packet.dmac, pfvf->netdev->dev_addr);
 	u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
-	req->channel = pfvf->rx_chan_base;
+	req->channel = pfvf->hw.rx_chan_base;
 	req->op = NIX_RX_ACTION_DEFAULT;
 	req->features = BIT_ULL(NPC_OUTER_VID) | BIT_ULL(NPC_DMAC);
 	req->vtag0_valid = true;
