@@ -43,6 +43,7 @@ char *disk_name(struct gendisk *hd, int partno, char *buf)
 
 	return buf;
 }
+EXPORT_SYMBOL_GPL(disk_name);
 
 const char *bdevname(struct block_device *bdev, char *buf)
 {

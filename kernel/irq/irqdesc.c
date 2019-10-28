@@ -129,7 +129,9 @@ static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node,
 int nr_irqs = NR_IRQS;
 EXPORT_SYMBOL_GPL(nr_irqs);
 
-static DEFINE_MUTEX(sparse_irq_lock);
+DEFINE_MUTEX(sparse_irq_lock);
+EXPORT_SYMBOL_GPL(sparse_irq_lock);
+
 static DECLARE_BITMAP(allocated_irqs, IRQ_BITMAP_BITS);
 
 #ifdef CONFIG_SPARSE_IRQ
@@ -883,6 +885,7 @@ unsigned int kstat_irqs_cpu(unsigned int irq, int cpu)
 	return desc && desc->kstat_irqs ?
 			*per_cpu_ptr(desc->kstat_irqs, cpu) : 0;
 }
+EXPORT_SYMBOL_GPL(kstat_irqs_cpu);
 
 /**
  * kstat_irqs - Get the statistics for an interrupt

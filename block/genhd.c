@@ -36,7 +36,7 @@ struct kobject *block_depr;
 static DEFINE_SPINLOCK(ext_devt_lock);
 static DEFINE_IDR(ext_devt_idr);
 
-static const struct device_type disk_type;
+const struct device_type disk_type;
 
 static void disk_check_events(struct disk_events *ev,
 			      unsigned int *clearing_ptr);
@@ -93,6 +93,7 @@ void part_in_flight_rw(struct request_queue *q, struct hd_struct *part,
 	inflight[0] = atomic_read(&part->in_flight[0]);
 	inflight[1] = atomic_read(&part->in_flight[1]);
 }
+EXPORT_SYMBOL_GPL(part_in_flight_rw);
 
 struct hd_struct *__disk_get_part(struct gendisk *disk, int partno)
 {
@@ -1284,6 +1285,7 @@ static void disk_release(struct device *dev)
 struct class block_class = {
 	.name		= "block",
 };
+EXPORT_SYMBOL_GPL(block_class);
 
 static char *block_devnode(struct device *dev, umode_t *mode,
 			   kuid_t *uid, kgid_t *gid)
@@ -1295,12 +1297,13 @@ static char *block_devnode(struct device *dev, umode_t *mode,
 	return NULL;
 }
 
-static const struct device_type disk_type = {
+const struct device_type disk_type = {
 	.name		= "disk",
 	.groups		= disk_attr_groups,
 	.release	= disk_release,
 	.devnode	= block_devnode,
 };
+EXPORT_SYMBOL_GPL(disk_type);
 
 #ifdef CONFIG_PROC_FS
 /*
