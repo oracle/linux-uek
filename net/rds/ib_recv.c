@@ -106,7 +106,8 @@ void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent)
 	}
 }
 /* fwd decl */
-static void rds_ib_recv_cache_put(struct lfstack_el *new_item_first,
+static void rds_ib_recv_cache_put(int cpu,
+				  struct lfstack_el *new_item_first,
 				  struct lfstack_el *new_item_last,
 				  struct rds_ib_refill_cache *cache,
 				  int count);
@@ -116,7 +117,8 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			     struct rds_page_frag *frag)
 {
-	rds_ib_recv_cache_put(&frag->f_cache_entry,
+	rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+			      &frag->f_cache_entry,
 			      &frag->f_cache_entry,
 			      frag->rds_ibdev->i_cache_frags +
 			      ic->i_frag_cache_inx,
@@ -172,16 +174,18 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	}
 	rdsdebug("first_frag %p frag %p p_frag %p count %d inc %p\n", first_frag, p_frag, frag, count, inc);
 	if (first_frag)
-		rds_ib_recv_cache_put(&first_frag->f_cache_entry,
+		rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+				      &first_frag->f_cache_entry,
 				      &p_frag->f_cache_entry,
 				      first_frag->rds_ibdev->i_cache_frags +
 				      ic->i_frag_cache_inx,
 				      count);
 
-	BUG_ON(!list_empty(&ibinc->ii_frags));
+	WARN_ON(!list_empty(&ibinc->ii_frags));
 
 	rdsdebug("freeing ibinc %p inc %p\n", ibinc, inc);
-	rds_ib_recv_cache_put(&ibinc->ii_cache_entry,
+	rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+			      &ibinc->ii_cache_entry,
 			      &ibinc->ii_cache_entry,
 			      &ibinc->rds_ibdev->i_cache_incs,
 			      1);
@@ -228,7 +232,6 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 	INIT_LIST_HEAD(&ibinc->ii_frags);
 	rds_inc_init(&ibinc->ii_inc, ic->conn, &ic->conn->c_faddr);
 	ibinc->rds_ibdev = ic->rds_ibdev;
-
 	return ibinc;
 }
 
@@ -651,18 +654,22 @@ release_out:
  * First, we put the memory on a percpu list. When this reaches a certain size,
  * we put the memory on  an intermediate non-percpu list.
  */
-static void rds_ib_recv_cache_put(struct lfstack_el *new_item_first,
+static void rds_ib_recv_cache_put(int cpu,
+				  struct lfstack_el *new_item_first,
 				  struct lfstack_el *new_item_last,
 				  struct rds_ib_refill_cache *cache,
 				  int count)
 {
+	struct rds_ib_cache_head *head;
+
 	if (!cache->percpu)
 		return;
+	head = per_cpu_ptr(cache->percpu, cpu);
 
-	if (this_cpu_read(cache->percpu->count)  < rds_ib_cache_max_percpu) {
-		struct lfstack *stack = this_cpu_ptr(&cache->percpu->stack);
+	if (atomic_read(&head->count)  < rds_ib_cache_max_percpu) {
+		struct lfstack *stack = &head->stack;
 
-		this_cpu_add(cache->percpu->count, count);
+		atomic_add(count, &head->count);
 		lfstack_push_many(stack, new_item_first, new_item_last);
 		return;
 	}
@@ -680,7 +687,7 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 	stack = this_cpu_ptr(&cache->percpu->stack);
 	item = lfstack_pop(stack);
 	if (item) {
-		this_cpu_dec(cache->percpu->count);
+		atomic_dec(this_cpu_ptr(&cache->percpu->count));
 		return item;
 	}
 
@@ -1261,6 +1268,12 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_recv_work *recv;
 	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
+
+	if (ic->i_irq_local_cpu == NR_CPUS) {
+		ic->i_irq_local_cpu = smp_processor_id();
+		rdsdebug("Setting irq_local_cpu %d ic %p conn %p\n",
+			 ic->i_irq_local_cpu, ic, conn);
+	}
 
 	rdsdebug("wc wr_id 0x%llx status %u (%s) byte_len %u imm_data %u\n",
 		 (unsigned long long)wc->wr_id, wc->status,
