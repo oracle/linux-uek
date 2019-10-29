@@ -737,6 +737,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev);
 void rds_ib_reset_fastreg(struct work_struct *work);
 
 /* ib_rdma.c */
+struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
 			 struct in6_addr *ipaddr);
 void rds_ib_add_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn);

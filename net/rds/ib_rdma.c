@@ -122,7 +122,7 @@ static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				 struct scatterlist *sg, unsigned int sg_len);
 static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr);
 
-static struct rds_ib_device *rds_ib_get_device(struct in6_addr *ipaddr)
+struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr)
 {
 	struct rds_ib_device *rds_ibdev;
 	struct rds_ib_ipaddr *i_ipaddr;
