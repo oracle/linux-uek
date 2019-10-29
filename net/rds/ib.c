@@ -105,7 +105,7 @@ static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
 	for_each_possible_cpu(cpu) {
 		head = per_cpu_ptr(cache->percpu, cpu);
 		lfstack_init(&head->stack);
-		head->count = 0;
+		atomic_set(&head->count, 0);
 	}
 	lfstack_init(&cache->ready);
 
@@ -120,7 +120,7 @@ static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 	for_each_possible_cpu(cpu) {
 		head = per_cpu_ptr(cache->percpu, cpu);
 		lfstack_free(&head->stack);
-		head->count = 0;
+		atomic_set(&head->count, 0);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
@@ -171,7 +171,7 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 				   &frag->ic->i_cache_allocs);
 		}
 		lfstack_free(&head->stack);
-		head->count = 0;
+		atomic_set(&head->count, 0);
 	}
 	while ((cache_item = lfstack_pop(&cache->ready))) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
@@ -203,7 +203,7 @@ static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
 			kmem_cache_free(rds_ib_incoming_slab, inc);
 		}
 		lfstack_free(&head->stack);
-		head->count =  0;
+		atomic_set(&head->count, 0);
 	}
 	while ((cache_item = lfstack_pop(&cache->ready))) {
 		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
@@ -814,6 +814,7 @@ void rds_ib_add_one(struct ib_device *device)
 	atomic_inc(&rds_ibdev->refcount);
 
 	rds_ib_nodev_connect();
+
 put_dev:
 	rds_ib_dev_put(rds_ibdev);
 free_attr:
