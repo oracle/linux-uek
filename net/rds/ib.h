@@ -70,7 +70,6 @@ extern struct list_head rds_ib_devices;
 struct rds_page_frag {
 	struct list_head	f_item;
 	struct lfstack_el	f_cache_entry;
-	struct llist_node	f_alloc;
 	struct scatterlist	f_sg[NUM_RDS_RECV_SG];
 	struct rds_ib_device	*rds_ibdev;
 	struct rds_ib_connection *ic;
@@ -85,7 +84,7 @@ struct rds_ib_incoming {
 
 struct rds_ib_cache_head {
 	struct lfstack		stack;
-	unsigned long		count;
+	atomic_t                count;
 };
 
 struct rds_ib_refill_cache {
@@ -287,6 +286,7 @@ struct rds_ib_connection {
 	u8			i_req_sequence;
 	u8			i_prev_seq;
 	u8			i_last_rej_seq;
+	uint			i_irq_local_cpu;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
