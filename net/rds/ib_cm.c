@@ -617,17 +617,18 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		rds_ib_attempt_ack(ic);
 
 	if (rds_ib_srq_enabled)
-		if ((atomic_read(&rds_ibdev->srq->s_num_posted) <
-					rds_ib_srq_hwm_refill) &&
-			!test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-				queue_delayed_work(conn->c_path[0].cp_wq,
-					&rds_ibdev->srq->s_refill_w, 0);
+		if ((atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
+		    !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
+			queue_delayed_work_on(ic->i_irq_local_cpu,
+					      conn->c_path[0].cp_wq,
+					      &rds_ibdev->srq->s_refill_w, 0);
 
 	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
 		ic->i_rx_w.ic = ic;
 		/* Delay 10 msecs until the RX worker starts reaping again */
-		queue_delayed_work(rds_aux_wq, &ic->i_rx_w.work,
-					msecs_to_jiffies(10));
+		queue_delayed_work_on(ic->i_irq_local_cpu,
+				      rds_aux_wq, &ic->i_rx_w.work,
+				      msecs_to_jiffies(10));
 		ic->i_rx_wait_for_handler = 1;
 	}
 }
@@ -1655,6 +1656,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
 	ic->i_cm_id_ctx = RDS_IB_NO_CTX;
+	ic->i_irq_local_cpu = NR_CPUS;
 
 	rdsdebug("conn %p conn ic %p\n", conn, conn->c_transport_data);
 	return 0;
