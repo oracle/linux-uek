@@ -146,6 +146,7 @@ SECTIONS
 	} :text =0xcccc
 
 	NOTES :text :note
+	.dummy : { *(.dummy) } :text
 
 	/* End of text section, which should occupy whole number of pages */
 	_etext = .;
