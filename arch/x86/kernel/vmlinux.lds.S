@@ -21,6 +21,8 @@
 #define LOAD_OFFSET __START_KERNEL_map
 #endif
 
+#define RO_EXCEPTION_TABLE_ALIGN	16
+
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/asm-offsets.h>
 #include <asm/thread_info.h>
@@ -144,8 +146,6 @@ SECTIONS
 	} :text =0xcccc
 
 	NOTES :text :note
-
-	EXCEPTION_TABLE(16) :text = 0x9090
 
 	/* End of text section, which should occupy whole number of pages */
 	_etext = .;
