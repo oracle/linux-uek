@@ -899,7 +899,9 @@ static void __flush_neigh_conn(struct net *net,
 
 	isv4 = ipv6_addr_v4mapped(faddr);
 	/* Use our local address to find the right interface to flush the
-	 * neighbor address.
+	 * neighbor address. If we are unable to find the interface, this is
+	 * likely because the IP-address moved due to failover/failback, so
+	 * don't log any issues in this case.
 	 */
 	if (isv4) {
 		idx = __rds_find_ifindex_v4(net, laddr->s6_addr32[3]);
@@ -909,11 +911,8 @@ static void __flush_neigh_conn(struct net *net,
 		addrlen = sizeof(*faddr);
 	}
 
-	if (!idx) {
-		pr_err_ratelimited("%s: cannot find %pI6c interface\n",
-				   __func__, laddr);
+	if (!idx)
 		return;
-	}
 
 	buflen = nlmsg_total_size(sizeof(*ndm) +
 				  nla_total_size(addrlen));
