@@ -223,22 +223,31 @@ struct otx2_mac_table {
 
 struct otx2_nic {
 	void __iomem		*reg_base;
-	struct pci_dev		*pdev;
-	struct device		*dev;
 	struct net_device	*netdev;
 	void			*iommu_domain;
 	u16			xtra_hdr;
 	u16			max_frs;
 
+#define OTX2_FLAG_RX_TSTAMP_ENABLED		BIT_ULL(0)
+#define OTX2_FLAG_TX_TSTAMP_ENABLED		BIT_ULL(1)
+#define OTX2_FLAG_INTF_DOWN			BIT_ULL(2)
+#define OTX2_FLAG_MCAM_ENTRIES_ALLOC		BIT_ULL(3)
+#define OTX2_FLAG_NTUPLE_SUPPORT		BIT_ULL(4)
+#define OTX2_FLAG_UCAST_FLTR_SUPPORT		BIT_ULL(5)
+#define OTX2_FLAG_RX_VLAN_SUPPORT		BIT_ULL(6)
+	u64			flags;
+
 	struct otx2_qset	qset;
 	struct otx2_hw		hw;
+	struct pci_dev		*pdev;
+	struct device		*dev;
+
+	/* Mbox */
 	struct mbox		mbox;
 	struct mbox		*mbox_pfvf;
 	struct workqueue_struct *mbox_wq;
 	struct workqueue_struct *mbox_pfvf_wq;
-	u8			intf_down;
 
-	u16			bpid[NIX_MAX_BPID_CHAN];
 	u16			pcifunc;
 	u16			rx_chan_base;
 	u16			tx_chan_base;
@@ -250,26 +259,20 @@ struct otx2_nic {
 	struct work_struct	reset_task;
 	u64			reset_count;
 	u8			total_vfs;
+	u16			bpid[NIX_MAX_BPID_CHAN];
 	struct otx2_vf_config	*vf_configs;
 	struct cgx_link_user_info linfo;
+	struct otx2_ptp		*ptp;
 
-	bool			entries_alloc;
+	/* NPC MCAM */
 	u32			nr_flows;
 	u32                     ntuple_max_flows;
-#define OTX2_NTUPLE_FILTER_CAPABLE		0
-#define OTX2_UNICAST_FILTER_CAPABLE		1
-#define OTX2_RX_VLAN_OFFLOAD_CAPABLE		2
-	unsigned long           priv_flags;
-
 	u16			entry_list[NPC_MAX_NONCONTIG_ENTRIES];
 	struct list_head	flows;
+
 	struct workqueue_struct	*flr_wq;
 	struct flr_work		*flr_wrk;
 	struct refill_work	*refill_wrk;
-
-	u8			hw_rx_tstamp;
-	u8			hw_tx_tstamp;
-	struct otx2_ptp		*ptp;
 	struct otx2_mac_table	*mac_table;
 	struct workqueue_struct	*otx2_ndo_wq;
 	struct work_struct	otx2_rx_mode_work;
@@ -685,19 +688,4 @@ int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable);
 int otx2smqvf_probe(struct otx2_nic *vf);
 int otx2smqvf_remove(struct otx2_nic *vf);
 
-/* OTX2_NIC access priv_flags */
-static inline void otx2_nic_enable_feature(struct otx2_nic *pf,
-					   unsigned long nr) {
-	set_bit(nr, &pf->priv_flags);
-}
-
-static inline void otx2_nic_disable_feature(struct otx2_nic *pf,
-					    unsigned long nr) {
-	clear_bit(nr, &pf->priv_flags);
-}
-
-static inline int otx2_nic_is_feature_enabled(struct otx2_nic *pf,
-					      unsigned long nr) {
-	return test_bit(nr, &pf->priv_flags);
-}
 #endif /* OTX2_COMMON_H */
