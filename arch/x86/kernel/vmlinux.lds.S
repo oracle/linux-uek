@@ -143,7 +143,7 @@ SECTIONS
 		*(.text.__x86.indirect_thunk)
 		__indirect_thunk_end = .;
 #endif
-	} :text = 0x9090
+	} :text =0xcccc
 
 	NOTES :text :note
 	.dummy : { *(.dummy) } :text
