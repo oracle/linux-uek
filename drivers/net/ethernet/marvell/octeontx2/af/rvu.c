@@ -967,6 +967,10 @@ init:
 	if (err)
 		goto cgx_err;
 
+	err = rvu_sdp_init(rvu);
+	if (err)
+		goto cgx_err;
+
 	return 0;
 
 cgx_err:

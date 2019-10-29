@@ -663,6 +663,10 @@ void rvu_cpt_unregister_interrupts(struct rvu *rvu);
 int rvu_tim_init(struct rvu *rvu);
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 
+/* SDP APIs */
+int rvu_sdp_init(struct rvu *rvu);
+bool is_sdp_pf(u16 pcifunc);
+
 /* CONFIG_DEBUG_FS*/
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
