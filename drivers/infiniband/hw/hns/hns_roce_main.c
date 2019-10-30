@@ -362,7 +362,8 @@ static int hns_roce_mmap(struct ib_ucontext *context,
 		return rdma_user_mmap_io(context, vma,
 					 to_hr_ucontext(context)->uar.pfn,
 					 PAGE_SIZE,
-					 pgprot_device(vma->vm_page_prot));
+					 pgprot_device(vma->vm_page_prot),
+					 NULL);
 
 	/* vm_pgoff: 1 -- TPTR */
 	case 1:
@@ -375,7 +376,8 @@ static int hns_roce_mmap(struct ib_ucontext *context,
 		return rdma_user_mmap_io(context, vma,
 					 hr_dev->tptr_dma_addr >> PAGE_SHIFT,
 					 hr_dev->tptr_size,
-					 vma->vm_page_prot);
+					 vma->vm_page_prot,
+					 NULL);
 
 	default:
 		return -EINVAL;
