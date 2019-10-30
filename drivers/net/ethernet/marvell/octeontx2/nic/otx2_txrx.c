@@ -640,13 +640,18 @@ static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 {
 	int proto = 0;
 
+	/* Check if SQE was framed before, if yes then no need to
+	 * set these constants again and again.
+	 */
+	if (!sqe_hdr->total) {
+		/* Don't free Tx buffers to Aura */
+		sqe_hdr->df = 1;
+		sqe_hdr->aura = sq->aura_id;
+		/* Post a CQE Tx after pkt transmission */
+		sqe_hdr->pnc = 1;
+		sqe_hdr->sq = qidx;
+	}
 	sqe_hdr->total = skb->len;
-	/* Don't free Tx buffers to Aura */
-	sqe_hdr->df = 1;
-	sqe_hdr->aura = sq->aura_id;
-	/* Post a CQE Tx after pkt transmission */
-	sqe_hdr->pnc = 1;
-	sqe_hdr->sq = qidx;
 	/* Set SQE identifier which will be used later for freeing SKB */
 	sqe_hdr->sqe_id = sq->head;
 
@@ -929,8 +934,10 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 		return true;
 	}
 
-	/* Set SQE's SEND_HDR */
-	memset(sq->sqe_base, 0, sq->sqe_size);
+	/* Set SQE's SEND_HDR.
+	 * Do not clear the first 64bit as it contains constant info.
+	 */
+	memset(sq->sqe_base + 8, 0, sq->sqe_size - 8);
 	sqe_hdr = (struct nix_sqe_hdr_s *)(sq->sqe_base);
 	otx2_sqe_add_hdr(pfvf, sq, sqe_hdr, skb, qidx);
 	offset = sizeof(*sqe_hdr);
