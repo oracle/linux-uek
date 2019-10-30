@@ -388,6 +388,17 @@ static int sriov_init(struct pci_dev *dev, int pos)
 	pci_read_config_word(dev, pos + PCI_SRIOV_CTRL, &ctrl);
 	if (ctrl & PCI_SRIOV_CTRL_VFE) {
 		pci_write_config_word(dev, pos + PCI_SRIOV_CTRL, 0);
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+		/* Speed up sriov_init for certain Cavium T93, PCI devices */
+		if ((dev->vendor == PCI_VENDOR_ID_CAVIUM) &&
+			((dev->device == 0xa018) ||	/* Random Number Generator */
+			 (dev->device == 0xa043) ||	/* Memory Controller */
+			 (dev->device == 0xa080) ||	/* System Peripheral */
+			 (dev->device == 0xa082) ||	/* Processing Accelerator */
+			 (dev->device == 0xa065)))	/* Ethernet Controller */
+			msleep(100);
+		else
+#endif
 		ssleep(1);
 	}
 
