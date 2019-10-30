@@ -251,6 +251,7 @@ static int ib_uverbs_get_context(struct uverbs_attr_bundle *attrs)
 
 	rdma_restrack_new(&ucontext->res, RDMA_RESTRACK_CTX);
 	rdma_restrack_set_name(&ucontext->res, NULL);
+	xa_init_flags(&ucontext->mmap_xa, XA_FLAGS_ALLOC);
 	attrs->context = ucontext;
 
 	ret = get_unused_fd_flags(O_CLOEXEC);
