@@ -26,6 +26,8 @@
 #include <asm/vmx.h>
 #include <xen/xen.h>
 
+#include "cpu.h"
+
 /*
  * use_ibrs flags:
  * SPEC_CTRL_BASIC_IBRS_INUSE		basic ibrs is currently in use
@@ -147,6 +149,7 @@ static enum ssb_mitigation __init ssb_select_mitigation(void);
 static void __init ssb_init(void);
 static void __init l1tf_select_mitigation(void);
 static void __init mds_select_mitigation(void);
+static void __init taa_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
@@ -240,6 +243,7 @@ void __init check_bugs(void)
 	ssb_init();
 	l1tf_select_mitigation();
 	mds_select_mitigation();
+	taa_select_mitigation();
 
 	alternative_instructions();
 
@@ -1487,6 +1491,7 @@ static void update_mds_branch_idle(void)
 	 * clearing the buffers on idle would be a window dressing exercise.
 	 */
 	if (!boot_cpu_has(X86_BUG_MSBDS_ONLY) &&
+	    !boot_cpu_has_bug(X86_BUG_TAA) &&
 	     mds_mitigation != MDS_MITIGATION_IDLE)
 		return;
 
@@ -1546,6 +1551,120 @@ static void mds_select_mitigation(void)
 
 bool itlb_multihit_kvm_mitigation;
 EXPORT_SYMBOL_GPL(itlb_multihit_kvm_mitigation);
+
+#undef pr_fmt
+#define pr_fmt(fmt)	"TAA: " fmt
+
+/* Default mitigation for TAA-affected CPUs */
+static enum taa_mitigations taa_mitigation __read_mostly = TAA_MITIGATION_VERW;
+static bool taa_nosmt;
+
+static const char * const taa_strings[] = {
+	[TAA_MITIGATION_OFF]		= "Vulnerable",
+	[TAA_MITIGATION_UCODE_NEEDED]	= "Vulnerable: Clear CPU buffers attempted, no microcode",
+	[TAA_MITIGATION_VERW]		= "Mitigation: Clear CPU buffers",
+	[TAA_MITIGATION_IDLE]		= "Mitigation: Clear CPU buffers during idle only",
+	[TAA_MITIGATION_TSX_DISABLED]	= "Mitigation: TSX disabled",
+};
+
+static void taa_select_mitigation(void)
+{
+	u64 ia32_cap;
+	char arg[12];
+	int ret;
+
+	if (!boot_cpu_has_bug(X86_BUG_TAA)) {
+		taa_mitigation = TAA_MITIGATION_OFF;
+		return;
+	}
+
+	if (!boot_cpu_has(X86_FEATURE_RTM)) {
+		taa_mitigation = TAA_MITIGATION_TSX_DISABLED;
+		goto out;
+	}
+
+	/* All mitigations turned off from cmdline (mitigations=off) */
+	if (cpu_mitigations_off()) {
+		taa_mitigation = TAA_MITIGATION_OFF;
+		return;
+	}
+
+       ret = cmdline_find_option(boot_command_line, "tsx", arg,
+                                 sizeof(arg));
+
+        if (ret > 0) {
+	        if (match_option(arg, ret, "off"))
+			taa_mitigation = TAA_MITIGATION_OFF;
+		else if (match_option(arg, ret, "full"))
+			taa_mitigation = TAA_MITIGATION_VERW;
+		else if (match_option(arg, ret, "idle")) 
+			taa_mitigation = TAA_MITIGATION_IDLE;
+		else if (match_option(arg, ret, "full,nosmt")) {
+			taa_mitigation = TAA_MITIGATION_VERW;
+			taa_nosmt = true;
+	        } else
+			pr_warn("tsx: unknown option %s\n", arg);
+	}
+
+	/* TAA mitigation is turned off from cmdline (tsx_async_abort=off) */
+	if (taa_mitigation == TAA_MITIGATION_OFF) {
+		goto out;
+	}
+
+	ia32_cap = x86_read_arch_cap_msr(&cpu_data(smp_processor_id()));
+
+	if (boot_cpu_has(X86_FEATURE_MD_CLEAR))
+		if ( !(ia32_cap & ARCH_CAP_MDS_NO)) {
+			switch (mds_mitigation) {
+			case MDS_MITIGATION_FULL:
+				taa_mitigation = TAA_MITIGATION_VERW;
+				break;
+			case MDS_MITIGATION_IDLE:
+				taa_mitigation = TAA_MITIGATION_IDLE;
+				break;
+			case MDS_MITIGATION_OFF:
+				taa_mitigation = TAA_MITIGATION_OFF;
+				goto out;
+			}; 
+		}
+	else
+		taa_mitigation = TAA_MITIGATION_UCODE_NEEDED;
+
+	/*
+	 * VERW doesn't clear the CPU buffers when MD_CLEAR=1 and MDS_NO=1.
+	 * A microcode update fixes this behavior to clear CPU buffers.
+	 * Microcode update also adds support for MSR_IA32_TSX_CTRL which
+	 * is enumerated by ARCH_CAP_TSX_CTRL_MSR bit.
+	 *
+	 * On MDS_NO=1 CPUs if ARCH_CAP_TSX_CTRL_MSR is not set, microcode
+	 * update is required.
+	 */
+	if ((ia32_cap & ARCH_CAP_MDS_NO) &&
+	   !(ia32_cap & ARCH_CAP_TSX_CTRL_MSR))
+		taa_mitigation = TAA_MITIGATION_UCODE_NEEDED;
+
+	/*
+	 * TSX is enabled, select alternate mitigation for TAA which is
+	 * same as MDS. 
+	 *
+	 * For guests that can't determine whether the correct microcode is
+	 * present on host, enable the mitigation for UCODE_NEEDED as well.
+	 * MDS would have already done that.
+	 */
+
+	if (taa_mitigation == TAA_MITIGATION_IDLE) 
+		static_branch_enable(&mds_idle_clear);
+	else
+		static_branch_enable(&mds_user_clear);
+
+	if (taa_nosmt || cpu_mitigations_auto_nosmt())
+		cpu_smt_disable(false);
+
+out:
+	pr_info("%s\n", taa_strings[taa_mitigation]);
+}
+
+#define TAA_MSG_SMT "TAA CPU bug present and SMT on, data leak possible. See https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/tsx_async_abort.html for more details.\n"
 
 #undef pr_fmt
 #define pr_fmt(fmt) fmt
