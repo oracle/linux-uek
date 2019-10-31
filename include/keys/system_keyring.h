@@ -38,6 +38,7 @@ extern int mark_key_revocationlisted(const char *data, size_t size);
 extern int is_hash_blacklisted(const u8 *hash, size_t hash_len,
 			       const char *type);
 extern int is_key_revocationlisted(struct pkcs7_message *pkcs7);
+extern int is_binary_blacklisted(const u8 *hash, size_t hash_len);
 #else
 static inline int is_hash_blacklisted(const u8 *hash, size_t hash_len,
 				      const char *type)
@@ -51,6 +52,10 @@ static inline int mark_key_revocationlisted(const char *data, size_t size)
 static inline int is_key_revocationlisted(struct pkcs7_message *pkcs7)
 {
 	return -ENOKEY;
+}
+static inline int is_binary_blacklisted(const u8 *hash, size_t hash_len)
+{
+	return 0;
 }
 #endif
 
