@@ -1986,6 +1986,9 @@ static int otx2_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 	struct pci_dev *pdev = pf->pdev;
 	struct otx2_vf_config *config;
 
+	if (!netif_running(netdev))
+		return -EAGAIN;
+
 	if (vf >= pci_num_vf(pdev))
 		return -EINVAL;
 
@@ -2032,6 +2035,9 @@ static int otx2_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos,
 	struct otx2_nic *pf = netdev_priv(netdev);
 	struct pci_dev *pdev = pf->pdev;
 	struct otx2_vf_config *config;
+
+	if (!netif_running(netdev))
+		return -EAGAIN;
 
 	if (vf >= pci_num_vf(pdev))
 		return -EINVAL;
