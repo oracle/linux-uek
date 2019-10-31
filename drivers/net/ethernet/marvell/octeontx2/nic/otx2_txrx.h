@@ -21,9 +21,14 @@
 
 #define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
 #define OTX2_DATA_ALIGN(X)	ALIGN(X, OTX2_ALIGN)
-#define RCV_FRAG_LEN		\
+#define RCV_FRAG_LEN1		\
 	((OTX2_DATA_ALIGN(DMA_BUFFER_LEN + NET_SKB_PAD)) + \
 	(OTX2_DATA_ALIGN(sizeof(struct skb_shared_info))))
+
+/* Prefer 2048 byte buffers for better last level cache
+ * utilization or data distribution across regions.
+ */
+#define RCV_FRAG_LEN		((RCV_FRAG_LEN1 < 2048) ? 2048 : RCV_FRAG_LEN1)
 
 #define OTX2_HEAD_ROOM		OTX2_ALIGN
 
