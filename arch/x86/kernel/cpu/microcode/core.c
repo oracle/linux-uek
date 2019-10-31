@@ -40,6 +40,8 @@
 #include <asm/cmdline.h>
 #include <asm/setup.h>
 
+#include "../cpu.h"
+
 #define DRIVER_VERSION	"2.2"
 
 static struct microcode_ops	*microcode_ops;
@@ -552,6 +554,7 @@ static int __wait_for_cpus(atomic_t *t, long long timeout)
 static int __reload_late(void *info)
 {
 	int cpu = smp_processor_id();
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	enum ucode_state err;
 	struct cpumask *siblmsk = topology_sibling_cpumask(cpu);
 	bool master_sibling = (cpumask_first(topology_sibling_cpumask(cpu)) ==
@@ -587,6 +590,20 @@ static int __reload_late(void *info)
 		__reload_late_ret[cpu_sibling] = -1;
 	}
 
+	if (__reload_late_ret[cpu] == 0 && c->cpu_index == boot_cpu_data.cpu_index) {
+		cpu_clear_bug_bits(c);
+
+		/*
+		 * If we are at late loading, we need to re-initialize
+		 * tsx becasue tsx control might be available.
+		 */
+		tsx_init();
+
+		get_cpu_cap(c);
+		memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
+		cpu_set_bug_bits(c);
+	}
+
 wait_for_siblings:
 	if (__wait_for_cpus(&late_cpus_out, NSEC_PER_SEC))
 		panic("Timeout during microcode update!\n");
@@ -599,6 +616,18 @@ wait_for_siblings:
 	 */
 	if (!__reload_late_ret[cpu] && !master_sibling)
 		apply_microcode_local(&err);
+
+	if (__reload_late_ret[cpu] == 0 && c->cpu_index != boot_cpu_data.cpu_index) {
+		cpu_clear_bug_bits(c);
+
+		/*
+		 * If we are at late loading, we need to re-initialize
+		 * tsx becasue tsx control might be available.
+		 */
+		tsx_init();
+
+		get_cpu_cap(c);
+	}
 
 	return __reload_late_ret[cpu];
 }
