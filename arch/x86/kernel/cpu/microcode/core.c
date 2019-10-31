@@ -594,10 +594,11 @@ static int __reload_late(void *info)
 		ret = 1;
 	}
 
-	if (ret > 0) {
+	if (ret > 0 && c->cpu_index == boot_cpu_data.cpu_index) {
+		cpu_clear_bug_bits(c);
 		get_cpu_cap(c);
-		if (c->cpu_index == boot_cpu_data.cpu_index)
-			memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
+		memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
+		cpu_set_bug_bits(c);
 	}
 
 wait_for_siblings:
@@ -612,6 +613,11 @@ wait_for_siblings:
 	 */
 	if (cpumask_first(topology_sibling_cpumask(cpu)) != cpu)
 		apply_microcode_local(&err);
+
+	if (ret > 0 && c->cpu_index != boot_cpu_data.cpu_index) {
+		cpu_clear_bug_bits(c);
+		get_cpu_cap(c);
+	}
 
 	return ret;
 }

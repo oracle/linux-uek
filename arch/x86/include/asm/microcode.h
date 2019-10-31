@@ -165,4 +165,7 @@ static inline bool
 get_builtin_firmware(struct cpio_data *cd, const char *name)	{ return false; }
 #endif
 
+void cpu_set_bug_bits(struct cpuinfo_x86 *c);
+void cpu_clear_bug_bits(struct cpuinfo_x86 *c);
+
 #endif /* _ASM_X86_MICROCODE_H */
