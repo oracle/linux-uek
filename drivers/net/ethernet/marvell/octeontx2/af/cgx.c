@@ -26,6 +26,8 @@
 #define DRV_NAME	"octeontx2-cgx"
 #define DRV_STRING      "Marvell OcteonTX2 CGX/MAC Driver"
 
+#define CGX_RX_STAT_GLOBAL_INDEX	9
+
 /**
  * struct lmac
  * @wq_cmd_cmplt:	waitq to keep the process blocked until cmd completion
@@ -449,7 +451,7 @@ int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
-#define CGX_RX_STAT_GLOBAL_INDEX	9
+
 	/* pass lmac as 0 for CGX_CMR_RX_STAT9-12 */
 	if (idx >= CGX_RX_STAT_GLOBAL_INDEX)
 		lmac_id = 0;
@@ -469,6 +471,30 @@ int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 	return 0;
 }
 EXPORT_SYMBOL(cgx_get_tx_stats);
+
+int cgx_stats_rst(void *cgxd, int lmac_id)
+{
+	struct cgx *cgx = cgxd;
+	int stat_id;
+
+	if (!cgx || lmac_id >= cgx->lmac_count)
+		return -ENODEV;
+
+	for (stat_id = 0 ; stat_id < CGX_RX_STATS_COUNT; stat_id++) {
+		if (stat_id >= CGX_RX_STAT_GLOBAL_INDEX)
+		/* pass lmac as 0 for CGX_CMR_RX_STAT9-12 */
+			cgx_write(cgx, 0,
+				  (CGXX_CMRX_RX_STAT0 + (stat_id * 8)), 0);
+		else
+			cgx_write(cgx, lmac_id,
+				  (CGXX_CMRX_RX_STAT0 + (stat_id * 8)), 0);
+	}
+
+	for (stat_id = 0 ; stat_id < CGX_TX_STATS_COUNT; stat_id++)
+		cgx_write(cgx, lmac_id, CGXX_CMRX_TX_STAT0 + (stat_id * 8), 0);
+
+	return 0;
+}
 
 static int cgx_set_fec_stats_count(struct cgx_link_user_info *linfo)
 {
