@@ -11177,6 +11177,7 @@ static int bnxt_suspend(struct device *device)
 	int rc = 0;
 
 	rtnl_lock();
+	bnxt_ulp_stop(bp);
 	if (netif_running(dev)) {
 		netif_device_detach(dev);
 		rc = bnxt_close(dev);
@@ -11211,6 +11212,7 @@ static int bnxt_resume(struct device *device)
 	}
 
 resume_exit:
+	bnxt_ulp_start(bp, rc);
 	rtnl_unlock();
 	return rc;
 }
