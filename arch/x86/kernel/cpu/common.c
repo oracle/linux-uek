@@ -1002,7 +1002,7 @@ static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 	{}
 };
 
-static bool __init cpu_matches(unsigned long which)
+static bool cpu_matches(unsigned long which)
 {
 	const struct x86_cpu_id *m = x86_match_cpu(cpu_vuln_whitelist);
 
@@ -1019,7 +1019,34 @@ u64 x86_read_arch_cap_msr(void)
 	return ia32_cap;
 }
 
-static void __init cpu_set_bug_bits(struct cpuinfo_x86 *c)
+void cpu_clear_bug_bits(struct cpuinfo_x86 *c)
+{
+	clear_cpu_cap(c, X86_BUG_SPECTRE_V1);
+	clear_cpu_cap(c, X86_BUG_SPECTRE_V2);
+	clear_cpu_cap(c, X86_BUG_SPEC_STORE_BYPASS);
+	clear_cpu_cap(c, X86_FEATURE_IBRS_ENHANCED);
+	clear_cpu_cap(c, X86_BUG_MDS);
+	clear_cpu_cap(c, X86_BUG_MSBDS_ONLY);
+	clear_cpu_cap(c, X86_BUG_SWAPGS);
+	clear_cpu_cap(c, X86_BUG_TAA);
+	clear_cpu_cap(c, X86_BUG_CPU_MELTDOWN);
+	clear_cpu_cap(c, X86_BUG_L1TF);
+
+	if (c->cpu_index == boot_cpu_data.cpu_index) {
+		setup_clear_cpu_cap(X86_BUG_SPECTRE_V1);
+		setup_clear_cpu_cap(X86_BUG_SPECTRE_V2);
+		setup_clear_cpu_cap(X86_BUG_SPEC_STORE_BYPASS);
+		setup_clear_cpu_cap(X86_FEATURE_IBRS_ENHANCED);
+		setup_clear_cpu_cap(X86_BUG_MDS);
+		setup_clear_cpu_cap(X86_BUG_MSBDS_ONLY);
+		setup_clear_cpu_cap(X86_BUG_SWAPGS);
+		setup_clear_cpu_cap(X86_BUG_TAA);
+		setup_clear_cpu_cap(X86_BUG_CPU_MELTDOWN);
+		setup_clear_cpu_cap(X86_BUG_L1TF);
+	}
+}
+
+void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = x86_read_arch_cap_msr();
 
