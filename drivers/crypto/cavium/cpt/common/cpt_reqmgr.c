@@ -107,7 +107,12 @@ process_pentry:
 		pqueue->pending_count--;
 		pqueue->front = modulo_inc(pqueue->front, pqueue->qlen, 1);
 		spin_unlock_bh(&pqueue->lock);
-
+		/*
+		 * Kernel crypto can reuse/free buffer(s), that's why cleanup
+		 * needs to be done before callback.
+		 */
+		if (cpt_info)
+			do_request_cleanup(pdev, cpt_info);
 		/*
 		 * Call callback after current pending entry has been been
 		 * processed we don't do it if the callback pointer or
@@ -115,9 +120,6 @@ process_pentry:
 		 */
 		if (callback && areq)
 			callback(res_code, areq, req);
-
-		if (cpt_info)
-			do_request_cleanup(pdev, cpt_info);
 	}
 }
 EXPORT_SYMBOL_GPL(process_pending_queue);
