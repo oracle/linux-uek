@@ -17,3 +17,5 @@
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_receive);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_drop_ingress);
