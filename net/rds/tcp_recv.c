@@ -33,6 +33,8 @@
 #include <linux/kernel.h>
 #include <net/tcp.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "tcp.h"
 
@@ -144,6 +146,8 @@ static void rds_tcp_cong_recv(struct rds_connection *conn,
 		}
 	}
 
+	trace_rds_receive(&tinc->ti_inc, NULL, conn, NULL,
+			  &conn->c_faddr, &conn->c_laddr);
 	rds_cong_map_updated(map, ~(u64) 0);
 }
 
