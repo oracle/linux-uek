@@ -36,6 +36,8 @@
 #include <linux/dma-mapping.h>
 #include <rdma/rdma_cm.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "ib.h"
 #include "rds_single_path.h"
@@ -1020,6 +1022,10 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 
 	/* catch completely corrupt packets */
 	if (be32_to_cpu(ibinc->ii_inc.i_hdr.h_len) != RDS_CONG_MAP_BYTES) {
+		trace_rds_drop_ingress(&ibinc->ii_inc, NULL, conn, NULL,
+				       &conn->c_faddr,
+				       &conn->c_laddr,
+				       "corrupt congestion update");
 		pr_warn_ratelimited("RDS: received corrupt congestion update, expected header length: %d, received header length: %d on conn %p <%pI6c, %pI6c, %d> remote map %p remote IP %pI6c\n",
 				    RDS_CONG_MAP_BYTES,
 				    be32_to_cpu(ibinc->ii_inc.i_hdr.h_len),
@@ -1081,6 +1087,9 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 	/* the congestion map is in little endian order */
 	uncongested = le64_to_cpu(uncongested);
 
+	trace_rds_receive(&ibinc->ii_inc, NULL, conn, NULL,
+			  &conn->c_faddr, &conn->c_laddr);
+
 	rds_cong_map_updated(map, uncongested);
 }
 
@@ -1098,6 +1107,10 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 data_len);
 
 	if (data_len < sizeof(struct rds_header)) {
+		trace_rds_drop_ingress(ibinc ? &ibinc->ii_inc : NULL, NULL,
+				       conn, NULL,
+				       &conn->c_faddr, &conn->c_laddr,
+				       "header missing");
 		rds_conn_drop(conn, DR_IB_HEADER_MISSING, 0);
 		pr_warn("RDS/IB: incoming message from %pI6c didn't inclue a header, disconnecting and reconnecting\n",
 			&conn->c_faddr);
@@ -1109,6 +1122,10 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
+		trace_rds_drop_ingress(ibinc ? &ibinc->ii_inc : NULL, NULL,
+				       conn, NULL,
+				       &conn->c_faddr, &conn->c_laddr,
+				       "corrupted header");
 		rds_conn_drop(conn, DR_IB_HEADER_CORRUPTED, 0);
 		pr_warn("RDS/IB: incoming message from %pI6c has corrupted header - forcing a reconnect\n",
 			&conn->c_faddr);
@@ -1130,6 +1147,8 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 * special treatment here is that historically, ACKs
 		 * were rather special beasts.
 		 */
+		trace_rds_receive(ibinc ? &ibinc->ii_inc : NULL, NULL, conn,
+				  NULL, &conn->c_faddr, &conn->c_laddr);
 		rds_ib_stats_inc(s_ib_ack_received);
 
 		/*
@@ -1175,6 +1194,9 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 || hdr->h_len != ihdr->h_len
 		 || hdr->h_sport != ihdr->h_sport
 		 || hdr->h_dport != ihdr->h_dport) {
+			trace_rds_drop_ingress(&ibinc->ii_inc, NULL, conn, NULL,
+					       &conn->c_faddr, &conn->c_laddr,
+					       "frag header mismatch");
 			rds_conn_drop(conn, DR_IB_FRAG_HEADER_MISMATCH, 0);
 			return;
 		}
@@ -1219,6 +1241,9 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 	struct rds_header *ihdr, *hdr;
 
 	if (data_len < sizeof(struct rds_header)) {
+		trace_rds_drop_ingress(NULL, NULL, conn, NULL,
+				       &conn->c_faddr, &conn->c_laddr,
+				       "no RDS header");
 		printk(KERN_WARNING "RDS: from %pI6c didn't inclue a "
 			"header, disconnecting and "
 			"reconnecting\n",
@@ -1233,6 +1258,9 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
+		trace_rds_drop_ingress(&ibinc->ii_inc, NULL, conn, NULL,
+				       &conn->c_faddr, &conn->c_laddr,
+				       "corrupted header");
 		printk(KERN_WARNING "RDS: from %pI6c has corrupted header - "
 			"forcing a reconnect\n",
 			&conn->c_faddr);
@@ -1268,6 +1296,11 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 			|| hdr->h_len != ihdr->h_len
 			|| hdr->h_sport != ihdr->h_sport
 			|| hdr->h_dport != ihdr->h_dport) {
+				trace_rds_drop_ingress(&ibinc->ii_inc, NULL,
+						       conn, NULL,
+						       &conn->c_faddr,
+						       &conn->c_laddr,
+						       "fragment header mismatch");
 				printk(KERN_WARNING "RDS: fragment header mismatch; "
 					"forcing reconnect\n");
 				rds_ib_frag_free(ic, recv->r_frag);
@@ -1338,6 +1371,10 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 		else
 			rds_ib_process_recv(conn, recv, wc->byte_len, state);
 	} else {
+		trace_rds_drop_ingress(NULL, NULL, conn, NULL,
+				       &conn->c_faddr, &conn->c_laddr,
+				       (char *)ib_wc_status_msg(wc->status));
+
 		/* We expect errors as the qp is drained during shutdown */
 		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
 			/* Flush errors are normal while draining the QP */
