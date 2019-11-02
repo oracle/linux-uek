@@ -146,6 +146,137 @@ DEFINE_EVENT(rds_state, rds_state_change_err,
 
 );
 
+TRACE_EVENT(rds_receive,
+
+	TP_PROTO(struct rds_incoming *inc, struct rds_sock *rs,
+		 struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(inc, rs, conn, cp, saddr, daddr),
+
+	/*
+	 * fields here are intended to match as much of rds_state_change[_err]
+	 * as is possible so the same struct can be used to access key
+	 * tracepoint data from all rds-related tracepoints.
+	 */
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, inc)
+		__field(void *, hdr)
+		__field(__u64, seq)
+		__field(__u64, next_rx_seq)
+		__field(bool, forward)
+		__field(__u32, len)
+		__field(unsigned long, rx_jiffies)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = *saddr;
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = *daddr;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->fport = inc ? be16_to_cpu(inc->i_hdr.h_sport) : 0;
+		__entry->lport = inc ? be16_to_cpu(inc->i_hdr.h_dport) : 0;
+		__entry->netns_inum = rds_netns_inum(rs);
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = inc ? inc->i_hdr.h_flags : 0;
+		__entry->err = 0;
+		RDS_STRLCPY(__entry->reason, NULL);
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->inc = inc;
+		__entry->rs = rs;
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->hdr = inc ? &inc->i_hdr : NULL;
+		__entry->seq = inc ? be64_to_cpu(inc->i_hdr.h_sequence) : 0;
+		__entry->next_rx_seq = cp ? cp->cp_next_rx_seq : 0;
+		__entry->forward = !cp;
+		__entry->len = inc ? be32_to_cpu(inc->i_hdr.h_len) : 0;
+		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu forward %d",
+		  show_transport(__entry->transport),
+		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->next_rx_seq, __entry->seq, __entry->len,
+		  __entry->fport, __entry->lport, __entry->flags,
+		  __entry->rx_jiffies, __entry->forward)
+);
+
+TRACE_EVENT(rds_drop_ingress,
+
+	TP_PROTO(struct rds_incoming *inc, struct rds_sock *rs,
+		 struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr,
+		 char *reason),
+
+	TP_ARGS(inc, rs, conn, cp, saddr, daddr, reason),
+
+	/*
+	 * fields here are intended to match rds_receive, and as much of
+	 * rds_state_change[_err] as is possible.
+	 */
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, inc)
+		__field(void *, hdr)
+		__field(__u64, seq)
+		__field(__u64, next_rx_seq)
+		__field(bool, forward)
+		__field(__u32, len)
+		__field(unsigned long, rx_jiffies)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = *saddr;
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = *daddr;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->fport = inc ? be16_to_cpu(inc->i_hdr.h_sport) : 0;
+		__entry->lport = inc ? be16_to_cpu(inc->i_hdr.h_dport) : 0;
+		__entry->netns_inum = rds_netns_inum(rs);
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = inc ? inc->i_hdr.h_flags : 0;
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = 0;
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->inc = inc;
+		__entry->rs = rs;
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->hdr = inc ? &inc->i_hdr : NULL;
+		__entry->seq = inc ? be64_to_cpu(inc->i_hdr.h_sequence) : 0;
+		__entry->next_rx_seq = cp ? cp->cp_next_rx_seq : 0;
+		__entry->forward = !cp;
+		__entry->len = inc ? be32_to_cpu(inc->i_hdr.h_len) : 0;
+		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> dropping request, reason [%s]",
+		  show_transport(__entry->transport),
+		  __entry->faddr, __entry->laddr, __entry->tos,
+		  __entry->reason)
+);
+
+
 
 #endif /* _TRACE_RDS_H */
 
