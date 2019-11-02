@@ -41,11 +41,13 @@
 #include "rds.h"
 #include "loop.h"
 
+#include <trace/events/rds.h>
+
 /* forward prototypes */
 static void
 rds_recv_drop(struct rds_connection *conn, struct in6_addr *saddr,
 	      struct in6_addr *daddr,
-	      struct rds_incoming *inc, gfp_t gfp);
+	      struct rds_incoming *inc, char *reason);
 
 static void
 rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
@@ -443,12 +445,8 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 			      sk, skb, NULL, NULL, rds_recv_ok);
 	}
 	/* if we had a failure to convert, then just assuming to continue as local */
-	else {
-		rds_rtd_ptr(RDS_RTD_RCV_EXT,
-			    "failed to create skb form, conn %p, inc %p, %pI6c -> %pI6c tos %d\n",
-			    conn, inc, saddr, daddr, conn->c_tos);
+	else
 		ret = 1;
-	}
 
 	/* pull back out the rds headers */
 	dst = rds_nf_hdr_dst(skb);
@@ -456,7 +454,8 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 
 	/* now depending upon we got back we can perform appropriate activities */
 	if (dst->flags & RDS_NF_HDR_FLAG_DONE) {
-		rds_recv_drop(conn, saddr, daddr, inc, gfp);
+		rds_recv_drop(conn, saddr, daddr, inc,
+			      "request consumed and done");
 	}
 	/* this is the normal good processed state */
 	else if (ret >= 0) {
@@ -489,8 +488,8 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	/* we don't really expect an error state from this call that isn't the done above */
 	else {
 		/* we don't really know how to handle this yet - just ignore for now */
-		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, %pI6c -> %pI6c\n",
-		       ret, conn, inc, saddr, daddr);
+		rds_recv_drop(conn, saddr, daddr, inc,
+			      "unacceptable state for skb");
 	}
 }
 EXPORT_SYMBOL_GPL(rds_recv_incoming);
@@ -498,11 +497,10 @@ EXPORT_SYMBOL_GPL(rds_recv_incoming);
 static void
 rds_recv_drop(struct rds_connection *conn, struct in6_addr *saddr,
 	      struct in6_addr *daddr,
-	      struct rds_incoming *inc, gfp_t gfp)
+	      struct rds_incoming *inc, char *reason)
 {
 	/* drop the existing incoming message */
-	rdsdebug("dropping request on conn %p, inc %p, %pI6c -> %pI6c",
-		 conn, inc, saddr, daddr);
+	trace_rds_drop_ingress(inc, NULL, conn, NULL, saddr, daddr, reason);
 }
 
 static void
@@ -534,7 +532,8 @@ rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
 
 		rdsdebug("cannot find matching conn for inc %p, %pI6c -> %pI6c",
 			 inc, &dst->saddr, &dst->daddr);
-		rds_recv_drop(conn, &dst->saddr, &dst->daddr, inc, gfp);
+		rds_recv_drop(conn, &dst->saddr, &dst->daddr, inc,
+			      "cannot find matching conn");
 	}
 	/* this is a request for our local node, but potentially a different source
 	 * either way we process it locally */
@@ -545,6 +544,8 @@ rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
 	}
 	/* looks like this request is going out to another node */
 	else {
+		trace_rds_receive(inc, NULL, conn, NULL, &dst->saddr,
+				  &dst->daddr);
 		WARN_ON(nconn->c_trans->t_mp_capable);
 		rds_recv_forward(&nconn->c_path[0], inc, gfp);
 	}
@@ -619,25 +620,15 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 	       struct in6_addr *daddr, struct rds_incoming *inc, gfp_t gfp,
 	       struct rds_sock *rs)
 {
-	struct sock *sk;
-	unsigned long flags;
-	u64 inc_hdr_h_sequence = 0;
-	bool rs_local = (!rs);
 	struct rds_connection *conn = cp->cp_conn;
+	u64 inc_hdr_h_sequence = 0;
+	char *dropreason = NULL;
+	bool rs_local = (!rs);
+	unsigned long flags;
+	struct sock *sk;
 
 	inc->i_conn = conn;
 	inc->i_rx_jiffies = jiffies;
-
-	rdsdebug("conn %p next %llu inc %p seq %llu len %u sport %u dport %u "
-		 "flags 0x%x rx_jiffies %lu\n", conn,
-		 (unsigned long long)cp->cp_next_rx_seq,
-		 inc,
-		 (unsigned long long)be64_to_cpu(inc->i_hdr.h_sequence),
-		 be32_to_cpu(inc->i_hdr.h_len),
-		 be16_to_cpu(inc->i_hdr.h_sport),
-		 be16_to_cpu(inc->i_hdr.h_dport),
-		 inc->i_hdr.h_flags,
-		 inc->i_rx_jiffies);
 
 	/*
 	 * Sequence numbers should only increase.  Messages get their
@@ -661,17 +652,10 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 	 */
 	inc_hdr_h_sequence = be64_to_cpu(inc->i_hdr.h_sequence);
 
-	if (inc_hdr_h_sequence != cp->cp_next_rx_seq) {
-		rds_rtd_ptr(RDS_RTD_RCV,
-			    "conn %p <%pI6c,%pI6c,%d> expect seq# %llu, recved seq# %llu, retrans bit %d\n",
-			    conn, &conn->c_laddr, &conn->c_faddr,
-			    conn->c_tos, cp->cp_next_rx_seq, inc_hdr_h_sequence,
-			    inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED);
-	}
-
 	if (inc_hdr_h_sequence < cp->cp_next_rx_seq
 	 && (inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED)) {
 		rds_stats_inc(s_recv_drop_old_seq);
+		dropreason = "dropping old sequence number";
 		goto out;
 	}
 	cp->cp_next_rx_seq = inc_hdr_h_sequence + 1;
@@ -681,14 +665,13 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 		bool is_hb_pong = (inc->i_hdr.h_flags & RDS_FLAG_ANY_HB) == RDS_FLAG_HB_PONG;
 
 		if (inc->i_hdr.h_len) {
-			rdsdebug("ignore ping with non-zero length from %pI6c\n", &saddr);
+			dropreason = "ignore ping with non-zero length";
 			goto out;
 		}
 
 		/* One and only one of the heart-beat flags must be set */
 		if (inc->i_hdr.h_sport == 0 && !(is_hb_ping ^ is_hb_pong)) {
-			rdsdebug("ignore ping with 0 sport from %pI6c\n",
-				 &saddr);
+			dropreason = "ignore ping with 0 sport";
 			goto out;
 		}
 		if (is_hb_ping) {
@@ -714,6 +697,7 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 				rds_start_mprds(cp->cp_conn);
 			}
 		}
+		dropreason = "ignoring invalid ping with 0 dport";
 		goto out;
 	}
 	if (conn->c_trans->t_mp_capable &&
@@ -735,6 +719,7 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 				    conn->c_bound_if);
 	if (!rs) {
 		rds_stats_inc(s_recv_drop_no_sock);
+		dropreason = "no socket";
 		goto out;
 	}
 
@@ -775,11 +760,18 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 			__rds_wake_sk_sleep(sk);
 		}
 	} else {
+		dropreason = "dead socket";
 		rds_stats_inc(s_recv_drop_dead_sock);
 	}
 	write_unlock_irqrestore(&rs->rs_recv_lock, flags);
 
 out:
+	if (dropreason)
+		trace_rds_drop_ingress(inc, rs, conn, cp, saddr, daddr,
+				       dropreason);
+	else
+		trace_rds_receive(inc, rs, conn, cp, saddr, daddr);
+
 	if (rs_local && rs)
 		rds_sock_put(rs);
 }
