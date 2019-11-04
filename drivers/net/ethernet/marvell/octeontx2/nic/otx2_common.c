@@ -1317,26 +1317,26 @@ static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
 					struct otx2_nic *pfvf, int qidx)
 {
 	u64 incr = (u64)qidx << 32;
-	atomic64_t *ptr;
+	u64 *ptr;
 
-	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_OCTS);
-	stats->bytes = atomic64_fetch_add_relaxed(incr, ptr);
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_OCTS);
+	stats->bytes = otx2_atomic64_add(incr, ptr);
 
-	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_PKTS);
-	stats->pkts = atomic64_fetch_add_relaxed(incr, ptr);
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_PKTS);
+	stats->pkts = otx2_atomic64_add(incr, ptr);
 }
 
 static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
 					struct otx2_nic *pfvf, int qidx)
 {
 	u64 incr = (u64)qidx << 32;
-	atomic64_t *ptr;
+	u64 *ptr;
 
-	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_OCTS);
-	stats->bytes = atomic64_fetch_add_relaxed(incr, ptr);
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_OCTS);
+	stats->bytes = otx2_atomic64_add(incr, ptr);
 
-	ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_PKTS);
-	stats->pkts = atomic64_fetch_add_relaxed(incr, ptr);
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_PKTS);
+	stats->pkts = otx2_atomic64_add(incr, ptr);
 }
 
 /* Mbox message handlers */
