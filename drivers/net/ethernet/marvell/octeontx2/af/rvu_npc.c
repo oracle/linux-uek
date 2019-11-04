@@ -2661,7 +2661,7 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 	if (req->dir & PKIND_RX) {
 		/* rx pkind set req valid only for cgx mapped PFs */
 		if (!is_cgx_config_permitted(rvu, req->hdr.pcifunc))
-			return -EPERM;
+			return 0;
 		rvu_get_cgx_lmac_id(pfvf->cgx_lmac, &cgx_id, &lmac_id);
 
 		rc = cgx_set_pkind(rvu_cgx_pdata(cgx_id, rvu),
