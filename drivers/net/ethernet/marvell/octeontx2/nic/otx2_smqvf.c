@@ -42,12 +42,6 @@ static bool is_otx2_smqvf(struct otx2_nic *vf)
 	return false;
 }
 
-/* Flush SQE written to LMT to SQB */
-static u64 otx2_lmt_flush(uint64_t addr)
-{
-	return atomic64_fetch_xor_relaxed(0, (atomic64_t *)addr);
-}
-
 static void otx2_sqe_flush(struct otx2_snd_queue *sq, int size)
 {
 	u64 status;

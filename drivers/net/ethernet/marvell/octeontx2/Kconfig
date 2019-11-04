@@ -8,7 +8,7 @@ config OCTEONTX2_MBOX
 config OCTEONTX2_AF
 	tristate "Marvell OcteonTX2 RVU Admin Function driver"
 	select OCTEONTX2_MBOX
-	depends on ARM64 && PCI
+	depends on PCI
 	---help---
 	  This driver supports Marvell's OcteonTX2 Resource Virtualization
 	  Unit's admin function manager which manages all RVU HW resources
@@ -27,7 +27,7 @@ config NDC_DIS_DYNAMIC_CACHING
 config OCTEONTX2_PF
 	tristate "Marvell OcteonTX2 NIC Physical Function driver"
 	select OCTEONTX2_MBOX
-	depends on PCI && ARM64 && ARM64_LSE_ATOMICS
+	depends on PCI
 	---help---
 	  This driver supports Marvell's OcteonTX2 NIC physical function.
 
