@@ -130,7 +130,11 @@ int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 
 static inline u64 get_tsc(bool is_pmu)
 {
+#if defined(CONFIG_ARM64)
 	return is_pmu ? read_sysreg(pmccntr_el0) : read_sysreg(cntvct_el0);
+#else
+	return 0;
+#endif
 }
 
 int ptp_get_clock(struct ptp *ptp, bool is_pmu, u64 *clk, u64 *tsc)

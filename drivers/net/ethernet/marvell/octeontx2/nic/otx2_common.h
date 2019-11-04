@@ -13,6 +13,7 @@
 
 #include <linux/pci.h>
 #include <linux/ptp_clock_kernel.h>
+#include <linux/timecounter.h>
 
 #include <mbox.h>
 #include "otx2_reg.h"
@@ -388,10 +389,11 @@ static inline u64 otx2_read64(struct otx2_nic *nic, u64 offset)
 #define otx2_low(high, low)    (low)
 #endif
 
+#if defined(CONFIG_ARM64)
 static inline void otx2_write128(u64 lo, u64 hi, void __iomem *addr)
 {
-	asm volatile("stp %x[x0], %x[x1], [%x[p1],#0]!"
-		::[x0]"r"(lo), [x1]"r"(hi), [p1]"r"(addr));
+	__asm__ volatile("stp %x[x0], %x[x1], [%x[p1],#0]!"
+			 ::[x0]"r"(lo), [x1]"r"(hi), [p1]"r"(addr));
 }
 
 static inline __uint128_t otx2_read128(const void __iomem *addr)
@@ -399,22 +401,51 @@ static inline __uint128_t otx2_read128(const void __iomem *addr)
 	__uint128_t *__addr = (__force __uint128_t *)addr;
 	u64 h, l;
 
-	asm volatile("ldp %x[x0], %x[x1], %x[p1]"
-		: [x0]"=r"(l), [x1]"=r"(h)
-		: [p1]"Ump"(*__addr));
+	__asm__ volatile("ldp %x[x0], %x[x1], %x[p1]"
+			 : [x0]"=r"(l), [x1]"=r"(h)
+			 : [p1]"Ump"(*__addr));
 
 	return (__uint128_t)le64_to_cpu(otx2_low(h, l)) |
 		(((__uint128_t)le64_to_cpu(otx2_high(h, l))) << 64);
 }
 
+static inline u64 otx2_atomic64_add(u64 incr, u64 *ptr)
+{
+	u64 result;
+
+	__asm__ volatile(".cpu   generic+lse\n"
+			 "ldadd %x[i], %x[r], [%[b]]"
+			 : [r]"=r"(result), "+m"(*ptr)
+			 : [i]"r"(incr), [b]"r"(ptr)
+			 : "memory");
+	return result;
+}
+
+static inline u64 otx2_lmt_flush(uint64_t addr)
+{
+	u64 result = 0;
+
+	__asm__ volatile(".cpu  generic+lse\n"
+			 "ldeor xzr,%x[rf],[%[rs]]"
+			 : [rf]"=r"(result)
+			 : [rs]"r"(addr));
+	return result;
+}
+#else
+#define otx2_write128(lo, hi, addr)
+#define otx2_read128(addr)
+#define otx2_atomic64_add(incr, ptr)		({ 0; })
+#define otx2_lmt_flush(addr)			({ 0; })
+#endif
+
 /* Alloc pointer from pool/aura */
 static inline u64 otx2_aura_allocptr(struct otx2_nic *pfvf, int aura)
 {
-	atomic64_t *ptr = (__force atomic64_t *)otx2_get_regaddr(pfvf,
+	u64 *ptr = (u64 *)otx2_get_regaddr(pfvf,
 			   NPA_LF_AURA_OP_ALLOCX(0));
 	u64 incr = (u64)aura | BIT_ULL(63);
 
-	return atomic64_fetch_add_relaxed(incr, ptr);
+	return otx2_atomic64_add(incr, ptr);
 }
 
 /* Free pointer to a pool/aura */
