@@ -501,9 +501,13 @@ struct sp_name {
 #define SRB_NACK_LOGO	18
 
 typedef struct srb {
-	atomic_t ref_count;
 	struct fc_port *fcport;
 	struct scsi_qla_host *vha;
+	//struct kref cmd_kref;	/* need to migrate ref_count over to this */
+	unsigned int abort:1;
+	unsigned int aborted:1;
+	unsigned int completed:1;
+
 	uint32_t handle;
 	uint16_t flags;
 	uint16_t type;

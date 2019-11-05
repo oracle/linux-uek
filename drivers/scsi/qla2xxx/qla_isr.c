@@ -2259,6 +2259,11 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 		return;
 	}
 
+	if (sp->abort)
+		sp->aborted = 1;
+	else
+		sp->completed = 1;
+
 	if (unlikely((state_flags & BIT_1) && (sp->type == SRB_BIDI_CMD))) {
 		qla25xx_process_bidir_status_iocb(vha, pkt, req, handle);
 		return;
