@@ -50,7 +50,6 @@
 #include "rdmaip.h"
 
 static struct workqueue_struct *rdmaip_wq;
-static struct workqueue_struct *rdmaip_garps_wq;
 
 static void rdmaip_device_add(struct ib_device *device);
 static void rdmaip_device_remove(struct ib_device *device, void *client_data);
@@ -294,7 +293,7 @@ static void rdmaip_garp_work_handler(struct work_struct *_work)
 
 	/*
 	 * If module unload in progress, dont queue the work request to the
-	 * rdmaip_garps_wq.
+	 * rdmaip_wq.
 	 * Note: Work is not added to the linked list in the
 	 * rdmaip_send_gratuitous_arp() function as there was no
 	 * delay when queueing the delayed work to the queue.
@@ -321,7 +320,7 @@ static void rdmaip_garp_work_handler(struct work_struct *_work)
 
 	if (--garps->garps_left >= 0) {
 		garps->queued = true;
-		queue_delayed_work(rdmaip_garps_wq, &garps->work, garps->delay);
+		queue_delayed_work(rdmaip_wq, &garps->work, garps->delay);
 		list_add(&garps->list, &rdmaip_delayed_work_list);
 		RDMAIP_DBG2("Adding %p GARP work to the list\n", garps);
 	} else {
@@ -351,7 +350,7 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 
 	/*
 	 * If module unload in progress, dont queue the work request to the
-	 * rdmaip_garps_wq.
+	 * rdmaip_wq.
 	 */
 	mutex_lock(&rdmaip_global_flag_lock);
 	if (rdmaip_is_teardown_flag_set()) {
@@ -389,7 +388,7 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 	garps->queued = false;
 
 	INIT_DELAYED_WORK(&garps->work, rdmaip_garp_work_handler);
-	queue_delayed_work(rdmaip_garps_wq, &garps->work, 0);
+	queue_delayed_work(rdmaip_wq, &garps->work, 0);
 }
 
 /* Add or remove an IPv6 address to/from an interface. */
@@ -2616,16 +2615,10 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 
 void rdmaip_destroy_workqs(void)
 {
-
 	if (rdmaip_init_flag & RDMAIP_IP_WQ_CREATED) {
 		cancel_delayed_work_sync(&rdmaip_dlywork);
 		destroy_workqueue(rdmaip_wq);
 		rdmaip_init_flag &= ~RDMAIP_IP_WQ_CREATED;
-	}
-
-	if (rdmaip_init_flag & RDMAIP_GARPS_WQ_CREATED) {
-		destroy_workqueue(rdmaip_garps_wq);
-		rdmaip_init_flag &= ~RDMAIP_GARPS_WQ_CREATED;
 	}
 }
 
@@ -2851,7 +2844,6 @@ void rdmaip_cleanup(void)
 	 * queue.
 	 */
 	flush_workqueue(rdmaip_wq);
-	flush_workqueue(rdmaip_garps_wq);
 
 	/* Cancel all the delayed work items */
 	list_for_each_entry_safe(work, temp, &rdmaip_delayed_work_list, list) {
@@ -2994,13 +2986,6 @@ int rdmaip_init(void)
 		return -ENOMEM;
 	}
 	rdmaip_init_flag |= RDMAIP_IP_WQ_CREATED;
-
-	rdmaip_garps_wq = create_workqueue("rdmaip_garps");
-	if (!rdmaip_garps_wq) {
-		rdmaip_cleanup();
-		return -ENOMEM;
-	}
-	rdmaip_init_flag |= RDMAIP_GARPS_WQ_CREATED;
 
 	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
 			    GFP_KERNEL);
