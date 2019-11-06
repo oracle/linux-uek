@@ -34,12 +34,6 @@ static inline struct nix_cqe_hdr_s *otx2_get_next_cqe(struct otx2_cq_queue *cq)
 	return cqe_hdr;
 }
 
-/* Flush SQE written to LMT to SQB */
-static inline u64 otx2_lmt_flush(uint64_t addr)
-{
-	return atomic64_fetch_xor_relaxed(0, (atomic64_t *)addr);
-}
-
 static inline unsigned int frag_num(unsigned int i)
 {
 #ifdef __BIG_ENDIAN

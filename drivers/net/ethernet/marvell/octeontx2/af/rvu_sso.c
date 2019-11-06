@@ -27,8 +27,9 @@
 #else
 #define rvu_sso_store_pair(val0, val1, addr)				\
 	do {								\
-		*(uint64_t *)addr = val0;			\
-		*(uint64_t *)(((uint8_t *)addr) + 8) = val1;	\
+		u64 *addr1 = (void *)addr;				\
+		*addr1 = val0;						\
+		*(u64 *)(((u8 *)addr1) + 8) = val1;			\
 	} while (0)
 #endif
 
