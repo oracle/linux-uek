@@ -302,7 +302,7 @@ static void rdmaip_garp_work_handler(struct work_struct *_work)
 	if (garps->queued) {
 		list_del(&garps->list);
 		garps->queued = false;
-		RDMAIP_DBG2("Deleted  %p GARP work from the list\n", garps);
+		RDMAIP_DBG3("Deleted  %p GARP work from the list\n", garps);
 	}
 
 	mutex_lock(&rdmaip_global_flag_lock);
@@ -322,7 +322,7 @@ static void rdmaip_garp_work_handler(struct work_struct *_work)
 		garps->queued = true;
 		queue_delayed_work(rdmaip_wq, &garps->work, garps->delay);
 		list_add(&garps->list, &rdmaip_delayed_work_list);
-		RDMAIP_DBG2("Adding %p GARP work to the list\n", garps);
+		RDMAIP_DBG3("Adding %p GARP work to the list\n", garps);
 	} else {
 		kfree(garps);
 	}
@@ -1237,7 +1237,7 @@ static void rdmaip_failback(struct work_struct *_work)
 	if (work->queued) {
 		list_del(&work->list);
 		work->queued = false;
-		RDMAIP_DBG2("Deleted %p work from the list\n", work);
+		RDMAIP_DBG3("Deleted %p work from the list\n", work);
 	}
 
 	if ((ip_config[port].port_state == RDMAIP_PORT_INIT) ||
@@ -1459,7 +1459,7 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 			queue_delayed_work(rdmaip_wq, &work->work,
 					   rdmaip_get_failback_sync_jiffies(port));
 			list_add(&work->list, &rdmaip_delayed_work_list);
-			RDMAIP_DBG2("Adding %p work to the list\n", work);
+			RDMAIP_DBG3("Adding %p work to the list\n", work);
 		} else {
 			kfree(work);
 		}
@@ -2427,7 +2427,7 @@ static void rdmaip_add_new_rdmaip_port_handler(struct work_struct *_work)
 	if (work->queued) {
 		list_del(&work->list);
 		work->queued = false;
-		RDMAIP_DBG2("Deleted  %p work from the list\n", work);
+		RDMAIP_DBG3("Deleted  %p work from the list\n", work);
 	}
 
 	in_dev = in_dev_get(ndev);
@@ -2494,7 +2494,7 @@ static void rdmaip_add_new_rdmaip_port(struct net_device *netdev)
 			queue_delayed_work(rdmaip_wq, &work->work,
 					msecs_to_jiffies(100));
 			list_add(&work->list, &rdmaip_delayed_work_list);
-			RDMAIP_DBG2("Adding %p work to the list\n", work);
+			RDMAIP_DBG3("Adding %p work to the list\n", work);
 		} else
 			RDMAIP_DBG2("Failed to allocated memory for work\n");
 	}
@@ -2511,7 +2511,7 @@ static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 	if (work->queued) {
 		list_del(&work->list);
 		work->queued = false;
-		RDMAIP_DBG2("Deleted  %p work from the list\n", work);
+		RDMAIP_DBG3("Deleted  %p work from the list\n", work);
 	}
 
 	mutex_lock(&rdmaip_global_flag_lock);
