@@ -905,7 +905,7 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 
 	if (free_sqe < sq->sqe_thresh ||
 	    free_sqe < otx2_get_sqe_count(pfvf, skb))
-		goto fail;
+		return false;
 
 	num_segs = skb_shinfo(skb)->nr_frags + 1;
 
@@ -955,10 +955,6 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 	otx2_sqe_flush(sq, offset);
 
 	return true;
-fail:
-	netdev_warn(pfvf->netdev, "SQ%d full, SQB count %d Aura count %lld\n",
-		    qidx, sq->num_sqbs, *sq->aura_fc_addr);
-	return false;
 }
 EXPORT_SYMBOL(otx2_sq_append_skb);
 
