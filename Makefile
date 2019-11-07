@@ -1080,7 +1080,7 @@ cmd_link-vmlinux =                                                 \
 	$(CONFIG_SHELL) $< $(LD) $(KBUILD_LDFLAGS) $(LDFLAGS_vmlinux) ;    \
 	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
 
-vmlinux: scripts/link-vmlinux.sh autoksyms_recursive $(vmlinux-deps) FORCE
+vmlinux: scripts/link-vmlinux.sh autoksyms_recursive $(vmlinux-deps) modules_thick.builtin FORCE
 	+$(call if_changed,link-vmlinux)
 
 targets := vmlinux
@@ -1295,17 +1295,6 @@ modules: $(if $(KBUILD_BUILTIN),vmlinux) modules.order modules.builtin
 modules.order: descend
 	$(Q)$(AWK) '!x[$$0]++' $(addsuffix /$@, $(build-dirs)) > $@
 
-modbuiltin-dirs := $(addprefix _modbuiltin_, $(build-dirs))
-
-modules.builtin: $(modbuiltin-dirs)
-	$(Q)$(AWK) '!x[$$0]++' $(addsuffix /$@, $(build-dirs)) > $@
-
-PHONY += $(modbuiltin-dirs)
-# tristate.conf is not included from this Makefile. Add it as a prerequisite
-# here to make it self-healing in case somebody accidentally removes it.
-$(modbuiltin-dirs): include/config/tristate.conf
-	$(Q)$(MAKE) $(modbuiltin)=$(patsubst _modbuiltin_%,%,$@)
-
 # Target to prepare building external modules
 PHONY += modules_prepare
 modules_prepare: prepare
@@ -1357,6 +1346,33 @@ modules modules_install:
 	@exit 1
 
 endif # CONFIG_MODULES
+
+# modules.builtin has a 'thick' form which maps from kernel modules (or rather
+# the object file names they would have had had they not been built in) to their
+# constituent object files: kallsyms uses this to determine which modules any
+# given object file is part of.  (We cannot eliminate the slight redundancy
+# here without double-expansion.)
+
+modbuiltin-dirs := $(addprefix _modbuiltin_, $(build-dirs))
+
+modbuiltin-thick-dirs := $(addprefix _modbuiltin_thick_, $(build-dirs))
+
+modules.builtin: $(modbuiltin-dirs)
+	$(Q)$(AWK) '!x[$$0]++' $(addsuffix /$@, $(build-dirs)) > $@
+
+modules_thick.builtin: $(modbuiltin-thick-dirs)
+	$(Q)$(AWK) '!x[$$0]++' $(addsuffix /$@, $(build-dirs)) > $@
+
+PHONY += $(modbuiltin-dirs) $(modbuiltin-thick-dirs)
+# tristate.conf is not included from this Makefile. Add it as a prerequisite
+# here to make it self-healing in case somebody accidentally removes it.
+$(modbuiltin-dirs): include/config/tristate.conf
+	$(Q)$(MAKE) $(modbuiltin)=$(patsubst _modbuiltin_%,%,$@) \
+			builtin-file=modules.builtin
+
+$(modbuiltin-thick-dirs): include/config/tristate.conf
+	$(Q)$(MAKE) $(modbuiltin)=$(patsubst _modbuiltin_thick_%,%,$@) \
+			builtin-file=modules_thick.builtin
 
 ###
 # Cleaning is done on three levels.
@@ -1677,6 +1693,7 @@ clean: $(clean-dirs)
 		-o -name '*.asn1.[ch]' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
 		-o -name modules.builtin -o -name '.tmp_*.o.*' \
+		-o -name modules_thick.builtin \
 		-o -name '*.c.[012]*.*' \
 		-o -name '*.ll' \
 		-o -name '*.gcno' \) -type f -print | xargs rm -f
