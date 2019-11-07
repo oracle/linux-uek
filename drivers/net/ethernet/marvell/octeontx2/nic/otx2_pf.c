@@ -1496,10 +1496,6 @@ static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
 		if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb)
 							> sq->sqe_thresh)
 			netif_tx_wake_queue(txq);
-		else
-			netdev_warn(netdev,
-				    "%s: Transmit ring full, stopping SQ%d\n",
-				     netdev->name, qidx);
 
 		return NETDEV_TX_BUSY;
 	}

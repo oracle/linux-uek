@@ -433,7 +433,7 @@ static inline u64 otx2_lmt_flush(uint64_t addr)
 }
 #else
 #define otx2_write128(lo, hi, addr)
-#define otx2_read128(addr)
+#define otx2_read128(addr)			({ 0; })
 #define otx2_atomic64_add(incr, ptr)		({ 0; })
 #define otx2_lmt_flush(addr)			({ 0; })
 #endif
