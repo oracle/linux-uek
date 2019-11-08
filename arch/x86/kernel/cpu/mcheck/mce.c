@@ -1456,6 +1456,7 @@ static int __mcheck_cpu_cap_init(void)
 {
 	unsigned b;
 	u64 cap;
+	struct cpuinfo_x86 *c = &cpu_data(smp_processor_id());
 
 	rdmsrl(MSR_IA32_MCG_CAP, cap);
 
@@ -1463,7 +1464,12 @@ static int __mcheck_cpu_cap_init(void)
 	if (!mca_cfg.banks)
 		pr_info("CPU supports %d MCE banks\n", b);
 
-	if (b > MAX_NR_BANKS) {
+	/* XXX: UEK4 kernel does not support AMD SMCA, limite banks to 6. */
+	if (c->x86_vendor == X86_VENDOR_AMD && b > 6) {
+		pr_warn("Using only 6 machine check banks out of %u on AMD\n",
+			b);
+		b = 6;
+	} else if (b > MAX_NR_BANKS) {
 		pr_warn("Using only %u machine check banks out of %u\n",
 			MAX_NR_BANKS, b);
 		b = MAX_NR_BANKS;
