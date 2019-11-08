@@ -16,6 +16,7 @@
 #include <linux/prctl.h>
 #include <linux/jump_label.h>
 #include <linux/sched/smt.h>
+#include <xen/xen.h>
 
 #include <asm/spec-ctrl.h>
 #include <asm/cmdline.h>
