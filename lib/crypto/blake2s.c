@@ -27,12 +27,8 @@ void blake2s_update(struct blake2s_state *state, const u8 *in, size_t inlen)
 		return;
 	if (inlen > fill) {
 		memcpy(state->buf + state->buflen, in, fill);
-		if (IS_ENABLED(CONFIG_CRYPTO_ARCH_HAVE_LIB_BLAKE2S))
-			blake2s_compress_arch(state, state->buf, 1,
-					      BLAKE2S_BLOCK_SIZE);
-		else
-			blake2s_compress_generic(state, state->buf, 1,
-						 BLAKE2S_BLOCK_SIZE);
+		blake2s_compress_generic(state, state->buf, 1,
+					 BLAKE2S_BLOCK_SIZE);
 		state->buflen = 0;
 		in += fill;
 		inlen -= fill;
@@ -40,12 +36,8 @@ void blake2s_update(struct blake2s_state *state, const u8 *in, size_t inlen)
 	if (inlen > BLAKE2S_BLOCK_SIZE) {
 		const size_t nblocks = DIV_ROUND_UP(inlen, BLAKE2S_BLOCK_SIZE);
 		/* Hash one less (full) block than strictly possible */
-		if (IS_ENABLED(CONFIG_CRYPTO_ARCH_HAVE_LIB_BLAKE2S))
-			blake2s_compress_arch(state, in, nblocks - 1,
-					      BLAKE2S_BLOCK_SIZE);
-		else
-			blake2s_compress_generic(state, in, nblocks - 1,
-						 BLAKE2S_BLOCK_SIZE);
+		blake2s_compress_generic(state, in, nblocks - 1,
+					 BLAKE2S_BLOCK_SIZE);
 		in += BLAKE2S_BLOCK_SIZE * (nblocks - 1);
 		inlen -= BLAKE2S_BLOCK_SIZE * (nblocks - 1);
 	}
@@ -60,10 +52,7 @@ void blake2s_final(struct blake2s_state *state, u8 *out)
 	blake2s_set_lastblock(state);
 	memset(state->buf + state->buflen, 0,
 	       BLAKE2S_BLOCK_SIZE - state->buflen); /* Padding */
-	if (IS_ENABLED(CONFIG_CRYPTO_ARCH_HAVE_LIB_BLAKE2S))
-		blake2s_compress_arch(state, state->buf, 1, state->buflen);
-	else
-		blake2s_compress_generic(state, state->buf, 1, state->buflen);
+	blake2s_compress_generic(state, state->buf, 1, state->buflen);
 	cpu_to_le32_array(state->h, ARRAY_SIZE(state->h));
 	memcpy(out, state->h, state->outlen);
 	memzero_explicit(state, sizeof(*state));
