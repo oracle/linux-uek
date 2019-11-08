@@ -6045,8 +6045,7 @@ static int vmx_sync_pir_to_irr(struct kvm_vcpu *vcpu)
 	bool max_irr_updated;
 
 	WARN_ON(!vcpu->arch.apicv_active);
-	if (pi_test_on(&vmx->pi_desc) ||
-	    !bitmap_empty((unsigned long *)vmx->pi_desc.pir, NR_VECTORS)) {
+	if (pi_test_on(&vmx->pi_desc)) {
 		pi_clear_on(&vmx->pi_desc);
 		/*
 		 * IOMMU can write to PIR.ON, so the barrier matters even on UP.
