@@ -1104,7 +1104,7 @@ mlx5e_tc_offload_to_slow_path(struct mlx5_eswitch *esw,
 	memcpy(slow_attr, flow->esw_attr, sizeof(*slow_attr));
 	slow_attr->action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
 	slow_attr->split_count = 0;
-	slow_attr->dest_chain = FDB_SLOW_PATH_CHAIN;
+	slow_attr->dest_chain = FDB_TC_SLOW_PATH_CHAIN;
 
 	rule = mlx5e_tc_offload_fdb_rules(esw, flow, spec, slow_attr);
 	if (!IS_ERR(rule))
@@ -1121,7 +1121,7 @@ mlx5e_tc_unoffload_from_slow_path(struct mlx5_eswitch *esw,
 	memcpy(slow_attr, flow->esw_attr, sizeof(*slow_attr));
 	slow_attr->action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
 	slow_attr->split_count = 0;
-	slow_attr->dest_chain = FDB_SLOW_PATH_CHAIN;
+	slow_attr->dest_chain = FDB_TC_SLOW_PATH_CHAIN;
 	mlx5e_tc_unoffload_fdb_rules(esw, flow, slow_attr);
 	flow_flag_clear(flow, SLOW);
 }
