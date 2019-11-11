@@ -81,6 +81,7 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 	mpi_cfg.s.wireor = (mode & SPI_3WIRE) ? 1 : 0;
 	mpi_cfg.s.idlelo = cpha != cpol;
 	mpi_cfg.s.cslate = cpha ? 1 : 0;
+	mpi_cfg.s.tritx = 1;
 	mpi_cfg.s.enable = 1;
 	mpi_cfg.s.cs_sticky = 1;
 	mpi_cfg.s.legacy_dis = 1;
