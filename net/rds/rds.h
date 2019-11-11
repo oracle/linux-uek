@@ -944,6 +944,9 @@ struct rds_statistics {
 	uint64_t	s_recv_bytes_added_to_socket;
 	uint64_t	s_recv_bytes_removed_from_socket;
 	uint64_t	s_send_stuck_rm;
+	uint64_t	s_page_allocs;
+	uint64_t	s_page_frees;
+	uint64_t	s_page_gets;
 };
 
 /* af_rds.c */
@@ -1349,5 +1352,17 @@ void rds_trans_exit(void);
 
 /* ib.c */
 int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb);
+
+static inline void rds_page_free(struct page *page)
+{
+	__free_page(page);
+	rds_stats_inc(s_page_frees);
+}
+
+static inline void rds_pages_free(struct page *page, int order)
+{
+	__free_pages(page, order);
+	rds_stats_inc(s_page_frees);
+}
 
 #endif
