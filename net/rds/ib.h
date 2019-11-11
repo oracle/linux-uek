@@ -85,11 +85,16 @@ struct rds_ib_incoming {
 struct rds_ib_cache_head {
 	struct lfstack		stack;
 	atomic_t		count;
+	atomic64_t		hit_count;
+	atomic64_t		miss_count;
 };
 
 struct rds_ib_refill_cache {
-	struct rds_ib_cache_head __percpu *percpu;
-	struct lfstack		ready;
+	struct rds_ib_cache_head __percpu	*percpu;
+	struct lfstack				ready;
+	atomic64_t				hit_count;
+	atomic64_t				miss_count;
+
 };
 
 struct rds_ib_conn_priv_cmn {
@@ -381,6 +386,7 @@ struct rds_ib_device {
 	struct mutex		free_dev_lock;
 	struct rds_ib_refill_cache i_cache_incs;
 	struct rds_ib_refill_cache i_cache_frags[RDS_FRAG_CACHE_ENTRIES];
+	struct dentry *debugfs_dir;
 };
 
 #define ibdev_to_node(ibdev) dev_to_node((ibdev)->dev.parent)
