@@ -3532,11 +3532,14 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 			dev_err(rvu->dev, "CQ ctx disable failed\n");
 	}
 
-	/* Disabling CGX config done for PTP */
+	/* Disabling CGX and NPC config done for PTP */
 	if (pfvf->hw_rx_tstamp_en) {
 		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 		cgxd = rvu_cgx_pdata(cgx_id, rvu);
 		cgx_lmac_ptp_config(cgxd, lmac_id, false);
+		/* Undo NPC config done for PTP */
+		if (npc_config_ts_kpuaction(rvu, pf, pcifunc, false))
+			dev_err(rvu->dev, "NPC config for PTP failed\n");
 		pfvf->hw_rx_tstamp_en = false;
 	}
 
