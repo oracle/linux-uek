@@ -61,6 +61,21 @@ struct kmem_cache *rds_ib_incoming_slab;
 struct kmem_cache *rds_ib_frag_slab;
 atomic_t rds_ib_allocation = ATOMIC_INIT(0);
 
+static inline void *rds_ib_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
+{
+	void *ent = kmem_cache_alloc(cachep, flags);
+
+	if (ent)
+		rds_ib_stats_inc(s_ib_rx_cache_alloc);
+	return ent;
+}
+
+static inline void rds_ib_kmem_cache_free(struct kmem_cache *cachep, void *objp)
+{
+	rds_ib_stats_inc(s_ib_rx_cache_free);
+	kmem_cache_free(cachep, objp);
+}
+
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 {
 	struct rds_ib_recv_work *recv;
@@ -102,7 +117,7 @@ void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent)
 	list_del_init(&frag->f_item);
 	for_each_sg(frag->f_sg, s, nent, i) {
 		rdsdebug("RDS/IB: frag %p page %p\n", frag, sg_page(s));
-		__free_pages(sg_page(s), get_order(s->length));
+		rds_pages_free(sg_page(s), get_order(s->length));
 	}
 }
 /* fwd decl */
@@ -125,6 +140,7 @@ static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			      1);
 
 	atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+	rds_ib_stats_inc(s_ib_recv_nmb_added_to_cache);
 	rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
 }
 
@@ -224,7 +240,7 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 	} else {
-		ibinc = kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
+		ibinc = rds_ib_kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
 		if (!ibinc)
 			return NULL;
 		rds_ib_stats_inc(s_ib_rx_total_incs);
@@ -251,6 +267,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		atomic_sub(ic->i_frag_sz/1024, &ic->i_cache_allocs);
+		rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
 		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
 	} else {
 		if (unlikely(atomic_add_return(ic->i_frag_pages,
@@ -260,12 +277,14 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 				    atomic_read(&rds_ib_allocation));
 			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 			rds_ib_stats_inc(s_ib_rx_alloc_limit);
+			rds_ib_stats_inc(s_ib_rx_cache_put_alloc);
 			return NULL;
 		}
 
-		frag = kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
+		frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
 		if (!frag) {
 			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
+			rds_ib_stats_inc(s_ib_rx_cache_put_alloc);
 			return NULL;
 		}
 
@@ -274,12 +293,14 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 			ret = rds_page_remainder_alloc(sg,
 						       PAGE_SIZE, page_mask);
 			if (ret) {
-				for_each_sg(frag->f_sg, s, ic->i_frag_pages, j)
+				for_each_sg(frag->f_sg, s, ic->i_frag_pages, j) {
 					/* Its the ith fragment we couldn't allocate */
 					if (j < i)
-						__free_pages(sg_page(s), get_order(s->length));
-				kmem_cache_free(rds_ib_frag_slab, frag);
+						rds_pages_free(sg_page(s), get_order(s->length));
+				}
+				rds_ib_kmem_cache_free(rds_ib_frag_slab, frag);
 				atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
+				rds_ib_stats_inc(s_ib_rx_cache_put_free);
 				return NULL;
 			}
 		}
@@ -348,7 +369,7 @@ static void rds_ib_srq_clear_one(struct rds_ib_srq *srq,
 		if (recv->r_ic)
 			rds_inc_put(&recv->r_ibinc->ii_inc);
 		else
-			kmem_cache_free(rds_ib_incoming_slab, recv->r_ibinc);
+			rds_ib_kmem_cache_free(rds_ib_incoming_slab, recv->r_ibinc);
 		recv->r_ibinc = NULL;
 	}
 	if (recv->r_frag) {
@@ -357,7 +378,7 @@ static void rds_ib_srq_clear_one(struct rds_ib_srq *srq,
 		if (recv->r_ic)
 			rds_ib_frag_free(recv->r_ic, recv->r_frag);
 		else
-			kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
+			rds_ib_kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
 		recv->r_frag = NULL;
 		recv->r_posted = 0;
 	}
@@ -432,7 +453,7 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 	}
 
 	if (!recv->r_ibinc) {
-		recv->r_ibinc = kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
+		recv->r_ibinc = rds_ib_kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
 		if (!recv->r_ibinc)
 			goto out;
 		rds_ib_stats_inc(s_ib_rx_total_incs);
@@ -440,7 +461,7 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 	}
 
 	WARN_ON_ONCE(recv->r_frag); /* leak! */
-	recv->r_frag = kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
+	recv->r_frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
 	if (!recv->r_frag)
 		goto out;
 	sg_init_table(recv->r_frag->f_sg, num_sge);
@@ -451,8 +472,8 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 			for_each_sg(recv->r_frag->f_sg, s, num_sge, j)
 				/* Its the ith fragment we couldn't allocate */
 				if (j < i)
-					__free_pages(sg_page(s), get_order(s->length));
-			kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
+					rds_pages_free(sg_page(s), get_order(s->length));
+			rds_ib_kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
 			goto out;
 		}
 	}
@@ -684,14 +705,21 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 
 	if (!cache->percpu)
 		return NULL;
+	rds_ib_stats_inc(s_ib_rx_cache_get);
+
 	stack = this_cpu_ptr(&cache->percpu->stack);
 	item = lfstack_pop(stack);
 	if (item) {
+		rds_ib_stats_inc(s_ib_rx_cache_get_percpu);
 		atomic_dec(this_cpu_ptr(&cache->percpu->count));
 		return item;
 	}
 
 	item = lfstack_pop(&cache->ready);
+	if (item)
+		rds_ib_stats_inc(s_ib_rx_cache_get_ready);
+	else
+		rds_ib_stats_inc(s_ib_rx_cache_get_miss);
 
 	return item;
 }
