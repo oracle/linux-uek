@@ -712,15 +712,20 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 	if (item) {
 		rds_ib_stats_inc(s_ib_rx_cache_get_percpu);
 		atomic_dec(this_cpu_ptr(&cache->percpu->count));
+		atomic64_inc(this_cpu_ptr(&cache->percpu->hit_count));
 		return item;
+	} else {
+		atomic64_inc(this_cpu_ptr(&cache->percpu->miss_count));
 	}
 
 	item = lfstack_pop(&cache->ready);
-	if (item)
+	if (item) {
 		rds_ib_stats_inc(s_ib_rx_cache_get_ready);
-	else
+		atomic64_inc(&cache->hit_count);
+	} else {
 		rds_ib_stats_inc(s_ib_rx_cache_get_miss);
-
+		atomic64_inc(&cache->miss_count);
+	}
 	return item;
 }
 

@@ -30,10 +30,12 @@
  * SOFTWARE.
  *
  */
+#include <linux/cpu.h>
 #include <linux/if_arp.h>
 #include <linux/sockios.h>
 #include <net/addrconf.h>
 #include <net/inet_common.h>
+#include <linux/debugfs.h>
 
 #include "ib.h"
 #include "rds_single_path.h"
@@ -93,6 +95,140 @@ static struct ib_mr *rds_ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags)
 	return mr;
 }
 
+static int ib_rds_cache_hit_show(struct seq_file *m, void *v)
+{
+	struct rds_ib_device *rds_ibdev = m->private;
+	struct rds_ib_refill_cache *cache;
+	struct rds_ib_cache_head *head;
+	unsigned long long miss, hit;
+	int i;
+	int cpu;
+	u64 sum_get_stats[(RDS_FRAG_CACHE_ENTRIES + 1)];
+	u64 sum_hit_stats[(RDS_FRAG_CACHE_ENTRIES + 1)];
+	char heading[(RDS_FRAG_CACHE_ENTRIES + 1)][40];
+
+	sprintf(heading[0], "---------- Inc ----------");
+	for (i = 1; i <= RDS_FRAG_CACHE_ENTRIES; i++)
+		sprintf(heading[i], "---------- Frag-%d ----------", i - 1);
+
+	seq_printf(m, "%11s", " ");
+	for (i = 0; i <= RDS_FRAG_CACHE_ENTRIES; i++) {
+		seq_printf(m, "%35s ", heading[i]);
+
+		sum_get_stats[i] = 0;
+		sum_hit_stats[i] = 0;
+	}
+	seq_puts(m, "\n");
+
+	seq_printf(m, "%11s", "cpu");
+	for (i = 0; i <= RDS_FRAG_CACHE_ENTRIES; i++)
+		seq_printf(m, "%15s %15s %4s", "Get", "Hit", "%");
+
+	seq_puts(m, "\n");
+
+	for_each_possible_cpu(cpu) {
+		seq_printf(m, "%3d        ", cpu);
+		for (i = 0; i <= RDS_FRAG_CACHE_ENTRIES; i++) {
+			if (i == 0)
+				cache = &rds_ibdev->i_cache_incs;
+			else
+				cache = rds_ibdev->i_cache_frags + i - 1;
+			head = per_cpu_ptr(cache->percpu, cpu);
+			miss = atomic64_read(&head->miss_count);
+			hit = atomic64_read(&head->hit_count);
+
+			seq_printf(m, "%15llu %15llu %4llu",
+				   (hit + miss),
+				   hit,
+				   (hit + miss) ? hit * 100 / (hit + miss) : 0);
+			sum_get_stats[i] += (hit + miss);
+			sum_hit_stats[i] += hit;
+		}
+		seq_puts(m, "\n");
+	}
+	seq_puts(m, "sum        ");
+
+	for (i = 0; i <= RDS_FRAG_CACHE_ENTRIES; i++) {
+		seq_printf(m, "%15llu %15llu %4llu",
+			   sum_get_stats[i],
+			   sum_hit_stats[i],
+			   sum_get_stats[i] ? sum_hit_stats[i] * 100 / sum_get_stats[i] : 0);
+	}
+	seq_puts(m, "\n");
+
+	seq_puts(m, "ready      ");
+	for (i = 0; i <= RDS_FRAG_CACHE_ENTRIES; i++) {
+		if (i == 0)
+			cache = &rds_ibdev->i_cache_incs;
+		else
+			cache = rds_ibdev->i_cache_frags + i - 1;
+		miss = atomic64_read(&cache->miss_count);
+		hit = atomic64_read(&cache->hit_count);
+		seq_printf(m, "%15s %15llu %4llu",
+			   "",
+			   hit,
+			   (hit + miss) ? hit  * 100 / (hit + miss) : 0);
+	}
+	seq_puts(m, "\n");
+
+	seq_puts(m, "miss       ");
+
+	for (i = 0; i <= RDS_FRAG_CACHE_ENTRIES; i++) {
+		if (i == 0)
+			cache = &rds_ibdev->i_cache_incs;
+		else
+			cache = rds_ibdev->i_cache_frags + i - 1;
+		miss = atomic64_read(&cache->miss_count);
+		seq_printf(m, "%15llu %15s %4s",
+			   miss, " ", " ");
+	}
+	seq_puts(m, "\n");
+
+	return 0;
+}
+
+static int ib_rds_cache_hit_open(struct inode *inode, struct file *filep)
+{
+	return single_open(filep, ib_rds_cache_hit_show, inode->i_private);
+}
+
+static const struct file_operations ib_rds_cache_hit_fops = {
+	.open           = ib_rds_cache_hit_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static int ib_rds_create_debugfs_cache_hit(struct rds_ib_device *rds_ibdev)
+{
+	struct dentry *d_dev;
+	struct dentry *ent;
+
+	rds_ibdev->debugfs_dir = debugfs_create_dir("rds_cache", NULL);
+	if (!rds_ibdev->debugfs_dir)
+		return -ENOMEM;
+
+	d_dev = debugfs_create_dir(rds_ibdev->dev->name, rds_ibdev->debugfs_dir);
+	if (!d_dev)
+		goto fail;
+
+	ent = debugfs_create_file("hit_stats", 0400, d_dev,
+				  rds_ibdev, &ib_rds_cache_hit_fops);
+	if (!ent)
+		goto fail;
+
+	return 0;
+fail:
+	debugfs_remove_recursive(rds_ibdev->debugfs_dir);
+	rds_ibdev->debugfs_dir = NULL;
+	return -ENOMEM;
+}
+
+static void ib_rds_remove_debugfs_cache_hit(struct rds_ib_device *rds_ibdev)
+{
+	debugfs_remove_recursive(rds_ibdev->debugfs_dir);
+}
+
 static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
 {
 	struct rds_ib_cache_head *head;
@@ -106,8 +242,12 @@ static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
 		head = per_cpu_ptr(cache->percpu, cpu);
 		lfstack_init(&head->stack);
 		atomic_set(&head->count, 0);
+		atomic64_set(&head->hit_count, 0);
+		atomic64_set(&head->miss_count, 0);
 	}
 	lfstack_init(&cache->ready);
+	atomic64_set(&cache->hit_count, 0);
+	atomic64_set(&cache->miss_count, 0);
 
 	return 0;
 }
@@ -121,10 +261,14 @@ static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 		head = per_cpu_ptr(cache->percpu, cpu);
 		lfstack_free(&head->stack);
 		atomic_set(&head->count, 0);
+		atomic64_set(&head->hit_count, 0);
+		atomic64_set(&head->miss_count, 0);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
 	cache->percpu = NULL;
+	atomic64_set(&cache->hit_count, 0);
+	atomic64_set(&cache->miss_count, 0);
 }
 
 static int rds_ib_alloc_caches(struct rds_ib_device *rds_ibdev)
@@ -370,6 +514,8 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 			device);
 		return;
 	}
+
+	ib_rds_remove_debugfs_cache_hit(rds_ibdev);
 
 	rds_ib_free_caches(rds_ibdev);
 	rds_rtd(RDS_RTD_ACT_BND,
@@ -815,6 +961,7 @@ void rds_ib_add_one(struct ib_device *device)
 
 	rds_ib_nodev_connect();
 
+	ib_rds_create_debugfs_cache_hit(rds_ibdev);
 put_dev:
 	rds_ib_dev_put(rds_ibdev);
 free_attr:
