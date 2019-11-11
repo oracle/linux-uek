@@ -84,7 +84,7 @@ struct rds_ib_incoming {
 
 struct rds_ib_cache_head {
 	struct lfstack		stack;
-	atomic_t                count;
+	atomic_t		count;
 };
 
 struct rds_ib_refill_cache {
@@ -406,12 +406,23 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_tx_credit_updates;
 	uint64_t	s_ib_rx_cq_event;
 	uint64_t	s_ib_rx_ring_empty;
+	uint64_t	s_ib_rx_refill_from_cm;
 	uint64_t	s_ib_rx_refill_from_cq;
 	uint64_t	s_ib_rx_refill_from_thread;
 	uint64_t        s_ib_rx_alloc_limit;
 	uint64_t        s_ib_rx_total_frags;
 	uint64_t        s_ib_rx_total_incs;
 	uint64_t	s_ib_rx_credit_updates;
+	uint64_t	s_ib_rx_cache_get;
+	uint64_t	s_ib_rx_cache_put;
+	uint64_t	s_ib_rx_cache_put_alloc;
+	uint64_t	s_ib_rx_cache_put_free;
+	uint64_t	s_ib_rx_cache_alloc;
+	uint64_t	s_ib_rx_cache_free;
+	uint64_t	s_ib_rx_cache_get_percpu;
+	uint64_t	s_ib_rx_cache_get_ready;
+	uint64_t	s_ib_rx_cache_get_miss;
+	uint64_t	s_ib_rx_cache_put_percpu;
 	uint64_t	s_ib_ack_sent;
 	uint64_t	s_ib_ack_send_failure;
 	uint64_t	s_ib_ack_send_delayed;
@@ -436,6 +447,8 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_srq_empty_refills;
 	uint64_t	s_ib_recv_added_to_cache;
 	uint64_t	s_ib_recv_removed_from_cache;
+	uint64_t	s_ib_recv_nmb_added_to_cache;
+	uint64_t	s_ib_recv_nmb_removed_from_cache;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -651,7 +664,6 @@ u64 rds_ib_piggyb_ack(struct rds_ib_connection *ic);
 void rds_ib_srq_refill(struct work_struct *work);
 void rds_ib_srq_rearm(struct work_struct *work);
 void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq, int ack_required);
-
 
 /* ib_ring.c */
 void rds_ib_ring_init(struct rds_ib_work_ring *ring, u32 nr);
