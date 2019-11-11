@@ -89,6 +89,9 @@ static char *rds_stat_names[] = {
 	"recv_bytes_added_to_sock",
 	"recv_bytes_freed_fromsock",
 	"send_stuck_rm",
+	"page_allocs",
+	"page_frees",
+	"page_gets",
 };
 
 void rds_stats_info_copy(struct rds_info_iterator *iter,
