@@ -2184,13 +2184,16 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 					 int *direct_io,
 					 int *has_refcount)
 {
-	int ret = 0, meta_level = 0;
+	int ret = 0, meta_level = 0, write_sem = 0;
 	struct dentry *dentry = file->f_path.dentry;
 	struct inode *inode = d_inode(dentry);
 	loff_t end;
 	struct ocfs2_super *osb = OCFS2_SB(inode->i_sb);
 	int full_coherency = !(osb->s_mount_opt &
 		OCFS2_MOUNT_COHERENCY_BUFFERED);
+	struct buffer_head *di_bh = NULL;
+	u32 cpos;
+	u32 clusters;
 
 	/*
 	 * We start with a read level meta lock and only jump to an ex
@@ -2203,6 +2206,7 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 			mlog_errno(ret);
 			goto out;
 		}
+		down_read(&OCFS2_I(inode)->ip_alloc_sem);
 
 		/* Clear suid / sgid if necessary. We do this here
 		 * instead of later in the write path because
@@ -2215,6 +2219,7 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 		 * set inode->i_size at the end of a write. */
 		if (should_remove_suid(dentry)) {
 			if (meta_level == 0) {
+				up_read(&OCFS2_I(inode)->ip_alloc_sem);
 				ocfs2_inode_unlock(inode, meta_level);
 				meta_level = 1;
 				continue;
@@ -2231,18 +2236,30 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 
 		ret = ocfs2_check_range_for_refcount(inode, pos, count);
 		if (ret == 1) {
+			up_read(&OCFS2_I(inode)->ip_alloc_sem);
 			ocfs2_inode_unlock(inode, meta_level);
 			meta_level = -1;
 
-			ret = ocfs2_prepare_inode_for_refcount(inode,
-							       file,
-							       pos,
-							       count,
-							       &meta_level);
 			if (has_refcount)
 				*has_refcount = 1;
 			if (direct_io)
 				*direct_io = 0;
+
+			cpos = pos >> OCFS2_SB(inode->i_sb)->s_clustersize_bits;
+			clusters = 
+				ocfs2_clusters_for_bytes(inode->i_sb, pos + count) - cpos;
+
+			ret = ocfs2_inode_lock(inode, &di_bh, 1);
+			if (ret) {
+				mlog_errno(ret);
+				goto out;
+			}
+			meta_level = 1;
+
+			down_write(&OCFS2_I(inode)->ip_alloc_sem);
+			write_sem = 1;
+
+			ret = ocfs2_refcount_cow(inode, di_bh, cpos, clusters, UINT_MAX);
 		}
 
 		if (ret < 0) {
@@ -2311,9 +2328,15 @@ out_unlock:
 	trace_ocfs2_prepare_inode_for_write(OCFS2_I(inode)->ip_blkno,
 					    pos, appending, count,
 					    direct_io, has_refcount);
+	if (write_sem > 0)
+		up_write(&OCFS2_I(inode)->ip_alloc_sem);
+	else
+		up_read(&OCFS2_I(inode)->ip_alloc_sem);
 
-	if (meta_level >= 0)
+	if (meta_level >= 0) {
+		brelse(di_bh);
 		ocfs2_inode_unlock(inode, meta_level);
+	}
 
 out:
 	return ret;
