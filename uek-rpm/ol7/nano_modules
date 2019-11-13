@@ -412,6 +412,7 @@ kernel/drivers/nvme/host/nvme.ko
 kernel/drivers/nvme/target/nvmet-fc.ko
 kernel/drivers/nvme/target/nvmet.ko
 kernel/drivers/parport/parport.ko
+kernel/drivers/pci/controller/vmd.ko
 kernel/drivers/pci/hotplug/shpchp.ko
 kernel/drivers/pci/pcie/aer/aer_inject.ko
 kernel/drivers/platform/x86/wmi.ko
