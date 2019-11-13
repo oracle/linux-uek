@@ -392,6 +392,7 @@ kernel/drivers/nvme/host/nvme.ko
 kernel/drivers/nvme/target/nvmet-fc.ko
 kernel/drivers/nvme/target/nvmet.ko
 kernel/drivers/parport/parport.ko
+kernel/drivers/pci/controller/vmd.ko
 kernel/drivers/platform/x86/wmi.ko
 kernel/drivers/regulator/fixed.ko
 kernel/drivers/regulator/lp3971.ko
