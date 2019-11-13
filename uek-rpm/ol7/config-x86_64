@@ -1955,7 +1955,7 @@ CONFIG_HOTPLUG_PCI_SHPC=y
 #
 # end of Cadence PCIe controllers support
 
-# CONFIG_VMD is not set
+CONFIG_VMD=m
 CONFIG_PCI_HYPERV_INTERFACE=m
 
 #
