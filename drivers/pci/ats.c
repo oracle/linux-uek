@@ -21,6 +21,13 @@ void pci_ats_init(struct pci_dev *dev)
 {
 	int pos;
 
+	if (embedded_pci_is_cavium(dev)) {
+		/* All the T93 PCI devices bailout because PCI_EXT_CAP_ID_ATS
+		 * is not found, so just bailout before checking
+		 */
+		return;
+	}
+
 	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ATS);
 	if (!pos)
 		return;

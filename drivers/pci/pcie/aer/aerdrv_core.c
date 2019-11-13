@@ -26,6 +26,7 @@
 #include <linux/slab.h>
 #include <linux/kfifo.h>
 #include "aerdrv.h"
+#include "../../pci.h"
 
 #define	PCI_EXP_AER_FLAGS	(PCI_EXP_DEVCTL_CERE | PCI_EXP_DEVCTL_NFERE | \
 				 PCI_EXP_DEVCTL_FERE | PCI_EXP_DEVCTL_URRE)
@@ -99,7 +100,14 @@ int pci_cleanup_aer_error_status_regs(struct pci_dev *dev)
 
 int pci_aer_init(struct pci_dev *dev)
 {
-	dev->aer_cap = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ERR);
+	if (embedded_pci_is_cavium(dev)) {
+		/* The T93 PCI devices always return the following */
+		if (dev->device == 0xa002)	/* PCI bridge */
+			dev->aer_cap = 0;
+		else
+			dev->aer_cap = 320;
+	} else
+		dev->aer_cap = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ERR);
 	return pci_cleanup_aer_error_status_regs(dev);
 }
 
