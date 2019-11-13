@@ -911,7 +911,7 @@ CONFIG_HOTPLUG_PCI_SHPC=m
 #
 # Cadence PCIe controllers support
 #
-# CONFIG_VMD is not set
+CONFIG_VMD=m
 
 #
 # DesignWare PCI Core Support
