@@ -757,11 +757,10 @@ static struct attribute *mapping_attributes[] = {
 	NULL,
 };
 
-struct attribute_group nd_mapping_attribute_group = {
+static const struct attribute_group nd_mapping_attribute_group = {
 	.is_visible = mapping_visible,
 	.attrs = mapping_attributes,
 };
-EXPORT_SYMBOL_GPL(nd_mapping_attribute_group);
 
 static const struct attribute_group nd_region_attribute_group = {
 	.attrs = nd_region_attributes,
@@ -772,6 +771,7 @@ static const struct attribute_group *nd_region_attribute_groups[] = {
 	&nd_device_attribute_group,
 	&nd_region_attribute_group,
 	&nd_numa_attribute_group,
+	&nd_mapping_attribute_group,
 	NULL,
 };
 
