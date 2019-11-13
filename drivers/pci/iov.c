@@ -388,9 +388,8 @@ static int sriov_init(struct pci_dev *dev, int pos)
 	pci_read_config_word(dev, pos + PCI_SRIOV_CTRL, &ctrl);
 	if (ctrl & PCI_SRIOV_CTRL_VFE) {
 		pci_write_config_word(dev, pos + PCI_SRIOV_CTRL, 0);
-#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
 		/* Speed up sriov_init for certain Cavium T93, PCI devices */
-		if ((dev->vendor == PCI_VENDOR_ID_CAVIUM) &&
+		if (embedded_pci_is_cavium(dev) &&
 			((dev->device == 0xa018) ||	/* Random Number Generator */
 			 (dev->device == 0xa043) ||	/* Memory Controller */
 			 (dev->device == 0xa080) ||	/* System Peripheral */
@@ -398,8 +397,7 @@ static int sriov_init(struct pci_dev *dev, int pos)
 			 (dev->device == 0xa065)))	/* Ethernet Controller */
 			msleep(100);
 		else
-#endif
-		ssleep(1);
+			ssleep(1);
 	}
 
 	ctrl = 0;
@@ -539,7 +537,27 @@ int pci_iov_init(struct pci_dev *dev)
 	if (!pci_is_pcie(dev))
 		return -ENODEV;
 
-	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
+	/* All the T93 PCI devices that have SRIOV capability
+	 * end up with pos = 384. So rather than calling
+	 * pci_find_ext_capability() which performs pci config reads,
+	 * just hardcode
+	 */
+	if (embedded_pci_is_cavium(dev)) {
+		if ((dev->device == 0xa018) ||	/* Random Number Generator */
+		    (dev->device == 0xa043) ||	/* Memory Controller */
+		    (dev->device == 0xa080) ||	/* System Peripheral */
+		    (dev->device == 0xa082) ||	/* Processing accelerators */
+		    (dev->device == 0xa065) ||	/* Ethernet Controller */
+		    (dev->device == 0xa063) ||	/* Ethernet Controller */
+		    (dev->device == 0xa0f9) ||	/* System Peripheral */
+		    (dev->device == 0xa0fb) ||	/* System Peripheral */
+		    (dev->device == 0xa0f6) ||	/* System Peripheral */
+		    (dev->device == 0xa0fd))	/* Encryption controller */
+			pos = 384;
+		else
+			pos = 0;
+	} else
+		pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
 	if (pos)
 		return sriov_init(dev, pos);
 
