@@ -1439,10 +1439,6 @@ static void update_mds_branch_idle(void)
 
 void arch_smt_update(void)
 {
-	/* Enhanced IBRS implies STIBP. No update required. */
-	if (spectre_v2_eibrs_enabled())
-		return;
-
 	mutex_lock(&spec_ctrl_mutex);
 
 	switch (spectre_v2_user) {
