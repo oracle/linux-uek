@@ -1230,6 +1230,12 @@ static void pci_read_irq(struct pci_dev *dev)
 {
 	unsigned char irq;
 
+	/* All the T93 PCI devices end up not setting
+	 * dev->pin or dev->irq
+	 */
+	if (embedded_pci_is_cavium(dev))
+		return;
+
 	pci_read_config_byte(dev, PCI_INTERRUPT_PIN, &irq);
 	dev->pin = irq;
 	if (irq)
@@ -1281,6 +1287,12 @@ void set_pcie_hotplug_bridge(struct pci_dev *pdev)
 {
 	u32 reg32;
 
+	/* All the T93 PCI devices end up not setting
+	 * pdev->is_hotplug_bridge = 1
+	 */
+	if (embedded_pci_is_cavium(pdev))
+		return;
+
 	pcie_capability_read_dword(pdev, PCI_EXP_SLTCAP, &reg32);
 	if (reg32 & PCI_EXP_SLTCAP_HPC)
 		pdev->is_hotplug_bridge = 1;
@@ -1290,6 +1302,12 @@ static void set_pcie_thunderbolt(struct pci_dev *dev)
 {
 	int vsec = 0;
 	u32 header;
+
+	/* All the T93 PCI devices end up not setting
+	 * dev->is_thunderbolt = 1
+	 */
+	if (embedded_pci_is_cavium(dev))
+		return;
 
 	while ((vsec = pci_find_next_ext_capability(dev, vsec,
 						    PCI_EXT_CAP_ID_VNDR))) {
@@ -1371,6 +1389,12 @@ int pci_cfg_space_size(struct pci_dev *dev)
 	u32 status;
 	u16 class;
 
+	/* All the T93 PCI devices
+	 * return PCI_CFG_SPACE_EXP_SIZE
+	 */
+	if (embedded_pci_is_cavium(dev))
+		return PCI_CFG_SPACE_EXP_SIZE;
+
 	class = dev->class >> 8;
 	if (class == PCI_CLASS_BRIDGE_HOST)
 		return pci_cfg_space_size_ext(dev);
@@ -1391,6 +1415,62 @@ int pci_cfg_space_size(struct pci_dev *dev)
 
 #define LEGACY_IO_RESOURCE	(IORESOURCE_IO | IORESOURCE_PCI_FIXED)
 
+static int t93_pci_cap_id_msix_capability(struct pci_dev *dev)
+{
+	int msix_cap;
+
+	switch (dev->device) {
+	case 0xa002:
+	case 0xa062:
+	case 0xa068:
+	case 0xa069:
+	case 0xa02a:
+	case 0xa061:
+	case 0xa018:
+	case 0xa033:
+		msix_cap = 0;
+		break;
+	case 0xa071:
+	case 0xa017:
+	case 0xa00b:
+	case 0xa00c:
+	case 0xa00a:
+	case 0xa067:
+	case 0xa075:
+	case 0xa085:
+	case 0xa029:
+	case 0xa010:
+	case 0xa035:
+	case 0xa070:
+	case 0xa073:
+	case 0xa012:
+	case 0xa06b:
+	case 0xa059:
+	case 0xa043:
+	case 0xa080:
+	case 0xa055:
+	case 0xa082:
+	case 0xa065:
+	case 0xa063:
+	case 0xa0f9:
+	case 0xa0fb:
+	case 0xa0f6:
+	case 0xa0fd:
+		msix_cap = 0x80;
+		break;
+	case 0xa0f8:
+	case 0xa044:
+		msix_cap = 0xb0;
+		break;
+	default:
+		msix_cap = pci_find_capability(dev, PCI_CAP_ID_MSIX);
+		dev_info(&dev->dev, "Oops msix_cap (0x%x) not hardcoded for device %x !\n",
+			msix_cap, dev->device);
+		break;
+	}
+	return msix_cap;
+}
+
 static void pci_msi_setup_pci_dev(struct pci_dev *dev)
 {
 	/*
@@ -1398,11 +1478,21 @@ static void pci_msi_setup_pci_dev(struct pci_dev *dev)
 	 * during boot.  This is the power on reset default so
 	 * usually this should be a noop.
 	 */
-	dev->msi_cap = pci_find_capability(dev, PCI_CAP_ID_MSI);
+
+	/* None of the T93 PCI devices find PCI_CAP_ID_MSI */
+	if (embedded_pci_is_cavium(dev))
+		dev->msi_cap = 0;
+	else
+		dev->msi_cap = pci_find_capability(dev, PCI_CAP_ID_MSI);
+
 	if (dev->msi_cap)
 		pci_msi_set_enable(dev, 0);
 
-	dev->msix_cap = pci_find_capability(dev, PCI_CAP_ID_MSIX);
+	if (embedded_pci_is_cavium(dev))
+		dev->msix_cap = t93_pci_cap_id_msix_capability(dev);
+	else
+		dev->msix_cap = pci_find_capability(dev, PCI_CAP_ID_MSIX);
+
 	if (dev->msix_cap)
 		pci_msix_clear_and_set_ctrl(dev, PCI_MSIX_FLAGS_ENABLE, 0);
 }
@@ -1435,6 +1525,202 @@ static int pci_intx_mask_broken(struct pci_dev *dev)
 	return 0;
 }
 
+static int t93_get_hdr_type(struct pci_dev *dev, u8 *hdr_type)
+{
+	switch (dev->device) {
+	case 0xa002:
+		*hdr_type = PCI_HEADER_TYPE_BRIDGE;
+		break;
+	case 0xa062:
+	case 0xa071:
+	case 0xa017:
+	case 0xa00b:
+	case 0xa00c:
+	case 0xa00a:
+	case 0xa068:
+	case 0xa067:
+	case 0xa018:
+	case 0xa043:
+	case 0xa080:
+	case 0xa055:
+	case 0xa082:
+	case 0xa065:
+	case 0xa063:
+	case 0xa0f9:
+	case 0xa0fb:
+	case 0xa0f6:
+	case 0xa0fd:
+	case 0xa0f8:
+	case 0xa033:
+	case 0xa044:
+		*hdr_type = PCI_HEADER_TYPE_NORMAL;
+		break;
+	case 0xa075:
+	case 0xa085:
+	case 0xa069:
+	case 0xa029:
+	case 0xa02a:
+	case 0xa010:
+	case 0xa035:
+	case 0xa070:
+	case 0xa073:
+	case 0xa012:
+	case 0xa06b:
+	case 0xa061:
+	case 0xa059:
+		*hdr_type = 0x80;
+		break;
+	default:
+		if (pci_read_config_byte(dev, PCI_HEADER_TYPE, hdr_type))
+			return -EIO;
+		dev_info(&dev->dev, "Oops hdr_type (0x%x) not hardcoded for device %x !\n",
+			*hdr_type, dev->device);
+		break;
+	}
+	return 0;
+}
+
+static void t93_set_pcie_port_type(struct pci_dev *dev)
+{
+	switch (dev->device) {
+	case 0xa002:
+		dev->pcie_cap = 0x70;
+		dev->pcie_flags_reg = 0x42;
+		/* dev->pcie_mpss = 0; */
+		dev->has_secondary_link = 1;
+		break;
+	case 0xa062:
+	case 0xa071:
+	case 0xa017:
+	case 0xa00b:
+	case 0xa00c:
+	case 0xa00a:
+	case 0xa068:
+	case 0xa067:
+	case 0xa055:
+		dev->pcie_cap = 0x40;
+		dev->pcie_flags_reg = 0x92;
+		/* dev->pcie_mpss = 0; */
+		/* dev->has_secondary_link = 0; */
+		break;
+	case 0xa075:
+	case 0xa085:
+	case 0xa069:
+	case 0xa029:
+	case 0xa02a:
+	case 0xa010:
+	case 0xa035:
+	case 0xa070:
+	case 0xa073:
+	case 0xa012:
+	case 0xa06b:
+	case 0xa061:
+	case 0xa059:
+	case 0xa018:
+	case 0xa043:
+	case 0xa080:
+	case 0xa082:
+	case 0xa065:
+	case 0xa063:
+	case 0xa0f9:
+	case 0xa0fb:
+	case 0xa0f6:
+	case 0xa0fd:
+		dev->pcie_cap = 0x40;
+		dev->pcie_flags_reg = 0x2;
+		/* dev->pcie_mpss = 0; */
+		/* dev->has_secondary_link = 0; */
+		break;
+	case 0xa0f8:
+	case 0xa033:
+	case 0xa044:
+		dev->pcie_cap = 0x70;
+		dev->pcie_flags_reg = 0x2;
+		/* dev->pcie_mpss = 0; */
+		/* dev->has_secondary_link = 0; */
+		break;
+	default:
+		dev_info(&dev->dev, "Oops set_pcie_port_type() not hardcoded for device %x !\n",
+			dev->device);
+		set_pcie_port_type(dev);
+		break;
+	}
+}
+
+static void t93_get_pci_class_revision(struct pci_dev *dev, u32 *class)
+{
+	u32 value;
+
+	switch (dev->device) {
+	case 0xa002:
+		value = 0x06040100;
+		break;
+	case 0xa062:
+	case 0xa071:
+	case 0xa017:
+	case 0xa00b:
+	case 0xa00c:
+	case 0xa00a:
+	case 0xa068:
+	case 0xa067:
+	case 0xa075:
+	case 0xa085:
+	case 0xa069:
+	case 0xa035:
+	case 0xa073:
+	case 0xa06b:
+	case 0xa061:
+	case 0xa080:
+	case 0xa0f9:
+	case 0xa0fb:
+	case 0xa0f6:
+		value = 0x08800000;
+		break;
+	case 0xa029:
+	case 0xa059:
+		value = 0x02800000;
+		break;
+	case 0xa02a:
+	case 0xa012:
+		value = 0x0c800000;
+		break;
+	case 0xa010:
+	case 0xa070:
+	case 0xa043:
+	case 0xa044:
+		value = 0x05800000;
+		break;
+	case 0xa018:
+	case 0xa082:
+	case 0xa033:
+		value = 0x12000000;
+		break;
+	case 0xa055:
+		value = 0x0c033000;
+		break;
+	case 0xa065:
+	case 0xa063:
+	case 0xa0f8:
+		value = 0x02000000;
+		break;
+	case 0xa0fd:
+		value = 0x10800000;
+		break;
+	default:
+		pci_read_config_dword(dev, PCI_CLASS_REVISION, class);
+		dev_info(&dev->dev, "Oops pci_class_revision (0x%x) not hardcoded for device %x !\n",
+			*class, dev->device);
+		return;
+	}
+
+	if (cavium_t93_rev_b0()) {
+		/* T93 Rev B0 PCI devices all have Rev = 1 */
+		value |= 1;
+	}
+
+	*class = value;
+}
+
 /**
  * pci_setup_device - fill in class and map information of a device
  * @dev: the device structure to fill
@@ -1454,8 +1740,13 @@ int pci_setup_device(struct pci_dev *dev)
 	struct pci_bus_region region;
 	struct resource *res;
 
-	if (pci_read_config_byte(dev, PCI_HEADER_TYPE, &hdr_type))
-		return -EIO;
+	if (embedded_pci_is_cavium(dev)) {
+		if (t93_get_hdr_type(dev, &hdr_type))
+			return -EIO;
+	} else {
+		if (pci_read_config_byte(dev, PCI_HEADER_TYPE, &hdr_type))
+			return -EIO;
+	}
 
 	dev->sysdata = dev->bus->sysdata;
 	dev->dev.parent = dev->bus->bridge;
@@ -1463,7 +1754,11 @@ int pci_setup_device(struct pci_dev *dev)
 	dev->hdr_type = hdr_type & 0x7f;
 	dev->multifunction = !!(hdr_type & 0x80);
 	dev->error_state = pci_channel_io_normal;
-	set_pcie_port_type(dev);
+
+	if (embedded_pci_is_cavium(dev))
+		t93_set_pcie_port_type(dev);
+	else
+		set_pcie_port_type(dev);
 
 	pci_dev_assign_slot(dev);
 	/* Assume 32-bit PCI; let 64-bit PCI cards (which are far rarer)
@@ -1474,7 +1769,11 @@ int pci_setup_device(struct pci_dev *dev)
 		     dev->bus->number, PCI_SLOT(dev->devfn),
 		     PCI_FUNC(dev->devfn));
 
-	pci_read_config_dword(dev, PCI_CLASS_REVISION, &class);
+	if (embedded_pci_is_cavium(dev))
+		t93_get_pci_class_revision(dev, &class);
+	else
+		pci_read_config_dword(dev, PCI_CLASS_REVISION, &class);
+
 	dev->revision = class & 0xff;
 	dev->class = class >> 8;		    /* upper 3 bytes */
 
@@ -1505,7 +1804,13 @@ int pci_setup_device(struct pci_dev *dev)
 		}
 	}
 
-	dev->broken_intx_masking = pci_intx_mask_broken(dev);
+	/* All the T93 PCI devices set
+	 * dev->broken_intx_masking = 1
+	 */
+	if (embedded_pci_is_cavium(dev))
+		dev->broken_intx_masking = 1;
+	else
+		dev->broken_intx_masking = pci_intx_mask_broken(dev);
 
 	switch (dev->hdr_type) {		    /* header type */
 	case PCI_HEADER_TYPE_NORMAL:		    /* standard header */
@@ -1513,8 +1818,18 @@ int pci_setup_device(struct pci_dev *dev)
 			goto bad;
 		pci_read_irq(dev);
 		pci_read_bases(dev, 6, PCI_ROM_ADDRESS);
-		pci_read_config_word(dev, PCI_SUBSYSTEM_VENDOR_ID, &dev->subsystem_vendor);
-		pci_read_config_word(dev, PCI_SUBSYSTEM_ID, &dev->subsystem_device);
+
+		/* All the T93 PCI devices set
+		 * dev->subsystem_vendor = 0x177d
+		 * dev->subsystem_device = 0xb200
+		 */
+		if (embedded_pci_is_cavium(dev)) {
+			dev->subsystem_vendor = 0x177d;
+			dev->subsystem_device = 0xb200;
+		} else {
+			pci_read_config_word(dev, PCI_SUBSYSTEM_VENDOR_ID, &dev->subsystem_vendor);
+			pci_read_config_word(dev, PCI_SUBSYSTEM_ID, &dev->subsystem_device);
+		}
 
 		/*
 		 * Do the ugly legacy mode stuff here rather than broken chip
@@ -1570,6 +1885,17 @@ int pci_setup_device(struct pci_dev *dev)
 		dev->transparent = ((dev->class & 0xff) == 1);
 		pci_read_bases(dev, 2, PCI_ROM_ADDRESS1);
 		set_pcie_hotplug_bridge(dev);
+
+		/* All the T93 PCI devices set
+		 * dev->subsystem_vendor = 0
+		 * dev->subsystem_device = 0
+		 */
+		if (embedded_pci_is_cavium(dev)) {
+			dev->subsystem_vendor = 0;
+			dev->subsystem_device = 0;
+			break;
+		}
+
 		pos = pci_find_capability(dev, PCI_CAP_ID_SSVID);
 		if (pos) {
 			pci_read_config_word(dev, pos + PCI_SSVID_VENDOR_ID, &dev->subsystem_vendor);
@@ -1894,6 +2220,13 @@ static void pci_configure_device(struct pci_dev *dev)
 	struct hotplug_params hpp;
 	int ret;
 
+	/* All the T93 PCI devices bail out of the following
+	 * functions without actually doing anything, so don't bother
+	 * calling...
+	 */
+	if (embedded_pci_is_cavium(dev))
+		return;
+
 	pci_configure_mps(dev);
 	pci_configure_extended_tags(dev, NULL);
 	pci_configure_relaxed_ordering(dev);
@@ -2001,6 +2334,90 @@ static bool pci_bus_wait_crs(struct pci_bus *bus, int devfn, u32 *l,
 	return true;
 }
 
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+/* The Cavium T93 has some empty pci slots. These are slots
+ * on the pci busses that do not have any devices attached.
+ * In order to save time during pci bus enumeration we do not
+ * try and read from these non existent pci config registers
+ */
+static bool embedded_skip_empty_pci_slot(struct pci_bus *bus, int devfn)
+{
+	bool skip = false;
+
+	if (cavium_t93_rev_a0() || cavium_t93_rev_b0()) {
+		if ((bus->domain_nr == 0) && (bus->number == 0)) {
+			switch (PCI_SLOT(devfn)) {
+			case 0x00:
+			case 0x0b:
+			case 0x0c:
+			case 0x0d:
+			case 0x0e:
+			case 0x10:
+			case 0x11:
+			case 0x12:
+			case 0x13:
+			case 0x15:
+			case 0x16:
+			case 0x17:
+			case 0x18:
+			case 0x19:
+			case 0x1b:
+			case 0x1e:
+			case 0x1f:
+				skip = true;
+				break;
+			default:
+				break;
+			}
+		} else if ((bus->domain_nr == 0) && (bus->number == 2)) {
+			skip = true;
+		} else if ((bus->domain_nr == 1) && (bus->number == 0)) {
+			switch (PCI_SLOT(devfn)) {
+			case 0x00:
+			case 0x01:
+			case 0x02:
+			case 0x03:
+			case 0x04:
+			case 0x05:
+			case 0x06:
+			case 0x07:
+			case 0x08:
+			case 0x09:
+			case 0x0a:
+			case 0x0e:
+			case 0x0f:
+			case 0x10:
+			case 0x11:
+			case 0x12:
+			case 0x13:
+			case 0x14:
+			case 0x15:
+			case 0x16:
+			case 0x17:
+			case 0x18:
+			case 0x19:
+			case 0x1a:
+			case 0x1b:
+			case 0x1c:
+			case 0x1d:
+			case 0x1e:
+			case 0x1f:
+				skip = true;
+				break;
+			default:
+				break;
+			}
+		} else if ((bus->domain_nr == 2) && (bus->number == 0) &&
+			   (PCI_SLOT(devfn) > 0xf)) {
+			skip = true;
+		}
+	}
+	return skip;
+}
+#else
+#define embedded_skip_empty_pci_slot(bus, devfn) false
+#endif
+
 bool pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn, u32 *l,
 				int timeout)
 {
@@ -2008,6 +2425,9 @@ bool pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn, u32 *l,
 	int enable = -1;
 	bool idt_workaround = (bus->self &&
 			(bus->self->vendor == PCI_VENDOR_ID_IDT));
+
+	if (embedded_skip_empty_pci_slot(bus, devfn))
+		goto out;
 
 	/*
 	 * Some IDT switches flag an ACS violation for config reads

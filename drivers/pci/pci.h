@@ -389,4 +389,31 @@ int acpi_get_rc_resources(struct device *dev, const char *hid, u16 segment,
 			  struct resource *res);
 #endif
 
+static inline bool embedded_pci_is_cavium(struct pci_dev *dev)
+{
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+	return (dev->vendor == PCI_VENDOR_ID_CAVIUM);
+#else
+	return false;
+#endif
+}
+
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+#define CAVIUM_T93_REV_A0 0x430f0b20
+#define CAVIUM_T93_REV_B0 0x430f0b21
+
+static inline bool cavium_t93_rev_a0(void)
+{
+	return (read_cpuid_id() == CAVIUM_T93_REV_A0);
+}
+
+static inline bool cavium_t93_rev_b0(void)
+{
+	return (read_cpuid_id() == CAVIUM_T93_REV_B0);
+}
+#else
+#define cavium_t93_rev_a0() false
+#define cavium_t93_rev_b0() false
+#endif
+
 #endif /* DRIVERS_PCI_H */

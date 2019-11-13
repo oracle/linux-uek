@@ -605,6 +605,13 @@ int pci_vpd_init(struct pci_dev *dev)
 	struct pci_vpd *vpd;
 	u8 cap;
 
+	if (embedded_pci_is_cavium(dev)) {
+		/* All the T93 PCI devices bailout because PCI_CAP_ID_VPD
+		 * is not found, so just bailout before checking
+		 */
+		return -ENODEV;
+	}
+
 	cap = pci_find_capability(dev, PCI_CAP_ID_VPD);
 	if (!cap)
 		return -ENODEV;

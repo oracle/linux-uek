@@ -2675,6 +2675,15 @@ void pci_ea_init(struct pci_dev *dev)
 	int offset;
 	int i;
 
+	/* Certain T93 PCI devices bailout because PCI_CAP_ID_EA
+	 * is not found, so just bailout before checking
+	 */
+	if (embedded_pci_is_cavium(dev) &&
+		((dev->device == 0xa0f8) ||	/* Ethernet controller */
+		 (dev->device == 0xa033) ||	/* Processing accelerators */
+		 (dev->device == 0xa044)))	/* Memory controller */
+		return;
+
 	/* find PCI EA capability in list */
 	ea = pci_find_capability(dev, PCI_CAP_ID_EA);
 	if (!ea)
@@ -2795,6 +2804,16 @@ void pci_configure_ari(struct pci_dev *dev)
 	bridge = dev->bus->self;
 	if (!bridge)
 		return;
+
+	/* All the T93 PCI devices that get this far end up
+	 * setting bridge->ari_enabled = 1.
+	 */
+	if (embedded_pci_is_cavium(dev)) {
+		pcie_capability_set_word(bridge, PCI_EXP_DEVCTL2,
+					 PCI_EXP_DEVCTL2_ARI);
+		bridge->ari_enabled = 1;
+		return;
+	}
 
 	pcie_capability_read_dword(bridge, PCI_EXP_DEVCAP2, &cap);
 	if (!(cap & PCI_EXP_DEVCAP2_ARI))
