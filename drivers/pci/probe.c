@@ -2048,6 +2048,39 @@ out:
 }
 EXPORT_SYMBOL(pci_bus_read_dev_vendor_id);
 
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+/* The Cavium T93 PCI subsystem contains some devices
+ * that we do not care about in our application, so
+ * simply discard them
+ */
+static bool embedded_discard_found_device(int devfn, u32 l)
+{
+	u16 vendor = l & 0xffff;
+	u16 device = (l >> 16) & 0xffff;
+
+	/* Remove the THUNDERX MPI / SPI Controller [177d:a00b]
+	 * that is unused in the Cavium T93
+	 */
+	if ((vendor == PCI_VENDOR_ID_CAVIUM) && (device == 0xa00b) &&
+	    (PCI_SLOT(devfn) == 7))
+		return true;
+
+	/* Processing accelerators [1200]: Cavium, Inc. Device [177d:a082]
+	 * - nothing appears to use it
+	 */
+	if ((vendor == PCI_VENDOR_ID_CAVIUM) && (device == 0xa082))
+		return true;
+
+	/* Both USB controller [0c03]: Cavium, Inc. Device [177d:a055] */
+	if ((vendor == PCI_VENDOR_ID_CAVIUM) && (device == 0xa055))
+		return true;
+
+	return false;
+}
+#else
+#define embedded_discard_found_device(devfn, l) false
+#endif
+
 /*
  * Read the config data for a PCI device, sanity-check it
  * and fill in the dev structure...
@@ -2058,6 +2091,9 @@ static struct pci_dev *pci_scan_device(struct pci_bus *bus, int devfn)
 	u32 l;
 
 	if (!pci_bus_read_dev_vendor_id(bus, devfn, &l, 60*1000))
+		return NULL;
+
+	if (embedded_discard_found_device(devfn, l))
 		return NULL;
 
 	dev = pci_alloc_dev(bus);
