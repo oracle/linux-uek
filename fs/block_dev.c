@@ -1438,6 +1438,7 @@ void check_disk_size_change(struct gendisk *disk, struct block_device *bdev,
 		if (bdev_size > disk_size)
 			flush_disk(bdev, false);
 	}
+	bdev->bd_invalidated = 0;
 }
 
 /**
@@ -1467,7 +1468,6 @@ int revalidate_disk(struct gendisk *disk)
 
 		mutex_lock(&bdev->bd_mutex);
 		check_disk_size_change(disk, bdev, ret == 0);
-		bdev->bd_invalidated = 0;
 		mutex_unlock(&bdev->bd_mutex);
 		bdput(bdev);
 	}
@@ -1522,7 +1522,6 @@ static void bdev_disk_changed(struct block_device *bdev, bool invalidate)
 			rescan_partitions(bdev->bd_disk, bdev);
 	} else {
 		check_disk_size_change(bdev->bd_disk, bdev, !invalidate);
-		bdev->bd_invalidated = 0;
 	}
 }
 
