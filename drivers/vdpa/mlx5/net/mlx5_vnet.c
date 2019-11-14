@@ -1293,6 +1293,7 @@ static int add_fwd_to_tir(struct mlx5_vdpa_net *ndev)
 {
 	static const struct mlx5_flow_spec spec = {};
 	struct mlx5_flow_destination dest[2] = {};
+	struct mlx5_flow_table_attr ft_attr = {};
 	struct mlx5_flow_act flow_act = {};
 	struct mlx5_flow_namespace *ns;
 	int err;
@@ -1304,7 +1305,10 @@ static int add_fwd_to_tir(struct mlx5_vdpa_net *ndev)
 	}
 
 	/* for now, one entry, match all, forward to tir */
-	ndev->rxft = mlx5_create_auto_grouped_flow_table(ns, 0, 1, 1, 0, 0);
+	ft_attr.max_fte = 1;
+	ft_attr.autogroup.max_num_groups = 1;
+
+	ndev->rxft = mlx5_create_auto_grouped_flow_table(ns, &ft_attr);
 	if (IS_ERR(ndev->rxft))
 		return PTR_ERR(ndev->rxft);
 
