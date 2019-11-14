@@ -2831,6 +2831,14 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_irq;
 
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+#define REQUIRED_NUMBER_VFS (6)
+	/* Limit the number of VFs supported on the embedded product */
+	err = pci_sriov_set_totalvfs(pdev, REQUIRED_NUMBER_VFS);
+	if (err)
+		dev_warn(dev, "Unable to set the number of VFs");
+#endif
+
 	/* Enable AF's VFs (if any) */
 	err = rvu_enable_sriov(rvu);
 	if (err)
