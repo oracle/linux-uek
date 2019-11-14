@@ -3,5 +3,3 @@
 obj-$(CONFIG_CRYPTO_DEV_OCTEONTX_ZIP) += octeontx-zip.o
 
 octeontx-zip-objs := zip_pf_main.o
-
-ccflags-y := -I$(src)/../../../net/ethernet/cavium/octeontx-83xx/
