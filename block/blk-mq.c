@@ -1212,7 +1212,7 @@ static void __blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx)
 	 *   handle dispatched requests to this hctx
 	 */
 	if (!cpumask_test_cpu(raw_smp_processor_id(), hctx->cpumask) &&
-		cpu_online(hctx->next_cpu)) {
+		cpu_online(hctx->next_cpu) && printk_ratelimit()) {
 		printk(KERN_WARNING "run queue from wrong CPU %d, hctx %s\n",
 			raw_smp_processor_id(),
 			cpumask_empty(hctx->cpumask) ? "inactive": "active");
