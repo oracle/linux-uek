@@ -148,6 +148,7 @@ static enum ssb_mitigation ssb_select_mitigation(void);
 static void ssb_init(void);
 static void l1tf_select_mitigation(void);
 static void mds_select_mitigation(void);
+static void mds_print_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 static void taa_select_mitigation(void);
@@ -296,6 +297,12 @@ void __ref check_bugs(void)
 	*/
 	if (system_state == SYSTEM_RUNNING)
 		return;
+
+	/*
+	 * As MDS and TAA mitigations are inter-related, print MDS
+	 * mitigation until after TAA mitigation selection is done.
+	 */
+	mds_print_mitigation();
 
 	arch_smt_update();
 
@@ -543,6 +550,12 @@ static void mds_select_mitigation(void)
 			cpu_smt_disable(false);
 	} else if (mds_mitigation == MDS_MITIGATION_IDLE)
 		update_mds_branch_idle();
+}
+
+static void mds_print_mitigation(void)
+{
+	if (!boot_cpu_has_bug(X86_BUG_MDS) || cpu_mitigations_off())
+		return;
 
 	pr_info("%s\n", mds_strings[mds_mitigation]);
 }
