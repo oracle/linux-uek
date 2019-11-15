@@ -203,6 +203,8 @@ static inline const char *phy_modes(phy_interface_t interface)
 
 struct device;
 struct phylink;
+struct sfp_bus;
+struct sfp_upstream_ops;
 struct sk_buff;
 
 /*
@@ -343,6 +345,8 @@ struct phy_c45_device_ids {
  * dev_flags: Device-specific flags used by the PHY driver.
  * irq: IRQ number of the PHY's interrupt (-1 if none)
  * phy_timer: The timer for handling the state machine
+ * sfp_bus_attached: flag indicating whether the SFP bus has been attached
+ * sfp_bus: SFP bus attached to this PHY's fiber port
  * attached_dev: The attached enet driver's device instance ptr
  * adjust_link: Callback for the enet controller to respond to
  * changes in the link state.
@@ -384,6 +388,8 @@ struct phy_device {
 	/* Interrupts are enabled */
 	unsigned interrupts:1;
 
+	UEK_KABI_FILL_HOLE(struct sfp_bus *sfp_bus)
+
 	enum phy_state state;
 
 	u32 dev_flags;
@@ -409,6 +415,9 @@ struct phy_device {
 
 	/* Energy efficient ethernet modes which should be prohibited */
 	u32 eee_broken_modes;
+
+	/* This may be modified under the rtnl lock */
+	UEK_KABI_FILL_HOLE(bool sfp_bus_attached)
 
 #ifdef CONFIG_LED_TRIGGER_PHY
 	struct phy_led_trigger *phy_led_triggers;
@@ -1022,6 +1031,10 @@ int phy_suspend(struct phy_device *phydev);
 int phy_resume(struct phy_device *phydev);
 int __phy_resume(struct phy_device *phydev);
 int phy_loopback(struct phy_device *phydev, bool enable);
+void phy_sfp_attach(void *upstream, struct sfp_bus *bus);
+void phy_sfp_detach(void *upstream, struct sfp_bus *bus);
+int phy_sfp_probe(struct phy_device *phydev,
+	          const struct sfp_upstream_ops *ops);
 struct phy_device *phy_attach(struct net_device *dev, const char *bus_id,
 			      phy_interface_t interface);
 struct phy_device *phy_find_first(struct mii_bus *bus);
