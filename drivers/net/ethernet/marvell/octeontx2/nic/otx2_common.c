@@ -539,6 +539,25 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 	return 0;
 }
 
+void otx2_sqb_flush(struct otx2_nic *pfvf)
+{
+	int qidx, sqe_tail, sqe_head;
+	u64 incr, *ptr, val;
+
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_STATUS);
+	for (qidx = 0; qidx < pfvf->hw.tx_queues; qidx++) {
+		incr = (u64)qidx << 32;
+		while (1) {
+			val = otx2_atomic64_add(incr, ptr);
+			sqe_head = (val >> 20) & 0x3F;
+			sqe_tail = (val >> 28) & 0x3F;
+			if (sqe_head == sqe_tail)
+				break;
+			usleep_range(1, 3);
+		}
+	}
+}
+
 /* RED and drop levels of CQ on packet reception.
  * For CQ level is measure of emptiness ( 0x0 = full, 255 = empty).
  */

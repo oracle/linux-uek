@@ -1417,6 +1417,9 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	struct msg_req *req;
 	int qidx, err;
 
+	/* Ensure all SQE are processed */
+	otx2_sqb_flush(pf);
+
 	/* Stop transmission */
 	err = otx2_txschq_stop(pf);
 	if (err)
@@ -1427,8 +1430,6 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	if (!(pf->pcifunc & RVU_PFVF_FUNC_MASK))
 		otx2_nix_config_bp(pf, false);
 	otx2_mbox_unlock(mbox);
-
-	otx2_free_sq_res(pf);
 
 	/* Disable RQs */
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_RQ, false);
@@ -1441,6 +1442,8 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 		else
 			otx2_cleanup_tx_cqes(pf, cq);
 	}
+
+	otx2_free_sq_res(pf);
 
 	/* Free RQ buffer pointers*/
 	otx2_free_aura_ptr(pf, AURA_NIX_RQ);
