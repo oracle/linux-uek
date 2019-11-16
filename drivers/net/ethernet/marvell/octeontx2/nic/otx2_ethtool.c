@@ -25,6 +25,8 @@
 
 #define OTX2_DEFAULT_ACTION	0x1
 
+static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf);
+
 static const char otx2_priv_flags_strings[][ETH_GSTRING_LEN] = {
 	"pam4",
 	"edsa",
@@ -221,11 +223,30 @@ static void otx2_get_qset_stats(struct otx2_nic *pfvf,
 	}
 }
 
+static int otx2_get_phy_fec_stats(struct otx2_nic *pfvf)
+{
+	struct msg_req *req;
+	int rc = -EAGAIN;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_cgx_get_phy_fec_stats(&pfvf->mbox);
+	if (!req)
+		goto end;
+
+	if (!otx2_sync_mbox_msg(&pfvf->mbox))
+		rc = 0;
+end:
+	otx2_mbox_unlock(&pfvf->mbox);
+	return rc;
+}
+
 /* Get device and per queue statistics */
 static void otx2_get_ethtool_stats(struct net_device *netdev,
 				   struct ethtool_stats *stats, u64 *data)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
+	u64 fec_corr_blks, fec_uncorr_blks;
+	struct cgx_fw_data *rsp;
 	int stat;
 
 	otx2_get_dev_stats(pfvf);
@@ -244,10 +265,35 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 	for (stat = 0; stat < CGX_TX_STATS_COUNT; stat++)
 		*(data++) = pfvf->hw.cgx_tx_stats[stat];
 	*(data++) = pfvf->reset_count;
-	if (pfvf->linfo.fec) {
-		*(data++) = pfvf->hw.cgx_fec_corr_blks;
-		*(data++) = pfvf->hw.cgx_fec_uncorr_blks;
+
+	if (pfvf->linfo.fec == OTX2_FEC_NONE)
+		return;
+
+	fec_corr_blks = pfvf->hw.cgx_fec_corr_blks;
+	fec_uncorr_blks = pfvf->hw.cgx_fec_uncorr_blks;
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (!IS_ERR(rsp) && rsp->fwdata.phy.misc.has_fec_stats &&
+	    !otx2_get_phy_fec_stats(pfvf)) {
+		/* Fetch fwdata again because it's been recently populated with
+		 * latest PHY FEC stats.
+		 */
+		rsp = otx2_get_fwdata(pfvf);
+		if (!IS_ERR(rsp)) {
+			struct fec_stats_s *p = &rsp->fwdata.phy.fec_stats;
+
+			if (pfvf->linfo.fec == OTX2_FEC_BASER) {
+				fec_corr_blks   = p->brfec_corr_blks;
+				fec_uncorr_blks = p->brfec_uncorr_blks;
+			} else {
+				fec_corr_blks   = p->rsfec_corr_cws;
+				fec_uncorr_blks = p->rsfec_uncorr_cws;
+			}
+		}
 	}
+
+	*(data++) = fec_corr_blks;
+	*(data++) = fec_uncorr_blks;
 }
 
 static int otx2_get_sset_count(struct net_device *netdev, int sset)
@@ -266,12 +312,12 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 		       (pfvf->hw.rx_queues + pfvf->hw.tx_queues);
 
 	if (!if_up || !pfvf->linfo.fec) {
-		return otx2_n_dev_stats + qstats_count +
+		return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
 			CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + 1;
 	}
 	fec_stats_count = 2;
 	otx2_update_lmac_fec_stats(pfvf);
-	return otx2_n_dev_stats + qstats_count +
+	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
 		CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + 1 +
 		fec_stats_count;
 }
@@ -1226,7 +1272,7 @@ static u32 otx2_get_priv_flags(struct net_device *netdev)
 	if (IS_ERR(rsp)) {
 		pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_PAM4;
 	} else {
-		if (rsp->fwdata.phy.mod_type)
+		if (rsp->fwdata.phy.misc.mod_type)
 			pfvf->ethtool_flags |= OTX2_PRIV_FLAG_PAM4;
 		else
 			pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_PAM4;
@@ -1247,7 +1293,7 @@ static int otx2_set_phy_mod_type(struct net_device *netdev, bool enable)
 		return -EAGAIN;
 
 	/* ret here if phy does not support this feature */
-	if (!fwd->fwdata.phy.can_change_mod_type)
+	if (!fwd->fwdata.phy.misc.can_change_mod_type)
 		return -EOPNOTSUPP;
 
 	otx2_mbox_lock(&pfvf->mbox);
