@@ -67,6 +67,7 @@ struct bpf_map_ops {
 				     u64 *imm, u32 off);
 	int (*map_direct_value_meta)(const struct bpf_map *map,
 				     u64 imm, u32 *off);
+	UEK_KABI_EXTEND(int (*map_mmap)(struct bpf_map *map, struct vm_area_struct *vma))
 };
 
 struct bpf_map_memory {
@@ -108,6 +109,8 @@ struct bpf_map {
 	UEK_KABI_REPLACE_UNSAFE(atomic_t usercnt, atomic64_t usercnt)
 	struct work_struct work;
 	char name[BPF_OBJ_NAME_LEN];
+	UEK_KABI_EXTEND(struct mutex freeze_mutex)
+	UEK_KABI_EXTEND(u64 writecnt) /* writable mmap cnt; protected by freeze_mutex */
 };
 
 static inline bool map_value_has_spin_lock(const struct bpf_map *map)
@@ -666,7 +669,8 @@ int bpf_map_charge_init(struct bpf_map_memory *mem, u64 size);
 void bpf_map_charge_finish(struct bpf_map_memory *mem);
 void bpf_map_charge_move(struct bpf_map_memory *dst,
 			 struct bpf_map_memory *src);
-void *bpf_map_area_alloc(u64 size, int numa_node);
+void *bpf_map_area_alloc(size_t size, int numa_node);
+void *bpf_map_area_mmapable_alloc(size_t size, int numa_node);
 void bpf_map_area_free(void *base);
 void bpf_map_init_from_attr(struct bpf_map *map, union bpf_attr *attr);
 
