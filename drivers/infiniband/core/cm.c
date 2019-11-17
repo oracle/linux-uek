@@ -263,7 +263,7 @@ struct cm_id_private {
 	struct rb_node sidr_id_node;
 	spinlock_t lock;	/* Do not acquire inside cm.lock */
 	struct completion comp;
-	atomic_t refcount;
+	refcount_t refcount;
 	/* Number of clients sharing this ib_cm_id. Only valid for listeners.
 	 * Protected by the cm.lock spinlock. */
 	int listen_sharecount;
@@ -308,7 +308,7 @@ static void cm_work_handler(struct work_struct *work);
 
 static inline void cm_deref_id(struct cm_id_private *cm_id_priv)
 {
-	if (atomic_dec_and_test(&cm_id_priv->refcount))
+	if (refcount_dec_and_test(&cm_id_priv->refcount))
 		complete(&cm_id_priv->comp);
 }
 
@@ -365,7 +365,7 @@ static int cm_alloc_msg(struct cm_id_private *cm_id_priv,
 	m->ah = ah;
 	m->retries = cm_id_priv->max_cm_retries;
 
-	atomic_inc(&cm_id_priv->refcount);
+	refcount_inc(&cm_id_priv->refcount);
 	m->context[0] = cm_id_priv;
 	*msg = m;
 
@@ -614,7 +614,7 @@ static struct cm_id_private * cm_get_id(__be32 local_id, __be32 remote_id)
 	cm_id_priv = xa_load(&cm.local_id_table, cm_local_id(local_id));
 	if (cm_id_priv) {
 		if (cm_id_priv->id.remote_id == remote_id)
-			atomic_inc(&cm_id_priv->refcount);
+			refcount_inc(&cm_id_priv->refcount);
 		else
 			cm_id_priv = NULL;
 	}
@@ -869,7 +869,7 @@ struct ib_cm_id *ib_create_cm_id(struct ib_device *device,
 	INIT_LIST_HEAD(&cm_id_priv->prim_list);
 	INIT_LIST_HEAD(&cm_id_priv->altr_list);
 	atomic_set(&cm_id_priv->work_count, -1);
-	atomic_set(&cm_id_priv->refcount, 1);
+	refcount_set(&cm_id_priv->refcount, 1);
 
 	ret = xa_alloc_cyclic_irq(&cm.local_id_table, &id, NULL, xa_limit_32b,
 				  &cm.local_id_next, GFP_KERNEL);
@@ -1226,7 +1226,7 @@ struct ib_cm_id *ib_cm_insert_listen(struct ib_device *device,
 			ib_destroy_cm_id(cm_id);
 			return ERR_PTR(-EINVAL);
 		}
-		atomic_inc(&cm_id_priv->refcount);
+		refcount_inc(&cm_id_priv->refcount);
 		++cm_id_priv->listen_sharecount;
 		spin_unlock_irqrestore(&cm.lock, flags);
 
@@ -1891,8 +1891,8 @@ static struct cm_id_private * cm_match_req(struct cm_work *work,
 			     NULL, 0);
 		goto out;
 	}
-	atomic_inc(&listen_cm_id_priv->refcount);
-	atomic_inc(&cm_id_priv->refcount);
+	refcount_inc(&listen_cm_id_priv->refcount);
+	refcount_inc(&cm_id_priv->refcount);
 	cm_id_priv->id.state = IB_CM_REQ_RCVD;
 	atomic_inc(&cm_id_priv->work_count);
 	spin_unlock_irq(&cm.lock);
@@ -2048,7 +2048,7 @@ static int cm_req_handler(struct cm_work *work)
 	return 0;
 
 rejected:
-	atomic_dec(&cm_id_priv->refcount);
+	refcount_dec(&cm_id_priv->refcount);
 	cm_deref_id(listen_cm_id_priv);
 free_timeinfo:
 	kfree(cm_id_priv->timewait_info);
@@ -2822,7 +2822,7 @@ static struct cm_id_private * cm_acquire_rejected_id(struct cm_rej_msg *rej_msg)
 				cm_local_id(timewait_info->work.local_id));
 		if (cm_id_priv) {
 			if (cm_id_priv->id.remote_id == remote_id)
-				atomic_inc(&cm_id_priv->refcount);
+				refcount_inc(&cm_id_priv->refcount);
 			else
 				cm_id_priv = NULL;
 		}
@@ -3592,8 +3592,8 @@ static int cm_sidr_req_handler(struct cm_work *work)
 		cm_reject_sidr_req(cm_id_priv, IB_SIDR_UNSUPPORTED);
 		goto out; /* No match. */
 	}
-	atomic_inc(&cur_cm_id_priv->refcount);
-	atomic_inc(&cm_id_priv->refcount);
+	refcount_inc(&cur_cm_id_priv->refcount);
+	refcount_inc(&cm_id_priv->refcount);
 	spin_unlock_irq(&cm.lock);
 
 	cm_id_priv->id.cm_handler = cur_cm_id_priv->id.cm_handler;
