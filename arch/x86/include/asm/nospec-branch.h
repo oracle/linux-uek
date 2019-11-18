@@ -152,7 +152,7 @@
 	"901: .byte " __stringify(STATIC_KEY_INIT_NOP) "\n"	\
 	".pushsection __jump_table, \"aw\"\n"			\
 	_ASM_ALIGN "\n"						\
-	".long 901 - ., 902 - .\n"				\
+	".long 901b - ., 902f - .\n"				\
 	_ASM_PTR "retpoline_enabled_key - .\n"			\
 	".popsection\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
