@@ -750,8 +750,6 @@ static int do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 func,
 	return __do_cpuid_ent(entry, func, idx, nent, maxnent);
 }
 
-#undef F
-
 struct kvm_cpuid_param {
 	u32 func;
 	u32 idx;
@@ -957,6 +955,12 @@ out:
 		*ebx = best->ebx;
 		*ecx = best->ecx;
 		*edx = best->edx;
+		if (function == 7 && index == 0) {
+			u64 data;
+		        if (!do_get_msr(vcpu, MSR_IA32_TSX_CTRL, &data) &&
+			    (data & TSX_CTRL_CPUID_CLEAR))
+				*ebx &= ~(F(RTM) | F(HLE));
+		}
 	} else
 		*eax = *ebx = *ecx = *edx = 0;
 	trace_kvm_cpuid(function, *eax, *ebx, *ecx, *edx, entry_found);
