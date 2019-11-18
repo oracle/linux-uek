@@ -1062,6 +1062,7 @@ static const u32 vmx_msr_index[] = {
 	MSR_SYSCALL_MASK, MSR_LSTAR, MSR_CSTAR,
 #endif
 	MSR_EFER, MSR_TSC_AUX, MSR_STAR,
+	MSR_IA32_TSX_CTRL,
 };
 
 static inline bool is_page_fault(u32 intr_info)
@@ -2427,6 +2428,9 @@ static void setup_msrs(struct vcpu_vmx *vmx)
 	index = __find_msr_index(vmx, MSR_EFER);
 	if (index >= 0 && update_transition_efer(vmx, index))
 		move_msr_up(vmx, index, save_nmsrs++);
+	index = __find_msr_index(vmx, MSR_IA32_TSX_CTRL);
+	if (index >= 0)
+		move_msr_up(vmx, index, save_nmsrs++);
 
 	vmx->save_nmsrs = save_nmsrs;
 
@@ -2861,6 +2865,10 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 *pdata)
 	case MSR_IA32_TSC:
 		data = guest_read_tsc();
 		break;
+	case MSR_IA32_TSX_CTRL:
+		if (!(to_vmx(vcpu)->arch_capabilities & ARCH_CAP_TSX_CTRL_MSR))
+			return 1;
+		goto find_shared_msr;
 	case MSR_IA32_SPEC_CTRL:
 		data = to_vmx(vcpu)->spec_ctrl;
 		break;
@@ -2898,8 +2906,9 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 *pdata)
 	case MSR_TSC_AUX:
 		if (!to_vmx(vcpu)->rdtscp_enabled)
 			return 1;
-		/* Otherwise falls through */
+		goto find_shared_msr;
 	default:
+	find_shared_msr:
 		msr = find_msr_entry(to_vmx(vcpu), msr_index);
 		if (msr) {
 			data = msr->data;
@@ -2965,6 +2974,12 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_SPEC_CTRL:
 		to_vmx(vcpu)->spec_ctrl = data;
 		break;
+	case MSR_IA32_TSX_CTRL:
+		if (!(to_vmx(vcpu)->arch_capabilities & ARCH_CAP_TSX_CTRL_MSR))
+			return 1;
+		if (data & ~(TSX_CTRL_RTM_DISABLE | TSX_CTRL_CPUID_CLEAR))
+			return 1;
+		goto find_shared_msr;
 	case MSR_IA32_PRED_CMD:
 		if (data & ~FEATURE_SET_IBPB)
 			return 1;
@@ -3024,8 +3039,10 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		/* Check reserved bit, higher 32 bits should be zero */
 		if ((data >> 32) != 0)
 			return 1;
-		/* Otherwise falls through */
+		goto find_shared_msr;
+
 	default:
+	find_shared_msr:
 		msr = find_msr_entry(vmx, msr_index);
 		if (msr) {
 			u64 old_msr_data = msr->data;
@@ -4956,7 +4973,20 @@ static int vmx_vcpu_setup(struct vcpu_vmx *vmx)
 			continue;
 		vmx->guest_msrs[j].index = i;
 		vmx->guest_msrs[j].data = 0;
-		vmx->guest_msrs[j].mask = -1ull;
+
+		switch (index) {
+		case MSR_IA32_TSX_CTRL:
+			/*
+			 * No need to pass TSX_CTRL_CPUID_CLEAR through, so
+			 * let's avoid changing CPUID bits under the host
+			 * kernel's feet.
+			 */
+			vmx->guest_msrs[j].mask = ~(u64)TSX_CTRL_CPUID_CLEAR;
+			break;
+		default:
+			vmx->guest_msrs[j].mask = -1ull;
+			break;
+		}
 		++vmx->nmsrs;
 	}
 
