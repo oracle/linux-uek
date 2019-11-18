@@ -1424,9 +1424,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
 				  conn->c_proposed_version, UINT_MAX, UINT_MAX,
 				  frag, isv6, seq);
-	if (rds_ib_sysctl_local_ack_timeout &&
-	    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
-		rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		rds_rtd(RDS_RTD_CM, "RDS/IB: rdma_connect failed (%d)\n", ret);
