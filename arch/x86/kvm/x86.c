@@ -1392,7 +1392,7 @@ EXPORT_SYMBOL_GPL(kvm_set_msr);
 /*
  * Adapt set_msr() to msr_io()'s calling convention
  */
-static int do_get_msr(struct kvm_vcpu *vcpu, unsigned index, u64 *data)
+int do_get_msr(struct kvm_vcpu *vcpu, unsigned index, u64 *data)
 {
 	struct msr_data msr;
 	int r;

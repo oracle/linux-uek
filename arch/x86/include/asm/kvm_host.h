@@ -1324,6 +1324,7 @@ void kvm_enable_efer_bits(u64);
 bool kvm_valid_efer(struct kvm_vcpu *vcpu, u64 efer);
 int kvm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr);
 int kvm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr);
+int do_get_msr(struct kvm_vcpu *vcpu, u32 index, u64 *data);
 
 struct x86_emulate_ctxt;
 
