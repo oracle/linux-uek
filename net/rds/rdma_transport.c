@@ -165,6 +165,9 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			    cm_id->route.addr.dev_addr.dst_dev_addr +
 			    rdma_addr_gid_offset(&cm_id->route.addr.dev_addr));
 		rdma_set_service_type(cm_id, conn->c_tos);
+		if (rds_ib_sysctl_local_ack_timeout &&
+		    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
+			rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
 
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
