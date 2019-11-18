@@ -1040,7 +1040,7 @@ static int kvm_get_msr_feature(struct kvm_msr_entry *msr)
 	return 0;
 }
 
-static int do_get_msr_feature(struct kvm_vcpu *vcpu, unsigned index, u64 *data)
+int do_get_msr_feature(struct kvm_vcpu *vcpu, unsigned index, u64 *data)
 {
 	struct kvm_msr_entry msr;
 	int r;
