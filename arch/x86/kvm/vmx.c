@@ -1755,6 +1755,23 @@ static void update_exception_bitmap(struct kvm_vcpu *vcpu)
 	vmcs_write32(EXCEPTION_BITMAP, eb);
 }
 
+static int vmx_set_guest_msr(struct vcpu_vmx *vmx, struct shared_msr_entry *msr, u64 data)
+{
+	int ret = 0;
+
+	u64 old_msr_data = msr->data;
+	msr->data = data;
+	if (msr - vmx->guest_msrs < vmx->save_nmsrs) {
+		preempt_disable();
+		ret = kvm_set_shared_msr(msr->index, msr->data,
+					 msr->mask);
+		preempt_enable();
+		if (ret)
+			msr->data = old_msr_data;
+	}
+	return ret;
+}
+
 static void clear_atomic_switch_msr_special(struct vcpu_vmx *vmx,
 		unsigned long entry, unsigned long exit)
 {
@@ -3044,20 +3061,10 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	default:
 	find_shared_msr:
 		msr = find_msr_entry(vmx, msr_index);
-		if (msr) {
-			u64 old_msr_data = msr->data;
-			msr->data = data;
-			if (msr - vmx->guest_msrs < vmx->save_nmsrs) {
-				preempt_disable();
-				ret = kvm_set_shared_msr(msr->index, msr->data,
-							 msr->mask);
-				preempt_enable();
-				if (ret)
-					msr->data = old_msr_data;
-			}
-			break;
-		}
-		ret = kvm_set_msr_common(vcpu, msr_info);
+		if (msr)
+			ret = vmx_set_guest_msr(vmx, msr, data);
+		else
+			ret = kvm_set_msr_common(vcpu, msr_info);
 	}
 
 	return ret;
@@ -9018,6 +9025,15 @@ static void vmx_cpuid_update(struct kvm_vcpu *vcpu)
 		}
 		if (best)
 			best->ebx &= ~bit(X86_FEATURE_INVPCID);
+	}
+
+	if (boot_cpu_has(X86_FEATURE_RTM)) {
+		struct shared_msr_entry *msr;
+		msr = find_msr_entry(vmx, MSR_IA32_TSX_CTRL);
+		if (msr) {
+			bool enabled = guest_cpuid_has_rtm(vcpu);
+			vmx_set_guest_msr(vmx, msr, enabled ? 0 : TSX_CTRL_RTM_DISABLE);
+		}
 	}
 }
 
