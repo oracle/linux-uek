@@ -86,7 +86,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # kernel-headers
 %define with_headers   1
 # dtrace
-%define with_dtrace    0
+%define with_dtrace    1
 # perf
 %define with_perf      0
 # tools
