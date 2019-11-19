@@ -95,7 +95,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # kernel-headers
 %define with_headers   1
 # dtrace
-%define with_dtrace    0
+%define with_dtrace    1
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
