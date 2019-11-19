@@ -63,6 +63,22 @@ static const struct file_operations mgag200_driver_fops = {
 	DRM_VRAM_MM_FILE_OPERATIONS
 };
 
+int mgag200_driver_dumb_create(struct drm_file *file,
+			       struct drm_device *dev,
+			       struct drm_mode_create_dumb *args)
+{
+	struct mga_device *mdev = dev->dev_private;
+	unsigned long pg_align;
+
+	if (WARN_ONCE(!dev->vram_mm, "VRAM MM not initialized"))
+		return -EINVAL;
+
+	pg_align = mdev->mc.vram_size >> PAGE_SHIFT;
+
+	return drm_gem_vram_fill_create_dumb(file, dev, &dev->vram_mm->bdev,
+					     pg_align, false, args);
+}
+
 static struct drm_driver driver = {
 	.driver_features = DRIVER_GEM | DRIVER_MODESET,
 	.load = mgag200_driver_load,
@@ -74,7 +90,9 @@ static struct drm_driver driver = {
 	.major = DRIVER_MAJOR,
 	.minor = DRIVER_MINOR,
 	.patchlevel = DRIVER_PATCHLEVEL,
-	DRM_GEM_VRAM_DRIVER
+	.dumb_create = mgag200_driver_dumb_create,
+	.dumb_map_offset = drm_gem_vram_driver_dumb_mmap_offset,
+	.gem_prime_mmap = drm_gem_prime_mmap,
 };
 
 static struct pci_driver mgag200_pci_driver = {
