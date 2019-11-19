@@ -195,6 +195,9 @@
 					     * reset-recovery completion is
 					     * second
 					     */
+
+#define FC_PORTSPEED_64GBIT		0x1000
+
 /* ISP2031: Values for laser on/off */
 #define PORT_0_2031	0x00201340
 #define PORT_1_2031	0x00201350
