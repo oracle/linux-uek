@@ -11,6 +11,13 @@ config SAMPLE_TRACE_EVENTS
 	help
 	  This build trace event example modules.
 
+config SAMPLE_TRACE_ARRAY
+        tristate "Build sample module for kernel access to Ftrace instancess"
+	depends on EVENT_TRACING && m
+	help
+	 This builds a module that demonstrates the use of various APIs to
+	 access Ftrace instances from within the kernel.
+
 config SAMPLE_KOBJECT
 	tristate "Build kobject examples -- loadable modules only"
 	depends on m
