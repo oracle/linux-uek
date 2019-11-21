@@ -708,41 +708,6 @@ qla2x00_sp_free_dma(void *ptr)
 	}
 
 end:
-	if (sp->flags & SRB_DIF_BUNDL_DMA_VALID) {
-		struct crc_context *difctx = sp->u.scmd.ctx;
-		struct dsd_dma *dif_dsd, *nxt_dsd;
-
-		list_for_each_entry_safe(dif_dsd, nxt_dsd,
-		    &difctx->ldif_dma_hndl_list, list) {
-			list_del(&dif_dsd->list);
-			dma_pool_free(ha->dif_bundl_pool, dif_dsd->dsd_addr,
-			    dif_dsd->dsd_list_dma);
-			kfree(dif_dsd);
-			difctx->no_dif_bundl--;
-		}
-
-		list_for_each_entry_safe(dif_dsd, nxt_dsd,
-		    &difctx->ldif_dsd_list, list) {
-			list_del(&dif_dsd->list);
-			dma_pool_free(ha->dl_dma_pool, dif_dsd->dsd_addr,
-			    dif_dsd->dsd_list_dma);
-			kfree(dif_dsd);
-			difctx->no_ldif_dsd--;
-		}
-
-		if (difctx->no_ldif_dsd) {
-			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, sp->vha, 0xe022,
-			    "%s: difctx->no_ldif_dsd=%x\n",
-			    __func__, difctx->no_ldif_dsd);
-		}
-
-		if (difctx->no_dif_bundl) {
-			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, sp->vha, 0xe022,
-			    "%s: difctx->no_dif_bundl=%x\n",
-			    __func__, difctx->no_dif_bundl);
-		}
-	}
-
 	if (sp->type != SRB_NVME_CMD && sp->type != SRB_NVME_LS) {
 		CMD_SP(cmd) = NULL;
 		qla2x00_rel_sp(sp);
@@ -815,6 +780,43 @@ qla2xxx_qpair_sp_free_dma(void *ptr)
 		ha->gbl_dsd_avail += ctx1->dsd_use_cnt;
 		mempool_free(ctx1, ha->ctx_mempool);
 	}
+
+	if (sp->flags & SRB_DIF_BUNDL_DMA_VALID) {
+		struct crc_context *difctx = sp->u.scmd.ctx;
+		struct dsd_dma *dif_dsd, *nxt_dsd;
+
+		list_for_each_entry_safe(dif_dsd, nxt_dsd,
+		    &difctx->ldif_dma_hndl_list, list) {
+			list_del(&dif_dsd->list);
+			dma_pool_free(ha->dif_bundl_pool, dif_dsd->dsd_addr,
+			    dif_dsd->dsd_list_dma);
+			kfree(dif_dsd);
+			difctx->no_dif_bundl--;
+		}
+
+		list_for_each_entry_safe(dif_dsd, nxt_dsd,
+		    &difctx->ldif_dsd_list, list) {
+			list_del(&dif_dsd->list);
+			dma_pool_free(ha->dl_dma_pool, dif_dsd->dsd_addr,
+			    dif_dsd->dsd_list_dma);
+			kfree(dif_dsd);
+			difctx->no_ldif_dsd--;
+		}
+
+		if (difctx->no_ldif_dsd) {
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, sp->vha, 0xe022,
+			    "%s: difctx->no_ldif_dsd=%x\n",
+			    __func__, difctx->no_ldif_dsd);
+		}
+
+		if (difctx->no_dif_bundl) {
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, sp->vha, 0xe022,
+			    "%s: difctx->no_dif_bundl=%x\n",
+			    __func__, difctx->no_dif_bundl);
+		}
+		sp->flags &= ~SRB_DIF_BUNDL_DMA_VALID;
+	}
+
 end:
 	CMD_SP(cmd) = NULL;
 	qla2xxx_rel_qpair_sp(sp->qpair, sp);
