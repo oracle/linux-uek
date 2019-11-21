@@ -194,21 +194,38 @@ EXPORT_SYMBOL_GPL(mds_idle_clear);
 
 static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
+void update_percpu_mitigations(void)
+{
+	/*
+	 * No need to check for availability of IBRS since the values updated
+	 * by update_cpu_ibrs_all() are based on @use_ibrs which incorporates
+	 * knowledge about IBRS status.
+	 */
+	mutex_lock(&spec_ctrl_mutex);
+	update_cpu_ibrs_all();
+	update_cpu_spec_ctrl_all();
+	mutex_unlock(&spec_ctrl_mutex);
+}
+
 void __ref check_bugs(void)
 {
-	int cpu;
-
-	identify_boot_cpu();
-
 	/*
-	 * identify_boot_cpu() initialized SMT support information, let the
-	 * core code know.
-	 */
-	cpu_smt_check_topology();
+	 * If we are late loading the microcode, all the stuff bellow cannot
+	 * be executed because they are related to early init of the machine.
+	*/
+	if (system_state != SYSTEM_RUNNING) {
+		identify_boot_cpu();
 
-	if (!IS_ENABLED(CONFIG_SMP)) {
-		pr_info("CPU: ");
-		print_cpu_info(&boot_cpu_data);
+		/*
+		 * identify_boot_cpu() initialized SMT support information, let the
+		 * core code know.
+		 */
+		cpu_smt_check_topology();
+
+		if (!IS_ENABLED(CONFIG_SMP)) {
+			pr_info("CPU: ");
+			print_cpu_info(&boot_cpu_data);
+		}
 	}
 
 	/*
@@ -268,6 +285,13 @@ void __ref check_bugs(void)
 	l1tf_select_mitigation();
 	mds_select_mitigation();
 	taa_select_mitigation();
+
+	/*
+	 * If we are late loading the microcode, all the stuff bellow cannot
+	 * be executed because they are related to early init of the machine.
+	*/
+	if (system_state == SYSTEM_RUNNING)
+		return;
 
 	/*
 	 * As MDS and TAA mitigations are inter-related, print MDS

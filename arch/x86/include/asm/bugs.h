@@ -5,6 +5,7 @@
 #include <asm/processor.h>
 
 extern void check_bugs(void);
+extern void update_percpu_mitigations(void);
 
 #if defined(CONFIG_CPU_SUP_INTEL)
 void check_mpx_erratum(struct cpuinfo_x86 *c);
