@@ -23,6 +23,11 @@ module_param(tbi_clk_en, uint, 0644);
 MODULE_PARM_DESC(tbi_clk_en,
 		 "Use Fixed Time Base 100MHz Reference Clock (0=Disable, 1=Enable [default])");
 
+static int cfg_mode_delay = 30;
+module_param(cfg_mode_delay, uint, 0644);
+MODULE_PARM_DESC(cfg_mode_delay,
+		 "Delay in micro-seconds for mode change in MPI CFG register (30 [default])");
+
 static void octeontx2_spi_wait_ready(struct octeontx2_spi *p)
 {
 	union mpix_sts mpi_sts;
@@ -105,7 +110,8 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 	if (mpi_cfg.u64 != p->last_cfg) {
 		p->last_cfg = mpi_cfg.u64;
 		writeq(mpi_cfg.u64, p->register_base + OCTEONTX2_SPI_CFG(p));
-		udelay(100); /* allow CS change to settle */
+		mpi_cfg.u64 = readq(p->register_base + OCTEONTX2_SPI_CFG(p));
+		udelay(cfg_mode_delay); /* allow CS change to settle */
 	}
 	tx_buf = xfer->tx_buf;
 	rx_buf = xfer->rx_buf;
