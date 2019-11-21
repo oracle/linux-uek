@@ -5862,7 +5862,8 @@ void dump_vmcs(void)
  * The guest has exited.  See if we can fix it or if we need userspace
  * assistance.
  */
-static int vmx_handle_exit(struct kvm_vcpu *vcpu)
+static int vmx_handle_exit(struct kvm_vcpu *vcpu,
+	enum exit_fastpath_completion exit_fastpath)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	u32 exit_reason = vmx->exit_reason;
@@ -5946,6 +5947,11 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 			       __func__, vcpu->vcpu_id);
 			vmx->loaded_vmcs->soft_vnmi_blocked = 0;
 		}
+	}
+
+	if (exit_fastpath == EXIT_FASTPATH_SKIP_EMUL_INS) {
+		kvm_skip_emulated_instruction(vcpu);
+		return 1;
 	}
 
 	if (exit_reason >= kvm_vmx_max_exit_handlers)
@@ -6301,7 +6307,8 @@ static void handle_external_interrupt_irqoff(struct kvm_vcpu *vcpu)
 }
 STACK_FRAME_NON_STANDARD(handle_external_interrupt_irqoff);
 
-static void vmx_handle_exit_irqoff(struct kvm_vcpu *vcpu)
+static void vmx_handle_exit_irqoff(struct kvm_vcpu *vcpu,
+	enum exit_fastpath_completion *exit_fastpath)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 
@@ -6309,6 +6316,9 @@ static void vmx_handle_exit_irqoff(struct kvm_vcpu *vcpu)
 		handle_external_interrupt_irqoff(vcpu);
 	else if (vmx->exit_reason == EXIT_REASON_EXCEPTION_NMI)
 		handle_exception_nmi_irqoff(vmx);
+	else if (!is_guest_mode(vcpu) &&
+		vmx->exit_reason == EXIT_REASON_MSR_WRITE)
+		*exit_fastpath = handle_fastpath_set_msr_irqoff(vcpu);
 }
 
 static bool vmx_has_emulated_msr(int index)
