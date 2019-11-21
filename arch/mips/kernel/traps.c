@@ -954,6 +954,17 @@ void do_trap_or_bp(struct pt_regs *regs, unsigned int code, int si_code,
 		scnprintf(b, sizeof(b), "%s instruction in kernel code", str);
 		die_if_kernel(b, regs);
 		if (si_code) {
+			unsigned long tmp;
+			__asm__ __volatile__(   /* flush local icache */
+				"      synci   0($0)      \n"	/* flush i-cache */
+				"      dla     %0, 1f     \n"
+				"      sync               \n"	/* clear memory hazards */
+				"      jr.hb   %0         \n"	/* clear instruction hazards */
+				"      nop                \n"
+				"1:                       \n"
+				: "=r" (tmp)
+		);
+
 			info.si_signo = SIGTRAP;
 			info.si_code = si_code;
 			force_sig_info(SIGTRAP, &info, current);
