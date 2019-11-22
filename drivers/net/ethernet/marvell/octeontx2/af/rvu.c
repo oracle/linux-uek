@@ -708,6 +708,7 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 		} else {
 			eth_random_addr(pfvf->mac_addr);
 		}
+		ether_addr_copy(pfvf->default_mac, pfvf->mac_addr);
 
 		/* Assign MAC address to VFs*/
 		rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvf);
@@ -722,6 +723,7 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 			} else {
 				eth_random_addr(pfvf->mac_addr);
 			}
+		ether_addr_copy(pfvf->default_mac, pfvf->mac_addr);
 		}
 	}
 }
@@ -1106,6 +1108,9 @@ static void rvu_detach_block(struct rvu *rvu, int pcifunc, int blktype)
 	blkaddr = rvu_get_blkaddr(rvu, blktype, pcifunc);
 	if (blkaddr < 0)
 		return;
+
+	if (blkaddr == BLKADDR_NIX0)
+		rvu_nix_reset_mac(pfvf, pcifunc);
 
 	block = &hw->block[blkaddr];
 

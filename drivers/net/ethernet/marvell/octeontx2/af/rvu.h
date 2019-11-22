@@ -265,7 +265,9 @@ struct rvu_pfvf {
 	u16		minlen;
 
 	bool		hw_rx_tstamp_en; /* Is rx_tstamp enabled */
+	bool		pf_set_vfs_mac;
 	u8		mac_addr[ETH_ALEN]; /* MAC address of this PF/VF */
+	u8		default_mac[ETH_ALEN]; /* MAC address from FWdata */
 
 	/* Broadcast pkt replication info */
 	u16			bcast_mce_idx;
@@ -614,6 +616,7 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int npalf);
 int nix_get_nixlf(struct rvu *rvu, u16 pcifunc, int *nixlf);
 int rvu_nix_register_interrupts(struct rvu *rvu);
 void rvu_nix_unregister_interrupts(struct rvu *rvu);
+void rvu_nix_reset_mac(struct rvu_pfvf *pfvf, int pcifunc);
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);

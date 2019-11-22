@@ -2910,10 +2910,11 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 	if (nixlf < 0)
 		return NIX_AF_ERR_AF_LF_INVALID;
 
-	/* Skip updating mac addr if request is from vf */
-	if (!from_vf)
-		ether_addr_copy(pfvf->mac_addr, req->mac_addr);
+	/* VF can't overwrite admin(PF) changes */
+	if (from_vf && pfvf->pf_set_vfs_mac)
+		return -EPERM;
 
+	ether_addr_copy(pfvf->mac_addr, req->mac_addr);
 
 	rvu_npc_install_ucast_entry(rvu, pcifunc, nixlf,
 				    pfvf->rx_chan_base, req->mac_addr);
@@ -3971,4 +3972,13 @@ struct rvu *rvu, struct nix_inline_ipsec_lf_cfg *req, struct msg_rsp *rsp)
 	}
 
 	return 0;
+}
+
+void rvu_nix_reset_mac(struct rvu_pfvf *pfvf, int pcifunc)
+{
+	bool from_vf = !!(pcifunc & RVU_PFVF_FUNC_MASK);
+
+	/* overwrite vf mac address with default_mac */
+	if (from_vf)
+		ether_addr_copy(pfvf->mac_addr, pfvf->default_mac);
 }

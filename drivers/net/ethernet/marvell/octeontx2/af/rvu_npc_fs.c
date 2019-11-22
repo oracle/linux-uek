@@ -979,8 +979,10 @@ update_rule:
 		pfvf->def_rule = rule;
 
 	/* VF's MAC address is being changed via PF  */
-	if (pf_set_vfs_mac)
-		ether_addr_copy(pfvf->mac_addr, req->packet.dmac);
+	if (pf_set_vfs_mac) {
+		ether_addr_copy(pfvf->default_mac, req->packet.dmac);
+		pfvf->pf_set_vfs_mac = true;
+	}
 
 	return 0;
 }
