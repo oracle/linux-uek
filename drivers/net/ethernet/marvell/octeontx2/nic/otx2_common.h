@@ -300,6 +300,8 @@ struct otx2_nic {
 #define OTX2_EDSA_HDR_LEN			16
 #define OTX2_HIGIG2_HDR_LEN			16
 	u32			addl_mtu;
+	/* Block address of NIX either BLKADDR_NIX0 or BLKADDR_NIX1 */
+	int			nix_blkaddr;
 };
 
 static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
@@ -347,7 +349,7 @@ static inline void __iomem *otx2_get_regaddr(struct otx2_nic *nic, u64 offset)
 
 	switch ((offset >> RVU_FUNC_BLKADDR_SHIFT) & RVU_FUNC_BLKADDR_MASK) {
 	case BLKTYPE_NIX:
-		blkaddr = BLKADDR_NIX0;
+		blkaddr = nic->nix_blkaddr;
 		break;
 	case BLKTYPE_NPA:
 		blkaddr = BLKADDR_NPA;

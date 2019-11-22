@@ -1266,6 +1266,14 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 		return err;
 	}
 
+	pfvf->nix_blkaddr = BLKADDR_NIX0;
+
+	/* If the platform has two NIX blocks then LF may be
+	 * allocated from NIX1.
+	 */
+	if (otx2_read64(pfvf, RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_NIX1)) & 0x1FFULL)
+		pfvf->nix_blkaddr = BLKADDR_NIX1;
+
 	/* Get NPA and NIX MSIX vector offsets */
 	msix = otx2_mbox_alloc_msg_msix_offset(&pfvf->mbox);
 	if (!msix) {
