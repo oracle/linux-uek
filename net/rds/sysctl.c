@@ -66,7 +66,7 @@ unsigned int rds_sysctl_passive_connect_delay_percent = 100;
  */
 unsigned int rds_sysctl_min_conn_hb_timeout;
 unsigned int rds_sysctl_max_conn_hb_timeout = 60;
-unsigned int rds_sysctl_conn_hb_timeout = 10;
+unsigned int rds_sysctl_conn_hb_timeout;
 
 /* Heartbeat interval in seconds. The time from a successful heartbeat
  * pong has been received until a new heartbeat ping is sent out is
