@@ -436,6 +436,11 @@ module_param_named(disable_bypass, disable_bypass, bool, S_IRUGO);
 MODULE_PARM_DESC(disable_bypass,
 	"Disable bypass streams such that incoming transactions from devices that are not attached to an iommu domain will report an abort back to the device and will not be allowed to pass through the SMMU.");
 
+static bool enable_evtq_logging;
+module_param_named(enable_evtq_logging, enable_evtq_logging, bool, 0644);
+MODULE_PARM_DESC(enable_evtq_logging,
+		 "Enable logging of SMMU events; if disabled, all SMMU events will be discarded. The default state is disabled.");
+
 enum pri_resp {
 	PRI_RESP_DENY,
 	PRI_RESP_FAIL,
@@ -1316,6 +1321,9 @@ static irqreturn_t arm_smmu_evtq_thread(int irq, void *dev)
 	do {
 		while (!queue_remove_raw(q, evt)) {
 			u8 id = evt[0] >> EVTQ_0_ID_SHIFT & EVTQ_0_ID_MASK;
+
+			if (!enable_evtq_logging)
+				continue;
 
 			dev_info(smmu->dev, "event 0x%02x received:\n", id);
 			for (i = 0; i < ARRAY_SIZE(evt); ++i)
