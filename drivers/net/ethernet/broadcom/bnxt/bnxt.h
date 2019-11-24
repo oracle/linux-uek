@@ -695,6 +695,7 @@ struct bnxt_ring_mem_info {
 #define BNXT_RMEM_USE_FULL_PAGE_FLAG	4
 
 	u16			depth;
+	u8			init_val;
 
 	void			**pg_arr;
 	dma_addr_t		*dma_arr;
@@ -1313,6 +1314,7 @@ struct bnxt_ctx_mem_info {
 	u32	tim_max_entries;
 	u16	mrav_num_entries_units;
 	u8	tqm_entries_multiple;
+	u8	ctx_kind_initializer;
 
 	u32	flags;
 	#define BNXT_CTX_FLAG_INITED	0x01
