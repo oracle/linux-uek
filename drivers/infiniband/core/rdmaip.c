@@ -50,7 +50,6 @@
 #include "rdmaip.h"
 
 static struct workqueue_struct *rdmaip_wq;
-static struct workqueue_struct *rdmaip_garps_wq;
 struct rdmaip_send_garps {
 	struct delayed_work work;
 	struct net_device *out_dev;
@@ -302,7 +301,7 @@ static void rdmaip_garp_work_handler(struct work_struct *_work)
 		 garps->dev_addr, NULL);
 
 	if (--garps->garps_left >= 0)
-		queue_delayed_work(rdmaip_garps_wq, &garps->work, garps->delay);
+		queue_delayed_work(rdmaip_wq, &garps->work, garps->delay);
 	else
 		kfree(garps);
 }
@@ -337,7 +336,7 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 	garps->garps_left = rdmaip_active_bonding_arps;
 
 	INIT_DELAYED_WORK(&garps->work, rdmaip_garp_work_handler);
-	queue_delayed_work(rdmaip_garps_wq, &garps->work, 0);
+	queue_delayed_work(rdmaip_wq, &garps->work, 0);
 }
 
 /* Add or remove an IPv6 address to/from an interface. */
@@ -2654,12 +2653,6 @@ void rdmaip_destroy_workqs(void)
 		destroy_workqueue(rdmaip_wq);
 		rdmaip_init_flag &= ~RDMAIP_IP_WQ_CREATED;
 	}
-
-	if (rdmaip_init_flag & RDMAIP_GARPS_WQ_CREATED) {
-		flush_workqueue(rdmaip_garps_wq);
-		destroy_workqueue(rdmaip_garps_wq);
-		rdmaip_init_flag &= ~RDMAIP_GARPS_WQ_CREATED;
-	}
 }
 
 static void rdmaip_restore_ip_addresses(void)
@@ -2998,14 +2991,6 @@ int rdmaip_init(void)
 		return -ENOMEM;
 	}
 	rdmaip_init_flag |= RDMAIP_IP_WQ_CREATED;
-
-	rdmaip_garps_wq = create_workqueue("rdmaip_garps");
-	if (!rdmaip_garps_wq) {
-		rdmaip_cleanup();
-		destroy_workqueue(rdmaip_wq);
-		return -ENOMEM;
-	}
-	rdmaip_init_flag |= RDMAIP_GARPS_WQ_CREATED;
 
 	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
 			    GFP_KERNEL);
