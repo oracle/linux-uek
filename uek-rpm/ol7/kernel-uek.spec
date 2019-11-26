@@ -1711,6 +1711,16 @@ make -j1 htmldocs || %{doc_build_fail}
       mv certs/signing_key.x509.sign certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
     fi \
+    if [ "%{with_embedded}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.emb certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
+    fi \
+    if [ "%{with_embedded_debug}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.embdebug certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.embdebug certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.embdebug/ %{dgst} \
+    fi \
   fi \
 %{nil}
 
