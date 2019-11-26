@@ -573,6 +573,7 @@ BuildRequires: gcc >= 3.4.2, binutils >= 2.12
 BuildRequires: net-tools
 BuildRequires: elfutils-libelf-devel
 BuildRequires: python, python-devel
+BuildRequires: python3
 BuildRequires: flex >= 2.5.19, bison >= 2.3
 BuildRequires: pkgconfig
 BuildRequires: glib2-devel
