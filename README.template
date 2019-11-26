@@ -4,7 +4,7 @@
 
 The Unbreakable Enterprise Kernel (UEK) is a Linux kernel built by Oracle and supported via Oracle Linux support. Its focus is performance, stability, and minimal backports by tracking the mainline source code as closely as is practical. UEK is well-tested and used to run Oracle's Engineered Systems, Oracle Cloud Infrastructure, and large enterprise deployments for Oracle customers.
 
-The source for UEK has always been available at [oss.oracle.com](https://oss.oracle.com/git/gitweb.cgi?p=linux-uek.git;a=summary), as a git repository with full git history. By posting the UEK source here on [github.com](https://github.com/oracle/linux-uek/) we hope to increase the visibility for our work and to make it even easier for people to access the source for UEK. We will also use this repository for working with developers at partner companies and in the Linux community.
+The source for UEK has always been available at [oss.oracle.com](https://oss.oracle.com/git/gitweb.cgi?p=oracle/linux-uek.git;a=summary), as a git repository with full git history. By posting the UEK source here on [github.com](https://github.com/oracle/linux-uek/) we hope to increase the visibility for our work and to make it even easier for people to access the source for UEK. We will also use this repository for working with developers at partner companies and in the Linux community.
 
 ## Current Branches
 
