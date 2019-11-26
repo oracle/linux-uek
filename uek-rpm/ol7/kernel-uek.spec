@@ -105,7 +105,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 %define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
 %define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
 # build embedded kernel
-%define with_embedded %{?_with_embedded: 1} %{?!_with_embedded: 0}
+%define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
