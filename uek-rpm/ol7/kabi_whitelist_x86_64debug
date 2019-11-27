@@ -565,3 +565,7 @@
 	wait_for_completion_io_timeout
 	wait_on_page_bit
 	write_inode_now
+	kernel_fpu_begin
+	__kernel_fpu_end
+	kernel_fpu_end
+	__kernel_fpu_begin

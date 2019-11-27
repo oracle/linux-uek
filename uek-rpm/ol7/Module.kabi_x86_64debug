@@ -561,3 +561,7 @@
 0x261b7bad	wait_for_completion_io_timeout	vmlinux	EXPORT_SYMBOL
 0xaf67f0cf	wait_on_page_bit	vmlinux	EXPORT_SYMBOL
 0x9700185e	write_inode_now	vmlinux	EXPORT_SYMBOL
+0xd986dad1	kernel_fpu_begin	vmlinux EXPORT_SYMBOL_GPL
+0x06c0dae5	__kernel_fpu_end	vmlinux EXPORT_SYMBOL
+0x38722f80	kernel_fpu_end	vmlinux EXPORT_SYMBOL_GPL
+0x0cdb7d12	__kernel_fpu_begin	vmlinux EXPORT_SYMBOL
