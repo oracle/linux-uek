@@ -80,6 +80,9 @@ def check_kabi(symvers,kabi):
 			if abi_dir != sym_dir:
 				warn=1
 				moved_symbols.append(symbol)
+		else:
+			fail=1
+			changed_symbols.append(symbol)
 
 	if fail:
 		print "*** ERROR - ABI BREAKAGE WAS DETECTED ***"
