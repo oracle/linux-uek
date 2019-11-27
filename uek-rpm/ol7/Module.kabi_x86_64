@@ -563,3 +563,5 @@
 0x19c500f4	wait_for_completion_io_timeout	vmlinux	EXPORT_SYMBOL
 0x0b80fb42	wait_on_page_bit	vmlinux	EXPORT_SYMBOL
 0x06c66245	write_inode_now	vmlinux	EXPORT_SYMBOL
+0xd986dad1	kernel_fpu_begin	vmlinux EXPORT_SYMBOL_GPL
+0x38722f80	kernel_fpu_end	vmlinux EXPORT_SYMBOL_GPL
