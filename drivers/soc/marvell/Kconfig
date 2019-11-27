@@ -91,4 +91,12 @@ config MDIO_DEBUGFS
 	depends on OCTEONTX2_AF
 	---help---
 	provides debugfs support to initiate mdio commands via smc call
+
+config OCTEONTX_INFO
+       tristate "OcteonTX Info driver"
+	depends on PROC_FS
+	help
+	provides procfs interface to board information like board name, board revision
+	mac addresses, board serial number and more. These are boards housing Marvell
+	OcteonTX family chipsets.
 endmenu
