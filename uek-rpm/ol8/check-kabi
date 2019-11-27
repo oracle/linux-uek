@@ -98,7 +98,9 @@ def check_kabi(symvers,kabi):
 			if abi_type != sym_type:
 				typeerr=1
 				retyped_symbols.append(symbol)
-				
+		else:
+			fail=1
+			changed_symbols.append(symbol)
 
 	if fail:
 		print ("*** ERROR - ABI BREAKAGE WAS DETECTED ***")
