@@ -126,7 +126,7 @@ void otx2_get_stats64(struct net_device *netdev,
 EXPORT_SYMBOL(otx2_get_stats64);
 
 /* Sync MAC address with RVU */
-int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
+int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, u8 *mac)
 {
 	struct nix_set_mac_addr *req;
 	int err;
@@ -138,7 +138,7 @@ int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
 		return -ENOMEM;
 	}
 
-	ether_addr_copy(req->mac_addr, netdev->dev_addr);
+	ether_addr_copy(req->mac_addr, mac);
 
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	otx2_mbox_unlock(&pfvf->mbox);
@@ -186,9 +186,14 @@ int otx2_set_mac_address(struct net_device *netdev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
-
-	otx2_hw_set_mac_addr(pfvf, netdev);
+	if (!otx2_hw_set_mac_addr(pfvf, addr->sa_data)) {
+		memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+		/* update dmac field in vlan offload rule */
+		if (pfvf->flags & OTX2_FLAG_RX_VLAN_SUPPORT)
+			otx2_install_rxvlan_offload_flow(pfvf);
+	} else {
+		return -EPERM;
+	}
 
 	return 0;
 }
