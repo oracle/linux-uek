@@ -95,6 +95,21 @@ ifeq ($(CONFIG_ARM64_MODULE_PLTS),y)
 KBUILD_LDS_MODULE	+= $(srctree)/arch/arm64/kernel/module.lds
 endif
 
+RETPOLINE_CFLAGS_GCC := -mindirect-branch=thunk-extern
+RETPOLINE_CFLAGS := $(call cc-option,$(RETPOLINE_CFLAGS_GCC))
+export RETPOLINE_CFLAGS
+
+NO_RETPOLINE_CFLAGS_GCC := -mindirect-branch=keep
+NO_RETPOLINE_CFLAGS := $(call cc-option,$(NO_RETPOLINE_CFLAGS_GCC))
+export NO_RETPOLINE_CFLAGS
+
+# Avoid indirect branches in kernel to deal with Spectre
+ifdef CONFIG_RETPOLINE
+ifneq ($(RETPOLINE_CFLAGS),)
+  KBUILD_CFLAGS += $(RETPOLINE_CFLAGS) -DRETPOLINE
+endif
+endif
+
 # Default value
 head-y		:= arch/arm64/kernel/head.o
 

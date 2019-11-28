@@ -22,6 +22,7 @@
 #include <asm/pgtable-hwdef.h>
 #include <asm/ptrace.h>
 #include <asm/thread_info.h>
+#include <asm/nospec-branch.h>
 
 	.macro save_and_disable_daif, flags
 	mrs	\flags, daif

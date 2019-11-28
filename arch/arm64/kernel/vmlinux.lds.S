@@ -128,6 +128,13 @@ SECTIONS
 			TRAMP_TEXT
 			*(.fixup)
 			*(.gnu.warning)
+
+#ifdef CONFIG_RETPOLINE
+			__indirect_thunk_start = .;
+			*(.text.__aarch64.indirect_thunk)
+			__indirect_thunk_end = .;
+#endif /* CONFIG_RETPOLINE */
+
 		. = ALIGN(16);
 		*(.got)			/* Global offset table		*/
 	}

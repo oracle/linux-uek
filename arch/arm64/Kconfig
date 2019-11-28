@@ -316,6 +316,20 @@ source "arch/arm64/Kconfig.platforms"
 
 menu "Kernel Features"
 
+config RETPOLINE
+	bool "Avoid speculative indirect branches in kernel"
+	default y
+	select STACK_VALIDATION if HAVE_STACK_VALIDATION
+	help
+	  Compile kernel with the retpoline compiler options to guard against
+	  kernel-to-user data leaks by avoiding speculative indirect
+	  branches. Requires a compiler with -mindirect-branch=thunk-extern
+	  support for full protection. The kernel may run slower.
+
+	  Without compiler support, at least indirect branches in assembler
+	  code are eliminated. Since this includes the syscall entry path,
+	  it is not entirely pointless.
+
 menu "ARM errata workarounds via the alternatives framework"
 
 config ARM64_WORKAROUND_CLEAN_CACHE
