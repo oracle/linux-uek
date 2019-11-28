@@ -506,10 +506,13 @@ int otx2_destroy_mcam_flows(struct otx2_nic *pfvf)
 	return 0;
 }
 
-static int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
+int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
 {
 	struct npc_install_flow_req *req;
 	int err;
+
+	if (!(pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC))
+		return -ENOMEM;
 
 	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_install_flow(&pfvf->mbox);

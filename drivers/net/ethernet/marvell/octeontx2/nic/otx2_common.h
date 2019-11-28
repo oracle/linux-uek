@@ -667,7 +667,7 @@ static inline void otx2_dma_unmap_page(struct otx2_nic *pfvf,
 void otx2_free_cints(struct otx2_nic *pfvf, int n);
 void otx2_set_cints_affinity(struct otx2_nic *pfvf);
 
-int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
+int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, u8 *mac);
 int otx2_set_mac_address(struct net_device *netdev, void *p);
 int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
 void otx2_tx_timeout(struct net_device *netdev);
@@ -757,6 +757,7 @@ int otx2_remove_flow(struct otx2_nic *pfvf, u32 location);
 int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 			      struct npc_install_flow_req *req);
 int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable);
+int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf);
 int otx2smqvf_probe(struct otx2_nic *vf);
 int otx2smqvf_remove(struct otx2_nic *vf);
 
