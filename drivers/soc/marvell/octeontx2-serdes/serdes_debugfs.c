@@ -1,0 +1,289 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2019 Marvell International Ltd.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#ifdef CONFIG_DEBUG_FS
+
+#include <linux/fs.h>
+#include <linux/debugfs.h>
+#include <linux/module.h>
+#include <linux/pci.h>
+#include <linux/string.h>
+#include <linux/uaccess.h>
+#include <linux/arm-smccc.h>
+
+MODULE_AUTHOR("Marvell International Ltd.");
+MODULE_DESCRIPTION("Serdes diagnostic commands for OcteonTX2");
+MODULE_LICENSE("GPL v2");
+
+#define OCTEONTX_SERDES_DBG_GET_MEM	0xc2000d04
+#define OCTEONTX_SERDES_DBG_GET_EYE	0xc2000d05
+#define OCTEONTX_SERDES_DBG_GET_CONF	0xc2000d06
+
+#define OCTEONTX_SMC_PENDING		0x1
+
+#define SERDES_SETTINGS_SIZE		0x1000
+enum qlm_type {
+	QLM_GSERC_TYPE,
+	QLM_GSERR_TYPE,
+	QLM_GSERN_TYPE,
+};
+
+struct dentry *pserdes_root;
+
+struct eye_data {
+	int width;
+	int height;
+	u32 data[64][128];
+	enum qlm_type type;
+};
+
+static struct {
+	int qlm;
+	int lane;
+	struct eye_data *res;
+} eye_cmd_data;
+
+static struct {
+	int qlm;
+	int lane;
+	char *res;
+} serdes_cmd_data;
+
+static int serdes_dbg_lane_parse(const char __user *buffer,
+				 size_t count, int *qlm, int *lane)
+{
+	char *cmd_buf, *cmd_buf_tmp, *subtoken;
+	int ec;
+
+	cmd_buf = memdup_user(buffer, count);
+	if (IS_ERR(cmd_buf))
+		return -ENOMEM;
+
+	cmd_buf[count] = '\0';
+
+	cmd_buf_tmp = strchr(cmd_buf, '\n');
+	if (cmd_buf_tmp) {
+		*cmd_buf_tmp = '\0';
+		count = cmd_buf_tmp - cmd_buf + 1;
+	}
+
+	cmd_buf_tmp = cmd_buf;
+	subtoken = strsep(&cmd_buf, " ");
+	ec = subtoken ? kstrtoint(subtoken, 10, qlm) : -EINVAL;
+
+	if (ec < 0) {
+		kfree(cmd_buf);
+		return ec;
+	}
+
+	subtoken = strsep(&cmd_buf, " ");
+	ec = subtoken ? kstrtoint(subtoken, 10, lane) : -EINVAL;
+
+	kfree(cmd_buf);
+	return ec;
+}
+
+static ssize_t serdes_dbg_eye_write_op(struct file *filp,
+				       const char __user *buffer,
+				       size_t count, loff_t *ppos)
+{
+	struct arm_smccc_res res;
+	int ec;
+
+	ec = serdes_dbg_lane_parse(buffer, count, &eye_cmd_data.qlm,
+				   &eye_cmd_data.lane);
+	if (ec < 0) {
+		pr_info("Usage: echo <qlm> <lane> > eye\n");
+		return ec;
+	}
+
+	do {
+		arm_smccc_smc(OCTEONTX_SERDES_DBG_GET_EYE, eye_cmd_data.qlm,
+			      eye_cmd_data.lane, 0, 0, 0, 0, 0, &res);
+	} while (res.a0 == OCTEONTX_SMC_PENDING);
+	if (res.a0 != SMCCC_RET_SUCCESS) {
+		pr_info("CGX eye capture failed.\n");
+		return -EIO;
+	}
+
+	return count;
+}
+
+static int serdes_dbg_eye_read_op(struct seq_file *s, void *unused)
+{
+	int v, t, v_height;
+	int errors_tr_ones, errors_nt_ones, errors_tr_zeros, errors_nt_zeros;
+
+	if (eye_cmd_data.res->type != QLM_GSERN_TYPE) {
+		seq_puts(s, "Currently only GSERN type of QLM is supported.\n");
+		return 0;
+	}
+
+	seq_printf(s, "V  T  %-20s %-20s %-20s %-20s\n", "TRANS_ONE_ECNT",
+		   "NON_TRANS_ONE_ECNT", "TRANS_ZEROS_ECNT",
+		   "NON_TRANS_ZEROS_ECNT");
+
+	v_height = (eye_cmd_data.res->height + 1) / 2;
+
+	for (t = 0; t < eye_cmd_data.res->width; t++) {
+		for (v = 0; v < v_height; v++) {
+			errors_nt_ones =
+				eye_cmd_data.res->data[v_height-v-1][t];
+			errors_tr_ones =
+				eye_cmd_data.res->data[v_height-v-1][t+64];
+			errors_nt_zeros =
+				eye_cmd_data.res->data[v_height+v-1][t];
+			errors_tr_zeros =
+				eye_cmd_data.res->data[v_height+v-1][t+64];
+
+			seq_printf(s, "%02x %02x %020x %020x %020x %020x\n",
+				   v, t, errors_tr_ones, errors_nt_ones,
+				   errors_tr_zeros, errors_nt_zeros);
+		}
+	}
+
+	return 0;
+}
+
+static int serdes_dbg_open_eye(struct inode *inode, struct file *file)
+{
+	return single_open(file, serdes_dbg_eye_read_op, inode->i_private);
+}
+
+static const struct file_operations serdes_dbg_eye_fops = {
+	.owner		= THIS_MODULE,
+	.open		= serdes_dbg_open_eye,
+	.read		= seq_read,
+	.write		= serdes_dbg_eye_write_op,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static ssize_t serdes_dbg_settings_write_op(struct file *filp,
+					    const char __user *buffer,
+					    size_t count, loff_t *ppos)
+{
+	struct arm_smccc_res res;
+	int ec;
+
+	ec = serdes_dbg_lane_parse(buffer, count, &serdes_cmd_data.qlm,
+				   &serdes_cmd_data.lane);
+	if (ec < 0) {
+		pr_info("Usage: echo <qlm> <lane> > serdes\n");
+		return ec;
+	}
+
+	arm_smccc_smc(OCTEONTX_SERDES_DBG_GET_CONF, serdes_cmd_data.qlm,
+		      serdes_cmd_data.lane, 0, 0, 0, 0, 0, &res);
+	if (res.a0 != SMCCC_RET_SUCCESS) {
+		pr_info("CGX serdes display command failed.\n");
+		return ec;
+	}
+
+	return count;
+}
+
+static int serdes_dbg_settings_read_op(struct seq_file *s, void *unused)
+{
+	serdes_cmd_data.res[SERDES_SETTINGS_SIZE - 1] = '\0';
+
+	seq_printf(s, "%s", serdes_cmd_data.res);
+
+	return 0;
+}
+
+static int serdes_dbg_open_settings(struct inode *inode, struct file *file)
+{
+	return single_open(file, serdes_dbg_settings_read_op, inode->i_private);
+}
+
+static const struct file_operations serdes_dbg_settings_fops = {
+	.owner		= THIS_MODULE,
+	.open		= serdes_dbg_open_settings,
+	.read		= seq_read,
+	.write		= serdes_dbg_settings_write_op,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int serdes_dbg_setup_debugfs(void)
+{
+	struct dentry *pfile;
+
+	pserdes_root = debugfs_create_dir("octeontx2_serdes", NULL);
+
+	pfile = debugfs_create_file("eye", 0644, pserdes_root, NULL,
+				    &serdes_dbg_eye_fops);
+	if (!pfile)
+		goto create_failed;
+
+	pfile = debugfs_create_file("settings", 0644, pserdes_root, NULL,
+				    &serdes_dbg_settings_fops);
+	if (!pfile)
+		goto create_failed;
+
+	return 0;
+
+create_failed:
+	pr_err("Failed to create debugfs dir/file for serdes\n");
+	debugfs_remove_recursive(pserdes_root);
+	return 1;
+}
+
+static int serdes_dbg_init(void)
+{
+	struct arm_smccc_res res;
+	int ec;
+
+	arm_smccc_smc(OCTEONTX_SERDES_DBG_GET_MEM, 0, 0, 0, 0, 0, 0, 0, &res);
+	if (res.a0 != SMCCC_RET_SUCCESS)
+		goto serdes_mem_init_failed;
+
+	eye_cmd_data.res = ioremap_wc(res.a1, sizeof(struct eye_data));
+	if (!eye_cmd_data.res)
+		goto serdes_mem_init_failed;
+
+	serdes_cmd_data.res = ioremap_wc(res.a2, SERDES_SETTINGS_SIZE);
+	if (!serdes_cmd_data.res)
+		goto serdes_mem_init_failed;
+
+	ec = serdes_dbg_setup_debugfs();
+	if (ec)
+		goto serdes_debugfs_failed;
+
+	return 0;
+
+serdes_mem_init_failed:
+	pr_err("Failed to obtain shared memory for serdes debug commands\n");
+
+serdes_debugfs_failed:
+	if (eye_cmd_data.res)
+		iounmap(eye_cmd_data.res);
+
+	if (serdes_cmd_data.res)
+		iounmap(serdes_cmd_data.res);
+
+	return 0;
+}
+
+static void serdes_dbg_exit(void)
+{
+	debugfs_remove_recursive(pserdes_root);
+
+	if (eye_cmd_data.res)
+		iounmap(eye_cmd_data.res);
+
+	if (serdes_cmd_data.res)
+		iounmap(serdes_cmd_data.res);
+}
+
+module_init(serdes_dbg_init);
+module_exit(serdes_dbg_exit);
+#endif /* CONFIG_DEBUG_FS */
+
