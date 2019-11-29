@@ -52,9 +52,9 @@ enum tsx_ctrl_states {
 	TSX_CTRL_NOT_SUPPORTED,
 };
 
-extern __ro_after_init enum tsx_ctrl_states tsx_ctrl_state;
+extern enum tsx_ctrl_states tsx_ctrl_state;
 
-extern void __init tsx_init(void);
+extern void tsx_init(void);
 extern void tsx_enable(void);
 extern void tsx_disable(void);
 #else
