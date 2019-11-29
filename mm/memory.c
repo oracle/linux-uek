@@ -4238,6 +4238,7 @@ EXPORT_SYMBOL(follow_pte_pmd);
 int follow_pfn(struct vm_area_struct *vma, unsigned long address,
 	unsigned long *pfn)
 {
+	pmd_t *pmdp = NULL;
 	int ret = -EINVAL;
 	spinlock_t *ptl;
 	pte_t *ptep;
@@ -4245,10 +4246,14 @@ int follow_pfn(struct vm_area_struct *vma, unsigned long address,
 	if (!(vma->vm_flags & (VM_IO | VM_PFNMAP)))
 		return ret;
 
-	ret = follow_pte(vma->vm_mm, address, &ptep, &ptl);
+	ret = follow_pte_pmd(vma->vm_mm, address, NULL,
+			     &ptep, &pmdp, &ptl);
 	if (ret)
 		return ret;
-	*pfn = pte_pfn(*ptep);
+	if (pmdp)
+		*pfn = pmd_pfn(*pmdp) + ((address & ~PMD_MASK) >> PAGE_SHIFT);
+	else
+		*pfn = pte_pfn(*ptep);
 	pte_unmap_unlock(ptep, ptl);
 	return 0;
 }
