@@ -470,7 +470,7 @@ int otx2_napi_handler(struct napi_struct *napi, int budget)
 	pfvf = (struct otx2_nic *)cq_poll->dev;
 	qset = &pfvf->qset;
 
-	for (i = 0; i < CQS_PER_CINT; i++) {
+	for (i = CQS_PER_CINT - 1; i >= 0; i--) {
 		cq_idx = cq_poll->cq_ids[i];
 		if (cq_idx == CINT_INVALID_CQ)
 			continue;
