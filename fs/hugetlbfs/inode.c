@@ -440,14 +440,14 @@ static void remove_inode_hugepages(struct inode *inode, loff_t lstart,
 			u32 hash;
 
 			index = page->index;
-			/*
-			 * Only need to acquire fault mutex in hole punch case.
-			 * For truncation, we are synchronized via truncation
-			 * mutex.
-			 */
+			hash = hugetlb_fault_mutex_hash(h, mapping, index);
 			if (!truncate_op) {
-				hash = hugetlb_fault_mutex_hash(h, mapping,
-								index, 0);
+				/*
+				 * Only need to hold the fault mutex in the
+				 * hole punch case.  This prevents races with
+				 * page faults.  Races are not possible in the
+				 * case of truncation.
+				 */
 				mutex_lock(&hugetlb_fault_mutex_table[hash]);
 			}
 
@@ -659,7 +659,7 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 		 * mutex taken here for fault path and hole punch.  No need
 		 * to worry about truncation as we are synchronized via inode.
 		 */
-		hash = hugetlb_fault_mutex_hash(h, mapping, index, addr);
+		hash = hugetlb_fault_mutex_hash(h, mapping, index);
 		mutex_lock(&hugetlb_fault_mutex_table[hash]);
 
 		/* See if already present in mapping to avoid alloc/free */

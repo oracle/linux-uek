@@ -272,7 +272,7 @@ retry:
 		mapping = dst_vma->vm_file->f_mapping;
 		hinode_info = HUGETLBFS_I(mapping->host);
 		down_read(&hinode_info->trunc_rwsem);
-		hash = hugetlb_fault_mutex_hash(h, mapping, idx, dst_addr);
+		hash = hugetlb_fault_mutex_hash(h, mapping, idx);
 		mutex_lock(&hugetlb_fault_mutex_table[hash]);
 
 		err = -ENOMEM;
