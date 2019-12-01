@@ -76,6 +76,31 @@ config OCTEONTX2_DPI_PF
 	  This driver intializes dpi PF device and enables VF's for supporting
 	  different types of DMA transfers.
 
+config OCTEONTX2_PCI_CONSOLE
+	tristate "OcteonTX2 PCI Endpoint console driver"
+	depends on ARM64 && PCI
+	default y
+	---help---
+	  Select this option to enable the PCI console driver when OcteonTX2
+	  is configured as an Endpoint.  This allows the host [PC] to connect
+	  to the Linux console via PCI (using the host remote console utility).
+	  To enable this console, specify 'console=pci0' on the kernel
+	  command line.
+	  To compile this as a module, choose M here.  However, when used
+	  as a module, some kernel boot messages may be missing from the
+	  console.
+
+config OCTEONTX2_PCI_CONSOLE_DEBUG
+	bool "OcteonTX2 PCI Endpoint console driver verbose debug messages"
+	depends on OCTEONTX2_PCI_CONSOLE
+	help
+	  Say Y here if you want the OcteonTX2 PCI console driver
+	  to write verbose debug messages to the system log.  Select this
+	  if you are having a problem with the OcteonTX2 PCI console
+	  and want to see more details of the console's operation.
+
+	  If you are unsure about this, say N here.
+
 config GTI_WATCHDOG
        bool "GTI Watchdog driver"
 	depends on ARM64 && ARM64_VHE
