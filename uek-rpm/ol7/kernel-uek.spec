@@ -248,7 +248,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_kdump 0
 #endif
 
-# don't do debug builds on anything but i686, x86_64, and aarch64
+# don't do debug builds on anything but i686, x86_64, aarch64 and mips64
 %ifnarch i686 x86_64 aarch64 mips64
 %define with_debug 0
 %endif
@@ -259,8 +259,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_4k_ps_debug 0
 %endif
 
-# only do embedded kernels on aarch64
-%ifnarch aarch64
+# only do embedded kernels on aarch64 and mips64
+%ifnarch aarch64 mips64
 %define with_embedded 0
 %endif
 
@@ -403,9 +403,11 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define hdrarch mips
 %define make_target vmlinux
 %define kernel_image vmlinux
+%define with_embedded   1
 %define with_headers   1
 %define with_perf 1
 %define with_tools 1
+%define with_up 0
 %endif
 
 # if requested, only build emb kernel
@@ -536,10 +538,8 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-%ifnarch mips64\
 %if !%{with_embedded}\
 Requires(pre): linux-firmware >= 999:20190627-999.2.git7ae3a09d\
-%endif\
 %endif\
 Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
@@ -1218,8 +1218,8 @@ mkdir -p configs
 %endif #ifarch aarch64
 
 %ifarch mips64
-	cp %{SOURCE1010} configs/config-debug
-	cp %{SOURCE1009} configs/config
+	cp %{SOURCE1010} configs/config-emb-debug
+	cp %{SOURCE1009} configs/config-emb
 %endif #ifarch mips64
 
 
