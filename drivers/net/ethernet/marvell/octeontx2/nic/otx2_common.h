@@ -457,6 +457,7 @@ struct otx2_nic {
 	struct net_device	*netdev;
 	struct dev_hw_ops	*hw_ops;
 	void			*iommu_domain;
+	u16			iommu_domain_type;
 	u16			xtra_hdr;
 	u16			tx_max_pktlen;
 	u16			rbsize; /* Receive buffer size */
@@ -938,6 +939,9 @@ static inline dma_addr_t otx2_dma_map_page(struct otx2_nic *pfvf,
 {
 	dma_addr_t iova;
 
+	if (pfvf->iommu_domain_type == IOMMU_DOMAIN_IDENTITY)
+		return page_to_phys(page) + offset;
+
 	iova = dma_map_page_attrs(pfvf->dev, page,
 				  offset, size, dir, DMA_ATTR_SKIP_CPU_SYNC);
 	if (unlikely(dma_mapping_error(pfvf->dev, iova)))
@@ -949,6 +953,9 @@ static inline void otx2_dma_unmap_page(struct otx2_nic *pfvf,
 				       dma_addr_t addr, size_t size,
 				       enum dma_data_direction dir)
 {
+	if (pfvf->iommu_domain_type == IOMMU_DOMAIN_IDENTITY)
+		return;
+
 	dma_unmap_page_attrs(pfvf->dev, addr, size,
 			     dir, DMA_ATTR_SKIP_CPU_SYNC);
 }
