@@ -61,8 +61,8 @@ static dma_addr_t otx2_dma_map_skb_frag(struct otx2_nic *pfvf,
 		offset = frag->page_offset;
 		*len = skb_frag_size(frag);
 	}
-	return dma_map_page_attrs(pfvf->dev, page, offset, *len,
-				  DMA_TO_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+	return otx2_dma_map_page(pfvf, page, offset, *len,
+				 DMA_TO_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
 }
 
 static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
@@ -70,9 +70,9 @@ static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
 	int seg;
 
 	for (seg = 0; seg < sg->num_segs; seg++) {
-		dma_unmap_page_attrs(pfvf->dev, sg->dma_addr[seg],
-				     sg->size[seg], DMA_TO_DEVICE,
-				     DMA_ATTR_SKIP_CPU_SYNC);
+		otx2_dma_unmap_page(pfvf, sg->dma_addr[seg],
+				    sg->size[seg], DMA_TO_DEVICE,
+				    DMA_ATTR_SKIP_CPU_SYNC);
 	}
 	sg->num_segs = 0;
 }
@@ -215,8 +215,8 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf, struct sk_buff *skb,
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
 			va - page_address(page) + off, len - off, RCV_FRAG_LEN);
 
-	dma_unmap_page_attrs(pfvf->dev, iova - OTX2_HEAD_ROOM, RCV_FRAG_LEN,
-			     DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+	otx2_dma_unmap_page(pfvf, iova - OTX2_HEAD_ROOM, RCV_FRAG_LEN,
+			    DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
 }
 
 static inline bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
@@ -983,10 +983,10 @@ void otx2_cleanup_rx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 				*iova -= OTX2_HEAD_ROOM;
 				pa = otx2_iova_to_phys(pfvf->iommu_domain,
 						       *iova);
-				dma_unmap_page_attrs(pfvf->dev, *iova,
-						     RCV_FRAG_LEN,
-						     DMA_FROM_DEVICE,
-						     DMA_ATTR_SKIP_CPU_SYNC);
+				otx2_dma_unmap_page(pfvf, *iova,
+						    RCV_FRAG_LEN,
+						    DMA_FROM_DEVICE,
+						    DMA_ATTR_SKIP_CPU_SYNC);
 				put_page(virt_to_page(phys_to_virt(pa)));
 				iova++;
 			}

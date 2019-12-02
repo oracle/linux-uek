@@ -364,10 +364,10 @@ dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 
 	pool->page_offset = 0;
 ret:
-	iova = (u64)dma_map_page_attrs(pfvf->dev, pool->page,
-				       pool->page_offset, pool->rbsize,
-				       DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
-	if (unlikely(dma_mapping_error(pfvf->dev, iova))) {
+	iova = (u64)otx2_dma_map_page(pfvf, pool->page, pool->page_offset,
+				      pool->rbsize, DMA_FROM_DEVICE,
+				      DMA_ATTR_SKIP_CPU_SYNC);
+	if (!iova) {
 		if (!pool->page_offset)
 			__free_pages(pool->page, 0);
 		pool->page = NULL;
