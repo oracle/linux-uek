@@ -14,6 +14,7 @@
 #include <linux/pci.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/timecounter.h>
+#include <linux/iommu.h>
 
 #include <mbox.h>
 #include "otx2_reg.h"
@@ -237,6 +238,7 @@ struct otx2_nic {
 	void __iomem		*reg_base;
 	struct net_device	*netdev;
 	void			*iommu_domain;
+	u16			iommu_domain_type;
 	u16			xtra_hdr;
 	u16			max_frs;
 
@@ -630,6 +632,35 @@ static inline void otx2_mbox_unlock(struct mbox *mbox)
 static inline int rvu_get_pf(u16 pcifunc)
 {
 	return (pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+}
+
+static inline dma_addr_t otx2_dma_map_page(struct otx2_nic *pfvf,
+					   struct page *page,
+					   size_t offset, size_t size,
+					   enum dma_data_direction dir,
+					   unsigned long attrs)
+{
+	dma_addr_t iova;
+
+	if (pfvf->iommu_domain_type == IOMMU_DOMAIN_IDENTITY)
+		return page_to_phys(page) + offset;
+
+	iova = dma_map_page_attrs(pfvf->dev, page,
+				  offset, size, dir, attrs);
+	if (unlikely(dma_mapping_error(pfvf->dev, iova)))
+		return (dma_addr_t)NULL;
+	return iova;
+}
+
+static inline void otx2_dma_unmap_page(struct otx2_nic *pfvf,
+				       dma_addr_t addr, size_t size,
+				       enum dma_data_direction dir,
+				       unsigned long attrs)
+{
+	if (pfvf->iommu_domain_type == IOMMU_DOMAIN_IDENTITY)
+		return;
+
+	dma_unmap_page_attrs(pfvf->dev, addr, size, dir, attrs);
 }
 
 /* MSI-X APIs */
