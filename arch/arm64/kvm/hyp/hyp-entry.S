@@ -28,7 +28,7 @@
 	mov	x0, x1
 	mov	x1, x2
 	mov	x2, x3
-	blr	lr
+	blr_nospec_lr
 	ldr	lr, [sp], #16
 .endm
 
