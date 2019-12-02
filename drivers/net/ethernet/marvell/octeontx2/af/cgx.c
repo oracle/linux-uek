@@ -648,7 +648,7 @@ static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_INTERVAL);
 		cfg &= ~0xFFFFULL;
 		cgx_write(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_INTERVAL,
-			  cfg | (DEFAULT_PAUSE_TIME - 0x1000));
+			  cfg | (DEFAULT_PAUSE_TIME / 2));
 
 		cgx_write(cgx, lmac_id, CGXX_GMP_GMI_TX_PAUSE_PKT_TIME,
 			  DEFAULT_PAUSE_TIME);
@@ -657,7 +657,7 @@ static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 			       CGXX_GMP_GMI_TX_PAUSE_PKT_INTERVAL);
 		cfg &= ~0xFFFFULL;
 		cgx_write(cgx, lmac_id, CGXX_GMP_GMI_TX_PAUSE_PKT_INTERVAL,
-			  cfg | (DEFAULT_PAUSE_TIME - 0x1000));
+			  cfg | (DEFAULT_PAUSE_TIME / 2));
 	} else {
 		/* ALL pause frames received are completely ignored */
 		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL);
