@@ -89,7 +89,7 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 
 	snd_comp = (struct nix_send_comp_s *)
 			((void *)cqe_hdr + sizeof(*cqe_hdr));
-	if (snd_comp->status) {
+	if (unlikely(snd_comp->status)) {
 		/* tx packet error handling*/
 		if (netif_msg_tx_err(pfvf)) {
 			netdev_info(pfvf->netdev,
@@ -103,7 +103,7 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 	sg = &sq->sg[snd_comp->sqe_id];
 
 	skb = (struct sk_buff *)sg->skb;
-	if (!skb)
+	if (unlikely(!skb))
 		return;
 
 	if (skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS) {
@@ -198,7 +198,7 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf, struct sk_buff *skb,
 
 	va = phys_to_virt(otx2_iova_to_phys(pfvf->iommu_domain, iova));
 
-	if (!skb_shinfo(skb)->nr_frags) {
+	if (likely(!skb_shinfo(skb)->nr_frags)) {
 		/* Check if data starts at some nonzero offset
 		 * from the start of the buffer.  For now the
 		 * only possible offset is 8 bytes in the case
@@ -313,7 +313,7 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 	/* CQE_HDR_S for a Rx pkt is always followed by RX_PARSE_S */
 	parse = (struct nix_rx_parse_s *)((void *)cqe_hdr + sizeof(*cqe_hdr));
-	if (parse->errlev || parse->errcode) {
+	if (unlikely(parse->errlev || parse->errcode)) {
 		if (otx2_check_rcv_errors(pfvf, parse, cq->cq_idx))
 			return;
 	}
@@ -322,7 +322,7 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	end = start + ((parse->desc_sizem1 + 1) * 16);
 
 	skb = napi_get_frags(napi);
-	if (!skb)
+	if (unlikely(!skb))
 		return;
 
 	/* Run through the each NIX_RX_SG_S subdc and frame the skb */
@@ -370,9 +370,9 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 
 	/* Make sure HW writes to CQ are done */
 	dma_rmb();
-	while (processed_cqe < budget) {
+	while (likely(processed_cqe < budget)) {
 		cqe_hdr = otx2_get_next_cqe(cq);
-		if (!cqe_hdr) {
+		if (unlikely(!cqe_hdr)) {
 			if (!processed_cqe)
 				return 0;
 			break;
@@ -387,13 +387,13 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 	otx2_write64(pfvf, NIX_LF_CQ_OP_DOOR,
 		     ((u64)cq->cq_idx << 32) | processed_cqe);
 
-	if (!cq->pool_ptrs)
+	if (unlikely(!cq->pool_ptrs))
 		return 0;
 
 	/* Refill pool with new buffers */
 	while (cq->pool_ptrs) {
 		bufptr = otx2_alloc_rbuf(pfvf, rbpool, GFP_ATOMIC);
-		if (bufptr <= 0) {
+		if (unlikely(bufptr <= 0)) {
 			struct refill_work *work;
 			struct delayed_work *dwork;
 
@@ -428,9 +428,9 @@ static inline int otx2_tx_napi_handler(struct otx2_nic *pfvf,
 
 	/* Make sure HW writes to CQ are done */
 	dma_rmb();
-	while (processed_cqe < budget) {
+	while (likely(processed_cqe < budget)) {
 		cqe_hdr = otx2_get_next_cqe(cq);
-		if (!cqe_hdr) {
+		if (unlikely(!cqe_hdr)) {
 			if (!processed_cqe)
 				return 0;
 			break;
@@ -446,7 +446,7 @@ static inline int otx2_tx_napi_handler(struct otx2_nic *pfvf,
 	otx2_write64(pfvf, NIX_LF_CQ_OP_DOOR,
 		     ((u64)cq->cq_idx << 32) | processed_cqe);
 
-	if (tx_pkts) {
+	if (likely(tx_pkts)) {
 		txq = netdev_get_tx_queue(pfvf->netdev, cq->cint_idx);
 		netdev_tx_completed_queue(txq, tx_pkts, tx_bytes);
 		/* Check if queue was stopped earlier due to ring full */
@@ -472,7 +472,7 @@ int otx2_napi_handler(struct napi_struct *napi, int budget)
 
 	for (i = CQS_PER_CINT - 1; i >= 0; i--) {
 		cq_idx = cq_poll->cq_ids[i];
-		if (cq_idx == CINT_INVALID_CQ)
+		if (unlikely(cq_idx == CINT_INVALID_CQ))
 			continue;
 		cq = &qset->cq[cq_idx];
 		if (cq->cq_type == CQ_RX) {
@@ -912,7 +912,7 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 	/* If SKB doesn't fit in a single SQE, linearize it.
 	 * TODO: Consider adding JUMP descriptor instead.
 	 */
-	if (num_segs > OTX2_MAX_FRAGS_IN_SQE) {
+	if (unlikely(num_segs > OTX2_MAX_FRAGS_IN_SQE)) {
 		if (__skb_linearize(skb)) {
 			dev_kfree_skb_any(skb);
 			return true;
