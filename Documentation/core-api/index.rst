@@ -40,6 +40,7 @@ Core utilities
    ../RCU/index
    gcc-plugins
    symbol-namespaces
+   padata
 
 
 Interfaces for kernel debugging
