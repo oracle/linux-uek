@@ -29,6 +29,7 @@ struct octtx_brd_info {
 	const char *board_revision;
 	const char *board_serial;
 	const char *board_model;
+	const char *board_num_of_mac;
 	int  dev_tree_parsed;
 	struct octeontx_info_mac_addr mac_addr;
 };
@@ -48,6 +49,7 @@ static int oct_brd_proc_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "board_revision: %s\n", brd.board_revision);
 	seq_printf(seq, "board_serial_number: %s\n", brd.board_serial);
 	seq_printf(seq, "mac_addr_base: %pM\n", brd.mac_addr.s.bytes);
+	seq_printf(seq, "mac_addr_count: %s\n", brd.board_num_of_mac);
 
 	return  0;
 }
@@ -108,6 +110,14 @@ static int octtx_info_init(void)
 		} else {
 			if (!kstrtoull(board_mac, 16, &mac_addr.num))
 				brd.mac_addr.num = be64_to_cpu(mac_addr.num);
+		}
+
+
+		ret = of_property_read_string(np, "BOARD-MAC-ADDRESS-NUM",
+							&brd.board_num_of_mac);
+		if (ret) {
+			pr_warn("Board mac address number not available\n");
+			brd.board_num_of_mac = null_string;
 		}
 
 		brd.dev_tree_parsed = 1;
