@@ -184,6 +184,26 @@ struct rds_ib_rx_work {
 	struct rds_ib_connection        *ic;
 };
 
+/* Structure for the DMA headers pool deallocation work */
+struct rds_dma_hdrs_free_wk {
+	struct work_struct	rdhf_work;
+	struct dma_pool		*rdhf_pool;	/* Pool for the headers. */
+
+	/* Info of headers for sending. */
+	struct rds_header	**rdhf_snd_hdrs;
+	dma_addr_t		*rdhf_snd_dma_addrs;
+	u32			rdhf_snd_num_hdrs;
+
+	/* Info of headers for receiving. */
+	struct rds_header	**rdhf_rcv_hdrs;
+	dma_addr_t		*rdhf_rcv_dma_addrs;
+	u32			rdhf_rcv_num_hdrs;
+
+	/* Info of the ACK header. */
+	struct rds_header	*rdhf_ack_rds_hdr;
+	dma_addr_t		rdhf_ack_dma_addr;
+};
+
 struct rds_ib_connection {
 
 	struct list_head	ib_node;
@@ -316,11 +336,6 @@ struct rds_ib_srq {
 };
 
 
-struct rds_ib_conn_drop_work {
-	struct delayed_work             work;
-	struct rds_connection          *conn;
-};
-
 struct rds_ib_conn_destroy_work {
 	struct delayed_work             work;
 	struct rds_connection          *conn;
@@ -338,6 +353,7 @@ struct rds_ib_device {
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
 	struct dma_pool		*rid_hdrs_pool; /* RDS headers DMA pool */
+	struct workqueue_struct	*rid_hdrs_pool_wq; /* Hdrs pool clean up wq */
 
 	bool			use_fastreg;
 	int			fastreg_cq_vector;
