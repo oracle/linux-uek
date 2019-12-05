@@ -804,6 +804,82 @@ void rds_dma_hdrs_free(struct dma_pool *pool, struct rds_header **hdrs,
 	kvfree(dma_addrs);
 }
 
+/* Worker function for freeing the DMA pool headers for sending and
+ * receiving.
+ */
+static void rds_dma_hdrs_cleanup_worker(struct work_struct *work)
+{
+	struct rds_dma_hdrs_free_wk *wk;
+	struct dma_pool *pool;
+
+	wk = container_of(work, struct rds_dma_hdrs_free_wk, rdhf_work);
+
+	pool = wk->rdhf_pool;
+	if (wk->rdhf_snd_hdrs)
+		rds_dma_hdrs_free(pool, wk->rdhf_snd_hdrs,
+				  wk->rdhf_snd_dma_addrs,
+				  wk->rdhf_snd_num_hdrs);
+	if (wk->rdhf_rcv_hdrs)
+		rds_dma_hdrs_free(pool, wk->rdhf_rcv_hdrs,
+				  wk->rdhf_rcv_dma_addrs,
+				  wk->rdhf_rcv_num_hdrs);
+	if (wk->rdhf_ack_rds_hdr)
+		dma_pool_free(pool, wk->rdhf_ack_rds_hdr,
+			      wk->rdhf_ack_dma_addr);
+
+	kfree(wk);
+}
+
+/* Free all the DMA pool headers associated with an RDS RDMA connection.
+ *
+ * @ic: the RDS RDMA connection
+ */
+static void rds_dma_hdrs_free_all(struct rds_ib_connection *ic)
+{
+	struct rds_dma_hdrs_free_wk *wk;
+	struct dma_pool *pool;
+
+	pool = ic->rds_ibdev->rid_hdrs_pool;
+
+	wk = kmalloc(sizeof(*wk), GFP_ATOMIC);
+	if (wk) {
+		wk->rdhf_pool = pool;
+
+		wk->rdhf_snd_hdrs = ic->i_send_hdrs;
+		wk->rdhf_snd_dma_addrs = ic->i_send_hdrs_dma;
+		wk->rdhf_snd_num_hdrs = ic->i_send_ring.w_nr;
+
+		wk->rdhf_rcv_hdrs = ic->i_recv_hdrs;
+		wk->rdhf_rcv_dma_addrs = ic->i_recv_hdrs_dma;
+		wk->rdhf_rcv_num_hdrs = ic->i_recv_ring.w_nr;
+
+		wk->rdhf_ack_rds_hdr = ic->i_ack;
+		wk->rdhf_ack_dma_addr = ic->i_ack_dma;
+
+		INIT_WORK(&wk->rdhf_work, rds_dma_hdrs_cleanup_worker);
+		queue_work(ic->rds_ibdev->rid_hdrs_pool_wq,  &wk->rdhf_work);
+	} else {
+		if (ic->i_send_hdrs)
+			rds_dma_hdrs_free(pool, ic->i_send_hdrs,
+					  ic->i_send_hdrs_dma,
+					  ic->i_send_ring.w_nr);
+		if (ic->i_recv_hdrs)
+			rds_dma_hdrs_free(pool, ic->i_recv_hdrs,
+					  ic->i_recv_hdrs_dma,
+					  ic->i_recv_ring.w_nr);
+		if (ic->i_ack)
+			dma_pool_free(pool, ic->i_ack, ic->i_ack_dma);
+	}
+
+	ic->i_send_hdrs = NULL;
+	ic->i_send_hdrs_dma = NULL;
+
+	ic->i_recv_hdrs = NULL;
+	ic->i_recv_hdrs_dma = NULL;
+
+	ic->i_ack = NULL;
+}
+
 /*
  * This needs to be very careful to not leave IS_ERR pointers around for
  * cleanup to trip over.
@@ -1586,32 +1662,9 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
 
+		/* then free the resources that ib callbacks use */
 		if (ic->rds_ibdev) {
-			struct dma_pool *pool;
-
-			pool = ic->rds_ibdev->rid_hdrs_pool;
-
-			/* then free the resources that ib callbacks use */
-			if (ic->i_send_hdrs) {
-				rds_dma_hdrs_free(pool, ic->i_send_hdrs,
-						  ic->i_send_hdrs_dma,
-						  ic->i_send_ring.w_nr);
-				ic->i_send_hdrs = NULL;
-				ic->i_send_hdrs_dma = NULL;
-			}
-
-			if (ic->i_recv_hdrs) {
-				rds_dma_hdrs_free(pool, ic->i_recv_hdrs,
-						  ic->i_recv_hdrs_dma,
-						  ic->i_recv_ring.w_nr);
-				ic->i_recv_hdrs = NULL;
-				ic->i_recv_hdrs_dma = NULL;
-			}
-
-			if (ic->i_ack) {
-				dma_pool_free(pool, ic->i_ack, ic->i_ack_dma);
-				ic->i_ack = NULL;
-			}
+			rds_dma_hdrs_free_all(ic);
 		} else {
 			WARN_ON(ic->i_send_hdrs);
 			WARN_ON(ic->i_send_hdrs_dma);
