@@ -291,6 +291,7 @@ static void otx2vf_vfaf_mbox_destroy(struct otx2_nic *vf)
 	struct mbox *mbox = &vf->mbox;
 
 	if (vf->mbox_wq) {
+		flush_workqueue(vf->mbox_wq);
 		destroy_workqueue(vf->mbox_wq);
 		vf->mbox_wq = NULL;
 	}
@@ -583,8 +584,10 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	vf->pdev = pdev;
 	vf->dev = dev;
 	vf->iommu_domain = iommu_get_domain_for_dev(dev);
-	vf->iommu_domain_type =
-		 ((struct iommu_domain *)vf->iommu_domain)->type;
+	if (vf->iommu_domain)
+		vf->iommu_domain_type =
+			((struct iommu_domain *)vf->iommu_domain)->type;
+
 	vf->flags |= OTX2_FLAG_INTF_DOWN;
 	hw = &vf->hw;
 	hw->pdev = vf->pdev;
