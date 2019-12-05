@@ -153,6 +153,11 @@ static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
 		ib_dereg_mr(rds_ibdev->mr);
 	if (rds_ibdev->pd)
 		ib_dealloc_pd(rds_ibdev->pd);
+	/* Flush and destroy the header pool clean up work queue before
+	 * destroying the pool.
+	 */
+	if (rds_ibdev->rid_hdrs_pool_wq)
+		destroy_workqueue(rds_ibdev->rid_hdrs_pool_wq);
 	if (rds_ibdev->rid_hdrs_pool)
 		dma_pool_destroy(rds_ibdev->rid_hdrs_pool);
 out:
@@ -617,6 +622,13 @@ void rds_ib_add_one(struct ib_device *device)
 						   sizeof(struct rds_header),
 						   L1_CACHE_BYTES, 0);
 	if (!rds_ibdev->rid_hdrs_pool)
+		goto put_dev;
+
+	rds_ibdev->rid_hdrs_pool_wq = alloc_workqueue("rds_pool_%s",
+						      WQ_UNBOUND |
+						      WQ_MEM_RECLAIM, 0,
+						      device->name);
+	if (!rds_ibdev->rid_hdrs_pool_wq)
 		goto put_dev;
 
 	rds_ibdev->vector_load = kzalloc(sizeof(int) *
