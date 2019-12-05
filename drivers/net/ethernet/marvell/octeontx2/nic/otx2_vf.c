@@ -132,10 +132,6 @@ static void otx2vf_vfaf_mbox_handler(struct work_struct *work)
 	}
 
 	otx2_mbox_reset(mbox, 0);
-
-	/* Clear the IRQ */
-	smp_wmb();
-	otx2_write64(af_mbox->pfvf, RVU_VF_INT, BIT_ULL(0));
 }
 
 static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,

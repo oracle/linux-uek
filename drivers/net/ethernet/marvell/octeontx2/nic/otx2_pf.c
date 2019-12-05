@@ -105,9 +105,8 @@ static void otx2_flr_handler(struct work_struct *work)
 {
 	struct flr_work *flrwork = container_of(work, struct flr_work, work);
 	struct otx2_nic *pf = flrwork->pf;
-	int vf, reg = 0;
 	struct msg_req *req;
-	struct msg_rsp *rsp;
+	int vf, reg = 0;
 
 	vf = flrwork - pf->flr_wrk;
 
@@ -126,11 +125,6 @@ static void otx2_flr_handler(struct work_struct *work)
 			reg = 1;
 			vf = vf - 64;
 		}
-		rsp = (struct  msg_rsp *)
-		      otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
-		otx2_mbox_unlock(&pf->mbox);
-		if (rsp->hdr.rc)
-			return;
 		/* clear transcation pending bit */
 		otx2_write64(pf, RVU_PF_VFTRPENDX(reg), BIT_ULL(vf));
 		otx2_write64(pf, RVU_PF_VFFLR_INT_ENA_W1SX(reg), BIT_ULL(vf));
@@ -376,9 +370,7 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 		src_mdev = &src_mbox->dev[vf];
 		mbox_hdr = src_mbox->hwbase +
 				src_mbox->rx_start + (vf * MBOX_SIZE);
-		req_hdr = (struct mbox_hdr *)(src_mdev->mbase +
-					      src_mbox->rx_start);
-		req_hdr->num_msgs = num_msgs;
+
 		dst_mbox = &pf->mbox;
 		dst_size = dst_mbox->mbox.tx_size -
 				ALIGN(sizeof(*mbox_hdr), MBOX_MSG_ALIGN);
@@ -391,7 +383,7 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 		otx2_mbox_lock(&pf->mbox);
 		dst_mdev->mbase = src_mdev->mbase;
 		dst_mdev->msg_size = mbox_hdr->msg_size;
-		dst_mdev->num_msgs = mbox_hdr->num_msgs;
+		dst_mdev->num_msgs = num_msgs;
 		err = otx2_sync_mbox_msg(dst_mbox);
 		if (err) {
 			dev_warn(pf->dev,
@@ -828,10 +820,6 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	}
 
 	otx2_mbox_reset(mbox, 0);
-
-	/* Clear the IRQ */
-	smp_wmb();
-	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
 }
 
 static void otx2_handle_link_event(struct otx2_nic *pf)
