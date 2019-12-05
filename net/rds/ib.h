@@ -184,28 +184,28 @@ struct rds_ib_rx_work {
 	struct rds_ib_connection        *ic;
 };
 
-/* Structure for the DMA headers pool deallocation work */
-struct rds_dma_hdrs_free_wk {
-	struct work_struct	rdhf_work;
-	struct dma_pool		*rdhf_pool;	/* Pool for the headers. */
+/* Time (in millisec) to wait before deallocating the RDS connection headers.
+ */
+extern u32 rds_hdrs_free_wait_ms;
 
+/* Structure for storing all the DMA headers */
+struct rds_dma_hdrs {
 	/* Info of headers for sending. */
-	struct rds_header	**rdhf_snd_hdrs;
-	dma_addr_t		*rdhf_snd_dma_addrs;
-	u32			rdhf_snd_num_hdrs;
+	struct rds_header	**rdh_snd_hdrs;
+	dma_addr_t		*rdh_snd_dma_addrs;
+	u32			rdh_snd_num_hdrs;
 
 	/* Info of headers for receiving. */
-	struct rds_header	**rdhf_rcv_hdrs;
-	dma_addr_t		*rdhf_rcv_dma_addrs;
-	u32			rdhf_rcv_num_hdrs;
+	struct rds_header	**rdh_rcv_hdrs;
+	dma_addr_t		*rdh_rcv_dma_addrs;
+	u32			rdh_rcv_num_hdrs;
 
 	/* Info of the ACK header. */
-	struct rds_header	*rdhf_ack_rds_hdr;
-	dma_addr_t		rdhf_ack_dma_addr;
+	struct rds_header	*rdh_ack_hdr;
+	dma_addr_t		rdh_ack_dma_addr;
 };
 
 struct rds_ib_connection {
-
 	struct list_head	ib_node;
 	struct rds_ib_device	*rds_ibdev;
 	struct rds_connection	*conn;
@@ -227,11 +227,21 @@ struct rds_ib_connection {
 	struct tasklet_struct	i_stasklet;
 	struct tasklet_struct	i_rtasklet;
 
+	struct rds_dma_hdrs	i_hdrs;
+
+/* Quick access to the fields of struct rds_dma_hdrs */
+#define	i_send_hdrs	i_hdrs.rdh_snd_hdrs
+#define	i_send_hdrs_dma	i_hdrs.rdh_snd_dma_addrs
+#define	i_send_num_hdrs	i_hdrs.rdh_snd_num_hdrs
+#define	i_recv_hdrs	i_hdrs.rdh_rcv_hdrs
+#define	i_recv_hdrs_dma	i_hdrs.rdh_rcv_dma_addrs
+#define	i_recv_num_hdrs	i_hdrs.rdh_rcv_num_hdrs
+#define	i_ack		i_hdrs.rdh_ack_hdr
+#define	i_ack_dma	i_hdrs.rdh_ack_dma_addr
+
 	/* tx */
 	struct rds_ib_work_ring	i_send_ring;
 	struct rm_data_op	*i_data_op;
-	struct rds_header	**i_send_hdrs;
-	dma_addr_t		*i_send_hdrs_dma;
 	struct rds_ib_send_work *i_sends;
 	atomic_t		i_signaled_sends;
 
@@ -241,8 +251,6 @@ struct rds_ib_connection {
 	struct rds_ib_work_ring	i_recv_ring;
 	struct rds_ib_incoming	*i_ibinc;
 	u32			i_recv_data_rem;
-	struct rds_header	**i_recv_hdrs;
-	dma_addr_t		*i_recv_hdrs_dma;
 	struct rds_ib_recv_work *i_recvs;
 	u64			i_ack_recv;	/* last ACK received */
 	struct rds_ib_refill_cache i_cache_incs;
@@ -256,11 +264,14 @@ struct rds_ib_connection {
 	spinlock_t		i_ack_lock;	/* protect i_ack_next */
 	u64			i_ack_next;	/* next ACK to send */
 #endif
-	struct rds_header	*i_ack;
 	struct ib_send_wr	i_ack_wr;
 	struct ib_sge		i_ack_sge;
-	u64			i_ack_dma;
 	unsigned long		i_ack_queued;
+
+	/* Lock for synchronizing with clean up worker */
+	spinlock_t		i_hdrs_lock;
+	struct dma_pool		*i_saved_hdrs_pool; /* Pool for the headers. */
+	struct delayed_work	i_hdrs_free_work;
 
 	/* Flow control related information
 	 *
