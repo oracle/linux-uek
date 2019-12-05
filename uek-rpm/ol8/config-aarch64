@@ -313,6 +313,7 @@ CONFIG_ARCH_ZYNQMP=y
 #
 # Kernel Features
 #
+CONFIG_RETPOLINE=y
 
 #
 # ARM errata workarounds via the alternatives framework
