@@ -529,7 +529,7 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 int otx2_txschq_stop(struct otx2_nic *pfvf)
 {
 	struct nix_txsch_free_req *free_req;
-	int lvl, schq;
+	int lvl, schq, err;
 
 	otx2_mbox_lock(&pfvf->mbox);
 	/* Free the transmit schedulers */
@@ -540,7 +540,7 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 	}
 
 	free_req->flags = TXSCHQ_FREE_ALL;
-	WARN_ON(otx2_sync_mbox_msg(&pfvf->mbox));
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	otx2_mbox_unlock(&pfvf->mbox);
 
 	/* Clear the txschq list */
@@ -548,7 +548,7 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 		for (schq = 0; schq < MAX_TXSCHQ_PER_FUNC; schq++)
 			pfvf->hw.txschq_list[lvl][schq] = 0;
 	}
-	return 0;
+	return err;
 }
 
 /* RED and drop levels of CQ on packet reception.
@@ -1310,7 +1310,10 @@ void otx2_ctx_disable(struct mbox *mbox, int type, bool npa)
 
 	req->ctype = type;
 
-	WARN_ON(otx2_sync_mbox_msg(mbox));
+	if (otx2_sync_mbox_msg(mbox))
+		dev_err(mbox->pfvf->dev, "%s failed to disable context\n",
+			__func__);
+
 	otx2_mbox_unlock(mbox);
 }
 
