@@ -146,7 +146,7 @@ struct  mbox {
 	struct work_struct	mbox_up_wrk;
 	struct otx2_nic		*pfvf;
 	void			*bbuf_base; /* Bounce buffer for mbox memory */
-	atomic_t		lock;	/* serialize mailbox access */
+	struct mutex		lock;	/* serialize mailbox access */
 	int			num_msgs; /*mbox number of messages*/
 	int			up_num_msgs;/* mbox_up number of messages*/
 
@@ -603,18 +603,17 @@ static inline void otx2_sync_mbox_bbuf(struct otx2_mbox *mbox, int devid)
 
 static inline void otx2_mbox_lock_init(struct mbox *mbox)
 {
-	atomic_set(&mbox->lock, 0);
+	mutex_init(&mbox->lock);
 }
 
 static inline void otx2_mbox_lock(struct mbox *mbox)
 {
-	while (!(atomic_add_return(1, &mbox->lock) == 1))
-		cpu_relax();
+	mutex_lock(&mbox->lock);
 }
 
 static inline void otx2_mbox_unlock(struct mbox *mbox)
 {
-	atomic_set(&mbox->lock, 0);
+	mutex_unlock(&mbox->lock);
 }
 
 /* Time to wait before watchdog kicks off.

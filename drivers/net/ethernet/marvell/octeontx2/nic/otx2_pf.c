@@ -1383,7 +1383,8 @@ err_free_nix_queues:
 	otx2_free_cq_res(pf);
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_RQ, false);
 err_free_txsch:
-	otx2_txschq_stop(pf);
+	if (otx2_txschq_stop(pf))
+		dev_err(pf->dev, "%s failed to stop TX schedulers\n", __func__);
 err_free_sq_ptrs:
 	otx2_sq_free_sqbs(pf);
 err_free_rq_ptrs:
@@ -1396,13 +1397,16 @@ err_free_nix_lf:
 	free_req = otx2_mbox_alloc_msg_nix_lf_free(mbox);
 	if (free_req) {
 		free_req->flags = NIX_LF_DISABLE_FLOWS;
-		WARN_ON(otx2_sync_mbox_msg(mbox));
+		if (otx2_sync_mbox_msg(mbox))
+			dev_err(pf->dev, "%s failed to free nixlf\n", __func__);
 	}
 err_free_npa_lf:
 	/* Reset NPA LF */
 	req = otx2_mbox_alloc_msg_npa_lf_free(mbox);
-	if (req)
-		WARN_ON(otx2_sync_mbox_msg(mbox));
+	if (req) {
+		if (otx2_sync_mbox_msg(mbox))
+			dev_err(pf->dev, "%s failed to free npalf\n", __func__);
+	}
 exit:
 	otx2_mbox_unlock(mbox);
 	return err;
@@ -1455,7 +1459,8 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	free_req = otx2_mbox_alloc_msg_nix_lf_free(mbox);
 	if (free_req) {
 		free_req->flags = NIX_LF_DISABLE_FLOWS;
-		WARN_ON(otx2_sync_mbox_msg(mbox));
+		if (otx2_sync_mbox_msg(mbox))
+			dev_err(pf->dev, "%s failed to free nixlf\n", __func__);
 	}
 	otx2_mbox_unlock(mbox);
 
@@ -1467,8 +1472,10 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	otx2_mbox_lock(mbox);
 	/* Reset NPA LF */
 	req = otx2_mbox_alloc_msg_npa_lf_free(mbox);
-	if (req)
-		WARN_ON(otx2_sync_mbox_msg(mbox));
+	if (req) {
+		if (otx2_sync_mbox_msg(mbox))
+			dev_err(pf->dev, "%s failed to free npalf\n", __func__);
+	}
 	otx2_mbox_unlock(mbox);
 }
 
