@@ -1221,9 +1221,10 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		if (rds_ib_same_cm_id(ic, cm_id))
 			destroy = 0;
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
-			rds_rtd(RDS_RTD_CM_EXT_P,
-				"conn %p <%pI6c,%pI6c,%d> incoming connect in UP state\n",
-				conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+			rds_rtd_ptr(RDS_RTD_CM_EXT_P,
+				    "conn %p <%pI6c,%pI6c,%d> incoming connect in UP state\n",
+				    conn, &conn->c_laddr, &conn->c_faddr,
+				    conn->c_tos);
 			rds_conn_drop(conn, DR_IB_REQ_WHILE_CONN_UP);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 			conn->c_reconnect_racing++;
