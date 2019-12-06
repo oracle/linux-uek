@@ -95,6 +95,7 @@ void install_gti_cwd_wdog_secondary_cores(void *arg)
 void install_gti_cwd_wdog_all_cores(struct set_watchdog_args *watchdog_args)
 {
 	struct arm_smccc_res res;
+	uint64_t cpumask = 0;
 	int cpu;
 
 	for_each_online_cpu(cpu) {
@@ -102,6 +103,7 @@ void install_gti_cwd_wdog_all_cores(struct set_watchdog_args *watchdog_args)
 		if (!(watchdog_args->core_mask & (1 << cpu)))
 			continue;
 
+		cpumask |= (1 << cpu);
 		smp_call_function_single(cpu,
 				install_gti_cwd_wdog_secondary_cores,
 				(void *)watchdog_args, 1);
@@ -113,12 +115,16 @@ void install_gti_cwd_wdog_all_cores(struct set_watchdog_args *watchdog_args)
 	 */
 
 	arm_smccc_smc(OCTEONTX_START_WDOG, (uintptr_t)&el1_nmi_callback,
-		watchdog_args->watchdog_timeout_ms, watchdog_args->core_mask,
-		0, 0, 0, 0, &res);
+		      watchdog_args->watchdog_timeout_ms, cpumask,
+		      0, 0, 0, 0, &res);
 
 	if (!res.a0)
-		pr_warn("Failed to install watchdog handler on core %d : %ld\n",
-				nr_cpu_ids, res.a0);
+		pr_warn("Failed to install watchdog handler on core %llx : %ld\n",
+				cpumask, res.a0);
+
+	if (cpumask != watchdog_args->core_mask)
+		pr_warn("Wdog on coremask %llx requested coremask %llx\n",
+			cpumask, watchdog_args->core_mask);
 }
 
 static long gti_wdog_ioctl(struct file *file, unsigned int cmd,
