@@ -605,10 +605,14 @@ int get_spectre_v2_workaround_state(void)
 	if (__spectrev2_safe)
 		return ARM64_BP_HARDEN_NOT_REQUIRED;
 
-	if (!__hardenbp_enab)
-		return ARM64_BP_HARDEN_UNKNOWN;
+	if (__hardenbp_enab)
+		return ARM64_BP_HARDEN_WA_NEEDED;
 
-	return ARM64_BP_HARDEN_WA_NEEDED;
+#ifdef CONFIG_RETPOLINE
+	if (retp_compiler())
+		return ARM64_RETPOLINE;
+#endif
+	return ARM64_BP_HARDEN_UNKNOWN;
 }
 
 /*
@@ -998,6 +1002,9 @@ ssize_t cpu_show_spectre_v2(struct device *dev, struct device_attribute *attr,
 		return sprintf(buf, "Not affected\n");
         case ARM64_BP_HARDEN_WA_NEEDED:
 		return sprintf(buf, "Mitigation: Branch predictor hardening\n");
+	case ARM64_RETPOLINE:
+		return sprintf(buf, "%s%s\n", spectre_v2_strings[spectre_v2_enabled],
+			spectre_v2_module_string());
         case ARM64_BP_HARDEN_UNKNOWN:
 	default:
 		return sprintf(buf, "Vulnerable\n");
