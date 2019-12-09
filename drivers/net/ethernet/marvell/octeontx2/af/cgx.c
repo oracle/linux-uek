@@ -154,6 +154,16 @@ int cgx_get_cgxid(void *cgxd)
 	return cgx->cgx_id;
 }
 
+u8 cgx_lmac_get_p2x(int cgx_id, int lmac_id)
+{
+	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
+	u64 cfg;
+
+	cfg = cgx_read(cgx_dev, lmac_id, CGXX_CMRX_CFG);
+
+	return (cfg & CMR_P2X_SEL_MASK) >> CMR_P2X_SEL_SHIFT;
+}
+
 /* Ensure the required lock for event queue(where asynchronous events are
  * posted) is acquired before calling this API. Else an asynchronous event(with
  * latest link status) can reach the destination before this function returns
