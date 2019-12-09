@@ -8443,6 +8443,9 @@ int kvm_arch_vcpu_ioctl_get_mpstate(struct kvm_vcpu *vcpu,
 {
 	vcpu_load(vcpu);
 
+	if (kvm_mpx_supported())
+		kvm_load_guest_fpu(vcpu);
+
 	kvm_apic_accept_events(vcpu);
 	if (vcpu->arch.mp_state == KVM_MP_STATE_HALTED &&
 					vcpu->arch.pv.pv_unhalted)
@@ -8451,6 +8454,10 @@ int kvm_arch_vcpu_ioctl_get_mpstate(struct kvm_vcpu *vcpu,
 		mp_state->mp_state = vcpu->arch.mp_state;
 
 	vcpu_put(vcpu);
+
+	if (kvm_mpx_supported())
+		kvm_put_guest_fpu(vcpu);
+
 	return 0;
 }
 
