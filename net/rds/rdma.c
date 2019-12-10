@@ -33,7 +33,7 @@
 #include <linux/pagemap.h>
 #include <linux/rbtree.h>
 #include <linux/dma-mapping.h> /* for DMA_*_DEVICE */
-
+#include <linux/sched/mm.h>
 #include "rds.h"
 
 /*
@@ -163,14 +163,20 @@ static int rds_pin_pages(unsigned long user_addr, unsigned int nr_pages,
 			struct page **pages, int write)
 {
 	int ret;
+	struct mm_struct *mm = current->mm;
+	int gup_flags = FOLL_LONGTERM | (write ? FOLL_WRITE : 0);
 
-	ret = get_user_pages_fast(user_addr, nr_pages, write, pages);
+	mmgrab(mm);
+	down_read(&mm->mmap_sem);
+	ret = get_user_pages(user_addr, nr_pages, gup_flags, pages, NULL);
 
 	if (ret >= 0 && (unsigned) ret < nr_pages) {
 		while (ret--)
 			put_page(pages[ret]);
 		ret = -EFAULT;
 	}
+	up_read(&mm->mmap_sem);
+	mmdrop(mm);
 
 	return ret;
 }
