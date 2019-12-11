@@ -753,7 +753,7 @@ void rvu_nix_update_link_credits(struct rvu *rvu, int blkaddr,
 void rvu_nix_update_sq_smq_mapping(struct rvu *rvu, int blkaddr, int nixlf,
 				   u16 sq, u16 smq);
 void rvu_nix_txsch_config_changed(struct nix_hw *nix_hw);
-ssize_t rvu_nix_get_tx_stall_counters(struct rvu *rvu,
+ssize_t rvu_nix_get_tx_stall_counters(struct nix_hw *nix_hw,
 				      char __user *buffer, loff_t *ppos);
 int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr);
 void rvu_nix_fixes_exit(struct rvu *rvu, struct nix_hw *nix_hw);
