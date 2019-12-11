@@ -36,7 +36,11 @@ static unsigned long tainted_mask;
 static int pause_on_oops;
 static int pause_on_oops_flag;
 static DEFINE_SPINLOCK(pause_on_oops_lock);
+#ifdef CONFIG_X86
 bool crash_kexec_post_notifiers = true;
+#else
+bool crash_kexec_post_notifiers;
+#endif
 int panic_on_warn __read_mostly;
 
 int panic_timeout = CONFIG_PANIC_TIMEOUT;
