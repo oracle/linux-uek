@@ -17,7 +17,6 @@
 #include <linux/phy.h>
 #include <linux/bitops.h>
 #include <linux/uaccess.h>
-#include <linux/vermagic.h>
 #include <linux/vmalloc.h>
 #include <linux/sfp.h>
 #include <linux/slab.h>
@@ -27,9 +26,6 @@
 #include <net/devlink.h>
 #include <net/xdp_sock.h>
 #include <net/flow_offload.h>
-#include <linux/ethtool_netlink.h>
-
-#include "common.h"
 
 /*
  * Some useful ethtool_ops methods that're device independent.
@@ -57,6 +53,89 @@ EXPORT_SYMBOL(ethtool_op_get_ts_info);
 /* Handlers for each ethtool command */
 
 #define ETHTOOL_DEV_FEATURE_WORDS	((NETDEV_FEATURE_COUNT + 31) / 32)
+
+static const char netdev_features_strings[NETDEV_FEATURE_COUNT][ETH_GSTRING_LEN] = {
+	[NETIF_F_SG_BIT] =               "tx-scatter-gather",
+	[NETIF_F_IP_CSUM_BIT] =          "tx-checksum-ipv4",
+	[NETIF_F_HW_CSUM_BIT] =          "tx-checksum-ip-generic",
+	[NETIF_F_IPV6_CSUM_BIT] =        "tx-checksum-ipv6",
+	[NETIF_F_HIGHDMA_BIT] =          "highdma",
+	[NETIF_F_FRAGLIST_BIT] =         "tx-scatter-gather-fraglist",
+	[NETIF_F_HW_VLAN_CTAG_TX_BIT] =  "tx-vlan-hw-insert",
+
+	[NETIF_F_HW_VLAN_CTAG_RX_BIT] =  "rx-vlan-hw-parse",
+	[NETIF_F_HW_VLAN_CTAG_FILTER_BIT] = "rx-vlan-filter",
+	[NETIF_F_HW_VLAN_STAG_TX_BIT] =  "tx-vlan-stag-hw-insert",
+	[NETIF_F_HW_VLAN_STAG_RX_BIT] =  "rx-vlan-stag-hw-parse",
+	[NETIF_F_HW_VLAN_STAG_FILTER_BIT] = "rx-vlan-stag-filter",
+	[NETIF_F_VLAN_CHALLENGED_BIT] =  "vlan-challenged",
+	[NETIF_F_GSO_BIT] =              "tx-generic-segmentation",
+	[NETIF_F_LLTX_BIT] =             "tx-lockless",
+	[NETIF_F_NETNS_LOCAL_BIT] =      "netns-local",
+	[NETIF_F_GRO_BIT] =              "rx-gro",
+	[NETIF_F_GRO_HW_BIT] =           "rx-gro-hw",
+	[NETIF_F_LRO_BIT] =              "rx-lro",
+
+	[NETIF_F_TSO_BIT] =              "tx-tcp-segmentation",
+	[NETIF_F_GSO_ROBUST_BIT] =       "tx-gso-robust",
+	[NETIF_F_TSO_ECN_BIT] =          "tx-tcp-ecn-segmentation",
+	[NETIF_F_TSO_MANGLEID_BIT] =	 "tx-tcp-mangleid-segmentation",
+	[NETIF_F_TSO6_BIT] =             "tx-tcp6-segmentation",
+	[NETIF_F_FSO_BIT] =              "tx-fcoe-segmentation",
+	[NETIF_F_GSO_GRE_BIT] =		 "tx-gre-segmentation",
+	[NETIF_F_GSO_GRE_CSUM_BIT] =	 "tx-gre-csum-segmentation",
+	[NETIF_F_GSO_IPXIP4_BIT] =	 "tx-ipxip4-segmentation",
+	[NETIF_F_GSO_IPXIP6_BIT] =	 "tx-ipxip6-segmentation",
+	[NETIF_F_GSO_UDP_TUNNEL_BIT] =	 "tx-udp_tnl-segmentation",
+	[NETIF_F_GSO_UDP_TUNNEL_CSUM_BIT] = "tx-udp_tnl-csum-segmentation",
+	[NETIF_F_GSO_PARTIAL_BIT] =	 "tx-gso-partial",
+	[NETIF_F_GSO_SCTP_BIT] =	 "tx-sctp-segmentation",
+	[NETIF_F_GSO_ESP_BIT] =		 "tx-esp-segmentation",
+	[NETIF_F_GSO_UDP_L4_BIT] =	 "tx-udp-segmentation",
+
+	[NETIF_F_FCOE_CRC_BIT] =         "tx-checksum-fcoe-crc",
+	[NETIF_F_SCTP_CRC_BIT] =        "tx-checksum-sctp",
+	[NETIF_F_FCOE_MTU_BIT] =         "fcoe-mtu",
+	[NETIF_F_NTUPLE_BIT] =           "rx-ntuple-filter",
+	[NETIF_F_RXHASH_BIT] =           "rx-hashing",
+	[NETIF_F_RXCSUM_BIT] =           "rx-checksum",
+	[NETIF_F_NOCACHE_COPY_BIT] =     "tx-nocache-copy",
+	[NETIF_F_LOOPBACK_BIT] =         "loopback",
+	[NETIF_F_RXFCS_BIT] =            "rx-fcs",
+	[NETIF_F_RXALL_BIT] =            "rx-all",
+	[NETIF_F_HW_L2FW_DOFFLOAD_BIT] = "l2-fwd-offload",
+	[NETIF_F_HW_TC_BIT] =		 "hw-tc-offload",
+	[NETIF_F_HW_ESP_BIT] =		 "esp-hw-offload",
+	[NETIF_F_HW_ESP_TX_CSUM_BIT] =	 "esp-tx-csum-hw-offload",
+	[NETIF_F_RX_UDP_TUNNEL_PORT_BIT] =	 "rx-udp_tunnel-port-offload",
+	[NETIF_F_HW_TLS_RECORD_BIT] =	"tls-hw-record",
+	[NETIF_F_HW_TLS_TX_BIT] =	 "tls-hw-tx-offload",
+	[NETIF_F_HW_TLS_RX_BIT] =	 "tls-hw-rx-offload",
+	[NETIF_F_GRO_FRAGLIST_BIT] =     "rx-gro-list",
+};
+
+static const char
+rss_hash_func_strings[ETH_RSS_HASH_FUNCS_COUNT][ETH_GSTRING_LEN] = {
+	[ETH_RSS_HASH_TOP_BIT] =	"toeplitz",
+	[ETH_RSS_HASH_XOR_BIT] =	"xor",
+	[ETH_RSS_HASH_CRC32_BIT] =	"crc32",
+};
+
+static const char
+tunable_strings[__ETHTOOL_TUNABLE_COUNT][ETH_GSTRING_LEN] = {
+	[ETHTOOL_ID_UNSPEC]     = "Unspec",
+	[ETHTOOL_RX_COPYBREAK]	= "rx-copybreak",
+	[ETHTOOL_TX_COPYBREAK]	= "tx-copybreak",
+	[ETHTOOL_PFC_PREVENTION_TOUT] = "pfc-prevention-tout",
+};
+
+static const char
+phy_tunable_strings[__ETHTOOL_PHY_TUNABLE_COUNT][ETH_GSTRING_LEN] = {
+	[ETHTOOL_ID_UNSPEC]     = "Unspec",
+	[ETHTOOL_PHY_DOWNSHIFT]	= "phy-downshift",
+	[ETHTOOL_PHY_FAST_LINK_DOWN] = "phy-fast-link-down",
+	[ETHTOOL_PHY_EDPD]	= "phy-energy-detect-power-down",
+};
 
 static int ethtool_get_features(struct net_device *dev, void __user *useraddr)
 {
@@ -156,9 +235,6 @@ static int __ethtool_get_sset_count(struct net_device *dev, int sset)
 	    !ops->get_ethtool_phy_stats)
 		return phy_ethtool_get_sset_count(dev->phydev);
 
-	if (sset == ETH_SS_LINK_MODES)
-		return __ETHTOOL_LINK_MODE_MASK_NBITS;
-
 	if (ops->get_sset_count && ops->get_strings)
 		return ops->get_sset_count(dev, sset);
 	else
@@ -183,9 +259,6 @@ static void __ethtool_get_strings(struct net_device *dev,
 	else if (stringset == ETH_SS_PHY_STATS && dev->phydev &&
 		 !ops->get_ethtool_phy_stats)
 		phy_ethtool_get_strings(dev->phydev, data);
-	else if (stringset == ETH_SS_LINK_MODES)
-		memcpy(data, link_mode_names,
-		       __ETHTOOL_LINK_MODE_MASK_NBITS * ETH_GSTRING_LEN);
 	else
 		/* ops->get_strings is valid because checked earlier */
 		ops->get_strings(dev, stringset, data);
@@ -360,6 +433,54 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
 }
 EXPORT_SYMBOL(ethtool_convert_link_mode_to_legacy_u32);
 
+/* return false if legacy contained non-0 deprecated fields
+ * maxtxpkt/maxrxpkt. rest of ksettings always updated
+ */
+static bool
+convert_legacy_settings_to_link_ksettings(
+	struct ethtool_link_ksettings *link_ksettings,
+	const struct ethtool_cmd *legacy_settings)
+{
+	bool retval = true;
+
+	memset(link_ksettings, 0, sizeof(*link_ksettings));
+
+	/* This is used to tell users that driver is still using these
+	 * deprecated legacy fields, and they should not use
+	 * %ETHTOOL_GLINKSETTINGS/%ETHTOOL_SLINKSETTINGS
+	 */
+	if (legacy_settings->maxtxpkt ||
+	    legacy_settings->maxrxpkt)
+		retval = false;
+
+	ethtool_convert_legacy_u32_to_link_mode(
+		link_ksettings->link_modes.supported,
+		legacy_settings->supported);
+	ethtool_convert_legacy_u32_to_link_mode(
+		link_ksettings->link_modes.advertising,
+		legacy_settings->advertising);
+	ethtool_convert_legacy_u32_to_link_mode(
+		link_ksettings->link_modes.lp_advertising,
+		legacy_settings->lp_advertising);
+	link_ksettings->base.speed
+		= ethtool_cmd_speed(legacy_settings);
+	link_ksettings->base.duplex
+		= legacy_settings->duplex;
+	link_ksettings->base.port
+		= legacy_settings->port;
+	link_ksettings->base.phy_address
+		= legacy_settings->phy_address;
+	link_ksettings->base.autoneg
+		= legacy_settings->autoneg;
+	link_ksettings->base.mdio_support
+		= legacy_settings->mdio_support;
+	link_ksettings->base.eth_tp_mdix
+		= legacy_settings->eth_tp_mdix;
+	link_ksettings->base.eth_tp_mdix_ctrl
+		= legacy_settings->eth_tp_mdix_ctrl;
+	return retval;
+}
+
 /* return false if ksettings link modes had higher bits
  * set. legacy_settings always updated (best effort)
  */
@@ -459,24 +580,6 @@ static int load_link_ksettings_from_user(struct ethtool_link_ksettings *to,
 	return 0;
 }
 
-/* Check if the user is trying to change anything besides speed/duplex */
-bool ethtool_virtdev_validate_cmd(const struct ethtool_link_ksettings *cmd)
-{
-	struct ethtool_link_settings base2 = {};
-
-	base2.speed = cmd->base.speed;
-	base2.port = PORT_OTHER;
-	base2.duplex = cmd->base.duplex;
-	base2.cmd = cmd->base.cmd;
-	base2.link_mode_masks_nwords = cmd->base.link_mode_masks_nwords;
-
-	return !memcmp(&base2, &cmd->base, sizeof(base2)) &&
-		bitmap_empty(cmd->link_modes.supported,
-			     __ETHTOOL_LINK_MODE_MASK_NBITS) &&
-		bitmap_empty(cmd->link_modes.lp_advertising,
-			     __ETHTOOL_LINK_MODE_MASK_NBITS);
-}
-
 /* convert a kernel internal ethtool_link_ksettings to
  * ethtool_link_usettings in user space. return 0 on success, errno on
  * error.
@@ -487,7 +590,7 @@ store_link_ksettings_for_user(void __user *to,
 {
 	struct ethtool_link_usettings link_usettings;
 
-	memcpy(&link_usettings.base, &from->base, sizeof(link_usettings));
+	memcpy(&link_usettings, from, sizeof(link_usettings));
 	bitmap_to_arr32(link_usettings.link_modes.supported,
 			from->link_modes.supported,
 			__ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -591,34 +694,8 @@ static int ethtool_set_link_ksettings(struct net_device *dev,
 	    != link_ksettings.base.link_mode_masks_nwords)
 		return -EINVAL;
 
-	err = dev->ethtool_ops->set_link_ksettings(dev, &link_ksettings);
-	if (err >= 0) {
-		ethtool_notify(dev, ETHTOOL_MSG_LINKINFO_NTF, NULL);
-		ethtool_notify(dev, ETHTOOL_MSG_LINKMODES_NTF, NULL);
-	}
-	return err;
+	return dev->ethtool_ops->set_link_ksettings(dev, &link_ksettings);
 }
-
-int ethtool_virtdev_set_link_ksettings(struct net_device *dev,
-				       const struct ethtool_link_ksettings *cmd,
-				       u32 *dev_speed, u8 *dev_duplex)
-{
-	u32 speed;
-	u8 duplex;
-
-	speed = cmd->base.speed;
-	duplex = cmd->base.duplex;
-	/* don't allow custom speed and duplex */
-	if (!ethtool_validate_speed(speed) ||
-	    !ethtool_validate_duplex(duplex) ||
-	    !ethtool_virtdev_validate_cmd(cmd))
-		return -EINVAL;
-	*dev_speed = speed;
-	*dev_duplex = duplex;
-
-	return 0;
-}
-EXPORT_SYMBOL(ethtool_virtdev_set_link_ksettings);
 
 /* Query device for its ethtool_cmd settings.
  *
@@ -666,7 +743,6 @@ static int ethtool_set_settings(struct net_device *dev, void __user *useraddr)
 {
 	struct ethtool_link_ksettings link_ksettings;
 	struct ethtool_cmd cmd;
-	int ret;
 
 	ASSERT_RTNL();
 
@@ -679,12 +755,7 @@ static int ethtool_set_settings(struct net_device *dev, void __user *useraddr)
 		return -EINVAL;
 	link_ksettings.base.link_mode_masks_nwords =
 		__ETHTOOL_LINK_MODE_MASK_NU32;
-	ret = dev->ethtool_ops->set_link_ksettings(dev, &link_ksettings);
-	if (ret >= 0) {
-		ethtool_notify(dev, ETHTOOL_MSG_LINKINFO_NTF, NULL);
-		ethtool_notify(dev, ETHTOOL_MSG_LINKMODES_NTF, NULL);
-	}
-	return ret;
+	return dev->ethtool_ops->set_link_ksettings(dev, &link_ksettings);
 }
 
 static noinline_for_stack int ethtool_get_drvinfo(struct net_device *dev,
@@ -695,7 +766,6 @@ static noinline_for_stack int ethtool_get_drvinfo(struct net_device *dev,
 
 	memset(&info, 0, sizeof(info));
 	info.cmd = ETHTOOL_GDRVINFO;
-	strlcpy(info.version, UTS_RELEASE, sizeof(info.version));
 	if (ops->get_drvinfo) {
 		ops->get_drvinfo(dev, &info);
 	} else if (dev->dev.parent && dev->dev.parent->driver) {
@@ -1357,7 +1427,6 @@ static int ethtool_set_wol(struct net_device *dev, char __user *useraddr)
 		return ret;
 
 	dev->wol_enabled = !!wol.wolopts;
-	ethtool_notify(dev, ETHTOOL_MSG_WOL_NTF, NULL);
 
 	return 0;
 }
@@ -1407,12 +1476,12 @@ static int ethtool_nway_reset(struct net_device *dev)
 static int ethtool_get_link(struct net_device *dev, char __user *useraddr)
 {
 	struct ethtool_value edata = { .cmd = ETHTOOL_GLINK };
-	int link = __ethtool_get_link(dev);
 
-	if (link < 0)
-		return link;
+	if (!dev->ethtool_ops->get_link)
+		return -EOPNOTSUPP;
 
-	edata.data = link;
+	edata.data = netif_running(dev) && dev->ethtool_ops->get_link(dev);
+
 	if (copy_to_user(useraddr, &edata, sizeof(edata)))
 		return -EFAULT;
 	return 0;
@@ -1440,7 +1509,7 @@ static int ethtool_get_any_eeprom(struct net_device *dev, void __user *useraddr,
 	if (eeprom.offset + eeprom.len > total_len)
 		return -EINVAL;
 
-	data = kmalloc(PAGE_SIZE, GFP_USER);
+	data = kzalloc(PAGE_SIZE, GFP_USER);
 	if (!data)
 		return -ENOMEM;
 
@@ -1505,7 +1574,7 @@ static int ethtool_set_eeprom(struct net_device *dev, void __user *useraddr)
 	if (eeprom.offset + eeprom.len > ops->get_eeprom_len(dev))
 		return -EINVAL;
 
-	data = kmalloc(PAGE_SIZE, GFP_USER);
+	data = kzalloc(PAGE_SIZE, GFP_USER);
 	if (!data)
 		return -ENOMEM;
 
@@ -1544,64 +1613,6 @@ static noinline_for_stack int ethtool_get_coalesce(struct net_device *dev,
 	return 0;
 }
 
-static bool
-ethtool_set_coalesce_supported(struct net_device *dev,
-			       struct ethtool_coalesce *coalesce)
-{
-	u32 supported_params = dev->ethtool_ops->supported_coalesce_params;
-	u32 nonzero_params = 0;
-
-	if (!supported_params)
-		return true;
-
-	if (coalesce->rx_coalesce_usecs)
-		nonzero_params |= ETHTOOL_COALESCE_RX_USECS;
-	if (coalesce->rx_max_coalesced_frames)
-		nonzero_params |= ETHTOOL_COALESCE_RX_MAX_FRAMES;
-	if (coalesce->rx_coalesce_usecs_irq)
-		nonzero_params |= ETHTOOL_COALESCE_RX_USECS_IRQ;
-	if (coalesce->rx_max_coalesced_frames_irq)
-		nonzero_params |= ETHTOOL_COALESCE_RX_MAX_FRAMES_IRQ;
-	if (coalesce->tx_coalesce_usecs)
-		nonzero_params |= ETHTOOL_COALESCE_TX_USECS;
-	if (coalesce->tx_max_coalesced_frames)
-		nonzero_params |= ETHTOOL_COALESCE_TX_MAX_FRAMES;
-	if (coalesce->tx_coalesce_usecs_irq)
-		nonzero_params |= ETHTOOL_COALESCE_TX_USECS_IRQ;
-	if (coalesce->tx_max_coalesced_frames_irq)
-		nonzero_params |= ETHTOOL_COALESCE_TX_MAX_FRAMES_IRQ;
-	if (coalesce->stats_block_coalesce_usecs)
-		nonzero_params |= ETHTOOL_COALESCE_STATS_BLOCK_USECS;
-	if (coalesce->use_adaptive_rx_coalesce)
-		nonzero_params |= ETHTOOL_COALESCE_USE_ADAPTIVE_RX;
-	if (coalesce->use_adaptive_tx_coalesce)
-		nonzero_params |= ETHTOOL_COALESCE_USE_ADAPTIVE_TX;
-	if (coalesce->pkt_rate_low)
-		nonzero_params |= ETHTOOL_COALESCE_PKT_RATE_LOW;
-	if (coalesce->rx_coalesce_usecs_low)
-		nonzero_params |= ETHTOOL_COALESCE_RX_USECS_LOW;
-	if (coalesce->rx_max_coalesced_frames_low)
-		nonzero_params |= ETHTOOL_COALESCE_RX_MAX_FRAMES_LOW;
-	if (coalesce->tx_coalesce_usecs_low)
-		nonzero_params |= ETHTOOL_COALESCE_TX_USECS_LOW;
-	if (coalesce->tx_max_coalesced_frames_low)
-		nonzero_params |= ETHTOOL_COALESCE_TX_MAX_FRAMES_LOW;
-	if (coalesce->pkt_rate_high)
-		nonzero_params |= ETHTOOL_COALESCE_PKT_RATE_HIGH;
-	if (coalesce->rx_coalesce_usecs_high)
-		nonzero_params |= ETHTOOL_COALESCE_RX_USECS_HIGH;
-	if (coalesce->rx_max_coalesced_frames_high)
-		nonzero_params |= ETHTOOL_COALESCE_RX_MAX_FRAMES_HIGH;
-	if (coalesce->tx_coalesce_usecs_high)
-		nonzero_params |= ETHTOOL_COALESCE_TX_USECS_HIGH;
-	if (coalesce->tx_max_coalesced_frames_high)
-		nonzero_params |= ETHTOOL_COALESCE_TX_MAX_FRAMES_HIGH;
-	if (coalesce->rate_sample_interval)
-		nonzero_params |= ETHTOOL_COALESCE_RATE_SAMPLE_INTERVAL;
-
-	return (supported_params & nonzero_params) == nonzero_params;
-}
-
 static noinline_for_stack int ethtool_set_coalesce(struct net_device *dev,
 						   void __user *useraddr)
 {
@@ -1612,9 +1623,6 @@ static noinline_for_stack int ethtool_set_coalesce(struct net_device *dev,
 
 	if (copy_from_user(&coalesce, useraddr, sizeof(coalesce)))
 		return -EFAULT;
-
-	if (!ethtool_set_coalesce_supported(dev, &coalesce))
-		return -EOPNOTSUPP;
 
 	return dev->ethtool_ops->set_coalesce(dev, &coalesce);
 }
@@ -1757,7 +1765,7 @@ static int ethtool_self_test(struct net_device *dev, char __user *useraddr)
 		return -EFAULT;
 
 	test.len = test_len;
-	data = kmalloc_array(test_len, sizeof(u64), GFP_USER);
+	data = kcalloc(test_len, sizeof(u64), GFP_USER);
 	if (!data)
 		return -ENOMEM;
 
@@ -2163,8 +2171,8 @@ static int ethtool_get_ts_info(struct net_device *dev, void __user *useraddr)
 	memset(&info, 0, sizeof(info));
 	info.cmd = ETHTOOL_GET_TS_INFO;
 
-	if (phy_has_tsinfo(phydev)) {
-		err = phy_ts_info(phydev, &info);
+	if (phydev && phydev->drv && phydev->drv->ts_info) {
+		err = phydev->drv->ts_info(phydev, &info);
 	} else if (ops->get_ts_info) {
 		err = ops->get_ts_info(dev, &info);
 	} else {
@@ -2288,7 +2296,7 @@ static int ethtool_get_tunable(struct net_device *dev, void __user *useraddr)
 	ret = ethtool_tunable_valid(&tuna);
 	if (ret)
 		return ret;
-	data = kmalloc(tuna.len, GFP_USER);
+	data = kzalloc(tuna.len, GFP_USER);
 	if (!data)
 		return -ENOMEM;
 	ret = ops->get_tunable(dev, &tuna, data);
@@ -2397,11 +2405,6 @@ ethtool_set_per_queue_coalesce(struct net_device *dev,
 			goto roll_back;
 		}
 
-		if (!ethtool_set_coalesce_supported(dev, &coalesce)) {
-			ret = -EOPNOTSUPP;
-			goto roll_back;
-		}
-
 		ret = dev->ethtool_ops->set_per_queue_coalesce(dev, bit, &coalesce);
 		if (ret != 0)
 			goto roll_back;
@@ -2479,7 +2482,7 @@ static int get_phy_tunable(struct net_device *dev, void __user *useraddr)
 	ret = ethtool_phy_tunable_valid(&tuna);
 	if (ret)
 		return ret;
-	data = kmalloc(tuna.len, GFP_USER);
+	data = kzalloc(tuna.len, GFP_USER);
 	if (!data)
 		return -ENOMEM;
 	mutex_lock(&phydev->lock);
@@ -2653,8 +2656,6 @@ int dev_ethtool(struct net *net, struct ifreq *ifr)
 	case ETHTOOL_SMSGLVL:
 		rc = ethtool_set_value_void(dev, useraddr,
 				       dev->ethtool_ops->set_msglevel);
-		if (!rc)
-			ethtool_notify(dev, ETHTOOL_MSG_DEBUG_NTF, NULL);
 		break;
 	case ETHTOOL_GEEE:
 		rc = ethtool_get_eee(dev, useraddr);
