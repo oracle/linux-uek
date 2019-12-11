@@ -31,6 +31,7 @@
 #define	PCI_MBOX_BAR_NUM			4
 
 #define NAME_SIZE				32
+#define MAX_NIX_BLKS				2
 
 /* PF_FUNC */
 #define RVU_PFVF_PF_SHIFT	10
@@ -341,6 +342,8 @@ struct nix_txvlan {
 };
 
 struct nix_hw {
+	int blkaddr;
+	struct rvu *rvu;
 	struct nix_txsch txsch[NIX_TXSCH_LVL_CNT]; /* Tx schedulers */
 	struct nix_mcast mcast;
 	struct nix_flowkey flowkey;
@@ -380,7 +383,8 @@ struct rvu_hwinfo {
 
 	struct hw_cap    cap;
 	struct rvu_block block[BLK_COUNT]; /* Block info */
-	struct nix_hw    *nix0;
+	struct nix_hw    *nix;
+	struct rvu	 *rvu;
 	struct npc_pkind pkind;
 	struct npc_mcam  mcam;
 	struct sso_rsrc  sso;
@@ -433,6 +437,7 @@ struct rvu {
 	struct rvu_limits	pf_limits;
 	struct mutex		rsrc_lock; /* Serialize resource alloc/free */
 	int			vfs; /* Number of VFs attached to RVU */
+	int			nix_blkaddr[MAX_NIX_BLKS];
 
 	/* Mbox */
 	struct mbox_wq_info	afpf_wq_info;
@@ -658,6 +663,8 @@ void rvu_nix_unregister_interrupts(struct rvu *rvu);
 void rvu_nix_reset_mac(struct rvu_pfvf *pfvf, int pcifunc);
 bool rvu_nix_is_ptp_tx_enabled(struct rvu *rvu, u16 pcifunc);
 int nix_update_bcast_mce_list(struct rvu *rvu, u16 pcifunc, bool add);
+struct nix_hw *get_nix_hw(struct rvu_hwinfo *hw, int blkaddr);
+int rvu_get_next_nix_blkaddr(struct rvu *rvu, int blkaddr);
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);

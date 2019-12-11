@@ -71,6 +71,7 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 	hw->cap.nix_tx_link_bp = true;
 	hw->cap.nix_rx_multicast = true;
 	hw->cap.nix_shaper_toggle_wait = false;
+	hw->rvu = rvu;
 
 	if (is_rvu_96xx_B0(rvu) || is_rvu_95xx_A0(rvu) ||
 	    is_rvu_95xx_B0(rvu)) {
@@ -803,6 +804,7 @@ static int rvu_setup_nix_hw_resource(struct rvu *rvu, int blkaddr)
 	block->msixcfg_reg = NIX_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = NIX_AF_LF_RST;
 	sprintf(block->name, "NIX%d", blkid);
+	rvu->nix_blkaddr[blkid] = blkaddr;
 	return rvu_alloc_bitmap(&block->lf);
 }
 
