@@ -4342,7 +4342,7 @@ int rvu_mbox_handler_nix_inline_ipsec_cfg(struct rvu *rvu,
 	if (!is_block_implemented(rvu->hw, BLKADDR_CPT0))
 		return 0;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, req->hdr.pcifunc);
 	if (blkaddr < 0)
 		return NIX_AF_ERR_AF_LF_INVALID;
 

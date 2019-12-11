@@ -219,6 +219,9 @@ int rvu_get_lf(struct rvu *rvu, struct rvu_block *block, u16 pcifunc, u16 slot)
  * multiple blocks of same type.
  *
  * @pcifunc has to be zero when no LF is yet attached.
+ *
+ * For a pcifunc if LFs are attached from multiple blocks of same type, then
+ * return blkaddr of first encountered block.
  */
 int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 {
@@ -267,22 +270,39 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 		devnum = rvu_get_pf(pcifunc);
 	}
 
-	/* Check if the 'pcifunc' has a NIX LF from 'BLKADDR_NIX0' */
+	/* Check if the 'pcifunc' has a NIX LF from 'BLKADDR_NIX0' or
+	 * 'BLKADDR_NIX1'.
+	 */
 	if (blktype == BLKTYPE_NIX) {
 		reg = is_pf ? RVU_PRIV_PFX_NIXX_CFG(0) :
 			RVU_PRIV_HWVFX_NIXX_CFG(0);
 		cfg = rvu_read64(rvu, BLKADDR_RVUM, reg | (devnum << 16));
-		if (cfg)
+		if (cfg) {
 			blkaddr = BLKADDR_NIX0;
+			goto exit;
+		}
+
+		reg = is_pf ? RVU_PRIV_PFX_NIXX_CFG(1) :
+			RVU_PRIV_HWVFX_NIXX_CFG(1);
+		cfg = rvu_read64(rvu, BLKADDR_RVUM, reg | (devnum << 16));
+		if (cfg)
+			blkaddr = BLKADDR_NIX1;
 	}
 
-	/* Check if the 'pcifunc' has a CPT LF from 'BLKADDR_CPT0' */
 	if (blktype == BLKTYPE_CPT) {
 		reg = is_pf ? RVU_PRIV_PFX_CPTX_CFG(0) :
 			RVU_PRIV_HWVFX_CPTX_CFG(0);
 		cfg = rvu_read64(rvu, BLKADDR_RVUM, reg | (devnum << 16));
-		if (cfg)
+		if (cfg) {
 			blkaddr = BLKADDR_CPT0;
+			goto exit;
+		}
+
+		reg = is_pf ? RVU_PRIV_PFX_CPTX_CFG(1) :
+			RVU_PRIV_HWVFX_CPTX_CFG(1);
+		cfg = rvu_read64(rvu, BLKADDR_RVUM, reg | (devnum << 16));
+		if (cfg)
+			blkaddr = BLKADDR_CPT1;
 	}
 
 exit:
@@ -1544,7 +1564,7 @@ int rvu_mbox_handler_msix_offset(struct rvu *rvu, struct msg_req *req,
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
 	struct rvu_pfvf *pfvf;
-	int lf, slot;
+	int lf, slot, blkaddr;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	if (!pfvf->msix.bmap)
@@ -1554,8 +1574,13 @@ int rvu_mbox_handler_msix_offset(struct rvu *rvu, struct msg_req *req,
 	lf = rvu_get_lf(rvu, &hw->block[BLKADDR_NPA], pcifunc, 0);
 	rsp->npa_msixoff = rvu_get_msix_offset(rvu, pfvf, BLKADDR_NPA, lf);
 
-	lf = rvu_get_lf(rvu, &hw->block[BLKADDR_NIX0], pcifunc, 0);
-	rsp->nix_msixoff = rvu_get_msix_offset(rvu, pfvf, BLKADDR_NIX0, lf);
+	/* Get BLKADDR from which LFs are attached to pcifunc */
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return blkaddr;
+
+	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
+	rsp->nix_msixoff = rvu_get_msix_offset(rvu, pfvf, blkaddr, lf);
 
 	rsp->sso = pfvf->sso;
 	for (slot = 0; slot < rsp->sso; slot++) {
@@ -2099,7 +2124,7 @@ static void rvu_npa_lf_mapped_nix_lf_teardown(struct rvu *rvu, u16 pcifunc)
 	int blkaddr, lf;
 	u64 regval;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
 		return;
 

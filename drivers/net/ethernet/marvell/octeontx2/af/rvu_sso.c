@@ -144,7 +144,7 @@ static void rvu_sso_ggrp_taq_flush(struct rvu *rvu, u16 pcifunc, int lf,
 	nix_lf = NULL;
 	nix_lf_cnt = rvu_sso_disable_aw_src(rvu, &nix_lf,
 					    rvu_get_blkaddr(rvu, BLKTYPE_NIX,
-							    0),
+							    pcifunc),
 					    NIX_AF_LF_SSO_PF_FUNC_SHIFT,
 					    NIX_AF_LF_CFG_SHIFT, pcifunc,
 					    NIX_AF_LFX_CFG(0));
@@ -228,7 +228,7 @@ get_work:
 
 	/* restore all sources of work. */
 	rvu_sso_enable_aw_src(rvu, nix_lf_cnt, rvu_get_blkaddr(rvu, BLKTYPE_NIX,
-							       0),
+							       pcifunc),
 			      NIX_AF_LFX_CFG(0), nix_lf, pcifunc,
 			      NIX_AF_LF_SSO_PF_FUNC_SHIFT,
 			      NIX_AF_LF_CFG_SHIFT);
