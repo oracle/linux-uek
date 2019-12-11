@@ -108,14 +108,6 @@ void rvu_nix_txsch_config_changed(struct nix_hw *nix_hw)
 		tx_stall->txsch_config_changed = true;
 }
 
-static inline struct nix_hw *get_nix_hw(struct rvu_hwinfo *hw, int blkaddr)
-{
-	if (blkaddr == BLKADDR_NIX0 && hw->nix0)
-		return hw->nix0;
-
-	return NULL;
-}
-
 void rvu_nix_update_link_credits(struct rvu *rvu, int blkaddr,
 				 int link, u64 ncredits)
 {
