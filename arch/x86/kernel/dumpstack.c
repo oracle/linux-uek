@@ -275,6 +275,11 @@ void __noreturn rewind_stack_do_exit(int signr);
 
 void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 {
+#ifndef CONFIG_X86
+	if (regs && kexec_should_crash(current))
+		crash_kexec(regs);
+
+#endif
 	bust_spinlocks(0);
 	die_owner = -1;
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
@@ -292,9 +297,11 @@ void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 	if (panic_on_oops)
 		panic("Fatal exception");
 
+#ifdef CONFIG_X86
 	if (regs && kexec_should_crash(current))
 		crash_kexec(regs);
 
+#endif
 	/*
 	 * We're not going to return, but we might be on an IST stack or
 	 * have very little stack space left.  Rewind the stack and kill
