@@ -717,4 +717,13 @@ static inline int pci_acpi_program_hp_params(struct pci_dev *dev)
 }
 #endif
 
+static inline bool embedded_pci_is_cavium(struct pci_dev *dev)
+{
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+	return (dev->vendor == PCI_VENDOR_ID_CAVIUM);
+#else
+	return false;
+#endif
+}
+
 #endif /* DRIVERS_PCI_H */
