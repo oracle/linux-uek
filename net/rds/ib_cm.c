@@ -804,53 +804,30 @@ void rds_dma_hdrs_free(struct dma_pool *pool, struct rds_header **hdrs,
 	kvfree(dma_addrs);
 }
 
-/* Helper function to free all the DMA headers.
- *
- * @hdrs: pointer to the headers to be freed
- * @pool: the DMA memory pool
- */
-static inline void __rds_dma_hdrs_free_all(struct rds_dma_hdrs *hdrs,
-					   struct dma_pool *pool)
-{
-	if (hdrs->rdh_snd_hdrs)
-		rds_dma_hdrs_free(pool, hdrs->rdh_snd_hdrs,
-				  hdrs->rdh_snd_dma_addrs,
-				  hdrs->rdh_snd_num_hdrs);
-	if (hdrs->rdh_rcv_hdrs)
-		rds_dma_hdrs_free(pool, hdrs->rdh_rcv_hdrs,
-				  hdrs->rdh_rcv_dma_addrs,
-				  hdrs->rdh_rcv_num_hdrs);
-	if (hdrs->rdh_ack_hdr)
-		dma_pool_free(pool, hdrs->rdh_ack_hdr, hdrs->rdh_ack_dma_addr);
-}
-
 /* Worker function for freeing the DMA pool headers for sending and
  * receiving.
  */
 static void rds_dma_hdrs_cleanup_worker(struct work_struct *work)
 {
-	struct rds_ib_connection *ic;
-	struct rds_dma_hdrs hdrs;
+	struct rds_dma_hdrs_free_wk *wk;
 	struct dma_pool *pool;
-	unsigned long flags;
 
-	ic = container_of(work, struct rds_ib_connection,
-			  i_hdrs_free_work.work);
+	wk = container_of(work, struct rds_dma_hdrs_free_wk, rdhf_work);
 
-	spin_lock_irqsave(&ic->i_hdrs_lock, flags);
-	pool = ic->i_saved_hdrs_pool;
-	if (!pool) {
-		spin_unlock_irqrestore(&ic->i_hdrs_lock, flags);
-		return;
-	}
-	ic->i_saved_hdrs_pool = NULL;
-	/* Copy out and zero all the headers info to avoid racing with
-	 * another allocation thread.
-	 */
-	memcpy(&hdrs, &ic->i_hdrs, sizeof(hdrs));
-	memset(&ic->i_hdrs, 0, sizeof(ic->i_hdrs));
-	spin_unlock_irqrestore(&ic->i_hdrs_lock, flags);
-	__rds_dma_hdrs_free_all(&hdrs, pool);
+	pool = wk->rdhf_pool;
+	if (wk->rdhf_snd_hdrs)
+		rds_dma_hdrs_free(pool, wk->rdhf_snd_hdrs,
+				  wk->rdhf_snd_dma_addrs,
+				  wk->rdhf_snd_num_hdrs);
+	if (wk->rdhf_rcv_hdrs)
+		rds_dma_hdrs_free(pool, wk->rdhf_rcv_hdrs,
+				  wk->rdhf_rcv_dma_addrs,
+				  wk->rdhf_rcv_num_hdrs);
+	if (wk->rdhf_ack_rds_hdr)
+		dma_pool_free(pool, wk->rdhf_ack_rds_hdr,
+			      wk->rdhf_ack_dma_addr);
+
+	kfree(wk);
 }
 
 /* Free all the DMA pool headers associated with an RDS RDMA connection.
@@ -859,114 +836,48 @@ static void rds_dma_hdrs_cleanup_worker(struct work_struct *work)
  */
 static void rds_dma_hdrs_free_all(struct rds_ib_connection *ic)
 {
-	unsigned long flags;
+	struct rds_dma_hdrs_free_wk *wk;
+	struct dma_pool *pool;
 
-	spin_lock_irqsave(&ic->i_hdrs_lock, flags);
+	pool = ic->rds_ibdev->rid_hdrs_pool;
 
-	if (ic->i_saved_hdrs_pool) {
-		/* Double free should not happen. */
-		pr_warn("%s: pool is not NULL, <%pI6c, %pI6c, %d>\n", __func__,
-			&ic->conn->c_laddr, &ic->conn->c_faddr,
-			ic->conn->c_tos);
-		spin_unlock_irqrestore(&ic->i_hdrs_lock, flags);
-		return;
+	wk = kmalloc(sizeof(*wk), GFP_ATOMIC);
+	if (wk) {
+		wk->rdhf_pool = pool;
+
+		wk->rdhf_snd_hdrs = ic->i_send_hdrs;
+		wk->rdhf_snd_dma_addrs = ic->i_send_hdrs_dma;
+		wk->rdhf_snd_num_hdrs = ic->i_send_ring.w_nr;
+
+		wk->rdhf_rcv_hdrs = ic->i_recv_hdrs;
+		wk->rdhf_rcv_dma_addrs = ic->i_recv_hdrs_dma;
+		wk->rdhf_rcv_num_hdrs = ic->i_recv_ring.w_nr;
+
+		wk->rdhf_ack_rds_hdr = ic->i_ack;
+		wk->rdhf_ack_dma_addr = ic->i_ack_dma;
+
+		INIT_WORK(&wk->rdhf_work, rds_dma_hdrs_cleanup_worker);
+		queue_work(ic->rds_ibdev->rid_hdrs_pool_wq,  &wk->rdhf_work);
+	} else {
+		if (ic->i_send_hdrs)
+			rds_dma_hdrs_free(pool, ic->i_send_hdrs,
+					  ic->i_send_hdrs_dma,
+					  ic->i_send_ring.w_nr);
+		if (ic->i_recv_hdrs)
+			rds_dma_hdrs_free(pool, ic->i_recv_hdrs,
+					  ic->i_recv_hdrs_dma,
+					  ic->i_recv_ring.w_nr);
+		if (ic->i_ack)
+			dma_pool_free(pool, ic->i_ack, ic->i_ack_dma);
 	}
 
-	/* rdh_pool is used to check if the old headers can be used. */
-	ic->i_saved_hdrs_pool = ic->rds_ibdev->rid_hdrs_pool;
-	ic->i_send_num_hdrs = ic->i_send_ring.w_nr;
-	ic->i_recv_num_hdrs = ic->i_recv_ring.w_nr;
+	ic->i_send_hdrs = NULL;
+	ic->i_send_hdrs_dma = NULL;
 
-	spin_unlock_irqrestore(&ic->i_hdrs_lock, flags);
+	ic->i_recv_hdrs = NULL;
+	ic->i_recv_hdrs_dma = NULL;
 
-	queue_delayed_work(ic->rds_ibdev->rid_hdrs_pool_wq,
-			   &ic->i_hdrs_free_work,
-			   msecs_to_jiffies(rds_hdrs_free_wait_ms));
-}
-
-/* Helper function to allocate all the headers (send/receive/ack) of a
- * connection.
- *
- * @dev: the device associated with the connection
- * @pool: the DMA pool for the headers allocation
- * @ic: the RDS connection
- */
-static inline int __rds_dma_hdrs_alloc_all(struct ib_device *dev,
-					   struct dma_pool *pool,
-					   struct rds_ib_connection *ic)
-{
-	int ret = 0;
-
-	ic->i_send_hdrs = rds_dma_hdrs_alloc(dev, pool, &ic->i_send_hdrs_dma,
-					     ic->i_send_ring.w_nr);
-	if (!ic->i_send_hdrs) {
-		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "%s: DMA send hdrs alloc failed\n",
-			__func__);
-		goto out;
-	}
-
-	if (!rds_ib_srq_enabled) {
-		ic->i_recv_hdrs = rds_dma_hdrs_alloc(dev, pool,
-						     &ic->i_recv_hdrs_dma,
-						     ic->i_recv_ring.w_nr);
-		if (!ic->i_recv_hdrs) {
-			ret = -ENOMEM;
-			rds_rtd(RDS_RTD_ERR,
-				"%s: DMA recv hdrs alloc failed\n", __func__);
-			goto out;
-		}
-	}
-
-	ic->i_ack = dma_pool_zalloc(pool, GFP_KERNEL, &ic->i_ack_dma);
-	if (!ic->i_ack) {
-		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "%s: DMA ack header alloc failed\n",
-			__func__);
-	}
-
-out:
-	return ret;
-}
-
-/* Function to allocate all the headers (send/receive/ack) of a connection.
- *
- * @dev: the device associated with the connection
- * @pool: the DMA pool for the headers allocation
- * @ic: the RDS connection
- * @resized: whether the number of headers is changed
- */
-static int rds_dma_hdrs_alloc_all(struct ib_device *dev,
-				  struct rds_ib_device *rds_ibdev,
-				  struct rds_ib_connection *ic,
-				  bool resized)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&ic->i_hdrs_lock, flags);
-
-	/* If there is no cached headers, or the number of headers are changed,
-	 * or the DMA pool of the cached headers do not match with the new
-	 * device's pool, do a fresh allocation.
-	 */
-	if (!ic->i_saved_hdrs_pool) {
-		spin_unlock_irqrestore(&ic->i_hdrs_lock, flags);
-		return __rds_dma_hdrs_alloc_all(dev, rds_ibdev->rid_hdrs_pool,
-						ic);
-	}
-	if (resized || ic->i_saved_hdrs_pool != ic->rds_ibdev->rid_hdrs_pool) {
-		spin_unlock_irqrestore(&ic->i_hdrs_lock, flags);
-		flush_delayed_work(&ic->i_hdrs_free_work);
-		return __rds_dma_hdrs_alloc_all(dev, rds_ibdev->rid_hdrs_pool,
-						ic);
-	}
-	ic->i_saved_hdrs_pool = NULL;
-
-	spin_unlock_irqrestore(&ic->i_hdrs_lock, flags);
-
-	cancel_delayed_work(&ic->i_hdrs_free_work);
-
-	return 0;
+	ic->i_ack = NULL;
 }
 
 /*
@@ -979,8 +890,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	struct ib_device *dev = ic->i_cm_id->device;
 	struct ib_qp_init_attr qp_attr;
 	struct rds_ib_device *rds_ibdev;
+	struct dma_pool *pool;
 	unsigned long max_wrs;
-	bool resized = false;
 	int ret;
 	int mr_reg;
 
@@ -1007,20 +918,13 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_send_wr + 1  + mr_reg ?
 		rds_ibdev->max_wrs - 1 - mr_reg : rds_ib_sysctl_max_send_wr;
-	if (ic->i_send_ring.w_nr != max_wrs) {
+	if (ic->i_send_ring.w_nr != max_wrs)
 		rds_ib_ring_resize(&ic->i_send_ring, max_wrs);
-		/* For simplicity, if either the send or receive ring size is
-		 * changed, re-allocate all the headers.
-		 */
-		resized = true;
-	}
 
 	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_recv_wr + 1 + mr_reg ?
 		rds_ibdev->max_wrs - 1 - mr_reg : rds_ib_sysctl_max_recv_wr;
-	if (ic->i_recv_ring.w_nr != max_wrs) {
+	if (ic->i_recv_ring.w_nr != max_wrs)
 		rds_ib_ring_resize(&ic->i_recv_ring, max_wrs);
-		resized = true;
-	}
 
 	/* Protection domain and memory range */
 	ic->i_pd = rds_ibdev->pd;
@@ -1090,9 +994,35 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	ret = rds_dma_hdrs_alloc_all(dev, rds_ibdev, ic, resized);
-	if (ret)
+	pool = rds_ibdev->rid_hdrs_pool;
+	ic->i_send_hdrs = rds_dma_hdrs_alloc(dev, pool, &ic->i_send_hdrs_dma,
+					     ic->i_send_ring.w_nr);
+	if (!ic->i_send_hdrs) {
+		ret = -ENOMEM;
+		rds_rtd(RDS_RTD_ERR, "%s: DMA send hdrs alloc failed\n",
+			__func__);
 		goto out;
+	}
+
+	if (!rds_ib_srq_enabled) {
+		ic->i_recv_hdrs = rds_dma_hdrs_alloc(dev, pool,
+						     &ic->i_recv_hdrs_dma,
+						     ic->i_recv_ring.w_nr);
+		if (!ic->i_recv_hdrs) {
+			ret = -ENOMEM;
+			rds_rtd(RDS_RTD_ERR,
+				"%s: DMA recv hdrs alloc failed\n", __func__);
+			goto out;
+		}
+	}
+
+	ic->i_ack = dma_pool_zalloc(pool, GFP_KERNEL, &ic->i_ack_dma);
+	if (!ic->i_ack) {
+		ret = -ENOMEM;
+		rds_rtd(RDS_RTD_ERR, "%s: DMA ack header alloc failed\n",
+			__func__);
+		goto out;
+	}
 
 	ic->i_sends = vmalloc_node(ic->i_send_ring.w_nr * sizeof(struct rds_ib_send_work),
 				   ibdev_to_node(dev));
@@ -1733,8 +1663,15 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 			rdma_destroy_qp(ic->i_cm_id);
 
 		/* then free the resources that ib callbacks use */
-		if (ic->rds_ibdev)
+		if (ic->rds_ibdev) {
 			rds_dma_hdrs_free_all(ic);
+		} else {
+			WARN_ON(ic->i_send_hdrs);
+			WARN_ON(ic->i_send_hdrs_dma);
+			WARN_ON(ic->i_recv_hdrs);
+			WARN_ON(ic->i_recv_hdrs_dma);
+			WARN_ON(ic->i_ack);
+		}
 
 		if (ic->i_sends)
 			rds_ib_send_clear_ring(ic);
@@ -1853,9 +1790,6 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 
 	ic->i_cm_id_ctx = RDS_IB_NO_CTX;
 
-	INIT_DELAYED_WORK(&ic->i_hdrs_free_work, rds_dma_hdrs_cleanup_worker);
-	spin_lock_init(&ic->i_hdrs_lock);
-
 	rdsdebug("conn %p conn ic %p\n", conn, conn->c_transport_data);
 	return 0;
 }
@@ -1869,9 +1803,6 @@ void rds_ib_conn_free(void *arg)
 	spinlock_t	*lock_ptr;
 
 	rdsdebug("ic %p\n", ic);
-
-	/* If the DMA headers are not freed yet, free them now. */
-	flush_delayed_work(&ic->i_hdrs_free_work);
 
 	/*
 	 * Conn is either on a dev's list or on the nodev list.
