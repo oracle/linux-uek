@@ -989,6 +989,15 @@ struct mlx5_devx_event_table {
 	struct xarray event_xa;
 };
 
+struct mlx5_var_table {
+	/* serialize updating the bitmap */
+	struct mutex bitmap_lock;
+	unsigned long *bitmap;
+	u64 hw_start_addr;
+	u32 stride_size;
+	u64 num_var_hw_entries;
+};
+
 struct mlx5_ib_dev {
 	struct ib_device		ib_dev;
 	struct mlx5_core_dev		*mdev;
@@ -1043,6 +1052,7 @@ struct mlx5_ib_dev {
 	struct mlx5_srq_table   srq_table;
 	struct mlx5_async_ctx   async_ctx;
 	struct mlx5_devx_event_table devx_event_table;
+	struct mlx5_var_table var_table;
 
 	struct xarray sig_mrs;
 };
