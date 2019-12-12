@@ -968,4 +968,13 @@ void pcim_release_region(struct pci_dev *pdev, int bar);
 	(PCI_CONF1_ADDRESS(bus, dev, func, reg) | \
 	 PCI_CONF1_EXT_REG(reg))
 
+static inline bool embedded_pci_is_cavium(struct pci_dev *dev)
+{
+#if defined(CONFIG_ARM64)
+	return (dev->vendor == PCI_VENDOR_ID_CAVIUM);
+#else
+	return false;
+#endif
+}
+
 #endif /* DRIVERS_PCI_H */
