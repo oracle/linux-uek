@@ -30,10 +30,15 @@
 #define PCI_SUBSYS_DEVID_9XXX	0xB
 #define PCI_SUBSYS_DEVID_95XX	0xB3
 
+/* Chip revision Id */
+#define REV_ID_0 0
+#define REV_ID_2 2
+
 #define KHZ_400 (400000)
 #define MHZ_26  (26000000)
 #define MHZ_52  (52000000)
 #define MHZ_100 (100000000)
+#define MHZ_150 (150000000)
 #define MHZ_200 (200000000)
 
 /* octtx2: emmc interface io current drive strength */
@@ -327,6 +332,15 @@ static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
 #else
 	return false;
 #endif
+}
+
+static inline bool is_mmc_otx2_C0(struct cvm_mmc_host *host)
+{
+	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
+
+	return (pdev->revision == REV_ID_2) &&
+		(chip_id == PCI_SUBSYS_DEVID_9XXX);
 }
 
 static inline bool is_mmc_95xx(struct cvm_mmc_host *host)
