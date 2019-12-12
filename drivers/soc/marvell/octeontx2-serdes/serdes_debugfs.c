@@ -183,7 +183,7 @@ static ssize_t serdes_dbg_settings_write_op(struct file *filp,
 		      serdes_cmd_data.lane, 0, 0, 0, 0, 0, &res);
 	if (res.a0 != SMCCC_RET_SUCCESS) {
 		pr_info("CGX serdes display command failed.\n");
-		return ec;
+		return -EIO;
 	}
 
 	return count;
