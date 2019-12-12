@@ -1376,6 +1376,8 @@ static u32 max_supported_frequency(struct cvm_mmc_host *host)
 		/* Erratum is only applicable pass A0 */
 		if (is_mmc_otx2_A0(host))
 			max_frequency = MHZ_100;
+		else if	(is_mmc_otx2_C0(host))
+			max_frequency = MHZ_150;
 	}
 	return max_frequency;
 }
