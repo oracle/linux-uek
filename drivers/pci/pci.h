@@ -746,4 +746,13 @@ extern const struct attribute_group aspm_ctrl_attr_group;
 
 extern const struct attribute_group pci_dev_reset_method_attr_group;
 
+static inline bool embedded_pci_is_cavium(struct pci_dev *dev)
+{
+#if defined(CONFIG_ARM64) && defined(CONFIG_EMBEDDED)
+	return (dev->vendor == PCI_VENDOR_ID_CAVIUM);
+#else
+	return false;
+#endif
+}
+
 #endif /* DRIVERS_PCI_H */

@@ -812,9 +812,15 @@ int pci_wait_for_pending(struct pci_dev *dev, int pos, u16 mask)
 	/* Wait for Transaction Pending bit clean */
 	for (i = 0; i < 4; i++) {
 		u16 status;
-		if (i)
-			msleep((1 << (i - 1)) * 100);
-
+		if (i) {
+			if (embedded_pci_is_cavium(dev))
+				/* Optimize delay for quick
+				 * bring up of DPDK application
+				 */
+				msleep((1 << (i - 1)) * 2);
+			else
+				msleep((1 << (i - 1)) * 100);
+		}
 		pci_read_config_word(dev, pos, &status);
 		if (!(status & mask))
 			return 1;
@@ -4687,7 +4693,22 @@ int pcie_flr(struct pci_dev *dev)
 	 * 100ms, but may silently discard requests while the FLR is in
 	 * progress.  Wait 100ms before trying to access the device.
 	 */
-	msleep(100);
+	if (embedded_pci_is_cavium(dev)) {
+		unsigned long timeout_jz = jiffies + HZ/10;
+		u16 status;
+
+		/*
+		 * Optimize delay for quick bring up of DPDK application
+		 */
+		do {
+			pci_read_config_word(dev,
+					     pci_pcie_cap(dev) + PCI_EXP_DEVSTA,
+					     &status);
+		} while ((time_before_eq(jiffies, timeout_jz)) &&
+			 !!(status & PCI_EXP_DEVSTA_TRPND));
+	} else {
+		msleep(100);
+	}
 
 	return pci_dev_wait(dev, "FLR", PCIE_RESET_READY_POLL_MS);
 }
