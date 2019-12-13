@@ -68,6 +68,8 @@
 #define RVU_PRIV_HWVFX_SSOW_CFG             (0x8001330)
 #define RVU_PRIV_HWVFX_TIM_CFG              (0x8001340)
 #define RVU_PRIV_HWVFX_CPTX_CFG(a)          (0x8001350 | (a) << 3)
+#define RVU_PRIV_PFX_REEX_CFG(a)            (0x8000360 | (a) << 3)
+#define RVU_PRIV_HWVFX_REEX_CFG(a)          (0x8001360 | (a) << 3)
 
 /* RVU PF registers */
 #define	RVU_PF_VFX_PFVF_MBOX0		    (0x00000)
@@ -768,5 +770,13 @@
 #define AF_BAR2_ALIASX(a, b)		(0x9100000ull | (a) << 12 | b)
 #define SSOW_AF_BAR2_ALIASX(a, b)	AF_BAR2_ALIASX(a, b)
 #define SSO_AF_BAR2_ALIASX(a, b)	AF_BAR2_ALIASX(a, b)
+
+/* REE */
+#define REE_AF_CONSTANTS		(0x0A0ull)
+#define REE_AF_RVU_LF_CFG_DEBUG	(0x44000ull)
+#define REE_AF_BLK_RST			(0x45000ull)
+#define REE_PRIV_LFX_CFG		(0x41000ull)
+#define REE_PRIV_LFX_INT_CFG		(0x42000ull)
+#define REE_AF_LF_RST			(0x43000ull)
 
 #endif /* RVU_REG_H */
