@@ -33,7 +33,9 @@ enum rvu_block_addr_e {
 	BLKADDR_NDC_NPA0        = 0xeULL,
 	BLKADDR_NDC_NIX1_RX	= 0x10ULL,
 	BLKADDR_NDC_NIX1_TX	= 0x11ULL,
-	BLK_COUNT               = 0x12ULL,
+	BLKADDR_REE0		= 0x14ULL,
+	BLKADDR_REE1		= 0x15ULL,
+	BLK_COUNT               = 0x16ULL,
 };
 
 /* RVU Block Type Enumeration */
@@ -49,7 +51,8 @@ enum rvu_block_type_e {
 	BLKTYPE_TIM  = 0x8,
 	BLKTYPE_CPT  = 0x9,
 	BLKTYPE_NDC  = 0xa,
-	BLKTYPE_MAX  = 0xa,
+	BLKTYPE_REE  = 0xe,
+	BLKTYPE_MAX  = 0xe,
 };
 
 /* RVU Admin function Interrupt Vector Enumeration */
