@@ -247,6 +247,8 @@ struct rvu_pfvf {
 	u16		cptlfs;
 	u16		timlfs;
 	u16		cpt1_lfs;
+	u16		ree0_lfs;
+	u16		ree1_lfs;
 	u8		cgx_lmac;
 	u8		sso_uniq_ident;
 

@@ -259,6 +259,12 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 			goto exit;
 		}
 		break;
+	case BLKTYPE_REE:
+		if (!pcifunc) {
+			blkaddr = BLKADDR_REE0;
+			goto exit;
+		}
+		break;
 	}
 
 	/* Check if this is a RVU PF or VF */
@@ -303,6 +309,26 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 		cfg = rvu_read64(rvu, BLKADDR_RVUM, reg | (devnum << 16));
 		if (cfg)
 			blkaddr = BLKADDR_CPT1;
+	}
+
+	/* Check if the 'pcifunc' has a REE LF from 'BLKADDR_REE0' or
+	 * 'BLKADDR_REE1'. If pcifunc has REE LFs from both then only
+	 * BLKADDR_REE0 is returned.
+	 */
+	if (blktype == BLKTYPE_REE) {
+		reg = is_pf ? RVU_PRIV_PFX_REEX_CFG(0) :
+			RVU_PRIV_HWVFX_REEX_CFG(0);
+		cfg = rvu_read64(rvu, BLKADDR_RVUM, reg | (devnum << 16));
+		if (cfg) {
+			blkaddr = BLKADDR_REE0;
+			goto exit;
+		}
+
+		reg = is_pf ? RVU_PRIV_PFX_REEX_CFG(1) :
+			RVU_PRIV_HWVFX_REEX_CFG(1);
+		cfg = rvu_read64(rvu, BLKADDR_RVUM, reg | (devnum << 16));
+		if (cfg)
+			blkaddr = BLKADDR_REE1;
 	}
 
 exit:
@@ -366,6 +392,14 @@ static void rvu_update_rsrc_map(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	case BLKADDR_CPT1:
 		attach ? pfvf->cpt1_lfs++ : pfvf->cpt1_lfs--;
 		num_lfs = pfvf->cpt1_lfs;
+		break;
+	case BLKADDR_REE0:
+		attach ? pfvf->ree0_lfs++ : pfvf->ree0_lfs--;
+		num_lfs = pfvf->ree0_lfs;
+		break;
+	case BLKADDR_REE1:
+		attach ? pfvf->ree1_lfs++ : pfvf->ree1_lfs--;
+		num_lfs = pfvf->ree1_lfs;
 		break;
 	}
 
@@ -513,7 +547,8 @@ static void rvu_reset_all_blocks(struct rvu *rvu)
 	rvu_block_reset(rvu, BLKADDR_NDC_NIX1_RX, NDC_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_NDC_NIX1_TX, NDC_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_NDC_NPA0, NDC_AF_BLK_RST);
-
+	rvu_block_reset(rvu, BLKADDR_REE0, REE_AF_BLK_RST);
+	rvu_block_reset(rvu, BLKADDR_REE1, REE_AF_BLK_RST);
 }
 
 static void rvu_scan_block(struct rvu *rvu, struct rvu_block *block)
@@ -857,6 +892,36 @@ static int rvu_setup_cpt_hw_resource(struct rvu *rvu, int blkaddr)
 	return rvu_alloc_bitmap(&block->lf);
 }
 
+static int rvu_setup_ree_hw_resource(struct rvu *rvu, int blkaddr, int blkid)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+	int err;
+	u64 cfg;
+
+	/* Init REE LF's bitmap */
+	block = &hw->block[blkaddr];
+	if (!block->implemented)
+		return 0;
+	cfg = rvu_read64(rvu, blkaddr, REE_AF_CONSTANTS);
+	block->lf.max = cfg & 0xFF;
+	block->addr = blkaddr;
+	block->type = BLKTYPE_REE;
+	block->multislot = true;
+	block->lfshift = 3;
+	block->lookup_reg = REE_AF_RVU_LF_CFG_DEBUG;
+	block->pf_lfcnt_reg = RVU_PRIV_PFX_REEX_CFG(blkid);
+	block->vf_lfcnt_reg = RVU_PRIV_HWVFX_REEX_CFG(blkid);
+	block->lfcfg_reg = REE_PRIV_LFX_CFG;
+	block->msixcfg_reg = REE_PRIV_LFX_INT_CFG;
+	block->lfreset_reg = REE_AF_LF_RST;
+	sprintf(block->name, "REE%d", blkid);
+	err = rvu_alloc_bitmap(&block->lf);
+	if (err)
+		return err;
+	return 0;
+}
+
 static int rvu_setup_hw_resources(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -967,6 +1032,13 @@ cpt:
 	if (err)
 		return err;
 	err = rvu_setup_cpt_hw_resource(rvu, BLKADDR_CPT1);
+	if (err)
+		return err;
+	/* REE */
+	err = rvu_setup_ree_hw_resource(rvu, BLKADDR_REE0, 0);
+	if (err)
+		return err;
+	err = rvu_setup_ree_hw_resource(rvu, BLKADDR_REE1, 1);
 	if (err)
 		return err;
 
@@ -1132,6 +1204,10 @@ u16 rvu_get_rsrc_mapcount(struct rvu_pfvf *pfvf, int blkaddr)
 		return pfvf->cptlfs;
 	case BLKADDR_CPT1:
 		return pfvf->cpt1_lfs;
+	case BLKADDR_REE0:
+		return pfvf->ree0_lfs;
+	case BLKADDR_REE1:
+		return pfvf->ree1_lfs;
 	}
 	return 0;
 }
@@ -1152,6 +1228,8 @@ static bool is_blktype_attached(struct rvu_pfvf *pfvf, int blktype)
 		return !!pfvf->timlfs;
 	case BLKTYPE_CPT:
 		return pfvf->cptlfs || pfvf->cpt1_lfs;
+	case BLKTYPE_REE:
+		return pfvf->ree0_lfs || pfvf->ree1_lfs;
 	}
 
 	return false;
