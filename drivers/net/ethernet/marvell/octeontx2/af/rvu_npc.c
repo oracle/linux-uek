@@ -64,6 +64,7 @@ static int npc_mcam_verify_pf_func(struct rvu *rvu,
 
 int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel)
 {
+	int max_lbkid = rvu->hw->lbk_links - 1;
 	int pf = rvu_get_pf(pcifunc);
 	u8 cgx_id, lmac_id;
 	int base = 0, end;
@@ -75,6 +76,7 @@ int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel)
 		end = rvu_get_num_lbk_chans();
 		if (end < 0)
 			return -EINVAL;
+		end = NIX_CHAN_LBK_CHX(max_lbkid, end);
 	} else {
 		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 		base = NIX_CHAN_CGX_LMAC_CHX(cgx_id, lmac_id, 0x0);
