@@ -237,7 +237,7 @@ static int pci_console_nexus_de_init_resources(struct platform_device *pdev)
 
 	dbgmsg(dev, "%s: entry\n", __func__);
 
-	if (pci_cons_nexus->desc) {
+	if (pci_cons_nexus && pci_cons_nexus->desc) {
 		iounmap(pci_cons_nexus->desc);
 		pci_cons_nexus->desc = NULL;
 	}
@@ -270,7 +270,8 @@ static int pci_console_nexus_init(struct platform_device *pdev)
 	/* Verify/use existing configuration (i.e. from U-Boot) */
 	if (readq(&nexus->magic) !=
 		cpu_to_le64(OCTEONTX_PCIE_CONSOLE_NEXUS_MAGIC)) {
-		dev_err(dev, "Invalid nexus signature.\n");
+		dev_err(dev, "Invalid nexus signature (0x%llx).\n",
+			(long long)readq(&nexus->magic));
 		goto exit;
 	}
 
@@ -323,6 +324,7 @@ static int pci_console_nexus_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct pci_console_nexus *pci_cons_nexus;
+	bool registered;
 	int ret;
 
 	BUILD_BUG_ON(offsetof(struct octeontx_pcie_console_nexus, console_addr)
@@ -333,6 +335,7 @@ static int pci_console_nexus_probe(struct platform_device *pdev)
 	max_cons_mask = BIT(max_consoles) - 1;
 
 	pci_cons_nexus = NULL;
+	registered = false;
 
 	ret = -ENODEV;
 
@@ -365,7 +368,8 @@ static int pci_console_nexus_probe(struct platform_device *pdev)
 			"Error %d registering child console driver\n",
 			ret);
 		goto exit;
-	}
+	} else
+		registered = true;
 
 	ret = of_platform_populate(pci_cons_nexus->of_node, NULL, NULL,
 				   dev);
@@ -381,7 +385,8 @@ static int pci_console_nexus_probe(struct platform_device *pdev)
 
 exit:
 	if (ret) {
-		platform_driver_unregister(&pci_console_driver);
+		if (registered)
+			platform_driver_unregister(&pci_console_driver);
 
 		pci_console_nexus_de_init_resources(pdev);
 
