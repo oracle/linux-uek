@@ -533,7 +533,7 @@ CONFIG_PCI_HOST_THUNDER_ECAM=y
 #
 # Kernel Features
 #
-CONFIG_RETPOLINE=y
+# CONFIG_RETPOLINE is not set
 
 #
 # ARM errata workarounds via the alternatives framework
