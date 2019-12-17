@@ -59,7 +59,7 @@ static void npc_set_kw_masks(struct npc_mcam *mcam, enum key_fields type,
 	else
 		max_kwi = 6; /* NPC_MCAM_KEY_X4 */
 
-	if (intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(intf))
 		field = &mcam->tx_key_fields[type];
 
 	if (offset + nr_bits <= 64) {
@@ -105,7 +105,7 @@ static bool npc_is_field_present(struct rvu *rvu, enum key_fields type, u8 intf)
 	struct npc_key_field *input;
 
 	input  = &mcam->rx_key_fields[type];
-	if (intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(intf))
 		input  = &mcam->tx_key_fields[type];
 
 	return input->nr_kws > 0;
@@ -126,7 +126,7 @@ static void npc_set_layer_mdata(struct npc_mcam *mcam, enum key_fields type,
 {
 	struct npc_key_field *input = &mcam->rx_key_fields[type];
 
-	if (intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(intf))
 		input = &mcam->tx_key_fields[type];
 
 	input->layer_mdata.hdr = FIELD_GET(NPC_HDR_OFFSET, cfg);
@@ -173,7 +173,7 @@ static bool npc_check_overlap(struct rvu *rvu, int blkaddr,
 	dummy = &mcam->rx_key_fields[NPC_UNKNOWN];
 	input = &mcam->rx_key_fields[type];
 
-	if (intf == NIX_INTF_TX) {
+	if (is_npc_intf_tx(intf)) {
 		dummy = &mcam->tx_key_fields[NPC_UNKNOWN];
 		input = &mcam->tx_key_fields[type];
 	}
@@ -293,7 +293,7 @@ static void npc_handle_multi_layer_fields(struct rvu *rvu, int blkaddr, u8 intf)
 	key_fields = mcam->rx_key_fields;
 	features = &mcam->rx_features;
 
-	if (intf == NIX_INTF_TX) {
+	if (is_npc_intf_tx(intf)) {
 		key_fields = mcam->tx_key_fields;
 		features = &mcam->tx_features;
 	}
@@ -395,7 +395,7 @@ static void npc_scan_ldata(struct rvu *rvu, int blkaddr, u8 lid,
 	/* For Tx, Layer A has NIX_INST_HDR_S(64 bytes) preceding
 	 * ethernet header.
 	 */
-	if (intf == NIX_INTF_TX) {
+	if (is_npc_intf_tx(intf)) {
 		la_ltype = NPC_LT_LA_IH_NIX_ETHER;
 		la_start = 8;
 	} else {
@@ -445,7 +445,7 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 	u64 tcp_udp;
 	int err, hdr;
 
-	if (intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(intf))
 		features = &mcam->tx_features;
 
 	for (hdr = NPC_DMAC; hdr < NPC_HEADER_FIELDS_MAX; hdr++) {
@@ -569,7 +569,7 @@ static int npc_check_unsupported_flows(struct rvu *rvu, u64 features, u8 intf)
 	u64 unsupported;
 	u8 bit;
 
-	if (intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(intf))
 		mcam_features = &mcam->tx_features;
 
 	unsupported = (*mcam_features ^ features) & ~(*mcam_features);
@@ -606,7 +606,7 @@ static void npc_update_entry(struct rvu *rvu, enum key_fields type,
 	int i;
 
 	field = &mcam->rx_key_fields[type];
-	if (intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(intf))
 		field = &mcam->tx_key_fields[type];
 
 	if (!field->nr_kws)
@@ -901,13 +901,13 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	npc_update_flow(rvu, entry, features, &req->packet, &req->mask, &dummy,
 			req->intf);
 
-	if (req->intf == NIX_INTF_RX)
+	if (is_npc_intf_rx(req->intf))
 		npc_update_rx_entry(rvu, pfvf, entry, req, target);
 	else
 		npc_update_tx_entry(rvu, pfvf, entry, req, target);
 
 	/* Default unicast rules do not exist for TX */
-	if (req->intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(req->intf))
 		goto find_rule;
 
 	if (def_rule)
@@ -922,14 +922,14 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 					&dummy, req->intf);
 		enable = rvu_npc_write_default_rule(rvu, blkaddr,
 						    nixlf, target,
-						    NIX_INTF_RX, entry,
+						    pfvf->nix_rx_intf, entry,
 						    &entry_index);
 		installed_features = req->features | missing_features;
 	} else if (req->default_rule && !req->append) {
 		/* overwrite default rule */
 		enable = rvu_npc_write_default_rule(rvu, blkaddr,
 						    nixlf, target,
-						    NIX_INTF_RX, entry,
+						    pfvf->nix_rx_intf, entry,
 						    &entry_index);
 	} else if (msg_from_vf) {
 		/* normal rule - include default rule also to it for VF */
@@ -983,7 +983,7 @@ update_rule:
 	memcpy(&rule->mask, &dummy.mask, sizeof(rule->mask));
 	rule->entry = entry_index;
 	memcpy(&rule->rx_action, &entry->action, sizeof(struct nix_rx_action));
-	if (req->intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(req->intf))
 		memcpy(&rule->tx_action, &entry->action,
 		       sizeof(struct nix_tx_action));
 	rule->vtag_action = entry->vtag_action;
@@ -991,7 +991,10 @@ update_rule:
 	rule->default_rule = req->default_rule;
 	rule->owner = owner;
 	rule->enable = enable;
-	rule->intf = req->intf;
+	if (is_npc_intf_tx(req->intf))
+		rule->intf = pfvf->nix_tx_intf;
+	else
+		rule->intf = pfvf->nix_rx_intf;
 
 	if (new)
 		rvu_mcam_add_rule(mcam, rule);
@@ -1015,9 +1018,9 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 				      struct npc_install_flow_rsp *rsp)
 {
 	bool from_vf = !!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK);
+	bool pf_set_vfs_mac = false;
 	int blkaddr, nixlf, err;
 	struct rvu_pfvf *pfvf;
-	bool pf_set_vfs_mac = false;
 	bool enable = true;
 	u16 target;
 
@@ -1026,6 +1029,9 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
 		return -ENODEV;
 	}
+
+	if (!is_npc_interface_valid(rvu, req->intf))
+		return -EINVAL;
 
 	if (from_vf && req->default_rule)
 		return NPC_MCAM_PERM_DENIED;
@@ -1078,7 +1084,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	 * NIXLF is properly setup and transmitting.
 	 * Hence rules can be enabled for Tx.
 	 */
-	if (req->intf == NIX_INTF_TX)
+	if (is_npc_intf_tx(req->intf))
 		enable = true;
 
 	/* Do not allow requests from uninitialized VFs */
@@ -1088,7 +1094,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	/* If message is from VF then its flow should not overlap with
 	 * reserved unicast flow.
 	 */
-	if (from_vf && pfvf->def_rule && req->intf == NIX_INTF_RX &&
+	if (from_vf && pfvf->def_rule && is_npc_intf_rx(req->intf) &&
 	    pfvf->def_rule->features & req->features)
 		return -EINVAL;
 
@@ -1203,7 +1209,7 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 
 	mutex_lock(&mcam->lock);
 	list_for_each_entry(rule, &mcam->mcam_rules, list) {
-		if (rule->intf == NIX_INTF_RX &&
+		if (is_npc_intf_rx(rule->intf) &&
 		    rule->rx_action.pf_func == target && !rule->enable) {
 			if (rule->default_rule) {
 				npc_enable_mcam_entry(rvu, mcam, blkaddr,

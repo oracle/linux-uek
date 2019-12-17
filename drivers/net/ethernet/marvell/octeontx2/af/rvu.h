@@ -302,6 +302,8 @@ struct rvu_pfvf {
 
 	u8	nix_blkaddr; /* BLKADDR_NIX0/1 assigned to this PF */
 	int     intf_mode;
+	u8	nix_rx_intf; /* NIX0_RX/NIX1_RX interface to NPC */
+	u8	nix_tx_intf; /* NIX0_TX/NIX1_TX interface to NPC */
 };
 
 struct nix_txsch {
@@ -384,6 +386,11 @@ struct rvu_hwinfo {
 	u8	lbk_links;
 	u8	sdp_links;
 	u8	npc_kpus;          /* No of parser units */
+	u8	npc_pkinds;        /* No of port kinds */
+	u8	npc_intfs;         /* No of interfaces */
+	u8	npc_kpu_entries;   /* No of KPU entries */
+	u16	npc_counters;	   /* No of match stats counters */
+	bool	npc_ext_set;	   /* Extended register set */
 
 	struct hw_cap    cap;
 	struct rvu_block block[BLK_COUNT]; /* Block info */
@@ -711,6 +718,9 @@ void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 void npc_read_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 			 int blkaddr, u16 src,
 			 struct mcam_entry *entry, u8 *intf, u8 *ena);
+bool is_npc_intf_tx(u8 intf);
+bool is_npc_intf_rx(u8 intf);
+bool is_npc_interface_valid(struct rvu *rvu, u8 intf);
 
 /* CPT APIs */
 int rvu_cpt_init(struct rvu *rvu);

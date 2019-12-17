@@ -1585,7 +1585,7 @@ static int rvu_dbg_npc_mcam_info_display(struct seq_file *filp, void *unsued)
 	struct rvu *rvu = filp->private;
 	int pf, vf, numvfs, blkaddr;
 	struct npc_mcam *mcam;
-	u16 pcifunc;
+	u16 pcifunc, counters;
 	u64 cfg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -1593,6 +1593,7 @@ static int rvu_dbg_npc_mcam_info_display(struct seq_file *filp, void *unsued)
 		return -ENODEV;
 
 	mcam = &rvu->hw->mcam;
+	counters = rvu->hw->npc_counters;
 
 	seq_puts(filp, "\nNPC MCAM info:\n");
 	/* MCAM keywidth on receive and transmit sides */
@@ -1615,10 +1616,9 @@ static int rvu_dbg_npc_mcam_info_display(struct seq_file *filp, void *unsued)
 	seq_printf(filp, "\t\t Available \t: %d\n", mcam->bmap_fcnt);
 
 	/* MCAM counters */
-	cfg = rvu_read64(rvu, blkaddr, NPC_AF_CONST);
-	cfg = (cfg >> 48) & 0xFFFF;
-	seq_printf(filp, "\n\t\t MCAM counters \t: %lld\n", cfg);
-	seq_printf(filp, "\t\t Reserved \t: %lld\n", cfg - mcam->counters.max);
+	seq_printf(filp, "\n\t\t MCAM counters \t: %d\n", counters);
+	seq_printf(filp, "\t\t Reserved \t: %d\n",
+		   counters - mcam->counters.max);
 	seq_printf(filp, "\t\t Available \t: %d\n",
 		   rvu_rsrc_free_count(&mcam->counters));
 
@@ -1780,6 +1780,24 @@ static void rvu_dbg_npc_mcam_show_action(struct seq_file *s,
 	}
 }
 
+static const char *rvu_dbg_get_intf_name(int intf)
+{
+	switch (intf) {
+	case NIX_INTFX_RX(0):
+		return "NIX0_RX";
+	case NIX_INTFX_RX(1):
+		return "NIX1_RX";
+	case NIX_INTFX_TX(0):
+		return "NIX0_TX";
+	case NIX_INTFX_TX(1):
+		return "NIX1_TX";
+	default:
+		break;
+	}
+
+	return "unknown";
+}
+
 static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 {
 	struct rvu_npc_mcam_rule *iter;
@@ -1807,8 +1825,10 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 		}
 		seq_puts(s, "\n");
 
-		seq_printf(s, "\tdirection: %s\n", (iter->intf == NIX_INTF_RX) ?
+		seq_printf(s, "\tdirection: %s\n", is_npc_intf_rx(iter->intf) ?
 						    "RX" : "TX");
+		seq_printf(s, "\tinterface: %s\n",
+			   rvu_dbg_get_intf_name(iter->intf));
 		seq_printf(s, "\tmcam entry: %d\n", iter->entry);
 
 		rvu_dbg_npc_mcam_show_flows(s, iter);
