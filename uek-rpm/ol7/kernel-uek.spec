@@ -415,10 +415,8 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_up        0
 %define with_smp       0
 %define with_kdump     0
-%define with_doc       0
-%define with_headers   0
-%define with_perf      0
-%define with_tools     0
+%define with_4k_ps     0
+%define with_4k_ps_debug 0
 %endif
 
 %if %{nopatches}
