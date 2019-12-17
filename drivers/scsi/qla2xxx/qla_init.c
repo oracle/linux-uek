@@ -46,16 +46,10 @@ qla2x00_sp_timeout(unsigned long __data)
 {
 	srb_t *sp = (srb_t *)__data;
 	struct srb_iocb *iocb;
-	struct req_que *req;
-	unsigned long flags;
 
-	spin_lock_irqsave(sp->qpair->qp_lock_ptr, flags);
-	req = sp->qpair->req;
-	req->outstanding_cmds[sp->handle] = NULL;
+	WARN_ON(irqs_disabled());
 	iocb = &sp->u.iocb_cmd;
-	spin_unlock_irqrestore(sp->qpair->qp_lock_ptr, flags);
 	iocb->timeout(sp);
-	//sp->free(sp);
 }
 
 void
@@ -139,6 +133,7 @@ qla2x00_async_iocb_timeout(void *data)
 	case SRB_NACK_PLOGI:
 	case SRB_NACK_PRLI:
 	case SRB_NACK_LOGO:
+	default:
 		rc = qla24xx_async_abort_cmd(sp, false);
 		if (rc) {
 			spin_lock_irqsave(sp->qpair->qp_lock_ptr, flags);
@@ -1184,9 +1179,23 @@ qla2x00_tmf_iocb_timeout(void *data)
 {
 	srb_t *sp = data;
 	struct srb_iocb *tmf = &sp->u.iocb_cmd;
+	int rc, h;
+	unsigned long flags;
 
-	tmf->u.tmf.comp_status = CS_TIMEOUT;
-	complete(&tmf->u.tmf.comp);
+	rc = qla24xx_async_abort_cmd(sp, false);
+	if (rc) {
+		spin_lock_irqsave(sp->qpair->qp_lock_ptr, flags);
+		for (h = 1; h < sp->qpair->req->num_outstanding_cmds; h++) {
+			if (sp->qpair->req->outstanding_cmds[h] == sp) {
+				sp->qpair->req->outstanding_cmds[h] = NULL;
+				break;
+			}
+		}
+		spin_unlock_irqrestore(sp->qpair->qp_lock_ptr, flags);
+		tmf->u.tmf.comp_status = CS_TIMEOUT;
+		tmf->u.tmf.data = QLA_FUNCTION_FAILED;
+		complete(&tmf->u.tmf.comp);
+	}
 }
 
 static void
