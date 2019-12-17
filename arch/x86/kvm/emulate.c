@@ -2377,12 +2377,7 @@ static int em_lseg(struct x86_emulate_ctxt *ctxt)
 static int emulator_has_longmode(struct x86_emulate_ctxt *ctxt)
 {
 #ifdef CONFIG_X86_64
-	u32 eax, ebx, ecx, edx;
-
-	eax = 0x80000001;
-	ecx = 0;
-	ctxt->ops->get_cpuid(ctxt, &eax, &ebx, &ecx, &edx, false);
-	return edx & bit(X86_FEATURE_LM);
+	return ctxt->ops->guest_has_long_mode(ctxt);
 #else
 	return false;
 #endif
@@ -3649,18 +3644,11 @@ static int em_mov(struct x86_emulate_ctxt *ctxt)
 	return X86EMUL_CONTINUE;
 }
 
-#define FFL(x) bit(X86_FEATURE_##x)
-
 static int em_movbe(struct x86_emulate_ctxt *ctxt)
 {
-	u32 ebx, ecx, edx, eax = 1;
 	u16 tmp;
 
-	/*
-	 * Check MOVBE is set in the guest-visible CPUID leaf.
-	 */
-	ctxt->ops->get_cpuid(ctxt, &eax, &ebx, &ecx, &edx, false);
-	if (!(ecx & FFL(MOVBE)))
+	if (!ctxt->ops->guest_has_movbe(ctxt))
 		return emulate_ud(ctxt);
 
 	switch (ctxt->op_bytes) {
@@ -4064,10 +4052,7 @@ static int em_movsxd(struct x86_emulate_ctxt *ctxt)
 
 static int check_fxsr(struct x86_emulate_ctxt *ctxt)
 {
-	u32 eax = 1, ebx, ecx = 0, edx;
-
-	ctxt->ops->get_cpuid(ctxt, &eax, &ebx, &ecx, &edx, false);
-	if (!(edx & FFL(FXSR)))
+	if (!ctxt->ops->guest_has_fxsr(ctxt))
 		return emulate_ud(ctxt);
 
 	if (ctxt->ops->get_cr(ctxt, 0) & (X86_CR0_TS | X86_CR0_EM))
