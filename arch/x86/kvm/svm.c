@@ -6114,7 +6114,7 @@ static void svm_cpuid_update(struct kvm_vcpu *vcpu)
 					 APICV_INHIBIT_REASON_NESTED);
 }
 
-#define F(x) bit(X86_FEATURE_##x)
+#define F feature_bit
 
 static void svm_set_supported_cpuid(u32 func, struct kvm_cpuid_entry2 *entry)
 {
