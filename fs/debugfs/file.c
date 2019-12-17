@@ -145,6 +145,7 @@ EXPORT_SYMBOL_GPL(debugfs_file_put);
  */
 static int debugfs_locked_down(struct inode *inode,
 			       struct file *filp,
+			       struct dentry *dentry,
 			       const struct file_operations *real_fops)
 {
 	if ((inode->i_mode & 07777) == 0444 &&
@@ -152,6 +153,9 @@ static int debugfs_locked_down(struct inode *inode,
 	    !real_fops->unlocked_ioctl &&
 	    !real_fops->compat_ioctl &&
 	    !real_fops->mmap)
+		return 0;
+
+	if (debugfs_lockdown_whitelisted(dentry))
 		return 0;
 
 	if (security_locked_down(LOCKDOWN_DEBUGFS))
@@ -172,7 +176,7 @@ static int open_proxy_open(struct inode *inode, struct file *filp)
 
 	real_fops = debugfs_real_fops(filp);
 
-	r = debugfs_locked_down(inode, filp, real_fops);
+	r = debugfs_locked_down(inode, filp, dentry, real_fops);
 	if (r)
 		goto out;
 
@@ -309,7 +313,7 @@ static int full_proxy_open(struct inode *inode, struct file *filp)
 
 	real_fops = debugfs_real_fops(filp);
 
-	r = debugfs_locked_down(inode, filp, real_fops);
+	r = debugfs_locked_down(inode, filp, dentry, real_fops);
 	if (r)
 		goto out;
 

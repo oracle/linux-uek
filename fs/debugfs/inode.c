@@ -48,7 +48,10 @@ static int debugfs_setattr(struct user_namespace *mnt_userns,
 	int ret;
 
 	if (ia->ia_valid & (ATTR_MODE | ATTR_UID | ATTR_GID)) {
-		ret = security_locked_down(LOCKDOWN_DEBUGFS);
+		if (debugfs_lockdown_whitelisted(dentry))
+			ret = 0;
+		else
+			ret = security_locked_down(LOCKDOWN_DEBUGFS);
 		if (ret)
 			return ret;
 	}
