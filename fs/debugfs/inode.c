@@ -43,7 +43,12 @@ static bool debugfs_registered;
  */
 static int debugfs_setattr(struct dentry *dentry, struct iattr *ia)
 {
-	int ret = security_locked_down(LOCKDOWN_DEBUGFS);
+	int ret;
+
+	if (debugfs_lockdown_whitelisted(dentry))
+		ret = 0;
+	else
+		ret = security_locked_down(LOCKDOWN_DEBUGFS);
 
 	if (ret && (ia->ia_valid & (ATTR_MODE | ATTR_UID | ATTR_GID)))
 		return ret;

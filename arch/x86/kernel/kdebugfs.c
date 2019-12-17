@@ -161,6 +161,8 @@ static int __init boot_params_kdebugfs_init(void)
 }
 #endif /* CONFIG_DEBUG_BOOT_PARAMS */
 
+struct dentry *get_arch_debugfs_dir(void) {return arch_debugfs_dir; }
+
 static int __init arch_kdebugfs_init(void)
 {
 	int error = 0;
