@@ -48,8 +48,12 @@ static int debugfs_setattr(struct dentry *dentry, struct iattr *ia)
 {
 	int ret;
 
-	if (kernel_is_locked_down("debugfs"))
-		ret = -EPERM;
+	if (debugfs_lockdown_whitelisted(dentry))
+		ret = 0;
+	else {
+		if (kernel_is_locked_down("debugfs"))
+			ret = -EPERM;
+	}
 
 	if (ret && (ia->ia_valid & (ATTR_MODE | ATTR_UID | ATTR_GID)))
 		return ret;
