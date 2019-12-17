@@ -105,8 +105,12 @@ EXPORT_SYMBOL_GPL(debugfs_use_file_finish);
  */
 static int debugfs_locked_down(struct inode *inode,
 			       struct file *filp,
+			       const struct dentry *dentry,
 			       const struct file_operations *real_fops)
 {
+	if (debugfs_lockdown_whitelisted(dentry))
+		return 0;
+
 	if (__kernel_is_confidentiality_mode())
 		return -EPERM;
 
@@ -137,7 +141,7 @@ static int open_proxy_open(struct inode *inode, struct file *filp)
 
 	real_fops = debugfs_real_fops(filp);
 
-	r = debugfs_locked_down(inode, filp, real_fops);
+	r = debugfs_locked_down(inode, filp, dentry, real_fops);
 	if (r)
 		goto out;
 
@@ -271,7 +275,7 @@ static int full_proxy_open(struct inode *inode, struct file *filp)
 
 	real_fops = debugfs_real_fops(filp);
 
-	r = debugfs_locked_down(inode, filp, real_fops);
+	r = debugfs_locked_down(inode, filp, dentry, real_fops);
 	if (r)
 		goto out;
 
