@@ -147,8 +147,6 @@
  * which is ensured when CONFIG_RETPOLINE is defined.
  */
 # define CALL_NOSPEC						\
-	ANNOTATE_NOSPEC_ALTERNATIVE				\
-	ALTERNATIVE(						\
 	"901: .byte " __stringify(STATIC_KEY_INIT_NOP) "\n"	\
 	".pushsection __jump_table, \"aw\"\n"			\
 	_ASM_ALIGN "\n"						\
@@ -159,12 +157,15 @@
 	"	call *%[thunk_target]\n"			\
 	"	jmp  903f\n"					\
 	"	.align 16\n"					\
-	"902:	call __x86_indirect_thunk_%V[thunk_target]\n"	\
-	"903:",							\
+	"902:"							\
+	ANNOTATE_NOSPEC_ALTERNATIVE				\
+	ALTERNATIVE(						\
+	"call __x86_indirect_thunk_%V[thunk_target];\n",	\
 	"lfence;\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
 	"call *%[thunk_target]\n",				\
-	X86_FEATURE_RETPOLINE_AMD)
+	X86_FEATURE_RETPOLINE_AMD)				\
+	"903:"
 # define THUNK_TARGET(addr) [thunk_target] "r" (addr)
 
 #else /* CONFIG_X86_32 */
