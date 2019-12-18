@@ -51,7 +51,9 @@ static int npc_mcam_verify_pf_func(struct rvu *rvu,
 	pf_func = (entry_data->kw[0] >> 32) & NPC_KEX_PF_FUNC_MASK;
 
 	pf_func = htons(pf_func);
-	if (pf_func_mask != NPC_KEX_PF_FUNC_MASK || pf_func != pcifunc)
+	if (pf_func_mask != NPC_KEX_PF_FUNC_MASK ||
+	    ((pf_func & ~RVU_PFVF_FUNC_MASK) !=
+	     (pcifunc & ~RVU_PFVF_FUNC_MASK)))
 		return -EINVAL;
 
 	return 0;

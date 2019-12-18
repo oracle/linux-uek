@@ -669,6 +669,7 @@ enum nix_af_status {
 	NIX_AF_INVAL_NPA_PF_FUNC    = -419,
 	NIX_AF_INVAL_SSO_PF_FUNC    = -420,
 	NIX_AF_ERR_TX_VTAG_NOSPC    = -421,
+	NIX_AF_ERR_RX_VTAG_INUSE    = -422,
 };
 
 /* For NIX RX vtag action  */
@@ -718,7 +719,8 @@ struct nix_lf_alloc_rsp {
 
 struct nix_lf_free_req {
 	struct mbox_msghdr hdr;
-#define NIX_LF_DISABLE_FLOWS	0x1
+#define NIX_LF_DISABLE_FLOWS		BIT_ULL(0)
+#define NIX_LF_DONT_FREE_TX_VTAG	BIT_ULL(1)
 	u64 flags;
 };
 
