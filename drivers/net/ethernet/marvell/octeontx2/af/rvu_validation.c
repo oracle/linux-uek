@@ -454,101 +454,104 @@ static struct rvu_quota_ops pf_limit_ops = {
 
 static void rvu_set_default_limits(struct rvu *rvu)
 {
-	struct nix_hw *nix_hw = rvu->hw->nix0;
-	int i, sso_rvus = 0, nix_rvus = 0, totalvfs;
+	int i, nvfs, cpt_rvus, npa_rvus, sso_rvus, nix_rvus, nsso, nssow, ntim;
+	int ncpt, nnpa, nnix, nsmq = 0, ntl4 = 0, ntl3 = 0, ntl2 = 0;
+	unsigned short devid;
 
 	/* First pass, count number of SSO/TIM PFs. */
+	sso_rvus = 0;
+	nix_rvus = 0;
+	cpt_rvus = 0;
+	npa_rvus = 0;
 	for (i = 0; i < rvu->hw->total_pfs; i++) {
 		if (rvu->pf[i].pdev == NULL)
 			continue;
-		if (rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_SSO_RVU_PF)
+		devid = rvu->pf[i].pdev->device;
+		if (devid == PCI_DEVID_OCTEONTX2_SSO_RVU_PF)
 			sso_rvus++;
-		if (rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_RVU_PF ||
-		    rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_RVU_AF ||
-		    rvu->pf[i].pdev->device == PCI_DEVID_OCTEONTX2_SDP_RVU_PF)
+		else if (devid == PCI_DEVID_OCTEONTX2_RVU_PF ||
+			 devid == PCI_DEVID_OCTEONTX2_RVU_AF ||
+			 devid == PCI_DEVID_OCTEONTX2_SDP_RVU_PF)
 			nix_rvus++;
+		else if (devid == PCI_DEVID_OCTEONTX2_CPT_RVU_PF)
+			cpt_rvus++;
+		else if (devid == PCI_DEVID_OCTEONTX2_NPA_RVU_PF)
+			npa_rvus++;
+	}
+	/* Calculate default partitioning. */
+	nsso = rvu->pf_limits.sso->max_sum / sso_rvus;
+	nssow = rvu->pf_limits.ssow->max_sum / sso_rvus;
+	ntim = rvu->pf_limits.tim->max_sum / sso_rvus;
+	/* Divide CPT among SSO and CPT PFs since cores shouldn't be shared. */
+	ncpt = rvu->pf_limits.cpt->max_sum / (sso_rvus + cpt_rvus);
+	/* NPA/NIX count depends on DTS VF config. Allocate until run out. */
+	nnpa = rvu->pf_limits.npa->max_sum;
+	nnix = rvu->pf_limits.nix->max_sum;
+	if (!rvu->hw->cap.nix_fixed_txschq_mapping) {
+		nsmq = rvu->pf_limits.smq->max_sum / nix_rvus;
+		ntl4 = rvu->pf_limits.tl4->max_sum / nix_rvus;
+		ntl3 = rvu->pf_limits.tl3->max_sum / nix_rvus;
+		ntl2 = rvu->pf_limits.tl2->max_sum / nix_rvus;
 	}
 
 	/* Second pass, set the default limit values. */
 	for (i = 0; i < rvu->hw->total_pfs; i++) {
 		if (rvu->pf[i].pdev == NULL)
 			continue;
-		totalvfs = pci_sriov_get_totalvfs(rvu->pf[i].pdev);
+		nvfs = pci_sriov_get_totalvfs(rvu->pf[i].pdev);
 		switch (rvu->pf[i].pdev->device) {
 		case PCI_DEVID_OCTEONTX2_RVU_AF:
-			rvu->pf_limits.nix->a[i].val = totalvfs;
-			rvu->pf_limits.npa->a[i].val = totalvfs;
+			nnix -= nvfs;
+			nnpa -= nvfs;
+			rvu->pf_limits.nix->a[i].val = nnix > 0 ? nvfs : 0;
+			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? nvfs : 0;
 			if (rvu->hw->cap.nix_fixed_txschq_mapping)
 				break;
-			rvu->pf_limits.smq->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_SMQ].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl4->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL4].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl3->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL3].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl2->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL2].schq.max /
-				nix_rvus;
+			rvu->pf_limits.smq->a[i].val = nsmq;
+			rvu->pf_limits.tl4->a[i].val = ntl4;
+			rvu->pf_limits.tl3->a[i].val = ntl3;
+			rvu->pf_limits.tl2->a[i].val = ntl2;
 			break;
 		case PCI_DEVID_OCTEONTX2_RVU_PF:
-			rvu->pf_limits.nix->a[i].val = 1 + totalvfs;
-			rvu->pf_limits.npa->a[i].val = 1 + totalvfs;
+			nnix -= 1 + nvfs;
+			nnpa -= 1 + nvfs;
+			rvu->pf_limits.nix->a[i].val = nnix > 0 ? 1 + nvfs : 0;
+			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 + nvfs : 0;
 			if (rvu->hw->cap.nix_fixed_txschq_mapping)
 				break;
-			rvu->pf_limits.smq->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_SMQ].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl4->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL4].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl3->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL3].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl2->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL2].schq.max /
-				nix_rvus;
+			rvu->pf_limits.smq->a[i].val = nsmq;
+			rvu->pf_limits.tl4->a[i].val = ntl4;
+			rvu->pf_limits.tl3->a[i].val = ntl3;
+			rvu->pf_limits.tl2->a[i].val = ntl2;
 			break;
 		case PCI_DEVID_OCTEONTX2_SSO_RVU_PF:
-			rvu->pf_limits.npa->a[i].val = 1 + totalvfs;
-			rvu->pf_limits.sso->a[i].val =
-				rvu->hw->block[BLKADDR_SSO].lf.max / sso_rvus;
-			rvu->pf_limits.ssow->a[i].val =
-				rvu->hw->block[BLKADDR_SSOW].lf.max / sso_rvus;
-			rvu->pf_limits.tim->a[i].val =
-				rvu->hw->block[BLKADDR_TIM].lf.max / sso_rvus;
-			/* All users of CPT should not share CPUs so if there
-			 * are multiple SSO/TIM PFs, then divide CPTs equally.
-			 */
-			rvu->pf_limits.cpt->a[i].val =
-				num_online_cpus() / sso_rvus;
+			nnpa -= 1 + nvfs;
+			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 + nvfs : 0;
+			rvu->pf_limits.sso->a[i].val = nsso;
+			rvu->pf_limits.ssow->a[i].val = nssow;
+			rvu->pf_limits.tim->a[i].val = ntim;
+			rvu->pf_limits.cpt->a[i].val = ncpt;
 			break;
 		case PCI_DEVID_OCTEONTX2_NPA_RVU_PF:
-			rvu->pf_limits.npa->a[i].val = 1 + totalvfs;
+			nnpa -= 1 + nvfs;
+			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 + nvfs : 0;
 			break;
 		case PCI_DEVID_OCTEONTX2_CPT_RVU_PF:
-			rvu->pf_limits.cpt->a[i].val = num_online_cpus();
-			rvu->pf_limits.npa->a[i].val = 1;
+			nnpa -= 1;
+			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 : 0;
+			rvu->pf_limits.cpt->a[i].val = ncpt;
 			break;
 		case PCI_DEVID_OCTEONTX2_SDP_RVU_PF:
-			rvu->pf_limits.nix->a[i].val = 1 + totalvfs;
-			rvu->pf_limits.npa->a[i].val = 1 + totalvfs;
+			nnix -= 1 + nvfs;
+			nnpa -= 1 + nvfs;
+			rvu->pf_limits.nix->a[i].val = nnix > 0 ? 1 + nvfs : 0;
+			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 + nvfs : 0;
 			if (rvu->hw->cap.nix_fixed_txschq_mapping)
 				break;
-			rvu->pf_limits.smq->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_SMQ].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl4->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL4].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl3->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL3].schq.max /
-				nix_rvus;
-			rvu->pf_limits.tl2->a[i].val =
-				nix_hw->txsch[NIX_TXSCH_LVL_TL2].schq.max /
-				nix_rvus;
+			rvu->pf_limits.smq->a[i].val = nsmq;
+			rvu->pf_limits.tl4->a[i].val = ntl4;
+			rvu->pf_limits.tl3->a[i].val = ntl3;
+			rvu->pf_limits.tl2->a[i].val = ntl2;
 			break;
 		}
 	}
