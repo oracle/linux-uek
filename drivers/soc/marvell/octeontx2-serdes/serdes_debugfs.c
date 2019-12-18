@@ -242,6 +242,11 @@ static int serdes_dbg_init(void)
 	int ec;
 
 	arm_smccc_smc(OCTEONTX_SERDES_DBG_GET_MEM, 0, 0, 0, 0, 0, 0, 0, &res);
+	if (res.a0 == SMCCC_RET_NOT_SUPPORTED) {
+		pr_info("Firmware doesn't support serdes diagnostic cmds.\n");
+		return 0;
+	}
+
 	if (res.a0 != SMCCC_RET_SUCCESS)
 		goto serdes_mem_init_failed;
 
