@@ -445,7 +445,8 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 		req->reg[0] = NIX_AF_SMQX_CFG(schq);
 		req->regval[0] = ((pfvf->netdev->mtu  + OTX2_ETH_HLEN) << 8) |
 				   OTX2_MIN_MTU;
-		req->regval[0] |= (0x20ULL << 51) | (0x80ULL << 39);
+		req->regval[0] |= (0x20ULL << 51) | (0x80ULL << 39) |
+				  (0x2ULL << 36);
 		req->num_regs++;
 		/* MDQ config */
 		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL4][0];

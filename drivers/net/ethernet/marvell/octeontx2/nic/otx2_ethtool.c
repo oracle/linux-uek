@@ -659,7 +659,7 @@ static int otx2_get_rxnfc(struct net_device *dev,
 		ret = 0;
 		break;
 	case ETHTOOL_GRXCLSRLCNT:
-		nfc->rule_cnt = pfvf->nr_flows;
+		nfc->rule_cnt = pfvf->flow_cfg->nr_flows;
 		ret = 0;
 		break;
 	case ETHTOOL_GRXCLSRULE:

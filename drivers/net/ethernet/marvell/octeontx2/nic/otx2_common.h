@@ -206,6 +206,7 @@ struct otx2_vf_config {
 	bool intf_down; /* interface was either configured or not */
 	u8 mac[ETH_ALEN];
 	u16 vlan;
+	int tx_vtag_idx;
 };
 
 struct otx2_ptp {
@@ -234,6 +235,20 @@ struct otx2_mac_table {
 	bool inuse;
 };
 
+struct otx2_flow_config {
+	u16			entry[NPC_MAX_NONCONTIG_ENTRIES];
+	u32			nr_flows;
+	u32			vf_vlan_offset;
+	u32			ntuple_offset;
+	u32			unicast_offset;
+	u32			rx_vlan_offset;
+#define OTX2_PER_VF_VLAN_FLOWS	2 /* rx+tx per VF */
+#define OTX2_VF_VLAN_RX_INDEX	0
+#define OTX2_VF_VLAN_TX_INDEX	1
+	u32                     ntuple_max_flows;
+	struct list_head	flow_list;
+};
+
 struct otx2_nic {
 	void __iomem		*reg_base;
 	struct net_device	*netdev;
@@ -249,6 +264,8 @@ struct otx2_nic {
 #define OTX2_FLAG_NTUPLE_SUPPORT		BIT_ULL(4)
 #define OTX2_FLAG_UCAST_FLTR_SUPPORT		BIT_ULL(5)
 #define OTX2_FLAG_RX_VLAN_SUPPORT		BIT_ULL(6)
+#define OTX2_FLAG_VF_VLAN_SUPPORT		BIT_ULL(7)
+#define OTX2_FLAG_PF_SHUTDOWN			BIT_ULL(8)
 	u64			flags;
 
 	struct otx2_qset	qset;
@@ -270,10 +287,7 @@ struct otx2_nic {
 	struct cgx_link_user_info linfo;
 
 	/* NPC MCAM */
-	u32			nr_flows;
-	u32                     ntuple_max_flows;
-	u16			entry_list[NPC_MAX_NONCONTIG_ENTRIES];
-	struct list_head	flows;
+	struct otx2_flow_config	*flow_cfg;
 	struct otx2_mac_table	*mac_table;
 
 	u64			reset_count;
@@ -742,6 +756,7 @@ int otx2_set_npc_parse_mode(struct otx2_nic *pfvf);
 void otx2_do_set_rx_mode(struct work_struct *work);
 int otx2_add_macfilter(struct net_device *netdev, const u8 *mac);
 int otx2_mcam_flow_init(struct otx2_nic *pf);
+int otx2_alloc_mcam_entries(struct otx2_nic *pfvf);
 int otx2_del_macfilter(struct net_device *netdev, const u8 *mac);
 void otx2_mcam_flow_del(struct otx2_nic *pf);
 int otx2_destroy_ntuple_flows(struct otx2_nic *pf);
@@ -756,6 +771,7 @@ int otx2_remove_flow(struct otx2_nic *pfvf, u32 location);
 int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 			      struct npc_install_flow_req *req);
 int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable);
+int otx2_enable_vf_vlan(struct otx2_nic *pf);
 int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf);
 int otx2smqvf_probe(struct otx2_nic *vf);
 int otx2smqvf_remove(struct otx2_nic *vf);
