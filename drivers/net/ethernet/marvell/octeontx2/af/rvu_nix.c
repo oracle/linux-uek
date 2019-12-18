@@ -273,9 +273,6 @@ static void nix_interface_deinit(struct rvu *rvu, u16 pcifunc, u8 nixlf)
 			pcifunc);
 	}
 
-	/* Free any tx vtag def entries used by this NIX LF */
-	nix_free_tx_vtag_entries(rvu, pcifunc);
-
 	/* Disable DMAC filters used */
 	rvu_cgx_disable_dmac_entries(rvu, pcifunc);
 }
@@ -1148,6 +1145,11 @@ int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 	/* Disable NPC entries as NIXLF's contexts are not initialized yet */
 	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
 
+	/* Configure RX VTAG Type 7 (strip) for vf vlan */
+	rvu_write64(rvu, blkaddr,
+		    NIX_AF_LFX_RX_VTAG_TYPEX(nixlf, NIX_AF_LFX_RX_VTAG_TYPE7),
+		    VTAGSIZE_T4 | BIT_ULL(4));
+
 	goto exit;
 
 free_mem:
@@ -1202,6 +1204,10 @@ int rvu_mbox_handler_nix_lf_free(struct rvu *rvu, struct nix_lf_free_req *req,
 		rvu_npc_disable_mcam_entries(rvu, pcifunc, nixlf);
 	else
 		rvu_npc_free_mcam_entries(rvu, pcifunc, nixlf);
+
+	/* Free any tx vtag def entries used by this NIX LF */
+	if (!(req->flags & NIX_LF_DONT_FREE_TX_VTAG))
+		nix_free_tx_vtag_entries(rvu, pcifunc);
 
 	nix_interface_deinit(rvu, pcifunc, nixlf);
 
@@ -1951,6 +1957,10 @@ static int nix_rx_vtag_cfg(struct rvu *rvu, int nixlf, int blkaddr,
 	if (req->rx.vtag_type > NIX_AF_LFX_RX_VTAG_TYPE7 ||
 	    req->vtag_size > VTAGSIZE_T8)
 		return -EINVAL;
+
+	/* RX VTAG Type 7 reserved for vf vlan */
+	if (req->rx.vtag_type == NIX_AF_LFX_RX_VTAG_TYPE7)
+		return NIX_AF_ERR_RX_VTAG_INUSE;
 
 	if (req->rx.capture_vtag)
 		regval |= BIT_ULL(5);
@@ -2911,7 +2921,7 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 		return NIX_AF_ERR_AF_LF_INVALID;
 
 	/* VF can't overwrite admin(PF) changes */
-	if (from_vf && pfvf->pf_set_vfs_mac)
+	if (from_vf && pfvf->pf_set_vf_cfg)
 		return -EPERM;
 
 	ether_addr_copy(pfvf->mac_addr, req->mac_addr);

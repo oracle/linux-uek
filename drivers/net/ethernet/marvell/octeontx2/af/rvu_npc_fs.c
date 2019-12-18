@@ -830,7 +830,7 @@ static void npc_update_tx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 {
 	struct nix_tx_action action;
 
-	npc_update_entry(rvu, NPC_PF_FUNC, entry, htons(req->hdr.pcifunc),
+	npc_update_entry(rvu, NPC_PF_FUNC, entry, htons(target),
 			 0, ~0ULL, 0, NIX_INTF_TX);
 
 	*(u64 *)&action = 0x00;
@@ -845,12 +845,12 @@ static void npc_update_tx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	 */
 	entry->vtag_action = FIELD_PREP(TX_VTAG0_DEF_MASK, req->vtag0_def) |
 			     FIELD_PREP(TX_VTAG0_OP_MASK, req->vtag0_op) |
-			     FIELD_PREP(TX_VTAG0_LID_MASK, NPC_LID_LB) |
-			     FIELD_PREP(TX_VTAG0_RELPTR_MASK, 0) |
+			     FIELD_PREP(TX_VTAG0_LID_MASK, NPC_LID_LA) |
+			     FIELD_PREP(TX_VTAG0_RELPTR_MASK, 20) |
 			     FIELD_PREP(TX_VTAG1_DEF_MASK, req->vtag1_def) |
 			     FIELD_PREP(TX_VTAG1_OP_MASK, req->vtag1_op) |
-			     FIELD_PREP(TX_VTAG1_LID_MASK, NPC_LID_LB) |
-			     FIELD_PREP(TX_VTAG1_RELPTR_MASK, 4);
+			     FIELD_PREP(TX_VTAG1_LID_MASK, NPC_LID_LA) |
+			     FIELD_PREP(TX_VTAG1_RELPTR_MASK, 24);
 }
 
 static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
@@ -979,10 +979,8 @@ update_rule:
 		pfvf->def_rule = rule;
 
 	/* VF's MAC address is being changed via PF  */
-	if (pf_set_vfs_mac) {
+	if (pf_set_vfs_mac)
 		ether_addr_copy(pfvf->default_mac, req->packet.dmac);
-		pfvf->pf_set_vfs_mac = true;
-	}
 
 	return 0;
 }
@@ -1032,6 +1030,17 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 		return -EINVAL;
 
 	pfvf = rvu_get_pfvf(rvu, target);
+
+	if (!from_vf && req->vf)
+		pfvf->pf_set_vf_cfg = 1;
+
+	/* update req destination mac addr */
+	if ((req->features & BIT_ULL(NPC_DMAC)) &&
+	    req->intf == NIX_INTF_RX &&
+	    is_zero_ether_addr(req->packet.dmac)) {
+		ether_addr_copy(req->packet.dmac, pfvf->default_mac);
+		u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
+	}
 
 	err = nix_get_nixlf(rvu, target, &nixlf);
 
