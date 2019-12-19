@@ -961,9 +961,9 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		 */
 		spin_lock_irqsave(&rm->m_rs_lock, flags);
 
-		spin_lock(&rs->rs_snd_lock);
+		spin_lock(&rs->rs_lock);
 		__rds_send_complete(rs, rm, RDS_RDMA_SEND_CANCELED);
-		spin_unlock(&rs->rs_snd_lock);
+		spin_unlock(&rs->rs_lock);
 
 		rm->m_rs = NULL;
 		spin_unlock_irqrestore(&rm->m_rs_lock, flags);
@@ -1002,9 +1002,9 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		 */
 		spin_lock_irqsave(&rm->m_rs_lock, flags);
 
-		spin_lock(&rs->rs_snd_lock);
+		spin_lock(&rs->rs_lock);
 		__rds_send_complete(rs, rm, RDS_RDMA_SEND_CANCELED);
-		spin_unlock(&rs->rs_snd_lock);
+		spin_unlock(&rs->rs_lock);
 
 		rm->m_rs = NULL;
 		spin_unlock_irqrestore(&rm->m_rs_lock, flags);
