@@ -1318,6 +1318,10 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	hw->sqpool_cnt = hw->tx_queues;
 	hw->pool_cnt = hw->rqpool_cnt + hw->sqpool_cnt;
 
+	/* Get the size of receive buffers to allocate */
+	pf->rbsize = RCV_FRAG_LEN(OTX2_HW_TIMESTAMP_LEN + pf->netdev->mtu +
+				  pf->addl_mtu + pf->xtra_hdr);
+
 	otx2_mbox_lock(mbox);
 	/* NPA init */
 	err = otx2_config_npa(pf);

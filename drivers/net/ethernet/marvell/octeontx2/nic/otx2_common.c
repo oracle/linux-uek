@@ -363,7 +363,8 @@ dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 	otx2_get_page(pool);
 
 	/* Allocate a new page */
-	pool->page = alloc_pages(gfp | __GFP_COMP | __GFP_NOWARN, 0);
+	pool->page = alloc_pages(gfp | __GFP_COMP | __GFP_NOWARN,
+				 pool->rbpage_order);
 	if (unlikely(!pool->page))
 		return -ENOMEM;
 
@@ -374,7 +375,7 @@ ret:
 				      DMA_ATTR_SKIP_CPU_SYNC);
 	if (!iova) {
 		if (!pool->page_offset)
-			__free_pages(pool->page, 0);
+			__free_pages(pool->page, pool->rbpage_order);
 		pool->page = NULL;
 		return -ENOMEM;
 	}
@@ -602,7 +603,7 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	aq->rq.ena = 1;
 	aq->rq.pb_caching = 1;
 	aq->rq.lpb_aura = lpb_aura; /* Use large packet buffer aura */
-	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
+	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN(pfvf->rbsize) / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
 	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
 	aq->rq.qint_idx = 0;
@@ -934,7 +935,7 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 	if (type == AURA_NIX_RQ) {
 		pool_start = otx2_get_pool_idx(pfvf, type, 0);
 		pool_end = pfvf->hw.rqpool_cnt;
-		size = RCV_FRAG_LEN;
+		size = pfvf->rbsize;
 	}
 
 	/* Free SQB and RQB pointers from the aura pool */
@@ -1043,6 +1044,7 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 		return err;
 
 	pool->rbsize = buf_size;
+	pool->rbpage_order = get_order(buf_size);
 
 	/* Initialize this pool's context via AF */
 	aq = otx2_mbox_alloc_msg_npa_aq_enq(&pfvf->mbox);
@@ -1168,7 +1170,7 @@ int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 	}
 	for (pool_id = 0; pool_id < hw->rqpool_cnt; pool_id++) {
 		err = otx2_pool_init(pfvf, pool_id, stack_pages,
-				     num_ptrs, RCV_FRAG_LEN);
+				     num_ptrs, pfvf->rbsize);
 		if (err)
 			goto fail;
 	}

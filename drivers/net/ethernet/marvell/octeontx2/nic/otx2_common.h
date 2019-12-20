@@ -256,6 +256,7 @@ struct otx2_nic {
 	u16			iommu_domain_type;
 	u16			xtra_hdr;
 	u16			max_frs;
+	u16			rbsize; /* Receive buffer size */
 
 #define OTX2_FLAG_RX_TSTAMP_ENABLED		BIT_ULL(0)
 #define OTX2_FLAG_TX_TSTAMP_ENABLED		BIT_ULL(1)
@@ -315,6 +316,7 @@ struct otx2_nic {
 	 */
 #define OTX2_EDSA_HDR_LEN			16
 #define OTX2_HIGIG2_HDR_LEN			16
+#define OTX2_HW_TIMESTAMP_LEN			8
 	u32			addl_mtu;
 	/* Block address of NIX either BLKADDR_NIX0 or BLKADDR_NIX1 */
 	int			nix_blkaddr;

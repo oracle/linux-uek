@@ -206,16 +206,16 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf, struct sk_buff *skb,
 		 */
 		if (parse->laptr) {
 			otx2_set_rxtstamp(pfvf, skb, va);
-			off = 8;
+			off = OTX2_HW_TIMESTAMP_LEN;
 		}
 		off += pfvf->xtra_hdr;
 	}
 
 	page = virt_to_page(va);
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
-			va - page_address(page) + off, len - off, RCV_FRAG_LEN);
+			va - page_address(page) + off, len - off, pfvf->rbsize);
 
-	otx2_dma_unmap_page(pfvf, iova - OTX2_HEAD_ROOM, RCV_FRAG_LEN,
+	otx2_dma_unmap_page(pfvf, iova - OTX2_HEAD_ROOM, pfvf->rbsize,
 			    DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
 }
 
@@ -984,7 +984,7 @@ void otx2_cleanup_rx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 				pa = otx2_iova_to_phys(pfvf->iommu_domain,
 						       *iova);
 				otx2_dma_unmap_page(pfvf, *iova,
-						    RCV_FRAG_LEN,
+						    pfvf->rbsize,
 						    DMA_FROM_DEVICE,
 						    DMA_ATTR_SKIP_CPU_SYNC);
 				put_page(virt_to_page(phys_to_virt(pa)));
