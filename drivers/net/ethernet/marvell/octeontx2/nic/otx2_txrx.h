@@ -19,17 +19,7 @@
 #define SDP_CHAN_BASE	0x700
 #define CGX_CHAN_BASE	0x800
 
-#define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
 #define OTX2_DATA_ALIGN(X)	ALIGN(X, OTX2_ALIGN)
-#define RCV_FRAG_LEN1		\
-	((OTX2_DATA_ALIGN(DMA_BUFFER_LEN + NET_SKB_PAD)) + \
-	(OTX2_DATA_ALIGN(sizeof(struct skb_shared_info))))
-
-/* Prefer 2048 byte buffers for better last level cache
- * utilization or data distribution across regions.
- */
-#define RCV_FRAG_LEN		((RCV_FRAG_LEN1 < 2048) ? 2048 : RCV_FRAG_LEN1)
-
 #define OTX2_HEAD_ROOM		OTX2_ALIGN
 
 #define	OTX2_ETH_HLEN		(VLAN_ETH_HLEN + VLAN_HLEN)
@@ -38,6 +28,21 @@
 
 #define OTX2_MAX_GSO_SEGS	255
 #define OTX2_MAX_FRAGS_IN_SQE	9
+
+/* Rx buffer size should be in multiples of 128bytes */
+#define RCV_FRAG_LEN1(x)				\
+		((OTX2_HEAD_ROOM + OTX2_DATA_ALIGN(x)) + \
+		OTX2_DATA_ALIGN(sizeof(struct skb_shared_info)))
+
+/* Prefer 2048 byte buffers for better last level cache
+ * utilization or data distribution across regions.
+ */
+#define RCV_FRAG_LEN(x)	\
+		((RCV_FRAG_LEN1(x) < 2048) ? 2048 : RCV_FRAG_LEN1(x))
+
+#define DMA_BUFFER_LEN(x)		\
+		((x) - OTX2_HEAD_ROOM - \
+		OTX2_DATA_ALIGN(sizeof(struct skb_shared_info)))
 
 /* IRQ triggered when NIX_LF_CINTX_CNT[ECOUNT]
  * is equal to this value.
@@ -105,6 +110,7 @@ struct otx2_cq_poll {
 struct otx2_pool {
 	struct qmem		*stack;
 	struct qmem		*fc_addr;
+	u8			rbpage_order;
 	u16			rbsize;
 	u32			page_offset;
 	u16			pageref;
