@@ -158,7 +158,14 @@
 	"	call *%[thunk_target];\n"			\
 	"	jmp   903f;\n"					\
 	"       .align 16\n"					\
-	"902:	call __x86_indirect_thunk_%V[thunk_target];\n"	\
+	"902:"							\
+	ANNOTATE_NOSPEC_ALTERNATIVE				\
+	ALTERNATIVE(						\
+	"call __x86_indirect_thunk_%V[thunk_target];\n",	\
+	"lfence;\n"						\
+	ANNOTATE_RETPOLINE_SAFE					\
+	"call *%[thunk_target]\n",				\
+	X86_FEATURE_RETPOLINE_AMD)				\
 	"903:"
 
 # define THUNK_TARGET(addr) [thunk_target] "r" (addr)
