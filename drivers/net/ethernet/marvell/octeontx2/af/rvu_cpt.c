@@ -243,7 +243,7 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 
 	block = &rvu->hw->block[blkaddr];
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
-					block->type);
+					block->addr);
 	if (!num_lfs)
 		return CPT_AF_ERR_LF_INVALID;
 
@@ -302,7 +302,7 @@ int rvu_mbox_handler_cpt_lf_free(struct rvu *rvu, struct msg_req *req,
 
 	block = &rvu->hw->block[blkaddr];
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
-					block->type);
+					block->addr);
 	if (!num_lfs)
 		return CPT_AF_ERR_LF_INVALID;
 
@@ -407,7 +407,7 @@ int rvu_mbox_handler_cpt_inline_ipsec_cfg(struct rvu *rvu,
 
 	block = &rvu->hw->block[blkaddr];
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
-					block->type);
+					block->addr);
 	if (req->slot >= num_lfs)
 		return CPT_AF_ERR_LF_INVALID;
 
@@ -462,7 +462,7 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	int blkaddr, num_lfs, offs, lf;
 	struct rvu_block *block;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, req->hdr.pcifunc);
 	if (blkaddr < 0)
 		return blkaddr;
 
@@ -491,8 +491,8 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 
 		block = &rvu->hw->block[blkaddr];
 		num_lfs = rvu_get_rsrc_mapcount(
-					rvu_get_pfvf(rvu, req->hdr.pcifunc),
-					block->type);
+				rvu_get_pfvf(rvu, req->hdr.pcifunc),
+				block->addr);
 		if (lf >= num_lfs)
 			/* Slot is not valid for that VF */
 			goto error;

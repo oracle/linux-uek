@@ -371,7 +371,7 @@ int rvu_check_rsrc_policy(struct rvu *rvu, struct rsrc_attach *req,
 
 	if (req->sso) {
 		block = &hw->block[BLKADDR_SSO];
-		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
+		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->addr);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
 		limit = rvu->pf_limits.sso->a[pf].val;
 		familylfs = rvu_blk_count_rsrc(block, pcifunc,
@@ -386,7 +386,7 @@ int rvu_check_rsrc_policy(struct rvu *rvu, struct rsrc_attach *req,
 
 	if (req->ssow) {
 		block = &hw->block[BLKADDR_SSOW];
-		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
+		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->addr);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
 		limit = rvu->pf_limits.ssow->a[pf].val;
 		familylfs = rvu_blk_count_rsrc(block, pcifunc,
@@ -401,7 +401,7 @@ int rvu_check_rsrc_policy(struct rvu *rvu, struct rsrc_attach *req,
 
 	if (req->timlfs) {
 		block = &hw->block[BLKADDR_TIM];
-		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
+		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->addr);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
 		limit = rvu->pf_limits.tim->a[pf].val;
 		familylfs = rvu_blk_count_rsrc(block, pcifunc,
@@ -416,7 +416,7 @@ int rvu_check_rsrc_policy(struct rvu *rvu, struct rsrc_attach *req,
 
 	if (req->cptlfs) {
 		block = &hw->block[BLKADDR_CPT0];
-		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
+		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->addr);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
 		limit = rvu->pf_limits.cpt->a[pf].val;
 		familylfs = rvu_blk_count_rsrc(block, pcifunc,
@@ -439,10 +439,10 @@ fail:
 static int check_mapped_rsrcs(void *arg, struct rvu_quota *quota, int new_val)
 {
 	struct rvu_pfvf *pf = arg;
-	int type;
+	int addr;
 
-	for (type = 0; type < BLKTYPE_MAX; type++) {
-		if (rvu_get_rsrc_mapcount(pf, type) > 0)
+	for (addr = 0; addr < BLK_COUNT; addr++) {
+		if (rvu_get_rsrc_mapcount(pf, addr) > 0)
 			return 1;
 	}
 	return 0;
