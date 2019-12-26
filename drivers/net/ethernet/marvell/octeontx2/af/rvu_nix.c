@@ -1265,6 +1265,10 @@ exit:
 	rsp->qints = ((cfg >> 12) & 0xFFF);
 	rsp->cints = ((cfg >> 24) & 0xFFF);
 	rsp->hw_rx_tstamp_en = parent_pf->hw_rx_tstamp_en;
+	rsp->cgx_links = hw->cgx_links;
+	rsp->lbk_links = hw->lbk_links;
+	rsp->sdp_links = hw->sdp_links;
+
 	return rc;
 }
 

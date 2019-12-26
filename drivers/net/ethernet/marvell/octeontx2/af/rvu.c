@@ -1287,7 +1287,7 @@ static void rvu_detach_block(struct rvu *rvu, int pcifunc, int blktype)
 	if (blkaddr < 0)
 		return;
 
-	if (blkaddr == BLKADDR_NIX0)
+	if (blktype == BLKTYPE_NIX)
 		rvu_nix_reset_mac(pfvf, pcifunc);
 
 	block = &hw->block[blkaddr];
@@ -1343,6 +1343,8 @@ static int rvu_detach_rsrcs(struct rvu *rvu, struct rsrc_detach *detach,
 				continue;
 			else if ((blkid == BLKADDR_NIX0) && !detach->nixlf)
 				continue;
+			else if ((blkid == BLKADDR_NIX1) && !detach->nixlf)
+				continue;
 			else if ((blkid == BLKADDR_SSO) && !detach->sso)
 				continue;
 			else if ((blkid == BLKADDR_SSOW) && !detach->ssow)
@@ -1350,6 +1352,12 @@ static int rvu_detach_rsrcs(struct rvu *rvu, struct rsrc_detach *detach,
 			else if ((blkid == BLKADDR_TIM) && !detach->timlfs)
 				continue;
 			else if ((blkid == BLKADDR_CPT0) && !detach->cptlfs)
+				continue;
+			else if ((blkid == BLKADDR_CPT1) && !detach->cptlfs)
+				continue;
+			else if ((blkid == BLKADDR_REE0) && !detach->reelfs)
+				continue;
+			else if ((blkid == BLKADDR_REE1) && !detach->reelfs)
 				continue;
 		}
 		rvu_detach_block(rvu, pcifunc, block->type);
@@ -1400,13 +1408,28 @@ static int rvu_get_nix_blkaddr(struct rvu *rvu, u16 pcifunc)
 	return pfvf->nix_blkaddr;
 }
 
-static int rvu_get_attach_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
+static int rvu_get_attach_blkaddr(struct rvu *rvu, int blktype,
+				  u16 pcifunc, struct rsrc_attach *attach)
 {
 	int blkaddr;
 
 	switch (blktype) {
 	case BLKTYPE_NIX:
 		blkaddr = rvu_get_nix_blkaddr(rvu, pcifunc);
+		break;
+	case BLKTYPE_CPT:
+		if (attach->hdr.ver < RVU_MULTI_BLK_VER)
+			return rvu_get_blkaddr(rvu, blktype, 0);
+		blkaddr = attach->cpt_blkaddr ? attach->cpt_blkaddr :
+			  BLKADDR_CPT0;
+		if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
+			return -ENODEV;
+		break;
+	case BLKTYPE_REE:
+		blkaddr = attach->ree_blkaddr ? attach->ree_blkaddr :
+			  BLKADDR_REE0;
+		if (blkaddr != BLKADDR_REE0 && blkaddr != BLKADDR_REE1)
+			return -ENODEV;
 		break;
 	default:
 		return rvu_get_blkaddr(rvu, blktype, 0);
@@ -1418,8 +1441,8 @@ static int rvu_get_attach_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 	return -ENODEV;
 }
 
-static void rvu_attach_block(struct rvu *rvu, int pcifunc,
-			     int blktype, int num_lfs)
+static void rvu_attach_block(struct rvu *rvu, int pcifunc, int blktype,
+			     int num_lfs, struct rsrc_attach *attach)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -1431,7 +1454,7 @@ static void rvu_attach_block(struct rvu *rvu, int pcifunc,
 	if (!num_lfs)
 		return;
 
-	blkaddr = rvu_get_attach_blkaddr(rvu, blktype, pcifunc);
+	blkaddr = rvu_get_attach_blkaddr(rvu, blktype, pcifunc, attach);
 	if (blkaddr < 0)
 		return;
 
@@ -1485,7 +1508,8 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 
 	/* Only one NIX LF can be attached */
 	if (req->nixlf && !is_blktype_attached(pfvf, BLKTYPE_NIX)) {
-		blkaddr = rvu_get_attach_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+		blkaddr = rvu_get_attach_blkaddr(rvu, BLKTYPE_NIX,
+						 pcifunc, req);
 		if (blkaddr < 0)
 			return blkaddr;
 		block = &hw->block[blkaddr];
@@ -1547,7 +1571,11 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 	}
 
 	if (req->cptlfs) {
-		block = &hw->block[BLKADDR_CPT0];
+		blkaddr = rvu_get_attach_blkaddr(rvu, BLKTYPE_CPT,
+						 pcifunc, req);
+		if (blkaddr < 0)
+			return blkaddr;
+		block = &hw->block[blkaddr];
 		if (req->cptlfs > block->lf.max) {
 			dev_err(&rvu->pdev->dev,
 				"Func 0x%x: Invalid CPTLF req, %d > max %d\n",
@@ -1561,11 +1589,46 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 			goto fail;
 	}
 
+	if (req->hdr.ver >= RVU_MULTI_BLK_VER && req->reelfs) {
+		blkaddr = rvu_get_attach_blkaddr(rvu, BLKTYPE_REE,
+						 pcifunc, req);
+		if (blkaddr < 0)
+			return blkaddr;
+		block = &hw->block[blkaddr];
+		if (req->reelfs > block->lf.max) {
+			dev_err(&rvu->pdev->dev,
+				"Func 0x%x: Invalid REELF req, %d > max %d\n",
+				 pcifunc, req->cptlfs, block->lf.max);
+			return -EINVAL;
+		}
+		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->addr);
+		free_lfs = rvu_rsrc_free_count(&block->lf);
+		if (req->reelfs > mappedlfs &&
+		    ((req->reelfs - mappedlfs) > free_lfs))
+			goto fail;
+	}
+
 	return 0;
 
 fail:
 	dev_info(rvu->dev, "Request for %s failed\n", block->name);
 	return -ENOSPC;
+}
+
+static bool rvu_attach_from_same_block(struct rvu *rvu, int blktype,
+				       struct rsrc_attach *attach)
+{
+	int blkaddr, num_lfs;
+
+	blkaddr = rvu_get_attach_blkaddr(rvu, blktype,
+					 attach->hdr.pcifunc, attach);
+	if (blkaddr < 0)
+		return false;
+
+	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, attach->hdr.pcifunc),
+					blkaddr);
+	/* Requester already has LFs from given block ? */
+	return !!num_lfs;
 }
 
 int rvu_mbox_handler_attach_resources(struct rvu *rvu,
@@ -1588,10 +1651,10 @@ int rvu_mbox_handler_attach_resources(struct rvu *rvu,
 
 	/* Now attach the requested resources */
 	if (attach->nixlf)
-		rvu_attach_block(rvu, pcifunc, BLKTYPE_NIX, 1);
+		rvu_attach_block(rvu, pcifunc, BLKTYPE_NIX, 1, attach);
 
 	if (attach->npalf)
-		rvu_attach_block(rvu, pcifunc, BLKTYPE_NPA, 1);
+		rvu_attach_block(rvu, pcifunc, BLKTYPE_NPA, 1, attach);
 
 	if (attach->sso) {
 		/* RVU func doesn't know which exact LF or slot is attached
@@ -1601,25 +1664,38 @@ int rvu_mbox_handler_attach_resources(struct rvu *rvu,
 		 */
 		if (attach->modify)
 			rvu_detach_block(rvu, pcifunc, BLKTYPE_SSO);
-		rvu_attach_block(rvu, pcifunc, BLKTYPE_SSO, attach->sso);
+		rvu_attach_block(rvu, pcifunc, BLKTYPE_SSO,
+				 attach->sso, attach);
 	}
 
 	if (attach->ssow) {
 		if (attach->modify)
 			rvu_detach_block(rvu, pcifunc, BLKTYPE_SSOW);
-		rvu_attach_block(rvu, pcifunc, BLKTYPE_SSOW, attach->ssow);
+		rvu_attach_block(rvu, pcifunc, BLKTYPE_SSOW,
+				 attach->ssow, attach);
 	}
 
 	if (attach->timlfs) {
 		if (attach->modify)
 			rvu_detach_block(rvu, pcifunc, BLKTYPE_TIM);
-		rvu_attach_block(rvu, pcifunc, BLKTYPE_TIM, attach->timlfs);
+		rvu_attach_block(rvu, pcifunc, BLKTYPE_TIM,
+				 attach->timlfs, attach);
 	}
 
 	if (attach->cptlfs) {
-		if (attach->modify)
+		if (attach->modify &&
+		    rvu_attach_from_same_block(rvu, BLKTYPE_CPT, attach))
 			rvu_detach_block(rvu, pcifunc, BLKTYPE_CPT);
-		rvu_attach_block(rvu, pcifunc, BLKTYPE_CPT, attach->cptlfs);
+		rvu_attach_block(rvu, pcifunc, BLKTYPE_CPT,
+				 attach->cptlfs, attach);
+	}
+
+	if (attach->hdr.ver >= RVU_MULTI_BLK_VER && attach->reelfs) {
+		if (attach->modify &&
+		    rvu_attach_from_same_block(rvu, BLKTYPE_REE, attach))
+			rvu_detach_block(rvu, pcifunc, BLKTYPE_REE);
+		rvu_attach_block(rvu, pcifunc, BLKTYPE_REE,
+				 attach->reelfs, attach);
 	}
 
 exit:
@@ -1743,6 +1819,28 @@ int rvu_mbox_handler_msix_offset(struct rvu *rvu, struct msg_req *req,
 		rsp->cptlf_msixoff[slot] =
 			rvu_get_msix_offset(rvu, pfvf, BLKADDR_CPT0, lf);
 	}
+
+	rsp->cpt1_lfs = pfvf->cpt1_lfs;
+	for (slot = 0; slot < rsp->cpt1_lfs; slot++) {
+		lf = rvu_get_lf(rvu, &hw->block[BLKADDR_CPT1], pcifunc, slot);
+		rsp->cpt1_lf_msixoff[slot] =
+			rvu_get_msix_offset(rvu, pfvf, BLKADDR_CPT1, lf);
+	}
+
+	rsp->ree0_lfs = pfvf->ree0_lfs;
+	for (slot = 0; slot < rsp->ree0_lfs; slot++) {
+		lf = rvu_get_lf(rvu, &hw->block[BLKADDR_REE0], pcifunc, slot);
+		rsp->ree0_lf_msixoff[slot] =
+			rvu_get_msix_offset(rvu, pfvf, BLKADDR_REE0, lf);
+	}
+
+	rsp->ree1_lfs = pfvf->ree1_lfs;
+	for (slot = 0; slot < rsp->ree1_lfs; slot++) {
+		lf = rvu_get_lf(rvu, &hw->block[BLKADDR_REE1], pcifunc, slot);
+		rsp->ree1_lf_msixoff[slot] =
+			rvu_get_msix_offset(rvu, pfvf, BLKADDR_REE1, lf);
+	}
+
 	return 0;
 }
 
