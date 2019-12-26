@@ -923,7 +923,7 @@ int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu, struct msg_req *req,
 	block = &hw->block[blkaddr];
 
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
-					block->type);
+					block->addr);
 	if (!num_lfs)
 		return SSOW_AF_ERR_LF_INVALID;
 
