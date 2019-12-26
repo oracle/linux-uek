@@ -207,9 +207,8 @@ static int rvu_blk_count_rsrc(struct rvu_block *block, u16 pcifunc, u8 rshift)
 }
 
 static int rvu_txsch_count_rsrc(struct rvu *rvu, int lvl, u16 pcifunc,
-				u8 rshift)
+				u8 rshift, struct nix_hw *nix_hw)
 {
-	struct nix_hw *nix_hw = get_nix_hw(rvu->hw, BLKADDR_NIX0);
 	struct nix_txsch *txsch = &nix_hw->txsch[lvl];
 	int count = 0, schq;
 
@@ -233,6 +232,8 @@ int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
 	struct rvu_block *block;
+	struct nix_txsch *txsch;
+	struct nix_hw *nix_hw;
 	int pf, curlfs;
 
 	mutex_lock(&rvu->rsrc_lock);
@@ -245,6 +246,9 @@ int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 	block = &hw->block[BLKADDR_NIX0];
 	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
 	rsp->nix = rvu->pf_limits.nix->a[pf].val - curlfs;
+
+	block = &hw->block[BLKADDR_NIX1];
+	rsp->nix1 = rvu_rsrc_free_count(&block->lf);
 
 	block = &hw->block[BLKADDR_SSO];
 	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
@@ -262,35 +266,72 @@ int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
 	rsp->cpt = rvu->pf_limits.cpt->a[pf].val - curlfs;
 
+	block = &hw->block[BLKADDR_CPT1];
+	rsp->cpt1 = rvu_rsrc_free_count(&block->lf);
+
+	block = &hw->block[BLKADDR_REE0];
+	rsp->ree0 = rvu_rsrc_free_count(&block->lf);
+
+	block = &hw->block[BLKADDR_REE1];
+	rsp->ree1 = rvu_rsrc_free_count(&block->lf);
+
 	if (rvu->hw->cap.nix_fixed_txschq_mapping) {
 		rsp->schq[NIX_TXSCH_LVL_SMQ] = 1;
 		rsp->schq[NIX_TXSCH_LVL_TL4] = 1;
 		rsp->schq[NIX_TXSCH_LVL_TL3] = 1;
 		rsp->schq[NIX_TXSCH_LVL_TL2] = 1;
+		/* NIX1 */
+		if (!is_block_implemented(rvu->hw, BLKADDR_NIX1))
+			goto out;
+		rsp->schq_nix1[NIX_TXSCH_LVL_SMQ] = 1;
+		rsp->schq_nix1[NIX_TXSCH_LVL_TL4] = 1;
+		rsp->schq_nix1[NIX_TXSCH_LVL_TL3] = 1;
+		rsp->schq_nix1[NIX_TXSCH_LVL_TL2] = 1;
 	} else {
+		nix_hw = get_nix_hw(hw, BLKADDR_NIX0);
 		curlfs = rvu_txsch_count_rsrc(rvu, NIX_TXSCH_LVL_SMQ, pcifunc,
-					      RVU_PFVF_PF_SHIFT);
+					      RVU_PFVF_PF_SHIFT, nix_hw);
 		rsp->schq[NIX_TXSCH_LVL_SMQ] =
 			rvu->pf_limits.smq->a[pf].val - curlfs;
 
 		curlfs = rvu_txsch_count_rsrc(rvu, NIX_TXSCH_LVL_TL4, pcifunc,
-					      RVU_PFVF_PF_SHIFT);
+					      RVU_PFVF_PF_SHIFT, nix_hw);
 		rsp->schq[NIX_TXSCH_LVL_TL4] =
 			rvu->pf_limits.tl4->a[pf].val - curlfs;
 
 		curlfs = rvu_txsch_count_rsrc(rvu, NIX_TXSCH_LVL_TL3, pcifunc,
-					      RVU_PFVF_PF_SHIFT);
+					      RVU_PFVF_PF_SHIFT, nix_hw);
 		rsp->schq[NIX_TXSCH_LVL_TL3] =
 			rvu->pf_limits.tl3->a[pf].val - curlfs;
 
 		curlfs = rvu_txsch_count_rsrc(rvu, NIX_TXSCH_LVL_TL2, pcifunc,
-					      RVU_PFVF_PF_SHIFT);
+					      RVU_PFVF_PF_SHIFT, nix_hw);
 		rsp->schq[NIX_TXSCH_LVL_TL2] =
 			rvu->pf_limits.tl2->a[pf].val - curlfs;
+		/* NIX1 */
+		if (!is_block_implemented(rvu->hw, BLKADDR_NIX1))
+			goto out;
+		nix_hw = get_nix_hw(hw, BLKADDR_NIX1);
+		txsch = &nix_hw->txsch[NIX_TXSCH_LVL_SMQ];
+		rsp->schq_nix1[NIX_TXSCH_LVL_SMQ] =
+				rvu_rsrc_free_count(&txsch->schq);
+
+		txsch = &nix_hw->txsch[NIX_TXSCH_LVL_TL4];
+		rsp->schq_nix1[NIX_TXSCH_LVL_TL4] =
+				rvu_rsrc_free_count(&txsch->schq);
+
+		txsch = &nix_hw->txsch[NIX_TXSCH_LVL_TL3];
+		rsp->schq_nix1[NIX_TXSCH_LVL_TL3] =
+				rvu_rsrc_free_count(&txsch->schq);
+
+		txsch = &nix_hw->txsch[NIX_TXSCH_LVL_TL2];
+		rsp->schq_nix1[NIX_TXSCH_LVL_TL2] =
+				rvu_rsrc_free_count(&txsch->schq);
 	}
 
+	rsp->schq_nix1[NIX_TXSCH_LVL_TL1] = 1;
+out:
 	rsp->schq[NIX_TXSCH_LVL_TL1] = 1;
-
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return 0;
@@ -299,10 +340,20 @@ int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 int rvu_check_txsch_policy(struct rvu *rvu, struct nix_txsch_alloc_req *req,
 				u16 pcifunc)
 {
-	struct nix_hw *nix_hw = get_nix_hw(rvu->hw, BLKADDR_NIX0);
-	struct nix_txsch *txsch;
 	int lvl, req_schq, pf = rvu_get_pf(pcifunc);
 	int limit, familylfs, delta;
+	struct nix_txsch *txsch;
+	struct nix_hw *nix_hw;
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return blkaddr;
+
+	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+
+	if (!nix_hw)
+		return -ENODEV;
 
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
 		txsch = &nix_hw->txsch[lvl];
@@ -328,8 +379,9 @@ int rvu_check_txsch_policy(struct rvu *rvu, struct nix_txsch_alloc_req *req,
 		}
 
 		familylfs = rvu_txsch_count_rsrc(rvu, lvl, pcifunc,
-						 RVU_PFVF_PF_SHIFT);
-		delta = req_schq - rvu_txsch_count_rsrc(rvu, lvl, pcifunc, 0);
+						 RVU_PFVF_PF_SHIFT, nix_hw);
+		delta = req_schq - rvu_txsch_count_rsrc(rvu, lvl, pcifunc,
+							0, nix_hw);
 
 		if ((delta > 0) && /* always allow usage decrease */
 		    ((limit < familylfs + delta) ||
