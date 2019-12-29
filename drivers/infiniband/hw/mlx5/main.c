@@ -523,7 +523,13 @@ static void get_atomic_caps(struct mlx5_ib_dev *dev,
 	if (((atomic_operations & tmp) == tmp) &&
 	    (atomic_size_qp & MLX5_ATOMIC_SIZE_QP_8BYTES) &&
 	    (atomic_req_8B_endianness_mode)) {
-		props->atomic_cap = IB_ATOMIC_HCA;
+		if (MLX5_CAP_ATOMIC(dev->mdev, fetch_add_pci_atomic) &
+			    IB_PCI_ATOMIC_OPERATION_8_BYTE_SIZE_SUP &&
+		    MLX5_CAP_ATOMIC(dev->mdev, compare_swap_pci_atomic) &
+			    IB_PCI_ATOMIC_OPERATION_8_BYTE_SIZE_SUP)
+			props->atomic_cap = IB_ATOMIC_GLOB;
+		else
+			props->atomic_cap = IB_ATOMIC_HCA;
 	} else {
 		props->atomic_cap = IB_ATOMIC_NONE;
 	}
