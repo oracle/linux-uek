@@ -247,6 +247,12 @@ enum ib_signature_guard_cap {
 	IB_GUARD_T10DIF_CSUM	= 1 << 1,
 };
 
+enum ib_pci_atomic_op_size {
+	IB_PCI_ATOMIC_OPERATION_4_BYTE_SIZE_SUP = 1 << 0,
+	IB_PCI_ATOMIC_OPERATION_8_BYTE_SIZE_SUP = 1 << 1,
+	IB_PCI_ATOMIC_OPERATION_16_BYTE_SIZE_SUP = 1 << 2,
+};
+
 enum ib_atomic_cap {
 	IB_ATOMIC_NONE,
 	IB_ATOMIC_HCA,
