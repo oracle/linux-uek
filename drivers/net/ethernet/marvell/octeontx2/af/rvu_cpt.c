@@ -399,20 +399,17 @@ int rvu_mbox_handler_cpt_inline_ipsec_cfg(struct rvu *rvu,
 {
 	u16 pcifunc = req->hdr.pcifunc;
 	struct rvu_block *block;
-	int cptlf, blkaddr;
-	int num_lfs, ret;
+	int cptlf, blkaddr, ret;
+	u16 actual_slot;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, pcifunc);
+	blkaddr = rvu_get_blkaddr_from_slot(rvu, BLKTYPE_CPT, pcifunc,
+					    req->slot, &actual_slot);
 	if (blkaddr < 0)
 		return CPT_AF_ERR_LF_INVALID;
 
 	block = &rvu->hw->block[blkaddr];
-	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
-					block->addr);
-	if (req->slot >= num_lfs)
-		return CPT_AF_ERR_LF_INVALID;
 
-	cptlf = rvu_get_lf(rvu, block, pcifunc, req->slot);
+	cptlf = rvu_get_lf(rvu, block, pcifunc, actual_slot);
 	if (cptlf < 0)
 		return CPT_AF_ERR_LF_INVALID;
 
