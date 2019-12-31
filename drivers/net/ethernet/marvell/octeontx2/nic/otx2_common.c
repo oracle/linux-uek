@@ -583,6 +583,7 @@ void otx2_sqb_flush(struct otx2_nic *pfvf)
  * RED accepts pkts if free pointers > 102 & <= 205.
  * Drops pkts if free pointers < 102.
  */
+#define RQ_BP_LVL_AURA   (255 - ((85 * 256) / 100)) /* BP when 85% is full */
 #define RQ_PASS_LVL_AURA (255 - ((95 * 256) / 100)) /* RED when 95% is full */
 #define RQ_DROP_LVL_AURA (255 - ((99 * 256) / 100)) /* Drop when 99% is full */
 
@@ -1018,8 +1019,8 @@ static int otx2_aura_init(struct otx2_nic *pfvf, int aura_id,
 	if (aura_id < pfvf->hw.rqpool_cnt) {
 		aq->aura.bp_ena = 0;
 		aq->aura.nix0_bpid = pfvf->bpid[0];
-		/* Set backpressure level is same as RQ aura pass level */
-		aq->aura.bp = RQ_PASS_LVL_AURA;
+		/* Set backpressure level for RQ's Aura */
+		aq->aura.bp = RQ_BP_LVL_AURA;
 	}
 
 	/* Fill AQ info */

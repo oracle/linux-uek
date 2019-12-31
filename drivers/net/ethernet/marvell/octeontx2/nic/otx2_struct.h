@@ -232,15 +232,18 @@ struct nix_rx_sg_s {
 	u64 segs       : 2;
 	u64 seg3_size  : 16;
 	u64 seg2_size  : 16;
-	u64 seg1_size  : 16;
+	u64 seg_size   : 16;
 #else
-	u64 seg1_size  : 16;
+	u64 seg_size   : 16;
 	u64 seg2_size  : 16;
 	u64 seg3_size  : 16;
 	u64 segs       : 2;
 	u64 rsvd_59_50 : 10;
 	u64 subdc      : 4;
 #endif
+	u64 seg_addr;
+	u64 seg2_addr;
+	u64 seg3_addr;
 };
 
 struct nix_send_comp_s {
@@ -253,6 +256,17 @@ struct nix_send_comp_s {
 	u64 sqe_id	: 16;
 	u64 rsvd_24_63	: 40;
 #endif
+};
+
+struct nix_cqe_rx_s {
+	struct nix_cqe_hdr_s  hdr;
+	struct nix_rx_parse_s parse;
+	struct nix_rx_sg_s sg;
+};
+
+struct nix_cqe_tx_s {
+	struct nix_cqe_hdr_s  hdr;
+	struct nix_send_comp_s comp;
 };
 
 /* NIX SQE header structure */
