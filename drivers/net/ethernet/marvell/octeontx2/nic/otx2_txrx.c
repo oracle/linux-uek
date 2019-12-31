@@ -80,15 +80,13 @@ static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
 static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 				 struct otx2_cq_queue *cq,
 				 struct otx2_snd_queue *sq,
-				 struct nix_cqe_hdr_s *cqe_hdr,
+				 struct nix_cqe_tx_s *cqe,
 				 int budget, int *tx_pkts, int *tx_bytes)
 {
-	struct nix_send_comp_s *snd_comp;
+	struct nix_send_comp_s *snd_comp = &cqe->comp;
 	struct sk_buff *skb = NULL;
 	struct sg_list *sg;
 
-	snd_comp = (struct nix_send_comp_s *)
-			((void *)cqe_hdr + sizeof(*cqe_hdr));
 	if (unlikely(snd_comp->status)) {
 		/* tx packet error handling*/
 		if (netif_msg_tx_err(pfvf)) {
@@ -150,7 +148,7 @@ static inline void otx2_set_taginfo(struct nix_rx_parse_s *parse,
 }
 
 static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
-				   struct nix_cqe_hdr_s *cqe_hdr,
+				   struct nix_cqe_rx_s *cqe,
 				   struct sk_buff *skb)
 {
 	enum pkt_hash_types hash_type = PKT_HASH_TYPE_NONE;
@@ -167,7 +165,7 @@ static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
 			hash_type = PKT_HASH_TYPE_L4;
 		else
 			hash_type = PKT_HASH_TYPE_L3;
-		hash = cqe_hdr->flow_tag;
+		hash = cqe->hdr.flow_tag;
 	}
 	skb_set_hash(skb, hash, hash_type);
 }
@@ -220,13 +218,10 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf, struct sk_buff *skb,
 }
 
 static inline bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
-					 struct nix_rx_parse_s *parse, int qidx)
+					 struct nix_cqe_rx_s *cqe, int qidx)
 {
 	struct otx2_drv_stats *stats = &pfvf->hw.drv_stats;
-	struct nix_rx_sg_s *sg;
-	void *start, *end;
-	u64 *iova;
-	int seg;
+	struct nix_rx_parse_s *parse = &cqe->parse;
 
 	if (netif_msg_rx_err(pfvf))
 		netdev_err(pfvf->netdev,
@@ -276,79 +271,38 @@ static inline bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
 		return false;
 	}
 
-	start = (void *)parse + sizeof(*parse);
-	end = start + ((parse->desc_sizem1 + 1) * 16);
-	while ((start + sizeof(*sg)) < end) {
-		sg = (struct nix_rx_sg_s *)start;
-		iova = (void *)sg + sizeof(*sg);
+	/* If RXALL is enabled pass on packets to stack. */
+	if (cqe->sg.segs && (pfvf->netdev->features & NETIF_F_RXALL))
+		return false;
 
-		/* If RXALL is enabled pass on packets to stack */
-		if (sg->segs && pfvf->netdev->features & NETIF_F_RXALL)
-			return false;
-
-		for (seg = 0; seg < sg->segs; seg++) {
-			otx2_aura_freeptr(pfvf, qidx, *iova & ~0x07ULL);
-			iova++;
-		}
-		if (sg->segs == 1)
-			start += sizeof(*sg) + sizeof(u64);
-		else
-			start += sizeof(*sg) + (3 * sizeof(u64));
-	}
+	/* Free buffer back to pool */
+	if (cqe->sg.segs)
+		otx2_aura_freeptr(pfvf, qidx, cqe->sg.seg_addr & ~0x07ULL);
 	return true;
 }
 
 static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 				 struct napi_struct *napi,
 				 struct otx2_cq_queue *cq,
-				 struct nix_cqe_hdr_s *cqe_hdr)
+				 struct nix_cqe_rx_s *cqe)
 {
-	struct nix_rx_parse_s *parse;
+	struct nix_rx_parse_s *parse = &cqe->parse;
 	struct sk_buff *skb = NULL;
-	struct nix_rx_sg_s *sg;
-	void *start, *end;
-	int seg, len;
-	u16 *sg_lens;
-	u64 *iova;
 
-	/* CQE_HDR_S for a Rx pkt is always followed by RX_PARSE_S */
-	parse = (struct nix_rx_parse_s *)((void *)cqe_hdr + sizeof(*cqe_hdr));
 	if (unlikely(parse->errlev || parse->errcode)) {
-		if (otx2_check_rcv_errors(pfvf, parse, cq->cq_idx))
+		if (otx2_check_rcv_errors(pfvf, cqe, cq->cq_idx))
 			return;
 	}
-
-	start = (void *)parse + sizeof(*parse);
-	end = start + ((parse->desc_sizem1 + 1) * 16);
 
 	skb = napi_get_frags(napi);
 	if (unlikely(!skb))
 		return;
 
-	/* Run through the each NIX_RX_SG_S subdc and frame the skb */
-	while ((start + sizeof(*sg)) < end) {
-		sg = (struct nix_rx_sg_s *)start;
-		sg_lens = (void *)sg;
-		iova = (void *)sg + sizeof(*sg);
+	otx2_skb_add_frag(pfvf, skb, cqe->sg.seg_addr,
+			  cqe->sg.seg_size, parse);
+	cq->pool_ptrs++;
 
-		for (seg = 0; seg < sg->segs; seg++) {
-			len = sg_lens[frag_num(seg)];
-			otx2_skb_add_frag(pfvf, skb, *iova, len, parse);
-			iova++;
-		}
-		cq->pool_ptrs += sg->segs;
-
-		/* When SEGS = 1, only one IOVA is followed by NIX_RX_SG_S.
-		 * When SEGS >= 2, three IOVAs will follow NIX_RX_SG_S,
-		 * irrespective of whether 2 SEGS are valid or all 3.
-		 */
-		if (sg->segs == 1)
-			start += sizeof(*sg) + sizeof(u64);
-		else
-			start += sizeof(*sg) + (3 * sizeof(u64));
-	}
-
-	otx2_set_rxhash(pfvf, cqe_hdr, skb);
+	otx2_set_rxhash(pfvf, cqe, skb);
 
 	skb_record_rx_queue(skb, cq->cq_idx);
 	if (pfvf->netdev->features & NETIF_F_RXCSUM)
@@ -363,23 +317,27 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 				       struct napi_struct *napi,
 				       struct otx2_cq_queue *cq, int budget)
 {
-	struct otx2_pool *rbpool = cq->rbpool;
-	struct nix_cqe_hdr_s *cqe_hdr;
+	struct nix_cqe_rx_s *cqe;
 	int processed_cqe = 0;
 	s64 bufptr;
 
 	/* Make sure HW writes to CQ are done */
 	dma_rmb();
 	while (likely(processed_cqe < budget)) {
-		cqe_hdr = otx2_get_next_cqe(cq);
-		if (unlikely(!cqe_hdr)) {
+		cqe = (struct nix_cqe_rx_s *)CQE_ADDR(cq, cq->cq_head);
+		if (cqe->hdr.cqe_type == NIX_XQE_TYPE_INVALID ||
+		    !cqe->sg.subdc) {
 			if (!processed_cqe)
 				return 0;
 			break;
 		}
-		otx2_rcv_pkt_handler(pfvf, napi, cq, cqe_hdr);
+		cq->cq_head++;
+		cq->cq_head &= (cq->cqe_cnt - 1);
 
-		cqe_hdr->cqe_type = NIX_XQE_TYPE_INVALID;
+		otx2_rcv_pkt_handler(pfvf, napi, cq, cqe);
+
+		cqe->hdr.cqe_type = NIX_XQE_TYPE_INVALID;
+		cqe->sg.subdc = NIX_SUBDC_NOP;
 		processed_cqe++;
 	}
 
@@ -392,7 +350,7 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 
 	/* Refill pool with new buffers */
 	while (cq->pool_ptrs) {
-		bufptr = otx2_alloc_rbuf(pfvf, rbpool, GFP_ATOMIC);
+		bufptr = otx2_alloc_rbuf(pfvf, cq->rbpool, GFP_ATOMIC);
 		if (unlikely(bufptr <= 0)) {
 			struct refill_work *work;
 			struct delayed_work *dwork;
@@ -410,7 +368,7 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 		otx2_aura_freeptr(pfvf, cq->cq_idx, bufptr + OTX2_HEAD_ROOM);
 		cq->pool_ptrs--;
 	}
-	otx2_get_page(rbpool);
+	otx2_get_page(cq->rbpool);
 
 	return processed_cqe;
 }
@@ -418,27 +376,23 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 static inline int otx2_tx_napi_handler(struct otx2_nic *pfvf,
 				       struct otx2_cq_queue *cq, int budget)
 {
-	struct nix_cqe_hdr_s *cqe_hdr;
 	int tx_pkts = 0, tx_bytes = 0;
-	struct otx2_snd_queue *sq;
-	struct netdev_queue *txq;
+	struct nix_cqe_tx_s *cqe;
 	int processed_cqe = 0;
-
-	sq = &pfvf->qset.sq[cq->cint_idx];
 
 	/* Make sure HW writes to CQ are done */
 	dma_rmb();
 	while (likely(processed_cqe < budget)) {
-		cqe_hdr = otx2_get_next_cqe(cq);
-		if (unlikely(!cqe_hdr)) {
+		cqe = (struct nix_cqe_tx_s *)otx2_get_next_cqe(cq);
+		if (unlikely(!cqe)) {
 			if (!processed_cqe)
 				return 0;
 			break;
 		}
-		otx2_snd_pkt_handler(pfvf, cq, sq, cqe_hdr, budget,
-				     &tx_pkts, &tx_bytes);
+		otx2_snd_pkt_handler(pfvf, cq, &pfvf->qset.sq[cq->cint_idx],
+				     cqe, budget, &tx_pkts, &tx_bytes);
 
-		cqe_hdr->cqe_type = NIX_XQE_TYPE_INVALID;
+		cqe->hdr.cqe_type = NIX_XQE_TYPE_INVALID;
 		processed_cqe++;
 	}
 
@@ -447,6 +401,8 @@ static inline int otx2_tx_napi_handler(struct otx2_nic *pfvf,
 		     ((u64)cq->cq_idx << 32) | processed_cqe);
 
 	if (likely(tx_pkts)) {
+		struct netdev_queue *txq;
+
 		txq = netdev_get_tx_queue(pfvf->netdev, cq->cint_idx);
 		netdev_tx_completed_queue(txq, tx_pkts, tx_bytes);
 		/* Check if queue was stopped earlier due to ring full */
@@ -960,41 +916,20 @@ EXPORT_SYMBOL(otx2_sq_append_skb);
 
 void otx2_cleanup_rx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 {
-	struct nix_cqe_hdr_s *cqe_hdr;
-	struct nix_rx_parse_s *parse;
-	struct nix_rx_sg_s *sg;
+	struct nix_cqe_rx_s *cqe;
 	int processed_cqe = 0;
-	void *start, *end;
-	u64 *iova, pa;
-	int seg;
+	u64 iova, pa;
 
 	/* Make sure HW writes to CQ are done */
 	dma_rmb();
-	while ((cqe_hdr = otx2_get_next_cqe(cq))) {
-		parse = (struct nix_rx_parse_s *)
-				((void *)cqe_hdr + sizeof(*cqe_hdr));
-		start = (void *)parse + sizeof(*parse);
-		end = start + ((parse->desc_sizem1 + 1) * 16);
-		while ((start + sizeof(*sg)) < end) {
-			sg = (struct nix_rx_sg_s *)start;
-			iova = (void *)sg + sizeof(*sg);
-			for (seg = 0; seg < sg->segs; seg++) {
-				/* Free IOVA */
-				*iova -= OTX2_HEAD_ROOM;
-				pa = otx2_iova_to_phys(pfvf->iommu_domain,
-						       *iova);
-				otx2_dma_unmap_page(pfvf, *iova,
-						    pfvf->rbsize,
-						    DMA_FROM_DEVICE,
-						    DMA_ATTR_SKIP_CPU_SYNC);
-				put_page(virt_to_page(phys_to_virt(pa)));
-				iova++;
-			}
-			start += sizeof(*sg);
-			start += (sg->segs == 1) ?
-				  sizeof(u64) : 3 * sizeof(u64);
-		}
-		cqe_hdr->cqe_type = NIX_XQE_TYPE_INVALID;
+	while ((cqe = (struct nix_cqe_rx_s *)otx2_get_next_cqe(cq))) {
+		if (!cqe->sg.subdc)
+			continue;
+		iova = cqe->sg.seg_addr - OTX2_HEAD_ROOM;
+		pa = otx2_iova_to_phys(pfvf->iommu_domain, iova);
+		otx2_dma_unmap_page(pfvf, iova, pfvf->rbsize,
+				    DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+		put_page(virt_to_page(phys_to_virt(pa)));
 		processed_cqe++;
 	}
 
@@ -1005,10 +940,9 @@ void otx2_cleanup_rx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 
 void otx2_cleanup_tx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 {
-	struct nix_send_comp_s *snd_comp;
-	struct nix_cqe_hdr_s *cqe_hdr;
 	struct sk_buff *skb = NULL;
 	struct otx2_snd_queue *sq;
+	struct nix_cqe_tx_s *cqe;
 	int processed_cqe = 0;
 	struct sg_list *sg;
 
@@ -1016,18 +950,14 @@ void otx2_cleanup_tx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 
 	/* Make sure HW writes to CQ are done */
 	dma_rmb();
-	while ((cqe_hdr = otx2_get_next_cqe(cq))) {
-		snd_comp = (struct nix_send_comp_s *)
-				((void *)cqe_hdr + sizeof(*cqe_hdr));
-		sg = &sq->sg[snd_comp->sqe_id];
+	while ((cqe = (struct nix_cqe_tx_s *)otx2_get_next_cqe(cq))) {
+		sg = &sq->sg[cqe->comp.sqe_id];
 		skb = (struct sk_buff *)sg->skb;
 		if (skb) {
 			otx2_dma_unmap_skb_frags(pfvf, sg);
 			dev_kfree_skb_any(skb);
 			sg->skb = (u64)NULL;
 		}
-
-		cqe_hdr->cqe_type = NIX_XQE_TYPE_INVALID;
 		processed_cqe++;
 	}
 
