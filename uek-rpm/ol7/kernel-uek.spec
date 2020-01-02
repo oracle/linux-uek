@@ -878,27 +878,31 @@ This package provides debug information for package kernel-tools.
 
 #
 # This macro creates a kernel-<subpackage>-debuginfo package.
-#	%%kernel_debuginfo_package <subpackage>
+#	%%kernel_debuginfo_package [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_debuginfo_package() \
-%package %{?1:%{1}-}debuginfo\
-Summary: Debug information for package %{name}%{?1:-%{1}}\
+%define kernel_debuginfo_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-debuginfo\
+Summary: Debug information for package %{variant_name}\
 Group: Development/Debug\
 Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}\
-Provides: %{name}%{?1:-%{1}}-debuginfo-%{_target_cpu} = %{version}-%{release}\
+Provides: %{variant_name}-debuginfo-%{_target_cpu} = %{version}-%{release}\
 AutoReqProv: no\
-%description -n %{name}%{?1:-%{1}}-debuginfo\
-This package provides debug information for package %{name}%{?1:-%{1}}.\
-This is required to use SystemTap with %{name}%{?1:-%{1}}-%{KVERREL}.\
+%description -n %{variant_name}-debuginfo\
+This package provides debug information for package %{variant_name}.\
+This is required to use SystemTap with %{variant_name}-%{KVERREL}.\
 %{expand:%%global debuginfo_args %{?debuginfo_args} -p '/.*/%%{KVERREL}%{?1:\.%{1}}/.*|/.*%%{KVERREL}%{?1:\.%{1}}(\.debug)?' -o debuginfo%{?1}.list}\
 %{nil}
 
 #
 # This macro creates a kernel-<subpackage>-devel package.
-#	%%kernel_devel_package <subpackage> <pretty-name>
+#	%%kernel_devel_package [-o] <subpackage> <pretty-name>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_devel_package() \
-%package %{?1:%{1}-}devel\
+%define kernel_devel_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-devel\
 Summary: Development package for building kernel modules to match the %{?2:%{2} }kernel\
 Group: System Environment/Kernel\
 Provides: kernel%{?variant}%{?1:-%{1}}-devel-%{_target_cpu} = %{version}-%{release}\
@@ -918,7 +922,7 @@ Requires: elfutils-libs >= 0.160\
 %if %{with_dtrace}\
 Requires: libdtrace-ctf >= 1.1.0\
 %endif\
-%description -n kernel%{?variant}%{?1:-%{1}}-devel\
+%description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2} }kernel package.\
 %{nil}
@@ -926,15 +930,16 @@ against the %{?2:%{2} }kernel package.\
 #
 # This macro creates a kernel-<subpackage> and its -devel and -debuginfo too.
 #	%%define variant_summary The Linux kernel compiled for <configuration>
-#	%%kernel_variant_package [-n <pretty-name>] <subpackage>
+#	%%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(n:) \
-%package %1\
+%define kernel_variant_package(n:o) \
+%package -n kernel%{?variant}%{!-o:-}%1\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
 %kernel_reqprovconf\
-%{expand:%%kernel_devel_package %1 %{!?-n:%1}%{?-n:%{-n*}}}\
-%{expand:%%kernel_debuginfo_package %1}\
+%{expand:%%kernel_devel_package %{-o:-o} %1 %{!?-n:%1}%{?-n:%{-n*}}}\
+%{expand:%%kernel_debuginfo_package %{-o:-o} %1}\
 %{nil}
 
 
@@ -1009,13 +1014,13 @@ This package includes 4k page size for aarch64 kernel.
 This package include debug kernel for 4k page size.
 
 %define variant_summary A kernel for embedded platform.
-%kernel_variant_package emb
-%description emb
+%kernel_variant_package -o emb
+%description -n kernel%{?variant}emb
 This package includes embedded kernel.
 
 %define variant_summary A kernel for embedded platform with extra debugging enabled.
-%kernel_variant_package embdebug
-%description embdebug
+%kernel_variant_package -o emb-debug
+%description -n kernel%{?variant}emb-debug
 This package includes debug embedded kernel.
 
 %prep
@@ -1301,7 +1306,7 @@ BuildKernel() {
 	cp configs/config-debug .config
     elif [ "$Flavour" == "emb" ]; then
 	cp configs/config-emb .config
-    elif [ "$Flavour" == "embdebug" ]; then
+    elif [ "$Flavour" == "emb-debug" ]; then
 	cp configs/config-emb-debug .config
     else
 	cp configs/config .config
@@ -1620,7 +1625,7 @@ BuildKernel %make_target %kernel_image debug
 BuildKernel %make_target %kernel_image PAEdebug
 %endif
 %if %{with_embedded}
-BuildKernel %make_target %kernel_image embdebug
+BuildKernel %make_target %kernel_image emb-debug
 %endif
 %endif
 
@@ -1715,9 +1720,9 @@ make -j1 htmldocs || %{doc_build_fail}
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
     fi \
     if [ "%{with_embedded_debug}" != "0" ]; then \
-      mv certs/signing_key.pem.sign.embdebug certs/signing_key.pem \
-      mv certs/signing_key.x509.sign.embdebug certs/signing_key.x509 \
-      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.embdebug/ %{dgst} \
+      mv certs/signing_key.pem.sign.emb-debug certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.emb-debug certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb-debug/ %{dgst} \
     fi \
   fi \
 %{nil}
@@ -1899,10 +1904,11 @@ rm -rf $RPM_BUILD_ROOT
 
 #
 # This macro defines a %%post script for a kernel*-devel package.
-#	%%kernel_devel_post [<subpackage>]
+#	%%kernel_devel_post [-o] [<subpackage>]
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_devel_post() \
-%{expand:%%post %{?1:%{1}-}devel}\
+%define kernel_devel_post(o) \
+%{expand:%%post -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-devel}\
 if [ -f /etc/sysconfig/kernel ]\
 then\
     . /etc/sysconfig/kernel || exit $?\
@@ -1917,11 +1923,12 @@ fi\
 %{nil}
 
 # This macro defines a %%posttrans script for a kernel package.
-#	%%kernel_variant_posttrans [<subpackage>]
+#	%%kernel_variant_posttrans [-o] [<subpackage>]
+# -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
-%define kernel_variant_posttrans() \
-%{expand:%%posttrans %{?1}}\
+%define kernel_variant_posttrans(o) \
+%{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
 %{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
 %{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
@@ -1932,15 +1939,16 @@ fi\
 
 #
 # This macro defines a %%post script for a kernel package and its devel package.
-#	%%kernel_variant_post [-v <subpackage>] [-r <replace>]
+#	%%kernel_variant_post [-o][-u][-v <subpackage>] [-r <replace>]
+# -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
-%define kernel_variant_post(uv:r:) \
-%{expand:%%kernel_devel_post %{!-u:%{?-v*}}}\
-%{expand:%%kernel_variant_posttrans %{!-u:%{?-v*}}}\
-%{expand:%%post %{!-u:%{?-v*}}}\
+%define kernel_variant_post(ouv:r:) \
+%{expand:%%kernel_devel_post %{-o:-o} %{!-u:%{?-v*}}}\
+%{expand:%%kernel_variant_posttrans %{-o:-o} %{!-u:%{?-v*}}}\
+%{expand:%%post -n kernel%{?variant}%{!-u:%{!-o:-}%{?-v*}}}\
 %{-r:\
-if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
+if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ]; then\
   /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
@@ -1950,18 +1958,19 @@ fi\
 [ -f /etc/default/grub ] && . /etc/default/grub\
 DIST_DTFILE="/boot/dtb-%{KVERREL}%{!-u:%{?-v:.%{-v*}}}/$GRUB_DEFAULT_DTB"\
 if [ -f "$DIST_DTFILE" ]; then\
-    %{_sbindir}/new-kernel-pkg --package kernel%{!-u:-uek}%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
 else\
-    %{_sbindir}/new-kernel-pkg --package kernel%{!-u:-uek}%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 fi\
 %{nil}
 
 #
 # This macro defines a %%preun script for a kernel package.
-#	%%kernel_variant_preun <subpackage>
+#	%%kernel_variant_preun [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_preun() \
-%{expand:%%preun %{?1}}\
+%define kernel_variant_preun(o) \
+%{expand:%%preun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
 %{_sbindir}/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
@@ -1971,10 +1980,11 @@ fi\
 
 #
 # This macro defines a %%pre script for a kernel package.
-#	%%kernel_variant_pre <subpackage>
+#	%%kernel_variant_pre [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_pre() \
-%{expand:%%pre %{?1}}\
+%define kernel_variant_pre(o) \
+%{expand:%%pre -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
@@ -2046,13 +2056,13 @@ fi\
 %kernel_variant_preun 4k
 %kernel_variant_post -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
 
-%kernel_variant_pre emb
-%kernel_variant_preun emb
-%kernel_variant_post -v emb -r (kernel%{variant}|kernel%{variant}-debug)
+%kernel_variant_pre -o emb
+%kernel_variant_preun -o emb
+%kernel_variant_post -o -v emb -r (kernel%{variant}|kernel%{variant}-debug)
 
-%kernel_variant_pre embdebug
-%kernel_variant_preun embdebug
-%kernel_variant_post -v embdebug -r (kernel-emb|kernel-embdebug)
+%kernel_variant_pre -o emb-debug
+%kernel_variant_preun -o emb-debug
+%kernel_variant_post -o -v emb-debug
 
 if [ -x /sbin/ldconfig ]
 then
@@ -2162,11 +2172,12 @@ fi
 #
 # This macro defines the %%files sections for a kernel package
 # and its devel and debuginfo packages.
-#	%%kernel_variant_files [-k vmlinux] <condition> <subpackage>
+#	%%kernel_variant_files [-k vmlinux] [-o] <condition> <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_files(k:) \
+%define kernel_variant_files(k:o) \
 %if %{1}\
-%{expand:%%files %{?2}}\
+%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}}\
 %defattr(-,root,root)\
 /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 %if %{with_fips} \
@@ -2202,7 +2213,7 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
-%{expand:%%files %{?2:%{2}-}devel}\
+%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
 %verify(not mtime) /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
@@ -2210,9 +2221,9 @@ fi
 %if %{with_debuginfo}\
 %ifnarch noarch\
 %if %{fancy_debuginfo}\
-%{expand:%%files -f debuginfo%{?2}.list %{?2:%{2}-}debuginfo}\
+%{expand:%%files -f debuginfo%{?2}.list -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
 %else\
-%{expand:%%files %{?2:%{2}-}debuginfo}\
+%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
 %endif\
 %defattr(-,root,root)\
 %if !%{fancy_debuginfo}\
@@ -2240,7 +2251,7 @@ fi
 %kernel_variant_files %{with_4k_ps} 4k
 %kernel_variant_files %{with_4k_ps_debug} 4kdebug
 
-%kernel_variant_files %{with_embedded} emb
-%kernel_variant_files %{with_embedded_debug} embdebug
+%kernel_variant_files -o %{with_embedded} emb
+%kernel_variant_files -o %{with_embedded_debug} emb-debug
 
 %changelog
