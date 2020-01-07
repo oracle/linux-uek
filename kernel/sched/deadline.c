@@ -1773,6 +1773,37 @@ static struct sched_dl_entity *pick_next_dl_entity(struct rq *rq,
 	return rb_entry(left, struct sched_dl_entity, rb_node);
 }
 
+static void for_each_dl_task(struct rq *rq,
+                             void (*fn)(struct rq *rq, struct task_struct *p))
+{
+	struct dl_rq *dl_rq = &rq->dl;
+	struct sched_dl_entity *dl_ent;
+	struct task_struct *task;
+	struct rb_node *rb_node;
+
+	rb_node = rb_first_cached(&dl_rq->root);
+	while (rb_node) {
+		dl_ent = rb_entry(rb_node, struct sched_dl_entity, rb_node);
+		task = dl_task_of(dl_ent);
+		fn(rq, task);
+		rb_node = rb_next(rb_node);
+	}
+}
+
+#ifdef CONFIG_SCHED_CORE
+
+static void core_sched_activate_dl(struct rq *rq)
+{
+	for_each_dl_task(rq, sched_core_add);
+}
+
+static void core_sched_deactivate_dl(struct rq *rq)
+{
+	for_each_dl_task(rq, sched_core_remove);
+}
+
+#endif
+
 static struct task_struct *
 pick_task_dl(struct rq *rq)
 {
@@ -2462,6 +2493,10 @@ const struct sched_class dl_sched_class = {
 	.rq_online              = rq_online_dl,
 	.rq_offline             = rq_offline_dl,
 	.task_woken		= task_woken_dl,
+#ifdef CONFIG_SCHED_CORE
+	.core_sched_activate    = core_sched_activate_dl,
+	.core_sched_deactivate  = core_sched_deactivate_dl,
+#endif
 #endif
 
 	.task_tick		= task_tick_dl,

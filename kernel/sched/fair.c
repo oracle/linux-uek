@@ -9970,6 +9970,40 @@ static void rq_offline_fair(struct rq *rq)
 	unthrottle_offline_cfs_rqs(rq);
 }
 
+static void for_each_fair_task(struct rq *rq,
+			       void (*fn)(struct rq *rq, struct task_struct *p))
+{
+	struct cfs_rq *cfs_rq, *pos;
+	struct sched_entity *se;
+	struct task_struct *task;
+
+	for_each_leaf_cfs_rq_safe(rq, cfs_rq, pos) {
+		for (se = __pick_first_entity(cfs_rq);
+		     se != NULL;
+		     se = __pick_next_entity(se)) {
+
+			if (!entity_is_task(se))
+				continue;
+
+			task = task_of(se);
+			fn(rq, task);
+		}
+	}
+}
+
+#ifdef CONFIG_SCHED_CORE
+
+static void core_sched_activate_fair(struct rq *rq)
+{
+	for_each_fair_task(rq, sched_core_add);
+}
+
+static void core_sched_deactivate_fair(struct rq *rq)
+{
+	for_each_fair_task(rq, sched_core_remove);
+}
+
+#endif
 #endif /* CONFIG_SMP */
 
 /*
@@ -10490,6 +10524,10 @@ const struct sched_class fair_sched_class = {
 
 	.task_dead		= task_dead_fair,
 	.set_cpus_allowed	= set_cpus_allowed_common,
+#ifdef CONFIG_SCHED_CORE
+	.core_sched_activate	= core_sched_activate_fair,
+	.core_sched_deactivate	= core_sched_deactivate_fair,
+#endif
 #endif
 
 	.task_tick		= task_tick_fair,

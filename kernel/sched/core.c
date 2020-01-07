@@ -75,6 +75,11 @@ int sysctl_sched_rt_runtime = 950000;
 
 #ifdef CONFIG_SCHED_CORE
 
+struct core_sched_cpu_work {
+	struct work_struct work;
+	cpumask_t smt_mask;
+};
+
 DEFINE_STATIC_KEY_FALSE(__sched_core_enabled);
 
 /* kernel prio, less is more */
@@ -183,6 +188,23 @@ static void sched_core_dequeue(struct rq *rq, struct task_struct *p)
 	rb_erase(&p->core_node, &rq->core_tree);
 }
 
+static bool sched_core_enqueued(struct task_struct *task)
+{
+	return !RB_EMPTY_NODE(&task->core_node);
+}
+
+void sched_core_add(struct rq *rq, struct task_struct *p)
+{
+	if (p->core_cookie && task_on_rq_queued(p))
+		sched_core_enqueue(rq, p);
+}
+
+void sched_core_remove(struct rq *rq, struct task_struct *p)
+{
+	if (sched_core_enqueued(p))
+		sched_core_dequeue(rq, p);
+}
+
 /*
  * Find left-most (aka, highest priority) task matching @cookie.
  */
@@ -270,10 +292,132 @@ void sched_core_put(void)
 	mutex_unlock(&sched_core_mutex);
 }
 
+enum cpu_action {
+	CPU_ACTIVATE = 1,
+	CPU_DEACTIVATE = 2
+};
+
+static int __activate_cpu_core_sched(void *data);
+static int __deactivate_cpu_core_sched(void *data);
+static void core_sched_cpu_update(unsigned int cpu, enum cpu_action action);
+
+static int activate_cpu_core_sched(struct core_sched_cpu_work *work)
+{
+	if (static_branch_unlikely(&__sched_core_enabled))
+		stop_machine(__activate_cpu_core_sched, (void *) work, NULL);
+
+	return 0;
+}
+
+static int deactivate_cpu_core_sched(struct core_sched_cpu_work *work)
+{
+	if (static_branch_unlikely(&__sched_core_enabled))
+		stop_machine(__deactivate_cpu_core_sched, (void *) work, NULL);
+
+	return 0;
+}
+
+static void core_sched_cpu_activate_fn(struct work_struct *work)
+{
+	struct core_sched_cpu_work *cpu_work;
+
+	cpu_work = container_of(work, struct core_sched_cpu_work, work);
+	activate_cpu_core_sched(cpu_work);
+	kfree(cpu_work);
+}
+
+static void core_sched_cpu_deactivate_fn(struct work_struct *work)
+{
+	struct core_sched_cpu_work *cpu_work;
+
+	cpu_work = container_of(work, struct core_sched_cpu_work, work);
+	deactivate_cpu_core_sched(cpu_work);
+	kfree(cpu_work);
+}
+
+static void core_sched_cpu_update(unsigned int cpu, enum cpu_action action)
+{
+	struct core_sched_cpu_work *work;
+
+	work = kmalloc(sizeof(struct core_sched_cpu_work), GFP_ATOMIC);
+	if (!work)
+		return;
+
+	if (action == CPU_ACTIVATE)
+		INIT_WORK(&work->work, core_sched_cpu_activate_fn);
+	else
+		INIT_WORK(&work->work, core_sched_cpu_deactivate_fn);
+
+	cpumask_copy(&work->smt_mask, cpu_smt_mask(cpu));
+
+	queue_work(system_highpri_wq, &work->work);
+}
+
+static int __activate_cpu_core_sched(void *data)
+{
+	struct core_sched_cpu_work *work = (struct core_sched_cpu_work *) data;
+	struct rq *rq;
+	int i;
+
+	if (cpumask_weight(&work->smt_mask) < 2)
+		return 0;
+
+	for_each_cpu(i, &work->smt_mask) {
+		const struct sched_class *class;
+
+		rq = cpu_rq(i);
+
+		if (rq->core_enabled)
+			continue;
+
+		for_each_class(class) {
+			if (!class->core_sched_activate)
+				continue;
+
+			if (cpu_online(i))
+				class->core_sched_activate(rq);
+		}
+
+		rq->core_enabled = true;
+	}
+	return 0;
+}
+
+static int __deactivate_cpu_core_sched(void *data)
+{
+	struct core_sched_cpu_work *work = (struct core_sched_cpu_work *) data;
+	struct rq *rq;
+	int i;
+
+	if (cpumask_weight(&work->smt_mask) > 2)
+		return 0;
+
+	for_each_cpu(i, &work->smt_mask) {
+		const struct sched_class *class;
+
+		rq = cpu_rq(i);
+
+		if (!rq->core_enabled)
+			continue;
+
+		for_each_class(class) {
+			if (!class->core_sched_deactivate)
+				continue;
+
+			if (cpu_online(i))
+				class->core_sched_deactivate(cpu_rq(i));
+		}
+
+		rq->core_enabled = false;
+	}
+	return 0;
+}
+
 #else /* !CONFIG_SCHED_CORE */
 
 static inline void sched_core_enqueue(struct rq *rq, struct task_struct *p) { }
 static inline void sched_core_dequeue(struct rq *rq, struct task_struct *p) { }
+static inline void core_sched_cpu_update(unsigned int cpu, int action) { }
 
 #endif /* CONFIG_SCHED_CORE */
 
@@ -6600,13 +6744,8 @@ int sched_cpu_activate(unsigned int cpu)
 	 */
 	if (cpumask_weight(cpu_smt_mask(cpu)) == 2) {
 		static_branch_inc_cpuslocked(&sched_smt_present);
-#ifdef CONFIG_SCHED_CORE
-		if (static_branch_unlikely(&__sched_core_enabled)) {
-			rq->core_enabled = true;
-		}
-#endif
 	}
-
+	core_sched_cpu_update(cpu, CPU_ACTIVATE);
 #endif
 	set_cpu_active(cpu, true);
 
@@ -6653,15 +6792,10 @@ int sched_cpu_deactivate(unsigned int cpu)
 	 * When going down, decrement the number of cores with SMT present.
 	 */
 	if (cpumask_weight(cpu_smt_mask(cpu)) == 2) {
-#ifdef CONFIG_SCHED_CORE
-		struct rq *rq = cpu_rq(cpu);
-		if (static_branch_unlikely(&__sched_core_enabled)) {
-			rq->core_enabled = false;
-		}
-#endif
 		static_branch_dec_cpuslocked(&sched_smt_present);
 
 	}
+	core_sched_cpu_update(cpu, CPU_DEACTIVATE);
 #endif
 
 	if (!sched_smp_initialized)
@@ -6736,9 +6870,6 @@ int sched_cpu_dying(unsigned int cpu)
 	update_max_interval();
 	nohz_balance_exit_idle(rq);
 	hrtick_clear(rq);
-#ifdef CONFIG_SCHED_CORE
-	rq->core = NULL;
-#endif
 	return 0;
 }
 #endif

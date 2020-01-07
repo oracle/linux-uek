@@ -1072,6 +1072,9 @@ static inline raw_spinlock_t *rq_lockp(struct rq *rq)
 	return &rq->__lock;
 }
 
+void sched_core_add(struct rq *rq, struct task_struct *p);
+void sched_core_remove(struct rq *rq, struct task_struct *p);
+
 #else /* !CONFIG_SCHED_CORE */
 
 static inline bool sched_core_enabled(struct rq *rq)
@@ -1859,6 +1862,10 @@ struct sched_class {
 
 	void (*rq_online)(struct rq *rq);
 	void (*rq_offline)(struct rq *rq);
+#ifdef CONFIG_SCHED_CORE
+	void (*core_sched_activate)(struct rq *rq);
+	void (*core_sched_deactivate)(struct rq *rq);
+#endif
 #endif
 
 	void (*task_tick)(struct rq *rq, struct task_struct *p, int queued);
