@@ -1656,9 +1656,7 @@ int otx2_open(struct net_device *netdev)
 	}
 
 	/* Set NPC parsing mode */
-	err = otx2_set_npc_parse_mode(pf);
-	if (err)
-		goto err_free_cints;
+	otx2_set_npc_parse_mode(pf, false);
 
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
@@ -2665,6 +2663,8 @@ static void otx2_remove(struct pci_dev *pdev)
 		otx2_config_hw_tx_tstamp(pf, false);
 	if (pf->flags & OTX2_FLAG_RX_TSTAMP_ENABLED)
 		otx2_config_hw_rx_tstamp(pf, false);
+
+	otx2_set_npc_parse_mode(pf, true);
 
 	/* Disable link notifications */
 	otx2_cgx_config_linkevents(pf, false);

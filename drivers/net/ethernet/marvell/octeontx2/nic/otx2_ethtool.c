@@ -1310,7 +1310,7 @@ end:
 	return rc;
 }
 
-int otx2_set_npc_parse_mode(struct otx2_nic *pfvf)
+int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind)
 {
 	struct npc_set_pkind *req;
 	int rc = -EAGAIN;
@@ -1320,7 +1320,9 @@ int otx2_set_npc_parse_mode(struct otx2_nic *pfvf)
 	if (!req)
 		goto end;
 
-	if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
+	if (unbind)
+		req->mode = OTX2_PRIV_FLAGS_DEFAULT;
+	else if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
 		req->mode = OTX2_PRIV_FLAGS_HIGIG;
 	else if (OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))
 		req->mode = OTX2_PRIV_FLAGS_EDSA;
@@ -1330,11 +1332,13 @@ int otx2_set_npc_parse_mode(struct otx2_nic *pfvf)
 	req->dir  = PKIND_RX;
 
 	/* req AF to change pkind on both the dir */
-	if (req->mode == OTX2_PRIV_FLAGS_HIGIG)
+	if (req->mode == OTX2_PRIV_FLAGS_HIGIG || unbind)
 		req->dir |= PKIND_TX;
 
 	if (!otx2_sync_mbox_msg(&pfvf->mbox))
 		rc = 0;
+	else
+		pfvf->ethtool_flags &= ~req->mode;
 end:
 	otx2_mbox_unlock(&pfvf->mbox);
 	return rc;
