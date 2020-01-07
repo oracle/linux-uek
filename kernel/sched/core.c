@@ -4644,9 +4644,6 @@ int available_idle_cpu(int cpu)
 	if (!idle_cpu(cpu))
 		return 0;
 
-	if (vcpu_is_preempted(cpu))
-		return 0;
-
 	return 1;
 }
 
