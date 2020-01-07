@@ -67,7 +67,8 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 	hw->cap.nix_tx_link_bp = true;
 	hw->cap.nix_rx_multicast = true;
 
-	if (is_rvu_96xx_B0(rvu) || is_rvu_95xx_A0(rvu)) {
+	if (is_rvu_96xx_B0(rvu) || is_rvu_95xx_A0(rvu) ||
+	    is_rvu_post_96xx_C0(rvu) || is_rvu_95xx_B0(rvu)) {
 		hw->cap.nix_fixed_txschq_mapping = true;
 		hw->cap.nix_txsch_per_cgx_lmac = 4;
 		hw->cap.nix_txsch_per_lbk_lmac = 132;

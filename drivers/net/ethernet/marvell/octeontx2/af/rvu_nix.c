@@ -3331,6 +3331,9 @@ int rvu_nix_init(struct rvu *rvu)
 	/* Restore CINT timer delay to HW reset values */
 	rvu_write64(rvu, blkaddr, NIX_AF_CINT_DELAY, 0x0ULL);
 
+	/* For better performance use NDC TX instead of NDC RX for SQ's SQEs" */
+	rvu_write64(rvu, blkaddr, NIX_AF_SEB_CFG, 0x1ULL);
+
 	if (blkaddr == BLKADDR_NIX0) {
 		hw->nix0 = devm_kzalloc(rvu->dev,
 					sizeof(struct nix_hw), GFP_KERNEL);
