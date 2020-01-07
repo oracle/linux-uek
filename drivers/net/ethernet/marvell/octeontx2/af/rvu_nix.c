@@ -205,8 +205,8 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf)
 
 		/* By default we enable pause frames */
 		if ((pcifunc & RVU_PFVF_FUNC_MASK) == 0)
-			cgx_lmac_set_pause_frm(rvu_cgx_pdata(cgx_id, rvu),
-					       lmac_id, true, true);
+			cgx_lmac_enadis_pause_frm(rvu_cgx_pdata(cgx_id, rvu),
+						  lmac_id, true, true);
 		break;
 	case NIX_INTF_TYPE_LBK:
 		vf = (pcifunc & RVU_PFVF_FUNC_MASK) - 1;
@@ -3577,6 +3577,10 @@ int rvu_mbox_handler_nix_lf_ptp_tx_enable(struct rvu *rvu, struct msg_req *req,
 	int nixlf;
 	u64 cfg;
 
+	/* Silicon does not support enabling time stamp in higig mode */
+	if (rvu_cgx_is_higig2_enabled(rvu, rvu_get_pf(pcifunc)))
+		return NIX_AF_ERR_PTP_CONFIG_FAIL;
+
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
 		return NIX_AF_ERR_AF_LF_INVALID;
@@ -3991,4 +3995,25 @@ void rvu_nix_reset_mac(struct rvu_pfvf *pfvf, int pcifunc)
 	/* overwrite vf mac address with default_mac */
 	if (from_vf)
 		ether_addr_copy(pfvf->mac_addr, pfvf->default_mac);
+}
+
+bool rvu_nix_is_ptp_tx_enabled(struct rvu *rvu, u16 pcifunc)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+	int blkaddr;
+	int nixlf;
+	u64 cfg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	block = &hw->block[blkaddr];
+	nixlf = rvu_get_lf(rvu, block, pcifunc, 0);
+	if (nixlf < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_TX_CFG(nixlf));
+	return (cfg & BIT_ULL(32));
 }

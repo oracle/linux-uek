@@ -670,6 +670,7 @@ enum nix_af_status {
 	NIX_AF_INVAL_SSO_PF_FUNC    = -420,
 	NIX_AF_ERR_TX_VTAG_NOSPC    = -421,
 	NIX_AF_ERR_RX_VTAG_INUSE    = -422,
+	NIX_AF_ERR_PTP_CONFIG_FAIL  = -423,
 };
 
 /* For NIX RX vtag action  */
@@ -1139,6 +1140,7 @@ enum npc_af_status {
 	NPC_MCAM_ALLOC_DENIED	= -702,
 	NPC_MCAM_ALLOC_FAILED	= -703,
 	NPC_MCAM_PERM_DENIED	= -704,
+	NPC_AF_ERR_HIGIG_CONFIG_FAIL	= -705,
 };
 
 struct npc_mcam_alloc_entry_req {

@@ -2641,7 +2641,9 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 				   struct msg_rsp *rsp)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
-	int pf = rvu_get_pf(req->hdr.pcifunc);
+	u16 pcifunc = req->hdr.pcifunc;
+	int pf = rvu_get_pf(pcifunc);
+	bool enable_higig2 = false;
 	int blkaddr, nixlf, rc;
 	u64 rxpkind, txpkind;
 	u8 cgx_id, lmac_id;
@@ -2653,8 +2655,14 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 	if (req->mode & OTX2_PRIV_FLAGS_EDSA) {
 		rxpkind = NPC_RX_EDSA_PKIND;
 	} else if (req->mode & OTX2_PRIV_FLAGS_HIGIG) {
+		/* Silicon does not support enabling higig in time stamp mode */
+		if (pfvf->hw_rx_tstamp_en ||
+		    rvu_nix_is_ptp_tx_enabled(rvu, pcifunc))
+			return NPC_AF_ERR_HIGIG_CONFIG_FAIL;
+
 		rxpkind = NPC_RX_HIGIG_PKIND;
 		txpkind = NPC_TX_HIGIG_PKIND;
+		enable_higig2 = true;
 	} else if (req->mode & OTX2_PRIV_FLAGS_CUSTOM) {
 		rxpkind = req->pkind;
 		txpkind = req->pkind;
@@ -2685,5 +2693,9 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 		rvu_write64(rvu, blkaddr, NIX_AF_LFX_TX_PARSE_CFG(nixlf),
 			    txpkind);
 	}
+
+	if (enable_higig2 ^ rvu_cgx_is_higig2_enabled(rvu, pf))
+		rvu_cgx_enadis_higig2(rvu, pf, enable_higig2);
+
 	return 0;
 }

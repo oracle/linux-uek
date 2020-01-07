@@ -571,14 +571,31 @@ int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable)
 }
 EXPORT_SYMBOL(cgx_lmac_tx_enable);
 
-int cgx_lmac_get_pause_frm(void *cgxd, int lmac_id,
-			   u8 *tx_pause, u8 *rx_pause)
+static int  cgx_lmac_get_higig2_pause_frm_status(void *cgxd, int lmac_id,
+						 u8 *tx_pause, u8 *rx_pause)
+{
+	struct cgx *cgx = cgxd;
+	u64 cfg;
+
+	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL);
+
+	*rx_pause = !!(cfg & CGXX_SMUX_HG2_CONTROL_RX_ENABLE);
+	*tx_pause = !!(cfg & CGXX_SMUX_HG2_CONTROL_TX_ENABLE);
+	return 0;
+}
+
+int cgx_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
+				  u8 *tx_pause, u8 *rx_pause)
 {
 	struct cgx *cgx = cgxd;
 	u64 cfg;
 
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
+
+	if (is_higig2_enabled(cgxd, lmac_id))
+		return cgx_lmac_get_higig2_pause_frm_status(cgxd, lmac_id,
+							    tx_pause, rx_pause);
 
 	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL);
 	*rx_pause = !!(cfg & CGX_SMUX_RX_FRM_CTL_CTL_BCK);
@@ -587,16 +604,53 @@ int cgx_lmac_get_pause_frm(void *cgxd, int lmac_id,
 	*tx_pause = !!(cfg & CGX_SMUX_TX_CTL_L2P_BP_CONV);
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_get_pause_frm);
+EXPORT_SYMBOL(cgx_lmac_get_pause_frm_status);
 
-int cgx_lmac_set_pause_frm(void *cgxd, int lmac_id,
-			   u8 tx_pause, u8 rx_pause)
+static int cgx_lmac_enadis_higig2_pause_frm(void *cgxd, int lmac_id,
+					    u8 tx_pause, u8 rx_pause)
 {
 	struct cgx *cgx = cgxd;
 	u64 cfg;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
-		return -ENODEV;
+	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL);
+	cfg &= ~CGXX_SMUX_HG2_CONTROL_RX_ENABLE;
+	cfg |= rx_pause ? CGXX_SMUX_HG2_CONTROL_RX_ENABLE : 0x0;
+	cgx_write(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL, cfg);
+
+	/* Forward PAUSE information to TX block */
+	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL);
+	cfg &= ~CGX_SMUX_RX_FRM_CTL_CTL_BCK;
+	cfg |= rx_pause ? CGX_SMUX_RX_FRM_CTL_CTL_BCK : 0x0;
+	cgx_write(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL, cfg);
+
+	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL);
+	cfg &= ~CGXX_SMUX_HG2_CONTROL_TX_ENABLE;
+	cfg |= tx_pause ? CGXX_SMUX_HG2_CONTROL_TX_ENABLE : 0x0;
+	cgx_write(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL, cfg);
+
+	/* allow intra packet hg2 generation */
+	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_INTERVAL);
+	cfg &= ~CGXX_SMUX_TX_PAUSE_PKT_HG2_INTRA_EN;
+	cfg |= tx_pause ? CGXX_SMUX_TX_PAUSE_PKT_HG2_INTRA_EN : 0x0;
+	cgx_write(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_INTERVAL, cfg);
+
+	cfg = cgx_read(cgx, 0, CGXX_CMR_RX_OVR_BP);
+	if (tx_pause) {
+		cfg &= ~CGX_CMR_RX_OVR_BP_EN(lmac_id);
+	} else {
+		cfg |= CGX_CMR_RX_OVR_BP_EN(lmac_id);
+		cfg &= ~CGX_CMR_RX_OVR_BP_BP(lmac_id);
+	}
+	cgx_write(cgx, 0, CGXX_CMR_RX_OVR_BP, cfg);
+
+	return 0;
+}
+
+static int cgx_lmac_enadis_8023_pause_frm(void *cgxd, int lmac_id,
+					  u8 tx_pause, u8 rx_pause)
+{
+	struct cgx *cgx = cgxd;
+	u64 cfg;
 
 	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL);
 	cfg &= ~CGX_SMUX_RX_FRM_CTL_CTL_BCK;
@@ -616,9 +670,27 @@ int cgx_lmac_set_pause_frm(void *cgxd, int lmac_id,
 		cfg &= ~CGX_CMR_RX_OVR_BP_BP(lmac_id);
 	}
 	cgx_write(cgx, 0, CGXX_CMR_RX_OVR_BP, cfg);
+
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_set_pause_frm);
+
+int cgx_lmac_enadis_pause_frm(void *cgxd, int lmac_id,
+			      u8 tx_pause, u8 rx_pause)
+{
+	struct cgx *cgx = cgxd;
+
+	if (!cgx || lmac_id >= cgx->lmac_count)
+		return -ENODEV;
+
+	if (is_higig2_enabled(cgxd, lmac_id))
+		return	cgx_lmac_enadis_higig2_pause_frm(cgxd, lmac_id,
+						   tx_pause, rx_pause);
+	else
+		return  cgx_lmac_enadis_8023_pause_frm(cgxd, lmac_id,
+						   tx_pause, rx_pause);
+	return 0;
+}
+EXPORT_SYMBOL(cgx_lmac_enadis_pause_frm);
 
 static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 {
@@ -650,6 +722,12 @@ static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 		cgx_write(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_INTERVAL,
 			  cfg | (DEFAULT_PAUSE_TIME / 2));
 
+		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_INTERVAL);
+		cfg = FIELD_SET(HG2_INTRA_INTERVAL, (DEFAULT_PAUSE_TIME / 2),
+				cfg);
+		cgx_write(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_INTERVAL,
+			  cfg);
+
 		cgx_write(cgx, lmac_id, CGXX_GMP_GMI_TX_PAUSE_PKT_TIME,
 			  DEFAULT_PAUSE_TIME);
 
@@ -668,10 +746,18 @@ static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 		cfg &= ~CGX_GMP_GMI_RXX_FRM_CTL_CTL_BCK;
 		cgx_write(cgx, lmac_id, CGXX_GMP_GMI_RXX_FRM_CTL, cfg);
 
+		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL);
+		cfg &= ~CGXX_SMUX_HG2_CONTROL_RX_ENABLE;
+		cgx_write(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL, cfg);
+
 		/* Disable pause frames transmission */
 		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_TX_CTL);
 		cfg &= ~CGX_SMUX_TX_CTL_L2P_BP_CONV;
 		cgx_write(cgx, lmac_id, CGXX_SMUX_TX_CTL, cfg);
+
+		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL);
+		cfg &= ~CGXX_SMUX_HG2_CONTROL_TX_ENABLE;
+		cgx_write(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL, cfg);
 	}
 }
 
@@ -1283,6 +1369,37 @@ int cgx_lmac_linkup_start(void *cgxd)
 	return 0;
 }
 EXPORT_SYMBOL(cgx_lmac_linkup_start);
+
+void cgx_lmac_enadis_higig2(void *cgxd, int lmac_id, bool enable)
+{
+	struct cgx *cgx = cgxd;
+	u64 req = 0, resp;
+
+	/* disable 802.3 pause frames before enabling higig2 */
+	if (enable) {
+		cgx_lmac_enadis_8023_pause_frm(cgxd, lmac_id, false, false);
+		cgx_lmac_enadis_higig2_pause_frm(cgxd, lmac_id, true, true);
+	}
+
+	req = FIELD_SET(CMDREG_ID, CGX_CMD_HIGIG, req);
+	req = FIELD_SET(CMDREG_ENABLE, enable, req);
+	cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
+
+	/* enable 802.3 pause frames as higig2 disabled */
+	if (!enable) {
+		cgx_lmac_enadis_higig2_pause_frm(cgxd, lmac_id, false, false);
+		cgx_lmac_enadis_8023_pause_frm(cgxd, lmac_id, true, true);
+	}
+}
+
+bool is_higig2_enabled(void *cgxd, int lmac_id)
+{
+	struct cgx *cgx = cgxd;
+	u64 cfg;
+
+	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_TX_CTL);
+	return (cfg & CGXX_SMUX_TX_CTL_HIGIG_EN);
+}
 
 static int cgx_lmac_init(struct cgx *cgx)
 {
