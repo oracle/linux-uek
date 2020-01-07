@@ -25,9 +25,6 @@
 #define PCI_DEVID_OCTEONTX2_RVU_VF		0xA064
 #define PCI_DEVID_OCTEONTX2_RVU_AFVF		0xA0F8
 
-#define PCI_SUBSYS_DEVID_96XX_RVU_PFVF		0xB200
-#define PCI_SUBSYS_DEVID_95XX_RVU_PFVF		0xB200
-
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM                     2
 #define PCI_MBOX_BAR_NUM                        4
@@ -327,16 +324,19 @@ static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
 	return pdev->device == PCI_DEVID_OCTEONTX2_RVU_AFVF;
 }
 
+static inline bool is_dev_post_96xx_C0(struct pci_dev *pdev)
+{
+	return (pdev->revision == 0x08) || (pdev->revision == 0x30);
+}
+
 static inline bool is_96xx_A0(struct pci_dev *pdev)
 {
-	return (pdev->revision == 0x00) &&
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX_RVU_PFVF);
+	return (pdev->revision == 0x00);
 }
 
 static inline bool is_95xx_A0(struct pci_dev *pdev)
 {
-	return ((pdev->revision == 0x10) || (pdev->revision == 0x11)) &&
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX_RVU_PFVF);
+	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
 }
 
 static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)

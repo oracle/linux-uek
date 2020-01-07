@@ -21,10 +21,8 @@
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
 
 /* Subsystem Device ID */
+#define PCI_SUBSYS_DEVID_98XX                  0xB100
 #define PCI_SUBSYS_DEVID_96XX                  0xB200
-#define PCI_SUBSYS_DEVID_95XX_RVU              0xB200
-#define PCI_SUBSYS_DEVID_95XX                  0xB300
-#define PCI_SUBSYS_DEVID_LOKI                  0xB400
 
 /* PCI BAR nos */
 #define	PCI_AF_REG_BAR_NUM			0
@@ -482,34 +480,46 @@ static inline u64 rvupf_read64(struct rvu *rvu, u64 offset)
 }
 
 /* Silicon revisions */
+
+static inline bool is_rvu_post_96xx_C0(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	return (pdev->revision == 0x08) || (pdev->revision == 0x30);
+}
+
 static inline bool is_rvu_96xx_A0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
-	return (pdev->revision == 0x00) &&
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
+	return (pdev->revision == 0x00);
 }
 
 static inline bool is_rvu_96xx_B0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
-	return ((pdev->revision == 0x00) || (pdev->revision == 0x01)) &&
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
+	return (pdev->revision == 0x00) || (pdev->revision == 0x01);
+}
+
+static inline bool is_rvu_95xx_B0(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	return (pdev->revision == 0x14);
 }
 
 static inline bool is_rvu_95xx_A0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
-	return ((pdev->revision == 0x10) || (pdev->revision == 0x11)) &&
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX_RVU);
+	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
 }
 
 static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
 {
-	return !(cgx_id && (id == PCI_SUBSYS_DEVID_95XX ||
-			    id == PCI_SUBSYS_DEVID_LOKI));
+	return !(cgx_id && !(id == PCI_SUBSYS_DEVID_96XX ||
+			     id == PCI_SUBSYS_DEVID_98XX));
 }
 
 /* Function Prototypes

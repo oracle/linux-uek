@@ -806,6 +806,8 @@ static inline bool is_hw_tso_supported(struct otx2_nic *pfvf,
 	if (!pfvf->hw.hw_tso)
 		return false;
 
+	if (is_dev_post_96xx_C0(pfvf->pdev))
+		return true;
 	/* HW has an issue due to which when the payload of the last LSO
 	 * segment is shorter than 16 bytes, some header fields may not
 	 * be correctly modified, hence don't offload such TSO segments.
