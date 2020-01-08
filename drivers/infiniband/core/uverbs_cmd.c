@@ -1670,7 +1670,8 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 	if (rcq && rcq != scq)
 		uobj_put_obj_read(rcq);
 	if (srq)
-		uobj_put_obj_read(srq);
+		rdma_lookup_put_uobject(&srq->uobject->uevent.uobject,
+					UVERBS_LOOKUP_READ);
 	if (ind_tbl)
 		uobj_put_obj_read(ind_tbl);
 
@@ -1688,7 +1689,8 @@ err_put:
 	if (rcq && rcq != scq)
 		uobj_put_obj_read(rcq);
 	if (srq)
-		uobj_put_obj_read(srq);
+		rdma_lookup_put_uobject(&srq->uobject->uevent.uobject,
+					UVERBS_LOOKUP_READ);
 	if (ind_tbl)
 		uobj_put_obj_read(ind_tbl);
 
@@ -2560,7 +2562,8 @@ static int ib_uverbs_post_srq_recv(struct uverbs_attr_bundle *attrs)
 	resp.bad_wr = 0;
 	ret = srq->device->ops.post_srq_recv(srq, wr, &bad_wr);
 
-	uobj_put_obj_read(srq);
+	rdma_lookup_put_uobject(&srq->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 
 	if (ret)
 		for (next = wr; next; next = next->next) {
@@ -3634,7 +3637,7 @@ static int __uverbs_create_xsrq(struct uverbs_attr_bundle *attrs,
 	srq->device        = pd->device;
 	srq->pd            = pd;
 	srq->srq_type	   = cmd->srq_type;
-	srq->uobject       = &obj->uevent.uobject;
+	srq->uobject       = obj;
 	srq->event_handler = attr.event_handler;
 	srq->srq_context   = attr.srq_context;
 
@@ -3757,7 +3760,8 @@ static int ib_uverbs_modify_srq(struct uverbs_attr_bundle *attrs)
 	ret = srq->device->ops.modify_srq(srq, &attr, cmd.attr_mask,
 					  &attrs->driver_udata);
 
-	uobj_put_obj_read(srq);
+	rdma_lookup_put_uobject(&srq->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 
 	return ret;
 }
@@ -3780,7 +3784,8 @@ static int ib_uverbs_query_srq(struct uverbs_attr_bundle *attrs)
 
 	ret = ib_query_srq(srq, &attr);
 
-	uobj_put_obj_read(srq);
+	rdma_lookup_put_uobject(&srq->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 
 	if (ret)
 		return ret;
