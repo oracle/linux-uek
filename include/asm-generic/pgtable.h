@@ -937,6 +937,14 @@ static inline int pud_trans_huge(pud_t pud)
 {
 	return 0;
 }
+static inline bool pud_special(pud_t pud)
+{
+	return false;
+}
+static inline pud_t pud_mkspecial(pud_t pud)
+{
+	return pud;
+}
 #endif
 
 /* See pmd_none_or_trans_huge_or_clear_bad for discussion. */

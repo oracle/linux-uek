@@ -262,7 +262,7 @@ static inline int pmd_trans_huge(pmd_t pmd)
 #ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
 static inline int pud_trans_huge(pud_t pud)
 {
-	return (pud_val(pud) & (_PAGE_PSE|_PAGE_DEVMAP)) == _PAGE_PSE;
+	return (pud_val(pud) & (_PAGE_PSE|_PAGE_DEVMAP|_PAGE_SPECIAL)) == _PAGE_PSE;
 }
 #endif
 
@@ -299,6 +299,13 @@ static inline bool pmd_special(pmd_t pmd)
 {
 	return !!(pmd_flags(pmd) & _PAGE_SPECIAL);
 }
+
+#ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
+static inline bool pud_special(pud_t pud)
+{
+	return !!(pud_flags(pud) & _PAGE_SPECIAL);
+}
+#endif
 
 #endif
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
@@ -483,6 +490,11 @@ static inline pud_t pud_mkdevmap(pud_t pud)
 static inline pud_t pud_mkhuge(pud_t pud)
 {
 	return pud_set_flags(pud, _PAGE_PSE);
+}
+
+static inline pud_t pud_mkspecial(pud_t pud)
+{
+	return pud_set_flags(pud, _PAGE_SPECIAL);
 }
 
 static inline pud_t pud_mkyoung(pud_t pud)

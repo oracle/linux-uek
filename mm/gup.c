@@ -2124,6 +2124,9 @@ static int gup_huge_pud(pud_t orig, pud_t *pudp, unsigned long addr,
 		return __gup_device_huge_pud(orig, pudp, addr, end, pages, nr);
 	}
 
+	if (pud_special(orig))
+		return 0;
+
 	refs = 0;
 	page = pud_page(orig) + ((addr & ~PUD_MASK) >> PAGE_SHIFT);
 	do {
