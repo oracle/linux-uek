@@ -92,6 +92,10 @@ obj-$(CONFIG_TEST_MEMINIT) += test_meminit.o
 
 obj-$(CONFIG_TEST_LIVEPATCH) += livepatch/
 
+obj-$(CONFIG_X86) += bsearch_retpoline.o
+CFLAGS_bsearch_retpoline.o += -mindirect-branch=thunk-inline
+OBJECT_FILES_NON_STANDARD_bsearch_retpoline.o := y
+
 ifeq ($(CONFIG_DEBUG_KOBJECT),y)
 CFLAGS_kobject.o += -DDEBUG
 CFLAGS_kobject_uevent.o += -DDEBUG
