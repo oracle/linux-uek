@@ -1631,7 +1631,7 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 		qp = ib_create_qp(pd, &attr);
 	else
 		qp = _ib_create_qp(device, pd, &attr, &attrs->driver_udata,
-				   &obj->uevent.uobject);
+				   obj);
 
 	if (IS_ERR(qp)) {
 		ret = PTR_ERR(qp);
@@ -1654,7 +1654,7 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 			atomic_inc(&ind_tbl->usecnt);
 	} else {
 		/* It is done in _ib_create_qp for other QP types */
-		qp->uobject = &obj->uevent.uobject;
+		qp->uobject = obj;
 	}
 
 	obj->uevent.uobject.object = qp;
@@ -1827,7 +1827,7 @@ static int ib_uverbs_open_qp(struct uverbs_attr_bundle *attrs)
 
 	obj->uxrcd = container_of(xrcd_uobj, struct ib_uxrcd_object, uobject);
 	atomic_inc(&obj->uxrcd->refcnt);
-	qp->uobject = &obj->uevent.uobject;
+	qp->uobject = obj;
 	uobj_put_read(xrcd_uobj);
 
 	rdma_alloc_commit_uobject(&obj->uevent.uobject, attrs);
@@ -1892,7 +1892,8 @@ static int ib_uverbs_query_qp(struct uverbs_attr_bundle *attrs)
 
 	ret = ib_query_qp(qp, attr, cmd.attr_mask, init_attr);
 
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 
 	if (ret)
 		goto out;
@@ -2129,7 +2130,8 @@ static int modify_qp(struct uverbs_attr_bundle *attrs,
 				      &attrs->driver_udata);
 
 release_qp:
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 out:
 	kfree(attr);
 
@@ -2393,7 +2395,8 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		ret = ret2;
 
 out_put:
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 
 	while (wr) {
 		if (is_ud && ud_wr(wr)->ah)
@@ -2535,7 +2538,8 @@ static int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 	resp.bad_wr = 0;
 	ret = qp->device->ops.post_recv(qp->real_qp, wr, &bad_wr);
 
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 	if (ret) {
 		for (next = wr; next; next = next->next) {
 			++resp.bad_wr;
@@ -2717,7 +2721,7 @@ static int ib_uverbs_attach_mcast(struct uverbs_attr_bundle *attrs)
 	if (!qp)
 		return -EINVAL;
 
-	obj = container_of(qp->uobject, struct ib_uqp_object, uevent.uobject);
+	obj = qp->uobject;
 
 	mutex_lock(&obj->mcast_lock);
 	list_for_each_entry(mcast, &obj->mcast_list, list)
@@ -2744,7 +2748,8 @@ static int ib_uverbs_attach_mcast(struct uverbs_attr_bundle *attrs)
 
 out_put:
 	mutex_unlock(&obj->mcast_lock);
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 
 	return ret;
 }
@@ -2766,7 +2771,7 @@ static int ib_uverbs_detach_mcast(struct uverbs_attr_bundle *attrs)
 	if (!qp)
 		return -EINVAL;
 
-	obj = container_of(qp->uobject, struct ib_uqp_object, uevent.uobject);
+	obj = qp->uobject;
 	mutex_lock(&obj->mcast_lock);
 
 	list_for_each_entry(mcast, &obj->mcast_list, list)
@@ -2787,7 +2792,8 @@ static int ib_uverbs_detach_mcast(struct uverbs_attr_bundle *attrs)
 
 out_put:
 	mutex_unlock(&obj->mcast_lock);
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 	return ret;
 }
 
@@ -3555,7 +3561,8 @@ static int ib_uverbs_ex_create_flow(struct uverbs_attr_bundle *attrs)
 	if (err)
 		goto err_copy;
 
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 	kfree(flow_attr);
 	if (cmd.flow_attr.num_of_specs)
 		kfree(kern_flow_attr);
@@ -3569,7 +3576,8 @@ err_free:
 err_free_flow_attr:
 	kfree(flow_attr);
 err_put:
-	uobj_put_obj_read(qp);
+	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+				UVERBS_LOOKUP_READ);
 err_uobj:
 	uobj_alloc_abort(uobj, attrs);
 err_free_attr:
