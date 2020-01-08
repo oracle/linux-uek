@@ -487,8 +487,8 @@ static int ethnl_default_start(struct netlink_callback *cb)
 		return -ENOMEM;
 	reply_data = kmalloc(ops->reply_data_size, GFP_KERNEL);
 	if (!reply_data) {
-		kfree(req_info);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto free_req_info;
 	}
 
 	ret = ethnl_default_parse(req_info, cb->nlh, sock_net(cb->skb->sk), ops,
@@ -502,7 +502,7 @@ static int ethnl_default_start(struct netlink_callback *cb)
 		req_info->dev = NULL;
 	}
 	if (ret < 0)
-		return ret;
+		goto free_reply_data;
 
 	ctx->ops = ops;
 	ctx->req_info = req_info;
@@ -511,6 +511,13 @@ static int ethnl_default_start(struct netlink_callback *cb)
 	ctx->pos_idx = 0;
 
 	return 0;
+
+free_reply_data:
+	kfree(reply_data);
+free_req_info:
+	kfree(req_info);
+
+	return ret;
 }
 
 /* default ->done() handler for GET requests */
