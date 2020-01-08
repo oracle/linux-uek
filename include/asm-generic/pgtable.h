@@ -918,6 +918,18 @@ static inline int pgd_devmap(pgd_t pgd)
 }
 #endif
 
+#if !defined(CONFIG_ARCH_HAS_PTE_SPECIAL) || !defined(CONFIG_TRANSPARENT_HUGEPAGE)
+static inline bool pmd_special(pmd_t pmd)
+{
+	return false;
+}
+
+static inline pmd_t pmd_mkspecial(pmd_t pmd)
+{
+	return pmd;
+}
+#endif
+
 #if !defined(CONFIG_TRANSPARENT_HUGEPAGE) || \
 	(defined(CONFIG_TRANSPARENT_HUGEPAGE) && \
 	 !defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD))

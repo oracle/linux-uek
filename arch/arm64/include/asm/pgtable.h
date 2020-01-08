@@ -376,10 +376,15 @@ static inline int pmd_protnone(pmd_t pmd)
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 #define pmd_devmap(pmd)		pte_devmap(pmd_pte(pmd))
+#define pmd_special(pmd)	pte_special(pmd_pte(pmd))
 #endif
 static inline pmd_t pmd_mkdevmap(pmd_t pmd)
 {
 	return pte_pmd(set_pte_bit(pmd_pte(pmd), __pgprot(PTE_DEVMAP)));
+}
+static inline pmd_t pmd_mkspecial(pmd_t pmd)
+{
+	return pte_pmd(set_pte_bit(pmd_pte(pmd), __pgprot(PTE_SPECIAL)));
 }
 
 #define __pmd_to_phys(pmd)	__pte_to_phys(pmd_pte(pmd))
