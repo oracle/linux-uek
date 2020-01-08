@@ -1585,7 +1585,6 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 	}
 
 	attr.event_handler = ib_uverbs_qp_event_handler;
-	attr.qp_context    = attrs->ufile;
 	attr.send_cq       = scq;
 	attr.recv_cq       = rcq;
 	attr.srq           = srq;
@@ -1601,7 +1600,6 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 	attr.cap.max_recv_sge    = cmd->max_recv_sge;
 	attr.cap.max_inline_data = cmd->max_inline_data;
 
-	obj->uevent.events_reported     = 0;
 	INIT_LIST_HEAD(&obj->uevent.event_list);
 	INIT_LIST_HEAD(&obj->mcast_list);
 
@@ -1774,7 +1772,7 @@ static int ib_uverbs_open_qp(struct uverbs_attr_bundle *attrs)
 	struct ib_xrcd		       *xrcd;
 	struct ib_uobject	       *uninitialized_var(xrcd_uobj);
 	struct ib_qp                   *qp;
-	struct ib_qp_open_attr          attr;
+	struct ib_qp_open_attr          attr = {};
 	int ret;
 	struct ib_device *ib_dev;
 
@@ -1800,11 +1798,9 @@ static int ib_uverbs_open_qp(struct uverbs_attr_bundle *attrs)
 	}
 
 	attr.event_handler = ib_uverbs_qp_event_handler;
-	attr.qp_context    = attrs->ufile;
 	attr.qp_num        = cmd.qpn;
 	attr.qp_type       = cmd.qp_type;
 
-	obj->uevent.events_reported = 0;
 	INIT_LIST_HEAD(&obj->uevent.event_list);
 	INIT_LIST_HEAD(&obj->mcast_list);
 
@@ -3158,7 +3154,6 @@ static int ib_uverbs_ex_create_wq(struct uverbs_attr_bundle *attrs)
 	wq_init_attr.wq_type = cmd.wq_type;
 	wq_init_attr.event_handler = ib_uverbs_wq_event_handler;
 	wq_init_attr.create_flags = cmd.create_flags;
-	obj->uevent.events_reported = 0;
 	INIT_LIST_HEAD(&obj->uevent.event_list);
 
 	wq = pd->device->ops.create_wq(pd, &wq_init_attr, &attrs->driver_udata);
@@ -3665,7 +3660,6 @@ static int __uverbs_create_xsrq(struct uverbs_attr_bundle *attrs,
 	attr.attr.max_sge   = cmd->max_sge;
 	attr.attr.srq_limit = cmd->srq_limit;
 
-	obj->uevent.events_reported = 0;
 	INIT_LIST_HEAD(&obj->uevent.event_list);
 	obj->uevent.uobject.user_handle = cmd->user_handle;
 
