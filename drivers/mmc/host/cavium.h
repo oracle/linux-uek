@@ -60,6 +60,10 @@
 #define PS_400			(400)
 #define MAX_NO_OF_TAPS		64
 
+/* Macros to enable/disable clks */
+#define CLK_ON			0
+#define CLK_OFF			1
+
 
 /* DMA register addresses */
 #define MIO_EMM_DMA_FIFO_CFG(x)	(0x00 + x->reg_off_dma)
@@ -291,6 +295,8 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_SWITCH_CLK		GENMASK_ULL(31, 0)
 #define MIO_EMM_SWITCH_CLK_HI		GENMASK_ULL(31, 16)
 #define MIO_EMM_SWITCH_CLK_LO		GENMASK_ULL(15, 0)
+#define MIO_EMM_DEBUG_CLK_DIS		BIT_ULL(20)
+#define MIO_EMM_DEBUG_RDSYNC		BIT_ULL(21)
 
 /* Protoypes */
 irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id);
