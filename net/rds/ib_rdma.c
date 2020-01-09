@@ -123,6 +123,7 @@ struct rds_ib_mr_pool {
 	/* Work queue for garbage collecting rds_ib_mr. */
 	struct workqueue_struct *frwr_clean_wq;
 	struct delayed_work	frwr_clean_worker;
+	bool			condemned;
 };
 
 static inline u32 rds_frwr_iova_mask(struct rds_ib_mr_pool *pool)
@@ -409,6 +410,8 @@ void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 	struct rds_ib_mr *ibmr;
 	LIST_HEAD(drp_list);
 
+	pool->condemned = true;
+
 	/* move MRs in in-use list to drop or free list */
 	spin_lock_bh(&pool->busy_lock);
 	list_splice_init(&pool->busy_list, &drp_list);
@@ -422,13 +425,15 @@ void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 			rds_rdma_drop_keys(ibmr->rs);
 	}
 
-	if (pool->use_fastreg)
+	if (pool->use_fastreg) {
 		/* No need to call rds_frwr_clean() as rds_ib_flush_mr_pool()
 		 * with free_all set to 1 calls rds_frwr_clean().
 		 */
 		rds_ib_queue_cancel_work(NULL,
 					 &pool->frwr_clean_worker,
 					 "cancel frwr worker, destroy MR pool");
+		destroy_workqueue(pool->frwr_clean_wq);
+	}
 	rds_ib_queue_cancel_work(NULL, &pool->flush_worker,
 				 "cancel flush worker, destroy MR pool");
 	rds_ib_flush_mr_pool(pool, 1, NULL);
@@ -1184,6 +1189,10 @@ static void rds_frwr_clean_worker(struct work_struct *work)
 				  "frwr clean worker");
 	pool = container_of(work, struct rds_ib_mr_pool,
 			    frwr_clean_worker.work);
+	/* The pool is being destroyed, just return. */
+	if (pool->condemned)
+		return;
+
 	rds_frwr_clean(pool, false);
 	unmap_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
 		WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
