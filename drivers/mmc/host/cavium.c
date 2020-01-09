@@ -148,12 +148,46 @@ static bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
 		return false;
 }
 
-static void cvm_mmc_set_timing(struct cvm_mmc_slot *slot)
+static void cvm_mmc_clk_config(struct cvm_mmc_host *host, bool flag)
 {
-	if (!is_mmc_otx2(slot->host))
+	u64 emm_debug;
+
+	if (!is_mmc_otx2_C0(host))
 		return;
 
-	writeq(slot->taps, slot->host->base + MIO_EMM_TIMING(slot->host));
+	/* Turn off the clock */
+	if (flag) {
+		emm_debug = readq(host->base + MIO_EMM_DEBUG(host));
+		emm_debug |= MIO_EMM_DEBUG_CLK_DIS;
+		writeq(emm_debug, host->base + MIO_EMM_DEBUG(host));
+		udelay(1);
+		emm_debug = readq(host->base + MIO_EMM_DEBUG(host));
+		emm_debug |= MIO_EMM_DEBUG_RDSYNC;
+		writeq(emm_debug, host->base + MIO_EMM_DEBUG(host));
+		udelay(1);
+	} else {
+		/* Turn on the clock */
+		emm_debug = readq(host->base + MIO_EMM_DEBUG(host));
+		emm_debug &= MIO_EMM_DEBUG_RDSYNC;
+		writeq(emm_debug, host->base + MIO_EMM_DEBUG(host));
+		udelay(1);
+		emm_debug = readq(host->base + MIO_EMM_DEBUG(host));
+		emm_debug &= MIO_EMM_DEBUG_CLK_DIS;
+		writeq(emm_debug, host->base + MIO_EMM_DEBUG(host));
+		udelay(1);
+	}
+}
+
+static void cvm_mmc_set_timing(struct cvm_mmc_slot *slot)
+{
+	struct cvm_mmc_host *host = slot->host;
+
+	if (!is_mmc_otx2(host))
+		return;
+
+	cvm_mmc_clk_config(host, CLK_OFF);
+	writeq(slot->taps, host->base + MIO_EMM_TIMING(host));
+	cvm_mmc_clk_config(host, CLK_ON);
 }
 
 static int tout(struct cvm_mmc_slot *slot, int ps, int hint)
@@ -1305,11 +1339,13 @@ static int adjust_tuning(struct mmc_host *mmc, struct adj *adj, u32 opcode)
 	/* loop over range+1 to simplify processing */
 	for (tap = 0; tap <= MAX_NO_OF_TAPS; tap++, prev_ok = !err) {
 		if (tap < MAX_NO_OF_TAPS) {
+			cvm_mmc_clk_config(host, CLK_OFF);
 			timing = readq(host->base + MIO_EMM_TIMING(host));
 			timing &= ~adj->mask;
 			timing |= (tap << __bf_shf(adj->mask));
 			writeq(timing, host->base + MIO_EMM_TIMING(host));
 
+			cvm_mmc_clk_config(host, CLK_ON);
 			err = adj->test(mmc, NULL, opcode);
 
 			how[tap] = "-+"[!err];
