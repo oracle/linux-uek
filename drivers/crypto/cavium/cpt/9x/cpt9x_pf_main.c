@@ -295,24 +295,12 @@ error:
 static int cptpf_device_init(struct cptpf_dev *cptpf)
 {
 	union cptx_af_constants1 af_cnsts1 = {0};
-	struct device *dev = &cptpf->pdev->dev;
 	int ret = 0;
-	u16 sdevid;
 
 	/* Reset the CPT PF device */
 	ret = cptpf_device_reset(cptpf);
 	if (ret)
 		goto error;
-
-	/* Read PCI subsystem id */
-	ret = pci_read_config_word(cptpf->pdev, PCI_SUBSYSTEM_ID, &sdevid);
-	if (ret)
-		goto error;
-	if (sdevid != CPT_96XX_PCI_PF_SUBSYS_ID) {
-		dev_err(dev, "Invalid subsystem id\n");
-		ret = -ENODEV;
-		goto error;
-	}
 
 	/* Get number of SE, IE and AE engines */
 	ret = cpt_read_af_reg(cptpf->pdev, CPT_AF_CONSTANTS1, &af_cnsts1.u);
