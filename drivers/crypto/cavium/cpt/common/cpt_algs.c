@@ -1569,7 +1569,7 @@ static void swap_func(void *lptr, void *rptr, int size)
 
 int cvm_crypto_init(struct pci_dev *pdev, struct module *mod,
 		    struct algs_ops ops, enum cpt_pf_type pf_type,
-		    enum cpt_vf_type engine_type, int num_queues,
+		    enum cpt_eng_type engine_type, int num_queues,
 		    int num_devices)
 {
 	int ret = 0;
@@ -1631,7 +1631,7 @@ err:
 EXPORT_SYMBOL_GPL(cvm_crypto_init);
 
 void cvm_crypto_exit(struct pci_dev *pdev, struct module *mod,
-		     enum cpt_vf_type engine_type)
+		     enum cpt_eng_type engine_type)
 {
 	struct cpt_device_table *dev_tbl;
 	bool dev_found = false;

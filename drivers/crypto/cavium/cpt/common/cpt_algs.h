@@ -19,10 +19,10 @@ struct algs_ops {
 
 int cvm_crypto_init(struct pci_dev *pdev, struct module *mod,
 		    struct algs_ops ops, enum cpt_pf_type pf_type,
-		    enum cpt_vf_type engine_type, int num_queues,
+		    enum cpt_eng_type engine_type, int num_queues,
 		    int num_devices);
 void cvm_crypto_exit(struct pci_dev *pdev, struct module *mod,
-		     enum cpt_vf_type engine_type);
+		     enum cpt_eng_type engine_type);
 void cvm_callback(int status, void *arg, void *req);
 
 #endif /* __CPT_ALGS_H_*/

@@ -8,11 +8,17 @@
  * published by the Free Software Foundation.
  */
 
-#include "rvu_reg.h"
 #include "cpt9x_mbox_common.h"
+#include "otx2_reg.h"
+#include "rvu_reg.h"
 
 /* Fastpath ipsec opcode with inplace processing */
 #define CPT_INLINE_RX_OPCODE  (0x26 | (1 << 6))
+/*
+ * CPT PF driver version, It will be incremented by 1 for every feature
+ * addition in CPT PF driver.
+ */
+#define CPT_PF_DRV_VERSION     0x1
 
 static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
 {
@@ -128,7 +134,7 @@ static int cptlf_set_grp_and_pri(struct pci_dev *pdev, struct cptlfs_info *lfs,
 	return 0;
 }
 
-static void cptpf_lf_cleanup(struct cptlfs_info *lfs)
+void cptpf_lf_cleanup(struct cptlfs_info *lfs)
 {
 	cptlf_disable_iqueues(lfs);
 	free_instruction_queues(lfs);
@@ -136,8 +142,8 @@ static void cptpf_lf_cleanup(struct cptlfs_info *lfs)
 	lfs->lfs_num = 0;
 }
 
-static int cptpf_lf_init(struct cptpf_dev *cptpf, u8 eng_grp_mask, int pri,
-			 int lfs_num)
+int cptpf_lf_init(struct cptpf_dev *cptpf, u8 eng_grp_mask, int pri,
+		  int lfs_num)
 {
 	struct cptlfs_info *lfs = &cptpf->lfs;
 	struct pci_dev *pdev = cptpf->pdev;
@@ -150,6 +156,10 @@ static int cptpf_lf_init(struct cptpf_dev *cptpf, u8 eng_grp_mask, int pri,
 	for (slot = 0; slot < lfs->lfs_num; slot++) {
 		lfs->lf[slot].lfs = lfs;
 		lfs->lf[slot].slot = slot;
+		lfs->lf[slot].lmtline = lfs->reg_base +
+			RVU_FUNC_ADDR_S(BLKADDR_LMT, slot, LMT_LF_LMTLINEX(0));
+		lfs->lf[slot].ioreg = lfs->reg_base +
+			RVU_FUNC_ADDR_S(BLKADDR_CPT0, slot, CPT_LF_NQX(0));
 	}
 
 	if (cptpf->limits.cpt < lfs_num) {
@@ -392,6 +402,27 @@ cpt_err:
 	return ret;
 }
 
+static int reply_caps_msg(struct cptpf_dev *cptpf, struct cptvf_info *vf,
+			  struct mbox_msghdr *req)
+{
+	struct cpt_caps_rsp *rsp;
+
+	rsp = (struct cpt_caps_rsp *)
+			      otx2_mbox_alloc_msg(&cptpf->vfpf_mbox, vf->vf_id,
+						  sizeof(*rsp));
+	if (!rsp)
+		return -ENOMEM;
+
+	rsp->hdr.id = MBOX_MSG_GET_CAPS;
+	rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
+	rsp->hdr.pcifunc = req->pcifunc;
+	rsp->cpt_pf_drv_version = CPT_PF_DRV_VERSION;
+	rsp->cpt_revision = cptpf->pdev->revision;
+	memcpy(&rsp->eng_caps, &cptpf->eng_caps, sizeof(rsp->eng_caps));
+
+	return 0;
+}
+
 static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 			       struct mbox_msghdr *req, int size)
 {
@@ -417,9 +448,15 @@ static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 	case MBOX_MSG_GET_ENG_GRP_NUM:
 		err = reply_eng_grp_num_msg(cptpf, vf, req);
 		break;
+
 	case MBOX_MSG_RX_INLINE_IPSEC_LF_CFG:
 		err = rx_inline_ipsec_lf_enable(cptpf, req);
 		break;
+
+	case MBOX_MSG_GET_CAPS:
+		err = reply_caps_msg(cptpf, vf, req);
+		break;
+
 	default:
 		err = forward_to_af(cptpf, vf, req, size);
 		break;

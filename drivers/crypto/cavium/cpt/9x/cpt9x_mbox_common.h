@@ -18,6 +18,7 @@
 /* Take mbox id from end of CPT mbox range in AF (range 0xA00 - 0xBFF) */
 #define MBOX_MSG_GET_ENG_GRP_NUM	0xBFF
 #define MBOX_MSG_RX_INLINE_IPSEC_LF_CFG	0xBFE
+#define MBOX_MSG_GET_CAPS		0xBFD
 
 /*
  * Message request and response to get engine group number
@@ -42,6 +43,22 @@ struct eng_grp_num_rsp {
 struct rx_inline_lf_cfg {
 	struct mbox_msghdr hdr;
 	u16 sso_pf_func;
+};
+
+/*
+ * Message request and response to get HW capabilities for each
+ * engine type (SE, IE, AE).
+ * This messages are only used between CPT PF <-> CPT VF
+ */
+struct cpt_caps_msg {
+	struct mbox_msghdr hdr;
+};
+
+struct cpt_caps_rsp {
+	struct mbox_msghdr hdr;
+	u16 cpt_pf_drv_version;
+	u8 cpt_revision;
+	union cpt_eng_caps eng_caps[CPT_MAX_ENG_TYPES];
 };
 
 static inline struct cptlfs_info *get_lfs_info(struct pci_dev *pdev)

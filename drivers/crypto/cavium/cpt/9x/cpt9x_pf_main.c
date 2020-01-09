@@ -528,6 +528,10 @@ static int cptpf_sriov_configure(struct pci_dev *pdev, int numvfs)
 		numvfs = cptpf->max_vfs;
 
 	if (numvfs > 0) {
+		/* Get CPT HW capabilities using LOAD_FVC operation. */
+		ret = cpt9x_discover_eng_capabilities(cptpf);
+		if (ret)
+			goto error;
 		ret = cpt_try_create_default_eng_grps(cptpf->pdev,
 						      &cptpf->eng_grps);
 		if (ret)

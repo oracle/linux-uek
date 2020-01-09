@@ -11,6 +11,12 @@
 #include "rvu_reg.h"
 #include "cpt_ucode.h"
 #include "cpt9x_mbox_common.h"
+#include "cpt9x_lf.h"
+#include "cpt9x_reqmgr.h"
+
+#define CPT_LOADFVC_RLEN	8
+#define CPT_LOADFVC_MAJOR_OP	0x01
+#define CPT_LOADFVC_MINOR_OP	0x08
 
 static struct bitmap get_cores_bmap(struct device *dev,
 				    struct engine_group_info *eng_grp)
@@ -281,6 +287,94 @@ error:
 	return ret;
 }
 
+/*
+ * Get CPT HW capabilities using LOAD_FVC operation.
+ */
+int cpt9x_discover_eng_capabilities(void *obj)
+{
+	struct cptpf_dev *cptpf = obj;
+	struct cpt_iq_command iq_cmd;
+	struct cpt_info_buffer info;
+	union opcode_info opcode;
+	union cpt_res_s *result;
+	union cpt_inst_s inst;
+	dma_addr_t rptr_baddr;
+	struct pci_dev *pdev;
+	u32 len, compl_rlen;
+	int ret, etype;
+	void *rptr;
+
+	/*
+	 * We don't get capabilities if it was already done
+	 * (when user enabled VFs for the first time)
+	 */
+	if (cptpf->is_eng_caps_discovered)
+		return 0;
+
+	pdev = cptpf->pdev;
+	ret = cpt_create_eng_caps_discovery_grps(pdev, &cptpf->eng_grps);
+	if (ret)
+		goto delete_grps;
+
+	ret = cptpf_lf_init(cptpf, ALL_ENG_GRPS_MASK, QUEUE_HI_PRIO, 1);
+	if (ret)
+		goto delete_grps;
+
+	compl_rlen = ALIGN(sizeof(union cpt_res_s), ARCH_DMA_MINALIGN);
+	len = compl_rlen + CPT_LOADFVC_RLEN;
+
+	result = kzalloc(len, GFP_KERNEL);
+	if (!result) {
+		ret = -ENOMEM;
+		goto lf_cleanup;
+	}
+	rptr_baddr = dma_map_single(&pdev->dev, (void *)result, len,
+				    DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(&pdev->dev, rptr_baddr)) {
+		dev_err(&pdev->dev, "DMA mapping failed\n");
+		ret = -EFAULT;
+		goto free_result;
+	}
+	info.comp_baddr = rptr_baddr;
+	rptr = (u8 *)result + compl_rlen;
+
+	/* Fill in the command */
+	opcode.s.major = CPT_LOADFVC_MAJOR_OP;
+	opcode.s.minor = CPT_LOADFVC_MINOR_OP;
+
+	iq_cmd.cmd.u64 = 0;
+	iq_cmd.cmd.s.opcode = cpu_to_be16(opcode.flags);
+
+	/* 64-bit swap for microcode data reads, not needed for addresses */
+	cpu_to_be64s(&iq_cmd.cmd.u64);
+	iq_cmd.dptr = 0;
+	iq_cmd.rptr = rptr_baddr + compl_rlen;
+	iq_cmd.cptr.u64 = 0;
+
+	for (etype = 1; etype < CPT_MAX_ENG_TYPES; etype++) {
+		result->s9x.compcode = COMPLETION_CODE_INIT;
+		iq_cmd.cptr.s.grp = cpt_get_eng_caps_discovery_grp(
+						&cptpf->eng_grps, etype);
+		cpt9x_fill_inst(&inst, &info, &iq_cmd);
+		cpt9x_send_cmd(&inst, 1, &cptpf->lfs.lf[0]);
+
+		while (result->s9x.compcode == COMPLETION_CODE_INIT)
+			cpu_relax();
+
+		cptpf->eng_caps[etype].u = be64_to_cpup(rptr);
+	}
+	dma_unmap_single(&pdev->dev, rptr_baddr, len, DMA_BIDIRECTIONAL);
+	cptpf->is_eng_caps_discovered = true;
+free_result:
+	kzfree(result);
+lf_cleanup:
+	cptpf_lf_cleanup(&cptpf->lfs);
+delete_grps:
+	cpt_delete_eng_caps_discovery_grps(pdev, &cptpf->eng_grps);
+
+	return ret;
+}
+
 struct ucode_ops cpt9x_get_ucode_ops(void)
 {
 	struct ucode_ops ops;
@@ -290,6 +384,7 @@ struct ucode_ops cpt9x_get_ucode_ops(void)
 	ops.set_ucode_base = cpt9x_set_ucode_base;
 	ops.print_engines_mask = cpt9x_print_engines_mask;
 	ops.notify_group_change = cpt9x_notify_group_change;
+	ops.discover_eng_capabilities = cpt9x_discover_eng_capabilities;
 
 	return ops;
 }

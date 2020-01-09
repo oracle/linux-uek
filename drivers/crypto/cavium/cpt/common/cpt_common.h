@@ -68,6 +68,8 @@
 #define CPT_COALESC_MIN_NUM_WAIT	0x0
 #define CPT_COALESC_MAX_NUM_WAIT	((1<<20)-1)
 
+#define BAD_CPT_VF_TYPE		CPT_MAX_ENG_TYPES
+
 enum cpt_pf_type {
 	CPT_81XX = 1,
 	CPT_AE_83XX = 2,
@@ -76,11 +78,11 @@ enum cpt_pf_type {
 	BAD_CPT_PF_TYPE,
 };
 
-enum cpt_vf_type {
+enum cpt_eng_type {
 	AE_TYPES = 1,
 	SE_TYPES = 2,
 	IE_TYPES = 3,
-	BAD_CPT_VF_TYPE,
+	CPT_MAX_ENG_TYPES,
 };
 
 union opcode_info {

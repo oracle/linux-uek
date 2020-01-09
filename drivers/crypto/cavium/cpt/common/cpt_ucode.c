@@ -1177,6 +1177,72 @@ static void update_ucode_ptrs(struct engine_group_info *eng_grp)
 	}
 }
 
+int cpt_get_eng_caps_discovery_grp(struct engine_groups *eng_grps, u8 eng_type)
+{
+	struct engine_group_info *grp;
+	int eng_grp_num = 0xff, i;
+
+	switch (eng_type) {
+	case SE_TYPES:
+		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+			grp = &eng_grps->grp[i];
+			if (!grp->is_enabled)
+				continue;
+
+			if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
+			    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
+			    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
+				eng_grp_num = i;
+				break;
+			}
+		}
+		break;
+
+	case IE_TYPES:
+		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+			grp = &eng_grps->grp[i];
+			if (!grp->is_enabled)
+				continue;
+
+			if (cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
+			    !cpt_eng_grp_has_eng_type(grp, SE_TYPES)) {
+				eng_grp_num = i;
+				break;
+			}
+		}
+		break;
+
+	case AE_TYPES:
+		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+			grp = &eng_grps->grp[i];
+			if (!grp->is_enabled)
+				continue;
+
+			if (cpt_eng_grp_has_eng_type(grp, eng_type)) {
+				eng_grp_num = i;
+				break;
+			}
+		}
+		break;
+	}
+	return eng_grp_num;
+}
+
+int cpt_delete_eng_caps_discovery_grps(struct pci_dev *pdev,
+				       struct engine_groups *eng_grps)
+{
+	struct engine_group_info *grp;
+	int i, ret;
+
+	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+		grp = &eng_grps->grp[i];
+		ret = delete_engine_group(&pdev->dev, grp);
+		if (ret)
+			return ret;
+	}
+	return ret;
+}
+
 static int create_engine_group(struct device *dev,
 			       struct engine_groups *eng_grps,
 			       struct engines *engs, int engs_cnt,
@@ -1448,6 +1514,12 @@ static ssize_t ucode_load_store(struct device *dev,
 		ret = -EACCES;
 		goto err_unlock;
 	}
+	if (eng_grps->ops.discover_eng_capabilities) {
+		if (eng_grps->ops.discover_eng_capabilities(eng_grps->obj)) {
+			dev_err(dev, "Unable to get engine capabilities\n");
+			goto err_unlock;
+		}
+	}
 
 	if (del_grp_idx == -1)
 		/* create engine group */
@@ -1494,6 +1566,70 @@ static void cpt_clear_ucode_ops(struct engine_groups *eng_grps)
 	eng_grps->ops.set_ucode_base = NULL;
 	eng_grps->ops.print_engines_mask = NULL;
 	eng_grps->ops.notify_group_change = NULL;
+	eng_grps->ops.discover_eng_capabilities = NULL;
+}
+
+int cpt_create_eng_caps_discovery_grps(struct pci_dev *pdev,
+				       struct engine_groups *eng_grps)
+{
+	struct tar_ucode_info_t *tar_ucode_info[MAX_ENGS_PER_GRP] = { 0 };
+	struct engines engs[MAX_ENGS_PER_GRP] = { 0 };
+	struct tar_arch_info_t *tar_arch = NULL;
+	char tar_filename[NAME_LENGTH];
+	int ret = -EINVAL;
+
+	sprintf(tar_filename, "cpt%02d-mc.tar", pdev->revision);
+	tar_arch = load_tar_archive(&pdev->dev, tar_filename);
+	if (!tar_arch)
+		return -EINVAL;
+	/*
+	 * If device supports AE engines and there is AE microcode in tar
+	 * archive try to create engine group with AE engines.
+	 */
+	tar_ucode_info[0] = get_uc_from_tar_archive(tar_arch, AE_TYPES);
+	if (tar_ucode_info[0] && dev_supports_eng_type(eng_grps, AE_TYPES)) {
+
+		engs[0].type = AE_TYPES;
+		engs[0].count = 2;
+
+		ret = create_engine_group(&pdev->dev, eng_grps, engs, 1,
+					  (void **) tar_ucode_info, 1, true);
+		if (ret)
+			goto release_tar;
+	}
+	/*
+	 * If device supports SE engines and there is SE microcode in tar
+	 * archive try to create engine group with SE engines.
+	 */
+	tar_ucode_info[0] = get_uc_from_tar_archive(tar_arch, SE_TYPES);
+	if (tar_ucode_info[0] && dev_supports_eng_type(eng_grps, SE_TYPES)) {
+
+		engs[0].type = SE_TYPES;
+		engs[0].count = 2;
+
+		ret = create_engine_group(&pdev->dev, eng_grps, engs, 1,
+					  (void **) tar_ucode_info, 1, true);
+		if (ret)
+			goto release_tar;
+	}
+	/*
+	 * If device supports IE engines and there is IE microcode in tar
+	 * archive try to create engine group with IE engines.
+	 */
+	tar_ucode_info[0] = get_uc_from_tar_archive(tar_arch, IE_TYPES);
+	if (tar_ucode_info[0] && dev_supports_eng_type(eng_grps, IE_TYPES)) {
+
+		engs[0].type = IE_TYPES;
+		engs[0].count = 2;
+
+		ret = create_engine_group(&pdev->dev, eng_grps, engs, 1,
+					  (void **) tar_ucode_info, 1, true);
+		if (ret)
+			goto release_tar;
+	}
+release_tar:
+	release_tar_archive(tar_arch);
+	return ret;
 }
 
 int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
@@ -1540,7 +1676,6 @@ int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 		if (ret)
 			goto err;
 	}
-
 	/* If device supports SE+IE engines and there is SE and IE microcode in
 	 * tar archive try to create engine group with SE+IE engines for IPSec.
 	 * All SE engines will be shared with engine group 0. This case applies
@@ -1578,7 +1713,6 @@ int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 		if (ret)
 			goto err;
 	}
-
 	print_dbg_info(&pdev->dev, eng_grps);
 err:
 	release_tar_archive(tar_arch);

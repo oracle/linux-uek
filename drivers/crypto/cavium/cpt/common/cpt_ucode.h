@@ -195,6 +195,7 @@ struct ucode_ops {
 	void (*print_engines_mask)(struct engine_group_info *eng_grp,
 				   void *obj, char *buf, int size);
 	void (*notify_group_change)(void *obj);
+	int (*discover_eng_capabilities)(void *obj);
 };
 
 struct engine_groups {
@@ -218,6 +219,11 @@ void cpt_cleanup_eng_grps(struct pci_dev *pdev,
 			  struct engine_groups *eng_grps);
 int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 				    struct engine_groups *eng_grps);
+int cpt_create_eng_caps_discovery_grps(struct pci_dev *pdev,
+				       struct engine_groups *eng_grps);
+int cpt_delete_eng_caps_discovery_grps(struct pci_dev *pdev,
+				       struct engine_groups *eng_grps);
+int cpt_get_eng_caps_discovery_grp(struct engine_groups *eng_grps, u8 eng_type);
 void cpt_set_eng_grps_is_rdonly(struct engine_groups *eng_grps, bool is_rdonly);
 int cpt_uc_supports_eng_type(struct microcode *ucode, int eng_type);
 int cpt_eng_grp_has_eng_type(struct engine_group_info *eng_grp, int eng_type);

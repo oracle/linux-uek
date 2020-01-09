@@ -35,6 +35,24 @@ struct cpt_kvf_limits {
 	int lfs_num; /* Number of LFs allocated for kernel VF driver */
 };
 
+/* CPT HW capabilities */
+union cpt_eng_caps {
+	u64 u;
+	struct {
+		u64 reserved_0_4:5;
+		u64 mul:1;
+		u64 sha1_sha2:1;
+		u64 chacha20:1;
+		u64 zuc_snow3g:1;
+		u64 sha3:1;
+		u64 aes:1;
+		u64 kasumi:1;
+		u64 des:1;
+		u64 crc:1;
+		u64 reserved_14_63:50;
+	};
+};
+
 struct cptpf_dev {
 	void __iomem *reg_base;		/* CPT PF registers start address */
 	void __iomem *afpf_mbox_base;	/* PF-AF mbox start address */
@@ -45,6 +63,9 @@ struct cptpf_dev {
 	struct free_rsrcs_rsp limits;   /* Maximum limits for all VFs and PF */
 	struct cpt_limits vf_limits;	/* Limits for each VF */
 	struct engine_groups eng_grps;	/* Engine groups information */
+	/* HW capabilities for each engine type */
+	union cpt_eng_caps eng_caps[CPT_MAX_ENG_TYPES];
+	bool is_eng_caps_discovered;
 
 	/* AF <=> PF mbox */
 	struct otx2_mbox	afpf_mbox;
@@ -71,6 +92,10 @@ void cptpf_vfpf_mbox_handler(struct work_struct *work);
 int cptpf_send_crypto_eng_grp_msg(struct cptpf_dev *cptpf,
 				  int crypto_eng_grp);
 int cpt9x_disable_all_cores(struct cptpf_dev *cptpf);
+int cpt9x_discover_eng_capabilities(void *obj);
 struct ucode_ops cpt9x_get_ucode_ops(void);
+int cptpf_lf_init(struct cptpf_dev *cptpf, u8 eng_grp_mask,
+		  int pri, int lfs_num);
+void cptpf_lf_cleanup(struct cptlfs_info *lfs);
 
 #endif /* __CPT9X_PF_H */
