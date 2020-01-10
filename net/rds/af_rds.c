@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -120,8 +120,10 @@ static int rds_release(struct socket *sock)
 	rds_remove_bound(rs);
 
 	rds_send_drop_to(rs, NULL);
-	rds_rdma_drop_keys(rs);
 	rds_notify_queue_get(rs, NULL);
+
+	if (rs->rs_transport && rs->rs_transport->sock_release)
+		rs->rs_transport->sock_release(rs);
 
 	rhashtable_free_and_destroy(&rs->rs_buf_info_tbl, rds_buf_info_free,
 				    NULL);
@@ -972,6 +974,9 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	ret = rhashtable_init(&rs->rs_buf_info_tbl, &rs_buf_info_params);
 	if (ret)
 		return ret;
+
+	rs->rs_trans_private = NULL;
+	mutex_init(&rs->rs_trans_lock);
 
 	if (!ipv6_addr_any(&rs->rs_bound_addr)) {
 		printk(KERN_CRIT "bound addr %pI6c at create\n",
