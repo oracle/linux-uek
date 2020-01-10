@@ -806,6 +806,19 @@
 	};
 };
 
+&rmem {
+	#address-cells = <2>;
+};
+
+&cma {
+	/*
+	 * arm64 reserves the CMA by default somewhere in ZONE_DMA32,
+	 * that's not good enough for the BCM2711 as some devices can
+	 * only address the lower 1G of memory (ZONE_DMA).
+	 */
+	alloc-ranges = <0x0 0x00000000 0x40000000>;
+};
+
 &i2c0 {
 	compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
 	interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
