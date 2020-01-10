@@ -273,7 +273,11 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	/* Obtain a transport specific MR. If this succeeds, the
 	 * s/g list is now owned by the MR.
 	 * Note that dma_map() implies that pending writes are
-	 * flushed to RAM, so no dma_sync is needed here. */
+	 * flushed to RAM, so no dma_sync is needed here.
+	 *
+	 * Note that the transport specific MR may become invalid after
+	 * this get_mr() does not hold a reference on it.
+	 */
 	trans_private = rs->rs_transport->get_mr(sg, nents, rs,
 						 &mr->r_key,
 						 cp ? cp->cp_conn : NULL);
