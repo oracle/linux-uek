@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -136,7 +136,7 @@ struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr)
 	list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
 		list_for_each_entry_rcu(i_ipaddr, &rds_ibdev->ipaddr_list, list) {
 			if (ipv6_addr_equal(&i_ipaddr->ipaddr, ipaddr)) {
-				atomic_inc(&rds_ibdev->refcount);
+				atomic_inc(&rds_ibdev->rid_refcount);
 				rcu_read_unlock();
 				return rds_ibdev;
 			}
@@ -145,6 +145,131 @@ struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr)
 	rcu_read_unlock();
 
 	return NULL;
+}
+
+/* kref deallocation function of the struct rds_rdma_dev_sock.
+ */
+void rds_rrds_free(struct kref *kref)
+{
+	struct rds_rdma_dev_sock *rrds;
+
+	rrds = container_of(kref, struct rds_rdma_dev_sock, rrds_kref);
+	rds_ib_dev_put(rrds->rrds_rds_ibdev);
+	kfree(rrds);
+}
+
+/* Worker function of the rrds_free_work of a struct rds_rdma_dev_sock.  It
+ * releases all the MRs used by a socket.
+ */
+static void rds_rdma_free_dev_rs_worker(struct work_struct *work)
+{
+	struct rds_rdma_dev_sock *rrds;
+	struct rds_sock *rs;
+	bool rs_released;
+
+	rrds = container_of(work, struct rds_rdma_dev_sock, rrds_free_work);
+	rs = rrds->rrds_rs;
+
+	/* Set rrds_dev_released so that the rds_sock knows that we are
+	 * executing.
+	 */
+	mutex_lock(&rs->rs_trans_lock);
+	rs_released = rrds->rrds_rs_released;
+	rrds->rrds_dev_released = true;
+	mutex_unlock(&rs->rs_trans_lock);
+
+	/* Release all the ibmrs if we are the only or first to be called.
+	 * After that, set rs_trans_private to NULL so that the rds_sock
+	 * will not find this rrds.
+	 *
+	 * If rs_released is set, rds_rdma_sock_release() will release all
+	 * ibmrs.  So just let the rds_sock know that we are done.
+	 */
+	if (!rs_released) {
+		rds_rdma_drop_keys(rs);
+
+		mutex_lock(&rs->rs_trans_lock);
+		rs->rs_trans_private = NULL;
+
+		/* The rds_sock may find rrds before rs_trans_private is unset.
+		 * So we cannot simply free this rrds.
+		 */
+		kref_put(&rrds->rrds_kref, rds_rrds_free);
+		mutex_unlock(&rs->rs_trans_lock);
+	}
+
+	complete(&rrds->rrds_work_done);
+}
+
+/* Given an IP address, find the RDMA device associated with that address
+ * and assign it to the given socket.
+ *
+ * @addr: find the device associated with this address.
+ * @rs: the RDS socket to be assigned to the found device.
+ *
+ * After a device is found and assigned to the socket, the socket holds a
+ * reference on that device.
+ */
+struct rds_ib_device *rds_rdma_rs_get_device(const struct in6_addr *addr,
+					     struct rds_sock *rs)
+{
+	struct rds_ib_device *tmp_rid, *found_rid = NULL;
+	struct rds_ib_ipaddr *ib_ipaddr;
+	struct rds_rdma_dev_sock *rrds;
+	unsigned long flags;
+
+	mutex_lock(&rs->rs_trans_lock);
+
+	rrds = (struct rds_rdma_dev_sock *)rs->rs_trans_private;
+	if (rrds && !rrds->rrds_dev_released) {
+		mutex_unlock(&rs->rs_trans_lock);
+		return rrds->rrds_rds_ibdev;
+	}
+
+	rrds = kzalloc(sizeof(*rrds), GFP_KERNEL);
+	if (!rrds) {
+		mutex_unlock(&rs->rs_trans_lock);
+		return NULL;
+	}
+	rrds->rrds_rs = rs;
+	INIT_LIST_HEAD(&rrds->rrds_list);
+	init_completion(&rrds->rrds_work_done);
+	INIT_WORK(&rrds->rrds_free_work, rds_rdma_free_dev_rs_worker);
+	kref_init(&rrds->rrds_kref);
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(tmp_rid, &rds_ib_devices, list) {
+		list_for_each_entry_rcu(ib_ipaddr, &tmp_rid->ipaddr_list,
+					list) {
+			if (ipv6_addr_equal(&ib_ipaddr->ipaddr, addr)) {
+				found_rid = tmp_rid;
+				goto addr_out;
+			}
+		}
+	}
+
+addr_out:
+	if (!found_rid) {
+		rcu_read_unlock();
+		mutex_unlock(&rs->rs_trans_lock);
+		kfree(rrds);
+		return NULL;
+	}
+
+	/* Each rds_rdma_dev_sock holds a reference on the device. */
+	rrds->rrds_rds_ibdev = found_rid;
+	atomic_inc(&found_rid->rid_refcount);
+	rs->rs_trans_private = rrds;
+
+	spin_lock_irqsave(&found_rid->rid_rs_list_lock, flags);
+	list_add_tail(&rrds->rrds_list, &found_rid->rid_rs_list);
+	spin_unlock_irqrestore(&found_rid->rid_rs_list_lock, flags);
+
+	rcu_read_unlock();
+	mutex_unlock(&rs->rs_trans_lock);
+
+	return found_rid;
 }
 
 static int rds_ib_add_ipaddr(struct rds_ib_device *rds_ibdev,
@@ -221,7 +346,7 @@ void rds_ib_add_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *con
 	spin_unlock_irq(&ib_nodev_conns_lock);
 
 	ic->rds_ibdev = rds_ibdev;
-	atomic_inc(&rds_ibdev->refcount);
+	atomic_inc(&rds_ibdev->rid_refcount);
 }
 
 void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn)
@@ -1144,7 +1269,6 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 
 	if (rds_ibdev->use_fastreg) {
 		__rds_frwr_free_mr(pool, ibmr, invalidate);
-		rds_ib_dev_put(rds_ibdev);
 		return;
 	}
 
@@ -1177,8 +1301,6 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 					      &pool->flush_worker, 10);
 		}
 	}
-
-	rds_ib_dev_put(rds_ibdev);
 }
 
 void rds_ib_flush_mrs(void)
@@ -1205,7 +1327,12 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	struct rds_ib_connection *ic = NULL;
 	int ret;
 
-	rds_ibdev = rds_ib_get_device(&rs->rs_bound_addr);
+	/* If this lookup is successful, this socket is associated with this
+	 * device even if subsequent ops fail as a socket cannot change its
+	 * bound address.  This association is broken if the device is removed
+	 * or the socket is closed.
+	 */
+	rds_ibdev = rds_rdma_rs_get_device(&rs->rs_bound_addr, rs);
 	if (!rds_ibdev) {
 		ret = -ENODEV;
 		goto out;
@@ -1220,10 +1347,8 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	}
 
 	ibmr = rds_ib_alloc_ibmr(rds_ibdev, nents);
-	if (IS_ERR(ibmr)) {
-		rds_ib_dev_put(rds_ibdev);
+	if (IS_ERR(ibmr))
 		return ibmr;
-	}
 
 	ibmr->ic = ic;
 
@@ -1241,7 +1366,6 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 
 	ibmr->rs = rs;
 	ibmr->device = rds_ibdev;
-	rds_ibdev = NULL;
 
  out:
 	if (ret) {
@@ -1249,8 +1373,7 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 			rds_ib_free_mr(ibmr, 0);
 		ibmr = ERR_PTR(ret);
 	}
-	if (rds_ibdev)
-		rds_ib_dev_put(rds_ibdev);
+
 	return ibmr;
 }
 
