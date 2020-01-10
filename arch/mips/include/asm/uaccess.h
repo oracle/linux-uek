@@ -137,6 +137,8 @@ static inline int __access_ok(const void __user *p, unsigned long size)
 #define access_ok(type, addr, size)					\
 	likely(__access_ok((addr), (size)))
 
+#define user_addr_max() get_fs().seg
+
 /*
  * put_user: - Write a simple value into user space.
  * @x:	 Value to copy to user space.
