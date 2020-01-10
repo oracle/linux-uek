@@ -241,7 +241,7 @@ enum rds_conn_drop_src {
 	DR_IB_POST_SEND_FAIL,
 
 	/* special features like active bonding */
-	DR_IB_UMMOD,
+	DR_RDMA_DEV_REM,
 	DR_IB_ACTIVE_BOND_FAILOVER,
 	DR_IB_LOOPBACK_CONN_DROP,
 	DR_IB_ACTIVE_BOND_FAILBACK,
@@ -768,6 +768,8 @@ struct rds_transport {
 	void (*flush_mrs)(void);
 	void (*check_migration)(struct rds_connection *conn,
 				struct rdma_cm_event *event);
+	void (*sock_release)(struct rds_sock *rs);
+
 	atomic64_t rds_avg_conn_jf;
 };
 
@@ -863,6 +865,10 @@ struct rds_sock {
 	u8			rs_rx_trace[RDS_MSG_RX_DGRAM_TRACE_MAX];
 
 	u32			rs_hash_initval;
+
+	/* Transport private info */
+	struct mutex		rs_trans_lock;
+	void			*rs_trans_private;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
