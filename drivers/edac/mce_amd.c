@@ -1185,6 +1185,11 @@ static int __init mce_amd_init(void)
 	if (!fam_ops)
 		return -ENOMEM;
 
+	if (boot_cpu_has(X86_FEATURE_SMCA)) {
+		xec_mask = 0x3f;
+		goto out;
+	}
+
 	switch (c->x86) {
 	case 0xf:
 		fam_ops->mc0_mce = k8_mc0_mce;
@@ -1232,11 +1237,8 @@ static int __init mce_amd_init(void)
 		break;
 
 	case 0x17:
-		xec_mask = 0x3f;
-		if (!boot_cpu_has(X86_FEATURE_SMCA)) {
-			printk(KERN_WARNING "Decoding supported only on Scalable MCA processors.\n");
-			goto err_out;
-		}
+		pr_warn("Decoding supported only on Scalable MCA processors.\n");
+		goto err_out;
 		break;
 
 	default:
@@ -1244,6 +1246,7 @@ static int __init mce_amd_init(void)
 		goto err_out;
 	}
 
+out:
 	pr_info("MCE: In-kernel MCE decoding enabled.\n");
 
 	mce_register_decode_chain(&amd_mce_dec_nb);
