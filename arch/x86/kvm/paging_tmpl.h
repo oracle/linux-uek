@@ -757,7 +757,6 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 				is_nx_huge_page_enabled();
 	bool force_pt_level = lpage_disallowed;
 
-
 	pgprintk("%s: addr %lx err %x\n", __func__, addr, error_code);
 
 	r = mmu_topup_memory_caches(vcpu);

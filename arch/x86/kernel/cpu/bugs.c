@@ -2113,7 +2113,6 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 	case X86_BUG_ITLB_MULTIHIT:
 		return itlb_multihit_show_state(buf);
 
-
 	default:
 		break;
 	}
