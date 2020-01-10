@@ -83,7 +83,7 @@ static enum tsx_ctrl_states x86_get_tsx_auto_mode(void)
 	return TSX_CTRL_ENABLE;
 }
 
-void __init tsx_init(void)
+void tsx_init(void)
 {
 	char arg[5] = {};
 	int ret;
@@ -91,7 +91,7 @@ void __init tsx_init(void)
 	if (!tsx_ctrl_is_supported())
 		return;
 
-	ret = cmdline_find_option(boot_command_line, "tsx", arg, sizeof(arg));
+	ret = cmdline_find_option(saved_command_line, "tsx", arg, sizeof(arg));
 	if (ret >= 0) {
 		if (!strcmp(arg, "on")) {
 			tsx_ctrl_state = TSX_CTRL_ENABLE;

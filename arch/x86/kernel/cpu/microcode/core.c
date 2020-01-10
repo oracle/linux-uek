@@ -390,6 +390,13 @@ static int __reload_late(void *info)
 	/* Populate boot_cpu_data with the current info. */
 	if (ret > 0 && cpu == boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
+
+		/*
+		 * If we are at late loading, we need to re-initialize
+		 * tsx becasue tsx control might be available.
+		 */
+		tsx_init();
+
 		get_cpu_cap(c);
 		memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
 		cpu_set_bug_bits(c);
@@ -409,6 +416,13 @@ wait_for_siblings:
 
 	if (ret > 0 && c->cpu_index != boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
+
+		/*
+		 * If we are at late loading, we need to re-initialize
+		 * tsx becasue tsx control might be available.
+		 */
+		tsx_init();
+
 		get_cpu_cap(c);
 	}
 
