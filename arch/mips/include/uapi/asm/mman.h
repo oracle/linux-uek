@@ -23,6 +23,7 @@
 #define PROT_SEM	0x10		/* page may be used for atomic ops */
 #define PROT_GROWSDOWN	0x01000000	/* mprotect flag: extend change to start of growsdown vma */
 #define PROT_GROWSUP	0x02000000	/* mprotect flag: extend change to end of growsup vma */
+#define PROT_RESERVED	0x10000000	/* Reserve this VA range */
 
 /*
  * Flags for mmap
