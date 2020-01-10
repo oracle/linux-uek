@@ -340,12 +340,31 @@ enum {
 
 #define RDS_FRAG_CACHE_ENTRIES (ilog2(RDS_MAX_FRAG_SIZE / PAGE_SIZE) + 1)
 
+/* Each RDMA device maintains a list of RDS sockets associated with it.  The
+ * following struct is used to represent this association.  This struct is
+ * used as the synchronization point for device and socket removal.
+ */
+struct rds_rdma_dev_sock {
+	struct rds_sock		*rrds_rs;
+	struct rds_ib_device	*rrds_rds_ibdev;
+	struct list_head	rrds_list;	/* List node for dev rs list */
+
+	struct completion	rrds_work_done;
+	struct work_struct	rrds_free_work;
+
+	struct kref		rrds_kref;
+
+	bool			rrds_rs_released;
+	bool			rrds_dev_released;
+};
+
 struct rds_ib_device {
 	struct list_head	list;
 	struct list_head	ipaddr_list;
 	struct list_head	conn_list;
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
+	struct workqueue_struct	*rid_dev_wq; /* Device work queue */
 
 	bool			use_fastreg;
 	int			fastreg_cq_vector;
@@ -368,8 +387,6 @@ struct rds_ib_device {
 	unsigned int		max_initiator_depth;
 	unsigned int		max_responder_resources;
 	spinlock_t		spinlock;	/* protect the above */
-	atomic_t		refcount;
-	struct work_struct	free_work;
 	struct rds_ib_srq       *srq;
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
@@ -388,6 +405,14 @@ struct rds_ib_device {
 	struct rds_ib_refill_cache i_cache_incs;
 	struct rds_ib_refill_cache i_cache_frags[RDS_FRAG_CACHE_ENTRIES];
 	struct dentry *debugfs_dir;
+
+	atomic_t		rid_refcount;
+	struct work_struct	rid_free_work;
+
+	struct list_head	rid_rs_list;	/* Device socket list */
+	spinlock_t		rid_rs_list_lock;
+
+	bool			rid_mod_unload;
 };
 
 #define ibdev_to_node(ibdev) dev_to_node((ibdev)->dev.parent)
@@ -643,6 +668,7 @@ int rds_ib_fmr_init(void);
 void rds_ib_fmr_exit(void);
 void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc);
 void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc);
+void rds_rrds_free(struct kref *kref);
 
 /* ib_recv.c */
 extern struct kmem_cache *rds_ib_incoming_slab;
