@@ -1838,6 +1838,7 @@ static bool cma_match_net_dev(const struct rdma_cm_id *id,
 			      const struct cma_req_info *req)
 {
 	const struct rdma_addr *addr = &id->route.addr;
+	bool same_ns, same_if, ib_netw_and_match;
 
 	if (!net_dev)
 		/* This request is an AF_IB request */
@@ -1853,14 +1854,15 @@ static bool cma_match_net_dev(const struct rdma_cm_id *id,
 		return true;
 	/*
 	 * Net namespaces must match, and if the listner is listening
-	 * on a specific netdevice than netdevice must match as well.
+	 * on a specific netdevice then netdevice must match as well,
+	 * unless match_net_dev_ignore_port is set and we are on an
+	 * IB network.
 	 */
-	if (net_eq(dev_net(net_dev), addr->dev_addr.net) &&
-	    (!!addr->dev_addr.bound_dev_if ==
-	     (addr->dev_addr.bound_dev_if == net_dev->ifindex)))
-		return true;
-	else
-		return false;
+	same_ns = net_eq(dev_net(net_dev), addr->dev_addr.net);
+	same_if = !!addr->dev_addr.bound_dev_if == (addr->dev_addr.bound_dev_if == net_dev->ifindex);
+	ib_netw_and_match = match_net_dev_ignore_port && (addr->dev_addr.network == RDMA_NETWORK_IB);
+
+	return same_ns && (same_if || ib_netw_and_match);
 }
 
 static struct rdma_id_private *cma_find_listener(
