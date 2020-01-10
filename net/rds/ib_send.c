@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -870,13 +870,10 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_send_work *send = NULL;
 	const struct ib_send_wr *failed_wr;
-	struct rds_ib_device *rds_ibdev;
 	u32 pos;
 	u32 work_alloc;
 	int ret;
 	int nr_sig = 0;
-
-	rds_ibdev = ib_get_client_data(ic->i_cm_id->device, &rds_ib_client);
 
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, 1, &pos);
 	if (work_alloc != 1) {
