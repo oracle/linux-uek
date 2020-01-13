@@ -37,6 +37,7 @@
 #include <linux/errno.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
+#include <linux/reboot.h>
 #include <linux/slab.h>
 #if defined(CONFIG_X86)
 #include <asm/pat.h>
@@ -3578,6 +3579,25 @@ static void mlx5_eth_lag_cleanup(struct mlx5_ib_dev *dev)
 	}
 }
 
+static int mlx5_ib_panic_notifier(struct notifier_block *nb,
+				  unsigned long action, void *unused)
+{
+	struct mlx5_ib_dev *dev;
+
+	list_for_each_entry(dev, &mlx5_ib_dev_list, ib_dev_list) {
+		struct pci_dev *pdev = dev->mdev->pdev;
+
+		pci_crit(pdev, "Revoke Bus_Mastership_Enable (BME)\n");
+		pci_clear_master(pdev);
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block mlx5_ib_panic_nb = {
+	.notifier_call = mlx5_ib_panic_notifier,
+};
+
 static int mlx5_add_netdev_notifier(struct mlx5_ib_dev *dev, u8 port_num)
 {
 	int err;
@@ -4703,6 +4723,11 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 
 	init_delay_drop(dev);
 
+	err =  atomic_notifier_chain_register(&panic_notifier_list,
+					      &mlx5_ib_panic_nb);
+	if (err)
+		goto err_delay_drop;
+
 	for (i = 0; i < ARRAY_SIZE(mlx5_class_attributes); i++) {
 		err = device_create_file(&dev->ib_dev.dev,
 					 mlx5_class_attributes[i]);
@@ -4787,6 +4812,9 @@ static void mlx5_ib_remove(struct mlx5_core_dev *mdev, void *context)
 
 	dev = context;
 	ll = mlx5_ib_port_link_layer(&dev->ib_dev, port_num);
+
+	atomic_notifier_chain_unregister(&panic_notifier_list,
+					 &mlx5_ib_panic_nb);
 
 	cancel_delay_drop(dev);
 	mlx5_remove_netdev_notifier(dev, port_num);
