@@ -70,6 +70,8 @@ struct cpu_info_ctx {
 	int			err;
 };
 
+static int __reload_late_ret[NR_CPUS];
+
 /*
  * Those patch levels cannot be updated to newer ones and thus should be final.
  */
@@ -545,14 +547,20 @@ static int __wait_for_cpus(atomic_t *t, long long timeout)
 /*
  * Returns:
  * < 0 - on error
- *   0 - no update done
- *   1 - microcode was updated
+ *   0 - success (no update done or microcode was updated)
  */
 static int __reload_late(void *info)
 {
 	int cpu = smp_processor_id();
 	enum ucode_state err;
-	int ret = 0;
+	struct cpumask *siblmsk = topology_sibling_cpumask(cpu);
+	bool master_sibling = (cpumask_first(topology_sibling_cpumask(cpu)) ==
+			cpu);
+	int cpu_sibling;
+
+	/* Compute sibling CPU. */
+	cpumask_clear_cpu(cpu, siblmsk);
+	cpu_sibling = cpumask_first(siblmsk);
 
 	/*
 	 * Wait for all CPUs to arrive. A load will not be attempted unless all
@@ -568,16 +576,15 @@ static int __reload_late(void *info)
 	 * loading attempts happen on multiple threads of an SMT core. See
 	 * below.
 	 */
-	if (cpumask_first(topology_sibling_cpumask(cpu)) == cpu)
+	if (master_sibling)
 		apply_microcode_local(&err);
 	else
 		goto wait_for_siblings;
 
-	if (err > UCODE_NFOUND) {
+	if (err >= UCODE_NFOUND) {
 		pr_warn("Error reloading microcode on CPU %d\n", cpu);
-		ret = -1;
-	} else if (err == UCODE_UPDATED || err == UCODE_OK) {
-		ret = 1;
+		__reload_late_ret[cpu] = -1;
+		__reload_late_ret[cpu_sibling] = -1;
 	}
 
 wait_for_siblings:
@@ -590,10 +597,10 @@ wait_for_siblings:
 	 * per-cpu cpuinfo can be updated with right microcode
 	 * revision.
 	 */
-	if (cpumask_first(topology_sibling_cpumask(cpu)) != cpu)
+	if (!__reload_late_ret[cpu] && !master_sibling)
 		apply_microcode_local(&err);
 
-	return ret;
+	return __reload_late_ret[cpu];
 }
 
 /*
@@ -607,8 +614,10 @@ static int microcode_reload_late(void)
 	atomic_set(&late_cpus_in,  0);
 	atomic_set(&late_cpus_out, 0);
 
+	memset(__reload_late_ret, 0, NR_CPUS * sizeof(int));
+
 	ret = stop_machine_cpuslocked(__reload_late, NULL, cpu_online_mask);
-	if (ret > 0)
+	if (ret == 0)
 		microcode_check();
 
 	pr_info("Reload completed, microcode revision: 0x%x\n", boot_cpu_data.microcode);
@@ -649,7 +658,7 @@ static ssize_t reload_store(struct device *dev,
 put:
 	put_online_cpus();
 
-	if (ret >= 0)
+	if (ret == 0)
 		ret = size;
 
 	return ret;
