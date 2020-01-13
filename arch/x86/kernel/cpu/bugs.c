@@ -285,14 +285,6 @@ void __ref check_bugs(void)
 
 	/* Relies on the result of spectre_v2_select_mitigation. */
 	ssb_init();
-
-	/*
-	 * If we are at late loading, we need to re-initialize
-	 * tsx becasue tsx control might be available.
-	 */
-	if (system_state == SYSTEM_RUNNING)
-		tsx_init();
-
 	l1tf_select_mitigation();
 	mds_select_mitigation();
 	taa_select_mitigation();
