@@ -79,6 +79,8 @@ struct cpu_info_ctx {
 	int			err;
 };
 
+static int __reload_late_ret[NR_CPUS];
+
 /*
  * Those patch levels cannot be updated to newer ones and thus should be final.
  */
@@ -566,9 +568,9 @@ static int __wait_for_cpus(atomic_t *t, long long timeout)
 static int __reload_late(void *info)
 {
 	int cpu = smp_processor_id();
+	int cpu_sibling = cpumask_last(topology_sibling_cpumask(cpu));
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	enum ucode_state err;
-	int ret = 0;
 
 	/*
 	 * Wait for all CPUs to arrive. A load will not be attempted unless all
@@ -591,12 +593,13 @@ static int __reload_late(void *info)
 
 	if (err > UCODE_NFOUND) {
 		pr_warn("Error reloading microcode on CPU %d\n", cpu);
-		ret = -1;
+		__reload_late_ret[cpu] = -1;
 	} else if (err == UCODE_UPDATED || err == UCODE_OK) {
-		ret = 1;
+		__reload_late_ret[cpu] = 1;
+		__reload_late_ret[cpu_sibling] = 1;
 	}
 
-	if (ret > 0 && c->cpu_index == boot_cpu_data.cpu_index) {
+	if (__reload_late_ret[cpu] > 0 && c->cpu_index == boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
 
 		/*
@@ -620,10 +623,11 @@ wait_for_siblings:
 	 * per-cpu cpuinfo can be updated with right microcode
 	 * revision.
 	 */
-	if (cpumask_first(topology_sibling_cpumask(cpu)) != cpu)
+	if (__reload_late_ret[cpu] > 0 &&
+	    cpumask_first(topology_sibling_cpumask(cpu)) != cpu)
 		apply_microcode_local(&err);
 
-	if (ret > 0 && c->cpu_index != boot_cpu_data.cpu_index) {
+	if (__reload_late_ret[cpu] > 0 && c->cpu_index != boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
 
 		/*
@@ -635,7 +639,7 @@ wait_for_siblings:
 		get_cpu_cap(c);
 	}
 
-	return ret;
+	return __reload_late_ret[cpu];
 }
 
 /*
@@ -648,6 +652,8 @@ static int microcode_reload_late(void)
 
 	atomic_set(&late_cpus_in,  0);
 	atomic_set(&late_cpus_out, 0);
+
+	memset(__reload_late_ret, 0, NR_CPUS * sizeof(int));
 
 	ret = stop_machine_cpuslocked(__reload_late, NULL, cpu_online_mask);
 
