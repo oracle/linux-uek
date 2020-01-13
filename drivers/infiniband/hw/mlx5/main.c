@@ -4658,7 +4658,7 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	if (err)
 		goto err_disable_eth;
 
-#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING	
+#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	err = mlx5_ib_odp_init_one(dev);
 	if (err)
 		goto err_rsrc;
