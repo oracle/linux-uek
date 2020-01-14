@@ -191,6 +191,11 @@ struct rds_ib_rx_work {
 	struct rds_ib_connection        *ic;
 };
 
+/* Time (in millisec) to wait before deallocating connection resources tied
+ * to a device
+ */
+extern u32 rds_dev_free_wait_ms;
+
 struct rds_ib_connection {
 
 	struct list_head	ib_node;
@@ -293,6 +298,12 @@ struct rds_ib_connection {
 	u8			i_prev_seq;
 	u8			i_last_rej_seq;
 	uint			i_irq_local_cpu;
+
+	/* For handling delayed release of device related resource. */
+	struct mutex		i_delayed_free_lock;
+	struct delayed_work	i_delayed_free_work;
+	struct list_head	i_delayed_free_work_node;
+	struct rds_ib_device	*i_saved_rds_ibdev;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -413,6 +424,7 @@ struct rds_ib_device {
 	spinlock_t		rid_rs_list_lock;
 
 	bool			rid_mod_unload;
+	bool			rid_dev_rem;
 };
 
 #define ibdev_to_node(ibdev) dev_to_node((ibdev)->dev.parent)
