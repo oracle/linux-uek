@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -84,6 +84,11 @@ static int rds_ib_sysctl_min_local_ack_timeout;
 static int rds_ib_sysctl_max_local_ack_timeout = 31;
 int rds_ib_sysctl_local_ack_timeout = 17; /* 0.5 secs */
 
+/* Time (in millisec) to wait before deallocating connection resources tied to
+ * a device.
+ */
+u32 rds_dev_free_wait_ms = 10000;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -162,6 +167,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.procname       = "frwr_ibmr_gc_idle_time",
 		.data           = &rds_frwr_ibmr_gc_time,
 		.maxlen         = sizeof(rds_frwr_ibmr_gc_time),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname	= "conn_dev_free_delay",
+		.data           = &rds_dev_free_wait_ms,
+		.maxlen         = sizeof(rds_dev_free_wait_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
 	},
