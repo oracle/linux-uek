@@ -620,6 +620,7 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 			device);
 		return;
 	}
+	rds_ibdev->rid_dev_rem = true;
 
 	ib_rds_remove_debugfs_cache_hit(rds_ibdev);
 
@@ -1178,8 +1179,13 @@ void rds_ib_exit(void)
 		rds_ibdev->rid_mod_unload = true;
 	up_read(&rds_ib_devices_lock);
 
-	rds_ib_destroy_nodev_conns();
+	/* Calling ib_unregister_client() triggers the upcall to
+	 * rds_ib_remove_one() to remove all RDMA devices sequentially.
+	 * And rds_ib_remove_one() will destroy all conns associated with
+	 * a device.
+	 */
 	rds_ib_unregister_client();
+	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();
 	destroy_workqueue(rds_aux_wq);
