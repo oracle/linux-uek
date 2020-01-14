@@ -744,6 +744,124 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 		       spurious_completions, str, ctx);
 }
 
+/* Helper function to deallocate the completion queues of an rds_ib_connection.
+ *
+ * @ic: pointer to the rds_ib_connection of the queues to be freed
+ * @rds_ibdev: the underlying RDMA device of the completion queues
+ */
+static void __rds_rdma_free_cq(struct rds_ib_connection *ic,
+			       struct rds_ib_device *rds_ibdev)
+{
+	struct ib_cq *rcq, *scq;
+
+	rcq = ic->i_rcq;
+	ic->i_rcq = NULL;
+	if (rcq) {
+		ibdev_put_vector(rds_ibdev, ic->i_rcq_vector);
+		ib_destroy_cq(rcq);
+	}
+
+	scq = ic->i_scq;
+	ic->i_scq = NULL;
+	if (scq) {
+		ibdev_put_vector(rds_ibdev, ic->i_scq_vector);
+		ib_destroy_cq(scq);
+	}
+}
+
+/* Delayed worker function for i_delayed_free_work of an rds_ib_connection.
+ * It deallocates all the connection resource associated with an RDMA device.
+ */
+static void rds_rdma_conn_delayed_free_worker(struct work_struct *work)
+{
+	struct rds_ib_device *rds_ibdev;
+	struct rds_ib_connection *ic;
+
+	ic = container_of(work, struct rds_ib_connection,
+			  i_delayed_free_work.work);
+	mutex_lock(&ic->i_delayed_free_lock);
+	rds_ibdev = ic->i_saved_rds_ibdev;
+	ic->i_saved_rds_ibdev = NULL;
+	if (!rds_ibdev) {
+		mutex_unlock(&ic->i_delayed_free_lock);
+		return;
+	}
+
+	__rds_rdma_free_cq(ic, rds_ibdev);
+	mutex_unlock(&ic->i_delayed_free_lock);
+
+	rds_ib_dev_put(rds_ibdev);
+}
+
+/* When an rds_ib_connection is shutdown, it is dissociated with the underlying
+ * RDMA device.  All the resource tied to the device should be freed.  For
+ * fail over optimization, the resource is not freed immediately.  After the
+ * fail over and the connection is re-started, the new device is most likely
+ * to be the original device.  So all the resource could be re-used.  This
+ * function is called to handle this delayed deallocation.
+ *
+ * @ic: pointer to the rds_ib_connection for deallocation
+ */
+static void __rds_rdma_conn_dev_rele(struct rds_ib_connection *ic)
+{
+	struct rds_ib_device *rds_ibdev;
+	struct ib_device *dev;
+
+	rds_ibdev = ic->rds_ibdev;
+	dev = rds_ibdev->dev;
+
+	WARN_ON(ic->i_saved_rds_ibdev);
+
+	if (ic->i_send_hdrs) {
+		ib_dma_free_coherent(dev,
+				     ic->i_send_ring.w_nr *
+				     sizeof(struct rds_header),
+				     ic->i_send_hdrs,
+				     ic->i_send_hdrs_dma);
+		ic->i_send_hdrs = NULL;
+	}
+
+	if (ic->i_recv_hdrs) {
+		ib_dma_free_coherent(dev,
+				     ic->i_recv_ring.w_nr *
+				     sizeof(struct rds_header),
+				     ic->i_recv_hdrs,
+				     ic->i_recv_hdrs_dma);
+		ic->i_recv_hdrs = NULL;
+	}
+
+	if (ic->i_ack) {
+		ib_dma_free_coherent(dev, sizeof(struct rds_header),
+				     ic->i_ack, ic->i_ack_dma);
+		ic->i_ack = NULL;
+	}
+
+	rds_ib_send_clear_ring(ic);
+	rds_ib_recv_clear_ring(ic);
+
+	/* If the module is going away, free all resource immediately. */
+	if (rds_ibdev->rid_dev_rem) {
+		mutex_lock(&ic->i_delayed_free_lock);
+		__rds_rdma_free_cq(ic, rds_ibdev);
+		mutex_unlock(&ic->i_delayed_free_lock);
+	} else {
+		/* Save the device and queue the delayed work. */
+		mutex_lock(&ic->i_delayed_free_lock);
+		ic->i_saved_rds_ibdev = rds_ibdev;
+		mutex_unlock(&ic->i_delayed_free_lock);
+
+		queue_delayed_work(rds_ibdev->rid_dev_wq,
+				   &ic->i_delayed_free_work,
+				   msecs_to_jiffies(rds_dev_free_wait_ms));
+	}
+
+	ic->i_pd = NULL;
+	ic->i_mr = NULL;
+
+	/* Move connection back to the nodev list. */
+	rds_ib_remove_conn(rds_ibdev, ic->conn);
+}
+
 /*
  * This needs to be very careful to not leave IS_ERR pointers around for
  * cleanup to trip over.
@@ -751,12 +869,14 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 static int rds_ib_setup_qp(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	struct rds_ib_device *rds_ibdev, *saved_ibdev;
 	struct ib_device *dev = ic->i_cm_id->device;
 	struct ib_qp_init_attr qp_attr;
-	struct rds_ib_device *rds_ibdev;
 	unsigned long max_wrs;
 	int ret;
 	int mr_reg;
+
+	WARN_ON(ic->rds_ibdev);
 
 	/*
 	 * It's normal to see a null device if an incoming connection races
@@ -776,9 +896,6 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	else
 		mr_reg = 0;
 
-	/* add the conn now so that connection establishment has the dev */
-	rds_ib_add_conn(rds_ibdev, conn);
-
 	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_send_wr + 1  + mr_reg ?
 		rds_ibdev->max_wrs - 1 - mr_reg : rds_ib_sysctl_max_send_wr;
 	if (ic->i_send_ring.w_nr != max_wrs)
@@ -792,6 +909,40 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	/* Protection domain and memory range */
 	ic->i_pd = rds_ibdev->pd;
 	ic->i_mr = rds_ibdev->mr;
+
+	cancel_delayed_work_sync(&ic->i_delayed_free_work);
+
+	/* Check if the DMA headers, i_scq and i_rcq can be reused.  If not,
+	 * free them.
+	 */
+	mutex_lock(&ic->i_delayed_free_lock);
+	saved_ibdev = ic->i_saved_rds_ibdev;
+	ic->i_saved_rds_ibdev = NULL;
+	if (saved_ibdev) {
+		/* If the underlying device does not match the saved one,
+		 * finish the delayed work.
+		 */
+		if (saved_ibdev != rds_ibdev) {
+			rds_rtd(RDS_RTD_CM, "%s: wrong rds_ibdev %p %p\n",
+				__func__, saved_ibdev, rds_ibdev);
+			/* Note that this deletes both send and receive cqs.
+			 * Both i_scq and i_rcq will be set to NULL.
+			 */
+			__rds_rdma_free_cq(ic, saved_ibdev);
+		}
+		mutex_unlock(&ic->i_delayed_free_lock);
+
+		/* Need to remove the reference added when the delayed free
+		 * work was scheduled.
+		 */
+		rds_ib_dev_put(saved_ibdev);
+	} else {
+		mutex_unlock(&ic->i_delayed_free_lock);
+		WARN_ON(ic->i_send_hdrs);
+		WARN_ON(ic->i_ack);
+		WARN_ON(ic->i_rcq);
+		WARN_ON(ic->i_scq);
+	}
 
 	rds_ib_check_cq(dev, rds_ibdev, &ic->i_scq_vector, &ic->i_scq,
 			rds_ib_cq_comp_handler_send,
@@ -910,11 +1061,38 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	rds_ib_recv_init_ack(ic);
 
+	/* Everything is set up, add the conn now so that connection
+	 * establishment has the dev.
+	 */
+	rds_ib_add_conn(rds_ibdev, conn);
+
 	rdsdebug("conn %p pd %p mr %p cq %p\n", conn, ic->i_pd, ic->i_mr, ic->i_rcq);
 
 out:
+	/* As this conn is already partially associated with the rds_ibdev
+	 * if an error happens, we need to clean up this partial association
+	 * here to avoid confusion in the RDS clean up path.  This RDMA
+	 * connection request will be rejected when an error is returned and
+	 * the conn will be dropped.
+	 */
+	if (ret) {
+		if (ic->i_sends) {
+			vfree(ic->i_sends);
+			ic->i_sends = NULL;
+		}
+		if (ic->i_recvs) {
+			vfree(ic->i_recvs);
+			ic->i_recvs = NULL;
+		}
+		ic->i_mr = NULL;
+		ic->i_pd = NULL;
+		__rds_rdma_free_cq(ic, rds_ibdev);
+	}
+
 	conn->c_reconnect_err = ret;
+	/* rds_ib_get_client_data() has a hold on the device. */
 	rds_ib_dev_put(rds_ibdev);
+
 	return ret;
 }
 
@@ -1404,6 +1582,8 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	else
 #endif
 		handler = rds_rdma_cm_event_handler;
+
+	WARN_ON(ic->i_cm_id);
 	ic->i_cm_id = rds_ib_rdma_create_id(rds_conn_net(conn),
 					    handler, ic, conn, RDMA_PS_TCP, IB_QPT_RC);
 
@@ -1477,8 +1657,6 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		    conn, ic->i_cm_id, ic->i_pd, ic->i_rcq, ic->i_cm_id ? ic->i_cm_id->qp : NULL);
 
 	if (ic->i_cm_id) {
-		struct ib_device *dev = ic->i_cm_id->device;
-
 		rds_rtd_ptr(RDS_RTD_CM_EXT, "disconnecting conn %p cm_id %p\n", conn, ic->i_cm_id);
 		err = rdma_disconnect(ic->i_cm_id);
 		if (err) {
@@ -1516,6 +1694,7 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 				spin_unlock_bh(&ic->i_rx_lock);
 			}
 		}
+		cancel_delayed_work_sync(&ic->i_rx_w.work);
 
 		tasklet_kill(&ic->i_stasklet);
 		tasklet_kill(&ic->i_rtasklet);
@@ -1527,44 +1706,16 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
 
-		/* then free the resources that ib callbacks use */
-		if (ic->i_send_hdrs)
-			ib_dma_free_coherent(dev,
-					   ic->i_send_ring.w_nr *
-						sizeof(struct rds_header),
-					   ic->i_send_hdrs,
-					   ic->i_send_hdrs_dma);
-
-		if (ic->i_recv_hdrs)
-			ib_dma_free_coherent(dev,
-					   ic->i_recv_ring.w_nr *
-						sizeof(struct rds_header),
-					   ic->i_recv_hdrs,
-					   ic->i_recv_hdrs_dma);
-
-		if (ic->i_ack)
-			ib_dma_free_coherent(dev, sizeof(struct rds_header),
-					     ic->i_ack, ic->i_ack_dma);
-
-		if (ic->i_sends)
-			rds_ib_send_clear_ring(ic);
-		if (ic->i_recvs)
-			rds_ib_recv_clear_ring(ic);
-
-		rds_ib_rdma_destroy_id(ic->i_cm_id);
-
-		/*
-		 * Move connection back to the nodev list.
-		 */
 		if (ic->rds_ibdev)
-			rds_ib_remove_conn(ic->rds_ibdev, conn);
+			__rds_rdma_conn_dev_rele(ic);
 
+		/* Finally, destroy the cm_id.  Note that i_cm_id may be
+		 * set even if rds_ibdev is NULL.  This is the error case
+		 * when the conn cannot be associated with the underlying
+		 * device.
+		 */
+		rds_ib_rdma_destroy_id(ic->i_cm_id);
 		ic->i_cm_id = NULL;
-		ic->i_pd = NULL;
-		ic->i_mr = NULL;
-		ic->i_send_hdrs = NULL;
-		ic->i_recv_hdrs = NULL;
-		ic->i_ack = NULL;
 	}
 	BUG_ON(ic->rds_ibdev);
 
@@ -1660,6 +1811,12 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	ic->i_cm_id_ctx = RDS_IB_NO_CTX;
 	ic->i_irq_local_cpu = NR_CPUS;
 
+	INIT_DELAYED_WORK(&ic->i_delayed_free_work,
+			  rds_rdma_conn_delayed_free_worker);
+	mutex_init(&ic->i_delayed_free_lock);
+
+	INIT_LIST_HEAD(&ic->i_delayed_free_work_node);
+
 	rdsdebug("conn %p conn ic %p\n", conn, conn->c_transport_data);
 	return 0;
 }
@@ -1674,6 +1831,8 @@ void rds_ib_conn_free(void *arg)
 
 	rdsdebug("ic %p\n", ic);
 
+	flush_delayed_work(&ic->i_delayed_free_work);
+
 	/*
 	 * Conn is either on a dev's list or on the nodev list.
 	 * A race with shutdown() or connect() would cause problems
@@ -1685,18 +1844,6 @@ void rds_ib_conn_free(void *arg)
 	spin_lock_irq(lock_ptr);
 	list_del(&ic->ib_node);
 	spin_unlock_irq(lock_ptr);
-
-	if (ic->i_rcq) {
-		if (ic->rds_ibdev)
-			ibdev_put_vector(ic->rds_ibdev, ic->i_rcq_vector);
-		ib_destroy_cq(ic->i_rcq);
-	}
-
-	if (ic->i_scq) {
-		if (ic->rds_ibdev)
-			ibdev_put_vector(ic->rds_ibdev, ic->i_scq_vector);
-		ib_destroy_cq(ic->i_scq);
-	}
 
 	kfree(ic);
 }
