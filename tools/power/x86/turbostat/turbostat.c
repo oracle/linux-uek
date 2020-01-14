@@ -4659,6 +4659,9 @@ unsigned int intel_model_duplicates(unsigned int model)
 	case INTEL_FAM6_ATOM_TREMONT_D:
 		return INTEL_FAM6_ATOM_GOLDMONT_D;
 
+	case INTEL_FAM6_ATOM_TREMONT_L:
+		return INTEL_FAM6_ATOM_TREMONT;
+
 	case INTEL_FAM6_ICELAKE_X:
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:
 		return INTEL_FAM6_SKYLAKE_X;
