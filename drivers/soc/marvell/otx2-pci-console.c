@@ -1147,13 +1147,6 @@ exit:
 	return ret ? -ENODEV : 0;
 }
 
-static void pci_console_shutdown(struct platform_device *pdev)
-{
-	struct device *dev = &pdev->dev;
-
-	dbgmsg(dev, "%s: entry\n", __func__);
-}
-
 static int pci_console_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1166,6 +1159,15 @@ static int pci_console_remove(struct platform_device *pdev)
 	devm_kfree(dev, pci_cons);
 
 	return 0;
+}
+
+static void pci_console_shutdown(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+
+	dbgmsg(dev, "%s: entry\n", __func__);
+
+	pci_console_remove(pdev);
 }
 
 static const struct of_device_id pci_console_of_match[] = {
