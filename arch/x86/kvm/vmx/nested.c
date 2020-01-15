@@ -2818,7 +2818,6 @@ static int nested_vmx_check_host_state(struct kvm_vcpu *vcpu,
 	    CC(vmcs12->host_ss_selector == 0 && !ia32e))
 		return -EINVAL;
 
-#ifdef CONFIG_X86_64
 	if (CC(is_noncanonical_address(vmcs12->host_fs_base, vcpu)) ||
 	    CC(is_noncanonical_address(vmcs12->host_gs_base, vcpu)) ||
 	    CC(is_noncanonical_address(vmcs12->host_gdtr_base, vcpu)) ||
@@ -2826,7 +2825,6 @@ static int nested_vmx_check_host_state(struct kvm_vcpu *vcpu,
 	    CC(is_noncanonical_address(vmcs12->host_tr_base, vcpu)) ||
 	    CC(is_noncanonical_address(vmcs12->host_rip, vcpu)))
 		return -EINVAL;
-#endif
 
 	/*
 	 * If the load IA32_EFER VM-exit control is 1, bits reserved in the
