@@ -3819,6 +3819,14 @@ static const struct mlx5_ib_counter extended_err_cnts[] = {
 	INIT_Q_COUNTER(req_cqe_flush_error),
 };
 
+static const struct mlx5_ib_counter roce_accl_cnts[] = {
+	INIT_Q_COUNTER(roce_adp_retrans),
+	INIT_Q_COUNTER(roce_adp_retrans_to),
+	INIT_Q_COUNTER(roce_slow_restart),
+	INIT_Q_COUNTER(roce_slow_restart_cnps),
+	INIT_Q_COUNTER(roce_slow_restart_trans),
+};
+
 static void mlx5_ib_dealloc_counters(struct mlx5_ib_dev *dev)
 {
 	int i;
@@ -3847,6 +3855,9 @@ static int __mlx5_ib_alloc_counters(struct mlx5_ib_dev *dev,
 
 	if (MLX5_CAP_GEN(dev->mdev, enhanced_error_q_counters))
 		num_counters += ARRAY_SIZE(extended_err_cnts);
+
+	if (MLX5_CAP_GEN(dev->mdev, roce_accl))
+		num_counters += ARRAY_SIZE(roce_accl_cnts);
 
 	cnts->num_q_counters = num_counters;
 
@@ -3902,6 +3913,13 @@ static void mlx5_ib_fill_counters(struct mlx5_ib_dev *dev,
 		for (i = 0; i < ARRAY_SIZE(extended_err_cnts); i++, j++) {
 			names[j] = extended_err_cnts[i].name;
 			offsets[j] = extended_err_cnts[i].offset;
+		}
+	}
+
+	if (MLX5_CAP_GEN(dev->mdev, roce_accl)) {
+		for (i = 0; i < ARRAY_SIZE(roce_accl_cnts); i++, j++) {
+			names[j] = roce_accl_cnts[i].name;
+			offsets[j] = roce_accl_cnts[i].offset;
 		}
 	}
 
