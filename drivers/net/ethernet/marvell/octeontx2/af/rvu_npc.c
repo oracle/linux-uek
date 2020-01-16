@@ -1468,7 +1468,7 @@ int rvu_npc_init(struct rvu *rvu)
 	rvu_write64(rvu, blkaddr, NPC_AF_PCK_DEF_OL2,
 		    (NPC_LID_LA << 8) | (NPC_LT_LA_ETHER << 4) | 0x0F);
 	rvu_write64(rvu, blkaddr, NPC_AF_PCK_DEF_OIP4,
-		    (NPC_LID_LC << 8) | (NPC_LT_LC_IP << 4) | 0x0F);
+		    (NPC_LID_LC << 8) | (NPC_LT_LC_IP << 4) | 0x0E);
 
 	/* Config Inner IPV4 NPC layer info */
 	rvu_write64(rvu, blkaddr, NPC_AF_PCK_DEF_IIP4,
