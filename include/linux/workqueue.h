@@ -14,6 +14,7 @@
 #include <linux/atomic.h>
 #include <linux/cpumask.h>
 #include <linux/rcupdate.h>
+#include <linux/uek_kabi.h>
 
 struct workqueue_struct;
 
@@ -153,6 +154,9 @@ struct workqueue_attrs {
 	 * doesn't participate in pool hash calculations or equality comparisons.
 	 */
 	bool no_numa;
+
+	UEK_KABI_RESERVE(1);
+	UEK_KABI_RESERVE(2);
 };
 
 static inline struct delayed_work *to_delayed_work(struct work_struct *work)
