@@ -3412,11 +3412,11 @@ int rvu_nix_init(struct rvu *rvu)
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OL2,
 			    (NPC_LID_LA << 8) | (NPC_LT_LA_ETHER << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OIP4,
-			    (NPC_LID_LC << 8) | (NPC_LT_LC_IP << 4) | 0x0F);
+			    (NPC_LID_LC << 8) | (NPC_LT_LC_IP << 4) | 0x0E);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IIP4,
 			    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_IP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OIP6,
-			    (NPC_LID_LC << 8) | (NPC_LT_LC_IP6 << 4) | 0x0F);
+			    (NPC_LID_LC << 8) | (NPC_LT_LC_IP6 << 4) | 0x0E);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IIP6,
 			    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_IP6 << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OTCP,
