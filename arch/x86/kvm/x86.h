@@ -360,4 +360,10 @@ static inline bool kvm_pat_valid(u64 data)
 	return (data | ((data & 0x0202020202020202ull) << 1)) == data;
 }
 
+static inline bool kvm_dr7_valid(unsigned long data)
+{
+	/* Bits [63:32] are reserved */
+	return !(data >> 32);
+}
+
 #endif
