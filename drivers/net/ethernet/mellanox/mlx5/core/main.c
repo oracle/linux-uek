@@ -69,6 +69,10 @@ static int prof_sel = MLX5_DEFAULT_PROF;
 module_param_named(prof_sel, prof_sel, int, 0444);
 MODULE_PARM_DESC(prof_sel, "profile selector. Valid range 0 - 2");
 
+#define MODULE_NAME "mlx5_core"
+int unload_allowed __initdata;
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
+
 static LIST_HEAD(intf_list);
 static LIST_HEAD(dev_list);
 static DEFINE_MUTEX(intf_mutex);
@@ -1496,6 +1500,12 @@ static int __init init(void)
 	mlx5_register_debugfs();
 
 	err = pci_register_driver(&mlx5_core_driver);
+	if (!err && !unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+				MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
+
 	if (err)
 		goto err_debug;
 
