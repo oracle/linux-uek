@@ -1700,10 +1700,14 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 			sg    = &rm->data.op_sg[i];
 
 			/* just save the pieces directly */
-			sg_set_page(sg, frags->page.p, frags->size, frags->page_offset);
+			sg_set_page(sg,
+				    skb_frag_page(frags),
+				    skb_frag_size(frags),
+				    skb_frag_off(frags)
+			);
 
 			/* and take an extra reference on the page */
-			get_page(frags->page.p);
+			get_page(skb_frag_page(frags));
 		}
 
 		/* finalization of the pieces of the message */
