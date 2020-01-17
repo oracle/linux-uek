@@ -569,7 +569,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	struct rds_ib_send_work *send = NULL;
 	struct rds_ib_send_work *first;
 	struct rds_ib_send_work *prev;
-	struct ib_send_wr *failed_wr;
+	const struct ib_send_wr *failed_wr;
 	struct scatterlist *scat;
 	int remaining_sge = 0;
 	u32 pos;
@@ -754,14 +754,14 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			send->s_wr.num_sge += num_sge;
 			while (j <= num_sge) {
 				len = min((unsigned int)PAGE_SIZE,
-					  ib_sg_dma_len(dev, scat) - rm->data.op_dmaoff);
-				send->s_sge[j].addr = ib_sg_dma_address(dev, scat);
+					  sg_dma_len(scat) - rm->data.op_dmaoff);
+				send->s_sge[j].addr = sg_dma_address(scat);
 				send->s_sge[j].addr += rm->data.op_dmaoff;
 				send->s_sge[j].length = len;
 
 				bytes_sent += len;
 				rm->data.op_dmaoff += len;
-				if (rm->data.op_dmaoff == ib_sg_dma_len(dev, scat)) {
+				if (rm->data.op_dmaoff == sg_dma_len(scat)) {
 					scat++;
 					rm->data.op_dmasg++;
 					rm->data.op_dmaoff = 0;
@@ -869,7 +869,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_send_work *send = NULL;
-	struct ib_send_wr *failed_wr;
+	const struct ib_send_wr *failed_wr;
 	struct rds_ib_device *rds_ibdev;
 	u32 pos;
 	u32 work_alloc;
@@ -918,8 +918,8 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	}
 
 	/* Convert our struct scatterlist to struct ib_sge */
-	send->s_sge[0].addr = ib_sg_dma_address(ic->i_cm_id->device, op->op_sg);
-	send->s_sge[0].length = ib_sg_dma_len(ic->i_cm_id->device, op->op_sg);
+	send->s_sge[0].addr = sg_dma_address(op->op_sg);
+	send->s_sge[0].length = sg_dma_len(op->op_sg);
 	send->s_sge[0].lkey = ic->i_mr->lkey;
 
 	rdsdebug("rva %Lx rpa %Lx len %u\n", op->op_remote_addr,
@@ -956,7 +956,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	struct rds_ib_send_work *send = NULL;
 	struct rds_ib_send_work *first;
 	struct rds_ib_send_work *prev;
-	struct ib_send_wr *failed_wr;
+	const struct ib_send_wr *failed_wr;
 	struct scatterlist *scat;
 	unsigned long len;
 	u64 remote_addr = op->op_remote_addr;
@@ -1031,9 +1031,8 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 			prev->s_wr.next = &send->s_wr;
 
 		for (j = 0; j < send->s_wr.num_sge && scat != &op->op_sg[op->op_count]; j++) {
-			len = ib_sg_dma_len(ic->i_cm_id->device, scat);
-			send->s_sge[j].addr =
-				 ib_sg_dma_address(ic->i_cm_id->device, scat);
+			len = sg_dma_len(scat);
+			send->s_sge[j].addr = sg_dma_address(scat);
 			send->s_sge[j].length = len;
 			send->s_sge[j].lkey = ic->i_mr->lkey;
 

@@ -605,8 +605,8 @@ static int rds_ib_map_fmr(struct rds_ib_device *rds_ibdev, struct rds_ib_mr *ibm
 	page_cnt = 0;
 
 	for (i = 0; i < sg_dma_len; ++i) {
-		unsigned int dma_len = ib_sg_dma_len(dev, &scat[i]);
-		u64 dma_addr = ib_sg_dma_address(dev, &scat[i]);
+		unsigned int dma_len = sg_dma_len(&scat[i]);
+		u64 dma_addr = sg_dma_address(&scat[i]);
 
 		if (dma_addr & ~PAGE_MASK) {
 			if (i > 0)
@@ -634,8 +634,8 @@ static int rds_ib_map_fmr(struct rds_ib_device *rds_ibdev, struct rds_ib_mr *ibm
 
 	page_cnt = 0;
 	for (i = 0; i < sg_dma_len; ++i) {
-		unsigned int dma_len = ib_sg_dma_len(dev, &scat[i]);
-		u64 dma_addr = ib_sg_dma_address(dev, &scat[i]);
+		unsigned int dma_len = sg_dma_len(&scat[i]);
+		u64 dma_addr = sg_dma_address(&scat[i]);
 
 		for (j = 0; j < dma_len; j += PAGE_SIZE)
 			dma_pages[page_cnt++] =
@@ -940,7 +940,8 @@ static void rds_ib_mr_pool_flush_worker(struct work_struct *work)
 
 static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 {
-	struct ib_send_wr s_wr, *failed_wr;
+	struct ib_send_wr s_wr;
+	const struct ib_send_wr *failed_wr;
 	int ret = 0;
 
 	down_read(&ibmr->device->fastreg_lock);
@@ -1259,7 +1260,8 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 				     struct rds_ib_mr *ibmr)
 {
 	struct ib_reg_wr reg_wr;
-	struct ib_send_wr inv_wr, *failed_wr, *first_wr = NULL;
+	struct ib_send_wr inv_wr, *first_wr = NULL;
+	const struct ib_send_wr *failed_wr;
 	struct ib_qp *qp;
 	atomic_t *n_wrs;
 	int ret = 0;
