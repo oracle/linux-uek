@@ -4,6 +4,7 @@
 #include "ice_common.h"
 #include "ice_sched.h"
 #include "ice_adminq_cmd.h"
+#include "ice_flow.h"
 
 #define ICE_PF_RESET_WAIT_COUNT	200
 
@@ -3413,7 +3414,10 @@ enum ice_status ice_replay_vsi(struct ice_hw *hw, u16 vsi_handle)
 		if (status)
 			return status;
 	}
-
+	/* Replay per VSI all RSS configurations */
+	status = ice_replay_rss_cfg(hw, vsi_handle);
+	if (status)
+		return status;
 	/* Replay per VSI all filters */
 	status = ice_replay_vsi_all_fltr(hw, vsi_handle);
 	return status;
