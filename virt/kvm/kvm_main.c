@@ -1765,11 +1765,11 @@ static int __kvm_map_gfn(struct kvm_memslots *slots, gfn_t gfn,
 	return 0;
 }
 
-int kvm_map_gfn(struct kvm_vcpu *vcpu, gfn_t gfn,
-		struct kvm_host_map *map, bool atomic)
+int kvm_map_gfn(struct kvm_vcpu *vcpu, gfn_t gfn, struct kvm_host_map *map,
+		struct gfn_to_pfn_cache *cache, bool atomic)
 {
 	return __kvm_map_gfn(kvm_memslots(vcpu->kvm), gfn, map,
-				&vcpu->arch.st.cache, atomic);
+			cache, atomic);
 }
 EXPORT_SYMBOL_GPL(kvm_map_gfn);
 
@@ -1781,9 +1781,9 @@ int kvm_vcpu_map(struct kvm_vcpu *vcpu, gfn_t gfn, struct kvm_host_map *map)
 EXPORT_SYMBOL_GPL(kvm_vcpu_map);
 
 static void __kvm_unmap_gfn(struct kvm_memory_slot *memslot,
-			struct kvm_host_map *map, bool dirty,
+			struct kvm_host_map *map,
 			struct gfn_to_pfn_cache *cache,
-			bool atomic)
+			bool dirty, bool atomic)
 {
 	if (!map)
 		return;
@@ -1817,19 +1817,19 @@ static void __kvm_unmap_gfn(struct kvm_memory_slot *memslot,
 	map->page = NULL;
 }
 
-int kvm_unmap_gfn(struct kvm_vcpu *vcpu, struct kvm_host_map *map, bool dirty,
-		 bool atomic)
+int kvm_unmap_gfn(struct kvm_vcpu *vcpu, struct kvm_host_map *map,
+		  struct gfn_to_pfn_cache *cache, bool dirty, bool atomic)
 {
-	__kvm_unmap_gfn(gfn_to_memslot(vcpu->kvm, map->gfn), map, dirty,
-			&vcpu->arch.st.cache, atomic);
+	__kvm_unmap_gfn(gfn_to_memslot(vcpu->kvm, map->gfn), map,
+			cache, dirty, atomic);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(kvm_unmap_gfn);
 
 void kvm_vcpu_unmap(struct kvm_vcpu *vcpu, struct kvm_host_map *map, bool dirty)
 {
-	__kvm_unmap_gfn(kvm_vcpu_gfn_to_memslot(vcpu, map->gfn), map, dirty,
-			NULL, false);
+	__kvm_unmap_gfn(kvm_vcpu_gfn_to_memslot(vcpu, map->gfn), map, NULL,
+			dirty, false);
 }
 EXPORT_SYMBOL_GPL(kvm_vcpu_unmap);
 
