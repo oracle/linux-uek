@@ -747,8 +747,12 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn,
 					      be32_to_cpu(inc->i_hdr.h_len),
 					      inc->i_hdr.h_dport);
-			if (sock_flag(sk, SOCK_RCVTSTAMP))
-				do_gettimeofday(&inc->i_usercopy.rx_tstamp);
+			if (sock_flag(sk, SOCK_RCVTSTAMP)) {
+				struct timespec64 now;
+				ktime_get_real_ts64(&now);
+				inc->i_usercopy.rx_tstamp.tv_sec = now.tv_sec;
+				inc->i_usercopy.rx_tstamp.tv_usec = now.tv_nsec / 1000;
+			}
 			rds_inc_addref(inc);
 			list_add_tail(&inc->i_item, &rs->rs_recv_queue);
 			inc->i_rx_lat_trace[RDS_MSG_RX_END] = local_clock();
@@ -933,7 +937,8 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 
 	if ((inc->i_usercopy.rx_tstamp.tv_sec != 0) &&
 	    sock_flag(rds_rs_to_sk(rs), SOCK_RCVTSTAMP)) {
-		ret = put_cmsg(msg, SOL_SOCKET, SCM_TIMESTAMP,
+		ret = put_cmsg(msg, SOL_SOCKET,
+			       SO_TIMESTAMP_OLD,
 			       sizeof(struct timeval),
 			       &inc->i_usercopy.rx_tstamp);
 		if (ret)
