@@ -200,8 +200,13 @@ static void id_map_find_del(struct ib_device *ibdev, int pv_cm_id)
 	if (!ent)
 		goto out;
 	found_ent = id_map_find_by_sl_id(ibdev, ent->slave_id, ent->sl_cm_id);
-	if (found_ent && found_ent == ent)
+	if (found_ent && found_ent == ent) {
 		rb_erase(&found_ent->node, sl_id_map);
+		if (!ent->scheduled_delete) {
+			list_del(&ent->list);
+			kfree(ent);
+		}
+	}
 	idr_remove(&sriov->pv_id_table, pv_cm_id);
 out:
 	spin_unlock(&sriov->id_map_lock);
