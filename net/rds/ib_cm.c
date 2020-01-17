@@ -35,7 +35,7 @@
 #include <linux/vmalloc.h>
 #include <linux/version.h>
 #include <linux/kconfig.h>
-#include <asm-generic/sizes.h>
+#include <linux/sizes.h>
 #include <rdma/rdma_cm_ib.h>
 #include <rdma/ib_cache.h>
 #include <rdma/ib_cm.h>
@@ -1788,9 +1788,7 @@ void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev)
 
 	if (rds_ibdev->fastreg_cq) {
 		/* Destroy cq and cq_vector */
-		if (ib_destroy_cq(rds_ibdev->fastreg_cq))
-			pr_err("Error destroying fastreg cq for rds_ibdev: %p\n",
-			       rds_ibdev);
+		ib_destroy_cq(rds_ibdev->fastreg_cq);
 		rds_ibdev->fastreg_cq = NULL;
 		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector);
 	}
@@ -1884,10 +1882,10 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 		"Successfully queried the port and the port is in %d state\n",
 		port_attr.state);
 
-	ret = ib_query_gid(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM,
-			   gid_index, &dgid, NULL);
+	ret = rdma_query_gid(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM,
+			     gid_index, &dgid);
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "ib_query_gid failed: %d\n", ret);
+		rds_rtd(RDS_RTD_ERR, "rdma_query_gid failed: %d\n", ret);
 		goto clean_up;
 	}
 	rds_rtd(RDS_RTD_RDMA_IB,
