@@ -633,7 +633,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_recv_work *recv;
-	struct ib_recv_wr *failed_wr;
+	const struct ib_recv_wr *failed_wr;
 	unsigned int posted = 0;
 	struct scatterlist *sg = NULL;
 	unsigned int flowctl_credits = 0;
@@ -977,7 +977,7 @@ static u64 rds_ib_get_ack(struct rds_ib_connection *ic)
 static void rds_ib_send_ack(struct rds_ib_connection *ic, unsigned int adv_credits)
 {
 	struct rds_header *hdr = ic->i_ack;
-	struct ib_send_wr *failed_wr;
+	const struct ib_send_wr *failed_wr;
 	u64 seq;
 	int ret;
 
@@ -1467,7 +1467,7 @@ void rds_ib_srq_refill(struct work_struct *work)
 {
 	struct rds_ib_srq *srq = container_of(work, struct rds_ib_srq, s_refill_w.work);
 	struct rds_ib_recv_work *prv = NULL, *cur = NULL, *tmp;
-	struct ib_recv_wr *bad_wr;
+	const struct ib_recv_wr *bad_wr;
 	int i, refills = 0, total_refills = 0;
 
 	if (!test_bit(0, &srq->s_refill_gate))
@@ -1538,7 +1538,7 @@ out:
 int rds_ib_srq_prefill_ring(struct rds_ib_device *rds_ibdev)
 {
 	struct rds_ib_recv_work *recv;
-	struct ib_recv_wr *bad_wr;
+	const struct ib_recv_wr *bad_wr;
 	u32 i;
 	int ret;
 
