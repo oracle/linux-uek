@@ -455,7 +455,8 @@ static inline struct rds_connection *rds_ib_map_conn(struct rds_connection *conn
 static inline struct rdma_cm_id *rds_ib_rdma_create_id(struct net *net,
 						       rdma_cm_event_handler event_handler,
 						       struct rds_ib_connection *ic,
-						       void *context, enum rdma_port_space ps,
+						       void *context,
+						       enum rdma_ucm_port_space ps,
 						       enum ib_qp_type qp_type)
 {
 	ic->i_cm_id_ctx = rds_ib_map_conn(context);
@@ -525,8 +526,8 @@ static inline void rds_ib_dma_sync_sg_for_cpu(struct ib_device *dev,
 
 	for (i = 0; i < sg_dma_len; ++i) {
 		ib_dma_sync_single_for_cpu(dev,
-				ib_sg_dma_address(dev, &sg[i]),
-				ib_sg_dma_len(dev, &sg[i]),
+				sg_dma_address(&sg[i]),
+				sg_dma_len(&sg[i]),
 				direction);
 	}
 }
@@ -539,8 +540,8 @@ static inline void rds_ib_dma_sync_sg_for_device(struct ib_device *dev,
 
 	for (i = 0; i < sg_dma_len; ++i) {
 		ib_dma_sync_single_for_device(dev,
-				ib_sg_dma_address(dev, &sg[i]),
-				ib_sg_dma_len(dev, &sg[i]),
+				sg_dma_address(&sg[i]),
+				sg_dma_len(&sg[i]),
 				direction);
 	}
 }
