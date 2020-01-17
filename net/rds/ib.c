@@ -71,6 +71,28 @@ struct workqueue_struct *rds_aux_wq;
 
 static struct socket *rds_rdma_rtnl_sk;
 
+static struct ib_mr *rds_ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags)
+{
+	struct ib_mr *mr;
+	int err;
+
+	err = ib_check_mr_access(mr_access_flags);
+	if (err)
+		return ERR_PTR(err);
+
+	mr = (*pd->device->ops.get_dma_mr)(pd, mr_access_flags);
+
+	if (!IS_ERR(mr)) {
+		mr->device      = pd->device;
+		mr->pd          = pd;
+		mr->uobject     = NULL;
+		mr->need_inval  = false;
+		atomic_inc(&pd->usecnt);
+	}
+
+	return mr;
+}
+
 void rds_ib_nodev_connect(void)
 {
 	struct rds_ib_connection *ic;
@@ -482,11 +504,11 @@ out:
 /* Detect possible link-layers in order to flush ARP correctly */
 static void detect_link_layers(struct ib_device *ibdev)
 {
-	if (ibdev->get_link_layer) {
+	if (ibdev->ops.get_link_layer) {
 		u8 port;
 
 		for (port = 1; port <= ibdev->phys_port_cnt; ++port) {
-			switch (ibdev->get_link_layer(ibdev, port)) {
+			switch (ibdev->ops.get_link_layer(ibdev, port)) {
 			case IB_LINK_LAYER_UNSPECIFIED:
 				rds_ib_transport.t_ll_ib_detected = true;
 				rds_ib_transport.t_ll_eth_detected = true;
@@ -512,6 +534,7 @@ void rds_ib_add_one(struct ib_device *device)
 	struct rds_ib_device *rds_ibdev;
 	struct ib_device_attr *dev_attr;
 	bool has_frwr, has_fmr;
+	struct ib_udata uhw;
 
 	rds_rtd(RDS_RTD_RDMA_IB,
 		"Adding ib_device: %p name: %s num_ports: %u\n",
@@ -527,7 +550,8 @@ void rds_ib_add_one(struct ib_device *device)
 	if (!dev_attr)
 		return;
 
-	if (ib_query_device(device, dev_attr)) {
+	memset(&uhw, 0, sizeof(uhw));
+	if ((*device->ops.query_device)(device, dev_attr, &uhw)) {
 		rds_rtd(RDS_RTD_ERR, "Query device failed for %s\n",
 			device->name);
 		goto free_attr;
@@ -548,7 +572,9 @@ void rds_ib_add_one(struct ib_device *device)
 	INIT_WORK(&rds_ibdev->free_work, rds_ib_dev_free);
 
 	rds_ibdev->max_wrs = dev_attr->max_qp_wr;
-	rds_ibdev->max_sge = min(dev_attr->max_sge, RDS_IB_MAX_SGE);
+	rds_ibdev->max_sge = min(dev_attr->max_send_sge, dev_attr->max_recv_sge);
+	if (rds_ibdev->max_sge > RDS_IB_MAX_SGE)
+		rds_ibdev->max_sge = RDS_IB_MAX_SGE;
 
 	WARN_ON(rds_ibdev->max_sge < 2);
 	rds_ibdev->fmr_max_remaps = dev_attr->max_map_per_fmr ?: 32;
@@ -587,15 +613,17 @@ void rds_ib_add_one(struct ib_device *device)
 	}
 	mutex_init(&rds_ibdev->vector_load_lock);
 
-	rds_ibdev->mr = ib_get_dma_mr(rds_ibdev->pd, IB_ACCESS_LOCAL_WRITE);
+	rds_ibdev->mr = rds_ib_get_dma_mr(rds_ibdev->pd, IB_ACCESS_LOCAL_WRITE);
 	if (IS_ERR(rds_ibdev->mr)) {
 		rds_ibdev->mr = NULL;
 		goto put_dev;
 	}
 
 	has_frwr = (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS);
-	has_fmr = (device->alloc_fmr && device->dealloc_fmr &&
-		   device->map_phys_fmr && device->unmap_fmr);
+	has_fmr = device->ops.alloc_fmr &&
+		  device->ops.dealloc_fmr &&
+		  device->ops.map_phys_fmr &&
+		  device->ops.unmap_fmr;
 	rds_ibdev->use_fastreg = (has_frwr && (!has_fmr || prefer_frwr));
 
 	pr_info("RDS/IB: %s will be used for ib_device: %s\n",
@@ -792,15 +820,15 @@ int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
 		/* one to one mapping of frags to sg structures */
 		frag = &skb_shinfo(skb)->frags[i];
 		/* save off all the sg pieces to the skb frags we are creating */
-		frag->size        = sg->length;
-		frag->page_offset = sg->offset;
-		frag->page.p      = sg_page(sg);
+		skb_frag_size_set(frag, sg->length);
+		skb_frag_off_set(frag, sg->offset);
+		__skb_frag_set_page(frag, sg_page(sg));
 
 		/* AA:  do we need to bump up the page reference */
 		/* get_page(frag->page); */
 
 		/* dec the amount of data we are consuming */
-		slen -= frag->size;
+		slen -= skb_frag_size(frag);
 
 		sg  = sg_next(sg);
 		if (!sg) {
