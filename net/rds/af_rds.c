@@ -158,8 +158,9 @@ void rds_wake_sk_sleep(struct rds_sock *rs)
 }
 
 static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
-		       int *uaddr_len, int peer)
+		       int peer)
 {
+	int ret = 0;
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
 	struct sockaddr_in6 *sin6;
 	struct sockaddr_in *sin;
@@ -175,7 +176,7 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 			sin->sin_family = AF_INET;
 			sin->sin_port = rs->rs_conn_port;
 			sin->sin_addr.s_addr = rs->rs_conn_addr_v4;
-			*uaddr_len = sizeof(*sin);
+			ret = sizeof(*sin);
 		} else {
 			sin6 = (struct sockaddr_in6 *)uaddr;
 			sin6->sin6_family = AF_INET6;
@@ -184,7 +185,7 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 			sin6->sin6_flowinfo = 0;
 			/* scope_id is the same as in the bound address. */
 			sin6->sin6_scope_id = rs->rs_bound_scope_id;
-			*uaddr_len = sizeof(*sin6);
+			ret = sizeof(*sin6);
 		}
 	} else {
 		/* If socket is not yet bound and the socket is connected,
@@ -198,8 +199,7 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 				sin = (struct sockaddr_in *)uaddr;
 				memset(sin, 0, sizeof(*sin));
 				sin->sin_family = AF_UNSPEC;
-				*uaddr_len = sizeof(*sin);
-				return 0;
+				return sizeof(*sin);
 			}
 
 #if IS_ENABLED(CONFIG_IPV6)
@@ -208,16 +208,14 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 				sin6 = (struct sockaddr_in6 *)uaddr;
 				memset(sin, 0, sizeof(*sin6));
 				sin->sin_family = AF_INET6;
-				*uaddr_len = sizeof(*sin6);
-				return 0;
+				return sizeof(*sin6);
 			}
 #endif
 
 			sin = (struct sockaddr_in *)uaddr;
 			memset(sin, 0, sizeof(*sin));
 			sin->sin_family = AF_INET;
-			*uaddr_len = sizeof(*sin);
-			return 0;
+			return sizeof(*sin);
 		}
 		if (ipv6_addr_v4mapped(&rs->rs_bound_addr)) {
 			sin = (struct sockaddr_in *)uaddr;
@@ -225,7 +223,7 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 			sin->sin_family = AF_INET;
 			sin->sin_port = rs->rs_bound_port;
 			sin->sin_addr.s_addr = rs->rs_bound_addr_v4;
-			*uaddr_len = sizeof(*sin);
+			ret = sizeof(*sin);
 		} else {
 			sin6 = (struct sockaddr_in6 *)uaddr;
 			sin6->sin6_family = AF_INET6;
@@ -233,11 +231,11 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 			sin6->sin6_addr = rs->rs_bound_addr;
 			sin6->sin6_flowinfo = 0;
 			sin6->sin6_scope_id = rs->rs_bound_scope_id;
-			*uaddr_len = sizeof(*sin6);
+			ret = sizeof(*sin6);
 		}
 	}
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -669,7 +667,7 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		ret = rds_set_transport(rs, optval, optlen);
 		release_sock(sock->sk);
 		break;
-	case SO_TIMESTAMP:
+	case SO_TIMESTAMP_OLD:
 		lock_sock(sock->sk);
 		ret = rds_enable_recvtstamp(sock->sk, optval, optlen);
 		release_sock(sock->sk);
