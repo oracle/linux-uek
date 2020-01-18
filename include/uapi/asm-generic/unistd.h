@@ -851,6 +851,9 @@ __SYSCALL(__NR_pidfd_open, sys_pidfd_open)
 __SYSCALL(__NR_clone3, sys_clone3)
 #endif
 
+#define __NR_openat2 437
+__SYSCALL(__NR_openat2, sys_openat2)
+
 #define __NR_waitfd 473
 __SYSCALL(__NR_waitfd, sys_waitfd)
 
