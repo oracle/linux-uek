@@ -645,6 +645,7 @@ enum devlink_trap_generic_id {
 	DEVLINK_TRAP_GENERIC_ID_IPV4_LPM_UNICAST_MISS,
 	DEVLINK_TRAP_GENERIC_ID_IPV6_LPM_UNICAST_MISS,
 	DEVLINK_TRAP_GENERIC_ID_NON_ROUTABLE,
+	DEVLINK_TRAP_GENERIC_ID_DECAP_ERROR,
 
 	/* Add new generic trap IDs above */
 	__DEVLINK_TRAP_GENERIC_ID_MAX,
@@ -658,6 +659,7 @@ enum devlink_trap_group_generic_id {
 	DEVLINK_TRAP_GROUP_GENERIC_ID_L2_DROPS,
 	DEVLINK_TRAP_GROUP_GENERIC_ID_L3_DROPS,
 	DEVLINK_TRAP_GROUP_GENERIC_ID_BUFFER_DROPS,
+	DEVLINK_TRAP_GROUP_GENERIC_ID_TUNNEL_DROPS,
 
 	/* Add new generic trap group IDs above */
 	__DEVLINK_TRAP_GROUP_GENERIC_ID_MAX,
@@ -715,6 +717,8 @@ enum devlink_trap_group_generic_id {
 	"ipv6_lpm_miss"
 #define DEVLINK_TRAP_GENERIC_NAME_NON_ROUTABLE \
 	"non_routable_packet"
+#define DEVLINK_TRAP_GENERIC_NAME_DECAP_ERROR \
+	"decap_error"
 
 #define DEVLINK_TRAP_GROUP_GENERIC_NAME_L2_DROPS \
 	"l2_drops"
@@ -722,6 +726,8 @@ enum devlink_trap_group_generic_id {
 	"l3_drops"
 #define DEVLINK_TRAP_GROUP_GENERIC_NAME_BUFFER_DROPS \
 	"buffer_drops"
+#define DEVLINK_TRAP_GROUP_GENERIC_NAME_TUNNEL_DROPS \
+	"tunnel_drops"
 
 #define DEVLINK_TRAP_GENERIC(_type, _init_action, _id, _group, _metadata_cap) \
 	{								      \

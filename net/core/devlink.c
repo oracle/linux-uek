@@ -8124,6 +8124,7 @@ static const struct devlink_trap devlink_trap_generic[] = {
 	DEVLINK_TRAP(IPV4_LPM_UNICAST_MISS, EXCEPTION),
 	DEVLINK_TRAP(IPV6_LPM_UNICAST_MISS, EXCEPTION),
 	DEVLINK_TRAP(NON_ROUTABLE, DROP),
+	DEVLINK_TRAP(DECAP_ERROR, EXCEPTION),
 };
 
 #define DEVLINK_TRAP_GROUP(_id)						      \
@@ -8136,6 +8137,7 @@ static const struct devlink_trap_group devlink_trap_group_generic[] = {
 	DEVLINK_TRAP_GROUP(L2_DROPS),
 	DEVLINK_TRAP_GROUP(L3_DROPS),
 	DEVLINK_TRAP_GROUP(BUFFER_DROPS),
+	DEVLINK_TRAP_GROUP(TUNNEL_DROPS),
 };
 
 static int devlink_trap_generic_verify(const struct devlink_trap *trap)
