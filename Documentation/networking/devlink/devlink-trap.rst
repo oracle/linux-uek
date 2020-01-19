@@ -255,6 +255,7 @@ links to the description of driver-specific traps registered by various device
 drivers:
 
   * :doc:`netdevsim`
+  * :doc:`mlxsw`
 
 Generic Packet Trap Groups
 ==========================
