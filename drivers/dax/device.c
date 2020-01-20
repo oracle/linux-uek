@@ -318,11 +318,35 @@ static unsigned long dev_dax_pagesize(struct vm_area_struct *vma)
 	return dev_dax->align;
 }
 
+static int dev_dax_access(struct vm_area_struct *vma, unsigned long addr,
+			void *buf, int len, int write)
+{
+	unsigned long pfn;
+	void *maddr;
+	int offset = addr & (PAGE_SIZE-1);
+
+	if (follow_pfn(vma, addr, &pfn))
+		return -EINVAL;
+
+	maddr = memremap(pfn, PAGE_ALIGN(len + offset), MEMREMAP_WB);
+	if (!maddr)
+		return -ENOMEM;
+
+	if (write)
+		memcpy(maddr + offset, buf, len);
+	else
+		memcpy(buf, maddr + offset, len);
+	memunmap(maddr);
+
+	return len;
+}
+
 static const struct vm_operations_struct dax_vm_ops = {
 	.fault = dev_dax_fault,
 	.huge_fault = dev_dax_huge_fault,
 	.split = dev_dax_split,
 	.pagesize = dev_dax_pagesize,
+	.access = dev_dax_access,
 };
 
 static int dax_mmap(struct file *filp, struct vm_area_struct *vma)
