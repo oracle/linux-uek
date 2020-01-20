@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -86,6 +86,22 @@ static char *rds_cm_event_str(enum rdma_cm_event_type type)
 			     ARRAY_SIZE(rds_cm_event_strings), type);
 };
 
+/* Check if the RDMA device is OK to be used. */
+static inline bool __rds_rdma_chk_dev(struct rds_connection *conn)
+{
+	struct rds_ib_connection *ic;
+
+	ic = (struct rds_ib_connection *)conn->c_transport_data;
+	/* If the rds_rdma module is unloading or the device is being removed,
+	 * the device is not OK.
+	 */
+	if (ic->rds_ibdev && (ic->rds_ibdev->rid_mod_unload ||
+			      ic->rds_ibdev->rid_dev_rem))
+		return false;
+	else
+		return true;
+}
+
 static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 					 struct rdma_cm_event *event,
 					 bool isv6)
@@ -147,6 +163,17 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
 		rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
 			conn, ret);
+		goto out;
+	}
+
+	/* If the device used by this conn is not OK, no need to process this
+	 * event and the device removal/module clean up code will handle it.
+	 */
+	if (!__rds_rdma_chk_dev(conn)) {
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "Event %d ignored: conn %p <%pI6c,%pI6c,%d>\n",
+			    event->event, conn, &conn->c_laddr, &conn->c_faddr,
+			    conn->c_tos);
 		goto out;
 	}
 
@@ -524,7 +551,9 @@ module_init(rds_rdma_init);
 
 void __exit rds_rdma_exit(void)
 {
-	/* stop listening first to ensure no new connections are attempted */
+	/* Stop listening first to ensure no new connections are attempted.
+	 * But there can be still connection requests waiting to be processed.
+	 */
 	rds_rdma_listen_stop();
 	rds_ib_exit();
 }
