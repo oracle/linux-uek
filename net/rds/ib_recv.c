@@ -1566,10 +1566,12 @@ static void rds_ib_srq_event(struct ib_event *event,
 		break;
 	case IB_EVENT_SRQ_LIMIT_REACHED:
 		rds_ib_stats_inc(s_ib_srq_lows);
-		queue_delayed_work(rds_wq, &rds_ibdev->srq->s_rearm_w, HZ);
+		queue_delayed_work(rds_ibdev->rid_dev_wq,
+				   &rds_ibdev->srq->s_rearm_w, HZ);
 
 		if (!test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-			queue_delayed_work(rds_wq, &rds_ibdev->srq->s_refill_w, 0);
+			queue_delayed_work(rds_ibdev->rid_dev_wq,
+					   &rds_ibdev->srq->s_refill_w, 0);
 		break;
 	default:
 		break;
@@ -1645,7 +1647,8 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 
 	INIT_DELAYED_WORK(&rds_ibdev->srq->s_rearm_w, rds_ib_srq_rearm);
 
-	queue_delayed_work(rds_wq, &rds_ibdev->srq->s_rearm_w, 0);
+	queue_delayed_work(rds_ibdev->rid_dev_wq,
+			   &rds_ibdev->srq->s_rearm_w, 0);
 
 	return 0;
 }
