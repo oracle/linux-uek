@@ -1064,7 +1064,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	/* Everything is set up, add the conn now so that connection
 	 * establishment has the dev.
 	 */
-	rds_ib_add_conn(rds_ibdev, conn);
+	ret = rds_ib_add_conn(rds_ibdev, conn);
 
 	rdsdebug("conn %p pd %p mr %p cq %p\n", conn, ic->i_pd, ic->i_mr, ic->i_rcq);
 
@@ -1827,23 +1827,23 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 void rds_ib_conn_free(void *arg)
 {
 	struct rds_ib_connection *ic = arg;
-	spinlock_t	*lock_ptr;
+	unsigned long flags;
 
 	rdsdebug("ic %p\n", ic);
 
 	flush_delayed_work(&ic->i_delayed_free_work);
 
-	/*
-	 * Conn is either on a dev's list or on the nodev list.
-	 * A race with shutdown() or connect() would cause problems
-	 * (since rds_ibdev would change) but that should never happen.
+	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
+	/* Conn is either on a rds_ibdev's list or on the ib_nodev_conns list.
+	 * If it is on a device's list, its rds_ibdev should be set.
 	 */
-
-	lock_ptr = ic->rds_ibdev ? &ic->rds_ibdev->spinlock : &ib_nodev_conns_lock;
-
-	spin_lock_irq(lock_ptr);
-	list_del(&ic->ib_node);
-	spin_unlock_irq(lock_ptr);
+	if (ic->rds_ibdev)
+		spin_lock(&ic->rds_ibdev->spinlock);
+	if (!list_empty(&ic->ib_node))
+		list_del(&ic->ib_node);
+	if (ic->rds_ibdev)
+		spin_unlock(&ic->rds_ibdev->spinlock);
+	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
 	kfree(ic);
 }
