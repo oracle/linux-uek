@@ -1539,7 +1539,7 @@ void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc)
 		pr_warn("RDS: IB: MR completion on fastreg qp status %u vendor_err %u\n",
 			wc->status, wc->vendor_err);
 		ibmr->fr_state = MR_IS_STALE;
-		queue_work(rds_wq, &rds_ibdev->fastreg_reset_w);
+		queue_work(rds_ibdev->rid_dev_wq, &rds_ibdev->fastreg_reset_w);
 	}
 
 	atomic_add(2, &rds_ibdev->fastreg_wrs);
