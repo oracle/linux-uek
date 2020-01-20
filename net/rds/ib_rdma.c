@@ -296,7 +296,6 @@ static void rds_ib_remove_ipaddr(struct rds_ib_device *rds_ibdev,
 	struct rds_ib_ipaddr *i_ipaddr;
 	struct rds_ib_ipaddr *to_free = NULL;
 
-
 	spin_lock_irq(&rds_ibdev->spinlock);
 	list_for_each_entry_rcu(i_ipaddr, &rds_ibdev->ipaddr_list, list) {
 		if (ipv6_addr_equal(&i_ipaddr->ipaddr, ipaddr)) {
@@ -330,57 +329,82 @@ int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
 	return 0;
 }
 
-void rds_ib_add_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn)
+int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
+		    struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	unsigned long flags;
 
 	/* conn was previously on the nodev_conns_list */
-	spin_lock_irq(&ib_nodev_conns_lock);
+	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
+	spin_lock(&rds_ibdev->spinlock);
+
+	/* Note that old requests may still be processing while the module or
+	 * device is going away or the connection is being destroyed.
+	 */
+	if (rds_ibdev->rid_mod_unload || rds_ibdev->rid_dev_rem ||
+	    conn->c_destroy_in_prog) {
+		spin_unlock(&rds_ibdev->spinlock);
+		spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
+		return -ENOMEM;
+	}
+
 	BUG_ON(list_empty(&ib_nodev_conns));
 	BUG_ON(list_empty(&ic->ib_node));
-	list_del(&ic->ib_node);
-
-	spin_lock_irq(&rds_ibdev->spinlock);
-	list_add_tail(&ic->ib_node, &rds_ibdev->conn_list);
-	spin_unlock_irq(&rds_ibdev->spinlock);
-	spin_unlock_irq(&ib_nodev_conns_lock);
+	list_del_init(&ic->ib_node);
 
 	ic->rds_ibdev = rds_ibdev;
+	list_add_tail(&ic->ib_node, &rds_ibdev->conn_list);
+	spin_unlock(&rds_ibdev->spinlock);
+
+	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
+
 	atomic_inc(&rds_ibdev->rid_refcount);
+
+	return 0;
 }
 
 void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	unsigned long flags;
 
 	/* place conn on nodev_conns_list */
-	spin_lock(&ib_nodev_conns_lock);
+	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 
-	spin_lock_irq(&rds_ibdev->spinlock);
-	BUG_ON(list_empty(&ic->ib_node));
-	list_del(&ic->ib_node);
-	spin_unlock_irq(&rds_ibdev->spinlock);
+	spin_lock(&rds_ibdev->spinlock);
+	if (!list_empty(&ic->ib_node))
+		list_del_init(&ic->ib_node);
+	ic->rds_ibdev = NULL;
+	spin_unlock(&rds_ibdev->spinlock);
 
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
 
-	spin_unlock(&ib_nodev_conns_lock);
+	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
-	ic->rds_ibdev = NULL;
 	rds_ib_dev_put(rds_ibdev);
 }
 
+/* Destroy all RDS/RDMA connections not associated with a device. */
 void rds_ib_destroy_nodev_conns(void)
 {
-	struct rds_ib_connection *ic, *_ic;
-	LIST_HEAD(tmp_list);
+	struct rds_ib_connection *ic;
+	unsigned long flags;
 
-	/* avoid calling conn_destroy with irqs off */
-	spin_lock_irq(&ib_nodev_conns_lock);
-	list_splice(&ib_nodev_conns, &tmp_list);
-	spin_unlock_irq(&ib_nodev_conns_lock);
-
-	list_for_each_entry_safe(ic, _ic, &tmp_list, ib_node)
+	/* Avoid calling conn_destroy with irqs off.  Note that while the
+	 * loop is running, conns can be queued to the nodev list until
+	 * rds_conn_destroy() is called on them.
+	 */
+	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
+	while (!list_empty(&ib_nodev_conns)) {
+		ic = list_first_entry(&ib_nodev_conns, struct rds_ib_connection,
+				      ib_node);
+		list_del_init(&ic->ib_node);
+		spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 		rds_conn_destroy(ic->conn, 1);
+		spin_lock_irqsave(&ib_nodev_conns_lock, flags);
+	}
+	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 }
 
 static unsigned int get_unmap_fmr_cpu(struct rds_ib_device *rds_ibdev,
