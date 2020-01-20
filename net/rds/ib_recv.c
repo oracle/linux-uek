@@ -77,7 +77,7 @@ void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 		recv->r_wr.num_sge = num_send_sge;
 
 		sge = recv->r_sge;
-		sge->addr = ic->i_recv_hdrs_dma[i];
+		sge->addr = ic->i_recv_hdrs_dma + (i * sizeof(struct rds_header));
 		sge->length = sizeof(struct rds_header);
 		sge->lkey = ic->i_mr->lkey;
 
@@ -445,7 +445,7 @@ static int rds_ib_recv_refill_one(struct rds_connection *conn,
 			    ic->i_frag_pages, DMA_FROM_DEVICE);
 
 	sge = recv->r_sge;
-	sge->addr = ic->i_recv_hdrs_dma[recv - ic->i_recvs];
+	sge->addr = ic->i_recv_hdrs_dma + (recv - ic->i_recvs) * sizeof(struct rds_header);
 	sge->length = sizeof(struct rds_header);
 
 	for_each_sg(recv->r_frag->f_sg, sg, ic->i_frag_pages, i) {
@@ -517,7 +517,10 @@ static int rds_ib_srq_refill_one(struct rds_ib_srq *srq,
 			    ic->i_frag_pages, DMA_FROM_DEVICE);
 
 	sge = recv->r_sge;
-	sge->addr = srq->s_recv_hdrs_dma[recv - srq->s_recvs];
+
+	sge->addr = srq->s_recv_hdrs_dma +
+		(recv - srq->s_recvs) *
+		sizeof(struct rds_header);
 
 	sge->length = sizeof(struct rds_header);
 
@@ -583,8 +586,9 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 			    num_sge, DMA_FROM_DEVICE);
 
 	sge = &recv->r_sge[0];
-	sge->addr = rds_ibdev->srq->s_recv_hdrs_dma[recv -
-						    rds_ibdev->srq->s_recvs];
+	sge->addr = rds_ibdev->srq->s_recv_hdrs_dma +
+			(recv - rds_ibdev->srq->s_recvs) *
+			sizeof(struct rds_header);
 	sge->length = sizeof(struct rds_header);
 	sge->lkey = rds_ibdev->mr->lkey;
 
@@ -1198,7 +1202,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 	}
 	data_len -= sizeof(struct rds_header);
 
-	ihdr = ic->i_recv_hdrs[recv - ic->i_recvs];
+	ihdr = &ic->i_recv_hdrs[recv - ic->i_recvs];
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
@@ -1322,7 +1326,7 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 	}
 	data_len -= sizeof(struct rds_header);
 
-	ihdr = ic->rds_ibdev->srq->s_recv_hdrs[recv->r_wr.wr_id];
+	ihdr = &ic->rds_ibdev->srq->s_recv_hdrs[recv->r_wr.wr_id];
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
@@ -1675,7 +1679,6 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 			.max_sge = rds_ibdev->max_sge
 		}
 	};
-	struct rds_header **hdrs;
 
 	/* This is called in two paths
 	 * 1) during insmod of rds_rdma module
@@ -1704,15 +1707,14 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 		return 1;
 	}
 
-	hdrs = rds_dma_hdrs_alloc(rds_ibdev->dev,
-				  rds_ibdev->rid_hdrs_pool,
-				  &rds_ibdev->srq->s_recv_hdrs_dma,
-				  rds_ibdev->srq->s_n_wr);
-	if (!hdrs) {
-		pr_warn("%s: DMA recv hdrs alloc failed\n", __func__);
+	rds_ibdev->srq->s_recv_hdrs = ib_dma_alloc_coherent(rds_ibdev->dev,
+				rds_ibdev->srq->s_n_wr *
+				sizeof(struct rds_header),
+				&rds_ibdev->srq->s_recv_hdrs_dma, GFP_KERNEL);
+	if (!rds_ibdev->srq->s_recv_hdrs) {
+		printk(KERN_WARNING "ib_dma_alloc_coherent failed\n");
 		return 1;
 	}
-	rds_ibdev->srq->s_recv_hdrs = hdrs;
 
 	rds_ibdev->srq->s_recvs = vmalloc(rds_ibdev->srq->s_n_wr *
 				sizeof(struct rds_ib_recv_work));
@@ -1750,10 +1752,11 @@ void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 	rds_ibdev->srq->s_srq = NULL;
 
 	if (rds_ibdev->srq->s_recv_hdrs)
-		rds_dma_hdrs_free(rds_ibdev->rid_hdrs_pool,
-				  rds_ibdev->srq->s_recv_hdrs,
-				  rds_ibdev->srq->s_recv_hdrs_dma,
-				  rds_ibdev->srq->s_n_wr);
+		ib_dma_free_coherent(rds_ibdev->dev,
+				rds_ibdev->srq->s_n_wr *
+				sizeof(struct rds_header),
+				rds_ibdev->srq->s_recv_hdrs,
+				rds_ibdev->srq->s_recv_hdrs_dma);
 
 	rds_ib_srq_clear_ring(rds_ibdev);
 	vfree(rds_ibdev->srq->s_recvs);
