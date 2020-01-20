@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1653,6 +1653,9 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 {
 	int ret;
+
+	cancel_delayed_work_sync(&rds_ibdev->srq->s_rearm_w);
+	cancel_delayed_work_sync(&rds_ibdev->srq->s_refill_w);
 
 	ret = ib_destroy_srq(rds_ibdev->srq->s_srq);
 	if (ret)
