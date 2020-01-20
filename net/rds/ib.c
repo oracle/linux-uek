@@ -374,13 +374,14 @@ static void rds_ib_free_caches(struct rds_ib_device *rds_ibdev)
 void rds_ib_nodev_connect(void)
 {
 	struct rds_ib_connection *ic;
+	unsigned long flags;
 
 	rds_rtd(RDS_RTD_CM_EXT, "check & build all connections\n");
 
-	spin_lock(&ib_nodev_conns_lock);
+	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 	list_for_each_entry(ic, &ib_nodev_conns, ib_node)
 		rds_conn_connect_if_down(ic->conn);
-	spin_unlock(&ib_nodev_conns_lock);
+	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 }
 
 static void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
@@ -389,8 +390,8 @@ static void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 	LIST_HEAD(tmp_list);
 	unsigned long flags;
 
-	rds_rtd(RDS_RTD_CM_EXT,
-		"calling rds_conn_drop to drop all connections.\n");
+	rds_rtd(RDS_RTD_CM_EXT, "%s: device %s\n", __func__,
+		rds_ibdev->dev->name);
 
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
 
