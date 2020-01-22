@@ -351,14 +351,21 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 
 	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev)) {
 		hw->hw_tso = false;
-	/* Due to HW issue previous silicons required minimum 600
-	 * unused CQE to avoid CQ overflow.
-	 */
+		/* Due to HW issue previous silicons required minimum 600
+		 * unused CQE to avoid CQ overflow.
+		 */
 		pfvf->hw.rq_skid = 600;
 		pfvf->qset.rqe_cnt = Q_COUNT(Q_SIZE_1K);
 	}
-	if (is_96xx_A0(pfvf->pdev))
+	if (is_96xx_A0(pfvf->pdev)) {
 		pfvf->hw.cq_qcount_wait = 0x0;
+
+		/* Due to HW errata there will be frequent stalls on the
+		 * transmit side, instead of disabling set timeout to a
+		 * very high value.
+		 */
+		pfvf->netdev->watchdog_timeo = 10000 * HZ;
+	}
 }
 
 static inline void __iomem *otx2_get_regaddr(struct otx2_nic *nic, u64 offset)
@@ -632,12 +639,8 @@ static inline void otx2_mbox_unlock(struct mbox *mbox)
 	mutex_unlock(&mbox->lock);
 }
 
-/* Time to wait before watchdog kicks off.
- * Due to PSE deadlock errata, XOFF on TL2 transmission
- * queues takes more time than default watchdog timeout.
- * Hence setting this value higher.
- */
-#define OTX2_TX_TIMEOUT		(100000 * HZ)
+/* Time to wait before watchdog kicks off */
+#define OTX2_TX_TIMEOUT		(60 * HZ)
 
 #define	RVU_PFVF_PF_SHIFT	10
 #define	RVU_PFVF_PF_MASK	0x3F
