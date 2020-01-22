@@ -2070,7 +2070,7 @@ static int svm_vm_init(struct kvm *kvm)
 			return ret;
 	}
 
-	kvm_apicv_init(kvm, avic && irqchip_split(kvm));
+	kvm_apicv_init(kvm, avic);
 	return 0;
 }
 
