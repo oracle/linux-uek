@@ -1057,6 +1057,9 @@ kernel/net/openvswitch/vport-geneve.ko
 kernel/net/openvswitch/vport-gre.ko
 kernel/net/openvswitch/vport-vxlan.ko
 kernel/net/packet/af_packet_diag.ko
+kernel/net/rds/rds.ko
+kernel/net/rds/rds_rdma.ko
+kernel/net/rds/rds_tcp.ko
 kernel/net/rfkill/rfkill.ko
 kernel/net/sched/act_bpf.ko
 kernel/net/sched/act_connmark.ko
