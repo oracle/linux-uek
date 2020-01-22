@@ -472,7 +472,8 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	rsp->is_write = req->is_write;
 
 	/* Registers that can be accessed from PF/VF */
-	if ((req->reg_offset & 0xFF000) ==  CPT_AF_LFX_CTL(0)) {
+	if ((req->reg_offset & 0xFF000) ==  CPT_AF_LFX_CTL(0) ||
+	    (req->reg_offset & 0xFF000) ==  CPT_AF_LFX_CTL2(0)) {
 		offs = req->reg_offset & 0xFFF;
 		if (offs % 8)
 			goto error;
