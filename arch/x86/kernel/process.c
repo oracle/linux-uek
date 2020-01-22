@@ -360,9 +360,9 @@ static __always_inline void intel_set_ssb_state(unsigned long tifn)
 
 static __always_inline void __speculative_store_bypass_update(unsigned long tifn)
 {
-	if (static_cpu_has(X86_FEATURE_VIRT_SSBD))
+	if (boot_cpu_has(X86_FEATURE_VIRT_SSBD))
 		amd_set_ssb_virt_state(tifn);
-	else if (static_cpu_has(X86_FEATURE_AMD_SSBD))
+	else if (boot_cpu_has(X86_FEATURE_AMD_SSBD))
 		amd_set_core_ssb_state(tifn);
 	else
 		intel_set_ssb_state(tifn);

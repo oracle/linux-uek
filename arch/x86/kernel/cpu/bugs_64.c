@@ -505,7 +505,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
 
 		/* SSBD controlled in MSR_SPEC_CTRL */
-		if (static_cpu_has(X86_FEATURE_SSBD))
+		if (boot_cpu_has(X86_FEATURE_SSBD))
 			hostval |= ssbd_tif_to_spec_ctrl(ti->flags);
 
 		if (hostval != guestval || check_basic_ibrs_inuse()) {
@@ -518,8 +518,8 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 	 * If SSBD is not handled in MSR_SPEC_CTRL on AMD, update
 	 * MSR_AMD64_L2_CFG or MSR_VIRT_SPEC_CTRL if supported.
 	 */
-	if (!static_cpu_has(X86_FEATURE_AMD_SSBD) &&
-	    !static_cpu_has(X86_FEATURE_VIRT_SSBD))
+	if (!boot_cpu_has(X86_FEATURE_AMD_SSBD) &&
+	    !boot_cpu_has(X86_FEATURE_VIRT_SSBD))
 		return;
 
 	/*
@@ -527,7 +527,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 	 * virtual MSR value. If its not permanently enabled, evaluate
 	 * current's TIF_SSBD thread flag.
 	 */
-	if (static_cpu_has(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE))
+	if (boot_cpu_has(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE))
 		hostval = SPEC_CTRL_SSBD;
 	else
 		hostval = ssbd_tif_to_spec_ctrl(ti->flags);
