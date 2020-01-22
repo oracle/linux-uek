@@ -2847,6 +2847,12 @@ union bpf_attr {
  *		0, on success;
  *		< 0, on error.
  *
+ *  u64 bpf_jiffies64(void)
+ *	Description
+ *		Obtain the 64bit jiffies
+ *	Return
+ *		The 64 bit jiffies
+ *
  * void *bpf_ringbuf_reserve(void *ringbuf, u64 size, u64 flags)
  *	Description
  *		Reserve *size* bytes of payload in a ring buffer *ringbuf*.
@@ -3033,7 +3039,7 @@ union bpf_attr {
 	FN(probe_read_kernel_str),	\
 	FN(unused6),			\
 	FN(unused7),			\
-	FN(unused8),			\
+	FN(jiffies64),			\
 	FN(unused9),			\
 	FN(unused10),			\
 	FN(unused11),			\
