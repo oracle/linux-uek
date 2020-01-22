@@ -1595,8 +1595,8 @@ static void ssb_init(void)
 	 * bit in the mask to allow guests to use the mitigation even in the
 	 * case where the host does not enable it.
 	 */
-	if (static_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
-	    static_cpu_has(X86_FEATURE_AMD_SSBD)) {
+	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
+	    boot_cpu_has(X86_FEATURE_AMD_SSBD)) {
 		x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 	}
 
