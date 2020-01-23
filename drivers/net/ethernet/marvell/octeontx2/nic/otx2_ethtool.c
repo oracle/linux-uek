@@ -354,14 +354,16 @@ static int otx2_set_channels(struct net_device *dev,
 	if (if_up)
 		otx2_dev_stop(dev);
 
+	err = otx2_set_real_num_queues(dev, channel->tx_count,
+				       channel->rx_count);
+	if (err)
+		goto fail;
+
 	pfvf->hw.rx_queues = channel->rx_count;
 	pfvf->hw.tx_queues = channel->tx_count;
-	err = otx2_set_real_num_queues(dev, pfvf->hw.tx_queues,
-				       pfvf->hw.rx_queues);
 	pfvf->qset.cq_cnt = pfvf->hw.tx_queues +  pfvf->hw.rx_queues;
-	if (err)
-		return err;
 
+fail:
 	if (if_up)
 		otx2_dev_open(dev);
 
@@ -393,20 +395,21 @@ static int otx2_set_pauseparam(struct net_device *netdev,
 			       struct ethtool_pauseparam *pause)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct cgx_pause_frm_cfg *req;
 
 	if (pause->autoneg)
 		return -EOPNOTSUPP;
 
-	req = otx2_mbox_alloc_msg_cgx_cfg_pause_frm(&pfvf->mbox);
-	if (!req)
-		return -EAGAIN;
+	if (pause->rx_pause)
+		pfvf->flags |= OTX2_FLAG_RX_PAUSE_ENABLED;
+	else
+		pfvf->flags &= ~OTX2_FLAG_RX_PAUSE_ENABLED;
 
-	req->set = 1;
-	req->rx_pause = pause->rx_pause;
-	req->tx_pause = pause->tx_pause;
+	if (pause->tx_pause)
+		pfvf->flags |= OTX2_FLAG_TX_PAUSE_ENABLED;
+	else
+		pfvf->flags &= ~OTX2_FLAG_TX_PAUSE_ENABLED;
 
-	return otx2_sync_mbox_msg(&pfvf->mbox);
+	return otx2_config_pause_frm(pfvf);
 }
 
 static void otx2_get_ringparam(struct net_device *netdev,
@@ -593,11 +596,14 @@ static int otx2_set_rss_hash_opts(struct otx2_nic *pfvf,
 				  struct ethtool_rxnfc *nfc)
 {
 	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
-	u32 rss_cfg = rss->flowkey_cfg;
 	u32 rxh_l4 = RXH_L4_B_0_1 | RXH_L4_B_2_3;
+	u32 rss_cfg = rss->flowkey_cfg;
 
-	if (!rss->enable)
-		netdev_err(pfvf->netdev, "RSS is disabled, cmd ignored\n");
+	if (!rss->enable) {
+		netdev_err(pfvf->netdev,
+			   "RSS is disabled, cannot change settings\n");
+		return -EIO;
+	}
 
 	/* Mimimum is IPv4 and IPv6, SIP/DIP */
 	if (!(nfc->data & RXH_IP_SRC) || !(nfc->data & RXH_IP_DST))
@@ -609,32 +615,44 @@ static int otx2_set_rss_hash_opts(struct otx2_nic *pfvf,
 		/* Different config for v4 and v6 is not supported.
 		 * Both of them have to be either 4-tuple or 2-tuple.
 		 */
-		if ((nfc->data & rxh_l4) == rxh_l4)
-			rss_cfg |= NIX_FLOW_KEY_TYPE_TCP;
-		else
+		switch (nfc->data & rxh_l4) {
+		case 0:
 			rss_cfg &= ~NIX_FLOW_KEY_TYPE_TCP;
+			break;
+		case (RXH_L4_B_0_1 | RXH_L4_B_2_3):
+			rss_cfg |= NIX_FLOW_KEY_TYPE_TCP;
+			break;
+		default:
+			return -EINVAL;
+		}
 		break;
 	case UDP_V4_FLOW:
 	case UDP_V6_FLOW:
-		if ((nfc->data & rxh_l4) == rxh_l4)
-			rss_cfg |= NIX_FLOW_KEY_TYPE_UDP;
-		else
+		switch (nfc->data & rxh_l4) {
+		case 0:
 			rss_cfg &= ~NIX_FLOW_KEY_TYPE_UDP;
+			break;
+		case (RXH_L4_B_0_1 | RXH_L4_B_2_3):
+			rss_cfg |= NIX_FLOW_KEY_TYPE_UDP;
+			break;
+		default:
+			return -EINVAL;
+		}
 		break;
 	case SCTP_V4_FLOW:
 	case SCTP_V6_FLOW:
-		if ((nfc->data & rxh_l4) == rxh_l4)
-			rss_cfg |= NIX_FLOW_KEY_TYPE_SCTP;
-		else
+		switch (nfc->data & rxh_l4) {
+		case 0:
 			rss_cfg &= ~NIX_FLOW_KEY_TYPE_SCTP;
+			break;
+		case (RXH_L4_B_0_1 | RXH_L4_B_2_3):
+			rss_cfg |= NIX_FLOW_KEY_TYPE_SCTP;
+			break;
+		default:
+			return -EINVAL;
+		}
 		break;
-	case AH_ESP_V4_FLOW:
-	case AH_V4_FLOW:
-	case ESP_V4_FLOW:
 	case IPV4_FLOW:
-	case AH_ESP_V6_FLOW:
-	case AH_V6_FLOW:
-	case ESP_V6_FLOW:
 	case IPV6_FLOW:
 		rss_cfg = NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6;
 		break;
@@ -881,11 +899,13 @@ static int otx2_set_rxfh(struct net_device *dev, const u32 *indir,
 			 const u8 *hkey, const u8 hfunc)
 {
 	struct otx2_nic *pfvf = netdev_priv(dev);
-	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
+	struct otx2_rss_info *rss;
 	int idx;
 
 	if (hfunc != ETH_RSS_HASH_NO_CHANGE && hfunc != ETH_RSS_HASH_TOP)
 		return -EOPNOTSUPP;
+
+	rss = &pfvf->hw.rss_info;
 
 	if (!rss->enable) {
 		netdev_err(dev, "RSS is disabled, cannot change settings\n");

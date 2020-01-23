@@ -1655,6 +1655,9 @@ int otx2_open(struct net_device *netdev)
 		otx2_config_hw_rx_tstamp(pf, true);
 	}
 
+	/* Restore pause frame settings */
+	otx2_config_pause_frm(pf);
+
 	/* Set NPC parsing mode */
 	otx2_set_npc_parse_mode(pf, false);
 
@@ -2474,6 +2477,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	/* Enable link notifications */
 	otx2_cgx_config_linkevents(pf, true);
+
+	/* Enable pause frames by default */
+	pf->flags |= OTX2_FLAG_RX_PAUSE_ENABLED;
+	pf->flags |= OTX2_FLAG_TX_PAUSE_ENABLED;
 
 	return 0;
 

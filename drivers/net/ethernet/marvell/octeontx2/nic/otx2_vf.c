@@ -633,6 +633,10 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	otx2vf_set_ethtool_ops(netdev);
 
+	/* Enable pause frames by default */
+	vf->flags |= OTX2_FLAG_RX_PAUSE_ENABLED;
+	vf->flags |= OTX2_FLAG_TX_PAUSE_ENABLED;
+
 	return 0;
 
 err_detach_rsrc:

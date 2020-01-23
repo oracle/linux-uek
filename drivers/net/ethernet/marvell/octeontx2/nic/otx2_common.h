@@ -264,6 +264,8 @@ struct otx2_nic {
 #define OTX2_FLAG_RX_VLAN_SUPPORT		BIT_ULL(6)
 #define OTX2_FLAG_VF_VLAN_SUPPORT		BIT_ULL(7)
 #define OTX2_FLAG_PF_SHUTDOWN			BIT_ULL(8)
+#define OTX2_FLAG_RX_PAUSE_ENABLED		BIT_ULL(9)
+#define OTX2_FLAG_TX_PAUSE_ENABLED		BIT_ULL(10)
 	u64			flags;
 
 	struct otx2_qset	qset;
@@ -691,6 +693,7 @@ int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
 void otx2_tx_timeout(struct net_device *netdev);
 void otx2_get_mac_from_af(struct net_device *netdev);
 void otx2_config_irq_coalescing(struct otx2_nic *pfvf, int qidx);
+int otx2_config_pause_frm(struct otx2_nic *pfvf);
 
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
