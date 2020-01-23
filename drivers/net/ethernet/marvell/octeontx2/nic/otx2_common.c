@@ -221,6 +221,25 @@ int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu)
 	return err;
 }
 
+int otx2_config_pause_frm(struct otx2_nic *pfvf)
+{
+	struct cgx_pause_frm_cfg *req;
+	int err;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_cgx_cfg_pause_frm(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->rx_pause = !!(pfvf->flags & OTX2_FLAG_RX_PAUSE_ENABLED);
+	req->tx_pause = !!(pfvf->flags & OTX2_FLAG_TX_PAUSE_ENABLED);
+	req->set = 1;
+
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	otx2_mbox_unlock(&pfvf->mbox);
+	return err;
+}
+
 int otx2_set_flowkey_cfg(struct otx2_nic *pfvf)
 {
 	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
@@ -309,29 +328,36 @@ int otx2_rss_init(struct otx2_nic *pfvf)
 	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
 	int idx, ret = 0;
 
-	/* Enable RSS */
-	rss->enable = true;
 	rss->rss_size = sizeof(rss->ind_tbl);
 
-	/* Init RSS key here */
-	netdev_rss_key_fill(rss->key, sizeof(rss->key));
+	/* Init RSS key if it is not setup already */
+	if (!rss->enable)
+		netdev_rss_key_fill(rss->key, sizeof(rss->key));
 	otx2_set_rss_key(pfvf);
 
-	/* Default indirection table */
-	for (idx = 0; idx < rss->rss_size; idx++)
-		rss->ind_tbl[idx] =
-			ethtool_rxfh_indir_default(idx, pfvf->hw.rx_queues);
-
+	if (!netif_is_rxfh_configured(pfvf->netdev)) {
+		/* Default indirection table */
+		for (idx = 0; idx < rss->rss_size; idx++)
+			rss->ind_tbl[idx] =
+				ethtool_rxfh_indir_default(idx,
+							   pfvf->hw.rx_queues);
+	}
 	ret = otx2_set_rss_table(pfvf);
 	if (ret)
 		return ret;
 
-	/* Default flowkey or hash config to be used for generating flow tag */
-	rss->flowkey_cfg = NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6 |
+	/* Flowkey or hash config to be used for generating flow tag */
+	rss->flowkey_cfg = rss->enable ? rss->flowkey_cfg :
+			   NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6 |
 			   NIX_FLOW_KEY_TYPE_TCP | NIX_FLOW_KEY_TYPE_UDP |
 			   NIX_FLOW_KEY_TYPE_SCTP;
 
-	return otx2_set_flowkey_cfg(pfvf);
+	ret = otx2_set_flowkey_cfg(pfvf);
+	if (ret)
+		return ret;
+
+	rss->enable = true;
+	return 0;
 }
 
 void otx2_config_irq_coalescing(struct otx2_nic *pfvf, int qidx)

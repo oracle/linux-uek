@@ -326,18 +326,19 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 	while (likely(processed_cqe < budget)) {
 		cqe = (struct nix_cqe_rx_s *)CQE_ADDR(cq, cq->cq_head);
 		if (cqe->hdr.cqe_type == NIX_XQE_TYPE_INVALID ||
-		    !cqe->sg.subdc) {
+		    !cqe->sg.seg_addr) {
 			if (!processed_cqe)
 				return 0;
 			break;
 		}
+
 		cq->cq_head++;
 		cq->cq_head &= (cq->cqe_cnt - 1);
 
 		otx2_rcv_pkt_handler(pfvf, napi, cq, cqe);
 
 		cqe->hdr.cqe_type = NIX_XQE_TYPE_INVALID;
-		cqe->sg.subdc = NIX_SUBDC_NOP;
+		cqe->sg.seg_addr = 0x00;
 		processed_cqe++;
 	}
 
