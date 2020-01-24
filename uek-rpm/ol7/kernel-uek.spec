@@ -49,7 +49,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 4.14.%{base_sublevel}%{?stablerev}
+%define rpmversion 5.4.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -60,7 +60,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # The git snapshot level
 %define gitrev 0
 # Set rpm version accordingly
-%define rpmversion 4.14.%{upstream_sublevel}
+%define rpmversion 5.4.%{upstream_sublevel}
 %endif
 # Nb: The above rcrev and gitrev values automagically define Patch00 and Patch01 below.
 
@@ -176,7 +176,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 # The kernel tarball/base version
 #%define kversion 4.1
-%define kversion 4.14.%{base_sublevel}
+%define kversion 5.4.%{base_sublevel}
 
 %define make_target bzImage
 
@@ -1010,18 +1010,18 @@ test_config_file()
 
 # Update to latest upstream.
 %if 0%{?released_kernel}
-%define vanillaversion 4.14.%{base_sublevel}
+%define vanillaversion 5.4.%{base_sublevel}
 # non-released_kernel case
 %else
 %if 0%{?rcrev}
-%define vanillaversion 4.14.%{upstream_sublevel}-rc%{rcrev}
+%define vanillaversion 5.4.%{upstream_sublevel}-rc%{rcrev}
 %if 0%{?gitrev}
-%define vanillaversion 4.14.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
+%define vanillaversion 5.4.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
 %endif
 %else
 # pre-{base_sublevel+1}-rc1 case
 %if 0%{?gitrev}
-%define vanillaversion 4.14.%{base_sublevel}-git%{gitrev}
+%define vanillaversion 5.4.%{base_sublevel}-git%{gitrev}
 %endif
 %endif
 %endif
