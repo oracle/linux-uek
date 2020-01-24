@@ -680,6 +680,35 @@ static struct device_type dax_mapping_type = {
 	.groups = dax_mapping_attribute_groups,
 };
 
+int dax_phys_to_pgoff(struct vm_area_struct *vma, phys_addr_t phys,
+		      pgoff_t *pgoff)
+{
+	struct file *filp = vma->vm_file;
+	struct dev_dax *dev_dax = filp->private_data;
+	int i, rc = -EINVAL;
+	pgoff_t val;
+
+	if (!pgoff || !vma_is_dax(vma))
+		return rc;
+
+	rc = -ENOENT;
+	for (i = 0; i < dev_dax->nr_range; i++) {
+		struct dev_dax_range *dax_range = &dev_dax->ranges[i];
+		struct range *range = &dax_range->range;
+
+		if (phys >= range->start && phys <= range->end) {
+			val = dax_range->pgoff +
+				PHYS_PFN(vma->vm_start + (phys - range->start));
+			rc = 0;
+			break;
+		}
+	}
+
+	if (!rc)
+		*pgoff = val;
+	return rc;
+}
+
 static int devm_register_dax_mapping(struct dev_dax *dev_dax, int range_id)
 {
 	struct dax_region *dax_region = dev_dax->region;

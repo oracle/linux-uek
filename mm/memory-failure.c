@@ -346,6 +346,26 @@ static void add_to_kill(struct task_struct *tsk, struct page *p,
 }
 
 /*
+ * Same as add_to_kill but without struct page
+ */
+static void add_pgoff_to_kill(struct task_struct *tsk, pgoff_t pgoff,
+			struct vm_area_struct *vma, struct list_head *to_kill)
+{
+	struct to_kill *tk;
+
+	tk = kmalloc(sizeof(struct to_kill), GFP_ATOMIC);
+	if (!tk) {
+		pr_err("Memory failure: Out of memory while machine check handling\n");
+		return;
+	}
+
+	get_task_struct(tsk);
+	tk->tsk = tsk;
+	tk->addr = PFN_PHYS(pgoff);
+	list_add_tail(&tk->nd, to_kill);
+}
+
+/*
  * Kill the processes that have been collected earlier.
  *
  * Only do anything when DOIT is set, otherwise just free the list
@@ -496,6 +516,39 @@ static void collect_procs_file(struct page *page, struct list_head *to_kill,
 	}
 	read_unlock(&tasklist_lock);
 	i_mmap_unlock_read(mapping);
+}
+
+/*
+ * Collect processes when the error hit a device mapped pfn.
+ */
+static int collect_procs_dev(unsigned long pfn, struct list_head *to_kill,
+			     int force_early)
+{
+	struct vm_area_struct *vma;
+	struct task_struct *tsk;
+	int nvmas = 0;
+
+	read_lock(&tasklist_lock);
+	for_each_process(tsk) {
+		struct task_struct *t = task_early_kill(tsk, force_early);
+
+		if (!t)
+			continue;
+
+		for (vma = tsk->mm->mmap; vma; vma = vma->vm_next) {
+			pgoff_t pgoff;
+
+			if (!(vma->vm_flags & (VM_IO | VM_PFNMAP)) ||
+			    (vma->vm_mm != t->mm) ||
+			    dax_phys_to_pgoff(vma, PFN_PHYS(pfn), &pgoff))
+				continue;
+
+			add_pgoff_to_kill(t, pgoff, vma, to_kill);
+			nvmas++;
+		}
+	}
+	read_unlock(&tasklist_lock);
+	return nvmas;
 }
 
 /*
@@ -1139,6 +1192,24 @@ out:
 	return res;
 }
 
+static int memory_failure_dev(unsigned long pfn, int flags)
+{
+	LIST_HEAD(tokill);
+
+	/*
+	 * Unlike System-RAM there is no possibility to swap in a
+	 * different physical page at a given virtual address, so all
+	 * userspace consumption necessitates SIGBUS (i.e. MF_MUST_KILL)
+	 */
+	flags |= MF_ACTION_REQUIRED | MF_MUST_KILL;
+	if (!collect_procs_dev(pfn, &tokill, flags & MF_ACTION_REQUIRED))
+		return -ENXIO;
+
+	kill_procs(&tokill, flags & MF_MUST_KILL, false, pfn, flags);
+	action_result(pfn, MF_MSG_DAX, MF_RECOVERED);
+	return 0;
+}
+
 static int memory_failure_dev_pagemap(unsigned long pfn, int flags,
 		struct dev_pagemap *pgmap)
 {
@@ -1253,7 +1324,7 @@ int memory_failure(unsigned long pfn, int flags)
 		}
 		pr_err("Memory failure: %#lx: memory outside kernel control\n",
 			pfn);
-		return -ENXIO;
+		return memory_failure_dev(pfn, flags);
 	}
 
 	if (PageHuge(p))

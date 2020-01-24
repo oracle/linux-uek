@@ -68,6 +68,9 @@ static inline bool daxdev_mapping_supported(struct vm_area_struct *vma,
 		return false;
 	return dax_synchronous(dax_dev);
 }
+
+int dax_phys_to_pgoff(struct vm_area_struct *vma, phys_addr_t phys,
+		      pgoff_t *pgoff);
 #else
 static inline struct dax_device *dax_get_by_host(const char *host)
 {
@@ -106,6 +109,11 @@ static inline bool daxdev_mapping_supported(struct vm_area_struct *vma,
 				struct dax_device *dax_dev)
 {
 	return !(vma->vm_flags & VM_SYNC);
+}
+static int dax_phys_to_pgoff(struct vm_area_struct *vma, phys_addr_t phys,
+			     pgoff_t *pgoff)
+{
+	return -ENOENT;
 }
 #endif
 

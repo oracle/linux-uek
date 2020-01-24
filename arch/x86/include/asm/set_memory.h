@@ -4,6 +4,7 @@
 
 #include <asm/page.h>
 #include <asm-generic/set_memory.h>
+#include <linux/mmzone.h>
 
 /*
  * The set_memory_* API can be used to change various attributes of a virtual
@@ -95,6 +96,10 @@ static inline int set_mce_nospec(unsigned long pfn, bool unmap)
 {
 	unsigned long decoy_addr;
 	int rc;
+
+	/* No need to invalidate if not part of 1:1 map */
+	if (!pfn_valid(pfn))
+		return 0;
 
 	/*
 	 * We would like to just call:
