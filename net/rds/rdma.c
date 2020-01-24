@@ -164,10 +164,11 @@ static int rds_pin_pages(unsigned long user_addr, unsigned int nr_pages,
 {
 	int ret;
 	struct mm_struct *mm = current->mm;
+	int gup_flags = write ? FOLL_WRITE : 0;
 
 	mmgrab(mm);
 	down_read(&mm->mmap_sem);
-	ret = get_user_pages_longterm(user_addr, nr_pages, write, pages, NULL);
+	ret = get_user_pages_longterm(user_addr, nr_pages, gup_flags, pages, NULL);
 
 	if (ret >= 0 && (unsigned) ret < nr_pages) {
 		while (ret--)
