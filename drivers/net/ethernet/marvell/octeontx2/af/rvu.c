@@ -944,44 +944,51 @@ init:
 
 	err = rvu_npc_init(rvu);
 	if (err)
-		goto fwdata_err;
+		goto npc_err;
 
 	err = rvu_cgx_init(rvu);
 	if (err)
-		goto fwdata_err;
+		goto cgx_err;
 
 	/* Assign MACs for CGX mapped functions */
 	rvu_setup_pfvf_macaddress(rvu);
 
 	err = rvu_npa_init(rvu);
 	if (err)
-		goto cgx_err;
+		goto npa_err;
 
 	err = rvu_nix_init(rvu);
 	if (err)
-		goto cgx_err;
+		goto nix_err;
 
 	err = rvu_sso_init(rvu);
 	if (err)
-		goto cgx_err;
+		goto sso_err;
 
 	err = rvu_tim_init(rvu);
 	if (err)
-		goto cgx_err;
+		goto sso_err;
 
 	err = rvu_cpt_init(rvu);
 	if (err)
-		goto cgx_err;
+		goto sso_err;
 
 	err = rvu_sdp_init(rvu);
 	if (err)
-		goto cgx_err;
+		goto sso_err;
 
 	return 0;
 
+sso_err:
+	rvu_sso_freemem(rvu);
+nix_err:
+	rvu_nix_freemem(rvu);
+npa_err:
+	rvu_npa_freemem(rvu);
 cgx_err:
 	rvu_cgx_exit(rvu);
-fwdata_err:
+npc_err:
+	rvu_npc_freemem(rvu);
 	rvu_fwdata_exit(rvu);
 msix_err:
 	rvu_reset_msix(rvu);
