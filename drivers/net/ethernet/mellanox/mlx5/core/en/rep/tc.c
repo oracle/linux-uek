@@ -562,8 +562,9 @@ int mlx5e_rep_tc_netdevice_event_register(struct mlx5e_rep_priv *rpriv)
 	INIT_LIST_HEAD(&uplink_priv->tc_indr_block_priv_list);
 
 	uplink_priv->netdevice_nb.notifier_call = mlx5e_nic_rep_netdevice_event;
-	err = register_netdevice_notifier(&uplink_priv->netdevice_nb);
-
+	err = register_netdevice_notifier_dev_net(rpriv->netdev,
+						  &uplink_priv->netdevice_nb,
+						  &uplink_priv->netdevice_nn);
 	return err;
 }
 
@@ -572,7 +573,9 @@ void mlx5e_rep_tc_netdevice_event_unregister(struct mlx5e_rep_priv *rpriv)
 	struct mlx5_rep_uplink_priv *uplink_priv = &rpriv->uplink_priv;
 
 	/* clean indirect TC block notifications */
-	unregister_netdevice_notifier(&uplink_priv->netdevice_nb);
+	unregister_netdevice_notifier_dev_net(rpriv->netdev,
+					      &uplink_priv->netdevice_nb,
+					      &uplink_priv->netdevice_nn);
 }
 
 #if IS_ENABLED(CONFIG_NET_TC_SKB_EXT)
