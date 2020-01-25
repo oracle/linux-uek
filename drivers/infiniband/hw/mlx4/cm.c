@@ -333,8 +333,7 @@ int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id
 cont:
 	set_local_comm_id(mad, id->pv_cm_id);
 
-	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID ||
-	    mad->mad_hdr.attr_id == CM_DREP_ATTR_ID)
+	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID)
 		schedule_delayed(ibdev, id);
 	return 0;
 }
@@ -375,8 +374,7 @@ int mlx4_ib_demux_cm_handler(struct ib_device *ibdev, int port, int *slave,
 	set_remote_comm_id(mad, id->sl_cm_id);
 
 	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID ||
-	    mad->mad_hdr.attr_id == CM_REJ_ATTR_ID ||
-	    mad->mad_hdr.attr_id == CM_DREP_ATTR_ID)
+	    mad->mad_hdr.attr_id == CM_REJ_ATTR_ID)
 		schedule_delayed(ibdev, id);
 
 	return 0;
