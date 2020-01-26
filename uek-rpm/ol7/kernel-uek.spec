@@ -767,6 +767,7 @@ Provides: kernel-tools
 Obsoletes: qemu-kvm-tools
 Obsoletes: qemu-kvm-tools-ev
 Provides: qemu-kvm-tools
+Requires: python3
 %ifarch %{cpupowerarchs}
 Provides:  cpupowerutils = 1:009-0.6.p1
 Obsoletes: cpupowerutils < 1:009-0.6.p1
