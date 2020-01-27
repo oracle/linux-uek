@@ -1,8 +1,19 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _RDS_TCP_H
 #define _RDS_TCP_H
 
-#define RDS_TCP_PORT	16385
+/* Per-network namespace private data for rds_tcp module */
+struct rds_tcp_net {
+	struct socket		*rds_tcp_listen_sock;
+
+	struct workqueue_struct	*rds_tcp_accept_wq;
+	struct work_struct	rds_tcp_accept_w;
+
+	struct ctl_table_header	*rds_tcp_sysctl;
+	struct ctl_table	*ctl_table;
+
+	int			sndbuf_size;
+	int			rcvbuf_size;
+};
 
 struct rds_tcp_incoming {
 	struct rds_incoming	ti_inc;
@@ -12,8 +23,7 @@ struct rds_tcp_incoming {
 struct rds_tcp_connection {
 
 	struct list_head	t_tcp_node;
-	bool			t_tcp_node_detached;
-	struct rds_conn_path	*t_cpath;
+	struct rds_conn_path    *t_cpath;
 	/* t_conn_path_lock synchronizes the connection establishment between
 	 * rds_tcp_accept_one and rds_tcp_conn_path_connect
 	 */
@@ -63,7 +73,7 @@ void rds_tcp_accept_work(struct sock *sk);
 
 /* tcp_connect.c */
 int rds_tcp_conn_path_connect(struct rds_conn_path *cp);
-void rds_tcp_conn_path_shutdown(struct rds_conn_path *conn);
+void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp);
 void rds_tcp_state_change(struct sock *sk);
 
 /* tcp_listen.c */
@@ -87,7 +97,7 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
 void rds_tcp_xmit_path_prepare(struct rds_conn_path *cp);
 void rds_tcp_xmit_path_complete(struct rds_conn_path *cp);
 int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
-		 unsigned int hdr_off, unsigned int sg, unsigned int off);
+	         unsigned int hdr_off, unsigned int sg, unsigned int off);
 void rds_tcp_write_space(struct sock *sk);
 
 /* tcp_stats.c */

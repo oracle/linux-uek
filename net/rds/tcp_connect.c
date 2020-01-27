@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -43,7 +43,7 @@ void rds_tcp_state_change(struct sock *sk)
 	struct rds_conn_path *cp;
 	struct rds_tcp_connection *tc;
 
-	read_lock_bh(&sk->sk_callback_lock);
+	read_lock(&sk->sk_callback_lock);
 	cp = sk->sk_user_data;
 	if (!cp) {
 		state_change = sk->sk_state_change;
@@ -60,29 +60,24 @@ void rds_tcp_state_change(struct sock *sk)
 	case TCP_SYN_RECV:
 		break;
 	case TCP_ESTABLISHED:
-		/* Force the peer to reconnect so that we have the
-		 * TCP ports going from <smaller-ip>.<transient> to
-		 * <larger-ip>.<RDS_TCP_PORT>. We avoid marking the
-		 * RDS connection as RDS_CONN_UP until the reconnect,
-		 * to avoid RDS datagram loss.
-		 */
 		if (rds_addr_cmp(&cp->cp_conn->c_laddr,
 				 &cp->cp_conn->c_faddr) >= 0 &&
 		    rds_conn_path_transition(cp, RDS_CONN_CONNECTING,
 					     RDS_CONN_ERROR)) {
-			rds_conn_path_drop(cp, false);
+			rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE);
 		} else {
 			rds_connect_path_complete(cp, RDS_CONN_CONNECTING);
+			wake_up(&cp->cp_up_waitq);
 		}
 		break;
 	case TCP_CLOSE_WAIT:
 	case TCP_CLOSE:
-		rds_conn_path_drop(cp, false);
+		rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE);
 	default:
 		break;
 	}
 out:
-	read_unlock_bh(&sk->sk_callback_lock);
+	read_unlock(&sk->sk_callback_lock);
 	state_change(sk);
 }
 
@@ -110,6 +105,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 		mutex_unlock(&tc->t_conn_path_lock);
 		return 0;
 	}
+
 	if (ipv6_addr_v4mapped(&conn->c_laddr)) {
 		ret = sock_create_kern(rds_conn_net(conn), PF_INET,
 				       SOCK_STREAM, IPPROTO_TCP, &sock);
@@ -119,7 +115,6 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 				       SOCK_STREAM, IPPROTO_TCP, &sock);
 		isv6 = true;
 	}
-
 	if (ret < 0)
 		goto out;
 
@@ -170,17 +165,17 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 	 */
 	rds_tcp_set_callbacks(sock, cp);
 	ret = sock->ops->connect(sock, addr, addrlen, O_NONBLOCK);
-
-	rdsdebug("connect to address %pI6c returned %d\n", &conn->c_faddr, ret);
+	rdsdebug("connect to address %pI6c returned %d\n", &conn->c_faddr,
+		 ret);
 	if (ret == -EINPROGRESS)
 		ret = 0;
+
 	if (ret == 0) {
 		rds_tcp_keepalive(sock);
 		sock = NULL;
 	} else {
 		rds_tcp_restore_callbacks(sock, cp->cp_transport_data);
 	}
-
 out:
 	mutex_unlock(&tc->t_conn_path_lock);
 	if (sock)
@@ -200,13 +195,16 @@ out:
 void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 {
 	struct rds_tcp_connection *tc = cp->cp_transport_data;
-	struct socket *sock = tc->t_sock;
+	struct socket *sock;
+
+	mutex_lock(&tc->t_conn_path_lock);
+	sock = tc->t_sock;
 
 	rdsdebug("shutting down conn %p tc %p sock %p\n",
 		 cp->cp_conn, tc, sock);
 
 	if (sock) {
-		if (rds_destroy_pending(cp->cp_conn))
+		if (cp->cp_conn->c_destroy_in_prog)
 			rds_tcp_set_linger(sock);
 		sock->ops->shutdown(sock, RCV_SHUTDOWN | SEND_SHUTDOWN);
 		lock_sock(sock->sk);
@@ -215,6 +213,7 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 		release_sock(sock->sk);
 		sock_release(sock);
 	}
+	mutex_unlock(&tc->t_conn_path_lock);
 
 	if (tc->t_tinc) {
 		rds_inc_put(&tc->t_tinc->ti_inc);

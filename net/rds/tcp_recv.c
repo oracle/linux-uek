@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <net/tcp.h>
 
 #include "rds.h"
@@ -63,6 +62,7 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
 	struct rds_tcp_incoming *tinc;
 	struct sk_buff *skb;
+	unsigned long to_copy, skb_off;
 	int ret = 0;
 
 	if (!iov_iter_count(to))
@@ -71,8 +71,8 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	tinc = container_of(inc, struct rds_tcp_incoming, ti_inc);
 
 	skb_queue_walk(&tinc->ti_skb_list, skb) {
-		unsigned long to_copy, skb_off;
-		for (skb_off = 0; skb_off < skb->len; skb_off += to_copy) {
+		skb_off = 0;
+		while (skb_off < skb->len) {
 			to_copy = iov_iter_count(to);
 			to_copy = min(to_copy, skb->len - skb_off);
 
@@ -81,6 +81,7 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 
 			rds_stats_add(s_copy_to_user, to_copy);
 			ret += to_copy;
+			skb_off += to_copy;
 
 			if (!iov_iter_count(to))
 				goto out;
@@ -171,7 +172,7 @@ static int rds_tcp_data_recv(read_descriptor_t *desc, struct sk_buff *skb,
 	while (left) {
 		if (!tinc) {
 			tinc = kmem_cache_alloc(rds_tcp_incoming_slab,
-						arg->gfp);
+					        arg->gfp);
 			if (!tinc) {
 				desc->error = -ENOMEM;
 				goto out;
@@ -311,7 +312,7 @@ void rds_tcp_data_ready(struct sock *sk)
 
 	rdsdebug("data ready sk %p\n", sk);
 
-	read_lock_bh(&sk->sk_callback_lock);
+	read_lock(&sk->sk_callback_lock);
 	cp = sk->sk_user_data;
 	if (!cp) { /* check for teardown race */
 		ready = sk->sk_data_ready;
@@ -322,14 +323,10 @@ void rds_tcp_data_ready(struct sock *sk)
 	ready = tc->t_orig_data_ready;
 	rds_tcp_stats_inc(s_tcp_data_ready_calls);
 
-	if (rds_tcp_read_sock(cp, GFP_ATOMIC) == -ENOMEM) {
-		rcu_read_lock();
-		if (!rds_destroy_pending(cp->cp_conn))
-			queue_delayed_work(rds_wq, &cp->cp_recv_w, 0);
-		rcu_read_unlock();
-	}
+	if (rds_tcp_read_sock(cp, GFP_ATOMIC) == -ENOMEM)
+		rds_cond_queue_recv_work(cp, 0);
 out:
-	read_unlock_bh(&sk->sk_callback_lock);
+	read_unlock(&sk->sk_callback_lock);
 	ready(sk);
 }
 

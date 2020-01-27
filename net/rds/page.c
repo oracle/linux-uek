@@ -31,9 +31,7 @@
  *
  */
 #include <linux/highmem.h>
-#include <linux/gfp.h>
 #include <linux/cpu.h>
-#include <linux/export.h>
 
 #include "rds.h"
 
@@ -42,15 +40,13 @@ struct rds_page_remainder {
 	unsigned long	r_offset;
 };
 
-static
-DEFINE_PER_CPU_SHARED_ALIGNED(struct rds_page_remainder, rds_page_remainders);
+DEFINE_PER_CPU(struct rds_page_remainder, rds_page_remainders) ____cacheline_aligned;
 
-/**
- * rds_page_remainder_alloc - build up regions of a message.
+/*
+ * Message allocation uses this to build up regions of a message.
  *
- * @scat: Scatter list for message
- * @bytes: the number of bytes needed.
- * @gfp: the waiting behaviour of the allocation
+ * @bytes - the number of bytes needed.
+ * @gfp - the waiting behaviour of the allocation
  *
  * @gfp is always ored with __GFP_HIGHMEM.  Callers must be prepared to
  * kmap the pages, etc.
@@ -106,6 +102,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 			if (rem->r_offset != 0)
 				rds_stats_inc(s_page_remainder_hit);
 
+			/* some hw (e.g. sparc) require aligned memory */
 			rem->r_offset += ALIGN(bytes, 8);
 			if (rem->r_offset >= PAGE_SIZE) {
 				__free_page(rem->r_page);
@@ -150,18 +147,37 @@ out:
 }
 EXPORT_SYMBOL_GPL(rds_page_remainder_alloc);
 
-void rds_page_exit(void)
+static int rds_page_remainder_cpu_notify(struct notifier_block *self,
+					 unsigned long action, void *hcpu)
 {
-	unsigned int cpu;
+	struct rds_page_remainder *rem;
+	long cpu = (long)hcpu;
 
-	for_each_possible_cpu(cpu) {
-		struct rds_page_remainder *rem;
+	rem = &per_cpu(rds_page_remainders, cpu);
 
-		rem = &per_cpu(rds_page_remainders, cpu);
-		rdsdebug("cpu %u\n", cpu);
+	rdsdebug("cpu %ld action 0x%lx\n", cpu, action);
 
+	switch (action) {
+	case CPU_DEAD:
 		if (rem->r_page)
 			__free_page(rem->r_page);
 		rem->r_page = NULL;
+		break;
 	}
+
+	return 0;
+}
+
+static struct notifier_block rds_page_remainder_nb = {
+	.notifier_call = rds_page_remainder_cpu_notify,
+};
+
+void rds_page_exit(void)
+{
+	int i;
+
+	for_each_possible_cpu(i)
+		rds_page_remainder_cpu_notify(&rds_page_remainder_nb,
+					      (unsigned long)CPU_DEAD,
+					      (void *)(long)i);
 }

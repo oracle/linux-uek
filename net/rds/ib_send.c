@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -34,11 +34,44 @@
 #include <linux/in.h>
 #include <linux/device.h>
 #include <linux/dmapool.h>
-#include <linux/ratelimit.h>
 
-#include "rds_single_path.h"
 #include "rds.h"
 #include "ib.h"
+#include "rds_single_path.h"
+
+static char *rds_ib_wc_status_strings[] = {
+#define RDS_IB_WC_STATUS_STR(foo) \
+		[IB_WC_##foo] = __stringify(IB_WC_##foo)
+	RDS_IB_WC_STATUS_STR(SUCCESS),
+	RDS_IB_WC_STATUS_STR(LOC_LEN_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_QP_OP_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_EEC_OP_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_PROT_ERR),
+	RDS_IB_WC_STATUS_STR(WR_FLUSH_ERR),
+	RDS_IB_WC_STATUS_STR(MW_BIND_ERR),
+	RDS_IB_WC_STATUS_STR(BAD_RESP_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_ACCESS_ERR),
+	RDS_IB_WC_STATUS_STR(REM_INV_REQ_ERR),
+	RDS_IB_WC_STATUS_STR(REM_ACCESS_ERR),
+	RDS_IB_WC_STATUS_STR(REM_OP_ERR),
+	RDS_IB_WC_STATUS_STR(RETRY_EXC_ERR),
+	RDS_IB_WC_STATUS_STR(RNR_RETRY_EXC_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_RDD_VIOL_ERR),
+	RDS_IB_WC_STATUS_STR(REM_INV_RD_REQ_ERR),
+	RDS_IB_WC_STATUS_STR(REM_ABORT_ERR),
+	RDS_IB_WC_STATUS_STR(INV_EECN_ERR),
+	RDS_IB_WC_STATUS_STR(INV_EEC_STATE_ERR),
+	RDS_IB_WC_STATUS_STR(FATAL_ERR),
+	RDS_IB_WC_STATUS_STR(RESP_TIMEOUT_ERR),
+	RDS_IB_WC_STATUS_STR(GENERAL_ERR),
+#undef RDS_IB_WC_STATUS_STR
+};
+
+char *rds_ib_wc_status_str(enum ib_wc_status status)
+{
+	return rds_str_array(rds_ib_wc_status_strings,
+			     ARRAY_SIZE(rds_ib_wc_status_strings), status);
+}
 
 /*
  * Convert IB-specific error message to RDS error message and call core
@@ -55,7 +88,7 @@ static void rds_ib_send_complete(struct rds_message *rm,
 		return;
 
 	case IB_WC_SUCCESS:
-		notify_status = RDS_RDMA_SUCCESS;
+		notify_status = RDS_RDMA_SEND_SUCCESS;
 		break;
 
 	case IB_WC_REM_ACCESS_ERR:
@@ -63,20 +96,33 @@ static void rds_ib_send_complete(struct rds_message *rm,
 		break;
 
 	default:
-		notify_status = RDS_RDMA_OTHER_ERROR;
+		notify_status = RDS_RDMA_SEND_OTHER_ERROR;
 		break;
 	}
 	complete(rm, notify_status);
 }
 
+static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
+		struct rm_rdma_op *op,
+		int wc_status);
+
 static void rds_ib_send_unmap_data(struct rds_ib_connection *ic,
 				   struct rm_data_op *op,
 				   int wc_status)
 {
+	struct rds_message *rm;
+
+	rm = container_of(op, struct rds_message, data);
+
 	if (op->op_nents)
 		ib_dma_unmap_sg(ic->i_cm_id->device,
 				op->op_sg, op->op_nents,
 				DMA_TO_DEVICE);
+
+	if (rm->data.op_async)
+		rds_ib_send_complete(rm, wc_status, rds_asend_complete);
+	else if (rm->rdma.op_active && rm->rdma.op_remote_complete)
+		rds_ib_send_unmap_rdma(ic, &rm->rdma, wc_status);
 }
 
 static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
@@ -175,7 +221,8 @@ static struct rds_message *rds_ib_send_unmap_op(struct rds_ib_connection *ic,
 		}
 		break;
 	default:
-		printk_ratelimited(KERN_NOTICE
+		if (printk_ratelimit())
+			printk(KERN_NOTICE
 			       "RDS/IB: %s: unexpected opcode 0x%x in WR!\n",
 			       __func__, send->s_wr.opcode);
 		break;
@@ -189,7 +236,9 @@ static struct rds_message *rds_ib_send_unmap_op(struct rds_ib_connection *ic,
 void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 {
 	struct rds_ib_send_work *send;
+	u32 num_send_sge = ic->i_frag_pages;
 	u32 i;
+	u32 j;
 
 	for (i = 0, send = ic->i_sends; i < ic->i_send_ring.w_nr; i++, send++) {
 		struct ib_sge *sge;
@@ -201,11 +250,12 @@ void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 		send->s_wr.ex.imm_data = 0;
 
 		sge = &send->s_sge[0];
-		sge->addr = ic->i_send_hdrs_dma + (i * sizeof(struct rds_header));
+		sge->addr = ic->i_send_hdrs_dma[i];
 		sge->length = sizeof(struct rds_header);
-		sge->lkey = ic->i_pd->local_dma_lkey;
+		sge->lkey = ic->i_mr->lkey;
 
-		send->s_sge[1].lkey = ic->i_pd->local_dma_lkey;
+		for (j = 1; j <= num_send_sge; j++)
+			send->s_sge[j].lkey = ic->i_mr->lkey;
 	}
 }
 
@@ -220,10 +270,6 @@ void rds_ib_send_clear_ring(struct rds_ib_connection *ic)
 	}
 }
 
-/*
- * The only fast path caller always has a non-zero nr, so we don't
- * bother testing nr before performing the atomic sub.
- */
 static void rds_ib_sub_signaled(struct rds_ib_connection *ic, int nr)
 {
 	if ((atomic_sub_return(nr, &ic->i_signaled_sends) == 0) &&
@@ -240,23 +286,23 @@ static void rds_ib_sub_signaled(struct rds_ib_connection *ic, int nr)
  */
 void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 {
-	struct rds_message *rm = NULL;
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_send_work *send;
 	u32 completed;
 	u32 oldest;
 	u32 i = 0;
 	int nr_sig = 0;
-
+	enum ib_wr_opcode opcode;
 
 	rdsdebug("wc wr_id 0x%llx status %u (%s) byte_len %u imm_data %u\n",
 		 (unsigned long long)wc->wr_id, wc->status,
-		 ib_wc_status_msg(wc->status), wc->byte_len,
+		 rds_ib_wc_status_str(wc->status), wc->byte_len,
 		 be32_to_cpu(wc->ex.imm_data));
+
 	rds_ib_stats_inc(s_ib_tx_cq_event);
 
 	if (wc->wr_id == RDS_IB_ACK_WR_ID) {
-		if (time_after(jiffies, ic->i_ack_queued + HZ / 2))
+		if (ic->i_ack_queued + HZ/2 < jiffies)
 			rds_ib_stats_inc(s_ib_tx_stalled);
 		rds_ib_ack_send_complete(ic);
 		return;
@@ -265,45 +311,70 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	oldest = rds_ib_ring_oldest(&ic->i_send_ring);
 
 	completed = rds_ib_ring_completed(&ic->i_send_ring, wc->wr_id, oldest);
+	/* Avoid compiler warning for uninitialized use of send and opcode */
+	if (unlikely(!completed))
+		return;
 
 	for (i = 0; i < completed; i++) {
+		struct rds_message *rm;
+
 		send = &ic->i_sends[oldest];
 		if (send->s_wr.send_flags & IB_SEND_SIGNALED)
 			nr_sig++;
 
+		opcode = send->s_wr.opcode;
+
 		rm = rds_ib_send_unmap_op(ic, send, wc->status);
 
-		if (time_after(jiffies, send->s_queued + HZ / 2))
+		if (send->s_queued + HZ/2 < jiffies)
 			rds_ib_stats_inc(s_ib_tx_stalled);
 
 		if (send->s_op) {
 			if (send->s_op == rm->m_final_op) {
-				/* If anyone waited for this message to get
-				 * flushed out, wake them up now
-				 */
+				/* If anyone waited for this message to get flushed out, wake
+				 * them up now */
 				rds_message_unmapped(rm);
 			}
 			rds_message_put(rm);
-			send->s_op = NULL;
 		}
+		send->s_op = NULL;
 
 		oldest = (oldest + 1) % ic->i_send_ring.w_nr;
 	}
 
+	/* If remote access error print op details */
+	if (unlikely(wc->status == IB_WC_REM_ACCESS_ERR)) {
+		int y;
+		u32 len = 0;
+		u64 remote_addr = 0;
+		u32 rkey = 0;
+
+		remote_addr = send->s_rdma_wr.remote_addr;
+		rkey = send->s_rdma_wr.rkey;
+
+		for (y = 0; y < send->s_wr.num_sge; y++)
+			len += send->s_sge[y].length;
+
+		trace_printk("RDS: Remote access failure op: %d addr: %#llx rkey: %#x len: %u\n",
+			     opcode, remote_addr, rkey, len);
+	}
+
 	rds_ib_ring_free(&ic->i_send_ring, completed);
 	rds_ib_sub_signaled(ic, nr_sig);
-	nr_sig = 0;
 
-	if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
-	    test_bit(0, &conn->c_map_queued))
-		queue_delayed_work(rds_wq, &conn->c_send_w, 0);
+	clear_bit(RDS_LL_SEND_FULL, &conn->c_flags);
 
 	/* We expect errors as the qp is drained during shutdown */
 	if (wc->status != IB_WC_SUCCESS && rds_conn_up(conn)) {
-		rds_ib_conn_error(conn, "send completion on <%pI6c,%pI6c,%d> had status %u (%s), disconnecting and reconnecting\n",
-				  &conn->c_laddr, &conn->c_faddr,
-				  conn->c_tos, wc->status,
-				  ib_wc_status_msg(wc->status));
+		/* Flush errors are normal while draining the QP */
+		if (!(wc->status == IB_WC_WR_FLUSH_ERR ||
+		    wc->status == IB_WC_RETRY_EXC_ERR))
+			pr_warn("RDS/IB: send completion <%pI6c,%pI6c,%d> status %u vendor_err 0x%x, disconnecting and reconnecting\n",
+				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				wc->status, wc->vendor_err);
+		rds_conn_drop(conn, DR_IB_SEND_COMP_ERR);
+		rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
+			rds_ib_wc_status_str(wc->status));
 	}
 }
 
@@ -313,7 +384,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
  *
  * Conceptually, we have two counters:
  *  -	send credits: this tells us how many WRs we're allowed
- *	to submit without overruning the receiver's queue. For
+ *	to submit without overruning the reciever's queue. For
  *	each SEND WR we post, we decrement this by one.
  *
  *  -	posted credits: this tells us how many WRs we recently
@@ -352,7 +423,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
  * and using atomic_cmpxchg when updating the two counters.
  */
 int rds_ib_send_grab_credits(struct rds_ib_connection *ic,
-			     u32 wanted, u32 *adv_credits, int need_posted, int max_posted)
+			     u32 wanted, u32 *adv_credits, int need_posted)
 {
 	unsigned int avail, posted, got = 0, advertise;
 	long oldval, newval;
@@ -367,15 +438,16 @@ try_again:
 	posted = IB_GET_POST_CREDITS(oldval);
 	avail = IB_GET_SEND_CREDITS(oldval);
 
-	rdsdebug("wanted=%u credits=%u posted=%u\n",
-			wanted, avail, posted);
+	rds_rtd(RDS_RTD_FLOW_CNTRL,
+		"rds_ib_send_grab_credits(%u): credits=%u posted=%u\n",
+		wanted, avail, posted);
 
 	/* The last credit must be used to send a credit update. */
 	if (avail && !posted)
 		avail--;
 
 	if (avail < wanted) {
-		struct rds_connection *conn = ic->i_cm_id->context;
+		struct rds_connection *conn = rds_ib_get_conn(ic->i_cm_id);
 
 		/* Oops, there aren't that many credits left! */
 		set_bit(RDS_LL_SEND_FULL, &conn->c_flags);
@@ -392,7 +464,7 @@ try_again:
 	 * available.
 	 */
 	if (posted && (got || need_posted)) {
-		advertise = min_t(unsigned int, posted, max_posted);
+		advertise = min_t(unsigned int, posted, RDS_MAX_ADV_CREDIT);
 		newval -= IB_SET_POST_CREDITS(advertise);
 	}
 
@@ -411,14 +483,16 @@ void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits)
 	if (credits == 0)
 		return;
 
-	rdsdebug("credits=%u current=%u%s\n",
-			credits,
-			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits)),
-			test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ? ", ll_send_full" : "");
+	rds_rtd(RDS_RTD_FLOW_CNTRL,
+		"rds_ib_send_add_credits(%u): current=%u%s\n",
+		credits,
+		IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits)),
+		test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ?
+		", ll_send_full" : "");
 
 	atomic_add(IB_SET_SEND_CREDITS(credits), &ic->i_credits);
 	if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags))
-		queue_delayed_work(rds_wq, &conn->c_send_w, 0);
+		rds_cond_queue_send_work(conn->c_path + 0, 0);
 
 	WARN_ON(IB_GET_SEND_CREDITS(credits) >= 16384);
 
@@ -446,8 +520,9 @@ void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 	 * credits and has to throttle.
 	 * For the time being, 16 seems to be a good compromise.
 	 */
-	if (IB_GET_POST_CREDITS(atomic_read(&ic->i_credits)) >= 16)
-		set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
+	rds_rtd(RDS_RTD_FLOW_CNTRL, "ic->i_credits %u\n",
+		IB_GET_POST_CREDITS(atomic_read(&ic->i_credits)));
+	set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
 }
 
 static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
@@ -462,9 +537,15 @@ static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
 	if (ic->i_unsignaled_wrs-- == 0 || notify) {
 		ic->i_unsignaled_wrs = rds_ib_sysctl_max_unsig_wrs;
 		send->s_wr.send_flags |= IB_SEND_SIGNALED;
-		return 1;
 	}
-	return 0;
+
+	/* To keep the rx pipeline going, add SEND_SOLIICITED once in a while */
+	if (rds_ib_sysctl_max_unsolicited_wrs && --ic->i_unsolicited_wrs == 0) {
+		ic->i_unsolicited_wrs = rds_ib_sysctl_max_unsolicited_wrs;
+		send->s_wr.send_flags |= IB_SEND_SOLICITED;
+	}
+
+	return !!(send->s_wr.send_flags & IB_SEND_SIGNALED);
 }
 
 /*
@@ -490,6 +571,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	struct rds_ib_send_work *prev;
 	const struct ib_send_wr *failed_wr;
 	struct scatterlist *scat;
+	int remaining_sge = 0;
 	u32 pos;
 	u32 i;
 	u32 work_alloc;
@@ -502,34 +584,40 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	int flow_controlled = 0;
 	int nr_sig = 0;
 
-	BUG_ON(off % RDS_FRAG_SIZE);
 	BUG_ON(hdr_off != 0 && hdr_off != sizeof(struct rds_header));
 
 	/* Do not send cong updates to IB loopback */
 	if (conn->c_loopback
 	    && rm->m_inc.i_hdr.h_flags & RDS_FLAG_CONG_BITMAP) {
 		rds_cong_map_updated(conn->c_fcong, ~(u64) 0);
-		scat = &rm->data.op_sg[sg];
-		ret = max_t(int, RDS_CONG_MAP_BYTES, scat->length);
-		return sizeof(struct rds_header) + ret;
+		return sizeof(struct rds_header) + RDS_CONG_MAP_BYTES;
 	}
 
 	/* FIXME we may overallocate here */
 	if (be32_to_cpu(rm->m_inc.i_hdr.h_len) == 0)
 		i = 1;
 	else
-		i = DIV_ROUND_UP(be32_to_cpu(rm->m_inc.i_hdr.h_len), RDS_FRAG_SIZE);
+		i = ceil(be32_to_cpu(rm->m_inc.i_hdr.h_len), ic->i_frag_sz);
 
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 	if (work_alloc == 0) {
+		/* there is a window right here where someone could
+		 * have freed up entries on the ring.  Lets make
+		 * sure it really really really is full.
+		 */
 		set_bit(RDS_LL_SEND_FULL, &conn->c_flags);
-		rds_ib_stats_inc(s_ib_tx_ring_full);
-		ret = -ENOMEM;
-		goto out;
+		smp_mb();
+		work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
+		if (work_alloc == 0) {
+			rds_ib_stats_inc(s_ib_tx_ring_full);
+			ret = -ENOMEM;
+			goto out;
+		}
+		clear_bit(RDS_LL_SEND_FULL, &conn->c_flags);
 	}
 
 	if (ic->i_flowctl) {
-		credit_alloc = rds_ib_send_grab_credits(ic, work_alloc, &posted, 0, RDS_MAX_ADV_CREDIT);
+		credit_alloc = rds_ib_send_grab_credits(ic, work_alloc, &posted, 0);
 		adv_credits += posted;
 		if (credit_alloc < work_alloc) {
 			rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc - credit_alloc);
@@ -537,7 +625,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			flow_controlled = 1;
 		}
 		if (work_alloc == 0) {
-			set_bit(RDS_LL_SEND_FULL, &conn->c_flags);
+			rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 			rds_ib_stats_inc(s_ib_tx_throttle);
 			ret = -ENOMEM;
 			goto out;
@@ -562,6 +650,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			rm->data.op_count = 0;
 		}
 
+		ic->i_unsolicited_wrs = rds_ib_sysctl_max_unsolicited_wrs;
 		rds_message_addref(rm);
 		rm->data.op_dmasg = 0;
 		rm->data.op_dmaoff = 0;
@@ -577,10 +666,27 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		 * used by the peer to release use-once RDMA MRs. */
 		if (rm->rdma.op_active) {
 			struct rds_ext_header_rdma ext_hdr;
+			struct rds_ext_header_rdma_bytes rdma_bytes_ext_hdr;
 
 			ext_hdr.h_rdma_rkey = cpu_to_be32(rm->rdma.op_rkey);
 			rds_message_add_extension(&rm->m_inc.i_hdr,
 					RDS_EXTHDR_RDMA, &ext_hdr, sizeof(ext_hdr));
+
+			/* prepare the rdma bytes ext header */
+			rdma_bytes_ext_hdr.h_rflags = rm->rdma.op_write ?
+				RDS_FLAG_RDMA_WR_BYTES : RDS_FLAG_RDMA_RD_BYTES;
+			rdma_bytes_ext_hdr.h_rdma_bytes =
+				cpu_to_be32(rm->rdma.op_bytes);
+
+			if (rds_message_add_extension(&rm->m_inc.i_hdr,
+				RDS_EXTHDR_RDMA_BYTES, &rdma_bytes_ext_hdr,
+				sizeof(rdma_bytes_ext_hdr))) {
+				/* rdma bytes ext header was added succesfully,
+				 * notify the remote side via flag in header
+				 */
+				rm->m_inc.i_hdr.h_flags |=
+					RDS_FLAG_EXTHDR_EXTENSION;
+			}
 		}
 		if (rm->m_rdma_cookie) {
 			rds_message_add_rdma_dest_extension(&rm->m_inc.i_hdr,
@@ -599,7 +705,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		 * Update adv_credits since we reset the ACK_REQUIRED bit.
 		 */
 		if (ic->i_flowctl) {
-			rds_ib_send_grab_credits(ic, 0, &posted, 1, RDS_MAX_ADV_CREDIT - adv_credits);
+			rds_ib_send_grab_credits(ic, 0, &posted, 1);
 			adv_credits += posted;
 			BUG_ON(adv_credits > 255);
 		}
@@ -620,6 +726,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	prev = NULL;
 	scat = &ic->i_data_op->op_sg[rm->data.op_dmasg];
 	i = 0;
+	remaining_sge = rm->data.op_count - sg;
 	do {
 		unsigned int len = 0;
 
@@ -631,29 +738,36 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		send->s_queued = jiffies;
 		send->s_op = NULL;
 
-		send->s_sge[0].addr = ic->i_send_hdrs_dma
-			+ (pos * sizeof(struct rds_header));
+		send->s_sge[0].addr = ic->i_send_hdrs_dma[pos];
 		send->s_sge[0].length = sizeof(struct rds_header);
 
-		memcpy(&ic->i_send_hdrs[pos], &rm->m_inc.i_hdr, sizeof(struct rds_header));
+		memcpy(ic->i_send_hdrs[pos], &rm->m_inc.i_hdr,
+		       sizeof(struct rds_header));
 
 		/* Set up the data, if present */
 		if (i < work_alloc
 		    && scat != &rm->data.op_sg[rm->data.op_count]) {
-			len = min(RDS_FRAG_SIZE,
-				  sg_dma_len(scat) - rm->data.op_dmaoff);
-			send->s_wr.num_sge = 2;
+			unsigned int num_sge = min_t(unsigned long, remaining_sge,
+						     ic->i_frag_pages);
+			unsigned int j = 1;
 
-			send->s_sge[1].addr = sg_dma_address(scat);
-			send->s_sge[1].addr += rm->data.op_dmaoff;
-			send->s_sge[1].length = len;
+			send->s_wr.num_sge += num_sge;
+			while (j <= num_sge) {
+				len = min((unsigned int)PAGE_SIZE,
+					  sg_dma_len(scat) - rm->data.op_dmaoff);
+				send->s_sge[j].addr = sg_dma_address(scat);
+				send->s_sge[j].addr += rm->data.op_dmaoff;
+				send->s_sge[j].length = len;
 
-			bytes_sent += len;
-			rm->data.op_dmaoff += len;
-			if (rm->data.op_dmaoff == sg_dma_len(scat)) {
-				scat++;
-				rm->data.op_dmasg++;
-				rm->data.op_dmaoff = 0;
+				bytes_sent += len;
+				rm->data.op_dmaoff += len;
+				if (rm->data.op_dmaoff == sg_dma_len(scat)) {
+					scat++;
+					rm->data.op_dmasg++;
+					rm->data.op_dmaoff = 0;
+				}
+				j++;
+				remaining_sge--;
 			}
 		}
 
@@ -674,7 +788,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			 &send->s_wr, send->s_wr.num_sge, send->s_wr.next);
 
 		if (ic->i_flowctl && adv_credits) {
-			struct rds_header *hdr = &ic->i_send_hdrs[pos];
+			struct rds_header *hdr = ic->i_send_hdrs[pos];
 
 			/* add credit and redo the header checksum */
 			hdr->h_credit = adv_credits;
@@ -703,7 +817,8 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	if (scat == &rm->data.op_sg[rm->data.op_count]) {
 		prev->s_op = ic->i_data_op;
 		prev->s_wr.send_flags |= IB_SEND_SOLICITED;
-		if (!(prev->s_wr.send_flags & IB_SEND_SIGNALED))
+		if (!(prev->s_wr.send_flags & IB_SEND_SIGNALED) ||
+		    (rm->rdma.op_active && rm->rdma.op_remote_complete))
 			nr_sig += rds_ib_set_wr_signal_state(ic, prev, true);
 		ic->i_data_op = NULL;
 	}
@@ -735,7 +850,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			prev->s_op = NULL;
 		}
 
-		rds_ib_conn_error(ic->conn, "ib_post_send failed\n");
+		rds_conn_drop(ic->conn, DR_IB_POST_SEND_FAIL);
 		goto out;
 	}
 
@@ -755,13 +870,17 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_send_work *send = NULL;
 	const struct ib_send_wr *failed_wr;
+	struct rds_ib_device *rds_ibdev;
 	u32 pos;
 	u32 work_alloc;
 	int ret;
 	int nr_sig = 0;
 
+	rds_ibdev = ib_get_client_data(ic->i_cm_id->device, &rds_ib_client);
+
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, 1, &pos);
 	if (work_alloc != 1) {
+		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_ring_full);
 		ret = -ENOMEM;
 		goto out;
@@ -772,22 +891,17 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	send->s_queued = jiffies;
 
 	if (op->op_type == RDS_ATOMIC_TYPE_CSWP) {
-		send->s_atomic_wr.wr.opcode = IB_WR_MASKED_ATOMIC_CMP_AND_SWP;
-		send->s_atomic_wr.compare_add = op->op_m_cswp.compare;
-		send->s_atomic_wr.swap = op->op_m_cswp.swap;
-		send->s_atomic_wr.compare_add_mask = op->op_m_cswp.compare_mask;
-		send->s_atomic_wr.swap_mask = op->op_m_cswp.swap_mask;
+		send->s_wr.opcode = IB_WR_ATOMIC_CMP_AND_SWP;
+		send->s_atomic_wr.compare_add = op->op_compare;
+		send->s_atomic_wr.swap = op->op_swap_add;
 	} else { /* FADD */
-		send->s_atomic_wr.wr.opcode = IB_WR_MASKED_ATOMIC_FETCH_AND_ADD;
-		send->s_atomic_wr.compare_add = op->op_m_fadd.add;
+		send->s_wr.opcode = IB_WR_ATOMIC_FETCH_AND_ADD;
+		send->s_atomic_wr.compare_add = op->op_swap_add;
 		send->s_atomic_wr.swap = 0;
-		send->s_atomic_wr.compare_add_mask = op->op_m_fadd.nocarry_mask;
-		send->s_atomic_wr.swap_mask = 0;
 	}
-	send->s_wr.send_flags = 0;
 	nr_sig = rds_ib_set_wr_signal_state(ic, send, op->op_notify);
-	send->s_atomic_wr.wr.num_sge = 1;
-	send->s_atomic_wr.wr.next = NULL;
+	send->s_wr.num_sge = 1;
+	send->s_wr.next = NULL;
 	send->s_atomic_wr.remote_addr = op->op_remote_addr;
 	send->s_atomic_wr.rkey = op->op_rkey;
 	send->s_op = op;
@@ -806,7 +920,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	/* Convert our struct scatterlist to struct ib_sge */
 	send->s_sge[0].addr = sg_dma_address(op->op_sg);
 	send->s_sge[0].length = sg_dma_len(op->op_sg);
-	send->s_sge[0].lkey = ic->i_pd->local_dma_lkey;
+	send->s_sge[0].lkey = ic->i_mr->lkey;
 
 	rdsdebug("rva %Lx rpa %Lx len %u\n", op->op_remote_addr,
 		 send->s_sge[0].addr, send->s_sge[0].length);
@@ -814,22 +928,22 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	if (nr_sig)
 		atomic_add(nr_sig, &ic->i_signaled_sends);
 
-	failed_wr = &send->s_atomic_wr.wr;
-	ret = ib_post_send(ic->i_cm_id->qp, &send->s_atomic_wr.wr, &failed_wr);
+	failed_wr = &send->s_wr;
+	ret = ib_post_send(ic->i_cm_id->qp, &send->s_wr, &failed_wr);
 	rdsdebug("ic %p send %p (wr %p) ret %d wr %p\n", ic,
-		 send, &send->s_atomic_wr, ret, failed_wr);
-	BUG_ON(failed_wr != &send->s_atomic_wr.wr);
+		 send, &send->s_wr, ret, failed_wr);
+	BUG_ON(failed_wr != &send->s_wr);
 	if (ret) {
-		printk(KERN_WARNING "RDS/IB: atomic ib_post_send to %pI6c "
-		       "returned %d\n", &conn->c_faddr, ret);
+		printk(KERN_WARNING "RDS/IB: atomic ib_post_send to %pI6c returned %d\n",
+		       &conn->c_faddr, ret);
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_sub_signaled(ic, nr_sig);
 		goto out;
 	}
 
-	if (unlikely(failed_wr != &send->s_atomic_wr.wr)) {
+	if (unlikely(failed_wr != &send->s_wr)) {
 		printk(KERN_WARNING "RDS/IB: atomic ib_post_send() rc=%d, but failed_wqe updated!\n", ret);
-		BUG_ON(failed_wr != &send->s_atomic_wr.wr);
+		BUG_ON(failed_wr != &send->s_wr);
 	}
 
 out:
@@ -875,7 +989,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	 * Instead of knowing how to return a partial rdma read/write we insist that there
 	 * be enough work requests to send the entire message.
 	 */
-	i = DIV_ROUND_UP(op->op_count, max_sge);
+	i = ceil(op->op_count, max_sge);
 
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 	if (work_alloc != i) {
@@ -897,32 +1011,30 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		send->s_queued = jiffies;
 		send->s_op = NULL;
 
-		if (!op->op_notify)
-			nr_sig += rds_ib_set_wr_signal_state(ic, send,
-							     op->op_notify);
+		if (!op->op_remote_complete && !op->op_notify)
+			nr_sig += rds_ib_set_wr_signal_state(ic, send, op->op_notify);
 
 		send->s_wr.opcode = op->op_write ? IB_WR_RDMA_WRITE : IB_WR_RDMA_READ;
 		send->s_rdma_wr.remote_addr = remote_addr;
 		send->s_rdma_wr.rkey = op->op_rkey;
 
 		if (num_sge > max_sge) {
-			send->s_rdma_wr.wr.num_sge = max_sge;
+			send->s_wr.num_sge = max_sge;
 			num_sge -= max_sge;
 		} else {
-			send->s_rdma_wr.wr.num_sge = num_sge;
+			send->s_wr.num_sge = num_sge;
 		}
 
-		send->s_rdma_wr.wr.next = NULL;
+		send->s_wr.next = NULL;
 
 		if (prev)
-			prev->s_rdma_wr.wr.next = &send->s_rdma_wr.wr;
+			prev->s_wr.next = &send->s_wr;
 
-		for (j = 0; j < send->s_rdma_wr.wr.num_sge &&
-		     scat != &op->op_sg[op->op_count]; j++) {
+		for (j = 0; j < send->s_wr.num_sge && scat != &op->op_sg[op->op_count]; j++) {
 			len = sg_dma_len(scat);
 			send->s_sge[j].addr = sg_dma_address(scat);
 			send->s_sge[j].length = len;
-			send->s_sge[j].lkey = ic->i_pd->local_dma_lkey;
+			send->s_sge[j].lkey = ic->i_mr->lkey;
 
 			sent += len;
 			rdsdebug("ic %p sent %d remote_addr %llu\n", ic, sent, remote_addr);
@@ -932,19 +1044,11 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		}
 
 		rdsdebug("send %p wr %p num_sge %u next %p\n", send,
-			&send->s_rdma_wr.wr,
-			send->s_rdma_wr.wr.num_sge,
-			send->s_rdma_wr.wr.next);
+			&send->s_wr, send->s_wr.num_sge, send->s_wr.next);
 
 		prev = send;
 		if (++send == &ic->i_sends[ic->i_send_ring.w_nr])
 			send = ic->i_sends;
-	}
-
-	/* give a reference to the last op */
-	if (scat == &op->op_sg[op->op_count]) {
-		prev->s_op = op;
-		rds_message_addref(container_of(op, struct rds_message, rdma));
 	}
 
 	if (i < work_alloc) {
@@ -952,14 +1056,53 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		work_alloc = i;
 	}
 
+	/* give a reference to the last op */
+	if (scat == &op->op_sg[op->op_count]) {
+		if (op->op_write && op->op_silent && op->op_remote_complete) {
+			int rcomp_alloc, rcomp_pos;
+			struct rds_ib_send_work *rcomp;
+
+			rcomp_alloc = rds_ib_ring_alloc(&ic->i_send_ring, 1,
+					&rcomp_pos);
+			if (rcomp_alloc != 1) {
+				ib_dma_unmap_sg(ic->i_cm_id->device,
+						op->op_sg, op->op_nents,
+						op->op_write ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+				op->op_mapped = 0;
+				rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
+				rds_ib_stats_inc(s_ib_tx_ring_full);
+				ret = -ENOMEM;
+				goto out;
+			}
+			rcomp = &ic->i_sends[rcomp_pos];
+			rcomp->s_sge[0] = prev->s_sge[prev->s_wr.num_sge-1];
+			rcomp->s_sge[0].addr +=
+				(rcomp->s_sge[0].length - sizeof(u8));
+			rcomp->s_sge[0].length = sizeof(u8);
+
+			rcomp->s_wr.num_sge = 1;
+			rcomp->s_wr.opcode = IB_WR_RDMA_READ;
+			rcomp->s_wr.next = NULL;
+			rcomp->s_rdma_wr.remote_addr =
+				remote_addr - sizeof(u8);
+			rcomp->s_rdma_wr.rkey = op->op_rkey;
+			prev->s_wr.next = &rcomp->s_wr;
+			prev = rcomp;
+			nr_sig += rds_ib_set_wr_signal_state(ic, rcomp, true);
+		}
+
+		prev->s_op = op;
+		rds_message_addref(container_of(op, struct rds_message, rdma));
+	}
+
 	if (nr_sig)
 		atomic_add(nr_sig, &ic->i_signaled_sends);
 
-	failed_wr = &first->s_rdma_wr.wr;
-	ret = ib_post_send(ic->i_cm_id->qp, &first->s_rdma_wr.wr, &failed_wr);
+	failed_wr = &first->s_wr;
+	ret = ib_post_send(ic->i_cm_id->qp, &first->s_wr, &failed_wr);
 	rdsdebug("ic %p first %p (wr %p) ret %d wr %p\n", ic,
-		 first, &first->s_rdma_wr.wr, ret, failed_wr);
-	BUG_ON(failed_wr != &first->s_rdma_wr.wr);
+		 first, &first->s_wr, ret, failed_wr);
+	BUG_ON(failed_wr != &first->s_wr);
 	if (ret) {
 		printk(KERN_WARNING "RDS/IB: rdma ib_post_send to %pI6c "
 		       "returned %d\n", &conn->c_faddr, ret);
@@ -968,9 +1111,9 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		goto out;
 	}
 
-	if (unlikely(failed_wr != &first->s_rdma_wr.wr)) {
+	if (unlikely(failed_wr != &first->s_wr)) {
 		printk(KERN_WARNING "RDS/IB: ib_post_send() rc=%d, but failed_wqe updated!\n", ret);
-		BUG_ON(failed_wr != &first->s_rdma_wr.wr);
+		BUG_ON(failed_wr != &first->s_wr);
 	}
 
 

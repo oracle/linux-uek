@@ -1,14 +1,12 @@
-# SPDX-License-Identifier: GPL-2.0-only
-
 config RDS
-	tristate "The Reliable Datagram Sockets Protocol"
+	tristate "The RDS Protocol"
 	depends on INET
 	---help---
 	  The RDS (Reliable Datagram Sockets) protocol provides reliable,
 	  sequenced delivery of datagrams over Infiniband or TCP.
 
 config RDS_RDMA
-	tristate "RDS over Infiniband"
+	tristate "RDS over Infiniband and iWARP"
 	depends on RDS && INFINIBAND && INFINIBAND_ADDR_TRANS
 	---help---
 	  Allow RDS to use Infiniband as a transport.
@@ -17,12 +15,16 @@ config RDS_RDMA
 config RDS_TCP
 	tristate "RDS over TCP"
 	depends on RDS
-	depends on IPV6 || !IPV6
 	---help---
 	  Allow RDS to use TCP as a transport.
 	  This transport does not support RDMA operations.
 
-config RDS_DEBUG
-	bool "RDS debugging messages"
+config RDS_ACL
+	bool "RDS support for ACL"
 	depends on RDS
 	default n
+
+config RDS_DEBUG
+        bool "RDS debugging messages"
+	depends on RDS
+        default n

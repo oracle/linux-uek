@@ -30,11 +30,10 @@
  * SOFTWARE.
  *
  */
-#include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/rbtree.h>
-#include <linux/bitops.h>
-#include <linux/export.h>
+
+#include <asm-generic/bitops/le.h>
 
 #include "rds.h"
 
@@ -101,7 +100,7 @@ static DEFINE_RWLOCK(rds_cong_monitor_lock);
 static DEFINE_SPINLOCK(rds_cong_lock);
 static struct rb_root rds_cong_tree = RB_ROOT;
 
-static struct rds_cong_map *rds_cong_tree_walk(const struct in6_addr *addr,
+static struct rds_cong_map *rds_cong_tree_walk(struct in6_addr *addr,
 					       struct rds_cong_map *insert)
 {
 	struct rb_node **p = &rds_cong_tree.rb_node;
@@ -110,7 +109,6 @@ static struct rds_cong_map *rds_cong_tree_walk(const struct in6_addr *addr,
 
 	while (*p) {
 		int diff;
-
 		parent = *p;
 		map = rb_entry(parent, struct rds_cong_map, m_rb_node);
 
@@ -135,7 +133,7 @@ static struct rds_cong_map *rds_cong_tree_walk(const struct in6_addr *addr,
  * these bitmaps in the process getting pointers to them.  The bitmaps are only
  * ever freed as the module is removed after all connections have been freed.
  */
-static struct rds_cong_map *rds_cong_from_addr(const struct in6_addr *addr)
+static struct rds_cong_map *rds_cong_from_addr(struct in6_addr *addr)
 {
 	struct rds_cong_map *map;
 	struct rds_cong_map *ret = NULL;
@@ -177,6 +175,31 @@ out:
 	rdsdebug("map %p for addr %pI6c\n", ret, addr);
 
 	return ret;
+}
+
+static struct rds_message *rds_cong_map_pages(unsigned long *page_addrs, unsigned int total_len)
+{
+	struct rds_message *rm;
+	unsigned int i;
+	int num_sgs = ceil(total_len, RDS_CONG_PAGE_SIZE);
+	int extra_bytes = num_sgs * sizeof(struct scatterlist);
+
+	rm = rds_message_alloc(extra_bytes, GFP_NOWAIT);
+	if (!rm)
+		return ERR_PTR(-ENOMEM);
+
+	set_bit(RDS_MSG_PAGEVEC, &rm->m_flags);
+	rm->m_inc.i_hdr.h_len = cpu_to_be32(total_len);
+	rm->data.op_nents = num_sgs;
+	rm->data.op_sg = rds_message_alloc_sgs(rm, num_sgs);
+
+	for (i = 0; i < rm->data.op_nents; i++) {
+		sg_set_page(&rm->data.op_sg[i],
+			    virt_to_page(page_addrs[i]),
+			    RDS_CONG_PAGE_SIZE, 0);
+	}
+
+	return rm;
 }
 
 /*
@@ -222,29 +245,12 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 	spin_lock_irqsave(&rds_cong_lock, flags);
 
 	list_for_each_entry(conn, &map->m_conn_list, c_map_item) {
-		struct rds_conn_path *cp = &conn->c_path[0];
-
-		rcu_read_lock();
-		if (!test_and_set_bit(0, &conn->c_map_queued) &&
-		    !rds_destroy_pending(cp->cp_conn)) {
+		if (!test_and_set_bit(RCMQ_BITOFF_CONGU_PENDING,
+				      &conn->c_map_queued)) {
 			rds_stats_inc(s_cong_update_queued);
-			/* We cannot inline the call to rds_send_xmit() here
-			 * for two reasons (both pertaining to a TCP transport):
-			 * 1. When we get here from the receive path, we
-			 *    are already holding the sock_lock (held by
-			 *    tcp_v4_rcv()). So inlining calls to
-			 *    tcp_setsockopt and/or tcp_sendmsg will deadlock
-			 *    when it tries to get the sock_lock())
-			 * 2. Interrupts are masked so that we can mark the
-			 *    the port congested from both send and recv paths.
-			 *    (See comment around declaration of rdc_cong_lock).
-			 *    An attempt to get the sock_lock() here will
-			 *    therefore trigger warnings.
-			 * Defer the xmit to rds_send_worker() instead.
-			 */
-			queue_delayed_work(rds_wq, &cp->cp_send_w, 0);
+			queue_delayed_work(conn->c_path[0].cp_wq,
+					   &conn->c_path[0].cp_send_w, 0);
 		}
-		rcu_read_unlock();
 	}
 
 	spin_unlock_irqrestore(&rds_cong_lock, flags);
@@ -252,8 +258,8 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 
 void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 {
-	rdsdebug("waking map %p for %pI4\n",
-	  map, &map->m_addr);
+	rdsdebug("waking map %p for %pI6c\n",
+		 map, &map->m_addr);
 	rds_stats_inc(s_cong_update_received);
 	atomic_inc(&rds_cong_generation);
 	if (waitqueue_active(&map->m_waitq))
@@ -301,8 +307,8 @@ void rds_cong_set_bit(struct rds_cong_map *map, __be16 port)
 	unsigned long i;
 	unsigned long off;
 
-	rdsdebug("setting congestion for %pI4:%u in map %p\n",
-	  &map->m_addr, ntohs(port), map);
+	rdsdebug("setting congestion for %pI6c:%u in map %p\n",
+		 &map->m_addr, ntohs(port), map);
 
 	i = be16_to_cpu(port) / RDS_CONG_MAP_PAGE_BITS;
 	off = be16_to_cpu(port) % RDS_CONG_MAP_PAGE_BITS;
@@ -315,8 +321,8 @@ void rds_cong_clear_bit(struct rds_cong_map *map, __be16 port)
 	unsigned long i;
 	unsigned long off;
 
-	rdsdebug("clearing congestion for %pI4:%u in map %p\n",
-	  &map->m_addr, ntohs(port), map);
+	rdsdebug("clearing congestion for %pI6c:%u in map %p\n",
+		 &map->m_addr, ntohs(port), map);
 
 	i = be16_to_cpu(port) / RDS_CONG_MAP_PAGE_BITS;
 	off = be16_to_cpu(port) % RDS_CONG_MAP_PAGE_BITS;
@@ -420,7 +426,7 @@ struct rds_message *rds_cong_update_alloc(struct rds_connection *conn)
 	struct rds_cong_map *map = conn->c_lcong;
 	struct rds_message *rm;
 
-	rm = rds_message_map_pages(map->m_page_addrs, RDS_CONG_MAP_BYTES);
+	rm = rds_cong_map_pages(map->m_page_addrs, RDS_CONG_MAP_BYTES);
 	if (!IS_ERR(rm))
 		rm->m_inc.i_hdr.h_flags = RDS_FLAG_CONG_BITMAP;
 

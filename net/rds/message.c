@@ -31,11 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
-#include <linux/export.h>
-#include <linux/skbuff.h>
-#include <linux/list.h>
-#include <linux/errqueue.h>
 
 #include "rds.h"
 
@@ -44,118 +39,33 @@ static unsigned int	rds_exthdr_size[__RDS_EXTHDR_MAX] = {
 [RDS_EXTHDR_VERSION]	= sizeof(struct rds_ext_header_version),
 [RDS_EXTHDR_RDMA]	= sizeof(struct rds_ext_header_rdma),
 [RDS_EXTHDR_RDMA_DEST]	= sizeof(struct rds_ext_header_rdma_dest),
-[RDS_EXTHDR_NPATHS]	= sizeof(u16),
-[RDS_EXTHDR_GEN_NUM]	= sizeof(u32),
+[RDS_EXTHDR_RDMA_BYTES] = sizeof(struct rds_ext_header_rdma_bytes),
+[RDS_EXTHDR_NPATHS]     = sizeof(u16),
+[RDS_EXTHDR_GEN_NUM]    = sizeof(u32),
 };
+
 
 void rds_message_addref(struct rds_message *rm)
 {
-	rdsdebug("addref rm %p ref %d\n", rm, refcount_read(&rm->m_refcount));
-	refcount_inc(&rm->m_refcount);
+	rdsdebug("addref rm %p ref %d\n", rm, atomic_read(&rm->m_refcount));
+	atomic_inc(&rm->m_refcount);
 }
 EXPORT_SYMBOL_GPL(rds_message_addref);
-
-static inline bool rds_zcookie_add(struct rds_msg_zcopy_info *info, u32 cookie)
-{
-	struct rds_zcopy_cookies *ck = &info->zcookies;
-	int ncookies = ck->num;
-
-	if (ncookies == RDS_MAX_ZCOOKIES)
-		return false;
-	ck->cookies[ncookies] = cookie;
-	ck->num =  ++ncookies;
-	return true;
-}
-
-static struct rds_msg_zcopy_info *rds_info_from_znotifier(struct rds_znotifier *znotif)
-{
-	return container_of(znotif, struct rds_msg_zcopy_info, znotif);
-}
-
-void rds_notify_msg_zcopy_purge(struct rds_msg_zcopy_queue *q)
-{
-	unsigned long flags;
-	LIST_HEAD(copy);
-	struct rds_msg_zcopy_info *info, *tmp;
-
-	spin_lock_irqsave(&q->lock, flags);
-	list_splice(&q->zcookie_head, &copy);
-	INIT_LIST_HEAD(&q->zcookie_head);
-	spin_unlock_irqrestore(&q->lock, flags);
-
-	list_for_each_entry_safe(info, tmp, &copy, rs_zcookie_next) {
-		list_del(&info->rs_zcookie_next);
-		kfree(info);
-	}
-}
-
-static void rds_rm_zerocopy_callback(struct rds_sock *rs,
-				     struct rds_znotifier *znotif)
-{
-	struct rds_msg_zcopy_info *info;
-	struct rds_msg_zcopy_queue *q;
-	u32 cookie = znotif->z_cookie;
-	struct rds_zcopy_cookies *ck;
-	struct list_head *head;
-	unsigned long flags;
-
-	mm_unaccount_pinned_pages(&znotif->z_mmp);
-	q = &rs->rs_zcookie_queue;
-	spin_lock_irqsave(&q->lock, flags);
-	head = &q->zcookie_head;
-	if (!list_empty(head)) {
-		info = list_entry(head, struct rds_msg_zcopy_info,
-				  rs_zcookie_next);
-		if (info && rds_zcookie_add(info, cookie)) {
-			spin_unlock_irqrestore(&q->lock, flags);
-			kfree(rds_info_from_znotifier(znotif));
-			/* caller invokes rds_wake_sk_sleep() */
-			return;
-		}
-	}
-
-	info = rds_info_from_znotifier(znotif);
-	ck = &info->zcookies;
-	memset(ck, 0, sizeof(*ck));
-	WARN_ON(!rds_zcookie_add(info, cookie));
-	list_add_tail(&q->zcookie_head, &info->rs_zcookie_next);
-
-	spin_unlock_irqrestore(&q->lock, flags);
-	/* caller invokes rds_wake_sk_sleep() */
-}
 
 /*
  * This relies on dma_map_sg() not touching sg[].page during merging.
  */
 static void rds_message_purge(struct rds_message *rm)
 {
-	unsigned long i, flags;
-	bool zcopy = false;
+	unsigned long i;
 
 	if (unlikely(test_bit(RDS_MSG_PAGEVEC, &rm->m_flags)))
 		return;
 
-	spin_lock_irqsave(&rm->m_rs_lock, flags);
-	if (rm->m_rs) {
-		struct rds_sock *rs = rm->m_rs;
-
-		if (rm->data.op_mmp_znotifier) {
-			zcopy = true;
-			rds_rm_zerocopy_callback(rs, rm->data.op_mmp_znotifier);
-			rds_wake_sk_sleep(rs);
-			rm->data.op_mmp_znotifier = NULL;
-		}
-		sock_put(rds_rs_to_sk(rs));
-		rm->m_rs = NULL;
-	}
-	spin_unlock_irqrestore(&rm->m_rs_lock, flags);
-
 	for (i = 0; i < rm->data.op_nents; i++) {
+		rdsdebug("putting data page %p\n", (void *)sg_page(&rm->data.op_sg[i]));
 		/* XXX will have to put_page for page refs */
-		if (!zcopy)
-			__free_page(sg_page(&rm->data.op_sg[i]));
-		else
-			put_page(sg_page(&rm->data.op_sg[i]));
+		__free_page(sg_page(&rm->data.op_sg[i]));
 	}
 	rm->data.op_nents = 0;
 
@@ -172,9 +82,12 @@ static void rds_message_purge(struct rds_message *rm)
 
 void rds_message_put(struct rds_message *rm)
 {
-	rdsdebug("put rm %p ref %d\n", rm, refcount_read(&rm->m_refcount));
-	WARN(!refcount_read(&rm->m_refcount), "danger refcount zero on %p\n", rm);
-	if (refcount_dec_and_test(&rm->m_refcount)) {
+	rdsdebug("put rm %p ref %d\n", rm, atomic_read(&rm->m_refcount));
+	if (atomic_read(&rm->m_refcount) == 0) {
+		printk(KERN_CRIT "danger refcount zero on %p\n", rm);
+		WARN_ON(1);
+	}
+	if (atomic_dec_and_test(&rm->m_refcount)) {
 		BUG_ON(!list_empty(&rm->m_sock_item));
 		BUG_ON(!list_empty(&rm->m_conn_item));
 		rds_message_purge(rm);
@@ -191,26 +104,59 @@ void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 	hdr->h_sport = sport;
 	hdr->h_dport = dport;
 	hdr->h_sequence = cpu_to_be64(seq);
-	hdr->h_exthdr[0] = RDS_EXTHDR_NONE;
+	/* see rds_find_next_ext_space for reason why we memset the
+	 * ext header
+	 */
+	memset(hdr->h_exthdr, RDS_EXTHDR_NONE, RDS_HEADER_EXT_SPACE);
 }
 EXPORT_SYMBOL_GPL(rds_message_populate_header);
 
-int rds_message_add_extension(struct rds_header *hdr, unsigned int type,
-			      const void *data, unsigned int len)
+/*
+ * Find the next place we can add rds header extension with specific lenght.
+ * Extension headers are pushed one after the other as follow:
+ * [ [ ext #1 ] RDS_EXTHDR_NONE [ ext #2 ] RDS_EXTHDR_NONE ... ]
+ * Last extension is detected as follow:
+ * [ [ ext #n ] RDS_EXTHDR_NONE RDS_EXTHDR_NONE ]
+ * See Orabug: 18468180 - NEW EXTENSION HEADER TYPE RDSV3_EXTHDR_RDMA_BYTES
+ */
+static int rds_find_next_ext_space(struct rds_header *hdr, unsigned int len,
+	u8 **ext_start)
+{
+	int ind;
+
+	for (ind = 0; ind < RDS_HEADER_EXT_SPACE - 1; ind++) {
+		if (hdr->h_exthdr[ind] != RDS_EXTHDR_NONE ||
+			hdr->h_exthdr[ind + 1] != RDS_EXTHDR_NONE)
+			continue;
+		/* found free space in ext header  */
+		/* skip the RDS_EXTHDR_NONE only if not on first ext */
+		if (ind > 0)
+			ind++;
+		if (RDS_HEADER_EXT_SPACE - ind < len)
+			return 1;
+		/* extension can fit to header */
+		*ext_start = hdr->h_exthdr + ind;
+		return 0;
+	}
+	/* no room for extension */
+	return 1;
+}
+
+int rds_message_add_extension(struct rds_header *hdr,
+		unsigned int type, const void *data, unsigned int len)
 {
 	unsigned int ext_len = sizeof(u8) + len;
 	unsigned char *dst;
 
-	/* For now, refuse to add more than one extension header */
-	if (hdr->h_exthdr[0] != RDS_EXTHDR_NONE)
+	if (rds_find_next_ext_space(hdr, ext_len, &dst))
 		return 0;
 
-	if (type >= __RDS_EXTHDR_MAX || len != rds_exthdr_size[type])
+	if (type >= __RDS_EXTHDR_MAX
+	 || len != rds_exthdr_size[type])
 		return 0;
 
 	if (ext_len >= RDS_HEADER_EXT_SPACE)
 		return 0;
-	dst = hdr->h_exthdr;
 
 	*dst++ = type;
 	memcpy(dst, data, len);
@@ -266,6 +212,26 @@ none:
 	return RDS_EXTHDR_NONE;
 }
 
+int rds_message_add_version_extension(struct rds_header *hdr, unsigned int version)
+{
+	struct rds_ext_header_version ext_hdr;
+
+	ext_hdr.h_version = cpu_to_be32(version);
+	return rds_message_add_extension(hdr, RDS_EXTHDR_VERSION, &ext_hdr, sizeof(ext_hdr));
+}
+
+int rds_message_get_version_extension(struct rds_header *hdr, unsigned int *version)
+{
+	struct rds_ext_header_version ext_hdr;
+	unsigned int pos = 0, len = sizeof(ext_hdr);
+
+	/* We assume the version extension is the only one present */
+	if (rds_message_next_extension(hdr, &pos, &ext_hdr, &len) != RDS_EXTHDR_VERSION)
+		return 0;
+	*version = be32_to_cpu(ext_hdr.h_version);
+	return 1;
+}
+
 int rds_message_add_rdma_dest_extension(struct rds_header *hdr, u32 r_key, u32 offset)
 {
 	struct rds_ext_header_rdma_dest ext_hdr;
@@ -295,7 +261,7 @@ struct rds_message *rds_message_alloc(unsigned int extra_len, gfp_t gfp)
 	rm->m_used_sgs = 0;
 	rm->m_total_sgs = extra_len / sizeof(struct scatterlist);
 
-	refcount_set(&rm->m_refcount, 1);
+	atomic_set(&rm->m_refcount, 1);
 	INIT_LIST_HEAD(&rm->m_sock_item);
 	INIT_LIST_HEAD(&rm->m_conn_item);
 	spin_lock_init(&rm->m_rs_lock);
@@ -308,27 +274,13 @@ out:
 /*
  * RDS ops use this to grab SG entries from the rm's sg pool.
  */
-struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents,
-					  int *ret)
+struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents)
 {
 	struct scatterlist *sg_first = (struct scatterlist *) &rm[1];
 	struct scatterlist *sg_ret;
 
-	if (WARN_ON(!ret))
-		return NULL;
-
-	if (nents <= 0) {
-		pr_warn("rds: alloc sgs failed! nents <= 0\n");
-		*ret = -EINVAL;
-		return NULL;
-	}
-
-	if (rm->m_used_sgs + nents > rm->m_total_sgs) {
-		pr_warn("rds: alloc sgs failed! total %d used %d nents %d\n",
-			rm->m_total_sgs, rm->m_used_sgs, nents);
-		*ret = -ENOMEM;
-		return NULL;
-	}
+	WARN_ON(rm->m_used_sgs + nents > rm->m_total_sgs);
+	WARN_ON(!nents);
 
 	sg_ret = &sg_first[rm->m_used_sgs];
 	sg_init_table(sg_ret, nents);
@@ -337,96 +289,8 @@ struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents,
 	return sg_ret;
 }
 
-struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned int total_len)
-{
-	struct rds_message *rm;
-	unsigned int i;
-	int num_sgs = DIV_ROUND_UP(total_len, PAGE_SIZE);
-	int extra_bytes = num_sgs * sizeof(struct scatterlist);
-	int ret;
-
-	rm = rds_message_alloc(extra_bytes, GFP_NOWAIT);
-	if (!rm)
-		return ERR_PTR(-ENOMEM);
-
-	set_bit(RDS_MSG_PAGEVEC, &rm->m_flags);
-	rm->m_inc.i_hdr.h_len = cpu_to_be32(total_len);
-	rm->data.op_nents = DIV_ROUND_UP(total_len, PAGE_SIZE);
-	rm->data.op_sg = rds_message_alloc_sgs(rm, num_sgs, &ret);
-	if (!rm->data.op_sg) {
-		rds_message_put(rm);
-		return ERR_PTR(ret);
-	}
-
-	for (i = 0; i < rm->data.op_nents; ++i) {
-		sg_set_page(&rm->data.op_sg[i],
-				virt_to_page(page_addrs[i]),
-				PAGE_SIZE, 0);
-	}
-
-	return rm;
-}
-
-static int rds_message_zcopy_from_user(struct rds_message *rm, struct iov_iter *from)
-{
-	struct scatterlist *sg;
-	int ret = 0;
-	int length = iov_iter_count(from);
-	int total_copied = 0;
-	struct rds_msg_zcopy_info *info;
-
-	rm->m_inc.i_hdr.h_len = cpu_to_be32(iov_iter_count(from));
-
-	/*
-	 * now allocate and copy in the data payload.
-	 */
-	sg = rm->data.op_sg;
-
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
-	if (!info)
-		return -ENOMEM;
-	INIT_LIST_HEAD(&info->rs_zcookie_next);
-	rm->data.op_mmp_znotifier = &info->znotif;
-	if (mm_account_pinned_pages(&rm->data.op_mmp_znotifier->z_mmp,
-				    length)) {
-		ret = -ENOMEM;
-		goto err;
-	}
-	while (iov_iter_count(from)) {
-		struct page *pages;
-		size_t start;
-		ssize_t copied;
-
-		copied = iov_iter_get_pages(from, &pages, PAGE_SIZE,
-					    1, &start);
-		if (copied < 0) {
-			struct mmpin *mmp;
-			int i;
-
-			for (i = 0; i < rm->data.op_nents; i++)
-				put_page(sg_page(&rm->data.op_sg[i]));
-			mmp = &rm->data.op_mmp_znotifier->z_mmp;
-			mm_unaccount_pinned_pages(mmp);
-			ret = -EFAULT;
-			goto err;
-		}
-		total_copied += copied;
-		iov_iter_advance(from, copied);
-		length -= copied;
-		sg_set_page(sg, pages, copied, start);
-		rm->data.op_nents++;
-		sg++;
-	}
-	WARN_ON_ONCE(length != 0);
-	return ret;
-err:
-	kfree(info);
-	rm->data.op_mmp_znotifier = NULL;
-	return ret;
-}
-
 int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
-			       bool zcopy)
+			       gfp_t gfp)
 {
 	unsigned long to_copy, nbytes;
 	unsigned long sg_off;
@@ -435,17 +299,18 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
 
 	rm->m_inc.i_hdr.h_len = cpu_to_be32(iov_iter_count(from));
 
-	/* now allocate and copy in the data payload.  */
+	/*
+	 * now allocate and copy in the data payload.
+	 */
 	sg = rm->data.op_sg;
 	sg_off = 0; /* Dear gcc, sg->page will be null from kzalloc. */
-
-	if (zcopy)
-		return rds_message_zcopy_from_user(rm, from);
 
 	while (iov_iter_count(from)) {
 		if (!sg_page(sg)) {
 			ret = rds_page_remainder_alloc(sg, iov_iter_count(from),
-						       GFP_HIGHUSER);
+						       GFP_ATOMIC == gfp ?
+						       gfp : GFP_HIGHUSER);
+
 			if (ret)
 				return ret;
 			rm->data.op_nents++;
@@ -526,3 +391,51 @@ void rds_message_unmapped(struct rds_message *rm)
 	wake_up_interruptible(&rm->m_flush_wait);
 }
 EXPORT_SYMBOL_GPL(rds_message_unmapped);
+
+int rds_message_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
+{
+	struct rds_message *rm;
+	struct scatterlist *sg;
+	skb_frag_t *frag;
+	int ret = 0;
+	u32 len;
+	int i;
+
+	rm  = container_of(inc, struct rds_message, m_inc);
+	len = be32_to_cpu(rm->m_inc.i_hdr.h_len);
+	i   = 0;
+
+	/* for now we will only have a single chain of fragments in the skb */
+	if (rm->data.op_nents >= MAX_SKB_FRAGS) {
+		rdsdebug("too many fragments in op %u > max %u, rm %p",
+			 rm->data.op_nents, (int)MAX_SKB_FRAGS, rm);
+		goto done;
+	}
+
+	/* run through the entire scatter gather list and save off the buffers */
+	for (i = 0; i < rm->data.op_nents; i++) {
+		/* one to one mapping of frags to sg structures */
+		frag = &skb_shinfo(skb)->frags[i];
+		sg   = &rm->data.op_sg[i];
+
+		/* save off all the sg pieces to the skb frags we are creating */
+		skb_frag_size_set(frag, sg->length);
+		skb_frag_off_set(frag, sg->offset);
+		__skb_frag_set_page(frag, sg_page(sg));
+
+		/* AA: do we need to bump up the page reference too */
+		/* get_page(frag->page); */
+	}
+
+	/* track the full message length too */
+	skb->len = len;
+
+	/* all good */
+	ret = 1;
+
+done:
+	/* track all the fragments we saved */
+	skb_shinfo(skb)->nr_frags = i;
+
+	return ret;
+}

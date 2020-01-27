@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -49,6 +49,24 @@ unsigned int  rds_sysctl_max_unacked_bytes = (16 << 20);
 
 unsigned int rds_sysctl_ping_enable = 1;
 
+unsigned int rds_sysctl_shutdown_trace_start_time;
+unsigned int rds_sysctl_shutdown_trace_end_time;
+
+unsigned int rds_sock_max_peers_min = 128;
+unsigned int rds_sock_max_peers_max = 65536;
+unsigned int rds_sock_max_peers = 8192;
+
+unsigned int rds_sysctl_passive_connect_delay_min_percent = 1;
+unsigned int rds_sysctl_passive_connect_delay_max_percent = 1000;
+unsigned int rds_sysctl_passive_connect_delay_percent = 100;
+
+/*
+ * We have official values, but must maintain the sysctl interface for existing
+ * software that expects to find these values here.
+ */
+static int rds_sysctl_pf_rds = PF_RDS;
+static int rds_sysctl_sol_rds = SOL_RDS;
+
 static struct ctl_table rds_sysctl_rds_table[] = {
 	{
 		.procname       = "reconnect_min_delay_ms",
@@ -67,6 +85,20 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
 		.extra1		= &rds_sysctl_reconnect_min_jiffies,
 		.extra2		= &rds_sysctl_reconnect_max,
+	},
+	{
+		.procname       = "pf_rds",
+		.data		= &rds_sysctl_pf_rds,
+		.maxlen         = sizeof(int),
+		.mode           = 0444,
+		.proc_handler   = proc_dointvec,
+	},
+	{
+		.procname       = "sol_rds",
+		.data		= &rds_sysctl_sol_rds,
+		.maxlen         = sizeof(int),
+		.mode           = 0444,
+		.proc_handler   = proc_dointvec,
 	},
 	{
 		.procname	= "max_unacked_packets",
@@ -89,6 +121,38 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.mode           = 0644,
 		.proc_handler   = proc_dointvec,
 	},
+	{
+		.procname       = "shutdown_trace_start_time",
+		.data           = &rds_sysctl_shutdown_trace_start_time,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "shutdown_trace_end_time",
+		.data           = &rds_sysctl_shutdown_trace_end_time,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "sock_max_peers",
+		.data           = &rds_sock_max_peers,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec_minmax,
+		.extra1		= &rds_sock_max_peers_min,
+		.extra2		= &rds_sock_max_peers_max
+	},
+	{
+		.procname       = "passive_connect_delay_percent",
+		.data           = &rds_sysctl_passive_connect_delay_percent,
+		.maxlen         = sizeof(rds_sysctl_passive_connect_delay_percent),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1		= &rds_sysctl_passive_connect_delay_min_percent,
+		.extra2		= &rds_sysctl_passive_connect_delay_max_percent,
+	},
 	{ }
 };
 
@@ -102,8 +166,7 @@ int rds_sysctl_init(void)
 	rds_sysctl_reconnect_min = msecs_to_jiffies(1);
 	rds_sysctl_reconnect_min_jiffies = rds_sysctl_reconnect_min;
 
-	rds_sysctl_reg_table =
-		register_net_sysctl(&init_net, "net/rds", rds_sysctl_rds_table);
+	rds_sysctl_reg_table = register_net_sysctl(&init_net, "net/rds", rds_sysctl_rds_table);
 	if (!rds_sysctl_reg_table)
 		return -ENOMEM;
 	return 0;

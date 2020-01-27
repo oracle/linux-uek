@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/gfp.h>
 #include <linux/in.h>
 #include <net/tcp.h>
 
@@ -79,21 +78,14 @@ bail:
  * smaller ip address, we recycle conns in RDS_CONN_ERROR on the passive side
  * by moving them to CONNECTING in this function.
  */
-static
-struct rds_tcp_connection *rds_tcp_accept_one_path(struct rds_connection *conn)
+static struct rds_tcp_connection *
+rds_tcp_accept_one_path(struct rds_connection *conn)
 {
 	int i;
 	int npaths = max_t(int, 1, conn->c_npaths);
 
-	/* for mprds, all paths MUST be initiated by the peer
-	 * with the smaller address.
-	 */
 	if (rds_addr_cmp(&conn->c_faddr, &conn->c_laddr) >= 0) {
-		/* Make sure we initiate at least one path if this
-		 * has not already been done; rds_start_mprds() will
-		 * take care of additional paths, if necessary.
-		 */
-		if (npaths == 1)
+		if (npaths <= 1)
 			rds_conn_path_connect_if_down(&conn->c_path[0]);
 		return NULL;
 	}
@@ -197,11 +189,9 @@ int rds_tcp_accept_one(struct socket *sock)
 		dev_if = new_sock->sk->sk_bound_dev_if;
 	}
 #endif
-
 	conn = rds_conn_create(sock_net(sock->sk),
 			       my_addr, peer_addr,
 			       &rds_tcp_transport, 0, GFP_KERNEL, dev_if);
-
 	if (IS_ERR(conn)) {
 		ret = PTR_ERR(conn);
 		goto out;
@@ -217,17 +207,20 @@ int rds_tcp_accept_one(struct socket *sock)
 	mutex_lock(&rs_tcp->t_conn_path_lock);
 	cp = rs_tcp->t_cpath;
 	conn_state = rds_conn_path_state(cp);
-	WARN_ON(conn_state == RDS_CONN_UP);
+	BUG_ON(conn_state == RDS_CONN_UP);
 	if (conn_state != RDS_CONN_CONNECTING && conn_state != RDS_CONN_ERROR)
 		goto rst_nsk;
 	if (rs_tcp->t_sock) {
-		/* Duelling SYN has been handled in rds_tcp_accept_one() */
+		/* Duelling SYN resolution has already been done in
+		 * rds_tcp_accept_one_path.
+		 */
 		rds_tcp_reset_callbacks(new_sock, cp);
 		/* rds_connect_path_complete() marks RDS_CONN_UP */
 		rds_connect_path_complete(cp, RDS_CONN_RESETTING);
 	} else {
 		rds_tcp_set_callbacks(new_sock, cp);
 		rds_connect_path_complete(cp, RDS_CONN_CONNECTING);
+		wake_up(&cp->cp_up_waitq);
 	}
 	new_sock = NULL;
 	ret = 0;
@@ -258,7 +251,7 @@ void rds_tcp_listen_data_ready(struct sock *sk)
 
 	rdsdebug("listen data ready sk %p\n", sk);
 
-	read_lock_bh(&sk->sk_callback_lock);
+	read_lock(&sk->sk_callback_lock);
 	ready = sk->sk_user_data;
 	if (!ready) { /* check for teardown race */
 		ready = sk->sk_data_ready;
@@ -280,7 +273,7 @@ void rds_tcp_listen_data_ready(struct sock *sk)
 		ready = rds_tcp_listen_sock_def_readable(sock_net(sk));
 
 out:
-	read_unlock_bh(&sk->sk_callback_lock);
+	read_unlock(&sk->sk_callback_lock);
 	if (ready)
 		ready(sk);
 }
@@ -297,12 +290,11 @@ struct socket *rds_tcp_listen_init(struct net *net, bool isv6)
 	ret = sock_create_kern(net, isv6 ? PF_INET6 : PF_INET, SOCK_STREAM,
 			       IPPROTO_TCP, &sock);
 	if (ret < 0) {
-		rdsdebug("could not create %s listener socket: %d\n",
-			 isv6 ? "IPv6" : "IPv4", ret);
+		rdsdebug("could not create listener socket: %d\n", ret);
 		goto out;
 	}
 
-	sock->sk->sk_reuse = SK_CAN_REUSE;
+	sock->sk->sk_reuse = 1;
 	rds_tcp_nonagle(sock);
 
 	write_lock_bh(&sock->sk->sk_callback_lock);
@@ -314,15 +306,15 @@ struct socket *rds_tcp_listen_init(struct net *net, bool isv6)
 		sin6 = (struct sockaddr_in6 *)&ss;
 		sin6->sin6_family = PF_INET6;
 		sin6->sin6_addr = in6addr_any;
-		sin6->sin6_port = (__force u16)htons(RDS_TCP_PORT);
+		sin6->sin6_port = htons(RDS_TCP_PORT);
 		sin6->sin6_scope_id = 0;
 		sin6->sin6_flowinfo = 0;
 		addr_len = sizeof(*sin6);
 	} else {
 		sin = (struct sockaddr_in *)&ss;
 		sin->sin_family = PF_INET;
-		sin->sin_addr.s_addr = INADDR_ANY;
-		sin->sin_port = (__force u16)htons(RDS_TCP_PORT);
+		sin->sin_addr.s_addr = htonl(INADDR_ANY);
+		sin->sin_port = htons(RDS_TCP_PORT);
 		addr_len = sizeof(*sin);
 	}
 
@@ -364,7 +356,6 @@ void rds_tcp_listen_stop(struct socket *sock, struct work_struct *acceptor)
 	release_sock(sk);
 
 	/* wait for accepts to stop and close the socket */
-	flush_workqueue(rds_wq);
 	flush_work(acceptor);
 	sock_release(sock);
 }

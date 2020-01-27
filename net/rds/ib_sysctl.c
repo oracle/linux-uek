@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -49,6 +49,22 @@ unsigned long rds_ib_sysctl_max_unsig_wrs = 16;
 static unsigned long rds_ib_sysctl_max_unsig_wr_min = 1;
 static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
 
+unsigned long rds_ib_sysctl_max_unsolicited_wrs = 16;
+
+/* Zero means inserting SEND_SOLICITED in the middle of an RDS message
+ * is disabled
+ */
+static unsigned long rds_ib_sysctl_max_unsolicited_wr_min;
+/* Nmbr frags of 1MB + 256B RDBMS hdr */
+static unsigned long rds_ib_sysctl_max_unsolicited_wr_max =
+	(1 * 1024 * 1024 + RDS_FRAG_SIZE) / RDS_FRAG_SIZE;
+
+/* Default FRWR garbage collection worker wakeup interval, in msec. */
+u32 rds_frwr_wake_intrvl = 5000;
+
+/* Default FRWR ibmr idle time before garbage collection, in msec. */
+u32 rds_frwr_ibmr_gc_time = 1000;
+
 /*
  * This sysctl does nothing.
  *
@@ -59,7 +75,14 @@ static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
  * rings from ib_cm_connect_complete() back into ib_setup_qp()
  * will cause credits to be added before protocol negotiation.
  */
+
 unsigned int rds_ib_sysctl_flow_control = 0;
+unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu; /* = 0 */
+
+/* Min/max from IBTA spec C9-140 */
+static int rds_ib_sysctl_min_local_ack_timeout;
+static int rds_ib_sysctl_max_local_ack_timeout = 31;
+int rds_ib_sysctl_local_ack_timeout = 17; /* 0.5 secs */
 
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
@@ -90,6 +113,15 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.extra2		= &rds_ib_sysctl_max_unsig_wr_max,
 	},
 	{
+		.procname       = "max_unsolicited_wr",
+		.data		= &rds_ib_sysctl_max_unsolicited_wrs,
+		.maxlen         = sizeof(unsigned long),
+		.mode           = 0644,
+		.proc_handler   = &proc_doulongvec_minmax,
+		.extra1		= &rds_ib_sysctl_max_unsolicited_wr_min,
+		.extra2		= &rds_ib_sysctl_max_unsolicited_wr_max,
+	},
+	{
 		.procname       = "max_recv_allocation",
 		.data		= &rds_ib_sysctl_max_recv_allocation,
 		.maxlen         = sizeof(unsigned long),
@@ -103,13 +135,42 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+	{
+		.procname       = "disable_unmap_fmr_cpu_assignment",
+		.data           = &rds_ib_sysctl_disable_unmap_fmr_cpu,
+		.maxlen         = sizeof(rds_ib_sysctl_disable_unmap_fmr_cpu),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "local_ack_timeout",
+		.data           = &rds_ib_sysctl_local_ack_timeout,
+		.maxlen         = sizeof(rds_ib_sysctl_local_ack_timeout),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1		= &rds_ib_sysctl_min_local_ack_timeout,
+		.extra2		= &rds_ib_sysctl_max_local_ack_timeout,
+	},
+	{
+		.procname       = "frwr_gc_interval",
+		.data           = &rds_frwr_wake_intrvl,
+		.maxlen         = sizeof(rds_frwr_wake_intrvl),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "frwr_ibmr_gc_idle_time",
+		.data           = &rds_frwr_ibmr_gc_time,
+		.maxlen         = sizeof(rds_frwr_ibmr_gc_time),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
 	{ }
 };
 
 void rds_ib_sysctl_exit(void)
 {
-	if (rds_ib_sysctl_hdr)
-		unregister_net_sysctl_table(rds_ib_sysctl_hdr);
+	unregister_net_sysctl_table(rds_ib_sysctl_hdr);
 }
 
 int rds_ib_sysctl_init(void)

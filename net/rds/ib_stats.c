@@ -37,9 +37,9 @@
 #include "rds.h"
 #include "ib.h"
 
-DEFINE_PER_CPU_SHARED_ALIGNED(struct rds_ib_statistics, rds_ib_stats);
+DEFINE_PER_CPU(struct rds_ib_statistics, rds_ib_stats) ____cacheline_aligned;
 
-static const char *const rds_ib_stat_names[] = {
+static char *rds_ib_stat_names[] = {
 	"ib_connect_raced",
 	"ib_listen_closed_stale",
 	"ib_evt_handler_call",
@@ -75,10 +75,13 @@ static const char *const rds_ib_stat_names[] = {
 	"ib_rdma_mr_1m_pool_flush",
 	"ib_rdma_mr_1m_pool_wait",
 	"ib_rdma_mr_1m_pool_depleted",
-	"ib_rdma_mr_8k_reused",
-	"ib_rdma_mr_1m_reused",
 	"ib_atomic_cswp",
 	"ib_atomic_fadd",
+	"ib_srq_lows",
+	"ib_srq_refills",
+	"ib_srq_empty_refills",
+	"ib_recv_cache_added",
+	"ib_recv_cache_removed",
 };
 
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
