@@ -2351,7 +2351,7 @@ int qed_resc_alloc(struct qed_dev *cdev)
 		if (rc)
 			goto alloc_err;
 
-		rc = qed_dbg_alloc_user_data(p_hwfn);
+		rc = qed_dbg_alloc_user_data(p_hwfn, &p_hwfn->dbg_user_info);
 		if (rc)
 			goto alloc_err;
 	}
