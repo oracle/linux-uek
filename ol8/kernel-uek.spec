@@ -485,7 +485,7 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware >= 999:20200109-999.3.git67d4ff59\
+Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
 Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
