@@ -2681,14 +2681,10 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 	}
 
 	if (req->dir & PKIND_TX) {
-		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, req->hdr.pcifunc);
-
-		/* tx pkind set req valid if NIXLF attached */
-		if (!pfvf->nixlf || blkaddr < 0)
-			return NIX_AF_ERR_AF_LF_INVALID;
-
-		nixlf = rvu_get_lf(rvu, &rvu->hw->block[blkaddr],
-				   req->hdr.pcifunc, 0);
+		/* Tx pkind set request valid if PCIFUNC has NIXLF attached */
+		rc = nix_get_nixlf(rvu, req->hdr.pcifunc, &nixlf, &blkaddr);
+		if (rc)
+			return rc;
 
 		rvu_write64(rvu, blkaddr, NIX_AF_LFX_TX_PARSE_CFG(nixlf),
 			    txpkind);
