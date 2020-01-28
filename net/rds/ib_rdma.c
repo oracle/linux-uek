@@ -949,12 +949,24 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 {
 	struct ib_send_wr s_wr;
 	const struct ib_send_wr *failed_wr;
+	atomic_t *n_wrs = &ibmr->device->fastreg_wrs;
 	int ret = 0;
 
 	down_read(&ibmr->device->fastreg_lock);
 
 	if (ibmr->fr_state != MR_IS_VALID)
 		goto out;
+	/* Even though we are posting one request,
+	   the number is decremented by 2 to match
+	   that in rds_ib_rdma_build_fastreg().
+	*/
+	while (atomic_sub_return(2, n_wrs) <= 0) {
+		atomic_add(2, n_wrs);
+		/* Depending on how many times schedule() is called,
+		 * we could replace it with wait_event() in future.
+		 */
+		schedule();
+	}
 
 	ibmr->fr_state = MR_IS_INVALID;
 
@@ -968,6 +980,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	ret = ib_post_send(ibmr->device->fastreg_qp, &s_wr, &failed_wr);
 	WARN_ON(failed_wr != &s_wr);
 	if (ret) {
+		atomic_add(2, n_wrs);
 		ibmr->fr_state = MR_IS_STALE;
 		pr_warn_ratelimited("RDS/IB: %s:%d ib_post_send returned %d\n",
 				    __func__, __LINE__, ret);
