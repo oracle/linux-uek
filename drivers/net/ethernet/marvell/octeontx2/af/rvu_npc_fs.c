@@ -1042,7 +1042,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 		u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
 	}
 
-	err = nix_get_nixlf(rvu, target, &nixlf);
+	err = nix_get_nixlf(rvu, target, &nixlf, NULL);
 
 	/* If interface is uninitialized then do not enable entry */
 	if (err || (!req->default_rule && !pfvf->def_rule))
