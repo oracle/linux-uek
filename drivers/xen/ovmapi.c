@@ -1120,12 +1120,12 @@ static int __init ovmapi_init(void)
 						0, OVMM_MAX_NAME_LEN, NULL);
 	value_cache = kmem_cache_create("value_cache", OVMM_MAX_VALUE_LEN,
 					0, 0, NULL);
-	parameter_cache = kmem_cache_create("parameter_cache",
-					    sizeof(struct ovmapi_param),
-					    0, 0, NULL);
-	event_cache = kmem_cache_create("event_cache",
-					sizeof(struct ovmapi_event_list),
-					0, 0, NULL);
+	parameter_cache = kmem_cache_create_usercopy("parameter_cache",
+					    sizeof(struct ovmapi_param), 0, 0,
+					    0, sizeof(struct ovmapi_param), NULL);
+	event_cache = kmem_cache_create_usercopy("event_cache",
+					sizeof(struct ovmapi_event_list), 0, 0,
+					0, sizeof(struct ovmapi_event_list), NULL);
 	memset(&ovmapi_info, 0, sizeof(ovmapi_info));
 	memset(&xenstore_notifier, 0, sizeof(xenstore_notifier));
 	INIT_LIST_HEAD(&ovmapi_info.parameter_list);
