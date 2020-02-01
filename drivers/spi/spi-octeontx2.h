@@ -17,6 +17,7 @@ struct octeontx2_spi_regs {
 	int status;
 	int xmit;
 	int wbuf;
+	int rcvd;
 };
 
 struct octeontx2_spi {
@@ -32,6 +33,7 @@ struct octeontx2_spi {
 #define OCTEONTX2_SPI_STS(x)	((x)->regs.status)
 #define OCTEONTX2_SPI_XMIT(x)	((x)->regs.xmit)
 #define OCTEONTX2_SPI_WBUF(x)	((x)->regs.wbuf)
+#define OCTEONTX2_SPI_RCVD(x)	((x)->regs.rcvd)
 
 int octeontx2_spi_transfer_one_message(struct spi_master *master,
 				       struct spi_message *msg);
