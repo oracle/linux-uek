@@ -60,6 +60,7 @@ config HAVE_CTF_TOOLCHAIN
 
 config CONSTRUCTORS
 	bool
+	depends on !UML
 
 config IRQ_WORK
 	bool
