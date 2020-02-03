@@ -283,6 +283,7 @@ extern struct cred init_cred;
 	},								\
 	.thread_group	= LIST_HEAD_INIT(tsk.thread_group),		\
 	.thread_node	= LIST_HEAD_INIT(init_signals.thread_head),	\
+	.futex_exit_mutex = &init_futex_exit_mutex,			\
 	INIT_IDS							\
 	INIT_PERF_EVENTS(tsk)						\
 	INIT_TRACE_IRQFLAGS						\
