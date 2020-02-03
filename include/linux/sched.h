@@ -974,8 +974,6 @@ struct task_struct {
 #endif
 	struct list_head		pi_state_list;
 	struct futex_pi_state		*pi_state_cache;
-	struct mutex			futex_exit_mutex;
-	unsigned int			futex_state;
 #endif
 #ifdef CONFIG_PERF_EVENTS
 	struct perf_event_context	*perf_event_ctxp[perf_nr_task_contexts];
@@ -1172,9 +1170,14 @@ struct task_struct {
 	UEK_KABI_RESERVED(2);
 #endif
 
-	/* Space for future expansion without breaking kABI. */
-	UEK_KABI_RESERVED(3);
+	UEK_KABI_USE(3, unsigned int futex_state);
+
+#ifdef __GENKSYMS__
 	UEK_KABI_RESERVED(4);
+#else
+	struct mutex *futex_exit_mutex;
+#endif
+	/* Space for future expansion without breaking kABI. */
 	UEK_KABI_RESERVED(5);
 	UEK_KABI_RESERVED(6);
 	UEK_KABI_RESERVED(7);

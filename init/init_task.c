@@ -2,6 +2,7 @@
 #include <linux/init_task.h>
 #include <linux/export.h>
 #include <linux/mqueue.h>
+#include <linux/mutex.h>
 #include <linux/sched.h>
 #include <linux/sched/sysctl.h>
 #include <linux/sched/rt.h>
@@ -15,6 +16,7 @@
 
 static struct signal_struct init_signals = INIT_SIGNALS(init_signals);
 static struct sighand_struct init_sighand = INIT_SIGHAND(init_sighand);
+static DEFINE_MUTEX(init_futex_exit_mutex);
 
 /* Initial task structure */
 struct task_struct init_task = INIT_TASK(init_task);
