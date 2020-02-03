@@ -755,17 +755,19 @@ static inline int __do_cpuid_func(struct kvm_cpuid_entry2 *entry, u32 function,
 		 * arch/x86/kernel/cpu/bugs.c is kind enough to
 		 * record that in cpufeatures so use them.
 		 */
-		if (boot_cpu_has(X86_FEATURE_IBPB))
-			entry->ebx |= F(AMD_IBPB);
-		if (boot_cpu_has(X86_FEATURE_IBRS))
-			entry->ebx |= F(AMD_IBRS);
-		if (boot_cpu_has(X86_FEATURE_STIBP))
-			entry->ebx |= F(AMD_STIBP);
-		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
-		    boot_cpu_has(X86_FEATURE_AMD_SSBD))
-			entry->ebx |= F(AMD_SSBD);
-		if (!boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS))
-			entry->ebx |= F(AMD_SSB_NO);
+		if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
+			if (boot_cpu_has(X86_FEATURE_IBPB))
+				entry->ebx |= F(AMD_IBPB);
+			if (boot_cpu_has(X86_FEATURE_IBRS))
+				entry->ebx |= F(AMD_IBRS);
+			if (boot_cpu_has(X86_FEATURE_STIBP))
+				entry->ebx |= F(AMD_STIBP);
+			if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
+			    boot_cpu_has(X86_FEATURE_AMD_SSBD))
+				entry->ebx |= F(AMD_SSBD);
+			if (!boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS))
+				entry->ebx |= F(AMD_SSB_NO);
+		}
 		/*
 		 * The preference is to use SPEC CTRL MSR instead of the
 		 * VIRT_SPEC MSR.
