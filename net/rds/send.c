@@ -937,6 +937,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	list_for_each_entry(rm, &list, m_sock_item) {
 
 		conn = rm->m_inc.i_conn;
+		rm->m_tmp_tos = conn->c_tos;
 		if (conn->c_trans->t_mp_capable)
 			cp = rm->m_inc.i_conn_path;
 		else
@@ -985,12 +986,12 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		 * belong to the same connection.
 		 */
 		conn = rm->m_inc.i_conn;
-		has_been_dropped = conn_dropped ? conn_dropped[conn->c_tos] : false;
+		has_been_dropped = conn_dropped ? conn_dropped[rm->m_tmp_tos] : false;
 		if (conn && !has_been_dropped && dest &&
 		    test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
 			rds_conn_drop(conn, DR_SOCK_CANCEL);
 			if (conn_dropped)
-				conn_dropped[conn->c_tos] = 1;
+				conn_dropped[rm->m_tmp_tos] = 1;
 		}
 		rds_message_wait(rm);
 
