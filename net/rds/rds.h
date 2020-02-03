@@ -611,6 +611,7 @@ static inline u32 rds_rdma_cookie_offset(rds_rdma_cookie_t cookie)
 
 struct rds_message {
 	atomic_t		m_refcount;
+	u8			m_tmp_tos;
 	struct list_head	m_sock_item;
 	struct list_head	m_conn_item;
 	struct rds_incoming	m_inc;
