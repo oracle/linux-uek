@@ -323,6 +323,9 @@ struct nix_tx_action {
 #endif
 };
 
+/* NPC_AF_INTFX_KEX_CFG field masks */
+#define NPC_PARSE_NIBBLE		GENMASK_ULL(30, 0)
+
 /* NIX Receive Vtag Action Structure */
 #define RX_VTAG0_VALID_BIT		BIT_ULL(15)
 #define RX_VTAG0_TYPE_MASK		GENMASK_ULL(14, 12)
@@ -359,6 +362,39 @@ struct npc_mcam_kex {
 	u64 intf_lid_lt_ld[NPC_MAX_INTF][NPC_MAX_LID][NPC_MAX_LT][NPC_MAX_LD];
 	/* NPC_AF_INTF(0..1)_LDATA(0..1)_FLAGS(0..15)_CFG */
 	u64 intf_ld_flags[NPC_MAX_INTF][NPC_MAX_LD][NPC_MAX_LFL];
+} __packed;
+
+struct npc_lt_def {
+	u8	ltype_mask;
+	u8	ltype_match;
+	u8	lid;
+} __packed;
+
+struct npc_lt_def_ipsec {
+	u8	ltype_mask;
+	u8	ltype_match;
+	u8	lid;
+	u8	spi_offset;
+	u8	spi_nz;
+} __packed;
+
+struct npc_lt_def_cfg {
+	struct npc_lt_def	rx_ol2;
+	struct npc_lt_def	rx_oip4;
+	struct npc_lt_def	rx_iip4;
+	struct npc_lt_def	rx_oip6;
+	struct npc_lt_def	rx_iip6;
+	struct npc_lt_def	rx_otcp;
+	struct npc_lt_def	rx_itcp;
+	struct npc_lt_def	rx_oudp;
+	struct npc_lt_def	rx_iudp;
+	struct npc_lt_def	rx_osctp;
+	struct npc_lt_def	rx_isctp;
+	struct npc_lt_def_ipsec	rx_ipsec[2];
+	struct npc_lt_def	pck_ol2;
+	struct npc_lt_def	pck_oip4;
+	struct npc_lt_def	pck_oip6;
+	struct npc_lt_def	pck_iip4;
 } __packed;
 
 struct rvu_npc_mcam_rule {

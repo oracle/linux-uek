@@ -208,6 +208,21 @@ struct npc_mcam {
 	struct list_head mcam_rules;
 };
 
+/* KPU profile adapter structure which is used to translate between built-in and
+ * firmware KPU profile structures.
+ */
+struct npc_kpu_profile_adapter {
+	const char		*name;
+	u64			version;
+	struct npc_lt_def_cfg	*lt_def;
+	struct npc_kpu_profile_action	*ikpu; /* array[pkinds] */
+	struct npc_kpu_profile	*kpu; /* array[kpus] */
+	struct npc_mcam_kex	*mkex;
+	bool			custom; /* true if loadable profile used */
+	size_t			pkinds;
+	size_t			kpus;
+};
+
 struct sso_rsrc {
 	u8      sso_hws;
 	u16     sso_hwgrps;
@@ -450,6 +465,9 @@ struct rvu {
 
 	/* Firmware data */
 	struct rvu_fwdata	*fwdata;
+
+	/* NPC KPU data */
+	struct npc_kpu_profile_adapter kpu;
 
 	/* DebugFS */
 #ifdef CONFIG_DEBUG_FS

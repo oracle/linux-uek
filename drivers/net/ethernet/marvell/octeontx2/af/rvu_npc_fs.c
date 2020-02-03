@@ -483,8 +483,7 @@ static int npc_scan_kex(struct rvu *rvu, int blkaddr, u8 intf)
 	 * will be concatenated in key.
 	 */
 	cfg = rvu_read64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(intf));
-	/* PARSE_NIBBLE_ENA <30:0> */
-	cfg &= GENMASK_ULL(30, 0);
+	cfg &= NPC_PARSE_NIBBLE;
 	for_each_set_bit(bitnr, (unsigned long *)&cfg, 31) {
 		npc_scan_parse_result(mcam, bitnr, key_nibble, intf);
 		key_nibble++;
