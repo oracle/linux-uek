@@ -774,14 +774,15 @@ struct rs_buf_info *rds_add_buf_info(struct rds_sock *rs, struct in6_addr *addr,
 
 	tmp_info->rsbi_key = *addr;
 	tmp_info->rsbi_snd_bytes = 0;
+	spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
 	*ret = rhashtable_insert_fast(&rs->rs_buf_info_tbl,
 				      &tmp_info->rsbi_link, rs_buf_info_params);
 	if (!*ret) {
+		spin_lock_irqsave(&rs->rs_snd_lock, flags);
 		rs->rs_buf_info_dest_cnt++;
 		spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
 		return tmp_info;
 	} else if (*ret != -EEXIST) {
-		spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
 		kmem_cache_free(rds_rs_buf_info_slab, tmp_info);
 		/* Very unlikely to happen... */
 		pr_err("%s: cannot add rs_buf_info for %pI6c: %d\n", __func__,
@@ -792,7 +793,6 @@ struct rs_buf_info *rds_add_buf_info(struct rds_sock *rs, struct in6_addr *addr,
 	/* Another thread beats us in adding the rs_buf_info.... */
 	info = rhashtable_lookup_fast(&rs->rs_buf_info_tbl, addr,
 				      rs_buf_info_params);
-	spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
 	kmem_cache_free(rds_rs_buf_info_slab, tmp_info);
 
 	if (info) {
