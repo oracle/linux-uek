@@ -261,7 +261,7 @@ static int __init __parse_crashkernel(char *cmdline,
 
 	if (strncmp(ck_cmdline, "auto", 4) == 0) {
 #ifdef CONFIG_X86_64
-		ck_cmdline = "1G-64G:160M,64G-1T:280M,1T-:512M";
+		ck_cmdline = "1G-64G:280M,64G-:512M";
 #elif defined(CONFIG_S390)
 		ck_cmdline = "4G-64G:160M,64G-1T:256M,1T-:512M";
 #elif defined(CONFIG_ARM64)

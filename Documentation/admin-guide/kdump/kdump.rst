@@ -292,7 +292,7 @@ reserve memory.
 
 The automatically reserved memory size varies based on architecture.
 The size changes according to system memory size like below:
-    x86_64: 1G-64G:160M,64G-1T:280M,1T-:512M
+    x86_64: 1G-64G:280M,64G-:512M
     s390x:  4G-64G:160M,64G-1T:256M,1T-:512M
     arm64:  2G-:768M
     ppc64:  2G-4G:384M,4G-16G:512M,16G-64G:1G,64G-128G:2G,128G-:4G
