@@ -4658,7 +4658,7 @@ static void intel_disable_iommus(void)
 		iommu_disable_translation(iommu);
 }
 
-void intel_iommu_shutdown(void)
+void intel_iommu_shutdown(int panic)
 {
 	struct dmar_drhd_unit *drhd;
 	struct intel_iommu *iommu = NULL;
@@ -4666,7 +4666,8 @@ void intel_iommu_shutdown(void)
 	if (no_iommu || dmar_disabled)
 		return;
 
-	down_write(&dmar_global_lock);
+	if (!panic)
+		down_write(&dmar_global_lock);
 
 	/* Disable PMRs explicitly here. */
 	for_each_iommu(iommu, drhd)
@@ -4675,7 +4676,9 @@ void intel_iommu_shutdown(void)
 	/* Make sure the IOMMUs are switched off */
 	intel_disable_iommus();
 
-	up_write(&dmar_global_lock);
+	if (!panic)
+		up_write(&dmar_global_lock);
+	
 }
 
 static inline struct intel_iommu *dev_to_intel_iommu(struct device *dev)
