@@ -707,7 +707,7 @@ static const struct dma_map_ops gart_dma_ops = {
 	.dma_supported			= x86_dma_supported,
 };
 
-static void gart_iommu_shutdown(void)
+static void gart_iommu_shutdown(int panic)
 {
 	struct pci_dev *dev;
 	int i;
