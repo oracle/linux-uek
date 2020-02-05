@@ -683,7 +683,7 @@ static const struct dma_map_ops gart_dma_ops = {
 	.get_required_mask		= dma_direct_get_required_mask,
 };
 
-static void gart_iommu_shutdown(void)
+static void gart_iommu_shutdown(int panic)
 {
 	struct pci_dev *dev;
 	int i;
