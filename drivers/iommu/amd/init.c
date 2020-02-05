@@ -2509,7 +2509,7 @@ static void enable_iommus(void)
 	enable_iommus_v2();
 }
 
-static void disable_iommus(void)
+static void disable_iommus(int panic)
 {
 	struct amd_iommu *iommu;
 
@@ -2543,7 +2543,7 @@ static void amd_iommu_resume(void)
 static int amd_iommu_suspend(void)
 {
 	/* disable IOMMUs to go out of the way for BIOS */
-	disable_iommus();
+	disable_iommus(0);
 
 	return 0;
 }
@@ -2767,7 +2767,7 @@ static int __init early_amd_iommu_init(void)
 
 	/* Disable any previously enabled IOMMUs */
 	if (!is_kdump_kernel() || amd_iommu_disabled)
-		disable_iommus();
+		disable_iommus(0);
 
 	if (amd_iommu_irq_remap)
 		amd_iommu_irq_remap = check_ioapic_information();
@@ -2928,7 +2928,7 @@ static int __init state_next(void)
 	if (ret) {
 		free_dma_resources();
 		if (!irq_remapping_enabled) {
-			disable_iommus();
+			disable_iommus(0);
 			free_iommu_resources();
 		} else {
 			struct amd_iommu *iommu;
