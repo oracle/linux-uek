@@ -1461,6 +1461,40 @@ static void nix_reset_tx_linkcfg(struct rvu *rvu, int blkaddr,
 			    NIX_AF_TL3_TL2X_LINKX_CFG(schq, link), 0x00);
 }
 
+static void nix_clear_tx_xoff(struct rvu *rvu, int blkaddr,
+			      int lvl, int schq)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u64 reg;
+
+	/* Skip this if shaping is not supported */
+	if (!hw->cap.nix_shaping)
+		return;
+
+	/* Clear level specific SW_XOFF */
+	switch (lvl) {
+	case NIX_TXSCH_LVL_TL1:
+		reg = NIX_AF_TL1X_SW_XOFF(schq);
+		break;
+	case NIX_TXSCH_LVL_TL2:
+		reg = NIX_AF_TL2X_SW_XOFF(schq);
+		break;
+	case NIX_TXSCH_LVL_TL3:
+		reg = NIX_AF_TL3X_SW_XOFF(schq);
+		break;
+	case NIX_TXSCH_LVL_TL4:
+		reg = NIX_AF_TL4X_SW_XOFF(schq);
+		break;
+	case NIX_TXSCH_LVL_MDQ:
+		reg = NIX_AF_MDQX_SW_XOFF(schq);
+		break;
+	default:
+		return;
+	}
+
+	rvu_write64(rvu, blkaddr, reg, 0x0);
+}
+
 static int nix_get_tx_link(struct rvu *rvu, u16 pcifunc)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -1730,8 +1764,8 @@ exit:
 	return rc;
 }
 
-static void nix_smq_flush(struct rvu *rvu, int blkaddr,
-			  int smq, u16 pcifunc, int nixlf)
+static int nix_smq_flush(struct rvu *rvu, int blkaddr,
+			 int smq, u16 pcifunc, int nixlf)
 {
 	int pf = rvu_get_pf(pcifunc);
 	u8 cgx_id = 0, lmac_id = 0;
@@ -1768,6 +1802,7 @@ static void nix_smq_flush(struct rvu *rvu, int blkaddr,
 	/* restore cgx tx state */
 	if (restore_tx_en)
 		cgx_lmac_tx_enable(rvu_cgx_pdata(cgx_id, rvu), lmac_id, false);
+	return err;
 }
 
 static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
@@ -1789,18 +1824,31 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 	if (nixlf < 0)
 		return NIX_AF_ERR_AF_LF_INVALID;
 
-	/* Disable TL2/3 queue links before SMQ flush*/
+	/* Disable TL2/3 queue links and all XOFF's before SMQ flush*/
 	mutex_lock(&rvu->rsrc_lock);
-	for (lvl = NIX_TXSCH_LVL_TL4; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
-		if (lvl != NIX_TXSCH_LVL_TL2 && lvl != NIX_TXSCH_LVL_TL4)
+	for (lvl = NIX_TXSCH_LVL_MDQ; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
+		txsch = &nix_hw->txsch[lvl];
+
+		if (lvl >= hw->cap.nix_tx_aggr_lvl)
 			continue;
 
-		txsch = &nix_hw->txsch[lvl];
 		for (schq = 0; schq < txsch->schq.max; schq++) {
 			if (TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) != pcifunc)
 				continue;
 			nix_reset_tx_linkcfg(rvu, blkaddr, lvl, schq);
+			nix_clear_tx_xoff(rvu, blkaddr, lvl, schq);
 		}
+	}
+	nix_clear_tx_xoff(rvu, blkaddr, NIX_TXSCH_LVL_TL1,
+			  nix_get_tx_link(rvu, pcifunc));
+
+	/* On PF cleanup, clear cfg done flag as
+	 * PF would have changed default config.
+	 */
+	if (!(pcifunc & RVU_PFVF_FUNC_MASK)) {
+		txsch = &nix_hw->txsch[NIX_TXSCH_LVL_TL1];
+		schq = nix_get_tx_link(rvu, pcifunc);
+		txsch->pfvf_map[schq] = TXSCH_SET_FLAG(0x0, 0x0);
 	}
 
 	/* Flush SMQs */
@@ -1845,6 +1893,7 @@ static int nix_txschq_free_one(struct rvu *rvu,
 	struct nix_txsch *txsch;
 	struct nix_hw *nix_hw;
 	u32 *pfvf_map;
+	int rc;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
@@ -1869,15 +1918,24 @@ static int nix_txschq_free_one(struct rvu *rvu,
 	mutex_lock(&rvu->rsrc_lock);
 
 	if (TXSCH_MAP_FUNC(pfvf_map[schq]) != pcifunc) {
-		mutex_unlock(&rvu->rsrc_lock);
+		rc = NIX_AF_ERR_TLX_INVALID;
 		goto err;
 	}
+
+	/* Clear SW_XOFF of this resource only.
+	 * For SMQ level, all path XOFF's
+	 * need to be made clear by user
+	 */
+	nix_clear_tx_xoff(rvu, blkaddr, lvl, schq);
 
 	/* Flush if it is a SMQ. Onus of disabling
 	 * TL2/3 queue links before SMQ flush is on user
 	 */
-	if (lvl == NIX_TXSCH_LVL_SMQ)
-		nix_smq_flush(rvu, blkaddr, schq, pcifunc, nixlf);
+	if (lvl == NIX_TXSCH_LVL_SMQ &&
+	    nix_smq_flush(rvu, blkaddr, schq, pcifunc, nixlf)) {
+		rc = NIX_AF_SMQ_FLUSH_FAILED;
+		goto err;
+	}
 
 	/* Free the resource */
 	rvu_free_rsrc(&txsch->schq, schq);
@@ -1885,7 +1943,8 @@ static int nix_txschq_free_one(struct rvu *rvu,
 	mutex_unlock(&rvu->rsrc_lock);
 	return 0;
 err:
-	return NIX_AF_ERR_TLX_INVALID;
+	mutex_unlock(&rvu->rsrc_lock);
+	return rc;
 }
 
 int rvu_mbox_handler_nix_txsch_free(struct rvu *rvu,
