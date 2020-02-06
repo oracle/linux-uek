@@ -1364,6 +1364,307 @@ static int adjust_tuning(struct mmc_host *mmc, struct adj *adj, u32 opcode)
 	return 0;
 }
 
+static const u8 octeontx_hs400_tuning_block[512] = {
+	0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00,
+	0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc, 0xcc,
+	0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff, 0xff,
+	0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee, 0xff,
+	0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd, 0xdd,
+	0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff, 0xbb,
+	0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff, 0xff,
+	0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee, 0xff,
+	0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00,
+	0x00, 0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc,
+	0xcc, 0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff,
+	0xff, 0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee,
+	0xff, 0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd,
+	0xdd, 0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff,
+	0xbb, 0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff,
+	0xff, 0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee,
+	0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00,
+	0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc, 0xcc,
+	0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff, 0xff,
+	0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee, 0xff,
+	0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd, 0xdd,
+	0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff, 0xbb,
+	0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff, 0xff,
+	0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee, 0xff,
+	0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00,
+	0x00, 0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc,
+	0xcc, 0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff,
+	0xff, 0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee,
+	0xff, 0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd,
+	0xdd, 0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff,
+	0xbb, 0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff,
+	0xff, 0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee,
+	0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00,
+	0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc, 0xcc,
+	0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff, 0xff,
+	0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee, 0xff,
+	0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd, 0xdd,
+	0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff, 0xbb,
+	0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff, 0xff,
+	0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee, 0xff,
+	0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00,
+	0x00, 0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc,
+	0xcc, 0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff,
+	0xff, 0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee,
+	0xff, 0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd,
+	0xdd, 0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff,
+	0xbb, 0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff,
+	0xff, 0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee,
+	0xff, 0x00, 0x00, 0xff, 0xff, 0x00, 0xff, 0x00,
+	0x00, 0xff, 0x00, 0xff, 0x55, 0xaa, 0x55, 0xaa,
+	0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff, 0xff,
+	0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee, 0xff,
+	0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd, 0xdd,
+	0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff, 0xbb,
+	0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff, 0xff,
+	0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee, 0xff,
+	0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00,
+	0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff,
+	0x01, 0xfe, 0x01, 0xfe, 0xcc, 0xcc, 0xcc, 0xff,
+	0xff, 0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee,
+	0xff, 0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd,
+	0xdd, 0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff,
+	0xbb, 0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff,
+	0xff, 0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee,
+
+};
+
+/* Initialization for single block read/write operation for tuning */
+static void hs400_prepare_mrq(const struct cvm_mmc_slot *slot,
+			      struct mmc_request *mrq, struct mmc_command *cmd,
+			      struct mmc_data *data, struct scatterlist *sg,
+			      const void *dat_buf, u32 size, bool write)
+{
+	struct mmc_host *mmc = slot->mmc;
+
+	memset(data, 0, sizeof(*data));
+	memset(cmd, 0, sizeof(*cmd));
+	memset(mrq, 0, sizeof(*mrq));
+
+	mrq->cmd = cmd;
+	mrq->data = data;
+	cmd->opcode = write ? MMC_WRITE_BLOCK : MMC_READ_SINGLE_BLOCK;
+	cmd->arg = slot->hs400_tuning_block;
+	cmd->flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
+	data->blksz = size;
+	data->blocks = 1;
+	data->sg = sg;
+	data->sg_len = 1;
+	data->flags = write ? MMC_DATA_WRITE : MMC_DATA_READ;
+	init_completion(&(mrq->completion));
+	if (mmc->card)
+		mmc_set_data_timeout(data, mmc->card);
+	else
+		data->timeout_ns = (write ? 80 : 10) * NSEC_PER_MSEC;
+	sg_init_one(sg, dat_buf, size);
+}
+
+static int access_hs400_tuning_block(struct cvm_mmc_slot *slot, bool write)
+{
+	struct mmc_request mrq = {};
+	struct mmc_command cmd = {};
+	struct mmc_data data = {};
+	struct scatterlist sg;
+	struct mmc_host *mmc = slot->mmc;
+	const int size = mmc->max_blk_size;
+	u8 *data_buf;
+
+	data_buf = kzalloc(size, GFP_KERNEL);
+	if (!data_buf)
+		return -ENOMEM;
+	if (write)
+		memcpy(data_buf, octeontx_hs400_tuning_block, size);
+
+	hs400_prepare_mrq(slot, &mrq, &cmd, &data, &sg, data_buf, size, write);
+
+	mmc_wait_for_req(mmc, &mrq);
+
+	if (!write) {
+		if (memcmp(data_buf, octeontx_hs400_tuning_block,
+			   sizeof(octeontx_hs400_tuning_block))) {
+			kfree(data_buf);
+			return -EILSEQ;
+		}
+	}
+	kfree(data_buf);
+
+	if (cmd.error || data.error)
+		dev_dbg(slot->host->dev, "%s op failed, cmd: %d, data: %d\n",
+			write ? "write" : "read", cmd.error, data.error);
+	return (cmd.error || data.error) ? -ENODATA : 0;
+}
+
+/* Check for and write if necessary the tuning block for HS4000 tuning */
+static int check_and_write_hs400_tuning_block(struct cvm_mmc_slot *slot)
+{
+	int err;
+
+	if (slot->hs400_tuning_block == -1 ||
+	    slot->hs400_tuning_block_present)
+		return 0;
+
+	/* Read the tuning block first and see if it's already set */
+	err = access_hs400_tuning_block(slot, false);
+	if (err == -ENODATA) {
+		dev_warn(slot->host->dev,
+			 "Could not access HS400 tuning block %d in HS200 mode, err: %d\n",
+			 slot->hs400_tuning_block, err);
+		return err;
+	} else if (!err) {
+		/* Everything is good, data matches, we're done */
+		goto done;
+	}
+
+	/* Attempt to write the tuning block */
+	err = access_hs400_tuning_block(slot, true);
+	if (err) {
+		dev_warn(slot->host->dev,
+			 "err: %d, Could not write HS400 tuning block in HS200 mode\n",
+			 err);
+		goto done;
+	}
+
+	/* Read after write, this should pass */
+	err = access_hs400_tuning_block(slot, false);
+	if (err)
+		dev_warn(slot->host->dev,
+			 "Could not read HS400 tuning block after write, err: %d\n",
+			 err);
+
+done:
+	/* Disable HS400 tuning if we can't access the tuning block */
+	if (err)
+		slot->hs400_tuning_block = -1;
+
+	slot->hs400_tuning_block_present = !err;
+
+	return err;
+}
+
+static int tune_hs400(struct cvm_mmc_slot *slot)
+{
+	int err = 0, start_run = -1, best_run = 0, best_start = -1;
+	int last_good = -1;
+	bool prev_ok = false;
+	u64 timing;
+	int tap;
+	const int size = sizeof(octeontx_hs400_tuning_block);
+	struct mmc_host *mmc = slot->mmc;
+	struct cvm_mmc_host *host = slot->host;
+	struct mmc_request mrq;
+	struct mmc_command cmd;
+	struct mmc_data data;
+	struct scatterlist sg;
+	u8 *data_buf;
+	char how[MAX_NO_OF_TAPS+1] = "";
+
+	if (slot->hs400_tuning_block == -1)
+		return 0;
+
+	/*
+	 * Unfortunately, in their infinite wisdom, the eMMC standard does
+	 * not allow for tuning in HS400 mode.  The problem is that what
+	 * makes a good tuning point for HS200 often does not work in HS400
+	 * mode.  In order to tune HS400 mode, a block (usually block 1) is
+	 * set aside for tuning.  U-Boot is responsible for writing a data
+	 * pattern designed to generate a worst case signal.  Most of this
+	 * pattern is based off of the HS200 pattern.
+	 *
+	 * Each data in tap is tested by a read of this block and the center
+	 * tap of the longest run of good reads is chosen.  This code is
+	 * largely similar to adjust_tuning() above.
+	 */
+	data_buf = kmalloc(size, GFP_KERNEL);
+	if (!data_buf)
+		return -ENOMEM;
+
+	hs400_prepare_mrq(slot, &mrq, &cmd, &data, &sg, data_buf, size, false);
+
+	/* loop over range+1 to simplify processing */
+	for (tap = 0; tap <= MAX_NO_OF_TAPS; tap++, prev_ok = !err) {
+		if (tap < MAX_NO_OF_TAPS) {
+			cvm_mmc_clk_config(host, CLK_OFF);
+			timing = readq(host->base + MIO_EMM_TIMING(host));
+			timing = FIELD_PREP(MIO_EMM_TIMING_DATA_IN, tap);
+			writeq(timing, host->base + MIO_EMM_TIMING(host));
+			cvm_mmc_clk_config(host, CLK_ON);
+
+			dev_dbg(host->dev, "HS400 testing data in tap %d\n",
+				 tap);
+			mmc_wait_for_req(mmc, &mrq);
+			if (cmd.error | data.error) {
+				err = cmd.error ? cmd.error : data.error;
+				how[tap] = '-';
+				dev_dbg(host->dev,
+					 "HS400 tuning cmd err: %d, data error: %d\n",
+					 cmd.error, data.error);
+			} else  {	/* Validate data */
+				err = memcmp(data_buf,
+					     octeontx_hs400_tuning_block, size);
+
+				how[tap] = "d+"[!err];
+				dev_dbg(host->dev,
+					"HS400 read OK at tap %d, data %s\n",
+					tap, err ? "mismatch" : "ok");
+			}
+
+			if (!err)
+				last_good = tap;
+		} else {
+			/*
+			 * putting the end+1 case in loop simplifies
+			 * logic, allowing 'prev_ok' to process a
+			 * sweet spot in tuning which extends to wall.
+			 */
+			err = -EILSEQ;
+		}
+
+		if (!err) {
+			/*
+			 * If no CRC/etc errors in response, but previous
+			 * failed, note the start of a new run
+			 */
+			if (!prev_ok)
+				start_run = tap;
+		} else if (prev_ok) {
+			int run = tap - 1 - start_run;
+
+			/* did we just exit a wider sweet spot? */
+			if (start_run >= 0 && run > best_run) {
+				best_start = start_run;
+				best_run = run;
+			}
+		}
+	}
+
+	kfree(data_buf);
+	if (best_start < 0) {
+		dev_warn(host->dev, "%s %lldMHz tuning HS400 data in failed\n",
+			mmc_hostname(mmc), slot->clock / 1000000);
+		return -EINVAL;
+	}
+
+	tap = best_start + best_run / 2;
+	how[tap] = '@';
+	if (tapdance) {
+		tap = last_good - tapdance;
+		how[tap] = 'X';
+	}
+	dev_dbg(host->dev, "%s/HS400 data in %d/%d/%d %s\n",
+		mmc_hostname(mmc), best_start, tap,
+		best_start + best_run, how);
+	slot->taps &= ~MIO_EMM_TIMING_DATA_IN;
+	slot->taps |= FIELD_PREP(MIO_EMM_TIMING_DATA_IN, tap);
+	dev_dbg(host->dev, "HS400 data input tap: %d\n", tap);
+	dev_dbg(host->dev, "%s\n", how);
+	cvm_mmc_set_timing(slot);
+
+	return 0;
+}
+
 static u32 max_supported_frequency(struct cvm_mmc_host *host)
 {
 	/* Default maximum freqeuncey is 52000000 for chip prior to 9X */
@@ -1514,6 +1815,10 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	cvm_mmc_configure_delay(slot);
 out:
 	host->release_bus(host);
+	if (ios->timing == MMC_TIMING_MMC_HS)
+		check_and_write_hs400_tuning_block(slot);
+	else if (ios->timing == MMC_TIMING_MMC_HS400)
+		tune_hs400(slot);
 }
 
 static struct adj adj[] = {
@@ -1542,6 +1847,8 @@ static int cvm_scan_tuning(struct mmc_host *mmc, u32 opcode)
 	}
 
 	cvm_mmc_set_timing(slot);
+	if (!slot->hs400_tuning_block_present)
+		check_and_write_hs400_tuning_block(slot);
 	return 0;
 }
 
@@ -1710,6 +2017,9 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	if (ret)
 		return ret;
 
+	slot->hs400_tuning_block = -1U;
+	of_property_read_u32(node, "marvell,hs400-tuning-block",
+			     &slot->hs400_tuning_block);
 	/* Set bus width from obsolete properties, if unset */
 	if (!(mmc->caps & (MMC_CAP_8_BIT_DATA | MMC_CAP_4_BIT_DATA))) {
 		of_property_read_u32(node, "cavium,bus-max-width", &bus_width);

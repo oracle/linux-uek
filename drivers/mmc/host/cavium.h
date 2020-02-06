@@ -165,6 +165,8 @@ struct cvm_mmc_slot {
 	int bus_id;
 	bool cmd6_pending;
 	u64 want_switch;
+	u32 hs400_tuning_block;		/* Block number used for tuning */
+	bool hs400_tuning_block_present;
 };
 
 struct cvm_mmc_cr_type {
