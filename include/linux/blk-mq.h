@@ -2,6 +2,7 @@
 #ifndef BLK_MQ_H
 #define BLK_MQ_H
 
+#include <linux/uek_kabi.h>
 #include <linux/blkdev.h>
 #include <linux/sbitmap.h>
 #include <linux/srcu.h>
@@ -69,6 +70,15 @@ struct blk_mq_hw_ctx {
 	struct dentry		*debugfs_dir;
 	struct dentry		*sched_debugfs_dir;
 #endif
+ 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 
 	struct list_head	hctx_list;
 
@@ -113,11 +123,22 @@ struct blk_mq_tag_set {
 
 	struct mutex		tag_list_lock;
 	struct list_head	tag_list;
+ 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 struct blk_mq_queue_data {
 	struct request *rq;
 	bool last;
+ 
+	UEK_KABI_RESERVE(1)
 };
 
 typedef blk_status_t (queue_rq_fn)(struct blk_mq_hw_ctx *,
@@ -221,6 +242,15 @@ struct blk_mq_ops {
 	 */
 	void (*show_rq)(struct seq_file *m, struct request *rq);
 #endif
+ 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 enum {
