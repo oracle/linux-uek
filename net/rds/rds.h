@@ -1032,6 +1032,7 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 			 struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_conn_path_connect_if_down(struct rds_conn_path *conn);
+void rds_check_all_paths(struct rds_connection *conn);
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			    struct rds_info_iterator *iter,
 			    struct rds_info_lengths *lens,
