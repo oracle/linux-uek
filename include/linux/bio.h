@@ -5,6 +5,7 @@
 #ifndef __LINUX_BIO_H
 #define __LINUX_BIO_H
 
+#include <linux/uek_kabi.h>
 #include <linux/highmem.h>
 #include <linux/mempool.h>
 #include <linux/ioprio.h>
@@ -319,6 +320,10 @@ struct bio_integrity_payload {
 	struct work_struct	bip_work;	/* I/O completion */
 
 	struct bio_vec		*bip_vec;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+
 	struct bio_vec		bip_inline_vecs[0];/* embedded bvec array */
 };
 
@@ -719,6 +724,11 @@ struct bio_set {
 	struct bio_list		rescue_list;
 	struct work_struct	rescue_work;
 	struct workqueue_struct	*rescue_workqueue;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 struct biovec_slab {
