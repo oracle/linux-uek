@@ -14,6 +14,7 @@
  * 	              Nauman Rafique <nauman@google.com>
  */
 
+#include <linux/uek_kabi.h>
 #include <linux/cgroup.h>
 #include <linux/percpu_counter.h>
 #include <linux/seq_file.h>
@@ -59,6 +60,10 @@ struct blkcg {
 	struct list_head		cgwb_list;
 	refcount_t			cgwb_refcnt;
 #endif
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /*
@@ -178,6 +183,11 @@ struct blkcg_policy {
 	blkcg_pol_free_pd_fn		*pd_free_fn;
 	blkcg_pol_reset_pd_stats_fn	*pd_reset_stats_fn;
 	blkcg_pol_stat_pd_fn		*pd_stat_fn;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 extern struct blkcg blkcg_root;
