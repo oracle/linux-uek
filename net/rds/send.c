@@ -1580,7 +1580,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	if (rds_conn_path_down(cpath)) {
 		rds_rtd(RDS_RTD_CM_EXT, "checking conn in down state %p\n",
 			conn);
-		rds_conn_path_connect_if_down(cpath);
+		rds_check_all_paths(conn);
 	}
 
 	ret = rds_cong_wait(conn->c_fcong, dport, nonblock, rs);
