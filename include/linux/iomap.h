@@ -2,6 +2,7 @@
 #ifndef LINUX_IOMAP_H
 #define LINUX_IOMAP_H 1
 
+#include <linux/uek_kabi.h>
 #include <linux/atomic.h>
 #include <linux/bitmap.h>
 #include <linux/mm.h>
@@ -120,6 +121,11 @@ struct iomap_ops {
 	 */
 	int (*iomap_end)(struct inode *inode, loff_t pos, loff_t length,
 			ssize_t written, unsigned flags, struct iomap *iomap);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /*
