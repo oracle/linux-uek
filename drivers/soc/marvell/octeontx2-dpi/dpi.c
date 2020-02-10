@@ -46,7 +46,7 @@ static int dpi_dma_engine_get_num(void)
 	return DPI_MAX_ENGINES;
 }
 
-int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
+static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 {
 	int engine = 0;
 	int queue = vf;
@@ -87,7 +87,7 @@ int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	return 0;
 }
 
-int dpi_queue_fini(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
+static int dpi_queue_fini(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 {
 	u64 reg = 0ULL;
 	int engine = 0;
@@ -120,9 +120,10 @@ int dpi_queue_fini(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 /**
  * Global initialization of DPI
  *
+ * @dpi: DPI device context structure
  * @return Zero on success, negative on failure
  */
-int dpi_init(struct dpipf *dpi)
+static int dpi_init(struct dpipf *dpi)
 {
 	int engine = 0;
 	u64 reg = 0ULL;
@@ -154,7 +155,7 @@ int dpi_init(struct dpipf *dpi)
 	return 0;
 }
 
-int dpi_fini(struct dpipf *dpi)
+static int dpi_fini(struct dpipf *dpi)
 {
 	int engine = 0;
 	u64 reg = 0ULL;
@@ -172,7 +173,7 @@ int dpi_fini(struct dpipf *dpi)
 	return 0;
 }
 
-int dpi_queue_reset(struct dpipf *dpi, u16 queue)
+static int dpi_queue_reset(struct dpipf *dpi, u16 queue)
 {
 	/* TODO: add support */
 	return 0;
