@@ -685,10 +685,8 @@ enadis_pmccntr_el0_store(struct kobject *kobj, struct kobj_attribute *attr,
 	char tmp_buf[64];
 	long enable = 0;
 	char *tmp_ptr;
-	ssize_t used;
 
 	strlcpy(tmp_buf, buf, 64);
-	used = strlen(tmp_buf);
 	tmp_ptr = strim(tmp_buf);
 	if (kstrtol(tmp_ptr, 0, &enable)) {
 		dev_err(dev, "Invalid value, expected 1/0\n");
