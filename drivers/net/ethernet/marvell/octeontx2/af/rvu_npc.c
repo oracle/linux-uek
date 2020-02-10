@@ -1150,7 +1150,7 @@ static int npc_apply_custom_kpu(struct rvu *rvu,
 	}
 	/* Verify if profile fits the HW */
 	if (fw->kpus > profile->kpus) {
-		dev_warn(rvu->dev, "Not enough KPUs: %d > %d\n", fw->kpus,
+		dev_warn(rvu->dev, "Not enough KPUs: %d > %ld\n", fw->kpus,
 			 profile->kpus);
 		return -EINVAL;
 	}
