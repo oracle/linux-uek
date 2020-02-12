@@ -7,6 +7,7 @@
  * APIs (schedule(), wakeup variants, etc.)
  */
 
+#include <linux/uek_kabi.h>
 #include <uapi/linux/sched.h>
 
 #include <asm/current.h>
@@ -476,6 +477,11 @@ struct sched_entity {
 	 */
 	struct sched_avg		avg;
 #endif
+ 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 struct sched_rt_entity {
@@ -1267,6 +1273,15 @@ struct task_struct {
 	unsigned long			lowest_stack;
 	unsigned long			prev_lowest_stack;
 #endif
+ 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 
 	/*
 	 * New fields for task_struct should be added above here, so that
