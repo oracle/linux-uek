@@ -152,7 +152,7 @@ static void cvm_mmc_clk_config(struct cvm_mmc_host *host, bool flag)
 {
 	u64 emm_debug;
 
-	if (!is_mmc_otx2_C0(host))
+	if (!host->tap_requires_noclk)
 		return;
 
 	/* Turn off the clock */
@@ -208,7 +208,7 @@ static int tout(struct cvm_mmc_slot *slot, int ps, int hint)
 	if (!tap_ps)
 		return hint;
 
-	taps = min((int)(ps * clk_scale) / (tap_ps * 100), 63);
+	taps = min_t(int, DIV_ROUND_UP(ps * clk_scale, (tap_ps * 100)), 63);
 
 	/* when modparam is adjusted, re-announce timing */
 	if (old_scale != clk_scale) {
@@ -228,6 +228,7 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 {
 	struct cvm_mmc_host *host = slot->host;
 	struct mmc_host *mmc = slot->mmc;
+	const char *mode;
 
 	pr_debug("slot%d.configure_delay\n", slot->bus_id);
 
@@ -251,48 +252,66 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 		 * Typically 3.0 ns at frequencies <= 52 MHz SDR.
 		 * Typically 2.5 ns at frequencies <= 52 MHz DDR.
 		 * Typically 0.8 ns at frequencies > 52 MHz SDR.
-		 * Typically 0.4 ns at frequencies > 52 MHz DDR.
+		 * Typically 0.8 ns at frequencies > 52 MHz DDR.
+		 *
+		 * Note that in DDR cases typically the data hold time is
+		 * half of the command hold time.
 		 */
 		switch (mmc->ios.timing) {
-		case MMC_TIMING_LEGACY:
 		default:
+		case MMC_TIMING_LEGACY:
 			if (mmc->card && mmc_card_mmc(mmc->card))
 				cout = tout(slot, 5000, 39);
 			else
 				cout = tout(slot, 8000, 63);
+			dout = cout;
+			mode = "legacy";
 			break;
 		case MMC_TIMING_UHS_SDR12:
 			cout = tout(slot, 3000, 39);
+			dout = cout;
+			mode = "SDR 12";
 			break;
 		case MMC_TIMING_MMC_HS:
 			cout = tout(slot, 2500, 32);
+			dout = cout;
+			mode = "MMC HS";
 			break;
 		case MMC_TIMING_SD_HS:
 		case MMC_TIMING_UHS_SDR25:
 		case MMC_TIMING_UHS_SDR50:
 			cout = tout(slot, 2000, 26);
+			dout = cout;
+			mode = "SD HS/25/50";
 			break;
 		case MMC_TIMING_UHS_DDR50:
 		case MMC_TIMING_MMC_DDR52:
+			mode = "SD DDR50/MMC DDR52";
 			cout = tout(slot, 1500, 20);
+			dout = cout / 2;
+			if (ddr_cmd_taps)
+				cout = cout / 2;
 			break;
 		case MMC_TIMING_UHS_SDR104:
-		case MMC_TIMING_MMC_HS200:
-		case MMC_TIMING_MMC_HS400:
 			cout = tout(slot, 800, 10);
+			dout = cout;
+			mode = "SD UHS104";
+			break;
+		case MMC_TIMING_MMC_HS200:
+			mode = "MMC HS200";
+			cout = tout(slot, slot->cmd_out_hs200_dly, 10);
+			dout = tout(slot, slot->data_out_hs200_dly, 10);
+			break;
+		case MMC_TIMING_MMC_HS400:
+			mode = "MMC HS400";
+			cout = tout(slot, slot->cmd_out_hs400_dly, 10);
+			dout = tout(slot, slot->data_out_hs400_dly, 10);
 			break;
 		}
 
-		if (!is_mmc_95xx(host)) {
-			if (!cvm_is_mmc_timing_ddr(slot))
-				dout = cout;
-			else if (ddr_cmd_taps)
-				cout = dout = cout / 2;
-			else
-				dout = cout / 2;
-		} else
-			dout = tout(slot, 800, 10);
-
+		dev_dbg(host->dev,
+			"%s: command in tap: %d, command out tap: %d, data in tap: %d, data out tap: %d\n",
+			mode, cin, cout, din, dout);
 		slot->taps =
 			FIELD_PREP(MIO_EMM_TIMING_CMD_IN, cin) |
 			FIELD_PREP(MIO_EMM_TIMING_CMD_OUT, cout) |
@@ -1706,16 +1725,10 @@ static u32 max_supported_frequency(struct cvm_mmc_host *host)
 	/* Default maximum freqeuncey is 52000000 for chip prior to 9X */
 	u32 max_frequency = MHZ_52;
 
-	if (is_mmc_otx2(host)) {
+	if (is_mmc_otx2(host))
 		/* Default max frequency is 200MHz for 9X chips */
-		max_frequency = MHZ_200;
+		max_frequency = host->max_freq;
 
-		/* Erratum is only applicable pass A0 */
-		if (is_mmc_otx2_A0(host))
-			max_frequency = MHZ_100;
-		else if	(is_mmc_otx2_C0(host))
-			max_frequency = MHZ_150;
-	}
 	return max_frequency;
 }
 
@@ -2039,7 +2052,7 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	}
 
 	ret = mmc_regulator_get_supply(mmc);
-	if (ret)
+	if (ret == -EPROBE_DEFER)
 		return ret;
 	/*
 	 * Legacy Octeon firmware has no regulator entry, fall-back to
@@ -2065,6 +2078,18 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 			mmc->caps |= MMC_CAP_4_BIT_DATA;
 	}
 
+	slot->cmd_out_hs200_dly = PS_800;
+	slot->data_out_hs200_dly = PS_800;
+	of_property_read_u32(node, "marvell,cmd-out-hs200-dly",
+			     &slot->cmd_out_hs200_dly);
+	of_property_read_u32(node, "marvell,data-out-hs200-dly",
+			     &slot->data_out_hs200_dly);
+	slot->cmd_out_hs400_dly = PS_800;
+	slot->data_out_hs400_dly = PS_400;
+	of_property_read_u32(node, "marvell,cmd-out-hs400-dly",
+			     &slot->cmd_out_hs400_dly);
+	of_property_read_u32(node, "marvell,data-out-hs400-dly",
+			     &slot->data_out_hs400_dly);
 	max_frequency = max_supported_frequency(slot->host);
 
 	/* Set maximum and minimum frequency */

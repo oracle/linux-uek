@@ -172,6 +172,7 @@ static int octeon_mmc_probe(struct platform_device *pdev)
 		host->dmar_fixup_done = octeon_mmc_dmar_fixup_done;
 	}
 
+	host->max_freq = MHZ_52;
 	host->sys_freq = octeon_get_io_clock_rate();
 
 	if (of_device_is_compatible(node, "cavium,octeon-7890-mmc")) {
