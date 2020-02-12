@@ -24,6 +24,7 @@
 #define LINUX_PCI_H
 
 
+#include <linux/uek_kabi.h>
 #include <linux/mod_devicetable.h>
 
 #include <linux/types.h>
@@ -468,6 +469,15 @@ struct pci_dev {
 	char		*driver_override; /* Driver name to force a match */
 
 	unsigned long	priv_flags;	/* Private flags for the PCI driver */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
@@ -601,6 +611,14 @@ struct pci_bus {
 	struct bin_attribute	*legacy_io;	/* Legacy I/O for this bus */
 	struct bin_attribute	*legacy_mem;	/* Legacy mem */
 	unsigned int		is_added:1;
+ 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
 };
 
 #define to_pci_bus(n)	container_of(n, struct pci_bus, dev)
@@ -838,6 +856,15 @@ struct pci_driver {
 	const struct attribute_group **groups;
 	struct device_driver	driver;
 	struct pci_dynids	dynids;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 #define	to_pci_driver(drv) container_of(drv, struct pci_driver, driver)
