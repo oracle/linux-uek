@@ -1031,6 +1031,9 @@ static noinline int alloc_debug_processing(struct kmem_cache *s,
 					struct page *page,
 					void *object, unsigned long addr)
 {
+	if (!(s->flags & SLAB_DEBUG_FREE))
+		goto skip_check;
+
 	if (!check_slab(s, page))
 		goto bad;
 
@@ -1042,6 +1045,7 @@ static noinline int alloc_debug_processing(struct kmem_cache *s,
 	if (!check_object(s, page, object, SLUB_RED_INACTIVE))
 		goto bad;
 
+skip_check:
 	/* Success perform special debug activities for allocs */
 	if (s->flags & SLAB_STORE_USER)
 		set_track(s, object, TRACK_ALLOC, addr);
@@ -1071,6 +1075,9 @@ static noinline struct kmem_cache_node *free_debug_processing(
 
 	spin_lock_irqsave(&n->list_lock, *flags);
 	slab_lock(page);
+
+	if (!(s->flags & SLAB_DEBUG_FREE))
+		goto skip_check;
 
 	if (!check_slab(s, page))
 		goto fail;
@@ -1102,6 +1109,7 @@ static noinline struct kmem_cache_node *free_debug_processing(
 		goto fail;
 	}
 
+skip_check:
 	if (s->flags & SLAB_STORE_USER)
 		set_track(s, object, TRACK_FREE, addr);
 	trace(s, page, object, 0);
@@ -1498,7 +1506,7 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 	int order = compound_order(page);
 	int pages = 1 << order;
 
-	if (kmem_cache_debug(s)) {
+	if (kmem_cache_debug(s) && (s->flags & SLAB_DEBUG_FREE)) {
 		void *p;
 
 		slab_pad_check(s, page);
