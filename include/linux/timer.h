@@ -2,6 +2,7 @@
 #ifndef _LINUX_TIMER_H
 #define _LINUX_TIMER_H
 
+#include <linux/uek_kabi.h>
 #include <linux/list.h>
 #include <linux/ktime.h>
 #include <linux/stddef.h>
@@ -21,6 +22,11 @@ struct timer_list {
 #ifdef CONFIG_LOCKDEP
 	struct lockdep_map	lockdep_map;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 #ifdef CONFIG_LOCKDEP
