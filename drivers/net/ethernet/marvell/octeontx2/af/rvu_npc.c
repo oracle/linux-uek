@@ -1475,6 +1475,7 @@ int rvu_npc_init(struct rvu *rvu)
 	if (nibble_ena) {
 		tx_kex &= ~NPC_PARSE_NIBBLE;
 		tx_kex |= FIELD_PREP(NPC_PARSE_NIBBLE, nibble_ena);
+		npc_mkex_default.keyx_cfg[NIX_INTF_TX] = tx_kex;
 	}
 	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(NIX_INTF_TX), tx_kex);
 
