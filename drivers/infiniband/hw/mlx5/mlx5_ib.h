@@ -889,6 +889,9 @@ struct mlx5_roce {
 	 * netdev pointer
 	 */
 	struct notifier_block	nb;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct notifier_block	panic_nb;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	struct netdev_net_notifier nn;
 	struct notifier_block	mdev_nb;
 	struct net_device	*tracking_netdev;
