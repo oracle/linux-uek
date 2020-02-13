@@ -1322,7 +1322,7 @@ BuildKernel() {
 %ifarch %{arm} aarch64
    mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
    mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
-   make -s ARCH=$Arch V=1 dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
+   make -s ARCH=$Arch V=1 %{?_kernel_cc} dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
    find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
