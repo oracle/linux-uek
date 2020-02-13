@@ -5281,6 +5281,75 @@ static void mlx5_eth_lag_cleanup(struct mlx5_ib_dev *dev)
 	}
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static int mlx5_ib_panic_handler(struct notifier_block *nb,
+				 unsigned long action, void *unused)
+{
+	struct mlx5_ib_dev *dev;
+
+	list_for_each_entry(dev, &mlx5_ib_dev_list, ib_dev_list) {
+		struct pci_dev *pdev = dev->mdev->pdev;
+
+		pci_crit(pdev, "Revoke Bus_Mastership_Enable (BME)\n");
+		pci_clear_master(pdev);
+	}
+
+	return NOTIFY_DONE;
+}
+
+static bool panic_handler_added;
+static int mlx5_ib_add_panic_notifier(struct mlx5_ib_dev *dev, u8 port_num)
+{
+	int err;
+
+	/* We only need to add the handler once, as it iterates
+	 * through all the devices
+	 */
+	if (panic_handler_added)
+		return 0;
+
+	dev->port[port_num].roce.panic_nb.notifier_call = mlx5_ib_panic_handler;
+	err = atomic_notifier_chain_register(&panic_notifier_list,
+					     &dev->port[port_num].roce.panic_nb);
+	if (err) {
+		pci_crit(dev->mdev->pdev,
+			 "Failed registering panic handler for port %d, err %d\n",
+			 port_num + 1, err);
+		dev->port[port_num].roce.panic_nb.notifier_call = NULL;
+		return err;
+	}
+
+	pci_crit(dev->mdev->pdev,
+		 "Successfully registered panic handler for port %d\n", port_num + 1);
+
+	panic_handler_added = true;
+
+	return 0;
+}
+
+static void mlx5_ib_remove_panic_notifier(struct mlx5_ib_dev *dev, u8 port_num)
+{
+	int err = 0;
+
+	if (dev->port[port_num].roce.panic_nb.notifier_call) {
+		err = atomic_notifier_chain_unregister(&panic_notifier_list,
+						       &dev->port[port_num].roce.panic_nb);
+		if (err) {
+			pci_crit(dev->mdev->pdev,
+				 "Unregistering the panic handler for port %d failed, err %d\n",
+				 port_num + 1, err);
+		} else {
+			pci_crit(dev->mdev->pdev,
+				 "Successfully unregistered panic handler for port %d",
+				 port_num + 1);
+			panic_handler_added = false;
+		}
+
+		dev->port[port_num].roce.panic_nb.notifier_call = NULL;
+	}
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static int mlx5_add_netdev_notifier(struct mlx5_ib_dev *dev, u8 port_num)
 {
 	int err;
@@ -6569,6 +6638,9 @@ static const struct ib_device_ops mlx5_ib_dev_common_roce_ops = {
 static int mlx5_ib_stage_common_roce_init(struct mlx5_ib_dev *dev)
 {
 	u8 port_num;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	int err;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	dev->ib_dev.uverbs_ex_cmd_mask |=
 			(1ull << IB_USER_VERBS_EX_CMD_CREATE_WQ) |
@@ -6581,13 +6653,32 @@ static int mlx5_ib_stage_common_roce_init(struct mlx5_ib_dev *dev)
 	port_num = mlx5_core_native_port_num(dev->mdev) - 1;
 
 	/* Register only for native ports */
-	return mlx5_add_netdev_notifier(dev, port_num);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+	return mlx5_add_netdev_notifier(dev, port_num)
+#else
+	err = mlx5_add_netdev_notifier(dev, port_num);
+	if (err)
+		return err;
+
+	err = mlx5_ib_add_panic_notifier(dev, port_num);
+	if (err)
+		goto err_remove_netdev_notifier;
+
+	return 0;
+
+err_remove_netdev_notifier:
+	mlx5_remove_netdev_notifier(dev, port_num);
+	return err;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 }
 
 static void mlx5_ib_stage_common_roce_cleanup(struct mlx5_ib_dev *dev)
 {
 	u8 port_num = mlx5_core_native_port_num(dev->mdev) - 1;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	mlx5_ib_remove_panic_notifier(dev, port_num);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	mlx5_remove_netdev_notifier(dev, port_num);
 }
 

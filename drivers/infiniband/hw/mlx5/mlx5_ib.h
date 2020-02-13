@@ -744,6 +744,9 @@ struct mlx5_roce {
 	rwlock_t		netdev_lock;
 	struct net_device	*netdev;
 	struct notifier_block	nb;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct notifier_block   panic_nb;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	atomic_t		tx_port_affinity;
 	enum ib_port_state last_port_state;
 	struct mlx5_ib_dev	*dev;
