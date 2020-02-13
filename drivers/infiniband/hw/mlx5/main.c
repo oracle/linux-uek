@@ -37,6 +37,7 @@
 #include <linux/errno.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
+#include <linux/reboot.h>
 #include <linux/slab.h>
 #if defined(CONFIG_X86)
 #include <asm/pat.h>
@@ -3571,6 +3572,73 @@ static void mlx5_eth_lag_cleanup(struct mlx5_ib_dev *dev)
 	}
 }
 
+static int mlx5_ib_panic_handler(struct notifier_block *nb,
+				 unsigned long action, void *unused)
+{
+	struct mlx5_ib_dev *dev;
+
+	list_for_each_entry(dev, &mlx5_ib_dev_list, ib_dev_list) {
+		struct pci_dev *pdev = dev->mdev->pdev;
+
+		pci_crit(pdev, "Revoke Bus_Mastership_Enable (BME)\n");
+		pci_clear_master(pdev);
+	}
+
+	return NOTIFY_DONE;
+}
+
+static bool panic_handler_added;
+static int mlx5_ib_add_panic_notifier(struct mlx5_ib_dev *dev, u8 port_num)
+{
+	int err;
+
+	/* We only need to add the handler once, as it iterates
+	 * through all the devices
+	 */
+	if (panic_handler_added)
+		return 0;
+
+	dev->roce[port_num].panic_nb.notifier_call = mlx5_ib_panic_handler;
+	err = atomic_notifier_chain_register(&panic_notifier_list,
+					     &dev->roce[port_num].panic_nb);
+	if (err) {
+		pci_crit(dev->mdev->pdev,
+			 "Failed registering panic handler for port %d, err %d\n",
+			 port_num + 1, err);
+		dev->roce[port_num].panic_nb.notifier_call = NULL;
+		return err;
+	}
+
+	pci_crit(dev->mdev->pdev,
+		 "Successfully registered panic handler for port %d\n", port_num + 1);
+
+	panic_handler_added = true;
+
+	return 0;
+}
+
+static void mlx5_ib_remove_panic_notifier(struct mlx5_ib_dev *dev, u8 port_num)
+{
+	int err = 0;
+
+	if (dev->roce[port_num].panic_nb.notifier_call) {
+		err = atomic_notifier_chain_unregister(&panic_notifier_list,
+						       &dev->roce[port_num].panic_nb);
+		if (err) {
+			pci_crit(dev->mdev->pdev,
+				 "Unregistering the panic handler for port %d failed, err %d\n",
+				 port_num + 1, err);
+		} else {
+			pci_crit(dev->mdev->pdev,
+				 "Successfully unregistered panic handler for port %d",
+				 port_num + 1);
+			panic_handler_added = false;
+		}
+
+		dev->roce[port_num].panic_nb.notifier_call = NULL;
+	}
+}
+
 static int mlx5_add_netdev_notifier(struct mlx5_ib_dev *dev, u8 port_num)
 {
 	int err;
@@ -3601,10 +3669,14 @@ static int mlx5_enable_eth(struct mlx5_ib_dev *dev, u8 port_num)
 	if (err)
 		return err;
 
+	err = mlx5_ib_add_panic_notifier(dev, port_num);
+	if (err)
+		goto err_unregister_netdevice_notifier;
+
 	if (MLX5_CAP_GEN(dev->mdev, roce)) {
 		err = mlx5_nic_vport_enable_roce(dev->mdev);
 		if (err)
-			goto err_unregister_netdevice_notifier;
+			goto err_unregister_panic_handler;
 	}
 
 	err = mlx5_eth_lag_init(dev);
@@ -3616,6 +3688,9 @@ static int mlx5_enable_eth(struct mlx5_ib_dev *dev, u8 port_num)
 err_disable_roce:
 	if (MLX5_CAP_GEN(dev->mdev, roce))
 		mlx5_nic_vport_disable_roce(dev->mdev);
+
+err_unregister_panic_handler:
+	mlx5_ib_remove_panic_notifier(dev, port_num);
 
 err_unregister_netdevice_notifier:
 	mlx5_remove_netdev_notifier(dev, port_num);
@@ -4782,6 +4857,7 @@ static void mlx5_ib_remove(struct mlx5_core_dev *mdev, void *context)
 	ll = mlx5_ib_port_link_layer(&dev->ib_dev, port_num);
 
 	cancel_delay_drop(dev);
+	mlx5_ib_remove_panic_notifier(dev, port_num);
 	mlx5_remove_netdev_notifier(dev, port_num);
 	ib_unregister_device(&dev->ib_dev);
 	mlx5_free_bfreg(dev->mdev, &dev->fp_bfreg);
