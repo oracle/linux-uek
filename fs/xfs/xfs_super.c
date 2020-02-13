@@ -866,6 +866,24 @@ xfs_setup_devices(
 }
 
 STATIC int
+xfs_init_inact_workqueue(
+struct xfs_mount	*mp)
+{
+	mp->m_inact_workqueue = alloc_workqueue("xfs-inact/%s", WQ_FREEZABLE,
+			xfs_guess_metadata_threads(mp), mp->m_fsname);
+	if (!mp->m_inact_workqueue)
+		return -ENOMEM;
+	return 0;
+}
+
+STATIC void
+xfs_destroy_inact_workqueue(
+struct xfs_mount	*mp)
+{
+	destroy_workqueue(mp->m_inact_workqueue);
+}
+
+STATIC int
 xfs_init_mount_workqueues(
 	struct xfs_mount	*mp)
 {
@@ -971,12 +989,8 @@ xfs_fs_alloc_inode(
 	return NULL;
 }
 
-/*
- * Now that the generic code is guaranteed not to be accessing
- * the linux inode, we can inactivate and reclaim the inode.
- */
 STATIC void
-xfs_fs_destroy_inode(
+_xfs_fs_destroy_inode(
 	struct inode		*inode)
 {
 	struct xfs_inode	*ip = XFS_I(inode);
@@ -1015,6 +1029,87 @@ xfs_fs_destroy_inode(
 	 * reclaim tear down all inodes.
 	 */
 	xfs_inode_set_reclaim_tag(ip);
+}
+
+/*
+ * Now that the generic code is guaranteed not to be accessing
+ * the linux inode, we can inactivate and reclaim the inode.
+ */
+STATIC void
+xfs_fs_destroy_inode(
+	struct inode		*inode)
+{
+	struct xfs_inode	*ip = XFS_I(inode);
+	struct xfs_mount	*mp = ip->i_mount;
+	struct xfs_perag	*pag;
+
+	if (xfs_inode_needs_inactivation(ip)) {
+		pag = xfs_perag_get(mp, XFS_INO_TO_AGNO(mp, ip->i_ino));
+		spin_lock(&pag->pag_inact_lock);
+		list_add_tail(&ip->i_inact_list, &pag->pag_inact_list);
+		spin_unlock(&pag->pag_inact_lock);
+		queue_work(mp->m_inact_workqueue, &pag->pag_inact_work);
+		xfs_perag_put(pag);
+		return;
+	}
+
+	_xfs_fs_destroy_inode(inode);
+}
+
+void
+xfs_fs_inact_worker(
+    struct work_struct *work)
+{
+	struct xfs_perag *pag = container_of(work,
+                    struct xfs_perag, pag_inact_work);
+	struct list_head	list;
+	struct xfs_inode	*ip;
+	struct xfs_inode	*next_ip;
+	struct xfs_mount	*mp;
+
+	mp = pag->pag_mount;
+	while (1) {
+		/* fs freezed, return to avoid hung task, requeue at thaw. */
+		if (!sb_start_write_trylock(mp->m_super))
+			return;
+
+		spin_lock(&pag->pag_inact_lock);
+		if (list_empty(&pag->pag_inact_list)) {
+			spin_unlock(&pag->pag_inact_lock);
+			sb_end_write(mp->m_super);
+			return;
+		}
+		list_replace_init(&pag->pag_inact_list, &list);
+		spin_unlock(&pag->pag_inact_lock);
+
+		list_for_each_entry_safe(ip, next_ip, &list, i_inact_list) {
+			list_del_init(&ip->i_inact_list);
+			_xfs_fs_destroy_inode(&ip->i_vnode);
+			cond_resched();
+		}
+		sb_end_write(mp->m_super);
+	}
+}
+
+STATIC void
+xfs_fs_requeue_inact_work(
+	struct xfs_mount *mp)
+{
+	struct xfs_perag	*pag;
+	xfs_agnumber_t	index;
+
+	for (index = 0; index < mp->m_sb.sb_agcount; index++) {
+		pag = xfs_perag_get(mp, index);
+		spin_lock(&pag->pag_inact_lock);
+		if (list_empty(&pag->pag_inact_list)) {
+			spin_unlock(&pag->pag_inact_lock);
+			xfs_perag_put(pag);
+			continue;
+		}
+		spin_unlock(&pag->pag_inact_lock);
+		queue_work(mp->m_inact_workqueue, &pag->pag_inact_work);
+		xfs_perag_put(pag);
+	}
 }
 
 static void
@@ -1445,12 +1540,26 @@ xfs_fs_remount(
 		 * final log force+buftarg wait and deadlock the remount.
 		 */
 		cancel_delayed_work_sync(&mp->m_eofblocks_work);
+		flush_workqueue(mp->m_inact_workqueue);
 
 		xfs_quiesce_attr(mp);
 		mp->m_flags |= XFS_MOUNT_RDONLY;
 	}
 
 	return 0;
+}
+
+STATIC int
+xfs_fs_freeze_super(struct super_block *sb)
+{
+	struct xfs_mount	*mp = XFS_M(sb);
+
+	/*
+	 * clean up inactive inodes before freezing to minimize
+	 * the amount of recovery work if we crash while frozen.
+	 */
+	flush_workqueue(mp->m_inact_workqueue);
+	return freeze_super(sb);
 }
 
 /*
@@ -1468,6 +1577,25 @@ xfs_fs_freeze(
 	xfs_save_resvblks(mp);
 	xfs_quiesce_attr(mp);
 	return xfs_sync_sb(mp, true);
+}
+
+STATIC int
+xfs_fs_thaw_super(
+struct super_block *sb)
+{
+	struct xfs_mount	*mp = XFS_M(sb);
+	int		error;
+
+	down_write(&sb->s_umount);
+	error = __thaw_super(sb);
+	if (error)
+		up_write(&sb->s_umount);
+	else {
+		/* inact work was skiped for fs frozen, requeue here. */
+		xfs_fs_requeue_inact_work(mp);
+		deactivate_locked_super(sb);
+	}
+	return error;
 }
 
 STATIC int
@@ -1666,17 +1794,22 @@ xfs_fs_fill_super(
 	if (error)
 		goto out_free_stats;
 
-	error = xfs_finish_flags(mp);
+	/* worker thread number depends on agcount. */
+	error = xfs_init_inact_workqueue(mp);
 	if (error)
 		goto out_free_sb;
+
+	error = xfs_finish_flags(mp);
+	if (error)
+		goto out_destroy_inact_workqueue;
 
 	error = xfs_setup_devices(mp);
 	if (error)
-		goto out_free_sb;
+		goto out_destroy_inact_workqueue;
 
 	error = xfs_filestream_mount(mp);
 	if (error)
-		goto out_free_sb;
+		goto out_destroy_inact_workqueue;
 
 	/*
 	 * we must configure the block size in the superblock before we run the
@@ -1765,6 +1898,8 @@ xfs_fs_fill_super(
 
  out_filestream_unmount:
 	xfs_filestream_unmount(mp);
+ out_destroy_inact_workqueue:
+	xfs_destroy_inact_workqueue(mp);
  out_free_sb:
 	xfs_freesb(mp);
  out_free_stats:
@@ -1785,7 +1920,7 @@ xfs_fs_fill_super(
  out_unmount:
 	xfs_filestream_unmount(mp);
 	xfs_unmountfs(mp);
-	goto out_free_sb;
+	goto out_destroy_inact_workqueue;
 }
 
 STATIC void
@@ -1806,6 +1941,7 @@ xfs_fs_put_super(
 	free_percpu(mp->m_stats.xs_stats);
 	xfs_destroy_percpu_counters(mp);
 	xfs_destroy_mount_workqueues(mp);
+	xfs_destroy_inact_workqueue(mp);
 	xfs_close_devices(mp);
 
 	sb->s_fs_info = NULL;
@@ -1849,7 +1985,9 @@ static const struct super_operations xfs_super_operations = {
 	.drop_inode		= xfs_fs_drop_inode,
 	.put_super		= xfs_fs_put_super,
 	.sync_fs		= xfs_fs_sync_fs,
+	.freeze_super		= xfs_fs_freeze_super,
 	.freeze_fs		= xfs_fs_freeze,
+	.thaw_super		= xfs_fs_thaw_super,
 	.unfreeze_fs		= xfs_fs_unfreeze,
 	.statfs			= xfs_fs_statfs,
 	.remount_fs		= xfs_fs_remount,

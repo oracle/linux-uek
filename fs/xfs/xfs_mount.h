@@ -184,6 +184,7 @@ typedef struct xfs_mount {
 	struct workqueue_struct	*m_log_workqueue;
 	struct workqueue_struct *m_eofblocks_workqueue;
 	struct workqueue_struct	*m_sync_workqueue;
+	struct workqueue_struct	*m_inact_workqueue;
 
 	/*
 	 * Generation of the filesysyem layout.  This is incremented by each
@@ -397,6 +398,11 @@ typedef struct xfs_perag {
 
 	/* reference count */
 	uint8_t			pagf_refcount_level;
+
+	/* For inode inactivation */
+	struct work_struct	pag_inact_work;
+	struct list_head		pag_inact_list;
+	spinlock_t		pag_inact_lock;
 } xfs_perag_t;
 
 static inline struct xfs_ag_resv *
