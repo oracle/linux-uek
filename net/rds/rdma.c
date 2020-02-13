@@ -150,9 +150,6 @@ void rds_rdma_drop_keys(struct rds_sock *rs)
 		spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	}
 	spin_unlock_irqrestore(&rs->rs_rdma_lock, flags);
-
-	if (rs->rs_transport && rs->rs_transport->flush_mrs)
-		rs->rs_transport->flush_mrs();
 }
 EXPORT_SYMBOL_GPL(rds_rdma_drop_keys);
 
