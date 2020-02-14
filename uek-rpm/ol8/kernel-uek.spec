@@ -490,6 +490,7 @@ Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
 Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
+Requires: numactl-libs\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 %{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
@@ -537,6 +538,7 @@ BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
+BuildRequires: numactl-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
