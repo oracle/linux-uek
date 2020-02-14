@@ -186,6 +186,9 @@ struct kernfs_root {
 	/* private fields, do not use outside kernfs proper */
 	struct idr		ino_idr;
 	u32			next_generation;
+#ifndef __GENKSYMS__
+	u32			last_ino;
+#endif
 	struct kernfs_syscall_ops *syscall_ops;
 
 	/* list of kernfs_super_info of this root, protected by kernfs_mutex */
