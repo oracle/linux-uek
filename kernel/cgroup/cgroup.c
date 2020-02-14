@@ -4599,6 +4599,7 @@ static void css_free_work_fn(struct work_struct *work)
 			cgroup_put(cgroup_parent(cgrp));
 			kernfs_put(cgrp->kn);
 			psi_cgroup_free(cgrp);
+			kfree(cgrp->psi);
 			if (cgroup_on_dfl(cgrp))
 				cgroup_stat_exit(cgrp);
 			kfree(cgrp);
