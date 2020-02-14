@@ -18,6 +18,7 @@
  */
 
 #include <asm/ppc_asm.h>
+#include <asm/code-patching-asm.h>
 #include <asm/kvm_asm.h>
 #include <asm/reg.h>
 #include <asm/mmu.h>
@@ -1504,6 +1505,10 @@ mc_cont:
 	eieio
 1:
 #endif /* CONFIG_KVM_XICS */
+
+	/* Possibly flush the link stack here. */
+1:	nop
+	patch_site 1b patch__call_kvm_flush_link_stack
 
 	stw	r12, STACK_SLOT_TRAP(r1)
 
