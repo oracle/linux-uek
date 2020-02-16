@@ -1,0 +1,70 @@
+* Marvell OcteonTX SOC sdei-ghes node
+
+The sdei-ghes node is defined to describe resources to the sdei-ghes module.
+
+Abstract
+--------
+
+The Generic Hardware Error Source (GHES) allows for non-standard errors to be
+reported to the system (please refer to the ACPI specification).
+
+The standard GHES driver requires the presence of ACPI tables, and accompanying
+kernel ACPI support, which is not available to systems utilizing Device Tree.
+
+The OcteonTX2 sdei-ghes module provides the required Hardware Error Source Table
+(HEST) to the kernel, allowing the GHES driver to load.
+
+Additionally, this module presents GHES devices to the system, which allows
+the firmware (ATF) to report RAS errors.
+
+The following error sources are supported:
+
+  MDC    - OcteonTX Memory Diagnostic Controller
+  MCC    - OcteonTX Memory Common Controller
+  LMC    - OcteonTX Local Memory DDR4 Controller
+
+Device Tree sdei-ghes binding
+-----------------------------
+
+Required properties:
+- compatible	: Shall be "marvell,sdei-ghes".
+
+Required properties for mdc subnode:
+- reg		: Shall contain three entries, one for each of:
+		  - GHES Error Status Address (ACPI 4.0a, sec 17.3.2.6)
+		  - GHES Error Status Block   (ACPI 4.0a, sec 17.3.2.6.1)
+		  - ring buffer for communication with firmware
+
+- event-id	: SDEI event ID for receiving firmware notifications
+		  (unused if SDEI not present)
+
+Example
+-------
+
+	sdei-ghes {
+		compatible = "marvell,sdei-ghes";
+		#address-cells = <2>;
+		#size-cells = <1>;
+		memory-region = <&ghes_hest_reserved>;
+		ranges = <0x0 0x00000000 0x0 0x7f020000 0x00100>,
+			 <0x0 0x00000100 0x0 0x7f020100 0x00700>,
+			 <0x0 0x00000800 0x0 0x7f020800 0x08000>;
+		mdc@0 {
+			reg = <0x0 0x00000000 0x008>,
+			      <0x0 0x00000100 0x100>,
+			      <0x0 0x00000800 0x800>;
+			event-id = <0x40000000>;
+		};
+		mcc@8 {
+			reg = <0x0 0x00000008 0x008>,
+			      <0x0 0x00000200 0x100>,
+			      <0x0 0x00001000 0x800>;
+			event-id = <0x40000001>;
+		};
+		lmc@10 {
+			reg = <0x0 0x00000010 0x008>,
+			      <0x0 0x00000300 0x100>,
+			      <0x0 0x00001800 0x800>;
+			event-id = <0x40000002>;
+		};
+	}

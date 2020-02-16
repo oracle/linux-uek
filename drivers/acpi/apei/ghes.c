@@ -46,6 +46,7 @@
 #include <linux/sched/clock.h>
 #include <linux/uuid.h>
 #include <linux/ras.h>
+#include <linux/of.h>
 
 #include <acpi/actbl1.h>
 #include <acpi/ghes.h>
@@ -217,6 +218,24 @@ static void unmap_gen_v2(struct ghes *ghes)
 	apei_unmap_generic_address(&ghes->generic_v2->read_ack_register);
 }
 
+/*
+ * Checks device tree for support of sdei-ghes [driver].
+ * This driver supports GHES in the absence of ACPI.
+ * on entry:
+ *     void
+ * returns:
+ *     true if sdei-ghes support found in Device Tree else false
+ */
+static bool sdei_ghes_present_dt(void)
+{
+	struct device_node *np;
+
+	np = of_find_node_by_name(NULL, "sdei-ghes");
+	of_node_put(np);
+
+	return !!np;
+}
+
 static struct ghes *ghes_new(struct acpi_hest_generic *generic)
 {
 	struct ghes *ghes;
@@ -228,6 +247,20 @@ static struct ghes *ghes_new(struct acpi_hest_generic *generic)
 		return ERR_PTR(-ENOMEM);
 
 	ghes->generic = generic;
+
+	/* If sdei-ghes is present (via device tree), ACPI mappings are not
+	 * available and will be relegated to 'early_mem_remap()'. However, any
+	 * such outstanding 'early' mappings will be detected as leaks during
+	 * late kernel initialization - see 'check_early_ioremap_leak()'.
+	 * Since this mapping is a 'sanity check' only (the mapping isn't used),
+	 * skip this step to avoid it being detected as an [errant] leak.
+	 * Notes:
+	 *   * the presence of the Device Tree disables ACPI
+	 *   * the status register is actually mapped at run-time, when accessed
+	 */
+	if (sdei_ghes_present_dt())
+		goto skip_map_status;
+
 	if (is_hest_type_generic_v2(ghes)) {
 		rc = map_gen_v2(ghes);
 		if (rc)
@@ -237,6 +270,8 @@ static struct ghes *ghes_new(struct acpi_hest_generic *generic)
 	rc = apei_map_generic_address(&generic->error_status_address);
 	if (rc)
 		goto err_unmap_read_ack_addr;
+
+skip_map_status:
 	error_block_length = generic->error_block_length;
 	if (error_block_length > GHES_ESTATUS_MAX_SIZE) {
 		pr_warning(FW_WARN GHES_PFX
@@ -254,6 +289,9 @@ static struct ghes *ghes_new(struct acpi_hest_generic *generic)
 	return ghes;
 
 err_unmap_status_addr:
+	/* if sdei-ghes is present, status was not mapped - skip the UNmap */
+	if (sdei_ghes_present_dt())
+		goto err_free;
 	apei_unmap_generic_address(&generic->error_status_address);
 err_unmap_read_ack_addr:
 	if (is_hest_type_generic_v2(ghes))
@@ -266,6 +304,9 @@ err_free:
 static void ghes_fini(struct ghes *ghes)
 {
 	kfree(ghes->estatus);
+	/* if sdei-ghes is present, status was not mapped - skip the UNmap */
+	if (sdei_ghes_present_dt())
+		return;
 	apei_unmap_generic_address(&ghes->generic->error_status_address);
 	if (is_hest_type_generic_v2(ghes))
 		unmap_gen_v2(ghes);
@@ -1210,7 +1251,8 @@ static int __init ghes_init(void)
 {
 	int rc;
 
-	if (acpi_disabled)
+	/* permit GHES initialization if either ACPI or SDEI_GHES is present */
+	if (acpi_disabled && !sdei_ghes_present_dt())
 		return -ENODEV;
 
 	switch (hest_disable) {
@@ -1243,15 +1285,17 @@ static int __init ghes_init(void)
 	if (rc)
 		goto err_pool_exit;
 
-	rc = apei_osc_setup();
-	if (rc == 0 && osc_sb_apei_support_acked)
-		pr_info(GHES_PFX "APEI firmware first mode is enabled by APEI bit and WHEA _OSC.\n");
-	else if (rc == 0 && !osc_sb_apei_support_acked)
-		pr_info(GHES_PFX "APEI firmware first mode is enabled by WHEA _OSC.\n");
-	else if (rc && osc_sb_apei_support_acked)
-		pr_info(GHES_PFX "APEI firmware first mode is enabled by APEI bit.\n");
-	else
-		pr_info(GHES_PFX "Failed to enable APEI firmware first mode.\n");
+	if (!acpi_disabled) {
+		rc = apei_osc_setup();
+		if (rc == 0 && osc_sb_apei_support_acked)
+			pr_info(GHES_PFX "APEI firmware first mode is enabled by APEI bit and WHEA _OSC.\n");
+		else if (rc == 0 && !osc_sb_apei_support_acked)
+			pr_info(GHES_PFX "APEI firmware first mode is enabled by WHEA _OSC.\n");
+		else if (rc && osc_sb_apei_support_acked)
+			pr_info(GHES_PFX "APEI firmware first mode is enabled by APEI bit.\n");
+		else
+			pr_info(GHES_PFX "Failed to enable APEI firmware first mode.\n");
+	}
 
 	return 0;
 err_pool_exit:

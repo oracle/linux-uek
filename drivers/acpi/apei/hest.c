@@ -236,8 +236,12 @@ void __init acpi_hest_init(void)
 		return;
 	}
 
-	status = acpi_get_table(ACPI_SIG_HEST, 0,
-				(struct acpi_table_header **)&hest_tab);
+	/* HEST table may have been initialized by hest_table_set() */
+	if (hest_tab)
+		status = AE_OK;
+	else
+		status = acpi_get_table(ACPI_SIG_HEST, 0,
+					(struct acpi_table_header **)&hest_tab);
 	if (status == AE_NOT_FOUND) {
 		hest_disable = HEST_NOT_FOUND;
 		return;
@@ -254,11 +258,15 @@ void __init acpi_hest_init(void)
 
 	if (!ghes_disable) {
 		rc = apei_hest_parse(hest_parse_ghes_count, &ghes_count);
-		if (rc)
+		if (rc) {
+			pr_err(HEST_PFX "Failed to parse GHES entries\n");
 			goto err;
+		}
 		rc = hest_ghes_dev_register(ghes_count);
-		if (rc)
+		if (rc) {
+			pr_err(HEST_PFX "Failed to register GHES devices\n");
 			goto err;
+		}
 	}
 
 	pr_info(HEST_PFX "Table parsing has been initialized.\n");
@@ -266,3 +274,12 @@ void __init acpi_hest_init(void)
 err:
 	hest_disable = HEST_DISABLED;
 }
+
+/*
+ * This allows the HEST to be initialized externally, in the absence of ACPI.
+ */
+void __init hest_table_set(struct acpi_table_hest *table)
+{
+	hest_tab = table;
+}
+

@@ -116,6 +116,7 @@ config MDIO_DEBUGFS
 	depends on OCTEONTX2_AF
 	---help---
 	provides debugfs support to initiate mdio commands via smc call
+	to the atf.
 
 config OCTEONTX_INFO
        tristate "OcteonTX Info driver"
@@ -124,4 +125,28 @@ config OCTEONTX_INFO
 	provides procfs interface to board information like board name, board revision
 	mac addresses, board serial number and more. These are boards housing Marvell
 	OcteonTX family chipsets.
+
+config OCTEONTX2_SDEI_GHES
+	bool "OcteonTX2 Generic Hardware Error Source (GHES) support"
+	depends on OF
+	select EDAC
+	select EDAC_GHES
+	select ACPI_APEI
+	select ACPI_APEI_GHES
+	help
+	  Select this option to enable support for RAS Generic Hardware Error
+	  Source (GHES) reporting on platforms that do not use ACPI.
+	  This will allow RAS errors that are detected by the OcteonTX2 to
+	  be reported using kernel logging.
+
+config OCTEONTX2_SDEI_GHES_DEBUG
+	bool "OcteonTX2 Generic Hardware Error Source (GHES) verbose debug msgs"
+	depends on OCTEONTX2_SDEI_GHES
+	help
+	  Say Y here if you want the OcteonTX2 GHES support to
+	  write verbose debug messages to the system log.  Select this
+	  if you are having a problem with the OcteonTX2 GHES support
+	  and want to see more details.
+	  If you are unsure about this, say N here.
+
 endmenu
