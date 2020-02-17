@@ -1963,10 +1963,7 @@ static int otx2_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
 
 static int otx2_do_set_vf_mac(struct otx2_nic *pf, int vf, const u8 *mac)
 {
-	struct otx2_flow_config *flow_cfg = pf->flow_cfg;
 	struct npc_install_flow_req *req;
-	struct otx2_vf_config *config;
-	u32 idx;
 	int err;
 
 	otx2_mbox_lock(&pf->mbox);
@@ -1985,32 +1982,6 @@ static int otx2_do_set_vf_mac(struct otx2_nic *pf, int vf, const u8 *mac)
 	req->append = 1;
 	req->vf = vf + 1;
 	req->op = NIX_RX_ACTION_DEFAULT;
-
-	err = otx2_sync_mbox_msg(&pf->mbox);
-	if (err)
-		goto out;
-
-	/* update vf vlan rx flow entry */
-	req = otx2_mbox_alloc_msg_npc_install_flow(&pf->mbox);
-	if (!req) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	idx = ((vf * OTX2_PER_VF_VLAN_FLOWS) + OTX2_VF_VLAN_RX_INDEX);
-	req->entry = flow_cfg->entry[flow_cfg->vf_vlan_offset + idx];
-	config = &pf->vf_configs[vf];
-	req->packet.vlan_tci = htons(config->vlan);
-	req->mask.vlan_tci = htons(VLAN_VID_MASK);
-	/* af fills the destination mac addr */
-	u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
-	req->features = BIT_ULL(NPC_OUTER_VID) | BIT_ULL(NPC_DMAC);
-	req->channel = pf->hw.rx_chan_base;
-	req->intf = NIX_INTF_RX;
-	req->vf = vf + 1;
-	req->op = NIX_RX_ACTION_DEFAULT;
-	req->vtag0_valid = true;
-	req->vtag0_type = NIX_AF_LFX_RX_VTAG_TYPE7;
 
 	err = otx2_sync_mbox_msg(&pf->mbox);
 out:
@@ -2481,6 +2452,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Enable pause frames by default */
 	pf->flags |= OTX2_FLAG_RX_PAUSE_ENABLED;
 	pf->flags |= OTX2_FLAG_TX_PAUSE_ENABLED;
+
+	/* Set interface mode as Default */
+	pf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
 
 	return 0;
 

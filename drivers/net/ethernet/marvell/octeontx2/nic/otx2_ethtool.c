@@ -1340,32 +1340,42 @@ end:
 int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind)
 {
 	struct npc_set_pkind *req;
+	u32 interface_mode = 0;
 	int rc = -EAGAIN;
+
+	if (OTX2_IS_DEF_MODE_ENABLED(pfvf->ethtool_flags))
+		return 0;
 
 	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_set_pkind(&pfvf->mbox);
 	if (!req)
 		goto end;
 
-	if (unbind)
+	if (unbind) {
 		req->mode = OTX2_PRIV_FLAGS_DEFAULT;
-	else if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
+		interface_mode = OTX2_PRIV_FLAG_DEF_MODE;
+	} else if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags)) {
 		req->mode = OTX2_PRIV_FLAGS_HIGIG;
-	else if (OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))
+		interface_mode = OTX2_PRIV_FLAG_HIGIG2_HDR;
+	} else if (OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))   {
 		req->mode = OTX2_PRIV_FLAGS_EDSA;
-	else
+		interface_mode = OTX2_PRIV_FLAG_EDSA_HDR;
+	} else {
 		req->mode = OTX2_PRIV_FLAGS_DEFAULT;
+		interface_mode = OTX2_PRIV_FLAG_DEF_MODE;
+	}
 
 	req->dir  = PKIND_RX;
 
 	/* req AF to change pkind on both the dir */
-	if (req->mode == OTX2_PRIV_FLAGS_HIGIG || unbind)
+	if (req->mode == OTX2_PRIV_FLAGS_HIGIG ||
+	    req->mode == OTX2_PRIV_FLAGS_DEFAULT)
 		req->dir |= PKIND_TX;
 
 	if (!otx2_sync_mbox_msg(&pfvf->mbox))
 		rc = 0;
 	else
-		pfvf->ethtool_flags &= ~req->mode;
+		pfvf->ethtool_flags &= ~interface_mode;
 end:
 	otx2_mbox_unlock(&pfvf->mbox);
 	return rc;
@@ -1379,6 +1389,7 @@ static int otx2_enable_addl_header(struct net_device *netdev, int bitpos,
 
 	if (enable) {
 		pfvf->ethtool_flags |= BIT(bitpos);
+		pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_DEF_MODE;
 	} else {
 		pfvf->ethtool_flags &= ~BIT(bitpos);
 		len = 0;
@@ -1399,8 +1410,12 @@ static int otx2_enable_addl_header(struct net_device *netdev, int bitpos,
 		pfvf->xtra_hdr = 0;
 
 	/* NPC parse mode will be updated here */
-	if (if_up)
+	if (if_up) {
 		otx2_open(netdev);
+
+		if (!enable)
+			pfvf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
+	}
 
 	return 0;
 }

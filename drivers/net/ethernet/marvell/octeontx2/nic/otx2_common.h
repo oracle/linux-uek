@@ -304,10 +304,13 @@ struct otx2_nic {
 #define OTX2_PRIV_FLAG_PAM4			BIT(0)
 #define OTX2_PRIV_FLAG_EDSA_HDR			BIT(1)
 #define OTX2_PRIV_FLAG_HIGIG2_HDR		BIT(2)
+#define OTX2_PRIV_FLAG_DEF_MODE			BIT(3)
 #define OTX2_IS_EDSA_ENABLED(flags)		((flags) &              \
 						 OTX2_PRIV_FLAG_EDSA_HDR)
 #define OTX2_IS_HIGIG2_ENABLED(flags)		((flags) &              \
 						 OTX2_PRIV_FLAG_HIGIG2_HDR)
+#define OTX2_IS_DEF_MODE_ENABLED(flags)		((flags) &              \
+						 OTX2_PRIV_FLAG_DEF_MODE)
 	u32		        ethtool_flags;
 
 	/* extended DSA and EDSA  header lengths are 8/16 bytes
