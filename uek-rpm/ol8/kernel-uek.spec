@@ -5,6 +5,7 @@
 # Errors in specfile are causing builds to fail. Adding workarounds.
 %define _unpackaged_files_terminate_build       0
 %define _missing_doc_files_terminate_build      0
+%define _wrong_version_format_terminate_build   0
 
 Summary: Oracle Unbreakable Enterprise Kernel Release 6
 
@@ -706,27 +707,31 @@ It provides the kernel source files common to all builds.
 
 #
 # This macro creates a kernel-<subpackage>-debuginfo package.
-#	%%kernel_debuginfo_package <subpackage>
+#	%%kernel_debuginfo_package [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_debuginfo_package() \
-%package %{?1:%{1}-}debuginfo\
-Summary: Debug information for package %{name}%{?1:-%{1}}\
+%define kernel_debuginfo_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-debuginfo\
+Summary: Debug information for package %{variant_name}\
 Group: Development/Debug\
 Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}\
-Provides: %{name}%{?1:-%{1}}-debuginfo-%{_target_cpu} = %{version}-%{release}\
+Provides: %{variant_name}-debuginfo-%{_target_cpu} = %{version}-%{release}\
 AutoReqProv: no\
-%description -n %{name}%{?1:-%{1}}-debuginfo\
-This package provides debug information for package %{name}%{?1:-%{1}}.\
-This is required to use SystemTap with %{name}%{?1:-%{1}}-%{KVERREL}.\
+%description -n %{variant_name}-debuginfo\
+This package provides debug information for package %{variant_name}.\
+This is required to use SystemTap with %{variant_name}-%{KVERREL}.\
 %{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '/.*/%%{KVERREL}%{?1:\.%{1}}/.*|/.*%%{KVERREL}%{?1:\.%{1}}(\.debug)?' -o debuginfo%{?1}.list}\
 %{nil}
 
 #
 # This macro creates a kernel-<subpackage>-devel package.
-#	%%kernel_devel_package <subpackage> <pretty-name>
+#	%%kernel_devel_package [-o] <subpackage> <pretty-name>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_devel_package() \
-%package %{?1:%{1}-}devel\
+%define kernel_devel_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-devel\
 Summary: Development package for building kernel modules to match the %{?2:%{2} }kernel\
 Group: System Environment/Kernel\
 Provides: kernel%{?variant}%{?1:-%{1}}-devel-%{_target_cpu} = %{version}-%{release}\
@@ -746,7 +751,7 @@ Requires: elfutils-libs >= 0.160\
 %if %{with_dtrace}\
 Requires: libdtrace-ctf >= 1.1.0\
 %endif\
-%description -n kernel%{?variant}%{?1:-%{1}}-devel\
+%description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2} }kernel package.\
 %{nil}
@@ -754,15 +759,16 @@ against the %{?2:%{2} }kernel package.\
 #
 # This macro creates a kernel-<subpackage> and its -devel and -debuginfo too.
 #	%%define variant_summary The Linux kernel compiled for <configuration>
-#	%%kernel_variant_package [-n <pretty-name>] <subpackage>
+#	%%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(n:) \
-%package %1\
+%define kernel_variant_package(n:o) \
+%package -n kernel%{?variant}%{!-o:-}%1\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
 %kernel_reqprovconf\
-%{expand:%%kernel_devel_package %1 %{!?-n:%1}%{?-n:%{-n*}}}\
-%{expand:%%kernel_debuginfo_package %1}\
+%{expand:%%kernel_devel_package %{-o:-o} %1 %{!?-n:%1}%{?-n:%{-n*}}}\
+%{expand:%%kernel_debuginfo_package %{-o:-o} %1}\
 %{nil}
 
 
@@ -827,13 +833,13 @@ required only on machines which will use the kexec-based kernel crash dump
 mechanism.
 
 %define variant_summary A aarch64 kernel with 4k page size.
-%kernel_variant_package 4k
-%description 4k
+%kernel_variant_package -o 4k
+%description -n kernel%{?variant}4k
 This package includes 4k page size for aarch64 kernel.
 
 %define variant_summary The Aarch64 Linux kernel compiled with extra debugging enabled
-%kernel_variant_package 4kdebug
-%description 4kdebug
+%kernel_variant_package -o 4k-debug
+%description -n kernel%{?variant}4k-debug
 This package include debug kernel for 4k page size.
 
 %prep
@@ -1092,7 +1098,7 @@ BuildKernel() {
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config
 	cp configs/config .config
-    elif [ "$Flavour" == "4kdebug" ]; then
+    elif [ "$Flavour" == "4k-debug" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
@@ -1437,7 +1443,7 @@ BuildKernel %make_target %kernel_image 4k
 %endif
 
 %if %{with_4k_ps_debug}
-BuildKernel %make_target %kernel_image 4kdebug
+BuildKernel %make_target %kernel_image 4k-debug
 %endif
 
 %if %{with_doc}
@@ -1596,10 +1602,11 @@ rm -rf $RPM_BUILD_ROOT
 
 #
 # This macro defines a %%post script for a kernel*-devel package.
-#	%%kernel_devel_post [<subpackage>]
+#	%%kernel_devel_post [-o] [<subpackage>]
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_devel_post() \
-%{expand:%%post %{?1:%{1}-}devel}\
+%define kernel_devel_post(o) \
+%{expand:%%post -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-devel}\
 if [ -f /etc/sysconfig/kernel ]\
 then\
     . /etc/sysconfig/kernel || exit $?\
@@ -1614,11 +1621,12 @@ fi\
 %{nil}
 
 # This macro defines a %%posttrans script for a kernel package.
-#	%%kernel_variant_posttrans [<subpackage>]
+#	%%kernel_variant_posttrans [-o] [<subpackage>]
+# -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
-%define kernel_variant_posttrans() \
-%{expand:%%posttrans %{?1}}\
+%define kernel_variant_posttrans(o) \
+%{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
@@ -1628,15 +1636,16 @@ fi\
 
 #
 # This macro defines a %%post script for a kernel package and its devel package.
-#	%%kernel_variant_post [-v <subpackage>] [-r <replace>]
+#	%%kernel_variant_post [-o][-u][-v <subpackage>] [-r <replace>]
+# -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
-%define kernel_variant_post(uv:r:) \
-%{expand:%%kernel_devel_post %{!-u:%{?-v*}}}\
-%{expand:%%kernel_variant_posttrans %{!-u:%{?-v*}}}\
-%{expand:%%post %{!-u:%{?-v*}}}\
+%define kernel_variant_post(ouv:r:) \
+%{expand:%%kernel_devel_post %{-o:-o} %{!-u:%{?-v*}}}\
+%{expand:%%kernel_variant_posttrans %{-o:-o} %{!-u:%{?-v*}}}\
+%{expand:%%post -n kernel%{?variant}%{!-u:%{!-o:-}%{?-v*}}}\
 %{-r:\
-if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
+if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ]; then\
   /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
@@ -1647,10 +1656,11 @@ fi\
 
 #
 # This macro defines a %%preun script for a kernel package.
-#	%%kernel_variant_preun <subpackage>
+#	%%kernel_variant_preun [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_preun() \
-%{expand:%%preun %{?1}}\
+%define kernel_variant_preun(o) \
+%{expand:%%preun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
 /bin/kernel-install remove %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
@@ -1660,10 +1670,11 @@ fi\
 
 #
 # This macro defines a %%pre script for a kernel package.
-#	%%kernel_variant_pre <subpackage>
+#	%%kernel_variant_pre [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_pre() \
-%{expand:%%pre %{?1}}\
+%define kernel_variant_pre(o) \
+%{expand:%%pre -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
@@ -1731,9 +1742,13 @@ fi\
 %kernel_variant_preun PAEdebug
 %kernel_variant_pre PAEdebug
 
-%kernel_variant_pre 4k
-%kernel_variant_preun 4k
-%kernel_variant_post -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
+%kernel_variant_pre -o 4k
+%kernel_variant_preun -o 4k
+%kernel_variant_post -o -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
+
+%kernel_variant_pre -o 4k-debug
+%kernel_variant_preun -o 4k-debug
+%kernel_variant_post -o -v 4k-debug
 
 if [ -x /sbin/ldconfig ]
 then
@@ -1774,11 +1789,12 @@ fi
 #
 # This macro defines the %%files sections for a kernel package
 # and its devel and debuginfo packages.
-#	%%kernel_variant_files [-k vmlinux] <condition> <subpackage>
+#	%%kernel_variant_files [-k vmlinux] [-o] <condition> <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_files(k:) \
+%define kernel_variant_files(k:o) \
 %if %{1}\
-%{expand:%%files %{?2}}\
+%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}}\
 %defattr(-,root,root)\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
@@ -1819,7 +1835,7 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
-%{expand:%%files %{?2:%{2}-}devel}\
+%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
 %verify(not mtime) /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
@@ -1827,9 +1843,9 @@ fi
 %if %{with_debuginfo}\
 %ifnarch noarch\
 %if %{fancy_debuginfo}\
-%{expand:%%files -f debuginfo%{?2}.list %{?2:%{2}-}debuginfo}\
+%{expand:%%files -f debuginfo%{?2}.list -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
 %else\
-%{expand:%%files %{?2:%{2}-}debuginfo}\
+%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
 %endif\
 %defattr(-,root,root)\
 %if !%{fancy_debuginfo}\
@@ -1854,7 +1870,7 @@ fi
 %kernel_variant_files %{with_pae_debug} PAEdebug
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
-%kernel_variant_files %{with_4k_ps} 4k
-%kernel_variant_files %{with_4k_ps_debug} 4kdebug
+%kernel_variant_files -o %{with_4k_ps} 4k
+%kernel_variant_files -o %{with_4k_ps_debug} 4k-debug
 
 %changelog
