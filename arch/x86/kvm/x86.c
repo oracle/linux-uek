@@ -6033,11 +6033,9 @@ static int emulator_pio_in_out(struct kvm_vcpu *vcpu, int size,
 	return 0;
 }
 
-static int emulator_pio_in_emulated(struct x86_emulate_ctxt *ctxt,
-				    int size, unsigned short port, void *val,
-				    unsigned int count)
+static int emulator_pio_in(struct kvm_vcpu *vcpu, int size,
+			   unsigned short port, void *val, unsigned int count)
 {
-	struct kvm_vcpu *vcpu = emul_to_vcpu(ctxt);
 	int ret;
 
 	if (vcpu->arch.pio.count)
@@ -6057,15 +6055,28 @@ data_avail:
 	return 0;
 }
 
+static int emulator_pio_in_emulated(struct x86_emulate_ctxt *ctxt,
+				    int size, unsigned short port, void *val,
+				    unsigned int count)
+{
+	return emulator_pio_in(emul_to_vcpu(ctxt), size, port, val, count);
+
+}
+
+static int emulator_pio_out(struct kvm_vcpu *vcpu, int size,
+			    unsigned short port, const void *val,
+			    unsigned int count)
+{
+	memcpy(vcpu->arch.pio_data, val, size * count);
+	trace_kvm_pio(KVM_PIO_OUT, port, size, count, vcpu->arch.pio_data);
+	return emulator_pio_in_out(vcpu, size, port, (void *)val, count, false);
+}
+
 static int emulator_pio_out_emulated(struct x86_emulate_ctxt *ctxt,
 				     int size, unsigned short port,
 				     const void *val, unsigned int count)
 {
-	struct kvm_vcpu *vcpu = emul_to_vcpu(ctxt);
-
-	memcpy(vcpu->arch.pio_data, val, size * count);
-	trace_kvm_pio(KVM_PIO_OUT, port, size, count, vcpu->arch.pio_data);
-	return emulator_pio_in_out(vcpu, size, port, (void *)val, count, false);
+	return emulator_pio_out(emul_to_vcpu(ctxt), size, port, val, count);
 }
 
 static unsigned long get_segment_base(struct kvm_vcpu *vcpu, int seg)
@@ -7010,8 +7021,8 @@ static int kvm_fast_pio_out(struct kvm_vcpu *vcpu, int size,
 			    unsigned short port)
 {
 	unsigned long val = kvm_rax_read(vcpu);
-	int ret = emulator_pio_out_emulated(&vcpu->arch.emulate_ctxt,
-					    size, port, &val, 1);
+	int ret = emulator_pio_out(vcpu, size, port, &val, 1);
+
 	if (ret)
 		return ret;
 
@@ -7047,11 +7058,10 @@ static int complete_fast_pio_in(struct kvm_vcpu *vcpu)
 	val = (vcpu->arch.pio.size < 4) ? kvm_rax_read(vcpu) : 0;
 
 	/*
-	 * Since vcpu->arch.pio.count == 1 let emulator_pio_in_emulated perform
+	 * Since vcpu->arch.pio.count == 1 let emulator_pio_in perform
 	 * the copy and tracing
 	 */
-	emulator_pio_in_emulated(&vcpu->arch.emulate_ctxt, vcpu->arch.pio.size,
-				 vcpu->arch.pio.port, &val, 1);
+	emulator_pio_in(vcpu, vcpu->arch.pio.size, vcpu->arch.pio.port, &val, 1);
 	kvm_rax_write(vcpu, val);
 
 	return kvm_skip_emulated_instruction(vcpu);
@@ -7066,8 +7076,7 @@ static int kvm_fast_pio_in(struct kvm_vcpu *vcpu, int size,
 	/* For size less than 4 we merge, else we zero extend */
 	val = (size < 4) ? kvm_rax_read(vcpu) : 0;
 
-	ret = emulator_pio_in_emulated(&vcpu->arch.emulate_ctxt, size, port,
-				       &val, 1);
+	ret = emulator_pio_in(vcpu, size, port, &val, 1);
 	if (ret) {
 		kvm_rax_write(vcpu, val);
 		return ret;
