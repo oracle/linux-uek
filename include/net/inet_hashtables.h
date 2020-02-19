@@ -114,10 +114,14 @@ struct inet_bind_hashbucket {
 #define LISTENING_NULLS_BASE (1U << 29)
 struct inet_listen_hashbucket {
 	spinlock_t		lock;
+#ifdef __GENKSYMS__
+	struct hlist_head	head;
+#else
 	union {
 		struct hlist_head	head;
 		struct hlist_nulls_head	nulls_head;
 	};
+#endif
 };
 
 /* This is for listening sockets, thus all sockets which possess wildcards. */
