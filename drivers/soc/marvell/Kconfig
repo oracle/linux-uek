@@ -149,4 +149,17 @@ config OCTEONTX2_SDEI_GHES_DEBUG
 	  and want to see more details.
 	  If you are unsure about this, say N here.
 
+config OCTEONTX2_EINJ
+	tristate "OcteonTX2 EDAC ECC Injection"
+	depends on OCTEONTX2_SDEI_GHES
+	help
+	  Provides support for error injection to OcteonTX2
+	  memory controllers (LMC) and cache blocks.
+	  This facilitates testing of the memory controller RAS features and
+	  is intended to be used by test personnel when conducting system tests.
+
+	  To compile this as a module, choose M here. The module will be
+	  called otx2-einj.
+	  Unless testing, say N here.
+
 endmenu

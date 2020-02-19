@@ -4,5 +4,6 @@
 #
 
 obj-$(CONFIG_OCTEONTX2_SDEI_GHES) += octeontx2_sdei_ghes.o
-
 octeontx2_sdei_ghes-y := otx2-sdei-ghes.o
+
+obj-$(CONFIG_OCTEONTX2_EINJ) += otx2-einj.o
