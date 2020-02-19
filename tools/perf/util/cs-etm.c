@@ -1173,9 +1173,6 @@ static int cs_etm__synth_instruction_sample(struct cs_etm_queue *etmq,
 			"CS ETM Trace: failed to deliver instruction event, error %d\n",
 			ret);
 
-	if (etm->synth_opts.last_branch)
-		cs_etm__reset_last_branch_rb(tidq);
-
 	return ret;
 }
 
@@ -1540,6 +1537,10 @@ static int cs_etm__flush(struct cs_etm_queue *etmq,
 
 swap_packet:
 	cs_etm__packet_swap(etm, tidq);
+
+	/* Reset last branches after flush the trace */
+	if (etm->synth_opts.last_branch)
+		cs_etm__reset_last_branch_rb(tidq);
 
 	return err;
 }
