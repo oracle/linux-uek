@@ -455,7 +455,8 @@ static struct rvu_quota_ops pf_limit_ops = {
 static void rvu_set_default_limits(struct rvu *rvu)
 {
 	int i, nvfs, cpt_rvus, npa_rvus, sso_rvus, nix_rvus, nsso, nssow, ntim;
-	int ncpt, nnpa, nnix, nsmq = 0, ntl4 = 0, ntl3 = 0, ntl2 = 0;
+	int total_cpt_lfs, ncptpf_cptlfs = 0, nssopf_cptlfs = 0;
+	int nnpa, nnix, nsmq = 0, ntl4 = 0, ntl3 = 0, ntl2 = 0;
 	unsigned short devid;
 
 	/* First pass, count number of SSO/TIM PFs. */
@@ -482,8 +483,13 @@ static void rvu_set_default_limits(struct rvu *rvu)
 	nsso = rvu->pf_limits.sso->max_sum / sso_rvus;
 	nssow = rvu->pf_limits.ssow->max_sum / sso_rvus;
 	ntim = rvu->pf_limits.tim->max_sum / sso_rvus;
+	total_cpt_lfs = rvu->pf_limits.cpt->max_sum;
 	/* Divide CPT among SSO and CPT PFs since cores shouldn't be shared. */
-	ncpt = rvu->pf_limits.cpt->max_sum / (sso_rvus + cpt_rvus);
+	if (total_cpt_lfs) {
+		/* One extra LF needed for inline ipsec inbound configuration */
+		ncptpf_cptlfs = num_online_cpus() + 1;
+		nssopf_cptlfs = (total_cpt_lfs - ncptpf_cptlfs) / sso_rvus;
+	}
 	/* NPA/NIX count depends on DTS VF config. Allocate until run out. */
 	nnpa = rvu->pf_limits.npa->max_sum;
 	nnix = rvu->pf_limits.nix->max_sum;
@@ -530,7 +536,7 @@ static void rvu_set_default_limits(struct rvu *rvu)
 			rvu->pf_limits.sso->a[i].val = nsso;
 			rvu->pf_limits.ssow->a[i].val = nssow;
 			rvu->pf_limits.tim->a[i].val = ntim;
-			rvu->pf_limits.cpt->a[i].val = ncpt;
+			rvu->pf_limits.cpt->a[i].val = nssopf_cptlfs;
 			break;
 		case PCI_DEVID_OCTEONTX2_NPA_RVU_PF:
 			nnpa -= 1 + nvfs;
@@ -539,7 +545,7 @@ static void rvu_set_default_limits(struct rvu *rvu)
 		case PCI_DEVID_OCTEONTX2_CPT_RVU_PF:
 			nnpa -= 1;
 			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 : 0;
-			rvu->pf_limits.cpt->a[i].val = ncpt;
+			rvu->pf_limits.cpt->a[i].val = ncptpf_cptlfs;
 			break;
 		case PCI_DEVID_OCTEONTX2_SDP_RVU_PF:
 			nnix -= 1 + nvfs;
