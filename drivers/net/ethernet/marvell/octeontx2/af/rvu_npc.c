@@ -2616,12 +2616,11 @@ bool rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
 	return enable;
 }
 
-int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
-				   struct npc_set_pkind *req,
-				   struct msg_rsp *rsp)
+int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
+			   u64 pkind)
+
 {
-	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
-	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	int pf = rvu_get_pf(pcifunc);
 	bool enable_higig2 = false;
 	int blkaddr, nixlf, rc;
@@ -2632,9 +2631,9 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 	rxpkind = rvu_npc_get_pkind(rvu, pf);
 	txpkind = NPC_TX_DEF_PKIND;
 
-	if (req->mode & OTX2_PRIV_FLAGS_EDSA) {
+	if (mode & OTX2_PRIV_FLAGS_EDSA) {
 		rxpkind = NPC_RX_EDSA_PKIND;
-	} else if (req->mode & OTX2_PRIV_FLAGS_HIGIG) {
+	} else if (mode & OTX2_PRIV_FLAGS_HIGIG) {
 		/* Silicon does not support enabling higig in time stamp mode */
 		if (pfvf->hw_rx_tstamp_en ||
 		    rvu_nix_is_ptp_tx_enabled(rvu, pcifunc))
@@ -2643,14 +2642,14 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 		rxpkind = NPC_RX_HIGIG_PKIND;
 		txpkind = NPC_TX_HIGIG_PKIND;
 		enable_higig2 = true;
-	} else if (req->mode & OTX2_PRIV_FLAGS_CUSTOM) {
-		rxpkind = req->pkind;
-		txpkind = req->pkind;
+	} else if (mode & OTX2_PRIV_FLAGS_CUSTOM) {
+		rxpkind = pkind;
+		txpkind = pkind;
 	}
 
-	if (req->dir & PKIND_RX) {
+	if (dir & PKIND_RX) {
 		/* rx pkind set req valid only for cgx mapped PFs */
-		if (!is_cgx_config_permitted(rvu, req->hdr.pcifunc))
+		if (!is_cgx_config_permitted(rvu, pcifunc))
 			return 0;
 		rvu_get_cgx_lmac_id(pfvf->cgx_lmac, &cgx_id, &lmac_id);
 
@@ -2660,9 +2659,9 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 			return rc;
 	}
 
-	if (req->dir & PKIND_TX) {
+	if (dir & PKIND_TX) {
 		/* Tx pkind set request valid if PCIFUNC has NIXLF attached */
-		rc = nix_get_nixlf(rvu, req->hdr.pcifunc, &nixlf, &blkaddr);
+		rc = nix_get_nixlf(rvu, pcifunc, &nixlf, &blkaddr);
 		if (rc)
 			return rc;
 
@@ -2674,4 +2673,12 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 		rvu_cgx_enadis_higig2(rvu, pf, enable_higig2);
 
 	return 0;
+}
+
+int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
+				   struct npc_set_pkind *req,
+				   struct msg_rsp *rsp)
+{
+	return rvu_npc_set_parse_mode(rvu, req->hdr.pcifunc, req->mode,
+				      req->dir, req->pkind);
 }
