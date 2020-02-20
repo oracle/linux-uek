@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 
 #include <net/netfilter/nf_conntrack.h>
+#include <linux/uek_kabi.h>
 
 enum nf_ct_ext_id {
 	NF_CT_EXT_HELPER,
@@ -46,7 +47,11 @@ struct nf_ct_ext {
 	struct rcu_head rcu;
 	u8 offset[NF_CT_EXT_NUM];
 	u8 len;
-	char data[0];
+#ifdef __GENKSYMS__
+	char data [0];
+#else
+	char data[];
+#endif
 };
 
 static inline bool __nf_ct_ext_exist(const struct nf_ct_ext *ext, u8 id)
