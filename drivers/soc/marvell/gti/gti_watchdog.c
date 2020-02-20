@@ -55,6 +55,8 @@ struct set_watchdog_args {
 };
 
 static unsigned long g_mmio_base;
+DEFINE_PER_CPU(uint64_t, gti_elr);
+DEFINE_PER_CPU(uint64_t, gti_spsr);
 
 static void cleanup_gti_watchdog(void)
 {
@@ -81,12 +83,19 @@ static int gti_wdog_close(struct inode *inode, struct file *file)
 void install_gti_cwd_wdog_secondary_cores(void *arg)
 {
 	struct arm_smccc_res res;
+	uint64_t kernel_in_hyp_mode;
+	int cpu;
+
+	cpu = smp_processor_id();
 
 	pr_info("Installing GTI CWD on CPU %d\n", raw_smp_processor_id());
 
-	arm_smccc_smc(OCTEONTX_INSTALL_WDOG, smp_processor_id(),
-		 0, 0, 0, 0, 0, 0, &res);
+	kernel_in_hyp_mode = is_kernel_in_hyp_mode();
 
+	arm_smccc_smc(OCTEONTX_INSTALL_WDOG, smp_processor_id(),
+		      virt_to_phys(&per_cpu(gti_elr, cpu)),
+		      virt_to_phys(&per_cpu(gti_spsr, cpu)), kernel_in_hyp_mode,
+		      0, 0, 0, &res);
 	if (!res.a0)
 		pr_warn("Failed to install watchdog handler on core %d : %ld\n",
 				raw_smp_processor_id(), res.a0);
@@ -114,9 +123,10 @@ void install_gti_cwd_wdog_all_cores(struct set_watchdog_args *watchdog_args)
 	 * enables the interrupts.
 	 */
 
-	arm_smccc_smc(OCTEONTX_START_WDOG, (uintptr_t)&el1_nmi_callback,
+	arm_smccc_smc(OCTEONTX_START_WDOG, (uintptr_t)&el0_nmi_callback,
+		      (uintptr_t)&el1_nmi_callback,
 		      watchdog_args->watchdog_timeout_ms, cpumask,
-		      0, 0, 0, 0, &res);
+		      0, 0, 0, &res);
 
 	if (!res.a0)
 		pr_warn("Failed to install watchdog handler on core %llx : %ld\n",

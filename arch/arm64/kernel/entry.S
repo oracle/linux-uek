@@ -214,14 +214,17 @@ alternative_cb_end
 	mrs	x23, spsr_el1
 	.else
 	/*
-	 * load elr, spsr in case of simulated exception return from
-	 * elr_el12, spsr_el12 which are used as scratch registers
-	 * to store interrupted register context by nmi handler in el3,
-	 * as elr_el2 & spsr_el2 will be used for simulated return to
-	 * el1/el2 by el3 nmi handler.
+	 * load elr and spsr in case of simulated exception return from
+	 * respective percpu gti_elr and gti_spsr variables, which are shared
+	 * with el3. EL3 gti watchdog handler store interrupted register
+	 * context in percpu shared location and elr_el1/2 & spsr_el1/2 will be
+	 * used for simulated return to el1/el2 by el3 nmi handler.
 	 */
-	mrs	x22, S3_5_C4_C0_1
-	mrs	x23, S3_5_C4_C0_0
+	ldr_this_cpu x22, gti_elr, x29
+	ldr_this_cpu x23, gti_spsr, x29
+	.if	\el == 0
+	mov	x29, xzr			// fp pointed to user-space
+	.endif
 	.endif	/* \exc_el3 == 0 */
 #else
 	mrs	x22, elr_el1
@@ -997,27 +1000,27 @@ ENDPROC(el0_error)
 
 #ifdef CONFIG_GTI_WATCHDOG
 
-.globl	el1_nmi_callback
-el1_nmi_callback:
-	/*
-	 * Simulate an exception return at same ELx, for example,
-	 * exception entry and pstate are loaded from ELR_ELx and SPSR_ELx.
-	 */
+/*
+ * Simulate an exception return at same ELx, for example,
+ * exception entry and pstate are loaded from ELR_ELx and SPSR_ELx.
+ */
+.globl	el0_nmi_callback
+el0_nmi_callback:
 	sub     sp, sp, #S_FRAME_SIZE
-	mrs	x8, S3_5_C13_C0_1		// contextidr_el12
-	cbnz	x8, el2_context_entry
 	kernel_entry 0, 64, 1
-	b	invoke_callback
-el2_context_entry:
-	kernel_entry 1, 64, 1
-invoke_callback:
 	mov	x0, sp
 	bl	nmi_kernel_callback
-	cbnz	x8, el2_context_exit
 	kernel_exit 0, 0, 1
 	b	ret_back_to_el3
-el2_context_exit:
+
+.globl	el1_nmi_callback
+el1_nmi_callback:
+	sub     sp, sp, #S_FRAME_SIZE
+	kernel_entry 1, 64, 1
+	mov	x0, sp
+	bl	nmi_kernel_callback
 	kernel_exit 1, 0, 1
+
 ret_back_to_el3:
 	/*
 	 * We return back to the interrupted context via EL3,

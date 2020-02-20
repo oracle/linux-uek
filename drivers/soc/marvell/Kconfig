@@ -103,7 +103,7 @@ config OCTEONTX2_PCI_CONSOLE_DEBUG
 
 config GTI_WATCHDOG
        bool "GTI Watchdog driver"
-	depends on ARM64 && ARM64_VHE
+	depends on ARM64
 	---help---
 	GTI Watchdog driver, provides ioctl's for applications to
 	setup and disable the NMI Watchdog and also provides an
