@@ -3612,6 +3612,10 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 		pfvf->hw_rx_tstamp_en = false;
 	}
 
+	/* reset HW config done for Switch headers */
+	rvu_npc_set_parse_mode(rvu, pcifunc, OTX2_PRIV_FLAGS_DEFAULT,
+			       (PKIND_TX | PKIND_RX), 0);
+
 	nix_ctx_free(rvu, pfvf);
 
 	if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
