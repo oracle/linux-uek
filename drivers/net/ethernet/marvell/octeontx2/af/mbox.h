@@ -1465,6 +1465,7 @@ struct tim_config_req {
 	u32	bucketsize;
 	u32	chunksize;
 	u32	interval;
+	u8	gpioedge;
 };
 
 struct tim_lf_alloc_rsp {

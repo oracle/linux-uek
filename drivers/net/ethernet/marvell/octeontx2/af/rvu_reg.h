@@ -612,6 +612,7 @@
 
 #define TIM_AF_RING_GMCTL_SHIFT		3
 #define TIM_AF_RING_SSO_PF_FUNC_SHIFT	0
+#define TIM_AF_FLAGS_REG_GPIO_EDGE_MASK	GENMASK_ULL(6, 5)
 
 /* CPT */
 #define CPT_AF_CONSTANTS0               (0x0ull)

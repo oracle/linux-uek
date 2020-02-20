@@ -11,6 +11,7 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/types.h>
+#include <linux/bitfield.h>
 
 #include "rvu_struct.h"
 #include "rvu_reg.h"
@@ -147,13 +148,6 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 	if (req->bigendian & ~1)
 		return TIM_AF_INVALID_BIG_ENDIAN_VALUE;
 
-	/* Check GPIO clock source has the GPIO edge set. */
-	if (req->clocksource == TIM_CLK_SRCS_GPIO) {
-		regval = rvu_read64(rvu, blkaddr, TIM_AF_FLAGS_REG);
-		if (((regval >> 5) & 0x3) == 0)
-			return TIM_AF_GPIO_CLK_SRC_NOT_ENABLED;
-	}
-
 	/* enableperiodic can only be 1 or 0. */
 	if (req->enableperiodic & ~1)
 		return TIM_AF_INVALID_ENABLE_PERIODIC;
@@ -200,6 +194,27 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 
 	if (req->interval < intervalmin)
 		return TIM_AF_INTERVAL_TOO_SMALL;
+
+	/* Configure edge of GPIO clock source */
+	if (req->clocksource == TIM_CLK_SRCS_GPIO &&
+	    req->gpioedge < TIM_GPIO_INVALID) {
+		regval = rvu_read64(rvu, blkaddr, TIM_AF_FLAGS_REG);
+		if (FIELD_GET(TIM_AF_FLAGS_REG_GPIO_EDGE_MASK, regval) ==
+		    TIM_GPIO_NO_EDGE && req->gpioedge == TIM_GPIO_NO_EDGE)
+			return TIM_AF_GPIO_CLK_SRC_NOT_ENABLED;
+		if (req->gpioedge != TIM_GPIO_NO_EDGE && req->gpioedge !=
+		    FIELD_GET(TIM_AF_FLAGS_REG_GPIO_EDGE_MASK, regval)) {
+			dev_info(rvu->dev,
+				 "Change edge of GPIO input to %d from %lld.\n",
+				 (int)req->gpioedge,
+				 FIELD_GET(TIM_AF_FLAGS_REG_GPIO_EDGE_MASK,
+					   regval));
+			regval &= ~TIM_AF_FLAGS_REG_GPIO_EDGE_MASK;
+			regval |= FIELD_PREP(TIM_AF_FLAGS_REG_GPIO_EDGE_MASK,
+					     req->gpioedge);
+			rvu_write64(rvu, blkaddr, TIM_AF_FLAGS_REG, regval);
+		}
+	}
 
 	/* CTL0 */
 	/* EXPIRE_OFFSET = 0 and is set correctly when enabling. */
@@ -335,7 +350,7 @@ int rvu_tim_init(struct rvu *rvu)
 	gpio_edge = TIM_GPIO_NO_EDGE;
 
 	/* Enable TIM block. */
-	regval = (((u64)gpio_edge) << 6) |
+	regval = FIELD_PREP(TIM_AF_FLAGS_REG_GPIO_EDGE_MASK, gpio_edge) |
 		 BIT_ULL(2) | /* RESET */
 		 BIT_ULL(0); /* ENA_TIM */
 	rvu_write64(rvu, blkaddr, TIM_AF_FLAGS_REG, regval);
