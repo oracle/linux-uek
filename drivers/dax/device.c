@@ -10,11 +10,24 @@
 #include <linux/dax.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/io.h>
 #include <linux/mman.h>
 #include "dax-private.h"
 #include "bus.h"
 
-static int check_vma(struct dev_dax *dev_dax, struct vm_area_struct *vma,
+static int dax_is_pfn_special(struct dev_dax *dev_dax)
+{
+	return (dev_dax->pfn_flags &
+		(PFN_DEV|PFN_SPECIAL)) == (PFN_DEV|PFN_SPECIAL);
+}
+
+static int dax_is_pfn_map(struct dev_dax *dev_dax)
+{
+	return (dev_dax->pfn_flags &
+		(PFN_DEV|PFN_MAP)) == (PFN_DEV|PFN_MAP);
+}
+
+static int check_vma_mmap(struct dev_dax *dev_dax, struct vm_area_struct *vma,
 		const char *func)
 {
 	struct device *dev = &dev_dax->dev;
@@ -50,6 +63,26 @@ static int check_vma(struct dev_dax *dev_dax, struct vm_area_struct *vma,
 	return 0;
 }
 
+static int check_vma(struct dev_dax *dev_dax, struct vm_area_struct *vma,
+		const char *func)
+{
+       int rc;
+
+	rc = check_vma_mmap(dev_dax, vma, func);
+	if (rc < 0)
+		return rc;
+
+	if (dax_is_pfn_special(dev_dax) && (vma->vm_flags & VM_DONTCOPY) == 0) {
+		dev_info_ratelimited(&dev_dax->dev,
+				"%s: %s: fail, dax range requires MADV_DONTFORK\n",
+				current->comm, func);
+		return -EINVAL;
+	}
+
+
+	return 0;
+}
+
 /* see "strong" declaration in tools/testing/nvdimm/dax-dev.c */
 __weak phys_addr_t dax_pgoff_to_phys(struct dev_dax *dev_dax, pgoff_t pgoff,
 		unsigned long size)
@@ -80,6 +113,7 @@ static vm_fault_t __dev_dax_pte_fault(struct dev_dax *dev_dax,
 	struct dax_region *dax_region;
 	phys_addr_t phys;
 	unsigned int fault_size = PAGE_SIZE;
+	int rc;
 
 	if (check_vma(dev_dax, vmf->vma, __func__))
 		return VM_FAULT_SIGBUS;
@@ -102,7 +136,11 @@ static vm_fault_t __dev_dax_pte_fault(struct dev_dax *dev_dax,
 
 	*pfn = phys_to_pfn_t(phys, dev_dax->pfn_flags);
 
-	return vmf_insert_mixed(vmf->vma, vmf->address, *pfn);
+	if (dax_is_pfn_map(dev_dax))
+		rc = vmf_insert_mixed(vmf->vma, vmf->address, *pfn);
+	else
+		rc = vmf_insert_pfn(vmf->vma, vmf->address, pfn_t_to_pfn(*pfn));
+	return rc;
 }
 
 static vm_fault_t __dev_dax_pmd_fault(struct dev_dax *dev_dax,
@@ -230,7 +268,7 @@ static vm_fault_t dev_dax_huge_fault(struct vm_fault *vmf,
 		rc = VM_FAULT_SIGBUS;
 	}
 
-	if (rc == VM_FAULT_NOPAGE) {
+	if (dax_is_pfn_map(dev_dax) && rc == VM_FAULT_NOPAGE) {
 		unsigned long i;
 		pgoff_t pgoff;
 
@@ -299,13 +337,15 @@ static int dax_mmap(struct file *filp, struct vm_area_struct *vma)
 	 * fault time.
 	 */
 	id = dax_read_lock();
-	rc = check_vma(dev_dax, vma, __func__);
+	rc = check_vma_mmap(dev_dax, vma, __func__);
 	dax_read_unlock(id);
 	if (rc)
 		return rc;
 
 	vma->vm_ops = &dax_vm_ops;
 	vma->vm_flags |= VM_HUGEPAGE;
+	if (dax_is_pfn_special(dev_dax))
+		vma->vm_flags |= VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP;
 	return 0;
 }
 
@@ -408,7 +448,7 @@ int dev_dax_probe(struct dev_dax *dev_dax)
 			"static pgmap / multi-range device conflict\n"))
 		return -EINVAL;
 
-	if (!pgmap) {
+	if (!pgmap && dax_is_pfn_map(dev_dax)) {
 		pgmap = devm_kzalloc(dev, sizeof(*pgmap) + sizeof(struct range)
 				* (dev_dax->nr_range - 1), GFP_KERNEL);
 		if (!pgmap)
@@ -426,14 +466,26 @@ int dev_dax_probe(struct dev_dax *dev_dax)
 			return -EBUSY;
 		}
 		/* don't update the range for static pgmap */
-		if (!dev_dax->pgmap)
+		if (!dev_dax->pgmap && pgmap)
 			pgmap->ranges[i] = *range;
+
+		if (dax_is_pfn_special(dev_dax)) {
+			addr = devm_memremap(dev, range->start, range_len(range),
+					     MEMREMAP_WB);
+			if (IS_ERR(addr)) {
+				dev_warn(dev, "mapping%d: %#llx-%#llx could not map range\n",
+						i, range->start, range->end);
+				return PTR_ERR(addr);
+			}
+		}
 	}
 
-	pgmap->type = MEMORY_DEVICE_DEVDAX;
-	addr = devm_memremap_pages(dev, pgmap);
-	if (IS_ERR(addr))
-		return PTR_ERR(addr);
+	if (dax_is_pfn_map(dev_dax)) {
+		pgmap->type = MEMORY_DEVICE_DEVDAX;
+		addr = devm_memremap_pages(dev, pgmap);
+		if (IS_ERR(addr))
+			return PTR_ERR(addr);
+	}
 
 	inode = dax_inode(dax_dev);
 	cdev = inode->i_cdev;
