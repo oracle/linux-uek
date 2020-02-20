@@ -604,7 +604,7 @@ xfs_iwalk_threaded(
 	ASSERT(agno < mp->m_sb.sb_agcount);
 	ASSERT(!(flags & ~XFS_IWALK_FLAGS_ALL));
 
-	nr_threads = xfs_pwork_guess_datadev_parallelism(mp);
+	nr_threads = xfs_pwork_guess_threads(mp);
 	error = xfs_pwork_init(mp, &pctl, xfs_iwalk_ag_work, "xfs_iwalk",
 			nr_threads);
 	if (error)

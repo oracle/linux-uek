@@ -118,19 +118,12 @@ xfs_pwork_poll(
 		touch_softlockup_watchdog();
 }
 
-/*
- * Return the amount of parallelism that the data device can handle, or 0 for
- * no limit.
- */
+/* Estimate how many threads we need for a parallel work queue. */
 unsigned int
-xfs_pwork_guess_datadev_parallelism(
+xfs_pwork_guess_threads(
 	struct xfs_mount	*mp)
 {
-	struct xfs_buftarg	*btp = mp->m_ddev_targp;
-
-	/*
-	 * For now we'll go with the most conservative setting possible,
-	 * which is two threads for an SSD and 1 thread everywhere else.
-	 */
-	return blk_queue_nonrot(btp->bt_bdev->bd_queue) ? 2 : 1;
+	/* pwork queues are not unbounded, so we have to abide WQ_MAX_ACTIVE. */
+	return min_t(unsigned int, xfs_guess_metadata_threads(mp),
+			WQ_MAX_ACTIVE);
 }
