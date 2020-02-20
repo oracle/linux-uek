@@ -3,6 +3,7 @@
 #include <linux/memremap.h>
 #include <linux/device.h>
 #include <linux/mutex.h>
+#include <linux/pfn_t.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/dax.h>
@@ -1275,6 +1276,7 @@ struct dev_dax *devm_create_dev_dax(struct dev_dax_data *data)
 	dev_dax->dax_dev = dax_dev;
 	dev_dax->target_node = dax_region->target_node;
 	dev_dax->align = dax_region->align;
+	dev_dax->pfn_flags = PFN_DEV|PFN_MAP;
 	ida_init(&dev_dax->ida);
 	kref_get(&dax_region->kref);
 

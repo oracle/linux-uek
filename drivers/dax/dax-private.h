@@ -49,6 +49,7 @@ struct dax_mapping {
  * data while the device is activated in the driver.
  * @region - parent region
  * @dax_dev - core dax functionality
+ * @pfn_flags - page metadata flags
  * @target_node: effective numa node if dev_dax memory range is onlined
  * @id: ida allocated id
  * @ida: mapping id allocator
@@ -61,6 +62,7 @@ struct dev_dax {
 	struct dax_region *region;
 	struct dax_device *dax_dev;
 	unsigned int align;
+	unsigned long long pfn_flags;
 	int target_node;
 	int id;
 	struct ida ida;
