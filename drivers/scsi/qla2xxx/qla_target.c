@@ -1768,7 +1768,7 @@ static int qlt_build_abts_resp_iocb(struct qla_tgt_mgmt_cmd *mcmd)
 		qpair->req->outstanding_cmds[h] = (srb_t *)mcmd;
 	}
 
-	resp->handle = MAKE_HANDLE(qpair->req->id, h);
+	resp->handle = make_handle(qpair->req->id, h);
 	resp->entry_type = ABTS_RESP_24XX;
 	resp->entry_count = 1;
 	resp->nport_handle = abts->nport_handle;
@@ -2590,7 +2590,7 @@ static int qlt_24xx_build_ctio_pkt(struct qla_qpair *qpair,
 	} else
 		qpair->req->outstanding_cmds[h] = (srb_t *)prm->cmd;
 
-	pkt->handle = MAKE_HANDLE(qpair->req->id, h);
+	pkt->handle = make_handle(qpair->req->id, h);
 	pkt->handle |= CTIO_COMPLETION_HANDLE_MARK;
 	pkt->nport_handle = cpu_to_le16(prm->cmd->loop_id);
 	pkt->timeout = cpu_to_le16(QLA_TGT_TIMEOUT);
@@ -3103,7 +3103,7 @@ qlt_build_ctio_crc2_pkt(struct qla_qpair *qpair, struct qla_tgt_prm *prm)
 	} else
 		qpair->req->outstanding_cmds[h] = (srb_t *)prm->cmd;
 
-	pkt->handle  = MAKE_HANDLE(qpair->req->id, h);
+	pkt->handle  = make_handle(qpair->req->id, h);
 	pkt->handle |= CTIO_COMPLETION_HANDLE_MARK;
 	pkt->nport_handle = cpu_to_le16(prm->cmd->loop_id);
 	pkt->timeout = cpu_to_le16(QLA_TGT_TIMEOUT);
