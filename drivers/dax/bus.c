@@ -1104,6 +1104,49 @@ static ssize_t align_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(align);
 
+static ssize_t map_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct dev_dax *dev_dax = to_dev_dax(dev);
+	bool map;
+
+	device_lock(dev);
+	map = (dev_dax->pfn_flags == (PFN_DEV|PFN_MAP));
+	device_unlock(dev);
+
+	return sprintf(buf, "%u\n", map);
+}
+
+static ssize_t map_store(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t len)
+{
+	ssize_t rc;
+	bool enabled;
+	unsigned long long pfn_flags;
+	struct dev_dax *dev_dax = to_dev_dax(dev);
+	struct dax_region *dax_region = dev_dax->region;
+
+	rc = kstrtobool(buf, &enabled);
+	if (rc)
+		return rc;
+
+	device_lock(dax_region->dev);
+	if (!dax_region->dev->driver) {
+		device_unlock(dax_region->dev);
+		return -ENXIO;
+	}
+
+	pfn_flags = enabled ? PFN_DEV|PFN_MAP : PFN_DEV|PFN_SPECIAL;
+
+	device_lock(dev);
+	dev_dax->pfn_flags = pfn_flags;
+	device_unlock(dev);
+	device_unlock(dax_region->dev);
+
+	return rc == 0 ? len : rc;
+}
+static DEVICE_ATTR_RW(map);
+
 static int dev_dax_target_node(struct dev_dax *dev_dax)
 {
 	struct dax_region *dax_region = dev_dax->region;
@@ -1165,6 +1208,7 @@ static umode_t dev_dax_visible(struct kobject *kobj, struct attribute *a, int n)
 	if (a == &dev_attr_numa_node.attr && !IS_ENABLED(CONFIG_NUMA))
 		return 0;
 	if ((a == &dev_attr_align.attr ||
+	     a == &dev_attr_map.attr ||
 	     a == &dev_attr_size.attr) && is_static(dax_region))
 		return 0444;
 	return a->mode;
@@ -1177,6 +1221,7 @@ static struct attribute *dev_dax_attributes[] = {
 	&dev_attr_align.attr,
 	&dev_attr_resource.attr,
 	&dev_attr_numa_node.attr,
+	&dev_attr_map.attr,
 	NULL,
 };
 
