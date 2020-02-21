@@ -23,10 +23,20 @@ MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION("Serdes diagnostic commands for OcteonTX2");
 MODULE_LICENSE("GPL v2");
 
+#define ARM_SMC_SVC_UID			0xc200ff01
+
 #define OCTEONTX_SERDES_DBG_GET_MEM	0xc2000d04
 #define OCTEONTX_SERDES_DBG_GET_EYE	0xc2000d05
 #define OCTEONTX_SERDES_DBG_GET_CONF	0xc2000d06
 #define OCTEONTX_SERDES_DBG_PRBS	0xc2000d07
+
+/* This is expected OcteonTX response for SVC UID command */
+static const int octeontx_svc_uuid[] = {
+	0x6ff498cf,
+	0x5a4e9cfa,
+	0x2f2a3aa4,
+	0x5945b105,
+};
 
 #define MAX_LMAC_PER_CGX		4
 
@@ -503,6 +513,17 @@ static int serdes_dbg_init(void)
 {
 	struct arm_smccc_res res;
 	int ec;
+
+	/*
+	 * Compare response for standard SVC_UID commandi with OcteonTX UUID.
+	 * Continue only if it is OcteonTX.
+	 */
+	arm_smccc_smc(ARM_SMC_SVC_UID, 0, 0, 0, 0, 0, 0, 0, &res);
+	if (res.a0 != octeontx_svc_uuid[0] || res.a1 != octeontx_svc_uuid[1] ||
+	    res.a2 != octeontx_svc_uuid[2] || res.a3 != octeontx_svc_uuid[3]) {
+		pr_info("UIID SVC doesn't match OcteonTX. No serdes cmds.\n");
+		return 0;
+	}
 
 	arm_smccc_smc(OCTEONTX_SERDES_DBG_GET_MEM, 0, 0, 0, 0, 0, 0, 0, &res);
 	if (res.a0 == SMCCC_RET_NOT_SUPPORTED) {
