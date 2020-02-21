@@ -73,6 +73,7 @@ xfs_inode_alloc(
 	INIT_WORK(&ip->i_ioend_work, xfs_end_io);
 	INIT_LIST_HEAD(&ip->i_ioend_list);
 	spin_lock_init(&ip->i_ioend_lock);
+	INIT_LIST_HEAD(&ip->i_inact_list);
 
 	return ip;
 }
