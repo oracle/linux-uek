@@ -653,9 +653,14 @@ static void npc_update_entry(struct rvu *rvu, enum key_fields type,
 		}
 	}
 	/* dummy is ready with values and masks for given key
-	 * field now update input entry with those
+	 * field now clear and update input entry with those
 	 */
 	for (i = 0; i < NPC_MAX_KWS_IN_KEY; i++) {
+		if (!field->kw_mask[i])
+			continue;
+		entry->kw[i] &= ~field->kw_mask[i];
+		entry->kw_mask[i] &= ~field->kw_mask[i];
+
 		entry->kw[i] |= dummy.kw[i];
 		entry->kw_mask[i] |= dummy.kw_mask[i];
 	}
@@ -978,8 +983,13 @@ update_rule:
 		pfvf->def_rule = rule;
 
 	/* VF's MAC address is being changed via PF  */
-	if (pf_set_vfs_mac)
+	if (pf_set_vfs_mac) {
 		ether_addr_copy(pfvf->default_mac, req->packet.dmac);
+		ether_addr_copy(pfvf->mac_addr, req->packet.dmac);
+	}
+
+	if (pfvf->pf_set_vf_cfg && req->vtag0_type == NIX_AF_LFX_RX_VTAG_TYPE7)
+		rule->vfvlan_cfg = true;
 
 	return 0;
 }
@@ -1030,14 +1040,15 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 
 	pfvf = rvu_get_pfvf(rvu, target);
 
-	if (!from_vf && req->vf)
+	/* PF installing for its VF */
+	if (req->hdr.pcifunc && !from_vf && req->vf)
 		pfvf->pf_set_vf_cfg = 1;
 
 	/* update req destination mac addr */
 	if ((req->features & BIT_ULL(NPC_DMAC)) &&
 	    req->intf == NIX_INTF_RX &&
 	    is_zero_ether_addr(req->packet.dmac)) {
-		ether_addr_copy(req->packet.dmac, pfvf->default_mac);
+		ether_addr_copy(req->packet.dmac, pfvf->mac_addr);
 		u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
 	}
 
@@ -1136,6 +1147,32 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	return 0;
 }
 
+static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
+				 struct rvu_npc_mcam_rule *rule,
+				 struct rvu_pfvf *pfvf)
+{
+	struct npc_mcam_write_entry_req write_req = { 0 };
+	struct mcam_entry *entry = &write_req.entry_data;
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct npc_mcam_read_entry_rsp wrsp;
+	struct msg_rsp rsp;
+
+	ether_addr_copy(rule->packet.dmac, pfvf->mac_addr);
+
+	npc_read_mcam_entry(rvu, mcam, npcblkaddr, rule->entry,
+			    entry, &wrsp.intf,
+			    &wrsp.enable);
+
+	npc_update_entry(rvu, NPC_DMAC, entry,
+			 ether_addr_to_u64(pfvf->mac_addr), 0,
+			 0xffffffffffffull, 0, wrsp.intf);
+
+	write_req.hdr.pcifunc = rule->owner;
+	write_req.entry = rule->entry;
+
+	return rvu_mbox_handler_npc_mcam_write_entry(rvu, &write_req, &rsp);
+}
+
 void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, target);
@@ -1161,6 +1198,9 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 				rule->enable = true;
 				continue;
 			}
+
+			if (rule->vfvlan_cfg)
+				npc_update_dmac_value(rvu, blkaddr, rule, pfvf);
 
 			if (rule->rx_action.op == NIX_RX_ACTION_DEFAULT) {
 				if (!pfvf->def_rule)

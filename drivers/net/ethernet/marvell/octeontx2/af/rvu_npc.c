@@ -416,9 +416,9 @@ static void npc_config_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 		npc_enable_mcam_entry(rvu, mcam, blkaddr, actindex, true);
 }
 
-static void npc_read_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
-				int blkaddr, u16 src,
-				struct mcam_entry *entry, u8 *intf, u8 *ena)
+void npc_read_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
+			 int blkaddr, u16 src,
+			 struct mcam_entry *entry, u8 *intf, u8 *ena)
 {
 	int sbank = npc_get_bank(mcam, src);
 	int bank, kw = 0;
@@ -2651,7 +2651,7 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 		/* rx pkind set req valid only for cgx mapped PFs */
 		if (!is_cgx_config_permitted(rvu, pcifunc))
 			return 0;
-		rvu_get_cgx_lmac_id(pfvf->cgx_lmac, &cgx_id, &lmac_id);
+		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 
 		rc = cgx_set_pkind(rvu_cgx_pdata(cgx_id, rvu),
 				   lmac_id, rxpkind);
