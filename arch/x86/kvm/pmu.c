@@ -113,7 +113,7 @@ static void pmc_reprogram_counter(struct kvm_pmc *pmc, u32 type,
 		.config = config,
 	};
 
-	attr.sample_period = (-pmc->counter) & pmc_bitmask(pmc);
+	attr.sample_period = get_sample_period(pmc, pmc->counter);
 
 	if (in_tx)
 		attr.config |= HSW_IN_TX;
