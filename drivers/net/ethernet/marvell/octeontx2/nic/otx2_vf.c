@@ -211,6 +211,9 @@ static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
 	struct otx2_mbox *mbox;
 	struct mbox_hdr *hdr;
 
+	/* Clear the IRQ */
+	otx2_write64(vf, RVU_VF_INT, BIT_ULL(0));
+
 	/* Read latest mbox data */
 	smp_rmb();
 
@@ -240,8 +243,6 @@ static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
 		       ALIGN(sizeof(struct mbox_hdr), sizeof(u64)));
 		queue_work(vf->mbox_wq, &vf->mbox.mbox_up_wrk);
 	}
-	/* Clear the IRQ */
-	otx2_write64(vf, RVU_VF_INT, BIT_ULL(0));
 
 	return IRQ_HANDLED;
 }
