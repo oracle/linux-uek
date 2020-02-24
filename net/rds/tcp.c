@@ -454,7 +454,6 @@ struct rds_transport rds_tcp_transport = {
 	.t_prefer_loopback	= 1,
 	.t_mp_capable		= 1,
 	.t_conn_count		= ATOMIC_INIT(0),
-	.t_zero_conn		= __WAIT_QUEUE_HEAD_INITIALIZER(rds_tcp_transport.t_zero_conn),
 };
 
 static int rds_tcp_netid;
@@ -682,13 +681,21 @@ static int rds_tcp_skbuf_handler(struct ctl_table *ctl, int write,
 
 static void __exit rds_tcp_exit(void)
 {
+	/* After unregistering the module, no new connection will be made
+	 * using this transport.
+	 */
+	rds_trans_unregister(&rds_tcp_transport);
+
 	rds_info_deregister_func(RDS_INFO_TCP_SOCKETS, rds_tcp_tc_info);
 #if IS_ENABLED(CONFIG_IPV6)
 	rds_info_deregister_func(RDS6_INFO_TCP_SOCKETS, rds6_tcp_tc_info);
 #endif
 	unregister_pernet_device(&rds_tcp_net_ops);
 	rds_tcp_destroy_conns();
-	rds_trans_unregister(&rds_tcp_transport);
+
+	/* There should not be any RDS/TCP connections. */
+	WARN_ON(atomic_read(&rds_tcp_transport.t_conn_count));
+
 	rds_tcp_recv_exit();
 	kmem_cache_destroy(rds_tcp_conn_slab);
 }

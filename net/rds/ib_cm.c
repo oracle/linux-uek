@@ -853,6 +853,7 @@ static void __rds_rdma_conn_dev_rele(struct rds_ib_connection *ic)
 		queue_delayed_work(rds_ibdev->rid_dev_wq,
 				   &ic->i_delayed_free_work,
 				   msecs_to_jiffies(rds_dev_free_wait_ms));
+		atomic_inc(&rds_ibdev->rid_refcount);
 	}
 
 	ic->i_pd = NULL;
