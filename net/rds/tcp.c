@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -453,6 +453,8 @@ struct rds_transport rds_tcp_transport = {
 	.t_type			= RDS_TRANS_TCP,
 	.t_prefer_loopback	= 1,
 	.t_mp_capable		= 1,
+	.t_conn_count		= ATOMIC_INIT(0),
+	.t_zero_conn		= __WAIT_QUEUE_HEAD_INITIALIZER(rds_tcp_transport.t_zero_conn),
 };
 
 static int rds_tcp_netid;
