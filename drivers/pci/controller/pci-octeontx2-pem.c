@@ -387,7 +387,10 @@ static int octeontx2_pem_config_write(struct pci_bus *bus, unsigned int devfn,
 	if (bus->number == cfg->busr.start)
 		return octeontx2_pem_bridge_write(bus, devfn, where, size, val);
 
-	octeontx2_be_workaround(bus, where, size, val);
+	if (MIDR_IS_CPU_MODEL_RANGE(read_cpuid_id(), MIDR_MRVL_OCTEONTX2_96XX,
+				    MIDR_CPU_VAR_REV(0, 0),
+				    MIDR_CPU_VAR_REV(1, 0)))
+		octeontx2_be_workaround(bus, where, size, val);
 
 	return pci_generic_config_write(bus, devfn, where, size, val);
 }
