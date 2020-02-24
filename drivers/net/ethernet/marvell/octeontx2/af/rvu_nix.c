@@ -1880,13 +1880,38 @@ static void nix_tl1_default_cfg(struct rvu *rvu, struct nix_hw *nix_hw,
 	pfvf_map[schq] = TXSCH_SET_FLAG(pfvf_map[schq], NIX_TXSCHQ_CFG_DONE);
 }
 
+static int nix_txschq_cfg_read(struct rvu *rvu, struct nix_hw *nix_hw,
+			       int blkaddr, struct nix_txschq_config *req,
+			       struct nix_txschq_config *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	int idx, schq;
+	u64 reg;
+
+	rvu_nix_txsch_lock(nix_hw);
+	for (idx = 0; idx < req->num_regs; idx++) {
+		reg = req->reg[idx];
+		schq = TXSCHQ_IDX(reg, TXSCHQ_IDX_SHIFT);
+		if (!rvu_check_valid_reg(TXSCHQ_HWREGMAP, req->lvl, reg) &&
+		    !is_valid_txschq(rvu, blkaddr, req->lvl, pcifunc, schq)) {
+			rvu_nix_txsch_unlock(nix_hw);
+			return NIX_AF_INVAL_TXSCHQ_CFG;
+		}
+		rsp->regval[idx] = rvu_read64(rvu, blkaddr, reg);
+	}
+	rsp->lvl = req->lvl;
+	rsp->num_regs = req->num_regs;
+	rvu_nix_txsch_unlock(nix_hw);
+	return 0;
+}
+
 int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 				    struct nix_txschq_config *req,
-				    struct msg_rsp *rsp)
+				    struct nix_txschq_config *rsp)
 {
+	u64 reg, val, regval, schq_regbase, val_mask;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
-	u64 reg, regval, schq_regbase;
 	struct nix_txsch *txsch;
 	struct nix_hw *nix_hw;
 	int blkaddr, idx, err;
@@ -1905,6 +1930,9 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 	if (!nix_hw)
 		return -EINVAL;
 
+	if (req->read)
+		return nix_txschq_cfg_read(rvu, nix_hw, blkaddr, req, rsp);
+
 	txsch = &nix_hw->txsch[req->lvl];
 	pfvf_map = txsch->pfvf_map;
 
@@ -1922,6 +1950,7 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 		reg = req->reg[idx];
 		regval = req->regval[idx];
 		schq_regbase = reg & 0xFFFF;
+		val_mask = req->regval_mask[idx];
 
 		if (!is_txschq_hierarchy_valid(rvu, pcifunc, blkaddr,
 					       txsch->lvl, reg, regval)) {
@@ -1932,6 +1961,9 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 		/* Check if shaping and coloring is supported */
 		if (!is_txschq_shaping_valid(hw, req->lvl, reg))
 			continue;
+
+		val = rvu_read64(rvu, blkaddr, reg);
+		regval = (val & val_mask) | (regval & ~val_mask);
 
 		/* Replace PF/VF visible NIXLF slot with HW NIXLF id */
 		if (schq_regbase == NIX_AF_SMQX_CFG(0)) {
