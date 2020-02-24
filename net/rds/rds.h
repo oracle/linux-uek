@@ -734,7 +734,6 @@ struct rds_transport {
 	unsigned int		t_type;
 
 	atomic_t		t_conn_count;
-	wait_queue_head_t	t_zero_conn;
 
 	int (*laddr_check)(struct net *net, const struct in6_addr *addr,
 			   __u32 scope_id);
