@@ -371,6 +371,26 @@ static void rds_ib_free_caches(struct rds_ib_device *rds_ibdev)
 	WARN_ON(atomic_read(&rds_ib_allocation));
 }
 
+/* Reference counter for struct rds_ib_device on the module */
+static atomic_t rds_rdma_mod_ref = ATOMIC_INIT(0);
+DECLARE_WAIT_QUEUE_HEAD(rds_rdma_zero_dev);
+
+/* Work struct for storing the work to detroy an RDS/RDMA connection. */
+struct __rds_destroy_wk {
+	struct rds_connection   *rdw_conn;
+	struct work_struct      rdw_free_work;
+};
+
+/* Worker function to destroy an RDS/RDMA connection. */
+static void __rds_conn_destroy(struct work_struct *work)
+{
+	struct __rds_destroy_wk *free_wk;
+
+	free_wk = container_of(work, struct __rds_destroy_wk, rdw_free_work);
+	rds_conn_destroy(free_wk->rdw_conn, 1);
+	kfree(free_wk);
+}
+
 void rds_ib_nodev_connect(void)
 {
 	struct rds_ib_connection *ic;
@@ -384,9 +404,10 @@ void rds_ib_nodev_connect(void)
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 }
 
-static void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
+static void __rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 {
 	struct rds_ib_connection *ic, *tmp_ic;
+	struct __rds_destroy_wk *free_wk;
 	LIST_HEAD(tmp_list);
 	unsigned long flags;
 
@@ -408,26 +429,91 @@ static void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 		INIT_LIST_HEAD(&rds_ibdev->conn_list);
 		spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 
-		list_for_each_entry_safe(ic, tmp_ic, &tmp_list, ib_node)
-			rds_conn_destroy(ic->conn, 1);
+		/* Spread out the work to destroy all the connections. */
+		list_for_each_entry_safe(ic, tmp_ic, &tmp_list, ib_node) {
+			list_del_init(&ic->ib_node);
+
+			free_wk = kmalloc(sizeof(*free_wk), GFP_KERNEL);
+			if (!free_wk) {
+				rds_conn_destroy(ic->conn, 1);
+			} else {
+				free_wk->rdw_conn = ic->conn;
+				INIT_WORK(&free_wk->rdw_free_work,
+					  __rds_conn_destroy);
+				queue_work(rds_ibdev->rid_dev_wq,
+					   &free_wk->rdw_free_work);
+			}
+		}
 	} else {
+		/* Drop all rds_ib_connections associated with this device.
+		 * Note that there can be some rds_ib_connections which were
+		 * associated with this device but had been dropped prior to
+		 * this.  And they still have resources associated with this
+		 * device because of the delayed free mechanism.  Those
+		 * resources will either be freed by the delayed work; or when
+		 * those rds_ib_connections try to restart and a new device
+		 * is available, the resources will be freed when
+		 * rds_ib_setup_qp() is called as the new device will not
+		 * match with the old device.  The struct rds_ib_device will
+		 * be freed when all the associated resources are freed (the
+		 * reference count dropped to 0).
+		 */
 		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
 			rds_conn_drop(ic->conn, DR_RDMA_DEV_REM);
 		spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 	}
 }
 
-/*
- * rds_ib_destroy_mr_pool() blocks on a few things and mrs drop references
- * from interrupt context so we push freing off into a work struct in krdsd.
- */
+/* Struct to hold device shut down work. */
+struct __rds_dev_shutdown_wk {
+	struct rds_ib_device	*rdsw_ibdev;
+	struct work_struct	rdsw_work;
+};
 
-/* free up rds_ibdev->dev related resource. We have to wait until freeing
- * work is done to avoid the racing with freeing in mlx4_remove_one ->
- * mlx4_cleanup_mr_table path
- */
-static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
+/* Device shut down worker function. */
+static void __rds_dev_shutdown_worker(struct work_struct *work)
 {
+	struct __rds_dev_shutdown_wk *wk;
+
+	wk = container_of(work, struct __rds_dev_shutdown_wk, rdsw_work);
+	__rds_ib_dev_shutdown(wk->rdsw_ibdev);
+	rds_ib_dev_put(wk->rdsw_ibdev);
+	kfree(wk);
+}
+
+/* Shut down a device.
+ *
+ * @rds_ibdev: pointer to the device to be shut down.
+ */
+static void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
+{
+	struct __rds_dev_shutdown_wk *wk;
+
+	wk = kmalloc(sizeof(*wk), GFP_KERNEL);
+	if (!wk) {
+		__rds_ib_dev_shutdown(rds_ibdev);
+		return;
+	}
+
+	wk->rdsw_ibdev = rds_ibdev;
+	/* Get a reference on the rds_ibdev so that it won't go away util
+	 * the worker is done is the device.
+	 */
+	atomic_inc(&rds_ibdev->rid_refcount);
+	INIT_WORK(&wk->rdsw_work, __rds_dev_shutdown_worker);
+	queue_work(rds_aux_wq, &wk->rdsw_work);
+}
+
+/* Worker function to de-allocate resources associated with a struct
+ * rds_ib_device.  The work is queued when all references to the struct
+ * are removed.
+ */
+static void rds_ib_dev_free(struct work_struct *work)
+{
+	struct rds_ib_ipaddr *i_ipaddr, *i_next;
+	struct rds_ib_device *rds_ibdev = container_of(work,
+					struct rds_ib_device, rid_free_work);
+
 	if (rds_ibdev->srq) {
 		rds_ib_srq_exit(rds_ibdev);
 		kfree(rds_ibdev->srq);
@@ -449,15 +535,6 @@ static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
 		destroy_workqueue(rds_ibdev->rid_dev_wq);
 	if (rds_ibdev->pd)
 		ib_dealloc_pd(rds_ibdev->pd);
-}
-
-static void rds_ib_dev_free(struct work_struct *work)
-{
-	struct rds_ib_ipaddr *i_ipaddr, *i_next;
-	struct rds_ib_device *rds_ibdev = container_of(work,
-					struct rds_ib_device, rid_free_work);
-
-	rds_ib_dev_free_dev(rds_ibdev);
 
 	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
 		list_del(&i_ipaddr->list);
@@ -467,7 +544,16 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
+	/* Wake up the thread waiting in rds_ib_remove_one(). */
+	complete(&rds_ibdev->rid_dev_rem_complete);
+	WARN_ON(!list_empty(&rds_ibdev->conn_list));
 	kfree(rds_ibdev);
+
+	/* If this is the last reference, wake up the thread doing the device
+	 * removal.
+	 */
+	if (!atomic_dec_return(&rds_rdma_mod_ref))
+		wake_up(&rds_rdma_zero_dev);
 }
 
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
@@ -615,7 +701,8 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	rds_rtd(RDS_RTD_RDMA_IB, "Removing ib_device: %p name: %s num_ports: %u\n",
 		device, device->name, device->phys_port_cnt);
 
-	rds_ibdev = ib_get_client_data(device, &rds_ib_client);
+	rds_ibdev = (struct rds_ib_device *)client_data;
+	/* The device is already removed. */
 	if (!rds_ibdev) {
 		rds_rtd(RDS_RTD_ACT_BND, "rds_ibdev is NULL, ib_device %p\n",
 			device);
@@ -630,8 +717,11 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	list_del_rcu(&rds_ibdev->list);
 	up_write(&rds_ib_devices_lock);
 
-	/* Stop connection attempts from getting a reference to this device. */
-	ib_set_client_data(device, &rds_ib_client, NULL);
+	/* Stop connection attempts from getting a reference to this device.
+	 * Only need to do this if it is not done already.
+	 */
+	if (!rds_ibdev->rid_mod_unload)
+		ib_set_client_data(device, &rds_ib_client, NULL);
 
 	/*
 	 * This synchronize rcu is waiting for readers of both the ib
@@ -648,8 +738,11 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	rds_ib_dev_shutdown(rds_ibdev);
 	rds_rdma_dev_rs_drop(rds_ibdev);
 
-	/* Drop our reference and let the last guy do the work. */
+	/* Drop our reference and wait for the last guy to wake us up.  Note
+	 * this we may be the last guy.
+	 */
 	rds_ib_dev_put(rds_ibdev);
+	wait_for_completion(&rds_ibdev->rid_dev_rem_complete);
 }
 
 struct ib_client rds_ib_client = {
@@ -937,6 +1030,18 @@ static void detect_link_layers(struct ib_device *ibdev)
 	}
 }
 
+/* Device removal worker function.  It just calls rds_ib_remove_one().  The
+ * reason to have this is to hang out the removal work to a workqueue so
+ * that different threads can work on different devices.
+ */
+static void rds_dev_removal_worker(struct work_struct *work)
+{
+	struct rds_ib_device *rds_ibdev;
+
+	rds_ibdev = container_of(work, struct rds_ib_device, rid_dev_rem_work);
+	rds_ib_remove_one(rds_ibdev->dev, rds_ibdev);
+}
+
 void rds_ib_add_one(struct ib_device *device)
 {
 	struct rds_ib_device *rds_ibdev;
@@ -976,6 +1081,7 @@ void rds_ib_add_one(struct ib_device *device)
 	spin_lock_init(&rds_ibdev->spinlock);
 	atomic_set(&rds_ibdev->rid_refcount, 1);
 	INIT_WORK(&rds_ibdev->rid_free_work, rds_ib_dev_free);
+	INIT_WORK(&rds_ibdev->rid_dev_rem_work, rds_dev_removal_worker);
 
 	rds_ibdev->max_wrs = dev_attr->max_qp_wr;
 	rds_ibdev->max_sge = min(dev_attr->max_send_sge, dev_attr->max_recv_sge);
@@ -997,6 +1103,8 @@ void rds_ib_add_one(struct ib_device *device)
 
 	rds_ibdev->max_initiator_depth = dev_attr->max_qp_init_rd_atom;
 	rds_ibdev->max_responder_resources = dev_attr->max_qp_rd_atom;
+
+	init_completion(&rds_ibdev->rid_dev_rem_complete);
 
 	rds_ibdev->dev = device;
 	rds_ibdev->pd = ib_alloc_pd(device, 0);
@@ -1075,6 +1183,8 @@ void rds_ib_add_one(struct ib_device *device)
 
 	ib_set_client_data(device, &rds_ib_client, rds_ibdev);
 
+	atomic_inc(&rds_rdma_mod_ref);
+
 	/* Check if those connections not associated with a device can
 	 * make use of this newly added one.
 	 */
@@ -1091,13 +1201,8 @@ free_attr:
 
 static void rds_ib_unregister_client(void)
 {
-	int i;
-
+	/* This triggers the upcall to remove all the RDMA devices. */
 	ib_unregister_client(&rds_ib_client);
-	flush_workqueue(rds_wq);
-
-	for (i = 0; i < RDS_NMBR_CP_WQS; ++i)
-		flush_workqueue(rds_cp_wqs[i]);
 }
 
 int rds_ib_init(void)
@@ -1132,7 +1237,8 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_recv;
 
-	rds_aux_wq = create_singlethread_workqueue("krdsd_aux");
+	rds_aux_wq = alloc_workqueue("%s", WQ_UNBOUND | WQ_MEM_RECLAIM, 0,
+				     "krdsd_aux");
 	if (!rds_aux_wq) {
 		pr_err("RDS/IB: failed to create aux workqueue\n");
 		goto out_ibreg;
@@ -1166,49 +1272,62 @@ out:
 	return ret;
 }
 
-
 void rds_ib_exit(void)
 {
 	struct rds_ib_device *rds_ibdev;
+
+	/* After unregistering the module, no new connection will be made
+	 * using this transport.
+	 */
+	rds_trans_unregister(&rds_ib_transport);
 
 	rds_info_deregister_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 #if IS_ENABLED(CONFIG_IPV6)
 	rds_info_deregister_func(RDS6_INFO_IB_CONNECTIONS, rds6_ib_ic_info);
 #endif
 	down_read(&rds_ib_devices_lock);
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list)
+	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
 		rds_ibdev->rid_mod_unload = true;
+
+		/* Stop connection attempts from getting a reference to this
+		 * device.  And doing this also removes the race if the
+		 * device is also being removed and the remove upcall is done
+		 * at the same time.
+		 */
+		ib_set_client_data(rds_ibdev->dev, &rds_ib_client, NULL);
+
+		/* The worker function just calls rds_ib_remove_one().  When
+		 * rds_ib_remove_one() tries to remove this device from the
+		 * rds_ib_devices list, it will block if this loop has not
+		 * finished.  But that should be OK.
+		 */
+		queue_work(rds_aux_wq, &rds_ibdev->rid_dev_rem_work);
+	}
 	up_read(&rds_ib_devices_lock);
+
+	/* Now wait for all the device free work to finish before freeing all
+	 * other resource.
+	 */
+	flush_workqueue(rds_wq);
+	wait_event(rds_rdma_zero_dev, !atomic_read(&rds_rdma_mod_ref));
 
 	/* Calling ib_unregister_client() triggers the upcall to
 	 * rds_ib_remove_one() to remove all RDMA devices sequentially.
-	 * And rds_ib_remove_one() will destroy all conns associated with
-	 * a device.
+	 * But since all devices should be freed at this point, so the
+	 * client_data passed to rds_ib_remove_one() should be NULL.  Hence
+	 * it will return immediately.
 	 */
 	rds_ib_unregister_client();
 
-	/* Wait for all RDS/RDMA connections to die before continuing */
-	if (atomic_read(&rds_ib_transport.t_conn_count)) {
-		int i;
+	/* Now kill all RDS/RDMA connection without an associated device. */
+	rds_ib_destroy_nodev_conns();
 
-		rds_ib_destroy_nodev_conns();
-		/* Flush all the queues before waiting. */
-		for (i = 0; i < RDS_NMBR_CP_WQS; ++i)
-			flush_workqueue(rds_cp_wqs[i]);
-		flush_workqueue(rds_local_wq);
-		wait_event(rds_ib_transport.t_zero_conn,
-			   !atomic_read(&rds_ib_transport.t_conn_count));
-	}
-
-	/* After all the connections are freed, we wait for all the
-	 * device free work to finish before freeing all other resource.
-	 */
-	flush_workqueue(rds_wq);
+	/* There should not be any RDS/RDMA connections. */
+	WARN_ON(atomic_read(&rds_ib_transport.t_conn_count));
 
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();
 	destroy_workqueue(rds_aux_wq);
-	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
 
 	if (rds_rdma_rtnl_sk) {
@@ -1245,7 +1364,6 @@ struct rds_transport rds_ib_transport = {
 	.t_name			= "infiniband",
 	.t_type			= RDS_TRANS_IB,
 	.t_conn_count		= ATOMIC_INIT(0),
-	.t_zero_conn		= __WAIT_QUEUE_HEAD_INITIALIZER(rds_ib_transport.t_zero_conn),
 };
 
 int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
