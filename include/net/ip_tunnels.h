@@ -2,6 +2,7 @@
 #ifndef __NET_IP_TUNNELS_H
 #define __NET_IP_TUNNELS_H 1
 
+#include <linux/uek_kabi.h>
 #include <linux/if_tunnel.h>
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
@@ -142,6 +143,15 @@ struct ip_tunnel {
 	__u32			fwmark;
 	bool			collect_md;
 	bool			ignore_df;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 struct tnl_ptk_info {
