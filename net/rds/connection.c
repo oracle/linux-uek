@@ -632,8 +632,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	 */
 	rds_cong_remove_conn(conn);
 
-	if (!atomic_dec_return(&conn->c_trans->t_conn_count))
-		wake_up(&conn->c_trans->t_zero_conn);
+	atomic_dec(&conn->c_trans->t_conn_count);
 
 	put_net(conn->c_net);
 	kfree(conn->c_path);
