@@ -3,6 +3,7 @@
 #define _X_TABLES_H
 
 
+#include <linux/uek_kabi.h>
 #include <linux/netdevice.h>
 #include <linux/static_key.h>
 #include <linux/netfilter.h>
@@ -217,6 +218,11 @@ struct xt_target {
 	unsigned short proto;
 
 	unsigned short family;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /* Furniture shopping... */
