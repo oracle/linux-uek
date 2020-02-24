@@ -373,8 +373,12 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			kmem_cache_free(rds_conn_slab, conn);
 			conn = parent->c_passive;
 		} else {
+			/* Note that for loopback connection, only one
+			 * rds_connection is added to the conn hash table.
+			 */
 			parent->c_passive = conn;
-			conn->c_base_conn = get_base_conn(laddr, faddr, gfp);
+			conn->c_base_conn = get_base_conn(laddr, faddr,
+							  GFP_ATOMIC);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
 		}
@@ -403,7 +407,8 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		} else {
 			conn->c_my_gen_num = rds_gen_num;
 			conn->c_peer_gen_num = 0;
-			conn->c_base_conn = get_base_conn(laddr, faddr, gfp);
+			conn->c_base_conn = get_base_conn(laddr, faddr,
+							  GFP_ATOMIC);
 			hlist_add_head_rcu(&conn->c_hash_node, head);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
@@ -601,6 +606,7 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 {
 	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
+	struct rds_base_conn *base_conn = NULL;
 	int i;
 
 	rds_rtd_ptr(RDS_RTD_CM, "freeing conn %p <%pI6c,%pI6c,%d>\n",
@@ -611,8 +617,10 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
 	hlist_del_init_rcu(&conn->c_hash_node);
-	if (conn->c_base_conn)
-		kref_put(&conn->c_base_conn->kref, base_conn_release);
+	if (conn->c_base_conn) {
+		base_conn = conn->c_base_conn;
+		conn->c_base_conn = NULL;
+	}
 	spin_unlock_irq(&rds_conn_lock);
 	synchronize_rcu();
 
@@ -635,6 +643,8 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	atomic_dec(&conn->c_trans->t_conn_count);
 
 	put_net(conn->c_net);
+	if (base_conn)
+		kref_put(&base_conn->kref, base_conn_release);
 	kfree(conn->c_path);
 	kmem_cache_free(rds_conn_slab, conn);
 }
