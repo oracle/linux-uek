@@ -44,7 +44,6 @@
 
 /* converting this to RCU is a chore for another day.. */
 static DEFINE_SPINLOCK(rds_conn_lock);
-static unsigned long rds_conn_count;
 static struct hlist_head rds_conn_hash[RDS_CONNECTION_HASH_ENTRIES];
 static struct kmem_cache *rds_conn_slab;
 
@@ -377,7 +376,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			parent->c_passive = conn;
 			conn->c_base_conn = get_base_conn(laddr, faddr, gfp);
 			rds_cong_add_conn(conn);
-			rds_conn_count++;
+			atomic_inc(&conn->c_trans->t_conn_count);
 		}
 	} else {
 		/* Creating normal conn */
@@ -407,7 +406,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			conn->c_base_conn = get_base_conn(laddr, faddr, gfp);
 			hlist_add_head_rcu(&conn->c_hash_node, head);
 			rds_cong_add_conn(conn);
-			rds_conn_count++;
+			atomic_inc(&conn->c_trans->t_conn_count);
 		}
 	}
 	spin_unlock_irqrestore(&rds_conn_lock, flags);
@@ -570,6 +569,7 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 	 * module unload and a pending reconn delay work.
 	 */
 	cancel_delayed_work_sync(&cp->cp_reconn_w);
+	cancel_delayed_work_sync(&cp->cp_conn_w);
 
 	/* tear down queued messages */
 	list_for_each_entry_safe(rm, rtmp,
@@ -600,9 +600,8 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
  */
 void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 {
-	unsigned long flags;
-	int i;
 	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
+	int i;
 
 	rds_rtd_ptr(RDS_RTD_CM, "freeing conn %p <%pI6c,%pI6c,%d>\n",
 		    conn, &conn->c_laddr, &conn->c_faddr,
@@ -633,13 +632,12 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	 */
 	rds_cong_remove_conn(conn);
 
+	if (!atomic_dec_return(&conn->c_trans->t_conn_count))
+		wake_up(&conn->c_trans->t_zero_conn);
+
 	put_net(conn->c_net);
 	kfree(conn->c_path);
 	kmem_cache_free(rds_conn_slab, conn);
-
-	spin_lock_irqsave(&rds_conn_lock, flags);
-	rds_conn_count--;
-	spin_unlock_irqrestore(&rds_conn_lock, flags);
 }
 EXPORT_SYMBOL_GPL(rds_conn_destroy);
 
