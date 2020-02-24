@@ -1186,7 +1186,25 @@ void rds_ib_exit(void)
 	 * a device.
 	 */
 	rds_ib_unregister_client();
-	rds_ib_destroy_nodev_conns();
+
+	/* Wait for all RDS/RDMA connections to die before continuing */
+	if (atomic_read(&rds_ib_transport.t_conn_count)) {
+		int i;
+
+		rds_ib_destroy_nodev_conns();
+		/* Flush all the queues before waiting. */
+		for (i = 0; i < RDS_NMBR_CP_WQS; ++i)
+			flush_workqueue(rds_cp_wqs[i]);
+		flush_workqueue(rds_local_wq);
+		wait_event(rds_ib_transport.t_zero_conn,
+			   !atomic_read(&rds_ib_transport.t_conn_count));
+	}
+
+	/* After all the connections are freed, we wait for all the
+	 * device free work to finish before freeing all other resource.
+	 */
+	flush_workqueue(rds_wq);
+
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();
 	destroy_workqueue(rds_aux_wq);
@@ -1225,7 +1243,9 @@ struct rds_transport rds_ib_transport = {
 	.sock_release		= rds_rdma_sock_release,
 	.t_owner		= THIS_MODULE,
 	.t_name			= "infiniband",
-	.t_type			= RDS_TRANS_IB
+	.t_type			= RDS_TRANS_IB,
+	.t_conn_count		= ATOMIC_INIT(0),
+	.t_zero_conn		= __WAIT_QUEUE_HEAD_INITIALIZER(rds_ib_transport.t_zero_conn),
 };
 
 int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
