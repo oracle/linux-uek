@@ -86,7 +86,7 @@ struct mbox_msghdr {
 #define OTX2_MBOX_REQ_SIG (0xdead)
 #define OTX2_MBOX_RSP_SIG (0xbeef)
 	u16 sig;         /* Signature, for validating corrupted msgs */
-#define OTX2_MBOX_VERSION (0x0004)
+#define OTX2_MBOX_VERSION (0x0005)
 	u16 ver;         /* Version of msg's structure for this ID */
 	u16 next_msgoff; /* Offset of next msg within mailbox region */
 	int rc;          /* Msg process'ed response code */
@@ -257,7 +257,8 @@ M(NIX_HWCTX_DISABLE,	0x8003, nix_hwctx_disable,			\
 M(NIX_TXSCH_ALLOC,	0x8004, nix_txsch_alloc,			\
 				 nix_txsch_alloc_req, nix_txsch_alloc_rsp)   \
 M(NIX_TXSCH_FREE,	0x8005, nix_txsch_free, nix_txsch_free_req, msg_rsp) \
-M(NIX_TXSCHQ_CFG,	0x8006, nix_txschq_cfg, nix_txschq_config, msg_rsp)  \
+M(NIX_TXSCHQ_CFG,	0x8006, nix_txschq_cfg, nix_txschq_config,	\
+				nix_txschq_config)			\
 M(NIX_STATS_RST,	0x8007, nix_stats_rst, msg_req, msg_rsp)	\
 M(NIX_VTAG_CFG,		0x8008, nix_vtag_cfg, nix_vtag_config,		\
 				 nix_vtag_config_rsp)			\
@@ -798,6 +799,7 @@ struct nix_txsch_free_req {
 struct nix_txschq_config {
 	struct mbox_msghdr hdr;
 	u8 lvl;	/* SMQ/MDQ/TL4/TL3/TL2/TL1 */
+	u8 read;
 #define TXSCHQ_IDX_SHIFT	16
 #define TXSCHQ_IDX_MASK		(BIT_ULL(10) - 1)
 #define TXSCHQ_IDX(reg, shift)	(((reg) >> (shift)) & TXSCHQ_IDX_MASK)
@@ -805,6 +807,8 @@ struct nix_txschq_config {
 #define MAX_REGS_PER_MBOX_MSG	20
 	u64 reg[MAX_REGS_PER_MBOX_MSG];
 	u64 regval[MAX_REGS_PER_MBOX_MSG];
+	/* All 0's => overwrite with new value */
+	u64 regval_mask[MAX_REGS_PER_MBOX_MSG];
 };
 
 struct nix_vtag_config {
