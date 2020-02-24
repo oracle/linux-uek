@@ -2054,6 +2054,8 @@ void rds_ib_reset_fastreg(struct work_struct *work)
 
 	rds_ib_destroy_fastreg(rds_ibdev);
 	if (rds_ib_setup_fastreg(rds_ibdev)) {
+		up_write(&rds_ibdev->fastreg_lock);
+
 		/* Failing to setup fastreg qp at this stage is unexpected.
 		 * If it happens, throw a warning, and return immediately,
 		 * without up_writing the fastreg_lock.
