@@ -1110,12 +1110,9 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 
 	if (ibmr->fr_state != MR_IS_VALID)
 		goto out;
-	/* Even though we are posting one request,
-	   the number is decremented by 2 to match
-	   that in rds_ib_rdma_build_fastreg().
-	*/
-	while (atomic_sub_return(2, n_wrs) <= 0) {
-		atomic_add(2, n_wrs);
+
+	while (atomic_sub_return(1, n_wrs) <= 0) {
+		atomic_add(1, n_wrs);
 		/* Depending on how many times schedule() is called,
 		 * we could replace it with wait_event() in future.
 		 */
@@ -1134,7 +1131,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	ret = ib_post_send(ibmr->device->fastreg_qp, &s_wr, &failed_wr);
 	WARN_ON(failed_wr != &s_wr);
 	if (ret) {
-		atomic_add(2, n_wrs);
+		atomic_add(1, n_wrs);
 		ibmr->fr_state = MR_IS_STALE;
 		pr_warn_ratelimited("RDS/IB: %s:%d ib_post_send returned %d\n",
 				    __func__, __LINE__, ret);
@@ -1142,6 +1139,8 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	}
 
 	wait_for_completion(&ibmr->wr_comp);
+	atomic_add(1, n_wrs);
+
  out:
 	up_read(&ibmr->device->fastreg_lock);
 	return ret;
@@ -1500,6 +1499,7 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 	}
 
 	wait_for_completion(&ibmr->wr_comp);
+	atomic_add(2, n_wrs);
 	if (ibmr->fr_state == MR_IS_STALE) {
 		/* Registration request failed */
 		ret = -EAGAIN;
@@ -1566,7 +1566,6 @@ void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc)
 		queue_work(rds_ibdev->rid_dev_wq, &rds_ibdev->fastreg_reset_w);
 	}
 
-	atomic_add(2, &rds_ibdev->fastreg_wrs);
 	complete(&ibmr->wr_comp);
 }
 
@@ -1590,6 +1589,5 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 		ibmr->fr_state = MR_IS_STALE;
 	}
 
-	atomic_add(2, &ic->i_fastreg_wrs);
 	complete(&ibmr->wr_comp);
 }
