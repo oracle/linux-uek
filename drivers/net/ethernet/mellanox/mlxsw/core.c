@@ -1529,6 +1529,7 @@ static void mlxsw_core_listener_unregister(struct mlxsw_core *mlxsw_core,
 int mlxsw_core_trap_register(struct mlxsw_core *mlxsw_core,
 			     const struct mlxsw_listener *listener, void *priv)
 {
+	enum mlxsw_reg_htgt_trap_group trap_group;
 	enum mlxsw_reg_hpkt_action action;
 	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int err;
@@ -1540,8 +1541,10 @@ int mlxsw_core_trap_register(struct mlxsw_core *mlxsw_core,
 
 	action = listener->enabled_on_register ? listener->en_action :
 						 listener->dis_action;
+	trap_group = listener->enabled_on_register ? listener->en_trap_group :
+						     listener->dis_trap_group;
 	mlxsw_reg_hpkt_pack(hpkt_pl, action, listener->trap_id,
-			    listener->trap_group, listener->is_ctrl);
+			    trap_group, listener->is_ctrl);
 	err = mlxsw_reg_write(mlxsw_core,  MLXSW_REG(hpkt), hpkt_pl);
 	if (err)
 		goto err_trap_set;
@@ -1562,7 +1565,7 @@ void mlxsw_core_trap_unregister(struct mlxsw_core *mlxsw_core,
 
 	if (!listener->is_event) {
 		mlxsw_reg_hpkt_pack(hpkt_pl, listener->dis_action,
-				    listener->trap_id, listener->trap_group,
+				    listener->trap_id, listener->dis_trap_group,
 				    listener->is_ctrl);
 		mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
 	}
@@ -1575,6 +1578,7 @@ int mlxsw_core_trap_state_set(struct mlxsw_core *mlxsw_core,
 			      const struct mlxsw_listener *listener,
 			      bool enabled)
 {
+	enum mlxsw_reg_htgt_trap_group trap_group;
 	enum mlxsw_reg_hpkt_action action;
 	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int err;
@@ -1584,8 +1588,10 @@ int mlxsw_core_trap_state_set(struct mlxsw_core *mlxsw_core,
 		return -EINVAL;
 
 	action = enabled ? listener->en_action : listener->dis_action;
+	trap_group = enabled ? listener->en_trap_group :
+			       listener->dis_trap_group;
 	mlxsw_reg_hpkt_pack(hpkt_pl, action, listener->trap_id,
-			    listener->trap_group, listener->is_ctrl);
+			    trap_group, listener->is_ctrl);
 	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
 	if (err)
 		return err;
