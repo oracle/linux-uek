@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -218,4 +218,6 @@ struct rds_transport rds_loop_transport = {
 	.skb_local              = rds_message_skb_local,
 	.inc_free		= rds_loop_inc_free,
 	.t_name			= "loopback",
+	.t_conn_count		= ATOMIC_INIT(0),
+	.t_zero_conn		= __WAIT_QUEUE_HEAD_INITIALIZER(rds_loop_transport.t_zero_conn),
 };
