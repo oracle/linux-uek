@@ -528,6 +528,7 @@ static void rds_ib_dev_free(struct work_struct *work)
 		cancel_work_sync(&rds_ibdev->fastreg_reset_w);
 		down_write(&rds_ibdev->fastreg_lock);
 		rds_ib_destroy_fastreg(rds_ibdev);
+		up_write(&rds_ibdev->fastreg_lock);
 	}
 	if (rds_ibdev->mr)
 		ib_dereg_mr(rds_ibdev->mr);
