@@ -425,6 +425,9 @@ struct rds_ib_device {
 
 	bool			rid_mod_unload;
 	bool			rid_dev_rem;
+
+	struct work_struct	rid_dev_rem_work;
+	struct completion	rid_dev_rem_complete;
 };
 
 #define ibdev_to_node(ibdev) dev_to_node((ibdev)->dev.parent)
