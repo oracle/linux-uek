@@ -3321,9 +3321,6 @@ static int nested_svm_exit_special(struct vcpu_svm *svm)
 	return NESTED_EXIT_CONTINUE;
 }
 
-/*
- * If this function returns true, this #vmexit was already handled
- */
 static int nested_svm_intercept(struct vcpu_svm *svm)
 {
 	u32 exit_code = svm->vmcb->control.exit_code;
