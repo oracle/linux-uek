@@ -529,8 +529,7 @@ static int cptpf_sriov_configure(struct pci_dev *pdev, int numvfs)
 
 	if (numvfs > 0) {
 		ret = cpt_try_create_default_eng_grps(cptpf->pdev,
-						      &cptpf->eng_grps,
-						      CPT_96XX);
+						      &cptpf->eng_grps);
 		if (ret)
 			goto error;
 

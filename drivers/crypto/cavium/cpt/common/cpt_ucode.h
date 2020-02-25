@@ -23,10 +23,6 @@
  */
 #define MAX_ENGS_PER_GRP	2
 
-/* Default tar archive file names */
-#define CPT_8X_TAR_FILE_NAME	"cpt8x-mc.tar"
-#define CPT_9X_TAR_FILE_NAME	"cpt9x-mc.tar"
-
 /* CPT ucode alignment */
 #define CPT_UCODE_ALIGNMENT	128
 
@@ -221,8 +217,7 @@ int cpt_init_eng_grps(struct pci_dev *pdev, struct engine_groups *eng_grps,
 void cpt_cleanup_eng_grps(struct pci_dev *pdev,
 			  struct engine_groups *eng_grps);
 int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
-				    struct engine_groups *eng_grps,
-				    int pf_type);
+				    struct engine_groups *eng_grps);
 void cpt_set_eng_grps_is_rdonly(struct engine_groups *eng_grps, bool is_rdonly);
 int cpt_uc_supports_eng_type(struct microcode *ucode, int eng_type);
 int cpt_eng_grp_has_eng_type(struct engine_group_info *eng_grp, int eng_type);

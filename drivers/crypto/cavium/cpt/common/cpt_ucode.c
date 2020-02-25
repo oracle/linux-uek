@@ -1497,13 +1497,12 @@ static void cpt_clear_ucode_ops(struct engine_groups *eng_grps)
 }
 
 int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
-				    struct engine_groups *eng_grps,
-				    int pf_type)
+				    struct engine_groups *eng_grps)
 {
 	struct tar_ucode_info_t *tar_ucode_info[MAX_ENGS_PER_GRP] = { 0 };
 	struct engines engs[MAX_ENGS_PER_GRP] = { 0 };
 	struct tar_arch_info_t *tar_arch = NULL;
-	char *tar_filename;
+	char tar_filename[NAME_LENGTH];
 	int i, ret = 0;
 
 	mutex_lock(&eng_grps->lock);
@@ -1520,22 +1519,7 @@ int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 		if (eng_grps->grp[i].is_enabled)
 			goto err;
 
-	switch (pf_type) {
-	case CPT_81XX:
-	case CPT_AE_83XX:
-	case CPT_SE_83XX:
-		tar_filename = CPT_8X_TAR_FILE_NAME;
-	break;
-
-	case CPT_96XX:
-		tar_filename = CPT_9X_TAR_FILE_NAME;
-	break;
-
-	default:
-		dev_err(&pdev->dev, "Unknown PF type %d\n", pf_type);
-		ret = -EINVAL;
-		goto err;
-	}
+	sprintf(tar_filename, "cpt%02d-mc.tar", pdev->revision);
 
 	tar_arch = load_tar_archive(&pdev->dev, tar_filename);
 	if (!tar_arch)
