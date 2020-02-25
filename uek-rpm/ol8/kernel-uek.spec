@@ -503,6 +503,7 @@ Requires(pre): linux-firmware >= 20180507-63.git0df406af.0.1\
 Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
+Requires: numactl-libs\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 %{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
@@ -549,6 +550,7 @@ BuildRequires: elfutils-devel
 BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
+BuildRequires: numactl-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif

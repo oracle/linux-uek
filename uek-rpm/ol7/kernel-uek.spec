@@ -542,6 +542,7 @@ Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
 Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
+Requires: numactl-libs\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 %{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
@@ -588,6 +589,7 @@ BuildRequires: elfutils-devel
 BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
+BuildRequires: numactl-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
@@ -609,9 +611,6 @@ BuildRequires: slang-devel, slang-static
 %if %{with_perf}
 BuildRequires: zlib-devel binutils-devel newt-devel python-devel bison flex xz-devel
 BuildRequires: audit-libs-devel
-%ifnarch s390x %{arm}
-BuildRequires: numactl-devel
-%endif
 %endif
 %if %{with_tools}
 BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
