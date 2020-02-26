@@ -1120,7 +1120,9 @@ BuildKernel() {
 %endif
 
 %if %{with_dtrace}
+    cp Module.symvers Module.symvers.save
     make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+    mv -f Module.symvers.save Module.symvers
 %endif
 
     # Start installing the results
