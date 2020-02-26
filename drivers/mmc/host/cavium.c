@@ -739,7 +739,6 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	struct cvm_mmc_host *host = dev_id;
 	struct mmc_request *req = NULL;
 	struct cvm_mmc_slot *slot = NULL;
-	unsigned long flags = 0;
 	u64 emm_int, rsp_sts;
 	bool host_done;
 	int bus_id;
