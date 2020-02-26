@@ -5148,6 +5148,7 @@ skip_login:
 			set_bit(LOCAL_LOOP_UPDATE, &vha->dpc_flags);
 			set_bit(LOOP_RESYNC_NEEDED, &vha->dpc_flags);
 		}
+		return QLA_FUNCTION_FAILED;
 	}
 
 	found_devs = 0;
