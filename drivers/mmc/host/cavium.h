@@ -35,6 +35,7 @@
 
 /* Chip revision Id */
 #define REV_ID_0 0
+#define REV_ID_1 1
 #define REV_ID_2 2
 
 #define KHZ_400 (400000)
