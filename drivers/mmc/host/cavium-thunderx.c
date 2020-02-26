@@ -239,6 +239,9 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 			host->calibrate_glitch = true;
 			host->cond_clock_glitch = true;
 			host->max_freq = MHZ_100;
+		} else if (rev == REV_ID_1) {
+			host->cond_clock_glitch = true;
+			host->max_freq = MHZ_167;
 		} else if (rev == REV_ID_2) {
 			host->tap_requires_noclk = true;
 			host->max_freq = MHZ_112_5;
