@@ -323,6 +323,8 @@ __printf(3, 4)
 int sysfs_emit_at(char *buf, int at, const char *fmt, ...);
 int sysfs_file_change_owner(struct kobject *kobj, const char *name, kuid_t kuid,
 			    kgid_t kgid);
+int sysfs_link_change_owner(struct kobject *kobj, struct kobject *targ,
+			    const char *name, kuid_t kuid, kgid_t kgid);
 
 #else /* CONFIG_SYSFS */
 
@@ -554,6 +556,15 @@ static inline int sysfs_file_change_owner(struct kobject *kobj,
 {
 	return 0;
 }
+
+static inline int sysfs_link_change_owner(struct kobject *kobj,
+					  struct kobject *targ,
+					  const char *name, kuid_t kuid,
+					  kgid_t kgid)
+{
+	return 0;
+}
+
 #endif /* CONFIG_SYSFS */
 
 static inline int __must_check sysfs_create_file(struct kobject *kobj,
