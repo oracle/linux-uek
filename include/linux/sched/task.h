@@ -26,6 +26,20 @@ struct kernel_clone_args {
 	unsigned long stack;
 	unsigned long stack_size;
 	unsigned long tls;
+	/*
+	 * The following attributes were cherry-picked from commits
+	 * 49cb2fc42ce4b and ef2c41cf38a75 in Tejun Heo's "for-5.7" branch
+	 * in https://git.kernel.org/pub/scm/linux/kernel/git/tj/cgroup.git/
+	 *
+	 * Note that these values are currently unused but are reserved for
+	 * use if/when these clone3 features are added to UEK6.
+	 */
+	pid_t *set_tid;
+	/* Number of elements in *set_tid */
+	size_t set_tid_size;
+	int cgroup;
+	struct cgroup *cgrp;
+	struct css_set *cset;
 };
 
 /*
