@@ -628,6 +628,7 @@ struct mlx5_ib_mr {
 	atomic_t		num_deferred_work;
 	struct ib_odp_counters	odp_stats;
 	bool			is_odp_implicit;
+	wait_queue_head_t       q_deferred_work;
 	struct xarray		implicit_children;
 	union {
 		struct rcu_head rcu;
