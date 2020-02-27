@@ -347,6 +347,7 @@ mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 	int error;
 	int dirty_accountable = 0;
 
+	//printk("vma area %lu-%lu\n", vma->vm_start, vma->vm_end);
 	if (newflags == oldflags) {
 		*pprev = vma;
 		return 0;

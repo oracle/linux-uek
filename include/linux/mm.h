@@ -2215,6 +2215,8 @@ extern int watermark_scale_factor;
 /* nommu.c */
 extern atomic_long_t mmap_pages_allocated;
 extern int nommu_shrink_inode_mappings(struct inode *, size_t, size_t);
+/* maple_tree */
+void vma_store(struct mm_struct *mm, struct vm_area_struct *vma);
 
 /* interval_tree.c */
 void vma_interval_tree_insert(struct vm_area_struct *node,
