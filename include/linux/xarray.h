@@ -169,7 +169,7 @@ static inline bool xa_is_internal(const void *entry)
 	return ((unsigned long)entry & 3) == 2;
 }
 
-#define XA_ZERO_ENTRY		xa_mk_internal(257)
+#define XA_ZERO_ENTRY		xa_mk_internal(259)
 
 /**
  * xa_is_zero() - Is the entry a zero entry?
@@ -1259,6 +1259,32 @@ static inline bool xa_is_sibling(const void *entry)
 static inline bool xa_is_retry(const void *entry)
 {
 	return unlikely(entry == XA_RETRY_ENTRY);
+}
+
+#define XA_SKIP_ENTRY           xa_mk_internal(257)
+
+/**
+ * xa_is_skip() - Is the entry a skip entry?
+ * @entry: Entry retrieved from the XArray
+ *
+ * Return: %true if the entry is a skip entry.
+ */
+static inline bool xa_is_skip(const void *entry)
+{
+	return unlikely(entry == XA_SKIP_ENTRY);
+}
+
+#define XA_DELETED_ENTRY           xa_mk_internal(258)
+
+/**
+ * xa_is_deleted() - has the entry been deleted?
+ * @entry: Entry retrieved from the XArray
+ *
+ * Return: %true if the entry has been deleted.
+ */
+static inline bool xa_is_deleted(const void *entry)
+{
+	return unlikely(entry == XA_DELETED_ENTRY);
 }
 
 /**
