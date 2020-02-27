@@ -24,14 +24,27 @@ struct kmem_cache {
 	int nr_objs;
 	void *objs;
 	void (*ctor)(void *);
+	unsigned int non_kernel;
 };
 
+void kmem_cache_set_non_kernel(struct kmem_cache *cachep, unsigned int val)
+{
+	cachep->non_kernel = val;
+}
+
+unsigned long kmem_cache_get_alloc(struct kmem_cache *cachep)
+{
+	return cachep->size * nr_allocated;
+}
 void *kmem_cache_alloc(struct kmem_cache *cachep, int gfp)
 {
 	void *p;
 
-	if (!(gfp & __GFP_DIRECT_RECLAIM))
+	if (!(gfp & __GFP_DIRECT_RECLAIM) && !cachep->non_kernel)
 		return NULL;
+
+	if (!(gfp & __GFP_DIRECT_RECLAIM))
+		cachep->non_kernel--;
 
 	pthread_mutex_lock(&cachep->lock);
 	if (cachep->nr_objs) {
@@ -116,5 +129,6 @@ kmem_cache_create(const char *name, unsigned int size, unsigned int align,
 	ret->nr_objs = 0;
 	ret->objs = NULL;
 	ret->ctor = ctor;
+	ret->non_kernel = 0;
 	return ret;
 }
