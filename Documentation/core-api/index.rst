@@ -29,6 +29,7 @@ Core utilities
    printk-formats
    circular-buffers
    generic-radix-tree
+   maple-tree
    memory-allocation
    mm-api
    gfp_mask-from-fs-io
