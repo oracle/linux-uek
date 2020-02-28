@@ -526,6 +526,10 @@ void ib_destroy_fmr_pool(struct ib_fmr_pool *pool)
 	LIST_HEAD(fmr_list);
 	int                 i;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (pool->relaxed)
+		kthread_cancel_delayed_work_sync(&pool->dwork);
+#endif
 	kthread_destroy_worker(pool->worker);
 #ifdef WITHOUT_ORACLE_EXTENSIONS
 	ib_fmr_batch_release(pool);
