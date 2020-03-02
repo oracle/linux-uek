@@ -1690,11 +1690,6 @@ static bool vmx_rdtscp_supported(void)
 	return cpu_has_vmx_rdtscp();
 }
 
-static bool vmx_invpcid_supported(void)
-{
-	return cpu_has_vmx_invpcid();
-}
-
 /*
  * Swap MSR entry in host/guest MSR entry array.
  */
@@ -4128,7 +4123,7 @@ static void vmx_compute_secondary_exec_control(struct vcpu_vmx *vmx)
 		}
 	}
 
-	if (vmx_invpcid_supported()) {
+	if (cpu_has_vmx_invpcid()) {
 		/* Exposing INVPCID only when PCID is exposed */
 		bool invpcid_enabled =
 			guest_cpuid_has(vcpu, X86_FEATURE_INVPCID) &&
@@ -7163,6 +7158,8 @@ static void vmx_set_supported_cpuid(struct kvm_cpuid_entry2 *entry)
 	case 0x7:
 		if (boot_cpu_has(X86_FEATURE_MPX) && kvm_mpx_supported())
 			cpuid_entry_set(entry, X86_FEATURE_MPX);
+		if (boot_cpu_has(X86_FEATURE_INVPCID) && cpu_has_vmx_invpcid())
+			cpuid_entry_set(entry, X86_FEATURE_INVPCID);
 		break;
 	default:
 		break;
@@ -7963,7 +7960,6 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.cpuid_update = vmx_cpuid_update,
 
 	.rdtscp_supported = vmx_rdtscp_supported,
-	.invpcid_supported = vmx_invpcid_supported,
 
 	.set_supported_cpuid = vmx_set_supported_cpuid,
 
