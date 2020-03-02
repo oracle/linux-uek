@@ -1510,6 +1510,8 @@ static __init int svm_hardware_setup(void)
 
 	vgif = false; /* Disabled for CVE-2021-3653 */
 
+	kvm_set_cpu_caps();
+
 	return 0;
 
 err:
