@@ -6137,11 +6137,6 @@ static bool svm_invpcid_supported(void)
 	return false;
 }
 
-static bool svm_mpx_supported(void)
-{
-	return false;
-}
-
 static bool svm_xsaves_supported(void)
 {
 	return boot_cpu_has(X86_FEATURE_XSAVES);
@@ -7546,7 +7541,6 @@ static struct kvm_x86_ops svm_x86_ops __ro_after_init = {
 
 	.rdtscp_supported = svm_rdtscp_supported,
 	.invpcid_supported = svm_invpcid_supported,
-	.mpx_supported = svm_mpx_supported,
 	.xsaves_supported = svm_xsaves_supported,
 	.umip_emulated = svm_umip_emulated,
 	.pt_supported = svm_pt_supported,
