@@ -1408,7 +1408,7 @@ static __init void svm_set_cpu_caps(void)
 	if (nested) {
 		kvm_cpu_cap_set(X86_FEATURE_SVM);
 
-		if (boot_cpu_has(X86_FEATURE_NRIPS))
+		if (nrips)
 			kvm_cpu_cap_set(X86_FEATURE_NRIPS);
 
 		if (npt_enabled)
@@ -6077,7 +6077,8 @@ static void svm_cpuid_update(struct kvm_vcpu *vcpu)
 				    boot_cpu_has(X86_FEATURE_XSAVES);
 
 	/* Update nrips enabled cache */
-	svm->nrips_enabled = !!guest_cpuid_has(&svm->vcpu, X86_FEATURE_NRIPS);
+	svm->nrips_enabled = kvm_cpu_cap_has(X86_FEATURE_NRIPS) &&
+			     guest_cpuid_has(&svm->vcpu, X86_FEATURE_NRIPS);
 
 	if (!kvm_vcpu_apicv_active(vcpu))
 		return;
