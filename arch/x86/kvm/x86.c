@@ -5310,7 +5310,7 @@ static void kvm_init_msr_list(void)
 				continue;
 			break;
 		case MSR_TSC_AUX:
-			if (!kvm_x86_ops->rdtscp_supported())
+			if (!kvm_cpu_cap_has(X86_FEATURE_RDTSCP))
 				continue;
 			break;
 		case MSR_IA32_UMWAIT_CONTROL:
