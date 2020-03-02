@@ -172,4 +172,5 @@ int cgx_get_phy_mod_type(void *cgxd, int lmac_id);
 int cgx_get_phy_fec_stats(void *cgxd, int lmac_id);
 void cgx_lmac_enadis_higig2(void *cgxd, int lmac_id, bool enable);
 bool is_higig2_enabled(void *cgxd, int lmac_id);
+int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind);
 #endif /* CGX_H */
