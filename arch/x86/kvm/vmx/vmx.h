@@ -12,7 +12,6 @@
 #include "vmcs.h"
 
 extern const u32 vmx_msr_index[];
-extern u64 host_efer;
 
 #define MSR_TYPE_R	1
 #define MSR_TYPE_W	2
