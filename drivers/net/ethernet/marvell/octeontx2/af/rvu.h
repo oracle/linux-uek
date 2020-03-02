@@ -345,6 +345,7 @@ struct nix_hw {
 	struct nix_mark_format mark_format;
 	struct nix_lso lso;
 	struct nix_txvlan txvlan;
+	u64    *tx_credits;
 	void   *tx_stall;
 };
 

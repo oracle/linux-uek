@@ -3302,6 +3302,78 @@ static void nix_find_link_frs(struct rvu *rvu,
 		req->minlen = minlen;
 }
 
+static int
+nix_config_link_credits(struct rvu *rvu, int blkaddr, int link,
+			u16 pcifunc, u64 tx_credits)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	int pf = rvu_get_pf(pcifunc);
+	u8 cgx_id = 0, lmac_id = 0;
+	unsigned long poll_tmo;
+	bool restore_tx_en = 0;
+	struct nix_hw *nix_hw;
+	u64 cfg, sw_xoff = 0;
+	u16 schq = 0;
+	u32 credits;
+	int rc;
+
+	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return -EINVAL;
+
+	if (tx_credits == nix_hw->tx_credits[link])
+		return 0;
+
+	/* Enable cgx tx if disabled for credits to be back */
+	if (is_pf_cgxmapped(rvu, pf)) {
+		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+		restore_tx_en = !cgx_lmac_tx_enable(rvu_cgx_pdata(cgx_id, rvu),
+						    lmac_id, true);
+	}
+
+	mutex_lock(&rvu->rsrc_lock);
+	/* Disable new traffic to link */
+	if (hw->cap.nix_shaping) {
+		schq = nix_get_tx_link(rvu, pcifunc);
+		sw_xoff = rvu_read64(rvu, blkaddr, NIX_AF_TL1X_SW_XOFF(schq));
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_TL1X_SW_XOFF(schq), BIT_ULL(0));
+	}
+
+	rc = -EBUSY;
+	poll_tmo = jiffies + usecs_to_jiffies(10000);
+	/* Wait for credits to return */
+	do {
+		if (time_after(jiffies, poll_tmo))
+			goto exit;
+		usleep_range(100, 200);
+
+		cfg = rvu_read64(rvu, blkaddr,
+				 NIX_AF_TX_LINKX_NORM_CREDIT(link));
+		credits = (cfg >> 12) & 0xFFFFFULL;
+	} while (credits != nix_hw->tx_credits[link]);
+
+	cfg &= ~(0xFFFFFULL << 12);
+	cfg |= (tx_credits << 12);
+	rvu_write64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link), cfg);
+	rc = 0;
+
+	nix_hw->tx_credits[link] = tx_credits;
+	rvu_nix_update_link_credits(rvu, blkaddr, link, cfg);
+
+exit:
+	/* Enable traffic back */
+	if (hw->cap.nix_shaping && !sw_xoff)
+		rvu_write64(rvu, blkaddr, NIX_AF_TL1X_SW_XOFF(schq), 0);
+
+	/* Restore state of cgx tx */
+	if (restore_tx_en)
+		cgx_lmac_tx_enable(rvu_cgx_pdata(cgx_id, rvu), lmac_id, false);
+
+	mutex_unlock(&rvu->rsrc_lock);
+	return rc;
+}
+
 int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 				    struct msg_rsp *rsp)
 {
@@ -3383,13 +3455,8 @@ linkcfg:
 	/* Update transmit credits for CGX links */
 	lmac_fifo_len =
 		CGX_FIFO_LEN / cgx_get_lmac_cnt(rvu_cgx_pdata(cgx, rvu));
-	cfg = rvu_read64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link));
-	cfg &= ~(0xFFFFFULL << 12);
-	cfg |=  ((lmac_fifo_len - req->maxlen) / 16) << 12;
-	rvu_write64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link), cfg);
-	rvu_nix_update_link_credits(rvu, blkaddr, link, cfg);
-
-	return 0;
+	return nix_config_link_credits(rvu, blkaddr, link, pcifunc,
+				       (lmac_fifo_len - req->maxlen) / 16);
 }
 
 int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
@@ -3424,11 +3491,12 @@ int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
 	return 0;
 }
 
-static void nix_link_config(struct rvu *rvu, int blkaddr)
+static void nix_link_config(struct rvu *rvu, int blkaddr,
+			    struct nix_hw *nix_hw)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	int cgx, lmac_cnt, slink, link;
-	u64 tx_credits;
+	u64 tx_credits, cfg;
 
 	/* Set default min/max packet lengths allowed on NIX Rx links.
 	 *
@@ -3457,12 +3525,12 @@ static void nix_link_config(struct rvu *rvu, int blkaddr)
 			continue;
 		tx_credits = ((CGX_FIFO_LEN / lmac_cnt) - NIC_HW_MAX_FRS) / 16;
 		/* Enable credits and set credit pkt count to max allowed */
-		tx_credits =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
+		cfg =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
 		slink = cgx * hw->lmac_per_cgx;
 		for (link = slink; link < (slink + lmac_cnt); link++) {
+			nix_hw->tx_credits[link] = tx_credits;
 			rvu_write64(rvu, blkaddr,
-				    NIX_AF_TX_LINKX_NORM_CREDIT(link),
-				    tx_credits);
+				    NIX_AF_TX_LINKX_NORM_CREDIT(link), cfg);
 		}
 	}
 
@@ -3470,6 +3538,7 @@ static void nix_link_config(struct rvu *rvu, int blkaddr)
 	slink = hw->cgx_links;
 	for (link = slink; link < (slink + hw->lbk_links); link++) {
 		tx_credits = 1000; /* 10 * max LBK datarate = 10 * 100Gbps */
+		nix_hw->tx_credits[link] = tx_credits;
 		/* Enable credits and set credit pkt count to max allowed */
 		tx_credits =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
 		rvu_write64(rvu, blkaddr,
@@ -3568,6 +3637,7 @@ int rvu_nix_init(struct rvu *rvu)
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct npc_lt_def_cfg *ltdefs;
 	struct rvu_block *block;
+	u16 cgx_lbk_links;
 	int blkaddr, err;
 	u64 cfg;
 
@@ -3589,6 +3659,7 @@ int rvu_nix_init(struct rvu *rvu)
 	hw->cgx_links = hw->cgx * hw->lmac_per_cgx;
 	hw->lbk_links = 1;
 	hw->sdp_links = 1;
+	cgx_lbk_links = hw->cgx_links + hw->lbk_links;
 
 	/* Initialize admin queue */
 	err = nix_aq_init(rvu, block);
@@ -3679,8 +3750,13 @@ int rvu_nix_init(struct rvu *rvu)
 		if (err)
 			return err;
 
+		hw->nix0->tx_credits = kcalloc(cgx_lbk_links,
+					       sizeof(u64), GFP_KERNEL);
+		if (!hw->nix0->tx_credits)
+			return -ENOMEM;
+
 		/* Initialize CGX/LBK/SDP link credits, min/max pkt lengths */
-		nix_link_config(rvu, blkaddr);
+		nix_link_config(rvu, blkaddr, hw->nix0);
 
 		/* Enable Channel backpressure */
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_CFG, BIT_ULL(0));
@@ -3732,6 +3808,8 @@ void rvu_nix_freemem(struct rvu *rvu)
 			txsch = &nix_hw->txsch[lvl];
 			kfree(txsch->schq.bmap);
 		}
+
+		kfree(nix_hw->tx_credits);
 
 		vlan = &nix_hw->txvlan;
 		kfree(vlan->rsrc.bmap);
