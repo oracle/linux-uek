@@ -162,4 +162,11 @@ config OCTEONTX2_EINJ
 	  called otx2-einj.
 	  Unless testing, say N here.
 
+config OCTEONTX_SERDES
+	tristate "OcteonTX serdes debug commands"
+	depends on ARM64
+	help
+	  Provides debugfs commands which allows to collect serdes information,
+	  capture eye or use PRBS.
+
 endmenu
