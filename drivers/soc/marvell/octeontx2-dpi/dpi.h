@@ -184,6 +184,15 @@
 								((y) << 4))
 #define DPI_EPFX_PP_VF_LINTX_ENA_W1S(x, y)	(0x7800ULL | ((x) << 5) |\
 								((y) << 4))
+
+#define DPI_EBUS_MRRS_MIN			128
+#define DPI_EBUS_MRRS_MAX			1024
+#define DPI_EBUS_MPS_MIN			128
+#define DPI_EBUS_MPS_MAX			1024
+#define DPI_EBUS_MAX_PORTS			2
+#define DPI_EBUS_PORTX_CFG_MRRS(x)		(((x) & 0x7) << 0)
+#define DPI_EBUS_PORTX_CFG_MPS(x)		(((x) & 0x7) << 4)
+
 /* VF Registers: */
 #define DPI_VDMA_EN		(0x0ULL)
 #define DPI_VDMA_REQQ_CTL	(0x8ULL)

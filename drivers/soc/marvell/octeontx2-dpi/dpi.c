@@ -25,6 +25,15 @@ static const struct pci_device_id dpi_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_DPI_PF) },
 	{ 0, }  /* end of table */
 };
+
+static int mps = 128;
+module_param(mps, int, 0644);
+MODULE_PARM_DESC(mps, "Maximum payload size, Supported sizes are 128, 256, 512 and 1024 bytes");
+
+static int mrrs = 128;
+module_param(mrrs, int, 0644);
+MODULE_PARM_DESC(mrrs, "Maximum read request size, Supported sizes are 128, 256, 512 and 1024 bytes");
+
 MODULE_DEVICE_TABLE(pci, dpi_id_table);
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION(DPI_DRV_STRING);
@@ -125,7 +134,8 @@ static int dpi_queue_fini(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
  */
 static int dpi_init(struct dpipf *dpi)
 {
-	int engine = 0;
+	int engine = 0, port = 0;
+	u8 mrrs_val, mps_val;
 	u64 reg = 0ULL;
 
 	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
@@ -152,12 +162,39 @@ static int dpi_init(struct dpipf *dpi)
 	dpi_reg_write(dpi, DPI_DMA_CONTROL, reg);
 	dpi_reg_write(dpi, DPI_CTL, DPI_CTL_EN);
 
+	/* Configure MPS and MRRS for DPI */
+	if (mrrs < DPI_EBUS_MRRS_MIN || mrrs > DPI_EBUS_MRRS_MAX ||
+			!is_power_of_2(mrrs)) {
+		dev_info(&dpi->pdev->dev,
+			"Invalid MRRS size:%d, Using default size(128 bytes)\n"
+			, mrrs);
+		mrrs = 128;
+	}
+	mrrs_val = fls(mrrs) - 8;
+
+	if (mps < DPI_EBUS_MPS_MIN || mps > DPI_EBUS_MPS_MAX
+			|| !is_power_of_2(mps)) {
+		dev_info(&dpi->pdev->dev,
+			"Invalid MPS size:%d, Using default size(128 bytes)\n"
+			, mps);
+		mps = 128;
+	}
+	mps_val = fls(mps) - 8;
+
+	for (port = 0; port < DPI_EBUS_MAX_PORTS; port++) {
+		reg = dpi_reg_read(dpi, DPI_EBUS_PORTX_CFG(port));
+		reg &= ~(DPI_EBUS_PORTX_CFG_MRRS(0x7) |
+			 DPI_EBUS_PORTX_CFG_MPS(0x7));
+		reg |= (DPI_EBUS_PORTX_CFG_MPS(mps_val) |
+			DPI_EBUS_PORTX_CFG_MRRS(mrrs_val));
+		dpi_reg_write(dpi, DPI_EBUS_PORTX_CFG(port), reg);
+	}
 	return 0;
 }
 
 static int dpi_fini(struct dpipf *dpi)
 {
-	int engine = 0;
+	int engine = 0, port;
 	u64 reg = 0ULL;
 
 	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
@@ -170,6 +207,12 @@ static int dpi_fini(struct dpipf *dpi)
 	dpi_reg_write(dpi, DPI_DMA_CONTROL, reg);
 	dpi_reg_write(dpi, DPI_CTL, ~DPI_CTL_EN);
 
+	for (port = 0; port < DPI_EBUS_MAX_PORTS; port++) {
+		reg = dpi_reg_read(dpi, DPI_EBUS_PORTX_CFG(port));
+		reg &= ~DPI_EBUS_PORTX_CFG_MRRS(0x7);
+		reg &= ~DPI_EBUS_PORTX_CFG_MPS(0x7);
+		dpi_reg_write(dpi, DPI_EBUS_PORTX_CFG(port), reg);
+	}
 	return 0;
 }
 
