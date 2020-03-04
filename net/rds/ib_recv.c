@@ -1523,8 +1523,10 @@ int rds_ib_recv_init(void)
 						    ii_inc.i_usercopy),
 					   sizeof(struct rds_inc_usercopy),
 					   NULL);
-	if (!rds_ib_incoming_slab)
+	if (!rds_ib_incoming_slab) {
+		pr_err("%s: rds_ib_incoming_slab creation failed\n", __func__);
 		return -ENOMEM;
+	}
 
 	rds_ib_frag_slab = kmem_cache_create("rds_ib_frag",
 					sizeof(struct rds_page_frag),
@@ -1532,6 +1534,7 @@ int rds_ib_recv_init(void)
 	if (!rds_ib_frag_slab) {
 		kmem_cache_destroy(rds_ib_incoming_slab);
 		rds_ib_incoming_slab = NULL;
+		pr_err("%s: rds_ib_incoming_slab creataion failed\n", __func__);
 		return -ENOMEM;
 	}
 	return 0;
