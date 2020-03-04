@@ -752,7 +752,7 @@ struct inode {
 
 	void			*i_private; /* fs or device private pointer */
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, atomic64_t i_sequence) /* see futex */
 	UEK_KABI_RESERVE(2)
 } __randomize_layout;
 
