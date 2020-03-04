@@ -188,7 +188,9 @@ void rds_ib_sysctl_exit(void)
 int rds_ib_sysctl_init(void)
 {
 	rds_ib_sysctl_hdr = register_net_sysctl(&init_net, "net/rds/ib", rds_ib_sysctl_table);
-	if (!rds_ib_sysctl_hdr)
+	if (!rds_ib_sysctl_hdr) {
+		pr_err("%s: register_net_sysctl() failed\n", __func__);
 		return -ENOMEM;
+	}
 	return 0;
 }
