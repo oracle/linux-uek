@@ -459,9 +459,8 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	pool->fmr_attr.max_maps = rds_ibdev->fmr_max_remaps;
 	pool->fmr_attr.page_shift = PAGE_SHIFT;
 	atomic_set(&pool->max_items_soft, pool->max_items);
-	pool->use_fastreg = rds_ibdev->use_fastreg;
 
-	if (pool->use_fastreg) {
+	if (rds_ibdev->use_fastreg) {
 		INIT_DELAYED_WORK(&pool->frwr_clean_worker,
 				  rds_frwr_clean_worker);
 		pool->frwr_clean_wq = create_workqueue("rds_frmr_clean_wq");
@@ -474,6 +473,11 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 		queue_delayed_work_on(unmap_cpu, pool->frwr_clean_wq,
 				      &pool->frwr_clean_worker,
 				      msecs_to_jiffies(rds_frwr_wake_intrvl));
+		/* Should set this only when everything is set up.  Otherwise,
+		 * if failure happens, the clean up routine will do the
+		 * wrong thing.
+		 */
+		pool->use_fastreg = true;
 	}
 
 	return pool;
@@ -1077,8 +1081,10 @@ out_nolock:
 int rds_ib_fmr_init(void)
 {
 	rds_ib_fmr_wq = create_workqueue("rds_fmr_flushd");
-	if (!rds_ib_fmr_wq)
+	if (!rds_ib_fmr_wq) {
+		pr_err("%s: failed to create rds_ib_fmr_wq\n", __func__);
 		return -ENOMEM;
+	}
 	return 0;
 }
 
