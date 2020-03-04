@@ -537,7 +537,8 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->pd)
 		ib_dealloc_pd(rds_ibdev->pd);
 
-	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
+	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list,
+				 list) {
 		list_del(&i_ipaddr->list);
 		kfree(i_ipaddr);
 	}
@@ -1140,12 +1141,8 @@ void rds_ib_add_one(struct ib_device *device)
 		  device->ops.dealloc_fmr &&
 		  device->ops.map_phys_fmr &&
 		  device->ops.unmap_fmr;
-	rds_ibdev->use_fastreg = (has_frwr && (!has_fmr || prefer_frwr));
 
-	pr_info("RDS/IB: %s will be used for ib_device: %s\n",
-		rds_ibdev->use_fastreg ? "FRWR" : "FMR", device->name);
-
-	if (rds_ibdev->use_fastreg) {
+	if (has_frwr && (!has_fmr || prefer_frwr)) {
 		INIT_WORK(&rds_ibdev->fastreg_reset_w, rds_ib_reset_fastreg);
 		init_rwsem(&rds_ibdev->fastreg_lock);
 		atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
@@ -1153,7 +1150,14 @@ void rds_ib_add_one(struct ib_device *device)
 			pr_err("RDS/IB: Failed to setup fastreg resources\n");
 			goto put_dev;
 		}
+		/* Should set this only when everything is set up.  Otherwise,
+		 * if failure happens, the clean up routine will do the
+		 * wrong thing.
+		 */
+		rds_ibdev->use_fastreg = true;
 	}
+	pr_info("RDS/IB: %s will be used for ib_device: %s\n",
+		rds_ibdev->use_fastreg ? "FRWR" : "FMR", device->name);
 
 	rds_ibdev->mr_1m_pool =
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_1M_POOL);
@@ -1234,15 +1238,11 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_sysctl;
 
-	ret = ib_register_client(&rds_ib_client);
-	if (ret)
-		goto out_recv;
-
 	rds_aux_wq = alloc_workqueue("%s", WQ_UNBOUND | WQ_MEM_RECLAIM, 0,
 				     "krdsd_aux");
 	if (!rds_aux_wq) {
-		pr_err("RDS/IB: failed to create aux workqueue\n");
-		goto out_ibreg;
+		pr_err("%s: failed to create aux workqueue\n", __func__);
+		goto out_recv;
 	}
 
 	ret = rds_trans_register(&rds_ib_transport);
@@ -1254,12 +1254,19 @@ int rds_ib_init(void)
 	rds_info_register_func(RDS6_INFO_IB_CONNECTIONS, rds6_ib_ic_info);
 #endif
 
+	/* Register with RDMA framework at last.  Once registered, upcall
+	 * can be made so everything should be set up first.
+	 */
+	ret = ib_register_client(&rds_ib_client);
+	if (ret) {
+		pr_err("%s: ib_register_client() failed\n", __func__);
+		goto out_aux_wq;
+	}
+
 	goto out;
 
 out_aux_wq:
 	destroy_workqueue(rds_aux_wq);
-out_ibreg:
-	rds_ib_unregister_client();
 out_recv:
 	rds_ib_recv_exit();
 out_sysctl:
@@ -1328,6 +1335,7 @@ void rds_ib_exit(void)
 
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();
+
 	destroy_workqueue(rds_aux_wq);
 	rds_ib_fmr_exit();
 
