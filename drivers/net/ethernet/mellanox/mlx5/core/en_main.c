@@ -5513,23 +5513,25 @@ static int mlx5e_probe(struct auxiliary_device *adev,
 		goto err_destroy_netdev;
 	}
 
-	err = register_netdev(netdev);
+	err = mlx5e_devlink_port_register(priv);
 	if (err) {
-		mlx5_core_err(mdev, "register_netdev failed, %d\n", err);
+		mlx5_core_err(mdev, "mlx5e_devlink_port_register failed, %d\n", err);
 		goto err_resume;
 	}
 
-	err = mlx5e_devlink_port_register(netdev);
+	err = register_netdev(netdev);
 	if (err) {
-		mlx5_core_err(mdev, "mlx5e_devlink_phy_port_register failed, %d\n", err);
-		goto err_unregister_netdev;
+		mlx5_core_err(mdev, "register_netdev failed, %d\n", err);
+		goto err_devlink_port_unregister;
 	}
+
+	mlx5e_devlink_port_type_eth_set(priv);
 
 	mlx5e_dcbnl_init_app(priv);
 	return 0;
 
-err_unregister_netdev:
-	unregister_netdev(netdev);
+err_devlink_port_unregister:
+	mlx5e_devlink_port_unregister(priv);
 err_resume:
 	mlx5e_suspend(adev, state);
 err_destroy_netdev:
