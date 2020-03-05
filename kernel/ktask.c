@@ -529,67 +529,75 @@ static void ktask_undo(struct ktask_node *nodes, size_t nr_nodes,
 	}
 }
 
-int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
-		     struct ktask_ctl *ctl, struct lock_class_key *key,
-		     const char *map_name)
+static int ktask_do_task(struct ktask_task *kt, struct ktask_node *nodes,
+			 size_t nr_nodes, struct ktask_ctl *ctl,
+			 struct lock_class_key *key, const char *map_name)
 {
-	size_t i;
+	size_t i, total_size;
 	struct ktask_work kw;
 	struct ktask_work *work;
-	struct ktask_task kt = {
-		.kt_ctl             = *ctl,
-		.kt_total_size      = 0,
-		.kt_nodes           = nodes,
-		.kt_nr_nodes        = nr_nodes,
-		.kt_nr_nodes_left   = nr_nodes,
-		.kt_nworks_fini     = 0,
-		.kt_error           = KTASK_RETURN_SUCCESS,
-	};
 
-	for (i = 0; i < nr_nodes; ++i) {
-		kt.kt_total_size += nodes[i].kn_task_size;
+	for (i = 0, total_size = 0; i < nr_nodes; ++i) {
+		total_size += nodes[i].kn_task_size;
 		nodes[i].kn_position = nodes[i].kn_start;
 		nodes[i].kn_remaining_size = nodes[i].kn_task_size;
 		INIT_LIST_HEAD(&nodes[i].kn_failed_works);
 		if (nodes[i].kn_task_size == 0)
-			kt.kt_nr_nodes_left--;
+			kt->kt_nr_nodes_left--;
 
 		WARN_ON(nodes[i].kn_nid >= MAX_NUMNODES);
 	}
 
-	if (kt.kt_total_size == 0)
+	if (total_size == 0)
 		return KTASK_RETURN_SUCCESS;
 
-	spin_lock_init(&kt.kt_lock);
-	ktask_init_completion(&kt);
-	lockdep_init_map(&kt.kt_lockdep_map, map_name, key, 0);
+	kt->kt_ctl		= *ctl;
+	kt->kt_total_size	= total_size;
+	kt->kt_nodes		= nodes;
+	kt->kt_nr_nodes		= nr_nodes;
+	kt->kt_nr_nodes_left	= nr_nodes;
+	kt->kt_nworks_fini	= 0;
+	kt->kt_error		= KTASK_RETURN_SUCCESS;
 
-	lock_map_acquire(&kt.kt_lockdep_map);
-	lock_map_release(&kt.kt_lockdep_map);
+	spin_lock_init(&kt->kt_lock);
+	INIT_LIST_HEAD(&kt->kt_works_list);
+	ktask_init_completion(kt);
+	lockdep_init_map(&kt->kt_lockdep_map, map_name, key, 0);
 
-	INIT_LIST_HEAD(&kt.kt_works_list);
-	kt.kt_nworks = ktask_init_works(nodes, nr_nodes, &kt);
-	kt.kt_chunk_size = ktask_chunk_size(kt.kt_total_size,
-					    ctl->kc_min_chunk_size,
-					    kt.kt_nworks);
+	lock_map_acquire(&kt->kt_lockdep_map);
+	lock_map_release(&kt->kt_lockdep_map);
 
-	list_for_each_entry(work, &kt.kt_works_list, kw_list)
+	kt->kt_nworks = ktask_init_works(nodes, nr_nodes, kt);
+	kt->kt_chunk_size = ktask_chunk_size(kt->kt_total_size,
+					     ctl->kc_min_chunk_size,
+					     kt->kt_nworks);
+
+	list_for_each_entry(work, &kt->kt_works_list, kw_list)
 		ktask_queue_work(work);
 
 	/* Use the current thread, which saves starting a workqueue worker. */
-	ktask_init_work(&kw, &kt, 0, nodes[0].kn_nid, true);
+	ktask_init_work(&kw, kt, 0, nodes[0].kn_nid, true);
 	INIT_LIST_HEAD(&kw.kw_list);
 	ktask_thread(&kw.kw_work);
 
 	/* Wait for all the jobs to finish. */
-	ktask_wait_for_completion(&kt);
+	ktask_wait_for_completion(kt);
 
-	if (kt.kt_error != KTASK_RETURN_SUCCESS && ctl->kc_undo_func)
-		ktask_undo(nodes, nr_nodes, ctl, &kt.kt_works_list, &kw);
+	if (kt->kt_error != KTASK_RETURN_SUCCESS && ctl->kc_undo_func)
+		ktask_undo(nodes, nr_nodes, ctl, &kt->kt_works_list, &kw);
 
-	ktask_fini_works(&kt);
+	ktask_fini_works(kt);
 
-	return kt.kt_error;
+	return kt->kt_error;
+}
+
+int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
+		     struct ktask_ctl *ctl, struct lock_class_key *key,
+		     const char *map_name)
+{
+	struct ktask_task kt;
+
+	return ktask_do_task(&kt, nodes, nr_nodes, ctl, key, map_name);
 }
 
 /*
