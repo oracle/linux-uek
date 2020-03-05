@@ -11,6 +11,7 @@
 
 #include <asm/cpu.h>
 #include <asm/smp.h>
+#include <asm/timer.h>
 #include <asm/reboot.h>
 #include <asm/setup.h>
 #include <asm/hypervisor.h>
@@ -207,6 +208,10 @@ static void __init xen_hvm_guest_init(void)
 #ifdef CONFIG_KEXEC_CORE
 	machine_ops.shutdown = xen_hvm_shutdown;
 	machine_ops.crash_shutdown = xen_hvm_crash_shutdown;
+#endif
+
+#ifdef CONFIG_X86_IO_APIC
+	no_timer_check = 1;
 #endif
 }
 
