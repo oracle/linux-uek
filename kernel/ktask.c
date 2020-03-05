@@ -147,6 +147,25 @@ static void ktask_queue_work(struct ktask_work *kw)
 	WARN_ON(!queue_work_on(cpu, wq, &kw->kw_work));
 }
 
+/*
+ * ktask_fini_work - return a ktask_work to the free list
+ * @work: work to be freed
+ *
+ * Caller must hold ktask_rlim_lock.
+ */
+static void ktask_fini_work(struct ktask_work *work)
+{
+	lockdep_assert_held(&ktask_rlim_lock);
+
+	if (work->kw_queue_nid != NUMA_NO_NODE) {
+		WARN_ON(ktask_rlim_node_cur[work->kw_queue_nid] == 0);
+		--ktask_rlim_node_cur[work->kw_queue_nid];
+	}
+	WARN_ON(ktask_rlim_cur == 0);
+	--ktask_rlim_cur;
+	list_move(&work->kw_list, &ktask_free_works);
+}
+
 /* Returns true if we're migrating this part of the task to another node. */
 static bool ktask_node_migrate(struct ktask_node *old_kn, struct ktask_node *kn,
 			       size_t ktask_node_i, struct ktask_work *kw,
@@ -436,7 +455,7 @@ static size_t ktask_init_works(struct ktask_node *nodes, size_t nr_nodes,
 static void ktask_fini_works(struct ktask_task *kt,
 			     struct list_head *works_list)
 {
-	struct ktask_work *work;
+	struct ktask_work *work, *next_work;
 
 	if (list_empty(works_list))
 		return;
@@ -444,15 +463,8 @@ static void ktask_fini_works(struct ktask_task *kt,
 	spin_lock(&ktask_rlim_lock);
 
 	/* Put the works back on the free list, adjusting rlimits. */
-	list_for_each_entry(work, works_list, kw_list) {
-		if (work->kw_queue_nid != NUMA_NO_NODE) {
-			WARN_ON(ktask_rlim_node_cur[work->kw_queue_nid] == 0);
-			--ktask_rlim_node_cur[work->kw_queue_nid];
-		}
-		WARN_ON(ktask_rlim_cur == 0);
-		--ktask_rlim_cur;
-	}
-	list_splice(works_list, &ktask_free_works);
+	list_for_each_entry_safe(work, next_work, works_list, kw_list)
+		ktask_fini_work(work);
 
 	spin_unlock(&ktask_rlim_lock);
 }
