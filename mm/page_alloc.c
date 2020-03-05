@@ -1850,7 +1850,8 @@ static int __init deferred_init_memmap(void *data)
 			struct def_init_args args = { zone,
 						      ATOMIC_LONG_INIT(0) };
 			DEFINE_KTASK_CTL(ctl, deferred_init_memmap_chunk, &args,
-					 KTASK_PTE_MINCHUNK, KTASK_ATOMIC);
+					 KTASK_PTE_MINCHUNK, KTASK_ATOMIC |
+					 KTASK_ASYNC_HELPERS | KTASK_IRQS_OFF);
 
 			/*
 			 * Helper threads should operate on MAX_ORDER_NR_PAGES

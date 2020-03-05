@@ -187,7 +187,14 @@ static inline void ktask_ctl_set_max_threads(struct ktask_ctl *ctl,
 }
 
 enum {
-	KTASK_ATOMIC = 1,
+	KTASK_ATOMIC		= 1, /* Main thread can't sleep. */
+	KTASK_ASYNC_HELPERS	= 2, /* Helpers may run after job is done. */
+
+	/*
+	 * Helpers disable irqs.  The ktask user is responsible for making sure
+	 * that disabling IRQs for long periods of time is safe for its job.
+	 */
+	KTASK_IRQS_OFF		= 4,
 };
 
 /*

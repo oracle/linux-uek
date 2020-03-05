@@ -64,6 +64,7 @@ static struct ktask_work *ktask_works;
 struct ktask_task {
 	struct ktask_ctl	kt_ctl;
 	size_t			kt_total_size;
+	size_t			kt_remaining_size;
 	size_t			kt_chunk_size;
 	/* protects this struct and struct ktask_work's of a running task */
 	spinlock_t		kt_lock;
@@ -78,6 +79,7 @@ struct ktask_task {
 		struct completion	kt_ktask_done;
 		int			kt_complete;
 	};
+	atomic_t		kt_refcnt;
 #ifdef CONFIG_LOCKDEP
 	struct lockdep_map	kt_lockdep_map;
 #endif
@@ -253,7 +255,11 @@ static void ktask_thread(struct work_struct *work)
 	struct ktask_task  *kt = kw->kw_task;
 	struct ktask_ctl   *kc = &kt->kt_ctl;
 	struct ktask_node  *kn = &kt->kt_nodes[kw->kw_ktask_node_i];
-	bool               done;
+	bool               done = false;
+	unsigned long	   uninitialized_var(flags);
+
+	if (kc->kc_flags & KTASK_IRQS_OFF)
+		local_irq_save(flags);
 
 	spin_lock(&kt->kt_lock);
 
@@ -300,6 +306,8 @@ static void ktask_thread(struct work_struct *work)
 			/* Start another worker on the node we've chosen. */
 			if (ktask_node_migrate(old_kn, kn, i, kw, kt)) {
 				spin_unlock(&kt->kt_lock);
+				if (kc->kc_flags & KTASK_IRQS_OFF)
+					local_irq_restore(flags);
 				return;
 			}
 		}
@@ -327,6 +335,13 @@ static void ktask_thread(struct work_struct *work)
 		lock_map_release(&kt->kt_lockdep_map);
 		spin_lock(&kt->kt_lock);
 
+		WARN_ON(kt->kt_remaining_size < size);
+		kt->kt_remaining_size -= size;
+
+		if (kt->kt_remaining_size == 0 &&
+		    (kc->kc_flags & KTASK_ASYNC_HELPERS))
+			done = true;
+
 		if (ret != KTASK_RETURN_SUCCESS) {
 			/* Save first error code only. */
 			if (kt->kt_error == KTASK_RETURN_SUCCESS)
@@ -349,11 +364,24 @@ static void ktask_thread(struct work_struct *work)
 
 	++kt->kt_nworks_fini;
 	WARN_ON(kt->kt_nworks_fini > kt->kt_nworks);
-	done = (kt->kt_nworks_fini == kt->kt_nworks);
+	if (!(kc->kc_flags & KTASK_ASYNC_HELPERS))
+		done = (kt->kt_nworks_fini == kt->kt_nworks);
 	spin_unlock(&kt->kt_lock);
 
 	if (done)
 		ktask_complete(kt);
+
+	if (kc->kc_flags & KTASK_IRQS_OFF)
+		local_irq_restore(flags);
+
+	if ((kc->kc_flags & KTASK_ASYNC_HELPERS) && !kw->kw_master_thr) {
+		spin_lock(&ktask_rlim_lock);
+		ktask_fini_work(kw);
+		spin_unlock(&ktask_rlim_lock);
+
+		if (atomic_dec_and_test(&kt->kt_refcnt))
+			kfree(kt);
+	}
 }
 
 /*
@@ -385,7 +413,14 @@ static size_t ktask_chunk_size(size_t task_size, size_t min_chunk_size,
 }
 
 /*
- * Returns the number of works to be used in the task.  This number includes
+ * ktask_init_works - allocate the right number of ktask_work structs for the job
+ * @nodes: array describing the job, split up by node
+ * @nr_nodes: length of the array
+ * @kt: the object holding the job state
+ *
+ * Assumes ktask_rlim_lock is held.
+ *
+ * Return: The number of works to be used in the task.  This number includes
  * the current thread, so a return value of 1 means no extra threads are
  * started.
  */
@@ -395,6 +430,8 @@ static size_t ktask_init_works(struct ktask_node *nodes, size_t nr_nodes,
 	size_t i, nr_works, nr_works_check;
 	size_t min_chunk_size = kt->kt_ctl.kc_min_chunk_size;
 	size_t max_threads    = kt->kt_ctl.kc_max_threads;
+
+	lockdep_assert_held(&ktask_rlim_lock);
 
 	if (!ktask_wq)
 		return 1;
@@ -415,7 +452,6 @@ static size_t ktask_init_works(struct ktask_node *nodes, size_t nr_nodes,
 	 * ktask_rlim allows additional work items to be queued.
 	 */
 	nr_works = 1;
-	spin_lock(&ktask_rlim_lock);
 	for (i = nr_works; i < nr_works_check; ++i) {
 		/* Allocate works evenly over the task's given nodes. */
 		size_t ktask_node_i = i % nr_nodes;
@@ -447,7 +483,6 @@ static size_t ktask_init_works(struct ktask_node *nodes, size_t nr_nodes,
 		++ktask_rlim_cur;
 		++nr_works;
 	}
-	spin_unlock(&ktask_rlim_lock);
 
 	return nr_works;
 }
@@ -536,6 +571,7 @@ static int ktask_do_task(struct ktask_task *kt, struct ktask_node *nodes,
 	size_t i, total_size;
 	struct ktask_work kw;
 	struct ktask_work *work;
+	int error;
 
 	for (i = 0, total_size = 0; i < nr_nodes; ++i) {
 		total_size += nodes[i].kn_task_size;
@@ -553,6 +589,7 @@ static int ktask_do_task(struct ktask_task *kt, struct ktask_node *nodes,
 
 	kt->kt_ctl		= *ctl;
 	kt->kt_total_size	= total_size;
+	kt->kt_remaining_size	= total_size;
 	kt->kt_nodes		= nodes;
 	kt->kt_nr_nodes		= nr_nodes;
 	kt->kt_nr_nodes_left	= nr_nodes;
@@ -567,37 +604,87 @@ static int ktask_do_task(struct ktask_task *kt, struct ktask_node *nodes,
 	lock_map_acquire(&kt->kt_lockdep_map);
 	lock_map_release(&kt->kt_lockdep_map);
 
+	spin_lock(&ktask_rlim_lock);
+
 	kt->kt_nworks = ktask_init_works(nodes, nr_nodes, kt);
 	kt->kt_chunk_size = ktask_chunk_size(kt->kt_total_size,
 					     ctl->kc_min_chunk_size,
 					     kt->kt_nworks);
 
+	if (ctl->kc_flags & KTASK_ASYNC_HELPERS)
+		atomic_set(&kt->kt_refcnt, kt->kt_nworks);
+
 	list_for_each_entry(work, &kt->kt_works_list, kw_list)
 		ktask_queue_work(work);
+
+	/*
+	 * Drop the lock after the list_for_each_entry loop above prevents
+	 * kt_works_list corruption when a ktask_thread calls ktask_work_fini()
+	 * to remove a ktask_work from the list.
+	 */
+	spin_unlock(&ktask_rlim_lock);
 
 	/* Use the current thread, which saves starting a workqueue worker. */
 	ktask_init_work(&kw, kt, 0, nodes[0].kn_nid, true);
 	INIT_LIST_HEAD(&kw.kw_list);
 	ktask_thread(&kw.kw_work);
 
-	/* Wait for all the jobs to finish. */
+	/* Wait for the job to finish. */
 	ktask_wait_for_completion(kt);
 
-	if (kt->kt_error != KTASK_RETURN_SUCCESS && ctl->kc_undo_func)
-		ktask_undo(nodes, nr_nodes, ctl, &kt->kt_works_list, &kw);
+	error = kt->kt_error;
 
-	ktask_fini_works(kt);
+	if (ctl->kc_flags & KTASK_ASYNC_HELPERS) {
+		if (atomic_dec_and_test(&kt->kt_refcnt))
+			kfree(kt);
+	} else {
+		if (error != KTASK_RETURN_SUCCESS && ctl->kc_undo_func)
+			ktask_undo(nodes, nr_nodes, ctl, &kt->kt_works_list, &kw);
 
-	return kt->kt_error;
+		ktask_fini_works(kt);
+	}
+
+	return error;
 }
 
 int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 		     struct ktask_ctl *ctl, struct lock_class_key *key,
 		     const char *map_name)
 {
-	struct ktask_task kt;
+	struct ktask_task *kt = NULL;
+	int flags = ctl->kc_flags;
 
-	return ktask_do_task(&kt, nodes, nr_nodes, ctl, key, map_name);
+	/*
+	 * Use a refcounted ktask_task to avoid waiting for all helpers to
+	 * finish before the task is done.  Useful in contexts where deadlock
+	 * is possible from the main thread and its helpers waiting on each
+	 * other to finish.
+	 */
+	if (flags & KTASK_ASYNC_HELPERS) {
+		gfp_t gfp = (flags & KTASK_ATOMIC) ? GFP_ATOMIC : GFP_KERNEL;
+
+		kt = kmalloc(sizeof(struct ktask_task), gfp);
+	}
+
+	if (kt) {
+		return ktask_do_task(kt, nodes, nr_nodes, ctl, key, map_name);
+	} else {
+		struct ktask_task kt_onstack;
+
+		kt = &kt_onstack;
+
+		if (flags & KTASK_ASYNC_HELPERS) {
+			/*
+			 * kmalloc() failed so refcounting ktask_task isn't
+			 * possible.  Fall back to one thread to avoid starting
+			 * helpers that this thread may deadlock on.
+			 */
+			ctl->kc_max_threads = 1;
+			ctl->kc_flags &= ~KTASK_ASYNC_HELPERS;
+		}
+
+		return ktask_do_task(kt, nodes, nr_nodes, ctl, key, map_name);
+	}
 }
 
 /*
