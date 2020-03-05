@@ -1,0 +1,5 @@
+config MSTFLINT_ACCESS
+        tristate "Mellanox Technologies MSTFLINT Secure Boot Access support"
+        depends on PCI
+        help
+          Mellanox Technologies MSTFLINT_ACCESS functionality.
