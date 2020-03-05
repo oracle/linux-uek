@@ -1648,11 +1648,24 @@ fi\
 %{expand:%%post -n kernel%{?variant}%{!-u:%{!-o:-}%{?-v*}}}\
 %{-r:\
 if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
-   [ -f /etc/sysconfig/kernel ]; then\
-  /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
+   [ -f /etc/sysconfig/kernel ] &&\
+   [ $1 -eq 1 ]; then\
+  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
+fi\
+%{nil}
+
+#
+# This macro defines a %%postun script for a kernel package.
+#      %%kernel_variant_postun [-o] <subpackage>
+#
+%define kernel_variant_postun(o) \
+%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
+if [ $1 -eq 0 ]\
+then\
+    /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel/' /etc/sysconfig/kernel || exit $?\
 fi\
 %{nil}
 
@@ -1726,30 +1739,37 @@ fi\
 
 %kernel_variant_pre
 %kernel_variant_preun
+%kernel_variant_postun
 %kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 
 %kernel_variant_pre smp
 %kernel_variant_preun smp
+%kernel_variant_postun smp
 %kernel_variant_post -v smp
 
 %kernel_variant_pre PAE
 %kernel_variant_preun PAE
+%kernel_variant_postun PAE
 %kernel_variant_post -v PAE -r (kernel|kernel-smp|kernel-xen)
 
 %kernel_variant_pre debug
 %kernel_variant_preun debug
+%kernel_variant_postun debug
 %kernel_variant_post -v debug
 
 %kernel_variant_post -v PAEdebug -r (kernel|kernel-smp|kernel-xen)
 %kernel_variant_preun PAEdebug
+%kernel_variant_postun PAEdebug
 %kernel_variant_pre PAEdebug
 
 %kernel_variant_pre -o 4k
 %kernel_variant_preun -o 4k
+%kernel_variant_postun -o 4k
 %kernel_variant_post -o -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
 
 %kernel_variant_pre -o 4k-debug
 %kernel_variant_preun -o 4k-debug
+%kernel_variant_postun -o 4k-debug
 %kernel_variant_post -o -v 4k-debug
 
 if [ -x /sbin/ldconfig ]
