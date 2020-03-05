@@ -1801,6 +1801,7 @@ fi
 %if %{with_doc}
 %files doc
 %defattr(-,root,root)
+%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/*
 %dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
 %endif
 
