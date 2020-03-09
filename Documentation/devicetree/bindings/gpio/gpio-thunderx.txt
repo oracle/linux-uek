@@ -14,6 +14,9 @@ Optional Properties:
                     "interrupt-controller" is present.
   - First cell is the GPIO pin number relative to the controller.
   - Second cell is triggering flags as defined in interrupts.txt.
+- pin-cfg: Configuration of pin's function, filters, XOR and output mode.
+  - First cell is the GPIO pin number
+  - Second cell is a value written to GPIO_BIT_CFG register at driver probe.
 
 Example:
 
@@ -24,4 +27,5 @@ gpio_6_0: gpio@6,0 {
 	#gpio-cells = <2>;
 	interrupt-controller;
 	#interrupt-cells = <2>;
+	pin-cfg = <57 0x2300000>, <58 0x2500000>;
 };
