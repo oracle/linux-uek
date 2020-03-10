@@ -122,7 +122,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_kabichk 0
 %define fancy_debuginfo 0
 %else
-%define with_kabichk 0
+%define with_kabichk 1
 %define fancy_debuginfo 0
 %endif
 
