@@ -18,8 +18,11 @@ else
     debugid=""
 fi
 
+# VERSION is in X.Y format. Take only X for OS version.
+osver=$(echo $VERSION | cut -d'.' -f1)
+
 cat >${output} <<EOF
-title ${NAME} (${kernelver}) ${VERSION}${debugname}
+title ${NAME} ${osver} (${kernelver}) ${debugname}
 version ${kernelver}${debugid}
 linux ${bootprefix}/vmlinuz-${kernelver}
 initrd ${bootprefix}/initramfs-${kernelver}.img
