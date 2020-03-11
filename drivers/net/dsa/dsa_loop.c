@@ -354,7 +354,9 @@ static void __exit dsa_loop_exit(void)
 		if (!IS_ERR(phydevs[i]))
 			fixed_phy_unregister(phydevs[i]);
 }
+#ifndef CONFIG_ARM64
 module_exit(dsa_loop_exit);
+#endif
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Florian Fainelli");
