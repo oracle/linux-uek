@@ -16,6 +16,8 @@
 #include <linux/if_vlan.h>
 #include <net/ip.h>
 #include <linux/iommu.h>
+#include <linux/bpf.h>
+#include <linux/bpf_trace.h>
 
 #include "otx2_reg.h"
 #include "otx2_common.h"
@@ -1187,7 +1189,7 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 	}
 
 	/* SQ */
-	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
+	for (qidx = 0; qidx < pf->hw.tot_tx_queues; qidx++) {
 		ptr = otx2_get_regaddr(pf, NIX_LF_SQ_OP_INT);
 		val = otx2_atomic64_add((qidx << 44), ptr);
 		otx2_write64(pf, NIX_LF_SQ_OP_INT, (qidx << 44) |
@@ -1292,7 +1294,7 @@ static void otx2_free_sq_res(struct otx2_nic *pf)
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_SQ, false);
 	/* Free SQB pointers */
 	otx2_sq_free_sqbs(pf);
-	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
+	for (qidx = 0; qidx < pf->hw.tot_tx_queues; qidx++) {
 		sq = &qset->sq[qidx];
 		qmem_free(pf->dev, sq->sqe);
 		qmem_free(pf->dev, sq->tso_hdrs);
@@ -1315,12 +1317,17 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	 * so, aura count = pool count.
 	 */
 	hw->rqpool_cnt = hw->rx_queues;
-	hw->sqpool_cnt = hw->tx_queues;
+	hw->sqpool_cnt = hw->tot_tx_queues;
 	hw->pool_cnt = hw->rqpool_cnt + hw->sqpool_cnt;
 
+	if (!pf->xdp_prog)
 	/* Get the size of receive buffers to allocate */
-	pf->rbsize = RCV_FRAG_LEN(OTX2_HW_TIMESTAMP_LEN + pf->netdev->mtu +
-				  pf->addl_mtu + pf->xtra_hdr);
+		pf->rbsize = RCV_FRAG_LEN(OTX2_HW_TIMESTAMP_LEN +
+					  pf->netdev->mtu +
+					  pf->addl_mtu + pf->xtra_hdr);
+	else
+		pf->rbsize = RCV_FRAG_LEN(XDP_PACKET_HEADROOM +
+					  pf->netdev->mtu);
 
 	otx2_mbox_lock(mbox);
 	/* NPA init */
@@ -1517,7 +1524,7 @@ int otx2_open(struct net_device *netdev)
 
 	netif_carrier_off(netdev);
 
-	pf->qset.cq_cnt = pf->hw.rx_queues + pf->hw.tx_queues;
+	pf->qset.cq_cnt = pf->hw.rx_queues + pf->hw.tot_tx_queues;
 	/* RQ and SQs are mapped to different CQs,
 	 * so find out max CQ IRQs (i.e CINTs) needed.
 	 */
@@ -1537,7 +1544,7 @@ int otx2_open(struct net_device *netdev)
 	if (!qset->cq)
 		goto err_free_mem;
 
-	qset->sq = kcalloc(pf->hw.tx_queues,
+	qset->sq = kcalloc(pf->hw.tot_tx_queues,
 			   sizeof(struct otx2_snd_queue), GFP_KERNEL);
 	if (!qset->sq)
 		goto err_free_mem;
@@ -1558,11 +1565,20 @@ int otx2_open(struct net_device *netdev)
 		/* RQ0 & SQ0 are mapped to CINT0 and so on..
 		 * 'cq_ids[0]' points to RQ's CQ and
 		 * 'cq_ids[1]' points to SQ's CQ and
+		 * 'cq_ids[2]' points to XDP's CQ and
 		 */
 		cq_poll->cq_ids[CQ_RX] =
 			(qidx <  pf->hw.rx_queues) ? qidx : CINT_INVALID_CQ;
 		cq_poll->cq_ids[CQ_TX] = (qidx < pf->hw.tx_queues) ?
 				      qidx + pf->hw.rx_queues : CINT_INVALID_CQ;
+		if (pf->xdp_prog)
+			cq_poll->cq_ids[CQ_XDP] = (qidx < pf->hw.xdp_queues) ?
+						  (qidx + pf->hw.rx_queues +
+						   pf->hw.tx_queues) :
+						   CINT_INVALID_CQ;
+		else
+			cq_poll->cq_ids[CQ_XDP] = CINT_INVALID_CQ;
+
 		cq_poll->dev = (void *)pf;
 		netif_napi_add(netdev, &cq_poll->napi,
 			       otx2_napi_handler, NAPI_POLL_WEIGHT);
@@ -2204,6 +2220,94 @@ otx2_features_check(struct sk_buff *skb, struct net_device *dev,
 	return features;
 }
 
+static int otx2_xdp_xmit(struct net_device *netdev, struct xdp_buff *xdp)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	int qidx = smp_processor_id();
+	struct otx2_snd_queue *sq;
+	struct page *page;
+	int err = 0, len;
+	u64 dma_addr;
+
+	if (!netif_running(netdev))
+		return -ENETDOWN;
+
+	qidx += pf->hw.tx_queues;
+	sq = pf->xdp_prog ? &pf->qset.sq[qidx] : NULL;
+
+	/* Abort xmit if xdp queue is not configured */
+	if (unlikely(!sq))
+		return -ENXIO;
+
+	len = xdp->data_end - xdp->data;
+	dma_addr = otx2_dma_map_page(pf, virt_to_page(xdp->data),
+				     offset_in_page(xdp->data), len,
+				     DMA_TO_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+	if (dma_mapping_error(pf->dev, dma_addr))
+		return -ENOMEM;
+
+	err = otx2_xdp_sq_append_pkt(pf, dma_addr, len, qidx);
+	if (!err) {
+		otx2_dma_unmap_page(pf, dma_addr, len, DMA_TO_DEVICE,
+				    DMA_ATTR_SKIP_CPU_SYNC);
+		page = virt_to_page(xdp->data);
+		put_page(page);
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+static int otx2_xdp_setup(struct otx2_nic *pf, struct bpf_prog *prog)
+{
+	bool if_up = netif_running(pf->netdev);
+	struct bpf_prog *old_prog;
+	int err = 0;
+
+	if (if_up)
+		otx2_stop(pf->netdev);
+
+	old_prog = xchg(&pf->xdp_prog, prog);
+
+	if (old_prog)
+		bpf_prog_put(old_prog);
+
+	if (pf->xdp_prog) {
+		pf->xdp_prog = bpf_prog_add(pf->xdp_prog, pf->hw.rx_queues - 1);
+		if (IS_ERR(pf->xdp_prog))
+			err = PTR_ERR(pf->xdp_prog);
+	}
+	/* Network stack and XDP shared same rx queues.
+	 * Use separate tx queues for XDP and network stack.
+	 */
+	if (pf->xdp_prog)
+		pf->hw.xdp_queues = pf->hw.rx_queues;
+	else
+		pf->hw.xdp_queues = 0;
+
+	pf->hw.tot_tx_queues += pf->hw.xdp_queues;
+
+	if (if_up)
+		otx2_open(pf->netdev);
+
+	return err;
+}
+
+static int otx2_xdp(struct net_device *netdev, struct netdev_xdp *xdp)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+
+	switch (xdp->command) {
+	case XDP_SETUP_PROG:
+		return otx2_xdp_setup(pf, xdp->prog);
+	case XDP_QUERY_PROG:
+		xdp->prog_attached = !!pf->xdp_prog;
+		xdp->prog_id = pf->xdp_prog ? pf->xdp_prog->aux->id : 0;
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
@@ -2220,6 +2324,8 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_set_vf_vlan	= otx2_set_vf_vlan,
 	.ndo_get_vf_config	= otx2_get_vf_config,
 	.ndo_features_check     = otx2_features_check,
+	.ndo_xdp		= otx2_xdp,
+	.ndo_xdp_xmit           = otx2_xdp_xmit,
 };
 
 static int otx2_check_pf_usable(struct otx2_nic *nic)
@@ -2321,6 +2427,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	hw->pdev = pdev;
 	hw->rx_queues = qcount;
 	hw->tx_queues = qcount;
+	hw->tot_tx_queues = qcount;
 	hw->max_queues = qcount;
 
 	num_vec = pci_msix_vec_count(pdev);
