@@ -42,7 +42,9 @@ def load_symvers(symvers,filename):
 			break
 		if in_line == "\n":
 			continue
-		checksum,symbol,directory,type = in_line.split()
+
+		l = in_line.split()
+		symbol = l[1]
 
 		symvers[symbol] = in_line[0:-1]
 
@@ -72,7 +74,15 @@ def check_kabi(symvers,kabi):
 	for symbol in kabi:
 		abi_hash,abi_sym,abi_dir,abi_type = kabi[symbol].split()
 		if symbol in symvers:
-			sym_hash,sym_sym,sym_dir,sym_type = symvers[symbol].split()
+			l = symvers[symbol].split()
+
+			sym_hash = l[0]
+
+			if len(l) == 4:
+				sym_dir = l[2]
+			else:
+				sym_dir = l[3]
+
 			if abi_hash != sym_hash:
 				fail=1
 				changed_symbols.append(symbol)
