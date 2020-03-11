@@ -160,38 +160,192 @@ static ssize_t serdes_dbg_eye_write_op(struct file *filp,
 	return count;
 }
 
-static int serdes_dbg_eye_read_op(struct seq_file *s, void *unused)
+static int serdes_dbg_eye_print_gsern(struct seq_file *s)
 {
+	struct eye_data *eye;
 	int v, t, v_height;
 	int errors_tr_ones, errors_nt_ones, errors_tr_zeros, errors_nt_zeros;
 
-	if (eye_cmd_data.res->type != QLM_GSERN_TYPE) {
-		seq_puts(s, "Currently only GSERN type of QLM is supported.\n");
-		return 0;
-	}
+	eye = eye_cmd_data.res;
 
 	seq_printf(s, "V  T  %-20s %-20s %-20s %-20s\n", "TRANS_ONE_ECNT",
 		   "NON_TRANS_ONE_ECNT", "TRANS_ZEROS_ECNT",
 		   "NON_TRANS_ZEROS_ECNT");
 
-	v_height = (eye_cmd_data.res->height + 1) / 2;
+	v_height = (eye->height + 1) / 2;
 
-	for (t = 0; t < eye_cmd_data.res->width; t++) {
+	for (t = 0; t < eye->width; t++) {
 		for (v = 0; v < v_height; v++) {
-			errors_nt_ones =
-				eye_cmd_data.res->data[v_height-v-1][t];
-			errors_tr_ones =
-				eye_cmd_data.res->data[v_height-v-1][t+64];
-			errors_nt_zeros =
-				eye_cmd_data.res->data[v_height+v-1][t];
-			errors_tr_zeros =
-				eye_cmd_data.res->data[v_height+v-1][t+64];
+			errors_nt_ones = eye->data[v_height-v-1][t];
+			errors_tr_ones = eye->data[v_height-v-1][t+64];
+			errors_nt_zeros = eye->data[v_height+v-1][t];
+			errors_tr_zeros = eye->data[v_height+v-1][t+64];
 
 			seq_printf(s, "%02x %02x %020x %020x %020x %020x\n",
 				   v, t, errors_tr_ones, errors_nt_ones,
 				   errors_tr_zeros, errors_nt_zeros);
 		}
 	}
+
+	return 0;
+}
+
+static int serdes_dbg_eye_print_gserx(struct seq_file *s)
+{
+	struct eye_data *eye;
+	int x_min = 0;
+	int x_step = 1;
+	int y_min = -255;
+	int y_step = 8;
+	int x;
+	int y;
+
+	eye = eye_cmd_data.res;
+
+	seq_printf(s, "%5s %5s %s\n", "V", "T", "Errors");
+
+	for (x = 0; x < eye->width; x++) {
+		for (y = 0; y < eye->height; y++) {
+			seq_printf(s, "%5d %5d %u\n", y * y_step + y_min,
+				   x * x_step + x_min, eye->data[y][x]);
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * Square root by abacus algorithm, Martin Guy @ UKC, June 1985.
+ * From a book on programming abaci by Mr C. Woo.
+ */
+static u64 isqrt(u64 num)
+{
+	u64 result = 0;
+	/* The second-to-top bit is set: 1 << 62 for 64 bits */
+	u64 bit = 1ull << 62;
+
+	/* "bit" starts at the highest power of four <= the argument. */
+	while (bit > num)
+		bit >>= 2;
+
+	while (bit != 0) {
+		if (num >= result + bit) {
+			num -= result + bit;
+			result = (result >> 1) + bit;
+		} else {
+			result >>= 1;
+		}
+		bit >>= 2;
+	}
+
+	return result;
+}
+
+static u64 log_10(u64 num)
+{
+	u64 result = 0;
+
+	while (num > 10) {
+		num /= 10;
+		result++;
+	}
+	if (num >= 5)
+		result++;
+
+	return result;
+}
+
+static int serdes_dbg_eye_read_op(struct seq_file *s, void *unused)
+{
+	struct eye_data *eye;
+	u64 data;
+	int ec, x, y, width, height, last_color, level, deltay, deltax, dy, dx;
+	int dist, color;
+	int eye_area = 0;
+	int eye_width = 0;
+	int eye_height = 0;
+	char color_str[] = "\33[40m"; /* Note: This is modified, not constant */
+
+	eye = eye_cmd_data.res;
+
+	/* GSERN eye needs to be handled differently */
+	if (eye->type == QLM_GSERN_TYPE) {
+		ec = serdes_dbg_eye_print_gsern(s);
+		if (ec)
+			return ec;
+		for (y = 0; y < eye->height; y++) {
+			for (x = 0; x < eye->width; x++) {
+				data = eye->data[y][x] + eye->data[y][x + 64];
+				if (data > U32_MAX)
+					data = U32_MAX;
+				eye->data[y][x] = data;
+			}
+		}
+	} else {
+		ec = serdes_dbg_eye_print_gserx(s);
+		if (ec)
+			return ec;
+	}
+
+	/* Calculate the max eye width */
+	for (y = 0; y < eye->height; y++) {
+		width = 0;
+		for (x = 0; x < eye->width; x++) {
+			if (eye->data[y][x] == 0) {
+				width++;
+				eye_area++;
+			}
+		}
+		if (width > eye_width)
+			eye_width = width;
+	}
+
+	/* Calculate the max eye height */
+	for (x = 0; x < eye->width; x++) {
+		height = 0;
+		for (y = 0; y < eye->height; y++) {
+			if (eye->data[y][x] == 0) {
+				height++;
+				eye_area++;
+			}
+		}
+		if (height > eye_height)
+			eye_height = height;
+	}
+
+	seq_printf(s, "\nEye Diagram for QLM %d, Lane %d\n", eye_cmd_data.qlm,
+		   eye_cmd_data.lane);
+
+	last_color = -1;
+	for (y = 0; y < eye->height; y++) {
+		for (x = 0; x < eye->width; x++) {
+			level = log_10(eye->data[y][x] + 1);
+			if (level > 9)
+				level = 9;
+			#define DIFF(a, b) (((a) < (b)) ? (b)-(a) : (a)-(b))
+			deltay = (y == (eye->height - 1)) ? -1 : 1;
+			deltax = (x == (eye->width - 1)) ? -1 : 1;
+			dy = DIFF(eye->data[y][x], eye->data[y + deltay][x]);
+			dx = DIFF(eye->data[y][x], eye->data[y][x + deltax]);
+			#undef DIFF
+			dist = dx * dx + dy * dy;
+			color = log_10(isqrt(dist) + 1);
+			if (color > 6)
+				color = 6;
+			if (level == 0)
+				color = 0;
+			if (color != last_color) {
+				color_str[3] = '0' + color;
+				seq_printf(s, "%s", color_str);
+				last_color = color;
+			}
+			seq_printf(s, "%c", '0' + level);
+		}
+		seq_puts(s, "\33[0m\n");
+		last_color = -1;
+	}
+	seq_printf(s, "\nEye Width %d, Height %d, Area %d\n",
+		   eye_width, eye_height, eye_area);
 
 	return 0;
 }
