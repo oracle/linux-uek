@@ -81,6 +81,8 @@ TEST(get_syscall_info)
 	}
 
 	if (pid == 0) {
+		unsigned int i;
+
 		/* get the pid before PTRACE_TRACEME */
 		pid = getpid();
 		ASSERT_EQ(0, sys_ptrace(PTRACE_TRACEME, 0, 0, 0)) {
@@ -90,7 +92,7 @@ TEST(get_syscall_info)
 			/* cannot happen */
 			TH_LOG("kill SIGSTOP: %m");
 		}
-		for (unsigned int i = 0; i < ARRAY_SIZE(args); ++i) {
+		for (i = 0; i < ARRAY_SIZE(args); ++i) {
 			syscall(args[i][0],
 				args[i][1], args[i][2], args[i][3],
 				args[i][4], args[i][5], args[i][6]);
