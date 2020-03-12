@@ -1035,8 +1035,10 @@ xfs_fs_evict_inode(
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
 	struct xfs_perag	*pag;
+	int		freezed;
 
-	if (xfs_inode_needs_inactivation(ip)) {
+	freezed = !sb_start_write_trylock(mp->m_super);
+	if (freezed && xfs_inode_needs_inactivation(ip)) {
 		pag = xfs_perag_get(mp, XFS_INO_TO_AGNO(mp, ip->i_ino));
 		spin_lock(&pag->pag_inact_lock);
 		list_add_tail(&ip->i_inact_list, &pag->pag_inact_list);
@@ -1047,6 +1049,7 @@ xfs_fs_evict_inode(
 	}
 
 	_xfs_fs_evict_inode(inode);
+	sb_end_write(mp->m_super);
 }
 
 void
