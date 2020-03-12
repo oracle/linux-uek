@@ -67,6 +67,8 @@ typedef struct xfs_inode {
 
 	/* VFS inode */
 	struct inode		i_vnode;	/* embedded VFS inode */
+
+	struct list_head	i_inact_list;
 } xfs_inode_t;
 
 /* Convert from vfs inode to xfs inode */

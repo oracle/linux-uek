@@ -208,6 +208,10 @@ xfs_initialize_perag(
 		if (radix_tree_preload(GFP_NOFS))
 			goto out_unwind;
 
+		INIT_WORK(&pag->pag_inact_work, xfs_fs_inact_worker);
+		INIT_LIST_HEAD(&pag->pag_inact_list);
+		spin_lock_init(&pag->pag_inact_lock);
+
 		spin_lock(&mp->m_perag_lock);
 		if (radix_tree_insert(&mp->m_perag_tree, index, pag)) {
 			BUG();
@@ -991,6 +995,7 @@ xfs_unmountfs(
 	int			error;
 
 	cancel_delayed_work_sync(&mp->m_eofblocks_work);
+	flush_workqueue(mp->m_inact_workqueue);
 
 	xfs_qm_unmount_quotas(mp);
 	xfs_rtunmount_inodes(mp);
