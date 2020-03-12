@@ -863,91 +863,76 @@ xfs_free_eofblocks(
 	bool		need_iolock)
 {
 	xfs_trans_t	*tp;
+	bool		has;
 	int		error;
-	xfs_fileoff_t	end_fsb;
-	xfs_fileoff_t	last_fsb;
-	xfs_filblks_t	map_len;
-	int		nimaps;
-	xfs_bmbt_irec_t	imap;
 
 	/*
-	 * Figure out if there are any blocks beyond the end
-	 * of the file.  If not, then there is nothing to do.
+	 * If there are blocks after the end of file, truncate the file to its
+	 * current size to free them up.
 	 */
-	end_fsb = XFS_B_TO_FSB(mp, (xfs_ufsize_t)XFS_ISIZE(ip));
-	last_fsb = XFS_B_TO_FSB(mp, mp->m_super->s_maxbytes);
-	if (last_fsb <= end_fsb)
-		return 0;
-	map_len = last_fsb - end_fsb;
+	error = xfs_has_eofblocks(ip, &has);
+	if (error || !has)
+		return error;
 
-	nimaps = 1;
-	xfs_ilock(ip, XFS_ILOCK_SHARED);
-	error = xfs_bmapi_read(ip, end_fsb, map_len, &imap, &nimaps, 0);
-	xfs_iunlock(ip, XFS_ILOCK_SHARED);
+	/*
+	 * Attach the dquots to the inode up front.
+	 */
+	error = xfs_qm_dqattach(ip, 0);
+	if (error)
+		return error;
 
-	if (!error && (nimaps != 0) &&
-	    (imap.br_startblock != HOLESTARTBLOCK ||
-	     ip->i_delayed_blks)) {
-		/*
-		 * Attach the dquots to the inode up front.
-		 */
-		error = xfs_qm_dqattach(ip, 0);
-		if (error)
-			return error;
+	/* wait on dio to ensure i_size has settled */
+	inode_dio_wait(VFS_I(ip));
 
-		/* wait on dio to ensure i_size has settled */
-		inode_dio_wait(VFS_I(ip));
+	/*
+	 * There are blocks after the end of file.
+	 * Free them up now by truncating the file to
+	 * its current size.
+	 */
+	tp = xfs_trans_alloc(mp, XFS_TRANS_INACTIVE);
 
-		/*
-		 * There are blocks after the end of file.
-		 * Free them up now by truncating the file to
-		 * its current size.
-		 */
-		tp = xfs_trans_alloc(mp, XFS_TRANS_INACTIVE);
-
-		if (need_iolock) {
-			if (!xfs_ilock_nowait(ip, XFS_IOLOCK_EXCL)) {
-				xfs_trans_cancel(tp);
-				return -EAGAIN;
-			}
-		}
-
-		error = xfs_trans_reserve(tp, &M_RES(mp)->tr_itruncate, 0, 0);
-		if (error) {
-			ASSERT(XFS_FORCED_SHUTDOWN(mp));
+	if (need_iolock) {
+		if (!xfs_ilock_nowait(ip, XFS_IOLOCK_EXCL)) {
 			xfs_trans_cancel(tp);
-			if (need_iolock)
-				xfs_iunlock(ip, XFS_IOLOCK_EXCL);
-			return error;
+			return -EAGAIN;
 		}
+	}
 
-		xfs_ilock(ip, XFS_ILOCK_EXCL);
-		xfs_trans_ijoin(tp, ip, 0);
-
-		/*
-		 * Do not update the on-disk file size.  If we update the
-		 * on-disk file size and then the system crashes before the
-		 * contents of the file are flushed to disk then the files
-		 * may be full of holes (ie NULL files bug).
-		 */
-		error = xfs_itruncate_extents(&tp, ip, XFS_DATA_FORK,
-					      XFS_ISIZE(ip));
-		if (error) {
-			/*
-			 * If we get an error at this point we simply don't
-			 * bother truncating the file.
-			 */
-			xfs_trans_cancel(tp);
-		} else {
-			error = xfs_trans_commit(tp);
-			if (!error)
-				xfs_inode_clear_eofblocks_tag(ip);
-		}
-
-		xfs_iunlock(ip, XFS_ILOCK_EXCL);
+	error = xfs_trans_reserve(tp, &M_RES(mp)->tr_itruncate, 0, 0);
+	if (error) {
+		ASSERT(XFS_FORCED_SHUTDOWN(mp));
+		xfs_trans_cancel(tp);
 		if (need_iolock)
 			xfs_iunlock(ip, XFS_IOLOCK_EXCL);
+		return error;
 	}
+
+	xfs_ilock(ip, XFS_ILOCK_EXCL);
+	xfs_trans_ijoin(tp, ip, 0);
+
+	/*
+	 * Do not update the on-disk file size.  If we update the
+	 * on-disk file size and then the system crashes before the
+	 * contents of the file are flushed to disk then the files
+	 * may be full of holes (ie NULL files bug).
+	 */
+	error = xfs_itruncate_extents(&tp, ip, XFS_DATA_FORK,
+				      XFS_ISIZE(ip));
+	if (error) {
+		/*
+		 * If we get an error at this point we simply don't
+		 * bother truncating the file.
+		 */
+		xfs_trans_cancel(tp);
+	} else {
+		error = xfs_trans_commit(tp);
+		if (!error)
+			xfs_inode_clear_eofblocks_tag(ip);
+	}
+
+	xfs_iunlock(ip, XFS_ILOCK_EXCL);
+	if (need_iolock)
+		xfs_iunlock(ip, XFS_IOLOCK_EXCL);
 	return error;
 }
 
