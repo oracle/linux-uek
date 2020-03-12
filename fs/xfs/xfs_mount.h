@@ -380,4 +380,5 @@ int	xfs_zero_extent(struct xfs_inode *ip, xfs_fsblock_t start_fsb,
 struct xfs_error_cfg * xfs_error_get_cfg(struct xfs_mount *mp,
 		int error_class, int error);
 
+unsigned int xfs_guess_metadata_threads(struct xfs_mount *mp);
 #endif	/* __XFS_MOUNT_H__ */

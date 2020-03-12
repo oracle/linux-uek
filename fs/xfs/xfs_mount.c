@@ -1314,3 +1314,42 @@ xfs_dev_is_read_only(
 	}
 	return 0;
 }
+
+/*
+ * Estimate the amount of parallelism that is available for metadata operations
+ * on this filesystem.
+ */
+unsigned int
+xfs_guess_metadata_threads(
+	struct xfs_mount	*mp)
+{
+	unsigned int		threads;
+
+	/*
+	 * Estimate the amount of parallelism for metadata operations from the
+	 * least capable of the two devices that handle metadata.  Cap that
+	 * estimate to the number of AGs to avoid unnecessary lock contention.
+	 */
+	threads = xfs_buftarg_guess_threads(mp->m_ddev_targp);
+	if (mp->m_logdev_targp != mp->m_ddev_targp)
+		threads = min(xfs_buftarg_guess_threads(mp->m_logdev_targp),
+			      threads);
+	threads = min(mp->m_sb.sb_agcount, threads);
+
+	/* If the storage told us it has fancy capabilities, we're done. */
+	if (threads > 1)
+		goto clamp;
+
+	/*
+	 * Metadata storage did not even hint that it has any parallel
+	 * capability.  If the filesystem was formatted with a stripe unit and
+	 * width, we'll treat that as evidence of a RAID setup and estimate
+	 * the number of disks.
+	 */
+	if (mp->m_sb.sb_unit > 0 && mp->m_sb.sb_width > mp->m_sb.sb_unit)
+		threads = mp->m_sb.sb_width / mp->m_sb.sb_unit;
+
+clamp:
+	/* Don't return an estimate larger than the CPU count. */
+	return min(num_online_cpus(), threads);
+}
