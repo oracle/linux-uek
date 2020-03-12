@@ -557,7 +557,9 @@ BuildRequires: fontconfig >= 2.13.0
 %endif
 
 %if %{with_dtrace}
-BuildRequires: libdtrace-ctf-devel >= 1.1.0
+BuildRequires: binutils >= 2.30-58.0.10
+BuildRequires: binutils-devel >= 2.30-58.0.10
+BuildRequires: gcc >= 8.3.1-4.5.0.7
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
@@ -751,7 +753,9 @@ Requires(pre): /usr/bin/find\
 Requires: elfutils-libelf >= 0.160\
 Requires: elfutils-libs >= 0.160\
 %if %{with_dtrace}\
-Requires: libdtrace-ctf >= 1.1.0\
+Requires: binutils >= 2.30-58.0.10\
+Requires: binutils-devel >= 2.30-58.0.10\
+Requires: gcc >= 8.3.1-4.5.0.7\
 %endif\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
