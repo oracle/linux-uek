@@ -1790,6 +1790,60 @@ xfs_inactive_ifree(
 }
 
 /*
+ * Returns true if we need to update the on-disk metadata before we can free
+ * the memory used by this inode.  Updates include freeing post-eof
+ * preallocations; and marking the inode free in the inobt if it is
+ * on the unlinked list.
+ */
+bool
+xfs_inode_needs_inactivation(
+	struct xfs_inode	*ip)
+{
+	struct xfs_mount	*mp = ip->i_mount;
+
+	/*
+	 * If the inode is already free, then there can be nothing
+	 * to clean up here.
+	 */
+	if (VFS_I(ip)->i_mode == 0)
+		return false;
+
+	/* If this is a read-only mount, don't do this (would generate I/O) */
+	if (mp->m_flags & XFS_MOUNT_RDONLY)
+		return false;
+
+	if (VFS_I(ip)->i_nlink != 0) {
+		int	error;
+		bool	has;
+
+		/*
+		 * force is true because we are evicting an inode from the
+		 * cache. Post-eof blocks must be freed, lest we end up with
+		 * broken free space accounting.
+		 *
+		 * Note: don't bother with iolock here since lockdep complains
+		 * about acquiring it in reclaim context. We have the only
+		 * reference to the inode at this point anyways.
+		 *
+		 * If the predicate errors out, send the inode through
+		 * inactivation anyway, because that's what we did before.
+		 * The inactivation worker will ignore an inode that doesn't
+		 * actually need it.
+		 */
+		if (!xfs_can_free_eofblocks(ip, true))
+			return false;
+		error = xfs_has_eofblocks(ip, &has);
+		return error != 0 || has;
+	}
+
+	/*
+	 * Link count dropped to zero, which means we have to mark the inode
+	 * free on disk and remove it from the AGI unlinked list.
+	 */
+	return true;
+}
+
+/*
  * xfs_inactive
  *
  * This is called when the vnode reference count for the vnode

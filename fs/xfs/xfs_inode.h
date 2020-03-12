@@ -405,6 +405,7 @@ int	xfs_zero_eof(struct xfs_inode *ip, xfs_off_t offset,
 		     xfs_fsize_t isize, bool *did_zeroing);
 int	xfs_iozero(struct xfs_inode *ip, loff_t pos, size_t count);
 int xfs_has_eofblocks(struct xfs_inode *ip, bool *has);
+bool xfs_inode_needs_inactivation(struct xfs_inode *ip);
 
 
 /* from xfs_iops.c */
