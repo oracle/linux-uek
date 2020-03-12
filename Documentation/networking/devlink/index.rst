@@ -33,6 +33,7 @@ parameters, info versions, and other features it supports.
 
    bnxt
    ionic
+   ice
    mlx4
    mlx5
    mlxsw
