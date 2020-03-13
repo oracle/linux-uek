@@ -403,7 +403,7 @@ void cpu_smt_disable(bool force)
 		else
 			ret = cpuhp_smt_disable(CPU_SMT_DISABLED);
 		if (ret)
-			pr_warn("SMT: not disabled %\n", ret);
+			pr_warn("SMT: not disabled %d\n", ret);
 		return;
 	}
 
