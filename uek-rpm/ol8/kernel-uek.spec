@@ -1671,7 +1671,7 @@ fi\
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
 if [ $1 -eq 0 ]\
 then\
-    /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel/' /etc/sysconfig/kernel || exit $?\
+    /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-core/' /etc/sysconfig/kernel || exit $?\
 fi\
 %{nil}
 
