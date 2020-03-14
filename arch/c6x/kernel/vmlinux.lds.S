@@ -146,6 +146,7 @@ SECTIONS
 		  EXIT_CALL
 		  *(.discard)
 		  *(.discard.*)
+		  *(.ctf)
 		  *(.interp)
 	}
 }
