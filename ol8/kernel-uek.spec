@@ -704,6 +704,7 @@ files combining both kernel and initial ramdisk.
 Summary: Kernel source files used by %{name}-debuginfo packages
 Group: Development/Debug
 Provides: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+Provides: installonlypkg(kernel-uek)
 AutoReq: no
 %description debuginfo-common
 This package is required by %{name}-debuginfo subpackages.
@@ -721,6 +722,7 @@ Summary: Debug information for package %{variant_name}\
 Group: Development/Debug\
 Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}\
 Provides: %{variant_name}-debuginfo-%{_target_cpu} = %{version}-%{release}\
+Provides: installonlypkg(kernel-uek)\
 AutoReqProv: no\
 %description -n %{variant_name}-debuginfo\
 This package provides debug information for package %{variant_name}.\
@@ -748,6 +750,7 @@ Provides: dtrace-kernel-headers = 1.2.0\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
+Provides: installonlypkg(kernel-uek)\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
 Requires: elfutils-libelf >= 0.160\
@@ -772,6 +775,7 @@ against the %{?2:%{2} }kernel package.\
 %package -n kernel%{?variant}%{!-o:-}%1\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
+Provides: installonlypkg(kernel-uek)\
 %kernel_reqprovconf\
 %{expand:%%kernel_devel_package %{-o:-o} %1 %{!?-n:%1}%{?-n:%{-n*}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %1}\
