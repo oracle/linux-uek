@@ -557,8 +557,8 @@ BuildRequires: fontconfig >= 2.13.0
 %endif
 
 %if %{with_dtrace}
-BuildRequires: binutils >= 2.30-58.0.10
-BuildRequires: binutils-devel >= 2.30-58.0.10
+BuildRequires: binutils >= 2.30-58.0.11
+BuildRequires: binutils-devel >= 2.30-58.0.11
 BuildRequires: gcc >= 8.3.1-4.5.0.7
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
@@ -753,8 +753,8 @@ Requires(pre): /usr/bin/find\
 Requires: elfutils-libelf >= 0.160\
 Requires: elfutils-libs >= 0.160\
 %if %{with_dtrace}\
-Requires: binutils >= 2.30-58.0.10\
-Requires: binutils-devel >= 2.30-58.0.10\
+Requires: binutils >= 2.30-58.0.11\
+Requires: binutils-devel >= 2.30-58.0.11\
 Requires: gcc >= 8.3.1-4.5.0.7\
 %endif\
 %description -n %{variant_name}-devel\
