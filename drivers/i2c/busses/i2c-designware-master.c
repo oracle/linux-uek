@@ -33,6 +33,19 @@
 
 #include "i2c-designware-core.h"
 
+/*
+ * The maximum number of jiffies we will wait while polling for the device
+ * to indicate recovery from a stuck SDA line is complete.
+ */
+#define __MAX_RECOVERY_TIME	(HZ / 1000ul)
+#define MAX_RECOVERY_TIME (__MAX_RECOVERY_TIME == 0 ? 1 : __MAX_RECOVERY_TIME)
+
+/*
+ * We are notified of the SDA timeout recovery in interrupt mode, so we
+ * jiffies won't increment. Fall back to using loops_per_jiffy
+ */
+extern unsigned long loops_per_jiffy;
+
 static void i2c_dw_configure_fifo_master(struct dw_i2c_dev *dev)
 {
 	/* Configure Tx/Rx FIFO threshold levels */
@@ -41,6 +54,63 @@ static void i2c_dw_configure_fifo_master(struct dw_i2c_dev *dev)
 
 	/* Configure the I2C master */
 	dw_writel(dev, dev->master_cfg, DW_IC_CON);
+}
+
+/*
+ * Set the timeout used to detect stuck SDA line according to the flowchart
+ * in the documentation
+ */
+static void init_stuck_sda_timeout(struct dw_i2c_dev *dev)
+{
+	uint32_t ic_enable;
+	uint32_t timeout;
+
+	ic_enable = dw_readl(dev, DW_IC_ENABLE);
+	dw_writel(dev, ic_enable & ~0x1, DW_IC_ENABLE);
+	timeout = i2c_dw_clk_rate(dev) * dev->sda_timeout_ms; /* clk in kHz */
+	dw_writel(dev, timeout, DW_IC_SDA_STUCK_AT_LOW);
+	dw_writel(dev, ic_enable, DW_IC_ENABLE);
+}
+
+/*
+ * This clears a stuck SDA by using the device's built-in facilities.
+ */
+static void clear_stuck_sda_intr(struct dw_i2c_dev *dev)
+{
+	uint32_t ic_enable;
+	uint32_t ic_status;
+	unsigned long remaining_loops;
+
+	dev_err(dev->dev, "SDA stuck; trying to recover\n");
+	ic_enable = dw_readl(dev, DW_IC_ENABLE);
+	dw_writel(dev, ic_enable | DW_IC_SDA_STUCK_RECOVERY_ENABLE,
+		DW_IC_ENABLE);
+
+	/*
+	 * Poll, waiting for recovery to be done. This may take up to 9 SCL
+	 * clocks and a STOP bit, though presumably the device will signal
+	 * completion in less time if it recovers sooner. There are apparently
+	 * cases where the recovery doesn't finish, so we have a timeout
+	 * in the loop.
+	 */
+	remaining_loops = MAX_RECOVERY_TIME * loops_per_jiffy;
+	do {
+		if (remaining_loops == 0) {
+			dev_err(dev->dev,
+				"Didn't recover after about %lu jiffies\n",
+				MAX_RECOVERY_TIME);
+			return;
+		}
+		remaining_loops -= 1;
+
+		ic_enable = dw_readl(dev, DW_IC_ENABLE);
+	} while ((ic_enable & DW_IC_SDA_STUCK_RECOVERY_ENABLE) != 0);
+
+	ic_status = dw_readl(dev, DW_IC_STATUS);
+	if ((ic_status & DW_IC_STATUS_SDA_STUCK_NOT_RECOVERED) != 0)
+		dev_err(dev->dev, "Stuck SDA recovery failed\n");
+	else
+		dev_info(dev->dev, "Recovery from stuck SDA successful\n");
 }
 
 /**
@@ -166,6 +236,8 @@ static int i2c_dw_init_master(struct dw_i2c_dev *dev)
 			"Hardware too old to adjust SDA hold time.\n");
 	}
 
+	if (dev->sda_timeout_ms)
+		init_stuck_sda_timeout(dev);
 	i2c_dw_configure_fifo_master(dev);
 	i2c_dw_release_lock(dev);
 
@@ -564,6 +636,11 @@ static int i2c_dw_irq_handler_master(struct dw_i2c_dev *dev)
 
 	stat = i2c_dw_read_clear_intrbits(dev);
 	if (stat & DW_IC_INTR_TX_ABRT) {
+		if ((dev->abort_source & DW_IC_TX_ABRT_SDA_STUCK_AT_LOW) != 0)
+			clear_stuck_sda_intr(dev);
+		if (stat & DW_IC_INTR_SCL_STUCK_AT_LOW)
+			dev_err(dev->dev,
+				"SCL stuck at low; no recovery available\n");
 		dev->cmd_err |= DW_IC_ERR_TX_ABRT;
 		dev->status = STATUS_IDLE;
 
