@@ -178,6 +178,8 @@ static void i2c_dw_configure_master(struct dw_i2c_dev *dev)
 
 	dev->master_cfg = DW_IC_CON_MASTER | DW_IC_CON_SLAVE_DISABLE |
 			  DW_IC_CON_RESTART_EN;
+	if (dev->sda_timeout_ms)
+		dev->master_cfg |= DW_IC_CON_BUS_CLEAR_FEATURE_CTL;
 
 	dev->mode = DW_IC_MASTER;
 
@@ -295,6 +297,8 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 					 &dev->scl_falling_time);
 		device_property_read_u32(&pdev->dev, "clock-frequency",
 					 &dev->clk_freq);
+		device_property_read_u32(&pdev->dev, "snps,sda-timeout-ms",
+					 &dev->sda_timeout_ms);
 	}
 
 	acpi_speed = i2c_acpi_find_bus_speed(&pdev->dev);
