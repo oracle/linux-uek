@@ -1697,7 +1697,7 @@ lpfc_rcv_logo_reglogin_issue(struct lpfc_vport *vport,
 	spin_unlock_irq(&phba->hbalock);
 
 	/* software abort if any GID_FT is outstanding */
-	if (vport->cfg_enable_fc4_type != LPFC_ENABLE_FCP) {
+	if (vport->phba->cfg_enable_fc4_type != LPFC_ENABLE_FCP) {
 		ns_ndlp = lpfc_findnode_did(vport, NameServer_DID);
 		if (ns_ndlp && NLP_CHK_NODE_ACT(ns_ndlp))
 			lpfc_els_abort(phba, ns_ndlp);
