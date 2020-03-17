@@ -512,11 +512,12 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
-#	%%kernel_reqprovconf <subpackage>
+#	%%kernel_reqprovconf [-e] <subpackage>
 # It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
 # macros defined above.
+# -e flag denotes an embedded package
 #
-%define kernel_reqprovconf \
+%define kernel_reqprovconf(e) \
 Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
 Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-drm = 4.3.0\
@@ -536,7 +537,7 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-%if !%{with_embedded}\
+%if 0%{!?-e:1}\
 Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
 %endif\
 Requires(pre): system-release\
@@ -929,14 +930,15 @@ against the %{?2:%{2} }kernel package.\
 #
 # This macro creates a kernel-<subpackage> and its -devel and -debuginfo too.
 #	%%define variant_summary The Linux kernel compiled for <configuration>
-#	%%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
+#	%%kernel_variant_package [-n <pretty-name>] [-e][-o] <subpackage>
+# -e flag denotes an embedded package
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(n:o) \
+%define kernel_variant_package(en:o) \
 %package -n kernel%{?variant}%{!-o:-}%1\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
-%kernel_reqprovconf\
+%kernel_reqprovconf %{?-e:-e}\
 %{expand:%%kernel_devel_package %{-o:-o} %1 %{!?-n:%1}%{?-n:%{-n*}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %1}\
 %{nil}
@@ -1013,12 +1015,12 @@ This package includes 4k page size for aarch64 kernel.
 This package include debug kernel for 4k page size.
 
 %define variant_summary A kernel for embedded platform.
-%kernel_variant_package -o emb
+%kernel_variant_package -eo emb
 %description -n kernel%{?variant}emb
 This package includes embedded kernel.
 
 %define variant_summary A kernel for embedded platform with extra debugging enabled.
-%kernel_variant_package -o emb-debug
+%kernel_variant_package -eo emb-debug
 %description -n kernel%{?variant}emb-debug
 This package includes debug embedded kernel.
 
