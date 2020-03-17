@@ -2245,7 +2245,7 @@ lpfc_cmpl_els_prli(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 		 * could be expected.
 		 */
 		if ((vport->fc_flag & FC_FABRIC) ||
-		    (vport->cfg_enable_fc4_type != LPFC_ENABLE_BOTH))
+		    (vport->phba->cfg_enable_fc4_type != LPFC_ENABLE_BOTH))
 			mode = KERN_ERR;
 		else
 			mode = KERN_INFO;
