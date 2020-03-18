@@ -368,11 +368,16 @@ enum cpuhp_smt_control cpu_smt_control __read_mostly = CPU_SMT_ENABLED;
 
 void cpu_smt_disable(bool force)
 {
+	int ret;
+
 	if (system_state == SYSTEM_RUNNING) {
 		if (force)
-			return cpuhp_smt_disable(CPU_SMT_FORCE_DISABLED);
+			ret = cpuhp_smt_disable(CPU_SMT_FORCE_DISABLED);
 		else
-			return cpuhp_smt_disable(CPU_SMT_DISABLED);
+			ret = cpuhp_smt_disable(CPU_SMT_DISABLED);
+		if (ret)
+			pr_warn("SMT: not disabled %d\n", ret);
+		return;
 	}
 
 	if (cpu_smt_control == CPU_SMT_FORCE_DISABLED ||
