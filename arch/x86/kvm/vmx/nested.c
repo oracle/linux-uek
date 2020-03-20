@@ -4574,7 +4574,7 @@ static int nested_vmx_get_vmptr(struct kvm_vcpu *vcpu, gpa_t *vmpointer)
 		return 1;
 
 	if (kvm_read_guest_virt(vcpu, gva, vmpointer, sizeof(*vmpointer), &e)) {
-		kvm_inject_page_fault(vcpu, &e);
+		kvm_inject_emulated_page_fault(vcpu, &e);
 		return 1;
 	}
 
@@ -4885,7 +4885,7 @@ static int handle_vmread(struct kvm_vcpu *vcpu)
 			return 1;
 		/* _system ok, nested_vmx_check_permission has verified cpl=0 */
 		if (kvm_write_guest_virt_system(vcpu, gva, &value, len, &e)) {
-			kvm_inject_page_fault(vcpu, &e);
+			kvm_inject_emulated_page_fault(vcpu, &e);
 			return 1;
 		}
 	}
@@ -4959,7 +4959,7 @@ static int handle_vmwrite(struct kvm_vcpu *vcpu)
 					instr_info, false, len, &gva))
 			return 1;
 		if (kvm_read_guest_virt(vcpu, gva, &value, len, &e)) {
-			kvm_inject_page_fault(vcpu, &e);
+			kvm_inject_emulated_page_fault(vcpu, &e);
 			return 1;
 		}
 	}
@@ -5124,7 +5124,7 @@ static int handle_vmptrst(struct kvm_vcpu *vcpu)
 	/* *_system ok, nested_vmx_check_permission has verified cpl=0 */
 	if (kvm_write_guest_virt_system(vcpu, gva, (void *)&current_vmptr,
 					sizeof(gpa_t), &e)) {
-		kvm_inject_page_fault(vcpu, &e);
+		kvm_inject_emulated_page_fault(vcpu, &e);
 		return 1;
 	}
 	return nested_vmx_succeed(vcpu);
@@ -5168,7 +5168,7 @@ static int handle_invept(struct kvm_vcpu *vcpu)
 			vmx_instruction_info, false, sizeof(operand), &gva))
 		return 1;
 	if (kvm_read_guest_virt(vcpu, gva, &operand, sizeof(operand), &e)) {
-		kvm_inject_page_fault(vcpu, &e);
+		kvm_inject_emulated_page_fault(vcpu, &e);
 		return 1;
 	}
 
@@ -5236,7 +5236,7 @@ static int handle_invvpid(struct kvm_vcpu *vcpu)
 			vmx_instruction_info, false, sizeof(operand), &gva))
 		return 1;
 	if (kvm_read_guest_virt(vcpu, gva, &operand, sizeof(operand), &e)) {
-		kvm_inject_page_fault(vcpu, &e);
+		kvm_inject_emulated_page_fault(vcpu, &e);
 		return 1;
 	}
 	if (operand.vpid >> 16)
