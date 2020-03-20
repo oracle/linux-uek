@@ -5312,7 +5312,7 @@ int kvm_mmu_load(struct kvm_vcpu *vcpu)
 	if (r)
 		goto out;
 	kvm_mmu_load_pgd(vcpu);
-	kvm_x86_ops.tlb_flush(vcpu, true);
+	kvm_x86_ops.tlb_flush(vcpu);
 out:
 	return r;
 }
