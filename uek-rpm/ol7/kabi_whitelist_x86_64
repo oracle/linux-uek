@@ -1,266 +1,69 @@
 [ol7_x86_64_whitelist]
-	add_timer
-	alloc_disk
-	alloc_pages_current
+	PDE_DATA
 	__alloc_skb
 	__alloc_workqueue_key
-	autoremove_wake_function
-	bdget
-	bdget_disk
-	bdput
-	bd_set_size
-	bio_add_page
-	bio_alloc_bioset
-	bio_endio
-	bio_put
-	bioset_create
-	bioset_free
-	bitmap_find_free_region
-	blk_cleanup_queue
-	blkdev_get
-	blkdev_get_by_dev
-	blkdev_put
-	blk_execute_rq
-	blk_fetch_request
-	blk_get_request
-	blk_init_queue
-	blk_mq_alloc_tag_set
-	blk_mq_end_request
-	blk_mq_free_tag_set
-	blk_mq_init_queue
-	blk_mq_stop_hw_queues
-	blk_put_request
-	blk_queue_io_min
-	blk_queue_io_opt
-	blk_queue_logical_block_size
-	blk_queue_make_request
-	blk_queue_max_hw_sectors
-	blk_queue_max_segments
-	blk_queue_max_segment_size
-	blk_queue_physical_block_size
-	blk_queue_segment_boundary
-	blk_rq_map_kern
-	__blk_run_queue
-	blk_stop_queue
-	blk_sync_queue
-	capable
-	complete
-	complete_and_exit
-	_cond_resched
-	__const_udelay
-	_copy_from_user
-	_copy_to_user
-	cpumask_next
-	cpu_number
-	__cpu_possible_mask
-	current_task
-	del_gendisk
-	del_timer_sync
-	destroy_workqueue
-	dev_driver_string
-	device_add_disk
-	do_gettimeofday
-	down_read
-	down_write
-	d_path
-	dump_stack
-	__elv_add_request
-	__fentry__
-	filp_close
-	filp_open
-	find_first_zero_bit
-	find_get_pid
-	find_vma
-	finish_wait
-	flush_workqueue
-	fortify_panic
-	fput
-	free_pages
-	freeze_bdev
-	fs_bio_set
-	fsync_bdev
-	generate_random_uuid
-	__get_free_pages
-	getnstimeofday64
-	__get_user_4
-	init_net
-	__init_rwsem
-	init_timer_key
-	init_wait_entry
-	__init_waitqueue_head
-	invalidate_bdev
-	invalidate_partition
-	iov_iter_advance
-	iov_iter_init
-	jiffies
-	jiffies_to_msecs
-	kernel_write
-	kfree
-	kfree_skb
-	__kmalloc
-	kmalloc_caches
-	kmalloc_order_trace
-	kmem_cache_alloc
-	kmem_cache_alloc_trace
-	kmem_cache_create
-	kmem_cache_destroy
-	kmem_cache_free
-	kobject_put
-	kthread_create_on_node
-	kthread_should_stop
-	kthread_stop
-	__list_add_valid
-	__list_del_entry_valid
-	lookup_address
-	memcmp
-	memcpy
-	memmove
-	mempool_alloc
-	mempool_alloc_slab
-	mempool_create
-	mempool_destroy
-	mempool_free
-	mempool_free_slab
-	mempool_resize
-	memset
-	misc_deregister
-	misc_register
-	module_put
-	msleep
-	__mutex_init
-	mutex_lock
-	mutex_lock_interruptible
-	mutex_unlock
-	names_cachep
-	__netlink_kernel_create
-	netlink_kernel_release
-	netlink_unicast
-	__nlmsg_put
-	no_llseek
-	nr_cpu_ids
-	page_offset_base
-	panic
-	param_array_ops
-	param_ops_bool
-	param_ops_charp
-	param_ops_int
-	param_ops_string
-	param_ops_ulong
-	PDE_DATA
-	__per_cpu_offset
-	pid_task
-	__preempt_count
-	prepare_to_wait
-	prepare_to_wait_event
-	printk
-	proc_create_data
-	proc_mkdir
-	put_disk
-	put_pid
-	__put_user_4
-	pv_irq_ops
-	pv_lock_ops
-	queue_work_on
-	_raw_read_lock
-	_raw_read_lock_irqsave
-	_raw_read_unlock_irqrestore
-	_raw_spin_lock
-	_raw_spin_lock_irq
-	_raw_spin_lock_irqsave
-	_raw_spin_unlock_irqrestore
-	_raw_write_lock
-	_raw_write_lock_irqsave
-	_raw_write_unlock_irqrestore
-	rb_erase
-	rb_first
-	rb_insert_color
-	rb_replace_node
-	recalc_sigpending
-	register_blkdev
-	__register_chrdev
-	remove_proc_entry
-	schedule
-	schedule_timeout
-	scsicam_bios_param
-	scsi_is_fc_rport
-	scsi_is_sdev_device
-	seq_lseek
-	seq_printf
-	seq_read
-	set_blocksize
-	set_device_ro
-	set_disk_ro
-	set_user_nice
-	simple_strtol
-	simple_strtoul
-	simple_strtoull
-	single_open
-	single_release
-	sme_me_mask
-	snprintf
-	sprintf
-	__stack_chk_fail
-	strchr
-	strcmp
-	strcpy
-	strlcpy
-	strlen
-	strncasecmp
-	strncmp
-	strncpy
-	strnlen
-	strsep
-	strstr
-	submit_bio
-	sys_close
-	thaw_bdev
-	time64_to_tm
-	try_module_get
-	unregister_blkdev
-	__unregister_chrdev
-	up_read
-	up_write
-	vfree
-	vmalloc
-	__vmalloc
-	vmemmap_base
-	vsnprintf
-	vsprintf
-	wait_for_completion_io
-	wait_for_completion_timeout
-	__wake_up
-	wake_up_process
-	yield
 	__bitmap_and
 	__bitmap_andnot
 	__bitmap_weight
 	__blk_end_request_all
+	__blk_run_queue
 	__bread_gfp
 	__break_lease
 	__brelse
+	__check_object_size
+	__const_udelay
 	__cpu_online_mask
+	__cpu_possible_mask
 	__cpu_present_mask
+	__cpuhp_remove_state
+	__cpuhp_setup_state
 	__d_drop
+	__elv_add_request
+	__fdget
+	__fentry__
 	__free_pages
 	__generic_file_write_iter
+	__get_free_pages
+	__get_user_4
+	__get_vm_area
+	__init_rwsem
+	__init_waitqueue_head
 	__insert_inode_hash
+	__kmalloc
 	__kmalloc_node
+	__list_add_valid
+	__list_del_entry_valid
 	__lock_page
 	__mark_inode_dirty
 	__module_get
 	__msecs_to_jiffies
+	__mutex_init
+	__netlink_kernel_create
+	__nlmsg_put
 	__pagevec_lru_add
 	__pagevec_release
 	__pci_register_driver
+	__per_cpu_offset
+	__preempt_count
 	__put_cred
+	__put_devmap_managed_page
 	__put_page
+	__put_user_4
+	__register_chrdev
+	__release_region
 	__remove_inode_hash
+	__request_module
+	__request_region
 	__set_page_dirty_nobuffers
+	__stack_chk_fail
 	__tasklet_hi_schedule
 	__test_set_page_writeback
+	__unregister_chrdev
 	__vfs_getxattr
 	__vfs_removexattr
 	__virt_addr_valid
+	__vmalloc
+	__wake_up
 	__x86_indirect_thunk_r10
 	__x86_indirect_thunk_r11
 	__x86_indirect_thunk_r12
@@ -275,46 +78,117 @@
 	__x86_indirect_thunk_rdx
 	__x86_indirect_thunk_rsi
 	_bin2bcd
+	_cond_resched
+	_copy_from_user
+	_copy_to_user
 	_dev_info
+	_raw_read_lock
+	_raw_read_lock_irqsave
+	_raw_read_unlock_irqrestore
+	_raw_spin_lock
 	_raw_spin_lock_bh
+	_raw_spin_lock_irq
+	_raw_spin_lock_irqsave
 	_raw_spin_unlock_bh
+	_raw_spin_unlock_irqrestore
+	_raw_write_lock
+	_raw_write_lock_irqsave
+	_raw_write_unlock_irqrestore
+	add_timer
 	add_to_page_cache_locked
 	address_space_init_once
 	alloc_chrdev_region
+	alloc_disk
 	alloc_file
+	alloc_pages_current
 	arch_dma_alloc_attrs
+	arch_phys_wc_add
+	arch_phys_wc_del
+	autoremove_wake_function
+	bd_set_size
 	bdevname
+	bdget
+	bdget_disk
+	bdput
+	bio_add_page
+	bio_alloc_bioset
+	bio_endio
 	bio_free_pages
 	bio_init
 	bio_integrity_add_page
 	bio_integrity_alloc
+	bio_put
+	bioset_create
+	bioset_free
+	bitmap_find_free_region
 	blk_alloc_queue
+	blk_cleanup_queue
 	blk_complete_request
 	blk_delay_queue
 	blk_end_request_all
+	blk_execute_rq
+	blk_fetch_request
 	blk_finish_plug
+	blk_get_request
+	blk_init_queue
 	blk_integrity_compare
+	blk_mq_alloc_tag_set
+	blk_mq_complete_request
+	blk_mq_end_request
+	blk_mq_free_tag_set
+	blk_mq_init_queue
+	blk_mq_kick_requeue_list
+	blk_mq_start_request
+	blk_mq_start_stopped_hw_queues
+	blk_mq_stop_hw_queues
 	blk_mq_unique_tag
+	blk_put_request
 	blk_queue_bounce_limit
+	blk_queue_io_min
+	blk_queue_io_opt
+	blk_queue_logical_block_size
+	blk_queue_make_request
+	blk_queue_max_hw_sectors
+	blk_queue_max_segment_size
+	blk_queue_max_segments
+	blk_queue_physical_block_size
+	blk_queue_segment_boundary
 	blk_queue_softirq_done
 	blk_queue_stack_limits
 	blk_requeue_request
+	blk_rq_map_kern
 	blk_set_default_limits
 	blk_start_plug
 	blk_start_queue
+	blk_stop_queue
+	blk_sync_queue
+	blkdev_get
+	blkdev_get_by_dev
 	blkdev_get_by_path
 	blkdev_issue_discard
+	blkdev_put
 	bsg_job_done
+	cancel_delayed_work
 	cancel_delayed_work_sync
+	capable
 	cdev_add
 	cdev_del
 	cdev_init
 	clear_inode
+	clear_page_dirty_for_io
+	clear_page_erms
+	clear_page_orig
+	clear_page_rep
+	complete
+	complete_and_exit
 	copy_user_enhanced_fast_string
 	copy_user_generic_string
 	copy_user_generic_unrolled
 	cpu_bit_bitmap
+	cpu_number
+	cpumask_next
 	current_kernel_time64
+	current_task
 	d_add
 	d_alloc
 	d_drop
@@ -323,28 +197,128 @@
 	d_invalidate
 	d_lookup
 	d_make_root
+	d_move
 	d_obtain_alias
+	d_path
 	d_prune_aliases
 	d_set_d_op
 	d_splice_alias
 	deactivate_locked_super
 	default_llseek
+	del_gendisk
+	del_timer
+	del_timer_sync
 	delayed_work_timer_fn
 	dentry_open
+	destroy_workqueue
+	dev_driver_string
 	dev_err
 	dev_warn
+	device_add_disk
+	devm_kmalloc
+	devmap_managed_key
 	dget_parent
 	dma_ops
+	do_gettimeofday
 	done_path_create
 	down
 	down_interruptible
+	down_read
 	down_read_trylock
+	down_write
 	down_write_trylock
 	dput
+	drm_add_modes_noedid
+	drm_compat_ioctl
+	drm_connector_cleanup
+	drm_connector_init
+	drm_connector_register
+	drm_connector_unregister
+	drm_crtc_cleanup
+	drm_crtc_helper_set_config
+	drm_crtc_init
+	drm_cvt_mode
+	drm_encoder_cleanup
+	drm_encoder_init
+	drm_fb_helper_alloc_fbi
+	drm_fb_helper_blank
+	drm_fb_helper_check_var
+	drm_fb_helper_debug_enter
+	drm_fb_helper_debug_leave
+	drm_fb_helper_deferred_io
+	drm_fb_helper_fill_fix
+	drm_fb_helper_fill_var
+	drm_fb_helper_fini
+	drm_fb_helper_init
+	drm_fb_helper_initial_config
+	drm_fb_helper_pan_display
+	drm_fb_helper_prepare
+	drm_fb_helper_restore_fbdev_mode_unlocked
+	drm_fb_helper_set_par
+	drm_fb_helper_set_suspend_unlocked
+	drm_fb_helper_setcmap
+	drm_fb_helper_single_add_all_connectors
+	drm_fb_helper_sys_copyarea
+	drm_fb_helper_sys_fillrect
+	drm_fb_helper_sys_imageblit
+	drm_fb_helper_unregister_fbi
+	drm_framebuffer_cleanup
+	drm_framebuffer_init
+	drm_framebuffer_unregister_private
+	drm_gem_dumb_destroy
+	drm_gem_handle_create
+	drm_gem_object_init
+	drm_gem_object_lookup
+	drm_gem_object_put
+	drm_gem_object_put_unlocked
+	drm_gem_object_release
+	drm_gem_prime_export
+	drm_gem_prime_fd_to_handle
+	drm_gem_prime_handle_to_fd
+	drm_gem_prime_import
+	drm_get_pci_dev
+	drm_global_item_ref
+	drm_global_item_unref
+	drm_helper_connector_dpms
+	drm_helper_disable_unused_functions
+	drm_helper_mode_fill_fb_struct
+	drm_helper_probe_single_connector_modes
+	drm_helper_resume_force_mode
+	drm_ioctl
+	drm_irq_install
+	drm_irq_uninstall
+	drm_kms_helper_hotplug_event
+	drm_kms_helper_poll_disable
+	drm_kms_helper_poll_enable
+	drm_mode_config_cleanup
+	drm_mode_config_init
+	drm_mode_config_reset
+	drm_mode_connector_attach_encoder
+	drm_mode_connector_update_edid_property
+	drm_mode_create_suggested_offset_properties
+	drm_mode_crtc_set_gamma_size
+	drm_mode_destroy
+	drm_mode_legacy_fb_format
+	drm_mode_object_find
+	drm_mode_probed_add
+	drm_modeset_lock_all
+	drm_modeset_unlock_all
+	drm_object_attach_property
+	drm_object_property_set_value
+	drm_open
+	drm_poll
+	drm_printk
+	drm_put_dev
+	drm_read
+	drm_release
 	drop_nlink
 	drop_super
+	dump_stack
 	emergency_restart
 	end_page_writeback
+	ex_handler_default
+	fasync_helper
+	fb_deferred_io_init
 	fget
 	fiemap_check_flags
 	fiemap_fill_next_extent
@@ -355,13 +329,36 @@
 	filemap_flush
 	filemap_write_and_wait
 	filemap_write_and_wait_range
+	filp_close
+	filp_open
 	find_first_bit
+	find_first_zero_bit
+	find_get_pid
+	find_vma
+	find_vpid
+	finish_wait
 	flush_signals
+	flush_work
+	flush_workqueue
+	fortify_panic
+	fput
 	free_buffer_head
+	free_cpumask_var
 	free_irq
+	free_pages
+	freeze_bdev
 	from_kgid
 	from_kuid
+	fs_bio_set
+	fsync_bdev
 	full_name_hash
+	gen_pool_add_virt
+	gen_pool_create
+	gen_pool_destroy
+	gen_pool_dma_alloc
+	gen_pool_free
+	gen_pool_virt_to_phys
+	generate_random_uuid
 	generic_block_fiemap
 	generic_file_direct_write
 	generic_file_llseek
@@ -372,70 +369,160 @@
 	generic_file_write_iter
 	generic_fillattr
 	generic_permission
+	generic_read_dir
 	generic_write_checks
+	get_current_tty
 	get_random_bytes
 	get_super
 	get_user_pages
+	get_user_pages_remote
+	getnstimeofday64
 	grab_cache_page_write_begin
+	high_memory
+	hrtimer_cancel
+	hrtimer_init
+	hrtimer_start_range_ns
+	hrtimer_try_to_cancel
 	iget5_locked
+	iget_locked
 	igrab
+	ilookup
+	in_egroup_p
 	in_group_p
 	inc_nlink
 	inet_csk_delete_keepalive_timer
 	inet_csk_reset_keepalive_timer
+	init_net
 	init_special_inode
+	init_timer_key
+	init_wait_entry
 	inode_init_once
 	inode_newsize_ok
 	inode_permission
+	input_allocate_device
+	input_event
+	input_free_device
+	input_register_device
+	input_set_abs_params
+	input_unregister_device
+	invalidate_bdev
 	invalidate_inode_buffers
 	invalidate_mapping_pages
+	invalidate_partition
 	io_schedule
 	ioctl_by_bdev
+	iomem_resource
 	ioremap_nocache
 	iounmap
+	iov_iter_advance
 	iov_iter_bvec
 	iov_iter_get_pages
+	iov_iter_init
 	iput
 	irq_set_affinity_hint
 	iterate_dir
+	iunique
+	jiffies
+	jiffies_to_msecs
 	jiffies_to_timeval
 	kern_path
 	kern_path_create
 	kernel_accept
+	kernel_fpu_begin
+	kernel_fpu_end
 	kernel_read
 	kernel_recvmsg
 	kernel_sendmsg
+	kernel_write
+	kfree
+	kfree_link
+	kfree_skb
 	kill_anon_super
 	kill_block_super
+	kill_fasync
+	kmalloc_caches
+	kmalloc_order_trace
+	kmem_cache_alloc
+	kmem_cache_alloc_node_trace
+	kmem_cache_alloc_trace
+	kmem_cache_create
+	kmem_cache_create_usercopy
+	kmem_cache_destroy
+	kmem_cache_free
+	kobject_put
+	kthread_create_on_node
+	kthread_should_stop
+	kthread_stop
+	ktime_get_ts64
+	load_nls
 	lock_rename
 	lock_sock_nested
 	lockref_get
 	locks_init_lock
 	locks_lock_inode_wait
+	lookup_address
 	lookup_bdev
 	lookup_one_len
 	make_kgid
 	make_kuid
+	map_vm_area
 	mapping_tagged
 	match_token
+	memchr
+	memcmp
+	memcpy
+	memmove
+	mempool_alloc
+	mempool_alloc_slab
+	mempool_create
+	mempool_destroy
+	mempool_free
+	mempool_free_slab
+	mempool_resize
+	memset
+	misc_deregister
+	misc_register
 	mntget
 	mntput
 	mod_timer
+	module_put
 	mount_bdev
+	mount_nodev
 	mpage_readpage
 	mpage_readpages
 	mpage_writepages
+	msleep
 	msleep_interruptible
+	mutex_lock
+	mutex_lock_interruptible
+	mutex_unlock
+	names_cachep
+	netlink_kernel_release
+	netlink_unicast
 	new_inode
+	nf_register_net_hook
+	nf_unregister_net_hook
+	no_llseek
 	nobh_truncate_page
 	nobh_write_begin
 	nobh_write_end
 	nobh_writepage
+	node_states
+	noop_fsync
 	notify_change
+	nr_cpu_ids
 	numa_node
 	override_creds
+	page_offset_base
 	pagecache_get_page
 	pagevec_lookup_range_tag
+	panic
+	param_array_ops
+	param_ops_bool
+	param_ops_charp
+	param_ops_int
+	param_ops_string
+	param_ops_ulong
 	path_get
 	path_put
 	pci_choose_state
@@ -443,6 +530,8 @@
 	pci_disable_msix
 	pci_enable_device
 	pci_enable_msix_range
+	pci_iomap_range
+	pci_iounmap
 	pci_release_regions
 	pci_request_regions
 	pci_restore_state
@@ -452,18 +541,39 @@
 	pci_unregister_driver
 	pcie_capability_clear_and_set_word
 	phys_base
+	pid_task
 	posix_lock_file
 	posix_test_lock
 	prepare_creds
+	prepare_to_wait
+	prepare_to_wait_event
 	prepare_to_wait_exclusive
+	printk
 	proc_create
+	proc_create_data
+	proc_mkdir
+	put_disk
+	put_pid
+	pv_irq_ops
+	pv_lock_ops
+	pv_mmu_ops
 	queue_delayed_work_on
+	queue_work_on
+	rb_erase
+	rb_first
+	rb_insert_color
+	rb_replace_node
 	read_cache_page
+	recalc_sigpending
 	redirty_page_for_writepage
+	register_blkdev
+	register_chrdev_region
 	register_filesystem
 	register_reboot_notifier
+	release_pages
 	release_sock
 	remap_pfn_range
+	remove_proc_entry
 	request_threaded_irq
 	reset_devices
 	revalidate_disk
@@ -484,6 +594,10 @@
 	sas_release_transport
 	sas_rphy_add
 	sb_set_blocksize
+	sched_setscheduler
+	schedule
+	schedule_hrtimeout_range
+	schedule_timeout
 	scnprintf
 	scsi_add_device
 	scsi_add_host_with_dma
@@ -495,14 +609,29 @@
 	scsi_dma_unmap
 	scsi_host_alloc
 	scsi_host_put
+	scsi_is_fc_rport
+	scsi_is_sdev_device
 	scsi_normalize_sense
 	scsi_remove_device
 	scsi_remove_host
 	scsi_unblock_requests
+	scsicam_bios_param
 	send_sig
+	send_sig_info
+	seq_escape
+	seq_lseek
+	seq_printf
+	seq_puts
+	seq_read
 	set_anon_super
+	set_blocksize
+	set_device_ro
+	set_disk_ro
 	set_nlink
 	set_page_dirty
+	set_pages_nx
+	set_pages_x
+	set_user_nice
 	setattr_prepare
 	sg_copy_from_buffer
 	sg_copy_to_buffer
@@ -511,33 +640,95 @@
 	shrink_dcache_parent
 	si_meminfo
 	sigprocmask
+	simple_strtol
+	simple_strtoul
+	simple_strtoull
+	simple_write_begin
+	single_open
+	single_release
 	sme_active
+	sme_me_mask
+	smp_call_function
+	smp_call_function_many
+	smp_call_function_single
+	snprintf
 	sock_create_kern
 	sock_release
+	sockfd_lookup
+	sprintf
 	sscanf
 	strcat
+	strchr
+	strcmp
+	strcpy
 	strim
+	strlcpy
+	strlen
+	strncasecmp
 	strncat
+	strncmp
+	strncpy
+	strnlen
 	strrchr
+	strsep
 	strspn
+	strstr
+	submit_bio
 	super_setup_bdi
+	sys_close
 	sys_tz
 	system_wq
+	tag_pages_for_writeback
 	tasklet_init
+	thaw_bdev
+	time64_to_tm
 	totalram_pages
 	touch_atime
 	truncate_inode_pages
 	truncate_inode_pages_range
 	truncate_pagecache
 	truncate_setsize
+	try_module_get
+	ttm_bo_add_to_lru
+	ttm_bo_default_io_mem_pfn
+	ttm_bo_del_sub_from_lru
+	ttm_bo_device_init
+	ttm_bo_device_release
+	ttm_bo_dma_acc_size
+	ttm_bo_eviction_valuable
+	ttm_bo_global_init
+	ttm_bo_global_release
+	ttm_bo_init
+	ttm_bo_init_mm
+	ttm_bo_kmap
+	ttm_bo_kunmap
+	ttm_bo_manager_func
+	ttm_bo_mmap
+	ttm_bo_unref
+	ttm_bo_validate
+	ttm_mem_global_init
+	ttm_mem_global_release
+	ttm_pool_populate
+	ttm_pool_unpopulate
+	ttm_tt_fini
+	ttm_tt_init
+	tty_kref_put
+	tty_name
+	unload_nls
 	unlock_new_inode
 	unlock_page
 	unlock_rename
 	unmap_mapping_range
+	unregister_blkdev
 	unregister_chrdev_region
 	unregister_filesystem
 	unregister_reboot_notifier
 	up
+	up_read
+	up_write
+	utf32_to_utf8
+	utf8_to_utf32
+	vfree
 	vfs_create
 	vfs_fsync
 	vfs_fsync_range
@@ -553,16 +744,30 @@
 	vfs_rmdir
 	vfs_symlink
 	vfs_unlink
+	vgacon_text_force
+	vm_insert_page
 	vm_mmap
 	vm_munmap
+	vmalloc
 	vmalloc_base
 	vmalloc_to_page
+	vmalloc_to_pfn
+	vmap
+	vmemmap_base
 	vprintk
 	vscnprintf
+	vsnprintf
+	vsprintf
+	vunmap
 	wait_for_completion
 	wait_for_completion_interruptible
+	wait_for_completion_io
 	wait_for_completion_io_timeout
+	wait_for_completion_timeout
 	wait_on_page_bit
+	wake_up_process
 	write_inode_now
-	kernel_fpu_begin
-	kernel_fpu_end
+	ww_mutex_lock_interruptible
+	ww_mutex_unlock
+	yield
+	zalloc_cpumask_var
