@@ -161,8 +161,8 @@ void percpu_down_write(struct percpu_rw_semaphore *sem)
 	 * will wait for them.
 	 */
 
-	/* Wait for all now active readers to complete. */
-	rcuwait_wait_event(&sem->writer, readers_active_check(sem));
+	/* Wait for all active readers to complete. */
+	rcuwait_wait_event(&sem->writer, readers_active_check(sem), TASK_UNINTERRUPTIBLE);
 }
 EXPORT_SYMBOL_GPL(percpu_down_write);
 
