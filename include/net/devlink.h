@@ -630,7 +630,7 @@ struct devlink_trap_group {
  * @generic: Whether the trap is generic or not.
  * @id: Trap identifier.
  * @name: Trap name.
- * @group: Immutable packet trap group attributes.
+ * @init_group_id: Initial group identifier.
  * @metadata_cap: Metadata types that can be provided by the trap.
  *
  * Describes immutable attributes of packet traps that drivers register with
@@ -642,7 +642,7 @@ struct devlink_trap {
 	bool generic;
 	u16 id;
 	const char *name;
-	struct devlink_trap_group group;
+	UEK_KABI_REPLACE(struct devlink_trap_group group, u16 init_group_id)
 	u32 metadata_cap;
 };
 
@@ -771,18 +771,19 @@ enum devlink_trap_group_generic_id {
 #define DEVLINK_TRAP_GROUP_GENERIC_NAME_ACL_DROPS \
 	"acl_drops"
 
-#define DEVLINK_TRAP_GENERIC(_type, _init_action, _id, _group, _metadata_cap) \
+#define DEVLINK_TRAP_GENERIC(_type, _init_action, _id, _group_id,	      \
+			     _metadata_cap)				      \
 	{								      \
 		.type = DEVLINK_TRAP_TYPE_##_type,			      \
 		.init_action = DEVLINK_TRAP_ACTION_##_init_action,	      \
 		.generic = true,					      \
 		.id = DEVLINK_TRAP_GENERIC_ID_##_id,			      \
 		.name = DEVLINK_TRAP_GENERIC_NAME_##_id,		      \
-		.group = _group,					      \
+		.init_group_id = _group_id,				      \
 		.metadata_cap = _metadata_cap,				      \
 	}
 
-#define DEVLINK_TRAP_DRIVER(_type, _init_action, _id, _name, _group,	      \
+#define DEVLINK_TRAP_DRIVER(_type, _init_action, _id, _name, _group_id,	      \
 			    _metadata_cap)				      \
 	{								      \
 		.type = DEVLINK_TRAP_TYPE_##_type,			      \
@@ -790,7 +791,7 @@ enum devlink_trap_group_generic_id {
 		.generic = false,					      \
 		.id = _id,						      \
 		.name = _name,						      \
-		.group = _group,					      \
+		.init_group_id = _group_id,				      \
 		.metadata_cap = _metadata_cap,				      \
 	}
 
