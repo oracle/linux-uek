@@ -468,3 +468,16 @@ int memory_add_physaddr_to_nid(u64 addr)
 	pr_warn("Unknown node for memory at 0x%llx, assuming node 0\n", addr);
 	return 0;
 }
+
+/*
+ * device-dax instance registrations want a valid target-node in case
+ * they are ever onlined as memory (see hmem_register_device()).
+ *
+ * TODO: consult cached numa info
+ */
+int phys_to_target_node(phys_addr_t addr)
+{
+	pr_warn_once("Unknown target node for memory at 0x%llx, assuming node 0\n",
+			addr);
+	return 0;
+}
