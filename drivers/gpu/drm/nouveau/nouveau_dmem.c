@@ -524,7 +524,8 @@ nouveau_dmem_init(struct nouveau_drm *drm)
 	if (IS_ERR(res))
 		goto out_free;
 	drm->dmem->pagemap.type = MEMORY_DEVICE_PRIVATE;
-	drm->dmem->pagemap.res = *res;
+	drm->dmem->pagemap.range.start = res->start;
+	drm->dmem->pagemap.range.end = res->end;
 	drm->dmem->pagemap.ops = &nouveau_dmem_pagemap_ops;
 	if (IS_ERR(devm_memremap_pages(device, &drm->dmem->pagemap)))
 		goto out_free;

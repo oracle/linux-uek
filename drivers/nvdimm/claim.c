@@ -302,13 +302,17 @@ static int nsio_rw_bytes(struct nd_namespace_common *ndns,
 
 int devm_nsio_enable(struct device *dev, struct nd_namespace_io *nsio)
 {
-	struct resource *res = &nsio->res;
+	resource_size_t size = resource_size(&nsio->res);
 	struct nd_namespace_common *ndns = &nsio->common;
+	struct range range = {
+		.start = nsio->res.start,
+		.end = nsio->res.end,
+	};
 
-	nsio->size = resource_size(res);
-	if (!devm_request_mem_region(dev, res->start, resource_size(res),
+	nsio->size = size;
+	if (!devm_request_mem_region(dev, range.start, size,
 				dev_name(&ndns->dev))) {
-		dev_warn(dev, "could not reserve region %pR\n", res);
+		dev_warn(dev, "could not reserve region %pR\n", &nsio->res);
 		return -EBUSY;
 	}
 
@@ -316,9 +320,9 @@ int devm_nsio_enable(struct device *dev, struct nd_namespace_io *nsio)
 	if (devm_init_badblocks(dev, &nsio->bb))
 		return -ENOMEM;
 	nvdimm_badblocks_populate(to_nd_region(ndns->dev.parent), &nsio->bb,
-			&nsio->res);
+			&range);
 
-	nsio->addr = devm_memremap(dev, res->start, resource_size(res),
+	nsio->addr = devm_memremap(dev, range.start, size,
 			ARCH_MEMREMAP_PMEM);
 
 	return PTR_ERR_OR_ZERO(nsio->addr);
