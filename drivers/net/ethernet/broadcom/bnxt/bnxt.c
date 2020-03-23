@@ -10101,6 +10101,12 @@ static void bnxt_fw_reset_close(struct bnxt *bp)
 	if (test_bit(BNXT_STATE_FW_FATAL_COND, &bp->state))
 		pci_disable_device(bp->pdev);
 	__bnxt_close_nic(bp, true, false);
+	bnxt_ulp_irq_stop(bp);
+	/* When firmware is fatal state, disable PCI device to prevent
+	 * any potential bad DMAs before freeing kernel memory.
+	 */
+	if (test_bit(BNXT_STATE_FW_FATAL_COND, &bp->state))
+		pci_disable_device(bp->pdev);
 	bnxt_clear_int_mode(bp);
 	bnxt_hwrm_func_drv_unrgtr(bp);
 	if (pci_is_enabled(bp->pdev))
