@@ -6342,7 +6342,7 @@ static void handle_external_interrupt_irqoff(struct kvm_vcpu *vcpu)
 #endif
 		ASM_CALL_CONSTRAINT
 		:
-		THUNK_TARGET(entry),
+		[thunk_target]"r"(entry),
 		[ss]"i"(__KERNEL_DS),
 		[cs]"i"(__KERNEL_CS)
 	);
