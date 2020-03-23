@@ -14,25 +14,27 @@
 #include "dax-private.h"
 #include "bus.h"
 
-static struct range dax_kmem_range(struct dev_dax *dev_dax)
+static int dax_kmem_range(struct dev_dax *dev_dax, int i, struct range *r)
 {
-	struct range range;
+	struct dev_dax_range *dax_range = &dev_dax->ranges[i];
+	struct range *range = &dax_range->range;
 
 	/* memory-block align the hotplug range */
-	range.start = ALIGN(dev_dax->range.start, memory_block_size_bytes());
-	range.end = ALIGN_DOWN(dev_dax->range.end + 1,
-			memory_block_size_bytes()) - 1;
-	return range;
+	r->start = ALIGN(range->start, memory_block_size_bytes());
+	r->end = ALIGN_DOWN(range->end + 1, memory_block_size_bytes()) - 1;
+	if (r->start >= r->end) {
+		r->start = range->start;
+		r->end = range->end;
+		return -ENOSPC;
+	}
+	return 0;
 }
 
 int dev_dax_kmem_probe(struct dev_dax *dev_dax)
 {
-	struct range range = dax_kmem_range(dev_dax);
 	int numa_node = dev_dax->target_node;
 	struct device *dev = &dev_dax->dev;
-	struct resource *res;
-	char *new_res_name;
-	int rc;
+	int i, mapped = 0;
 
 	/*
 	 * Ensure good NUMA information for the persistent memory.
@@ -46,27 +48,54 @@ int dev_dax_kmem_probe(struct dev_dax *dev_dax)
 		return -EINVAL;
 	}
 
-	new_res_name = kstrdup(dev_name(dev), GFP_KERNEL);
-	if (!new_res_name)
-		return -ENOMEM;
+	for (i = 0; i < dev_dax->nr_range; i++) {
+		char *new_res_name;
+		struct resource *res;
+		struct range range;
+		int rc;
 
-	res = request_mem_region(range.start, range_len(&range), new_res_name);
-	if (!res) {
-		dev_warn(dev, "could not reserve region [%#llx-%#llx]\n",
-				range.start, range.end);
-		return -EBUSY;
-	}
+		rc = dax_kmem_range(dev_dax, i, &range);
+		if (rc) {
+			dev_info(dev, "mapping%d: %#llx-%#llx too small after alignment\n",
+					i, range.start, range.end);
+			continue;
+		}
 
-	/* Temporarily clear busy to allow add_memory() to claim it */
-	res->flags &= ~IORESOURCE_BUSY;
-	rc = add_memory(numa_node, range.start, range_len(&range));
-	res->flags |= IORESOURCE_BUSY;
-	if (rc) {
-		release_mem_region(range.start, range_len(&range));
-		kfree(new_res_name);
-		return rc;
+		new_res_name = kstrdup(dev_name(dev), GFP_KERNEL);
+		if (!new_res_name)
+			return -ENOMEM;
+
+		res = request_mem_region(range.start, range_len(&range),
+				new_res_name);
+		if (!res) {
+			dev_warn(dev, "mapping%d: %#llx-%#llx could not reserve region\n",
+					i, range.start, range.end);
+			kfree(new_res_name);
+			/*
+			 * Once some memory has been onlined we can't
+			 * assume that it can be un-onlined safely.
+			 */
+			if (mapped)
+				continue;
+			return -EBUSY;
+		}
+
+		/* Temporarily clear busy to allow add_memory() to claim it */
+		res->flags &= ~IORESOURCE_BUSY;
+		rc = add_memory(numa_node, range.start, range_len(&range));
+		res->flags |= IORESOURCE_BUSY;
+		if (rc) {
+			dev_warn(dev, "mapping%d: %#llx-%#llx memory add failed\n",
+					i, range.start, range.end);
+			release_mem_region(range.start, range_len(&range));
+			kfree(new_res_name);
+			if (mapped)
+				continue;
+			return rc;
+		}
+		dev_dax->ranges[i].dax_kmem_name = new_res_name;
+		mapped++;
 	}
-	dev_dax->dax_kmem_name = new_res_name;
 
 	return 0;
 }
@@ -74,9 +103,7 @@ int dev_dax_kmem_probe(struct dev_dax *dev_dax)
 #ifdef CONFIG_MEMORY_HOTREMOVE
 static void dax_kmem_release(struct dev_dax *dev_dax)
 {
-	const char *res_name = dev_dax->dax_kmem_name;
-	struct range range = dax_kmem_range(dev_dax);
-	int rc;
+	int i;
 
 	/*
 	 * We have one shot for removing memory, if some memory blocks were not
@@ -84,15 +111,27 @@ static void dax_kmem_release(struct dev_dax *dev_dax)
 	 * there is no way to hotremove this memory until reboot because device
 	 * unbind will proceed regardless of the remove_memory result.
 	 */
-	rc = remove_memory(dev_dax->target_node, range.start, range_len(&range));
-	if (rc == 0) {
-		release_mem_region(range.start, range_len(&range));
-		kfree(res_name);
-		dev_dax->dax_kmem_name = NULL;
-		return;
+	for (i = 0; i < dev_dax->nr_range; i++) {
+		const char *res_name = dev_dax->ranges[i].dax_kmem_name;
+		struct range range;
+		int rc;
+
+		rc = dax_kmem_range(dev_dax, i, &range);
+		if (rc)
+			continue;
+
+		rc = remove_memory(dev_dax->target_node, range.start,
+				range_len(&range));
+		if (rc == 0) {
+			release_mem_region(range.start, range_len(&range));
+			kfree(res_name);
+			dev_dax->ranges[i].dax_kmem_name = NULL;
+			continue;
+		}
+		dev_err(&dev_dax->dev,
+			"mapping%d: %#llx-%#llx cannot be hotremoved until the next reboot\n",
+				i, range.start, range.end);
 	}
-	dev_err(&dev_dax->dev, "%#llx-%#llx cannot be hotremoved until the next reboot\n",
-			range.start, range.end);
 }
 #else
 static void dax_kmem_release(struct dev_dax *dev_dax)
