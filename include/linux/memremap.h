@@ -95,7 +95,6 @@ struct dev_pagemap_ops {
 /**
  * struct dev_pagemap - metadata for ZONE_DEVICE mappings
  * @altmap: pre-allocated/reserved memory for vmemmap allocations
- * @range: physical address range covered by @ref
  * @ref: reference count that pins the devm_memremap_pages() mapping
  * @internal_ref: internal reference if @ref is not provided by the caller
  * @done: completion for @internal_ref
@@ -104,16 +103,23 @@ struct dev_pagemap_ops {
  * @type: memory type: see MEMORY_* in memory_hotplug.h
  * @flags: PGMAP_* flags to specify defailed behavior
  * @ops: method table
+ * @range(s): physical address range(s) covered by @ref
  */
 struct dev_pagemap {
 	struct vmem_altmap altmap;
-	UEK_KABI_REPLACE(struct resource res, struct range range)
+	UEK_KABI_DEPRECATE(struct resource, res)
 	struct percpu_ref *ref;
 	struct percpu_ref internal_ref;
 	struct completion done;
 	enum memory_type type;
 	unsigned int flags;
 	const struct dev_pagemap_ops *ops;
+	UEK_KABI_EXTEND(
+	int nr_range;
+	union {
+		struct range range;
+		struct range ranges[1];
+	})
 };
 
 static inline struct vmem_altmap *pgmap_altmap(struct dev_pagemap *pgmap)
