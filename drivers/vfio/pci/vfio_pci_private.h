@@ -13,6 +13,7 @@
 #include <linux/irqbypass.h>
 #include <linux/types.h>
 #include <linux/uuid.h>
+#include <linux/notifier.h>
 
 #ifndef VFIO_PCI_PRIVATE_H
 #define VFIO_PCI_PRIVATE_H
@@ -135,6 +136,7 @@ struct vfio_pci_device {
 	struct mutex		ioeventfds_lock;
 	struct list_head	ioeventfds_list;
 	struct vfio_pci_vf_token	*vf_token;
+	struct notifier_block	nb;
 	struct mutex		vma_lock;
 	struct list_head	vma_list;
 	struct rw_semaphore	memory_lock;
