@@ -261,8 +261,8 @@ struct x86_hyper_runtime {
 struct x86_platform_ops {
 	unsigned long (*calibrate_cpu)(void);
 	unsigned long (*calibrate_tsc)(void);
-	void (*get_wallclock)(struct timespec64 *ts);
-	int (*set_wallclock)(const struct timespec64 *ts);
+	void (*get_wallclock)(struct timespec *ts);
+	int (*set_wallclock)(const struct timespec *ts);
 	void (*iommu_shutdown)(int panic);
 	bool (*is_untracked_pat_range)(u64 start, u64 end);
 	void (*nmi_init)(void);
