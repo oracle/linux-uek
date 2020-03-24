@@ -410,7 +410,7 @@ int pci_std_enable_acs_sv(struct pci_dev *dev, bool enable);
 
 /* PCI error reporting and recovery */
 void pcie_do_recovery(struct pci_dev *dev, enum pci_channel_state state,
-		      u32 service);
+		      pci_ers_result_t (*reset_link)(struct pci_dev *pdev));
 
 bool pcie_wait_for_link(struct pci_dev *pdev, bool active);
 #ifdef CONFIG_PCIEASPM
