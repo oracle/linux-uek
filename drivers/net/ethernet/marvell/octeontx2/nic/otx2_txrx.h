@@ -96,7 +96,8 @@ struct otx2_snd_queue {
 enum cq_type {
 	CQ_RX,
 	CQ_TX,
-	CQS_PER_CINT = 2, /* RQ + SQ */
+	CQ_XDP,
+	CQS_PER_CINT = 3, /* RQ + SQ + XDP */
 };
 
 struct otx2_cq_poll {
