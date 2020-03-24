@@ -546,6 +546,7 @@ struct pci_host_bridge *pci_alloc_host_bridge(size_t priv)
 	bridge->native_aer = 1;
 	bridge->native_hotplug = 1;
 	bridge->native_pme = 1;
+	bridge->native_dpc = 1;
 
 	return bridge;
 }
