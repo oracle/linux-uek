@@ -122,28 +122,30 @@ ssize_t part_stat_show(struct device *dev,
 	struct hd_struct *p = dev_to_part(dev);
 	struct request_queue *q = part_to_disk(p)->queue;
 	unsigned int inflight[2];
+	struct disk_stats stat;
 	int cpu;
 
 	cpu = part_stat_lock();
 	part_round_stats(q, cpu, p);
 	part_stat_unlock();
+	part_stat_read_all(p, &stat);
 	part_in_flight(q, p, inflight);
 	return sprintf(buf,
 		"%8lu %8lu %8llu %8u "
 		"%8lu %8lu %8llu %8u "
 		"%8u %8u %8u"
 		"\n",
-		part_stat_read(p, ios[READ]),
-		part_stat_read(p, merges[READ]),
-		(unsigned long long)part_stat_read(p, sectors[READ]),
-		jiffies_to_msecs(part_stat_read(p, ticks[READ])),
-		part_stat_read(p, ios[WRITE]),
-		part_stat_read(p, merges[WRITE]),
-		(unsigned long long)part_stat_read(p, sectors[WRITE]),
-		jiffies_to_msecs(part_stat_read(p, ticks[WRITE])),
+		stat.ios[READ],
+		stat.merges[READ],
+		(unsigned long long)stat.sectors[READ],
+		jiffies_to_msecs(stat.ticks[READ]),
+		stat.ios[WRITE],
+		stat.merges[WRITE],
+		(unsigned long long)stat.sectors[WRITE],
+		jiffies_to_msecs(stat.ticks[WRITE]),
 		inflight[0],
-		jiffies_to_msecs(part_stat_read(p, io_ticks)),
-		jiffies_to_msecs(part_stat_read(p, time_in_queue)));
+		jiffies_to_msecs(stat.io_ticks),
+		jiffies_to_msecs(stat.time_in_queue));
 }
 
 ssize_t part_inflight_show(struct device *dev, struct device_attribute *attr,
