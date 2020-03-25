@@ -2784,6 +2784,8 @@ static int __init intel_pstate_init(void)
 		pr_info("Invalid MSRs\n");
 		return -ENODEV;
 	}
+	/* Without HWP start in the passive mode. */
+	default_driver = &intel_cpufreq;
 
 hwp_cpu_matched:
 	/*
@@ -2829,7 +2831,6 @@ static int __init intel_pstate_setup(char *str)
 	if (!strcmp(str, "disable")) {
 		no_load = 1;
 	} else if (!strcmp(str, "passive")) {
-		pr_info("Passive mode enabled\n");
 		default_driver = &intel_cpufreq;
 		no_hwp = 1;
 	}
