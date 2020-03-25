@@ -45,6 +45,34 @@ static void disk_add_events(struct gendisk *disk);
 static void disk_del_events(struct gendisk *disk);
 static void disk_release_events(struct gendisk *disk);
 
+#ifdef CONFIG_SMP
+void part_stat_read_all(struct hd_struct *part, struct disk_stats *stat)
+{
+	int cpu;
+
+	memset(stat, 0, sizeof(struct disk_stats));
+	for_each_possible_cpu(cpu) {
+		struct disk_stats *ptr = per_cpu_ptr(part->dkstats, cpu);
+		int group;
+
+		for (group = 0; group < 2; group++) {
+			stat->ticks[group] += ptr->ticks[group];
+			stat->sectors[group] += ptr->sectors[group];
+			stat->ios[group] += ptr->ios[group];
+			stat->merges[group] += ptr->merges[group];
+		}
+
+		stat->io_ticks += ptr->io_ticks;
+		stat->time_in_queue += ptr->time_in_queue;
+	}
+}
+#else /* CONFIG_SMP */
+void part_stat_read_all(struct hd_struct *part, struct disk_stats *stat)
+{
+	memcpy(stat, &part->dkstats, sizeof(struct disk_stats));
+}
+#endif /* CONFIG_SMP */
+
 void part_inc_in_flight(struct request_queue *q, struct hd_struct *part, int rw)
 {
 	if (q->mq_ops)
@@ -1324,6 +1352,7 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	char buf[BDEVNAME_SIZE];
 	unsigned int inflight[2];
 	int cpu;
+	struct disk_stats stat;
 
 	/*
 	if (&disk_to_dev(gp)->kobj.entry == block_class.devices.next)
@@ -1338,22 +1367,23 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 		cpu = part_stat_lock();
 		part_round_stats(gp->queue, cpu, hd);
 		part_stat_unlock();
+		part_stat_read_all(hd, &stat);
 		part_in_flight(gp->queue, hd, inflight);
 		seq_printf(seqf, "%4d %7d %s %lu %lu %lu "
 			   "%u %lu %lu %lu %u %u %u %u\n",
 			   MAJOR(part_devt(hd)), MINOR(part_devt(hd)),
 			   disk_name(gp, hd->partno, buf),
-			   part_stat_read(hd, ios[READ]),
-			   part_stat_read(hd, merges[READ]),
-			   part_stat_read(hd, sectors[READ]),
-			   jiffies_to_msecs(part_stat_read(hd, ticks[READ])),
-			   part_stat_read(hd, ios[WRITE]),
-			   part_stat_read(hd, merges[WRITE]),
-			   part_stat_read(hd, sectors[WRITE]),
-			   jiffies_to_msecs(part_stat_read(hd, ticks[WRITE])),
+			   stat.ios[READ],
+			   stat.merges[READ],
+			   stat.sectors[READ],
+			   jiffies_to_msecs(stat.ticks[READ]),
+			   stat.ios[WRITE],
+			   stat.merges[WRITE],
+			   stat.sectors[WRITE],
+			   jiffies_to_msecs(stat.ticks[WRITE]),
 			   inflight[0],
-			   jiffies_to_msecs(part_stat_read(hd, io_ticks)),
-			   jiffies_to_msecs(part_stat_read(hd, time_in_queue))
+			   jiffies_to_msecs(stat.io_ticks),
+			   jiffies_to_msecs(stat.time_in_queue)
 			);
 	}
 	disk_part_iter_exit(&piter);

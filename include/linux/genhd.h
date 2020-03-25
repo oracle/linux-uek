@@ -378,6 +378,7 @@ void part_dec_in_flight(struct request_queue *q, struct hd_struct *part,
 			int rw);
 void part_inc_in_flight(struct request_queue *q, struct hd_struct *part,
 			int rw);
+void part_stat_read_all(struct hd_struct *part, struct disk_stats *stat);
 
 static inline struct partition_meta_info *alloc_part_info(struct gendisk *disk)
 {
