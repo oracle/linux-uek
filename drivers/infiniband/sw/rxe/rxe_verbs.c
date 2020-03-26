@@ -245,13 +245,31 @@ static struct ib_pd *rxe_alloc_pd(struct ib_device *dev,
 	struct rxe_pd *pd;
 
 	pd = rxe_alloc(&rxe->pd_pool);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (pd) {
+		pd->pdn = rxe_pdn_allocate(rxe);
+		pd->real_rxepd = pd;
+	}
+	if (pd && context)
+		if (ib_copy_to_udata(udata, &pd->pdn, sizeof(__u32))) {
+			rxe_drop_ref(pd);
+			pd = NULL;
+		}
+
+#endif	/* !WITHOUT_ORACLE_EXTENSIONS */
 	return pd ? &pd->ibpd : ERR_PTR(-ENOMEM);
 }
 
 static int rxe_dealloc_pd(struct ib_pd *ibpd)
 {
 	struct rxe_pd *pd = to_rpd(ibpd);
+	struct rxe_dev *rxe = to_rdev(ibpd->device);
+	u32 pdn = pd->pdn;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (!ibpd->shpd)
+		rxe_pdn_free(rxe, pdn);
+#endif
 	rxe_drop_ref(pd);
 	return 0;
 }
@@ -1187,6 +1205,57 @@ static struct device_attribute *rxe_dev_attributes[] = {
 	&dev_attr_parent,
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static struct ib_shpd *rxe_alloc_shpd(struct ib_device *dev,
+					 struct ib_pd *pd,
+					 struct ib_udata *udata)
+{
+	struct rxe_shpd *shpd;
+
+	shpd = kzalloc(sizeof(*shpd), GFP_KERNEL);
+	if (!shpd)
+		return ERR_PTR(-ENOMEM);
+	shpd->shared_rxepd = to_rpd(pd);
+	shpd->shared_pdn = to_rpd(pd)->pdn;
+	return &shpd->ibshpd;
+}
+
+static struct ib_pd *rxe_share_pd(struct ib_device *dev,
+				  struct ib_ucontext *context,
+				  struct ib_udata *udata,
+				  struct ib_shpd *shpd)
+{
+	struct rxe_dev *rxe = to_rdev(dev);
+	struct rxe_pd *pd;
+
+	pd = rxe_alloc(&rxe->pd_pool);
+	if (!pd)
+		return ERR_PTR(-ENOMEM);
+
+	pd->real_rxepd = to_rshpd(shpd)->shared_rxepd;
+	pd->pdn = to_rshpd(shpd)->shared_pdn;
+	if (context)
+		if (ib_copy_to_udata(udata, &pd->pdn, sizeof(__u32))) {
+			kfree(pd);
+			return ERR_PTR(-EFAULT);
+		}
+
+	return &pd->ibpd;
+}
+
+static int rxe_remove_shpd(struct ib_device *ibdev,
+			      struct ib_shpd *shpd, int atinit)
+{
+	struct rxe_dev *rxe = to_rdev(ibdev);
+
+	if (!atinit)
+		rxe_pdn_free(rxe, to_rshpd(shpd)->shared_pdn);
+	kfree(shpd);
+	return 0;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int rxe_register_device(struct rxe_dev *rxe)
 {
 	int err;
@@ -1239,6 +1308,10 @@ int rxe_register_device(struct rxe_dev *rxe)
 	    | BIT_ULL(IB_USER_VERBS_CMD_DESTROY_AH)
 	    | BIT_ULL(IB_USER_VERBS_CMD_ATTACH_MCAST)
 	    | BIT_ULL(IB_USER_VERBS_CMD_DETACH_MCAST)
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	    | BIT_ULL(IB_USER_VERBS_CMD_ALLOC_SHPD)
+	    | BIT_ULL(IB_USER_VERBS_CMD_SHARE_PD)
+#endif	/* !WITHOUT_ORACLE_EXTENSIONS */
 	    ;
 
 	dev->query_device = rxe_query_device;
@@ -1287,6 +1360,11 @@ int rxe_register_device(struct rxe_dev *rxe)
 	dev->detach_mcast = rxe_detach_mcast;
 	dev->get_hw_stats = rxe_ib_get_hw_stats;
 	dev->alloc_hw_stats = rxe_ib_alloc_hw_stats;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	dev->alloc_shpd	= rxe_alloc_shpd;
+	dev->share_pd	= rxe_share_pd;
+	dev->remove_shpd	= rxe_remove_shpd;
+#endif	/* !WITHOUT_ORACLE_EXTENSIONS */
 
 	rxe->tfm = crypto_alloc_shash("crc32", 0, 0);
 	if (IS_ERR(rxe->tfm)) {
