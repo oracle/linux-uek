@@ -25,6 +25,7 @@ struct octeontx2_spi {
 	u64 last_cfg;
 	u64 cs_enax;
 	int sys_freq;
+	bool rcvd_present;
 	struct octeontx2_spi_regs regs;
 	struct clk *clk;
 };
