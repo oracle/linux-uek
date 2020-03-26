@@ -119,13 +119,8 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 	len = xfer->len;
 
 	/* Except T96 A0, use rcvdx register for x1 uni-directional mode */
-	if (!mpi_cfg.s.iomode) {
-		if (!MIDR_IS_CPU_MODEL_RANGE(read_cpuid_id(),
-					     MIDR_MRVL_OCTEONTX2_96XX,
-					     MIDR_CPU_VAR_REV(0, 0),
-					     MIDR_CPU_VAR_REV(0, 0)))
-			rx_ptr = p->register_base + OCTEONTX2_SPI_RCVD(p);
-	}
+	if (!mpi_cfg.s.iomode && p->rcvd_present)
+		rx_ptr = p->register_base + OCTEONTX2_SPI_RCVD(p);
 
 	while (len > OCTEONTX2_SPI_MAX_BYTES) {
 		if (tx_buf) {
@@ -242,6 +237,7 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 	struct device *dev = &pdev->dev;
 	struct spi_master *master;
 	struct octeontx2_spi *p;
+	union mpix_sts mpi_sts;
 	int ret = -ENOENT;
 
 	/* may need to hunt for devtree entry */
@@ -282,6 +278,9 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 	p->regs.wbuf = 0x1800;
 	p->regs.rcvd = 0x2800;
 	p->last_cfg = 0x0;
+
+	mpi_sts.u64 = readq(p->register_base + OCTEONTX2_SPI_STS(p));
+	p->rcvd_present = mpi_sts.u64 & 0x4 ? true : false;
 
 	/* FIXME: need a proper clocksource object for SCLK */
 	p->clk = devm_clk_get(dev, NULL);
