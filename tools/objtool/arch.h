@@ -66,6 +66,8 @@ struct stack_op {
 	struct list_head list;
 };
 
+struct instruction;
+
 void arch_initial_func_cfi_state(struct cfi_state *state);
 
 int arch_decode_instruction(struct elf *elf, struct section *sec,
@@ -75,5 +77,9 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 			    struct list_head *ops_list);
 
 bool arch_callee_saved_reg(unsigned char reg);
+
+unsigned long arch_jump_destination(struct instruction *insn);
+
+unsigned long arch_dest_rela_offset(int addend);
 
 #endif /* _ARCH_H */
