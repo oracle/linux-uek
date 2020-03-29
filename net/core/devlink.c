@@ -5063,6 +5063,7 @@ struct devlink_health_reporter {
 	struct mutex dump_lock; /* lock parallel read/write from dump buffers */
 	u64 graceful_period;
 	bool auto_recover;
+	bool auto_dump;
 	u8 health_state;
 	u64 dump_ts;
 	u64 dump_real_ts;
@@ -5129,6 +5130,7 @@ devlink_health_reporter_create(struct devlink *devlink,
 	reporter->devlink = devlink;
 	reporter->graceful_period = graceful_period;
 	reporter->auto_recover = !!ops->recover;
+	reporter->auto_dump = !!ops->dump;
 	mutex_init(&reporter->dump_lock);
 	refcount_set(&reporter->refcount, 1);
 	list_add_tail(&reporter->list, &devlink->reporter_list);
@@ -5208,6 +5210,10 @@ devlink_nl_health_reporter_fill(struct sk_buff *msg,
 	if (reporter->dump_fmsg &&
 	    nla_put_u64_64bit(msg, DEVLINK_ATTR_HEALTH_REPORTER_DUMP_TS_NS,
 			      reporter->dump_real_ts, DEVLINK_ATTR_PAD))
+		goto reporter_nest_cancel;
+	if (reporter->ops->dump &&
+	    nla_put_u8(msg, DEVLINK_ATTR_HEALTH_REPORTER_AUTO_DUMP,
+		       reporter->auto_dump))
 		goto reporter_nest_cancel;
 
 	nla_nest_end(msg, reporter_attr);
@@ -5354,10 +5360,12 @@ int devlink_health_report(struct devlink_health_reporter *reporter,
 
 	reporter->health_state = DEVLINK_HEALTH_REPORTER_STATE_ERROR;
 
-	mutex_lock(&reporter->dump_lock);
-	/* store current dump of current error, for later analysis */
-	devlink_health_do_dump(reporter, priv_ctx);
-	mutex_unlock(&reporter->dump_lock);
+	if (reporter->auto_dump) {
+		mutex_lock(&reporter->dump_lock);
+		/* store current dump of current error, for later analysis */
+		devlink_health_do_dump(reporter, priv_ctx);
+		mutex_unlock(&reporter->dump_lock);
+	}
 
 	if (reporter->auto_recover)
 		return devlink_health_reporter_recover(reporter, priv_ctx);
@@ -5544,6 +5552,11 @@ devlink_nl_cmd_health_reporter_set_doit(struct sk_buff *skb,
 		err = -EOPNOTSUPP;
 		goto out;
 	}
+	if (!reporter->ops->dump &&
+	    info->attrs[DEVLINK_ATTR_HEALTH_REPORTER_AUTO_DUMP]) {
+		err = -EOPNOTSUPP;
+		goto out;
+	}
 
 	if (info->attrs[DEVLINK_ATTR_HEALTH_REPORTER_GRACEFUL_PERIOD])
 		reporter->graceful_period =
@@ -5552,6 +5565,10 @@ devlink_nl_cmd_health_reporter_set_doit(struct sk_buff *skb,
 	if (info->attrs[DEVLINK_ATTR_HEALTH_REPORTER_AUTO_RECOVER])
 		reporter->auto_recover =
 			nla_get_u8(info->attrs[DEVLINK_ATTR_HEALTH_REPORTER_AUTO_RECOVER]);
+
+	if (info->attrs[DEVLINK_ATTR_HEALTH_REPORTER_AUTO_DUMP])
+		reporter->auto_dump =
+		nla_get_u8(info->attrs[DEVLINK_ATTR_HEALTH_REPORTER_AUTO_DUMP]);
 
 	devlink_health_reporter_put(reporter);
 	return 0;
@@ -6290,6 +6307,7 @@ static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 	[DEVLINK_ATTR_PORT_PCI_PF_NUMBER] = { .type = NLA_U16 },
 	[DEVLINK_ATTR_PORT_PCI_SF_NUMBER] = { .type = NLA_U32 },
 	[DEVLINK_ATTR_PORT_CONTROLLER_NUMBER] = { .type = NLA_U32 },
+	[DEVLINK_ATTR_HEALTH_REPORTER_AUTO_DUMP] = { .type = NLA_U8 },
 };
 
 static const struct genl_ops devlink_nl_ops[] = {
