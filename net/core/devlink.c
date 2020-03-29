@@ -5098,14 +5098,12 @@ devlink_health_reporter_find_by_name(struct devlink *devlink,
  *	@devlink: devlink
  *	@ops: ops
  *	@graceful_period: to avoid recovery loops, in msecs
- *	@auto_recover: auto recover when error occurs
  *	@priv: priv
  */
 struct devlink_health_reporter *
 devlink_health_reporter_create(struct devlink *devlink,
 			       const struct devlink_health_reporter_ops *ops,
-			       u64 graceful_period, bool auto_recover,
-			       void *priv)
+			       u64 graceful_period, void *priv)
 {
 	struct devlink_health_reporter *reporter;
 
@@ -5115,8 +5113,7 @@ devlink_health_reporter_create(struct devlink *devlink,
 		goto unlock;
 	}
 
-	if (WARN_ON(auto_recover && !ops->recover) ||
-	    WARN_ON(graceful_period && !ops->recover)) {
+	if (WARN_ON(graceful_period && !ops->recover)) {
 		reporter = ERR_PTR(-EINVAL);
 		goto unlock;
 	}
@@ -5131,7 +5128,7 @@ devlink_health_reporter_create(struct devlink *devlink,
 	reporter->ops = ops;
 	reporter->devlink = devlink;
 	reporter->graceful_period = graceful_period;
-	reporter->auto_recover = auto_recover;
+	reporter->auto_recover = !!ops->recover;
 	mutex_init(&reporter->dump_lock);
 	refcount_set(&reporter->refcount, 1);
 	list_add_tail(&reporter->list, &devlink->reporter_list);
