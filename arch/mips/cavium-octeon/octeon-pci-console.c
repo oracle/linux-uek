@@ -20,6 +20,7 @@
 #include <linux/tty_driver.h>
 #include <linux/tty_flip.h>
 #include <linux/module.h>
+#include <linux/delay.h>
 
 #include <asm/byteorder.h>
 #include <asm/io.h>
@@ -120,6 +121,7 @@ static void octeon_pci_console_lowlevel_write(struct octeon_pci_console *opc,
 					      const char *str, unsigned int len)
 {
 	u32 s = opc->rings->buf_size;
+	int buffer_full_milliseconds = 0;
 
 	spin_lock(&opc->lock);
 	while (len > 0) {
@@ -128,8 +130,33 @@ static void octeon_pci_console_lowlevel_write(struct octeon_pci_console *opc,
 		u32 a = ((s - 1) - (w - r)) % s;
 		unsigned int n;
 
-		if (!a)
+		if (buffer_full_milliseconds >= 10) {
+			/* We've waited long enough!
+			 * Note: The oct-remote tools poll for new data in the
+			 * ring every millisecond.
+			 */
+			unsigned int tail_bytes;
+
+			/* Empty the buffer */
+			a = s - 1;
+			w = r;
+			buffer_full_milliseconds = 0;
+
+			/* Copy the trailing bytes, overwriting the previous
+			 * contents of the ring. If len <= s - 1, then all
+			 * bytes in str will fit in the ring buffer
+			 */
+			tail_bytes = min(len, a);
+			str = &str[len - tail_bytes];
+			len = tail_bytes;
+		}
+
+		if (!a) {
+			mdelay(1);
+			++buffer_full_milliseconds;
 			continue;
+		}
+
 		if (r <= w)
 			n = min(a, min(len, s - w));
 		else
