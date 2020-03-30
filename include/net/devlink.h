@@ -41,6 +41,7 @@ struct devlink {
 	u8 reload_failed:1,
 	   reload_enabled:1;
 	UEK_KABI_FILL_HOLE(struct list_head rate_list)
+	UEK_KABI_FILL_HOLE(struct list_head trap_policer_list)
 	char priv[0] __aligned(NETDEV_ALIGN);
 };
 
@@ -606,6 +607,29 @@ struct devlink_health_reporter_ops {
 };
 
 /**
+ * struct devlink_trap_policer - Immutable packet trap policer attributes.
+ * @id: Policer identifier.
+ * @init_rate: Initial rate in packets / sec.
+ * @init_burst: Initial burst size in packets.
+ * @max_rate: Maximum rate.
+ * @min_rate: Minimum rate.
+ * @max_burst: Maximum burst size.
+ * @min_burst: Minimum burst size.
+ *
+ * Describes immutable attributes of packet trap policers that drivers register
+ * with devlink.
+ */
+struct devlink_trap_policer {
+	u32 id;
+	u64 init_rate;
+	u64 init_burst;
+	u64 max_rate;
+	u64 min_rate;
+	u64 max_burst;
+	u64 min_burst;
+};
+
+/**
  * struct devlink_trap_group - Immutable packet trap group attributes.
  * @name: Trap group name.
  * @id: Trap group identifier.
@@ -802,6 +826,18 @@ enum devlink_trap_group_generic_id {
 		.generic = true,					      \
 	}
 
+#define DEVLINK_TRAP_POLICER(_id, _rate, _burst, _max_rate, _min_rate,	      \
+			     _max_burst, _min_burst)			      \
+	{								      \
+		.id = _id,						      \
+		.init_rate = _rate,					      \
+		.init_burst = _burst,					      \
+		.max_rate = _max_rate,					      \
+		.min_rate = _min_rate,					      \
+		.max_burst = _max_burst,				      \
+		.min_burst = _min_burst,				      \
+	}
+
 struct devlink_ops {
 	UEK_KABI_REPLACE_UNSAFE(
 	int (*reload_down)(struct devlink *devlink,
@@ -902,6 +938,38 @@ struct devlink_ops {
 	 */
 	int (*trap_group_init)(struct devlink *devlink,
 			       const struct devlink_trap_group *group);
+	/**
+	 * @trap_policer_init: Trap policer initialization function.
+	 *
+	 * Should be used by device drivers to initialize the trap policer in
+	 * the underlying device.
+	 */
+	UEK_KABI_EXTEND(int (*trap_policer_init)(struct devlink *devlink,
+					 const struct devlink_trap_policer *policer))
+	/**
+	 * @trap_policer_fini: Trap policer de-initialization function.
+	 *
+	 * Should be used by device drivers to de-initialize the trap policer
+	 * in the underlying device.
+	 */
+	UEK_KABI_EXTEND(void (*trap_policer_fini)(struct devlink *devlink,
+					  const struct devlink_trap_policer *policer))
+	/**
+	 * @trap_policer_set: Trap policer parameters set function.
+	 */
+	UEK_KABI_EXTEND(int (*trap_policer_set)(struct devlink *devlink,
+					const struct devlink_trap_policer *policer,
+					u64 rate, u64 burst,
+					struct netlink_ext_ack *extack))
+	/**
+	 * @trap_policer_counter_get: Trap policer counter get function.
+	 *
+	 * Should be used by device drivers to report number of packets dropped
+	 * by the policer.
+	 */
+	UEK_KABI_EXTEND(int (*trap_policer_counter_get)(struct devlink *devlink,
+						const struct devlink_trap_policer *policer,
+						u64 *p_drops))
 	/**
 	 * @port_function_hw_addr_get: Port function's hardware address get function.
 	 *
@@ -1281,6 +1349,14 @@ int devlink_trap_groups_register(struct devlink *devlink,
 void devlink_trap_groups_unregister(struct devlink *devlink,
 				    const struct devlink_trap_group *groups,
 				    size_t groups_count);
+int
+devlink_trap_policers_register(struct devlink *devlink,
+			       const struct devlink_trap_policer *policers,
+			       size_t policers_count);
+void
+devlink_trap_policers_unregister(struct devlink *devlink,
+				 const struct devlink_trap_policer *policers,
+				 size_t policers_count);
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 

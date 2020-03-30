@@ -243,6 +243,7 @@ enum devlink_param_reset_dev_on_drv_probe_value {
 enum {
 	DEVLINK_ATTR_STATS_RX_PACKETS,		/* u64 */
 	DEVLINK_ATTR_STATS_RX_BYTES,		/* u64 */
+	DEVLINK_ATTR_STATS_RX_DROPPED,		/* u64 */
 
 	__DEVLINK_ATTR_STATS_MAX,
 	DEVLINK_ATTR_STATS_MAX = __DEVLINK_ATTR_STATS_MAX - 1
