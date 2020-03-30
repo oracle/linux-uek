@@ -162,6 +162,7 @@ struct nsim_dev {
 	u32 max_macs;
 	bool test1;
 	struct devlink_region *dummy_region;
+	bool fail_trap_group_set;
 	bool fail_trap_policer_set;
 	bool fail_trap_policer_counter_get;
 };
