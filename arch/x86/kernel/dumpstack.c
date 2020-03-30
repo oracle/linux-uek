@@ -228,6 +228,9 @@ NOKPROBE_SYMBOL(oops_begin);
 
 void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 {
+	if (regs && kexec_should_crash(current))
+		crash_kexec(regs);
+
 	bust_spinlocks(0);
 	die_owner = -1;
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
@@ -244,10 +247,6 @@ void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 		panic("Fatal exception in interrupt");
 	if (panic_on_oops)
 		panic("Fatal exception");
-
-	if (regs && kexec_should_crash(current))
-		crash_kexec(regs);
-
 	do_exit(signr);
 }
 NOKPROBE_SYMBOL(oops_end);
