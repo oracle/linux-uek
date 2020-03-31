@@ -91,7 +91,7 @@ vhost_transport_do_send_pkt(struct vhost_vsock *vsock,
 
 	mutex_lock(&vq->mutex);
 
-	if (!vq->private_data)
+	if (!vhost_vq_get_backend(vq))
 		goto out;
 
 	/* Avoid further vmexits, we're already processing the virtqueue */
@@ -443,7 +443,7 @@ static void vhost_vsock_handle_tx_kick(struct vhost_work *work)
 
 	mutex_lock(&vq->mutex);
 
-	if (!vq->private_data)
+	if (!vhost_vq_get_backend(vq))
 		goto out;
 
 	vhost_disable_notify(&vsock->dev, vq);
@@ -536,8 +536,8 @@ static int vhost_vsock_start(struct vhost_vsock *vsock)
 			goto err_vq;
 		}
 
-		if (!vq->private_data) {
-			vq->private_data = vsock;
+		if (!vhost_vq_get_backend(vq)) {
+			vhost_vq_set_backend(vq, vsock);
 			ret = vhost_vq_init_access(vq);
 			if (ret)
 				goto err_vq;
@@ -555,14 +555,14 @@ static int vhost_vsock_start(struct vhost_vsock *vsock)
 	return 0;
 
 err_vq:
-	vq->private_data = NULL;
+	vhost_vq_set_backend(vq, NULL);
 	mutex_unlock(&vq->mutex);
 
 	for (i = 0; i < ARRAY_SIZE(vsock->vqs); i++) {
 		vq = &vsock->vqs[i];
 
 		mutex_lock(&vq->mutex);
-		vq->private_data = NULL;
+		vhost_vq_set_backend(vq, NULL);
 		mutex_unlock(&vq->mutex);
 	}
 err:
@@ -585,7 +585,7 @@ static int vhost_vsock_stop(struct vhost_vsock *vsock)
 		struct vhost_virtqueue *vq = &vsock->vqs[i];
 
 		mutex_lock(&vq->mutex);
-		vq->private_data = NULL;
+		vhost_vq_set_backend(vq, NULL);
 		mutex_unlock(&vq->mutex);
 	}
 
