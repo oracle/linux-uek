@@ -3024,6 +3024,13 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->ltype_match = NPC_LT_LE_GTPU;
 			field->ltype_mask = 0xF;
 			break;
+		case NIX_FLOW_KEY_TYPE_CH_LEN_90B:
+			field->lid = NPC_LID_LA;
+			field->hdr_offset = 24;
+			field->bytesm1 = 1; /* 2 Bytes*/
+			field->ltype_match = NPC_LT_LA_CH_LEN_90B_ETHER;
+			field->ltype_mask = 0xF;
+			break;
 		}
 		field->ena = 1;
 
