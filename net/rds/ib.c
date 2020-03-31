@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -869,7 +869,9 @@ done:
 static unsigned int neigh_flush_interval = 750;
 
 /* Should be large enough to hold the flush message. */
-static unsigned int flush_buf_len = 48;
+enum {
+	flush_buf_len = 48,
+};
 
 static void __flush_neigh_conn(struct net *net,
 			       struct rds_connection *conn)
@@ -924,7 +926,8 @@ static void __flush_neigh_conn(struct net *net,
 	buflen = nlmsg_total_size(sizeof(*ndm) +
 				  nla_total_size(addrlen));
 	if (buflen > sizeof(buf)) {
-		flush_buf_len = buflen;
+		pr_warn_once("RDS/IB: Larger than expected NL message size:%zd\n",
+			     buflen);
 		sndbuf = kmalloc(buflen, GFP_ATOMIC);
 		if (!sndbuf) {
 			pr_err("%s: failed: buflen %zd idx %d %pI6c,%pI6c\n",
