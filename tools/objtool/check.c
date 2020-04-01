@@ -1209,6 +1209,9 @@ static int read_unwind_hints(struct objtool_file *file)
 		} else if (hint->type == UNWIND_HINT_TYPE_RESTORE) {
 			insn->restore = true;
 			insn->hint = true;
+
+		} else if (hint->type == UNWIND_HINT_TYPE_RET_OFFSET) {
+			insn->ret_offset = hint->sp_offset;
 			continue;
 		}
 
@@ -1372,20 +1375,25 @@ static bool is_fentry_call(struct instruction *insn)
 	return false;
 }
 
-static bool has_modified_stack_frame(struct insn_state *state)
+static bool has_modified_stack_frame(struct instruction *insn, struct insn_state *state)
 {
+	u8 ret_offset = insn->ret_offset;
 	int i;
 
-	if (state->cfa.base != initial_func_cfi.cfa.base ||
-	    state->cfa.offset != initial_func_cfi.cfa.offset ||
-	    state->stack_size != initial_func_cfi.cfa.offset ||
-	    state->drap)
+	if (state->cfa.base != initial_func_cfi.cfa.base || state->drap)
 		return true;
 
-	for (i = 0; i < CFI_NUM_REGS; i++)
+	if (state->cfa.offset != initial_func_cfi.cfa.offset + ret_offset)
+		return true;
+
+	if (state->stack_size != initial_func_cfi.cfa.offset + ret_offset)
+		return true;
+
+	for (i = 0; i < CFI_NUM_REGS; i++) {
 		if (state->regs[i].base != initial_func_cfi.regs[i].base ||
 		    state->regs[i].offset != initial_func_cfi.regs[i].offset)
 			return true;
+	}
 
 	return false;
 }
@@ -1964,7 +1972,7 @@ static int validate_call(struct instruction *insn, struct insn_state *state)
 
 static int validate_sibling_call(struct instruction *insn, struct insn_state *state)
 {
-	if (has_modified_stack_frame(state)) {
+	if (has_modified_stack_frame(insn, state)) {
 		WARN_FUNC("sibling call from callable instruction with modified stack frame",
 				insn->sec, insn->offset);
 		return 1;
@@ -2103,7 +2111,7 @@ static int validate_branch(struct objtool_file *file, struct symbol *func,
 				return 1;
 			}
 
-			if (func && has_modified_stack_frame(&state)) {
+			if (func && has_modified_stack_frame(insn, &state)) {
 				WARN_FUNC("return with modified stack frame",
 					  sec, insn->offset);
 				return 1;
