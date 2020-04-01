@@ -728,10 +728,14 @@ static struct rvu_npc_mcam_rule *rvu_mcam_find_rule(struct npc_mcam *mcam,
 {
 	struct rvu_npc_mcam_rule *iter;
 
+	mutex_lock(&mcam->lock);
 	list_for_each_entry(iter, &mcam->mcam_rules, list) {
-		if (iter->entry == entry)
+		if (iter->entry == entry) {
+			mutex_unlock(&mcam->lock);
 			return iter;
+		}
 	}
+	mutex_unlock(&mcam->lock);
 
 	return NULL;
 }
@@ -742,6 +746,7 @@ static void rvu_mcam_add_rule(struct npc_mcam *mcam,
 	struct list_head *head = &mcam->mcam_rules;
 	struct rvu_npc_mcam_rule *iter;
 
+	mutex_lock(&mcam->lock);
 	list_for_each_entry(iter, &mcam->mcam_rules, list) {
 		if (iter->entry > rule->entry)
 			break;
@@ -749,6 +754,7 @@ static void rvu_mcam_add_rule(struct npc_mcam *mcam,
 	}
 
 	list_add(&rule->list, head);
+	mutex_unlock(&mcam->lock);
 }
 
 static void rvu_mcam_remove_counter_from_rule(struct rvu *rvu, u16 pcifunc,
@@ -1080,17 +1086,11 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 				req, rsp, enable, pf_set_vfs_mac);
 }
 
-static int npc_delete_flow(struct rvu *rvu, u16 entry, u16 pcifunc)
+static int npc_delete_flow(struct rvu *rvu, struct rvu_npc_mcam_rule *rule,
+			   u16 pcifunc)
 {
 	struct npc_mcam_ena_dis_entry_req dis_req = { 0 };
-	struct npc_mcam *mcam = &rvu->hw->mcam;
-	struct rvu_npc_mcam_rule *rule;
 	struct msg_rsp dis_rsp;
-	int err;
-
-	rule = rvu_mcam_find_rule(mcam, entry);
-	if (!rule)
-		return -ENOENT;
 
 	if (rule->default_rule)
 		return 0;
@@ -1099,15 +1099,12 @@ static int npc_delete_flow(struct rvu *rvu, u16 entry, u16 pcifunc)
 		rvu_mcam_remove_counter_from_rule(rvu, pcifunc, rule);
 
 	dis_req.hdr.pcifunc = pcifunc;
-	dis_req.entry = entry;
-	err = rvu_mbox_handler_npc_mcam_dis_entry(rvu, &dis_req, &dis_rsp);
-	if (err)
-		return err;
+	dis_req.entry = rule->entry;
 
 	list_del(&rule->list);
 	kfree(rule);
 
-	return 0;
+	return rvu_mbox_handler_npc_mcam_dis_entry(rvu, &dis_req, &dis_rsp);
 }
 
 int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
@@ -1117,31 +1114,33 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule *iter, *tmp;
 	u16 pcifunc = req->hdr.pcifunc;
-	int err;
+	struct list_head del_list;
 
-	if (req->end) {
-		list_for_each_entry_safe(iter, tmp, &mcam->mcam_rules, list) {
-			if (iter->owner == pcifunc &&
-			    iter->entry >= req->start &&
-			    iter->entry <= req->end) {
-				err = npc_delete_flow(rvu, iter->entry,
-						      pcifunc);
-				if (err)
-					return err;
-			}
-		}
-		return 0;
-	}
+	INIT_LIST_HEAD(&del_list);
 
-	if (!req->all)
-		return npc_delete_flow(rvu, req->entry, pcifunc);
-
+	mutex_lock(&mcam->lock);
 	list_for_each_entry_safe(iter, tmp, &mcam->mcam_rules, list) {
 		if (iter->owner == pcifunc) {
-			err = npc_delete_flow(rvu, iter->entry, pcifunc);
-			if (err)
-				return err;
+			/* All rules */
+			if (req->all) {
+				list_move_tail(&iter->list, &del_list);
+			/* Range of rules */
+			} else if (req->end && iter->entry >= req->start &&
+				   iter->entry <= req->end) {
+				list_move_tail(&iter->list, &del_list);
+			/* single rule */
+			} else if (req->entry == iter->entry) {
+				list_move_tail(&iter->list, &del_list);
+				break;
+			}
 		}
+	}
+	mutex_unlock(&mcam->lock);
+
+	list_for_each_entry_safe(iter, tmp, &del_list, list) {
+		if (npc_delete_flow(rvu, iter, pcifunc))
+			dev_err(rvu->dev, "rule deletion failed for entry:%d",
+				iter->entry);
 	}
 
 	return 0;
@@ -1156,6 +1155,7 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct npc_mcam_read_entry_rsp wrsp;
 	struct msg_rsp rsp;
+	int err;
 
 	ether_addr_copy(rule->packet.dmac, pfvf->mac_addr);
 
@@ -1170,17 +1170,19 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 	write_req.hdr.pcifunc = rule->owner;
 	write_req.entry = rule->entry;
 
-	return rvu_mbox_handler_npc_mcam_write_entry(rvu, &write_req, &rsp);
+	mutex_unlock(&mcam->lock);
+	err = rvu_mbox_handler_npc_mcam_write_entry(rvu, &write_req, &rsp);
+	mutex_lock(&mcam->lock);
+
+	return err;
 }
 
 void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, target);
-	struct npc_mcam_ena_dis_entry_req ena_req = { 0 };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule *rule;
-	int blkaddr, bank, err;
-	struct msg_rsp rsp;
+	int blkaddr, bank;
 	u64 def_action;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -1189,6 +1191,7 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 		return;
 	}
 
+	mutex_lock(&mcam->lock);
 	list_for_each_entry(rule, &mcam->mcam_rules, list) {
 		if (rule->intf == NIX_INTF_RX &&
 		    rule->rx_action.pf_func == target && !rule->enable) {
@@ -1213,13 +1216,11 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 					    NPC_AF_MCAMEX_BANKX_ACTION
 					    (rule->entry, bank), def_action);
 			}
-			ena_req.hdr.pcifunc = rule->owner;
-			ena_req.entry = rule->entry;
-			err = rvu_mbox_handler_npc_mcam_ena_entry(rvu, &ena_req,
-								  &rsp);
-			if (err)
-				continue;
+
+			npc_enable_mcam_entry(rvu, mcam, blkaddr,
+					      rule->entry, true);
 			rule->enable = true;
 		}
 	}
+	mutex_unlock(&mcam->lock);
 }

@@ -1789,8 +1789,13 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 	u16 target;
 	u64 hits;
 
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return 0;
+
 	mcam = &rvu->hw->mcam;
 
+	mutex_lock(&mcam->lock);
 	list_for_each_entry(iter, &mcam->mcam_rules, list) {
 		pf = (iter->owner >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
 		seq_printf(s, "\n\tPF%d ", pf);
@@ -1825,12 +1830,10 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 			continue;
 		seq_printf(s, "\tcounter: %d\n", iter->cntr);
 
-		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
-		if (blkaddr < 0)
-			return 0;
 		hits = rvu_read64(rvu, blkaddr, NPC_AF_MATCH_STATX(iter->cntr));
 		seq_printf(s, "\thits: %lld\n", hits);
 	}
+	mutex_unlock(&mcam->lock);
 
 	return 0;
 }
