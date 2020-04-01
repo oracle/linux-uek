@@ -18,6 +18,7 @@
 #include <regex.h>
 #include <perf/cpumap.h>
 #include "debug.h"
+#include "evsel.h"
 #include "pmu.h"
 #include "parse-events.h"
 #include "header.h"
@@ -880,6 +881,31 @@ struct perf_pmu *perf_pmu__scan(struct perf_pmu *pmu)
 	list_for_each_entry_continue(pmu, &pmus, list)
 		return pmu;
 	return NULL;
+}
+
+struct perf_pmu *perf_evsel__find_pmu(struct evsel *evsel)
+{
+	struct perf_pmu *pmu = NULL;
+
+	while ((pmu = perf_pmu__scan(pmu)) != NULL) {
+		if (pmu->type == evsel->core.attr.type)
+			break;
+	}
+
+	return pmu;
+}
+
+bool perf_evsel__is_aux_event(struct evsel *evsel __maybe_unused)
+{
+/* UEK6 does not support auxtrace due to KABI breakage,
+ * return false to indicate aux_event is not supported.
+ */
+#if (0)
+	struct perf_pmu *pmu = perf_evsel__find_pmu(evsel);
+
+	return pmu && pmu->auxtrace;
+#endif
+	return false;
 }
 
 struct perf_pmu *perf_pmu__find(const char *name)
