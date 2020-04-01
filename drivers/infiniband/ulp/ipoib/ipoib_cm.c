@@ -844,9 +844,11 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	netif_tx_lock(dev);
 
 	++tx->tx_tail;
-	if (unlikely(--priv->tx_outstanding == ipoib_sendq_size >> 1) &&
-	    netif_queue_stopped(dev) &&
-	    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
+	--priv->tx_outstanding;
+
+	if (unlikely(netif_queue_stopped(dev)) &&
+		(priv->tx_outstanding <= ipoib_sendq_size >> 1) &&
+		test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
 		netif_wake_queue(dev);
 
 	if (wc->status != IB_WC_SUCCESS &&
