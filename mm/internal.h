@@ -561,6 +561,8 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 #endif
 #define ALLOC_KSWAPD		0x200 /* allow waking of kswapd */
 
+#define ALLOC_CONTIG_ALLOC     0x8000 /* alloc_contig_range allocation */
+
 enum ttu_flags;
 struct tlbflush_unmap_batch;
 
