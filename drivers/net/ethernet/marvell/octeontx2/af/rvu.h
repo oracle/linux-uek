@@ -510,7 +510,8 @@ static inline bool is_rvu_post_96xx_C0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
-	return (pdev->revision == 0x08) || (pdev->revision == 0x30);
+	return (pdev->revision == 0x08) || (pdev->revision == 0x30) ||
+		(pdev->revision == 0x20);
 }
 
 static inline bool is_rvu_96xx_A0(struct rvu *rvu)
