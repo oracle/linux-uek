@@ -1437,7 +1437,7 @@ retry:
 				 * Got some results, but now none, abort.
 				 */
 				sdev_printk(KERN_ERR, sdev,
-					"Unexpected response from lun %d while scanning, ignoring device\n",
+					"Unexpected response from lun %llu while scanning, ignoring device\n",
 					lun);
 			}
 		}
