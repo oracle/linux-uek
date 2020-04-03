@@ -65,10 +65,30 @@ struct rxe_ucontext {
 	struct rxe_pool_entry	pelem;
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct rxe_pd {
+	struct ib_pd            ibpd;
+	struct rxe_pool_entry   pelem;
+	/* pointer to self or in case of shared pd, to the shared pd */
+	struct rxe_pd           *real_rxepd;
+	u32                     pdn;
+};
+
+struct rxe_shpd {
+	struct ib_shpd          ibshpd;
+	struct rxe_pd           *shared_rxepd; /* pointer to the shared pd */
+	u32                     shared_pdn;
+};
+
+#else /* WITHOUT_ORACLE_EXTENSIONS */
+
 struct rxe_pd {
 	struct ib_pd            ibpd;
 	struct rxe_pool_entry	pelem;
 };
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 struct rxe_ah {
 	struct ib_ah		ibah;
@@ -402,6 +422,9 @@ struct rxe_dev {
 	struct rxe_pool		mw_pool;
 	struct rxe_pool		mc_grp_pool;
 	struct rxe_pool		mc_elem_pool;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct rxe_pool		pdn_pool;
+#endif
 
 	spinlock_t		pending_lock; /* guard pending_mmaps */
 	struct list_head	pending_mmaps;
@@ -434,6 +457,15 @@ static inline struct rxe_pd *to_rpd(struct ib_pd *pd)
 {
 	return pd ? container_of(pd, struct rxe_pd, ibpd) : NULL;
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static inline struct rxe_shpd *to_rshpd(struct ib_shpd *shpd)
+{
+	return shpd ? container_of(shpd, struct rxe_shpd, ibshpd) : NULL;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static inline struct rxe_ah *to_rah(struct ib_ah *ah)
 {

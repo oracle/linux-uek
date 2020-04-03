@@ -578,7 +578,11 @@ struct rxe_mem *lookup_mem(struct rxe_pd *pd, int access, u32 key,
 
 	if (unlikely((type == lookup_local && mem->lkey != key) ||
 		     (type == lookup_remote && mem->rkey != key) ||
-		     mem->pd != pd ||
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		     (mem->pd != pd->real_rxepd) ||
+#else
+		     (mem->pd != pd) ||
+#endif
 		     (access && !(access & mem->access)) ||
 		     mem->state != RXE_MEM_STATE_VALID)) {
 		rxe_drop_ref(mem);
