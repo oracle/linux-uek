@@ -5545,8 +5545,8 @@ static void mlx5e_remove(struct auxiliary_device *adev)
 	pm_message_t state = {};
 
 	mlx5e_dcbnl_delete_app(priv);
-	mlx5e_devlink_port_unregister(priv);
 	unregister_netdev(priv->netdev);
+	mlx5e_devlink_port_unregister(priv);
 	mlx5e_suspend(adev, state);
 	mlx5e_destroy_netdev(priv);
 }
