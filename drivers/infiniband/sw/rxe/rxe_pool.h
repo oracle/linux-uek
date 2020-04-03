@@ -160,6 +160,16 @@ void *rxe_pool_get_key(struct rxe_pool *pool, void *key);
 /* cleanup an object when all references are dropped */
 void rxe_elem_release(struct kref *kref);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/* Allocate a pdn */
+u32 rxe_pdn_allocate(struct rxe_dev *rxe_dev);
+
+/* Free pdn */
+void rxe_pdn_free(struct rxe_dev *rxe_dev, u32 pdn);
+
+#endif
+
 /* take a reference on an object */
 #define rxe_add_ref(elem) kref_get(&(elem)->pelem.ref_cnt)
 

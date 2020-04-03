@@ -133,6 +133,10 @@ enum rxe_device_param {
 	RXE_INFLIGHT_SKBS_PER_QP_HIGH	= 64,
 	RXE_INFLIGHT_SKBS_PER_QP_LOW	= 16,
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	RXE_MIN_PDN			= 0x00000001,
+	RXE_MAX_PDN			= 0x000FFFFF,
+#endif
 	/* Delay before calling arbiter timer */
 	RXE_NSEC_ARB_TIMER_DELAY	= 200,
 };
