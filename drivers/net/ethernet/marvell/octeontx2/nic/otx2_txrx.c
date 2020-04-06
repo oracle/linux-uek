@@ -46,7 +46,7 @@ static inline unsigned int frag_num(unsigned int i)
 static dma_addr_t otx2_dma_map_skb_frag(struct otx2_nic *pfvf,
 					struct sk_buff *skb, int seg, int *len)
 {
-	const struct skb_frag_struct *frag;
+	const skb_frag_t *frag;
 	struct page *page;
 	int offset;
 
@@ -58,7 +58,7 @@ static dma_addr_t otx2_dma_map_skb_frag(struct otx2_nic *pfvf,
 	} else {
 		frag = &skb_shinfo(skb)->frags[seg - 1];
 		page = skb_frag_page(frag);
-		offset = frag->page_offset;
+		offset = skb_frag_off(frag);
 		*len = skb_frag_size(frag);
 	}
 	return otx2_dma_map_page(pfvf, page, offset, *len,
@@ -688,7 +688,7 @@ static u64 otx2_tso_frag_dma_addr(struct otx2_snd_queue *sq,
 				  struct sk_buff *skb, int seg,
 				  u64 seg_addr, int hdr_len, int sqe)
 {
-	const struct skb_frag_struct *frag;
+	const skb_frag_t *frag;
 	struct sg_list *sg = &sq->sg[sqe];
 	int offset;
 
@@ -696,8 +696,7 @@ static u64 otx2_tso_frag_dma_addr(struct otx2_snd_queue *sq,
 		return sg->dma_addr[0] + (seg_addr - (u64)skb->data);
 
 	frag = &skb_shinfo(skb)->frags[seg];
-	offset = (u64)(page_address(frag->page.p) + frag->page_offset);
-	offset = seg_addr - offset;
+	offset = seg_addr - (u64)skb_frag_address(frag);
 	if (skb_headlen(skb) - hdr_len)
 		seg++;
 	return sg->dma_addr[seg] + offset;
