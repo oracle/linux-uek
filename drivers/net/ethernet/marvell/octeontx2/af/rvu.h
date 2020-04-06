@@ -655,6 +655,7 @@ int rvu_nix_register_interrupts(struct rvu *rvu);
 void rvu_nix_unregister_interrupts(struct rvu *rvu);
 void rvu_nix_reset_mac(struct rvu_pfvf *pfvf, int pcifunc);
 bool rvu_nix_is_ptp_tx_enabled(struct rvu *rvu, u16 pcifunc);
+int nix_update_bcast_mce_list(struct rvu *rvu, u16 pcifunc, bool add);
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);

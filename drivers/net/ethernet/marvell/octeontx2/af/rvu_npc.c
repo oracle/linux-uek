@@ -783,23 +783,32 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 					 nixlf, NIXLF_UCAST_ENTRY);
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 
-	/* For PF, ena/dis promisc and bcast MCAM match entries */
-	if (pcifunc & RVU_PFVF_FUNC_MASK)
+	/* For PF, ena/dis promisc and bcast MCAM match entries.
+	 * For VFs add/delete from bcast list when RX multicast
+	 * feature is present.
+	 */
+	if (pcifunc & RVU_PFVF_FUNC_MASK && !rvu->hw->cap.nix_rx_multicast)
 		return;
 
 	/* For bcast, enable/disable only if it's action is not
 	 * packet replication, incase if action is replication
-	 * then this PF's nixlf is removed from bcast replication
+	 * then this PF/VF's nixlf is removed from bcast replication
 	 * list.
 	 */
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	index = npc_get_nixlf_mcam_index(mcam, pcifunc & ~RVU_PFVF_FUNC_MASK,
 					 nixlf, NIXLF_BCAST_ENTRY);
 	bank = npc_get_bank(mcam, index);
 	*(u64 *)&action = rvu_read64(rvu, blkaddr,
 	     NPC_AF_MCAMEX_BANKX_ACTION(index & (mcam->banksize - 1), bank));
-	if (action.op != NIX_RX_ACTIONOP_MCAST)
+
+	/* VFs will not have BCAST entry */
+	if (action.op != NIX_RX_ACTIONOP_MCAST &&
+	    !(pcifunc & RVU_PFVF_FUNC_MASK))
 		npc_enable_mcam_entry(rvu, mcam,
 				      blkaddr, index, enable);
+	else
+		nix_update_bcast_mce_list(rvu, pcifunc, enable);
+
 	if (enable)
 		rvu_npc_enable_promisc_entry(rvu, pcifunc, nixlf);
 	else
