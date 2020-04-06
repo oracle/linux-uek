@@ -5460,7 +5460,7 @@ qla2xxx_mctp_dump(scsi_qla_host_t *vha)
 		    vha->host_no, ha->mctp_dump);
 		ha->mctp_dumped = 1;
 	}
-
+#if 0
 	if (!ha->flags.nic_core_reset_hdlr_active && !ha->portnum) {
 		ha->flags.nic_core_reset_hdlr_active = 1;
 		rval = qla83xx_restart_nic_firmware(vha);
@@ -5473,7 +5473,7 @@ qla2xxx_mctp_dump(scsi_qla_host_t *vha)
 			    "Restarted NIC firmware successfully.\n");
 		ha->flags.nic_core_reset_hdlr_active = 0;
 	}
-
+#endif
 	return rval;
 
 }
