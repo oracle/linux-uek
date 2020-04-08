@@ -531,7 +531,7 @@ struct rds_incoming {
 
 struct rds_mr {
 	struct rb_node		r_rb_node;
-	atomic_t		r_refcount;
+	struct kref		r_kref;
 	u32			r_key;
 
 	/* A copy of the creation flags */
@@ -1277,12 +1277,7 @@ void rds_asend_complete(struct rds_message *rm, int wc_status);
 int rds_cmsg_atomic(struct rds_sock *rs, struct rds_message *rm,
 		    struct cmsghdr *cmsg);
 
-extern void __rds_put_mr_final(struct rds_mr *mr);
-static inline void rds_mr_put(struct rds_mr *mr)
-{
-	if (atomic_dec_and_test(&mr->r_refcount))
-		__rds_put_mr_final(mr);
-}
+void __rds_put_mr_final(struct kref *kref);
 
 /* stats.c */
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rds_statistics, rds_stats);
