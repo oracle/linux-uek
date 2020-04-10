@@ -449,6 +449,7 @@ static const struct nla_policy fl_policy[TCA_FLOWER_MAX + 1] = {
 	[TCA_FLOWER_KEY_CVLAN_ID]	= { .type = NLA_U16 },
 	[TCA_FLOWER_KEY_CVLAN_PRIO]	= { .type = NLA_U8 },
 	[TCA_FLOWER_KEY_CVLAN_ETH_TYPE]	= { .type = NLA_U16 },
+	[TCA_FLOWER_FLAGS]		= { .type = NLA_U32 },
 };
 
 static void fl_set_key_val(struct nlattr **tb,
