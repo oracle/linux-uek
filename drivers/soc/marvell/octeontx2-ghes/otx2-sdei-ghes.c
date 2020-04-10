@@ -38,7 +38,8 @@
 #endif // CONFIG_OCTEONTX2_SDEI_GHES_DEBUG
 
 static struct acpi_table_hest *hest;
-static struct otx2_ghes_event *event_list;
+/* A list of all GHES producers, allocated during module initialization. */
+static struct otx2_ghes_source *ghes_source_list;
 
 #ifdef CONFIG_EDAC_DEBUG
 extern int edac_debug_level;
@@ -67,7 +68,7 @@ static void poll_worker(struct work_struct *work)
 	struct otx2_ghes_err_record *err_rec;
 	struct cper_sec_mem_err_old *mem_err;
 	struct otx2_sdei_ghes_drv *ghes_drv;
-	struct otx2_ghes_event *event;
+	struct otx2_ghes_source *event;
 	struct delayed_work *dwork;
 	u32 head, tail;
 	size_t idx;
@@ -75,10 +76,10 @@ static void poll_worker(struct work_struct *work)
 	dwork = to_delayed_work(work);
 	ghes_drv = container_of(dwork, struct otx2_sdei_ghes_drv, dwork);
 
-	for (idx = 0; idx < ghes_drv->event_count; idx++) {
+	for (idx = 0; idx < ghes_drv->source_count; idx++) {
 		static u32 ostatus;
 
-		event = &ghes_drv->event_list[idx];
+		event = &ghes_drv->source_list[idx];
 		head = event->ring->head;
 		tail = event->ring->tail;
 
@@ -168,8 +169,8 @@ static int sdei_ghes_init(struct platform_device *pdev)
 	ghes_drv = platform_get_drvdata(pdev);
 
 	/* Allocated during initialization (see sdei_ghes_driver_init) */
-	ghes_drv->event_list = event_list;
-	ghes_drv->event_count = hest->error_source_count;
+	ghes_drv->source_list = ghes_source_list;
+	ghes_drv->source_count = hest->error_source_count;
 
 	INIT_DEFERRABLE_WORK(&ghes_drv->dwork, poll_worker);
 	schedule_delayed_work(&ghes_drv->dwork, 0);
@@ -285,7 +286,7 @@ static int __init sdei_ghes_hest_init(struct device_node *of_node)
 	const __be32 *of_base0, *of_base1, *of_base2;
 	struct acpi_hest_generic *hest_gen_entry;
 	struct device_node *child_node;
-	struct otx2_ghes_event *event;
+	struct otx2_ghes_source *event;
 	size_t event_cnt, size, idx;
 	const u32 *evt_id_prop;
 	int ret, prop_sz;
@@ -297,7 +298,7 @@ static int __init sdei_ghes_hest_init(struct device_node *of_node)
 
 	ret = -ENODEV;
 
-	/* enumerate events available for subscription */
+	/* enumerate [GHES] producers available for subscription */
 	event_cnt = 0;
 	for_each_available_child_of_node(of_node, child_node) {
 		of_base0 = of_get_address(child_node, 0, NULL, NULL);
@@ -333,7 +334,7 @@ static int __init sdei_ghes_hest_init(struct device_node *of_node)
 	size = roundup(size, 8);
 
 	/* allocate room for list of available events */
-	size += event_cnt * sizeof(struct otx2_ghes_event);
+	size += event_cnt * sizeof(struct otx2_ghes_source);
 
 	/* allocate everything in one block, ordered as:
 	 *   HEST table
@@ -355,7 +356,7 @@ static int __init sdei_ghes_hest_init(struct device_node *of_node)
 	size += event_cnt * sizeof(struct acpi_hest_generic);
 	/* align event list on 8-byte boundary (see allocation above) */
 	size = roundup(size, 8);
-	event_list = memblock + size;
+	ghes_source_list = memblock + size;
 
 	/* populate HEST header */
 	strncpy(hest->header.signature, ACPI_SIG_HEST,
@@ -401,7 +402,7 @@ static int __init sdei_ghes_hest_init(struct device_node *of_node)
 		if (!evt_id_prop && (prop_sz != sizeof(*evt_id_prop)))
 			continue;
 
-		event = &event_list[idx];
+		event = &ghes_source_list[idx];
 
 		/* name is already terminated by 'kzalloc' */
 		strncpy(event->name, child_node->name,

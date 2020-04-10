@@ -15,11 +15,16 @@
 
 #define SDEI_GHES_EVENT_NAME_MAX_CHARS 16
 /*
+ * Describes an error source per ACPI 18.3.2.6 (Generic Hardware Error Source).
+ * This produces GHES-compliant error records from data forwarded by the [ATF]
+ * firmware.
+ * There exists one of these for each error source.
+ *
  * @estatus_pa:         physical address of error status information block
  * @estatus_address:    mapped pointer to error_status_address
  * @estatus:            mapped pointer to error status block
  */
-struct otx2_ghes_event {
+struct otx2_ghes_source {
 	char                            name[SDEI_GHES_EVENT_NAME_MAX_CHARS];
 	u32                             id;
 	phys_addr_t                     estatus_pa;
@@ -32,13 +37,15 @@ struct otx2_ghes_event {
  * struct otx2_sdei_ghes_drv: driver state
  *
  * @of_node:                  associated device tree node
- * @event_list:               list of [GHES] events
- * @event_count:              count of [GHES] events (size of @event_list)
+ * @source_list:              list of [GHES] producers
+ *                            (1 for each error source)
+ * @source_count:             count of [GHES] producers
+ *                            (i.e. size of @source_list)
  */
 struct otx2_sdei_ghes_drv {
 	struct device_node                   *of_node;
-	struct otx2_ghes_event               *event_list;
-	size_t                               event_count;
+	struct otx2_ghes_source              *source_list;
+	size_t                               source_count;
 	struct delayed_work                  dwork;
 };
 
