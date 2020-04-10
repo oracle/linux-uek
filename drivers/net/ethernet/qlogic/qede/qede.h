@@ -160,6 +160,8 @@ struct qede_rdma_dev {
 	struct list_head rdma_event_list;
 	struct workqueue_struct *rdma_wq;
 	bool exp_recovery;
+	struct kref refcnt;
+	struct completion event_comp;
 };
 
 struct qede_ptp;
