@@ -143,8 +143,11 @@ static void poll_worker(struct work_struct *work)
 		 */
 		wmb();
 
-		estatus->block_status = ACPI_HEST_CORRECTABLE |
-					(1 << 4); /* i.e. one entry */
+		/*
+		 * This simply needs the entry count to be non-zero.
+		 * Set entry count to one (see ACPI_HEST_ERROR_ENTRY_COUNT).
+		 */
+		estatus->block_status = (1 << 4); /* i.e. one entry */
 
 		if (++tail >= event->ring->size)
 			tail = 0;
