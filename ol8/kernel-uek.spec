@@ -543,6 +543,9 @@ BuildRequires: numactl-devel
 BuildRequires: sparse >= 0.4.1
 %endif
 
+%ifarch x86_64
+BuildRequires: libcap-devel
+%endif
 %if %{signkernel}%{signmodules}
 BuildRequires: openssl openssl-devel
 %if %{signkernel}
