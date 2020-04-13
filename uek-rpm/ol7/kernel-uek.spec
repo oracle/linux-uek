@@ -540,6 +540,9 @@ BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
 BuildRequires: numactl-devel
+%ifarch x86_64
+BuildRequires: libcap-devel
+%endif
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
