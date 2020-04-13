@@ -14,6 +14,10 @@
 #include <linux/bitops.h>
 #include <linux/bitfield.h>
 
+/* Major version would change only if there is structural change in
+ * existing commands and due to which functionaliy is impacted.
+ * Minor version would change with new command/structure additions
+ */
 #define CGX_FIRMWARE_MAJOR_VER		1
 #define CGX_FIRMWARE_MINOR_VER		0
 
