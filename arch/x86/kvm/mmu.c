@@ -112,7 +112,16 @@ module_param(dbg, bool, 0644);
 #define PTE_PREFETCH_NUM		8
 
 #define PT_FIRST_AVAIL_BITS_SHIFT 10
-#define PT64_SECOND_AVAIL_BITS_SHIFT 52
+#define PT64_SECOND_AVAIL_BITS_SHIFT 54
+
+/*
+ * The mask used to denote special SPTEs, which can be either MMIO SPTEs or
+ * Access Tracking SPTEs.
+ */
+#define SPTE_SPECIAL_MASK (3ULL << 52)
+#define SPTE_AD_ENABLED_MASK (0ULL << 52)
+#define SPTE_AD_DISABLED_MASK (1ULL << 52)
+#define SPTE_MMIO_MASK (3ULL << 52)
 
 #define PT64_LEVEL_BITS 9
 
@@ -246,12 +255,11 @@ static u64 __read_mostly shadow_present_mask;
 static u64 __read_mostly shadow_me_mask;
 
 /*
- * SPTEs used by MMUs without A/D bits are marked with shadow_acc_track_value.
- * Non-present SPTEs with shadow_acc_track_value set are in place for access
- * tracking.
+ * SPTEs used by MMUs without A/D bits are marked with SPTE_AD_DISABLED_MASK;
+ * shadow_acc_track_mask is the set of bits to be cleared in non-accessed
+ * pages.
  */
 static u64 __read_mostly shadow_acc_track_mask;
-static const u64 shadow_acc_track_value = SPTE_SPECIAL_MASK;
 
 /*
  * The mask/shift to use for saving the original R/X bits when marking the PTE
@@ -325,7 +333,7 @@ void kvm_mmu_set_mmio_spte_mask(u64 mmio_mask, u64 mmio_value, u64 access_mask)
 {
 	BUG_ON((u64)(unsigned)access_mask != access_mask);
 	BUG_ON((mmio_mask & mmio_value) != mmio_value);
-	shadow_mmio_value = mmio_value | SPTE_SPECIAL_MASK;
+	shadow_mmio_value = mmio_value | SPTE_MMIO_MASK;
 	shadow_mmio_mask = mmio_mask | SPTE_SPECIAL_MASK;
 	shadow_mmio_access_mask = access_mask;
 }
@@ -344,7 +352,7 @@ static inline bool sp_ad_disabled(struct kvm_mmu_page *sp)
 static inline bool spte_ad_enabled(u64 spte)
 {
 	MMU_WARN_ON(is_mmio_spte(spte));
-	return !(spte & shadow_acc_track_value);
+	return (spte & SPTE_SPECIAL_MASK) == SPTE_AD_ENABLED_MASK;
 }
 
 static bool is_nx_huge_page_enabled(void)
@@ -480,7 +488,7 @@ void kvm_mmu_set_mask_ptes(u64 user_mask, u64 accessed_mask,
 {
 	BUG_ON(!dirty_mask != !accessed_mask);
 	BUG_ON(!accessed_mask && !acc_track_mask);
-	BUG_ON(acc_track_mask & shadow_acc_track_value);
+	BUG_ON(acc_track_mask & SPTE_SPECIAL_MASK);
 
 	shadow_user_mask = user_mask;
 	shadow_accessed_mask = accessed_mask;
@@ -2633,7 +2641,7 @@ static void link_shadow_page(struct kvm_vcpu *vcpu, u64 *sptep,
 	       shadow_user_mask | shadow_x_mask | shadow_me_mask;
 
 	if (sp_ad_disabled(sp))
-		spte |= shadow_acc_track_value;
+		spte |= SPTE_AD_DISABLED_MASK;
 	else
 		spte |= shadow_accessed_mask;
 
@@ -2965,7 +2973,7 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 
 	sp = page_header(__pa(sptep));
 	if (sp_ad_disabled(sp))
-		spte |= shadow_acc_track_value;
+		spte |= SPTE_AD_DISABLED_MASK;
 
 	/*
 	 * For the EPT case, shadow_present_mask is 0 if hardware
