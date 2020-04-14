@@ -193,7 +193,7 @@ do_create_domain(struct domain_sysfs *lsfs, struct domain_params *dparams)
 	struct device *dev = &lsfs->rdev->pdev->dev;
 	struct domain *domain = NULL;
 	struct rvu_port *ports = NULL, *cur;
-	struct rvu_cpt *cpt = NULL, *cpt_cur;
+	struct rvu_cpt *cpt = NULL;
 	u32 dom, bus, slot, fn;
 	int old_sso, old_ssow, old_npa, old_tim, device;
 	int res = 0, i, domain_index;
