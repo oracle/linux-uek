@@ -7232,7 +7232,7 @@ static unsigned long scale_rt_capacity(int cpu)
 
 	total = sched_avg_period() + delta;
 
-	used = div_u64(avg, total);
+	used = div64_u64(avg, total);
 
 	if (likely(used < SCHED_CAPACITY_SCALE))
 		return SCHED_CAPACITY_SCALE - used;
