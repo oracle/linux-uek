@@ -363,4 +363,9 @@ static inline void otx2_cpt_send_cmd(union otx2_cpt_inst_s *cptinst,
 			: "=r" (ret) : "r" (ioreg) : "memory");
 	} while (!ret);
 }
+
+int otx2_cptvf_lf_init(struct pci_dev *pdev, void *reg_base,
+		       struct otx2_cptlfs_info *lfs, int lfs_num);
+int otx2_cptvf_lf_shutdown(struct pci_dev *pdev, struct otx2_cptlfs_info *lfs);
+
 #endif /* __OTX2_CPTLF_H */
