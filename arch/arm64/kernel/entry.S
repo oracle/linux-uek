@@ -426,41 +426,32 @@ alternative_else_nop_endif
 #ifdef CONFIG_MRVL_ERRATUM_37119
 alternative_insn "nop", "tlbi aside1, xzr", ARM64_WORKAROUND_MRVL_37119
 #endif
+#ifdef CONFIG_GTI_WATCHDOG
+	/*
+	 * Cannot do an eret here as we have not
+	 * entered from a real exception.
+	 */
+	.if     \exc_el3 == 1
+	b	6f
+	.endif
+#endif
 	.if	\el == 0
 alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	bne	4f
 	msr	far_el1, x30
-#ifdef CONFIG_GTI_WATCHDOG
-	.if	\exc_el3 == 0
 	tramp_alias	x30, tramp_exit_native
-	.else
-	tramp_alias	x30, tramp_exit_native_el3
-	.endif
-#else
-	tramp_alias	x30, tramp_exit_native
-#endif
 	br	x30
 4:
-#ifdef CONFIG_GTI_WATCHDOG
-	.if	\exc_el3 == 0
 	tramp_alias	x30, tramp_exit_compat
-	.else
-	tramp_alias	x30, tramp_exit_compat_el3
-	.endif
-#else
-	tramp_alias	x30, tramp_exit_compat
-#endif
 	br	x30
 #endif
-#ifdef CONFIG_GTI_WATCHDOG
-	.elseif	\exc_el3 == 0
-	eret
-#else
 	.else
 	eret
-#endif
 	.endif
+#ifdef CONFIG_GTI_WATCHDOG
+6:
+#endif
 	.endm
 
 	.macro	irq_stack_entry
@@ -1239,30 +1230,14 @@ alternative_insn isb, nop, ARM64_WORKAROUND_QCOM_FALKOR_E1003
 	ret
 	.endm
 
-#ifdef CONFIG_GTI_WATCHDOG
-	.macro tramp_exit, regsize = 64, exc_el3 = 0
-#else
 	.macro tramp_exit, regsize = 64
-#endif
 	adr	x30, tramp_vectors
 	msr	vbar_el1, x30
 	tramp_unmap_kernel	x30
 	.if	\regsize == 64
 	mrs	x30, far_el1
 	.endif
-#ifdef CONFIG_GTI_WATCHDOG
-	.if \exc_el3 == 0
 	eret
-	.else
-	/*
-	 * Cannot do an eret here as we have not
-	 * entered from a real exception.
-	 */
-	b	ret_back_to_el3
-	.endif
-#else
-	eret
-#endif
 	.endm
 
 	.align	11
@@ -1287,16 +1262,6 @@ END(tramp_exit_native)
 ENTRY(tramp_exit_compat)
 	tramp_exit	32
 END(tramp_exit_compat)
-
-#ifdef CONFIG_GTI_WATCHDOG
-ENTRY(tramp_exit_native_el3)
-	tramp_exit	64, 1
-END(tramp_exit_native_el3)
-
-ENTRY(tramp_exit_compat_el3)
-	tramp_exit	32, 1
-END(tramp_exit_compat_el3)
-#endif
 
 	.ltorg
 	.popsection				// .entry.tramp.text

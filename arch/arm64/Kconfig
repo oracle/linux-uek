@@ -913,6 +913,7 @@ config FORCE_MAX_ZONEORDER
 
 config UNMAP_KERNEL_AT_EL0
 	bool "Unmap kernel when running in userspace (aka \"KAISER\")" if EXPERT
+	default y
 	depends on !GTI_WATCHDOG
 	help
 	  Speculation attacks against some high-performance processors can
