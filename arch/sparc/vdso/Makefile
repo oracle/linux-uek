@@ -3,6 +3,11 @@
 # Building vDSO images for sparc.
 #
 
+ifdef CONFIG_CTF_USING_BINUTILS
+KBUILD_CFLAGS := $(KBUILD_CFLAGS)
+KBUILD_CFLAGS += $(call cc-option,-gctf0) $(call cc-option,-gt0)
+endif
+
 VDSO64-$(CONFIG_SPARC64)	:= y
 VDSOCOMPAT-$(CONFIG_COMPAT)	:= y
 

@@ -36,6 +36,10 @@ cflags-vdso := $(ccflags-vdso) \
 aflags-vdso := $(ccflags-vdso) \
 	-D__ASSEMBLY__ -Wa,-gdwarf-2
 
+ifdef CONFIG_CTF_USING_BINUTILS
+cflags-vdso += $(call cc-option,-gctf0) $(call cc-option,-gt0)
+endif
+
 ifneq ($(c-gettimeofday-y),)
 CFLAGS_vgettimeofday.o = -include $(c-gettimeofday-y)
 

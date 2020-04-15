@@ -37,6 +37,11 @@ $(obj)/%.so: OBJCOPYFLAGS := -S
 $(obj)/%.so: $(obj)/%.so.dbg FORCE
 	$(call if_changed,objcopy)
 
+ifdef CONFIG_CTF_USING_BINUTILS
+KBUILD_CFLAGS := $(KBUILD_CFLAGS)
+KBUILD_CFLAGS += $(call cc-option,-gctf0) $(call cc-option,-gt0)
+endif
+
 #
 # Don't omit frame pointers for ease of userspace debugging, but do
 # optimize sibling calls.

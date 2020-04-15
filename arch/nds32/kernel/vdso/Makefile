@@ -18,6 +18,10 @@ ccflags-y := -shared -fno-common -fno-builtin -nostdlib -fPIC -Wl,-shared -g \
 # Disable gcov profiling for VDSO code
 GCOV_PROFILE := n
 
+vdso-cflags :=
+ifdef CONFIG_CTF_USING_BINUTILS
+vdso-cflags += $(call cc-option,-gctf0) $(call cc-option,-gt0)
+endif
 
 obj-y += vdso.o
 targets += vdso.lds
@@ -66,7 +70,7 @@ quiet_cmd_vdsold = VDSOL   $@
 quiet_cmd_vdsoas = VDSOA   $@
       cmd_vdsoas = $(CC) $(a_flags) -c -o $@ $<
 quiet_cmd_vdsocc = VDSOA   $@
-      cmd_vdsocc = $(CC) $(c_flags) -c -o $@ $<
+      cmd_vdsocc = $(CC) $(c_flags) $(vdso-cflags) -c -o $@ $<
 
 # Install commands for the unstripped file
 quiet_cmd_vdso_install = INSTALL $@

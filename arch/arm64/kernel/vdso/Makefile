@@ -36,6 +36,11 @@ UBSAN_SANITIZE			:= n
 OBJECT_FILES_NON_STANDARD	:= y
 KCOV_INSTRUMENT			:= n
 
+ifdef CONFIG_CTF_USING_BINUTILS
+KBUILD_CFLAGS := $(KBUILD_CFLAGS)
+KBUILD_CFLAGS += $(call cc-option,-gctf0) $(call cc-option,-gt0)
+endif
+
 CFLAGS_vgettimeofday.o = -O2 -mcmodel=tiny -fasynchronous-unwind-tables
 
 ifneq ($(c-gettimeofday-y),)
