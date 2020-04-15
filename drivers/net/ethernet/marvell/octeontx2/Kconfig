@@ -38,3 +38,11 @@ config OCTEONTX2_VF
 	depends on OCTEONTX2_PF
 	help
 	  This driver supports Marvell's OcteonTX2 NIC virtual function.
+
+config OCTEONTX2_BPHY_RFOE_NETDEV
+	tristate "OcteonTX2 BPHY RFOE netdev driver"
+	depends on ARM64
+	help
+	  This driver provides support for processing packets received/sent by
+	  BPHY RFOE MHAB such as eCPRI control, PTP and other ethernet packets
+	  in Linux kernel. The rest of packets are processed by ODP application.
