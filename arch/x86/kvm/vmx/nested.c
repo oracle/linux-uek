@@ -5668,19 +5668,13 @@ static bool nested_vmx_exit_handled_mtf(struct vmcs12 *vmcs12)
  */
 static bool nested_vmx_exit_reflected(struct kvm_vcpu *vcpu, u32 exit_reason)
 {
-	u32 intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
-
-	trace_kvm_nested_vmexit(kvm_rip_read(vcpu), exit_reason,
-				vmcs_readl(EXIT_QUALIFICATION),
-				vmx->idt_vectoring_info,
-				intr_info,
-				vmcs_read32(VM_EXIT_INTR_ERROR_CODE),
-				KVM_ISA_VMX);
+	u32 intr_info;
 
 	switch ((u16)exit_reason) {
 	case EXIT_REASON_EXCEPTION_NMI:
+		intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
 		if (is_nmi(intr_info))
 			return false;
 		else if (is_page_fault(intr_info))
@@ -5848,6 +5842,14 @@ bool nested_vmx_reflect_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason)
 		goto reflect_vmexit;
 	}
 
+	exit_intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
+	exit_qual = vmcs_readl(EXIT_QUALIFICATION);
+
+	trace_kvm_nested_vmexit(kvm_rip_read(vcpu), exit_reason, exit_qual,
+				vmx->idt_vectoring_info, exit_intr_info,
+				vmcs_read32(VM_EXIT_INTR_ERROR_CODE),
+				KVM_ISA_VMX);
+
 	if (!nested_vmx_exit_reflected(vcpu, exit_reason))
 		return false;
 
@@ -5858,7 +5860,6 @@ bool nested_vmx_reflect_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason)
 	 */
 	WARN_ON(exit_reason == EXIT_REASON_EXTERNAL_INTERRUPT);
 
-	exit_intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
 	if ((exit_intr_info &
 	     (INTR_INFO_VALID_MASK | INTR_INFO_DELIVER_CODE_MASK)) ==
 	    (INTR_INFO_VALID_MASK | INTR_INFO_DELIVER_CODE_MASK)) {
@@ -5867,7 +5868,6 @@ bool nested_vmx_reflect_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason)
 		vmcs12->vm_exit_intr_error_code =
 			vmcs_read32(VM_EXIT_INTR_ERROR_CODE);
 	}
-	exit_qual = vmcs_readl(EXIT_QUALIFICATION);
 
 reflect_vmexit:
 	nested_vmx_vmexit(vcpu, exit_reason, exit_intr_info, exit_qual);
