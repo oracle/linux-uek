@@ -2068,13 +2068,15 @@ static void rvu_npa_lf_mapped_nix_lf_teardown(struct rvu *rvu, u16 pcifunc)
 
 static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 {
-	u16 pcifunc_arr[rvu->hw->total_pfs + rvu->hw->total_vfs];
+	u16 *pcifunc_arr;
 	u16 sso_pcifunc, match_cnt = 0;
 	struct rvu_block *sso_block;
 	struct rsrc_detach detach;
 	int blkaddr, lf;
 	u64 regval;
 
+	pcifunc_arr = kcalloc(rvu->hw->total_pfs + rvu->hw->total_vfs,
+			      sizeof(*pcifunc_arr), GFP_KERNEL);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
 		return;
@@ -2102,6 +2104,7 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 
 	for (sso_pcifunc = 0; sso_pcifunc < match_cnt; sso_pcifunc++)
 		rvu_detach_rsrcs(rvu, &detach, pcifunc_arr[sso_pcifunc]);
+	kfree(pcifunc_arr);
 }
 
 static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
