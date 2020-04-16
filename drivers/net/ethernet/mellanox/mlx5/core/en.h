@@ -334,7 +334,7 @@ enum {
 	MLX5E_SQ_STATE_PENDING_XSK_TX,
 };
 
-struct mlx5e_sq_wqe_info {
+struct mlx5e_icosq_wqe_info {
 	u8  opcode;
 	u8 num_wqebbs;
 
@@ -516,7 +516,7 @@ struct mlx5e_icosq {
 
 	/* write@xmit, read@completion */
 	struct {
-		struct mlx5e_sq_wqe_info *ico_wqe;
+		struct mlx5e_icosq_wqe_info *wqe_info;
 	} db;
 
 	/* read only */
