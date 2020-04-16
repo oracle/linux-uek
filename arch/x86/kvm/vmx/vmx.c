@@ -5641,7 +5641,6 @@ void dump_vmcs(void)
 	u32 secondary_exec_control = 0;
 	unsigned long cr4 = vmcs_readl(GUEST_CR4);
 	u64 efer = vmcs_read64(GUEST_IA32_EFER);
-	int i, n;
 
 	if (cpu_has_secondary_exec_ctrls())
 		secondary_exec_control = vmcs_read32(SECONDARY_VM_EXEC_CONTROL);
@@ -5758,14 +5757,6 @@ void dump_vmcs(void)
 		pr_err("PostedIntrVec = 0x%02x\n", vmcs_read16(POSTED_INTR_NV));
 	if ((secondary_exec_control & SECONDARY_EXEC_ENABLE_EPT))
 		pr_err("EPT pointer = 0x%016llx\n", vmcs_read64(EPT_POINTER));
-	n = vmcs_read32(CR3_TARGET_COUNT);
-	for (i = 0; i + 1 < n; i += 4)
-		pr_err("CR3 target%u=%016lx target%u=%016lx\n",
-		       i, vmcs_readl(CR3_TARGET_VALUE0 + i * 2),
-		       i + 1, vmcs_readl(CR3_TARGET_VALUE0 + i * 2 + 2));
-	if (i < n)
-		pr_err("CR3 target%u=%016lx\n",
-		       i, vmcs_readl(CR3_TARGET_VALUE0 + i * 2));
 	if (secondary_exec_control & SECONDARY_EXEC_PAUSE_LOOP_EXITING)
 		pr_err("PLE Gap=%08x Window=%08x\n",
 		       vmcs_read32(PLE_GAP), vmcs_read32(PLE_WINDOW));
