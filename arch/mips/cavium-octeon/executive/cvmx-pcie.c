@@ -2684,8 +2684,7 @@ uint32_t cvmx_pcie_config_read32(int pcie_port, int bus, int dev,
 {
 	int node = (pcie_port >> 4) & 0x3;
 	pcie_port &= 0x3;
-	return __cvmx_pcie_config_read32(node, pcie_port, bus, dev, fn, reg,
-					 pcie_link_initialized[node][pcie_port]);
+	return __cvmx_pcie_config_read32(node, pcie_port, bus, dev, fn, reg, 1);
 }
 
 /**
