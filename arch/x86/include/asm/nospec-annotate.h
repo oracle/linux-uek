@@ -8,15 +8,6 @@
 #ifdef __ASSEMBLY__
 
 /*
- * This should be used immediately before a retpoline alternative.  It tells
- * objtool where the retpolines are so that it can make sense of the control
- * flow by just reading the original instruction(s) and ignoring the
- * alternatives.
- */
-#define ANNOTATE_NOSPEC_ALTERNATIVE \
-	ANNOTATE_IGNORE_ALTERNATIVE
-
-/*
  * This should be used immediately before an indirect jump/call. It tells
  * objtool the subsequent indirect jump/call is vouched safe for retpoline
  * builds.
