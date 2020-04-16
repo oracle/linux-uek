@@ -59,7 +59,7 @@
 #define FIRMWARE_TIMEOUT	(1 * NSEC_PER_MSEC)
 #define FIRMWARE_MAX_STALL	50			/* 50us */
 
-int erst_disable;
+int erst_disable = 1;
 EXPORT_SYMBOL_GPL(erst_disable);
 
 static struct acpi_table_erst *erst_tab;
