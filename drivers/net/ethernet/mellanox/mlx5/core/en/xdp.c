@@ -60,7 +60,7 @@ static inline bool
 mlx5e_xmit_xdp_buff(struct mlx5e_xdpsq *sq, struct mlx5e_rq *rq,
 		    struct mlx5e_dma_info *di, struct xdp_buff *xdp)
 {
-	struct mlx5e_xdp_xmit_data xdptxd;
+	struct mlx5e_xmit_data xdptxd;
 	struct mlx5e_xdp_info xdpi;
 	struct xdp_frame *xdpf;
 	dma_addr_t dma_addr;
@@ -212,7 +212,7 @@ static u16 mlx5e_xdpsq_get_next_pi(struct mlx5e_xdpsq *sq, u16 size)
 
 static void mlx5e_xdp_mpwqe_session_start(struct mlx5e_xdpsq *sq)
 {
-	struct mlx5e_xdp_mpwqe *session = &sq->mpwqe;
+	struct mlx5e_tx_mpwqe *session = &sq->mpwqe;
 	struct mlx5e_xdpsq_stats *stats = sq->stats;
 	struct mlx5e_tx_wqe *wqe;
 	u16 pi;
@@ -221,7 +221,7 @@ static void mlx5e_xdp_mpwqe_session_start(struct mlx5e_xdpsq *sq)
 	wqe = MLX5E_TX_FETCH_WQE(sq, pi);
 	net_prefetchw(wqe->data);
 
-	*session = (struct mlx5e_xdp_mpwqe) {
+	*session = (struct mlx5e_tx_mpwqe) {
 		.wqe = wqe,
 		.ds_count = MLX5E_TX_WQE_EMPTY_DS_COUNT,
 		.pkt_count = 0,
@@ -234,7 +234,7 @@ static void mlx5e_xdp_mpwqe_session_start(struct mlx5e_xdpsq *sq)
 void mlx5e_xdp_mpwqe_complete(struct mlx5e_xdpsq *sq)
 {
 	struct mlx5_wq_cyc       *wq    = &sq->wq;
-	struct mlx5e_xdp_mpwqe *session = &sq->mpwqe;
+	struct mlx5e_tx_mpwqe *session = &sq->mpwqe;
 	struct mlx5_wqe_ctrl_seg *cseg = &session->wqe->ctrl;
 	u16 ds_count = session->ds_count;
 	u16 pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
@@ -279,10 +279,10 @@ INDIRECT_CALLABLE_SCOPE int mlx5e_xmit_xdp_frame_check_mpwqe(struct mlx5e_xdpsq 
 }
 
 INDIRECT_CALLABLE_SCOPE bool
-mlx5e_xmit_xdp_frame_mpwqe(struct mlx5e_xdpsq *sq, struct mlx5e_xdp_xmit_data *xdptxd,
+mlx5e_xmit_xdp_frame_mpwqe(struct mlx5e_xdpsq *sq, struct mlx5e_xmit_data *xdptxd,
 			   struct mlx5e_xdp_info *xdpi, int check_result)
 {
-	struct mlx5e_xdp_mpwqe *session = &sq->mpwqe;
+	struct mlx5e_tx_mpwqe *session = &sq->mpwqe;
 	struct mlx5e_xdpsq_stats *stats = sq->stats;
 
 	if (unlikely(xdptxd->len > sq->hw_mtu)) {
@@ -326,7 +326,7 @@ INDIRECT_CALLABLE_SCOPE int mlx5e_xmit_xdp_frame_check(struct mlx5e_xdpsq *sq)
 }
 
 INDIRECT_CALLABLE_SCOPE bool
-mlx5e_xmit_xdp_frame(struct mlx5e_xdpsq *sq, struct mlx5e_xdp_xmit_data *xdptxd,
+mlx5e_xmit_xdp_frame(struct mlx5e_xdpsq *sq, struct mlx5e_xmit_data *xdptxd,
 		     struct mlx5e_xdp_info *xdpi, int check_result)
 {
 	struct mlx5_wq_cyc       *wq   = &sq->wq;
@@ -524,7 +524,7 @@ int mlx5e_xdp_xmit(struct net_device *dev, int n, struct xdp_frame **frames,
 
 	for (i = 0; i < n; i++) {
 		struct xdp_frame *xdpf = frames[i];
-		struct mlx5e_xdp_xmit_data xdptxd;
+		struct mlx5e_xmit_data xdptxd;
 		struct mlx5e_xdp_info xdpi;
 		bool ret;
 
