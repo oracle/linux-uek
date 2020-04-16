@@ -67,34 +67,6 @@
 .extern retpoline_enabled_key
 
 /*
- * These are the bare retpoline primitives for indirect jmp and call.
- * Do not use these directly; they only exist to make the ALTERNATIVE
- * invocation below less ugly.
- */
-.macro RETPOLINE_JMP reg:req
-	call	.Ldo_rop_\@
-.Lspec_trap_\@:
-	pause
-	lfence
-	jmp	.Lspec_trap_\@
-.Ldo_rop_\@:
-	mov	\reg, (%_ASM_SP)
-	ret
-.endm
-
-/*
- * This is a wrapper around RETPOLINE_JMP so the called function in reg
- * returns to the instruction after the macro.
- */
-.macro RETPOLINE_CALL reg:req
-	jmp	.Ldo_call_\@
-.Ldo_retpoline_jmp_\@:
-	RETPOLINE_JMP \reg
-.Ldo_call_\@:
-	call	.Ldo_retpoline_jmp_\@
-.endm
-
-/*
  * JMP_NOSPEC and CALL_NOSPEC macros can be used instead of a simple
  * indirect jmp/call which may be susceptible to the Spectre variant 2
  * attack.
@@ -105,8 +77,7 @@
 	ANNOTATE_RETPOLINE_SAFE
 	jmp	*%\reg
 .Lretpoline_jmp_\@:
-	ANNOTATE_NOSPEC_ALTERNATIVE
-	ALTERNATIVE __stringify(RETPOLINE_JMP %\reg), \
+	ALTERNATIVE __stringify(jmp __x86_retpoline_\reg), \
 		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg), X86_FEATURE_RETPOLINE_AMD
 #else
 	jmp	*%\reg
@@ -120,8 +91,7 @@
 	call	*%\reg
 	jmp	.Ldone_call_\@
 .Lretpoline_call_\@:
-	ANNOTATE_NOSPEC_ALTERNATIVE
-	ALTERNATIVE __stringify(RETPOLINE_CALL %\reg), \
+	ALTERNATIVE __stringify(call __x86_retpoline_\reg), \
 		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; call *%\reg), X86_FEATURE_RETPOLINE_AMD
 .Ldone_call_\@:
 #else
@@ -162,9 +132,8 @@
 	"	jmp  903f\n"					\
 	"	.align 16\n"					\
 	"902:"							\
-	ANNOTATE_NOSPEC_ALTERNATIVE				\
 	ALTERNATIVE(						\
-	"call __x86_indirect_thunk_%V[thunk_target];\n",	\
+	"call __x86_retpoline_%V[thunk_target];\n",		\
 	"lfence;\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
 	"call *%[thunk_target]\n",				\
@@ -179,7 +148,6 @@
  * here, anyway.
  */
 # define CALL_NOSPEC						\
-	ANNOTATE_NOSPEC_ALTERNATIVE				\
 	ALTERNATIVE(						\
 	"910: .byte " __stringify(STATIC_KEY_INIT_NOP) "\n"	\
 	".pushsection __jump_table, \"aw\"\n"			\
