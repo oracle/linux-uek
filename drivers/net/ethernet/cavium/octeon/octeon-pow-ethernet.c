@@ -919,6 +919,8 @@ static int __init octeon_pow_mod_init(void)
 	}
 
 	octeon_pow_oct_dev->netdev_ops = &octeon_pow_netdev_ops;
+	octeon_pow_oct_dev->min_mtu = 64;
+	octeon_pow_oct_dev->max_mtu = 65392;
 	strcpy(octeon_pow_oct_dev->name, "oct%d");
 
 	/* Initialize the device private structure. */
@@ -977,6 +979,8 @@ static int __init octeon_pow_mod_init(void)
 	}
 
 	octeon_pow_ptp_dev->netdev_ops = &octeon_pow_netdev_ops;
+	octeon_pow_ptp_dev->min_mtu = 64;
+	octeon_pow_ptp_dev->max_mtu = 65392;
 	strcpy(octeon_pow_ptp_dev->name, "pow%d");
 
 	/* Initialize the device private structure. */
