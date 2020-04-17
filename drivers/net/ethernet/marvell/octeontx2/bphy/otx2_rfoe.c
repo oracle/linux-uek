@@ -410,6 +410,12 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	len = (jd_dma_cfg_word_0->block_size) << 2;
 	netif_dbg(priv, rx_status, priv->netdev, "jd rd_dma len = %d\n", len);
 
+	if (unlikely(netif_msg_pktdata(priv))) {
+		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
+		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
+			       buf_ptr, len, true);
+	}
+
 	buf_ptr += (ft_cfg->pkt_offset * 16);
 	len -= (ft_cfg->pkt_offset * 16);
 
@@ -454,13 +460,6 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	memcpy(skb->data, buf_ptr, len);
 	skb_put(skb, len);
 	skb->protocol = eth_type_trans(skb, netdev);
-
-	if (unlikely(netif_msg_pktdata(priv2))) {
-		netdev_printk(KERN_DEBUG, priv2->netdev, "Rx: skb %pS len=%d\n",
-			      skb, skb->len);
-		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
-			       skb->data, skb->len, true);
-	}
 
 	if (priv2->rx_hw_tstamp_en)
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tstamp);
