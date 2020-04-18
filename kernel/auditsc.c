@@ -168,6 +168,19 @@ static int audit_match_perm(struct audit_context *ctx, int mask)
 		return ((mask & AUDIT_PERM_WRITE) && ctx->argv[0] == SYS_BIND);
 	case 5: /* execve */
 		return mask & AUDIT_PERM_EXEC;
+#ifdef CONFIG_MIPS
+	case 6: /* for N32 */
+		if ((mask & AUDIT_PERM_WRITE) &&
+				audit_match_class(AUDIT_CLASS_WRITE_N32, n))
+			return 1;
+		if ((mask & AUDIT_PERM_READ) &&
+				audit_match_class(AUDIT_CLASS_READ_N32, n))
+			return 1;
+		if ((mask & AUDIT_PERM_ATTR) &&
+				audit_match_class(AUDIT_CLASS_CHATTR_N32, n))
+			return 1;
+		return 0;
+#endif
 	default:
 		return 0;
 	}
