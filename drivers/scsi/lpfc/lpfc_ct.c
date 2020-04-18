@@ -1511,7 +1511,7 @@ lpfc_vport_symbolic_node_name(struct lpfc_vport *vport, char *symbol,
 	if (strlcat(symbol, tmp, size) >= size)
 		goto buffer_done;
 
-	scnprintf(tmp, sizeof(tmp), " HN:%s", init_utsname()->nodename);
+	scnprintf(tmp, sizeof(tmp), " HN:%s", vport->phba->os_host_name);
 	if (strlcat(symbol, tmp, size) >= size)
 		goto buffer_done;
 
