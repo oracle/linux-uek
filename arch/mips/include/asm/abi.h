@@ -21,6 +21,7 @@ struct mips_abi {
 	int (* const setup_rt_frame)(void *sig_return, struct ksignal *ksig,
 				     struct pt_regs *regs, sigset_t *set);
 	const unsigned long	restart;
+	const int audit_arch;
 
 	unsigned	off_sc_fpregs;
 	unsigned	off_sc_fpc_csr;

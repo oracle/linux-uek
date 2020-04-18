@@ -14,6 +14,7 @@ config MIPS
 	select ARCH_USE_QUEUED_SPINLOCKS
 	select ARCH_WANT_DEFAULT_TOPDOWN_MMAP_LAYOUT if MMU
 	select ARCH_WANT_IPC_PARSE_VERSION
+	select AUDIT_ARCH
 	select BUILDTIME_EXTABLE_SORT
 	select CLONE_BACKWARDS
 	select CPU_NO_EFFICIENT_FFS if (TARGET_ISA_REV < 1)
@@ -38,6 +39,7 @@ config MIPS
 	select GUP_GET_PTE_LOW_HIGH if CPU_MIPS32 && PHYS_ADDR_T_64BIT
 	select HANDLE_DOMAIN_IRQ
 	select HAVE_ARCH_COMPILER_H
+	select HAVE_ARCH_AUDITSYSCALL
 	select HAVE_ARCH_JUMP_LABEL
 	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_MMAP_RND_BITS if MMU
@@ -1071,6 +1073,15 @@ config FW_ARC
 	bool
 
 config ARCH_MAY_HAVE_PC_FDC
+	bool
+
+config AUDIT_ARCH
+	bool
+
+config AUDITSYSCALL_O32
+	bool
+
+config AUDITSYSCALL_N32
 	bool
 
 config BOOT_RAW
@@ -3169,6 +3180,7 @@ config MIPS32_O32
 	select COMPAT
 	select MIPS32_COMPAT
 	select SYSVIPC_COMPAT if SYSVIPC
+	select AUDITSYSCALL_O32 if AUDITSYSCALL
 	help
 	  Select this option if you want to run o32 binaries.  These are pure
 	  32-bit binaries as used by the 32-bit Linux/MIPS port.  Most of
@@ -3183,6 +3195,7 @@ config MIPS32_N32
 	select COMPAT
 	select MIPS32_COMPAT
 	select SYSVIPC_COMPAT if SYSVIPC
+	select AUDITSYSCALL_N32 if AUDITSYSCALL
 	help
 	  Select this option if you want to run n32 binaries.  These are
 	  64-bit binaries using 32-bit quantities for addressing and certain

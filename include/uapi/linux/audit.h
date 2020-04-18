@@ -177,7 +177,11 @@
  * AUDIT_LIST commands must be implemented. */
 #define AUDIT_MAX_FIELDS   64
 #define AUDIT_MAX_KEY_LEN  256
+#ifdef __mips__
+#define AUDIT_BITMASK_SIZE 256
+#else
 #define AUDIT_BITMASK_SIZE 64
+#endif
 #define AUDIT_WORD(nr) ((__u32)((nr)/32))
 #define AUDIT_BIT(nr)  (1 << ((nr) - AUDIT_WORD(nr)*32))
 
@@ -192,6 +196,12 @@
 #define AUDIT_CLASS_WRITE_32 7
 #define AUDIT_CLASS_SIGNAL 8
 #define AUDIT_CLASS_SIGNAL_32 9
+
+#define AUDIT_CLASS_DIR_WRITE_N32      10
+#define AUDIT_CLASS_CHATTR_N32         11
+#define AUDIT_CLASS_READ_N32           12
+#define AUDIT_CLASS_WRITE_N32          13
+#define AUDIT_CLASS_SIGNAL_N32         14
 
 /* This bitmask is used to validate user input.  It represents all bits that
  * are currently used in an audit field constant understood by the kernel.

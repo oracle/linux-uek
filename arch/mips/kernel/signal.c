@@ -8,6 +8,7 @@
  * Copyright (C) 1999, 2000 Silicon Graphics, Inc.
  * Copyright (C) 2014, Imagination Technologies Ltd.
  */
+#include <linux/audit.h>
 #include <linux/cache.h>
 #include <linux/context_tracking.h>
 #include <linux/irqflags.h>
@@ -790,6 +791,23 @@ struct mips_abi mips_abi = {
 #endif
 	.setup_rt_frame = setup_rt_frame,
 	.restart	= __NR_restart_syscall,
+#ifdef CONFIG_64BIT
+# ifdef __BIG_ENDIAN
+	.audit_arch     = AUDIT_ARCH_MIPS64,
+# elif defined(__LITTLE_ENDIAN)
+	.audit_arch     = AUDIT_ARCH_MIPSEL64,
+# else
+#  error "Neither big nor little endian ???"
+# endif
+#else
+# ifdef __BIG_ENDIAN
+	.audit_arch     = AUDIT_ARCH_MIPS,
+# elif defined(__LITTLE_ENDIAN)
+	.audit_arch     = AUDIT_ARCH_MIPSEL,
+# else
+#  error "Neither big nor little endian ???"
+# endif
+#endif
 
 	.off_sc_fpregs = offsetof(struct sigcontext, sc_fpregs),
 	.off_sc_fpc_csr = offsetof(struct sigcontext, sc_fpc_csr),

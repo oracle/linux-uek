@@ -59,4 +59,14 @@
 
 #endif /* !__ASSEMBLY__ */
 
+#ifdef CONFIG_MIPS32_N32
+#define NR_syscalls    (__NR_N32_Linux + __NR_N32_Linux_syscalls)
+#elif defined(CONFIG_64BIT)
+#define NR_syscalls    (__NR_64_Linux  + __NR_64_Linux_syscalls)
+#elif defined(CONFIG_32BIT)
+#define NR_syscalls    (__NR_O32_Linux + __NR_O32_Linux_syscalls)
+#else
+#error Must know ABIs in use to define NR_syscalls
+#endif
+
 #endif /* _ASM_UNISTD_H */
