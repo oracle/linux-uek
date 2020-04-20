@@ -87,6 +87,12 @@ module_param(reverse_endian, int, 0444);
 MODULE_PARM_DESC(reverse_endian,
 		 "Link partner is running with different endianness (set on only one end of the link).\n");
 
+static int ptp_dbg_group = -1;
+module_param(ptp_dbg_group, int, 0444);
+MODULE_PARM_DESC(ptp_dbg_group,
+		 "For the PTP POW device, 0-64 POW group to receive packets from for debug tap (packet capture).\n"
+		 "\t\tIf you don't specify a value, the 'dbg0' device will not be created\n.");
+
 static void *memcpy_re_to(void *d, const void *s, size_t n)
 {
 	u8 *dst = d;
@@ -135,6 +141,7 @@ static int fpa_packet_pool;	/* HW FPA pool to use for packet buffers */
 static int fpa_packet_pool_size = 2048;	/* Size of the packet buffers */
 static struct net_device *octeon_pow_oct_dev;
 static struct net_device *octeon_pow_ptp_dev;
+static struct net_device *octeon_pow_dbg_dev;
 static int octeon_pow_num_groups;
 
 void *work_to_skb(void *work)
@@ -842,6 +849,10 @@ static int __init octeon_pow_mod_init(void)
 	struct octeon_pow *priv;
 	u64 allowed_group_mask;
 
+	octeon_pow_ptp_dev = NULL;
+	octeon_pow_dbg_dev = NULL;
+	octeon_pow_oct_dev = NULL;
+
 	if (reverse_endian) {
 		octeon_pow_copy_to = memcpy_re_to;
 		octeon_pow_copy_from = memcpy_re_from;
@@ -943,7 +954,7 @@ static int __init octeon_pow_mod_init(void)
 
 		if (fpa_packet_pool < 0) {
 			netdev_err(octeon_pow_oct_dev, "ERROR: Failed to initialize fpa pool\n");
-			goto err1;
+			goto err;
 		}
 	} else {
 		/* Spin waiting for another core to setup all the hardware */
@@ -965,7 +976,47 @@ static int __init octeon_pow_mod_init(void)
 
 	if (register_netdev(octeon_pow_oct_dev) < 0) {
 		netdev_err(octeon_pow_oct_dev, "ERROR: Failed to register ethernet device\n");
-		goto err1;
+		goto err;
+	}
+
+	/* If requested, add a device for debug tap. Thus, SES applications can
+	 * submit network packets/work to ptp_dbg_group and have the packets
+	 * appear at this interface.
+	 */
+
+	if (ptp_dbg_group >= 0) {
+		octeon_pow_dbg_dev = alloc_etherdev(sizeof(struct octeon_pow));
+		if (!octeon_pow_dbg_dev) {
+			pr_err(DEV_NAME " ERROR: Failed to allocate ethernet device\n");
+			goto err;
+		}
+
+		octeon_pow_dbg_dev->netdev_ops = &octeon_pow_netdev_ops;
+		octeon_pow_dbg_dev->min_mtu = 64;
+		octeon_pow_dbg_dev->max_mtu = 65392;
+		strcpy(octeon_pow_dbg_dev->name, "dbg%d");
+
+		/* Initialize the device private structure. */
+
+		priv = netdev_priv(octeon_pow_dbg_dev);
+		priv->rx_group = ptp_dbg_group;
+
+		/* Note: We don't want to transmit from the dbg interface, ever.
+		 * We don't, but if someone should try, setting tx_mask to
+		 * rx_group will disable any tx since octeon_pow_xmit removes
+		 * rx_group from send_group_mask. We could change netdev_ops,
+		 * but that is a larger change to the pow driver and this
+		 * tx_mask setting is to protect against something that won't
+		 * happen anyway.
+		 */
+
+		priv->tx_mask = 1ull << priv->rx_group;
+		priv->is_ptp = true;
+
+		if (register_netdev(octeon_pow_dbg_dev) < 0) {
+			netdev_err(octeon_pow_dbg_dev, "ERROR: Failed to register ethernet device\n");
+			goto err;
+		}
 	}
 
 	if (ptp_rx_group < 0)
@@ -975,7 +1026,7 @@ static int __init octeon_pow_mod_init(void)
 	octeon_pow_ptp_dev = alloc_etherdev(sizeof(struct octeon_pow));
 	if (octeon_pow_ptp_dev == NULL) {
 		pr_err(DEV_NAME " ERROR: Failed to allocate ethernet device\n");
-		goto err1;
+		goto err;
 	}
 
 	octeon_pow_ptp_dev->netdev_ops = &octeon_pow_netdev_ops;
@@ -998,9 +1049,13 @@ static int __init octeon_pow_mod_init(void)
 	return 0;
 
  err:
-	free_netdev(octeon_pow_ptp_dev);
- err1:
-	free_netdev(octeon_pow_oct_dev);
+	if (octeon_pow_ptp_dev)
+		free_netdev(octeon_pow_ptp_dev);
+	if (octeon_pow_dbg_dev)
+		free_netdev(octeon_pow_dbg_dev);
+	if (octeon_pow_oct_dev)
+		free_netdev(octeon_pow_oct_dev);
+
 	return -1;
 }
 
@@ -1012,8 +1067,14 @@ static int __init octeon_pow_mod_init(void)
 static void __exit octeon_pow_mod_exit(void)
 {
 	/* Free the ethernet devices */
-	unregister_netdev(octeon_pow_oct_dev);
-	free_netdev(octeon_pow_oct_dev);
+	if (octeon_pow_oct_dev) {
+		unregister_netdev(octeon_pow_oct_dev);
+		free_netdev(octeon_pow_oct_dev);
+	}
+	if (octeon_pow_dbg_dev) {
+		unregister_netdev(octeon_pow_dbg_dev);
+		free_netdev(octeon_pow_dbg_dev);
+	}
 	if (octeon_pow_ptp_dev) {
 		unregister_netdev(octeon_pow_ptp_dev);
 		free_netdev(octeon_pow_ptp_dev);
