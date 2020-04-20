@@ -289,8 +289,6 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 			rds_ib_recv_free_frag(frag, cache_frag_pages);
 			atomic_sub(cache_frag_pages, &rds_ib_allocation);
 			kmem_cache_free(rds_ib_frag_slab, frag);
-			atomic_sub(cache_sz_k,
-				   &frag->ic->i_cache_allocs);
 		}
 		lfstack_free(&head->stack);
 		atomic_set(&head->count, 0);
@@ -302,8 +300,6 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 		rds_ib_recv_free_frag(frag, cache_frag_pages);
 		atomic_sub(cache_frag_pages, &rds_ib_allocation);
 		kmem_cache_free(rds_ib_frag_slab, frag);
-		atomic_sub(cache_sz_k,
-			   &frag->ic->i_cache_allocs);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
@@ -400,6 +396,7 @@ static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
 		rds_ib_srq_exit(rds_ibdev);
 		kfree(rds_ibdev->srq);
 	}
+	rds_ib_free_caches(rds_ibdev);
 
 	if (rds_ibdev->mr_8k_pool)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
@@ -495,7 +492,6 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 
 	ib_rds_remove_debugfs_cache_hit(rds_ibdev);
 
-	rds_ib_free_caches(rds_ibdev);
 	rds_rtd(RDS_RTD_ACT_BND,
 		"calling rds_ib_dev_shutdown, ib_device %p, rds_ibdev %p\n",
 		device, rds_ibdev);
