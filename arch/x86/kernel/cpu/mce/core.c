@@ -384,6 +384,8 @@ static void mce_panic(const char *msg, struct mce *final, char *exp)
 	}
 	if (final) {
 		print_mce(final);
+		if (final->status & MCI_STATUS_UC)
+			uncorrectable = true;
 		if (!apei_err)
 			apei_err = apei_write_mce(final);
 	}
