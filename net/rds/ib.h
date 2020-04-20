@@ -72,7 +72,6 @@ struct rds_page_frag {
 	struct lfstack_el	f_cache_entry;
 	struct scatterlist	f_sg[NUM_RDS_RECV_SG];
 	struct rds_ib_device	*rds_ibdev;
-	struct rds_ib_connection *ic;
 };
 
 struct rds_ib_incoming {
