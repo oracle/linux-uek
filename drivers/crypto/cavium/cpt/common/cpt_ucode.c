@@ -1227,6 +1227,7 @@ int cpt_get_eng_caps_discovery_grp(struct engine_groups *eng_grps, u8 eng_type)
 	}
 	return eng_grp_num;
 }
+EXPORT_SYMBOL_GPL(cpt_get_eng_caps_discovery_grp);
 
 int cpt_delete_eng_caps_discovery_grps(struct pci_dev *pdev,
 				       struct engine_groups *eng_grps)
@@ -1242,6 +1243,7 @@ int cpt_delete_eng_caps_discovery_grps(struct pci_dev *pdev,
 	}
 	return ret;
 }
+EXPORT_SYMBOL_GPL(cpt_delete_eng_caps_discovery_grps);
 
 static int create_engine_group(struct device *dev,
 			       struct engine_groups *eng_grps,
@@ -1631,6 +1633,7 @@ release_tar:
 	release_tar_archive(tar_arch);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(cpt_create_eng_caps_discovery_grps);
 
 int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 				    struct engine_groups *eng_grps)
