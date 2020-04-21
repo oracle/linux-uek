@@ -223,7 +223,7 @@ void __show_regs(struct pt_regs *regs)
 	print_pstate(regs);
 	print_symbol("pc : %s\n", regs->pc);
 	print_symbol("lr : %s\n", lr);
-	printk("sp : %016llx\n", sp);
+	printk("sp : %016llx pstate : %08llx\n", sp, regs->pstate);
 
 	i = top_reg;
 
