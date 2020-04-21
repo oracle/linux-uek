@@ -1930,7 +1930,7 @@ static int lio_tpg_shutdown_session(struct se_session *se_sess)
 	    (sess->time2retain_timer_flags & ISCSI_TF_EXPIRED)) {
 		spin_unlock(&sess->conn_lock);
 		if (local_lock)
-			spin_unlock_irq(&sess->conn_lock);
+			spin_unlock_irq(&se_tpg->session_lock);
 		return 0;
 	}
 	atomic_set(&sess->session_reinstatement, 1);
