@@ -251,6 +251,7 @@ static int vfio_msi_enable(struct vfio_pci_device *vdev, int nvec, bool msix)
 {
 	struct pci_dev *pdev = vdev->pdev;
 	int ret;
+	u16 cmd;
 
 	if (!is_irq_none(vdev))
 		return -EINVAL;
@@ -259,6 +260,7 @@ static int vfio_msi_enable(struct vfio_pci_device *vdev, int nvec, bool msix)
 	if (!vdev->ctx)
 		return -ENOMEM;
 
+	cmd = vfio_pci_memory_lock_and_enable(vdev);
 	if (msix) {
 		int i;
 
@@ -266,7 +268,8 @@ static int vfio_msi_enable(struct vfio_pci_device *vdev, int nvec, bool msix)
 				     GFP_KERNEL);
 		if (!vdev->msix) {
 			kfree(vdev->ctx);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto unlock_out;
 		}
 
 		for (i = 0; i < nvec; i++)
@@ -278,7 +281,7 @@ static int vfio_msi_enable(struct vfio_pci_device *vdev, int nvec, bool msix)
 				pci_disable_msix(pdev);
 			kfree(vdev->msix);
 			kfree(vdev->ctx);
-			return ret;
+			goto unlock_out;
 		}
 	} else {
 		ret = pci_enable_msi_range(pdev, 1, nvec);
@@ -286,10 +289,11 @@ static int vfio_msi_enable(struct vfio_pci_device *vdev, int nvec, bool msix)
 			if (ret > 0)
 				pci_disable_msi(pdev);
 			kfree(vdev->ctx);
-			return ret;
+			goto unlock_out;
 		}
 	}
 
+	ret = 0;
 	vdev->num_ctx = nvec;
 	vdev->irq_type = msix ? VFIO_PCI_MSIX_IRQ_INDEX :
 				VFIO_PCI_MSI_IRQ_INDEX;
@@ -301,8 +305,9 @@ static int vfio_msi_enable(struct vfio_pci_device *vdev, int nvec, bool msix)
 		 */
 		vdev->msi_qmax = fls(nvec * 2 - 1) - 1;
 	}
-
-	return 0;
+unlock_out:
+	vfio_pci_memory_unlock_and_restore(vdev, cmd);
+	return ret;
 }
 
 static int vfio_msi_set_vector_signal(struct vfio_pci_device *vdev,
@@ -311,6 +316,7 @@ static int vfio_msi_set_vector_signal(struct vfio_pci_device *vdev,
 	struct pci_dev *pdev = vdev->pdev;
 	struct eventfd_ctx *trigger;
 	int irq, ret;
+	u16 cmd;
 
 	if (vector < 0 || vector >= vdev->num_ctx)
 		return -EINVAL;
@@ -318,7 +324,10 @@ static int vfio_msi_set_vector_signal(struct vfio_pci_device *vdev,
 	irq = msix ? vdev->msix[vector].vector : pdev->irq + vector;
 
 	if (vdev->ctx[vector].trigger) {
+		cmd = vfio_pci_memory_lock_and_enable(vdev);
 		free_irq(irq, vdev->ctx[vector].trigger);
+		vfio_pci_memory_unlock_and_restore(vdev, cmd);
+
 		kfree(vdev->ctx[vector].name);
 		eventfd_ctx_put(vdev->ctx[vector].trigger);
 		vdev->ctx[vector].trigger = NULL;
@@ -346,6 +355,7 @@ static int vfio_msi_set_vector_signal(struct vfio_pci_device *vdev,
 	 * such a reset it would be unsuccessful. To avoid this, restore the
 	 * cached value of the message prior to enabling.
 	 */
+	cmd = vfio_pci_memory_lock_and_enable(vdev);
 	if (msix) {
 		struct msi_msg msg;
 
@@ -355,6 +365,7 @@ static int vfio_msi_set_vector_signal(struct vfio_pci_device *vdev,
 
 	ret = request_irq(irq, vfio_msihandler, 0,
 			  vdev->ctx[vector].name, trigger);
+	vfio_pci_memory_unlock_and_restore(vdev, cmd);
 	if (ret) {
 		kfree(vdev->ctx[vector].name);
 		eventfd_ctx_put(trigger);
@@ -391,6 +402,7 @@ static void vfio_msi_disable(struct vfio_pci_device *vdev, bool msix)
 {
 	struct pci_dev *pdev = vdev->pdev;
 	int i;
+	u16 cmd;
 
 	vfio_msi_set_block(vdev, 0, vdev->num_ctx, NULL, msix);
 
@@ -399,11 +411,13 @@ static void vfio_msi_disable(struct vfio_pci_device *vdev, bool msix)
 		vfio_virqfd_disable(&vdev->ctx[i].mask);
 	}
 
+	cmd = vfio_pci_memory_lock_and_enable(vdev);
 	if (msix) {
 		pci_disable_msix(vdev->pdev);
 		kfree(vdev->msix);
 	} else
 		pci_disable_msi(pdev);
+	vfio_pci_memory_unlock_and_restore(vdev, cmd);
 
 	vdev->irq_type = VFIO_PCI_NUM_IRQS;
 	vdev->num_ctx = 0;
