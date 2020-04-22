@@ -76,7 +76,7 @@ static int symbol_by_offset(const void *key, const struct rb_node *node)
 	return 0;
 }
 
-struct section *find_section_by_name(struct elf *elf, const char *name)
+struct section *find_section_by_name(const struct elf *elf, const char *name)
 {
 	struct section *sec;
 
@@ -166,7 +166,7 @@ struct symbol *find_func_containing(struct section *sec, unsigned long offset)
 	return NULL;
 }
 
-struct symbol *find_symbol_by_name(struct elf *elf, const char *name)
+struct symbol *find_symbol_by_name(const struct elf *elf, const char *name)
 {
 	struct symbol *sym;
 
@@ -177,7 +177,7 @@ struct symbol *find_symbol_by_name(struct elf *elf, const char *name)
 	return NULL;
 }
 
-struct rela *find_rela_by_dest_range(struct elf *elf, struct section *sec,
+struct rela *find_rela_by_dest_range(const struct elf *elf, struct section *sec,
 				     unsigned long offset, unsigned int len)
 {
 	struct rela *rela, *r = NULL;
@@ -206,7 +206,7 @@ struct rela *find_rela_by_dest_range(struct elf *elf, struct section *sec,
 	return NULL;
 }
 
-struct rela *find_rela_by_dest(struct elf *elf, struct section *sec, unsigned long offset)
+struct rela *find_rela_by_dest(const struct elf *elf, struct section *sec, unsigned long offset)
 {
 	return find_rela_by_dest_range(elf, sec, offset, 1);
 }
@@ -721,7 +721,7 @@ int elf_rebuild_rela_section(struct section *sec)
 	return 0;
 }
 
-int elf_write(struct elf *elf)
+int elf_write(const struct elf *elf)
 {
 	struct section *sec;
 	Elf_Scn *s;
