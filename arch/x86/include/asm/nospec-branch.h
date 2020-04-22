@@ -103,13 +103,13 @@
 #ifdef CONFIG_RETPOLINE
 	STATIC_JUMP_IF_TRUE .Lretpoline_jmp_\@, retpoline_enabled_key, def=0
 	ANNOTATE_RETPOLINE_SAFE
-	jmp	*\reg
+	jmp	*%\reg
 .Lretpoline_jmp_\@:
 	ANNOTATE_NOSPEC_ALTERNATIVE
-	ALTERNATIVE __stringify(RETPOLINE_JMP \reg), \
-		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *\reg), X86_FEATURE_RETPOLINE_AMD
+	ALTERNATIVE __stringify(RETPOLINE_JMP %\reg), \
+		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg), X86_FEATURE_RETPOLINE_AMD
 #else
-	jmp	*\reg
+	jmp	*%\reg
 #endif
 .endm
 
@@ -117,15 +117,15 @@
 #ifdef CONFIG_RETPOLINE
 	STATIC_JUMP_IF_TRUE .Lretpoline_call_\@, retpoline_enabled_key, def=0
 	ANNOTATE_RETPOLINE_SAFE
-	call	*\reg
+	call	*%\reg
 	jmp	.Ldone_call_\@
 .Lretpoline_call_\@:
 	ANNOTATE_NOSPEC_ALTERNATIVE
-	ALTERNATIVE __stringify(RETPOLINE_CALL \reg), \
-		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; call *\reg), X86_FEATURE_RETPOLINE_AMD
+	ALTERNATIVE __stringify(RETPOLINE_CALL %\reg), \
+		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; call *%\reg), X86_FEATURE_RETPOLINE_AMD
 .Ldone_call_\@:
 #else
-	call	*\reg
+	call	*%\reg
 #endif
 .endm
 

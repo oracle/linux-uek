@@ -13,7 +13,7 @@
 
 ENTRY(__x86_indirect_thunk_\reg)
 	CFI_STARTPROC
-	JMP_NOSPEC %\reg
+	JMP_NOSPEC \reg
 	CFI_ENDPROC
 ENDPROC(__x86_indirect_thunk_\reg)
 .endm
