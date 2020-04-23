@@ -3765,6 +3765,12 @@ static int vmx_check_nested_events(struct kvm_vcpu *vcpu)
 		return 0;
 	}
 
+	if (vcpu->arch.smi_pending && !is_smm(vcpu)) {
+		if (block_nested_events)
+			return -EBUSY;
+		goto no_vmexit;
+	}
+
 	if (vcpu->arch.nmi_pending && !vmx_nmi_blocked(vcpu)) {
 		if (block_nested_events)
 			return -EBUSY;
