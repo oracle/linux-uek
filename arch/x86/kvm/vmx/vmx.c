@@ -4585,6 +4585,9 @@ static bool vmx_nmi_allowed(struct kvm_vcpu *vcpu)
 	if (to_vmx(vcpu)->nested.nested_run_pending)
 		return false;
 
+	if (is_guest_mode(vcpu) && nested_exit_on_nmi(vcpu))
+		return true;
+
 	if (!enable_vnmi &&
 	    to_vmx(vcpu)->loaded_vmcs->soft_vnmi_blocked)
 		return false;
