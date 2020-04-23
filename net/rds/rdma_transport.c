@@ -126,7 +126,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 							NULL,
 							rds_cm_event_str(event->event),
 							0);
-			ret = trans->cm_handle_connect(cm_id, event, isv6);
+			ret = trans->cm_handle_connect(cm_id, event, isv6, false);
 			if (ret)
 				reason = "handle connect failed";
 		} else {
@@ -150,24 +150,22 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	/* If the connection is being shut down, bail out
 	 * right away. We return 0 so cm_id doesn't get
-	 * destroyed prematurely
+	 * destroyed prematurely.
+	 *
+	 * Events RDMA_CM_EVENT_ADDR_CHANGE and RDMA_CM_EVENT_DISCONNECTED
+	 * need to be processed regardless of the connection state
+	 * as they flush the ARP cache as well as invalidate the
+	 * pending inbound connection (RDS_CONN_PATH_RESET_ALT_CONN).
+	 * 
+	 * Also event RDMA_CM_EVENT_CONNECT_REQUEST needs to be processed,
+	 * because we want to figure out if we want to yield to that incoming connection,
+	 * also regardless of what state the outbound connection is in.
 	 */
-	if (rds_conn_state(conn) == RDS_CONN_DISCONNECTING ||
-	    rds_conn_state(conn) == RDS_CONN_ERROR) {
-		/* Reject incoming connections while we're tearing
-		 * down an existing one.
-		 */
-		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
-			ret = 1;
-			conn->c_reconnect_racing = 1;
-		}
-		if (event->event == RDMA_CM_EVENT_ADDR_CHANGE ||
-		    event->event == RDMA_CM_EVENT_DISCONNECTED)
-			/* These events might indicate the IP being moved,
-			 * hence flush the address
-			 */
-			rds_ib_flush_neigh(&init_net, conn, flush_local_peer,
-					   event->event == RDMA_CM_EVENT_ADDR_CHANGE);
+	if ((rds_conn_state(conn) == RDS_CONN_DISCONNECTING ||
+	     rds_conn_state(conn) == RDS_CONN_ERROR) &&
+	    event->event != RDMA_CM_EVENT_ADDR_CHANGE &&
+	    event->event != RDMA_CM_EVENT_DISCONNECTED &&
+	    event->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
 		reason = "reject incoming connections during teardown";
 		goto out;
 	}
@@ -185,7 +183,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
 		if (conn->c_path)
 			conn->c_path->cp_conn_start_jf = 0;
-		ret = trans->cm_handle_connect(cm_id, event, isv6);
+		ret = trans->cm_handle_connect(cm_id, event, isv6, true);
 		if (ret)
 			reason = "handle connect failed";
 		break;
@@ -242,7 +240,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
-		conn->c_reconnect_racing = 0;
 		rds_conn_drop(conn, DR_IB_ROUTE_ERR, 0);
 		break;
 
@@ -254,7 +251,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
-		conn->c_reconnect_racing = 0;
 		rds_conn_drop(conn, DR_IB_ADDR_ERR, 0);
 		break;
 
@@ -264,7 +260,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
-		conn->c_reconnect_racing = 0;
 		rds_conn_drop(conn, DR_IB_CONNECT_ERR, 0);
 		break;
 
@@ -273,12 +268,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
 		err = (int *)event->param.conn.private_data;
-
-		if (event->status == RDS_REJ_CONSUMER_DEFINED &&
-		    *err <= 1) {
-			conn->c_reconnect_racing++;
-			reason = "reconnect racing";
-		}
 
 		if (event->status == RDS_REJ_CONSUMER_DEFINED && (*err) == 0) {
 			/* Rejection from RDSV3.1 */
@@ -301,6 +290,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			rds_ib_conn_destroy_init(conn);
 		} else {
 			rds_conn_drop(conn, DR_IB_REJECTED_EVENT, *err);
+			reason = "connection rejected";
 		}
 		break;
 
@@ -308,7 +298,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, true);
 
-		conn->c_reconnect_racing = 0;
 		rds_conn_drop(conn, DR_IB_ADDR_CHANGE, 0);
 		break;
 
@@ -316,7 +305,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
-		conn->c_reconnect_racing = 0;
 		if (!rds_conn_self_loopback_passive(conn))
 			rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT, 0);
 		break;
