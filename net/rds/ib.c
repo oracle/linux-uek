@@ -1352,6 +1352,7 @@ struct rds_transport rds_ib_transport = {
 	.recv_path		= rds_ib_recv_path,
 	.conn_alloc		= rds_ib_conn_alloc,
 	.conn_free		= rds_ib_conn_free,
+	.conn_path_reset	= rds_ib_conn_path_reset,
 	.conn_path_connect	= rds_ib_conn_path_connect,
 	.conn_path_shutdown	= rds_ib_conn_path_shutdown,
 	.inc_copy_to_user	= rds_ib_inc_copy_to_user,
