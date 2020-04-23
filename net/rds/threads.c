@@ -171,10 +171,8 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	WRITE_ONCE(cp->cp_hb_state, HB_PONG_RCVD);
 	rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_hb_w, 0,
 			       "hb worker");
-	rds_queue_cancel_work(cp, &cp->cp_reconn_w, "connect path complete");
 
 	rds_update_avg_connect_time(cp);
-	cp->cp_connection_start = ktime_get_real_seconds();
 	cp->cp_reconnect = 1;
 	cp->cp_connection_established = ktime_get_real_seconds();
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
@@ -187,35 +185,16 @@ void rds_connect_complete(struct rds_connection *conn)
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
-static bool rds_conn_is_active_peer(struct rds_connection *conn)
-{
-	bool greater_ip = rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) > 0;
-	bool self_loopback = rds_conn_self_loopback_passive(conn);
-	bool passive = greater_ip || self_loopback;
-
-	return !passive;
-}
-
 void rds_queue_reconnect(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
-	bool active = rds_conn_is_active_peer(conn);
 	uint64_t delay;
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
 	if (is_tcp && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) >= 0) {
 		trace_rds_queue_noop(conn, cp, NULL, NULL, 0,
 				     "no reconnect; tcp with smaller addr");
-		return;
-	}
-
-	/* If we're the passive initiator and we're racing, let the
-	 * active peer drive the reconnect
-	 */
-	if (!active && cp->cp_reconnect_racing) {
-		trace_rds_queue_noop(conn, cp, NULL, NULL, 0,
-				     "no reconnect; passive initiator racing");
 		return;
 	}
 
@@ -226,22 +205,9 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		delay = cp->cp_reconnect_jiffies;
 	}
 
-	if (!active) {
-		delay = max_t(uint64_t,
-			      rds_sysctl_passive_connect_delay_percent *
-			      atomic64_read(&conn->c_trans->rds_avg_conn_jf) / 100,
-			      msecs_to_jiffies(1000));
-		/* The heuristics may be very long, e.g., node reboots */
-		delay = min_t(uint64_t, delay, msecs_to_jiffies(15000));
-	}
-
-	/* Prioritize local connections by delaying the others by one jiffie */
-	if (!conn->c_loopback)
-		++delay;
-
-	rds_cond_queue_reconnect_work(cp, delay);
-	cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
-				       rds_sysctl_reconnect_max_jiffies);
+	if (rds_cond_queue_reconnect_work(cp, delay))
+		cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
+					       rds_sysctl_reconnect_max_jiffies);
 }
 
 void rds_connect_worker(struct work_struct *work)
@@ -259,6 +225,7 @@ void rds_connect_worker(struct work_struct *work)
 	if (is_tcp && cp->cp_index > 0 &&
 	    rds_addr_cmp(&cp->cp_conn->c_laddr, &cp->cp_conn->c_faddr) > 0)
 		goto out;
+
 	ret = rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_CONNECTING,
 				       DR_DEFAULT);
 	if (ret) {
@@ -266,7 +233,6 @@ void rds_connect_worker(struct work_struct *work)
 		 * record the time we started trying to connect so that we can
 		 * drop the connection if it doesn't work out after a while
 		 */
-		cp->cp_connection_start = ktime_get_real_seconds();
 		cp->cp_connection_initiated = ktime_get_real_seconds();
 		cp->cp_connection_attempts++;
 		cp->cp_drop_source = DR_DEFAULT;
@@ -408,21 +374,6 @@ void rds_hb_worker(struct work_struct *work)
 	}
 }
 
-void rds_reconnect_timeout(struct work_struct *work)
-{
-	struct rds_conn_path *cp = container_of(work,
-						struct rds_conn_path,
-						cp_reconn_w.work);
-
-	trace_rds_queue_worker(cp->cp_conn, cp, cp->cp_wq, work, 0,
-			       "reconnect timeout");
-
-	if (!rds_conn_path_up(cp)) {
-		cp->cp_reconnect_racing = 0;
-		rds_conn_path_drop(cp, DR_RECONNECT_TIMEOUT, 0);
-	}
-}
-
 void rds_shutdown_worker(struct work_struct *work)
 {
 	struct rds_conn_path *cp = container_of(work,
@@ -431,7 +382,6 @@ void rds_shutdown_worker(struct work_struct *work)
 	time64_t now = ktime_get_real_seconds();
 	bool is_tcp = cp->cp_conn->c_trans->t_type == RDS_TRANS_TCP;
 	struct rds_connection *conn = cp->cp_conn;
-	bool restart = true;
 
 	trace_rds_queue_worker(cp->cp_conn, cp, cp->cp_wq, work, 0,
 			       "shutdown worker");
@@ -447,17 +397,7 @@ void rds_shutdown_worker(struct work_struct *work)
 			conn->c_tos,
 			conn_drop_reason_str(cp->cp_drop_source));
 
-	/* If racing is detected, the bigger IP backs off and lets the
-	 * smaller IP drive the reconnect (one-sided reconnect).
-	 */
-	if (cp->cp_reconnect_racing)
-		restart = rds_conn_is_active_peer(conn);
-
-	rds_conn_shutdown(cp, restart);
-	if (!restart)
-		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_reconn_w,
-				       msecs_to_jiffies(RDS_RECONNECT_RETRY_MS),
-				       "reconnect retry");
+	rds_conn_shutdown(cp);
 	rds_clear_shutdown_pending_work_bit(cp);
 }
 
