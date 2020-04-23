@@ -215,6 +215,40 @@ struct rds_ib_connection {
 	struct ib_wc		i_send_wc[RDS_WC_MAX];
 	struct ib_wc		i_recv_wc[RDS_WC_MAX];
 
+	/* There are cases when we have the right_of_way
+	 * and are sitting on an outbound connection-attempt
+	 * that appears to be slow or stuck.
+	 * At the same time, conection-request from the peer
+	 * we're tryingt o reach comes in.
+	 * In order to not stubbornly insist that our slow
+	 * or frozen connection ought to succeed,
+	 * we simply keep track of the last transition
+	 * timestamp as:
+	 *   max(time_of(rds_ib_conn_path_connect),
+	 *       time_of(rds_ib_cm_accept),
+	 *       time_of(rds_ib_cm_connect_complete))
+	 *
+	 * If this value exceeds sysctl 'net.rds.yield_after_ms'
+	 * we accept the incoming call.
+	 *
+	 * Atomic value type: ktime_t
+	 */
+	atomic64_t              i_connecting_ts;
+
+	/* Alternative connection to be accepted for resolving
+	 * concurrent connect request.
+	 * Refer to comments in rds_ib_cm_handle_connect().
+	 */
+	struct {
+		struct rdma_cm_id	*cm_id;
+		bool			 is_stale;
+		bool			 isv6;
+		union rds_ib_conn_priv	 private_data;
+		u32			 version;
+		u8			 responder_resources;
+		u8			 initiator_depth;
+	} i_alt;
+
 	/* Number of wrs available for MR registration(frwr) */
 	atomic_t		i_fastreg_wrs;
 
@@ -508,6 +542,12 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_recv_removed_from_cache;
 	uint64_t	s_ib_recv_nmb_added_to_cache;
 	uint64_t	s_ib_recv_nmb_removed_from_cache;
+	uint64_t	s_ib_yield_yielding;
+	uint64_t	s_ib_yield_right_of_way;
+	uint64_t	s_ib_yield_stale;
+	uint64_t	s_ib_yield_expired;
+	uint64_t	s_ib_yield_accepting;
+	uint64_t	s_ib_yield_success;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -645,13 +685,15 @@ extern struct socket *rds_ib_inet_socket;
 bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id);
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
 void rds_ib_conn_free(void *arg);
+void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags);
 int rds_ib_conn_path_connect(struct rds_conn_path *cp);
 void rds_ib_conn_path_shutdown(struct rds_conn_path *cp);
 void rds_ib_state_change(struct sock *sk);
 int rds_ib_listen_init(void);
 void rds_ib_listen_stop(void);
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
-			     struct rdma_cm_event *event, bool isv6);
+			     struct rdma_cm_event *event,
+			     bool isv6, bool was_locked);
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6);
 void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
@@ -763,6 +805,7 @@ extern unsigned int rds_ib_srq_enabled;
 /* ib_sysctl.c */
 int rds_ib_sysctl_init(void);
 void rds_ib_sysctl_exit(void);
+
 extern unsigned long rds_ib_sysctl_max_send_wr;
 extern unsigned long rds_ib_sysctl_max_recv_wr;
 extern unsigned long rds_ib_sysctl_max_unsig_wrs;
@@ -775,5 +818,6 @@ extern int rds_ib_sysctl_local_ack_timeout;
 extern u32 rds_frwr_wake_intrvl;
 extern u32 rds_frwr_ibmr_gc_time;
 extern u32 rds_frwr_ibmr_qrtn_time;
+extern unsigned rds_ib_sysctl_yield_after_ms;
 
 #endif
