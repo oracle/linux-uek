@@ -95,6 +95,12 @@ static char *rds_ib_stat_names[] = {
 	"ib_recv_cache_removed",
 	"ib_recv_nmb_cache_added",
 	"ib_recv_nmb_cache_removed",
+	"ib_yield_yielding",
+	"ib_yield_right_of_way",
+	"ib_yield_stale",
+	"ib_yield_expired",
+	"ib_yield_accepting",
+	"ib_yield_success",
 };
 
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
