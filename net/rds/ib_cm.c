@@ -379,6 +379,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	ic->i_dst_qp_num = event->param.conn.qp_num;
 
 	rds_connect_complete(conn);
+
+	atomic64_set(&ic->i_connecting_ts, ktime_get());
 }
 
 static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
@@ -1369,15 +1371,90 @@ bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id)
 	return false;
 }
 
+static int rds_ib_cm_accept(struct rds_connection *conn,
+			    struct rdma_cm_id *cm_id,
+			    bool isv6,
+			    const union rds_ib_conn_priv *dp,
+			    u32 version,
+			    u8 responder_resources,
+			    u8 initiator_depth)
+{
+	int err;
+	struct rds_ib_connection *ic;
+	const struct rds_ib_conn_priv_cmn *dp_cmn;
+	struct rdma_conn_param conn_param;
+	u16 frag;
+
+	ic = conn->c_transport_data;
+
+	BUG_ON(rds_ib_get_conn(cm_id));
+	BUG_ON(ic->i_cm_id);
+
+	ic->i_cm_id = cm_id;
+	cm_id->context = rds_ib_map_conn(conn);
+	ic->i_cm_id_ctx = cm_id->context;
+
+	if (isv6) {
+#if IS_ENABLED(CONFIG_IPV6)
+		dp_cmn = &dp->ricp_v6.dp_cmn;
+#else
+		return -EOPNOTSUPP;
+#endif
+	} else
+		dp_cmn = &dp->ricp_v4.dp_cmn;
+
+	rds_ib_set_flow_control(conn, be32_to_cpu(dp_cmn->ricpc_credit));
+	/* Use ic->i_flowctl as the first post credit to enable
+	 * IB transport flow control. This first post credit is
+	 * deducted after advertise the credit to the remote
+	 * connection.
+	 */
+	atomic_set(&ic->i_credits, IB_SET_POST_CREDITS(ic->i_flowctl));
+
+	/* If the peer gave us the last packet it saw, process this as if
+	 * we had received a regular ACK. */
+	if (dp_cmn->ricpc_ack_seq)
+		rds_send_drop_acked(conn, be64_to_cpu(dp_cmn->ricpc_ack_seq),
+				    NULL);
+
+	err = rds_ib_setup_qp(conn);
+	if (err) {
+		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL, err);
+                trace_rds_ib_cm_accept_err(NULL, ic->rds_ibdev,
+					   conn, ic, "rds_ib_setup_qp error", err);
+		return err;
+	}
+
+	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp_cmn->ricpc_frag_sz));
+
+	rds_ib_cm_fill_conn_param(conn, &conn_param, NULL, version,
+				  responder_resources,
+				  initiator_depth,
+				  frag, isv6);
+
+	/* rdma_accept() calls rdma_reject() internally if it fails */
+	if (rds_ib_sysctl_local_ack_timeout &&
+	    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
+		rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
+	err = rdma_accept(cm_id, &conn_param);
+	if (err) {
+		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL, err);
+                trace_rds_ib_cm_accept_err(NULL, ic->rds_ibdev,
+					   conn, ic, "rdma accept failure", err);
+	}
+
+	return err;
+}
+
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
-			     struct rdma_cm_event *event, bool isv6)
+			     struct rdma_cm_event *event,
+			     bool isv6, bool was_locked)
 {
 	const struct rds_ib_conn_priv_cmn *dp_cmn;
 	struct rds_ib_connection *ic = NULL;
 	struct rds_connection *conn = NULL;
-	struct rdma_conn_param conn_param;
+	struct rds_conn_path *cp;
 	const union rds_ib_conn_priv *dp;
-	union rds_ib_conn_priv dp_rep;
 	struct in6_addr s_mapped_addr;
 	struct in6_addr d_mapped_addr;
 	const struct in6_addr *saddr6;
@@ -1388,12 +1465,13 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	u32 ifindex = 0;
 	u32 version;
 	int err = 1;
-	u16 frag;
 
 	/* Check whether the remote protocol version matches ours. */
 	version = rds_ib_protocol_compatible(event, isv6);
-	if (!version)
+	if (!version) {
+		reason = "protocol incompatible";
 		goto out;
+	}
 
 	dp = event->param.conn.private_data;
 	if (isv6) {
@@ -1459,6 +1537,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		goto out;
 	}
 
+	cp = &conn->c_path[0];
+
 	rds_ib_set_protocol(conn, version);
 
 	conn->c_acl_en = acl_ret;
@@ -1468,121 +1548,113 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	 * The connection request may occur while the
 	 * previous connection exist, e.g. in case of failover.
 	 */
-	mutex_lock(&conn->c_cm_lock);
+	if (!was_locked)
+		mutex_lock(&conn->c_cm_lock);
+
 	ic = conn->c_transport_data;
+	if (!ic) {
+		err = -ENOLINK;
+		reason = "no ic";
+		goto out;
+	}
+
+	/* There can only be a single alternative:
+	 * A new connection request can arrive
+	 * prior to this node having worked its way
+	 * through the entire shutdown path
+	 * plus the subsequent attempt to use
+	 * "i_alt.cm_id" in "rds_ib_conn_path_connect".
+	 * So we simply disregard the now stale cm_id
+	 * and work with the latest incoming request.
+	 */
+	if (ic->i_alt.cm_id) {
+		rds_ib_stats_inc(s_ib_yield_stale);
+		trace_rds_ib_conn_yield_stale(NULL, ic->rds_ibdev,
+					      conn, ic, "stale", 0);
+		rdma_destroy_id(ic->i_alt.cm_id);
+		ic->i_alt.cm_id = NULL;
+	}
+
+	/* Cancel any pending reconnect */
+	rds_queue_cancel_work(cp, &cp->cp_conn_w,
+			      "cancel pending reconnect");
+	rds_clear_reconnect_pending_work_bit(cp);
+
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING,
 				 DR_DEFAULT)) {
-		/*
-		 * in both of the cases below, the conn is half setup.
-		 * we need to make sure the lower layers don't destroy it
+		int delta;
+		bool yield;
+		ktime_t conn_ts;
+		s64 conn_age;
+
+		/* Yield if the peer is what has been considered
+		 * 'active side' (i.e. lower IP-address)
+		 * for compatibility reasons during unsynchronized
+		 * initial connection establishment races.
+		 *
+		 * Also yield to this incoming connection request
+		 * if previous connection establishment took too long
+		 * or the existing connection is just older:
+		 *
+		 * If we've been in state RDS_CONN_UP this long
+		 * and there's a inbound connection requests
+		 * the peer apparently doesn't agree the connection
+		 * is UP. So we're better of accepting the call
+		 * than hanging on to a connection that no longer works.
+		 *
+		 * If we're the 'active side' but haven't even come
+		 * as far as trying to connect, we yield as well.
 		 */
-		if (rds_ib_same_cm_id(ic, cm_id))
-			destroy = 0;
-		if (rds_conn_state(conn) == RDS_CONN_UP) {
-			rds_conn_drop(conn, DR_IB_REQ_WHILE_CONN_UP, 0);
-			rds_ib_stats_inc(s_ib_listen_closed_stale);
-			conn->c_reconnect_racing++;
-			trace_rds_ib_reconnect_racing(NULL, ic->rds_ibdev, conn,
-						      ic, "conn up", 0);
-		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
-			unsigned long now = get_seconds();
-			conn->c_reconnect_racing++;
-
-			trace_rds_ib_reconnect_racing(NULL, ic->rds_ibdev,
-						      conn, ic,
-						      "conn connecting", 0);
-
-			/* When a race is detected, one side should fall back
-			 * to passive and let the active side to reconnect.
-			 * If the connection is in CONNECTING and still receive
-			 * multiple back-to-back REQ, it means something is
-			 * horribly wrong. Thus, drop the connection.
-			 */
-			if (conn->c_reconnect_racing > 5) {
-				conn->c_reconnect_racing = 0;
-				rds_conn_drop(conn,
-					      DR_IB_REQ_WHILE_CONNECTING_MULTI,
-					      0);
-			/* After 15 seconds, give up on existing connection
-			 * attempts and make them try again.  At this point
-			 * it's no longer a race but something has gone
-			 * horribly wrong.
-			 */
-			} else if (now > conn->c_connection_start &&
-			    now - conn->c_connection_start > 15) {
-				rds_conn_drop(conn,
-					      DR_IB_REQ_WHILE_CONNECTING_TIME,
-					      0);
-				rds_ib_stats_inc(s_ib_listen_closed_stale);
-			} else {
-				/* Wait and see - our connect may still be succeeding */
-				rds_ib_stats_inc(s_ib_connect_raced);
+		delta = rds_addr_cmp(&conn->c_faddr, &conn->c_laddr);
+		yield = delta < 0;
+		if (!yield && delta > 0) {
+			conn_ts = atomic64_read(&ic->i_connecting_ts);
+			if (conn_ts) {
+				conn_age = ktime_to_ms(ktime_sub(ktime_get(), conn_ts));
+				yield = conn_age >= rds_ib_sysctl_yield_after_ms;
+				if (yield && rds_conn_path_state(cp) != RDS_CONN_UP) {
+					rds_ib_stats_inc(s_ib_yield_expired);
+					trace_rds_ib_conn_yield_expired(NULL, ic->rds_ibdev,
+									conn, ic, "expired", 0);
+				}
 			}
 		}
-		goto out;
+		if (yield) {
+			ic->i_alt.cm_id = cm_id;
+			ic->i_alt.is_stale = false;
+			ic->i_alt.isv6 = isv6;
+			memcpy(&ic->i_alt.private_data, dp,
+			       sizeof(ic->i_alt.private_data));
+			ic->i_alt.version = version;
+			ic->i_alt.responder_resources = event->param.conn.responder_resources;
+			ic->i_alt.initiator_depth = event->param.conn.initiator_depth;
+			atomic64_set(&ic->i_connecting_ts, 0);
+			cp->cp_reconnect_jiffies = 0;
+			/* We need to take the long route
+			 * through the shutdown code-path here
+			 * as the resources allocated and configured
+			 * by "rds_ib_setup_qp" are only properly
+			 * de-allocated in that path:
+			 * e.g. "rds_ib_conn_path_shutdown"
+			 */
+			rds_conn_drop(conn, DR_IB_CONN_DROP_YIELD, 0);
+			err = 0;
+			destroy = 0;
+			rds_ib_stats_inc(s_ib_yield_yielding);
+			trace_rds_ib_conn_yield_yielding(NULL, ic->rds_ibdev,
+							 conn, ic, "yielding", 0);
+		} else {
+			rds_ib_stats_inc(s_ib_yield_right_of_way);
+			trace_rds_ib_conn_yield_right_of_way(NULL, ic->rds_ibdev,
+							     conn, ic, "right of way", 0);
+		}
 	} else {
-		/* Cancel any pending reconnect */
-		struct rds_conn_path *cp = &conn->c_path[0];
-
-		rds_queue_cancel_work(cp, &cp->cp_conn_w,
-				      "failed to transition to CONNECTING");
-		rds_clear_reconnect_pending_work_bit(cp);
-	}
-
-	ic = conn->c_transport_data;
-
-	/*
-	 * record the time we started trying to connect so that we can
-	 * drop the connection if it doesn't work out after a while
-	 */
-	conn->c_connection_start = get_seconds();
-
-	rds_ib_set_flow_control(conn, be32_to_cpu(dp_cmn->ricpc_credit));
-	/* Use ic->i_flowctl as the first post credit to enable
-	 * IB transport flow control. This first post credit is
-	 * deducted after advertise the credit to the remote
-	 * connection.
-	 */
-	atomic_set(&ic->i_credits, IB_SET_POST_CREDITS(ic->i_flowctl));
-
-	/* If the peer gave us the last packet it saw, process this as if
-	 * we had received a regular ACK. */
-	if (dp_cmn->ricpc_ack_seq)
-		rds_send_drop_acked(conn, be64_to_cpu(dp_cmn->ricpc_ack_seq),
-				    NULL);
-
-	BUG_ON(rds_ib_get_conn(cm_id));
-	BUG_ON(ic->i_cm_id);
-
-	ic->i_cm_id = cm_id;
-	cm_id->context = rds_ib_map_conn(conn);
-	ic->i_cm_id_ctx = cm_id->context;
-
-	/* We got halfway through setting up the ib_connection, if we
-	 * fail now, we have to take the long route out of this mess. */
-	destroy = 0;
-
-	err = rds_ib_setup_qp(conn);
-	if (err) {
-		reason = "rds_ib_setup_qp error";
-		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL, err);
-		goto out;
-	}
-	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp_cmn->ricpc_frag_sz));
-
-	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp_rep, version,
-				  event->param.conn.responder_resources,
-				  event->param.conn.initiator_depth,
-				  frag, isv6);
-
-	/* rdma_accept() calls rdma_reject() internally if it fails */
-	if (rds_ib_sysctl_local_ack_timeout &&
-	    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
-		rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
-	err = rdma_accept(cm_id, &conn_param);
-	if (err) {
-		reason = "rdma accept failure";
-		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL, err);
+		destroy = 0;
+		atomic64_set(&ic->i_connecting_ts, ktime_get());
+		err = rds_ib_cm_accept(conn, cm_id,
+				       isv6, dp, version,
+				       event->param.conn.responder_resources,
+				       event->param.conn.initiator_depth);
 	}
 
 out:
@@ -1595,10 +1667,11 @@ out:
 						   conn, ic, reason, err);
 	}
 
-	if (conn)
+	if (conn && !was_locked)
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
 		rdma_reject(cm_id, &err, sizeof(int));
+
 	return destroy;
 }
 
@@ -1687,7 +1760,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		reason = "rdma_connect failed";
-		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL, 0);
+		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL, ret);
 	}
 
 out:
@@ -1706,12 +1779,34 @@ out:
 	return ret;
 }
 
+void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags)
+{
+	struct rds_connection *conn = cp->cp_conn;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	if (ic) {
+		/* A reset of the connection-timestamp is implicit */
+		atomic64_set(&ic->i_connecting_ts, 0);
+
+		if (flags & RDS_CONN_PATH_RESET_ALT_CONN) {
+			/* delaying destruction of "ic->i_alt.cm_id"
+			 * until "rds_ib_conn_path_connect" so that
+			 * we don't end up in a dead-lock acquiring
+			 * "conn->c_cm_lock".
+			 */
+			ic->i_alt.is_stale = true;
+			cp->cp_reconnect_jiffies = 0;
+		}
+	}
+}
+
 int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	struct sockaddr_storage src, dest;
 	rdma_cm_event_handler handler;
 	struct rds_ib_connection *ic;
+	struct rdma_cm_id *alt_cm_id;
 	char *reason = NULL;
 	int ret;
 
@@ -1722,6 +1817,57 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 				       ic ? ic->rds_ibdev : NULL,
 				       conn, ic, "start connect", 0);
 	conn->c_path->cp_conn_start_jf = jiffies;
+
+	mutex_lock(&conn->c_cm_lock);
+
+	atomic64_set(&ic->i_connecting_ts, ktime_get());
+
+	if (ic->i_alt.cm_id && !ic->i_alt.is_stale) {
+		rds_ib_stats_inc(s_ib_yield_accepting);
+		trace_rds_ib_conn_yield_accepting(NULL, ic->rds_ibdev,
+						  conn, ic, "accepting", 0);
+
+		ret = rds_ib_cm_accept(conn, ic->i_alt.cm_id,
+				       ic->i_alt.isv6,
+				       &ic->i_alt.private_data,
+				       ic->i_alt.version,
+				       ic->i_alt.responder_resources,
+				       ic->i_alt.initiator_depth);
+
+		if (ret == 0) {
+			ic->i_alt.cm_id = NULL;
+			mutex_unlock(&conn->c_cm_lock);
+
+			rds_ib_stats_inc(s_ib_yield_success);
+			trace_rds_ib_conn_yield_success(NULL, ic->rds_ibdev,
+							conn, ic, "success", 0);
+
+			return 0;
+		} else {
+			trace_rds_ib_conn_yield_accept_err(NULL, ic->rds_ibdev,
+							   conn, ic, "accept failed", ret);
+			alt_cm_id = ic->i_alt.cm_id;
+			ic->i_alt.cm_id = NULL;
+			ic->i_cm_id = NULL;
+			ic->i_cm_id_ctx = RDS_IB_NO_CTX;
+			mutex_unlock(&conn->c_cm_lock);
+
+			rds_ib_rdma_destroy_id(alt_cm_id);
+		}
+	} else {
+		alt_cm_id = ic->i_alt.cm_id;
+		if (alt_cm_id) {
+			rds_ib_stats_inc(s_ib_yield_stale);
+			trace_rds_ib_conn_yield_stale(NULL, ic->rds_ibdev,
+						      conn, ic, "stale", 0);
+			ic->i_alt.cm_id = NULL;
+		}
+
+		mutex_unlock(&conn->c_cm_lock);
+
+		if (alt_cm_id)
+			rdma_destroy_id(alt_cm_id);
+	}
 
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
@@ -1995,6 +2141,9 @@ void rds_ib_conn_free(void *arg)
 	if (ic->rds_ibdev)
 		spin_unlock(&ic->rds_ibdev->spinlock);
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
+
+	if (ic->i_alt.cm_id)
+		rdma_destroy_id(ic->i_alt.cm_id);
 
 	kfree(ic);
 }
