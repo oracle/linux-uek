@@ -91,6 +91,14 @@ int rds_ib_sysctl_local_ack_timeout = 17; /* 0.5 secs */
  */
 u32 rds_dev_free_wait_ms = 10000;
 
+/* Time (in milliseconds) after which an incoming
+ * connection request is honored, even though we have
+ * the right of way.
+ *
+ * Refer to 'ib.h' variable 'i_connecting_ts' for more details.
+ */
+unsigned rds_ib_sysctl_yield_after_ms = 2000;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -183,6 +191,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.procname	= "conn_dev_free_delay",
 		.data           = &rds_dev_free_wait_ms,
 		.maxlen         = sizeof(rds_dev_free_wait_ms),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "yield_after_ms",
+		.data           = &rds_ib_sysctl_yield_after_ms,
+		.maxlen         = sizeof(rds_ib_sysctl_yield_after_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
 	},
