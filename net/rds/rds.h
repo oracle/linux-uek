@@ -51,7 +51,6 @@
 #define KERNEL_HAS_ATOMIC64
 #endif
 
-#define RDS_RECONNECT_RETRY_MS 15000
 #define RDS_NMBR_CP_WQS 16
 
 #ifdef RDS_DEBUG
@@ -208,6 +207,7 @@ enum rds_conn_drop_src {
 	DR_IB_RDMA_ACCEPT_FAIL,
 	DR_IB_ACT_SETUP_QP_FAIL,
 	DR_IB_RDMA_CONNECT_FAIL,
+	DR_IB_CONN_DROP_YIELD,
 
 	/* event handling */
 	DR_IB_RESOLVE_ROUTE_FAIL,
@@ -279,7 +279,6 @@ struct rds_conn_path {
 	struct delayed_work	cp_recv_w;
 	struct delayed_work	cp_conn_w;
 	struct delayed_work     cp_hb_w;
-	struct delayed_work	cp_reconn_w;
 	struct work_struct	cp_down_w;
 	struct mutex		cp_cm_lock;	/* protect cp_state & cm */
 	wait_queue_head_t	cp_waitq;
@@ -289,7 +288,6 @@ struct rds_conn_path {
 	unsigned int		cp_index;
 
 	/* when was this connection started */
-	time64_t		cp_connection_start;
 	uint64_t		cp_conn_start_jf;
 
 	/* Re-connect stall diagnostics */
@@ -310,7 +308,6 @@ struct rds_conn_path {
 
 	unsigned int		cp_rdsinfo_pending;
 
-	unsigned int		cp_reconnect_racing;
 	enum rds_conn_drop_src	cp_drop_source;
 
 	unsigned char		cp_acl_init;
@@ -694,6 +691,10 @@ struct rds_notifier {
 	struct rds_connection   *n_conn;
 };
 
+enum {
+	RDS_CONN_PATH_RESET_ALT_CONN	= 1 << 0,
+};
+
 /**
  * struct rds_transport -  transport specific behavioural hooks
  *
@@ -735,6 +736,7 @@ struct rds_transport {
 			   __u32 scope_id);
 	int (*conn_alloc)(struct rds_connection *conn, gfp_t gfp);
 	void (*conn_free)(void *data);
+	void (*conn_path_reset)(struct rds_conn_path *cp, unsigned flags);
 	int (*conn_path_connect)(struct rds_conn_path *cp);
 	void (*conn_path_shutdown)(struct rds_conn_path *cp);
 	void (*xmit_path_prepare)(struct rds_conn_path *cp);
@@ -751,7 +753,8 @@ struct rds_transport {
 	int  (*skb_local)(struct sk_buff *skb);
 
 	int (*cm_handle_connect)(struct rdma_cm_id *cm_id,
-				 struct rdma_cm_event *event, bool isv6);
+				 struct rdma_cm_event *event,
+				 bool isv6, bool was_locked);
 	int (*cm_initiate_connect)(struct rdma_cm_id *cm_id, bool isv6);
 	void (*cm_connect_complete)(struct rds_connection *conn,
 				    struct rdma_cm_event *event);
@@ -1051,7 +1054,7 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 				     struct in6_addr *faddr,
 				     struct rds_transport *trans, u8 tos,
 				     int dev_if);
-void rds_conn_shutdown(struct rds_conn_path *cp, int restart);
+void rds_conn_shutdown(struct rds_conn_path *cp);
 void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn, int reason, int err);
@@ -1108,11 +1111,14 @@ static inline void rds_clear_shutdown_pending_work_bit(struct rds_conn_path *cp)
 	smp_mb__after_atomic();
 }
 
-static inline void rds_cond_queue_reconnect_work(struct rds_conn_path *cp, unsigned long delay)
+static inline bool rds_cond_queue_reconnect_work(struct rds_conn_path *cp, unsigned long delay)
 {
-	if (!test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags))
+	if (!test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
 		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_conn_w, delay,
 				       "reconnect work");
+		return true;
+	} else
+		return false;
 }
 
 static inline void
@@ -1383,7 +1389,6 @@ extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
-extern unsigned int  rds_sysctl_passive_connect_delay_percent;
 extern unsigned int  rds_sysctl_conn_hb_timeout;
 extern unsigned int  rds_sysctl_conn_hb_interval;
 
@@ -1399,7 +1404,6 @@ void rds_shutdown_worker(struct work_struct *);
 void rds_send_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
 void rds_hb_worker(struct work_struct *);
-void rds_reconnect_timeout(struct work_struct *);
 void rds_connect_path_complete(struct rds_conn_path *cp, int curr);
 void rds_connect_complete(struct rds_connection *conn);
 int rds_addr_cmp(const struct in6_addr *a1, const struct in6_addr *a2);
