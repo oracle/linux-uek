@@ -738,6 +738,16 @@ DEFINE_EVENT(rds_ib, rds_ib_cm_mismatch,
 
 );
 
+DEFINE_EVENT(rds_ib, rds_ib_cm_accept_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
 DEFINE_EVENT(rds_ib, rds_ib_cm_handle_connect,
 
 	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
@@ -749,16 +759,6 @@ DEFINE_EVENT(rds_ib, rds_ib_cm_handle_connect,
 );
 
 DEFINE_EVENT(rds_ib, rds_ib_cm_handle_connect_err,
-
-	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
-		 struct rds_connection *conn, struct rds_ib_connection *ic,
-		 char *reason, int err),
-
-	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
-
-);
-
-DEFINE_EVENT(rds_ib, rds_ib_reconnect_racing,
 
 	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
 		 struct rds_connection *conn, struct rds_ib_connection *ic,
@@ -825,6 +825,76 @@ DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown_err,
 		 char *reason, int err),
 
 	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_yield_yielding,
+
+       TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		struct rds_connection *conn, struct rds_ib_connection *ic,
+		char *reason, int err),
+
+       TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_yield_right_of_way,
+
+       TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		struct rds_connection *conn, struct rds_ib_connection *ic,
+		char *reason, int err),
+
+       TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_yield_stale,
+
+       TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		struct rds_connection *conn, struct rds_ib_connection *ic,
+		char *reason, int err),
+
+       TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_yield_expired,
+
+       TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		struct rds_connection *conn, struct rds_ib_connection *ic,
+		char *reason, int err),
+
+       TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_yield_accepting,
+
+       TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		struct rds_connection *conn, struct rds_ib_connection *ic,
+		char *reason, int err),
+
+       TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_yield_success,
+
+       TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		struct rds_connection *conn, struct rds_ib_connection *ic,
+		char *reason, int err),
+
+       TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_yield_accept_err,
+
+       TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		struct rds_connection *conn, struct rds_ib_connection *ic,
+		char *reason, int err),
+
+       TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
 
 );
 
