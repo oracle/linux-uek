@@ -84,6 +84,14 @@ static int rds_ib_sysctl_min_local_ack_timeout;
 static int rds_ib_sysctl_max_local_ack_timeout = 31;
 int rds_ib_sysctl_local_ack_timeout = 17; /* 0.5 secs */
 
+/* Time (in milliseconds) after which an incoming
+ * connection request is honored, even though we have
+ * the right of way.
+ *
+ * Refer to 'ib.h' variable 'i_connecting_ts' for more details.
+ */
+unsigned rds_ib_sysctl_yield_after_ms = 2000;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -162,6 +170,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.procname       = "frwr_ibmr_gc_idle_time",
 		.data           = &rds_frwr_ibmr_gc_time,
 		.maxlen         = sizeof(rds_frwr_ibmr_gc_time),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "yield_after_ms",
+		.data           = &rds_ib_sysctl_yield_after_ms,
+		.maxlen         = sizeof(rds_ib_sysctl_yield_after_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
 	},

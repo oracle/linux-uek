@@ -207,7 +207,6 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	INIT_DELAYED_WORK(&cp->cp_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&cp->cp_conn_w, rds_connect_worker);
 	INIT_DELAYED_WORK(&cp->cp_hb_w, rds_hb_worker);
-	INIT_DELAYED_WORK(&cp->cp_reconn_w, rds_reconnect_timeout);
 	INIT_WORK(&cp->cp_down_w, rds_shutdown_worker);
 
 	mutex_init(&cp->cp_cm_lock);
@@ -450,7 +449,7 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 }
 EXPORT_SYMBOL_GPL(rds_conn_find);
 
-void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
+void rds_conn_shutdown(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
@@ -518,10 +517,10 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 	 * The passive side of an IB loopback connection is never added
 	 * to the conn hash, so we never trigger a reconnect on this
 	 * conn - the reconnect is always triggered by the active peer. */
-	cancel_delayed_work_sync(&cp->cp_conn_w);
+	rds_queue_cancel_work(cp, &cp->cp_conn_w, "conn shutdown");
 	rds_clear_reconnect_pending_work_bit(cp);
 	rcu_read_lock();
-	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
+	if (!hlist_unhashed(&conn->c_hash_node)) {
 		rcu_read_unlock();
 		rds_queue_reconnect(cp);
 	} else {
@@ -556,14 +555,6 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 
 	rds_conn_path_drop(cp, DR_CONN_DESTROY, 0);
 	flush_work(&cp->cp_down_w);
-
-	/* now that conn down worker is flushed; there cannot be any
-	 * more posting of reconn timeout work. But cancel any already
-	 * posted reconn timeout worker as there is a race between rds
-	 * module unload and a pending reconn delay work.
-	 */
-	rds_queue_cancel_work(cp, &cp->cp_reconn_w,
-			      "conn path destroy reconn work");
 
 	/* tear down queued messages */
 	list_for_each_entry_safe(rm, rtmp,
@@ -1100,6 +1091,7 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_RDMA_ACCEPT_FAIL]	= "rdma_accept failure",
 	[DR_IB_ACT_SETUP_QP_FAIL]	= "active setup_qp failure",
 	[DR_IB_RDMA_CONNECT_FAIL]	= "rdma_connect failure",
+	[DR_IB_CONN_DROP_YIELD]		= "yield to incoming request",
 	[DR_IB_RESOLVE_ROUTE_FAIL]	= "resolve_route failure",
 	[DR_IB_RDMA_CM_ID_MISMATCH]	= "detected rdma_cm_id mismatch",
 	[DR_IB_ROUTE_ERR]		= "ROUTE_ERROR event",
@@ -1152,6 +1144,15 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	struct rds_connection *conn = cp->cp_conn;
 	unsigned long now = get_seconds();
 
+	if (conn->c_trans->conn_path_reset) {
+		unsigned flags = 0;
+
+		if (reason == DR_IB_ADDR_CHANGE || reason == DR_IB_DISCONNECTED_EVENT)
+			flags |= RDS_CONN_PATH_RESET_ALT_CONN;
+
+		conn->c_trans->conn_path_reset(cp, flags);
+	}
+
 	cp->cp_drop_source = reason;
 	trace_rds_conn_drop(NULL, conn, cp, conn_drop_reason_str(reason), err);
 
@@ -1159,8 +1160,6 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 		cp->cp_reconnect_start = now;
 		cp->cp_reconnect_warn = 1;
 		cp->cp_reconnect_err = 0;
-		cp->cp_reconnect_racing = 0;
-
 		cp->cp_connection_reset = ktime_get_real_seconds();
 		/* Restart counting */
 		cp->cp_connection_attempts = 0;
@@ -1205,8 +1204,14 @@ void rds_conn_drop(struct rds_connection *conn, int reason, int err)
 	 * See if we can find the loop-back peer. We exclude same-port
 	 * connections. Use wildcard as interface index when looking
 	 * up the peer, in order to be forward compatible with IPv6
-	 * loop-back connections. */
-	if (conn->c_loopback && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr)) {
+	 * loop-back connections.
+	 *
+	 * For connections that yield to the peer, we obviously
+	 * don't want to drop the peer's connection,
+	 * as that's the one with the right-of-way.
+	 */
+	if (reason != DR_IB_CONN_DROP_YIELD &&
+	    conn->c_loopback && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr)) {
 		struct rds_connection *peer;
 
 		/* Note the swapped d/saddr */
