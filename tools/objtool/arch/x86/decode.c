@@ -130,7 +130,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		if (rex_w && !rex_b && modrm_mod == 3 && modrm_rm == 4) {
 
 			/* add/sub reg, %rsp */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_ADD;
 				op->src.reg = op_to_cfi_reg[modrm_reg][rex_r];
@@ -143,7 +142,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 	case 0x50 ... 0x57:
 
 		/* push reg */
-		*type = INSN_STACK;
 		ADD_OP(op) {
 			op->src.type = OP_SRC_REG;
 			op->src.reg = op_to_cfi_reg[op1 & 0x7][rex_b];
@@ -155,7 +153,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 	case 0x58 ... 0x5f:
 
 		/* pop reg */
-		*type = INSN_STACK;
 		ADD_OP(op) {
 			op->src.type = OP_SRC_POP;
 			op->dest.type = OP_DEST_REG;
@@ -167,7 +164,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 	case 0x68:
 	case 0x6a:
 		/* push immediate */
-		*type = INSN_STACK;
 		ADD_OP(op) {
 			op->src.type = OP_SRC_CONST;
 			op->dest.type = OP_DEST_PUSH;
@@ -185,7 +181,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 
 		if (modrm == 0xe4) {
 			/* and imm, %rsp */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_AND;
 				op->src.reg = CFI_SP;
@@ -204,7 +199,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 			break;
 
 		/* add/sub imm, %rsp */
-		*type = INSN_STACK;
 		ADD_OP(op) {
 			op->src.type = OP_SRC_ADD;
 			op->src.reg = CFI_SP;
@@ -218,7 +212,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		if (rex_w && !rex_r && modrm_mod == 3 && modrm_reg == 4) {
 
 			/* mov %rsp, reg */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_REG;
 				op->src.reg = CFI_SP;
@@ -231,7 +224,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		if (rex_w && !rex_b && modrm_mod == 3 && modrm_rm == 4) {
 
 			/* mov reg, %rsp */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_REG;
 				op->src.reg = op_to_cfi_reg[modrm_reg][rex_r];
@@ -247,7 +239,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		    (modrm_mod == 1 || modrm_mod == 2) && modrm_rm == 5) {
 
 			/* mov reg, disp(%rbp) */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_REG;
 				op->src.reg = op_to_cfi_reg[modrm_reg][rex_r];
@@ -259,7 +250,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		} else if (rex_w && !rex_b && modrm_rm == 4 && sib == 0x24) {
 
 			/* mov reg, disp(%rsp) */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_REG;
 				op->src.reg = op_to_cfi_reg[modrm_reg][rex_r];
@@ -275,7 +265,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		if (rex_w && !rex_b && modrm_mod == 1 && modrm_rm == 5) {
 
 			/* mov disp(%rbp), reg */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_REG_INDIRECT;
 				op->src.reg = CFI_BP;
@@ -288,7 +277,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 			   modrm_mod != 3 && modrm_rm == 4) {
 
 			/* mov disp(%rsp), reg */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_REG_INDIRECT;
 				op->src.reg = CFI_SP;
@@ -303,7 +291,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 	case 0x8d:
 		if (sib == 0x24 && rex_w && !rex_b && !rex_x) {
 
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				if (!insn.displacement.value) {
 					/* lea (%rsp), reg */
@@ -321,7 +308,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		} else if (rex == 0x48 && modrm == 0x65) {
 
 			/* lea disp(%rbp), %rsp */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_ADD;
 				op->src.reg = CFI_BP;
@@ -339,7 +325,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 			 * Restoring rsp back to its original value after a
 			 * stack realignment.
 			 */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_ADD;
 				op->src.reg = CFI_R10;
@@ -357,7 +342,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 			 * Restoring rsp back to its original value after a
 			 * stack realignment.
 			 */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_ADD;
 				op->src.reg = CFI_R13;
@@ -371,7 +355,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 
 	case 0x8f:
 		/* pop to mem */
-		*type = INSN_STACK;
 		ADD_OP(op) {
 			op->src.type = OP_SRC_POP;
 			op->dest.type = OP_DEST_MEM;
@@ -384,7 +367,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 
 	case 0x9c:
 		/* pushf */
-		*type = INSN_STACK;
 		ADD_OP(op) {
 			op->src.type = OP_SRC_CONST;
 			op->dest.type = OP_DEST_PUSHF;
@@ -393,7 +375,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 
 	case 0x9d:
 		/* popf */
-		*type = INSN_STACK;
 		ADD_OP(op) {
 			op->src.type = OP_SRC_POPF;
 			op->dest.type = OP_DEST_MEM;
@@ -432,7 +413,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		} else if (op2 == 0xa0 || op2 == 0xa8) {
 
 			/* push fs/gs */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_CONST;
 				op->dest.type = OP_DEST_PUSH;
@@ -441,7 +421,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		} else if (op2 == 0xa1 || op2 == 0xa9) {
 
 			/* pop fs/gs */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_POP;
 				op->dest.type = OP_DEST_MEM;
@@ -458,7 +437,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		 * mov bp, sp
 		 * pop bp
 		 */
-		*type = INSN_STACK;
 		ADD_OP(op)
 			op->dest.type = OP_DEST_LEAVE;
 
@@ -514,7 +492,6 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 		else if (modrm_reg == 6) {
 
 			/* push from mem */
-			*type = INSN_STACK;
 			ADD_OP(op) {
 				op->src.type = OP_SRC_CONST;
 				op->dest.type = OP_DEST_PUSH;
