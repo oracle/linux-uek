@@ -56,7 +56,6 @@
 #include "en/rep/neigh.h"
 #include "en_tc.h"
 #include "eswitch.h"
-#include "esw/chains.h"
 #include "fs_core.h"
 #include "en/port.h"
 #include "en/tc_tun.h"
@@ -65,6 +64,7 @@
 #include "en/mod_hdr.h"
 #include "lib/devcom.h"
 #include "lib/geneve.h"
+#include "lib/fs_chains.h"
 #include "diag/en_tc_tracepoint.h"
 #include <asm/div64.h>
 
@@ -1209,7 +1209,7 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 	int err = 0;
 	int out_index;
 
-	if (!mlx5_esw_chains_prios_supported(esw) && attr->prio != 1) {
+	if (!mlx5_chains_prios_supported(esw_chains(esw)) && attr->prio != 1) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "E-switch priorities unsupported, upgrade FW");
 		return -EOPNOTSUPP;
@@ -1220,14 +1220,14 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 	 * FDB_FT_CHAIN which is outside tc range.
 	 * See mlx5e_rep_setup_ft_cb().
 	 */
-	max_chain = mlx5_esw_chains_get_chain_range(esw);
+	max_chain = mlx5_chains_get_chain_range(esw_chains(esw));
 	if (!mlx5e_is_ft_flow(flow) && attr->chain > max_chain) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Requested chain is out of supported range");
 		return -EOPNOTSUPP;
 	}
 
-	max_prio = mlx5_esw_chains_get_prio_range(esw);
+	max_prio = mlx5_chains_get_prio_range(esw_chains(esw));
 	if (attr->prio > max_prio) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Requested priority is out of supported range");
@@ -3829,7 +3829,7 @@ static int mlx5_validate_goto_chain(struct mlx5_eswitch *esw,
 				    u32 actions,
 				    struct netlink_ext_ack *extack)
 {
-	u32 max_chain = mlx5_esw_chains_get_chain_range(esw);
+	u32 max_chain = mlx5_chains_get_chain_range(esw_chains(esw));
 	struct mlx5_esw_flow_attr *attr = flow->esw_attr;
 	bool ft_flow = mlx5e_is_ft_flow(flow);
 	u32 dest_chain = act->chain_index;
@@ -3839,7 +3839,7 @@ static int mlx5_validate_goto_chain(struct mlx5_eswitch *esw,
 		return -EOPNOTSUPP;
 	}
 
-	if (!mlx5_esw_chains_backwards_supported(esw) &&
+	if (!mlx5_chains_backwards_supported(esw_chains(esw)) &&
 	    dest_chain <= attr->chain) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Goto lower numbered chain isn't supported");
