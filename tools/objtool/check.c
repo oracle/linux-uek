@@ -2096,6 +2096,9 @@ static int validate_branch(struct objtool_file *file, struct symbol *func,
 				return 0;
 		}
 
+		if (handle_insn_ops(insn, &state))
+			return 1;
+
 		switch (insn->type) {
 
 		case INSN_RETURN:
@@ -2190,8 +2193,6 @@ static int validate_branch(struct objtool_file *file, struct symbol *func,
 			return 0;
 
 		case INSN_STACK:
-			if (handle_insn_ops(insn, &state))
-				return 1;
 			break;
 
 		case INSN_STAC:
