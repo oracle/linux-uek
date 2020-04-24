@@ -138,7 +138,7 @@ struct symbol *find_func_by_offset(struct section *sec, unsigned long offset)
 	return NULL;
 }
 
-struct symbol *find_symbol_containing(struct section *sec, unsigned long offset)
+struct symbol *find_symbol_containing(const struct section *sec, unsigned long offset)
 {
 	struct rb_node *node;
 
