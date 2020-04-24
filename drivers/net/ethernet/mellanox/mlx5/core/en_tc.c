@@ -62,7 +62,7 @@
 #include "diag/en_tc_tracepoint.h"
 #include <asm/div64.h>
 
-#define MLX5_MH_ACT_SZ MLX5_UN_SZ_BYTES(set_action_in_add_action_in_auto)
+#define MLX5_MH_ACT_SZ MLX5_UN_SZ_BYTES(set_add_copy_action_in_auto)
 
 struct mlx5_nic_flow_attr {
 	u32 action;
@@ -2704,7 +2704,7 @@ static int offload_pedit_fields(struct mlx5e_priv *priv,
 	set_vals = &hdrs[0].vals;
 	add_vals = &hdrs[1].vals;
 
-	action_size = MLX5_UN_SZ_BYTES(set_action_in_add_action_in_auto);
+	action_size = MLX5_UN_SZ_BYTES(set_add_copy_action_in_auto);
 
 	for (i = 0; i < ARRAY_SIZE(fields); i++) {
 		bool skip;
@@ -2836,7 +2836,7 @@ int alloc_mod_hdr_actions(struct mlx5_core_dev *mdev,
 	if (mod_hdr_acts->num_actions < mod_hdr_acts->max_actions)
 		return 0;
 
-	action_size = MLX5_UN_SZ_BYTES(set_action_in_add_action_in_auto);
+	action_size = MLX5_UN_SZ_BYTES(set_add_copy_action_in_auto);
 
 	max_hw_actions = mlx5e_flow_namespace_max_modify_action(mdev,
 								namespace);
