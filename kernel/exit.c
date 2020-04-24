@@ -262,6 +262,7 @@ int rcuwait_wake_up(struct rcuwait *w)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(rcuwait_wake_up);
 
 /*
  * Determine if a process group is "orphaned", according to the POSIX
