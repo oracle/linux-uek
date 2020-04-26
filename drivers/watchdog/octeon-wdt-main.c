@@ -377,7 +377,7 @@ static int octeon_wdt_cpu_online(unsigned int cpu)
 		irq = OCTEON_IRQ_WDOG0 + core;
 
 	if (request_irq(irq, octeon_wdt_poke_irq,
-			IRQF_NO_THREAD, "octeon_wdt", octeon_wdt_poke_irq))
+			IRQF_NO_THREAD | IRQF_NOBALANCING, "octeon_wdt", octeon_wdt_poke_irq))
 		panic("octeon_wdt: Couldn't obtain irq %d", irq);
 
 	/* Must set the irq affinity here */
