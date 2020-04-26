@@ -24,6 +24,8 @@
 #define DRV_VF_VERSION	"1.0"
 
 #define OTX2_DEFAULT_ACTION	0x1
+#define FDSA_MAX_SPORT		32
+#define FDSA_SPORT_MASK         0xf8
 
 static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf);
 
@@ -31,6 +33,7 @@ static const char otx2_priv_flags_strings[][ETH_GSTRING_LEN] = {
 	"pam4",
 	"edsa",
 	"higig2",
+	"fdsa",
 };
 
 struct otx2_stat {
@@ -703,8 +706,27 @@ static int otx2_get_rxnfc(struct net_device *dev,
 	return ret;
 }
 
+static void otx2_prepare_fdsa_flow_request(struct npc_install_flow_req *req,
+					   bool is_vlan)
+{
+	struct flow_msg *pmask = &req->mask;
+	struct flow_msg *pkt = &req->packet;
+
+	/* In FDSA tag srcport starts from b3..b7 */
+	if (!is_vlan) {
+		pkt->vlan_tci <<= 3;
+		pmask->vlan_tci = cpu_to_be16(FDSA_SPORT_MASK);
+	}
+	/* Strip FDSA tag */
+	req->features |= BIT_ULL(NPC_FDSA_VAL);
+	req->vtag0_valid = true;
+	req->vtag0_type = NIX_AF_LFX_RX_VTAG_TYPE6;
+	req->op = NIX_RX_ACTION_DEFAULT;
+}
+
 int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
-			      struct npc_install_flow_req *req)
+			      struct npc_install_flow_req *req,
+			      struct otx2_nic *pfvf)
 {
 	struct ethtool_tcpip4_spec *l4_mask = &fsp->m_u.tcp_ip4_spec;
 	struct ethtool_tcpip4_spec *l4_hdr = &fsp->h_u.tcp_ip4_spec;
@@ -775,6 +797,8 @@ int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 		return -ENOTSUPP;
 	}
 	if (fsp->flow_type & FLOW_EXT) {
+		int skip_user_def = false;
+
 		if (fsp->m_ext.vlan_etype)
 			return -EINVAL;
 		if (fsp->m_ext.vlan_tci) {
@@ -782,17 +806,40 @@ int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 				return -EINVAL;
 			if (be16_to_cpu(fsp->h_ext.vlan_tci) >= VLAN_N_VID)
 				return -EINVAL;
+
 			memcpy(&pkt->vlan_tci, &fsp->h_ext.vlan_tci,
 			       sizeof(pkt->vlan_tci));
 			memcpy(&pmask->vlan_tci, &fsp->m_ext.vlan_tci,
 			       sizeof(pmask->vlan_tci));
-			req->features |= BIT_ULL(NPC_OUTER_VID);
+
+			if (pfvf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR) {
+				otx2_prepare_fdsa_flow_request(req, true);
+				skip_user_def = true;
+			} else {
+				req->features |= BIT_ULL(NPC_OUTER_VID);
+			}
 		}
-		/* Not Drop/Direct to queue but use action in default entry */
-		if (fsp->m_ext.data[1] &&
-		    fsp->h_ext.data[1] == cpu_to_be32(OTX2_DEFAULT_ACTION))
-			req->op = NIX_RX_ACTION_DEFAULT;
+
+		if (fsp->m_ext.data[1] && !skip_user_def) {
+			if (pfvf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR) {
+				if (be32_to_cpu(fsp->h_ext.data[1]) >=
+						FDSA_MAX_SPORT)
+					return -EINVAL;
+
+				memcpy(&pkt->vlan_tci,
+				       (u8 *)&fsp->h_ext.data[1] + 2,
+				       sizeof(pkt->vlan_tci));
+				otx2_prepare_fdsa_flow_request(req, false);
+			} else if (fsp->h_ext.data[1] ==
+					cpu_to_be32(OTX2_DEFAULT_ACTION)) {
+				/* Not Drop/Direct to queue but use action
+				 * in default entry
+				 */
+				req->op = NIX_RX_ACTION_DEFAULT;
+			}
+		}
 	}
+
 	if (fsp->flow_type & FLOW_MAC_EXT &&
 	    !is_zero_ether_addr(fsp->m_ext.h_dest)) {
 		ether_addr_copy(pkt->dmac, fsp->h_ext.h_dest);
@@ -1363,6 +1410,9 @@ int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind)
 	} else if (OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))   {
 		req->mode = OTX2_PRIV_FLAGS_EDSA;
 		interface_mode = OTX2_PRIV_FLAG_EDSA_HDR;
+	} else if (pfvf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR) {
+		req->mode = OTX2_PRIV_FLAGS_FDSA;
+		interface_mode = OTX2_PRIV_FLAG_FDSA_HDR;
 	} else {
 		req->mode = OTX2_PRIV_FLAGS_DEFAULT;
 		interface_mode = OTX2_PRIV_FLAG_DEF_MODE;
@@ -1423,6 +1473,28 @@ static int otx2_enable_addl_header(struct net_device *netdev, int bitpos,
 	return 0;
 }
 
+/* This function disables vfvlan rules upon enabling
+ * fdsa and vice versa
+ */
+static void otx2_endis_vfvlan_rules(struct otx2_nic *pfvf, bool enable)
+{
+	struct vfvlan *rule;
+	int vf;
+
+	for (vf = 0; vf < pci_num_vf(pfvf->pdev); vf++) {
+		/* pass vlan as 0 to disable rule */
+		if (enable) {
+			otx2_do_set_vf_vlan(pfvf, vf, 0, 0, 0);
+		} else {
+			rule = &pfvf->vf_configs[vf].rule;
+			otx2_do_set_vf_vlan(pfvf, vf, rule->vlan, rule->qos,
+					    rule->proto);
+		}
+	}
+}
+
+#define OTX2_IS_INTFMOD_SET(flags) hweight32((flags) & OTX2_INTF_MOD_MASK)
+
 static int otx2_set_priv_flags(struct net_device *netdev, u32 new_flags)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
@@ -1451,16 +1523,35 @@ static int otx2_set_priv_flags(struct net_device *netdev, u32 new_flags)
 		break;
 	case OTX2_PRIV_FLAG_EDSA_HDR:
 		/* HIGIG & EDSA  are mutual exclusive */
-		if (enable && OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
+		if (enable && OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+			netdev_info(netdev,
+				    "Disable mutually exclusive modes higig2/fdsa\n");
 			return -EINVAL;
+		}
 		return otx2_enable_addl_header(netdev, bitnr,
 					       OTX2_EDSA_HDR_LEN, enable);
 		break;
 	case OTX2_PRIV_FLAG_HIGIG2_HDR:
-		if (enable && OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))
+		if (enable && OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+			netdev_info(netdev,
+				    "Disable mutually exclusive modes edsa/fdsa\n");
 			return -EINVAL;
+		}
 		return otx2_enable_addl_header(netdev, bitnr,
 					       OTX2_HIGIG2_HDR_LEN, enable);
+		break;
+	case OTX2_PRIV_FLAG_FDSA_HDR:
+		if (enable && OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+			netdev_info(netdev,
+				    "Disable mutually exclusive modes edsa/higig2\n");
+			return -EINVAL;
+		}
+		otx2_enable_addl_header(netdev, bitnr,
+					OTX2_FDSA_HDR_LEN, enable);
+		if (enable)
+			netdev_warn(netdev,
+				    "Disabling VF VLAN rules as FDSA & VFVLAN are mutual exclusive\n");
+		otx2_endis_vfvlan_rules(pfvf, enable);
 		break;
 	default:
 		break;
