@@ -5,8 +5,6 @@
 #include <rdma/rdma_cm.h>
 #include "rds.h"
 
-#define RDS_RDMA_RESOLVE_TIMEOUT_MS     RDS_RECONNECT_RETRY_MS
-
 extern struct mutex		cm_id_map_lock;
 extern struct idr		cm_id_map;
 
