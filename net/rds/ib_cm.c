@@ -1449,7 +1449,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 
 	ret = rdma_resolve_addr(ic->i_cm_id, (struct sockaddr *)&src,
 				(struct sockaddr *)&dest,
-				RDS_RDMA_RESOLVE_TIMEOUT_MS);
+				RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(conn));
 	if (ret) {
 		rds_rtd(RDS_RTD_ERR, "addr resolve failed for cm id %p: %d\n",
 			ic->i_cm_id, ret);
