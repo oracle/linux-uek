@@ -18,7 +18,7 @@
  * CPT PF driver version, It will be incremented by 1 for every feature
  * addition in CPT PF driver.
  */
-#define CPT_PF_DRV_VERSION     0x1
+#define CPT_PF_DRV_VERSION     0x2
 
 static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
 {
@@ -423,6 +423,19 @@ static int reply_caps_msg(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 	return 0;
 }
 
+static int check_cpt_lf_alloc_req(struct cptpf_dev *cptpf,
+				  struct cptvf_info *vf,
+				  struct mbox_msghdr *req, int size)
+{
+	struct cpt_lf_alloc_req_msg *alloc_req =
+					(struct cpt_lf_alloc_req_msg *)req;
+
+	if (alloc_req->eng_grpmsk == 0x0)
+		alloc_req->eng_grpmsk = ALL_ENG_GRPS_MASK;
+
+	return forward_to_af(cptpf, vf, req, size);
+}
+
 static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 			       struct mbox_msghdr *req, int size)
 {
@@ -455,6 +468,10 @@ static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 
 	case MBOX_MSG_GET_CAPS:
 		err = reply_caps_msg(cptpf, vf, req);
+		break;
+
+	case MBOX_MSG_CPT_LF_ALLOC:
+		err = check_cpt_lf_alloc_req(cptpf, vf, req, size);
 		break;
 
 	default:

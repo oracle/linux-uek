@@ -199,13 +199,10 @@ M(TIM_ENABLE_RING,	0x803, tim_enable_ring, tim_ring_req, tim_enable_rsp)\
 M(TIM_DISABLE_RING,	0x804, tim_disable_ring, tim_ring_req, msg_rsp)	\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 M(CPT_LF_ALLOC,		0xA00, cpt_lf_alloc, cpt_lf_alloc_req_msg,	\
-			       cpt_lf_alloc_rsp_msg)			\
+			       msg_rsp)			\
 M(CPT_LF_FREE,		0xA01, cpt_lf_free, msg_req, msg_rsp)		\
 M(CPT_RD_WR_REGISTER,	0xA02, cpt_rd_wr_register,  cpt_rd_wr_reg_msg,	\
 			       cpt_rd_wr_reg_msg)			\
-M(CPT_SET_CRYPTO_GRP,	0xA03, cpt_set_crypto_grp,			\
-			       cpt_set_crypto_grp_req_msg,		\
-			       cpt_set_crypto_grp_req_msg)		\
 M(CPT_INLINE_IPSEC_CFG,	0xA04, cpt_inline_ipsec_cfg,			\
 			       cpt_inline_ipsec_cfg_msg, msg_rsp)	\
 /* NPC mbox IDs (range 0x6000 - 0x7FFF) */				\
@@ -1544,20 +1541,11 @@ struct cpt_rd_wr_reg_msg {
 	u8 is_write;
 };
 
-struct cpt_set_crypto_grp_req_msg {
-	struct mbox_msghdr hdr;
-	u8 crypto_eng_grp;
-};
-
 struct cpt_lf_alloc_req_msg {
 	struct mbox_msghdr hdr;
 	u16 nix_pf_func;
 	u16 sso_pf_func;
-};
-
-struct cpt_lf_alloc_rsp_msg {
-	struct mbox_msghdr hdr;
-	u8 crypto_eng_grp;
+	u16 eng_grpmsk;
 };
 
 #define CPT_INLINE_INBOUND      0
