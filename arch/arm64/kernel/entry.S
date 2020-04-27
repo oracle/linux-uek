@@ -150,7 +150,11 @@ alternative_cb_end
 #endif
 	.endm
 
+#ifdef CONFIG_GTI_WATCHDOG
+	.macro	kernel_entry, el, regsize = 64, exc_el3 = 0
+#else
 	.macro	kernel_entry, el, regsize = 64
+#endif
 	.if	\regsize == 32
 	mov	w0, w0				// zero upper 32 bits of x0
 	.endif
@@ -189,8 +193,31 @@ alternative_cb_end
 	str	x20, [tsk, #TSK_TI_ADDR_LIMIT]
 	/* No need to reset PSTATE.UAO, hardware's already set it to 0 for us */
 	.endif /* \el == 0 */
+
+#ifdef CONFIG_GTI_WATCHDOG
+	.if 	\exc_el3 == 0
 	mrs	x22, elr_el1
 	mrs	x23, spsr_el1
+	.else
+	/*
+	 * load elr and spsr in case of simulated exception return from
+	 * respective percpu gti_elr and gti_spsr variables, which are shared
+	 * with el3. EL3 gti watchdog handler store interrupted register
+	 * context in percpu shared location and elr_el1/2 & spsr_el1/2 will be
+	 * used for simulated return to el1/el2 by el3 nmi handler.
+	 */
+	ldr_this_cpu x22, gti_elr, x29
+	ldr_this_cpu x23, gti_spsr, x29
+	.if	\el == 0
+	mov	x29, xzr
+	.else
+	ldp	x28, x29, [sp, #S_X28]
+	.endif
+	.endif	/* \exc_el3 == 0 */
+#else
+	mrs	x22, elr_el1
+	mrs	x23, spsr_el1
+#endif
 	stp	lr, x21, [sp, #S_LR]
 
 	/*
@@ -261,7 +288,11 @@ alternative_else_nop_endif
 	*/
 	.endm
 
+#ifdef CONFIG_GTI_WATCHDOG
+	.macro	kernel_exit, el, exc_el3 = 0
+#else
 	.macro	kernel_exit, el
+#endif
 	.if	\el != 0
 	disable_daif
 
@@ -369,6 +400,15 @@ alternative_else_nop_endif
 	ldp	x26, x27, [sp, #16 * 13]
 	ldp	x28, x29, [sp, #16 * 14]
 
+#ifdef CONFIG_GTI_WATCHDOG
+	/*
+	 * Cannot do an eret here as we have not
+	 * entered from a real exception.
+	 */
+	.if     \exc_el3 == 1
+	b	6f
+	.endif
+#endif
 	.if	\el == 0
 alternative_if_not ARM64_UNMAP_KERNEL_AT_EL0
 	ldr	lr, [sp, #S_LR]
@@ -389,6 +429,9 @@ alternative_else_nop_endif
 	add	sp, sp, #S_FRAME_SIZE		// restore sp
 	eret
 	.endif
+#ifdef CONFIG_GTI_WATCHDOG
+6:
+#endif
 	sb
 	.endm
 
@@ -957,6 +1000,49 @@ el0_irq_naked:
 #endif
 	b	ret_to_user
 ENDPROC(el0_irq)
+
+#ifdef CONFIG_GTI_WATCHDOG
+
+/*
+ * Simulate an exception return at same ELx, for example,
+ * exception entry and pstate are loaded from ELR_ELx and SPSR_ELx.
+ */
+.globl	el0_nmi_callback
+el0_nmi_callback:
+	sub     sp, sp, #S_FRAME_SIZE
+	kernel_entry 0, 64, 1
+	mov	x0, sp
+	bl	nmi_kernel_callback
+	kernel_exit 0, 1
+	b	ret_back_to_el3
+
+.globl	el1_nmi_callback
+el1_nmi_callback:
+	sub     sp, sp, #S_FRAME_SIZE
+	kernel_entry 1, 64, 1
+	mov	x0, sp
+	bl	nmi_kernel_callback
+	kernel_exit 1, 1
+
+ret_back_to_el3:
+	/*
+	 * We return back to the interrupted context via EL3,
+	 * as we need to do cleanup in ATF before restoring
+	 * interrupted context such as dropping lock and
+	 * do interrupt completion, etc.
+	 * Make OCTEONTX_RESTORE_WDOG_CTXT (0xc2000c04) SMC
+	 * call.
+	 */
+	mov	x0, #0xc04		// OCTEONTX_RESTORE_WDOG_CTXT
+	mov	x7, #0x0		// #0
+	movk	x0, #0xc200, lsl #16
+	mov	x6, #0x0		// #0
+	mov	x5, #0x0		// #0
+	mov	x4, #0x0		// #0
+	mov	x3, #0x0		// #0
+	mov	x1, #0x0		// #0
+	smc	#0x0
+#endif
 
 el1_error:
 	kernel_entry 1
