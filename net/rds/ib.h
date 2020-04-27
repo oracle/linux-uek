@@ -59,6 +59,8 @@
 #define RDS_CM_RETRY_SEQ_EN	BIT(7)
 #define RDS_CM_REQ_SEQ_SZ	(RDS_CM_RETRY_SEQ_EN - 1)
 
+#define RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(c) ((c)->c_loopback ? 1000 : 4000)
+
 extern struct rw_semaphore rds_ib_devices_lock;
 extern struct list_head rds_ib_devices;
 
