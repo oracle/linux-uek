@@ -17,15 +17,6 @@
 /* CPT PF device id */
 #define	PCI_DEVID_OTX2_CPT_PF	0xA0FD
 
-/* Maximum supported microcode groups */
-#define CPT_MAX_ENGINE_GROUPS	8
-
-/* Invalid engine group */
-#define INVALID_ENGINE_GRP	0xFF
-
-/* Number of engine group for symmetric crypto */
-static int crypto_eng_grp = INVALID_ENGINE_GRP;
-
 /* CPT PF number */
 static int cpt_pf_num = -1;
 
@@ -226,15 +217,15 @@ err:
 
 int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 				  struct cpt_lf_alloc_req_msg *req,
-				  struct cpt_lf_alloc_rsp_msg *rsp)
+				  struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
-	int num_lfs, slot, grp_mask;
 	struct rvu_block *block;
 	int cptlf, blkaddr;
+	int num_lfs, slot;
 	u64 val;
 
-	if (crypto_eng_grp == INVALID_ENGINE_GRP)
+	if (req->eng_grpmsk == 0x0)
 		return CPT_AF_ERR_GRP_INVALID;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, pcifunc);
@@ -271,8 +262,7 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 			return CPT_AF_ERR_LF_INVALID;
 
 		/* Set CPT LF group and priority */
-		grp_mask = 1 << crypto_eng_grp;
-		val = (u64) grp_mask << 48 | 1;
+		val = (u64)req->eng_grpmsk << 48 | 1;
 		rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
 
 		/* Set CPT LF NIX_PF_FUNC and SSO_PF_FUNC */
@@ -280,8 +270,6 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 		      (u64) req->sso_pf_func << 32;
 		rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL2(cptlf), val);
 	}
-
-	rsp->crypto_eng_grp = crypto_eng_grp;
 	return 0;
 }
 
@@ -427,24 +415,6 @@ int rvu_mbox_handler_cpt_inline_ipsec_cfg(struct rvu *rvu,
 	}
 
 	return ret;
-}
-
-int rvu_mbox_handler_cpt_set_crypto_grp(struct rvu *rvu,
-					struct cpt_set_crypto_grp_req_msg *req,
-					struct cpt_set_crypto_grp_req_msg *rsp)
-{
-	/* This message is accepted only if sent from CPT PF */
-	if (!is_cpt_pf(req->hdr.pcifunc))
-		return CPT_AF_ERR_ACCESS_DENIED;
-
-	rsp->crypto_eng_grp = req->crypto_eng_grp;
-
-	if (req->crypto_eng_grp != INVALID_ENGINE_GRP &&
-	    req->crypto_eng_grp >= CPT_MAX_ENGINE_GROUPS)
-		return CPT_AF_ERR_GRP_INVALID;
-
-	crypto_eng_grp = req->crypto_eng_grp;
-	return 0;
 }
 
 int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
