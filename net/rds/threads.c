@@ -247,17 +247,10 @@ void rds_connect_worker(struct work_struct *work)
 		cp->cp_drop_source = DR_DEFAULT;
 
 		ret = conn->c_trans->conn_path_connect(cp);
-		if (ret) {
-			if (rds_conn_path_transition(cp,
-						     RDS_CONN_CONNECTING,
-						     RDS_CONN_DOWN,
-						     DR_DEFAULT)) {
-				rds_queue_reconnect(cp, false);
-			} else {
-				rds_conn_path_drop(cp, DR_CONN_CONNECT_FAIL, 0);
-			}
-		}
+		if (ret)
+			rds_conn_path_drop(cp, DR_CONN_CONNECT_FAIL, ret);
 	}
+
 out:
 	rds_clear_reconnect_pending_work_bit(cp);
 }
