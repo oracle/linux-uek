@@ -186,8 +186,10 @@ enum {
 
 enum exit_fastpath_completion {
 	EXIT_FASTPATH_NONE,
-	EXIT_FASTPATH_SKIP_EMUL_INS,
+	EXIT_FASTPATH_REENTER_GUEST,
+	EXIT_FASTPATH_EXIT_HANDLED,
 };
+typedef enum exit_fastpath_completion fastpath_t;
 
 #include <asm/kvm_emulate.h>
 
