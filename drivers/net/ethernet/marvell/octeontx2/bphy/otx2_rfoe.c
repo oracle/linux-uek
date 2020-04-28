@@ -1237,13 +1237,14 @@ err_exit:
 		if (drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
+			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 				ft_cfg = &priv->rx_ft_cfg[idx];
 				netif_napi_del(&ft_cfg->napi);
 			}
-			unregister_netdev(netdev);
 			kfree(priv->rfoe_common);
 			free_netdev(netdev);
+			drv_ctx->valid = 0;
 		}
 	}
 	return ret;
@@ -1282,7 +1283,7 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 		}
 		ret = otx2_rfoe_parse_and_init_intf(cdev, &intf_cfg[0]);
 		if (ret == 0) {
-			/* Enable GPINT(1) bits */
+			/* Enable GPINT Rx and Tx interrupts */
 			writeq(0xFFFFFFFF,
 			       bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
 
@@ -1303,16 +1304,17 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 			if (drv_ctx->valid) {
 				netdev = drv_ctx->netdev;
 				priv = netdev_priv(netdev);
+				unregister_netdev(netdev);
 				for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 					ft_cfg = &priv->rx_ft_cfg[idx];
 					netif_napi_del(&ft_cfg->napi);
 				}
-				unregister_netdev(netdev);
 				kfree(priv->rfoe_common);
 				free_netdev(netdev);
+				drv_ctx->valid = 0;
 			}
 		}
-		/* Disable GPINT bits */
+		/* Disable GPINT Rx and Tx interrupts */
 		writeq(0xFFFFFFFF,
 		       bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
 
@@ -1356,8 +1358,38 @@ error:
 static int otx2_rfoe_cdev_release(struct inode *inode, struct file *filp)
 {
 	struct otx2_rfoe_cdev_priv *cdev = filp->private_data;
+	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
+	struct otx2_rfoe_ndev_priv *priv;
+	struct net_device *netdev;
+	struct rx_ft_cfg *ft_cfg;
+	int i, idx;
 
 	mutex_lock(&cdev->mutex_lock);
+
+	if (!cdev->odp_intf_cfg)
+		goto cdev_release_exit;
+
+	for (i = 0; i < RFOE_MAX_INTF; i++) {
+		drv_ctx = &rfoe_drv_ctx[i];
+		if (drv_ctx->valid) {
+			netdev = drv_ctx->netdev;
+			priv = netdev_priv(netdev);
+			unregister_netdev(netdev);
+			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+				ft_cfg = &priv->rx_ft_cfg[idx];
+				netif_napi_del(&ft_cfg->napi);
+			}
+			kfree(priv->rfoe_common);
+			free_netdev(netdev);
+			drv_ctx->valid = 0;
+		}
+	}
+
+	/* Disable GPINT Rx and Tx interrupts */
+	writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+	cdev->odp_intf_cfg = 0;
+
+cdev_release_exit:
 	cdev->is_open = 0;
 	mutex_unlock(&cdev->mutex_lock);
 
