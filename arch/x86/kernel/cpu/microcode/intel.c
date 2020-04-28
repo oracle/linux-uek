@@ -298,7 +298,7 @@ static bool is_blacklisted(unsigned int cpu)
 	 */
 	if (c->x86 == 6 &&
 	    c->x86_model == 79 &&
-	    c->x86_mask == 0x01 &&
+	    c->x86_stepping == 0x01 &&
 	    c->microcode < 0x0b000021) {
 		pr_err_once("Erratum BDF90: late loading with revision < 0x0b000021 (0x%x) disabled.\n", c->microcode);
 		pr_err_once("Please consider either early loading through initrd/built-in or a potential BIOS update.\n");
@@ -320,7 +320,7 @@ static enum ucode_state request_microcode_fw(int cpu, struct device *device,
 		return UCODE_NFOUND;
 
 	sprintf(name, "intel-ucode/%02x-%02x-%02x",
-		c->x86, c->x86_model, c->x86_mask);
+		c->x86, c->x86_model, c->x86_stepping);
 
 	if (request_firmware_direct(&firmware, name, device)) {
 		pr_debug("data file %s load failed\n", name);

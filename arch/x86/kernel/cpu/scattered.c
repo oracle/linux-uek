@@ -83,7 +83,7 @@ bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 
 	for (i = 0; i < ARRAY_SIZE(spectre_bad_microcodes); i++) {
 		if (c->x86_model == spectre_bad_microcodes[i].model &&
-		    c->x86_mask == spectre_bad_microcodes[i].stepping)
+		    c->x86_stepping == spectre_bad_microcodes[i].stepping)
 			return (c->microcode <= spectre_bad_microcodes[i].microcode);
 	}
 	return false;
