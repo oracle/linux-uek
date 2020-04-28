@@ -74,6 +74,7 @@ enum tx_packet_type {
 
 enum state {
 	PTP_TX_IN_PROGRESS = 1,
+	RFOE_INTF_DOWN,
 };
 
 /* char driver private data */
