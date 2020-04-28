@@ -566,19 +566,56 @@ static int otx2_rfoe_napi_poll(struct napi_struct *napi, int budget)
 	return workdone;
 }
 
+/* Rx GPINT napi schedule api */
+static void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status)
+{
+	enum bphy_netdev_packet_type pkt_type;
+	struct otx2_rfoe_drv_ctx *drv_ctx;
+	struct otx2_rfoe_ndev_priv *priv;
+	struct rx_ft_cfg *ft_cfg;
+	int intf, bit_idx;
+	u32 intr_sts;
+	u64 regval;
+
+	for (intf = 0; intf < RFOE_MAX_INTF; intf++) {
+		drv_ctx = &rfoe_drv_ctx[intf];
+		/* ignore lmac, one interrupt/pkt_type/rfoe */
+		if (!(drv_ctx->valid && drv_ctx->rfoe_num == rfoe_num))
+			continue;
+		/* check if i/f down, napi disabled */
+		priv = netdev_priv(drv_ctx->netdev);
+		if (test_bit(RFOE_INTF_DOWN, &priv->state))
+			continue;
+		/* check rx pkt type */
+		intr_sts = ((status >> RFOE_RX_INTR_SHIFT(rfoe_num)) &
+			    RFOE_RX_INTR_EN);
+		for (bit_idx = 0; bit_idx < PACKET_TYPE_MAX; bit_idx++) {
+			if (!(intr_sts & BIT(bit_idx)))
+				continue;
+			pkt_type = INTR_TO_PKT_TYPE(bit_idx);
+			/* clear intr enable bit, re-enable in napi handler */
+			regval = PKT_TYPE_TO_INTR(pkt_type) <<
+				 RFOE_RX_INTR_SHIFT(rfoe_num);
+			writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+			/* schedule napi */
+			ft_cfg = &drv_ctx->ft_cfg[pkt_type];
+			napi_schedule(&ft_cfg->napi);
+		}
+		/* napi scheduled per pkt_type, return */
+		return;
+	}
+}
+
 /* GPINT(1) interrupt handler routine */
 static irqreturn_t otx2_rfoe_intr_handler(int irq, void *dev_id)
 {
 	struct otx2_rfoe_cdev_priv *cdev = (struct otx2_rfoe_cdev_priv *)dev_id;
-	enum bphy_netdev_packet_type pkt_type;
-	u32 intr_mask, intr_sts, status;
 	struct otx2_rfoe_drv_ctx *drv_ctx;
 	struct otx2_rfoe_ndev_priv *priv;
-	int rfoe_num, found = 0, i;
 	struct net_device *netdev;
-	struct rx_ft_cfg *ft_cfg;
+	u32 intr_mask, status;
 	unsigned long flags;
-	u64 regval;
+	int rfoe_num, i;
 
 	spin_lock_irqsave(&cdev->lock, flags);
 
@@ -590,41 +627,8 @@ static irqreturn_t otx2_rfoe_intr_handler(int irq, void *dev_id)
 
 	for (rfoe_num = 0; rfoe_num < MAX_RFOE_INTF; rfoe_num++) {
 		intr_mask = RFOE_RX_INTR_MASK(rfoe_num);
-		if (status & intr_mask) {
-			found = 0;
-			for (i = 0; i < RFOE_MAX_INTF; i++) {
-				drv_ctx = &rfoe_drv_ctx[i];
-				/* ignore lmac, one interrupt/pkt_type/rfoe */
-				if (drv_ctx->valid &&
-				    drv_ctx->rfoe_num == rfoe_num) {
-					found = 1;
-					break;
-				}
-			}
-			if (found) {
-				intr_sts =
-				    ((status >> RFOE_RX_INTR_SHIFT(rfoe_num)) &
-				     RFOE_RX_INTR_EN);
-				for (i = 0; i < PACKET_TYPE_MAX; i++) {
-					if (intr_sts & (1UL << i)) {
-						pkt_type = INTR_TO_PKT_TYPE(i);
-						/* clear intr enable bit */
-						regval =
-						  PKT_TYPE_TO_INTR(pkt_type) <<
-						  RFOE_RX_INTR_SHIFT(rfoe_num);
-						writeq(regval, bphy_reg_base +
-							PSM_INT_GP_ENA_W1C(1));
-						/* schedule napi */
-						ft_cfg =
-						   &drv_ctx->ft_cfg[pkt_type];
-						napi_schedule(&ft_cfg->napi);
-					}
-				}
-			} else {
-				pr_debug("rfoe%d: valid ctx not found\n",
-					 rfoe_num);
-			}
-		}
+		if (status & intr_mask)
+			otx2_rfoe_rx_napi_schedule(rfoe_num, status);
 	}
 
 	/* tx intr processing */
@@ -943,6 +947,8 @@ static int otx2_rfoe_eth_open(struct net_device *netdev)
 	netif_carrier_on(netdev);
 	netif_start_queue(netdev);
 
+	clear_bit(RFOE_INTF_DOWN, &priv->state);
+
 	return 0;
 }
 
@@ -952,6 +958,9 @@ static int otx2_rfoe_eth_stop(struct net_device *netdev)
 	struct otx2_rfoe_ndev_priv *priv = netdev_priv(netdev);
 	struct ptp_tstamp_skb *ts_skb, *ts_skb2;
 	int i;
+
+	if (test_and_set_bit(RFOE_INTF_DOWN, &priv->state))
+		return 0;
 
 	netif_stop_queue(netdev);
 	netif_carrier_off(netdev);
@@ -1207,6 +1216,7 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 
 			netif_carrier_off(netdev);
 			netif_stop_queue(netdev);
+			set_bit(RFOE_INTF_DOWN, &priv->state);
 
 			/* initialize global ctx */
 			drv_ctx = &rfoe_drv_ctx[intf_idx];
