@@ -148,6 +148,7 @@ static void ssb_init(void);
 static void l1tf_select_mitigation(void);
 static void mds_select_mitigation(void);
 static void taa_select_mitigation(void);
+static void srbds_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
@@ -284,6 +285,7 @@ void __ref check_bugs(void)
 	l1tf_select_mitigation();
 	mds_select_mitigation();
 	taa_select_mitigation();
+	srbds_select_mitigation();
 
 	/*
 	 * If we are late loading the microcode, all the stuff bellow cannot
@@ -1714,6 +1716,95 @@ out:
 #define TAA_MSG_SMT "TAA CPU bug present and SMT on, data leak possible. See https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/tsx_async_abort.html for more details.\n"
 
 #undef pr_fmt
+#define pr_fmt(fmt)    "SRBDS: " fmt
+
+enum srbds_mitigations {
+	SRBDS_MITIGATION_OFF,
+	SRBDS_MITIGATION_UCODE_NEEDED,
+	SRBDS_MITIGATION_FULL,
+	SRBDS_MITIGATION_TSX_OFF,
+	SRBDS_MITIGATION_HYPERVISOR,
+};
+
+static enum srbds_mitigations srbds_mitigation = SRBDS_MITIGATION_FULL;
+
+static const char * const srbds_strings[] = {
+	[SRBDS_MITIGATION_OFF]		= "Vulnerable",
+	[SRBDS_MITIGATION_UCODE_NEEDED]	= "Vulnerable: No microcode",
+	[SRBDS_MITIGATION_FULL]		= "Mitigation: Microcode",
+	[SRBDS_MITIGATION_TSX_OFF]	= "Mitigation: TSX disabled",
+	[SRBDS_MITIGATION_HYPERVISOR]	= "Unknown: Dependent on hypervisor status",
+};
+
+void update_srbds_msr(void)
+{
+	u64 mcu_ctrl;
+
+	if (!boot_cpu_has_bug(X86_BUG_SRBDS))
+		return;
+
+	if (boot_cpu_has(X86_FEATURE_HYPERVISOR))
+		return;
+
+	if (srbds_mitigation == SRBDS_MITIGATION_UCODE_NEEDED)
+		return;
+
+	rdmsrl(MSR_IA32_MCU_OPT_CTRL, mcu_ctrl);
+
+	switch (srbds_mitigation) {
+	case SRBDS_MITIGATION_OFF:
+	case SRBDS_MITIGATION_TSX_OFF:
+		mcu_ctrl |= RNGDS_MITG_DIS;
+		break;
+	case SRBDS_MITIGATION_FULL:
+		mcu_ctrl &= ~RNGDS_MITG_DIS;
+		break;
+	default:
+		break;
+	}
+
+	wrmsrl(MSR_IA32_MCU_OPT_CTRL, mcu_ctrl);
+}
+
+static void srbds_select_mitigation(void)
+{
+	u64 ia32_cap;
+	int ret;
+	char arg[12];
+	bool srbds_off = false;
+
+	if (!boot_cpu_has_bug(X86_BUG_SRBDS))
+		return;
+
+	ret = cmdline_find_option(boot_command_line, "srbds", arg,
+				  sizeof(arg));
+
+	if (ret > 0) {
+		if (match_option(arg, ret, "off"))
+			srbds_off = true;
+		else
+			pr_warn("srbds: unknown option %s\n", arg);
+	}
+
+	/*
+	 * Check to see if this is one of the MDS_NO systems supporting
+	 * TSX that are only exposed to SRBDS when TSX is enabled.
+	 */
+	ia32_cap = x86_read_arch_cap_msr(&cpu_data(smp_processor_id()));
+	if ((ia32_cap & ARCH_CAP_MDS_NO) && !boot_cpu_has(X86_FEATURE_RTM))
+		srbds_mitigation = SRBDS_MITIGATION_TSX_OFF;
+	else if (boot_cpu_has(X86_FEATURE_HYPERVISOR))
+		srbds_mitigation = SRBDS_MITIGATION_HYPERVISOR;
+	else if (!boot_cpu_has(X86_FEATURE_SRBDS_CTRL))
+		srbds_mitigation = SRBDS_MITIGATION_UCODE_NEEDED;
+	else if (cpu_mitigations_off() || srbds_off)
+		srbds_mitigation = SRBDS_MITIGATION_OFF;
+
+	update_srbds_msr();
+	pr_info("%s\n", srbds_strings[srbds_mitigation]);
+}
+
+#undef pr_fmt
 #define pr_fmt(fmt) fmt
 
 #ifdef CONFIG_SYSFS
@@ -1785,6 +1876,11 @@ static ssize_t tsx_async_abort_show_state(char *buf)
 
 	return sprintf(buf, "%s; SMT %s\n", taa_strings[taa_mitigation],
 		       (cpu_smt_control == CPU_SMT_ENABLED) ? "vulnerable" : "disabled");
+}
+
+static ssize_t srbds_show_state(char *buf)
+{
+	return sprintf(buf, "%s\n", srbds_strings[srbds_mitigation]);
 }
 
 #else
@@ -1861,6 +1957,9 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 	case X86_BUG_TAA:
 		return tsx_async_abort_show_state(buf);
 
+	case X86_BUG_SRBDS:
+		return srbds_show_state(buf);
+
 	default:
 		break;
 	}
@@ -1910,5 +2009,10 @@ ssize_t cpu_show_tsx_async_abort(struct device *dev, struct device_attribute *at
 ssize_t cpu_show_itlb_multihit(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return cpu_show_common(dev, attr, buf, X86_BUG_ITLB_MULTIHIT);
+}
+
+ssize_t cpu_show_srbds(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return cpu_show_common(dev, attr, buf, X86_BUG_SRBDS);
 }
 #endif

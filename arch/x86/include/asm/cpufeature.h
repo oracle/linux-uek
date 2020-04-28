@@ -76,6 +76,7 @@
 #define X86_FEATURE_MD_CLEAR		( 2*32+2) /* VERW clears CPU buffers */
 #define X86_FEATURE_FENCE_SWAPGS_USER	( 2*32+3) /* "" LFENCE in user entry SWAPGS path */
 #define X86_FEATURE_FENCE_SWAPGS_KERNEL ( 2*32+4) /* "" LFENCE in kernel entry SWAPGS path */
+#define X86_FEATURE_SRBDS_CTRL		( 2*32+5) /* "" SRBDS mitigation MSR available */
 
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */
@@ -307,6 +308,7 @@
 #define X86_BUG_SWAPGS			X86_BUG(21) /* CPU is affected by speculation through SWAPGS */
 #define X86_BUG_ITLB_MULTIHIT		X86_BUG(22) /* CPU may incur MCE during certain page attribute changes */
 #define X86_BUG_TAA			X86_BUG(23) /* CPU is affected by TSX Async Abort(TAA) */
+#define X86_BUG_SRBDS			X86_BUG(24) /* CPU may leak RNG bits if not mitigated */
 
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 
