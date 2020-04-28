@@ -1640,11 +1640,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		ic->i_alt.cm_id = NULL;
 	}
 
-	/* Cancel any pending reconnect */
-	rds_queue_cancel_work(cp, &cp->cp_conn_w,
-			      "cancel pending reconnect");
-	rds_clear_reconnect_pending_work_bit(cp);
-
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING,
 				 DR_DEFAULT)) {
 		int delta;
