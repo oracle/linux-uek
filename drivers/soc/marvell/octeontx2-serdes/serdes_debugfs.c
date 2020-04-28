@@ -96,6 +96,7 @@ static struct {
 
 static struct {
 	int qlm;
+	int qlm_lane;
 	struct prbs_status status_list;
 	struct cgx_prbs_data *res;
 } prbs_cmd_data;
@@ -413,7 +414,8 @@ static const struct file_operations serdes_dbg_settings_fops = {
 
 static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 				      size_t count, int *qlm,
-				      enum cgx_prbs_cmd *cmd, int *mode)
+				      enum cgx_prbs_cmd *cmd, int *mode,
+				      int *qlm_lane)
 {
 	char *cmd_buf, *cmd_buf_tmp, *subtoken;
 	int ec;
@@ -435,6 +437,14 @@ static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 	ec = subtoken ? kstrtoint(subtoken, 10, qlm) : -EINVAL;
 
 	if (ec < 0) {
+		kfree(cmd_buf_tmp);
+		return ec;
+	}
+
+	subtoken = strsep(&cmd_buf, " ");
+	ec = subtoken ? kstrtoint(subtoken, 10, qlm_lane) : -EINVAL;
+
+	if (ec == -EINVAL) {
 		kfree(cmd_buf_tmp);
 		return ec;
 	}
@@ -469,20 +479,22 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 	int mode;
 	int qlm;
 	int ec;
+	int qlm_lane;
 
 	ec = serdes_dbg_prbs_lane_parse(buffer, count, &prbs_cmd_data.qlm,
-					&cmd, &mode);
+					&cmd, &mode, &prbs_cmd_data.qlm_lane);
 	if (ec < 0) {
-		pr_info("Usage: echo <qlm> [{start <mode>|stop}] > prbs\n");
+		pr_info("Usage: echo <qlm> <lane> [{start <mode>|stop}] > prbs\n");
 		return ec;
 	}
 
 	qlm = prbs_cmd_data.qlm;
+	qlm_lane = prbs_cmd_data.qlm_lane;
 
 	switch (cmd) {
 	case CGX_PRBS_START_CMD:
 		arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, cmd,
-			      prbs_cmd_data.qlm, mode, 0, 0, 0, 0, &res);
+			      qlm, mode, 0, qlm_lane, 0, 0, &res);
 
 		list_for_each_entry(status,
 				    &prbs_cmd_data.status_list.list,
@@ -503,7 +515,7 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 				list_del(&status->list);
 				kfree(status);
 			}
-			pr_info("CGX prbs start command failed.\n");
+			pr_info("GSER prbs start command failed.\n");
 			return -EIO;
 		}
 
@@ -517,14 +529,17 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 				 &prbs_cmd_data.status_list.list);
 		}
 		status->start_time = get_seconds();
-		pr_info("CGX PRBS-%d start on QLM %d.\n", mode, qlm);
+		if (qlm_lane == -1)
+			pr_info("GSER PRBS-%d start on QLM %d (all lanes).\n", mode, qlm);
+		else
+			pr_info("GSER PRBS-%d start on QLM %d on lane %d.\n", mode, qlm, qlm_lane);
 		break;
 
 	case CGX_PRBS_STOP_CMD:
 		arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, cmd,
-			      prbs_cmd_data.qlm, 0, 0, 0, 0, 0, &res);
+			      qlm, 0, qlm_lane, 0, 0, 0, &res);
 		if (res.a0 != SMCCC_RET_SUCCESS) {
-			pr_info("CGX prbs stop command failed.\n");
+			pr_info("GSER prbs stop command failed.\n");
 			return -EIO;
 		}
 		list_for_each_entry(status,
@@ -536,11 +551,14 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 				break;
 			}
 		}
-		pr_info("CGX PRBS stop on QLM %d.\n", qlm);
+		if (qlm_lane == -1)
+			pr_info("GSER PRBS stop on QLM %d on all lanes.\n", qlm);
+		else
+			pr_info("GSER PRBS stop on QLM %d on Lane %d.\n", qlm, qlm_lane);
 		break;
 
 	default:
-		pr_info("CGX PRBS set QLM %d to read.\n", qlm);
+		pr_info("GSER PRBS set QLM %d to read.\n", qlm);
 		break;
 	}
 
@@ -556,8 +574,10 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 	int num_lanes;
 	int lane;
 	int qlm;
+	int qlm_lane;
 
 	qlm = prbs_cmd_data.qlm;
+	qlm_lane = prbs_cmd_data.qlm_lane;
 
 	list_for_each_entry(status,
 			    &prbs_cmd_data.status_list.list,
@@ -569,16 +589,16 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 	}
 
 	if (time == -1) {
-		seq_printf(s, "CGX PRBS not started for qlm %d.\n", qlm);
+		seq_printf(s, "GSER PRBS not started for qlm %d.\n", qlm);
 		return 0;
 	}
 	time = get_seconds() - time;
 
 	arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, CGX_PRBS_GET_DATA_CMD,
-		      qlm, 0, 0, 0, 0, 0, &res);
+		      qlm, 0, qlm_lane, 0, 0, 0, &res);
 
 	if (res.a0 != SMCCC_RET_SUCCESS) {
-		seq_printf(s, "CGX prbs get command failed for qlm %d.\n", qlm);
+		seq_printf(s, "GSER prbs get command failed for qlm %d.\n", qlm);
 		return 0;
 	}
 
@@ -592,6 +612,8 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 	}
 
 	for (lane = 0; lane < num_lanes; lane++) {
+		if ((qlm_lane != -1) && (qlm_lane != lane))
+			continue;
 		seq_printf(s, "Time: %ld seconds QLM%d.Lane%d: errors: ",
 			   time, qlm, lane);
 		if (errors[lane].err != -1)
