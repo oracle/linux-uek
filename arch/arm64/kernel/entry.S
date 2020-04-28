@@ -223,7 +223,9 @@ alternative_cb_end
 	ldr_this_cpu x22, gti_elr, x29
 	ldr_this_cpu x23, gti_spsr, x29
 	.if	\el == 0
-	mov	x29, xzr			// fp pointed to user-space
+	mov	x29, xzr
+	.else
+	ldp	x28, x29, [sp, #S_X28]
 	.endif
 	.endif	/* \exc_el3 == 0 */
 #else
