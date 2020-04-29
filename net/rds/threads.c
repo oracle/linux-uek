@@ -399,8 +399,7 @@ void rds_shutdown_worker(struct work_struct *work)
 			conn->c_tos,
 			conn_drop_reason_str(cp->cp_drop_source));
 
-	rds_conn_shutdown(cp);
-	rds_clear_shutdown_pending_work_bit(cp);
+	rds_conn_init_shutdown(cp);
 }
 
 void rds_threads_exit(void)

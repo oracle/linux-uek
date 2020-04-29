@@ -506,6 +506,8 @@ static void rds_ib_cq_event_handler(struct ib_event *event, void *data)
 	ic->i_flags |= RDS_IB_CQ_ERR;
 	if (waitqueue_active(&rds_ib_ring_empty_wait))
 		wake_up(&rds_ib_ring_empty_wait);
+	if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
+		mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
 }
 
 static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
@@ -2007,31 +2009,24 @@ out:
 	return ret;
 }
 
-/*
- * This is so careful about only cleaning up resources that were built up
- * so that it can be called at any point during startup.  In fact it
- * can be called multiple times for a given connection.
- */
-void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
+void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	int err = 0;
-	struct rdma_cm_id *cm_id;
 
-	trace_rds_ib_conn_path_shutdown(ic && ic->rds_ibdev ?
-					ic->rds_ibdev->dev : NULL,
-					ic ? ic->rds_ibdev : NULL, conn, ic,
-					"conn path shutdown", 0);
-
+	trace_rds_ib_conn_path_shutdown_prepare(ic && ic->rds_ibdev ?
+						ic->rds_ibdev->dev : NULL,
+						ic ? ic->rds_ibdev : NULL, conn, ic,
+						"conn path shutdown prepare", 0);
 
 	if (ic->i_cm_id) {
+		int err;
 		err = rdma_disconnect(ic->i_cm_id);
 		if (err) {
 			/* Actually this may happen quite frequently, when
 			 * an outgoing connect raced with an incoming connect.
 			 */
-			trace_rds_ib_conn_path_shutdown_err(ic->rds_ibdev ?
+			trace_rds_ib_conn_path_shutdown_prepare_err(ic->rds_ibdev ?
 				ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
 				conn, ic, "failed to disconnect", err);
 
@@ -2043,26 +2038,42 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 			wait_for_completion(&ic->i_last_wqe_complete);
 			tasklet_schedule(&ic->i_rtasklet);
 		}
+	}
+}
 
-		/* quiesce tx and rx completion before tearing down */
-		while (!wait_event_timeout(rds_ib_ring_empty_wait,
-				(rds_ib_ring_empty(&ic->i_recv_ring) &&
-				 (atomic_read(&ic->i_signaled_sends) == 0) &&
-				 (atomic_read(&ic->i_fastreg_wrs) ==
-				  RDS_IB_DEFAULT_FREG_WR)) ||
-				(ic->i_flags & RDS_IB_CQ_ERR),
-				 msecs_to_jiffies(5000))) {
+unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
+{
+	struct rds_connection *conn = cp->cp_conn;
+	struct rds_ib_connection *ic = conn->c_transport_data;
 
-			if (ic->i_flags & RDS_IB_CQ_ERR)
-				break;
+	return (!ic->i_cm_id ||
+		(ic->i_flags & RDS_IB_CQ_ERR) ||
+		(rds_ib_ring_empty(&ic->i_recv_ring) &&
+		 (atomic_read(&ic->i_signaled_sends) == 0) &&
+		 (atomic_read(&ic->i_fastreg_wrs) ==
+		  RDS_IB_DEFAULT_FREG_WR))) ? 0
+		: msecs_to_jiffies(1000);
+}
 
-			/* Try to reap pending RX completions every 5 secs */
-			if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
-				spin_lock_bh(&ic->i_rx_lock);
-				rds_ib_rx(ic);
-				spin_unlock_bh(&ic->i_rx_lock);
-			}
-		}
+void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
+{
+	struct rds_connection *conn = cp->cp_conn;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
+		spin_lock_bh(&ic->i_rx_lock);
+		rds_ib_rx(ic);
+		spin_unlock_bh(&ic->i_rx_lock);
+	}
+}
+
+void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
+{
+	struct rds_connection *conn = cp->cp_conn;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+	struct rdma_cm_id *cm_id;
+
+	if (ic->i_cm_id) {
 		cancel_delayed_work_sync(&ic->i_rx_w.work);
 
 		tasklet_kill(&ic->i_stasklet);
@@ -2092,6 +2103,7 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 
 		rds_spawn_destroy_cm_id(cm_id);
 	}
+
 	BUG_ON(ic->rds_ibdev);
 
 	/* Clear pending transmit */
@@ -2136,6 +2148,31 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 	reinit_completion(&ic->i_last_wqe_complete);
 
 	ic->i_active_side = 0;
+}
+
+/*
+ * This is so careful about only cleaning up resources that were built up
+ * so that it can be called at any point during startup.  In fact it
+ * can be called multiple times for a given connection.
+ */
+void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
+{
+	struct rds_connection *conn = cp->cp_conn;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	if (ic->i_cm_id) {
+		rds_ib_conn_path_shutdown_prepare(cp);
+
+		/* quiesce tx and rx completion before tearing down */
+		while (!wait_event_timeout(rds_ib_ring_empty_wait,
+					   rds_ib_conn_path_shutdown_check_wait(cp) == 0,
+					   msecs_to_jiffies(1000))) {
+			/* Try to reap pending RX completions every second */
+			rds_ib_conn_path_shutdown_tidy_up(cp);
+		}
+	}
+
+	rds_ib_conn_path_shutdown_final(cp);
 }
 
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
