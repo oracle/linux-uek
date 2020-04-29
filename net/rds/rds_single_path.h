@@ -14,6 +14,7 @@
 #define c_retrans		c_path[0].cp_retrans
 #define c_next_rx_seq		c_path[0].cp_next_rx_seq
 #define c_transport_data	c_path[0].cp_transport_data
+#define c_wq			c_path[0].cp_wq
 #define c_state			c_path[0].cp_state
 #define c_send_gen		c_path[0].cp_send_gen
 #define c_flags			c_path[0].cp_flags
@@ -22,6 +23,7 @@
 #define c_recv_w		c_path[0].cp_recv_w
 #define c_conn_w		c_path[0].cp_conn_w
 #define c_down_w		c_path[0].cp_down_w
+#define c_down_wait_w		c_path[0].cp_down_wait_w
 #define c_cm_lock		c_path[0].cp_cm_lock
 #define c_waitq			c_path[0].cp_waitq
 #define c_unacked_packets	c_path[0].cp_unacked_packets
