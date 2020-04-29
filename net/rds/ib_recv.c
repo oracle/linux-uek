@@ -525,6 +525,8 @@ static void release_refill(struct rds_connection *conn)
 	 */
 	if (waitqueue_active(&conn->c_waitq))
 		wake_up_all(&conn->c_waitq);
+	if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
+		mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
 }
 
 
@@ -1403,6 +1405,14 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 
 	if (!rds_ib_srq_enabled) {
 		rds_ib_ring_free(&ic->i_recv_ring, 1);
+
+		if (rds_ib_ring_empty(&ic->i_recv_ring)) {
+			if (waitqueue_active(&rds_ib_ring_empty_wait))
+				wake_up(&rds_ib_ring_empty_wait);
+			if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
+				mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
+		}
+
 		rds_ib_recv_refill(conn, 0, GFP_NOWAIT);
 		rds_ib_stats_inc(s_ib_rx_refill_from_cq);
 	} else {
