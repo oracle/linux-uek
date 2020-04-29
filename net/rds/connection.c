@@ -61,6 +61,7 @@ static struct kmem_cache *rds_conn_slab;
 	 (head)++)
 
 static void rds_conn_ha_changed_task(struct work_struct *work);
+static void rds_conn_shutdown_check_wait(struct work_struct *work);
 
 static u32 rds_conn_bucket_hash(const struct in6_addr *laddr,
 				const struct in6_addr *faddr,
@@ -238,7 +239,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	INIT_DELAYED_WORK(&cp->cp_conn_w, rds_connect_worker);
 	INIT_DELAYED_WORK(&cp->cp_hb_w, rds_hb_worker);
 	INIT_WORK(&cp->cp_down_w, rds_shutdown_worker);
-
+	INIT_DELAYED_WORK(&cp->cp_down_wait_w, rds_conn_shutdown_check_wait);
 	mutex_init(&cp->cp_cm_lock);
 	atomic_set(&cp->cp_rdma_map_pending, 0);
 	init_waitqueue_head(&cp->cp_up_waitq);
@@ -500,10 +501,117 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 }
 EXPORT_SYMBOL_GPL(rds_conn_find);
 
-void rds_conn_shutdown(struct rds_conn_path *cp)
+static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
+	/* Then reconnect if it's still live.
+	 * The passive side of an IB loopback connection is never added
+	 * to the conn hash, so we never trigger a reconnect on this
+	 * conn - the reconnect is always triggered by the active peer. */
+
+	rds_queue_cancel_work(cp, &cp->cp_conn_w, "final shutdown");
+	rds_clear_reconnect_pending_work_bit(cp);
+
+	rcu_read_lock();
+	if (!hlist_unhashed(&conn->c_hash_node)) {
+		rcu_read_unlock();
+		rds_queue_reconnect(cp, false);
+	} else {
+		rcu_read_unlock();
+	}
+
+	rds_clear_shutdown_pending_work_bit(cp);
+}
+
+static void rds_conn_shutdown_check_wait(struct work_struct *work)
+{
+	struct rds_conn_path *cp = container_of(work,
+						struct rds_conn_path,
+						cp_down_wait_w.work);
+	struct rds_connection *conn = cp->cp_conn;
+	unsigned long delay;
+
+	if (!test_bit(RDS_SHUTDOWN_WAITING, &cp->cp_flags))
+		return;
+
+	if (!test_bit(RDS_SHUTDOWN_WAIT1_DONE, &cp->cp_flags)) {
+		if (test_bit(RDS_IN_XMIT, &cp->cp_flags) ||
+		    test_and_set_bit(RDS_RECV_REFILL, &cp->cp_flags))
+			return;
+
+		set_bit(RDS_SHUTDOWN_WAIT1_DONE, &cp->cp_flags);
+		smp_mb__after_atomic();
+	}
+
+	if (atomic_read(&cp->cp_rdma_map_pending) != 0)
+		return;
+
+	if (conn->c_trans->conn_path_shutdown_check_wait) {
+		if (!test_bit(RDS_SHUTDOWN_PREPARE_DONE, &cp->cp_flags)) {
+			if (conn->c_trans->conn_path_shutdown_prepare)
+				conn->c_trans->conn_path_shutdown_prepare(cp);
+
+			set_bit(RDS_SHUTDOWN_PREPARE_DONE, &cp->cp_flags);
+			smp_mb__after_atomic();
+		}
+
+		delay = conn->c_trans->conn_path_shutdown_check_wait(cp);
+
+		if (delay > 0) {
+			rds_queue_delayed_work(cp, cp->cp_wq,
+					       &cp->cp_down_wait_w, delay,
+					       "shutdown check wait");
+
+			if (conn->c_trans->conn_path_shutdown_tidy_up) {
+				conn->c_trans->conn_path_shutdown_tidy_up(cp);
+
+				delay = conn->c_trans->conn_path_shutdown_check_wait(cp);
+				if (delay == 0)
+					mod_delayed_work(cp->cp_wq, &cp->cp_down_wait_w, 0);
+			}
+
+			return;
+		}
+
+		if (conn->c_trans->conn_path_shutdown_final)
+			conn->c_trans->conn_path_shutdown_final(cp);
+	} else
+		conn->c_trans->conn_path_shutdown(cp);
+
+	clear_bit(RDS_SHUTDOWN_WAITING, &cp->cp_flags);
+	smp_mb__after_atomic();
+
+	clear_bit(RDS_RECV_REFILL, &cp->cp_flags);
+	rds_conn_path_reset(cp);
+
+	if (!rds_conn_path_transition(cp, RDS_CONN_DISCONNECTING,
+				      RDS_CONN_DOWN, DR_DEFAULT) &&
+	    !rds_conn_path_transition(cp, RDS_CONN_ERROR,
+				      RDS_CONN_DOWN, DR_DEFAULT)) {
+		/* This can happen - eg when we're in the middle of tearing
+		 * down the connection, and someone unloads the rds module.
+		 * Quite reproducible with loopback connections.
+		 * Mostly harmless.
+		 *
+		 * Note that this also happens with rds-tcp because
+		 * we could have triggered rds_conn_path_drop in irq
+		 * mode from rds_tcp_state change on the receipt of
+		 * a FIN, thus we need to recheck for RDS_CONN_ERROR
+		 * here.
+		 *
+		 */
+		pr_warn("RDS: %s: failed to transition to state DOWN, current state is %d\n",
+			__func__, atomic_read(&cp->cp_state));
+		rds_conn_path_drop(cp, DR_DOWN_TRANSITION_FAIL, 0);
+		return;
+	}
+
+	rds_conn_shutdown_final(cp);
+}
+
+void rds_conn_init_shutdown(struct rds_conn_path *cp)
+{
 	/* shut it down unless it's down already */
 	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN,
 				      DR_DEFAULT)) {
@@ -530,53 +638,13 @@ void rds_conn_shutdown(struct rds_conn_path *cp)
 		}
 		mutex_unlock(&cp->cp_cm_lock);
 
-		wait_event(cp->cp_waitq,
-			   !test_bit(RDS_IN_XMIT, &cp->cp_flags));
-		wait_event(cp->cp_waitq,
-			   !test_and_set_bit(RDS_RECV_REFILL, &cp->cp_flags));
-		wait_event(cp->cp_waitq,
-			   (atomic_read(&cp->cp_rdma_map_pending) == 0));
-
-		conn->c_trans->conn_path_shutdown(cp);
-		clear_bit(RDS_RECV_REFILL, &cp->cp_flags);
-		rds_conn_path_reset(cp);
-
-		if (!rds_conn_path_transition(cp, RDS_CONN_DISCONNECTING,
-					      RDS_CONN_DOWN, DR_DEFAULT) &&
-		    !rds_conn_path_transition(cp, RDS_CONN_ERROR,
-					      RDS_CONN_DOWN, DR_DEFAULT)) {
-			/* This can happen - eg when we're in the middle of tearing
-			 * down the connection, and someone unloads the rds module.
-			 * Quite reproducible with loopback connections.
-			 * Mostly harmless.
-			 *
-			 * Note that this also happens with rds-tcp because
-			 * we could have triggered rds_conn_path_drop in irq
-			 * mode from rds_tcp_state change on the receipt of
-			 * a FIN, thus we need to recheck for RDS_CONN_ERROR
-			 * here.
-			 *
-			 */
-			pr_warn("RDS: %s: failed to transition to state DOWN, current state is %d\n",
-				__func__, atomic_read(&cp->cp_state));
-			rds_conn_path_drop(cp, DR_DOWN_TRANSITION_FAIL, 0);
-			return;
-		}
-	}
-
-	/* Then reconnect if it's still live.
-	 * The passive side of an IB loopback connection is never added
-	 * to the conn hash, so we never trigger a reconnect on this
-	 * conn - the reconnect is always triggered by the active peer. */
-	rds_queue_cancel_work(cp, &cp->cp_conn_w, "conn shutdown");
-	rds_clear_reconnect_pending_work_bit(cp);
-	rcu_read_lock();
-	if (!hlist_unhashed(&conn->c_hash_node)) {
-		rcu_read_unlock();
-		rds_queue_reconnect(cp, false);
-	} else {
-		rcu_read_unlock();
-	}
+		clear_bit(RDS_SHUTDOWN_WAIT1_DONE, &cp->cp_flags);
+		clear_bit(RDS_SHUTDOWN_PREPARE_DONE, &cp->cp_flags);
+		set_bit(RDS_SHUTDOWN_WAITING, &cp->cp_flags);
+		smp_mb__after_atomic();
+		queue_delayed_work(cp->cp_wq, &cp->cp_down_wait_w, 0);
+	} else
+		rds_conn_shutdown_final(cp);
 }
 
 /* destroy a single rds_conn_path. rds_conn_destroy() iterates over
