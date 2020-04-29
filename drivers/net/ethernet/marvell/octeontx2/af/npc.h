@@ -153,6 +153,13 @@ enum npc_pkind_type {
 	NPC_TX_DEF_PKIND,
 };
 
+enum npc_interface_type {
+	NPC_INTF_MODE_DEF,
+	NPC_INTF_MODE_EDSA,
+	NPC_INTF_MODE_HIGIG,
+	NPC_INTF_MODE_FDSA,
+};
+
 struct npc_kpu_profile_cam {
 	u8 state;
 	u8 state_mask;
