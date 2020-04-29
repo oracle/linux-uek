@@ -778,9 +778,12 @@ static void inc_rdma_map_pending(struct rds_conn_path *cp)
 
 static void dec_rdma_map_pending(struct rds_conn_path *cp)
 {
-	if (atomic_dec_and_test(&cp->cp_rdma_map_pending))
+	if (atomic_dec_and_test(&cp->cp_rdma_map_pending)) {
 		if (waitqueue_active(&cp->cp_waitq))
 			wake_up_all(&cp->cp_waitq);
+		if (test_bit(RDS_SHUTDOWN_WAITING, &cp->cp_flags))
+			mod_delayed_work(cp->cp_wq, &cp->cp_down_wait_w, 0);
+	}
 }
 
 /*

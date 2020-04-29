@@ -1722,4 +1722,12 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	}
 
 	complete(&ibmr->wr_comp);
+
+	if (atomic_read(&ic->i_fastreg_wrs) == RDS_IB_DEFAULT_FREG_WR) {
+		if (waitqueue_active(&rds_ib_ring_empty_wait))
+			wake_up(&rds_ib_ring_empty_wait);
+
+		if (test_bit(RDS_SHUTDOWN_WAITING, &ic->conn->c_flags))
+			mod_delayed_work(ic->conn->c_wq, &ic->conn->c_down_wait_w, 0);
+	}
 }

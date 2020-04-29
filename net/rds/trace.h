@@ -808,7 +808,7 @@ DEFINE_EVENT(rds_ib, rds_ib_conn_path_connect_err,
 
 );
 
-DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown,
+DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown_prepare,
 
 	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
 		 struct rds_connection *conn, struct rds_ib_connection *ic,
@@ -818,7 +818,7 @@ DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown,
 
 );
 
-DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown_err,
+DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown_prepare_err,
 
 	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
 		 struct rds_connection *conn, struct rds_ib_connection *ic,
