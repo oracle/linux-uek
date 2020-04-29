@@ -2629,18 +2629,23 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	int blkaddr, nixlf, rc, intf_mode;
 	int pf = rvu_get_pf(pcifunc);
 	bool enable_higig2 = false;
-	int blkaddr, nixlf, rc;
 	u64 rxpkind, txpkind;
 	u8 cgx_id, lmac_id;
 
 	/* use default pkind to disable edsa/higig */
 	rxpkind = rvu_npc_get_pkind(rvu, pf);
 	txpkind = NPC_TX_DEF_PKIND;
+	intf_mode = NPC_INTF_MODE_DEF;
 
 	if (mode & OTX2_PRIV_FLAGS_EDSA) {
 		rxpkind = NPC_RX_EDSA_PKIND;
+		intf_mode = NPC_INTF_MODE_EDSA;
+	} else if (mode & OTX2_PRIV_FLAGS_FDSA) {
+		rxpkind = NPC_RX_EDSA_PKIND;
+		intf_mode = NPC_INTF_MODE_FDSA;
 	} else if (mode & OTX2_PRIV_FLAGS_HIGIG) {
 		/* Silicon does not support enabling higig in time stamp mode */
 		if (pfvf->hw_rx_tstamp_en ||
@@ -2649,6 +2654,7 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 
 		rxpkind = NPC_RX_HIGIG_PKIND;
 		txpkind = NPC_TX_HIGIG_PKIND;
+		intf_mode = NPC_INTF_MODE_HIGIG;
 		enable_higig2 = true;
 	} else if (mode & OTX2_PRIV_FLAGS_CUSTOM) {
 		rxpkind = pkind;
@@ -2680,6 +2686,7 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 	if (enable_higig2 ^ rvu_cgx_is_higig2_enabled(rvu, pf))
 		rvu_cgx_enadis_higig2(rvu, pf, enable_higig2);
 
+	pfvf->intf_mode = intf_mode;
 	return 0;
 }
 
