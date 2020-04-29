@@ -274,9 +274,12 @@ void rds_ib_send_clear_ring(struct rds_ib_connection *ic)
 
 static void rds_ib_sub_signaled(struct rds_ib_connection *ic, int nr)
 {
-	if ((atomic_sub_return(nr, &ic->i_signaled_sends) == 0) &&
-	    waitqueue_active(&rds_ib_ring_empty_wait))
-		wake_up(&rds_ib_ring_empty_wait);
+	if ((atomic_sub_return(nr, &ic->i_signaled_sends) == 0)) {
+		if (waitqueue_active(&rds_ib_ring_empty_wait))
+			wake_up(&rds_ib_ring_empty_wait);
+		if (test_bit(RDS_SHUTDOWN_WAITING, &ic->conn->c_flags))
+			mod_delayed_work(ic->conn->c_wq, &ic->conn->c_down_wait_w, 0);
+	}
 	BUG_ON(atomic_read(&ic->i_signaled_sends) < 0);
 }
 
@@ -365,6 +368,15 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	}
 
 	rds_ib_ring_free(&ic->i_send_ring, completed);
+
+	if (rds_ib_ring_empty(&ic->i_recv_ring)) {
+		if (waitqueue_active(&rds_ib_ring_empty_wait))
+			wake_up(&rds_ib_ring_empty_wait);
+		if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
+			mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
+	}
+
+
 	rds_ib_sub_signaled(ic, nr_sig);
 
 	clear_bit(RDS_LL_SEND_FULL, &conn->c_flags);
