@@ -298,7 +298,8 @@ void brcmf_netif_rx(struct brcmf_if *ifp, struct sk_buff *skb)
 		ifp->stats.multicast++;
 
 	/* Process special event packets */
-	brcmf_fweh_process_skb(ifp->drvr, skb);
+	brcmf_fweh_process_skb(ifp->drvr, skb,
+				BCMILCP_SUBTYPE_VENDOR_LONG);
 
 	if (!(ifp->ndev->flags & IFF_UP)) {
 		brcmu_pkt_buf_free_skb(skb);

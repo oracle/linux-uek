@@ -25,60 +25,6 @@
 #include "fweh.h"
 #include "fwil.h"
 
-/**
- * struct brcm_ethhdr - broadcom specific ether header.
- *
- * @subtype: subtype for this packet.
- * @length: TODO: length of appended data.
- * @version: version indication.
- * @oui: OUI of this packet.
- * @usr_subtype: subtype for this OUI.
- */
-struct brcm_ethhdr {
-	__be16 subtype;
-	__be16 length;
-	u8 version;
-	u8 oui[3];
-	__be16 usr_subtype;
-} __packed;
-
-struct brcmf_event_msg_be {
-	__be16 version;
-	__be16 flags;
-	__be32 event_type;
-	__be32 status;
-	__be32 reason;
-	__be32 auth_type;
-	__be32 datalen;
-	u8 addr[ETH_ALEN];
-	char ifname[IFNAMSIZ];
-	u8 ifidx;
-	u8 bsscfgidx;
-} __packed;
-
-/**
- * struct brcmf_event - contents of broadcom event packet.
- *
- * @eth: standard ether header.
- * @hdr: broadcom specific ether header.
- * @msg: common part of the actual event message.
- */
-struct brcmf_event {
-	struct ethhdr eth;
-	struct brcm_ethhdr hdr;
-	struct brcmf_event_msg_be msg;
-} __packed;
-
-/**
- * struct brcmf_fweh_queue_item - event item on event queue.
- *
- * @q: list element for queuing.
- * @code: event code.
- * @ifidx: interface index related to this event.
- * @ifaddr: ethernet address for interface.
- * @emsg: common parameters of the firmware event message.
- * @data: event specific data part of the firmware event.
- */
 struct brcmf_fweh_queue_item {
 	struct list_head q;
 	enum brcmf_fweh_event_code code;
