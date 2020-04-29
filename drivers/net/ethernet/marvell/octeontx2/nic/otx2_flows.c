@@ -319,7 +319,7 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 		return -ENOMEM;
 	}
 
-	err = otx2_prepare_flow_request(&flow->flow_spec, req);
+	err = otx2_prepare_flow_request(&flow->flow_spec, req, pfvf);
 	if (err) {
 		/* free the allocated msg above */
 		otx2_mbox_reset(&pfvf->mbox.mbox, 0);
@@ -589,6 +589,10 @@ int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
 	/* Dont have enough mcam entries */
 	if (!(pf->flags & OTX2_FLAG_RX_VLAN_SUPPORT))
 		return -ENOMEM;
+
+	/* FDSA & RXVLAN are mutually exclusive */
+	if (pf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR)
+		enable = false;
 
 	if (enable) {
 		err = otx2_install_rxvlan_offload_flow(pf);
