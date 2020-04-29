@@ -177,6 +177,9 @@ static inline const char *conn_state_mnem(int state)
 #define RDS_SEND_WORK_QUEUED	5
 #define RDS_RECV_WORK_QUEUED	6
 #define RDS_SHUTDOWN_WORK_QUEUED 7
+#define RDS_SHUTDOWN_WAITING	8
+#define RDS_SHUTDOWN_WAIT1_DONE	9
+#define RDS_SHUTDOWN_PREPARE_DONE 10
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
@@ -281,6 +284,7 @@ struct rds_conn_path {
 	struct delayed_work	cp_conn_w;
 	struct delayed_work     cp_hb_w;
 	struct work_struct	cp_down_w;
+	struct delayed_work	cp_down_wait_w;
 	struct mutex		cp_cm_lock;	/* protect cp_state & cm */
 	wait_queue_head_t	cp_waitq;
 
@@ -751,6 +755,10 @@ struct rds_transport {
 	bool (*conn_has_alt_conn)(struct rds_connection *conn);
 	void (*conn_path_reset)(struct rds_conn_path *cp, unsigned flags);
 	int (*conn_path_connect)(struct rds_conn_path *cp);
+	void (*conn_path_shutdown_prepare)(struct rds_conn_path *cp);
+	unsigned long (*conn_path_shutdown_check_wait)(struct rds_conn_path *cp);
+	void (*conn_path_shutdown_tidy_up)(struct rds_conn_path *cp);
+	void (*conn_path_shutdown_final)(struct rds_conn_path *cp);
 	void (*conn_path_shutdown)(struct rds_conn_path *cp);
 	void (*xmit_path_prepare)(struct rds_conn_path *cp);
 	void (*xmit_path_complete)(struct rds_conn_path *cp);
@@ -1070,7 +1078,7 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 				     struct in6_addr *faddr,
 				     struct rds_transport *trans, u8 tos,
 				     int dev_if);
-void rds_conn_shutdown(struct rds_conn_path *cp);
+void rds_conn_init_shutdown(struct rds_conn_path *cp);
 void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn, int reason, int err);
