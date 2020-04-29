@@ -1680,17 +1680,18 @@ static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
 		switch (bit) {
 		case NPC_DMAC:
 			seq_printf(s, "%pM ", rule->packet.dmac);
-			seq_printf(s, "%pM\n", rule->mask.dmac);
+			seq_printf(s, "mask %pM\n", rule->mask.dmac);
 			break;
 		case NPC_SMAC:
 			seq_printf(s, "%pM ", rule->packet.smac);
-			seq_printf(s, "%pM\n", rule->mask.smac);
+			seq_printf(s, "mask %pM\n", rule->mask.smac);
 			break;
 		case NPC_ETYPE:
 			seq_printf(s, "0x%x ", ntohs(rule->packet.etype));
-			seq_printf(s, "0x%x\n", ntohs(rule->mask.etype));
+			seq_printf(s, "mask 0x%x\n", ntohs(rule->mask.etype));
 			break;
 		case NPC_OUTER_VID:
+		case NPC_FDSA_VAL:
 			seq_printf(s, "%d ", ntohs(rule->packet.vlan_tci));
 			seq_printf(s, "mask 0x%x\n",
 				   ntohs(rule->mask.vlan_tci));
@@ -1701,19 +1702,19 @@ static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
 			break;
 		case NPC_SIP_IPV4:
 			seq_printf(s, "%pI4 ", &rule->packet.ip4src);
-			seq_printf(s, "%pI4\n", &rule->mask.ip4src);
+			seq_printf(s, "mask %pI4\n", &rule->mask.ip4src);
 			break;
 		case NPC_DIP_IPV4:
 			seq_printf(s, "%pI4 ", &rule->packet.ip4dst);
-			seq_printf(s, "%pI4\n", &rule->mask.ip4dst);
+			seq_printf(s, "mask %pI4\n", &rule->mask.ip4dst);
 			break;
 		case NPC_SIP_IPV6:
 			seq_printf(s, "%pI6 ", rule->packet.ip6src);
-			seq_printf(s, "%pI6\n", rule->mask.ip6src);
+			seq_printf(s, "mask %pI6\n", rule->mask.ip6src);
 			break;
 		case NPC_DIP_IPV6:
 			seq_printf(s, "%pI6 ", rule->packet.ip6dst);
-			seq_printf(s, "%pI6\n", rule->mask.ip6dst);
+			seq_printf(s, "mask %pI6\n", rule->mask.ip6dst);
 			break;
 		case NPC_SPORT_TCP:
 		case NPC_SPORT_UDP:
@@ -1798,7 +1799,7 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 	mutex_lock(&mcam->lock);
 	list_for_each_entry(iter, &mcam->mcam_rules, list) {
 		pf = (iter->owner >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
-		seq_printf(s, "\n\tPF%d ", pf);
+		seq_printf(s, "\n\tInstalled by: PF%d ", pf);
 
 		if (iter->owner & RVU_PFVF_FUNC_MASK) {
 			vf = (iter->owner & RVU_PFVF_FUNC_MASK) - 1;
@@ -1806,23 +1807,23 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 		}
 		seq_puts(s, "\n");
 
+		seq_printf(s, "\tdirection: %s\n", (iter->intf == NIX_INTF_RX) ?
+						    "RX" : "TX");
+		seq_printf(s, "\tmcam entry: %d\n", iter->entry);
+
+		rvu_dbg_npc_mcam_show_flows(s, iter);
 		if (iter->intf == NIX_INTF_RX) {
-			seq_puts(s, "\tdirection: RX\n");
 			target = iter->rx_action.pf_func;
 			pf = (target >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
-			seq_printf(s, "\ttarget: PF%d ", pf);
+			seq_printf(s, "\tForward to: PF%d ", pf);
 
 			if (target & RVU_PFVF_FUNC_MASK) {
 				vf = (target & RVU_PFVF_FUNC_MASK) - 1;
 				seq_printf(s, "VF%d", vf);
 			}
 			seq_puts(s, "\n");
-		} else {
-			seq_puts(s, "\tdirection: TX\n");
 		}
 
-		seq_printf(s, "\tmcam entry: %d\n", iter->entry);
-		rvu_dbg_npc_mcam_show_flows(s, iter);
 		rvu_dbg_npc_mcam_show_action(s, iter);
 		seq_printf(s, "\tenabled: %s\n", iter->enable ? "yes" : "no");
 

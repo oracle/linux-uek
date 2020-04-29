@@ -1221,6 +1221,10 @@ int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 	rvu_write64(rvu, blkaddr,
 		    NIX_AF_LFX_RX_VTAG_TYPEX(nixlf, NIX_AF_LFX_RX_VTAG_TYPE7),
 		    VTAGSIZE_T4 | BIT_ULL(4));
+	/* Configure RX VTAG Type 6 (strip) for fdsa */
+	rvu_write64(rvu, blkaddr,
+		    NIX_AF_LFX_RX_VTAG_TYPEX(nixlf, NIX_AF_LFX_RX_VTAG_TYPE6),
+		    VTAGSIZE_T4 | BIT_ULL(4) | BIT_ULL(5));
 
 	goto exit;
 
@@ -2239,8 +2243,8 @@ static int nix_rx_vtag_cfg(struct rvu *rvu, int nixlf, int blkaddr,
 	    req->vtag_size > VTAGSIZE_T8)
 		return -EINVAL;
 
-	/* RX VTAG Type 7 reserved for vf vlan */
-	if (req->rx.vtag_type == NIX_AF_LFX_RX_VTAG_TYPE7)
+	/* RX VTAG Type 7,6 are reserved for vf vlan& FDSA tag strip */
+	if (req->rx.vtag_type >= NIX_AF_LFX_RX_VTAG_TYPE6)
 		return NIX_AF_ERR_RX_VTAG_INUSE;
 
 	if (req->rx.capture_vtag)
