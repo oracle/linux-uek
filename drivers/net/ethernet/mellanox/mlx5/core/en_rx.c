@@ -44,12 +44,29 @@
 #include "en_rep.h"
 #include "en/rep/tc.h"
 #include "ipoib/ipoib.h"
+#include "accel/ipsec.h"
+#include "fpga/ipsec.h"
 #include "en_accel/ipsec_rxtx.h"
 #include "en_accel/tls_rxtx.h"
 #include "lib/clock.h"
 #include "en/xdp.h"
 #include "en/xsk/rx.h"
 #include "en/health.h"
+#include "en/params.h"
+
+static struct sk_buff *
+mlx5e_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi,
+				u16 cqe_bcnt, u32 head_offset, u32 page_idx);
+static struct sk_buff *
+mlx5e_skb_from_cqe_mpwrq_nonlinear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi,
+				   u16 cqe_bcnt, u32 head_offset, u32 page_idx);
+static void mlx5e_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe);
+static void mlx5e_handle_rx_cqe_mpwrq(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe);
+
+const struct mlx5e_rx_handlers mlx5e_rx_handlers_nic = {
+	.handle_rx_cqe       = mlx5e_handle_rx_cqe,
+	.handle_rx_cqe_mpwqe = mlx5e_handle_rx_cqe_mpwrq,
+};
 
 static inline bool mlx5e_rx_hw_stamp(struct hwtstamp_config *config)
 {
@@ -368,7 +385,7 @@ static inline void mlx5e_free_rx_wqe(struct mlx5e_rq *rq,
 		mlx5e_put_rx_frag(rq, wi, recycle);
 }
 
-void mlx5e_dealloc_rx_wqe(struct mlx5e_rq *rq, u16 ix)
+static void mlx5e_dealloc_rx_wqe(struct mlx5e_rq *rq, u16 ix)
 {
 	struct mlx5e_wqe_frag_info *wi = get_frag(rq, ix);
 
@@ -528,7 +545,7 @@ err:
 	return err;
 }
 
-void mlx5e_dealloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
+static void mlx5e_dealloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
 {
 	struct mlx5e_mpw_info *wi = &rq->mpwqe.info[ix];
 	/* Don't recycle, this function is called on rq/netdev close */
@@ -1086,7 +1103,7 @@ struct sk_buff *mlx5e_build_linear_skb(struct mlx5e_rq *rq, void *va,
 	return skb;
 }
 
-struct sk_buff *
+static struct sk_buff *
 mlx5e_skb_from_cqe_linear(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe,
 			  struct mlx5e_wqe_frag_info *wi, u32 cqe_bcnt)
 {
@@ -1122,7 +1139,7 @@ mlx5e_skb_from_cqe_linear(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe,
 	return skb;
 }
 
-struct sk_buff *
+static struct sk_buff *
 mlx5e_skb_from_cqe_nonlinear(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe,
 			     struct mlx5e_wqe_frag_info *wi, u32 cqe_bcnt)
 {
@@ -1177,7 +1194,7 @@ static void trigger_report(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 	}
 }
 
-void mlx5e_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
+static void mlx5e_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 {
 	struct mlx5_wq_cyc *wq = &rq->wqe.wq;
 	struct mlx5e_wqe_frag_info *wi;
@@ -1220,7 +1237,7 @@ wq_cyc_pop:
 }
 
 #ifdef CONFIG_MLX5_ESWITCH
-void mlx5e_handle_rx_cqe_rep(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
+static void mlx5e_handle_rx_cqe_rep(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 {
 	struct net_device *netdev = rq->netdev;
 	struct mlx5e_priv *priv = netdev_priv(netdev);
@@ -1272,8 +1289,7 @@ wq_cyc_pop:
 	mlx5_wq_cyc_pop(wq);
 }
 
-void mlx5e_handle_rx_cqe_mpwrq_rep(struct mlx5e_rq *rq,
-				   struct mlx5_cqe64 *cqe)
+static void mlx5e_handle_rx_cqe_mpwrq_rep(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 {
 	u16 cstrides       = mpwrq_get_cqe_consumed_strides(cqe);
 	u16 wqe_id         = be16_to_cpu(cqe->wqe_id);
@@ -1331,9 +1347,14 @@ mpwrq_cqe_out:
 	mlx5e_free_rx_mpwqe(rq, wi, true);
 	mlx5_wq_ll_pop(wq, cqe->wqe_id, &wqe->next.next_wqe_index);
 }
+
+const struct mlx5e_rx_handlers mlx5e_rx_handlers_rep = {
+	.handle_rx_cqe       = mlx5e_handle_rx_cqe_rep,
+	.handle_rx_cqe_mpwqe = mlx5e_handle_rx_cqe_mpwrq_rep,
+};
 #endif
 
-struct sk_buff *
+static struct sk_buff *
 mlx5e_skb_from_cqe_mpwrq_nonlinear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi,
 				   u16 cqe_bcnt, u32 head_offset, u32 page_idx)
 {
@@ -1379,7 +1400,7 @@ mlx5e_skb_from_cqe_mpwrq_nonlinear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *w
 	return skb;
 }
 
-struct sk_buff *
+static struct sk_buff *
 mlx5e_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi,
 				u16 cqe_bcnt, u32 head_offset, u32 page_idx)
 {
@@ -1425,7 +1446,7 @@ mlx5e_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi,
 	return skb;
 }
 
-void mlx5e_handle_rx_cqe_mpwrq(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
+static void mlx5e_handle_rx_cqe_mpwrq(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 {
 	u16 cstrides       = mpwrq_get_cqe_consumed_strides(cqe);
 	u16 wqe_id         = be16_to_cpu(cqe->wqe_id);
@@ -1618,7 +1639,7 @@ static inline void mlx5i_complete_rx_cqe(struct mlx5e_rq *rq,
 	stats->bytes += cqe_bcnt;
 }
 
-void mlx5i_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
+static void mlx5i_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 {
 	struct mlx5_wq_cyc *wq = &rq->wqe.wq;
 	struct mlx5e_wqe_frag_info *wi;
@@ -1654,11 +1675,15 @@ wq_free_wqe:
 	mlx5_wq_cyc_pop(wq);
 }
 
+const struct mlx5e_rx_handlers mlx5i_rx_handlers = {
+	.handle_rx_cqe       = mlx5i_handle_rx_cqe,
+	.handle_rx_cqe_mpwqe = NULL, /* Not supported */
+};
 #endif /* CONFIG_MLX5_CORE_IPOIB */
 
 #ifdef CONFIG_MLX5_EN_IPSEC
 
-void mlx5e_ipsec_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
+static void mlx5e_ipsec_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 {
 	struct mlx5_wq_cyc *wq = &rq->wqe.wq;
 	struct mlx5e_wqe_frag_info *wi;
@@ -1695,3 +1720,55 @@ wq_free_wqe:
 }
 
 #endif /* CONFIG_MLX5_EN_IPSEC */
+
+int mlx5e_rq_set_handlers(struct mlx5e_rq *rq, struct mlx5e_params *params, bool xsk)
+{
+	struct mlx5_core_dev *mdev = rq->mdev;
+	struct mlx5e_channel *c = rq->channel;
+
+	switch (rq->wq_type) {
+	case MLX5_WQ_TYPE_LINKED_LIST_STRIDING_RQ:
+		rq->mpwqe.skb_from_cqe_mpwrq = xsk ?
+			mlx5e_xsk_skb_from_cqe_mpwrq_linear :
+			mlx5e_rx_mpwqe_is_linear_skb(mdev, params, NULL) ?
+				mlx5e_skb_from_cqe_mpwrq_linear :
+				mlx5e_skb_from_cqe_mpwrq_nonlinear;
+		rq->post_wqes = mlx5e_post_rx_mpwqes;
+		rq->dealloc_wqe = mlx5e_dealloc_rx_mpwqe;
+
+		rq->handle_rx_cqe = c->priv->profile->rx_handlers->handle_rx_cqe_mpwqe;
+#ifdef CONFIG_MLX5_EN_IPSEC
+		if (MLX5_IPSEC_DEV(mdev)) {
+			netdev_err(c->netdev, "MPWQE RQ with IPSec offload not supported\n");
+			return -EINVAL;
+		}
+#endif
+		if (!rq->handle_rx_cqe) {
+			netdev_err(c->netdev, "RX handler of MPWQE RQ is not set\n");
+			return -EINVAL;
+		}
+		break;
+	default: /* MLX5_WQ_TYPE_CYCLIC */
+		rq->wqe.skb_from_cqe = xsk ?
+			mlx5e_xsk_skb_from_cqe_linear :
+			mlx5e_rx_is_linear_skb(params, NULL) ?
+				mlx5e_skb_from_cqe_linear :
+				mlx5e_skb_from_cqe_nonlinear;
+		rq->post_wqes = mlx5e_post_rx_wqes;
+		rq->dealloc_wqe = mlx5e_dealloc_rx_wqe;
+
+#ifdef CONFIG_MLX5_EN_IPSEC
+		if ((mlx5_fpga_ipsec_device_caps(mdev) & MLX5_ACCEL_IPSEC_CAP_DEVICE) &&
+		    c->priv->ipsec)
+			rq->handle_rx_cqe = mlx5e_ipsec_handle_rx_cqe;
+		else
+#endif
+			rq->handle_rx_cqe = c->priv->profile->rx_handlers->handle_rx_cqe;
+		if (!rq->handle_rx_cqe) {
+			netdev_err(c->netdev, "RX handler of RQ is not set\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
