@@ -179,7 +179,6 @@ static int mlx5e_rx_reporter_build_diagnose_output(struct mlx5e_rq *rq,
 						   struct devlink_fmsg *fmsg)
 {
 	struct mlx5e_priv *priv = rq->channel->priv;
-	struct mlx5e_params *params;
 	struct mlx5e_icosq *icosq;
 	u8 icosq_hw_state;
 	int wqes_sz;
@@ -187,7 +186,6 @@ static int mlx5e_rx_reporter_build_diagnose_output(struct mlx5e_rq *rq,
 	u16 wq_head;
 	int err;
 
-	params = &priv->channels.params;
 	icosq = &rq->channel->icosq;
 	err = mlx5e_query_rq_state(priv->mdev, rq->rqn, &hw_state);
 	if (err)
@@ -198,8 +196,7 @@ static int mlx5e_rx_reporter_build_diagnose_output(struct mlx5e_rq *rq,
 		return err;
 
 	wqes_sz = mlx5e_rqwq_get_cur_sz(rq);
-	wq_head = params->rq_wq_type == MLX5_WQ_TYPE_LINKED_LIST_STRIDING_RQ ?
-		  rq->mpwqe.wq.head : mlx5_wq_cyc_get_head(&rq->wqe.wq);
+	wq_head = mlx5e_rqwq_get_head(rq);
 
 	err = devlink_fmsg_obj_nest_start(fmsg);
 	if (err)
