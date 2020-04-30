@@ -713,6 +713,30 @@ unlock:
 }
 EXPORT_SYMBOL(mlx5_lag_get_roce_netdev);
 
+u8 mlx5_lag_get_slave_port(struct mlx5_core_dev *dev,
+			   struct net_device *slave)
+{
+	struct mlx5_lag *ldev;
+	u8 port = 0;
+
+	spin_lock(&lag_lock);
+	ldev = mlx5_lag_dev_get(dev);
+	if (!(ldev && __mlx5_lag_is_roce(ldev)))
+		goto unlock;
+
+	if (ldev->pf[MLX5_LAG_P1].netdev == slave)
+		port = MLX5_LAG_P1;
+	else
+		port = MLX5_LAG_P2;
+
+	port = ldev->v2p_map[port];
+
+unlock:
+	spin_unlock(&lag_lock);
+	return port;
+}
+EXPORT_SYMBOL(mlx5_lag_get_slave_port);
+
 int mlx5_lag_query_cong_counters(struct mlx5_core_dev *dev,
 				 u64 *values,
 				 int num_counters,
