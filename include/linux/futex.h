@@ -34,26 +34,23 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 
 union futex_key {
 	struct {
-		u64 i_seq;
 		unsigned long pgoff;
-		unsigned int offset;
+		struct inode *inode;
+		int offset;
 	} shared;
 	struct {
-		union {
-			struct mm_struct *mm;
-			u64 __tmp;
-		};
 		unsigned long address;
-		unsigned int offset;
+		struct mm_struct *mm;
+		int offset;
 	} private;
 	struct {
-		u64 ptr;
 		unsigned long word;
-		unsigned int offset;
+		void *ptr;
+		int offset;
 	} both;
 };
 
-#define FUTEX_KEY_INIT (union futex_key) { .both = { .ptr = 0ULL } }
+#define FUTEX_KEY_INIT (union futex_key) { .both = { .ptr = NULL } }
 
 #ifdef CONFIG_FUTEX
 enum {
