@@ -2356,8 +2356,8 @@ void warn_alloc_failed(gfp_t gfp_mask, int order, const char *fmt, ...)
 
 static inline int
 should_alloc_retry(gfp_t gfp_mask, unsigned int order,
-				unsigned long did_some_progress,
-				unsigned long pages_reclaimed)
+			unsigned long did_some_progress,
+			unsigned long pages_reclaimed, int *alloc_retries)
 {
 	/* Do not loop if specifically requested */
 	if (gfp_mask & __GFP_NORETRY)
@@ -2391,6 +2391,17 @@ should_alloc_retry(gfp_t gfp_mask, unsigned int order,
 	 * allocation still fails, we stop retrying.
 	 */
 	if (gfp_mask & __GFP_REPEAT && pages_reclaimed < (1 << order))
+		return 1;
+
+	/*
+	 * We know __GFP_NORETRY is not set, so we are allowed to retry.
+	 * As long as we are making progress, retry at least order times
+	 * before giving up.
+	 * NOTE - alloc_retries only comes into play in this 'last chance'
+	 * retry scenario.
+	 */
+	(*alloc_retries)++;
+	if (did_some_progress && *alloc_retries <= order)
 		return 1;
 
 	return 0;
@@ -2686,6 +2697,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	enum migrate_mode migration_mode = MIGRATE_ASYNC;
 	bool deferred_compaction = false;
 	int contended_compaction = COMPACT_CONTENDED_NONE;
+	int alloc_retries = 0;
 
 	/*
 	 * In the slowpath, we sanity check order to avoid ever trying to
@@ -2821,7 +2833,7 @@ retry:
 	/* Check if we should retry the allocation */
 	pages_reclaimed += did_some_progress;
 	if (should_alloc_retry(gfp_mask, order, did_some_progress,
-						pages_reclaimed)) {
+					pages_reclaimed, &alloc_retries)) {
 		/*
 		 * If we fail to make progress by freeing individual
 		 * pages, but the allocation wants us to keep going,
