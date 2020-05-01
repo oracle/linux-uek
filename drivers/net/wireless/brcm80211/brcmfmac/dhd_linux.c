@@ -303,7 +303,8 @@ void brcmf_rx_frame(struct device *dev, u8 ifidx,
 		skb_pull(skb, ETH_HLEN);
 
 		/* Process special event packets and then discard them */
-		brcmf_fweh_process_skb(drvr, skb, &ifidx);
+		brcmf_fweh_process_skb(drvr, skb, &ifidx
+					BCMILCP_SUBTYPE_VENDOR_LONG);
 
 		if (drvr->iflist[ifidx]) {
 			ifp = drvr->iflist[ifidx];

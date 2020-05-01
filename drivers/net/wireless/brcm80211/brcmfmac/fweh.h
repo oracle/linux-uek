@@ -121,6 +121,7 @@ enum brcmf_fweh_event_code {
 #define BRCM_OUI			"\x00\x10\x18"
 #define DOT11_OUI_LEN			3
 #define BCMILCP_BCM_SUBTYPE_EVENT	1
+#define BCMILCP_SUBTYPE_VENDOR_LONG	32769
 
 
 /**
@@ -186,18 +187,26 @@ void brcmf_fweh_process_event(struct brcmf_pub *drvr,
 			      struct brcmf_event *event_packet, u8 *ifidx);
 
 static inline void brcmf_fweh_process_skb(struct brcmf_pub *drvr,
-					  struct sk_buff *skb, u8 *ifidx)
+					  struct sk_buff *skb, u8 *ifidx, u16 stype)
 {
 	struct brcmf_event *event_packet;
 	u8 *data;
-	u16 usr_stype;
+	u16 subtype, usr_stype;
 
 	/* only process events when protocol matches */
 	if (skb->protocol != cpu_to_be16(ETH_P_LINK_CTL))
 		return;
 
-	/* check for BRCM oui match */
 	event_packet = (struct brcmf_event *)skb_mac_header(skb);
+
+	/* check subtype if needed */
+	if (unlikely(stype)) {
+		subtype = get_unaligned_be16(&event_packet->hdr.subtype);
+		if (subtype != stype)
+			return;
+	}
+
+	/* check for BRCM oui match */
 	data = (u8 *)event_packet;
 	data += BRCMF_EVENT_OUI_OFFSET;
 	if (memcmp(BRCM_OUI, data, DOT11_OUI_LEN))
