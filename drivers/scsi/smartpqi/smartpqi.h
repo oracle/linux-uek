@@ -1180,9 +1180,9 @@ struct pqi_ctrl_info {
 	spinlock_t	raid_bypass_retry_list_lock;
 	struct work_struct raid_bypass_retry_work;
 
-	struct pqi_ofa_memory *pqi_ofa_mem_virt_addr;
-	dma_addr_t	pqi_ofa_mem_dma_handle;
-	void		**pqi_ofa_chunk_virt_addr;
+	struct          pqi_ofa_memory *pqi_ofa_mem_virt_addr;
+	dma_addr_t      pqi_ofa_mem_dma_handle;
+	void            **pqi_ofa_chunk_virt_addr;
 	atomic_t	sync_cmds_outstanding;
 };
 
