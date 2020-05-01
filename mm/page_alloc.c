@@ -2124,6 +2124,7 @@ get_page_from_freelist(gfp_t gfp_mask, unsigned int order, int alloc_flags,
 				(gfp_mask & __GFP_WRITE);
 	int nr_fair_skipped = 0;
 	bool zonelist_rescan;
+	bool skip_reclaim = zone_reclaim_mode == 0;
 
 zonelist_scan:
 	zonelist_rescan = false;
@@ -2208,7 +2209,7 @@ zonelist_scan:
 				did_zlc_setup = 1;
 			}
 
-			if (zone_reclaim_mode == 0 ||
+			if (skip_reclaim ||
 			    !zone_allows_reclaim(ac->preferred_zone, zone))
 				goto this_zone_full;
 
@@ -2285,6 +2286,17 @@ this_zone_full:
 	if (unlikely(IS_ENABLED(CONFIG_NUMA) && zlc_active)) {
 		/* Disable zlc cache for second zonelist scan */
 		zlc_active = 0;
+		zonelist_rescan = true;
+	}
+
+	if (unlikely((alloc_flags & ALLOC_LAST_CHANCE) &&
+				!zonelist_rescan && skip_reclaim)) {
+		/*
+		 * We have already performed a scan or two in the case
+		 * of NUMA/zlc without success.  If previous scans skipped
+		 * reclaim, scan one more time with reclaim before failing.
+		 */
+		skip_reclaim = false;
 		zonelist_rescan = true;
 	}
 
@@ -2691,7 +2703,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 {
 	const gfp_t wait = gfp_mask & __GFP_WAIT;
 	struct page *page = NULL;
-	int alloc_flags;
+	int alloc_flags = 0;
 	unsigned long pages_reclaimed = 0;
 	unsigned long did_some_progress;
 	enum migrate_mode migration_mode = MIGRATE_ASYNC;
@@ -2710,16 +2722,16 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 		return NULL;
 	}
 
-retry:
-	if (!(gfp_mask & __GFP_NO_KSWAPD))
-		wake_all_kswapds(order, ac);
-
 	/*
-	 * OK, we're below the kswapd watermark and have kicked background
-	 * reclaim. Now things get more complex, so set up alloc_flags according
+	 * Things are getting more complex, so set up alloc_flags according
 	 * to how we want to proceed.
 	 */
 	alloc_flags = gfp_to_alloc_flags(gfp_mask);
+
+retry:
+	/* We're below the kswapd watermark so kick background reclaim.  */
+	if (!(gfp_mask & __GFP_NO_KSWAPD))
+		wake_all_kswapds(order, ac);
 
 	/*
 	 * Find the true preferred zone if the allocation is unconstrained by
@@ -2829,6 +2841,9 @@ retry:
 							&did_some_progress);
 	if (page)
 		goto got_pg;
+
+	/* Make last chance efforts before failing or on retry */
+	alloc_flags |= ALLOC_LAST_CHANCE;
 
 	/* Check if we should retry the allocation */
 	pages_reclaimed += did_some_progress;
