@@ -684,6 +684,7 @@ struct kvm_vcpu_arch {
 
 	unsigned long cr3_lm_rsvd_bits;
 	int maxphyaddr;
+	int tdp_level;
 
 	/* emulate context */
 
