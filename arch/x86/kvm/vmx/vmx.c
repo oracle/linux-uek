@@ -2213,6 +2213,8 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 
 static void vmx_cache_reg(struct kvm_vcpu *vcpu, enum kvm_reg reg)
 {
+	unsigned long guest_owned_bits;
+
 	kvm_register_mark_available(vcpu, reg);
 
 	switch (reg) {
@@ -2229,6 +2231,12 @@ static void vmx_cache_reg(struct kvm_vcpu *vcpu, enum kvm_reg reg)
 	case VCPU_EXREG_CR3:
 		if (enable_unrestricted_guest || (enable_ept && is_paging(vcpu)))
 			vcpu->arch.cr3 = vmcs_readl(GUEST_CR3);
+		break;
+	case VCPU_EXREG_CR4:
+		guest_owned_bits = vcpu->arch.cr4_guest_owned_bits;
+
+		vcpu->arch.cr4 &= ~guest_owned_bits;
+		vcpu->arch.cr4 |= vmcs_readl(GUEST_CR4) & guest_owned_bits;
 		break;
 	default:
 		WARN_ON_ONCE(1);
@@ -2969,14 +2977,6 @@ static void vmx_decache_cr0_guest_bits(struct kvm_vcpu *vcpu)
 	vcpu->arch.cr0 |= vmcs_readl(GUEST_CR0) & cr0_guest_owned_bits;
 }
 
-static void vmx_decache_cr4_guest_bits(struct kvm_vcpu *vcpu)
-{
-	ulong cr4_guest_owned_bits = vcpu->arch.cr4_guest_owned_bits;
-
-	vcpu->arch.cr4 &= ~cr4_guest_owned_bits;
-	vcpu->arch.cr4 |= vmcs_readl(GUEST_CR4) & cr4_guest_owned_bits;
-}
-
 static void ept_load_pdptrs(struct kvm_vcpu *vcpu)
 {
 	struct kvm_mmu *mmu = vcpu->arch.walk_mmu;
@@ -3174,6 +3174,7 @@ int vmx_set_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
 		return 1;
 
 	vcpu->arch.cr4 = cr4;
+	kvm_register_mark_available(vcpu, VCPU_EXREG_CR4);
 
 	if (!enable_unrestricted_guest) {
 		if (enable_ept) {
@@ -7844,7 +7845,6 @@ static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.get_cpl = vmx_get_cpl,
 	.get_cs_db_l_bits = vmx_get_cs_db_l_bits,
 	.decache_cr0_guest_bits = vmx_decache_cr0_guest_bits,
-	.decache_cr4_guest_bits = vmx_decache_cr4_guest_bits,
 	.set_cr0 = vmx_set_cr0,
 	.set_cr4 = vmx_set_cr4,
 	.set_efer = vmx_set_efer,
