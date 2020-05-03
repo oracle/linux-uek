@@ -57,11 +57,19 @@ obj-$(CONFIG_EDAC_MPC85XX)		+= mpc85xx_edac_mod.o
 layerscape_edac_mod-y			:= fsl_ddr_edac.o layerscape_edac.o
 obj-$(CONFIG_EDAC_LAYERSCAPE)		+= layerscape_edac_mod.o
 
+ifeq ($(CONFIG_EDAC_SKX)$(CONFIG_EDAC_I10NM),yy)
+skx_edac-y				:= skx_base.o
+obj-$(CONFIG_EDAC_SKX)			+= skx_edac.o skx_common.o
+
+i10nm_edac-y				:= i10nm_base.o
+obj-$(CONFIG_EDAC_I10NM)		+= i10nm_edac.o skx_common.o
+else
 skx_edac-y				:= skx_common.o skx_base.o
 obj-$(CONFIG_EDAC_SKX)			+= skx_edac.o
 
 i10nm_edac-y				:= skx_common.o i10nm_base.o
 obj-$(CONFIG_EDAC_I10NM)		+= i10nm_edac.o
+endif
 
 obj-$(CONFIG_EDAC_MV64X60)		+= mv64x60_edac.o
 obj-$(CONFIG_EDAC_CELL)			+= cell_edac.o
