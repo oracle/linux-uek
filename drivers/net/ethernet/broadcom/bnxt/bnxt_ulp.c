@@ -481,6 +481,8 @@ struct bnxt_en_dev *bnxt_ulp_probe(struct net_device *dev)
 		edev->en_ops = &bnxt_en_ops_tbl;
 		edev->net = dev;
 		edev->pdev = bp->pdev;
+		edev->l2_db_size = bp->db_size;
+		edev->l2_db_size_nc = bp->db_size;
 		bp->edev = edev;
 	}
 	edev->flags &= ~BNXT_EN_FLAG_ROCE_CAP;
