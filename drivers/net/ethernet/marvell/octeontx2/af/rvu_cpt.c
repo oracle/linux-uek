@@ -457,7 +457,7 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	int blkaddr, num_lfs, offs, lf;
 	struct rvu_block *block;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, req->hdr.pcifunc);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
 	if (blkaddr < 0)
 		return blkaddr;
 
