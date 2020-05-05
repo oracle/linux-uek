@@ -348,9 +348,6 @@ config CS4318_PHY
 
 config DAVICOM_PHY
 	tristate "Davicom PHYs"
-
-config ICPLUS_PHY
-	tristate "Drivers for ICPlus PHYs"
 	---help---
 	  Currently supports dm9161e and dm9131
 
