@@ -888,6 +888,20 @@ static inline struct sock *rds_rs_to_sk(struct rds_sock *rs)
 	return &rs->rs_sk;
 }
 
+/* Used by tracepoints to retrieve cgroup info */
+static inline struct cgroup *rds_rs_to_cgroup(struct rds_sock *rs)
+{
+	struct cgroup *cgrp = NULL;
+	struct sock *sk;
+
+	if (rs) {
+		sk = rds_rs_to_sk(rs);
+		if (sk)
+			cgrp = sock_cgroup_ptr(&sk->sk_cgrp_data);
+	}
+	return cgrp;
+}
+
 /*
  * The stack assigns sk_sndbuf and sk_rcvbuf to twice the specified value
  * to account for overhead.  We don't account for overhead, we just apply
