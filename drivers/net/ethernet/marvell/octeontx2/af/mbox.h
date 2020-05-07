@@ -1305,7 +1305,7 @@ struct npc_get_kex_cfg_rsp {
 	struct mbox_msghdr hdr;
 	u64 rx_keyx_cfg;   /* NPC_AF_INTF(0)_KEX_CFG */
 	u64 tx_keyx_cfg;   /* NPC_AF_INTF(1)_KEX_CFG */
-#define NPC_MAX_INTF	4
+#define NPC_MAX_INTF	2
 #define NPC_MAX_LID	8
 #define NPC_MAX_LT	16
 #define NPC_MAX_LD	2
