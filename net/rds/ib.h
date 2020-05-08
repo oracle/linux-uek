@@ -59,6 +59,7 @@
 
 #define	RDS_IB_CLEAN_CACHE	1
 #define	RDS_IB_CQ_ERR		2
+#define	RDS_IB_NEED_SHUTDOWN	4
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
 
