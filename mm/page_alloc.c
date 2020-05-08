@@ -67,6 +67,34 @@
 #include <asm/div64.h>
 #include "internal.h"
 
+#ifdef CONFIG_DEBUG_FS
+/* Last chance counter aviable via debugfs */
+struct last_chance_stat {
+	unsigned long flag_set;
+	unsigned long retry_exercised;
+	unsigned long reclaim_exercised;
+};
+
+static DEFINE_PER_CPU(struct last_chance_stat, last_chance_stats[MAX_ORDER]);
+
+static inline void last_chance_flag_set(int order)
+{
+	this_cpu_inc(last_chance_stats[order].flag_set);
+}
+static inline void last_chance_retry_exercised(int order)
+{
+	this_cpu_inc(last_chance_stats[order].retry_exercised);
+}
+static inline void last_chance_reclaim_exercised(int order)
+{
+	this_cpu_inc(last_chance_stats[order].reclaim_exercised);
+}
+#else
+static inline void last_chance_flag_set(int order) {}
+static inline void last_chance_retry_exercised(int order) {}
+static inline void last_chance_reclaim_exercised(int order) {}
+#endif
+
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
 static DEFINE_MUTEX(pcp_batch_high_lock);
 #define MIN_PERCPU_PAGELIST_FRACTION	(8)
@@ -2298,6 +2326,7 @@ this_zone_full:
 		 */
 		skip_reclaim = false;
 		zonelist_rescan = true;
+		last_chance_reclaim_exercised(order);
 	}
 
 	if (zonelist_rescan)
@@ -2413,8 +2442,10 @@ should_alloc_retry(gfp_t gfp_mask, unsigned int order,
 	 * retry scenario.
 	 */
 	(*alloc_retries)++;
-	if (did_some_progress && *alloc_retries <= order)
+	if (did_some_progress && *alloc_retries <= order) {
+		last_chance_retry_exercised(order);
 		return 1;
+	}
 
 	return 0;
 }
@@ -2843,7 +2874,10 @@ retry:
 		goto got_pg;
 
 	/* Make last chance efforts before failing or on retry */
-	alloc_flags |= ALLOC_LAST_CHANCE;
+	if (!(alloc_flags & ALLOC_LAST_CHANCE)) {
+		alloc_flags |= ALLOC_LAST_CHANCE;
+		last_chance_flag_set(order);
+	}
 
 	/* Check if we should retry the allocation */
 	pages_reclaimed += did_some_progress;
@@ -6766,4 +6800,97 @@ bool is_free_buddy_page(struct page *page)
 
 	return order < MAX_ORDER;
 }
+#endif
+
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+/* Last chance debugfs support */
+static int last_chance_stats_show(struct seq_file *m, void *v)
+{
+	int i, cpu;
+	struct last_chance_stat total_stats[MAX_ORDER];
+
+	memset(total_stats, 0, sizeof(total_stats));
+
+	for_each_possible_cpu(cpu) {
+		for (i = 0; i < MAX_ORDER; i++) {
+			total_stats[i].flag_set +=
+				per_cpu(last_chance_stats[i].flag_set, cpu);
+			total_stats[i].retry_exercised +=
+				per_cpu(last_chance_stats[i].retry_exercised,
+				cpu);
+			total_stats[i].reclaim_exercised +=
+				per_cpu(last_chance_stats[i].reclaim_exercised,
+					cpu);
+		}
+	}
+
+	seq_printf(m,	"flag_set:         ");
+	for (i = 0; i < MAX_ORDER; i++)
+		seq_printf(m,   " %8lu", total_stats[i].flag_set);
+	seq_printf(m,   "\n");
+	seq_printf(m,   "retry_exercised:  ");
+	for (i = 0; i < MAX_ORDER; i++)
+		seq_printf(m,   " %8lu", total_stats[i].retry_exercised);
+	seq_printf(m,   "\n");
+	seq_printf(m,   "reclaim_exercised:");
+	for (i = 0; i < MAX_ORDER; i++)
+		seq_printf(m,   " %8lu", total_stats[i].reclaim_exercised);
+	seq_printf(m,   "\n");
+
+	return 0;
+}
+
+static int last_chance_stats_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, last_chance_stats_show, NULL);
+}
+
+static const struct file_operations last_chance_stats_fops = {
+	.open		= last_chance_stats_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static struct dentry *last_chance_dir;
+int last_chance_create_debugfs(void)
+{
+	struct dentry *last_chance_stats_file;
+
+	last_chance_dir = debugfs_create_dir("alloc_last_chance", NULL);
+	if (!last_chance_dir) {
+		pr_warn("mm: error creating last_chance debugfs entry\n");
+		return -ENOMEM;
+	}
+
+	last_chance_stats_file = debugfs_create_file("stats", 0444,
+				last_chance_dir, NULL, &last_chance_stats_fops);
+	if (IS_ERR(last_chance_stats_file)) {
+		pr_warn("mm: error creating last_chance debugfs entry\n");
+		debugfs_remove_recursive(last_chance_dir);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+static int __init last_chance_init(void)
+{
+	int i, cpu;
+
+	for_each_possible_cpu(cpu) {
+		for (i = 0; i < MAX_ORDER; i++) {
+			this_cpu_write(last_chance_stats[i].flag_set, 0);
+			this_cpu_write(last_chance_stats[i].retry_exercised, 0);
+			this_cpu_write(last_chance_stats[i].reclaim_exercised,
+				0);
+		}
+	}
+
+	last_chance_create_debugfs();
+
+	return 0;
+}
+module_init(last_chance_init);
 #endif
