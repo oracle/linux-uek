@@ -1057,6 +1057,9 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		return ret;
 	}
 
+	ic->i_flags |= RDS_IB_NEED_SHUTDOWN;
+	smp_mb();
+
 	/* In the case of FRWR, mr registration wrs use the
 	 * same work queue as the send wrs. To make sure that we are not
 	 * overflowing the workqueue, we allocate separately for each operation.
@@ -1903,26 +1906,33 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 				       ic->i_alt.responder_resources,
 				       ic->i_alt.initiator_depth);
 
-		if (ret == 0) {
-			ic->i_alt.cm_id = NULL;
-			mutex_unlock(&conn->c_cm_lock);
+		ic->i_alt.cm_id = NULL;
+		mutex_unlock(&conn->c_cm_lock);
 
-			rds_ib_stats_inc(s_ib_yield_success);
-			trace_rds_ib_conn_yield_success(NULL, ic->rds_ibdev,
-							conn, ic, "success", 0);
+		if (ret) {
+			/* Take the long route here,
+			 * since "rds_ib_setup_qp" allocates a number of
+			 * resources that are only released
+			 * in the shutdown-path:
+			 * e.g. "ic->i_send_hdrs", "ic->i_sends",
+			 *      or even "rds_ib_remove_conn".
+			 *
+			 * But we want to reconnect as quickly as possible.
+			 */
 
-			return 0;
-		} else {
 			trace_rds_ib_conn_yield_accept_err(NULL, ic->rds_ibdev,
 							   conn, ic, "accept failed", ret);
-			alt_cm_id = ic->i_alt.cm_id;
-			ic->i_alt.cm_id = NULL;
-			ic->i_cm_id = NULL;
-			ic->i_cm_id_ctx = RDS_IB_NO_CTX;
-			mutex_unlock(&conn->c_cm_lock);
 
-			rds_ib_rdma_destroy_id(alt_cm_id);
+			cp->cp_reconnect_jiffies = 0;
+
+			return ret;
 		}
+
+		rds_ib_stats_inc(s_ib_yield_success);
+		trace_rds_ib_conn_yield_success(NULL, ic->rds_ibdev,
+						conn, ic, "success", 0);
+
+		return 0;
 	} else {
 		alt_cm_id = ic->i_alt.cm_id;
 		if (alt_cm_id) {
@@ -1932,10 +1942,24 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 			ic->i_alt.cm_id = NULL;
 		}
 
+		smp_mb();
+		if (ic->i_flags & RDS_IB_NEED_SHUTDOWN) {
+			/* The shutdown-path hasn't completed yet,
+			 * so we can't make any progress quite yet.
+			 * Try again in a jiff.
+			 */
+			cp->cp_reconnect_jiffies = 1;
+			ret = -EAGAIN;
+		} else
+			ret = 0;
+
 		mutex_unlock(&conn->c_cm_lock);
 
 		if (alt_cm_id)
 			rds_spawn_destroy_cm_id(alt_cm_id);
+
+		if (ret)
+			return ret;
 	}
 
 	/* XXX I wonder what affect the port space has */
@@ -2102,6 +2126,9 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		up_write(&ic->i_cm_id_free_lock);
 
 		rds_spawn_destroy_cm_id(cm_id);
+
+		ic->i_flags &= ~RDS_IB_NEED_SHUTDOWN;
+		smp_mb();
 	}
 
 	BUG_ON(ic->rds_ibdev);
