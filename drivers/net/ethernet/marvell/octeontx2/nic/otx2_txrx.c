@@ -407,7 +407,7 @@ s64 otx2_alloc_buffer(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 {
 	s64 bufptr;
 
-	bufptr = otx2_alloc_rbuf(pfvf, cq->rbpool, GFP_ATOMIC);
+	bufptr = __otx2_alloc_rbuf(pfvf, cq->rbpool);
 	if (unlikely(bufptr <= 0)) {
 		struct refill_work *work;
 		struct delayed_work *dwork;
@@ -436,7 +436,6 @@ void otx2_refill_pool_ptrs(void *dev, struct otx2_cq_queue *cq)
 		otx2_aura_freeptr(pfvf, cq->cq_idx, bufptr + OTX2_HEAD_ROOM);
 		cq->pool_ptrs--;
 	}
-	otx2_get_page(cq->rbpool);
 }
 
 static int otx2_tx_napi_handler(struct otx2_nic *pfvf,
