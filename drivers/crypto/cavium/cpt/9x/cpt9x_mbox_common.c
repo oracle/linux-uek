@@ -91,10 +91,6 @@ char *cpt_get_mbox_opcode_str(int msg_opcode)
 		str = "RD_WR_REGISTER";
 	break;
 
-	case MBOX_MSG_CPT_SET_CRYPTO_GRP:
-		str = "SET_CRYPTO_GRP";
-	break;
-
 	case MBOX_MSG_GET_ENG_GRP_NUM:
 		str = "GET_ENG_GRP_NUM";
 	break;

@@ -195,7 +195,6 @@ struct ucode_ops cpt8x_get_ucode_ops(void)
 	ops.attach_and_enable_cores = cpt8x_attach_and_enable_cores;
 	ops.set_ucode_base = cpt8x_set_ucode_base;
 	ops.print_engines_mask = cpt8x_print_engines_mask;
-	ops.notify_group_change = NULL;
 
 	return ops;
 }

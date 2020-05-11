@@ -1081,8 +1081,6 @@ static int delete_engine_group(struct device *dev,
 
 	device_remove_file(dev, &eng_grp->info_attr);
 	eng_grp->is_enabled = false;
-	if (eng_grp->g->ops.notify_group_change)
-		eng_grp->g->ops.notify_group_change(eng_grp->g->obj);
 err:
 	return ret;
 }
@@ -1358,8 +1356,6 @@ static int create_engine_group(struct device *dev,
 		dev_info(dev, "Engine_group%d: microcode loaded %s",
 			 eng_grp->idx, eng_grp->ucode[1].ver_str);
 
-	if (eng_grps->ops.notify_group_change)
-		eng_grps->ops.notify_group_change(eng_grps->obj);
 	return 0;
 
 err_release_engs:
@@ -1550,7 +1546,6 @@ static int cpt_set_ucode_ops(struct engine_groups *eng_grps,
 	if (!uc_ops)
 		return -EINVAL;
 
-	/* notify_group_change is not mandatory */
 	if (!uc_ops->detach_and_disable_cores ||
 	    !uc_ops->attach_and_enable_cores ||
 	    !uc_ops->set_ucode_base ||
@@ -1567,7 +1562,6 @@ static void cpt_clear_ucode_ops(struct engine_groups *eng_grps)
 	eng_grps->ops.attach_and_enable_cores = NULL;
 	eng_grps->ops.set_ucode_base = NULL;
 	eng_grps->ops.print_engines_mask = NULL;
-	eng_grps->ops.notify_group_change = NULL;
 	eng_grps->ops.discover_eng_capabilities = NULL;
 }
 

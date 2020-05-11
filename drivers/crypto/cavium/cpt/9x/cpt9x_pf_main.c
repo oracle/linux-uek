@@ -581,7 +581,6 @@ static int cptpf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, cptpf);
 	cptpf->pdev = pdev;
-	cptpf->crypto_eng_grp = INVALID_CRYPTO_ENG_GRP;
 	cptpf->max_vfs = pci_sriov_get_totalvfs(pdev);
 
 	err = pcim_enable_device(pdev);

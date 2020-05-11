@@ -465,42 +465,6 @@ static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 	return err;
 }
 
-int cptpf_send_crypto_eng_grp_msg(struct cptpf_dev *cptpf, int crypto_eng_grp)
-{
-	struct cpt_set_crypto_grp_req_msg *req;
-	struct pci_dev *pdev = cptpf->pdev;
-	int tmp_crypto_eng_grp;
-	int ret = 0;
-
-	req = (struct cpt_set_crypto_grp_req_msg *)
-			otx2_mbox_alloc_msg_rsp(&cptpf->afpf_mbox, 0,
-						sizeof(*req),
-						sizeof(struct msg_rsp));
-	if (req == NULL) {
-		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
-		ret = -EFAULT;
-		goto error;
-	}
-
-	req->hdr.id = MBOX_MSG_CPT_SET_CRYPTO_GRP;
-	req->hdr.sig = OTX2_MBOX_REQ_SIG;
-	req->hdr.pcifunc = RVU_PFFUNC(cptpf->pf_id, 0);
-	req->crypto_eng_grp = crypto_eng_grp;
-
-	tmp_crypto_eng_grp = cptpf->crypto_eng_grp;
-	ret = cpt_send_mbox_msg(pdev);
-	if (ret)
-		goto error;
-
-	if (!cptpf->crypto_eng_grp) {
-		cptpf->crypto_eng_grp = tmp_crypto_eng_grp;
-		ret = -EINVAL;
-	}
-		cptpf->crypto_eng_grp = crypto_eng_grp;
-error:
-	return ret;
-}
-
 irqreturn_t cptpf_afpf_mbox_intr(int irq, void *arg)
 {
 	struct cptpf_dev *cptpf = (struct cptpf_dev *) arg;
@@ -552,7 +516,6 @@ irqreturn_t cptpf_vfpf_mbox_intr(int irq, void *arg)
 
 void cptpf_afpf_mbox_handler(struct work_struct *work)
 {
-	struct cpt_set_crypto_grp_req_msg *rsp_set_grp;
 	struct cpt_rd_wr_reg_msg *rsp_rd_wr;
 	struct otx2_mbox *afpf_mbox;
 	struct otx2_mbox *vfpf_mbox;
@@ -645,20 +608,6 @@ void cptpf_afpf_mbox_handler(struct work_struct *work)
 
 				if (!rsp_rd_wr->is_write)
 					*rsp_rd_wr->ret_val = rsp_rd_wr->val;
-				break;
-
-			case MBOX_MSG_CPT_SET_CRYPTO_GRP:
-				rsp_set_grp =
-				    (struct cpt_set_crypto_grp_req_msg *) msg;
-				if (msg->rc) {
-					dev_err(&cptpf->pdev->dev,
-						"Crypto grp %d set failed %d",
-						rsp_set_grp->crypto_eng_grp,
-						msg->rc);
-					cptpf->crypto_eng_grp = 0;
-					continue;
-				} else
-					cptpf->crypto_eng_grp = 1;
 				break;
 
 			case MBOX_MSG_ATTACH_RESOURCES:

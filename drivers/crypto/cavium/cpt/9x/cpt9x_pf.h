@@ -80,7 +80,6 @@ struct cptpf_dev {
 	u8 pf_id;		/* RVU PF number */
 	u8 max_vfs;		/* Maximum number of VFs supported by CPT */
 	u8 enabled_vfs;		/* Number of enabled VFs */
-	u8 crypto_eng_grp;	/* Symmetric crypto engine group number */
 	u8 sso_pf_func_ovrd;	/* SSO PF_FUNC override bit */
 	u8 kvf_limits;		/* Kernel VF limits */
 };

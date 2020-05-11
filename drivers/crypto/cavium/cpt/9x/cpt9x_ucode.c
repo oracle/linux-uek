@@ -205,31 +205,6 @@ static void cpt9x_print_engines_mask(struct engine_group_info *eng_grp,
 		  mask[1], mask[0]);
 }
 
-static void cpt9x_notify_group_change(void *obj)
-{
-	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
-	struct engine_group_info *grp;
-	int crypto_eng_grp = INVALID_CRYPTO_ENG_GRP;
-	int i;
-
-	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
-		grp = &cptpf->eng_grps.grp[i];
-		if (!grp->is_enabled)
-			continue;
-
-		if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
-		    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
-		    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
-			crypto_eng_grp = i;
-			break;
-		}
-	}
-
-	if (cptpf->crypto_eng_grp == crypto_eng_grp)
-		return;
-	cptpf_send_crypto_eng_grp_msg(cptpf, crypto_eng_grp);
-}
-
 int cpt9x_disable_all_cores(struct cptpf_dev *cptpf)
 {
 	int timeout = 10, ret = 0;
@@ -383,7 +358,6 @@ struct ucode_ops cpt9x_get_ucode_ops(void)
 	ops.attach_and_enable_cores = cpt9x_attach_and_enable_cores;
 	ops.set_ucode_base = cpt9x_set_ucode_base;
 	ops.print_engines_mask = cpt9x_print_engines_mask;
-	ops.notify_group_change = cpt9x_notify_group_change;
 	ops.discover_eng_capabilities = cpt9x_discover_eng_capabilities;
 
 	return ops;

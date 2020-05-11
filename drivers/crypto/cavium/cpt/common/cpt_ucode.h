@@ -194,7 +194,6 @@ struct ucode_ops {
 	int (*set_ucode_base)(struct engine_group_info *eng_grp, void *obj);
 	void (*print_engines_mask)(struct engine_group_info *eng_grp,
 				   void *obj, char *buf, int size);
-	void (*notify_group_change)(void *obj);
 	int (*discover_eng_capabilities)(void *obj);
 };
 
