@@ -42,6 +42,7 @@
 #include <asm/msa.h>
 
 #include "signal-common.h"
+#include  <linux/ksplice_clear_stack.h>
 
 static int (*save_fp_context)(void __user *sc);
 static int (*restore_fp_context)(void __user *sc);
@@ -882,6 +883,8 @@ asmlinkage void do_notify_resume(struct pt_regs *regs, void *unused,
 	/* deal with pending signal delivery */
 	if (thread_info_flags & _TIF_SIGPENDING) {
 		set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+		if (thread_info_flags & _TIF_KSPLICE_FREEZING)
+			ksplice_clear_stack();
 		do_signal(regs);
 		clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 	}
