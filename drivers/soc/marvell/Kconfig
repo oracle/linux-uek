@@ -76,29 +76,6 @@ config OCTEONTX2_DPI_PF
 	  This driver intializes dpi PF device and enables VF's for supporting
 	  different types of DMA transfers.
 
-config OCTEONTX2_REMOTE_PCI_CONSOLE
-	tristate "Octeon TX2 Remote PCI console driver"
-	depends on ARM64 && PCI
-	default y
-	---help---
-	  Select this option to enable the Remote PCI console driver,
-	  which allows the host PC to connect to the Linux console via PCIe.
-	  To enable this console, specify 'console=pci0' on the kernel
-	  command line.
-	  To compile this as a module, choose M here.  However, when used
-	  as a module, some kernel boot messages may be missing from the
-	  remote console.
-
-config OCTEONTX2_REMOTE_PCI_CONSOLE_DEBUG
-	bool "Octeon TX2 Remote PCI console driver verbose debug messages"
-	depends on OCTEONTX2_REMOTE_PCI_CONSOLE
-	help
-	  Say Y here if you want the OcteonTX Remote PCI console driver
-	  to write verbose debug messages to the system log.  Select this
-	  if you are having a problem with the OcteonTX Remote PCI console
-	  and want to see more of what is going on.
-
-	  If you are unsure about this, say N here.
 config GTI_WATCHDOG
        bool "GTI Watchdog driver"
 	depends on ARM64 && ARM64_VHE

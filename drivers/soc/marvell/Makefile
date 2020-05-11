@@ -5,4 +5,3 @@ obj-y		+= octeontx2-serdes/
 obj-y		+= gti/
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
 obj-$(CONFIG_MDIO_DEBUGFS) += mdio_debugfs.o
-obj-$(CONFIG_OCTEONTX2_REMOTE_PCI_CONSOLE) += otx2-pci-console.o
