@@ -880,8 +880,11 @@ asmlinkage void do_notify_resume(struct pt_regs *regs, void *unused,
 		uprobe_notify_resume(regs);
 
 	/* deal with pending signal delivery */
-	if (thread_info_flags & _TIF_SIGPENDING)
+	if (thread_info_flags & _TIF_SIGPENDING) {
+		set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 		do_signal(regs);
+		clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+	}
 
 	if (thread_info_flags & _TIF_NOTIFY_RESUME) {
 		clear_thread_flag(TIF_NOTIFY_RESUME);
