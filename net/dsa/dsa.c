@@ -137,7 +137,8 @@ int dsa_cpu_port_ethtool_setup(struct dsa_port *cpu_dp)
 
 void dsa_cpu_port_ethtool_restore(struct dsa_port *cpu_dp)
 {
-	cpu_dp->netdev->ethtool_ops = cpu_dp->orig_ethtool_ops;
+	if (cpu_dp->netdev->ethtool_ops)
+		cpu_dp->netdev->ethtool_ops = cpu_dp->orig_ethtool_ops;
 }
 
 void dsa_cpu_dsa_destroy(struct dsa_port *port)
