@@ -345,7 +345,6 @@ static int __init dsa_loop_init(void)
 }
 module_init(dsa_loop_init);
 
-#ifndef CONFIG_ARM64
 static void __exit dsa_loop_exit(void)
 {
 	unsigned int i;
@@ -355,6 +354,7 @@ static void __exit dsa_loop_exit(void)
 		if (!IS_ERR(phydevs[i]))
 			fixed_phy_unregister(phydevs[i]);
 }
+#ifndef CONFIG_ARM64
 module_exit(dsa_loop_exit);
 #endif
 
