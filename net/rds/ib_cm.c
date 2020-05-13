@@ -1410,6 +1410,32 @@ bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id)
 	return false;
 }
 
+static void rds_destroy_cm_id_worker(struct work_struct *_work)
+{
+	struct rds_ib_destroy_cm_id_work *work = container_of(_work,
+							      struct rds_ib_destroy_cm_id_work,
+							      work);
+
+	rdma_destroy_id(work->cm_id);
+	kfree(work);
+}
+
+static void rds_spawn_destroy_cm_id(struct rdma_cm_id *cm_id)
+{
+	struct rds_ib_destroy_cm_id_work *work;
+
+	work = kmalloc(sizeof(*work), GFP_KERNEL);
+	if (work) {
+		INIT_WORK(&work->work, rds_destroy_cm_id_worker);
+		work->cm_id = cm_id;
+		trace_rds_ib_queue_work(NULL, rds_aux_wq,
+					&work->work, 0,
+					"destroy cm_id");
+		queue_work(rds_aux_wq, &work->work);
+	} else
+		rdma_destroy_id(cm_id);
+}
+
 static int rds_ib_cm_accept(struct rds_connection *conn,
 			    struct rdma_cm_id *cm_id,
 			    bool isv6,
@@ -1610,7 +1636,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		rds_ib_stats_inc(s_ib_yield_stale);
 		trace_rds_ib_conn_yield_stale(NULL, ic->rds_ibdev,
 					      conn, ic, "stale", 0);
-		rdma_destroy_id(ic->i_alt.cm_id);
+		rds_spawn_destroy_cm_id(ic->i_alt.cm_id);
 		ic->i_alt.cm_id = NULL;
 	}
 
@@ -1912,7 +1938,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		mutex_unlock(&conn->c_cm_lock);
 
 		if (alt_cm_id)
-			rdma_destroy_id(alt_cm_id);
+			rds_spawn_destroy_cm_id(alt_cm_id);
 	}
 
 	/* XXX I wonder what affect the port space has */
@@ -2062,12 +2088,14 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		 * when the conn cannot be associated with the underlying
 		 * device.
 		 */
+		rds_ib_rdma_unlink_id(ic->i_cm_id);
+
 		down_write(&ic->i_cm_id_free_lock);
 		cm_id = ic->i_cm_id;
 		ic->i_cm_id = NULL;
 		up_write(&ic->i_cm_id_free_lock);
 
-		rds_ib_rdma_destroy_id(cm_id);
+		rds_spawn_destroy_cm_id(cm_id);
 	}
 	BUG_ON(ic->rds_ibdev);
 
