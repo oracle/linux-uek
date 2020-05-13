@@ -385,6 +385,12 @@ struct rds_ib_conn_destroy_work {
 	struct rds_connection          *conn;
 };
 
+
+struct rds_ib_destroy_cm_id_work {
+	struct work_struct		work;
+	struct rdma_cm_id	       *cm_id;
+};
+
 enum {
 	RDS_IB_MR_8K_POOL,
 	RDS_IB_MR_1M_POOL,
@@ -592,7 +598,7 @@ static inline struct rds_connection *rds_ib_get_conn(struct rdma_cm_id *cm_id)
 	return conn;
 }
 
-static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
+static inline void rds_ib_rdma_unlink_id(struct rdma_cm_id *cm_id)
 {
 	struct rds_ib_connection *ic = NULL;
 	struct rds_connection *conn;
@@ -606,6 +612,13 @@ static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
 	mutex_lock(&cm_id_map_lock);
 	(void)idr_remove(&cm_id_map, (int)(u64)cm_id->context);
 	mutex_unlock(&cm_id_map_lock);
+
+	cm_id->context = RDS_IB_NO_CTX;
+}
+
+static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
+{
+	rds_ib_rdma_unlink_id(cm_id);
 	rdma_destroy_id(cm_id);
 }
 
