@@ -1011,7 +1011,7 @@ static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 
 #define SRBDS		BIT(0)
 
-static const struct x86_cpu_id cpu_vuln_blacklist[] __initconst = {
+static const struct x86_cpu_id cpu_vuln_blacklist[] = {
 	VULNBL_INTEL_STEPPINGS(IVYBRIDGE,	X86_STEPPING_ANY,		SRBDS),
 	VULNBL_INTEL_STEPPINGS(HASWELL_CORE,	X86_STEPPING_ANY,		SRBDS),
 	VULNBL_INTEL_STEPPINGS(HASWELL_ULT,	X86_STEPPING_ANY,		SRBDS),
