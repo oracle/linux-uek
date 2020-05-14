@@ -333,7 +333,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
-	atomic_set(&ic->i_cq_quiesce, 0);
 	ic->i_flags &= ~RDS_IB_CQ_ERR;
 
 	/*
@@ -634,8 +633,8 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
-	/* if cq has been already reaped, ignore incoming cq event */
-	 if (atomic_read(&ic->i_cq_quiesce))
+	/* if send cq has been destroyed, ignore incoming cq event */
+	if (!ic->i_scq)
 		return;
 
 	rds_ib_clear_irq_miss(ic);
@@ -659,10 +658,6 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	struct rds_ib_ack_state ack_state;
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
-
-	/* if cq has been already reaped, ignore incoming cq event */
-	if (atomic_read(&ic->i_cq_quiesce))
-		return;
 
 	memset(&ack_state, 0, sizeof(ack_state));
 
@@ -2115,7 +2110,6 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		tasklet_kill(&ic->i_stasklet);
 		tasklet_kill(&ic->i_rtasklet);
 
-		atomic_set(&ic->i_cq_quiesce, 1);
 		ic->i_flags &= ~RDS_IB_CQ_ERR;
 
 		/* first destroy the ib state that generates callbacks */
