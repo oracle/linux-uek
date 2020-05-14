@@ -314,7 +314,7 @@ static int wait_pko_response;
 module_param(wait_pko_response, int, 0644);
 MODULE_PARM_DESC(use_tx_queues, "Wait for response after each pko command.");
 
-static int num_packet_buffers = 768;
+static int num_packet_buffers = 4096;
 module_param(num_packet_buffers, int, S_IRUGO);
 MODULE_PARM_DESC(num_packet_buffers, "Number of packet buffers to allocate per port.");
 
