@@ -1654,7 +1654,7 @@ int otx2_open(struct net_device *netdev)
 		if (!(pf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC)) {
 			err = otx2_alloc_mcam_entries(pf);
 			if (err)
-				goto err_free_cints;
+				goto err_tx_stop_queues;
 		}
 	}
 
@@ -1679,10 +1679,13 @@ int otx2_open(struct net_device *netdev)
 
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
-		goto err_free_cints;
+		goto err_tx_stop_queues;
 
 	return 0;
 
+err_tx_stop_queues:
+	netif_tx_stop_all_queues(netdev);
+	netif_carrier_off(netdev);
 err_free_cints:
 	otx2_free_cints(pf, qidx);
 	vec = pci_irq_vector(pf->pdev,
