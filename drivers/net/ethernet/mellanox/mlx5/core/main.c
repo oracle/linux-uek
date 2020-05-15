@@ -1218,24 +1218,23 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, bool boot)
 	if (err)
 		goto err_load;
 
+	set_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
+
 	if (boot) {
 		err = mlx5_devlink_register(priv_to_devlink(dev), dev->device);
 		if (err)
 			goto err_devlink_reg;
-	}
-
-	if (mlx5_device_registered(dev))
-		mlx5_attach_device(dev);
-	else
 		mlx5_register_device(dev);
-
-	set_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
+	} else {
+		mlx5_attach_device(dev);
+	}
 out:
 	mutex_unlock(&dev->intf_state_mutex);
 
 	return err;
 
 err_devlink_reg:
+	clear_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
 	mlx5_unload(dev);
 err_load:
 	if (boot)
@@ -1251,10 +1250,15 @@ err_function:
 
 static void mlx5_unload_one(struct mlx5_core_dev *dev, bool cleanup)
 {
-	if (cleanup)
-		mlx5_unregister_device(dev);
-
 	mutex_lock(&dev->intf_state_mutex);
+
+	if (cleanup) {
+		mlx5_unregister_device(dev);
+		mlx5_devlink_unregister(priv_to_devlink(dev));
+	} else {
+		mlx5_detach_device(dev);
+	}
+
 	if (!test_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state)) {
 		mlx5_core_warn(dev, "%s: interface is down, NOP\n",
 			       __func__);
@@ -1264,9 +1268,6 @@ static void mlx5_unload_one(struct mlx5_core_dev *dev, bool cleanup)
 	}
 
 	clear_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
-
-	if (mlx5_device_registered(dev))
-		mlx5_detach_device(dev);
 
 	mlx5_unload(dev);
 
@@ -1394,7 +1395,6 @@ static void remove_one(struct pci_dev *pdev)
 	struct devlink *devlink = priv_to_devlink(dev);
 
 	mlx5_crdump_disable(dev);
-	mlx5_devlink_unregister(devlink);
 
 	mlx5_drain_health_wq(dev);
 	mlx5_unload_one(dev, true);
