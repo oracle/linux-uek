@@ -814,7 +814,6 @@ static int ice_vsi_init(struct ice_vsi *vsi, bool init_vsi)
 	if (!ctxt)
 		return -ENOMEM;
 
-	ctxt->info = vsi->info;
 	switch (vsi->type) {
 	case ICE_VSI_LB:
 	case ICE_VSI_PF:
