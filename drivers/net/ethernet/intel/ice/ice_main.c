@@ -4837,6 +4837,11 @@ static void ice_update_pf_netdev_link(struct ice_pf *pf)
  * ice_rebuild - rebuild after reset
  * @pf: PF to rebuild
  * @reset_type: type of reset
+ *
+ * Do not rebuild VF VSI in this flow because that is already handled via
+ * ice_reset_all_vfs(). This is because requirements for resetting a VF after a
+ * PFR/CORER/GLOBER/etc. are different than the normal flow. Also, we don't want
+ * to reset/rebuild all the VF VSI twice.
  */
 static void ice_rebuild(struct ice_pf *pf, enum ice_reset_req reset_type)
 {
