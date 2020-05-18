@@ -140,11 +140,9 @@ void recalc_intercepts(struct vcpu_svm *svm)
 	c->intercept |= g->intercept;
 }
 
-static void copy_vmcb_control_area(struct vmcb *dst_vmcb, struct vmcb *from_vmcb)
+static void copy_vmcb_control_area(struct vmcb_control_area *dst,
+				   struct vmcb_control_area *from)
 {
-	struct vmcb_control_area *dst  = &dst_vmcb->control;
-	struct vmcb_control_area *from = &from_vmcb->control;
-
 	dst->intercept_cr         = from->intercept_cr;
 	dst->intercept_dr         = from->intercept_dr;
 	dst->intercept_exceptions = from->intercept_exceptions;
@@ -418,7 +416,7 @@ int nested_svm_vmrun(struct vcpu_svm *svm)
 	else
 		hsave->save.cr3    = kvm_read_cr3(&svm->vcpu);
 
-	copy_vmcb_control_area(hsave, vmcb);
+	copy_vmcb_control_area(&hsave->control, &vmcb->control);
 
 	svm->nested.nested_run_pending = 1;
 	enter_svm_guest_mode(svm, vmcb_gpa, nested_vmcb);
@@ -549,7 +547,7 @@ int nested_svm_vmexit(struct vcpu_svm *svm)
 		nested_vmcb->control.int_ctl &= ~V_INTR_MASKING_MASK;
 
 	/* Restore the original control entries */
-	copy_vmcb_control_area(vmcb, hsave);
+	copy_vmcb_control_area(&vmcb->control, &hsave->control);
 
 	svm->vmcb->control.tsc_offset = svm->vcpu.arch.tsc_offset =
 		svm->vcpu.arch.l1_tsc_offset;
