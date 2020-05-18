@@ -349,8 +349,8 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	struct otx2_rfoe_drv_ctx *drv_ctx;
 	struct rfoe_psw0_s *psw0 = NULL;
 	struct rfoe_psw1_s *psw1 = NULL;
-	u8 *buf_ptr, *jdt_ptr;
 	struct net_device *netdev;
+	u8 *buf_ptr, *jdt_ptr;
 	struct sk_buff *skb;
 	u8 lmac_id;
 
@@ -593,6 +593,8 @@ static void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status)
 			if (!(intr_sts & BIT(bit_idx)))
 				continue;
 			pkt_type = INTR_TO_PKT_TYPE(bit_idx);
+			if (unlikely(!(priv->pkt_type_mask & (1U << pkt_type))))
+				continue;
 			/* clear intr enable bit, re-enable in napi handler */
 			regval = PKT_TYPE_TO_INTR(pkt_type) <<
 				 RFOE_RX_INTR_SHIFT(rfoe_num);
@@ -766,27 +768,47 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			netif_dbg(priv, tx_queued, priv->netdev,
 				  "skb HW timestamp requested but not enabled, this packet will not be timestamped\n");
 			job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
-			pkt_type = TX_PACKET_TYPE_OTH;
+			pkt_type = PACKET_TYPE_OTHER;
 		} else {
 			job_cfg = &priv->tx_ptp_job_cfg;
-			pkt_type = TX_PACKET_TYPE_PTP;
+			pkt_type = PACKET_TYPE_PTP;
 		}
 	} else {
 		job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
 		eth = (struct ethhdr *)skb->data;
 		if (htons(eth->h_proto) == ETH_P_ECPRI)
-			pkt_type = TX_PACKET_TYPE_ECPRI;
+			pkt_type = PACKET_TYPE_ECPRI;
 		else
-			pkt_type = TX_PACKET_TYPE_OTH;
+			pkt_type = PACKET_TYPE_OTHER;
 	}
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
 	if (unlikely(!netif_carrier_ok(netdev))) {
+		netif_err(priv, tx_err, netdev,
+			  "%s {rfoe%d lmac%d} link down, drop pkt\n",
+			  netdev->name, priv->rfoe_num,
+			  priv->lmac_id);
 		/* update stats */
-		if (pkt_type == TX_PACKET_TYPE_ECPRI)
+		if (pkt_type == PACKET_TYPE_ECPRI)
 			priv->stats.ecpri_tx_dropped++;
-		else if (pkt_type == TX_PACKET_TYPE_PTP)
+		else if (pkt_type == PACKET_TYPE_PTP)
+			priv->stats.ptp_tx_dropped++;
+		else
+			priv->stats.tx_dropped++;
+
+		goto exit;
+	}
+
+	if (unlikely(!(priv->pkt_type_mask & (1U << pkt_type)))) {
+		netif_err(priv, tx_queued, netdev,
+			  "%s {rfoe%d lmac%d} pkt not supported, drop pkt\n",
+			  netdev->name, priv->rfoe_num,
+			  priv->lmac_id);
+		/* update stats */
+		if (pkt_type == PACKET_TYPE_ECPRI)
+			priv->stats.ecpri_tx_dropped++;
+		else if (pkt_type == PACKET_TYPE_PTP)
 			priv->stats.ptp_tx_dropped++;
 		else
 			priv->stats.tx_dropped++;
@@ -806,14 +828,14 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	/* check psm queue space available */
 	regval = readq(priv->psm_reg_base + PSM_QUEUE_SPACE(psm_queue_id));
 	queue_space = regval & 0x7FFF;
-	if (queue_space < 1 && pkt_type != TX_PACKET_TYPE_PTP) {
+	if (queue_space < 1 && pkt_type != PACKET_TYPE_PTP) {
 		netif_err(priv, tx_err, netdev,
 			  "no space in psm queue %d, dropping pkt\n",
 			   psm_queue_id);
 		netif_stop_queue(netdev);
 		dev_kfree_skb_any(skb);
 		/* update stats */
-		if (pkt_type == TX_PACKET_TYPE_ECPRI)
+		if (pkt_type == PACKET_TYPE_ECPRI)
 			priv->stats.ecpri_tx_dropped++;
 		else
 			priv->stats.tx_dropped++;
@@ -888,9 +910,9 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	jd_dma_cfg_word_0->block_size = (((skb->len + 15) >> 4) * 4);
 
 	/* update rfoe_mode and lmac id for non-ptp (shared) psm job entry */
-	if (pkt_type != TX_PACKET_TYPE_PTP) {
+	if (pkt_type != PACKET_TYPE_PTP) {
 		jd_cfg_ptr->cfg.lmacid = priv->lmac_id & 0x3;
-		if (pkt_type == TX_PACKET_TYPE_ECPRI)
+		if (pkt_type == PACKET_TYPE_ECPRI)
 			jd_cfg_ptr->cfg.rfoe_mode = 1;
 		else
 			jd_cfg_ptr->cfg.rfoe_mode = 0;
@@ -912,9 +934,9 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
 
 	/* update stats */
-	if (pkt_type == TX_PACKET_TYPE_ECPRI)
+	if (pkt_type == PACKET_TYPE_ECPRI)
 		priv->stats.ecpri_tx_packets++;
-	else if (pkt_type == TX_PACKET_TYPE_PTP)
+	else if (pkt_type == PACKET_TYPE_PTP)
 		priv->stats.ptp_tx_packets++;
 	else
 		priv->stats.tx_packets++;
@@ -937,10 +959,13 @@ exit:
 static int otx2_rfoe_eth_open(struct net_device *netdev)
 {
 	struct otx2_rfoe_ndev_priv *priv = netdev_priv(netdev);
-	int i;
+	int idx;
 
-	for (i = 0; i < PACKET_TYPE_MAX; i++)
-		napi_enable(&priv->rx_ft_cfg[i].napi);
+	for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+		if (!(priv->pkt_type_mask & (1U << idx)))
+			continue;
+		napi_enable(&priv->rx_ft_cfg[idx].napi);
+	}
 
 	priv->ptp_tx_skb = NULL;
 
@@ -957,7 +982,7 @@ static int otx2_rfoe_eth_stop(struct net_device *netdev)
 {
 	struct otx2_rfoe_ndev_priv *priv = netdev_priv(netdev);
 	struct ptp_tstamp_skb *ts_skb, *ts_skb2;
-	int i;
+	int idx;
 
 	if (test_and_set_bit(RFOE_INTF_DOWN, &priv->state))
 		return 0;
@@ -965,8 +990,11 @@ static int otx2_rfoe_eth_stop(struct net_device *netdev)
 	netif_stop_queue(netdev);
 	netif_carrier_off(netdev);
 
-	for (i = 0; i < PACKET_TYPE_MAX; i++)
-		napi_disable(&priv->rx_ft_cfg[i].napi);
+	for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+		if (!(priv->pkt_type_mask & (1U << idx)))
+			continue;
+		napi_disable(&priv->rx_ft_cfg[idx].napi);
+	}
 
 	del_timer_sync(&priv->tx_timer);
 
@@ -1003,10 +1031,12 @@ static const struct net_device_ops otx2_rfoe_netdev_ops = {
 static void otx2_rfoe_dump_rx_ft_cfg(struct otx2_rfoe_ndev_priv *priv)
 {
 	struct rx_ft_cfg *ft_cfg;
-	int i;
+	int idx;
 
-	for (i = 0; i < PACKET_TYPE_MAX; i++) {
-		ft_cfg = &priv->rx_ft_cfg[i];
+	for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+		if (!(priv->pkt_type_mask & (1U << idx)))
+			continue;
+		ft_cfg = &priv->rx_ft_cfg[idx];
 		pr_debug("rfoe=%d lmac=%d pkttype=%d flowid=%d mbt: idx=%d size=%d nbufs=%d iova=0x%llx jdt: idx=%d size=%d num_jd=%d iova=0x%llx\n",
 			 priv->rfoe_num, priv->lmac_id, ft_cfg->pkt_type,
 			 ft_cfg->flow_id, ft_cfg->mbt_idx, ft_cfg->buf_size,
@@ -1026,6 +1056,8 @@ static inline void otx2_rfoe_fill_rx_ft_cfg(struct otx2_rfoe_ndev_priv *priv,
 
 	/* RX flow table configuration */
 	for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+		if (!(priv->pkt_type_mask & (1U << idx)))
+			continue;
 		ft_cfg = &priv->rx_ft_cfg[idx];
 		rbuf_info = &if_cfg->rbuf_info[idx];
 		ft_cfg->pkt_type = rbuf_info->pkt_type;
@@ -1102,9 +1134,11 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 	struct tx_job_queue_cfg *tx_cfg;
 	struct net_device *netdev;
 	struct rx_ft_cfg *ft_cfg;
+	u8 pkt_type_mask;
 
 	for (i = 0; i < MAX_RFOE_INTF; i++) {
 		priv2 = NULL;
+		pkt_type_mask = cfg[i].pkt_type_mask;
 		for (lmac = 0; lmac < MAX_LMAC_PER_RFOE; lmac++) {
 			if_cfg = &cfg[i].if_cfg[lmac];
 			/* check if lmac is valid */
@@ -1167,16 +1201,26 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 			priv->ptp_skb_list.count = 0;
 			timer_setup(&priv->tx_timer, otx2_rfoe_tx_timer_cb, 0);
 
+			priv->pkt_type_mask = pkt_type_mask;
 			otx2_rfoe_fill_rx_ft_cfg(priv, if_cfg);
 			otx2_rfoe_dump_rx_ft_cfg(priv);
 
 			/* TX PTP job configuration */
-			otx2_rfoe_fill_tx_job_entries(priv,
-						      &priv->tx_ptp_job_cfg,
-						      &if_cfg->ptp_pkt_info[0],
-						      MAX_PTP_MSG_PER_LMAC);
-			/* TX ECPRI/OTH job configuration */
-			if (!priv2) {
+			if (priv->pkt_type_mask & (1U << PACKET_TYPE_PTP)) {
+				tx_cfg = &priv->tx_ptp_job_cfg;
+				tx_info = &if_cfg->ptp_pkt_info[0];
+				num_entries = MAX_PTP_MSG_PER_LMAC;
+				otx2_rfoe_fill_tx_job_entries(priv, tx_cfg,
+							      tx_info,
+							      num_entries);
+			}
+
+			/* TX ECPRI/OTH(PTP) job configuration */
+			if (!priv2 &&
+			    ((priv->pkt_type_mask &
+			      (1U << PACKET_TYPE_OTHER)) ||
+			     (priv->pkt_type_mask &
+			      (1U << PACKET_TYPE_ECPRI)))) {
 				/* RFOE 2 will have 2 LMAC's */
 				num_entries = (priv->rfoe_num < 2) ?
 						MAX_OTH_MSG_PER_RFOE : 32;
@@ -1239,6 +1283,8 @@ err_exit:
 			priv = netdev_priv(netdev);
 			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+				if (!(priv->pkt_type_mask & (1U << idx)))
+					continue;
 				ft_cfg = &priv->rx_ft_cfg[idx];
 				netif_napi_del(&ft_cfg->napi);
 			}
@@ -1306,6 +1352,9 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 				priv = netdev_priv(netdev);
 				unregister_netdev(netdev);
 				for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+					if (!(priv->pkt_type_mask &
+					      (1U << idx)))
+						continue;
 					ft_cfg = &priv->rx_ft_cfg[idx];
 					netif_napi_del(&ft_cfg->napi);
 				}
@@ -1376,6 +1425,8 @@ static int otx2_rfoe_cdev_release(struct inode *inode, struct file *filp)
 			priv = netdev_priv(netdev);
 			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+				if (!(priv->pkt_type_mask & (1U << idx)))
+					continue;
 				ft_cfg = &priv->rx_ft_cfg[idx];
 				netif_napi_del(&ft_cfg->napi);
 			}
