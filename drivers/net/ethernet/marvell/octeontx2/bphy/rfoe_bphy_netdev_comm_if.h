@@ -161,14 +161,13 @@ struct bphy_netdev_comm_if {
 };
 
 struct bphy_netdev_comm_intf_cfg {
-	/* Total number of interfaces initialized of ODP */
-	u8 num_intf;
 	/* Interface configuration */
 	struct bphy_netdev_comm_if if_cfg[MAX_LMAC_PER_RFOE];
 	/* TX JD cmds to send packets other than PTP;
 	 * These are defined per RFoE and all LMAC can share
 	 */
 	struct bphy_netdev_tx_psm_cmd_info oth_pkt_info[MAX_OTH_MSG_PER_RFOE];
+	u8 pkt_type_mask;
 };
 
 #endif //_RFOE_BPHY_NETDEV_COMM_IF_H_
