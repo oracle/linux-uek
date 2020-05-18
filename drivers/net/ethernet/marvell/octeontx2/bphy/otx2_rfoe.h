@@ -27,8 +27,8 @@
 
 /* char device ioctl numbers */
 #define OTX2_RFOE_IOCTL_BASE		0xCC	/* Temporary */
-#define OTX2_RFOE_IOCTL_ODP_INIT	_IOR(OTX2_RFOE_IOCTL_BASE, 0x00, int)
-#define OTX2_RFOE_IOCTL_ODP_INTF_CFG	_IOR(OTX2_RFOE_IOCTL_BASE, 0x01, int)
+#define OTX2_RFOE_IOCTL_ODP_INTF_CFG	_IOW(OTX2_RFOE_IOCTL_BASE, 0x01, \
+					     struct bphy_netdev_comm_intf_cfg)
 #define OTX2_RFOE_IOCTL_ODP_DEINIT      _IO(OTX2_RFOE_IOCTL_BASE, 0x02)
 
 //#define ASIM		/* ASIM environment */
@@ -63,14 +63,6 @@
 #define MAX_TX_JOB_ENTRIES 64
 
 #define OTX2_RFOE_MSG_DEFAULT	(NETIF_MSG_DRV)
-
-/* tx job configuration */
-enum tx_packet_type {
-	TX_PACKET_TYPE_OTH	= 0,
-	TX_PACKET_TYPE_PTP	= 1,
-	TX_PACKET_TYPE_ECPRI	= 2,
-	TX_PACKET_TYPE_MAX,
-};
 
 enum state {
 	PTP_TX_IN_PROGRESS = 1,
@@ -200,6 +192,7 @@ struct otx2_rfoe_ndev_priv {
 	struct rx_ft_cfg		rx_ft_cfg[PACKET_TYPE_MAX];
 	struct tx_job_queue_cfg		tx_ptp_job_cfg;
 	struct rfoe_common_cfg		*rfoe_common;
+	u8				pkt_type_mask;
 	/* priv lock */
 	spinlock_t			lock;
 	int				rx_hw_tstamp_en;
