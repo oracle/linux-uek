@@ -405,8 +405,8 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define kernel_image vmlinux
 %define with_embedded   1
 %define with_headers   1
-%define with_perf 1
-%define with_tools 1
+%define with_perf 0
+%define with_tools 0
 %define with_up 0
 %endif
 
