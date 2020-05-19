@@ -57,11 +57,92 @@ module_param(rds_qos_threshold_action, int, 0644);
 MODULE_PARM_DESC(rds_qos_threshold_action,
 	"0=Ignore,1=Error,2=Statistic,3=Error_Statistic");
 
+static int rt_debug_bitmap_set(const char *val, const struct kernel_param *kp);
+
+/* used for backwards compat only, enables tracepoints */
+static const struct kernel_param_ops rt_debug_bitmap_ops = {
+	.set = rt_debug_bitmap_set,
+	.get = param_get_uint,
+};
+
 u32 kernel_rds_rt_debug_bitmap = 0x488B;
 EXPORT_SYMBOL(kernel_rds_rt_debug_bitmap);
-module_param_named(rds_rt_debug_bitmap, kernel_rds_rt_debug_bitmap, uint, 0644);
+module_param_cb(rds_rt_debug_bitmap, &rt_debug_bitmap_ops,
+		&kernel_rds_rt_debug_bitmap, 0644);
 MODULE_PARM_DESC(rds_rt_debug_bitmap,
 		 "RDS Runtime Debug Message Enabling Bitmap [default 0x488B]");
+
+struct rt_debug_tp {
+	int flag;
+	const char *tps[10];
+};
+
+/* Map from RDS_RTD_ flag to replacement tracepoints. */
+static struct rt_debug_tp rt_debug_tp_map[] = {
+	{ RDS_RTD_ERR,
+	  { "rds_ib_add_device_err", "rds_ib_setup_qp_err",
+	    "rds_conn_drop", "rds_ib_cm_handle_connect_err",
+	    "rds_ib_setup_fastreg_err", "rds_rdma_cm_event_handler_err",
+	    NULL }},
+	{ RDS_RTD_ERR_EXT,
+	  { "rds_send_worker_err", "rds_receive_worker_err", NULL }},
+	{ RDS_RTD_CM,
+	  {  "rds_conn_destroy", "rds_conn_drop",
+	    "rds_ib_cm_initiate_connect_err", "rds_ib_conn_path_connect",
+	    "rds_rdma_cm_event_handler", "rds_rdma_cm_event_handler_err",
+	    NULL }},
+	{ RDS_RTD_CM_EXT,
+	  { "rds_conn_create", "rds_conn_shutdown",
+	    "rds_conn_update_connect_time", NULL }},
+	{ RDS_RTD_ACT_BND,
+	  { "rds_ib_remove_device_err", "rds_ib_remove_device", NULL }},
+	{ RDS_RTD_RCV,
+	  { "rds_receive_err", "rds_drop_ingress", NULL }},
+	{ RDS_RTD_RCV_EXT,
+	  { "rds_receive_worker_err", NULL }},
+	{ RDS_RTD_SND,
+	  { "rds_send_err", NULL }},
+	{ RDS_RTD_SND_EXT,
+	  { "rds_send_worker_err", NULL }},
+	{ RDS_RTD_FLOW_CNTRL,
+	  { "rds_ib_flow_cntrl_grab_credits", "rds_ib_flow_cntrl_add_credits",
+	    "rds_ib_flow_cntrl_advertise_credits", NULL }},
+	{ RDS_RTD_RDMA_IB,
+	  { "rds_ib_add_device", "rds_ib_remove_device", NULL }},
+};
+
+/* Enable all tracepoints associated with RDS_RTD_ flags that are set. */
+void rds_rt_debug_tp_enable(void)
+{
+	int enable, i, j;
+
+	for (i = 0; i < ARRAY_SIZE(rt_debug_tp_map); i++) {
+		enable = (kernel_rds_rt_debug_bitmap &
+			  rt_debug_tp_map[i].flag) != 0;
+		for (j = 0; rt_debug_tp_map[i].tps[j] != NULL; j++)
+			trace_set_clr_event("rds",
+					    rt_debug_tp_map[i].tps[j], enable);
+	}
+}
+EXPORT_SYMBOL_GPL(rds_rt_debug_tp_enable);
+
+static int rt_debug_bitmap_set(const char *val, const struct kernel_param *kp)
+{
+	unsigned int n;
+	int ret;
+
+	ret = kstrtouint(val, 0, &n);
+	if (ret != 0)
+		return -EINVAL;
+
+	ret = param_set_uint(val, kp);
+	if (ret)
+		return ret;
+
+	rds_rt_debug_tp_enable();
+
+	return 0;
+}
 
 static unsigned long rds_qos_threshold_tbl[256];
 
@@ -1325,6 +1406,8 @@ u32 rds_gen_num;
 static int __init rds_init(void)
 {
 	int ret;
+
+	rds_rt_debug_tp_enable();
 
 	rds_rs_buf_info_slab = kmem_cache_create("rds_rs_buf_info",
 						 sizeof(struct rs_buf_info),

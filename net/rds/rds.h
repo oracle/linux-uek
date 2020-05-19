@@ -13,6 +13,7 @@
 #include <linux/in6.h>
 #include <linux/sizes.h>
 #include <linux/rhashtable.h>
+#include <linux/trace_events.h>
 
 #include "info.h"
 
@@ -63,6 +64,11 @@ rdsdebug(char *fmt, ...)
 }
 #endif
 
+/* Keep previous debugging bitmap values as these will be mapped
+ * to relevant tracepoints such that logging behaviour is
+ * backwards-compatible.  It is simply realized via tracepoints
+ * rather than via direct use of trace_printk() now.
+ */
 extern u32 kernel_rds_rt_debug_bitmap;
 enum {
 	/* bit 0 ~ 19 are feature related bits */
@@ -84,23 +90,8 @@ enum {
 	RDS_RTD_FLOW_CNTRL		= 1 << 16,	/* 0x10000 */
 
 	/* bit 20 ~ 31 are module specific bits */
-	RDS_RTD_CORE			= 1 << 20,	/* 0x100000   */
 	RDS_RTD_RDMA_IB			= 1 << 23,	/* 0x800000   */
-
-	/* the following are placeholders for now */
-	RDS_RTD_RDMA_IW			= 1 << 26,	/* 0x4000000  */
-	RDS_RTD_TCP			= 1 << 28,	/* 0x10000000 */
 };
-
-#define rds_rtd(enabling_bit, format, arg...)				     \
-	do { if (likely(!(enabling_bit & kernel_rds_rt_debug_bitmap))) break;\
-		trace_printk("%d: " format, __LINE__, ## arg);		     \
-	} while (0)
-
-#define rds_rtd_ptr(enabling_bit, format, arg...)			      \
-	do { if (likely(!(enabling_bit & kernel_rds_rt_debug_bitmap))) break; \
-		__trace_printk(_THIS_IP_, "%d: " format, __LINE__, ## arg);   \
-	} while (0)
 
 /* XXX is there one of these somewhere? */
 #define ceil(x, y) \
@@ -1288,6 +1279,10 @@ static inline int rds_message_verify_checksum(const struct rds_header *hdr)
 	return !hdr->h_csum || ip_fast_csum((void *) hdr, sizeof(*hdr) >> 2) == 0;
 }
 
+/* used by __init functions in rds, rds_rdma and rds_tcp to enable tracepoints
+ * associated with the legacy rds_rt_debug_bitmap values specified.
+ */
+void rds_rt_debug_tp_enable(void);
 
 /* page.c */
 int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
