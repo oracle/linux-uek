@@ -1004,34 +1004,6 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 	return rds_ib_laddr_check_cm(net, addr, scope_id);
 }
 
-/* Detect possible link-layers in order to flush ARP correctly */
-static void detect_link_layers(struct ib_device *ibdev)
-{
-	if (ibdev->ops.get_link_layer) {
-		u8 port;
-
-		for (port = 1; port <= ibdev->phys_port_cnt; ++port) {
-			switch (ibdev->ops.get_link_layer(ibdev, port)) {
-			case IB_LINK_LAYER_UNSPECIFIED:
-				rds_ib_transport.t_ll_ib_detected = true;
-				rds_ib_transport.t_ll_eth_detected = true;
-				break;
-
-			case IB_LINK_LAYER_INFINIBAND:
-				rds_ib_transport.t_ll_ib_detected = true;
-				break;
-
-			case IB_LINK_LAYER_ETHERNET:
-				rds_ib_transport.t_ll_eth_detected = true;
-				break;
-			}
-		}
-	} else {
-		rds_ib_transport.t_ll_ib_detected = true;
-		rds_ib_transport.t_ll_eth_detected = true;
-	}
-}
-
 /* Device removal worker function.  It just calls rds_ib_remove_one().  The
  * reason to have this is to hang out the removal work to a workqueue so
  * that different threads can work on different devices.
@@ -1058,8 +1030,6 @@ void rds_ib_add_one(struct ib_device *device)
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
 		return;
-
-	detect_link_layers(device);
 
 	dev_attr = kmalloc(sizeof(*dev_attr), GFP_KERNEL);
 	if (!dev_attr)
