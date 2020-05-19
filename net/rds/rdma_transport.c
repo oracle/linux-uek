@@ -475,6 +475,8 @@ int __init rds_rdma_init(void)
 {
 	int ret;
 
+	rds_rt_debug_tp_enable();
+
 	mutex_init(&cm_id_map_lock);
 
 	ret = rds_ib_init();
