@@ -232,8 +232,7 @@ struct backing_dev_info {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debug_dir;
 #endif
-
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, char *dev_name)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)

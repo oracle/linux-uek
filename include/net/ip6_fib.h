@@ -13,6 +13,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/spinlock.h>
 #include <linux/notifier.h>
+#include <linux/uek_kabi.h>
 #include <net/dst.h>
 #include <net/flow.h>
 #include <net/ip_fib.h>
@@ -189,6 +190,7 @@ struct rt6_info {
 
 	/* more non-fragment space at head required */
 	unsigned short			rt6i_nfheader_len;
+	UEK_KABI_EXTEND(int sernum)
 };
 
 struct fib6_result {
@@ -259,6 +261,9 @@ static inline u32 rt6_get_cookie(const struct rt6_info *rt)
 {
 	struct fib6_info *from;
 	u32 cookie = 0;
+
+	if (rt->sernum)
+		return rt->sernum;
 
 	rcu_read_lock();
 
