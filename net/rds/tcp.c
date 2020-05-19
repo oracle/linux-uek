@@ -714,6 +714,8 @@ static int __init rds_tcp_init(void)
 {
 	int ret;
 
+	rds_rt_debug_tp_enable();
+
 	rds_tcp_conn_slab = kmem_cache_create("rds_tcp_connection",
 					      sizeof(struct rds_tcp_connection),
 					      0, 0, NULL);
