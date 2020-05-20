@@ -1553,6 +1553,7 @@ struct cpt_rd_wr_reg_msg {
 	u64 *ret_val;
 	u64 val;
 	u8 is_write;
+	u8 blkaddr; /* BLKADDR_CPT0/BLKADDR_CPT1 or 0 for BLKADDR_CPT0 */
 };
 
 struct cpt_lf_alloc_req_msg {
@@ -1560,6 +1561,7 @@ struct cpt_lf_alloc_req_msg {
 	u16 nix_pf_func;
 	u16 sso_pf_func;
 	u16 eng_grpmsk;
+	u8 blkaddr; /* BLKADDR_CPT0/BLKADDR_CPT1 or 0 for BLKADDR_CPT0 */
 };
 
 #define CPT_INLINE_INBOUND      0

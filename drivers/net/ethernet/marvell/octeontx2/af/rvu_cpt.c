@@ -225,12 +225,12 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 	int num_lfs, slot;
 	u64 val;
 
+	blkaddr = req->blkaddr ? req->blkaddr : BLKADDR_CPT0;
+	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
+		return -ENODEV;
+
 	if (req->eng_grpmsk == 0x0)
 		return CPT_AF_ERR_GRP_INVALID;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, pcifunc);
-	if (blkaddr < 0)
-		return blkaddr;
 
 	block = &rvu->hw->block[blkaddr];
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
@@ -273,23 +273,18 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_cpt_lf_free(struct rvu *rvu, struct msg_req *req,
-				 struct msg_rsp *rsp)
+static int cpt_lf_free(struct rvu *rvu, struct msg_req *req, int blkaddr)
 {
 	u16 pcifunc = req->hdr.pcifunc;
+	int num_lfs, cptlf, slot;
 	struct rvu_block *block;
-	int cptlf, blkaddr;
-	int num_lfs, slot;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, pcifunc);
-	if (blkaddr < 0)
-		return blkaddr;
 
 	block = &rvu->hw->block[blkaddr];
+
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
 					block->addr);
 	if (!num_lfs)
-		return CPT_AF_ERR_LF_INVALID;
+		return 0;
 
 	for (slot = 0; slot < num_lfs; slot++) {
 		cptlf = rvu_get_lf(rvu, block, pcifunc, slot);
@@ -303,6 +298,21 @@ int rvu_mbox_handler_cpt_lf_free(struct rvu *rvu, struct msg_req *req,
 	}
 
 	return 0;
+}
+
+int rvu_mbox_handler_cpt_lf_free(struct rvu *rvu, struct msg_req *req,
+				 struct msg_rsp *rsp)
+{
+	int ret;
+
+	ret = cpt_lf_free(rvu, req, BLKADDR_CPT0);
+	if (ret)
+		return ret;
+
+	if (is_block_implemented(rvu->hw, BLKADDR_CPT1))
+		ret = cpt_lf_free(rvu, req, BLKADDR_CPT1);
+
+	return ret;
 }
 
 static int cpt_inline_ipsec_cfg_inbound(struct rvu *rvu, int blkaddr, u8 cptlf,
@@ -424,9 +434,9 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	int blkaddr, num_lfs, offs, lf;
 	struct rvu_block *block;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
-	if (blkaddr < 0)
-		return blkaddr;
+	blkaddr = req->blkaddr ? req->blkaddr : BLKADDR_CPT0;
+	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
+		return -ENODEV;
 
 	/* This message is accepted only if sent from CPT PF/VF */
 	if (!is_cpt_pf(req->hdr.pcifunc) &&
