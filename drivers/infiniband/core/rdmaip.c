@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2019, 2020 Oracle and/or its affilicates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -2846,14 +2846,6 @@ void rdmaip_cleanup(void)
 		unregister_netdevice_notifier(&rdmaip_nb);
 		rdmaip_init_flag &= ~RDMAIP_REG_NETDEV_NOTIFIER;
 	}
-
-	/*
-	 * Make sure all the queued (except delayed) works
-	 * in rdmaip_wq callbacks run to completion. This
-	 * also ensures that no new work is queued to the
-	 * queue.
-	 */
-	flush_workqueue(rdmaip_wq);
 
 	/* Cancel all the delayed work items */
 	list_for_each_entry_safe(work, temp, &rdmaip_delayed_work_list, list) {
