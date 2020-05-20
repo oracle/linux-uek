@@ -421,3 +421,68 @@ Multipath RDS (mprds)
   ignored.  In this case the pong will not have any exthdrs, so the sender
   of the probe-ping can default to single-path mprds.
 
+RDS observability
+=================
+Tracepoints have been added to RDS.  Tracepoints cover general RDS events
+and transport-specific tracepoints are present for RDMA/IB and TCP transports.
+
+To enable a specific tracepoint, for example "rds_state_change" to observe
+connection state changes:
+
+  $ echo 1 >  /sys/kernel/debug/tracing/events/rds/rds_state_change/enable
+  $ cat /sys/kernel/debug/tracing/trace_pipe
+  kworker/u83:1-9778  [030] ....   213.359983: rds_state_change: RDS/IB:
+  <::1,::1,0>, state [down -> connecting], flags [reconnect_pending]
+  reason [unknown reason]
+
+To enable all RDS tracepoints
+  $ echo 1 >  /sys/kernel/debug/tracing/events/rds/enable
+  $ cat /sys/kernel/debug/tracing/trace_pipe
+
+The following tracepoints are available.
+
+General RDS transport-independent tracepoints:
+
+* rds_send, rds_send_complete, rds_receive – fire when RDS data is
+  transmitted, send completes or traffic is received
+
+* rds_drop_ingress, rds_drop_egress – fire on inbound/outbound data drops and
+  provide a reason for the drop
+
+* rds_state_change, rds_state_change_err – fire if a connection state
+  change succeeds or fails, providing reasons for state changes
+
+* transport-agnostic info- and error-style messaging; for example
+  rds_conn_create[_err], rds_conn_destroy, etc
+
+* rds_mr_get, rds_mr_get_err, rds_mr_destroy: MR tracking
+
+* rds_queue_work, rds_queue_cancel, rds_queue_worker, rds_queue_flush -
+  trace RDS work queue events and handling
+
+* rds_cong_seen, rds_cong_cleared, rds_cong_notify - congestion seen/cleared
+  for send/receive paths or congestion map update received for socket
+
+RDS RDMA/IB specific tracepoints:
+
+* rds_ib_flow_cntrl – flow control updates
+
+* rds_ib_queue_* - various work queue interfaces (schedule, cancel, worker
+  threads)
+
+ * rds_ib_[add,remove]_device[_err], rds_ib_cm_handle_connect[_err], etc
+   Various IB/RDMA-transport-specific events
+
+RDS TCP specific tracepoints:
+
+* rds_tcp_state_change – TCP state machine transitions (as opposed to RDS
+  connection state transitions)
+
+* rds_tcp_connect[_err] – trace rds tcp connection success/failure with
+  reason for failure + err value
+
+* rds_tcp_accept[_err] – trace connection acceptance/failure
+
+* rds_tcp_listen[_err] - trace listen/failure
+
+* rds_tcp_shutdown – trace shutdown for conn path
