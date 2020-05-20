@@ -274,15 +274,17 @@ struct i40e_tx_buffer {
 
 struct i40e_rx_buffer {
 	dma_addr_t dma;
-	struct page *page;
-	__u32 page_offset;
-	__u16 pagecnt_bias;
-};
-
-struct i40e_rx_buffer_zc {
-	dma_addr_t dma;
-	void *addr;
-	u64 handle;
+	union {
+		struct {
+			struct page *page;
+			__u32 page_offset;
+			__u16 pagecnt_bias;
+		};
+		struct {
+			void *addr;
+			u64 handle;
+		};
+	};
 };
 
 struct i40e_queue_stats {
@@ -332,7 +334,7 @@ struct i40e_ring {
 	union {
 		struct i40e_tx_buffer *tx_bi;
 		struct i40e_rx_buffer *rx_bi;
-		struct i40e_rx_buffer_zc *rx_bi_zc;
+		struct xdp_buff **rx_bi_zc;
 	};
 	DECLARE_BITMAP(state, __I40E_RING_STATE_NBITS);
 	u16 queue_index;		/* Queue number of ring */
