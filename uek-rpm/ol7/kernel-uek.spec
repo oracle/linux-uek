@@ -241,13 +241,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_smp 0
 %endif
 
-# only build kernel-kdump on ppc64
-# (no relocatable kernel support upstream yet)
-#FIXME: Temporarily disabled to speed up builds.
-#ifnarch ppc64
-%define with_kdump 0
-#endif
-
 # don't do debug builds on anything but i686, x86_64, aarch64 and mips64
 %ifnarch i686 x86_64 aarch64 mips64
 %define with_debug 0
@@ -408,6 +401,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_perf 0
 %define with_tools 0
 %define with_up 0
+%define with_kdump 1
 %endif
 
 # if requested, only build emb kernel
@@ -645,6 +639,7 @@ Source1009: config-mips64-embedded
 Source1010: config-mips64-embedded-debug
 Source1011: config-aarch64-embedded
 Source1012: config-aarch64-embedded-debug
+Source1013: config-mips64-embedded-kdump
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -996,13 +991,39 @@ This variant of the kernel has numerous debugging options enabled.
 It should only be installed when trying to gather additional information
 on kernel bugs, as some of these options impact performance noticably.
 
-
-%define variant_summary A minimal Linux kernel compiled for crash dumps
-%kernel_variant_package kdump
+%package kdump
+Summary: A minimal Linux kernel compiled for crash dumps
+Group: System Environment/Kernel
+Requires: kexec-tools
+AutoReq: no
+AutoProv: no
 %description kdump
 This package includes a kdump version of the Linux kernel. It is
 required only on machines which will use the kexec-based kernel crash dump
 mechanism.
+%posttrans kdump
+%{_sbindir}/new-kernel-pkg --package kernel-kdump --dracut --depmod --update %{KVERREL}.kdump
+ln -fs vmlinuz-%{KVERREL}.kdump /boot/vmlinuz-kdump
+%preun kdump
+%{_sbindir}/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}.kdump
+rm -f /boot/vmlinuz-kdump
+
+%package kdump-devel
+Summary: Development package for building kernel modules to match the kdump kernel
+Group: System Environment/Kernel
+AutoReq: no
+AutoProv: no
+%description kdump-devel
+This package provides kernel headers and makefiles sufficient to build modules
+against the kdump kernel package. You probably don't need this.
+
+%package kdump-debuginfo
+Summary: Debug information for package %{name}-kdump
+Group: Development/Debug
+AutoReq: no
+AutoProv: no
+%description kdump-debuginfo
+This package provides debug information for package %{name}-kdump
 
 %define variant_summary A aarch64 kernel with 4k page size.
 %kernel_variant_package 4k
@@ -1224,6 +1245,7 @@ mkdir -p configs
 %ifarch mips64
 	cp %{SOURCE1010} configs/config-emb-debug
 	cp %{SOURCE1009} configs/config-emb
+	cp %{SOURCE1013} configs/config-emb-kdump
 %endif #ifarch mips64
 
 
@@ -1309,6 +1331,8 @@ BuildKernel() {
 	cp configs/config-emb .config
     elif [ "$Flavour" == "emb-debug" ]; then
 	cp configs/config-emb-debug .config
+    elif [ "$Flavour" == "kdump" ]; then
+	cp configs/config-emb-kdump .config
     else
 	cp configs/config .config
     fi
@@ -1643,7 +1667,7 @@ BuildKernel %make_target %kernel_image smp
 %endif
 
 %if %{with_kdump}
-BuildKernel vmlinux vmlinux kdump vmlinux
+BuildKernel %make_target %kernel_image kdump
 %endif
 
 %if %{with_4k_ps}
@@ -1916,7 +1940,7 @@ then\
 fi\
 if [ "$HARDLINK" != "no" -a -x /usr/sbin/hardlink ]\
 then\
-    (cd /usr/src/kernels/%{kversion}-%{release}.%{_arch}%{?1:.%{1}} &&\
+    (cd /usr/src/kernels/%{kversion}-%{release}.%{_target_cpu}%{?1:.%{1}} &&\
      /usr/bin/find . -type f | while read f; do\
        hardlink -c /usr/src/kernels/*.fc*.*/$f $f\
      done)\
@@ -2246,7 +2270,7 @@ fi
 %endif
 %kernel_variant_files %{with_pae} PAE
 %kernel_variant_files %{with_pae_debug} PAEdebug
-%kernel_variant_files -k vmlinux %{with_kdump} kdump
+%kernel_variant_files %{with_kdump} kdump
 
 %kernel_variant_files %{with_4k_ps} 4k
 %kernel_variant_files %{with_4k_ps_debug} 4k-debug
