@@ -46,18 +46,13 @@ static struct bitmap get_cores_bmap(struct device *dev,
 	return bmap;
 }
 
-static int cpt9x_detach_and_disable_cores(struct engine_group_info *eng_grp,
-					  void *obj)
+static int cptx_detach_and_disable_cores(struct engine_group_info *eng_grp,
+					 struct cptpf_dev *cptpf,
+					 struct bitmap bmap)
 {
-	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
-	struct bitmap bmap;
-	int i, timeout = 10;
-	int busy, ret = 0;
+	int i, busy, ret = 0;
+	int timeout = 10;
 	u64 reg;
-
-	bmap = get_cores_bmap(&cptpf->pdev->dev, eng_grp);
-	if (!bmap.size)
-		return -EINVAL;
 
 	/* Detach the cores from group */
 	for_each_set_bit(i, bmap.bits, bmap.size) {
@@ -69,8 +64,8 @@ static int cpt9x_detach_and_disable_cores(struct engine_group_info *eng_grp,
 			eng_grp->g->eng_ref_cnt[i]--;
 			reg &= ~(1ull << eng_grp->idx);
 
-			ret = cpt_write_af_reg(cptpf->pdev,
-					       CPT_AF_EXEX_CTL2(i), reg);
+			ret = cpt_write_af_reg(cptpf->pdev, CPT_AF_EXEX_CTL2(i),
+					       reg);
 			if (ret)
 				goto error;
 		}
@@ -108,12 +103,35 @@ error:
 	return ret;
 }
 
-static int cpt9x_set_ucode_base(struct engine_group_info *eng_grp, void *obj)
+static int cpt9x_detach_and_disable_cores(struct engine_group_info *eng_grp,
+					  void *obj)
 {
-	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
+	struct cptpf_dev *cptpf = obj;
+	struct bitmap bmap;
+	int ret;
+
+	bmap = get_cores_bmap(&cptpf->pdev->dev, eng_grp);
+	if (!bmap.size)
+		return -EINVAL;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_detach_and_disable_cores(eng_grp, cptpf, bmap);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_detach_and_disable_cores(eng_grp, cptpf, bmap);
+
+	return ret;
+}
+
+static int cptx_set_ucode_base(struct engine_group_info *eng_grp,
+			       struct cptpf_dev *cptpf)
+{
 	struct engines_reserved *engs;
 	dma_addr_t dma_addr;
-	int i, bit, ret = 0;
+	int i, bit, ret;
 
 	/* Set PF number for microcode fetches */
 	ret = cpt_write_af_reg(cptpf->pdev, CPT_AF_PF_FUNC,
@@ -144,17 +162,29 @@ error:
 	return ret;
 }
 
-static int cpt9x_attach_and_enable_cores(struct engine_group_info *eng_grp,
-					 void *obj)
+static int cpt9x_set_ucode_base(struct engine_group_info *eng_grp, void *obj)
 {
-	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
-	struct bitmap bmap;
+	struct cptpf_dev *cptpf = obj;
+	int ret;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_set_ucode_base(eng_grp, cptpf);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_set_ucode_base(eng_grp, cptpf);
+
+	return ret;
+}
+
+static int cptx_attach_and_enable_cores(struct engine_group_info *eng_grp,
+					struct cptpf_dev *cptpf,
+					struct bitmap bmap)
+{
 	u64 reg;
 	int i, ret = 0;
-
-	bmap = get_cores_bmap(&cptpf->pdev->dev, eng_grp);
-	if (!bmap.size)
-		return -EINVAL;
 
 	/* Attach the cores to the group */
 	for_each_set_bit(i, bmap.bits, bmap.size) {
@@ -166,8 +196,8 @@ static int cpt9x_attach_and_enable_cores(struct engine_group_info *eng_grp,
 			eng_grp->g->eng_ref_cnt[i]++;
 			reg |= 1ull << eng_grp->idx;
 
-			ret = cpt_write_af_reg(cptpf->pdev,
-					       CPT_AF_EXEX_CTL2(i), reg);
+			ret = cpt_write_af_reg(cptpf->pdev, CPT_AF_EXEX_CTL2(i),
+					       reg);
 			if (ret)
 				goto error;
 		}
@@ -184,6 +214,29 @@ static int cpt9x_attach_and_enable_cores(struct engine_group_info *eng_grp,
 	if (ret)
 		goto error;
 error:
+	return ret;
+}
+
+static int cpt9x_attach_and_enable_cores(struct engine_group_info *eng_grp,
+					 void *obj)
+{
+	struct cptpf_dev *cptpf = obj;
+	struct bitmap bmap;
+	int ret;
+
+	bmap = get_cores_bmap(&cptpf->pdev->dev, eng_grp);
+	if (!bmap.size)
+		return -EINVAL;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_attach_and_enable_cores(eng_grp, cptpf, bmap);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_attach_and_enable_cores(eng_grp, cptpf, bmap);
+
 	return ret;
 }
 
@@ -205,15 +258,11 @@ static void cpt9x_print_engines_mask(struct engine_group_info *eng_grp,
 		  mask[1], mask[0]);
 }
 
-int cpt9x_disable_all_cores(struct cptpf_dev *cptpf)
+static int cptx_disable_all_cores(struct cptpf_dev *cptpf, int total_cores)
 {
-	int timeout = 10, ret = 0;
-	int i, busy, total_cores;
+	int timeout = 10, ret;
+	int i, busy;
 	u64 reg;
-
-	total_cores = cptpf->eng_grps.avail.max_se_cnt +
-		      cptpf->eng_grps.avail.max_ie_cnt +
-		      cptpf->eng_grps.avail.max_ae_cnt;
 
 	/* Disengage the cores from groups */
 	for (i = 0; i < total_cores; i++) {
@@ -259,6 +308,26 @@ int cpt9x_disable_all_cores(struct cptpf_dev *cptpf)
 	if (ret)
 		goto error;
 error:
+	return ret;
+}
+
+int cpt9x_disable_all_cores(struct cptpf_dev *cptpf)
+{
+	int total_cores, ret;
+
+	total_cores = cptpf->eng_grps.avail.max_se_cnt +
+		      cptpf->eng_grps.avail.max_ie_cnt +
+		      cptpf->eng_grps.avail.max_ae_cnt;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_disable_all_cores(cptpf, total_cores);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_disable_all_cores(cptpf, total_cores);
+
 	return ret;
 }
 

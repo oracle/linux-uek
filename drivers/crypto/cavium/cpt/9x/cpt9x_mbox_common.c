@@ -62,6 +62,20 @@ static inline struct free_rsrcs_rsp *get_limits(struct pci_dev *pdev)
 	return &cptvf->limits;
 }
 
+static inline u8 cpt_get_blkaddr(struct pci_dev *pdev)
+{
+	struct cptpf_dev *cptpf;
+	struct cptvf_dev *cptvf;
+
+	if (pdev->is_physfn) {
+		cptpf = (struct cptpf_dev *) pci_get_drvdata(pdev);
+		return cptpf->blkaddr;
+	}
+
+	cptvf = (struct cptvf_dev *) pci_get_drvdata(pdev);
+	return cptvf->blkaddr;
+}
+
 char *cpt_get_mbox_opcode_str(int msg_opcode)
 {
 	char *str = "Unknown";
@@ -187,7 +201,6 @@ int cpt_attach_rscrs_msg(struct pci_dev *pdev)
 		goto error;
 	}
 
-	memset(req, 0, sizeof(*req));
 	req->hdr.id = MBOX_MSG_ATTACH_RESOURCES;
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	req->hdr.pcifunc = RVU_PFFUNC(get_pf_id(pdev), get_vf_id(pdev));
@@ -218,7 +231,6 @@ int cpt_detach_rscrs_msg(struct pci_dev *pdev)
 		goto error;
 	}
 
-	memset(req, 0, sizeof(*req));
 	req->hdr.id = MBOX_MSG_DETACH_RESOURCES;
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	req->hdr.pcifunc = RVU_PFFUNC(get_pf_id(pdev), get_vf_id(pdev));
@@ -247,7 +259,6 @@ int cpt_msix_offset_msg(struct pci_dev *pdev)
 		goto error;
 	}
 
-	memset(req, 0, sizeof(*req));
 	req->id = MBOX_MSG_MSIX_OFFSET;
 	req->sig = OTX2_MBOX_REQ_SIG;
 	req->pcifunc = RVU_PFFUNC(get_pf_id(pdev), get_vf_id(pdev));
@@ -275,6 +286,7 @@ int cpt_send_af_reg_requests(struct pci_dev *pdev)
 int cpt_add_read_af_reg(struct pci_dev *pdev, u64 reg, u64 *val)
 {
 	struct otx2_mbox *mbox = get_mbox(pdev);
+	u8 blkaddr = cpt_get_blkaddr(pdev);
 	struct cpt_rd_wr_reg_msg *reg_msg;
 	int ret = 0;
 
@@ -293,6 +305,7 @@ int cpt_add_read_af_reg(struct pci_dev *pdev, u64 reg, u64 *val)
 	reg_msg->is_write = 0;
 	reg_msg->reg_offset = reg;
 	reg_msg->ret_val = val;
+	reg_msg->blkaddr = blkaddr;
 error:
 	return ret;
 }
@@ -300,6 +313,7 @@ error:
 int cpt_add_write_af_reg(struct pci_dev *pdev, u64 reg, u64 val)
 {
 	struct otx2_mbox *mbox = get_mbox(pdev);
+	u8 blkaddr = cpt_get_blkaddr(pdev);
 	struct cpt_rd_wr_reg_msg *reg_msg;
 	int ret = 0;
 
@@ -318,6 +332,7 @@ int cpt_add_write_af_reg(struct pci_dev *pdev, u64 reg, u64 val)
 	reg_msg->is_write = 1;
 	reg_msg->reg_offset = reg;
 	reg_msg->val = val;
+	reg_msg->blkaddr = blkaddr;
 error:
 	return ret;
 }

@@ -82,6 +82,9 @@ struct cptpf_dev {
 	u8 enabled_vfs;		/* Number of enabled VFs */
 	u8 sso_pf_func_ovrd;	/* SSO PF_FUNC override bit */
 	u8 kvf_limits;		/* Kernel VF limits */
+	/* BLKADDR_CPT0/BLKADDR_CPT1 or 0 for BLKADDR_CPT0 */
+	u8 blkaddr;
+	bool cpt1_implemented;
 };
 
 irqreturn_t cptpf_afpf_mbox_intr(int irq, void *arg);

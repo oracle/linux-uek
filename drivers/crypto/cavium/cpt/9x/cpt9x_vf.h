@@ -26,6 +26,7 @@ struct cptvf_dev {
 	struct otx2_mbox	pfvf_mbox;
 	struct work_struct	pfvf_mbox_work;
 	struct workqueue_struct *pfvf_mbox_wq;
+	int blkaddr;
 };
 
 irqreturn_t cptvf_pfvf_mbox_intr(int irq, void *arg);
