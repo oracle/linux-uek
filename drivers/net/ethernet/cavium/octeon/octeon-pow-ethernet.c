@@ -999,6 +999,7 @@ static int __init octeon_pow_mod_init(void)
 		/* Initialize the device private structure. */
 
 		priv = netdev_priv(octeon_pow_dbg_dev);
+		priv->netdev = octeon_pow_dbg_dev;
 		priv->rx_group = ptp_dbg_group;
 
 		/* Note: We don't want to transmit from the dbg interface, ever.
