@@ -2748,13 +2748,14 @@ static int rvu_dbg_cpt_engines_sts_display(struct seq_file *filp, void *unused)
 	struct rvu *rvu = filp->private;
 	u16  max_ses, max_ies, max_aes;
 	u32  e_min = 0, e_max = 0, e;
+	struct dentry *current_dir;
 	int  blkaddr;
 	char *e_type;
 	u64  reg;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
-	if (blkaddr < 0)
-		return -ENODEV;
+	current_dir = filp->file->f_path.dentry->d_parent;
+	blkaddr = (!strcmp(current_dir->d_name.name, "cpt1") ?
+		   BLKADDR_CPT1 : BLKADDR_CPT0);
 
 	reg = rvu_read64(rvu, blkaddr, CPT_AF_CONSTANTS1);
 	max_ses = reg & 0xffff;
@@ -2816,14 +2817,15 @@ static int rvu_dbg_cpt_engines_info_display(struct seq_file *filp, void *unused)
 {
 	struct rvu *rvu = filp->private;
 	u16  max_ses, max_ies, max_aes;
+	struct dentry *current_dir;
 	u32  e_min, e_max, e;
 	int  blkaddr;
 	char *e_type;
 	u64  reg;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
-	if (blkaddr < 0)
-		return -ENODEV;
+	current_dir = filp->file->f_path.dentry->d_parent;
+	blkaddr = (!strcmp(current_dir->d_name.name, "cpt1") ?
+		   BLKADDR_CPT1 : BLKADDR_CPT0);
 
 	reg = rvu_read64(rvu, blkaddr, CPT_AF_CONSTANTS1);
 	max_ses = reg & 0xffff;
@@ -2871,14 +2873,15 @@ static int rvu_dbg_cpt_lfs_info_display(struct seq_file *filp, void *unused)
 {
 	struct rvu *rvu = filp->private;
 	struct rvu_hwinfo *hw = rvu->hw;
+	struct dentry *current_dir;
 	struct rvu_block *block;
 	int blkaddr;
 	u64 reg;
 	u32 lf;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
-	if (blkaddr < 0)
-		return -ENODEV;
+	current_dir = filp->file->f_path.dentry->d_parent;
+	blkaddr = (!strcmp(current_dir->d_name.name, "cpt1") ?
+		   BLKADDR_CPT1 : BLKADDR_CPT0);
 
 	block = &hw->block[blkaddr];
 	if (!block->lf.bmap)
@@ -2905,12 +2908,13 @@ RVU_DEBUG_SEQ_FOPS(cpt_lfs_info, cpt_lfs_info_display, NULL);
 static int rvu_dbg_cpt_err_info_display(struct seq_file *filp, void *unused)
 {
 	struct rvu *rvu = filp->private;
+	struct dentry *current_dir;
 	u64 reg0, reg1;
 	int blkaddr;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
-	if (blkaddr < 0)
-		return -ENODEV;
+	current_dir = filp->file->f_path.dentry->d_parent;
+	blkaddr = (!strcmp(current_dir->d_name.name, "cpt1") ?
+		   BLKADDR_CPT1 : BLKADDR_CPT0);
 
 	reg0 = rvu_read64(rvu, blkaddr, CPT_AF_FLTX_INT(0));
 	reg1 = rvu_read64(rvu, blkaddr, CPT_AF_FLTX_INT(1));
@@ -2934,14 +2938,16 @@ RVU_DEBUG_SEQ_FOPS(cpt_err_info, cpt_err_info_display, NULL);
 
 static int rvu_dbg_cpt_pc_display(struct seq_file *filp, void *unused)
 {
+	struct dentry *current_dir;
 	struct rvu *rvu;
 	int blkaddr;
 	u64 reg;
 
 	rvu = filp->private;
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
-	if (blkaddr < 0)
-		return -ENODEV;
+
+	current_dir = filp->file->f_path.dentry->d_parent;
+	blkaddr = (!strcmp(current_dir->d_name.name, "cpt1") ?
+		   BLKADDR_CPT1 : BLKADDR_CPT0);
 
 	reg = rvu_read64(rvu, blkaddr, CPT_AF_INST_REQ_PC);
 	seq_printf(filp, "CPT instruction requests   %llu\n", reg);
@@ -2963,15 +2969,28 @@ static int rvu_dbg_cpt_pc_display(struct seq_file *filp, void *unused)
 
 RVU_DEBUG_SEQ_FOPS(cpt_pc, cpt_pc_display, NULL);
 
-static void rvu_dbg_cpt_init(struct rvu *rvu)
+static void rvu_dbg_cpt_init(struct rvu *rvu, int blkaddr)
 {
 	const struct device *dev = &rvu->pdev->dev;
 	struct dentry *pfile;
 
-	rvu->rvu_dbg.cpt = debugfs_create_dir("cpt", rvu->rvu_dbg.root);
-	if (!rvu->rvu_dbg.cpt)
+	if (!is_block_implemented(rvu->hw, blkaddr))
 		return;
 
+	if (blkaddr == BLKADDR_CPT0) {
+		rvu->rvu_dbg.cpt = debugfs_create_dir("cpt", rvu->rvu_dbg.root);
+		if (!rvu->rvu_dbg.cpt) {
+			dev_err(rvu->dev, "create debugfs dir failed for cpt\n");
+			return;
+		}
+	} else {
+		rvu->rvu_dbg.cpt = debugfs_create_dir("cpt1",
+						      rvu->rvu_dbg.root);
+		if (!rvu->rvu_dbg.cpt) {
+			dev_err(rvu->dev, "create debugfs dir failed for cpt1\n");
+			return;
+		}
+	}
 	pfile = debugfs_create_file("cpt_pc", 0600,
 				    rvu->rvu_dbg.cpt, rvu,
 				    &rvu_dbg_cpt_pc_fops);
@@ -3036,8 +3055,9 @@ void rvu_dbg_init(struct rvu *rvu)
 
 	rvu_dbg_sso_init(rvu);
 
-	if (is_block_implemented(rvu->hw, BLKADDR_CPT0))
-		rvu_dbg_cpt_init(rvu);
+	rvu_dbg_cpt_init(rvu, BLKADDR_CPT0);
+
+	rvu_dbg_cpt_init(rvu, BLKADDR_CPT1);
 
 	return;
 
