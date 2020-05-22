@@ -2919,6 +2919,8 @@ static int handle_exit(struct kvm_vcpu *vcpu, fastpath_t exit_fastpath)
 	if (npt_enabled)
 		vcpu->arch.cr3 = svm->vmcb->save.cr3;
 
+	svm_complete_interrupts(svm);
+
 	if (is_guest_mode(vcpu)) {
 		int vmexit;
 
@@ -2937,8 +2939,6 @@ static int handle_exit(struct kvm_vcpu *vcpu, fastpath_t exit_fastpath)
 		if (vmexit == NESTED_EXIT_DONE)
 			return 1;
 	}
-
-	svm_complete_interrupts(svm);
 
 	if (svm->vmcb->control.exit_code == SVM_EXIT_ERR) {
 		kvm_run->exit_reason = KVM_EXIT_FAIL_ENTRY;
