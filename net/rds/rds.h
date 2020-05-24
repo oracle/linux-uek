@@ -1363,4 +1363,10 @@ static inline void rds_pages_free(struct page *page, int order)
 	rds_stats_inc(s_page_frees);
 }
 
+static inline
+struct rds_conn_path *rds_conn_to_path(struct rds_connection *conn, struct rds_incoming *inc)
+{
+	return conn->c_trans->t_mp_capable ? inc->i_conn_path : conn->c_path + 0;
+}
+
 #endif
