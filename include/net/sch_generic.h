@@ -16,6 +16,7 @@
 #include <linux/rwsem.h>
 #include <linux/atomic.h>
 #include <linux/hashtable.h>
+#include <linux/uek_kabi.h>
 #include <net/gen_stats.h>
 #include <net/rtnetlink.h>
 #include <net/flow_offload.h>
@@ -424,6 +425,7 @@ struct tcf_block {
 	struct rcu_head rcu;
 	DECLARE_HASHTABLE(proto_destroy_ht, 7);
 	struct mutex proto_destroy_lock; /* Lock for proto_destroy hashtable. */
+	UEK_KABI_EXTEND(u32 classid) /* which class this block belongs to */
 };
 
 #ifdef CONFIG_PROVE_LOCKING
