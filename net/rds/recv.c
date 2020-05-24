@@ -371,10 +371,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	/* save off the original connection against which the request arrived */
 	inc->i_oconn = conn;
 	inc->i_skb   = NULL;
-	if (conn->c_trans->t_mp_capable)
-		cp = inc->i_conn_path;
-	else
-		cp = &conn->c_path[0];
+	cp = rds_conn_to_path(conn, inc);
 
 	/* lets find a socket to which this request belongs */
 	rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_bound_if);
