@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -922,10 +922,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	list_for_each_entry(rm, &list, m_sock_item) {
 
 		conn = rm->m_inc.i_conn;
-		if (conn->c_trans->t_mp_capable)
-			cp = rm->m_inc.i_conn_path;
-		else
-			cp = &conn->c_path[0];
+		cp = rds_conn_to_path(conn, &rm->m_inc);
 
 		spin_lock_irqsave(&cp->cp_lock, flags);
 		/*
