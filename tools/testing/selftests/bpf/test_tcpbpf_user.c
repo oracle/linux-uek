@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 
 	if (g.bytes_received != 501 || g.bytes_acked != 1002 ||
 	    g.data_segs_in != 1 || g.data_segs_out != 1 ||
-	    (g.event_map ^ 0x47e) != 0 || g.bad_cb_test_rv != 0x80 ||
+	    (g.event_map & 0x47e) != 0x47e || g.bad_cb_test_rv != 0x80 ||
 		g.good_cb_test_rv != 0) {
 		printf("FAILED: Wrong stats\n");
 		if (debug_flag) {
