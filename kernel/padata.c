@@ -41,6 +41,7 @@ struct padata_mt_job_state {
 	struct padata_mt_job	*job;
 	int			nworks;
 	int			nworks_fini;
+	int			error; /* first error from thread_fn */
 	unsigned long		chunk_size;
 };
 
@@ -463,8 +464,9 @@ static void padata_mt_helper(struct work_struct *w)
 
 	spin_lock(&ps->lock);
 
-	while (job->size > 0) {
+	while (job->size > 0 && ps->error == 0) {
 		unsigned long start, size, end;
+		int ret;
 
 		start = job->start;
 		/* So end is chunk size aligned if enough work remains. */
@@ -476,8 +478,12 @@ static void padata_mt_helper(struct work_struct *w)
 		job->size -= size;
 
 		spin_unlock(&ps->lock);
-		job->thread_fn(start, end, job->fn_arg);
+		ret = job->thread_fn(start, end, job->fn_arg);
 		spin_lock(&ps->lock);
+
+		/* Save first error code only. */
+		if (ps->error == 0)
+			ps->error = ret;
 	}
 
 	++ps->nworks_fini;
@@ -493,19 +499,21 @@ static void padata_mt_helper(struct work_struct *w)
  * @job: Description of the job.
  *
  * See the definition of struct padata_mt_job for more details.
+ *
+ * Return: 0 for success or a client-specific nonzero error code.
  */
-void padata_do_multithreaded(struct padata_mt_job *job)
+int padata_do_multithreaded(struct padata_mt_job *job)
 {
 	/* In case threads finish at different times. */
 	static const unsigned long load_balance_factor = 4;
 	struct padata_work my_work, *pw;
 	struct padata_mt_job_state ps;
 	LIST_HEAD(works);
-	int nworks, nid;
+	int nworks, nid, ret;
 	static atomic_t last_used_nid;
 
 	if (job->size == 0)
-		return;
+		return 0;
 
 	/* Ensure at least one thread when size < min_chunk. */
 	nworks = max(job->size / max(job->min_chunk, job->align), 1ul);
@@ -513,8 +521,9 @@ void padata_do_multithreaded(struct padata_mt_job *job)
 
 	if (nworks == 1) {
 		/* Single thread, no coordination needed, cut to the chase. */
-		job->thread_fn(job->start, job->start + job->size, job->fn_arg);
-		return;
+		ret = job->thread_fn(job->start, job->start + job->size,
+				     job->fn_arg);
+		return ret;
 	}
 
 	spin_lock_init(&ps.lock);
@@ -522,6 +531,7 @@ void padata_do_multithreaded(struct padata_mt_job *job)
 	ps.job	       = job;
 	ps.nworks      = padata_work_alloc_mt(nworks, &ps, &works);
 	ps.nworks_fini = 0;
+	ps.error       = 0;
 
 	/*
 	 * Chunk size is the amount of work a helper does per call to the
@@ -557,6 +567,7 @@ void padata_do_multithreaded(struct padata_mt_job *job)
 
 	destroy_work_on_stack(&my_work.pw_work);
 	padata_works_free(&works);
+	return ps.error;
 }
 
 static void __padata_list_init(struct padata_list *pd_list)
