@@ -677,7 +677,7 @@ static long vpfn_pages(struct vfio_dma *dma,
 static long vfio_pin_pages_remote(struct vfio_dma *dma, unsigned long vaddr,
 				  unsigned long npage, unsigned long *pfn_base,
 				  unsigned long limit, struct vfio_batch *batch,
-				  struct mm_struct *mm)
+				  struct mm_struct *mm, long *lock_cache)
 {
 	unsigned long pfn;
 	long ret, pinned = 0, lock_acct = 0;
@@ -767,14 +767,32 @@ static long vfio_pin_pages_remote(struct vfio_dma *dma, unsigned long vaddr,
 			 * the user.
 			 */
 			if (acct_pages) {
+				long cache_pages;
+
+				/*
+				 * lock_cache has already been accounted to
+				 * mm->locked_vm, so de-account it in this
+				 * comparison only.
+				 */
+				WARN_ON_ONCE(*lock_cache > mm->locked_vm);
 				if (!dma->lock_cap &&
-				    mm->locked_vm + lock_acct + acct_pages > limit) {
+				    mm->locked_vm - *lock_cache + lock_acct + acct_pages > limit) {
 					pr_warn("%s: RLIMIT_MEMLOCK (%ld) exceeded\n",
 						__func__, limit << PAGE_SHIFT);
 					ret = -ENOMEM;
 					goto unpin_out;
 				}
-				lock_acct += acct_pages;
+
+				/*
+				 * Draw from the cache if possible to avoid
+				 * taking the write-side mmap_lock in
+				 * vfio_lock_acct(), which will alleviate
+				 * contention with the read-side mmap_lock in
+				 * vaddr_get_pfn().
+				 */
+				cache_pages  = min(*lock_cache, acct_pages);
+				*lock_cache -= cache_pages;
+				lock_acct   += (acct_pages - cache_pages);
 			}
 
 			pinned += nr_pages;
@@ -1603,6 +1621,14 @@ static void vfio_pin_map_dma_undo(unsigned long start_vaddr,
 	vfio_unmap_unpin(args->iommu, args->dma, iova, end, true);
 }
 
+/*
+ * Relieve mmap_lock contention when multithreading page pinning by caching
+ * locked_vm locally.  Bound the locked_vm that a thread will cache but not use
+ * with this constant, which compromises between performance and overaccounting.
+ * NOTE - LOCK_CACHE_MAX is in pages.
+ */
+#define LOCK_CACHE_MAX	65536
+
 static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
 				  unsigned long end_vaddr, void *arg)
 {
@@ -1611,6 +1637,7 @@ static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
 	dma_addr_t iova = dma->iova + (start_vaddr - dma->vaddr);
 	unsigned long unmapped_size = end_vaddr - start_vaddr;
 	unsigned long pfn, mapped_size = 0;
+	long cache_size, lock_cache = 0;
 	struct vfio_batch batch;
 	long npage;
 	int ret = 0;
@@ -1618,11 +1645,22 @@ static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
 	vfio_batch_init(&batch);
 
 	while (unmapped_size) {
+		if (lock_cache == 0) {
+			cache_size = min_t(long, unmapped_size >> PAGE_SHIFT,
+					   LOCK_CACHE_MAX);
+			ret = vfio_lock_acct(dma, cache_size, false);
+			if (ret) {
+				vfio_batch_unpin(&batch, dma);
+				break;
+			}
+			lock_cache = cache_size;
+		}
+
 		/* Pin a contiguous chunk of memory */
 		npage = vfio_pin_pages_remote(dma, start_vaddr + mapped_size,
 					      unmapped_size >> PAGE_SHIFT,
 					      &pfn, args->limit, &batch,
-					      args->mm);
+					      args->mm, &lock_cache);
 		if (npage <= 0) {
 			WARN_ON(!npage);
 			ret = (int)npage;
@@ -1644,6 +1682,7 @@ static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
 	}
 
 	vfio_batch_fini(&batch);
+	vfio_lock_acct(dma, -lock_cache, false);
 
 	/*
 	 * Undo the successfully completed part of this chunk now.  padata will
@@ -1872,6 +1911,7 @@ static int vfio_iommu_replay(struct vfio_iommu *iommu,
 	struct rb_node *n;
 	unsigned long limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
 	int ret;
+	long lock_cache = 0;
 
 	/* Arbitrarily pick the first domain in the list for lookups */
 	if (!list_empty(&iommu->domain_list))
@@ -1928,7 +1968,8 @@ static int vfio_iommu_replay(struct vfio_iommu *iommu,
 							      n >> PAGE_SHIFT,
 							      &pfn, limit,
 							      &batch,
-							      current->mm);
+							      current->mm,
+							      &lock_cache);
 				if (npage <= 0) {
 					WARN_ON(!npage);
 					ret = (int)npage;
