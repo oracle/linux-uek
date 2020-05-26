@@ -733,6 +733,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	rvu_npc_freemem(rvu);
 	rvu_nix_freemem(rvu);
 	rvu_sso_freemem(rvu);
+	rvu_ree_freemem(rvu);
 
 	/* Free block LF bitmaps */
 	for (id = 0; id < BLK_COUNT; id++) {
@@ -859,6 +860,7 @@ static int rvu_setup_nix_hw_resource(struct rvu *rvu, int blkaddr)
 	block->lfcfg_reg = NIX_PRIV_LFX_CFG;
 	block->msixcfg_reg = NIX_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = NIX_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "NIX%d", blkid);
 	rvu->nix_blkaddr[blkid] = blkaddr;
 	return rvu_alloc_bitmap(&block->lf);
@@ -888,6 +890,7 @@ static int rvu_setup_cpt_hw_resource(struct rvu *rvu, int blkaddr)
 	block->lfcfg_reg = CPT_PRIV_LFX_CFG;
 	block->msixcfg_reg = CPT_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = CPT_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "CPT%d", blkid);
 	return rvu_alloc_bitmap(&block->lf);
 }
@@ -915,6 +918,7 @@ static int rvu_setup_ree_hw_resource(struct rvu *rvu, int blkaddr, int blkid)
 	block->lfcfg_reg = REE_PRIV_LFX_CFG;
 	block->msixcfg_reg = REE_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = REE_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "REE%d", blkid);
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err)
@@ -950,6 +954,7 @@ static int rvu_setup_hw_resources(struct rvu *rvu)
 	block->lfcfg_reg = NPA_PRIV_LFX_CFG;
 	block->msixcfg_reg = NPA_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = NPA_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "NPA");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err)
@@ -979,6 +984,7 @@ nix:
 	block->lfcfg_reg = SSO_PRIV_LFX_HWGRP_CFG;
 	block->msixcfg_reg = SSO_PRIV_LFX_HWGRP_INT_CFG;
 	block->lfreset_reg = SSO_AF_LF_HWGRP_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "SSO GROUP");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err)
@@ -1000,6 +1006,7 @@ ssow:
 	block->lfcfg_reg = SSOW_PRIV_LFX_HWS_CFG;
 	block->msixcfg_reg = SSOW_PRIV_LFX_HWS_INT_CFG;
 	block->lfreset_reg = SSOW_AF_LF_HWS_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "SSOWS");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err)
@@ -1022,6 +1029,7 @@ tim:
 	block->lfcfg_reg = TIM_PRIV_LFX_CFG;
 	block->msixcfg_reg = TIM_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = TIM_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "TIM");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err)
@@ -1112,6 +1120,10 @@ cpt:
 		goto sso_err;
 
 	err = rvu_sdp_init(rvu);
+	if (err)
+		goto sso_err;
+
+	err = rvu_ree_init(rvu);
 	if (err)
 		goto sso_err;
 
@@ -1656,7 +1668,7 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 		if (req->reelfs > block->lf.max) {
 			dev_err(&rvu->pdev->dev,
 				"Func 0x%x: Invalid REELF req, %d > max %d\n",
-				 pcifunc, req->cptlfs, block->lf.max);
+				 pcifunc, req->reelfs, block->lf.max);
 			return -EINVAL;
 		}
 		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->addr);
@@ -2547,6 +2559,8 @@ static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_NIX1);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_CPT0);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_CPT1);
+	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_REE0);
+	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_REE1);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_TIM);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_SSOW);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_SSO);
@@ -2726,6 +2740,7 @@ static void rvu_unregister_interrupts(struct rvu *rvu)
 	rvu_nix_unregister_interrupts(rvu);
 	rvu_sso_unregister_interrupts(rvu);
 	rvu_cpt_unregister_interrupts(rvu);
+	rvu_ree_unregister_interrupts(rvu);
 
 	/* Disable the Mbox interrupt */
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFAF_MBOX_INT_ENA_W1C,
@@ -2948,6 +2963,10 @@ static int rvu_register_interrupts(struct rvu *rvu)
 		goto fail;
 
 	ret = rvu_cpt_register_interrupts(rvu);
+	if (ret)
+		goto fail;
+
+	ret = rvu_ree_register_interrupts(rvu);
 	if (ret)
 		goto fail;
 
