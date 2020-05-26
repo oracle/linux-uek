@@ -37,6 +37,7 @@
 #include <linux/vfio.h>
 #include <linux/workqueue.h>
 #include <linux/notifier.h>
+#include <linux/padata.h>
 #include "vfio.h"
 
 #define DRIVER_VERSION  "0.2"
@@ -1443,24 +1444,44 @@ unwind:
 	return ret;
 }
 
-static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
-			    size_t map_size)
+struct vfio_pin_args {
+	struct vfio_iommu *iommu;
+	struct vfio_dma *dma;
+	unsigned long limit;
+	struct mm_struct *mm;
+};
+
+static void vfio_pin_map_dma_undo(unsigned long start_vaddr,
+				  unsigned long end_vaddr, void *arg)
 {
-	dma_addr_t iova = dma->iova;
-	unsigned long vaddr = dma->vaddr;
+	struct vfio_pin_args *args = arg;
+	struct vfio_dma *dma = args->dma;
+	dma_addr_t iova = dma->iova + (start_vaddr - dma->vaddr);
+	dma_addr_t end  = dma->iova + (end_vaddr   - dma->vaddr);
+
+	vfio_unmap_unpin(args->iommu, args->dma, iova, end, true);
+}
+
+static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
+				  unsigned long end_vaddr, void *arg)
+{
+	struct vfio_pin_args *args = arg;
+	struct vfio_dma *dma = args->dma;
+	dma_addr_t iova = dma->iova + (start_vaddr - dma->vaddr);
+	unsigned long unmapped_size = end_vaddr - start_vaddr;
+	unsigned long pfn, mapped_size = 0;
 	struct vfio_batch batch;
-	size_t size = map_size;
 	long npage;
-	unsigned long pfn, limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
 	int ret = 0;
 
 	vfio_batch_init(&batch);
 
-	while (size) {
+	while (unmapped_size) {
 		/* Pin a contiguous chunk of memory */
-		npage = vfio_pin_pages_remote(dma, vaddr + dma->size,
-					      size >> PAGE_SHIFT, &pfn, limit,
-					      &batch, current->mm);
+		npage = vfio_pin_pages_remote(dma, start_vaddr + mapped_size,
+					      unmapped_size >> PAGE_SHIFT,
+					      &pfn, args->limit, &batch,
+					      args->mm);
 		if (npage <= 0) {
 			WARN_ON(!npage);
 			ret = (int)npage;
@@ -1468,24 +1489,60 @@ static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
 		}
 
 		/* Map it! */
-		ret = vfio_iommu_map(iommu, iova + dma->size, pfn, npage,
-				     dma->prot);
+		ret = vfio_iommu_map(args->iommu, iova + mapped_size, pfn,
+				     npage, dma->prot);
 		if (ret) {
-			vfio_unpin_pages_remote(dma, iova + dma->size, pfn,
+			vfio_unpin_pages_remote(dma, iova + mapped_size, pfn,
 						npage, true);
 			vfio_batch_unpin(&batch, dma);
 			break;
 		}
 
-		size -= npage << PAGE_SHIFT;
-		dma->size += npage << PAGE_SHIFT;
+		unmapped_size -= npage << PAGE_SHIFT;
+		mapped_size   += npage << PAGE_SHIFT;
 	}
 
 	vfio_batch_fini(&batch);
+
+	/*
+	 * Undo the successfully completed part of this chunk now.  padata will
+	 * undo previously completed chunks internally at the end of the job.
+	 */
+	if (ret) {
+		vfio_pin_map_dma_undo(start_vaddr, start_vaddr + mapped_size,
+				      args);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
+			    size_t map_size)
+{
+	unsigned long limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+	int ret = 0;
+	struct vfio_pin_args args = { iommu, dma, limit, current->mm };
+	/* Stay on PMD boundary in case THP is being used. */
+	struct padata_mt_job job = {
+		.thread_fn   = vfio_pin_map_dma_chunk,
+		.fn_arg      = &args,
+		.start       = dma->vaddr,
+		.size        = map_size,
+		.align       = PMD_SIZE,
+		.min_chunk   = (1ul << 27),
+		.undo_fn     = vfio_pin_map_dma_undo,
+		.max_threads = 16,
+	};
+
+	ret = padata_do_multithreaded(&job);
+
 	dma->iommu_mapped = true;
 
 	if (ret)
-		vfio_remove_dma(iommu, dma);
+		vfio_remove_dma_finish(iommu, dma);
+	else
+		dma->size += map_size;
 
 	return ret;
 }
