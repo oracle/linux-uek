@@ -58,7 +58,8 @@
 #define ARM64_SPECTRE_BHB			48
 #define ARM64_HAS_RNG				49
 #define ARM64_WORKAROUND_CAVIUM_36890		50
+#define ARM64_WORKAROUND_MRVL_38545		51
 
-#define ARM64_NCAPS				51
+#define ARM64_NCAPS				52
 
 #endif /* __ASM_CPUCAPS_H */
