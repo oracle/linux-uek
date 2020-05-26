@@ -2095,13 +2095,15 @@ deferred_init_memmap_chunk(unsigned long start_pfn, unsigned long end_pfn,
 	return nr_pages;
 }
 
-static void __init
+static int __init
 deferred_init_memmap_job(unsigned long start_pfn, unsigned long end_pfn,
 			 void *arg)
 {
 	struct zone *zone = arg;
 
 	deferred_init_memmap_chunk(start_pfn, end_pfn, zone);
+
+	return 0;
 }
 
 static unsigned int __init
