@@ -321,8 +321,8 @@ static int rds_ib_recv_refill_one(struct rds_connection *conn,
 	struct ib_sge *sge;
 	int i;
 	int ret = -ENOMEM;
-	gfp_t slab_mask = GFP_NOWAIT;
-	gfp_t page_mask = GFP_NOWAIT;
+	gfp_t slab_mask = GFP_NOWAIT | __GFP_NOWARN;
+	gfp_t page_mask = GFP_NOWAIT | __GFP_NOWARN;
 
 	if (gfp & __GFP_DIRECT_RECLAIM) {
 		slab_mask = GFP_KERNEL;
@@ -587,6 +587,14 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 		recv = &ic->i_recvs[pos];
 		ret = rds_ib_recv_refill_one(conn, recv, gfp);
 		if (ret) {
+			static unsigned long warn_time;
+			/* warn max once per day. This should be enough to
+			 * warn users about low mem situation.
+			 */
+			if (printk_timed_ratelimit(&warn_time, 24*60*60*1000))
+				pr_warn("RDS/IB: failed to refill recv buffer for <%pI6c,%pI6c,%d>, waking worker\n",
+					&conn->c_laddr, &conn->c_faddr,
+					conn->c_tos);
 			must_wake = 1;
 			break;
 		}
