@@ -52,6 +52,7 @@ config VFIO_CONTAINER
 if VFIO_CONTAINER
 config VFIO_IOMMU_TYPE1
 	tristate
+	select PADATA
 	default n
 
 config VFIO_IOMMU_SPAPR_TCE
