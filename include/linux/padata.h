@@ -136,6 +136,10 @@ struct padata_shell {
  * @min_chunk: The minimum chunk size in job-specific units.  This allows
  *             the client to communicate the minimum amount of work that's
  *             appropriate for one worker thread to do at once.
+ * @undo_fn: A function that undoes one chunk of the task per call.  If
+ *           error(s) occur during the job, this is called on all successfully
+ *           completed chunks.  The chunk(s) in which failure occurs should be
+ *           handled in the thread function.
  * @max_threads: Max threads to use for the job, actual number may be less
  *               depending on task size and minimum chunk size.
  * @numa_aware: Distribute jobs to different nodes with CPU in a round robin fashion.
@@ -147,6 +151,9 @@ struct padata_mt_job {
 	unsigned long		size;
 	unsigned long		align;
 	unsigned long		min_chunk;
+
+	/* Have default values. */
+	void (*undo_fn)(unsigned long start, unsigned long end, void *arg);
 	int			max_threads;
 	bool			numa_aware;
 };
