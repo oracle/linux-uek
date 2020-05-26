@@ -2061,7 +2061,7 @@ deferred_init_maxorder(u64 *i, struct zone *zone, unsigned long *start_pfn,
 	return nr_pages;
 }
 
-static void __init
+static int __init
 deferred_init_memmap_chunk(unsigned long start_pfn, unsigned long end_pfn,
 			   void *arg)
 {
@@ -2079,6 +2079,8 @@ deferred_init_memmap_chunk(unsigned long start_pfn, unsigned long end_pfn,
 		deferred_init_maxorder(&i, zone, &spfn, &epfn);
 		cond_resched();
 	}
+
+	return 0;
 }
 
 static unsigned int __init
