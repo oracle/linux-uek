@@ -18,6 +18,7 @@
 #include <linux/spinlock.h>
 #include <linux/list.h>
 #include <linux/kobject.h>
+#include <linux/lockdep.h>
 
 #define PADATA_CPU_SERIAL   0x01
 #define PADATA_CPU_PARALLEL 0x02
@@ -180,6 +181,24 @@ struct padata_instance {
 
 #ifdef CONFIG_PADATA
 extern void __init padata_init(void);
+
+#ifdef CONFIG_LOCKDEP
+
+#define padata_do_multithreaded(job)					      \
+({									      \
+	static struct lock_class_key __key;				      \
+	const char *__map_name = "padata master waiting";		      \
+									      \
+	__padata_do_multithreaded((job), &__key, __map_name);		      \
+})
+
+#else
+
+#define padata_do_multithreaded(job)					      \
+	__padata_do_multithreaded((job), NULL, NULL)
+
+#endif
+
 extern struct padata_instance *padata_alloc(const char *name);
 extern void padata_free(struct padata_instance *pinst);
 extern struct padata_shell *padata_alloc_shell(struct padata_instance *pinst);
@@ -187,7 +206,9 @@ extern void padata_free_shell(struct padata_shell *ps);
 extern int padata_do_parallel(struct padata_shell *ps,
 			      struct padata_priv *padata, int *cb_cpu);
 extern void padata_do_serial(struct padata_priv *padata);
-extern int padata_do_multithreaded(struct padata_mt_job *job);
+extern int __padata_do_multithreaded(struct padata_mt_job *job,
+				     struct lock_class_key *key,
+				     const char *map_name);
 extern int padata_set_cpumask(struct padata_instance *pinst, int cpumask_type,
 			      cpumask_var_t cpumask);
 #else
