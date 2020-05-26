@@ -43,6 +43,9 @@ struct padata_mt_job_state {
 	int			nworks_fini;
 	int			error; /* first error from thread_fn */
 	unsigned long		chunk_size;
+#ifdef CONFIG_LOCKDEP
+	struct lockdep_map	lockdep_map;
+#endif
 };
 
 static void padata_free_pd(struct parallel_data *pd);
@@ -454,7 +457,11 @@ static void padata_mt_helper(struct work_struct *w)
 		job->size -= size;
 
 		spin_unlock(&ps->lock);
+		lock_map_acquire(&ps->lockdep_map);
+
 		ret = job->thread_fn(start, end, job->fn_arg);
+
+		lock_map_release(&ps->lockdep_map);
 		spin_lock(&ps->lock);
 
 		/* Save first error code only. */
@@ -471,14 +478,16 @@ static void padata_mt_helper(struct work_struct *w)
 }
 
 /**
- * padata_do_multithreaded - run a multithreaded job
+ * __padata_do_multithreaded - run a multithreaded job
  * @job: Description of the job.
  *
  * See the definition of struct padata_mt_job for more details.
  *
  * Return: 0 for success or a client-specific nonzero error code.
  */
-int padata_do_multithreaded(struct padata_mt_job *job)
+int __padata_do_multithreaded(struct padata_mt_job *job,
+			      struct lock_class_key *key,
+			      const char *map_name)
 {
 	/* In case threads finish at different times. */
 	static const unsigned long load_balance_factor = 4;
@@ -504,6 +513,7 @@ int padata_do_multithreaded(struct padata_mt_job *job)
 
 	spin_lock_init(&ps.lock);
 	init_completion(&ps.completion);
+	lockdep_init_map(&ps.lockdep_map, map_name, key, 0);
 	ps.job	       = job;
 	ps.nworks      = padata_work_alloc_mt(nworks, &ps, &works);
 	ps.nworks_fini = 0;
@@ -528,6 +538,9 @@ int padata_do_multithreaded(struct padata_mt_job *job)
 	 */
 	if (!ps.chunk_size)
 		ps.chunk_size = 1U;
+
+	lock_map_acquire(&ps.lockdep_map);
+	lock_map_release(&ps.lockdep_map);
 
 	list_for_each_entry(pw, &works, pw_list)
 		if (job->numa_aware) {
