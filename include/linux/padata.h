@@ -140,7 +140,7 @@ struct padata_shell {
  * @numa_aware: Distribute jobs to different nodes with CPU in a round robin fashion.
  */
 struct padata_mt_job {
-	void (*thread_fn)(unsigned long start, unsigned long end, void *arg);
+	int (*thread_fn)(unsigned long start, unsigned long end, void *arg);
 	void			*fn_arg;
 	unsigned long		start;
 	unsigned long		size;
@@ -187,7 +187,7 @@ extern void padata_free_shell(struct padata_shell *ps);
 extern int padata_do_parallel(struct padata_shell *ps,
 			      struct padata_priv *padata, int *cb_cpu);
 extern void padata_do_serial(struct padata_priv *padata);
-extern void padata_do_multithreaded(struct padata_mt_job *job);
+extern int padata_do_multithreaded(struct padata_mt_job *job);
 extern int padata_set_cpumask(struct padata_instance *pinst, int cpumask_type,
 			      cpumask_var_t cpumask);
 #else
