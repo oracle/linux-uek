@@ -3272,13 +3272,15 @@ static void __init gather_bootmem_prealloc_node(unsigned long nid)
 	prep_and_add_bootmem_folios(h, &folio_list);
 }
 
-static void __init gather_bootmem_prealloc_parallel(unsigned long start,
-						    unsigned long end, void *arg)
+static int __init gather_bootmem_prealloc_parallel(unsigned long start,
+						   unsigned long end, void *arg)
 {
 	int nid;
 
 	for (nid = start; nid < end; nid++)
 		gather_bootmem_prealloc_node(nid);
+
+	return 0;
 }
 
 static void __init gather_bootmem_prealloc(void)
@@ -3355,7 +3357,7 @@ static void __init hugetlb_hstate_alloc_pages_errcheck(unsigned long allocated, 
 	}
 }
 
-static void __init hugetlb_pages_alloc_boot_node(unsigned long start, unsigned long end, void *arg)
+static int __init hugetlb_pages_alloc_boot_node(unsigned long start, unsigned long end, void *arg)
 {
 	struct hstate *h = (struct hstate *)arg;
 	int i, num = end - start;
@@ -3377,6 +3379,8 @@ static void __init hugetlb_pages_alloc_boot_node(unsigned long start, unsigned l
 	}
 
 	prep_and_add_allocated_folios(h, &folio_list);
+
+	return 0;
 }
 
 static unsigned long __init hugetlb_gigantic_pages_alloc_boot(struct hstate *h)
