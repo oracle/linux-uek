@@ -12,6 +12,7 @@ menuconfig VFIO
 if VFIO
 config VFIO_IOMMU_TYPE1
 	tristate
+	select PADATA
 	default n
 
 config VFIO_IOMMU_SPAPR_TCE
