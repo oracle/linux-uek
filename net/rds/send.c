@@ -381,9 +381,27 @@ restart:
 		/* The transport either sends the whole rdma or none of it */
 		if (rm->rdma.op_active && !cp->cp_xmit_rdma_sent) {
 			rm->m_final_op = &rm->rdma;
+
+			spin_lock_irqsave(&cp->cp_lock, flags);
+			if (!test_bit(RDS_MSG_ON_CONN, &rm->m_flags)) {
+				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+				cp->cp_xmit_rm = NULL;
+				cp->cp_xmit_sg = 0;
+				cp->cp_xmit_hdr_off = 0;
+				cp->cp_xmit_data_off = 0;
+				cp->cp_xmit_rdma_sent = 0;
+				cp->cp_xmit_atomic_sent = 0;
+				cp->cp_xmit_data_sent = 0;
+
+				rds_message_put(rm);
+				spin_unlock_irqrestore(&cp->cp_lock, flags);
+				break;
+			}
+
 			/* The transport owns the mapped memory for now.
 			 * You can't unmap it while it's on the send queue */
 			set_bit(RDS_MSG_MAPPED, &rm->m_flags);
+			spin_unlock_irqrestore(&cp->cp_lock, flags);
 			ret = conn->c_trans->xmit_rdma(conn, &rm->rdma);
 			if (ret) {
 				clear_bit(RDS_MSG_MAPPED, &rm->m_flags);
@@ -918,7 +936,8 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	list_for_each_entry_safe(rm, tmp, &rs->rs_send_queue, m_sock_item) {
 		if (dest &&
 		    (!ipv6_addr_equal(&dest->sin6_addr, &rm->m_daddr) ||
-		    dest->sin6_port != rm->m_inc.i_hdr.h_dport))
+		     dest->sin6_port != rm->m_inc.i_hdr.h_dport ||
+		     test_bit(RDS_MSG_MAPPED, &rm->m_flags)))
 			continue;
 
 		list_move(&rm->m_sock_item, &list);
@@ -942,6 +961,11 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		cp = rds_conn_to_path(conn, &rm->m_inc);
 
 		spin_lock_irqsave(&cp->cp_lock, flags);
+		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
+			spin_unlock_irqrestore(&cp->cp_lock, flags);
+			continue;
+		}
+
 		/*
 		 * Maybe someone else beat us to removing rm from the conn.
 		 * If we race with their flag update we'll get the lock and
@@ -961,6 +985,12 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		spin_lock_irqsave(&rm->m_rs_lock, flags);
 
 		spin_lock(&rs->rs_lock);
+		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
+			spin_unlock(&rs->rs_lock);
+			spin_unlock_irqrestore(&rm->m_rs_lock, flags);
+			continue;
+		}
+
 		__rds_send_complete(rs, rm, RDS_RDMA_SEND_CANCELED);
 		spin_unlock(&rs->rs_lock);
 
