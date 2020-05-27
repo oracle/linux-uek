@@ -268,6 +268,7 @@ int main (int argc, char *argv[])
 	if (fclose(fp) < 0)
 		goto err;
 	free (file_data);
+	ctf_file_close (output);
 
 	return 0;
 err:
