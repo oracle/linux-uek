@@ -6314,7 +6314,7 @@ static void vcpu_scan_ioapic(struct kvm_vcpu *vcpu)
 	u64 eoi_exit_bitmap[4];
 	u32 tmr[8];
 
-	if (!kvm_apic_present(vcpu));
+	if (!kvm_apic_present(vcpu))
 		return;
 
 	memset(eoi_exit_bitmap, 0, 32);
