@@ -733,7 +733,7 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 			      pfvf->nix_rx_intf, &entry, true);
 }
 
-void rvu_npc_disable_bcast_entry(struct rvu *rvu, u16 pcifunc)
+void rvu_npc_enable_bcast_entry(struct rvu *rvu, u16 pcifunc, bool enable)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int blkaddr, index;
@@ -746,7 +746,7 @@ void rvu_npc_disable_bcast_entry(struct rvu *rvu, u16 pcifunc)
 	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
 
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc, 0, NIXLF_BCAST_ENTRY);
-	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, false);
+	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 }
 
 void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
@@ -849,11 +849,14 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 
 	/* VFs will not have BCAST entry */
 	if (action.op != NIX_RX_ACTIONOP_MCAST &&
-	    !(pcifunc & RVU_PFVF_FUNC_MASK))
+	    !(pcifunc & RVU_PFVF_FUNC_MASK)) {
 		npc_enable_mcam_entry(rvu, mcam,
 				      blkaddr, index, enable);
-	else
+	} else {
 		nix_update_bcast_mce_list(rvu, pcifunc, enable);
+		/* Enable PF's BCAST entry for packet replication */
+		rvu_npc_enable_bcast_entry(rvu, pcifunc, enable);
+	}
 
 	if (enable)
 		rvu_npc_enable_promisc_entry(rvu, pcifunc, nixlf);
