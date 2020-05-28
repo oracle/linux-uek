@@ -1075,7 +1075,8 @@ xfs_fs_destroy_inode(
 	}
 
 	_xfs_fs_destroy_inode(inode);
-	sb_end_write(mp->m_super);
+	if (!freezed)
+		sb_end_write(mp->m_super);
 }
 
 void
