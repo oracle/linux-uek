@@ -406,7 +406,7 @@ struct kvm_irq_routing_table {
 	 * Array indexed by gsi. Each entry contains list of irq chips
 	 * the gsi is connected to.
 	 */
-	struct hlist_head map[0];
+	struct hlist_head map[];
 };
 #endif
 
