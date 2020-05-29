@@ -93,6 +93,7 @@ int rds_ib_sysctl_local_ack_timeout = 17; /* 0.5 secs */
 unsigned rds_ib_sysctl_yield_after_ms = 2000;
 
 int rds_ib_sysctl_drop_on_neigh_update = 1;
+unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
 
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
@@ -188,6 +189,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(rds_ib_sysctl_drop_on_neigh_update),
 		.mode           = 0644,
 		.proc_handler   = proc_dointvec,
+	},
+	{
+		.procname       = "cm_watchdog_ms",
+		.data           = &rds_ib_sysctl_cm_watchdog_ms,
+		.maxlen         = sizeof(rds_ib_sysctl_cm_watchdog_ms),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
 	},
 	{ }
 };
