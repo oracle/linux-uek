@@ -1217,6 +1217,7 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_ACT_SETUP_QP_FAIL]	= "active setup_qp failure",
 	[DR_IB_RDMA_CONNECT_FAIL]	= "rdma_connect failure",
 	[DR_IB_CONN_DROP_YIELD]		= "yield to incoming request",
+	[DR_IB_CONN_DROP_CM_WATCHDOG]	= "CM watchdog triggered",
 	[DR_IB_RESOLVE_ROUTE_FAIL]	= "resolve_route failure",
 	[DR_IB_RDMA_CM_ID_MISMATCH]	= "detected rdma_cm_id mismatch",
 	[DR_IB_ROUTE_ERR]		= "ROUTE_ERROR event",
@@ -1271,7 +1272,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	unsigned long now = get_seconds();
 
 	if (conn->c_trans->conn_path_reset) {
-		unsigned flags = 0;
+		unsigned flags = RDS_CONN_PATH_RESET_WATCHDOG;
 
 		if (reason == DR_IB_ADDR_CHANGE || reason == DR_IB_PEER_ADDR_CHANGE ||
 		    reason == DR_IB_DISCONNECTED_EVENT)
