@@ -178,6 +178,14 @@ unsigned int blk_mq_get_tag(struct blk_mq_alloc_data *data)
 	finish_wait(&ws->wait, &wait);
 
 found_tag:
+	/*
+	 * Give up this allocation if the hctx is inactive.  The caller will
+	 * retry on an active hctx.
+	 */
+	if (unlikely(test_bit(BLK_MQ_S_INACTIVE, &data->hctx->state))) {
+		blk_mq_put_tag(data->hctx, tags, data->ctx, tag + tag_offset);
+		return BLK_MQ_TAG_FAIL;
+	}
 	return tag + tag_offset;
 }
 
