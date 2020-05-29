@@ -597,11 +597,19 @@ static inline void tcmu_flush_dcache_range(void *vaddr, size_t size)
 {
 	unsigned long offset = offset_in_page(vaddr);
 	void *start = vaddr - offset;
+	struct page *pg;
 
 	size = round_up(size+offset, PAGE_SIZE);
 
 	while (size) {
-		flush_dcache_page(virt_to_page(start));
+		if (virt_addr_valid(start))
+			pg = virt_to_page(start);
+		else if (is_vmalloc_addr(start))
+			pg = vmalloc_to_page(start);
+		else
+			break;
+
+		flush_dcache_page(pg);
 		start += PAGE_SIZE;
 		size -= PAGE_SIZE;
 	}
