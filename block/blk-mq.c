@@ -351,10 +351,6 @@ static struct request *blk_mq_get_request(struct request_queue *q,
 
 	blk_queue_enter_live(q);
 	data->q = q;
-	if (likely(!data->ctx))
-		data->ctx = local_ctx = blk_mq_get_ctx(q);
-	if (likely(!data->hctx))
-		data->hctx = blk_mq_map_queue(q, data->ctx->cpu);
 	if (op & REQ_NOWAIT)
 		data->flags |= BLK_MQ_REQ_NOWAIT;
 
@@ -369,14 +365,34 @@ static struct request *blk_mq_get_request(struct request_queue *q,
 			e->type->ops.mq.limit_depth(op, data);
 	}
 
+retry:
+	data->ctx = local_ctx = blk_mq_get_ctx(q);
+	data->hctx = blk_mq_map_queue(q, data->ctx->cpu);
+
+	/*
+	 * Waiting allocations only fail because of an inactive hctx.  In that
+	 * case just retry the hctx assignment and tag allocation as CPU hotplug
+	 * should have migrated us to an online CPU by now.
+	 */
 	tag = blk_mq_get_tag(data);
 	if (tag == BLK_MQ_TAG_FAIL) {
 		if (local_ctx) {
 			blk_mq_put_ctx(local_ctx);
 			data->ctx = NULL;
 		}
-		blk_queue_exit(q);
-		return NULL;
+
+		if (data->flags & BLK_MQ_REQ_NOWAIT) {
+			blk_queue_exit(q);
+			return NULL;
+		}
+
+		/*
+		 * Give up the CPU and sleep for a random short time to ensure
+		 * that thread using a realtime scheduling class are migrated
+		 * off the the CPU, and thus off the hctx that is going away.
+		 */
+		msleep(3);
+		goto retry;
 	}
 
 	rq = blk_mq_rq_ctx_init(data, tag, op);
@@ -2040,6 +2056,87 @@ fail:
 	return -ENOMEM;
 }
 
+struct rq_iter_data {
+	struct blk_mq_hw_ctx *hctx;
+	bool has_rq;
+};
+
+static void blk_mq_has_request(struct request *rq, void *data, bool reserved)
+{
+	struct rq_iter_data *iter_data = data;
+	struct blk_mq_hw_ctx *mq_hctx;
+
+	mq_hctx = blk_mq_map_queue(rq->q, rq->mq_ctx->cpu);
+	if (mq_hctx != iter_data->hctx)
+		return;
+	iter_data->has_rq = true;
+}
+
+static bool blk_mq_hctx_has_requests(struct blk_mq_hw_ctx *hctx)
+{
+	struct blk_mq_tags *tags = hctx->sched_tags ?
+			hctx->sched_tags : hctx->tags;
+	struct rq_iter_data data = {
+		.hctx	= hctx,
+	};
+
+	blk_mq_all_tag_iter(tags, blk_mq_has_request, &data);
+	return data.has_rq;
+}
+
+static inline bool blk_mq_last_cpu_in_hctx(unsigned int cpu,
+		struct blk_mq_hw_ctx *hctx)
+{
+	if (cpumask_next_and(-1, hctx->cpumask, cpu_online_mask) != cpu)
+		return false;
+	if (cpumask_next_and(cpu, hctx->cpumask, cpu_online_mask) < nr_cpu_ids)
+		return false;
+	return true;
+}
+
+static int blk_mq_hctx_notify_offline(unsigned int cpu, struct hlist_node *node)
+{
+	struct blk_mq_hw_ctx *hctx = hlist_entry_safe(node,
+			struct blk_mq_hw_ctx, cpuhp_online);
+
+	if (!cpumask_test_cpu(cpu, hctx->cpumask) ||
+	    !blk_mq_last_cpu_in_hctx(cpu, hctx))
+		return 0;
+
+	/*
+	 * Prevent new request from being allocated on the current hctx.
+	 *
+	 * The smp_mb__after_atomic() Pairs with the implied barrier in
+	 * test_and_set_bit_lock in sbitmap_get().  Ensures the inactive flag is
+	 * seen once we return from the tag allocator.
+	 */
+	set_bit(BLK_MQ_S_INACTIVE, &hctx->state);
+	smp_mb__after_atomic();
+
+	/*
+	 * Try to grab a reference to the queue and wait for any outstanding
+	 * requests.  If we could not grab a reference the queue has been
+	 * frozen and there are no requests.
+	 */
+	if (percpu_ref_tryget(&hctx->queue->q_usage_counter)) {
+		while (blk_mq_hctx_has_requests(hctx))
+			msleep(5);
+		percpu_ref_put(&hctx->queue->q_usage_counter);
+	}
+
+	return 0;
+}
+
+static int blk_mq_hctx_notify_online(unsigned int cpu, struct hlist_node *node)
+{
+	struct blk_mq_hw_ctx *hctx = hlist_entry_safe(node,
+			struct blk_mq_hw_ctx, cpuhp_online);
+
+	if (cpumask_test_cpu(cpu, hctx->cpumask))
+		clear_bit(BLK_MQ_S_INACTIVE, &hctx->state);
+	return 0;
+}
+
 /*
  * 'cpu' is going away. splice any existing rq_list entries from this
  * software queue to the hw queue dispatch list, and ensure that it
@@ -2052,6 +2149,9 @@ static int blk_mq_hctx_notify_dead(unsigned int cpu, struct hlist_node *node)
 	LIST_HEAD(tmp);
 
 	hctx = hlist_entry_safe(node, struct blk_mq_hw_ctx, cpuhp_dead);
+	if (!cpumask_test_cpu(cpu, hctx->cpumask))
+		return 0;
+
 	ctx = __blk_mq_get_ctx(hctx->queue, cpu);
 
 	spin_lock(&ctx->lock);
@@ -2074,6 +2174,9 @@ static int blk_mq_hctx_notify_dead(unsigned int cpu, struct hlist_node *node)
 
 static void blk_mq_remove_cpuhp(struct blk_mq_hw_ctx *hctx)
 {
+	if (!(hctx->flags & BLK_MQ_F_STACKING))
+		cpuhp_state_remove_instance_nocalls(CPUHP_AP_BLK_MQ_ONLINE,
+						    &hctx->cpuhp_online);
 	cpuhp_state_remove_instance_nocalls(CPUHP_BLK_MQ_DEAD,
 					    &hctx->cpuhp_dead);
 }
@@ -2133,6 +2236,9 @@ static int blk_mq_init_hctx(struct request_queue *q,
 	hctx->queue = q;
 	hctx->flags = set->flags & ~BLK_MQ_F_TAG_SHARED;
 
+	if (!(hctx->flags & BLK_MQ_F_STACKING))
+		cpuhp_state_add_instance_nocalls(CPUHP_AP_BLK_MQ_ONLINE,
+				&hctx->cpuhp_online);
 	cpuhp_state_add_instance_nocalls(CPUHP_BLK_MQ_DEAD, &hctx->cpuhp_dead);
 
 	hctx->tags = set->tags[hctx_idx];
@@ -3087,6 +3193,9 @@ static int __init blk_mq_init(void)
 {
 	cpuhp_setup_state_multi(CPUHP_BLK_MQ_DEAD, "block/mq:dead", NULL,
 				blk_mq_hctx_notify_dead);
+	cpuhp_setup_state_multi(CPUHP_AP_BLK_MQ_ONLINE, "block/mq:online",
+				blk_mq_hctx_notify_online,
+				blk_mq_hctx_notify_offline);
 	return 0;
 }
 subsys_initcall(blk_mq_init);
