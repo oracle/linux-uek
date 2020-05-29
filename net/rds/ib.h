@@ -342,6 +342,8 @@ struct rds_ib_connection {
 	/* qp number info */
 	s32			i_qp_num;
 	s32			i_dst_qp_num;
+
+	struct delayed_work	i_cm_watchdog_w;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -551,6 +553,7 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_yield_expired;
 	uint64_t	s_ib_yield_accepting;
 	uint64_t	s_ib_yield_success;
+	uint64_t	s_ib_cm_watchdog_triggered;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -837,5 +840,6 @@ extern u32 rds_frwr_wake_intrvl;
 extern u32 rds_frwr_ibmr_gc_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
 extern int rds_ib_sysctl_drop_on_neigh_update;
+extern unsigned rds_ib_sysctl_cm_watchdog_ms;
 
 #endif
