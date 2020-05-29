@@ -211,6 +211,7 @@ enum rds_conn_drop_src {
 	DR_IB_ACT_SETUP_QP_FAIL,
 	DR_IB_RDMA_CONNECT_FAIL,
 	DR_IB_CONN_DROP_YIELD,
+	DR_IB_CONN_DROP_CM_WATCHDOG,
 
 	/* event handling */
 	DR_IB_RESOLVE_ROUTE_FAIL,
@@ -709,6 +710,7 @@ struct rds_notifier {
 
 enum {
 	RDS_CONN_PATH_RESET_ALT_CONN	= 1 << 0,
+	RDS_CONN_PATH_RESET_WATCHDOG	= 1 << 1,
 };
 
 /**
