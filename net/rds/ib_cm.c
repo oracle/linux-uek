@@ -93,6 +93,9 @@ static char *rds_ib_event_str(enum ib_event_type type)
 	((ic->i_send_ring.w_nr + HDRS_PER_PAGE - 1) / HDRS_PER_PAGE)
 #define NMBR_RECV_HDR_PAGES \
 	((ic->i_recv_ring.w_nr + HDRS_PER_PAGE - 1) / HDRS_PER_PAGE)
+
+static void rds_ib_cancel_cm_watchdog(struct rds_ib_connection *ic, char *reason);
+
 /*
  * Set the selected protocol version
  */
@@ -376,6 +379,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	/* Save the qp number information in the connection details. */
 	ic->i_qp_num = ic->i_cm_id->qp->qp_num;
 	ic->i_dst_qp_num = event->param.conn.qp_num;
+
+	rds_ib_cancel_cm_watchdog(ic, "connect complete");
 
 	rds_connect_complete(conn);
 
@@ -711,6 +716,47 @@ static void rds_ib_rx_handler(struct work_struct *_work)
 	ic->i_rx_wait_for_handler = 0;
 	rds_ib_rx(ic);
 	spin_unlock_bh(&ic->i_rx_lock);
+}
+
+static void rds_ib_arm_cm_watchdog(struct rds_ib_connection *ic)
+{
+	unsigned cm_watchdog_ms = rds_ib_sysctl_cm_watchdog_ms;
+
+	if (!cm_watchdog_ms)
+		return;
+
+	trace_rds_ib_queue_work(ic->rds_ibdev, rds_aux_wq,
+				&ic->i_cm_watchdog_w.work,
+				msecs_to_jiffies(cm_watchdog_ms),
+				"arm cm watchdog");
+
+	queue_delayed_work(rds_aux_wq, &ic->i_cm_watchdog_w,
+			   msecs_to_jiffies(cm_watchdog_ms));
+}
+
+static void rds_ib_cancel_cm_watchdog(struct rds_ib_connection *ic, char *reason)
+{
+	trace_rds_ib_queue_cancel_work(ic->rds_ibdev, rds_aux_wq,
+				       &ic->i_cm_watchdog_w.work, 0, reason);
+
+	cancel_delayed_work(&ic->i_cm_watchdog_w);
+}
+
+static void rds_ib_cm_watchdog_handler(struct work_struct *work)
+{
+	struct rds_ib_connection *ic = container_of(work,
+						    struct rds_ib_connection,
+						    i_cm_watchdog_w.work);
+	struct rds_connection *conn = ic->conn;
+
+	if (!rds_conn_connecting(conn))
+		return;
+
+	pr_info("RDS/IB: CM watchdog triggered on connection <%pI6c,%pI6c,%d>\n",
+		&conn->c_laddr, &conn->c_faddr, conn->c_tos);
+
+	rds_conn_drop(conn, DR_IB_CONN_DROP_CM_WATCHDOG, 0);
+	rds_ib_stats_inc(s_ib_cm_watchdog_triggered);
 }
 
 static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
@@ -1711,6 +1757,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	} else {
 		destroy = 0;
 		atomic64_set(&ic->i_connecting_ts, ktime_get());
+		rds_ib_arm_cm_watchdog(ic);
 		err = rds_ib_cm_accept(conn, cm_id,
 				       isv6, dp, version,
 				       event->param.conn.responder_resources,
@@ -1857,6 +1904,9 @@ void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags)
 			ic->i_alt.is_stale = true;
 			cp->cp_reconnect_jiffies = 0;
 		}
+
+		if (flags & RDS_CONN_PATH_RESET_WATCHDOG)
+			rds_ib_cancel_cm_watchdog(ic, "conn path reset");
 	}
 }
 
@@ -1888,6 +1938,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	mutex_lock(&conn->c_cm_lock);
 
 	atomic64_set(&ic->i_connecting_ts, ktime_get());
+	rds_ib_arm_cm_watchdog(ic);
 
 	if (ic->i_alt.cm_id && !ic->i_alt.is_stale) {
 		rds_ib_stats_inc(s_ib_yield_accepting);
@@ -2037,6 +2088,8 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 						ic->rds_ibdev->dev : NULL,
 						ic ? ic->rds_ibdev : NULL, conn, ic,
 						"conn path shutdown prepare", 0);
+
+	rds_ib_cancel_cm_watchdog(ic, "conn path shutdown prepare");
 
 	if (ic->i_cm_id) {
 		int err;
@@ -2245,6 +2298,8 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 
 	ic->i_cm_id_ctx = RDS_IB_NO_CTX;
 	ic->i_irq_local_cpu = NR_CPUS;
+
+	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
 
 	INIT_DELAYED_WORK(&ic->i_delayed_free_work,
 			  rds_rdma_conn_delayed_free_worker);
