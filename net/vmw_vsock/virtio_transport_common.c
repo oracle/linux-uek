@@ -1104,6 +1104,14 @@ void virtio_transport_recv_pkt(struct virtio_vsock_pkt *pkt)
 
 	lock_sock(sk);
 
+	/* Check if sk has been released before lock_sock */
+	if (sk->sk_shutdown == SHUTDOWN_MASK) {
+		(void)virtio_transport_reset_no_sock(pkt);
+		release_sock(sk);
+		sock_put(sk);
+		goto free_pkt;
+	}
+
 	/* Update CID in case it has changed after a transport reset event */
 	vsk->local_addr.svm_cid = dst.svm_cid;
 
