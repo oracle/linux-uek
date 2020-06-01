@@ -494,7 +494,7 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 	switch (cmd) {
 	case CGX_PRBS_START_CMD:
 		arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, cmd,
-			      qlm, mode, 0, qlm_lane, 0, 0, &res);
+			      qlm, mode, qlm_lane, 0, 0, 0, &res);
 
 		list_for_each_entry(status,
 				    &prbs_cmd_data.status_list.list,
