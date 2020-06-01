@@ -169,6 +169,9 @@ int uncore_pcibus_to_dieid(struct pci_bus *bus);
 ssize_t uncore_event_show(struct device *dev,
 			  struct device_attribute *attr, char *buf);
 
+extern int __uncore_max_dies;
+#define uncore_max_dies()	(__uncore_max_dies)
+
 #define INTEL_UNCORE_EVENT_DESC(_name, _config)			\
 {								\
 	.attr	= __ATTR(_name, 0444, uncore_event_show, NULL),	\
