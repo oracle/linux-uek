@@ -1538,6 +1538,13 @@ union bpf_attr {
  * 		Grow or shrink the room for data in the packet associated to
  * 		*skb* by *len_diff*, and according to the selected *mode*.
  *
+ *		By default, the helper will reset any offloaded checksum
+ *		indicator of the skb to CHECKSUM_NONE. This can be avoided
+ *		by the following flag:
+ *
+ *		* **BPF_F_ADJ_ROOM_NO_CSUM_RESET**: Do not reset offloaded
+ *		  checksum data of the skb to CHECKSUM_NONE.
+ *
  *		There are two supported modes at this time:
  *
  *		* **BPF_ADJ_ROOM_MAC**: Adjust room at the mac layer
@@ -2931,6 +2938,7 @@ enum bpf_func_id {
 #define BPF_F_ADJ_ROOM_ENCAP_L3_IPV6	(1ULL << 2)
 #define BPF_F_ADJ_ROOM_ENCAP_L4_GRE	(1ULL << 3)
 #define BPF_F_ADJ_ROOM_ENCAP_L4_UDP	(1ULL << 4)
+#define BPF_F_ADJ_ROOM_NO_CSUM_RESET	(1ULL << 5)
 #define BPF_F_ADJ_ROOM_ENCAP_L2(len)	(((__u64)len & \
 					  BPF_ADJ_ROOM_ENCAP_L2_MASK) \
 					 << BPF_ADJ_ROOM_ENCAP_L2_SHIFT)
