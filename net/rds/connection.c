@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -47,6 +47,14 @@ static DEFINE_SPINLOCK(rds_conn_lock);
 static unsigned long rds_conn_count;
 static struct hlist_head rds_conn_hash[RDS_CONNECTION_HASH_ENTRIES];
 static struct kmem_cache *rds_conn_slab;
+
+/* Loop through the rds_conn_hash table and set head to the hlist_head
+ * of each element.
+ */
+#define	for_each_conn_hash_bucket(head)				\
+    for ((head) = rds_conn_hash;				\
+	 (head) < rds_conn_hash + ARRAY_SIZE(rds_conn_hash);	\
+	 (head)++)
 
 static struct hlist_head *rds_conn_bucket(const struct in6_addr *laddr,
 					  const struct in6_addr *faddr,
@@ -107,12 +115,10 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 {
 	struct rds_connection *conn;
 	struct hlist_head *head;
-	int i;
 
 	rcu_read_lock();
 
-	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
-	     i++, head++) {
+	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node)
 			if (ipv6_addr_equal(&conn->c_laddr, laddr) &&
 			    net == rds_conn_net(conn))
@@ -137,11 +143,9 @@ static struct rds_base_conn *get_base_conn(const struct in6_addr *laddr,
 	struct rds_connection *lconn, *conn = NULL;
 	struct hlist_head *head;
 	struct rds_base_conn *base_conn;
-	int i;
 
 	rcu_read_lock();
-	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
-	     i++, head++) {
+	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(lconn, head, c_hash_node)
 			if (ipv6_addr_equal(&lconn->c_faddr, faddr) &&
 			    ipv6_addr_equal(&lconn->c_laddr, laddr) &&
@@ -664,7 +668,6 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 	struct rds_message *rm;
 	unsigned int total = 0;
 	unsigned long flags;
-	size_t i;
 	int j;
 
 	if (isv6)
@@ -674,8 +677,7 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 
 	rcu_read_lock();
 
-	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
-	     i++, head++) {
+	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			struct rds_conn_path *cp;
 			int npaths;
@@ -782,15 +784,13 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 {
 	struct hlist_head *head;
 	struct rds_connection *conn;
-	size_t i;
 
 	rcu_read_lock();
 
 	lens->nr = 0;
 	lens->each = item_len;
 
-	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
-	     i++, head++) {
+	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 
 			/* XXX no c_lock usage.. */
@@ -821,15 +821,13 @@ static void rds_walk_conn_path_info(struct socket *sock, unsigned int len,
 {
 	struct hlist_head *head;
 	struct rds_connection *conn;
-	size_t i;
 
 	rcu_read_lock();
 
 	lens->nr = 0;
 	lens->each = item_len;
 
-	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
-	     i++, head++) {
+	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			struct rds_conn_path *cp;
 
