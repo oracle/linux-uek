@@ -7886,7 +7886,7 @@ void kvm_arch_commit_memory_region(struct kvm *kvm,
 	 * KVM_MR_FLAGS_ONLY, the old slot is essentially the same one as the
 	 * new and it's also covered when dealing with the new slot.
 	 */
-	if (change != KVM_MR_DELETE)
+	if (change == KVM_MR_FLAGS_ONLY)
 		kvm_mmu_slot_apply_flags(kvm, new);
 }
 
