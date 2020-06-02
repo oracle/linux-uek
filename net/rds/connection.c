@@ -973,9 +973,12 @@ int rds_conn_init(void)
 
 void rds_conn_exit(void)
 {
+	struct hlist_head *head;
+
 	rds_loop_exit();
 
-	WARN_ON(!hlist_empty(rds_conn_hash));
+	for_each_conn_hash_bucket(head)
+		WARN_ON(!hlist_empty(head));
 
 	kmem_cache_destroy(rds_conn_slab);
 
