@@ -611,15 +611,11 @@ static void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status)
 /* GPINT(1) interrupt handler routine */
 static irqreturn_t otx2_rfoe_intr_handler(int irq, void *dev_id)
 {
-	struct otx2_rfoe_cdev_priv *cdev = (struct otx2_rfoe_cdev_priv *)dev_id;
 	struct otx2_rfoe_drv_ctx *drv_ctx;
 	struct otx2_rfoe_ndev_priv *priv;
 	struct net_device *netdev;
 	u32 intr_mask, status;
-	unsigned long flags;
 	int rfoe_num, i;
-
-	spin_lock_irqsave(&cdev->lock, flags);
 
 	/* clear interrupt status */
 	status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(1)) & 0xFFFFFFFF;
@@ -645,8 +641,6 @@ static irqreturn_t otx2_rfoe_intr_handler(int irq, void *dev_id)
 				schedule_work(&priv->ptp_tx_work);
 		}
 	}
-
-	spin_unlock_irqrestore(&cdev->lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -1300,7 +1294,7 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 				 unsigned long arg)
 {
 	struct otx2_rfoe_cdev_priv *cdev = filp->private_data;
-	int ret = -1;
+	int ret;
 
 	if (!cdev) {
 		pr_warn("ioctl: device not opened\n");
@@ -1371,14 +1365,66 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 		ret = 0;
 		goto out;
 	}
+	case OTX2_RFOE_IOCTL_RX_IND_CFG:
+	{
+		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
+		struct otx2_rfoe_ndev_priv *priv;
+		struct otx2_rfoe_rx_ind_cfg cfg;
+		struct net_device *netdev;
+		unsigned long flags;
+		int idx;
+
+		if (!cdev->odp_intf_cfg) {
+			dev_err(cdev->dev, "odp interface cfg is not done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+		if (copy_from_user(&cfg, (void __user *)arg,
+				   sizeof(struct otx2_rfoe_rx_ind_cfg))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+			drv_ctx = &rfoe_drv_ctx[idx];
+			if (!(drv_ctx->valid &&
+			      drv_ctx->rfoe_num == cfg.rfoe_num))
+				break;
+		}
+		if (idx >= RFOE_MAX_INTF) {
+			dev_err(cdev->dev, "valid drv_ctx not found\n");
+			ret = -EINVAL;
+			goto out;
+		}
+		netdev = drv_ctx->netdev;
+		priv = netdev_priv(netdev);
+		spin_lock_irqsave(&priv->rfoe_common->rx_lock, flags);
+		writeq(cfg.rx_ind_idx, (priv->rfoe_reg_base +
+		       RFOEX_RX_INDIRECT_INDEX_OFFSET(cfg.rfoe_num)));
+		if (cfg.dir == OTX2_RFOE_RX_IND_READ)
+			cfg.regval = readq(priv->rfoe_reg_base + cfg.regoff);
+		else
+			writeq(cfg.regval, priv->rfoe_reg_base + cfg.regoff);
+		spin_unlock_irqrestore(&priv->rfoe_common->rx_lock, flags);
+		if (copy_to_user((void __user *)(unsigned long)arg, &cfg,
+				 sizeof(struct otx2_rfoe_rx_ind_cfg))) {
+			dev_err(cdev->dev, "copy to user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+		ret = 0;
+		goto out;
+	}
 	default:
+	{
 		dev_info(cdev->dev, "ioctl: no match\n");
-		return 0;
+		ret = -EINVAL;
+	}
 	}
 
 out:
 	mutex_unlock(&cdev->mutex_lock);
-	return 0;
+	return ret;
 }
 
 static int otx2_rfoe_cdev_open(struct inode *inode, struct file *filp)
