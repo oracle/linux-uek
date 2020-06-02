@@ -30,6 +30,8 @@
 #define OTX2_RFOE_IOCTL_ODP_INTF_CFG	_IOW(OTX2_RFOE_IOCTL_BASE, 0x01, \
 					     struct bphy_netdev_comm_intf_cfg)
 #define OTX2_RFOE_IOCTL_ODP_DEINIT      _IO(OTX2_RFOE_IOCTL_BASE, 0x02)
+#define OTX2_RFOE_IOCTL_RX_IND_CFG	_IOWR(OTX2_RFOE_IOCTL_BASE, 0x03, \
+					      struct otx2_rfoe_rx_ind_cfg)
 
 //#define ASIM		/* ASIM environment */
 
@@ -89,6 +91,17 @@ struct otx2_rfoe_drv_ctx {
 	struct net_device               *netdev;
 	struct rx_ft_cfg		*ft_cfg;
 	int				tx_gpint_bit;
+};
+
+/* rfoe rx ind register configuration */
+struct otx2_rfoe_rx_ind_cfg {
+	u8			rfoe_num; /* rfoe idx */
+	u16			rx_ind_idx; /* RFOE(0..2)_RX_INDIRECT_INDEX */
+	u64			regoff; /* RFOE(0..2)_RX_IND_* reg offset */
+	u64			regval; /* input when write, output when read */
+#define OTX2_RFOE_RX_IND_READ	0
+#define OTX2_RFOE_RX_IND_WRITE	1
+	u8			dir; /* register access dir (read/write) */
 };
 
 /* rx flow table configuration */
