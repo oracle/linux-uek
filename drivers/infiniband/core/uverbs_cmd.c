@@ -2381,7 +2381,7 @@ ssize_t ib_uverbs_open_qp(struct uverbs_attr_bundle *attrs,
 	struct ib_uverbs_create_qp_resp resp;
 	struct ib_uqp_object           *obj;
 	struct ib_xrcd		       *xrcd;
-	struct ib_uobject	       *uninitialized_var(xrcd_uobj);
+	struct ib_uobject	       *xrcd_uobj;
 	struct ib_qp                   *qp;
 	struct ib_qp_open_attr          attr;
 	int ret;
@@ -4314,7 +4314,7 @@ static int __uverbs_create_xsrq(struct uverbs_attr_bundle *attrs,
 	struct ib_usrq_object           *obj;
 	struct ib_pd                    *pd;
 	struct ib_srq                   *srq;
-	struct ib_uobject               *uninitialized_var(xrcd_uobj);
+	struct ib_uobject               *xrcd_uobj;
 	struct ib_srq_init_attr          attr;
 	int ret;
 	struct ib_device *ib_dev;
