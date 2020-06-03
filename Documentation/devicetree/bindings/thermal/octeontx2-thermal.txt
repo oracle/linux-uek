@@ -1,0 +1,62 @@
+* Octeon TX2 Thermal
+
+This driver is for Octeon TX2 SoCs
+
+Required properties:
+- compatible : "marvell,octeontx2-thermal"
+- reg : Address range of the thermal registers
+
+The reg properties should contain one range for the temperature sensor
+registers.
+
+Example:
+
+	thermal@87e0c0000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c0000000 0x1000000>;
+	};
+
+	thermal@87e0c1000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c1000000 0x1000000>;
+	};
+
+	thermal@87e0c2000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c2000000 0x1000000>;
+	};
+
+	thermal@87e0c3000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c3000000 0x1000000>;
+	};
+
+	thermal@87e0c4000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c4000000 0x1000000>;
+	};
+
+	thermal@87e0c5000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c5000000 0x1000000>;
+	};
+
+	thermal@87e0c6000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c6000000 0x1000000>;
+	};
+
+	thermal@87e0c7000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c7000000 0x1000000>;
+	};
+
+	thermal@87e0c8000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c8000000 0x1000000>;
+	};
+
+	thermal@87e0c9000000 {
+		compatible = "marvell,octeontx2-thermal";
+		reg = <0x87e0c9000000 0x1000000>;
+	};
