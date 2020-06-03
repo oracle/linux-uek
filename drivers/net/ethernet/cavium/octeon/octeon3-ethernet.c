@@ -2457,13 +2457,6 @@ static int octeon3_ioctl_hwtstamp(struct net_device *netdev,
 	octeon3_bgx_hwtstamp(netdev, en);
 	octeon3_pki_hwtstamp(netdev, en);
 
-	priv->cc.read = octeon3_cyclecounter_read;
-	priv->cc.mask = CLOCKSOURCE_MASK(64);
-	/* Ptp counter is always in nsec */
-	priv->cc.mult = 1;
-	priv->cc.shift = 0;
-	timecounter_init(&priv->tc, &priv->cc, ktime_to_ns(ktime_get_real()));
-
 	return 0;
 }
 
@@ -2887,6 +2880,13 @@ static int octeon3_eth_probe(struct platform_device *pdev)
 		list_del(&priv->list);
 		free_netdev(netdev);
 	}
+
+	priv->cc.read = octeon3_cyclecounter_read;
+	priv->cc.mask = CLOCKSOURCE_MASK(64);
+	/* Ptp counter is always in nsec */
+	priv->cc.mult = 1;
+	priv->cc.shift = 0;
+	timecounter_init(&priv->tc, &priv->cc, ktime_to_ns(ktime_get_real()));
 
 	spin_lock_init(&priv->ptp_lock);
 	priv->ptp_info.owner = THIS_MODULE;
