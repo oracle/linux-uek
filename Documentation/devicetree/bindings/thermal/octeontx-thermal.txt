@@ -1,0 +1,17 @@
+* Octeon TX Thermal
+
+This driver is for Octeon TX SoCs
+
+Required properties:
+- compatible : "marvell,octeontx-thermal"
+- reg : Address range of the thermal registers
+
+The reg properties should contain one range for the temperature sensor
+registers.
+
+Example:
+
+	thermal@1180021000000 {
+		compatible = "marvell,octeontx-thermal";
+		reg = <0x1180021000000 0x1000000>;
+	};
