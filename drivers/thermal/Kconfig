@@ -372,6 +372,27 @@ config DOVE_THERMAL
 	  Support for the Dove thermal sensor driver in the Linux thermal
 	  framework.
 
+config OCTEONTX_THERMAL
+	bool "Temperature sensor on Marvell Octeon TX SoCs"
+	depends on MIPS || COMPILE_TEST
+	depends on HAS_IOMEM
+	depends on OF
+	help
+	  Adds support for Marvell's Octeon TX thermal SoC sensor driver in
+	  the Linux thermal framework. Depending on the amount of temperature
+	  sensors available, a number of thermal zones will be created with the
+	  ability to read temperature. Trip points and other advanced features
+	  are not implemented.
+
+config OCTEONTX_THERMAL_DEVICES
+	bool "Include devices for known Octeon TX SoCs"
+	depends on OCTEONTX_THERMAL
+	help
+	  Enable this when the thermal sensors of your Octeon TX device are
+	  not included in the device tree (dtb) or if their names in the device
+	  tree mistmatch.
+	  Supported models: CN23XX
+
 config DB8500_THERMAL
 	tristate "DB8500 thermal management"
 	depends on MFD_DB8500_PRCMU && OF
