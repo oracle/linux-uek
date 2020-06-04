@@ -86,4 +86,12 @@ config GTI_WATCHDOG
 	address space for the application to directly poke the
 	GTI watchdog without any kernel support and entry.
 
+config OCTEONTX2_LLC
+	bool "OcteonTX2 LLC Manager driver"
+	depends on ARM64
+	default y
+	help
+	  This driver offers cache management interface for
+	  Marvell's OcteonTX2 LLC cache Lock and Unlock operations.
+
 endmenu
