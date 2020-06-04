@@ -13,9 +13,11 @@
 
 #include <linux/in6.h>
 #include <linux/rds.h>
+#include <linux/tcp.h>
 #include <linux/cgroup.h>
 #include "../../../net/rds/rds.h"
 #include "../../../net/rds/ib.h"
+#include "../../../net/rds/tcp.h"
 #include <linux/tracepoint.h>
 
 #define show_state(state)						\
@@ -50,6 +52,20 @@
 		{ RDS_RDMA_SEND_CANCELED,	"send canceled" },	\
 		{ RDS_RDMA_SEND_DROPPED,	"send dropped" },	\
 		{ RDS_RDMA_SEND_OTHER_ERROR,	"other error" })
+
+#define show_tcp_state(state)						\
+	__print_symbolic(state,						\
+		{ TCP_ESTABLISHED,		"established" },	\
+		{ TCP_SYN_SENT,			"syn-sent" },		\
+		{ TCP_SYN_RECV,			"syn-recv" },		\
+		{ TCP_FIN_WAIT1,		"fin-wait1" },		\
+		{ TCP_FIN_WAIT2,		"fin-wait2" },		\
+		{ TCP_TIME_WAIT,		"time-wait" },		\
+		{ TCP_CLOSE,			"close" },		\
+		{ TCP_CLOSE_WAIT,		"close-wait" },		\
+		{ TCP_LAST_ACK,			"last-ack" },		\
+		{ TCP_LISTEN,			"listen" },		\
+		{ TCP_CLOSING,			"closing" })
 
 #define RDS_STRSIZE	64
 #define RDS_STRLCPY(dst, src)   strlcpy(dst, src ? src : "<none>",	\
@@ -1229,6 +1245,127 @@ DEFINE_EVENT(rds_mr, rds_mr_get_err,
 		 struct rds_mr *mr, int refcount, char *reason, int err),
 
 	TP_ARGS(rs, conn, mr, refcount, reason, err)
+);
+
+DECLARE_EVENT_CLASS(rds_tcp,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, tc)
+		__field(void *, sk)
+		__field(int, state)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = conn ? conn->c_laddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = conn ? conn->c_faddr : in6addr_any;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = 0;
+		__entry->fport = 0;
+		__entry->flags = 0;
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = err;
+		cgrp = sk ? sock_cgroup_ptr(&sk->sk_cgrp_data) : NULL;
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->rm = NULL;
+		__entry->rs = NULL;
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->tc = tc;
+		__entry->sk = sk;
+		__entry->state = sk ? sk->sk_state : 0;
+	),
+
+	TP_printk("RDS/tcp: <%pI6c,%pI6c,%d>, state [%s] reason [%s] err [%d]",
+		  __entry->laddr, __entry->faddr, __entry->tos,
+		 show_tcp_state(__entry->state),
+		  __entry->reason, __entry->err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_connect,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_connect_err,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_accept,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+	 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_accept_err,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_listen,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_listen_err,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_state_change,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
+);
+
+DEFINE_EVENT(rds_tcp, rds_tcp_shutdown,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct rds_tcp_connection *tc, struct sock *sk,
+		 char *reason, int err),
+
+	TP_ARGS(conn, cp, tc, sk, reason, err)
 );
 
 #endif /* _TRACE_RDS_H */
