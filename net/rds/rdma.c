@@ -34,6 +34,9 @@
 #include <linux/rbtree.h>
 #include <linux/dma-mapping.h> /* for DMA_*_DEVICE */
 #include <linux/sched/mm.h>
+
+#include <trace/events/rds.h>
+
 #include "rds.h"
 
 /*
@@ -97,8 +100,8 @@ static void rds_destroy_mr(struct rds_mr *mr)
 	void *trans_private = NULL;
 	unsigned long flags;
 
-	rdsdebug("RDS: destroy mr key is %x refcnt %u\n",
-		 mr->r_key, kref_read(&mr->r_kref));
+	trace_rds_mr_destroy(rs, rs->rs_conn, mr, kref_read(&mr->r_kref),
+			     NULL, 0);
 
 	spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	if (!RB_EMPTY_NODE(&mr->r_rb_node))
@@ -140,10 +143,6 @@ void rds_rdma_drop_keys(struct rds_sock *rs)
 		rb_erase(&mr->r_rb_node, &rs->rs_rdma_keys);
 		RB_CLEAR_NODE(&mr->r_rb_node);
 		spin_unlock_irqrestore(&rs->rs_rdma_lock, flags);
-		trace_printk("RDS: %s pid %d sk closed. Active MR key: %#x %s %s\n",
-			     name, current->pid, mr->r_key,
-			     mr->r_use_once ? ",use once" : "",
-			     mr->r_invalidate ? ",invalidate" : "");
 		kref_put(&mr->r_kref, __rds_put_mr_final);
 		spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	}
@@ -188,28 +187,33 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	unsigned long flags;
 	rds_rdma_cookie_t cookie;
 	unsigned int nents;
+	char *reason;
 	long i;
 	int ret;
 
 	if (ipv6_addr_any(&rs->rs_bound_addr) || !rs->rs_transport) {
 		ret = -ENOTCONN; /* XXX not a great errno */
+		reason = "transport not set up";
 		goto out;
 	}
 
 	if (!rs->rs_transport->get_mr) {
 		ret = -EOPNOTSUPP;
+		reason = "get_mr not supported";
 		goto out;
 	}
 
 	/* Restrict the size of mr irrespective of underlying transport */
 	if (args->vec.bytes > RDS_MAX_MSG_SIZE) {
 		ret = -EMSGSIZE;
+		reason = "message too big";
 		goto out;
 	}
 
 	nr_pages = rds_pages_in_vec(&args->vec);
 	if (nr_pages == 0) {
 		ret = -EINVAL;
+		reason = "no pages in vec";
 		goto out;
 	}
 
@@ -220,12 +224,14 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	pages = kcalloc(nr_pages, sizeof(struct page *), GFP_KERNEL);
 	if (!pages) {
 		ret = -ENOMEM;
+		reason = "alloc of pages failed";
 		goto out;
 	}
 
 	mr = kzalloc(sizeof(struct rds_mr), GFP_KERNEL);
 	if (!mr) {
 		ret = -ENOMEM;
+		reason = "alloc of mr failed";
 		goto out;
 	}
 
@@ -252,13 +258,16 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	 * the zero page.
 	 */
 	ret = rds_pin_pages(args->vec.addr, nr_pages, pages, 1);
-	if (ret < 0)
+	if (ret < 0) {
+		reason = "rds_pin_pages failed";
 		goto out;
+	}
 
 	nents = ret;
 	sg = kcalloc(nents, sizeof(*sg), GFP_KERNEL);
 	if (!sg) {
 		ret = -ENOMEM;
+		reason = "alloc of sg failed";
 		goto out;
 	}
 	WARN_ON(!nents);
@@ -287,6 +296,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 			put_page(sg_page(&sg[i]));
 		kfree(sg);
 		ret = PTR_ERR(trans_private);
+		reason = "get_mr failed for transport";
 		goto out;
 	}
 
@@ -305,6 +315,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 
 	if (args->cookie_addr && put_user(cookie, (u64 __user *)(unsigned long) args->cookie_addr)) {
 		ret = -EFAULT;
+		reason = "invalid address for cookie";
 		goto out;
 	}
 
@@ -316,7 +327,6 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 
 	BUG_ON(found && found != mr);
 
-	rdsdebug("RDS: get_mr key is %x\n", mr->r_key);
 	if (mr_ret) {
 		kref_get(&mr->r_kref);
 		*mr_ret = mr;
@@ -325,6 +335,15 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	ret = 0;
 out:
 	kfree(pages);
+
+	if (ret)
+		trace_rds_mr_get_err(rs, rs->rs_conn, mr,
+				     mr ? kref_read(&mr->r_kref) : 0,
+				     reason, ret);
+	else
+		trace_rds_mr_get(rs, rs->rs_conn, mr,
+				 kref_read(&mr->r_kref), NULL, 0);
+
 	if (mr)
 		kref_put(&mr->r_kref, __rds_put_mr_final);
 	return ret;
