@@ -34,6 +34,8 @@
 #include <linux/in.h>
 #include <net/tcp.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "tcp.h"
 
@@ -117,30 +119,38 @@ void rds_tcp_set_linger(struct socket *sock)
 int rds_tcp_accept_one(struct socket *sock)
 {
 	struct socket *new_sock = NULL;
-	struct rds_connection *conn;
+	struct rds_connection *conn = NULL;
 	int ret;
 	struct inet_sock *inet;
 	struct rds_tcp_connection *rs_tcp = NULL;
 	int conn_state;
-	struct rds_conn_path *cp;
+	struct rds_conn_path *cp = NULL;
 	struct in6_addr *my_addr, *peer_addr;
 #if !IS_ENABLED(CONFIG_IPV6)
 	struct in6_addr saddr, daddr;
 #endif
 	int dev_if = 0;
+	char *reason = NULL;
 
-	if (!sock) /* module unload or netns delete in progress */
-		return -ENETUNREACH;
+	if (!sock) {
+		reason = "module unload/netns delete in progress";
+		ret = -ENETUNREACH;
+		goto out;
+	}
 
 	ret = sock_create_lite(sock->sk->sk_family,
 			       sock->sk->sk_type, sock->sk->sk_protocol,
 			       &new_sock);
-	if (ret)
+	if (ret) {
+		reason = "socket creation failed";
 		goto out;
+	}
 
 	ret = sock->ops->accept(sock, new_sock, O_NONBLOCK, true);
-	if (ret < 0)
+	if (ret < 0) {
+		reason = "accept sock op failed";
 		goto out;
+	}
 
 	/* sock_create_lite() does not get a hold on the owner module so we
 	 * need to do it here.  Note that sock_release() uses sock->ops to
@@ -153,8 +163,10 @@ int rds_tcp_accept_one(struct socket *sock)
 	__module_get(new_sock->ops->owner);
 
 	ret = rds_tcp_keepalive(new_sock);
-	if (ret < 0)
+	if (ret < 0) {
+		reason = "keepalive setting failed";
 		goto out;
+	}
 
 	rds_tcp_tune(new_sock);
 
@@ -169,10 +181,6 @@ int rds_tcp_accept_one(struct socket *sock)
 	my_addr = &saddr;
 	peer_addr = &daddr;
 #endif
-	rdsdebug("accepted family %d tcp %pI6c:%u -> %pI6c:%u\n",
-		 sock->sk->sk_family,
-		 my_addr, ntohs(inet->inet_sport),
-		 peer_addr, ntohs(inet->inet_dport));
 
 #if IS_ENABLED(CONFIG_IPV6)
 	/* sk_bound_dev_if is not set if the peer address is not link local
@@ -193,6 +201,7 @@ int rds_tcp_accept_one(struct socket *sock)
 			       my_addr, peer_addr,
 			       &rds_tcp_transport, 0, GFP_KERNEL, dev_if);
 	if (IS_ERR(conn)) {
+		reason = "conn creation failed";
 		ret = PTR_ERR(conn);
 		goto out;
 	}
@@ -202,14 +211,18 @@ int rds_tcp_accept_one(struct socket *sock)
 	 * rds_tcp_state_change() will do that cleanup
 	 */
 	rs_tcp = rds_tcp_accept_one_path(conn);
-	if (!rs_tcp)
+	if (!rs_tcp) {
+		reason = "force reconnect from smaller IP";
 		goto rst_nsk;
+	}
 	mutex_lock(&rs_tcp->t_conn_path_lock);
 	cp = rs_tcp->t_cpath;
 	conn_state = rds_conn_path_state(cp);
 	BUG_ON(conn_state == RDS_CONN_UP);
-	if (conn_state != RDS_CONN_CONNECTING && conn_state != RDS_CONN_ERROR)
+	if (conn_state != RDS_CONN_CONNECTING && conn_state != RDS_CONN_ERROR) {
+		reason = "unexpected conn state";
 		goto rst_nsk;
+	}
 	if (rs_tcp->t_sock) {
 		/* Duelling SYN resolution has already been done in
 		 * rds_tcp_accept_one_path.
@@ -217,10 +230,12 @@ int rds_tcp_accept_one(struct socket *sock)
 		rds_tcp_reset_callbacks(new_sock, cp);
 		/* rds_connect_path_complete() marks RDS_CONN_UP */
 		rds_connect_path_complete(cp, RDS_CONN_RESETTING);
+		reason = "conn resetting";
 	} else {
 		rds_tcp_set_callbacks(new_sock, cp);
 		rds_connect_path_complete(cp, RDS_CONN_CONNECTING);
 		wake_up(&cp->cp_up_waitq);
+		reason = "conn connecting";
 	}
 	new_sock = NULL;
 	ret = 0;
@@ -238,10 +253,16 @@ rst_nsk:
 	kernel_sock_shutdown(new_sock, SHUT_RDWR);
 	ret = 0;
 out:
+	if (ret)
+		trace_rds_tcp_accept_err(conn, cp, rs_tcp, sock->sk, reason,
+					 ret);
+	else
+		trace_rds_tcp_accept(conn, cp, rs_tcp, sock->sk, "accept", ret);
 	if (rs_tcp)
 		mutex_unlock(&rs_tcp->t_conn_path_lock);
 	if (new_sock)
 		sock_release(new_sock);
+
 	return ret;
 }
 
@@ -284,13 +305,14 @@ struct socket *rds_tcp_listen_init(struct net *net, bool isv6)
 	struct sockaddr_storage ss;
 	struct sockaddr_in6 *sin6;
 	struct sockaddr_in *sin;
+	char *reason = NULL;
 	int addr_len;
 	int ret;
 
 	ret = sock_create_kern(net, isv6 ? PF_INET6 : PF_INET, SOCK_STREAM,
 			       IPPROTO_TCP, &sock);
 	if (ret < 0) {
-		rdsdebug("could not create listener socket: %d\n", ret);
+		reason = "could not create kernel socket";
 		goto out;
 	}
 
@@ -320,17 +342,23 @@ struct socket *rds_tcp_listen_init(struct net *net, bool isv6)
 
 	ret = sock->ops->bind(sock, (struct sockaddr *)&ss, addr_len);
 	if (ret < 0) {
-		rdsdebug("could not bind %s listener socket: %d\n",
-			 isv6 ? "IPv6" : "IPv4", ret);
+		reason = "could not bind listener socket";
 		goto out;
 	}
 
 	ret = sock->ops->listen(sock, 64);
-	if (ret < 0)
+	if (ret < 0) {
+		reason = "listen op failed";
 		goto out;
+	}
+
+	trace_rds_tcp_listen(NULL, NULL, NULL, sock->sk, "listen", 0);
 
 	return sock;
 out:
+	trace_rds_tcp_listen_err(NULL, NULL, NULL, sock ? sock->sk : NULL,
+				 reason, ret);
+
 	if (sock)
 		sock_release(sock);
 	return NULL;
