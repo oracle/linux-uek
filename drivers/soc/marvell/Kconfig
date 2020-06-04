@@ -76,6 +76,13 @@ config OCTEONTX2_DPI_PF
 	  This driver intializes dpi PF device and enables VF's for supporting
 	  different types of DMA transfers.
 
+config OCTEONTX2_SDP_PF
+	tristate "OcteonTX2 SDP PF driver"
+	depends on ARM64 && PCI && OCTEONTX2_AF && OCTEONTX2_MBOX
+	default y
+	---help---
+	  Select this option to enable SDP PF driver support.
+
 config OCTEONTX2_PCI_CONSOLE
 	tristate "OcteonTX2 PCI Endpoint console driver"
 	depends on ARM64 && PCI
