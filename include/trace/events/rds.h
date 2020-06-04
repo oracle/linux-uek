@@ -1146,6 +1146,91 @@ DEFINE_EVENT(rds_ib_queue, rds_ib_queue_flush_work,
 
 );
 
+DECLARE_EVENT_CLASS(rds_mr,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_mr *mr, int refcount, char *reason, int err),
+
+	TP_ARGS(rs, conn, mr, refcount, reason, err),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, mr)
+		__field(u32, key)
+		__field(bool, use_once)
+		__field(bool, invalidate)
+		__field(bool, write)
+		__field(int, refcount)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = conn ? conn->c_laddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = conn ? conn->c_faddr : in6addr_any;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = rs ? rs->rs_bound_port : 0;
+		__entry->fport = rs ? rs->rs_conn_port : 0;
+		__entry->netns_inum = rds_netns_inum(rs);
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = 0;
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = err;
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->rm = NULL;
+		__entry->rs = rs;
+		__entry->conn = conn;
+		__entry->cp = NULL;
+		__entry->mr = mr;
+		__entry->key = mr->r_key;
+		__entry->use_once = mr->r_use_once;
+		__entry->invalidate = mr->r_invalidate;
+		__entry->write = mr->r_write;
+		__entry->refcount = refcount;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d>, key %#x (%s%s%s) refcount %d reason [%s] err [%d]",
+		  show_transport(__entry->transport),
+		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->key, __entry->use_once ? ",use once" : "",
+		  __entry->invalidate ? ",invalidate" : "",
+		  __entry->write ? ",write" : "",
+		  __entry->refcount, __entry->reason,
+		  __entry->err)
+);
+
+DEFINE_EVENT(rds_mr, rds_mr_destroy,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_mr *mr, int refcount, char *reason, int err),
+
+	TP_ARGS(rs, conn, mr, refcount, reason, err)
+);
+
+DEFINE_EVENT(rds_mr, rds_mr_get,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_mr *mr, int refcount, char *reason, int err),
+
+	TP_ARGS(rs, conn, mr, refcount, reason, err)
+);
+
+DEFINE_EVENT(rds_mr, rds_mr_get_err,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_mr *mr, int refcount, char *reason, int err),
+
+	TP_ARGS(rs, conn, mr, refcount, reason, err)
+);
+
 #endif /* _TRACE_RDS_H */
 
 /* This part must be outside protection */
