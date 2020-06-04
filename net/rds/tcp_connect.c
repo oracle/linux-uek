@@ -34,6 +34,8 @@
 #include <linux/in.h>
 #include <net/tcp.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "tcp.h"
 
@@ -52,7 +54,7 @@ void rds_tcp_state_change(struct sock *sk)
 	tc = cp->cp_transport_data;
 	state_change = tc->t_orig_state_change;
 
-	rdsdebug("sock %p state_change to %d\n", tc->t_sock, sk->sk_state);
+	trace_rds_tcp_state_change(cp->cp_conn, cp, tc, sk, "state change", 0);
 
 	switch (sk->sk_state) {
 	/* ignore connecting sockets as they make progress */
@@ -88,6 +90,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 	struct sockaddr_in6 sin6;
 	struct sockaddr_in sin;
 	struct sockaddr *addr;
+	char *reason = NULL;
 	int addrlen;
 	bool isv6;
 	int ret;
@@ -97,14 +100,19 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 	/* for multipath rds,we only trigger the connection after
 	 * the handshake probe has determined the number of paths.
 	 */
-	if (cp->cp_index > 0 && cp->cp_conn->c_npaths < 2)
-		return -EAGAIN;
+	if (cp->cp_index > 0 && cp->cp_conn->c_npaths < 2) {
+		reason = "cp index > 0 but npaths < 2";
+		ret = -EAGAIN;
+		goto out_nolock;
+	}
 
 	mutex_lock(&tc->t_conn_path_lock);
 
 	if (rds_conn_path_up(cp)) {
 		mutex_unlock(&tc->t_conn_path_lock);
-		return 0;
+		reason = "conn path already up";
+		ret = 0;
+		goto out_nolock;
 	}
 
 	if (ipv6_addr_v4mapped(&conn->c_laddr)) {
@@ -116,8 +124,10 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 				       SOCK_STREAM, IPPROTO_TCP, &sock);
 		isv6 = true;
 	}
-	if (ret < 0)
+	if (ret < 0) {
+		reason = "sock_create_kern failed";
 		goto out;
+	}
 
 	rds_tcp_tune(sock);
 
@@ -139,8 +149,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 
 	ret = sock->ops->bind(sock, addr, addrlen);
 	if (ret) {
-		rdsdebug("bind failed with %d at address %pI6c\n",
-			 ret, &conn->c_laddr);
+		reason = "bind failed";
 		goto out;
 	}
 
@@ -166,19 +175,28 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 	 */
 	rds_tcp_set_callbacks(sock, cp);
 	ret = sock->ops->connect(sock, addr, addrlen, O_NONBLOCK);
-	rdsdebug("connect to address %pI6c returned %d\n", &conn->c_faddr,
-		 ret);
-	if (ret == -EINPROGRESS)
+	if (ret == -EINPROGRESS) {
+		reason = "connect already in progress";
 		ret = 0;
+	}
 
 	if (ret == 0) {
 		rds_tcp_keepalive(sock);
 		sock = NULL;
 	} else {
+		reason = "connect returned nonzero value";
 		rds_tcp_restore_callbacks(sock, cp->cp_transport_data);
 	}
 out:
 	mutex_unlock(&tc->t_conn_path_lock);
+out_nolock:
+	if (reason)
+		trace_rds_tcp_connect_err(conn, cp, tc, sock ? sock->sk : NULL,
+					  reason, ret);
+	else
+		trace_rds_tcp_connect(conn, cp, tc, sock ? sock->sk : NULL,
+				      "connect", ret);
+
 	if (sock)
 		sock_release(sock);
 	return ret;
@@ -201,8 +219,8 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 	mutex_lock(&tc->t_conn_path_lock);
 	sock = tc->t_sock;
 
-	rdsdebug("shutting down conn %p tc %p sock %p\n",
-		 cp->cp_conn, tc, sock);
+	trace_rds_tcp_shutdown(cp->cp_conn, cp, tc, sock ? sock->sk : NULL,
+			       "shutting down", 0);
 
 	if (sock) {
 		if (cp->cp_conn->c_destroy_in_prog)
