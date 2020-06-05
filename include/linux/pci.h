@@ -312,7 +312,6 @@ struct pci_dev {
 	u8		hdr_type;	/* PCI header type (`multi' flag masked out) */
 #ifdef CONFIG_PCIEAER
 	u16		aer_cap;	/* AER capability offset */
-	struct aer_stats *aer_stats;	/* AER stats for this device */
 #endif
 	u8		pcie_cap;	/* PCIe capability offset */
 	u8		msi_cap;	/* MSI capability offset */
@@ -359,6 +358,9 @@ struct pci_dev {
 #ifndef __GENKSYMS__
 	unsigned int	clear_retrain_link:1;	/* Need to clear Retrain Link
 						   bit manually */
+#endif
+#ifdef CONFIG_PCIE_DPC
+	UEK_KABI_FILL_HOLE(unsigned int dpc_rp_extensions:1)
 #endif
 	unsigned int	d3_delay;	/* D3->D0 transition time in ms */
 	unsigned int	d3cold_delay;	/* D3cold->D0 transition time in ms */
@@ -413,7 +415,7 @@ struct pci_dev {
 	unsigned int	has_secondary_link:1;
 	unsigned int	non_compliant_bars:1;	/* Broken BARs; ignore them */
 	unsigned int	is_probed:1;		/* Device probing in progress */
-	unsigned int	link_active_reporting:1;/* Device capable of reporting link active */
+	UEK_KABI_FILL_HOLE(unsigned int link_active_reporting:1)/* Device capable of reporting link active */
 	pci_dev_flags_t dev_flags;
 	atomic_t	enable_cnt;	/* pci_enable_device has been called */
 
@@ -421,6 +423,9 @@ struct pci_dev {
 	struct hlist_head saved_cap_space;
 	struct bin_attribute *rom_attr; /* attribute descriptor for sysfs ROM entry */
 	int rom_attr_enabled;		/* has display of the rom attribute been enabled? */
+#ifdef CONFIG_PCIE_DPC
+	UEK_KABI_FILL_HOLE(u8 dpc_rp_log_size)
+#endif
 	struct bin_attribute *res_attr[DEVICE_COUNT_RESOURCE]; /* sysfs file for resources */
 	struct bin_attribute *res_attr_wc[DEVICE_COUNT_RESOURCE]; /* sysfs file for WC mapping of resources */
 
@@ -433,11 +438,6 @@ struct pci_dev {
 	const struct attribute_group **msi_irq_groups;
 #endif
 	struct pci_vpd *vpd;
-#ifdef CONFIG_PCIE_DPC
-	u16		dpc_cap;
-	unsigned int	dpc_rp_extensions:1;
-	u8		dpc_rp_log_size;
-#endif
 #ifdef CONFIG_PCI_ATS
 	union {
 		struct pci_sriov *sriov;	/* SR-IOV capability related */
@@ -453,6 +453,10 @@ struct pci_dev {
 #ifdef CONFIG_PCI_PASID
 	u16		pasid_features;
 #endif
+#ifdef CONFIG_PCIE_DPC
+	UEK_KABI_FILL_HOLE(u16 dpc_cap)
+#endif
+
 	phys_addr_t rom; /* Physical address of ROM if it's not from the BAR */
 	size_t romlen; /* Length of ROM if it's not from the BAR */
 	char *driver_override; /* Driver name to force a match */
@@ -460,7 +464,11 @@ struct pci_dev {
 	unsigned long priv_flags; /* Private flags for the pci driver */
 
 	/* Space for future expansion without breaking kABI. */
+#ifdef CONFIG_PCIEAER
+	UEK_KABI_USE(1, struct aer_stats *aer_stats);/* AER stats for this device */
+#else
 	UEK_KABI_RESERVED(1);
+#endif
 	UEK_KABI_RESERVED(2);
 	UEK_KABI_RESERVED(3);
 	UEK_KABI_RESERVED(4);
