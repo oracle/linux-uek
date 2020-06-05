@@ -984,38 +984,6 @@ static inline unsigned int queued_to_index(unsigned int queued)
 	return min(BLK_MQ_MAX_DISPATCH_ORDER - 1, ilog2(queued) + 1);
 }
 
-bool blk_mq_get_driver_tag(struct request *rq, struct blk_mq_hw_ctx **hctx,
-			   bool wait)
-{
-	struct blk_mq_alloc_data data = {
-		.q = rq->q,
-		.hctx = blk_mq_map_queue(rq->q, rq->mq_ctx->cpu),
-		.flags = wait ? 0 : BLK_MQ_REQ_NOWAIT,
-	};
-
-	might_sleep_if(wait);
-
-	if (rq->tag != -1)
-		goto done;
-
-	if (blk_mq_tag_is_reserved(data.hctx->sched_tags, rq->internal_tag))
-		data.flags |= BLK_MQ_REQ_RESERVED;
-
-	rq->tag = blk_mq_get_tag(&data);
-	if (rq->tag >= 0) {
-		if (blk_mq_tag_busy(data.hctx)) {
-			rq->rq_flags |= RQF_MQ_INFLIGHT;
-			atomic_inc(&data.hctx->nr_active);
-		}
-		data.hctx->tags->rqs[rq->tag] = rq;
-	}
-
-done:
-	if (hctx)
-		*hctx = data.hctx;
-	return rq->tag != -1;
-}
-
 static int blk_mq_dispatch_wake(wait_queue_entry_t *wait, unsigned mode,
 				int flags, void *key)
 {

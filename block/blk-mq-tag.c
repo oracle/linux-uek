@@ -189,6 +189,41 @@ found_tag:
 	return tag + tag_offset;
 }
 
+bool blk_mq_get_driver_tag(struct request *rq, struct blk_mq_hw_ctx **hctx,
+			   bool wait)
+{
+	struct blk_mq_hw_ctx *mq_hctx = blk_mq_map_queue(rq->q, rq->mq_ctx->cpu);
+	struct sbitmap_queue *bt = &mq_hctx->tags->bitmap_tags;
+	unsigned int tag_offset = mq_hctx->tags->nr_reserved_tags;
+	bool shared = blk_mq_tag_busy(mq_hctx);
+	int tag;
+
+	if (hctx)
+		*hctx = mq_hctx;
+
+	if (rq->tag != BLK_MQ_TAG_FAIL)
+		return true;
+
+	if (blk_mq_tag_is_reserved(mq_hctx->sched_tags, rq->internal_tag)) {
+		bt = &mq_hctx->tags->breserved_tags;
+		tag_offset = 0;
+	}
+
+	if (!hctx_may_queue(mq_hctx, bt))
+		return false;
+	tag = __sbitmap_queue_get(bt);
+	if (tag == BLK_MQ_TAG_FAIL)
+		return false;
+
+	rq->tag = tag + tag_offset;
+	if (shared) {
+		rq->rq_flags |= RQF_MQ_INFLIGHT;
+		atomic_inc(&mq_hctx->nr_active);
+	}
+	mq_hctx->tags->rqs[rq->tag] = rq;
+	return true;
+}
+
 void blk_mq_put_tag(struct blk_mq_hw_ctx *hctx, struct blk_mq_tags *tags,
 		    struct blk_mq_ctx *ctx, unsigned int tag)
 {
