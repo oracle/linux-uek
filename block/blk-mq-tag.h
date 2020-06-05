@@ -57,6 +57,9 @@ enum {
 	BLK_MQ_TAG_MAX		= BLK_MQ_TAG_FAIL - 1,
 };
 
+bool blk_mq_get_driver_tag(struct request *rq,
+		struct blk_mq_hw_ctx **hctx, bool wait);
+
 extern bool __blk_mq_tag_busy(struct blk_mq_hw_ctx *);
 extern void __blk_mq_tag_idle(struct blk_mq_hw_ctx *);
 
