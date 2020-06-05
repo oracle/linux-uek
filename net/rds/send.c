@@ -383,7 +383,7 @@ restart:
 			rm->m_final_op = &rm->rdma;
 
 			spin_lock_irqsave(&cp->cp_lock, flags);
-			if (!test_bit(RDS_MSG_ON_CONN, &rm->m_flags)) {
+			if (!test_bit(RDS_MSG_ON_SOCK, &rm->m_flags)) {
 				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
 				cp->cp_xmit_rm = NULL;
 				cp->cp_xmit_sg = 0;
@@ -393,8 +393,8 @@ restart:
 				cp->cp_xmit_atomic_sent = 0;
 				cp->cp_xmit_data_sent = 0;
 
-				rds_message_put(rm);
 				spin_unlock_irqrestore(&cp->cp_lock, flags);
+				rds_message_put(rm);
 				break;
 			}
 
@@ -929,6 +929,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	DECLARE_BITMAP(conn_dropped, nbits);
 	unsigned long flags;
 	LIST_HEAD(list);
+	bool msg_on_conn = false;
 
 	/* get all the messages we're dropping under the rs_snd_lock */
 	spin_lock_irqsave(&rs->rs_snd_lock, flags);
@@ -961,16 +962,15 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		cp = rds_conn_to_path(conn, &rm->m_inc);
 
 		spin_lock_irqsave(&cp->cp_lock, flags);
-		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
-			spin_unlock_irqrestore(&cp->cp_lock, flags);
-			continue;
-		}
 
 		/*
 		 * Maybe someone else beat us to removing rm from the conn.
 		 * If we race with their flag update we'll get the lock and
 		 * then really see that the flag has been cleared.
 		 */
+		if (test_bit(RDS_MSG_ON_CONN, &rm->m_flags))
+			msg_on_conn = true;
+
 		if (!test_and_clear_bit(RDS_MSG_ON_CONN, &rm->m_flags)) {
 			spin_unlock_irqrestore(&cp->cp_lock, flags);
 			continue;
@@ -1013,8 +1013,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		 * belong to the same connection.
 		 */
 		conn = rm->m_inc.i_conn;
-		if (conn && !test_bit(rm->m_tmp_tos, conn_dropped) && dest &&
-		    test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
+		if (conn && !test_bit(rm->m_tmp_tos, conn_dropped) && dest && msg_on_conn) {
 			rds_conn_drop(conn, DR_SOCK_CANCEL);
 			__set_bit(rm->m_tmp_tos, conn_dropped);
 		}
