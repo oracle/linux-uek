@@ -573,6 +573,9 @@ static int target_xcopy_setup_pt_cmd(
 	}
 	cmd->se_cmd_flags |= SCF_SE_LUN_CMD;
 
+	if (target_cmd_init_cdb(cmd, cdb))
+		return -EINVAL;
+
 	cmd->tag = 0;
 	sense_rc = target_setup_cmd_from_cdb(cmd, cdb);
 	if (sense_rc) {
