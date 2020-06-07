@@ -577,11 +577,8 @@ static int target_xcopy_setup_pt_cmd(
 		return -EINVAL;
 
 	cmd->tag = 0;
-	sense_rc = target_setup_cmd_from_cdb(cmd, cdb);
-	if (sense_rc) {
-		ret = -EINVAL;
-		goto out;
-	}
+	if (target_cmd_parse_cdb(cmd))
+		return -EINVAL;
 
 	if (alloc_mem) {
 		rc = target_alloc_sgl(&cmd->t_data_sg, &cmd->t_data_nents,
