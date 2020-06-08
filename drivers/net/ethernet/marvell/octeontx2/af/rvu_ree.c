@@ -191,7 +191,8 @@ static int ree_reex_programming(struct rvu *rvu, struct rvu_block *block,
 	return 0;
 }
 
-int ree_aq_verify_type6_completion(struct rvu *rvu, struct rvu_block *block)
+static int ree_aq_verify_type6_completion(struct rvu *rvu,
+					  struct rvu_block *block)
 {
 	u64 val;
 	int err;
@@ -212,9 +213,9 @@ int ree_aq_verify_type6_completion(struct rvu *rvu, struct rvu_block *block)
 	return 0;
 }
 
-int ree_aq_inst_enq(struct rvu *rvu, struct rvu_block *block,
-		    struct ree_rsrc *ree, dma_addr_t head, u32 size,
-		    int doneint)
+static void ree_aq_inst_enq(struct rvu *rvu, struct rvu_block *block,
+			    struct ree_rsrc *ree, dma_addr_t head, u32 size,
+			    int doneint)
 {
 	struct admin_queue *aq = block->aq;
 	struct ree_af_aq_inst_s inst;
@@ -237,7 +238,6 @@ int ree_aq_inst_enq(struct rvu *rvu, struct rvu_block *block,
 	ree->aq_head++;
 	if (ree->aq_head >= aq->inst->qsize)
 		ree->aq_head = 0;
-	return 0;
 }
 
 static int ree_reex_memory_alloc(struct rvu *rvu, struct rvu_block *block,
@@ -519,7 +519,7 @@ int ree_rof_data_enq(struct rvu *rvu, struct rvu_block *block,
 		     int *rule_db_len, int *db_block)
 {
 	void *prefix_ptr = ree->prefix_ctx->base;
-	int err, size, num_of_entries = 0;
+	int size, num_of_entries = 0;
 	dma_addr_t head;
 
 	/* Parse ROF data */
@@ -568,22 +568,16 @@ int ree_rof_data_enq(struct rvu *rvu, struct rvu_block *block,
 	while (num_of_entries > 0) {
 		if (num_of_entries > REE_PREFIX_PTR_LEN) {
 			size = REE_PREFIX_PTR_LEN * sizeof(struct ree_rof_s);
-			err = ree_aq_inst_enq(rvu, block, ree, head, size,
-					      false);
+			ree_aq_inst_enq(rvu, block, ree, head, size, false);
 			head += REE_PREFIX_PTR_LEN * sizeof(struct ree_rof_s);
 		} else {
 			size = num_of_entries * sizeof(struct ree_rof_s);
-			err = ree_aq_inst_enq(rvu, block, ree, head, size,
-					      true);
+			ree_aq_inst_enq(rvu, block, ree, head, size, true);
 		}
-		if (err)
-			return err;
 		num_of_entries -= REE_PREFIX_PTR_LEN;
 	}
 	/* Verify completion of type 6 */
-	ree_aq_verify_type6_completion(rvu, block);
-
-	return 0;
+	return ree_aq_verify_type6_completion(rvu, block);
 }
 
 static
@@ -718,8 +712,11 @@ int rvu_mbox_handler_ree_rule_db_prog(struct rvu *rvu,
 	if (req->total_len != ree->ruledb_len)
 		return REE_AF_ERR_RULE_DB_PARTIAL;
 
-	if (!req->is_incremental || req->is_dbi)
-		ree_rule_db_prog(rvu, block, ree, req->is_incremental);
+	if (!req->is_incremental || req->is_dbi) {
+		err = ree_rule_db_prog(rvu, block, ree, req->is_incremental);
+		if (err)
+			return err;
+	}
 
 	if (req->is_dbi) {
 		memcpy(ree->ruledbi,
@@ -1166,15 +1163,17 @@ static int rvu_ree_init_block(struct rvu *rvu, int blkaddr)
 int rvu_ree_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
+	int err;
 
 	hw->ree = devm_kcalloc(rvu->dev, MAX_REE_BLKS, sizeof(struct ree_rsrc),
 			       GFP_KERNEL);
 	if (!hw->ree)
 		return -ENOMEM;
 
-	rvu_ree_init_block(rvu, BLKADDR_REE0);
-	rvu_ree_init_block(rvu, BLKADDR_REE1);
-	return 0;
+	err = rvu_ree_init_block(rvu, BLKADDR_REE0);
+	if (err)
+		return err;
+	return rvu_ree_init_block(rvu, BLKADDR_REE1);
 }
 
 void rvu_ree_freemem_block(struct rvu *rvu, int blkaddr, int blkid)
