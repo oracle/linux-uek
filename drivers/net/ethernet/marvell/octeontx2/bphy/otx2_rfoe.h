@@ -32,6 +32,9 @@
 #define OTX2_RFOE_IOCTL_ODP_DEINIT      _IO(OTX2_RFOE_IOCTL_BASE, 0x02)
 #define OTX2_RFOE_IOCTL_RX_IND_CFG	_IOWR(OTX2_RFOE_IOCTL_BASE, 0x03, \
 					      struct otx2_rfoe_rx_ind_cfg)
+#define OTX2_RFOE_IOCTL_PTP_OFFSET	_IO(OTX2_RFOE_IOCTL_BASE, 0x04)
+#define OTX2_RFOE_IOCTL_SEC_BCN_OFFSET	_IOW(OTX2_RFOE_IOCTL_BASE, 0x05, \
+					     struct bcn_sec_offset_cfg)
 
 //#define ASIM		/* ASIM environment */
 
@@ -65,6 +68,39 @@
 #define MAX_TX_JOB_ENTRIES 64
 
 #define OTX2_RFOE_MSG_DEFAULT	(NETIF_MSG_DRV)
+
+/* PTP clock time operates by adding a constant increment every clock
+ * cycle. That increment is expressed (MIO_PTP_CLOCK_COMP) as a Q32.32
+ * number of nanoseconds (32 integer bits and 32 fractional bits). The
+ * value must be equal to 1/(PTP clock frequency in Hz). If the PTP clock
+ * freq is 1 GHz, there is no issue but for other input clock frequency
+ * values for example 950 MHz which is SLCK or 153.6 MHz (bcn_clk/2) the
+ * MIO_PTP_CLOCK_COMP register value can't be expressed exactly and there
+ * will be error accumulated over the time depending on the direction the
+ * PTP_CLOCK_COMP value is rounded. The accumulated error will be around
+ * -70ps or +150ps per second in case of 950 MHz.
+ *
+ * To solve this issue, the driver calculates the PTP timestamps using
+ * BCN clock as reference as per the algorithm proposed as given below.
+ *
+ * Set PTP tick (= MIO_PTP_CLOCK_COMP) to 1.0 ns
+ * Sample once, at exactly the same time, BCN and PTP to (BCN0, PTP0).
+ * Calculate (applying BCN-to-PTP epoch difference and an OAM parameter
+ *            secondaryBcnOffset)
+ * PTPbase[ns] = NanoSec(BCN0) + NanoSec(315964819[s]) - secondaryBcnOffset[ns]
+ * When reading packet timestamp (tick count) PTPn, convert it to nanoseconds.
+ * PTP pkt timestamp = PTPbase[ns] + (PTPn - PTP0) / (PTP Clock in GHz)
+ *
+ * The intermediate values generated need to be of pico-second precision to
+ * achieve PTP accuracy < 1ns. The calculations should not overflow 64-bit
+ * value at anytime. Added timer to adjust the PTP and BCN base values
+ * periodically to fix the overflow issue.
+ */
+#define PTP_CLK_FREQ_DIV_GHZ		1536	/* freq_div = Clock MHz x 10 */
+#define PTP_CLK_FREQ_MULT_GHZ		10000	/* freq(Ghz) = freq_div/10000 */
+#define PTP_OFF_RESAMPLE_THRESH		1800	/* resample period in seconds */
+#define PICO_SEC_PER_NSEC		1000	/* pico seconds per nano sec */
+#define UTC_GPS_EPOCH_DIFF		315964819UL /* UTC - GPS epoch secs */
 
 enum state {
 	PTP_TX_IN_PROGRESS = 1,
@@ -191,6 +227,27 @@ struct otx2_rfoe_stats {
 	spinlock_t lock;
 };
 
+struct bcn_sec_offset_cfg {
+	u8				rfoe_num;
+	u8				lmac_id;
+	s32				sec_bcn_offset;
+};
+
+struct ptp_bcn_ref {
+	u64				ptp0_ns;	/* PTP nanosec */
+	u64				bcn0_n1_ns;	/* BCN N1 nanosec */
+	u64				bcn0_n2_ps;	/* BCN N2 picosec */
+};
+
+struct ptp_bcn_off_cfg {
+	struct ptp_bcn_ref		old_ref;
+	struct ptp_bcn_ref		new_ref;
+	struct timer_list		ptp_timer;
+	int				use_ptp_alg;
+	/* protection lock for updating ref */
+	spinlock_t			lock;
+};
+
 /* netdev priv */
 struct otx2_rfoe_ndev_priv {
 	u8				rfoe_num;
@@ -201,6 +258,8 @@ struct otx2_rfoe_ndev_priv {
 	void __iomem			*bphy_reg_base;
 	void __iomem			*psm_reg_base;
 	void __iomem			*rfoe_reg_base;
+	void __iomem			*bcn_reg_base;
+	void __iomem			*ptp_reg_base;
 	void				*iommu_domain;
 	struct rx_ft_cfg		rx_ft_cfg[PACKET_TYPE_MAX];
 	struct tx_job_queue_cfg		tx_ptp_job_cfg;
@@ -219,6 +278,8 @@ struct otx2_rfoe_ndev_priv {
 	struct ptp_tx_skb_list		ptp_skb_list;
 	struct otx2_rfoe_stats		stats;
 	u8				mac_addr[ETH_ALEN];
+	struct ptp_bcn_off_cfg		*ptp_cfg;
+	s32				sec_bcn_offset;
 };
 
 /* ethtool */

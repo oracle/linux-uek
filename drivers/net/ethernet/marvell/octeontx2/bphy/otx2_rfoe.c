@@ -130,6 +130,8 @@ static struct class *otx2rfoe_class;
 void __iomem *bphy_reg_base;
 void __iomem *psm_reg_base;
 void __iomem *rfoe_reg_base;
+void __iomem *bcn_reg_base;
+void __iomem *ptp_reg_base;
 
 /* global driver ctx */
 struct otx2_rfoe_drv_ctx rfoe_drv_ctx[RFOE_MAX_INTF];
@@ -139,6 +141,65 @@ static inline void *otx2_iova_to_virt(struct otx2_rfoe_ndev_priv *priv,
 				      u64 iova)
 {
 	return phys_to_virt(iommu_iova_to_phys(priv->iommu_domain, iova));
+}
+
+static void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv,
+				  u64 *ts)
+{
+	u64 ptp_diff_nsec, ptp_diff_psec;
+	struct ptp_bcn_off_cfg *ptp_cfg;
+	struct ptp_bcn_ref *ref;
+	unsigned long flags;
+	u64 timestamp = *ts;
+
+	ptp_cfg = priv->ptp_cfg;
+	if (!ptp_cfg->use_ptp_alg)
+		return;
+
+	spin_lock_irqsave(&ptp_cfg->lock, flags);
+
+	if (likely(timestamp > ptp_cfg->new_ref.ptp0_ns))
+		ref = &ptp_cfg->new_ref;
+	else
+		ref = &ptp_cfg->old_ref;
+
+	/* calculate ptp timestamp diff in pico sec */
+	ptp_diff_psec = ((timestamp - ref->ptp0_ns) * PICO_SEC_PER_NSEC *
+			 PTP_CLK_FREQ_MULT_GHZ) / PTP_CLK_FREQ_DIV_GHZ;
+	ptp_diff_nsec = (ptp_diff_psec + ref->bcn0_n2_ps + 500) /
+			PICO_SEC_PER_NSEC;
+	timestamp = ref->bcn0_n1_ns - priv->sec_bcn_offset + ptp_diff_nsec;
+
+	spin_unlock_irqrestore(&ptp_cfg->lock, flags);
+
+	*ts = timestamp;
+}
+
+static void otx2_rfoe_ptp_offset_timer(struct timer_list *t)
+{
+	struct ptp_bcn_off_cfg *ptp_cfg = from_timer(ptp_cfg, t, ptp_timer);
+	u64 mio_ptp_ts, ptp_ts_diff, ptp_diff_nsec, ptp_diff_psec;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ptp_cfg->lock, flags);
+
+	memcpy(&ptp_cfg->old_ref, &ptp_cfg->new_ref,
+	       sizeof(struct ptp_bcn_ref));
+
+	mio_ptp_ts = readq(ptp_reg_base + MIO_PTP_CLOCK_HI);
+	ptp_ts_diff = mio_ptp_ts - ptp_cfg->new_ref.ptp0_ns;
+	ptp_diff_psec = (ptp_ts_diff * PICO_SEC_PER_NSEC *
+			 PTP_CLK_FREQ_MULT_GHZ) / PTP_CLK_FREQ_DIV_GHZ;
+	ptp_diff_nsec = ptp_diff_psec / PICO_SEC_PER_NSEC;
+	ptp_cfg->new_ref.ptp0_ns += ptp_ts_diff;
+	ptp_cfg->new_ref.bcn0_n1_ns += ptp_diff_nsec;
+	ptp_cfg->new_ref.bcn0_n2_ps += ptp_diff_psec -
+				       (ptp_diff_nsec * PICO_SEC_PER_NSEC);
+
+	spin_unlock_irqrestore(&ptp_cfg->lock, flags);
+
+	ptp_cfg->ptp_timer.expires = jiffies + PTP_OFF_RESAMPLE_THRESH * HZ;
+	add_timer(&ptp_cfg->ptp_timer);
 }
 
 /* submit pending ptp tx requests */
@@ -280,6 +341,7 @@ static void otx2_rfoe_ptp_tx_work(struct work_struct *work)
 		timestamp = readq(priv->rfoe_reg_base +
 				  RFOEX_TX_PTP_TSTMP_W0(priv->rfoe_num,
 							priv->lmac_id));
+		otx2_rfoe_calc_ptp_ts(priv, &timestamp);
 		memset(&ts, 0, sizeof(ts));
 		ts.hwtstamp = ns_to_ktime(timestamp);
 		skb_tstamp_tx(priv->ptp_tx_skb, &ts);
@@ -341,9 +403,9 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 				     struct rx_ft_cfg *ft_cfg, int mbt_buf_idx)
 {
 	struct mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
-	u64 tstamp = 0, mbt_state, jdt_iova_addr;
 	struct rfoe_ecpri_psw0_s *ecpri_psw0 = NULL;
 	struct rfoe_ecpri_psw1_s *ecpri_psw1 = NULL;
+	u64 tstamp = 0, mbt_state, jdt_iova_addr;
 	int found = 0, idx, len, pkt_type;
 	struct otx2_rfoe_ndev_priv *priv2;
 	struct otx2_rfoe_drv_ctx *drv_ctx;
@@ -461,8 +523,10 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	skb_put(skb, len);
 	skb->protocol = eth_type_trans(skb, netdev);
 
-	if (priv2->rx_hw_tstamp_en)
+	if (priv2->rx_hw_tstamp_en) {
+		otx2_rfoe_calc_ptp_ts(priv, &tstamp);
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tstamp);
+	}
 
 	netif_receive_skb(skb);
 
@@ -1126,9 +1190,16 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 	struct otx2_rfoe_ndev_priv *priv, *priv2;
 	struct bphy_netdev_comm_if *if_cfg;
 	struct tx_job_queue_cfg *tx_cfg;
+	struct ptp_bcn_off_cfg *ptp_cfg;
 	struct net_device *netdev;
 	struct rx_ft_cfg *ft_cfg;
 	u8 pkt_type_mask;
+
+	ptp_cfg = kzalloc(sizeof(*ptp_cfg), GFP_KERNEL);
+	if (!ptp_cfg)
+		return -ENOMEM;
+	timer_setup(&ptp_cfg->ptp_timer, otx2_rfoe_ptp_offset_timer, 0);
+	spin_lock_init(&ptp_cfg->lock);
 
 	for (i = 0; i < MAX_RFOE_INTF; i++) {
 		priv2 = NULL;
@@ -1184,6 +1255,9 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 			priv->bphy_reg_base = bphy_reg_base;
 			priv->psm_reg_base = psm_reg_base;
 			priv->rfoe_reg_base = rfoe_reg_base;
+			priv->bcn_reg_base = bcn_reg_base;
+			priv->ptp_reg_base = ptp_reg_base;
+			priv->ptp_cfg = ptp_cfg;
 
 			/* Initialise PTP TX work queue */
 			INIT_WORK(&priv->ptp_tx_work, otx2_rfoe_ptp_tx_work);
@@ -1270,6 +1344,7 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 	return 0;
 
 err_exit:
+	kfree(ptp_cfg);
 	for (i = 0; i < RFOE_MAX_INTF; i++) {
 		drv_ctx = &rfoe_drv_ctx[i];
 		if (drv_ctx->valid) {
@@ -1287,6 +1362,7 @@ err_exit:
 			drv_ctx->valid = 0;
 		}
 	}
+
 	return ret;
 }
 
@@ -1335,6 +1411,7 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 	{
 		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 		struct otx2_rfoe_ndev_priv *priv;
+		struct ptp_bcn_off_cfg *ptp_cfg;
 		struct net_device *netdev;
 		struct rx_ft_cfg *ft_cfg;
 		int i, idx;
@@ -1344,6 +1421,12 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 			if (drv_ctx->valid) {
 				netdev = drv_ctx->netdev;
 				priv = netdev_priv(netdev);
+				ptp_cfg = priv->ptp_cfg;
+				if (priv->ptp_cfg) {
+					del_timer_sync(&ptp_cfg->ptp_timer);
+					kfree(priv->ptp_cfg);
+					priv->ptp_cfg = NULL;
+				}
 				unregister_netdev(netdev);
 				for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 					if (!(priv->pkt_type_mask &
@@ -1415,6 +1498,98 @@ static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
 		ret = 0;
 		goto out;
 	}
+	case OTX2_RFOE_IOCTL_PTP_OFFSET:
+	{
+		u64 bcn_n1, bcn_n2, bcn_n1_ns, bcn_n2_ps, ptp0_ns, regval;
+		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
+		struct ptp_bcn_off_cfg *ptp_cfg;
+		struct otx2_rfoe_ndev_priv *priv;
+		struct net_device *netdev;
+		struct ptp_bcn_ref ref;
+		int idx;
+
+		if (!cdev->odp_intf_cfg) {
+			dev_info(cdev->dev, "odp interface cfg is not done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+			drv_ctx = &rfoe_drv_ctx[idx];
+			if (drv_ctx->valid)
+				break;
+		}
+		if (idx >= RFOE_MAX_INTF) {
+			dev_err(cdev->dev, "drv ctx not found\n");
+			ret = -EINVAL;
+			goto out;
+		}
+		netdev = drv_ctx->netdev;
+		priv = netdev_priv(netdev);
+		ptp_cfg = priv->ptp_cfg;
+		/* capture ptp and bcn timestamp using BCN_CAPTURE_CFG */
+		writeq((CAPT_EN | CAPT_TRIG_SW),
+		       priv->bcn_reg_base + BCN_CAPTURE_CFG);
+		/* poll for capt_en to become 0 */
+		while ((readq(priv->bcn_reg_base + BCN_CAPTURE_CFG) & CAPT_EN))
+			cpu_relax();
+		ptp0_ns = readq(priv->bcn_reg_base + BCN_CAPTURE_PTP);
+		regval = readq(priv->bcn_reg_base + BCN_CAPTURE_N1_N2);
+		bcn_n1 = (regval >> 24) & 0xFFFFFFFFFF;
+		bcn_n2 = regval & 0xFFFFFF;
+		/* BCN N1 10 msec counter to nsec */
+		bcn_n1_ns = bcn_n1 * 10 * NSEC_PER_MSEC;
+		bcn_n1_ns += UTC_GPS_EPOCH_DIFF * NSEC_PER_SEC;
+		/* BCN N2 clock period 0.813802083 nsec to pico secs */
+		bcn_n2_ps = (bcn_n2 * 813802083UL) / 1000000;
+		ref.ptp0_ns = ptp0_ns;
+		ref.bcn0_n1_ns = bcn_n1_ns;
+		ref.bcn0_n2_ps = bcn_n2_ps;
+		memcpy(&ptp_cfg->old_ref, &ref, sizeof(struct ptp_bcn_ref));
+		memcpy(&ptp_cfg->new_ref, &ref, sizeof(struct ptp_bcn_ref));
+		ptp_cfg->use_ptp_alg = 1;
+		ptp_cfg->ptp_timer.expires = jiffies +
+					     PTP_OFF_RESAMPLE_THRESH * HZ;
+		add_timer(&ptp_cfg->ptp_timer);
+		ret = 0;
+		goto out;
+	}
+	case OTX2_RFOE_IOCTL_SEC_BCN_OFFSET:
+	{
+		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
+		struct otx2_rfoe_ndev_priv *priv;
+		struct bcn_sec_offset_cfg cfg;
+		struct net_device *netdev;
+		int idx;
+
+		if (!cdev->odp_intf_cfg) {
+			dev_info(cdev->dev, "odp interface cfg is not done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+		if (copy_from_user(&cfg, (void __user *)arg,
+				   sizeof(struct bcn_sec_offset_cfg))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+			drv_ctx = &rfoe_drv_ctx[idx];
+			if (drv_ctx->valid &&
+			    drv_ctx->rfoe_num == cfg.rfoe_num &&
+			    drv_ctx->lmac_id == cfg.lmac_id)
+				break;
+		}
+		if (idx >= RFOE_MAX_INTF) {
+			dev_err(cdev->dev, "drv ctx not found\n");
+			ret = -EINVAL;
+			goto out;
+		}
+		netdev = drv_ctx->netdev;
+		priv = netdev_priv(netdev);
+		priv->sec_bcn_offset = cfg.sec_bcn_offset;
+		ret = 0;
+		goto out;
+	}
 	default:
 	{
 		dev_info(cdev->dev, "ioctl: no match\n");
@@ -1469,6 +1644,11 @@ static int otx2_rfoe_cdev_release(struct inode *inode, struct file *filp)
 		if (drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
+			if (priv->ptp_cfg) {
+				del_timer_sync(&priv->ptp_cfg->ptp_timer);
+				kfree(priv->ptp_cfg);
+				priv->ptp_cfg = NULL;
+			}
 			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 				if (!(priv->pkt_type_mask & (1U << idx)))
@@ -1538,12 +1718,28 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 		err = PTR_ERR(rfoe_reg_base);
 		goto out_unmap_psm_reg;
 	}
+	/* bcn register ioremap */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
+	bcn_reg_base = ioremap_nocache(res->start, resource_size(res));
+	if (IS_ERR(bcn_reg_base)) {
+		dev_err(&pdev->dev, "failed to ioremap bcn registers\n");
+		err = PTR_ERR(bcn_reg_base);
+		goto out_unmap_rfoe_reg;
+	}
+	/* ptp register ioremap */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 4);
+	ptp_reg_base = ioremap_nocache(res->start, resource_size(res));
+	if (IS_ERR(ptp_reg_base)) {
+		dev_err(&pdev->dev, "failed to ioremap ptp registers\n");
+		err = PTR_ERR(ptp_reg_base);
+		goto out_unmap_bcn_reg;
+	}
 	/* get irq */
 	ret = platform_get_irq(pdev, 0);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "irq resource not found\n");
 		err = ret;
-		goto out_unmap_rfoe_reg;
+		goto out_unmap_ptp_reg;
 	}
 	irq = ret;
 
@@ -1552,7 +1748,7 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 	if (ret != 0) {
 		dev_err(&pdev->dev, "failed to alloc chrdev device region\n");
 		err = ret;
-		goto out_unmap_rfoe_reg;
+		goto out_unmap_ptp_reg;
 	}
 
 	otx2rfoe_class = class_create(THIS_MODULE, DEVICE_NAME);
@@ -1608,6 +1804,10 @@ out_class_destroy:
 	class_destroy(otx2rfoe_class);
 out_unregister_chrdev_region:
 	unregister_chrdev_region(devt, 1);
+out_unmap_ptp_reg:
+	iounmap(ptp_reg_base);
+out_unmap_bcn_reg:
+	iounmap(bcn_reg_base);
 out_unmap_rfoe_reg:
 	iounmap(rfoe_reg_base);
 out_unmap_psm_reg:
@@ -1625,6 +1825,8 @@ static int otx2_rfoe_remove(struct platform_device *pdev)
 	struct otx2_rfoe_cdev_priv *cdev_priv = dev_get_drvdata(&pdev->dev);
 
 	/* unmap register regions */
+	iounmap(ptp_reg_base);
+	iounmap(bcn_reg_base);
 	iounmap(rfoe_reg_base);
 	iounmap(psm_reg_base);
 	iounmap(bphy_reg_base);
