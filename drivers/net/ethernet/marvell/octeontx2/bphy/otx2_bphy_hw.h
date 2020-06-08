@@ -67,6 +67,18 @@
 					 (((unsigned long)(a) << 36)) | \
 					 ((b) << 3))
 
+/* PTP register offsets */
+#define MIO_PTP_CLOCK_HI		0x10
+
+/* BCN register offsets and definitions */
+#define BCN_CAPTURE_CFG			0x10400
+#define BCN_CAPTURE_N1_N2		0x10410
+#define BCN_CAPTURE_PTP			0x10430
+
+/* BCN_CAPTURE_CFG register definitions */
+#define CAPT_EN				BIT(0)
+#define CAPT_TRIG_SW			(3UL << 8)
+
 /* MHAB definitions */
 struct mhbw_jd_dma_cfg_word_0_s {
 	u64 dma_mode		: 3;
