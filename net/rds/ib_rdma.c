@@ -1339,10 +1339,10 @@ void rds_ib_flush_mrs(void)
 	down_read(&rds_ib_devices_lock);
 	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
 		if (rds_ibdev->mr_8k_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 0, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 1, NULL);
 
 		if (rds_ibdev->mr_1m_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 0, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 1, NULL);
 	}
 	up_read(&rds_ib_devices_lock);
 }
