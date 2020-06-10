@@ -849,7 +849,6 @@ static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb)
 static int bdi_init(struct backing_dev_info *bdi)
 {
 	int ret;
-	char dev_name[64];
 
 	bdi->dev = NULL;
 
@@ -857,7 +856,7 @@ static int bdi_init(struct backing_dev_info *bdi)
 	bdi->min_ratio = 0;
 	bdi->max_ratio = 100;
 	bdi->max_prop_frac = FPROP_FRAC_BASE;
-	bdi->dev_name = kmalloc(sizeof(dev_name), GFP_KERNEL);
+	bdi->dev_name = kmalloc(BACKING_DEV_INFO_NAME_SIZE, GFP_KERNEL);
 	if (!bdi->dev_name)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&bdi->bdi_list);
@@ -944,7 +943,7 @@ int bdi_register_va(struct backing_dev_info *bdi, const char *fmt, va_list args)
 	if (bdi->dev)	/* The driver needs to use separate queues per device */
 		return 0;
 
-	vsnprintf(bdi->dev_name, sizeof(bdi->dev_name), fmt, args);
+	vsnprintf(bdi->dev_name, BACKING_DEV_INFO_NAME_SIZE, fmt, args);
 	dev = device_create(bdi_class, NULL, MKDEV(0, 0), bdi, bdi->dev_name);
 	if (IS_ERR(dev))
 		return PTR_ERR(dev);
