@@ -16,6 +16,10 @@
 #define DRV_NAME	"octeontx2-cptvf"
 #define DRV_VERSION	"1.0"
 
+static unsigned int cpt_block_num;
+module_param(cpt_block_num, uint, 0644);
+MODULE_PARM_DESC(cpt_block_num, "cpt block number (0=CPT0 1=CPT1, default 0)");
+
 static void cptvf_enable_pfvf_mbox_intrs(struct cptvf_dev *cptvf)
 {
 	/* Clear interrupt if any */
@@ -226,6 +230,7 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (err)
 		goto cpt_err_remove_sysfs;
 
+	cptvf->blkaddr = (cpt_block_num == 0) ? BLKADDR_CPT0 : BLKADDR_CPT1;
 	/* Initialize CPT LFs */
 	err = cptlf_init(pdev, cptvf->reg_base, &cptvf->lfs,
 			 cptvf->limits.cpt);

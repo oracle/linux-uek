@@ -35,4 +35,6 @@ static inline u64 cpt_read64(void __iomem *reg_base, u64 blk, u64 slot,
 	return readq_relaxed(reg_base + RVU_FUNC_ADDR_S(blk, slot, offs));
 }
 
+u8 cpt_get_blkaddr(struct pci_dev *pdev);
+
 #endif /* __CPT9X_COMMON_H */

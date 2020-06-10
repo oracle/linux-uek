@@ -356,6 +356,8 @@ int cpt9x_discover_eng_capabilities(void *obj)
 		return 0;
 
 	pdev = cptpf->pdev;
+	cptpf->blkaddr = BLKADDR_CPT0;
+
 	ret = cpt_create_eng_caps_discovery_grps(pdev, &cptpf->eng_grps);
 	if (ret)
 		goto delete_grps;

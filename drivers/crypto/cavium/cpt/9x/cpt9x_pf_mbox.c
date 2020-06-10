@@ -385,6 +385,7 @@ static int rx_inline_ipsec_lf_enable(struct cptpf_dev *cptpf,
 	 * set queue priority of each LF to high
 	 */
 	egrp = get_eng_grp(cptpf, IE_TYPES);
+	cptpf->blkaddr = BLKADDR_CPT0;
 
 	ret = cptpf_lf_init(cptpf, 1 << egrp, QUEUE_HI_PRIO, 1);
 	if (ret)

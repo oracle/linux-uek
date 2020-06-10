@@ -62,7 +62,7 @@ static inline struct free_rsrcs_rsp *get_limits(struct pci_dev *pdev)
 	return &cptvf->limits;
 }
 
-static inline u8 cpt_get_blkaddr(struct pci_dev *pdev)
+u8 cpt_get_blkaddr(struct pci_dev *pdev)
 {
 	struct cptpf_dev *cptpf;
 	struct cptvf_dev *cptvf;
@@ -189,6 +189,7 @@ int cpt_attach_rscrs_msg(struct pci_dev *pdev)
 {
 	struct cptlfs_info *lfs = get_lfs_info(pdev);
 	struct otx2_mbox *mbox = get_mbox(pdev);
+	u8 blkaddr = cpt_get_blkaddr(pdev);
 	struct rsrc_attach *req;
 	int ret = 0;
 
@@ -205,6 +206,7 @@ int cpt_attach_rscrs_msg(struct pci_dev *pdev)
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	req->hdr.pcifunc = RVU_PFFUNC(get_pf_id(pdev), get_vf_id(pdev));
 	req->cptlfs = lfs->lfs_num;
+	req->cpt_blkaddr = blkaddr;
 	ret = cpt_send_mbox_msg(pdev);
 	if (ret)
 		goto error;

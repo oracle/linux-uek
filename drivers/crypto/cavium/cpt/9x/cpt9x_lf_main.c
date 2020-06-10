@@ -18,41 +18,45 @@
 
 static int cptlf_get_done_time_wait(struct cptlf_info *lf)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_vqx_done_wait done_wait;
 
-	done_wait.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	done_wait.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 				 CPT_LF_DONE_WAIT);
 	return done_wait.s.time_wait;
 }
 
 static void cptlf_do_set_done_time_wait(struct cptlf_info *lf, int time_wait)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_vqx_done_wait done_wait;
 
-	done_wait.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	done_wait.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 				 CPT_LF_DONE_WAIT);
 	done_wait.s.time_wait = time_wait;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_DONE_WAIT,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_DONE_WAIT,
 		    done_wait.u);
 }
 
 static int cptlf_get_done_num_wait(struct cptlf_info *lf)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_vqx_done_wait done_wait;
 
-	done_wait.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	done_wait.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 				 CPT_LF_DONE_WAIT);
 	return done_wait.s.num_wait;
 }
 
 static void cptlf_do_set_done_num_wait(struct cptlf_info *lf, int num_wait)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_vqx_done_wait done_wait;
 
-	done_wait.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	done_wait.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 				 CPT_LF_DONE_WAIT);
 	done_wait.s.num_wait = num_wait;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_DONE_WAIT,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_DONE_WAIT,
 		    done_wait.u);
 }
 
@@ -74,9 +78,10 @@ static void cptlf_set_done_num_wait(struct cptlfs_info *lfs, int num_wait)
 
 static int cptlf_get_inflight(struct cptlf_info *lf)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_lf_inprog lf_inprog;
 
-	lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	lf_inprog.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 				 CPT_LF_INPROG);
 
 	return lf_inprog.s.inflight;
@@ -198,6 +203,7 @@ static void cptlf_set_misc_intrs(struct cptlfs_info *lfs, u8 enable)
 {
 	union cptx_lf_misc_int_ena_w1s irq_misc = { .u = 0x0 };
 	u64 reg = enable ? CPT_LF_MISC_INT_ENA_W1S : CPT_LF_MISC_INT_ENA_W1C;
+	u8 blkaddr = cpt_get_blkaddr(lfs->pdev);
 	int slot;
 
 	irq_misc.s.fault = 0x1;
@@ -207,7 +213,7 @@ static void cptlf_set_misc_intrs(struct cptlfs_info *lfs, u8 enable)
 	irq_misc.s.nwrp = 0x1;
 
 	for (slot = 0; slot < lfs->lfs_num; slot++)
-		cpt_write64(lfs->reg_base, BLKADDR_CPT0, slot, reg, irq_misc.u);
+		cpt_write64(lfs->reg_base, blkaddr, slot, reg, irq_misc.u);
 }
 
 static void cptlf_enable_misc_intrs(struct cptlfs_info *lfs)
@@ -222,27 +228,30 @@ static void cptlf_disable_misc_intrs(struct cptlfs_info *lfs)
 
 static void cptlf_enable_done_intr(struct cptlfs_info *lfs)
 {
+	u8 blkaddr = cpt_get_blkaddr(lfs->pdev);
 	int slot;
 
 	for (slot = 0; slot < lfs->lfs_num; slot++)
-		cpt_write64(lfs->reg_base, BLKADDR_CPT0, slot,
+		cpt_write64(lfs->reg_base, blkaddr, slot,
 			    CPT_LF_DONE_INT_ENA_W1S, 0x1);
 }
 
 static void cptlf_disable_done_intr(struct cptlfs_info *lfs)
 {
+	u8 blkaddr = cpt_get_blkaddr(lfs->pdev);
 	int slot;
 
 	for (slot = 0; slot < lfs->lfs_num; slot++)
-		cpt_write64(lfs->reg_base, BLKADDR_CPT0, slot,
+		cpt_write64(lfs->reg_base, blkaddr, slot,
 			    CPT_LF_DONE_INT_ENA_W1C, 0x1);
 }
 
 static inline int cptlf_read_done_cnt(struct cptlf_info *lf)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_vqx_done irq_cnt;
 
-	irq_cnt.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	irq_cnt.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 			       CPT_LF_DONE);
 	return irq_cnt.s.done;
 }
@@ -251,9 +260,10 @@ static irqreturn_t cptlf_misc_intr_handler(int irq, void *cptlf)
 {
 	struct cptlf_info *lf = (struct cptlf_info *) cptlf;
 	union cptx_lf_misc_int irq_misc, irq_misc_ack;
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	struct device *dev = &lf->lfs->pdev->dev;
 
-	irq_misc.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	irq_misc.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 				CPT_LF_MISC_INT);
 	irq_misc_ack.u = 0x0;
 
@@ -286,7 +296,7 @@ static irqreturn_t cptlf_misc_intr_handler(int irq, void *cptlf)
 	}
 
 	/* Acknowledge interrupts */
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_MISC_INT,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_MISC_INT,
 		    irq_misc_ack.u);
 
 	return IRQ_HANDLED;
@@ -295,19 +305,20 @@ static irqreturn_t cptlf_misc_intr_handler(int irq, void *cptlf)
 static irqreturn_t cptlf_done_intr_handler(int irq, void *cptlf)
 {
 	struct cptlf_info *lf = (struct cptlf_info *) cptlf;
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_vqx_done_wait done_wait;
 	int irq_cnt;
 
 	/* Read the number of completed requests */
 	irq_cnt = cptlf_read_done_cnt(lf);
 	if (irq_cnt) {
-		done_wait.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0,
+		done_wait.u = cpt_read64(lf->lfs->reg_base, blkaddr,
 					 lf->slot, CPT_LF_DONE_WAIT);
 		/* Acknowledge the number of completed requests */
-		cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+		cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot,
 			    CPT_LF_DONE_ACK, irq_cnt);
 
-		cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+		cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot,
 			    CPT_LF_DONE_WAIT, done_wait.u);
 		if (unlikely(!lf->wqe)) {
 			dev_err(&lf->lfs->pdev->dev, "No work for LF %d\n",
@@ -851,6 +862,7 @@ err:
 int cptlf_init(struct pci_dev *pdev, void *reg_base,
 	       struct cptlfs_info *lfs, int lfs_num)
 {
+	u8 blkaddr = cpt_get_blkaddr(pdev);
 	int slot, ret = 0;
 
 	lfs->reg_base = reg_base;
@@ -863,7 +875,7 @@ int cptlf_init(struct pci_dev *pdev, void *reg_base,
 		lfs->lf[slot].lmtline = lfs->reg_base +
 			RVU_FUNC_ADDR_S(BLKADDR_LMT, slot, LMT_LF_LMTLINEX(0));
 		lfs->lf[slot].ioreg = lfs->reg_base +
-			RVU_FUNC_ADDR_S(BLKADDR_CPT0, slot, CPT_LF_NQX(0));
+			RVU_FUNC_ADDR_S(blkaddr, slot, CPT_LF_NQX(0));
 	}
 
 	/* Send request to attach LFs */

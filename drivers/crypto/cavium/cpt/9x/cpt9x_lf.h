@@ -176,12 +176,13 @@ error:
 
 static inline void cptlf_set_iqueues_base_addr(struct cptlfs_info *lfs)
 {
+	u8 blkaddr = cpt_get_blkaddr(lfs->pdev);
 	union cptx_lf_q_base lf_q_base;
 	int slot;
 
 	for (slot = 0; slot < lfs->lfs_num; slot++) {
 		lf_q_base.u = lfs->lf[slot].iqueue.dma_addr;
-		cpt_write64(lfs->reg_base, BLKADDR_CPT0, slot, CPT_LF_Q_BASE,
+		cpt_write64(lfs->reg_base, blkaddr, slot, CPT_LF_Q_BASE,
 			    lf_q_base.u);
 	}
 }
@@ -189,9 +190,10 @@ static inline void cptlf_set_iqueues_base_addr(struct cptlfs_info *lfs)
 static inline void cptlf_do_set_iqueue_size(struct cptlf_info *lf)
 {
 	union cptx_lf_q_size lf_q_size = { .u = 0x0 };
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 
 	lf_q_size.s.size_div40 = CPT_SIZE_DIV40;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_Q_SIZE,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_Q_SIZE,
 		    lf_q_size.u);
 }
 
@@ -205,17 +207,18 @@ static inline void cptlf_set_iqueues_size(struct cptlfs_info *lfs)
 
 static inline void cptlf_do_disable_iqueue(struct cptlf_info *lf)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_lf_ctl lf_ctl = { .u = 0x0 };
 	union cptx_lf_inprog lf_inprog;
 	int timeout = 20;
 
 	/* Disable instructions enqueuing */
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_CTL,
 		    lf_ctl.u);
 
 	/* Wait for instruction queue to become empty */
 	do {
-		lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0,
+		lf_inprog.u = cpt_read64(lf->lfs->reg_base, blkaddr,
 					 lf->slot, CPT_LF_INPROG);
 		if (!lf_inprog.s.inflight)
 			break;
@@ -233,7 +236,7 @@ static inline void cptlf_do_disable_iqueue(struct cptlf_info *lf)
 	 * the queue should be empty at this point
 	 */
 	lf_inprog.s.eena = 0x0;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_INPROG,
 		    lf_inprog.u);
 }
 
@@ -247,14 +250,15 @@ static inline void cptlf_disable_iqueues(struct cptlfs_info *lfs)
 
 static inline void cptlf_set_iqueue_enq(struct cptlf_info *lf, bool enable)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_lf_ctl lf_ctl;
 
-	lf_ctl.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	lf_ctl.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 			      CPT_LF_CTL);
 
 	/* Set iqueue's enqueuing */
 	lf_ctl.s.ena = enable ? 0x1 : 0x0;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_CTL,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_CTL,
 		    lf_ctl.u);
 }
 
@@ -265,14 +269,15 @@ static inline void cptlf_enable_iqueue_enq(struct cptlf_info *lf)
 
 static inline void cptlf_set_iqueue_exec(struct cptlf_info *lf, bool enable)
 {
+	u8 blkaddr = cpt_get_blkaddr(lf->lfs->pdev);
 	union cptx_lf_inprog lf_inprog;
 
-	lf_inprog.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+	lf_inprog.u = cpt_read64(lf->lfs->reg_base, blkaddr, lf->slot,
 				 CPT_LF_INPROG);
 
 	/* Set iqueue's execution */
 	lf_inprog.s.eena = enable ? 0x1 : 0x0;
-	cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot, CPT_LF_INPROG,
+	cpt_write64(lf->lfs->reg_base, blkaddr, lf->slot, CPT_LF_INPROG,
 		    lf_inprog.u);
 }
 
