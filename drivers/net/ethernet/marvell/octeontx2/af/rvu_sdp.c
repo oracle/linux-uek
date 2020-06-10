@@ -14,13 +14,26 @@
 /* SDP PF device id */
 #define PCI_DEVID_OTX2_SDP_PF   0xA0F6
 
+/* Maximum SDP blocks in a chip */
+#define MAX_SDP		2
+
 /* SDP PF number */
-static int sdp_pf_num = -1;
+static int sdp_pf_num[MAX_SDP] = {-1, -1};
 
 bool is_sdp_pf(u16 pcifunc)
 {
-	if (rvu_get_pf(pcifunc) != sdp_pf_num)
+	u16 pf = rvu_get_pf(pcifunc);
+	u32 found = 0, i = 0;
+
+	while (i < MAX_SDP) {
+		if (pf == sdp_pf_num[i])
+			found = 1;
+		i++;
+	}
+
+	if (!found)
 		return false;
+
 	if (pcifunc & RVU_PFVF_FUNC_MASK)
 		return false;
 
@@ -29,22 +42,16 @@ bool is_sdp_pf(u16 pcifunc)
 
 int rvu_sdp_init(struct rvu *rvu)
 {
-	struct pci_dev *pdev;
-	int i;
+	struct pci_dev *pdev = NULL;
+	u32 i = 0;
 
-	for (i = 0; i < rvu->hw->total_pfs; i++) {
-		pdev = pci_get_domain_bus_and_slot(
-				pci_domain_nr(rvu->pdev->bus), i + 1, 0);
-		if (!pdev)
-			continue;
-
-		if (pdev->device == PCI_DEVID_OTX2_SDP_PF) {
-			sdp_pf_num = i;
-			put_device(&pdev->dev);
-			break;
-		}
-
+	while ((i < MAX_SDP) && (pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
+						       PCI_DEVID_OTX2_SDP_PF,
+						       pdev)) != NULL) {
+		/* The RVU PF number is one less than bus number */
+		sdp_pf_num[i] = pdev->bus->number - 1;
 		put_device(&pdev->dev);
+		i++;
 	}
 
 	return 0;
