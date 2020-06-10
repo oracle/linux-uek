@@ -958,7 +958,10 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 
 		conn = rm->m_inc.i_conn;
 		rm->m_tmp_tos = conn->c_tos;
-		cp = rds_conn_to_path(conn, &rm->m_inc);
+		if (conn->c_trans->t_mp_capable)
+			cp = rm->m_inc.i_conn_path;
+		else
+			cp = &conn->c_path[0];
 
 		spin_lock_irqsave(&cp->cp_lock, flags);
 		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
