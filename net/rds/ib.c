@@ -299,7 +299,6 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 	int cpu;
 	struct lfstack_el *cache_item;
 	struct rds_page_frag *frag;
-	size_t cache_sz_k =  cache_sz / 1024;
 	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
 
 	for_each_possible_cpu(cpu) {
