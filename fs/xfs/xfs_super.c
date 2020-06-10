@@ -917,8 +917,6 @@ void
 xfs_flush_inodes(
 	struct xfs_mount	*mp)
 {
-	struct super_block	*sb = mp->m_super;
-
 	/*
 	 * If flush_work() returns true then that means we waited for a flush
 	 * which was already in progress.  Don't bother running another scan.
