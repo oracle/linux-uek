@@ -1039,7 +1039,7 @@ static void io_sq_thread_drop_mm(void)
 	struct mm_struct *mm = current->mm;
 
 	if (mm) {
-		unuse_mm(mm);
+		kthread_unuse_mm(mm);
 		mmput(mm);
 		current->mm = NULL;
 	}
@@ -1065,7 +1065,7 @@ static int __io_sq_thread_acquire_mm(struct io_ring_ctx *ctx)
 	task_unlock(ctx->sqo_task);
 
 	if (mm) {
-		use_mm(mm);
+		kthread_use_mm(mm);
 		return 0;
 	}
 

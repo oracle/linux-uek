@@ -32,7 +32,7 @@
 #include <linux/usb/functionfs.h>
 
 #include <linux/aio.h>
-#include <linux/mmu_context.h>
+#include <linux/kthread.h>
 #include <linux/poll.h>
 #include <linux/eventfd.h>
 
@@ -827,9 +827,9 @@ static void ffs_user_copy_worker(struct work_struct *work)
 		mm_segment_t oldfs = get_fs();
 
 		set_fs(USER_DS);
-		use_mm(io_data->mm);
+		kthread_use_mm(io_data->mm);
 		ret = ffs_copy_to_iter(io_data->buf, ret, &io_data->data);
-		unuse_mm(io_data->mm);
+		kthread_unuse_mm(io_data->mm);
 		set_fs(oldfs);
 	}
 
