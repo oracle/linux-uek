@@ -214,17 +214,9 @@ static inline void elevator_exit(struct request_queue *q,
 
 struct hd_struct *__disk_get_part(struct gendisk *disk, int partno);
 
-#ifdef CONFIG_FAIL_IO_TIMEOUT
-int blk_should_fake_timeout(struct request_queue *);
 ssize_t part_timeout_show(struct device *, struct device_attribute *, char *);
 ssize_t part_timeout_store(struct device *, struct device_attribute *,
 				const char *, size_t);
-#else
-static inline int blk_should_fake_timeout(struct request_queue *q)
-{
-	return 0;
-}
-#endif
 
 void __blk_queue_split(struct request_queue *q, struct bio **bio,
 		unsigned int *nr_segs);
