@@ -95,7 +95,6 @@ struct sk_buff *mlx5e_xsk_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq,
 	u32 cqe_bcnt32 = cqe_bcnt;
 	void *va, *data;
 	u32 frag_size;
-	bool consumed;
 
 	/* Check packet size. Note LRO doesn't use linear SKB */
 	if (unlikely(cqe_bcnt > rq->hw_mtu)) {
@@ -117,10 +116,6 @@ struct sk_buff *mlx5e_xsk_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq,
 	dma_sync_single_for_cpu(rq->pdev, di->addr, frag_size, DMA_BIDIRECTIONAL);
 	net_prefetch(data);
 
-	rcu_read_lock();
-	consumed = mlx5e_xdp_handle(rq, di, va, &rx_headroom, &cqe_bcnt32, true);
-	rcu_read_unlock();
-
 	/* Possible flows:
 	 * - XDP_REDIRECT to XSKMAP:
 	 *   The page is owned by the userspace from now.
@@ -136,7 +131,7 @@ struct sk_buff *mlx5e_xsk_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq,
 	 * allocated first from the Reuse Ring, so it has enough space.
 	 */
 
-	if (likely(consumed)) {
+	if (likely(mlx5e_xdp_handle(rq, di, va, &rx_headroom, &cqe_bcnt32, true))) {
 		if (likely(__test_and_clear_bit(MLX5E_RQ_FLAG_XDP_XMIT, rq->flags)))
 			__set_bit(page_idx, wi->xdp_xmit_bitmap); /* non-atomic */
 		return NULL; /* page/packet was consumed by XDP */
@@ -156,7 +151,6 @@ struct sk_buff *mlx5e_xsk_skb_from_cqe_linear(struct mlx5e_rq *rq,
 	struct mlx5e_dma_info *di = wi->di;
 	u16 rx_headroom = rq->buff.headroom - rq->buff.umem_headroom;
 	void *va, *data;
-	bool consumed;
 	u32 frag_size;
 
 	/* wi->offset is not used in this function, because di->xsk.data and
@@ -178,11 +172,7 @@ struct sk_buff *mlx5e_xsk_skb_from_cqe_linear(struct mlx5e_rq *rq,
 		return NULL;
 	}
 
-	rcu_read_lock();
-	consumed = mlx5e_xdp_handle(rq, di, va, &rx_headroom, &cqe_bcnt, true);
-	rcu_read_unlock();
-
-	if (likely(consumed))
+	if (likely(mlx5e_xdp_handle(rq, di, va, &rx_headroom, &cqe_bcnt, true)))
 		return NULL; /* page/packet was consumed by XDP */
 
 	/* XDP_PASS: copy the data from the UMEM to a new SKB. The frame reuse
