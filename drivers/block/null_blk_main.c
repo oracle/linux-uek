@@ -1190,7 +1190,8 @@ static inline void nullb_complete_cmd(struct nullb_cmd *cmd)
 	case NULL_IRQ_SOFTIRQ:
 		switch (cmd->nq->dev->queue_mode) {
 		case NULL_Q_MQ:
-			blk_mq_complete_request(cmd->rq);
+			if (likely(!blk_should_fake_timeout(cmd->rq->q)))
+				blk_mq_complete_request(cmd->rq);
 			break;
 		case NULL_Q_BIO:
 			/*
