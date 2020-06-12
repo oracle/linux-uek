@@ -573,8 +573,13 @@ static void drain_tx_cq(struct net_device *dev)
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 
 	netif_tx_lock(dev);
-	while (poll_tx(priv))
-		; /* nothing */
+
+	do {
+		while (poll_tx(priv))
+			; /* nothing */
+	} while (ib_req_notify_cq(priv->send_cq,
+				  IB_CQ_NEXT_COMP |
+				  IB_CQ_REPORT_MISSED_EVENTS) > 0);
 
 	if (netif_queue_stopped(dev))
 		mod_timer(&priv->poll_timer, jiffies + 1);
@@ -716,9 +721,14 @@ int ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		++priv->tx_head;
 	}
 
-	if (unlikely(priv->tx_outstanding > MAX_SEND_CQE))
-		while (poll_tx(priv))
-			; /* nothing */
+	if (unlikely(priv->tx_outstanding > MAX_SEND_CQE)) {
+		do {
+			while (poll_tx(priv))
+				; /* nothing */
+		} while (ib_req_notify_cq(priv->send_cq,
+					  IB_CQ_NEXT_COMP |
+					  IB_CQ_REPORT_MISSED_EVENTS) > 0);
+	}
 
 	return rc;
 }
