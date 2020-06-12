@@ -1766,6 +1766,11 @@ void update_srbds_msr(void)
 	wrmsrl(MSR_IA32_MCU_OPT_CTRL, mcu_ctrl);
 }
 
+static void _update_srbds_msr(void *p)
+{
+	update_srbds_msr();
+}
+
 static void srbds_select_mitigation(void)
 {
 	u64 ia32_cap;
@@ -1800,7 +1805,7 @@ static void srbds_select_mitigation(void)
 	else if (cpu_mitigations_off() || srbds_off)
 		srbds_mitigation = SRBDS_MITIGATION_OFF;
 
-	update_srbds_msr();
+	on_each_cpu(_update_srbds_msr, NULL, 1);
 	pr_info("%s\n", srbds_strings[srbds_mitigation]);
 }
 
