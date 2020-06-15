@@ -430,7 +430,13 @@ struct rds_ib_device {
 	struct completion	rid_dev_rem_complete;
 };
 
-#define ibdev_to_node(ibdev) dev_to_node((ibdev)->dev.parent)
+static inline int ibdev_to_node(struct ib_device *ibdev)
+{
+	struct device *parent;
+
+	parent = ibdev->dev.parent;
+	return parent ? dev_to_node(parent) : NUMA_NO_NODE;
+}
 #define rdsibdev_to_node(rdsibdev) ibdev_to_node(rdsibdev->dev)
 
 /* bits for i_ack_flags */
