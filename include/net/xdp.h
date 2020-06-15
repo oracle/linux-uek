@@ -6,6 +6,8 @@
 #ifndef __LINUX_NET_XDP_H__
 #define __LINUX_NET_XDP_H__
 
+#include <linux/uek_kabi.h>
+
 /**
  * DOC: XDP RX-queue information
  *
