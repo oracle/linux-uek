@@ -33,6 +33,10 @@ static ssize_t acpi_table_aml_write(struct config_item *cfg,
 	struct acpi_table *table;
 	int ret;
 
+	if (kernel_is_locked_down("ACPI table override")) {
+		return -EPERM;
+	}
+
 	table = container_of(cfg, struct acpi_table, cfg);
 
 	if (table->header) {
