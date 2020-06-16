@@ -24,6 +24,7 @@
 #define _LINUX_UEK_KABI_H
 
 #include <linux/compiler.h>
+#include <linux/kconfig.h>
 #include <linux/stringify.h>
 
 /*
