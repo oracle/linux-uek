@@ -1778,6 +1778,9 @@ static void srbds_select_mitigation(void)
 	char arg[12];
 	bool srbds_off = false;
 
+	/* Init the default value for late loading case. */
+	srbds_mitigation = SRBDS_MITIGATION_FULL;
+
 	if (!boot_cpu_has_bug(X86_BUG_SRBDS))
 		return;
 
