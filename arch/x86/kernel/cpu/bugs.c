@@ -699,7 +699,7 @@ enum srbds_mitigations {
 	SRBDS_MITIGATION_HYPERVISOR,
 };
 
-static enum srbds_mitigations srbds_mitigation __ro_after_init = SRBDS_MITIGATION_FULL;
+static enum srbds_mitigations srbds_mitigation = SRBDS_MITIGATION_FULL;
 
 static const char * const srbds_strings[] = {
 	[SRBDS_MITIGATION_OFF]		= "Vulnerable",
@@ -749,6 +749,9 @@ static void _update_srbds_msr(void *p)
 static void srbds_select_mitigation(void)
 {
 	u64 ia32_cap;
+
+	/* Init the default value for late loading case. */
+	srbds_mitigation = SRBDS_MITIGATION_FULL;
 
 	if (!boot_cpu_has_bug(X86_BUG_SRBDS))
 		return;
