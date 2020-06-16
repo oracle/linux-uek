@@ -953,6 +953,7 @@ void cpu_clear_bug_bits(struct cpuinfo_x86 *c)
 	clear_cpu_cap(c, X86_BUG_MSBDS_ONLY);
 	clear_cpu_cap(c, X86_BUG_SWAPGS);
 	clear_cpu_cap(c, X86_BUG_TAA);
+	clear_cpu_cap(c, X86_BUG_SRBDS);
 	clear_cpu_cap(c, X86_BUG_CPU_MELTDOWN);
 	clear_cpu_cap(c, X86_BUG_L1TF);
 
@@ -965,6 +966,7 @@ void cpu_clear_bug_bits(struct cpuinfo_x86 *c)
 		setup_clear_cpu_cap(X86_BUG_MSBDS_ONLY);
 		setup_clear_cpu_cap(X86_BUG_SWAPGS);
 		setup_clear_cpu_cap(X86_BUG_TAA);
+		setup_clear_cpu_cap(X86_BUG_SRBDS);
 		setup_clear_cpu_cap(X86_BUG_CPU_MELTDOWN);
 		setup_clear_cpu_cap(X86_BUG_L1TF);
 
