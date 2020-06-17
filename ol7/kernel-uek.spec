@@ -136,6 +136,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_baseonly  %{?_with_baseonly:     1} %{?!_with_baseonly:     0}
 # Only build the smp kernel (--with smponly):
 %define with_smponly   %{?_with_smponly:      1} %{?!_with_smponly:      0}
+# Only build the 4k page size kernel (--with 4konly):
+%define with_4konly    %{?_with_4konly:       1} %{?!_with_4konly:       0}
 
 # should we do C=1 builds with sparse
 %define with_sparse	%{?_with_sparse:      1} %{?!_with_sparse:      0}
@@ -213,11 +215,24 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_smp 0
 %define with_kdump 0
 %define with_debug 0
+%define with_4k_ps 0
+%define with_4k_ps_debug 0
 %endif
 
 # if requested, only build smp kernel
 %if %{with_smponly}
 %define with_up 0
+%define with_kdump 0
+%define with_debug 0
+%define with_4k_ps 0
+%define with_4k_ps_debug 0
+%endif
+
+# if requested, only build 4k page size kernel
+%if %{with_4konly}
+%define with_4k_ps 1
+%define with_up 0
+%define with_smp 0
 %define with_kdump 0
 %define with_debug 0
 %endif
@@ -962,8 +977,8 @@ mechanism.
 This package includes 4k page size for aarch64 kernel.
 
 %define variant_summary The Aarch64 Linux kernel compiled with extra debugging enabled
-%kernel_variant_package -o 4k-debug
-%description -n kernel%{?variant}4k-debug
+%kernel_variant_package -o 4kdebug
+%description -n kernel%{?variant}4kdebug
 This package include debug kernel for 4k page size.
 
 %prep
@@ -1230,7 +1245,7 @@ BuildKernel() {
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config
 	cp configs/config .config
-    elif [ "$Flavour" == "4k-debug" ]; then
+    elif [ "$Flavour" == "4kdebug" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
@@ -1563,7 +1578,7 @@ BuildKernel %make_target %kernel_image 4k
 %endif
 
 %if %{with_4k_ps_debug}
-BuildKernel %make_target %kernel_image 4k-debug
+BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
 %global perf_make \
@@ -1973,10 +1988,10 @@ fi\
 %kernel_variant_postun -o 4k
 %kernel_variant_post -o -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
 
-%kernel_variant_pre -o 4k-debug
-%kernel_variant_preun -o 4k-debug
-%kernel_variant_postun -o 4k-debug
-%kernel_variant_post -o -v 4k-debug
+%kernel_variant_pre -o 4kdebug
+%kernel_variant_preun -o 4kdebug
+%kernel_variant_postun -o 4kdebug
+%kernel_variant_post -o -v 4kdebug
 
 if [ -x /sbin/ldconfig ]
 then
@@ -2163,6 +2178,6 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %kernel_variant_files -o %{with_4k_ps} 4k
-%kernel_variant_files -o %{with_4k_ps_debug} 4k-debug
+%kernel_variant_files -o %{with_4k_ps_debug} 4kdebug
 
 %changelog
