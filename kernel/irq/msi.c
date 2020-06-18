@@ -412,6 +412,8 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 			struct irq_data *irq_data;
 
 			irq_data = irq_domain_get_irq_data(domain, desc->irq);
+			if (domain->flags & IRQ_DOMAIN_MSI_NOMASK_QUIRK)
+				irqd_set_msi_nomask_quirk(irq_data);
 			ret = irq_domain_activate_irq(irq_data, true);
 			if (ret)
 				goto cleanup;
