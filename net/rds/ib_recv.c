@@ -170,13 +170,14 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	ibinc = container_of(inc, struct rds_ib_incoming, ii_inc);
 	/* Free attached frags */
 	list_for_each_entry_safe(frag, pos, &ibinc->ii_frags, f_item) {
-		count++;
 		if (sg_total_lens(frag->f_sg) != ic->i_frag_sz) {
 			rds_ib_recv_free_frag(frag, sg_total_lens(frag->f_sg) / PAGE_SIZE);
 			kmem_cache_free(rds_ib_frag_slab, frag);
+			continue;
 		} else {
 			list_del_init(&frag->f_item);
 		}
+		count++;
 		if (!first_frag)
 			first_frag = frag;
 
