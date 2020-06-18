@@ -1680,9 +1680,19 @@ static const struct file_operations otx2_rfoe_cdev_fops = {
 	.release	= otx2_rfoe_cdev_release,
 };
 
+static inline void msix_enable_ctrl(struct pci_dev *dev)
+{
+	u16 control;
+
+	pci_read_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, &control);
+	control |= PCI_MSIX_FLAGS_ENABLE;
+	pci_write_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, control);
+}
+
 static int otx2_rfoe_probe(struct platform_device *pdev)
 {
 	struct otx2_rfoe_cdev_priv *cdev_priv;
+	struct pci_dev *bphy_pdev;
 	int err = 0, ret, irq;
 	struct resource *res;
 	dev_t devt;
@@ -1693,6 +1703,19 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 		err = -ENOMEM;
 		goto out;
 	}
+
+	/* BPHY is a PCI device and the kernel resets the MSIXEN bit during
+	 * enumeration. So enable it back for interrupts to be generated.
+	 */
+	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
+				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
+	if (!bphy_pdev) {
+		dev_err(&pdev->dev, "Couldn't find BPHY PCI device %x\n",
+			OTX2_BPHY_PCI_DEVICE_ID);
+		ret = -ENODEV;
+		goto free_cdev_priv;
+	}
+	msix_enable_ctrl(bphy_pdev);
 
 	/* bphy registers ioremap */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
