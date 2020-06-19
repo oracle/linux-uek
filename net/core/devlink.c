@@ -551,7 +551,8 @@ static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 static int devlink_nl_port_fill(struct sk_buff *msg, struct devlink *devlink,
 				struct devlink_port *devlink_port,
 				enum devlink_command cmd, u32 portid,
-				u32 seq, int flags)
+				u32 seq, int flags,
+				struct netlink_ext_ack *extack)
 {
 	void *hdr;
 
@@ -623,7 +624,8 @@ static void devlink_port_notify(struct devlink_port *devlink_port,
 	if (!msg)
 		return;
 
-	err = devlink_nl_port_fill(msg, devlink, devlink_port, cmd, 0, 0, 0);
+	err = devlink_nl_port_fill(msg, devlink, devlink_port, cmd, 0, 0, 0,
+				   NULL);
 	if (err) {
 		nlmsg_free(msg);
 		return;
@@ -697,7 +699,8 @@ static int devlink_nl_cmd_port_get_doit(struct sk_buff *skb,
 
 	err = devlink_nl_port_fill(msg, devlink, devlink_port,
 				   DEVLINK_CMD_PORT_NEW,
-				   info->snd_portid, info->snd_seq, 0);
+				   info->snd_portid, info->snd_seq, 0,
+				   info->extack);
 	if (err) {
 		nlmsg_free(msg);
 		return err;
@@ -729,7 +732,8 @@ static int devlink_nl_cmd_port_get_dumpit(struct sk_buff *msg,
 						   DEVLINK_CMD_NEW,
 						   NETLINK_CB(cb->skb).portid,
 						   cb->nlh->nlmsg_seq,
-						   NLM_F_MULTI);
+						   NLM_F_MULTI,
+						   cb->extack);
 			if (err) {
 				mutex_unlock(&devlink->lock);
 				goto out;
