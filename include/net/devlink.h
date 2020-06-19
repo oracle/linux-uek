@@ -739,6 +739,19 @@ struct devlink_ops {
 	 */
 	int (*trap_group_init)(struct devlink *devlink,
 			       const struct devlink_trap_group *group);
+	/**
+	 * @port_function_hw_addr_get: Port function's hardware address get function.
+	 *
+	 * Should be used by device drivers to report the hardware address of a function managed
+	 * by the devlink port. Driver should return -EOPNOTSUPP if it doesn't support port
+	 * function handling for a particular port.
+	 *
+	 * Note: @extack can be NULL when port notifier queries the port function.
+	 */
+	UEK_KABI_EXTEND(int (*port_function_hw_addr_get)(struct devlink *devlink,
+							 struct devlink_port *port,
+							 u8 *hw_addr, int *hw_addr_len,
+							 struct netlink_ext_ack *extack))
 };
 
 static inline void *devlink_priv(struct devlink *devlink)

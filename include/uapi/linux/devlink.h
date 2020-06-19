@@ -425,6 +425,19 @@ enum devlink_attr {
 	DEVLINK_ATTR_RELOAD_FAILED,			/* u8 0 or 1 */
 
 	DEVLINK_ATTR_HEALTH_REPORTER_DUMP_TS_NS,	/* u64 */
+
+	DEVLINK_ATTR_NETNS_FD,			/* u32 */
+	DEVLINK_ATTR_NETNS_PID,			/* u32 */
+	DEVLINK_ATTR_NETNS_ID,			/* u32 */
+
+	DEVLINK_ATTR_HEALTH_REPORTER_AUTO_DUMP,	/* u8 */
+
+	DEVLINK_ATTR_TRAP_POLICER_ID,			/* u32 */
+	DEVLINK_ATTR_TRAP_POLICER_RATE,			/* u64 */
+	DEVLINK_ATTR_TRAP_POLICER_BURST,		/* u64 */
+
+	DEVLINK_ATTR_PORT_FUNCTION,			/* nested */
+
 	/* add new attributes above here, update the policy in devlink.c */
 
 	__DEVLINK_ATTR_MAX,
@@ -469,6 +482,14 @@ enum devlink_dpipe_header_id {
 
 enum devlink_resource_unit {
 	DEVLINK_RESOURCE_UNIT_ENTRY,
+};
+
+enum devlink_port_function_attr {
+	DEVLINK_PORT_FUNCTION_ATTR_UNSPEC,
+	DEVLINK_PORT_FUNCTION_ATTR_HW_ADDR,	/* binary */
+
+	__DEVLINK_PORT_FUNCTION_ATTR_MAX,
+	DEVLINK_PORT_FUNCTION_ATTR_MAX = __DEVLINK_PORT_FUNCTION_ATTR_MAX - 1
 };
 
 #endif /* _UAPI_LINUX_DEVLINK_H_ */
