@@ -752,6 +752,17 @@ struct devlink_ops {
 							 struct devlink_port *port,
 							 u8 *hw_addr, int *hw_addr_len,
 							 struct netlink_ext_ack *extack))
+	/**
+	 * @port_function_hw_addr_set: Port function's hardware address set function.
+	 *
+	 * Should be used by device drivers to set the hardware address of a function managed
+	 * by the devlink port. Driver should return -EOPNOTSUPP if it doesn't support port
+	 * function handling for a particular port.
+	 */
+	UEK_KABI_EXTEND(int (*port_function_hw_addr_set)(struct devlink *devlink,
+							 struct devlink_port *port,
+							 const u8 *hw_addr, int hw_addr_len,
+							 struct netlink_ext_ack *extack))
 };
 
 static inline void *devlink_priv(struct devlink *devlink)
