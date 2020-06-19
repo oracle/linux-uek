@@ -356,6 +356,9 @@ struct pci_dev {
 						      user sysfs */
 	unsigned int	clear_retrain_link:1;	/* Need to clear Retrain Link
 						   bit manually */
+#ifdef CONFIG_PCIE_DPC
+	UEK_KABI_FILL_HOLE(unsigned int dpc_rp_extensions:1)
+#endif
 	unsigned int	d3_delay;	/* D3->D0 transition time in ms */
 	unsigned int	d3cold_delay;	/* D3cold->D0 transition time in ms */
 
@@ -431,6 +434,9 @@ struct pci_dev {
 	struct hlist_head saved_cap_space;
 	struct bin_attribute *rom_attr;		/* Attribute descriptor for sysfs ROM entry */
 	int		rom_attr_enabled;	/* Display of ROM attribute enabled? */
+#ifdef CONFIG_PCIE_DPC
+	UEK_KABI_FILL_HOLE(u8 dpc_rp_log_size)
+#endif
 	struct bin_attribute *res_attr[DEVICE_COUNT_RESOURCE]; /* sysfs file for resources */
 	struct bin_attribute *res_attr_wc[DEVICE_COUNT_RESOURCE]; /* sysfs file for WC mapping of resources */
 
@@ -446,11 +452,6 @@ struct pci_dev {
 	const struct attribute_group **msi_irq_groups;
 #endif
 	struct pci_vpd *vpd;
-#ifdef CONFIG_PCIE_DPC
-	u16		dpc_cap;
-	unsigned int	dpc_rp_extensions:1;
-	u8		dpc_rp_log_size;
-#endif
 #ifdef CONFIG_PCI_ATS
 	union {
 		struct pci_sriov	*sriov;		/* PF: SR-IOV info */
@@ -468,6 +469,9 @@ struct pci_dev {
 #endif
 #ifdef CONFIG_PCI_P2PDMA
 	struct pci_p2pdma *p2pdma;
+#endif
+#ifdef CONFIG_PCIE_DPC
+	UEK_KABI_FILL_HOLE(u16 dpc_cap)
 #endif
 	phys_addr_t	rom;		/* Physical address if not from BAR */
 	size_t		romlen;		/* Length if not from BAR */
