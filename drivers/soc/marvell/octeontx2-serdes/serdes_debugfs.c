@@ -571,13 +571,11 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 	struct cgx_prbs_errors *errors;
 	struct arm_smccc_res res;
 	long time = -1;
-	int num_lanes;
 	int lane;
 	int qlm;
-	int qlm_lane;
 
 	qlm = prbs_cmd_data.qlm;
-	qlm_lane = prbs_cmd_data.qlm_lane;
+	lane = prbs_cmd_data.qlm_lane;
 
 	list_for_each_entry(status,
 			    &prbs_cmd_data.status_list.list,
@@ -589,55 +587,47 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 	}
 
 	if (time == -1) {
-		seq_printf(s, "GSER PRBS not started for qlm %d.\n", qlm);
+		seq_printf(s, "GSER PRBS not started for qlm %d lane%d.\n",
+				qlm, lane);
 		return 0;
 	}
+
 	time = get_seconds() - time;
 
 	arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, CGX_PRBS_GET_DATA_CMD,
-		      qlm, 0, qlm_lane, 0, 0, 0, &res);
+		      qlm, 0, lane, 0, 0, 0, &res);
 
 	if (res.a0 != SMCCC_RET_SUCCESS) {
-		seq_printf(s, "GSER prbs get command failed for qlm %d.\n", qlm);
+		seq_printf(s, "GSER prbs get command failed for QLM%d Lane%d\n",
+				qlm, lane);
 		return 0;
 	}
 
 	errors = prbs_cmd_data.res->errors;
-	num_lanes = prbs_cmd_data.res->num_lanes;
-	if (num_lanes > MAX_LMAC_PER_CGX) {
-		seq_printf(s, "ATF returned status for %d lanes.\n", num_lanes);
-		seq_printf(s, "Kernel support only %d lanes.\n",
-			   MAX_LMAC_PER_CGX);
-		num_lanes = MAX_LMAC_PER_CGX;
-	}
 
-	for (lane = 0; lane < num_lanes; lane++) {
-		if ((qlm_lane != -1) && (qlm_lane != lane))
-			continue;
-		seq_printf(s, "Time: %ld seconds QLM%d.Lane%d: errors: ",
-			   time, qlm, lane);
-		if (errors[lane].err != -1)
-			seq_printf(s, "%lld", errors[lane].err);
+	seq_printf(s, "Time: %ld seconds QLM%d.Lane%d: errors: ", time, qlm,
+			lane);
+	if (errors[lane].err != -1)
+		seq_printf(s, "%lld", errors[lane].err);
+	else
+		seq_puts(s, "No lock");
+
+	if (errors[lane].phy_host != -2) {
+		seq_puts(s, ", PHY Host errors: ");
+		if (errors[lane].phy_host != -1)
+			seq_printf(s, "%lld", errors[lane].phy_host);
 		else
 			seq_puts(s, "No lock");
-
-		if (errors[lane].phy_host != -2) {
-			seq_puts(s, ", PHY Host errors: ");
-			if (errors[lane].phy_host != -1)
-				seq_printf(s, "%lld", errors[lane].phy_host);
-			else
-				seq_puts(s, "No lock");
-		}
-
-		if (errors[lane].phy_line != -2) {
-			seq_puts(s, ", PHY Line errors: ");
-			if (errors[lane].phy_line != -1)
-				seq_printf(s, "%lld", errors[lane].phy_line);
-			else
-				seq_puts(s, "No lock");
-		}
-		seq_puts(s, "\n");
 	}
+
+	if (errors[lane].phy_line != -2) {
+		seq_puts(s, ", PHY Line errors: ");
+		if (errors[lane].phy_line != -1)
+			seq_printf(s, "%lld", errors[lane].phy_line);
+		else
+			seq_puts(s, "No lock");
+	}
+	seq_puts(s, "\n");
 
 	return 0;
 }
