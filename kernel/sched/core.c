@@ -36,6 +36,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_overutilized_tp);
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU_SHARED_ALIGNED(int, next_cpu);
+DEFINE_PER_CPU_SHARED_ALIGNED(struct rq_kabi_extra, rq_rke);
 
 #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
 /*
@@ -142,7 +143,7 @@ static inline bool __sched_core_less(struct task_struct *a, struct task_struct *
 
 static bool sched_core_empty(struct rq *rq)
 {
-	return RB_EMPTY_ROOT(&rq->core_tree);
+	return RB_EMPTY_ROOT(&rq->rke->core_tree);
 }
 
 static bool sched_core_enqueued(struct task_struct *task)
@@ -154,7 +155,8 @@ static struct task_struct *sched_core_first(struct rq *rq)
 {
 	struct task_struct *task;
 
-	task = container_of(rb_first(&rq->core_tree), struct task_struct, core_node);
+	task = container_of(rb_first(&rq->rke->core_tree), struct task_struct,
+			    core_node);
 	return task;
 }
 
@@ -165,10 +167,10 @@ static void sched_core_flush(int cpu)
 
 	while (!sched_core_empty(rq)) {
 		task = sched_core_first(rq);
-		rb_erase(&task->core_node, &rq->core_tree);
+		rb_erase(&task->core_node, &rq->rke->core_tree);
 		RB_CLEAR_NODE(&task->core_node);
 	}
-	rq->core->core_task_seq++;
+	rq->rke->core->rke->core_task_seq++;
 }
 
 static void sched_core_enqueue(struct rq *rq, struct task_struct *p)
@@ -176,12 +178,12 @@ static void sched_core_enqueue(struct rq *rq, struct task_struct *p)
 	struct rb_node *parent, **node;
 	struct task_struct *node_task;
 
-	rq->core->core_task_seq++;
+	rq->rke->core->rke->core_task_seq++;
 
 	if (!p->core_cookie)
 		return;
 
-	node = &rq->core_tree.rb_node;
+	node = &rq->rke->core_tree.rb_node;
 	parent = *node;
 
 	while (*node) {
@@ -195,17 +197,17 @@ static void sched_core_enqueue(struct rq *rq, struct task_struct *p)
 	}
 
 	rb_link_node(&p->core_node, parent, node);
-	rb_insert_color(&p->core_node, &rq->core_tree);
+	rb_insert_color(&p->core_node, &rq->rke->core_tree);
 }
 
 static void sched_core_dequeue(struct rq *rq, struct task_struct *p)
 {
-	rq->core->core_task_seq++;
+	rq->rke->core->rke->core_task_seq++;
 
 	if (!sched_core_enqueued(p))
 		return;
 
-	rb_erase(&p->core_node, &rq->core_tree);
+	rb_erase(&p->core_node, &rq->rke->core_tree);
 	RB_CLEAR_NODE(&p->core_node);
 }
 
@@ -226,7 +228,7 @@ void sched_core_remove(struct rq *rq, struct task_struct *p)
  */
 static struct task_struct *sched_core_find(struct rq *rq, unsigned long cookie)
 {
-	struct rb_node *node = rq->core_tree.rb_node;
+	struct rb_node *node = rq->rke->core_tree.rb_node;
 	struct task_struct *node_task, *match;
 
 	/*
@@ -296,7 +298,7 @@ static int __sched_core_stopper(void *data)
 
 	for_each_online_cpu(cpu) {
 		if (!enabled || (enabled && cpumask_weight(cpu_smt_mask(cpu)) >= 2))
-			cpu_rq(cpu)->core_enabled = enabled;
+			cpu_rq(cpu)->rke->core_enabled = enabled;
 	}
 
 	return 0;
@@ -414,7 +416,7 @@ static int __activate_cpu_core_sched(void *data)
 
 		rq = cpu_rq(i);
 
-		if (rq->core_enabled)
+		if (rq->rke->core_enabled)
 			continue;
 
 		for_each_class(class) {
@@ -425,7 +427,7 @@ static int __activate_cpu_core_sched(void *data)
 				class->core_sched_activate(rq);
 		}
 
-		rq->core_enabled = true;
+		rq->rke->core_enabled = true;
 	}
 	return 0;
 }
@@ -444,7 +446,7 @@ static int __deactivate_cpu_core_sched(void *data)
 
 		rq = cpu_rq(i);
 
-		if (!rq->core_enabled)
+		if (!rq->rke->core_enabled)
 			continue;
 
 		for_each_class(class) {
@@ -455,7 +457,7 @@ static int __deactivate_cpu_core_sched(void *data)
 				class->core_sched_deactivate(cpu_rq(i));
 		}
 
-		rq->core_enabled = false;
+		rq->rke->core_enabled = false;
 	}
 	return 0;
 }
@@ -4401,7 +4403,7 @@ static struct task_struct *
 pick_task(struct rq *rq, const struct sched_class *class, struct task_struct *max)
 {
 	struct task_struct *class_pick, *cookie_pick;
-	unsigned long cookie = rq->core->core_cookie;
+	unsigned long cookie = rq->rke->core->rke->core_cookie;
 
 	class_pick = class->pick_task(rq);
 	if (!class_pick)
@@ -4460,11 +4462,13 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	 * pointers are all still valid), and we haven't scheduled the last
 	 * pick yet, do so now.
 	 */
-	if (rq->core->core_pick_seq == rq->core->core_task_seq &&
-	    rq->core->core_pick_seq != rq->core_sched_seq) {
-		WRITE_ONCE(rq->core_sched_seq, rq->core->core_pick_seq);
+	if (rq->rke->core->rke->core_pick_seq ==
+	    rq->rke->core->rke->core_task_seq &&
+	    rq->rke->core->rke->core_pick_seq != rq->rke->core_sched_seq) {
+		WRITE_ONCE(rq->rke->core_sched_seq,
+			   rq->rke->core->rke->core_pick_seq);
 
-		next = rq->core_pick;
+		next = rq->rke->core_pick;
 		if (next != prev) {
 			put_prev_task(rq, prev);
 			set_next_task(rq, next);
@@ -4488,19 +4492,19 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	 * However, preemptions can cause multiple picks on the same task set.
 	 * 'Fix' this by also increasing @task_seq for every pick.
 	 */
-	rq->core->core_task_seq++;
-	need_sync = !!rq->core->core_cookie;
+	rq->rke->core->rke->core_task_seq++;
+	need_sync = !!rq->rke->core->rke->core_cookie;
 
 	/* reset state */
-	rq->core->core_cookie = 0UL;
+	rq->rke->core->rke->core_cookie = 0UL;
 	for_each_cpu(i, smt_mask) {
 		struct rq *rq_i = cpu_rq(i);
 
-		rq_i->core_pick = NULL;
+		rq_i->rke->core_pick = NULL;
 
-		if (rq_i->core_forceidle) {
+		if (rq_i->rke->core_forceidle) {
 			need_sync = true;
-			rq_i->core_forceidle = false;
+			rq_i->rke->core_forceidle = false;
 		}
 
 		if (i != cpu)
@@ -4518,11 +4522,11 @@ again:
 			struct task_struct *p;
 
 			if (cpu_is_offline(i)) {
-				rq_i->core_pick = rq_i->idle;
+				rq_i->rke->core_pick = rq_i->idle;
 				continue;
 			}
 
-			if (rq_i->core_pick)
+			if (rq_i->rke->core_pick)
 				continue;
 
 			/*
@@ -4555,7 +4559,7 @@ again:
 			if (!is_idle_task(p))
 				occ++;
 
-			rq_i->core_pick = p;
+			rq_i->rke->core_pick = p;
 
 			/*
 			 * If this new candidate is of higher priority than the
@@ -4570,7 +4574,7 @@ again:
 			if (!max || !cookie_match(max, p)) {
 				struct task_struct *old_max = max;
 
-				rq->core->core_cookie = p->core_cookie;
+				rq->rke->core->rke->core_cookie = p->core_cookie;
 				max = p;
 
 				if (old_max) {
@@ -4578,7 +4582,7 @@ again:
 						if (j == i)
 							continue;
 
-						cpu_rq(j)->core_pick = NULL;
+						cpu_rq(j)->rke->core_pick = NULL;
 					}
 					occ = 1;
 					goto again;
@@ -4597,9 +4601,9 @@ again:
 next_class:;
 	}
 
-	rq->core->core_pick_seq = rq->core->core_task_seq;
-	next = rq->core_pick;
-	rq->core_sched_seq = rq->core->core_pick_seq;
+	rq->rke->core->rke->core_pick_seq = rq->rke->core->rke->core_task_seq;
+	next = rq->rke->core_pick;
+	rq->rke->core_sched_seq = rq->rke->core->rke->core_pick_seq;
 
 	/*
 	 * Reschedule siblings
@@ -4615,21 +4619,21 @@ next_class:;
 		if (cpu_is_offline(i))
 			continue;
 
-		WARN_ON_ONCE(!rq_i->core_pick);
+		WARN_ON_ONCE(!rq_i->rke->core_pick);
 
-		if (is_idle_task(rq_i->core_pick) && rq_i->nr_running)
-			rq_i->core_forceidle = true;
+		if (is_idle_task(rq_i->rke->core_pick) && rq_i->nr_running)
+			rq_i->rke->core_forceidle = true;
 
-		rq_i->core_pick->core_occupation = occ;
+		rq_i->rke->core_pick->core_occupation = occ;
 
 		if (i == cpu)
 			continue;
 
-		if (rq_i->curr != rq_i->core_pick)
+		if (rq_i->curr != rq_i->rke->core_pick)
 			resched_curr(rq_i);
 
 		/* Did we break L1TF mitigation requirements? */
-		WARN_ON_ONCE(!cookie_match(next, rq_i->core_pick));
+		WARN_ON_ONCE(!cookie_match(next, rq_i->rke->core_pick));
 	}
 
 done:
@@ -4647,7 +4651,7 @@ static bool try_steal_cookie(int this, int that)
 	local_irq_disable();
 	double_rq_lock(dst, src);
 
-	cookie = dst->core->core_cookie;
+	cookie = dst->rke->core->rke->core_cookie;
 	if (!cookie)
 		goto unlock;
 
@@ -4659,7 +4663,7 @@ static bool try_steal_cookie(int this, int that)
 		goto unlock;
 
 	do {
-		if (p == src->core_pick || p == src->curr)
+		if (p == src->rke->core_pick || p == src->curr)
 			goto next;
 
 		if (!cpumask_test_cpu(this, &p->cpus_mask))
@@ -4736,7 +4740,7 @@ void queue_core_balance(struct rq *rq)
 	if (!sched_core_enabled(rq))
 		return;
 
-	if (!rq->core->core_cookie)
+	if (!rq->rke->core->rke->core_cookie)
 		return;
 
 	if (!rq->nr_running) /* not forced idle */
@@ -7279,7 +7283,7 @@ int sched_cpu_starting(unsigned int cpu)
 
 	for_each_cpu(i, smt_mask) {
 		rq = cpu_rq(i);
-		if (rq->core && rq->core == rq)
+		if (rq->rke->core && rq->rke->core == rq)
 			core_rq = rq;
 	}
 
@@ -7289,8 +7293,8 @@ int sched_cpu_starting(unsigned int cpu)
 	for_each_cpu(i, smt_mask) {
 		rq = cpu_rq(i);
 
-		WARN_ON_ONCE(rq->core && rq->core != core_rq);
-		rq->core = core_rq;
+		WARN_ON_ONCE(rq->rke->core && rq->rke->core != core_rq);
+		rq->rke->core = core_rq;
 	}
 #endif /* CONFIG_SCHED_CORE */
 
@@ -7455,6 +7459,7 @@ void __init sched_init(void)
 		per_cpu(next_cpu, i) = -1;
 		rq = cpu_rq(i);
 #ifdef CONFIG_SCHED_CORE
+		rq->rke = cpu_rq_rke(i);
 		raw_spin_lock_init(&rq->__lock);
 #else
 		raw_spin_lock_init(&rq->lock);
@@ -7523,13 +7528,12 @@ void __init sched_init(void)
 		atomic_set(&rq->nr_iowait, 0);
 
 #ifdef CONFIG_SCHED_CORE
-		rq->core = NULL;
-		rq->core_pick = NULL;
-		rq->core_enabled = 0;
-		rq->core_tree = RB_ROOT;
-		rq->core_forceidle = false;
-
-		rq->core_cookie = 0UL;
+		rq->rke->core = NULL;
+		rq->rke->core_pick = NULL;
+		rq->rke->core_enabled = 0;
+		rq->rke->core_tree = RB_ROOT;
+		rq->rke->core_forceidle = false;
+		rq->rke->core_cookie = 0UL;
 #endif
 	}
 
@@ -7866,7 +7870,7 @@ static void sched_change_group(struct task_struct *tsk, int type)
 	if ((unsigned long)tsk->sched_task_group == tsk->core_cookie)
 		tsk->core_cookie = 0UL;
 
-	if (tg->tagged /* && !tsk->core_cookie ? */)
+	if (tg->tagged /* && !tsk->rke->core_cookie ? */)
 		tsk->core_cookie = (unsigned long)tg;
 #endif
 

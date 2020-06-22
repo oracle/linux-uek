@@ -463,7 +463,7 @@ static inline bool is_root_cfs_rq(struct cfs_rq *cfs_rq)
 #ifdef CONFIG_SCHED_CORE
 static inline struct cfs_rq *core_cfs_rq(struct cfs_rq *cfs_rq)
 {
-	return &rq_of(cfs_rq)->core->cfs;
+	return &rq_of(cfs_rq)->rke->core->cfs;
 }
 #endif
 
@@ -10203,9 +10203,8 @@ static void resched_forceidle_sibling(struct rq *rq, struct sched_entity *se)
 			continue;
 
 		sibling_rq = cpu_rq(sibling_cpu);
-		if (sibling_rq->core_forceidle) {
+		if (sibling_rq->rke->core_forceidle)
 			resched_curr(sibling_rq);
-		}
 	}
 }
 #endif
