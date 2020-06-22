@@ -1487,6 +1487,8 @@ void dtrace_bzero(void *dst, size_t len)
 #define DTRACE_DYNHASH_SINK	1
 #define DTRACE_DYNHASH_VALID	2
 
+#define DTRACE_DYNVAR_LIMIT	10
+
 /*
  * Depending on the value of the op parameter, this function looks-up,
  * allocates or deallocates an arbitrarily-keyed dynamic variable.  If an
@@ -1512,9 +1514,11 @@ static dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *dstate, uint_t nkeys,
 	uintptr_t		kdata, lock;
 	dtrace_dstate_state_t	nstate;
 	uint_t			i;
+	int			iteration = 0;
 
         ASSERT(nkeys != 0);
 
+again:
 	/*
 	 * Hash the key.  As with aggregations, we use Jenkins' "One-at-a-time"
 	 * algorithm.  For the by-value portions, we perform the algorithm in
@@ -1950,9 +1954,9 @@ retry:
 	 * this hash chain, or another CPU is deleting an element from this
 	 * hash chain.  The simplest way to deal with both of these cases
 	 * (though not necessarily the most efficient) is to free our
-	 * allocated block and tail-call ourselves.  Note that the free is
-	 * to the dirty list and _not_ to the free list.  This is to prevent
-	 * races with allocators, above.
+	 * allocated block and start over.  Note that the free is to the dirty
+	 * list and _not_ to the free list.  This is to prevent races with
+	 * allocators, above.
 	 */
 	dvar->dtdv_hashval = DTRACE_DYNHASH_FREE;
 
@@ -1963,7 +1967,11 @@ retry:
 		dvar->dtdv_next = free;
 	} while (cmpxchg(&dcpu->dtdsc_dirty, free, dvar) != free);
 
-	return dtrace_dynvar(dstate, nkeys, key, dsize, op, mstate, vstate);
+	if (iteration++ < DTRACE_DYNVAR_LIMIT)
+		goto again;
+
+	DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
+	return NULL;
 }
 
 /*
