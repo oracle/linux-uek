@@ -1319,6 +1319,7 @@ void __init device_tree_init(void)
 		pr_info("Using appended Device Tree.\n");
 	} else if (octeon_bootinfo->minor_version >= 3 && octeon_bootinfo->fdt_addr) {
 		fdt = phys_to_virt(octeon_bootinfo->fdt_addr);
+		pr_info("Using passed Device Tree <%p>.\n", fdt);
 		if (fdt_check_header(fdt))
 			panic("Corrupt Device Tree passed to kernel.");
 		do_prune = false;
