@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Marvell OcteonTx2 RFOE Ethernet Driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 BPHY RFOE Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -8,8 +8,8 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef OTX2_BPHY_HW_H
-#define OTX2_BPHY_HW_H
+#ifndef _OTX2_BPHY_HW_H_
+#define _OTX2_BPHY_HW_H_
 
 #include <linux/types.h>
 
@@ -273,4 +273,4 @@ struct mhab_job_desc_cfg {
 	struct rfoex_abx_slotx_configuration2 cfg2;
 } __packed;
 
-#endif	/* OTX2_BPHY_HW_H */
+#endif	/* _OTX2_BPHY_HW_H_ */
