@@ -1139,6 +1139,21 @@
 #define FPU_CSR_RD	0x3	/* towards -Infinity */
 
 
+/*
+ * These defines are used on Octeon to implement fast access to the
+ * thread pointer from userspace. Octeon uses a 64bit location in
+ * CVMSEG to store the thread pointer for quick access.
+ *
+ * TLB refill uses location -8, fast access is -16 (both from the top
+ * of the area.
+ */
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+#define FAST_ACCESS_THREAD_OFFSET			\
+	(CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE*128-16-32768)
+#define FAST_ACCESS_THREAD_REGISTER			\
+	(*(unsigned long *)(FAST_ACCESS_THREAD_OFFSET))
+#endif
+
 #ifndef __ASSEMBLY__
 
 /*

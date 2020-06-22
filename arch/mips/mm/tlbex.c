@@ -1272,15 +1272,24 @@ build_fast_tlb_refill_handler (u32 **p, struct uasm_label **l,
 		UASM_i_MFC0(p, scratch, c0_kscratch(), c0_scratch_reg);
 		build_tlb_write_entry(p, l, r, tlb_random);
 		uasm_l_leave(l, *p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_MFC0(p, K0, 4, 2);
+#endif
 		rv.restore_scratch = 1;
 	} else if (PAGE_SHIFT == 14 || PAGE_SHIFT == 13)  {
 		build_tlb_write_entry(p, l, r, tlb_random);
 		uasm_l_leave(l, *p);
 		UASM_i_LW(p, scratch, scratchpad_offset(0), 0);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
+#endif
 	} else {
 		UASM_i_LW(p, scratch, scratchpad_offset(0), 0);
 		build_tlb_write_entry(p, l, r, tlb_random);
 		uasm_l_leave(l, *p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
+#endif
 		rv.restore_scratch = 1;
 	}
 
@@ -1352,6 +1361,9 @@ static void build_r4000_tlb_refill_handler(void)
 		build_update_entries(&p, K0, K1);
 		build_tlb_write_entry(&p, &l, &r, tlb_random);
 		uasm_l_leave(&l, p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_LW(&p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread ptr */
+#endif
 		uasm_i_eret(&p); /* return from trap */
 	}
 #ifdef CONFIG_MIPS_HUGE_TLB_SUPPORT
@@ -2098,6 +2110,9 @@ build_r4000_tlbchange_handler_tail(u32 **p, struct uasm_label **l,
 	build_tlb_write_entry(p, l, r, tlb_indexed);
 	uasm_l_leave(l, *p);
 	build_restore_work_registers(p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+	UASM_i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread ptr */
+#endif
 	uasm_i_eret(p); /* return from trap */
 
 #ifdef CONFIG_64BIT

@@ -429,6 +429,9 @@
 #else
 		.set	push
 		.set	arch=r4000
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		LONG_L	k0, FAST_ACCESS_THREAD_OFFSET($0) /* K0 = thread pointer */
+#endif
 		eret
 		.set	pop
 #endif

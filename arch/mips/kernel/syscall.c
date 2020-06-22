@@ -90,6 +90,9 @@ SYSCALL_DEFINE1(set_thread_area, unsigned long, addr)
 	if (cpu_has_userlocal)
 		write_c0_userlocal(addr);
 
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+	FAST_ACCESS_THREAD_REGISTER = addr;
+#endif
 	return 0;
 }
 

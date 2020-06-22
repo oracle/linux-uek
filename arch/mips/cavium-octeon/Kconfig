@@ -26,6 +26,20 @@ endif # CPU_CAVIUM_OCTEON
 
 if CAVIUM_OCTEON_SOC
 
+config FAST_ACCESS_TO_THREAD_POINTER
+	bool "Enable fast access to the thread pointer"
+	default "y"
+	help
+	  For Mips, normally the TLS thread pointer is accessed by the
+	  userspace program executing a "rdhwr" from register $29. This
+	  register doesn't exist, so the kernel emulates the instruction
+	  assigning the thread pointer to the value register. This option
+	  supplies an alternate, faster access to the thread pointer. A
+	  side effect of this option is that the highest 8 bytes of CVMSEG
+	  is used by the kernel to save and restore the thread pointer during
+	  the TLB fault handlers. This CVMSEG address isn't available to user
+	  applications.
+
 config CAVIUM_OCTEON_LOCK_L2
 	bool "Lock often used kernel code in the L2"
 	default "y"
