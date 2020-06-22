@@ -243,6 +243,12 @@
 #ifndef cpu_has_pindexed_dcache
 #define cpu_has_pindexed_dcache	(cpu_data[0].dcache.flags & MIPS_CACHE_PINDEX)
 #endif
+#ifndef cpu_has_local_ebase
+#define cpu_has_local_ebase	1
+#endif
+#ifndef cpu_has_octeon2_isa
+#define cpu_has_octeon2_isa 0
+#endif
 
 /*
  * I-Cache snoops remote store.	 This only matters on SMP.  Some multiprocessors

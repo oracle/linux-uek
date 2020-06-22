@@ -41,6 +41,29 @@ extern unsigned long __cmpxchg64_unsupported(void)
 extern unsigned long __xchg_called_with_bad_pointer(void)
 	__compiletime_error("Bad argument size for xchg");
 
+#define __xchg_asm_octeon(lac, las, law, max_val, m, val) 		\
+({									\
+	__typeof(*(m)) __ret;						\
+									\
+	if (__builtin_constant_p(val) && val == 0)			\
+		__asm__ __volatile__(lac "\t%0,(%1)\t"			\
+				: "=r" (__ret)				\
+				: "r" (m)				\
+				: "memory");				\
+	else if (__builtin_constant_p(val) && val == max_val)		\
+		__asm__ __volatile__(las "\t%0,(%1)\t"			\
+				: "=r" (__ret)				\
+				: "r" (m)				\
+				: "memory");				\
+	else								\
+		__asm__ __volatile__(law "\t%0,(%1),%2\t"		\
+				: "=r" (__ret)				\
+				: "r" (m), "r" (val)			\
+				: "memory");				\
+									\
+				__ret;					\
+})
+
 #define __xchg_asm(ld, st, m, val)					\
 ({									\
 	__typeof(*(m)) __ret;						\
@@ -86,13 +109,21 @@ unsigned long __xchg(volatile void *ptr, unsigned long x, int size)
 		return __xchg_small(ptr, x, size);
 
 	case 4:
-		return __xchg_asm("ll", "sc", (volatile u32 *)ptr, x);
+		if (cpu_has_octeon2_isa && kernel_uses_llsc)
+			return __xchg_asm_octeon("lac", "las", "law",
+					0xffffffffu, (volatile u32 *)ptr, x);
+		else
+			return __xchg_asm("ll", "sc", (volatile u32 *)ptr, x);
 
 	case 8:
 		if (!IS_ENABLED(CONFIG_64BIT))
 			return __xchg_called_with_bad_pointer();
-
-		return __xchg_asm("lld", "scd", (volatile u64 *)ptr, x);
+		
+		if (cpu_has_octeon2_isa && kernel_uses_llsc)
+			return __xchg_asm_octeon("lacd", "lasd", "lawd",
+					0xffffffffffffffffull, (volatile u64 *)ptr, x);
+		else
+			return __xchg_asm("lld", "scd", (volatile u64 *)ptr, x);
 
 	default:
 		return __xchg_called_with_bad_pointer();
