@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 BPHY RFOE Ethernet Driver
+/* Marvell OcteonTx2 BPHY RFOE/CPRI Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -1143,9 +1143,9 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 {
 	int i, intf_idx = 0, num_entries, lmac, idx, ret;
 	struct bphy_netdev_tx_psm_cmd_info *tx_info;
-	struct bphy_netdev_comm_intf_cfg *rfoe_cfg;
 	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 	struct otx2_rfoe_ndev_priv *priv, *priv2;
+	struct bphy_netdev_rfoe_if *rfoe_cfg;
 	struct bphy_netdev_comm_if *if_cfg;
 	struct tx_job_queue_cfg *tx_cfg;
 	struct ptp_bcn_off_cfg *ptp_cfg;
@@ -1160,8 +1160,13 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	spin_lock_init(&ptp_cfg->lock);
 
 	for (i = 0; i < MAX_RFOE_INTF; i++) {
+		/* Don't initialize rfoe i/f when cpri is default mode.
+		 * The mode switching from cpri to rfoe is not supported.
+		 */
+		if (cfg[i].if_type != IF_TYPE_ETHERNET)
+			continue;
 		priv2 = NULL;
-		rfoe_cfg = &cfg[i];
+		rfoe_cfg = &cfg[i].rfoe_if_cfg;
 		pkt_type_mask = rfoe_cfg->pkt_type_mask;
 		for (lmac = 0; lmac < MAX_LMAC_PER_RFOE; lmac++) {
 			if_cfg = &rfoe_cfg->if_cfg[lmac];
