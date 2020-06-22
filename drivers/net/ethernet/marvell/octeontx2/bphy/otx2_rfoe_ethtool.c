@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RFOE Ethernet Driver
+/* Marvell OcteonTx2 BPHY RFOE Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -7,9 +7,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
-#include <linux/ethtool.h>
-#include <linux/net_tstamp.h>
 
 #include "otx2_rfoe.h"
 

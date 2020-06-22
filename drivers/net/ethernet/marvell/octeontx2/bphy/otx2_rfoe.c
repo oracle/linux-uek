@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RFOE Ethernet Driver
+/* Marvell OcteonTx2 BPHY RFOE Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -8,33 +8,7 @@
  * published by the Free Software Foundation.
  */
 
-//#define DEBUG
-
-#include <linux/io.h>
-#include <linux/module.h>
-#include <linux/platform_device.h>
-#include <linux/pci.h>
-#include <linux/cdev.h>
-#include <linux/slab.h>
-#include <linux/netdevice.h>
-#include <linux/interrupt.h>
-#include <linux/etherdevice.h>
-#include <linux/ethtool.h>
-#include <linux/of.h>
-#include <linux/iommu.h>
-#include <linux/if_ether.h>
-#include <linux/net_tstamp.h>
-
 #include "otx2_rfoe.h"
-
-MODULE_AUTHOR("Marvell International Ltd.");
-MODULE_DESCRIPTION(DRV_STRING);
-MODULE_LICENSE("GPL v2");
-
-/* max ptp tx requests */
-static int max_ptp_req = 16;
-module_param(max_ptp_req, int, 0644);
-MODULE_PARM_DESC(max_ptp_req, "Maximum PTP Tx requests");
 
 /*	                      Theory of Operation
  *
@@ -123,24 +97,39 @@ MODULE_PARM_DESC(max_ptp_req, "Maximum PTP Tx requests");
  *
  */
 
-/* cdev */
-static struct class *otx2rfoe_class;
-
-/* reg base address */
-void __iomem *bphy_reg_base;
-void __iomem *psm_reg_base;
-void __iomem *rfoe_reg_base;
-void __iomem *bcn_reg_base;
-void __iomem *ptp_reg_base;
-
 /* global driver ctx */
 struct otx2_rfoe_drv_ctx rfoe_drv_ctx[RFOE_MAX_INTF];
 
-/* iova to kernel virtual addr */
-static inline void *otx2_iova_to_virt(struct otx2_rfoe_ndev_priv *priv,
-				      u64 iova)
+void otx2_bphy_rfoe_cleanup(void)
 {
-	return phys_to_virt(iommu_iova_to_phys(priv->iommu_domain, iova));
+	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
+	struct otx2_rfoe_ndev_priv *priv;
+	struct net_device *netdev;
+	struct rx_ft_cfg *ft_cfg;
+	int i, idx;
+
+	for (i = 0; i < RFOE_MAX_INTF; i++) {
+		drv_ctx = &rfoe_drv_ctx[i];
+		if (drv_ctx->valid) {
+			netdev = drv_ctx->netdev;
+			priv = netdev_priv(netdev);
+			if (priv->ptp_cfg) {
+				del_timer_sync(&priv->ptp_cfg->ptp_timer);
+				kfree(priv->ptp_cfg);
+				priv->ptp_cfg = NULL;
+			}
+			unregister_netdev(netdev);
+			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
+				if (!(priv->pkt_type_mask & (1U << idx)))
+					continue;
+				ft_cfg = &priv->rx_ft_cfg[idx];
+				netif_napi_del(&ft_cfg->napi);
+			}
+			kfree(priv->rfoe_common);
+			free_netdev(netdev);
+			drv_ctx->valid = 0;
+		}
+	}
 }
 
 static void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv,
@@ -271,7 +260,7 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 
 	/* update length and block size in jd dma cfg word */
 	jd_cfg_ptr_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
-	jd_cfg_ptr = otx2_iova_to_virt(priv, jd_cfg_ptr_iova);
+	jd_cfg_ptr = otx2_iova_to_virt(priv->iommu_domain, jd_cfg_ptr_iova);
 	jd_cfg_ptr->cfg1.pkt_len = skb->len;
 	jd_dma_cfg_word_0 = (struct mhbw_jd_dma_cfg_word_0_s *)
 				job_entry->rd_dma_ptr;
@@ -280,7 +269,8 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 	/* copy packet data to rd_dma_ptr start addr */
 	jd_dma_cfg_word_1 = (struct mhbw_jd_dma_cfg_word_1_s *)
 				((u8 *)job_entry->rd_dma_ptr + 8);
-	memcpy(otx2_iova_to_virt(priv, jd_dma_cfg_word_1->start_addr),
+	memcpy(otx2_iova_to_virt(priv->iommu_domain,
+				 jd_dma_cfg_word_1->start_addr),
 	       skb->data, skb->len);
 
 	/* make sure that all memory writes are completed */
@@ -466,7 +456,7 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		  jdt_iova_addr);
 
 	/* read jd ptr from psw */
-	jdt_ptr = otx2_iova_to_virt(priv, jdt_iova_addr);
+	jdt_ptr = otx2_iova_to_virt(priv->iommu_domain, jdt_iova_addr);
 	jd_dma_cfg_word_0 = (struct mhbw_jd_dma_cfg_word_0_s *)
 			((u8 *)jdt_ptr + ft_cfg->jd_rd_offset);
 	len = (jd_dma_cfg_word_0->block_size) << 2;
@@ -599,6 +589,7 @@ static int otx2_rfoe_process_rx_flow(struct otx2_rfoe_ndev_priv *priv,
 /* napi poll routine */
 static int otx2_rfoe_napi_poll(struct napi_struct *napi, int budget)
 {
+	struct otx2_bphy_cdev_priv *cdev_priv;
 	struct otx2_rfoe_ndev_priv *priv;
 	int workdone = 0, pkt_type;
 	struct rx_ft_cfg *ft_cfg;
@@ -606,10 +597,8 @@ static int otx2_rfoe_napi_poll(struct napi_struct *napi, int budget)
 
 	ft_cfg = container_of(napi, struct rx_ft_cfg, napi);
 	priv = ft_cfg->priv;
+	cdev_priv = priv->cdev_priv;
 	pkt_type = ft_cfg->pkt_type;
-
-	/* read memory barrier to guarantee data is ready to be read */
-	dma_rmb();
 
 	/* pkt processing loop */
 	workdone += otx2_rfoe_process_rx_flow(priv, pkt_type, budget);
@@ -620,18 +609,18 @@ static int otx2_rfoe_napi_poll(struct napi_struct *napi, int budget)
 		/* Re enable the Rx interrupts */
 		intr_en = PKT_TYPE_TO_INTR(pkt_type) <<
 				RFOE_RX_INTR_SHIFT(priv->rfoe_num);
-		spin_lock(&priv->rfoe_common->rx_lock);
+		spin_lock(&cdev_priv->lock);
 		regval = readq(bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
 		regval |= intr_en;
 		writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
-		spin_unlock(&priv->rfoe_common->rx_lock);
+		spin_unlock(&cdev_priv->lock);
 	}
 
 	return workdone;
 }
 
 /* Rx GPINT napi schedule api */
-static void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status)
+void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status)
 {
 	enum bphy_netdev_packet_type pkt_type;
 	struct otx2_rfoe_drv_ctx *drv_ctx;
@@ -670,43 +659,6 @@ static void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status)
 		/* napi scheduled per pkt_type, return */
 		return;
 	}
-}
-
-/* GPINT(1) interrupt handler routine */
-static irqreturn_t otx2_rfoe_intr_handler(int irq, void *dev_id)
-{
-	struct otx2_rfoe_drv_ctx *drv_ctx;
-	struct otx2_rfoe_ndev_priv *priv;
-	struct net_device *netdev;
-	u32 intr_mask, status;
-	int rfoe_num, i;
-
-	/* clear interrupt status */
-	status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(1)) & 0xFFFFFFFF;
-	writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
-
-	pr_debug("gpint status = 0x%x\n", status);
-
-	for (rfoe_num = 0; rfoe_num < MAX_RFOE_INTF; rfoe_num++) {
-		intr_mask = RFOE_RX_INTR_MASK(rfoe_num);
-		if (status & intr_mask)
-			otx2_rfoe_rx_napi_schedule(rfoe_num, status);
-	}
-
-	/* tx intr processing */
-	for (i = 0; i < RFOE_MAX_INTF; i++) {
-		drv_ctx = &rfoe_drv_ctx[i];
-		if (drv_ctx->valid) {
-			netdev = drv_ctx->netdev;
-			priv = netdev_priv(netdev);
-			intr_mask = RFOE_TX_PTP_INTR_MASK(priv->rfoe_num,
-							  priv->lmac_id);
-			if ((status & intr_mask) && priv->ptp_tx_skb)
-				schedule_work(&priv->ptp_tx_work);
-		}
-	}
-
-	return IRQ_HANDLED;
 }
 
 static void otx2_rfoe_get_stats64(struct net_device *netdev,
@@ -961,7 +913,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 
 	/* update length and block size in jd dma cfg word */
 	jd_cfg_ptr_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
-	jd_cfg_ptr = otx2_iova_to_virt(priv, jd_cfg_ptr_iova);
+	jd_cfg_ptr = otx2_iova_to_virt(priv->iommu_domain, jd_cfg_ptr_iova);
 	jd_cfg_ptr->cfg1.pkt_len = skb->len;
 	jd_dma_cfg_word_0 = (struct mhbw_jd_dma_cfg_word_0_s *)
 						job_entry->rd_dma_ptr;
@@ -979,7 +931,8 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	/* copy packet data to rd_dma_ptr start addr */
 	jd_dma_cfg_word_1 = (struct mhbw_jd_dma_cfg_word_1_s *)
 					((u8 *)job_entry->rd_dma_ptr + 8);
-	memcpy(otx2_iova_to_virt(priv, jd_dma_cfg_word_1->start_addr),
+	memcpy(otx2_iova_to_virt(priv->iommu_domain,
+				 jd_dma_cfg_word_1->start_addr),
 	       skb->data, skb->len);
 
 	/* make sure that all memory writes are completed */
@@ -1126,13 +1079,15 @@ static inline void otx2_rfoe_fill_rx_ft_cfg(struct otx2_rfoe_ndev_priv *priv,
 		ft_cfg->num_bufs = rbuf_info->num_bufs;
 		ft_cfg->mbt_iova_addr = rbuf_info->mbt_iova_addr;
 		iova = ft_cfg->mbt_iova_addr;
-		ft_cfg->mbt_virt_addr = otx2_iova_to_virt(priv, iova);
+		ft_cfg->mbt_virt_addr = otx2_iova_to_virt(priv->iommu_domain,
+							  iova);
 		ft_cfg->jdt_idx = rbuf_info->jdt_index;
 		ft_cfg->jd_size = rbuf_info->jd_size * 8;
 		ft_cfg->num_jd = rbuf_info->num_jd;
 		ft_cfg->jdt_iova_addr = rbuf_info->jdt_iova_addr;
 		iova = ft_cfg->jdt_iova_addr;
-		ft_cfg->jdt_virt_addr = otx2_iova_to_virt(priv, iova);
+		ft_cfg->jdt_virt_addr = otx2_iova_to_virt(priv->iommu_domain,
+							  iova);
 		writeq(ft_cfg->jdt_idx,
 		       (priv->rfoe_reg_base +
 			RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
@@ -1162,12 +1117,14 @@ static void otx2_rfoe_fill_tx_job_entries(struct otx2_rfoe_ndev_priv *priv,
 		job_entry->job_cmd_hi = tx_job->high_cmd;
 		job_entry->jd_iova_addr = tx_job->jd_iova_addr;
 		iova = job_entry->jd_iova_addr;
-		job_entry->jd_ptr = otx2_iova_to_virt(priv, iova);
+		job_entry->jd_ptr = otx2_iova_to_virt(priv->iommu_domain, iova);
 		jd_cfg_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
-		job_entry->jd_cfg_ptr = otx2_iova_to_virt(priv, jd_cfg_iova);
+		job_entry->jd_cfg_ptr = otx2_iova_to_virt(priv->iommu_domain,
+							  jd_cfg_iova);
 		job_entry->rd_dma_iova_addr = tx_job->rd_dma_iova_addr;
 		iova = job_entry->rd_dma_iova_addr;
-		job_entry->rd_dma_ptr = otx2_iova_to_virt(priv, iova);
+		job_entry->rd_dma_ptr = otx2_iova_to_virt(priv->iommu_domain,
+							  iova);
 		pr_debug("job_cmd_lo=0x%llx job_cmd_hi=0x%llx jd_iova_addr=0x%llx rd_dma_iova_addr=%llx\n",
 			 tx_job->low_cmd, tx_job->high_cmd,
 			 tx_job->jd_iova_addr, tx_job->rd_dma_iova_addr);
@@ -1181,11 +1138,12 @@ static void otx2_rfoe_fill_tx_job_entries(struct otx2_rfoe_ndev_priv *priv,
 	spin_lock_init(&job_cfg->lock);
 }
 
-static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
-					 struct bphy_netdev_comm_intf_cfg *cfg)
+int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
+				  struct bphy_netdev_comm_intf_cfg *cfg)
 {
 	int i, intf_idx = 0, num_entries, lmac, idx, ret;
 	struct bphy_netdev_tx_psm_cmd_info *tx_info;
+	struct bphy_netdev_comm_intf_cfg *rfoe_cfg;
 	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 	struct otx2_rfoe_ndev_priv *priv, *priv2;
 	struct bphy_netdev_comm_if *if_cfg;
@@ -1203,9 +1161,10 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 
 	for (i = 0; i < MAX_RFOE_INTF; i++) {
 		priv2 = NULL;
-		pkt_type_mask = cfg[i].pkt_type_mask;
+		rfoe_cfg = &cfg[i];
+		pkt_type_mask = rfoe_cfg->pkt_type_mask;
 		for (lmac = 0; lmac < MAX_LMAC_PER_RFOE; lmac++) {
-			if_cfg = &cfg[i].if_cfg[lmac];
+			if_cfg = &rfoe_cfg->if_cfg[lmac];
 			/* check if lmac is valid */
 			if (!if_cfg->lmac_info.is_valid) {
 				dev_dbg(cdev->dev,
@@ -1236,6 +1195,7 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 			}
 			spin_lock_init(&priv->lock);
 			priv->netdev = netdev;
+			priv->cdev_priv = cdev;
 			priv->msg_enable = netif_msg_init(-1, 0);
 			spin_lock_init(&priv->stats.lock);
 			priv->rfoe_num = if_cfg->lmac_info.rfoe_num;
@@ -1293,7 +1253,7 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 				num_entries = (priv->rfoe_num < 2) ?
 						MAX_OTH_MSG_PER_RFOE : 32;
 				tx_cfg = &priv->rfoe_common->tx_oth_job_cfg;
-				tx_info = &cfg[i].oth_pkt_info[0];
+				tx_info = &rfoe_cfg->oth_pkt_info[0];
 				otx2_rfoe_fill_tx_job_entries(priv, tx_cfg,
 							      tx_info,
 							      num_entries);
@@ -1306,6 +1266,7 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 			if (!priv2)
 				priv2 = priv;
 
+			intf_idx = (i * 4) + lmac;
 			snprintf(netdev->name, sizeof(netdev->name),
 				 "rfoe%d", intf_idx);
 			netdev->netdev_ops = &otx2_rfoe_netdev_ops;
@@ -1337,7 +1298,6 @@ static int otx2_rfoe_parse_and_init_intf(struct otx2_rfoe_cdev_priv *cdev,
 			drv_ctx->valid = 1;
 			drv_ctx->netdev = netdev;
 			drv_ctx->ft_cfg = &priv->rx_ft_cfg[0];
-			intf_idx++;
 		}
 	}
 
@@ -1365,565 +1325,3 @@ err_exit:
 
 	return ret;
 }
-
-static long otx2_rfoe_cdev_ioctl(struct file *filp, unsigned int cmd,
-				 unsigned long arg)
-{
-	struct otx2_rfoe_cdev_priv *cdev = filp->private_data;
-	int ret;
-
-	if (!cdev) {
-		pr_warn("ioctl: device not opened\n");
-		return -EIO;
-	}
-
-	mutex_lock(&cdev->mutex_lock);
-
-	switch (cmd) {
-	case OTX2_RFOE_IOCTL_ODP_INTF_CFG:
-	{
-		struct bphy_netdev_comm_intf_cfg intf_cfg[MAX_RFOE_INTF];
-
-		if (cdev->odp_intf_cfg) {
-			dev_info(cdev->dev, "odp interface cfg already done\n");
-			ret = -EBUSY;
-			goto out;
-		}
-
-		if (copy_from_user(&intf_cfg, (void __user *)arg,
-				   (MAX_RFOE_INTF *
-				   sizeof(struct bphy_netdev_comm_intf_cfg)))) {
-			dev_err(cdev->dev, "copy from user fault\n");
-			ret = -EFAULT;
-			goto out;
-		}
-		ret = otx2_rfoe_parse_and_init_intf(cdev, &intf_cfg[0]);
-		if (ret == 0) {
-			/* Enable GPINT Rx and Tx interrupts */
-			writeq(0xFFFFFFFF,
-			       bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
-
-			cdev->odp_intf_cfg = 1;
-		}
-		goto out;
-	}
-	case OTX2_RFOE_IOCTL_ODP_DEINIT:
-	{
-		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-		struct otx2_rfoe_ndev_priv *priv;
-		struct ptp_bcn_off_cfg *ptp_cfg;
-		struct net_device *netdev;
-		struct rx_ft_cfg *ft_cfg;
-		int i, idx;
-
-		for (i = 0; i < RFOE_MAX_INTF; i++) {
-			drv_ctx = &rfoe_drv_ctx[i];
-			if (drv_ctx->valid) {
-				netdev = drv_ctx->netdev;
-				priv = netdev_priv(netdev);
-				ptp_cfg = priv->ptp_cfg;
-				if (priv->ptp_cfg) {
-					del_timer_sync(&ptp_cfg->ptp_timer);
-					kfree(priv->ptp_cfg);
-					priv->ptp_cfg = NULL;
-				}
-				unregister_netdev(netdev);
-				for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
-					if (!(priv->pkt_type_mask &
-					      (1U << idx)))
-						continue;
-					ft_cfg = &priv->rx_ft_cfg[idx];
-					netif_napi_del(&ft_cfg->napi);
-				}
-				kfree(priv->rfoe_common);
-				free_netdev(netdev);
-				drv_ctx->valid = 0;
-			}
-		}
-		/* Disable GPINT Rx and Tx interrupts */
-		writeq(0xFFFFFFFF,
-		       bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
-
-		cdev->odp_intf_cfg = 0;
-		ret = 0;
-		goto out;
-	}
-	case OTX2_RFOE_IOCTL_RX_IND_CFG:
-	{
-		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-		struct otx2_rfoe_ndev_priv *priv;
-		struct otx2_rfoe_rx_ind_cfg cfg;
-		struct net_device *netdev;
-		unsigned long flags;
-		int idx;
-
-		if (!cdev->odp_intf_cfg) {
-			dev_err(cdev->dev, "odp interface cfg is not done\n");
-			ret = -EBUSY;
-			goto out;
-		}
-		if (copy_from_user(&cfg, (void __user *)arg,
-				   sizeof(struct otx2_rfoe_rx_ind_cfg))) {
-			dev_err(cdev->dev, "copy from user fault\n");
-			ret = -EFAULT;
-			goto out;
-		}
-		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-			drv_ctx = &rfoe_drv_ctx[idx];
-			if (!(drv_ctx->valid &&
-			      drv_ctx->rfoe_num == cfg.rfoe_num))
-				break;
-		}
-		if (idx >= RFOE_MAX_INTF) {
-			dev_err(cdev->dev, "valid drv_ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		spin_lock_irqsave(&priv->rfoe_common->rx_lock, flags);
-		writeq(cfg.rx_ind_idx, (priv->rfoe_reg_base +
-		       RFOEX_RX_INDIRECT_INDEX_OFFSET(cfg.rfoe_num)));
-		if (cfg.dir == OTX2_RFOE_RX_IND_READ)
-			cfg.regval = readq(priv->rfoe_reg_base + cfg.regoff);
-		else
-			writeq(cfg.regval, priv->rfoe_reg_base + cfg.regoff);
-		spin_unlock_irqrestore(&priv->rfoe_common->rx_lock, flags);
-		if (copy_to_user((void __user *)(unsigned long)arg, &cfg,
-				 sizeof(struct otx2_rfoe_rx_ind_cfg))) {
-			dev_err(cdev->dev, "copy to user fault\n");
-			ret = -EFAULT;
-			goto out;
-		}
-		ret = 0;
-		goto out;
-	}
-	case OTX2_RFOE_IOCTL_PTP_OFFSET:
-	{
-		u64 bcn_n1, bcn_n2, bcn_n1_ns, bcn_n2_ps, ptp0_ns, regval;
-		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-		struct ptp_bcn_off_cfg *ptp_cfg;
-		struct otx2_rfoe_ndev_priv *priv;
-		struct net_device *netdev;
-		struct ptp_bcn_ref ref;
-		int idx;
-
-		if (!cdev->odp_intf_cfg) {
-			dev_info(cdev->dev, "odp interface cfg is not done\n");
-			ret = -EBUSY;
-			goto out;
-		}
-		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-			drv_ctx = &rfoe_drv_ctx[idx];
-			if (drv_ctx->valid)
-				break;
-		}
-		if (idx >= RFOE_MAX_INTF) {
-			dev_err(cdev->dev, "drv ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		ptp_cfg = priv->ptp_cfg;
-		/* capture ptp and bcn timestamp using BCN_CAPTURE_CFG */
-		writeq((CAPT_EN | CAPT_TRIG_SW),
-		       priv->bcn_reg_base + BCN_CAPTURE_CFG);
-		/* poll for capt_en to become 0 */
-		while ((readq(priv->bcn_reg_base + BCN_CAPTURE_CFG) & CAPT_EN))
-			cpu_relax();
-		ptp0_ns = readq(priv->bcn_reg_base + BCN_CAPTURE_PTP);
-		regval = readq(priv->bcn_reg_base + BCN_CAPTURE_N1_N2);
-		bcn_n1 = (regval >> 24) & 0xFFFFFFFFFF;
-		bcn_n2 = regval & 0xFFFFFF;
-		/* BCN N1 10 msec counter to nsec */
-		bcn_n1_ns = bcn_n1 * 10 * NSEC_PER_MSEC;
-		bcn_n1_ns += UTC_GPS_EPOCH_DIFF * NSEC_PER_SEC;
-		/* BCN N2 clock period 0.813802083 nsec to pico secs */
-		bcn_n2_ps = (bcn_n2 * 813802083UL) / 1000000;
-		ref.ptp0_ns = ptp0_ns;
-		ref.bcn0_n1_ns = bcn_n1_ns;
-		ref.bcn0_n2_ps = bcn_n2_ps;
-		memcpy(&ptp_cfg->old_ref, &ref, sizeof(struct ptp_bcn_ref));
-		memcpy(&ptp_cfg->new_ref, &ref, sizeof(struct ptp_bcn_ref));
-		ptp_cfg->use_ptp_alg = 1;
-		ptp_cfg->ptp_timer.expires = jiffies +
-					     PTP_OFF_RESAMPLE_THRESH * HZ;
-		add_timer(&ptp_cfg->ptp_timer);
-		ret = 0;
-		goto out;
-	}
-	case OTX2_RFOE_IOCTL_SEC_BCN_OFFSET:
-	{
-		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-		struct otx2_rfoe_ndev_priv *priv;
-		struct bcn_sec_offset_cfg cfg;
-		struct net_device *netdev;
-		int idx;
-
-		if (!cdev->odp_intf_cfg) {
-			dev_info(cdev->dev, "odp interface cfg is not done\n");
-			ret = -EBUSY;
-			goto out;
-		}
-		if (copy_from_user(&cfg, (void __user *)arg,
-				   sizeof(struct bcn_sec_offset_cfg))) {
-			dev_err(cdev->dev, "copy from user fault\n");
-			ret = -EFAULT;
-			goto out;
-		}
-		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-			drv_ctx = &rfoe_drv_ctx[idx];
-			if (drv_ctx->valid &&
-			    drv_ctx->rfoe_num == cfg.rfoe_num &&
-			    drv_ctx->lmac_id == cfg.lmac_id)
-				break;
-		}
-		if (idx >= RFOE_MAX_INTF) {
-			dev_err(cdev->dev, "drv ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		priv->sec_bcn_offset = cfg.sec_bcn_offset;
-		ret = 0;
-		goto out;
-	}
-	default:
-	{
-		dev_info(cdev->dev, "ioctl: no match\n");
-		ret = -EINVAL;
-	}
-	}
-
-out:
-	mutex_unlock(&cdev->mutex_lock);
-	return ret;
-}
-
-static int otx2_rfoe_cdev_open(struct inode *inode, struct file *filp)
-{
-	struct otx2_rfoe_cdev_priv *cdev;
-	int status = 0;
-
-	cdev = container_of(inode->i_cdev, struct otx2_rfoe_cdev_priv, cdev);
-
-	mutex_lock(&cdev->mutex_lock);
-
-	if (cdev->is_open) {
-		dev_err(cdev->dev, "failed to open the device\n");
-		status = -EBUSY;
-		goto error;
-	}
-	cdev->is_open = 1;
-	filp->private_data = cdev;
-
-error:
-	mutex_unlock(&cdev->mutex_lock);
-
-	return status;
-}
-
-static int otx2_rfoe_cdev_release(struct inode *inode, struct file *filp)
-{
-	struct otx2_rfoe_cdev_priv *cdev = filp->private_data;
-	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-	struct otx2_rfoe_ndev_priv *priv;
-	struct net_device *netdev;
-	struct rx_ft_cfg *ft_cfg;
-	int i, idx;
-
-	mutex_lock(&cdev->mutex_lock);
-
-	if (!cdev->odp_intf_cfg)
-		goto cdev_release_exit;
-
-	for (i = 0; i < RFOE_MAX_INTF; i++) {
-		drv_ctx = &rfoe_drv_ctx[i];
-		if (drv_ctx->valid) {
-			netdev = drv_ctx->netdev;
-			priv = netdev_priv(netdev);
-			if (priv->ptp_cfg) {
-				del_timer_sync(&priv->ptp_cfg->ptp_timer);
-				kfree(priv->ptp_cfg);
-				priv->ptp_cfg = NULL;
-			}
-			unregister_netdev(netdev);
-			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
-				if (!(priv->pkt_type_mask & (1U << idx)))
-					continue;
-				ft_cfg = &priv->rx_ft_cfg[idx];
-				netif_napi_del(&ft_cfg->napi);
-			}
-			kfree(priv->rfoe_common);
-			free_netdev(netdev);
-			drv_ctx->valid = 0;
-		}
-	}
-
-	/* Disable GPINT Rx and Tx interrupts */
-	writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
-	cdev->odp_intf_cfg = 0;
-
-cdev_release_exit:
-	cdev->is_open = 0;
-	mutex_unlock(&cdev->mutex_lock);
-
-	return 0;
-}
-
-static const struct file_operations otx2_rfoe_cdev_fops = {
-	.owner		= THIS_MODULE,
-	.unlocked_ioctl	= otx2_rfoe_cdev_ioctl,
-	.open		= otx2_rfoe_cdev_open,
-	.release	= otx2_rfoe_cdev_release,
-};
-
-static inline void msix_enable_ctrl(struct pci_dev *dev)
-{
-	u16 control;
-
-	pci_read_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, &control);
-	control |= PCI_MSIX_FLAGS_ENABLE;
-	pci_write_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, control);
-}
-
-static int otx2_rfoe_probe(struct platform_device *pdev)
-{
-	struct otx2_rfoe_cdev_priv *cdev_priv;
-	struct pci_dev *bphy_pdev;
-	int err = 0, ret, irq;
-	struct resource *res;
-	dev_t devt;
-
-	/* allocate priv structure */
-	cdev_priv = kzalloc(sizeof(*cdev_priv), GFP_KERNEL);
-	if (!cdev_priv) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	/* BPHY is a PCI device and the kernel resets the MSIXEN bit during
-	 * enumeration. So enable it back for interrupts to be generated.
-	 */
-	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
-				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
-	if (!bphy_pdev) {
-		dev_err(&pdev->dev, "Couldn't find BPHY PCI device %x\n",
-			OTX2_BPHY_PCI_DEVICE_ID);
-		err = -ENODEV;
-		goto free_cdev_priv;
-	}
-	msix_enable_ctrl(bphy_pdev);
-
-	/* bphy registers ioremap */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get bphy resource\n");
-		err = -ENXIO;
-		goto free_cdev_priv;
-	}
-	bphy_reg_base = ioremap_nocache(res->start, resource_size(res));
-	if (IS_ERR(bphy_reg_base)) {
-		dev_err(&pdev->dev, "failed to ioremap bphy registers\n");
-		err = PTR_ERR(bphy_reg_base);
-		goto free_cdev_priv;
-	}
-	/* psm registers ioremap */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get psm resource\n");
-		err = -ENXIO;
-		goto out_unmap_bphy_reg;
-	}
-	psm_reg_base = ioremap_nocache(res->start, resource_size(res));
-	if (IS_ERR(psm_reg_base)) {
-		dev_err(&pdev->dev, "failed to ioremap psm registers\n");
-		err = PTR_ERR(psm_reg_base);
-		goto out_unmap_bphy_reg;
-	}
-	/* rfoe registers ioremap */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get rfoe resource\n");
-		err = -ENXIO;
-		goto out_unmap_psm_reg;
-	}
-	rfoe_reg_base = ioremap_nocache(res->start, resource_size(res));
-	if (IS_ERR(rfoe_reg_base)) {
-		dev_err(&pdev->dev, "failed to ioremap rfoe registers\n");
-		err = PTR_ERR(rfoe_reg_base);
-		goto out_unmap_psm_reg;
-	}
-	/* bcn register ioremap */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get bcn resource\n");
-		err = -ENXIO;
-		goto out_unmap_rfoe_reg;
-	}
-	bcn_reg_base = ioremap_nocache(res->start, resource_size(res));
-	if (IS_ERR(bcn_reg_base)) {
-		dev_err(&pdev->dev, "failed to ioremap bcn registers\n");
-		err = PTR_ERR(bcn_reg_base);
-		goto out_unmap_rfoe_reg;
-	}
-	/* ptp register ioremap */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 4);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get ptp resource\n");
-		err = -ENXIO;
-		goto out_unmap_bcn_reg;
-	}
-	ptp_reg_base = ioremap_nocache(res->start, resource_size(res));
-	if (IS_ERR(ptp_reg_base)) {
-		dev_err(&pdev->dev, "failed to ioremap ptp registers\n");
-		err = PTR_ERR(ptp_reg_base);
-		goto out_unmap_bcn_reg;
-	}
-	/* get irq */
-	ret = platform_get_irq(pdev, 0);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "irq resource not found\n");
-		err = ret;
-		goto out_unmap_ptp_reg;
-	}
-	irq = ret;
-
-	/* create a character device */
-	ret = alloc_chrdev_region(&devt, 0, 1, DEVICE_NAME);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "failed to alloc chrdev device region\n");
-		err = ret;
-		goto out_unmap_ptp_reg;
-	}
-
-	otx2rfoe_class = class_create(THIS_MODULE, DEVICE_NAME);
-	if (IS_ERR(otx2rfoe_class)) {
-		dev_err(&pdev->dev, "couldn't create class %s\n", DEVICE_NAME);
-		err = PTR_ERR(otx2rfoe_class);
-		goto out_unregister_chrdev_region;
-	}
-
-	cdev_priv->devt = devt;
-	cdev_priv->irq = irq;
-	cdev_priv->is_open = 0;
-	spin_lock_init(&cdev_priv->lock);
-	mutex_init(&cdev_priv->mutex_lock);
-
-	cdev_init(&cdev_priv->cdev, &otx2_rfoe_cdev_fops);
-	cdev_priv->cdev.owner = THIS_MODULE;
-
-	ret = cdev_add(&cdev_priv->cdev, devt, 1);
-	if (ret) {
-		dev_err(&pdev->dev, "cdev_add() failed\n");
-		err = ret;
-		goto out_class_destroy;
-	}
-
-	cdev_priv->dev = device_create(otx2rfoe_class, &pdev->dev,
-				       cdev_priv->cdev.dev, cdev_priv,
-				       DEVICE_NAME);
-	if (IS_ERR(cdev_priv->dev)) {
-		dev_err(&pdev->dev, "device_create failed\n");
-		err = PTR_ERR(cdev_priv->dev);
-		goto out_cdev_del;
-	}
-
-	dev_info(&pdev->dev, "successfully registered char device, major=%d\n",
-		 MAJOR(cdev_priv->cdev.dev));
-
-	err = request_irq(cdev_priv->irq, otx2_rfoe_intr_handler, 0,
-			  "otx2_rfoe_int", cdev_priv);
-	if (err) {
-		dev_err(&pdev->dev, "can't assign irq %d\n", cdev_priv->irq);
-		goto out_device_destroy;
-	}
-
-	err = 0;
-	goto out;
-
-out_device_destroy:
-	device_destroy(otx2rfoe_class, cdev_priv->cdev.dev);
-out_cdev_del:
-	cdev_del(&cdev_priv->cdev);
-out_class_destroy:
-	class_destroy(otx2rfoe_class);
-out_unregister_chrdev_region:
-	unregister_chrdev_region(devt, 1);
-out_unmap_ptp_reg:
-	iounmap(ptp_reg_base);
-out_unmap_bcn_reg:
-	iounmap(bcn_reg_base);
-out_unmap_rfoe_reg:
-	iounmap(rfoe_reg_base);
-out_unmap_psm_reg:
-	iounmap(psm_reg_base);
-out_unmap_bphy_reg:
-	iounmap(bphy_reg_base);
-free_cdev_priv:
-	kfree(cdev_priv);
-out:
-	return err;
-}
-
-static int otx2_rfoe_remove(struct platform_device *pdev)
-{
-	struct otx2_rfoe_cdev_priv *cdev_priv = dev_get_drvdata(&pdev->dev);
-
-	/* unmap register regions */
-	iounmap(ptp_reg_base);
-	iounmap(bcn_reg_base);
-	iounmap(rfoe_reg_base);
-	iounmap(psm_reg_base);
-	iounmap(bphy_reg_base);
-
-	/* free irq */
-	free_irq(cdev_priv->irq, cdev_priv);
-
-	/* char device cleanup */
-	device_destroy(otx2rfoe_class, cdev_priv->cdev.dev);
-	cdev_del(&cdev_priv->cdev);
-	class_destroy(otx2rfoe_class);
-	unregister_chrdev_region(cdev_priv->cdev.dev, 1);
-	kfree(cdev_priv);
-
-	return 0;
-}
-
-static const struct of_device_id otx2_rfoe_of_match[] = {
-	{ .compatible = "marvell,bphy-netdev" },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, otx2_rfoe_of_match);
-
-static struct platform_driver otx2_rfoe_driver = {
-	.probe	= otx2_rfoe_probe,
-	.remove	= otx2_rfoe_remove,
-	.driver	= {
-		.name = DRV_NAME,
-		.of_match_table = otx2_rfoe_of_match,
-	},
-};
-
-static int __init otx2_rfoe_init(void)
-{
-	int ret;
-
-	pr_info("%s: %s\n", DRV_NAME, DRV_STRING);
-
-	ret = platform_driver_register(&otx2_rfoe_driver);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
-static void __exit otx2_rfoe_exit(void)
-{
-	platform_driver_unregister(&otx2_rfoe_driver);
-}
-
-module_init(otx2_rfoe_init);
-module_exit(otx2_rfoe_exit);

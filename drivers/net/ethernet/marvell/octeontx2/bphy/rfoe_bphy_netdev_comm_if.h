@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Marvell OcteonTx2 RFOE Ethernet Driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 BPHY RFOE Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *

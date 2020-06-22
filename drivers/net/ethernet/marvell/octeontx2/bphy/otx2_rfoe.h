@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Marvell OcteonTx2 RFOE Ethernet Driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 BPHY RFOE Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -8,41 +8,23 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef OTX2_RFOE_H
-#define OTX2_RFOE_H
+#ifndef _OTX2_RFOE_H_
+#define _OTX2_RFOE_H_
 
-#include <linux/cdev.h>
+#include <linux/pci.h>
+#include <linux/slab.h>
+#include <linux/iommu.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
-#include <linux/if_ether.h>
 #include <linux/ethtool.h>
+#include <linux/if_ether.h>
 #include <linux/net_tstamp.h>
 
+#include "otx2_bphy.h"
 #include "otx2_bphy_hw.h"
 #include "rfoe_bphy_netdev_comm_if.h"
 
-#define DEVICE_NAME		"otx2_rfoe"
-#define DRV_NAME		"octeontx2-rfoe"
-#define DRV_STRING		"Marvell OcteonTX2 BPHY RFOE Ethernet Driver"
-
-/* char device ioctl numbers */
-#define OTX2_RFOE_IOCTL_BASE		0xCC	/* Temporary */
-#define OTX2_RFOE_IOCTL_ODP_INTF_CFG	_IOW(OTX2_RFOE_IOCTL_BASE, 0x01, \
-					     struct bphy_netdev_comm_intf_cfg)
-#define OTX2_RFOE_IOCTL_ODP_DEINIT      _IO(OTX2_RFOE_IOCTL_BASE, 0x02)
-#define OTX2_RFOE_IOCTL_RX_IND_CFG	_IOWR(OTX2_RFOE_IOCTL_BASE, 0x03, \
-					      struct otx2_rfoe_rx_ind_cfg)
-#define OTX2_RFOE_IOCTL_PTP_OFFSET	_IO(OTX2_RFOE_IOCTL_BASE, 0x04)
-#define OTX2_RFOE_IOCTL_SEC_BCN_OFFSET	_IOW(OTX2_RFOE_IOCTL_BASE, 0x05, \
-					     struct bcn_sec_offset_cfg)
-
-//#define ASIM		/* ASIM environment */
-
-/* CGX register offsets */
-#define OTX2_CGX_REG_BASE	0x87E0E0000000
-#define OTX2_CGX_REG_LEN	0x34F0000
-
-/* GPINT(1) definitions */
+/* GPINT(1) RFOE definitions */
 #define RX_PTP_INTR			BIT(2) /* PTP packet intr */
 #define RX_ECPRI_INTR			BIT(1) /* ECPRI packet intr */
 #define RX_GEN_INTR			BIT(0) /* GENERIC packet intr */
@@ -56,18 +38,19 @@
 #define INTR_TO_PKT_TYPE(a)		(PACKET_TYPE_OTHER - (a))
 #define PKT_TYPE_TO_INTR(a)		(1UL << (PACKET_TYPE_OTHER - (a)))
 
-/* intf definitions */
-#define RFOE_NUM_INST		3
-#define LMAC_PER_RFOE		4
-#define RFOE_MAX_INTF		10	/* 2 rfoe x 4 lmac + 1 rfoe x 2 lmac */
+/* rfoe intf definitions */
+#define RFOE_NUM_INST			3
+#define LMAC_PER_RFOE			4
+#define RFOE_MAX_INTF			10
 
 /* eCPRI ethertype */
-#define ETH_P_ECPRI	0xAEFE
+#define ETH_P_ECPRI			0xAEFE
 
 /* max tx job entries */
-#define MAX_TX_JOB_ENTRIES 64
+#define MAX_TX_JOB_ENTRIES		64
 
-#define OTX2_RFOE_MSG_DEFAULT	(NETIF_MSG_DRV)
+/* ethtool msg */
+#define OTX2_RFOE_MSG_DEFAULT		(NETIF_MSG_DRV)
 
 /* PTP clock time operates by adding a constant increment every clock
  * cycle. That increment is expressed (MIO_PTP_CLOCK_COMP) as a Q32.32
@@ -107,18 +90,6 @@ enum state {
 	RFOE_INTF_DOWN,
 };
 
-/* char driver private data */
-struct otx2_rfoe_cdev_priv {
-	struct device			*dev;
-	struct cdev			cdev;
-	dev_t				devt;
-	int				is_open;
-	int				odp_intf_cfg;
-	int				irq;
-	struct mutex			mutex_lock;	/* mutex */
-	spinlock_t			lock;		/* irq lock */
-};
-
 /* global driver context */
 struct otx2_rfoe_drv_ctx {
 	u8				rfoe_num;
@@ -128,6 +99,8 @@ struct otx2_rfoe_drv_ctx {
 	struct rx_ft_cfg		*ft_cfg;
 	int				tx_gpint_bit;
 };
+
+extern struct otx2_rfoe_drv_ctx rfoe_drv_ctx[RFOE_MAX_INTF];
 
 /* rfoe rx ind register configuration */
 struct otx2_rfoe_rx_ind_cfg {
@@ -254,13 +227,14 @@ struct otx2_rfoe_ndev_priv {
 	u8				lmac_id;
 	struct net_device		*netdev;
 	struct pci_dev			*pdev;
+	struct otx2_bphy_cdev_priv	*cdev_priv;
 	u32				msg_enable;
 	void __iomem			*bphy_reg_base;
 	void __iomem			*psm_reg_base;
 	void __iomem			*rfoe_reg_base;
 	void __iomem			*bcn_reg_base;
 	void __iomem			*ptp_reg_base;
-	void				*iommu_domain;
+	struct iommu_domain		*iommu_domain;
 	struct rx_ft_cfg		rx_ft_cfg[PACKET_TYPE_MAX];
 	struct tx_job_queue_cfg		tx_ptp_job_cfg;
 	struct rfoe_common_cfg		*rfoe_common;
@@ -281,6 +255,13 @@ struct otx2_rfoe_ndev_priv {
 	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
 };
+
+void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status);
+
+int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
+				  struct bphy_netdev_comm_intf_cfg *cfg);
+
+void otx2_bphy_rfoe_cleanup(void);
 
 /* ethtool */
 void otx2_rfoe_set_ethtool_ops(struct net_device *netdev);
