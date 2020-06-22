@@ -81,6 +81,10 @@ MODULE_PARM_DESC(prof_sel, "profile selector. Valid range 0 - 2");
 
 static u64 sw_owner_id[2];
 
+#define MODULE_NAME "mlx5_core"
+int unload_allowed __initdata;
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
+
 enum {
 	MLX5_ATOMIC_REQ_MODE_BE = 0x0,
 	MLX5_ATOMIC_REQ_MODE_HOST_ENDIANNESS = 0x1,
@@ -1771,6 +1775,12 @@ static int __init init(void)
 	mlx5_register_debugfs();
 
 	err = pci_register_driver(&mlx5_core_driver);
+	if (!err && !unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+		       MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
+
 	if (err)
 		goto err_debug;
 
