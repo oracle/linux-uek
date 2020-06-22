@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0
- * Marvell OcteonTx2 BPHY RFOE Ethernet Driver
+ * Marvell OcteonTx2 BPHY RFOE/CPRI Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -29,10 +29,11 @@ extern void __iomem *psm_reg_base;
 extern void __iomem *rfoe_reg_base;
 extern void __iomem *bcn_reg_base;
 extern void __iomem *ptp_reg_base;
+extern void __iomem *cpri_reg_base;
 
 #define DEVICE_NAME		"otx2_rfoe"
 #define DRV_NAME		"octeontx2-bphy-netdev"
-#define DRV_STRING		"Marvell OcteonTX2 BPHY RFOE Ethernet Driver"
+#define DRV_STRING		"Marvell OcteonTX2 BPHY Ethernet Driver"
 
 /* char device ioctl numbers */
 #define OTX2_RFOE_IOCTL_BASE		0xCC	/* Temporary */

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 BPHY RFOE Ethernet Driver
+/* Marvell OcteonTx2 BPHY RFOE/CPRI Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -17,6 +17,7 @@
 
 #include "otx2_bphy.h"
 #include "otx2_rfoe.h"
+#include "otx2_cpri.h"
 
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION(DRV_STRING);
@@ -36,6 +37,7 @@ void __iomem *psm_reg_base;
 void __iomem *rfoe_reg_base;
 void __iomem *bcn_reg_base;
 void __iomem *ptp_reg_base;
+void __iomem *cpri_reg_base;
 
 /* GPINT(1) interrupt handler routine */
 static irqreturn_t otx2_bphy_intr_handler(int irq, void *dev_id)
@@ -43,8 +45,8 @@ static irqreturn_t otx2_bphy_intr_handler(int irq, void *dev_id)
 	struct otx2_rfoe_drv_ctx *drv_ctx;
 	struct otx2_rfoe_ndev_priv *priv;
 	struct net_device *netdev;
+	int rfoe_num, cpri_num, i;
 	u32 intr_mask, status;
-	int rfoe_num, i;
 
 	/* clear interrupt status */
 	status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(1)) & 0xFFFFFFFF;
@@ -56,6 +58,15 @@ static irqreturn_t otx2_bphy_intr_handler(int irq, void *dev_id)
 		intr_mask = RFOE_RX_INTR_MASK(rfoe_num);
 		if (status & intr_mask)
 			otx2_rfoe_rx_napi_schedule(rfoe_num, status);
+	}
+
+	for (cpri_num = 0; cpri_num < OTX2_BPHY_CPRI_MAX_MHAB; cpri_num++) {
+		intr_mask = CPRI_RX_INTR_MASK(cpri_num);
+		if (status & intr_mask) {
+			/* clear UL ETH interrupt */
+			writeq(0x1, cpri_reg_base + CPRIX_ETH_UL_INT(cpri_num));
+			otx2_cpri_rx_napi_schedule(cpri_num, status);
+		}
 	}
 
 	/* tx intr processing */
@@ -90,7 +101,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 	switch (cmd) {
 	case OTX2_RFOE_IOCTL_ODP_INTF_CFG:
 	{
-		struct bphy_netdev_comm_intf_cfg intf_cfg[MAX_RFOE_INTF];
+		struct bphy_netdev_comm_intf_cfg *intf_cfg;
+		int idx;
 
 		if (cdev->odp_intf_cfg) {
 			dev_info(cdev->dev, "odp interface cfg already done\n");
@@ -98,7 +110,14 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			goto out;
 		}
 
-		if (copy_from_user(&intf_cfg, (void __user *)arg,
+		intf_cfg = kzalloc(MAX_RFOE_INTF * sizeof(*intf_cfg),
+				   GFP_KERNEL);
+		if (!intf_cfg) {
+			ret = -ENOMEM;
+			goto out;
+		}
+
+		if (copy_from_user(intf_cfg, (void __user *)arg,
 				   (MAX_RFOE_INTF *
 				   sizeof(struct bphy_netdev_comm_intf_cfg)))) {
 			dev_err(cdev->dev, "copy from user fault\n");
@@ -106,10 +125,23 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			goto out;
 		}
 
-		ret = otx2_rfoe_parse_and_init_intf(cdev, &intf_cfg[0]);
+		ret = otx2_rfoe_parse_and_init_intf(cdev, intf_cfg);
 		if (ret < 0) {
 			dev_err(cdev->dev, "odp <-> netdev parse error\n");
 			goto out;
+		}
+
+		ret = otx2_cpri_parse_and_init_intf(cdev, intf_cfg);
+		if (ret < 0) {
+			dev_err(cdev->dev, "odp <-> netdev parse error\n");
+			goto out;
+		}
+
+		/* Enable CPRI ETH UL INT */
+		for (idx = 0; idx < OTX2_BPHY_CPRI_MAX_MHAB; idx++) {
+			if (intf_cfg[idx].if_type == IF_TYPE_CPRI)
+				writeq(0x1, cpri_reg_base +
+				       CPRIX_ETH_UL_INT_ENA_W1S(idx));
 		}
 
 		/* Enable GPINT Rx and Tx interrupts */
@@ -117,12 +149,15 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 
 		cdev->odp_intf_cfg = 1;
 
+		kfree(intf_cfg);
+
 		ret = 0;
 		goto out;
 	}
 	case OTX2_RFOE_IOCTL_ODP_DEINIT:
 	{
 		otx2_bphy_rfoe_cleanup();
+		otx2_bphy_cpri_cleanup();
 
 		/* Disable GPINT Rx and Tx interrupts */
 		writeq(0xFFFFFFFF,
@@ -320,6 +355,7 @@ static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
 		goto cdev_release_exit;
 
 	otx2_bphy_rfoe_cleanup();
+	otx2_bphy_cpri_cleanup();
 
 	/* Disable GPINT Rx and Tx interrupts */
 	writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
@@ -442,18 +478,31 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		err = PTR_ERR(ptp_reg_base);
 		goto out_unmap_bcn_reg;
 	}
+	/* cpri registers ioremap */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 5);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get cpri resource\n");
+		err = -ENXIO;
+		goto out_unmap_ptp_reg;
+	}
+	cpri_reg_base = ioremap_nocache(res->start, resource_size(res));
+	if (IS_ERR(cpri_reg_base)) {
+		dev_err(&pdev->dev, "failed to ioremap cpri registers\n");
+		err = PTR_ERR(cpri_reg_base);
+		goto out_unmap_ptp_reg;
+	}
 	/* get irq */
 	cdev_priv->irq = platform_get_irq(pdev, 0);
 	if (cdev_priv->irq <= 0) {
 		dev_err(&pdev->dev, "irq resource not found\n");
-		goto out_unmap_ptp_reg;
+		goto out_unmap_cpri_reg;
 	}
 
 	/* create a character device */
 	err = alloc_chrdev_region(&devt, 0, 1, DEVICE_NAME);
 	if (err < 0) {
 		dev_err(&pdev->dev, "failed to alloc chrdev device region\n");
-		goto out_unmap_ptp_reg;
+		goto out_unmap_cpri_reg;
 	}
 
 	otx2rfoe_class = class_create(THIS_MODULE, DEVICE_NAME);
@@ -507,6 +556,8 @@ out_class_destroy:
 	class_destroy(otx2rfoe_class);
 out_unregister_chrdev_region:
 	unregister_chrdev_region(devt, 1);
+out_unmap_cpri_reg:
+	iounmap(cpri_reg_base);
 out_unmap_ptp_reg:
 	iounmap(ptp_reg_base);
 out_unmap_bcn_reg:
@@ -528,6 +579,7 @@ static int otx2_bphy_remove(struct platform_device *pdev)
 	struct otx2_bphy_cdev_priv *cdev_priv = dev_get_drvdata(&pdev->dev);
 
 	/* unmap register regions */
+	iounmap(cpri_reg_base);
 	iounmap(ptp_reg_base);
 	iounmap(bcn_reg_base);
 	iounmap(rfoe_reg_base);
