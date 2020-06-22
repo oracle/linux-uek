@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0
- * Marvell OcteonTx2 BPHY RFOE Ethernet Driver
+ * Marvell OcteonTx2 BPHY RFOE/CPRI Ethernet Driver
  *
  * Copyright (C) 2020 Marvell International Ltd.
  *
@@ -8,8 +8,8 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef _RFOE_BPHY_NETDEV_COMM_IF_H_
-#define _RFOE_BPHY_NETDEV_COMM_IF_H_
+#ifndef _BPHY_NETDEV_COMM_IF_H_
+#define _BPHY_NETDEV_COMM_IF_H_
 
 #define ETH_ADDR_LEN		6	/* ethernet address len */
 #define MAX_RFOE_INTF		3	/* Max RFOE instances */
@@ -21,6 +21,16 @@
 #define MAX_OTH_MSG_PER_LMAC	16	/* 64 Per RFoE */
 /* 64 per RFoE; RFoE2 shall have 32 entries */
 #define MAX_OTH_MSG_PER_RFOE	(MAX_OTH_MSG_PER_LMAC * MAX_LMAC_PER_RFOE)
+
+/* CPRI ETH Macros */
+#define MAX_NUM_CPRI                3
+#define MAX_LANE_PER_CPRI           4
+#define CPRI_ETH_PAYLOAD_SIZE_MIN   64
+#define CPRI_ETH_PAYLOAD_SIZE_MAX   1536
+#define CPRI_ETH_PKT_HDR_SIZE       128
+
+#define CPRI_ETH_PKT_SIZE           (CPRI_ETH_PKT_HDR_SIZE + \
+				     CPRI_ETH_PAYLOAD_SIZE_MAX)
 
 /**
  * @enum bphy_netdev_tx_gpint
@@ -59,6 +69,17 @@ enum bphy_netdev_rx_gpint {
 	RX_GP_INT_RFOE2_PTP       = 57, //PSM_GPINT57,
 	RX_GP_INT_RFOE2_ECPRI     = 56, //PSM_GPINT56,
 	RX_GP_INT_RFOE2_GENERIC   = 55, //PSM_GPINT55
+};
+
+/**
+ * @enum bphy_netdev_cpri_rx_gpint
+ * @brief GP_INT numbers for CPRI Ethernet packet Rx notification to netdev.
+ *
+ */
+enum bphy_netdev_cpri_rx_gpint {
+	RX_GP_INT_CPRI0_ETH = 45, //PSM_GPINT45,
+	RX_GP_INT_CPRI1_ETH = 46, //PSM_GPINT46,
+	RX_GP_INT_CPRI2_ETH = 47, //PSM_GPINT47
 };
 
 /**
@@ -153,21 +174,58 @@ struct bphy_netdev_tx_psm_cmd_info {
  *
  */
 struct bphy_netdev_comm_if {
-	enum bphy_netdev_if_type type;
 	struct bphy_netdev_intf_info lmac_info;
 	struct bphy_netdev_rbuf_info rbuf_info[PACKET_TYPE_MAX];
 	/* Defining single array to handle both PTP and OTHER cmds info */
 	struct bphy_netdev_tx_psm_cmd_info ptp_pkt_info[MAX_PTP_MSG_PER_LMAC];
 };
 
-struct bphy_netdev_comm_intf_cfg {
+/**
+ * @struct bphy_netdev_cpri_if
+ * @brief communication interface structure defnition to be used by
+ *        BPHY and NETDEV applications for CPRI Interface.
+ *
+ */
+struct bphy_netdev_cpri_if {
+	u8 id;                 /* CPRI ID 0..2 */
+	u8 active_lane_mask;   /* lane mask */
+	u8 ul_gp_int_num;      /* UL GP INT NUM */
+	u8 ul_int_threshold;   /* UL INT THRESHOLD */
+	u8 num_ul_buf;         /* Num UL Buffers */
+	u8 num_dl_buf;         /* Num DL Buffers */
+	u8 reserved[2];
+	u64 ul_buf_iova_addr;
+	u64 dl_buf_iova_addr;
+	u8 eth_addr[MAX_LANE_PER_CPRI][ETH_ADDR_LEN];
+};
+
+/**
+ * @struct bphy_netdev_rfoe_if
+ * @brief communication interface structure defnition to be used by
+ *        BPHY and NETDEV applications for RFOE Interface.
+ *
+ */
+struct bphy_netdev_rfoe_if {
 	/* Interface configuration */
 	struct bphy_netdev_comm_if if_cfg[MAX_LMAC_PER_RFOE];
 	/* TX JD cmds to send packets other than PTP;
 	 * These are defined per RFoE and all LMAC can share
 	 */
 	struct bphy_netdev_tx_psm_cmd_info oth_pkt_info[MAX_OTH_MSG_PER_RFOE];
+	/* Packet types for which the RX flows are configured.*/
 	u8 pkt_type_mask;
 };
 
-#endif //_RFOE_BPHY_NETDEV_COMM_IF_H_
+/**
+ * @struct bphy_netdev_comm_intf_cfg
+ * @brief ODP-NETDEV communication interface defnition structure to share
+ *        the RX/TX intrefaces information.
+ *
+ */
+struct bphy_netdev_comm_intf_cfg {
+	enum bphy_netdev_if_type if_type;     /* 0 --> ETHERNET, 1 --> CPRI */
+	struct bphy_netdev_rfoe_if rfoe_if_cfg; /* RFOE INTF configuration */
+	struct bphy_netdev_cpri_if cpri_if_cfg; /* CPRI INTF configuration */
+};
+
+#endif //_BPHY_NETDEV_COMM_IF_H_
