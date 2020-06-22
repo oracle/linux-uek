@@ -1712,13 +1712,18 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 	if (!bphy_pdev) {
 		dev_err(&pdev->dev, "Couldn't find BPHY PCI device %x\n",
 			OTX2_BPHY_PCI_DEVICE_ID);
-		ret = -ENODEV;
+		err = -ENODEV;
 		goto free_cdev_priv;
 	}
 	msix_enable_ctrl(bphy_pdev);
 
 	/* bphy registers ioremap */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get bphy resource\n");
+		err = -ENXIO;
+		goto free_cdev_priv;
+	}
 	bphy_reg_base = ioremap_nocache(res->start, resource_size(res));
 	if (IS_ERR(bphy_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap bphy registers\n");
@@ -1727,6 +1732,11 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 	}
 	/* psm registers ioremap */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get psm resource\n");
+		err = -ENXIO;
+		goto out_unmap_bphy_reg;
+	}
 	psm_reg_base = ioremap_nocache(res->start, resource_size(res));
 	if (IS_ERR(psm_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap psm registers\n");
@@ -1735,6 +1745,11 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 	}
 	/* rfoe registers ioremap */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get rfoe resource\n");
+		err = -ENXIO;
+		goto out_unmap_psm_reg;
+	}
 	rfoe_reg_base = ioremap_nocache(res->start, resource_size(res));
 	if (IS_ERR(rfoe_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap rfoe registers\n");
@@ -1743,6 +1758,11 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 	}
 	/* bcn register ioremap */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get bcn resource\n");
+		err = -ENXIO;
+		goto out_unmap_rfoe_reg;
+	}
 	bcn_reg_base = ioremap_nocache(res->start, resource_size(res));
 	if (IS_ERR(bcn_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap bcn registers\n");
@@ -1751,6 +1771,11 @@ static int otx2_rfoe_probe(struct platform_device *pdev)
 	}
 	/* ptp register ioremap */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 4);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get ptp resource\n");
+		err = -ENXIO;
+		goto out_unmap_bcn_reg;
+	}
 	ptp_reg_base = ioremap_nocache(res->start, resource_size(res));
 	if (IS_ERR(ptp_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap ptp registers\n");
