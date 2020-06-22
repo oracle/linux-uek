@@ -51,6 +51,11 @@ MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("core kernel InfiniBand API");
 MODULE_LICENSE("Dual BSD/GPL");
 
+int unload_allowed __initdata = 1;
+
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 1 for YES)");
+
 struct ib_client_data {
 	struct list_head  list;
 	struct ib_client *client;
@@ -1274,6 +1279,8 @@ static const struct rdma_nl_cbs ibnl_ls_cb_table[RDMA_NL_LS_NUM_OPS] = {
 	},
 };
 
+#define MODULE_NAME "ib_core"
+
 static int __init ib_core_init(void)
 {
 	int ret;
@@ -1326,6 +1333,11 @@ static int __init ib_core_init(void)
 	if (ret) {
 		pr_warn("Couldn't init SA\n");
 		goto err_mad;
+	}
+	if (!unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+				MODULE_NAME);
+		__module_get(THIS_MODULE);
 	}
 
 	ret = register_lsm_notifier(&ibdev_lsm_nb);

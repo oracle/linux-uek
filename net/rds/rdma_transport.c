@@ -32,6 +32,7 @@
  */
 #include <rdma/rdma_cm.h>
 #include <rdma/rdma_cm_ib.h>
+#include <rdma/rdmaip_if.h>
 
 #include "rdma_transport.h"
 #include "ib.h"
@@ -52,6 +53,11 @@ static struct rdma_cm_id *rds6_rdma_listen_id;
 #endif
 
 static int rds_rdma_resolve_to_ms[] = {1000, 1000, 2000, 4000, 5000};
+
+int unload_allowed __initdata;
+
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
 
 static char *rds_cm_event_strings[] = {
 #define RDS_CM_EVENT_STRING(foo) \
@@ -482,7 +488,9 @@ static void rds_rdma_listen_stop(void)
 #endif
 }
 
-int rds_rdma_init(void)
+#define MODULE_NAME "rds_rdma"
+
+int __init rds_rdma_init(void)
 {
 	int ret;
 
@@ -495,6 +503,17 @@ int rds_rdma_init(void)
 	ret = rds_rdma_listen_init();
 	if (ret)
 		goto err_rdma_listen_init;
+
+	if (!unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+		       MODULE_NAME);
+		__module_get(THIS_MODULE);
+
+		/* Prevent Resilient RDMAIP module from unloading
+		 * when RDS RDMA module is loaded.
+		 */
+		rdmaip_hold_resilient_rdmaip();
+	}
 
 	goto out;
 
