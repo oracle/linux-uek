@@ -365,4 +365,6 @@ void kvm_load_host_xsave_state(struct kvm_vcpu *vcpu);
 int kvm_spec_ctrl_test_value(u64 value);
 bool kvm_vcpu_exit_request(struct kvm_vcpu *vcpu);
 
+#define  KVM_MSR_RET_INVALID  2
+
 #endif
