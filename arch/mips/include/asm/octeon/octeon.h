@@ -11,6 +11,7 @@
 #include <linux/irqflags.h>
 #include <asm/octeon/cvmx.h>
 #include <asm/bitfield.h>
+#include <linux/irq.h>
 
 extern uint64_t octeon_bootmem_alloc_range_phys(uint64_t size,
 						uint64_t alignment,
@@ -280,6 +281,22 @@ union octeon_cvmemctl {
 	} s;
 };
 
+struct octeon_ciu_chip_data {
+	union {
+		struct {		/* only used for ciu3 */
+			u64 ciu3_addr;
+			unsigned int intsn;
+		};
+		struct {		/* only used for ciu/ciu2 */
+			u8 line;
+			u8 bit;
+		};
+	};
+	int gpio_line;
+	int current_cpu;	/* Next CPU expected to take this irq */
+	int ciu_node; /* NUMA node number of the CIU */
+};
+
 extern void octeon_check_cpu_bist(void);
 
 int octeon_prune_device_tree(void);
@@ -321,8 +338,15 @@ void octeon_irq_ciu3_disable(struct irq_data *data);
 void octeon_irq_ciu3_ack(struct irq_data *data);
 void octeon_irq_ciu3_mask(struct irq_data *data);
 void octeon_irq_ciu3_mask_ack(struct irq_data *data);
+int octeon_irq_ciu3_set_affinity(struct irq_data *data,
+				 const struct cpumask *dest, bool force);
+void octeon_irq_free_cd(struct irq_domain *d, unsigned int irq);
 int octeon_irq_ciu3_mapx(struct irq_domain *d, unsigned int virq,
 			 irq_hw_number_t hw, struct irq_chip *chip);
+void *octeon_irq_get_ciu3_info(int node);
+void octeon_irq_add_block_domain(int node, uint8_t block,
+				 struct irq_domain *domain);
+struct irq_domain *octeon_irq_get_block_domain(int node, uint8_t block);
 
 /* Octeon multiplier save/restore routines from octeon_switch.S */
 void octeon_mult_save(void);
@@ -380,7 +404,5 @@ void octeon_irq_set_ip4_handler(octeon_irq_ip4_handler_t);
 extern void octeon_fixup_irqs(void);
 
 extern struct semaphore octeon_bootbus_sem;
-
-struct irq_domain *octeon_irq_get_block_domain(int node, uint8_t block);
 
 #endif /* __ASM_OCTEON_OCTEON_H */

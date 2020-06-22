@@ -3,13 +3,14 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2005-2009, 2010 Cavium Networks
+ * Copyright (C) 2005-2012 Cavium Inc.
  */
+#include <linux/interrupt.h>
+#include <linux/spinlock.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/cpu.h>
 #include <linux/msi.h>
-#include <linux/spinlock.h>
-#include <linux/interrupt.h>
 
 #include <asm/octeon/octeon.h>
 #include <asm/octeon/cvmx-npi-defs.h>
@@ -17,27 +18,25 @@
 #include <asm/octeon/cvmx-npei-defs.h>
 #include <asm/octeon/cvmx-sli-defs.h>
 #include <asm/octeon/cvmx-pexp-defs.h>
+#include <asm/octeon/cvmx-sli-defs.h>
+#include <asm/octeon/cvmx-ciu2-defs.h>
 #include <asm/octeon/pci-octeon.h>
 
-/*
- * Each bit in msi_free_irq_bitmask represents a MSI interrupt that is
- * in use.
- */
-static u64 msi_free_irq_bitmask[4];
+/* MSI major block number (8 MSBs of intsn) */
+#define MSI_BLOCK_NUMBER	0x1e
+
+#define MSI_IRQ_SIZE		256
 
 /*
- * Each bit in msi_multiple_irq_bitmask tells that the device using
- * this bit in msi_free_irq_bitmask is also using the next bit. This
- * is used so we can disable all of the MSI interrupts when a device
- * uses multiple.
+ * Each bit in msi_free_irq_bitmap represents a MSI interrupt that is
+ * in use. Each node requires its own set of bits.
  */
-static u64 msi_multiple_irq_bitmask[4];
+static DECLARE_BITMAP(msi_free_irq_bitmap[CVMX_MAX_NODES], MSI_IRQ_SIZE);
 
 /*
- * This lock controls updates to msi_free_irq_bitmask and
- * msi_multiple_irq_bitmask.
+ * This lock controls updates to msi_free_irq_bitmap.
  */
-static DEFINE_SPINLOCK(msi_free_irq_bitmask_lock);
+static DEFINE_SPINLOCK(msi_free_irq_bitmap_lock);
 
 /*
  * Number of MSI IRQs used. This variable is set up in

@@ -67,22 +67,6 @@ struct octeon_irq_ciu_domain_data {
 
 static __read_mostly int octeon_irq_ciu_to_irq[8][64];
 
-struct octeon_ciu_chip_data {
-	union {
-		struct {		/* only used for ciu3 */
-			u64 ciu3_addr;
-			unsigned int intsn;
-		};
-		struct {		/* only used for ciu/ciu2 */
-			u8 line;
-			u8 bit;
-		};
-	};
-	int gpio_line;
-	int current_cpu;	/* Next CPU expected to take this irq */
-	int ciu_node; /* NUMA node number of the CIU */
-};
-
 struct octeon_core_chip_data {
 	struct mutex core_irq_mutex;
 	bool current_en;
@@ -115,7 +99,7 @@ static int octeon_irq_set_ciu_mapping(int irq, int line, int bit, int gpio_line,
 	return 0;
 }
 
-static void octeon_irq_free_cd(struct irq_domain *d, unsigned int irq)
+void octeon_irq_free_cd(struct irq_domain *d, unsigned int irq)
 {
 	struct irq_data *data = irq_get_irq_data(irq);
 	struct octeon_ciu_chip_data *cd = irq_data_get_irq_chip_data(data);
@@ -2289,19 +2273,17 @@ static int __init octeon_irq_init_cib(struct device_node *ciu_node,
 
 	parent_irq = irq_of_parse_and_map(ciu_node, 0);
 	if (!parent_irq) {
-		pr_err("ERROR: Couldn't acquire parent_irq for %pOFn\n",
+		pr_err("ERROR: Couldn't acquire parent_irq for %pOFn\n.",
 			ciu_node);
 		return -EINVAL;
 	}
 
 	host_data = kzalloc(sizeof(*host_data), GFP_KERNEL);
-	if (!host_data)
-		return -ENOMEM;
 	raw_spin_lock_init(&host_data->lock);
 
 	addr = of_get_address(ciu_node, 0, NULL, NULL);
 	if (!addr) {
-		pr_err("ERROR: Couldn't acquire reg(0) %pOFn\n", ciu_node);
+		pr_err("ERROR: Couldn't acquire reg(0) %pOFn\n.", ciu_node);
 		return -EINVAL;
 	}
 	host_data->raw_reg = (u64)phys_to_virt(
@@ -2309,7 +2291,7 @@ static int __init octeon_irq_init_cib(struct device_node *ciu_node,
 
 	addr = of_get_address(ciu_node, 1, NULL, NULL);
 	if (!addr) {
-		pr_err("ERROR: Couldn't acquire reg(1) %pOFn\n", ciu_node);
+		pr_err("ERROR: Couldn't acquire reg(1) %pOFn\n.", ciu_node);
 		return -EINVAL;
 	}
 	host_data->en_reg = (u64)phys_to_virt(
@@ -2317,7 +2299,7 @@ static int __init octeon_irq_init_cib(struct device_node *ciu_node,
 
 	r = of_property_read_u32(ciu_node, "cavium,max-bits", &val);
 	if (r) {
-		pr_err("ERROR: Couldn't read cavium,max-bits from %pOFn\n",
+		pr_err("ERROR: Couldn't read cavium,max-bits from %pOFn\n.",
 			ciu_node);
 		return r;
 	}
@@ -2327,7 +2309,7 @@ static int __init octeon_irq_init_cib(struct device_node *ciu_node,
 					   &octeon_irq_domain_cib_ops,
 					   host_data);
 	if (!cib_domain) {
-		pr_err("ERROR: Couldn't irq_domain_add_linear()\n");
+		pr_err("ERROR: Couldn't irq_domain_add_linear()\n.");
 		return -ENOMEM;
 	}
 
@@ -2983,6 +2965,20 @@ void octeon_fixup_irqs(void)
 }
 
 #endif /* CONFIG_HOTPLUG_CPU */
+
+void *octeon_irq_get_ciu3_info(int node)
+{
+	return octeon_ciu3_info_per_node[node & CVMX_NODE_MASK];
+}
+
+void octeon_irq_add_block_domain(int node, uint8_t block,
+				 struct irq_domain *domain)
+{
+	struct octeon_ciu3_info *ciu3_info;
+
+	ciu3_info = octeon_ciu3_info_per_node[node & CVMX_NODE_MASK];
+	ciu3_info->domain[block] = domain;
+}
 
 struct irq_domain *octeon_irq_get_block_domain(int node, uint8_t block)
 {
