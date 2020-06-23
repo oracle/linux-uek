@@ -39,6 +39,7 @@ static int enable_pcie_bus_num_war[2];
 
 union cvmx_pcie_address {
 	uint64_t u64;
+#ifdef __BIG_ENDIAN_BITFIELD
 	struct {
 		uint64_t upper:2;	/* Normally 2 for XKPHYS */
 		uint64_t reserved_49_61:13;	/* Must be zero */
@@ -90,7 +91,52 @@ union cvmx_pcie_address {
 		uint64_t reserved_36_39:4;	/* Must be zero */
 		uint64_t address:36;	/* PCIe Mem address */
 	} mem;
+#else
+	struct {
+		uint64_t reg:12;
+		uint64_t func:3;
+		uint64_t dev:5;
+		uint64_t bus:8;
+		uint64_t ty:1;
+		uint64_t reserved_29_31:3;
+		uint64_t port:2;
+		uint64_t es:2;
+		uint64_t reserved_36_39:4;
+		uint64_t subdid:3;
+		uint64_t did:5;
+		uint64_t io:1;
+		uint64_t reserved_49_61:13;
+		uint64_t upper:2;
+	} config;
+	struct {
+		uint64_t address:32;
+		uint64_t port:2;
+		uint64_t es:2;
+		uint64_t reserved_36_39:4;
+		uint64_t subdid:3;
+		uint64_t did:5;
+		uint64_t io:1;
+		uint64_t reserved_49_61:13;
+		uint64_t upper:2;
+	} io;
+	struct {
+		uint64_t address:36;
+		uint64_t reserved_36_39:4;
+		uint64_t subdid:3;
+		uint64_t did:5;
+		uint64_t io:1;
+		uint64_t reserved_49_61:13;
+		uint64_t upper:2;
+	} mem;
+#endif
 };
+
+/* Endian swap mode. */
+#ifdef __BIG_ENDIAN_BITFIELD
+#define _CVMX_PCIE_ES 1
+#else
+#define _CVMX_PCIE_ES 0
+#endif
 
 static int cvmx_pcie_rc_initialize(int pcie_port);
 
@@ -102,7 +148,7 @@ static int cvmx_pcie_rc_initialize(int pcie_port);
  *
  * Returns 64bit Octeon IO base address for read/write
  */
-static inline uint64_t cvmx_pcie_get_io_base_address(int pcie_port)
+static uint64_t cvmx_pcie_get_io_base_address(int pcie_port)
 {
 	union cvmx_pcie_address pcie_addr;
 	pcie_addr.u64 = 0;
@@ -110,7 +156,7 @@ static inline uint64_t cvmx_pcie_get_io_base_address(int pcie_port)
 	pcie_addr.io.io = 1;
 	pcie_addr.io.did = 3;
 	pcie_addr.io.subdid = 2;
-	pcie_addr.io.es = 1;
+	pcie_addr.io.es = _CVMX_PCIE_ES;
 	pcie_addr.io.port = pcie_port;
 	return pcie_addr.u64;
 }
@@ -241,7 +287,7 @@ static inline uint64_t __cvmx_pcie_build_config_addr(int pcie_port, int bus,
 	pcie_addr.config.io = 1;
 	pcie_addr.config.did = 3;
 	pcie_addr.config.subdid = 1;
-	pcie_addr.config.es = 1;
+	pcie_addr.config.es = _CVMX_PCIE_ES;
 	pcie_addr.config.port = pcie_port;
 	pcie_addr.config.ty = (bus > pciercx_cfg006.s.pbnum);
 	pcie_addr.config.bus = bus;
@@ -889,8 +935,8 @@ retry:
 	mem_access_subid.u64 = 0;
 	mem_access_subid.s.port = pcie_port; /* Port the request is sent to. */
 	mem_access_subid.s.nmerge = 1;	/* Due to an errata on pass 1 chips, no merging is allowed. */
-	mem_access_subid.s.esr = 1;	/* Endian-swap for Reads. */
-	mem_access_subid.s.esw = 1;	/* Endian-swap for Writes. */
+	mem_access_subid.s.esr = _CVMX_PCIE_ES;	/* Endian-swap for Reads. */
+	mem_access_subid.s.esw = _CVMX_PCIE_ES;	/* Endian-swap for Writes. */
 	mem_access_subid.s.nsr = 0;	/* Enable Snooping for Reads. Octeon doesn't care, but devices might want this more conservative setting */
 	mem_access_subid.s.nsw = 0;	/* Enable Snoop for Writes. */
 	mem_access_subid.s.ror = 0;	/* Disable Relaxed Ordering for Reads. */
@@ -925,7 +971,7 @@ retry:
 	bar1_index.u32 = 0;
 	bar1_index.s.addr_idx = (CVMX_PCIE_BAR1_PHYS_BASE >> 22);
 	bar1_index.s.ca = 1;	   /* Not Cached */
-	bar1_index.s.end_swp = 1;  /* Endian Swap mode */
+	bar1_index.s.end_swp = _CVMX_PCIE_ES;  /* Endian Swap mode */
 	bar1_index.s.addr_v = 1;   /* Valid entry */
 
 	base = pcie_port ? 16 : 0;
@@ -965,7 +1011,7 @@ retry:
 		union cvmx_npei_ctl_port1 npei_ctl_port;
 		npei_ctl_port.u64 = cvmx_read_csr(CVMX_PEXP_NPEI_CTL_PORT1);
 		npei_ctl_port.s.bar2_enb = 1;
-		npei_ctl_port.s.bar2_esx = 1;
+		npei_ctl_port.s.bar2_esx = _CVMX_PCIE_ES;
 		npei_ctl_port.s.bar2_cax = 0;
 		npei_ctl_port.s.ptlp_ro = 1;
 		npei_ctl_port.s.ctlp_ro = 1;
@@ -976,7 +1022,7 @@ retry:
 		union cvmx_npei_ctl_port0 npei_ctl_port;
 		npei_ctl_port.u64 = cvmx_read_csr(CVMX_PEXP_NPEI_CTL_PORT0);
 		npei_ctl_port.s.bar2_enb = 1;
-		npei_ctl_port.s.bar2_esx = 1;
+		npei_ctl_port.s.bar2_esx = _CVMX_PCIE_ES;
 		npei_ctl_port.s.bar2_cax = 0;
 		npei_ctl_port.s.ptlp_ro = 1;
 		npei_ctl_port.s.ctlp_ro = 1;
@@ -1341,8 +1387,8 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 	mem_access_subid.u64 = 0;
 	mem_access_subid.s.port = pcie_port; /* Port the request is sent to. */
 	mem_access_subid.s.nmerge = 0;	/* Allow merging as it works on CN6XXX. */
-	mem_access_subid.s.esr = 1;	/* Endian-swap for Reads. */
-	mem_access_subid.s.esw = 1;	/* Endian-swap for Writes. */
+	mem_access_subid.s.esr = _CVMX_PCIE_ES;     /* Endian-swap for Reads. */
+	mem_access_subid.s.esw = _CVMX_PCIE_ES;     /* Endian-swap for Writes. */
 	mem_access_subid.s.wtype = 0;	/* "No snoop" and "Relaxed ordering" are not set */
 	mem_access_subid.s.rtype = 0;	/* "No snoop" and "Relaxed ordering" are not set */
 	/* PCIe Adddress Bits <63:34>. */
@@ -1392,7 +1438,7 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 	pemx_bar_ctl.u64 = cvmx_read_csr(CVMX_PEMX_BAR_CTL(pcie_port));
 	pemx_bar_ctl.s.bar1_siz = 3;  /* 256MB BAR1*/
 	pemx_bar_ctl.s.bar2_enb = 1;
-	pemx_bar_ctl.s.bar2_esx = 1;
+	pemx_bar_ctl.s.bar2_esx = _CVMX_PCIE_ES;
 	pemx_bar_ctl.s.bar2_cax = 0;
 	cvmx_write_csr(CVMX_PEMX_BAR_CTL(pcie_port), pemx_bar_ctl.u64);
 	sli_ctl_portx.u64 = cvmx_read_csr(CVMX_PEXP_SLI_CTL_PORTX(pcie_port));
@@ -1408,7 +1454,7 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 	bar1_index.u64 = 0;
 	bar1_index.s.addr_idx = (CVMX_PCIE_BAR1_PHYS_BASE >> 22);
 	bar1_index.s.ca = 1;	   /* Not Cached */
-	bar1_index.s.end_swp = 1;  /* Endian Swap mode */
+	bar1_index.s.end_swp = _CVMX_PCIE_ES;  /* Endian Swap mode */
 	bar1_index.s.addr_v = 1;   /* Valid entry */
 
 	for (i = 0; i < 16; i++) {
