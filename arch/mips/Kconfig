@@ -2239,6 +2239,24 @@ config FORCE_MAX_ZONEORDER
 	  The page size is not necessarily 4KB.  Keep this in mind
 	  when choosing a value for this option.
 
+config MAPPED_KERNEL
+	bool "Mapped kernel"
+	depends on CPU_CAVIUM_OCTEON
+	help
+	  Select this option if you want the kernel's code and data to
+	  be in mapped memory.  The kernel will be mapped using a
+	  single wired TLB entry, thus reducing the number of
+	  available TLB entries by one.  Kernel modules will be able
+	  to use a more efficient calling convention.
+
+config PHYS_LOAD_ADDRESS
+	hex "Physical load address"
+	depends on MAPPED_KERNEL
+	default 0xffffffff81000000
+	help
+	  The physical load address reflected as the program header
+	  physical address in the kernel ELF image.
+
 config BOARD_SCACHE
 	bool
 

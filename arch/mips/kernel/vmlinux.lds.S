@@ -4,6 +4,11 @@
 
 #define PAGE_SIZE _PAGE_SIZE
 
+#ifdef PHYSADDR
+phys_entry = kernel_entry - VMLINUX_LOAD_ADDRESS + PHYSADDR;
+#define LOAD_OFFSET (VMLINUX_LOAD_ADDRESS - PHYSADDR)
+#endif
+
 /*
  * Put .bss..swapper_pg_dir as the first thing in .bss. This will
  * ensure that it has .bss alignment (64K).
@@ -15,9 +20,15 @@
 #undef mips
 #define mips mips
 OUTPUT_ARCH(mips)
+#ifdef PHYSADDR
+ENTRY(phys_entry)
+#define AT_LOCATION AT(PHYSADDR)
+#else
 ENTRY(kernel_entry)
+#define AT_LOCATION
+#endif
 PHDRS {
-	text PT_LOAD FLAGS(7);	/* RWX */
+	text PT_LOAD AT_LOCATION FLAGS(7);	/* RWX */
 #ifndef CONFIG_DISABLE_ELF_NOTE_HEADER
 	note PT_NOTE FLAGS(4);	/* R__ */
 #endif /* CONFIG_DISABLE_ELF_NOTE_HEADER */
@@ -53,7 +64,7 @@ SECTIONS
 	. = LINKER_LOAD_ADDRESS;
 	/* read-only */
 	_text = .;	/* Text and read-only data */
-	.text : {
+	.text : AT_LOCATION {
 		TEXT_TEXT
 		SCHED_TEXT
 		CPUIDLE_TEXT

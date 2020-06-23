@@ -514,7 +514,9 @@ static void r4k_tlb_configure(void)
 	if (read_c0_pagemask() != PM_DEFAULT_MASK)
 		panic("MMU doesn't support PAGE_SIZE=0x%lx", PAGE_SIZE);
 
+#ifndef CONFIG_MAPPED_KERNEL
 	write_c0_wired(0);
+#endif
 	if (current_cpu_type() == CPU_R10000 ||
 	    current_cpu_type() == CPU_R12000 ||
 	    current_cpu_type() == CPU_R14000 ||

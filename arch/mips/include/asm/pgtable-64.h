@@ -154,7 +154,12 @@
 #if defined(CONFIG_MODULES) && defined(KBUILD_64BIT_SYM32) && \
 	VMALLOC_START != CKSSEG
 /* Load modules into 32bit-compatible segment. */
-#define MODULE_START	CKSSEG
+#ifdef CONFIG_MAPPED_KERNEL
+extern unsigned long kernel_image_end;
+#define MODULE_START	kernel_image_end
+#else
+#define MODULE_START   CKSSEG
+#endif
 #define MODULE_END	(FIXADDR_START-2*PAGE_SIZE)
 #endif
 

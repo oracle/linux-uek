@@ -112,4 +112,8 @@ obj-$(CONFIG_MIPS_CPC)		+= mips-cpc.o
 obj-$(CONFIG_CPU_PM)		+= pm.o
 obj-$(CONFIG_MIPS_CPS_PM)	+= pm-cps.o
 
-CPPFLAGS_vmlinux.lds		:= $(KBUILD_CFLAGS)
+ifdef CONFIG_MAPPED_KERNEL
+  PHYS_LOAD_ADDRESS = -D"PHYSADDR=$(CONFIG_PHYS_LOAD_ADDRESS)"
+endif
+
+CPPFLAGS_vmlinux.lds		:= $(KBUILD_CFLAGS) $(PHYS_LOAD_ADDRESS)

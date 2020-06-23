@@ -1619,6 +1619,18 @@ static void build_setup_pgd(void)
 		struct uasm_reloc *r = relocs;
 
 		/* PGD << 11 in c0_Context */
+#ifdef CONFIG_MAPPED_KERNEL
+		/*
+		 * if (&swapper_pg_dir == pgd)
+		 *     pgd = pgd - phys_to_kernel_offset;
+		 */
+		UASM_i_LA(&p, a1, (long)&swapper_pg_dir);
+		uasm_il_bne(&p, &r, a0, a1, label_tlbl_goaround1);
+		UASM_i_LA_mostly(&p, a1, (long)&phys_to_kernel_offset);
+		UASM_i_LW(&p, a1, uasm_rel_lo((long)&phys_to_kernel_offset), a1);
+		UASM_i_SUBU(&p, a0, a0, a1);
+		/* Fall through to tlbl_goaround1. */
+#else
 		/*
 		 * If it is a ckseg0 address, convert to a physical
 		 * address.  Shifting right by 29 and adding 4 will
@@ -1630,6 +1642,7 @@ static void build_setup_pgd(void)
 		uasm_il_bnez(&p, &r, a1, label_tlbl_goaround1);
 		uasm_i_nop(&p);
 		uasm_i_dinsm(&p, a0, 0, 29, 64 - 29);
+#endif
 		uasm_l_tlbl_goaround1(&l, p);
 		UASM_i_SLL(&p, a0, a0, 11);
 		UASM_i_MTC0(&p, a0, C0_CONTEXT);
