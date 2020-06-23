@@ -63,6 +63,8 @@ unsigned long mips_machtype __read_mostly = MACH_UNKNOWN;
 
 EXPORT_SYMBOL(mips_machtype);
 
+bool initrd_in_reserved;
+
 static char __initdata command_line[COMMAND_LINE_SIZE];
 char __initdata arcs_cmdline[COMMAND_LINE_SIZE];
 
@@ -309,7 +311,13 @@ static void __init bootmem_init(void)
 	 * as our memory range starting point. Once bootmem is inited we
 	 * will reserve the area used for the initrd.
 	 */
-	init_initrd();
+	if (initrd_in_reserved) {
+		init_initrd();
+		reserved_end = PFN_UP(__pa_symbol(&_end));
+	} else {
+		reserved_end = max_t(unsigned long, init_initrd(),
+				     PFN_UP(__pa_symbol(&_end)));
+	}
 
 	/* Reserve memory occupied by kernel. */
 	memblock_reserve(__pa_symbol(&_text),
@@ -325,6 +333,7 @@ static void __init bootmem_init(void)
 	 */
 	if (ramstart > PHYS_OFFSET)
 		memblock_reserve(PHYS_OFFSET, ramstart - PHYS_OFFSET);
+
 
 	if (PFN_UP(ramstart) > ARCH_PFN_OFFSET) {
 		pr_info("Wasting %lu bytes for tracking %lu unused pages\n",

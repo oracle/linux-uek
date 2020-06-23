@@ -28,6 +28,7 @@
 #include <linux/of_fdt.h>
 #include <linux/libfdt.h>
 #include <linux/kexec.h>
+#include <linux/initrd.h>
 
 #include <asm/processor.h>
 #include <asm/reboot.h>
@@ -297,6 +298,9 @@ static uint64_t crashk_size, crashk_base;
 static int octeon_uart;
 
 extern asmlinkage void handle_int(void);
+
+/* If an initrd named block is specified, its name goes here. */
+static char rd_name[64] __initdata;
 
 /**
  * Return non zero if we are currently running in the Octeon simulator
@@ -1027,6 +1031,10 @@ void __init prom_init(void)
 				max_memory = 32ull << 30;
 			if (*p == '@')
 				reserve_low_mem = memparse(p + 1, &p);
+		} else if (strncmp(arg, "rd_name=", 8) == 0) {
+			strncpy(rd_name, arg + 8, sizeof(rd_name));
+			rd_name[sizeof(rd_name) - 1] = 0;
+			goto append_arg;
 #ifdef CONFIG_KEXEC
 		} else if (strncmp(arg, "crashkernel=", 12) == 0) {
 			crashk_size = memparse(arg+12, &p);
@@ -1039,11 +1047,14 @@ void __init prom_init(void)
 			 * parse_crashkernel(arg, sysinfo->system_dram_size,
 			 *		  &crashk_size, &crashk_base);
 			 */
+			goto append_arg;
 #endif
-		} else if (strlen(arcs_cmdline) + strlen(arg) + 1 <
-			   sizeof(arcs_cmdline) - 1) {
-			strcat(arcs_cmdline, " ");
-			strcat(arcs_cmdline, arg);
+		} else {
+append_arg:
+			if (strlen(arcs_cmdline) + strlen(arg) + 1 < sizeof(arcs_cmdline) - 1) {
+				strcat(arcs_cmdline, " ");
+				strcat(arcs_cmdline, arg);
+			}
 		}
 	}
 
@@ -1128,6 +1139,23 @@ void __init plat_mem_setup(void)
 
 	total = 0;
 	crashk_end = 0;
+
+#ifdef CONFIG_BLK_DEV_INITRD
+
+	if (rd_name[0]) {
+		const struct cvmx_bootmem_named_block_desc *initrd_block;
+
+		initrd_block = cvmx_bootmem_find_named_block(rd_name);
+		if (initrd_block != NULL) {
+			initrd_start = initrd_block->base_addr + PAGE_OFFSET;
+			initrd_end = initrd_start + initrd_block->size;
+			add_memory_region(initrd_block->base_addr, initrd_block->size,
+					  BOOT_MEM_INIT_RAM);
+			initrd_in_reserved = 1;
+			total += initrd_block->size;
+		}
+	}
+#endif
 
 	/*
 	 * The Mips memory init uses the first memory location for

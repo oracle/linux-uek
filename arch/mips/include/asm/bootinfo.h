@@ -94,6 +94,8 @@ extern unsigned long mips_machtype;
 #define BOOT_MEM_INIT_RAM	4
 #define BOOT_MEM_NOMAP		5
 
+extern bool initrd_in_reserved;
+
 extern void add_memory_region(phys_addr_t start, phys_addr_t size, long type);
 extern void detect_memory_region(phys_addr_t start, phys_addr_t sz_min,  phys_addr_t sz_max);
 
