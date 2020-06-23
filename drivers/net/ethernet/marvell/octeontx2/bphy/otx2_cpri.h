@@ -126,6 +126,8 @@ void otx2_cpri_update_stats(struct otx2_cpri_ndev_priv *priv);
 
 void otx2_bphy_cpri_cleanup(void);
 
+void otx2_cpri_enable_intf(int cpri_num);
+
 /* ethtool */
 void otx2_cpri_set_ethtool_ops(struct net_device *netdev);
 

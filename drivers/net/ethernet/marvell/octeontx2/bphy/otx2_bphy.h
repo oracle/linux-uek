@@ -45,8 +45,12 @@ extern void __iomem *cpri_reg_base;
 #define OTX2_RFOE_IOCTL_PTP_OFFSET	_IO(OTX2_RFOE_IOCTL_BASE, 0x04)
 #define OTX2_RFOE_IOCTL_SEC_BCN_OFFSET	_IOW(OTX2_RFOE_IOCTL_BASE, 0x05, \
 					     struct bcn_sec_offset_cfg)
+#define OTX2_RFOE_IOCTL_MODE_CPRI	_IOW(OTX2_RFOE_IOCTL_BASE, 0x06, \
+					     int)
 
 //#define ASIM		/* ASIM environment */
+
+#define OTX2_BPHY_MHAB_INST		3
 
 /* char driver private data */
 struct otx2_bphy_cdev_priv {
@@ -58,6 +62,7 @@ struct otx2_bphy_cdev_priv {
 	int				irq;
 	struct mutex			mutex_lock;	/* mutex */
 	spinlock_t			lock;		/* irq lock */
+	u8				mhab_mode[OTX2_BPHY_MHAB_INST];
 };
 
 /* iova to kernel virtual addr */

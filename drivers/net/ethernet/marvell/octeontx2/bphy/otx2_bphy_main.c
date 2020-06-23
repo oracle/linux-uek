@@ -125,6 +125,9 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			goto out;
 		}
 
+		for (idx = 0; idx < OTX2_BPHY_MHAB_INST; idx++)
+			cdev->mhab_mode[idx] = intf_cfg[idx].if_type;
+
 		ret = otx2_rfoe_parse_and_init_intf(cdev, intf_cfg);
 		if (ret < 0) {
 			dev_err(cdev->dev, "odp <-> netdev parse error\n");
@@ -307,6 +310,31 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		netdev = drv_ctx->netdev;
 		priv = netdev_priv(netdev);
 		priv->sec_bcn_offset = cfg.sec_bcn_offset;
+		ret = 0;
+		goto out;
+	}
+	case OTX2_RFOE_IOCTL_MODE_CPRI:
+	{
+		int id = 0;
+
+		if (!cdev->odp_intf_cfg) {
+			dev_info(cdev->dev, "odp interface cfg is not done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+
+		if (copy_from_user(&id, (void __user *)arg, sizeof(int))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+
+		if (cdev->mhab_mode[id] == IF_TYPE_ETHERNET) {
+			otx2_rfoe_disable_intf(id);
+			otx2_cpri_enable_intf(id);
+			cdev->mhab_mode[id] = IF_TYPE_CPRI;
+		}
+
 		ret = 0;
 		goto out;
 	}
