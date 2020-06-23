@@ -74,6 +74,35 @@ struct net_device *otx2_cpri_get_netdev(int mhab_id, int lmac_id)
 	return netdev;
 }
 
+void otx2_cpri_enable_intf(int cpri_num)
+{
+	struct otx2_cpri_drv_ctx *drv_ctx;
+	struct otx2_cpri_ndev_priv *priv;
+	struct net_device *netdev;
+	int idx, ret;
+
+	for (idx = 0; idx < OTX2_BPHY_CPRI_MAX_INTF; idx++) {
+		drv_ctx = &cpri_drv_ctx[idx];
+		if (drv_ctx->cpri_num == cpri_num && drv_ctx->valid) {
+			netdev = drv_ctx->netdev;
+			priv = netdev_priv(netdev);
+			ret = register_netdev(netdev);
+			if (ret < 0) {
+				pr_err("failed to register net device %s\n",
+				       netdev->name);
+				free_netdev(netdev);
+				return;
+			}
+			pr_info("net device %s registered\n",
+				netdev->name);
+			netif_carrier_off(netdev);
+			netif_stop_queue(netdev);
+			set_bit(CPRI_INTF_DOWN, &priv->state);
+			drv_ctx->netdev_registered = 1;
+		}
+	}
+}
+
 void otx2_bphy_cpri_cleanup(void)
 {
 	struct otx2_cpri_drv_ctx *drv_ctx = NULL;

@@ -100,6 +100,34 @@
 /* global driver ctx */
 struct otx2_rfoe_drv_ctx rfoe_drv_ctx[RFOE_MAX_INTF];
 
+void otx2_rfoe_disable_intf(int rfoe_num)
+{
+	struct otx2_rfoe_drv_ctx *drv_ctx;
+	struct otx2_rfoe_ndev_priv *priv;
+	struct net_device *netdev;
+	struct rx_ft_cfg *ft_cfg;
+	int idx, pkt_type;
+
+	for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+		drv_ctx = &rfoe_drv_ctx[idx];
+		if (drv_ctx->rfoe_num == rfoe_num && drv_ctx->valid) {
+			netdev = drv_ctx->netdev;
+			priv = netdev_priv(netdev);
+			unregister_netdev(netdev);
+			for (pkt_type = 0; pkt_type < PACKET_TYPE_MAX;
+			     pkt_type++) {
+				if (!(priv->pkt_type_mask & (1U << pkt_type)))
+					continue;
+				ft_cfg = &priv->rx_ft_cfg[pkt_type];
+				netif_napi_del(&ft_cfg->napi);
+			}
+			kfree(priv->rfoe_common);
+			free_netdev(netdev);
+			drv_ctx->valid = 0;
+		}
+	}
+}
+
 void otx2_bphy_rfoe_cleanup(void)
 {
 	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
