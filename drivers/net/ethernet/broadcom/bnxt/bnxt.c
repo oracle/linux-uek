@@ -6320,17 +6320,19 @@ int bnxt_hwrm_set_coal(struct bnxt *bp)
 	return rc;
 }
 
-static int bnxt_hwrm_stat_ctx_free(struct bnxt *bp)
+static void bnxt_hwrm_stat_ctx_free(struct bnxt *bp)
 {
-	int rc = 0, i;
+	struct hwrm_stat_ctx_clr_stats_input req0 = {0};
 	struct hwrm_stat_ctx_free_input req = {0};
+	int i;
 
 	if (!bp->bnapi)
-		return 0;
+		return;
 
 	if (BNXT_CHIP_TYPE_NITRO_A0(bp))
-		return 0;
+		return;
 
+	bnxt_hwrm_cmd_hdr_init(bp, &req0, HWRM_STAT_CTX_CLR_STATS, -1, -1);
 	bnxt_hwrm_cmd_hdr_init(bp, &req, HWRM_STAT_CTX_FREE, -1, -1);
 
 	mutex_lock(&bp->hwrm_cmd_lock);
@@ -6340,15 +6342,19 @@ static int bnxt_hwrm_stat_ctx_free(struct bnxt *bp)
 
 		if (cpr->hw_stats_ctx_id != INVALID_STATS_CTX_ID) {
 			req.stat_ctx_id = cpu_to_le32(cpr->hw_stats_ctx_id);
-
-			rc = _hwrm_send_message(bp, &req, sizeof(req),
-						HWRM_CMD_TIMEOUT);
+			if (BNXT_FW_MAJ(bp) <= 20) {
+				req0.stat_ctx_id = req.stat_ctx_id;
+				_hwrm_send_message(bp, &req0, sizeof(req0),
+						   HWRM_CMD_TIMEOUT);
+			}
+			_hwrm_send_message(bp, &req, sizeof(req),
+					   HWRM_CMD_TIMEOUT);
 
 			cpr->hw_stats_ctx_id = INVALID_STATS_CTX_ID;
 		}
 	}
 	mutex_unlock(&bp->hwrm_cmd_lock);
-	return rc;
+	return;
 }
 
 static int bnxt_hwrm_stat_ctx_alloc(struct bnxt *bp)
