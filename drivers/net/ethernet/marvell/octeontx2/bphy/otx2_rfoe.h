@@ -263,6 +263,8 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 
 void otx2_bphy_rfoe_cleanup(void);
 
+void otx2_rfoe_disable_intf(int rfoe_num);
+
 /* ethtool */
 void otx2_rfoe_set_ethtool_ops(struct net_device *netdev);
 
