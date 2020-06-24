@@ -67,8 +67,8 @@ DEFINE_SIMPLE_ATTRIBUTE(reset_statistics_ops, NULL, reset_statistics, "%llu\n");
 static void init_debugfs(void)
 {
 	dir = debugfs_create_dir("oct_ilm", 0);
-	debugfs_create_file("statistics", 0222, dir, NULL, &oct_ilm_ops);
-	debugfs_create_file("reset", 0222, dir, NULL, &reset_statistics_ops);
+	debugfs_create_file("statistics", 0444, dir, NULL, &oct_ilm_ops);
+	debugfs_create_file("reset", 0220, dir, NULL, &reset_statistics_ops);
 }
 
 static void init_latency_info(struct latency_info *li, int startup)
