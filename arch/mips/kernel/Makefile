@@ -39,7 +39,7 @@ obj-$(CONFIG_FUNCTION_TRACER)	+= mcount.o ftrace.o
 sw-y				:= r4k_switch.o
 sw-$(CONFIG_CPU_R3000)		:= r2300_switch.o
 sw-$(CONFIG_CPU_TX39XX)		:= r2300_switch.o
-sw-$(CONFIG_CPU_CAVIUM_OCTEON)	:= octeon_switch.o
+sw-$(CONFIG_CPU_CAVIUM_OCTEON)	:= octeon_switch.o octeon-cpu.o
 obj-y				+= $(sw-y)
 
 obj-$(CONFIG_CPU_R2300_FPU)	+= r2300_fpu.o
