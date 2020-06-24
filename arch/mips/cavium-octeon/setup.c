@@ -934,28 +934,26 @@ late_initcall(octeon_l2_cache_lock);
 static int octeon_mipspmu_notifier(struct notifier_block *nb,
 				   unsigned long action, void *data)
 {
-	u64 cvmctl;
+	u64 cvmctl_orig = read_c0_cvmctl();
+	u64 cvmctl_new = cvmctl_orig;
+	u64 mask = (1ull << 15) | (1ull << 17);
+
 	switch (action) {
-	case MIPSPMU_ENABLE:
-		cvmctl = read_c0_cvmctl();
+	case MIPSPMU_ACTIVE:
+		cvmctl_new = cvmctl_orig | mask;
 		/*
 		 * Set CvmCtl[DCICLK,DISCE] for more accurate profiling at
 		 * the expense of power consumption.
 		 */
-		cvmctl |= ((1ull << 15) | (1ull << 17));
-		write_c0_cvmctl(cvmctl);
 		break;
-	case MIPSPMU_DISABLE:
-		cvmctl = read_c0_cvmctl();
-		/*
-		 * Clear CvmCtl[DCICLK,DISCE] for lower power consumption.
-		 */
-		cvmctl &= ~((1ull << 15) | (1ull << 17));
-		write_c0_cvmctl(cvmctl);
+	case MIPSPMU_INACTIVE:
+		cvmctl_new = cvmctl_orig & ~mask;
 		break;
 	default:
 		break;
 	}
+	if (cvmctl_new != cvmctl_orig)
+		write_c0_cvmctl(cvmctl_new);
 	return NOTIFY_OK;
 }
 static struct notifier_block octeon_mipspmu_nb = {

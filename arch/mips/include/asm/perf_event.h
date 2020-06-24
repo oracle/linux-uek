@@ -14,7 +14,7 @@
 /* Allow CPU specific actions on PMU state changes. */
 int mipspmu_notifier_register(struct notifier_block *nb);
 int mipspmu_notifier_unregister(struct notifier_block *nb);
-#define MIPSPMU_ENABLE 0
-#define MIPSPMU_DISABLE 1
+#define MIPSPMU_ACTIVE 0
+#define MIPSPMU_INACTIVE 1
 
 #endif /* __MIPS_PERF_EVENT_H__ */
