@@ -121,12 +121,14 @@ int ptrace_get_watch_regs(struct task_struct *child,
 			  struct pt_watch_regs __user *addr)
 {
 	enum pt_watch_style style;
-	int i;
+	unsigned int num_valid;
+	u16 watch_reg_masks[NUM_WATCH_REGS];
+	int i, rv;
 
-	if (!cpu_has_watch || boot_cpu_data.watch_reg_use_cnt == 0)
+	if (!cpu_has_watch)
 		return -EIO;
 	if (!access_ok(addr, sizeof(struct pt_watch_regs)))
-		return -EIO;
+		return -EFAULT;
 
 #ifdef CONFIG_32BIT
 	style = pt_watch_style_mips32;
@@ -136,42 +138,77 @@ int ptrace_get_watch_regs(struct task_struct *child,
 #define WATCH_STYLE mips64
 #endif
 
-	__put_user(style, &addr->style);
-	__put_user(boot_cpu_data.watch_reg_use_cnt,
-		   &addr->WATCH_STYLE.num_valid);
-	for (i = 0; i < boot_cpu_data.watch_reg_use_cnt; i++) {
-		__put_user(child->thread.watch.mips3264.watchlo[i],
-			   &addr->WATCH_STYLE.watchlo[i]);
-		__put_user(child->thread.watch.mips3264.watchhi[i] &
-				(MIPS_WATCHHI_MASK | MIPS_WATCHHI_IRW),
-			   &addr->WATCH_STYLE.watchhi[i]);
-		__put_user(boot_cpu_data.watch_reg_masks[i],
-			   &addr->WATCH_STYLE.watch_masks[i]);
+	preempt_disable();
+	num_valid = current_cpu_data.watch_reg_use_cnt;
+	memcpy(watch_reg_masks, current_cpu_data.watch_reg_masks,
+	       sizeof(watch_reg_masks));
+	preempt_enable();
+
+	if (num_valid == 0)
+		return -EIO;
+
+	rv = __put_user(style, &addr->style);
+	if (rv)
+		goto out;
+	rv = __put_user(num_valid, &addr->WATCH_STYLE.num_valid);
+	if (rv)
+		goto out;
+	for (i = 0; i < num_valid; i++) {
+		rv = __put_user(child->thread.watch.mips3264.watchlo[i],
+				&addr->WATCH_STYLE.watchlo[i]);
+		if (rv)
+			goto out;
+		rv = __put_user(child->thread.watch.mips3264.watchhi[i] &
+					(MIPS_WATCHHI_MASK | MIPS_WATCHHI_IRW),
+				&addr->WATCH_STYLE.watchhi[i]);
+		if (rv)
+			goto out;
+		rv = __put_user(watch_reg_masks[i],
+				&addr->WATCH_STYLE.watch_masks[i]);
+		if (rv)
+			goto out;
 	}
 	for (; i < 8; i++) {
-		__put_user(0, &addr->WATCH_STYLE.watchlo[i]);
-		__put_user(0, &addr->WATCH_STYLE.watchhi[i]);
-		__put_user(0, &addr->WATCH_STYLE.watch_masks[i]);
+		rv = __put_user(0, &addr->WATCH_STYLE.watchlo[i]);
+		if (rv)
+			goto out;
+		rv = __put_user(0, &addr->WATCH_STYLE.watchhi[i]);
+		if (rv)
+			goto out;
+		rv = __put_user(0, &addr->WATCH_STYLE.watch_masks[i]);
+		if (rv)
+			goto out;
 	}
-
-	return 0;
+out:
+	return rv;
 }
 
 int ptrace_set_watch_regs(struct task_struct *child,
 			  struct pt_watch_regs __user *addr)
 {
-	int i;
+	int i, rv;
+	unsigned int num_valid;
 	int watch_active = 0;
 	unsigned long lt[NUM_WATCH_REGS];
 	u16 ht[NUM_WATCH_REGS];
 
-	if (!cpu_has_watch || boot_cpu_data.watch_reg_use_cnt == 0)
+	if (!cpu_has_watch)
 		return -EIO;
 	if (!access_ok(addr, sizeof(struct pt_watch_regs)))
+		return -EFAULT;
+
+	preempt_disable();
+	num_valid = current_cpu_data.watch_reg_use_cnt;
+	preempt_enable();
+
+	if (num_valid == 0)
 		return -EIO;
+
 	/* Check the values. */
-	for (i = 0; i < boot_cpu_data.watch_reg_use_cnt; i++) {
-		__get_user(lt[i], &addr->WATCH_STYLE.watchlo[i]);
+	for (i = 0; i < num_valid; i++) {
+		rv = __get_user(lt[i], &addr->WATCH_STYLE.watchlo[i]);
+		if (rv)
+			return rv;
 #ifdef CONFIG_32BIT
 		if (lt[i] & __UA_LIMIT)
 			return -EINVAL;
@@ -184,12 +221,14 @@ int ptrace_set_watch_regs(struct task_struct *child,
 				return -EINVAL;
 		}
 #endif
-		__get_user(ht[i], &addr->WATCH_STYLE.watchhi[i]);
+		rv = __get_user(ht[i], &addr->WATCH_STYLE.watchhi[i]);
+		if (rv)
+			return rv;
 		if (ht[i] & ~MIPS_WATCHHI_MASK)
 			return -EINVAL;
 	}
 	/* Install them. */
-	for (i = 0; i < boot_cpu_data.watch_reg_use_cnt; i++) {
+	for (i = 0; i < num_valid; i++) {
 		if (lt[i] & MIPS_WATCHLO_IRW)
 			watch_active = 1;
 		child->thread.watch.mips3264.watchlo[i] = lt[i];
