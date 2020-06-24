@@ -5,7 +5,7 @@
  * deduplicated CTF derived from those object files, split up by kernel
  * module.
  *
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,12 +23,23 @@
 
 static ctf_file_t *output;
 
+static int private_ctf_link_add_ctf (ctf_file_t *fp,
+				     const char *name)
+{
+#if !defined (CTF_LINK_FINAL)
+	return ctf_link_add_ctf (fp, NULL, name);
+#else
+	/* Non-upstreamed, erroneously-broken API.  */
+	return ctf_link_add_ctf (fp, NULL, name, NULL, 0);
+#endif
+}
+
 /*
  * Add a file to the link.
  */
 static void add_to_link(const char *fn)
 {
-	if (ctf_link_add_ctf (output, NULL, fn, NULL, 0) < 0)
+	if (private_ctf_link_add_ctf (output, fn) < 0)
 	{
 		fprintf(stderr, "Cannot add CTF file %s: %s\n", fn,
 			ctf_errmsg(ctf_errno(output)));
