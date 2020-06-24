@@ -43,6 +43,7 @@
 #include <asm/time.h>
 
 #include <asm/octeon/octeon.h>
+#include <asm/octeon/octeon-boot-info.h>
 #include <asm/octeon/pci-octeon.h>
 #include <asm/octeon/cvmx-rst-defs.h>
 #include <asm/octeon/cvmx-sso-defs.h>
@@ -577,7 +578,7 @@ void octeon_user_io_init(void)
 		/* 4096 cycles */
 		nm_tim.s.nw_tim = 3;
 		cvmx_write_csr(CVMX_SSO_NW_TIM, nm_tim.u64);
-	} else {
+	} else if (!OCTEON_IS_MODEL(OCTEON_CN78XX)){
 		union cvmx_pow_nw_tim nm_tim;
 
 		nm_tim.u64 = 0;
@@ -784,7 +785,7 @@ void __init prom_init(void)
 	if (OCTEON_IS_MODEL(OCTEON_CN38XX_PASS2) ||
 	    OCTEON_IS_MODEL(OCTEON_CN31XX))
 		cvmx_write_csr(CVMX_CIU_SOFT_BIST, 0);
-	else
+	else if (!OCTEON_IS_MODEL(OCTEON_CN78XX))
 		cvmx_write_csr(CVMX_CIU_SOFT_BIST, 1);
 
 	/* Default to 64MB in the simulator to speed things up */
