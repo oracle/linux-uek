@@ -536,7 +536,7 @@ void octeon_user_io_init(void)
 	cvmmemctl.s.cvmsegenau = 0;
 
 	/* Enable TLB parity error reporting on OCTEON II */
-	if (OCTEON_IS_OCTEON2())
+	if (current_cpu_type() == CPU_CAVIUM_OCTEON2)
 		cvmmemctl.s.tlbperrena = 1;
 
 	write_c0_cvmmemctl(cvmmemctl.u64);

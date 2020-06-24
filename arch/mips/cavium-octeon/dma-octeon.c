@@ -201,7 +201,8 @@ void __init plat_swiotlb_setup(void)
 
 	for_each_memblock(memory, mem) {
 		/* These addresses map low for PCI. */
-		if (mem->base > 0x410000000ull && !OCTEON_IS_OCTEON2())
+		if (e->addr > 0x410000000ull &&
+		    current_cpu_type() != CPU_CAVIUM_OCTEON2)
 			continue;
 
 		addr_size += mem->size;
@@ -233,7 +234,7 @@ void __init plat_swiotlb_setup(void)
 #endif
 #ifdef CONFIG_USB_OHCI_HCD_PLATFORM
 	/* OCTEON II ohci is only 32-bit. */
-	if (OCTEON_IS_OCTEON2() && max_addr >= 0x100000000ul)
+	if (current_cpu_type() == CPU_CAVIUM_OCTEON2 && max_addr >= 0x100000000ul)
 		swiotlbsize = 64 * (1<<20);
 #endif
 	swiotlb_nslabs = swiotlbsize >> IO_TLB_SHIFT;
