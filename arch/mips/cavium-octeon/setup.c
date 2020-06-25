@@ -44,7 +44,6 @@
 #include <asm/perf_event.h>
 
 #include <asm/octeon/octeon.h>
-#include <asm/octeon/octeon-boot-info.h>
 #include <asm/octeon/pci-octeon.h>
 #include <asm/octeon/cvmx-rst-defs.h>
 #include <asm/octeon/cvmx-sso-defs.h>
@@ -73,6 +72,7 @@ const bool octeon_should_swizzle_table[256] = {
 EXPORT_SYMBOL(octeon_should_swizzle_table);
 
 static unsigned long long max_memory = ULLONG_MAX;
+static const unsigned long MIN_MEM_32 = 256 << 20;
 static unsigned long long reserve_low_mem;
 
 /*
@@ -105,8 +105,8 @@ static void octeon_kexec_smp_down(void *ignored)
 		cpu_relax();
 
 	asm volatile (
-	"	sync						\n"
-	"	synci	($0)					\n");
+	"	sync\n"
+	"	synci	($0)\n");
 
 	kexec_reboot();
 }
@@ -325,8 +325,7 @@ void octeon_check_cpu_bist(void)
 	else
 		bist_val = read_octeon_c0_dcacheerr();
 	if (bist_val & 1)
-		pr_err("Core%d L1 Dcache parity error: "
-		       "CacheErr(dcache) = 0x%llx\n",
+		pr_err("Core%d L1 Dcache parity error: CacheErr(dcache) = 0x%llx\n",
 		       coreid, bist_val);
 
 	mask = 0xfc00000000000000ull;
@@ -759,16 +758,14 @@ void __init prom_init(void)
 	 * Allocate memory for RESERVE32 aligned on 2MB boundary. This
 	 * is in case we later use hugetlb entries with it.
 	 */
-	if ( CONFIG_CAVIUM_RESERVE32 > 0 ) {
+	if (CONFIG_CAVIUM_RESERVE32 > 0) {
 		int64_t addr = -1;
-		addr = 
-			cvmx_bootmem_phy_named_block_alloc(
+		addr = cvmx_bootmem_phy_named_block_alloc(
 				CONFIG_CAVIUM_RESERVE32 << 20,
 				0, 0, 2 << 20,
 				"CAVIUM_RESERVE32", 0);
 		if (addr < 0)
-			pr_err("Failed to allocate "
-				"CAVIUM_RESERVE32 memory area\n");
+			pr_err("Failed to allocate CAVIUM_RESERVE32 memory area\n");
 		else
 			octeon_reserve32_memory = addr;
 	}
@@ -883,7 +880,7 @@ append_arg:
 	octeon_setup_smp();
 
 #ifdef CONFIG_CAVIUM_GDB
-	cvmx_debug_init ();
+	cvmx_debug_init();
 #endif
 
 #ifdef CONFIG_PCI
@@ -1034,6 +1031,7 @@ void __init plat_mem_setup(void)
 	uint64_t mem_alloc_size;
 	uint64_t total = 0;
 	int64_t memory;
+	uint64_t limit_max, limit_min;
 	const struct cvmx_bootmem_named_block_desc *named_block;
 
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -1090,26 +1088,21 @@ void __init plat_mem_setup(void)
 	cvmx_bootmem_lock();
 	while (total < max_memory) {
 #if defined(CONFIG_64BIT) || defined(CONFIG_64BIT_PHYS_ADDR)
-		const uint64_t min_low_ram = 256 << 20; /* 256 MBytes */
-		uint64_t limit;
-		if (total < min_low_ram)
-			limit = (1ull << 32)-1;
+		if (total < MIN_MEM_32)
+			limit_max = (1ull << 32)-1;	/* 4GBytes */
 		else
-			limit = ~0ull;
+			limit_max = ~0ull;		/* unlimitted */
+#elif defined(CONFIG_HIGHMEM)
+		limit_max = (1ull << 31) - 1;	/* 4GBytes */
+#else
+		limit_max = (1ull << 29) - 1;	/* 512MBytes */
+#endif
+		limit_min = __pa_symbol(&__init_end);
 
 		memory = cvmx_bootmem_phy_alloc(mem_alloc_size,
-						__pa_symbol(&_end), limit,
-						0x100000,
-						CVMX_BOOTMEM_FLAG_NO_LOCKING);
-#elif defined(CONFIG_HIGHMEM)
-		memory = cvmx_bootmem_phy_alloc(mem_alloc_size, 0, 1ull << 31,
-						0x100000,
-						CVMX_BOOTMEM_FLAG_NO_LOCKING);
-#else
-		memory = cvmx_bootmem_phy_alloc(mem_alloc_size, 0, 512 << 20,
-						0x100000,
-						CVMX_BOOTMEM_FLAG_NO_LOCKING);
-#endif
+				limit_min, limit_max, 0x100000,
+				CVMX_BOOTMEM_FLAG_NO_LOCKING);
+
 		if (memory >= 0) {
 			u64 size = mem_alloc_size;
 
@@ -1150,8 +1143,7 @@ mem_alloc_done:
 		cvmx_bootmem_free_named("CAVIUM_RESERVE32");
 
 	if (total == 0)
-		panic("Unable to allocate memory from "
-		      "cvmx_bootmem_phy_alloc\n");
+		panic("Unable to allocate memory from cvmx_bootmem_phy_alloc\n");
 
 	/* Initialize QLM and also apply any erratas */
 	cvmx_qlm_init();
