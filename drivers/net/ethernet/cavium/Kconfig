@@ -83,6 +83,7 @@ config OCTEON_MGMT_ETHERNET
 	select PHYLIB
 	select MDIO_OCTEON
 	select OCTEON_ETHERNET_COMMON
+	select OCTEON_BGX_PORT
 	default y
 	help
 	  Enable the ethernet driver for the management
