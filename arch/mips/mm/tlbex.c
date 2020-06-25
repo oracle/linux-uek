@@ -116,23 +116,14 @@ static int use_lwx_insns(void)
 		return 0;
 	}
 }
-#if defined(CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE) && \
-    CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
 static bool scratchpad_available(void)
 {
 	return true;
 }
 static int scratchpad_offset(int i)
 {
-	/*
-	 * CVMSEG starts at address -32768 and extends for
-	 * CAVIUM_OCTEON_CVMSEG_SIZE 128 byte cache lines.
-	 *
-	 * FAST_ACCESS_THREAD_OFFSET is at the top.  TLB related work
-	 * down from there.
-	 */
-	i += 2;
-	return CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE * 128 - (8 * i) - 32768;
+	return CAVIUM_OCTEON_SCRATCH_OFFSET - (8 * i);
 }
 #else
 static bool scratchpad_available(void)

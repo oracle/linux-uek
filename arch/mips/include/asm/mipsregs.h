@@ -1149,11 +1149,11 @@
  * below), fast access is -8 (both from the top of the area).
  */
 #ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
-#define FAST_ACCESS_THREAD_OFFSET			\
-	(2 * 128 - 8 - 32768)
+#define FAST_ACCESS_THREAD_OFFSET (2 * 128 - 8 - 32768)
 #define FAST_ACCESS_THREAD_REGISTER			\
 	(*(unsigned long *)(FAST_ACCESS_THREAD_OFFSET))
 #endif
+#define CAVIUM_OCTEON_SCRATCH_OFFSET (2 * 128 - 16 - 32768)
 
 #ifndef __ASSEMBLY__
 
