@@ -75,6 +75,12 @@ EXPORT_SYMBOL(octeon_should_swizzle_table);
 static unsigned long long max_memory = ULLONG_MAX;
 static unsigned long long reserve_low_mem;
 
+/*
+ * modified in hernel-entry-init.h, must have an initial value to keep
+ * it from being clobbered when bss is zeroed.
+ */
+u32 octeon_cvmseg_lines = 2;
+
 DEFINE_SEMAPHORE(octeon_bootbus_sem);
 EXPORT_SYMBOL(octeon_bootbus_sem);
 
@@ -534,7 +540,6 @@ void octeon_user_io_init(void)
 
 	/* R/W If set, CVMSEG is available for loads/stores in
 	 * kernel/debug mode. */
-#if CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0
 	cvmmemctl.s.cvmsegenak = 1;
 	if (octeon_has_feature(OCTEON_FEATURE_PKO3)) {
 		/* Enable LMTDMA */
@@ -542,9 +547,6 @@ void octeon_user_io_init(void)
 		/* Scratch line to use for LMT operation */
 		cvmmemctl.s.lmtline = 2;
 	}
-#else
-	cvmmemctl.s.cvmsegenak = 0;
-#endif
 	/* R/W If set, CVMSEG is available for loads/stores in
 	 * supervisor mode. */
 	cvmmemctl.s.cvmsegenas = 0;
@@ -562,9 +564,9 @@ void octeon_user_io_init(void)
 
 	/* Setup of CVMSEG is done in kernel-entry-init.h */
 	if (smp_processor_id() == 0)
-		pr_notice("CVMSEG size: %d cache lines (%d bytes)\n",
-			  CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE,
-			  CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE * 128);
+		pr_notice("CVMSEG size: %u cache lines (%u bytes)\n",
+			  octeon_cvmseg_lines,
+			  octeon_cvmseg_lines * 128);
 
 	if (current_cpu_type() != CPU_CAVIUM_OCTEON3 ||
 	    OCTEON_IS_MODEL(OCTEON_CN70XX)) {

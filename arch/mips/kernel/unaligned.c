@@ -2324,23 +2324,25 @@ sigill:
 	    ("Unhandled kernel unaligned access or invalid instruction", regs);
 	force_sig(SIGILL);
 }
-
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
+#include <asm/octeon/octeon.h>
+#endif
 asmlinkage void do_ade(struct pt_regs *regs)
 {
 	enum ctx_state prev_state;
 	unsigned int __user *pc;
 	mm_segment_t seg;
-#if defined(CONFIG_CPU_CAVIUM_OCTEON) && (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0)
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
 	const unsigned long CVMSEG_BASE	= 0xffffffffffff8000ul;
 	const unsigned long CVMSEG_IO		= 0xffffffffffffa000ul;
 	const unsigned long CVMSEG_IO_END	= 0xffffffffffffc000ul;
-	u64 cvmmemctl			= __read_64bit_c0_register($11, 7);
-	unsigned long cvmseg_size	= (cvmmemctl & 0x3f) * 128;
+	u64 cvmmemctl;
+	unsigned long cvmseg_size	= octeon_cvmseg_lines * 128;
 #endif
 
 	prev_state = exception_enter();
 
-#if defined(CONFIG_CPU_CAVIUM_OCTEON) && (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0)
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
 	/*
 	 * Allows tasks to access CVMSEG addresses. These are special
 	 * addresses into the Octeon L1 Cache that can be used as fast
@@ -2359,19 +2361,17 @@ asmlinkage void do_ade(struct pt_regs *regs)
 		/* Enable userspace access to CVMSEG */
 		cvmmemctl |= 1 << 6;
 		__write_64bit_c0_register($11, 7, cvmmemctl);
-# ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
 		/*
 		 * Restore the processes CVMSEG data. Leave off the
-		 * last 8 bytes since the kernel stores the thread
-		 * pointer there.
+		 * second 128 bytes since they are reserved for kernel use.
 		 */
-		memcpy((void *)CVMSEG_BASE, current->thread.cvmseg.cvmseg,
-		       cvmseg_size - 8);
-# else
-		/* Restore the processes CVMSEG data */
-		memcpy((void *)CVMSEG_BASE, current->thread.cvmseg.cvmseg,
-		       cvmseg_size);
-# endif
+		if (octeon_cvmseg_lines > 0)
+			memcpy((void *)(CVMSEG_BASE + 0), current->thread.cvmseg.cvmseg[0],
+			       128);
+		if (octeon_cvmseg_lines > 2)
+			memcpy((void *)(CVMSEG_BASE + 256), current->thread.cvmseg.cvmseg[2],
+			       cvmseg_size - 256);
+
 		preempt_enable();
 		return;
 	}
