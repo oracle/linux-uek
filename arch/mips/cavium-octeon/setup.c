@@ -884,6 +884,21 @@ append_arg:
 	cvmx_debug_init ();
 #endif
 
+#ifdef CONFIG_PCI
+	if (octeon_has_feature(OCTEON_FEATURE_PCIE)) {
+		if (octeon_has_feature(OCTEON_FEATURE_NPEI))
+			octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_PCIE;
+		else
+			octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_PCIE2;
+	} else {
+		if (OCTEON_IS_MODEL(OCTEON_CN31XX) ||
+		    OCTEON_IS_MODEL(OCTEON_CN38XX_PASS2))
+			octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_SMALL;
+		else
+			octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_BIG;
+	}
+#endif
+
 	pr_info("Cavium Inc. SDK-" SDK_VERSION "\n");
 }
 
