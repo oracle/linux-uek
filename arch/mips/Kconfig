@@ -932,6 +932,8 @@ config CAVIUM_OCTEON_SOC
 	select SYS_SUPPORTS_SMP
 	select NR_CPUS_DEFAULT_64
 	select MIPS_NR_CPU_NR_MAP_1024
+	select SYS_SUPPORTS_NUMA if SMP
+	select SPARSE_IRQ if NUMA
 	select BUILTIN_DTB
 	select MTD_COMPLEX_MAPPINGS
 	select SWIOTLB
@@ -2721,6 +2723,7 @@ config RANDOMIZE_BASE_MAX_OFFSET
 
 config NODES_SHIFT
 	int
+	default "1" if CAVIUM_OCTEON_SOC
 	default "6"
 	depends on NEED_MULTIPLE_NODES
 

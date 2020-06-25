@@ -331,6 +331,7 @@ static void octeon_smp_finish(void)
 	octeon_user_io_init();
 	per_cpu(cpu_state, smp_processor_id()) = CPU_ONLINE;
 	mb();
+	octeon_numa_cpu_online();
 
 	/* to generate the first CPU timer interrupt */
 	write_c0_compare(read_c0_count() + mips_hpt_frequency / HZ);
