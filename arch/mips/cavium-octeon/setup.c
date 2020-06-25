@@ -304,16 +304,6 @@ static int octeon_get_boot_uart(void)
 }
 
 /**
- * Get the coremask Linux was booted on.
- *
- * Returns Core mask
- */
-int octeon_get_boot_coremask(void)
-{
-	return octeon_boot_desc_ptr->core_mask;
-}
-
-/**
  * Check the hardware BIST results for a CPU
  */
 void octeon_check_cpu_bist(void)
@@ -811,7 +801,7 @@ void __init prom_init(void)
 	if (arg) {
 		max_memory = memparse(arg + 4, &p);
 		if (max_memory == 0)
-			max_memory = 32ull << 30;
+			max_memory = 2ull << 49;
 		if (*p == '@')
 			reserve_low_mem = memparse(p + 1, &p);
 	}
@@ -843,7 +833,7 @@ void __init prom_init(void)
 		    (strncmp(arg, "mem=", 4) == 0)) {
 			max_memory = memparse(arg + 4, &p);
 			if (max_memory == 0)
-				max_memory = 32ull << 30;
+				max_memory = 2ull << 49;
 			if (*p == '@')
 				reserve_low_mem = memparse(p + 1, &p);
 		} else if (strncmp(arg, "rd_name=", 8) == 0) {
@@ -1038,11 +1028,22 @@ void __init *plat_get_fdt(void)
 
 void __init plat_mem_setup(void)
 {
-	uint64_t mem_alloc_size;
-	uint64_t total = 0;
-	int64_t memory;
-	uint64_t limit_max, limit_min;
+	u64 mem_alloc_size = 4 << 20;
+	u64 mem_32_size;
+	u64 total = 0;
+	s64 memory;
+	u64 limit_max, limit_min;
 	const struct cvmx_bootmem_named_block_desc *named_block;
+	u64 system_limit = cvmx_bootmem_available_mem(mem_alloc_size);
+
+#ifndef CONFIG_NUMA
+	int last_core;
+	struct cvmx_sysinfo *sysinfo = cvmx_sysinfo_get();
+
+	last_core = cvmx_coremask_get_last_core(&sysinfo->core_mask);
+	if (last_core >= CVMX_COREMASK_MAX_CORES_PER_NODE)
+		panic("Must build kernel with CONFIG_NUMA for multi-node system.");
+#endif
 
 #ifdef CONFIG_BLK_DEV_INITRD
 	if (rd_name[0]) {
@@ -1061,8 +1062,13 @@ void __init plat_mem_setup(void)
 #endif
 
 	if (named_memory_blocks[0][0]) {
+		phys_addr_t kernel_begin, kernel_end;
+		phys_addr_t block_begin, block_size;
 		/* Memory from named blocks only */
 		int i;
+
+		kernel_begin = PFN_DOWN(__pa_symbol(&_text)) << PAGE_SHIFT;
+		kernel_end = PFN_UP(__pa_symbol(&_end)) << PAGE_SHIFT;
 
 		for (i = 0;
 		     named_memory_blocks[i][0] && i < ARRAY_SIZE(named_memory_blocks);
@@ -1077,30 +1083,45 @@ void __init plat_mem_setup(void)
 				named_memory_blocks[i],
 				(unsigned long)named_block->size,
 				(unsigned long)named_block->base_addr);
-			add_memory_region(named_block->base_addr, named_block->size,
-					  BOOT_MEM_RAM);
-			total += named_block->size;
+		
+			block_begin = named_block->base_addr;
+			block_size = named_block->size;
+			if (kernel_begin <= block_begin && kernel_end >= block_begin + block_size)
+				continue;
+
+			if (kernel_begin > block_begin && kernel_begin < block_begin + block_size) {
+				u64 sz = kernel_begin - named_block->base_addr;
+				add_memory_region(named_block->base_addr, sz, BOOT_MEM_RAM);
+				total += sz;
+				if (block_begin + block_size <= kernel_end)
+					continue;
+				block_size = block_begin + block_size - kernel_end;
+				block_begin = kernel_end;
+			}
+			if (kernel_end > block_begin && kernel_end < block_begin + block_size) {
+				block_size = block_begin + block_size - kernel_end;
+				block_begin = kernel_end;
+			}
+			add_memory_region(block_begin, block_size, BOOT_MEM_RAM);
+			total += block_size;
 		}
 		goto mem_alloc_done;
 	}
 
-	/*
-	 * The Mips memory init uses the first memory location for
-	 * some memory vectors. When SPARSEMEM is in use, it doesn't
-	 * verify that the size is big enough for the final
-	 * vectors. Making the smallest chuck 4MB seems to be enough
-	 * to consistently work.
-	 */
-	mem_alloc_size = 4 << 20;
 	if (mem_alloc_size > max_memory)
 		mem_alloc_size = max_memory;
 
+	if (system_limit > max_memory)
+		system_limit = max_memory;
+	/* Try to get 256MB (or more) of 32-bit memory */
+	mem_32_size = system_limit <= (16ull * (2 << 30)) ? 256 * (1 << 20) : 512 * (1 << 20);
+
 	cvmx_bootmem_lock();
-	limit_min = __pa_symbol(&__init_end);
+	limit_max = 0xffffffffull;
+	limit_min = 0;
 	while (total < max_memory) {
-		if (total < MIN_MEM_32)
-			limit_max = (1ull << 32)-1;	/* 4GBytes */
-		else
+
+		if (total >= mem_32_size)
 			limit_max = ~0ull;		/* unlimitted */
 
 		memory = cvmx_bootmem_phy_alloc(mem_alloc_size,
@@ -1130,7 +1151,10 @@ void __init plat_mem_setup(void)
 				add_memory_region(memory, size, BOOT_MEM_RAM);
 			total += mem_alloc_size;
 		} else {
-			break;
+			if (limit_max < ~0ull)
+				limit_max = ~0ull;		/* unlimitted */
+			else
+				break;
 		}
 	}
 	cvmx_bootmem_unlock();
@@ -1153,6 +1177,7 @@ mem_alloc_done:
 }
 
 struct node_data __node_data[4];
+EXPORT_SYMBOL(__node_data);
 
 void __init mach_bootmem_init(void)
 {
