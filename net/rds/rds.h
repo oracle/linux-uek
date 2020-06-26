@@ -902,6 +902,19 @@ static inline struct cgroup *rds_rs_to_cgroup(struct rds_sock *rs)
 	return cgrp;
 }
 
+/* Used by tracepoints to retrieve netns inode number associated with sock */
+static inline u64 rds_rs_to_ns_inum(struct rds_sock *rs)
+{
+	struct sock *sk;
+
+	if (rs) {
+		sk = rds_rs_to_sk(rs);
+		if (sk)
+			return sk->sk_net.net->ns.inum;
+	}
+	return 0;
+}
+
 /*
  * The stack assigns sk_sndbuf and sk_rcvbuf to twice the specified value
  * to account for overhead.  We don't account for overhead, we just apply
