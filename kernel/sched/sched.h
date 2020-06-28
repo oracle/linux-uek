@@ -362,10 +362,6 @@ struct cfs_bandwidth {
 struct task_group {
 	struct cgroup_subsys_state css;
 
-#ifdef CONFIG_SCHED_CORE
-	int			tagged;
-#endif
-
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* schedulable entities of this group on each CPU */
 	struct sched_entity	**se;
@@ -412,7 +408,11 @@ struct task_group {
 	struct uclamp_se	uclamp[UCLAMP_CNT];
 #endif
 
+#ifdef CONFIG_SCHED_CORE
+	UEK_KABI_USE(1, int tagged)
+#else
 	UEK_KABI_RESERVE(1)
+#endif
 	UEK_KABI_RESERVE(2)
 };
 
@@ -867,7 +867,11 @@ struct uclamp_rq {
  */
 struct rq {
 	/* runqueue lock: */
-	raw_spinlock_t		__lock;
+#ifdef CONFIG_SCHED_CORE
+	UEK_KABI_REPLACE(raw_spinlock_t	lock, raw_spinlock_t __lock)
+#else
+	raw_spinlock_t		lock;
+#endif
 
 	/*
 	 * nr_running and cpu_load should be in the same cacheline because
@@ -1021,6 +1025,11 @@ struct rq {
 	struct cpuidle_state	*idle_state;
 #endif
  
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+
+#ifndef __GENKSYMS__
 #ifdef CONFIG_SCHED_CORE
 	/* per rq */
 	struct rq		*core;
@@ -1035,9 +1044,7 @@ struct rq {
 	unsigned int		core_pick_seq;
 	unsigned long		core_cookie;
 #endif
-
-	UEK_KABI_RESERVE(1)
-	UEK_KABI_RESERVE(2)
+#endif
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -1893,9 +1900,6 @@ struct sched_class {
 
 #ifdef CONFIG_SMP
 	int (*balance)(struct rq *rq, struct task_struct *prev, struct rq_flags *rf);
-
-	struct task_struct * (*pick_task)(struct rq *rq);
-
 	int  (*select_task_rq)(struct task_struct *p, int task_cpu, int sd_flag, int flags);
 	void (*migrate_task_rq)(struct task_struct *p, int new_cpu);
 
@@ -1906,10 +1910,6 @@ struct sched_class {
 
 	void (*rq_online)(struct rq *rq);
 	void (*rq_offline)(struct rq *rq);
-#ifdef CONFIG_SCHED_CORE
-	void (*core_sched_activate)(struct rq *rq);
-	void (*core_sched_deactivate)(struct rq *rq);
-#endif
 #endif
 
 	void (*task_tick)(struct rq *rq, struct task_struct *p, int queued);
@@ -1937,9 +1937,21 @@ struct sched_class {
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	void (*task_change_group)(struct task_struct *p, int type);
 #endif
- 
+
+#if defined(CONFIG_SCHED_CORE) && defined(CONFIG_SMP)
+	UEK_KABI_USE(1, void (*core_sched_activate)(struct rq *rq))
+	UEK_KABI_USE(2, void (*core_sched_deactivate)(struct rq *rq))
+#else
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
+#endif
+
+#ifndef __GENKSYMS__
+#ifdef CONFIG_SCHED_CORE
+	struct task_struct * (*pick_task)(struct rq *rq);
+#endif
+#endif
+
 };
 
 static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
