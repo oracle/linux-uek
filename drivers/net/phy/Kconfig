@@ -456,6 +456,17 @@ config NXP_TJA11XX_PHY
 	---help---
 	  Currently supports the NXP TJA1100 and TJA1101 PHY.
 
+config QCA833X_PHY
+	tristate "Qualcomm/Atheros QCA833X PHYs"
+	depends on CAVIUM_OCTEON_SOC
+	---help---
+	  Presents a Qualcomm/Atheros QCA8334/5/6/7 multi-port PHY as a
+	  single SGMII device. Does not enable advanced features, such as
+	  packet header reporting ingress port / steering egress port,
+	  or NAT.
+	  Link-state transitions require PSC cycling to undo hang,
+	  which is only implemented for CAVIUM_OCTEON_SOC.
+
 config QSEMI_PHY
 	tristate "Quality Semiconductor PHYs"
 	---help---
