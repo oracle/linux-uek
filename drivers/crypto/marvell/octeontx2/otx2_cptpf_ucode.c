@@ -223,9 +223,9 @@ static int is_mem_zero(const char *ptr, int size)
 	return 1;
 }
 
-static int cpt_set_ucode_base(struct otx2_cpt_eng_grp_info *eng_grp, void *obj)
+static int cptx_set_ucode_base(struct otx2_cpt_eng_grp_info *eng_grp,
+			       struct otx2_cptpf_dev *cptpf)
 {
-	struct otx2_cptpf_dev *cptpf = obj;
 	struct otx2_cpt_engs_rsvd *engs;
 	dma_addr_t dma_addr;
 	int i, bit, ret;
@@ -259,18 +259,30 @@ static int cpt_set_ucode_base(struct otx2_cpt_eng_grp_info *eng_grp, void *obj)
 	return 0;
 }
 
-static int cpt_detach_and_disable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
-					void *obj)
+static int cpt_set_ucode_base(struct otx2_cpt_eng_grp_info *eng_grp, void *obj)
 {
 	struct otx2_cptpf_dev *cptpf = obj;
-	struct otx2_cpt_bitmap bmap;
-	int i, timeout = 10;
-	int busy, ret;
-	u64 reg;
+	int ret;
 
-	bmap = get_cores_bmap(&cptpf->pdev->dev, eng_grp);
-	if (!bmap.size)
-		return -EINVAL;
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_set_ucode_base(eng_grp, cptpf);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_set_ucode_base(eng_grp, cptpf);
+
+	return ret;
+}
+
+static int cptx_detach_and_disable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
+					 struct otx2_cptpf_dev *cptpf,
+					 struct otx2_cpt_bitmap bmap)
+{
+	int i, busy, ret;
+	int timeout = 10;
+	u64 reg;
 
 	/* Detach the cores from group */
 	for_each_set_bit(i, bmap.bits, bmap.size) {
@@ -323,17 +335,35 @@ static int cpt_detach_and_disable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
 	return 0;
 }
 
-static int cpt_attach_and_enable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
-				       void *obj)
+static int cpt_detach_and_disable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
+					void *obj)
 {
 	struct otx2_cptpf_dev *cptpf = obj;
 	struct otx2_cpt_bitmap bmap;
-	int i, ret;
-	u64 reg;
+	int ret;
 
 	bmap = get_cores_bmap(&cptpf->pdev->dev, eng_grp);
 	if (!bmap.size)
 		return -EINVAL;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_detach_and_disable_cores(eng_grp, cptpf, bmap);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_detach_and_disable_cores(eng_grp, cptpf, bmap);
+
+	return ret;
+}
+
+static int cptx_attach_and_enable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
+					struct otx2_cptpf_dev *cptpf,
+					struct otx2_cpt_bitmap bmap)
+{
+	int i, ret;
+	u64 reg;
 
 	/* Attach the cores to the group */
 	for_each_set_bit(i, bmap.bits, bmap.size) {
@@ -361,6 +391,29 @@ static int cpt_attach_and_enable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
 			return ret;
 	}
 	ret = otx2_cpt_send_af_reg_requests(cptpf->pdev);
+
+	return ret;
+}
+
+static int cpt_attach_and_enable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
+				       void *obj)
+{
+	struct otx2_cptpf_dev *cptpf = obj;
+	struct otx2_cpt_bitmap bmap;
+	int ret;
+
+	bmap = get_cores_bmap(&cptpf->pdev->dev, eng_grp);
+	if (!bmap.size)
+		return -EINVAL;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_attach_and_enable_cores(eng_grp, cptpf, bmap);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_attach_and_enable_cores(eng_grp, cptpf, bmap);
 
 	return ret;
 }
@@ -2024,15 +2077,11 @@ void otx2_cpt_set_eng_grps_is_rdonly(struct otx2_cpt_eng_grps *eng_grps,
 	mutex_unlock(&eng_grps->lock);
 }
 
-int otx2_cpt_disable_all_cores(struct otx2_cptpf_dev *cptpf)
+static int cptx_disable_all_cores(struct otx2_cptpf_dev *cptpf, int total_cores)
 {
-	int i, ret, busy, total_cores;
-	int timeout = 10;
+	int timeout = 10, ret;
+	int i, busy;
 	u64 reg;
-
-	total_cores = cptpf->eng_grps.avail.max_se_cnt +
-		      cptpf->eng_grps.avail.max_ie_cnt +
-		      cptpf->eng_grps.avail.max_ae_cnt;
 
 	/* Disengage the cores from groups */
 	for (i = 0; i < total_cores; i++) {
@@ -2075,6 +2124,26 @@ int otx2_cpt_disable_all_cores(struct otx2_cptpf_dev *cptpf)
 			return ret;
 	}
 	ret = otx2_cpt_send_af_reg_requests(cptpf->pdev);
+
+	return ret;
+}
+
+int otx2_cpt_disable_all_cores(struct otx2_cptpf_dev *cptpf)
+{
+	int total_cores, ret;
+
+	total_cores = cptpf->eng_grps.avail.max_se_cnt +
+		      cptpf->eng_grps.avail.max_ie_cnt +
+		      cptpf->eng_grps.avail.max_ae_cnt;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_disable_all_cores(cptpf, total_cores);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_disable_all_cores(cptpf, total_cores);
 
 	return ret;
 }
