@@ -158,6 +158,7 @@ int otx2_cptpf_lf_init(struct otx2_cptpf_dev *cptpf, u8 eng_grp_mask, int pri,
 	lfs->reg_base = cptpf->reg_base;
 	lfs->lfs_num = lfs_num;
 	lfs->pdev = pdev;
+	lfs->blkaddr = cptpf->blkaddr;
 
 	for (slot = 0; slot < lfs->lfs_num; slot++) {
 		lfs->lf[slot].lfs = lfs;
@@ -166,7 +167,7 @@ int otx2_cptpf_lf_init(struct otx2_cptpf_dev *cptpf, u8 eng_grp_mask, int pri,
 			OTX2_CPT_RVU_FUNC_ADDR_S(BLKADDR_LMT, slot,
 			OTX2_CPT_LMT_LF_LMTLINEX(0));
 		lfs->lf[slot].ioreg = lfs->reg_base +
-			OTX2_CPT_RVU_FUNC_ADDR_S(BLKADDR_CPT0, slot,
+			OTX2_CPT_RVU_FUNC_ADDR_S(lfs->blkaddr, slot,
 			OTX2_CPT_LF_NQX(0));
 	}
 	ret = otx2_cpt_attach_rscrs_msg(pdev);
@@ -366,7 +367,7 @@ static int rx_inline_ipsec_lf_enable(struct otx2_cptpf_dev *cptpf,
 			"Engine group for inline ipsec is not available\n");
 		return -ENOENT;
 	}
-
+	cptpf->blkaddr = BLKADDR_CPT0;
 	ret = otx2_cptpf_lf_init(cptpf, 1 << egrp, OTX2_CPT_QUEUE_HI_PRIO, 1);
 	if (ret)
 		return ret;

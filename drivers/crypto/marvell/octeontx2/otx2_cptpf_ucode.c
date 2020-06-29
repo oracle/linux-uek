@@ -1909,6 +1909,7 @@ int otx2_cpt_discover_eng_capabilities(void *obj)
 		return 0;
 
 	pdev = cptpf->pdev;
+	cptpf->blkaddr = BLKADDR_CPT0;
 	ret = create_eng_caps_discovery_grps(pdev, &cptpf->eng_grps);
 	if (ret)
 		goto delete_grps;
