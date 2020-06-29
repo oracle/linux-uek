@@ -90,6 +90,7 @@ static int bcm87xx_get_features(struct phy_device *phydev)
 
 static int bcm87xx_config_init(struct phy_device *phydev)
 {
+	phydev->state = PHY_CHANGELINK;
 	return bcm87xx_of_reg_init(phydev);
 }
 
