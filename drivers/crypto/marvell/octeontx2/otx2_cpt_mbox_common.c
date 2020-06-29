@@ -166,6 +166,7 @@ int otx2_cpt_attach_rscrs_msg(struct pci_dev *pdev)
 	req->hdr.pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev),
 					       get_vf_id(pdev));
 	req->cptlfs = lfs->lfs_num;
+	req->cpt_blkaddr = lfs->blkaddr;
 	ret = otx2_cpt_send_mbox_msg(pdev);
 	if (ret)
 		return ret;

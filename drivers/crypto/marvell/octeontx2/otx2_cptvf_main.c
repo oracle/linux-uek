@@ -14,6 +14,10 @@
 #define OTX2_CPT_DRV_NAME "octeontx2-cptvf"
 #define OTX2_CPT_DRV_VERSION "1.0"
 
+static unsigned int cpt_block_num;
+module_param(cpt_block_num, uint, 0644);
+MODULE_PARM_DESC(cpt_block_num, "cpt block number (0=CPT0 1=CPT1, default 0)");
+
 static void cptvf_enable_pfvf_mbox_intrs(struct otx2_cptvf_dev *cptvf)
 {
 	/* Clear interrupt if any */
@@ -199,6 +203,8 @@ static int otx2_cptvf_probe(struct pci_dev *pdev,
 
 	kcrypto_lfs = cptvf->lfs.kcrypto_limits ? cptvf->lfs.kcrypto_limits :
 		      num_online_cpus();
+
+	cptvf->blkaddr = (cpt_block_num == 0) ? BLKADDR_CPT0 : BLKADDR_CPT1;
 	/* Initialize CPT LFs */
 	ret = otx2_cptvf_lf_init(pdev, cptvf->reg_base, &cptvf->lfs,
 				 kcrypto_lfs);

@@ -110,6 +110,10 @@ void otx2_cptvf_pfvf_mbox_handler(struct work_struct *work)
 			for (j = 0; j < rsp_msix->cptlfs; j++)
 				cptvf->lfs.lf[j].msix_offset =
 						rsp_msix->cptlf_msixoff[j];
+
+			for (j = 0; j < rsp_msix->cpt1_lfs; j++)
+				cptvf->lfs.lf[j].msix_offset =
+						rsp_msix->cpt1_lf_msixoff[j];
 			break;
 
 		case MBOX_MSG_CPT_RD_WR_REGISTER:
