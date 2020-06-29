@@ -1628,8 +1628,8 @@ err:
 	return r;
 }
 
-static int __init octeon_irq_init_gpio(
-	struct device_node *gpio_node, struct device_node *parent)
+int octeon_irq_init_gpio(struct device_node *gpio_node,
+			 struct device_node *parent)
 {
 	struct octeon_irq_gpio_domain_data *gpiod;
 	u32 interrupt_cells;
@@ -3269,8 +3269,8 @@ static irq_hw_number_t octeon_irq_ciu3_intsn2hw(struct irq_domain *d,
 	return intsn - gpiod->base_hwirq;
 }
 
-static int __init octeon_irq_init_gpio78(struct device_node *gpio_node,
-					 struct device_node *parent)
+int octeon_irq_init_gpio78(struct device_node *gpio_node,
+			   struct device_node *parent)
 {
 	struct octeon_irq_gpio_domain_data *gpiod;
 	unsigned int base_hwirq;
@@ -3310,10 +3310,8 @@ static int __init octeon_irq_init_gpio78(struct device_node *gpio_node,
 
 static struct of_device_id ciu_types[] __initdata = {
 	{.compatible = "cavium,octeon-3860-ciu", .data = octeon_irq_init_ciu},
-	{.compatible = "cavium,octeon-3860-gpio", .data = octeon_irq_init_gpio},
 	{.compatible = "cavium,octeon-6880-ciu2", .data = octeon_irq_init_ciu2},
 	{.compatible = "cavium,octeon-7890-ciu3", .data = octeon_irq_init_ciu3},
-	{.compatible = "cavium,octeon-7890-gpio", .data = octeon_irq_init_gpio78},
 	{.compatible = "cavium,octeon-7130-cib", .data = octeon_irq_init_cib},
 	{}
 };
