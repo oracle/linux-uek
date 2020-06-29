@@ -74,6 +74,9 @@ struct otx2_cptpf_dev {
 	u8 crypto_eng_grp;	/* Symmetric crypto engine group number */
 	u8 sso_pf_func_ovrd;	/* SSO PF_FUNC override bit */
 	u8 kvf_limits;		/* Kernel VF limits */
+	/* BLKADDR_CPT0/BLKADDR_CPT1 or 0 for BLKADDR_CPT0 */
+	u8 blkaddr;
+	bool cpt1_implemented;
 };
 
 irqreturn_t otx2_cptpf_afpf_mbox_intr(int irq, void *arg);

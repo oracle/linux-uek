@@ -265,7 +265,7 @@ static void cptpf_vfpf_mbox_destroy(struct otx2_cptpf_dev *cptpf)
 	otx2_mbox_destroy(&cptpf->vfpf_mbox);
 }
 
-static int cptpf_device_reset(struct otx2_cptpf_dev *cptpf)
+static int cptx_device_reset(struct otx2_cptpf_dev *cptpf)
 {
 	int timeout = 10, ret;
 	u64 reg;
@@ -291,11 +291,39 @@ static int cptpf_device_reset(struct otx2_cptpf_dev *cptpf)
 	return ret;
 }
 
+static int cptpf_device_reset(struct otx2_cptpf_dev *cptpf)
+{
+	int ret = 0;
+
+	if (cptpf->cpt1_implemented) {
+		cptpf->blkaddr = BLKADDR_CPT1;
+		ret = cptx_device_reset(cptpf);
+		if (ret)
+			return ret;
+	}
+	cptpf->blkaddr = BLKADDR_CPT0;
+	ret = cptx_device_reset(cptpf);
+
+	return ret;
+}
+
+static void cpt_check_block_implemented(struct otx2_cptpf_dev *cptpf)
+{
+	u64 cfg;
+
+	cfg = otx2_cpt_read64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			      RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_CPT1));
+	if (cfg & BIT_ULL(11))
+		cptpf->cpt1_implemented = true;
+}
+
 static int cptpf_device_init(struct otx2_cptpf_dev *cptpf)
 {
 	union otx2_cptx_af_constants1 af_cnsts1 = {0};
 	int ret = 0;
 
+	/* check if 'implemented' bit is set for block BLKADDR_CPT1 */
+	cpt_check_block_implemented(cptpf);
 	/* Reset the CPT PF device */
 	ret = cptpf_device_reset(cptpf);
 	if (ret)

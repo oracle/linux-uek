@@ -48,6 +48,20 @@ static inline int get_vf_id(struct pci_dev *pdev)
 	return 0;
 }
 
+static inline u8 cpt_get_blkaddr(struct pci_dev *pdev)
+{
+	struct otx2_cptpf_dev *cptpf;
+	struct otx2_cptvf_dev *cptvf;
+
+	if (pdev->is_physfn) {
+		cptpf = (struct otx2_cptpf_dev *) pci_get_drvdata(pdev);
+		return cptpf->blkaddr;
+	}
+
+	cptvf = (struct otx2_cptvf_dev *) pci_get_drvdata(pdev);
+	return cptvf->blkaddr;
+}
+
 char *otx2_cpt_get_mbox_opcode_str(int msg_opcode)
 {
 	char *str = "Unknown";
@@ -147,7 +161,6 @@ int otx2_cpt_attach_rscrs_msg(struct pci_dev *pdev)
 		return -EFAULT;
 	}
 
-	memset(req, 0, sizeof(*req));
 	req->hdr.id = MBOX_MSG_ATTACH_RESOURCES;
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	req->hdr.pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev),
@@ -178,7 +191,6 @@ int otx2_cpt_detach_rsrcs_msg(struct pci_dev *pdev)
 		return -EFAULT;
 	}
 
-	memset(req, 0, sizeof(*req));
 	req->hdr.id = MBOX_MSG_DETACH_RESOURCES;
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	req->hdr.pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev),
@@ -207,7 +219,6 @@ int otx2_cpt_msix_offset_msg(struct pci_dev *pdev)
 		return -EFAULT;
 	}
 
-	memset(req, 0, sizeof(*req));
 	req->id = MBOX_MSG_MSIX_OFFSET;
 	req->sig = OTX2_MBOX_REQ_SIG;
 	req->pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev), get_vf_id(pdev));
@@ -251,6 +262,7 @@ int otx2_cpt_add_read_af_reg(struct pci_dev *pdev, u64 reg, u64 *val)
 	reg_msg->is_write = 0;
 	reg_msg->reg_offset = reg;
 	reg_msg->ret_val = val;
+	reg_msg->blkaddr = cpt_get_blkaddr(pdev);
 
 	return 0;
 }
@@ -275,6 +287,7 @@ int otx2_cpt_add_write_af_reg(struct pci_dev *pdev, u64 reg, u64 val)
 	reg_msg->is_write = 1;
 	reg_msg->reg_offset = reg;
 	reg_msg->val = val;
+	reg_msg->blkaddr = cpt_get_blkaddr(pdev);
 
 	return 0;
 }
