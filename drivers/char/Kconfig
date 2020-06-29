@@ -537,6 +537,19 @@ config ADI
 	  and SSM (Silicon Secured Memory).  Intended consumers of this
 	  driver include crash and makedumpfile.
 
+config OCTEON_OCLA
+	tristate "Octeon On Chip Logic Analizer"
+	depends on CAVIUM_OCTEON_SOC
+	default n
+	---help---
+	  This driver provides kernel-side support for the On Chip Logic
+	  Analizer found on Cavium Networks CN70XX and CN78XX SOCs.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called octeon-ocla.
+
+	  If unsure, say N.
+
 config RANDOM_TRUST_CPU
 	bool "Initialize RNG using CPU RNG instructions"
 	default y
