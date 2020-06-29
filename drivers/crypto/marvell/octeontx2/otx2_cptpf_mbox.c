@@ -17,7 +17,7 @@
  * CPT PF driver version, It will be incremented by 1 for every feature
  * addition in CPT PF driver.
  */
-#define OTX2_CPT_PF_DRV_VERSION 0x2
+#define OTX2_CPT_PF_DRV_VERSION 0x3
 
 static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
 {
