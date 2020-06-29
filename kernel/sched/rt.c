@@ -2419,7 +2419,9 @@ const struct sched_class rt_sched_class = {
 
 #ifdef CONFIG_SMP
 	.balance		= balance_rt,
+#ifdef CONFIG_SCHED_CORE
 	.pick_task		= pick_task_rt,
+#endif
 	.select_task_rq		= select_task_rq_rt,
 	.set_cpus_allowed       = set_cpus_allowed_common,
 	.rq_online              = rq_online_rt,

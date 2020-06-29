@@ -7180,7 +7180,9 @@ int sched_cpu_activate(unsigned int cpu)
 	if (cpumask_weight(cpu_smt_mask(cpu)) == 2) {
 		static_branch_inc_cpuslocked(&sched_smt_present);
 	}
+#ifdef CONFIG_SCHED_CORE
 	core_sched_cpu_update(cpu, CPU_ACTIVATE);
+#endif
 #endif
 	set_cpu_active(cpu, true);
 
@@ -7230,7 +7232,9 @@ int sched_cpu_deactivate(unsigned int cpu)
 		static_branch_dec_cpuslocked(&sched_smt_present);
 
 	}
+#ifdef CONFIG_SCHED_CORE
 	core_sched_cpu_update(cpu, CPU_DEACTIVATE);
+#endif
 #endif
 
 	if (!sched_smp_initialized)
@@ -7437,7 +7441,11 @@ void __init sched_init(void)
 
 		per_cpu(next_cpu, i) = -1;
 		rq = cpu_rq(i);
+#ifdef CONFIG_SCHED_CORE
 		raw_spin_lock_init(&rq->__lock);
+#else
+		raw_spin_lock_init(&rq->lock);
+#endif
 		rq->nr_running = 0;
 		rq->calc_load_active = 0;
 		rq->calc_load_update = jiffies + LOAD_FREQ;
@@ -7982,12 +7990,16 @@ static void cpu_cgroup_fork(struct task_struct *task)
 	rq = task_rq_lock(task, &rf);
 
 	update_rq_clock(rq);
+#ifdef CONFIG_SCHED_CORE
 	if (sched_core_enqueued(task))
 		sched_core_dequeue(rq, task);
+#endif
 	sched_change_group(task, TASK_SET_GROUP);
+#ifdef CONFIG_SCHED_CORE
 	if (sched_core_enabled(rq) && task_on_rq_queued(task) &&
 	    task->core_cookie)
 		sched_core_enqueue(rq, task);
+#endif
 
 	task_rq_unlock(rq, task, &rf);
 }

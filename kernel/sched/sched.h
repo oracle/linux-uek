@@ -1131,7 +1131,7 @@ static inline bool sched_core_enabled(struct rq *rq)
 
 static inline raw_spinlock_t *rq_lockp(struct rq *rq)
 {
-	return &rq->__lock;
+	return &rq->lock;
 }
 
 static inline void queue_core_balance(struct rq *rq)

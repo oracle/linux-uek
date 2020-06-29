@@ -140,7 +140,9 @@ const struct sched_class stop_sched_class = {
 
 #ifdef CONFIG_SMP
 	.balance		= balance_stop,
+#ifdef CONFIG_SCHED_CORE
 	.pick_task		= pick_task_stop,
+#endif
 	.select_task_rq		= select_task_rq_stop,
 	.set_cpus_allowed	= set_cpus_allowed_common,
 #endif
