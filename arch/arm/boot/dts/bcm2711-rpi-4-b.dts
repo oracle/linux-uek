@@ -216,6 +216,14 @@
 	};
 };
 
+&gpio {
+	/* single CS0 SPI, leave out CS1 */
+	spi0_gpio8: spi0_gpio8 {
+		brcm,pins = <8 9 10 11>;
+		brcm,function = <BCM2835_FSEL_ALT0>;
+	};
+};
+
 /* uart1 is mapped to the pin header */
 &uart1 {
 	pinctrl-names = "default";
@@ -225,4 +233,52 @@
 
 &vchiq {
 	interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>;
+};
+
+/* leave uart2 disabled, conflicts with i2c */
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2_gpio0>;
+	status = "disabled";
+};
+
+/* uart3 with hw flow-control */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart3_gpio4 &uart3_ctsrts_gpio6>;
+	status = "disabled";
+};
+
+/* leave uart4 disabled, conflicts with spi0 */
+&uart4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart4_gpio8>;
+	status = "disabled";
+};
+
+/* enable only TX/RX.  CTS/RTS pins conflict with uart0/uart1 on GPIO14,15 */
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart5_gpio12>;
+	status = "disabled";
+};
+
+/* select single CS0 SPI.  CS1 conflicts with UART3 RTS */
+&spi {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_gpio8>;
+	status = "okay";
+};
+
+&firmware {
+	ts: touchscreen {
+	    compatible = "raspberrypi,firmware-ts";
+	    touchscreen-size-x = <800>;
+	    touchscreen-size-y = <480>;
+	};
+
+	rpi_backlight: rpi_backlight {
+	    compatible = "raspberrypi,rpi-backlight";
+	    status = "okay";
+	};
 };
