@@ -2403,6 +2403,13 @@ relock:
 
 	/* Has this task already been marked for death? */
 	if (signal_group_exit(signal)) {
+		DTRACE_PROC(signal__handle,
+			    int, signal->group_exit_code,
+			    siginfo_t *, ksig->ka.sa.sa_handler != SIG_DFL
+						? NULL
+						: &ksig->info,
+			    void (*)(void), ksig->ka.sa.sa_handler);
+
 		ksig->info.si_signo = signr = SIGKILL;
 		sigdelset(&current->pending.signal, SIGKILL);
 		trace_signal_deliver(SIGKILL, SEND_SIG_NOINFO,
