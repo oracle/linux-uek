@@ -5,6 +5,7 @@
  * Copyright (c) 2018 Cavium, Inc.
  */
 #include <linux/types.h>
+#include <linux/err.h>
 #include <linux/bcd.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
