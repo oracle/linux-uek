@@ -142,7 +142,33 @@ extern const char * const x86_bug_flags[NBUGINTS*32];
 
 #define boot_cpu_has(bit)	cpu_has(&boot_cpu_data, bit)
 
-#define set_cpu_cap(c, bit)	set_bit(bit, (unsigned long *)((c)->x86_capability))
+#define PTR_ALIGN_DOWN(p, a)	((typeof(p))ALIGN_DOWN((unsigned long)(p), (a)))
+
+static __inline__ void
+set_clear_bit_kabi_workaround(int nr, unsigned long * addr, bool is_set_bit)
+{
+	unsigned long * ptr = PTR_ALIGN_DOWN(addr, 8);
+	unsigned int bit_offset_pos = nr + ((__u8 *)addr - (__u8*)ptr) * 8;
+
+	if (is_set_bit)
+		set_bit(bit_offset_pos, ptr);
+	else
+		clear_bit(bit_offset_pos, ptr);
+}
+
+static __inline__ void
+set_bit_kabi_workaround(int nr, unsigned long * addr)
+{
+	set_clear_bit_kabi_workaround(nr, addr, true);
+}
+
+static __inline__ void
+clear_bit_kabi_workaround(int nr, unsigned long * addr)
+{
+	set_clear_bit_kabi_workaround(nr, addr, false);
+}
+
+#define set_cpu_cap(c, bit)	set_bit_kabi_workaround(bit, (unsigned long *)((c)->x86_capability))
 
 extern void setup_clear_cpu_cap(unsigned int bit);
 extern void clear_cpu_cap(struct cpuinfo_x86 *c, unsigned int bit);
