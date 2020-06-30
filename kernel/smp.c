@@ -163,6 +163,9 @@ static int generic_exec_single(int cpu, struct __call_single_data *csd,
 
 	csd->func = func;
 	csd->info = info;
+#ifdef CONFIG_64BIT
+	csd->dst = cpu;
+#endif
 
 	/*
 	 * The list addition should be visible before sending the IPI
@@ -453,6 +456,9 @@ void smp_call_function_many(const struct cpumask *mask,
 			csd->flags |= CSD_FLAG_SYNCHRONOUS;
 		csd->func = func;
 		csd->info = info;
+#ifdef CONFIG_64BIT
+		csd->dst = cpu;
+#endif
 		if (llist_add(&csd->llist, &per_cpu(call_single_queue, cpu)))
 			__cpumask_set_cpu(cpu, cfd->cpumask_ipi);
 	}
