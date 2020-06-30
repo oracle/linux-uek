@@ -4,6 +4,7 @@
  *
  * Copyright (c) 2018 Cavium, Inc.
  */
+#include <linux/types.h>
 #include <linux/bcd.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
@@ -38,10 +39,22 @@
 struct isl12026 {
 	struct rtc_device *rtc;
 	struct i2c_client *nvm_client;
+	struct nvmem_device *nvm_dev;
+	struct nvmem_config nvm_cfg;
+	/*
+	 * RTC write operations require that multiple messages be
+	 * transmitted, we hold the lock for all accesses to the
+	 * device so that these sequences cannot be disrupted.  Also,
+	 * the write cycle to the nvmem takes many mS during which the
+	 * device does not respond to commands, so holding the lock
+	 * also prevents access during these times.
+	 */
+	struct mutex lock;
 };
 
 static int isl12026_read_reg(struct i2c_client *client, int reg)
 {
+	struct isl12026 *priv = i2c_get_clientdata(client);
 	u8 addr[] = {0, reg};
 	u8 val;
 	int ret;
@@ -52,7 +65,8 @@ static int isl12026_read_reg(struct i2c_client *client, int reg)
 			.flags	= 0,
 			.len	= sizeof(addr),
 			.buf	= addr
-		}, {
+		},
+		{
 			.addr	= client->addr,
 			.flags	= I2C_M_RD,
 			.len	= 1,
@@ -60,7 +74,12 @@ static int isl12026_read_reg(struct i2c_client *client, int reg)
 		}
 	};
 
+	mutex_lock(&priv->lock);
+
 	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+
+	mutex_unlock(&priv->lock);
+
 	if (ret != ARRAY_SIZE(msgs)) {
 		dev_err(&client->dev, "read reg error, ret=%d\n", ret);
 		ret = ret < 0 ? ret : -EIO;
@@ -135,6 +154,8 @@ static int isl12026_disarm_write(struct i2c_client *client)
 
 static int isl12026_write_reg(struct i2c_client *client, int reg, u8 val)
 {
+	struct isl12026 *priv = i2c_get_clientdata(client);
+	int rv = 0;
 	int ret;
 	u8 op[3] = {0, reg, val};
 	struct i2c_msg msg = {
@@ -144,6 +165,7 @@ static int isl12026_write_reg(struct i2c_client *client, int reg, u8 val)
 		.buf	= op
 	};
 
+	mutex_lock(&priv->lock);
 	ret = isl12026_arm_write(client);
 	if (ret)
 		return ret;
@@ -159,12 +181,14 @@ static int isl12026_write_reg(struct i2c_client *client, int reg, u8 val)
 
 	ret = isl12026_disarm_write(client);
 out:
+	mutex_unlock(&priv->lock);
 	return ret;
 }
 
 static int isl12026_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
 	struct i2c_client *client = to_i2c_client(dev);
+	struct isl12026 *priv = i2c_get_clientdata(client);
 	int ret;
 	u8 op[10];
 	struct i2c_msg msg = {
@@ -174,6 +198,7 @@ static int isl12026_rtc_set_time(struct device *dev, struct rtc_time *tm)
 		.buf	= op
 	};
 
+	mutex_lock(&priv->lock);
 	ret = isl12026_arm_write(client);
 	if (ret)
 		return ret;
@@ -198,27 +223,34 @@ static int isl12026_rtc_set_time(struct device *dev, struct rtc_time *tm)
 
 	ret = isl12026_disarm_write(client);
 out:
+	mutex_unlock(&priv->lock);
 	return ret;
 }
 
 static int isl12026_rtc_read_time(struct device *dev, struct rtc_time *tm)
 {
 	struct i2c_client *client = to_i2c_client(dev);
+	struct isl12026 *priv = i2c_get_clientdata(client);
 	u8 ccr[8];
 	u8 addr[2];
 	u8 sr;
 	int ret;
+	int rv = 0;
+
 	struct i2c_msg msgs[] = {
 		{
 			.addr	= client->addr,
 			.flags	= 0,
 			.len	= sizeof(addr),
 			.buf	= addr
-		}, {
+		},
+		{
 			.addr	= client->addr,
 			.flags	= I2C_M_RD,
 		}
 	};
+
+	mutex_lock(&priv->lock);
 
 	/* First, read SR */
 	addr[0] = 0;
@@ -251,6 +283,11 @@ static int isl12026_rtc_read_time(struct device *dev, struct rtc_time *tm)
 		goto out;
 	}
 
+	dev_dbg(&client->dev,
+		"raw data is sec=%02x, min=%02x, hr=%02x, mday=%02x, mon=%02x, year=%02x, wday=%02x, y2k=%02x\n",
+		ccr[0], ccr[1], ccr[2], ccr[3],
+		ccr[4], ccr[5], ccr[6],	ccr[7]);
+
 	tm->tm_sec = bcd2bin(ccr[0] & 0x7F);
 	tm->tm_min = bcd2bin(ccr[1] & 0x7F);
 	if (ccr[2] & ISL12026_REG_HR_MIL)
@@ -265,9 +302,13 @@ static int isl12026_rtc_read_time(struct device *dev, struct rtc_time *tm)
 		tm->tm_year += 100;
 	tm->tm_wday = ccr[6] & 0x07;
 
-	ret = 0;
+	dev_dbg(&client->dev, "secs=%d, mins=%d, hours=%d, mday=%d, mon=%d, year=%d, wday=%d\n",
+		tm->tm_sec, tm->tm_min, tm->tm_hour,
+		tm->tm_mday, tm->tm_mon, tm->tm_year, tm->tm_wday);
+	rv = rtc_valid_tm(tm);
 out:
-	return ret;
+	mutex_unlock(&priv->lock);
+	return rv;
 }
 
 static const struct rtc_class_ops isl12026_rtc_ops = {
@@ -287,7 +328,8 @@ static int isl12026_nvm_read(void *p, unsigned int offset,
 			.flags	= 0,
 			.len	= sizeof(addr),
 			.buf	= addr
-		}, {
+		},
+		{
 			.addr	= priv->nvm_client->addr,
 			.flags	= I2C_M_RD,
 			.buf	= val
@@ -449,6 +491,8 @@ static int isl12026_probe_new(struct i2c_client *client)
 	priv = devm_kzalloc(&client->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
+
+	mutex_init(&priv->lock);
 
 	i2c_set_clientdata(client, priv);
 
