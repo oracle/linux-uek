@@ -200,4 +200,13 @@ config OCTEON_ERROR_INJECTOR
 	  Used to test hardware error reporting.  Should never be used
 	  in a normal running system.
 
+config CAVIUM_OCTEON_IPSEC
+       bool "Enable enhancements to the IPSec stack to allow procotol offload."
+       default "n"
+       depends on NET_KEY
+       help
+         This enables enhancements to the IPSec stack to allow some of the
+         processing required for IPSec to be performed on another processor
+         which must be running the ipsec-filter application.
+
 endif # CAVIUM_OCTEON_SOC

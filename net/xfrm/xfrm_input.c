@@ -23,6 +23,10 @@
 
 #include "xfrm_inout.h"
 
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+extern int (*cavium_ipsec_process)(void *, struct sk_buff *, int, int);
+#endif
+
 struct xfrm_trans_tasklet {
 	struct tasklet_struct tasklet;
 	struct sk_buff_head queue;
@@ -471,6 +475,9 @@ int xfrm_input(struct sk_buff *skb, int nexthdr, __be32 spi, int encap_type)
 	struct xfrm_offload *xo = xfrm_offload(skb);
 	struct sec_path *sp;
 
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+	int offset = 0;
+#endif
 	if (encap_type < 0) {
 		x = xfrm_input_state(skb);
 
@@ -612,7 +619,53 @@ lock:
 			XFRM_INC_STATS(net, LINUX_MIB_XFRMINSTATESEQERROR);
 			goto drop_unlock;
 		}
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+		/*
+		 * If Octeon IPSEC Acceleration module has been loaded
+ 		 * call it, otherwise, follow the software path
+ 		 */
+		if (cavium_ipsec_process) {
+			if (x->props.replay_window && x->repl->check(x, skb, seq) ) {
+				XFRM_INC_STATS(net, LINUX_MIB_XFRMINSTATESEQERROR);
+				goto drop_unlock;
+			}
 
+			if (xfrm_state_check_expire(x)) {
+				XFRM_INC_STATS(net, LINUX_MIB_XFRMINSTATEEXPIRED);
+				goto drop_unlock;
+			}
+
+			spin_unlock(&x->lock);
+			seq_hi = htonl(xfrm_replay_seqhi(x, seq));
+
+			XFRM_SKB_CB(skb)->seq.input.low = seq;
+			XFRM_SKB_CB(skb)->seq.input.hi = seq_hi;
+
+			skb_dst_force(skb);
+			switch (nexthdr) {
+				case IPPROTO_AH:
+					offset = offsetof(struct ip_auth_hdr, spi);
+					break;
+				case IPPROTO_ESP:
+					offset = offsetof(struct ip_esp_hdr, spi);
+					break;
+				default:
+					return 1;
+			}
+			offset += (uint64_t)skb->data - (uint64_t)ip_hdr(skb);
+			/*
+			 * skb->data points to the start of the esp/ah header
+			 * but we require skb->data to point to the start of ip header.
+			 */
+			skb_push(skb, (unsigned int)((uint64_t)skb->data - (uint64_t)ip_hdr(skb)));
+			if ((skb_is_nonlinear(skb) || skb_cloned(skb)) && 
+					skb_linearize(skb) != 0) {
+				err = -ENOMEM;
+				goto drop_unlock;
+			}
+			nexthdr = cavium_ipsec_process(x, skb, offset, 0 /*DECRYPT*/);
+        } else  {  /* if (cavium_ipsec_process == NULL) */
+#endif
 		if (xfrm_state_check_expire(x)) {
 			XFRM_INC_STATS(net, LINUX_MIB_XFRMINSTATEEXPIRED);
 			goto drop_unlock;
@@ -636,6 +689,9 @@ lock:
 			nexthdr = x->type_offload->input_tail(x, skb);
 		else
 			nexthdr = x->type->input(x, skb);
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+	}
+#endif
 
 		if (nexthdr == -EINPROGRESS)
 			return 0;

@@ -804,6 +804,13 @@ static void esp_destroy(struct xfrm_state *x)
 {
 	struct crypto_aead *aead = x->data;
 
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+	if (x->iv) {
+		kfree(x->iv);
+		x->iv = NULL;
+	}
+#endif
+
 	if (!aead)
 		return;
 
@@ -951,6 +958,15 @@ static int esp_init_state(struct xfrm_state *x)
 		goto error;
 
 	aead = x->data;
+
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+	if(crypto_aead_ivsize(aead)) {
+		x->iv = kmalloc(crypto_aead_ivsize(aead), GFP_KERNEL);
+		if (unlikely(x->iv == NULL))
+			goto error;
+		x->ivinitted = 0;
+	}
+#endif
 
 	x->props.header_len = sizeof(struct ip_esp_hdr) +
 			      crypto_aead_ivsize(aead);

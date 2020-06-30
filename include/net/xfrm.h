@@ -265,6 +265,14 @@ struct xfrm_state {
 	/* Private data of this transformer, format is opaque,
 	 * interpreted by xfrm_type methods. */
 	void			*data;
+
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+	void            	*sa_handle;
+	struct xfrm_policy  	*pol;
+	u8 			*iv;
+	int 			ivinitted;
+#endif  /* defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY) */
+
 };
 
 static inline struct net *xs_net(struct xfrm_state *x)
@@ -535,6 +543,9 @@ struct xfrm_policy {
 	struct xfrm_tmpl       	xfrm_vec[XFRM_MAX_DEPTH];
 	struct hlist_node	bydst_inexact_list;
 	struct rcu_head		rcu;
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+    struct xfrm_state   *x;
+#endif /* defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY) */
 };
 
 static inline struct net *xp_net(const struct xfrm_policy *xp)
