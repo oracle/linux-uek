@@ -741,6 +741,50 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.cpu_enable = cpu_enable_trap_zva_access,
 	},
 #endif
+#ifdef CONFIG_MRVL_ERRATUM_38545
+	{
+	/* Cavium ThunderX, T81 all passes */
+		.desc = "Marvell erratum 38545",
+		.capability = ARM64_WORKAROUND_MRVL_38545,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_OCTEON_T81),
+	},
+	{
+	/* Cavium ThunderX, T83 all passes */
+		.desc = "Marvell erratum 38545",
+		.capability = ARM64_WORKAROUND_MRVL_38545,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_OCTEON_T83),
+	},
+	{
+	/* Marvell OcteonTX 2, 98xx all passes */
+		.desc = "Marvell erratum 38545",
+		.capability = ARM64_WORKAROUND_MRVL_38545,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_98XX),
+	},
+	{
+	/* Marvell OcteonTX 2, 96xx all passes */
+		.desc = "Marvell erratum 38545",
+		.capability = ARM64_WORKAROUND_MRVL_38545,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_96XX),
+	},
+	{
+	/* Marvell OcteonTX 2, 95xx all passes */
+		.desc = "Marvell erratum 38545",
+		.capability = ARM64_WORKAROUND_MRVL_38545,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_95XX),
+	},
+	{
+	/* Marvell OcteonTX 2, LOKI all passes */
+		.desc = "Marvell erratum 38545",
+		.capability = ARM64_WORKAROUND_MRVL_38545,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_LOKI),
+	},
+	{
+	/* Marvell OcteonTX 2, 95MM all passes */
+		.desc = "Marvell erratum 38545",
+		.capability = ARM64_WORKAROUND_MRVL_38545,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_95MM),
+	},
+#endif
 #ifdef CONFIG_CAVIUM_ERRATUM_30115
 	{
 	/* Cavium ThunderX, T88 pass 1.x - 2.2 */
