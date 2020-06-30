@@ -585,7 +585,7 @@ END(__bad_stack)
 	mov	x1, #\reason
 	mrs	x2, esr_el1
 	bl	bad_mode
-	ASM_BUG()
+	kernel_exit \el
 	.endm
 
 el0_sync_invalid:
