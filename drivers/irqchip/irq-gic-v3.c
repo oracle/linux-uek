@@ -126,10 +126,23 @@ static void gic_redist_wait_for_rwp(void)
 
 static u64 __maybe_unused gic_read_iar(void)
 {
+	u32 irqnr;
+	u32 apr;
+	bool cc_enabled;
+
+	cc_enabled = cpus_have_const_cap(ARM64_WORKAROUND_MRVL_38545);
+	if (cc_enabled)
+		apr = read_sysreg_s(SYS_ICC_AP1R0_EL1);
+
 	if (cpus_have_const_cap(ARM64_WORKAROUND_CAVIUM_23154))
-		return gic_read_iar_cavium_thunderx();
+		irqnr = gic_read_iar_cavium_thunderx();
 	else
-		return gic_read_iar_common();
+		irqnr = gic_read_iar_common();
+
+	if (!cc_enabled || apr != read_sysreg_s(SYS_ICC_AP1R0_EL1))
+		return irqnr;
+
+	return ICC_IAR1_EL1_SPURIOUS;
 }
 #endif
 

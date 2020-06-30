@@ -589,6 +589,21 @@ config MRVL_ERRATUM_37119
 
 	  If unsure, say Y.
 
+config MRVL_ERRATUM_38545
+	bool "Marvell erratum 38545"
+	default y
+	help
+	  On some OcteonTX2 chips, an issue exists wherein when an interrupt
+	  is pending and a second interrupt arrives at the core under certain
+	  stall conditions, a read of interrpt acknowledge register will return
+	  the first interrupt but not acknowledge it. A second read of IAR will
+	  return the first interrupt again, not the second interrupt. To
+	  workaround, software checks the active interrupt priorities before
+	  and after PE acknowledges interrupt in sw. The PE ignores interrupt
+	  if there was no change in acitive priorities.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
