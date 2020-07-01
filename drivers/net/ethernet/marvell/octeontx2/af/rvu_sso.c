@@ -510,8 +510,9 @@ af_cleanup:
 
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
+	struct sso_rsrc *sso = &rvu->hw->sso;
 	int blkaddr, ssow_blkaddr;
-	u64 reg;
+	u64 reg, grpmsk;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
@@ -567,6 +568,16 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x1);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_ARB(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_GMCTL(lf), 0x0);
+
+	/* Unset the HWS Hardware Group Mask. */
+	for (grpmsk = 0; grpmsk < (sso->sso_hwgrps / 64); grpmsk++) {
+		rvu_write64(rvu, blkaddr,
+			    SSO_AF_HWSX_SX_GRPMSKX(lf, 0, grpmsk),
+			    0x0);
+		rvu_write64(rvu, blkaddr,
+			    SSO_AF_HWSX_SX_GRPMSKX(lf, 1, grpmsk),
+			    0x0);
+	}
 
 	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0x0);
 
