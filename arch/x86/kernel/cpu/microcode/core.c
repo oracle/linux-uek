@@ -73,8 +73,6 @@ struct cpu_info_ctx {
 	int			err;
 };
 
-static int __reload_late_ret[NR_CPUS];
-
 /*
  * Those patch levels cannot be updated to newer ones and thus should be final.
  */
@@ -557,14 +555,7 @@ static int __reload_late(void *info)
 	int cpu = smp_processor_id();
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	enum ucode_state err;
-	struct cpumask *siblmsk = topology_sibling_cpumask(cpu);
-	bool master_sibling = (cpumask_first(topology_sibling_cpumask(cpu)) ==
-			cpu);
-	int cpu_sibling;
-
-	/* Compute sibling CPU. */
-	cpumask_clear_cpu(cpu, siblmsk);
-	cpu_sibling = cpumask_first(siblmsk);
+	int ret = 0;
 
 	/*
 	 * Wait for all CPUs to arrive. A load will not be attempted unless all
@@ -580,18 +571,17 @@ static int __reload_late(void *info)
 	 * loading attempts happen on multiple threads of an SMT core. See
 	 * below.
 	 */
-	if (master_sibling)
+	if (cpumask_first(topology_sibling_cpumask(cpu)) == cpu)
 		apply_microcode_local(&err);
 	else
 		goto wait_for_siblings;
 
 	if (err >= UCODE_NFOUND) {
 		pr_warn("Error reloading microcode on CPU %d\n", cpu);
-		__reload_late_ret[cpu] = -1;
-		__reload_late_ret[cpu_sibling] = -1;
+		ret = -1;
 	}
 
-	if (__reload_late_ret[cpu] == 0 && c->cpu_index == boot_cpu_data.cpu_index) {
+	if (ret == 0 && c->cpu_index == boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
 
 		/*
@@ -615,10 +605,10 @@ wait_for_siblings:
 	 * per-cpu cpuinfo can be updated with right microcode
 	 * revision.
 	 */
-	if (!__reload_late_ret[cpu] && !master_sibling)
+	if (cpumask_first(topology_sibling_cpumask(cpu)) != cpu)
 		apply_microcode_local(&err);
 
-	if (__reload_late_ret[cpu] == 0 && c->cpu_index != boot_cpu_data.cpu_index) {
+	if (ret == 0 && c->cpu_index != boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
 
 		/*
@@ -630,7 +620,7 @@ wait_for_siblings:
 		get_cpu_cap(c);
 	}
 
-	return __reload_late_ret[cpu];
+	return ret;
 }
 
 /*
@@ -643,8 +633,6 @@ static int microcode_reload_late(void)
 
 	atomic_set(&late_cpus_in,  0);
 	atomic_set(&late_cpus_out, 0);
-
-	memset(__reload_late_ret, 0, NR_CPUS * sizeof(int));
 
 	ret = stop_machine_cpuslocked(__reload_late, NULL, cpu_online_mask);
 	if (ret == 0)
