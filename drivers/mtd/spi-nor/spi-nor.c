@@ -2309,6 +2309,18 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "mx25um51245g", INFO(0xc2803a, 0, 64 * 1024, 1024, SECT_4K | SPI_NOR_4B_OPCODES) },
 
 	/* Micron <--> ST Micro */
+	{ "mt25ql064",   INFO(0x20ba17, 0, 64 * 1024,  128, SECT_4K) },
+	{ "mt25qu064",   INFO(0x20bb17, 0, 64 * 1024,  128, SECT_4K) },
+	{ "mt25ql128",   INFO(0x20ba18, 0, 64 * 1024,  256, SECT_4K) },
+	{ "mt25qu128",   INFO(0x20bb18, 0, 64 * 1024,  256, SECT_4K) },
+	{ "mt25ql256",   INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K) },
+	{ "mt25qu256",   INFO(0x20bb19, 0, 64 * 1024,  512, SECT_4K) },
+	{ "mt25ql512",   INFO(0x20ba20, 0, 64 * 1024, 1024, SECT_4K) },
+	{ "mt25qu512",   INFO(0x20bb20, 0, 64 * 1024, 1024, SECT_4K) },
+	{ "mt25ql01g",   INFO(0x20ba21, 0, 64 * 1024, 2048, SECT_4K) },
+	{ "mt25qu01g",   INFO(0x20bb21, 0, 64 * 1024, 2048, SECT_4K) },
+	{ "mt25ql02g",   INFO(0x20ba22, 0, 64 * 1024, 4096, SECT_4K) },
+	{ "mt25qu02g",   INFO(0x20bb22, 0, 64 * 1024, 4096, SECT_4K) },
 	{ "n25q016a",	 INFO(0x20bb15, 0, 64 * 1024,   32, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q032",	 INFO(0x20ba16, 0, 64 * 1024,   64, SPI_NOR_QUAD_READ) },
 	{ "n25q032a",	 INFO(0x20bb16, 0, 64 * 1024,   64, SPI_NOR_QUAD_READ) },
@@ -5173,6 +5185,19 @@ static const struct spi_device_id spi_nor_dev_ids[] = {
 	{"m25p64"},	{"m25p128"},
 	{"w25x80"},	{"w25x32"},	{"w25q32"},	{"w25q32dw"},
 	{"w25q80bl"},	{"w25q128"},	{"w25q256"},
+	{ "mt25ql064" },
+	{ "mt25qu064" },
+	{ "mt25ql128" },
+	{ "mt25qu128" },
+	{ "mt25ql256" },
+	{ "mt25qu256" },
+	{ "mt25ql512" },
+	{ "mt25qu512" },
+	{ "mt25ql01g" },
+	{ "mt25qu01g" },
+	{ "mt25ql02g" },
+	{ "mt25qu02g" },
+
 
 	/* Flashes that can't be detected using JEDEC */
 	{"m25p05-nonjedec"},	{"m25p10-nonjedec"},	{"m25p20-nonjedec"},
