@@ -105,25 +105,14 @@ void otx2_rfoe_disable_intf(int rfoe_num)
 	struct otx2_rfoe_drv_ctx *drv_ctx;
 	struct otx2_rfoe_ndev_priv *priv;
 	struct net_device *netdev;
-	struct rx_ft_cfg *ft_cfg;
-	int idx, pkt_type;
+	int idx;
 
 	for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
 		drv_ctx = &rfoe_drv_ctx[idx];
 		if (drv_ctx->rfoe_num == rfoe_num && drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
-			unregister_netdev(netdev);
-			for (pkt_type = 0; pkt_type < PACKET_TYPE_MAX;
-			     pkt_type++) {
-				if (!(priv->pkt_type_mask & (1U << pkt_type)))
-					continue;
-				ft_cfg = &priv->rx_ft_cfg[pkt_type];
-				netif_napi_del(&ft_cfg->napi);
-			}
-			kfree(priv->rfoe_common);
-			free_netdev(netdev);
-			drv_ctx->valid = 0;
+			priv->if_type = IF_TYPE_NONE;
 		}
 	}
 }
@@ -825,6 +814,15 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
+	if (unlikely(priv->if_type != IF_TYPE_ETHERNET)) {
+		netif_err(priv, tx_queued, netdev,
+			  "%s {rfoe%d lmac%d} invalid intf mode, drop pkt\n",
+			  netdev->name, priv->rfoe_num, priv->lmac_id);
+		/* update stats */
+		priv->stats.tx_dropped++;
+		goto exit;
+	}
+
 	if (unlikely(!netif_carrier_ok(netdev))) {
 		netif_err(priv, tx_err, netdev,
 			  "%s {rfoe%d lmac%d} link down, drop pkt\n",
@@ -1193,11 +1191,6 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	spin_lock_init(&ptp_cfg->lock);
 
 	for (i = 0; i < MAX_RFOE_INTF; i++) {
-		/* Don't initialize rfoe i/f when cpri is default mode.
-		 * The mode switching from cpri to rfoe is not supported.
-		 */
-		if (cfg[i].if_type != IF_TYPE_ETHERNET)
-			continue;
 		priv2 = NULL;
 		rfoe_cfg = &cfg[i].rfoe_if_cfg;
 		pkt_type_mask = rfoe_cfg->pkt_type_mask;
@@ -1238,6 +1231,7 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			spin_lock_init(&priv->stats.lock);
 			priv->rfoe_num = if_cfg->lmac_info.rfoe_num;
 			priv->lmac_id = if_cfg->lmac_info.lane_num;
+			priv->if_type = cfg[i].if_type;
 			memcpy(priv->mac_addr, if_cfg->lmac_info.eth_addr,
 			       ETH_ALEN);
 			if (is_valid_ether_addr(priv->mac_addr))
