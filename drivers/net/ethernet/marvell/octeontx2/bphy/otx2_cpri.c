@@ -79,26 +79,14 @@ void otx2_cpri_enable_intf(int cpri_num)
 	struct otx2_cpri_drv_ctx *drv_ctx;
 	struct otx2_cpri_ndev_priv *priv;
 	struct net_device *netdev;
-	int idx, ret;
+	int idx;
 
 	for (idx = 0; idx < OTX2_BPHY_CPRI_MAX_INTF; idx++) {
 		drv_ctx = &cpri_drv_ctx[idx];
 		if (drv_ctx->cpri_num == cpri_num && drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
-			ret = register_netdev(netdev);
-			if (ret < 0) {
-				pr_err("failed to register net device %s\n",
-				       netdev->name);
-				free_netdev(netdev);
-				return;
-			}
-			pr_info("net device %s registered\n",
-				netdev->name);
-			netif_carrier_off(netdev);
-			netif_stop_queue(netdev);
-			set_bit(CPRI_INTF_DOWN, &priv->state);
-			drv_ctx->netdev_registered = 1;
+			priv->if_type = IF_TYPE_CPRI;
 		}
 	}
 }
@@ -115,8 +103,7 @@ void otx2_bphy_cpri_cleanup(void)
 		if (drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
-			if (drv_ctx->netdev_registered)
-				unregister_netdev(netdev);
+			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
 			kfree(priv->cpri_common);
 			free_netdev(netdev);
@@ -362,6 +349,15 @@ static netdev_tx_t otx2_cpri_eth_start_xmit(struct sk_buff *skb,
 
 	spin_lock_irqsave(&dl_cfg->lock, flags);
 
+	if (unlikely(priv->if_type != IF_TYPE_CPRI)) {
+		netif_err(priv, tx_queued, netdev,
+			  "%s {cpri%d lmac%d} invalid intf mode, drop pkt\n",
+			  netdev->name, priv->cpri_num, priv->lmac_id);
+		/* update stats */
+		priv->stats.tx_dropped++;
+		goto exit;
+	}
+
 	if (unlikely(!netif_carrier_ok(netdev))) {
 		/* update stats */
 		priv->stats.tx_dropped++;
@@ -511,7 +507,6 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	struct bphy_netdev_cpri_if *cpri_cfg;
 	int i, intf_idx = 0, lmac, ret;
 	struct net_device *netdev;
-	int netdev_registered;
 
 	for (i = 0; i < OTX2_BPHY_CPRI_MAX_MHAB; i++) {
 		priv2 = NULL;
@@ -519,7 +514,6 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 		for (lmac = 0; lmac < OTX2_BPHY_CPRI_MAX_LMAC; lmac++) {
 			if (!(cpri_cfg->active_lane_mask & (1 << lmac)))
 				continue;
-			netdev_registered = 0;
 			netdev =
 			    alloc_etherdev(sizeof(struct otx2_cpri_ndev_priv));
 			if (!netdev) {
@@ -548,6 +542,7 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			spin_lock_init(&priv->stats.lock);
 			priv->cpri_num = cpri_cfg->id;
 			priv->lmac_id = lmac;
+			priv->if_type = cfg[i].if_type;
 			memcpy(priv->mac_addr, &cpri_cfg->eth_addr[lmac],
 			       ETH_ALEN);
 			if (is_valid_ether_addr(priv->mac_addr))
@@ -585,23 +580,20 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			netdev->mtu = 1500U;
 			netdev->min_mtu = ETH_MIN_MTU;
 			netdev->max_mtu = 1500U;
-			if (cfg[i].if_type == IF_TYPE_CPRI) {
-				ret = register_netdev(netdev);
-				if (ret < 0) {
-					dev_err(cdev->dev,
-						"failed to register net device %s\n",
-						netdev->name);
-					free_netdev(netdev);
-					ret = -ENODEV;
-					goto err_exit;
-				}
-				dev_dbg(cdev->dev, "net device %s registered\n",
+			ret = register_netdev(netdev);
+			if (ret < 0) {
+				dev_err(cdev->dev,
+					"failed to register net device %s\n",
 					netdev->name);
-
-				netif_carrier_off(netdev);
-				netif_stop_queue(netdev);
-				netdev_registered = 1;
+				free_netdev(netdev);
+				ret = -ENODEV;
+				goto err_exit;
 			}
+			dev_dbg(cdev->dev, "net device %s registered\n",
+				netdev->name);
+
+			netif_carrier_off(netdev);
+			netif_stop_queue(netdev);
 			set_bit(CPRI_INTF_DOWN, &priv->state);
 
 			/* initialize global ctx */
@@ -610,7 +602,6 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			drv_ctx->lmac_id = priv->lmac_id;
 			drv_ctx->valid = 1;
 			drv_ctx->netdev = netdev;
-			drv_ctx->netdev_registered = netdev_registered;
 		}
 	}
 

@@ -90,6 +90,7 @@ enum bphy_netdev_cpri_rx_gpint {
 enum bphy_netdev_if_type {
 	IF_TYPE_ETHERNET    = 0,
 	IF_TYPE_CPRI        = 1,
+	IF_TYPE_NONE        = 2,
 	IF_TYPE_MAX,
 };
 

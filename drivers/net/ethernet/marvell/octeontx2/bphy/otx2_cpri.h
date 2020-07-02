@@ -47,7 +47,6 @@ struct otx2_cpri_drv_ctx {
 	u8				lmac_id;
 	int				valid;
 	struct net_device               *netdev;
-	int				netdev_registered;
 };
 
 extern struct otx2_cpri_drv_ctx cpri_drv_ctx[OTX2_BPHY_CPRI_MAX_INTF];
@@ -115,6 +114,7 @@ struct otx2_cpri_ndev_priv {
 	u8				mac_addr[ETH_ALEN];
 	/* priv lock */
 	spinlock_t			lock;
+	int				if_type;
 };
 
 int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
