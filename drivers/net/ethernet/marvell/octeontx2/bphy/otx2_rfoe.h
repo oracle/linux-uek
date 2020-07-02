@@ -274,6 +274,7 @@ struct otx2_rfoe_ndev_priv {
 	u8				mac_addr[ETH_ALEN];
 	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
+	int				if_type;
 };
 
 void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status);
