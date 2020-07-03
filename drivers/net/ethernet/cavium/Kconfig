@@ -82,6 +82,7 @@ config OCTEON_MGMT_ETHERNET
 	depends on CAVIUM_OCTEON_SOC
 	select PHYLIB
 	select MDIO_OCTEON
+	select OCTEON_ETHERNET_COMMON
 	default y
 	help
 	  Enable the ethernet driver for the management
@@ -99,5 +100,40 @@ config LIQUIDIO_VF
 	  To compile this driver as a module, choose M here: The module
 	  will be called liquidio_vf. MSI-X interrupt support is required
 	  for this driver to work correctly
+
+config OCTEON_ETHERNET
+	tristate "OCTEON Ethernet support"
+	depends on CAVIUM_OCTEON_SOC
+	select PHYLIB
+	select MDIO_OCTEON
+	select OCTEON_ETHERNET_MEM
+	select OCTEON_ETHERNET_COMMON
+	---help---
+	  This driver supports the builtin ethernet ports on Cavium
+	  Inc.' products in the Octeon family. This driver supports the
+	  CN3XXX, CN5XXX, CN6XXX and CNF7XXX OCTEON processors.
+
+	  To compile this driver as a module, choose M here.  The module
+	  will be called octeon-ethernet.
+
+config OCTEON_ETHERNET_MEM
+	tristate
+	depends on CAVIUM_OCTEON_SOC
+
+config OCTEON_POW_ONLY_ETHERNET
+	tristate "POW based internal only ethernet driver"
+	depends on CAVIUM_OCTEON_SOC
+	depends on OCTEON_ETHERNET
+	---help---
+	  This option enables a very simple ethernet driver for internal core
+	  to core traffic. It relies on another driver, octeon-ethernet,
+	  to perform all hardware setup. This driver's purpose is to supply
+	  basic networking between different Linux images running on the same
+	  chip. A single core loads the octeon-ethernet module, all other cores
+	  load this driver. On load, the driver waits for some other core to
+	  perform hardware setup.
+
+config OCTEON_ETHERNET_COMMON
+	tristate
 
 endif # NET_VENDOR_CAVIUM
