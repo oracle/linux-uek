@@ -71,7 +71,7 @@ pcibios_align_resource(void *data, const struct resource *res,
 
 static void pcibios_scanbus(struct pci_controller *hose)
 {
-	static int next_busno;
+	int next_busno = 0;
 	static int need_domain_info;
 	LIST_HEAD(resources);
 	struct pci_bus *bus;
