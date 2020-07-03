@@ -964,7 +964,7 @@ static int cvm_oct_remove(struct platform_device *pdev)
 
 	cvmx_pko_shutdown();
 
-	cvmx_ipd_free_ptr();
+	//cvmx_ipd_free_ptr();
 
 	/* Free the HW pools */
 	cvm_oct_mem_empty_fpa(CVMX_FPA_PACKET_POOL, CVMX_FPA_PACKET_POOL_SIZE,

@@ -81,7 +81,7 @@
 #define CVMX_PKO_ILLEGAL_QUEUE	0xFFFF
 #define CVMX_PKO_MAX_QUEUE_DEPTH 0
 
-typedef enum {
+/* typedef */ enum {
 	CVMX_PKO_SUCCESS,
 	CVMX_PKO_INVALID_PORT,
 	CVMX_PKO_INVALID_QUEUE,
@@ -89,7 +89,7 @@ typedef enum {
 	CVMX_PKO_NO_MEMORY,
 	CVMX_PKO_PORT_ALREADY_SETUP,
 	CVMX_PKO_CMD_QUEUE_INIT_ERROR
-} cvmx_pko_status_t;
+} /*cvmx_pko_status_t */;
 
 /**
  * This enumeration represents the differnet locking modes supported by PKO.
@@ -308,7 +308,7 @@ extern void cvmx_pko_shutdown(void);
  *		     of a value of 1. There must be num_queues elements in the
  *		     array.
  */
-extern cvmx_pko_status_t cvmx_pko_config_port(uint64_t port,
+extern int cvmx_pko_config_port(uint64_t port,
 					      uint64_t base_queue,
 					      uint64_t num_queues,
 					      const uint64_t priority[]);
@@ -416,7 +416,7 @@ static inline void cvmx_pko_send_packet_prepare(uint64_t port, uint64_t queue,
  * Returns returns CVMX_PKO_SUCCESS on success, or error code on
  * failure of output
  */
-static inline cvmx_pko_status_t cvmx_pko_send_packet_finish(
+static inline int cvmx_pko_send_packet_finish(
 	uint64_t port,
 	uint64_t queue,
 	cvmx_pko_command_word0_t pko_command,
@@ -459,7 +459,7 @@ static inline cvmx_pko_status_t cvmx_pko_send_packet_finish(
  * Returns returns CVMX_PKO_SUCCESS on success, or error code on
  * failure of output
  */
-static inline cvmx_pko_status_t cvmx_pko_send_packet_finish3(
+static inline int cvmx_pko_send_packet_finish3(
 	uint64_t port,
 	uint64_t queue,
 	cvmx_pko_command_word0_t pko_command,

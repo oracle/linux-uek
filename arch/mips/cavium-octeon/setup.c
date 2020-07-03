@@ -379,7 +379,7 @@ static void octeon_halt(void)
 	smp_call_function(octeon_kill_core, NULL, 0);
 
 	switch (octeon_bootinfo->board_type) {
-	case CVMX_BOARD_TYPE_NAO38:
+	case CVMX_BOARD_TYPE_NAC38:
 		/* Driving a 1 to GPIO 12 shuts off this board */
 		cvmx_write_csr(CVMX_GPIO_BIT_CFGX(12), 1);
 		cvmx_write_csr(CVMX_GPIO_TX_SET, 0x1000);
@@ -731,7 +731,7 @@ void __init prom_init(void)
 	 */
 	octeon_boot_desc_ptr = (struct octeon_boot_descriptor *)fw_arg3;
 	octeon_bootinfo = phys_to_virt(octeon_boot_desc_ptr->cvmx_desc_vaddr);
-	cvmx_bootmem_init(cvmx_phys_to_ptr(octeon_bootinfo->phy_mem_desc_addr));
+	cvmx_bootmem_init(octeon_bootinfo->phy_mem_desc_addr);
 
 	sysinfo = cvmx_sysinfo_get();
 	memset(sysinfo, 0, sizeof(*sysinfo));
@@ -772,12 +772,12 @@ void __init prom_init(void)
 	sysinfo->dfa_ref_clock_hz = octeon_bootinfo->dfa_ref_clock_hz;
 	sysinfo->bootloader_config_flags = octeon_bootinfo->config_flags;
 
-	if (OCTEON_IS_OCTEON2()) {
+	if (current_cpu_type() == CPU_CAVIUM_OCTEON2) {
 		/* I/O clock runs at a different rate than the CPU. */
 		union cvmx_mio_rst_boot rst_boot;
 		rst_boot.u64 = cvmx_read_csr(CVMX_MIO_RST_BOOT);
 		octeon_io_clock_rate = 50000000 * rst_boot.s.pnr_mul;
-	} else if (OCTEON_IS_OCTEON3()) {
+	} else if (current_cpu_type() == CPU_CAVIUM_OCTEON3) {
 		/* I/O clock runs at a different rate than the CPU. */
 		union cvmx_rst_boot rst_boot;
 		rst_boot.u64 = cvmx_read_csr(CVMX_RST_BOOT);
@@ -821,6 +821,9 @@ void __init prom_init(void)
 			memcpy(octeon_mult_restore, restore, restore_len);
 		}
 	}
+
+	/* init octeon feature map */
+	octeon_feature_init();
 
 	/*
 	 * Only enable the LED controller if we're running on a CN38XX, CN58XX,

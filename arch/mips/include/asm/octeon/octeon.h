@@ -12,6 +12,7 @@
 #include <linux/irqflags.h>
 #include <linux/notifier.h>
 #include <asm/octeon/cvmx.h>
+#include <asm/octeon/cvmx-fpa3.h>
 #include <asm/bitfield.h>
 #include <linux/irq.h>
 
@@ -305,7 +306,10 @@ struct octeon_ciu_chip_data {
 	union {
 		struct {		/* only used for ciu3 */
 			u64 ciu3_addr;
-			unsigned int intsn;
+			union {
+				unsigned int intsn;
+				unsigned int idt; /* For errbit irq */
+			};
 		};
 		struct {		/* only used for ciu/ciu2 */
 			u8 line;
@@ -315,6 +319,7 @@ struct octeon_ciu_chip_data {
 	int gpio_line;
 	int current_cpu;	/* Next CPU expected to take this irq */
 	int ciu_node; /* NUMA node number of the CIU */
+	int trigger_type;
 };
 
 extern void octeon_check_cpu_bist(void);
@@ -335,6 +340,33 @@ static inline void octeon_npi_write32(uint64_t address, uint32_t val)
 	cvmx_write64_uint32(address ^ 4, val);
 	cvmx_read64_uint32(address ^ 4);
 }
+
+#if IS_ENABLED(CONFIG_CAVIUM_OCTEON_ERROR_TREE)
+int octeon_error_tree_enable(enum cvmx_error_groups group, int unit);
+int octeon_error_tree_disable(enum cvmx_error_groups group, int unit);
+int octeon_error_tree_shutdown(void);
+int octeon_error3_tree_enable(enum cvmx_error_groups group, int unit);
+int octeon_error3_tree_disable(enum cvmx_error_groups group, int unit);
+#else
+static inline int octeon_error_tree_enable(enum cvmx_error_groups group, int unit)
+{
+	return 0;
+}
+static inline int octeon_error_tree_disable(enum cvmx_error_groups group, int unit)
+{
+	return 0;
+}
+static inline int octeon_error_tree_shutdown(void)
+{
+	return 0;
+}
+#endif
+
+int octeon_ciu3_errbits_set_handler(void (* handler)(int node, int intsn));
+int octeon_ciu3_errbits_enable_intsn(int node, int intsn);
+int octeon_ciu3_errbits_disable_intsn(int node , int intsn);
+
+int octeon_i2c_cvmx2i2c(unsigned int cvmx_twsi_bus_num);
 
 #ifdef CONFIG_SMP
 void octeon_setup_smp(void);
