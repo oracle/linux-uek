@@ -30,6 +30,7 @@ obj-$(CONFIG_OCTEON_ERROR_INJECTOR)	+= octeon-error-injector.o
 obj-$(CONFIG_CAVIUM_OCTEON_ERROR_TREE)	+= octeon-error-tree.o octeon-78xx-errors.o \
 	octeon-73xx-errors.o octeon-7xxx-errors.o octeon-75xx-errors.o
 obj-$(CONFIG_SYSFS)                     += cacheinfo.o
+obj-$(CONFIG_OCTEON_FPA3)		+= octeon-fpa3.o
 
 ifdef CONFIG_SMP
 ifdef CONFIG_SYSFS

@@ -15,6 +15,7 @@
 #include <asm/octeon/cvmx-fpa3.h>
 #include <asm/bitfield.h>
 #include <linux/irq.h>
+#include <linux/slab.h>
 
 extern int octeon_is_simulation(void);
 extern int octeon_is_pci_host(void);
@@ -475,5 +476,16 @@ void octeon_mult_restore3(void);
 void octeon_mult_restore3_end(void);
 void octeon_mult_restore2(void);
 void octeon_mult_restore2_end(void);
+
+#if CONFIG_OCTEON_FPA3
+int octeon_fpa3_init(int node);
+int octeon_fpa3_pool_init(int node, int pool_num, cvmx_fpa3_pool_t *pool,
+			  void **pool_stack, int num_ptrs);
+int octeon_fpa3_aura_init(cvmx_fpa3_pool_t pool, int aura_num,
+			  cvmx_fpa3_gaura_t *aura, int num_bufs,
+			  unsigned int limit);
+int octeon_mem_fill_fpa3(int node, struct kmem_cache *cache,
+			  cvmx_fpa3_gaura_t aura, int num_bufs);
+#endif
 
 #endif /* __ASM_OCTEON_OCTEON_H */
