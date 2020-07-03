@@ -204,7 +204,7 @@ int cvm_oct_srio_init(struct net_device *dev)
 
 	dev->features |= NETIF_F_LLTX; /* We do our own locking, Linux doesn't need to */
 
-	SET_ETHTOOL_OPS(dev, &cvm_oct_ethtool_ops);
+	dev->ethtool_ops = &cvm_oct_ethtool_ops;
 
 	/* Make sure register access is allowed */
 	srio_status_reg.u64 = cvmx_read_csr(CVMX_SRIOX_STATUS_REG(srio_port));
