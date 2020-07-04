@@ -34,9 +34,11 @@ extern bool ghes_disable;
 #ifdef CONFIG_ACPI_APEI
 void __init acpi_hest_init(void);
 void __init hest_table_set(struct acpi_table_hest *table);
+void __init bert_table_set(struct acpi_table_bert *table);
 #else
 static inline void acpi_hest_init(void) { return; }
 static inline void hest_table_set(struct acpi_table_hest *table) { return; }
+static inline void bert_table_set(struct acpi_table_bert *table) { return; }
 #endif
 
 typedef int (*apei_hest_func_t)(struct acpi_hest_header *hest_hdr, void *data);
