@@ -156,6 +156,16 @@ config OCTEONTX2_SDEI_GHES_DEBUG
 	  and want to see more details.
 	  If you are unsure about this, say N here.
 
+config OCTEONTX2_SDEI_GHES_BERT
+	bool "OcteonTX2 GHES Boot Error Record Table (BERT) support"
+	depends on OCTEONTX2_SDEI_GHES
+	default y
+	help
+	  Select this option to enable reporting of fatal OcteonTX2 GHES
+	  errors on subsequent Linux boot.  Normally, fatal errors will
+	  reset the system.  Enabling support here will allow such errors
+	  to be reported when Linux is started again.
+
 config OCTEONTX2_EINJ
 	tristate "OcteonTX2 EDAC ECC Injection"
 	depends on OCTEONTX2_SDEI_GHES
