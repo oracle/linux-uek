@@ -26,6 +26,7 @@
 #include <linux/init.h>
 #include <linux/acpi.h>
 #include <linux/io.h>
+#include <linux/of.h>
 
 #include "apei-internal.h"
 
@@ -33,6 +34,26 @@
 #define pr_fmt(fmt) "BERT: " fmt
 
 static int bert_disable;
+
+static struct acpi_table_bert *__read_mostly bert_tab;
+
+/*
+ * Checks device tree for support of bed-bert [driver].
+ * This driver supports BERT in the absence of ACPI.
+ * on entry:
+ *     void
+ * returns:
+ *     true if bed-bert support found in Device Tree else false
+ */
+static bool bed_bert_present_dt(void)
+{
+	struct device_node *np;
+
+	np = of_find_node_by_name(NULL, "bed-bert");
+	of_node_put(np);
+
+	return !!np;
+}
 
 static void __init bert_print_all(struct acpi_bert_region *region,
 				  unsigned int region_len)
@@ -86,10 +107,10 @@ static int __init setup_bert_disable(char *str)
 }
 __setup("bert_disable", setup_bert_disable);
 
-static int __init bert_check_table(struct acpi_table_bert *bert_tab)
+static int __init bert_check_table(struct acpi_table_bert *bert)
 {
-	if (bert_tab->header.length < sizeof(struct acpi_table_bert) ||
-	    bert_tab->region_length < sizeof(struct acpi_bert_region))
+	if (bert->header.length < sizeof(struct acpi_table_bert) ||
+	    bert->region_length < sizeof(struct acpi_bert_region))
 		return -EINVAL;
 
 	return 0;
@@ -99,12 +120,12 @@ static int __init bert_init(void)
 {
 	struct apei_resources bert_resources;
 	struct acpi_bert_region *boot_error_region;
-	struct acpi_table_bert *bert_tab;
 	unsigned int region_len;
 	acpi_status status;
 	int rc = 0;
 
-	if (acpi_disabled)
+	/* permit BERT initialization if either ACPI or GHES_BERT is present */
+	if (acpi_disabled && !bed_bert_present_dt())
 		return 0;
 
 	if (bert_disable) {
@@ -112,7 +133,12 @@ static int __init bert_init(void)
 		return 0;
 	}
 
-	status = acpi_get_table(ACPI_SIG_BERT, 0, (struct acpi_table_header **)&bert_tab);
+	/* BERT table may have been initialized by bert_table_set() */
+	if (bert_tab)
+		status = AE_OK;
+	else
+		status = acpi_get_table(ACPI_SIG_BERT, 0,
+					(struct acpi_table_header **)&bert_tab);
 	if (status == AE_NOT_FOUND)
 		return 0;
 
@@ -129,13 +155,15 @@ static int __init bert_init(void)
 
 	region_len = bert_tab->region_length;
 	apei_resources_init(&bert_resources);
-	rc = apei_resources_add(&bert_resources, bert_tab->address,
-				region_len, true);
-	if (rc)
-		return rc;
-	rc = apei_resources_request(&bert_resources, "APEI BERT");
-	if (rc)
-		goto out_fini;
+	if (!acpi_disabled) {
+		rc = apei_resources_add(&bert_resources, bert_tab->address,
+					region_len, true);
+		if (rc)
+			return rc;
+		rc = apei_resources_request(&bert_resources, "APEI BERT");
+		if (rc)
+			goto out_fini;
+	}
 	boot_error_region = ioremap_cache(bert_tab->address, region_len);
 	if (boot_error_region) {
 		bert_print_all(boot_error_region, region_len);
@@ -144,11 +172,20 @@ static int __init bert_init(void)
 		rc = -ENOMEM;
 	}
 
-	apei_resources_release(&bert_resources);
+	if (!acpi_disabled)
+		apei_resources_release(&bert_resources);
 out_fini:
 	apei_resources_fini(&bert_resources);
 
 	return rc;
+}
+
+/*
+ * This allows the BERT to be initialized externally, in the absence of ACPI.
+ */
+void __init bert_table_set(struct acpi_table_bert *table)
+{
+	bert_tab = table;
 }
 
 late_initcall(bert_init);
