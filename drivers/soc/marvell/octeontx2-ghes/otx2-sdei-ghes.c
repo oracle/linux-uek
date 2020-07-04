@@ -528,6 +528,259 @@ static void dev_enable_msix(struct pci_dev *pdev)
 	}
 }
 
+#ifdef CONFIG_OCTEONTX2_SDEI_GHES_BERT
+static const struct of_device_id bed_bert_of_match[] = {
+	{ .compatible = "marvell,bed-bert", },
+	{},
+};
+
+struct bed_bert_mem_entry {
+	union {
+		/* These are identical; both are listed here for clarity */
+		struct acpi_hest_generic_status hest;
+		struct acpi_bert_region         bert;
+	} estatus;
+	struct acpi_hest_generic_data   gen_data;
+	struct cper_sec_mem_err_old     mem_err;
+} __packed;
+
+/*
+ * Allocates and initializes Boot Error Record Table (BERT), then
+ * registers it with kernel.
+ */
+static int __init sdei_ghes_bert_init(struct device_node *of_node)
+{
+	const __be32 *of_base0, *of_base1, *of_base2;
+	uint64_t bert_size, bert_rgn_size, of_size2;
+	const char *bert_tbl_oem_id = "OTX2    ";
+	struct bed_bert_mem_entry *bert_entries;
+	struct otx2_ghes_err_ring *bed_ring;
+	const char *bert_oem_id = "MRVL  ";
+	struct acpi_bert_region *bert_rgn;
+	struct acpi_table_bert *bert_tbl;
+	void *bert_va, *firmware_bert_va;
+	struct device_node *child_node;
+	size_t error_cnt, size, idx;
+	phys_addr_t memblock_phys;
+	phys_addr_t bert_phys;
+	void *memblock_va;
+	int ret;
+	u8 sum;
+	u8 *p;
+
+	initdbgmsg("%s: entry\n", __func__);
+
+	ret = -ENODEV;
+	bed_ring = NULL;
+	error_cnt = 0;
+
+	child_node = of_get_next_available_child(of_node, NULL);
+	if (!child_node)
+		goto exit;
+
+	of_base0 = of_get_address(child_node, 0, NULL, NULL);
+	if ((of_base0 == NULL) ||
+	    (of_translate_address(child_node, of_base0) == OF_BAD_ADDR)) {
+		pr_err("Bad or missing device tree entry #0");
+		goto exit;
+	}
+
+	of_base1 = of_get_address(child_node, 1, NULL, NULL);
+	if ((of_base1 == NULL) ||
+	    (of_translate_address(child_node, of_base1) == OF_BAD_ADDR)) {
+		pr_err("Bad or missing device tree entry #1");
+		goto exit;
+	}
+
+	of_base2 = of_get_address(child_node, 2, &of_size2, NULL);
+	if (!of_base2 ||
+	    (of_translate_address(child_node, of_base2) == OF_BAD_ADDR)) {
+		pr_err("Missing device tree entry #2");
+		goto exit;
+	}
+	memblock_phys = of_translate_address(child_node, of_base2);
+
+	if (!request_mem_region(memblock_phys, of_size2,
+				"boot_error_data_BERT")) {
+		pr_err("request mem region (0x%llx@0x%llx) failed\n",
+		(unsigned long long)of_size2,
+		(unsigned long long)memblock_phys);
+		goto exit;
+	}
+
+	memblock_va = ioremap(memblock_phys, of_size2);
+	if (memblock_va == NULL) {
+		pr_err("Unable to access Boot Error Data memory\n");
+		goto exit;
+	}
+
+	bed_ring = memblock_va;
+
+	if (!bed_ring->size) {
+		pr_err("Invalid ring size %d\n", bed_ring->size);
+		goto exit;
+	}
+
+	/* TODO: handle wrap-around */
+	if (bed_ring->head >= bed_ring->tail)
+		error_cnt = bed_ring->head - bed_ring->tail;
+	else
+		error_cnt = bed_ring->size -
+			(bed_ring->tail - bed_ring->head);
+
+	initdbgmsg("Node '%s' BED mem @ %llx (%llx PA), %llu B, entries %ld\n",
+		   child_node->name, (long long)memblock_va, memblock_phys,
+		   (long long)of_size2, error_cnt);
+
+	if (!error_cnt) {
+		ret = 0;
+		goto exit;
+	}
+
+	/*
+	 * The memory block contains the boot error data ring; beyond the ring
+	 * is room for the BERT.  Calculate size of BERT area.
+	 * Note: the ring structure definition already contains one entry,
+	 * so subtract one from the 'size' member.
+	 */
+	size = sizeof(*bed_ring) +
+		(sizeof(struct otx2_ghes_err_record) * (bed_ring->size - 1));
+	/* round up to 8B */
+	size = roundup(size, 8);
+	if (size > of_size2) {
+		pr_err("Insufficient memory for ring (0x%lx / 0x%lx)\n",
+		       (long)size, (long)of_size2);
+		goto exit;
+	}
+
+	bert_phys = memblock_phys + size;
+	bert_size = of_size2 - size;
+
+	/*
+	 * BERT is contiguous to the boot error data ring and is organized as:
+	 *   BERT header
+	 *   BERT region (which includes error records)
+	 */
+
+	size = sizeof(*bert_tbl);
+	size += sizeof(*bert_entries) * error_cnt;
+
+	if (size > bert_size) {
+		pr_err("Insufficient memory for BERT data (0x%lx / 0x%lx)\n",
+		       (long)size, (long)bert_size);
+		goto exit;
+	}
+
+	firmware_bert_va = memblock_va + (bert_phys - memblock_phys);
+
+	bert_va = kzalloc(bert_size, GFP_KERNEL);
+	if (!bert_va) {
+		pr_err("Unable to allocate suitable BERT data area (0x%x B)\n",
+		       (unsigned int)bert_size);
+		goto exit;
+	}
+
+	/* BERT Table is at start of BERT block */
+	bert_tbl = bert_va;
+	/* BERT region follows Table (table is 8B-aligned, see above) */
+	size = sizeof(*bert_tbl);
+	bert_rgn = (struct acpi_bert_region *)(bert_va + size);
+	bert_rgn_size = bert_size - size;
+	/* entries begin at BERT region */
+	bert_entries = (struct bed_bert_mem_entry *)bert_rgn;
+
+	initdbgmsg("BERT memory at %llx (0x%llx PA), %llu B\n",
+		   (long long)bert_va, bert_phys, (long long)bert_size);
+	initdbgmsg("BERT header at %llx, %llu B\n", (long long)bert_tbl,
+		   (long long)sizeof(*bert_tbl));
+	initdbgmsg("BERT region (error recs) at %llx (%llu B)\n",
+		   (long long)bert_rgn, bert_rgn_size);
+
+	/* populate BERT header */
+	strncpy(bert_tbl->header.signature, ACPI_SIG_BERT,
+			  sizeof(bert_tbl->header.signature));
+	bert_tbl->header.length = sizeof(*bert_tbl);
+	bert_tbl->header.revision = 1;
+	bert_tbl->header.oem_revision = 1;
+
+	strncpy(bert_tbl->header.oem_id, bert_oem_id,
+		sizeof(bert_tbl->header.oem_id));
+	strncpy(bert_tbl->header.oem_table_id, bert_tbl_oem_id,
+		sizeof(bert_tbl->header.oem_table_id));
+	strncpy(bert_tbl->header.asl_compiler_id, bert_oem_id,
+		sizeof(bert_tbl->header.asl_compiler_id));
+	bert_tbl->header.asl_compiler_revision = 1;
+
+	sum = 0;
+	for (p = (u8 *)&bert_tbl->header; p < (u8 *)(&bert_tbl->header + 1);
+	     p++)
+		sum += *p;
+	bert_tbl->header.checksum -= sum;
+	bert_tbl->region_length = (error_cnt * sizeof(*bert_entries));
+	bert_tbl->address = ((void *)bert_rgn - bert_va) + bert_phys;
+
+	for (idx = 0; idx < error_cnt; idx++) {
+		struct acpi_hest_generic_data *hest_gen_data;
+		struct bed_bert_mem_entry *bert_mem_entry;
+		struct acpi_hest_generic_status *estatus;
+		struct cper_sec_mem_err_old *mem_err;
+		struct otx2_ghes_err_record *err_rec;
+
+		bert_mem_entry = &bert_entries[idx];
+
+		estatus = &bert_mem_entry->estatus.hest;
+		err_rec = &bed_ring->records[bed_ring->tail];
+
+		estatus->raw_data_length = 0;
+		estatus->raw_data_offset = 0;
+		estatus->data_length = sizeof(bert_mem_entry->gen_data);
+		estatus->error_severity = err_rec->severity;
+
+		hest_gen_data = &bert_mem_entry->gen_data;
+
+		hest_gen_data->revision = 0x201; /* ACPI 4.x */
+		if (err_rec->fru_text[0]) {
+			hest_gen_data->validation_bits =
+				ACPI_HEST_GEN_VALID_FRU_STRING;
+			strncpy(hest_gen_data->fru_text,
+				err_rec->fru_text,
+				sizeof(hest_gen_data->fru_text));
+		}
+		/* copy severity from generic status */
+		hest_gen_data->error_severity = estatus->error_severity;
+		memcpy((guid_t *)hest_gen_data->section_type,
+		       &CPER_SEC_PLATFORM_MEM, sizeof(guid_t));
+
+		hest_gen_data->error_data_length = sizeof(*mem_err);
+		estatus->data_length += hest_gen_data->error_data_length;
+
+		mem_err = &bert_mem_entry->mem_err;
+		/* copy error record from ring */
+		memcpy(mem_err, &err_rec->u.mcc, sizeof(*mem_err));
+
+		/*
+		 * This simply needs the entry count to be non-zero.
+		 * Set entry count to one (see ACPI_HEST_ERROR_ENTRY_COUNT).
+		 */
+		estatus->block_status = (1 << 4); /* i.e. one entry */
+
+		if (++bed_ring->tail >= bed_ring->size)
+			bed_ring->tail = 0;
+	}
+
+	memcpy(firmware_bert_va, bert_va, bert_size);
+	kfree(bert_va);
+
+	initdbgmsg("%s: registering BERT\n", __func__);
+	bert_table_set(firmware_bert_va);
+
+	ret = 0;
+
+exit:
+	return ret;
+}
+#endif /* CONFIG_OCTEONTX2_SDEI_GHES_BERT */
+
 /* Driver entry point */
 static int __init sdei_ghes_driver_init(void)
 {
@@ -539,6 +792,20 @@ static int __init sdei_ghes_driver_init(void)
 	initdbgmsg("%s: edac_debug_level:%d\n", __func__, edac_debug_level);
 
 	rc = -ENODEV;
+
+#ifdef CONFIG_OCTEONTX2_SDEI_GHES_BERT
+	of_node = of_find_matching_node_and_match(NULL, bed_bert_of_match,
+						  NULL);
+	if (!of_node)
+		goto skip_bert;
+
+	/* Initialize Boot Error Record Table (BERT) */
+	rc = sdei_ghes_bert_init(of_node);
+	if (rc)
+		initerrmsg("BERT initialization error %d\n", rc);
+
+skip_bert:
+#endif /* CONFIG_OCTEONTX2_SDEI_GHES_BERT */
 
 	of_node = of_find_matching_node_and_match(NULL, sdei_ghes_of_match,
 						  NULL);
