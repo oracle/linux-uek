@@ -143,6 +143,7 @@ static inline int atomic_add_return(int i, atomic_t *v)
 	result = atomic_add_return_relaxed(i, v);
 	return result;
 }
+#define atomic_add_return atomic_add_return
 
 static inline int atomic_sub_return_relaxed(int i, atomic_t *v)
 {
@@ -197,6 +198,7 @@ static inline int atomic_sub_return(int i, atomic_t *v)
 	smp_llsc_mb();
 	return result;
 }
+#define atomic_sub_return atomic_sub_return
 #endif
 
 #define ATOMIC_OP(op, c_op, asm_op)					      \
@@ -497,6 +499,7 @@ static inline long atomic64_add_return(long i, atomic64_t *v)
 	smp_llsc_mb();
 	return result;
 }
+#define atomic64_add_return atomic64_add_return
 
 static inline long atomic64_sub_return_relaxed(long i, atomic64_t *v)
 {
@@ -552,6 +555,7 @@ static inline long atomic64_sub_return(long i, atomic64_t *v)
 	smp_llsc_mb();
 	return result;
 }
+#define atomic64_sub_return atomic64_sub_return
 #endif
 
 #define ATOMIC64_OP(op, c_op, asm_op)					      \

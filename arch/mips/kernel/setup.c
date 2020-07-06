@@ -308,6 +308,7 @@ static void __init bootmem_init(void)
 {
 	struct memblock_region *mem;
 	phys_addr_t ramstart, ramend;
+	unsigned long reserved_end;
 
 	ramstart = memblock_start_of_DRAM();
 	ramend = memblock_end_of_DRAM();
