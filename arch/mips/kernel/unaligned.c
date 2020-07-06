@@ -956,7 +956,7 @@ static void emulate_load_store_insn(struct pt_regs *regs,
 				break;
 #ifdef CONFIG_64BIT
 			case ldx_op:
-				if (!access_ok(VERIFY_READ, addr, 8))
+				if (!access_ok(addr, 8))
 					goto sigbus;
 
 				LoadDW(addr, value, res);
@@ -967,7 +967,7 @@ static void emulate_load_store_insn(struct pt_regs *regs,
 				break;
 
 			case lwux_op:
-				if (!access_ok(VERIFY_READ, addr, 4))
+				if (!access_ok(addr, 4))
 					goto sigbus;
 
 				LoadWU(addr, value, res);
@@ -979,7 +979,7 @@ static void emulate_load_store_insn(struct pt_regs *regs,
 #endif /* CONFIG_64BIT */
 
 			case lhux_op:
-				if (!access_ok(VERIFY_READ, addr, 2))
+				if (!access_ok(addr, 2))
 					goto sigbus;
 
 				LoadHWU(addr, value, res);
