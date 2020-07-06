@@ -879,7 +879,6 @@ static void sdp_afpf_mbox_term(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp = pci_get_drvdata(pdev);
 
-	flush_workqueue(sdp->afpf_mbox_wq);
 	destroy_workqueue(sdp->afpf_mbox_wq);
 	otx2_mbox_destroy(&sdp->afpf_mbox);
 	otx2_mbox_destroy(&sdp->afpf_mbox_up);
@@ -1005,13 +1004,11 @@ void sdp_sysfs_remove(struct device *dev)
 
 static void sdp_host_handshake_fn(struct work_struct *wrk)
 {
-	struct host_hs_work *container_work;
 	union ring host_rinfo;
 	struct sdp_dev *sdp;
 	int err;
 
-	container_work = container_of(wrk, struct host_hs_work, sdp_work.work);
-	sdp = container_work->sdp;
+	sdp = container_of(wrk, struct sdp_dev, sdp_work.work);
 	host_rinfo.u = readq(sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
 	if (host_rinfo.s.dir == HOST_TO_FW) {
 		neg_vf0_rings = host_rinfo.s.rppf;
@@ -1033,8 +1030,7 @@ static void sdp_host_handshake_fn(struct work_struct *wrk)
 		return;
 	}
 
-	queue_delayed_work(container_work->sdp_host_handshake,
-			   &container_work->sdp_work,  HZ * 1);
+	queue_delayed_work(sdp->sdp_host_handshake, &sdp->sdp_work,  HZ * 1);
 }
 
 static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -1165,11 +1161,10 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	dev_info(&pdev->dev, "Ring info 0x%llx\n", fw_rinfo.u);
 	writeq(fw_rinfo.u, sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
 
-	hs_work.sdp = sdp;
-	hs_work.sdp_host_handshake = alloc_workqueue("sdp_epmode_fw_hs",
+	sdp->sdp_host_handshake = alloc_workqueue("sdp_epmode_fw_hs",
 						     WQ_MEM_RECLAIM, 0);
-	INIT_DELAYED_WORK(&hs_work.sdp_work, sdp_host_handshake_fn);
-	queue_delayed_work(hs_work.sdp_host_handshake, &hs_work.sdp_work, 0);
+	INIT_DELAYED_WORK(&sdp->sdp_work, sdp_host_handshake_fn);
+	queue_delayed_work(sdp->sdp_host_handshake, &sdp->sdp_work, 0);
 
 	/* Add to global list of PFs found */
 	spin_lock(&sdp_lst_lock);
@@ -1340,7 +1335,6 @@ static int __sriov_disable(struct pci_dev *pdev)
 	disable_vf_mbox_int(pdev);
 
 	if (sdp->pfvf_mbox_wq) {
-		flush_workqueue(sdp->pfvf_mbox_wq);
 		destroy_workqueue(sdp->pfvf_mbox_wq);
 		sdp->pfvf_mbox_wq = NULL;
 	}
@@ -1489,8 +1483,7 @@ static void sdp_remove(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp = pci_get_drvdata(pdev);
 
-	flush_workqueue(hs_work.sdp_host_handshake);
-	destroy_workqueue(hs_work.sdp_host_handshake);
+	destroy_workqueue(sdp->sdp_host_handshake);
 
 	spin_lock(&sdp_lst_lock);
 	list_del(&sdp->list);
