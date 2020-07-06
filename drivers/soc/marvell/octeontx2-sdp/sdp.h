@@ -78,6 +78,8 @@ struct sdp_dev {
 	struct workqueue_struct	*pfvf_mbox_wq; /* VF MBOX handler */
 	struct rvu_vf		*vf_info;
 	struct free_rsrcs_rsp	limits; /* Maximum limits for all VFs */
+	struct delayed_work	sdp_work;
+	struct workqueue_struct *sdp_host_handshake;
 };
 
 #endif /* SDP_H_ */
