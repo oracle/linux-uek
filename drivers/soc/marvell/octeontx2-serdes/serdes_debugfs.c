@@ -54,7 +54,8 @@ struct dentry *pserdes_root;
 enum cgx_prbs_cmd {
 	CGX_PRBS_START_CMD = 1,
 	CGX_PRBS_STOP_CMD,
-	CGX_PRBS_GET_DATA_CMD
+	CGX_PRBS_GET_DATA_CMD,
+	CGX_PRBS_CLEAR_CMD
 };
 
 struct cgx_prbs_errors {
@@ -460,6 +461,8 @@ static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 					-EINVAL;
 		} else if (!strcmp(subtoken, "stop")) {
 			*cmd = CGX_PRBS_STOP_CMD;
+		} else if (!strcmp(subtoken, "clear")) {
+			*cmd = CGX_PRBS_CLEAR_CMD;
 		} else {
 			ec = -EINVAL;
 		}
@@ -555,6 +558,20 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 			pr_info("GSER PRBS stop on QLM %d on all lanes.\n", qlm);
 		else
 			pr_info("GSER PRBS stop on QLM %d on Lane %d.\n", qlm, qlm_lane);
+		break;
+
+	case CGX_PRBS_CLEAR_CMD:
+		arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, cmd,
+			      qlm, 0, qlm_lane, 0, 0, 0, &res);
+		if (res.a0 != SMCCC_RET_SUCCESS) {
+			pr_info("GSER prbs clear command failed.\n");
+			return -EIO;
+		}
+		if (qlm_lane == -1)
+			pr_info("GSER PRBS errors cleared on QLM%d\n", qlm);
+		else
+			pr_info("GSER PRBS errors cleared on QLM%d Lane%d\n",
+					qlm, qlm_lane);
 		break;
 
 	default:
