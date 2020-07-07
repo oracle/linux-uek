@@ -642,7 +642,6 @@ void psi_cgroup_free(struct cgroup *cgroup)
 
 	cancel_delayed_work_sync(&cgroup->psi->clock_work);
 	free_percpu(cgroup->psi->pcpu);
-	kfree(cgroup->psi);
 }
 
 /**
