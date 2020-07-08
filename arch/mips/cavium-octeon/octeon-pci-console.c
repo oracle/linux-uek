@@ -224,10 +224,12 @@ void octeon_pci_console_init(const char *arg)
 /*
  * called by a timer to poll the PCI device for input data
  */
-static void octeon_pci_console_read_poll(unsigned long arg)
+static void octeon_pci_console_read_poll(struct timer_list *t)
 {
-	struct tty_struct *tty = (struct tty_struct *) arg;
-	struct octeon_pci_console  *opc = tty->driver->driver_state;
+	struct octeon_pci_console  *opc = from_timer(opc, t, poll_timer);
+	struct tty_driver *driver = container_of((void **)opc, struct tty_driver, driver_state);
+	struct tty_struct *tty = container_of((struct tty_driver **)driver, struct tty_struct, driver);
+
 	int nr;
 	u32 s = opc->rings->buf_size;
 	u32 r =  opc->rings->input_read_index;
@@ -276,9 +278,7 @@ static int octeon_pci_console_tty_open(struct tty_struct *tty,
 
 	opc->open_count++;
 	if (opc->open_count == 1) {
-		init_timer(&opc->poll_timer);
-		opc->poll_timer.data = (unsigned long) tty;
-		opc->poll_timer.function = octeon_pci_console_read_poll;
+		timer_setup(&opc->poll_timer, octeon_pci_console_read_poll, 0);
 		mod_timer(&opc->poll_timer, jiffies + 1);
 	}
 	return 0;
