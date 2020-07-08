@@ -952,7 +952,7 @@ int kvm_set_xcr(struct kvm_vcpu *vcpu, u32 index, u64 xcr)
 }
 EXPORT_SYMBOL_GPL(kvm_set_xcr);
 
-static int kvm_valid_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
+int kvm_valid_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
 {
 	if (cr4 & cr4_reserved_bits)
 		return -EINVAL;
@@ -962,6 +962,7 @@ static int kvm_valid_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(kvm_valid_cr4);
 
 int kvm_set_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
 {
