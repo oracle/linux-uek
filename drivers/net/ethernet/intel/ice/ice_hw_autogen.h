@@ -355,6 +355,15 @@
 #define GLV_UPTCL(_i)				(0x0030A000 + ((_i) * 8))
 #define VSIQF_HKEY_MAX_INDEX			12
 #define VSIQF_HLUT_MAX_INDEX			15
+#define PFPM_APM				0x000B8080
+#define PFPM_APM_APME_M				BIT(0)
+#define PFPM_WUFC				0x0009DC00
+#define PFPM_WUFC_MAG_M				BIT(1)
+#define PFPM_WUS				0x0009DB80
+#define PFPM_WUS_LNKC_M				BIT(0)
+#define PFPM_WUS_MAG_M				BIT(1)
+#define PFPM_WUS_MNG_M				BIT(3)
+#define PFPM_WUS_FW_RST_WK_M			BIT(31)
 #define VFINT_DYN_CTLN(_i)			(0x00003800 + ((_i) * 4))
 #define VFINT_DYN_CTLN_CLEARPBA_M		BIT(1)
 #define PRTRPB_RDPC				0x000AC260
