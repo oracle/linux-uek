@@ -122,11 +122,25 @@ static char mlx4_version[] =
 	DRV_NAME ": Mellanox ConnectX core driver v"
 	DRV_VERSION "\n";
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define MLX4_LOG_NUM_MTT 20
+/* We limit to 30 as of a bit map issue which uses int and not uint.
+ * see mlx4_buddy_init -> bitmap_zero which gets int.
+ */
+#define MLX4_MAX_LOG_NUM_MTT 30
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static const struct mlx4_profile default_profile = {
 	.num_qp		= 1 << 18,
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	.num_srq	= 1 << 16,
 	.rdmarc_per_qp	= 1 << 4,
 	.num_cq		= 1 << 16,
+#else
+	.num_srq	= 1 << 18,
+	.rdmarc_per_qp	= 1 << 3,
+	.num_cq		= 1 << 18,
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	.num_mcg	= 1 << 13,
 	.num_mpt	= 1 << 19,
 	.num_mtt	= 1 << 20, /* It is really num mtt segments */
@@ -2332,6 +2346,9 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 	u64 icm_size;
 	struct mlx4_config_dev_params params;
 	int err;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct sysinfo si;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (!mlx4_is_slave(dev)) {
 		dev_cap = kzalloc(sizeof(*dev_cap), GFP_KERNEL);
@@ -2367,6 +2384,28 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 			profile = low_mem_profile;
 		} else {
 			profile = default_profile;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+			pr_info("mlx4_core: Effective log_num_qp is now set to %d.\n",
+				ilog2(profile.num_qp));
+			pr_info("mlx4_core: Effective log_num_srq is now set to %d.\n",
+				ilog2(profile.num_srq));
+			pr_info("mlx4_core: Effective log_rdmarc_per_qp is now set to %d.\n",
+				ilog2(profile.rdmarc_per_qp));
+			pr_info("mlx4_core: Effective log_num_cq is now set to %d.\n",
+				ilog2(profile.num_cq));
+			si_meminfo(&si);
+			profile.num_mtt =
+				roundup_pow_of_two(max_t(unsigned int,
+							 1 << (MLX4_LOG_NUM_MTT -
+							      log_mtts_per_seg),
+							 min(1UL <<
+							    (MLX4_MAX_LOG_NUM_MTT -
+							     log_mtts_per_seg),
+							    (si.totalram << 1)
+							    >> log_mtts_per_seg)));
+			pr_info("mlx4_core: log_num_mtt is scaled dynamically. Effective log_num_mtt is now set to %d.\n",
+				ilog2(profile.num_mtt));
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		}
 		if (dev->caps.steering_mode ==
 		    MLX4_STEERING_MODE_DEVICE_MANAGED)
