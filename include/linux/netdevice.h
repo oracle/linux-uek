@@ -63,6 +63,8 @@ struct wpan_dev;
 struct mpls_dev;
 /* UDP Tunnel offloads */
 struct udp_tunnel_info;
+struct udp_tunnel_nic_info;
+struct udp_tunnel_nic;
 struct bpf_prog;
 struct xdp_buff;
 
@@ -1838,6 +1840,10 @@ enum netdev_ml_priv_type {
  *				that follow this device when it is moved
  *				to another network namespace.
  *
+ *	@udp_tunnel_nic_info:	static structure describing the UDP tunnel
+ *				offload capabilities of the device
+ *	@udp_tunnel_nic:	UDP tunnel offload state
+ *
  *	FIXME: cleanup struct net_device such that network protocol info
  *	moves out.
  */
@@ -2133,8 +2139,9 @@ struct net_device {
 	UEK_KABI_USE(2, enum netdev_ml_priv_type ml_priv_type)
 
 	UEK_KABI_USE(3, struct list_head net_notifier_list)
-	UEK_KABI_RESERVE(4)
-	UEK_KABI_RESERVE(5)
+	UEK_KABI_USE(4, const struct udp_tunnel_nic_info	*udp_tunnel_nic_info)
+	UEK_KABI_USE(5, struct udp_tunnel_nic	*udp_tunnel_nic)
+
 	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
