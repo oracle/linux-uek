@@ -40,6 +40,7 @@
 #include <asm/virt.h>
 
 #include "irq-gic-common.h"
+#include "irq-gic-v3-quirks.h"
 
 struct redist_region {
 	void __iomem		*redist_base;
@@ -62,6 +63,7 @@ struct gic_chip_data {
 
 static struct gic_chip_data gic_data __read_mostly;
 static struct static_key supports_deactivate = STATIC_KEY_INIT_TRUE;
+DEFINE_STATIC_KEY_FALSE(gic_ipimiss_quirk);
 
 static struct gic_kvm_info gic_v3_kvm_info;
 static DEFINE_PER_CPU(bool, has_rss);
@@ -71,8 +73,38 @@ static DEFINE_PER_CPU(bool, has_rss);
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
 #define gic_data_rdist_sgi_base()	(gic_data_rdist_rd_base() + SZ_64K)
 
+#define gic_data_rdist_cpu(cpu)		\
+				(per_cpu_ptr(gic_data.rdists.rdist, cpu))
+#define gic_data_rdist_rd_base_cpu(cpu)	\
+				(gic_data_rdist_cpu(cpu)->rd_base)
+#define gic_data_rdist_sgi_base_cpu(cpu)\
+				(gic_data_rdist_rd_base_cpu(cpu) + SZ_64K)
+
 /* Our default, arbitrary priority value. Linux only uses one anyway. */
 #define DEFAULT_PMR_VALUE	0xf0
+
+void gic_v3_enable_ipimiss_quirk(void)
+{
+	static_branch_enable(&gic_ipimiss_quirk);
+}
+
+u32 gic_rdist_pend_reg(int cpu, int offset)
+{
+	void __iomem *base;
+
+	base = gic_data_rdist_sgi_base_cpu(cpu);
+
+	return readl_relaxed(base + GICR_ISPENDR0 + offset);
+}
+
+u32 gic_rdist_active_reg(int cpu, int offset)
+{
+	void __iomem *base;
+
+	base = gic_data_rdist_sgi_base_cpu(cpu);
+
+	return readl_relaxed(base + GICR_ISACTIVER0 + offset);
+}
 
 static inline unsigned int gic_irq(struct irq_data *d)
 {
@@ -385,6 +417,11 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 			continue;
 		}
 		if (irqnr < 16) {
+			if (static_branch_likely(&gic_ipimiss_quirk)) {
+				gic_ipi_rxcount_inc(smp_processor_id(), irqnr);
+				/* Force increment is done before deactivate */
+				wmb();
+			}
 			gic_write_eoir(irqnr);
 			if (static_key_true(&supports_deactivate))
 				gic_write_dir(irqnr);
@@ -410,6 +447,8 @@ static void __init gic_dist_init(void)
 	unsigned int i;
 	u64 affinity;
 	void __iomem *base = gic_data.dist_base;
+
+	gic_v3_enable_quirks(base);
 
 	/* Disable the distributor */
 	writel_relaxed(0, base + GICD_CTLR);
@@ -654,6 +693,10 @@ static u16 gic_compute_target_list(int *base_cpu, const struct cpumask *mask,
 	while (cpu < nr_cpu_ids) {
 		tlist |= 1 << (mpidr & 0xf);
 
+		if (static_branch_likely(&gic_ipimiss_quirk))
+			/* Force only one target at a time */
+			goto out;
+
 		next_cpu = cpumask_next(cpu, mask);
 		if (next_cpu >= nr_cpu_ids)
 			goto out;
@@ -674,8 +717,8 @@ out:
 #define MPIDR_TO_SGI_AFFINITY(cluster_id, level) \
 	(MPIDR_AFFINITY_LEVEL(cluster_id, level) \
 		<< ICC_SGI1R_AFFINITY_## level ##_SHIFT)
-
-static void gic_send_sgi(u64 cluster_id, u16 tlist, unsigned int irq)
+static void gic_send_sgi(int dest_cpu, u64 cluster_id, u16 tlist,
+			 unsigned int irq)
 {
 	u64 val;
 
@@ -687,7 +730,10 @@ static void gic_send_sgi(u64 cluster_id, u16 tlist, unsigned int irq)
 	       tlist << ICC_SGI1R_TARGET_LIST_SHIFT);
 
 	pr_devel("CPU%d: ICC_SGI1R_EL1 %llx\n", smp_processor_id(), val);
-	gic_write_sgi1r(val);
+	if (static_branch_likely(&gic_ipimiss_quirk))
+		gic_write_sgi1r_retry(dest_cpu, irq, val);
+	else
+		gic_write_sgi1r(val);
 }
 
 static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
@@ -708,8 +754,11 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 		u16 tlist;
 
 		tlist = gic_compute_target_list(&cpu, mask, cluster_id);
-		gic_send_sgi(cluster_id, tlist, irq);
+		gic_send_sgi(cpu, cluster_id, tlist, irq);
 	}
+
+	if (static_branch_likely(&gic_ipimiss_quirk))
+		return;
 
 	/* Force the above writes to ICC_SGI1R_EL1 to be executed */
 	isb();
