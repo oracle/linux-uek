@@ -79,8 +79,8 @@
  * value at anytime. Added timer to adjust the PTP and BCN base values
  * periodically to fix the overflow issue.
  */
-#define PTP_CLK_FREQ_DIV_GHZ		1536	/* freq_div = Clock MHz x 10 */
-#define PTP_CLK_FREQ_MULT_GHZ		10000	/* freq(Ghz) = freq_div/10000 */
+#define PTP_CLK_FREQ_GHZ		95	/* Clock freq GHz dividend */
+#define PTP_CLK_FREQ_DIV		100	/* Clock freq GHz divisor */
 #define PTP_OFF_RESAMPLE_THRESH		1800	/* resample period in seconds */
 #define PICO_SEC_PER_NSEC		1000	/* pico seconds per nano sec */
 #define UTC_GPS_EPOCH_DIFF		315964819UL /* UTC - GPS epoch secs */
@@ -200,6 +200,25 @@ struct otx2_rfoe_stats {
 	spinlock_t lock;
 };
 
+/* PTP clk freq in GHz represented as integer numbers.
+ * This information is passed to netdev by the ODP BPHY
+ * application via ioctl. The values are used in PTP
+ * timestamp calculation algorithm.
+ *
+ * For 950MHz PTP clock =0.95GHz, the values are:
+ *     clk_freq_ghz = 95
+ *     clk_freq_div = 100
+ *
+ * For 153.6MHz PTP clock =0.1536GHz, the values are:
+ *     clk_freq_ghz = 1536
+ *     clk_freq_div = 10000
+ *
+ */
+struct ptp_clk_cfg {
+	int clk_freq_ghz;	/* ptp clk freq */
+	int clk_freq_div;	/* ptp clk divisor */
+};
+
 struct bcn_sec_offset_cfg {
 	u8				rfoe_num;
 	u8				lmac_id;
@@ -215,6 +234,7 @@ struct ptp_bcn_ref {
 struct ptp_bcn_off_cfg {
 	struct ptp_bcn_ref		old_ref;
 	struct ptp_bcn_ref		new_ref;
+	struct ptp_clk_cfg		clk_cfg;
 	struct timer_list		ptp_timer;
 	int				use_ptp_alg;
 	/* protection lock for updating ref */

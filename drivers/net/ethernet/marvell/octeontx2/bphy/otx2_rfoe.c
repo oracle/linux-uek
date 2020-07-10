@@ -165,6 +165,7 @@ static void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv,
 {
 	u64 ptp_diff_nsec, ptp_diff_psec;
 	struct ptp_bcn_off_cfg *ptp_cfg;
+	struct ptp_clk_cfg *clk_cfg;
 	struct ptp_bcn_ref *ref;
 	unsigned long flags;
 	u64 timestamp = *ts;
@@ -172,6 +173,7 @@ static void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv,
 	ptp_cfg = priv->ptp_cfg;
 	if (!ptp_cfg->use_ptp_alg)
 		return;
+	clk_cfg = &ptp_cfg->clk_cfg;
 
 	spin_lock_irqsave(&ptp_cfg->lock, flags);
 
@@ -182,7 +184,7 @@ static void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv,
 
 	/* calculate ptp timestamp diff in pico sec */
 	ptp_diff_psec = ((timestamp - ref->ptp0_ns) * PICO_SEC_PER_NSEC *
-			 PTP_CLK_FREQ_MULT_GHZ) / PTP_CLK_FREQ_DIV_GHZ;
+			 clk_cfg->clk_freq_div) / clk_cfg->clk_freq_ghz;
 	ptp_diff_nsec = (ptp_diff_psec + ref->bcn0_n2_ps + 500) /
 			PICO_SEC_PER_NSEC;
 	timestamp = ref->bcn0_n1_ns - priv->sec_bcn_offset + ptp_diff_nsec;
@@ -196,6 +198,7 @@ static void otx2_rfoe_ptp_offset_timer(struct timer_list *t)
 {
 	struct ptp_bcn_off_cfg *ptp_cfg = from_timer(ptp_cfg, t, ptp_timer);
 	u64 mio_ptp_ts, ptp_ts_diff, ptp_diff_nsec, ptp_diff_psec;
+	struct ptp_clk_cfg *clk_cfg = &ptp_cfg->clk_cfg;
 	unsigned long flags;
 
 	spin_lock_irqsave(&ptp_cfg->lock, flags);
@@ -206,7 +209,7 @@ static void otx2_rfoe_ptp_offset_timer(struct timer_list *t)
 	mio_ptp_ts = readq(ptp_reg_base + MIO_PTP_CLOCK_HI);
 	ptp_ts_diff = mio_ptp_ts - ptp_cfg->new_ref.ptp0_ns;
 	ptp_diff_psec = (ptp_ts_diff * PICO_SEC_PER_NSEC *
-			 PTP_CLK_FREQ_MULT_GHZ) / PTP_CLK_FREQ_DIV_GHZ;
+			 clk_cfg->clk_freq_div) / clk_cfg->clk_freq_ghz;
 	ptp_diff_nsec = ptp_diff_psec / PICO_SEC_PER_NSEC;
 	ptp_cfg->new_ref.ptp0_ns += ptp_ts_diff;
 	ptp_cfg->new_ref.bcn0_n1_ns += ptp_diff_nsec;
@@ -1185,6 +1188,8 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	if (!ptp_cfg)
 		return -ENOMEM;
 	timer_setup(&ptp_cfg->ptp_timer, otx2_rfoe_ptp_offset_timer, 0);
+	ptp_cfg->clk_cfg.clk_freq_ghz = PTP_CLK_FREQ_GHZ;
+	ptp_cfg->clk_cfg.clk_freq_div = PTP_CLK_FREQ_DIV;
 	spin_lock_init(&ptp_cfg->lock);
 
 	for (i = 0; i < MAX_RFOE_INTF; i++) {
