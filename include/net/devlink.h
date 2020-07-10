@@ -132,6 +132,8 @@ struct devlink_port {
 	void *type_dev;
 	struct devlink_port_attrs attrs;
 	struct delayed_work type_warn_dw;
+	UEK_KABI_EXTEND(struct list_head reporter_list)
+	UEK_KABI_EXTEND(struct mutex reporters_lock) /* Protects reporter_list */
 };
 
 struct devlink_port_new_attrs {
