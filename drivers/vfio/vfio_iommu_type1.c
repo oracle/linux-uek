@@ -38,7 +38,7 @@
 #include <linux/notifier.h>
 #include <linux/dma-iommu.h>
 #include <linux/irqdomain.h>
-#include <linux/ktask.h>
+#include <linux/padata.h>
 
 #define DRIVER_VERSION  "0.2"
 #define DRIVER_AUTHOR   "Alex Williamson <alex.williamson@redhat.com>"
@@ -1068,9 +1068,9 @@ struct vfio_pin_args {
 };
 
 static void vfio_pin_map_dma_undo(unsigned long start_vaddr,
-				  unsigned long end_vaddr,
-				  struct vfio_pin_args *args)
+				  unsigned long end_vaddr, void *arg)
 {
+	struct vfio_pin_args *args = arg;
 	struct vfio_dma *dma = args->dma;
 	dma_addr_t iova = dma->iova + (start_vaddr - dma->vaddr);
 	dma_addr_t end  = dma->iova + (end_vaddr   - dma->vaddr);
@@ -1087,9 +1087,9 @@ static void vfio_pin_map_dma_undo(unsigned long start_vaddr,
 #define LOCK_CACHE_MAX	16384
 
 static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
-				  unsigned long end_vaddr,
-				  struct vfio_pin_args *args)
+				  unsigned long end_vaddr, void *arg)
 {
+	struct vfio_pin_args *args = arg;
 	struct vfio_dma *dma = args->dma;
 	dma_addr_t iova = dma->iova + (start_vaddr - dma->vaddr);
 	unsigned long unmapped_size = end_vaddr - start_vaddr;
@@ -1135,16 +1135,14 @@ static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
 	vfio_lock_acct(dma, -lock_cache, false);
 
 	/*
-	 * Undo the successfully completed part of this chunk now.  ktask will
+	 * Undo the successfully completed part of this chunk now.  padata will
 	 * undo previously completed chunks internally at the end of the task.
 	 */
-	if (ret) {
+	if (ret)
 		vfio_pin_map_dma_undo(start_vaddr, start_vaddr + mapped_size,
 				      args);
-		return ret;
-	}
 
-	return KTASK_RETURN_SUCCESS;
+	return ret;
 }
 
 static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
@@ -1154,11 +1152,18 @@ static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
 	int ret = 0;
 	struct vfio_pin_args args = { iommu, dma, limit, current->mm };
 	/* Stay on PMD boundary in case THP is being used. */
-	DEFINE_KTASK_CTL(ctl, vfio_pin_map_dma_chunk, &args, KTASK_MEM_CHUNK,
-			 0);
+	struct padata_mt_job job = {
+		.thread_fn   = vfio_pin_map_dma_chunk,
+		.fn_arg      = &args,
+		.start       = dma->vaddr,
+		.size        = map_size,
+		.align       = PMD_SIZE,
+		.min_chunk   = (1ul << 27),
+		.undo_fn     = vfio_pin_map_dma_undo,
+		.max_threads = 16,
+	};
 
-	ktask_ctl_set_undo_func(&ctl, vfio_pin_map_dma_undo);
-	ret = ktask_run((void *)dma->vaddr, map_size, &ctl);
+	ret = padata_do_multithreaded(&job);
 
 	dma->iommu_mapped = true;
 
