@@ -225,8 +225,9 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 	{
 		u64 bcn_n1, bcn_n2, bcn_n1_ns, bcn_n2_ps, ptp0_ns, regval;
 		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-		struct ptp_bcn_off_cfg *ptp_cfg;
 		struct otx2_rfoe_ndev_priv *priv;
+		struct ptp_bcn_off_cfg *ptp_cfg;
+		struct ptp_clk_cfg clk_cfg;
 		struct net_device *netdev;
 		struct ptp_bcn_ref ref;
 		int idx;
@@ -234,6 +235,17 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		if (!cdev->odp_intf_cfg) {
 			dev_info(cdev->dev, "odp interface cfg is not done\n");
 			ret = -EBUSY;
+			goto out;
+		}
+		if (copy_from_user(&clk_cfg, (void __user *)arg,
+				   sizeof(struct ptp_clk_cfg))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+		if (!(clk_cfg.clk_freq_ghz && clk_cfg.clk_freq_div)) {
+			dev_err(cdev->dev, "Invalid ptp clk parameters\n");
+			ret = -EINVAL;
 			goto out;
 		}
 		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
@@ -249,6 +261,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		netdev = drv_ctx->netdev;
 		priv = netdev_priv(netdev);
 		ptp_cfg = priv->ptp_cfg;
+		ptp_cfg->clk_cfg.clk_freq_ghz = clk_cfg.clk_freq_ghz;
+		ptp_cfg->clk_cfg.clk_freq_div = clk_cfg.clk_freq_div;
 		/* capture ptp and bcn timestamp using BCN_CAPTURE_CFG */
 		writeq((CAPT_EN | CAPT_TRIG_SW),
 		       priv->bcn_reg_base + BCN_CAPTURE_CFG);

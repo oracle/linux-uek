@@ -42,7 +42,8 @@ extern void __iomem *cpri_reg_base;
 #define OTX2_RFOE_IOCTL_ODP_DEINIT      _IO(OTX2_RFOE_IOCTL_BASE, 0x02)
 #define OTX2_RFOE_IOCTL_RX_IND_CFG	_IOWR(OTX2_RFOE_IOCTL_BASE, 0x03, \
 					      struct otx2_rfoe_rx_ind_cfg)
-#define OTX2_RFOE_IOCTL_PTP_OFFSET	_IO(OTX2_RFOE_IOCTL_BASE, 0x04)
+#define OTX2_RFOE_IOCTL_PTP_OFFSET	_IOW(OTX2_RFOE_IOCTL_BASE, 0x04, \
+					    struct ptp_clk_cfg)
 #define OTX2_RFOE_IOCTL_SEC_BCN_OFFSET	_IOW(OTX2_RFOE_IOCTL_BASE, 0x05, \
 					     struct bcn_sec_offset_cfg)
 #define OTX2_RFOE_IOCTL_MODE_CPRI	_IOW(OTX2_RFOE_IOCTL_BASE, 0x06, \
