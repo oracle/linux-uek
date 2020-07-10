@@ -19,6 +19,7 @@ int ethnl_fill_reply_header(struct sk_buff *skb, struct net_device *dev,
 struct sk_buff *ethnl_reply_init(size_t payload, struct net_device *dev, u8 cmd,
 				 u16 hdr_attrtype, struct genl_info *info,
 				 void **ehdrp);
+void *ethnl_dump_put(struct sk_buff *skb, struct netlink_callback *cb, u8 cmd);
 void *ethnl_bcastmsg_put(struct sk_buff *skb, u8 cmd);
 int ethnl_multicast(struct sk_buff *skb, struct net_device *dev);
 
@@ -344,5 +345,8 @@ int ethnl_set_linkinfo(struct sk_buff *skb, struct genl_info *info);
 int ethnl_set_linkmodes(struct sk_buff *skb, struct genl_info *info);
 int ethnl_set_debug(struct sk_buff *skb, struct genl_info *info);
 int ethnl_set_wol(struct sk_buff *skb, struct genl_info *info);
+int ethnl_tunnel_info_doit(struct sk_buff *skb, struct genl_info *info);
+int ethnl_tunnel_info_start(struct netlink_callback *cb);
+int ethnl_tunnel_info_dumpit(struct sk_buff *skb, struct netlink_callback *cb);
 
 #endif /* _NET_ETHTOOL_NETLINK_H */

@@ -520,6 +520,39 @@ Request contents:
 ``WAKE_MAGICSECURE`` mode.
 
 
+TUNNEL_INFO
+===========
+
+Gets information about the tunnel state NIC is aware of.
+
+Request contents:
+
+  =====================================  ======  ==========================
+  ``ETHTOOL_A_TUNNEL_INFO_HEADER``       nested  request header
+  =====================================  ======  ==========================
+
+Kernel response contents:
+
+ +---------------------------------------------+--------+---------------------+
+ | ``ETHTOOL_A_TUNNEL_INFO_HEADER``            | nested | reply header        |
+ +---------------------------------------------+--------+---------------------+
+ | ``ETHTOOL_A_TUNNEL_INFO_UDP_PORTS``         | nested | all UDP port tables |
+ +-+-------------------------------------------+--------+---------------------+
+ | | ``ETHTOOL_A_TUNNEL_UDP_TABLE``            | nested | one UDP port table  |
+ +-+-+-----------------------------------------+--------+---------------------+
+ | | | ``ETHTOOL_A_TUNNEL_UDP_TABLE_SIZE``     | u32    | max size of the     |
+ | | |                                         |        | table               |
+ +-+-+-----------------------------------------+--------+---------------------+
+ | | | ``ETHTOOL_A_TUNNEL_UDP_TABLE_TYPES``    | bitset | tunnel types which  |
+ | | |                                         |        | table can hold      |
+ +-+-+-----------------------------------------+--------+---------------------+
+ | | | ``ETHTOOL_A_TUNNEL_UDP_TABLE_ENTRY``    | nested | offloaded UDP port  |
+ +-+-+-+---------------------------------------+--------+---------------------+
+ | | | | ``ETHTOOL_A_TUNNEL_UDP_ENTRY_PORT``   | be16   | UDP port            |
+ +-+-+-+---------------------------------------+--------+---------------------+
+ | | | | ``ETHTOOL_A_TUNNEL_UDP_ENTRY_TYPE``   | u32    | tunnel type         |
+ +-+-+-+---------------------------------------+--------+---------------------+
+
 Request translation
 ===================
 
