@@ -9,6 +9,7 @@
 #include <linux/elf.h>
 #include <linux/pagemap.h>
 #include <linux/irq_work.h>
+#include <linux/btf_ids.h>
 #include "percpu_freelist.h"
 
 #define STACK_CREATE_FLAG_MASK					\
