@@ -115,4 +115,11 @@ bpftool_install:
 bpftool_clean:
 	$(call descend,bpftool,clean)
 
-.PHONY: all install clean bpftool bpftool_install bpftool_clean
+resolve_btfids:
+	$(call descend,resolve_btfids)
+
+resolve_btfids_clean:
+	$(call descend,resolve_btfids,clean)
+
+.PHONY: all install clean bpftool bpftool_install bpftool_clean \
+	resolve_btfids resolve_btfids_clean
