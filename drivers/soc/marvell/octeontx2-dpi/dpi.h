@@ -252,4 +252,12 @@ union dpi_mbox_message_t {
 		uint64_t npa_pf_func    :16;
 	} s;
 };
+
+struct otx2_dpipf_com_s {
+	int (*queue_config)(struct pci_dev *pfdev,
+			    union dpi_mbox_message_t *req);
+};
+
+extern struct otx2_dpipf_com_s otx2_dpipf_com;
+
 #endif
