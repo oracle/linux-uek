@@ -73,8 +73,8 @@ static int tlk10232_config_init(struct phy_device *phydev)
 	struct tlk10232_phy *priv = phydev->priv;
 	int ret, v;
 
-	phydev->supported = SUPPORTED_10000baseR_FEC;
-	phydev->advertising = ADVERTISED_10000baseR_FEC;
+        linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseR_FEC_BIT,phydev->supported);
+        linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseR_FEC_BIT,phydev->advertising);
 	phydev->state = PHY_NOLINK;
 
 	if (priv->tx_disable_gpio >= 0)

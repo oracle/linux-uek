@@ -18,8 +18,8 @@
 
 static int m88x3120_config_init(struct phy_device *phydev)
 {
-	phydev->supported = SUPPORTED_10000baseR_FEC;
-	phydev->advertising = ADVERTISED_10000baseR_FEC;
+	linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseR_FEC_BIT,phydev->supported);
+	linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseR_FEC_BIT,phydev->advertising);
 	phydev->state = PHY_NOLINK;
 	phydev->autoneg = AUTONEG_DISABLE;
 
@@ -101,7 +101,6 @@ static struct phy_driver m88x3120_driver[] = {
 	.phy_id		= 0,
 	.phy_id_mask	= 0,
 	.name		= "Marvell 88X3120",
-	.flags		= PHY_HAS_INTERRUPT,
 	.config_init	= m88x3120_config_init,
 	.config_aneg	= m88x3120_config_aneg,
 	.read_status	= m88x3120_read_status,
