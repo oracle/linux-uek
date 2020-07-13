@@ -381,8 +381,6 @@ void octeon_irq_ciu3_disable(struct irq_data *data);
 void octeon_irq_ciu3_ack(struct irq_data *data);
 void octeon_irq_ciu3_mask(struct irq_data *data);
 void octeon_irq_ciu3_mask_ack(struct irq_data *data);
-int octeon_irq_ciu3_set_affinity(struct irq_data *data,
-				 const struct cpumask *dest, bool force);
 void octeon_irq_free_cd(struct irq_domain *d, unsigned int irq);
 int octeon_irq_ciu3_mapx(struct irq_domain *d, unsigned int virq,
 			 irq_hw_number_t hw, struct irq_chip *chip);
