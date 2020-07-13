@@ -97,6 +97,27 @@ static int octeon_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
 	return irq_create_of_mapping(&oirq);
 }
 
+static int octeon_gpio_of_xlate(struct gpio_chip *chip,
+                             const struct of_phandle_args *gpiospec,
+                             u32 *flags)
+{
+        if (chip->of_gpio_n_cells < 2) {
+                WARN_ON(1);
+                return -EINVAL;
+        }
+
+        if (WARN_ON(gpiospec->args_count < chip->of_gpio_n_cells))
+                return -EINVAL;
+
+        if (gpiospec->args[0] >= chip->ngpio)
+                return -EINVAL;
+
+        if (flags)
+                *flags = gpiospec->args[1];
+
+        return gpiospec->args[0];
+}
+
 struct match_data {
 	unsigned int (*bit_cfg)(unsigned int gpio);
 	int (*irq_init_gpio)(struct device_node *n, struct device_node *p);
@@ -177,7 +198,7 @@ static int octeon_gpio_probe(struct platform_device *pdev)
 	chip->direction_output = octeon_gpio_dir_out;
 	chip->set = octeon_gpio_set;
 	chip->of_gpio_n_cells = 2;
-	chip->of_xlate = of_gpio_simple_xlate;
+	chip->of_xlate = octeon_gpio_of_xlate;
 	chip->to_irq = octeon_gpio_to_irq;
 	err = devm_gpiochip_add_data(&pdev->dev, chip, gpio);
 	if (err)
