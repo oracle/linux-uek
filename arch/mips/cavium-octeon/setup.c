@@ -280,7 +280,7 @@ EXPORT_SYMBOL(octeon_get_io_clock_rate);
  *
  * @s:	    String to write
  */
-static void octeon_write_lcd(const char *s)
+void octeon_write_lcd(const char *s)
 {
 	if (octeon_bootinfo->led_display_base_addr) {
 		void __iomem *lcd_address =
