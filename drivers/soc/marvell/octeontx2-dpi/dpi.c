@@ -419,6 +419,53 @@ static ssize_t dpi_device_config_show(struct device *dev,
 	return strlen(buf);
 }
 
+static int queue_config(struct dpipf *dpi, struct dpipf_vf *dpivf,
+						union dpi_mbox_message_t *msg)
+{
+	switch (msg->s.cmd) {
+	case DPI_QUEUE_OPEN:
+		dpivf->vf_config.aura = msg->s.aura;
+		dpivf->vf_config.csize = msg->s.csize;
+		dpivf->vf_config.sso_pf_func = msg->s.sso_pf_func;
+		dpivf->vf_config.npa_pf_func = msg->s.npa_pf_func;
+		dpi_queue_init(dpi, dpivf, msg->s.vfid);
+		dpivf->setup_done = true;
+		break;
+	case DPI_QUEUE_CLOSE:
+		dpivf->vf_config.aura = 0;
+		dpivf->vf_config.csize = 0;
+		dpivf->vf_config.sso_pf_func = 0;
+		dpivf->vf_config.npa_pf_func = 0;
+		dpi_queue_fini(dpi, dpivf, msg->s.vfid);
+		dpivf->setup_done = false;
+		break;
+	default:
+		return -1;
+	}
+	return 0;
+}
+
+static int dpi_queue_config(struct pci_dev *pfdev,
+			    union dpi_mbox_message_t *msg)
+{
+	struct device *dev = &pfdev->dev;
+	struct dpipf *dpi = pci_get_drvdata(pfdev);
+	struct dpipf_vf *dpivf;
+
+	if (msg->s.vfid > DPI_MAX_VFS) {
+		dev_err(dev, "Invalid vfid:%d\n", msg->s.vfid);
+		return -1;
+	}
+	dpivf = &dpi->vf[msg->s.vfid];
+
+	return queue_config(dpi, dpivf, msg);
+}
+
+struct otx2_dpipf_com_s otx2_dpipf_com  = {
+	.queue_config = dpi_queue_config
+};
+EXPORT_SYMBOL(otx2_dpipf_com);
+
 static ssize_t dpi_device_config_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
@@ -435,26 +482,8 @@ static ssize_t dpi_device_config_store(struct device *dev,
 	}
 	dpivf = &dpi->vf[mbox_msg.s.vfid];
 
-	switch (mbox_msg.s.cmd) {
-	case DPI_QUEUE_OPEN:
-		dpivf->vf_config.aura = mbox_msg.s.aura;
-		dpivf->vf_config.csize = mbox_msg.s.csize;
-		dpivf->vf_config.sso_pf_func = mbox_msg.s.sso_pf_func;
-		dpivf->vf_config.npa_pf_func = mbox_msg.s.npa_pf_func;
-		dpi_queue_init(dpi, dpivf, mbox_msg.s.vfid);
-		dpivf->setup_done = true;
-		break;
-	case DPI_QUEUE_CLOSE:
-		dpivf->vf_config.aura = 0;
-		dpivf->vf_config.csize = 0;
-		dpivf->vf_config.sso_pf_func = 0;
-		dpivf->vf_config.npa_pf_func = 0;
-		dpi_queue_fini(dpi, dpivf, mbox_msg.s.vfid);
-		dpivf->setup_done = false;
-		break;
-	default:
+	if (queue_config(dpi, dpivf, &mbox_msg) < 0)
 		return -1;
-	}
 
 	return sizeof(mbox_msg);
 }
