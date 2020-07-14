@@ -444,7 +444,7 @@ struct rvu_fwdata {
 #define FWDATA_RESERVED_MEM 1023
 	u64 reserved[FWDATA_RESERVED_MEM];
 	/* Do not add new fields below this line */
-#define CGX_MAX         4
+#define CGX_MAX         5
 #define CGX_LMACS_MAX   4
 	struct cgx_lmac_fwdata_s cgx_fw_data[CGX_MAX][CGX_LMACS_MAX];
 };
