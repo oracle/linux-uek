@@ -1015,6 +1015,7 @@ void mlx5_register_debugfs(void);
 void mlx5_unregister_debugfs(void);
 
 void mlx5_fill_page_array(struct mlx5_frag_buf *buf, __be64 *pas);
+void mlx5_fill_page_frag_array_perm(struct mlx5_frag_buf *buf, __be64 *pas, u8 perm);
 void mlx5_fill_page_frag_array(struct mlx5_frag_buf *frag_buf, __be64 *pas);
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, int vector);
