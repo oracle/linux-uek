@@ -30,7 +30,6 @@
 #include <linux/kexec.h>
 #include <linux/initrd.h>
 
-#include <linux/bootmem.h>
 #include <linux/memblock.h>
 
 #include <mmzone.h>
@@ -1231,6 +1230,9 @@ EXPORT_SYMBOL(__node_data);
 
 void __init mach_bootmem_init(void)
 {
+#ifndef CONFIG_NUMA
+	/* Do nothing */
+#else
 	int i;
 	int node;
 
@@ -1316,6 +1318,7 @@ void __init mach_bootmem_init(void)
 		}
 		reserve_bootmem(PFN_PHYS(nd->startmempfn), bootmap_size, BOOTMEM_DEFAULT);
 	}
+#endif
 }
 
 /*
