@@ -77,6 +77,7 @@
 #define MIN(a, b)  (((a) < (b)) ? (a) : (b))
 
 #define ALIGN_ADDR_UP(addr, align)     (((addr) + (~(align))) & (align))
+#define MAX_LEN 512
 
 /**
  * This is the physical location of a cvmx_bootmem_desc_t
@@ -1177,7 +1178,7 @@ uint64_t cvmx_bootmem_phy_named_block_find(const char *name, uint32_t flags)
 			uint64_t named_size =
 				CVMX_BOOTMEM_NAMED_GET_FIELD(named_addr, size);
 			if (name && named_size) {
-				char name_tmp[name_length+1];
+				char name_tmp[MAX_LEN];
 				CVMX_BOOTMEM_NAMED_GET_NAME(named_addr,
 							    name_tmp,
 							    name_length);
@@ -1319,7 +1320,7 @@ void cvmx_bootmem_phy_named_block_print(void)
 		uint64_t named_size =
 			CVMX_BOOTMEM_NAMED_GET_FIELD(named_block_addr, size);
 		if (named_size) {
-			char name_tmp[name_length+1];
+			char name_tmp[MAX_LEN];
 			uint64_t named_addr =
 				CVMX_BOOTMEM_NAMED_GET_FIELD(named_block_addr,
 							     base_addr);

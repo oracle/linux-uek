@@ -205,7 +205,11 @@ int cvmx_pki_cluster_grp_free(int node, int cl_grp)
 int cvmx_pki_cluster_alloc(int node, int num_clusters, uint64_t *cluster_mask)
 {
 	unsigned cluster = 0;
-	int clusters[CVMX_PKI_NUM_CLUSTER];
+#if (__OCTEON_IS_MODEL_COMPILE__(OCTEON_CN73XX,0xf) || __OCTEON_IS_MODEL_COMPILE__(OCTEON_CNF75XX,0xf))
+        int clusters[2];
+#else
+        int clusters[4];
+#endif
 
 	if (node >= CVMX_MAX_NODES) {
 		cvmx_printf("ERROR: Invalid node number %d\n", node);
