@@ -1330,7 +1330,7 @@ BuildKernel() {
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
     %if %{signmodules}
-    %ifarch x86_64 aarch64
+    %ifarch x86_64
 	# Sign the image if we're using EFI
         %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot
         mv $KernelImage.signed $KernelImage
