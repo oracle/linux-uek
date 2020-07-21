@@ -72,6 +72,7 @@ struct cgx_prbs_data {
 struct prbs_status {
 	struct list_head list;
 	int qlm;
+	int qlm_lane;
 	long start_time;
 	struct prbs_status *next;
 };
@@ -445,7 +446,7 @@ static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 	subtoken = strsep(&cmd_buf, " ");
 	ec = subtoken ? kstrtoint(subtoken, 10, qlm_lane) : -EINVAL;
 
-	if (ec == -EINVAL) {
+	if (ec == -EINVAL || *qlm_lane < 0) {
 		kfree(cmd_buf_tmp);
 		return ec;
 	}
@@ -502,7 +503,8 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 		list_for_each_entry(status,
 				    &prbs_cmd_data.status_list.list,
 				    list) {
-			if (status->qlm == qlm)
+			if ((status->qlm == qlm) &&
+					(status->qlm_lane == qlm_lane))
 				break;
 		}
 
@@ -528,14 +530,13 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 			if (status == NULL)
 				return -ENOMEM;
 			status->qlm = qlm;
+			status->qlm_lane = qlm_lane;
 			list_add(&status->list,
 				 &prbs_cmd_data.status_list.list);
 		}
 		status->start_time = get_seconds();
-		if (qlm_lane == -1)
-			pr_info("GSER PRBS-%d start on QLM %d (all lanes).\n", mode, qlm);
-		else
-			pr_info("GSER PRBS-%d start on QLM %d on lane %d.\n", mode, qlm, qlm_lane);
+		pr_info("GSER PRBS-%d start on QLM %d on lane %d.\n", mode,
+				qlm, qlm_lane);
 		break;
 
 	case CGX_PRBS_STOP_CMD:
@@ -548,16 +549,15 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 		list_for_each_entry(status,
 				    &prbs_cmd_data.status_list.list,
 				    list) {
-			if (status->qlm == qlm) {
+			if ((status->qlm == qlm) &&
+					(status->qlm_lane == qlm_lane)) {
 				list_del(&status->list);
 				kfree(status);
 				break;
 			}
 		}
-		if (qlm_lane == -1)
-			pr_info("GSER PRBS stop on QLM %d on all lanes.\n", qlm);
-		else
-			pr_info("GSER PRBS stop on QLM %d on Lane %d.\n", qlm, qlm_lane);
+		pr_info("GSER PRBS stop on QLM %d on Lane %d.\n", qlm,
+				qlm_lane);
 		break;
 
 	case CGX_PRBS_CLEAR_CMD:
@@ -567,15 +567,13 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 			pr_info("GSER prbs clear command failed.\n");
 			return -EIO;
 		}
-		if (qlm_lane == -1)
-			pr_info("GSER PRBS errors cleared on QLM%d\n", qlm);
-		else
-			pr_info("GSER PRBS errors cleared on QLM%d Lane%d\n",
-					qlm, qlm_lane);
+		pr_info("GSER PRBS errors cleared on QLM%d Lane%d\n", qlm,
+				qlm_lane);
 		break;
 
 	default:
-		pr_info("GSER PRBS set QLM %d to read.\n", qlm);
+		pr_info("GSER PRBS set QLM %d Lane %d to read.\n", qlm,
+				qlm_lane);
 		break;
 	}
 
@@ -604,8 +602,8 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 	}
 
 	if (time == -1) {
-		seq_printf(s, "GSER PRBS not started for qlm %d lane%d.\n",
-				qlm, lane);
+		seq_printf(s, "GSER PRBS not started for QLM%d.Lane%d.\n", qlm,
+			lane);
 		return 0;
 	}
 
@@ -615,8 +613,8 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 		      qlm, 0, lane, 0, 0, 0, &res);
 
 	if (res.a0 != SMCCC_RET_SUCCESS) {
-		seq_printf(s, "GSER prbs get command failed for QLM%d Lane%d\n",
-				qlm, lane);
+		seq_printf(s, "GSER prbs get command failed for QLM%d.Lane%d.\n",
+			qlm, lane);
 		return 0;
 	}
 
