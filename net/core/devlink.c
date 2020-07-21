@@ -3627,7 +3627,7 @@ static void devlink_reload_netns_change(struct devlink *devlink,
 				     DEVLINK_CMD_PARAM_NEW);
 }
 
-static bool devlink_reload_supported(struct devlink *devlink)
+static bool devlink_reload_supported(const struct devlink *devlink)
 {
 	return devlink->ops->reload_down && devlink->ops->reload_up;
 }
