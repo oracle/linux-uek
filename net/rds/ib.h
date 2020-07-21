@@ -56,8 +56,6 @@
 #define	RDS_IB_CQ_ERR		2
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
-#define RDS_CM_RETRY_SEQ_EN	BIT(7)
-#define RDS_CM_REQ_SEQ_SZ	(RDS_CM_RETRY_SEQ_EN - 1)
 
 #define RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(c) ((c)->c_loopback ? 1000 : 4000)
 
@@ -103,7 +101,7 @@ struct rds_ib_conn_priv_cmn {
 	u8			ricpc_protocol_minor;
 	__be16			ricpc_protocol_minor_mask;	/* bitmask */
 	u8			ricpc_tos;
-	u8			ricpc_cm_seq;
+	u8			ricpc_reserved1;
 	__be16			ricpc_frag_sz;
 	__be64			ricpc_ack_seq;
 	__be32			ricpc_credit;	/* non-zero enables flow ctl */
@@ -127,7 +125,7 @@ struct rds6_ib_connect_private {
 #define dp_protocol_minor	dp_cmn.ricpc_protocol_minor
 #define dp_protocol_minor_mask	dp_cmn.ricpc_protocol_minor_mask
 #define dp_tos			dp_cmn.ricpc_tos
-#define dp_cm_seq		dp_cmn.ricpc_cm_seq
+#define dp_reserved1		dp_cmn.ricpc_reserved1
 #define dp_frag_sz		dp_cmn.ricpc_frag_sz
 #define dp_ack_seq		dp_cmn.ricpc_ack_seq
 #define dp_credit		dp_cmn.ricpc_credit
@@ -297,9 +295,6 @@ struct rds_ib_connection {
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
 	atomic_t		i_cq_quiesce;
-	u8			i_req_sequence;
-	u8			i_prev_seq;
-	u8			i_last_rej_seq;
 	uint			i_irq_local_cpu;
 
 	/* For handling delayed release of device related resource. */
@@ -314,7 +309,6 @@ struct rds_ib_connection {
 #define IB_GET_POST_CREDITS(v)	((v) >> 16)
 #define IB_SET_SEND_CREDITS(v)	((v) & 0xffff)
 #define IB_SET_POST_CREDITS(v)	((v) << 16)
-#define IB_GET_CM_SEQ_NUM(v)	((v) & RDS_CM_REQ_SEQ_SZ)
 
 struct rds_ib_ipaddr {
 	struct list_head	list;
