@@ -6940,10 +6940,11 @@ qportcfg_exit:
 
 static int bnxt_hwrm_ver_get(struct bnxt *bp)
 {
-	int rc;
 	struct hwrm_ver_get_input req = {0};
 	struct hwrm_ver_get_output *resp = bp->hwrm_cmd_resp_addr;
+	u16 fw_maj, fw_min, fw_bld, fw_rsv;
 	u32 dev_caps_cfg;
+	int rc, len;
 
 	bp->hwrm_max_req_len = HWRM_MAX_REQ_LEN;
 	bnxt_hwrm_cmd_hdr_init(bp, &req, HWRM_VER_GET, -1, -1);
@@ -6966,9 +6967,22 @@ static int bnxt_hwrm_ver_get(struct bnxt *bp)
 			    resp->hwrm_intf_upd_8b);
 		netdev_warn(bp->dev, "Please update firmware with HWRM interface 1.0.0 or newer.\n");
 	}
-	snprintf(bp->fw_ver_str, BC_HWRM_STR_LEN, "%d.%d.%d.%d",
-		 resp->hwrm_fw_maj_8b, resp->hwrm_fw_min_8b,
-		 resp->hwrm_fw_bld_8b, resp->hwrm_fw_rsvd_8b);
+	fw_maj = le16_to_cpu(resp->hwrm_fw_major);
+	if (bp->hwrm_spec_code > 0x10803 && fw_maj) {
+		fw_min = le16_to_cpu(resp->hwrm_fw_minor);
+		fw_bld = le16_to_cpu(resp->hwrm_fw_build);
+		fw_rsv = le16_to_cpu(resp->hwrm_fw_patch);
+		len = FW_VER_STR_LEN;
+	} else {
+		fw_maj = resp->hwrm_fw_maj_8b;
+		fw_min = resp->hwrm_fw_min_8b;
+		fw_bld = resp->hwrm_fw_bld_8b;
+		fw_rsv = resp->hwrm_fw_rsvd_8b;
+		len = BC_HWRM_STR_LEN;
+	}
+	bp->fw_ver_code = BNXT_FW_VER_CODE(fw_maj, fw_min, fw_bld, fw_rsv);
+	snprintf(bp->fw_ver_str, len, "%d.%d.%d.%d", fw_maj, fw_min, fw_bld,
+		 fw_rsv);
 
 	if (strlen(resp->active_pkg_name)) {
 		int fw_ver_len = strlen(bp->fw_ver_str);
