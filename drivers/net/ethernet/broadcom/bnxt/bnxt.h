@@ -1667,6 +1667,7 @@ struct bnxt {
 #define BNXT_FLOW_STATS_SP_EVENT	15
 #define BNXT_UPDATE_PHY_SP_EVENT	16
 #define BNXT_RING_COAL_NOW_SP_EVENT	17
+#define BNXT_LINK_CFG_CHANGE_SP_EVENT	21
 
 	struct bnxt_hw_resc	hw_resc;
 	struct bnxt_pf_info	pf;
