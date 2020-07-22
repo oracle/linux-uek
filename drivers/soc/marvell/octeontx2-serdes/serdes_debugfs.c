@@ -597,7 +597,7 @@ static int serdes_dbg_prbs_read_op(struct seq_file *s, void *unused)
 	time = get_seconds() - time;
 
 	arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, CGX_PRBS_GET_DATA_CMD,
-		      qlm, 0, qlm_lane, 0, 0, 0, &res);
+		      qlm, 0, lane, 0, 0, 0, &res);
 
 	if (res.a0 != SMCCC_RET_SUCCESS) {
 		seq_printf(s, "GSER prbs get command failed for qlm %d.\n",
