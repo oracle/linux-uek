@@ -69,6 +69,7 @@
 #include "cvmx-fpa.h"
 #endif
 
+#define MAX_BUFFERS	16
 
 /**
  * Return the number of DMA engimes supported by this chip
@@ -315,7 +316,7 @@ int cvmx_dma_engine_submit(int engine, cvmx_dma_engine_header_t header, int num_
 {
 	cvmx_cmd_queue_result_t result;
 	int cmd_count = 1;
-	uint64_t cmds[num_buffers + 2];
+	uint64_t cmds[MAX_BUFFERS + 2];
 
 	if (OCTEON_IS_MODEL(OCTEON_CN56XX_PASS1_X)) {
 		/* Check for Errata PCIe-604 */
