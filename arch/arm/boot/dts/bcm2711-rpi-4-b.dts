@@ -270,6 +270,10 @@
 	status = "okay";
 };
 
+&gpiomem {
+	status = "okay";
+};
+
 &firmware {
 	ts: touchscreen {
 	    compatible = "raspberrypi,firmware-ts";
