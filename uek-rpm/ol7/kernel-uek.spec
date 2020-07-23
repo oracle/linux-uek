@@ -88,7 +88,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # dtrace
 %define with_dtrace    1
 # perf
-%define with_perf      0
+%define with_perf      1
+# bpftools
+%define with_bpftool   1
 # tools
 %define with_tools     0
 # kernel-debuginfo
@@ -287,6 +289,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_headers 0
 %define with_tools 0
 %define with_perf 0
+%define with_bpftool 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
 %endif
@@ -306,6 +309,16 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_dtrace 1
 %endif
 
+# Enable perf
+%ifarch x86_64 aarch64
+%define with_perf 1
+%endif
+
+# Enable bpf_tools
+%ifarch x86_64 aarch64
+%define with_bpftool 1
+%endif
+
 # Per-arch tweaks
 
 %ifarch %{all_x86}
@@ -320,6 +333,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
 %define with_tools 1
+%define with_perf 1
+%define with_bpftool 1
 %endif
 
 %ifarch ppc64
@@ -388,6 +403,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_headers   1
 %define with_perf 1
 %define with_tools 1
+%define with_bpftool 1
 %endif
 
 %if %{nopatches}
@@ -416,6 +432,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_debuginfo 0
 %define with_perf 0
 %define with_tools 0
+%define with_bpftool 0
 %define _enable_debug_packages 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
@@ -587,6 +604,11 @@ BuildRequires: audit-libs-devel
 %if %{with_tools}
 BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
 %endif # with_tools
+%if %{with_bpftool}
+BuildRequires: python3
+BuildRequires: python-docutils
+BuildRequires: zlib-devel binutils-devel
+%endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 Source0: linux-%{kversion}.tar.bz2
@@ -843,6 +865,29 @@ This package provides debug information for package kernel-tools.
 %{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_bindir}/centrino-decode(\.debug)?|.*%%{_bindir}/powernow-k8-decode(\.debug)?|.*%%{_bindir}/cpupower(\.debug)?|.*%%{_libdir}/libcpupower.*|.*%%{_bindir}/turbostat(\.debug)?|.*%%{_bindir}/x86_energy_perf_policy(\.debug)?|.*%%{_bindir}/tmon(\.debug)?|.*%%{_bindir}/lsgpio(\.debug)?|.*%%{_bindir}/gpio-hammer(\.debug)?|.*%%{_bindir}/gpio-event-mon(\.debug)?|.*%%{_bindir}/iio_event_monitor(\.debug)?|.*%%{_bindir}/iio_generic_buffer(\.debug)?|.*%%{_bindir}/lsiio(\.debug)?|XXX' -o kernel-tools-debuginfo.list}
 
 %endif # with_tools
+
+%if %{with_bpftool}
+
+%package -n bpftool
+Summary: Inspection and simple manipulation of eBPF programs and maps
+License: GPLv2
+%description -n bpftool
+This package contains the bpftool, which allows inspection and simple
+manipulation of eBPF programs and maps.
+
+%package -n bpftool-debuginfo
+Summary: Debug information for package bpftool
+Group: Development/Debug
+Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+AutoReqProv: no
+%description -n bpftool-debuginfo
+This package provides debug information for the bpftool package.
+
+#%{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '.*%%{_sbindir}/bpftool(\.debug)?|XXX' -o bpftool-debuginfo.list}
+%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_sbindir}/bpftool(\.debug)?|XXX' -o bpftool-debuginfo.list}
+
+#with_bpftool
+%endif
 
 #
 # This macro creates a kernel-<subpackage>-debuginfo package.
@@ -1609,6 +1654,14 @@ make
 popd
 %endif # with_tools
 
+%global bpftool_make \
+  make EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT V=1
+%if %{with_bpftool}
+pushd tools/bpf/bpftool
+%{bpftool_make}
+popd
+%endif
+
 %if %{with_doc}
 # Make the HTML pages.
 make %{?_smp_mflags} htmldocs || %{doc_build_fail}
@@ -1792,6 +1845,11 @@ make INSTALL_ROOT=%{buildroot} install-tools
 make INSTALL_ROOT=%{buildroot} install-man || %{doc_build_fail}
 popd
 %endif # with_tools
+%if %{with_bpftool}
+pushd tools/bpf/bpftool
+%{bpftool_make} prefix=%{_prefix} bash_compdir=%{_sysconfdir}/bash_completion.d/ mandir=%{_mandir} install doc-install
+popd
+%endif
 
 %if %{with_bootwrapper}
 make DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kernel-wrapper WRAPPER_DTSDIR=%{_libdir}/kernel-wrapper/dts
@@ -2085,6 +2143,26 @@ fi
 %{_includedir}/cpufreq.h
 %endif # cpupowerarchs
 %endif # with_tools
+
+%if %{with_bpftool}
+%files -n bpftool
+%{_sbindir}/bpftool
+%{_sysconfdir}/bash_completion.d/bpftool
+%{_mandir}/man8/bpftool-cgroup.8.gz
+%{_mandir}/man8/bpftool-map.8.gz
+%{_mandir}/man8/bpftool-prog.8.gz
+%{_mandir}/man8/bpftool-perf.8.gz
+%{_mandir}/man8/bpftool.8.gz
+%{_mandir}/man7/bpf-helpers.7.gz
+%{_mandir}/man8/bpftool-net.8.gz
+%{_mandir}/man8/bpftool-feature.8.gz
+%{_mandir}/man8/bpftool-btf.8.gz
+
+%if %{with_debuginfo}
+%files -f bpftool-debuginfo.list -n bpftool-debuginfo
+%defattr(-,root,root)
+%endif
+%endif
 
 # only some architecture builds need kernel%{variant}-doc
 %if %{with_doc}
