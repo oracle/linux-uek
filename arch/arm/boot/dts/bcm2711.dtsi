@@ -244,6 +244,11 @@
 		hvs@7e400000 {
 			interrupts = <GIC_SPI 97 IRQ_TYPE_LEVEL_HIGH>;
 		};
+
+		gpiomem: gpiomem@7e200000 {
+			 compatible = "brcm,bcm2835-gpiomem";
+			 reg = <0x7e200000 0x1000>;
+		};
 	};
 
 	/*
