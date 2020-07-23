@@ -2163,9 +2163,9 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 		scr_off += sizeof(buf_ptr);
 	}
 	for (i = 1; i <= skb_shinfo(skb)->nr_frags; i++) {
-		struct skb_frag_struct *fs = skb_shinfo(skb)->frags + i - 1;
-		buf_ptr.s.size = fs->size;
-		buf_ptr.s.addr = virt_to_phys((u8 *)page_address(fs->page.p) + fs->page_offset);
+		struct skb_frag_t *fs = skb_shinfo(skb)->frags + i - 1;
+		buf_ptr.s.size = skb_frag_size(fs);
+		buf_ptr.s.addr = virt_to_phys((u8 *)skb_frag_address(fs));
 		cvmx_scratch_write64(scr_off, buf_ptr.u64);
 		scr_off += sizeof(buf_ptr);
 	}

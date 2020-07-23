@@ -158,7 +158,7 @@ static void cvm_oct_periodic_worker(struct work_struct *work)
 						    port_periodic_work.work);
 	void (*poll_fn) (struct net_device *);
 
-	poll_fn = ACCESS_ONCE(priv->poll);
+	poll_fn = READ_ONCE(priv->poll);
 
 	if (poll_fn)
 		poll_fn(priv->netdev);
@@ -1123,7 +1123,7 @@ static int cvm_oct_remove(struct platform_device *pdev)
 	 */
 	list_for_each_entry(priv, &cvm_oct_list, list) {
 		unsigned int f = dev_get_flags(priv->netdev);
-		dev_change_flags(priv->netdev, f & ~IFF_UP);
+		dev_change_flags(priv->netdev, f & ~IFF_UP, NULL);
 	}
 
 	mdelay(10);
