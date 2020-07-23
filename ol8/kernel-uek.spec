@@ -97,6 +97,10 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_headers   1
 # dtrace
 %define with_dtrace    1
+# perf
+%define with_perf      1
+# bpftools
+%define with_bpftool   1
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
@@ -299,6 +303,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_headers 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
+%define with_bpftool 0
 %endif
 
 # bootwrapper is only on ppc
@@ -316,6 +321,16 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_dtrace 1
 %endif
 
+# Enable perf
+%ifarch x86_64 aarch64
+%define with_perf 1
+%endif
+
+# Enable bpftool
+%ifarch x86_64 aarch64
+%define with_bpftool 1
+%endif
+
 # Per-arch tweaks
 
 %ifarch %{all_x86}
@@ -329,6 +344,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define asmarch x86
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
+%define with_perf 1
+%define with_bpftool 1
 %endif
 
 %ifarch ppc64
@@ -394,6 +411,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
 %define with_headers   1
+%define with_perf 1
+%define with_bpftool   1
 %endif
 
 %if %{nopatches}
@@ -422,6 +441,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define _enable_debug_packages 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
+%define with_bpftool 0
 %endif
 
 %define with_pae_debug 0
@@ -579,6 +599,11 @@ BuildRequires: binutils >= 2.30-58.0.11
 BuildRequires: binutils-devel >= 2.30-58.0.11
 BuildRequires: gcc >= 8.3.1-4.5.0.7
 %endif
+
+%if %{with_bpftool}
+BuildRequires: python3-docutils
+BuildRequires: zlib-devel binutils-devel
+%endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 %if %{with_debuginfo}
@@ -727,6 +752,29 @@ AutoReq: no
 %description debuginfo-common
 This package is required by %{name}-debuginfo subpackages.
 It provides the kernel source files common to all builds.
+
+%if %{with_bpftool}
+
+%package -n bpftool
+Summary: Inspection and simple manipulation of eBPF programs and maps
+License: GPLv2
+%description -n bpftool
+This package contains the bpftool, which allows inspection and simple
+manipulation of eBPF programs and maps.
+
+%package -n bpftool-debuginfo
+Summary: Debug information for package bpftool
+Group: Development/Debug
+Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+AutoReqProv: no
+%description -n bpftool-debuginfo
+This package provides debug information for the bpftool package.
+
+#%{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '.*%%{_sbindir}/bpftool(\.debug)?|XXX' -o bpftool-debuginfo.list}
+%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_sbindir}/bpftool(\.debug)?|XXX' -o bpftool-debuginfo.list}
+
+#with_bpftool
+%endif
 
 #
 # This macro creates a kernel-<subpackage>-debuginfo package.
@@ -1476,6 +1524,14 @@ BuildKernel %make_target %kernel_image 4k
 BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
+%global bpftool_make \
+  make EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT V=1
+%if %{with_bpftool}
+pushd tools/bpf/bpftool
+%{bpftool_make}
+popd
+%endif
+
 %if %{with_doc}
 # Make the HTML pages.
 make %{?_smp_mflags} htmldocs || %{doc_build_fail}
@@ -1613,6 +1669,12 @@ rm -f $RPM_BUILD_ROOT/usr/include/asm*/irq.h
 
 # these are provided by drm-devel
 rm -rf $RPM_BUILD_ROOT/usr/include/drm
+%endif
+
+%if %{with_bpftool}
+pushd tools/bpf/bpftool
+%{bpftool_make} prefix=%{_prefix} bash_compdir=%{_sysconfdir}/bash_completion.d/ mandir=%{_mandir} install doc-install
+popd
 %endif
 
 %if %{with_bootwrapper}
@@ -1823,6 +1885,26 @@ fi
 %defattr(-,root,root)
 /usr/sbin/*
 %{_libdir}/kernel-wrapper
+%endif
+
+%if %{with_bpftool}
+%files -n bpftool
+%{_sbindir}/bpftool
+%{_sysconfdir}/bash_completion.d/bpftool
+%{_mandir}/man8/bpftool-cgroup.8.gz
+%{_mandir}/man8/bpftool-map.8.gz
+%{_mandir}/man8/bpftool-prog.8.gz
+%{_mandir}/man8/bpftool-perf.8.gz
+%{_mandir}/man8/bpftool.8.gz
+%{_mandir}/man7/bpf-helpers.7.gz
+%{_mandir}/man8/bpftool-net.8.gz
+%{_mandir}/man8/bpftool-feature.8.gz
+%{_mandir}/man8/bpftool-btf.8.gz
+
+%if %{with_debuginfo}
+%files -f bpftool-debuginfo.list -n bpftool-debuginfo
+%defattr(-,root,root)
+%endif
 %endif
 
 # only some architecture builds need kernel-doc
