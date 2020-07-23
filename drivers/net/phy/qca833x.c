@@ -279,8 +279,8 @@ static int qca833x_re_init(struct phy_device *phydev)
 			features |= SUPPORTED_1000baseT_Half;
 	}
 
-	phydev->supported = features;
-	phydev->advertising = features;
+	linkmode_set_bit(features,phydev->supported);
+	linkmode_set_bit(features,phydev->advertising);
 
 	pr_debug(KERN_ERR "%s: complete\n", __func__);
 	return 0;
