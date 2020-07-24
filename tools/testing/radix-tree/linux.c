@@ -13,6 +13,7 @@
 #include <urcu/uatomic.h>
 
 int nr_allocated;
+int nr_tallocated;
 int preempt_count;
 int kmalloc_verbose;
 int test_verbose;
@@ -67,6 +68,7 @@ void *kmem_cache_alloc(struct kmem_cache *cachep, int gfp)
 	}
 
 	uatomic_inc(&nr_allocated);
+	uatomic_inc(&nr_tallocated);
 	if (kmalloc_verbose)
 		printf("Allocating %p from slab\n", p);
 	return p;
