@@ -47,7 +47,7 @@ struct otx2_stat {
 	.index = offsetof(struct otx2_dev_stats, stat) / sizeof(u64), \
 }
 
-#define OTX2_ETHTOOL_SUPPORTED_MODES 0x638CE23 //110001110001100111000100011
+#define OTX2_ETHTOOL_SUPPORTED_MODES 0x638CFFB //110001110001100111111111011
 #define OTX2_ETHTOOL_ALL_MODES (BIT_ULL(ETHTOOL_LINK_MODE_FEC_BASER_BIT) - 1)
 
 static const struct otx2_stat otx2_dev_stats[] = {
