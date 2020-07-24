@@ -1280,7 +1280,14 @@ struct ice_aqc_nvm {
 #define ICE_AQC_NVM_PRESERVATION_M	(3 << ICE_AQC_NVM_PRESERVATION_S)
 #define ICE_AQC_NVM_NO_PRESERVATION	(0 << ICE_AQC_NVM_PRESERVATION_S)
 #define ICE_AQC_NVM_PRESERVE_ALL	BIT(1)
+#define ICE_AQC_NVM_FACTORY_DEFAULT	(2 << ICE_AQC_NVM_PRESERVATION_S)
 #define ICE_AQC_NVM_PRESERVE_SELECTED	(3 << ICE_AQC_NVM_PRESERVATION_S)
+#define ICE_AQC_NVM_ACTIV_SEL_NVM	BIT(3) /* Write Activate/SR Dump only */
+#define ICE_AQC_NVM_ACTIV_SEL_OROM	BIT(4)
+#define ICE_AQC_NVM_ACTIV_SEL_NETLIST	BIT(5)
+#define ICE_AQC_NVM_SPECIAL_UPDATE	BIT(6)
+#define ICE_AQC_NVM_REVERT_LAST_ACTIV	BIT(6) /* Write Activate only */
+#define ICE_AQC_NVM_ACTIV_SEL_MASK	ICE_M(0x7, 3)
 #define ICE_AQC_NVM_FLASH_ONLY		BIT(7)
 	__le16 module_typeid;
 	__le16 length;
@@ -1301,6 +1308,94 @@ struct ice_aqc_nvm_checksum {
 #define ICE_AQC_NVM_CHECKSUM_CORRECT	0xBABA
 	u8 rsvd2[12];
 };
+
+/* The result of netlist NVM read comes in a TLV format. The actual data
+ * (netlist header) starts from word offset 1 (byte 2). The FW strips
+ * out the type field from the TLV header so all the netlist fields
+ * should adjust their offset value by 1 word (2 bytes) in order to map
+ * their correct location.
+ */
+#define ICE_AQC_NVM_LINK_TOPO_NETLIST_MOD_ID		0x11B
+#define ICE_AQC_NVM_LINK_TOPO_NETLIST_LEN_OFFSET	1
+#define ICE_AQC_NVM_LINK_TOPO_NETLIST_LEN		2 /* In bytes */
+#define ICE_AQC_NVM_NETLIST_NODE_COUNT_OFFSET		2
+#define ICE_AQC_NVM_NETLIST_NODE_COUNT_LEN		2 /* In bytes */
+#define ICE_AQC_NVM_NETLIST_NODE_COUNT_M		ICE_M(0x3FF, 0)
+#define ICE_AQC_NVM_NETLIST_ID_BLK_START_OFFSET		5
+#define ICE_AQC_NVM_NETLIST_ID_BLK_LEN			0x30 /* In words */
+
+/* netlist ID block field offsets (word offsets) */
+#define ICE_AQC_NVM_NETLIST_ID_BLK_MAJOR_VER_LOW	2
+#define ICE_AQC_NVM_NETLIST_ID_BLK_MAJOR_VER_HIGH	3
+#define ICE_AQC_NVM_NETLIST_ID_BLK_MINOR_VER_LOW	4
+#define ICE_AQC_NVM_NETLIST_ID_BLK_MINOR_VER_HIGH	5
+#define ICE_AQC_NVM_NETLIST_ID_BLK_TYPE_LOW		6
+#define ICE_AQC_NVM_NETLIST_ID_BLK_TYPE_HIGH		7
+#define ICE_AQC_NVM_NETLIST_ID_BLK_REV_LOW		8
+#define ICE_AQC_NVM_NETLIST_ID_BLK_REV_HIGH		9
+#define ICE_AQC_NVM_NETLIST_ID_BLK_SHA_HASH		0xA
+#define ICE_AQC_NVM_NETLIST_ID_BLK_CUST_VER		0x2F
+
+/* Used for NVM Set Package Data command - 0x070A */
+struct ice_aqc_nvm_pkg_data {
+	u8 reserved[3];
+	u8 cmd_flags;
+#define ICE_AQC_NVM_PKG_DELETE		BIT(0) /* used for command call */
+#define ICE_AQC_NVM_PKG_SKIPPED		BIT(0) /* used for command response */
+
+	u32 reserved1;
+	__le32 addr_high;
+	__le32 addr_low;
+};
+
+/* Used for Pass Component Table command - 0x070B */
+struct ice_aqc_nvm_pass_comp_tbl {
+	u8 component_response; /* Response only */
+#define ICE_AQ_NVM_PASS_COMP_CAN_BE_UPDATED		0x0
+#define ICE_AQ_NVM_PASS_COMP_CAN_MAY_BE_UPDATEABLE	0x1
+#define ICE_AQ_NVM_PASS_COMP_CAN_NOT_BE_UPDATED		0x2
+	u8 component_response_code; /* Response only */
+#define ICE_AQ_NVM_PASS_COMP_CAN_BE_UPDATED_CODE	0x0
+#define ICE_AQ_NVM_PASS_COMP_STAMP_IDENTICAL_CODE	0x1
+#define ICE_AQ_NVM_PASS_COMP_STAMP_LOWER		0x2
+#define ICE_AQ_NVM_PASS_COMP_INVALID_STAMP_CODE		0x3
+#define ICE_AQ_NVM_PASS_COMP_CONFLICT_CODE		0x4
+#define ICE_AQ_NVM_PASS_COMP_PRE_REQ_NOT_MET_CODE	0x5
+#define ICE_AQ_NVM_PASS_COMP_NOT_SUPPORTED_CODE		0x6
+#define ICE_AQ_NVM_PASS_COMP_CANNOT_DOWNGRADE_CODE	0x7
+#define ICE_AQ_NVM_PASS_COMP_INCOMPLETE_IMAGE_CODE	0x8
+#define ICE_AQ_NVM_PASS_COMP_VER_STR_IDENTICAL_CODE	0xA
+#define ICE_AQ_NVM_PASS_COMP_VER_STR_LOWER_CODE		0xB
+	u8 reserved;
+	u8 transfer_flag;
+#define ICE_AQ_NVM_PASS_COMP_TBL_START			0x1
+#define ICE_AQ_NVM_PASS_COMP_TBL_MIDDLE			0x2
+#define ICE_AQ_NVM_PASS_COMP_TBL_END			0x4
+#define ICE_AQ_NVM_PASS_COMP_TBL_START_AND_END		0x5
+	__le32 reserved1;
+	__le32 addr_high;
+	__le32 addr_low;
+};
+
+struct ice_aqc_nvm_comp_tbl {
+	__le16 comp_class;
+#define NVM_COMP_CLASS_ALL_FW	0x000A
+
+	__le16 comp_id;
+#define NVM_COMP_ID_OROM	0x5
+#define NVM_COMP_ID_NVM		0x6
+#define NVM_COMP_ID_NETLIST	0x8
+
+	u8 comp_class_idx;
+#define FWU_COMP_CLASS_IDX_NOT_USE 0x0
+
+	__le32 comp_cmp_stamp;
+	u8 cvs_type;
+#define NVM_CVS_TYPE_ASCII	0x1
+
+	u8 cvs_len;
+	u8 cvs[]; /* Component Version String */
+} __packed;
 
 /**
  * Send to PF command (indirect 0x0801) ID is only used by PF
@@ -1749,6 +1844,8 @@ struct ice_aq_desc {
 		struct ice_aqc_rl_profile rl_profile;
 		struct ice_aqc_nvm nvm;
 		struct ice_aqc_nvm_checksum nvm_checksum;
+		struct ice_aqc_nvm_pkg_data pkg_data;
+		struct ice_aqc_nvm_pass_comp_tbl pass_comp_tbl;
 		struct ice_aqc_pf_vf_msg virt;
 		struct ice_aqc_lldp_get_mib lldp_get_mib;
 		struct ice_aqc_lldp_set_mib_change lldp_set_event;
@@ -1875,7 +1972,13 @@ enum ice_adminq_opc {
 
 	/* NVM commands */
 	ice_aqc_opc_nvm_read				= 0x0701,
+	ice_aqc_opc_nvm_erase				= 0x0702,
+	ice_aqc_opc_nvm_write				= 0x0703,
 	ice_aqc_opc_nvm_checksum			= 0x0706,
+	ice_aqc_opc_nvm_write_activate			= 0x0707,
+	ice_aqc_opc_nvm_update_empr			= 0x0709,
+	ice_aqc_opc_nvm_pkg_data			= 0x070A,
+	ice_aqc_opc_nvm_pass_component_tbl		= 0x070B,
 
 	/* PF/VF mailbox commands */
 	ice_mbx_opc_send_msg_to_pf			= 0x0801,
