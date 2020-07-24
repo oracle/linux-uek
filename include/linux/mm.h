@@ -2553,8 +2553,6 @@ extern int __split_vma(struct mm_struct *, struct vm_area_struct *,
 extern int split_vma(struct mm_struct *, struct vm_area_struct *,
 	unsigned long addr, int new_below);
 extern int insert_vm_struct(struct mm_struct *, struct vm_area_struct *);
-extern void __vma_link_rb(struct mm_struct *, struct vm_area_struct *,
-	struct rb_node **, struct rb_node *);
 extern void unlink_file_vma(struct vm_area_struct *);
 extern struct vm_area_struct *copy_vma(struct vm_area_struct **,
 	unsigned long addr, unsigned long len, pgoff_t pgoff,
@@ -2699,7 +2697,7 @@ static inline struct vm_area_struct * find_vma_intersection(struct mm_struct * m
 static inline
 struct vm_area_struct *vma_lookup(struct mm_struct *mm, unsigned long addr)
 {
-       return find_vma_intersection(mm, addr, addr + 1);
+       return mtree_load(&mm->mm_mt, addr);
 }
 
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
