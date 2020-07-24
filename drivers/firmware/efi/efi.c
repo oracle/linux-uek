@@ -55,6 +55,7 @@ static unsigned long __initdata rt_prop = EFI_INVALID_TABLE_ADDR;
 
 struct mm_struct efi_mm = {
 	.mm_rb			= RB_ROOT,
+	.mm_mt			= MTREE_INIT(mm_mt, MAPLE_ALLOC_RANGE),
 	.mm_users		= ATOMIC_INIT(2),
 	.mm_count		= ATOMIC_INIT(1),
 	.write_protect_seq      = SEQCNT_ZERO(efi_mm.write_protect_seq),
