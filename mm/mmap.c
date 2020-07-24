@@ -785,10 +785,6 @@ void vma_mt_store(struct mm_struct *mm, struct vm_area_struct *vma)
 		GFP_KERNEL);
 }
 
-void vma_store(struct mm_struct *mm, struct vm_area_struct *vma) {
-	vma_mt_store(mm, vma);
-}
-
 static void
 __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct vm_area_struct *prev, struct rb_node **rb_link,

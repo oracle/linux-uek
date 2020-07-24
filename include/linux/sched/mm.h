@@ -8,6 +8,7 @@
 #include <linux/mm_types.h>
 #include <linux/gfp.h>
 #include <linux/sync_core.h>
+#include <linux/maple_tree.h>
 
 /*
  * Routines for handling mm_structs
@@ -67,11 +68,19 @@ static inline void mmdrop(struct mm_struct *mm)
  */
 static inline void mmget(struct mm_struct *mm)
 {
+	mt_set_in_rcu(&mm->mm_mt);
 	atomic_inc(&mm->mm_users);
 }
 
 static inline bool mmget_not_zero(struct mm_struct *mm)
 {
+	/*
+	 * There is a race below during task tear down that can cause the maple
+	 * tree to enter rcu mode with only a single user.  If this race
+	 * happens, the result would be that the maple tree nodes would remain
+	 * active for an extra RCU read cycle.
+	 */
+	mt_set_in_rcu(&mm->mm_mt);
 	return atomic_inc_not_zero(&mm->mm_users);
 }
 
