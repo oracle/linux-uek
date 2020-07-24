@@ -713,7 +713,11 @@ next_mr:
 
 		if (prefetch) {
 			if (!is_odp_mr(mr) ||
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 			    mr->ibmr.pd != pd) {
+#else
+			    to_mpd(mr->ibmr.pd)->pdn != to_mpd(pd)->pdn) {
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 				mlx5_ib_dbg(dev, "Invalid prefetch request: %s\n",
 					    is_odp_mr(mr) ?  "MR is not ODP" :
 					    "PD is not of the MR");
@@ -1457,7 +1461,11 @@ static bool num_pending_prefetch_inc(struct ib_pd *pd,
 
 		mr = container_of(mmkey, struct mlx5_ib_mr, mmkey);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		if (mr->ibmr.pd != pd) {
+#else
+		if (to_mpd(mr->ibmr.pd)->pdn != to_mpd(pd)->pdn) {
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 			ret = false;
 			break;
 		}
