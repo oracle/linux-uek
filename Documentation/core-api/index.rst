@@ -39,6 +39,7 @@ Library functionality that is used throughout the kernel.
    rbtree
    generic-radix-tree
    packing
+   maple-tree
    timekeeping
    errseq
 
