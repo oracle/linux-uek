@@ -43,6 +43,7 @@ Library functionality that is used throughout the kernel.
    this_cpu_ops
    timekeeping
    errseq
+   maple-tree
 
 Concurrency primitives
 ======================
