@@ -807,6 +807,15 @@ config DEBUG_VM_RB
 
 	  If unsure, say N.
 
+
+config DEBUG_MAPLE_TREE
+	bool "Debug VM maple trees"
+	depends on DEBUG_VM
+	help
+	  Enable VM maple tree debugging information and extra validations.
+
+	  If unsure, say N.
+
 config DEBUG_VM_PGFLAGS
 	bool "Debug page-flags operations"
 	depends on DEBUG_VM
