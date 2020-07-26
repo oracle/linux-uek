@@ -25,6 +25,12 @@
 		pcie0 = &pcie0;
 	};
 
+	rpi_backlight: rpi_backlight {
+	    compatible = "raspberrypi,rpi-backlight";
+	    firmware =<&firmware>;
+	    status = "okay";
+	};
+
 	leds {
 		act {
 			gpios = <&gpio 42 GPIO_ACTIVE_HIGH>;
@@ -289,10 +295,5 @@
 	    compatible = "raspberrypi,firmware-ts";
 	    touchscreen-size-x = <800>;
 	    touchscreen-size-y = <480>;
-	};
-
-	rpi_backlight: rpi_backlight {
-	    compatible = "raspberrypi,rpi-backlight";
-	    status = "okay";
 	};
 };
