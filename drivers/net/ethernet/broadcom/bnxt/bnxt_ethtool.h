@@ -78,6 +78,8 @@ struct hwrm_dbg_cmn_output {
 #define BNXT_FW_RESET_AP	0xfffe
 #define BNXT_FW_RESET_CHIP	0xffff
 
+#define BNXT_PXP_REG_LEN	0x3110
+
 extern const struct ethtool_ops bnxt_ethtool_ops;
 
 u32 bnxt_get_rxfh_indir_size(struct net_device *dev);
