@@ -204,7 +204,7 @@ static void mlx5_lag_fib_update(struct work_struct *work)
 	/* Protect internal structures from changes */
 	rtnl_lock();
 	switch (fib_work->event) {
-	case FIB_EVENT_ENTRY_REPLACE: /* fall through */
+	case FIB_EVENT_ENTRY_REPLACE:
 	case FIB_EVENT_ENTRY_APPEND: /* fall through */
 	case FIB_EVENT_ENTRY_ADD: /* fall through */
 	case FIB_EVENT_ENTRY_DEL:
@@ -212,7 +212,7 @@ static void mlx5_lag_fib_update(struct work_struct *work)
 					 fib_work->fen_info.fi);
 		fib_info_put(fib_work->fen_info.fi);
 		break;
-	case FIB_EVENT_NH_ADD: /* fall through */
+	case FIB_EVENT_NH_ADD:
 	case FIB_EVENT_NH_DEL:
 		fib_nh = fib_work->fnh_info.fib_nh;
 		mlx5_lag_fib_nexthop_event(ldev,
@@ -266,7 +266,7 @@ static int mlx5_lag_fib_event(struct notifier_block *nb,
 		return NOTIFY_DONE;
 
 	switch (event) {
-	case FIB_EVENT_ENTRY_REPLACE: /* fall through */
+	case FIB_EVENT_ENTRY_REPLACE:
 	case FIB_EVENT_ENTRY_APPEND: /* fall through */
 	case FIB_EVENT_ENTRY_ADD: /* fall through */
 	case FIB_EVENT_ENTRY_DEL:
@@ -289,7 +289,7 @@ static int mlx5_lag_fib_event(struct notifier_block *nb,
 		 */
 		fib_info_hold(fib_work->fen_info.fi);
 		break;
-	case FIB_EVENT_NH_ADD: /* fall through */
+	case FIB_EVENT_NH_ADD:
 	case FIB_EVENT_NH_DEL:
 		fnh_info = container_of(info, struct fib_nh_notifier_info,
 					info);
