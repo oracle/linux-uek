@@ -3722,6 +3722,10 @@ static int bnxt_alloc_hwrm_short_cmd_req(struct bnxt *bp)
 
 static void bnxt_free_stats_mem(struct bnxt *bp, struct bnxt_stats_mem *stats)
 {
+	kfree(stats->hw_masks);
+	stats->hw_masks = NULL;
+	kfree(stats->sw_stats);
+	stats->sw_stats = NULL;
 	if (stats->hw_stats) {
 		dma_free_coherent(&bp->pdev->dev, stats->len, stats->hw_stats,
 				  stats->hw_stats_map);
@@ -3729,7 +3733,8 @@ static void bnxt_free_stats_mem(struct bnxt *bp, struct bnxt_stats_mem *stats)
 	}
 }
 
-static int bnxt_alloc_stats_mem(struct bnxt *bp, struct bnxt_stats_mem *stats)
+static int bnxt_alloc_stats_mem(struct bnxt *bp, struct bnxt_stats_mem *stats,
+				bool alloc_masks)
 {
 	stats->hw_stats = dma_alloc_coherent(&bp->pdev->dev, stats->len,
 					     &stats->hw_stats_map, GFP_KERNEL);
@@ -3737,7 +3742,21 @@ static int bnxt_alloc_stats_mem(struct bnxt *bp, struct bnxt_stats_mem *stats)
 		return -ENOMEM;
 
 	memset(stats->hw_stats, 0, stats->len);
+
+	stats->sw_stats = kzalloc(stats->len, GFP_KERNEL);
+	if (!stats->sw_stats)
+		goto stats_mem_err;
+
+	if (alloc_masks) {
+		stats->hw_masks = kzalloc(stats->len, GFP_KERNEL);
+		if (!stats->hw_masks)
+			goto stats_mem_err;
+	}
 	return 0;
+
+stats_mem_err:
+	bnxt_free_stats_mem(bp, stats);
+	return -ENOMEM;
 }
 
 static void bnxt_free_port_stats(struct bnxt *bp)
@@ -3777,7 +3796,7 @@ static int bnxt_alloc_stats(struct bnxt *bp)
 		struct bnxt_cp_ring_info *cpr = &bnapi->cp_ring;
 
 		cpr->stats.len = size;
-		rc = bnxt_alloc_stats_mem(bp, &cpr->stats);
+		rc = bnxt_alloc_stats_mem(bp, &cpr->stats, !i);
 		if (rc)
 			return rc;
 
@@ -3791,7 +3810,7 @@ static int bnxt_alloc_stats(struct bnxt *bp)
 		goto alloc_ext_stats;
 
 	bp->port_stats.len = BNXT_PORT_STATS_SIZE;
-	rc = bnxt_alloc_stats_mem(bp, &bp->port_stats);
+	rc = bnxt_alloc_stats_mem(bp, &bp->port_stats, true);
 	if (rc)
 		return rc;
 
@@ -3807,7 +3826,7 @@ alloc_ext_stats:
 		goto alloc_tx_ext_stats;
 
 	bp->rx_port_stats_ext.len = sizeof(struct rx_port_stats_ext);
-	rc = bnxt_alloc_stats_mem(bp, &bp->rx_port_stats_ext);
+	rc = bnxt_alloc_stats_mem(bp, &bp->rx_port_stats_ext, true);
 	/* Extended stats are optional */
 	if (rc)
 		return 0;
@@ -3819,7 +3838,7 @@ alloc_tx_ext_stats:
 	if (bp->hwrm_spec_code >= 0x10902 ||
 	    (bp->fw_cap & BNXT_FW_CAP_EXT_STATS_SUPPORTED)) {
 		bp->tx_port_stats_ext.len = sizeof(struct tx_port_stats_ext);
-		rc = bnxt_alloc_stats_mem(bp, &bp->tx_port_stats_ext);
+		rc = bnxt_alloc_stats_mem(bp, &bp->tx_port_stats_ext, true);
 		/* Extended stats are optional */
 		if (rc)
 			return 0;
