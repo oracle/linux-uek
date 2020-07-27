@@ -24,4 +24,11 @@
 #define __must_hold(x)
 
 #define EXPORT_PER_CPU_SYMBOL_GPL(x)
+
+#if __has_attribute(__fallthrough__)
+# define fallthrough                    __attribute__((__fallthrough__))
+#else
+# define fallthrough                    do {} while (0)  /* fallthrough */
+#endif /* __has_attribute */
+
 #endif /* _KERNEL_H */
