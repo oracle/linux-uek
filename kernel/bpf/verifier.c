@@ -21,6 +21,15 @@
 #include <linux/vmalloc.h>
 #include <linux/stringify.h>
 
+static const struct bpf_verifier_ops * const bpf_verifier_ops[] = {
+#define BPF_PROG_TYPE(_id, _name) \
+	[_id] = & _name ## _verifier_ops,
+#define BPF_MAP_TYPE(_id, _ops)
+#include <linux/bpf_types.h>
+#undef BPF_PROG_TYPE
+#undef BPF_MAP_TYPE
+};
+
 /* bpf_check() is a static code analyzer that walks eBPF program
  * instruction by instruction and updates register/stack state.
  * All paths of conditional branches are analyzed until 'bpf_exit' insn.
@@ -1145,8 +1154,8 @@ static int check_ctx_access(struct bpf_verifier_env *env, int insn_idx, int off,
 			*reg_type = info.reg_type;
 			return 0;
 		}
-	} else if (env->prog->aux->vops->is_valid_access &&
-		   env->prog->aux->vops->is_valid_access(off, size, t, &info)) {
+	} else if (env->ops->is_valid_access &&
+		   env->ops->is_valid_access(off, size, t, &info)) {
 		/* A non zero info.ctx_field_size indicates that this field is a
 		 * candidate for later verifier transformation to load the whole
 		 * field and then apply a mask when accessed with a narrower
@@ -1882,8 +1891,8 @@ static int check_call(struct bpf_verifier_env *env, int func_id, int insn_idx)
 		return -EINVAL;
 	}
 
-	if (env->prog->aux->vops->get_func_proto)
-		fn = env->prog->aux->vops->get_func_proto(func_id);
+	if (env->ops->get_func_proto)
+		fn = env->ops->get_func_proto(func_id);
 
 	if (!fn) {
 		verbose("unknown func %s#%d\n", func_id_name(func_id), func_id);
@@ -4607,7 +4616,7 @@ static void sanitize_dead_code(struct bpf_verifier_env *env)
  */
 static int convert_ctx_accesses(struct bpf_verifier_env *env)
 {
-	const struct bpf_verifier_ops *ops = env->prog->aux->vops;
+	const struct bpf_verifier_ops *ops = env->ops;
 	int i, cnt, size, ctx_field_size, delta = 0;
 	const int insn_cnt = env->prog->len;
 	struct bpf_insn insn_buf[16], *insn;
@@ -4936,7 +4945,7 @@ static int fixup_bpf_calls(struct bpf_verifier_env *env)
 			insn      = new_prog->insnsi + i + delta;
 		}
 patch_call_imm:
-		fn = prog->aux->vops->get_func_proto(insn->imm);
+		fn = env->ops->get_func_proto(insn->imm);
 		/* all functions that have prototype and verifier allowed
 		 * programs to call them, must be real in-kernel functions
 		 */
@@ -4993,6 +5002,7 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 	if (!env->insn_aux_data)
 		goto err_free_env;
 	env->prog = *prog;
+	env->ops = bpf_verifier_ops[env->prog->type];
 
 	/* grab the mutex to protect few globals used by verifier */
 	mutex_lock(&bpf_verifier_lock);
@@ -5128,6 +5138,7 @@ int bpf_analyzer(struct bpf_prog *prog, const struct bpf_ext_analyzer_ops *ops,
 	if (!env->insn_aux_data)
 		goto err_free_env;
 	env->prog = prog;
+	env->ops = bpf_verifier_ops[env->prog->type];
 	env->analyzer_ops = ops;
 	env->analyzer_priv = priv;
 
