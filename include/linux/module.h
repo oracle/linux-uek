@@ -396,6 +396,7 @@ struct module {
 #endif
 
 	bool async_probe_requested;
+	UEK_KABI_FILL_HOLE(bool using_gplonly_symbols)
 
 	/* symbols that will be GPL-only in the near future. */
 	const struct kernel_symbol *gpl_future_syms;
