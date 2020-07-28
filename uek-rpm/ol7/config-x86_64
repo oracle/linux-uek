@@ -7801,6 +7801,14 @@ CONFIG_NVMEM_SYSFS=y
 # end of HW tracing support
 
 # CONFIG_FPGA is not set
+CONFIG_TEE=m
+
+#
+# TEE drivers
+#
+CONFIG_AMDTEE=m
+# end of TEE drivers
+
 CONFIG_PM_OPP=y
 # CONFIG_UNISYS_VISORBUS is not set
 # CONFIG_SIOX is not set
