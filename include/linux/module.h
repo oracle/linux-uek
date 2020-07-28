@@ -350,6 +350,9 @@ struct module {
 	const struct kernel_symbol *syms;
 	const s32 *crcs;
 	unsigned int num_syms;
+#ifndef __GENKSYMS__
+	bool using_gplonly_symbols;
+#endif
 
 	/* Kernel parameters. */
 #ifdef CONFIG_SYSFS
