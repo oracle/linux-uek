@@ -4401,83 +4401,6 @@ mlx5e_get_offload_stats(int attr_id, const struct net_device *dev,
 }
 #endif
 
-struct mlx5e_vxlan_work {
-	struct work_struct	work;
-	struct mlx5e_priv	*priv;
-	u16			port;
-};
-
-static void mlx5e_vxlan_add_work(struct work_struct *work)
-{
-	struct mlx5e_vxlan_work *vxlan_work =
-		container_of(work, struct mlx5e_vxlan_work, work);
-	struct mlx5e_priv *priv = vxlan_work->priv;
-	u16 port = vxlan_work->port;
-
-	mutex_lock(&priv->state_lock);
-	mlx5_vxlan_add_port(priv->mdev->vxlan, port);
-	mutex_unlock(&priv->state_lock);
-
-	kfree(vxlan_work);
-}
-
-static void mlx5e_vxlan_del_work(struct work_struct *work)
-{
-	struct mlx5e_vxlan_work *vxlan_work =
-		container_of(work, struct mlx5e_vxlan_work, work);
-	struct mlx5e_priv *priv         = vxlan_work->priv;
-	u16 port = vxlan_work->port;
-
-	mutex_lock(&priv->state_lock);
-	mlx5_vxlan_del_port(priv->mdev->vxlan, port);
-	mutex_unlock(&priv->state_lock);
-	kfree(vxlan_work);
-}
-
-static void mlx5e_vxlan_queue_work(struct mlx5e_priv *priv, u16 port, int add)
-{
-	struct mlx5e_vxlan_work *vxlan_work;
-
-	vxlan_work = kmalloc(sizeof(*vxlan_work), GFP_ATOMIC);
-	if (!vxlan_work)
-		return;
-
-	if (add)
-		INIT_WORK(&vxlan_work->work, mlx5e_vxlan_add_work);
-	else
-		INIT_WORK(&vxlan_work->work, mlx5e_vxlan_del_work);
-
-	vxlan_work->priv = priv;
-	vxlan_work->port = port;
-	queue_work(priv->wq, &vxlan_work->work);
-}
-
-void mlx5e_add_vxlan_port(struct net_device *netdev, struct udp_tunnel_info *ti)
-{
-	struct mlx5e_priv *priv = netdev_priv(netdev);
-
-	if (ti->type != UDP_TUNNEL_TYPE_VXLAN)
-		return;
-
-	if (!mlx5_vxlan_allowed(priv->mdev->vxlan))
-		return;
-
-	mlx5e_vxlan_queue_work(priv, be16_to_cpu(ti->port), 1);
-}
-
-void mlx5e_del_vxlan_port(struct net_device *netdev, struct udp_tunnel_info *ti)
-{
-	struct mlx5e_priv *priv = netdev_priv(netdev);
-
-	if (ti->type != UDP_TUNNEL_TYPE_VXLAN)
-		return;
-
-	if (!mlx5_vxlan_allowed(priv->mdev->vxlan))
-		return;
-
-	mlx5e_vxlan_queue_work(priv, be16_to_cpu(ti->port), 0);
-}
-
 static bool mlx5e_tunnel_proto_supported_tx(struct mlx5_core_dev *mdev, u8 proto_type)
 {
 	switch (proto_type) {
@@ -4846,8 +4769,8 @@ const struct net_device_ops mlx5e_netdev_ops = {
 	.ndo_change_mtu          = mlx5e_change_nic_mtu,
 	.ndo_do_ioctl            = mlx5e_ioctl,
 	.ndo_set_tx_maxrate      = mlx5e_set_tx_maxrate,
-	.ndo_udp_tunnel_add      = mlx5e_add_vxlan_port,
-	.ndo_udp_tunnel_del      = mlx5e_del_vxlan_port,
+	.ndo_udp_tunnel_add      = udp_tunnel_nic_add_port,
+	.ndo_udp_tunnel_del      = udp_tunnel_nic_del_port,
 	.ndo_features_check      = mlx5e_features_check,
 	.ndo_tx_timeout          = mlx5e_tx_timeout,
 	.ndo_bpf		 = mlx5e_xdp,
@@ -5103,6 +5026,39 @@ static void mlx5e_set_netdev_dev_addr(struct net_device *netdev)
 	}
 }
 
+static int mlx5e_vxlan_set_port(struct net_device *netdev, unsigned int table,
+				unsigned int entry, struct udp_tunnel_info *ti)
+{
+	struct mlx5e_priv *priv = netdev_priv(netdev);
+
+	return mlx5_vxlan_add_port(priv->mdev->vxlan, ntohs(ti->port));
+}
+
+static int mlx5e_vxlan_unset_port(struct net_device *netdev, unsigned int table,
+				  unsigned int entry, struct udp_tunnel_info *ti)
+{
+	struct mlx5e_priv *priv = netdev_priv(netdev);
+
+	return mlx5_vxlan_del_port(priv->mdev->vxlan, ntohs(ti->port));
+}
+
+void mlx5e_vxlan_set_netdev_info(struct mlx5e_priv *priv)
+{
+	if (!mlx5_vxlan_allowed(priv->mdev->vxlan))
+		return;
+
+	priv->nic_info.set_port = mlx5e_vxlan_set_port;
+	priv->nic_info.unset_port = mlx5e_vxlan_unset_port;
+	priv->nic_info.flags = UDP_TUNNEL_NIC_INFO_MAY_SLEEP |
+				UDP_TUNNEL_NIC_INFO_STATIC_IANA_VXLAN;
+	priv->nic_info.tables[0].tunnel_types = UDP_TUNNEL_TYPE_VXLAN;
+	/* Don't count the space hard-coded to the IANA port */
+	priv->nic_info.tables[0].n_entries =
+		mlx5_vxlan_max_udp_ports(priv->mdev) - 1;
+
+	priv->netdev->udp_tunnel_nic_info = &priv->nic_info;
+}
+
 static bool mlx5e_tunnel_any_tx_proto_supported(struct mlx5_core_dev *mdev)
 {
 	int tt;
@@ -5270,6 +5226,7 @@ static int mlx5e_nic_init(struct mlx5_core_dev *mdev,
 	int err;
 
 	mlx5e_build_nic_params(priv, &priv->xsk, netdev->mtu);
+	mlx5e_vxlan_set_netdev_info(priv);
 
 	mlx5e_timestamp_init(priv);
 
@@ -5432,8 +5389,7 @@ static void mlx5e_nic_enable(struct mlx5e_priv *priv)
 	rtnl_lock();
 	if (netif_running(netdev))
 		mlx5e_open(netdev);
-	if (mlx5_vxlan_allowed(priv->mdev->vxlan))
-		udp_tunnel_get_rx_info(netdev);
+	udp_tunnel_nic_reset_ntf(priv->netdev);
 	netif_device_attach(netdev);
 	rtnl_unlock();
 }
@@ -5448,8 +5404,6 @@ static void mlx5e_nic_disable(struct mlx5e_priv *priv)
 	rtnl_lock();
 	if (netif_running(priv->netdev))
 		mlx5e_close(priv->netdev);
-	if (mlx5_vxlan_allowed(priv->mdev->vxlan))
-		udp_tunnel_drop_rx_info(priv->netdev);
 	netif_device_detach(priv->netdev);
 	rtnl_unlock();
 

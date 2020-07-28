@@ -626,6 +626,7 @@ static int mlx5e_init_ul_rep(struct mlx5_core_dev *mdev,
 	if (err)
 		mlx5_core_err(mdev, "Uplink rep IPsec initialization failed, %d\n", err);
 
+	mlx5e_vxlan_set_netdev_info(priv);
 	return mlx5e_init_rep(mdev, netdev);
 }
 
