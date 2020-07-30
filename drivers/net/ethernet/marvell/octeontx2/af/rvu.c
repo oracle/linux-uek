@@ -1828,6 +1828,8 @@ static void rvu_clear_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
 		    (lf << block->lfshift), cfg & ~0x7FFULL);
 
 	offset = rvu_get_msix_offset(rvu, pfvf, block->addr, lf);
+	if (offset == MSIX_VECTOR_INVALID)
+		return;
 
 	/* Update the mapping */
 	for (vec = 0; vec < nvecs; vec++)
