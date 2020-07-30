@@ -619,6 +619,7 @@ static void taa_select_mitigation(void)
 		if ( !(ia32_cap & ARCH_CAP_MDS_NO)) {
 			switch (mds_mitigation) {
 			case MDS_MITIGATION_FULL:
+			case MDS_MITIGATION_VMWERV:
 				taa_mitigation = TAA_MITIGATION_VERW;
 				break;
 			case MDS_MITIGATION_IDLE:
@@ -1581,6 +1582,7 @@ void arch_smt_update(void)
 	}
 
 	switch (taa_mitigation) {
+	case TAA_MITIGATION_IDLE:
 	case TAA_MITIGATION_VERW:
 	case TAA_MITIGATION_UCODE_NEEDED:
 		if (sched_smt_active())
