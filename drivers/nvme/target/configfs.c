@@ -1110,6 +1110,7 @@ static ssize_t nvmet_subsys_attr_model_store(struct config_item *item,
 	up_write(&nvmet_config_sem);
 
 	kfree_rcu(new_model, rcuhead);
+	kfree(new_model_number);
 
 	return count;
 }
