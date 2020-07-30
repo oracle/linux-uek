@@ -538,10 +538,8 @@ ice_alloc_buf_fast_zc(struct ice_ring *rx_ring, struct ice_rx_buf *rx_buf)
 	void *addr = rx_buf->addr;
 	u64 handle, hr;
 
-	if (addr) {
-		rx_ring->rx_stats.page_reuse_count++;
+	if (addr)
 		return true;
-	}
 
 	if (!xsk_umem_peek_addr(umem, &handle)) {
 		rx_ring->rx_stats.alloc_page_failed++;
