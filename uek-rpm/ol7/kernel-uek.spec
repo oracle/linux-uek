@@ -1901,14 +1901,8 @@ fi\
 #
 %define kernel_variant_posttrans(o) \
 %{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
-[ -f /etc/default/grub ] && . /etc/default/grub\
-DIST_DTFILE="/boot/dtb-%{KVERREL}%{?1:.%{1}}/$GRUB_DEFAULT_DTB"\
-if [ -f "$DIST_DTFILE" ]; then\
-	%{_sbindir}/new-kernel-pkg --package kernel%{?variant}%{?1:%{!-o:-}%{1}} --install --mkinitrd --dracut --depmod %{KVERREL}%{?1:.%{1}} "--devtree=$DIST_DTFILE" || exit $?\
-else\
-	%{_sbindir}/new-kernel-pkg --package kernel%{?variant}%{?1:%{!-o:-}%{1}} --install --mkinitrd --dracut --depmod %{KVERREL}%{?1:.%{1}} || exit $?\
-fi\
-%{_sbindir}/new-kernel-pkg --package kernel%{?variant}%{?1:%{!-o:-}%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
@@ -1933,6 +1927,13 @@ if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" 
 fi}\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
+fi\
+[ -f /etc/default/grub ] && . /etc/default/grub\
+DIST_DTFILE="/boot/dtb-%{KVERREL}%{!-u:%{?-v:.%{-v*}}}/$GRUB_DEFAULT_DTB"\
+if [ -f "$DIST_DTFILE" ]; then\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
+else\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 fi\
 %{nil}
 
