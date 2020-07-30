@@ -66,6 +66,7 @@
 	__register_chrdev
 	__release_region
 	__remove_inode_hash
+	__request_module
 	__request_region
 	__root_device_register
 	__set_page_dirty_buffers
@@ -98,6 +99,7 @@
 	__x86_indirect_thunk_rcx
 	__x86_indirect_thunk_rdi
 	__x86_indirect_thunk_rdx
+	__x86_indirect_thunk_rsi
 	_bin2bcd
 	_cond_resched
 	_copy_from_iter
@@ -394,6 +396,7 @@
 	find_next_bit
 	find_pid_ns
 	find_vma
+	find_vpid
 	finish_no_open
 	finish_open
 	finish_wait
@@ -483,6 +486,7 @@
 	iov_iter_bvec
 	iov_iter_get_pages
 	iov_iter_init
+	iov_iter_npages
 	iov_iter_revert
 	iov_iter_single_seg_count
 	iput
@@ -583,6 +587,7 @@
 	mutex_trylock
 	mutex_unlock
 	names_cachep
+	net_namespace_list
 	netdev_refcnt_read
 	netif_carrier_off
 	netif_carrier_on
@@ -591,6 +596,8 @@
 	netlink_kernel_release
 	netlink_unicast
 	new_inode
+	nf_register_net_hook
+	nf_unregister_net_hook
 	no_llseek
 	nobh_truncate_page
 	nobh_write_begin
@@ -668,6 +675,7 @@
 	recalc_sigpending
 	redirty_page_for_writepage
 	register_blkdev
+	register_chrdev_region
 	register_filesystem
 	register_inet6addr_notifier
 	register_inetaddr_notifier
@@ -729,6 +737,7 @@
 	scsi_unblock_requests
 	scsicam_bios_param
 	send_sig
+	send_sig_info
 	seq_escape
 	seq_lseek
 	seq_open
@@ -753,6 +762,7 @@
 	sigprocmask
 	simple_read_from_buffer
 	simple_strtol
+	simple_strtoul
 	simple_strtoull
 	simple_write_begin
 	simple_write_end
@@ -794,6 +804,7 @@
 	strncpy_from_user
 	strnlen
 	strrchr
+	strscpy
 	strsep
 	strspn
 	strstr
@@ -885,6 +896,7 @@
 	vmalloc
 	vmalloc_base
 	vmalloc_to_page
+	vmalloc_to_pfn
 	vmap
 	vmemmap_base
 	vprintk
