@@ -104,7 +104,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 #build kernel with 4k & 64k page size for aarch64
 %define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
 %define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
-# build embedded kernel
+# build embedded kernels
 %define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
 # Build the kernel-doc package, but don't fail the build if it botches.
@@ -404,7 +404,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_kdump 1
 %endif
 
-# if requested, only build emb kernel
+# if requested, only build emb and emb2 kernels
 %if %{with_embeddedonly}
 %define with_up        0
 %define with_smp       0
@@ -643,6 +643,7 @@ Source1010: config-mips64-embedded-debug
 Source1011: config-aarch64-embedded
 Source1012: config-aarch64-embedded-debug
 Source1013: config-mips64-embedded-kdump
+Source1014: config-aarch64-embedded2
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -1048,6 +1049,11 @@ This package includes embedded kernel.
 %description -n kernel%{?variant}emb-debug
 This package includes debug embedded kernel.
 
+%define variant_summary A kernel for another embedded platform.
+%kernel_variant_package -eo emb2
+%description -n kernel%{?variant}emb2
+This package includes embedded kernel.
+
 %prep
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
@@ -1243,6 +1249,7 @@ mkdir -p configs
 	cp %{SOURCE1007} configs/config
 	cp %{SOURCE1011} configs/config-emb
 	cp %{SOURCE1012} configs/config-emb-debug
+	cp %{SOURCE1014} configs/config-embedded2
 %endif #ifarch aarch64
 
 %ifarch mips64
@@ -1336,6 +1343,8 @@ BuildKernel() {
 	cp configs/config-emb-debug .config
     elif [ "$Flavour" == "kdump" ]; then
 	cp configs/config-emb-kdump .config
+    elif [ "$Flavour" == "emb2" ]; then
+	cp configs/config-embedded2 .config
     else
 	cp configs/config .config
     fi
@@ -1354,7 +1363,7 @@ BuildKernel() {
 %endif
 
 %if %{with_dtrace}
-   if [ "$Flavour" != "emb" ] ; then
+   if [ "$Flavour" != "emb" -a "$Flavour" != "emb2" ] ; then
        make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
    fi
 %endif
@@ -1683,6 +1692,7 @@ BuildKernel %make_target %kernel_image 4kdebug
 
 %if %{with_embedded}
 BuildKernel %make_target %kernel_image emb
+BuildKernel %make_target %kernel_image emb2
 %endif
 
 %global perf_make \
@@ -1746,6 +1756,7 @@ make -j1 htmldocs || %{doc_build_fail}
       mv certs/signing_key.pem.sign.emb certs/signing_key.pem \
       mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
     fi \
     if [ "%{with_embedded_debug}" != "0" ]; then \
       mv certs/signing_key.pem.sign.emb-debug certs/signing_key.pem \
@@ -2114,6 +2125,11 @@ fi\
 %kernel_variant_postun -o emb-debug
 %kernel_variant_post -o -v emb-debug
 
+%kernel_variant_pre -o emb2
+%kernel_variant_preun -o emb2
+%kernel_variant_postun -o emb2
+%kernel_variant_post -o -v emb2
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2238,7 +2254,7 @@ fi
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-%if %{with_dtrace} && "%{2}" != "emb"\
+%if %{with_dtrace} && "%{2}" != "emb" && "%{2}" != "emb2"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
@@ -2302,6 +2318,7 @@ fi
 %kernel_variant_files %{with_4k_ps_debug} 4kdebug
 
 %kernel_variant_files -o %{with_embedded} emb
+%kernel_variant_files -o %{with_embedded} emb2
 %kernel_variant_files -o %{with_embedded_debug} emb-debug
 
 %changelog
