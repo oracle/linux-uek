@@ -21,6 +21,7 @@
 #include <linux/fs.h>
 #include <linux/dma-fence.h>
 #include <linux/wait.h>
+#include <linux/uek_kabi.h>
 
 struct device;
 struct dma_buf;
@@ -317,6 +318,7 @@ struct dma_buf {
 
 		__poll_t active;
 	} cb_excl, cb_shared;
+	UEK_KABI_EXTEND(spinlock_t name_lock) /* spinlock to protect name access */
 };
 
 /**

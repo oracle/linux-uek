@@ -797,6 +797,7 @@ static struct platform_driver dsu_pmu_driver = {
 		.name	= DRVNAME,
 		.of_match_table = of_match_ptr(dsu_pmu_of_match),
 		.acpi_match_table = ACPI_PTR(dsu_pmu_acpi_match),
+		.suppress_bind_attrs = true,
 	},
 	.probe = dsu_pmu_device_probe,
 	.remove = dsu_pmu_device_remove,
