@@ -161,8 +161,6 @@ struct tx_job_queue_cfg {
 /* rfoe common (for all lmac's) */
 struct rfoe_common_cfg {
 	struct tx_job_queue_cfg		tx_oth_job_cfg;
-	/* lmac protection lock */
-	spinlock_t			rx_lock;
 };
 
 /* ptp pending skb list */

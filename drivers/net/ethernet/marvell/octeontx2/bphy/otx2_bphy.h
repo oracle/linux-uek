@@ -63,6 +63,7 @@ struct otx2_bphy_cdev_priv {
 	int				irq;
 	struct mutex			mutex_lock;	/* mutex */
 	spinlock_t			lock;		/* irq lock */
+	spinlock_t			mbt_lock;	/* mbt ind lock */
 	u8				mhab_mode[OTX2_BPHY_MHAB_INST];
 };
 
