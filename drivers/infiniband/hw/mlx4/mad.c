@@ -1399,10 +1399,10 @@ int mlx4_ib_send_to_wire(struct mlx4_ib_dev *dev, int slave, u8 port,
 
 	spin_lock(&sqp->tx_lock);
 	if (sqp->tx_ix_head - sqp->tx_ix_tail >=
-	    (MLX4_NUM_TUNNEL_BUFS - 1))
+	    (MLX4_NUM_WIRE_BUFS - 1))
 		ret = -EAGAIN;
 	else
-		wire_tx_ix = (++sqp->tx_ix_head) & (MLX4_NUM_TUNNEL_BUFS - 1);
+		wire_tx_ix = (++sqp->tx_ix_head) & (MLX4_NUM_WIRE_BUFS - 1);
 	spin_unlock(&sqp->tx_lock);
 	if (ret)
 		goto out;
@@ -1598,19 +1598,20 @@ static int mlx4_ib_alloc_pv_bufs(struct mlx4_ib_demux_pv_ctx *ctx,
 	int i;
 	struct mlx4_ib_demux_pv_qp *tun_qp;
 	int rx_buf_size, tx_buf_size;
+	const int nmbr_bufs = is_tun ? MLX4_NUM_TUNNEL_BUFS : MLX4_NUM_WIRE_BUFS;
 
 	if (qp_type > IB_QPT_GSI)
 		return -EINVAL;
 
 	tun_qp = &ctx->qp[qp_type];
 
-	tun_qp->ring = kcalloc(MLX4_NUM_TUNNEL_BUFS,
+	tun_qp->ring = kcalloc(nmbr_bufs,
 			       sizeof(struct mlx4_ib_buf),
 			       GFP_KERNEL);
 	if (!tun_qp->ring)
 		return -ENOMEM;
 
-	tun_qp->tx_ring = kcalloc(MLX4_NUM_TUNNEL_BUFS,
+	tun_qp->tx_ring = kcalloc(nmbr_bufs,
 				  sizeof (struct mlx4_ib_tun_tx_buf),
 				  GFP_KERNEL);
 	if (!tun_qp->tx_ring) {
@@ -1627,7 +1628,7 @@ static int mlx4_ib_alloc_pv_bufs(struct mlx4_ib_demux_pv_ctx *ctx,
 		tx_buf_size = sizeof (struct mlx4_mad_snd_buf);
 	}
 
-	for (i = 0; i < MLX4_NUM_TUNNEL_BUFS; i++) {
+	for (i = 0; i < nmbr_bufs; i++) {
 		tun_qp->ring[i].addr = kmalloc(rx_buf_size, GFP_KERNEL);
 		if (!tun_qp->ring[i].addr)
 			goto err;
@@ -1641,7 +1642,7 @@ static int mlx4_ib_alloc_pv_bufs(struct mlx4_ib_demux_pv_ctx *ctx,
 		}
 	}
 
-	for (i = 0; i < MLX4_NUM_TUNNEL_BUFS; i++) {
+	for (i = 0; i < nmbr_bufs; i++) {
 		tun_qp->tx_ring[i].buf.addr =
 			kmalloc(tx_buf_size, GFP_KERNEL);
 		if (!tun_qp->tx_ring[i].buf.addr)
@@ -1672,7 +1673,7 @@ tx_err:
 				    tx_buf_size, DMA_TO_DEVICE);
 		kfree(tun_qp->tx_ring[i].buf.addr);
 	}
-	i = MLX4_NUM_TUNNEL_BUFS;
+	i = nmbr_bufs;
 err:
 	while (i > 0) {
 		--i;
@@ -1693,6 +1694,7 @@ static void mlx4_ib_free_pv_qp_bufs(struct mlx4_ib_demux_pv_ctx *ctx,
 	int i;
 	struct mlx4_ib_demux_pv_qp *tun_qp;
 	int rx_buf_size, tx_buf_size;
+	const int nmbr_bufs = is_tun ? MLX4_NUM_TUNNEL_BUFS : MLX4_NUM_WIRE_BUFS;
 
 	if (qp_type > IB_QPT_GSI)
 		return;
@@ -1707,13 +1709,13 @@ static void mlx4_ib_free_pv_qp_bufs(struct mlx4_ib_demux_pv_ctx *ctx,
 	}
 
 
-	for (i = 0; i < MLX4_NUM_TUNNEL_BUFS; i++) {
+	for (i = 0; i < nmbr_bufs; i++) {
 		ib_dma_unmap_single(ctx->ib_dev, tun_qp->ring[i].map,
 				    rx_buf_size, DMA_FROM_DEVICE);
 		kfree(tun_qp->ring[i].addr);
 	}
 
-	for (i = 0; i < MLX4_NUM_TUNNEL_BUFS; i++) {
+	for (i = 0; i < nmbr_bufs; i++) {
 		ib_dma_unmap_single(ctx->ib_dev, tun_qp->tx_ring[i].buf.map,
 				    tx_buf_size, DMA_TO_DEVICE);
 		kfree(tun_qp->tx_ring[i].buf.addr);
@@ -1793,6 +1795,7 @@ static int create_pv_sqp(struct mlx4_ib_demux_pv_ctx *ctx,
 	struct mlx4_ib_qp_tunnel_init_attr qp_init_attr;
 	struct ib_qp_attr attr;
 	int qp_attr_mask_INIT;
+	const int nmbr_bufs = create_tun ? MLX4_NUM_TUNNEL_BUFS : MLX4_NUM_WIRE_BUFS;
 
 	if (qp_type > IB_QPT_GSI)
 		return -EINVAL;
@@ -1803,8 +1806,8 @@ static int create_pv_sqp(struct mlx4_ib_demux_pv_ctx *ctx,
 	qp_init_attr.init_attr.send_cq = ctx->cq;
 	qp_init_attr.init_attr.recv_cq = ctx->cq;
 	qp_init_attr.init_attr.sq_sig_type = IB_SIGNAL_ALL_WR;
-	qp_init_attr.init_attr.cap.max_send_wr = MLX4_NUM_TUNNEL_BUFS;
-	qp_init_attr.init_attr.cap.max_recv_wr = MLX4_NUM_TUNNEL_BUFS;
+	qp_init_attr.init_attr.cap.max_send_wr = nmbr_bufs;
+	qp_init_attr.init_attr.cap.max_recv_wr = nmbr_bufs;
 	qp_init_attr.init_attr.cap.max_send_sge = 1;
 	qp_init_attr.init_attr.cap.max_recv_sge = 1;
 	if (create_tun) {
@@ -1866,7 +1869,7 @@ static int create_pv_sqp(struct mlx4_ib_demux_pv_ctx *ctx,
 		goto err_qp;
 	}
 
-	for (i = 0; i < MLX4_NUM_TUNNEL_BUFS; i++) {
+	for (i = 0; i < nmbr_bufs; i++) {
 		ret = mlx4_ib_post_pv_qp_buf(ctx, tun_qp, i);
 		if (ret) {
 			pr_err(" mlx4_ib_post_pv_buf error"
@@ -1902,8 +1905,8 @@ static void mlx4_ib_sqp_comp_worker(struct work_struct *work)
 			switch (wc.opcode) {
 			case IB_WC_SEND:
 				kfree(sqp->tx_ring[wc.wr_id &
-				      (MLX4_NUM_TUNNEL_BUFS - 1)].ah);
-				sqp->tx_ring[wc.wr_id & (MLX4_NUM_TUNNEL_BUFS - 1)].ah
+				      (MLX4_NUM_WIRE_BUFS - 1)].ah);
+				sqp->tx_ring[wc.wr_id & (MLX4_NUM_WIRE_BUFS - 1)].ah
 					= NULL;
 				spin_lock(&sqp->tx_lock);
 				sqp->tx_ix_tail++;
@@ -1912,13 +1915,13 @@ static void mlx4_ib_sqp_comp_worker(struct work_struct *work)
 			case IB_WC_RECV:
 				mad = (struct ib_mad *) &(((struct mlx4_mad_rcv_buf *)
 						(sqp->ring[wc.wr_id &
-						(MLX4_NUM_TUNNEL_BUFS - 1)].addr))->payload);
+						(MLX4_NUM_WIRE_BUFS - 1)].addr))->payload);
 				grh = &(((struct mlx4_mad_rcv_buf *)
 						(sqp->ring[wc.wr_id &
-						(MLX4_NUM_TUNNEL_BUFS - 1)].addr))->grh);
+						(MLX4_NUM_WIRE_BUFS - 1)].addr))->grh);
 				mlx4_ib_demux_mad(ctx->ib_dev, ctx->port, &wc, grh, mad);
 				if (mlx4_ib_post_pv_qp_buf(ctx, sqp, wc.wr_id &
-							   (MLX4_NUM_TUNNEL_BUFS - 1)))
+							   (MLX4_NUM_WIRE_BUFS - 1)))
 					pr_err("Failed reposting SQP "
 					       "buf:%lld\n", wc.wr_id);
 				break;
@@ -1931,8 +1934,8 @@ static void mlx4_ib_sqp_comp_worker(struct work_struct *work)
 				 ctx->slave, wc.status, wc.wr_id);
 			if (!MLX4_TUN_IS_RECV(wc.wr_id)) {
 				kfree(sqp->tx_ring[wc.wr_id &
-				      (MLX4_NUM_TUNNEL_BUFS - 1)].ah);
-				sqp->tx_ring[wc.wr_id & (MLX4_NUM_TUNNEL_BUFS - 1)].ah
+				      (MLX4_NUM_WIRE_BUFS - 1)].ah);
+				sqp->tx_ring[wc.wr_id & (MLX4_NUM_WIRE_BUFS - 1)].ah
 					= NULL;
 				spin_lock(&sqp->tx_lock);
 				sqp->tx_ix_tail++;
@@ -1972,6 +1975,7 @@ static int create_pv_resources(struct ib_device *ibdev, int slave, int port,
 {
 	int ret, cq_size;
 	struct ib_cq_init_attr cq_attr = {};
+	const int nmbr_bufs = create_tun ? MLX4_NUM_TUNNEL_BUFS : MLX4_NUM_WIRE_BUFS;
 
 	if (ctx->state != DEMUX_PV_STATE_DOWN)
 		return -EEXIST;
@@ -1996,7 +2000,7 @@ static int create_pv_resources(struct ib_device *ibdev, int slave, int port,
 		goto err_out_qp0;
 	}
 
-	cq_size = 2 * MLX4_NUM_TUNNEL_BUFS;
+	cq_size = 2 * nmbr_bufs;
 	if (ctx->has_smi)
 		cq_size *= 2;
 
