@@ -469,6 +469,9 @@ struct mlx4_ib_sriov {
 	spinlock_t id_map_lock;
 	struct rb_root sl_id_map;
 	struct idr pv_id_table;
+	/* Protects the radix-tree */
+	struct mutex rej_tmout_lock;
+	struct radix_tree_root rej_tmout_root;
 };
 
 struct mlx4_ib_iboe {
