@@ -930,9 +930,15 @@ struct devlink_ops {
 	/**
 	 * @trap_action_set: Trap action set function.
 	 */
+	UEK_KABI_REPLACE_UNSAFE(
 	int (*trap_action_set)(struct devlink *devlink,
 			       const struct devlink_trap *trap,
-			       enum devlink_trap_action action);
+			       enum devlink_trap_action action),
+	int (*trap_action_set)(struct devlink *devlink,
+			       const struct devlink_trap *trap,
+			       enum devlink_trap_action action,
+			       struct netlink_ext_ack *extack)
+	)
 	/**
 	 * @trap_group_init: Trap group initialization function.
 	 *
@@ -949,7 +955,8 @@ struct devlink_ops {
 	 */
 	UEK_KABI_EXTEND(int (*trap_group_set)(struct devlink *devlink,
 				      const struct devlink_trap_group *group,
-				      const struct devlink_trap_policer *policer))
+				      const struct devlink_trap_policer *policer,
+				      struct netlink_ext_ack *extack))
 	/**
 	 * @trap_policer_init: Trap policer initialization function.
 	 *
