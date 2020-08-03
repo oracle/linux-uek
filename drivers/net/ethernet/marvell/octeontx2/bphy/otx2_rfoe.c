@@ -412,6 +412,7 @@ static void otx2_rfoe_tx_timer_cb(struct timer_list *t)
 static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 				     struct rx_ft_cfg *ft_cfg, int mbt_buf_idx)
 {
+	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
 	struct mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
 	struct rfoe_ecpri_psw0_s *ecpri_psw0 = NULL;
 	struct rfoe_ecpri_psw1_s *ecpri_psw1 = NULL;
@@ -427,12 +428,12 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	u8 lmac_id;
 
 	/* read mbt state */
-	spin_lock(&priv->rfoe_common->rx_lock);
+	spin_lock(&cdev_priv->mbt_lock);
 	writeq(mbt_buf_idx, (priv->rfoe_reg_base +
 			 RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
 	mbt_state = readq(priv->rfoe_reg_base +
 			  RFOEX_RX_IND_MBT_SEG_STATE(priv->rfoe_num));
-	spin_unlock(&priv->rfoe_common->rx_lock);
+	spin_unlock(&cdev_priv->mbt_lock);
 
 	if ((mbt_state >> 16 & 0xf) != 0) {
 		pr_err("rx pkt error: mbt_buf_idx=%d, err=%d\n",
@@ -553,6 +554,7 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 static int otx2_rfoe_process_rx_flow(struct otx2_rfoe_ndev_priv *priv,
 				     int pkt_type, int budget)
 {
+	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
 	int count = 0, processed_pkts = 0;
 	struct rx_ft_cfg *ft_cfg;
 	u64 mbt_cfg;
@@ -560,14 +562,14 @@ static int otx2_rfoe_process_rx_flow(struct otx2_rfoe_ndev_priv *priv,
 
 	ft_cfg = &priv->rx_ft_cfg[pkt_type];
 
-	spin_lock(&priv->rfoe_common->rx_lock);
+	spin_lock(&cdev_priv->mbt_lock);
 	/* read mbt nxt_buf */
 	writeq(ft_cfg->mbt_idx,
 	       priv->rfoe_reg_base +
 	       RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num));
 	mbt_cfg = readq(priv->rfoe_reg_base +
 			RFOEX_RX_IND_MBT_CFG(priv->rfoe_num));
-	spin_unlock(&priv->rfoe_common->rx_lock);
+	spin_unlock(&cdev_priv->mbt_lock);
 
 	nxt_buf = (mbt_cfg >> 32) & 0xffff;
 
@@ -1089,6 +1091,7 @@ static void otx2_rfoe_dump_rx_ft_cfg(struct otx2_rfoe_ndev_priv *priv)
 static inline void otx2_rfoe_fill_rx_ft_cfg(struct otx2_rfoe_ndev_priv *priv,
 					    struct bphy_netdev_comm_if *if_cfg)
 {
+	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
 	struct bphy_netdev_rbuf_info *rbuf_info;
 	struct rx_ft_cfg *ft_cfg;
 	u64 jdt_cfg0, iova;
@@ -1117,11 +1120,13 @@ static inline void otx2_rfoe_fill_rx_ft_cfg(struct otx2_rfoe_ndev_priv *priv,
 		iova = ft_cfg->jdt_iova_addr;
 		ft_cfg->jdt_virt_addr = otx2_iova_to_virt(priv->iommu_domain,
 							  iova);
+		spin_lock(&cdev_priv->mbt_lock);
 		writeq(ft_cfg->jdt_idx,
 		       (priv->rfoe_reg_base +
 			RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
 		jdt_cfg0 = readq(priv->rfoe_reg_base +
 				 RFOEX_RX_IND_JDT_CFG0(priv->rfoe_num));
+		spin_unlock(&cdev_priv->mbt_lock);
 		ft_cfg->jd_rd_offset = ((jdt_cfg0 >> 28) & 0xf) * 8;
 		ft_cfg->pkt_offset = (u8)((jdt_cfg0 >> 52) & 0x7);
 		ft_cfg->priv = priv;
@@ -1222,7 +1227,6 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 					ret = -ENOMEM;
 					goto err_exit;
 				}
-				spin_lock_init(&priv->rfoe_common->rx_lock);
 			}
 			spin_lock_init(&priv->lock);
 			priv->netdev = netdev;

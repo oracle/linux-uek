@@ -196,45 +196,24 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 	}
 	case OTX2_RFOE_IOCTL_RX_IND_CFG:
 	{
-		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-		struct otx2_rfoe_ndev_priv *priv;
 		struct otx2_rfoe_rx_ind_cfg cfg;
-		struct net_device *netdev;
 		unsigned long flags;
-		int idx;
 
-		if (!cdev->odp_intf_cfg) {
-			dev_err(cdev->dev, "odp interface cfg is not done\n");
-			ret = -EBUSY;
-			goto out;
-		}
 		if (copy_from_user(&cfg, (void __user *)arg,
 				   sizeof(struct otx2_rfoe_rx_ind_cfg))) {
 			dev_err(cdev->dev, "copy from user fault\n");
 			ret = -EFAULT;
 			goto out;
 		}
-		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-			drv_ctx = &rfoe_drv_ctx[idx];
-			if (!(drv_ctx->valid &&
-			      drv_ctx->rfoe_num == cfg.rfoe_num))
-				break;
-		}
-		if (idx >= RFOE_MAX_INTF) {
-			dev_err(cdev->dev, "valid drv_ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		spin_lock_irqsave(&priv->rfoe_common->rx_lock, flags);
-		writeq(cfg.rx_ind_idx, (priv->rfoe_reg_base +
+
+		spin_lock_irqsave(&cdev->mbt_lock, flags);
+		writeq(cfg.rx_ind_idx, (rfoe_reg_base +
 		       RFOEX_RX_INDIRECT_INDEX_OFFSET(cfg.rfoe_num)));
 		if (cfg.dir == OTX2_RFOE_RX_IND_READ)
-			cfg.regval = readq(priv->rfoe_reg_base + cfg.regoff);
+			cfg.regval = readq(rfoe_reg_base + cfg.regoff);
 		else
-			writeq(cfg.regval, priv->rfoe_reg_base + cfg.regoff);
-		spin_unlock_irqrestore(&priv->rfoe_common->rx_lock, flags);
+			writeq(cfg.regval, rfoe_reg_base + cfg.regoff);
+		spin_unlock_irqrestore(&cdev->mbt_lock, flags);
 		if (copy_to_user((void __user *)(unsigned long)arg, &cfg,
 				 sizeof(struct otx2_rfoe_rx_ind_cfg))) {
 			dev_err(cdev->dev, "copy to user fault\n");
@@ -571,6 +550,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 	cdev_priv->devt = devt;
 	cdev_priv->is_open = 0;
 	spin_lock_init(&cdev_priv->lock);
+	spin_lock_init(&cdev_priv->mbt_lock);
 	mutex_init(&cdev_priv->mutex_lock);
 
 	cdev_init(&cdev_priv->cdev, &otx2_bphy_cdev_fops);
