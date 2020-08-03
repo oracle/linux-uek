@@ -6201,7 +6201,7 @@ again:
 	    found_type == BTRFS_FILE_EXTENT_PREALLOC) {
 		/* Only regular file could have regular/prealloc extent */
 		if (!S_ISREG(inode->i_mode)) {
-			ret = -EUCLEAN;
+			err = -EUCLEAN;
 			btrfs_printk(root->fs_info, KERN_CRIT
 				"regular/prealloc extent found for non-regular inode %llu",
 			btrfs_ino(inode));
