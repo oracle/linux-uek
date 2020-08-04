@@ -18,4 +18,13 @@ config VDPA_SIM
 	  to RX. This device is used for testing, prototyping and
 	  development of vDPA.
 
+config MLX5_VDPA
+	bool "MLX5 VDPA support library for ConnectX devices"
+	depends on MLX5_CORE
+	default n
+	help
+	  Support library for Mellanox VDPA drivers. Provides code that is
+	  common for all types of VDPA drivers. The following drivers are planned:
+	  net, block.
+
 endif # VDPA
