@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -511,8 +511,6 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	 */
 	synchronize_rcu();
 	rds_ib_dev_put(rds_ibdev);
-	/* free up lower layer resource since it may be the last change */
-	rds_ib_dev_free_dev(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
 }
 
