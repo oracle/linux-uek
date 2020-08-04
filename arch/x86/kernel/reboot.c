@@ -690,6 +690,10 @@ void native_machine_shutdown(void)
 	disable_IO_APIC();
 #endif
 
+#ifdef CONFIG_X86_64
+	x86_platform.iommu_shutdown(0);
+#endif
+
 #ifdef CONFIG_SMP
 	/*
 	 * Stop all of the others. Also disable the local irq to
@@ -704,10 +708,6 @@ void native_machine_shutdown(void)
 
 #ifdef CONFIG_HPET_TIMER
 	hpet_disable();
-#endif
-
-#ifdef CONFIG_X86_64
-	x86_platform.iommu_shutdown(0);
 #endif
 }
 
