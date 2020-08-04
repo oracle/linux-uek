@@ -364,11 +364,6 @@ static void rds_ib_free_caches(struct rds_ib_device *rds_ibdev)
 
 		rds_ib_free_frag_cache(rds_ibdev->i_cache_frags + i, cache_sz);
 	}
-
-	/* If there is only 1 IB device, rds_ib_allocation should be 0
-	 * after the rds recv cache is freed.
-	 */
-	WARN_ON(atomic_read(&rds_ib_allocation));
 }
 
 /* Reference counter for struct rds_ib_device on the module */
