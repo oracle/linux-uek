@@ -891,6 +891,9 @@ int otx2_mbox_up_handler_cgx_ptp_rx_info(struct otx2_nic *pf,
 {
 	int i;
 
+	if (!pf->ptp)
+		return 0;
+
 	pf->ptp->ptp_en = msg->ptp_en;
 
 	/* notify VFs about ptp event */
