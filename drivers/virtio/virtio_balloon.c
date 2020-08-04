@@ -358,12 +358,9 @@ static inline s64 towards_target(struct virtio_balloon *vb)
 	s64 target;
 	u32 num_pages;
 
-	virtio_cread(vb->vdev, struct virtio_balloon_config, num_pages,
-		     &num_pages);
-
 	/* Legacy balloon config space is LE, unlike all other devices. */
-	if (!virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
-		num_pages = le32_to_cpu((__force __le32)num_pages);
+	virtio_cread_le(vb->vdev, struct virtio_balloon_config, num_pages,
+			&num_pages);
 
 	target = num_pages;
 	return target - vb->num_pages;
@@ -422,11 +419,8 @@ static void update_balloon_size(struct virtio_balloon *vb)
 	u32 actual = vb->num_pages;
 
 	/* Legacy balloon config space is LE, unlike all other devices. */
-	if (!virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
-		actual = (__force u32)cpu_to_le32(actual);
-
-	virtio_cwrite(vb->vdev, struct virtio_balloon_config, actual,
-		      &actual);
+	virtio_cwrite_le(vb->vdev, struct virtio_balloon_config, actual,
+			 &actual);
 }
 
 static void update_balloon_stats_func(struct work_struct *work)
@@ -530,12 +524,10 @@ static u32 virtio_balloon_cmd_id_received(struct virtio_balloon *vb)
 {
 	if (test_and_clear_bit(VIRTIO_BALLOON_CONFIG_READ_CMD_ID,
 			       &vb->config_read_bitmap)) {
-		virtio_cread(vb->vdev, struct virtio_balloon_config,
+		/* Legacy balloon config space is LE, unlike all other devices. */
+		virtio_cread_le(vb->vdev, struct virtio_balloon_config,
 			     free_page_report_cmd_id,
 			     &vb->cmd_id_received_cache);
-		/* Legacy balloon config space is LE, unlike all other devices. */
-		if (!virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
-			vb->cmd_id_received_cache = le32_to_cpu((__force __le32)vb->cmd_id_received_cache);
 	}
 
 	return vb->cmd_id_received_cache;
@@ -935,7 +927,7 @@ static int virtballoon_probe(struct virtio_device *vdev)
 		INIT_LIST_HEAD(&vb->free_page_list);
 		if (virtio_has_feature(vdev, VIRTIO_BALLOON_F_PAGE_POISON)) {
 			memset(&poison_val, PAGE_POISON, sizeof(poison_val));
-			virtio_cwrite(vb->vdev, struct virtio_balloon_config,
+			virtio_cwrite_le(vb->vdev, struct virtio_balloon_config,
 				      poison_val, &poison_val);
 		}
 	}
