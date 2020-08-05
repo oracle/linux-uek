@@ -51,3 +51,15 @@ config CRYPTO_DEV_OCTEONTX2_CPT
 
 		To compile this driver as module, choose M here:
 		the modules will be called octeontx2-cpt and octeontx2-cptvf
+
+config CRYPTO_DEV_CN10K_CPT
+	tristate "Support for Marvell CN10K CPT driver"
+	depends on ARCH_THUNDER || COMPILE_TEST
+	depends on PCI_MSI && 64BIT
+	select CRYPTO_DEV_MARVELL
+	help
+		This driver allows you to utilize the Marvell Cryptographic
+		Accelerator Unit(CPT) found in cn10xxx series of processors.
+
+		To compile this driver as module, choose M here:
+		the modules will be called cn10k-cpt and cn10k-cptvf
