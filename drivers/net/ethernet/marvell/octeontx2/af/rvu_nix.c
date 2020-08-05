@@ -3104,6 +3104,14 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->ltype_match = NPC_LT_LC_CUSTOM0;
 			field->ltype_mask = 0xF;
 			break;
+		case NIX_FLOW_KEY_TYPE_VLAN:
+			field->lid = NPC_LID_LB;
+			field->hdr_offset = 2; /* Skip TPID (2-bytes) */
+			field->bytesm1 = 1; /* 2 Bytes (Actually 12 bits)*/
+			field->ltype_match = NPC_LT_LB_CTAG;
+			field->ltype_mask = 0xF;
+			field->fn_mask = 1; /* Mask out the first nibble */
+			break;
 		}
 		field->ena = 1;
 
