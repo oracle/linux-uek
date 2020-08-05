@@ -10,6 +10,7 @@
 #include <linux/mm_types.h>
 #include <linux/sched.h>
 #include <linux/types.h>
+#include <linux/random.h>
 
 #include <asm/cacheflush.h>
 #include <asm/fixmap.h>
