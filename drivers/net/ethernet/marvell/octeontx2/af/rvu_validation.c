@@ -17,6 +17,7 @@
 #define	PCI_DEVID_OCTEONTX2_NPA_RVU_PF	0xA0FB
 #define	PCI_DEVID_OCTEONTX2_CPT_RVU_PF	0xA0FD
 #define	PCI_DEVID_OCTEONTX2_SDP_RVU_PF	0xA0F6
+#define	PCI_DEVID_OCTEONTX2_CPT10_RVU_PF 0xA0F2
 
 static u64 quotas_get_sum(struct rvu_quotas *quotas)
 {
@@ -604,6 +605,7 @@ static void rvu_set_default_limits(struct rvu *rvu)
 			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 + nvfs : 0;
 			break;
 		case PCI_DEVID_OCTEONTX2_CPT_RVU_PF:
+		case PCI_DEVID_OCTEONTX2_CPT10_RVU_PF:
 			nnpa -= 1;
 			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 : 0;
 			rvu->pf_limits.cpt->a[i].val = ncptpf_cptlfs;

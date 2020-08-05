@@ -16,6 +16,7 @@
 
 /* CPT PF device id */
 #define	PCI_DEVID_OTX2_CPT_PF	0xA0FD
+#define	PCI_DEVID_OTX2_CPT10_PF	0xA0F2
 
 /* CPT PF number */
 static int cpt_pf_num = -1;
@@ -155,7 +156,8 @@ int rvu_cpt_init(struct rvu *rvu)
 		if (!pdev)
 			continue;
 
-		if (pdev->device == PCI_DEVID_OTX2_CPT_PF) {
+		if (pdev->device == PCI_DEVID_OTX2_CPT_PF ||
+		    pdev->device == PCI_DEVID_OTX2_CPT10_PF) {
 			cpt_pf_num = i;
 			put_device(&pdev->dev);
 			break;
@@ -488,7 +490,7 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 		case CPT_AF_EXEX_CTL2(0):
 		case CPT_AF_EXEX_UCODE_BASE(0):
 			offs = req->reg_offset & 0xFFF;
-			if ((offs % 8) || (offs >> 3) > 127)
+			if (offs % 8)
 				goto error;
 			break;
 		default:
