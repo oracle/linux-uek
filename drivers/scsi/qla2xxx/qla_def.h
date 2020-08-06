@@ -3851,6 +3851,7 @@ struct qla_hw_data {
 		uint32_t        n2n_bigger:1;
 		uint32_t	secure_adapter:1;
 		uint32_t	secure_fw:1;
+		uint32_t	max_req_queue_warned:1;
 	} flags;
 
 	uint16_t max_exchg;
