@@ -643,7 +643,7 @@ struct pci_bus {
 	struct bin_attribute	*legacy_mem;	/* Legacy mem */
 	unsigned int		is_added:1;
  
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, unsigned int unsafe_warn:1) /* warned about RW1C config write */
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
