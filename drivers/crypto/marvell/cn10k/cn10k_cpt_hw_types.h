@@ -105,6 +105,11 @@
 #define CN10K_CPT_LMT_LFBASE           BIT_ULL(CN10K_CPT_RVU_FUNC_BLKADDR_SHIFT)
 #define CN10K_CPT_LMT_LF_LMTLINEX(a)   (CN10K_CPT_LMT_LFBASE | 0x000 | \
 					(a) << 12)
+/* RVU VF registers */
+#define CN10K_RVU_VF_INT               (0x20)
+#define CN10K_RVU_VF_INT_W1S           (0x28)
+#define CN10K_RVU_VF_INT_ENA_W1S       (0x30)
+#define CN10K_RVU_VF_INT_ENA_W1C       (0x38)
 
 /*
  * Enumeration cn10k_cpt_ucode_error_code_e

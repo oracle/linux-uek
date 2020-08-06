@@ -358,4 +358,15 @@ static inline void cn10k_cpt_send_cmd(union cn10k_cpt_inst_s *cptinst,
 
 	cn10k_lmt_flush(ioreg, info);
 }
+
+static inline bool cn10k_cptlf_started(struct cn10k_cptlfs_info *lfs)
+{
+	return atomic_read(&lfs->state) == CN10K_CPTLF_STARTED;
+}
+
+int cn10k_cptvf_lf_init(struct pci_dev *pdev, void *reg_base,
+			struct cn10k_cptlfs_info *lfs, int lfs_num);
+int cn10k_cptvf_lf_shutdown(struct pci_dev *pdev,
+			    struct cn10k_cptlfs_info *lfs);
+
 #endif /* __CN10K_CPTLF_H */

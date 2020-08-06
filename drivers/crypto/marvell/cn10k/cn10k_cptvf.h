@@ -19,6 +19,15 @@ struct cn10k_cptvf_dev {
 	struct otx2_mbox	pfvf_mbox;
 	struct work_struct	pfvf_mbox_work;
 	struct workqueue_struct *pfvf_mbox_wq;
+	void *bbuf_base;
 };
+
+irqreturn_t cn10k_cptvf_pfvf_mbox_intr(int irq, void *arg);
+void cn10k_cptvf_pfvf_mbox_handler(struct work_struct *work);
+int cn10k_cptvf_send_eng_grp_num_msg(struct cn10k_cptvf_dev *cptvf,
+				     int eng_type);
+int cn10k_cptvf_send_kcrypto_limits_msg(struct cn10k_cptvf_dev *cptvf);
+int cn10k_cpt_mbox_bbuf_init(struct cn10k_cptvf_dev *cptvf,
+			     struct pci_dev *pdev);
 
 #endif /* __CN10K_CPTVF_H */
