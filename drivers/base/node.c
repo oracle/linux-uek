@@ -510,7 +510,7 @@ static ssize_t node_read_vmstat(struct device *dev,
 		n += sprintf(buf+n, "%s %lu\n",
 			     vmstat_text[i + NR_VM_ZONE_STAT_ITEMS +
 			     NR_VM_NUMA_STAT_ITEMS],
-			     node_page_state(pgdat, i));
+			     node_page_state_pages(pgdat, i));
 
 	return n;
 }
