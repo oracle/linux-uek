@@ -1008,16 +1008,18 @@ xfs_fs_inode_init_once(
 
 STATIC void
 _xfs_fs_evict_inode(
-	struct inode		*inode)
+	struct inode		*inode,
+	bool			is_clear)
 {
 	xfs_inode_t		*ip = XFS_I(inode);
 
 	ASSERT(!rwsem_is_locked(&ip->i_iolock.mr_lock));
 
 	trace_xfs_evict_inode(ip);
-
-	truncate_inode_pages_final(&inode->i_data);
-	clear_inode(inode);
+	if (!is_clear) {
+		truncate_inode_pages_final(&inode->i_data);
+		clear_inode(inode);
+	}
 	XFS_STATS_INC(ip->i_mount, vn_rele);
 	XFS_STATS_INC(ip->i_mount, vn_remove);
 
@@ -1040,6 +1042,8 @@ xfs_fs_evict_inode(
 	freezed = !sb_start_write_trylock(mp->m_super);
 	if (freezed && xfs_inode_needs_inactivation(ip)) {
 		pag = xfs_perag_get(mp, XFS_INO_TO_AGNO(mp, ip->i_ino));
+		truncate_inode_pages_final(&inode->i_data);
+		clear_inode(inode);
 		spin_lock(&pag->pag_inact_lock);
 		list_add_tail(&ip->i_inact_list, &pag->pag_inact_list);
 		spin_unlock(&pag->pag_inact_lock);
@@ -1048,7 +1052,7 @@ xfs_fs_evict_inode(
 		return;
 	}
 
-	_xfs_fs_evict_inode(inode);
+	_xfs_fs_evict_inode(inode, false);
 	if (!freezed)
 		sb_end_write(mp->m_super);
 }
@@ -1081,7 +1085,7 @@ xfs_fs_inact_worker(
 
 		list_for_each_entry_safe(ip, next_ip, &list, i_inact_list) {
 			list_del_init(&ip->i_inact_list);
-			_xfs_fs_evict_inode(&ip->i_vnode);
+			_xfs_fs_evict_inode(&ip->i_vnode, true);
 			cond_resched();
 		}
 		sb_end_write(mp->m_super);
