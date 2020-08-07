@@ -1724,8 +1724,10 @@ void qedf_flush_active_ios(struct qedf_rport *fcport, int lun)
 				    io_req, io_req->xid);
 				continue;
 			}
+			qedf_initiate_cleanup(io_req, false);
 			flush_cnt++;
 			qedf_flush_els_req(qedf, io_req);
+
 			/*
 			 * Release the kref and go back to the top of the
 			 * loop.
@@ -2189,6 +2191,10 @@ int qedf_initiate_cleanup(struct qedf_ioreq *io_req,
 		return SUCCESS;
 	}
 
+	if (io_req->cmd_type == QEDF_ELS) {
+		goto process_els;
+	}
+
 	if (!test_bit(QEDF_CMD_OUTSTANDING, &io_req->flags) ||
 	    test_and_set_bit(QEDF_CMD_IN_CLEANUP, &io_req->flags)) {
 		QEDF_ERR(&(qedf->dbg_ctx), "io_req xid=0x%x already in "
@@ -2198,6 +2204,7 @@ int qedf_initiate_cleanup(struct qedf_ioreq *io_req,
 	}
 	set_bit(QEDF_CMD_IN_CLEANUP, &io_req->flags);
 
+process_els:
 	/* Ensure room on SQ */
 	if (!atomic_read(&fcport->free_sqes)) {
 		QEDF_ERR(&(qedf->dbg_ctx), "No SQ entries available\n");
