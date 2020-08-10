@@ -618,6 +618,19 @@ static inline void rds_ib_dma_sync_sg_for_device(struct ib_device *dev,
 }
 #define ib_dma_sync_sg_for_device	rds_ib_dma_sync_sg_for_device
 
+static inline __s32 rds_qp_num(struct rds_connection *conn, int dst)
+{
+	struct rds_ib_connection *ic;
+
+	if (conn && conn->c_trans->t_type == RDS_TRANS_IB &&
+	    conn->c_npaths > 0) {
+		ic = conn->c_transport_data;
+
+		return dst ? ic->i_dst_qp_num : ic->i_qp_num;
+	}
+
+	return 0;
+}
 
 /* ib.c */
 extern struct workqueue_struct *rds_aux_wq;
