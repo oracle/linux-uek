@@ -1,6 +1,7 @@
 #
 # Capri SoC drivers
 #
+obj-$(CONFIG_ARCH_PENSANDO_CAPRI_SOC) += cap_soc.o
 obj-$(CONFIG_CAPRI_CAPMEM) += cap_mem.o
 obj-$(CONFIG_CAPRI_PCIE) += cap_pcie.o cap_reboot.o
 obj-$(CONFIG_CAPRI_CRASH) += cap_crash.o

@@ -7,6 +7,7 @@
  * Based on spi-dw.c
  */
 
+#define CAPRI_APB_BUS
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
