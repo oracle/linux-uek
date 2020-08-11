@@ -48,6 +48,13 @@
 #define mst_info(format, arg...)	\
 	pr_info("%s: %s %d: " format, MST_PREFIX, __func__, __LINE__, ## arg)
 
+#define capability_support_info_message(dev, capability) \
+    mst_info("Device 0x%x (%x:%x:%x.%x) doesn't support %s capability.\n", \
+        dev->pci_dev->device,pci_domain_nr(dev->pci_dev->bus), \
+        dev->pci_dev->bus->number, PCI_SLOT(dev->pci_dev->devfn), \
+        PCI_FUNC(dev->pci_dev->devfn), #capability);
+
+
 
 /****************************************************/
 /* new types */

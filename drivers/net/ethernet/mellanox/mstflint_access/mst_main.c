@@ -426,7 +426,7 @@ static int get_space_support_status(struct mst_dev_data *dev)
 {
 	int ret;
 	//    printk("[MST] Checking if the Vendor CAP %d supports the SPACES in devices\n", vend_cap);
-	if (!dev->vendor_specific_cap)
+	if ((!dev->vendor_specific_cap) || (!dev->pci_dev))
 		return 0;
 	if (dev->spaces_support_status != SS_UNINITIALIZED)
 		return 0;
@@ -437,13 +437,21 @@ static int get_space_support_status(struct mst_dev_data *dev)
 		return 1;
 	}
 
-	if (_set_addr_space(dev, AS_CR_SPACE) || _set_addr_space(dev, AS_ICMD)
-			|| _set_addr_space(dev, AS_SEMAPHORE)) {
-		mst_err("At least one SPACE is not supported\n");
+    if (_set_addr_space(dev, AS_CR_SPACE)) {
+        capability_support_info_message(dev, CR_SPACE);
+        dev->spaces_support_status = SS_NOT_ALL_SPACES_SUPPORTED;
+    }
+    else if (_set_addr_space(dev, AS_ICMD)) {
+        capability_support_info_message(dev, ICMD);
+        dev->spaces_support_status = SS_NOT_ALL_SPACES_SUPPORTED;
+	}
+    else if (_set_addr_space(dev, AS_SEMAPHORE)) {
+        capability_support_info_message(dev, SEMAPHORE);
 		dev->spaces_support_status = SS_NOT_ALL_SPACES_SUPPORTED;
 	} else {
 		dev->spaces_support_status = SS_ALL_SPACES_SUPPORTED;
 	}
+
 	// clear semaphore
 	_vendor_specific_sem(dev, 0);
 	return 0;
