@@ -88,7 +88,8 @@ struct mst_write_block_st {
 };
 
 
-#define PCICONF_READ4_BUFFER  _IOR(MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_st)
+#define PCICONF_READ4_BUFFER  _IOR(MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_buffer_st)
+#define PCICONF_READ4_BUFFER_EX  _IOR(MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_buffer_st)
 struct mst_read4_buffer_st {
 	unsigned int address_space;
 	unsigned int offset;
