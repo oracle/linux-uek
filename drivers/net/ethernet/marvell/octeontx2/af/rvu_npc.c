@@ -401,6 +401,41 @@ static void npc_fill_entryword(struct mcam_entry *entry, int idx,
 	}
 }
 
+static void npc_get_default_entry_action(struct rvu *rvu, struct npc_mcam *mcam,
+					 int blkaddr, int index,
+					 struct mcam_entry *entry)
+{
+	u16 owner, target_func;
+	struct rvu_pfvf *pfvf;
+	int bank, nixlf;
+	u64 rx_action;
+
+	owner = mcam->entry2pfvf_map[index];
+	target_func = (entry->action >> 4) & 0xffff;
+	/* return incase target is PF or LBK or rule owner is not PF */
+	if (is_afvf(target_func) || (owner & RVU_PFVF_FUNC_MASK) ||
+	    !(target_func & RVU_PFVF_FUNC_MASK))
+		return;
+
+	pfvf = rvu_get_pfvf(rvu, target_func);
+	mcam->entry2target_pffunc[index] = target_func;
+	/* return if nixlf is not attached or initialized */
+	if (!is_nixlf_attached(rvu, target_func) || !pfvf->def_rule)
+		return;
+
+	/* get VF ucast entry rule */
+	nix_get_nixlf(rvu, target_func, &nixlf, NULL);
+	index = npc_get_nixlf_mcam_index(mcam, target_func,
+					 nixlf, NIXLF_UCAST_ENTRY);
+	bank = npc_get_bank(mcam, index);
+	index &= (mcam->banksize - 1);
+
+	rx_action = rvu_read64(rvu, blkaddr,
+			       NPC_AF_MCAMEX_BANKX_ACTION(index, bank));
+	if (rx_action)
+		entry->action = rx_action;
+}
+
 static void npc_config_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 				  int blkaddr, int index, u8 intf,
 				  struct mcam_entry *entry, bool enable)
@@ -447,6 +482,11 @@ static void npc_config_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 		rvu_write64(rvu, blkaddr,
 			    NPC_AF_MCAMEX_BANKX_CAMX_W1(index, bank, 0), cam0);
 	}
+
+	/* copy VF default entry action to the VF mcam entry */
+	if (is_npc_intf_rx(intf) && actindex < mcam->bmap_entries)
+		npc_get_default_entry_action(rvu, mcam, blkaddr, actindex,
+					     entry);
 
 	/* Set 'action' */
 	rvu_write64(rvu, blkaddr,
@@ -749,6 +789,40 @@ void rvu_npc_enable_bcast_entry(struct rvu *rvu, u16 pcifunc, bool enable)
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 }
 
+static void npc_update_vf_flow_entry(struct rvu *rvu, struct npc_mcam *mcam,
+				     int blkaddr, u16 pcifunc, u64 rx_action)
+{
+	int actindex, index, bank;
+	bool enable;
+
+	if (!(pcifunc & RVU_PFVF_FUNC_MASK))
+		return;
+
+	mutex_lock(&mcam->lock);
+	for (index = 0; index < mcam->bmap_entries; index++) {
+		if (mcam->entry2target_pffunc[index] == pcifunc) {
+			bank = npc_get_bank(mcam, index);
+			actindex = index;
+			index &= (mcam->banksize - 1);
+
+			/* read vf flow entry enable status */
+			enable = is_mcam_entry_enabled(rvu, mcam, blkaddr,
+						       actindex);
+			/* disable before mcam entry update */
+			npc_enable_mcam_entry(rvu, mcam, blkaddr, actindex,
+					      false);
+			/* update 'action' */
+			rvu_write64(rvu, blkaddr,
+				    NPC_AF_MCAMEX_BANKX_ACTION(index, bank),
+				    rx_action);
+			if (enable)
+				npc_enable_mcam_entry(rvu, mcam, blkaddr,
+						      actindex, true);
+		}
+	}
+	mutex_unlock(&mcam->lock);
+}
+
 void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 				    int group, int alg_idx, int mcam_index)
 {
@@ -791,6 +865,14 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_MCAMEX_BANKX_ACTION(index, bank), *(u64 *)&action);
+
+	/* update the VF flow rule action with the VF default entry action
+	 * due to restriction of the dataplane application PF adding the
+	 * VF flow rule can not specify the rx action explicitly.
+	 */
+	if (mcam_index < 0)
+		npc_update_vf_flow_entry(rvu, mcam, blkaddr, pcifunc,
+					 *(u64 *)&action);
 
 	/* update the action change in default rule */
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
@@ -901,6 +983,8 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 	}
 
 	mutex_unlock(&mcam->lock);
+
+	npc_mcam_disable_flows(rvu, pcifunc);
 
 	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
 }
@@ -1464,6 +1548,12 @@ static int npc_mcam_rsrcs_init(struct rvu *rvu, int blkaddr)
 	if (!mcam->cntr_refcnt)
 		goto free_mem;
 
+	/* Alloc memory for saving target device of mcam rule */
+	mcam->entry2target_pffunc = devm_kcalloc(rvu->dev, mcam->total_entries,
+						 sizeof(u16), GFP_KERNEL);
+	if (!mcam->entry2target_pffunc)
+		goto free_mem;
+
 	mutex_init(&mcam->lock);
 
 	return 0;
@@ -1816,6 +1906,7 @@ static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 				npc_unmap_mcam_entry_and_cntr(rvu, mcam,
 							      blkaddr, index,
 							      cntr);
+			mcam->entry2target_pffunc[index] = 0x0;
 		}
 	}
 }
@@ -2202,6 +2293,7 @@ int rvu_mbox_handler_npc_mcam_free_entry(struct rvu *rvu,
 		goto exit;
 
 	mcam->entry2pfvf_map[req->entry] = 0;
+	mcam->entry2target_pffunc[req->entry] = 0x0;
 	npc_mcam_clear_bit(mcam, req->entry);
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, req->entry, false);
 
