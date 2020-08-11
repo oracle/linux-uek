@@ -1198,14 +1198,12 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, target);
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule *rule;
-	int blkaddr, bank;
+	int blkaddr, bank, index;
 	u64 def_action;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
-	if (blkaddr < 0) {
-		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
+	if (blkaddr < 0)
 		return;
-	}
 
 	mutex_lock(&mcam->lock);
 	list_for_each_entry(rule, &mcam->mcam_rules, list) {
@@ -1237,6 +1235,32 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 					      rule->entry, true);
 			rule->enable = true;
 		}
+	}
+
+	/* Enable MCAM entries installed by PF with target as VF pcifunc */
+	for (index = 0; index < mcam->bmap_entries; index++) {
+		if (mcam->entry2target_pffunc[index] == target)
+			npc_enable_mcam_entry(rvu, mcam, blkaddr,
+					      index, true);
+	}
+	mutex_unlock(&mcam->lock);
+}
+
+void npc_mcam_disable_flows(struct rvu *rvu, u16 target)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	int blkaddr, index;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return;
+
+	mutex_lock(&mcam->lock);
+	/* Disable MCAM entries installed by PF with target as VF pcifunc */
+	for (index = 0; index < mcam->bmap_entries; index++) {
+		if (mcam->entry2target_pffunc[index] == target)
+			npc_enable_mcam_entry(rvu, mcam, blkaddr,
+					      index, false);
 	}
 	mutex_unlock(&mcam->lock);
 }

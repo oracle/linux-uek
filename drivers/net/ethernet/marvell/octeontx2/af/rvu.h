@@ -192,6 +192,7 @@ struct npc_mcam {
 	u16	*entry2cntr_map;
 	u16	*cntr2pfvf_map;
 	u16	*cntr_refcnt;
+	u16	*entry2target_pffunc;
 	u8	keysize;	/* MCAM keysize 112/224/448 bits */
 	u8	banks;		/* Number of MCAM banks */
 	u8	banks_per_entry;/* Number of keywords in key */
@@ -728,6 +729,7 @@ bool rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
 int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel);
 int npc_get_bank(struct npc_mcam *mcam, int index);
 void npc_mcam_enable_flows(struct rvu *rvu, u16 target);
+void npc_mcam_disable_flows(struct rvu *rvu, u16 target);
 void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 			   int blkaddr, int index, bool enable);
 void npc_read_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,

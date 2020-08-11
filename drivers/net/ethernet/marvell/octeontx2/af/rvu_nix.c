@@ -3965,6 +3965,8 @@ int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 
 	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
 
+	npc_mcam_disable_flows(rvu, pcifunc);
+
 	return rvu_cgx_start_stop_io(rvu, pcifunc, false);
 }
 
