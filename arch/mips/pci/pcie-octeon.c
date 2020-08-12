@@ -73,12 +73,14 @@ static void pcie_17400_disable(struct irq_data *data)
 	disable_irq(cd->parent_irq);
 }
 
+#ifdef CONFIG_SMP
 static int pcie_17400_set_affinity(struct irq_data *data,
 				   const struct cpumask *dest, bool force)
 {
 	struct pcie_17400_chip_data *cd = irq_data_get_irq_chip_data(data);
 	return irq_set_affinity(cd->parent_irq, dest);
 }
+#endif /* CONFIG_SMP */
 
 static struct irq_chip pcie_17400_chip = {
 	.name = "PCI-WAR",
