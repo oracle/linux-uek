@@ -387,7 +387,7 @@
 };
 
 &clk_osc {
-	clock-frequency = <54000000>;
+	clock-frequency = <27000000>;
 };
 
 &clocks {
