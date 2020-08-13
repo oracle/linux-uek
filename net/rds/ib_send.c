@@ -964,7 +964,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	int sent;
 	int ret;
 	int num_sge;
-	int nr_sig = 0;
+	int nr_sig;
 
 	/* map the op the first time we see it */
 	if (!op->op_mapped) {
@@ -1006,10 +1006,6 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		send->s_wr.send_flags = 0;
 		send->s_queued = jiffies;
 		send->s_op = NULL;
-
-		if (!op->op_remote_complete && !op->op_notify)
-			nr_sig += rds_ib_set_wr_signal_state(ic, send, op->op_notify);
-
 		send->s_wr.opcode = op->op_write ? IB_WR_RDMA_WRITE : IB_WR_RDMA_READ;
 		send->s_rdma_wr.remote_addr = remote_addr;
 		send->s_rdma_wr.rkey = op->op_rkey;
@@ -1084,12 +1080,12 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 			rcomp->s_rdma_wr.rkey = op->op_rkey;
 			prev->s_wr.next = &rcomp->s_wr;
 			prev = rcomp;
-			nr_sig += rds_ib_set_wr_signal_state(ic, rcomp, true);
 		}
 
 		prev->s_op = op;
 		rds_message_addref(container_of(op, struct rds_message, rdma));
 	}
+	nr_sig = rds_ib_set_wr_signal_state(ic, prev, true);
 
 	if (nr_sig)
 		atomic_add(nr_sig, &ic->i_signaled_sends);

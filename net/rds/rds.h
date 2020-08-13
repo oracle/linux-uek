@@ -606,6 +606,7 @@ static inline u32 rds_rdma_cookie_offset(rds_rdma_cookie_t cookie)
 #define RDS_MSG_MAPPED		6
 #define RDS_MSG_PAGEVEC		7
 #define RDS_MSG_FLUSH           8
+#define RDS_MSG_CANCELED	9
 
 struct rds_message {
 	atomic_t		m_refcount;
