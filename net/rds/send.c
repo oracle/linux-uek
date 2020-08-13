@@ -383,26 +383,55 @@ restart:
 			rm->m_final_op = &rm->rdma;
 			/* The transport owns the mapped memory for now.
 			 * You can't unmap it while it's on the send queue */
+			spin_lock_irqsave(&cp->cp_lock, flags);
+			if (test_bit(RDS_MSG_CANCELED, &rm->m_flags)) {
+				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+				cp->cp_xmit_rm = NULL;
+				cp->cp_xmit_sg = 0;
+				cp->cp_xmit_hdr_off = 0;
+				cp->cp_xmit_data_off = 0;
+				cp->cp_xmit_rdma_sent = 0;
+				cp->cp_xmit_atomic_sent = 0;
+				cp->cp_xmit_data_sent = 0;
+				spin_unlock_irqrestore(&cp->cp_lock, flags);
+				rds_message_put(rm);
+				break;
+			}
 			set_bit(RDS_MSG_MAPPED, &rm->m_flags);
+			spin_unlock_irqrestore(&cp->cp_lock, flags);
+
 			ret = conn->c_trans->xmit_rdma(conn, &rm->rdma);
 			if (ret) {
-				clear_bit(RDS_MSG_MAPPED, &rm->m_flags);
-				wake_up_interruptible(&rm->m_flush_wait);
+				rds_message_unmapped(rm);
 				break;
 			}
 			cp->cp_xmit_rdma_sent = 1;
-
 		}
 
 		if (rm->atomic.op_active && !cp->cp_xmit_atomic_sent) {
 			rm->m_final_op = &rm->atomic;
 			/* The transport owns the mapped memory for now.
 			 * You can't unmap it while it's on the send queue */
+			spin_lock_irqsave(&cp->cp_lock, flags);
+			if (test_bit(RDS_MSG_CANCELED, &rm->m_flags)) {
+				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+				cp->cp_xmit_rm = NULL;
+				cp->cp_xmit_sg = 0;
+				cp->cp_xmit_hdr_off = 0;
+				cp->cp_xmit_data_off = 0;
+				cp->cp_xmit_rdma_sent = 0;
+				cp->cp_xmit_atomic_sent = 0;
+				cp->cp_xmit_data_sent = 0;
+				spin_unlock_irqrestore(&cp->cp_lock, flags);
+				rds_message_put(rm);
+				break;
+			}
 			set_bit(RDS_MSG_MAPPED, &rm->m_flags);
+			spin_unlock_irqrestore(&cp->cp_lock, flags);
+
 			ret = conn->c_trans->xmit_atomic(conn, &rm->atomic);
 			if (ret) {
-				clear_bit(RDS_MSG_MAPPED, &rm->m_flags);
-				wake_up_interruptible(&rm->m_flush_wait);
+				rds_message_unmapped(rm);
 				break;
 			}
 			cp->cp_xmit_atomic_sent = 1;
@@ -908,6 +937,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		list_move(&rm->m_sock_item, &list);
 		rds_send_sndbuf_remove(rs, rm);
 		clear_bit(RDS_MSG_ON_SOCK, &rm->m_flags);
+		set_bit(RDS_MSG_CANCELED, &rm->m_flags);
 	}
 
 	/* order flag updates with the rs_snd_lock */
@@ -919,22 +949,27 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		return;
 
 	/* Remove the messages from the conn */
-	list_for_each_entry(rm, &list, m_sock_item) {
+	list_for_each_entry_safe(rm, tmp, &list, m_sock_item) {
 
 		conn = rm->m_inc.i_conn;
 		cp = rds_conn_to_path(conn, &rm->m_inc);
 
 		spin_lock_irqsave(&cp->cp_lock, flags);
 		/*
-		 * Maybe someone else beat us to removing rm from the conn.
-		 * If we race with their flag update we'll get the lock and
-		 * then really see that the flag has been cleared.
+		 * Maybe someone else beat us to removing rm from the
+		 * conn.  If we race with their flag update we'll get
+		 * the lock and then really see that the flag has been
+		 * cleared. Further, if the rm is owned by the
+		 * transport layer, we must not complete it here, but
+		 * wait until the connection has been reset.
 		 */
-		if (!test_and_clear_bit(RDS_MSG_ON_CONN, &rm->m_flags)) {
+		if (!test_and_clear_bit(RDS_MSG_ON_CONN, &rm->m_flags) ||
+		    test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
 			spin_unlock_irqrestore(&cp->cp_lock, flags);
 			continue;
 		}
 		list_del_init(&rm->m_conn_item);
+		list_del_init(&rm->m_sock_item);
 		spin_unlock_irqrestore(&cp->cp_lock, flags);
 
 		/*
@@ -950,6 +985,8 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		rm->m_rs = NULL;
 		spin_unlock_irqrestore(&rm->m_rs_lock, flags);
 
+		/* Removed from both lists above */
+		rds_message_put(rm);
 		rds_message_put(rm);
 	}
 
