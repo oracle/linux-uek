@@ -204,6 +204,7 @@ enum cgx_cmd_own {
  * CGX_STAT_SUCCESS
  */
 #define RESP_MKEX_PRFL_ADDR		GENMASK_ULL(63, 9)
+
 /* Response to cmd ID as CGX_CMD_GET_FWD_BASE with cmd status as
  * CGX_STAT_SUCCESS
  */

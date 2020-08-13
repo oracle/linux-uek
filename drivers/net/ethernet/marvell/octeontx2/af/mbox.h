@@ -1040,7 +1040,7 @@ struct nix_bp_cfg_req {
 	u16	chan_base; /* Starting channel number */
 	u8	chan_cnt; /* Number of channels */
 	u8	bpid_per_chan;
-	/* bpid_per_chan = 0  assigns single bp id for range of channels */
+	/* bpid_per_chan = 0 assigns single bp id for range of channels */
 	/* bpid_per_chan = 1 assigns separate bp id for each channel */
 };
 

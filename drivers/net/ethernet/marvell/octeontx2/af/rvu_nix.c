@@ -384,9 +384,9 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 	pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
 
 	/* Backpressure IDs range division
-	 * CGX  channles are mapped to (0 - 191) BPIDs
-	 * LBK	channles are mapped to (192 - 255) BPIDs
-	 * SDP  channles are mapped to (256 - 511) BPIDs
+	 * CGX channles are mapped to (0 - 191) BPIDs
+	 * LBK channles are mapped to (192 - 255) BPIDs
+	 * SDP channles are mapped to (256 - 511) BPIDs
 	 *
 	 * Lmac channles and bpids mapped as follows
 	 * cgx(0)_lmac(0)_chan(0 - 15) = bpid(0 - 15)
@@ -450,7 +450,7 @@ int rvu_mbox_handler_nix_bp_enable(struct rvu *rvu,
 
 	for (chan = chan_base; chan < (chan_base + req->chan_cnt); chan++) {
 		if (bpid < 0) {
-			dev_warn(rvu->dev, "Fail to enable backpessure\n");
+			dev_warn(rvu->dev, "Fail to enable backpressure\n");
 			return -EINVAL;
 		}
 
@@ -2705,8 +2705,8 @@ free_mem:
 static int nix_setup_txschq(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 {
 	struct nix_txsch *txsch;
-	u64 cfg, reg;
 	int err, lvl, schq;
+	u64 cfg, reg;
 
 	/* Get scheduler queue count of each type and alloc
 	 * bitmap for each for alloc/free/attach operations.
