@@ -39,7 +39,6 @@
 #define RVU_PFVF_FUNC_SHIFT	0
 #define RVU_PFVF_FUNC_MASK	0x3FF
 
-/* CONFIG_DEBUG_FS */
 #ifdef CONFIG_DEBUG_FS
 struct dump_ctx {
 	int	lf;
@@ -72,7 +71,7 @@ struct rvu_debugfs {
 	int npa_qsize_id;
 	int nix_qsize_id;
 };
-#endif /* CONFIG_DEBUG_FS */
+#endif
 
 struct rvu_work {
 	struct	work_struct work;
@@ -510,10 +509,9 @@ struct rvu {
 
 	struct ptp		*ptp;
 
-/* CONFIG_DEBUG_FS */
 #ifdef CONFIG_DEBUG_FS
 	struct rvu_debugfs	rvu_dbg;
-#endif /* CONFIG_DEBUG_FS */
+#endif
 };
 
 static inline void rvu_write64(struct rvu *rvu, u64 block, u64 offset, u64 val)
@@ -758,14 +756,13 @@ void rvu_ree_freemem(struct rvu *rvu);
 int rvu_ree_register_interrupts(struct rvu *rvu);
 void rvu_ree_unregister_interrupts(struct rvu *rvu);
 
-/* CONFIG_DEBUG_FS*/
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
 void rvu_dbg_exit(struct rvu *rvu);
 #else
 static inline void rvu_dbg_init(struct rvu *rvu) {}
 static inline void rvu_dbg_exit(struct rvu *rvu) {}
-#endif /* CONFIG_DEBUG_FS*/
+#endif
 
 /* HW workarounds/fixes */
 #include "npc.h"

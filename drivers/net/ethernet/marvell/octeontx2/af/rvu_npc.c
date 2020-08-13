@@ -246,7 +246,7 @@ void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 }
 
 static void npc_clear_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
-				  int blkaddr, int index)
+				 int blkaddr, int index)
 {
 	int bank = npc_get_bank(mcam, index);
 	int actbank = bank;

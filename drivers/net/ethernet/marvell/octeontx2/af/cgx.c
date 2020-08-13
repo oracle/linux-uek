@@ -119,7 +119,6 @@ int cgx_get_cgxcnt_max(void)
 
 	return idmax + 1;
 }
-EXPORT_SYMBOL(cgx_get_cgxcnt_max);
 
 int cgx_get_lmac_cnt(void *cgxd)
 {
@@ -130,7 +129,6 @@ int cgx_get_lmac_cnt(void *cgxd)
 
 	return cgx->lmac_count;
 }
-EXPORT_SYMBOL(cgx_get_lmac_cnt);
 
 void *cgx_get_pdata(int cgx_id)
 {
@@ -142,7 +140,6 @@ void *cgx_get_pdata(int cgx_id)
 	}
 	return NULL;
 }
-EXPORT_SYMBOL(cgx_get_pdata);
 
 int cgx_get_cgxid(void *cgxd)
 {
@@ -180,7 +177,6 @@ int cgx_get_link_info(void *cgxd, int lmac_id,
 	*linfo = lmac->link_info;
 	return 0;
 }
-EXPORT_SYMBOL(cgx_get_link_info);
 
 static u64 mac2u64 (u8 *mac_addr)
 {
@@ -217,7 +213,6 @@ int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_addr_set);
 
 int cgx_lmac_addr_add(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 {
@@ -319,7 +314,6 @@ u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id)
 	cfg = cgx_read(cgx_dev, 0, CGXX_CMRX_RX_DMAC_CAM0 + index * 0x8);
 	return cfg & CGX_RX_DMAC_ADR_MASK;
 }
-EXPORT_SYMBOL(cgx_lmac_addr_get);
 
 int cgx_set_pkind(void *cgxd, u8 lmac_id, int pkind)
 {
@@ -331,7 +325,6 @@ int cgx_set_pkind(void *cgxd, u8 lmac_id, int pkind)
 	cgx_write(cgx, lmac_id, CGXX_CMRX_RX_ID_MAP, (pkind & 0x3F));
 	return 0;
 }
-EXPORT_SYMBOL(cgx_set_pkind);
 
 int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind)
 {
@@ -381,7 +374,6 @@ int cgx_lmac_internal_loopback(void *cgxd, int lmac_id, bool enable)
 	}
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_internal_loopback);
 
 void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 {
@@ -427,7 +419,6 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 		}
 	}
 }
-EXPORT_SYMBOL(cgx_lmac_promisc_config);
 
 /* Enable or disable forwarding received pause frames to Tx block */
 void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable)
@@ -456,7 +447,6 @@ void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable)
 		cgx_write(cgx, lmac_id,	CGXX_SMUX_RX_FRM_CTL, cfg);
 	}
 }
-EXPORT_SYMBOL(cgx_lmac_enadis_rx_pause_fwding);
 
 int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 {
@@ -472,7 +462,6 @@ int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 	*rx_stat =  cgx_read(cgx, lmac_id, CGXX_CMRX_RX_STAT0 + (idx * 8));
 	return 0;
 }
-EXPORT_SYMBOL(cgx_get_rx_stats);
 
 int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 {
@@ -483,7 +472,6 @@ int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 	*tx_stat = cgx_read(cgx, lmac_id, CGXX_CMRX_TX_STAT0 + (idx * 8));
 	return 0;
 }
-EXPORT_SYMBOL(cgx_get_tx_stats);
 
 int cgx_stats_rst(void *cgxd, int lmac_id)
 {
@@ -587,7 +575,6 @@ int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable)
 	cgx_write(cgx, lmac_id, CGXX_CMRX_CFG, cfg);
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_rx_tx_enable);
 
 int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable)
 {
@@ -608,7 +595,6 @@ int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable)
 		cgx_write(cgx, lmac_id, CGXX_CMRX_CFG, cfg);
 	return !!(last & DATA_PKT_TX_EN);
 }
-EXPORT_SYMBOL(cgx_lmac_tx_enable);
 
 static int  cgx_lmac_get_higig2_pause_frm_status(void *cgxd, int lmac_id,
 						 u8 *tx_pause, u8 *rx_pause)
@@ -782,7 +768,7 @@ static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 		cfg |= CGX_SMUX_TX_CTL_L2P_BP_CONV;
 		cgx_write(cgx, lmac_id, CGXX_SMUX_TX_CTL, cfg);
 
-		/* Set pause time and interval*/
+		/* Set pause time and interval */
 		cgx_write(cgx, lmac_id, CGXX_SMUX_TX_PAUSE_PKT_TIME,
 			  DEFAULT_PAUSE_TIME);
 		/* Set pause interval as the hardware default is too short */
@@ -1227,7 +1213,6 @@ int cgx_lmac_evh_register(struct cgx_event_cb *cb, void *cgxd, int lmac_id)
 
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_evh_register);
 
 int cgx_lmac_evh_unregister(void *cgxd, int lmac_id)
 {
@@ -1246,7 +1231,6 @@ int cgx_lmac_evh_unregister(void *cgxd, int lmac_id)
 
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_evh_unregister);
 
 int cgx_get_fwdata_base(u64 *base)
 {
@@ -1436,7 +1420,6 @@ int cgx_lmac_linkup_start(void *cgxd)
 
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_linkup_start);
 
 void cgx_lmac_enadis_higig2(void *cgxd, int lmac_id, bool enable)
 {
