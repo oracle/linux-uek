@@ -28,6 +28,7 @@
 #include <linux/idr.h>
 #include <linux/workqueue.h>
 #include <linux/llist.h>
+#include <linux/uek_kabi.h>
 
 #include <drm/drm_modeset_lock.h>
 
@@ -927,6 +928,18 @@ struct drm_mode_config {
 	struct drm_atomic_state *suspend_state;
 
 	const struct drm_mode_config_helper_funcs *helper_private;
+
+	/**
+	 * @fbdev_use_iomem:
+	 *
+	 * Set to true if framebuffer reside in iomem.
+	 * When set to true memcpy_toio() is used when copying the framebuffer in
+	 * drm_fb_helper.drm_fb_helper_dirty_blit_real().
+	 *
+	 * FIXME: This should be replaced with a per-mapping is_iomem
+	 * flag (like ttm does), and then used everywhere in fbdev code.
+	 */
+	UEK_KABI_EXTEND(bool fbdev_use_iomem)
 };
 
 void drm_mode_config_init(struct drm_device *dev);
