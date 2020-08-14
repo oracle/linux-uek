@@ -134,11 +134,7 @@ static int omninet_port_remove(struct usb_serial_port *port)
 static int omninet_open(struct tty_struct *tty, struct usb_serial_port *port)
 {
 	struct usb_serial	*serial = port->serial;
-	struct usb_serial_port	*wport;
 	int			result = 0;
-
-	wport = serial->port[1];
-	tty_port_tty_set(&wport->port, tty);
 
 	/* Start reading from the device */
 	result = usb_submit_urb(port->read_urb, GFP_KERNEL);
