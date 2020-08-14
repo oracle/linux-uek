@@ -208,8 +208,8 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 			if (!(ipv6_addr_type(&rs->rs_conn_addr) &
 			      IPV6_ADDR_MAPPED)) {
 				sin6 = (struct sockaddr_in6 *)uaddr;
-				memset(sin, 0, sizeof(*sin6));
-				sin->sin_family = AF_INET6;
+				memset(sin6, 0, sizeof(*sin6));
+				sin6->sin6_family = AF_INET6;
 				return sizeof(*sin6);
 			}
 #endif
