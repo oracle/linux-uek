@@ -26,18 +26,18 @@
  * method, i.e. 32-bit accesses for 32-bit fields, 16-bit accesses
  * for 16-bit fields and 8-bit accesses for 8-bit fields.
  */
-static inline u8 vp_ioread8(u8 __iomem *addr)
+static inline u8 vp_ioread8(const u8 __iomem *addr)
 {
-	return ioread8(addr);
+	return ioread8((u8 __iomem *)addr);
 }
-static inline u16 vp_ioread16 (__le16 __iomem *addr)
+static inline u16 vp_ioread16 (const __le16 __iomem *addr)
 {
-	return ioread16(addr);
+	return ioread16((__le16 __iomem *)addr);
 }
 
-static inline u32 vp_ioread32(__le32 __iomem *addr)
+static inline u32 vp_ioread32(const __le32 __iomem *addr)
 {
-	return ioread32(addr);
+	return ioread32((__le32 __iomem *)addr);
 }
 
 static inline void vp_iowrite8(u8 value, u8 __iomem *addr)
