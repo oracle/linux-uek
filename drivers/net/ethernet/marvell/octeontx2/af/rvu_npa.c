@@ -557,7 +557,7 @@ static irqreturn_t rvu_npa_af_rvu_intr_handler(int irq, void *rvu_irq)
 	intr = rvu_read64(rvu, blkaddr, NPA_AF_RVU_INT);
 
 	if (intr & BIT_ULL(0))
-		dev_err(rvu->dev, "NPA: Unmapped slot error\n");
+		dev_err_ratelimited(rvu->dev, "NPA: Unmapped slot error\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, NPA_AF_RVU_INT, intr);
