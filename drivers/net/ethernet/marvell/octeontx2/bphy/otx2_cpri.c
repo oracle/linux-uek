@@ -397,8 +397,11 @@ static netdev_tx_t otx2_cpri_eth_start_xmit(struct sk_buff *skb,
 	wqe->mhab_id = priv->cpri_num;
 	wqe->lane_id = priv->lmac_id;
 	buf_ptr += OTX2_BPHY_CPRI_WQE_SIZE;
+	/* zero pad for short pkts, since there is no HW support */
+	if (skb->len < 64)
+		memset(buf_ptr, 0, 64);
 	memcpy(buf_ptr, skb->data, skb->len);
-	wqe->pkt_length = skb->len;
+	wqe->pkt_length = skb->len > 64 ? skb->len : 64;
 
 	/* ensure the memory is updated before ringing doorbell */
 	dma_wmb();
