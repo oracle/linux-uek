@@ -4163,7 +4163,7 @@ static irqreturn_t rvu_nix_af_rvu_intr_handler(int irq, void *rvu_irq)
 	intr = rvu_read64(rvu, blkaddr, NIX_AF_RVU_INT);
 
 	if (intr & BIT_ULL(0))
-		dev_err(rvu->dev, "NIX: Unmapped slot error\n");
+		dev_err_ratelimited(rvu->dev, "NIX: Unmapped slot error\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, NIX_AF_RVU_INT, intr);
@@ -4180,34 +4180,42 @@ static irqreturn_t rvu_nix_af_err_intr_handler(int irq, void *rvu_irq)
 	intr = rvu_read64(rvu, blkaddr, NIX_AF_ERR_INT);
 
 	if (intr & BIT_ULL(14))
-		dev_err(rvu->dev, "NIX: Memory fault on NIX_AQ_INST_S read\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Memory fault on NIX_AQ_INST_S read\n");
 
 	if (intr & BIT_ULL(13))
-		dev_err(rvu->dev, "NIX: Memory fault on NIX_AQ_RES_S write\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Memory fault on NIX_AQ_RES_S write\n");
 
 	if (intr & BIT_ULL(12))
-		dev_err(rvu->dev, "NIX: AQ doorbell error\n");
+		dev_err_ratelimited(rvu->dev, "NIX: AQ doorbell error\n");
 
 	if (intr & BIT_ULL(6))
-		dev_err(rvu->dev, "NIX: Rx on unmapped PF_FUNC\n");
+		dev_err_ratelimited(rvu->dev, "NIX: Rx on unmapped PF_FUNC\n");
 
 	if (intr & BIT_ULL(5))
-		dev_err(rvu->dev, "NIX: Rx multicast replication error\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Rx multicast replication error\n");
 
 	if (intr & BIT_ULL(4))
-		dev_err(rvu->dev, "NIX: Memory fault on NIX_RX_MCE_S read\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Memory fault on NIX_RX_MCE_S read\n");
 
 	if (intr & BIT_ULL(3))
-		dev_err(rvu->dev, "NIX: Memory fault on multicast WQE read\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Memory fault on multicast WQE read\n");
 
 	if (intr & BIT_ULL(2))
-		dev_err(rvu->dev, "NIX: Memory fault on mirror WQE read\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Memory fault on mirror WQE read\n");
 
 	if (intr & BIT_ULL(1))
-		dev_err(rvu->dev, "NIX: Memory fault on mirror pkt write\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Memory fault on mirror pkt write\n");
 
 	if (intr & BIT_ULL(0))
-		dev_err(rvu->dev, "NIX: Memory fault on multicast pkt write\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Memory fault on multicast pkt write\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, NIX_AF_ERR_INT, intr);
