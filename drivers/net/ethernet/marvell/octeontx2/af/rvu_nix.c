@@ -4359,13 +4359,13 @@ static void rvu_nix_blk_unregister_interrupts(struct rvu *rvu,
 
 	if (rvu->irq_allocated[offs + NIX_AF_INT_VEC_RVU]) {
 		free_irq(pci_irq_vector(rvu->pdev, offs + NIX_AF_INT_VEC_RVU),
-			 rvu);
+			 nix_hw);
 		rvu->irq_allocated[offs + NIX_AF_INT_VEC_RVU] = false;
 	}
 
 	for (i = NIX_AF_INT_VEC_AF_ERR; i < NIX_AF_INT_VEC_CNT; i++)
 		if (rvu->irq_allocated[offs + i]) {
-			free_irq(pci_irq_vector(rvu->pdev, offs + i), rvu);
+			free_irq(pci_irq_vector(rvu->pdev, offs + i), nix_hw);
 			rvu->irq_allocated[offs + i] = false;
 		}
 }
