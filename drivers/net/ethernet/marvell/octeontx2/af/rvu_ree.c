@@ -414,7 +414,8 @@ int ree_reex_cksum_compare(struct rvu *rvu, int blkaddr,
 static
 void ree_reex_prefix_write(void **prefix_ptr,
 			   struct ree_rule_db_entry **rule_db,
-			   int *rule_db_len, int *count)
+			   int *rule_db_len, u32 *count,
+			   u32 *db_block_len)
 {
 	struct ree_rof_s rof_entry;
 
@@ -432,29 +433,41 @@ void ree_reex_prefix_write(void **prefix_ptr,
 		(*rule_db_len) -= sizeof(struct ree_rule_db_entry);
 		/* Number of type 6 rows that were parsed */
 		(*count)++;
+		/* Go over current block only */
+		(*db_block_len)--;
+		if (*db_block_len == 0)
+			break;
 	}
 }
 
 static
-void ree_reex_graph_write(struct ree_rsrc *ree,
-			  struct ree_rule_db_entry **rule_db, int *rule_db_len)
+int ree_reex_graph_write(struct ree_rsrc *ree,
+			 struct ree_rule_db_entry **rule_db, int *rule_db_len,
+			 u32 *db_block_len)
 {
 	u32 offset;
 
 	while ((*rule_db)->type == REE_ROF_TYPE_7) {
 		offset = ((*rule_db)->addr & 0xFFFFFF) << 3;
+		if (offset > REE_GRAPH_CNT)
+			return REE_AF_ERR_GRAPH_ADDRESS_TOO_BIG;
 		memcpy(ree->graph_ctx->base + offset,
 		       &(*rule_db)->value, sizeof((*rule_db)->value));
 		(*rule_db)++;
 		*rule_db_len -= sizeof(struct ree_rule_db_entry);
+		/* Go over current block only */
+		(*db_block_len)--;
+		if (*db_block_len == 0)
+			break;
 	}
+	return 0;
 }
 
 static
 int ree_rof_data_validation(struct rvu *rvu, int blkaddr,
 			    struct ree_rsrc *ree, int *db_block,
 			    struct ree_rule_db_entry **rule_db_ptr,
-			    int *rule_db_len)
+			    int *rule_db_len, u32 *db_block_len)
 {
 	int err;
 
@@ -497,16 +510,16 @@ int ree_rof_data_validation(struct rvu *rvu, int blkaddr,
 			/* Other types not supported */
 			(*rule_db_ptr)++;
 			*rule_db_len -= sizeof(struct ree_rof_s);
-			break;
+			return REE_AF_ERR_BAD_RULE_TYPE;
 		}
+		(*db_block_len)--;
 		/* If rule DB is larger than 4M there is a need
 		 * to move between db blocks of 4M
 		 */
-		if ((uint64_t)(*rule_db_ptr) -
-					  (uint64_t)ree->ruledb[(*db_block)] >=
-			 REE_RULE_DB_ALLOC_SIZE) {
+		if (*db_block_len == 0) {
 			(*db_block)++;
 			*rule_db_ptr = ree->ruledb[(*db_block)];
+			*db_block_len = (REE_RULE_DB_ALLOC_SIZE >> 4);
 		}
 	}
 	return 0;
@@ -516,11 +529,12 @@ static
 int ree_rof_data_enq(struct rvu *rvu, struct rvu_block *block,
 		     struct ree_rsrc *ree,
 		     struct ree_rule_db_entry **rule_db_ptr,
-		     int *rule_db_len, int *db_block)
+		     int *rule_db_len, int *db_block, u32 *db_block_len)
 {
 	void *prefix_ptr = ree->prefix_ctx->base;
-	int size, num_of_entries = 0;
+	u32 size, num_of_entries = 0;
 	dma_addr_t head;
+	int err;
 
 	/* Parse ROF data */
 	while (*rule_db_len > 0) {
@@ -533,25 +547,26 @@ int ree_rof_data_enq(struct rvu *rvu, struct rvu_block *block,
 			break;
 		case REE_ROF_TYPE_6:
 			ree_reex_prefix_write(&prefix_ptr, rule_db_ptr,
-					      rule_db_len, &num_of_entries);
+					      rule_db_len, &num_of_entries,
+					      db_block_len);
 			break;
 		case REE_ROF_TYPE_7:
-			ree_reex_graph_write(ree, rule_db_ptr, rule_db_len);
+			err = ree_reex_graph_write(ree, rule_db_ptr,
+						   rule_db_len, db_block_len);
+			if (err)
+				return err;
 			break;
 		default:
 			/* Other types not supported */
-			(*rule_db_ptr)++;
-			(*rule_db_len) -= sizeof(struct ree_rof_s);
-			break;
+			return REE_AF_ERR_BAD_RULE_TYPE;
 		}
 		/* If rule DB is larger than 4M there is a need
 		 * to move between db blocks of 4M
 		 */
-		if ((uint64_t)(*rule_db_ptr) -
-					  (uint64_t)ree->ruledb[(*db_block)] >=
-			 REE_RULE_DB_ALLOC_SIZE) {
+		if (*db_block_len == 0) {
 			(*db_block)++;
 			*rule_db_ptr = ree->ruledb[(*db_block)];
+			*db_block_len = (REE_RULE_DB_ALLOC_SIZE >> 4);
 		}
 		/* If there are no more prefix and graph data
 		 * en-queue prefix data and continue with data validation
@@ -570,11 +585,13 @@ int ree_rof_data_enq(struct rvu *rvu, struct rvu_block *block,
 			size = REE_PREFIX_PTR_LEN * sizeof(struct ree_rof_s);
 			ree_aq_inst_enq(rvu, block, ree, head, size, false);
 			head += REE_PREFIX_PTR_LEN * sizeof(struct ree_rof_s);
+			num_of_entries -= REE_PREFIX_PTR_LEN;
 		} else {
+			/* Last chunk of instructions to handle */
 			size = num_of_entries * sizeof(struct ree_rof_s);
 			ree_aq_inst_enq(rvu, block, ree, head, size, true);
+			num_of_entries = 0;
 		}
-		num_of_entries -= REE_PREFIX_PTR_LEN;
 	}
 	/* Verify completion of type 6 */
 	return ree_aq_verify_type6_completion(rvu, block);
@@ -584,6 +601,8 @@ static
 int ree_rule_db_prog(struct rvu *rvu, struct rvu_block *block,
 		     struct ree_rsrc *ree, int inc)
 {
+	/* db_block_len holds number of ROF instruction in a memory block */
+	u32 db_block_len = (REE_RULE_DB_ALLOC_SIZE >> 4);
 	struct ree_rule_db_entry *rule_db_ptr;
 	int rule_db_len, err = 0, db_block = 0;
 	u64 reg;
@@ -606,24 +625,24 @@ int ree_rule_db_prog(struct rvu *rvu, struct rvu_block *block,
 	if (err)
 		return err;
 
-	/* Parse ROF data - validation part*/
+	/* Parse ROF data - validation part */
 	rule_db_len = ree->ruledb_len;
-	rule_db_ptr = (struct ree_rule_db_entry *)ree->ruledb[0];
-	db_block = 0;
+	rule_db_ptr = (struct ree_rule_db_entry *)ree->ruledb[db_block];
 	err = ree_rof_data_validation(rvu, block->addr, ree, &db_block,
-				      &rule_db_ptr, &rule_db_len);
+				      &rule_db_ptr, &rule_db_len,
+				      &db_block_len);
 	if (err)
 		return err;
 
-	/* Parse ROF data - data part*/
+	/* Parse ROF data - data part */
 	err = ree_rof_data_enq(rvu, block, ree, &rule_db_ptr, &rule_db_len,
-			       &db_block);
+			       &db_block, &db_block_len);
 	if (err)
 		return err;
-
-	/* Parse ROF data - validation part*/
+	/* Parse ROF data - validation part */
 	err = ree_rof_data_validation(rvu, block->addr, ree, &db_block,
-				      &rule_db_ptr, &rule_db_len);
+				      &rule_db_ptr, &rule_db_len,
+				      &db_block_len);
 	if (err)
 		return err;
 
@@ -700,8 +719,8 @@ int rvu_mbox_handler_ree_rule_db_prog(struct rvu *rvu,
 	db_block = ree->ruledb_len >> REE_RULE_DB_ALLOC_SHIFT;
 	if (db_block >= ree->ruledb_blocks)
 		return REE_AF_ERR_RULE_DB_BLOCK_TOO_BIG;
-	memcpy((void *)((u64)ree->ruledb[db_block] + ree->ruledb_len),
-	       req->rule_db, req->len);
+	memcpy((void *)((u64)ree->ruledb[db_block] + ree->ruledb_len -
+	       db_block * REE_RULE_DB_ALLOC_SIZE), req->rule_db, req->len);
 	ree->ruledb_len += req->len;
 	/* ROF file is sent in chunks
 	 * wait for last chunk to start programming
