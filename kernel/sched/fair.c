@@ -522,7 +522,6 @@ bool cfs_prio_less(struct task_struct *a, struct task_struct *b)
 	struct sched_entity *sea = &a->se;
 	struct sched_entity *seb = &b->se;
 	bool samecpu = task_cpu(a) == task_cpu(b);
-	struct task_struct *p;
 	s64 delta;
 
 	if (samecpu) {
@@ -549,11 +548,6 @@ bool cfs_prio_less(struct task_struct *a, struct task_struct *b)
 	delta = (s64)(sea->vruntime - seb->vruntime);
 
 out:
-	p = delta > 0 ? b : a;
-	trace_printk("picked %s/%d %s: %Ld %Ld %Ld\n", p->comm, p->pid,
-			samecpu ? "samecpu" : "crosscpu",
-			sea->vruntime, seb->vruntime, delta);
-
 	return delta > 0;
 }
 
