@@ -1849,7 +1849,7 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %kernel_variant_postun
-%kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
+%kernel_variant_post -u -v luci -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 
 %kernel_variant_pre smp
 %kernel_variant_preun smp
