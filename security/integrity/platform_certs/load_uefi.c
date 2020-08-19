@@ -92,6 +92,15 @@ static __init void uefi_blacklist_hash(const char *source, const void *data,
 }
 
 /*
+ * Revocationlist the X509 cert
+ */
+static __init void uefi_revocationlist_x509(const char *source,
+					    const void *data, size_t len)
+{
+	mark_key_revocationlisted(data, len);
+}
+
+/*
  * Blacklist an X509 TBS hash.
  */
 static __init void uefi_blacklist_x509_tbs(const char *source,
@@ -132,6 +141,8 @@ static __init efi_element_handler_t get_handler_for_dbx(const efi_guid_t *
 		return uefi_blacklist_x509_tbs;
 	if (efi_guidcmp(*sig_type, efi_cert_sha256_guid) == 0)
 		return uefi_blacklist_binary;
+	if (efi_guidcmp(*sig_type, efi_cert_x509_guid) == 0)
+		return uefi_revocationlist_x509;
 	return 0;
 }
 

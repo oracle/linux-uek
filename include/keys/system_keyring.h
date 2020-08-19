@@ -31,15 +31,26 @@ extern int restrict_link_by_builtin_and_secondary_trusted(
 #define restrict_link_by_builtin_and_secondary_trusted restrict_link_by_builtin_trusted
 #endif
 
+extern struct pkcs7_message *pkcs7;
 #ifdef CONFIG_SYSTEM_BLACKLIST_KEYRING
 extern int mark_hash_blacklisted(const char *hash);
+extern int mark_key_revocationlisted(const char *data, size_t size);
 extern int is_hash_blacklisted(const u8 *hash, size_t hash_len,
 			       const char *type);
+extern int is_key_revocationlisted(struct pkcs7_message *pkcs7);
 #else
 static inline int is_hash_blacklisted(const u8 *hash, size_t hash_len,
 				      const char *type)
 {
 	return 0;
+}
+static inline int mark_key_revocationlisted(const char *data, size_t size)
+{
+	return 0;
+}
+static inline int is_key_revocationlisted(struct pkcs7_message *pkcs7)
+{
+	return -ENOKEY;
 }
 #endif
 
