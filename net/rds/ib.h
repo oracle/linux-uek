@@ -385,6 +385,8 @@ struct rds_ib_device {
 	struct rds_ib_refill_cache i_cache_incs;
 	struct rds_ib_refill_cache i_cache_frags[RDS_FRAG_CACHE_ENTRIES];
 	struct dentry *debugfs_dir;
+
+	struct completion	*rid_dev_rem_complete;
 };
 
 static inline int ibdev_to_node(struct ib_device *ibdev)
