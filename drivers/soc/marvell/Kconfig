@@ -140,6 +140,7 @@ config OCTEONTX2_SDEI_GHES
 	select EDAC_GHES
 	select ACPI_APEI
 	select ACPI_APEI_GHES
+	select CRASH_DUMP
 	help
 	  Select this option to enable support for RAS Generic Hardware Error
 	  Source (GHES) reporting on platforms that do not use ACPI.
