@@ -22,6 +22,7 @@
 #include <acpi/apei.h>
 #include <acpi/acpi_io.h>
 #include <linux/pci.h>
+#include <linux/crash_dump.h>
 #include "otx2-sdei-ghes.h"
 
 #define DRV_NAME       "sdei-ghes"
@@ -792,6 +793,15 @@ static int __init sdei_ghes_driver_init(void)
 	initdbgmsg("%s: edac_debug_level:%d\n", __func__, edac_debug_level);
 
 	rc = -ENODEV;
+
+	/* Operation under kdump crash kernel is not desired nor supported. */
+#ifdef CONFIG_CRASH_DUMP
+	if (is_kdump_kernel())
+#else
+#pragma message "CONFIG_CRASH_DUMP setting is rquired for this module"
+	if (true)
+#endif
+		return rc;
 
 #ifdef CONFIG_OCTEONTX2_SDEI_GHES_BERT
 	of_node = of_find_matching_node_and_match(NULL, bed_bert_of_match,
