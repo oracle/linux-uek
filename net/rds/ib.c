@@ -426,6 +426,7 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
+	complete(rds_ibdev->rid_dev_rem_complete);
 	kfree(rds_ibdev);
 }
 
@@ -473,6 +474,7 @@ struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device)
  */
 void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
+	DECLARE_COMPLETION(rem_complete);
 	struct rds_ib_device *rds_ibdev;
 
 	rds_rtd(RDS_RTD_RDMA_IB, "Removing ib_device: %p name: %s num_ports: %u\n",
@@ -499,6 +501,8 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	list_del_rcu(&rds_ibdev->list);
 	up_write(&rds_ib_devices_lock);
 
+	rds_ibdev->rid_dev_rem_complete = &rem_complete;
+
 	/*
 	 * This synchronize rcu is waiting for readers of both the ib
 	 * client data and the devices list to finish before we drop
@@ -507,6 +511,7 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	synchronize_rcu();
 	rds_ib_dev_put(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
+	wait_for_completion(&rem_complete);
 }
 
 struct ib_client rds_ib_client = {
