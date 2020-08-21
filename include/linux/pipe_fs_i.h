@@ -108,7 +108,11 @@ struct pipe_buf_operations {
 	/*
 	 * Get a reference to the pipe buffer.
 	 */
+#ifdef __GENKSYMS__
+	void (*get)(struct pipe_inode_info *, struct pipe_buffer *);
+#else
 	bool (*get)(struct pipe_inode_info *, struct pipe_buffer *);
+#endif
 };
 
 /**
