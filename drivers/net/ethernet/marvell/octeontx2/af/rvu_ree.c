@@ -985,7 +985,7 @@ static irqreturn_t rvu_ree_af_aq_intr_handler(int irq, void *ptr)
 	return IRQ_HANDLED;
 }
 
-void rvu_ree_unregister_interrupts_block(struct rvu *rvu, int blkaddr)
+static void rvu_ree_unregister_interrupts_block(struct rvu *rvu, int blkaddr)
 {
 	int i, offs;
 
@@ -1038,7 +1038,7 @@ static int rvu_ree_af_request_irq(struct rvu_block *block,
 	return rvu->irq_allocated[offset];
 }
 
-int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr)
+static int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
@@ -1195,7 +1195,7 @@ int rvu_ree_init(struct rvu *rvu)
 	return rvu_ree_init_block(rvu, BLKADDR_REE1);
 }
 
-void rvu_ree_freemem_block(struct rvu *rvu, int blkaddr, int blkid)
+static void rvu_ree_freemem_block(struct rvu *rvu, int blkaddr, int blkid)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
