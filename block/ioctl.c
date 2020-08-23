@@ -144,7 +144,7 @@ static int blkpg_ioctl(struct block_device *bdev, struct blkpg_ioctl_arg __user 
 			}
 			disk_part_iter_exit(&piter);
 			part_nr_sects_write(part, (sector_t)length);
-			i_size_write(bdevp->bd_inode, p.length);
+			bd_set_nr_sectors(bdevp, (sector_t)length);
 			mutex_unlock(&bdevp->bd_mutex);
 			mutex_unlock(&bdev->bd_mutex);
 			bdput(bdevp);
