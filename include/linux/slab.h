@@ -602,20 +602,25 @@ struct memcg_cache_params {
 			struct memcg_cache_array __rcu *memcg_caches;
 			struct list_head __root_caches_node;
 			struct list_head children;
-			bool dying;
+			UEK_KABI_EXTEND(bool dying)
 		};
 		struct {
 			struct mem_cgroup *memcg;
 			struct list_head children_node;
 			struct list_head kmem_caches_node;
-			struct percpu_ref refcnt;
 
-			void (*work_fn)(struct kmem_cache *);
+			UEK_KABI_RENAME(void (*deact_fn)(struct kmem_cache *),
+					void (*work_fn)(struct kmem_cache *));
 			union {
-				struct rcu_head rcu_head;
-				struct work_struct work;
+				UEK_KABI_RENAME(struct rcu_head deact_rcu_head,
+						struct rcu_head rcu_head);
+				UEK_KABI_RENAME(struct work_struct deact_work,
+						struct work_struct work);
 			};
+
+			UEK_KABI_EXTEND(struct percpu_ref refcnt)
 		};
+
 	};
 };
 
