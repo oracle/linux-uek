@@ -218,5 +218,4 @@ struct rds_transport rds_loop_transport = {
 	.skb_local              = rds_message_skb_local,
 	.inc_free		= rds_loop_inc_free,
 	.t_name			= "loopback",
-	.t_type			= RDS_TRANS_LOOP,
 };
