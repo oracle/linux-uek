@@ -1835,6 +1835,7 @@ static inline bool i40e_page_is_reusable(struct page *page)
  * the adapter for another receive
  *
  * @rx_buffer: buffer containing the page
+ * @rx_buffer_pgcnt: buffer page refcount pre xdp_do_redirect() call
  *
  * If page is reusable, rx_buffer->page_offset is adjusted to point to
  * an unused region in the page.
