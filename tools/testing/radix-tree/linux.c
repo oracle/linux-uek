@@ -91,6 +91,15 @@ void kmem_cache_free(struct kmem_cache *cachep, void *objp)
 	pthread_mutex_unlock(&cachep->lock);
 }
 
+void kmem_cache_free_bulk(struct kmem_cache *cachep, size_t size, void **list)
+{
+	if (kmalloc_verbose)
+		printk("Bulk free %p[0-%lu]\n", list, size - 1);
+	for (int i = 0; i < size; i++) {
+		kmem_cache_free(cachep, list[i]);
+	}
+}
+
 void *kmalloc(size_t size, gfp_t gfp)
 {
 	void *ret;
