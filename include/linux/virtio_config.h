@@ -401,6 +401,7 @@ static inline __virtio64 cpu_to_virtio64(struct virtio_device *vdev, u64 val)
  * Nothing virtio-specific about these, but let's worry about generalizing
  * these later.
  */
+#if defined(GCC_VERSION) && GCC_VERSION >= 40900
 #define virtio_le_to_cpu(x) \
 	_Generic((x), \
 		__u8: (u8)(x), \
@@ -416,6 +417,23 @@ static inline __virtio64 cpu_to_virtio64(struct virtio_device *vdev, u64 val)
 		 __le32: cpu_to_le32(x), \
 		 __le64: cpu_to_le64(x) \
 		)
+#else
+#define virtio_le_to_cpu(x) \
+	__builtin_choose_expr(__same_type((x), __u8), (u8)(x),		\
+	__builtin_choose_expr(__same_type((x), __le16), (u16)le16_to_cpu(x), \
+	__builtin_choose_expr(__same_type((x), __le32), (u32)le32_to_cpu(x), \
+	__builtin_choose_expr(__same_type((x), __le64), (u64)le64_to_cpu(x), \
+	/* No other type allowed */					\
+	(void)0))))
+
+#define virtio_cpu_to_le(x, m) \
+	__builtin_choose_expr(__same_type((m), __u8), (x),		\
+	__builtin_choose_expr(__same_type((m), __le16), cpu_to_le16(x),	\
+	__builtin_choose_expr(__same_type((m), __le32), cpu_to_le32(x),	\
+	__builtin_choose_expr(__same_type((m), __le64), cpu_to_le64(x),	\
+	/* No other type allowed */					\
+	(void)0))))
+#endif
 
 /* LE (e.g. modern) Config space accessors. */
 #define virtio_cread_le(vdev, structname, member, ptr)			\
