@@ -1618,7 +1618,7 @@ config EPOLL
 config WAITFD
 	bool "Enable waitfd() system call" if EXPERT
 	select ANON_INODES
-	default n
+	default y
 	help
 	  Enable the waitfd() system call that allows receiving child state
 	  changes from a file descriptor.  This permits use of poll() to
