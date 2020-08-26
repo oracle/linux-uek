@@ -580,6 +580,8 @@ extern int trace_remove_event_call(struct ftrace_event_call *call);
 #define is_signed_type(type)	(((type)(-1)) < (type)1)
 
 int trace_set_clr_event(const char *system, const char *event, int set);
+int trace_array_set_clr_event(struct trace_array *tr, const char *system,
+		const char *event, bool enable);
 
 /*
  * The double __builtin_constant_p is because gcc will give us an error
