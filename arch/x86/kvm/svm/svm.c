@@ -1098,7 +1098,7 @@ static void init_vmcb(struct vcpu_svm *svm)
 	}
 	svm->asid_generation = 0;
 
-	svm->nested.vmcb = 0;
+	svm->nested.vmcb12_gpa = 0;
 	svm->vcpu.arch.hflags = 0;
 
 	if (pause_filter_count) {
@@ -3838,7 +3838,7 @@ static int svm_pre_enter_smm(struct kvm_vcpu *vcpu, char *smstate)
 		/* FED8h - SVM Guest */
 		put_smstate(u64, smstate, 0x7ed8, 1);
 		/* FEE0h - SVM Guest VMCB Physical Address */
-		put_smstate(u64, smstate, 0x7ee0, svm->nested.vmcb);
+		put_smstate(u64, smstate, 0x7ee0, svm->nested.vmcb12_gpa);
 
 		svm->vmcb->save.rax = vcpu->arch.regs[VCPU_REGS_RAX];
 		svm->vmcb->save.rsp = vcpu->arch.regs[VCPU_REGS_RSP];
@@ -3860,7 +3860,7 @@ static int svm_pre_leave_smm(struct kvm_vcpu *vcpu, const char *smstate)
 	if (guest_cpuid_has(vcpu, X86_FEATURE_LM)) {
 		u64 saved_efer = GET_SMSTATE(u64, smstate, 0x7ed0);
 		u64 guest = GET_SMSTATE(u64, smstate, 0x7ed8);
-		u64 vmcb = GET_SMSTATE(u64, smstate, 0x7ee0);
+		u64 vmcb12_gpa = GET_SMSTATE(u64, smstate, 0x7ee0);
 
 		if (guest) {
 			if (!guest_cpuid_has(vcpu, X86_FEATURE_SVM))
@@ -3870,10 +3870,10 @@ static int svm_pre_leave_smm(struct kvm_vcpu *vcpu, const char *smstate)
 				return 1;
 
 			if (kvm_vcpu_map(&svm->vcpu,
-					 gpa_to_gfn(vmcb), &map) == -EINVAL)
+					 gpa_to_gfn(vmcb12_gpa), &map) == -EINVAL)
 				return 1;
 
-			ret = enter_svm_guest_mode(svm, vmcb, map.hva);
+			ret = enter_svm_guest_mode(svm, vmcb12_gpa, map.hva);
 			kvm_vcpu_unmap(&svm->vcpu, &map, true);
 		}
 	}
