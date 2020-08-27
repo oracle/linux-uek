@@ -567,8 +567,8 @@ Source90: config-sparc64-generic
 
 Source100: config-arm
 
-Source200: kabi_whitelist_i686
-Source201: kabi_whitelist_x86_64
+Source200: kabi_lockedlist_i686
+Source201: kabi_lockedlist_x86_64
 
 
 # Here should be only the patches up to the upstream canonical Linus tree.
@@ -1226,8 +1226,8 @@ hwcap 0 nosegneg"
     echo "**** GENERATING kernel ABI metadata ****"
     gzip -c9 < Module.symvers > $RPM_BUILD_ROOT/boot/symvers-$KernelVer.gz
     chmod 0755 %_sourcedir/kabitool
-    if [ -e $RPM_SOURCE_DIR/kabi_whitelist_%{_target_cpu}$Flavour ]; then
-       cp $RPM_SOURCE_DIR/kabi_whitelist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/kabi_whitelist
+    if [ -e $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour ]; then
+       cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/kabi_lockedlist
     fi
     rm -f %{_tmppath}/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps 
@@ -5403,7 +5403,7 @@ fi
 - [SCSI] hpsa: Fix problem with MSA2xxx devices (Stephen M. Cameron)
 - [scsi] hpsa: Add IRQF_SHARED back in for the non-MSI(X) interrupt handler
   (Joe Jin)
-- kabi update whitelist for OCFS (Maxim Uvarov) [Orabug: 14055758]
+- kabi update lockedlist for OCFS (Maxim Uvarov) [Orabug: 14055758]
 - [SCSI] scsi_dh_rdac: Fix for unbalanced reference count (Moger, Babu)
   [Orabug: 14059970]
 - [SCSI] scsi_dh_rdac: Adding couple more vendor product ids (Moger, Babu)
@@ -7746,7 +7746,7 @@ fi
 
 * Wed Mar 14 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.2.el6uek]
 - xen: make page table walk hugepages aware (Dave McCracken) [Orabug: 13719997]
-- x86/PCI: Preserve existing pci=bfsort whitelist for Dell systems (Narendra_K)
+- x86/PCI: Preserve existing pci=bfsort lockedlist for Dell systems (Narendra_K)
 
 * Sun Mar 11 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.1.el6uek]
 - disable kabicheck for uek2 update 1 beta
