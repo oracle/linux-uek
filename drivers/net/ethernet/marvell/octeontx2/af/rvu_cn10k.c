@@ -7,6 +7,11 @@
 #include "cgx.h"
 #include "rvu_reg.h"
 
+/* RVU LMTST */
+#define LMT_TBL_OP_READ    0
+#define LMT_TBL_OP_WRITE   1
+#define LMT_MAP_TABLE_SIZE (128 * 1024)
+
 int rvu_set_channels_base(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -255,4 +260,33 @@ void rvu_program_channels(struct rvu *rvu)
 	rvu_nix_set_channels(rvu);
 	rvu_lbk_set_channels(rvu);
 	rvu_rpm_set_channels(rvu);
+}
+
+/* Function to perform operations (read/write) on lmtst map table */
+int lmtst_map_table_ops(struct rvu *rvu, u32 index, u64 *val,
+			int lmt_tbl_op)
+{
+	void __iomem *lmt_map_base;
+	u64 tbl_base;
+
+	tbl_base = rvu_read64(rvu, BLKADDR_APR, APR_AF_LMT_MAP_BASE),
+
+	lmt_map_base = ioremap_wc(tbl_base, LMT_MAP_TABLE_SIZE);
+	if (!lmt_map_base) {
+		dev_err(rvu->dev, "Failed to setup lmt map table mapping!!\n");
+		return -ENOMEM;
+	}
+
+	if (lmt_tbl_op == LMT_TBL_OP_READ) {
+		*val = readq(lmt_map_base + index);
+	} else {
+		writeq((*val), (lmt_map_base + index));
+		/* Flushing the AP interceptor cache to make APR_LMT_MAP_ENTRY_S
+		 * changes effective.
+		 */
+		rvu_write64(rvu, BLKADDR_APR, APR_AF_LMT_CTL, BIT_ULL(0));
+	}
+
+	iounmap(lmt_map_base);
+	return 0;
 }
