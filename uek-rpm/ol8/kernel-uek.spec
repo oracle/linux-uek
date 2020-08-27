@@ -624,8 +624,8 @@ Source1008: config-aarch64-debug
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
 
-Source200: kabi_whitelist_x86_64debug
-Source201: kabi_whitelist_x86_64
+Source200: kabi_lockedlist_x86_64debug
+Source201: kabi_lockedlist_x86_64
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -1275,8 +1275,8 @@ fi
     gzip -c9 < Module.symvers > $RPM_BUILD_ROOT/boot/symvers-$KernelVer.gz
     cp $RPM_BUILD_ROOT/boot/symvers-$KernelVer.gz $RPM_BUILD_ROOT/lib/modules/$KernelVer/symvers.gz
     chmod 0755 %_sourcedir/kabitool
-    if [ -e $RPM_SOURCE_DIR/kabi_whitelist_%{_target_cpu}$Flavour ]; then
-       cp $RPM_SOURCE_DIR/kabi_whitelist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/kabi_whitelist
+    if [ -e $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour ]; then
+       cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/kabi_lockedlist
     fi
     rm -f %{_tmppath}/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
