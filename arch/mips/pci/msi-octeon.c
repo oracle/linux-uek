@@ -247,7 +247,7 @@ static void octeon_irq_msi_enable_pcie(struct irq_data *data)
 	cvmx_write_csr(msi_ena_reg[irq_index], en);
 	cvmx_read_csr(msi_ena_reg[irq_index]);
 	raw_spin_unlock_irqrestore(&octeon_irq_msi_lock, flags);
-	unmask_msi_irq(data);
+	pci_msi_unmask_irq(data);
 }
 
 static void octeon_irq_msi_disable_pcie(struct irq_data *data)
@@ -265,7 +265,7 @@ static void octeon_irq_msi_disable_pcie(struct irq_data *data)
 	cvmx_write_csr(msi_ena_reg[irq_index], en);
 	cvmx_read_csr(msi_ena_reg[irq_index]);
 	raw_spin_unlock_irqrestore(&octeon_irq_msi_lock, flags);
-	mask_msi_irq(data);
+	pci_msi_mask_irq(data);
 }
 
 static struct irq_chip octeon_irq_chip_msi_pcie = {
@@ -476,7 +476,7 @@ static int arch_setup_multi_msi_irq(struct pci_dev *dev, struct msi_desc *desc,
 	desc->msi_attrib.multiple = ilog2(nvec);
 	msg.data = msi_base;
 	setup_msi_msg_address(&msg);
-	write_msi_msg(irq_base, &msg);
+	pci_write_msi_msg(irq_base, &msg);
 
 	return 0;
 }
@@ -517,7 +517,7 @@ int arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 	desc->msi_attrib.multiple = 0;
 	msg.data = msi;
 	setup_msi_msg_address(&msg);
-	write_msi_msg(irq, &msg);
+	pci_write_msi_msg(irq, &msg);
 
 	return 0;
 }
@@ -623,13 +623,13 @@ static void octeon_msi_ciu3_mask_ack(struct irq_data *data)
 static void octeon_msi_ciu3_enable(struct irq_data *data)
 {
 	octeon_irq_ciu3_enable(data);
-	unmask_msi_irq(data);
+	pci_msi_unmask_irq(data);
 }
 
 static void octeon_msi_ciu3_disable(struct irq_data *data)
 {
 	octeon_irq_ciu3_disable(data);
-	mask_msi_irq(data);
+	pci_msi_mask_irq(data);
 }
 
 static struct irq_chip octeon_irq_msi_chip_ciu3 = {

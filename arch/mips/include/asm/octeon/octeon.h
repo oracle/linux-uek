@@ -384,6 +384,8 @@ void octeon_irq_ciu3_mask_ack(struct irq_data *data);
 void octeon_irq_free_cd(struct irq_domain *d, unsigned int irq);
 int octeon_irq_ciu3_mapx(struct irq_domain *d, unsigned int virq,
 			 irq_hw_number_t hw, struct irq_chip *chip);
+int octeon_irq_ciu3_set_affinity(struct irq_data *data,
+                                const struct cpumask *dest, bool force);
 void *octeon_irq_get_ciu3_info(int node);
 void octeon_irq_add_block_domain(int node, uint8_t block,
 				 struct irq_domain *domain);
