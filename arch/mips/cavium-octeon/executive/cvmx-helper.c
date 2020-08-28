@@ -1535,6 +1535,7 @@ int cvmx_helper_interface_probe(int xiface)
 	case CVMX_HELPER_INTERFACE_MODE_SGMII:
 	case CVMX_HELPER_INTERFACE_MODE_QSGMII:
 		padding = CVMX_PKO_PADDING_60;
+		/* fall through */
 	case CVMX_HELPER_INTERFACE_MODE_PICMG:
 		has_fcs = 1;
 		break;

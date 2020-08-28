@@ -335,6 +335,7 @@ static int octeon_pcie_pem_read(struct pci_bus *bus, unsigned int devfn,
 		/* Override class code to be PCI-PCI bridge. */
 		read_val &= 0x000000ff;
 		read_val |= 0x06040000;
+		/* fall through */
 	case 0x40:
 		read_val &= 0xffff00ff;
 		read_val |= 0x00007000; /* Skip MSI CAP */

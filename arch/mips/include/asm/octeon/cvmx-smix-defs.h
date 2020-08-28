@@ -81,6 +81,7 @@ static inline uint64_t CVMX_SMIX_CLK(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return CVMX_ADD_IO_SEG(0x0001180000003818ull) + ((offset) & 3) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return CVMX_ADD_IO_SEG(0x0001180000003818ull) + ((offset) & 3) * 128;
@@ -117,6 +118,7 @@ static inline uint64_t CVMX_SMIX_CLK(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180000003818ull) + (offset) * 128;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180000003818ull) + (offset) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180000003818ull) + (offset) * 128;
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
@@ -155,6 +157,7 @@ static inline uint64_t CVMX_SMIX_CMD(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return CVMX_ADD_IO_SEG(0x0001180000003800ull) + ((offset) & 3) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return CVMX_ADD_IO_SEG(0x0001180000003800ull) + ((offset) & 3) * 128;
@@ -191,6 +194,7 @@ static inline uint64_t CVMX_SMIX_CMD(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180000003800ull) + (offset) * 128;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180000003800ull) + (offset) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180000003800ull) + (offset) * 128;
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
@@ -229,6 +233,7 @@ static inline uint64_t CVMX_SMIX_EN(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return CVMX_ADD_IO_SEG(0x0001180000003820ull) + ((offset) & 3) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return CVMX_ADD_IO_SEG(0x0001180000003820ull) + ((offset) & 3) * 128;
@@ -265,6 +270,7 @@ static inline uint64_t CVMX_SMIX_EN(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180000003820ull) + (offset) * 128;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180000003820ull) + (offset) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180000003820ull) + (offset) * 128;
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
@@ -303,6 +309,7 @@ static inline uint64_t CVMX_SMIX_RD_DAT(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return CVMX_ADD_IO_SEG(0x0001180000003810ull) + ((offset) & 3) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return CVMX_ADD_IO_SEG(0x0001180000003810ull) + ((offset) & 3) * 128;
@@ -339,6 +346,7 @@ static inline uint64_t CVMX_SMIX_RD_DAT(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180000003810ull) + (offset) * 128;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180000003810ull) + (offset) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180000003810ull) + (offset) * 128;
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
@@ -377,6 +385,7 @@ static inline uint64_t CVMX_SMIX_WR_DAT(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return CVMX_ADD_IO_SEG(0x0001180000003808ull) + ((offset) & 3) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return CVMX_ADD_IO_SEG(0x0001180000003808ull) + ((offset) & 3) * 128;
@@ -413,6 +422,7 @@ static inline uint64_t CVMX_SMIX_WR_DAT(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180000003808ull) + (offset) * 128;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180000003808ull) + (offset) * 128;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180000003808ull) + (offset) * 128;
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:

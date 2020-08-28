@@ -113,6 +113,7 @@ static inline uint64_t CVMX_GPIO_BIT_CFGX(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001070000000900ull) + (offset) * 8;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001070000000900ull) + (offset) * 8;
+			/* fall through */
 
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:

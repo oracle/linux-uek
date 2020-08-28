@@ -1781,6 +1781,8 @@ enum cvmx_qlm_mode __cvmx_qlm_get_mode_cn73xx(int qlm)
 				qlm_mode[qlm] = CVMX_QLM_MODE_RXAUI_1X2;
 				bgx_cmr_rx_lmacs.s.lmacs = 4;
 			} else
+			}
+			/* fall through */
 		case 0x205:
 		case 0x233:
 		case 0x3302:

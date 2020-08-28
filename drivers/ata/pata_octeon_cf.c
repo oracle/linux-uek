@@ -809,6 +809,7 @@ static unsigned int octeon_cf_qc_issue(struct ata_queued_cmd *qc)
 	case ATAPI_PROT_DMA:
 		dev_err(ap->dev, "Error, ATAPI not supported\n");
 		WARN_ON(true);
+		/* fall through */
 
 	default:
 		return ata_sff_qc_issue(qc);

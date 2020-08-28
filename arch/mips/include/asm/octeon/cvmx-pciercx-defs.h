@@ -71,6 +71,7 @@ static inline uint64_t CVMX_PCIERCX_CFG000(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000000ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000000ull + ((offset) & 3) * 0x100000000ull;
@@ -102,6 +103,7 @@ static inline uint64_t CVMX_PCIERCX_CFG000(unsigned long offset)
 				return 0x0000020000000000ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000000ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000000ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -135,6 +137,7 @@ static inline uint64_t CVMX_PCIERCX_CFG001(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000004ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000004ull + ((offset) & 3) * 0x100000000ull;
@@ -166,6 +169,7 @@ static inline uint64_t CVMX_PCIERCX_CFG001(unsigned long offset)
 				return 0x0000020000000004ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000004ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000004ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -199,6 +203,7 @@ static inline uint64_t CVMX_PCIERCX_CFG002(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000008ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000008ull + ((offset) & 3) * 0x100000000ull;
@@ -230,6 +235,7 @@ static inline uint64_t CVMX_PCIERCX_CFG002(unsigned long offset)
 				return 0x0000020000000008ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000008ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000008ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -263,6 +269,7 @@ static inline uint64_t CVMX_PCIERCX_CFG003(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000000Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000000Cull + ((offset) & 3) * 0x100000000ull;
@@ -294,6 +301,7 @@ static inline uint64_t CVMX_PCIERCX_CFG003(unsigned long offset)
 				return 0x000002000000000Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000000Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000000Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -327,6 +335,7 @@ static inline uint64_t CVMX_PCIERCX_CFG004(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000010ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000010ull + ((offset) & 3) * 0x100000000ull;
@@ -358,6 +367,7 @@ static inline uint64_t CVMX_PCIERCX_CFG004(unsigned long offset)
 				return 0x0000020000000010ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000010ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000010ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -391,6 +401,7 @@ static inline uint64_t CVMX_PCIERCX_CFG005(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000014ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000014ull + ((offset) & 3) * 0x100000000ull;
@@ -422,6 +433,7 @@ static inline uint64_t CVMX_PCIERCX_CFG005(unsigned long offset)
 				return 0x0000020000000014ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000014ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000014ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -455,6 +467,7 @@ static inline uint64_t CVMX_PCIERCX_CFG006(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000018ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000018ull + ((offset) & 3) * 0x100000000ull;
@@ -486,6 +499,7 @@ static inline uint64_t CVMX_PCIERCX_CFG006(unsigned long offset)
 				return 0x0000020000000018ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000018ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000018ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -519,6 +533,7 @@ static inline uint64_t CVMX_PCIERCX_CFG007(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000001Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000001Cull + ((offset) & 3) * 0x100000000ull;
@@ -550,6 +565,7 @@ static inline uint64_t CVMX_PCIERCX_CFG007(unsigned long offset)
 				return 0x000002000000001Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000001Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000001Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -583,6 +599,7 @@ static inline uint64_t CVMX_PCIERCX_CFG008(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000020ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000020ull + ((offset) & 3) * 0x100000000ull;
@@ -614,6 +631,7 @@ static inline uint64_t CVMX_PCIERCX_CFG008(unsigned long offset)
 				return 0x0000020000000020ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000020ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000020ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -647,6 +665,7 @@ static inline uint64_t CVMX_PCIERCX_CFG009(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000024ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000024ull + ((offset) & 3) * 0x100000000ull;
@@ -678,6 +697,7 @@ static inline uint64_t CVMX_PCIERCX_CFG009(unsigned long offset)
 				return 0x0000020000000024ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000024ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000024ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -711,6 +731,7 @@ static inline uint64_t CVMX_PCIERCX_CFG010(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000028ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000028ull + ((offset) & 3) * 0x100000000ull;
@@ -742,6 +763,7 @@ static inline uint64_t CVMX_PCIERCX_CFG010(unsigned long offset)
 				return 0x0000020000000028ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000028ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000028ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -775,6 +797,7 @@ static inline uint64_t CVMX_PCIERCX_CFG011(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000002Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000002Cull + ((offset) & 3) * 0x100000000ull;
@@ -806,6 +829,7 @@ static inline uint64_t CVMX_PCIERCX_CFG011(unsigned long offset)
 				return 0x000002000000002Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000002Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000002Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -839,6 +863,7 @@ static inline uint64_t CVMX_PCIERCX_CFG012(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000030ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000030ull + ((offset) & 3) * 0x100000000ull;
@@ -870,6 +895,7 @@ static inline uint64_t CVMX_PCIERCX_CFG012(unsigned long offset)
 				return 0x0000020000000030ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000030ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000030ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -903,6 +929,7 @@ static inline uint64_t CVMX_PCIERCX_CFG013(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000034ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000034ull + ((offset) & 3) * 0x100000000ull;
@@ -934,6 +961,7 @@ static inline uint64_t CVMX_PCIERCX_CFG013(unsigned long offset)
 				return 0x0000020000000034ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000034ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000034ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -967,6 +995,7 @@ static inline uint64_t CVMX_PCIERCX_CFG014(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000038ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000038ull + ((offset) & 3) * 0x100000000ull;
@@ -998,6 +1027,7 @@ static inline uint64_t CVMX_PCIERCX_CFG014(unsigned long offset)
 				return 0x0000020000000038ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000038ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000038ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1031,6 +1061,7 @@ static inline uint64_t CVMX_PCIERCX_CFG015(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000003Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000003Cull + ((offset) & 3) * 0x100000000ull;
@@ -1062,6 +1093,7 @@ static inline uint64_t CVMX_PCIERCX_CFG015(unsigned long offset)
 				return 0x000002000000003Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000003Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000003Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1095,6 +1127,7 @@ static inline uint64_t CVMX_PCIERCX_CFG016(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000040ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000040ull + ((offset) & 3) * 0x100000000ull;
@@ -1126,6 +1159,7 @@ static inline uint64_t CVMX_PCIERCX_CFG016(unsigned long offset)
 				return 0x0000020000000040ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000040ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000040ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1159,6 +1193,7 @@ static inline uint64_t CVMX_PCIERCX_CFG017(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000044ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000044ull + ((offset) & 3) * 0x100000000ull;
@@ -1190,6 +1225,7 @@ static inline uint64_t CVMX_PCIERCX_CFG017(unsigned long offset)
 				return 0x0000020000000044ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000044ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000044ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1223,6 +1259,7 @@ static inline uint64_t CVMX_PCIERCX_CFG020(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000050ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000050ull + ((offset) & 3) * 0x100000000ull;
@@ -1254,6 +1291,7 @@ static inline uint64_t CVMX_PCIERCX_CFG020(unsigned long offset)
 				return 0x0000020000000050ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000050ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000050ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1287,6 +1325,7 @@ static inline uint64_t CVMX_PCIERCX_CFG021(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000054ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000054ull + ((offset) & 3) * 0x100000000ull;
@@ -1318,6 +1357,7 @@ static inline uint64_t CVMX_PCIERCX_CFG021(unsigned long offset)
 				return 0x0000020000000054ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000054ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000054ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1351,6 +1391,7 @@ static inline uint64_t CVMX_PCIERCX_CFG022(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000058ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000058ull + ((offset) & 3) * 0x100000000ull;
@@ -1382,6 +1423,7 @@ static inline uint64_t CVMX_PCIERCX_CFG022(unsigned long offset)
 				return 0x0000020000000058ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000058ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000058ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1415,6 +1457,7 @@ static inline uint64_t CVMX_PCIERCX_CFG023(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000005Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000005Cull + ((offset) & 3) * 0x100000000ull;
@@ -1446,6 +1489,7 @@ static inline uint64_t CVMX_PCIERCX_CFG023(unsigned long offset)
 				return 0x000002000000005Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000005Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000005Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1479,6 +1523,7 @@ static inline uint64_t CVMX_PCIERCX_CFG028(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000070ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000070ull + ((offset) & 3) * 0x100000000ull;
@@ -1510,6 +1555,7 @@ static inline uint64_t CVMX_PCIERCX_CFG028(unsigned long offset)
 				return 0x0000020000000070ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000070ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000070ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1543,6 +1589,7 @@ static inline uint64_t CVMX_PCIERCX_CFG029(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000074ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000074ull + ((offset) & 3) * 0x100000000ull;
@@ -1574,6 +1621,7 @@ static inline uint64_t CVMX_PCIERCX_CFG029(unsigned long offset)
 				return 0x0000020000000074ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000074ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000074ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1607,6 +1655,7 @@ static inline uint64_t CVMX_PCIERCX_CFG030(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000078ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000078ull + ((offset) & 3) * 0x100000000ull;
@@ -1638,6 +1687,7 @@ static inline uint64_t CVMX_PCIERCX_CFG030(unsigned long offset)
 				return 0x0000020000000078ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000078ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000078ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1671,6 +1721,7 @@ static inline uint64_t CVMX_PCIERCX_CFG031(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000007Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000007Cull + ((offset) & 3) * 0x100000000ull;
@@ -1702,6 +1753,7 @@ static inline uint64_t CVMX_PCIERCX_CFG031(unsigned long offset)
 				return 0x000002000000007Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000007Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000007Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1735,6 +1787,7 @@ static inline uint64_t CVMX_PCIERCX_CFG032(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000080ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000080ull + ((offset) & 3) * 0x100000000ull;
@@ -1766,6 +1819,7 @@ static inline uint64_t CVMX_PCIERCX_CFG032(unsigned long offset)
 				return 0x0000020000000080ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000080ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000080ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1799,6 +1853,7 @@ static inline uint64_t CVMX_PCIERCX_CFG033(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000084ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000084ull + ((offset) & 3) * 0x100000000ull;
@@ -1830,6 +1885,7 @@ static inline uint64_t CVMX_PCIERCX_CFG033(unsigned long offset)
 				return 0x0000020000000084ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000084ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000084ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1863,6 +1919,7 @@ static inline uint64_t CVMX_PCIERCX_CFG034(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000088ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000088ull + ((offset) & 3) * 0x100000000ull;
@@ -1894,6 +1951,7 @@ static inline uint64_t CVMX_PCIERCX_CFG034(unsigned long offset)
 				return 0x0000020000000088ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000088ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000088ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1927,6 +1985,7 @@ static inline uint64_t CVMX_PCIERCX_CFG035(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000008Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000008Cull + ((offset) & 3) * 0x100000000ull;
@@ -1958,6 +2017,7 @@ static inline uint64_t CVMX_PCIERCX_CFG035(unsigned long offset)
 				return 0x000002000000008Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000008Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000008Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -1991,6 +2051,7 @@ static inline uint64_t CVMX_PCIERCX_CFG036(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000090ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000090ull + ((offset) & 3) * 0x100000000ull;
@@ -2022,6 +2083,7 @@ static inline uint64_t CVMX_PCIERCX_CFG036(unsigned long offset)
 				return 0x0000020000000090ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000090ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000090ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2055,6 +2117,7 @@ static inline uint64_t CVMX_PCIERCX_CFG037(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000094ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000094ull + ((offset) & 3) * 0x100000000ull;
@@ -2086,6 +2149,7 @@ static inline uint64_t CVMX_PCIERCX_CFG037(unsigned long offset)
 				return 0x0000020000000094ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000094ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000094ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2119,6 +2183,7 @@ static inline uint64_t CVMX_PCIERCX_CFG038(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000098ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000098ull + ((offset) & 3) * 0x100000000ull;
@@ -2150,6 +2215,7 @@ static inline uint64_t CVMX_PCIERCX_CFG038(unsigned long offset)
 				return 0x0000020000000098ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000098ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000098ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2183,6 +2249,7 @@ static inline uint64_t CVMX_PCIERCX_CFG039(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000009Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000009Cull + ((offset) & 3) * 0x100000000ull;
@@ -2214,6 +2281,7 @@ static inline uint64_t CVMX_PCIERCX_CFG039(unsigned long offset)
 				return 0x000002000000009Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000009Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000009Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2247,6 +2315,7 @@ static inline uint64_t CVMX_PCIERCX_CFG040(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x00000200000000A0ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x00000200000000A0ull + ((offset) & 3) * 0x100000000ull;
@@ -2278,6 +2347,7 @@ static inline uint64_t CVMX_PCIERCX_CFG040(unsigned long offset)
 				return 0x00000200000000A0ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x00000200000000A0ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x00000200000000A0ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2311,6 +2381,7 @@ static inline uint64_t CVMX_PCIERCX_CFG041(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x00000200000000A4ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x00000200000000A4ull + ((offset) & 3) * 0x100000000ull;
@@ -2342,6 +2413,7 @@ static inline uint64_t CVMX_PCIERCX_CFG041(unsigned long offset)
 				return 0x00000200000000A4ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x00000200000000A4ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x00000200000000A4ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2375,6 +2447,7 @@ static inline uint64_t CVMX_PCIERCX_CFG042(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x00000200000000A8ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x00000200000000A8ull + ((offset) & 3) * 0x100000000ull;
@@ -2406,6 +2479,7 @@ static inline uint64_t CVMX_PCIERCX_CFG042(unsigned long offset)
 				return 0x00000200000000A8ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x00000200000000A8ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x00000200000000A8ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2481,6 +2555,7 @@ static inline uint64_t CVMX_PCIERCX_CFG064(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000100ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000100ull + ((offset) & 3) * 0x100000000ull;
@@ -2512,6 +2587,7 @@ static inline uint64_t CVMX_PCIERCX_CFG064(unsigned long offset)
 				return 0x0000020000000100ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000100ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000100ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2545,6 +2621,7 @@ static inline uint64_t CVMX_PCIERCX_CFG065(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000104ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000104ull + ((offset) & 3) * 0x100000000ull;
@@ -2576,6 +2653,7 @@ static inline uint64_t CVMX_PCIERCX_CFG065(unsigned long offset)
 				return 0x0000020000000104ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000104ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000104ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2609,6 +2687,7 @@ static inline uint64_t CVMX_PCIERCX_CFG066(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000108ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000108ull + ((offset) & 3) * 0x100000000ull;
@@ -2640,6 +2719,7 @@ static inline uint64_t CVMX_PCIERCX_CFG066(unsigned long offset)
 				return 0x0000020000000108ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000108ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000108ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2673,6 +2753,7 @@ static inline uint64_t CVMX_PCIERCX_CFG067(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000010Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000010Cull + ((offset) & 3) * 0x100000000ull;
@@ -2704,6 +2785,7 @@ static inline uint64_t CVMX_PCIERCX_CFG067(unsigned long offset)
 				return 0x000002000000010Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000010Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000010Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2737,6 +2819,7 @@ static inline uint64_t CVMX_PCIERCX_CFG068(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000110ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000110ull + ((offset) & 3) * 0x100000000ull;
@@ -2768,6 +2851,7 @@ static inline uint64_t CVMX_PCIERCX_CFG068(unsigned long offset)
 				return 0x0000020000000110ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000110ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000110ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2801,6 +2885,7 @@ static inline uint64_t CVMX_PCIERCX_CFG069(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000114ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000114ull + ((offset) & 3) * 0x100000000ull;
@@ -2832,6 +2917,7 @@ static inline uint64_t CVMX_PCIERCX_CFG069(unsigned long offset)
 				return 0x0000020000000114ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000114ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000114ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2865,6 +2951,7 @@ static inline uint64_t CVMX_PCIERCX_CFG070(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000118ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000118ull + ((offset) & 3) * 0x100000000ull;
@@ -2896,6 +2983,7 @@ static inline uint64_t CVMX_PCIERCX_CFG070(unsigned long offset)
 				return 0x0000020000000118ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000118ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000118ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2929,6 +3017,7 @@ static inline uint64_t CVMX_PCIERCX_CFG071(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000011Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000011Cull + ((offset) & 3) * 0x100000000ull;
@@ -2960,6 +3049,7 @@ static inline uint64_t CVMX_PCIERCX_CFG071(unsigned long offset)
 				return 0x000002000000011Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000011Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000011Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -2993,6 +3083,7 @@ static inline uint64_t CVMX_PCIERCX_CFG072(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000120ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000120ull + ((offset) & 3) * 0x100000000ull;
@@ -3024,6 +3115,7 @@ static inline uint64_t CVMX_PCIERCX_CFG072(unsigned long offset)
 				return 0x0000020000000120ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000120ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000120ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3057,6 +3149,7 @@ static inline uint64_t CVMX_PCIERCX_CFG073(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000124ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000124ull + ((offset) & 3) * 0x100000000ull;
@@ -3088,6 +3181,7 @@ static inline uint64_t CVMX_PCIERCX_CFG073(unsigned long offset)
 				return 0x0000020000000124ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000124ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000124ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3121,6 +3215,7 @@ static inline uint64_t CVMX_PCIERCX_CFG074(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000128ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000128ull + ((offset) & 3) * 0x100000000ull;
@@ -3152,6 +3247,7 @@ static inline uint64_t CVMX_PCIERCX_CFG074(unsigned long offset)
 				return 0x0000020000000128ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000128ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000128ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3185,6 +3281,7 @@ static inline uint64_t CVMX_PCIERCX_CFG075(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000012Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000012Cull + ((offset) & 3) * 0x100000000ull;
@@ -3216,6 +3313,7 @@ static inline uint64_t CVMX_PCIERCX_CFG075(unsigned long offset)
 				return 0x000002000000012Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000012Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000012Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3249,6 +3347,7 @@ static inline uint64_t CVMX_PCIERCX_CFG076(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000130ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000130ull + ((offset) & 3) * 0x100000000ull;
@@ -3280,6 +3379,7 @@ static inline uint64_t CVMX_PCIERCX_CFG076(unsigned long offset)
 				return 0x0000020000000130ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000130ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000130ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3313,6 +3413,7 @@ static inline uint64_t CVMX_PCIERCX_CFG077(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000134ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000134ull + ((offset) & 3) * 0x100000000ull;
@@ -3344,6 +3445,7 @@ static inline uint64_t CVMX_PCIERCX_CFG077(unsigned long offset)
 				return 0x0000020000000134ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000134ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000134ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3475,6 +3577,7 @@ static inline uint64_t CVMX_PCIERCX_CFG448(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000700ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000700ull + ((offset) & 3) * 0x100000000ull;
@@ -3506,6 +3609,7 @@ static inline uint64_t CVMX_PCIERCX_CFG448(unsigned long offset)
 				return 0x0000020000000700ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000700ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000700ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3539,6 +3643,7 @@ static inline uint64_t CVMX_PCIERCX_CFG449(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000704ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000704ull + ((offset) & 3) * 0x100000000ull;
@@ -3570,6 +3675,7 @@ static inline uint64_t CVMX_PCIERCX_CFG449(unsigned long offset)
 				return 0x0000020000000704ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000704ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000704ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3603,6 +3709,7 @@ static inline uint64_t CVMX_PCIERCX_CFG450(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000708ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000708ull + ((offset) & 3) * 0x100000000ull;
@@ -3634,6 +3741,7 @@ static inline uint64_t CVMX_PCIERCX_CFG450(unsigned long offset)
 				return 0x0000020000000708ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000708ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000708ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3667,6 +3775,7 @@ static inline uint64_t CVMX_PCIERCX_CFG451(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000070Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000070Cull + ((offset) & 3) * 0x100000000ull;
@@ -3698,6 +3807,7 @@ static inline uint64_t CVMX_PCIERCX_CFG451(unsigned long offset)
 				return 0x000002000000070Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000070Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000070Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3731,6 +3841,7 @@ static inline uint64_t CVMX_PCIERCX_CFG452(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000710ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000710ull + ((offset) & 3) * 0x100000000ull;
@@ -3762,6 +3873,7 @@ static inline uint64_t CVMX_PCIERCX_CFG452(unsigned long offset)
 				return 0x0000020000000710ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000710ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000710ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3795,6 +3907,7 @@ static inline uint64_t CVMX_PCIERCX_CFG453(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000714ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000714ull + ((offset) & 3) * 0x100000000ull;
@@ -3826,6 +3939,7 @@ static inline uint64_t CVMX_PCIERCX_CFG453(unsigned long offset)
 				return 0x0000020000000714ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000714ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000714ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3859,6 +3973,7 @@ static inline uint64_t CVMX_PCIERCX_CFG454(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000718ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000718ull + ((offset) & 3) * 0x100000000ull;
@@ -3890,6 +4005,7 @@ static inline uint64_t CVMX_PCIERCX_CFG454(unsigned long offset)
 				return 0x0000020000000718ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000718ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000718ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3923,6 +4039,7 @@ static inline uint64_t CVMX_PCIERCX_CFG455(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000071Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000071Cull + ((offset) & 3) * 0x100000000ull;
@@ -3954,6 +4071,7 @@ static inline uint64_t CVMX_PCIERCX_CFG455(unsigned long offset)
 				return 0x000002000000071Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000071Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000071Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -3987,6 +4105,7 @@ static inline uint64_t CVMX_PCIERCX_CFG456(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000720ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000720ull + ((offset) & 3) * 0x100000000ull;
@@ -4018,6 +4137,7 @@ static inline uint64_t CVMX_PCIERCX_CFG456(unsigned long offset)
 				return 0x0000020000000720ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000720ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000720ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4051,6 +4171,7 @@ static inline uint64_t CVMX_PCIERCX_CFG458(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000728ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000728ull + ((offset) & 3) * 0x100000000ull;
@@ -4082,6 +4203,7 @@ static inline uint64_t CVMX_PCIERCX_CFG458(unsigned long offset)
 				return 0x0000020000000728ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000728ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000728ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4115,6 +4237,7 @@ static inline uint64_t CVMX_PCIERCX_CFG459(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000072Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000072Cull + ((offset) & 3) * 0x100000000ull;
@@ -4146,6 +4269,7 @@ static inline uint64_t CVMX_PCIERCX_CFG459(unsigned long offset)
 				return 0x000002000000072Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000072Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000072Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4179,6 +4303,7 @@ static inline uint64_t CVMX_PCIERCX_CFG460(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000730ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000730ull + ((offset) & 3) * 0x100000000ull;
@@ -4210,6 +4335,7 @@ static inline uint64_t CVMX_PCIERCX_CFG460(unsigned long offset)
 				return 0x0000020000000730ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000730ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000730ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4243,6 +4369,7 @@ static inline uint64_t CVMX_PCIERCX_CFG461(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000734ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000734ull + ((offset) & 3) * 0x100000000ull;
@@ -4274,6 +4401,7 @@ static inline uint64_t CVMX_PCIERCX_CFG461(unsigned long offset)
 				return 0x0000020000000734ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000734ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000734ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4307,6 +4435,7 @@ static inline uint64_t CVMX_PCIERCX_CFG462(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000738ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000738ull + ((offset) & 3) * 0x100000000ull;
@@ -4338,6 +4467,7 @@ static inline uint64_t CVMX_PCIERCX_CFG462(unsigned long offset)
 				return 0x0000020000000738ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000738ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000738ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4371,6 +4501,7 @@ static inline uint64_t CVMX_PCIERCX_CFG463(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000073Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000073Cull + ((offset) & 3) * 0x100000000ull;
@@ -4402,6 +4533,7 @@ static inline uint64_t CVMX_PCIERCX_CFG463(unsigned long offset)
 				return 0x000002000000073Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000073Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000073Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4435,6 +4567,7 @@ static inline uint64_t CVMX_PCIERCX_CFG464(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000740ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000740ull + ((offset) & 3) * 0x100000000ull;
@@ -4466,6 +4599,7 @@ static inline uint64_t CVMX_PCIERCX_CFG464(unsigned long offset)
 				return 0x0000020000000740ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000740ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000740ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4499,6 +4633,7 @@ static inline uint64_t CVMX_PCIERCX_CFG465(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000744ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000744ull + ((offset) & 3) * 0x100000000ull;
@@ -4530,6 +4665,7 @@ static inline uint64_t CVMX_PCIERCX_CFG465(unsigned long offset)
 				return 0x0000020000000744ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000744ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000744ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4563,6 +4699,7 @@ static inline uint64_t CVMX_PCIERCX_CFG466(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000748ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000748ull + ((offset) & 3) * 0x100000000ull;
@@ -4594,6 +4731,7 @@ static inline uint64_t CVMX_PCIERCX_CFG466(unsigned long offset)
 				return 0x0000020000000748ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000748ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000748ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4627,6 +4765,7 @@ static inline uint64_t CVMX_PCIERCX_CFG467(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000074Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000074Cull + ((offset) & 3) * 0x100000000ull;
@@ -4658,6 +4797,7 @@ static inline uint64_t CVMX_PCIERCX_CFG467(unsigned long offset)
 				return 0x000002000000074Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000074Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000074Cull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4691,6 +4831,7 @@ static inline uint64_t CVMX_PCIERCX_CFG468(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000750ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000750ull + ((offset) & 3) * 0x100000000ull;
@@ -4722,6 +4863,7 @@ static inline uint64_t CVMX_PCIERCX_CFG468(unsigned long offset)
 				return 0x0000020000000750ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000750ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000750ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4875,6 +5017,7 @@ static inline uint64_t CVMX_PCIERCX_CFG515(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x000002000000080Cull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x000002000000080Cull + ((offset) & 3) * 0x100000000ull;
@@ -4904,6 +5047,7 @@ static inline uint64_t CVMX_PCIERCX_CFG515(unsigned long offset)
 				return 0x000002000000080Cull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x000002000000080Cull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x000002000000080Cull + (offset) * 0x100000000ull;
 		case OCTEON_CN66XX & OCTEON_FAMILY_MASK:
@@ -4935,6 +5079,7 @@ static inline uint64_t CVMX_PCIERCX_CFG516(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000810ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000810ull + ((offset) & 3) * 0x100000000ull;
@@ -4966,6 +5111,7 @@ static inline uint64_t CVMX_PCIERCX_CFG516(unsigned long offset)
 				return 0x0000020000000810ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000810ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000810ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:
@@ -4999,6 +5145,7 @@ static inline uint64_t CVMX_PCIERCX_CFG517(unsigned long offset)
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 3))
 					return 0x0000020000000814ull + ((offset) & 3) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			if ((offset <= 3))
 				return 0x0000020000000814ull + ((offset) & 3) * 0x100000000ull;
@@ -5030,6 +5177,7 @@ static inline uint64_t CVMX_PCIERCX_CFG517(unsigned long offset)
 				return 0x0000020000000814ull + (offset) * 0x100000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return 0x0000020000000814ull + (offset) * 0x100000000ull;
+			/* fall through */
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return 0x0000020000000814ull + (offset) * 0x100000000ull;
 		case OCTEON_CNF71XX & OCTEON_FAMILY_MASK:

@@ -93,6 +93,7 @@ static inline uint64_t CVMX_OSM_BANKX_CTRL(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x00011800DC001000ull) + (offset) * 8;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x00011800DC001000ull) + (offset) * 8;
+			/* fall through */
 
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001DC0000001000ull) + (offset) * 8;
@@ -321,6 +322,7 @@ static inline uint64_t CVMX_OSM_MEMX_BIST_STATUS(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x00011800DC002000ull) + (offset) * 8;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x00011800DC002000ull) + (offset) * 8;
+			/* fall through */
 
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001DC0000002000ull) + (offset) * 8;

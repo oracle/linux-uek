@@ -892,6 +892,7 @@ int cvmx_helper_set_autonegotiation(int xiface, int index, bool enable)
 	switch (mode) {
 	case CVMX_HELPER_INTERFACE_MODE_RGMII:
 		enable = false;
+		/* fall through */
 	case CVMX_HELPER_INTERFACE_MODE_SGMII:
 		gmp_control.u64 =
 			cvmx_read_csr_node(node,
