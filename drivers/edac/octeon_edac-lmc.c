@@ -298,7 +298,7 @@ static ssize_t octeon_lmc_inject_ecc_write(struct file *file,
 	struct octeon_lmc *lmc = file->private_data;
 
 	unsigned int cline_size = cache_line_size();
-	u8 tmp[cline_size];
+	u8 *tmp;
 	void __iomem *addr;
 	unsigned int offs, timeout = 100000;
 
@@ -311,6 +311,7 @@ static ssize_t octeon_lmc_inject_ecc_write(struct file *file,
 
 	addr = page_address(lmc->mem);
 
+	tmp = kmalloc(cline_size * sizeof(u8), GFP_KERNEL);
 	while (!atomic_read(&lmc->ecc_int) && timeout--) {
 		stop_machine(*inject_lmc_ecc_fn, lmc, NULL);
 
@@ -324,6 +325,7 @@ static ssize_t octeon_lmc_inject_ecc_write(struct file *file,
 	}
 
 	__free_pages(lmc->mem, 0);
+	kfree(tmp);
 
 	return count;
 }
