@@ -12,10 +12,10 @@ This repository hosts source code for UEK versions which are in development and 
 
 | UEK Release and Tag | Linux Kernel version | Release Status | Target Arch | Target Userspace Distribution(s) |
 |--------------------|-----------------------------|----------------------|-----------------|--------------------------------------------|
-| [`uek6/master`](https://github.com/oracle/linux-uek/tree/uek6/master)<br/>[`v5.4.17-2033.1`](https://github.com/oracle/linux-uek/tree/v5.4.17-2033.1) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
-| [`uek6/ga`](https://github.com/oracle/linux-uek/tree/uek6/ga)<br/>[`v5.4.17-2011.6.0`](https://github.com/oracle/linux-uek/tree/v5.4.17-2011.6.0) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
-| [`uek5/master`](https://github.com/oracle/linux-uek/tree/uek5/master)<br/>[`v4.14.35-2025.400.7`](https://github.com/oracle/linux-uek/tree/v4.14.35-2025.400.7) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
-| [`uek5/u3`](https://github.com/oracle/linux-uek/tree/uek5/u3)<br/>[`v4.14.35-1902.306.0`](https://github.com/oracle/linux-uek/tree/v4.14.35-1902.306.0) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
+| [`uek6/master`](https://github.com/oracle/linux-uek/tree/uek6/master)<br/>[`v5.4.17-2035`](https://github.com/oracle/linux-uek/tree/v5.4.17-2035) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
+| [`uek6/ga`](https://github.com/oracle/linux-uek/tree/uek6/ga)<br/>[`v5.4.17-2011.6.1`](https://github.com/oracle/linux-uek/tree/v5.4.17-2011.6.1) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
+| [`uek5/master`](https://github.com/oracle/linux-uek/tree/uek5/master)<br/>[`v4.14.35-2034`](https://github.com/oracle/linux-uek/tree/v4.14.35-2034) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
+| [`uek5/u3`](https://github.com/oracle/linux-uek/tree/uek5/u3)<br/>[`v4.14.35-1902.306.1`](https://github.com/oracle/linux-uek/tree/v4.14.35-1902.306.1) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
 | [`uek5/u2`](https://github.com/oracle/linux-uek/tree/uek5/u2)<br/>[`v4.14.35-1902.12.0`](https://github.com/oracle/linux-uek/tree/v4.14.35-1902.12.0) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
 | [`uek4/qu7`](https://github.com/oracle/linux-uek/tree/uek4/qu7)<br/>[`v4.1.12-124.42.2`](https://github.com/oracle/linux-uek/tree/v4.1.12-124.42.2) | v4.1 | Production | `x86_64`, `SPARC` | Oracle Linux 6, Oracle Linux 7 |
 | [`uek3/master`](https://github.com/oracle/linux-uek/tree/uek3/master)<br/>[`v3.8.13-118.47.2`](https://github.com/oracle/linux-uek/tree/v3.8.13-118.47.2) | v3.8 | Production | `x86_64` | Oracle Linux 6, Oracle Linux 7 |
