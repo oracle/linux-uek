@@ -90,36 +90,6 @@ static const unsigned int otx2_n_dev_stats = ARRAY_SIZE(otx2_dev_stats);
 static const unsigned int otx2_n_drv_stats = ARRAY_SIZE(otx2_drv_stats);
 static const unsigned int otx2_n_queue_stats = ARRAY_SIZE(otx2_queue_stats);
 
-int __weak otx2vf_open(struct net_device *netdev)
-{
-	return 0;
-}
-
-int __weak otx2vf_stop(struct net_device *netdev)
-{
-	return 0;
-}
-
-static void otx2_dev_open(struct net_device *netdev)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-
-	if (pfvf->pcifunc & RVU_PFVF_FUNC_MASK)
-		otx2vf_open(netdev);
-	else
-		otx2_open(netdev);
-}
-
-static void otx2_dev_stop(struct net_device *netdev)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-
-	if (pfvf->pcifunc & RVU_PFVF_FUNC_MASK)
-		otx2vf_stop(netdev);
-	else
-		otx2_stop(netdev);
-}
-
 static void otx2_get_drvinfo(struct net_device *netdev,
 			     struct ethtool_drvinfo *info)
 {
@@ -356,7 +326,7 @@ static int otx2_set_channels(struct net_device *dev,
 		return -EINVAL;
 
 	if (if_up)
-		otx2_dev_stop(dev);
+		dev->netdev_ops->ndo_stop(dev);
 
 	err = otx2_set_real_num_queues(dev, channel->tx_count,
 				       channel->rx_count);
@@ -372,7 +342,7 @@ static int otx2_set_channels(struct net_device *dev,
 
 fail:
 	if (if_up)
-		otx2_dev_open(dev);
+		dev->netdev_ops->ndo_open(dev);
 
 	netdev_info(dev, "Setting num Tx rings to %d, Rx rings to %d success\n",
 		    pfvf->hw.tx_queues, pfvf->hw.rx_queues);
@@ -459,7 +429,7 @@ static int otx2_set_ringparam(struct net_device *netdev,
 	rx_count = Q_COUNT(Q_SIZE(rx_count, 3));
 
 	/* Due pipelining impact minimum 2000 unused SQ CQE's
-	 * need to maintain to avoid CQ overflow, hence the
+	 * need to be maintained to avoid CQ overflow, hence the
 	 * minimum 4K size.
 	 */
 	tx_count = clamp_t(u32, ring->tx_pending,
@@ -470,14 +440,15 @@ static int otx2_set_ringparam(struct net_device *netdev,
 		return 0;
 
 	if (if_up)
-		otx2_dev_stop(netdev);
+		netdev->netdev_ops->ndo_stop(netdev);
 
 	/* Assigned to the nearest possible exponent. */
 	qs->sqe_cnt = tx_count;
 	qs->rqe_cnt = rx_count;
 
 	if (if_up)
-		otx2_dev_open(netdev);
+		netdev->netdev_ops->ndo_open(netdev);
+
 	return 0;
 }
 
@@ -924,7 +895,9 @@ static int otx2vf_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *nfc)
 static u32 otx2_get_rxfh_key_size(struct net_device *netdev)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
+	struct otx2_rss_info *rss;
+
+	rss = &pfvf->hw.rss_info;
 
 	return sizeof(rss->key);
 }
@@ -936,13 +909,15 @@ static u32 otx2_get_rxfh_indir_size(struct net_device *dev)
 	return sizeof(pfvf->hw.rss_info.ind_tbl);
 }
 
-/* Get RSS configuration*/
+/* Get RSS configuration */
 static int otx2_get_rxfh(struct net_device *dev, u32 *indir,
 			 u8 *hkey, u8 *hfunc)
 {
 	struct otx2_nic *pfvf = netdev_priv(dev);
-	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
+	struct otx2_rss_info *rss;
 	int idx;
+
+	rss = &pfvf->hw.rss_info;
 
 	if (indir) {
 		for (idx = 0; idx < rss->rss_size; idx++)
@@ -1639,7 +1614,15 @@ static void otx2vf_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 		data += ETH_GSTRING_LEN;
 	}
 
+	for (stats = 0; stats < otx2_n_drv_stats; stats++) {
+		memcpy(data, otx2_drv_stats[stats].name, ETH_GSTRING_LEN);
+		data += ETH_GSTRING_LEN;
+	}
+
 	otx2_get_qset_strings(vf, &data, 0);
+
+	strcpy(data, "reset_count");
+	data += ETH_GSTRING_LEN;
 }
 
 static void otx2vf_get_ethtool_stats(struct net_device *netdev,
@@ -1649,13 +1632,16 @@ static void otx2vf_get_ethtool_stats(struct net_device *netdev,
 	int stat;
 
 	otx2_get_dev_stats(vf);
+	for (stat = 0; stat < otx2_n_dev_stats; stat++)
+		*(data++) = ((u64 *)&vf->hw.dev_stats)
+				[otx2_dev_stats[stat].index];
 
-	for (stat = 0; stat < otx2_n_dev_stats; stat++) {
-		*data = ((u64 *)&vf->hw.dev_stats)[otx2_dev_stats[stat].index];
-		data++;
-	}
+	for (stat = 0; stat < otx2_n_drv_stats; stat++)
+		*(data++) = atomic_read(&((atomic_t *)&vf->hw.drv_stats)
+						[otx2_drv_stats[stat].index]);
 
 	otx2_get_qset_stats(vf, stats, &data);
+	*(data++) = vf->reset_count;
 }
 
 static int otx2vf_get_sset_count(struct net_device *netdev, int sset)
@@ -1701,6 +1687,8 @@ static const struct ethtool_ops otx2vf_ethtool_ops = {
 	.set_ringparam		= otx2_set_ringparam,
 	.get_coalesce		= otx2_get_coalesce,
 	.set_coalesce		= otx2_set_coalesce,
+	.get_msglevel		= otx2_get_msglevel,
+	.set_msglevel		= otx2_set_msglevel,
 	.get_pauseparam		= otx2_get_pauseparam,
 	.set_pauseparam		= otx2_set_pauseparam,
 	.get_link_ksettings     = otx2vf_get_link_ksettings,
