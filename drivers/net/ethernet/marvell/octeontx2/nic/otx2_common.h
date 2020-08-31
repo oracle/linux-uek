@@ -25,6 +25,8 @@
 #define PCI_DEVID_OCTEONTX2_RVU_VF		0xA064
 #define PCI_DEVID_OCTEONTX2_RVU_AFVF		0xA0F8
 
+#define PCI_SUBSYS_DEVID_96XX_RVU_PFVF		0xB200
+
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM                     2
 #define PCI_MBOX_BAR_NUM                        4
@@ -110,7 +112,7 @@ enum nix_stat_lf_rx {
 	RX_STATS_ENUM_LAST,
 };
 
-struct  otx2_dev_stats {
+struct otx2_dev_stats {
 	u64 rx_bytes;
 	u64 rx_frames;
 	u64 rx_ucast_frames;
@@ -136,7 +138,7 @@ struct otx2_drv_stats {
 	atomic_t rx_other_errs;
 };
 
-struct  mbox {
+struct mbox {
 	struct otx2_mbox	mbox;
 	struct work_struct	mbox_wrk;
 	struct otx2_mbox	mbox_up;
@@ -144,8 +146,8 @@ struct  mbox {
 	struct otx2_nic		*pfvf;
 	void			*bbuf_base; /* Bounce buffer for mbox memory */
 	struct mutex		lock;	/* serialize mailbox access */
-	int			num_msgs; /*mbox number of messages*/
-	int			up_num_msgs;/* mbox_up number of messages*/
+	int			num_msgs; /* mbox number of messages */
+	int			up_num_msgs; /* mbox_up number of messages */
 };
 
 struct otx2_hw {
@@ -183,7 +185,7 @@ struct otx2_hw {
 	u8			lso_udpv6_idx;
 	u8			hw_tso;
 
-	/* MSI-X*/
+	/* MSI-X */
 	u8			cint_cnt; /* CQ interrupt count */
 	u16			npa_msixoff; /* Offset of NPA vectors */
 	u16			nix_msixoff; /* Offset of NIX vectors */
@@ -309,8 +311,8 @@ struct otx2_nic {
 	struct workqueue_struct	*flr_wq;
 	struct flr_work		*flr_wrk;
 	struct refill_work	*refill_wrk;
-	struct work_struct	otx2_rx_mode_work;
-	struct workqueue_struct	*otx2_ndo_wq;
+	struct workqueue_struct	*otx2_wq;
+	struct work_struct	rx_mode_work;
 
 	/* Ethtool stuff */
 	u32			msg_enable;
@@ -356,6 +358,12 @@ static inline bool is_96xx_A0(struct pci_dev *pdev)
 	return (pdev->revision == 0x00);
 }
 
+static inline bool is_96xx_B0(struct pci_dev *pdev)
+{
+	return (pdev->revision == 0x01) &&
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX_RVU_PFVF);
+}
+
 static inline bool is_95xx_A0(struct pci_dev *pdev)
 {
 	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
@@ -390,6 +398,7 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 	}
 }
 
+/* Register read/write APIs */
 static inline void __iomem *otx2_get_regaddr(struct otx2_nic *nic, u64 offset)
 {
 	u64 blkaddr;
@@ -404,7 +413,7 @@ static inline void __iomem *otx2_get_regaddr(struct otx2_nic *nic, u64 offset)
 	default:
 		blkaddr = BLKADDR_RVUM;
 		break;
-	};
+	}
 
 	offset &= ~(RVU_FUNC_BLKADDR_MASK << RVU_FUNC_BLKADDR_SHIFT);
 	offset |= (blkaddr << RVU_FUNC_BLKADDR_SHIFT);
@@ -412,7 +421,6 @@ static inline void __iomem *otx2_get_regaddr(struct otx2_nic *nic, u64 offset)
 	return nic->reg_base + offset;
 }
 
-/* Register read/write APIs */
 static inline void otx2_write64(struct otx2_nic *nic, u64 offset, u64 val)
 {
 	void __iomem *addr = otx2_get_regaddr(nic, offset);
@@ -430,8 +438,8 @@ static inline u64 otx2_read64(struct otx2_nic *nic, u64 offset)
 /* Mbox bounce buffer APIs */
 static inline int otx2_mbox_bbuf_init(struct mbox *mbox, struct pci_dev *pdev)
 {
-	struct otx2_mbox_dev *mdev;
 	struct otx2_mbox *otx2_mbox;
+	struct otx2_mbox_dev *mdev;
 
 	mbox->bbuf_base = devm_kmalloc(&pdev->dev, MBOX_SIZE, GFP_KERNEL);
 	if (!mbox->bbuf_base)
@@ -526,10 +534,11 @@ static inline u64 otx2_lmt_flush(uint64_t addr)
 			 : [rs]"r"(addr));
 	return result;
 }
+
 #else
 #define otx2_write128(lo, hi, addr)
+#define otx2_atomic64_add(incr, ptr)		({ *(ptr) += incr; })
 #define otx2_read128(addr)			({ 0; })
-#define otx2_atomic64_add(incr, ptr)		({ 0; })
 #define otx2_lmt_flush(addr)			({ 0; })
 #endif
 
@@ -647,7 +656,7 @@ MBOX_UP_CGX_MESSAGES
 #undef M
 
 /* Time to wait before watchdog kicks off */
-#define OTX2_TX_TIMEOUT		(60 * HZ)
+#define OTX2_TX_TIMEOUT		(100 * HZ)
 
 #define	RVU_PFVF_PF_SHIFT	10
 #define	RVU_PFVF_PF_MASK	0x3F
@@ -691,8 +700,6 @@ static inline void otx2_dma_unmap_page(struct otx2_nic *pfvf,
 /* MSI-X APIs */
 void otx2_free_cints(struct otx2_nic *pfvf, int n);
 void otx2_set_cints_affinity(struct otx2_nic *pfvf);
-
-int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, u8 *mac);
 int otx2_set_mac_address(struct net_device *netdev, void *p);
 int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
 void otx2_tx_timeout(struct net_device *netdev);
@@ -760,8 +767,6 @@ void otx2vf_set_ethtool_ops(struct net_device *netdev);
 
 int otx2_open(struct net_device *netdev);
 int otx2_stop(struct net_device *netdev);
-int otx2vf_open(struct net_device *netdev);
-int otx2vf_stop(struct net_device *netdev);
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues);
 int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind);

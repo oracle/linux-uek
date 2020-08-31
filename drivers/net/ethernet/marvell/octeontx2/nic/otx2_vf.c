@@ -31,30 +31,10 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_vf_id_table);
 
-/**
- * RVU VF Interrupt Vector Enumeration
- */
+/* RVU VF Interrupt Vector Enumeration */
 enum {
 	RVU_VF_INT_VEC_MBOX = 0x0,
 };
-
-static int otx2vf_change_mtu(struct net_device *netdev, int new_mtu)
-{
-	bool if_up = netif_running(netdev);
-	int err = 0;
-
-	if (if_up)
-		otx2vf_stop(netdev);
-
-	netdev_info(netdev, "Changing MTU from %d to %d\n",
-		    netdev->mtu, new_mtu);
-	netdev->mtu = new_mtu;
-
-	if (if_up)
-		err = otx2vf_open(netdev);
-
-	return err;
-}
 
 static void otx2vf_process_vfaf_mbox_msg(struct otx2_nic *vf,
 					 struct mbox_msghdr *msg)
@@ -185,7 +165,7 @@ static void otx2vf_vfaf_mbox_up_handler(struct work_struct *work)
 	int offset, id;
 
 	vf_mbox = container_of(work, struct mbox, mbox_up_wrk);
-	vf =  vf_mbox->pfvf;
+	vf = vf_mbox->pfvf;
 	mbox = &vf_mbox->mbox_up;
 	mdev = &mbox->dev[0];
 
@@ -366,7 +346,7 @@ exit:
 	return err;
 }
 
-int otx2vf_open(struct net_device *netdev)
+static int otx2vf_open(struct net_device *netdev)
 {
 	struct otx2_nic *vf;
 	int err;
@@ -385,13 +365,11 @@ int otx2vf_open(struct net_device *netdev)
 
 	return 0;
 }
-EXPORT_SYMBOL(otx2vf_open);
 
-int otx2vf_stop(struct net_device *netdev)
+static int otx2vf_stop(struct net_device *netdev)
 {
 	return otx2_stop(netdev);
 }
-EXPORT_SYMBOL(otx2vf_stop);
 
 static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
@@ -429,16 +407,37 @@ static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 	return NETDEV_TX_OK;
 }
 
+static int otx2vf_change_mtu(struct net_device *netdev, int new_mtu)
+{
+	bool if_up = netif_running(netdev);
+	int err = 0;
+
+	if (if_up)
+		otx2vf_stop(netdev);
+
+	netdev_info(netdev, "Changing MTU from %d to %d\n",
+		    netdev->mtu, new_mtu);
+	netdev->mtu = new_mtu;
+
+	if (if_up)
+		err = otx2vf_open(netdev);
+
+	return err;
+}
+
 static void otx2vf_reset_task(struct work_struct *work)
 {
 	struct otx2_nic *vf = container_of(work, struct otx2_nic, reset_task);
 
-	if (!netif_running(vf->netdev))
-		return;
+	rtnl_lock();
 
-	otx2vf_stop(vf->netdev);
-	otx2vf_open(vf->netdev);
-	netif_trans_update(vf->netdev);
+	if (netif_running(vf->netdev)) {
+		otx2vf_stop(vf->netdev);
+		vf->reset_count++;
+		otx2vf_open(vf->netdev);
+	}
+
+	rtnl_unlock();
 }
 
 static netdev_features_t
@@ -477,10 +476,7 @@ static int otx2vf_realloc_msix_vectors(struct otx2_nic *vf)
 		return err;
 	}
 
-	err = otx2vf_register_mbox_intr(vf, false);
-	if (err)
-		return err;
-	return 0;
+	return otx2vf_register_mbox_intr(vf, false);
 }
 
 static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -546,13 +542,17 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	hw->irq_name = devm_kmalloc_array(&hw->pdev->dev, num_vec, NAME_SIZE,
 					  GFP_KERNEL);
-	if (!hw->irq_name)
+	if (!hw->irq_name) {
+		err = -ENOMEM;
 		goto err_free_netdev;
+	}
 
 	hw->affinity_mask = devm_kcalloc(&hw->pdev->dev, num_vec,
 					 sizeof(cpumask_var_t), GFP_KERNEL);
-	if (!hw->affinity_mask)
+	if (!hw->affinity_mask) {
+		err = -ENOMEM;
 		goto err_free_netdev;
+	}
 
 	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
 	if (err < 0) {
@@ -622,6 +622,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	INIT_WORK(&vf->reset_task, otx2vf_reset_task);
 
+	/* To distinguish, for LBK VFs set netdev name explicitly */
 	if (is_otx2_lbkvf(vf->pdev)) {
 		int n;
 

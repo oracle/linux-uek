@@ -25,7 +25,7 @@ static inline bool otx2_xdp_rcv_pkt_handler(struct otx2_nic *pfvf,
 					    struct nix_cqe_rx_s *cqe,
 					    struct otx2_cq_queue *cq);
 
-static inline struct nix_cqe_hdr_s *otx2_get_next_cqe(struct otx2_cq_queue *cq)
+static struct nix_cqe_hdr_s *otx2_get_next_cqe(struct otx2_cq_queue *cq)
 {
 	struct nix_cqe_hdr_s *cqe_hdr;
 
@@ -39,7 +39,7 @@ static inline struct nix_cqe_hdr_s *otx2_get_next_cqe(struct otx2_cq_queue *cq)
 	return cqe_hdr;
 }
 
-static inline unsigned int frag_num(unsigned int i)
+static unsigned int frag_num(unsigned int i)
 {
 #ifdef __BIG_ENDIAN
 	return (i & ~3) + 3 - (i & 3);
@@ -111,19 +111,14 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 	struct sk_buff *skb = NULL;
 	struct sg_list *sg;
 
-	if (unlikely(snd_comp->status)) {
-		/* tx packet error handling*/
-		if (netif_msg_tx_err(pfvf)) {
-			netdev_info(pfvf->netdev,
-				    "TX%d: Error in send CQ status:%x\n",
-				    cq->cint_idx, snd_comp->status);
-		}
-	}
+	if (unlikely(snd_comp->status) && netif_msg_tx_err(pfvf))
+		net_err_ratelimited("%s: TX%d: Error in send CQ status:%x\n",
+				    pfvf->netdev->name, cq->cint_idx,
+				    snd_comp->status);
 
 	/* Barrier, so that update to sq by other cpus is visible */
 	smp_mb();
 	sg = &sq->sg[snd_comp->sqe_id];
-
 	skb = (struct sk_buff *)sg->skb;
 	if (unlikely(!skb))
 		return;
@@ -260,8 +255,8 @@ static void otx2_free_rcv_seg(struct otx2_nic *pfvf, struct nix_cqe_rx_s *cqe,
 	}
 }
 
-static inline bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
-					 struct nix_cqe_rx_s *cqe, int qidx)
+static bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
+				  struct nix_cqe_rx_s *cqe, int qidx)
 {
 	struct otx2_drv_stats *stats = &pfvf->hw.drv_stats;
 	struct nix_rx_parse_s *parse = &cqe->parse;
@@ -361,9 +356,9 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	napi_gro_frags(napi);
 }
 
-static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
-				       struct napi_struct *napi,
-				       struct otx2_cq_queue *cq, int budget)
+static int otx2_rx_napi_handler(struct otx2_nic *pfvf,
+				struct napi_struct *napi,
+				struct otx2_cq_queue *cq, int budget)
 {
 	struct nix_cqe_rx_s *cqe;
 	int processed_cqe = 0;
@@ -378,7 +373,6 @@ static inline int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 				return 0;
 			break;
 		}
-
 		cq->cq_head++;
 		cq->cq_head &= (cq->cqe_cnt - 1);
 
@@ -424,8 +418,8 @@ static void otx2_refill_pool_ptrs(struct otx2_nic *pfvf,
 	otx2_get_page(cq->rbpool);
 }
 
-static inline int otx2_tx_napi_handler(struct otx2_nic *pfvf,
-				       struct otx2_cq_queue *cq, int budget)
+static int otx2_tx_napi_handler(struct otx2_nic *pfvf,
+				struct otx2_cq_queue *cq, int budget)
 {
 	int tx_pkts = 0, tx_bytes = 0, qidx;
 	struct nix_cqe_tx_s *cqe;
@@ -515,7 +509,7 @@ int otx2_napi_handler(struct napi_struct *napi, int budget)
 	return workdone;
 }
 
-static inline void otx2_sqe_flush(struct otx2_snd_queue *sq, int size)
+static void otx2_sqe_flush(struct otx2_snd_queue *sq, int size)
 {
 	u64 status;
 
@@ -670,7 +664,7 @@ static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	int proto = 0;
 
 	/* Check if SQE was framed before, if yes then no need to
-	 * set these constants again anf again.
+	 * set these constants again and again.
 	 */
 	if (!sqe_hdr->total) {
 		/* Don't free Tx buffers to Aura */
@@ -747,8 +741,8 @@ static u64 otx2_tso_frag_dma_addr(struct otx2_snd_queue *sq,
 				  struct sk_buff *skb, int seg,
 				  u64 seg_addr, int hdr_len, int sqe)
 {
-	const skb_frag_t *frag;
 	struct sg_list *sg = &sq->sg[sqe];
+	const skb_frag_t *frag;
 	int offset;
 
 	if (seg < 0)
@@ -877,8 +871,8 @@ static void otx2_sq_append_tso(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	}
 }
 
-static inline bool is_hw_tso_supported(struct otx2_nic *pfvf,
-				       struct sk_buff *skb)
+static bool is_hw_tso_supported(struct otx2_nic *pfvf,
+				struct sk_buff *skb)
 {
 	int payload_len, last_seg_size;
 
@@ -891,10 +885,14 @@ static inline bool is_hw_tso_supported(struct otx2_nic *pfvf,
 	 * segment is shorter than 16 bytes, some header fields may not
 	 * be correctly modified, hence don't offload such TSO segments.
 	 */
+	if (!is_96xx_B0(pfvf->pdev))
+		return true;
+
 	payload_len = skb->len - (skb_transport_offset(skb) + tcp_hdrlen(skb));
 	last_seg_size = payload_len % skb_shinfo(skb)->gso_size;
 	if (last_seg_size && last_seg_size < 16)
 		return false;
+
 	return true;
 }
 

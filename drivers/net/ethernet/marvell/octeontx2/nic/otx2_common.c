@@ -17,10 +17,31 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 
-static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
-					struct otx2_nic *pfvf, int qidx);
-static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
-					struct otx2_nic *pfvf, int qidx);
+static void otx2_nix_rq_op_stats(struct queue_stats *stats,
+				 struct otx2_nic *pfvf, int qidx)
+{
+	u64 incr = (u64)qidx << 32;
+	u64 *ptr;
+
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_OCTS);
+	stats->bytes = otx2_atomic64_add(incr, ptr);
+
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_PKTS);
+	stats->pkts = otx2_atomic64_add(incr, ptr);
+}
+
+static void otx2_nix_sq_op_stats(struct queue_stats *stats,
+				 struct otx2_nic *pfvf, int qidx)
+{
+	u64 incr = (u64)qidx << 32;
+	u64 *ptr;
+
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_OCTS);
+	stats->bytes = otx2_atomic64_add(incr, ptr);
+
+	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_PKTS);
+	stats->pkts = otx2_atomic64_add(incr, ptr);
+}
 
 void otx2_update_lmac_stats(struct otx2_nic *pfvf)
 {
@@ -110,10 +131,11 @@ void otx2_get_stats64(struct net_device *netdev,
 		      struct rtnl_link_stats64 *stats)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct otx2_dev_stats *dev_stats = &pfvf->hw.dev_stats;
+	struct otx2_dev_stats *dev_stats;
 
 	otx2_get_dev_stats(pfvf);
 
+	dev_stats = &pfvf->hw.dev_stats;
 	stats->rx_bytes = dev_stats->rx_bytes;
 	stats->rx_packets = dev_stats->rx_frames;
 	stats->rx_dropped = dev_stats->rx_drops;
@@ -125,8 +147,8 @@ void otx2_get_stats64(struct net_device *netdev,
 }
 EXPORT_SYMBOL(otx2_get_stats64);
 
-/* Sync MAC address with RVU */
-int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, u8 *mac)
+/* Sync MAC address with RVU AF */
+static int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, u8 *mac)
 {
 	struct nix_set_mac_addr *req;
 	int err;
@@ -520,10 +542,7 @@ void otx2_get_mac_from_af(struct net_device *netdev)
 	if (err)
 		dev_warn(pfvf->dev, "Failed to read mac from hardware\n");
 
-	/* Normally AF should provide mac addresses for both PFs and CGX mapped
-	 * VFs which means random mac gets generated either in case of error
-	 * or LBK netdev.
-	 */
+	/* If AF doesn't provide a valid MAC, generate a random one */
 	if (!is_valid_ether_addr(netdev->dev_addr))
 		eth_hw_addr_random(netdev);
 }
@@ -531,8 +550,8 @@ EXPORT_SYMBOL(otx2_get_mac_from_af);
 
 int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 {
-	struct nix_txschq_config *req;
 	struct otx2_hw *hw = &pfvf->hw;
+	struct nix_txschq_config *req;
 	u64 schq, parent;
 
 	req = otx2_mbox_alloc_msg_nix_txschq_cfg(&pfvf->mbox);
@@ -545,13 +564,12 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 	schq = hw->txschq_list[lvl][0];
 	/* Set topology e.t.c configuration */
 	if (lvl == NIX_TXSCH_LVL_SMQ) {
-		/* Set min and max Tx packet lengths */
 		req->reg[0] = NIX_AF_SMQX_CFG(schq);
 		req->regval[0] = ((OTX2_MAX_MTU + OTX2_ETH_HLEN) << 8) |
 				   OTX2_MIN_MTU;
 
 		req->regval[0] |= (0x20ULL << 51) | (0x80ULL << 39) |
-					(0x2ULL << 36);
+				  (0x2ULL << 36);
 		req->num_regs++;
 		/* MDQ config */
 		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL4][0];
@@ -613,7 +631,7 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 int otx2_txsch_alloc(struct otx2_nic *pfvf)
 {
 	struct nix_txsch_alloc_req *req;
-	int lvl, err;
+	int lvl;
 
 	/* Get memory to put this msg */
 	req = otx2_mbox_alloc_msg_nix_txsch_alloc(&pfvf->mbox);
@@ -624,10 +642,7 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
 		req->schq[lvl] = 1;
 
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
-		return err;
-	return 0;
+	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
 int otx2_txschq_stop(struct otx2_nic *pfvf)
@@ -950,7 +965,6 @@ int otx2_config_nix_queues(struct otx2_nic *pfvf)
 	}
 
 	/* Initialize work queue for receive buffer refill */
-
 	pfvf->refill_wrk = devm_kcalloc(pfvf->dev, pfvf->qset.cq_cnt,
 					sizeof(struct refill_work), GFP_KERNEL);
 	if (!pfvf->refill_wrk)
@@ -1319,7 +1333,7 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 	struct otx2_qset *qset = &pfvf->qset;
 	struct npa_lf_alloc_req  *npalf;
 	struct otx2_hw *hw = &pfvf->hw;
-	int aura_cnt, err;
+	int aura_cnt;
 
 	/* Pool - Stack of free buffer pointers
 	 * Aura - Alloc/frees pointers from/to pool for NIX DMA.
@@ -1343,10 +1357,7 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 	aura_cnt = ilog2(roundup_pow_of_two(hw->pool_cnt));
 	npalf->aura_sz = (aura_cnt >= ilog2(128)) ? (aura_cnt - 6) : 1;
 
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
-		return err;
-	return 0;
+	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
 int otx2_detach_resources(struct mbox *mbox)
@@ -1469,32 +1480,6 @@ int otx2_nix_config_bp(struct otx2_nic *pfvf, bool enable)
 	req->bpid_per_chan = 0;
 
 	return otx2_sync_mbox_msg(&pfvf->mbox);
-}
-
-static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
-					struct otx2_nic *pfvf, int qidx)
-{
-	u64 incr = (u64)qidx << 32;
-	u64 *ptr;
-
-	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_OCTS);
-	stats->bytes = otx2_atomic64_add(incr, ptr);
-
-	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_RQ_OP_PKTS);
-	stats->pkts = otx2_atomic64_add(incr, ptr);
-}
-
-static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
-					struct otx2_nic *pfvf, int qidx)
-{
-	u64 incr = (u64)qidx << 32;
-	u64 *ptr;
-
-	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_OCTS);
-	stats->bytes = otx2_atomic64_add(incr, ptr);
-
-	ptr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_SQ_OP_PKTS);
-	stats->pkts = otx2_atomic64_add(incr, ptr);
 }
 
 /* Mbox message handlers */
