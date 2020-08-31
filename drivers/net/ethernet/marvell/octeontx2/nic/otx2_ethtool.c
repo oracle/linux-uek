@@ -232,7 +232,7 @@ static int otx2_get_phy_fec_stats(struct otx2_nic *pfvf)
 	struct msg_req *req;
 	int rc = -EAGAIN;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_cgx_get_phy_fec_stats(&pfvf->mbox);
 	if (!req)
 		goto end;
@@ -240,7 +240,7 @@ static int otx2_get_phy_fec_stats(struct otx2_nic *pfvf)
 	if (!otx2_sync_mbox_msg(&pfvf->mbox))
 		rc = 0;
 end:
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return rc;
 }
 
@@ -1146,10 +1146,10 @@ static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
 	struct msg_req *req;
 	int err = 0;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_cgx_get_aux_link_info(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -1161,7 +1161,7 @@ static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
 		rsp = ERR_PTR(err);
 	}
 
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return rsp;
 }
 
@@ -1234,10 +1234,10 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 	struct cgx_set_link_mode_rsp *rsp;
 	int err = 0;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_cgx_set_link_mode(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -EAGAIN;
 	}
 
@@ -1246,7 +1246,7 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 	    (advertising <= BIT_ULL(ETHTOOL_LINK_MODE_10000baseLRM_Full_BIT))) {
 		req->args.mode = advertising;
 	} else {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -EINVAL;
 	}
 	err =  otx2_sync_mbox_msg(&pfvf->mbox);
@@ -1256,7 +1256,7 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 		if (rsp->status)
 			err =  rsp->status;
 	}
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return err;
 }
 
@@ -1321,7 +1321,7 @@ static int otx2_set_fecparam(struct net_device *netdev,
 	if (fec == pfvf->linfo.fec)
 		return 0;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_cgx_set_fec_param(&pfvf->mbox);
 	if (!req) {
 		err = -EAGAIN;
@@ -1343,7 +1343,8 @@ static int otx2_set_fecparam(struct net_device *netdev,
 		err = rsp->fec;
 	}
 
-end:	otx2_mbox_unlock(&pfvf->mbox);
+end:
+	mutex_unlock(&pfvf->mbox.lock);
 	return err;
 }
 
@@ -1381,7 +1382,7 @@ static int otx2_set_phy_mod_type(struct net_device *netdev, bool enable)
 	if (!fwd->fwdata.phy.misc.can_change_mod_type)
 		return -EOPNOTSUPP;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_cgx_set_phy_mod_type(&pfvf->mbox);
 	if (!req)
 		goto end;
@@ -1391,7 +1392,7 @@ static int otx2_set_phy_mod_type(struct net_device *netdev, bool enable)
 	if (!otx2_sync_mbox_msg(&pfvf->mbox))
 		rc = 0;
 end:
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return rc;
 }
 
@@ -1404,7 +1405,7 @@ int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind)
 	if (OTX2_IS_DEF_MODE_ENABLED(pfvf->ethtool_flags))
 		return 0;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_set_pkind(&pfvf->mbox);
 	if (!req)
 		goto end;
@@ -1438,7 +1439,7 @@ int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind)
 	else
 		pfvf->ethtool_flags &= ~interface_mode;
 end:
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return rc;
 }
 

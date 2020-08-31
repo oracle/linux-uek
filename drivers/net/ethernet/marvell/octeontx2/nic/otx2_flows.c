@@ -76,15 +76,15 @@ int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 	int vf_vlan_max_flows;
 	int i;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	if (pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return 0;
 	}
 
 	req = otx2_mbox_alloc_msg_npc_mcam_alloc_entry(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -94,7 +94,7 @@ int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 
 	/* Send message to AF */
 	if (otx2_sync_mbox_msg(&pfvf->mbox)) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -EINVAL;
 	}
 
@@ -129,7 +129,7 @@ int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 		flow_cfg->entry[i] = rsp->entry_list[i];
 
 	pfvf->flags |= OTX2_FLAG_MCAM_ENTRIES_ALLOC;
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 
 	return 0;
 }
@@ -156,10 +156,10 @@ static int otx2_do_add_macfilter(struct otx2_nic *pf, const u8 *mac)
 	if (netdev_uc_count(pf->netdev) > OTX2_MAX_UNICAST_FLOWS)
 		return -ENOMEM;
 
-	otx2_mbox_lock(&pf->mbox);
+	mutex_lock(&pf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_install_flow(&pf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pf->mbox);
+		mutex_unlock(&pf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -184,7 +184,7 @@ static int otx2_do_add_macfilter(struct otx2_nic *pf, const u8 *mac)
 	req->set_cntr = 1;
 
 	err = otx2_sync_mbox_msg(&pf->mbox);
-	otx2_mbox_unlock(&pf->mbox);
+	mutex_unlock(&pf->mbox.lock);
 
 	return err;
 }
@@ -230,16 +230,16 @@ int otx2_del_macfilter(struct net_device *netdev, const u8 *mac)
 	if (!otx2_get_mcamentry_for_mac(pf, mac, &mcam_entry))
 		return 0;
 
-	otx2_mbox_lock(&pf->mbox);
+	mutex_lock(&pf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_delete_flow(&pf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pf->mbox);
+		mutex_unlock(&pf->mbox.lock);
 		return -ENOMEM;
 	}
 	req->entry = mcam_entry;
 	/* Send message to AF */
 	err = otx2_sync_mbox_msg(&pf->mbox);
-	otx2_mbox_unlock(&pf->mbox);
+	mutex_unlock(&pf->mbox.lock);
 
 	return err;
 }
@@ -312,10 +312,10 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	struct npc_install_flow_req *req;
 	int err, vf = 0;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_install_flow(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -323,7 +323,7 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	if (err) {
 		/* free the allocated msg above */
 		otx2_mbox_reset(&pfvf->mbox.mbox, 0);
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return err;
 	}
 
@@ -342,7 +342,7 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 		req->index = ethtool_get_flow_spec_ring(ring_cookie);
 		vf = ethtool_get_flow_spec_ring_vf(ring_cookie);
 		if (vf > pci_num_vf(pfvf->pdev)) {
-			otx2_mbox_unlock(&pfvf->mbox);
+			mutex_unlock(&pfvf->mbox.lock);
 			return -EINVAL;
 		}
 	}
@@ -356,7 +356,7 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 
 	/* Send message to AF */
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return err;
 }
 
@@ -414,10 +414,10 @@ static int otx2_remove_flow_msg(struct otx2_nic *pfvf, u16 entry, bool all)
 	struct npc_delete_flow_req *req;
 	int err;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -427,7 +427,7 @@ static int otx2_remove_flow_msg(struct otx2_nic *pfvf, u16 entry, bool all)
 
 	/* Send message to AF */
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return err;
 }
 
@@ -465,10 +465,10 @@ int otx2_destroy_ntuple_flows(struct otx2_nic *pfvf)
 	if (!(pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC))
 		return 0;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -476,7 +476,7 @@ int otx2_destroy_ntuple_flows(struct otx2_nic *pfvf)
 	req->end   = flow_cfg->entry[flow_cfg->ntuple_offset +
 				      flow_cfg->ntuple_max_flows - 1];
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 
 	list_for_each_entry_safe(iter, tmp, &flow_cfg->flow_list, list) {
 		list_del(&iter->list);
@@ -507,10 +507,10 @@ int otx2_destroy_mcam_flows(struct otx2_nic *pfvf)
 		flow_cfg->nr_flows--;
 	}
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_mcam_free_entry(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -518,12 +518,12 @@ int otx2_destroy_mcam_flows(struct otx2_nic *pfvf)
 	/* Send message to AF to free MCAM entries */
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	if (err) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return err;
 	}
 
 	pfvf->flags &= ~OTX2_FLAG_MCAM_ENTRIES_ALLOC;
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 
 	return 0;
 }
@@ -537,10 +537,10 @@ int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
 	if (!(pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC))
 		return -ENOMEM;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_install_flow(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -556,7 +556,7 @@ int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
 
 	/* Send message to AF */
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return err;
 }
 
@@ -566,17 +566,17 @@ static int otx2_delete_rxvlan_offload_flow(struct otx2_nic *pfvf)
 	struct npc_delete_flow_req *req;
 	int err;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
 	req->entry = flow_cfg->entry[flow_cfg->rx_vlan_offset];
 	/* Send message to AF */
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 	return err;
 }
 
@@ -604,10 +604,10 @@ int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
 			return err;
 	}
 
-	otx2_mbox_lock(&pf->mbox);
+	mutex_lock(&pf->mbox.lock);
 	req = otx2_mbox_alloc_msg_nix_vtag_cfg(&pf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pf->mbox);
+		mutex_unlock(&pf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -620,16 +620,16 @@ int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
 
 	err = otx2_sync_mbox_msg(&pf->mbox);
 	if (err) {
-		otx2_mbox_unlock(&pf->mbox);
+		mutex_unlock(&pf->mbox.lock);
 		return err;
 	}
 
 	rsp_hdr = otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
 	if (IS_ERR(rsp_hdr)) {
-		otx2_mbox_unlock(&pf->mbox);
+		mutex_unlock(&pf->mbox.lock);
 		return PTR_ERR(rsp_hdr);
 	}
 
-	otx2_mbox_unlock(&pf->mbox);
+	mutex_unlock(&pf->mbox.lock);
 	return rsp_hdr->rc;
 }

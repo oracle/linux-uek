@@ -68,9 +68,9 @@ static int otx2_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
 
-	otx2_mbox_lock(&ptp->nic->mbox);
+	mutex_lock(&ptp->nic->mbox.lock);
 	timecounter_adjtime(&ptp->time_counter, delta);
-	otx2_mbox_unlock(&ptp->nic->mbox);
+	mutex_unlock(&ptp->nic->mbox.lock);
 
 	return 0;
 }
@@ -82,9 +82,9 @@ static int otx2_ptp_gettime(struct ptp_clock_info *ptp_info,
 					    ptp_info);
 	u64 nsec;
 
-	otx2_mbox_lock(&ptp->nic->mbox);
+	mutex_lock(&ptp->nic->mbox.lock);
 	nsec = timecounter_read(&ptp->time_counter);
-	otx2_mbox_unlock(&ptp->nic->mbox);
+	mutex_unlock(&ptp->nic->mbox.lock);
 
 	*ts = ns_to_timespec64(nsec);
 
@@ -100,9 +100,9 @@ static int otx2_ptp_settime(struct ptp_clock_info *ptp_info,
 
 	nsec = timespec64_to_ns(ts);
 
-	otx2_mbox_lock(&ptp->nic->mbox);
+	mutex_lock(&ptp->nic->mbox.lock);
 	timecounter_init(&ptp->time_counter, &ptp->cycle_counter, nsec);
-	otx2_mbox_unlock(&ptp->nic->mbox);
+	mutex_unlock(&ptp->nic->mbox.lock);
 
 	return 0;
 }
@@ -120,11 +120,11 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 	struct ptp_req *req;
 	int err;
 
-	otx2_mbox_lock(&pfvf->mbox);
+	mutex_lock(&pfvf->mbox.lock);
 	/* check if PTP block is available */
 	req = otx2_mbox_alloc_msg_ptp_op(&pfvf->mbox);
 	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return -ENOMEM;
 	}
 
@@ -132,10 +132,10 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	if (err) {
-		otx2_mbox_unlock(&pfvf->mbox);
+		mutex_unlock(&pfvf->mbox.lock);
 		return err;
 	}
-	otx2_mbox_unlock(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
 
 	ptp_ptr = kzalloc(sizeof(*ptp_ptr), GFP_KERNEL);
 	if (!ptp_ptr) {

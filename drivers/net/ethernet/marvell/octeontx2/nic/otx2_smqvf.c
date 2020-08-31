@@ -152,11 +152,11 @@ static int otx2smqvf_install_flow(struct otx2_nic *vf)
 			goto err_free_mem;
 	}
 
-	otx2_mbox_lock(&vf->mbox);
+	mutex_lock(&vf->mbox.lock);
 
 	alloc_req = otx2_mbox_alloc_msg_npc_mcam_alloc_entry(&vf->mbox);
 	if (!alloc_req) {
-		otx2_mbox_unlock(&vf->mbox);
+		mutex_unlock(&vf->mbox.lock);
 		goto err_free_mem;
 	}
 	alloc_req->count = 1;
@@ -165,22 +165,22 @@ static int otx2smqvf_install_flow(struct otx2_nic *vf)
 	/* Send message to AF */
 	if (otx2_sync_mbox_msg(&vf->mbox)) {
 		err = -EINVAL;
-		otx2_mbox_unlock(&vf->mbox);
+		mutex_unlock(&vf->mbox.lock);
 		goto err_free_mem;
 	}
-	otx2_mbox_unlock(&vf->mbox);
+	mutex_unlock(&vf->mbox.lock);
 
 	rsp = (struct npc_mcam_alloc_entry_rsp *)otx2_mbox_get_rsp
 	       (&vf->mbox.mbox, 0, &alloc_req->hdr);
 	drop_entry = rsp->entry;
 
-	otx2_mbox_lock(&vf->mbox);
+	mutex_lock(&vf->mbox.lock);
 
 	/* Send messages to drop Tx packets at NPC and stop Rx traffic */
 	install_req = otx2_mbox_alloc_msg_npc_install_flow(&vf->mbox);
 	if (!install_req) {
 		err = -ENOMEM;
-		otx2_mbox_unlock(&vf->mbox);
+		mutex_unlock(&vf->mbox.lock);
 		goto err_free_entry;
 	}
 
@@ -193,24 +193,24 @@ static int otx2smqvf_install_flow(struct otx2_nic *vf)
 
 	msg = otx2_mbox_alloc_msg_nix_lf_stop_rx(&vf->mbox);
 	if (!msg) {
-		otx2_mbox_unlock(&vf->mbox);
+		mutex_unlock(&vf->mbox.lock);
 		goto err_free_entry;
 	}
 
 	/* Send message to AF */
 	if (otx2_sync_mbox_msg(&vf->mbox)) {
 		err = -EINVAL;
-		otx2_mbox_unlock(&vf->mbox);
+		mutex_unlock(&vf->mbox.lock);
 		goto err_free_entry;
 	}
-	otx2_mbox_unlock(&vf->mbox);
+	mutex_unlock(&vf->mbox.lock);
 
 	otx2_sq_append_skb(vf->netdev, &vf->qset.sq[0], the_skb, 0);
 
 	return 0;
 
 err_free_entry:
-	otx2_mbox_lock(&vf->mbox);
+	mutex_lock(&vf->mbox.lock);
 	free_req = otx2_mbox_alloc_msg_npc_mcam_free_entry(&vf->mbox);
 	if (!free_req) {
 		dev_err(vf->dev, "Could not allocate msg for freeing entry\n");
@@ -218,7 +218,7 @@ err_free_entry:
 		free_req->entry = drop_entry;
 		WARN_ON(otx2_sync_mbox_msg(&vf->mbox));
 	}
-	otx2_mbox_unlock(&vf->mbox);
+	mutex_unlock(&vf->mbox.lock);
 err_free_mem:
 	kfree_skb(the_skb);
 	drop_entry = 0xFFFF;
@@ -266,7 +266,7 @@ int otx2smqvf_remove(struct otx2_nic *vf)
 	the_skb = NULL;
 	mutex_unlock(&remove_lock);
 
-	otx2_mbox_lock(&vf->mbox);
+	mutex_lock(&vf->mbox.lock);
 	del_req = otx2_mbox_alloc_msg_npc_delete_flow(&vf->mbox);
 	free_req = otx2_mbox_alloc_msg_npc_mcam_free_entry(&vf->mbox);
 	if (!del_req || !free_req) {
@@ -276,7 +276,7 @@ int otx2smqvf_remove(struct otx2_nic *vf)
 		free_req->entry = drop_entry;
 		WARN_ON(otx2_sync_mbox_msg(&vf->mbox));
 	}
-	otx2_mbox_unlock(&vf->mbox);
+	mutex_unlock(&vf->mbox.lock);
 
 	otx2_stop(vf->netdev);
 	drop_entry = 0xFFFF;
