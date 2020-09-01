@@ -191,9 +191,9 @@ CVM_OCT_XMIT
 		}
 		hw_buffer_list[0] = hw_buffer.u64;
 		for (i = 1; i <= skb_shinfo(skb)->nr_frags; i++) {
-			struct skb_frag_t *fs = skb_shinfo(skb)->frags + i - 1;
-			hw_buffer.s.addr = virt_to_phys((u8 *)skb_frag_address(fs));
-			hw_buffer.s.size = skb_frag_size(fs);
+			skb_frag_t *fs = skb_shinfo(skb)->frags + i - 1;
+			hw_buffer.s.addr = virt_to_phys((u8 *)page_address(fs->bv_page) + fs->bv_offset); 
+			hw_buffer.s.size = fs->bv_len;
 			hw_buffer_list[i] = hw_buffer.u64;
 			can_do_reuse = false;
 		}

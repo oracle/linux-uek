@@ -2163,9 +2163,9 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 		scr_off += sizeof(buf_ptr);
 	}
 	for (i = 1; i <= skb_shinfo(skb)->nr_frags; i++) {
-		struct skb_frag_t *fs = skb_shinfo(skb)->frags + i - 1;
-		buf_ptr.s.size = skb_frag_size(fs);
-		buf_ptr.s.addr = virt_to_phys((u8 *)skb_frag_address(fs));
+		skb_frag_t *fs = skb_shinfo(skb)->frags + i - 1;
+		buf_ptr.s.size = fs->bv_len;
+		buf_ptr.s.addr = virt_to_phys((u8 *)page_address(fs->bv_page) + fs->bv_offset);
 		cvmx_scratch_write64(scr_off, buf_ptr.u64);
 		scr_off += sizeof(buf_ptr);
 	}
@@ -2545,7 +2545,7 @@ static int octeon3_settime(struct ptp_clock_info *ptp,
 	unsigned long		flags;
 
 	priv = container_of(ptp, struct octeon3_ethernet, ptp_info);
-	ns = timespec_to_ns(ts);
+	ns = timespec64_to_ns(ts);
 
 	spin_lock_irqsave(&priv->ptp_lock, flags);
 	timecounter_init(&priv->tc, &priv->cc, ns);
