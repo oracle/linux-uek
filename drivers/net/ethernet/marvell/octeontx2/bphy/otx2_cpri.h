@@ -96,6 +96,12 @@ struct cpri_common_cfg {
 	struct ul_cbuf_cfg		ul_cfg;
 };
 
+struct otx2_cpri_link_event {
+	u8				cpri_num;
+	u8				lmac_id;
+	u8				link_state;
+};
+
 /* cpri netdev priv */
 struct otx2_cpri_ndev_priv {
 	u8				cpri_num;
@@ -115,6 +121,7 @@ struct otx2_cpri_ndev_priv {
 	/* priv lock */
 	spinlock_t			lock;
 	int				if_type;
+	u8				link_state;
 };
 
 int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,

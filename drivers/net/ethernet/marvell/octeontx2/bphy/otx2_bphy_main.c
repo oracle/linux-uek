@@ -354,6 +354,108 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		ret = 0;
 		goto out;
 	}
+	case OTX2_RFOE_IOCTL_LINK_EVENT:
+	{
+		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
+		struct otx2_rfoe_ndev_priv *priv;
+		struct otx2_rfoe_link_event cfg;
+		struct net_device *netdev;
+		int idx;
+
+		if (!cdev->odp_intf_cfg) {
+			dev_info(cdev->dev, "odp interface cfg is not done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+		if (copy_from_user(&cfg, (void __user *)arg,
+				   sizeof(struct otx2_rfoe_link_event))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+			drv_ctx = &rfoe_drv_ctx[idx];
+			if (drv_ctx->valid &&
+			    drv_ctx->rfoe_num == cfg.rfoe_num &&
+			    drv_ctx->lmac_id == cfg.lmac_id)
+				break;
+		}
+		if (idx >= RFOE_MAX_INTF) {
+			dev_err(cdev->dev, "drv ctx not found\n");
+			ret = -EINVAL;
+			goto out;
+		}
+		netdev = drv_ctx->netdev;
+		priv = netdev_priv(netdev);
+		if (priv->link_state != cfg.link_state) {
+			if (cfg.link_state == LINK_STATE_DOWN) {
+				netdev_info(netdev, "Link DOWN\n");
+				netif_carrier_off(netdev);
+				netif_stop_queue(netdev);
+				set_bit(RFOE_INTF_DOWN, &priv->state);
+				priv->link_state = 0;
+			} else {
+				netdev_info(netdev, "Link UP\n");
+				netif_carrier_on(netdev);
+				netif_start_queue(netdev);
+				clear_bit(RFOE_INTF_DOWN, &priv->state);
+				priv->link_state = 1;
+			}
+		}
+		ret = 0;
+		goto out;
+	}
+	case OTX2_CPRI_IOCTL_LINK_EVENT:
+	{
+		struct otx2_cpri_drv_ctx *drv_ctx = NULL;
+		struct otx2_cpri_ndev_priv *priv;
+		struct otx2_cpri_link_event cfg;
+		struct net_device *netdev;
+		int idx;
+
+		if (!cdev->odp_intf_cfg) {
+			dev_info(cdev->dev, "odp interface cfg is not done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+		if (copy_from_user(&cfg, (void __user *)arg,
+				   sizeof(struct otx2_cpri_link_event))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+		for (idx = 0; idx < OTX2_BPHY_CPRI_MAX_INTF; idx++) {
+			drv_ctx = &cpri_drv_ctx[idx];
+			if (drv_ctx->valid &&
+			    drv_ctx->cpri_num == cfg.cpri_num &&
+			    drv_ctx->lmac_id == cfg.lmac_id)
+				break;
+		}
+		if (idx >= OTX2_BPHY_CPRI_MAX_INTF) {
+			dev_err(cdev->dev, "drv ctx not found\n");
+			ret = -EINVAL;
+			goto out;
+		}
+		netdev = drv_ctx->netdev;
+		priv = netdev_priv(netdev);
+		if (priv->link_state != cfg.link_state) {
+			if (cfg.link_state == LINK_STATE_DOWN) {
+				netdev_info(netdev, "Link DOWN\n");
+				netif_carrier_off(netdev);
+				netif_stop_queue(netdev);
+				set_bit(CPRI_INTF_DOWN, &priv->state);
+				priv->link_state = 0;
+			} else {
+				netdev_info(netdev, "Link UP\n");
+				netif_carrier_on(netdev);
+				netif_start_queue(netdev);
+				clear_bit(CPRI_INTF_DOWN, &priv->state);
+				priv->link_state = 1;
+			}
+		}
+		ret = 0;
+		goto out;
+	}
 	default:
 	{
 		dev_info(cdev->dev, "ioctl: no match\n");
