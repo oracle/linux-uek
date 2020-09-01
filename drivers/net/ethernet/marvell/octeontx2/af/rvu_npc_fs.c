@@ -1157,6 +1157,8 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 		if (npc_delete_flow(rvu, iter, pcifunc))
 			dev_err(rvu->dev, "rule deletion failed for entry:%d",
 				iter->entry);
+		/* clear the mcam entry target pcifunc */
+		mcam->entry2target_pffunc[iter->entry] = 0x0;
 	}
 
 	return 0;
