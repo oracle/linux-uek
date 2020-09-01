@@ -430,6 +430,7 @@ static int otx2_cpri_eth_open(struct net_device *netdev)
 	netif_start_queue(netdev);
 
 	clear_bit(CPRI_INTF_DOWN, &priv->state);
+	priv->link_state = 1;
 
 	return 0;
 }
@@ -444,6 +445,7 @@ static int otx2_cpri_eth_stop(struct net_device *netdev)
 
 	netif_stop_queue(netdev);
 	netif_carrier_off(netdev);
+	priv->link_state = 0;
 
 	napi_disable(&priv->napi);
 
@@ -598,6 +600,7 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			netif_carrier_off(netdev);
 			netif_stop_queue(netdev);
 			set_bit(CPRI_INTF_DOWN, &priv->state);
+			priv->link_state = 0;
 
 			/* initialize global ctx */
 			drv_ctx = &cpri_drv_ctx[intf_idx];
