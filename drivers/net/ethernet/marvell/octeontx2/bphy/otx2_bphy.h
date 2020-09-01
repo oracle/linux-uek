@@ -48,10 +48,19 @@ extern void __iomem *cpri_reg_base;
 					     struct bcn_sec_offset_cfg)
 #define OTX2_RFOE_IOCTL_MODE_CPRI	_IOW(OTX2_RFOE_IOCTL_BASE, 0x06, \
 					     int)
+#define OTX2_RFOE_IOCTL_LINK_EVENT	_IOW(OTX2_RFOE_IOCTL_BASE, 0x07, \
+					     struct otx2_rfoe_link_event)
+#define OTX2_CPRI_IOCTL_LINK_EVENT	_IOW(OTX2_RFOE_IOCTL_BASE, 0x08, \
+					     struct otx2_cpri_link_event)
 
 //#define ASIM		/* ASIM environment */
 
 #define OTX2_BPHY_MHAB_INST		3
+
+enum port_link_state {
+	LINK_STATE_DOWN,
+	LINK_STATE_UP,
+};
 
 /* char driver private data */
 struct otx2_bphy_cdev_priv {

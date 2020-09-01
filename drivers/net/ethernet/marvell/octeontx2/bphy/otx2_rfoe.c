@@ -1021,6 +1021,7 @@ static int otx2_rfoe_eth_open(struct net_device *netdev)
 	netif_start_queue(netdev);
 
 	clear_bit(RFOE_INTF_DOWN, &priv->state);
+	priv->link_state = 1;
 
 	return 0;
 }
@@ -1037,6 +1038,7 @@ static int otx2_rfoe_eth_stop(struct net_device *netdev)
 
 	netif_stop_queue(netdev);
 	netif_carrier_off(netdev);
+	priv->link_state = 0;
 
 	for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 		if (!(priv->pkt_type_mask & (1U << idx)))
@@ -1332,6 +1334,7 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			netif_carrier_off(netdev);
 			netif_stop_queue(netdev);
 			set_bit(RFOE_INTF_DOWN, &priv->state);
+			priv->link_state = 0;
 
 			/* initialize global ctx */
 			drv_ctx = &rfoe_drv_ctx[intf_idx];

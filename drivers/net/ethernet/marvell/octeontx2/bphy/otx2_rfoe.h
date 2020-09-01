@@ -239,6 +239,12 @@ struct ptp_bcn_off_cfg {
 	spinlock_t			lock;
 };
 
+struct otx2_rfoe_link_event {
+	u8				rfoe_num;
+	u8				lmac_id;
+	u8				link_state;
+};
+
 /* netdev priv */
 struct otx2_rfoe_ndev_priv {
 	u8				rfoe_num;
@@ -273,6 +279,7 @@ struct otx2_rfoe_ndev_priv {
 	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
 	int				if_type;
+	u8				link_state;
 };
 
 void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status);
