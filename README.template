@@ -15,6 +15,7 @@ This repository hosts source code for UEK versions which are in development and 
 | ##uek6/master## | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
 | ##uek6/ga## | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
 | ##uek5/master## | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
+| ##uek5/u4## | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
 | ##uek5/u3## | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
 | ##uek5/u2## | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
 | ##uek4/qu7## | v4.1 | Production | `x86_64`, `SPARC` | Oracle Linux 6, Oracle Linux 7 |
