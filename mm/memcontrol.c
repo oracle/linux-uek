@@ -3172,6 +3172,9 @@ static const char *const memcg1_event_names[] = {
 static int memcg_stat_show(struct seq_file *m, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(seq_css(m));
+	unsigned long long stats_val[ARRAY_SIZE(memcg1_stats)] = { 0 };
+	unsigned long long events_val[ARRAY_SIZE(memcg1_events)] = { 0 };
+	unsigned long long lru_val[NR_LRU_LISTS] = { 0 };
 	unsigned long memory, memsw;
 	struct mem_cgroup *mi;
 	unsigned int i;
@@ -3207,32 +3210,35 @@ static int memcg_stat_show(struct seq_file *m, void *v)
 		seq_printf(m, "hierarchical_memsw_limit %llu\n",
 			   (u64)memsw * PAGE_SIZE);
 
-	for (i = 0; i < ARRAY_SIZE(memcg1_stats); i++) {
-		unsigned long long val = 0;
-
-		if (memcg1_stats[i] == MEMCG_SWAP && !do_memsw_account())
-			continue;
-		for_each_mem_cgroup_tree(mi, memcg)
-			val += memcg_page_state(mi, memcg1_stats[i]) *
+	for_each_mem_cgroup_tree(mi, memcg) {
+		for (i = 0; i < ARRAY_SIZE(memcg1_stats); i++) {
+			if (memcg1_stats[i] == MEMCG_SWAP && !do_memsw_account())
+				continue;
+			stats_val[i] += memcg_page_state(mi, memcg1_stats[i]) *
 			PAGE_SIZE;
-		seq_printf(m, "total_%s %llu\n", memcg1_stat_names[i], val);
+		}
+
+		for (i = 0; i < ARRAY_SIZE(memcg1_events); i++)
+			events_val[i] += memcg_sum_events(mi, memcg1_events[i]);
+
+		for (i = 0; i < NR_LRU_LISTS; i++)
+			lru_val[i] += mem_cgroup_nr_lru_pages(mi, BIT(i)) * PAGE_SIZE;
+
+		cond_resched();
 	}
 
-	for (i = 0; i < ARRAY_SIZE(memcg1_events); i++) {
-		unsigned long long val = 0;
 
-		for_each_mem_cgroup_tree(mi, memcg)
-			val += memcg_sum_events(mi, memcg1_events[i]);
-		seq_printf(m, "total_%s %llu\n", memcg1_event_names[i], val);
-	}
+	for (i = 0; i < ARRAY_SIZE(memcg1_stats); i++)
+		seq_printf(m, "total_%s %llu\n", memcg1_stat_names[i],
+			   stats_val[i]);
 
-	for (i = 0; i < NR_LRU_LISTS; i++) {
-		unsigned long long val = 0;
+	for (i = 0; i < ARRAY_SIZE(memcg1_events); i++)
+		seq_printf(m, "total_%s %llu\n", memcg1_event_names[i],
+			   events_val[i]);
 
-		for_each_mem_cgroup_tree(mi, memcg)
-			val += mem_cgroup_nr_lru_pages(mi, BIT(i)) * PAGE_SIZE;
-		seq_printf(m, "total_%s %llu\n", mem_cgroup_lru_names[i], val);
-	}
+	for (i = 0; i < NR_LRU_LISTS; i++)
+		seq_printf(m, "total_%s %llu\n", mem_cgroup_lru_names[i],
+			   lru_val[i]);
 
 #ifdef CONFIG_DEBUG_VM
 	{
