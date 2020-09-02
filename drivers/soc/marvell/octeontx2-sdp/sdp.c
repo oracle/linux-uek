@@ -70,8 +70,9 @@ struct host_hs_work {
 struct host_hs_work hs_work;
 static int sdp_sriov_configure(struct pci_dev *pdev, int num_vfs);
 
-static u32 num_vf0_rings, num_vfx_rings, max_vfs;
-static u32 neg_vf0_rings, neg_vfx_rings, neg_vf;
+static u32 num_pf_rings, pf_srn;
+static u32 vf_rings[SDP_MAX_VFS];
+static u32 neg_vf0_rings, neg_vfx_rings, max_vfs, neg_vf;
 
 static void
 sdp_write64(struct sdp_dev *rvu, u64 b, u64 s, u64 o, u64 v)
@@ -903,56 +904,74 @@ static int sdp_check_pf_usable(struct sdp_dev *sdp)
 	return 0;
 }
 
-static int sdp_parse_rinfo(void)
+static int sdp_parse_rinfo(struct sdp_dev *sdp)
 {
 	struct device_node *dev;
+	struct device *sdev;
+	u32 vf_ring_cnts;
 	const void *ptr;
-	int len;
+	int len, vfid;
 
+	sdev = &sdp->pdev->dev;
 	dev = of_find_node_by_name(NULL, "rvu-sdp");
 	if (dev == NULL) {
-		pr_info("can't find FDT dev %s\n", "rvu-sdp");
-		return -1;
+		dev_err(sdev, "can't find FDT dev %s\n", "rvu-sdp");
+		return -EINVAL;
 	}
 
-	ptr = of_get_property(dev, "num-vf0-rings", &len);
+	max_vfs = pci_sriov_get_totalvfs(sdp->pdev);
+
+	ptr = of_get_property(dev, "num-pf-rings", &len);
 	if (ptr == NULL) {
-		pr_info("Error: Failed to get property\n");
-		return -1;
+		dev_err(sdev, "SDP DTS: Failed to get num-pf-rings\n");
+		return -EINVAL;
 	}
-
-	if (len == 4) {
-		num_vf0_rings = be32_to_cpup((u32 *)ptr);
-	} else {
-		pr_info("SDP DTSi info: Wrong field length\n");
-		return -1;
+	if (len != sizeof(u32)) {
+		dev_err(sdev, "SDP DTS: Wrong field length: num-pf-rings\n");
+		return -EINVAL;
 	}
+	num_pf_rings = be32_to_cpup((u32 *)ptr);
 
-	ptr = of_get_property(dev, "num-vfx-rings", &len);
+	ptr = of_get_property(dev, "pf-srn", &len);
 	if (ptr == NULL) {
-		pr_info("Error: Failed to get property\n");
-		return -1;
+		dev_err(sdev, "SDP DTS: Failed to get pf-srn\n");
+		return -EINVAL;
 	}
-
-	if (len == 4) {
-		num_vfx_rings = be32_to_cpup((u32 *)ptr);
-	} else {
-		pr_info("SDP DTSi info: Wrong field length\n");
-		return -1;
+	if (len != sizeof(u32)) {
+		dev_err(sdev, "SDP DTS: Wrong field length: pf-srn\n");
+		return -EINVAL;
 	}
+	pf_srn = be32_to_cpup((u32 *)ptr);
 
-	ptr = of_get_property(dev, "num-rvu-vfs", &len);
+	ptr = of_get_property(dev, "num-vf-rings", &len);
 	if (ptr == NULL) {
-		pr_info("Error: Failed to get property\n");
-		return -1;
+		dev_err(sdev, "SDP DTS: Failed to get num-vf-rings\n");
+		return -EINVAL;
 	}
 
-	if (len == 4) {
-		max_vfs = be32_to_cpup((u32 *)ptr);
-	} else {
-		pr_info("SDP DTSi info: Wrong field length\n");
-		return -1;
+	vf_ring_cnts = len / sizeof(u32);
+	if (vf_ring_cnts > max_vfs) {
+		dev_err(sdev, "SDP DTS: Wrong field length: num-vf-rings\n");
+		return -EINVAL;
 	}
+
+	for (vfid = 0; vfid < max_vfs; vfid++) {
+		if (vfid < vf_ring_cnts) {
+			if (of_property_read_u32_index(dev, "num-vf-rings",
+					vfid, &vf_rings[vfid])) {
+				dev_err(sdev, "SDP DTS: Failed to get vf ring count\n");
+				return -EINVAL;
+			}
+		} else {
+			/*
+			 * Rest of the VFs use the same last ring count
+			 * specified
+			 */
+			vf_rings[vfid] = vf_rings[vf_ring_cnts - 1];
+		}
+	}
+	dev_info(sdev, "pf start ring number:%d num_pf_rings:%d max_vfs:%d vf_ring_cnts:%d\n",
+		 pf_srn, num_pf_rings, max_vfs, vf_ring_cnts);
 
 	return 0;
 }
@@ -1146,7 +1165,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto get_pcifunc_failed;
 	}
 
-	err = sdp_parse_rinfo();
+	err = sdp_parse_rinfo(sdp);
 	if (err) {
 		err = -EINVAL;
 		goto get_rinfo_failed;
@@ -1154,8 +1173,8 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	fw_rinfo.u = 0;
 	fw_rinfo.s.dir = FW_TO_HOST;
-	fw_rinfo.s.rppf = num_vf0_rings;
-	fw_rinfo.s.rpvf = num_vfx_rings;
+	fw_rinfo.s.rppf = num_pf_rings;
+	fw_rinfo.s.rpvf = vf_rings[0];
 	fw_rinfo.s.numvf = max_vfs-1;
 
 	dev_info(&pdev->dev, "Ring info 0x%llx\n", fw_rinfo.u);
