@@ -392,7 +392,7 @@ void rds_message_wait(struct rds_message *rm)
 
 void rds_message_unmapped(struct rds_message *rm)
 {
-	clear_bit(RDS_MSG_MAPPED, &rm->m_flags);
+	rds_clear_rm_flag_bit(rm, RDS_MSG_MAPPED);
 	wake_up_interruptible(&rm->m_flush_wait);
 }
 EXPORT_SYMBOL_GPL(rds_message_unmapped);

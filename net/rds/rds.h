@@ -1108,6 +1108,24 @@ static inline void rds_clear_queued_recv_work_bit(struct rds_conn_path *cp)
 	smp_mb__after_atomic();
 }
 
+static inline void rds_set_rm_flag_bit(struct rds_message *rm, int n)
+{
+	/* set_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	set_bit(n, &rm->m_flags);
+	/* set_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
+
+static inline void rds_clear_rm_flag_bit(struct rds_message *rm, int n)
+{
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	clear_bit(n, &rm->m_flags);
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
+
 static inline int
 rds_conn_path_transition(struct rds_conn_path *cp, int old, int new)
 {
