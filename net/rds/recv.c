@@ -247,7 +247,7 @@ static void rds_conn_peer_gen_update(struct rds_connection *conn,
 				list_for_each_entry_safe(rm, tmp,
 							 &cp->cp_retrans,
 							 m_conn_item) {
-					set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+					rds_set_rm_flag_bit(rm, RDS_MSG_FLUSH);
 					flushed++;
 				}
 				spin_unlock_irqrestore(&cp->cp_lock, flags);
