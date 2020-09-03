@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -188,7 +188,7 @@ static struct rds_message *rds_cong_map_pages(unsigned long *page_addrs, unsigne
 	if (!rm)
 		return ERR_PTR(-ENOMEM);
 
-	set_bit(RDS_MSG_PAGEVEC, &rm->m_flags);
+	rds_set_rm_flag_bit(rm, RDS_MSG_PAGEVEC);
 	rm->m_inc.i_hdr.h_len = cpu_to_be32(total_len);
 	rm->data.op_nents = num_sgs;
 	rm->data.op_sg = rds_message_alloc_sgs(rm, num_sgs);
