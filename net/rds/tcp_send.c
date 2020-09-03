@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -96,7 +96,7 @@ int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
 				sizeof(struct rds_header) +
 				be32_to_cpu(rm->m_inc.i_hdr.h_len) - 1;
 		smp_mb__before_atomic();
-		set_bit(RDS_MSG_HAS_ACK_SEQ, &rm->m_flags);
+		rds_set_rm_flag_bit(rm, RDS_MSG_HAS_ACK_SEQ);
 		tc->t_last_expected_una = rm->m_ack_seq + 1;
 
 		if (test_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags))
