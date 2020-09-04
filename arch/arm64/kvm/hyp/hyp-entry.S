@@ -212,6 +212,15 @@ el1_error:
 	b	__guest_exit
 ENDPROC(el1_error)
 
+el2_sync:
+	save_caller_saved_regs_vect
+	stp     x29, x30, [sp, #-16]!
+	bl	kvm_unexpected_el2_exception
+	ldp     x29, x30, [sp], #16
+	restore_caller_saved_regs_vect
+
+	eret
+
 el2_error:
 	save_caller_saved_regs_vect
 	stp     x29, x30, [sp, #-16]!
@@ -250,7 +259,6 @@ ENDPROC(\label)
 	invalid_vector	el2t_irq_invalid
 	invalid_vector	el2t_fiq_invalid
 	invalid_vector	el2t_error_invalid
-	invalid_vector	el2h_sync_invalid
 	invalid_vector	el2h_irq_invalid
 	invalid_vector	el2h_fiq_invalid
 	invalid_vector	el1_sync_invalid
@@ -267,7 +275,7 @@ ENTRY(__kvm_hyp_vector)
 	ventry	el2t_fiq_invalid		// FIQ EL2t
 	ventry	el2t_error_invalid		// Error EL2t
 
-	ventry	el2h_sync_invalid		// Synchronous EL2h
+	ventry	el2_sync			// Synchronous EL2h
 	ventry	el2h_irq_invalid		// IRQ EL2h
 	ventry	el2h_fiq_invalid		// FIQ EL2h
 	ventry	el2_error			// Error EL2h
