@@ -1694,6 +1694,13 @@ config CMDLINE
 	  entering them here. As a minimum, you should specify the the
 	  root device (e.g. root=/dev/nfs).
 
+config CMDLINE_EXTEND
+        bool "Extend bootloader kernel arguments"
+        help
+          The command-line arguments provided by the boot loader will be
+          appended to the default kernel command string.
+
+
 config CMDLINE_FORCE
 	bool "Always use the default kernel command string"
 	help

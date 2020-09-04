@@ -447,6 +447,7 @@ CONFIG_RANDOMIZE_MODULE_REGION_FULL=y
 # Boot options
 #
 CONFIG_CMDLINE="crashkernel=512M softdog.soft_panic=1"
+CONFIG_CMDLINE_EXTEND=y
 # CONFIG_CMDLINE_FORCE is not set
 # CONFIG_EFI is not set
 # end of Boot options
