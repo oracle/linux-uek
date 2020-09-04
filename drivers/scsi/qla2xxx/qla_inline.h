@@ -339,3 +339,59 @@ qla2x00_set_retry_delay_timestamp(fc_port_t *fcport, uint16_t retry_delay)
 		fcport->retry_delay_timestamp = jiffies +
 		    (retry_delay * HZ / 10);
 }
+
+enum {
+	RESOURCE_NONE,
+	RESOURCE_INI,
+};
+
+static inline int
+qla_get_iocbs(struct qla_qpair *qp, struct iocb_resource *iores)
+{
+	u16 iocbs_used, i;
+	struct qla_hw_data *ha = qp->vha->hw;
+
+	if (!ql2xenforce_iocb_limit) {
+		iores->res_type = RESOURCE_NONE;
+		return 0;
+	}
+
+	if ((iores->iocb_cnt + qp->fwres.iocbs_used) < qp->fwres.iocbs_qp_limit) {
+		qp->fwres.iocbs_used += iores->iocb_cnt;
+		return 0;
+	} else {
+		/* no need to acquire qpair lock. It's just rough calculation */
+		iocbs_used = ha->base_qpair->fwres.iocbs_used;
+		for (i = 0; i < ha->max_qpairs; i++) {
+			if (ha->queue_pair_map[i])
+				iocbs_used += ha->queue_pair_map[i]->fwres.iocbs_used;
+		}
+
+		if ((iores->iocb_cnt + iocbs_used) < qp->fwres.iocbs_limit) {
+			qp->fwres.iocbs_used += iores->iocb_cnt;
+			return 0;
+		} else {
+			iores->res_type = RESOURCE_NONE;
+			return -ENOSPC;
+		}
+	}
+}
+
+static inline void
+qla_put_iocbs(struct qla_qpair *qp, struct iocb_resource *iores)
+{
+	switch (iores->res_type) {
+	case RESOURCE_NONE:
+		break;
+	default:
+		if (qp->fwres.iocbs_used >= iores->iocb_cnt) {
+			qp->fwres.iocbs_used -= iores->iocb_cnt;
+		} else {
+			// should not happen
+			qp->fwres.iocbs_used = 0;
+		}
+		break;
+	}
+	iores->res_type = RESOURCE_NONE;
+}
+

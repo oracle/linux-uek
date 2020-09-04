@@ -2264,6 +2264,8 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 	else
 		sp->completed = 1;
 
+	qla_put_iocbs(sp->qpair, &sp->iores);
+
 	if (unlikely((state_flags & BIT_1) && (sp->type == SRB_BIDI_CMD))) {
 		qla25xx_process_bidir_status_iocb(vha, pkt, req, handle);
 		return;
@@ -2662,6 +2664,7 @@ qla2x00_error_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, sts_entry_t *pkt)
 
 	sp = qla2x00_get_sp_from_handle(vha, func, req, pkt);
 	if (sp) {
+		qla_put_iocbs(sp->qpair, &sp->iores);
 		sp->done(sp, res);
 		return;
 	}

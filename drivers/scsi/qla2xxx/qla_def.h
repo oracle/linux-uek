@@ -500,7 +500,15 @@ struct sp_name {
 #define SRB_NACK_PRLI	17
 #define SRB_NACK_LOGO	18
 
+struct iocb_resource {
+	u8 res_type;
+	u8 pad;
+	u16 iocb_cnt;
+};
+
+
 typedef struct srb {
+	struct iocb_resource iores;
 	struct fc_port *fcport;
 	struct scsi_qla_host *vha;
 	//struct kref cmd_kref;	/* need to migrate ref_count over to this */
@@ -3259,6 +3267,15 @@ struct req_que {
 	uint8_t req_pkt[REQUEST_ENTRY_SIZE];
 };
 
+struct qla_fw_resources {
+	u16 iocbs_total;
+	u16 iocbs_limit;
+	u16 iocbs_qp_limit;
+	u16 iocbs_used;
+};
+
+#define QLA_IOCB_PCT_LIMIT 95
+
 /*Queue pair data structure */
 struct qla_qpair {
 	spinlock_t qp_lock;
@@ -3290,6 +3307,7 @@ struct qla_qpair {
 	struct work_struct q_work;
 	struct list_head qp_list_elem; /* vha->qp_list */
 	struct scsi_qla_host *vha;
+	struct qla_fw_resources fwres ____cacheline_aligned;
 };
 
 struct qla_percpu_qp_hint {

@@ -107,6 +107,8 @@ int qla24xx_post_newsess_work(struct scsi_qla_host *, port_id_t *, u8 *,
 int qla24xx_fcport_handle_login(struct scsi_qla_host *, fc_port_t *);
 
 int qla24xx_post_gpdb_work(struct scsi_qla_host *, fc_port_t *, u8);
+void qla_init_iocb_limit(scsi_qla_host_t *);
+
 /*
  * Global Data in qla_os.c source file.
  */
@@ -140,6 +142,7 @@ extern int ql2xmdenable;
 extern int ql2xfwholdabts;
 extern int ql2xmvasynctoatio;
 extern int ql2xdifbundlinginternalbuffers;
+extern int ql2xenforce_iocb_limit;
 
 extern int qla2x00_loop_reset(scsi_qla_host_t *);
 extern void qla2x00_abort_all_cmds(scsi_qla_host_t *, int);

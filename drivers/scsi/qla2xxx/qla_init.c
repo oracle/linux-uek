@@ -2724,6 +2724,32 @@ qla2x00_alloc_outstanding_cmds(struct qla_hw_data *ha, struct req_que *req)
 	return QLA_SUCCESS;
 }
 
+void qla_init_iocb_limit(scsi_qla_host_t *vha)
+{
+	u16 i, num_qps;
+	u32 limit;
+	struct qla_hw_data *ha = vha->hw;
+
+	//num_qps = ha->mum_qpairs + 1;
+	num_qps = 1;
+	limit = (ha->orig_fw_iocb_count * QLA_IOCB_PCT_LIMIT) / 100;
+
+	ha->base_qpair->fwres.iocbs_total = ha->orig_fw_iocb_count;
+	ha->base_qpair->fwres.iocbs_limit = limit;
+	ha->base_qpair->fwres.iocbs_qp_limit = limit / num_qps;
+	ha->base_qpair->fwres.iocbs_used = 0;
+	for (i = 0; i < ha->max_qpairs; i++) {
+		if (ha->queue_pair_map[i])  {
+			ha->queue_pair_map[i]->fwres.iocbs_total =
+				ha->orig_fw_iocb_count;
+			ha->queue_pair_map[i]->fwres.iocbs_limit = limit;
+			ha->queue_pair_map[i]->fwres.iocbs_qp_limit =
+				limit / num_qps;
+			ha->queue_pair_map[i]->fwres.iocbs_used = 0;
+		}
+	}
+}
+
 /**
  * qla2x00_setup_chip() - Load and start RISC firmware.
  * @ha: HA context
@@ -2793,6 +2819,7 @@ enable_82xx_npiv:
 						    MIN_MULTI_ID_FABRIC - 1;
 				}
 				qla2x00_get_resource_cnts(vha);
+				qla_init_iocb_limit(vha);
 
 				/*
 				 * Allocate the array of outstanding commands
