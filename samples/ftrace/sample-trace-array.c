@@ -36,7 +36,7 @@ static DECLARE_WORK(trace_work, trace_work_fn);
  * timer is only for the purposes of the sample module to demonstrate access of
  * Ftrace instances from within kernel.
  */
-static DEFINE_TIMER(mytimer, mytimer_handler);
+static DEFINE_TIMER(mytimer, mytimer_handler, 0, 0);
 
 static void mytimer_handler(struct timer_list *unused)
 {
