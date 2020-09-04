@@ -627,6 +627,12 @@ enum {
 	TYPE_TGT_TMCMD,		/* task management */
 };
 
+struct iocb_resource {
+	u8 res_type;
+	u8 pad;
+	u16 iocb_cnt;
+};
+
 typedef struct srb {
 	/*
 	 * Do not move cmd_type field, it needs to
@@ -634,6 +640,7 @@ typedef struct srb {
 	 */
 	uint8_t cmd_type;
 	uint8_t pad[3];
+	struct iocb_resource iores;
 	struct kref cmd_kref;	/* need to migrate ref_count over to this */
 	void *priv;
 	wait_queue_head_t nvme_ls_waitq;
@@ -3581,6 +3588,15 @@ struct req_que {
 	uint8_t req_pkt[REQUEST_ENTRY_SIZE];
 };
 
+struct qla_fw_resources {
+	u16 iocbs_total;
+	u16 iocbs_limit;
+	u16 iocbs_qp_limit;
+	u16 iocbs_used;
+};
+
+#define QLA_IOCB_PCT_LIMIT 95
+
 /*Queue pair data structure */
 struct qla_qpair {
 	spinlock_t qp_lock;
@@ -3633,6 +3649,7 @@ struct qla_qpair {
 	uint64_t retry_term_jiff;
 	struct qla_tgt_counters tgt_counters;
 	uint16_t cpuid;
+	struct qla_fw_resources fwres ____cacheline_aligned;
 };
 
 /* Place holder for FW buffer parameters */
