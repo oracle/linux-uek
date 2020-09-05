@@ -694,6 +694,7 @@ void efi_native_runtime_setup(void);
 #define LINUX_EFI_TPM_EVENT_LOG_GUID		EFI_GUID(0xb7799cb0, 0xeca2, 0x4943,  0x96, 0x67, 0x1f, 0xae, 0x07, 0xb7, 0x47, 0xfa)
 #define LINUX_EFI_TPM_FINAL_LOG_GUID		EFI_GUID(0x1e2ed096, 0x30e2, 0x4254,  0xbd, 0x89, 0x86, 0x3b, 0xbe, 0xf8, 0x23, 0x25)
 #define LINUX_EFI_MEMRESERVE_TABLE_GUID		EFI_GUID(0x888eb0c6, 0x8ede, 0x4ff5,  0xa8, 0xf0, 0x9a, 0xee, 0x5c, 0xb9, 0x77, 0xc2)
+#define LINUX_EFI_MOK_VARIABLE_TABLE_GUID	EFI_GUID(0xc451ed2b, 0x9694, 0x45d3,  0xba, 0xba, 0xed, 0x9f, 0x89, 0x88, 0xa3, 0x89)
 
 /* OEM GUIDs */
 #define DELLEMC_EFI_RCI2_TABLE_GUID		EFI_GUID(0x2d9f28a2, 0xa886, 0x456a,  0x97, 0xa8, 0xf1, 0x1e, 0xf2, 0x4f, 0xf4, 0x55)
@@ -1006,6 +1007,7 @@ extern struct efi {
 	unsigned long rng_seed;		/* UEFI firmware random seed */
 	unsigned long tpm_log;		/* TPM2 Event Log table */
 	unsigned long tpm_final_log;	/* TPM2 Final Events Log table */
+	unsigned long mokvar_table;	/* MOK variable config table */
 	unsigned long mem_reserve;	/* Linux EFI memreserve table */
 	efi_get_time_t *get_time;
 	efi_set_time_t *set_time;
@@ -1819,5 +1821,37 @@ struct linux_efi_memreserve {
 
 #define EFI_MEMRESERVE_COUNT(size) (((size) - sizeof(struct linux_efi_memreserve)) \
 	/ sizeof(((struct linux_efi_memreserve *)0)->entry[0]))
+
+/*
+ * The LINUX_EFI_MOK_VARIABLE_TABLE_GUID config table can be provided
+ * to the kernel by an EFI boot loader. The table contains a packed
+ * sequence of these entries, one for each named MOK variable.
+ * The sequence is terminated by an entry with a completely NULL
+ * name and 0 data size.
+ */
+struct efi_mokvar_table_entry {
+	char name[256];
+	u64 data_size;
+	u8 data[];
+} __attribute((packed));
+
+#ifdef CONFIG_LOAD_UEFI_KEYS
+extern void __init efi_mokvar_table_init(void);
+extern struct efi_mokvar_table_entry *efi_mokvar_entry_next(
+			struct efi_mokvar_table_entry **mokvar_entry);
+extern struct efi_mokvar_table_entry *efi_mokvar_entry_find(const char *name);
+#else
+static inline void efi_mokvar_table_init(void) { }
+static inline struct efi_mokvar_table_entry *efi_mokvar_entry_next(
+			struct efi_mokvar_table_entry **mokvar_entry)
+{
+	return NULL;
+}
+static inline struct efi_mokvar_table_entry *efi_mokvar_entry_find(
+			const char *name)
+{
+	return NULL;
+}
+#endif
 
 #endif /* _LINUX_EFI_H */
