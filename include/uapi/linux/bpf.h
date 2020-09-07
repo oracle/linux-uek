@@ -714,7 +714,11 @@ union bpf_attr {
 	FN(redirect_map),		\
 	FN(sk_redirect_map),		\
 	FN(sock_map_update),		\
+	FN(unused1),			\
+	FN(unused2),			\
+	FN(unused3),			\
 	FN(getsockopt),			\
+	FN(unused4),			\
 	FN(sock_ops_cb_flags_set),
 #else
 #define __BPF_FUNC_MAPPER(FN)		\
