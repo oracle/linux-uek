@@ -176,6 +176,10 @@ void xenvif_napi_schedule_or_enable_events(struct xenvif_queue *queue)
 
 	if (more_to_do)
 		napi_schedule(&queue->napi);
+	else if (atomic_fetch_andnot(NETBK_TX_EOI | NETBK_COMMON_EOI,
+				     &queue->eoi_pending) &
+		 (NETBK_TX_EOI | NETBK_COMMON_EOI))
+		xen_irq_lateeoi(queue->tx_irq, 0);
 }
 
 static void tx_add_credit(struct xenvif_queue *queue)

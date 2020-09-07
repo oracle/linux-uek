@@ -158,6 +158,20 @@ struct xenvif_queue { /* Per-queue data for xenvif */
 	char name[QUEUE_NAME_SIZE]; /* DEVNAME-qN */
 	struct xenvif *vif; /* Parent VIF */
 
+	/*
+	 * TX/RX common EOI handling.
+	 * When feature-split-event-channels = 0, interrupt handler sets
+	 * NETBK_COMMON_EOI, otherwise NETBK_RX_EOI and NETBK_TX_EOI are set
+	 * by the RX and TX interrupt handlers.
+	 * RX and TX handler threads will issue an EOI when either
+	 * NETBK_COMMON_EOI or their specific bits (NETBK_RX_EOI or
+	 * NETBK_TX_EOI) are set and they will reset those bits.
+	 */
+	atomic_t eoi_pending;
+#define NETBK_RX_EOI		0x01
+#define NETBK_TX_EOI		0x02
+#define NETBK_COMMON_EOI	0x04
+
 	/* Use NAPI for guest TX */
 	struct napi_struct napi;
 	/* When feature-split-event-channels = 0, tx_irq = rx_irq. */
@@ -344,6 +358,7 @@ void xenvif_kick_thread(struct xenvif_queue *queue);
 int xenvif_dealloc_kthread(void *data);
 
 int xenvif_rx_one_skb(struct xenvif_queue *queue, struct sk_buff *skb);
+bool xenvif_have_rx_work(struct xenvif_queue *queue, bool test_kthread);
 void xenvif_rx_action(struct xenvif_queue *queue);
 void xenvif_rx_queue_tail(struct xenvif_queue *queue, struct sk_buff *skb);
 
@@ -399,5 +414,59 @@ u32 xenvif_put_gref_mapping(struct xenvif *vif, u32 queue_id, grant_ref_t ref,
 #ifdef CONFIG_DEBUG_FS
 void xenvif_dump_grant_info(struct xenvif_queue *queue, struct seq_file *m);
 #endif
+
+
+/* These really belong in arch/x86/include/asm/atomic.h or include/linux/atomic.h */
+
+static inline int atomic_fetch_or(int i, atomic_t *v)
+{
+        int val = atomic_read(v);
+        int old, new;
+
+        for (;;) {
+                new = val | i;
+                old = atomic_cmpxchg(v, val, new);
+                if (old == val)
+                        break;
+                val = old;
+        }
+
+        return val;
+}
+
+static inline int atomic_fetch_and(int i, atomic_t *v)
+{
+	int val = atomic_read(v);
+	int old, new;
+
+	for (;;) {
+		new = val & i;
+		old = atomic_cmpxchg(v, val, new);
+		if (old == val)
+			break;
+		val = old;
+        }
+
+        return val;
+}
+
+static inline int atomic_fetch_andnot(int i, atomic_t *v)
+{
+	return atomic_fetch_and(~i, v);
+}
+
+static inline void atomic_and(int i, atomic_t *v)
+{
+        asm volatile(LOCK_PREFIX "andl %1,%0"
+                        : "+m" (v->counter)
+                        : "ir" (i)
+                        : "memory");
+}
+
+static inline void atomic_andnot(int i, atomic_t *v)
+{
+        atomic_and(~i, v);
+}
+
 
 #endif /* __XEN_NETBACK__COMMON_H__ */
