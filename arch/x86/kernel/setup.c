@@ -462,9 +462,6 @@ static void __init memblock_x86_reserve_range_setup_data(void)
 
 #ifdef CONFIG_KEXEC_CORE
 
-/* 16M alignment for crash kernel regions */
-#define CRASH_ALIGN		SZ_16M
-
 /*
  * Keep the crash kernel below this limit.
  *
@@ -590,7 +587,7 @@ static void __init reserve_crashkernel(void)
 
 		start = memblock_find_in_range(crash_base,
 					       crash_base + crash_size,
-					       crash_size, 1 << 20);
+					       crash_size, CRASH_ALIGN);
 		if (start != crash_base) {
 			pr_info("crashkernel reservation failed - memory is in use.\n");
 			return;
