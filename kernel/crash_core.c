@@ -343,7 +343,7 @@ int __init parse_crashkernel_low(char *cmdline,
 
 int __init reserve_crashkernel_low(void)
 {
-#if defined(CONFIG_X86_64)
+#if defined(CONFIG_X86_64) || defined(CONFIG_ARM64)
 	unsigned long long base, low_base = 0, low_size = 0;
 	unsigned long total_low_mem;
 	int ret;
@@ -392,12 +392,14 @@ int __init reserve_crashkernel_low(void)
 
 	crashk_low_res.start = low_base;
 	crashk_low_res.end   = low_base + low_size - 1;
+#ifdef CONFIG_X86
 	insert_resource(&iomem_resource, &crashk_low_res);
+#endif
 #endif
 	return 0;
 }
 
-#if defined(CONFIG_X86)
+#if defined(CONFIG_X86) || defined(CONFIG_ARM64)
 #ifdef CONFIG_KEXEC_CORE
 /*
  * reserve_crashkernel() - reserves memory for crash kernel
@@ -490,7 +492,9 @@ void __init reserve_crashkernel(void)
 
 	crashk_res.start = crash_base;
 	crashk_res.end   = crash_base + crash_size - 1;
+#ifdef CONFIG_X86
 	insert_resource(&iomem_resource, &crashk_res);
+#endif
 }
 #endif /* CONFIG_KEXEC_CORE */
 #endif
