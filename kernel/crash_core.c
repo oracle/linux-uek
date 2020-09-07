@@ -400,6 +400,15 @@ int __init reserve_crashkernel_low(void)
 }
 
 #if defined(CONFIG_X86) || defined(CONFIG_ARM64)
+
+/*
+ * Add a threshold for required memory size of crashkernel. If required memory
+ * size is greater than threshold, just go for high allocation directly. The
+ * value of threshold is set as half of the total low memory.
+ */
+#define REQUIRED_MEMORY_THRESHOLD	(memblock_mem_size(CRASH_ADDR_LOW_MAX >> \
+			PAGE_SHIFT) >> 1)
+
 #ifdef CONFIG_KEXEC_CORE
 /*
  * reserve_crashkernel() - reserves memory for crash kernel
@@ -444,7 +453,7 @@ void __init reserve_crashkernel(void)
 		 * So try low memory first and fall back to high memory
 		 * unless "crashkernel=size[KMG],high" is specified.
 		 */
-		if (!high)
+		if (!high && crash_size <= REQUIRED_MEMORY_THRESHOLD)
 			crash_base = memblock_find_in_range(CRASH_ALIGN,
 						CRASH_ADDR_LOW_MAX,
 						crash_size, CRASH_ALIGN);
