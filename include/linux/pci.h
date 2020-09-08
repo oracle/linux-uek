@@ -469,7 +469,17 @@ struct pci_dev {
 #else
 	UEK_KABI_RESERVED(1);
 #endif
-	UEK_KABI_RESERVED(2);
+	/*
+	 * In order to preserve KABI, the below fields are introduced via
+	 * UEK_KABI_REPLACE().
+	 *
+	 * io_window:      Bridge has I/O window
+	 * pref_window:    Bridge has pref mem window
+	 * pref_64_window: Pref mem window is 64-bit
+	 */
+	UEK_KABI_REPLACE(_UEK_KABI_RESERVED(2),
+			 bool io_window:1; bool pref_window:1; bool pref_64_window:1;);
+
 	UEK_KABI_RESERVED(3);
 	UEK_KABI_RESERVED(4);
 };
