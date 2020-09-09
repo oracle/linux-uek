@@ -925,7 +925,7 @@ static u32 otx2_get_rxfh_indir_size(struct net_device *dev)
 {
 	struct otx2_nic *pfvf = netdev_priv(dev);
 
-	return pfvf->hw.rss_info.rss_size;
+	return sizeof(pfvf->hw.rss_info.ind_tbl);
 }
 
 /* Get RSS configuration*/
