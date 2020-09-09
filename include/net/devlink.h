@@ -60,6 +60,15 @@ struct devlink_port_pci_vf_attrs {
 	u16 vf;	/* Associated PCI VF for of the PCI PF for this port. */
 };
 
+/**
+ * struct devlink_port_attrs - devlink port object
+ * @flavour: flavour of the port
+ * @split: indicates if this is split port
+ * @switch_id: if the port is part of switch, this is buffer with ID, otherwise this is NULL
+ * @phys: physical port attributes
+ * @pci_pf: PCI PF port attributes
+ * @pci_vf: PCI VF port attributes
+ */
 struct devlink_port_attrs {
 	u8 set:1,
 	   split:1,
