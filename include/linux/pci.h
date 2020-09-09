@@ -281,6 +281,16 @@ struct pci_dev {
 	u16		pcie_flags_reg;	/* cached PCIe Capabilities Register */
 	u8		dma_alias_devfn;/* devfn of DMA alias, if any */
 
+#ifndef __GENKSYMS__
+	/*
+	 * The below fields are following dma_alias_devfn and converted
+	 * from type "unsigned int" to "u8" in order to preserve KABI.
+	 */
+	u8		io_window:1;		/* Bridge has I/O window */
+	u8		pref_window:1;		/* Bridge has pref mem window */
+	u8		pref_64_window:1;	/* Pref mem window is 64-bit */
+#endif
+
 	struct pci_driver *driver;	/* which driver has allocated this device */
 	u64		dma_mask;	/* Mask of the bits of bus address this
 					   device implements.  Normally this is
