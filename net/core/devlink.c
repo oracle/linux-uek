@@ -522,12 +522,16 @@ static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 		if (nla_put_u16(msg, DEVLINK_ATTR_PORT_PCI_PF_NUMBER,
 				attrs->pci_pf.pf))
 			return -EMSGSIZE;
+		if (nla_put_u8(msg, DEVLINK_ATTR_PORT_EXTERNAL, attrs->pci_pf.external))
+			return -EMSGSIZE;
 		break;
 	case DEVLINK_PORT_FLAVOUR_PCI_VF:
 		if (nla_put_u16(msg, DEVLINK_ATTR_PORT_PCI_PF_NUMBER,
 				attrs->pci_vf.pf) ||
 		    nla_put_u16(msg, DEVLINK_ATTR_PORT_PCI_VF_NUMBER,
 				attrs->pci_vf.vf))
+			return -EMSGSIZE;
+		if (nla_put_u8(msg, DEVLINK_ATTR_PORT_EXTERNAL, attrs->pci_vf.external))
 			return -EMSGSIZE;
 		break;
 	case DEVLINK_PORT_FLAVOUR_PHYSICAL:
@@ -6671,6 +6675,17 @@ void devlink_port_attrs_pci_pf_set(struct devlink_port *devlink_port,
 				   const unsigned char *switch_id,
 				   unsigned char switch_id_len, u16 pf)
 {
+	/*
+	 * UEK developer note:
+	 *
+	 * devlink_port_attrs_pci_pf_set_ext() needs to be updated should
+	 * any upstream fix/merge is to be applied to this function. The
+	 * corresponding code change has to be ported equivalently to the
+	 * sister function devlink_port_attrs_pci_pf_set_ext(). By doing
+	 * it we got the flexibility to change the _ext() API whenever
+	 * needed, while the kABI commitment is maintained on the legacy
+	 * API.
+	 */
 	struct devlink_port_attrs *attrs = &devlink_port->attrs;
 	int ret;
 
@@ -6681,8 +6696,39 @@ void devlink_port_attrs_pci_pf_set(struct devlink_port *devlink_port,
 		return;
 
 	attrs->pci_pf.pf = pf;
+	/* Upstream update enclosed should port to the new _ext() API */
 }
 EXPORT_SYMBOL_GPL(devlink_port_attrs_pci_pf_set);
+
+/**
+ *	devlink_port_attrs_pci_pf_set_ext - Set PCI PF port attributes
+ *					    (extended due to UEK kABI)
+ *
+ *	@devlink_port: devlink port
+ *	@pf: associated PF for the devlink port instance
+ *	@switch_id: if the port is part of switch, this is buffer with ID,
+ *	            otherwise this is NULL
+ *	@switch_id_len: length of the switch_id buffer
+ *	@external: indicates if the port is for an external controller
+ */
+void devlink_port_attrs_pci_pf_set_ext(struct devlink_port *devlink_port,
+				       const unsigned char *switch_id,
+				       unsigned char switch_id_len, u16 pf,
+				       bool external)
+{
+	struct devlink_port_attrs *attrs = &devlink_port->attrs;
+	int ret;
+
+	ret = __devlink_port_attrs_set(devlink_port,
+				       DEVLINK_PORT_FLAVOUR_PCI_PF,
+				       switch_id, switch_id_len);
+	if (ret)
+		return;
+
+	attrs->pci_pf.pf = pf;
+	attrs->pci_pf.external = external;
+}
+EXPORT_SYMBOL_GPL(devlink_port_attrs_pci_pf_set_ext);
 
 /**
  *	devlink_port_attrs_pci_vf_set - Set PCI VF port attributes
@@ -6699,6 +6745,17 @@ void devlink_port_attrs_pci_vf_set(struct devlink_port *devlink_port,
 				   unsigned char switch_id_len,
 				   u16 pf, u16 vf)
 {
+	/*
+	 * UEK developer note:
+	 *
+	 * devlink_port_attrs_pci_vf_set_ext() needs to be updated should
+	 * any upstream fix/merge is to be applied to this function. The
+	 * corresponding code change has to be ported equivalently to the
+	 * sister function devlink_port_attrs_pci_vf_set_ext(). By doing
+	 * it we got the flexibility to change the _ext() API whenever
+	 * needed, while the kABI commitment is maintained on the legacy
+	 * API.
+	 */
 	struct devlink_port_attrs *attrs = &devlink_port->attrs;
 	int ret;
 
@@ -6709,8 +6766,40 @@ void devlink_port_attrs_pci_vf_set(struct devlink_port *devlink_port,
 		return;
 	attrs->pci_vf.pf = pf;
 	attrs->pci_vf.vf = vf;
+	/* Upstream update enclosed should port to the new _ext() API */
 }
 EXPORT_SYMBOL_GPL(devlink_port_attrs_pci_vf_set);
+
+/**
+ *	devlink_port_attrs_pci_vf_set_ext - Set PCI VF port attributes
+ *					    (extended due to UEK kABI)
+ *
+ *	@devlink_port: devlink port
+ *	@pf: associated PF for the devlink port instance
+ *	@vf: associated VF of a PF for the devlink port instance
+ *	@switch_id: if the port is part of switch, this is buffer with ID,
+ *	            otherwise this is NULL
+ *	@switch_id_len: length of the switch_id buffer
+ *	@external: indicates if the port is for an external controller
+ */
+void devlink_port_attrs_pci_vf_set_ext(struct devlink_port *devlink_port,
+				       const unsigned char *switch_id,
+				       unsigned char switch_id_len,
+				       u16 pf, u16 vf, bool external)
+{
+	struct devlink_port_attrs *attrs = &devlink_port->attrs;
+	int ret;
+
+	ret = __devlink_port_attrs_set(devlink_port,
+				       DEVLINK_PORT_FLAVOUR_PCI_VF,
+				       switch_id, switch_id_len);
+	if (ret)
+		return;
+	attrs->pci_vf.pf = pf;
+	attrs->pci_vf.vf = vf;
+	attrs->pci_vf.external = external;
+}
+EXPORT_SYMBOL_GPL(devlink_port_attrs_pci_vf_set_ext);
 
 static int __devlink_port_phys_port_name_get(struct devlink_port *devlink_port,
 					     char *name, size_t len)

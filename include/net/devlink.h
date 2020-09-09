@@ -54,19 +54,25 @@ struct devlink_port_phys_attrs {
 /**
  * struct devlink_port_pci_pf_attrs - devlink port's PCI PF attributes
  * @pf: Associated PCI PF number for this port.
+ * @external: when set, indicates if a port is for an external controller
  */
 struct devlink_port_pci_pf_attrs {
 	u16 pf;
+	/* 10 bytes hole to hold the excessive tailing members */
+	UEK_KABI_EXTEND(u8 external:1)
 };
 
 /**
  * struct devlink_port_pci_vf_attrs - devlink port's PCI VF attributes
  * @pf: Associated PCI PF number for this port.
  * @vf: Associated PCI VF for of the PCI PF for this port.
+ * @external: when set, indicates if a port is for an external controller
  */
 struct devlink_port_pci_vf_attrs {
 	u16 pf;
 	u16 vf;
+	/* 8 bytes hole to hold the excessive tailing members */
+	UEK_KABI_EXTEND(u8 external:1)
 };
 
 /**
@@ -839,10 +845,18 @@ void devlink_port_attrs_set(struct devlink_port *devlink_port,
 void devlink_port_attrs_pci_pf_set(struct devlink_port *devlink_port,
 				   const unsigned char *switch_id,
 				   unsigned char switch_id_len, u16 pf);
+void devlink_port_attrs_pci_pf_set_ext(struct devlink_port *devlink_port,
+				       const unsigned char *switch_id,
+				       unsigned char switch_id_len, u16 pf,
+				       bool external);
 void devlink_port_attrs_pci_vf_set(struct devlink_port *devlink_port,
 				   const unsigned char *switch_id,
 				   unsigned char switch_id_len,
 				   u16 pf, u16 vf);
+void devlink_port_attrs_pci_vf_set_ext(struct devlink_port *devlink_port,
+				       const unsigned char *switch_id,
+				       unsigned char switch_id_len,
+				       u16 pf, u16 vf, bool external);
 int devlink_sb_register(struct devlink *devlink, unsigned int sb_index,
 			u32 size, u16 ingress_pools_count,
 			u16 egress_pools_count, u16 ingress_tc_count,
