@@ -1145,6 +1145,7 @@ is_devlink_port_supported(const struct mlx5_core_dev *dev,
 static int register_devlink_port(struct mlx5_core_dev *dev,
 				 struct mlx5e_rep_priv *rpriv)
 {
+	struct mlx5_esw_offload *offloads = &dev->priv.eswitch->offloads;
 	struct devlink *devlink = priv_to_devlink(dev);
 	struct mlx5_eswitch_rep *rep = rpriv->rep;
 	struct netdev_phys_item_id ppid = {};
@@ -1157,9 +1158,8 @@ static int register_devlink_port(struct mlx5_core_dev *dev,
 		return 0;
 
 	external = mlx5_core_is_ecpf_esw_manager(dev);
-	/*
-	 * TODO: load controller_num from offloads->host_number
-	 */
+	if (external)
+		controller_num = offloads->host_number + 1;
 	mlx5e_rep_get_port_parent_id(rpriv->netdev, &ppid);
 	dl_port_index = mlx5_esw_vport_to_devlink_port_index(dev, rep->vport);
 	pfnum = PCI_FUNC(dev->pdev->devfn);
