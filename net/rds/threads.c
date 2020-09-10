@@ -130,8 +130,9 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	cancel_delayed_work(&cp->cp_reconn_w);
 
 	rds_update_avg_connect_time(cp);
-	cp->cp_connection_start = get_seconds();
+	cp->cp_connection_start = ktime_get_real_seconds();
 	cp->cp_reconnect = 1;
+	cp->cp_connection_established = ktime_get_real_seconds();
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 }
 EXPORT_SYMBOL_GPL(rds_connect_path_complete);
@@ -239,7 +240,9 @@ void rds_connect_worker(struct work_struct *work)
 		 * record the time we started trying to connect so that we can
 		 * drop the connection if it doesn't work out after a while
 		 */
-		cp->cp_connection_start = get_seconds();
+		cp->cp_connection_start = ktime_get_real_seconds();
+		cp->cp_connection_initiated = ktime_get_real_seconds();
+		cp->cp_connection_attempts++;
 		cp->cp_drop_source = DR_DEFAULT;
 
 		ret = conn->c_trans->conn_path_connect(cp);
@@ -331,7 +334,7 @@ void rds_hb_worker(struct work_struct *work)
 	struct rds_conn_path *cp = container_of(work,
 						struct rds_conn_path,
 						cp_hb_w.work);
-	unsigned long now = get_seconds();
+	time64_t now = ktime_get_real_seconds();
 	unsigned long delay = HZ;
 	int ret;
 	struct rds_connection *conn = cp->cp_conn;
@@ -350,7 +353,7 @@ void rds_hb_worker(struct work_struct *work)
 					msecs_to_jiffies(prandom_u32() % rds_sysctl_conn_hb_interval * 1000);
 			} else if (now - READ_ONCE(cp->cp_hb_start) > rds_sysctl_conn_hb_timeout) {
 				rds_rtd_ptr(RDS_RTD_CM,
-					    "RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
+					    "RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%llx,0x%llx)..discon and recon\n",
 					    &conn->c_laddr, &conn->c_faddr,
 					    conn->c_tos, READ_ONCE(cp->cp_hb_start), now);
 				rds_conn_path_drop(cp, DR_HB_TIMEOUT);
@@ -398,7 +401,7 @@ void rds_shutdown_worker(struct work_struct *work)
 	struct rds_conn_path *cp = container_of(work,
 						struct rds_conn_path,
 						cp_down_w);
-	unsigned long now = get_seconds();
+	time64_t now = ktime_get_real_seconds();
 	bool is_tcp = cp->cp_conn->c_trans->t_type == RDS_TRANS_TCP;
 	struct rds_connection *conn = cp->cp_conn;
 	bool restart = true;

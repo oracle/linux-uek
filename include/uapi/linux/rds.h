@@ -169,8 +169,12 @@ struct rds_cmsg_rx_trace {
 #define RDS6_INFO_SOCKETS		10015
 #define RDS6_INFO_TCP_SOCKETS		10016
 #define RDS6_INFO_IB_CONNECTIONS	10017
+#define RDS_INFO_RDMA_CONNECTION_STATS	10018
+#define RDS6_INFO_RDMA_CONNECTION_STATS	10019
+#define RDS_INFO_CONN_PATHS		10020
+#define RDS6_INFO_CONN_PATHS		10021
 
-#define RDS_INFO_LAST			10017
+#define RDS_INFO_LAST			10021
 
 struct rds_info_counter {
 	u_int8_t	name[32];
@@ -320,6 +324,25 @@ struct rds6_info_rdma_connection {
 	uint32_t	w_free_ctr;
 	int32_t		dst_qp_num;
 };
+
+struct rds_path_info {
+	time64_t	attempt_time;
+	time64_t	connect_time;
+	time64_t	reset_time;
+	uint32_t	disconnect_reason;
+	uint32_t	connect_attempts;
+	unsigned int	index;
+	u_int8_t	flags;
+} __attribute__((packed));
+
+struct rds_info_connection_paths {
+	struct in6_addr local_addr;
+	struct in6_addr peer_addr;
+	u_int8_t	transport[TRANSNAMSIZ];
+	uint8_t		tos;
+	u_int8_t	npaths;
+	struct rds_path_info paths[];
+} __attribute__((packed));
 
 /*
  * Congestion monitoring.
