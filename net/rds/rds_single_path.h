@@ -31,7 +31,6 @@
 #define c_acl_init		c_path[0].cp_acl_init
 #define c_connection_start	c_path[0].cp_connection_start
 #define c_reconnect_racing	c_path[0].cp_reconnect_racing
-#define c_reconnect		c_path[0].cp_reconnect
 #define c_to_index		c_path[0].cp_to_index
 #define c_acl_en		c_path[0].cp_acl_en
 #define c_reconnect_err		c_path[0].cp_reconnect_err
