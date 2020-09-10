@@ -200,21 +200,18 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 
 	cp->cp_conn = conn;
 	atomic_set(&cp->cp_state, RDS_CONN_DOWN);
-	cp->cp_send_gen = 0;
-	cp->cp_reconnect_jiffies = 0;
 	cp->cp_reconnect_start = get_seconds();
 	cp->cp_reconnect_warn = 1;
-	cp->cp_reconnect_drops = 0;
-	cp->cp_reconnect_err = 0;
 	cp->cp_conn->c_proposed_version = RDS_PROTOCOL_VERSION;
+
 	INIT_DELAYED_WORK(&cp->cp_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&cp->cp_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&cp->cp_conn_w, rds_connect_worker);
 	INIT_DELAYED_WORK(&cp->cp_hb_w, rds_hb_worker);
 	INIT_DELAYED_WORK(&cp->cp_reconn_w, rds_reconnect_timeout);
 	INIT_WORK(&cp->cp_down_w, rds_shutdown_worker);
+
 	mutex_init(&cp->cp_cm_lock);
-	cp->cp_flags = 0;
 	atomic_set(&cp->cp_rdma_map_pending, 0);
 	init_waitqueue_head(&cp->cp_up_waitq);
 }
@@ -898,6 +895,54 @@ static int rds_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
 	return 1;
 }
 
+static void fill_path_info(struct rds_connection *conn, void *buffer)
+{
+	int i = 0;
+	struct rds_info_connection_paths *cinfo =
+				(struct rds_info_connection_paths *)buffer;
+	struct rds_path_info *pinfo = cinfo->paths;
+
+	memset(cinfo, 0, sizeof(struct rds_info_connection_paths));
+	cinfo->local_addr = conn->c_laddr;
+	cinfo->peer_addr = conn->c_faddr;
+	cinfo->tos = conn->c_tos;
+	strncpy(cinfo->transport, conn->c_trans->t_name,
+		sizeof(cinfo->transport));
+	cinfo->npaths = conn->c_npaths;
+	do {
+		struct rds_conn_path *cp = &conn->c_path[i];
+
+		memset(pinfo, 0, sizeof(struct rds_path_info));
+		rds_conn_info_set(pinfo->flags,
+				  test_bit(RDS_IN_XMIT, &cp->cp_flags),
+				  SENDING);
+		rds_conn_info_set(pinfo->flags,
+				  atomic_read(&cp->cp_state) == RDS_CONN_UP,
+				  CONNECTED);
+		rds_conn_info_set(pinfo->flags, cp->cp_pending_flush,
+				  ERROR);
+		pinfo->attempt_time = cp->cp_connection_initiated;
+		pinfo->connect_time = cp->cp_connection_established;
+		pinfo->connect_attempts = cp->cp_connection_attempts;
+		pinfo->reset_time = cp->cp_connection_reset;
+		pinfo->disconnect_reason = cp->cp_drop_source;
+		pinfo->index = cp->cp_index;
+		pinfo++;
+	} while (++i < conn->c_npaths);
+}
+
+static int rds_info_paths_visitor(struct rds_conn_path *cp, void *buffer)
+{
+	struct rds_connection *conn = cp->cp_conn;
+
+	if (conn->c_isv6)
+		return 0;
+
+	fill_path_info(conn, buffer);
+
+	return 1;
+}
+
 #if IS_ENABLED(CONFIG_IPV6)
 static int rds6_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
 {
@@ -929,6 +974,14 @@ static int rds6_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
 	 */
 	return 1;
 }
+
+static int rds6_info_paths_visitor(struct rds_conn_path *cp, void *buffer)
+{
+	struct rds_connection *conn = cp->cp_conn;
+
+	fill_path_info(conn, buffer);
+	return 1;
+}
 #endif
 
 static void rds_conn_info(struct socket *sock, unsigned int len,
@@ -942,6 +995,21 @@ static void rds_conn_info(struct socket *sock, unsigned int len,
 				sizeof(struct rds_info_connection));
 }
 
+static void rds_info_conn_paths(struct socket *sock, unsigned int len,
+				struct rds_info_iterator *iter,
+				struct rds_info_lengths *lens)
+{
+#define	paths_info_size (sizeof(struct rds_path_info) * RDS_MPATH_WORKERS)
+#define	conn_path_info_size	\
+	(sizeof(struct rds_info_connection_paths) + paths_info_size)
+
+	u64 path_buffer[(conn_path_info_size + 7) / 8];
+
+	rds_walk_conn_path_info(sock, len, iter, lens,
+				rds_info_paths_visitor, path_buffer,
+				conn_path_info_size);
+}
+
 #if IS_ENABLED(CONFIG_IPV6)
 static void rds6_conn_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
@@ -952,6 +1020,21 @@ static void rds6_conn_info(struct socket *sock, unsigned int len,
 	rds_walk_conn_path_info(sock, len, iter, lens,
 				rds6_conn_info_visitor, buffer,
 				sizeof(struct rds6_info_connection));
+}
+
+static void rds6_info_conn_paths(struct socket *sock, unsigned int len,
+				 struct rds_info_iterator *iter,
+				 struct rds_info_lengths *lens)
+{
+#define	paths_info_size (sizeof(struct rds_path_info) * RDS_MPATH_WORKERS)
+#define	conn_path_info_size	\
+	(sizeof(struct rds_info_connection_paths) + paths_info_size)
+
+	u64 path6_buffer[(conn_path_info_size + 7) / 8];
+
+	rds_walk_conn_path_info(sock, len, iter, lens,
+				rds6_info_paths_visitor, path6_buffer,
+				conn_path_info_size);
 }
 #endif
 
@@ -968,12 +1051,14 @@ int rds_conn_init(void)
 			       rds_conn_message_info_send);
 	rds_info_register_func(RDS_INFO_RETRANS_MESSAGES,
 			       rds_conn_message_info_retrans);
+	rds_info_register_func(RDS_INFO_CONN_PATHS, rds_info_conn_paths);
 #if IS_ENABLED(CONFIG_IPV6)
 	rds_info_register_func(RDS6_INFO_CONNECTIONS, rds6_conn_info);
 	rds_info_register_func(RDS6_INFO_SEND_MESSAGES,
 			       rds6_conn_message_info_send);
 	rds_info_register_func(RDS6_INFO_RETRANS_MESSAGES,
 			       rds6_conn_message_info_retrans);
+	rds_info_register_func(RDS6_INFO_CONN_PATHS, rds6_info_conn_paths);
 #endif
 
 	return 0;
@@ -1067,9 +1152,12 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
 		cp->cp_reconnect_start = now;
 		cp->cp_reconnect_warn = 1;
-		cp->cp_reconnect_drops = 0;
 		cp->cp_reconnect_err = 0;
 		cp->cp_reconnect_racing = 0;
+
+		cp->cp_connection_reset = ktime_get_real_seconds();
+		/* Restart counting */
+		cp->cp_connection_attempts = 0;
 		if (conn->c_trans->t_type != RDS_TRANS_TCP)
 			printk(KERN_INFO "RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s'\n",
 			       &conn->c_laddr,
@@ -1084,11 +1172,10 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 		       &conn->c_laddr,
 		       &conn->c_faddr,
 		       conn->c_tos,
-		       cp->cp_reconnect_drops,
+		       cp->cp_connection_attempts,
 		       cp->cp_reconnect_err);
 		cp->cp_reconnect_warn = 0;
 	}
-	cp->cp_reconnect_drops++;
 	cp->cp_conn_start_jf = 0;
 
 	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
