@@ -298,15 +298,14 @@ struct rds_conn_path {
 	unsigned int		cp_index;
 
 	/* when was this connection started */
-	unsigned long		cp_connection_start;
+	time64_t		cp_connection_start;
 	uint64_t		cp_conn_start_jf;
 
 	/* Re-connect stall diagnostics */
 	unsigned long		cp_reconn_flags;
 	unsigned long		cp_reconnect_retry;
 	unsigned int		cp_reconnect_retry_count;
-	unsigned long           cp_reconnect_start;
-	unsigned int            cp_reconnect_drops;
+	time64_t                cp_reconnect_start;
 	int                     cp_reconnect_warn;
 	int                     cp_reconnect_err;
 	int			cp_to_index;
@@ -315,7 +314,7 @@ struct rds_conn_path {
 
 	unsigned int		cp_pending_flush;
 
-	unsigned long           cp_hb_start;
+	time64_t                cp_hb_start;
 	enum rds_hb_state	cp_hb_state;
 
 	unsigned int		cp_rdsinfo_pending;
@@ -327,6 +326,15 @@ struct rds_conn_path {
 	unsigned char		cp_acl_en;
 
 	wait_queue_head_t	cp_up_waitq;	/* start up waitq */
+	u64			cp_rcvd;
+	u64			cp_xmit;
+	u64			cp_rexmit;
+	u64			cp_unacked;
+	u64			cp_send_queued;
+	time64_t		cp_connection_reset;
+	time64_t		cp_connection_initiated;
+	time64_t		cp_connection_established;
+	u32			cp_connection_attempts;
 };
 
 struct rds_connection {
@@ -371,7 +379,6 @@ struct rds_connection {
 
 	/* Re-connect stall diagnostics */
 	unsigned long           c_reconnect_start;
-	unsigned int            c_reconnect_drops;
 	int                     c_reconnect_warn;
 	int                     c_reconnect_err;
 	int			c_to_index;
