@@ -2214,12 +2214,9 @@ static bool check_selective_cr0_intercepted(struct vcpu_svm *svm,
 {
 	unsigned long cr0 = svm->vcpu.arch.cr0;
 	bool ret = false;
-	u64 intercept;
-
-	intercept = svm->nested.ctl.intercept;
 
 	if (!is_guest_mode(&svm->vcpu) ||
-	    (!(intercept & (1ULL << INTERCEPT_SELECTIVE_CR0))))
+	    (!(vmcb_is_intercept(&svm->nested.ctl, INTERCEPT_SELECTIVE_CR0))))
 		return false;
 
 	cr0 &= ~SVM_CR0_SELECTIVE_MASK;
@@ -2808,7 +2805,9 @@ static void dump_vmcb(struct kvm_vcpu *vcpu)
 	pr_err("%-20s%04x\n", "dr_read:", control->intercepts[INTERCEPT_DR] & 0xffff);
 	pr_err("%-20s%04x\n", "dr_write:", control->intercepts[INTERCEPT_DR] >> 16);
 	pr_err("%-20s%08x\n", "exceptions:", control->intercepts[INTERCEPT_EXCEPTION]);
-	pr_err("%-20s%016llx\n", "intercepts:", control->intercept);
+	pr_err("%-20s%08x %08x\n", "intercepts:",
+              control->intercepts[INTERCEPT_WORD3],
+	       control->intercepts[INTERCEPT_WORD4]);
 	pr_err("%-20s%d\n", "pause filter count:", control->pause_filter_count);
 	pr_err("%-20s%d\n", "pause filter threshold:",
 	       control->pause_filter_thresh);
@@ -3686,7 +3685,6 @@ static int svm_check_intercept(struct kvm_vcpu *vcpu,
 		break;
 	case SVM_EXIT_WRITE_CR0: {
 		unsigned long cr0, val;
-		u64 intercept;
 
 		if (info->intercept == x86_intercept_cr_write)
 			icpt_info.exit_code += info->modrm_reg;
@@ -3695,9 +3693,8 @@ static int svm_check_intercept(struct kvm_vcpu *vcpu,
 		    info->intercept == x86_intercept_clts)
 			break;
 
-		intercept = svm->nested.ctl.intercept;
-
-		if (!(intercept & (1ULL << INTERCEPT_SELECTIVE_CR0)))
+		if (!(vmcb_is_intercept(&svm->nested.ctl,
+					INTERCEPT_SELECTIVE_CR0)))
 			break;
 
 		cr0 = vcpu->arch.cr0 & ~SVM_CR0_SELECTIVE_MASK;
@@ -3965,7 +3962,7 @@ static bool svm_apic_init_signal_blocked(struct kvm_vcpu *vcpu)
 	 * if an INIT signal is pending.
 	 */
 	return !gif_set(svm) ||
-		   (svm->vmcb->control.intercept & (1ULL << INTERCEPT_INIT));
+		   (vmcb_is_intercept(&svm->vmcb->control, INTERCEPT_INIT));
 }
 
 static void svm_vm_destroy(struct kvm *kvm)
