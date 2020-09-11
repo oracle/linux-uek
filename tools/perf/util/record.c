@@ -12,6 +12,7 @@
 #include "cloexec.h"
 #include "record.h"
 #include "../perf-sys.h"
+#include "topdown.h"
 
 typedef void (*setup_probe_fn_t)(struct evsel *evsel);
 
@@ -146,7 +147,7 @@ static struct evsel *perf_evsel__read_sampler(struct evsel *evsel,
 {
 	struct evsel *leader = evsel->leader;
 
-	if (perf_evsel__is_aux_event(leader)) {
+	if (perf_evsel__is_aux_event(leader) || arch_topdown_sample_read(leader)) {
 		evlist__for_each_entry(evlist, evsel) {
 			if (evsel->leader == leader && evsel != evsel->leader)
 				return evsel;
