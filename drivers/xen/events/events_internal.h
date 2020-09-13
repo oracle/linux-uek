@@ -71,6 +71,9 @@ struct evtchn_ops {
 
 	void (*handle_events)(unsigned cpu);
 	void (*resume)(void);
+
+	int (*cpu_notify)(struct notifier_block *self,
+			  unsigned long action, void *hcpu);
 };
 
 extern const struct evtchn_ops *evtchn_ops;

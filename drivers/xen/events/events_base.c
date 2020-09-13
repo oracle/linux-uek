@@ -33,6 +33,7 @@
 #include <linux/irqnr.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
+#include <linux/cpu.h>
 
 #ifdef CONFIG_X86
 #include <asm/desc.h>
@@ -1823,6 +1824,22 @@ void xen_callback_vector(void) {}
 static bool fifo_events = true;
 module_param(fifo_events, bool, 0);
 
+static int evtchn_cpu_notification(struct notifier_block *self,
+				   unsigned long action, void *hcpu)
+{
+	int ret = NOTIFY_OK;
+
+	if (evtchn_ops->cpu_notify)
+		ret = evtchn_ops->cpu_notify(self, action, hcpu);
+
+	return ret;
+}
+
+
+static struct notifier_block evtchn_cpu_notifier = {
+	.notifier_call  = evtchn_cpu_notification,
+};
+
 void __init xen_init_IRQ(void)
 {
 	int ret = -EINVAL;
@@ -1831,6 +1848,8 @@ void __init xen_init_IRQ(void)
 		ret = xen_evtchn_fifo_init();
 	if (ret < 0)
 		xen_evtchn_2l_init();
+
+	register_cpu_notifier(&evtchn_cpu_notifier);
 
 	evtchn_to_irq = kcalloc(EVTCHN_ROW(xen_evtchn_max_channels()),
 				sizeof(*evtchn_to_irq), GFP_KERNEL);
