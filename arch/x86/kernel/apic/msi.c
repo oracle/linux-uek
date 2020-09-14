@@ -68,6 +68,7 @@ msi_set_affinity(struct irq_data *irqd, const struct cpumask *mask, bool force)
 	struct irq_data *parent = irqd->parent_data;
 	unsigned int cpu;
 	int ret;
+	struct msi_desc *desc = irqd->common->msi_desc;
 
 	/* Save the current configuration */
 	cpu = cpumask_first(irq_data_get_effective_affinity_mask(irqd));
@@ -92,6 +93,8 @@ msi_set_affinity(struct irq_data *irqd, const struct cpumask *mask, bool force)
 	 * - The new destination CPU is the same as the old destination CPU
 	 */
 	if (!irqd_msi_nomask_quirk(irqd) ||
+	    desc->msi_attrib.is_msix ||
+	    desc->msi_attrib.maskbit ||
 	    cfg->vector == old_cfg.vector ||
 	    old_cfg.vector == MANAGED_IRQ_SHUTDOWN_VECTOR ||
 	    cfg->dest_apicid == old_cfg.dest_apicid) {
