@@ -383,6 +383,45 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	atomic64_set(&ic->i_connecting_ts, ktime_get());
 }
 
+void rds_ib_conn_ha_changed(struct rds_connection *conn,
+			    const unsigned char *ha,
+			    unsigned ha_len)
+{
+	struct rds_ib_connection *ic;
+	struct rdma_cm_id *cm_id;
+	int gid_ofs, gid_len;
+	const unsigned char *old_ha;
+	bool drop_it;
+
+	ic = conn->c_transport_data;
+	if (!ic)
+		return;
+
+	/* if we can't acquire a read-lock, ic->i_cm_id is being destroyed */
+	if (!down_read_trylock(&ic->i_cm_id_free_lock))
+		return;
+
+	cm_id = ic->i_cm_id;
+	if (cm_id) {
+		old_ha = cm_id->route.addr.dev_addr.dst_dev_addr;
+		gid_ofs = rdma_addr_gid_offset(&cm_id->route.addr.dev_addr);
+		gid_len = ha_len - gid_ofs;
+
+		if (gid_len > 0)
+			drop_it =
+				memchr_inv(old_ha + gid_ofs, 0, gid_len) != NULL &&
+				memcmp(old_ha + gid_ofs, ha + gid_ofs, gid_len) != 0;
+		else
+			drop_it = false;
+	} else
+		drop_it = false;
+
+	up_read(&ic->i_cm_id_free_lock);
+
+	if (drop_it)
+		rds_conn_drop(conn, DR_IB_PEER_ADDR_CHANGE, 0);
+}
+
 static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 				      struct rdma_conn_param *conn_param,
 				      union rds_ib_conn_priv *dp,
@@ -1806,7 +1845,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	struct sockaddr_storage src, dest;
 	rdma_cm_event_handler handler;
 	struct rds_ib_connection *ic;
-	struct rdma_cm_id *alt_cm_id;
+	struct rdma_cm_id *cm_id, *alt_cm_id;
 	char *reason = NULL;
 	int ret;
 
@@ -1922,9 +1961,13 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 				RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(conn));
 	if (ret) {
 		reason = "addr resolve failed";
-		rds_ib_rdma_destroy_id(ic->i_cm_id);
 
+		down_write(&ic->i_cm_id_free_lock);
+		cm_id = ic->i_cm_id;
 		ic->i_cm_id = NULL;
+		up_write(&ic->i_cm_id_free_lock);
+
+		rds_ib_rdma_destroy_id(cm_id);
 	}
 
 out:
@@ -1946,6 +1989,7 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	int err = 0;
+	struct rdma_cm_id *cm_id;
 
 	trace_rds_ib_conn_path_shutdown(ic && ic->rds_ibdev ?
 					ic->rds_ibdev->dev : NULL,
@@ -2011,8 +2055,12 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		 * when the conn cannot be associated with the underlying
 		 * device.
 		 */
-		rds_ib_rdma_destroy_id(ic->i_cm_id);
+		down_write(&ic->i_cm_id_free_lock);
+		cm_id = ic->i_cm_id;
 		ic->i_cm_id = NULL;
+		up_write(&ic->i_cm_id_free_lock);
+
+		rds_ib_rdma_destroy_id(cm_id);
 	}
 	BUG_ON(ic->rds_ibdev);
 
@@ -2071,6 +2119,8 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 		return -ENOMEM;
 
 	INIT_LIST_HEAD(&ic->ib_node);
+	init_rwsem(&ic->i_cm_id_free_lock);
+
 	tasklet_init(&ic->i_stasklet, rds_ib_tasklet_fn_send, (unsigned long) ic);
 	tasklet_init(&ic->i_rtasklet, rds_ib_tasklet_fn_recv, (unsigned long) ic);
 	mutex_init(&ic->i_recv_mutex);

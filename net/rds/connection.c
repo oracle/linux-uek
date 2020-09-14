@@ -44,9 +44,12 @@
 #define RDS_CONNECTION_HASH_ENTRIES (1 << RDS_CONNECTION_HASH_BITS)
 #define RDS_CONNECTION_HASH_MASK (RDS_CONNECTION_HASH_ENTRIES - 1)
 
+#define RDS_CONN_FADDR_HASH_ENTRIES 256
+
 /* converting this to RCU is a chore for another day.. */
 static DEFINE_SPINLOCK(rds_conn_lock);
 static struct hlist_head rds_conn_hash[RDS_CONNECTION_HASH_ENTRIES];
+static struct hlist_head rds_conn_faddr_hash[RDS_CONN_FADDR_HASH_ENTRIES];
 static struct kmem_cache *rds_conn_slab;
 
 /* Loop through the rds_conn_hash table and set head to the hlist_head
@@ -57,9 +60,11 @@ static struct kmem_cache *rds_conn_slab;
 	 (head) < rds_conn_hash + ARRAY_SIZE(rds_conn_hash);	\
 	 (head)++)
 
-static struct hlist_head *rds_conn_bucket(const struct in6_addr *laddr,
-					  const struct in6_addr *faddr,
-					  u8 tos)
+static void rds_conn_ha_changed_task(struct work_struct *work);
+
+static u32 rds_conn_bucket_hash(const struct in6_addr *laddr,
+				const struct in6_addr *faddr,
+				u8 tos)
 {
 	static u32 rds6_hash_secret __read_mostly;
 	static u32 rds_hash_secret __read_mostly;
@@ -69,16 +74,38 @@ static struct hlist_head *rds_conn_bucket(const struct in6_addr *laddr,
 	net_get_random_once(&rds_hash_secret, sizeof(rds_hash_secret));
 	net_get_random_once(&rds6_hash_secret, sizeof(rds6_hash_secret));
 
-	lhash = (__force u32)laddr->s6_addr32[3];
+	if (laddr)
+		lhash = (__force u32)laddr->s6_addr32[3];
+	else
+		lhash = 0;
+
+	if (faddr) {
 #if IS_ENABLED(CONFIG_IPV6)
-	fhash = __ipv6_addr_jhash(faddr, rds6_hash_secret);
+		fhash = __ipv6_addr_jhash(faddr, rds6_hash_secret);
 #else
-	fhash = (__force u32)faddr->s6_addr32[3];
+		fhash = (__force u32)faddr->s6_addr32[3];
 #endif
+	} else
+		fhash = 0;
+
 	hash = __inet_ehashfn((__force __be32)lhash, tos,
 			      (__force __be32)fhash, 0, rds_hash_secret);
 
+	return hash;
+}
+
+static struct hlist_head *rds_conn_bucket(const struct in6_addr *laddr,
+					  const struct in6_addr *faddr,
+					  u8 tos)
+{
+	u32 hash = rds_conn_bucket_hash(laddr, faddr, tos);
 	return &rds_conn_hash[hash & RDS_CONNECTION_HASH_MASK];
+}
+
+static struct hlist_head *rds_conn_faddr_bucket(const struct in6_addr *faddr)
+{
+	u32 hash = rds_conn_bucket_hash(NULL, faddr, 0);
+	return &rds_conn_faddr_hash[hash % RDS_CONN_FADDR_HASH_ENTRIES];
 }
 
 #define rds_conn_info_set(var, test, suffix) do {		\
@@ -235,6 +262,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 {
 	struct rds_connection *conn, *parent = NULL;
 	struct hlist_head *head = rds_conn_bucket(laddr, faddr, tos);
+	struct hlist_head *faddr_head = rds_conn_faddr_bucket(faddr);
 	struct rds_transport *loop_trans;
 	char *reason = NULL;
 	unsigned long flags;
@@ -272,10 +300,13 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	memset(conn, 0, sizeof(*conn));
 
 	INIT_HLIST_NODE(&conn->c_hash_node);
+	INIT_HLIST_NODE(&conn->c_faddr_node);
 	conn->c_laddr = *laddr;
 	conn->c_isv6 = !ipv6_addr_v4mapped(laddr);
 	conn->c_faddr = *faddr;
 	conn->c_dev_if = dev_if;
+
+	INIT_WORK(&conn->c_ha_changed.work, rds_conn_ha_changed_task);
 
 #if IS_ENABLED(CONFIG_IPV6)
 	/* If the local address is link local, set c_bound_if to be the
@@ -418,6 +449,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			conn->c_base_conn = get_base_conn(laddr, faddr,
 							  GFP_ATOMIC);
 			hlist_add_head_rcu(&conn->c_hash_node, head);
+			hlist_add_head_rcu(&conn->c_faddr_node, faddr_head);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
 		}
@@ -614,9 +646,13 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	trace_rds_conn_destroy(NULL, conn, NULL, NULL, 0);
 
 	conn->c_destroy_in_prog = 1;
+	smp_mb();
+	cancel_work_sync(&conn->c_ha_changed.work);
+
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
 	hlist_del_init_rcu(&conn->c_hash_node);
+	hlist_del_init_rcu(&conn->c_faddr_node);
 	if (conn->c_base_conn) {
 		base_conn = conn->c_base_conn;
 		conn->c_base_conn = NULL;
@@ -1121,6 +1157,7 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_CONSUMER_DEFINED_REJ]	= "CONSUMER_DEFINED reject",
 	[DR_IB_REJECTED_EVENT]		= "REJECTED event",
 	[DR_IB_ADDR_CHANGE]		= "ADDR_CHANGE event",
+	[DR_IB_PEER_ADDR_CHANGE]	= "peer ADDR_CHANGE event",
 	[DR_IB_DISCONNECTED_EVENT]	= "DISCONNECTED event",
 	[DR_IB_TIMEWAIT_EXIT]		= "TIMEWAIT_EXIT event",
 	[DR_IB_POST_RECV_FAIL]		= "post_recv failure",
@@ -1168,7 +1205,8 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	if (conn->c_trans->conn_path_reset) {
 		unsigned flags = 0;
 
-		if (reason == DR_IB_ADDR_CHANGE || reason == DR_IB_DISCONNECTED_EVENT)
+		if (reason == DR_IB_ADDR_CHANGE || reason == DR_IB_PEER_ADDR_CHANGE ||
+		    reason == DR_IB_DISCONNECTED_EVENT)
 			flags |= RDS_CONN_PATH_RESET_ALT_CONN;
 
 		conn->c_trans->conn_path_reset(cp, flags);
@@ -1222,6 +1260,73 @@ void rds_conn_drop(struct rds_connection *conn, int reason, int err)
 	rds_conn_path_drop(&conn->c_path[0], reason, err);
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);
+
+static void rds_conn_ha_changed_task(struct work_struct *work)
+{
+	struct rds_connection *conn = container_of(work,
+						   struct rds_connection,
+						   c_ha_changed.work);
+
+	conn->c_trans->conn_ha_changed(conn,
+				       conn->c_ha_changed.ha,
+				       conn->c_ha_changed.ha_len);
+}
+
+void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
+			       const unsigned char *ha,
+			       unsigned ha_len)
+{
+	struct hlist_head *head = rds_conn_faddr_bucket(faddr);
+	struct rds_connection *conn;
+
+	rcu_read_lock();
+
+	hlist_for_each_entry_rcu(conn, head, c_faddr_node) {
+		smp_mb();
+		if (conn->c_destroy_in_prog)
+			continue;
+
+		if (conn->c_trans->conn_ha_changed &&
+		    ipv6_addr_equal(&conn->c_faddr, faddr)) {
+			/* In order to not disturb the delicate RCU read lock
+			 * we don't acquire any locks to protect against
+			 * concurrent access to c_ha_changed here.
+			 *
+			 * We can afford to to so because:
+			 * o The only thing we care about is whether an address was changed or not
+			 * o Concurrent access with an unchanged address doesn't matter:
+			 *   No matter how many times we overwrite memory with unchanged data,
+			 *   it's still unchanged.
+			 * o If a changed address is updated partially, and the half-update
+			 *   only included unchanged data thus far, the concurrent
+			 *   "rds_conn_ha_changed_task" will see the data as unchanged
+			 *   and the subsequent "queue_work" will take care of the address change.
+			 *   We know it will be scheduled in this case, since we have concurrency
+			 *   so the work wasn't PENDING anymore, but RUNNING.
+			 * o If a changed address is updated partially, and the half-update
+			 *   already included changed data, the concurrent
+			 *   "rds_conn_ha_changed_task" will already see the changed data.
+			 *   The subsequent "queue_work" will see it again, and issue another drop
+			 *   which happens with a lock also, as the code doesn't remember if a drop
+			 *   was already issued.
+			 * o The only "weird" case is if a changed address is updated partially
+			 *   but then falls back to unchanged.
+			 *   Depending on where the change was with regards to the partial update,
+			 *   the entire event may be missed or not.
+			 *   If it's missed, that's probably a good thing:
+			 *   The peer managed to failover and failback quicker than we were able
+			 *   to memcpy MAC addresses and execute delayed work.
+			 */
+			memcpy(&conn->c_ha_changed.ha, ha, ha_len);
+			conn->c_ha_changed.ha_len = ha_len;
+
+			queue_work(system_unbound_wq, &conn->c_ha_changed.work);
+		}
+	}
+
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(rds_conn_faddr_ha_changed);
 
 /*
  * If the connection is down, trigger a connect. We may have scheduled a
