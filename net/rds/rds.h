@@ -218,6 +218,7 @@ enum rds_conn_drop_src {
 	DR_IB_CONSUMER_DEFINED_REJ,
 	DR_IB_REJECTED_EVENT,
 	DR_IB_ADDR_CHANGE,
+	DR_IB_PEER_ADDR_CHANGE,
 	DR_IB_DISCONNECTED_EVENT,
 	DR_IB_TIMEWAIT_EXIT,
 
@@ -325,6 +326,13 @@ struct rds_conn_path {
 	u32			cp_connection_attempts;
 };
 
+struct rds_conn_ha_changed_work {
+	struct work_struct	work;
+
+	unsigned char		ha[MAX_ADDR_LEN];
+	unsigned		ha_len;
+};
+
 struct rds_connection {
 	struct hlist_node	c_hash_node;
 	struct in6_addr		c_laddr;
@@ -381,9 +389,13 @@ struct rds_connection {
 
 
 	struct list_head	c_laddr_node;
+	struct hlist_node	c_faddr_node;
 
 	u32			c_my_gen_num;
 	u32			c_peer_gen_num;
+
+	/* for rds_conn_ha_changed_task */
+	struct rds_conn_ha_changed_work c_ha_changed;
 };
 
 static inline
@@ -758,6 +770,9 @@ struct rds_transport {
 	int (*cm_initiate_connect)(struct rdma_cm_id *cm_id, bool isv6);
 	void (*cm_connect_complete)(struct rds_connection *conn,
 				    struct rdma_cm_event *event);
+	void (*conn_ha_changed)(struct rds_connection *conn,
+				const unsigned char *ha,
+				unsigned ha_len);
 
 	unsigned int (*stats_info_copy)(struct rds_info_iterator *iter,
 					unsigned int avail);
@@ -1059,6 +1074,9 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn, int reason, int err);
 void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err);
+void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
+			       const unsigned char *ha,
+			       unsigned ha_len);
 void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 			 struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);

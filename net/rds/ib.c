@@ -1362,6 +1362,7 @@ struct rds_transport rds_ib_transport = {
 	.cm_initiate_connect	= rds_ib_cm_initiate_connect,
 	.cm_handle_connect	= rds_ib_cm_handle_connect,
 	.cm_connect_complete	= rds_ib_cm_connect_complete,
+	.conn_ha_changed	= rds_ib_conn_ha_changed,
 	.stats_info_copy	= rds_ib_stats_info_copy,
 	.get_mr			= rds_ib_get_mr,
 	.sync_mr		= rds_ib_sync_mr,
