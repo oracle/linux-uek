@@ -206,6 +206,7 @@ struct rds_ib_connection {
 	struct rds_connection	*conn;
 
 	/* alphabet soup, IBTA style */
+	struct rw_semaphore	i_cm_id_free_lock;
 	struct rdma_cm_id	*i_cm_id;
 	struct rds_connection	*i_cm_id_ctx;
 	struct ib_pd		*i_pd;
@@ -697,6 +698,9 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6);
 void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
+void rds_ib_conn_ha_changed(struct rds_connection *conn,
+			    const unsigned char *ha,
+			    unsigned ha_len);
 void rds_ib_init_frag(unsigned int version);
 void rds_ib_conn_destroy_init(struct rds_connection *conn);
 void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev);
@@ -819,5 +823,6 @@ extern u32 rds_frwr_wake_intrvl;
 extern u32 rds_frwr_ibmr_gc_time;
 extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
+extern int rds_ib_sysctl_drop_on_neigh_update;
 
 #endif
