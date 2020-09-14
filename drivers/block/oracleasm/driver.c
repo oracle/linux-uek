@@ -2380,7 +2380,6 @@ static ssize_t asmfs_svc_query_handle(struct file *file, char *buf, size_t size)
 	}
 
 	d = ASMDISK_I(disk_inode);
-	iput(disk_inode);
 	bdev = d->d_bdev;
 
 	qh_info->qh_max_sectors = compute_max_sectors(bdev);
@@ -2394,6 +2393,15 @@ static ssize_t asmfs_svc_query_handle(struct file *file, char *buf, size_t size)
 
 	trace_queryhandle(bdev, qh_info);
 	ret = 0;
+
+	/*
+	 * Dropping the reference to disk_inode could result in d and
+	 * disk_inode being evicted and freed. This will further drop the
+	 * reference to bdev, which could be the last one. Thus, we must
+	 * delay the iput() until all accesses to disk_inode, d, and bdev
+	 * are complete.
+	 */
+	iput(disk_inode);
 
 out:
 	qh_info->qh_abi.ai_status = ret;
