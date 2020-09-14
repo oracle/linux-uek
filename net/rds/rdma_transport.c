@@ -39,6 +39,7 @@
 
 #include <net/sock.h>
 #include <net/inet_common.h>
+#include <net/netevent.h>
 #include <linux/version.h>
 
 #include "trace.h"
@@ -458,6 +459,39 @@ static void rds_rdma_listen_stop(void)
 #endif
 }
 
+static int rds_rdma_nb_cb(struct notifier_block *self,
+			  unsigned long event,
+			  void *ctx)
+{
+	if (rds_ib_sysctl_drop_on_neigh_update &&
+	    event == NETEVENT_NEIGH_UPDATE) {
+		struct neighbour *neigh = ctx;
+		struct in6_addr faddr;
+
+                read_lock_bh(&neigh->lock);
+		if (neigh->nud_state & NUD_VALID) {
+			switch (neigh->tbl->family) {
+			case AF_INET:
+				ipv6_addr_set_v4mapped(*(const __be32 *)neigh->primary_key, &faddr);
+				rds_conn_faddr_ha_changed(&faddr, neigh->ha, neigh->dev->addr_len);
+				break;
+
+			case AF_INET6:
+				rds_conn_faddr_ha_changed((const struct in6_addr *)neigh->primary_key,
+							  neigh->ha, neigh->dev->addr_len);
+				break;
+			}
+		}
+		read_unlock_bh(&neigh->lock);
+	}
+
+	return 0;
+}
+
+static struct notifier_block rds_rdma_nb = {
+	.notifier_call = rds_rdma_nb_cb
+};
+
 #define MODULE_NAME "rds_rdma"
 
 int __init rds_rdma_init(void)
@@ -475,6 +509,8 @@ int __init rds_rdma_init(void)
 	ret = rds_rdma_listen_init();
 	if (ret)
 		goto err_rdma_listen_init;
+
+	register_netevent_notifier(&rds_rdma_nb);
 
 	goto out;
 
@@ -494,6 +530,7 @@ void __exit rds_rdma_exit(void)
 	/* Stop listening first to ensure no new connections are attempted.
 	 * But there can be still connection requests waiting to be processed.
 	 */
+	unregister_netevent_notifier(&rds_rdma_nb);
 	rds_rdma_listen_stop();
 	rds_ib_exit();
 }
