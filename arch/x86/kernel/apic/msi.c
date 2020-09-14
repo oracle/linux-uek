@@ -82,22 +82,98 @@ static int
 msi_set_affinity(struct irq_data *data, const struct cpumask *mask, bool force)
 {
 	struct irq_cfg *cfg = irqd_cfg(data);
-	struct msi_msg msg;
+	struct msi_msg msg, old_msg;
 	unsigned int dest;
+	unsigned cpu, vector;
 	int ret;
+
+	__get_cached_msi_msg(data->msi_desc, &msg);
+
+	/* Save it */
+	memcpy(&old_msg, &msg, sizeof(msg));
+
+	vector = cfg->vector;
+	cpu = cpumask_first(cfg->domain);
+	old_msg.data &= ~MSI_DATA_VECTOR_MASK;
+	old_msg.data |= MSI_DATA_VECTOR(cfg->vector);
+	old_msg.address_lo &= ~MSI_ADDR_DEST_ID_MASK;
+	old_msg.address_lo |= MSI_ADDR_DEST_ID(cpu);
 
 	ret = apic_set_affinity(data, mask, &dest);
 	if (ret)
 		return ret;
-
-	__get_cached_msi_msg(data->msi_desc, &msg);
 
 	msg.data &= ~MSI_DATA_VECTOR_MASK;
 	msg.data |= MSI_DATA_VECTOR(cfg->vector);
 	msg.address_lo &= ~MSI_ADDR_DEST_ID_MASK;
 	msg.address_lo |= MSI_ADDR_DEST_ID(dest);
 
+	if (vector == cfg->vector || cpu == dest) {
+		__pci_write_msi_msg(data->msi_desc, &msg);
+		return ret;
+	}
+	if (WARN_ON_ONCE(cpu != smp_processor_id())) {
+		__pci_write_msi_msg(data->msi_desc, &msg);
+		return ret;
+	}
+
+	/*
+	 * Redirect the interrupt to the new vector on the current CPU
+	 * first. This might cause a spurious interrupt on this vector if
+	 * the device raises an interrupt right between this update and the
+	 * update to the final destination CPU.
+	 *
+	 * If the vector is in use then the installed device handler will
+	 * denote it as spurious which is no harm as this is a rare event
+	 * and interrupt handlers have to cope with spurious interrupts
+	 * anyway. If the vector is unused, then it is marked so it won't
+	 * trigger the 'No irq handler for vector' warning in do_IRQ().
+	 *
+	 * This requires to hold vector lock to prevent concurrent updates to
+	 * the affected vector.
+	 */
+	lock_vector_lock();
+
+	/*
+	 * Mark the new target vector on the local CPU if it is currently
+	 * unused. Reuse the VECTOR_RETRIGGERED state which is also used in
+	 * the CPU hotplug path for a similar purpose. This cannot be
+	 * undone here as the current CPU has interrupts disabled and
+	 * cannot handle the interrupt before the whole set_affinity()
+	 * section is done. In the CPU unplug case, the current CPU is
+	 * about to vanish and will not handle any interrupts anymore. The
+	 * vector is cleaned up when the CPU comes online again.
+	 */
+	if (IS_ERR_OR_NULL(this_cpu_read(vector_irq[cfg->vector])))
+		this_cpu_write(vector_irq[cfg->vector], VECTOR_RETRIGGERED);
+
+	/* Redirect it to the new vector on the local CPU temporarily */
+	__pci_write_msi_msg(data->msi_desc, &old_msg);
+
+	/* Now transition it to the target CPU */
 	__pci_write_msi_msg(data->msi_desc, &msg);
+
+	/*
+	 * All interrupts after this point are now targeted at the new
+	 * vector/CPU.
+	 *
+	 * Drop vector lock before testing whether the temporary assignment
+	 * to the local CPU was hit by an interrupt raised in the device,
+	 * because the retrigger function acquires vector lock again.
+	 */
+	unlock_vector_lock();
+	/*
+	 * Check whether the transition raced with a device interrupt and
+	 * is pending in the local APICs IRR. It is safe to do this outside
+	 * of vector lock as the irq_desc::lock of this interrupt is still
+	 * held and interrupts are disabled: The check is not accessing the
+	 * underlying vector store. It's just checking the local APIC's
+	 * IRR.
+	 */
+	if (lapic_vector_set_in_irr(cfg->vector)) {
+		printk("Retriger IRQ for cpu %d vector: %u\n", smp_processor_id(), cfg->vector);
+		irq_data_get_irq_chip(data)->irq_retrigger(data);
+	}
 
 	return IRQ_SET_MASK_OK_NOCOPY;
 }
