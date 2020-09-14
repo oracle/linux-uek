@@ -96,6 +96,9 @@ msi_set_affinity(struct irq_data *data, const struct cpumask *mask, bool force)
 	cpu = cpumask_first(cfg->domain);
 	old_msg.data &= ~MSI_DATA_VECTOR_MASK;
 	old_msg.data |= MSI_DATA_VECTOR(cfg->vector);
+	old_msg.address_hi = MSI_ADDR_BASE_HI;
+	if (x2apic_enabled())
+		old_msg.address_hi |= MSI_ADDR_EXT_DEST_ID(cpu);
 	old_msg.address_lo &= ~MSI_ADDR_DEST_ID_MASK;
 	old_msg.address_lo |= MSI_ADDR_DEST_ID(cpu);
 
@@ -105,6 +108,9 @@ msi_set_affinity(struct irq_data *data, const struct cpumask *mask, bool force)
 
 	msg.data &= ~MSI_DATA_VECTOR_MASK;
 	msg.data |= MSI_DATA_VECTOR(cfg->vector);
+	msg.address_hi = MSI_ADDR_BASE_HI;
+	if (x2apic_enabled())
+		msg.address_hi |= MSI_ADDR_EXT_DEST_ID(dest);
 	msg.address_lo &= ~MSI_ADDR_DEST_ID_MASK;
 	msg.address_lo |= MSI_ADDR_DEST_ID(dest);
 
