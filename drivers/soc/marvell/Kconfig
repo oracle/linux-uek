@@ -83,6 +83,18 @@ config OCTEONTX2_SDP_PF
 	---help---
 	  Select this option to enable SDP PF driver support.
 
+config OCTEONTX2_NPA_PF
+	tristate "OcteonTX2 NPA PF driver"
+	depends on ARM64 && PCI && OCTEONTX2_AF && OCTEONTX2_MBOX
+	default m
+	help
+	  Select this option to enable NPA PF driver support.
+
+	  NPA stands for Network Pool Allocator. This is a hardware unit on
+	  OCTEONTX2 that can maintain pools of buffer pointers. Either software
+	  or any other hardware can allocate and free pointers to buffer pools
+	  maintained by NPA.
+
 config GTI_WATCHDOG
 	tristate "GTI Watchdog driver"
 	depends on ARM64
