@@ -398,8 +398,10 @@ int bgx_port_enable(struct net_device *netdev)
 
 	netif_carrier_off(netdev);
 
-	if (priv->phydev)
+	if (priv->phydev){
+		phy_start(priv->phydev);
 		phy_start_aneg(priv->phydev);
+	}
 
 	return 0;
 }
