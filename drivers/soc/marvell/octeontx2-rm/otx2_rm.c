@@ -12,9 +12,12 @@
 #include <linux/irq.h>
 #include <linux/list.h>
 #include <linux/module.h>
+#include <linux/cdev.h>
 #include <linux/pci.h>
 #include <linux/sysfs.h>
+#include <asm/cputype.h>
 
+#include "otxrmcmd.h"
 #include "rvu_reg.h"
 #include "rvu_struct.h"
 #include "otx2_rm.h"
@@ -24,15 +27,25 @@
 #endif
 
 #define DRV_NAME	"octeontx2-rm"
-#define DRV_VERSION	"1.0"
+#define DRV_VERSION	"1.1"
+#define CLS_NAME	"otxrm"
+#define DEV_NAME	"otxrm"
+#define DEV_MINOR	102
 
 #define PCI_DEVID_OCTEONTX2_SSO_PF	0xA0F9
 #define PCI_DEVID_OCTEONTX2_SSO_VF	0xA0FA
 
-/* PCI BAR nos */
-#define PCI_AF_REG_BAR_NUM		0
-#define PCI_CFG_REG_BAR_NUM		2
-#define PCI_MBOX_BAR_NUM		4
+/* OCTEONTX2 models */
+#define CPU_MODEL_98XX_PART	0xB1
+#define CPU_MODEL_96XX_PART	0xB2
+#define CPU_MODEL_95XX_PART	0xB3
+#define CPU_MODEL_95XXN_PART	0xB4
+#define CPU_MODEL_95XXMM_PART	0xB5
+
+/* PCI BAR info */
+#define PCI_AF_REG_BAR_NUM	0
+#define PCI_CFG_REG_BAR_NUM	2
+#define PCI_MBOX_BAR_NUM	4
 
 /* Supported devices */
 static const struct pci_device_id rvu_rm_id_table[] = {
@@ -45,6 +58,10 @@ MODULE_DESCRIPTION("Marvell OcteonTX2 SSO/SSOW/TIM/NPA PF Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, rvu_rm_id_table);
+
+static struct class *cls; /* Device class */
+static struct cdev cdev; /* Char device control */
+static dev_t devno; /* Char device major:minor */
 
 /* All PF devices found are stored here */
 static spinlock_t rm_lst_lock;
@@ -1564,17 +1581,108 @@ static struct pci_driver rm_driver = {
 	.sriov_configure = rm_sriov_configure,
 };
 
+static int rm_open(struct inode *inode, struct file *filp)
+{
+	return 0;
+}
+
+static int rm_close(struct inode *inode, struct file *filp)
+{
+	return 0;
+}
+
+static int mem_read(struct otx_mem *umem)
+{
+	struct otx_mem mem;
+	uint8_t *base;
+	int rc;
+
+	if (copy_from_user(&mem, umem, sizeof(struct otx_mem)))
+		return -EIO;
+
+	base = phys_to_virt(mem.pa);
+	if (base == NULL)
+		return -ENOMEM;
+
+	rc = copy_to_user(mem.buf, base, mem.nbytes);
+	iounmap(base);
+	return rc;
+}
+
+static ssize_t rm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	int rc = 0;
+
+	switch (cmd) {
+	case IOC_MEMREAD:
+		rc = mem_read((void *)arg);
+		break;
+	default:
+		return -EINVAL;
+	};
+	return rc;
+}
+
+static const struct file_operations rm_fops = {
+	.owner = THIS_MODULE,
+	.open = rm_open,
+	.release = rm_close,
+	.unlocked_ioctl = rm_ioctl,
+};
+
 static int __init otx2_rm_init_module(void)
 {
+	dev_t dev;
+
 	pr_info("%s\n", DRV_NAME);
+	switch (MIDR_PARTNUM(read_cpuid_id())) {
+	case CPU_MODEL_98XX_PART:
+	case CPU_MODEL_96XX_PART:
+	case CPU_MODEL_95XX_PART:
+	case CPU_MODEL_95XXN_PART:
+	case CPU_MODEL_95XXMM_PART:
+		break;
+	default:
+		return 0;
+	}
+	cls = class_create(THIS_MODULE, CLS_NAME);
+	if (cls == NULL)
+		goto eexit1;
+
+	if (alloc_chrdev_region(&devno, 0, 1, DEV_NAME) < 0)
+		goto eexit2;
+
+	dev = MKDEV(MAJOR(devno), DEV_MINOR);
+	if (device_create(cls, NULL, dev, NULL, DEV_NAME) == NULL)
+		goto eexit3;
+
+	cdev_init(&cdev, &rm_fops);
+	if (cdev_add(&cdev, dev, 1) != 0)
+		goto eexit4;
 
 	spin_lock_init(&rm_lst_lock);
 	return pci_register_driver(&rm_driver);
+
+eexit4:
+	device_destroy(cls, dev);
+eexit3:
+	unregister_chrdev_region(devno, 1);
+eexit2:
+	class_destroy(cls);
+eexit1:
+	pr_info("%s: failed to install\n", DEV_NAME);
+	return -EIO;
 }
 
 static void __exit otx2_rm_exit_module(void)
 {
+	dev_t dev = MKDEV(MAJOR(devno), DEV_MINOR);
+
 	pci_unregister_driver(&rm_driver);
+	cdev_del(&cdev);
+	device_destroy(cls, dev);
+	unregister_chrdev_region(devno, 1);
+	class_destroy(cls);
 }
 
 module_init(otx2_rm_init_module);
