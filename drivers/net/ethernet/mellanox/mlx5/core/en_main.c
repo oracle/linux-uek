@@ -4248,6 +4248,29 @@ int mlx5e_get_vf_stats(struct net_device *dev,
 	return mlx5_eswitch_get_vport_stats(mdev->priv.eswitch, vf + 1,
 					    vf_stats);
 }
+
+static bool
+mlx5e_has_offload_stats(const struct net_device *dev, int attr_id)
+{
+	struct mlx5e_priv *priv = netdev_priv(dev);
+
+	if (!mlx5e_is_uplink_rep(priv))
+		return false;
+
+	return mlx5e_rep_has_offload_stats(dev, attr_id);
+}
+
+static int
+mlx5e_get_offload_stats(int attr_id, const struct net_device *dev,
+			void *sp)
+{
+	struct mlx5e_priv *priv = netdev_priv(dev);
+
+	if (!mlx5e_is_uplink_rep(priv))
+		return -EOPNOTSUPP;
+
+	return mlx5e_rep_get_offload_stats(attr_id, dev, sp);
+}
 #endif
 
 struct mlx5e_vxlan_work {
@@ -4722,6 +4745,8 @@ const struct net_device_ops mlx5e_netdev_ops = {
 	.ndo_get_vf_config       = mlx5e_get_vf_config,
 	.ndo_set_vf_link_state   = mlx5e_set_vf_link_state,
 	.ndo_get_vf_stats        = mlx5e_get_vf_stats,
+	.ndo_has_offload_stats   = mlx5e_has_offload_stats,
+	.ndo_get_offload_stats   = mlx5e_get_offload_stats,
 #endif
 	.ndo_get_devlink_port    = mlx5e_get_devlink_port,
 	.ndo_get_phys_port_name  = mlx5e_get_phys_port_name,

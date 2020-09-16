@@ -211,6 +211,10 @@ struct mlx5e_rep_sq {
 
 int mlx5e_rep_init(void);
 void mlx5e_rep_cleanup(void);
+bool mlx5e_rep_has_offload_stats(const struct net_device *dev, int attr_id);
+int mlx5e_rep_get_offload_stats(int attr_id, const struct net_device *dev,
+				void *sp);
+
 bool mlx5e_is_uplink_rep(struct mlx5e_priv *priv);
 int mlx5e_add_sqs_fwd_rules(struct mlx5e_priv *priv);
 void mlx5e_remove_sqs_fwd_rules(struct mlx5e_priv *priv);
@@ -231,6 +235,11 @@ static inline int mlx5e_add_sqs_fwd_rules(struct mlx5e_priv *priv) { return 0; }
 static inline void mlx5e_remove_sqs_fwd_rules(struct mlx5e_priv *priv) {}
 static inline int mlx5e_rep_init(void) { return 0; };
 static inline void mlx5e_rep_cleanup(void) {};
+static inline bool mlx5e_rep_has_offload_stats(const struct net_device *dev,
+					       int attr_id) { return false; }
+static inline int mlx5e_rep_get_offload_stats(int attr_id,
+					      const struct net_device *dev,
+					      void *sp) { return -EOPNOTSUPP; }
 #endif
 
 static inline bool mlx5e_is_vport_rep(struct mlx5e_priv *priv)
