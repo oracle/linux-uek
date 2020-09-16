@@ -603,6 +603,14 @@ static int mlx5e_init_rep(struct mlx5_core_dev *mdev,
 	return 0;
 }
 
+static int mlx5e_init_ul_rep(struct mlx5_core_dev *mdev,
+			     struct net_device *netdev)
+{
+	struct mlx5e_priv *priv = netdev_priv(netdev);
+
+	return mlx5e_init_rep(mdev, netdev);
+}
+
 static void mlx5e_cleanup_rep(struct mlx5e_priv *priv)
 {
 }
@@ -1017,7 +1025,7 @@ static const struct mlx5e_profile mlx5e_rep_profile = {
 };
 
 static const struct mlx5e_profile mlx5e_uplink_rep_profile = {
-	.init			= mlx5e_init_rep,
+	.init			= mlx5e_init_ul_rep,
 	.cleanup		= mlx5e_cleanup_rep,
 	.init_rx		= mlx5e_init_ul_rep_rx,
 	.cleanup_rx		= mlx5e_cleanup_ul_rep_rx,
