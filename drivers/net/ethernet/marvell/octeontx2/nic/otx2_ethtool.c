@@ -419,8 +419,7 @@ static int otx2_set_ringparam(struct net_device *netdev,
 		return -EINVAL;
 
 	/* Permitted lengths are 16 64 256 1K 4K 16K 64K 256K 1M  */
-	rx_count = clamp_t(u32, ring->rx_pending,
-			   Q_COUNT(Q_SIZE_MIN), Q_COUNT(Q_SIZE_MAX));
+	rx_count = ring->rx_pending;
 	/* On some silicon variants a skid or reserved CQEs are
 	 * needed to avoid CQ overflow.
 	 */

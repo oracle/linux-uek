@@ -96,6 +96,7 @@ static void otx2_flr_wq_destroy(struct otx2_nic *pf)
 		return;
 	destroy_workqueue(pf->flr_wq);
 	pf->flr_wq = NULL;
+	devm_kfree(pf->dev, pf->flr_wrk);
 }
 
 static void otx2_flr_handler(struct work_struct *work)
@@ -1484,12 +1485,11 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 }
 
 static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
-
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
-	struct otx2_snd_queue *sq;
 	int qidx = skb_get_queue_mapping(skb);
-	struct netdev_queue *txq = netdev_get_tx_queue(netdev, qidx);
+	struct otx2_snd_queue *sq;
+	struct netdev_queue *txq;
 
 	/* Check for minimum and maximum packet length */
 	if (skb->len <= ETH_HLEN ||
@@ -1499,10 +1499,9 @@ static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
 	}
 
 	sq = &pf->qset.sq[qidx];
+	txq = netdev_get_tx_queue(netdev, qidx);
 
-	if (netif_tx_queue_stopped(txq)) {
-		dev_kfree_skb(skb);
-	} else if (!otx2_sq_append_skb(netdev, sq, skb, qidx)) {
+	if (!otx2_sq_append_skb(netdev, sq, skb, qidx)) {
 		netif_tx_stop_queue(txq);
 
 		/* Check again, incase SQBs got freed up */
