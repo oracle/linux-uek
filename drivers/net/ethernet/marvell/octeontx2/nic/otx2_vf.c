@@ -386,13 +386,12 @@ static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 	}
 
 	sq = &vf->qset.sq[qidx];
-
 	txq = netdev_get_tx_queue(netdev, qidx);
-	if (!netif_tx_queue_stopped(txq) &&
-	    !otx2_sq_append_skb(netdev, sq, skb, qidx)) {
+
+	if (!otx2_sq_append_skb(netdev, sq, skb, qidx)) {
 		netif_tx_stop_queue(txq);
 
-		/* Barrier, for stop_queue visible to be on other cpus */
+		/* Check again, incase SQBs got freed up */
 		smp_mb();
 		if ((sq->num_sqbs - *sq->aura_fc_addr) > 1)
 			netif_tx_start_queue(txq);
