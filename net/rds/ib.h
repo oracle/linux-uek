@@ -302,6 +302,10 @@ struct rds_ib_connection {
 	struct delayed_work	i_delayed_free_work;
 	struct list_head	i_delayed_free_work_node;
 	struct rds_ib_device	*i_saved_rds_ibdev;
+
+	/* qp number info */
+	s32			i_qp_num;
+	s32			i_dst_qp_num;
 };
 
 /* This assumes that atomic_t is at least 32 bits */

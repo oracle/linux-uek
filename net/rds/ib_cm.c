@@ -375,6 +375,10 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 					    NULL);
 	}
 
+	/* Save the qp number information in the connection details. */
+	ic->i_qp_num = ic->i_cm_id->qp->qp_num;
+	ic->i_dst_qp_num = event->param.conn.qp_num;
+
 	rds_connect_complete(conn);
 }
 
