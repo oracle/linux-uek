@@ -4655,9 +4655,7 @@ static bool pcie_wait_for_link_delay(struct pci_dev *pdev, bool active,
 	}
 	if (active && ret)
 		msleep(delay);
-	else if (ret != active)
-		pci_info(pdev, "Data Link Layer Link Active not %s in 1000 msec\n",
-			active ? "set" : "cleared");
+
 	return ret == active;
 }
 
@@ -4782,6 +4780,7 @@ void pci_bridge_wait_for_secondary_bus(struct pci_dev *dev)
 			delay);
 		if (!pcie_wait_for_link_delay(dev, true, delay)) {
 			/* Did not train, no need to wait any further */
+			pci_info(dev, "Data Link Layer Link Active not set in 1000 msec\n");
 			return;
 		}
 	}
