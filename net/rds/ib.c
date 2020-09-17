@@ -769,6 +769,9 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 	memset(&iinfo->src_gid, 0, sizeof(iinfo->src_gid));
 	memset(&iinfo->dst_gid, 0, sizeof(iinfo->dst_gid));
 
+	iinfo->qp_num = -1;
+	iinfo->dst_qp_num = -1;
+
 	if (ic) {
 		iinfo->tos = conn->c_tos;
 		iinfo->sl = ic->i_sl;
@@ -785,7 +788,8 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->max_send_wr = ic->i_send_ring.w_nr;
 		iinfo->max_recv_wr = ic->i_recv_ring.w_nr;
 		iinfo->max_send_sge = rds_ibdev->max_sge;
-		iinfo->qp_num = ic->i_cm_id->qp->qp_num;
+		iinfo->qp_num = ic->i_qp_num;
+		iinfo->dst_qp_num = ic->i_dst_qp_num;
 		iinfo->w_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
 		iinfo->w_free_ctr =
 			(u32)atomic_read(&ic->i_recv_ring.w_free_ctr);
@@ -817,6 +821,9 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 	memset(&iinfo6->src_gid, 0, sizeof(iinfo6->src_gid));
 	memset(&iinfo6->dst_gid, 0, sizeof(iinfo6->dst_gid));
 
+	iinfo6->qp_num = -1;
+	iinfo6->dst_qp_num = -1;
+
 	if (ic) {
 		iinfo6->tos = conn->c_tos;
 		iinfo6->sl = ic->i_sl;
@@ -832,7 +839,8 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo6->max_send_wr = ic->i_send_ring.w_nr;
 		iinfo6->max_recv_wr = ic->i_recv_ring.w_nr;
 		iinfo6->max_send_sge = rds_ibdev->max_sge;
-		iinfo6->qp_num = ic->i_cm_id->qp->qp_num;
+		iinfo6->qp_num = ic->i_qp_num;
+		iinfo6->dst_qp_num = ic->i_dst_qp_num;
 		iinfo6->w_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
 		iinfo6->w_free_ctr =
 			(u32)atomic_read(&ic->i_recv_ring.w_free_ctr);
