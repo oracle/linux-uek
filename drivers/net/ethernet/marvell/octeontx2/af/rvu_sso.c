@@ -584,6 +584,64 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	return 0;
 }
 
+static void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int lf,
+				    int hwgrp)
+{
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
+	if (reg & SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK || reg & BIT_ULL(3)) {
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf));
+		reg = (reg & ~SSO_HWGRP_AW_CFG_RWEN) |
+			SSO_HWGRP_AW_CFG_XAQ_BYP_DIS;
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf), reg);
+
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
+		if (reg & SSO_HWGRP_AW_STS_TPTR_VLD) {
+			rvu_poll_reg(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf),
+				     SSO_HWGRP_AW_STS_NPA_FETCH, true);
+
+			rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf),
+				    SSO_HWGRP_AW_STS_TPTR_VLD);
+		}
+
+		if (rvu_poll_reg(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf),
+				 SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK, true))
+			dev_warn(rvu->dev,
+				 "SSO_HWGRP(%d)_AW_STATUS[XAQ_BUF_CACHED] not cleared",
+				 lf);
+	}
+}
+
+int rvu_mbox_handler_sso_hw_release_xaq_aura(struct rvu *rvu,
+					     struct sso_release_xaq *req,
+					     struct msg_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	int hwgrp, lf, blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
+		lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hwgrp);
+		if (lf < 0)
+			return SSO_AF_ERR_LF_INVALID;
+
+		rvu_sso_deinit_xaq_aura(rvu, blkaddr, lf, hwgrp);
+		/* disable XAQ */
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf),
+			    SSO_HWGRP_AW_CFG_LDWB | SSO_HWGRP_AW_CFG_LDT |
+			    SSO_HWGRP_AW_CFG_STT);
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf), 0);
+		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf), 0);
+	}
+
+	return 0;
+}
+
 int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 				      struct sso_hw_setconfig *req,
 				      struct msg_rsp *rsp)
@@ -615,34 +673,7 @@ int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 		if (lf < 0)
 			return SSO_AF_ERR_LF_INVALID;
 
-		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
-		if (reg & SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK || reg & BIT_ULL(3)) {
-			reg = rvu_read64(rvu, blkaddr,
-					 SSO_AF_HWGRPX_AW_CFG(lf));
-			reg = (reg & ~SSO_HWGRP_AW_CFG_RWEN) |
-			       SSO_HWGRP_AW_CFG_XAQ_BYP_DIS;
-			rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf),
-				    reg);
-
-			reg = rvu_read64(rvu, blkaddr,
-					 SSO_AF_HWGRPX_AW_STATUS(lf));
-			if (reg & SSO_HWGRP_AW_STS_TPTR_VLD) {
-				rvu_poll_reg(rvu, blkaddr,
-					     SSO_AF_HWGRPX_AW_STATUS(lf),
-					     SSO_HWGRP_AW_STS_NPA_FETCH, true);
-
-				rvu_write64(rvu, blkaddr,
-					    SSO_AF_HWGRPX_AW_STATUS(lf),
-					    SSO_HWGRP_AW_STS_TPTR_VLD);
-			}
-
-			if (rvu_poll_reg(rvu, blkaddr,
-					 SSO_AF_HWGRPX_AW_STATUS(lf),
-					 SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK, true))
-				dev_warn(rvu->dev,
-					 "SSO_HWGRP(%d)_AW_STATUS[XAQ_BUF_CACHED] not cleared",
-					 lf);
-		}
+		rvu_sso_deinit_xaq_aura(rvu, blkaddr, lf, hwgrp);
 
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf),
 			    npa_aura_id);
