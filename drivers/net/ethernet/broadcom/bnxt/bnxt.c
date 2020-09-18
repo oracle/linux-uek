@@ -7707,7 +7707,6 @@ static void bnxt_accumulate_all_stats(struct bnxt *bp)
 
 static int bnxt_hwrm_port_qstats(struct bnxt *bp, u8 flags)
 {
-	int rc;
 	struct bnxt_pf_info *pf = &bp->pf;
 	struct hwrm_port_qstats_input req = {0};
 
