@@ -6001,14 +6001,6 @@ static void emulator_halt(struct x86_emulate_ctxt *ctxt)
 	emul_to_vcpu(ctxt)->arch.halt_request = 1;
 }
 
-static void emulator_get_fpu(struct x86_emulate_ctxt *ctxt)
-{
-}
-
-static void emulator_put_fpu(struct x86_emulate_ctxt *ctxt)
-{
-}
-
 static int emulator_intercept(struct x86_emulate_ctxt *ctxt,
 			      struct x86_instruction_info *info,
 			      enum x86_intercept_stage stage)
