@@ -283,6 +283,10 @@ struct rds_ib_connection {
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
 	atomic_t		i_cq_quiesce;
+
+	/* qp number info */
+	s32			i_qp_num;
+	s32			i_dst_qp_num;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
