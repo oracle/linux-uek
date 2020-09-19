@@ -2617,6 +2617,7 @@ static void rds_ib_portstate_delayed_initswitch(struct work_struct *_work)
 	struct rds_ib_port_ud_work      *work =
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
 	u8 port = work->port;
+	int ret;
 
 	BUG_ON(!port);
 
@@ -2688,6 +2689,33 @@ static void rds_ib_portstate_delayed_initswitch(struct work_struct *_work)
 		       "state(portlayers 0x%x)\n",
 		       port, ip_config[port].dev->name,
 		       ip_config[port].port_layerflags);
+		/* Note: We could still be in init phase in which case,
+		 * failover will be done by initial failover, Else we do it
+		 * here.
+		 */
+		if (!ip_config_init_phase_flag) {
+			/* Note: Code here is substantially similar
+			 * (isomorphic) to code in rds_ib_do_initial_failover.
+			 */
+			rds_ib_do_failover(port, 0, 0,
+					   RDS_IB_PORT_EVENT_ADDINTF_AFTER_INITSCRIPTS);
+			/* reset IP addr of DOWN port to 0 if the failover
+			 * did not suceed. Note: rds_ib_do_failover() logs
+			 * successful migrations but not unsuccesful ones.
+			 * We log unsuccessful attempts for this instance
+			 * here and deactivate the port by its IP address.
+			 */
+			if (ip_config[port].ip_active_port == port) {
+				printk(KERN_NOTICE "RDS/IB: Delayed INIT, IP %p I4 deactivated on interface %s (no suitable failover target available)\n",
+				       &ip_config[port].ip_addr,
+				       ip_config[port].dev->name);
+
+				ret = rds_ib_set_ip4(NULL, NULL,
+						     ip_config[port].if_name,
+						     0, 0, 0);
+				(void)rds_ib_clear_ip6(port);
+			}
+		}
 	}
 	kfree(work);
 }
