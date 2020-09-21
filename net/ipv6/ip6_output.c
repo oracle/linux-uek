@@ -318,7 +318,7 @@ int ip6_xmit(const struct sock *sk, struct sk_buff *skb, struct flowi6 *fl6,
 	dropreason = "fragmentation failure";
 	IP6_INC_STATS(net, ip6_dst_idev(skb_dst(skb)), IPSTATS_MIB_FRAGFAILS);
 	err = -EMSGSIZE;
-drop:
+
 	DTRACE_IP(drop__out,
 		  struct sk_buff * : pktinfo_t *, skb,
 		  struct sock * : csinfo_t *, skb->sk,
