@@ -2556,8 +2556,12 @@ static inline void mm_populate(unsigned long addr, unsigned long len)
 	/* Ignore errors */
 	(void) __mm_populate(addr, len, 1);
 }
+extern void mm_populate_vma(struct vm_area_struct *vma, unsigned long start,
+		unsigned long end);
 #else
 static inline void mm_populate(unsigned long addr, unsigned long len) {}
+extern void mm_populate_vma(struct vm_area_struct *vma, unsigned long start,
+		unsigned long end) {}
 #endif
 
 /* These take the mm semaphore themselves */
