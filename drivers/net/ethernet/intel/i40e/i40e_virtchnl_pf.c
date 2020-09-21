@@ -1173,7 +1173,7 @@ i40e_set_vsi_promisc(struct i40e_vf *vf, u16 seid, bool multi_enable,
 {
 	struct i40e_pf *pf = vf->pf;
 	struct i40e_hw *hw = &pf->hw;
-	i40e_status aq_ret;
+	i40e_status aq_ret = I40E_SUCCESS;
 	int i;
 
 	/* No VLAN to set promisc on, set on VSI */
