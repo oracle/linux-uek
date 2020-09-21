@@ -1437,6 +1437,26 @@ long populate_vma_page_range(struct vm_area_struct *vma,
 }
 
 /*
+ * mm_populate_vma() - Populate a single range in a single vma.
+ * @vma: The vma to populate.
+ * @start: The start address to populate
+ * @end: The end address to stop populating
+ *
+ * Note: Ignores errors.
+ */
+void mm_populate_vma(struct vm_area_struct *vma, unsigned long start,
+		unsigned long end)
+{
+	struct mm_struct *mm = current->mm;
+	int locked = 1;
+
+	mmap_read_lock(mm);
+	populate_vma_page_range(vma, start, end, &locked);
+	if (locked)
+		mmap_read_unlock(mm);
+}
+
+/*
  * __mm_populate - populate and/or mlock pages within a range of address space.
  *
  * This is used to implement mlock() and the MAP_POPULATE / MAP_LOCKED mmap
