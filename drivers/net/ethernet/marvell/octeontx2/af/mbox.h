@@ -612,6 +612,7 @@ struct cgx_set_link_mode_args {
 };
 
 struct cgx_set_link_mode_req {
+#define AUTONEG_UNKNOWN		0xff
 	struct mbox_msghdr hdr;
 	struct cgx_set_link_mode_args args;
 };
