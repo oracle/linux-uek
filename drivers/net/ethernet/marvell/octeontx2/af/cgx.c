@@ -953,10 +953,13 @@ static void set_mod_args(struct cgx_set_link_mode_args *args,
 			 u32 speed, u8 duplex, u8 autoneg, u64 mode)
 {
 	/* firmware requires this value in the reverse format */
-	args->duplex = duplex;
-	args->speed = speed;
+	if (args->duplex == DUPLEX_UNKNOWN)
+		args->duplex = duplex;
+	if (args->speed == SPEED_UNKNOWN)
+		args->speed = speed;
+	if (args->an == AUTONEG_UNKNOWN)
+		args->an = autoneg;
 	args->mode = mode;
-	args->an = autoneg;
 	args->ports = 0;
 }
 
