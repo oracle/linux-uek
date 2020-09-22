@@ -250,6 +250,7 @@ static int ib_uverbs_get_context(struct uverbs_attr_bundle *attrs)
 	ucontext->cleanup_retryable = false;
 
 	rdma_restrack_new(&ucontext->res, RDMA_RESTRACK_CTX);
+	rdma_restrack_set_name(&ucontext->res, NULL);
 	attrs->context = ucontext;
 
 	ret = get_unused_fd_flags(O_CLOEXEC);
@@ -273,7 +274,7 @@ static int ib_uverbs_get_context(struct uverbs_attr_bundle *attrs)
 	if (ret)
 		goto err_file;
 
-	rdma_restrack_uadd(&ucontext->res);
+	rdma_restrack_add(&ucontext->res);
 
 	fd_install(resp.async_fd, filp);
 
@@ -436,14 +437,17 @@ static int ib_uverbs_alloc_pd(struct uverbs_attr_bundle *attrs)
 	atomic_set(&pd->usecnt, 0);
 
 	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
+	rdma_restrack_set_name(&pd->res, NULL);
+
 	ret = ib_dev->ops.alloc_pd(pd, &attrs->driver_udata);
 	if (ret)
 		goto err_alloc;
 
+	rdma_restrack_add(&pd->res);
+
 	uobj->object = pd;
 	memset(&resp, 0, sizeof resp);
 	resp.pd_handle = uobj->id;
-	rdma_restrack_uadd(&pd->res);
 
 	ret = uverbs_response(attrs, &resp, sizeof(resp));
 	if (ret)
@@ -953,7 +957,8 @@ static int ib_uverbs_reg_mr(struct uverbs_attr_bundle *attrs)
 	mr->iova = cmd.hca_va;
 
 	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
-	rdma_restrack_uadd(&mr->res);
+	rdma_restrack_set_name(&mr->res, NULL);
+	rdma_restrack_add(&mr->res);
 
 	uobj->object = mr;
 
@@ -1230,6 +1235,8 @@ static struct ib_ucq_object *create_cq(struct uverbs_attr_bundle *attrs,
 	atomic_set(&cq->usecnt, 0);
 
 	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
+	rdma_restrack_set_name(&cq->res, NULL);
+
 	ret = ib_dev->ops.create_cq(cq, &attr, &attrs->driver_udata);
 	if (ret)
 		goto err_free;
@@ -1240,7 +1247,7 @@ static struct ib_ucq_object *create_cq(struct uverbs_attr_bundle *attrs,
 	resp.base.cqe       = cq->cqe;
 	resp.response_length = uverbs_response_length(attrs, sizeof(resp));
 
-	rdma_restrack_uadd(&cq->res);
+	rdma_restrack_add(&cq->res);
 
 	ret = uverbs_response(attrs, &resp, sizeof(resp));
 	if (ret)
