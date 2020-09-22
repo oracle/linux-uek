@@ -99,6 +99,7 @@ kernel/drivers/block/null_blk.ko
 kernel/drivers/block/virtio_blk.ko
 kernel/drivers/block/xen-blkback/xen-blkback.ko
 kernel/drivers/block/xen-blkfront.ko
+kernel/drivers/xen/ovmapi.ko
 kernel/drivers/block/zram/zram.ko
 kernel/drivers/cdrom/cdrom.ko
 kernel/drivers/char/hangcheck-timer.ko
