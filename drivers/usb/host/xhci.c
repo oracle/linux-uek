@@ -643,19 +643,6 @@ int xhci_run(struct usb_hcd *hcd)
 		if (ret)
 			xhci_free_command(xhci, command);
 	}
-	/*
-	 * In case that the USB3.0 downstream port is not available
-	 * No one triggers to start the xHC which should be done
-	 * before finishing xhci_run
-	 */
-	if (xhci->num_usb3_ports == 0) {
-		if (xhci_start(xhci)) {
-			xhci_halt(xhci);
-			return -ENODEV;
-		}
-		xhci->cmd_ring_state = CMD_RING_STATE_RUNNING;
-	}
-
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"Finished xhci_run for USB2 roothub");
 	return 0;

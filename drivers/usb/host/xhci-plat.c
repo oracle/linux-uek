@@ -288,12 +288,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (HCC_MAX_PSA(xhci->hcc_params) >= 4)
 		xhci->shared_hcd->can_do_streams = 1;
 
-	/* Just add the shared_hcd when USB3.0 downstream port is available */
-	if (xhci->num_usb3_ports > 0) {
-		ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
-		if (ret)
-			goto dealloc_usb2_hcd;
-	}
+	ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
+	if (ret)
+		goto dealloc_usb2_hcd;
 
 	device_enable_async_suspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
