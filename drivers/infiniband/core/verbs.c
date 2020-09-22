@@ -272,11 +272,12 @@ struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
 	atomic_set(&pd->usecnt, 0);
 	pd->flags = flags;
 
-	pd->res.type = RDMA_RESTRACK_PD;
+	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
 	rdma_restrack_set_task(&pd->res, caller);
 
 	ret = device->ops.alloc_pd(pd, NULL);
 	if (ret) {
+		rdma_restrack_put(&pd->res);
 		kfree(pd);
 		return ERR_PTR(ret);
 	}
@@ -1957,11 +1958,13 @@ struct ib_cq *__ib_create_cq(struct ib_device *device,
 	cq->event_handler = event_handler;
 	cq->cq_context = cq_context;
 	atomic_set(&cq->usecnt, 0);
-	cq->res.type = RDMA_RESTRACK_CQ;
+
+	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
 	rdma_restrack_set_task(&cq->res, caller);
 
 	ret = device->ops.create_cq(cq, cq_attr, NULL);
 	if (ret) {
+		rdma_restrack_put(&cq->res);
 		kfree(cq);
 		return ERR_PTR(ret);
 	}
@@ -2052,7 +2055,7 @@ struct ib_mr *ib_alloc_mr_user(struct ib_pd *pd, enum ib_mr_type mr_type,
 		mr->uobject = NULL;
 		atomic_inc(&pd->usecnt);
 		mr->need_inval = false;
-		mr->res.type = RDMA_RESTRACK_MR;
+		rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
 		rdma_restrack_kadd(&mr->res);
 		mr->type = mr_type;
 		mr->sig_attrs = NULL;
@@ -2105,7 +2108,7 @@ struct ib_mr *ib_alloc_mr_integrity(struct ib_pd *pd,
 	mr->uobject = NULL;
 	atomic_inc(&pd->usecnt);
 	mr->need_inval = false;
-	mr->res.type = RDMA_RESTRACK_MR;
+	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
 	rdma_restrack_kadd(&mr->res);
 	mr->type = IB_MR_TYPE_INTEGRITY;
 	mr->sig_attrs = sig_attrs;

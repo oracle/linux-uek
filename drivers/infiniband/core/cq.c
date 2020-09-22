@@ -7,6 +7,8 @@
 #include <linux/slab.h>
 #include <rdma/ib_verbs.h>
 
+#include "core_priv.h"
+
 /* # of WCs to poll for with a single call to ib_poll_cq */
 #define IB_POLL_BATCH			16
 #define IB_POLL_BATCH_DIRECT		8
@@ -205,14 +207,12 @@ struct ib_cq *__ib_alloc_cq_user(struct ib_device *dev, void *private,
 	if (!cq->wc)
 		goto out_free_cq;
 
-	cq->res.type = RDMA_RESTRACK_CQ;
+	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
 	rdma_restrack_set_task(&cq->res, caller);
 
 	ret = dev->ops.create_cq(cq, &cq_attr, NULL);
 	if (ret)
 		goto out_free_wc;
-
-	rdma_restrack_kadd(&cq->res);
 
 	rdma_dim_init(cq);
 
@@ -239,12 +239,13 @@ struct ib_cq *__ib_alloc_cq_user(struct ib_device *dev, void *private,
 		goto out_destroy_cq;
 	}
 
+	rdma_restrack_kadd(&cq->res);
 	return cq;
 
 out_destroy_cq:
-	rdma_restrack_del(&cq->res);
 	cq->device->ops.destroy_cq(cq, udata);
 out_free_wc:
+	rdma_restrack_put(&cq->res);
 	kfree(cq->wc);
 out_free_cq:
 	kfree(cq);

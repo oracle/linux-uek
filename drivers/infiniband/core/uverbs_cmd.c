@@ -241,9 +241,6 @@ static int ib_uverbs_get_context(struct uverbs_attr_bundle *attrs)
 		goto err_alloc;
 	}
 
-	attrs->context = ucontext;
-
-	ucontext->res.type = RDMA_RESTRACK_CTX;
 	ucontext->device = ib_dev;
 	ucontext->cg_obj = cg_obj;
 	/* ufile is required when some objects are released */
@@ -251,6 +248,9 @@ static int ib_uverbs_get_context(struct uverbs_attr_bundle *attrs)
 
 	ucontext->closing = false;
 	ucontext->cleanup_retryable = false;
+
+	rdma_restrack_new(&ucontext->res, RDMA_RESTRACK_CTX);
+	attrs->context = ucontext;
 
 	ret = get_unused_fd_flags(O_CLOEXEC);
 	if (ret < 0)
@@ -295,7 +295,9 @@ err_fd:
 	put_unused_fd(resp.async_fd);
 
 err_free:
+	rdma_restrack_put(&ucontext->res);
 	kfree(ucontext);
+	attrs->context = NULL;
 
 err_alloc:
 	ib_rdmacg_uncharge(&cg_obj, ib_dev, RDMACG_RESOURCE_HCA_HANDLE);
@@ -432,8 +434,8 @@ static int ib_uverbs_alloc_pd(struct uverbs_attr_bundle *attrs)
 	pd->shpd  = NULL;
 #endif
 	atomic_set(&pd->usecnt, 0);
-	pd->res.type = RDMA_RESTRACK_PD;
 
+	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
 	ret = ib_dev->ops.alloc_pd(pd, &attrs->driver_udata);
 	if (ret)
 		goto err_alloc;
@@ -453,6 +455,7 @@ err_copy:
 	ib_dealloc_pd_user(pd, uverbs_get_cleared_udata(attrs));
 	pd = NULL;
 err_alloc:
+	rdma_restrack_put(&pd->res);
 	kfree(pd);
 err:
 	uobj_alloc_abort(uobj, attrs);
@@ -947,8 +950,9 @@ static int ib_uverbs_reg_mr(struct uverbs_attr_bundle *attrs)
 	mr->sig_attrs = NULL;
 	mr->uobject = uobj;
 	atomic_inc(&pd->usecnt);
-	mr->res.type = RDMA_RESTRACK_MR;
 	mr->iova = cmd.hca_va;
+
+	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
 	rdma_restrack_uadd(&mr->res);
 
 	uobj->object = mr;
@@ -1225,6 +1229,7 @@ static struct ib_ucq_object *create_cq(struct uverbs_attr_bundle *attrs,
 	cq->cq_context    = ev_file ? &ev_file->ev_queue : NULL;
 	atomic_set(&cq->usecnt, 0);
 
+	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
 	ret = ib_dev->ops.create_cq(cq, &attr, &attrs->driver_udata);
 	if (ret)
 		goto err_free;
@@ -1235,7 +1240,6 @@ static struct ib_ucq_object *create_cq(struct uverbs_attr_bundle *attrs,
 	resp.base.cqe       = cq->cqe;
 	resp.response_length = uverbs_response_length(attrs, sizeof(resp));
 
-	cq->res.type = RDMA_RESTRACK_CQ;
 	rdma_restrack_uadd(&cq->res);
 
 	ret = uverbs_response(attrs, &resp, sizeof(resp));
@@ -1251,6 +1255,7 @@ err_cb:
 	ib_destroy_cq_user(cq, uverbs_get_cleared_udata(attrs));
 	cq = NULL;
 err_free:
+	rdma_restrack_put(&cq->res);
 	kfree(cq);
 err_file:
 	if (ev_file)
