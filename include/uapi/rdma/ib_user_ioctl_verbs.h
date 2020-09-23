@@ -173,4 +173,12 @@ struct ib_uverbs_query_port_resp_ex {
 	__u8  reserved[6];
 };
 
+struct ib_uverbs_gid_entry {
+	__aligned_u64 gid[2];
+	__u32 gid_index;
+	__u32 port_num;
+	__u32 gid_type;
+	__u32 netdev_ifindex; /* It is 0 if there is no netdev associated with it */
+};
+
 #endif
