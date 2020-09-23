@@ -732,6 +732,18 @@ static inline int free_pages_check(struct page *page)
 	return 0;
 }
 
+static inline void prefetch_buddy(struct page *page)
+{
+	unsigned long page_idx, buddy_idx;
+	struct page *buddy;
+
+	page_idx = page_to_pfn(page) & ((1 << MAX_ORDER) - 1);
+	buddy_idx = __find_buddy_index(page_idx, 0);
+	buddy = page + (buddy_idx - page_idx);
+
+	prefetch(buddy);
+}
+
 /*
  * Frees a number of pages from the PCP lists
  * Assumes all pages on list are in same zone, and of same order.
@@ -749,6 +761,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	int migratetype = 0;
 	int batch_free = 0;
 	unsigned long nr_scanned;
+	int prefetch_nr = 0;
 	bool isolated_pageblocks;
 	struct page *page, *tmp;
 	LIST_HEAD(head);
@@ -784,6 +797,18 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			list_del(&page->lru);
 
 			list_add_tail(&page->lru, &head);
+
+			/*
+			 * We are going to put the page back to the global
+			 * pool, prefetch its buddy to speed up later access
+			 * under zone->lock. It is believed the overhead of
+			 * an additional test and calculating buddy_pfn here
+			 * can be offset by reduced memory latency later. To
+			 * avoid excessive prefetching due to large count, only
+			 * prefetch buddy for the first pcp->batch nr of pages.
+			 */
+			if (prefetch_nr++ < pcp->batch)
+				prefetch_buddy(page);
 		} while (--count && --batch_free && !list_empty(list));
 	}
 
