@@ -560,6 +560,7 @@ static inline void armv8pmu_write_event_type(struct perf_event *event)
 static inline int armv8pmu_enable_counter(int idx)
 {
 	u32 counter = ARMV8_IDX_TO_COUNTER(idx);
+	isb();
 	write_sysreg(BIT(counter), pmcntenset_el0);
 	return idx;
 }
