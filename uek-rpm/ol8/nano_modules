@@ -87,6 +87,7 @@ kernel/drivers/ata/libahci.ko
 kernel/drivers/ata/libahci_platform.ko
 kernel/drivers/ata/libata.ko
 kernel/drivers/ata/pata_acpi.ko
+kernel/drivers/base/regmap/regmap-i2c.ko
 kernel/drivers/block/aoe/aoe.ko
 kernel/drivers/block/brd.ko
 kernel/drivers/block/cryptoloop.ko
@@ -565,6 +566,7 @@ kernel/drivers/vhost/vhost.ko
 kernel/drivers/vhost/vhost_net.ko
 kernel/drivers/vhost/vhost_scsi.ko
 kernel/drivers/vhost/vhost_vsock.ko
+kernel/drivers/vhost/vhost_iotlb.ko
 kernel/drivers/video/backlight/lcd.ko
 kernel/drivers/video/backlight/platform_lcd.ko
 kernel/drivers/video/fbdev/aty/aty128fb.ko
