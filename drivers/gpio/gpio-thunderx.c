@@ -727,6 +727,9 @@ static int thunderx_gpio_irq_request_resources(struct irq_data *data)
 		return r;
 
 	r = irq_chip_request_resources_parent(data);
+	/* If parent does not HAVE resources, this isn't a failing error */
+	if (r == -ENOSYS)
+		r = 0;
 	if (r)
 		gpiochip_unlock_as_irq(&txgpio->chip, txline->line);
 
