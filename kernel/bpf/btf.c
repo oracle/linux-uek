@@ -3501,8 +3501,6 @@ struct btf *btf_parse_vmlinux(void)
 	if (err)
 		goto errout;
 
-	init_btf_sock_ids(btf);
-
 	btf_verifier_env_free(env);
 	refcount_set(&btf->refcnt, 1);
 	return btf;

@@ -403,7 +403,11 @@ static bool is_acquire_function(enum bpf_func_id func_id)
 static bool is_ptr_cast_function(enum bpf_func_id func_id)
 {
 	return func_id == BPF_FUNC_tcp_sock ||
-		func_id == BPF_FUNC_sk_fullsock;
+		func_id == BPF_FUNC_sk_fullsock ||
+		func_id == BPF_FUNC_skc_to_tcp_sock ||
+		func_id == BPF_FUNC_skc_to_tcp6_sock ||
+		func_id == BPF_FUNC_skc_to_tcp_timewait_sock ||
+		func_id == BPF_FUNC_skc_to_tcp_request_sock;
 }
 
 /* string representation of 'enum bpf_reg_type' */
@@ -3537,6 +3541,19 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 arg,
 		expected_type = PTR_TO_SOCKET;
 		if (type != expected_type)
 			goto err_type;
+		if (reg->btf_id != meta->btf_id) {
+			verbose(env, "Helper has type %s got %s in R%d\n",
+				kernel_type_name(meta->btf_id),
+				kernel_type_name(reg->btf_id), regno);
+
+			return -EACCES;
+		}
+		if (!tnum_is_const(reg->var_off) || reg->var_off.value || reg->off) {
+			verbose(env, "R%d is a pointer to in-kernel struct with non-zero offset\n",
+				regno);
+			return -EACCES;
+		}
+
 	} else if (arg_type == ARG_PTR_TO_BTF_ID) {
 		expected_type = PTR_TO_BTF_ID;
 		if (type != expected_type)
@@ -3560,6 +3577,24 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 arg,
 				regno);
 			return -EACCES;
 		}
+
+	} else if (arg_type == ARG_PTR_TO_BTF_ID_SOCK_COMMON) {
+		expected_type = PTR_TO_SOCKET;
+		if (type != expected_type)
+			goto err_type;
+		if (reg->btf_id != meta->btf_id) {
+			verbose(env, "Helper has type %s got %s in R%d\n",
+				kernel_type_name(meta->btf_id),
+				kernel_type_name(reg->btf_id), regno);
+
+			return -EACCES;
+		}
+		if (!tnum_is_const(reg->var_off) || reg->var_off.value || reg->off) {
+			verbose(env, "R%d is a pointer to in-kernel struct with non-zero offset\n",
+				regno);
+			return -EACCES;
+		}
+
 	} else if (arg_type == ARG_PTR_TO_SPIN_LOCK) {
 		if (meta->func_id == BPF_FUNC_spin_lock) {
 			if (process_spin_lock(env, regno, true))
