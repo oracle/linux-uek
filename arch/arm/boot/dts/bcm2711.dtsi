@@ -208,7 +208,7 @@
 			clocks = <&clocks BCM2835_CLOCK_VPU>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			status = "disabled";
+			status = "okay";
 		};
 
 		i2c5: i2c@7e205a00 {
@@ -888,6 +888,12 @@
 &i2c1 {
 	compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
 	interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
+};
+
+&i2c4 {
+	pinctrl-0 = <&i2c4_gpio6>;
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
 };
 
 &mailbox {
