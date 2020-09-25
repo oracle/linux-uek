@@ -1606,6 +1606,9 @@ static int octeon_mgmt_o3_probe(struct platform_device *pdev)
 	p->numa_node = pd->numa_node;
 	netdev->netdev_ops = &octeon_mgmt_o3_ops;
 	netdev->ethtool_ops = &octeon_mgmt_o3_ethtool_ops;
+	netdev->min_mtu = 64 - OCTEON_FRAME_HEADER_LEN;
+	netdev->max_mtu = 65392 - OCTEON_FRAME_HEADER_LEN - VLAN_HLEN;
+
 
 	p->mix_phys = 0x1070000100000ull + 0x800 * p->port + (1ull << 36) * p->numa_node;
 	p->mix_size = 0x100;
@@ -1741,6 +1744,9 @@ static int octeon_mgmt_probe(struct platform_device *pdev)
 	}
 	netdev->netdev_ops = &octeon_mgmt_ops;
 	netdev->ethtool_ops = &octeon_mgmt_ethtool_ops;
+        netdev->min_mtu = 64 - OCTEON_FRAME_HEADER_LEN;
+        netdev->max_mtu = 65392 - OCTEON_FRAME_HEADER_LEN - VLAN_HLEN;
+
 
 	mac = of_get_mac_address(pdev->dev.of_node);
 
