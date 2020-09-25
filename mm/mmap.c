@@ -3549,9 +3549,9 @@ int vma_dup(struct vm_area_struct *old_vma, struct mm_struct *mm)
 	old_vma->vm_flags &= ~VM_ACCOUNT;
 
 #ifdef CONFIG_PADATA
-	ret = copy_page_range_mt(mm, old_mm, old_vma);
+	ret = copy_page_range_mt(mm, old_mm, old_vma, vma);
 #else
-	ret = copy_page_range(mm, old_mm, old_vma);
+	ret = copy_page_range(mm, old_mm, old_vma, vma);
 #endif
 	return ret;
 

@@ -792,6 +792,7 @@ out_set_pte:
 
 static int copy_pte_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		   pmd_t *dst_pmd, pmd_t *src_pmd, struct vm_area_struct *vma,
+		   struct vm_area_struct *new,
 		   unsigned long addr, unsigned long end)
 {
 	pte_t *orig_src_pte, *orig_dst_pte;
@@ -855,6 +856,7 @@ again:
 
 static inline int copy_pmd_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		pud_t *dst_pud, pud_t *src_pud, struct vm_area_struct *vma,
+		struct vm_area_struct *new,
 		unsigned long addr, unsigned long end)
 {
 	pmd_t *src_pmd, *dst_pmd;
@@ -881,7 +883,7 @@ static inline int copy_pmd_range(struct mm_struct *dst_mm, struct mm_struct *src
 		if (pmd_none_or_clear_bad(src_pmd))
 			continue;
 		if (copy_pte_range(dst_mm, src_mm, dst_pmd, src_pmd,
-						vma, addr, next))
+				   vma, new, addr, next))
 			return -ENOMEM;
 	} while (dst_pmd++, src_pmd++, addr = next, addr != end);
 	return 0;
@@ -889,6 +891,7 @@ static inline int copy_pmd_range(struct mm_struct *dst_mm, struct mm_struct *src
 
 static inline int copy_pud_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		p4d_t *dst_p4d, p4d_t *src_p4d, struct vm_area_struct *vma,
+		struct vm_area_struct *new,
 		unsigned long addr, unsigned long end)
 {
 	pud_t *src_pud, *dst_pud;
@@ -915,7 +918,7 @@ static inline int copy_pud_range(struct mm_struct *dst_mm, struct mm_struct *src
 		if (pud_none_or_clear_bad(src_pud))
 			continue;
 		if (copy_pmd_range(dst_mm, src_mm, dst_pud, src_pud,
-						vma, addr, next))
+				   vma, new, addr, next))
 			return -ENOMEM;
 	} while (dst_pud++, src_pud++, addr = next, addr != end);
 	return 0;
@@ -923,6 +926,7 @@ static inline int copy_pud_range(struct mm_struct *dst_mm, struct mm_struct *src
 
 static inline int copy_p4d_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		pgd_t *dst_pgd, pgd_t *src_pgd, struct vm_area_struct *vma,
+		struct vm_area_struct *new,
 		unsigned long addr, unsigned long end)
 {
 	p4d_t *src_p4d, *dst_p4d;
@@ -937,14 +941,14 @@ static inline int copy_p4d_range(struct mm_struct *dst_mm, struct mm_struct *src
 		if (p4d_none_or_clear_bad(src_p4d))
 			continue;
 		if (copy_pud_range(dst_mm, src_mm, dst_p4d, src_p4d,
-						vma, addr, next))
+				   vma, new, addr, next))
 			return -ENOMEM;
 	} while (dst_p4d++, src_p4d++, addr = next, addr != end);
 	return 0;
 }
 
 int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
-		struct vm_area_struct *vma)
+		    struct vm_area_struct *vma, struct vm_area_struct *new)
 {
 	pgd_t *src_pgd, *dst_pgd;
 	unsigned long next;
@@ -999,7 +1003,7 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		if (pgd_none_or_clear_bad(src_pgd))
 			continue;
 		if (unlikely(copy_p4d_range(dst_mm, src_mm, dst_pgd, src_pgd,
-					    vma, addr, next))) {
+					    vma, new, addr, next))) {
 			ret = -ENOMEM;
 			break;
 		}
@@ -1015,7 +1019,8 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 struct copy_page_range_args {
 	struct mm_struct *dst_mm;
 	struct mm_struct *src_mm;
-	struct vm_area_struct *vma;
+	struct vm_area_struct *dst_vma;
+	struct vm_area_struct *src_vma;
 };
 
 static int copy_page_range_chunk(unsigned long addr,
@@ -1024,7 +1029,8 @@ static int copy_page_range_chunk(unsigned long addr,
 	struct copy_page_range_args *args = arg;
 	struct mm_struct *dst_mm = args->dst_mm;
 	struct mm_struct *src_mm = args->src_mm;
-	struct vm_area_struct *vma = args->vma;
+	struct vm_area_struct *dst_vma = args->dst_vma;
+	struct vm_area_struct *src_vma = args->src_vma;
 	pgd_t *src_pgd, *dst_pgd;
 	unsigned long next;
 	int ret = 0;
@@ -1037,7 +1043,7 @@ static int copy_page_range_chunk(unsigned long addr,
 		if (pgd_none_or_clear_bad(src_pgd))
 			continue;
 		if (unlikely(copy_p4d_range(dst_mm, src_mm, dst_pgd, src_pgd,
-					    vma, addr, next))) {
+					    src_vma, dst_vma, addr, next))) {
 			ret = -ENOMEM;
 			break;
 		}
@@ -1052,9 +1058,9 @@ static int copy_page_range_chunk(unsigned long addr,
  * up the copying of very large VMAs.
  */
 int copy_page_range_mt(struct mm_struct *dst_mm, struct mm_struct *src_mm,
-		struct vm_area_struct *vma)
+		struct vm_area_struct *vma, struct vm_area_struct *new)
 {
-	struct copy_page_range_args args = { dst_mm, src_mm, vma };
+	struct copy_page_range_args args = { dst_mm, src_mm, new, vma};
 	struct padata_mt_job job = {
 		.thread_fn   = copy_page_range_chunk,
 		.fn_arg      = &args,
