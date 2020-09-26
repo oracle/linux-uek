@@ -72,6 +72,8 @@ long do_symlinkat(const char __user *oldname, int newdfd,
 		  const char __user *newname);
 int do_linkat(int olddfd, const char __user *oldname, int newdfd,
 	      const char __user *newname, int flags);
+int do_renameat2(int olddfd, struct filename *oldname, int newdfd,
+		 struct filename *newname, unsigned int flags);
 
 /*
  * namespace.c
