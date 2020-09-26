@@ -18,6 +18,9 @@
 #define	PCI_DEVID_OTX2_CPT_PF	0xA0FD
 #define	PCI_DEVID_OTX2_CPT10_PF	0xA0F2
 
+/* Length of initial context fetch in 128 byte words */
+#define CPT_CTX_ILEN    2
+
 /* CPT PF number */
 static int cpt_pf_num = -1;
 
@@ -265,6 +268,8 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 
 		/* Set CPT LF group and priority */
 		val = (u64)req->eng_grpmsk << 48 | 1;
+		/* Configure initial context push length */
+		val |= (CPT_CTX_ILEN << 17);
 		rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
 
 		/* Set CPT LF NIX_PF_FUNC and SSO_PF_FUNC */
@@ -478,6 +483,7 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	} else if (!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK)) {
 		/* Registers that can be accessed from PF */
 		switch (req->reg_offset & 0xFF000) {
+		case CPT_AF_CTL:
 		case CPT_AF_PF_FUNC:
 		case CPT_AF_BLK_RST:
 		case CPT_AF_CONSTANTS1:
