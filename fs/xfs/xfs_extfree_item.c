@@ -586,14 +586,15 @@ const struct xfs_defer_op_type xfs_agfl_free_defer_type = {
 int
 xfs_efi_recover(
 	struct xfs_mount	*mp,
-	struct xfs_efi_log_item	*efip)
+	struct xfs_efi_log_item	*efip,
+	struct list_head	*capture_list)
 {
 	struct xfs_efd_log_item	*efdp;
 	struct xfs_trans	*tp;
+	struct xfs_extent	*extp;
+	xfs_fsblock_t		startblock_fsb;
 	int			i;
 	int			error = 0;
-	xfs_extent_t		*extp;
-	xfs_fsblock_t		startblock_fsb;
 
 	ASSERT(!test_bit(XFS_EFI_RECOVERED, &efip->efi_flags));
 
@@ -636,8 +637,8 @@ xfs_efi_recover(
 	}
 
 	set_bit(XFS_EFI_RECOVERED, &efip->efi_flags);
-	error = xfs_trans_commit(tp);
-	return error;
+
+	return xfs_defer_ops_capture_and_commit(tp, capture_list);
 
 abort_error:
 	xfs_trans_cancel(tp);
