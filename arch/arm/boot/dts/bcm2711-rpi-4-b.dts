@@ -164,6 +164,12 @@
 			  "RGMII_TXD3";
 };
 
+&pwm {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pwm0_0_gpio12 &pwm0_1_gpio13 &pwm0_1_gpio19>;
+        status = "okay";
+};
+
 &pwm1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pwm1_0_gpio40 &pwm1_1_gpio41>;
