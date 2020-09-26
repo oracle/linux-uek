@@ -2006,7 +2006,12 @@ int cn10k_cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 		if (ret)
 			goto release_tar_arch;
 	}
-
+	/*
+	 * Configure engine group mask to allow context prefetching
+	 * for the groups.
+	 */
+	cn10k_cpt_write_af_reg(pdev, CPT_AF_CTL,
+			       CN10K_CPT_ALL_ENG_GRPS_MASK << 3);
 	print_dbg_info(&pdev->dev, eng_grps);
 release_tar_arch:
 	release_tar_archive(tar_arch);
@@ -2080,6 +2085,9 @@ void cn10k_cpt_cleanup_eng_grps(struct pci_dev *pdev,
 {
 	struct cn10k_cpt_eng_grp_info *grp;
 	int i, j;
+
+	/* Clear engine group mask for context prefetching */
+	cn10k_cpt_write_af_reg(pdev, CPT_AF_CTL, 0ULL);
 
 	mutex_lock(&eng_grps->lock);
 	if (eng_grps->is_ucode_load_created) {
