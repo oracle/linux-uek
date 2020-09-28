@@ -2052,30 +2052,48 @@ get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 EXPORT_SYMBOL(get_unmapped_area);
 
 /**
- * find_vma() - Find the VMA for a given address, or the next vma.
- * @mm: The mm_struct to check
- * @addr: The address
+ * find_vma_intersection() - Look up the first VMA which intersects the interval
+ * @mm: The process address space.
+ * @start_addr: The inclusive start user address.
+ * @end_addr: The exclusive end user address.
  *
- * Returns: The VMA associated with addr, or the next vma.
- * May return %NULL in the case of no vma at addr or above.
+ * Returns: The first VMA within the provided range, %NULL otherwise.  Assumes
+ * start_addr < end_addr.
  */
-struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
+struct vm_area_struct *find_vma_intersection(struct mm_struct *mm,
+					     unsigned long start_addr,
+					     unsigned long end_addr)
 {
 	struct vm_area_struct *vma;
-	MA_STATE(mas, &mm->mm_mt, addr, addr);
+	MA_STATE(mas, &mm->mm_mt, start_addr, start_addr);
 
 	/* Check the cache first. */
-	vma = vmacache_find(mm, addr);
+	vma = vmacache_find(mm, start_addr);
 	if (likely(vma))
 		return vma;
 
 	rcu_read_lock();
-	vma = mas_find(&mas, -1);
+	vma = mas_find(&mas, end_addr - 1);
 	rcu_read_unlock();
 	if (vma)
-		vmacache_update(addr, vma);
+		vmacache_update(mas.index, vma);
 
 	return vma;
+}
+EXPORT_SYMBOL(find_vma_intersection);
+
+/**
+ * find_vma() - Find the VMA for a given address, or the next vma.
+ * @mm:  The mm_struct to check
+ * @addr: The address
+ *
+ * Returns: The VMA associated with addr, or the next vma.
+ * May return NULL in the case of no vma at addr or above.
+ */
+inline struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
+{
+	// Note find_vma_intersection will decrease 0 to underflow to ULONG_MAX
+	return find_vma_intersection(mm, addr, 0);
 }
 EXPORT_SYMBOL(find_vma);
 
