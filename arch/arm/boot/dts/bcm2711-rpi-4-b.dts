@@ -23,6 +23,9 @@
 		emmc2bus = &emmc2bus;
 		ethernet0 = &genet;
 		pcie0 = &pcie0;
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		i2c4 = &i2c4;
 	};
 
 	rpi_backlight: rpi_backlight {
