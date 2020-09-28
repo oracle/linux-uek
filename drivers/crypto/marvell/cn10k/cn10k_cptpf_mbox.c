@@ -243,24 +243,6 @@ static int check_attach_rsrcs_req(struct cn10k_cptpf_dev *cptpf,
 	return forward_to_af(cptpf, vf, req, size);
 }
 
-static int reply_ready_msg(struct cn10k_cptpf_dev *cptpf,
-			   struct cn10k_cptvf_info *vf,
-			   struct mbox_msghdr *req)
-{
-	struct ready_msg_rsp *rsp;
-
-	rsp = (struct ready_msg_rsp *)
-	       otx2_mbox_alloc_msg(&cptpf->vfpf_mbox, vf->vf_id, sizeof(*rsp));
-	if (!rsp)
-		return -ENOMEM;
-
-	rsp->hdr.id = MBOX_MSG_READY;
-	rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
-	rsp->hdr.pcifunc = req->pcifunc;
-
-	return 0;
-}
-
 static int reply_eng_grp_num_msg(struct cn10k_cptpf_dev *cptpf,
 				 struct cn10k_cptvf_info *vf,
 				 struct mbox_msghdr *req)
@@ -440,10 +422,6 @@ static int cptpf_handle_vf_req(struct cn10k_cptpf_dev *cptpf,
 		return otx2_reply_invalid_msg(&cptpf->vfpf_mbox, vf->vf_id,
 					      req->pcifunc, req->id);
 	switch (req->id) {
-	case MBOX_MSG_READY:
-		err = reply_ready_msg(cptpf, vf, req);
-		break;
-
 	case MBOX_MSG_ATTACH_RESOURCES:
 		err = check_attach_rsrcs_req(cptpf, vf, req, size);
 		break;
