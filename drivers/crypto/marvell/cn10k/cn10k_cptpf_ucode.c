@@ -357,13 +357,11 @@ static int cpt_attach_and_enable_cores(struct cn10k_cpt_eng_grp_info *eng_grp,
 
 	/* Enable the cores */
 	for_each_set_bit(i, bmap.bits, bmap.size) {
-		ret = cn10k_cpt_add_write_af_reg(cptpf->pdev,
-						 CPT_AF_EXEX_CTL(i), 0x1);
+		ret = cn10k_cpt_write_af_reg(cptpf->pdev,
+					     CPT_AF_EXEX_CTL(i), 0x1);
 		if (ret)
 			return ret;
 	}
-	ret = cn10k_cpt_send_af_reg_requests(cptpf->pdev);
-
 	return ret;
 }
 
@@ -2039,17 +2037,13 @@ int cn10k_cpt_disable_all_cores(struct cn10k_cptpf_dev *cptpf)
 
 	/* Disengage the cores from groups */
 	for (i = 0; i < total_cores; i++) {
-		ret = cn10k_cpt_add_write_af_reg(cptpf->pdev,
-						 CPT_AF_EXEX_CTL2(i), 0x0);
+		ret = cn10k_cpt_write_af_reg(cptpf->pdev, CPT_AF_EXEX_CTL2(i),
+					     0x0);
 		if (ret)
 			return ret;
 
 		cptpf->eng_grps.eng_ref_cnt[i] = 0;
 	}
-	ret = cn10k_cpt_send_af_reg_requests(cptpf->pdev);
-	if (ret)
-		return ret;
-
 	/* Wait for cores to become idle */
 	do {
 		busy = 0;
@@ -2072,12 +2066,11 @@ int cn10k_cpt_disable_all_cores(struct cn10k_cptpf_dev *cptpf)
 
 	/* Disable the cores */
 	for (i = 0; i < total_cores; i++) {
-		ret = cn10k_cpt_add_write_af_reg(cptpf->pdev,
-						 CPT_AF_EXEX_CTL(i), 0x0);
+		ret = cn10k_cpt_write_af_reg(cptpf->pdev,
+					     CPT_AF_EXEX_CTL(i), 0x0);
 		if (ret)
 			return ret;
 	}
-	ret = cn10k_cpt_send_af_reg_requests(cptpf->pdev);
 
 	return ret;
 }

@@ -210,11 +210,6 @@ int cn10k_cpt_msix_offset_msg(struct pci_dev *pdev)
 	return ret;
 }
 
-int cn10k_cpt_send_af_reg_requests(struct pci_dev *pdev)
-{
-	return cn10k_cpt_send_mbox_msg(pdev);
-}
-
 int cn10k_cpt_add_read_af_reg(struct pci_dev *pdev, u64 reg, u64 *val)
 {
 	struct otx2_mbox *mbox = get_mbox(pdev);
