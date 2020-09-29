@@ -284,17 +284,19 @@ union cn10k_cpt_res_s {
 
 	struct {
 #if defined(__BIG_ENDIAN_BITFIELD) /* Word 0 - Big Endian */
-		u64 reserved_17_63:47;
-		u64 doneint:1;
+		u64 spi:32;
+		u64 rlen:16;
 		u64 uc_compcode:8;
-		u64 compcode:8;
+		u64 doneint:1;
+		u64 compcode:7;
 #else /* Word 0 - Little Endian */
-		u64 compcode:8;
-		u64 uc_compcode:8;
+		u64 compcode:7;
 		u64 doneint:1;
-		u64 reserved_17_63:47;
+		u64 uc_compcode:8;
+		u64 rlen:16;
+		u64 spi:32;
 #endif /* Word 0 - End */
-		u64 reserved_64_127;
+		u64 esn;
 	} s;
 };
 
