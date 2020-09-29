@@ -2814,6 +2814,24 @@ static int nix_af_mark_format_setup(struct rvu *rvu, struct nix_hw *nix_hw,
 	return 0;
 }
 
+int rvu_mbox_handler_nix_get_hw_info(struct rvu *rvu, struct msg_req *req,
+				     struct nix_hw_info *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	rsp->vwqe_delay = 0;
+	if (!is_rvu_otx2(rvu))
+		rsp->vwqe_delay = rvu_read64(rvu, blkaddr, NIX_AF_VWQE_TIMER) &
+				  GENMASK_ULL(9, 0);
+
+	return 0;
+}
+
 int rvu_mbox_handler_nix_stats_rst(struct rvu *rvu, struct msg_req *req,
 				   struct msg_rsp *rsp)
 {
