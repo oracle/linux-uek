@@ -94,13 +94,9 @@ static inline void rds_update_avg_connect_time(struct rds_conn_path *cp)
 	old_avg_jf = atomic64_read(&cp->cp_conn->c_trans->rds_avg_conn_jf);
 	new_avg_jf = (old_avg_jf >> 1) + (new_conn_jf >> 1);
 
-	rds_rtd(RDS_RTD_CM_EXT,
-		"trans %p old_avg %u (ms) new_avg %u (ms)\n",
-		cp->cp_conn->c_trans,
-		jiffies_to_msecs(old_avg_jf),
-		jiffies_to_msecs(new_avg_jf));
-
 	atomic64_set(&cp->cp_conn->c_trans->rds_avg_conn_jf, new_avg_jf);
+
+	trace_rds_conn_update_connect_time(NULL, cp->cp_conn, cp, NULL, 0);
 }
 
 void rds_queue_work(struct rds_conn_path *cp,
@@ -325,7 +321,9 @@ void rds_send_worker(struct work_struct *work)
 		clear_bit(RDS_LL_SEND_FULL, &cp->cp_flags);
 		ret = rds_send_xmit(cp);
 		cond_resched();
-		rds_rtd(RDS_RTD_SND_EXT, "conn %p ret %d\n", cp->cp_conn, ret);
+		if (ret)
+			trace_rds_send_worker_err(NULL, cp->cp_conn, cp,
+						  "send worker err", ret);
 
 		switch (ret) {
 		case -EAGAIN:
@@ -357,7 +355,11 @@ void rds_recv_worker(struct work_struct *work)
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
 		rds_clear_queued_recv_work_bit(cp);
 		ret = cp->cp_conn->c_trans->recv_path(cp);
-		rds_rtd(RDS_RTD_RCV_EXT, "conn %p ret %d\n", cp->cp_conn, ret);
+
+		if (ret)
+			trace_rds_receive_worker_err(NULL, cp->cp_conn, cp,
+						     "recv worker err", ret);
+
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_recv_immediate_retry);
