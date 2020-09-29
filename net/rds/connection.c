@@ -237,6 +237,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	struct rds_connection *conn, *parent = NULL;
 	struct hlist_head *head = rds_conn_bucket(laddr, faddr, tos);
 	struct rds_transport *loop_trans;
+	char *reason = NULL;
 	unsigned long flags;
 	int ret, i;
 	int npaths;
@@ -266,6 +267,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	conn = kmem_cache_alloc(rds_conn_slab, gfp);
 	if (!conn) {
 		conn = ERR_PTR(-ENOMEM);
+		reason = "could not allocate conn";
 		goto out;
 	}
 	memset(conn, 0, sizeof(*conn));
@@ -296,6 +298,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	if (ret) {
 		kmem_cache_free(rds_conn_slab, conn);
 		conn = ERR_PTR(ret);
+		reason = "rds_cong_get_maps failed";
 		goto out;
 	}
 
@@ -322,6 +325,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	if (!conn->c_path) {
 		kmem_cache_free(rds_conn_slab, conn);
 		conn = ERR_PTR(-ENOMEM);
+		reason = "conn path alloc failed";
 		goto out;
 	}
 
@@ -335,26 +339,21 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 
 		__rds_conn_path_init(conn, cp, is_outgoing);
 		cp->cp_index = i;
-		if (conn->c_loopback) {
+		if (conn->c_loopback)
 			cp->cp_wq = rds_local_wq;
-		} else {
-			rds_rtd(RDS_RTD_CM_EXT, "using rds_cp_wqs index %d\n", cp_wqs_inx);
+		else
 			cp->cp_wq = rds_cp_wqs[cp_wqs_inx];
-		}
 	}
 	ret = trans->conn_alloc(conn, gfp);
 	if (ret) {
 		kfree(conn->c_path);
 		kmem_cache_free(rds_conn_slab, conn);
 		conn = ERR_PTR(ret);
+		reason = "conn alloc failed";
 		goto out;
 	}
 
-	rds_rtd_ptr(RDS_RTD_CM_EXT,
-		    "allocated conn %p for <%pI6c,%pI6c,%d> over %s %s\n",
-		    conn, laddr, faddr, tos,
-		    trans->t_name ? trans->t_name : "[unknown]",
-		    is_outgoing ? "(outgoing)" : "");
+	trace_rds_conn_create(NULL, conn, NULL, NULL, 0);
 
 	/*
 	 * Since we ran without holding the conn lock, someone could
@@ -416,6 +415,10 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	spin_unlock_irqrestore(&rds_conn_lock, flags);
 
 out:
+	if (reason)
+		trace_rds_conn_create_err(NULL, conn, NULL, reason,
+					  PTR_ERR(conn));
+
 	return conn;
 }
 
@@ -605,9 +608,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	struct rds_base_conn *base_conn = NULL;
 	int i;
 
-	rds_rtd_ptr(RDS_RTD_CM, "freeing conn %p <%pI6c,%pI6c,%d>\n",
-		    conn, &conn->c_laddr, &conn->c_faddr,
-		    conn->c_tos);
+	trace_rds_conn_destroy(NULL, conn, NULL, NULL, 0);
 
 	conn->c_destroy_in_prog = 1;
 	/* Ensure conn will not be scheduled for reconnect */
@@ -1161,6 +1162,8 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	unsigned long now = get_seconds();
 
 	cp->cp_drop_source = reason;
+	trace_rds_conn_drop(NULL, conn, cp, conn_drop_reason_str(reason), err);
+
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
 		cp->cp_reconnect_start = now;
 		cp->cp_reconnect_warn = 1;
