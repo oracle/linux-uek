@@ -395,9 +395,9 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	skb = alloc_skb(sizeof(struct rds_nf_hdr) * 2, gfp);
 	if (NULL == skb) {
 		/* if we have allocation problems, then we just need to depart */
-		rds_rtd_ptr(RDS_RTD_ERR,
-			    "failure to allocate space for inc %p, %pI6c -> %pI6c tos %d\n",
-			    inc, saddr, daddr, conn->c_tos);
+		trace_rds_receive_err(rs, conn, cp,
+				      "alloc skb for netfilter failed",
+				      -ENOMEM);
 		rds_recv_local(cp, saddr, daddr, inc, gfp, rs);
 		/* drop the reference if we had taken one */
 		if (NULL != rs)
