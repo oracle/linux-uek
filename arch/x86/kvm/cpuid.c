@@ -123,8 +123,6 @@ static void kvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	struct kvm_cpuid_entry2 *best;
 
-	kvm_x86_ops.vcpu_after_set_cpuid(vcpu);
-
 	best = kvm_find_cpuid_entry(vcpu, 1, 0);
 	if (best && apic) {
 		if (cpuid_entry_has(best, X86_FEATURE_TSC_DEADLINE_TIMER))
@@ -153,6 +151,8 @@ static void kvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.cr3_lm_rsvd_bits = rsvd_bits(cpuid_maxphyaddr(vcpu), 63);
 
+	/* Invoke the vendor callback only after the above state is updated. */
+	kvm_x86_ops.vcpu_after_set_cpuid(vcpu);
 	kvm_x86_ops.update_exception_bitmap(vcpu);
 }
 
