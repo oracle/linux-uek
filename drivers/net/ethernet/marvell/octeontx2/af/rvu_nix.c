@@ -3768,6 +3768,9 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 	/* For better performance use NDC TX instead of NDC RX for SQ's SQEs" */
 	rvu_write64(rvu, blkaddr, NIX_AF_SEB_CFG, 0x1ULL);
 
+	if (!is_rvu_otx2(rvu))
+		rvu_nix_block_cn10k_init(rvu, nix_hw);
+
 	if (is_block_implemented(hw, blkaddr)) {
 		err = nix_setup_txschq(rvu, nix_hw, blkaddr);
 		if (err)
