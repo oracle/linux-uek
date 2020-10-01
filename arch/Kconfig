@@ -1683,3 +1683,10 @@ config ARCH_NEED_CMPXCHG_1_EMU
 	bool
 
 endmenu
+
+config KSPLICE
+	bool "Ksplice"
+	depends on MODULES
+	select SYSCTL
+	help
+	  Enable helper features for supporting Ksplice zero-downtime updates.
