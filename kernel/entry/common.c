@@ -6,6 +6,7 @@
 #include <linux/livepatch.h>
 #include <linux/audit.h>
 #include <linux/tick.h>
+#include <linux/ksplice_clear_stack.h>
 
 #include "common.h"
 
@@ -170,6 +171,8 @@ static unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 
 		if (ti_work & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
 			set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+			if (ti_work & _TIF_KSPLICE_FREEZING)
+				ksplice_clear_stack();
 			handle_signal_work(regs, ti_work);
 			clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 		}
