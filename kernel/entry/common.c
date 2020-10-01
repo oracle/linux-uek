@@ -9,6 +9,7 @@
 #include <linux/livepatch.h>
 #include <linux/audit.h>
 #include <linux/tick.h>
+#include <linux/ksplice_clear_stack.h>
 
 #include "common.h"
 
@@ -107,8 +108,11 @@ __always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 		if (ti_work & _TIF_PATCH_PENDING)
 			klp_update_patch_state(current);
 
-		if (ti_work & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+		if (ti_work & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
+			if (ti_work & _TIF_KSPLICE_FREEZING)
+				ksplice_clear_stack();
 			arch_do_signal_or_restart(regs);
+		}
 
 		if (ti_work & _TIF_NOTIFY_RESUME)
 			resume_user_mode_work(regs);
