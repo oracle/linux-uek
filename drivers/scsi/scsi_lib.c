@@ -718,6 +718,23 @@ static bool scsi_end_request(struct request *req, blk_status_t error,
 	return false;
 }
 
+static bool scsi_cmd_runtime_exceeced(struct scsi_cmnd *cmd)
+{
+	struct request *req = cmd->request;
+	unsigned long wait_for;
+
+	if (cmd->allowed == SCSI_CMD_RETRIES_NO_LIMIT)
+		return false;
+
+	wait_for = (cmd->allowed + 1) * req->timeout;
+	if (time_before(cmd->jiffies_at_alloc + wait_for, jiffies)) {
+		scmd_printk(KERN_ERR, cmd, "timing out command, waited %lus\n",
+			    wait_for/HZ);
+		return true;
+	}
+	return false;
+}
+
 /**
  * __scsi_error_from_host_byte - translate SCSI error code into errno
  * @cmd:	SCSI command (unused)
@@ -788,7 +805,6 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 	int sense_deferred = 0, level = 0;
 	enum {ACTION_FAIL, ACTION_REPREP, ACTION_RETRY,
 	      ACTION_DELAYED_RETRY} action;
-	unsigned long wait_for = (cmd->allowed + 1) * req->timeout;
 
 	if (result) {
 		sense_valid = scsi_command_normalize_sense(cmd, &sshdr);
@@ -993,8 +1009,7 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 	} else
 		action = ACTION_FAIL;
 
-	if (action != ACTION_FAIL &&
-	    time_before(cmd->jiffies_at_alloc + wait_for, jiffies))
+	if (action != ACTION_FAIL && scsi_cmd_runtime_exceeced(cmd))
 		action = ACTION_FAIL;
 
 	switch (action) {
@@ -1647,7 +1662,6 @@ static void scsi_kill_request(struct request *req, struct request_queue *q)
 static void scsi_softirq_done(struct request *rq)
 {
 	struct scsi_cmnd *cmd = blk_mq_rq_to_pdu(rq);
-	unsigned long wait_for = (cmd->allowed + 1) * rq->timeout;
 	int disposition;
 
 	INIT_LIST_HEAD(&cmd->eh_entry);
@@ -1657,13 +1671,8 @@ static void scsi_softirq_done(struct request *rq)
 		atomic_inc(&cmd->device->ioerr_cnt);
 
 	disposition = scsi_decide_disposition(cmd);
-	if (disposition != SUCCESS &&
-	    time_before(cmd->jiffies_at_alloc + wait_for, jiffies)) {
-		sdev_printk(KERN_ERR, cmd->device,
-			    "timing out command, waited %lus\n",
-			    wait_for/HZ);
+	if (disposition != SUCCESS && scsi_cmd_runtime_exceeced(cmd))
 		disposition = SUCCESS;
-	}
 
 	scsi_log_completion(cmd, disposition);
 
