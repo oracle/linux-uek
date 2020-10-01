@@ -15,6 +15,7 @@
 #include <linux/sched.h>
 #include <linux/sched/debug.h>
 #include <linux/thread_info.h>
+#include <linux/ksplice_clear_stack.h>
 
 #include <asm/cpufeature.h>
 #include <asm/daifflags.h>
@@ -148,8 +149,11 @@ static void do_notify_resume(struct pt_regs *regs, unsigned long thread_flags)
 		if (thread_flags & _TIF_PATCH_PENDING)
 			klp_update_patch_state(current);
 
-		if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+		if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
+			if (thread_flags & _TIF_KSPLICE_FREEZING)
+				ksplice_clear_stack();
 			do_signal(regs);
+		}
 
 		if (thread_flags & _TIF_NOTIFY_RESUME)
 			resume_user_mode_work(regs);
