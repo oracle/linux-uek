@@ -937,8 +937,11 @@ void do_notify_resume(struct pt_regs *regs, unsigned long thread_flags)
 					       (void __user *)NULL, current);
 			}
 
-			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
+				set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 				do_signal(regs);
+				clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+			}
 
 			if (thread_flags & _TIF_NOTIFY_RESUME)
 				tracehook_notify_resume(regs);

@@ -168,8 +168,11 @@ static unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 		if (ti_work & _TIF_PATCH_PENDING)
 			klp_update_patch_state(current);
 
-		if (ti_work & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+		if (ti_work & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
+			set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 			handle_signal_work(regs, ti_work);
+			clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+		}
 
 		if (ti_work & _TIF_NOTIFY_RESUME)
 			tracehook_notify_resume(regs);
