@@ -1756,3 +1756,10 @@ config ARCH_WANTS_PRE_LINK_VMLINUX
 	  with .arch.vmlinux.o target to be linked into vmlinux.
 
 endmenu
+
+config KSPLICE
+	bool "Ksplice"
+	depends on MODULES
+	select SYSCTL
+	help
+	  Enable helper features for supporting Ksplice zero-downtime updates.
