@@ -11,6 +11,11 @@
 /* Workaround to allow gradual conversion of architecture code */
 void __weak arch_do_signal_or_restart(struct pt_regs *regs) { }
 
+/*
+ * How many bytes to clear from the stack
+ */
+#define KSPLICE_CLEAR_STACK_BYTES 0x400
+
 #ifdef CONFIG_HAVE_GENERIC_TIF_BITS
 #define EXIT_TO_USER_MODE_WORK_LOOP	(EXIT_TO_USER_MODE_WORK & ~_TIF_RSEQ)
 #else
@@ -37,8 +42,13 @@ static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *re
 		if (ti_work & _TIF_PATCH_PENDING)
 			klp_update_patch_state(current);
 
-		if (ti_work & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+		if (ti_work & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
+			if (ti_work & _TIF_KSPLICE_FREEZING)
+				/* clear garbage left on the stack */
+				memset((void*)(current_stack_pointer - KSPLICE_CLEAR_STACK_BYTES),
+				       0x0, KSPLICE_CLEAR_STACK_BYTES);
 			arch_do_signal_or_restart(regs);
+		}
 
 		if (ti_work & _TIF_NOTIFY_RESUME)
 			resume_user_mode_work(regs);
