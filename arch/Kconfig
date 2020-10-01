@@ -1508,3 +1508,10 @@ config FUNCTION_ALIGNMENT
 	default 0
 
 endmenu
+
+config KSPLICE
+	bool "Ksplice"
+	depends on MODULES
+	select SYSCTL
+	help
+	  Enable helper features for supporting Ksplice zero-downtime updates.
