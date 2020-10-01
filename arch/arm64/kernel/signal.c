@@ -21,6 +21,7 @@
 #include <linux/syscalls.h>
 
 #include <asm/daifflags.h>
+#include <linux/ksplice_clear_stack.h>
 #include <asm/debug-monitors.h>
 #include <asm/elf.h>
 #include <asm/exception.h>
@@ -1298,8 +1299,11 @@ void do_notify_resume(struct pt_regs *regs, unsigned long thread_flags)
 					       (void __user *)NULL, current);
 			}
 
-			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
+				if (thread_flags & _TIF_KSPLICE_FREEZING)
+					ksplice_clear_stack();
 				do_signal(regs);
+			}
 
 			if (thread_flags & _TIF_NOTIFY_RESUME)
 				resume_user_mode_work(regs);
