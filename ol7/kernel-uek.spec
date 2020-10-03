@@ -1591,6 +1591,10 @@ fi
       cp arch/$Arch/kernel/module.lds $RPM_BUILD_ROOT/$DevelDir/arch/$Arch/kernel/module.lds || :
     fi
     ln -sf $DevelDir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
+
+    # UEFI Secure Boot cert, which can verify kernel signature
+    mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
+    install -m 0644 %{SOURCE22} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
 }
 
 ###
