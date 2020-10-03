@@ -1485,9 +1485,9 @@ fi
     # build a BLS config for this kernel
     %{SOURCE43} "$KernelVer" "$RPM_BUILD_ROOT" "%{?variant}"
 
-    # UEFI Secure Boot CA cert, which can be used to authenticate the kernel
+    # UEFI Secure Boot cert, which can verify kernel signature
     mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
-    install -m 0644 %{SOURCE21} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing-ca.cer
+    install -m 0644 %{SOURCE22} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
 }
 
 ###
@@ -1959,7 +1959,7 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/weak-updates\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/bls.conf\
-%{_datadir}/doc/kernel-keys/%{KVERREL}%{?2:.%{2}}/kernel-signing-ca.cer\
+%{_datadir}/doc/kernel-keys/%{KVERREL}%{?2:.%{2}}/kernel-signing.cer\
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
 /etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
