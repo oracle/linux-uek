@@ -6950,8 +6950,8 @@ void __mlx5_ib_remove(struct mlx5_ib_dev *dev,
 	ib_dealloc_device(&dev->ib_dev);
 }
 
-void *__mlx5_ib_add(struct mlx5_ib_dev *dev,
-		    const struct mlx5_ib_profile *profile)
+int __mlx5_ib_add(struct mlx5_ib_dev *dev,
+		  const struct mlx5_ib_profile *profile)
 {
 	int err;
 	int i;
@@ -6966,13 +6966,16 @@ void *__mlx5_ib_add(struct mlx5_ib_dev *dev,
 
 	dev->profile = profile;
 	dev->ib_active = true;
-
-	return dev;
+	return 0;
 
 err_out:
-	__mlx5_ib_remove(dev, profile, i);
-
-	return NULL;
+	/* Clean up stages which were initialized */
+	while (i) {
+		i--;
+		if (profile->stage[i].cleanup)
+			profile->stage[i].cleanup(dev);
+	}
+	return -ENOMEM;
 }
 
 static const struct mlx5_ib_profile pf_profile = {
@@ -7080,8 +7083,11 @@ const struct mlx5_ib_profile uplink_rep_profile = {
 		     NULL),
 };
 
-static void *mlx5_ib_add_slave_port(struct mlx5_core_dev *mdev)
+static int mlx5r_mp_probe(struct auxiliary_device *adev,
+			  const struct auxiliary_device_id *id)
 {
+	struct mlx5_adev *idev = container_of(adev, struct mlx5_adev, adev);
+	struct mlx5_core_dev *mdev = idev->mdev;
 	struct mlx5_ib_multiport_info *mpi;
 	struct mlx5_ib_dev *dev;
 	bool bound = false;
@@ -7089,15 +7095,14 @@ static void *mlx5_ib_add_slave_port(struct mlx5_core_dev *mdev)
 
 	mpi = kzalloc(sizeof(*mpi), GFP_KERNEL);
 	if (!mpi)
-		return NULL;
+		return -ENOMEM;
 
 	mpi->mdev = mdev;
-
 	err = mlx5_query_nic_vport_system_image_guid(mdev,
 						     &mpi->sys_image_guid);
 	if (err) {
 		kfree(mpi);
-		return NULL;
+		return err;
 	}
 
 	mutex_lock(&mlx5_ib_multiport_mutex);
@@ -7118,78 +7123,96 @@ static void *mlx5_ib_add_slave_port(struct mlx5_core_dev *mdev)
 	}
 	mutex_unlock(&mlx5_ib_multiport_mutex);
 
-	return mpi;
+	dev_set_drvdata(&adev->dev, mpi);
+	return 0;
 }
 
-static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
+static void mlx5r_mp_remove(struct auxiliary_device *adev)
 {
+	struct mlx5_ib_multiport_info *mpi;
+
+	mpi = dev_get_drvdata(&adev->dev);
+	mutex_lock(&mlx5_ib_multiport_mutex);
+	if (mpi->ibdev)
+		mlx5_ib_unbind_slave_port(mpi->ibdev, mpi);
+	list_del(&mpi->list);
+	mutex_unlock(&mlx5_ib_multiport_mutex);
+	kfree(mpi);
+}
+
+static int mlx5r_probe(struct auxiliary_device *adev,
+		       const struct auxiliary_device_id *id)
+{
+	struct mlx5_adev *idev = container_of(adev, struct mlx5_adev, adev);
+	struct mlx5_core_dev *mdev = idev->mdev;
+	int port_type_cap, num_ports, ret;
 	enum rdma_link_layer ll;
 	struct mlx5_ib_dev *dev;
-	int port_type_cap;
-	int num_ports;
 
 	printk_once(KERN_INFO "%s", mlx5_version);
 
-	if (MLX5_ESWITCH_MANAGER(mdev) &&
-	    mlx5_ib_eswitch_mode(mdev->priv.eswitch) == MLX5_ESWITCH_OFFLOADS) {
-		if (!mlx5_core_mp_enabled(mdev))
-			mlx5_ib_register_vport_reps(mdev);
-		return mdev;
-	}
-
 	port_type_cap = MLX5_CAP_GEN(mdev, port_type);
 	ll = mlx5_port_type_cap_to_rdma_ll(port_type_cap);
-
-	if (mlx5_core_is_mp_slave(mdev) && ll == IB_LINK_LAYER_ETHERNET)
-		return mlx5_ib_add_slave_port(mdev);
 
 	num_ports = max(MLX5_CAP_GEN(mdev, num_ports),
 			MLX5_CAP_GEN(mdev, num_vhca_ports));
 	dev = ib_alloc_device(mlx5_ib_dev, ib_dev);
 	if (!dev)
-		return NULL;
+		return -ENOMEM;
 	dev->port = kcalloc(num_ports, sizeof(*dev->port),
 			     GFP_KERNEL);
 	if (!dev->port) {
 		ib_dealloc_device(&dev->ib_dev);
-		return NULL;
+		return -ENOMEM;
 	}
 
 	dev->mdev = mdev;
 	dev->num_ports = num_ports;
 
-	return __mlx5_ib_add(dev, &pf_profile);
+	ret = __mlx5_ib_add(dev, &pf_profile);
+	if (ret) {
+		kfree(dev->port);
+		ib_dealloc_device(&dev->ib_dev);
+		return ret;
+	}
+
+	dev_set_drvdata(&adev->dev, dev);
+	return 0;
 }
 
-static void mlx5_ib_remove(struct mlx5_core_dev *mdev, void *context)
+static void mlx5r_remove(struct auxiliary_device *adev)
 {
-	struct mlx5_ib_multiport_info *mpi;
 	struct mlx5_ib_dev *dev;
 
-	if (MLX5_ESWITCH_MANAGER(mdev) && context == mdev) {
-		mlx5_ib_unregister_vport_reps(mdev);
-		return;
-	}
-
-	if (mlx5_core_is_mp_slave(mdev)) {
-		mpi = context;
-		mutex_lock(&mlx5_ib_multiport_mutex);
-		if (mpi->ibdev)
-			mlx5_ib_unbind_slave_port(mpi->ibdev, mpi);
-		list_del(&mpi->list);
-		mutex_unlock(&mlx5_ib_multiport_mutex);
-		kfree(mpi);
-		return;
-	}
-
-	dev = context;
+	dev = dev_get_drvdata(&adev->dev);
 	__mlx5_ib_remove(dev, dev->profile, MLX5_IB_STAGE_MAX);
 }
 
-static struct mlx5_interface mlx5_ib_interface = {
-	.add            = mlx5_ib_add,
-	.remove         = mlx5_ib_remove,
-	.protocol	= MLX5_INTERFACE_PROTOCOL_IB,
+static const struct auxiliary_device_id mlx5r_mp_id_table[] = {
+	{ .name = MLX5_ADEV_NAME ".multiport", },
+	{},
+};
+
+static const struct auxiliary_device_id mlx5r_id_table[] = {
+	{ .name = MLX5_ADEV_NAME ".rdma", },
+	{},
+};
+
+MODULE_DEVICE_TABLE(auxiliary, mlx5r_mp_id_table);
+MODULE_DEVICE_TABLE(auxiliary, mlx5r_id_table);
+
+static struct auxiliary_driver mlx5r_mp_driver = {
+	.name = "multiport",
+	.probe = mlx5r_mp_probe,
+	.remove = mlx5r_mp_remove,
+	.id_table = mlx5r_mp_id_table,
+};
+
+static struct auxiliary_driver mlx5r_driver = {
+	.name = "rdma",
+	.probe = mlx5r_probe,
+	.remove = mlx5r_remove,
+	.id_table = mlx5r_id_table,
 };
 
 unsigned long mlx5_ib_get_xlt_emergency_page(void)
@@ -7205,7 +7228,7 @@ void mlx5_ib_put_xlt_emergency_page(void)
 
 static int __init mlx5_ib_init(void)
 {
-	int err;
+	int ret;
 
 	xlt_emergency_page = __get_free_page(GFP_KERNEL);
 	if (!xlt_emergency_page)
@@ -7220,15 +7243,33 @@ static int __init mlx5_ib_init(void)
 	}
 
 	mlx5_ib_odp_init();
+	ret = mlx5r_rep_init();
+	if (ret)
+		goto rep_err;
+	ret = auxiliary_driver_register(&mlx5r_mp_driver);
+	if (ret)
+		goto mp_err;
+	ret = auxiliary_driver_register(&mlx5r_driver);
+	if (ret)
+		goto drv_err;
+	return 0;
 
-	err = mlx5_register_interface(&mlx5_ib_interface);
-
-	return err;
+drv_err:
+	auxiliary_driver_unregister(&mlx5r_mp_driver);
+mp_err:
+	mlx5r_rep_cleanup();
+rep_err:
+	destroy_workqueue(mlx5_ib_event_wq);
+	free_page((unsigned long)xlt_emergency_page);
+	return ret;
 }
 
 static void __exit mlx5_ib_cleanup(void)
 {
-	mlx5_unregister_interface(&mlx5_ib_interface);
+	auxiliary_driver_unregister(&mlx5r_driver);
+	auxiliary_driver_unregister(&mlx5r_mp_driver);
+	mlx5r_rep_cleanup();
+
 	destroy_workqueue(mlx5_ib_event_wq);
 	mutex_destroy(&xlt_emergency_page_mutex);
 	free_page(xlt_emergency_page);
