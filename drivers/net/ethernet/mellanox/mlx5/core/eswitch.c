@@ -1901,7 +1901,6 @@ int mlx5_eswitch_enable(struct mlx5_eswitch *esw, int mode)
 		err = esw_legacy_enable(esw);
 	} else {
 		mlx5_rescan_drivers(esw->dev);
-		mlx5_reload_interface(esw->dev, MLX5_INTERFACE_PROTOCOL_IB);
 		err = esw_offloads_enable(esw);
 	}
 
@@ -1919,10 +1918,9 @@ int mlx5_eswitch_enable(struct mlx5_eswitch *esw, int mode)
 abort:
 	esw->mode = MLX5_ESWITCH_NONE;
 
-	if (mode == MLX5_ESWITCH_OFFLOADS) {
-		mlx5_reload_interface(esw->dev, MLX5_INTERFACE_PROTOCOL_IB);
+	if (mode == MLX5_ESWITCH_OFFLOADS)
 		mlx5_rescan_drivers(esw->dev);
-	}
+
 	esw_destroy_tsar(esw);
 	return err;
 }
@@ -1952,10 +1950,8 @@ void mlx5_eswitch_disable(struct mlx5_eswitch *esw)
 
 	mlx5_lag_update(esw->dev);
 
-	if (old_mode == MLX5_ESWITCH_OFFLOADS) {
-		mlx5_reload_interface(esw->dev, MLX5_INTERFACE_PROTOCOL_IB);
+	if (old_mode == MLX5_ESWITCH_OFFLOADS)
 		mlx5_rescan_drivers(esw->dev);
-	}
 }
 
 int mlx5_eswitch_init(struct mlx5_core_dev *dev)

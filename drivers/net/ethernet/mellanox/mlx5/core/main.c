@@ -1338,7 +1338,6 @@ static void mlx5_mdev_uninit(struct mlx5_core_dev *dev)
 	debugfs_remove_recursive(dev->priv.dbg_root);
 }
 
-#define MLX5_IB_MOD "mlx5_ib"
 static int init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct mlx5_core_dev *dev;
@@ -1379,8 +1378,6 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 			      err);
 		goto err_load_one;
 	}
-
-	request_module_nowait(MLX5_IB_MOD);
 
 	err = mlx5_crdump_enable(dev);
 	if (err)
