@@ -140,9 +140,9 @@ static int dpi_init(struct dpipf *dpi)
 
 	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
 		if (engine == 4 || engine == 5)
-			reg = DPI_ENG_BUF_BLKS(8);
+			reg = DPI_ENG_BUF_BLKS(16);
 		else
-			reg = DPI_ENG_BUF_BLKS(4);
+			reg = DPI_ENG_BUF_BLKS(8);
 
 		dpi_reg_write(dpi, DPI_ENGX_BUF(engine), reg);
 
