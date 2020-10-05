@@ -239,6 +239,11 @@ int verify_pkcs7_signature(const void *data, size_t len,
 		trusted_keys = builtin_trusted_keys;
 #endif
 	}
+	ret = is_key_revocationlisted(pkcs7);
+	if (ret != -ENOKEY) {
+		pr_devel("PKCS#7 platform key revocationlisted\n");
+		goto error;
+	}
 	ret = pkcs7_validate_trust(pkcs7, trusted_keys);
 	if (ret < 0) {
 		if (ret == -ENOKEY)

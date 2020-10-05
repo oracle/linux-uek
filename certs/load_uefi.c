@@ -127,6 +127,15 @@ static __init efi_element_handler_t get_handler_for_db(const efi_guid_t *sig_typ
 }
 
 /*
+ * Revocationlist the X509 cert
+ */
+static __init void uefi_revocationlist_x509(const char *source,
+					    const void *data, size_t len)
+{
+	mark_key_revocationlisted(data, len);
+}
+
+/*
  * Return the appropriate handler for particular signature list types found in
  * the UEFI dbx and MokListXRT tables.
  */
@@ -136,6 +145,8 @@ static __init efi_element_handler_t get_handler_for_dbx(const efi_guid_t *sig_ty
 		return uefi_blacklist_x509_tbs;
 	if (efi_guidcmp(*sig_type, efi_cert_sha256_guid) == 0)
 		return uefi_blacklist_binary;
+	if (efi_guidcmp(*sig_type, efi_cert_x509_guid) == 0)
+		return uefi_revocationlist_x509;
 	return 0;
 }
 
