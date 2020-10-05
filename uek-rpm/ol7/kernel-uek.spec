@@ -1306,6 +1306,11 @@ hwcap 0 nosegneg"
     mkdir -p $RPM_BUILD_ROOT/usr/src/kernels
     mv $RPM_BUILD_ROOT/lib/modules/$KernelVer/build $RPM_BUILD_ROOT/$DevelDir
     ln -sf $DevelDir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
+
+    # UEFI Secure Boot cert, which can verify kernel signature
+    mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
+    install -m 0644 %{SOURCE22} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
+
 }
 
 ###
