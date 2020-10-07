@@ -34,6 +34,11 @@
 /* Administrative instruction queue size */
 #define REE_AQ_SIZE		128
 
+static const char *ree_irq_name[MAX_REE_BLKS][REE_AF_INT_VEC_CNT] = {
+		{ "REE0_AF_RAS", "REE0_AF_RVU", "REE0_AF_DONE", "REE0_AF_AQ" },
+		{ "REE1_AF_RAS", "REE1_AF_RVU", "REE1_AF_DONE", "REE1_AF_AQ" },
+};
+
 enum ree_cmp_ops {
 	REE_CMP_EQ,	/* Equal to data*/
 	REE_CMP_GEQ,	/* Equal or greater than data */
@@ -969,9 +974,12 @@ static irqreturn_t rvu_ree_af_aq_intr_handler(int irq, void *ptr)
 void rvu_ree_unregister_interrupts_block(struct rvu *rvu, int blkaddr)
 {
 	int i, offs;
+	struct rvu_block *block;
+	struct rvu_hwinfo *hw = rvu->hw;
 
-	if (!is_block_implemented(rvu->hw, blkaddr))
+	if (!is_block_implemented(hw, blkaddr))
 		return;
+	block = &hw->block[blkaddr];
 
 	offs = rvu_read64(rvu, blkaddr, REE_PRIV_AF_INT_CFG) & 0x7FF;
 	if (!offs) {
@@ -988,7 +996,7 @@ void rvu_ree_unregister_interrupts_block(struct rvu *rvu, int blkaddr)
 
 	for (i = 0; i < REE_AF_INT_VEC_CNT; i++)
 		if (rvu->irq_allocated[offs + i]) {
-			free_irq(pci_irq_vector(rvu->pdev, offs + i), rvu);
+			free_irq(pci_irq_vector(rvu->pdev, offs + i), block);
 			rvu->irq_allocated[offs + i] = false;
 		}
 }
@@ -1019,7 +1027,8 @@ static int rvu_ree_af_request_irq(struct rvu_block *block,
 	return rvu->irq_allocated[offset];
 }
 
-int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr)
+int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr,
+				      int blkid)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
@@ -1041,7 +1050,7 @@ int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr)
 	/* Register and enable RAS interrupt */
 	ret = rvu_ree_af_request_irq(block, offs + REE_AF_INT_VEC_RAS,
 				     rvu_ree_af_ras_intr_handler,
-				     "REEAF RAS");
+				     ree_irq_name[blkid][REE_AF_INT_VEC_RAS]);
 	if (!ret)
 		goto err;
 	rvu_write64(rvu, blkaddr, REE_AF_RAS_ENA_W1S, ~0ULL);
@@ -1049,7 +1058,7 @@ int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr)
 	/* Register and enable RVU interrupt */
 	ret = rvu_ree_af_request_irq(block, offs + REE_AF_INT_VEC_RVU,
 				     rvu_ree_af_rvu_intr_handler,
-				     "REEAF RVU");
+				     ree_irq_name[blkid][REE_AF_INT_VEC_RVU]);
 	if (!ret)
 		goto err;
 	rvu_write64(rvu, blkaddr, REE_AF_RVU_INT_ENA_W1S, ~0ULL);
@@ -1062,7 +1071,7 @@ int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr)
 	/* Register and enable AQ interrupt */
 	ret = rvu_ree_af_request_irq(block, offs + REE_AF_INT_VEC_AQ,
 				     rvu_ree_af_aq_intr_handler,
-				     "REEAF RVU");
+				     ree_irq_name[blkid][REE_AF_INT_VEC_AQ]);
 	if (!ret)
 		goto err;
 	rvu_write64(rvu, blkaddr, REE_AF_AQ_INT_ENA_W1S, ~0ULL);
@@ -1077,11 +1086,11 @@ int rvu_ree_register_interrupts(struct rvu *rvu)
 {
 	int ret;
 
-	ret = rvu_ree_register_interrupts_block(rvu, BLKADDR_REE0);
+	ret = rvu_ree_register_interrupts_block(rvu, BLKADDR_REE0, 0);
 	if (ret)
 		return ret;
 
-	return rvu_ree_register_interrupts_block(rvu, BLKADDR_REE1);
+	return rvu_ree_register_interrupts_block(rvu, BLKADDR_REE1, 1);
 }
 
 static int rvu_ree_init_block(struct rvu *rvu, int blkaddr)
