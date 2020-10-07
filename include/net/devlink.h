@@ -18,6 +18,13 @@
 #include <net/net_namespace.h>
 #include <uapi/linux/devlink.h>
 
+#define DEVLINK_RELOAD_STATS_ARRAY_SIZE \
+	(__DEVLINK_RELOAD_LIMIT_MAX * __DEVLINK_RELOAD_ACTION_MAX)
+
+struct devlink_dev_stats {
+	u32 reload_stats[DEVLINK_RELOAD_STATS_ARRAY_SIZE];
+};
+
 struct devlink_ops;
 
 struct devlink {
@@ -42,6 +49,7 @@ struct devlink {
 	   reload_enabled:1;
 	UEK_KABI_FILL_HOLE(struct list_head rate_list)
 	UEK_KABI_FILL_HOLE(struct list_head trap_policer_list)
+	UEK_KABI_FILL_HOLE(struct devlink_dev_stats stats)
 	char priv[0] __aligned(NETDEV_ALIGN);
 };
 
