@@ -294,6 +294,19 @@ enum devlink_reload_action {
 	DEVLINK_RELOAD_ACTION_MAX = __DEVLINK_RELOAD_ACTION_MAX - 1
 };
 
+enum devlink_reload_limit {
+	DEVLINK_RELOAD_LIMIT_UNSPEC,	/* unspecified, no constraints */
+	DEVLINK_RELOAD_LIMIT_NO_RESET,	/* No reset allowed, no down time allowed,
+					 * no link flap and no configuration is lost.
+					 */
+
+	/* Add new reload limit above */
+	__DEVLINK_RELOAD_LIMIT_MAX,
+	DEVLINK_RELOAD_LIMIT_MAX = __DEVLINK_RELOAD_LIMIT_MAX - 1
+};
+
+#define DEVLINK_RELOAD_LIMITS_VALID_MASK (BIT(__DEVLINK_RELOAD_LIMIT_MAX) - 1)
+
 enum devlink_attr {
 	/* don't change the order or add anything between, this is ABI! */
 	DEVLINK_ATTR_UNSPEC,

@@ -592,13 +592,15 @@ static void nsim_dev_traps_exit(struct devlink *devlink)
 }
 
 static int nsim_dev_reload_down(struct devlink *devlink, bool netns_change,
-				enum devlink_reload_action action, struct netlink_ext_ack *extack)
+				enum devlink_reload_action action, enum devlink_reload_limit limit,
+				struct netlink_ext_ack *extack)
 {
 	return 0;
 }
 
 static int nsim_dev_reload_up(struct devlink *devlink, enum devlink_reload_action action,
-			      u32 *actions_performed, struct netlink_ext_ack *extack)
+			      enum devlink_reload_limit limit, u32 *actions_performed,
+			      struct netlink_ext_ack *extack)
 {
 	enum nsim_resource_id res_ids[] = {
 		NSIM_RESOURCE_IPV4_FIB, NSIM_RESOURCE_IPV4_FIB_RULES,

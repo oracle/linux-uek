@@ -846,13 +846,16 @@ struct devlink_ops {
 	int (*reload_down)(struct devlink *devlink,
 			   struct netlink_ext_ack *extack),
 	int (*reload_down)(struct devlink *devlink, bool netns_change,
-			   enum devlink_reload_action action, struct netlink_ext_ack *extack)
+			   enum devlink_reload_action action,
+			   enum devlink_reload_limit limit,
+			   struct netlink_ext_ack *extack)
 	)
 	UEK_KABI_REPLACE_UNSAFE(
 	int (*reload_up)(struct devlink *devlink,
 			 struct netlink_ext_ack *extack),
 	int (*reload_up)(struct devlink *devlink, enum devlink_reload_action action,
-			 u32 *actions_performed, struct netlink_ext_ack *extack)
+			 enum devlink_reload_limit limit, u32 *actions_performed,
+			 struct netlink_ext_ack *extack)
 	)
 	int (*port_type_set)(struct devlink_port *devlink_port,
 			     enum devlink_port_type port_type);
@@ -1116,6 +1119,7 @@ struct devlink_ops {
 						    void *priv_child, void *priv_parent,
 						    struct netlink_ext_ack *extack))
 	UEK_KABI_EXTEND(unsigned long reload_actions)
+	UEK_KABI_EXTEND(unsigned long reload_limits)
 };
 
 static inline void *devlink_priv(struct devlink *devlink)
