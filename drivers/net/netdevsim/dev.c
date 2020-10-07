@@ -592,13 +592,13 @@ static void nsim_dev_traps_exit(struct devlink *devlink)
 }
 
 static int nsim_dev_reload_down(struct devlink *devlink, bool netns_change,
-				struct netlink_ext_ack *extack)
+				enum devlink_reload_action action, struct netlink_ext_ack *extack)
 {
 	return 0;
 }
 
-static int nsim_dev_reload_up(struct devlink *devlink,
-			      struct netlink_ext_ack *extack)
+static int nsim_dev_reload_up(struct devlink *devlink, enum devlink_reload_action action,
+			      u32 *actions_performed, struct netlink_ext_ack *extack)
 {
 	enum nsim_resource_id res_ids[] = {
 		NSIM_RESOURCE_IPV4_FIB, NSIM_RESOURCE_IPV4_FIB_RULES,
@@ -620,6 +620,7 @@ static int nsim_dev_reload_up(struct devlink *devlink,
 	}
 	nsim_devlink_param_load_driverinit_values(devlink);
 
+	*actions_performed = BIT(DEVLINK_RELOAD_ACTION_DRIVER_REINIT);
 	return 0;
 }
 
@@ -763,6 +764,7 @@ nsim_dev_devlink_trap_policer_counter_get(struct devlink *devlink,
 }
 
 static const struct devlink_ops nsim_dev_devlink_ops = {
+	.reload_actions = BIT(DEVLINK_RELOAD_ACTION_DRIVER_REINIT),
 	.reload_down = nsim_dev_reload_down,
 	.reload_up = nsim_dev_reload_up,
 	.flash_update = nsim_dev_flash_update,
