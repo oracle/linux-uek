@@ -1314,8 +1314,14 @@ static int mlx5_mdev_init(struct mlx5_core_dev *dev, int profile_idx)
 	if (err)
 		goto err_pagealloc_init;
 
+	err = mlx5_adev_init(dev);
+	if (err)
+		goto err_adev_init;
+
 	return 0;
 
+err_adev_init:
+	mlx5_pagealloc_cleanup(dev);
 err_pagealloc_init:
 	mlx5_health_cleanup(dev);
 err_health_init:
@@ -1326,6 +1332,7 @@ err_health_init:
 
 static void mlx5_mdev_uninit(struct mlx5_core_dev *dev)
 {
+	mlx5_adev_cleanup(dev);
 	mlx5_pagealloc_cleanup(dev);
 	mlx5_health_cleanup(dev);
 	debugfs_remove_recursive(dev->priv.dbg_root);
@@ -1350,6 +1357,10 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	dev->coredev_type = id->driver_data & MLX5_PCI_DEV_IS_VF ?
 			 MLX5_COREDEV_VF : MLX5_COREDEV_PF;
+
+	dev->priv.adev_idx = mlx5_adev_idx_alloc();
+	if (dev->priv.adev_idx < 0)
+		return dev->priv.adev_idx;
 
 	err = mlx5_mdev_init(dev, prof_sel);
 	if (err)
@@ -1383,6 +1394,7 @@ err_load_one:
 pci_init_err:
 	mlx5_mdev_uninit(dev);
 mdev_init_err:
+	mlx5_adev_idx_free(dev->priv.adev_idx);
 	mlx5_devlink_free(devlink);
 
 	return err;
@@ -1399,6 +1411,7 @@ static void remove_one(struct pci_dev *pdev)
 	mlx5_unload_one(dev, true);
 	mlx5_pci_close(dev);
 	mlx5_mdev_uninit(dev);
+	mlx5_adev_idx_free(dev->priv.adev_idx);
 	mlx5_devlink_free(devlink);
 }
 
