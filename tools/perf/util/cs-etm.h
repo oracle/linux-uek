@@ -20,6 +20,7 @@ enum {
 	CS_HEADER_VERSION,
 	/* PMU->type (32 bit), total # of CPUs (32 bit) */
 	CS_PMU_TYPE_CPUS,
+	CS_SINK_FORMATTED,
 	CS_ETM_SNAPSHOT,
 	CS_HEADER_VERSION_MAX,
 };
