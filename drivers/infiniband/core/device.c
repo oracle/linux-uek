@@ -1169,54 +1169,23 @@ out:
 	return ret;
 }
 
-static void setup_dma_device(struct ib_device *device)
+static void setup_dma_device(struct ib_device *device,
+			     struct device *dma_device)
 {
-	struct device *parent = device->dev.parent;
-
-	WARN_ON_ONCE(device->dma_device);
-	if (device->dev.dma_ops) {
-		/*
-		 * The caller provided custom DMA operations. Copy the
-		 * DMA-related fields that are used by e.g. dma_alloc_coherent()
-		 * into device->dev.
-		 */
-		device->dma_device = &device->dev;
-		if (!device->dev.dma_mask) {
-			if (parent)
-				device->dev.dma_mask = parent->dma_mask;
-			else
-				WARN_ON_ONCE(true);
-		}
-		if (!device->dev.coherent_dma_mask) {
-			if (parent)
-				device->dev.coherent_dma_mask =
-					parent->coherent_dma_mask;
-			else
-				WARN_ON_ONCE(true);
-		}
-	} else {
-		/*
-		 * The caller did not provide custom DMA operations. Use the
-		 * DMA mapping operations of the parent device.
-		 */
-		WARN_ON_ONCE(!parent);
-		device->dma_device = parent;
+	/*
+	 * If the caller does not provide a DMA capable device then the IB
+	 * device will be used. In this case the caller should fully setup the
+	 * ibdev for DMA. This usually means using dma_virt_ops.
+	 */
+#ifdef CONFIG_DMA_VIRT_OPS
+	if (!dma_device) {
+		device->dev.dma_ops = &dma_virt_ops;
+		dma_device = &device->dev;
 	}
-
-	if (!device->dev.dma_parms) {
-		if (parent) {
-			/*
-			 * The caller did not provide DMA parameters, so
-			 * 'parent' probably represents a PCI device. The PCI
-			 * core sets the maximum segment size to 64
-			 * KB. Increase this parameter to 2 GB.
-			 */
-			device->dev.dma_parms = parent->dma_parms;
-			dma_set_max_seg_size(device->dma_device, SZ_2G);
-		} else {
-			WARN_ON_ONCE(true);
-		}
-	}
+#endif
+	WARN_ON(!dma_device);
+	device->dma_device = dma_device;
+	WARN_ON(!device->dma_device->dma_parms);
 }
 
 /*
@@ -1229,7 +1198,6 @@ static int setup_device(struct ib_device *device)
 	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
 	int ret;
 
-	setup_dma_device(device);
 	ib_device_check_mandatory(device);
 
 	ret = setup_port_data(device);
@@ -1336,7 +1304,10 @@ static void prevent_dealloc_device(struct ib_device *ib_dev)
 
 /**
  * ib_register_device - Register an IB device with IB core
- * @device:Device to register
+ * @device: Device to register
+ * @dma_device: pointer to a DMA-capable device. If %NULL, then the IB
+ *	        device will be used. In this case the caller should fully
+ *		setup the ibdev for DMA. This usually means using dma_virt_ops.
  *
  * Low-level drivers use ib_register_device() to register their
  * devices with the IB core.  All registered clients will receive a
@@ -1347,7 +1318,8 @@ static void prevent_dealloc_device(struct ib_device *ib_dev)
  * asynchronously then the device pointer may become freed as soon as this
  * function returns.
  */
-int ib_register_device(struct ib_device *device, const char *name)
+int ib_register_device(struct ib_device *device, const char *name,
+		       struct device *dma_device)
 {
 	int ret;
 
@@ -1355,6 +1327,7 @@ int ib_register_device(struct ib_device *device, const char *name)
 	if (ret)
 		return ret;
 
+	setup_dma_device(device, dma_device);
 	ret = setup_device(device);
 	if (ret)
 		return ret;

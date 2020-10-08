@@ -1310,7 +1310,7 @@ int iwch_register_device(struct iwch_dev *dev)
 	if (err)
 		return err;
 
-	return ib_register_device(&dev->ibdev, "cxgb3_%d");
+	return ib_register_device(&dev->ibdev, "cxgb3_%d", NULL);
 }
 
 void iwch_unregister_device(struct iwch_dev *dev)
