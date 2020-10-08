@@ -1184,7 +1184,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
 void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 				 __be16 dport, u64 seq);
 int rds_message_add_extension(struct rds_header *hdr,
-			      unsigned int type, const void *data, unsigned int len);
+			      unsigned int type, const void *data);
 int rds_message_next_extension(struct rds_header *hdr,
 			       unsigned int *pos, void *buf, unsigned int *buflen);
 int rds_message_add_version_extension(struct rds_header *hdr, unsigned int version);
