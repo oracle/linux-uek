@@ -112,56 +112,61 @@ void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 EXPORT_SYMBOL_GPL(rds_message_populate_header);
 
 /*
- * Find the next place we can add rds header extension with specific lenght.
- * Extension headers are pushed one after the other as follow:
- * [ [ ext #1 ] RDS_EXTHDR_NONE [ ext #2 ] RDS_EXTHDR_NONE ... ]
- * Last extension is detected as follow:
- * [ [ ext #n ] RDS_EXTHDR_NONE RDS_EXTHDR_NONE ]
- * See Orabug: 18468180 - NEW EXTENSION HEADER TYPE RDSV3_EXTHDR_RDMA_BYTES
+ * Find the next place we can add an RDS header extension with
+ * specific length. Extension headers are pushed one after the
+ * other. In the following, the number after the colon is the number
+ * of bytes:
+ *
+ * [ type1:1 dta1:len1 [ type2:1 dta2:len2 ] ... ] RDS_EXTHDR_NONE
+ *
+ * If the extension headers fill the complete extension header space
+ * (16 bytes), the trailing RDS_EXTHDR_NONE is omitted.
  */
 static int rds_find_next_ext_space(struct rds_header *hdr, unsigned int len,
 	u8 **ext_start)
 {
-	int ind;
+	unsigned int ext_len;
+	unsigned int type;
+	int ind = 0;
 
-	for (ind = 0; ind < RDS_HEADER_EXT_SPACE - 1; ind++) {
-		if (hdr->h_exthdr[ind] != RDS_EXTHDR_NONE ||
-			hdr->h_exthdr[ind + 1] != RDS_EXTHDR_NONE)
-			continue;
-		/* found free space in ext header  */
-		/* skip the RDS_EXTHDR_NONE only if not on first ext */
-		if (ind > 0)
-			ind++;
-		if (RDS_HEADER_EXT_SPACE - ind < len)
-			return 1;
-		/* extension can fit to header */
-		*ext_start = hdr->h_exthdr + ind;
-		return 0;
+	while ((ind + 1 + len) <= RDS_HEADER_EXT_SPACE) {
+		if (hdr->h_exthdr[ind] == RDS_EXTHDR_NONE) {
+			*ext_start = hdr->h_exthdr + ind;
+			return 0;
+		}
+
+		type = hdr->h_exthdr[ind];
+
+		ext_len = (type < __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
+		WARN_ONCE(!ext_len, "Unknown ext hdr type %d\n", type);
+		if (!ext_len)
+			return -EINVAL;
+
+		/* ind points to a valid ext hdr with known length */
+		ind += 1 + ext_len;
 	}
+
 	/* no room for extension */
-	return 1;
+	return -ENOSPC;
 }
 
+/* The ext hdr space is prefilled with zero from the kzalloc() */
 int rds_message_add_extension(struct rds_header *hdr,
-		unsigned int type, const void *data, unsigned int len)
+			      unsigned int type, const void *data)
 {
-	unsigned int ext_len = sizeof(u8) + len;
 	unsigned char *dst;
+	unsigned int len;
 
-	if (rds_find_next_ext_space(hdr, ext_len, &dst))
+	len = (type < __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
+	if (!len)
 		return 0;
 
-	if (type >= __RDS_EXTHDR_MAX
-	 || len != rds_exthdr_size[type])
-		return 0;
-
-	if (ext_len >= RDS_HEADER_EXT_SPACE)
+	if (rds_find_next_ext_space(hdr, len, &dst))
 		return 0;
 
 	*dst++ = type;
 	memcpy(dst, data, len);
 
-	dst[len] = RDS_EXTHDR_NONE;
 	return 1;
 }
 EXPORT_SYMBOL_GPL(rds_message_add_extension);
@@ -217,7 +222,7 @@ int rds_message_add_version_extension(struct rds_header *hdr, unsigned int versi
 	struct rds_ext_header_version ext_hdr;
 
 	ext_hdr.h_version = cpu_to_be32(version);
-	return rds_message_add_extension(hdr, RDS_EXTHDR_VERSION, &ext_hdr, sizeof(ext_hdr));
+	return rds_message_add_extension(hdr, RDS_EXTHDR_VERSION, &ext_hdr);
 }
 
 int rds_message_get_version_extension(struct rds_header *hdr, unsigned int *version)
@@ -238,7 +243,7 @@ int rds_message_add_rdma_dest_extension(struct rds_header *hdr, u32 r_key, u32 o
 
 	ext_hdr.h_rdma_rkey = cpu_to_be32(r_key);
 	ext_hdr.h_rdma_offset = cpu_to_be32(offset);
-	return rds_message_add_extension(hdr, RDS_EXTHDR_RDMA_DEST, &ext_hdr, sizeof(ext_hdr));
+	return rds_message_add_extension(hdr, RDS_EXTHDR_RDMA_DEST, &ext_hdr);
 }
 EXPORT_SYMBOL_GPL(rds_message_add_rdma_dest_extension);
 
