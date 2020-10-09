@@ -1342,6 +1342,8 @@ struct rds_transport rds_ib_transport = {
 	.free_mr		= rds_ib_free_mr,
 	.flush_mrs		= rds_ib_flush_mrs,
 	.sock_release		= rds_rdma_sock_release,
+	.process_send_cmsg	= rds_rdma_process_send_cmsg,
+
 	.t_owner		= THIS_MODULE,
 	.t_name			= "infiniband",
 	.t_type			= RDS_TRANS_IB,
