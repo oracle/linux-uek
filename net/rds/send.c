@@ -1149,32 +1149,8 @@ static int rds_rm_size(struct msghdr *msg, int data_len)
 	return size;
 }
 
-static int rds_cmsg_asend(struct rds_sock *rs, struct rds_message *rm,
-		struct cmsghdr *cmsg)
-{
-	struct rds_asend_args *args;
-
-	if (!rds_async_send_enabled)
-		return -EINVAL;
-
-	if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct rds_asend_args)))
-		return -EINVAL;
-
-	args = CMSG_DATA(cmsg);
-	rm->data.op_notifier = kzalloc(sizeof(*rm->data.op_notifier), GFP_KERNEL);
-	if (!rm->data.op_notifier)
-		return -ENOMEM;
-
-	rm->data.op_notify = !!(args->flags & RDS_SEND_NOTIFY_ME);
-	rm->data.op_notifier->n_user_token = args->user_token;
-	rm->data.op_notifier->n_status = RDS_RDMA_SEND_SUCCESS;
-	rm->data.op_async = 1;
-
-	return 0;
-}
-
-static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
-			 struct msghdr *msg, int *allocated_mr)
+static int rds_cmsg_send(struct rds_connection *conn, struct rds_sock *rs,
+			 struct rds_message *rm, struct msghdr *msg)
 {
 	struct cmsghdr *cmsg;
 	int ret = 0;
@@ -1186,41 +1162,13 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 		if (cmsg->cmsg_level != SOL_RDS)
 			continue;
 
-		/* As a side effect, RDMA_DEST and RDMA_MAP will set
-		 * rm->rdma.m_rdma_cookie and rm->rdma.m_rdma_mr.
+		/* Non-transport specific ancillary data should be handled
+		 * here before calling transport specific ancillary data
+		 * handler.
 		 */
-		switch (cmsg->cmsg_type) {
-		case RDS_CMSG_RDMA_ARGS:
-			ret = rds_cmsg_rdma_args(rs, rm, cmsg);
-			break;
-
-		case RDS_CMSG_RDMA_DEST:
-			ret = rds_cmsg_rdma_dest(rs, rm, cmsg);
-			break;
-
-		case RDS_CMSG_RDMA_MAP:
-			ret = rds_cmsg_rdma_map(rs, rm, cmsg);
-			if (!ret)
-				*allocated_mr = 1;
-			else if (ret == -ENODEV)
-				/* Accomodate the get_mr() case which can fail
-				 * if connection isn't established yet.
-				 */
-				ret = -EAGAIN;
-			break;
-		case RDS_CMSG_ATOMIC_CSWP:
-		case RDS_CMSG_ATOMIC_FADD:
-			ret = rds_cmsg_atomic(rs, rm, cmsg);
-			break;
-
-		case RDS_CMSG_ASYNC_SEND:
-			ret = rds_cmsg_asend(rs, rm, cmsg);
-			break;
-
-		default:
+		if (!conn->c_trans->process_send_cmsg)
 			return -EINVAL;
-		}
-
+		ret = conn->c_trans->process_send_cmsg(rs, rm, cmsg);
 		if (ret)
 			break;
 	}
@@ -1299,7 +1247,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	struct rds_message *rm = NULL;
 	struct rds_connection *conn;
 	int ret = 0;
-	int queued = 0, allocated_mr = 0;
+	int queued = 0;
 	int nonblock = msg->msg_flags & MSG_DONTWAIT;
 	long timeo = sock_sndtimeo(sk, nonblock);
 	size_t total_payload_len = payload_len, rdma_payload_len = 0;
@@ -1542,10 +1490,10 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	rm->m_conn_path = cpath;
 
 	/* Parse any control messages the user may have included. */
-	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
+	ret = rds_cmsg_send(conn, rs, rm, msg);
 	if (ret) {
 		/* Trigger connection so that its ready for the next retry */
-		if ( ret ==  -EAGAIN)
+		if (ret == -EAGAIN)
 			rds_conn_connect_if_down(conn);
 		goto out;
 	}
@@ -1643,11 +1591,13 @@ out:
 	/* If the user included a RDMA_MAP cmsg, we allocated a MR on the fly.
 	 * If the sendmsg goes through, we keep the MR. If it fails with EAGAIN
 	 * or in any other way, we need to destroy the MR again */
-	if (allocated_mr)
-		rds_rdma_unuse(rs, rds_rdma_cookie_key(rm->m_rdma_cookie), 1);
-
-	if (rm)
+	if (rm) {
+		if (rm->rdma.op_implicit_mr)
+			rds_rdma_unuse(rs,
+				       rds_rdma_cookie_key(rm->m_rdma_cookie),
+				       1);
 		rds_message_put(rm);
+	}
 	return ret;
 }
 
