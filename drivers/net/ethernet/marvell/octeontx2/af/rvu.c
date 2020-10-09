@@ -783,6 +783,10 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 	u64 *mac;
 
 	for (pf = 0; pf < hw->total_pfs; pf++) {
+		/* For PF0 (AF) get mac address only for AFVFs (LBKVFs) */
+		if (!pf)
+			goto lbkvf;
+
 		if (!is_pf_cgxmapped(rvu, pf))
 			continue;
 		/* Assign MAC address to PF */
@@ -798,6 +802,7 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 		}
 		ether_addr_copy(pfvf->default_mac, pfvf->mac_addr);
 
+lbkvf:
 		/* Assign MAC address to VFs*/
 		rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvf);
 		for (vf = 0; vf < numvfs; vf++, hwvf++) {
