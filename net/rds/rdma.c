@@ -550,8 +550,8 @@ int rds_rdma_extra_size(struct rds_rdma_args *args)
  * The application asks for a RDMA transfer.
  * Extract all arguments and set up the rdma_op
  */
-int rds_cmsg_rdma_args(struct rds_sock *rs, struct rds_message *rm,
-			  struct cmsghdr *cmsg)
+static int rds_cmsg_rdma_args(struct rds_sock *rs, struct rds_message *rm,
+			      struct cmsghdr *cmsg)
 {
 	struct rds_rdma_args *args;
 	struct rds_iovec vec;
@@ -705,8 +705,8 @@ out:
  * The application wants us to pass an RDMA destination (aka MR)
  * to the remote
  */
-int rds_cmsg_rdma_dest(struct rds_sock *rs, struct rds_message *rm,
-			  struct cmsghdr *cmsg)
+static int rds_cmsg_rdma_dest(struct rds_sock *rs, struct rds_message *rm,
+			      struct cmsghdr *cmsg)
 {
 	unsigned long flags;
 	struct rds_mr *mr;
@@ -761,8 +761,8 @@ static void dec_rdma_map_pending(struct rds_conn_path *cp)
  * in rm->m_rdma_cookie. This causes it to be sent along to the peer
  * in an extension header.
  */
-int rds_cmsg_rdma_map(struct rds_sock *rs, struct rds_message *rm,
-			  struct cmsghdr *cmsg)
+static int rds_cmsg_rdma_map(struct rds_sock *rs, struct rds_message *rm,
+			     struct cmsghdr *cmsg)
 {
 	int ret;
 	if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct rds_get_mr_args))
@@ -788,8 +788,8 @@ int rds_cmsg_rdma_map(struct rds_sock *rs, struct rds_message *rm,
 /*
  * Fill in rds_message for an atomic request.
  */
-int rds_cmsg_atomic(struct rds_sock *rs, struct rds_message *rm,
-		    struct cmsghdr *cmsg)
+static int rds_cmsg_atomic(struct rds_sock *rs, struct rds_message *rm,
+			   struct cmsghdr *cmsg)
 {
 	struct page *page = NULL;
 	struct rds_atomic_args *args;
@@ -861,3 +861,68 @@ err:
 
 	return ret;
 }
+
+static int rds_cmsg_asend(struct rds_sock *rs, struct rds_message *rm,
+			  struct cmsghdr *cmsg)
+{
+	struct rds_asend_args *args;
+
+	if (!rds_async_send_enabled)
+		return -EINVAL;
+
+	if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct rds_asend_args)))
+		return -EINVAL;
+
+	args = CMSG_DATA(cmsg);
+	rm->data.op_notifier = kzalloc(sizeof(*rm->data.op_notifier),
+				       GFP_KERNEL);
+	if (!rm->data.op_notifier)
+		return -ENOMEM;
+
+	rm->data.op_notify = !!(args->flags & RDS_SEND_NOTIFY_ME);
+	rm->data.op_notifier->n_user_token = args->user_token;
+	rm->data.op_notifier->n_status = RDS_RDMA_SEND_SUCCESS;
+	rm->data.op_async = 1;
+
+	return 0;
+}
+
+int rds_rdma_process_send_cmsg(struct rds_sock *rs, struct rds_message *rm,
+			       struct cmsghdr *cmsg)
+{
+	int ret;
+
+	switch (cmsg->cmsg_type) {
+	case RDS_CMSG_RDMA_ARGS:
+		ret = rds_cmsg_rdma_args(rs, rm, cmsg);
+		break;
+
+	case RDS_CMSG_RDMA_DEST:
+		ret = rds_cmsg_rdma_dest(rs, rm, cmsg);
+		break;
+
+	case RDS_CMSG_RDMA_MAP:
+		ret = rds_cmsg_rdma_map(rs, rm, cmsg);
+		if (ret == -ENODEV)
+			/* Accommodate the get_mr() case which can fail
+			 * if connection isn't established yet.
+			 */
+			ret = -EAGAIN;
+		break;
+	case RDS_CMSG_ATOMIC_CSWP:
+	case RDS_CMSG_ATOMIC_FADD:
+		ret = rds_cmsg_atomic(rs, rm, cmsg);
+		break;
+
+	case RDS_CMSG_ASYNC_SEND:
+		ret = rds_cmsg_asend(rs, rm, cmsg);
+		break;
+
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rds_rdma_process_send_cmsg);
