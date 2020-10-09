@@ -1227,6 +1227,15 @@ static struct ctl_table kern_table[] = {
 		.child		= ksplice_sysctls,
 	},
 #endif
+#ifdef CONFIG_FAST_KEXEC
+	{
+		.procname	= "fast_kexec",
+		.data		= &fast_kexec,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+#endif
 	{ }
 };
 

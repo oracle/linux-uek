@@ -31,6 +31,7 @@ show up in /proc/sys/kernel:
 - ctrl-alt-del
 - dmesg_restrict
 - domainname
+- fast_kexec			[ Arm64 only ]
 - hostname
 - hotplug
 - hardlockup_all_cpu_backtrace
@@ -281,6 +282,7 @@ dmesg(8).
 The kernel config option CONFIG_SECURITY_DMESG_RESTRICT sets the
 default value of dmesg_restrict.
 
+
 ==============================================================
 
 domainname & hostname:
@@ -300,6 +302,14 @@ domainname "frop.org", not to be confused with the NIS (Network
 Information Service) or YP (Yellow Pages) domainname. These two
 domain names are in general different. For a detailed discussion
 see the hostname(1) man page.
+==============================================================
+
+fast_kexec:
+
+This toggle indicates whether the fast kexec algorithm is used
+instead of the normal hotplug interface on Arm64. The kernel
+config option CONFIG_FAST_KEXEC enables this. The default value
+is 0 unless fast_kexec is passed as a kernel parameter
 
 ==============================================================
 hardlockup_all_cpu_backtrace:

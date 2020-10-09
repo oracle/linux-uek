@@ -94,6 +94,10 @@ static inline void crash_setup_regs(struct pt_regs *newregs,
 	}
 }
 
+#ifdef CONFIG_FAST_KEXEC
+extern int  fast_kexec;
+#endif
+
 #if defined(CONFIG_KEXEC_CORE) && defined(CONFIG_HIBERNATION)
 extern bool crash_is_nosave(unsigned long pfn);
 extern void crash_prepare_suspend(void);
