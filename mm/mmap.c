@@ -3004,7 +3004,7 @@ int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 	populate = ((mm->def_flags & VM_LOCKED) != 0);
 	mmap_write_unlock(mm);
 	if (populate && !ret)
-		mm_populate(addr, len);
+		mm_populate_vma(vma, addr, addr + len);
 	return ret;
 }
 EXPORT_SYMBOL(vm_brk_flags);
