@@ -803,7 +803,6 @@ static void blk_mq_check_expired(struct blk_mq_hw_ctx *hctx,
 		struct request *rq, void *priv, bool reserved)
 {
 	struct blk_mq_timeout_data *data = priv;
-	struct blk_mq_ctx *ctx = rq->mq_ctx;
 
 	if (!test_bit(REQ_ATOM_STARTED, &rq->atomic_flags))
 		return;
