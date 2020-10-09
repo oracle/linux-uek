@@ -188,7 +188,7 @@ static void otx2_rfoe_ptp_offset_timer(struct timer_list *t)
 	struct ptp_bcn_off_cfg *ptp_cfg = from_timer(ptp_cfg, t, ptp_timer);
 	u64 mio_ptp_ts, ptp_ts_diff, ptp_diff_nsec, ptp_diff_psec;
 	struct ptp_clk_cfg *clk_cfg = &ptp_cfg->clk_cfg;
-	unsigned long flags;
+	unsigned long expires, flags;
 
 	spin_lock_irqsave(&ptp_cfg->lock, flags);
 
@@ -207,8 +207,8 @@ static void otx2_rfoe_ptp_offset_timer(struct timer_list *t)
 
 	spin_unlock_irqrestore(&ptp_cfg->lock, flags);
 
-	ptp_cfg->ptp_timer.expires = jiffies + PTP_OFF_RESAMPLE_THRESH * HZ;
-	add_timer(&ptp_cfg->ptp_timer);
+	expires = jiffies + PTP_OFF_RESAMPLE_THRESH * HZ;
+	mod_timer(&ptp_cfg->ptp_timer, expires);
 }
 
 /* submit pending ptp tx requests */
