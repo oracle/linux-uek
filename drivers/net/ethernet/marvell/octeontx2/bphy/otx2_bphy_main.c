@@ -232,6 +232,7 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		struct ptp_clk_cfg clk_cfg;
 		struct net_device *netdev;
 		struct ptp_bcn_ref ref;
+		unsigned long expires;
 		int idx;
 
 		if (!cdev->odp_intf_cfg) {
@@ -286,9 +287,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		memcpy(&ptp_cfg->old_ref, &ref, sizeof(struct ptp_bcn_ref));
 		memcpy(&ptp_cfg->new_ref, &ref, sizeof(struct ptp_bcn_ref));
 		ptp_cfg->use_ptp_alg = 1;
-		ptp_cfg->ptp_timer.expires = jiffies +
-					     PTP_OFF_RESAMPLE_THRESH * HZ;
-		add_timer(&ptp_cfg->ptp_timer);
+		expires = jiffies + PTP_OFF_RESAMPLE_THRESH * HZ;
+		mod_timer(&ptp_cfg->ptp_timer, expires);
 		ret = 0;
 		goto out;
 	}
