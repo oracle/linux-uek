@@ -3045,10 +3045,10 @@ int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 	// This vma left intentionally blank.
 	mas_walk(&mas);
 	ret = do_brk_flags(&mas, &vma, addr, len, flags);
-	populate = ((mm->def_flags & VM_LOCKED) != 0);
 	mmap_write_unlock(mm);
+	populate = ((mm->def_flags & VM_LOCKED) != 0);
 	if (populate && !ret)
-		mm_populate(addr, len);
+		mm_populate_vma(vma, addr, addr + len);
 	return ret;
 }
 EXPORT_SYMBOL(vm_brk_flags);
