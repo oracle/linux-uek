@@ -343,7 +343,9 @@ void cpu_die(void)
 {
 	unsigned int cpu = smp_processor_id();
 
-	idle_task_exit();
+	/* Skip this if we are about to exit the machine */
+	if (!kexec_in_progress)
+		idle_task_exit();
 
 	local_daif_mask();
 
@@ -798,6 +800,11 @@ static void ipi_cpu_stop(unsigned int cpu)
 
 	local_daif_mask();
 	sdei_mask_local_cpu();
+
+#ifdef CONFIG_FAST_KEXEC
+	if (kexec_in_progress)
+		cpu_die();
+#endif
 
 	while (1)
 		cpu_relax();

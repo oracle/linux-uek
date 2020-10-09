@@ -888,6 +888,17 @@ config KEXEC_AUTO_RESERVE
 	  instead you can use "crashkernel=auto". To make this work, you need
 	  to have more than 2G memory.
 
+config FAST_KEXEC
+	bool "Enable alternative kexec implementation without hotplug"
+	depends on KEXEC && EMBEDDED
+	default y
+	help
+	  Kexec on aarch64 depends on the hotplug infrastructure. However,
+	  disable_nonboot_cpus() can take a relatively long time to finish
+	  since it shuts down each CPU individually in sequence. If
+	  ipi_cpu_stop is sensitive to kexec, smp_send_stop() can shut them
+	  all down immediately.
+
 config CRASH_DUMP
 	bool "Build kdump crash kernel"
 	help

@@ -1163,6 +1163,9 @@
 			Format: <interval>,<probability>,<space>,<times>
 			See also Documentation/fault-injection/.
 
+	fast_kexec	[ARM64] Use the faster machine_shutdown implementation
+			for kexec instead of the hotplug interface.
+
 	floppy=		[HW]
 			See Documentation/blockdev/floppy.txt.
 

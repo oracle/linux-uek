@@ -26,6 +26,20 @@
 
 #include "cpu-reset.h"
 
+#ifdef CONFIG_FAST_KEXEC
+
+int fast_kexec;
+
+
+static int __init fastkexec_setup(char *__unused)
+{
+	fast_kexec = 1;
+	return 1;
+}
+__setup("fast_kexec", fastkexec_setup);
+
+#endif
+
 /* Global variables for the arm64_relocate_new_kernel routine. */
 extern const unsigned char arm64_relocate_new_kernel[];
 extern const unsigned long arm64_relocate_new_kernel_size;

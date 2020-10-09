@@ -50,6 +50,7 @@
 #include <trace/events/power.h>
 #include <linux/percpu.h>
 #include <linux/thread_info.h>
+#include <linux/kexec.h>
 
 #include <asm/alternative.h>
 #include <asm/compat.h>
@@ -59,6 +60,7 @@
 #include <asm/mmu_context.h>
 #include <asm/processor.h>
 #include <asm/stacktrace.h>
+#include <asm/kexec.h>
 
 #ifdef CONFIG_CC_STACKPROTECTOR
 #include <linux/stackprotector.h>
@@ -97,16 +99,32 @@ void arch_cpu_idle_dead(void)
 #endif
 
 /*
- * Called by kexec, immediately prior to machine_kexec().
+ * Called by kexec, immediately prior to machine_kexec() to shutdown the
+ * secondary CPUs in an architecture specific way.
  *
- * This must completely disable all secondary CPUs; simply causing those CPUs
- * to execute e.g. a RAM-based pin loop is not sufficient. This allows the
- * kexec'd kernel to use any and all RAM as it sees fit, without having to
- * avoid any code or data used by any SW CPU pin loop. The CPU hotplug
- * functionality embodied in disable_nonboot_cpus() to achieve this.
- */
+ * This must completely disable all secondary CPUs. On Arm with PSCI that
+ * means calling the PSCI CPU_OFF function. Arm without PSCI, i.e. spin-table
+ * enablement this is not supported. The CPU hotplug functionality embodied
+ * in disable_nonboot_cpus() achieves this on Arm.
+ *
+ * However, disable_nonboot_cpus() can take the better part of 1 sec to shut
+ * everything down, because it handles each CPU separately in sequence. This
+ * is too slow for some embedded applications that need to restart the kernel
+ * in a fraction of second. If fast_kexec is active, use smp_send_stop(),
+ * which can shutdown all the CPUs in around .005 secs.
+  */
 void machine_shutdown(void)
 {
+#ifdef CONFIG_FAST_KEXEC
+
+	if (fast_kexec) {
+		smp_send_stop();
+		while (num_online_cpus() > 1)
+			cpu_relax();
+		return;
+	}
+#endif
+
 	disable_nonboot_cpus();
 }
 
