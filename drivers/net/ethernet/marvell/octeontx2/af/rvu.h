@@ -317,6 +317,8 @@ struct rvu_pfvf {
 	int     intf_mode;
 	u8	nix_rx_intf; /* NIX0_RX/NIX1_RX interface to NPC */
 	u8	nix_tx_intf; /* NIX0_TX/NIX1_TX interface to NPC */
+	bool	is_sdp0; /* is this PF mapped to SDP0 */
+	bool	is_sdp1; /* is this PF mapped to SDP1 */
 };
 
 struct nix_txsch {
@@ -629,7 +631,10 @@ void rvu_aq_free(struct rvu *rvu, struct admin_queue *aq);
 /* CGX APIs */
 static inline bool is_pf_cgxmapped(struct rvu *rvu, u8 pf)
 {
-	return (pf >= PF_CGXMAP_BASE && pf <= rvu->cgx_mapped_pfs);
+	struct rvu_pfvf *pfvf = &rvu->pf[pf];
+
+	return (pf >= PF_CGXMAP_BASE && pf <= rvu->cgx_mapped_pfs) &&
+		(!pfvf->is_sdp0 && !pfvf->is_sdp1);
 }
 
 static inline void rvu_get_cgx_lmac_id(u8 map, u8 *cgx_id, u8 *lmac_id)

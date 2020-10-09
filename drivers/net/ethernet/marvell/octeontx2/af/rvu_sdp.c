@@ -43,6 +43,7 @@ bool is_sdp_pf(u16 pcifunc)
 int rvu_sdp_init(struct rvu *rvu)
 {
 	struct pci_dev *pdev = NULL;
+	struct rvu_pfvf *pfvf;
 	u32 i = 0;
 
 	while ((i < MAX_SDP) && (pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
@@ -50,6 +51,23 @@ int rvu_sdp_init(struct rvu *rvu)
 						       pdev)) != NULL) {
 		/* The RVU PF number is one less than bus number */
 		sdp_pf_num[i] = pdev->bus->number - 1;
+		pfvf = &rvu->pf[sdp_pf_num[i]];
+		/* To differentiate a PF between SDP0 or SDP1 we make use of the
+		 * revision ID field in the config space. The revision is filled
+		 * by the firmware.
+		 * 0 means SDP0
+		 * 1 means SDP1
+		 */
+		if (pdev->revision) {
+			pfvf->is_sdp0 = 0;
+			pfvf->is_sdp1 = 1;
+		} else {
+			pfvf->is_sdp0 = 1;
+			pfvf->is_sdp1 = 0;
+		}
+
+		dev_info(rvu->dev, "SDP PF number:%d\n", sdp_pf_num[i]);
+
 		put_device(&pdev->dev);
 		i++;
 	}
