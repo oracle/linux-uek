@@ -686,6 +686,7 @@ extern struct socket *rds_ib_inet_socket;
 bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id);
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
 void rds_ib_conn_free(void *arg);
+bool rds_ib_conn_has_alt_conn(struct rds_connection *conn);
 void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags);
 int rds_ib_conn_path_connect(struct rds_conn_path *cp);
 void rds_ib_conn_path_shutdown(struct rds_conn_path *cp);
