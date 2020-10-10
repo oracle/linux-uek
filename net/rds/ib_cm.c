@@ -1839,6 +1839,13 @@ void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags)
 	}
 }
 
+bool rds_ib_conn_has_alt_conn(struct rds_connection *conn)
+{
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	return ic && ic->i_alt.cm_id && !ic->i_alt.is_stale;
+}
+
 int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
