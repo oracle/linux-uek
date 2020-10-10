@@ -573,7 +573,7 @@ void rds_conn_shutdown(struct rds_conn_path *cp)
 	rcu_read_lock();
 	if (!hlist_unhashed(&conn->c_hash_node)) {
 		rcu_read_unlock();
-		rds_queue_reconnect(cp);
+		rds_queue_reconnect(cp, false);
 	} else {
 		rcu_read_unlock();
 	}
@@ -1335,7 +1335,7 @@ EXPORT_SYMBOL_GPL(rds_conn_faddr_ha_changed);
 void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 {
 	if (rds_conn_path_down(cp))
-		rds_queue_reconnect(cp);
+		rds_queue_reconnect(cp, true);
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_connect_if_down);
 

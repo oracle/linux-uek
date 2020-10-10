@@ -185,7 +185,7 @@ void rds_connect_complete(struct rds_connection *conn)
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
-void rds_queue_reconnect(struct rds_conn_path *cp)
+void rds_queue_reconnect(struct rds_conn_path *cp, bool immediate)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
@@ -198,11 +198,20 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		return;
 	}
 
-	if (cp->cp_reconnect_jiffies == 0) {
+	if (immediate || cp->cp_reconnect_jiffies == 0) {
 		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
 		delay = cp->cp_reconnect_jiffies;
 	} else {
 		delay = cp->cp_reconnect_jiffies;
+	}
+
+	if (!immediate &&
+	    (!conn->c_trans->conn_has_alt_conn ||
+	     !conn->c_trans->conn_has_alt_conn(conn)) &&
+	    rds_addr_cmp(&conn->c_faddr, &conn->c_laddr) < 0) {
+		/* we're the passive side with no request to yield to */
+		if (delay < rds_sysctl_reconnect_passive_min_jiffies)
+			delay = rds_sysctl_reconnect_passive_min_jiffies;
 	}
 
 	if (rds_cond_queue_reconnect_work(cp, delay))
@@ -243,7 +252,7 @@ void rds_connect_worker(struct work_struct *work)
 						     RDS_CONN_CONNECTING,
 						     RDS_CONN_DOWN,
 						     DR_DEFAULT)) {
-				rds_queue_reconnect(cp);
+				rds_queue_reconnect(cp, false);
 			} else {
 				rds_conn_path_drop(cp, DR_CONN_CONNECT_FAIL, 0);
 			}
