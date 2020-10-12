@@ -575,6 +575,29 @@ int mmc_cqe_recovery(struct mmc_host *host)
 }
 EXPORT_SYMBOL(mmc_cqe_recovery);
 
+#ifdef CONFIG_MMC_OOPS
+/**
+ *      mmc_wait_for_oops_req - initiate a blocking mmc request
+ *      @host: MMC host to start command
+ *      @mrq: MMC request to start
+ *
+ *      Start a new MMC custom command request for a host, and
+ *      wait for the command to complete based on request data timeout.
+ */
+void mmc_wait_for_oops_req(struct mmc_host *host, struct mmc_request *mrq)
+{
+	unsigned int timeout;
+
+	host->ops->req_cleanup_pending(host);
+	mmc_start_request(host, mrq);
+
+	if (mrq->data) {
+		timeout = mrq->data->timeout_ns / NSEC_PER_MSEC;
+		host->ops->req_completion_poll(host, timeout);
+	}
+}
+#endif
+
 /**
  *	mmc_is_req_done - Determine if a 'cap_cmd_during_tfr' request is done
  *	@host: MMC host

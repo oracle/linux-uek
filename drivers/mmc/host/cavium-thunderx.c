@@ -21,12 +21,22 @@
 
 static void thunder_mmc_acquire_bus(struct cvm_mmc_host *host)
 {
-	down(&host->mmc_serializer);
+#ifdef CONFIG_MMC_OOPS
+	if (!host->pstore)
+		down(&host->mmc_serializer);
+#else
+		down(&host->mmc_serializer);
+#endif
 }
 
 static void thunder_mmc_release_bus(struct cvm_mmc_host *host)
 {
-	up(&host->mmc_serializer);
+#ifdef CONFIG_MMC_OOPS
+	if (!host->pstore)
+		up(&host->mmc_serializer);
+#else
+		up(&host->mmc_serializer);
+#endif
 }
 
 static void thunder_mmc_int_enable(struct cvm_mmc_host *host, u64 val)
