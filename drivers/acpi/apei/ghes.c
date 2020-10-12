@@ -143,7 +143,6 @@ static void __iomem *ghes_ioremap_pfn_nmi(u64 pfn)
 
 static void __iomem *ghes_ioremap_pfn_irq(u64 pfn)
 {
-	unsigned long vaddr;
 	phys_addr_t paddr;
 	pgprot_t prot;
 
