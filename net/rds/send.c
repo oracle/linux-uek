@@ -738,6 +738,22 @@ __rds_send_complete(struct rds_sock *rs, struct rds_message *rm, int status)
 	/* No need to wake the app - caller does this */
 }
 
+static inline void rds_q_or_free_notifier(struct rds_sock *rs,
+					  struct rds_notifier *notifier,
+					  bool notify,
+					  int sts)
+{
+	if (notify || sts) {
+		if (!notifier->n_status)
+			notifier->n_status = sts;
+		spin_lock(&rs->rs_lock);
+		list_add_tail(&notifier->n_list, &rs->rs_notify_queue);
+		spin_unlock(&rs->rs_lock);
+	} else {
+		kfree(notifier);
+	}
+}
+
 /*
  * This removes messages from the socket's list if they're on it.  The list
  * argument must be private to the caller, we must be able to modify it
@@ -791,49 +807,19 @@ void rds_send_remove_from_sock(struct list_head *messages, int status)
 
 			if (rm->rdma.op_active && rm->rdma.op_notifier) {
 				struct rm_rdma_op *ro = &rm->rdma;
-				struct rds_notifier *notifier;
 
-				if (ro->op_notify || status) {
-					notifier = ro->op_notifier;
-					spin_lock(&rs->rs_lock);
-					list_add_tail(&notifier->n_list,
-							&rs->rs_notify_queue);
-					spin_unlock(&rs->rs_lock);
-					if (!notifier->n_status)
-						notifier->n_status = status;
-				} else
-					kfree(rm->rdma.op_notifier);
-				rm->rdma.op_notifier = NULL;
+				rds_q_or_free_notifier(rs, ro->op_notifier, ro->op_notify, status);
+				ro->op_notifier = NULL;
 			} else if (rm->atomic.op_active && rm->atomic.op_notifier) {
 				struct rm_atomic_op *ao = &rm->atomic;
-				struct rds_notifier *notifier;
 
-				if (ao->op_notify || status) {
-					notifier = ao->op_notifier;
-					spin_lock(&rs->rs_lock);
-					list_add_tail(&notifier->n_list,
-						&rs->rs_notify_queue);
-					spin_unlock(&rs->rs_lock);
-					if (!notifier->n_status)
-						notifier->n_status = status;
-				} else
-					kfree(rm->atomic.op_notifier);
-				rm->atomic.op_notifier = NULL;
+				rds_q_or_free_notifier(rs, ao->op_notifier, ao->op_notify, status);
+				ao->op_notifier = NULL;
 			} else if (rm->data.op_active && rm->data.op_notifier) {
 				struct rm_data_op *so = &rm->data;
-				struct rds_notifier *notifier;
 
-				if (so->op_notify || status) {
-					notifier = so->op_notifier;
-					spin_lock(&rs->rs_lock);
-					list_add_tail(&notifier->n_list,
-						&rs->rs_notify_queue);
-					spin_unlock(&rs->rs_lock);
-					if (!notifier->n_status)
-						notifier->n_status = status;
-				} else
-					kfree(rm->data.op_notifier);
-				rm->data.op_notifier = NULL;
+				rds_q_or_free_notifier(rs, so->op_notifier, so->op_notify, status);
+				so->op_notifier = NULL;
 			}
 
 			was_on_sock = 1;
