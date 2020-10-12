@@ -1145,7 +1145,7 @@ static void npc_load_mkex_profile(struct rvu *rvu, int blkaddr,
 		if (mcam_kex->mkex_sign == MKEX_SIGN &&
 		    !strncmp(mcam_kex->name, mkex_profile, MKEX_NAME_LEN)) {
 			/* If profile is valid, switch to it. */
-			if (!is_parse_nibble_config_valid(rvu, mcam_kex))
+			if (is_parse_nibble_config_valid(rvu, mcam_kex))
 				rvu->kpu.mkex = mcam_kex;
 			goto program_mkex;
 		}
