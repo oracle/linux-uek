@@ -841,6 +841,74 @@ out:
 	return IRQ_RETVAL(emm_int != 0);
 }
 
+#ifdef CONFIG_MMC_OOPS
+static int cvm_req_completion_poll(struct mmc_host *host, unsigned long msecs)
+{
+	struct cvm_mmc_slot *slot = mmc_priv(host);
+	struct cvm_mmc_host *cvm_host = slot->host;
+	u64 emm_int;
+
+	while (msecs) {
+		emm_int = readq(cvm_host->base + MIO_EMM_INT(cvm_host));
+
+		if (emm_int & MIO_EMM_INT_DMA_DONE)
+			return 0;
+		else if (emm_int & MIO_EMM_INT_DMA_ERR)
+			return -EIO;
+		mdelay(1);
+		msecs--;
+	}
+
+	return -ETIMEDOUT;
+}
+
+static void cvm_req_cleanup_pending(struct mmc_host *host)
+{
+	struct cvm_mmc_slot *slot = mmc_priv(host);
+	struct cvm_mmc_host *cvm_host = slot->host;
+	u64 fifo_cfg;
+	u64 dma_cfg;
+	u64 emm_int;
+	int cnt;
+
+	cvm_host->pstore = 1;
+
+	/* Clear pending DMA FIFO queue */
+	fifo_cfg = readq(cvm_host->dma_base + MIO_EMM_DMA_FIFO_CFG(cvm_host));
+	if (FIELD_GET(MIO_EMM_DMA_FIFO_CFG_COUNT, fifo_cfg))
+		writeq(MIO_EMM_DMA_FIFO_CFG_CLR,
+			cvm_host->dma_base + MIO_EMM_DMA_FIFO_CFG(cvm_host));
+
+	/* Clear ongoing DMA, if there is any */
+	dma_cfg = readq(cvm_host->dma_base + MIO_EMM_DMA_CFG(cvm_host));
+	if (dma_cfg & MIO_EMM_DMA_CFG_EN) {
+		dma_cfg |= MIO_EMM_DMA_CFG_CLR;
+		writeq(dma_cfg, cvm_host->dma_base +
+				MIO_EMM_DMA_CFG(cvm_host));
+		do {
+			dma_cfg = readq(cvm_host->dma_base +
+					MIO_EMM_DMA_CFG(cvm_host));
+		} while (dma_cfg & MIO_EMM_DMA_CFG_EN);
+	}
+
+	/* Clear pending DMA interrupts */
+	emm_int = readq(cvm_host->base + MIO_EMM_INT(cvm_host));
+	if (emm_int)
+		writeq(emm_int, cvm_host->base + MIO_EMM_INT(cvm_host));
+
+	/* Clear prepared and yet to be fired DMA requests */
+	for (cnt = 0; cnt < CAVIUM_MAX_MMC; cnt++) {
+		if (cvm_host->slot[cnt]) {
+			if (cvm_host->slot[cnt]->current_req) {
+				cvm_host->slot[cnt]->current_req = NULL;
+				cvm_host->slot[cnt]->dma_active = false;
+				break;
+			}
+		}
+	}
+}
+#endif
+
 /*
  * Program DMA_CFG and if needed DMA_ADR.
  * Returns 0 on error, DMA address otherwise.
@@ -1977,6 +2045,10 @@ static const struct mmc_host_ops cvm_mmc_ops = {
 	.card_hw_reset	= cvm_mmc_reset,
 	.execute_tuning = cvm_execute_tuning,
 	.prepare_hs400_tuning = cvm_prepare_hs400_tuning,
+#ifdef CONFIG_MMC_OOPS
+	.req_cleanup_pending = cvm_req_cleanup_pending,
+	.req_completion_poll = cvm_req_completion_poll,
+#endif
 };
 
 static void cvm_mmc_set_clock(struct cvm_mmc_slot *slot, unsigned int clock)
@@ -2196,6 +2268,9 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 	slot->bus_id = id;
 	slot->cached_rca = 1;
 
+#ifdef CONFIG_MMC_OOPS
+	host->pstore = 0;
+#endif
 	host->acquire_bus(host);
 	host->slot[id] = slot;
 	host->use_vqmmc |= !IS_ERR_OR_NULL(slot->mmc->supply.vqmmc);
