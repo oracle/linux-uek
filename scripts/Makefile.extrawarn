@@ -21,7 +21,7 @@ KBUILD_CFLAGS += -Wmissing-declarations
 KBUILD_CFLAGS += -Wmissing-prototypes
 
 ifneq ($(CONFIG_FRAME_WARN),0)
-KBUILD_CFLAGS += -Wframe-larger-than=$(CONFIG_FRAME_WARN)
+KBUILD_CFLAGS += -Werror=frame-larger-than=$(CONFIG_FRAME_WARN)
 endif
 
 KBUILD_CPPFLAGS-$(CONFIG_WERROR) += -Werror
