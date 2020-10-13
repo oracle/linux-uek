@@ -1955,9 +1955,9 @@ fi\
 [ -f /etc/default/grub ] && . /etc/default/grub\
 DIST_DTFILE="/boot/dtb-%{KVERREL}%{!-u:%{?-v:.%{-v*}}}/$GRUB_DEFAULT_DTB"\
 if [ -f "$DIST_DTFILE" ]; then\
-    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --dracut --depmod --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
 else\
-    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --dracut --depmod --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 fi\
 %{nil}
 
