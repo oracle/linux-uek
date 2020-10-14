@@ -39,6 +39,11 @@ bool tag_clear_highpages(struct page *to, int numpages);
 #define clear_user_page(page, vaddr, pg)	clear_page(page)
 #define copy_user_page(to, from, vaddr, pg)	copy_page(to, from)
 
+#define clear_user_page_uncached(addr, vaddr, pg) \
+	clear_user_page(addr, vaddr, pg)
+
+#define clear_page_uncached_flush()	do { } while (0)
+
 typedef struct page *pgtable_t;
 
 int pfn_is_map_memory(unsigned long pfn);
