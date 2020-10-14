@@ -794,35 +794,6 @@ void xprt_connect(struct rpc_task *task)
 	xprt_release_write(xprt, task);
 }
 
-static void xprt_connect_status(struct rpc_task *task)
-{
-	switch (task->tk_status) {
-	case 0:
-		dprintk("RPC: %5u xprt_connect_status: connection established\n",
-				task->tk_pid);
-		break;
-	case -ECONNREFUSED:
-	case -ECONNRESET:
-	case -ECONNABORTED:
-	case -ENETUNREACH:
-	case -EHOSTUNREACH:
-	case -EPIPE:
-	case -ENOTCONN:
-	case -EAGAIN:
-		dprintk("RPC: %5u xprt_connect_status: retrying\n", task->tk_pid);
-		break;
-	case -ETIMEDOUT:
-		dprintk("RPC: %5u xprt_connect_status: connect attempt timed "
-				"out\n", task->tk_pid);
-		break;
-	default:
-		dprintk("RPC: %5u xprt_connect_status: error %d connecting to "
-				"server %s\n", task->tk_pid, -task->tk_status,
-				task->tk_rqstp->rq_xprt->servername);
-		task->tk_status = -EIO;
-	}
-}
-
 /**
  * xprt_lookup_rqst - find an RPC request corresponding to an XID
  * @xprt: transport on which the original request was transmitted
