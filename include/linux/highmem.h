@@ -150,6 +150,7 @@ static inline void clear_user_highpage(struct page *page, unsigned long vaddr)
 #endif
 
 #ifndef __HAVE_ARCH_ALLOC_ZEROED_USER_HIGHPAGE_MOVABLE
+
 /**
  * alloc_zeroed_user_highpage_movable - Allocate a zeroed HIGHMEM page for a VMA that the caller knows can move
  * @vma: The VMA the page is to be allocated for
@@ -188,6 +189,16 @@ static inline void tag_clear_highpage(struct page *page)
 {
 }
 
+#endif
+
+#ifndef clear_user_highpage_uncached
+static inline void clear_user_highpage_uncached(struct page *page, unsigned long vaddr)
+{
+	void *addr = kmap_atomic(page);
+
+	clear_user_page_uncached(addr, vaddr, page);
+	kunmap_atomic(addr);
+}
 #endif
 
 /*
