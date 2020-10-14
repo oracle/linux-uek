@@ -51,3 +51,30 @@ ENTRY(clear_page_erms)
 	ret
 ENDPROC(clear_page_erms)
 EXPORT_SYMBOL_GPL(clear_page_erms)
+
+/*
+ * Zero a page.
+ * %rdi - page
+ *
+ * Caller needs to issue a fence at the end.
+ */
+ENTRY(clear_page_nt)
+	xorl	%eax,%eax
+	movl	$4096,%ecx
+
+	.p2align 4
+.Lstart:
+        movnti  %rax, 0x00(%rdi)
+        movnti  %rax, 0x08(%rdi)
+        movnti  %rax, 0x10(%rdi)
+        movnti  %rax, 0x18(%rdi)
+        movnti  %rax, 0x20(%rdi)
+        movnti  %rax, 0x28(%rdi)
+        movnti  %rax, 0x30(%rdi)
+        movnti  %rax, 0x38(%rdi)
+        addq    $0x40, %rdi
+        subl    $0x40, %ecx
+        ja      .Lstart
+	ret
+ENDPROC(clear_page_nt)
+EXPORT_SYMBOL_GPL(clear_page_nt)
