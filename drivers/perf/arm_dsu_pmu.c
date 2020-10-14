@@ -11,7 +11,6 @@
 #define DRVNAME		PMUNAME "_pmu"
 #define pr_fmt(fmt)	DRVNAME ": " fmt
 
-#include <linux/acpi.h>
 #include <linux/bitmap.h>
 #include <linux/bitops.h>
 #include <linux/bug.h>
@@ -604,22 +603,18 @@ static struct dsu_pmu *dsu_pmu_alloc(struct platform_device *pdev)
 }
 
 /**
- * dsu_pmu_get_cpus: Get the list of CPUs in the cluster.
+ * dsu_pmu_dt_get_cpus: Get the list of CPUs in the cluster.
  */
-static int dsu_pmu_get_cpus(struct platform_device *pdev)
+static int dsu_pmu_dt_get_cpus(struct device_node *dev, cpumask_t *mask)
 {
-#ifndef CONFIG_ACPI
-	/* Get the list of CPUs from device tree */
 	int i = 0, n, cpu;
 	struct device_node *cpu_node;
-	struct dsu_pmu *dsu_pmu =
-		(struct dsu_pmu *) platform_get_drvdata(pdev);
 
-	n = of_count_phandle_with_args(pdev->dev.of_node, "cpus", NULL);
+	n = of_count_phandle_with_args(dev, "cpus", NULL);
 	if (n <= 0)
 		return -ENODEV;
 	for (; i < n; i++) {
-		cpu_node = of_parse_phandle(pdev->dev.of_node, "cpus", i);
+		cpu_node = of_parse_phandle(dev, "cpus", i);
 		if (!cpu_node)
 			break;
 		cpu = of_cpu_node_to_id(cpu_node);
@@ -631,33 +626,9 @@ static int dsu_pmu_get_cpus(struct platform_device *pdev)
 		 */
 		if (cpu < 0)
 			continue;
-		cpumask_set_cpu(cpu, &dsu_pmu->associated_cpus);
+		cpumask_set_cpu(cpu, mask);
 	}
 	return 0;
-#else /* CONFIG_ACPI */
-	int i, cpu, ret;
-	const union acpi_object *obj;
-	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
-	struct dsu_pmu *dsu_pmu =
-		(struct dsu_pmu *) platform_get_drvdata(pdev);
-
-	ret = acpi_dev_get_property(adev, "cpus", ACPI_TYPE_ANY, &obj);
-	if (ret < 0)
-		return -EINVAL;
-
-	if (obj->type != ACPI_TYPE_PACKAGE)
-		return -EINVAL;
-
-	for (i = 0; i < obj->package.count; i++) {
-		/* Each element is the MPIDR of associated cpu */
-		for_each_possible_cpu(cpu) {
-			if (cpu_physical_id(cpu) ==
-				obj->package.elements[i].integer.value)
-				cpumask_set_cpu(cpu, &dsu_pmu->associated_cpus);
-		}
-	}
-	return 0;
-#endif
 }
 
 /*
@@ -712,9 +683,7 @@ static int dsu_pmu_device_probe(struct platform_device *pdev)
 	if (IS_ERR(dsu_pmu))
 		return PTR_ERR(dsu_pmu);
 
-	platform_set_drvdata(pdev, dsu_pmu);
-
-	rc = dsu_pmu_get_cpus(pdev);
+	rc = dsu_pmu_dt_get_cpus(pdev->dev.of_node, &dsu_pmu->associated_cpus);
 	if (rc) {
 		dev_warn(&pdev->dev, "Failed to parse the CPUs\n");
 		return rc;
@@ -738,6 +707,7 @@ static int dsu_pmu_device_probe(struct platform_device *pdev)
 	}
 
 	dsu_pmu->irq = irq;
+	platform_set_drvdata(pdev, dsu_pmu);
 	rc = cpuhp_state_add_instance(dsu_pmu_cpuhp_state,
 						&dsu_pmu->cpuhp_node);
 	if (rc)
@@ -784,19 +754,11 @@ static const struct of_device_id dsu_pmu_of_match[] = {
 	{ .compatible = "arm,dsu-pmu", },
 	{},
 };
-MODULE_DEVICE_TABLE(of, dsu_pmu_of_match);
-
-static const struct acpi_device_id dsu_pmu_acpi_match[] = {
-	{ "ARMHD500", 0},
-	{},
-};
-MODULE_DEVICE_TABLE(acpi, dsu_pmu_acpi_match);
 
 static struct platform_driver dsu_pmu_driver = {
 	.driver = {
 		.name	= DRVNAME,
 		.of_match_table = of_match_ptr(dsu_pmu_of_match),
-		.acpi_match_table = ACPI_PTR(dsu_pmu_acpi_match),
 		.suppress_bind_attrs = true,
 	},
 	.probe = dsu_pmu_device_probe,
@@ -866,6 +828,7 @@ static void __exit dsu_pmu_exit(void)
 module_init(dsu_pmu_init);
 module_exit(dsu_pmu_exit);
 
+MODULE_DEVICE_TABLE(of, dsu_pmu_of_match);
 MODULE_DESCRIPTION("Perf driver for ARM DynamIQ Shared Unit");
 MODULE_AUTHOR("Suzuki K Poulose <suzuki.poulose@arm.com>");
 MODULE_LICENSE("GPL v2");
