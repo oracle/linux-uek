@@ -219,12 +219,12 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 						ptp_queue_work);
 	struct mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
 	struct mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
-	struct ptp_tstamp_skb *ts_skb, *ts_skb2;
 	struct mhab_job_desc_cfg *jd_cfg_ptr;
 	struct psm_cmd_addjob_s *psm_cmd_lo;
-	u16 psm_queue_id, queue_space;
 	struct tx_job_queue_cfg *job_cfg;
 	struct tx_job_entry *job_entry;
+	struct ptp_tstamp_skb *ts_skb;
+	u16 psm_queue_id, queue_space;
 	struct sk_buff *skb = NULL;
 	u64 jd_cfg_ptr_iova;
 	unsigned long flags;
@@ -251,15 +251,21 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 		/* reschedule to check later */
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
 		schedule_work(&priv->ptp_queue_work);
+		return;
 	}
 
-	list_for_each_entry_safe(ts_skb, ts_skb2,
-				 &priv->ptp_skb_list.list, list) {
-		skb = ts_skb->skb;
-		list_del(&ts_skb->list);
-		kfree(ts_skb);
-		priv->ptp_skb_list.count--;
+	if (test_and_set_bit_lock(PTP_TX_IN_PROGRESS, &priv->state)) {
+		netif_dbg(priv, tx_queued, priv->netdev, "ptp tx ongoing\n");
+		spin_unlock_irqrestore(&job_cfg->lock, flags);
+		return;
 	}
+
+	ts_skb = list_entry(&priv->ptp_skb_list.list, struct ptp_tstamp_skb,
+			    list);
+	skb = ts_skb->skb;
+	list_del(&ts_skb->list);
+	kfree(ts_skb);
+	priv->ptp_skb_list.count--;
 
 	netif_dbg(priv, tx_queued, priv->netdev,
 		  "submitting ptp tx skb %pS\n", skb);
