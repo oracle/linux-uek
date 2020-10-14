@@ -104,6 +104,7 @@
 //TODO: Is it worth probing dt_dbg_id.num_pmucntr?
 #define CMN_DT_NUM_COUNTERS		8
 
+
 enum cmn_node_type {
 	CMN_TYPE_INVALID,
 	CMN_TYPE_DVM,
@@ -125,7 +126,6 @@ enum cmn_node_type {
 struct arm_cmn {
 	struct device *dev;
 	void __iomem *base;
-	void __iomem *dtc_base;
 
 	u8 mesh_x;
 	u8 mesh_y;
@@ -169,9 +169,6 @@ struct arm_cmn_dtc {
 };
 
 #define to_cmn_dtc(x)	container_of(x, struct arm_cmn_dtc, pmu)
-
-/* Keep track of our dynamic hotplug state */
-static enum cpuhp_state arm_cmn_cpuhp_state;
 
 struct arm_cmn_event_attr {
 	struct device_attribute attr;
@@ -768,28 +765,20 @@ static irqreturn_t arm_cmn_irq_handler(int irq, void *dev_id)
 	return res;
 }
 
-static int arm_cmn_init_pmu(struct arm_cmn *cmn)
+static int arm_cmn_init_pmu(struct arm_cmn *cmn, void __iomem *base, int id)
 {
 	struct platform_device *pdev = to_platform_device(cmn->dev);
 	struct arm_cmn_dtc *dtc;
-	unsigned long long value;
-	acpi_handle handle;
-	acpi_status status;
 	const char *name;
 	int irq, err;
-
-	if (!cmn->dtc_base) {
-		dev_err(cmn->dev, "no DTC found\n");
-		return -ENODEV;
-	}
 
 	dtc = devm_kzalloc(cmn->dev, sizeof(*dtc), GFP_KERNEL);
 	if (!dtc)
 		return -ENOMEM;
 
-	irq = platform_get_irq(pdev, 0);
+	irq = platform_get_irq(pdev, id);
 	if (irq <= 0) {
-		dev_err(cmn->dev, "missing IRQ for DTC\n");
+		dev_err(cmn->dev, "missing IRQ for DTC %d\n", id);
 		return -EINVAL;
 	}
 
@@ -799,10 +788,8 @@ static int arm_cmn_init_pmu(struct arm_cmn *cmn)
 	if (err)
 		return err;
 
-	platform_set_drvdata(pdev, dtc);
-
 	dtc->cmn = cmn;
-	dtc->base = cmn->dtc_base;
+	dtc->base = base;
 	dtc->cpu = get_cpu();
 	dtc->pmu = (struct pmu) {
 		.attr_groups = arm_cmn_attr_groups,
@@ -817,35 +804,21 @@ static int arm_cmn_init_pmu(struct arm_cmn *cmn)
 		.read = arm_cmn_event_read,
 	};
 
-	handle = ACPI_HANDLE(cmn->dev);
-	if (handle) {
-		status = acpi_evaluate_integer(handle, METHOD_NAME__UID, NULL,
-						&value);
-		if (ACPI_FAILURE(status)) {
-			dev_err(cmn->dev,
-				"Failed to evaluate _UID (0x%x)\n", status);
-			return -ENODEV;
-		}
-
-		name = devm_kasprintf(cmn->dev, GFP_KERNEL, "arm_cmn_%d",
-					(unsigned int)value);
-	} else {
-		/* FIXME: multiple instance if no ACPI? */
+	if (id == 0) {
 		name = "arm_cmn";
+	} else {
+		name = devm_kasprintf(cmn->dev, GFP_KERNEL, "arm_cmn_%d", id);
+		if (!name)
+			return -ENOMEM;
 	}
 
 	cpuhp_state_add_instance_nocalls(CPUHP_AP_PERF_ARM_CMN_ONLINE,
 					 &dtc->cpuhp_node);
 	put_cpu();
 
-	writel_relaxed(CMN_DT_PMCR_PMU_EN, dtc->base + CMN_DT_PMCR);
+	writel_relaxed(CMN_DT_PMCR_PMU_EN, base + CMN_DT_PMCR);
 
-	err = perf_pmu_register(&dtc->pmu, name, -1);
-	if (err)
-		cpuhp_state_remove_instance(arm_cmn_cpuhp_state,
-						&dtc->cpuhp_node);
-
-	return err;
+	return perf_pmu_register(&dtc->pmu, name, -1);
 }
 
 static int arm_cmn_discover(struct arm_cmn *cmn, unsigned int rgn_offset, int lvl)
@@ -911,8 +884,8 @@ static int arm_cmn_discover(struct arm_cmn *cmn, unsigned int rgn_offset, int lv
 				 "multiple DTCs not supported; events outside domain 0 will not be counted correctly\n");
 			return 0;
 		}
-		cmn->dtc_base = region;
-		return 0;
+		// FIXME: node_logid is apparently not a nice simple index
+		return arm_cmn_init_pmu(cmn, region, node_logid);
 	/* These guys have PMU events */
 	case CMN_TYPE_DVM:
 	case CMN_TYPE_HNI:
@@ -922,10 +895,6 @@ static int arm_cmn_discover(struct arm_cmn *cmn, unsigned int rgn_offset, int lv
 	case CMN_TYPE_RND:
 	case CMN_TYPE_CXRA:
 	case CMN_TYPE_CXHA:
-		if (node_type == CMN_TYPE_RND) {
-			/* RND uses the same event type with RNI */
-			node_type = CMN_TYPE_RNI;
-		}
 		node = &cmn->dns[cmn->num_dns++];
 		break;
 	/* Nothing to see here */
@@ -1061,6 +1030,7 @@ static int arm_cmn_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	cmn->dev = &pdev->dev;
+	platform_set_drvdata(pdev, cmn);
 
 	if (has_acpi_companion(cmn->dev))
 		rootnode = arm_cmn_acpi_probe(pdev, cmn);
@@ -1075,16 +1045,17 @@ static int arm_cmn_probe(struct platform_device *pdev)
 
 	arm_cmn_mesh_fixup(cmn);
 
-	return arm_cmn_init_pmu(cmn);
+	return cpuhp_setup_state_multi(CPUHP_AP_PERF_ARM_CMN_ONLINE,
+				       "perf/arm/cmn:online", NULL,
+				       arm_cmn_pmu_offline_cpu);
 }
 
 static int arm_cmn_remove(struct platform_device *pdev)
 {
-	struct arm_cmn_dtc *dtc = platform_get_drvdata(pdev);
-
 	//TODO: What's the neatest way to find the DTCs and clean them up?
-	cpuhp_state_remove_instance(arm_cmn_cpuhp_state,
-					&dtc->cpuhp_node);
+
+	cpuhp_remove_multi_state(CPUHP_AP_PERF_ARM_CMN_ONLINE);
+
 	return 0;
 }
 
@@ -1111,34 +1082,7 @@ static struct platform_driver arm_cmn_driver = {
 	.probe = arm_cmn_probe,
 	.remove = arm_cmn_remove,
 };
-
-static int __init arm_cmn_init(void)
-{
-	int ret;
-
-	ret = cpuhp_setup_state_multi(CPUHP_AP_PERF_ARM_CMN_ONLINE,
-				       "perf/arm/cmn:online", NULL,
-				       arm_cmn_pmu_offline_cpu);
-	if (ret < 0)
-		return ret;
-
-	arm_cmn_cpuhp_state = ret;
-
-	ret = platform_driver_register(&arm_cmn_driver);
-	if (ret)
-		cpuhp_remove_multi_state(arm_cmn_cpuhp_state);
-
-	return ret;
-}
-
-static void __exit arm_cmn_exit(void)
-{
-	platform_driver_unregister(&arm_cmn_driver);
-	cpuhp_remove_multi_state(arm_cmn_cpuhp_state);
-}
-
-module_init(arm_cmn_init);
-module_exit(arm_cmn_exit);
+module_platform_driver(arm_cmn_driver);
 
 MODULE_AUTHOR("Robin Murphy <robin.murphy@arm.com>");
 MODULE_DESCRIPTION("Arm CMN-600 PMU driver");
