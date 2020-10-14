@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -893,9 +893,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	struct rds_message *rm, *tmp;
 	struct rds_connection *conn = NULL;
 	struct rds_conn_path *cp;
-	enum {
-		nbits = BIT(BITS_PER_BYTE * sizeof(conn->c_tos)),
-	};
+	unsigned int nbits = BIT(BITS_PER_BYTE * sizeof(conn->c_tos));
 	DECLARE_BITMAP(conn_dropped, nbits);
 	unsigned long flags;
 	LIST_HEAD(list);
