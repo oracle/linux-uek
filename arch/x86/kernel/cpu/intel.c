@@ -594,6 +594,8 @@ static void init_intel(struct cpuinfo_x86 *c)
 		c->x86_cache_alignment = c->x86_clflush_size * 2;
 	if (c->x86 == 6)
 		set_cpu_cap(c, X86_FEATURE_REP_GOOD);
+	if (c->x86 == 6 && c->x86_model == INTEL_BROADWELL_X)
+		set_cpu_cap(c, X86_FEATURE_NT_GOOD);
 #else
 	/*
 	 * Names for the Pentium II/Celeron processors
