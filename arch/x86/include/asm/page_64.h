@@ -60,6 +60,25 @@ static inline void clear_page(void *page)
 			   : "cc", "memory", "rax", "rcx");
 }
 
+static inline void clear_page_uncached(void *page)
+{
+	/*
+	 * Clean up KMSAN metadata for the page being cleared. The assembly call
+	 * below clobbers @page, so we perform unpoisoning before it.
+	 */
+	kmsan_unpoison_memory(page, PAGE_SIZE);
+	alternative_call(clear_page,
+			 clear_page_nt, X86_FEATURE_NT_GOOD,
+			 "=D" (page),
+			 "D" (page)
+			 : "cc", "memory", "rax", "rcx");
+}
+
+static inline void clear_page_uncached_flush(void)
+{
+	alternative("", "sfence", X86_FEATURE_NT_GOOD);
+}
+
 void copy_page(void *to, void *from);
 
 #ifdef CONFIG_X86_5LEVEL
