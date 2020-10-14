@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
-MEMSET_FN(memset_orig,
+MEMSET_FN(memset_movq,
 	"x86-64-unrolled",
 	"unrolled memset() in arch/x86/lib/memset_64.S")
 
@@ -11,3 +11,7 @@ MEMSET_FN(__memset,
 MEMSET_FN(memset_erms,
 	"x86-64-stosb",
 	"movsb-based memset() in arch/x86/lib/memset_64.S")
+
+MEMSET_FN(memset_movnti,
+	"x86-64-movnt",
+	"movnt-based memset() in arch/x86/lib/memset_64.S")
