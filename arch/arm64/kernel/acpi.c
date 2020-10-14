@@ -282,6 +282,12 @@ int apei_claim_sea(struct pt_regs *regs)
 	if (regs)
 		return_to_irqs_enabled = interrupts_enabled(regs);
 
+	/* current_flags isn't useful here as daif doesn't tell us about pNMI */
+	return_to_irqs_enabled = !irqs_disabled_flags(arch_local_save_flags());
+
+	if (regs)
+		return_to_irqs_enabled = interrupts_enabled(regs);
+
 	/*
 	 * SEA can interrupt SError, mask it and describe this as an NMI so
 	 * that APEI defers the handling.
@@ -302,7 +308,7 @@ int apei_claim_sea(struct pt_regs *regs)
 			irq_work_run();
 			__irq_exit();
 		} else {
-			pr_warn("APEI work queued but not completed");
+			pr_warn_ratelimited("APEI work queued but not completed");
 			err = -EINPROGRESS;
 		}
 	}

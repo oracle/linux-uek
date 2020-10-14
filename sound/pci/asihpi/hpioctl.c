@@ -346,6 +346,7 @@ int asihpi_adapter_probe(struct pci_dev *pci_dev,
 	struct hpi_pci pci;
 
 	memset(&adapter, 0, sizeof(adapter));
+	memset(&pci, 0, sizeof(pci));
 
 	dev_printk(KERN_DEBUG, &pci_dev->dev,
 		"probe %04x:%04x,%04x:%04x,%04x\n", pci_dev->vendor,
@@ -499,7 +500,7 @@ int asihpi_adapter_probe(struct pci_dev *pci_dev,
 	return 0;
 
 err:
-	for (idx = 0; idx < HPI_MAX_ADAPTER_MEM_SPACES; idx++) {
+	while (--idx >= 0) {
 		if (pci.ap_mem_base[idx]) {
 			iounmap(pci.ap_mem_base[idx]);
 			pci.ap_mem_base[idx] = NULL;

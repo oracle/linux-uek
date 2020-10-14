@@ -1105,6 +1105,7 @@ retest:
 	}
 	WARN_ON(cm_id->state != IB_CM_IDLE);
 
+	spin_lock_irq(&cm_id_priv->lock);
 	spin_lock(&cm.lock);
 	/* Required for cleanup paths related cm_req_handler() */
 	if (cm_id_priv->timewait_info) {
