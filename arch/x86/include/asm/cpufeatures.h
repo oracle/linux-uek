@@ -74,6 +74,13 @@
 #define X86_FEATURE_RECOVERY		( 2*32+ 0) /* CPU in recovery mode */
 #define X86_FEATURE_LONGRUN		( 2*32+ 1) /* Longrun power control */
 #define X86_FEATURE_LRTI		( 2*32+ 3) /* LongRun table interface */
+/*
+ * The Linux extended auxiliary flags leaf is now full. The Transmeta leaf,
+ * is not.
+ * Add this feature at the end of this leaf where it can hopefully stay
+ * happy and conflict free.
+ */
+#define X86_FEATURE_NT_GOOD		( 2*32+31) /* Non-temporal instructions perform well */
 
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */
