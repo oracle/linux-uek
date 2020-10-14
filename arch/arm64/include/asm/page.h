@@ -34,6 +34,9 @@ extern void clear_page(void *to);
 
 #define clear_user_page(addr,vaddr,pg)  __cpu_clear_user_page(addr, vaddr)
 #define copy_user_page(to,from,vaddr,pg) __cpu_copy_user_page(to, from, vaddr)
+#define clear_user_page_uncached(addr,vaddr,pg) clear_user_page(addr, vaddr, pg)
+
+#define clear_page_uncached_flush()	do { } while (0)
 
 typedef struct page *pgtable_t;
 

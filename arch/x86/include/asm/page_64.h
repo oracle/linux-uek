@@ -51,6 +51,20 @@ static inline void clear_page(void *page)
 			   : "memory", "rax", "rcx");
 }
 
+static inline void clear_page_uncached(void *page)
+{
+	alternative_call(clear_page,
+			 clear_page_nt, X86_FEATURE_NT_GOOD,
+			 "=D" (page),
+			 "0" (page)
+			 : "cc", "memory", "rax", "rcx");
+}
+
+static inline void clear_page_uncached_flush(void)
+{
+	alternative("", "sfence", X86_FEATURE_NT_GOOD);
+}
+
 void copy_page(void *to, void *from);
 
 #endif	/* !__ASSEMBLY__ */
