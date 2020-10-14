@@ -257,6 +257,16 @@ static inline void tag_clear_highpage(struct page *page)
 
 #endif
 
+#ifndef clear_user_highpage_uncached
+static inline void clear_user_highpage_uncached(struct page *page, unsigned long vaddr)
+{
+	void *addr = kmap_atomic(page);
+
+	clear_user_page_uncached(addr, vaddr, page);
+	kunmap_atomic(addr);
+}
+#endif
+
 /*
  * If we pass in a base or tail page, we can zero up to PAGE_SIZE.
  * If we pass in a head page, we can zero up to the size of the compound page.
