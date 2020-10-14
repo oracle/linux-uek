@@ -26,6 +26,9 @@
 #ifndef __ASSEMBLY__
 
 #define clear_page(page)	memset((page), 0, PAGE_SIZE)
+#define clear_page_uncached(page)	clear_page(page)
+#define clear_page_uncached_flush()	do { } while (0)
+
 #define copy_page(to,from)	memcpy((to), (from), PAGE_SIZE)
 
 #define clear_user_page(page, vaddr, pg)	clear_page(page)
