@@ -654,10 +654,11 @@ static int do_sea(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 
 	inf = esr_to_fault_info(esr);
 
-	if (apei_claim_sea(regs) == 0) {
-		/* APEI claimed this as a firmware-first notification */
-		return 0;
-	}
+	/*
+	 * Return value ignored as we rely on signal merging.
+	 * Future patches will make this more robust.
+	 */
+	apei_claim_sea(regs);
 
 	if (esr & ESR_ELx_FnV)
 		siaddr = NULL;
