@@ -6788,7 +6788,7 @@ static void clear_gigantic_page(struct folio *folio, unsigned long addr,
 	might_sleep();
 	for (i = 0; i < nr_pages; i++) {
 		cond_resched();
-		clear_user_highpage(folio_page(folio, i), addr + i * PAGE_SIZE);
+		clear_user_highpage_uncached(folio_page(folio, i), addr + i * PAGE_SIZE);
 	}
 }
 
@@ -6809,10 +6809,12 @@ void folio_zero_user(struct folio *folio, unsigned long addr_hint)
 {
 	unsigned int nr_pages = folio_nr_pages(folio);
 
-	if (unlikely(nr_pages > MAX_ORDER_NR_PAGES))
+	if (unlikely(nr_pages > MAX_ORDER_NR_PAGES)) {
 		clear_gigantic_page(folio, addr_hint, nr_pages);
-	else
+		clear_page_uncached_flush();
+	} else {
 		process_huge_page(addr_hint, nr_pages, clear_subpage, folio);
+	}
 }
 
 static int copy_user_gigantic_page(struct folio *dst, struct folio *src,
