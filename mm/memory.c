@@ -5337,7 +5337,7 @@ static void clear_gigantic_page(struct page *page,
 	for (i = 0; i < pages_per_huge_page;
 	     i++, p = mem_map_next(p, page, i)) {
 		cond_resched();
-		clear_user_highpage(p, addr + i * PAGE_SIZE);
+		clear_user_highpage_uncached(p, addr + i * PAGE_SIZE);
 	}
 }
 
@@ -5356,6 +5356,7 @@ void clear_huge_page(struct page *page,
 
 	if (unlikely(pages_per_huge_page > MAX_ORDER_NR_PAGES)) {
 		clear_gigantic_page(page, addr, pages_per_huge_page);
+		clear_page_uncached_flush();
 		return;
 	}
 
