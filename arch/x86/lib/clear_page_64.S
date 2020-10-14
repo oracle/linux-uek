@@ -139,3 +139,29 @@ SYM_FUNC_START(rep_stos_alternative)
 	_ASM_EXTABLE_UA(17b, .Lclear_user_tail)
 SYM_FUNC_END(rep_stos_alternative)
 EXPORT_SYMBOL(rep_stos_alternative)
+
+/*
+ * Zero a page.
+ * %rdi - page
+ *
+ * Caller needs to issue a fence at the end.
+ */
+SYM_FUNC_START(clear_page_nt)
+	xorl	%eax,%eax
+	movl	$4096,%ecx
+
+	.p2align 4
+.Lstart:
+	movnti  %rax, 0x00(%rdi)
+	movnti  %rax, 0x08(%rdi)
+	movnti  %rax, 0x10(%rdi)
+	movnti  %rax, 0x18(%rdi)
+	movnti  %rax, 0x20(%rdi)
+	movnti  %rax, 0x28(%rdi)
+	movnti  %rax, 0x30(%rdi)
+	movnti  %rax, 0x38(%rdi)
+	addq	$0x40, %rdi
+	subl	$0x40, %ecx
+	ja	.Lstart
+	RET
+SYM_FUNC_END(clear_page_nt)
