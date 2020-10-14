@@ -161,6 +161,7 @@ enum cpuhp_state {
 	CPUHP_AP_PERF_S390_SF_ONLINE,
 	CPUHP_AP_PERF_ARM_CCI_ONLINE,
 	CPUHP_AP_PERF_ARM_CCN_ONLINE,
+	CPUHP_AP_PERF_ARM_CMN_ONLINE,
 	CPUHP_AP_PERF_ARM_HISI_DDRC_ONLINE,
 	CPUHP_AP_PERF_ARM_HISI_HHA_ONLINE,
 	CPUHP_AP_PERF_ARM_HISI_L3_ONLINE,
@@ -184,9 +185,6 @@ enum cpuhp_state {
 	CPUHP_AP_ACTIVE,
 	CPUHP_ONLINE,
 };
-
-/* Quick hack to avoid breaking KABI */
-#define CPUHP_AP_PERF_ARM_CMN_ONLINE CPUHP_AP_PERF_POWERPC_NEST_IMC_ONLINE
 
 int __cpuhp_setup_state(enum cpuhp_state state,	const char *name, bool invoke,
 			int (*startup)(unsigned int cpu),
