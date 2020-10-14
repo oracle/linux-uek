@@ -28,6 +28,12 @@ static inline void clear_user_page(void *page, unsigned long vaddr,
 	clear_page(page);
 }
 
+static inline void clear_user_page_uncached(void *page, unsigned long vaddr,
+					    struct page *pg)
+{
+	clear_page_uncached(page);
+}
+
 static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 				  struct page *topage)
 {
