@@ -774,7 +774,7 @@ static int arm_dmc620_pmu_device_remove(struct platform_device *pdev)
 }
 
 static const struct acpi_device_id arm_dmc620_acpi_match[] = {
-	{ "ARMHD620", 0},
+	{ "AMPC0003", 0},
 	{},
 };
 MODULE_DEVICE_TABLE(acpi, arm_dmc620_acpi_match);
