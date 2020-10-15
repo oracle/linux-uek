@@ -39,10 +39,10 @@ union ring {
 	u64 u;
 	struct {
 		u64 dir:2;
-		u64 rpvf:4;
-		u64 rppf:6;
+		u64 rpvf:8;
+		u64 rppf:8;
 		u64 numvf:8;
-		u64 rsvd:16;
+		u64 rsvd:10;
 		u64 raz:28;
 	} s;
 };
