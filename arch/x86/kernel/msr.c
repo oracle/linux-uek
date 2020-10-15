@@ -80,18 +80,19 @@ static ssize_t msr_read(struct file *file, char __user *buf,
 
 static int filter_write(u32 reg)
 {
+	static DEFINE_RATELIMIT_STATE(fw_rs, 30 * HZ, 1);
+
 	switch (allow_writes) {
 	case MSR_WRITES_ON:  return 0;
 	case MSR_WRITES_OFF: return -EPERM;
 	default: break;
 	}
 
-	if (reg == MSR_IA32_ENERGY_PERF_BIAS)
+	if (!__ratelimit(&fw_rs))
 		return 0;
 
-	pr_err_ratelimited("Write to unrecognized MSR 0x%x by %s\n"
-			   "Please report to x86@kernel.org\n",
-			   reg, current->comm);
+	pr_err("Write to unrecognized MSR 0x%x by %s (pid: %d). Please report to x86@kernel.org.\n",
+	       reg, current->comm, current->pid);
 
 	return 0;
 }
