@@ -30,6 +30,8 @@ static const char * const npc_flow_names[] = {
 	[NPC_DPORT_TCP]	= "tcp destination port",
 	[NPC_SPORT_UDP]	= "udp source port",
 	[NPC_DPORT_UDP]	= "udp destination port",
+	[NPC_SPORT_SCTP] = "sctp source port",
+	[NPC_DPORT_SCTP] = "sctp destination port",
 	[NPC_FDSA_VAL]	= "FDSA tag value ",
 	[NPC_UNKNOWN]	= "unknown",
 };
@@ -429,6 +431,8 @@ do {									       \
 	NPC_SCAN_HDR(NPC_DPORT_UDP, NPC_LID_LD, NPC_LT_LD_UDP, 2, 2);
 	NPC_SCAN_HDR(NPC_SPORT_TCP, NPC_LID_LD, NPC_LT_LD_TCP, 0, 2);
 	NPC_SCAN_HDR(NPC_DPORT_TCP, NPC_LID_LD, NPC_LT_LD_TCP, 2, 2);
+	NPC_SCAN_HDR(NPC_SPORT_SCTP, NPC_LID_LD, NPC_LT_LD_SCTP, 0, 2);
+	NPC_SCAN_HDR(NPC_DPORT_SCTP, NPC_LID_LD, NPC_LT_LD_SCTP, 2, 2);
 	NPC_SCAN_HDR(NPC_ETYPE_ETHER, NPC_LID_LA, NPC_LT_LA_ETHER, 12, 2);
 	NPC_SCAN_HDR(NPC_ETYPE_TAG1, NPC_LID_LB, NPC_LT_LB_CTAG, 4, 2);
 	NPC_SCAN_HDR(NPC_ETYPE_TAG2, NPC_LID_LB, NPC_LT_LB_STAG_QINQ, 8, 2);
@@ -445,7 +449,7 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	u64 *features = &mcam->rx_features;
-	u64 tcp_udp;
+	u64 tcp_udp_sctp;
 	int err, hdr;
 
 	if (is_npc_intf_tx(intf))
@@ -457,13 +461,14 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 			*features |= BIT_ULL(hdr);
 	}
 
-	tcp_udp = BIT_ULL(NPC_SPORT_TCP) | BIT_ULL(NPC_SPORT_UDP) |
-		  BIT_ULL(NPC_DPORT_TCP) | BIT_ULL(NPC_DPORT_UDP);
+	tcp_udp_sctp = BIT_ULL(NPC_SPORT_TCP) | BIT_ULL(NPC_SPORT_UDP) |
+		       BIT_ULL(NPC_DPORT_TCP) | BIT_ULL(NPC_DPORT_UDP) |
+		       BIT_ULL(NPC_SPORT_SCTP) | BIT_ULL(NPC_DPORT_SCTP);
 
-	/* for tcp/udp corresponding layer type should be in the key */
-	if (*features & tcp_udp)
+	/* for tcp/udp/sctp corresponding layer type should be in the key */
+	if (*features & tcp_udp_sctp)
 		if (npc_check_field(rvu, blkaddr, NPC_LD, intf))
-			*features &= ~tcp_udp;
+			*features &= ~tcp_udp_sctp;
 
 	/* for vlan corresponding layer type should be in the key */
 	if (*features & BIT_ULL(NPC_OUTER_VID) ||
@@ -752,13 +757,17 @@ do {									      \
 	}								      \
 } while (0)
 
-	 /* For tcp/udp LTYPE should be present in entry */
+	 /* For tcp/udp/sctp LTYPE should be present in entry */
 	if (features & (BIT_ULL(NPC_SPORT_TCP) | BIT_ULL(NPC_DPORT_TCP)))
 		npc_update_entry(rvu, NPC_LD, entry, NPC_LT_LD_TCP,
 				 0, ~0ULL, 0, intf);
 	if (features & (BIT_ULL(NPC_SPORT_UDP) | BIT_ULL(NPC_DPORT_UDP)))
 		npc_update_entry(rvu, NPC_LD, entry, NPC_LT_LD_UDP,
 				 0, ~0ULL, 0, intf);
+	if (features & (BIT_ULL(NPC_SPORT_SCTP) | BIT_ULL(NPC_DPORT_SCTP)))
+		npc_update_entry(rvu, NPC_LD, entry, NPC_LT_LD_SCTP,
+				 0, ~0ULL, 0, intf);
+
 	if (features & BIT_ULL(NPC_OUTER_VID))
 		npc_update_entry(rvu, NPC_LB, entry,
 				 NPC_LT_LB_STAG_QINQ | NPC_LT_LB_CTAG, 0,
@@ -783,6 +792,11 @@ do {									      \
 		       ntohs(mask->dport), 0);
 	NPC_WRITE_FLOW(NPC_DPORT_UDP, dport, ntohs(pkt->dport), 0,
 		       ntohs(mask->dport), 0);
+	NPC_WRITE_FLOW(NPC_SPORT_SCTP, sport, ntohs(pkt->sport), 0,
+		       ntohs(mask->sport), 0);
+	NPC_WRITE_FLOW(NPC_DPORT_SCTP, dport, ntohs(pkt->dport), 0,
+		       ntohs(mask->dport), 0);
+
 	NPC_WRITE_FLOW(NPC_OUTER_VID, vlan_tci, ntohs(pkt->vlan_tci), 0,
 		       ntohs(mask->vlan_tci), 0);
 	NPC_WRITE_FLOW(NPC_FDSA_VAL, vlan_tci, ntohs(pkt->vlan_tci), 0,

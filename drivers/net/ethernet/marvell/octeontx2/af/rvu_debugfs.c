@@ -1611,11 +1611,13 @@ static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
 			break;
 		case NPC_SPORT_TCP:
 		case NPC_SPORT_UDP:
+		case NPC_SPORT_SCTP:
 			seq_printf(s, "%d ", ntohs(rule->packet.sport));
 			seq_printf(s, "mask 0x%x\n", ntohs(rule->mask.sport));
 			break;
 		case NPC_DPORT_TCP:
 		case NPC_DPORT_UDP:
+		case NPC_DPORT_SCTP:
 			seq_printf(s, "%d ", ntohs(rule->packet.dport));
 			seq_printf(s, "mask 0x%x\n", ntohs(rule->mask.dport));
 			break;
