@@ -14,7 +14,7 @@
 #include <linux/export.h>
 
 static __ro_after_init bool kernel_locked_down;
-
+static __ro_after_init bool lockdown_confidentiality = true;
 /*
  * Put the kernel into lock-down mode.
  */
@@ -27,8 +27,14 @@ static void __init lock_kernel_down(const char *where)
 	}
 }
 
-static int __init lockdown_param(char *ignored)
+static int __init lockdown_param(char *level)
 {
+	if (level) {
+		if (strcmp(level, "confidentiality") == 0)
+			lockdown_confidentiality = true;
+		else if (strcmp(level, "integrity") == 0)
+			lockdown_confidentiality = false;
+	}
 	lock_kernel_down("command line");
 	return 0;
 }
