@@ -1614,7 +1614,7 @@ fi}\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
-%{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --dracut --depmod --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 %{nil}
 
@@ -1638,7 +1638,7 @@ fi\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
-%{_sbindir}/new-kernel-pkg --package kernel-ueknano --install %{KVERREL} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel-ueknano --mkinitrd --dracut --depmod --install %{KVERREL} || exit $?\
 ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu}\
 %{nil}
 
