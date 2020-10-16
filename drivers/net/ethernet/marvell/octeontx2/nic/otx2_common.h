@@ -789,9 +789,6 @@ int otx2_get_all_flows(struct otx2_nic *pfvf,
 int otx2_add_flow(struct otx2_nic *pfvf,
 		  struct ethtool_rx_flow_spec *fsp);
 int otx2_remove_flow(struct otx2_nic *pfvf, u32 location);
-int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
-			      struct npc_install_flow_req *req,
-			      struct otx2_nic *pfvf);
 int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable);
 int otx2_enable_vf_vlan(struct otx2_nic *pf);
 int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf);

@@ -18,6 +18,10 @@
 				 OTX2_MAX_UNICAST_FLOWS + \
 				 OTX2_MAX_VLAN_FLOWS)
 
+#define OTX2_DEFAULT_ACTION	0x1
+#define FDSA_MAX_SPORT		32
+#define FDSA_SPORT_MASK         0xf8
+
 struct otx2_flow {
 	struct ethtool_rx_flow_spec flow_spec;
 	struct list_head list;
@@ -302,6 +306,197 @@ int otx2_get_all_flows(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc,
 	}
 
 	return err;
+}
+
+static void otx2_prepare_fdsa_flow_request(struct npc_install_flow_req *req,
+					   bool is_vlan)
+{
+	struct flow_msg *pmask = &req->mask;
+	struct flow_msg *pkt = &req->packet;
+
+	/* In FDSA tag srcport starts from b3..b7 */
+	if (!is_vlan) {
+		pkt->vlan_tci <<= 3;
+		pmask->vlan_tci = cpu_to_be16(FDSA_SPORT_MASK);
+	}
+	/* Strip FDSA tag */
+	req->features |= BIT_ULL(NPC_FDSA_VAL);
+	req->vtag0_valid = true;
+	req->vtag0_type = NIX_AF_LFX_RX_VTAG_TYPE6;
+	req->op = NIX_RX_ACTION_DEFAULT;
+}
+
+static void otx2_prepare_ipv4_flow(struct ethtool_rx_flow_spec *fsp,
+				   struct npc_install_flow_req *req,
+				   u32 flow_type)
+{
+	struct ethtool_usrip4_spec *ipv4_usr_mask = &fsp->m_u.usr_ip4_spec;
+	struct ethtool_usrip4_spec *ipv4_usr_hdr = &fsp->h_u.usr_ip4_spec;
+	struct ethtool_tcpip4_spec *ipv4_l4_mask = &fsp->m_u.tcp_ip4_spec;
+	struct ethtool_tcpip4_spec *ipv4_l4_hdr = &fsp->h_u.tcp_ip4_spec;
+	struct flow_msg *pmask = &req->mask;
+	struct flow_msg *pkt = &req->packet;
+
+	switch (flow_type) {
+	case IP_USER_FLOW:
+		if (ipv4_usr_mask->ip4src) {
+			memcpy(&pkt->ip4src, &ipv4_usr_hdr->ip4src,
+			       sizeof(pkt->ip4src));
+			memcpy(&pmask->ip4src, &ipv4_usr_mask->ip4src,
+			       sizeof(pmask->ip4src));
+			req->features |= BIT_ULL(NPC_SIP_IPV4);
+		}
+		if (ipv4_usr_mask->ip4dst) {
+			memcpy(&pkt->ip4dst, &ipv4_usr_hdr->ip4dst,
+			       sizeof(pkt->ip4dst));
+			memcpy(&pmask->ip4dst, &ipv4_usr_mask->ip4dst,
+			       sizeof(pmask->ip4dst));
+			req->features |= BIT_ULL(NPC_DIP_IPV4);
+		}
+		break;
+	case TCP_V4_FLOW:
+	case UDP_V4_FLOW:
+	case SCTP_V4_FLOW:
+		if (ipv4_l4_mask->ip4src) {
+			memcpy(&pkt->ip4src, &ipv4_l4_hdr->ip4src,
+			       sizeof(pkt->ip4src));
+			memcpy(&pmask->ip4src, &ipv4_l4_mask->ip4src,
+			       sizeof(pmask->ip4src));
+			req->features |= BIT_ULL(NPC_SIP_IPV4);
+		}
+		if (ipv4_l4_mask->ip4dst) {
+			memcpy(&pkt->ip4dst, &ipv4_l4_hdr->ip4dst,
+			       sizeof(pkt->ip4dst));
+			memcpy(&pmask->ip4dst, &ipv4_l4_mask->ip4dst,
+			       sizeof(pmask->ip4dst));
+			req->features |= BIT_ULL(NPC_DIP_IPV4);
+		}
+		if (ipv4_l4_mask->psrc) {
+			memcpy(&pkt->sport, &ipv4_l4_hdr->psrc,
+			       sizeof(pkt->sport));
+			memcpy(&pmask->sport, &ipv4_l4_mask->psrc,
+			       sizeof(pmask->sport));
+			if (flow_type == UDP_V4_FLOW)
+				req->features |= BIT_ULL(NPC_SPORT_UDP);
+			else if (flow_type == TCP_V4_FLOW)
+				req->features |= BIT_ULL(NPC_SPORT_TCP);
+			else
+				req->features |= BIT_ULL(NPC_SPORT_SCTP);
+		}
+		if (ipv4_l4_mask->pdst) {
+			memcpy(&pkt->dport, &ipv4_l4_hdr->pdst,
+			       sizeof(pkt->dport));
+			memcpy(&pmask->dport, &ipv4_l4_mask->pdst,
+			       sizeof(pmask->dport));
+			if (flow_type == UDP_V4_FLOW)
+				req->features |= BIT_ULL(NPC_DPORT_UDP);
+			else if (flow_type == TCP_V4_FLOW)
+				req->features |= BIT_ULL(NPC_DPORT_TCP);
+			else
+				req->features |= BIT_ULL(NPC_DPORT_SCTP);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
+				     struct npc_install_flow_req *req,
+				     struct otx2_nic *pfvf)
+{
+	struct ethhdr *eth_mask = &fsp->m_u.ether_spec;
+	struct ethhdr *eth_hdr = &fsp->h_u.ether_spec;
+	struct flow_msg *pmask = &req->mask;
+	struct flow_msg *pkt = &req->packet;
+	u32 flow_type;
+
+	flow_type = fsp->flow_type & ~(FLOW_EXT | FLOW_MAC_EXT);
+	switch (flow_type) {
+	/* bits not set in mask are don't care */
+	case ETHER_FLOW:
+		if (!is_zero_ether_addr(eth_mask->h_source)) {
+			ether_addr_copy(pkt->smac, eth_hdr->h_source);
+			ether_addr_copy(pmask->smac, eth_mask->h_source);
+			req->features |= BIT_ULL(NPC_SMAC);
+		}
+		if (!is_zero_ether_addr(eth_mask->h_dest)) {
+			ether_addr_copy(pkt->dmac, eth_hdr->h_dest);
+			ether_addr_copy(pmask->dmac, eth_mask->h_dest);
+			req->features |= BIT_ULL(NPC_DMAC);
+		}
+		if (eth_mask->h_proto) {
+			memcpy(&pkt->etype, &eth_hdr->h_proto,
+			       sizeof(pkt->etype));
+			memcpy(&pmask->etype, &eth_mask->h_proto,
+			       sizeof(pmask->etype));
+			req->features |= BIT_ULL(NPC_ETYPE);
+		}
+		break;
+	case IP_USER_FLOW:
+	case TCP_V4_FLOW:
+	case UDP_V4_FLOW:
+	case SCTP_V4_FLOW:
+		otx2_prepare_ipv4_flow(fsp, req, flow_type);
+		break;
+	default:
+		return -ENOTSUPP;
+	}
+	if (fsp->flow_type & FLOW_EXT) {
+		int skip_user_def = false;
+
+		if (fsp->m_ext.vlan_etype)
+			return -EINVAL;
+		if (fsp->m_ext.vlan_tci) {
+			if (fsp->m_ext.vlan_tci != cpu_to_be16(VLAN_VID_MASK))
+				return -EINVAL;
+			if (be16_to_cpu(fsp->h_ext.vlan_tci) >= VLAN_N_VID)
+				return -EINVAL;
+
+			memcpy(&pkt->vlan_tci, &fsp->h_ext.vlan_tci,
+			       sizeof(pkt->vlan_tci));
+			memcpy(&pmask->vlan_tci, &fsp->m_ext.vlan_tci,
+			       sizeof(pmask->vlan_tci));
+
+			if (pfvf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR) {
+				otx2_prepare_fdsa_flow_request(req, true);
+				skip_user_def = true;
+			} else {
+				req->features |= BIT_ULL(NPC_OUTER_VID);
+			}
+		}
+
+		if (fsp->m_ext.data[1] && !skip_user_def) {
+			if (pfvf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR) {
+				if (be32_to_cpu(fsp->h_ext.data[1]) >=
+						FDSA_MAX_SPORT)
+					return -EINVAL;
+
+				memcpy(&pkt->vlan_tci,
+				       (u8 *)&fsp->h_ext.data[1] + 2,
+				       sizeof(pkt->vlan_tci));
+				otx2_prepare_fdsa_flow_request(req, false);
+			} else if (fsp->h_ext.data[1] ==
+					cpu_to_be32(OTX2_DEFAULT_ACTION)) {
+				/* Not Drop/Direct to queue but use action
+				 * in default entry
+				 */
+				req->op = NIX_RX_ACTION_DEFAULT;
+			}
+		}
+	}
+
+	if (fsp->flow_type & FLOW_MAC_EXT &&
+	    !is_zero_ether_addr(fsp->m_ext.h_dest)) {
+		ether_addr_copy(pkt->dmac, fsp->h_ext.h_dest);
+		ether_addr_copy(pmask->dmac, fsp->m_ext.h_dest);
+		req->features |= BIT_ULL(NPC_DMAC);
+	}
+
+	if (!req->features)
+		return -ENOTSUPP;
+
+	return 0;
 }
 
 static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
