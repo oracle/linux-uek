@@ -423,6 +423,8 @@ do {									       \
 	 */
 	NPC_SCAN_HDR(NPC_SIP_IPV4, NPC_LID_LC, NPC_LT_LC_IP, 12, 4);
 	NPC_SCAN_HDR(NPC_DIP_IPV4, NPC_LID_LC, NPC_LT_LC_IP, 16, 4);
+	NPC_SCAN_HDR(NPC_SIP_IPV6, NPC_LID_LC, NPC_LT_LC_IP6, 8, 16);
+	NPC_SCAN_HDR(NPC_DIP_IPV6, NPC_LID_LC, NPC_LT_LC_IP6, 24, 16);
 	NPC_SCAN_HDR(NPC_SPORT_UDP, NPC_LID_LD, NPC_LT_LD_UDP, 0, 2);
 	NPC_SCAN_HDR(NPC_DPORT_UDP, NPC_LID_LD, NPC_LT_LD_UDP, 2, 2);
 	NPC_SCAN_HDR(NPC_SPORT_TCP, NPC_LID_LD, NPC_LT_LD_TCP, 0, 2);
@@ -676,6 +678,55 @@ static void npc_update_entry(struct rvu *rvu, enum key_fields type,
 	}
 }
 
+#define IPV6_WORDS     4
+
+static void npc_update_ipv6_flow(struct rvu *rvu, struct mcam_entry *entry,
+				 u64 features, struct flow_msg *pkt,
+				 struct flow_msg *mask,
+				 struct rvu_npc_mcam_rule *output, u8 intf)
+{
+	u32 src_ip[IPV6_WORDS], src_ip_mask[IPV6_WORDS];
+	u32 dst_ip[IPV6_WORDS], dst_ip_mask[IPV6_WORDS];
+	struct flow_msg *opkt = &output->packet;
+	struct flow_msg *omask = &output->mask;
+	u64 mask_lo, mask_hi;
+	u64 val_lo, val_hi;
+
+	/* For an ipv6 address fe80::2c68:63ff:fe5e:2d0a the packet
+	 * values to be programmed in MCAM should as below:
+	 * val_high: 0xfe80000000000000
+	 * val_low: 0x2c6863fffe5e2d0a
+	 */
+	if (features & BIT_ULL(NPC_SIP_IPV6)) {
+		be32_to_cpu_array(src_ip_mask, mask->ip6src, IPV6_WORDS);
+		be32_to_cpu_array(src_ip, pkt->ip6src, IPV6_WORDS);
+
+		mask_hi = (u64)src_ip_mask[0] << 32 | src_ip_mask[1];
+		mask_lo = (u64)src_ip_mask[2] << 32 | src_ip_mask[3];
+		val_hi = (u64)src_ip[0] << 32 | src_ip[1];
+		val_lo = (u64)src_ip[2] << 32 | src_ip[3];
+
+		npc_update_entry(rvu, NPC_SIP_IPV6, entry, val_lo, val_hi,
+				 mask_lo, mask_hi, intf);
+		memcpy(opkt->ip6src, pkt->ip6src, sizeof(opkt->ip6src));
+		memcpy(omask->ip6src, mask->ip6src, sizeof(omask->ip6src));
+	}
+	if (features & BIT_ULL(NPC_DIP_IPV6)) {
+		be32_to_cpu_array(dst_ip_mask, mask->ip6dst, IPV6_WORDS);
+		be32_to_cpu_array(dst_ip, pkt->ip6dst, IPV6_WORDS);
+
+		mask_hi = (u64)dst_ip_mask[0] << 32 | dst_ip_mask[1];
+		mask_lo = (u64)dst_ip_mask[2] << 32 | dst_ip_mask[3];
+		val_hi = (u64)dst_ip[0] << 32 | dst_ip[1];
+		val_lo = (u64)dst_ip[2] << 32 | dst_ip[3];
+
+		npc_update_entry(rvu, NPC_DIP_IPV6, entry, val_lo, val_hi,
+				 mask_lo, mask_hi, intf);
+		memcpy(opkt->ip6dst, pkt->ip6dst, sizeof(opkt->ip6dst));
+		memcpy(omask->ip6dst, mask->ip6dst, sizeof(omask->ip6dst));
+	}
+}
+
 static void npc_update_flow(struct rvu *rvu, struct mcam_entry *entry,
 			    u64 features, struct flow_msg *pkt,
 			    struct flow_msg *mask,
@@ -736,6 +787,8 @@ do {									      \
 		       ntohs(mask->vlan_tci), 0);
 	NPC_WRITE_FLOW(NPC_FDSA_VAL, vlan_tci, ntohs(pkt->vlan_tci), 0,
 		       ntohs(mask->vlan_tci), 0);
+
+	npc_update_ipv6_flow(rvu, entry, features, pkt, mask, output, intf);
 }
 
 static struct rvu_npc_mcam_rule *rvu_mcam_find_rule(struct npc_mcam *mcam,
