@@ -8,6 +8,8 @@
  * published by the Free Software Foundation.
  */
 
+#include <net/ipv6.h>
+
 #include "otx2_common.h"
 
 /* helper macros to support mcam flows */
@@ -401,6 +403,81 @@ static void otx2_prepare_ipv4_flow(struct ethtool_rx_flow_spec *fsp,
 	}
 }
 
+static void otx2_prepare_ipv6_flow(struct ethtool_rx_flow_spec *fsp,
+				   struct npc_install_flow_req *req,
+				   u32 flow_type)
+{
+	struct ethtool_usrip6_spec *ipv6_usr_mask = &fsp->m_u.usr_ip6_spec;
+	struct ethtool_usrip6_spec *ipv6_usr_hdr = &fsp->h_u.usr_ip6_spec;
+	struct ethtool_tcpip6_spec *ipv6_l4_mask = &fsp->m_u.tcp_ip6_spec;
+	struct ethtool_tcpip6_spec *ipv6_l4_hdr = &fsp->h_u.tcp_ip6_spec;
+	struct flow_msg *pmask = &req->mask;
+	struct flow_msg *pkt = &req->packet;
+
+	switch (flow_type) {
+	case IPV6_USER_FLOW:
+		if (!ipv6_addr_any((struct in6_addr *)ipv6_usr_mask->ip6src)) {
+			memcpy(&pkt->ip6src, &ipv6_usr_hdr->ip6src,
+			       sizeof(pkt->ip6src));
+			memcpy(&pmask->ip6src, &ipv6_usr_mask->ip6src,
+			       sizeof(pmask->ip6src));
+			req->features |= BIT_ULL(NPC_SIP_IPV6);
+		}
+		if (!ipv6_addr_any((struct in6_addr *)ipv6_usr_mask->ip6dst)) {
+			memcpy(&pkt->ip6dst, &ipv6_usr_hdr->ip6dst,
+			       sizeof(pkt->ip6dst));
+			memcpy(&pmask->ip6dst, &ipv6_usr_mask->ip6dst,
+			       sizeof(pmask->ip6dst));
+			req->features |= BIT_ULL(NPC_DIP_IPV6);
+		}
+		break;
+	case TCP_V6_FLOW:
+	case UDP_V6_FLOW:
+	case SCTP_V6_FLOW:
+		if (!ipv6_addr_any((struct in6_addr *)ipv6_l4_mask->ip6src)) {
+			memcpy(&pkt->ip6src, &ipv6_l4_hdr->ip6src,
+			       sizeof(pkt->ip6src));
+			memcpy(&pmask->ip6src, &ipv6_l4_mask->ip6src,
+			       sizeof(pmask->ip6src));
+			req->features |= BIT_ULL(NPC_SIP_IPV6);
+		}
+		if (!ipv6_addr_any((struct in6_addr *)ipv6_l4_mask->ip6dst)) {
+			memcpy(&pkt->ip6dst, &ipv6_l4_hdr->ip6dst,
+			       sizeof(pkt->ip6dst));
+			memcpy(&pmask->ip6dst, &ipv6_l4_mask->ip6dst,
+			       sizeof(pmask->ip6dst));
+			req->features |= BIT_ULL(NPC_DIP_IPV6);
+		}
+		if (ipv6_l4_mask->psrc) {
+			memcpy(&pkt->sport, &ipv6_l4_hdr->psrc,
+			       sizeof(pkt->sport));
+			memcpy(&pmask->sport, &ipv6_l4_mask->psrc,
+			       sizeof(pmask->sport));
+			if (flow_type == UDP_V6_FLOW)
+				req->features |= BIT_ULL(NPC_SPORT_UDP);
+			else if (flow_type == TCP_V6_FLOW)
+				req->features |= BIT_ULL(NPC_SPORT_TCP);
+			else
+				req->features |= BIT_ULL(NPC_SPORT_SCTP);
+		}
+		if (ipv6_l4_mask->pdst) {
+			memcpy(&pkt->dport, &ipv6_l4_hdr->pdst,
+			       sizeof(pkt->dport));
+			memcpy(&pmask->dport, &ipv6_l4_mask->pdst,
+			       sizeof(pmask->dport));
+			if (flow_type == UDP_V6_FLOW)
+				req->features |= BIT_ULL(NPC_DPORT_UDP);
+			else if (flow_type == TCP_V6_FLOW)
+				req->features |= BIT_ULL(NPC_DPORT_TCP);
+			else
+				req->features |= BIT_ULL(NPC_DPORT_SCTP);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 				     struct npc_install_flow_req *req,
 				     struct otx2_nic *pfvf)
@@ -438,6 +515,12 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 	case UDP_V4_FLOW:
 	case SCTP_V4_FLOW:
 		otx2_prepare_ipv4_flow(fsp, req, flow_type);
+		break;
+	case IPV6_USER_FLOW:
+	case TCP_V6_FLOW:
+	case UDP_V6_FLOW:
+	case SCTP_V6_FLOW:
+		otx2_prepare_ipv6_flow(fsp, req, flow_type);
 		break;
 	default:
 		return -ENOTSUPP;
