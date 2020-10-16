@@ -45,7 +45,7 @@ const char *npc_get_field_name(u8 hdr)
 /* Compute keyword masks and figure out the number of keywords a field
  * spans in the key.
  */
-static void npc_set_kw_masks(struct npc_mcam *mcam, enum key_fields type,
+static void npc_set_kw_masks(struct npc_mcam *mcam, u8 type,
 			     u8 nr_bits, int start_kwi, int offset, u8 intf)
 {
 	struct npc_key_field *field = &mcam->rx_key_fields[type];
@@ -66,7 +66,8 @@ static void npc_set_kw_masks(struct npc_mcam *mcam, enum key_fields type,
 		/* one KW only */
 		if (start_kwi > max_kwi)
 			return;
-		field->kw_mask[start_kwi] |= (BIT_ULL(nr_bits) - 1) << offset;
+		field->kw_mask[start_kwi] |= GENMASK_ULL(nr_bits - 1, 0)
+					     << offset;
 		field->nr_kws = 1;
 	} else if (offset + nr_bits > 64 &&
 		   offset + nr_bits <= 128) {
@@ -75,11 +76,11 @@ static void npc_set_kw_masks(struct npc_mcam *mcam, enum key_fields type,
 			return;
 		/* first KW mask */
 		bits_in_kw = 64 - offset;
-		field->kw_mask[start_kwi] |= (BIT_ULL(bits_in_kw) - 1)
-						<< offset;
+		field->kw_mask[start_kwi] |= GENMASK_ULL(bits_in_kw - 1, 0)
+					     << offset;
 		/* second KW mask i.e. mask for rest of bits */
 		bits_in_kw = nr_bits + offset - 64;
-		field->kw_mask[start_kwi + 1] |= BIT_ULL(bits_in_kw) - 1;
+		field->kw_mask[start_kwi + 1] |= GENMASK_ULL(bits_in_kw - 1, 0);
 		field->nr_kws = 2;
 	} else {
 		/* three KWs */
@@ -87,13 +88,13 @@ static void npc_set_kw_masks(struct npc_mcam *mcam, enum key_fields type,
 			return;
 		/* first KW mask */
 		bits_in_kw = 64 - offset;
-		field->kw_mask[start_kwi] |= (BIT_ULL(bits_in_kw) - 1)
-						<< offset;
+		field->kw_mask[start_kwi] |= GENMASK_ULL(bits_in_kw - 1, 0)
+					     << offset;
 		/* second KW mask */
 		field->kw_mask[start_kwi + 1] = ~0ULL;
 		/* third KW mask i.e. mask for rest of bits */
 		bits_in_kw = nr_bits + offset - 128;
-		field->kw_mask[start_kwi + 2] |= BIT_ULL(bits_in_kw) - 1;
+		field->kw_mask[start_kwi + 2] |= GENMASK_ULL(bits_in_kw - 1, 0);
 		field->nr_kws = 3;
 	}
 }
@@ -629,11 +630,13 @@ static void npc_update_entry(struct rvu *rvu, enum key_fields type,
 		/* place remaining bits of key value in kw[x + 1] */
 		if (field->nr_kws == 2) {
 			/* update entry value */
-			kw2 = (val_lo >> (64 - shift)) | (val_hi << shift);
+			kw2 = shift ? val_lo >> (64 - shift) : 0;
+			kw2 |= (val_hi << shift);
 			kw2 &= field->kw_mask[i + 1];
 			dummy.kw[i + 1] = kw2;
 			/* update entry mask */
-			kw2 = (mask_lo >> (64 - shift)) | (mask_hi << shift);
+			kw2 = shift ? mask_lo >> (64 - shift) : 0;
+			kw2 |= (mask_hi << shift);
 			kw2 &= field->kw_mask[i + 1];
 			dummy.kw_mask[i + 1] = kw2;
 			break;
@@ -641,16 +644,18 @@ static void npc_update_entry(struct rvu *rvu, enum key_fields type,
 		/* place remaining bits of key value in kw[x + 1], kw[x + 2] */
 		if (field->nr_kws == 3) {
 			/* update entry value */
-			kw2 = (val_lo >> (64 - shift)) | (val_hi << shift);
+			kw2 = shift ? val_lo >> (64 - shift) : 0;
+			kw2 |= (val_hi << shift);
 			kw2 &= field->kw_mask[i + 1];
-			kw3 = (val_hi >> (64 - shift));
+			kw3 = shift ? val_hi >> (64 - shift) : 0;
 			kw3 &= field->kw_mask[i + 2];
 			dummy.kw[i + 1] = kw2;
 			dummy.kw[i + 2] = kw3;
 			/* update entry mask */
-			kw2 = (mask_lo >> (64 - shift)) | (mask_hi << shift);
+			kw2 = shift ? mask_lo >> (64 - shift) : 0;
+			kw2 |= (mask_hi << shift);
 			kw2 &= field->kw_mask[i + 1];
-			kw3 = (mask_hi >> (64 - shift));
+			kw3 = shift ? mask_hi >> (64 - shift) : 0;
 			kw3 &= field->kw_mask[i + 2];
 			dummy.kw_mask[i + 1] = kw2;
 			dummy.kw_mask[i + 2] = kw3;
