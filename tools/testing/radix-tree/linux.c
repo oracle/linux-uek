@@ -99,6 +99,55 @@ void kmem_cache_free_bulk(struct kmem_cache *cachep, size_t size, void **list)
 		kmem_cache_free(cachep, list[i]);
 	}
 }
+int kmem_cache_alloc_bulk(struct kmem_cache *cachep, gfp_t gfp, size_t size,
+			  void **p)
+{
+	size_t i;
+	if (kmalloc_verbose)
+		printk("Bulk alloc %lu\n", size);
+
+	if (!(gfp & __GFP_DIRECT_RECLAIM) && cachep->non_kernel < size)
+		return 0;
+
+	if (!(gfp & __GFP_DIRECT_RECLAIM))
+		cachep->non_kernel-= size;
+
+	pthread_mutex_lock(&cachep->lock);
+	if (cachep->nr_objs >= size) {
+		struct radix_tree_node *node = cachep->objs;
+		for (i = 0; i < size; i++) {
+			cachep->nr_objs--;
+			cachep->objs = node->parent;
+			p[i] = cachep->objs;
+		}
+		pthread_mutex_unlock(&cachep->lock);
+		node->parent = NULL;
+	} else {
+		pthread_mutex_unlock(&cachep->lock);
+		for (i = 0; i < size; i++) {
+			if (cachep->align) {
+				posix_memalign(&p[i], cachep->align,
+					       cachep->size * size);
+			} else {
+				p[i] = malloc(cachep->size * size);
+			}
+			if (cachep->ctor)
+				cachep->ctor(p[i]);
+			else if (gfp & __GFP_ZERO)
+				memset(p[i], 0, cachep->size);
+		}
+	}
+
+	for (i = 0; i < size; i++) {
+		uatomic_inc(&nr_allocated);
+		uatomic_inc(&nr_tallocated);
+		if (kmalloc_verbose)
+			printf("Allocating %p from slab\n", p[i]);
+	}
+
+	return size;
+}
+
 
 void *kmalloc(size_t size, gfp_t gfp)
 {
