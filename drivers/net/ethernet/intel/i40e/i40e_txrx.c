@@ -613,11 +613,6 @@ static void i40e_unmap_and_free_tx_resource(struct i40e_ring *ring,
 	if (tx_buffer->skb) {
 		if (tx_buffer->tx_flags & I40E_TX_FLAGS_FD_SB)
 			kfree(tx_buffer->raw_buf);
-#ifdef HAVE_XDP_SUPPORT
-		else if (ring_is_xdp(ring))
-			xdp_return_frame(tx_buffer->xdpf->data,
-					 &tx_buffer->xdpf->mem);
-#endif
 		else
 			dev_kfree_skb_any(tx_buffer->skb);
 		if (dma_unmap_len(tx_buffer, len))
@@ -819,12 +814,7 @@ static bool i40e_clean_tx_irq(struct i40e_vsi *vsi,
 		total_packets += tx_buf->gso_segs;
 
 		/* free the skb/XDP data */
-#ifdef HAVE_XDP_SUPPORT
-		if (ring_is_xdp(tx_ring))
-			xdp_return_frame(tx_buf->xdpf->data, &tx_buf->xdpf->mem);
-		else
-#endif
-			napi_consume_skb(tx_buf->skb, napi_budget);
+		napi_consume_skb(tx_buf->skb, napi_budget);
 
 		/* unmap skb header data */
 		dma_unmap_single(tx_ring->dev,
@@ -2192,11 +2182,6 @@ static bool i40e_is_non_eop(struct i40e_ring *rx_ring,
 #define I40E_XDP_TX		BIT(1)
 #define I40E_XDP_REDIR		BIT(2)
 
-#ifdef HAVE_XDP_SUPPORT
-static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
-			      struct i40e_ring *xdp_ring);
-#endif
-
 /**
  * i40e_run_xdp - run an XDP program
  * @rx_ring: Rx ring being processed
@@ -2205,45 +2190,7 @@ static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
 static struct sk_buff *i40e_run_xdp(struct i40e_ring *rx_ring,
 				    struct xdp_buff *xdp)
 {
-	int err, result = I40E_XDP_PASS;
-#ifdef HAVE_XDP_SUPPORT
-	struct i40e_ring *xdp_ring;
-	struct bpf_prog *xdp_prog;
-	u32 act;
-
-	rcu_read_lock();
-	xdp_prog = READ_ONCE(rx_ring->xdp_prog);
-
-	if (!xdp_prog)
-		goto xdp_out;
-
-	prefetchw(xdp->data_hard_start); /* xdp_frame write */
-
-	act = bpf_prog_run_xdp(xdp_prog, xdp);
-	switch (act) {
-	case XDP_PASS:
-		break;
-	case XDP_TX:
-		xdp_ring = rx_ring->vsi->xdp_rings[rx_ring->queue_index];
-		result = i40e_xmit_xdp_ring(xdp, xdp_ring);
-		break;
-	case XDP_REDIRECT:
-		err = xdp_do_redirect(rx_ring->netdev, xdp, xdp_prog);
-		result = !err ? I40E_XDP_REDIR : I40E_XDP_CONSUMED;
-		break;
-	default:
-		bpf_warn_invalid_xdp_action(act);
-		/* fall through */
-	case XDP_ABORTED:
-		trace_xdp_exception(rx_ring->netdev, xdp_prog, act);
-		/* fall through -- handle aborts by dropping packet */
-	case XDP_DROP:
-		result = I40E_XDP_CONSUMED;
-		break;
-	}
-xdp_out:
-	rcu_read_unlock();
-#endif /* HAVE_XDP_SUPPORT */
+	int result = I40E_XDP_PASS;
 	return ERR_PTR(-result);
 }
 
@@ -3511,68 +3458,6 @@ dma_error:
 	return -1;
 }
 
-#ifdef HAVE_XDP_SUPPORT
-/**
- * i40e_xmit_xdp_ring - transmits an XDP buffer to an XDP Tx ring
- * @xdp: data to transmit
- * @xdp_ring: XDP Tx ring
- **/
-static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
-			      struct i40e_ring *xdp_ring)
-{
-	u16 i = xdp_ring->next_to_use;
-	struct i40e_tx_buffer *tx_bi;
-	struct i40e_tx_desc *tx_desc;
-	struct xdp_frame *xdpf;
-	dma_addr_t dma;
-	u32 size;
-
-	xdpf = convert_to_xdp_frame(xdp);
-	if (unlikely(!xdpf))
-		return I40E_XDP_CONSUMED;
-
-	size = xdpf->len;
-
-	if (!unlikely(I40E_DESC_UNUSED(xdp_ring))) {
-		xdp_ring->tx_stats.tx_busy++;
-		return I40E_XDP_CONSUMED;
-	}
-
-	dma = dma_map_single(xdp_ring->dev, xdpf->data, size, DMA_TO_DEVICE);
-	if (dma_mapping_error(xdp_ring->dev, dma))
-		return I40E_XDP_CONSUMED;
-
-	tx_bi = &xdp_ring->tx_bi[i];
-	tx_bi->bytecount = size;
-	tx_bi->gso_segs = 1;
-	tx_bi->xdpf = xdpf;
-
-	/* record length, and DMA address */
-	dma_unmap_len_set(tx_bi, len, size);
-	dma_unmap_addr_set(tx_bi, dma, dma);
-
-	tx_desc = I40E_TX_DESC(xdp_ring, i);
-	tx_desc->buffer_addr = cpu_to_le64(dma);
-	tx_desc->cmd_type_offset_bsz = build_ctob(I40E_TX_DESC_CMD_ICRC
-						  | I40E_TXD_CMD,
-						  0, size, 0);
-
-	/* Make certain all of the status bits have been updated
-	 * before next_to_watch is written.
-	 */
-	smp_wmb();
-
-	i++;
-	if (i == xdp_ring->count)
-		i = 0;
-
-	tx_bi->next_to_watch = tx_desc;
-	xdp_ring->next_to_use = i;
-
-	return I40E_XDP_TX;
-}
-#endif
-
 /**
  * i40e_xmit_frame_ring - Sends buffer on Tx ring
  * @skb:     send buffer
@@ -3715,50 +3600,3 @@ netdev_tx_t i40e_lan_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 	return i40e_xmit_frame_ring(skb, tx_ring);
 }
 
-#ifdef HAVE_XDP_SUPPORT
-/**
- * i40e_xdp_xmit - Implements ndo_xdp_xmit
- * @dev: netdev
- * @xdp: XDP buffer
- *
- * Returns Zero if sent, else an error code
- **/
-int i40e_xdp_xmit(struct net_device *dev, struct xdp_buff *xdp)
-{
-	struct i40e_netdev_priv *np = netdev_priv(dev);
-	unsigned int queue_index = smp_processor_id();
-	struct i40e_vsi *vsi = np->vsi;
-	int err;
-
-	if (test_bit(__I40E_VSI_DOWN, vsi->state))
-		return -ENETDOWN;
-
-	if (!i40e_enabled_xdp_vsi(vsi) || queue_index >= vsi->num_queue_pairs)
-		return -ENXIO;
-
-	err = i40e_xmit_xdp_ring(xdp, vsi->xdp_rings[queue_index]);
-	if (err != I40E_XDP_TX)
-		return -ENOSPC;
-
-	return 0;
-}
-
-/**
- * i40e_xdp_flush - Implements ndo_xdp_flush
- * @dev: netdev
- **/
-void i40e_xdp_flush(struct net_device *dev)
-{
-	struct i40e_netdev_priv *np = netdev_priv(dev);
-	unsigned int queue_index = smp_processor_id();
-	struct i40e_vsi *vsi = np->vsi;
-
-	if (test_bit(__I40E_VSI_DOWN, vsi->state))
-		return;
-
-	if (!i40e_enabled_xdp_vsi(vsi) || queue_index >= vsi->num_queue_pairs)
-		return;
-
-	i40e_xdp_ring_update_tail(vsi->xdp_rings[queue_index]);
-}
-#endif
