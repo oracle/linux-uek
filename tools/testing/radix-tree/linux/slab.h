@@ -25,4 +25,5 @@ struct kmem_cache *kmem_cache_create(const char *name, unsigned int size,
 			void (*ctor)(void *));
 
 void kmem_cache_free_bulk(struct kmem_cache *cachep, size_t, void **);
+int kmem_cache_alloc_bulk(struct kmem_cache *cachep, gfp_t, size_t, void **);
 #endif		/* SLAB_H */
