@@ -1570,12 +1570,12 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
       mv certs/signing_key.x509.sign certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
     fi \
-    if [ "%{with_4k_ps}" != "0" ]; then \
+    if [ "%{with_4k_ps}" -ne "0" ]; then \
        mv certs/signing_key.pem.sign.4k certs/signing_key.pem \
        mv certs/signing_key.x509.sign.4k certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.4k/ %{dgst} \
      fi \
-     if [ "%{with_4k_ps_debug}" != "0" ]; then \
+     if [ "%{with_4k_ps_debug}" -ne "0" ]; then \
        mv certs/signing_key.pem.sign.4kdebug certs/signing_key.pem \
        mv certs/signing_key.x509.sign.4kdebug certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.4kdebug/ %{dgst} \
