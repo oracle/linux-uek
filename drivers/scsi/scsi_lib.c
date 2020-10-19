@@ -1993,7 +1993,6 @@ static bool scsi_mq_get_budget(struct blk_mq_hw_ctx *hctx)
 {
 	struct request_queue *q = hctx->queue;
 	struct scsi_device *sdev = q->queuedata;
-	blk_status_t ret;
 
 	if (!get_device(&sdev->sdev_gendev))
 		goto out;
