@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/nfs4_mount.h>
 #include <linux/nfs_fs.h>
+#include <linux/nfs_ssc.h>
 #include "delegation.h"
 #include "internal.h"
 #include "nfs4_fs.h"
@@ -335,6 +336,9 @@ static int __init init_nfs_v4(void)
 	if (err)
 		goto out2;
 
+#ifdef CONFIG_NFS_V4_2
+	nfs42_ssc_register_ops();
+#endif
 	register_nfs_version(&nfs_v4);
 	return 0;
 out2:
@@ -351,6 +355,9 @@ static void __exit exit_nfs_v4(void)
 	nfs4_pnfs_v3_ds_connect_unload();
 
 	unregister_nfs_version(&nfs_v4);
+#ifdef CONFIG_NFS_V4_2
+	nfs42_ssc_unregister_ops();
+#endif
 	nfs4_unregister_sysctl();
 	nfs_idmap_quit();
 	nfs_dns_resolver_destroy();
