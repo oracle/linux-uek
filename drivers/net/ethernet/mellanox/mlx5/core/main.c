@@ -82,7 +82,7 @@ MODULE_PARM_DESC(prof_sel, "profile selector. Valid range 0 - 2");
 static u64 sw_owner_id[2];
 
 #define MODULE_NAME "mlx5_core"
-int unload_allowed __initdata;
+static int unload_allowed __initdata;
 module_param_named(module_unload_allowed, unload_allowed, int, 0);
 
 enum {
