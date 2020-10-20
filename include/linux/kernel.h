@@ -316,8 +316,13 @@ static inline void refcount_error_report(struct pt_regs *regs, const char *err)
 
 #ifdef CONFIG_LOCK_DOWN_KERNEL
 extern bool __kernel_is_locked_down(const char *what, bool first);
+extern bool __kernel_is_confidentiality_mode(void);
 #else
 static inline bool __kernel_is_locked_down(const char *what, bool first)
+{
+	return false;
+}
+static inline bool __kernel_is_confidentiality_mode(void)
 {
 	return false;
 }
