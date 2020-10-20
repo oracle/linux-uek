@@ -59,9 +59,18 @@ void __init init_lockdown(void)
  */
 bool __kernel_is_locked_down(const char *what, bool first)
 {
-	if (what && first && kernel_locked_down)
-		pr_notice("Lockdown: %s is restricted; see man kernel_lockdown.7\n",
+	if (what && kernel_locked_down) {
+		/* If we are in integrity mode we allow certain callsites */
+		if (!lockdown_confidentiality) {
+			if ((strcmp(what, "BPF") == 0)) {
+				return false;
+			}
+		}
+		if (first) {
+			pr_notice("Lockdown: %s is restricted; see man kernel_lockdown.7\n",
 			  what);
+		}
+	}
 	return kernel_locked_down;
 }
 EXPORT_SYMBOL(__kernel_is_locked_down);
