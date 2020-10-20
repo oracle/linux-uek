@@ -75,3 +75,13 @@ bool __kernel_is_locked_down(const char *what, bool first)
 	return kernel_locked_down;
 }
 EXPORT_SYMBOL(__kernel_is_locked_down);
+
+/**
+ * kernel_is_confidentiality_mode - Find out if the kernel is locked down
+ * and in confidentiality mode.
+ */
+bool __kernel_is_confidentiality_mode(void)
+{
+	return (kernel_locked_down && lockdown_confidentiality);
+}
+EXPORT_SYMBOL(__kernel_is_confidentiality_mode);
