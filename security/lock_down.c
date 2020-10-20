@@ -64,6 +64,7 @@ bool __kernel_is_locked_down(const char *what, bool first)
 		if (!lockdown_confidentiality) {
 			if ((strcmp(what, "BPF") == 0) ||
 			    (strcmp(what, "debugfs") == 0) ||
+			    (strcmp(what, "Use of kprobes") == 0) ||
 			    (strcmp(what, "DTRACE") == 0)) {
 				return false;
 			}
