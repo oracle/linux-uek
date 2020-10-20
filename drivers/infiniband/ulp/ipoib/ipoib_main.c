@@ -64,7 +64,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
 int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
 
-int unload_allowed __initdata = 1;
+static int unload_allowed __initdata = 1;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0);
 MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 1 for YES)");
