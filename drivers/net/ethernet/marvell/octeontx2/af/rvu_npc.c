@@ -1104,6 +1104,29 @@ static void npc_program_mkex_profile(struct rvu *rvu, int blkaddr,
 	}
 }
 
+static int npc_fwdb_prfl_img_map(struct rvu *rvu, void __iomem **prfl_img_addr,
+				 u64 *size)
+{
+	u64 prfl_addr, prfl_sz;
+
+	if (!rvu->fwdata)
+		return -EINVAL;
+
+	prfl_addr = rvu->fwdata->mcam_addr;
+	prfl_sz = rvu->fwdata->mcam_sz;
+
+	if (!prfl_addr || !prfl_sz)
+		return -EINVAL;
+
+	*prfl_img_addr = ioremap_wc(prfl_addr, prfl_sz);
+	if (!(*prfl_img_addr))
+		return -ENOMEM;
+
+	*size = prfl_sz;
+
+	return 0;
+}
+
 /* strtoull of "mkexprof" with base:36 */
 #define MKEX_END_SIGN  0xdeadbeef
 
@@ -1113,8 +1136,8 @@ static void npc_load_mkex_profile(struct rvu *rvu, int blkaddr,
 	struct device *dev = &rvu->pdev->dev;
 	void __iomem *mkex_prfl_addr = NULL;
 	struct npc_mcam_kex *mcam_kex;
-	u64 prfl_addr;
 	u64 prfl_sz;
+	int ret;
 
 	/* Order of precedence (high to low):
 	 * 1. Embedded in custom KPU profile firmware via kpu_profile param.
@@ -1125,20 +1148,12 @@ static void npc_load_mkex_profile(struct rvu *rvu, int blkaddr,
 	if (rvu->kpu_fwdata_sz ||
 	    !strncmp(mkex_profile, def_pfl_name, MKEX_NAME_LEN))
 		goto program_mkex;
-
-	if (!rvu->fwdata)
-		goto program_mkex;
-	prfl_addr = rvu->fwdata->mcam_addr;
-	prfl_sz = rvu->fwdata->mcam_sz;
-
-	if (!prfl_addr || !prfl_sz)
+	/* Setting up the mapping for mkex profile image */
+	ret = npc_fwdb_prfl_img_map(rvu, &mkex_prfl_addr, &prfl_sz);
+	if (ret < 0)
 		goto program_mkex;
 
-	mkex_prfl_addr = ioremap_wc(prfl_addr, prfl_sz);
-	if (!mkex_prfl_addr)
-		goto program_mkex;
-
-	mcam_kex = (struct npc_mcam_kex *)mkex_prfl_addr;
+	mcam_kex = (struct npc_mcam_kex __force *)mkex_prfl_addr;
 
 	while (((s64)prfl_sz > 0) && (mcam_kex->mkex_sign != MKEX_END_SIGN)) {
 		/* Compare with mkex mod_param name string */
@@ -1367,6 +1382,40 @@ static int npc_apply_custom_kpu(struct rvu *rvu,
 	return 0;
 }
 
+static int npc_load_kpu_profile_fwdb(struct rvu *rvu, const char *kpu_profile)
+{
+	struct npc_kpu_profile_fwdata *kpu_fw = NULL;
+	u64 prfl_sz;
+	int ret;
+
+	/* Setting up the mapping for NPC profile image */
+	ret = npc_fwdb_prfl_img_map(rvu, &rvu->kpu_prfl_addr, &prfl_sz);
+	if (ret < 0)
+		return ret;
+
+	rvu->kpu_fwdata =
+		(struct npc_kpu_profile_fwdata __force *)rvu->kpu_prfl_addr;
+	rvu->kpu_fwdata_sz = prfl_sz;
+
+	kpu_fw = rvu->kpu_fwdata;
+	if (le64_to_cpu(kpu_fw->signature) == KPU_SIGN &&
+	    !strncmp(kpu_fw->name, kpu_profile, KPU_NAME_LEN)) {
+		dev_info(rvu->dev, "Loading KPU profile from firmware db: %s\n",
+			 kpu_profile);
+		return 0;
+	}
+
+	/* Cleaning up if KPU profile image from fwdata is not valid. */
+	if (rvu->kpu_prfl_addr) {
+		iounmap(rvu->kpu_prfl_addr);
+		rvu->kpu_prfl_addr = NULL;
+		rvu->kpu_fwdata_sz = 0;
+		rvu->kpu_fwdata = NULL;
+	}
+
+	return -EINVAL;
+}
+
 static void npc_load_kpu_profile(struct rvu *rvu)
 {
 	struct npc_kpu_profile_adapter *profile = &rvu->kpu;
@@ -1379,19 +1428,47 @@ static void npc_load_kpu_profile(struct rvu *rvu)
 	/* First prepare default KPU, then we'll customize top entries. */
 	npc_prepare_default_kpu(profile);
 
-	dev_info(rvu->dev, "Loading KPU profile from firmware: %s\n",
-		 kpu_profile);
+	/* Order of preceedence for load loading NPC profile (high to low)
+	 * Firmware binary in filesystem.
+	 * Firmware database method.
+	 * Default KPU profile.
+	 */
 	if (!request_firmware(&fw, kpu_profile, rvu->dev)) {
+		dev_info(rvu->dev, "Loading KPU profile from firmware: %s\n",
+			 kpu_profile);
 		rvu->kpu_fwdata = kzalloc(fw->size, GFP_KERNEL);
 		if (rvu->kpu_fwdata) {
 			memcpy(rvu->kpu_fwdata, fw->data, fw->size);
 			rvu->kpu_fwdata_sz = fw->size;
 		}
+		release_firmware(fw);
+		goto program_kpu;
 	}
-	release_firmware(fw);
 
+load_image_fwdb:
+	/* Loading the KPU profile using firmware database */
+	if (npc_load_kpu_profile_fwdb(rvu, kpu_profile))
+		goto revert_to_default;
+
+program_kpu:
 	/* Apply profile customization if firmware was loaded. */
 	if (!rvu->kpu_fwdata_sz || npc_apply_custom_kpu(rvu, profile)) {
+		/* If image from firmware filesystem fails to load or invalid
+		 * retry with firmware database method.
+		 */
+		if (rvu->kpu_fwdata || rvu->kpu_fwdata_sz) {
+			/* Loading image from firmware database failed. */
+			if (rvu->kpu_prfl_addr) {
+				iounmap(rvu->kpu_prfl_addr);
+				rvu->kpu_prfl_addr = NULL;
+			} else {
+				kfree(rvu->kpu_fwdata);
+			}
+			rvu->kpu_fwdata = NULL;
+			rvu->kpu_fwdata_sz = 0;
+			goto load_image_fwdb;
+		}
+
 		dev_warn(rvu->dev,
 			 "Can't load KPU profile %s. Using default.\n",
 			 kpu_profile);
@@ -1753,7 +1830,10 @@ void rvu_npc_freemem(struct rvu *rvu)
 
 	kfree(pkind->rsrc.bmap);
 	kfree(mcam->counters.bmap);
-	kfree(rvu->kpu_fwdata);
+	if (rvu->kpu_prfl_addr)
+		iounmap(rvu->kpu_prfl_addr);
+	else
+		kfree(rvu->kpu_fwdata);
 	mutex_destroy(&mcam->lock);
 }
 
