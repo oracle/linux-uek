@@ -97,14 +97,34 @@ EXPORT_SYMBOL_GPL(debugfs_use_file_finish);
 
 #define F_DENTRY(filp) ((filp)->f_path.dentry)
 
+
+/*
+ * Only permit access to world-readable files when the kernel is locked down.
+ * We also need to exclude any file that has ways to write or alter it as root
+ * can bypass the permissions check.
+ */
+static bool debugfs_is_locked_down(struct inode *inode,
+				   struct file *filp,
+				   const struct file_operations *real_fops)
+{
+	if (__kernel_is_confidentiality_mode())
+		return true;
+
+	if ((inode->i_mode & 07777) == 0444 &&
+	    !(filp->f_mode & FMODE_WRITE) &&
+	    !real_fops->unlocked_ioctl &&
+	    !real_fops->compat_ioctl &&
+	    !real_fops->mmap)
+		return false;
+
+	return kernel_is_locked_down("debugfs");
+}
+
 static int open_proxy_open(struct inode *inode, struct file *filp)
 {
 	const struct dentry *dentry = F_DENTRY(filp);
 	const struct file_operations *real_fops = NULL;
 	int srcu_idx, r;
-
-	if (kernel_is_locked_down("debugfs"))
-		return -EPERM;
 
 	r = debugfs_use_file_start(dentry, &srcu_idx);
 	if (r) {
@@ -113,6 +133,11 @@ static int open_proxy_open(struct inode *inode, struct file *filp)
 	}
 
 	real_fops = debugfs_real_fops(filp);
+
+	r = debugfs_locked_down(inode, filp, real_fops);
+	if (r)
+		goto out;
+
 	real_fops = fops_get(real_fops);
 	if (!real_fops) {
 		/* Huh? Module did not clean up after itself at exit? */
@@ -235,9 +260,6 @@ static int full_proxy_open(struct inode *inode, struct file *filp)
 	struct file_operations *proxy_fops = NULL;
 	int srcu_idx, r;
 
-	if (kernel_is_locked_down("debugfs"))
-		return -EPERM;
-
 	r = debugfs_use_file_start(dentry, &srcu_idx);
 	if (r) {
 		r = -ENOENT;
@@ -245,6 +267,11 @@ static int full_proxy_open(struct inode *inode, struct file *filp)
 	}
 
 	real_fops = debugfs_real_fops(filp);
+
+	r = debugfs_is_locked_down(inode, filp, real_fops);
+	if (r)
+		goto out;
+
 	real_fops = fops_get(real_fops);
 	if (!real_fops) {
 		/* Huh? Module did not cleanup after itself at exit? */

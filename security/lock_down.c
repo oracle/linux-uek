@@ -63,6 +63,7 @@ bool __kernel_is_locked_down(const char *what, bool first)
 		/* If we are in integrity mode we allow certain callsites */
 		if (!lockdown_confidentiality) {
 			if ((strcmp(what, "BPF") == 0) ||
+			    (strcmp(what, "debugfs") == 0) ||
 			    (strcmp(what, "DTRACE") == 0)) {
 				return false;
 			}
