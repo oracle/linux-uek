@@ -11,7 +11,7 @@
 #include <linux/etherdevice.h>
 #include <linux/rtnetlink.h>
 #include <linux/jhash.h>
-#ifdef HAVE_TC_SETUP_TYPE
+#ifdef CONFIG_BNXT_FLOWER_OFFLOAD
 #include <net/pkt_cls.h>
 #endif
 
