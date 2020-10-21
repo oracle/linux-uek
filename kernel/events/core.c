@@ -10047,6 +10047,10 @@ SYSCALL_DEFINE5(perf_event_open,
 	if (!attr.sample_max_stack)
 		attr.sample_max_stack = sysctl_perf_event_max_stack;
 
+	if (kernel_is_locked_down("perf") && (attr.sample_type & PERF_SAMPLE_REGS_INTR))
+		/* REGS_INTR can leak data, lockdown must prevent this */
+		return -EPERM;
+
 	/*
 	 * In cgroup mode, the pid argument is used to pass the fd
 	 * opened to the cgroup directory in cgroupfs. The cpu argument
