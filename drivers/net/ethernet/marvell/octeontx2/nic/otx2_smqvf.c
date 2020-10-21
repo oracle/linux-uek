@@ -42,7 +42,7 @@ static bool is_otx2_smqvf(struct otx2_nic *vf)
 	return false;
 }
 
-static void otx2_sqe_flush(struct otx2_snd_queue *sq, int size)
+static void __otx2_sqe_flush(struct otx2_snd_queue *sq, int size)
 {
 	u64 status;
 
@@ -114,7 +114,7 @@ void otx2smqvf_xmit(void)
 	       sizeof(struct nix_sqe_ext_s) + sizeof(u64);
 
 	for (i = 0; i < 256; i++)
-		otx2_sqe_flush(sq, size);
+		__otx2_sqe_flush(sq, size);
 
 	mutex_unlock(&remove_lock);
 }
