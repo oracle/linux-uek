@@ -213,7 +213,8 @@ struct npa_aura_s {
 	u64 limit                 : 36; /* W3 */
 	u64 reserved_228_231      : 4;
 	u64 bp                    : 8;
-	u64 reserved_240_243      : 4;
+	u64 reserved_241_243      : 3;
+	u64 fc_be                 : 1;
 	u64 fc_ena                : 1;
 	u64 fc_up_crossing        : 1;
 	u64 fc_stype              : 2;
@@ -233,7 +234,9 @@ struct npa_aura_s {
 	u64 err_qint_idx          : 7;
 	u64 reserved_379_383      : 5;
 	u64 thresh                : 36; /* W6*/
-	u64 reserved_420_447      : 28;
+	u64 rsvd_423_420          : 4;
+	u64 fc_msh_dst            : 11;
+	u64 reserved_435_447      : 13;
 	u64 reserved_448_511;		/* W7 */
 };
 
@@ -263,7 +266,8 @@ struct npa_pool_s {
 	u64 fc_stype              : 2;
 	u64 fc_hyst_bits          : 4;
 	u64 fc_up_crossing        : 1;
-	u64 reserved_297_299      : 3;
+	u64 fc_be		  : 1;
+	u64 reserved_298_299      : 2;
 	u64 update_time           : 16;
 	u64 reserved_316_319      : 4;
 	u64 fc_addr;			/* W5 */
@@ -281,7 +285,9 @@ struct npa_pool_s {
 	u64 err_qint_idx          : 7;
 	u64 reserved_571_575      : 5;
 	u64 thresh                : 36;
-	u64 reserved_612_639      : 28;
+	u64 rsvd_615_612	  : 4;
+	u64 fc_msh_dst		  : 11;
+	u64 reserved_627_639      : 13;
 	u64 reserved_640_703;		/* W10 */
 	u64 reserved_704_767;		/* W11 */
 	u64 reserved_768_831;		/* W12 */
@@ -309,6 +315,7 @@ enum nix_aq_ctype {
 	NIX_AQ_CTYPE_MCE  = 0x3,
 	NIX_AQ_CTYPE_RSS  = 0x4,
 	NIX_AQ_CTYPE_DYNO = 0x5,
+	NIX_AQ_CTYPE_BAND_PROF = 0x6,
 };
 
 /* NIX admin queue instruction opcodes */
@@ -325,8 +332,8 @@ enum nix_aq_instop {
 struct nix_aq_inst_s {
 	u64 op			: 4;
 	u64 ctype		: 4;
-	u64 lf			: 7;
-	u64 reserved_15_23	: 9;
+	u64 lf			: 9;
+	u64 reserved_17_23	: 7;
 	u64 cindex		: 20;
 	u64 reserved_44_62	: 19;
 	u64 doneint		: 1;
@@ -371,6 +378,157 @@ struct nix_cq_ctx_s {
 	u64 qsize		: 4;
 	u64 cq_err_int		: 8;
 	u64 cq_err_int_ena	: 8;
+};
+
+/* CN10K NIX Receive queue context structure */
+struct nix_cn10k_rq_ctx_s {
+	u64 ena			: 1;
+	u64 sso_ena		: 1;
+	u64 ipsech_ena		: 1;
+	u64 ena_wqwd		: 1;
+	u64 cq			: 20;
+	u64 rsvd_36_24		: 13;
+	u64 lenerr_dis		: 1;
+	u64 csum_il4_dis	: 1;
+	u64 csum_ol4_dis	: 1;
+	u64 len_il4_dis		: 1;
+	u64 len_il3_dis		: 1;
+	u64 len_ol4_dis		: 1;
+	u64 len_ol3_dis		: 1;
+	u64 wqe_aura		: 20;
+	u64 spb_aura		: 20;
+	u64 lpb_aura		: 20;
+	u64 sso_grp		: 10;
+	u64 sso_tt		: 2;
+	u64 pb_caching		: 2;
+	u64 wqe_caching		: 1;
+	u64 xqe_drop_ena	: 1;
+	u64 spb_drop_ena	: 1;
+	u64 lpb_drop_ena	: 1;
+	u64 pb_stashing		: 1;
+	u64 ipsecd_drop_ena	: 1;
+	u64 chi_ena		: 1;
+	u64 rsvd_127_125	: 3;
+	u64 band_prof_id	: 10; /* W2 */
+	u64 rsvd_138		: 1;
+	u64 policer_ena		: 1;
+	u64 spb_sizem1		: 6;
+	u64 wqe_skip		: 2;
+	u64 rsvd_150_148	: 3;
+	u64 spb_ena		: 1;
+	u64 lpb_sizem1		: 12;
+	u64 first_skip		: 7;
+	u64 rsvd_171		: 1;
+	u64 later_skip		: 6;
+	u64 xqe_imm_size	: 6;
+	u64 rsvd_189_184	: 6;
+	u64 xqe_imm_copy	: 1;
+	u64 xqe_hdr_split	: 1;
+	u64 xqe_drop		: 8; /* W3 */
+	u64 xqe_pass		: 8;
+	u64 wqe_pool_drop	: 8;
+	u64 wqe_pool_pass	: 8;
+	u64 spb_aura_drop	: 8;
+	u64 spb_aura_pass	: 8;
+	u64 spb_pool_drop	: 8;
+	u64 spb_pool_pass	: 8;
+	u64 lpb_aura_drop	: 8; /* W4 */
+	u64 lpb_aura_pass	: 8;
+	u64 lpb_pool_drop	: 8;
+	u64 lpb_pool_pass	: 8;
+	u64 rsvd_291_288	: 4;
+	u64 rq_int		: 8;
+	u64 rq_int_ena		: 8;
+	u64 qint_idx		: 7;
+	u64 rsvd_319_315	: 5;
+	u64 ltag		: 24; /* W5 */
+	u64 good_utag		: 8;
+	u64 bad_utag		: 8;
+	u64 flow_tagw		: 6;
+	u64 ipsec_vwqe		: 1;
+	u64 vwqe_ena		: 1;
+	u64 vwqe_wait		: 8;
+	u64 max_vsize_exp	: 4;
+	u64 vwqe_skip		: 2;
+	u64 rsvd_383_382	: 2;
+	u64 octs		: 48; /* W6 */
+	u64 rsvd_447_432	: 16;
+	u64 pkts		: 48; /* W7 */
+	u64 rsvd_511_496	: 16;
+	u64 drop_octs		: 48; /* W8 */
+	u64 rsvd_575_560	: 16;
+	u64 drop_pkts		: 48; /* W9 */
+	u64 rsvd_639_624	: 16;
+	u64 re_pkts		: 48; /* W10 */
+	u64 rsvd_703_688	: 16;
+	u64 rsvd_767_704;		/* W11 */
+	u64 rsvd_831_768;		/* W12 */
+	u64 rsvd_895_832;		/* W13 */
+	u64 rsvd_959_896;		/* W14 */
+	u64 rsvd_1023_960;		/* W15 */
+};
+
+/* CN10K NIX Send queue context structure */
+struct nix_cn10k_sq_ctx_s {
+	u64 ena                   : 1;
+	u64 qint_idx              : 6;
+	u64 substream             : 20;
+	u64 sdp_mcast             : 1;
+	u64 cq                    : 20;
+	u64 sqe_way_mask          : 16;
+	u64 smq                   : 10; /* W1 */
+	u64 cq_ena                : 1;
+	u64 xoff                  : 1;
+	u64 sso_ena               : 1;
+	u64 smq_rr_weight         : 14;
+	u64 default_chan          : 12;
+	u64 sqb_count             : 16;
+	u64 rsvd_120_119          : 2;
+	u64 smq_rr_count_lb       : 7;
+	u64 smq_rr_count_ub       : 25; /* W2 */
+	u64 sqb_aura              : 20;
+	u64 sq_int                : 8;
+	u64 sq_int_ena            : 8;
+	u64 sqe_stype             : 2;
+	u64 rsvd_191              : 1;
+	u64 max_sqe_size          : 2; /* W3 */
+	u64 cq_limit              : 8;
+	u64 lmt_dis               : 1;
+	u64 mnq_dis               : 1;
+	u64 smq_next_sq           : 20;
+	u64 smq_lso_segnum        : 8;
+	u64 tail_offset           : 6;
+	u64 smenq_offset          : 6;
+	u64 head_offset           : 6;
+	u64 smenq_next_sqb_vld    : 1;
+	u64 smq_pend              : 1;
+	u64 smq_next_sq_vld       : 1;
+	u64 rsvd_255_253          : 3;
+	u64 next_sqb              : 64; /* W4 */
+	u64 tail_sqb              : 64; /* W5 */
+	u64 smenq_sqb             : 64; /* W6 */
+	u64 smenq_next_sqb        : 64; /* W7 */
+	u64 head_sqb              : 64; /* W8 */
+	u64 rsvd_583_576          : 8;  /* W9 */
+	u64 vfi_lso_total         : 18;
+	u64 vfi_lso_sizem1        : 3;
+	u64 vfi_lso_sb            : 8;
+	u64 vfi_lso_mps           : 14;
+	u64 vfi_lso_vlan0_ins_ena : 1;
+	u64 vfi_lso_vlan1_ins_ena : 1;
+	u64 vfi_lso_vld           : 1;
+	u64 rsvd_639_630          : 10;
+	u64 scm_lso_rem           : 18; /* W10 */
+	u64 rsvd_703_658          : 46;
+	u64 octs                  : 48; /* W11 */
+	u64 rsvd_767_752          : 16;
+	u64 pkts                  : 48; /* W12 */
+	u64 rsvd_831_816          : 16;
+	u64 rsvd_895_832          : 64; /* W13 */
+	u64 dropped_octs          : 48;
+	u64 rsvd_959_944          : 16;
+	u64 dropped_pkts          : 48;
+	u64 rsvd_1023_1008        : 16;
 };
 
 /* NIX Receive queue context structure */

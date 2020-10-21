@@ -310,7 +310,9 @@ M(NIX_GET_MAC_ADDR, 0x8018, nix_get_mac_addr, msg_req, nix_get_mac_addr_rsp) \
 M(NIX_INLINE_IPSEC_CFG, 0x8019, nix_inline_ipsec_cfg,			\
 				nix_inline_ipsec_cfg, msg_rsp)		\
 M(NIX_INLINE_IPSEC_LF_CFG, 0x801a, nix_inline_ipsec_lf_cfg,		\
-				nix_inline_ipsec_lf_cfg, msg_rsp)
+				nix_inline_ipsec_lf_cfg, msg_rsp)	\
+M(NIX_CN10K_AQ_ENQ,	0x801b, nix_cn10k_aq_enq, nix_cn10k_aq_enq_req, \
+				nix_cn10k_aq_enq_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -782,6 +784,39 @@ struct nix_lf_free_req {
 #define NIX_LF_DISABLE_FLOWS		BIT_ULL(0)
 #define NIX_LF_DONT_FREE_TX_VTAG	BIT_ULL(1)
 	u64 flags;
+};
+
+/* CN10K NIX AQ enqueue msg */
+struct nix_cn10k_aq_enq_req {
+	struct mbox_msghdr hdr;
+	u32  qidx;
+	u8 ctype;
+	u8 op;
+	union {
+		struct nix_cn10k_rq_ctx_s rq;
+		struct nix_cn10k_sq_ctx_s sq;
+		struct nix_cq_ctx_s cq;
+		struct nix_rsse_s   rss;
+		struct nix_rx_mce_s mce;
+	};
+	union {
+		struct nix_cn10k_rq_ctx_s rq_mask;
+		struct nix_cn10k_sq_ctx_s sq_mask;
+		struct nix_cq_ctx_s cq_mask;
+		struct nix_rsse_s   rss_mask;
+		struct nix_rx_mce_s mce_mask;
+	};
+};
+
+struct nix_cn10k_aq_enq_rsp {
+	struct mbox_msghdr hdr;
+	union {
+		struct nix_cn10k_rq_ctx_s rq;
+		struct nix_cn10k_sq_ctx_s sq;
+		struct nix_cq_ctx_s cq;
+		struct nix_rsse_s   rss;
+		struct nix_rx_mce_s mce;
+	};
 };
 
 /* NIX AQ enqueue msg */
