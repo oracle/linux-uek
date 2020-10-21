@@ -196,8 +196,8 @@ static int ree_reex_programming(struct rvu *rvu, struct rvu_block *block,
 	return 0;
 }
 
-static int ree_aq_verify_type6_completion(struct rvu *rvu,
-					  struct rvu_block *block)
+static int ree_afaq_done_ack(struct rvu *rvu, struct rvu_block *block,
+			     bool poll)
 {
 	u64 val;
 	int err;
@@ -207,14 +207,17 @@ static int ree_aq_verify_type6_completion(struct rvu *rvu,
 	 * the value of Done count
 	 * Note that no interrupts are used for this counters
 	 */
-	err = rvu_poll_reg(rvu, block->addr, REE_AF_AQ_DONE,
-			   0x1, false);
-	if (err) {
-		dev_err(rvu->dev, "REE AFAQ done failed");
-		return err;
+	if (poll) {
+		err = rvu_poll_reg(rvu, block->addr, REE_AF_AQ_DONE,
+				   0x1, false);
+		if (err) {
+			dev_err(rvu->dev, "REE AFAQ done failed");
+			return err;
+		}
 	}
 	val = rvu_read64(rvu, block->addr, REE_AF_AQ_DONE);
-	rvu_write64(rvu, block->addr, REE_AF_AQ_DONE_ACK, val);
+	if (val)
+		rvu_write64(rvu, block->addr, REE_AF_AQ_DONE_ACK, val);
 	return 0;
 }
 
@@ -599,7 +602,7 @@ int ree_rof_data_enq(struct rvu *rvu, struct rvu_block *block,
 		}
 	}
 	/* Verify completion of type 6 */
-	return ree_aq_verify_type6_completion(rvu, block);
+	return ree_afaq_done_ack(rvu, block, true);
 }
 
 static
@@ -609,15 +612,13 @@ int ree_rule_db_prog(struct rvu *rvu, struct rvu_block *block,
 	/* db_block_len holds number of ROF instruction in a memory block */
 	u32 db_block_len = (REE_RULE_DB_ALLOC_SIZE >> 4);
 	struct ree_rule_db_entry *rule_db_ptr;
-	int rule_db_len, err = 0, db_block = 0;
+	int rule_db_len, ret = 0, db_block = 0;
 	u64 reg;
 
-	/* If it is incremental programming, stop fetching new instructions */
-	if (inc) {
-		err = ree_graceful_disable_control(rvu, block, true);
-		if (err)
-			return err;
-	}
+	/* Stop fetching new instructions while programming*/
+	ret = ree_graceful_disable_control(rvu, block, true);
+	if (ret)
+		return ret;
 
 	/* Force Clock ON
 	 * Force bits should be set throughout REEX programming, whether full
@@ -625,31 +626,40 @@ int ree_rule_db_prog(struct rvu *rvu, struct rvu_block *block,
 	 */
 	ree_reex_force_clock(rvu, block, true);
 
+	/* Ack afaq done count
+	 * In case previous programming timed-out before receiving done
+	 * indication. Before programming process starts acknowledge all
+	 * existing done counts from previous run
+	 */
+	ret = ree_afaq_done_ack(rvu, block, false);
+	if (ret)
+		goto err;
+
 	/* Reinitialize REEX block for programming */
-	err = ree_reex_programming(rvu, block, inc);
-	if (err)
-		return err;
+	ret = ree_reex_programming(rvu, block, inc);
+	if (ret)
+		goto err;
 
 	/* Parse ROF data - validation part */
 	rule_db_len = ree->ruledb_len;
 	rule_db_ptr = (struct ree_rule_db_entry *)ree->ruledb[db_block];
-	err = ree_rof_data_validation(rvu, block->addr, ree, &db_block,
+	ret = ree_rof_data_validation(rvu, block->addr, ree, &db_block,
 				      &rule_db_ptr, &rule_db_len,
 				      &db_block_len);
-	if (err)
-		return err;
+	if (ret)
+		goto err;
 
 	/* Parse ROF data - data part */
-	err = ree_rof_data_enq(rvu, block, ree, &rule_db_ptr, &rule_db_len,
+	ret = ree_rof_data_enq(rvu, block, ree, &rule_db_ptr, &rule_db_len,
 			       &db_block, &db_block_len);
-	if (err)
-		return err;
+	if (ret)
+		goto err;
 	/* Parse ROF data - validation part */
-	err = ree_rof_data_validation(rvu, block->addr, ree, &db_block,
+	ret = ree_rof_data_validation(rvu, block->addr, ree, &db_block,
 				      &rule_db_ptr, &rule_db_len,
 				      &db_block_len);
-	if (err)
-		return err;
+	if (ret)
+		goto err;
 
 	/* REEX Programming DONE: clear GO bit */
 	reg = rvu_read64(rvu, block->addr, REE_AF_REEXR_CTRL);
@@ -658,17 +668,14 @@ int ree_rule_db_prog(struct rvu *rvu, struct rvu_block *block,
 
 	ree_reex_enable(rvu, block);
 
+err:
 	/* Force Clock OFF */
 	ree_reex_force_clock(rvu, block, false);
 
-	/* If it is incremental programming, resume fetching instructions */
-	if (inc) {
-		err = ree_graceful_disable_control(rvu, block, false);
-		if (err)
-			return err;
-	}
+	/* Resume fetching instructions */
+	ree_graceful_disable_control(rvu, block, false);
 
-	return 0;
+	return ret;
 }
 
 int rvu_mbox_handler_ree_rule_db_prog(struct rvu *rvu,
@@ -1116,8 +1123,8 @@ static int rvu_ree_init_block(struct rvu *rvu, int blkaddr)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
+	int ret = 0, blkid = 0;
 	struct ree_rsrc *ree;
-	int err, blkid = 0;
 	u64 val;
 
 	if (!is_block_implemented(rvu->hw, blkaddr))
@@ -1129,12 +1136,12 @@ static int rvu_ree_init_block(struct rvu *rvu, int blkaddr)
 	ree = &rvu->hw->ree[blkid];
 
 	/* Administrative instruction queue allocation */
-	err = ree_aq_inst_alloc(rvu, &block->aq,
+	ret = ree_aq_inst_alloc(rvu, &block->aq,
 				REE_AQ_SIZE,
 				sizeof(struct ree_af_aq_inst_s),
 				0);
-	if (err)
-		return err;
+	if (ret)
+		return ret;
 
 	/* Administrative instruction queue address */
 	rvu_write64(rvu, block->addr, REE_AF_AQ_SBUF_ADDR,
@@ -1175,17 +1182,18 @@ static int rvu_ree_init_block(struct rvu *rvu, int blkaddr)
 	rvu_write64(rvu, block->addr, REE_AF_REEXM_CTRL, 0x0);
 
 	/* REEX Poll MAIN_CSR INIT_DONE */
-	err = rvu_poll_reg(rvu, block->addr, REE_AF_REEXM_STATUS,
+	ret = rvu_poll_reg(rvu, block->addr, REE_AF_REEXM_STATUS,
 			   BIT_ULL(0), false);
-	if (err) {
+	if (ret) {
 		dev_err(rvu->dev, "REE reexm poll for init done failed");
-		return err;
+		goto err;
 	}
 
+err:
 	/* Force Clock OFF */
 	ree_reex_force_clock(rvu, block, false);
 
-	return 0;
+	return ret;
 }
 
 int rvu_ree_init(struct rvu *rvu)
