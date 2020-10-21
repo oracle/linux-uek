@@ -66,6 +66,7 @@ bool __kernel_is_locked_down(const char *what, bool first)
 			    (strcmp(what, "debugfs") == 0) ||
 			    (strcmp(what, "Use of kprobes") == 0) ||
 			    (strcmp(what, "perf") == 0) ||
+			    (strcmp(what, "/proc/kcore") == 0) ||
 			    (strcmp(what, "DTRACE") == 0)) {
 				return false;
 			}
