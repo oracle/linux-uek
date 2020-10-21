@@ -582,10 +582,8 @@ static int mlx4_ib_query_device(struct ib_device *ibdev,
 
 	if (uhw->outlen >= resp.response_length + sizeof(resp.hca_core_clock_offset)) {
 		resp.response_length += sizeof(resp.hca_core_clock_offset);
-		if (!err && !mlx4_is_slave(dev->dev)) {
-			resp.comp_mask |= MLX4_IB_QUERY_DEV_RESP_MASK_CORE_CLOCK_OFFSET;
+		if (!err && !mlx4_is_slave(dev->dev))
 			resp.hca_core_clock_offset = clock_params.offset % PAGE_SIZE;
-		}
 	}
 
 	if (uhw->outlen >= resp.response_length +
