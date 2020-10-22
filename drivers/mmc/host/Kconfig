@@ -185,6 +185,19 @@ config MMC_SDHCI_CADENCE
 
 	  If unsure, say N.
 
+config MMC_SDHCI_CADENCE_ELBA
+	tristate "SDHCI support for the Pensando/Cadence SD/SDIO/eMMC controller"
+	depends on ARCH_PENSANDO_ELBA_SOC
+	depends on MMC_SDHCI
+	depends on OF
+        depends on MMC_SDHCI_CADENCE
+	depends on MMC_SDHCI_PLTFM
+        select MMC_SDHCI_IO_ACCESSORS
+	help
+	  This selects the Pensando/Cadence SD/SDIO/eMMC controller.
+	  If you have a controller with this interface, say Y or M here.
+	  If unsure, say N.
+
 config MMC_SDHCI_CNS3XXX
 	tristate "SDHCI support on the Cavium Networks CNS3xxx SoC"
 	depends on ARCH_CNS3XXX
