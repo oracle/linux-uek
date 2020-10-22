@@ -165,6 +165,12 @@ config GPIO_DWAPB
 	  Say Y or M here to build support for the Synopsys DesignWare APB
 	  GPIO block.
 
+config GPIO_ELBA_SPICS
+	bool "Pensando Elba SPI chip-select"
+	depends on ARCH_PENSANDO_ELBA_SOC
+	help
+	  Say yes here to support the Pensndo Elba SoC SPI chip-select driver
+
 config GPIO_EM
 	tristate "Emma Mobile GPIO"
 	depends on (ARCH_EMEV2 || COMPILE_TEST) && OF_GPIO
