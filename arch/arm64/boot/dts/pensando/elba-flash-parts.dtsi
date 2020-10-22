@@ -1,0 +1,64 @@
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		partition@0 {
+			label = "flash";
+			reg = <0x00010000 0x0fff0000>;
+		};
+		partition@100000 {
+			label = "boot0";
+			reg = <0x00100000 0x00080000>;
+		};
+		partition@180000 {
+			label = "golduboot";
+			reg = <0x00180000 0x00200000>;
+		};
+		partition@400000 {
+			label = "goldfw";
+			reg = <0x00400000 0x03c00000>;
+		};
+		partition@4010000 {
+			label = "fwmap";
+			reg = <0x04010000 0x00020000>;
+		};
+		partition@4030000 {
+			label = "fwsel";
+			reg = <0x04030000 0x00020000>;
+		};
+		partition@4090000 {
+			label = "bootlog";
+			reg = <0x04090000 0x00020000>;
+		};
+		partition@40b0000 {
+			label = "panicbuf";
+			reg = <0x040b0000 0x00020000>;
+		};
+		partition@4200000 {
+			label = "uboota";
+			reg = <0x04200000 0x00400000>;
+		};
+		partition@4600000 {
+			label = "ubootb";
+			reg = <0x04600000 0x00400000>;
+		};
+		partition@4a00000 {
+			label = "mainfwa";
+			reg = <0x04a00000 0x01000000>;
+		};
+		partition@5a00000 {
+			label = "mainfwb";
+			reg = <0x05a00000 0x01000000>;
+		};
+		partition@8000000 {
+			label = "diagfw";
+			reg = <0x08000000 0x07fe0000>;
+		};
+	};
+};
+
+&panic {
+	status = "okay";
+	reg = <0x0 0x740b0000 0x0 0x00020000>;
+};
