@@ -617,7 +617,8 @@ extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
 extern void rds_ib_flush_neigh(struct net *net,
 			       struct rds_connection *conn,
-			       bool flush_local_peer);
+			       bool flush_local_peer,
+			       bool force);
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
 int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
 
