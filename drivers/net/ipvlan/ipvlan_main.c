@@ -634,7 +634,6 @@ int ipvlan_link_new(struct net *src_net, struct net_device *dev,
 
 unlink_netdev:
 	netdev_upper_dev_unlink(phy_dev, dev);
-unregister_netdev:
 	unregister_netdevice(dev);
 remove_ida:
 	ida_simple_remove(&port->ida, dev->dev_id);
