@@ -145,7 +145,9 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			/* These events might indicate the IP being moved,
 			 * hence flush the address
 			 */
-			rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
+			rds_ib_flush_neigh(&init_net, conn,
+					   flush_local_peer,
+					   event->event == RDMA_CM_EVENT_ADDR_CHANGE);
 		rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
 			conn, ret);
 		goto out;
@@ -224,7 +226,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
+		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
 		rds_rtd_ptr(RDS_RTD_ERR,
 			    "ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
@@ -240,7 +242,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
+		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
 		rds_rtd_ptr(RDS_RTD_ERR,
 			    "ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
@@ -254,7 +256,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
+		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
 		rds_rtd_ptr(RDS_RTD_ERR,
 			    "CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
@@ -266,7 +268,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_REJECTED:
 		/* May be due to ARP cache containing an incorrect dmac, hence flush it */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
+		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
 		err = (int *)event->param.conn.private_data;
 
@@ -312,7 +314,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
+		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, true);
 
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
 			    "ADDR_CHANGE event <%pI6c,%pI6c>\n",
@@ -327,7 +329,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
+		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
 
 		rds_rtd_ptr(RDS_RTD_CM,
 			    "DISCONNECT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
