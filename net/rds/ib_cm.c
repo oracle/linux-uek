@@ -1467,9 +1467,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	/*
 	 * The connection request may occur while the
 	 * previous connection exist, e.g. in case of failover.
-	 * But as connections may be initiated simultaneously
-	 * by both hosts, we have a random backoff mechanism -
-	 * see the comment above rds_queue_reconnect()
 	 */
 	mutex_lock(&conn->c_cm_lock);
 	ic = conn->c_transport_data;
