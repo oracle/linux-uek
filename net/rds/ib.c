@@ -1444,7 +1444,8 @@ enum {
 };
 
 static void __flush_neigh_conn(struct net *net,
-			       struct rds_connection *conn)
+			       struct rds_connection *conn,
+			       bool force)
 {
 	struct sockaddr_nl nlsa = { .nl_family = AF_NETLINK };
 	u64 timenow = jiffies_to_msecs(get_jiffies_64());
@@ -1468,7 +1469,8 @@ static void __flush_neigh_conn(struct net *net,
 	 * that interface are notified.
 	 */
 	if (conn->c_base_conn) {
-		if ((timenow - READ_ONCE(conn->c_base_conn->last_flush_ms)) <
+		if (!force &&
+		    (timenow - READ_ONCE(conn->c_base_conn->last_flush_ms)) <
 		    neigh_flush_interval)
 			return;
 		WRITE_ONCE(conn->c_base_conn->last_flush_ms, timenow);
@@ -1549,7 +1551,9 @@ static void __flush_neigh_conn(struct net *net,
  * of conn
  */
 void rds_ib_flush_neigh(struct net *net,
-			struct rds_connection *conn, bool flush_local_peer)
+			struct rds_connection *conn,
+			bool flush_local_peer,
+			bool force)
 {
 	if (flush_local_peer && conn->c_loopback) {
 		struct rds_connection *peer;
@@ -1560,9 +1564,9 @@ void rds_ib_flush_neigh(struct net *net,
 				     conn->c_trans, conn->c_tos,
 				     0);
 		if (peer)
-			__flush_neigh_conn(net, peer);
+			__flush_neigh_conn(net, peer, force);
 	} else {
-		__flush_neigh_conn(net, conn);
+		__flush_neigh_conn(net, conn, force);
 	}
 }
 
