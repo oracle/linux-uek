@@ -120,8 +120,10 @@ static void otx2_get_qset_strings(struct otx2_nic *pfvf, u8 **data, int qset)
 static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
+	char *mac_name;
 	int stats;
 
+	mac_name =  (pfvf->hw.mac_features & RVU_MAC_RPM) ? "rpm" : "cgx";
 	if (sset == ETH_SS_PRIV_FLAGS) {
 		memcpy(data, otx2_priv_flags_strings,
 		       ARRAY_SIZE(otx2_priv_flags_strings) * ETH_GSTRING_LEN);
@@ -144,12 +146,12 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 	otx2_get_qset_strings(pfvf, &data, 0);
 
 	for (stats = 0; stats < CGX_RX_STATS_COUNT; stats++) {
-		sprintf(data, "cgx_rxstat%d: ", stats);
+		sprintf(data, "%s_rxstat%d: ", mac_name, stats);
 		data += ETH_GSTRING_LEN;
 	}
 
 	for (stats = 0; stats < CGX_TX_STATS_COUNT; stats++) {
-		sprintf(data, "cgx_txstat%d: ", stats);
+		sprintf(data, "%s_txstat%d: ", mac_name, stats);
 		data += ETH_GSTRING_LEN;
 	}
 
@@ -1400,6 +1402,10 @@ static int otx2_set_priv_flags(struct net_device *netdev, u32 new_flags)
 					       OTX2_EDSA_HDR_LEN, enable);
 		break;
 	case OTX2_PRIV_FLAG_HIGIG2_HDR:
+		/* Check if underlying MAC support HIGIG2 */
+		if (!(pfvf->hw.mac_features & RVU_LMAC_FEAT_HIGIG2))
+			return -EOPNOTSUPP;
+
 		if (enable && OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
 			netdev_info(netdev,
 				    "Disable mutually exclusive modes edsa/fdsa\n");
