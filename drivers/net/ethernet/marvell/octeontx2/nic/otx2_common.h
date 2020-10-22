@@ -216,6 +216,8 @@ struct otx2_hw {
 	void __iomem		*lmt_base;
 	u64			*npa_lmt_base;
 	u64			*nix_lmt_base;
+	/* Supported MAC features */
+	u64			mac_features;
 };
 
 struct otx2_ptp {
@@ -896,4 +898,5 @@ int otx2smqvf_probe(struct otx2_nic *vf);
 int otx2smqvf_remove(struct otx2_nic *vf);
 
 bool otx2_xdp_sq_append_pkt(struct otx2_nic *pfvf, u64 iova, int len, u16 qidx);
+int otx2_cgx_features_get(struct otx2_nic *pfvf);
 #endif /* OTX2_COMMON_H */
