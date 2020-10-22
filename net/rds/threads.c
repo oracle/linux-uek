@@ -196,24 +196,6 @@ static bool rds_conn_is_active_peer(struct rds_connection *conn)
 	return !passive;
 }
 
-/*
- * This random exponential backoff is relied on to eventually resolve racing
- * connects.
- *
- * If connect attempts race then both parties drop both connections and come
- * here to wait for a random amount of time before trying again.  Eventually
- * the backoff range will be so much greater than the time it takes to
- * establish a connection that one of the pair will establish the connection
- * before the other's random delay fires.
- *
- * Connection attempts that arrive while a connection is already established
- * are also considered to be racing connects.  This lets a connection from
- * a rebooted machine replace an existing stale connection before the transport
- * notices that the connection has failed.
- *
- * We should *always* start with a random backoff; otherwise a broken connection
- * will always take several iterations to be re-established.
- */
 void rds_queue_reconnect(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
