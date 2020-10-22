@@ -23,6 +23,7 @@
 #include <linux/of_device.h>
 
 #include "sdhci-pltfm.h"
+#include "sdhci-cadence.h"
 
 /* HRS - Host Register Set (specific to Cadence) */
 #define SDHCI_CDNS_HRS04		0x10		/* PHY access port */
@@ -67,23 +68,6 @@
  * but I am not quite sure if it is official.  Use only 0 to 39 for safety.
  */
 #define SDHCI_CDNS_MAX_TUNING_LOOP	40
-
-struct sdhci_cdns_phy_param {
-	u8 addr;
-	u8 data;
-};
-
-struct sdhci_cdns_priv {
-	void __iomem *hrs_addr;
-	bool enhanced_strobe;
-	unsigned int nr_phy_params;
-	struct sdhci_cdns_phy_param phy_params[0];
-};
-
-struct sdhci_cdns_phy_cfg {
-	const char *property;
-	u8 addr;
-};
 
 static const struct sdhci_cdns_phy_cfg sdhci_cdns_phy_cfgs[] = {
 	{ "cdns,phy-input-delay-sd-highspeed", SDHCI_CDNS_PHY_DLY_SD_HS, },
@@ -176,14 +160,7 @@ static int sdhci_cdns_phy_init(struct sdhci_cdns_priv *priv)
 	return 0;
 }
 
-static void *sdhci_cdns_priv(struct sdhci_host *host)
-{
-	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-
-	return sdhci_pltfm_priv(pltfm_host);
-}
-
-static unsigned int sdhci_cdns_get_timeout_clock(struct sdhci_host *host)
+unsigned int sdhci_cdns_get_timeout_clock(struct sdhci_host *host)
 {
 	/*
 	 * Cadence's spec says the Timeout Clock Frequency is the same as the
@@ -211,7 +188,7 @@ static u32 sdhci_cdns_get_emmc_mode(struct sdhci_cdns_priv *priv)
 	return FIELD_GET(SDHCI_CDNS_HRS06_MODE, tmp);
 }
 
-static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
+void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 					 unsigned int timing)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
@@ -253,13 +230,17 @@ static const struct sdhci_ops sdhci_cdns_ops = {
 	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
 };
 
-static const struct sdhci_pltfm_data sdhci_cdns_uniphier_pltfm_data = {
-	.ops = &sdhci_cdns_ops,
-	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
+static const struct sdhci_cdns_drv_data sdhci_cdns_uniphier_drv_data = {
+	.pltfm_data = {
+		.ops = &sdhci_cdns_ops,
+		.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
+	},
 };
 
-static const struct sdhci_pltfm_data sdhci_cdns_pltfm_data = {
-	.ops = &sdhci_cdns_ops,
+static const struct sdhci_cdns_drv_data sdhci_cdns_drv_data = {
+	.pltfm_data = {
+		.ops = &sdhci_cdns_ops,
+	},
 };
 
 static int sdhci_cdns_set_tune_val(struct sdhci_host *host, unsigned int val)
@@ -356,8 +337,8 @@ static void sdhci_cdns_hs400_enhanced_strobe(struct mmc_host *mmc,
 
 static int sdhci_cdns_probe(struct platform_device *pdev)
 {
+	const struct sdhci_cdns_drv_data *data;
 	struct sdhci_host *host;
-	const struct sdhci_pltfm_data *data;
 	struct sdhci_pltfm_host *pltfm_host;
 	struct sdhci_cdns_priv *priv;
 	struct clk *clk;
@@ -375,10 +356,10 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 
 	data = of_device_get_match_data(dev);
 	if (!data)
-		data = &sdhci_cdns_pltfm_data;
+		data = &sdhci_cdns_drv_data;
 
 	nr_phy_params = sdhci_cdns_phy_param_count(dev->of_node);
-	host = sdhci_pltfm_init(pdev, data,
+	host = sdhci_pltfm_init(pdev, &data->pltfm_data,
 				struct_size(priv, phy_params, nr_phy_params));
 	if (IS_ERR(host)) {
 		ret = PTR_ERR(host);
@@ -393,7 +374,8 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	priv->hrs_addr = host->ioaddr;
 	priv->enhanced_strobe = false;
 	host->ioaddr += SDHCI_CDNS_SRS_BASE;
-	host->mmc_host_ops.execute_tuning = sdhci_cdns_execute_tuning;
+	if (!data->no_retune)
+		host->mmc_host_ops.execute_tuning = sdhci_cdns_execute_tuning;
 	host->mmc_host_ops.hs400_enhanced_strobe =
 				sdhci_cdns_hs400_enhanced_strobe;
 
@@ -408,6 +390,12 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	ret = sdhci_cdns_phy_init(priv);
 	if (ret)
 		goto free;
+
+	if (data->init) {
+		ret = data->init(pdev);
+		if (ret)
+			goto free;
+	}
 
 	ret = sdhci_add_host(host);
 	if (ret)
@@ -458,8 +446,14 @@ static const struct dev_pm_ops sdhci_cdns_pm_ops = {
 static const struct of_device_id sdhci_cdns_match[] = {
 	{
 		.compatible = "socionext,uniphier-sd4hc",
-		.data = &sdhci_cdns_uniphier_pltfm_data,
+		.data = &sdhci_cdns_uniphier_drv_data,
 	},
+#ifdef CONFIG_MMC_SDHCI_CADENCE_ELBA
+	{
+		.compatible = "pensando,elba-emmc",
+		.data = &sdhci_elba_drv_data
+	},
+#endif
 	{ .compatible = "cdns,sd4hc" },
 	{ /* sentinel */ }
 };
