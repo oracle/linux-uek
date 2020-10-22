@@ -17,9 +17,11 @@
 #include "mbox.h"
 #include "npc.h"
 #include "rvu_validation.h"
+#include "rvu_reg.h"
 
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
+#define	PCI_DEVID_OCTEONTX2_LBK			0xA061
 
 /* Subsystem Device ID */
 #define PCI_SUBSYS_DEVID_98XX                  0xB100
@@ -394,6 +396,7 @@ struct hw_cap {
 	bool	nix_tx_link_bp;		 /* Can link backpressure TL queues ? */
 	bool	nix_rx_multicast;	 /* Rx packet replication support */
 	bool	per_pf_mbox_regs; /* PF mbox specified in per PF registers ? */
+	bool	programmable_chans; /* Channels programmable ? */
 };
 
 struct rvu_hwinfo {
@@ -402,9 +405,14 @@ struct rvu_hwinfo {
 	u16	max_vfs_per_pf; /* Max VFs that can be attached to a PF */
 	u8	cgx;
 	u8	lmac_per_cgx;
+	u16	cgx_chan_base;	/* CGX base channel number */
+	u16	lbk_chan_base;	/* LBK base channel number */
+	u16	sdp_chan_base;	/* SDP base channel number */
+	u16	cpt_chan_base;	/* CPT base channel number */
 	u8	cgx_links;
 	u8	lbk_links;
 	u8	sdp_links;
+	u8	cpt_links;	/* Number of CPT links */
 	u8	npc_kpus;          /* No of parser units */
 	u8	npc_pkinds;        /* No of port kinds */
 	u8	npc_intfs;         /* No of interfaces */
@@ -594,6 +602,48 @@ static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
 	return !(cgx_id && !(id == PCI_SUBSYS_DEVID_96XX ||
 			     id == PCI_SUBSYS_DEVID_98XX ||
 			     id == PCI_SUBSYS_DEVID_CN10K_A));
+}
+
+static inline u16 rvu_nix_chan_cgx(struct rvu *rvu, u8 cgxid,
+				   u8 lmacid, u8 chan)
+{
+	u64 nix_const = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_CONST);
+	u16 cgx_chans = nix_const & 0xFFULL;
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	if (!hw->cap.programmable_chans)
+		return NIX_CHAN_CGX_LMAC_CHX(cgxid, lmacid, chan);
+
+	return rvu->hw->cgx_chan_base +
+		(cgxid * hw->lmac_per_cgx + lmacid) * cgx_chans + chan;
+}
+
+static inline u16 rvu_nix_chan_lbk(struct rvu *rvu, u8 lbkid,
+				   u8 chan)
+{
+	u64 nix_const = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_CONST);
+	u16 lbk_chans = (nix_const >> 16) & 0xFFULL;
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	if (!hw->cap.programmable_chans)
+		return NIX_CHAN_LBK_CHX(lbkid, chan);
+
+	return rvu->hw->lbk_chan_base + lbkid * lbk_chans + chan;
+}
+
+static inline u16 rvu_nix_chan_sdp(struct rvu *rvu, u8 chan)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	if (!hw->cap.programmable_chans)
+		return NIX_CHAN_SDP_CHX(chan);
+
+	return hw->sdp_chan_base + chan;
+}
+
+static inline u16 rvu_nix_chan_cpt(struct rvu *rvu, u8 chan)
+{
+	return rvu->hw->cpt_chan_base + chan;
 }
 
 /* Function Prototypes
@@ -807,4 +857,9 @@ bool is_parse_nibble_config_valid(struct rvu *rvu,
 				  struct npc_mcam_kex *mcam_kex);
 int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 			   u64 pkind);
+
+/* CN10K RVU */
+int rvu_set_channels_base(struct rvu *rvu);
+void rvu_program_channels(struct rvu *rvu);
+
 #endif /* RVU_H */
