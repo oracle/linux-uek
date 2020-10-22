@@ -425,7 +425,8 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
-	complete(rds_ibdev->rid_dev_rem_complete);
+	if (rds_ibdev->rid_dev_rem_complete)
+		complete(rds_ibdev->rid_dev_rem_complete);
 	kfree(rds_ibdev);
 }
 
