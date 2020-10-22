@@ -210,4 +210,6 @@ u8 cgx_lmac_get_p2x(int cgx_id, int lmac_id);
 u64 cgx_features_get(void *cgxd);
 struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd);
 int cgx_get_nr_lmacs(void *cgxd);
+void cgx_lmac_write(int cgx_id, int lmac_id, u64 offset, u64 val);
+u64 cgx_lmac_read(int cgx_id, int lmac_id, u64 offset);
 #endif /* CGX_H */

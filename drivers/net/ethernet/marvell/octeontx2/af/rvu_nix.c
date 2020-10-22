@@ -243,7 +243,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 				"PF_Func 0x%x: Invalid pkind\n", pcifunc);
 			return -EINVAL;
 		}
-		pfvf->rx_chan_base = NIX_CHAN_CGX_LMAC_CHX(cgx_id, lmac_id, 0);
+		pfvf->rx_chan_base = rvu_nix_chan_cgx(rvu, cgx_id, lmac_id, 0);
 		pfvf->tx_chan_base = pfvf->rx_chan_base;
 		pfvf->rx_chan_cnt = 1;
 		pfvf->tx_chan_cnt = 1;
@@ -277,10 +277,10 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 		 * loopback channels.Therefore if odd number of AF VFs are
 		 * enabled then the last VF remains with no pair.
 		 */
-		pfvf->rx_chan_base = NIX_CHAN_LBK_CHX(lbkid, vf);
+		pfvf->rx_chan_base = rvu_nix_chan_lbk(rvu, lbkid, vf);
 		pfvf->tx_chan_base = vf & 0x1 ?
-					NIX_CHAN_LBK_CHX(lbkid, vf - 1) :
-					NIX_CHAN_LBK_CHX(lbkid, vf + 1);
+					rvu_nix_chan_lbk(rvu, lbkid, vf - 1) :
+					rvu_nix_chan_lbk(rvu, lbkid, vf + 1);
 		pfvf->rx_chan_cnt = 1;
 		pfvf->tx_chan_cnt = 1;
 		rsp->tx_link = hw->cgx_links + lbkid;
@@ -289,7 +289,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 		break;
 	case NIX_INTF_TYPE_SDP:
 		/* Added single interface and single channel support for now */
-		pfvf->rx_chan_base = NIX_CHAN_SDP_CHX(0);
+		pfvf->rx_chan_base = rvu_nix_chan_sdp(rvu, 0);
 		pfvf->tx_chan_base = pfvf->rx_chan_base;
 		pfvf->rx_chan_cnt = 1;
 		pfvf->tx_chan_cnt = 1;
@@ -3747,9 +3747,7 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 	struct npc_lt_def_cfg *ltdefs;
 	int blkaddr = nix_hw->blkaddr;
 	struct rvu_block *block;
-	u16 cgx_lbk_links;
 	int err;
-	u64 cfg;
 
 	block = &hw->block[blkaddr];
 
@@ -3758,15 +3756,6 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 	err = nix_calibrate_x2p(rvu, blkaddr);
 	if (err)
 		return err;
-
-	/* Set num of links of each type */
-	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST);
-	hw->cgx = (cfg >> 12) & 0xF;
-	hw->lmac_per_cgx = (cfg >> 8) & 0xF;
-	hw->cgx_links = hw->cgx * hw->lmac_per_cgx;
-	hw->lbk_links = (cfg >> 24) & 0xF;
-	hw->sdp_links = 1;
-	cgx_lbk_links = hw->cgx_links + hw->lbk_links;
 
 	/* Initialize admin queue */
 	err = nix_aq_init(rvu, block);
@@ -3852,7 +3841,7 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 		if (err)
 			return err;
 
-		nix_hw->tx_credits = kcalloc(cgx_lbk_links,
+		nix_hw->tx_credits = kcalloc(hw->cgx_links + hw->lbk_links,
 					     sizeof(u64), GFP_KERNEL);
 		if (!nix_hw->tx_credits)
 			return -ENOMEM;
