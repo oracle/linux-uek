@@ -489,6 +489,7 @@
 #define SSO_AF_HWGRPX_TS_PC(a)		(0x200080 | (a) << 12)
 #define SSO_AF_HWGRPX_DS_PC(a)		(0x200090 | (a) << 12)
 #define SSO_AF_HWGRPX_DQ_PC(a)		(0x2000A0 | (a) << 12)
+#define SSO_AF_HWGRPX_LS_PC(a)		(0x2000C0 | (a) << 12)
 #define SSO_AF_HWGRPX_PAGE_CNT(a)	(0x200100 | (a) << 12)
 #define SSO_AF_IU_ACCNTX_CFG(a)		(0x50000 | (a) << 3)
 #define SSO_AF_IU_ACCNTX_RST(a)		(0x60000 | (a) << 3)
@@ -501,6 +502,7 @@
 #define SSO_AF_HWSX_ARB(a)		(0x400100 | (a) << 12)
 #define SSO_AF_HWSX_INV(a)		(0x400180 | (a) << 12)
 #define SSO_AF_HWSX_GMCTL(a)		(0x400200 | (a) << 12)
+#define SSO_AF_HWSX_LSW_CFG(a)		(0x400300 | (a) << 12)
 #define SSO_AF_HWSX_SX_GRPMSKX(a, b, c) \
 				(0x400400 | (a) << 12 | (b) << 5 | (c) << 3)
 #define SSO_AF_TAQX_LINK(a)		(0xc00000 | (a) << 3)
@@ -525,6 +527,8 @@
 #define SSO_AF_BFPN_DIGESTX(a)		(0x900400 | (a) << 3)
 #define SSO_AF_GRPDIS_DIGESTX(a)	(0x900600 | (a) << 3)
 
+#define SSO_AF_CONST1_NO_NSCHED		BIT_ULL(34)
+#define SSO_AF_CONST1_LSW		BIT_ULL(36)
 #define SSO_AF_IAQ_FREE_CNT_MASK	0x3FFFull
 #define SSO_AF_IAQ_RSVD_FREE_MASK	0x3FFFull
 #define SSO_AF_IAQ_RSVD_FREE_SHIFT	16
@@ -574,6 +578,7 @@
 
 #define SSO_HWGRP_AW_STS_TPTR_VLD	BIT_ULL(8)
 #define SSO_HWGRP_AW_STS_NPA_FETCH	BIT_ULL(9)
+#define SSO_HWGRP_AW_STS_TPTR_NEXT_VLD	BIT_ULL(10)
 #define SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK	0x7ull
 #define SSO_HWGRP_AW_STS_INIT_STS	0x18ull
 
@@ -606,6 +611,7 @@
 #define SSOW_LF_GWS_INT_ENA_W1C		(0x118ull)
 #define SSOW_LF_GWS_TAG			(0x200ull)
 #define SSOW_LF_GWS_WQP			(0x210ull)
+#define SSOW_LF_GWS_PRF_TAG		(0x400ull)
 #define SSOW_LF_GWS_OP_GET_WORK		(0x600ull)
 #define SSOW_LF_GWS_OP_SWTAG_FLUSH	(0x800ull)
 #define SSOW_LF_GWS_OP_DESCHED		(0x880ull)
@@ -615,6 +621,11 @@
 #define SSO_TT_EMPTY			(0x3)
 #define SSOW_LF_GWS_INT_MASK		(0x7FF)
 #define SSOW_LF_GWS_MAX_NW_TIM		(BIT_ULL(10) - 1)
+#define SSOW_LF_GWS_OP_GET_WORK_WAIT	BIT_ULL(16)
+#define SSOW_LF_GWS_OP_GET_WORK_GROUPED	BIT_ULL(18)
+#define SSOW_LF_GWS_TAG_PEND_DESCHED	BIT_ULL(58)
+#define SSOW_LF_GWS_TAG_PEND_SWITCH	BIT_ULL(62)
+#define SSOW_LF_GWS_TAG_PEND_GET_WORK	BIT_ULL(63)
 
 #define AF_BAR2_ALIASX_SIZE		(0x100000ull)
 #define SSOW_AF_BAR2_SEL		(0x9000000ull)

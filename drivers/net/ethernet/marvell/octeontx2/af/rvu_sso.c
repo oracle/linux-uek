@@ -247,17 +247,80 @@ get_work:
 	kfree(tim_lf);
 }
 
+static void rvu_sso_clean_nscheduled(struct rvu *rvu, int lf)
+{
+	struct sso_rsrc *sso = &rvu->hw->sso;
+	int blkaddr, ssow_blkaddr, iue;
+	u64 wqp, reg, op_clr_nsched;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+	op_clr_nsched = (ssow_blkaddr << 28) |
+			SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_CLR_NSCHED0);
+	for (iue = 0; iue < sso->sso_iue; iue++) {
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_IENTX_GRP(iue));
+		if (SSO_AF_HWGRPX_IUEX_NOSCHED(lf, reg)) {
+			wqp = rvu_read64(rvu, blkaddr, SSO_AF_IENTX_WQP(iue));
+			rvu_sso_store_pair(wqp, iue,
+					   rvu->afreg_base + op_clr_nsched);
+		}
+	}
+}
+
+static void rvu_ssow_clean_prefetch(struct rvu *rvu, int slot)
+{
+	int ssow_blkaddr, err;
+	u64 val, reg;
+
+	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+	err = rvu_poll_reg(rvu, ssow_blkaddr,
+			   SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_PRF_TAG),
+			   SSOW_LF_GWS_TAG_PEND_GET_WORK, true);
+	if (err)
+		dev_warn(rvu->dev,
+			 "SSOW_LF_GWS_PRF_TAG[PEND_GET_WORK] not cleared\n");
+
+	reg = rvu_read64(rvu, ssow_blkaddr,
+			 SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_PRF_TAG));
+	if (((reg >> 32) & SSO_TT_EMPTY) != SSO_TT_EMPTY) {
+		val = slot; /* GGRP ID */
+		val |= SSOW_LF_GWS_OP_GET_WORK_GROUPED;
+		val |= SSOW_LF_GWS_OP_GET_WORK_WAIT;
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_OP_GET_WORK),
+			    val);
+		err = rvu_poll_reg(rvu, ssow_blkaddr,
+				   SSOW_AF_BAR2_ALIASX(slot,
+						       SSOW_LF_GWS_PENDSTATE),
+				   SSOW_LF_GWS_TAG_PEND_GET_WORK, true);
+		if (err)
+			dev_warn(rvu->dev,
+				 "SSOW_LF_GWS_PENDSTATE[PEND_GET_WORK] not cleared\n");
+
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(slot,
+						SSOW_LF_GWS_OP_SWTAG_FLUSH),
+			    0x0);
+	}
+}
+
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
-	int ssow_lf, iue, blkaddr, ssow_blkaddr, err;
-	struct sso_rsrc *sso = &rvu->hw->sso;
+	int ssow_lf, blkaddr, ssow_blkaddr, err;
+	bool has_prefetch, has_nsched, has_lsw;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u64 aq_cnt, ds_cnt, cq_ds_cnt;
-	u64 reg, add, wqp, val;
+	u64 reg, add, val;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
 		return SSO_AF_ERR_LF_INVALID;
+
+	/* Read hardware capabilities */
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
+	has_lsw = reg & SSO_AF_CONST1_LSW;
+	has_nsched = !(reg & SSO_AF_CONST1_NO_NSCHED);
+	has_prefetch = is_rvu_otx2(rvu) ? 0 : 1;
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -294,13 +357,16 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_INT),
 		    SSOW_LF_GWS_INT_MASK);
 
+	if (has_lsw)
+		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(lf), 0x0);
+
 	/* Prepare WS for GW operations. */
 	rvu_poll_reg(rvu, ssow_blkaddr, SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_TAG),
-		     BIT_ULL(63), true);
+		     SSOW_LF_GWS_TAG_PEND_GET_WORK, true);
 
 	reg = rvu_read64(rvu, ssow_blkaddr,
 			 SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_TAG));
-	if (reg & BIT_ULL(62))
+	if (reg & SSOW_LF_GWS_TAG_PEND_SWITCH)
 		rvu_write64(rvu, ssow_blkaddr,
 			    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_DESCHED), 0);
 	else if (((reg >> 32) & SSO_TT_EMPTY) != SSO_TT_EMPTY)
@@ -310,6 +376,12 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	rvu_write64(rvu, ssow_blkaddr,
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0);
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM),
+		    SSOW_LF_GWS_MAX_NW_TIM);
+
+	if (has_prefetch)
+		rvu_ssow_clean_prefetch(rvu, slot);
 
 	/* Disable add work. */
 	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_QCTL),
@@ -317,16 +389,8 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* HRM 14.13.4 (4) */
 	/* Clean up nscheduled IENT let the work flow. */
-	for (iue = 0; iue < sso->sso_iue; iue++) {
-		reg = rvu_read64(rvu, blkaddr, SSO_AF_IENTX_GRP(iue));
-		if (SSO_AF_HWGRPX_IUEX_NOSCHED(lf, reg)) {
-			wqp = rvu_read64(rvu, blkaddr, SSO_AF_IENTX_WQP(iue));
-			rvu_sso_store_pair(wqp, iue, rvu->afreg_base +
-					   ((ssow_blkaddr << 28) |
-					    SSOW_AF_BAR2_ALIASX(0,
-						  SSOW_LF_GWS_OP_CLR_NSCHED0)));
-		}
-	}
+	if (has_nsched)
+		rvu_sso_clean_nscheduled(rvu, lf);
 
 	/* HRM 14.13.4 (6) */
 	/* Drain all the work using grouped gw. */
@@ -338,13 +402,9 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 			       SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_INT_CNT));
 	cq_ds_cnt &= SSO_LF_GGRP_INT_CNT_MASK;
 
-	val  = slot;		/* GGRP ID */
-	val |= BIT_ULL(18);	/* Grouped */
-	val |= BIT_ULL(16);	/* WAIT */
-
-	rvu_write64(rvu, ssow_blkaddr,
-		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM),
-		    SSOW_LF_GWS_MAX_NW_TIM);
+	val  = slot; /* GGRP ID */
+	val |= SSOW_LF_GWS_OP_GET_WORK_GROUPED;
+	val |= SSOW_LF_GWS_OP_GET_WORK_WAIT;
 
 	while (aq_cnt || cq_ds_cnt || ds_cnt) {
 		rvu_write64(rvu, ssow_blkaddr,
@@ -354,7 +414,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 			reg = rvu_read64(rvu, ssow_blkaddr,
 					 SSOW_AF_BAR2_ALIASX(0,
 							     SSOW_LF_GWS_TAG));
-		} while (reg & BIT_ULL(63));
+		} while (reg & SSOW_LF_GWS_TAG_PEND_GET_WORK);
 		if (((reg >> 32) & SSO_TT_EMPTY) != SSO_TT_EMPTY)
 			rvu_write64(rvu, ssow_blkaddr,
 				    SSOW_AF_BAR2_ALIASX(0,
@@ -418,6 +478,10 @@ af_cleanup:
 	if ((reg & 0xFFF) == pcifunc)
 		rvu_write64(rvu, blkaddr, SSO_AF_ERR2, SSO_AF_ERR2_MASK);
 
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_UNMAP_INFO3);
+	if ((reg & 0xFFF) == pcifunc)
+		rvu_write64(rvu, blkaddr, SSO_AF_ERR2, SSO_AF_ERR2_MASK);
+
 	rvu_write64(rvu, blkaddr, SSO_AF_POISONX(lf / 64), lf % 64);
 	rvu_write64(rvu, blkaddr, SSO_AF_IU_ACCNTX_RST(lf), 0x1);
 
@@ -432,7 +496,13 @@ af_cleanup:
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf));
 	reg = (reg & ~SSO_HWGRP_AW_CFG_RWEN) | SSO_HWGRP_AW_CFG_XAQ_BYP_DIS;
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf), reg);
-
+	if (has_prefetch) {
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
+		if (reg & SSO_HWGRP_AW_STS_TPTR_NEXT_VLD) {
+			rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf),
+				    SSO_HWGRP_AW_STS_TPTR_NEXT_VLD);
+		}
+	}
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
 	if (reg & SSO_HWGRP_AW_STS_TPTR_VLD) {
 		/* aura will be torn down, no need to free the pointer. */
@@ -469,6 +539,8 @@ af_cleanup:
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_WA_PC(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_TS_PC(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_DS_PC(lf), 0x0);
+	if (has_lsw)
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_LS_PC(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_LIMIT(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_IU_ACCNT(lf), 0x0);
 
@@ -512,6 +584,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	struct sso_rsrc *sso = &rvu->hw->sso;
 	int blkaddr, ssow_blkaddr;
+	bool has_prefetch;
 	u64 reg, grpmsk;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
@@ -521,6 +594,9 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
 	if (ssow_blkaddr < 0)
 		return SSOW_AF_ERR_LF_INVALID;
+
+	/* Read hardware capabilities */
+	has_prefetch = is_rvu_otx2(rvu) ? 0 : 1;
 
 	/* Enable BAR2 alias access. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -538,12 +614,13 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	/* Wait till waitw/desched completes. */
 	rvu_poll_reg(rvu, ssow_blkaddr,
 		     SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_PENDSTATE),
-		     BIT_ULL(63) | BIT_ULL(58), true);
+		     SSOW_LF_GWS_TAG_PEND_GET_WORK |
+		     SSOW_LF_GWS_TAG_PEND_DESCHED, true);
 
 	reg = rvu_read64(rvu, ssow_blkaddr,
 			 SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_TAG));
 	/* Switch Tag Pending */
-	if (reg & BIT_ULL(62))
+	if (reg & SSOW_LF_GWS_TAG_PEND_SWITCH)
 		rvu_write64(rvu, ssow_blkaddr,
 			    SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_OP_DESCHED),
 			    0x0);
@@ -557,7 +634,10 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	/* Wait for desched to complete. */
 	rvu_poll_reg(rvu, ssow_blkaddr,
 		     SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_PENDSTATE),
-		     BIT_ULL(58), true);
+		     SSOW_LF_GWS_TAG_PEND_DESCHED, true);
+
+	if (has_prefetch)
+		rvu_ssow_clean_prefetch(rvu, slot);
 
 	rvu_write64(rvu, ssow_blkaddr,
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM), 0x0);
