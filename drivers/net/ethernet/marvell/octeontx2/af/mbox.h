@@ -1617,6 +1617,10 @@ struct ndc_sync_op {
 
 struct lmtst_tbl_setup_req {
 	struct mbox_msghdr hdr;
+	u64 dis_sched_early_comp :1;
+	u64 sch_ena		 :1;
+	u64 dis_line_pref	 :1;
+	u64 ssow_pf_func	 :13;
 	u16 base_pcifunc;
 };
 
