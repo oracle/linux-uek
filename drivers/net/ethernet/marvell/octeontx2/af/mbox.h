@@ -1155,7 +1155,9 @@ struct nix_inline_ipsec_lf_cfg {
 struct nix_hw_info {
 	struct mbox_msghdr hdr;
 	u16 vwqe_delay;
-	u16 rsvd[15];
+	u16 max_mtu;
+	u16 min_mtu;
+	u16 rsvd[13];
 };
 
 /* SSO mailbox error codes

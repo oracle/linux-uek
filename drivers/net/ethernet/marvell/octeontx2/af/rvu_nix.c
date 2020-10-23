@@ -2829,6 +2829,24 @@ static int nix_af_mark_format_setup(struct rvu *rvu, struct nix_hw *nix_hw,
 	return 0;
 }
 
+void rvu_get_lbk_link_max_frs(struct rvu *rvu,  u16 *max_mtu)
+{
+	/* CN10K supports LBK FIFO size 72 KB */
+	if (rvu->hw->lbk_bufsize == 0x12000)
+		*max_mtu = CN10K_LBK_LINK_MAX_FRS;
+	else
+		*max_mtu = NIC_HW_MAX_FRS;
+}
+
+void rvu_get_lmac_link_max_frs(struct rvu *rvu, u16 *max_mtu)
+{
+	/* RPM supports FIFO len 128 KB */
+	if (rvu_cgx_get_fifolen(rvu) == 0x20000)
+		*max_mtu = CN10K_LMAC_LINK_MAX_FRS;
+	else
+		*max_mtu = NIC_HW_MAX_FRS;
+}
+
 int rvu_mbox_handler_nix_get_hw_info(struct rvu *rvu, struct msg_req *req,
 				     struct nix_hw_info *rsp)
 {
@@ -2844,6 +2862,12 @@ int rvu_mbox_handler_nix_get_hw_info(struct rvu *rvu, struct msg_req *req,
 		rsp->vwqe_delay = rvu_read64(rvu, blkaddr, NIX_AF_VWQE_TIMER) &
 				  GENMASK_ULL(9, 0);
 
+	if (is_afvf(pcifunc))
+		rvu_get_lbk_link_max_frs(rvu, &rsp->max_mtu);
+	else
+		rvu_get_lmac_link_max_frs(rvu, &rsp->max_mtu);
+
+	rsp->min_mtu = NIC_HW_MIN_FRS;
 	return 0;
 }
 
@@ -3527,6 +3551,7 @@ int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 	u64 cfg, lmac_fifo_len;
 	struct nix_hw *nix_hw;
 	u8 cgx = 0, lmac = 0;
+	u16 max_mtu;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
@@ -3536,7 +3561,12 @@ int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 	if (!nix_hw)
 		return -EINVAL;
 
-	if (!req->sdp_link && req->maxlen > NIC_HW_MAX_FRS)
+	if (is_afvf(pcifunc))
+		rvu_get_lbk_link_max_frs(rvu, &max_mtu);
+	else
+		rvu_get_lmac_link_max_frs(rvu, &max_mtu);
+
+	if (!req->sdp_link && req->maxlen > max_mtu)
 		return NIX_AF_ERR_FRS_INVALID;
 
 	if (req->update_minlen && req->minlen < NIC_HW_MIN_FRS)
@@ -3596,7 +3626,8 @@ linkcfg:
 
 	/* Update transmit credits for CGX links */
 	lmac_fifo_len =
-		CGX_FIFO_LEN / cgx_get_lmac_cnt(rvu_cgx_pdata(cgx, rvu));
+		rvu_cgx_get_fifolen(rvu) /
+		cgx_get_lmac_cnt(rvu_cgx_pdata(cgx, rvu));
 	return nix_config_link_credits(rvu, blkaddr, link, pcifunc,
 				       (lmac_fifo_len - req->maxlen) / 16);
 }
@@ -3638,7 +3669,11 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	int cgx, lmac_cnt, slink, link;
+	u16 lbk_max_frs, lmac_max_frs;
 	u64 tx_credits, cfg;
+
+	rvu_get_lbk_link_max_frs(rvu, &lbk_max_frs);
+	rvu_get_lmac_link_max_frs(rvu, &lmac_max_frs);
 
 	/* Set default min/max packet lengths allowed on NIX Rx links.
 	 *
@@ -3646,11 +3681,15 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 	 * as undersize and report them to SW as error pkts, hence
 	 * setting it to 40 bytes.
 	 */
-	for (link = 0; link < (hw->cgx_links + hw->lbk_links); link++) {
+	for (link = 0; link < hw->cgx_links; link++) {
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_LINKX_CFG(link),
-			    NIC_HW_MAX_FRS << 16 | NIC_HW_MIN_FRS);
+				((u64)lmac_max_frs << 16) | NIC_HW_MIN_FRS);
 	}
 
+	for (link = hw->cgx_links; link < hw->lbk_links; link++) {
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_LINKX_CFG(link),
+			    ((u64)lbk_max_frs << 16) | NIC_HW_MIN_FRS);
+	}
 	if (hw->sdp_links) {
 		link = hw->cgx_links + hw->lbk_links;
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_LINKX_CFG(link),
@@ -3665,7 +3704,8 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 		/* Skip when cgx is not available or lmac cnt is zero */
 		if (lmac_cnt <= 0)
 			continue;
-		tx_credits = ((CGX_FIFO_LEN / lmac_cnt) - NIC_HW_MAX_FRS) / 16;
+		tx_credits = ((rvu_cgx_get_fifolen(rvu) / lmac_cnt) -
+			       lmac_max_frs) / 16;
 		/* Enable credits and set credit pkt count to max allowed */
 		cfg =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
 		slink = cgx * hw->lmac_per_cgx;
