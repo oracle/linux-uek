@@ -944,6 +944,32 @@ static int rvu_setup_ree_hw_resource(struct rvu *rvu, int blkaddr, int blkid)
 	return 0;
 }
 
+static void rvu_get_lbk_bufsize(struct rvu *rvu)
+{
+	struct pci_dev *pdev = NULL;
+	void __iomem *base;
+	u64 lbk_const;
+
+	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
+			      PCI_DEVID_OCTEONTX2_LBK, pdev);
+	if (!pdev)
+		return;
+
+	base = pci_ioremap_bar(pdev, 0);
+	if (!base)
+		goto err_put;
+
+	lbk_const = readq(base + LBK_CONST);
+
+	/* cache fifo size */
+	rvu->hw->lbk_bufsize = FIELD_GET(LBK_CONST_BUF_SIZE, lbk_const);
+
+	iounmap(base);
+err_put:
+	pci_dev_put(pdev);
+}
+
+/* Function to perform operations (read/write) on lmtst map table */
 static int rvu_setup_hw_resources(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -1150,6 +1176,8 @@ cpt:
 		goto sso_err;
 
 	rvu_program_channels(rvu);
+
+	rvu_get_lbk_bufsize(rvu);
 
 	return 0;
 

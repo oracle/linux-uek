@@ -263,7 +263,6 @@ void rvu_program_channels(struct rvu *rvu)
 	rvu_rpm_set_channels(rvu);
 }
 
-/* Function to perform operations (read/write) on lmtst map table */
 int lmtst_map_table_ops(struct rvu *rvu, u32 index, u64 *val,
 			int lmt_tbl_op)
 {
