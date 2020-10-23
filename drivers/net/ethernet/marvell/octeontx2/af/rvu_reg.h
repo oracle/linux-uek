@@ -695,6 +695,7 @@
 #define CPT_AF_RAS_INT_W1S              (0x47028ull)
 #define CPT_AF_RAS_INT_ENA_W1S          (0x47030ull)
 #define CPT_AF_RAS_INT_ENA_W1C          (0x47038ull)
+#define CPT_AF_CTX_FLUSH_TIMER          (0x48000ull)
 
 #define CPT_AF_LF_CTL2_SHIFT		3
 #define CPT_AF_LF_SSO_PF_FUNC_SHIFT	32

@@ -487,6 +487,7 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 		case CPT_AF_PF_FUNC:
 		case CPT_AF_BLK_RST:
 		case CPT_AF_CONSTANTS1:
+		case CPT_AF_CTX_FLUSH_TIMER:
 			if (req->reg_offset & 0xFFF)
 				goto error;
 			break;
