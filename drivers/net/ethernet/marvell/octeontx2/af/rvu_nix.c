@@ -4072,8 +4072,12 @@ int rvu_mbox_handler_nix_lf_ptp_tx_enable(struct rvu *rvu, struct msg_req *req,
 					  struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
-	int blkaddr, nixlf, err;
+	int blkaddr, nixlf, err, pf;
 	u64 cfg;
+
+	pf = rvu_get_pf(pcifunc);
+	if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_PTP))
+		return 0;
 
 	/* Silicon does not support enabling time stamp in higig mode */
 	if (rvu_cgx_is_higig2_enabled(rvu, rvu_get_pf(pcifunc)))

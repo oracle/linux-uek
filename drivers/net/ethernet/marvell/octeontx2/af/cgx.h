@@ -13,6 +13,7 @@
 
 #include "mbox.h"
 #include "cgx_fw_if.h"
+#include "rpm.h"
 
  /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_CGX		0xA059
@@ -41,21 +42,21 @@
 #define FW_CGX_INT			BIT_ULL(1)
 #define CGXX_CMRX_INT_ENA_W1S		0x058
 #define CGXX_CMRX_RX_ID_MAP		0x060
-#define CGXX_CMRX_RX_STAT0		0x070
+#define CGXX_CMRX_RX_STAT0		(0x070 + mac_ops->csr_offset)
 #define CGXX_CMRX_RX_LMACS		0x128
-#define CGXX_CMRX_RX_DMAC_CTL0		0x1F8
+#define CGXX_CMRX_RX_DMAC_CTL0		(0x1F8 + mac_ops->csr_offset)
 #define CGX_DMAC_CTL0_CAM_ENABLE	BIT_ULL(3)
 #define CGX_DMAC_CAM_ACCEPT		BIT_ULL(3)
 #define CGX_DMAC_MCAST_MODE		BIT_ULL(1)
 #define CGX_DMAC_BCAST_MODE		BIT_ULL(0)
-#define CGXX_CMRX_RX_DMAC_CAM0		0x200
+#define CGXX_CMRX_RX_DMAC_CAM0		(0x200 + mac_ops->csr_offset)
 #define CGX_DMAC_CAM_ADDR_ENABLE	BIT_ULL(48)
 #define CGXX_CMRX_RX_DMAC_CAM1		0x400
 #define CGX_RX_DMAC_ADR_MASK		GENMASK_ULL(47, 0)
 #define CGXX_CMRX_TX_FIFO_LEN		0x618
 #define CGXX_CMRX_TX_LMAC_IDLE		BIT_ULL(14)
 #define CGXX_CMRX_TX_LMAC_E_IDLE	BIT_ULL(29)
-#define CGXX_CMRX_TX_STAT0		0x700
+#define CGXX_CMRX_TX_STAT0		(0x700 + mac_ops->csr_offset)
 #define CGXX_SCRATCH0_REG		0x1050
 #define CGXX_SCRATCH1_REG		0x1058
 #define CGX_CONST			0x2000
@@ -95,8 +96,7 @@
 #define CGX_CMD_TIMEOUT			2200 /* msecs */
 #define DEFAULT_PAUSE_TIME		0x7FF
 
-#define CGX_NVEC			37
-#define CGX_LMAC_FWI			0
+#define CGX_LMAC_FWI                    0
 
 enum  cgx_nix_stat_type {
 	NIX_STATS_RX,
@@ -131,6 +131,35 @@ struct cgx_link_event {
 struct cgx_event_cb {
 	int (*notify_link_chg)(struct cgx_link_event *event, void *data);
 	void *data;
+};
+
+/* CGX & RPM has different feature set
+ * update the structure fields with different one
+ */
+struct cgx_mac_ops {
+	char		       *name;
+	/* Features like RXSTAT, TXSTAT, DMAC FILTER csrs differs by fixed
+	 * bar offset for example
+	 * CGX RXSTAT0 starts at 0x070
+	 * RPM RXSTAT0 starts at 0x4070
+	 */
+	u64			csr_offset;
+	/* lmac offset is different is RPM */
+	u8			lmac_offset;
+	/* For ATF to send events to kernel, there is no dedicated interrupt
+	 * defined hence CGX uses OVERFLOW bit in CMR_INT. RPM block supports
+	 * SW_INT so that ATF triggers this interrupt after processing of
+	 * requested command
+	 */
+	u64			int_register;
+	u64			int_set_reg;
+	u8			irq_offset;
+	u8			int_ena_bit;
+	u8			lmac_fwi;
+	/* Incase of RPM get number of lmacs from RPMX_CMR_RX_LMACS[LMAC_EXIST]
+	 * number of setbits in lmac_exist tells number of lmacs
+	 */
+	int			(*get_nr_lmacs)(void *cgx);
 };
 
 extern struct pci_driver cgx_driver;
@@ -178,5 +207,7 @@ void cgx_lmac_enadis_higig2(void *cgxd, int lmac_id, bool enable);
 bool is_higig2_enabled(void *cgxd, int lmac_id);
 int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind);
 u8 cgx_lmac_get_p2x(int cgx_id, int lmac_id);
-
+u64 cgx_features_get(void *cgxd);
+struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd);
+int cgx_get_nr_lmacs(void *cgxd);
 #endif /* CGX_H */

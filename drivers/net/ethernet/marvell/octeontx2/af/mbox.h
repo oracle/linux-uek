@@ -174,6 +174,8 @@ M(CGX_SET_LINK_MODE,	0x218, cgx_set_link_mode, cgx_set_link_mode_req,\
 			       cgx_set_link_mode_rsp)	\
 M(CGX_GET_PHY_FEC_STATS, 0x219, cgx_get_phy_fec_stats, msg_req, msg_rsp) \
 M(CGX_STATS_RST,	0x21A, cgx_stats_rst, msg_req, msg_rsp)		\
+M(CGX_FEATURES_GET,	0x21B, cgx_features_get, msg_req,		\
+			       cgx_features_info_msg)			\
 /* NPA mbox IDs (range 0x400 - 0x5FF) */				\
 M(NPA_LF_ALLOC,		0x400, npa_lf_alloc,				\
 				npa_lf_alloc_req, npa_lf_alloc_rsp)	\
@@ -452,8 +454,8 @@ struct msix_offset_rsp {
 
 struct cgx_stats_rsp {
 	struct mbox_msghdr hdr;
-#define CGX_RX_STATS_COUNT	13
-#define CGX_TX_STATS_COUNT	18
+#define CGX_RX_STATS_COUNT		9
+#define CGX_TX_STATS_COUNT		18
 	u64 rx_stats[CGX_RX_STATS_COUNT];
 	u64 tx_stats[CGX_TX_STATS_COUNT];
 };
@@ -594,6 +596,20 @@ struct cgx_set_link_state_msg {
 struct cgx_phy_mod_type {
 	struct mbox_msghdr hdr;
 	int mod;
+};
+
+#define RVU_LMAC_FEAT_FC		BIT_ULL(0) /* pause frames */
+#define	RVU_LMAC_FEAT_HIGIG2		BIT_ULL(1)
+			/* flow control from physical link higig2 messages */
+#define RVU_LMAC_FEAT_PTP		BIT_ULL(2) /* precison time protocol */
+#define RVU_LMAC_FEAT_DMACF		BIT_ULL(3) /* DMAC FILTER */
+#define RVU_MAC_VERSION			BIT_ULL(4)
+#define RVU_MAC_CGX			0
+#define RVU_MAC_RPM			1
+
+struct cgx_features_info_msg {
+	struct mbox_msghdr hdr;
+	u64    lmac_features;
 };
 
 struct npc_set_pkind {
@@ -1253,6 +1269,7 @@ enum npc_af_status {
 	NPC_MCAM_ALLOC_FAILED	= -703,
 	NPC_MCAM_PERM_DENIED	= -704,
 	NPC_AF_ERR_HIGIG_CONFIG_FAIL	= -705,
+	NPC_AF_ERR_HIGIG_NOT_SUPPORTED	= -706,
 };
 
 struct npc_mcam_alloc_entry_req {

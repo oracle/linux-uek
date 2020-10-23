@@ -42,6 +42,20 @@ static struct _req_type __maybe_unused					\
 MBOX_UP_CGX_MESSAGES
 #undef M
 
+bool is_mac_feature_supported(struct rvu *rvu, int pf, int feature)
+{
+	u8 cgx_id, lmac_id;
+	void *cgxd;
+
+	if (!is_pf_cgxmapped(rvu, pf))
+		return 0;
+
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+	cgxd = rvu_cgx_pdata(cgx_id, rvu);
+
+	return  (cgx_features_get(cgxd) & feature);
+}
+
 /* Returns bitmap of mapped PFs */
 static inline u64 cgxlmac_to_pfmap(struct rvu *rvu, u8 cgx_id, u8 lmac_id)
 {
@@ -413,6 +427,9 @@ bool rvu_cgx_is_higig2_enabled(struct rvu *rvu, int pf)
 	u8 cgx_id, lmac_id;
 	void *cgxd;
 
+	if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_HIGIG2))
+		return 0;
+
 	if (!is_pf_cgxmapped(rvu, pf))
 		return false;
 
@@ -703,6 +720,9 @@ int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
 	u8 cgx_id, lmac_id;
 	void *cgxd;
 
+	if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_PTP))
+		return 0;
+
 	if (!is_cgx_config_permitted(rvu, pcifunc))
 		return -EPERM;
 
@@ -735,6 +755,9 @@ int rvu_mbox_handler_cgx_ptp_rx_disable(struct rvu *rvu, struct msg_req *req,
 	int pf = rvu_get_pf(pcifunc);
 	u8 cgx_id, lmac_id;
 	void *cgxd;
+
+	if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_PTP))
+		return 0;
 
 	if (!is_cgx_config_permitted(rvu, pcifunc))
 		return -EPERM;
@@ -841,6 +864,9 @@ int rvu_mbox_handler_cgx_cfg_pause_frm(struct rvu *rvu,
 {
 	int pf = rvu_get_pf(req->hdr.pcifunc);
 	u8 cgx_id, lmac_id;
+
+	if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_FC))
+		return 0;
 
 	/* This msg is expected only from PF/VFs that are mapped to CGX LMACs,
 	 * if received from other PF/VF simply ACK, nothing to do.
@@ -1091,4 +1117,22 @@ bool rvu_cgx_is_pkind_config_permitted(struct rvu *rvu, u16 pcifunc)
 	}
 
 	return rc;
+}
+
+int rvu_mbox_handler_cgx_features_get(struct rvu *rvu,
+				      struct msg_req *req,
+				      struct cgx_features_info_msg *rsp)
+{
+	int pf = rvu_get_pf(req->hdr.pcifunc);
+	u8 cgx_idx, lmac;
+	void *cgxd;
+
+	if (!is_pf_cgxmapped(rvu, pf))
+		return 0;
+
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_idx, &lmac);
+	cgxd = rvu_cgx_pdata(cgx_idx, rvu);
+	rsp->lmac_features = cgx_features_get(cgxd);
+
+	return 0;
 }
