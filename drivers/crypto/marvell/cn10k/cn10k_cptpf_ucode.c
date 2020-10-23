@@ -20,6 +20,12 @@
 #define LOADFVC_MAJOR_OP 0x01
 #define LOADFVC_MINOR_OP 0x08
 
+/*
+ * Interval to flush dirty data for next CTX entry. The interval is measured
+ * in increments of 10ns(interval time = CTX_FLUSH_TIMER_COUNT * 10ns).
+ */
+#define CTX_FLUSH_TIMER_CNT 0xFFFFFF
+
 /* tar header as defined in POSIX 1003.1-1990. */
 struct tar_hdr_t {
 	char name[100];
@@ -2012,6 +2018,13 @@ int cn10k_cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 	 */
 	cn10k_cpt_write_af_reg(pdev, CPT_AF_CTL,
 			       CN10K_CPT_ALL_ENG_GRPS_MASK << 3);
+	/*
+	 * Set interval to periodically flush dirty data for the next
+	 * CTX cache entry. Set the interval count to maximum supported
+	 * value.
+	 */
+	cn10k_cpt_write_af_reg(pdev, CPT_AF_CTX_FLUSH_TIMER,
+			       CTX_FLUSH_TIMER_CNT);
 	print_dbg_info(&pdev->dev, eng_grps);
 release_tar_arch:
 	release_tar_archive(tar_arch);
