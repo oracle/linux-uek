@@ -992,9 +992,13 @@ ENTRY(\sym)
 	.error "using shift_ist requires paranoid=1"
 	.endif
 
-	.if \create_gap && \paranoid
-	.error "using create_gap requires paranoid=0"
-	.endif
+
+	/*
+	 * UEK needs to support runtime patching which requires paranoid checks for int3
+	 * .if \create_gap && \paranoid
+	 * .error "using create_gap requires paranoid=0"
+	 * .endif
+	 */
 
 	ASM_CLAC
 	STUFF_RSB
@@ -1206,7 +1210,7 @@ apicinterrupt3 HYPERVISOR_CALLBACK_VECTOR \
 #endif
 
 idtentry debug			do_debug		has_error_code=0	paranoid=1 shift_ist=IST_INDEX_DB ist_offset=DB_STACK_OFFSET
-idtentry int3			do_int3			has_error_code=0	create_gap=1
+idtentry int3			do_int3			has_error_code=0	create_gap=1 paranoid=1
 idtentry stack_segment		do_stack_segment	has_error_code=1
 
 #ifdef CONFIG_XEN_PV
