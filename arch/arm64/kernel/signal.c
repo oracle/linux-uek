@@ -916,7 +916,7 @@ asmlinkage void do_notify_resume(struct pt_regs *regs,
 			if (thread_flags & _TIF_UPROBE)
 				uprobe_notify_resume(regs);
 
-			if (thread_flags & _TIF_SIGPENDING) {
+			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL)) {
 				set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 				if (thread_flags & _TIF_KSPLICE_FREEZING)
 					ksplice_clear_stack();
