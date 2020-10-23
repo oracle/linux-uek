@@ -1030,7 +1030,6 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 	cmd->base.duplex = pfvf->linfo.full_duplex;
 	cmd->base.speed = pfvf->linfo.speed;
 	cmd->base.autoneg = pfvf->linfo.an;
-	cmd->base.port = pfvf->linfo.port;
 
 	rsp = otx2_get_fwdata(pfvf);
 	if (IS_ERR(rsp))
