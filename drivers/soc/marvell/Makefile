@@ -4,3 +4,4 @@ obj-y		+= octeontx2-rm/
 obj-y		+= octeontx2-dpi/
 obj-y		+= octeontx2-sdp/
 obj-y		+= octeontx2-llc/
+obj-y		+= octeontx_info.o
