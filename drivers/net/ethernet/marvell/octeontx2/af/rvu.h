@@ -592,7 +592,8 @@ static inline bool is_rvu_otx2(struct rvu *rvu)
 static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
 {
 	return !(cgx_id && !(id == PCI_SUBSYS_DEVID_96XX ||
-			     id == PCI_SUBSYS_DEVID_98XX));
+			     id == PCI_SUBSYS_DEVID_98XX ||
+			     id == PCI_SUBSYS_DEVID_CN10K_A));
 }
 
 /* Function Prototypes
@@ -676,6 +677,7 @@ int rvu_cgx_nix_cuml_stats(struct rvu *rvu, void *cgxd, int lmac_id, int index,
 			   int rxtxflag, u64 *stat);
 bool is_cgx_config_permitted(struct rvu *rvu, u16 pcifunc);
 bool rvu_cgx_is_pkind_config_permitted(struct rvu *rvu, u16 pcifunc);
+bool is_mac_feature_supported(struct rvu *rvu, int pf, int feature);
 
 /* SSO APIs */
 int rvu_sso_init(struct rvu *rvu);

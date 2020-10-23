@@ -66,6 +66,32 @@ struct cgx {
 	struct			work_struct cgx_cmd_work;
 	struct			workqueue_struct *cgx_cmd_workq;
 	struct list_head	cgx_list;
+	u64			hw_features;
+	struct cgx_mac_ops     *mac_ops;
+};
+
+static struct cgx_mac_ops	otx2_mac_ops    = {
+	.name		=       "cgx",
+	.csr_offset	=       0,
+	.lmac_offset    =       18,
+	.int_register	=       CGXX_CMRX_INT,
+	.int_set_reg	=       CGXX_CMRX_INT_ENA_W1S,
+	.irq_offset	=       9,
+	.int_ena_bit    =       FW_CGX_INT,
+	.lmac_fwi	=	CGX_LMAC_FWI,
+	.get_nr_lmacs	=	cgx_get_nr_lmacs,
+};
+
+static struct cgx_mac_ops	cn10k_mac_ops   = {
+	.name		=       "rpm",
+	.csr_offset     =       0x4000,
+	.lmac_offset    =       20,
+	.int_register	=       RPMX_CMRX_SW_INT,
+	.int_set_reg    =       RPMX_CMRX_SW_INT_ENA_W1S,
+	.irq_offset     =       1,
+	.int_ena_bit    =       BIT_ULL(0),
+	.lmac_fwi	=	RPM_LMAC_FWI,
+	.get_nr_lmacs	=	rpm_get_nr_lmacs,
 };
 
 static LIST_HEAD(cgx_list);
@@ -82,19 +108,34 @@ static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool en);
 /* Supported devices */
 static const struct pci_device_id cgx_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_CGX) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_CN10K_RPM) },
 	{ 0, }  /* end of table */
 };
 
 MODULE_DEVICE_TABLE(pci, cgx_id_table);
 
+static bool is_dev_rpm(void *cgxd)
+{
+	struct cgx *cgx = cgxd;
+
+	return (cgx->pdev->device == PCI_DEVID_CN10K_RPM);
+}
+
+struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd)
+{
+	return ((struct cgx *)cgxd)->mac_ops;
+}
+
 static void cgx_write(struct cgx *cgx, u64 lmac, u64 offset, u64 val)
 {
-	writeq(val, cgx->reg_base + (lmac << 18) + offset);
+	writeq(val, cgx->reg_base + (lmac << cgx->mac_ops->lmac_offset) +
+	       offset);
 }
 
 static u64 cgx_read(struct cgx *cgx, u64 lmac, u64 offset)
 {
-	return readq(cgx->reg_base + (lmac << 18) + offset);
+	return readq(cgx->reg_base + (lmac << cgx->mac_ops->lmac_offset) +
+		     offset);
 }
 
 static inline struct lmac *lmac_pdata(u8 lmac_id, struct cgx *cgx)
@@ -192,8 +233,12 @@ int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
+	struct cgx_mac_ops *mac_ops;
 	int index;
 	u64 cfg;
+
+	/* access mac_ops to know csr_offset */
+	mac_ops = cgx_dev->mac_ops;
 
 	/* copy 6bytes from macaddr */
 	/* memcpy(&cfg, mac_addr, 6); */
@@ -218,9 +263,11 @@ int cgx_lmac_addr_add(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
+	struct cgx_mac_ops *mac_ops;
 	int index, idx;
 	u64 cfg = 0;
 
+	mac_ops = cgx_dev->mac_ops;
 	/* Get available index where entry is to be installed */
 	idx = rvu_alloc_rsrc(&lmac->mac_to_index_bmap);
 	if (idx < 0)
@@ -247,9 +294,11 @@ int cgx_lmac_addr_reset(u8 cgx_id, u8 lmac_id)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
+	struct cgx_mac_ops *mac_ops;
 	u8 index = 0;
 	u64 cfg;
 
+	mac_ops = cgx_dev->mac_ops;
 	/* Restore index 0 to its default init value as done during
 	 * cgx_lmac_init
 	 */
@@ -272,7 +321,9 @@ int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
+	struct cgx_mac_ops *mac_ops;
 
+	mac_ops = cgx_dev->mac_ops;
 	/* Validate the index */
 	if (index >= lmac->mac_to_index_bmap.max)
 		return -EINVAL;
@@ -306,8 +357,11 @@ u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
+	struct cgx_mac_ops *mac_ops;
 	int index;
 	u64 cfg;
+
+	mac_ops = cgx_dev->mac_ops;
 
 	/* Calculate real index of CGX DMAC table */
 	index = lmac_id * lmac->mac_to_index_bmap.max;
@@ -380,12 +434,14 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 	struct cgx *cgx = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx);
 	u16 max_dmac = lmac->mac_to_index_bmap.max;
+	struct cgx_mac_ops *mac_ops;
 	int index, i;
 	u64 cfg = 0;
 
 	if (!cgx)
 		return;
 
+	mac_ops = cgx->mac_ops;
 	if (enable) {
 		/* Enable promiscuous mode on LMAC */
 		cfg = cgx_read(cgx, lmac_id, CGXX_CMRX_RX_DMAC_CTL0);
@@ -426,6 +482,10 @@ void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable)
 	struct cgx *cgx = cgxd;
 	u64 cfg;
 
+	/* FIXME add support rx pause forwarding */
+	if (is_dev_rpm(cgx))
+		return;
+
 	if (!cgx)
 		return;
 
@@ -450,8 +510,10 @@ void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable)
 
 int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 {
+	struct cgx_mac_ops *mac_ops;
 	struct cgx *cgx = cgxd;
 
+	mac_ops = cgx->mac_ops;
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
@@ -465,19 +527,24 @@ int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 
 int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 {
+	struct cgx_mac_ops *mac_ops;
 	struct cgx *cgx = cgxd;
 
+	mac_ops = cgx->mac_ops;
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
+
 	*tx_stat = cgx_read(cgx, lmac_id, CGXX_CMRX_TX_STAT0 + (idx * 8));
 	return 0;
 }
 
 int cgx_stats_rst(void *cgxd, int lmac_id)
 {
+	struct cgx_mac_ops *mac_ops;
 	struct cgx *cgx = cgxd;
 	int stat_id;
 
+	mac_ops = cgx->mac_ops;
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
@@ -495,6 +562,11 @@ int cgx_stats_rst(void *cgxd, int lmac_id)
 		cgx_write(cgx, lmac_id, CGXX_CMRX_TX_STAT0 + (stat_id * 8), 0);
 
 	return 0;
+}
+
+u64 cgx_features_get(void *cgxd)
+{
+	return ((struct cgx *)cgxd)->hw_features;
 }
 
 static int cgx_set_fec_stats_count(struct cgx_link_user_info *linfo)
@@ -704,6 +776,12 @@ int cgx_lmac_enadis_pause_frm(void *cgxd, int lmac_id,
 {
 	struct cgx *cgx = cgxd;
 
+	/* flow control configuration logic is changed for RPM.
+	 * Will add the support later
+	 */
+	if (is_dev_rpm(cgx))
+		return 0;
+
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
@@ -721,6 +799,12 @@ void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable)
 {
 	struct cgx *cgx = cgxd;
 	u64 cfg;
+
+	/* PTP configuration logic is changed for RPM.
+	 * Will add the support later
+	 */
+	if (is_dev_rpm(cgx))
+		return;
 
 	if (!cgx)
 		return;
@@ -750,6 +834,10 @@ EXPORT_SYMBOL(cgx_lmac_ptp_config);
 static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 {
 	u64 cfg;
+
+	/* FIXME add support for pause frame */
+	if (is_dev_rpm(cgx))
+		return;
 
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return;
@@ -1154,11 +1242,15 @@ static inline bool cgx_event_is_linkevent(u64 event)
 
 static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
 {
+	u64 event, offset, clear_bit;
 	struct lmac *lmac = data;
 	struct cgx *cgx;
-	u64 event;
 
 	cgx = lmac->cgx;
+
+	/* Clear SW_INT for RPM and CMR_INT for CGX */
+	offset     = cgx->mac_ops->int_register;
+	clear_bit  = cgx->mac_ops->int_ena_bit;
 
 	event = cgx_read(cgx, lmac->lmac_id, CGX_EVENT_REG);
 
@@ -1195,7 +1287,7 @@ static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
 	 * Ack the interrupt register as well.
 	 */
 	cgx_write(lmac->cgx, lmac->lmac_id, CGX_EVENT_REG, 0);
-	cgx_write(lmac->cgx, lmac->lmac_id, CGXX_CMRX_INT, FW_CGX_INT);
+	cgx_write(lmac->cgx, lmac->lmac_id, offset, clear_bit);
 
 	return IRQ_HANDLED;
 }
@@ -1455,12 +1547,53 @@ bool is_higig2_enabled(void *cgxd, int lmac_id)
 	return (cfg & CGXX_SMUX_TX_CTL_HIGIG_EN);
 }
 
+static int cgx_configure_interrupt(struct cgx *cgx, struct lmac *lmac,
+				   int cnt, bool req_free)
+{
+	struct cgx_mac_ops     *mac_ops = cgx->mac_ops;
+	u64 offset, ena_bit;
+	unsigned int irq;
+	int err;
+
+	irq      = pci_irq_vector(cgx->pdev, mac_ops->lmac_fwi +
+				  cnt * mac_ops->irq_offset);
+	offset   = mac_ops->int_set_reg;
+	ena_bit  = mac_ops->int_ena_bit;
+
+	if (req_free) {
+		free_irq(irq, lmac);
+		return 0;
+	}
+
+	err = request_irq(irq, cgx_fwi_event_handler, 0, lmac->name, lmac);
+	if (err)
+		return err;
+
+	/* Enable interrupt */
+	cgx_write(cgx, lmac->lmac_id, offset, ena_bit);
+	return 0;
+}
+
+int cgx_get_nr_lmacs(void *cgxd)
+{
+	struct cgx *cgx = cgxd;
+
+	return cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0x7ULL;
+}
+
+int rpm_get_nr_lmacs(void *cgxd)
+{
+	struct cgx *cgx = cgxd;
+
+	return hweight8(cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0xFULL);
+}
+
 static int cgx_lmac_init(struct cgx *cgx)
 {
 	struct lmac *lmac;
 	int i, err;
 
-	cgx->lmac_count = cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0x7;
+	cgx->lmac_count = cgx->mac_ops->get_nr_lmacs(cgx);
 	if (cgx->lmac_count > MAX_LMAC_PER_CGX)
 		cgx->lmac_count = MAX_LMAC_PER_CGX;
 
@@ -1488,15 +1621,10 @@ static int cgx_lmac_init(struct cgx *cgx)
 		init_waitqueue_head(&lmac->wq_cmd_cmplt);
 		mutex_init(&lmac->cmd_lock);
 		spin_lock_init(&lmac->event_cb_lock);
-		err = request_irq(pci_irq_vector(cgx->pdev,
-						 CGX_LMAC_FWI + i * 9),
-				   cgx_fwi_event_handler, 0, lmac->name, lmac);
+
+		err = cgx_configure_interrupt(cgx, lmac, i, false);
 		if (err)
 			goto err_irq;
-
-		/* Enable interrupt */
-		cgx_write(cgx, lmac->lmac_id, CGXX_CMRX_INT_ENA_W1S,
-			  FW_CGX_INT);
 
 		/* Add reference */
 		cgx->lmac_idmap[i] = lmac;
@@ -1529,13 +1657,22 @@ static int cgx_lmac_exit(struct cgx *cgx)
 		lmac = cgx->lmac_idmap[i];
 		if (!lmac)
 			continue;
-		free_irq(pci_irq_vector(cgx->pdev, CGX_LMAC_FWI + i * 9), lmac);
+		cgx_configure_interrupt(cgx, lmac, i, true);
 		kfree(lmac->mac_to_index_bmap.bmap);
 		kfree(lmac->name);
 		kfree(lmac);
 	}
 
 	return 0;
+}
+
+static void cgx_populate_features(struct cgx *cgx)
+{
+	if (is_dev_rpm(cgx))
+		cgx->hw_features = RVU_LMAC_FEAT_DMACF | RVU_MAC_RPM;
+	else
+		cgx->hw_features = (RVU_LMAC_FEAT_FC  | RVU_LMAC_FEAT_HIGIG2 |
+				    RVU_LMAC_FEAT_PTP | RVU_LMAC_FEAT_DMACF);
 }
 
 static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -1550,6 +1687,12 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	cgx->pdev = pdev;
 
 	pci_set_drvdata(pdev, cgx);
+
+	/* Use mac_ops to get MAC specific features */
+	if (pdev->device == PCI_DEVID_CN10K_RPM)
+		cgx->mac_ops = &cn10k_mac_ops;
+	else
+		cgx->mac_ops = &otx2_mac_ops;
 
 	err = pci_enable_device(pdev);
 	if (err) {
@@ -1572,7 +1715,8 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_release_regions;
 	}
 
-	nvec = CGX_NVEC;
+	nvec = pci_msix_vec_count(cgx->pdev);
+
 	err = pci_alloc_irq_vectors(pdev, nvec, nvec, PCI_IRQ_MSIX);
 	if (err < 0 || err != nvec) {
 		dev_err(dev, "Request for %d msix vectors failed, err %d\n",
@@ -1602,6 +1746,8 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	list_add(&cgx->cgx_list, &cgx_list);
 
 	cgx_link_usertable_init();
+
+	cgx_populate_features(cgx);
 
 	err = cgx_lmac_init(cgx);
 	if (err)

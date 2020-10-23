@@ -2996,6 +2996,9 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 		    rvu_nix_is_ptp_tx_enabled(rvu, pcifunc))
 			return NPC_AF_ERR_HIGIG_CONFIG_FAIL;
 
+		if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_HIGIG2))
+			return NPC_AF_ERR_HIGIG_NOT_SUPPORTED;
+
 		rxpkind = NPC_RX_HIGIG_PKIND;
 		txpkind = NPC_TX_HIGIG_PKIND;
 		intf_mode = NPC_INTF_MODE_HIGIG;
