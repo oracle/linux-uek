@@ -876,8 +876,6 @@ static bool is_hw_tso_supported(struct otx2_nic *pfvf,
 {
 	int payload_len, last_seg_size;
 
-	if (!pfvf->hw.hw_tso)
-		return false;
 
 	if (is_dev_post_96xx_C0(pfvf->pdev))
 		return true;
@@ -892,6 +890,9 @@ static bool is_hw_tso_supported(struct otx2_nic *pfvf,
 	last_seg_size = payload_len % skb_shinfo(skb)->gso_size;
 	if (last_seg_size && last_seg_size < 16)
 		return false;
+
+	if (test_bit(HW_TSO, &pfvf->hw.cap_flag))
+		return true;
 
 	return true;
 }
