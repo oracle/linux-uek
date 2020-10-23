@@ -136,6 +136,8 @@ M(VF_FLR,		0x006, vf_flr, msg_req, msg_rsp)		\
 M(PTP_OP,		0x007, ptp_op, ptp_req, ptp_rsp)		\
 M(GET_HW_CAP,		0x008, get_hw_cap, msg_req, get_hw_cap_rsp)	\
 M(NDC_SYNC_OP,		0x009, ndc_sync_op, ndc_sync_op, msg_rsp)	\
+M(LMTST_TBL_SETUP,	0x00a, lmtst_tbl_setup, lmtst_tbl_setup_req,    \
+				msg_rsp)				\
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, cgx_start_rxtx, msg_req, msg_rsp)	\
 M(CGX_STOP_RXTX,	0x201, cgx_stop_rxtx, msg_req, msg_rsp)		\
@@ -1611,6 +1613,11 @@ struct ndc_sync_op {
 	u8 nix_lf_tx_sync;
 	u8 nix_lf_rx_sync;
 	u8 npa_lf_sync;
+};
+
+struct lmtst_tbl_setup_req {
+	struct mbox_msghdr hdr;
+	u16 base_pcifunc;
 };
 
 /* CPT mailbox error codes
