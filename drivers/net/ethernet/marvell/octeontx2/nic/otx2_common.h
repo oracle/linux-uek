@@ -184,7 +184,6 @@ struct otx2_hw {
 	u8			lso_tsov6_idx;
 	u8			lso_udpv4_idx;
 	u8			lso_udpv6_idx;
-	u8			hw_tso;
 
 	/* MSI-X */
 	u8			cint_cnt; /* CQ interrupt count */
@@ -203,6 +202,10 @@ struct otx2_hw {
 	u8			cgx_links;  /* No. of CGX links present in HW */
 	u8			lbk_links;  /* No. of LBK links present in HW */
 	u8			tx_link;    /* Transmit channel link number */
+
+#define HW_TSO			BIT_ULL(0)
+#define CN10K_MBOX		BIT_ULL(1)
+	unsigned long		cap_flag;
 };
 
 struct otx2_ptp {
@@ -370,6 +373,21 @@ static inline bool is_95xx_A0(struct pci_dev *pdev)
 	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
 }
 
+#define PCI_SUBSYS_DEVID_98XX                  0xB100
+#define PCI_SUBSYS_DEVID_96XX                  0xB200
+#define PCI_SUBSYS_DEVID_95XX                  0xB300
+#define PCI_SUBSYS_DEVID_LOKI                  0xB400
+#define PCI_SUBSYS_DEVID_95XXMM                0xB500
+
+static inline bool is_dev_otx2(struct pci_dev *pdev)
+{
+	unsigned short id = pdev->subsystem_device;
+
+	return (id == PCI_SUBSYS_DEVID_96XX || id == PCI_SUBSYS_DEVID_98XX ||
+		id == PCI_SUBSYS_DEVID_95XX || id == PCI_SUBSYS_DEVID_LOKI ||
+		id == PCI_SUBSYS_DEVID_95XXMM);
+}
+
 static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 {
 	struct otx2_hw *hw = &pfvf->hw;
@@ -378,10 +396,10 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 	pfvf->hw.cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
 	pfvf->hw.cq_qcount_wait = CQ_QCOUNT_DEFAULT;
 
-	hw->hw_tso = true;
+	__set_bit(HW_TSO, &hw->cap_flag);
 
 	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev)) {
-		hw->hw_tso = false;
+		__clear_bit(HW_TSO, &hw->cap_flag);
 		/* Due to HW issue previous silicons required minimum 600
 		 * unused CQE to avoid CQ overflow.
 		 */
@@ -397,6 +415,8 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 		 */
 		pfvf->netdev->watchdog_timeo = 10000 * HZ;
 	}
+	if (!is_dev_otx2(pfvf->pdev))
+		__set_bit(CN10K_MBOX, &hw->cap_flag);
 }
 
 /* Register read/write APIs */
