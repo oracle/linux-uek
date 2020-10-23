@@ -1373,7 +1373,7 @@ handle_txschq_shaper_update(struct rvu *rvu, int blkaddr, int nixlf,
 	u64 dbgval, md_debug0 = 0;
 	unsigned long poll_tmo;
 	bool rate_reg = 0;
-	u16 schq;
+	u32 schq;
 
 	regbase = reg & 0xFFFF;
 	schq = TXSCHQ_IDX(reg, TXSCHQ_IDX_SHIFT);
@@ -2290,8 +2290,12 @@ static int nix_tx_vtag_free(struct rvu *rvu, int blkaddr,
 			    u16 pcifunc, int index)
 {
 	struct nix_hw *nix_hw = get_nix_hw(rvu->hw, blkaddr);
-	struct nix_txvlan *vlan = &nix_hw->txvlan;
+	struct nix_txvlan *vlan;
 
+	if (!nix_hw)
+		return -ENODEV;
+
+	vlan = &nix_hw->txvlan;
 	if (vlan->entry2pfvf_map[index] != pcifunc)
 		return NIX_AF_ERR_PARAM;
 
@@ -2317,6 +2321,9 @@ static void nix_free_tx_vtag_entries(struct rvu *rvu, u16 pcifunc)
 		return;
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return;
+
 	vlan = &nix_hw->txvlan;
 
 	mutex_lock(&vlan->rsrc_lock);
@@ -2360,12 +2367,16 @@ static int nix_tx_vtag_decfg(struct rvu *rvu, int blkaddr,
 			     struct nix_vtag_config *req)
 {
 	struct nix_hw *nix_hw = get_nix_hw(rvu->hw, blkaddr);
-	struct nix_txvlan *vlan = &nix_hw->txvlan;
 	u16 pcifunc = req->hdr.pcifunc;
 	int idx0 = req->tx.vtag0_idx;
 	int idx1 = req->tx.vtag1_idx;
+	struct nix_txvlan *vlan;
 	int err = 0;
 
+	if (!nix_hw)
+		return -ENODEV;
+
+	vlan = &nix_hw->txvlan;
 	if (req->tx.free_vtag0 && req->tx.free_vtag1)
 		if (vlan->entry2pfvf_map[idx0] != pcifunc ||
 		    vlan->entry2pfvf_map[idx1] != pcifunc)
@@ -2392,9 +2403,13 @@ static int nix_tx_vtag_cfg(struct rvu *rvu, int blkaddr,
 			   struct nix_vtag_config_rsp *rsp)
 {
 	struct nix_hw *nix_hw = get_nix_hw(rvu->hw, blkaddr);
-	struct nix_txvlan *vlan = &nix_hw->txvlan;
+	struct nix_txvlan *vlan;
 	u16 pcifunc = req->hdr.pcifunc;
 
+	if (!nix_hw)
+		return -ENODEV;
+
+	vlan = &nix_hw->txvlan;
 	if (req->tx.cfg_vtag0) {
 		rsp->vtag0_idx =
 			nix_tx_vtag_alloc(rvu, blkaddr,
@@ -3440,7 +3455,7 @@ nix_config_link_credits(struct rvu *rvu, int blkaddr, int link,
 	bool restore_tx_en = 0;
 	struct nix_hw *nix_hw;
 	u64 cfg, sw_xoff = 0;
-	u16 schq = 0;
+	u32 schq = 0;
 	u32 credits;
 	int rc;
 
@@ -4421,6 +4436,8 @@ void rvu_nix_unregister_interrupts(struct rvu *rvu)
 	blkaddr = rvu_get_next_nix_blkaddr(rvu, blkaddr);
 	while (blkaddr) {
 		nix_hw = get_nix_hw(rvu->hw, blkaddr);
+		if (!nix_hw)
+			continue;
 		rvu_nix_blk_unregister_interrupts(rvu, nix_hw);
 		blkaddr = rvu_get_next_nix_blkaddr(rvu, blkaddr);
 	}

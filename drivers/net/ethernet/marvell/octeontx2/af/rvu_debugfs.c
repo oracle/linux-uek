@@ -384,7 +384,7 @@ static ssize_t rvu_dbg_qsize_write(struct file *filp,
 	int ret, lf;
 
 	cmd_buf = memdup_user(buffer, count);
-	if (IS_ERR(cmd_buf))
+	if (IS_ERR_OR_NULL(cmd_buf))
 		return -ENOMEM;
 
 	cmd_buf[count] = '\0';
@@ -401,7 +401,7 @@ static ssize_t rvu_dbg_qsize_write(struct file *filp,
 	if (cmd_buf)
 		ret = -EINVAL;
 
-	if (!strncmp(subtoken, "help", 4) || ret < 0) {
+	if (ret < 0 || !strncmp(subtoken, "help", 4)) {
 		dev_info(rvu->dev, "Use echo <%s-lf > qsize\n", blk_string);
 		goto qsize_write_done;
 	}

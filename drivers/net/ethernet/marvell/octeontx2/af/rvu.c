@@ -2569,6 +2569,9 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 
 	pcifunc_arr = kcalloc(rvu->hw->total_pfs + rvu->hw->total_vfs,
 			      sizeof(*pcifunc_arr), GFP_KERNEL);
+	if (!pcifunc_arr)
+		return;
+
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
 		return;
