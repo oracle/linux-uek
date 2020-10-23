@@ -8,9 +8,10 @@
 #include "rvu_reg.h"
 
 /* RVU LMTST */
-#define LMT_TBL_OP_READ    0
-#define LMT_TBL_OP_WRITE   1
-#define LMT_MAP_TABLE_SIZE (128 * 1024)
+#define LMT_TBL_OP_READ			0
+#define LMT_TBL_OP_WRITE		1
+#define LMT_MAP_TABLE_SIZE		(128 * 1024)
+#define LMT_MAPTBL_ENTRY_SIZE		16
 
 int rvu_set_channels_base(struct rvu *rvu)
 {
@@ -289,4 +290,105 @@ int lmtst_map_table_ops(struct rvu *rvu, u32 index, u64 *val,
 
 	iounmap(lmt_map_base);
 	return 0;
+}
+
+static u32 rvu_get_lmtst_tbl_index(struct rvu *rvu, u16 pcifunc)
+{
+	return ((rvu_get_pf(pcifunc) * rvu->hw->total_vfs) +
+		(pcifunc & RVU_PFVF_FUNC_MASK)) * LMT_MAPTBL_ENTRY_SIZE;
+}
+
+int rvu_mbox_handler_lmtst_tbl_setup(struct rvu *rvu,
+				     struct lmtst_tbl_setup_req *req,
+				     struct msg_rsp *rsp)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
+	u32 pri_tbl_idx, sec_tbl_idx;
+	int err = 0;
+	u64 val;
+
+	/* Reconfiguring lmtst map table in lmt region shared mode i.e. make
+	 * multiple PF_FUNCs to share an LMTLINE region, so primary/base
+	 * pcifunc (which is passed as an argument to mailbox) is the one
+	 * whose lmt base address will be shared among other secondary
+	 * pcifunc (will be the one who is calling this mailbox).
+	 */
+	if (req->base_pcifunc) {
+		/* Calculating the LMT table index equivalent to primary
+		 * pcifunc.
+		 */
+		pri_tbl_idx = rvu_get_lmtst_tbl_index(rvu, req->base_pcifunc);
+
+		/* Truncating secondary pcifunc to calculate the LMT table index
+		 * equivalent to secondary pcifunc.
+		 */
+		sec_tbl_idx = rvu_get_lmtst_tbl_index(rvu, req->hdr.pcifunc);
+		/* Read the base lmt addr of the secondary pcifunc */
+		err = lmtst_map_table_ops(rvu, sec_tbl_idx, &val,
+					  LMT_TBL_OP_READ);
+		if (err) {
+			dev_err(rvu->dev,
+				"Failed to read LMT map table: index 0x%x err %d\n",
+				sec_tbl_idx, err);
+			goto error;
+		}
+
+		/* Storing the seondary's lmt base address as this needs to be
+		 * reverted in FLR. Also making sure this default value doesn't
+		 * get overwritten on multiple calls to this mailbox.
+		 */
+		if (!pfvf->lmt_base_addr)
+			pfvf->lmt_base_addr = val;
+
+		/* Read the base lmt addr of the primary pcifunc */
+		err = lmtst_map_table_ops(rvu, pri_tbl_idx, &val,
+					  LMT_TBL_OP_READ);
+		if (err) {
+			dev_err(rvu->dev,
+				"Failed to read LMT map table: index 0x%x err %d\n",
+				pri_tbl_idx, err);
+			goto error;
+		}
+
+		/* Update the base lmt addr of secondary with primary's base
+		 * lmt addr.
+		 */
+		err = lmtst_map_table_ops(rvu, sec_tbl_idx, &val,
+					  LMT_TBL_OP_WRITE);
+		if (err) {
+			dev_err(rvu->dev,
+				"Failed to update LMT map table: index 0x%x err %d\n",
+				sec_tbl_idx, err);
+			goto error;
+		}
+	}
+
+error:
+	return err;
+}
+
+/* Resetting the lmtst map table to original base addresses */
+void rvu_reset_lmt_map_tbl(struct rvu *rvu, u16 pcifunc)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	u32 tbl_idx;
+	int err;
+
+	if (is_rvu_otx2(rvu))
+		return;
+
+	if (pfvf->lmt_base_addr) {
+		/* This corresponds to lmt map table index */
+		tbl_idx = rvu_get_lmtst_tbl_index(rvu, pcifunc);
+		/* Reverting back original lmt base addr for respective
+		 * pcifunc.
+		 */
+		err = lmtst_map_table_ops(rvu, tbl_idx, &pfvf->lmt_base_addr,
+					  LMT_TBL_OP_WRITE);
+		if (err)
+			dev_err(rvu->dev,
+				"Failed to update LMT map table: index 0x%x err %d\n",
+				tbl_idx, err);
+		pfvf->lmt_base_addr = 0;
+	}
 }
