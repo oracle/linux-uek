@@ -24,6 +24,10 @@
 /* Subsystem Device ID */
 #define PCI_SUBSYS_DEVID_98XX                  0xB100
 #define PCI_SUBSYS_DEVID_96XX                  0xB200
+#define PCI_SUBSYS_DEVID_95XX                  0xB300
+#define PCI_SUBSYS_DEVID_LOKI                  0xB400
+#define PCI_SUBSYS_DEVID_95XXMM                0xB500
+#define PCI_SUBSYS_DEVID_CN10K_A	       0xB900
 
 /* PCI BAR nos */
 #define	PCI_AF_REG_BAR_NUM			0
@@ -389,6 +393,7 @@ struct hw_cap {
 	bool    nix_shaper_toggle_wait; /* Shaping toggle needs poll/wait */
 	bool	nix_tx_link_bp;		 /* Can link backpressure TL queues ? */
 	bool	nix_rx_multicast;	 /* Rx packet replication support */
+	bool	per_pf_mbox_regs; /* PF mbox specified in per PF registers ? */
 };
 
 struct rvu_hwinfo {
@@ -573,6 +578,15 @@ static inline bool is_rvu_95xx_A0(struct rvu *rvu)
 	struct pci_dev *pdev = rvu->pdev;
 
 	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
+}
+
+static inline bool is_rvu_otx2(struct rvu *rvu)
+{
+	unsigned short id = rvu->pdev->subsystem_device;
+
+	return (id == PCI_SUBSYS_DEVID_96XX || id == PCI_SUBSYS_DEVID_98XX ||
+		id == PCI_SUBSYS_DEVID_95XX || id == PCI_SUBSYS_DEVID_LOKI ||
+		id == PCI_SUBSYS_DEVID_95XXMM);
 }
 
 static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
