@@ -289,6 +289,9 @@ int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 		rsp->schq_nix1[NIX_TXSCH_LVL_TL2] = 1;
 	} else {
 		nix_hw = get_nix_hw(hw, BLKADDR_NIX0);
+		if (!nix_hw)
+			goto err;
+
 		curlfs = rvu_txsch_count_rsrc(rvu, NIX_TXSCH_LVL_SMQ, pcifunc,
 					      RVU_PFVF_PF_SHIFT, nix_hw);
 		rsp->schq[NIX_TXSCH_LVL_SMQ] =
@@ -312,6 +315,9 @@ int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 		if (!is_block_implemented(rvu->hw, BLKADDR_NIX1))
 			goto out;
 		nix_hw = get_nix_hw(hw, BLKADDR_NIX1);
+		if (!nix_hw)
+			goto err;
+
 		txsch = &nix_hw->txsch[NIX_TXSCH_LVL_SMQ];
 		rsp->schq_nix1[NIX_TXSCH_LVL_SMQ] =
 				rvu_rsrc_free_count(&txsch->schq);
@@ -332,6 +338,7 @@ int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 	rsp->schq_nix1[NIX_TXSCH_LVL_TL1] = 1;
 out:
 	rsp->schq[NIX_TXSCH_LVL_TL1] = 1;
+err:
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return 0;
@@ -768,8 +775,11 @@ int rvu_policy_init(struct rvu *rvu)
 	struct nix_hw *nix_hw = get_nix_hw(rvu->hw, BLKADDR_NIX0);
 	struct pci_dev *pdev = rvu->pdev;
 	struct rvu_hwinfo *hw = rvu->hw;
-	int err, i = 0;
+	int err = -EINVAL, i = 0;
 	u32 max = 0;
+
+	if (!nix_hw)
+		goto error;
 
 	max = hw->block[BLKADDR_SSO].lf.max;
 	rvu->pf_limits.sso = quotas_alloc(rvu->hw->total_pfs, max, max,

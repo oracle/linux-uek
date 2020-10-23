@@ -169,8 +169,10 @@ static int rvu_cgx_send_link_info(int cgx_id, int lmac_id, struct rvu *rvu)
 				&qentry->link_event.link_uinfo);
 	qentry->link_event.cgx_id = cgx_id;
 	qentry->link_event.lmac_id = lmac_id;
-	if (err)
+	if (err) {
+		kfree(qentry);
 		goto skip_add;
+	}
 	list_add_tail(&qentry->evq_node, &rvu->cgx_evq_head);
 skip_add:
 	spin_unlock_irqrestore(&rvu->cgx_evq_lock, flags);

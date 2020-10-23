@@ -33,7 +33,7 @@ static inline u64 get_tenns_tsc(void)
 
 static inline u64 get_tenns_clk(void)
 {
-	u64 tsc;
+	u64 tsc = 0;
 
 #if defined(CONFIG_ARM64)
 	asm volatile("mrs %0, cntfrq_el0" : "=r" (tsc));
