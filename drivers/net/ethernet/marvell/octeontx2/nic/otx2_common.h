@@ -396,19 +396,23 @@ static inline bool is_95xx_A0(struct pci_dev *pdev)
 	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
 }
 
-#define PCI_SUBSYS_DEVID_98XX                  0xB100
-#define PCI_SUBSYS_DEVID_96XX                  0xB200
-#define PCI_SUBSYS_DEVID_95XX                  0xB300
-#define PCI_SUBSYS_DEVID_LOKI                  0xB400
-#define PCI_SUBSYS_DEVID_95XXMM                0xB500
+/* REVID for PCIe devices.
+ * Bits 0..1: minor pass, bit 3..2: major pass
+ * bits 7..4: midr id
+ */
+#define PCI_REVISION_ID_96XX		0x00
+#define PCI_REVISION_ID_95XX		0x10
+#define PCI_REVISION_ID_LOKI		0x20
+#define PCI_REVISION_ID_98XX		0x30
+#define PCI_REVISION_ID_95XXMM		0x40
 
 static inline bool is_dev_otx2(struct pci_dev *pdev)
 {
-	unsigned short id = pdev->subsystem_device;
+	u8 midr = pdev->revision & 0xF0;
 
-	return (id == PCI_SUBSYS_DEVID_96XX || id == PCI_SUBSYS_DEVID_98XX ||
-		id == PCI_SUBSYS_DEVID_95XX || id == PCI_SUBSYS_DEVID_LOKI ||
-		id == PCI_SUBSYS_DEVID_95XXMM);
+	return (midr == PCI_REVISION_ID_96XX || midr == PCI_REVISION_ID_95XX ||
+		midr == PCI_REVISION_ID_LOKI || midr == PCI_REVISION_ID_98XX ||
+		midr == PCI_REVISION_ID_95XXMM);
 }
 
 static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
