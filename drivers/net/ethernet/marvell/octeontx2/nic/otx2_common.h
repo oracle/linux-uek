@@ -903,4 +903,5 @@ int otx2smqvf_remove(struct otx2_nic *vf);
 
 bool otx2_xdp_sq_append_pkt(struct otx2_nic *pfvf, u64 iova, int len, u16 qidx);
 int otx2_cgx_features_get(struct otx2_nic *pfvf);
+u16 otx2_get_max_mtu(struct otx2_nic *pfvf);
 #endif /* OTX2_COMMON_H */
