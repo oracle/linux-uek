@@ -419,6 +419,7 @@ struct rvu_hwinfo {
 	u8	npc_kpu_entries;   /* No of KPU entries */
 	u16	npc_counters;	   /* No of match stats counters */
 	bool	npc_ext_set;	   /* Extended register set */
+	u64     npc_stat_ena;      /* Match stats enable bit */
 
 	struct hw_cap    cap;
 	struct rvu_block block[BLK_COUNT]; /* Block info */
