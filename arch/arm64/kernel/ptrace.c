@@ -182,6 +182,9 @@ static void ptrace_hbptriggered(struct perf_event *bp,
 {
 	struct arch_hw_breakpoint *bkpt = counter_arch_bp(bp);
 	siginfo_t info;
+#ifdef CONFIG_COMPAT
+	int i;
+#endif
 
 	clear_siginfo(&info);
 	info.si_signo	= SIGTRAP;
@@ -190,7 +193,6 @@ static void ptrace_hbptriggered(struct perf_event *bp,
 	info.si_addr	= (void __user *)(bkpt->trigger);
 
 #ifdef CONFIG_COMPAT
-	int i;
 
 	if (!is_compat_task())
 		goto send_sig;
