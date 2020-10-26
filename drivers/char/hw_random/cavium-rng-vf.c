@@ -55,7 +55,6 @@ static u64 rng_get_coprocessor_clkrate(void)
 	u64 ret = CLOCK_BASE_RATE * 16; /* Assume 800Mhz as default */
 	struct pci_dev *pdev;
 	void __iomem *base;
-	u16 dev_id;
 
 	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
 			      PCI_DEVICE_ID_RST_OTX2, NULL);
