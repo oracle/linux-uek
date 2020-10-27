@@ -209,7 +209,6 @@ struct rds_ib_connection {
 	/* alphabet soup, IBTA style */
 	struct rw_semaphore	i_cm_id_free_lock;
 	struct rdma_cm_id	*i_cm_id;
-	struct rds_connection	*i_cm_id_ctx;
 	struct ib_pd		*i_pd;
 	struct ib_mr		*i_mr;
 	struct ib_cq		*i_scq;
@@ -564,69 +563,6 @@ struct rds_ib_statistics {
 
 extern struct workqueue_struct *rds_ib_wq;
 
-#define RDS_IB_NO_CTX ERR_PTR(ENOENT)
-
-static inline struct rds_connection *rds_ib_map_conn(struct rds_connection *conn)
-{
-	int id;
-
-	mutex_lock(&cm_id_map_lock);
-	id = idr_alloc_cyclic(&cm_id_map, conn, 0, 0, GFP_KERNEL);
-	mutex_unlock(&cm_id_map_lock);
-
-	if (id < 0)
-		return ERR_PTR(id);
-
-	return (struct rds_connection *)(unsigned long)id;
-}
-
-static inline struct rdma_cm_id *rds_ib_rdma_create_id(struct net *net,
-						       rdma_cm_event_handler event_handler,
-						       struct rds_ib_connection *ic,
-						       void *context,
-						       enum rdma_ucm_port_space ps,
-						       enum ib_qp_type qp_type)
-{
-	ic->i_cm_id_ctx = rds_ib_map_conn(context);
-
-	return rdma_create_id(net, event_handler, ic->i_cm_id_ctx, ps, qp_type);
-}
-
-static inline struct rds_connection *rds_ib_get_conn(struct rdma_cm_id *cm_id)
-{
-	struct rds_connection *conn;
-
-	mutex_lock(&cm_id_map_lock);
-	conn = idr_find(&cm_id_map, (unsigned long)cm_id->context);
-	mutex_unlock(&cm_id_map_lock);
-
-	return conn;
-}
-
-static inline void rds_ib_rdma_unlink_id(struct rdma_cm_id *cm_id)
-{
-	struct rds_ib_connection *ic = NULL;
-	struct rds_connection *conn;
-
-	conn = rds_ib_get_conn(cm_id);
-	if (conn)
-		ic = conn->c_transport_data;
-	if (ic)
-		ic->i_cm_id_ctx = RDS_IB_NO_CTX;
-
-	mutex_lock(&cm_id_map_lock);
-	(void)idr_remove(&cm_id_map, (int)(u64)cm_id->context);
-	mutex_unlock(&cm_id_map_lock);
-
-	cm_id->context = RDS_IB_NO_CTX;
-}
-
-static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
-{
-	rds_ib_rdma_unlink_id(cm_id);
-	rdma_destroy_id(cm_id);
-}
-
 /*
  * Fake ib_dma_sync_sg_for_{cpu,device} as long as ib_verbs.h
  * doesn't define it.
@@ -701,7 +637,6 @@ extern struct list_head ib_nodev_conns;
 extern struct socket *rds_ib_inet_socket;
 
 /* ib_cm.c */
-bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id);
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
 void rds_ib_conn_free(void *arg);
 bool rds_ib_conn_has_alt_conn(struct rds_connection *conn);

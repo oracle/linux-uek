@@ -105,7 +105,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 					 bool isv6)
 {
 	/* this can be null in the listening path */
-	struct rds_connection *conn;
+	struct rds_connection *conn = cm_id->context;
 	struct rds_transport *trans = &rds_ib_transport;
 	int ret = 0;
 	/* ADDR_CHANGE event indicates that the local address has moved
@@ -120,7 +120,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	char *reason = NULL;
 	int *err;
 
-	conn = rds_ib_get_conn(cm_id);
 	if (!conn) {
 		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
 			trace_rds_rdma_cm_event_handler(NULL, NULL, NULL,
@@ -205,7 +204,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			 */
 			reason = "resolve route failed";
 			ibic = conn->c_transport_data;
-			if (rds_ib_same_cm_id(ibic, cm_id))
+			if (ibic && ibic->i_cm_id == cm_id)
 				ibic->i_cm_id = NULL;
 			rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL, ret);
 		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
@@ -220,7 +219,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		 * cm_id is valid before proceeding */
 
 		ibic = conn->c_transport_data;
-		if (rds_ib_same_cm_id(ibic, cm_id)) {
+		if (ibic && ibic->i_cm_id == cm_id) {
 			/* ibacm caches the path record without considering the tos/sl.
 			 * It is considered a match if the <src,dest> matches the
 			 * cache. In order to create qp with the correct sl/vl, RDS
@@ -349,18 +348,13 @@ static int rds_rdma_listen_init_common(rdma_cm_event_handler handler,
 				       struct sockaddr *sa,
 				       struct rdma_cm_id **ret_cm_id)
 {
-	struct rds_ib_connection *dummy_ic;
 	struct rdma_cm_id *cm_id;
 	int ret;
 
-	dummy_ic = kmalloc(sizeof(*dummy_ic), GFP_KERNEL);
-	if (!dummy_ic)
-		return -ENOMEM;
-
-	cm_id = rds_ib_rdma_create_id(&init_net, handler, dummy_ic, NULL, RDMA_PS_TCP, IB_QPT_RC);
+	cm_id = rdma_create_id(&init_net, handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
-		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rds_ib_rdma_create_id() returned %d\n",
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rdma_create_id() returned %d\n",
 		       ret);
 		return ret;
 	}
@@ -391,7 +385,7 @@ static int rds_rdma_listen_init_common(rdma_cm_event_handler handler,
 	cm_id = NULL;
 out:
 	if (cm_id)
-		rds_ib_rdma_destroy_id(cm_id);
+		rdma_destroy_id(cm_id);
 	return ret;
 }
 
@@ -436,25 +430,16 @@ static int rds_rdma_listen_init(void)
 
 static void rds_rdma_listen_stop(void)
 {
-	struct rds_ib_connection *ic;
-	struct rds_connection *conn;
-
 	if (rds_rdma_listen_id) {
-		conn = rds_ib_get_conn(rds_rdma_listen_id);
-		ic = conn ? conn->c_transport_data : NULL;
 		rdsdebug("cm %p\n", rds_rdma_listen_id);
-		rds_ib_rdma_destroy_id(rds_rdma_listen_id);
+		rdma_destroy_id(rds_rdma_listen_id);
 		rds_rdma_listen_id = NULL;
-		kfree(ic);
 	}
 #if IS_ENABLED(CONFIG_IPV6)
 	if (rds6_rdma_listen_id) {
-		conn = rds_ib_get_conn(rds6_rdma_listen_id);
-		ic = conn ? conn->c_transport_data : NULL;
 		rdsdebug("cm %p\n", rds6_rdma_listen_id);
-		rds_ib_rdma_destroy_id(rds6_rdma_listen_id);
+		rdma_destroy_id(rds6_rdma_listen_id);
 		rds6_rdma_listen_id = NULL;
-		kfree(ic);
 	}
 #endif
 }
