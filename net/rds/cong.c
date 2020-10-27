@@ -37,6 +37,8 @@
 
 #include "rds.h"
 
+#include <trace/events/rds.h>
+
 /*
  * This file implements the receive side of the unconventional congestion
  * management in RDS.
@@ -280,8 +282,14 @@ void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 			rs->rs_cong_notify |= (rs->rs_cong_mask & portmask);
 			rs->rs_cong_mask &= ~portmask;
 			spin_unlock(&rs->rs_lock);
-			if (rs->rs_cong_notify)
+			if (rs->rs_cong_notify) {
+				trace_rds_cong_notify(rs, rs->rs_conn,
+						      rs->rs_conn ?
+						      &rs->rs_conn->c_path[0] :
+						      NULL,
+						      "cong map update", 0);
 				rds_wake_sk_sleep(rs);
+			}
 		}
 		read_unlock_irqrestore(&rds_cong_monitor_lock, flags);
 	}
