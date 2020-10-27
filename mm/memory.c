@@ -1432,6 +1432,56 @@ copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 	return ret;
 }
 
+struct copy_page_range_args {
+	struct vm_area_struct *dst_vma;
+	struct vm_area_struct *src_vma;
+};
+
+static int copy_page_range_chunk(unsigned long addr, unsigned long end,
+		void *arg)
+{
+	struct copy_page_range_args *args = arg;
+	struct vm_area_struct *dst_vma = args->dst_vma;
+	struct vm_area_struct *src_vma = args->src_vma;
+	pgd_t *src_pgd, *dst_pgd;
+	unsigned long next;
+	int ret = 0;
+
+	dst_pgd = pgd_offset(dst_vma->vm_mm, addr);
+	src_pgd = pgd_offset(src_vma->vm_mm, addr);
+
+	do {
+		next = pgd_addr_end(addr, end);
+		if (pgd_none_or_clear_bad(src_pgd))
+			continue;
+		if (unlikely(copy_p4d_range(dst_vma, src_vma, dst_pgd, src_pgd,
+					    addr, next))) {
+			ret = -ENOMEM;
+			break;
+		}
+	} while (dst_pgd++, src_pgd++, addr = next, addr != end);
+
+	return ret;
+}
+
+/*
+ * A stripped down version of copy_page_range() used to copy an anonymous VMA
+ * as part of preserving it across exec.
+ */
+int
+copy_page_range_exec(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
+{
+	struct copy_page_range_args args = { dst_vma, src_vma };
+	struct mm_struct *src_mm = src_vma->vm_mm;
+	int ret;
+
+	raw_write_seqcount_begin(&src_mm->write_protect_seq);
+	ret = copy_page_range_chunk(src_vma->vm_start, src_vma->vm_end, &args);
+	raw_write_seqcount_end(&src_mm->write_protect_seq);
+
+	return ret;
+}
+
 /* Whether we should zap all COWed (private) pages too */
 static inline bool should_zap_cows(struct zap_details *details)
 {

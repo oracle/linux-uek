@@ -396,6 +396,7 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 	const int orig_nr_pages = nr_pages;
 	bool maybe_pinned;
 	int i;
+	bool is_exec_keep;
 
 	VM_WARN_ON_FOLIO(!folio_test_anon(folio), folio);
 	__folio_rmap_sanity_checks(folio, page, nr_pages, level);
@@ -410,6 +411,8 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 	maybe_pinned = likely(!folio_is_device_private(folio)) &&
 		       unlikely(folio_needs_cow_for_dma(src_vma, folio));
 
+	is_exec_keep = dst_vma->vm_flags & VM_EXEC_KEEP ? true : false;
+
 	/*
 	 * No need to check+clear for already shared PTEs/PMDs of the
 	 * folio. But if any page is PageAnonExclusive, we must fallback to
@@ -417,7 +420,7 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 	 */
 	switch (level) {
 	case RMAP_LEVEL_PTE:
-		if (unlikely(maybe_pinned)) {
+		if (unlikely(maybe_pinned) && likely(!is_exec_keep)) {
 			for (i = 0; i < nr_pages; i++)
 				if (PageAnonExclusive(page + i))
 					return -EBUSY;
@@ -439,7 +442,7 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 		break;
 	case RMAP_LEVEL_PMD:
 		if (PageAnonExclusive(page)) {
-			if (unlikely(maybe_pinned))
+			if (unlikely(maybe_pinned) && likely(!is_exec_keep))
 				return -EBUSY;
 			ClearPageAnonExclusive(page);
 		}
