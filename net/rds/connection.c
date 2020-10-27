@@ -1102,7 +1102,10 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_NOT_CONNECTING_STATE]	= "conn is not in CONNECTING state",
 	[DR_IB_QP_EVENT]		= "qp event",
 	[DR_IB_REQ_WHILE_CONN_UP]	= "incoming REQ in CONN_UP state",
-	[DR_IB_REQ_WHILE_CONNECTING]	= "incoming REQ in CONNECTING state",
+	[DR_IB_REQ_WHILE_CONNECTING_MULTI]
+						= "back-to-back REQ in CONNECTING state",
+	[DR_IB_REQ_WHILE_CONNECTING_TIME]
+					= "REQ racing for 15s in CONNECTING state",
 	[DR_IB_PAS_SETUP_QP_FAIL]	= "passive setup_qp failure",
 	[DR_IB_RDMA_ACCEPT_FAIL]	= "rdma_accept failure",
 	[DR_IB_ACT_SETUP_QP_FAIL]	= "active setup_qp failure",

@@ -37,6 +37,8 @@
 #include <net/inet_common.h>
 #include <linux/debugfs.h>
 
+#include <trace/events/rds.h>
+
 #include "ib.h"
 #include "rds_single_path.h"
 
@@ -391,8 +393,6 @@ void rds_ib_nodev_connect(void)
 	struct rds_ib_connection *ic;
 	unsigned long flags;
 
-	rds_rtd(RDS_RTD_CM_EXT, "check & build all connections\n");
-
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 	list_for_each_entry(ic, &ib_nodev_conns, ib_node)
 		rds_conn_connect_if_down(ic->conn);
@@ -406,10 +406,10 @@ static void __rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 	LIST_HEAD(tmp_list);
 	unsigned long flags;
 
-	rds_rtd(RDS_RTD_CM_EXT, "%s: device %s\n", __func__,
-		rds_ibdev->dev->name);
-
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
+
+	trace_rds_ib_shutdown_device(rds_ibdev->dev, rds_ibdev, NULL, NULL,
+				     "shutdown IB device", 0);
 
 	/* If the rds_rdma module is being unloaded, destroy the conns.
 	 * Otherwise, drop them and they will be moved to the ib_nodev_conns
@@ -695,16 +695,16 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
 	struct rds_ib_device *rds_ibdev;
 
-	rds_rtd(RDS_RTD_RDMA_IB, "Removing ib_device: %p name: %s num_ports: %u\n",
-		device, device->name, device->phys_port_cnt);
-
 	rds_ibdev = (struct rds_ib_device *)client_data;
 	/* The device is already removed. */
 	if (!rds_ibdev) {
-		rds_rtd(RDS_RTD_ACT_BND, "rds_ibdev is NULL, ib_device %p\n",
-			device);
+		trace_rds_ib_remove_device_err(device, NULL, NULL, NULL,
+					       "rds_ibdev is NULL", 0);
 		return;
 	}
+	trace_rds_ib_remove_device(device, rds_ibdev, NULL, NULL,
+				   "removing IB device", 0);
+
 	rds_ibdev->rid_dev_rem = true;
 
 	ib_rds_remove_debugfs_cache_hit(rds_ibdev);
@@ -729,9 +729,6 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	 */
 	synchronize_rcu();
 
-	rds_rtd(RDS_RTD_ACT_BND,
-		"calling rds_ib_dev_shutdown, ib_device %p, rds_ibdev %p\n",
-		device, rds_ibdev);
 	rds_ib_dev_shutdown(rds_ibdev);
 	rds_rdma_dev_rs_drop(rds_ibdev);
 
@@ -1025,30 +1022,33 @@ void rds_ib_add_one(struct ib_device *device)
 	struct ib_device_attr *dev_attr;
 	bool has_frwr, has_fmr;
 	struct ib_udata uhw;
-
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Adding ib_device: %p name: %s num_ports: %u\n",
-		device, device->name, device->phys_port_cnt);
+	char *reason = NULL;
 
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
 		return;
 
+	trace_rds_ib_add_device(device, NULL, NULL, NULL,
+				"adding IB device", 0);
+
 	dev_attr = kmalloc(sizeof(*dev_attr), GFP_KERNEL);
-	if (!dev_attr)
-		return;
+	if (!dev_attr) {
+		reason = "could not allocate dev_attr";
+		goto trace_err;
+	}
 
 	memset(&uhw, 0, sizeof(uhw));
 	if ((*device->ops.query_device)(device, dev_attr, &uhw)) {
-		rds_rtd(RDS_RTD_ERR, "Query device failed for %s\n",
-			device->name);
+		reason = "query device failed";
 		goto free_attr;
 	}
 
 	rds_ibdev = kzalloc_node(sizeof(*rds_ibdev), GFP_KERNEL,
 				 ibdev_to_node(device));
-	if (!rds_ibdev)
+	if (!rds_ibdev) {
+		reason = "could not allocate rds_ibdev";
 		goto free_attr;
+	}
 
 	INIT_LIST_HEAD(&rds_ibdev->ipaddr_list);
 	INIT_LIST_HEAD(&rds_ibdev->conn_list);
@@ -1085,6 +1085,7 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev->pd = ib_alloc_pd(device, 0);
 	if (IS_ERR(rds_ibdev->pd)) {
 		rds_ibdev->pd = NULL;
+		reason = "ib_alloc_pd failed";
 		goto put_dev;
 	}
 
@@ -1092,13 +1093,16 @@ void rds_ib_add_one(struct ib_device *device)
 						WQ_UNBOUND |
 						WQ_MEM_RECLAIM, 0,
 						device->name);
-	if (!rds_ibdev->rid_dev_wq)
+	if (!rds_ibdev->rid_dev_wq) {
+		reason = "no wq";
 		goto put_dev;
+	}
 
 	rds_ibdev->vector_load = kzalloc(sizeof(int) *
 					device->num_comp_vectors, GFP_KERNEL);
 	if (!rds_ibdev->vector_load) {
 		pr_err("RDS/IB: failed to allocate vector memory\n");
+		reason = "failed to allocate vector memory";
 		goto put_dev;
 	}
 	mutex_init(&rds_ibdev->vector_load_lock);
@@ -1106,6 +1110,7 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev->mr = rds_ib_get_dma_mr(rds_ibdev->pd, IB_ACCESS_LOCAL_WRITE);
 	if (IS_ERR(rds_ibdev->mr)) {
 		rds_ibdev->mr = NULL;
+		reason = "rds_ib_get_dma_mr failed";
 		goto put_dev;
 	}
 
@@ -1121,6 +1126,7 @@ void rds_ib_add_one(struct ib_device *device)
 		atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
 		if (rds_ib_setup_fastreg(rds_ibdev)) {
 			pr_err("RDS/IB: Failed to setup fastreg resources\n");
+			reason = "rds_ib_setup_fastreg failed";
 			goto put_dev;
 		}
 		/* Should set this only when everything is set up.  Otherwise,
@@ -1136,6 +1142,7 @@ void rds_ib_add_one(struct ib_device *device)
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_1M_POOL);
 	if (IS_ERR(rds_ibdev->mr_1m_pool)) {
 		rds_ibdev->mr_1m_pool = NULL;
+		reason = "rds_ib_create_mr_pool (1k) failed";
 		goto put_dev;
 	}
 
@@ -1143,14 +1150,19 @@ void rds_ib_add_one(struct ib_device *device)
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_8K_POOL);
 	if (IS_ERR(rds_ibdev->mr_8k_pool)) {
 		rds_ibdev->mr_8k_pool = NULL;
+		reason = "reds_ib_create_mr_pool (8k) failed";
 		goto put_dev;
 	}
 
-	if (rds_ib_srq_init(rds_ibdev))
+	if (rds_ib_srq_init(rds_ibdev)) {
+		reason = "rds_ib_srq_init failed";
 		goto put_dev;
+	}
 
-	if (rds_ib_alloc_caches(rds_ibdev))
+	if (rds_ib_alloc_caches(rds_ibdev)) {
+		reason = "rds_ib_alloc_caches failed";
 		goto put_dev;
+	}
 
 	INIT_LIST_HEAD(&rds_ibdev->rid_rs_list);
 	spin_lock_init(&rds_ibdev->rid_rs_list_lock);
@@ -1175,6 +1187,10 @@ put_dev:
 	rds_ib_dev_put(rds_ibdev);
 free_attr:
 	kfree(dev_attr);
+trace_err:
+	if (reason)
+		trace_rds_ib_add_device_err(device, NULL, NULL, NULL,
+					    reason, 0);
 }
 
 static void rds_ib_unregister_client(void)
