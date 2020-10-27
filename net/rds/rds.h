@@ -225,6 +225,7 @@ enum rds_conn_drop_src {
 	DR_IB_PEER_ADDR_CHANGE,
 	DR_IB_DISCONNECTED_EVENT,
 	DR_IB_TIMEWAIT_EXIT,
+	DR_IB_SHUTDOWN_NEEDED,
 
 	/* data path */
 	DR_IB_POST_RECV_FAIL,
@@ -777,7 +778,7 @@ struct rds_transport {
 
 	int (*cm_handle_connect)(struct rdma_cm_id *cm_id,
 				 struct rdma_cm_event *event,
-				 bool isv6, bool was_locked);
+				 bool isv6);
 	int (*cm_initiate_connect)(struct rdma_cm_id *cm_id, bool isv6);
 	void (*cm_connect_complete)(struct rds_connection *conn,
 				    struct rdma_cm_event *event);
