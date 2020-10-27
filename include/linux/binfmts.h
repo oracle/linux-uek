@@ -59,6 +59,12 @@ struct linux_binprm {
 #ifdef __alpha__
 	unsigned int taso:1;
 #endif
+	/*
+	 * Set if the binary being exec'd will accept memory marked
+	 * for preservation by the outgoing process.
+	 */
+	UEK_KABI_FILL_HOLE(unsigned int accepts_preserved_mem:1)
+
 	unsigned int recursion_depth; /* only for search_binary_handler() */
 	struct file * file;
 	struct cred *cred;	/* new credentials */

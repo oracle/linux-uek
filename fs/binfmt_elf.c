@@ -678,6 +678,82 @@ out:
  * libraries.  There is no binary dependent code anywhere else.
  */
 
+static int get_elf_notes(struct linux_binprm *bprm, struct elf_phdr *phdr, char **notes, size_t *notes_sz)
+{
+	char *data;
+	size_t datasz;
+	loff_t pos;
+	int ret;
+
+	if (!phdr)
+		return 0;
+
+	datasz = phdr->p_filesz;
+	if ((datasz > MAX_FILE_NOTE_SIZE) || (datasz < sizeof(struct elf_note)))
+		return -ENOEXEC;
+
+	data = kvmalloc(datasz, GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	pos = phdr->p_offset;
+	ret = kernel_read(bprm->file, data, datasz, &pos);
+	if (ret != datasz) {
+		if (ret >= 0)
+			ret = -EIO;
+		kvfree(data);
+		return ret;
+	}
+
+	*notes = data;
+	*notes_sz = datasz;
+	return 0;
+}
+
+#define PRESERVED_MEM_OK_STRING		"preserved-mem-ok"
+#define SZ_PRESERVED_MEM_OK_STRING	sizeof(PRESERVED_MEM_OK_STRING)
+
+static int check_preserved_mem_ok(struct linux_binprm *bprm, const char *data, const size_t datasz)
+{
+	size_t off = 0;
+	size_t remain;
+
+	if (!data)
+		return 0;
+
+	while (off < datasz) {
+		const struct elf_note *nhdr;
+		const char *name;
+
+		remain = datasz - off;
+
+		if (remain < sizeof(*nhdr))
+			return -ENOEXEC;
+
+		nhdr = (struct elf_note *)(data + off);
+		off += sizeof(*nhdr);
+		remain -= sizeof(*nhdr);
+
+		if (nhdr->n_type != 0x07c1feed) {
+			off += roundup(nhdr->n_namesz, 4) + roundup(nhdr->n_descsz, 4);
+			continue;
+		}
+
+		if (nhdr->n_namesz > SZ_PRESERVED_MEM_OK_STRING)
+			return -ENOEXEC;
+
+		name =  data + off;
+		if (remain < SZ_PRESERVED_MEM_OK_STRING ||
+		    strncmp(name, PRESERVED_MEM_OK_STRING, SZ_PRESERVED_MEM_OK_STRING))
+			return -ENOEXEC;
+
+		bprm->accepts_preserved_mem = 1;
+		break;
+	}
+
+	return 0;
+}
+
 #define MAX_RSVD_VA_RANGES	64
 #define RSVD_VA_STRING		"Reserved VA"
 #define SZ_RSVD_VA_STRING	sizeof(RSVD_VA_STRING)
@@ -784,6 +860,9 @@ static int load_elf_binary(struct linux_binprm *bprm)
 	int load_addr_set = 0;
 	unsigned long error;
 	struct elf_phdr *elf_ppnt, *elf_phdata, *interp_elf_phdata = NULL;
+	struct elf_phdr *elf_notes_phdata = NULL;
+	char *elf_notes = NULL;
+	size_t elf_notes_sz = 0;
 	unsigned long elf_bss, elf_brk;
 	int bss_prot = 0;
 	int retval, i;
@@ -899,6 +978,10 @@ out_free_interp:
 				executable_stack = EXSTACK_DISABLE_X;
 			break;
 
+		case PT_NOTE:
+			elf_notes_phdata = elf_ppnt;
+			break;
+
 		case PT_LOPROC ... PT_HIPROC:
 			retval = arch_elf_pt_proc(&loc->elf_ex, elf_ppnt,
 						  bprm->file, false,
@@ -947,6 +1030,14 @@ out_free_interp:
 	retval = arch_check_elf(&loc->elf_ex,
 				!!interpreter, &loc->interp_elf_ex,
 				&arch_state);
+	if (retval)
+		goto out_free_dentry;
+
+	retval = get_elf_notes(bprm, elf_notes_phdata, &elf_notes, &elf_notes_sz);
+	if (retval)
+		goto out_free_dentry;
+
+	retval = check_preserved_mem_ok(bprm, elf_notes, elf_notes_sz);
 	if (retval)
 		goto out_free_dentry;
 
@@ -1226,6 +1317,7 @@ out_free_interp:
 		}
 	}
 
+	kvfree(elf_notes);
 	kfree(interp_elf_phdata);
 	kfree(elf_phdata);
 
@@ -1306,6 +1398,7 @@ out_free_dentry:
 	if (interpreter)
 		fput(interpreter);
 out_free_ph:
+	kvfree(elf_notes);
 	kfree(elf_phdata);
 	goto out;
 }
