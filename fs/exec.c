@@ -973,10 +973,11 @@ static int vma_dup_some(struct mm_struct *old_mm, struct mm_struct *new_mm)
  * On success, this function returns with exec_update_lock
  * held for writing.
  */
-static int exec_mmap(struct mm_struct *mm)
+static int exec_mmap(struct linux_binprm *bprm)
 {
 	struct task_struct *tsk;
 	struct mm_struct *old_mm, *active_mm;
+	struct mm_struct *mm = bprm->mm;
 	int ret;
 
 	/* Notify parent that we're no longer interested in the old VM */
@@ -999,11 +1000,13 @@ static int exec_mmap(struct mm_struct *mm)
 			up_write(&tsk->signal->exec_update_lock);
 			return ret;
 		}
-		ret = vma_dup_some(old_mm, mm);
-		if (ret) {
-			mmap_read_unlock(old_mm);
-			up_write(&tsk->signal->exec_update_lock);
-			return ret;
+		if (bprm->accepts_preserved_mem) {
+			ret = vma_dup_some(old_mm, mm);
+			if (ret) {
+				mmap_read_unlock(old_mm);
+				up_write(&tsk->signal->exec_update_lock);
+				return ret;
+			}
 		}
 	}
 
@@ -1301,7 +1304,7 @@ int begin_new_exec(struct linux_binprm * bprm)
 	 * Release all of the old mmap stuff
 	 */
 	acct_arg_size(bprm, 0);
-	retval = exec_mmap(bprm->mm);
+	retval = exec_mmap(bprm);
 	if (retval)
 		goto out;
 
