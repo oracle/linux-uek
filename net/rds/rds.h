@@ -1079,6 +1079,18 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 char *conn_drop_reason_str(enum rds_conn_drop_src reason);
 void rds_conn_path_trace_state_change(int changed, struct rds_conn_path *cp,
 				      int old, int new, int reason, int err);
+void rds_queue_work(struct rds_conn_path *cp,
+		    struct workqueue_struct *wq,
+		    struct work_struct *work,
+		    char *reason);
+void rds_queue_delayed_work(struct rds_conn_path *cp,
+			    struct workqueue_struct *wq,
+			    struct delayed_work *dwork,
+			    unsigned long delay, char *reason);
+void rds_queue_delayed_work_on(struct rds_conn_path *cp, int cpu,
+			       struct workqueue_struct *wq,
+			       struct delayed_work *dwork,
+			       unsigned long delay, char *reason);
 
 static inline void rds_conn_path_state_change(struct rds_conn_path *cp,
 					      int new, int reason, int err)
@@ -1092,7 +1104,8 @@ static inline void rds_conn_path_state_change(struct rds_conn_path *cp,
 static inline void rds_cond_queue_shutdown_work(struct rds_conn_path *cp)
 {
 	if (!test_and_set_bit(RDS_SHUTDOWN_WORK_QUEUED, &cp->cp_flags))
-		queue_work(cp->cp_wq, &cp->cp_down_w);
+		rds_queue_work(cp, cp->cp_wq, &cp->cp_down_w,
+			       "queue shutdown work");
 }
 
 static inline void rds_clear_shutdown_pending_work_bit(struct rds_conn_path *cp)
@@ -1107,10 +1120,12 @@ static inline void rds_clear_shutdown_pending_work_bit(struct rds_conn_path *cp)
 static inline void rds_cond_queue_reconnect_work(struct rds_conn_path *cp, unsigned long delay)
 {
 	if (!test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags))
-		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, delay);
+		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_conn_w, delay,
+				       "reconnect work");
 }
 
-static inline void rds_clear_reconnect_pending_work_bit(struct rds_conn_path *cp)
+static inline void
+rds_clear_reconnect_pending_work_bit(struct rds_conn_path *cp)
 {
 	/* clear_bit() does not imply a memory barrier */
 	smp_mb__before_atomic();
@@ -1122,7 +1137,8 @@ static inline void rds_clear_reconnect_pending_work_bit(struct rds_conn_path *cp
 static inline void rds_cond_queue_send_work(struct rds_conn_path *cp, unsigned long delay)
 {
 	if (!test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
-		queue_delayed_work(cp->cp_wq, &cp->cp_send_w, delay);
+		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_send_w, delay,
+				       "send work");
 }
 
 static inline void rds_clear_queued_send_work_bit(struct rds_conn_path *cp)
@@ -1137,7 +1153,8 @@ static inline void rds_clear_queued_send_work_bit(struct rds_conn_path *cp)
 static inline void rds_cond_queue_recv_work(struct rds_conn_path *cp, unsigned long delay)
 {
 	if (!test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
-		queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, delay);
+		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_recv_w, delay,
+				       "recv work");
 }
 
 static inline void rds_clear_queued_recv_work_bit(struct rds_conn_path *cp)
@@ -1391,6 +1408,12 @@ void rds_reconnect_timeout(struct work_struct *);
 void rds_connect_path_complete(struct rds_conn_path *cp, int curr);
 void rds_connect_complete(struct rds_connection *conn);
 int rds_addr_cmp(const struct in6_addr *a1, const struct in6_addr *a2);
+void rds_queue_cancel_work(struct rds_conn_path *cp,
+			   struct delayed_work *dwork,
+			   char *reason);
+void rds_queue_flush_work(struct rds_conn_path *cp,
+			  struct work_struct *dwork,
+			  char *reason);
 
 /* transport.c */
 int rds_trans_register(struct rds_transport *trans);
