@@ -1553,7 +1553,7 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			     struct rdma_cm_event *event,
-			     bool isv6, bool was_locked)
+			     bool isv6)
 {
 	const struct rds_ib_conn_priv_cmn *dp_cmn;
 	struct rds_ib_connection *ic = NULL;
@@ -1653,8 +1653,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	 * The connection request may occur while the
 	 * previous connection exist, e.g. in case of failover.
 	 */
-	if (!was_locked)
-		mutex_lock(&conn->c_cm_lock);
+	mutex_lock(&conn->c_cm_lock);
 
 	ic = conn->c_transport_data;
 	if (!ic) {
@@ -1768,7 +1767,7 @@ out:
 						   conn, ic, reason, err);
 	}
 
-	if (conn && !was_locked)
+	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
 		rdma_reject(cm_id, &err, sizeof(int));
@@ -1865,18 +1864,8 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	}
 
 out:
-	/* Beware - returning non-zero tells the rdma_cm to destroy
-	 * the cm_id. We should certainly not do it as long as we still
-	 * "own" the cm_id. */
-	if (ret) {
-		trace_rds_ib_cm_initiate_connect_err(ic->rds_ibdev ?
-		    ic->rds_ibdev->dev : NULL, ic->rds_ibdev, conn, ic,
-		    reason, ret);
-		if (ic->i_cm_id == cm_id)
-			ret = 0;
-	}
-
 	ic->i_active_side = 1;
+
 	return ret;
 }
 
