@@ -327,6 +327,7 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_HIGH_ARCH_BIT_5	37	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_BIT_16	48	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_BIT_17	49	/* bit only usable on 64-bit architectures */
+#define VM_HIGH_ARCH_BIT_18	50	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_0	BIT(VM_HIGH_ARCH_BIT_0)
 #define VM_HIGH_ARCH_1	BIT(VM_HIGH_ARCH_BIT_1)
 #define VM_HIGH_ARCH_2	BIT(VM_HIGH_ARCH_BIT_2)
@@ -335,6 +336,7 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_HIGH_ARCH_5	BIT(VM_HIGH_ARCH_BIT_5)
 #define VM_HIGH_ARCH_16	BIT(VM_HIGH_ARCH_BIT_16)
 #define VM_HIGH_ARCH_17	BIT(VM_HIGH_ARCH_BIT_17)
+#define VM_HIGH_ARCH_18	BIT(VM_HIGH_ARCH_BIT_18)
 #endif /* CONFIG_ARCH_USES_HIGH_VMA_FLAGS */
 
 #ifdef CONFIG_ARCH_HAS_PKEYS
@@ -395,9 +397,11 @@ extern unsigned int kobjsize(const void *objp);
 						 * userspace but still reserved
 						 * for use by userspace only
 						 */
+# define VM_EXEC_KEEP		VM_HIGH_ARCH_18 /* preserve VMA across exec */
 #else
 # define VM_RSVD_VA		VM_NONE
 # define VM_RSVD_NORELINK	VM_NONE
+# define VM_EXEC_KEEP		VM_NONE
 #endif
 
 #ifndef VM_GROWSUP
@@ -3310,6 +3314,7 @@ extern struct vm_area_struct *copy_vma(struct vm_area_struct **,
 	unsigned long addr, unsigned long len, pgoff_t pgoff,
 	bool *need_rmap_locks);
 extern void exit_mmap(struct mm_struct *);
+extern int vma_dup(struct vm_area_struct *vma, struct mm_struct *mm);
 struct vm_area_struct *vma_modify(struct vma_iterator *vmi,
 				  struct vm_area_struct *prev,
 				  struct vm_area_struct *vma,
