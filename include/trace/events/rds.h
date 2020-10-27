@@ -297,6 +297,30 @@ DEFINE_EVENT(rds_status, rds_receive_worker_err,
 
 );
 
+DEFINE_EVENT(rds_status, rds_cong_seen,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_conn_path *cp, char *reason, int err),
+
+	TP_ARGS(rs, conn, cp, reason, err)
+);
+
+DEFINE_EVENT(rds_status, rds_cong_cleared,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_conn_path *cp, char *reason, int err),
+
+	TP_ARGS(rs, conn, cp, reason, err)
+);
+
+DEFINE_EVENT(rds_status, rds_cong_notify,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_conn_path *cp, char *reason, int err),
+
+	TP_ARGS(rs, conn, cp, reason, err)
+);
+
 TRACE_EVENT(rds_receive,
 
 	TP_PROTO(struct rds_incoming *inc, struct rds_sock *rs,
