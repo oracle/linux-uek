@@ -950,6 +950,24 @@ ssize_t read_code(struct file *file, unsigned long addr, loff_t pos, size_t len)
 EXPORT_SYMBOL(read_code);
 #endif
 
+static int vma_dup_some(struct mm_struct *old_mm, struct mm_struct *new_mm)
+{
+	struct vm_area_struct *vma;
+	VMA_ITERATOR(vmi, old_mm, 0);
+	int ret = 0;
+
+	mmap_write_lock_nested(new_mm, SINGLE_DEPTH_NESTING);
+	for_each_vma(vmi, vma)
+		if (vma->vm_flags & VM_EXEC_KEEP) {
+			ret = vma_dup(vma, new_mm);
+			if (ret)
+				break;
+		}
+
+	mmap_write_unlock(new_mm);
+	return ret;
+}
+
 /*
  * Maps the mm_struct mm into the current task struct.
  * On success, this function returns with exec_update_lock
@@ -978,6 +996,12 @@ static int exec_mmap(struct mm_struct *mm)
 		 */
 		ret = mmap_read_lock_killable(old_mm);
 		if (ret) {
+			up_write(&tsk->signal->exec_update_lock);
+			return ret;
+		}
+		ret = vma_dup_some(old_mm, mm);
+		if (ret) {
+			mmap_read_unlock(old_mm);
 			up_write(&tsk->signal->exec_update_lock);
 			return ret;
 		}
