@@ -176,6 +176,8 @@ static void rds_recv_rcvbuf_delta(struct rds_sock *rs, struct sock *sk,
 	if (!rs->rs_congested && now_congested) {
 		rs->rs_congested = 1;
 		rds_cong_set_bit(map, port);
+		trace_rds_cong_seen(rs, conn, NULL,
+				    "receive bytes > rcvbuf size", 0);
 		rds_cong_queue_updates(map);
 	}
 	/* was -> aren't congested */
@@ -184,6 +186,8 @@ static void rds_recv_rcvbuf_delta(struct rds_sock *rs, struct sock *sk,
 	else if (rs->rs_congested && (rs->rs_rcv_bytes < (rds_sk_rcvbuf(rs)/2))) {
 		rs->rs_congested = 0;
 		rds_cong_clear_bit(map, port);
+		trace_rds_cong_cleared(rs, conn, NULL,
+				       "receive bytes < rcvbuf size/2", 0);
 		rds_cong_queue_updates(map);
 	}
 

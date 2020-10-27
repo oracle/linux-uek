@@ -41,12 +41,15 @@
 #include <linux/random.h>
 #include <net/sock.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 
 /* UNUSED for backwards compat only */
-static unsigned int rds_ib_retry_count = 0xdead;
-module_param(rds_ib_retry_count, int, 0444);
-MODULE_PARM_DESC(rds_ib_retry_count, "UNUSED, set param in rds_rdma instead");
+static int rds_ib_retry_count_unused = 0xdead;
+module_param(rds_ib_retry_count_unused, int, 0444);
+MODULE_PARM_DESC(rds_ib_retry_count_unused,
+		 "UNUSED, set param in rds_rdma instead");
 
 static char *rds_qos_threshold = NULL;
 module_param(rds_qos_threshold, charp, 0444);
@@ -380,8 +383,13 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
 
 	/* clear state any time we wake a seen-congested socket */
-	if (mask)
+	if (mask) {
+		if (rs->rs_seen_congestion == 1)
+			trace_rds_cong_cleared(rs, rs->rs_conn, NULL,
+					       "poll woke seen-congested sock",
+					       0);
 		rs->rs_seen_congestion = 0;
+	}
 
 	return mask;
 }
