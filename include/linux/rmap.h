@@ -623,6 +623,7 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 	const int orig_nr_pages = nr_pages;
 	bool maybe_pinned;
 	int i;
+	bool is_exec_keep = !!(dst_vma->vm_flags & VM_EXEC_KEEP);
 
 	VM_WARN_ON_FOLIO(!folio_test_anon(folio), folio);
 	__folio_rmap_sanity_checks(folio, page, nr_pages, level);
@@ -644,21 +645,21 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 	 */
 	switch (level) {
 	case RMAP_LEVEL_PTE:
-		if (unlikely(maybe_pinned)) {
+		if (unlikely(maybe_pinned && !is_exec_keep)) {
 			for (i = 0; i < nr_pages; i++)
 				if (PageAnonExclusive(page + i))
 					return -EBUSY;
 		}
 
 		if (!folio_test_large(folio)) {
-			if (PageAnonExclusive(page))
+			if (PageAnonExclusive(page) && !is_exec_keep)
 				ClearPageAnonExclusive(page);
 			atomic_inc(&folio->_mapcount);
 			break;
 		}
 
 		do {
-			if (PageAnonExclusive(page))
+			if (PageAnonExclusive(page) && !is_exec_keep)
 				ClearPageAnonExclusive(page);
 			if (IS_ENABLED(CONFIG_PAGE_MAPCOUNT))
 				atomic_inc(&page->_mapcount);
@@ -667,7 +668,7 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 		break;
 	case RMAP_LEVEL_PMD:
 	case RMAP_LEVEL_PUD:
-		if (PageAnonExclusive(page)) {
+		if (PageAnonExclusive(page) && !is_exec_keep) {
 			if (unlikely(maybe_pinned))
 				return -EBUSY;
 			ClearPageAnonExclusive(page);

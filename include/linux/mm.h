@@ -419,9 +419,12 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_RSVD_VA			BIT(VM_RSVD_VA_BIT) /* Reserved VA range */
 # define VM_RSVD_PLACEHOLDER_BIT	49
 # define VM_RSVD_PLACEHOLDER		BIT(VM_RSVD_PLACEHOLDER_BIT)
+# define VM_EXEC_KEEP_BIT		50
+# define VM_EXEC_KEEP			BIT(VM_EXEC_KEEP_BIT) /* preserve VMA across exec */
 #else
 # define VM_RSVD_VA			VM_NONE
 # define VM_RSVD_PLACEHOLDER		VM_NONE
+# define VM_EXEC_KEEP			VM_NONE
 #endif
 
 #ifdef CONFIG_64BIT
@@ -2510,6 +2513,8 @@ void free_pgd_range(struct mmu_gather *tlb, unsigned long addr,
 		unsigned long end, unsigned long floor, unsigned long ceiling);
 int
 copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma);
+int copy_page_range_exec(struct vm_area_struct *dst_vma,
+			 struct vm_area_struct *src_vma);
 int generic_access_phys(struct vm_area_struct *vma, unsigned long addr,
 			void *buf, int len, int write);
 
@@ -3439,6 +3444,7 @@ extern void exit_mmap(struct mm_struct *);
 int relocate_vma_down(struct vm_area_struct *vma, unsigned long shift);
 bool mmap_read_lock_maybe_expand(struct mm_struct *mm, struct vm_area_struct *vma,
 				 unsigned long addr, bool write);
+int vma_dup(struct vm_area_struct *vma, struct mm_struct *mm);
 
 static inline int check_data_rlimit(unsigned long rlim,
 				    unsigned long new,
