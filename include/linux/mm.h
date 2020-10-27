@@ -432,9 +432,12 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_RSVD_VA			BIT(VM_RSVD_VA_BIT) /* Reserved VA range */
 # define VM_RSVD_PLACEHOLDER_BIT	49
 # define VM_RSVD_PLACEHOLDER		BIT(VM_RSVD_PLACEHOLDER_BIT)
+# define VM_EXEC_KEEP_BIT		50
+# define VM_EXEC_KEEP			BIT(VM_EXEC_KEEP_BIT) /* preserve VMA across exec */
 #else
 # define VM_RSVD_VA			VM_NONE
 # define VM_RSVD_PLACEHOLDER		VM_NONE
+# define VM_EXEC_KEEP			VM_NONE
 #endif
 
 #ifdef CONFIG_64BIT
@@ -3320,6 +3323,7 @@ extern int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admi
 extern int insert_vm_struct(struct mm_struct *, struct vm_area_struct *);
 extern void exit_mmap(struct mm_struct *);
 int relocate_vma_down(struct vm_area_struct *vma, unsigned long shift);
+extern int vma_dup(struct vm_area_struct *vma, struct mm_struct *mm);
 
 static inline int check_data_rlimit(unsigned long rlim,
 				    unsigned long new,
