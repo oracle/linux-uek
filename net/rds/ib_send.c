@@ -441,10 +441,6 @@ try_again:
 	posted = IB_GET_POST_CREDITS(oldval);
 	avail = IB_GET_SEND_CREDITS(oldval);
 
-	rds_rtd(RDS_RTD_FLOW_CNTRL,
-		"rds_ib_send_grab_credits(%u): credits=%u posted=%u\n",
-		wanted, avail, posted);
-
 	/* The last credit must be used to send a credit update. */
 	if (avail && !posted)
 		avail--;
@@ -475,6 +471,9 @@ try_again:
 	if (atomic_cmpxchg(&ic->i_credits, oldval, newval) != oldval)
 		goto try_again;
 
+	trace_rds_ib_flow_cntrl_grab_credits(ic->rds_ibdev, ic->conn, ic,
+					     oldval);
+
 	*adv_credits = advertise;
 	return got;
 }
@@ -482,20 +481,18 @@ try_again:
 void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	long oldval;
 
 	if (credits == 0)
 		return;
 
-	rds_rtd(RDS_RTD_FLOW_CNTRL,
-		"rds_ib_send_add_credits(%u): current=%u%s\n",
-		credits,
-		IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits)),
-		test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ?
-		", ll_send_full" : "");
+	oldval = atomic_read(&ic->i_credits);
 
 	atomic_add(IB_SET_SEND_CREDITS(credits), &ic->i_credits);
 	if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags))
 		rds_cond_queue_send_work(conn->c_path + 0, 0);
+
+	trace_rds_ib_flow_cntrl_add_credits(ic->rds_ibdev, conn, ic, oldval);
 
 	WARN_ON(IB_GET_SEND_CREDITS(credits) >= 16384);
 
@@ -505,9 +502,12 @@ void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits)
 void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	long oldval;
 
 	if (posted == 0)
 		return;
+
+	oldval = atomic_read(&ic->i_credits);
 
 	atomic_add(IB_SET_POST_CREDITS(posted), &ic->i_credits);
 
@@ -523,9 +523,9 @@ void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 	 * credits and has to throttle.
 	 * For the time being, 16 seems to be a good compromise.
 	 */
-	rds_rtd(RDS_RTD_FLOW_CNTRL, "ic->i_credits %u\n",
-		IB_GET_POST_CREDITS(atomic_read(&ic->i_credits)));
 	set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
+	trace_rds_ib_flow_cntrl_advertise_credits(ic->rds_ibdev, conn, ic,
+						  oldval);
 }
 
 static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
