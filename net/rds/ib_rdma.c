@@ -33,6 +33,8 @@
 #include <linux/kernel.h>
 #include <linux/rculist.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "ib.h"
 #include "xlist.h"
@@ -423,6 +425,26 @@ static unsigned int get_unmap_fmr_cpu(struct rds_ib_device *rds_ibdev,
 	return cpumask_local_spread(index, ib_node);
 }
 
+static void rds_ib_queue_delayed_work_on(struct rds_ib_device *rds_ibdev,
+					 int cpu,
+					 struct workqueue_struct *wq,
+					 struct delayed_work *dwork,
+					 unsigned long delay,
+					 char *reason)
+{
+	trace_rds_ib_queue_work(rds_ibdev, wq, &dwork->work, delay, reason);
+	queue_delayed_work_on(cpu, wq, dwork, delay);
+}
+
+static void rds_ib_queue_cancel_work(struct rds_ib_device *rds_ibdev,
+				     struct delayed_work *dwork,
+				     char *reason)
+{
+	trace_rds_ib_queue_cancel_work(rds_ibdev, NULL, &dwork->work, 0,
+				       reason);
+	cancel_delayed_work_sync(dwork);
+}
+
 struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 						int pool_type)
 {
@@ -470,9 +492,12 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 		}
 		unmap_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
 			WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
-		queue_delayed_work_on(unmap_cpu, pool->frwr_clean_wq,
-				      &pool->frwr_clean_worker,
-				      msecs_to_jiffies(rds_frwr_wake_intrvl));
+		rds_ib_queue_delayed_work_on(rds_ibdev, unmap_cpu,
+					     pool->frwr_clean_wq,
+					     &pool->frwr_clean_worker,
+					     msecs_to_jiffies(rds_frwr_wake_intrvl),
+					     "frwr clean");
+
 		/* Should set this only when everything is set up.  Otherwise,
 		 * if failure happens, the clean up routine will do the
 		 * wrong thing.
@@ -526,10 +551,13 @@ void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 		/* No need to call rds_frwr_clean() as rds_ib_flush_mr_pool()
 		 * with free_all set to 1 calls rds_frwr_clean().
 		 */
-		cancel_delayed_work_sync(&pool->frwr_clean_worker);
+		rds_ib_queue_cancel_work(NULL,
+					 &pool->frwr_clean_worker,
+					"cancel frwr worker, destroy MR pool");
 		destroy_workqueue(pool->frwr_clean_wq);
 	}
-	cancel_delayed_work_sync(&pool->flush_worker);
+	rds_ib_queue_cancel_work(NULL, &pool->flush_worker,
+				 "cancel flush worker, destroy MR pool");
 	rds_ib_flush_mr_pool(pool, 1, NULL);
 
 	WARN_ON(atomic_read(&pool->item_count));
@@ -614,8 +642,9 @@ static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
 		WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
 	if (atomic_read(&pool->dirty_count) >=
 		atomic_read(&pool->max_items_soft) / 10)
-		queue_delayed_work_on(unmap_fmr_cpu,
-				      rds_ib_fmr_wq, &pool->flush_worker, 10);
+		rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
+					     rds_ib_fmr_wq, &pool->flush_worker,
+					     10, "dirty count too high");
 
 	while (1) {
 		ibmr = rds_ib_reuse_fmr(pool);
@@ -1102,6 +1131,8 @@ static void rds_ib_mr_pool_flush_worker(struct work_struct *work)
 {
 	struct rds_ib_mr_pool *pool = container_of(work, struct rds_ib_mr_pool, flush_worker.work);
 
+	trace_rds_ib_queue_worker(NULL, rds_ib_fmr_wq, work, 0,
+				  "MR pool flush worker");
 	rds_ib_flush_mr_pool(pool, 0, NULL);
 }
 
@@ -1222,6 +1253,8 @@ static void rds_frwr_clean_worker(struct work_struct *work)
 	unsigned int unmap_cpu;
 	u32 fuzz;
 
+	trace_rds_ib_queue_worker(NULL, rds_ib_fmr_wq, work, 0,
+				  "frwr clean worker");
 	pool = container_of(work, struct rds_ib_mr_pool,
 			    frwr_clean_worker.work);
 	/* The pool is being destroyed, just return. */
@@ -1238,9 +1271,10 @@ static void rds_frwr_clean_worker(struct work_struct *work)
 	 */
 	get_random_bytes(&fuzz, sizeof(fuzz));
 	fuzz %= rds_frwr_wake_intrvl >> 2;
-	queue_delayed_work_on(unmap_cpu, pool->frwr_clean_wq,
-			      &pool->frwr_clean_worker,
-			      msecs_to_jiffies(rds_frwr_wake_intrvl + fuzz));
+	rds_ib_queue_delayed_work_on(NULL, unmap_cpu, pool->frwr_clean_wq,
+				     &pool->frwr_clean_worker,
+				     msecs_to_jiffies(rds_frwr_wake_intrvl + fuzz),
+				     "frwr clean worker");
 }
 
 static inline void __rds_frwr_free_mr(struct rds_ib_mr_pool *pool,
@@ -1317,8 +1351,10 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 	if (atomic_read(&pool->free_pinned) >= pool->max_free_pinned ||
 	    atomic_read(&pool->dirty_count) >=
 	    atomic_read(&pool->max_items_soft) / 5)
-		queue_delayed_work_on(unmap_fmr_cpu,
-				      rds_ib_fmr_wq, &pool->flush_worker, 10);
+		rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
+					     rds_ib_fmr_wq,
+					     &pool->flush_worker, 10,
+					     "flush frwr");
 
 	if (invalidate) {
 		if (likely(!in_interrupt())) {
@@ -1326,8 +1362,10 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 		} else {
 			/* We get here if the user created a MR marked
 			 * as use_once and invalidate at the same time. */
-			queue_delayed_work_on(unmap_fmr_cpu, rds_ib_fmr_wq,
-					      &pool->flush_worker, 10);
+			rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
+						     rds_ib_fmr_wq,
+						     &pool->flush_worker, 10,
+						     "flush frwr");
 		}
 	}
 }

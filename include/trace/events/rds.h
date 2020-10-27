@@ -829,6 +829,196 @@ DEFINE_EVENT(rds_ib_flow_cntrl, rds_ib_flow_cntrl_grab_credits,
 
 );
 
+DECLARE_EVENT_CLASS(rds_queue,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct workqueue_struct *wq, struct work_struct *work,
+		 unsigned long delay, char *reason),
+
+	TP_ARGS(conn, cp, wq, work, delay, reason),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, wq)
+		__field(void *, work)
+		__field(unsigned long, delay)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct rds_sock *rs;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = conn ? conn->c_laddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = conn ? conn->c_faddr : in6addr_any;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = 0;
+		__entry->fport = 0;
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = 0;
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = 0;
+		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs :
+					    NULL;
+		__entry->rs = rs;
+		__entry->netns_inum = rds_netns_inum(rs);
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->wq = wq;
+		__entry->work = work;
+		__entry->delay = delay;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> delay %ld reason [%s]",
+		  show_transport(__entry->transport),
+		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->delay, __entry->reason)
+);
+
+DEFINE_EVENT(rds_queue, rds_queue_cancel,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct workqueue_struct *wq, struct work_struct *work,
+		 unsigned long delay, char *reason),
+
+	TP_ARGS(conn, cp, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_queue, rds_queue_work,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct workqueue_struct *wq, struct work_struct *work,
+		 unsigned long delay, char *reason),
+
+	TP_ARGS(conn, cp, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_queue, rds_queue_worker,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct workqueue_struct *wq, struct work_struct *work,
+		 unsigned long delay, char *reason),
+
+	TP_ARGS(conn, cp, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_queue, rds_queue_cancel_work,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct workqueue_struct *wq, struct work_struct *work,
+		 unsigned long delay, char *reason),
+
+	TP_ARGS(conn, cp, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_queue, rds_queue_flush_work,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct workqueue_struct *wq, struct work_struct *work,
+		 unsigned long delay, char *reason),
+
+	TP_ARGS(conn, cp, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_queue, rds_queue_noop,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct workqueue_struct *wq, struct work_struct *work,
+		 unsigned long delay, char *reason),
+
+	TP_ARGS(conn, cp, wq, work, delay, reason)
+);
+
+DECLARE_EVENT_CLASS(rds_ib_queue,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct workqueue_struct *wq,
+		 struct work_struct *work, unsigned long delay, char *reason),
+
+	TP_ARGS(rds_ibdev, wq, work, delay, reason),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, dev)
+		__field(void *, rds_ibdev)
+		__field(void *, wq)
+		__field(void *, work)
+		__field(unsigned long, delay)
+		__array(char, dev_name, RDS_STRSIZE)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = in6addr_any;
+		__entry->tos = 0;
+		__entry->transport = RDS_TRANS_IB;
+		__entry->lport = 0;
+		__entry->fport = 0;
+		__entry->flags = 0;
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = 0;
+		__entry->rs = NULL;
+		__entry->cgroup = NULL;
+		__entry->cgroup_id = 0;
+		__entry->conn = NULL;
+		__entry->cp = NULL;
+		__entry->dev = rds_ibdev ? rds_ibdev->dev : NULL;
+		__entry->rds_ibdev = rds_ibdev;
+		RDS_STRLCPY(__entry->dev_name, rds_ibdev && rds_ibdev->dev ?
+					       rds_ibdev->dev->name : NULL);
+		__entry->wq = wq;
+		__entry->work = work;
+		__entry->delay = delay;
+	),
+
+	TP_printk("RDS/IB: dev %s %s delay %ld",
+		  __entry->dev_name, __entry->reason, __entry->delay)
+);
+
+DEFINE_EVENT(rds_ib_queue, rds_ib_queue_work,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct workqueue_struct *wq,
+		 struct work_struct *work, unsigned long delay, char *reason),
+
+	TP_ARGS(rds_ibdev, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_ib_queue, rds_ib_queue_worker,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct workqueue_struct *wq,
+		 struct work_struct *work, unsigned long delay, char *reason),
+
+	TP_ARGS(rds_ibdev, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_ib_queue, rds_ib_queue_cancel_work,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct workqueue_struct *wq,
+		 struct work_struct *work, unsigned long delay, char *reason),
+
+	TP_ARGS(rds_ibdev, wq, work, delay, reason)
+);
+
+DEFINE_EVENT(rds_ib_queue, rds_ib_queue_flush_work,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct workqueue_struct *wq,
+		 struct work_struct *work, unsigned long delay, char *reason),
+
+	TP_ARGS(rds_ibdev, wq, work, delay, reason)
+
+);
+
 #endif /* _TRACE_RDS_H */
 
 /* This part must be outside protection */
