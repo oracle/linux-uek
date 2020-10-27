@@ -430,6 +430,308 @@ TRACE_EVENT(rds_drop_egress,
 		 __entry->reason)
 );
 
+DECLARE_EVENT_CLASS(rds_ib,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, dev)
+		__field(void *, rds_ibdev)
+		__field(void *, cm_id)
+		__field(void *, pd)
+		__field(void *, rcq)
+		__field(void *, qp)
+		__field(__u64, lguid)
+		__field(__u64, fguid)
+		__array(char, dev_name, RDS_STRSIZE)
+	),
+
+	TP_fast_assign(
+		struct rds_conn_path *cp;
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+		struct rds_sock *rs;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = conn ? conn->c_laddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = conn ? conn->c_faddr : in6addr_any;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = 0;
+		__entry->fport = 0;
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = 0;
+		RDS_STRLCPY(__entry->dev_name, dev ? dev->name : NULL);
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = err;
+		cp = conn && conn->c_npaths == 1 ? &conn->c_path[0] : NULL;
+		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs : NULL;
+		__entry->rs = rs;
+		__entry->netns_inum = rds_netns_inum(rs);
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->dev = dev;
+		__entry->rds_ibdev = rds_ibdev;
+		__entry->cm_id = ic ? ic->i_cm_id : NULL;
+		__entry->pd = ic ? ic->i_pd : NULL;
+		__entry->rcq = ic ? ic->i_rcq : NULL;
+		__entry->qp = ic && ic->i_cm_id ? ic->i_cm_id->qp : NULL;
+		__entry->lguid = __entry->cm_id ?
+				((struct rdma_cm_id *)__entry->cm_id)
+				->route.path_rec->sgid.global.interface_id : 0;
+		__entry->fguid = __entry->cm_id ?
+				((struct rdma_cm_id *)__entry->cm_id)
+				->route.path_rec->dgid.global.interface_id : 0;
+	),
+
+	TP_printk("RDS/IB: <%pI6c,%pI6c,%d> lguid 0x%llx fguid 0x%llx qps <%d,%d> dev %s reason [%s], err [%d]",
+		__entry->laddr, __entry->faddr, __entry->tos,
+		__entry->lguid, __entry->fguid,
+		__entry->qp_num, __entry->remote_qp_num, __entry->dev_name,
+		__entry->reason, __entry->err)
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_add_device,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_add_device_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_remove_device,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_remove_device_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_shutdown_device,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_cm_mismatch,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_cm_handle_connect,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_cm_handle_connect_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_reconnect_racing,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_cm_initiate_connect,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_cm_initiate_connect_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_path_connect,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_path_connect_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_conn_path_shutdown_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_setup_fastreg,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_setup_fastreg_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_setup_qp,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_setup_qp_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_send_cqe_handler,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_send_cqe_handler_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_rdma_cm_event_handler,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_rdma_cm_event_handler_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
 #endif /* _TRACE_RDS_H */
 
 /* This part must be outside protection */

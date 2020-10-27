@@ -296,16 +296,18 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	int nr_sig = 0;
 	enum ib_wr_opcode opcode;
 
-	rdsdebug("wc wr_id 0x%llx status %u (%s) byte_len %u imm_data %u\n",
-		 (unsigned long long)wc->wr_id, wc->status,
-		 rds_ib_wc_status_str(wc->status), wc->byte_len,
-		 be32_to_cpu(wc->ex.imm_data));
+	trace_rds_ib_send_cqe_handler(NULL, ic->rds_ibdev, conn, ic,
+				      rds_ib_wc_status_str(wc->status), 0);
 
 	rds_ib_stats_inc(s_ib_tx_cq_event);
 
 	if (wc->wr_id == RDS_IB_ACK_WR_ID) {
-		if (ic->i_ack_queued + HZ/2 < jiffies)
+		if (ic->i_ack_queued + HZ/2 < jiffies) {
 			rds_ib_stats_inc(s_ib_tx_stalled);
+			trace_rds_ib_send_cqe_handler_err(NULL, ic->rds_ibdev,
+							  conn, ic,
+							  "ib tx stalled", 0);
+		}
 		rds_ib_ack_send_complete(ic);
 		return;
 	}
@@ -357,8 +359,9 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 		for (y = 0; y < send->s_wr.num_sge; y++)
 			len += send->s_sge[y].length;
 
-		trace_printk("RDS: Remote access failure op: %d addr: %#llx rkey: %#x len: %u\n",
-			     opcode, remote_addr, rkey, len);
+		trace_rds_ib_send_cqe_handler_err(NULL, ic->rds_ibdev, conn, ic,
+						  "remote access failure op",
+						  opcode);
 	}
 
 	rds_ib_ring_free(&ic->i_send_ring, completed);
