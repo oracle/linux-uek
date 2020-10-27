@@ -80,6 +80,9 @@
 
 #define MADV_COLLAPSE	25		/* Synchronous hugepage collapse */
 
+#define MADV_DOEXEC	201		/* do inherit across exec */
+#define MADV_DONTEXEC	202		/* don't inherit across exec */
+
 /* compatibility flags */
 #define MAP_FILE	0
 
