@@ -355,6 +355,7 @@ enum {
 	DECLARE_VMA_BIT(SEALED, 42),
 	DECLARE_VMA_BIT(RSVD_VA, 48),
 	DECLARE_VMA_BIT(RSVD_PLACEHOLDER, 49),
+	DECLARE_VMA_BIT(EXEC_KEEP, 50),
 	/* Flags that reuse flags above. */
 	DECLARE_VMA_BIT_ALIAS(PKEY_BIT0, HIGH_ARCH_0),
 	DECLARE_VMA_BIT_ALIAS(PKEY_BIT1, HIGH_ARCH_1),
@@ -510,9 +511,11 @@ enum {
 #ifdef CONFIG_64BIT
 #define VM_RSVD_VA			INIT_VM_FLAG(RSVD_VA)
 #define VM_RSVD_PLACEHOLDER		INIT_VM_FLAG(RSVD_PLACEHOLDER)
+#define VM_EXEC_KEEP			INIT_VM_FLAG(EXEC_KEEP)
 #else
 #define VM_RSVD_VA			VM_NONE
 #define VM_RSVD_PLACEHOLDER		VM_NONE
+#define VM_EXEC_KEEP			VM_NONE
 #endif
 
 /* Bits set in the VMA until the stack is in its final location */
@@ -2656,6 +2659,8 @@ void free_pgd_range(struct mmu_gather *tlb, unsigned long addr,
 		unsigned long end, unsigned long floor, unsigned long ceiling);
 int
 copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma);
+int copy_page_range_exec(struct vm_area_struct *dst_vma,
+			 struct vm_area_struct *src_vma);
 int generic_access_phys(struct vm_area_struct *vma, unsigned long addr,
 			void *buf, int len, int write);
 
@@ -3656,6 +3661,7 @@ extern int insert_vm_struct(struct mm_struct *, struct vm_area_struct *);
 extern void exit_mmap(struct mm_struct *);
 bool mmap_read_lock_maybe_expand(struct mm_struct *mm, struct vm_area_struct *vma,
 				 unsigned long addr, bool write);
+int vma_dup(struct vm_area_struct *vma, struct mm_struct *mm);
 
 static inline int check_data_rlimit(unsigned long rlim,
 				    unsigned long new,

@@ -1789,7 +1789,7 @@ __latent_entropy int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 			tmp->anon_vma = NULL;
 		} else if (anon_vma_fork(tmp, mpnt))
 			goto fail_nomem_anon_vma_fork;
-		vm_flags_clear(tmp, VM_LOCKED_MASK);
+		vm_flags_clear(tmp, VM_LOCKED_MASK | VM_EXEC_KEEP);
 		/*
 		 * Copy/update hugetlb private vma information.
 		 */
