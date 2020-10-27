@@ -732,6 +732,103 @@ DEFINE_EVENT(rds_ib, rds_rdma_cm_event_handler_err,
 
 );
 
+DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
+		 struct rds_ib_connection *ic, long oldval),
+
+	TP_ARGS(rds_ibdev, conn, ic, oldval),
+
+	/*
+	 * fields here are intended to match as much of other RDS
+	 * tracepoints as possible so the same struct can be used to
+	 * access key tracepoint data from all rds-related tracepoints.
+	 */
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, dev)
+		__field(void *, rds_ibdev)
+		__field(long, old_send_credits)
+		__field(long, old_post_credits)
+		__field(long, new_send_credits)
+		__field(long, new_post_credits)
+		__array(char, dev_name, RDS_STRSIZE)
+	),
+
+	TP_fast_assign(
+		struct rds_conn_path *cp;
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+		struct rds_sock *rs;
+		long newval = atomic_read(&ic->i_credits);
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = conn ? conn->c_laddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = conn ? conn->c_faddr : in6addr_any;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = 0;
+		__entry->fport = 0;
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = 0;
+		__entry->err = 0;
+		RDS_STRLCPY(__entry->reason, NULL);
+		cp = conn && conn->c_npaths == 1 ? &conn->c_path[0] : NULL;
+		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs : NULL;
+		__entry->rs = rs;
+		__entry->netns_inum = rds_netns_inum(rs);
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->dev = rds_ibdev ? rds_ibdev->dev : NULL;
+		__entry->rds_ibdev = rds_ibdev;
+		RDS_STRLCPY(__entry->dev_name, rds_ibdev && rds_ibdev->dev ?
+					       rds_ibdev->dev->name : NULL);
+		__entry->old_send_credits = IB_GET_SEND_CREDITS(oldval);
+		__entry->old_post_credits = IB_GET_POST_CREDITS(oldval);
+		__entry->new_send_credits = IB_GET_SEND_CREDITS(newval);
+		__entry->new_post_credits = IB_GET_POST_CREDITS(newval);
+	),
+
+	TP_printk("RDS/IB: <%pI6c,%pI6c,%d> dev %s send_credits [%ld -> %ld], post_credits [%ld -> %ld]",
+		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->dev_name, __entry->old_send_credits,
+		  __entry->new_send_credits, __entry->old_post_credits,
+		  __entry->new_post_credits)
+);
+
+DEFINE_EVENT(rds_ib_flow_cntrl, rds_ib_flow_cntrl_add_credits,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
+		 struct rds_ib_connection *ic, long oldval),
+
+	TP_ARGS(rds_ibdev, conn, ic, oldval)
+
+);
+
+DEFINE_EVENT(rds_ib_flow_cntrl, rds_ib_flow_cntrl_advertise_credits,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
+		 struct rds_ib_connection *ic, long oldval),
+
+	TP_ARGS(rds_ibdev, conn, ic, oldval)
+
+);
+
+DEFINE_EVENT(rds_ib_flow_cntrl, rds_ib_flow_cntrl_grab_credits,
+
+	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
+		 struct rds_ib_connection *ic, long oldval),
+
+	TP_ARGS(rds_ibdev, conn, ic, oldval)
+
+);
+
 #endif /* _TRACE_RDS_H */
 
 /* This part must be outside protection */
