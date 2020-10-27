@@ -43,3 +43,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_send_cqe_handler_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_reconnect_racing);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_rdma_cm_event_handler);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_rdma_cm_event_handler_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_flow_cntrl_add_credits);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_flow_cntrl_advertise_credits);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_flow_cntrl_grab_credits);
