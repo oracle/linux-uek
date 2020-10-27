@@ -458,7 +458,7 @@ try_again:
 		avail--;
 
 	if (avail < wanted) {
-		struct rds_connection *conn = rds_ib_get_conn(ic->i_cm_id);
+		struct rds_connection *conn = ic->i_cm_id->context;
 
 		/* Oops, there aren't that many credits left! */
 		set_bit(RDS_LL_SEND_FULL, &conn->c_flags);
