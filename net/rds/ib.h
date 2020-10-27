@@ -5,6 +5,7 @@
 #include <rdma/rdma_cm.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
+
 #include "rds.h"
 #include "rdma_transport.h"
 #include "rds_single_path.h"
@@ -563,29 +564,6 @@ static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
 	rdma_destroy_id(cm_id);
 }
 
-static inline bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id)
-{
-	if (ic) {
-		if (ic->i_cm_id != cm_id) {
-			rds_rtd_ptr(RDS_RTD_CM_EXT,
-				    "conn %p ic->cm_id %p NE cm_id %p\n",
-				    ic->conn, ic->i_cm_id, cm_id);
-			return false;
-		}
-		if (ic->i_cm_id_ctx != cm_id->context) {
-			rds_rtd_ptr(RDS_RTD_CM_EXT,
-				    "conn %p ic->cm_id %p cm_id %p ctx1 %p NE ctx2 %p\n",
-				    ic->conn, ic->i_cm_id, cm_id,
-				    ic->i_cm_id_ctx, cm_id->context);
-			return false;
-		}
-
-		return true;
-	}
-
-	return false;
-}
-
 /*
  * Fake ib_dma_sync_sg_for_{cpu,device} as long as ib_verbs.h
  * doesn't define it.
@@ -659,6 +637,7 @@ extern struct list_head ib_nodev_conns;
 extern struct socket *rds_ib_inet_socket;
 
 /* ib_cm.c */
+bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id);
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
 void rds_ib_conn_free(void *arg);
 int rds_ib_conn_path_connect(struct rds_conn_path *cp);
