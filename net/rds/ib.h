@@ -652,7 +652,7 @@ int rds_ib_listen_init(void);
 void rds_ib_listen_stop(void);
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			     struct rdma_cm_event *event,
-			     bool isv6, bool was_locked);
+			     bool isv6);
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6);
 void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
