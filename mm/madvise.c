@@ -32,6 +32,8 @@
 
 #include "internal.h"
 
+int madv_doexec_flag = MADV_DOEXEC;
+
 struct madvise_walk_private {
 	struct mmu_gather *tlb;
 	bool pageout;
