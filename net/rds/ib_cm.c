@@ -628,19 +628,26 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	if (rds_conn_up(conn))
 		rds_ib_attempt_ack(ic);
 
-	if (rds_ib_srq_enabled)
+	if (rds_ib_srq_enabled) {
 		if ((atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
 		    !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-			queue_delayed_work_on(ic->i_irq_local_cpu,
-					      conn->c_path[0].cp_wq,
-					      &rds_ibdev->srq->s_refill_w, 0);
+			rds_queue_delayed_work_on(&conn->c_path[0],
+						  ic->i_irq_local_cpu,
+						  conn->c_path[0].cp_wq,
+						  &rds_ibdev->srq->s_refill_w,
+						  0,
+						  "srq refill");
+	}
 
 	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
 		ic->i_rx_w.ic = ic;
 		/* Delay 10 msecs until the RX worker starts reaping again */
-		queue_delayed_work_on(ic->i_irq_local_cpu,
-				      rds_aux_wq, &ic->i_rx_w.work,
-				      msecs_to_jiffies(10));
+		rds_queue_delayed_work_on(&conn->c_path[0],
+					  ic->i_irq_local_cpu,
+					  rds_aux_wq,
+					  &ic->i_rx_w.work,
+					  msecs_to_jiffies(10),
+					  "delay for RX worker");
 		ic->i_rx_wait_for_handler = 1;
 	}
 }
@@ -1521,7 +1528,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		/* Cancel any pending reconnect */
 		struct rds_conn_path *cp = &conn->c_path[0];
 
-		cancel_delayed_work_sync(&cp->cp_conn_w);
+		rds_queue_cancel_work(cp, &cp->cp_conn_w,
+				      "failed to transition to CONNECTING");
 		rds_clear_reconnect_pending_work_bit(cp);
 	}
 
@@ -1621,7 +1629,8 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn)
 
 	work->conn = conn;
 	INIT_DELAYED_WORK(&work->work, rds_ib_conn_destroy_worker);
-	queue_delayed_work(rds_aux_wq, &work->work, 0);
+	rds_queue_delayed_work(&conn->c_path[0], rds_aux_wq, &work->work, 0,
+			       "conn destroy");
 }
 
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
