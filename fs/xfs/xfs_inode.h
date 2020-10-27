@@ -218,6 +218,11 @@ xfs_get_initial_prid(struct xfs_inode *dp)
 #define __XFS_IPINNED_BIT	8	 /* wakeup key for zero pin count */
 #define XFS_IPINNED		(1 << __XFS_IPINNED_BIT)
 #define XFS_IDONTCACHE		(1 << 9) /* don't cache the inode long term */
+/*
+ * this inode can be called with xfs_fs_destroy_inode() twice.
+ * when this flag is set, only the later will do real free work.
+ */
+#define XFS_IDONTFREE		(1 << 10)
 
 /*
  * Per-lifetime flags need to be reset when re-using a reclaimable inode during

@@ -956,6 +956,12 @@ xfs_fs_destroy_inode(
 	struct xfs_inode	*ip = XFS_I(inode);
 
 	trace_xfs_destroy_inode(ip);
+	/* could be called twice from evict() path and
+	 * from xfs_fs_inact_worker(). Let the later do
+	 * the free work.
+	 */
+	if (xfs_iflags_test_and_clear(ip, XFS_IDONTFREE))
+		return;
 
 	XFS_STATS_INC(ip->i_mount, vn_reclaim);
 
@@ -1044,6 +1050,12 @@ xfs_fs_evict_inode(
 		pag = xfs_perag_get(mp, XFS_INO_TO_AGNO(mp, ip->i_ino));
 		truncate_inode_pages_final(&inode->i_data);
 		clear_inode(inode);
+		/*
+		 * this inode can be called with xfs_fs_destroy_inode()
+		 * twice from evict() path and from xfs_fs_inact_worker().
+		 * set XFS_IDONTFREE to make the freeing safe.
+		 */
+		xfs_iflags_set(ip, XFS_IDONTFREE);
 		spin_lock(&pag->pag_inact_lock);
 		list_add_tail(&ip->i_inact_list, &pag->pag_inact_list);
 		spin_unlock(&pag->pag_inact_lock);
@@ -1086,6 +1098,7 @@ xfs_fs_inact_worker(
 		list_for_each_entry_safe(ip, next_ip, &list, i_inact_list) {
 			list_del_init(&ip->i_inact_list);
 			_xfs_fs_evict_inode(&ip->i_vnode, true);
+			xfs_fs_destroy_inode(&ip->i_vnode);
 			cond_resched();
 		}
 		sb_end_write(mp->m_super);
