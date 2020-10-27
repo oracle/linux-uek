@@ -83,6 +83,9 @@
 #define MADV_GUARD_INSTALL 102		/* fatal signal on access to range */
 #define MADV_GUARD_REMOVE 103		/* unguard range */
 
+#define MADV_DOEXEC	201		/* do inherit across exec */
+#define MADV_DONTEXEC	202		/* don't inherit across exec */
+
 /* compatibility flags */
 #define MAP_FILE	0
 
