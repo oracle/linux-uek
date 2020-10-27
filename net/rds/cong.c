@@ -248,8 +248,11 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 		if (!test_and_set_bit(RCMQ_BITOFF_CONGU_PENDING,
 				      &conn->c_map_queued)) {
 			rds_stats_inc(s_cong_update_queued);
-			queue_delayed_work(conn->c_path[0].cp_wq,
-					   &conn->c_path[0].cp_send_w, 0);
+			rds_queue_delayed_work(&conn->c_path[0],
+					       conn->c_path[0].cp_wq,
+					       &conn->c_path[0].cp_send_w,
+					       0,
+					       "cong update queued");
 		}
 	}
 
