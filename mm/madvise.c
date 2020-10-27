@@ -1075,6 +1075,26 @@ static int madvise_vma_behavior(struct vm_area_struct *vma,
 			return -EINVAL;
 		new_flags &= ~VM_WIPEONFORK;
 		break;
+	case MADV_DOEXEC:
+		/*
+		 * MADV_DOEXEC is only supported on private, non-executable,
+		 * non-stack anonymous memory and if the VM_EXEC_KEEP flag
+		 * is available.
+		 */
+		if (!VM_EXEC_KEEP || !vma_is_anonymous(vma) || vma->vm_flags & (VM_EXEC|VM_SHARED|VM_STACK)) {
+			error = -EINVAL;
+			goto out;
+		}
+		new_flags |= (new_flags & ~VM_MAYEXEC) | VM_EXEC_KEEP;
+		break;
+	case MADV_DONTEXEC:
+		if (!VM_EXEC_KEEP) {
+			error = -EINVAL;
+			goto out;
+		}
+		if (new_flags & VM_EXEC_KEEP)
+			new_flags = (new_flags & ~VM_EXEC_KEEP) | VM_MAYEXEC;
+		break;
 	case MADV_DONTDUMP:
 		new_flags |= VM_DONTDUMP;
 		break;
@@ -1201,6 +1221,8 @@ madvise_behavior_valid(int behavior)
 	case MADV_SOFT_OFFLINE:
 	case MADV_HWPOISON:
 #endif
+	case MADV_DOEXEC:
+	case MADV_DONTEXEC:
 		return true;
 
 	default:
@@ -1394,6 +1416,9 @@ int madvise_set_anon_name(struct mm_struct *mm, unsigned long start,
  *		triggering read faults if required
  *  MADV_POPULATE_WRITE - populate (prefault) page tables writable by
  *		triggering write faults if required
+ *  MADV_DOEXEC - On exec, preserve and duplicate this area in the new process
+ *		if the new process allows it.
+ *  MADV_DONTEXEC - Undo the effect of MADV_DOEXEC.
  *
  * return values:
  *  zero    - success
