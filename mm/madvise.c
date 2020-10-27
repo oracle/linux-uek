@@ -37,6 +37,8 @@
 #include "internal.h"
 #include "swap.h"
 
+int madv_doexec_flag = MADV_DOEXEC;
+
 /*
  * Maximum number of attempts we make to install guard pages before we give up
  * and return -ERESTARTNOINTR to have userspace try again.
