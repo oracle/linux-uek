@@ -31,6 +31,7 @@
 #include <linux/swapops.h>
 #include <linux/shmem_fs.h>
 #include <linux/mmu_notifier.h>
+#include <linux/sysctl.h>
 
 #include <asm/tlb.h>
 
@@ -1932,3 +1933,24 @@ free_iov:
 out:
 	return ret;
 }
+
+#ifdef CONFIG_SYSCTL
+int madv_doexec_flag = MADV_DOEXEC;
+
+static const struct ctl_table madv_table[] = {
+	{
+		.procname	= "madv_doexec_flag",
+		.data		= &madv_doexec_flag,
+		.maxlen		= sizeof(int),
+		.mode		= 0444,
+		.proc_handler	= proc_dointvec,
+	},
+};
+
+static int __init init_vm_madv_sysctl(void)
+{
+	register_sysctl_init("vm", madv_table);
+	return 0;
+}
+subsys_initcall(init_vm_madv_sysctl);
+#endif
