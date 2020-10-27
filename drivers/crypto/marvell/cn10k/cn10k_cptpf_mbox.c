@@ -10,7 +10,7 @@
  * CPT PF driver version, It will be incremented by 1 for every feature
  * addition in CPT PF driver.
  */
-#define CN10K_CPT_PF_DRV_VERSION 0x2
+#define CN10K_CPT_PF_DRV_VERSION 0x1
 
 static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
 {
