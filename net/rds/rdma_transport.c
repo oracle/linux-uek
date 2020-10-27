@@ -107,6 +107,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	/* this can be null in the listening path */
 	struct rds_connection *conn = cm_id->context;
 	struct rds_transport *trans = &rds_ib_transport;
+	struct rds_ib_connection *ic;
 	int ret = 0;
 	/* ADDR_CHANGE event indicates that the local address has moved
 	 * to a different device, most likely due to failover/failback.
@@ -121,21 +122,34 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	int *err;
 
 	if (!conn) {
-		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
-			trace_rds_rdma_cm_event_handler(NULL, NULL, NULL,
-							NULL,
-							rds_cm_event_str(event->event),
-							0);
-			ret = trans->cm_handle_connect(cm_id, event, isv6, false);
-			if (ret)
-				reason = "handle connect failed";
-		} else {
-			reason = "no conn found for event";
+		trace_rds_rdma_cm_event_handler(NULL, NULL, NULL,
+						NULL,
+						rds_cm_event_str(event->event),
+						0);
+
+		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST)
+			ret = trans->cm_handle_connect(cm_id, event, isv6);
+
+		if (ret) {
+			trace_rds_rdma_cm_event_handler_err(NULL, NULL, NULL,
+							    NULL, rds_cm_event_str(event->event), ret);
+
+			/* make sure that ic and cm_id are disassocated
+			 * before cm_id gets destroyed
+			 */
+			conn = cm_id->context;
+			if (conn) {
+				mutex_lock(&conn->c_cm_lock);
+				ic = conn->c_transport_data;
+				BUG_ON(!ic);
+				down_write(&ic->i_cm_id_free_lock);
+				ic->i_cm_id = NULL;
+				cm_id->context = NULL;
+				up_write(&ic->i_cm_id_free_lock);
+				mutex_unlock(&conn->c_cm_lock);
+			}
 		}
 
-		if (reason)
-			trace_rds_rdma_cm_event_handler_err(NULL, NULL, NULL,
-							    NULL, reason, ret);
 		return ret;
 	}
 
@@ -148,6 +162,52 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 					conn->c_transport_data : NULL,
 					rds_cm_event_str(event->event), 0);
 
+	/* RDMA_CM_EVENT_CONNECT_REQUEST should always come in on a freshly
+	 * allocated cm_id:
+	 * ("cm_req_handler" unconditionally calls "ib_create_cm_id",
+	 * which allocates with "kzalloc").
+	 *
+	 * If we ever encounter "cm_id->context != NULL" for this event,
+	 * then something went very wrong.
+	 *
+	 * Whatever the cause, we certainly don't want to proceed
+	 * by dispatching the same "cm_id" to "trans->cm_handle_connect" twice.
+	 */
+	BUG_ON(event->event == RDMA_CM_EVENT_CONNECT_REQUEST);
+
+	ic = conn->c_transport_data;
+	BUG_ON(!ic);
+
+        /* If we can't acquire a read-lock on "i_cm_id_free_lock", "ic->i_cm_id" is being destroyed.
+	 * Just ignore the event in that case.
+	 */
+        if (!down_read_trylock(&ic->i_cm_id_free_lock)) {
+		mutex_unlock(&conn->c_cm_lock);
+                return 0;
+	}
+
+	if (!cm_id->context) {
+		/* Connection is being destroyed.
+		 * This must have happened just before we acquired "i_cm_id_free_lock".
+		 * Just ignore the event in this case as well.
+		 */
+		up_read(&ic->i_cm_id_free_lock);
+		mutex_unlock(&conn->c_cm_lock);
+                return 0;
+	}
+
+	/* If the bottom-up pointer "cm_id->context" is inconsistent with
+	 * the top-down pointer "ic->i_cm_id", it must be a bug.
+	 */
+	BUG_ON(ic->i_cm_id != cm_id);
+
+	/* Even though this function no longer accesses "ic->i_cm_id" past this point
+	 * and "cma.c" always blocks "rdma_destroy_id" until "event_callback" is done,
+	 * we still need to hang on to the "i_cm_id_free_lock" until return,
+	 * since some functions called (e.g. conn->c_transport_data) just access
+	 * "ic->i_cm_id" without any checks.
+	 */
+
 	/* If the connection is being shut down, bail out
 	 * right away. We return 0 so cm_id doesn't get
 	 * destroyed prematurely.
@@ -156,17 +216,12 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	 * need to be processed regardless of the connection state
 	 * as they flush the ARP cache as well as invalidate the
 	 * pending inbound connection (RDS_CONN_PATH_RESET_ALT_CONN).
-	 * 
-	 * Also event RDMA_CM_EVENT_CONNECT_REQUEST needs to be processed,
-	 * because we want to figure out if we want to yield to that incoming connection,
-	 * also regardless of what state the outbound connection is in.
 	 */
 	if ((rds_conn_state(conn) == RDS_CONN_DISCONNECTING ||
 	     rds_conn_state(conn) == RDS_CONN_ERROR) &&
 	    event->event != RDMA_CM_EVENT_ADDR_CHANGE &&
-	    event->event != RDMA_CM_EVENT_DISCONNECTED &&
-	    event->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
-		reason = "reject incoming connections during teardown";
+	    event->event != RDMA_CM_EVENT_DISCONNECTED) {
+		reason = "ignoring events during teardown";
 		goto out;
 	}
 
@@ -179,15 +234,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	}
 
 	switch (event->event) {
-		struct rds_ib_connection *ibic;
-	case RDMA_CM_EVENT_CONNECT_REQUEST:
-		if (conn->c_path)
-			conn->c_path->cp_conn_start_jf = 0;
-		ret = trans->cm_handle_connect(cm_id, event, isv6, true);
-		if (ret)
-			reason = "handle connect failed";
-		break;
-
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		rdma_set_service_type(cm_id, conn->c_tos);
 		if (rds_ib_sysctl_local_ack_timeout &&
@@ -198,15 +244,9 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		ret = rdma_resolve_route(cm_id,
 				rds_rdma_resolve_to_ms[conn->c_to_index]);
 		if (ret) {
-			/*
-			 * The cm_id will get destroyed by addr_handler
-			 * in RDMA CM when we return from here.
-			 */
 			reason = "resolve route failed";
-			ibic = conn->c_transport_data;
-			if (ibic && ibic->i_cm_id == cm_id)
-				ibic->i_cm_id = NULL;
 			rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL, ret);
+			ret = 0;
 		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
 				conn->c_to_index++;
 		break;
@@ -218,22 +258,17 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* Connection could have been dropped so make sure the
 		 * cm_id is valid before proceeding */
 
-		ibic = conn->c_transport_data;
-		if (ibic && ibic->i_cm_id == cm_id) {
-			/* ibacm caches the path record without considering the tos/sl.
-			 * It is considered a match if the <src,dest> matches the
-			 * cache. In order to create qp with the correct sl/vl, RDS
-			 * needs to update the sl manually. As for now, RDS is assuming
-			 * that it is a 1:1 in tos to sl mapping.
-			 */
-			cm_id->route.path_rec[0].sl = TOS_TO_SL(conn->c_tos);
-			cm_id->route.path_rec[0].qos_class = conn->c_tos;
-			ret = trans->cm_initiate_connect(cm_id, isv6);
-			if (ret)
-				reason = "initiate connect failed";
-		} else {
-			rds_conn_drop(conn, DR_IB_RDMA_CM_ID_MISMATCH, 0);
-		}
+		/* ibacm caches the path record without considering the tos/sl.
+		 * It is considered a match if the <src,dest> matches the
+		 * cache. In order to create qp with the correct sl/vl, RDS
+		 * needs to update the sl manually. As for now, RDS is assuming
+		 * that it is a 1:1 in tos to sl mapping.
+		 */
+		cm_id->route.path_rec[0].sl = TOS_TO_SL(conn->c_tos);
+		cm_id->route.path_rec[0].qos_class = conn->c_tos;
+		ret = trans->cm_initiate_connect(cm_id, isv6);
+		if (ret)
+			reason = "initiate connect failed";
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
@@ -325,6 +360,24 @@ out:
 	if (reason)
 		trace_rds_rdma_cm_event_handler_err(NULL, NULL, conn, NULL,
 						    reason, ret);
+
+	if (ret) {
+		/* We need to take the shutdown-path here
+		 * since this cm_id is already owned by a connection.
+		 * There may be delayed or scheduled work pending.
+		 * Or there may be resources allocated by "rds_ib_setup_qp"
+		 * that are only released in the shutdown-path.
+		 */
+
+		rds_conn_drop(conn, DR_IB_SHUTDOWN_NEEDED, ret);
+
+		/* prevent double rdma_destroy_id,
+		 * as the shutdown-path will destroy this cm_id
+		 */
+		ret = 0;
+	}
+
+        up_read(&ic->i_cm_id_free_lock);
 	mutex_unlock(&conn->c_cm_lock);
 
 	return ret;
