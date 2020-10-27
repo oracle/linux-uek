@@ -41,6 +41,8 @@
 #include <net/inet_common.h>
 #include <linux/version.h>
 
+#include <trace/events/rds.h>
+
 #define RDS_REJ_CONSUMER_DEFINED 28
 
 struct mutex cm_id_map_lock;
@@ -114,29 +116,38 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	 * the neighbor cache for the local side of the connection.
 	 */
 	bool flush_local_peer = event->event == RDMA_CM_EVENT_ADDR_CHANGE;
+	char *reason = NULL;
 	int *err;
 
 	conn = rds_ib_get_conn(cm_id);
 	if (!conn) {
-		rds_rtd(RDS_RTD_CM,
-			"conn %p cm_id %p handling event %u (%s) priv_dta_len %d\n",
-			conn, cm_id,
-			event->event, rds_cm_event_str(event->event),
-			event->param.conn.private_data_len);
-		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST)
+		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
+			trace_rds_rdma_cm_event_handler(NULL, NULL, NULL,
+							NULL,
+							rds_cm_event_str(event->event),
+							0);
 			ret = trans->cm_handle_connect(cm_id, event, isv6);
+			if (ret)
+				reason = "handle connect failed";
+		} else {
+			reason = "no conn found for event";
+		}
+
+		if (reason)
+			trace_rds_rdma_cm_event_handler_err(NULL, NULL, NULL,
+							    NULL, reason, ret);
 		return ret;
 	}
-	rds_rtd_ptr(RDS_RTD_CM,
-		    "conn %p state %s cm_id %p <%pI6c,%pI6c,%d> handling event %u (%s) priv_dta_len %d\n",
-		    conn, conn_state_mnem(rds_conn_state(conn)), cm_id,
-		    &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-		    event->event, rds_cm_event_str(event->event),
-		    event->param.conn.private_data_len);
 
 	/* Prevent shutdown from tearing down the connection
 	 * while we're executing. */
 	mutex_lock(&conn->c_cm_lock);
+
+	trace_rds_rdma_cm_event_handler(NULL, NULL, conn,
+					conn->c_npaths > 0 ?
+					conn->c_transport_data : NULL,
+					rds_cm_event_str(event->event), 0);
+
 	/* If the connection is being shut down, bail out
 	 * right away. We return 0 so cm_id doesn't get
 	 * destroyed prematurely
@@ -156,8 +167,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			 * hence flush the address
 			 */
 			rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
-		rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
-			conn, ret);
+		reason = "reject incoming connections during teardown";
 		goto out;
 	}
 
@@ -165,10 +175,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	 * event and the device removal/module clean up code will handle it.
 	 */
 	if (!__rds_rdma_chk_dev(conn)) {
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "Event %d ignored: conn %p <%pI6c,%pI6c,%d>\n",
-			    event->event, conn, &conn->c_laddr, &conn->c_faddr,
-			    conn->c_tos);
+		reason = "event ignored, device not OK";
 		goto out;
 	}
 
@@ -178,14 +185,11 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		if (conn->c_path)
 			conn->c_path->cp_conn_start_jf = 0;
 		ret = trans->cm_handle_connect(cm_id, event, isv6);
+		if (ret)
+			reason = "handle connect failed";
 		break;
 
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "conn %p <%pI6c,%pI6c,%d> daddr resolved. dmac %pI6c\n",
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-			    cm_id->route.addr.dev_addr.dst_dev_addr +
-			    rdma_addr_gid_offset(&cm_id->route.addr.dev_addr));
 		rdma_set_service_type(cm_id, conn->c_tos);
 		if (rds_ib_sysctl_local_ack_timeout &&
 		    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
@@ -199,7 +203,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			 * The cm_id will get destroyed by addr_handler
 			 * in RDMA CM when we return from here.
 			 */
-
+			reason = "resolve route failed";
 			ibic = conn->c_transport_data;
 			if (rds_ib_same_cm_id(ibic, cm_id))
 				ibic->i_cm_id = NULL;
@@ -225,12 +229,9 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			 */
 			cm_id->route.path_rec[0].sl = TOS_TO_SL(conn->c_tos);
 			cm_id->route.path_rec[0].qos_class = conn->c_tos;
-			rds_rtd_ptr(RDS_RTD_CM,
-				    "conn %p <%pI6c,%pI6c,%d> initiate connect, smac %pI6c dmac %pI6c\n",
-				    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-				    cm_id->route.path_rec[0].sgid.raw,
-				    cm_id->route.path_rec[0].dgid.raw);
 			ret = trans->cm_initiate_connect(cm_id, isv6);
+			if (ret)
+				reason = "initiate connect failed";
 		} else {
 			rds_conn_drop(conn, DR_IB_RDMA_CM_ID_MISMATCH, 0);
 		}
@@ -275,10 +276,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 		    *err <= 1) {
 			conn->c_reconnect_racing++;
-			rds_rtd_ptr(RDS_RTD_ERR,
-				    "conn %p, reconnect racing (%d) rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				    conn, conn->c_reconnect_racing, &conn->c_laddr,
-				    &conn->c_faddr, conn->c_tos);
+			reason = "reconnect racing";
 		}
 
 		if (event->status == RDS_REJ_CONSUMER_DEFINED && (*err) == 0) {
@@ -291,15 +289,14 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 					RDS_PROTOCOL_COMPAT_VERSION;
 			rds_conn_drop(conn,
 				      DR_IB_CONSUMER_DEFINED_REJ, *err);
+			reason = "rejection from RDS";
 		} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 			   (*err) == RDS_ACL_FAILURE) {
 			/* Rejection due to ACL violation */
 			pr_err("RDS: IB: conn %p <%pI6c,%pI6c,%d> destroyed due to ACL violation\n",
 			       conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
-			rds_rtd_ptr(RDS_RTD_CM,
-				    "Rejected: active conn %p <%pI6c,%pI6c,%d> destroyed due to ACL violation\n",
-				    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+			reason = "ACL violation";
 			rds_ib_conn_destroy_init(conn);
 		} else {
 			rds_conn_drop(conn, DR_IB_REJECTED_EVENT, *err);
@@ -331,14 +328,15 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* things like device disconnect? */
 		pr_err("RDS: unknown event %u (%s)!\n", event->event,
 		       rds_cm_event_str(event->event));
+		reason = "unknown event";
 		break;
 	}
 
 out:
+	if (reason)
+		trace_rds_rdma_cm_event_handler_err(NULL, NULL, conn, NULL,
+						    reason, ret);
 	mutex_unlock(&conn->c_cm_lock);
-
-	rdsdebug("id %p event %u (%s) handling ret %d\n", cm_id, event->event,
-		 rds_cm_event_str(event->event), ret);
 
 	return ret;
 }
