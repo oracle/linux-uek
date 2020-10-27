@@ -639,7 +639,7 @@ static const struct file_operations loop_serdes_dbg_settings_fops = {
 static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 				      size_t count, int *qlm,
 				      enum cgx_prbs_cmd *cmd, int *mode,
-				      int *qlm_lane)
+				      int *qlm_lane, int *inject)
 {
 	char *cmd_buf, *cmd_buf_tmp, *subtoken;
 	int ec;
@@ -682,6 +682,13 @@ static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 			subtoken = strsep(&cmd_buf, " ");
 			ec = subtoken ? kstrtoint(subtoken, 10, mode) :
 					-EINVAL;
+			if (ec == -EINVAL)
+				goto out;
+			subtoken = strsep(&cmd_buf, " ");
+			if (subtoken)
+				kstrtoint(subtoken, 10, inject);
+			else
+				*inject = 0;
 		} else if (!strcmp(subtoken, "stop")) {
 			*cmd = CGX_PRBS_STOP_CMD;
 		} else if (!strcmp(subtoken, "clear")) {
@@ -691,6 +698,7 @@ static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 		}
 	}
 
+out:
 	kfree(cmd_buf_tmp);
 	return ec;
 }
@@ -706,11 +714,13 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 	int qlm;
 	int ec;
 	int qlm_lane;
+	int inject;
 
 	ec = serdes_dbg_prbs_lane_parse(buffer, count, &prbs_cmd_data.qlm,
-					&cmd, &mode, &prbs_cmd_data.qlm_lane);
+					&cmd, &mode, &prbs_cmd_data.qlm_lane,
+					&inject);
 	if (ec < 0) {
-		pr_info("Usage: echo <qlm> <lane> [{start <mode>|stop}] > prbs\n");
+		pr_info("Usage: echo <qlm> <lane> [{start <mode> [inject]|stop|clear}] > prbs\n");
 		return ec;
 	}
 
@@ -719,8 +729,9 @@ static ssize_t serdes_dbg_prbs_write_op(struct file *filp,
 
 	switch (cmd) {
 	case CGX_PRBS_START_CMD:
-		arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, cmd,
-			      qlm, mode, qlm_lane, 0, 0, 0, &res);
+		arm_smccc_smc(OCTEONTX_SERDES_DBG_PRBS, cmd, qlm,
+			      mode | (inject << 8),
+			      qlm_lane, 0, 0, 0, &res);
 
 		list_for_each_entry(status,
 				    &prbs_cmd_data.status_list.list,
