@@ -3428,6 +3428,69 @@ out:
 }
 
 /*
+ * Duplicate an anonymous VMA into a new mm as part of preserving
+ * it across exec.
+ */
+int vma_dup(struct vm_area_struct *old_vma, struct mm_struct *mm)
+{
+	struct vm_area_struct *vma;
+	unsigned long npages;
+	int ret = -ENOMEM;
+
+	if (WARN_ON(!vma_is_anonymous(old_vma)))
+		return -EINVAL;
+
+	if (find_vma_intersection(mm, old_vma->vm_start, old_vma->vm_end))
+		return -EEXIST;
+
+	npages = vma_pages(old_vma);
+	vm_stat_account(mm, old_vma->vm_flags, npages);
+
+	vma = vm_area_dup(old_vma);
+	if (!vma)
+		goto fail_nomem;
+
+	ret = vma_dup_policy(old_vma, vma);
+	if (ret)
+		goto fail_nomem_policy;
+
+	vma->vm_mm = mm;
+	ret = anon_vma_fork(vma, old_vma);
+	if (ret)
+		goto fail_nomem_anon_vma_fork;
+
+	/*
+	 * Clear functionality that should not carry over to the new
+	 * process.any memory locking, userfaultfd, and preservation over
+	 * exec flags.
+	 */
+	vma->vm_flags &= ~(VM_LOCKED|VM_LOCKONFAULT|VM_UFFD_MISSING|VM_UFFD_WP|VM_EXEC_KEEP);
+	vma->vm_userfaultfd_ctx = NULL_VM_UFFD_CTX;
+
+	__insert_vm_struct(mm, vma);
+
+	/*
+	 * Now that the dup vma is inserted into the mm, clear VM_ACCOUNT
+	 * from old_vma.  Since vma_dup() is only called during exec to
+	 * duplicate a vma from the outgoing mm into the mm of the new
+	 * process, this effectively transfers the accounting from the old
+	 * vma to new one.
+	 */
+	old_vma->vm_flags &= ~VM_ACCOUNT;
+
+	ret = copy_page_range(vma, old_vma);
+	return ret;
+
+fail_nomem_anon_vma_fork:
+	mpol_put(vma_policy(vma));
+fail_nomem_policy:
+	vm_area_free(vma);
+fail_nomem:
+	vm_stat_account(mm, old_vma->vm_flags, -npages);
+	return -ENOMEM;
+}
+
+/*
  * Return true if the calling process may expand its vm space by the passed
  * number of pages
  */
