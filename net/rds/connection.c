@@ -528,15 +528,9 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 	rcu_read_lock();
 	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
 		rcu_read_unlock();
-		rds_rtd(RDS_RTD_CM,
-			"calling rds_queue_reconnect conn %p restart: %d\n",
-			cp->cp_conn, restart);
 		rds_queue_reconnect(cp);
 	} else {
 		rcu_read_unlock();
-		rds_rtd(RDS_RTD_CM,
-			"NOT calling rds_queue_reconnect conn %p restart: %d\n",
-			cp->cp_conn, restart);
 	}
 }
 
@@ -559,20 +553,24 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 	 * bit to avoid any re-queueing)
 	 */
 	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
-		cancel_delayed_work_sync(&cp->cp_send_w);
+		rds_queue_cancel_work(cp, &cp->cp_send_w,
+				      "conn path destroy send work");
 	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
-		cancel_delayed_work_sync(&cp->cp_recv_w);
+		rds_queue_cancel_work(cp, &cp->cp_recv_w,
+				      "conn path destroy recv work");
 
 	rds_conn_path_drop(cp, DR_CONN_DESTROY, 0);
-	flush_work(&cp->cp_down_w);
+	rds_queue_flush_work(cp, &cp->cp_down_w, "conn path destroy down work");
 
 	/* now that conn down worker is flushed; there cannot be any
 	 * more posting of reconn timeout work. But cancel any already
 	 * posted reconn timeout worker as there is a race between rds
 	 * module unload and a pending reconn delay work.
 	 */
-	cancel_delayed_work_sync(&cp->cp_reconn_w);
-	cancel_delayed_work_sync(&cp->cp_conn_w);
+	rds_queue_cancel_work(cp, &cp->cp_reconn_w,
+			      "conn path destroy reconn work");
+	rds_queue_cancel_work(cp, &cp->cp_conn_w,
+			      "conn path destroy conn work");
 
 	/* tear down queued messages */
 	list_for_each_entry_safe(rm, rtmp,
@@ -1195,19 +1193,10 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	rds_conn_path_state_change(cp, RDS_CONN_ERROR, reason, err);
 
 	if (reason != DR_CONN_DESTROY && test_bit(RDS_DESTROY_PENDING, &cp->cp_flags)) {
-		rds_rtd_ptr(RDS_RTD_CM_EXT,
-			    "RDS/%s: NOT queueing shutdown work, conn %p <%pI6c,%pI6c,%d>\n",
-			    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-			    conn, &conn->c_laddr, &conn->c_faddr,
-			    conn->c_tos);
+		trace_rds_queue_noop(conn, cp, NULL, NULL, 0,
+				     "not queueing work, destroy pending");
 		return;
 	}
-
-	rds_rtd_ptr(RDS_RTD_CM_EXT,
-		    "RDS/%s: queueing shutdown work, conn %p <%pI6c,%pI6c,%d>\n",
-		    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-		    conn, &conn->c_laddr, &conn->c_faddr,
-		    conn->c_tos);
 
 	rds_cond_queue_shutdown_work(cp);
 }
@@ -1243,15 +1232,8 @@ EXPORT_SYMBOL_GPL(rds_conn_drop);
  */
 void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 {
-	struct rds_connection *conn = cp->cp_conn;
-
-	if (rds_conn_path_down(cp)) {
-		rds_rtd_ptr(RDS_RTD_CM_EXT,
-			    "calling rds_queue_reconnect, conn %p, <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr, &conn->c_faddr,
-			    conn->c_tos);
+	if (rds_conn_path_down(cp))
 		rds_queue_reconnect(cp);
-	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_connect_if_down);
 
