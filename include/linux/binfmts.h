@@ -42,7 +42,15 @@ struct linux_binprm {
 		 * Set when errors can no longer be returned to the
 		 * original userspace.
 		 */
-		point_of_no_return:1;
+		point_of_no_return:1,
+		/*
+		 * Set if the binary being exec'd will accept memory marked
+		 * for preservation by the outgoing process.
+		 */
+		accepts_preserved_mem:1;
+#ifdef __alpha__
+	unsigned int taso:1;
+#endif
 	struct file *executable; /* Executable to pass to the interpreter */
 	struct file *interpreter;
 	struct file *file;
