@@ -2773,6 +2773,7 @@ extern bool process_shares_mm(struct task_struct *p, struct mm_struct *mm);
 extern int sysctl_drop_caches;
 int drop_caches_sysctl_handler(struct ctl_table *, int,
 					void __user *, size_t *, loff_t *);
+extern int madv_doexec_flag;
 #endif
 
 void drop_slab(void);
