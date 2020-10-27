@@ -367,9 +367,10 @@ void rds_hb_worker(struct work_struct *work)
 			ret = rds_send_hb(cp->cp_conn, 0);
 
 			if (ret) {
-				rds_rtd(RDS_RTD_ERR_EXT,
-					"RDS/IB: rds_hb_worker: failed %d\n",
-					ret);
+				/* rds_send_hb() will call rds_send_probe();
+				 * if the latter fails, drop-out trace events
+				 * will occur.
+				 */
 				return;
 			}
 			WRITE_ONCE(cp->cp_hb_start, now);
