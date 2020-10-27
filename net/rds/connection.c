@@ -1229,6 +1229,7 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_PEER_ADDR_CHANGE]	= "peer ADDR_CHANGE event",
 	[DR_IB_DISCONNECTED_EVENT]	= "DISCONNECTED event",
 	[DR_IB_TIMEWAIT_EXIT]		= "TIMEWAIT_EXIT event",
+	[DR_IB_SHUTDOWN_NEEDED]		= "rdma_cm_id error and RDS_IB_NEED_SHUTDOWN is set",
 	[DR_IB_POST_RECV_FAIL]		= "post_recv failure",
 	[DR_IB_SEND_ACK_FAIL]		= "send_ack failure",
 	[DR_IB_HEADER_MISSING]		= "no header in incoming msg",
