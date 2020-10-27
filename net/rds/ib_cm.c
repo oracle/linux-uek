@@ -1439,23 +1439,6 @@ u32 __rds_find_ifindex_v4(struct net *net, __be32 addr)
 	return idx;
 }
 
-bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id)
-{
-	char *reason = "no connection";
-
-	if (ic) {
-		if (ic->i_cm_id != cm_id)
-			reason = "cm_id mismatch";
-		else if (ic->i_cm_id_ctx != cm_id->context)
-			reason = "context mismatch";
-		else
-			return true;
-	}
-	trace_rds_ib_cm_mismatch(NULL, ic ? ic->rds_ibdev : NULL,
-				 ic ? ic->conn : NULL, ic, reason, 0);
-	return false;
-}
-
 static void rds_destroy_cm_id_worker(struct work_struct *_work)
 {
 	struct rds_ib_destroy_cm_id_work *work = container_of(_work,
@@ -1498,12 +1481,11 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 
 	ic = conn->c_transport_data;
 
-	BUG_ON(rds_ib_get_conn(cm_id));
+	BUG_ON(cm_id->context);
 	BUG_ON(ic->i_cm_id);
 
 	ic->i_cm_id = cm_id;
-	cm_id->context = rds_ib_map_conn(conn);
-	ic->i_cm_id_ctx = cm_id->context;
+	cm_id->context = conn;
 
 	if (isv6) {
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1811,7 +1793,7 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn)
 
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 {
-	struct rds_connection *conn = rds_ib_get_conn(cm_id);
+	struct rds_connection *conn = cm_id->context;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
 	union rds_ib_conn_priv dp;
@@ -1878,7 +1860,7 @@ out:
 		trace_rds_ib_cm_initiate_connect_err(ic->rds_ibdev ?
 		    ic->rds_ibdev->dev : NULL, ic->rds_ibdev, conn, ic,
 		    reason, ret);
-		if (rds_ib_same_cm_id(ic, cm_id))
+		if (ic->i_cm_id == cm_id)
 			ret = 0;
 	}
 
@@ -2018,13 +2000,13 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		handler = rds_rdma_cm_event_handler;
 
 	WARN_ON(ic->i_cm_id);
-	ic->i_cm_id = rds_ib_rdma_create_id(rds_conn_net(conn),
-					    handler, ic, conn, RDMA_PS_TCP, IB_QPT_RC);
+	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
+				     handler, conn, RDMA_PS_TCP, IB_QPT_RC);
 
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
-		reason = "rds_ib_rdma_create_id failed";
+		reason = "rdma_create_id failed";
 		goto out;
 	}
 
@@ -2067,7 +2049,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		ic->i_cm_id = NULL;
 		up_write(&ic->i_cm_id_free_lock);
 
-		rds_ib_rdma_destroy_id(cm_id);
+		rdma_destroy_id(cm_id);
 	}
 
 out:
@@ -2165,10 +2147,10 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		 * when the conn cannot be associated with the underlying
 		 * device.
 		 */
-		rds_ib_rdma_unlink_id(ic->i_cm_id);
 
 		down_write(&ic->i_cm_id_free_lock);
 		cm_id = ic->i_cm_id;
+		cm_id->context = NULL;
 		ic->i_cm_id = NULL;
 		up_write(&ic->i_cm_id_free_lock);
 
@@ -2296,7 +2278,6 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
-	ic->i_cm_id_ctx = RDS_IB_NO_CTX;
 	ic->i_irq_local_cpu = NR_CPUS;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
