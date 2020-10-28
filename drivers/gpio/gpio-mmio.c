@@ -44,7 +44,6 @@ o        `                     ~~~~\___/~~~~    ` controller in FPGA is ,.`
  *               `.......````.```
  */
 
-#define CAPRI_APB_BUS
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/bug.h>

@@ -15,7 +15,6 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define CAPRI_APB_BUS
 #include <linux/clk.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
@@ -719,27 +718,6 @@ static int cqspi_indirect_write_setup(struct spi_nor *nor,
 	writel(reg, reg_base + CQSPI_REG_SIZE);
 	return 0;
 }
-
-#ifdef CONFIG_ARCH_PENSANDO_CAPRI_SOC
-/*
- * For Capri, avoid using iowrite32_rep, which will eventually call
- * the __raw_writel from io.h.  This isn't appropriate for * writing
- * to the AHB area.
- */
-#undef iowrite32_rep
-#define iowrite32_rep cap_ahb_write
-static inline void cap_ahb_write(volatile void __iomem *addr,
-				 const void *buffer,
-				 unsigned int count)
-{
-	volatile u32 __iomem *waddr = addr;
-	const u32 *buf = buffer;
-	while (count--) {
-		*waddr = *buf++;
-	}
-	mb();
-}
-#endif
 
 static int cqspi_indirect_write_execute(struct spi_nor *nor,
 					const u8 *txbuf, const unsigned n_tx)

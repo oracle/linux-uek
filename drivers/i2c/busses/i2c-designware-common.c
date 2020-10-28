@@ -21,7 +21,6 @@
  * ----------------------------------------------------------------------------
  *
  */
-#define CAPRI_APB_BUS
 #include <linux/delay.h>
 #include <linux/export.h>
 #include <linux/errno.h>

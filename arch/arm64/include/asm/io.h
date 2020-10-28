@@ -33,107 +33,41 @@
 
 #include <xen/xen.h>
 
-#if defined(CONFIG_ARCH_PENSANDO_CAPRI_SOC) && defined(CAPRI_APB_BUS)
-/*
- * Pensando Capri has an APB bus issue that requires all access to these
- * perihperals be single-threadded.  Rather than intrusively modify the
- * standard drivers, we guard readl/writel calls with a spinlock.  These
- * are low-speed peripherals so, ugly as it is, it shouldn't be a performance
- * concern.
- *
- * CAPRI_APB_BUS is only defined in those drivers that access the APB bus.
- */
-
-#include <linux/spinlock.h>
-
-extern spinlock_t apb_bus_spinlock;
-
-/*
- * Capri APB devices have a side-effect-free readable register at offset 0xfc.
- */
-#define CAP_APB_READBACK(a) (((a) & -0x100ULL) | 0xfc)
-
-#define APB_READ_BEGIN(addr) \
-	unsigned long flags; \
-	do { \
-		spin_lock_irqsave(&apb_bus_spinlock, flags); \
-	} while (0)
-
-#define APB_READ_END() \
-	do { \
-		mb(); \
-		spin_unlock_irqrestore(&apb_bus_spinlock, flags); \
-	} while (0)
-
-#define APB_WRITE_BEGIN(addr) \
-	volatile void __iomem *taddr = (void *)CAP_APB_READBACK((u64)addr); \
-	unsigned long flags; \
-	do { \
-		spin_lock_irqsave(&apb_bus_spinlock, flags); \
-	} while (0)
-
-#define APB_WRITE_END() \
-	do { \
-		uint32_t tmp; \
-		mb(); \
-		asm volatile(ALTERNATIVE("ldr %w0, [%1]", \
-					 "ldar %w0, [%1]", \
-					 ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE) \
-			     : "=r" (tmp) : "r" (taddr)); \
-		mb(); \
-		spin_unlock_irqrestore(&apb_bus_spinlock, flags); \
-	} while (0)
-#else	/* CONFIG_ARCH_PENSANDO_CAPRI_SOC && CAPRI_APB_BUS */
-#define APB_READ_BEGIN(addr)	do { } while (0)
-#define APB_READ_END()		do { } while (0)
-#define APB_WRITE_BEGIN(addr)	do { } while (0)
-#define APB_WRITE_END()		do { } while (0)
-#endif 	/* CONFIG_ARCH_PENSANDO_CAPRI_SOC && CAPRI_APB_BUS */
 /*
  * Generic IO read/write.  These perform native-endian accesses.
  */
 #define __raw_writeb __raw_writeb
 static inline void __raw_writeb(u8 val, volatile void __iomem *addr)
 {
-	APB_WRITE_BEGIN(addr);
 	asm volatile("strb %w0, [%1]" : : "rZ" (val), "r" (addr));
-	APB_WRITE_END();
 }
 
 #define __raw_writew __raw_writew
 static inline void __raw_writew(u16 val, volatile void __iomem *addr)
 {
-	APB_WRITE_BEGIN(addr);
 	asm volatile("strh %w0, [%1]" : : "rZ" (val), "r" (addr));
-	APB_WRITE_END();
 }
 
 #define __raw_writel __raw_writel
 static inline void __raw_writel(u32 val, volatile void __iomem *addr)
 {
-	APB_WRITE_BEGIN(addr);
 	asm volatile("str %w0, [%1]" : : "rZ" (val), "r" (addr));
-	APB_WRITE_END();
 }
 
 #define __raw_writeq __raw_writeq
 static inline void __raw_writeq(u64 val, volatile void __iomem *addr)
 {
-	APB_WRITE_BEGIN(addr);
 	asm volatile("str %x0, [%1]" : : "rZ" (val), "r" (addr));
-	APB_WRITE_END();
 }
 
 #define __raw_readb __raw_readb
 static inline u8 __raw_readb(const volatile void __iomem *addr)
 {
 	u8 val;
-	APB_READ_BEGIN(addr);
 	asm volatile(ALTERNATIVE("ldrb %w0, [%1]",
 				 "ldarb %w0, [%1]",
 				 ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE)
 		     : "=r" (val) : "r" (addr));
-	APB_READ_END();
 	return val;
 }
 
@@ -142,12 +76,10 @@ static inline u16 __raw_readw(const volatile void __iomem *addr)
 {
 	u16 val;
 
-	APB_READ_BEGIN(addr);
 	asm volatile(ALTERNATIVE("ldrh %w0, [%1]",
 				 "ldarh %w0, [%1]",
 				 ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE)
 		     : "=r" (val) : "r" (addr));
-	APB_READ_END();
 	return val;
 }
 
@@ -155,12 +87,10 @@ static inline u16 __raw_readw(const volatile void __iomem *addr)
 static inline u32 __raw_readl(const volatile void __iomem *addr)
 {
 	u32 val;
-	APB_READ_BEGIN(addr);
 	asm volatile(ALTERNATIVE("ldr %w0, [%1]",
 				 "ldar %w0, [%1]",
 				 ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE)
 		     : "=r" (val) : "r" (addr));
-	APB_READ_END();
 	return val;
 }
 
@@ -168,20 +98,14 @@ static inline u32 __raw_readl(const volatile void __iomem *addr)
 static inline u64 __raw_readq(const volatile void __iomem *addr)
 {
 	u64 val;
-	APB_READ_BEGIN(addr);
 	asm volatile(ALTERNATIVE("ldr %0, [%1]",
 				 "ldar %0, [%1]",
 				 ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE)
 		     : "=r" (val) : "r" (addr));
-	APB_READ_END();
 	return val;
 }
 
 /* IO barriers */
-#if defined(CONFIG_ARCH_PENSANDO_CAPRI_SOC) && defined(CAPRI_APB_BUS)
-#define __iormb(v)	mb()
-#define __iowmb()	mb()
-#else
 #define __iormb(v)							\
 ({									\
 	unsigned long tmp;						\
@@ -200,7 +124,6 @@ static inline u64 __raw_readq(const volatile void __iomem *addr)
 })
 
 #define __iowmb()		wmb()
-#endif
 
 #define mmiowb()		do { } while (0)
 
