@@ -15,7 +15,6 @@ dts-dirs += hisilicon
 dts-dirs += marvell
 dts-dirs += mediatek
 dts-dirs += nvidia
-dts-dirs += pensando
 dts-dirs += qcom
 dts-dirs += realtek
 dts-dirs += renesas
