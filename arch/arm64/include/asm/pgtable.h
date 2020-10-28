@@ -367,15 +367,6 @@ static inline int pmd_protnone(pmd_t pmd)
 	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_NORMAL_NC) | PTE_PXN | PTE_UXN)
 #define pgprot_device(prot) \
 	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_DEVICE_nGnRE) | PTE_PXN | PTE_UXN)
-
-/*
- * Mark the pgprot value as non-shared or outer-shareable
- */
-#define pgprot_nonshared(prot) \
-	__pgprot_modify(prot, PTE_SH_MASK, PTE_SHARED_NONE)
-#define pgprot_outershared(prot) \
-	__pgprot_modify(prot, PTE_SH_MASK, PTE_SHARED_OUTER)
-
 #define __HAVE_PHYS_MEM_ACCESS_PROT
 struct file;
 extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
@@ -707,26 +698,6 @@ extern pgd_t tramp_pg_dir[PTRS_PER_PGD];
 #define MAX_SWAPFILES_CHECK() BUILD_BUG_ON(MAX_SWAPFILES_SHIFT > __SWP_TYPE_BITS)
 
 extern int kern_addr_valid(unsigned long addr);
-
-#define pgprot_modify   pgprot_modify
-static inline pgprot_t pgprot_modify(pgprot_t oldprot, pgprot_t newprot)
-{
-	/* match ATTRIDX */
-	if (pgprot_val(oldprot) == pgprot_val(pgprot_noncached(oldprot)))
-		newprot = pgprot_noncached(newprot);
-	if (pgprot_val(oldprot) == pgprot_val(pgprot_writecombine(oldprot)))
-		newprot = pgprot_writecombine(newprot);
-	if (pgprot_val(oldprot) == pgprot_val(pgprot_device(oldprot)))
-		newprot = pgprot_device(newprot);
-
-	/* match shareability */
-	if (pgprot_val(oldprot) == pgprot_val(pgprot_nonshared(oldprot)))
-		newprot = pgprot_nonshared(newprot);
-	if (pgprot_val(oldprot) == pgprot_val(pgprot_outershared(oldprot)))
-		newprot = pgprot_outershared(newprot);
-
-	return newprot;
-}
 
 #include <asm-generic/pgtable.h>
 
