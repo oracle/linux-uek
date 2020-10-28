@@ -33,7 +33,6 @@
 #include <linux/watchdog.h>
 
 #define WDOG_CONTROL_REG_OFFSET		    0x00
-#define WDOG_CONTROL_REG_RPL_SHIFT	    2
 #define WDOG_CONTROL_REG_WDT_EN_MASK	    0x01
 #define WDOG_CONTROL_REG_RESP_MODE_MASK	    0x02
 #define WDOG_TIMEOUT_RANGE_REG_OFFSET	    0x04
@@ -58,7 +57,6 @@ struct dw_wdt {
 	unsigned long		rate;
 	struct watchdog_device	wdd;
 	struct reset_control	*rst;
-	u32			rpl;
 };
 
 #define to_dw_wdt(wdd)	container_of(wdd, struct dw_wdt, wdd)
@@ -126,16 +124,10 @@ static int dw_wdt_set_timeout(struct watchdog_device *wdd, unsigned int top_s)
 
 static void dw_wdt_arm_system_reset(struct dw_wdt *dw_wdt)
 {
-#ifdef CONFIG_ARCH_PENSANDO
-	u32 val = dw_wdt->rpl << WDOG_CONTROL_REG_RPL_SHIFT;
-
-	writel(val, dw_wdt->regs + WDOG_CONTROL_REG_OFFSET);
-#else
 	u32 val = readl(dw_wdt->regs + WDOG_CONTROL_REG_OFFSET);
 
 	/* Disable interrupt mode; always perform system reset. */
 	val &= ~WDOG_CONTROL_REG_RESP_MODE_MASK;
-#endif
 	/* Enable watchdog. */
 	val |= WDOG_CONTROL_REG_WDT_EN_MASK;
 	writel(val, dw_wdt->regs + WDOG_CONTROL_REG_OFFSET);
@@ -240,7 +232,6 @@ static int dw_wdt_drv_probe(struct platform_device *pdev)
 	struct watchdog_device *wdd;
 	struct dw_wdt *dw_wdt;
 	struct resource *mem;
-	u32 reset_pulse_len;
 	int ret;
 
 	dw_wdt = devm_kzalloc(dev, sizeof(*dw_wdt), GFP_KERNEL);
@@ -271,13 +262,6 @@ static int dw_wdt_drv_probe(struct platform_device *pdev)
 		ret = PTR_ERR(dw_wdt->rst);
 		goto out_disable_clk;
 	}
-
-	reset_pulse_len = 2;
-#ifdef CONFIG_OF
-	of_property_read_u32(pdev->dev.of_node,
-			"snps,reset-pulse-len", &reset_pulse_len);
-#endif
-	dw_wdt->rpl = min(ilog2(reset_pulse_len) - 1, 7);
 
 	reset_control_deassert(dw_wdt->rst);
 
