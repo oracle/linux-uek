@@ -286,9 +286,6 @@ struct proc_maps_private {
 struct mm_struct *proc_mem_open(struct inode *inode, unsigned int mode);
 
 extern const struct file_operations proc_pid_maps_operations;
-#ifdef CONFIG_PROC_XMAPS
-extern const struct file_operations proc_pid_xmaps_operations;
-#endif
 extern const struct file_operations proc_tid_maps_operations;
 extern const struct file_operations proc_pid_numa_maps_operations;
 extern const struct file_operations proc_tid_numa_maps_operations;
@@ -303,8 +300,3 @@ extern unsigned long task_statm(struct mm_struct *,
 				unsigned long *, unsigned long *,
 				unsigned long *, unsigned long *);
 extern void task_mem(struct seq_file *, struct mm_struct *);
-#ifdef CONFIG_PROC_XMAPS
-extern void proc_xmaps_show_vma_header_prefix(struct seq_file *m,
-	unsigned long start, unsigned long end, vm_flags_t flags,
-	unsigned long long pgoff, dev_t dev, unsigned long ino, pgprot_t prot);
-#endif
