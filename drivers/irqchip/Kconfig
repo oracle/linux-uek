@@ -321,14 +321,3 @@ config IRQ_UNIPHIER_AIDET
 	select IRQ_DOMAIN_HIERARCHY
 	help
 	  Support for the UniPhier AIDET (ARM Interrupt Detector).
-
-config IRQ_CAPRI
-	bool "Support of Capri IRQ chip structure"
-	depends on ARCH_PENSANDO_CAPRI_SOC
-	default "y"
-	select IRQ_DOMAIN
-	select IRQ_DOMAIN_HIERARCHY
-	help
-	  This controls whether the Capri IRQ chip code is used. This code
-	  works in sync with the Capri device tree to define the topology
-	  of devices controlling interrupts.
