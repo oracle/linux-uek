@@ -1232,13 +1232,6 @@ config RANDOMIZE_MODULE_REGION_FULL
 	  a limited range that contains the [_stext, _etext] interval of the
 	  core kernel, so branch relocations are always in range.
 
-config ARM64_MMU_DISABLE_OUTER_CACHE_ALLOCATE
-	bool "Disable cache allocate in the outer domain"
-	depends on ARCH_PENSANDO
-        default n
-	help
-	  This option disables outer read/write cache-allocate"
-
 endmenu
 
 menu "Boot options"

@@ -44,13 +44,8 @@
 
 #define TCR_SMP_FLAGS	TCR_SHARED
 
-#ifdef CONFIG_ARM64_MMU_DISABLE_OUTER_CACHE_ALLOCATE
-/* PTWs cacheable, inner WBWA, outer WBnWA */
-#define TCR_CACHE_FLAGS	TCR_IRGN_WBWA | TCR_ORGN_WBnWA
-#else
 /* PTWs cacheable, inner/outer WBWA */
 #define TCR_CACHE_FLAGS	TCR_IRGN_WBWA | TCR_ORGN_WBWA
-#endif
 
 #define MAIR(attr, mt)	((attr) << ((mt) * 8))
 
@@ -423,27 +418,6 @@ ENTRY(__cpu_setup)
 	isb					// Unmask debug exceptions now,
 	enable_dbg				// since this is per-cpu
 	reset_pmuserenr_el0 x0			// Disable PMU access from EL0
-
-#ifdef CONFIG_ARM64_MMU_DISABLE_OUTER_CACHE_ALLOCATE
-	/*
-	 * Memory region attributes for LPAE:
-	 *
-	 *   n = AttrIndx[2:0]
-	 *			n	MAIR
-	 *   DEVICE_nGnRnE	000	00000000
-	 *   DEVICE_nGnRE	001	00000100
-	 *   DEVICE_GRE		010	00001100
-	 *   NORMAL_NC		011	01000100
-	 *   NORMAL		100	11001111
-	 *   NORMAL_WT		101	10001011
-	 */
-	ldr	x5, =MAIR(0x00, MT_DEVICE_nGnRnE) | \
-		     MAIR(0x04, MT_DEVICE_nGnRE) | \
-		     MAIR(0x0c, MT_DEVICE_GRE) | \
-		     MAIR(0x44, MT_NORMAL_NC) | \
-		     MAIR(0xcf, MT_NORMAL) | \
-		     MAIR(0x8b, MT_NORMAL_WT)
-#else
 	/*
 	 * Memory region attributes for LPAE:
 	 *
@@ -462,7 +436,6 @@ ENTRY(__cpu_setup)
 		     MAIR(0x44, MT_NORMAL_NC) | \
 		     MAIR(0xff, MT_NORMAL) | \
 		     MAIR(0xbb, MT_NORMAL_WT)
-#endif
 	msr	mair_el1, x5
 	/*
 	 * Prepare SCTLR
