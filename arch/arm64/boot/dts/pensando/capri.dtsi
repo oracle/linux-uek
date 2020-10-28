@@ -384,10 +384,5 @@
 			portmac_crs_en = <0x0 0x08>;    /* cfg_retry_en */
 			portmac_ltssm_en = <0x0 0x02>;  /* ltssm_en */
 		};
-
-		panic: panicdump {
-			compatible = "pensando,capri-crash";
-			status = "disabled";
-		};
 	};
 };
