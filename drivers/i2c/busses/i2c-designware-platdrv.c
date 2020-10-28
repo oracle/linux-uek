@@ -21,7 +21,6 @@
  * ----------------------------------------------------------------------------
  *
  */
-#define CAPRI_APB_BUS
 #include <linux/acpi.h>
 #include <linux/clk-provider.h>
 #include <linux/clk.h>

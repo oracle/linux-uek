@@ -18,7 +18,6 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#define CAPRI_APB_BUS
 #include <linux/bitops.h>
 #include <linux/clk.h>
 #include <linux/delay.h>

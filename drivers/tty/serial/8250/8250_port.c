@@ -19,7 +19,6 @@
 #define SUPPORT_SYSRQ
 #endif
 
-#define CAPRI_APB_BUS
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/ioport.h>
