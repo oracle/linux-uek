@@ -199,12 +199,6 @@ config SPI_CADENCE
 	  This selects the Cadence SPI controller master driver
 	  used by Xilinx Zynq and ZynqMP.
 
-config SPI_PENSANDO_CAPRI
-	tristate "Pensando Capri SPI controller"
-	depends on ARCH_PENSANDO_CAPRI_SOC
-	help
-	  This selects the SPI controller for the Penando Capri SoC
-
 config SPI_CLPS711X
 	tristate "CLPS711X host SPI controller"
 	depends on ARCH_CLPS711X || COMPILE_TEST
