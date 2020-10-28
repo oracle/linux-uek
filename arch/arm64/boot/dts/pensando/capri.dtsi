@@ -373,16 +373,5 @@
 			msi-parent = <&its 0xa>;
 			num-interrupts = <16>;	/* # MSI interrupts to get */
 		};
-
-		pcie {
-			compatible = "pensando,pcie";
-			reg = <0x0 0x6a000180 0x0 0x4   /* MS CFG_WDT */
-			       0x0 0x00001400 0x0 0x10  /* WDT0 */
-			       0x0 0x070111b0 0x0 0x4   /* PXC C_MAC_INTREG */
-			       0x0 0x070110f8 0x0 0x4>; /* PXC C_PORT_MAC */
-			pciemac_mask = <0x0 0x10>;      /* rst_dn2up */
-			portmac_crs_en = <0x0 0x08>;    /* cfg_retry_en */
-			portmac_ltssm_en = <0x0 0x02>;  /* ltssm_en */
-		};
 	};
 };
