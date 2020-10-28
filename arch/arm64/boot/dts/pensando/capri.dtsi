@@ -324,54 +324,5 @@
 			phy-names = "phy_arasan";
 			status = "disabled";
 		};
-
-		/* UIO device using interrupt line PCIEMAC */
-		pciemac {
-			#address-cells = <2>;
-			#size-cells = <2>;
-			#interrupt-cells = <3>;
-
-			compatible = "pensando,uio_pciemac";
-			register-type = "csr-interrupt";
-			interrupt-parent = <&pp_intr>;
-			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
-			reg = <0x0 0x70202c8 0x0 0x10>; /* pp_intr */
-
-			enable_csr_paddr = <0x0 0x70202c8 0x0 0x10>;
-			enable_mask = <(1 << 0)>;
-		};
-
-#ifdef ENABLE_LINKMAC
-		/* Registers mx0_intr and mx1_intr */
-		linkmac {
-			#address-cells = <2>;
-			#size-cells = <3>;
-			#interrupt-cells = <3>;
-
-			compatible = "pensando,uio_linkmac";
-			register-type = "csr-interrupt";
-			interrupt-parent = <&mx0_intr>;
-			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
-			reg = <0x0 0x01d82060 0x0 0x4>, /* mx0_intr */
-			      <0x0 0x01e82060 0x0 0x4>; /* mx1_intr */
-
-			enable_csr_paddr = <0x0 0x01d82060 0x0 0x10>;
-			enable_mask = <(1 << 0)>;
-		};
-#endif /* ENABLE_LINKMAC */
-
-		/* Common UIO device for MSI drivers */
-		uio_penmsi {
-			compatible = "pensando,uio_penmsi";
-			name = "uio_penmsi";
-		};
-
-		/* MSI UIO device 1 */
-		uio_penmsi1 {
-			compatible = "pensando,uio_penmsi1";
-			reg = <0x0 0x520000 0x0 0x10000>;
-			msi-parent = <&its 0xa>;
-			num-interrupts = <16>;	/* # MSI interrupts to get */
-		};
 	};
 };
