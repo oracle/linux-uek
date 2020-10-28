@@ -298,7 +298,7 @@ static void show_vma_header_prefix(struct seq_file *m,
 }
 
 static void
-show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid, int is_xmap)
+show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 {
 	struct mm_struct *mm = vma->vm_mm;
 	struct file *file = vma->vm_file;
@@ -318,14 +318,7 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid, int is_
 
 	start = vma->vm_start;
 	end = vma->vm_end;
-	if (is_xmap) {
-#ifdef CONFIG_PROC_XMAPS
-		proc_xmaps_show_vma_header_prefix(m, start, end, flags, pgoff,
-				dev, ino, vma->vm_page_prot);
-#endif
-	} else {
-		show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
-	}
+	show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
 
 	/*
 	 * Print the dentry name for named mappings, and a
@@ -370,7 +363,7 @@ done:
 
 static int show_map(struct seq_file *m, void *v, int is_pid)
 {
-	show_map_vma(m, v, is_pid, 0);
+	show_map_vma(m, v, is_pid);
 	m_cache_vma(m, v);
 	return 0;
 }
@@ -415,34 +408,6 @@ const struct file_operations proc_pid_maps_operations = {
 	.llseek		= seq_lseek,
 	.release	= proc_map_release,
 };
-
-#ifdef CONFIG_PROC_XMAPS
-static int show_pid_xmap(struct seq_file *m, void *v)
-{
-	show_map_vma(m, v, 1, 1);
-	m_cache_vma(m, v);
-	return 0;
-}
-
-static const struct seq_operations proc_pid_xmaps_op = {
-	.start	= m_start,
-	.next	= m_next,
-	.stop	= m_stop,
-	.show	= show_pid_xmap
-};
-
-static int pid_xmaps_open(struct inode *inode, struct file *file)
-{
-	return do_maps_open(inode, file, &proc_pid_xmaps_op);
-}
-
-const struct file_operations proc_pid_xmaps_operations = {
-	.open		= pid_xmaps_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= proc_map_release,
-};
-#endif
 
 const struct file_operations proc_tid_maps_operations = {
 	.open		= tid_maps_open,
@@ -841,7 +806,7 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	walk_page_vma(vma, &smaps_walk);
 
 	if (!rollup_mode) {
-		show_map_vma(m, vma, is_pid, 0);
+		show_map_vma(m, vma, is_pid);
 	} else if (last_vma) {
 		show_vma_header_prefix(
 			m, mss->first_vma_start, vma->vm_end, 0, 0, 0, 0);

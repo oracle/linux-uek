@@ -81,11 +81,3 @@ config PROC_CHILDREN
 
 	  Say Y if you are running any user-space software which takes benefit from
 	  this interface. For example, rkt is such a piece of software.
-
-config PROC_XMAPS
-	bool "Include /proc/<pid>/xmaps file"
-        depends on PROC_FS && ARM64
-	default n
-	help
-	  Provides a file similar to /proc/<pid>/maps which also include
-	  architecture-specific decodes of the PTE.
