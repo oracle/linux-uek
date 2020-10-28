@@ -47,14 +47,6 @@
 			compatible = "fixed-clock";
 			#clock-cells = <0>;
 		};
-		core_clk: oscillator1 {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-		};
-		emmc_clk: oscillator2 {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-		};
 		flash_clk: oscillator3 {
 			compatible = "fixed-clock";
 			#clock-cells = <0>;
@@ -241,26 +233,6 @@
 			clocks = <&apb_clk>;
 			interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>;
 			snps,reset-pulse-len = <256>;
-			status = "disabled";
-		};
-
-		emmc_phy: phy {
-			compatible = "pensando,capri-emmc-phy";
-			reg = <0x0 0x6a900000 0x0 0x1000>;
-			#phy-cells = <0>;
-		};
-		emmc: sdhci@600000 {
-			compatible = "arasan,sdhci-5.1";
-			reg = <0x0 0x600000 0x0 0x10000>;
-			clock-names = "clk_xin", "clk_ahb";
-			clocks = <&emmc_clk>, <&core_clk>;
-			interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
-			bus-width = <1>;
-			mmc-hs200-1_8v;
-			non-removable;
-			cap-mmc-hw-reset;
-			phys = <&emmc_phy>;
-			phy-names = "phy_arasan";
 			status = "disabled";
 		};
 	};

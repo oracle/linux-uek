@@ -1,9 +1,0 @@
-#
-# Phy drivers for Pensando platforms
-#
-config PHY_PENSANDO_CAPRI_EMMC
-	tristate "Pensando Capri EMMC PHY Driver"
-	depends on ARCH_PENSANDO_CAPRI_SOC && OF
-	select GENERIC_PHY
-	help
-	  Enable this to support the Pensando EMMC PHY.
