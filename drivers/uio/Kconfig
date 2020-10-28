@@ -164,48 +164,4 @@ config UIO_HV_GENERIC
 	  to network and storage devices from userspace.
 
 	  If you compile this as a module, it will be called uio_hv_generic.
-
-config UIO_PCIEMAC
-	tristate "Include PCI MAC status driver"
-	default "y"
-	select UIO_PENGIC
-	depends on ARCH_PENSANDO_CAPRI_SOC
-	help
-	  Driver that allows handling of ring2 on Pensando Capri systems. It
-	  is useful for having a userspace driver that can handle GIC 17
-	  interrupts.
-
-	  If you compile this as a module, it will be called uio_pciemac.
-
-config UIO_LINKMAC
-	tristate "Include Pensando Capri uplink MAC status driver"
-	default "y"
-	select UIO_PENGIC
-	depends on ARCH_PENSANDO_CAPRI_SOC
-	help
-	  Driver that allows monitoring of the Ethernet uplink MAC hardware so
-	  that userspace can decode ASIC status changes.
-
-	  If you compile this as a module, it will be called uio_linkmac0.
-
-config UIO_PENMSI1
-	tristate "Driver 1 for MSI"
-	default "y"
-	select UIO_PENMSI
-	depends on ARCH_PENSANDO_CAPRI_SOC
-	help
-	  Driver that allows obtaining MSI data and handling MSI interrupts
-	  in userspace.
-
-	  If you compile this as a module, it will be called uio_pengmsi1.
-
-config UIO_PENGIC
-	tristate
-	depends on ARCH_PENSANDO
-	default n
-
-config UIO_PENMSI
-	tristate
-	depends on ARCH_PENSANDO
-	default n
 endif
