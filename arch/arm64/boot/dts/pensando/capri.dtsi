@@ -211,23 +211,6 @@
 			status = "disabled";
 		};
 
-		ssi0: ssi@2800 {
-			compatible = "pensando,capri-spi";
-			reg = <0x0 0x2800 0x0 0x100>;
-			clocks = <&apb_clk>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			status = "disabled";
-		};
-		ssi1: ssi@2c00 {
-			compatible = "pensando,capri-spi";
-			reg = <0x0 0x2c00 0x0 0x100>;
-			clocks = <&apb_clk>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			status = "disabled";
-		};
-
 		wdt0: watchdog@1400 {
 			compatible = "snps,dw-wdt";
 			reg = <0x0 0x1400 0x0 0x100>;
