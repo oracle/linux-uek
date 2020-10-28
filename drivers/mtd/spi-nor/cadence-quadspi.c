@@ -506,101 +506,6 @@ static int cqspi_indirect_read_setup(struct spi_nor *nor,
 	return 0;
 }
 
-#ifdef CONFIG_ARCH_PENSANDO
-static int cqspi_indirect_read_execute_fast(struct spi_nor *nor,
-				       u8 *rxbuf, const unsigned n_rx)
-{
-	u64 *dptr = (u64 *)rxbuf;
-	struct cqspi_flash_pdata *f_pdata = nor->priv;
-	struct cqspi_st *cqspi = f_pdata->cqspi;
-	void __iomem *reg_base = cqspi->iobase;
-	void __iomem *ahb_base = cqspi->ahb_base;
-	unsigned int remaining = n_rx;
-	unsigned int nwords = 0;
-	unsigned long flags;
-	int ret = 0;
-
-	writel(remaining, reg_base + CQSPI_REG_INDIRECTRDBYTES);
-
-	/* Clear all interrupts. */
-	writel(CQSPI_IRQ_STATUS_MASK, reg_base + CQSPI_REG_IRQSTATUS);
-
-	writel(CQSPI_IRQ_MASK_RD, reg_base + CQSPI_REG_IRQMASK);
-
-	reinit_completion(&cqspi->transfer_complete);
-	writel(CQSPI_REG_INDIRECTRD_START_MASK,
-	       reg_base + CQSPI_REG_INDIRECTRD);
-
-	while (remaining > 0) {
-		ret = wait_for_completion_timeout(&cqspi->transfer_complete,
-						  msecs_to_jiffies
-						  (CQSPI_READ_TIMEOUT_MS));
-
-		nwords = cqspi_get_rd_sram_level(cqspi);
-
-		if (!ret && nwords == 0) {
-			dev_err(nor->dev, "Indirect read timeout, no bytes\n");
-			ret = -ETIMEDOUT;
-			goto failrd;
-		}
-
-		local_irq_save(flags);
-		while (nwords >= 8) {
-			u64 r0 = *(volatile u64 *)ahb_base;
-			u64 r1 = *(volatile u64 *)ahb_base;
-			u64 r2 = *(volatile u64 *)ahb_base;
-			u64 r3 = *(volatile u64 *)ahb_base;
-			asm volatile("" ::: "memory");
-			dptr[0] = r0;
-			dptr[1] = r1;
-			dptr[2] = r2;
-			dptr[3] = r3;
-			dptr += 4;
-			nwords -= 8;
-			remaining -= 32;
-			nwords = cqspi_get_rd_sram_level(cqspi);
-		}
-		if (remaining < 32) {
-			u32 *wptr = (u32 *)dptr;
-			while (nwords-- > 0) {
-				*wptr++ = *(volatile u32 *)ahb_base;
-				remaining -= 4;
-			}
-		}
-		local_irq_restore(flags);
-
-		if (remaining > 0)
-			reinit_completion(&cqspi->transfer_complete);
-	}
-
-	/* Check indirect done status */
-	ret = cqspi_wait_for_bit(reg_base + CQSPI_REG_INDIRECTRD,
-				 CQSPI_REG_INDIRECTRD_DONE_MASK, 0);
-	if (ret) {
-		dev_err(nor->dev,
-			"Indirect read completion error (%i)\n", ret);
-		goto failrd;
-	}
-
-	/* Disable interrupt */
-	writel(0, reg_base + CQSPI_REG_IRQMASK);
-
-	/* Clear indirect completion status */
-	writel(CQSPI_REG_INDIRECTRD_DONE_MASK, reg_base + CQSPI_REG_INDIRECTRD);
-
-	return 0;
-
-failrd:
-	/* Disable interrupt */
-	writel(0, reg_base + CQSPI_REG_IRQMASK);
-
-	/* Cancel the indirect read */
-	writel(CQSPI_REG_INDIRECTWR_CANCEL_MASK,
-	       reg_base + CQSPI_REG_INDIRECTRD);
-	return ret;
-}
-#endif
-
 static int cqspi_indirect_read_execute(struct spi_nor *nor,
 				       u8 *rxbuf, const unsigned n_rx)
 {
@@ -612,7 +517,6 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor,
 	unsigned int mod_bytes = n_rx % 4;
 	unsigned int bytes_to_read = 0;
 	u8 *rxbuf_end = rxbuf + n_rx;
-	unsigned long flags;
 	int ret = 0;
 
 	writel(remaining, reg_base + CQSPI_REG_INDIRECTRDBYTES);
@@ -639,7 +543,6 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor,
 			goto failrd;
 		}
 
-		local_irq_save(flags);
 		while (bytes_to_read != 0) {
 			unsigned int word_remain = round_down(remaining, 4);
 
@@ -663,7 +566,6 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor,
 			remaining -= bytes_to_read;
 			bytes_to_read = cqspi_get_rd_sram_level(cqspi);
 		}
-		local_irq_restore(flags);
 
 		if (remaining > 0)
 			reinit_completion(&cqspi->transfer_complete);
@@ -1072,15 +974,7 @@ static ssize_t cqspi_read(struct spi_nor *nor, loff_t from,
 	if (ret)
 		return ret;
 
-#ifdef CONFIG_ARCH_PENSANDO
-	/* Pensando FPGA hack: Minimize the number of PIOs */
-	if ((((uintptr_t)buf & 0x7) == 0) && (len & 0x3) == 0)
-		ret = cqspi_indirect_read_execute_fast(nor, buf, len);
-	else
-		ret = cqspi_indirect_read_execute(nor, buf, len);
-#else
 	ret = cqspi_indirect_read_execute(nor, buf, len);
-#endif
 	if (ret)
 		return ret;
 
