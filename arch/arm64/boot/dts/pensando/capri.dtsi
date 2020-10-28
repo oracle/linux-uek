@@ -325,39 +325,6 @@
 			status = "disabled";
 		};
 
-		mnet0: mnet0 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x0>;
-		};
-		mnet1: mnet1 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x1>;
-		};
-		mnet2: mnet2 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x2>;
-		};
-		mnet3: mnet3 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x3>;
-		};
-		mnet4: mnet4 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x4>;
-		};
-		mnet5: mnet5 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x5>;
-		};
-		mnet6: mnet6 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x6>;
-		};
-		mnet7: mnet7 {
-			compatible = "pensando,mnet";
-			msi-parent = <&its 0x7>;
-		};
-
 		/* UIO device using interrupt line PCIEMAC */
 		pciemac {
 			#address-cells = <2>;
