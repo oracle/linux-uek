@@ -415,6 +415,10 @@ kernel/drivers/parport/parport.ko
 kernel/drivers/pci/controller/vmd.ko
 kernel/drivers/pci/hotplug/shpchp.ko
 kernel/drivers/pci/pcie/aer/aer_inject.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_common.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mbox_msr.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mbox_pci.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mmio.ko
 kernel/drivers/platform/x86/wmi.ko
 kernel/drivers/pps/pps_core.ko
 kernel/drivers/ptp/ptp.ko
