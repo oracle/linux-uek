@@ -26,18 +26,6 @@ config CAPRI_CRASH
 	help
 	  Support for the Pensando Capri crash driver
 
-config CAPRI_BSM
-	bool "Capri Boot State Machine"
-	default y
-	help
-	  Support for the Pensando Capri boot state machine driver
-
-config CAPRI_BSM_ENABLE
-	bool "Enable the Boot State Machine in the kernel"
-        depends on CAPRI_BSM
-	help
-	  Re-enable the BSM on kernel startup
-
 endmenu
 
 endif

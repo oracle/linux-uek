@@ -389,10 +389,5 @@
 			compatible = "pensando,capri-crash";
 			status = "disabled";
 		};
-
-		bsm {
-			compatible = "pensando,bsm";
-			reg = <0x0 0x6a000080 0x0 0x4>;
-		};
 	};
 };
