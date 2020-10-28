@@ -13,12 +13,6 @@ config ARCH_PENSANDO_CAPRI_SOC
 
 endchoice
 
-config CAPRI_CAPMEM
-	tristate "/dev/capmem driver for Capri"
-	default y
-	help
-	  Support for the Pensando Capri SoC
-
 config CAPRI_PCIE
 	tristate "PCIe driver for Capri"
 	depends on OF && ARCH_PENSANDO_CAPRI_SOC
