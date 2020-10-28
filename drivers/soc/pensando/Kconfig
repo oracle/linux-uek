@@ -20,12 +20,6 @@ config CAPRI_PCIE
 	help
 	  Provide a PCIe panic handler to respond to host reboots
 
-config CAPRI_CRASH
-	tristate "Capri crash driver"
-	default y
-	help
-	  Support for the Pensando Capri crash driver
-
 endmenu
 
 endif
