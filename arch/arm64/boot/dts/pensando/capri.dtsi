@@ -7,8 +7,6 @@
  */
 #include "dt-bindings/interrupt-controller/arm-gic.h"
 
-#undef ENABLE_LINKMAC
-
 / {
 	compatible = "pensando,capri";
 	#address-cells = <2>;
@@ -116,48 +114,6 @@
 							<0xd00000 0x1000000>;
 			};
 		};
-
-		/*
-		 * Until we  know the interrupt domain following this, we
-		 * are forced to use this is the place where interrupts from
-		 * PCI converge. In the ideal case, we use one domain higher,
-		 * where the PCI-ness has been shed.
-		 */
-		pp_intr: intc@70202c8 {
-			compatible = "pensando,capri-ictlr-csrintr";
-			interrupt-controller;
-			reg = <0x0 0x70202c8 0x0 0x4>;
-			#interrupt-cells = <3>;
-			interrupt-parent = <&gic>;
-			interrupts = <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt-names = "pp_intr";
-		};
-
-#ifdef ENABLE_LINKMAC
-		/* Interrupt controllers for uplink MAC #0 */
-		mx0_intr: intc@1d82060 {
-			compatible = "pensando,capri-ictlr-csrintr";
-			interrupt-controller;
-			reg = <0x0 0x01d82060 0x0 0x4>, /* Paired w/ mx1_intr */
-			      <0x0 0x01e82060 0x0 0x4>;
-			#interrupt-cells = <3>;
-			interrupt-parent = <&gic>;
-			interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt_names = "mx0_intr";
-		};
-
-		/* Interrupt controllers for uplink MAC #1 */
-		mx1_intr: intc@1e82060 {
-			compatible = "pensando,capri-ictlr-csrintr";
-			interrupt-controller;
-			reg = <0x0 0x01d82060 0x0 0x4>, /* Paired w/ mx0_intr */
-			      <0x0 0x01e82060 0x0 0x4>;
-			#interrupt-cells = <3>;
-			interrupt-parent = <&gic>;
-			interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt_names = "mx1_intr";
-		};
-#endif /* ENABLE_LINKMAC */
 
 		uart0: serial@4800 {
 			device_type = "serial";
