@@ -157,6 +157,7 @@
 #define PTE_TABLE_BIT		(_AT(pteval_t, 1) << 1)
 #define PTE_USER		(_AT(pteval_t, 1) << 6)		/* AP[1] */
 #define PTE_RDONLY		(_AT(pteval_t, 1) << 7)		/* AP[2] */
+#define PTE_SHARED		(_AT(pteval_t, 3) << 8)		/* SH[1:0], inner shareable */
 #define PTE_AF			(_AT(pteval_t, 1) << 10)	/* Access Flag */
 #define PTE_NG			(_AT(pteval_t, 1) << 11)	/* nG */
 #define PTE_DBM			(_AT(pteval_t, 1) << 51)	/* Dirty Bit Management */
@@ -170,15 +171,6 @@
  */
 #define PTE_ATTRINDX(t)		(_AT(pteval_t, (t)) << 2)
 #define PTE_ATTRINDX_MASK	(_AT(pteval_t, 7) << 2)
-
-/*
- * SH[1:0] encoding
- */
-#define PTE_SH(s)		(_AT(pteval_t, (s)) << 8)
-#define PTE_SH_MASK		(_AT(pteval_t, 3) << 8)
-#define PTE_SHARED		PTE_SH(3)	/* default: inner shareable */
-#define PTE_SHARED_OUTER	PTE_SH(2)	/* outer shareable */
-#define PTE_SHARED_NONE		PTE_SH(0)	/* non-shared */
 
 /*
  * 2nd stage PTE definitions
