@@ -13,13 +13,6 @@ config ARCH_PENSANDO_CAPRI_SOC
 
 endchoice
 
-config CAPRI_PCIE
-	tristate "PCIe driver for Capri"
-	depends on OF && ARCH_PENSANDO_CAPRI_SOC
-	default y
-	help
-	  Provide a PCIe panic handler to respond to host reboots
-
 endmenu
 
 endif
