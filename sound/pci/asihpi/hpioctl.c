@@ -350,8 +350,9 @@ int asihpi_adapter_probe(struct pci_dev *pci_dev,
 	struct hpi_message hm;
 	struct hpi_response hr;
 	struct hpi_adapter adapter;
-	struct hpi_pci pci = { 0 };
+	struct hpi_pci pci;
 
+	memset(&pci, 0, sizeof(pci));
 	memset(&adapter, 0, sizeof(adapter));
 
 	dev_printk(KERN_DEBUG, &pci_dev->dev,
