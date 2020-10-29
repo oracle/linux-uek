@@ -2587,7 +2587,7 @@ static void hotkey_compare_and_issue_event(struct tp_nvram_state *oldn,
  */
 static int hotkey_kthread(void *data)
 {
-	struct tp_nvram_state s[2] = { 0 };
+	struct tp_nvram_state s[2];
 	u32 poll_mask, event_mask;
 	unsigned int si, so;
 	unsigned long t;
@@ -2597,6 +2597,8 @@ static int hotkey_kthread(void *data)
 
 	if (tpacpi_lifecycle == TPACPI_LIFE_EXITING)
 		goto exit;
+
+	memset(&s, 0, sizeof(s));
 
 	set_freezable();
 
