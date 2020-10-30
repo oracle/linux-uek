@@ -895,27 +895,10 @@ static int check_preserved_mem_ok(struct linux_binprm *bprm, const char *data, c
 #define RSVD_VA_STRING		"Reserved VA"
 #define SZ_RSVD_VA_STRING	sizeof(RSVD_VA_STRING)
 
-static int reserve_va_range(struct elf_phdr *elf_ppnt,
-				struct linux_binprm *bprm)
+static int reserve_va_range(const char *note_seg, const size_t note_size)
 {
-	char *note_seg = NULL;
 	struct elf_note *note;
-	loff_t pos = elf_ppnt->p_offset;
 	int retval = 0;
-	size_t note_size = elf_ppnt->p_filesz;
-
-	note_seg = kvmalloc(note_size, GFP_KERNEL);
-	if (!note_seg) {
-		retval = -ENOMEM;
-		return retval;
-	}
-
-	retval = kernel_read(bprm->file, note_seg, note_size, &pos);
-	if (retval != note_size) {
-		if (retval >= 0)
-			retval = -EIO;
-		goto out;
-	}
 
 	note = (struct elf_note *)note_seg;
 	while ((char *)note + sizeof(struct elf_note) <
@@ -992,7 +975,6 @@ cont_loop:
 	}
 
 out:
-	kvfree(note_seg);
 	return retval;
 }
 
@@ -1218,23 +1200,9 @@ out_free_interp:
 	start_data = 0;
 	end_data = 0;
 
-	/*
-	 * Read the notes segment to find notes to reserve address space
-	 */
-	elf_ppnt = elf_phdata;
-	for (i = 0; i < elf_ex->e_phnum; i++, elf_ppnt++) {
-		if (elf_ppnt->p_type == PT_NOTE) {
-			/* Malformed note segments are ignored */
-			if ((elf_ppnt->p_filesz > MAX_FILE_NOTE_SIZE) ||
-			    (elf_ppnt->p_filesz < sizeof(struct elf_note)))
-				continue;
-
-			retval = reserve_va_range(elf_ppnt, bprm);
-			if (retval < 0)
-				goto out_free_ph;
-		}
-	}
-
+	retval = reserve_va_range(elf_notes, elf_notes_sz);
+	if (retval < 0)
+		goto out_free_dentry;
 
 	/* Now we do a little grungy work by mmapping the ELF image into
 	   the correct location in memory. */
