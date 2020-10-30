@@ -43,6 +43,14 @@
 		{ 1 << RDS_RECV_REFILL,		"recv_refill" },	\
 		{ 1 << RDS_DESTROY_PENDING,	"destroy_pending" })
 
+#define show_send_status(status)					\
+	__print_symbolic(status,					\
+		{ RDS_RDMA_SEND_SUCCESS,	"success" },		\
+		{ RDS_RDMA_REMOTE_ERROR,	"remote error" },	\
+		{ RDS_RDMA_SEND_CANCELED,	"send canceled" },	\
+		{ RDS_RDMA_SEND_DROPPED,	"send dropped" },	\
+		{ RDS_RDMA_SEND_OTHER_ERROR,	"other error" })
+
 #define RDS_STRSIZE	64
 #define RDS_STRLCPY(dst, src)   strlcpy(dst, src ? src : "<none>",	\
 					ARRAY_SIZE(dst))
@@ -276,7 +284,151 @@ TRACE_EVENT(rds_drop_ingress,
 		  __entry->reason)
 );
 
+TRACE_EVENT(rds_send,
 
+	TP_PROTO(struct rds_message *rm, struct rds_sock *rs,
+		 struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(rm, rs, conn, cp, saddr, daddr),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, hdr)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = *saddr;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = *daddr;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = rm ? be16_to_cpu(rm->m_inc.i_hdr.h_sport) : 0;
+		__entry->fport = rm ? be16_to_cpu(rm->m_inc.i_hdr.h_dport) : 0;
+		__entry->netns_inum = rds_netns_inum(rs);
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = rm ? rm->m_flags : 0;
+		__entry->err = 0;
+		RDS_STRLCPY(__entry->reason, NULL);
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->rs = rs;
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->hdr = rm ? &rm->m_inc.i_hdr : NULL;
+		__entry->rm = rm;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> flags 0x%lxu",
+		  show_transport(__entry->transport),
+		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->flags)
+);
+
+TRACE_EVENT(rds_send_complete,
+
+	TP_PROTO(struct rds_message *rm, struct rds_sock *rs,
+		 struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr,
+		 char *reason, int err),
+
+	TP_ARGS(rm, rs, conn, cp, saddr, daddr, reason, err),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, hdr)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = saddr ? *saddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = daddr ? *daddr : in6addr_any;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = rm ? be16_to_cpu(rm->m_inc.i_hdr.h_sport) : 0;
+		__entry->fport = rm ? be16_to_cpu(rm->m_inc.i_hdr.h_dport) : 0;
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = rm ? rm->m_flags : 0;
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = err;
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->rs = rs;
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->hdr = rm ? &rm->m_inc.i_hdr : NULL;
+		__entry->rm = rm;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> flags 0x%lxu reason [%s] status [%s]",
+		  show_transport(__entry->transport),
+		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->flags, __entry->reason,
+		  show_send_status(__entry->err))
+);
+
+TRACE_EVENT(rds_drop_egress,
+
+	TP_PROTO(struct rds_message *rm, struct rds_sock *rs,
+		 struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr,
+		 char *reason),
+
+	TP_ARGS(rm, rs, conn, cp, saddr, daddr, reason),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(void *, hdr)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+		struct cgroup *cgrp;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = *saddr;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = *daddr;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->lport = rm ? be16_to_cpu(rm->m_inc.i_hdr.h_sport) : 0;
+		__entry->fport = rm ? be16_to_cpu(rm->m_inc.i_hdr.h_dport) : 0;
+		__entry->netns_inum = rds_netns_inum(rs);
+		__entry->qp_num = rds_qp_num(conn, 0);
+		__entry->remote_qp_num = rds_qp_num(conn, 1);
+		__entry->flags = rm ? rm->m_flags : 0;
+		RDS_STRLCPY(__entry->reason, reason);
+		__entry->err = 0;
+		cgrp = rds_rs_to_cgroup(rs);
+		__entry->cgroup = cgrp;
+		__entry->cgroup_id = rds_cgroup_id(cgrp);
+		__entry->rs = rs;
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->hdr = rm ? &rm->m_inc.i_hdr : NULL;
+		__entry->rm = rm;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> dropping message, flags 0x%lxu reason [%s]",
+		  show_transport(__entry->transport), __entry->laddr,
+		  __entry->faddr, __entry->tos, __entry->flags,
+		 __entry->reason)
+);
 
 #endif /* _TRACE_RDS_H */
 
