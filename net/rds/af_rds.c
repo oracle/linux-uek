@@ -440,12 +440,12 @@ static void rds_user_conn_paths_drop(struct rds_connection *conn, int reason)
 	if (!conn->c_trans->t_mp_capable || conn->c_npaths == 1) {
 		cp = &conn->c_path[0];
 		cp->cp_drop_source = reason;
-		rds_conn_path_drop(cp, DR_USER_RESET);
+		rds_conn_path_drop(cp, DR_USER_RESET, 0);
 	} else {
 		for (i = 0; i < RDS_MPATH_WORKERS; i++) {
 			cp = &conn->c_path[i];
 			cp->cp_drop_source = reason;
-			rds_conn_path_drop(cp, DR_USER_RESET);
+			rds_conn_path_drop(cp, DR_USER_RESET, 0);
 		}
 	}
 }
@@ -477,7 +477,7 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
 			if (conn)
-				rds_conn_drop(conn, DR_USER_RESET);
+				rds_conn_drop(conn, DR_USER_RESET, 0);
 		goto done;
 	}
 
