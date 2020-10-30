@@ -17,6 +17,7 @@ kernel/arch/x86/crypto/sha512-ssse3.ko
 kernel/arch/x86/crypto/twofish-avx-x86_64.ko
 kernel/arch/x86/crypto/twofish-x86_64-3way.ko
 kernel/arch/x86/crypto/twofish-x86_64.ko
+kernel/arch/x86/kernel/cpu/mce/mce-inject.ko
 kernel/arch/x86/kvm/kvm-amd.ko
 kernel/arch/x86/kvm/kvm-intel.ko
 kernel/arch/x86/kvm/kvm.ko
