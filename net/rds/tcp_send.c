@@ -34,6 +34,8 @@
 #include <linux/in.h>
 #include <net/tcp.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "tcp.h"
 
@@ -82,6 +84,7 @@ int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
 {
 	struct rds_conn_path *cp = rm->m_inc.i_conn_path;
 	struct rds_tcp_connection *tc = cp->cp_transport_data;
+	char *reason = NULL;
 	int done = 0;
 	int ret = 0;
 	int more;
@@ -114,8 +117,10 @@ int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
 		ret = rds_tcp_sendmsg(tc->t_sock,
 				      (void *)&rm->m_inc.i_hdr + hdr_off,
 				      sizeof(rm->m_inc.i_hdr) - hdr_off);
-		if (ret < 0)
+		if (ret < 0) {
+			reason = "sendmsg err";
 			goto out;
+		}
 		done += ret;
 		if (hdr_off + done != sizeof(struct rds_header))
 			goto out;
@@ -133,8 +138,11 @@ int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
 		rdsdebug("tcp sendpage %p:%u:%u ret %d\n", (void *)sg_page(&rm->data.op_sg[sg]),
 			 rm->data.op_sg[sg].offset + off, rm->data.op_sg[sg].length - off,
 			 ret);
-		if (ret <= 0)
+		if (ret <= 0) {
+			if (ret < 0)
+				reason = "sendpage err";
 			break;
+		}
 
 		off += ret;
 		done += ret;
@@ -148,6 +156,10 @@ int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
 
 out:
 	if (ret <= 0) {
+		if (reason)
+			trace_rds_drop_egress(rm, rm->m_rs, conn, cp,
+					      &conn->c_laddr, &conn->c_faddr,
+					      reason);
 		/* write_space will hit after EAGAIN, all else fatal */
 		if (ret == -EAGAIN) {
 			rds_tcp_stats_inc(s_tcp_sndbuf_full);
