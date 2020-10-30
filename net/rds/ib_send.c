@@ -35,6 +35,8 @@
 #include <linux/device.h>
 #include <linux/dmapool.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "ib.h"
 #include "rds_single_path.h"
@@ -581,6 +583,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	int ret;
 	int flow_controlled = 0;
 	int nr_sig = 0;
+	char *reason = NULL;
 
 	BUG_ON(hdr_off != 0 && hdr_off != sizeof(struct rds_header));
 
@@ -608,6 +611,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 		if (work_alloc == 0) {
 			rds_ib_stats_inc(s_ib_tx_ring_full);
+			reason = "rds_ib_ring_alloc failed";
 			ret = -ENOMEM;
 			goto out;
 		}
@@ -625,6 +629,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		if (work_alloc == 0) {
 			rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 			rds_ib_stats_inc(s_ib_tx_throttle);
+			reason = "no credits available";
 			ret = -ENOMEM;
 			goto out;
 		}
@@ -641,6 +646,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			if (rm->data.op_count == 0) {
 				rds_ib_stats_inc(s_ib_tx_sg_mapping_failure);
 				rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
+				reason = "no data ops";
 				ret = -ENOMEM; /* XXX ? */
 				goto out;
 			}
@@ -840,6 +846,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	if (ret) {
 		printk(KERN_WARNING "RDS/IB: ib_post_send to %pI6c "
 		       "returned %d\n", &conn->c_faddr, ret);
+		reason = "ib_post_send failed";
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_sub_signaled(ic, nr_sig);
 		if (prev->s_op) {
@@ -853,6 +860,10 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 
 	ret = bytes_sent;
 out:
+	if (reason)
+		trace_rds_drop_egress(rm, rm->m_rs, conn, &conn->c_path[0],
+				      &conn->c_laddr, &conn->c_faddr,
+				      reason);
 	BUG_ON(adv_credits);
 	return ret;
 }
@@ -871,11 +882,13 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	u32 work_alloc;
 	int ret;
 	int nr_sig = 0;
+	char *reason = NULL;
 
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, 1, &pos);
 	if (work_alloc != 1) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_ring_full);
+		reason = "rds_ib_ring_alloc failed";
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -907,6 +920,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	if (ret != 1) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_sg_mapping_failure);
+		reason =  "ib_dma_map_sg failed";
 		ret = -ENOMEM; /* XXX ? */
 		goto out;
 	}
@@ -930,6 +944,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	if (ret) {
 		printk(KERN_WARNING "RDS/IB: atomic ib_post_send to %pI6c returned %d\n",
 		       &conn->c_faddr, ret);
+		reason = "atomic ib_post_send failed";
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_sub_signaled(ic, nr_sig);
 		goto out;
@@ -941,6 +956,10 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	}
 
 out:
+	if (reason)
+		trace_rds_drop_egress(NULL, NULL, conn, &conn->c_path[0],
+				      &conn->c_laddr, &conn->c_faddr,
+				      reason);
 	return ret;
 }
 
@@ -963,6 +982,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	int ret;
 	int num_sge;
 	int nr_sig;
+	char *reason = NULL;
 
 	/* map the op the first time we see it */
 	if (!op->op_mapped) {
@@ -971,6 +991,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 					     DMA_TO_DEVICE : DMA_FROM_DEVICE);
 		rdsdebug("ic %p mapping op %p: %d\n", ic, op, op->op_count);
 		if (op->op_count == 0) {
+			reason = "ib_dma_map_sg failed";
 			rds_ib_stats_inc(s_ib_tx_sg_mapping_failure);
 			ret = -ENOMEM; /* XXX ? */
 			goto out;
@@ -989,6 +1010,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	if (work_alloc != i) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_ring_full);
+		reason = "rds_ib_ring_alloc failed";
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -1061,6 +1083,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 				op->op_mapped = 0;
 				rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 				rds_ib_stats_inc(s_ib_tx_ring_full);
+				reason = "ib tx ring full";
 				ret = -ENOMEM;
 				goto out;
 			}
@@ -1096,6 +1119,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	if (ret) {
 		printk(KERN_WARNING "RDS/IB: rdma ib_post_send to %pI6c "
 		       "returned %d\n", &conn->c_faddr, ret);
+		reason = "rdma ib_post_send failed";
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_sub_signaled(ic, nr_sig);
 		goto out;
@@ -1108,6 +1132,10 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 
 
 out:
+	if (reason)
+		trace_rds_drop_egress(NULL, NULL, conn, &conn->c_path[0],
+				      &conn->c_laddr, &conn->c_faddr,
+				      reason);
 	return ret;
 }
 
