@@ -38,6 +38,8 @@
 #include "rds.h"
 #include "loop.h"
 
+#include <trace/events/rds.h>
+
 #define RDS_CONNECTION_HASH_BITS 12
 #define RDS_CONNECTION_HASH_ENTRIES (1 << RDS_CONNECTION_HASH_BITS)
 #define RDS_CONNECTION_HASH_MASK (RDS_CONNECTION_HASH_ENTRIES - 1)
@@ -199,7 +201,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	INIT_LIST_HEAD(&cp->cp_retrans);
 
 	cp->cp_conn = conn;
-	atomic_set(&cp->cp_state, RDS_CONN_DOWN);
+	rds_conn_path_state_change(cp, RDS_CONN_DOWN, DR_DEFAULT, 0);
 	cp->cp_reconnect_start = get_seconds();
 	cp->cp_reconnect_warn = 1;
 	cp->cp_conn->c_proposed_version = RDS_PROTOCOL_VERSION;
@@ -458,13 +460,8 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 	struct rds_connection *conn = cp->cp_conn;
 
 	/* shut it down unless it's down already */
-	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN)) {
-		rds_rtd_ptr(RDS_RTD_CM_EXT,
-			    "RDS/%s: shutdown init conn %p conn->c_passive %p <%pI6c,%pI6c,%d>\n",
-			    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-			    conn, conn->c_passive,
-			    &conn->c_laddr, &conn->c_faddr,
-			    conn->c_tos);
+	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN,
+				      DR_DEFAULT)) {
 		/*
 		 * Quiesce the connection mgmt handlers before we start tearing
 		 * things down. We don't hold the mutex for the entire
@@ -474,12 +471,15 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 		 */
 		mutex_lock(&cp->cp_cm_lock);
 		if (!rds_conn_path_transition(cp, RDS_CONN_UP,
-					      RDS_CONN_DISCONNECTING) &&
+					      RDS_CONN_DISCONNECTING,
+					      DR_DEFAULT) &&
 		    !rds_conn_path_transition(cp, RDS_CONN_CONNECTING,
-					      RDS_CONN_DISCONNECTING) &&
+					      RDS_CONN_DISCONNECTING,
+					      DR_DEFAULT) &&
 		    !rds_conn_path_transition(cp, RDS_CONN_ERROR,
-					      RDS_CONN_DISCONNECTING)) {
-			rds_conn_path_drop(cp, DR_INV_CONN_STATE);
+					      RDS_CONN_DISCONNECTING,
+					      DR_DEFAULT)) {
+			rds_conn_path_drop(cp, DR_INV_CONN_STATE, 0);
 			mutex_unlock(&cp->cp_cm_lock);
 			return;
 		}
@@ -497,9 +497,9 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 		rds_conn_path_reset(cp);
 
 		if (!rds_conn_path_transition(cp, RDS_CONN_DISCONNECTING,
-					      RDS_CONN_DOWN) &&
+					      RDS_CONN_DOWN, DR_DEFAULT) &&
 		    !rds_conn_path_transition(cp, RDS_CONN_ERROR,
-					      RDS_CONN_DOWN)) {
+					      RDS_CONN_DOWN, DR_DEFAULT)) {
 			/* This can happen - eg when we're in the middle of tearing
 			 * down the connection, and someone unloads the rds module.
 			 * Quite reproducible with loopback connections.
@@ -514,7 +514,7 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 			 */
 			pr_warn("RDS: %s: failed to transition to state DOWN, current state is %d\n",
 				__func__, atomic_read(&cp->cp_state));
-			rds_conn_path_drop(cp, DR_DOWN_TRANSITION_FAIL);
+			rds_conn_path_drop(cp, DR_DOWN_TRANSITION_FAIL, 0);
 			return;
 		}
 	}
@@ -563,7 +563,7 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
 		cancel_delayed_work_sync(&cp->cp_recv_w);
 
-	rds_conn_path_drop(cp, DR_CONN_DESTROY);
+	rds_conn_path_drop(cp, DR_CONN_DESTROY, 0);
 	flush_work(&cp->cp_down_w);
 
 	/* now that conn down worker is flushed; there cannot be any
@@ -1139,13 +1139,25 @@ char *conn_drop_reason_str(enum rds_conn_drop_src reason)
 			     ARRAY_SIZE(conn_drop_reasons), reason);
 }
 
+void rds_conn_path_trace_state_change(int changed, struct rds_conn_path *cp,
+				      int old, int new, int reason, int err)
+{
+	char *reason_str = conn_drop_reason_str(reason);
+
+	if (changed)
+		trace_rds_state_change(cp, reason_str, err, old, new);
+	else
+		trace_rds_state_change_err(cp, reason_str, err, old, new);
+}
+EXPORT_SYMBOL_GPL(rds_conn_path_trace_state_change);
+
 /*
  * Force a disconnect
  */
-void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
+void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 {
-	unsigned long now = get_seconds();
 	struct rds_connection *conn = cp->cp_conn;
+	unsigned long now = get_seconds();
 
 	cp->cp_drop_source = reason;
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
@@ -1162,7 +1174,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 			       &conn->c_laddr,
 			       &conn->c_faddr,
 			       conn->c_tos,
-			       conn_drop_reason_str(cp->cp_drop_source));
+			       conn_drop_reason_str(reason));
 
 	} else if ((cp->cp_reconnect_warn) &&
 		   (now - cp->cp_reconnect_start > 60)) {
@@ -1177,7 +1189,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 	}
 	cp->cp_conn_start_jf = 0;
 
-	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
+	rds_conn_path_state_change(cp, RDS_CONN_ERROR, reason, err);
 
 	if (reason != DR_CONN_DESTROY && test_bit(RDS_DESTROY_PENDING, &cp->cp_flags)) {
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
@@ -1198,10 +1210,10 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_drop);
 
-void rds_conn_drop(struct rds_connection *conn, int reason)
+void rds_conn_drop(struct rds_connection *conn, int reason, int err)
 {
 	WARN_ON(conn->c_trans->t_mp_capable);
-	rds_conn_path_drop(&conn->c_path[0], reason);
+	rds_conn_path_drop(&conn->c_path[0], reason, err);
 
 	/*
 	 * See if we can find the loop-back peer. We exclude same-port
@@ -1217,7 +1229,7 @@ void rds_conn_drop(struct rds_connection *conn, int reason)
 				     conn->c_trans, conn->c_tos,
 				     0);
 		if (peer)
-			rds_conn_path_drop(peer->c_path + 0, reason);
+			rds_conn_path_drop(peer->c_path + 0, reason, err);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);

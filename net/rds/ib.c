@@ -454,7 +454,7 @@ static void __rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 		 * reference count dropped to 0).
 		 */
 		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
-			rds_conn_drop(ic->conn, DR_RDMA_DEV_REM);
+			rds_conn_drop(ic->conn, DR_RDMA_DEV_REM, 0);
 		spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 	}
 }
