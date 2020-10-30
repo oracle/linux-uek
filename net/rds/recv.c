@@ -571,10 +571,9 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	/* find the proper output socket - it should be the local one on which we originated */
 	rs = rds_find_bound(&dst->saddr, dst->sport, conn->c_bound_if);
 	if (!rs) {
-		rds_rtd_ptr(RDS_RTD_RCV,
-			    "failed to find output rds_socket dst %pI6c : %u, inc %p, conn %p tos %d\n",
-			    &dst->daddr, dst->dport, inc, conn,
-			    conn->c_tos);
+		trace_rds_drop_egress(NULL, NULL, conn, cp,
+				      &conn->c_laddr, &dst->daddr,
+				      "failed to find output socket");
 		rds_stats_inc(s_recv_drop_no_sock);
 		goto out;
 	}
@@ -585,10 +584,9 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	/* now lets see if we can send it all */
 	ret = rds_send_internal(conn, rs, inc->i_skb, gfp);
 	if (len != ret) {
-		rds_rtd_ptr(RDS_RTD_RCV,
-			    "failed to send rds_data dst %pI6c : %u, inc %p, conn %p tos %d, len %d != ret %d\n",
-			    &dst->daddr, dst->dport, inc, conn, conn->c_tos,
-			    len, ret);
+		trace_rds_drop_egress(NULL, rs, conn, cp,
+				      &conn->c_laddr, &dst->daddr,
+				      "failed to forward rds data");
 		goto out;
 	}
 
