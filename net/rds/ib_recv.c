@@ -609,9 +609,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 		/* XXX when can this fail? */
 		ret = ib_post_recv(ic->i_cm_id->qp, &recv->r_wr, &failed_wr);
 		if (ret) {
-			rds_conn_drop(conn, DR_IB_POST_RECV_FAIL);
-			pr_warn("RDS/IB: recv post on %pI6c returned %d, disconnecting and reconnecting\n",
-				&conn->c_faddr, ret);
+			rds_conn_drop(conn, DR_IB_POST_RECV_FAIL, ret);
 			break;
 		}
 
@@ -908,7 +906,7 @@ static void rds_ib_send_ack(struct rds_ib_connection *ic, unsigned int adv_credi
 		set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
 
 		rds_ib_stats_inc(s_ib_ack_send_failure);
-		rds_conn_drop(ic->conn, DR_IB_SEND_ACK_FAIL);
+		rds_conn_drop(ic->conn, DR_IB_SEND_ACK_FAIL, ret);
 	} else
 		rds_ib_stats_inc(s_ib_ack_sent);
 }
@@ -1100,7 +1098,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 data_len);
 
 	if (data_len < sizeof(struct rds_header)) {
-		rds_conn_drop(conn, DR_IB_HEADER_MISSING);
+		rds_conn_drop(conn, DR_IB_HEADER_MISSING, 0);
 		pr_warn("RDS/IB: incoming message from %pI6c didn't inclue a header, disconnecting and reconnecting\n",
 			&conn->c_faddr);
 		return;
@@ -1111,7 +1109,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
-		rds_conn_drop(conn, DR_IB_HEADER_CORRUPTED);
+		rds_conn_drop(conn, DR_IB_HEADER_CORRUPTED, 0);
 		pr_warn("RDS/IB: incoming message from %pI6c has corrupted header - forcing a reconnect\n",
 			&conn->c_faddr);
 		rds_stats_inc(s_recv_drop_bad_checksum);
@@ -1177,7 +1175,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 || hdr->h_len != ihdr->h_len
 		 || hdr->h_sport != ihdr->h_sport
 		 || hdr->h_dport != ihdr->h_dport) {
-			rds_conn_drop(conn, DR_IB_FRAG_HEADER_MISMATCH);
+			rds_conn_drop(conn, DR_IB_FRAG_HEADER_MISMATCH, 0);
 			return;
 		}
 	}
@@ -1349,9 +1347,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 					wc->status, wc->vendor_err);
 			if (wc->status == IB_WC_LOC_LEN_ERR)
 				ic->i_flags |= RDS_IB_CLEAN_CACHE;
-			rds_conn_drop(conn, DR_IB_RECV_COMP_ERR);
-			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
-				rds_ib_wc_status_str(wc->status));
+			rds_conn_drop(conn, DR_IB_RECV_COMP_ERR, wc->status);
 		}
 	}
 

@@ -94,9 +94,9 @@ rds_tcp_accept_one_path(struct rds_connection *conn)
 		struct rds_conn_path *cp = &conn->c_path[i];
 
 		if (rds_conn_path_transition(cp, RDS_CONN_DOWN,
-					     RDS_CONN_CONNECTING) ||
+					     RDS_CONN_CONNECTING, DR_DEFAULT) ||
 		    rds_conn_path_transition(cp, RDS_CONN_ERROR,
-					     RDS_CONN_CONNECTING)) {
+					     RDS_CONN_CONNECTING, DR_DEFAULT)) {
 			return cp->cp_transport_data;
 		}
 	}
