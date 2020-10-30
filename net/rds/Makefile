@@ -1,7 +1,7 @@
 obj-$(CONFIG_RDS) += rds.o
 rds-y :=	af_rds.o bind.o cong.o connection.o info.o message.o   \
 			recv.o send.o stats.o sysctl.o threads.o transport.o \
-			loop.o page.o rdma.o
+			loop.o page.o rdma.o trace.o
 
 obj-$(CONFIG_RDS_RDMA) += rds_rdma.o
 rds_rdma-y :=	rdma_transport.o \
