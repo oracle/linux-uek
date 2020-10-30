@@ -789,7 +789,7 @@ static int reserve_va_range(const char *note_seg, const size_t note_size)
 			 * entries exist in note section
 			 */
 			if (((nentry % 2) != 0) ||
-				((nentry % 2) > MAX_RSVD_VA_RANGES)) {
+				((nentry / 2) > MAX_RSVD_VA_RANGES)) {
 				retval = -ENOEXEC;
 				goto out;
 			}
