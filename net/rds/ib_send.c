@@ -372,9 +372,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 			pr_warn("RDS/IB: send completion <%pI6c,%pI6c,%d> status %u vendor_err 0x%x, disconnecting and reconnecting\n",
 				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 				wc->status, wc->vendor_err);
-		rds_conn_drop(conn, DR_IB_SEND_COMP_ERR);
-		rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
-			rds_ib_wc_status_str(wc->status));
+		rds_conn_drop(conn, DR_IB_SEND_COMP_ERR, wc->status);
 	}
 }
 
@@ -849,7 +847,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			prev->s_op = NULL;
 		}
 
-		rds_conn_drop(ic->conn, DR_IB_POST_SEND_FAIL);
+		rds_conn_drop(ic->conn, DR_IB_POST_SEND_FAIL, ret);
 		goto out;
 	}
 

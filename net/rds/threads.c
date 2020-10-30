@@ -105,12 +105,12 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
-	if (!rds_conn_path_transition(cp, curr, RDS_CONN_UP)) {
+	if (!rds_conn_path_transition(cp, curr, RDS_CONN_UP, DR_DEFAULT)) {
 		rds_rtd_ptr(RDS_RTD_CM,
 			    "conn %p <%pI6c,%pI6c,%d> cannot transition to state UP, current state is %s\n",
 			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 			    conn_state_mnem(atomic_read(&cp->cp_state)));
-		rds_conn_path_drop(cp, DR_IB_NOT_CONNECTING_STATE);
+		rds_conn_path_drop(cp, DR_IB_NOT_CONNECTING_STATE, 0);
 		return;
 	}
 
@@ -234,7 +234,8 @@ void rds_connect_worker(struct work_struct *work)
 	if (is_tcp && cp->cp_index > 0 &&
 	    rds_addr_cmp(&cp->cp_conn->c_laddr, &cp->cp_conn->c_faddr) > 0)
 		goto out;
-	ret = rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_CONNECTING);
+	ret = rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_CONNECTING,
+				       DR_DEFAULT);
 	if (ret) {
 		/*
 		 * record the time we started trying to connect so that we can
@@ -254,12 +255,13 @@ void rds_connect_worker(struct work_struct *work)
 		if (ret) {
 			if (rds_conn_path_transition(cp,
 						     RDS_CONN_CONNECTING,
-						     RDS_CONN_DOWN)) {
+						     RDS_CONN_DOWN,
+						     DR_DEFAULT)) {
 				rds_rtd(RDS_RTD_CM_EXT,
 					"reconnecting..., conn %p\n", conn);
 				rds_queue_reconnect(cp);
 			} else {
-				rds_conn_path_drop(cp, DR_CONN_CONNECT_FAIL);
+				rds_conn_path_drop(cp, DR_CONN_CONNECT_FAIL, 0);
 			}
 		}
 	} else {
@@ -356,7 +358,7 @@ void rds_hb_worker(struct work_struct *work)
 					    "RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%llx,0x%llx)..discon and recon\n",
 					    &conn->c_laddr, &conn->c_faddr,
 					    conn->c_tos, READ_ONCE(cp->cp_hb_start), now);
-				rds_conn_path_drop(cp, DR_HB_TIMEOUT);
+				rds_conn_path_drop(cp, DR_HB_TIMEOUT, 0);
 				return;
 			}
 			break;
@@ -392,7 +394,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 			    cp->cp_reconnect_retry_count);
 		cp->cp_reconnect_racing = 0;
-		rds_conn_path_drop(cp, DR_RECONNECT_TIMEOUT);
+		rds_conn_path_drop(cp, DR_RECONNECT_TIMEOUT, 0);
 	}
 }
 
