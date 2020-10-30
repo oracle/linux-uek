@@ -40,6 +40,8 @@
 #include "rds.h"
 #include "tcp.h"
 
+#include <trace/events/rds.h>
+
 /* only for info exporting */
 static DEFINE_SPINLOCK(rds_tcp_tc_list_lock);
 static LIST_HEAD(rds_tcp_tc_list);
@@ -174,7 +176,8 @@ void rds_tcp_reset_callbacks(struct socket *sock,
 	 * RDS_CONN_RESETTTING, to ensure that rds_tcp_state_change
 	 * cannot mark rds_conn_path_up() in the window before lock_sock()
 	 */
-	atomic_set(&cp->cp_state, RDS_CONN_RESETTING);
+	rds_conn_path_state_change(cp, RDS_CONN_RESETTING, DR_DEFAULT, 0);
+
 	wait_event(cp->cp_waitq, !test_bit(RDS_IN_XMIT, &cp->cp_flags));
 	lock_sock(osock->sk);
 	/* reset receive side state for rds_tcp_data_recv() for osock  */
@@ -656,7 +659,7 @@ static void rds_tcp_sysctl_reset(struct net *net)
 			continue;
 
 		/* reconnect with new parameters */
-		rds_conn_path_drop(tc->t_cpath, DR_USER_RESET);
+		rds_conn_path_drop(tc->t_cpath, DR_USER_RESET, 0);
 	}
 	spin_unlock_irq(&rds_tcp_conn_lock);
 }
