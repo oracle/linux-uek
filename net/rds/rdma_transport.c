@@ -200,13 +200,10 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			 * in RDMA CM when we return from here.
 			 */
 
-			rds_rtd_ptr(RDS_RTD_CM,
-				    "conn %p <%pI6c,%pI6c,%d> dropping connection after rdma_resolve_route failure %d\n",
-				    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos, ret);
 			ibic = conn->c_transport_data;
 			if (rds_ib_same_cm_id(ibic, cm_id))
 				ibic->i_cm_id = NULL;
-			rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL);
+			rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL, ret);
 		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
 				conn->c_to_index++;
 		break;
@@ -235,11 +232,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				    cm_id->route.path_rec[0].dgid.raw);
 			ret = trans->cm_initiate_connect(cm_id, isv6);
 		} else {
-			rds_rtd_ptr(RDS_RTD_CM,
-				    "ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI6c,%pI6c,%d>\n",
-				    conn, &conn->c_laddr,
-				    &conn->c_faddr, conn->c_tos);
-			rds_conn_drop(conn, DR_IB_RDMA_CM_ID_MISMATCH);
+			rds_conn_drop(conn, DR_IB_RDMA_CM_ID_MISMATCH, 0);
 		}
 		break;
 
@@ -247,12 +240,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
 
-		rds_rtd_ptr(RDS_RTD_ERR,
-			    "ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr,
-			    &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
-		rds_conn_drop(conn, DR_IB_ROUTE_ERR);
+		rds_conn_drop(conn, DR_IB_ROUTE_ERR, 0);
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
@@ -263,12 +252,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
 
-		rds_rtd_ptr(RDS_RTD_ERR,
-			    "ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr,
-			    &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
-		rds_conn_drop(conn, DR_IB_ADDR_ERR);
+		rds_conn_drop(conn, DR_IB_ADDR_ERR, 0);
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_ERROR:
@@ -277,12 +262,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
 
-		rds_rtd_ptr(RDS_RTD_ERR,
-			    "CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr,
-			    &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
-		rds_conn_drop(conn, DR_IB_CONNECT_ERR);
+		rds_conn_drop(conn, DR_IB_CONNECT_ERR, 0);
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
@@ -309,7 +290,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				conn->c_proposed_version =
 					RDS_PROTOCOL_COMPAT_VERSION;
 			rds_conn_drop(conn,
-				      DR_IB_CONSUMER_DEFINED_REJ);
+				      DR_IB_CONSUMER_DEFINED_REJ, *err);
 		} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 			   (*err) == RDS_ACL_FAILURE) {
 			/* Rejection due to ACL violation */
@@ -321,13 +302,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 			rds_ib_conn_destroy_init(conn);
 		} else {
-			rds_rtd_ptr(RDS_RTD_ERR,
-				    "Rejected: *err %d status %d calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				    *err, event->status,
-				    &conn->c_laddr,
-				    &conn->c_faddr,
-				    conn->c_tos);
-			rds_conn_drop(conn, DR_IB_REJECTED_EVENT);
+			rds_conn_drop(conn, DR_IB_REJECTED_EVENT, *err);
 		}
 		break;
 
@@ -335,34 +310,21 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
 
-		rds_rtd_ptr(RDS_RTD_CM_EXT,
-			    "ADDR_CHANGE event <%pI6c,%pI6c>\n",
-			    &conn->c_laddr,
-			    &conn->c_faddr);
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "ADDR_CHANGE: calling rds_conn_drop conn %p <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
-		rds_conn_drop(conn, DR_IB_ADDR_CHANGE);
+		rds_conn_drop(conn, DR_IB_ADDR_CHANGE, 0);
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		/* IP might have been moved so flush the ARP entry and retry */
 		rds_ib_flush_neigh(&init_net, conn, flush_local_peer);
 
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "DISCONNECT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
 		if (!rds_conn_self_loopback_passive(conn))
-			rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT);
+			rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT, 0);
 		break;
 
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "TIMEWAIT_EXIT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		rds_conn_drop(conn, DR_IB_TIMEWAIT_EXIT);
+		rds_conn_drop(conn, DR_IB_TIMEWAIT_EXIT, 0);
 		break;
 
 	default:
