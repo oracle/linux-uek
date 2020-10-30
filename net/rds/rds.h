@@ -1062,8 +1062,8 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 void rds_conn_shutdown(struct rds_conn_path *cp, int restart);
 void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
-void rds_conn_drop(struct rds_connection *conn, int reason);
-void rds_conn_path_drop(struct rds_conn_path *cp, int reason);
+void rds_conn_drop(struct rds_connection *conn, int reason, int err);
+void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err);
 void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 			 struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
@@ -1076,6 +1076,17 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			    u64 *buffer,
 			    size_t item_len);
 char *conn_drop_reason_str(enum rds_conn_drop_src reason);
+void rds_conn_path_trace_state_change(int changed, struct rds_conn_path *cp,
+				      int old, int new, int reason, int err);
+
+static inline void rds_conn_path_state_change(struct rds_conn_path *cp,
+					      int new, int reason, int err)
+{
+	int old = atomic_read(&cp->cp_state);
+
+	atomic_set(&cp->cp_state, new);
+	rds_conn_path_trace_state_change(1, cp, old, new, reason, err);
+}
 
 static inline void rds_cond_queue_shutdown_work(struct rds_conn_path *cp)
 {
@@ -1156,16 +1167,20 @@ static inline void rds_clear_rm_flag_bit(struct rds_message *rm, int n)
 }
 
 static inline int
-rds_conn_path_transition(struct rds_conn_path *cp, int old, int new)
+rds_conn_path_transition(struct rds_conn_path *cp, int old, int new, int reason)
 {
-	return atomic_cmpxchg(&cp->cp_state, old, new) == old;
+	int ret = atomic_cmpxchg(&cp->cp_state, old, new) == old;
+
+	rds_conn_path_trace_state_change(ret, cp, old, new, reason, 0);
+
+	return ret;
 }
 
 static inline int
-rds_conn_transition(struct rds_connection *conn, int old, int new)
+rds_conn_transition(struct rds_connection *conn, int old, int new, int reason)
 {
 	WARN_ON(conn->c_trans->t_mp_capable);
-	return rds_conn_path_transition(&conn->c_path[0], old, new);
+	return rds_conn_path_transition(&conn->c_path[0], old, new, reason);
 }
 
 static inline int
