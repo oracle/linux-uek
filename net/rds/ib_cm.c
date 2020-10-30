@@ -326,10 +326,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
-		rds_rtd(RDS_RTD_CM,
-			"ic->i_cm_id is NULL, ic: %p, calling rds_conn_drop\n",
-			ic);
-		rds_conn_drop(conn, DR_IB_CONN_DROP_RACE);
+		rds_conn_drop(conn, DR_IB_CONN_DROP_RACE, 0);
 		return;
 	}
 
@@ -686,11 +683,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		complete(&ic->i_last_wqe_complete);
 		break;
 	default:
-		rds_rtd_ptr(RDS_RTD_ERR,
-			    "Fatal QP Event %u (%s) - conn %p <%pI6c,%pI6c,%d>, reconnecting\n",
-			    event->event, rds_ib_event_str(event->event),
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		rds_conn_drop(conn, DR_IB_QP_EVENT);
+		rds_conn_drop(conn, DR_IB_QP_EVENT, 0);
 		break;
 	}
 }
@@ -1444,7 +1437,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	 */
 	mutex_lock(&conn->c_cm_lock);
 	ic = conn->c_transport_data;
-	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING)) {
+	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING,
+				 DR_DEFAULT)) {
 		/*
 		 * in both of the cases below, the conn is half setup.
 		 * we need to make sure the lower layers don't destroy it
@@ -1455,7 +1449,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			rds_rtd(RDS_RTD_CM_EXT_P,
 				"conn %p <%pI6c,%pI6c,%d> incoming connect in UP state\n",
 				conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-			rds_conn_drop(conn, DR_IB_REQ_WHILE_CONN_UP);
+			rds_conn_drop(conn, DR_IB_REQ_WHILE_CONN_UP, 0);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 			conn->c_reconnect_racing++;
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
@@ -1473,7 +1467,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 					    "conn %p <%pI6c,%pI6c,%d> back-to-back REQ, reset\n",
 					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 				conn->c_reconnect_racing = 0;
-				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING);
+				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING,
+					      0);
 			/* After 15 seconds, give up on existing connection
 			 * attempts and make them try again.  At this point
 			 * it's no longer a race but something has gone
@@ -1484,7 +1479,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				rds_rtd_ptr(RDS_RTD_CM,
 					    "conn %p <%pI6c,%pI6c,%d> racing for 15s, forcing reset\n",
 					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING);
+				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING,
+					      0);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
 				/* Wait and see - our connect may still be succeeding */
@@ -1538,9 +1534,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	err = rds_ib_setup_qp(conn);
 	if (err) {
-		pr_warn("RDS/IB: rds_ib_setup_qp failed with err(%d) for conn <%pI6c,%pI6c,%d>\n",
-			err, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL);
+		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL, err);
 		goto out;
 	}
 	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp_cmn->ricpc_frag_sz));
@@ -1555,11 +1549,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
 		rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
 	err = rdma_accept(cm_id, &conn_param);
-	if (err) {
-		pr_warn("RDS/IB: rdma_accept failed with err(%d) for conn <%pI6c,%pI6c,%d>\n",
-			err, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL);
-	}
+	if (err)
+		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL, err);
 
 out:
 	if (conn)
@@ -1642,8 +1633,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 
 	ret = rds_ib_setup_qp(conn);
 	if (ret) {
-		rds_rtd(RDS_RTD_CM, "RDS/IB: rds_ib_setup_qp failed (%d)\n", ret);
-		rds_conn_drop(conn, DR_IB_ACT_SETUP_QP_FAIL);
+		rds_conn_drop(conn, DR_IB_ACT_SETUP_QP_FAIL, ret);
 		goto out;
 	}
 	frag = rds_ib_set_frag_size(conn, ib_init_frag_size);
@@ -1653,7 +1643,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		rds_rtd(RDS_RTD_CM, "RDS/IB: rdma_connect failed (%d)\n", ret);
-		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL);
+		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL, 0);
 	}
 
 out:
