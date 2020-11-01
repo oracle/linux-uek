@@ -38,7 +38,7 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU_SHARED_ALIGNED(int, next_cpu);
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq_kabi_extra, rq_rke);
 
-#if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
+#ifdef CONFIG_SCHED_DEBUG
 /*
  * Debugging: various feature bits
  *

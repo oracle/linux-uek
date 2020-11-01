@@ -747,6 +747,9 @@ static void remove_nexthop_from_groups(struct net *net, struct nexthop *nh,
 
 	list_for_each_entry_safe(nhge, tmp, &nh->grp_list, nh_list)
 		remove_nh_grp_entry(net, nhge, nlinfo);
+
+	/* make sure all see the newly published array before releasing rtnl */
+	synchronize_net();
 }
 
 static void remove_nexthop_group(struct nexthop *nh, struct nl_info *nlinfo)
