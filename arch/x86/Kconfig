@@ -1970,6 +1970,42 @@ config EFI_MIXED
 
 	   If unsure, say N.
 
+config SECURE_LAUNCH
+	bool "Secure Launch support"
+	default n
+	depends on X86_64
+	help
+	   The Secure Launch feature allows a kernel to be loaded
+	   directly through an Intel TXT measured launch. Intel TXT
+	   establishes a Dynamic Root of Trust for Measurement (DRTM)
+	   where the CPU measures the kernel image. This feature then
+	   continues the measurement chain over kernel configuration
+	   information and init images.
+
+choice
+	prompt "Select Secure Launch Algorithm for TPM2"
+	depends on SECURE_LAUNCH
+
+config SECURE_LAUNCH_SHA1
+	bool "Secure Launch TPM1 SHA1"
+	help
+	   When using Secure Launch and TPM1 is present, use SHA1 hash
+	   algorithm for measurements.
+
+config SECURE_LAUNCH_SHA256
+	bool "Secure Launch TPM2 SHA256"
+	help
+	   When using Secure Launch and TPM2 is present, use SHA256 hash
+	   algorithm for measurements.
+
+config SECURE_LAUNCH_SHA512
+	bool "Secure Launch TPM2 SHA512"
+	help
+	   When using Secure Launch and TPM2 is present, use SHA512 hash
+	   algorithm for measurements.
+
+endchoice
+
 config SECCOMP
 	def_bool y
 	prompt "Enable seccomp to safely compute untrusted bytecode"
