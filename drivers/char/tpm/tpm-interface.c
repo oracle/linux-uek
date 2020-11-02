@@ -31,6 +31,7 @@
 #include <linux/freezer.h>
 #include <linux/pm_runtime.h>
 #include <linux/tpm_eventlog.h>
+#include <linux/slaunch.h>
 
 #include "tpm.h"
 
@@ -371,7 +372,7 @@ err_len:
 
 static int tpm_request_locality(struct tpm_chip *chip, unsigned int flags)
 {
-	int rc;
+	int rc, locality;
 
 	if (flags & TPM_TRANSMIT_RAW)
 		return 0;
@@ -379,7 +380,15 @@ static int tpm_request_locality(struct tpm_chip *chip, unsigned int flags)
 	if (!chip->ops->request_locality)
 		return 0;
 
-	rc = chip->ops->request_locality(chip, 0);
+	if (slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) {
+		dev_dbg(&chip->dev, "setting TPM locality to 2 for MLE\n");
+		locality = 2;
+	} else {
+		dev_dbg(&chip->dev, "setting TPM locality to 0\n");
+		locality = 0;
+	}
+
+	rc = chip->ops->request_locality(chip, locality);
 	if (rc < 0)
 		return rc;
 
