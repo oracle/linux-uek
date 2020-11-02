@@ -598,7 +598,11 @@ struct dev_pm_info {
 #endif
 #ifdef CONFIG_PM
 	struct hrtimer		suspend_timer;
+#ifndef __GENKSYMS__
+	u64			timer_expires;
+#else
 	unsigned long		timer_expires;
+#endif
 	struct work_struct	work;
 	wait_queue_head_t	wait_queue;
 	struct wake_irq		*wakeirq;
