@@ -22,53 +22,12 @@
 
 #include "cgx.h"
 #include "rvu.h"
+#include "lmac_common.h"
 
 #define DRV_NAME	"octeontx2-cgx"
 #define DRV_STRING      "Marvell OcteonTX2 CGX/MAC Driver"
 
 #define CGX_RX_STAT_GLOBAL_INDEX	9
-
-/**
- * struct lmac
- * @wq_cmd_cmplt:	waitq to keep the process blocked until cmd completion
- * @cmd_lock:		Lock to serialize the command interface
- * @resp:		command response
- * @link_info:		link related information
- * @mac_to_index_bmap:	Mac address to CGX table index mapping
- * @event_cb:		callback for linkchange events
- * @event_cb_lock:	lock for serializing callback with unregister
- * @cmd_pend:		flag set before new command is started
- *			flag cleared after command response is received
- * @cgx:		parent cgx port
- * @lmac_id:		lmac port id
- * @name:		lmac port name
- */
-struct lmac {
-	wait_queue_head_t wq_cmd_cmplt;
-	struct mutex cmd_lock;
-	u64 resp;
-	struct cgx_link_user_info link_info;
-	struct rsrc_bmap mac_to_index_bmap;
-	struct cgx_event_cb event_cb;
-	spinlock_t event_cb_lock;
-	bool cmd_pend;
-	struct cgx *cgx;
-	u8 lmac_id;
-	char *name;
-};
-
-struct cgx {
-	void __iomem		*reg_base;
-	struct pci_dev		*pdev;
-	u8			cgx_id;
-	u8			lmac_count;
-	struct lmac		*lmac_idmap[MAX_LMAC_PER_CGX];
-	struct			work_struct cgx_cmd_work;
-	struct			workqueue_struct *cgx_cmd_workq;
-	struct list_head	cgx_list;
-	u64			hw_features;
-	struct cgx_mac_ops     *mac_ops;
-};
 
 static struct cgx_mac_ops	otx2_mac_ops    = {
 	.name		=       "cgx",
@@ -126,19 +85,19 @@ struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd)
 	return ((struct cgx *)cgxd)->mac_ops;
 }
 
-static void cgx_write(struct cgx *cgx, u64 lmac, u64 offset, u64 val)
+void cgx_write(struct cgx *cgx, u64 lmac, u64 offset, u64 val)
 {
 	writeq(val, cgx->reg_base + (lmac << cgx->mac_ops->lmac_offset) +
 	       offset);
 }
 
-static u64 cgx_read(struct cgx *cgx, u64 lmac, u64 offset)
+u64 cgx_read(struct cgx *cgx, u64 lmac, u64 offset)
 {
 	return readq(cgx->reg_base + (lmac << cgx->mac_ops->lmac_offset) +
 		     offset);
 }
 
-static inline struct lmac *lmac_pdata(u8 lmac_id, struct cgx *cgx)
+struct lmac *lmac_pdata(u8 lmac_id, struct cgx *cgx)
 {
 	if (!cgx || lmac_id >= MAX_LMAC_PER_CGX)
 		return NULL;
@@ -928,7 +887,7 @@ static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 }
 
 /* CGX Firmware interface low level support */
-static int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac)
+int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac)
 {
 	struct cgx *cgx = lmac->cgx;
 	struct device *dev;
@@ -976,8 +935,7 @@ unlock:
 	return err;
 }
 
-static inline int cgx_fwi_cmd_generic(u64 req, u64 *resp,
-				      struct cgx *cgx, int lmac_id)
+int cgx_fwi_cmd_generic(u64 req, u64 *resp, struct cgx *cgx, int lmac_id)
 {
 	struct lmac *lmac;
 	int err;
@@ -1609,13 +1567,6 @@ int cgx_get_nr_lmacs(void *cgxd)
 	struct cgx *cgx = cgxd;
 
 	return cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0x7ULL;
-}
-
-int rpm_get_nr_lmacs(void *cgxd)
-{
-	struct cgx *cgx = cgxd;
-
-	return hweight8(cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0xFULL);
 }
 
 static int cgx_lmac_init(struct cgx *cgx)
