@@ -161,6 +161,9 @@ struct cgx_mac_ops {
 	 * number of setbits in lmac_exist tells number of lmacs
 	 */
 	int			(*get_nr_lmacs)(void *cgx);
+	u8                      (*get_lmac_type)(void *cgx, int lmac_id);
+	int                     (*mac_lmac_intl_lbk)(void *cgx, int lmac_id,
+						     bool enable);
 };
 
 extern struct pci_driver cgx_driver;
@@ -213,4 +216,5 @@ struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd);
 int cgx_get_nr_lmacs(void *cgxd);
 void cgx_lmac_write(int cgx_id, int lmac_id, u64 offset, u64 val);
 u64 cgx_lmac_read(int cgx_id, int lmac_id, u64 offset);
+u8 cgx_get_lmac_type(void *cgx, int lmac_id);
 #endif /* CGX_H */

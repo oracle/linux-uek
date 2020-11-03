@@ -39,6 +39,8 @@ static struct cgx_mac_ops	otx2_mac_ops    = {
 	.int_ena_bit    =       FW_CGX_INT,
 	.lmac_fwi	=	CGX_LMAC_FWI,
 	.get_nr_lmacs	=	cgx_get_nr_lmacs,
+	.get_lmac_type  =       cgx_get_lmac_type,
+	.mac_lmac_intl_lbk =    cgx_lmac_internal_loopback,
 };
 
 static struct cgx_mac_ops	cn10k_mac_ops   = {
@@ -51,6 +53,8 @@ static struct cgx_mac_ops	cn10k_mac_ops   = {
 	.int_ena_bit    =       BIT_ULL(0),
 	.lmac_fwi	=	RPM_LMAC_FWI,
 	.get_nr_lmacs	=	rpm_get_nr_lmacs,
+	.get_lmac_type  =       rpm_get_lmac_type,
+	.mac_lmac_intl_lbk =    rpm_lmac_internal_loopback,
 };
 
 static LIST_HEAD(cgx_list);
@@ -374,8 +378,9 @@ int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind)
 	return 0;
 }
 
-static inline u8 cgx_get_lmac_type(struct cgx *cgx, int lmac_id)
+u8 cgx_get_lmac_type(void *cgxd, int lmac_id)
 {
+	struct cgx *cgx = cgxd;
 	u64 cfg;
 
 	cfg = cgx_read(cgx, lmac_id, CGXX_CMRX_CFG);
@@ -392,7 +397,7 @@ int cgx_lmac_internal_loopback(void *cgxd, int lmac_id, bool enable)
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
-	lmac_type = cgx_get_lmac_type(cgx, lmac_id);
+	lmac_type = cgx->mac_ops->get_lmac_type(cgx, lmac_id);
 	if (lmac_type == LMAC_MODE_SGMII || lmac_type == LMAC_MODE_QSGMII) {
 		cfg = cgx_read(cgx, lmac_id, CGXX_GMP_PCS_MRX_CTL);
 		if (enable)
@@ -1148,7 +1153,7 @@ static inline void link_status_user_format(u64 lstat,
 	linfo->speed = cgx_speed_mbps[FIELD_GET(RESP_LINKSTAT_SPEED, lstat)];
 	linfo->an = FIELD_GET(RESP_LINKSTAT_AN, lstat);
 	linfo->fec = FIELD_GET(RESP_LINKSTAT_FEC, lstat);
-	linfo->lmac_type_id = cgx_get_lmac_type(cgx, lmac_id);
+	linfo->lmac_type_id = FIELD_GET(RESP_LINKSTAT_LMAC_TYPE, lstat);
 	lmac_string = cgx_lmactype_string[linfo->lmac_type_id];
 	strncpy(linfo->lmac_type, lmac_string, LMACTYPE_STR_LEN - 1);
 }
