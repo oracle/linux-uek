@@ -138,10 +138,10 @@ struct cgx_event_cb {
  */
 struct cgx_mac_ops {
 	char		       *name;
-	/* Features like RXSTAT, TXSTAT, DMAC FILTER csrs differs by fixed
+	/* Features like  DMAC FILTER csrs differs by fixed
 	 * bar offset for example
-	 * CGX RXSTAT0 starts at 0x070
-	 * RPM RXSTAT0 starts at 0x4070
+	 * CGX DMAC_CTL0  0x1f8
+	 * RPM DMAC_CTL0  0x4ff8
 	 */
 	u64			csr_offset;
 	/* lmac offset is different is RPM */
@@ -157,6 +157,8 @@ struct cgx_mac_ops {
 	u8			int_ena_bit;
 	u8			lmac_fwi;
 	u32			fifo_len;
+	bool			non_contiguous_serdes_lane;
+
 	/* Incase of RPM get number of lmacs from RPMX_CMR_RX_LMACS[LMAC_EXIST]
 	 * number of setbits in lmac_exist tells number of lmacs
 	 */
@@ -217,4 +219,5 @@ int cgx_get_nr_lmacs(void *cgxd);
 void cgx_lmac_write(int cgx_id, int lmac_id, u64 offset, u64 val);
 u64 cgx_lmac_read(int cgx_id, int lmac_id, u64 offset);
 u8 cgx_get_lmac_type(void *cgx, int lmac_id);
+u8 cgx_get_lmacid(void *cgxd, u8 lmac_index);
 #endif /* CGX_H */

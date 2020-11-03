@@ -38,6 +38,7 @@ static struct cgx_mac_ops	otx2_mac_ops    = {
 	.irq_offset	=       9,
 	.int_ena_bit    =       FW_CGX_INT,
 	.lmac_fwi	=	CGX_LMAC_FWI,
+	.non_contiguous_serdes_lane = false,
 	.get_nr_lmacs	=	cgx_get_nr_lmacs,
 	.get_lmac_type  =       cgx_get_lmac_type,
 	.mac_lmac_intl_lbk =    cgx_lmac_internal_loopback,
@@ -45,13 +46,14 @@ static struct cgx_mac_ops	otx2_mac_ops    = {
 
 static struct cgx_mac_ops	cn10k_mac_ops   = {
 	.name		=       "rpm",
-	.csr_offset     =       0x4000,
+	.csr_offset     =       0x4e00,
 	.lmac_offset    =       20,
 	.int_register	=       RPMX_CMRX_SW_INT,
 	.int_set_reg    =       RPMX_CMRX_SW_INT_ENA_W1S,
 	.irq_offset     =       1,
 	.int_ena_bit    =       BIT_ULL(0),
 	.lmac_fwi	=	RPM_LMAC_FWI,
+	.non_contiguous_serdes_lane = true,
 	.get_nr_lmacs	=	rpm_get_nr_lmacs,
 	.get_lmac_type  =       rpm_get_lmac_type,
 	.mac_lmac_intl_lbk =    rpm_lmac_internal_loopback,
@@ -1574,14 +1576,29 @@ int cgx_get_nr_lmacs(void *cgxd)
 	return cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0x7ULL;
 }
 
+u8 cgx_get_lmacid(void *cgxd, u8 lmac_index)
+{
+	struct cgx *cgx = cgxd;
+
+	return cgx->lmac_idmap[lmac_index]->lmac_id;
+}
+
 static int cgx_lmac_init(struct cgx *cgx)
 {
 	struct lmac *lmac;
+	u64 lmac_list;
 	int i, err;
 
 	cgx_lmac_get_fifolen(cgx);
 
 	cgx->lmac_count = cgx->mac_ops->get_nr_lmacs(cgx);
+
+	/* lmac_list specifies which lmacs are enabled
+	 * when bit n is set to 1, LMAC[n] is enabled
+	 */
+	if (cgx->mac_ops->non_contiguous_serdes_lane)
+		lmac_list = cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0xFULL;
+
 	if (cgx->lmac_count > MAX_LMAC_PER_CGX)
 		cgx->lmac_count = MAX_LMAC_PER_CGX;
 
@@ -1595,7 +1612,13 @@ static int cgx_lmac_init(struct cgx *cgx)
 			goto err_lmac_free;
 		}
 		sprintf(lmac->name, "cgx_fwi_%d_%d", cgx->cgx_id, i);
-		lmac->lmac_id = i;
+		if (cgx->mac_ops->non_contiguous_serdes_lane) {
+			lmac->lmac_id = __ffs64(lmac_list);
+			lmac_list   &= ~BIT_ULL(lmac->lmac_id);
+		} else {
+			lmac->lmac_id = i;
+		}
+
 		lmac->cgx = cgx;
 		lmac->mac_to_index_bmap.max =
 				MAX_DMAC_ENTRIES_PER_CGX / cgx->lmac_count;
