@@ -307,12 +307,11 @@ static bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
 		/* For now ignore all the NPC parser errors and
 		 * pass the packets to stack.
 		 */
-		if (cqe->sg.segs == 1)
-			return false;
+		return false;
 	}
 
 	/* If RXALL is enabled pass on packets to stack. */
-	if (cqe->sg.segs == 1 && (pfvf->netdev->features & NETIF_F_RXALL))
+	if (pfvf->netdev->features & NETIF_F_RXALL)
 		return false;
 
 	/* Free buffer back to pool */
@@ -321,7 +320,7 @@ static bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
 	return true;
 }
 
-static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
+static bool otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 				 struct napi_struct *napi,
 				 struct otx2_cq_queue *cq,
 				 struct nix_cqe_rx_s *cqe)
@@ -329,22 +328,18 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	struct nix_rx_parse_s *parse = &cqe->parse;
 	struct sk_buff *skb = NULL;
 
-	if (unlikely(parse->errlev || parse->errcode || cqe->sg.segs > 1)) {
+	if (unlikely(parse->errlev || parse->errcode)) {
 		if (otx2_check_rcv_errors(pfvf, cqe, cq->cq_idx))
-			return;
+			return false;
 	}
-
-	if (pfvf->xdp_prog)
-		if (otx2_xdp_rcv_pkt_handler(pfvf, cqe, cq))
-			return;
 
 	skb = napi_get_frags(napi);
 	if (unlikely(!skb))
-		return;
+		return false;
 
-	otx2_skb_add_frag(pfvf, skb, cqe->sg.seg_addr,
-			  cqe->sg.seg_size, parse);
-	cq->pool_ptrs++;
+	if (pfvf->xdp_prog)
+		if (otx2_xdp_rcv_pkt_handler(pfvf, cqe, cq))
+			return false;
 
 	otx2_set_rxhash(pfvf, cqe, skb);
 
@@ -354,7 +349,21 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 	otx2_set_taginfo(parse, skb);
 
-	napi_gro_frags(napi);
+	return true;
+}
+
+static void otx2_rcv_add_frags(struct otx2_nic *pfvf,
+			       struct napi_struct *napi,
+			       struct otx2_cq_queue *cq,
+			       struct nix_cqe_rx_s *cqe,
+			       u64 iova, int len)
+{
+	struct nix_rx_parse_s *parse = &cqe->parse;
+	/* skb is checked for NULL before calling this function */
+	struct sk_buff *skb = napi_get_frags(napi);
+
+	otx2_skb_add_frag(pfvf, skb, iova, len, parse);
+	cq->pool_ptrs++;
 }
 
 static int otx2_rx_napi_handler(struct otx2_nic *pfvf,
@@ -362,7 +371,9 @@ static int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 				struct otx2_cq_queue *cq, int budget)
 {
 	struct nix_cqe_rx_s *cqe;
+	struct nix_rx_sg_s *sg;
 	int processed_cqe = 0;
+	u8 segs;
 
 	/* Make sure HW writes to CQ are done */
 	dma_rmb();
@@ -377,8 +388,30 @@ static int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 		cq->cq_head++;
 		cq->cq_head &= (cq->cqe_cnt - 1);
 
-		otx2_rcv_pkt_handler(pfvf, napi, cq, cqe);
+		if (!otx2_rcv_pkt_handler(pfvf, napi, cq, cqe))
+			goto next;
 
+		sg = &cqe->sg;
+		while (sg->subdc == NIX_SUBDC_SG && sg->segs) {
+			/* Hardware supports three segements per SG */
+			for (segs = 0; segs < sg->segs; segs++) {
+				if (segs == 0)
+					otx2_rcv_add_frags(pfvf, napi, cq, cqe,
+							   sg->seg_addr,
+							   sg->seg_size);
+				if (segs == 1)
+					otx2_rcv_add_frags(pfvf, napi, cq, cqe,
+							   sg->seg2_addr,
+							   sg->seg2_size);
+				if (segs == 2)
+					otx2_rcv_add_frags(pfvf, napi, cq, cqe,
+							   sg->seg3_addr,
+							   sg->seg3_size);
+			}
+			sg++;
+		}
+		napi_gro_frags(napi);
+next:
 		cqe->hdr.cqe_type = NIX_XQE_TYPE_INVALID;
 		cqe->sg.seg_addr = 0x00;
 		processed_cqe++;

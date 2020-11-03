@@ -1350,6 +1350,7 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	struct nix_lf_free_req *free_req;
 	struct mbox *mbox = &pf->mbox;
 	struct otx2_hw *hw = &pf->hw;
+	size_t max_pkt_bytes;
 	struct msg_req *req;
 	int err = 0, lvl;
 
@@ -1361,18 +1362,33 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	hw->sqpool_cnt = hw->tot_tx_queues;
 	hw->pool_cnt = hw->rqpool_cnt + hw->sqpool_cnt;
 
-	/* Get the size of receive buffers to allocate.
-	 *
-	 * Depending interface mode ie timestamp and/or Higig2 enabled
-	 * and presence of DSA tags in L2 header, the packet size would
-	 * vary, hence consider all while calculating receive buffer size.
+	/* Add EDSA/HIGIG2 header length and timestamp length to maxlen */
+	pf->max_frs = pf->netdev->mtu + OTX2_ETH_HLEN + pf->addl_mtu +
+		      OTX2_HW_TIMESTAMP_LEN + pf->xtra_hdr;
+
+	/* The data transferred by NIX to memory consists of actual packet
+	 * plus additional data which has timestamp and/or EDSA/HIGIG2
+	 * headers if interface is configured in corresponding modes.
+	 * NIX transfers entire data using 6 segments/buffers and writes
+	 * a CQE_RX descriptor with those segment addresses. First segment
+	 * has additional data prepended to packet. Also software omits a
+	 * headroom of 128 bytes in each receive buffer. Hence the maximum
+	 * number of actual packet bytes per one CQE_RX descriptor with a
+	 * receive buffer of size 4K is:
+	 * ((4k - 128) * 6) - additional bytes in segment 1.
 	 */
-	pf->rbsize = pf->netdev->mtu + OTX2_ETH_HLEN;
-	pf->rbsize += OTX2_HW_TIMESTAMP_LEN + pf->addl_mtu + pf->xtra_hdr;
-	if (!pf->xdp_prog)
-		pf->rbsize = RCV_FRAG_LEN(pf->rbsize);
-	else
-		pf->rbsize = RCV_FRAG_LEN(XDP_PACKET_HEADROOM + pf->rbsize);
+	max_pkt_bytes = DMA_BUFFER_LEN(0x1000) * 6;
+	max_pkt_bytes -= OTX2_ETH_HLEN + OTX2_HW_TIMESTAMP_LEN +
+			 pf->addl_mtu + pf->xtra_hdr;
+
+	/* Use packet receive buffers of size 4K since hardware can support
+	 * MTU of size 16K for RPM and 64K for LBK. If MTU is more than
+	 * maximum pkt_bytes then use receive buffers of size 12K so that
+	 * it works for 64K MTU.
+	 */
+	pf->rbsize = 0x1000;
+	if (pf->netdev->mtu > max_pkt_bytes)
+		pf->rbsize = 0x3000;
 
 	mutex_lock(&mbox->lock);
 	/* NPA init */
