@@ -107,7 +107,7 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 {
 	struct npc_pkind *pkind = &rvu->hw->pkind;
 	int cgx_cnt_max = rvu->cgx_cnt_max;
-	int cgx, lmac_cnt, lmac;
+	int cgx, lmac_cnt, lmac, iter;
 	int pf = PF_CGXMAP_BASE;
 	int size, free_pkind;
 
@@ -141,7 +141,9 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 		if (!rvu_cgx_pdata(cgx, rvu))
 			continue;
 		lmac_cnt = cgx_get_lmac_cnt(rvu_cgx_pdata(cgx, rvu));
-		for (lmac = 0; lmac < lmac_cnt; lmac++, pf++) {
+		for (iter = 0; iter < lmac_cnt; iter++, pf++) {
+			lmac = cgx_get_lmacid(rvu_cgx_pdata(cgx, rvu),
+					      iter);
 			rvu->pf2cgxlmac_map[pf] = cgxlmac_id_to_bmap(cgx, lmac);
 			rvu->cgxlmac2pf_map[CGX_OFFSET(cgx) + lmac] = 1 << pf;
 			free_pkind = rvu_alloc_rsrc(&pkind->rsrc);
