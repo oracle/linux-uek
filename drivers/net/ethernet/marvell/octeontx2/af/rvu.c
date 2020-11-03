@@ -1151,6 +1151,8 @@ cpt:
 	if (err)
 		goto npa_err;
 
+	rvu_get_lbk_bufsize(rvu);
+
 	err = rvu_nix_init(rvu);
 	if (err)
 		goto nix_err;
@@ -1176,8 +1178,6 @@ cpt:
 		goto sso_err;
 
 	rvu_program_channels(rvu);
-
-	rvu_get_lbk_bufsize(rvu);
 
 	return 0;
 

@@ -3664,6 +3664,15 @@ int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
 	return 0;
 }
 
+static u64 rvu_get_lbk_link_credits(struct rvu *rvu, u16 lbk_max_frs)
+{
+	/* CN10k supports 72KB FIFO size and max packet size of 64k */
+	if (rvu->hw->lbk_bufsize == 0x12000)
+		return (rvu->hw->lbk_bufsize - lbk_max_frs) / 16;
+	else
+		return 1600; /* 16 * max LBK datarate = 16 * 100Gbps */
+}
+
 static void nix_link_config(struct rvu *rvu, int blkaddr,
 			    struct nix_hw *nix_hw)
 {
@@ -3719,7 +3728,7 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 	/* Set Tx credits for LBK link */
 	slink = hw->cgx_links;
 	for (link = slink; link < (slink + hw->lbk_links); link++) {
-		tx_credits = 1000; /* 10 * max LBK datarate = 10 * 100Gbps */
+		tx_credits = rvu_get_lbk_link_credits(rvu, lbk_max_frs);
 		nix_hw->tx_credits[link] = tx_credits;
 		/* Enable credits and set credit pkt count to max allowed */
 		tx_credits =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
