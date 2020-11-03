@@ -32,14 +32,6 @@ irqreturn_t octeon_i2c_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void octeon_i2c_clear_iflg(struct octeon_i2c *i2c)
-{
-	int ctl = octeon_i2c_ctl_read(i2c);
-
-	ctl &= (~TWSI_CTL_IFLG);
-	octeon_i2c_ctl_write(i2c, ctl);
-}
-
 static bool octeon_i2c_test_iflg(struct octeon_i2c *i2c)
 {
 	return (octeon_i2c_ctl_read(i2c) & TWSI_CTL_IFLG);
@@ -337,9 +329,6 @@ static int octeon_i2c_read(struct octeon_i2c *i2c, int target,
 	result = octeon_i2c_check_status(i2c, false);
 	if (result)
 		return result;
-	/* Clear IFLG bit early incase of HS Mode */
-	if (i2c->twsi_freq > FREQ_400KHZ)
-		octeon_i2c_clear_iflg(i2c);
 
 	for (i = 0; i < length; i++) {
 		/*
@@ -375,9 +364,6 @@ static int octeon_i2c_read(struct octeon_i2c *i2c, int target,
 		result = octeon_i2c_check_status(i2c, final_read);
 		if (result)
 			return result;
-		/* Clear IFLG bit early incase of HS Mode */
-		if (i2c->twsi_freq > FREQ_400KHZ)
-			octeon_i2c_clear_iflg(i2c);
 	}
 	*rlength = length;
 	return 0;
@@ -410,9 +396,6 @@ static int octeon_i2c_write(struct octeon_i2c *i2c, int target,
 		result = octeon_i2c_check_status(i2c, false);
 		if (result)
 			return result;
-		/* Clear IFLG bit early incase of HS Mode */
-		if (i2c->twsi_freq > FREQ_400KHZ)
-			octeon_i2c_clear_iflg(i2c);
 
 		octeon_i2c_data_write(i2c, data[i]);
 		octeon_i2c_ctl_write(i2c, TWSI_CTL_ENAB);
