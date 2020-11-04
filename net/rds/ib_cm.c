@@ -602,9 +602,6 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 {
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_ack_state ack_state;
-	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
-
-	BUG_ON(conn->c_tos && !rds_ibdev);
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
@@ -629,7 +626,9 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		rds_ib_attempt_ack(ic);
 
 	if (rds_ib_srq_enabled) {
-		if ((atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
+		struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
+		if (rds_ibdev &&
+		    (atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
 		    !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
 			rds_queue_delayed_work_on(&conn->c_path[0],
 						  ic->i_irq_local_cpu,
