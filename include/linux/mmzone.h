@@ -812,7 +812,7 @@ typedef struct pglist_data {
 	 *
 	 * Use mem_cgroup_lruvec() to look up lruvecs.
 	 */
-	struct lruvec		__lruvec;
+	UEK_KABI_RENAME(struct lruvec lruvec, struct lruvec __lruvec);
 
 	unsigned long		flags;
 

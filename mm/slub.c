@@ -3555,6 +3555,7 @@ static void set_cpu_partial(struct kmem_cache *s)
  */
 static int calculate_sizes(struct kmem_cache *s, int forced_order)
 {
+	struct reciprocal_value recip;
 	slab_flags_t flags = s->flags;
 	unsigned int size = s->object_size;
 	unsigned int order;
@@ -3647,7 +3648,10 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 	 */
 	size = ALIGN(size, s->align);
 	s->size = size;
-	s->reciprocal_size = reciprocal_value(size);
+	recip = reciprocal_value(size);
+	s->reciprocal_value_m = recip.m;
+	s->reciprocal_value_sh1 = recip.sh1;
+	s->reciprocal_value_sh2 = recip.sh2;
 	if (forced_order >= 0)
 		order = forced_order;
 	else

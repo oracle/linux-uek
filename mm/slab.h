@@ -30,6 +30,46 @@ struct kmem_cache {
 	struct list_head list;	/* List of all slab caches on the system */
 };
 
+#else /* !CONFIG_SLOB */
+
+/*
+ * struct memcg_cache_array has been deprecated and is no
+ * longer used. It is still defined here to ensure kABI
+ * compatibility.
+ */
+struct memcg_cache_array {
+	struct rcu_head rcu;
+	struct kmem_cache *entries[0];
+};
+
+/*
+ * struct memcg_cache_params has been deprecated and is no
+ * longer used.  It is still defined here to ensure kABI
+ * compatibility.
+ */
+struct memcg_cache_params {
+	struct kmem_cache *root_cache;
+	union {
+		struct {
+			struct memcg_cache_array __rcu *memcg_caches;
+			struct list_head __root_caches_node;
+			struct list_head children;
+			bool dying;
+		};
+		struct {
+			struct mem_cgroup *memcg;
+			struct list_head children_node;
+			struct list_head kmem_caches_node;
+			struct percpu_ref refcnt;
+
+			void (*work_fn)(struct kmem_cache *);
+			union {
+				struct rcu_head rcu_head;
+				struct work_struct work;
+			};
+		};
+	};
+};
 #endif /* CONFIG_SLOB */
 
 #ifdef CONFIG_SLAB

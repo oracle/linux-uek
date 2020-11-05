@@ -199,10 +199,14 @@ struct page {
 	atomic_t _refcount;
 
 #ifdef CONFIG_MEMCG
+#ifdef __GENKSYMS__
+	struct mem_cgroup *mem_cgroup;
+#else
 	union {
 		struct mem_cgroup *mem_cgroup;
 		struct obj_cgroup **obj_cgroups;
 	};
+#endif
 #endif
 
 	/*

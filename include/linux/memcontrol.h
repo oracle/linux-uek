@@ -294,6 +294,12 @@ struct mem_cgroup {
 	spinlock_t		move_lock;
 	unsigned long		move_lock_flags;
 
+#ifdef CONFIG_MEMCG_KMEM
+#ifndef __GENKSYMS__
+	struct obj_cgroup __rcu *objcg;
+#endif
+#endif
+
 	MEMCG_PADDING(_pad1_);
 
 	/*
@@ -327,8 +333,9 @@ struct mem_cgroup {
         /* Index in the kmem_cache->memcg_params.memcg_caches array */
 	int kmemcg_id;
 	enum memcg_kmem_state kmem_state;
-	struct obj_cgroup __rcu *objcg;
-	struct list_head objcg_list; /* list of inherited objcgs */
+	/* list of inherited objcgs */
+	UEK_KABI_RENAME(struct list_head kmem_caches,
+			struct list_head objcg_list);
 #endif
 
 	int last_scanned_node;

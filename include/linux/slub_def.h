@@ -84,10 +84,10 @@ struct kmem_cache {
 	struct kmem_cache_cpu __percpu *cpu_slab;
 	/* Used for retrieving partial slabs, etc. */
 	slab_flags_t flags;
+	UEK_KABI_FILL_HOLE(u32 reciprocal_value_m)
 	unsigned long min_partial;
 	unsigned int size;	/* The size of an object including metadata */
 	unsigned int object_size;/* The size of an object without metadata */
-	struct reciprocal_value reciprocal_size;
 	unsigned int offset;	/* Free pointer offset */
 #ifdef CONFIG_SLUB_CPU_PARTIAL
 	/* Number of per cpu partial objects to keep around */
@@ -100,6 +100,8 @@ struct kmem_cache {
 	struct kmem_cache_order_objects min;
 	gfp_t allocflags;	/* gfp flags to use on each alloc */
 	int refcount;		/* Refcount for slab cache destroy */
+	UEK_KABI_FILL_HOLE(u8 reciprocal_value_sh1)
+	UEK_KABI_FILL_HOLE(u8 reciprocal_value_sh2)
 	void (*ctor)(void *);
 	unsigned int inuse;		/* Offset to metadata */
 	unsigned int align;		/* Alignment */
@@ -108,7 +110,21 @@ struct kmem_cache {
 	struct list_head list;	/* List of slab caches */
 #ifdef CONFIG_SYSFS
 	struct kobject kobj;	/* For sysfs */
+	/* deprecated and kept only for kABI purposes */
+	struct work_struct kobj_remove_work;
 #endif
+#ifdef CONFIG_MEMCG
+	/*
+	 * Deprecated and kept only for kABI purposes.
+	 */
+	struct memcg_cache_params memcg_params;
+	/* For propagation, maximum size of a stored attr */
+	unsigned int max_attr_size;
+#ifdef CONFIG_SYSFS
+	struct kset *memcg_kset;
+#endif
+#endif
+
 #ifdef CONFIG_SLAB_FREELIST_HARDENED
 	unsigned long random;
 #endif
@@ -178,8 +194,13 @@ static inline void *nearest_obj(struct kmem_cache *cache, struct page *page,
 static inline unsigned int __obj_to_index(const struct kmem_cache *cache,
 					  void *addr, void *obj)
 {
-	return reciprocal_divide(kasan_reset_tag(obj) - addr,
-				 cache->reciprocal_size);
+	struct reciprocal_value recip = {0};
+
+	recip.m = cache->reciprocal_value_m;
+	recip.sh1 = cache->reciprocal_value_sh1;
+	recip.sh2 = cache->reciprocal_value_sh2;
+
+	return reciprocal_divide(kasan_reset_tag(obj) - addr, recip);
 }
 
 static inline unsigned int obj_to_index(const struct kmem_cache *cache,
