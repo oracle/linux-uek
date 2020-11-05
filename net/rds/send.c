@@ -427,6 +427,8 @@ restart:
 				rds_message_unmapped(rm);
 				break;
 			}
+			trace_rds_send(rm, rm->m_rs, conn, cp,
+				       &conn->c_laddr, &conn->c_faddr);
 			cp->cp_xmit_rdma_sent = 1;
 		}
 
@@ -456,6 +458,8 @@ restart:
 				rds_message_unmapped(rm);
 				break;
 			}
+			trace_rds_send(rm, rm->m_rs, conn, cp,
+				       &conn->c_laddr, &conn->c_faddr);
 			cp->cp_xmit_atomic_sent = 1;
 
 		}
@@ -484,8 +488,6 @@ restart:
 
 		if (rm->data.op_active && !cp->cp_xmit_data_sent) {
 			rm->m_final_op = &rm->data;
-			trace_rds_send(rm, rm->m_rs, conn, cp,
-				       &conn->c_laddr, &conn->c_faddr);
 			ret = conn->c_trans->xmit(conn, rm,
 						  cp->cp_xmit_hdr_off,
 						  cp->cp_xmit_sg,
