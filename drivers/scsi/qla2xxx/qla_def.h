@@ -4293,6 +4293,7 @@ struct qla2_sgx {
 #define QLA_BUSY			0x107
 #define QLA_ALREADY_REGISTERED		0x109
 #define QLA_OS_TIMER_EXPIRED		0x10a
+#define QLA_CMD_NOT_FOUND		0x10b
 
 #define NVRAM_DELAY()		udelay(10)
 

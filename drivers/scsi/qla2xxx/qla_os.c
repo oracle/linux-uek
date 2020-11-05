@@ -1264,6 +1264,11 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 	ratov_j = ha->r_a_tov/10 * 4 * 1000;
 	ratov_j = msecs_to_jiffies(ratov_j);
 	switch (rval) {
+	case QLA_CMD_NOT_FOUND:
+		ql_dbg(ql_dbg_taskm, vha, 0x108e,
+		    "Command not found (%x).\n", rval);
+		ret = SUCCESS;
+		break;
 	case QLA_SUCCESS:
 		if (!wait_for_completion_timeout(&comp, ratov_j)) {
 			ql_dbg(ql_dbg_taskm, vha, 0xffff,
@@ -1282,8 +1287,8 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 	sp->comp = NULL;
 
 	ql_log(ql_log_info, vha, 0x801c,
-	    "Abort command issued nexus=%ld:%d:%llu -- %x.\n",
-	    vha->host_no, id, lun, ret);
+	    "Abort command issued (rc %x) nexus=%ld:%d:%llu -- %x.\n",
+	    rval, vha->host_no, id, lun, ret);
 
 	return ret;
 }

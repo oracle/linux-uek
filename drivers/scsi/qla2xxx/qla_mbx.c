@@ -2621,8 +2621,11 @@ qla24xx_abort_command(srb_t *sp)
 
 	if (sp->qpair)
 		req = sp->qpair->req;
-	else
+	else {
+		ql_log(ql_log_warn, vha, 0x108d,
+		    "Failed to allocate abort IOCB.\n");
 		return QLA_FUNCTION_FAILED;
+	}
 
 	if (ql2xasynctmfenable)
 		return qla24xx_async_abort_command(sp);
@@ -2635,7 +2638,7 @@ qla24xx_abort_command(srb_t *sp)
 	spin_unlock_irqrestore(qpair->qp_lock_ptr, flags);
 	if (handle == req->num_outstanding_cmds) {
 		/* Command not found. */
-		return QLA_FUNCTION_FAILED;
+		return QLA_CMD_NOT_FOUND;
 	}
 
 	abt = dma_pool_alloc(ha->s_dma_pool, GFP_KERNEL, &abt_dma);
@@ -2660,15 +2663,15 @@ qla24xx_abort_command(srb_t *sp)
 
 	rval = qla2x00_issue_iocb(vha, abt, abt_dma, 0);
 	if (rval != QLA_SUCCESS) {
-		ql_dbg(ql_dbg_mbx, vha, 0x108e,
+		ql_dbg(ql_dbg_taskm, vha, 0x108e,
 		    "Failed to issue IOCB (%x).\n", rval);
 	} else if (abt->entry_status != 0) {
-		ql_dbg(ql_dbg_mbx, vha, 0x108f,
+		ql_dbg(ql_dbg_taskm, vha, 0x108f,
 		    "Failed to complete IOCB -- error status (%x).\n",
 		    abt->entry_status);
 		rval = QLA_FUNCTION_FAILED;
 	} else if (abt->nport_handle != cpu_to_le16(0)) {
-		ql_dbg(ql_dbg_mbx, vha, 0x1090,
+		ql_dbg(ql_dbg_taskm, vha, 0x1090,
 		    "Failed to complete IOCB -- completion status (%x).\n",
 		    le16_to_cpu(abt->nport_handle));
 		if (abt->nport_handle == CS_IOCB_ERROR)
