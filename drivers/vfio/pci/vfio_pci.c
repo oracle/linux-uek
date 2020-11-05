@@ -1407,8 +1407,8 @@ static int vfio_pci_mmap_fault(struct vm_fault *vmf)
 	if (p->vma_mapped)
 		goto unlock_out;
 
-	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
-			    vma->vm_end - vma->vm_start, vma->vm_page_prot))
+	if (io_remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
+			       vma->vm_end - vma->vm_start, vma->vm_page_prot))
 		ret = VM_FAULT_SIGBUS;
 	else
 		p->vma_mapped = true;
