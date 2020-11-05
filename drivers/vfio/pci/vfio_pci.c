@@ -1449,8 +1449,7 @@ static void vfio_pci_mmap_close(struct vm_area_struct *vma)
 static vm_fault_t vfio_pci_mmap_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-	struct vdev_vma_priv *p = vma->vm_private_data;
-	struct vfio_pci_device *vdev = p->vdev;
+	struct vfio_pci_device *vdev = vma->vm_private_data;
 	vm_fault_t ret = VM_FAULT_NOPAGE;
 
 	mutex_lock(&vdev->vma_lock);
@@ -1470,24 +1469,10 @@ static vm_fault_t vfio_pci_mmap_fault(struct vm_fault *vmf)
 
 	mutex_unlock(&vdev->vma_lock);
 
-	/*
-	 * The vdev->map_lock in vfio_pci_zap_and_vma_lock() nests
-	 * inside the vdev->vma_lock but doesn't depend on that for
-	 * protection of the VMA.
-	 * So take vdev->map_lock after releasing vdev->vma_lock.
-	 */
-	mutex_lock(&vdev->map_lock);
-	if (p->vma_mapped)
-		goto unlock_out;
-
-	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
-			    vma->vm_end - vma->vm_start, vma->vm_page_prot))
+	if (io_remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
+			       vma->vm_end - vma->vm_start, vma->vm_page_prot))
 		ret = VM_FAULT_SIGBUS;
-	else
-		p->vma_mapped = true;
 
-unlock_out:
-	mutex_unlock(&vdev->map_lock);
 up_out:
 	up_read(&vdev->memory_lock);
 	return ret;
