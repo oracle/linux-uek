@@ -175,11 +175,11 @@ MODULE_PARM_DESC(ql2xdbwr,
 		" 0 -- Regular doorbell.\n"
 		" 1 -- CAMRAM doorbell (faster).\n");
 
-int ql2xtargetreset = 1;
-module_param(ql2xtargetreset, int, S_IRUGO);
+int ql2xtargetreset = 0;
+module_param(ql2xtargetreset, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(ql2xtargetreset,
 		 "Enable target reset."
-		 "Default is 1 - use hw defaults.");
+		 "Default is 0 .");
 
 int ql2xgffidenable;
 module_param(ql2xgffidenable, int, S_IRUGO);
