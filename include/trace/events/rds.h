@@ -336,8 +336,8 @@ TRACE_EVENT(rds_receive,
 	 */
 	TP_STRUCT__entry(
 		RDS_TRACE_COMMON_FIELDS
-		__field(void *, inc)
 		__field(void *, hdr)
+		__field(void *, inc)
 		__field(__u64, seq)
 		__field(__u64, next_rx_seq)
 		__field(bool, forward)
@@ -402,8 +402,8 @@ TRACE_EVENT(rds_drop_ingress,
 	 */
 	TP_STRUCT__entry(
 		RDS_TRACE_COMMON_FIELDS
-		__field(void *, inc)
 		__field(void *, hdr)
+		__field(void *, inc)
 		__field(__u64, seq)
 		__field(__u64, next_rx_seq)
 		__field(bool, forward)
