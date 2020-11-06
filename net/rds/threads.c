@@ -72,10 +72,6 @@
  */
 struct workqueue_struct *rds_wq;
 EXPORT_SYMBOL_GPL(rds_wq);
-struct workqueue_struct *rds_local_wq;
-EXPORT_SYMBOL_GPL(rds_local_wq);
-struct workqueue_struct *rds_cp_wqs[RDS_NMBR_CP_WQS];
-EXPORT_SYMBOL_GPL(rds_cp_wqs);
 
 static inline void rds_update_avg_connect_time(struct rds_conn_path *cp)
 {
@@ -404,44 +400,16 @@ void rds_shutdown_worker(struct work_struct *work)
 
 void rds_threads_exit(void)
 {
-	int i;
-
 	destroy_workqueue(rds_wq);
-	destroy_workqueue(rds_local_wq);
-	for (i = 0; i < RDS_NMBR_CP_WQS; ++i)
-		destroy_workqueue(rds_cp_wqs[i]);
 }
 
 int rds_threads_init(void)
 {
-	int i, j;
-
 	rds_wq = create_singlethread_workqueue("krdsd");
 	if (!rds_wq)
 		return -ENOMEM;
 
-	rds_local_wq = alloc_ordered_workqueue("krdsd_local", WQ_HIGHPRI | WQ_MEM_RECLAIM);
-	if (!rds_local_wq)
-		goto err_rds_wq;
-
-	for (i = 0; i < RDS_NMBR_CP_WQS; ++i) {
-		rds_cp_wqs[i] = alloc_ordered_workqueue("krds_cp_wq_%d",
-							WQ_MEM_RECLAIM, i);
-		if (!rds_cp_wqs[i])
-			goto err_rds_local_wq;
-	}
-
 	return 0;
-
-err_rds_local_wq:
-	for (j = 0; j < i; ++j)
-		destroy_workqueue(rds_cp_wqs[j]);
-
-	destroy_workqueue(rds_local_wq);
-
-err_rds_wq:
-	destroy_workqueue(rds_wq);
-	return -ENOMEM;
 }
 
 /* Compare two IPv6 addresses.  Return 0 if the two addresses are equal.
