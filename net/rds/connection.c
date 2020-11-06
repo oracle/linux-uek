@@ -269,10 +269,6 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	unsigned long flags;
 	int ret, i;
 	int npaths;
-	int cp_wqs_inx = jhash_3words(laddr->s6_addr32[3],
-				      faddr->s6_addr32[3],
-				      tos,
-				      0) % RDS_NMBR_CP_WQS;
 
 	rcu_read_lock();
 	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos, dev_if);
@@ -381,10 +377,18 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 
 		__rds_conn_path_init(conn, cp, is_outgoing);
 		cp->cp_index = i;
-		if (conn->c_loopback)
-			cp->cp_wq = rds_local_wq;
-		else
-			cp->cp_wq = rds_cp_wqs[cp_wqs_inx];
+
+		cp->cp_wq = alloc_ordered_workqueue("krds_cp_wq#%lu/%d", 0,
+						    atomic_read(&conn->c_trans->t_conn_count), i);
+		if (!cp->cp_wq) {
+			while (--i >= 0) {
+				cp = conn->c_path + i;
+				destroy_workqueue(cp->cp_wq);
+			}
+			conn = ERR_PTR(-ENOMEM);
+			reason = "alloc_ordered_workqueue failed";
+			goto out;
+		}
 	}
 	ret = trans->conn_alloc(conn, gfp);
 	if (ret) {
@@ -697,6 +701,9 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 		rds_message_put(cp->cp_xmit_rm);
 
 	cp->cp_conn->c_trans->conn_free(cp->cp_transport_data);
+
+	destroy_workqueue(cp->cp_wq);
+	cp->cp_wq = NULL;
 }
 
 /* Stop and free a connection.
