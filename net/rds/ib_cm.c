@@ -44,6 +44,8 @@
 #include <rdma/ib_cm.h>
 #include <net/addrconf.h>
 
+#include <trace/events/rds.h>
+
 #include "rds.h"
 #include "ib.h"
 #include "rds_single_path.h"
@@ -778,6 +780,7 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 				 struct rds_header ***_hdrs,
 				 dma_addr_t **_dma,
 				 struct scatterlist **_sg,
+				 char **reason,
 				 const int n,
 				 const int nmbr_hdr_pages,
 				 enum dma_data_direction direction)
@@ -791,7 +794,7 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 	hdrs = *_hdrs = vzalloc_node(sizeof(struct rds_header *) * n,
 				     ibdev_to_node(dev));
 	if (!hdrs) {
-		rds_rtd(RDS_RTD_ERR, "vzalloc_node for hdrs\n");
+		*reason = "vzalloc_node for hdrs";
 		return -ENOMEM;
 	}
 
@@ -799,7 +802,7 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 				   ibdev_to_node(dev));
 	if (!dma) {
 		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "vzalloc_node for dma failed\n");
+		*reason = "vzalloc_node for dma failed";
 		goto hdrs_out;
 	}
 
@@ -807,14 +810,14 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 				 ibdev_to_node(dev));
 	if (!sg) {
 		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "vzalloc_node for sg failed\n");
+		*reason = "vzalloc_node for sg failed";
 		goto dma_out;
 	}
 
 	for (i = 0; i < nmbr_hdr_pages; i++) {
 		ret = rds_page_remainder_alloc(sg + i, PAGE_SIZE, GFP_KERNEL);
 		if (ret) {
-			rds_rtd(RDS_RTD_ERR, "rds_page_remainder_alloc for %dth page failed\n", i);
+			*reason = "rds_page_remainder_alloc failed";
 			for (j = 0; j < i; ++j)
 				__free_page(sg_page(sg + j));
 			goto sg_out;
@@ -825,7 +828,7 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 		ret = ib_dma_map_sg(dev, sg + i, 1, direction);
 		if (ret != 1) {
 			ret = -EIO;
-			rds_rtd(RDS_RTD_ERR, "ib_dma_map_sg failed for %dth page\n", i);
+			*reason = "ib_dma_map_sg failed";
 			for (j = 0; j < i; ++j)
 				ib_dma_unmap_sg(dev, sg + j, 1, direction);
 			goto page_remainder;
@@ -872,6 +875,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	struct ib_qp_init_attr qp_attr;
 	struct rds_ib_device *rds_ibdev;
 	unsigned long max_wrs;
+	char *reason = NULL;
 	int ret;
 	int mr_reg;
 
@@ -880,8 +884,12 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	 * with device removal, so we don't print a warning.
 	 */
 	rds_ibdev = rds_ib_get_client_data(dev);
-	if (!rds_ibdev)
-		return -EOPNOTSUPP;
+	if (!rds_ibdev) {
+		ret = -EOPNOTSUPP;
+		trace_rds_ib_setup_qp_err(NULL, NULL, conn, ic,
+					  "no rds_ibdev during qp setup", ret);
+		return ret;
+	}
 
 	/* In the case of FRWR, mr registration wrs use the
 	 * same work queue as the send wrs. To make sure that we are not
@@ -916,6 +924,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 			ic->i_send_ring.w_nr + 1 + mr_reg,
 			"send");
 	if (IS_ERR(ic->i_scq)) {
+		reason = "rds_ib_check_cq for send failed";
 		ret = PTR_ERR(ic->i_scq);
 		ic->i_scq = NULL;
 		goto out;
@@ -927,6 +936,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 			rds_ib_srq_enabled ? rds_ib_srq_max_wr - 1 : ic->i_recv_ring.w_nr,
 			"recv");
 	if (IS_ERR(ic->i_rcq)) {
+		reason = "rds_ib_check_cq for recv failed";
 		ret = PTR_ERR(ic->i_rcq);
 		ic->i_rcq = NULL;
 		goto out;
@@ -934,13 +944,13 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	ret = ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
 	if (ret) {
-		rdsdebug("ib_req_notify_cq send failed: %d\n", ret);
+		reason = "ib_req_notify_cq send failed";
 		goto out;
 	}
 
 	ret = ib_req_notify_cq(ic->i_rcq, IB_CQ_SOLICITED);
 	if (ret) {
-		rdsdebug("ib_req_notify_cq recv failed: %d\n", ret);
+		reason = "ib_req_notify_cq recv failed";
 		goto out;
 	}
 
@@ -970,7 +980,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	 */
 	ret = rdma_create_qp(ic->i_cm_id, ic->i_pd, &qp_attr);
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "rdma_create_qp failed: %d\n", ret);
+		reason = "rdma_create_qp failed";
 		goto out;
 	}
 
@@ -978,7 +988,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				       &ic->i_ack_dma, GFP_KERNEL);
 	if (!ic->i_ack) {
 		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "ib_dma_alloc_coherent ack failed\n");
+		reason = "ib_dma_alloc_coherent ack failed";
 		goto qp_out;
 	}
 
@@ -986,7 +996,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				   ibdev_to_node(dev));
 	if (!ic->i_sends) {
 		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "vzalloc_node for i_sends failed\n");
+		reason = "vzalloc_node for i_sends failed";
 		goto ack_out;
 	}
 
@@ -994,7 +1004,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				   ibdev_to_node(dev));
 	if (!ic->i_recvs) {
 		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "vzalloc_node for i_recvs failed\n");
+		reason = "vzalloc_node for i_recvs failed";
 		goto sends_out;
 	}
 
@@ -1004,6 +1014,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				    &ic->i_send_hdrs,
 				    &ic->i_send_hdrs_dma,
 				    &ic->i_send_hdrs_sg,
+				    &reason,
 				    ic->i_send_ring.w_nr,
 				    NMBR_SEND_HDR_PAGES,
 				    DMA_TO_DEVICE);
@@ -1014,6 +1025,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				    &ic->i_recv_hdrs,
 				    &ic->i_recv_hdrs_dma,
 				    &ic->i_recv_hdrs_sg,
+				    &reason,
 				    ic->i_recv_ring.w_nr,
 				    NMBR_RECV_HDR_PAGES,
 				    DMA_FROM_DEVICE);
@@ -1044,6 +1056,13 @@ ack_out:
 qp_out:
 	rdma_destroy_qp(ic->i_cm_id);
 out:
+	if (reason)
+		trace_rds_ib_setup_qp_err(rds_ibdev ? rds_ibdev->dev : NULL,
+					  rds_ibdev, conn, ic, reason, ret);
+	else
+		trace_rds_ib_setup_qp(rds_ibdev ? rds_ibdev->dev : NULL,
+				      rds_ibdev, conn, ic, reason, ret);
+
 	conn->c_reconnect_err = ret;
 	rds_ib_dev_put(rds_ibdev);
 	return ret;
@@ -1151,11 +1170,26 @@ u32 __rds_find_ifindex_v4(struct net *net, __be32 addr)
 	return idx;
 }
 
+bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id)
+{
+	char *reason = "no connection";
+
+	if (ic) {
+		if (ic->i_cm_id != cm_id)
+			reason = "cm_id mismatch";
+		else if (ic->i_cm_id_ctx != cm_id->context)
+			reason = "context mismatch";
+		else
+			return true;
+	}
+	trace_rds_ib_cm_mismatch(NULL, ic ? ic->rds_ibdev : NULL,
+				 ic ? ic->conn : NULL, ic, reason, 0);
+	return false;
+}
+
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			     struct rdma_cm_event *event, bool isv6)
 {
-	__be64 lguid = cm_id->route.path_rec->sgid.global.interface_id;
-	__be64 fguid = cm_id->route.path_rec->dgid.global.interface_id;
 	const struct rds_ib_conn_priv_cmn *dp_cmn;
 	struct rds_ib_connection *ic = NULL;
 	struct rds_connection *conn = NULL;
@@ -1166,6 +1200,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	struct in6_addr d_mapped_addr;
 	const struct in6_addr *saddr6;
 	const struct in6_addr *daddr6;
+	char *reason = NULL;
 	int destroy = 1;
 	int acl_ret = 0;
 	u32 ifindex = 0;
@@ -1197,11 +1232,13 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			ifindex = __rds_find_ifindex_v6(&init_net, daddr6);
 			/* No index found...  Need to bail out. */
 			if (ifindex == 0) {
+				reason = "no ifindex found";
 				err = -EOPNOTSUPP;
 				goto out;
 			}
 		}
 #else
+		reason = "IPv6 not supported";
 		err = -EOPNOTSUPP;
 		goto out;
 #endif
@@ -1213,20 +1250,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		daddr6 = &d_mapped_addr;
 	}
 
-	rds_rtd_ptr(RDS_RTD_CM,
-		    "<%pI6c,%pI6c,%d> RDSv%u.%u lguid 0x%llx fguid 0x%llx\n",
-		    saddr6, daddr6, dp_cmn->ricpc_tos,
-		    RDS_PROTOCOL_MAJOR(version),
-		    RDS_PROTOCOL_MINOR(version),
-		    (unsigned long long)be64_to_cpu(lguid),
-		    (unsigned long long)be64_to_cpu(fguid));
-
 #ifdef CONFIG_RDS_ACL
 
 	acl_ret = rds_ib_match_acl(cm_id, saddr6);
 	if (acl_ret < 0) {
 		err = RDS_ACL_FAILURE;
-		rdsdebug("RDS: IB: passive: rds_ib_match_acl failed\n");
+		reason = "passive: rds_ib_match_acl failed";
 		goto out;
 	}
 
@@ -1242,8 +1271,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			       GFP_KERNEL, ifindex);
 
 	if (IS_ERR(conn)) {
-		rds_rtd(RDS_RTD_ERR, "rds_conn_create failed (%ld)\n",
-			PTR_ERR(conn));
+		reason = "rds_conn_create_failed";
+		err = PTR_ERR(conn);
 		conn = NULL;
 		goto out;
 	}
@@ -1271,15 +1300,18 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		if (rds_ib_same_cm_id(ic, cm_id))
 			destroy = 0;
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
-			rds_rtd(RDS_RTD_CM_EXT_P,
-				"conn %p <%pI6c,%pI6c,%d> incoming connect in UP state\n",
-				conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_REQ_WHILE_CONN_UP, 0);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 			conn->c_reconnect_racing++;
+			trace_rds_ib_reconnect_racing(NULL, ic->rds_ibdev, conn,
+						      ic, "conn up", 0);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
 			unsigned long now = get_seconds();
 			conn->c_reconnect_racing++;
+
+			trace_rds_ib_reconnect_racing(NULL, ic->rds_ibdev,
+						      conn, ic,
+						      "conn connecting", 0);
 
 			/* When a race is detected, one side should fall back
 			 * to passive and let the active side to reconnect.
@@ -1288,11 +1320,9 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			 * horribly wrong. Thus, drop the connection.
 			 */
 			if (conn->c_reconnect_racing > 5) {
-				rds_rtd_ptr(RDS_RTD_CM,
-					    "conn %p <%pI6c,%pI6c,%d> back-to-back REQ, reset\n",
-					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 				conn->c_reconnect_racing = 0;
-				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING,
+				rds_conn_drop(conn,
+					      DR_IB_REQ_WHILE_CONNECTING_MULTI,
 					      0);
 			/* After 15 seconds, give up on existing connection
 			 * attempts and make them try again.  At this point
@@ -1301,17 +1331,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			 */
 			} else if (now > conn->c_connection_start &&
 			    now - conn->c_connection_start > 15) {
-				rds_rtd_ptr(RDS_RTD_CM,
-					    "conn %p <%pI6c,%pI6c,%d> racing for 15s, forcing reset\n",
-					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING,
+				rds_conn_drop(conn,
+					      DR_IB_REQ_WHILE_CONNECTING_TIME,
 					      0);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
 				/* Wait and see - our connect may still be succeeding */
-				rds_rtd_ptr(RDS_RTD_CM,
-					    "conn %p <%pI6c,%pI6c,%d> racing, wait and see\n",
-					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 				rds_ib_stats_inc(s_ib_connect_raced);
 			}
 		}
@@ -1359,6 +1384,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	err = rds_ib_setup_qp(conn);
 	if (err) {
+		reason = "rds_ib_setup_qp error";
 		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL, err);
 		goto out;
 	}
@@ -1374,10 +1400,21 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
 		rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
 	err = rdma_accept(cm_id, &conn_param);
-	if (err)
+	if (err) {
+		reason = "rdma accept failure";
 		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL, err);
+	}
 
 out:
+	if (reason) {
+		struct rds_ib_device *rds_ibdev = ic ? ic->rds_ibdev : NULL;
+
+		trace_rds_ib_cm_handle_connect_err(rds_ibdev ?
+						   rds_ibdev->dev : NULL,
+						   rds_ibdev,
+						   conn, ic, reason, err);
+	}
+
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
@@ -1417,6 +1454,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
 	union rds_ib_conn_priv dp;
+	char *reason = NULL;
 	u16 frag;
 	int ret;
 
@@ -1426,9 +1464,9 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	if (ret < 0) {
 		pr_err("RDS: IB: active conn %p <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
 		       conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "active conn %p <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+		trace_rds_ib_cm_initiate_connect_err(ic->rds_ibdev ?
+		    ic->rds_ibdev->dev : NULL, ic->rds_ibdev, conn, ic,
+		    "active conn destroyed due to ACL violation", -EPERM);
 		rds_ib_conn_destroy_init(conn);
 		return 0;
 	}
@@ -1451,13 +1489,13 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	 */
 	atomic_set(&ic->i_credits, IB_SET_POST_CREDITS(ic->i_flowctl));
 
-	rds_rtd_ptr(RDS_RTD_CM,
-		    "RDS/IB: Initiate conn %p <%pI6c,%pI6c,%d> with Frags <init,ic>: {%d,%d}\n",
-		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-		    ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K);
+	trace_rds_ib_cm_initiate_connect(ic->rds_ibdev ?
+	    ic->rds_ibdev->dev : NULL, ic->rds_ibdev, conn, ic,
+	    "initiate conn", 0);
 
 	ret = rds_ib_setup_qp(conn);
 	if (ret) {
+		reason = "rds_ib_setup_qp failed";
 		rds_conn_drop(conn, DR_IB_ACT_SETUP_QP_FAIL, ret);
 		goto out;
 	}
@@ -1467,7 +1505,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 				  frag, isv6);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
-		rds_rtd(RDS_RTD_CM, "RDS/IB: rdma_connect failed (%d)\n", ret);
+		reason = "rdma_connect failed";
 		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL, 0);
 	}
 
@@ -1476,6 +1514,9 @@ out:
 	 * the cm_id. We should certainly not do it as long as we still
 	 * "own" the cm_id. */
 	if (ret) {
+		trace_rds_ib_cm_initiate_connect_err(ic->rds_ibdev ?
+		    ic->rds_ibdev->dev : NULL, ic->rds_ibdev, conn, ic,
+		    reason, ret);
 		if (rds_ib_same_cm_id(ic, cm_id))
 			ret = 0;
 	}
@@ -1490,11 +1531,15 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	struct sockaddr_storage src, dest;
 	rdma_cm_event_handler handler;
 	struct rds_ib_connection *ic;
+	char *reason = NULL;
 	int ret;
 
 	ic = conn->c_transport_data;
 
-	rds_rtd(RDS_RTD_CM, "conn: %p now start:%lu\n", conn, jiffies);
+	trace_rds_ib_conn_path_connect(ic && ic->rds_ibdev ?
+				       ic->rds_ibdev->dev : NULL,
+				       ic ? ic->rds_ibdev : NULL,
+				       conn, ic, "start connect", 0);
 	conn->c_path->cp_conn_start_jf = jiffies;
 
 	/* XXX I wonder what affect the port space has */
@@ -1511,14 +1556,9 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
-		rds_rtd(RDS_RTD_ERR, "rds_ib_rdma_create_id() failed: %d\n", ret);
+		reason = "rds_ib_rdma_create_id failed";
 		goto out;
 	}
-
-	rds_rtd(RDS_RTD_CM_EXT,
-		"RDS/IB: conn init <%pI6c,%pI6c,%d> cm_id %p\n",
-		&conn->c_laddr, &conn->c_faddr,
-		conn->c_tos, ic->i_cm_id);
 
 	if (ipv6_addr_v4mapped(&conn->c_faddr)) {
 		struct sockaddr_in *sin;
@@ -1552,14 +1592,18 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 				(struct sockaddr *)&dest,
 				RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(conn));
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "addr resolve failed for cm id %p: %d\n",
-			ic->i_cm_id, ret);
+		reason = "addr resolve failed";
 		rds_ib_rdma_destroy_id(ic->i_cm_id);
 
 		ic->i_cm_id = NULL;
 	}
 
 out:
+	if (reason)
+		trace_rds_ib_conn_path_connect_err(ic && ic->rds_ibdev ?
+						   ic->rds_ibdev->dev : NULL,
+						   ic ? ic->rds_ibdev : NULL,
+						   conn, ic, reason, ret);
 	return ret;
 }
 
@@ -1574,21 +1618,23 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	int err = 0;
 
-	rds_rtd_ptr(RDS_RTD_CM_EXT, "conn %p cm_id %p pd %p cq %p qp %p\n",
-		    conn, ic->i_cm_id, ic->i_pd, ic->i_rcq, ic->i_cm_id ? ic->i_cm_id->qp : NULL);
+	trace_rds_ib_conn_path_shutdown(ic && ic->rds_ibdev ?
+					ic->rds_ibdev->dev : NULL,
+					ic ? ic->rds_ibdev : NULL, conn, ic,
+					"conn path shutdown", 0);
 
 	if (ic->i_cm_id) {
 		struct ib_device *dev = ic->i_cm_id->device;
 
-		rds_rtd_ptr(RDS_RTD_CM_EXT, "disconnecting conn %p cm_id %p\n", conn, ic->i_cm_id);
 		err = rdma_disconnect(ic->i_cm_id);
 		if (err) {
 			/* Actually this may happen quite frequently, when
 			 * an outgoing connect raced with an incoming connect.
 			 */
-			rds_rtd(RDS_RTD_CM_EXT_P,
-				"failed to disconnect, cm: %p err %d\n",
-				ic->i_cm_id, err);
+			trace_rds_ib_conn_path_shutdown_err(ic->rds_ibdev ?
+				ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
+				conn, ic, "failed to disconnect", err);
+
 		} else if (rds_ib_srq_enabled && ic->rds_ibdev) {
 			/*
 			   wait for the last wqe to complete, then schedule
@@ -1834,6 +1880,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	struct ib_qp_init_attr qp_init_attr;
 	struct ib_qp_attr qp_attr;
 	struct ib_port_attr port_attr;
+	char *reason = NULL;
 	int gid_index = 0;
 	union ib_gid dgid;
 
@@ -1850,16 +1897,15 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 		ret = PTR_ERR(rds_ibdev->fastreg_cq);
 		rds_ibdev->fastreg_cq = NULL;
 		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector);
-		rds_rtd(RDS_RTD_ERR, "ib_create_cq failed: %d\n", ret);
+		reason = "ib_create_cq failed";
 		goto clean_up;
 	}
 
 	ret = ib_req_notify_cq(rds_ibdev->fastreg_cq, IB_CQ_NEXT_COMP);
-	if (ret)
+	if (ret) {
+		reason = "ib_req_notify_cq failed";
 		goto clean_up;
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Successfully created fast reg cq for ib_device: %p\n",
-		rds_ibdev->dev);
+	}
 
 	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
 	qp_init_attr.send_cq		= rds_ibdev->fastreg_cq;
@@ -1876,12 +1922,9 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	if (IS_ERR(rds_ibdev->fastreg_qp)) {
 		ret = PTR_ERR(rds_ibdev->fastreg_qp);
 		rds_ibdev->fastreg_qp = NULL;
-		rds_rtd(RDS_RTD_ERR, "ib_create_qp failed: %d\n", ret);
+		reason = "ib_create_qp failed";
 		goto clean_up;
 	}
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Successfully created fast reg qp for ib_device: %p\n",
-		rds_ibdev->dev);
 
 	/* Use modify_qp verb to change the state from RESET to INIT */
 	memset(&qp_attr, 0, sizeof(qp_attr));
@@ -1896,34 +1939,24 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 						IB_QP_ACCESS_FLAGS	|
 						IB_QP_PORT);
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "ib_modify_qp to IB_QPS_INIT failed: %d\n",
-			ret);
+		reason = "ib_modify_qp to IB_QPS_INIT failed";
 		goto clean_up;
 	}
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Successfully moved qp to INIT state for ib_device: %p\n",
-		rds_ibdev->dev);
 
 	/* query port to get the lid */
 	ret = ib_query_port(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM,
 			    &port_attr);
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "ib_query_port failed: %d\n", ret);
+		reason = "ib_query_port failed";
 		goto clean_up;
 	}
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Successfully queried the port and the port is in %d state\n",
-		port_attr.state);
 
 	ret = ib_query_gid(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM,
 			   gid_index, &dgid, NULL);
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "ib_query_gid failed: %d\n", ret);
+		reason = "rdma_query_gid failed";
 		goto clean_up;
 	}
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Successfully queried the gid_index %d and the gid is " RDS_IB_GID_FMT "\n",
-		gid_index, RDS_IB_GID_ARG(dgid));
 
 	/* Use modify_qp verb to change the state from INIT to RTR */
 	memset(&qp_attr, 0, sizeof(qp_attr));
@@ -1942,7 +1975,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 		qp_attr.ah_attr.type		= RDMA_AH_ATTR_TYPE_IB;
 		qp_attr.ah_attr.ib.dlid		= port_attr.lid;
 	} else {
-		rds_rtd(RDS_RTD_ERR, "Unexpected port type\n");
+		reason = "unexpected port type";
 		goto clean_up;
 	}
 
@@ -1954,13 +1987,9 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 						IB_QP_MAX_DEST_RD_ATOMIC |
 						IB_QP_MIN_RNR_TIMER);
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "ib_modify_qp to IB_QPS_RTR failed: %d\n",
-			ret);
+		reason = "ib_modify_qp to IB_QPS_RTR failed";
 		goto clean_up;
 	}
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Successfully moved qp to RTR state for ib_device: %p\n",
-		rds_ibdev->dev);
 
 	/* Use modify_qp verb to change the state from RTR to RTS */
 	memset(&qp_attr, 0, sizeof(qp_attr));
@@ -1978,19 +2007,22 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 						IB_QP_SQ_PSN		|
 						IB_QP_MAX_QP_RD_ATOMIC);
 	if (ret) {
-		rds_rtd(RDS_RTD_ERR, "ib_modify_qp to IB_QPS_RTS failed: %d\n",
-			ret);
+		reason = "ib_modify_qp to IB_QPS_RTS failed";
 		goto clean_up;
-	}
-	rds_rtd(RDS_RTD_RDMA_IB,
-		"Successfully moved qp to RTS state for ib_device: %p\n",
-		rds_ibdev->dev);
+	} else
+		trace_rds_ib_setup_fastreg(rds_ibdev ? rds_ibdev->dev : NULL,
+					   rds_ibdev, NULL, NULL,
+					   "moved qp to RTS state for device",
+					   0);
 
 	tasklet_init(&rds_ibdev->fastreg_tasklet, rds_ib_tasklet_fn_fastreg,
 		     (unsigned long)rds_ibdev);
 	atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
 
 clean_up:
+	if (reason)
+		trace_rds_ib_setup_fastreg_err(rds_ibdev ?
+		    rds_ibdev->dev : NULL, rds_ibdev, NULL, NULL, reason, ret);
 	if (ret)
 		rds_ib_destroy_fastreg(rds_ibdev);
 	return ret;
