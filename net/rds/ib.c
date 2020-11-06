@@ -398,6 +398,9 @@ static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
 	if (rds_ibdev->mr_1m_pool)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
 	if (rds_ibdev->use_fastreg) {
+		trace_rds_ib_queue_cancel_work(rds_ibdev, NULL,
+					       &rds_ibdev->fastreg_reset_w, 0,
+					       "dev free, cancel reset work");
 		cancel_work_sync(&rds_ibdev->fastreg_reset_w);
 		down_write(&rds_ibdev->fastreg_lock);
 		rds_ib_destroy_fastreg(rds_ibdev);
@@ -434,8 +437,12 @@ static void rds_ib_dev_free(struct work_struct *work)
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
 {
 	BUG_ON(atomic_read(&rds_ibdev->refcount) <= 0);
-	if (atomic_dec_and_test(&rds_ibdev->refcount))
+	if (atomic_dec_and_test(&rds_ibdev->refcount)) {
+		trace_rds_ib_queue_work(rds_ibdev, rds_wq,
+					&rds_ibdev->free_work, 0,
+					"free rds_ibdev");
 		queue_work(rds_wq, &rds_ibdev->free_work);
+	}
 }
 
 /*
