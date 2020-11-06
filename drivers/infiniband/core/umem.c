@@ -228,7 +228,7 @@ struct ib_umem *ib_umem_get(struct ib_udata *udata, unsigned long addr,
 		npages -= ret;
 		sg = __sg_alloc_table_from_pages(
 			&umem->sg_head, page_list, ret, 0, ret << PAGE_SHIFT,
-			dma_get_max_seg_size(context->device->dma_device), sg, npages,
+			ib_dma_max_seg_size(context->device), sg, npages,
 			GFP_KERNEL);
 		umem->sg_nents = umem->sg_head.nents;
 		if (IS_ERR(sg)) {
