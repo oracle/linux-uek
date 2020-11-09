@@ -318,9 +318,9 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Read hardware capabilities */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
-	has_lsw = reg & SSO_AF_CONST1_LSW;
+	has_lsw = reg & SSO_AF_CONST1_LSW_PRESENT;
 	has_nsched = !(reg & SSO_AF_CONST1_NO_NSCHED);
-	has_prefetch = is_rvu_otx2(rvu) ? 0 : 1;
+	has_prefetch = reg & SSO_AF_CONST1_PRF_PRESENT;
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -358,7 +358,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		    SSOW_LF_GWS_INT_MASK);
 
 	if (has_lsw)
-		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(lf), 0x0);
+		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(ssow_lf), 0x0);
 
 	/* Prepare WS for GW operations. */
 	rvu_poll_reg(rvu, ssow_blkaddr, SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_TAG),
@@ -381,7 +381,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		    SSOW_LF_GWS_MAX_NW_TIM);
 
 	if (has_prefetch)
-		rvu_ssow_clean_prefetch(rvu, slot);
+		rvu_ssow_clean_prefetch(rvu, 0);
 
 	/* Disable add work. */
 	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_QCTL),
@@ -583,8 +583,8 @@ af_cleanup:
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	struct sso_rsrc *sso = &rvu->hw->sso;
+	bool has_prefetch, has_lsw;
 	int blkaddr, ssow_blkaddr;
-	bool has_prefetch;
 	u64 reg, grpmsk;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
@@ -596,7 +596,9 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		return SSOW_AF_ERR_LF_INVALID;
 
 	/* Read hardware capabilities */
-	has_prefetch = is_rvu_otx2(rvu) ? 0 : 1;
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
+	has_lsw = reg & SSO_AF_CONST1_LSW_PRESENT;
+	has_prefetch = reg & SSO_AF_CONST1_PRF_PRESENT;
 
 	/* Enable BAR2 alias access. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -609,6 +611,9 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	rvu_write64(rvu, ssow_blkaddr,
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_INT),
 		    SSOW_LF_GWS_INT_MASK);
+
+	if (has_lsw)
+		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(lf), 0x0);
 
 	/* HRM 14.13.4 (3) */
 	/* Wait till waitw/desched completes. */
