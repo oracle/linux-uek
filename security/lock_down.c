@@ -14,7 +14,7 @@
 #include <linux/export.h>
 
 static __ro_after_init bool kernel_locked_down;
-static __ro_after_init bool lockdown_confidentiality = true;
+static __ro_after_init bool lockdown_confidentiality = false;
 /*
  * Put the kernel into lock-down mode.
  */
