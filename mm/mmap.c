@@ -2834,8 +2834,8 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 
 	arch_unmap(mm, newbrk, oldbrk);
 
-	if (vma->vm_start >= newbrk) { // remove entire mapping.
-		ret = __do_munmap(mm, newbrk, oldbrk - newbrk, &uf, true);
+	if (vma->vm_start >= newbrk) { // remove entire mapping(s)
+		ret = __do_munmap(mm, newbrk, oldbrk-newbrk, uf, true);
 		goto munmap_full_vma;
 	}
 
@@ -2845,6 +2845,7 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	ret = userfaultfd_unmap_prep(&unmap, newbrk, oldbrk, uf);
 	if (ret)
 		return ret;
+	ret = 1;
 
 	// Change the oldbrk of vma to the newbrk of the munmap area
 	vma_adjust_trans_huge(vma, vma->vm_start, newbrk, 0);
