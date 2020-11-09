@@ -2117,7 +2117,8 @@
 			modify the running kernel are disabled. If set to
 			confidentiality, kernel features that allow userland
 			to extract confidential information from the kernel
-			are also disabled.
+			are also disabled. By default if booted in Secure Boot
+			mode we use integrity mode.
 
 	locktorture.nreaders_stress= [KNL]
 			Set the number of locking read-acquisition kthreads.
