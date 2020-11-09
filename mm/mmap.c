@@ -1840,13 +1840,10 @@ static unsigned long unmapped_area(struct vm_unmapped_area_info *info)
 	if (length < info->length)
 		return -ENOMEM;
 
-	rcu_read_lock();
 	if (mas_get_empty_area(&mas, info->low_limit, info->high_limit - 1,
 				  length)) {
-		rcu_read_unlock();
 		return -ENOMEM;
 	}
-	rcu_read_unlock();
 	gap = mas.index;
 	gap += (info->align_offset - gap) & info->align_mask;
 	return gap;
@@ -1871,13 +1868,10 @@ static unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
 	if (length < info->length)
 		return -ENOMEM;
 
-	rcu_read_lock();
 	if (mas_get_empty_area_rev(&mas, info->low_limit, info->high_limit,
 				length)) {
-		rcu_read_unlock();
 		return -ENOMEM;
 	}
-	rcu_read_unlock();
 	gap = (mas.index + info->align_mask) & ~info->align_mask;
 	gap -= info->align_offset & info->align_mask;
 	return gap;
@@ -2820,6 +2814,7 @@ out:
 
 /*
  * bkr_munmap() - Unmap a parital vma.
+ * @mas: The maple tree state.
  * @vma: The vma to be modified
  * @newbrk: the start of the address to unmap
  * @oldbrk: The end of the address to unmap
@@ -2840,42 +2835,7 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	arch_unmap(mm, newbrk, oldbrk);
 
 	if (vma->vm_start >= newbrk) { // remove entire mapping.
-		struct vm_area_struct *prev, *next;
-
-
-		ret = userfaultfd_unmap_prep(&unmap, newbrk, oldbrk, uf);
-		if (ret)
-			return ret;
-
-		if (mm->locked_vm)
-			unlock_range(vma, oldbrk);
-
-		mas->index = vma->vm_start;
-		mas->last = vma->vm_end - 1;
-		if (mas_store_gfp(mas, NULL, GFP_KERNEL))
-			goto mas_store_fail;
-
-		/* TODO: Drop linked list */
-		prev = vma->vm_prev;
-		next = vma->vm_next;
-		if (prev) {
-			prev->vm_next = next;
-			if (prev->vm_flags & VM_GROWSUP)
-				ret = 0;
-		}
-		if (next) {
-			next->vm_prev = prev;
-			if (next->vm_flags & VM_GROWSDOWN)
-				ret = 0;
-		}
-
-		vmacache_invalidate(mm);
-		if (ret)
-			mmap_write_downgrade(mm);
-
-		unmap_region(mm, vma, prev, newbrk, oldbrk);
-		/* Fix up all other VM information */
-		remove_vma_list(mm, vma);
+		ret = __do_munmap(mm, newbrk, oldbrk - newbrk, &uf, true);
 		goto munmap_full_vma;
 	}
 
@@ -2908,7 +2868,7 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 
 munmap_full_vma:
 	validate_mm_mt(mm);
-	return 1;
+	return ret;
 
 mas_store_fail:
 	vma->vm_end = oldbrk;
@@ -2917,6 +2877,7 @@ mas_store_fail:
 
 /*
  * do_brk_flags() - Increase the brk vma if the flags match.
+ * @mas: The maple tree state.
  * @addr: The start address
  * @len: The length of the increase
  * @vma: The vma,
