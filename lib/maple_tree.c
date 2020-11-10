@@ -3525,6 +3525,7 @@ complete_at_root:
 	if (ret > 2)
 		return NULL;
 spanning_store:
+
 	return content;
 }
 
