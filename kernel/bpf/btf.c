@@ -16,6 +16,8 @@
 #include <linux/sort.h>
 #include <linux/bpf_verifier.h>
 #include <linux/btf.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 
 /* BTF (BPF Type Format) is the meta data format which describes
  * the data types of BPF program/map.  Hence, it basically focus
@@ -3512,3 +3514,125 @@ u32 btf_id(const struct btf *btf)
 {
 	return btf->id;
 }
+
+#ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+struct btf_module {
+	struct list_head list;
+	struct module *module;
+	void *btf;
+	unsigned int btf_data_size;
+	struct bin_attribute *sysfs_attr;
+};
+
+static LIST_HEAD(btf_modules);
+static DEFINE_MUTEX(btf_module_mutex);
+
+static ssize_t
+btf_module_read(struct file *file, struct kobject *kobj,
+		struct bin_attribute *bin_attr,
+		char *buf, loff_t off, size_t len)
+{
+	void *btf_data = bin_attr->private;
+
+	memcpy(buf, btf_data + off, len);
+	return len;
+}
+
+static int btf_module_notify(struct notifier_block *nb, unsigned long op,
+			     void *module)
+{
+	struct btf_module *btf_mod, *tmp;
+	struct module *mod = module;
+	void *btf_data = NULL;
+	int err = 0;
+
+	if (mod->btf_data_size == 0 ||
+	    (op != MODULE_STATE_COMING && op != MODULE_STATE_GOING))
+		goto out;
+
+	switch (op) {
+	case MODULE_STATE_COMING:
+		btf_mod = kzalloc(sizeof(*btf_mod), GFP_KERNEL);
+		if (!btf_mod) {
+			err = -ENOMEM;
+			goto out;
+		}
+		/* No BTF validation is required as kernel does not use
+		 * module BTF.
+		 */
+		btf_data = kzalloc(mod->btf_data_size,
+				   GFP_KERNEL | __GFP_NOWARN);
+		if (!btf_data) {
+			kfree(btf_mod);
+			err = -ENOMEM;
+			goto out;
+		}
+		memcpy(btf_data, mod->btf_data, mod->btf_data_size);
+
+		mutex_lock(&btf_module_mutex);
+		btf_mod->module = module;
+		btf_mod->btf = btf_data;
+		btf_mod->btf_data_size = mod->btf_data_size;
+		list_add(&btf_mod->list, &btf_modules);
+		mutex_unlock(&btf_module_mutex);
+
+		if (IS_ENABLED(CONFIG_SYSFS)) {
+			struct bin_attribute *attr;
+
+			attr = kzalloc(sizeof(*attr), GFP_KERNEL);
+			if (!attr)
+				goto out;
+
+			sysfs_bin_attr_init(attr);
+			attr->attr.name = mod->name;
+			attr->attr.mode = 0444;
+			attr->size = mod->btf_data_size;
+			attr->private = btf_data;
+			attr->read = btf_module_read;
+
+			err = sysfs_create_bin_file(btf_kobj, attr);
+			if (err) {
+				pr_warn("failed to register module [%s] BTF in sysfs: %d\n",
+					mod->name, err);
+				kfree(attr);
+				err = 0;
+				goto out;
+			}
+
+			btf_mod->sysfs_attr = attr;
+		}
+
+		break;
+	case MODULE_STATE_GOING:
+		mutex_lock(&btf_module_mutex);
+		list_for_each_entry_safe(btf_mod, tmp, &btf_modules, list) {
+			if (btf_mod->module != module)
+				continue;
+
+			list_del(&btf_mod->list);
+			if (btf_mod->sysfs_attr)
+				sysfs_remove_bin_file(btf_kobj, btf_mod->sysfs_attr);
+			kfree(btf_mod->sysfs_attr);
+			kfree(btf_mod->btf);
+			kfree(btf_mod);
+			break;
+		}
+		mutex_unlock(&btf_module_mutex);
+		break;
+	}
+out:
+	return notifier_from_errno(err);
+}
+
+static struct notifier_block btf_module_nb = {
+	.notifier_call = btf_module_notify,
+};
+
+static int __init btf_module_init(void)
+{
+	register_module_notifier(&btf_module_nb);
+	return 0;
+}
+
+fs_initcall(btf_module_init);
+#endif /* CONFIG_DEBUG_INFO_BTF_MODULES */

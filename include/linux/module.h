@@ -509,9 +509,13 @@ struct module {
 	struct error_injection_entry *ei_funcs;
 	unsigned int num_ei_funcs;
 #endif
-
+#ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+	UEK_KABI_USE(1, unsigned int btf_data_size)
+	UEK_KABI_USE(2, void *btf_data)
+#else
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
+#endif
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 } ____cacheline_aligned __randomize_layout;
