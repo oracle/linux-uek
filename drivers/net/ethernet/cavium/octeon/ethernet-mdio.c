@@ -449,8 +449,11 @@ int cvm_oct_common_stop(struct net_device *dev)
 
 	priv->poll = NULL;
 
-	if (priv->phydev)
+	if (priv->phydev){
+		phy_stop(priv->phydev);
 		phy_disconnect(priv->phydev);
+	}
+
 	priv->phydev = NULL;
 
 	if (priv->last_link) {
@@ -510,6 +513,7 @@ int cvm_oct_phy_setup_device(struct net_device *dev)
 		return -ENODEV;
 
 	priv->last_link = 0;
+	phy_start(priv->phydev);
 	phy_start_aneg(priv->phydev);
 
 	return 0;
