@@ -1736,6 +1736,7 @@ BuildKernel %make_target %kernel_image PAE
 gzip -c /boot/uroot-initramfs.cpio >> ./uroot-initramfs.cpio.gz
 # copy over the policy file provided by the u-root package and version it.
 cp /boot/securelaunch.policy $RPM_BUILD_ROOT/boot/securelaunch.policy-%{KVERREL}.SL
+cp samples/slaunch/rover-tpm-prov.sh $RPM_BUILD_ROOT/boot/rover-tpm-prov.sh
 BuildKernel %make_target %kernel_image SL
 %endif
 
@@ -2364,6 +2365,7 @@ fi
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %if %{with_securelaunch}\
 /boot/securelaunch.policy-%{KVERREL}.SL\
+/boot/rover-tpm-prov.sh\
 %else\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
