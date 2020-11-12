@@ -183,25 +183,13 @@
 		};
 
 		ssi0: ssi@2800 {
-			compatible = "snps,dw-apb-ssi";
+			compatible = "pensando,elba-spi";
 			reg = <0x0 0x2800 0x0 0x100>;
 			clocks = <&ahb_clk>;
 			interrupts = <GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			num-cs = <2>;
-			cs-gpios = <&spics 0 0>, <&spics 1 0>;
-			status = "disabled";
-		};
-		ssi1: ssi@2c00 {
-			compatible = "snps,dw-apb-ssi";
-			reg = <0x0 0x2c00 0x0 0x100>;
-			clocks = <&ahb_clk>;
-			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			num-cs = <2>;
-			cs-gpios = <&spics 2 0>, <&spics 3 0>;
 			status = "disabled";
 		};
 
