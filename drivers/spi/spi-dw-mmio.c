@@ -30,8 +30,41 @@ struct dw_spi_mmio {
 	struct clk     *clk;
 };
 
+static void dw_spi_elba_set_cs(struct spi_device *spi, bool enable)
+{
+	struct dw_spi *dws = spi_master_get_devdata(spi->master);
+
+	if (!enable) {
+		if (gpio_is_valid(spi->cs_gpio)) {
+			/*
+			 * Using a GPIO-based chip-select, the DW SPI
+			 * controller still needs its own CS bit selected
+			 * to start the serial engine.  On Elba the specific
+			 * CS doesn't matter, so use CS0.
+			 */
+			dw_writel(dws, DW_SPI_SER, BIT(0));
+		} else {
+			/*
+			 * Using the intrinsic DW chip-select; set the
+			 * appropriate CS.
+			 */
+			dw_writel(dws, DW_SPI_SER, BIT(spi->chip_select));
+		}
+	} else
+		dw_writel(dws, DW_SPI_SER, 0);
+}
+
+static int dw_spi_elba_init(struct platform_device *pdev,
+			    struct dw_spi_mmio *dwsmmio)
+{
+	dwsmmio->dws.set_cs = dw_spi_elba_set_cs;
+	return 0;
+}
+
 static int dw_spi_mmio_probe(struct platform_device *pdev)
 {
+	int (*init_func)(struct platform_device *pdev,
+			 struct dw_spi_mmio *dwsmmio);
 	struct dw_spi_mmio *dwsmmio;
 	struct dw_spi *dws;
 	struct resource *mem;
@@ -99,6 +132,13 @@ static int dw_spi_mmio_probe(struct platform_device *pdev)
 		}
 	}
 
+	init_func = of_device_get_match_data(&pdev->dev);
+	if (init_func) {
+		ret = init_func(pdev, dwsmmio);
+		if (ret)
+			goto out;
+	}
+
 	ret = dw_spi_add_host(&pdev->dev, dws);
 	if (ret)
 		goto out;
@@ -123,6 +163,7 @@ static int dw_spi_mmio_remove(struct platform_device *pdev)
 
 static const struct of_device_id dw_spi_mmio_of_match[] = {
 	{ .compatible = "snps,dw-apb-ssi", },
+	{ .compatible = "pensando,elba-spi", .data = dw_spi_elba_init },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, dw_spi_mmio_of_match);
