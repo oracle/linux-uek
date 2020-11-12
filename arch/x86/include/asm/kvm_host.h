@@ -681,6 +681,7 @@ struct kvm_vcpu_arch {
 	int cpuid_nent;
 	struct kvm_cpuid_entry2 cpuid_entries[KVM_MAX_CPUID_ENTRIES];
 
+	unsigned long cr3_lm_rsvd_bits;
 	int maxphyaddr;
 
 	/* emulate context */
