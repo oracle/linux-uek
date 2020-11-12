@@ -40,6 +40,11 @@ union cn10k_cpt_eng_caps {
 	};
 };
 
+struct cptpf_flr_work {
+	struct work_struct work;
+	struct cn10k_cptpf_dev *pf;
+};
+
 struct cn10k_cptpf_dev {
 	void __iomem *reg_base;		/* CPT PF registers start address */
 	void __iomem *afpf_mbox_base;	/* PF-AF mbox start address */
@@ -61,6 +66,9 @@ struct cn10k_cptpf_dev {
 	/* VF <=> PF mbox */
 	struct otx2_mbox	vfpf_mbox;
 	struct workqueue_struct *vfpf_mbox_wq;
+
+	struct workqueue_struct	*flr_wq;
+	struct cptpf_flr_work   *flr_wrk;
 
 	u8 pf_id;		/* RVU PF number */
 	u8 max_vfs;		/* Maximum number of VFs supported by CPT */
