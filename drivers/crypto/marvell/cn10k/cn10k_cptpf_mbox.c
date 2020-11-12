@@ -606,6 +606,7 @@ void cn10k_cptpf_afpf_mbox_handler(struct work_struct *work)
 				break;
 			case MBOX_MSG_CPT_INLINE_IPSEC_CFG:
 			case MBOX_MSG_NIX_INLINE_IPSEC_CFG:
+			case MBOX_MSG_VF_FLR:
 				break;
 			default:
 				dev_err(&cptpf->pdev->dev,
