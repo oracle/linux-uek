@@ -137,6 +137,9 @@ struct cvm_mmc_host {
 	spinlock_t irq_handler_lock;
 	struct semaphore mmc_serializer;
 
+#if IS_ENABLED(CONFIG_MMC_PSTORE)
+	bool pstore;
+#endif
 	struct gpio_desc *global_pwr_gpiod;
 	atomic_t shared_power_users;
 
