@@ -46,14 +46,10 @@ Oracle's Linux team is a top ten contributor in each upstream kernel release. Ou
 
 ## Issues, Pull Requests and Support
 
-Please ask questions, report issues or provide suggestions in the
-[Oracle Linux and UEK Preview](https://community.oracle.com/community/server_&_storage_systems/linux/oracle_linux_and_uek_preview)
-space in the Oracle Developer Community. We will not accept pull requests via GitHub, but pointers to upstream commits are welcomed.
-
 The UEK source is published here without support. For compiled binaries and a supported
 enterprise distribution, Oracle Linux is free to download, distribute and use and can be obtained from http://www.oracle.com/technetwork/server-storage/linux/downloads/index.html.  Individual packages and updates are available on the [Oracle Linux yum server](https://yum.oracle.com/)
 
-SPARC64 is not a supported platform for Oracle Linux.
+We cannot accept pull requests for linux-uek via GitHub.
 
 
 ## Additional Resources
