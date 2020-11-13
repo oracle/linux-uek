@@ -87,7 +87,7 @@ struct mbox_msghdr {
 #define OTX2_MBOX_REQ_SIG (0xdead)
 #define OTX2_MBOX_RSP_SIG (0xbeef)
 	u16 sig;         /* Signature, for validating corrupted msgs */
-#define OTX2_MBOX_VERSION (0x0009)
+#define OTX2_MBOX_VERSION (0x000a)
 	u16 ver;         /* Version of msg's structure for this ID */
 	u16 next_msgoff; /* Offset of next msg within mailbox region */
 	int rc;          /* Msg process'ed response code */
@@ -437,17 +437,17 @@ struct msix_offset_rsp {
 	struct mbox_msghdr hdr;
 	u16  npa_msixoff;
 	u16  nix_msixoff;
-	u8   sso;
-	u8   ssow;
-	u8   timlfs;
-	u8   cptlfs;
+	u16  sso;
+	u16  ssow;
+	u16  timlfs;
+	u16  cptlfs;
 	u16  sso_msixoff[MAX_RVU_BLKLF_CNT];
 	u16  ssow_msixoff[MAX_RVU_BLKLF_CNT];
 	u16  timlf_msixoff[MAX_RVU_BLKLF_CNT];
 	u16  cptlf_msixoff[MAX_RVU_BLKLF_CNT];
-	u8   cpt1_lfs;
-	u8   ree0_lfs;
-	u8   ree1_lfs;
+	u16  cpt1_lfs;
+	u16  ree0_lfs;
+	u16  ree1_lfs;
 	u16  cpt1_lf_msixoff[MAX_RVU_BLKLF_CNT];
 	u16  ree0_lf_msixoff[MAX_RVU_BLKLF_CNT];
 	u16  ree1_lf_msixoff[MAX_RVU_BLKLF_CNT];
