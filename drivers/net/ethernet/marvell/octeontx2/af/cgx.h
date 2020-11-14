@@ -41,7 +41,7 @@
 #define FW_CGX_INT			BIT_ULL(1)
 #define CGXX_CMRX_INT_ENA_W1S		0x058
 #define CGXX_CMRX_RX_ID_MAP		0x060
-#define CGXX_CMRX_RX_STAT0		(0x070 + mac_ops->csr_offset)
+#define CGXX_CMRX_RX_STAT0		0x070
 #define CGXX_CMRX_RX_LMACS		0x128
 #define CGXX_CMRX_RX_DMAC_CTL0		(0x1F8 + mac_ops->csr_offset)
 #define CGX_DMAC_CTL0_CAM_ENABLE	BIT_ULL(3)
@@ -55,7 +55,7 @@
 #define CGXX_CMRX_TX_FIFO_LEN		0x618
 #define CGXX_CMRX_TX_LMAC_IDLE		BIT_ULL(14)
 #define CGXX_CMRX_TX_LMAC_E_IDLE	BIT_ULL(29)
-#define CGXX_CMRX_TX_STAT0		(0x700 + mac_ops->csr_offset)
+#define CGXX_CMRX_TX_STAT0		0x700
 #define CGXX_SCRATCH0_REG		0x1050
 #define CGXX_SCRATCH1_REG		0x1058
 #define CGX_CONST			0x2000
@@ -158,6 +158,9 @@ struct cgx_mac_ops {
 	u8			lmac_fwi;
 	u32			fifo_len;
 	bool			non_contiguous_serdes_lane;
+	/* RPM & CGX differs in number of Receive/transmit stats */
+	u8			rx_stats_cnt;
+	u8			tx_stats_cnt;
 
 	/* Incase of RPM get number of lmacs from RPMX_CMR_RX_LMACS[LMAC_EXIST]
 	 * number of setbits in lmac_exist tells number of lmacs
@@ -166,6 +169,11 @@ struct cgx_mac_ops {
 	u8                      (*get_lmac_type)(void *cgx, int lmac_id);
 	int                     (*mac_lmac_intl_lbk)(void *cgx, int lmac_id,
 						     bool enable);
+	/* Register Stats related functions */
+	int			(*mac_get_rx_stats)(void *cgx, int lmac_id,
+						    int idx, u64 *rx_stat);
+	int			(*mac_get_tx_stats)(void *cgx, int lmac_id,
+						    int idx, u64 *tx_stat);
 };
 
 extern struct pci_driver cgx_driver;
