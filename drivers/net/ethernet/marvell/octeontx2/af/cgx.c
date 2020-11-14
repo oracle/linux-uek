@@ -39,9 +39,13 @@ static struct cgx_mac_ops	otx2_mac_ops    = {
 	.int_ena_bit    =       FW_CGX_INT,
 	.lmac_fwi	=	CGX_LMAC_FWI,
 	.non_contiguous_serdes_lane = false,
+	.rx_stats_cnt   =       9,
+	.tx_stats_cnt   =       18,
 	.get_nr_lmacs	=	cgx_get_nr_lmacs,
 	.get_lmac_type  =       cgx_get_lmac_type,
 	.mac_lmac_intl_lbk =    cgx_lmac_internal_loopback,
+	.mac_get_rx_stats  =	cgx_get_rx_stats,
+	.mac_get_tx_stats  =	cgx_get_tx_stats,
 };
 
 static struct cgx_mac_ops	cn10k_mac_ops   = {
@@ -54,9 +58,13 @@ static struct cgx_mac_ops	cn10k_mac_ops   = {
 	.int_ena_bit    =       BIT_ULL(0),
 	.lmac_fwi	=	RPM_LMAC_FWI,
 	.non_contiguous_serdes_lane = true,
+	.rx_stats_cnt   =       43,
+	.tx_stats_cnt   =       34,
 	.get_nr_lmacs	=	rpm_get_nr_lmacs,
 	.get_lmac_type  =       rpm_get_lmac_type,
 	.mac_lmac_intl_lbk =    rpm_lmac_internal_loopback,
+	.mac_get_rx_stats  =	rpm_get_rx_stats,
+	.mac_get_tx_stats  =	rpm_get_tx_stats,
 };
 
 static LIST_HEAD(cgx_list);
@@ -499,10 +507,8 @@ void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable)
 
 int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 {
-	struct cgx_mac_ops *mac_ops;
 	struct cgx *cgx = cgxd;
 
-	mac_ops = cgx->mac_ops;
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
@@ -516,10 +522,8 @@ int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 
 int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 {
-	struct cgx_mac_ops *mac_ops;
 	struct cgx *cgx = cgxd;
 
-	mac_ops = cgx->mac_ops;
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
@@ -529,11 +533,9 @@ int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 
 int cgx_stats_rst(void *cgxd, int lmac_id)
 {
-	struct cgx_mac_ops *mac_ops;
 	struct cgx *cgx = cgxd;
 	int stat_id;
 
-	mac_ops = cgx->mac_ops;
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
@@ -1759,6 +1761,8 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	cgx_link_usertable_init();
 
 	cgx_populate_features(cgx);
+
+	mutex_init(&cgx->lock);
 
 	err = cgx_lmac_init(cgx);
 	if (err)

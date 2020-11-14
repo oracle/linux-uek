@@ -109,6 +109,89 @@ static char *cgx_tx_stats_fields[] = {
 	[CGX_STAT17]	= "Control/PAUSE packets sent",
 };
 
+static char *rpm_rx_stats_fields[] = {
+	"Octets of received packets",
+	"Octets of received packets with out error",
+	"Received packets with alignment errors",
+	"Control/PAUSE packets received",
+	"Packets received with Frame too long Errors",
+	"Packets received with a1nrange length Errors",
+	"Received packets",
+	"Packets received with FrameCheckSequenceErrors",
+	"Packets received with VLAN header",
+	"Error packets",
+	"Packets recievd with unicast DMAC",
+	"Packets received with multicast DMAC",
+	"Packets received with broadcast DMAC",
+	"Dropped packets",
+	"Total frames received on interface",
+	"Packets received with an octet count < 64",
+	"Packets received with an octet count == 64",
+	"Packets received with an octet count of 65–127",
+	"Packets received with an octet count of 128-255",
+	"Packets received with an octet count of 256-511",
+	"Packets received with an octet count of 512-1023",
+	"Packets received with an octet count of 1024-1518",
+	"Packets received with an octet count of > 1518",
+	"Oversized Packets",
+	"Jabber Packets",
+	"Fragmented Packets",
+	"CBFC(class based flow control) pause frames received for class 0",
+	"CBFC pause frames received for class 1",
+	"CBFC pause frames received for class 2",
+	"CBFC pause frames received for class 3",
+	"CBFC pause frames received for class 4",
+	"CBFC pause frames received for class 5",
+	"CBFC pause frames received for class 6",
+	"CBFC pause frames received for class 7",
+	"CBFC pause frames received for class 8",
+	"CBFC pause frames received for class 9",
+	"CBFC pause frames received for class 10",
+	"CBFC pause frames received for class 11",
+	"CBFC pause frames received for class 12",
+	"CBFC pause frames received for class 13",
+	"CBFC pause frames received for class 14",
+	"CBFC pause frames received for class 15",
+	"MAC control packets received",
+};
+
+static char *rpm_tx_stats_fields[] = {
+	"Total octets sent on the interface",
+	"Total octets transmitted OK",
+	"Control/Pause frames sent",
+	"Total frames transmitted OK",
+	"Total frames sent with VLAN header",
+	"Error Packets",
+	"Packets sent to to unicast DMAC",
+	"Packets sent to the multicast DMAC",
+	"Packets sent to a broadcast DMAC",
+	"Packets sent with an octet count == 64",
+	"Packets sent with an octet count of 65–127",
+	"Packets sent with an octet count of 128-255",
+	"Packets sent with an octet count of 256-511",
+	"Packets sent with an octet count of 512-1023",
+	"Packets sent with an octet count of 1024-1518",
+	"Packets sent with an octet count of > 1518",
+	"CBFC(class based flow control) pause frames transmitted for class 0",
+	"CBFC pause frames transmitted for class 1",
+	"CBFC pause frames transmitted for class 2",
+	"CBFC pause frames transmitted for class 3",
+	"CBFC pause frames transmitted for class 4",
+	"CBFC pause frames transmitted for class 5",
+	"CBFC pause frames transmitted for class 6",
+	"CBFC pause frames transmitted for class 7",
+	"CBFC pause frames transmitted for class 8",
+	"CBFC pause frames transmitted for class 9",
+	"CBFC pause frames transmitted for class 10",
+	"CBFC pause frames transmitted for class 11",
+	"CBFC pause frames transmitted for class 12",
+	"CBFC pause frames transmitted for class 13",
+	"CBFC pause frames transmitted for class 14",
+	"CBFC pause frames transmitted for class 15",
+	"MAC control packets sent",
+	"Total frames sent on the interface"
+};
+
 #define NDC_MAX_BANK(rvu, blk_addr) (rvu_read64(rvu, \
 						blk_addr, NDC_AF_CONST) & 0xFF)
 
@@ -467,7 +550,7 @@ static void print_npa_aura_ctx(struct seq_file *m, struct npa_aq_enq_rsp *rsp)
 
 	seq_printf(m, "W3: limit\t\t%llu\nW3: bp\t\t\t%d\nW3: fc_ena\t\t%d\n",
 		   (u64)aura->limit, aura->bp, aura->fc_ena);
-	
+
 	if (!is_rvu_otx2(rvu))
 		seq_printf(m, "W3: fc_be\t\t%d\n", aura->fc_be);
 	seq_printf(m, "W3: fc_up_crossing\t%d\nW3: fc_stype\t\t%d\n",
@@ -1009,22 +1092,32 @@ static int cgx_print_stats(struct seq_file *s, int lmac_id)
 
 	/* Rx stats */
 	seq_printf(s, "\n=======%s RX_STATS======\n\n", mac_ops->name);
-	while (stat < CGX_RX_STATS_COUNT) {
-		err = cgx_get_rx_stats(cgxd, lmac_id, stat, &rx_stat);
+	while (stat < mac_ops->rx_stats_cnt) {
+		err = mac_ops->mac_get_rx_stats(cgxd, lmac_id, stat, &rx_stat);
 		if (err)
 			return err;
-		seq_printf(s, "%s: %llu\n", cgx_rx_stats_fields[stat], rx_stat);
+		if (is_rvu_otx2(rvu))
+			seq_printf(s, "%s: %llu\n", cgx_rx_stats_fields[stat],
+				   rx_stat);
+		else
+			seq_printf(s, "%s: %llu\n", rpm_rx_stats_fields[stat],
+				   rx_stat);
 		stat++;
 	}
 
 	/* Tx stats */
 	stat = 0;
 	seq_printf(s, "\n=======%s TX_STATS======\n\n", mac_ops->name);
-	while (stat < CGX_TX_STATS_COUNT) {
-		err = cgx_get_tx_stats(cgxd, lmac_id, stat, &tx_stat);
+	while (stat < mac_ops->tx_stats_cnt) {
+		err = mac_ops->mac_get_tx_stats(cgxd, lmac_id, stat, &tx_stat);
 		if (err)
 			return err;
-		seq_printf(s, "%s: %llu\n", cgx_tx_stats_fields[stat], tx_stat);
+		if (is_rvu_otx2(rvu))
+			seq_printf(s, "%s: %llu\n", cgx_tx_stats_fields[stat],
+				   tx_stat);
+		else
+			seq_printf(s, "%s: %llu\n", rpm_tx_stats_fields[stat],
+				   tx_stat);
 		stat++;
 	}
 

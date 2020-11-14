@@ -45,6 +45,10 @@ struct cgx {
 	struct list_head        cgx_list;
 	u64                     hw_features;
 	struct cgx_mac_ops     *mac_ops;
+	/* Lock to serialize read/write of global csrs like
+	 * RPMX_MTI_STAT_DATA_HI_CDC etc
+	 */
+	struct mutex		lock;
 };
 
 /* Function Declarations */

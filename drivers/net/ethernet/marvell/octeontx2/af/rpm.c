@@ -56,13 +56,64 @@ int rpm_lmac_internal_loopback(void *rpmd, int lmac_id, bool enable)
 			cfg &= ~RPMX_MTI_PCS_LBK;
 		rpm_write(rpm, lmac_id, RPMX_MTI_PCS100X_CONTROL1, cfg);
 	} else {
-		cfg = rpm_read(rpm, lmac_id, RPMX_MTI_LPCSX_CONTROL1);
+		cfg = rpm_read(rpm, 0, RPMX_MTI_LPCSX_CONTROL(lmac_id));
 		if (enable)
 			cfg |= RPMX_MTI_PCS_LBK;
 		else
 			cfg &= ~RPMX_MTI_PCS_LBK;
-		rpm_write(rpm, lmac_id, RPMX_MTI_LPCSX_CONTROL1, cfg);
+		rpm_write(rpm, 0, RPMX_MTI_LPCSX_CONTROL(lmac_id), cfg);
 	}
 
+	return 0;
+}
+
+int rpm_get_rx_stats(void *rpmd, int lmac_id, int idx, u64 *rx_stat)
+{
+	struct cgx *rpm = rpmd;
+	u64 val_lo, val_hi;
+
+	if (!rpm || lmac_id >= rpm->lmac_count)
+		return -ENODEV;
+
+	mutex_lock(&rpm->lock);
+
+	/* Update idx to point per lmac Rx statistics page */
+	idx += lmac_id * rpm->mac_ops->rx_stats_cnt;
+
+	/* Read lower 32 bits of counter */
+	val_lo = rpm_read(rpm, 0, RPMX_MTI_STAT_RX_STAT_PAGES_COUNTERX +
+			  (idx * 8));
+
+	/* upon read of lower 32 bits, higher 32 bits are written
+	 * to RPMX_MTI_STAT_DATA_HI_CDC
+	 */
+	val_hi = rpm_read(rpm, 0, RPMX_MTI_STAT_DATA_HI_CDC);
+
+	*rx_stat = (val_hi << 32 | val_lo);
+
+	mutex_unlock(&rpm->lock);
+	return 0;
+}
+
+int rpm_get_tx_stats(void *rpmd, int lmac_id, int idx, u64 *tx_stat)
+{
+	struct cgx *rpm = rpmd;
+	u64 val_lo, val_hi;
+
+	if (!rpm || lmac_id >= rpm->lmac_count)
+		return -ENODEV;
+
+	mutex_lock(&rpm->lock);
+
+	/* Update idx to point per lmac Tx statistics page */
+	idx += lmac_id * rpm->mac_ops->tx_stats_cnt;
+
+	val_lo = rpm_read(rpm, 0, RPMX_MTI_STAT_TX_STAT_PAGES_COUNTERX +
+			    (idx * 8));
+	val_hi = rpm_read(rpm, 0, RPMX_MTI_STAT_DATA_HI_CDC);
+
+	*tx_stat = (val_hi << 32 | val_lo);
+
+	mutex_unlock(&rpm->lock);
 	return 0;
 }
