@@ -1433,7 +1433,8 @@ lpfc_els_abort_flogi(struct lpfc_hba *phba)
 		if (icmd->ulpCommand == CMD_ELS_REQUEST64_CR) {
 			ndlp = (struct lpfc_nodelist *)(iocb->context1);
 			if (ndlp && (ndlp->nlp_DID == Fabric_DID))
-				lpfc_sli_issue_abort_iotag(phba, pring, iocb);
+				lpfc_sli_issue_abort_iotag(phba, pring, iocb,
+							   NULL);
 		}
 	}
 	spin_unlock_irq(&phba->hbalock);
@@ -8144,7 +8145,7 @@ lpfc_els_timeout_handler(struct lpfc_vport *vport)
 			 remote_ID, cmd->ulpCommand, cmd->ulpIoTag);
 		spin_lock_irq(&phba->hbalock);
 		list_del_init(&piocb->dlist);
-		lpfc_sli_issue_abort_iotag(phba, pring, piocb);
+		lpfc_sli_issue_abort_iotag(phba, pring, piocb, NULL);
 		spin_unlock_irq(&phba->hbalock);
 	}
 
@@ -8244,7 +8245,7 @@ lpfc_els_flush_cmd(struct lpfc_vport *vport)
 	list_for_each_entry_safe(piocb, tmp_iocb, &abort_list, dlist) {
 		spin_lock_irqsave(&phba->hbalock, iflags);
 		list_del_init(&piocb->dlist);
-		lpfc_sli_issue_abort_iotag(phba, pring, piocb);
+		lpfc_sli_issue_abort_iotag(phba, pring, piocb, NULL);
 		spin_unlock_irqrestore(&phba->hbalock, iflags);
 	}
 	if (!list_empty(&abort_list))
