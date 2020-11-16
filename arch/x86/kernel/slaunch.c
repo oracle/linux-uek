@@ -796,7 +796,8 @@ void slaunch_finalize(int do_sexit)
 	void __iomem *config;
 	u64 one = 1, val;
 
-	if (!(slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)))
+	if ((slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) !=
+	    (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT))
 		return;
 
 	config = ioremap(TXT_PRIV_CONFIG_REGS_BASE, TXT_NR_CONFIG_PAGES *
@@ -815,8 +816,8 @@ void slaunch_finalize(int do_sexit)
 	memcpy_fromio(&val, config + TXT_CR_E2STS, sizeof(u64));
 
 	/* Close the TXT private register space */
-	memcpy_fromio(&val, config + TXT_CR_E2STS, sizeof(u64));
 	memcpy_toio(config + TXT_CR_CMD_CLOSE_PRIVATE, &one, sizeof(u64));
+	memcpy_fromio(&val, config + TXT_CR_E2STS, sizeof(u64));
 
 	/*
 	 * Calls to iounmap are not being done because of the state of the

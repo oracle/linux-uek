@@ -1109,7 +1109,8 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle,
 	smp_mb();
 
 	/* With Intel TXT, the AP startup is totally different */
-	if (slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) {
+	if ((slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) ==
+	   (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) {
 		boot_error = slaunch_wakeup_cpu_from_txt(cpu, apicid);
 		goto txt_wake;
 	}

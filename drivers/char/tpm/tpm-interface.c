@@ -380,7 +380,7 @@ static int tpm_request_locality(struct tpm_chip *chip, unsigned int flags)
 	if (!chip->ops->request_locality)
 		return 0;
 
-	if (slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) {
+	if (slaunch_get_flags() & SL_FLAG_ACTIVE) {
 		dev_dbg(&chip->dev, "setting TPM locality to 2 for MLE\n");
 		locality = 2;
 	} else {
