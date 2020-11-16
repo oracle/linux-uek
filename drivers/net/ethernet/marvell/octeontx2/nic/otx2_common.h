@@ -198,13 +198,15 @@ struct otx2_hw {
 	/* Stats */
 	struct otx2_dev_stats	dev_stats;
 	struct otx2_drv_stats	drv_stats;
-	u64			cgx_rx_stats[CGX_RX_STATS_COUNT];
-	u64			cgx_tx_stats[CGX_TX_STATS_COUNT];
+	u64			cgx_rx_stats[RPM_RX_STATS_COUNT];
+	u64			cgx_tx_stats[RPM_TX_STATS_COUNT];
 	u64			cgx_fec_corr_blks;
 	u64			cgx_fec_uncorr_blks;
 	u8			cgx_links;  /* No. of CGX links present in HW */
 	u8			lbk_links;  /* No. of LBK links present in HW */
 	u8			tx_link;    /* Transmit channel link number */
+	u8			lmac_rx_stats_cnt;
+	u8			lmac_tx_stats_cnt;
 
 #define HW_TSO			BIT_ULL(0)
 #define CN10K_MBOX		BIT_ULL(1)
@@ -859,6 +861,8 @@ void mbox_handler_cgx_fec_stats(struct otx2_nic *pfvf,
 void otx2_set_fec_stats_count(struct otx2_nic *pfvf);
 void mbox_handler_nix_bp_enable(struct otx2_nic *pfvf,
 				struct nix_bp_cfg_rsp *rsp);
+void mbox_handler_rpm_stats(struct otx2_nic *pfvf,
+			    struct rpm_stats_rsp *rsp);
 
 /* Device stats APIs */
 void otx2_get_dev_stats(struct otx2_nic *pfvf);
