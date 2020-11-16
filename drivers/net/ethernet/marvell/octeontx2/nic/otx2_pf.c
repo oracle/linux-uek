@@ -799,6 +799,9 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 	case MBOX_MSG_CGX_FEC_STATS:
 		mbox_handler_cgx_fec_stats(pf, (struct cgx_fec_stats_rsp *)msg);
 		break;
+	case MBOX_MSG_RPM_STATS:
+		mbox_handler_rpm_stats(pf, (struct rpm_stats_rsp *)msg);
+		break;
 	default:
 		if (msg->rc)
 			dev_err(pf->dev,
@@ -1153,6 +1156,15 @@ int otx2_cgx_features_get(struct otx2_nic *pfvf)
 	rsp = (struct cgx_features_info_msg *)
 		     otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &msg->hdr);
 	pfvf->hw.mac_features = rsp->lmac_features;
+
+	if (pfvf->hw.mac_features & RVU_MAC_RPM) {
+		pfvf->hw.lmac_rx_stats_cnt = RPM_RX_STATS_COUNT;
+		pfvf->hw.lmac_tx_stats_cnt = RPM_TX_STATS_COUNT;
+	} else {
+		pfvf->hw.lmac_rx_stats_cnt = CGX_RX_STATS_COUNT;
+		pfvf->hw.lmac_tx_stats_cnt = CGX_TX_STATS_COUNT;
+	}
+
 out:
 	mutex_unlock(&pfvf->mbox.lock);
 	return err;
