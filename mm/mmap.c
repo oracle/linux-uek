@@ -13,7 +13,6 @@
 #include <linux/slab.h>
 #include <linux/backing-dev.h>
 #include <linux/mm.h>
-#include <linux/vmacache.h>
 #include <linux/shm.h>
 #include <linux/mman.h>
 #include <linux/pagemap.h>
@@ -705,9 +704,6 @@ inline int vma_expand(struct ma_state *mas, struct vm_area_struct *vma,
 		/* Remove from mm linked list - also updates highest_vm_end */
 		__vma_unlink_list(mm, next);
 
-		/* Kill the cache */
-		vmacache_invalidate(mm);
-
 		if (file)
 			__remove_shared_vm_struct(next, file, mapping);
 
@@ -921,8 +917,6 @@ again:
 
 	if (remove_next) {
 		__vma_unlink_list(mm, next);
-		/* Kill the cache */
-		vmacache_invalidate(mm);
 		if (file)
 			__remove_shared_vm_struct(next, file, mapping);
 	} else if (insert) {
@@ -2220,19 +2214,9 @@ struct vm_area_struct *find_vma_intersection(struct mm_struct *mm,
 {
 	struct vm_area_struct *vma;
 	MA_STATE(mas, &mm->mm_mt, start_addr, start_addr);
-
-	/* Check the cache first. */
-	vma = vmacache_find(mm, start_addr);
-	if (likely(vma))
-		return vma;
-
 	rcu_read_lock();
 	vma = mas_find(&mas, end_addr - 1);
 	rcu_read_unlock();
-
-	if (vma)
-		vmacache_update(start_addr, vma);
-
 	return vma;
 }
 EXPORT_SYMBOL(find_vma_intersection);
@@ -2626,9 +2610,6 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 	else
 		mm->highest_vm_end = prev ? vm_end_gap(prev) : 0;
 	tail_vma->vm_next = NULL;
-
-	/* Kill the cache */
-	vmacache_invalidate(mm);
 
 	/*
 	 * Do not downgrade mmap_lock if we are next to VM_GROWSDOWN or
@@ -3026,7 +3007,6 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	if (vma_mas_remove(&unmap, mas))
 		goto mas_store_fail;
 
-	vmacache_invalidate(vma->vm_mm);
 	if (vma->anon_vma) {
 		anon_vma_interval_tree_post_update_vma(vma);
 		anon_vma_unlock_write(vma->anon_vma);
