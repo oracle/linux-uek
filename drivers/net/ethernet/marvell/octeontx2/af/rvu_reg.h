@@ -698,8 +698,15 @@
 #define CPT_AF_RAS_INT_ENA_W1C          (0x47038ull)
 #define CPT_AF_CTX_FLUSH_TIMER          (0x48000ull)
 
+#define CPT_AF_BAR2_SEL                 0x9000000
+#define CPT_AF_BAR2_ALIASX(a, b)        AF_BAR2_ALIASX(a, b)
+
 #define CPT_AF_LF_CTL2_SHIFT		3
 #define CPT_AF_LF_SSO_PF_FUNC_SHIFT	32
+
+#define CPT_LF_CTL                      0x10
+#define CPT_LF_INPROG                   0x40
+#define CPT_LF_Q_GRP_PTR                0x120
 
 /* NPC */
 #define NPC_AF_CFG			(0x00000)
