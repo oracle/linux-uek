@@ -835,6 +835,7 @@ bool is_npc_interface_valid(struct rvu *rvu, u8 intf);
 int rvu_cpt_init(struct rvu *rvu);
 int rvu_cpt_register_interrupts(struct rvu *rvu);
 void rvu_cpt_unregister_interrupts(struct rvu *rvu);
+int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);

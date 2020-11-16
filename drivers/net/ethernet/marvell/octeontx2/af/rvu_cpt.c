@@ -517,3 +517,77 @@ error:
 	/* Access to register denied */
 	return CPT_AF_ERR_ACCESS_DENIED;
 }
+
+static void cpt_lf_disable_iqueue(struct rvu *rvu, int blkaddr, int slot)
+{
+	u64 inprog, grp_ptr;
+	int i = 0;
+
+	/* Disable instructions enqueuing */
+	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_ALIASX(slot, CPT_LF_CTL), 0x0);
+
+	/* Disable executions in the LF's queue */
+	inprog = rvu_read64(rvu, blkaddr,
+			    CPT_AF_BAR2_ALIASX(slot, CPT_LF_INPROG));
+	inprog &= ~BIT_ULL(16);
+	rvu_write64(rvu, blkaddr,
+		    CPT_AF_BAR2_ALIASX(slot, CPT_LF_INPROG), inprog);
+
+	/* Wait for CPT queue to become execution-quiescent */
+	do {
+		inprog = rvu_read64(rvu, blkaddr,
+				    CPT_AF_BAR2_ALIASX(slot, CPT_LF_INPROG));
+		/* Check for partial entries (GRB_PARTIAL) */
+		if (inprog & BIT_ULL(31))
+			i = 0;
+		else
+			i++;
+
+		grp_ptr = rvu_read64(rvu, blkaddr,
+				     CPT_AF_BAR2_ALIASX(slot,
+							CPT_LF_Q_GRP_PTR));
+	} while ((i < 10) && (((grp_ptr >> 32) & 0x7FFF) !=
+				(grp_ptr & 0x7FFF)));
+
+	i = 0;
+	do {
+		inprog = rvu_read64(rvu, blkaddr,
+				    CPT_AF_BAR2_ALIASX(slot, CPT_LF_INPROG));
+		/* GWB writes groups of 40. So below formula is used for
+		 * knowing that no more instructions will be scheduled
+		 * (INFLIGHT == 0) && (GWB < 40) && (GRB == 0 OR 40)
+		 */
+		if (((inprog && 0x1FF) == 0) &&
+		    (((inprog >> 40) & 0xFF) < 40) &&
+		    ((((inprog >> 32) & 0xFF) == 0) ||
+		    (((inprog >> 32) & 0xFF) == 40)))
+			i++;
+		else
+			i = 0;
+	} while (i < 10);
+}
+
+int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
+{
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, pcifunc);
+	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
+		return -EINVAL;
+
+	/* Enable BAR2 ALIAS for this pcifunc. */
+	reg = BIT_ULL(16) | pcifunc;
+	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, reg);
+
+	cpt_lf_disable_iqueue(rvu, blkaddr, slot);
+
+	/* Set group drop to help clear out hardware */
+	reg = rvu_read64(rvu, blkaddr, CPT_AF_BAR2_ALIASX(slot, CPT_LF_INPROG));
+	reg |= BIT_ULL(17);
+	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_ALIASX(slot, CPT_LF_INPROG), reg);
+
+	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, 0);
+
+	return 0;
+}
