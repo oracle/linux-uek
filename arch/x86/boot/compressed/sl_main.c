@@ -18,6 +18,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/bootparam.h>
 #include <asm/efi.h>
+#include <asm/bootparam_utils.h>
 #include <linux/slaunch.h>
 #ifdef CONFIG_SECURE_LAUNCH_SHA256
 #include <linux/sha256.h>
@@ -26,6 +27,7 @@
 #include <linux/sha512.h>
 #endif
 
+#include "misc.h"
 #include "early_sha1.h"
 #include "tpm/tpm_common.h"
 #include "tpm/tpm2_constants.h"
@@ -314,15 +316,19 @@ void sl_main(u8 *bootparams)
 	if (tpm_request_locality(tpm, 2) == TPM_NO_LOCALITY)
 		sl_txt_reset(SL_ERROR_TPM_GET_LOC);
 
+	/* Sanitize them before measuring */
+	boot_params = (struct boot_params*)bootparams;
+	sanitize_boot_params(boot_params);
+
 	/* Measure the zero page/boot params */
-	sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR18, bootparams, PAGE_SIZE,
+	sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR19, bootparams, PAGE_SIZE,
 			  "Measured boot parameters into PCR18");
 
 	/* Now safe to use boot params */
 	bp = (struct boot_params *)bootparams;
 
 	/* Measure the command line */
-	sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR18,
+	sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR19,
 			  (u8 *)((unsigned long)bp->hdr.cmd_line_ptr),
 			  bp->hdr.cmdline_size,
 			  "Measured Kernel command line into PCR18");
@@ -333,7 +339,7 @@ void sl_main(u8 *bootparams)
 	 */
 	data = (struct setup_data *)(unsigned long)bp->hdr.setup_data;
 	while (data) {
-		sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR18,
+		sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR19,
 				  ((u8 *)data) + sizeof(struct setup_data),
 				  data->len,
 				  "Measured Kernel setup_data into PCR18");
@@ -352,13 +358,13 @@ void sl_main(u8 *bootparams)
 			((u64)bp->efi_info.efi_memmap_hi << 32));
 
 	if (mmap)
-		sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR18, (void *)mmap,
+		sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR19, (void *)mmap,
 				  bp->efi_info.efi_memmap_size,
 				  "Measured EFI memory map into PCR18");
 
 	/* Measure any external initrd */
 	if (bp->hdr.ramdisk_image != 0 && bp->hdr.ramdisk_size != 0)
-		sl_tpm_extend_pcr(tpm, SL_IMAGE_PCR17,
+		sl_tpm_extend_pcr(tpm, SL_IMAGE_PCR20,
 				  (u8 *)((u64)bp->hdr.ramdisk_image),
 				  bp->hdr.ramdisk_size,
 				  "Measured initramfs into PCR17");
@@ -375,7 +381,7 @@ void sl_main(u8 *bootparams)
 	os_mle_tmp.saved_misc_enable_msr = os_mle_data->saved_misc_enable_msr;
 	os_mle_tmp.saved_bsp_mtrrs = os_mle_data->saved_bsp_mtrrs;
 
-	sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR18, (u8 *)&os_mle_tmp,
+	sl_tpm_extend_pcr(tpm, SL_CONFIG_PCR19, (u8 *)&os_mle_tmp,
 			  sizeof(struct txt_os_mle_data),
 			  "Measured TXT OS-MLE data into PCR18");
 

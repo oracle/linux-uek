@@ -161,8 +161,10 @@
 /*
  * Measured Launch PCRs
  */
-#define SL_IMAGE_PCR17		17
-#define SL_CONFIG_PCR18		18
+#define SL_DETAILS_PCR17	17
+#define SL_AUTHORITIES_PCR18	18
+#define SL_CONFIG_PCR19		19
+#define SL_IMAGE_PCR20		20
 
 /*
  * MLE scratch area offsets
