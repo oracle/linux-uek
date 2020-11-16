@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver */
+/* Marvell OcteonTx2 RVU Admin Function driver
+ *
+ * Copyright (C) 2020 Marvell.
+ */
 
 #include <linux/bitfield.h>
 #include <linux/pci.h>
