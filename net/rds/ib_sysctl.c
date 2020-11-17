@@ -99,7 +99,6 @@ u32 rds_dev_free_wait_ms = 10000;
  */
 unsigned rds_ib_sysctl_yield_after_ms = 2000;
 
-int rds_ib_sysctl_drop_on_neigh_update = 1;
 unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
 
 static struct ctl_table rds_ib_sysctl_table[] = {
@@ -203,13 +202,6 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(rds_ib_sysctl_yield_after_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
-	},
-	{
-		.procname       = "drop_on_neigh_update",
-		.data           = &rds_ib_sysctl_drop_on_neigh_update,
-		.maxlen         = sizeof(rds_ib_sysctl_drop_on_neigh_update),
-		.mode           = 0644,
-		.proc_handler   = proc_dointvec,
 	},
 	{
 		.procname       = "cm_watchdog_ms",
