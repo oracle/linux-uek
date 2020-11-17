@@ -189,6 +189,7 @@ static inline char *mc_event_error_type(const unsigned int err_type)
  *			This is a variant of the DDR4 memories.
  * @MEM_LRDDR4:		Load-Reduced DDR4 memory.
  * @MEM_LPDDR4:		Low-Power DDR4 memory.
+ * @MEM_DDR5:		Unbuffered DDR5 RAM
  * @MEM_NVDIMM:		Non-volatile RAM
  * @MEM_WIO2:		Wide I/O 2.
  */
@@ -216,6 +217,7 @@ enum mem_type {
 	MEM_RDDR4,
 	MEM_LRDDR4,
 	MEM_LPDDR4,
+	MEM_DDR5,
 	MEM_NVDIMM,
 	MEM_WIO2,
 };
@@ -242,6 +244,7 @@ enum mem_type {
 #define MEM_FLAG_RDDR4          BIT(MEM_RDDR4)
 #define MEM_FLAG_LRDDR4         BIT(MEM_LRDDR4)
 #define MEM_FLAG_LPDDR4         BIT(MEM_LPDDR4)
+#define MEM_FLAG_DDR5           BIT(MEM_DDR5)
 #define MEM_FLAG_NVDIMM         BIT(MEM_NVDIMM)
 #define MEM_FLAG_WIO2		BIT(MEM_WIO2)
 
