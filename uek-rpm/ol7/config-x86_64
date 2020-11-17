@@ -7156,7 +7156,7 @@ CONFIG_INTEL_TURBO_MAX_3=y
 #
 # Intel Speed Select Technology interface support
 #
-# CONFIG_INTEL_SPEED_SELECT_INTERFACE is not set
+CONFIG_INTEL_SPEED_SELECT_INTERFACE=m
 # end of Intel Speed Select Technology interface support
 
 CONFIG_PMC_ATOM=y
