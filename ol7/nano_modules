@@ -401,6 +401,10 @@ kernel/drivers/nvme/target/nvmet.ko
 kernel/drivers/parport/parport.ko
 kernel/drivers/pci/controller/pci-hyperv-intf.ko
 kernel/drivers/pci/controller/vmd.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_common.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mbox_msr.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mbox_pci.ko
+kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mmio.ko
 kernel/drivers/platform/x86/wmi.ko
 kernel/drivers/regulator/fixed.ko
 kernel/drivers/regulator/lp3971.ko
