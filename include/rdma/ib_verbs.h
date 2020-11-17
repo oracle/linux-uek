@@ -3703,9 +3703,11 @@ static inline int ib_post_srq_recv(struct ib_srq *srq,
  *   the actual capabilities of the created QP.
  * @udata: Valid user data or NULL for kernel objects
  */
-struct ib_qp *ib_create_qp_user(struct ib_pd *pd,
+struct ib_qp *__ib_create_qp_user(struct ib_pd *pd,
 				struct ib_qp_init_attr *qp_init_attr,
-				struct ib_udata *udata);
+				struct ib_udata *udata, const char *caller);
+#define ib_create_qp_user(pd, qp_init_attr, udata) \
+	__ib_create_qp_user((pd), (qp_init_attr), (udata), KBUILD_MODNAME)
 
 /**
  * ib_create_qp - Creates a kernel QP associated with the specified protection

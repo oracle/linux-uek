@@ -1175,9 +1175,9 @@ static struct ib_qp *create_xrc_qp_user(struct ib_qp *qp,
 	return qp;
 }
 
-struct ib_qp *ib_create_qp_user(struct ib_pd *pd,
+struct ib_qp *__ib_create_qp_user(struct ib_pd *pd,
 				struct ib_qp_init_attr *qp_init_attr,
-				struct ib_udata *udata)
+				struct ib_udata *udata, const char *caller)
 {
 	struct ib_device *device = pd ? pd->device : qp_init_attr->xrcd->device;
 	struct ib_qp *qp;
@@ -1202,7 +1202,7 @@ struct ib_qp *ib_create_qp_user(struct ib_pd *pd,
 	if (qp_init_attr->cap.max_rdma_ctxs)
 		rdma_rw_init_qp(device, qp_init_attr);
 
-	qp = _ib_create_qp(device, pd, qp_init_attr, NULL, NULL);
+	qp = _ib_create_qp(device, pd, qp_init_attr, NULL, NULL, caller);
 	if (IS_ERR(qp))
 		return qp;
 
@@ -1268,7 +1268,7 @@ err:
 	return ERR_PTR(ret);
 
 }
-EXPORT_SYMBOL(ib_create_qp_user);
+EXPORT_SYMBOL(__ib_create_qp_user);
 
 static const struct {
 	int			valid;
