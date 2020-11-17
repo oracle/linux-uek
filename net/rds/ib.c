@@ -73,8 +73,6 @@ LIST_HEAD(ib_nodev_conns);
 
 struct workqueue_struct *rds_aux_wq;
 
-static struct socket *rds_rdma_rtnl_sk;
-
 static struct ib_mr *rds_ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags)
 {
 	struct ib_mr *mr;
@@ -1213,19 +1211,12 @@ int rds_ib_init(void)
 
 	INIT_LIST_HEAD(&rds_ib_devices);
 
-	ret = sock_create_kern(&init_net, PF_NETLINK, SOCK_RAW, NETLINK_ROUTE,
-			       &rds_rdma_rtnl_sk);
-	if (ret < 0) {
-		pr_err("RDS/IB: can't create netlink socket (%d).\n", -ret);
-		goto out;
-	}
-
 	/* Initialise the RDS IB fragment size */
 	rds_ib_init_frag(RDS_PROTOCOL_VERSION);
 
 	ret = rds_ib_fmr_init();
 	if (ret)
-		goto kernel_sock;
+		goto out;
 
 	ret = rds_ib_sysctl_init();
 	if (ret)
@@ -1270,9 +1261,6 @@ out_sysctl:
 	rds_ib_sysctl_exit();
 out_fmr_exit:
 	rds_ib_fmr_exit();
-kernel_sock:
-	sock_release(rds_rdma_rtnl_sk);
-	rds_rdma_rtnl_sk = NULL;
 out:
 	return ret;
 }
@@ -1335,11 +1323,6 @@ void rds_ib_exit(void)
 
 	destroy_workqueue(rds_aux_wq);
 	rds_ib_fmr_exit();
-
-	if (rds_rdma_rtnl_sk) {
-		sock_release(rds_rdma_rtnl_sk);
-		rds_rdma_rtnl_sk = NULL;
-	}
 }
 
 struct rds_transport rds_ib_transport = {
@@ -1441,141 +1424,6 @@ done:
 	skb_shinfo(skb)->nr_frags = i;
 
 	return ret;
-}
-
-/* How long the same cache can be flushed again (in msec). */
-static unsigned int neigh_flush_interval = 750;
-
-/* Should be large enough to hold the flush message. */
-enum {
-	flush_buf_len = 48,
-};
-
-static void __flush_neigh_conn(struct net *net,
-			       struct rds_connection *conn,
-			       bool force)
-{
-	struct sockaddr_nl nlsa = { .nl_family = AF_NETLINK };
-	u64 timenow = jiffies_to_msecs(get_jiffies_64());
-	u8 buf[flush_buf_len], *sndbuf;
-	const struct in6_addr *laddr;
-	const struct in6_addr *faddr;
-	struct msghdr msg = { 0 };
-	struct nlmsghdr *nlh;
-	struct nlattr *nla;
-	struct ndmsg *ndm;
-	bool isv4, alloc;
-	struct kvec vec;
-	size_t buflen;
-	int addrlen;
-	int ret;
-	int idx;
-
-	/* Should not flush the same cache again and again.  This can happen
-	 * when an interface is brought down so that all the connections
-	 * (say with different TOS hence same local/peer address pair) using
-	 * that interface are notified.
-	 */
-	if (conn->c_base_conn) {
-		if (!force &&
-		    (timenow - READ_ONCE(conn->c_base_conn->last_flush_ms)) <
-		    neigh_flush_interval)
-			return;
-		WRITE_ONCE(conn->c_base_conn->last_flush_ms, timenow);
-	}
-	laddr = &conn->c_laddr;
-	faddr = &conn->c_faddr;
-	isv4 = ipv6_addr_v4mapped(faddr);
-
-	/* Use our local address to find the right interface to flush the
-	 * neighbor address. If we are unable to find the interface, this is
-	 * likely because the IP-address moved due to failover/failback, so
-	 * don't log any issues in this case.
-	 */
-	if (isv4) {
-		idx = __rds_find_ifindex_v4(net, laddr->s6_addr32[3]);
-		addrlen = sizeof(faddr->s6_addr32[3]);
-	} else {
-		idx = __rds_find_ifindex_v6(net, laddr);
-		addrlen = sizeof(*faddr);
-	}
-
-	if (!idx)
-		return;
-
-	buflen = nlmsg_total_size(sizeof(*ndm) +
-				  nla_total_size(addrlen));
-	if (buflen > sizeof(buf)) {
-		pr_warn_once("RDS/IB: Larger than expected NL message size:%zd\n",
-			     buflen);
-		sndbuf = kmalloc(buflen, GFP_ATOMIC);
-		if (!sndbuf) {
-			pr_err("%s: failed: buflen %zd idx %d %pI6c,%pI6c\n",
-			       __func__, buflen, idx, laddr, faddr);
-			return;
-		}
-		alloc = true;
-	} else {
-		sndbuf = buf;
-		alloc = false;
-	}
-
-	nlh = (struct nlmsghdr *)sndbuf;
-	ndm = nlmsg_data(nlh);
-	nla = (struct nlattr *)((u8 *)ndm + NLMSG_ALIGN(sizeof(*ndm)));
-	nlh->nlmsg_len = buflen;
-	nlh->nlmsg_flags = NLM_F_REQUEST;
-	nlh->nlmsg_type = RTM_DELNEIGH;
-	ndm->ndm_family = isv4 ? AF_INET : AF_INET6;
-	ndm->ndm_ifindex = idx;
-	ndm->ndm_state = NUD_PERMANENT;
-	ndm->ndm_flags = 0;
-	nla->nla_type = NDA_DST;
-	nla->nla_len = nla_attr_size(addrlen);
-	if (isv4)
-		memcpy(nla_data(nla), &faddr->s6_addr32[3], addrlen);
-	else
-		memcpy(nla_data(nla), faddr, addrlen);
-
-	msg.msg_name = &nlsa;
-	msg.msg_namelen = sizeof(nlsa);
-	vec.iov_base = (void *)sndbuf;
-	vec.iov_len = nlh->nlmsg_len;
-
-	ret = kernel_sendmsg(rds_rdma_rtnl_sk, &msg, &vec, 1, vec.iov_len);
-	if (ret < 0)
-		pr_err("%s: kernel_sendmsg %d\n", __func__, ret);
-
-	if (alloc)
-		kfree(sndbuf);
-}
-
-/* Given an rds_connection, flush the peer address' neighbor cache entry.
- * If the peer is not in the same network as us, nothing will be flushed.
- *
- * @net: the connection's namespace
- * @conn: pointer to the connection
- * @flush_local_peer: Flush neighbor for the peer, if it is local, instead
- * of conn
- */
-void rds_ib_flush_neigh(struct net *net,
-			struct rds_connection *conn,
-			bool flush_local_peer,
-			bool force)
-{
-	if (flush_local_peer && conn->c_loopback) {
-		struct rds_connection *peer;
-
-		/* Note the swapped d/saddr */
-		peer = rds_conn_find(rds_conn_net(conn),
-				     &conn->c_faddr, &conn->c_laddr,
-				     conn->c_trans, conn->c_tos,
-				     0);
-		if (peer)
-			__flush_neigh_conn(net, peer, force);
-	} else {
-		__flush_neigh_conn(net, conn, force);
-	}
 }
 
 MODULE_LICENSE("GPL");
