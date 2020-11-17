@@ -13,12 +13,23 @@
 #include <linux/efi.h>
 #include <linux/export.h>
 
-static __ro_after_init bool kernel_locked_down;
-static __ro_after_init bool lockdown_confidentiality = false;
+static bool kernel_locked_down;
+static bool lockdown_confidentiality;
+
+static const char * const lockdown_reasons[] = { "none",
+						 "integrity",
+						 "confidentiality" };
+
+enum lockdown_reason {
+	LOCKDOWN_NONE,
+	LOCKDOWN_INTEGRITY,
+	LOCKDOWN_CONFIDENTIALITY
+};
+
 /*
  * Put the kernel into lock-down mode.
  */
-static void __init lock_kernel_down(const char *where)
+static void lock_kernel_down(const char *where)
 {
 	if (!kernel_locked_down) {
 		kernel_locked_down = true;
@@ -30,7 +41,9 @@ static void __init lock_kernel_down(const char *where)
 static int __init lockdown_param(char *level)
 {
 	if (level) {
-		if (strcmp(level, "confidentiality") == 0)
+		if (strcmp(level, "none") == 0)
+			return 0;
+		else if (strcmp(level, "confidentiality") == 0)
 			lockdown_confidentiality = true;
 		else if (strcmp(level, "integrity") == 0)
 			lockdown_confidentiality = false;
@@ -89,3 +102,90 @@ bool __kernel_is_confidentiality_mode(void)
 	return (kernel_locked_down && lockdown_confidentiality);
 }
 EXPORT_SYMBOL(__kernel_is_confidentiality_mode);
+
+static enum lockdown_reason __get_lockdown_level(void)
+{
+	enum lockdown_reason lockdown_level = LOCKDOWN_NONE;
+
+	if (kernel_locked_down) {
+		lockdown_level = __kernel_is_confidentiality_mode() ?
+				 LOCKDOWN_CONFIDENTIALITY :
+				 LOCKDOWN_INTEGRITY;
+	}
+	return lockdown_level;
+}
+
+static ssize_t lockdown_read(struct file *filp, char __user *buf, size_t count,
+			     loff_t *ppos)
+{
+	enum lockdown_reason lockdown_level = __get_lockdown_level();
+	int i, offset = 0;
+	char temp[80];
+
+	for (i = 0; i < ARRAY_SIZE(lockdown_reasons); i++) {
+		const char *label = lockdown_reasons[i];
+
+		if (lockdown_level == i)
+			offset += sprintf(temp+offset, "[%s] ", label);
+		else
+			offset += sprintf(temp+offset, "%s ", label);
+	}
+
+	/* Convert the last space to a newline if needed. */
+	if (offset > 0)
+		temp[offset-1] = '\n';
+
+	return simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+}
+
+static ssize_t lockdown_write(struct file *file, const char __user *buf,
+			      size_t n, loff_t *ppos)
+{
+	enum lockdown_reason lockdown_level = __get_lockdown_level();
+	char *state;
+	int i, len, err = -EINVAL;
+
+	state = memdup_user_nul(buf, n);
+	if (IS_ERR(state))
+		return PTR_ERR(state);
+
+	len = strlen(state);
+	if (len && state[len-1] == '\n') {
+		state[len-1] = '\0';
+		len--;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(lockdown_reasons); i++) {
+		const char *label = lockdown_reasons[i];
+
+		if (label && !strcmp(state, label)) {
+			if (i < lockdown_level) {
+				err = -EPERM;
+				break;
+			}
+			lockdown_confidentiality = i ==
+						   LOCKDOWN_CONFIDENTIALITY;
+			lock_kernel_down("securityfs");
+			err = 0;
+		}
+	}
+
+	kfree(state);
+	return err ? err : n;
+}
+
+static const struct file_operations lockdown_ops = {
+	.read  = lockdown_read,
+	.write = lockdown_write,
+};
+
+static int __init lockdown_secfs_init(void)
+{
+	struct dentry *dentry;
+
+	dentry = securityfs_create_file("lockdown", 0644, NULL, NULL,
+					&lockdown_ops);
+	return PTR_ERR_OR_ZERO(dentry);
+}
+
+core_initcall(lockdown_secfs_init);
