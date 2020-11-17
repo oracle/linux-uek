@@ -109,15 +109,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	struct rds_transport *trans = &rds_ib_transport;
 	struct rds_ib_connection *ic;
 	int ret = 0;
-	/* ADDR_CHANGE event indicates that the local address has moved
-	 * to a different device, most likely due to failover/failback.
-	 * If this is a local connection (a connection to this host), we need
-	 * to flush the neighbor cache entry for the peer side of the
-	 * connection. In this case we do not need to flush this side of the
-	 * connection. If this is not a local connection, we still flush
-	 * the neighbor cache for the local side of the connection.
-	 */
-	bool flush_local_peer = event->event == RDMA_CM_EVENT_ADDR_CHANGE;
 	char *reason = NULL;
 	int *err;
 
@@ -272,9 +263,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
-		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
-
 		rds_conn_drop(conn, DR_IB_ROUTE_ERR, 0);
 		break;
 
@@ -283,25 +271,16 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
-		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
-
 		rds_conn_drop(conn, DR_IB_ADDR_ERR, 0);
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
-
 		rds_conn_drop(conn, DR_IB_CONNECT_ERR, 0);
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
-		/* May be due to ARP cache containing an incorrect dmac, hence flush it */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
-
 		err = (int *)event->param.conn.private_data;
 
 		if (event->status == RDS_REJ_CONSUMER_DEFINED && (*err) == 0) {
@@ -330,16 +309,10 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
-		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, true);
-
 		rds_conn_drop(conn, DR_IB_ADDR_CHANGE, 0);
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
-		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_neigh(&init_net, conn, flush_local_peer, false);
-
 		if (!rds_conn_self_loopback_passive(conn))
 			rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT, 0);
 		break;
@@ -501,8 +474,7 @@ static int rds_rdma_nb_cb(struct notifier_block *self,
 			  unsigned long event,
 			  void *ctx)
 {
-	if (rds_ib_sysctl_drop_on_neigh_update &&
-	    event == NETEVENT_NEIGH_UPDATE) {
+	if (event == NETEVENT_NEIGH_UPDATE) {
 		struct neighbour *neigh = ctx;
 		struct in6_addr faddr;
 
