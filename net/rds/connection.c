@@ -157,45 +157,6 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 	rcu_read_unlock();
 }
 
-static void base_conn_release(struct kref *kref)
-{
-	struct rds_base_conn *base_conn;
-
-	base_conn = container_of(kref, struct rds_base_conn, kref);
-	kfree(base_conn);
-}
-
-static struct rds_base_conn *get_base_conn(const struct in6_addr *laddr,
-					   const struct in6_addr *faddr,
-					   gfp_t gfp)
-{
-	struct rds_connection *lconn, *conn = NULL;
-	struct hlist_head *head;
-	struct rds_base_conn *base_conn;
-
-	rcu_read_lock();
-	for_each_conn_hash_bucket(head) {
-		hlist_for_each_entry_rcu(lconn, head, c_hash_node)
-			if (ipv6_addr_equal(&lconn->c_faddr, faddr) &&
-			    ipv6_addr_equal(&lconn->c_laddr, laddr) &&
-			    lconn->c_base_conn) {
-				conn = lconn;
-				break;
-			}
-	}
-	rcu_read_unlock();
-	if (conn) {
-		base_conn = conn->c_base_conn;
-		kref_get(&base_conn->kref);
-	} else {
-		base_conn = kzalloc(sizeof(*base_conn), gfp);
-		if (!base_conn)
-			return base_conn;
-		kref_init(&base_conn->kref);
-	}
-	return base_conn;
-}
-
 /*
  * This is called by transports as they're bringing down a connection.
  * It clears partial message state so that the transport can start sending
@@ -421,8 +382,6 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			 * rds_connection is added to the conn hash table.
 			 */
 			parent->c_passive = conn;
-			conn->c_base_conn = get_base_conn(laddr, faddr,
-							  GFP_ATOMIC);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
 		}
@@ -451,8 +410,6 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		} else {
 			conn->c_my_gen_num = rds_gen_num;
 			conn->c_peer_gen_num = 0;
-			conn->c_base_conn = get_base_conn(laddr, faddr,
-							  GFP_ATOMIC);
 			hlist_add_head_rcu(&conn->c_hash_node, head);
 			hlist_add_head_rcu(&conn->c_faddr_node, faddr_head);
 			rds_cong_add_conn(conn);
@@ -715,7 +672,6 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 {
 	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
-	struct rds_base_conn *base_conn = NULL;
 	int i;
 
 	trace_rds_conn_destroy(NULL, conn, NULL, NULL, 0);
@@ -728,10 +684,6 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	spin_lock_irq(&rds_conn_lock);
 	hlist_del_init_rcu(&conn->c_hash_node);
 	hlist_del_init_rcu(&conn->c_faddr_node);
-	if (conn->c_base_conn) {
-		base_conn = conn->c_base_conn;
-		conn->c_base_conn = NULL;
-	}
 	spin_unlock_irq(&rds_conn_lock);
 	synchronize_rcu();
 
@@ -754,8 +706,6 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	atomic_dec(&conn->c_trans->t_conn_count);
 
 	put_net(conn->c_net);
-	if (base_conn)
-		kref_put(&base_conn->kref, base_conn_release);
 	kfree(conn->c_path);
 	kmem_cache_free(rds_conn_slab, conn);
 }
