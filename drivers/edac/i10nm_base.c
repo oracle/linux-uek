@@ -25,11 +25,11 @@
 #define I10NM_GET_IMC_BAR(d, i, reg)	\
 	pci_read_config_dword((d)->uracu, 0xd8 + (i) * 4, &(reg))
 #define I10NM_GET_DIMMMTR(m, i, j)	\
-	readl((m)->mbase + 0x2080c + (i) * (m)->chan_mmio_sz + (j) * 4)
+	readl((m)->mbase + 0x2080c + (i) * 0x4000 + (j) * 4)
 #define I10NM_GET_MCDDRTCFG(m, i, j)	\
-	readl((m)->mbase + 0x20970 + (i) * (m)->chan_mmio_sz + (j) * 4)
+	readl((m)->mbase + 0x20970 + (i) * 0x4000 + (j) * 4)
 #define I10NM_GET_MCMTR(m, i)		\
-	readl((m)->mbase + 0x20ef8 + (i) * (m)->chan_mmio_sz)
+	readl((m)->mbase + 0x20ef8 + (i) * 0x4000)
 #define I10NM_GET_AMAP(m, i)		\
 	readl((m)->mbase + 0x20814 + (i) * (m)->chan_mmio_sz)
 
