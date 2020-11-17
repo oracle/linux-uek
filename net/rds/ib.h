@@ -614,10 +614,6 @@ extern struct workqueue_struct *rds_aux_wq;
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
-extern void rds_ib_flush_neigh(struct net *net,
-			       struct rds_connection *conn,
-			       bool flush_local_peer,
-			       bool force);
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
 int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
 
@@ -781,7 +777,6 @@ extern u32 rds_frwr_wake_intrvl;
 extern u32 rds_frwr_ibmr_gc_time;
 extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
-extern int rds_ib_sysctl_drop_on_neigh_update;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
 
 #endif
