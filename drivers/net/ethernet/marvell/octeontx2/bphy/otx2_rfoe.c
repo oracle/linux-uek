@@ -226,6 +226,7 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 	struct ptp_tstamp_skb *ts_skb;
 	u16 psm_queue_id, queue_space;
 	struct sk_buff *skb = NULL;
+	struct list_head *head;
 	u64 jd_cfg_ptr_iova;
 	unsigned long flags;
 	u64 regval;
@@ -260,8 +261,8 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 		return;
 	}
 
-	ts_skb = list_entry(&priv->ptp_skb_list.list, struct ptp_tstamp_skb,
-			    list);
+	head = &priv->ptp_skb_list.list;
+	ts_skb = list_entry(head->next, struct ptp_tstamp_skb, list);
 	skb = ts_skb->skb;
 	list_del(&ts_skb->list);
 	kfree(ts_skb);
