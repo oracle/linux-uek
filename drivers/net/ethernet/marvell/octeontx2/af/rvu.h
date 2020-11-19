@@ -27,6 +27,8 @@
 #define PCI_SUBSYS_DEVID_98XX                  0xB100
 #define PCI_SUBSYS_DEVID_96XX                  0xB200
 #define PCI_SUBSYS_DEVID_CN10K_A	       0xB900
+#define PCI_SUBSYS_DEVID_CNF10K_A	       0xBA00
+#define PCI_SUBSYS_DEVID_CNF10K_B	       0xBC00
 
 /* PCI BAR nos */
 #define	PCI_AF_REG_BAR_NUM			0
@@ -612,6 +614,12 @@ static inline bool is_rvu_otx2(struct rvu *rvu)
 
 static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
 {
+	/* On CNF10KA and CNF10KB silicons only two CGX blocks are connected
+	 * to NIX.
+	 */
+	if (id == PCI_SUBSYS_DEVID_CNF10K_A || id == PCI_SUBSYS_DEVID_CNF10K_B)
+		return cgx_id <= 1;
+
 	return !(cgx_id && !(id == PCI_SUBSYS_DEVID_96XX ||
 			     id == PCI_SUBSYS_DEVID_98XX ||
 			     id == PCI_SUBSYS_DEVID_CN10K_A));
