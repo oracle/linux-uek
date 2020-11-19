@@ -2726,7 +2726,6 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	if (!vma)
 		return 0;
 
-	prev = vma->vm_prev;
 	/* we have start < vma->vm_end  */
 
 	/*
@@ -2750,16 +2749,24 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		if (error)
 			return error;
 		prev = vma;
+		vma = vma_next(mm, prev);
+	} else {
+		prev = vma->vm_prev;
 	}
 
+	if (vma->vm_end >= end)
+		last = vma;
+	else
+		last = find_vma_intersection(mm, end - 1, end);
+
 	/* Does it split the last one? */
-	last = find_vma(mm, end);
-	if (last && end > last->vm_start) {
+	if (last && end < last->vm_end) {
 		int error = __split_vma(mm, last, end, 1);
 		if (error)
 			return error;
+		vma = vma_next(mm, prev);
 	}
-	vma = vma_next(mm, prev);
+
 
 	if (unlikely(uf)) {
 		/*
@@ -2772,6 +2779,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		 * failure that it's not worth optimizing it for.
 		 */
 		int error = userfaultfd_unmap_prep(vma, start, end, uf);
+
 		if (error)
 			return error;
 	}
