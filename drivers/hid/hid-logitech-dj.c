@@ -328,7 +328,7 @@ static const char mse_bluetooth_descriptor[] = {
 	0x25, 0x01,		/*      LOGICAL_MAX (1)                 */
 	0x75, 0x01,		/*      REPORT_SIZE (1)                 */
 	0x95, 0x04,		/*      REPORT_COUNT (4)                */
-	0x81, 0x06,		/*      INPUT                           */
+	0x81, 0x02,		/*      INPUT (Data,Var,Abs)            */
 	0xC0,			/*    END_COLLECTION                    */
 	0xC0,			/*  END_COLLECTION                      */
 };
@@ -875,6 +875,7 @@ static void logi_dj_recv_queue_notification(struct dj_receiver_dev *djrcv_dev,
  */
 static const u16 kbd_builtin_touchpad_ids[] = {
 	0xb309, /* Dinovo Edge */
+	0xb30c, /* Dinovo Mini */
 };
 
 static void logi_hidpp_dev_conn_notif_equad(struct hid_device *hdev,
