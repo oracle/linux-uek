@@ -2084,7 +2084,6 @@ int
 lpfc_issue_els_plogi(struct lpfc_vport *vport, uint32_t did, uint8_t retry)
 {
 	struct lpfc_hba  *phba = vport->phba;
-	struct Scsi_Host *shost;
 	struct serv_parm *sp;
 	struct lpfc_nodelist *ndlp;
 	struct lpfc_iocbq *elsiocb;
@@ -2122,7 +2121,6 @@ lpfc_issue_els_plogi(struct lpfc_vport *vport, uint32_t did, uint8_t retry)
 	if (!elsiocb)
 		return 1;
 
-	shost = lpfc_shost_from_vport(vport);
 	spin_lock_irq(&ndlp->lock);
 	ndlp->nlp_flag &= ~NLP_FCP_PRLI_RJT;
 	spin_unlock_irq(&ndlp->lock);
@@ -8583,7 +8581,6 @@ static void
 lpfc_els_unsol_buffer(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 		      struct lpfc_vport *vport, struct lpfc_iocbq *elsiocb)
 {
-	struct Scsi_Host  *shost;
 	struct lpfc_nodelist *ndlp;
 	struct ls_rjt stat;
 	uint32_t *payload, payload_len;
@@ -8644,7 +8641,6 @@ lpfc_els_unsol_buffer(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 	 * Do not process any unsolicited ELS commands
 	 * if the ndlp is in DEV_LOSS
 	 */
-	shost = lpfc_shost_from_vport(vport);
 	spin_lock_irq(&ndlp->lock);
 	if (ndlp->nlp_flag & NLP_IN_DEV_LOSS) {
 		spin_unlock_irq(&ndlp->lock);
@@ -9414,7 +9410,6 @@ void
 lpfc_retry_pport_discovery(struct lpfc_hba *phba)
 {
 	struct lpfc_nodelist *ndlp;
-	struct Scsi_Host  *shost;
 
 	/* Cancel the all vports retry delay retry timers */
 	lpfc_cancel_all_vport_retry_delay_timer(phba);
@@ -9424,7 +9419,6 @@ lpfc_retry_pport_discovery(struct lpfc_hba *phba)
 	if (!ndlp)
 		return;
 
-	shost = lpfc_shost_from_vport(phba->pport);
 	mod_timer(&ndlp->nlp_delayfunc, jiffies + msecs_to_jiffies(1000));
 	spin_lock_irq(&ndlp->lock);
 	ndlp->nlp_flag |= NLP_DELAY_TMO;
