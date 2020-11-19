@@ -2563,44 +2563,6 @@ static void unmap_region(struct mm_struct *mm,
 }
 
 /*
- * Create a list of vma's touched by the unmap, removing them from the mm's
- * vma list as we go..
- */
-static bool
-detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
-	struct vm_area_struct *prev, unsigned long end)
-{
-	struct vm_area_struct **insertion_point;
-	struct vm_area_struct *tail_vma = NULL;
-
-	insertion_point = (prev ? &prev->vm_next : &mm->mmap);
-	vma->vm_prev = NULL;
-	vma_mt_szero(mm, vma->vm_start, end);
-	do {
-		mm->map_count--;
-		tail_vma = vma;
-		vma = vma->vm_next;
-	} while (vma && vma->vm_start < end);
-	*insertion_point = vma;
-	if (vma)
-		vma->vm_prev = prev;
-	else
-		mm->highest_vm_end = prev ? vm_end_gap(prev) : 0;
-	tail_vma->vm_next = NULL;
-
-	/*
-	 * Do not downgrade mmap_lock if we are next to VM_GROWSDOWN or
-	 * VM_GROWSUP VMA. Such VMAs can change their size under
-	 * down_read(mmap_lock) and collide with the VMA we are about to unmap.
-	 */
-	if (vma && (vma->vm_flags & VM_GROWSDOWN))
-		return false;
-	if (prev && (prev->vm_flags & VM_GROWSUP))
-		return false;
-	return true;
-}
-
-/*
  * __split_vma() bypasses sysctl_max_map_count checking.  We use this where it
  * has already been checked or doesn't make sense to fail.
  */
@@ -2693,6 +2655,80 @@ static inline void unlock_range(struct vm_area_struct *start, unsigned long limi
 		tmp = tmp->vm_next;
 	}
 }
+
+void vma_shorten(struct vm_area_struct *vma, unsigned long start,
+			unsigned long end, struct vm_area_struct *unmap)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	unsigned long old_start = vma->vm_start;
+	unsigned long old_end = vma->vm_end;
+//	unsigned long old_pgoff = vma->vm_pgoff;
+	struct vm_area_struct *next = vma->vm_next;
+	struct address_space *mapping = NULL;
+	struct rb_root_cached *root = NULL;
+	struct anon_vma *anon_vma = NULL;
+	struct file *file = vma->vm_file;
+
+
+	vma_init(unmap, mm);
+	if (end != old_end) { // shortening the start, unmap the end of vma.
+		unmap->vm_start = end;
+		unmap->vm_end = old_end;
+		unmap->vm_next = vma->vm_next;
+		unmap->vm_prev = vma;
+	} else {
+		unmap->vm_start = old_start;
+		unmap->vm_end = start;
+		unmap->vm_next = vma;
+		unmap->vm_prev = vma->vm_prev;
+	}
+
+	vma_adjust_trans_huge(vma, vma->vm_start, end, 0);
+
+	if (file) {
+		mapping = file->f_mapping;
+		root = &mapping->i_mmap;
+		uprobe_munmap(vma, vma->vm_start, vma->vm_end);
+
+		i_mmap_lock_write(mapping);
+	}
+
+	anon_vma = vma->anon_vma;
+	if (anon_vma) {
+		anon_vma_lock_write(anon_vma);
+		anon_vma_interval_tree_pre_update_vma(vma);
+	}
+
+	if (file) {
+		flush_dcache_mmap_lock(mapping);
+		vma_interval_tree_remove(vma, root);
+	}
+
+	if (end == old_end)
+		vma->vm_pgoff += (old_start - start) >> PAGE_SHIFT;
+
+	vma->vm_end = end;
+	vma->vm_start = start;
+
+	if (file) {
+		vma_interval_tree_insert(vma, root);
+		flush_dcache_mmap_unlock(mapping);
+	}
+
+	if (!next) {
+		mm->highest_vm_end = vm_end_gap(vma);
+	}
+
+	if (anon_vma) {
+		anon_vma_interval_tree_post_update_vma(vma);
+		anon_vma_unlock_write(anon_vma);
+	}
+
+	if (file) {
+		i_mmap_unlock_write(mapping);
+		uprobe_mmap(vma);
+	}
+}
 /* Munmap is split into 2 main parts -- this part which finds
  * what needs doing, and the areas themselves, which do the
  * work.  This now handles partial unmappings.
@@ -2702,7 +2738,11 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		struct list_head *uf, bool downgrade)
 {
 	unsigned long end;
-	struct vm_area_struct *vma, *prev, *last;
+	struct vm_area_struct *vma, *next, *prev, *last;
+	struct vm_area_struct start_split, end_split;
+	int map_count = 0;
+	MA_STATE(mas, &mm->mm_mt, start, start);
+
 
 	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
 		return -EINVAL;
@@ -2716,77 +2756,141 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	arch_unmap(mm, start, end);
 
 	/* Find the first overlapping VMA */
-	vma = find_vma_intersection(mm, start, end);
+	vma = mas_find(&mas, end - 1);
 	if (!vma)
 		return 0;
 
-	prev = vma->vm_prev;
-	/* we have start < vma->vm_end  */
-
-	/*
-	 * If we need to split any vma, do it now to save pain later.
-	 *
-	 * Note: mremap's move_vma VM_ACCOUNT handling assumes a partially
-	 * unmapped vm_area_struct will remain in use: so lower split_vma
-	 * places tmp vma above, and higher split_vma places tmp vma below.
-	 */
-	if (start > vma->vm_start) {
-		int error;
-		/*
-		 * Make sure that map_count on return from munmap() will
-		 * not exceed its limit; but let map_count go just above
-		 * its limit temporarily, to help free resources as expected.
-		 */
-		if (end < vma->vm_end && mm->map_count >= sysctl_max_map_count)
-			return -ENOMEM;
-
-		error = __split_vma(mm, vma, start, 0);
-		if (error)
-			return error;
-		prev = vma;
-	}
-
-	/* Does it split the last one? */
-	last = find_vma(mm, end);
-	if (last && end > last->vm_start) {
-		int error = __split_vma(mm, last, end, 1);
-		if (error)
-			return error;
-	}
-	vma = vma_next(mm, prev);
-
+	/* Check for userfaultfd now before altering the mm */
 	if (unlikely(uf)) {
-		/*
-		 * If userfaultfd_unmap_prep returns an error the vmas
-		 * will remain splitted, but userland will get a
-		 * highly unexpected error anyway. This is no
-		 * different than the case where the first of the two
-		 * __split_vma fails, but we don't undo the first
-		 * split, despite we could. This is unlikely enough
-		 * failure that it's not worth optimizing it for.
-		 */
 		int error = userfaultfd_unmap_prep(vma, start, end, uf);
 		if (error)
 			return error;
 	}
 
-	/*
-	 * unlock any mlock()ed ranges before detaching vmas
-	 */
-	if (mm->locked_vm)
-		unlock_range(vma, end);
+	if (start > vma->vm_start) {
+		if (unlikely(vma->vm_end > end)) {
+			// adjust the same vma twice requires a split.
+			int error;
+			/*
+			 * Make sure that map_count on return from munmap() will
+			 * not exceed its limit; but let map_count go just above
+			 * its limit temporarily, to help free resources as expected.
+			 */
+			if (end < vma->vm_end && mm->map_count >= sysctl_max_map_count)
+				return -ENOMEM;
 
-	/* Detach vmas from the MM linked list and remove from the mm tree*/
-	if (!detach_vmas_to_be_unmapped(mm, vma, prev, end))
+			error = __split_vma(mm, vma, start, 0);
+			if (error)
+				return error;
+
+			prev = vma;
+			mas_reset(&mas);
+			mas_set(&mas, start);
+			vma = mas_walk(&mas);
+		} else {
+			vma_shorten(vma, vma->vm_start, start, &start_split);
+			prev = vma;
+			vma = &start_split;
+			map_count--;
+		}
+	} else {
+		prev = vma->vm_prev;
+	}
+
+	if (vma->vm_end >= end) // almost always the case
+		last = vma;
+	else
+		last = find_vma_intersection(mm, end - 1, end);
+
+	/* Does it split the last one? */
+	if (last && end < last->vm_end) {
+		vma_shorten(last, end, last->vm_end, &end_split);
+		if (last == vma)
+			vma = &end_split;
+
+		// map_count will count the existing vma in this case
+		map_count--;
+		last = &end_split;
+	}
+
+	/* unlock any mlock()ed VMAs and count the number of VMAs to be
+	 * detached.
+	 */
+	next = vma;
+	while (next && next->vm_start < end) {
+		map_count++;
+		if (next->vm_flags & VM_LOCKED) {
+			mm->locked_vm -= vma_pages(next);
+			munlock_vma_pages_all(next);
+		}
+
+		next = next->vm_next;
+	}
+
+	/* Detach vmas from the MM linked list */
+	vma->vm_prev = NULL;
+	if (prev)
+		prev->vm_next = next;
+	else
+		mm->mmap = next;
+
+	if (next)
+		next->vm_prev = prev;
+	else
+		mm->highest_vm_end = prev ? vm_end_gap(prev) : 0;
+
+	if (!last)
+		last = vma;
+
+	last->vm_next = NULL;
+
+	/* Detach VMAs from the maple tree */
+	mas.index = start;
+	mas.last = end - 1;
+	mas_store_gfp(&mas, NULL, GFP_KERNEL);
+
+	/* Update map_count */
+	mm->map_count -= map_count;
+
+	/* Downgrade the lock, if possible */
+	if (next && (next->vm_flags & VM_GROWSDOWN))
+		downgrade = false;
+	else if (prev && (prev->vm_flags & VM_GROWSUP))
 		downgrade = false;
 
 	if (downgrade)
 		mmap_write_downgrade(mm);
 
+	/* Actual unmap the region */
 	unmap_region(mm, vma, prev, start, end);
 
-	/* Fix up all other VM information */
-	remove_vma_list(mm, vma);
+	/* Take care of accounting for orphan VMAs, and remove from the list. */
+	if (vma == &start_split) {
+		if (vma->vm_flags & VM_ACCOUNT) {
+			long nrpages = vma_pages(vma);
+
+			vm_stat_account(mm, vma->vm_flags, -nrpages);
+			vm_unacct_memory(nrpages);
+		}
+		vma = vma->vm_next;
+	}
+
+	if (last == &end_split) {
+		if (last->vm_flags & VM_ACCOUNT) {
+			long nrpages = vma_pages(last);
+			vm_stat_account(mm, last->vm_flags, -nrpages);
+			vm_unacct_memory(nrpages);
+		}
+
+		if (last->vm_prev)
+			last->vm_prev->vm_next = NULL;
+		if (vma == last)
+			vma = NULL;
+	}
+
+	/* Clean up accounting and free VMAs */
+	if (vma)
+		remove_vma_list(mm, vma);
 
 	return downgrade ? 1 : 0;
 }
