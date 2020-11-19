@@ -106,6 +106,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 %define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
 # build embedded kernels
 %define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
+%define with_embedded2 %{with_embedded}
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -255,6 +256,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # only do embedded kernels on aarch64 and mips64
 %ifnarch aarch64 mips64
 %define with_embedded 0
+%define with_embedded2 0
 %endif
 
 # only package docs noarch
@@ -397,6 +399,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define make_target vmlinux
 %define kernel_image vmlinux
 %define with_embedded   1
+%define with_embedded2	0
 %define with_headers   1
 %define with_perf 0
 %define with_tools 0
@@ -1697,6 +1700,8 @@ BuildKernel %make_target %kernel_image 4kdebug
 
 %if %{with_embedded}
 BuildKernel %make_target %kernel_image emb
+%endif
+%if %{with_embedded2}
 BuildKernel %make_target %kernel_image emb2
 %endif
 
@@ -1761,6 +1766,10 @@ make -j1 htmldocs || %{doc_build_fail}
       mv certs/signing_key.pem.sign.emb certs/signing_key.pem \
       mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
+    fi \
+    if [ "%{with_embedded2}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.emb2 certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.emb2 certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
     fi \
     if [ "%{with_embedded_debug}" != "0" ]; then \
@@ -2323,7 +2332,7 @@ fi
 %kernel_variant_files %{with_4k_ps_debug} 4kdebug
 
 %kernel_variant_files -o %{with_embedded} emb
-%kernel_variant_files -o %{with_embedded} emb2
+%kernel_variant_files -o %{with_embedded2} emb2
 %kernel_variant_files -o %{with_embedded_debug} emb-debug
 
 %changelog
