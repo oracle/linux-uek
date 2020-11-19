@@ -2324,46 +2324,6 @@ static void unmap_region(struct mm_struct *mm,
 }
 
 /*
- * Create a list of vma's touched by the unmap, removing them from the mm's
- * vma list as we go..
- */
-static bool
-detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
-	struct vm_area_struct *prev, unsigned long end)
-{
-	struct vm_area_struct **insertion_point;
-	struct vm_area_struct *tail_vma = NULL;
-
-	insertion_point = (prev ? &prev->vm_next : &mm->mmap);
-	vma->vm_prev = NULL;
-	vma_mt_szero(mm, vma->vm_start, end);
-	do {
-		if (vma->vm_flags & VM_LOCKED)
-			mm->locked_vm -= vma_pages(vma);
-		mm->map_count--;
-		tail_vma = vma;
-		vma = vma->vm_next;
-	} while (vma && vma->vm_start < end);
-	*insertion_point = vma;
-	if (vma)
-		vma->vm_prev = prev;
-	else
-		mm->highest_vm_end = prev ? vm_end_gap(prev) : 0;
-	tail_vma->vm_next = NULL;
-
-	/*
-	 * Do not downgrade mmap_lock if we are next to VM_GROWSDOWN or
-	 * VM_GROWSUP VMA. Such VMAs can change their size under
-	 * down_read(mmap_lock) and collide with the VMA we are about to unmap.
-	 */
-	if (vma && (vma->vm_flags & VM_GROWSDOWN))
-		return false;
-	if (prev && (prev->vm_flags & VM_GROWSUP))
-		return false;
-	return true;
-}
-
-/*
  * __split_vma() bypasses sysctl_max_map_count checking.  We use this where it
  * has already been checked or doesn't make sense to fail.
  */
@@ -2442,35 +2402,47 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	return __split_vma(mm, vma, addr, new_below);
 }
 
-/* Munmap is split into 2 main parts -- this part which finds
- * what needs doing, and the areas themselves, which do the
- * work.  This now handles partial unmappings.
- * Jeremy Fitzhardinge <jeremy@goop.org>
- */
-int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
-		struct list_head *uf, bool downgrade)
+static inline int
+unlock_range(struct vm_area_struct *start, struct vm_area_struct **tail,
+	     unsigned long limit)
 {
-	unsigned long end;
-	struct vm_area_struct *vma, *prev, *last;
+	struct mm_struct *mm = start->vm_mm;
+	struct vm_area_struct *tmp = start;
+	int count = 0;
 
-	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
-		return -EINVAL;
+	while (tmp && tmp->vm_start < limit) {
+		*tail = tmp;
+		count++;
+		if (tmp->vm_flags & VM_LOCKED)
+			mm->locked_vm -= vma_pages(tmp);
 
-	len = PAGE_ALIGN(len);
-	end = start + len;
-	if (len == 0)
-		return -EINVAL;
+		tmp = tmp->vm_next;
+	}
 
-	 /* arch_unmap() might do unmaps itself.  */
-	arch_unmap(mm, start, end);
+	return count;
+}
 
-	/* Find the first overlapping VMA where start < vma->vm_end */
-	vma = find_vma_intersection(mm, start, end);
-	if (!vma)
-		return 0;
-	prev = vma->vm_prev;
+/*
+ * do_mas_align_munmap() - munmap the aligned region from @start to @end.
+ * @mas: The maple_state, ideally set up to alter the correct tree location.
+ * @vma: The starting vm_area_struct
+ * @mm: The mm_struct
+ * @start: The aligned start address to munmap.
+ * @end: The aligned end address to munmap.
+ * @uf: The userfaultfd list_head
+ * @downgrade: Set to true to attempt a write downgrade of the mmap_sem
+ *
+ * If @downgrade is true, check return code for potential release of the lock.
+ */
+static int
+do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
+		    struct mm_struct *mm, unsigned long start,
+		    unsigned long end, struct list_head *uf, bool downgrade)
+{
+	struct vm_area_struct *prev, *last;
 	/* we have start < vma->vm_end  */
 
+	mas->last = end - 1;
 	/*
 	 * If we need to split any vma, do it now to save pain later.
 	 *
@@ -2493,16 +2465,29 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		if (error)
 			return error;
 		prev = vma;
+		vma = __vma_next(mm, prev);
+		mas->index = start;
+		mas_reset(mas);
+	} else {
+		prev = vma->vm_prev;
 	}
 
+	if (vma->vm_end >= end)
+		last = vma;
+	else
+		last = find_vma_intersection(mm, end - 1, end);
+
 	/* Does it split the last one? */
-	last = find_vma(mm, end);
-	if (last && end > last->vm_start) {
+	if (last && end < last->vm_end) {
 		int error = __split_vma(mm, last, end, 1);
+
 		if (error)
 			return error;
+
+		if (vma == last)
+			vma = __vma_next(mm, prev);
+		mas_reset(mas);
 	}
-	vma = __vma_next(mm, prev);
 
 	if (unlikely(uf)) {
 		/*
@@ -2515,15 +2500,46 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		 * failure that it's not worth optimizing it for.
 		 */
 		int error = userfaultfd_unmap_prep(vma, start, end, uf);
+
 		if (error)
 			return error;
 	}
 
-	if (!detach_vmas_to_be_unmapped(mm, vma, prev, end))
-		downgrade = false;
+	/*
+	 * unlock any mlock()ed ranges before detaching vmas, count the number
+	 * of VMAs to be dropped, and return the tail entry of the affected
+	 * area.
+	 */
+	mm->map_count -= unlock_range(vma, &last, end);
+	/* Drop removed area from the tree */
+	mas_store_gfp(mas, NULL, GFP_KERNEL);
 
-	if (downgrade)
-		mmap_write_downgrade(mm);
+	/* Detach vmas from the MM linked list */
+	vma->vm_prev = NULL;
+	if (prev)
+		prev->vm_next = last->vm_next;
+	else
+		mm->mmap = last->vm_next;
+
+	if (last->vm_next) {
+		last->vm_next->vm_prev = prev;
+		last->vm_next = NULL;
+	} else
+		mm->highest_vm_end = prev ? vm_end_gap(prev) : 0;
+
+	/*
+	 * Do not downgrade mmap_lock if we are next to VM_GROWSDOWN or
+	 * VM_GROWSUP VMA. Such VMAs can change their size under
+	 * down_read(mmap_lock) and collide with the VMA we are about to unmap.
+	 */
+	if (downgrade) {
+		if (last && (last->vm_flags & VM_GROWSDOWN))
+			downgrade = false;
+		else if (prev && (prev->vm_flags & VM_GROWSUP))
+			downgrade = false;
+		else
+			mmap_write_downgrade(mm);
+	}
 
 	unmap_region(mm, vma, prev, start, end);
 
@@ -2533,10 +2549,59 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	return downgrade ? 1 : 0;
 }
 
+/*
+ * do_mas_munmap() - munmap a given range.
+ * @mas: The maple state
+ * @mm: The mm_struct
+ * @start: The start address to munmap
+ * @len: The length of the range to munmap
+ * @uf: The userfaultfd list_head
+ * @downgrade: set to true if the user wants to attempt to write_downgrade the
+ * mmap_sem
+ *
+ * This function takes a @mas that is either pointing to the previous VMA or set
+ * to MA_START and sets it up to remove the mapping(s).  The @len will be
+ * aligned and any arch_unmap work will be preformed.
+ *
+ * Returns: -EINVAL on failure, 1 on success and unlock, 0 otherwise.
+ */
+int do_mas_munmap(struct ma_state *mas, struct mm_struct *mm,
+		  unsigned long start, size_t len, struct list_head *uf,
+		  bool downgrade)
+{
+	unsigned long end;
+	struct vm_area_struct *vma;
+
+	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
+		return -EINVAL;
+
+	end = start + PAGE_ALIGN(len);
+	if (end == start)
+		return -EINVAL;
+
+	 /* arch_unmap() might do unmaps itself.  */
+	arch_unmap(mm, start, end);
+
+	/* Find the first overlapping VMA */
+	vma = mas_find(mas, end - 1);
+	if (!vma)
+		return 0;
+
+	return do_mas_align_munmap(mas, vma, mm, start, end, uf, downgrade);
+}
+
+/* do_munmap() - Wrapper function for non-maple tree aware do_munmap() calls.
+ * @mm: The mm_struct
+ * @start: The start address to munmap
+ * @len: The length to be munmapped.
+ * @uf: The userfaultfd list_head
+ */
 int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	      struct list_head *uf)
 {
-	return __do_munmap(mm, start, len, uf, false);
+	MA_STATE(mas, &mm->mm_mt, start, start);
+
+	return do_mas_munmap(&mas, mm, start, len, uf, false);
 }
 
 unsigned long mmap_region(struct file *file, unsigned long addr,
@@ -2570,7 +2635,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	}
 
 	/* Unmap any existing mapping in the area */
-	if (do_munmap(mm, addr, len, uf))
+	if (do_mas_munmap(&mas, mm, addr, len, uf, false))
 		return -ENOMEM;
 
 	/*
@@ -2774,11 +2839,12 @@ static int __vm_munmap(unsigned long start, size_t len, bool downgrade)
 	int ret;
 	struct mm_struct *mm = current->mm;
 	LIST_HEAD(uf);
+	MA_STATE(mas, &mm->mm_mt, start, start);
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
-	ret = __do_munmap(mm, start, len, &uf, downgrade);
+	ret = do_mas_munmap(&mas, mm, start, len, &uf, downgrade);
 	/*
 	 * Returning 1 indicates mmap_lock is downgraded.
 	 * But 1 is not legal return value of vm_munmap() and munmap(), reset
@@ -2913,10 +2979,7 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	if (likely((vma->vm_end < oldbrk) ||
 		   ((vma->vm_start == newbrk) && (vma->vm_end == oldbrk)))) {
 		/* remove entire mapping(s) */
-		mas_set(mas, newbrk);
-		if (vma->vm_start != newbrk)
-			mas_reset(mas); /* cause a re-walk for the first overlap. */
-		ret = __do_munmap(mm, newbrk, oldbrk - newbrk, uf, true);
+		ret = do_mas_munmap(mas, mm, newbrk, oldbrk-newbrk, uf, true);
 		goto munmap_full_vma;
 	}
 
@@ -2945,10 +3008,8 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	}
 
 	unmap_pages = vma_pages(&unmap);
-	if (vma->vm_flags & VM_LOCKED) {
+	if (vma->vm_flags & VM_LOCKED)
 		mm->locked_vm -= unmap_pages;
-		munlock_vma_pages_range(&unmap, newbrk, oldbrk);
-	}
 
 	mmap_write_downgrade(mm);
 	unmap_region(mm, &unmap, vma, newbrk, oldbrk);
@@ -3092,9 +3153,7 @@ int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 	if (ret)
 		goto limits_failed;
 
-	if (find_vma_intersection(mm, addr, addr + len))
-		ret = do_munmap(mm, addr, len, &uf);
-
+	ret = do_mas_munmap(&mas, mm, addr, len, &uf, 0);
 	if (ret)
 		goto munmap_failed;
 
