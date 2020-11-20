@@ -36,7 +36,7 @@
 #include <linux/dma-mapping.h>
 #include <rdma/rdma_cm.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #include "rds.h"
 #include "ib.h"
