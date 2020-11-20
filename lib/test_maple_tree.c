@@ -35401,21 +35401,21 @@ static int maple_tree_seed(void)
 
 	pr_info("\nTEST STARTING\n\n");
 
-#if BENCH_SLOT_STORE
+#if defined(BENCH_SLOT_STORE)
 #define BENCH
 	mtree_init(&tree, MAPLE_ALLOC_RANGE);
 	bench_slot_store(&tree);
 	mtree_destroy(&tree);
 	goto skip;
 #endif
-#if BENCH_NODE_STORE
+#if defined(BENCH_NODE_STORE)
 #define BENCH
 	mtree_init(&tree, MAPLE_ALLOC_RANGE);
 	bench_node_store(&tree);
 	mtree_destroy(&tree);
 	goto skip;
 #endif
-#if BENCH_FORK
+#if defined(BENCH_FORK)
 #define BENCH
 	mtree_init(&tree, MAPLE_ALLOC_RANGE);
 	bench_forking(&tree);
@@ -35597,7 +35597,7 @@ static int maple_tree_seed(void)
 	check_node_overwrite(&tree);
 	mtree_destroy(&tree);
 
-#if BENCH
+#if defined(BENCH)
 skip:
 #endif
 	rcu_barrier();
