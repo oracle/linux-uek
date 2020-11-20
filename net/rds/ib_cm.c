@@ -393,6 +393,8 @@ void rds_ib_conn_ha_changed(struct rds_connection *conn,
 {
 	struct rds_ib_connection *ic;
 	struct rdma_cm_id *cm_id;
+	int gid_ofs, gid_len;
+	const unsigned char *old_ha;
 	bool drop_it;
 
 	ic = conn->c_transport_data;
@@ -404,9 +406,19 @@ void rds_ib_conn_ha_changed(struct rds_connection *conn,
 		return;
 
 	cm_id = ic->i_cm_id;
-	drop_it = cm_id &&
-		memchr_inv(cm_id->route.addr.dev_addr.dst_dev_addr, 0, ha_len) != NULL &&
-		memcmp(cm_id->route.addr.dev_addr.dst_dev_addr, ha, ha_len) != 0;
+	if (cm_id) {
+		old_ha = cm_id->route.addr.dev_addr.dst_dev_addr;
+		gid_ofs = rdma_addr_gid_offset(&cm_id->route.addr.dev_addr);
+		gid_len = ha_len - gid_ofs;
+
+		if (gid_len > 0)
+			drop_it =
+				memchr_inv(old_ha + gid_ofs, 0, gid_len) != NULL &&
+				memcmp(old_ha + gid_ofs, ha + gid_ofs, gid_len) != 0;
+		else
+			drop_it = false;
+	} else
+		drop_it = false;
 
 	up_read(&ic->i_cm_id_free_lock);
 
