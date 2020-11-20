@@ -545,7 +545,8 @@ static void rds_ib_dev_free(struct work_struct *work)
 		kfree(rds_ibdev->vector_load);
 
 	/* Wake up the thread waiting in rds_ib_remove_one(). */
-	complete(&rds_ibdev->rid_dev_rem_complete);
+	if (rds_ibdev->rid_dev_rem_complete)
+		complete(rds_ibdev->rid_dev_rem_complete);
 	WARN_ON(!list_empty(&rds_ibdev->conn_list));
 	kfree(rds_ibdev);
 
@@ -700,6 +701,7 @@ static void rds_rdma_dev_rs_drop(struct rds_ib_device *rds_ibdev)
  */
 void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
+	DECLARE_COMPLETION(rem_complete);
 	struct rds_ib_device *rds_ibdev;
 
 	rds_ibdev = (struct rds_ib_device *)client_data;
@@ -727,6 +729,8 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	if (!rds_ibdev->rid_mod_unload)
 		ib_set_client_data(device, &rds_ib_client, NULL);
 
+	rds_ibdev->rid_dev_rem_complete = &rem_complete;
+
 	/*
 	 * This synchronize rcu is waiting for readers of both the ib
 	 * client data and the devices list to finish before we close all
@@ -743,7 +747,7 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	 * this we may be the last guy.
 	 */
 	rds_ib_dev_put(rds_ibdev);
-	wait_for_completion(&rds_ibdev->rid_dev_rem_complete);
+	wait_for_completion(&rem_complete);
 }
 
 struct ib_client rds_ib_client = {
@@ -1085,8 +1089,6 @@ void rds_ib_add_one(struct ib_device *device)
 
 	rds_ibdev->max_initiator_depth = dev_attr->max_qp_init_rd_atom;
 	rds_ibdev->max_responder_resources = dev_attr->max_qp_rd_atom;
-
-	init_completion(&rds_ibdev->rid_dev_rem_complete);
 
 	rds_ibdev->dev = device;
 	rds_ibdev->pd = ib_alloc_pd(device, 0);
