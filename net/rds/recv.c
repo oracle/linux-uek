@@ -41,7 +41,7 @@
 #include "rds.h"
 #include "loop.h"
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 /* forward prototypes */
 static void
