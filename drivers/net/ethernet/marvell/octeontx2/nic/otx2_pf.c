@@ -2875,10 +2875,6 @@ static void otx2_remove(struct pci_dev *pdev)
 		return;
 
 	pf = netdev_priv(netdev);
-
-	if (pf->hw.lmt_base)
-		iounmap(pf->hw.lmt_base);
-
 	pf->flags |= OTX2_FLAG_PF_SHUTDOWN;
 
 	if (pf->flags & OTX2_FLAG_TX_TSTAMP_ENABLED)
@@ -2895,8 +2891,9 @@ static void otx2_remove(struct pci_dev *pdev)
 	otx2_sriov_disable(pf->pdev);
 	otx2_ptp_destroy(pf);
 	otx2_mcam_flow_del(pf);
-
 	otx2_detach_resources(&pf->mbox);
+	if (pf->hw.lmt_base)
+		iounmap(pf->hw.lmt_base);
 	otx2_disable_mbox_intr(pf);
 	otx2_pfaf_mbox_destroy(pf);
 	pci_free_irq_vectors(pf->pdev);

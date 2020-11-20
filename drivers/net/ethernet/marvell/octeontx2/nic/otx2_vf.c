@@ -699,11 +699,9 @@ static void otx2vf_remove(struct pci_dev *pdev)
 		unregister_netdev(netdev);
 
 	otx2vf_disable_mbox_intr(vf);
-
+	otx2_detach_resources(&vf->mbox);
 	if (vf->hw.lmt_base)
 		iounmap(vf->hw.lmt_base);
-
-	otx2_detach_resources(&vf->mbox);
 	otx2vf_vfaf_mbox_destroy(vf);
 	pci_free_irq_vectors(vf->pdev);
 	pci_set_drvdata(pdev, NULL);
