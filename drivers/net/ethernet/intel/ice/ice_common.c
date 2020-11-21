@@ -4084,6 +4084,7 @@ static enum ice_status ice_replay_pre_init(struct ice_hw *hw)
 	for (i = 0; i < ICE_SW_LKUP_LAST; i++)
 		list_replace_init(&sw->recp_list[i].filt_rules,
 				  &sw->recp_list[i].filt_replay_rules);
+	ice_sched_replay_agg_vsi_preinit(hw);
 
 	return 0;
 }
@@ -4115,6 +4116,8 @@ enum ice_status ice_replay_vsi(struct ice_hw *hw, u16 vsi_handle)
 		return status;
 	/* Replay per VSI all filters */
 	status = ice_replay_vsi_all_fltr(hw, vsi_handle);
+	if (!status)
+		status = ice_replay_vsi_agg(hw, vsi_handle);
 	return status;
 }
 
@@ -4128,6 +4131,7 @@ void ice_replay_post(struct ice_hw *hw)
 {
 	/* Delete old entries from replay filter list head */
 	ice_rm_all_sw_replay_rule_info(hw);
+	ice_sched_replay_agg(hw);
 }
 
 /**
