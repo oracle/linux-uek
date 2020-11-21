@@ -2324,7 +2324,7 @@ ice_xmit_frame_ring(struct sk_buff *skb, struct ice_ring *tx_ring)
 	if (unlikely((skb->priority == TC_PRIO_CONTROL ||
 		      eth->h_proto == htons(ETH_P_LLDP)) &&
 		     vsi->type == ICE_VSI_PF &&
-		     vsi->port_info->is_sw_lldp))
+		     vsi->port_info->qos_cfg.is_sw_lldp))
 		offload.cd_qw1 |= (u64)(ICE_TX_DESC_DTYPE_CTX |
 					ICE_TX_CTX_DESC_SWTCH_UPLINK <<
 					ICE_TXD_CTX_QW1_CMD_S);
