@@ -2732,7 +2732,7 @@ static void ice_fill_tbl(struct ice_hw *hw, enum ice_block block_id, u32 sid)
 		case ICE_SID_XLT1_RSS:
 		case ICE_SID_XLT1_ACL:
 		case ICE_SID_XLT1_PE:
-			xlt1 = (struct ice_xlt1_section *)sect;
+			xlt1 = sect;
 			src = xlt1->value;
 			sect_len = le16_to_cpu(xlt1->count) *
 				sizeof(*hw->blk[block_id].xlt1.t);
@@ -2745,7 +2745,7 @@ static void ice_fill_tbl(struct ice_hw *hw, enum ice_block block_id, u32 sid)
 		case ICE_SID_XLT2_RSS:
 		case ICE_SID_XLT2_ACL:
 		case ICE_SID_XLT2_PE:
-			xlt2 = (struct ice_xlt2_section *)sect;
+			xlt2 = sect;
 			src = (__force u8 *)xlt2->value;
 			sect_len = le16_to_cpu(xlt2->count) *
 				sizeof(*hw->blk[block_id].xlt2.t);
@@ -2758,7 +2758,7 @@ static void ice_fill_tbl(struct ice_hw *hw, enum ice_block block_id, u32 sid)
 		case ICE_SID_PROFID_TCAM_RSS:
 		case ICE_SID_PROFID_TCAM_ACL:
 		case ICE_SID_PROFID_TCAM_PE:
-			pid = (struct ice_prof_id_section *)sect;
+			pid = sect;
 			src = (u8 *)pid->entry;
 			sect_len = le16_to_cpu(pid->count) *
 				sizeof(*hw->blk[block_id].prof.t);
@@ -2771,7 +2771,7 @@ static void ice_fill_tbl(struct ice_hw *hw, enum ice_block block_id, u32 sid)
 		case ICE_SID_PROFID_REDIR_RSS:
 		case ICE_SID_PROFID_REDIR_ACL:
 		case ICE_SID_PROFID_REDIR_PE:
-			pr = (struct ice_prof_redir_section *)sect;
+			pr = sect;
 			src = pr->redir_value;
 			sect_len = le16_to_cpu(pr->count) *
 				sizeof(*hw->blk[block_id].prof_redir.t);
@@ -2784,7 +2784,7 @@ static void ice_fill_tbl(struct ice_hw *hw, enum ice_block block_id, u32 sid)
 		case ICE_SID_FLD_VEC_RSS:
 		case ICE_SID_FLD_VEC_ACL:
 		case ICE_SID_FLD_VEC_PE:
-			es = (struct ice_sw_fv_section *)sect;
+			es = sect;
 			src = (u8 *)es->fv;
 			sect_len = (u32)(le16_to_cpu(es->count) *
 					 hw->blk[block_id].es.fvw) *
