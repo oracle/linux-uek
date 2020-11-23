@@ -37,7 +37,7 @@
 
 #include "rds.h"
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 /* When transmitting messages in rds_send_xmit, we need to emerge from
  * time to time and briefly release the CPU. Otherwise the softlock watchdog

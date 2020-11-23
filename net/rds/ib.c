@@ -37,7 +37,7 @@
 #include <net/inet_common.h>
 #include <linux/debugfs.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #include "ib.h"
 #include "rds_single_path.h"
