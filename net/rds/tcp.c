@@ -40,7 +40,7 @@
 #include "rds.h"
 #include "tcp.h"
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 /* only for info exporting */
 static DEFINE_SPINLOCK(rds_tcp_tc_list_lock);
