@@ -33,7 +33,7 @@
 #include <linux/kernel.h>
 #include <linux/rculist.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #include "rds.h"
 #include "ib.h"
