@@ -41,8 +41,7 @@
 #include <linux/random.h>
 #include <net/sock.h>
 
-#include <trace/events/rds.h>
-
+#include "trace.h"
 #include "rds.h"
 
 /* UNUSED for backwards compat only */
