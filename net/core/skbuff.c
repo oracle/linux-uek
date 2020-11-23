@@ -413,6 +413,11 @@ refill:
 		if (!atomic_sub_and_test(nc->pagecnt_bias, &page->_count))
 			goto refill;
 
+		if (unlikely(page_is_pfmemalloc(page))) {
+			free_the_page(page, compound_order(page));
+			goto refill;
+		}
+
 		/* if size can vary use frag.size else just use PAGE_SIZE */
 		size = NETDEV_FRAG_PAGE_MAX_ORDER ? nc->frag.size : PAGE_SIZE;
 

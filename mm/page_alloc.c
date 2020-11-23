@@ -3066,6 +3066,22 @@ unsigned long get_zeroed_page(gfp_t gfp_mask)
 }
 EXPORT_SYMBOL(get_zeroed_page);
 
+/*
+ * This function is introduced in order to backport upstream
+ * commit d8c19014bba8 ("page_frag: Recover from memory pressure").
+ *
+ * Since the free_the_page() is not available in uek4, it is introduced to
+ * free the frag page(s). Its implementation is copied from
+ * __free_pages() and upstream free_the_page().
+ */
+inline void free_the_page(struct page *page, unsigned int order)
+{
+	if (order == 0)         /* Via pcp? */
+		free_hot_cold_page(page, false);
+	else
+		__free_pages_ok(page, order);
+}
+
 void __free_pages(struct page *page, unsigned int order)
 {
 	if (put_page_testzero(page)) {
