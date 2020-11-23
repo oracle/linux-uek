@@ -11,14 +11,14 @@
 #if !defined(_TRACE_RDS_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_RDS_H
 
+#include <linux/tracepoint.h>
 #include <linux/in6.h>
 #include <linux/rds.h>
 #include <linux/tcp.h>
 #include <linux/cgroup.h>
-#include "../../../net/rds/rds.h"
-#include "../../../net/rds/ib.h"
-#include "../../../net/rds/tcp.h"
-#include <linux/tracepoint.h>
+#include "rds.h"
+#include "ib.h"
+#include "tcp.h"
 
 #define show_state(state)						\
 	__print_symbolic(state,						\
@@ -1393,6 +1393,10 @@ DEFINE_EVENT(rds_tcp, rds_tcp_shutdown,
 );
 
 #endif /* _TRACE_RDS_H */
+
+#undef TRACE_INCLUDE_PATH
+#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_FILE trace
 
 /* This part must be outside protection */
 #include <trace/define_trace.h>
