@@ -41,7 +41,7 @@
 #include <net/inet_common.h>
 #include <linux/version.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 

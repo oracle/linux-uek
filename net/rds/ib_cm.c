@@ -44,7 +44,7 @@
 #include <rdma/ib_cm.h>
 #include <net/addrconf.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #include "rds.h"
 #include "ib.h"
