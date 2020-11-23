@@ -4408,6 +4408,22 @@ void __page_frag_cache_drain(struct page *page, unsigned int count)
 }
 EXPORT_SYMBOL(__page_frag_cache_drain);
 
+/*
+ * This function is introduced in order to backport upstream
+ * commit d8c19014bba8 ("page_frag: Recover from memory pressure").
+ *
+ * Since the free_the_page() is not available in uek5, it is introduced to
+ * free the frag page(s). Its implementation is copied from
+ * __page_frag_cache_drain() and upstream free_the_page().
+ */
+static inline void free_the_page(struct page *page, unsigned int order)
+{
+	if (order == 0)         /* Via pcp? */
+		free_hot_cold_page(page, false);
+	else
+		__free_pages_ok(page, order);
+}
+
 void *page_frag_alloc(struct page_frag_cache *nc,
 		      unsigned int fragsz, gfp_t gfp_mask)
 {
@@ -4442,6 +4458,11 @@ refill:
 
 		if (!page_ref_sub_and_test(page, nc->pagecnt_bias))
 			goto refill;
+
+		if (unlikely(nc->pfmemalloc)) {
+			free_the_page(page, compound_order(page));
+			goto refill;
+		}
 
 #if (PAGE_SIZE < PAGE_FRAG_CACHE_MAX_SIZE)
 		/* if size can vary use size else just use PAGE_SIZE */
