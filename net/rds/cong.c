@@ -37,7 +37,7 @@
 
 #include "rds.h"
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 /*
  * This file implements the receive side of the unconventional congestion

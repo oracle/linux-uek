@@ -35,7 +35,7 @@
 #include <linux/dma-mapping.h> /* for DMA_*_DEVICE */
 #include <linux/sched/mm.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #include "rds.h"
 
