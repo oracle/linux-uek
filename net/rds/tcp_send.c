@@ -34,7 +34,7 @@
 #include <linux/in.h>
 #include <net/tcp.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #include "rds.h"
 #include "tcp.h"
