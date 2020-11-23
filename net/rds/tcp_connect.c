@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -34,7 +34,7 @@
 #include <linux/in.h>
 #include <net/tcp.h>
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 #include "rds.h"
 #include "tcp.h"
