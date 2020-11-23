@@ -3,7 +3,7 @@
  *
  * Author: Alan Maguire <alan.maguire@oracle.com>
  *
- * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates.
  */
 
 #define CREATE_TRACE_POINTS
@@ -13,7 +13,7 @@
 #include <linux/cgroup.h>
 #include "rds.h"
 
-#include <trace/events/rds.h>
+#include "trace.h"
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change_err);
