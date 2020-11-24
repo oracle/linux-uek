@@ -12,6 +12,7 @@
 #define CONFIG_DEBUG_MAPLE_TREE
 //#define BENCH_SLOT_STORE
 //#define BENCH_NODE_STORE
+//#define BENCH_AWALK
 //#define BENCH_WALK
 //#define BENCH_FORK
 static
@@ -35321,6 +35322,23 @@ static noinline void bench_node_store(struct maple_tree *mt)
 }
 #endif
 
+#if defined(BENCH_AWALK)
+static noinline void bench_awalk(struct maple_tree *mt)
+{
+	int i, max = 2500, count = 30000000;
+	MA_STATE(mas, mt, 1470, 1470);
+
+	for (i = 0; i < max; i += 10)
+		mtree_store_range(mt, i, i + 5, xa_mk_value(i), GFP_KERNEL);
+
+	mtree_store_range(mt, 1470, 1475, NULL, GFP_KERNEL);
+
+	for (i = 0; i < count; i++) {
+		mas_get_empty_area_rev(&mas, 0, 2000, 10);
+		mas_reset(&mas);
+	}
+}
+#endif
 #if defined(BENCH_WALK)
 static noinline void bench_walk(struct maple_tree *mt)
 {
@@ -35583,6 +35601,13 @@ static int maple_tree_seed(void)
 #define BENCH
 	mtree_init(&tree, MAPLE_ALLOC_RANGE);
 	bench_node_store(&tree);
+	mtree_destroy(&tree);
+	goto skip;
+#endif
+#if defined(BENCH_AWALK)
+#define BENCH
+	mtree_init(&tree, MAPLE_ALLOC_RANGE);
+	bench_awalk(&tree);
 	mtree_destroy(&tree);
 	goto skip;
 #endif
