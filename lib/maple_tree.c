@@ -519,7 +519,7 @@ mas_safe_pivot(const struct ma_state *mas, unsigned char piv)
 static inline unsigned long
 mas_safe_min(struct ma_state *mas, unsigned long *pivots, unsigned char piv)
 {
-	if (!piv)
+	if (unlikely(!piv))
 		return mas->min;
 
 	return pivots[piv - 1] + 1;
@@ -3084,14 +3084,14 @@ static inline bool __mas_walk(struct ma_state *mas, unsigned long *range_min,
 		mas->depth++;
 
 		mas_node_walk(mas, type, range_min, range_max);
-		if (ma_is_leaf(type)) // Leaf.
+		if (unlikely(ma_is_leaf(type)))
 			return true;
 
 		next = mas_get_slot(mas, mas->offset);
 		if (!next)
 			return false;
 
-		// Traverse.
+		// Descend.
 		mas->max = *range_max;
 		mas->min = *range_min;
 		mas->node = next;
@@ -3852,7 +3852,7 @@ bool _mas_rev_awalk(struct ma_state *mas, unsigned long size)
 {
 	enum maple_type type = mte_node_type(mas->node);
 	struct maple_node *node = mas_mn(mas);
-	unsigned long *pivots, *gaps;
+	unsigned long *pivots, *gaps = NULL;
 	void **slots;
 	unsigned long gap, max, min;
 
@@ -3872,6 +3872,7 @@ bool _mas_rev_awalk(struct ma_state *mas, unsigned long size)
 		min = mas_safe_min(mas, pivots, mas->offset);
 		if (mas->last < min)
 			continue;
+
 
 		if (mas->index > max) {
 			mas_set_err(mas, -EBUSY);
@@ -4000,8 +4001,7 @@ static inline bool _mas_walk(struct ma_state *mas, unsigned long *range_min,
 		goto not_found;
 
 	if (mas_is_ptr(mas)) {
-		*range_min = 0;
-		*range_max = 0;
+		*range_min = *range_max = 0;
 		if (!mas->index)
 			return true;
 
