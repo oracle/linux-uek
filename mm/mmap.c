@@ -2427,17 +2427,18 @@ static inline int unlock_range(struct vm_area_struct *start,
 
 	return count;
 }
+
 /* Munmap is split into 2 main parts -- this part which finds
  * what needs doing, and the areas themselves, which do the
  * work.  This now handles partial unmappings.
  * Jeremy Fitzhardinge <jeremy@goop.org>
  */
-int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
-		struct list_head *uf, bool downgrade)
+static int do_mas_munmap(struct ma_state *mas, struct mm_struct *mm,
+			 unsigned long start, size_t len, struct list_head *uf,
+			 bool downgrade)
 {
 	unsigned long end;
 	struct vm_area_struct *vma, *prev, *last;
-	MA_STATE(mas, &mm->mm_mt, start, start);
 
 	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
 		return -EINVAL;
@@ -2450,11 +2451,11 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	arch_unmap(mm, start, end);
 
 	/* Find the first overlapping VMA */
-	vma = mas_find(&mas, end - 1);
+	vma = mas_find(mas, end - 1);
 	if (!vma)
 		return 0;
 
-	mas.last = end - 1;
+	mas->last = end - 1;
 	/* we have start < vma->vm_end  */
 
 	/*
@@ -2479,8 +2480,8 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 			return error;
 		prev = vma;
 		vma = vma_next(mm, prev);
-		mas.index = start;
-		mas_reset(&mas);
+		mas->index = start;
+		mas_reset(mas);
 	} else {
 		prev = vma->vm_prev;
 	}
@@ -2496,7 +2497,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		if (error)
 			return error;
 		vma = vma_next(mm, prev);
-		mas_reset(&mas);
+		mas_reset(mas);
 	}
 
 
@@ -2523,7 +2524,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	 */
 	mm->map_count -= unlock_range(vma, &last, end);
 	/* Drop removed area from the tree */
-	mas_store_gfp(&mas, NULL, GFP_KERNEL);
+	mas_store_gfp(mas, NULL, GFP_KERNEL);
 
 	/* Detach vmas from the MM linked list */
 	vma->vm_prev = NULL;
@@ -2558,6 +2559,13 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	remove_vma_list(mm, vma);
 
 	return downgrade ? 1 : 0;
+}
+
+int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
+		struct list_head *uf, bool downgrade)
+{
+	MA_STATE(mas, &mm->mm_mt, start, start);
+	return do_mas_munmap(&mas, mm, start, len, uf, downgrade);
 }
 
 int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
