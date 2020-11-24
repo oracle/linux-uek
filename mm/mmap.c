@@ -2429,9 +2429,9 @@ static inline int unlock_range(struct vm_area_struct *start,
  * work.  This now handles partial unmappings.
  * Jeremy Fitzhardinge <jeremy@goop.org>
  */
-static int do_mas_munmap(struct ma_state *mas, struct mm_struct *mm,
-			 unsigned long start, size_t len, struct list_head *uf,
-			 bool downgrade)
+int do_mas_munmap(struct ma_state *mas, struct mm_struct *mm,
+		  unsigned long start, size_t len, struct list_head *uf,
+		  bool downgrade)
 {
 	unsigned long end;
 	struct vm_area_struct *vma, *prev, *last;
@@ -2557,17 +2557,11 @@ static int do_mas_munmap(struct ma_state *mas, struct mm_struct *mm,
 	return downgrade ? 1 : 0;
 }
 
-int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
-		struct list_head *uf, bool downgrade)
-{
-	MA_STATE(mas, &mm->mm_mt, start, start);
-	return do_mas_munmap(&mas, mm, start, len, uf, downgrade);
-}
-
 int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	      struct list_head *uf)
 {
-	return __do_munmap(mm, start, len, uf, false);
+	MA_STATE(mas, &mm->mm_mt, start, start);
+	return do_mas_munmap(&mas, mm, start, len, uf, false);
 }
 
 unsigned long mmap_region(struct file *file, unsigned long addr,
@@ -2815,11 +2809,12 @@ static int __vm_munmap(unsigned long start, size_t len, bool downgrade)
 	int ret;
 	struct mm_struct *mm = current->mm;
 	LIST_HEAD(uf);
+	MA_STATE(mas, &mm->mm_mt, start, start);
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
-	ret = __do_munmap(mm, start, len, &uf, downgrade);
+	ret = do_mas_munmap(&mas, mm, start, len, &uf, downgrade);
 	/*
 	 * Returning 1 indicates mmap_lock is downgraded.
 	 * But 1 is not legal return value of vm_munmap() and munmap(), reset
@@ -2971,7 +2966,7 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	arch_unmap(mm, newbrk, oldbrk);
 
 	if (vma->vm_start >= newbrk) { // remove entire mapping(s)
-		ret = __do_munmap(mm, newbrk, oldbrk-newbrk, uf, true);
+		ret = do_mas_munmap(mas, mm, newbrk, oldbrk-newbrk, uf, true);
 		goto munmap_full_vma;
 	}
 
