@@ -2649,9 +2649,6 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		goto expanded;
 	}
 
-	mas_reset(&mas);
-	mas_set(&mas, addr);
-	mas.last = end - 1;
 cannot_expand:
 	/*
 	 * Determine the object being mapped and call the appropriate
@@ -2747,6 +2744,13 @@ cannot_expand:
 			goto free_vma;
 	}
 
+	/*
+	 * mas was called for the prev vma, and that may not be the correct
+	 * location for the vma being inserted.
+	 */
+	if (mas.max < addr)
+		mas_reset(&mas);
+	mas_set(&mas, addr);
 	mas_walk(&mas);
 	vma_mas_link(mm, vma, &mas, prev);
 	/* Once vma denies write, undo our temporary denial count */
