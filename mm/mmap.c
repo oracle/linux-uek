@@ -489,17 +489,15 @@ static unsigned long count_vma_pages_range(struct mm_struct *mm,
 	MA_STATE(mas, &mm->mm_mt, addr, addr);
 
 	/* Find first overlaping mapping */
-	vma = find_vma_intersection(mm, addr, end);
+	vma = mas_find(&mas, end - 1);
 	if (!vma)
 		return 0;
 
 	vm_start = vma->vm_start;
 	vm_end = vma->vm_end;
-
 	nr_pages = (min(end, vm_end) - max(addr, vm_start)) >> PAGE_SHIFT;
 
 	/* Iterate over the rest of the overlaps */
-	mas.index = mas.last = vm_end;
 	mas_for_each(&mas, vma, end) {
 		vm_start = vma->vm_start;
 		vm_end = vma->vm_end;
