@@ -2605,7 +2605,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	}
 
 	/* Unmap any existing mapping in the area */
-	if (do_munmap(mm, addr, len, uf))
+	if (do_mas_munmap(&mas, mm, addr, len, uf, false))
 		return -ENOMEM;
 
 	/*
@@ -2629,7 +2629,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	/* Check next */
 	next = mas_next(&mas, ULONG_MAX);
 	if (next && next->vm_start == end && vma_policy(next) &&
-	    can_vma_merge_before(next, vm_flags, NULL, file, pgoff+pglen,
+	    can_vma_merge_before(next, vm_flags, NULL, file, pgoff + pglen,
 				 NULL_VM_UFFD_CTX)) {
 		merge_end = next->vm_end;
 		vma = next;
@@ -2645,7 +2645,6 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		vma = prev;
 		vm_pgoff = prev->vm_pgoff;
 	}
-
 
 	/* Actually expand, if possible */
 	if (vma &&
