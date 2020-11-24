@@ -5,7 +5,7 @@
 #include "rvu_reg.h"
 
 /* Fastpath ipsec opcode with inplace processing */
-#define CPT_INLINE_RX_OPCODE (0x26 | (1 << 6))
+#define CPT_INLINE_RX_OPCODE (0x29 | (1 << 6))
 /*
  * CPT PF driver version, It will be incremented by 1 for every feature
  * addition in CPT PF driver.
