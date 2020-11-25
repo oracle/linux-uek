@@ -113,6 +113,12 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
 %define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
 
+# build rpi kernel
+%define with_rpi %{?_without_rpi: 0} %{?!_without_rpi: 1}
+
+# Only build the rpi kernel (--with rpionly):
+%define with_rpionly %{?_with_rpionly: 1} %{?!_with_rpionly: 0}
+
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
 %if 0%{?released_kernel}
@@ -233,6 +239,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_debug 0
 %define with_4k_ps 0
 %define with_4k_ps_debug 0
+%define with_rpi 0
 %endif
 
 # if requested, only build smp kernel
@@ -242,6 +249,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_debug 0
 %define with_4k_ps 0
 %define with_4k_ps_debug 0
+%define with_rpi 0
 %endif
 
 # if requested, only build 4k page size kernel
@@ -251,6 +259,16 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_smp 0
 %define with_kdump 0
 %define with_debug 0
+%define with_rpi 0
+%endif
+
+# if requested, only build rpi kernel
+%if %{with_rpionly}
+%define with_up     0
+%define with_smp    0
+%define with_kdump  0
+%define with_4k_ps  0
+%define with_4k_ps_debug 0
 %endif
 
 %define all_x86 i386 i686
@@ -283,6 +301,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifnarch aarch64
 %define with_4k_ps      0
 %define with_4k_ps_debug 0
+%define with_rpi 0
 %endif
 
 # only package docs noarch
@@ -454,6 +473,12 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %if %{with_pae}
 %define with_pae_debug %{with_debug}
 %endif
+
+%define with_rpi_debug 0
+%if %{with_rpi}
+%define with_rpi_debug %{with_debug}
+%endif
+
 
 #
 # Three sets of minimum package version requirements in the form of Conflicts:
@@ -654,6 +679,7 @@ Source1000: config-x86_64
 Source1001: config-x86_64-debug
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
+Source1009: config-aarch64-rpi
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -927,6 +953,11 @@ This package includes 4k page size for aarch64 kernel.
 %description -n kernel%{?variant}4kdebug
 This package include debug kernel for 4k page size.
 
+%define variant_summary A kernel for rpi platform.
+%kernel_variant_package -o rpi
+%description -n kernel%{?variant}rpi
+This package includes rpi kernel.
+
 %prep
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
@@ -939,6 +970,13 @@ exit 1
 %if %{with_smponly}
 %if !%{with_smp}
 echo "Cannot build --with smponly, smp build is disabled"
+exit 1
+%endif
+%endif
+
+%if %{with_rpionly}
+%if  !%{with_rpi}
+echo "Cannot build --with rpionly, rpi build is disabled"
 exit 1
 %endif
 %endif
@@ -1107,6 +1145,7 @@ mkdir -p configs
 %ifarch aarch64
 	cp %{SOURCE1008} configs/config-debug
 	cp %{SOURCE1007} configs/config
+	cp %{SOURCE1009} configs/config-rpi
 %endif #ifarch aarch64
 
 %if %{with_dtrace}
@@ -1187,6 +1226,8 @@ BuildKernel() {
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
+    elif [ "$Flavour" == "rpi" ]; then
+        cp configs/config-rpi .config
     else
 	cp configs/config .config
     fi
@@ -1533,6 +1574,10 @@ BuildKernel %make_target %kernel_image 4k
 BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
+%if %{with_rpi}
+BuildKernel %make_target %kernel_image rpi
+%endif
+
 %global bpftool_make \
   make EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT V=1
 %if %{with_bpftool}
@@ -1579,6 +1624,11 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
        mv certs/signing_key.pem.sign.4kdebug certs/signing_key.pem \
        mv certs/signing_key.x509.sign.4kdebug certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.4kdebug/ %{dgst} \
+     fi \
+     if [ "%{with_rpi}" != "0" ]; then \
+       mv certs/signing_key.pem.sign.rpi certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.rpi certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.rpi/ %{dgst} \
      fi \
   fi \
 %{nil}
@@ -1881,6 +1931,11 @@ fi\
 %kernel_variant_postun -o 4kdebug
 %kernel_variant_post -o -v 4kdebug
 
+%kernel_variant_pre -o rpi
+%kernel_variant_preun -o rpi
+%kernel_variant_postun -o rpi
+%kernel_variant_post -o -v rpi -r (kernel%{variant}|kernel%{variant}-debug)
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2024,5 +2079,7 @@ fi
 
 %kernel_variant_files -o %{with_4k_ps} 4k
 %kernel_variant_files -o %{with_4k_ps_debug} 4kdebug
+
+%kernel_variant_files -o %{with_rpi} rpi
 
 %changelog
