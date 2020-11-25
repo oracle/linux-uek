@@ -10,7 +10,7 @@
 #include <linux/topology.h>
 #include <linux/mm.h>
 #include <linux/nodemask.h>
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/swap.h>
 #include <linux/of.h>
 
@@ -85,7 +85,7 @@ void __init mem_init(void)
 {
 	unsigned long codesize, datasize, initsize, tmp;
 
-	free_all_bootmem();
+	memblock_free_all();
 	setup_zero_pages();	/* This comes from node 0 */
 
 	codesize =  (unsigned long) &_etext - (unsigned long) &_text;
@@ -95,9 +95,9 @@ void __init mem_init(void)
 	tmp = nr_free_pages();
 	pr_info("Memory: %luk/%luk available (%ldk kernel code, %ldk reserved, %ldk data, %ldk init)\n",
 	       tmp << (PAGE_SHIFT-10),
-	       totalram_pages << (PAGE_SHIFT-10),
+	       get_num_physpages() << (PAGE_SHIFT-10),
 	       codesize >> 10,
-	       (totalram_pages - tmp) << (PAGE_SHIFT-10),
+	       (get_num_physpages() - tmp) << (PAGE_SHIFT-10),
 	       datasize >> 10,
 	       initsize >> 10);
 }

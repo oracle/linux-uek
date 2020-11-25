@@ -1230,95 +1230,68 @@ EXPORT_SYMBOL(__node_data);
 
 void __init mach_bootmem_init(void)
 {
-#ifndef CONFIG_NUMA
-	/* Do nothing */
-#else
-	int i;
-	int node;
+	struct memblock_region *mem;
+	phys_addr_t ramstart, ramend;
+        int node;
 
-	min_low_pfn = ~0UL;
-	max_low_pfn = 0;
+	ramstart = memblock_start_of_DRAM();
+	ramend = memblock_end_of_DRAM();
 
-	for (i = 0; i < boot_mem_map.nr_map; i++) {
-		unsigned long start, end;
-		struct node_data *nd;
-		bool is_usable;
+        /* Reserve memory occupied by kernel. */
+        memblock_reserve(__pa_symbol(&_text),
+                        __pa_symbol(&_end) - __pa_symbol(&_text));
 
-		switch (boot_mem_map.map[i].type) {
-		case BOOT_MEM_RAM:
-			is_usable = true;
-			break;
-		case BOOT_MEM_KERNEL:
-		case BOOT_MEM_INIT_RAM:
-			is_usable = false;
-			break;
-		default:
-			/* Not usable memory */
+	min_low_pfn = ARCH_PFN_OFFSET;
+	max_pfn = PFN_DOWN(ramend);
+
+	for_each_memblock(memory, mem) {
+		unsigned long start = memblock_region_memory_base_pfn(mem);
+		unsigned long end = memblock_region_memory_end_pfn(mem);
+                struct node_data *nd;
+		bool is_usable=true;
+
+		node = pa_to_nid(memblock_region_memory_base_pfn(mem));
+                nd = __node_data + node;
+
+
+		if (memblock_is_nomap(mem))
 			continue;
-		}
-		start = PFN_UP(boot_mem_map.map[i].addr);
-		end = PFN_DOWN(boot_mem_map.map[i].addr
-				+ boot_mem_map.map[i].size);
-		node = pa_to_nid(boot_mem_map.map[i].addr);
-		nd = __node_data + node;
-
-		if (max_low_pfn < end)
+		if (end > max_low_pfn)
 			max_low_pfn = end;
-		if (min_low_pfn > start)
-			min_low_pfn = start;
 
-		memblock_add_node(PFN_PHYS(start), PFN_PHYS(end - start), node);
+	        memblock_set_node(PFN_PHYS(start), PFN_PHYS(end - start), &memblock.memory, node);
 
 		if (nd->endpfn == 0) {
-			nd->startpfn = start;
-			nd->endpfn = end;
-		} else {
-			if (nd->startpfn > start)
-				nd->startpfn = start;
-			if (nd->endpfn < end)
-				nd->endpfn = end;
+                        nd->startpfn = start;
+                        nd->endpfn = end;
+                } else {
+                        if (nd->startpfn > start)
+                                nd->startpfn = start;
+                        if (nd->endpfn < end)
+                                nd->endpfn = end;
 		}
 		if (is_usable && (nd->startmempfn == 0 || start < nd->startmempfn))
-			nd->startmempfn = start;
+                        nd->startmempfn = start;
 	}
 
 	for_each_online_node(node) {
-		unsigned long bootmap_size;
-		struct node_data *nd = __node_data + node;
-		if (nd->endpfn == 0)
-			continue;
-		NODE_DATA(node)->bdata = &bootmem_node_data[node];
-		bootmap_size = init_bootmem_node(NODE_DATA(node), nd->startmempfn, nd->startpfn,  nd->endpfn);
-
-		for (i = 0; i < boot_mem_map.nr_map; i++) {
+                struct node_data *nd = __node_data + node;
+                if (nd->endpfn == 0)
+                        continue;
+		for_each_memblock(memory, mem) {
 			int map_nid;
-			bool is_init;
 
-			switch (boot_mem_map.map[i].type) {
-			case BOOT_MEM_RAM:
-				is_init = false;
-				break;
-			case BOOT_MEM_INIT_RAM:
-				is_init = true;
-				break;
-			default:
-				/* Not usable memory */
-				continue;
+                        map_nid = pa_to_nid(mem->base);
+                        if (map_nid != node){
+				printk("Continue.... after map_nid\n");
+                                continue;
 			}
-			map_nid = pa_to_nid(boot_mem_map.map[i].addr);
-			if (map_nid != node)
-				continue;
-			memory_present(node,
-				       PFN_DOWN(boot_mem_map.map[i].addr),
-				       PFN_UP(boot_mem_map.map[i].addr + boot_mem_map.map[i].size));
-			if (!is_init) {
-				memblock_add_node(boot_mem_map.map[i].addr, boot_mem_map.map[i].size, node);
-				free_bootmem_node(NODE_DATA(node), boot_mem_map.map[i].addr, boot_mem_map.map[i].size);
-			}
-		}
-		reserve_bootmem(PFN_PHYS(nd->startmempfn), bootmap_size, BOOTMEM_DEFAULT);
-	}
-#endif
+                        memory_present(node,
+                                       PFN_DOWN(mem->base),
+                                       PFN_UP(mem->base + mem->size));
+                }
+		memblocks_present();
+        }
 }
 
 /*
@@ -1384,7 +1357,7 @@ void __init device_tree_init(void)
 		pr_info("Using appended Device Tree.\n");
 	} else if (octeon_bootinfo->minor_version >= 3 && octeon_bootinfo->fdt_addr) {
 		fdt = phys_to_virt(octeon_bootinfo->fdt_addr);
-		pr_info("Using passed Device Tree <%p>.\n", fdt);
+		pr_info("Using passed Device Tree <%px>.\n", fdt);
 		if (fdt_check_header(fdt))
 			panic("Corrupt Device Tree passed to kernel.");
 		do_prune = false;
