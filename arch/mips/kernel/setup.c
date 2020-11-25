@@ -553,6 +553,12 @@ static void __init check_kernel_sections_mem(void)
 		pr_info("Kernel sections are not in the memory maps\n");
 		memblock_add(start, size);
 	}
+	/*
+	 * Octeon bootloader places shared data structure right after
+	 * the kernel => make sure it will not be corrupted.
+	 */
+	memblock_reserve(__pa_symbol(&_end),
+			 start + size - __pa_symbol(&_end));
 }
 
 #define USE_PROM_CMDLINE	IS_ENABLED(CONFIG_MIPS_CMDLINE_FROM_BOOTLOADER)
