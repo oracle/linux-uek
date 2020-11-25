@@ -2294,7 +2294,8 @@ EXPORT_SYMBOL_GPL(find_extend_vma);
  *
  * Called with the mm semaphore held.
  */
-static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
+static inline void remove_vma_list(struct mm_struct *mm,
+				   struct vm_area_struct *vma)
 {
 	unsigned long nr_accounted = 0;
 
