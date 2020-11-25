@@ -41,6 +41,7 @@ config CRYPTO_DEV_OCTEONTX2_CPT
 	depends on ARCH_THUNDER || COMPILE_TEST
 	depends on PCI_MSI && 64BIT
 	depends on CRYPTO_LIB_AES
+	select OCTEONTX2_MBOX
 	select CRYPTO_SKCIPHER
 	select CRYPTO_HASH
 	select CRYPTO_AEAD
@@ -57,6 +58,7 @@ config CRYPTO_DEV_CN10K_CPT
 	depends on ARCH_THUNDER || COMPILE_TEST
 	depends on PCI_MSI && 64BIT
 	depends on CRYPTO_LIB_AES
+	select OCTEONTX2_MBOX
 	select CRYPTO_DEV_MARVELL
 	select CRYPTO_SKCIPHER
 	select CRYPTO_HASH
