@@ -66,8 +66,8 @@ struct dm_crypt_io {
 
 struct dm_crypt_request {
 	struct convert_context *ctx;
-	struct scatterlist sg_in;
-	struct scatterlist sg_out;
+	struct scatterlist sg_in[2];
+	struct scatterlist sg_out[2];
 	sector_t iv_sector;
 };
 
@@ -605,8 +605,9 @@ static int crypt_iv_lmk_gen(struct crypt_config *cc, u8 *iv,
 	int r = 0;
 
 	if (bio_data_dir(dmreq->ctx->bio_in) == WRITE) {
-		src = kmap_atomic(sg_page(&dmreq->sg_in));
-		r = crypt_iv_lmk_one(cc, iv, dmreq, src + dmreq->sg_in.offset);
+		src = kmap_atomic(sg_page(&dmreq->sg_in[0]));
+		r = crypt_iv_lmk_one(cc, iv, dmreq,
+				     src + dmreq->sg_in[0].offset);
 		kunmap_atomic(src);
 	} else
 		memset(iv, 0, cc->iv_size);
@@ -623,12 +624,12 @@ static int crypt_iv_lmk_post(struct crypt_config *cc, u8 *iv,
 	if (bio_data_dir(dmreq->ctx->bio_in) == WRITE)
 		return 0;
 
-	dst = kmap_atomic(sg_page(&dmreq->sg_out));
-	r = crypt_iv_lmk_one(cc, iv, dmreq, dst + dmreq->sg_out.offset);
+	dst = kmap_atomic(sg_page(&dmreq->sg_out[0]));
+	r = crypt_iv_lmk_one(cc, iv, dmreq, dst + dmreq->sg_out[0].offset);
 
 	/* Tweak the first block of plaintext sector */
 	if (!r)
-		crypto_xor(dst + dmreq->sg_out.offset, iv, cc->iv_size);
+		crypto_xor(dst + dmreq->sg_out[0].offset, iv, cc->iv_size);
 
 	kunmap_atomic(dst);
 	return r;
@@ -747,8 +748,9 @@ static int crypt_iv_tcw_gen(struct crypt_config *cc, u8 *iv,
 
 	/* Remove whitening from ciphertext */
 	if (bio_data_dir(dmreq->ctx->bio_in) != WRITE) {
-		src = kmap_atomic(sg_page(&dmreq->sg_in));
-		r = crypt_iv_tcw_whitening(cc, dmreq, src + dmreq->sg_in.offset);
+		src = kmap_atomic(sg_page(&dmreq->sg_in[0]));
+		r = crypt_iv_tcw_whitening(cc, dmreq,
+					   src + dmreq->sg_in[0].offset);
 		kunmap_atomic(src);
 	}
 
@@ -771,8 +773,8 @@ static int crypt_iv_tcw_post(struct crypt_config *cc, u8 *iv,
 		return 0;
 
 	/* Apply whitening on ciphertext */
-	dst = kmap_atomic(sg_page(&dmreq->sg_out));
-	r = crypt_iv_tcw_whitening(cc, dmreq, dst + dmreq->sg_out.offset);
+	dst = kmap_atomic(sg_page(&dmreq->sg_out[0]));
+	r = crypt_iv_tcw_whitening(cc, dmreq, dst + dmreq->sg_out[0].offset);
 	kunmap_atomic(dst);
 
 	return r;
@@ -864,12 +866,31 @@ static u8 *iv_of_dmreq(struct crypt_config *cc,
 		crypto_ablkcipher_alignmask(any_tfm(cc)) + 1);
 }
 
+static int build_split_sg(struct scatterlist *sg, struct bio_vec *bvec,
+			  struct bio *bio, struct bvec_iter *iter,
+			  unsigned short int sector_size)
+{
+	int bytes_first_page;
+
+	bytes_first_page = bvec->bv_len;
+	sg_set_page(sg, bvec->bv_page, bvec->bv_len, bvec->bv_offset);
+	bio_advance_iter(bio, iter, bvec->bv_len);
+	*bvec = bio_iter_iovec(bio, *iter);
+	sg++;
+	sg_set_page(sg, bvec->bv_page, sector_size - bytes_first_page,
+	bvec->bv_offset);
+
+	return bytes_first_page;
+}
+
 static int crypt_convert_block(struct crypt_config *cc,
 			       struct convert_context *ctx,
 			       struct ablkcipher_request *req)
 {
 	struct bio_vec bv_in = bio_iter_iovec(ctx->bio_in, ctx->iter_in);
 	struct bio_vec bv_out = bio_iter_iovec(ctx->bio_out, ctx->iter_out);
+	struct scatterlist *sg_in, *sg_out;
+	int src_split = 0, dst_split = 0;
 	struct dm_crypt_request *dmreq;
 	u8 *iv;
 	int r;
@@ -879,16 +900,34 @@ static int crypt_convert_block(struct crypt_config *cc,
 
 	dmreq->iv_sector = ctx->cc_sector;
 	dmreq->ctx = ctx;
-	sg_init_table(&dmreq->sg_in, 1);
-	sg_set_page(&dmreq->sg_in, bv_in.bv_page, 1 << SECTOR_SHIFT,
-		    bv_in.bv_offset);
 
-	sg_init_table(&dmreq->sg_out, 1);
-	sg_set_page(&dmreq->sg_out, bv_out.bv_page, 1 << SECTOR_SHIFT,
-		    bv_out.bv_offset);
+	sg_in  = &dmreq->sg_in[0];
+	sg_out = &dmreq->sg_out[0];
 
-	bio_advance_iter(ctx->bio_in, &ctx->iter_in, 1 << SECTOR_SHIFT);
-	bio_advance_iter(ctx->bio_out, &ctx->iter_out, 1 << SECTOR_SHIFT);
+	if (unlikely(bv_in.bv_len < 1 << SECTOR_SHIFT)) {
+		sg_init_table(sg_in, 2);
+		src_split = build_split_sg(sg_in, &bv_in, ctx->bio_in,
+					   &ctx->iter_in, 1 << SECTOR_SHIFT);
+	} else {
+		sg_init_table(sg_in, 1);
+		sg_set_page(sg_in, bv_in.bv_page, 1 << SECTOR_SHIFT,
+			    bv_in.bv_offset);
+	}
+
+	if (unlikely(bv_out.bv_len < 1 << SECTOR_SHIFT)) {
+		sg_init_table(sg_out, 2);
+		dst_split = build_split_sg(sg_out, &bv_out, ctx->bio_out,
+					   &ctx->iter_out, 1 << SECTOR_SHIFT);
+	} else {
+		sg_init_table(sg_out, 1);
+		sg_set_page(sg_out, bv_out.bv_page, 1 << SECTOR_SHIFT,
+			    bv_out.bv_offset);
+	}
+
+	bio_advance_iter(ctx->bio_in, &ctx->iter_in,
+			 (1 << SECTOR_SHIFT) - src_split);
+	bio_advance_iter(ctx->bio_out, &ctx->iter_out,
+			 (1 << SECTOR_SHIFT) - dst_split);
 
 	if (cc->iv_gen_ops) {
 		r = cc->iv_gen_ops->generator(cc, iv, dmreq);
@@ -896,7 +935,7 @@ static int crypt_convert_block(struct crypt_config *cc,
 			return r;
 	}
 
-	ablkcipher_request_set_crypt(req, &dmreq->sg_in, &dmreq->sg_out,
+	ablkcipher_request_set_crypt(req, sg_in, sg_out,
 				     1 << SECTOR_SHIFT, iv);
 
 	if (bio_data_dir(ctx->bio_in) == WRITE)
