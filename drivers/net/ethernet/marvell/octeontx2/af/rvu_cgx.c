@@ -107,9 +107,10 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 {
 	struct npc_pkind *pkind = &rvu->hw->pkind;
 	int cgx_cnt_max = rvu->cgx_cnt_max;
-	int cgx, lmac_cnt, lmac, iter;
 	int pf = PF_CGXMAP_BASE;
+	unsigned long lmac_bmap;
 	int size, free_pkind;
+	int cgx, lmac, iter;
 
 	if (!cgx_cnt_max)
 		return 0;
@@ -140,8 +141,8 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 	for (cgx = 0; cgx < cgx_cnt_max; cgx++) {
 		if (!rvu_cgx_pdata(cgx, rvu))
 			continue;
-		lmac_cnt = cgx_get_lmac_cnt(rvu_cgx_pdata(cgx, rvu));
-		for (iter = 0; iter < lmac_cnt; iter++, pf++) {
+		lmac_bmap = cgx_get_lmac_bmap(rvu_cgx_pdata(cgx, rvu));
+		for_each_set_bit(iter, &lmac_bmap, MAX_LMAC_PER_CGX) {
 			lmac = cgx_get_lmacid(rvu_cgx_pdata(cgx, rvu),
 					      iter);
 			rvu->pf2cgxlmac_map[pf] = cgxlmac_id_to_bmap(cgx, lmac);
@@ -150,6 +151,7 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 			pkind->pfchan_map[free_pkind] = ((pf) & 0x3F) << 16;
 			rvu_map_cgx_nix_block(rvu, pf, cgx, lmac);
 			rvu->cgx_mapped_pfs++;
+			pf++;
 		}
 	}
 	return 0;
@@ -267,6 +269,7 @@ static void cgx_evhandler_task(struct work_struct *work)
 
 static int cgx_lmac_event_handler_init(struct rvu *rvu)
 {
+	unsigned long lmac_bmap;
 	struct cgx_event_cb cb;
 	int cgx, lmac, err;
 	void *cgxd;
@@ -287,7 +290,8 @@ static int cgx_lmac_event_handler_init(struct rvu *rvu)
 		cgxd = rvu_cgx_pdata(cgx, rvu);
 		if (!cgxd)
 			continue;
-		for (lmac = 0; lmac < cgx_get_lmac_cnt(cgxd); lmac++) {
+		lmac_bmap = cgx_get_lmac_bmap(cgxd);
+		for_each_set_bit(lmac, &lmac_bmap, MAX_LMAC_PER_CGX) {
 			err = cgx_lmac_evh_register(&cb, cgxd, lmac);
 			if (err)
 				dev_err(rvu->dev,
@@ -365,6 +369,7 @@ int rvu_cgx_init(struct rvu *rvu)
 
 int rvu_cgx_exit(struct rvu *rvu)
 {
+	unsigned long lmac_bmap;
 	int cgx, lmac;
 	void *cgxd;
 
@@ -372,7 +377,8 @@ int rvu_cgx_exit(struct rvu *rvu)
 		cgxd = rvu_cgx_pdata(cgx, rvu);
 		if (!cgxd)
 			continue;
-		for (lmac = 0; lmac < cgx_get_lmac_cnt(cgxd); lmac++)
+		lmac_bmap = cgx_get_lmac_bmap(cgxd);
+		for_each_set_bit(lmac, &lmac_bmap, MAX_LMAC_PER_CGX)
 			cgx_lmac_evh_unregister(cgxd, lmac);
 	}
 

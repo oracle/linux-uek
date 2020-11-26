@@ -228,4 +228,5 @@ void cgx_lmac_write(int cgx_id, int lmac_id, u64 offset, u64 val);
 u64 cgx_lmac_read(int cgx_id, int lmac_id, u64 offset);
 u8 cgx_get_lmac_type(void *cgx, int lmac_id);
 u8 cgx_get_lmacid(void *cgxd, u8 lmac_index);
+unsigned long cgx_get_lmac_bmap(void *cgxd);
 #endif /* CGX_H */
