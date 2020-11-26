@@ -587,6 +587,9 @@ void otx2_cptpf_afpf_mbox_handler(struct work_struct *work)
 					vf_id, cptpf->enabled_vfs);
 				goto error;
 			}
+			if (msg->id == MBOX_MSG_VF_FLR)
+				goto error;
+
 			fwd = otx2_mbox_alloc_msg(vfpf_mbox, vf_id, size);
 			if (!fwd) {
 				dev_err(&cptpf->pdev->dev,

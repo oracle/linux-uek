@@ -46,6 +46,11 @@ union otx2_cpt_eng_caps {
 	};
 };
 
+struct cptpf_flr_work {
+	struct work_struct work;
+	struct otx2_cptpf_dev *pf;
+};
+
 struct otx2_cptpf_dev {
 	void __iomem *reg_base;		/* CPT PF registers start address */
 	void __iomem *afpf_mbox_base;	/* PF-AF mbox start address */
@@ -66,6 +71,9 @@ struct otx2_cptpf_dev {
 	/* VF <=> PF mbox */
 	struct otx2_mbox	vfpf_mbox;
 	struct workqueue_struct *vfpf_mbox_wq;
+
+	struct workqueue_struct	*flr_wq;
+	struct cptpf_flr_work   *flr_work;
 
 	bool irq_registered[OTX2_CPT_PF_MSIX_VECTORS];	/* Is IRQ registered */
 	u8 pf_id;		/* RVU PF number */

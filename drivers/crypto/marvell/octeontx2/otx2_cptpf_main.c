@@ -106,22 +106,72 @@ static void cptpf_disable_vfpf_mbox_intrs(struct otx2_cptpf_dev *cptpf)
 			 RVU_PF_VFPF_MBOX_INTX(1), ~0x0ULL);
 }
 
+static void cptpf_flr_wq_handler(struct work_struct *work)
+{
+	struct cptpf_flr_work *flr_work;
+	struct otx2_cptpf_dev *pf;
+	struct mbox_msghdr *req;
+	struct otx2_mbox *mbox;
+	int vf, reg = 0;
+
+	flr_work = container_of(work, struct cptpf_flr_work, work);
+	pf = flr_work->pf;
+	mbox = &pf->afpf_mbox;
+
+	vf = flr_work - pf->flr_work;
+
+	req = otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*req),
+				      sizeof(struct msg_rsp));
+	if (!req)
+		return;
+
+	req->sig = OTX2_MBOX_REQ_SIG;
+	req->id = MBOX_MSG_VF_FLR;
+	req->pcifunc &= RVU_PFVF_FUNC_MASK;
+	req->pcifunc |= (vf + 1) & RVU_PFVF_FUNC_MASK;
+
+	otx2_cpt_send_mbox_msg(pf->pdev);
+
+	if (vf >= 64) {
+		reg = 1;
+		vf = vf - 64;
+	}
+	/* Clear transaction pending register */
+	otx2_cpt_write64(pf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFTRPENDX(reg), BIT_ULL(vf));
+	otx2_cpt_write64(pf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFFLR_INT_ENA_W1SX(reg), BIT_ULL(vf));
+}
+
 static irqreturn_t cptpf_vf_flr_intr(int __always_unused irq, void *arg)
 {
+	int reg, dev, vf, start_vf, num_reg = 1;
 	struct otx2_cptpf_dev *cptpf = arg;
+	u64 intr;
 
-	/* Clear transaction pending register */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(0),
-			 ~0x0ULL);
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(1),
-			 ~0x0ULL);
+	if (cptpf->max_vfs > 64)
+		num_reg = 2;
 
-	/* Clear interrupt if any */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(0),
-			 ~0x0ULL);
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(1),
-			 ~0x0ULL);
-
+	for (reg = 0; reg < num_reg; reg++) {
+		intr = otx2_cpt_read64(cptpf->reg_base, BLKADDR_RVUM, 0,
+				       RVU_PF_VFFLR_INTX(reg));
+		if (!intr)
+			continue;
+		start_vf = 64 * reg;
+		for (vf = 0; vf < 64; vf++) {
+			if (!(intr & BIT_ULL(vf)))
+				continue;
+			dev = vf + start_vf;
+			queue_work(cptpf->flr_wq, &cptpf->flr_work[dev].work);
+			/* Clear interrupt */
+			otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+					 RVU_PF_VFFLR_INTX(reg), BIT_ULL(vf));
+			/* Disable the interrupt */
+			otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+					 RVU_PF_VFFLR_INT_ENA_W1CX(reg),
+					 BIT_ULL(vf));
+		}
+	}
 	return IRQ_HANDLED;
 }
 
@@ -197,6 +247,41 @@ err:
 	dev_err(&cptpf->pdev->dev, "Failed to register interrupts\n");
 	cptpf_unregister_interrupts(cptpf);
 	return ret;
+}
+
+static void cptpf_flr_wq_destroy(struct otx2_cptpf_dev *pf)
+{
+	if (!pf->flr_wq)
+		return;
+	destroy_workqueue(pf->flr_wq);
+	pf->flr_wq = NULL;
+	kfree(pf->flr_work);
+}
+
+static int cptpf_flr_wq_init(struct otx2_cptpf_dev *cptpf)
+{
+	int num_vfs = cptpf->max_vfs;
+	int vf;
+
+	cptpf->flr_wq = alloc_ordered_workqueue("cptpf_flr_wq", 0);
+	if (!cptpf->flr_wq)
+		return -ENOMEM;
+
+	cptpf->flr_work = kcalloc(num_vfs, sizeof(struct cptpf_flr_work),
+				  GFP_KERNEL);
+	if (!cptpf->flr_work)
+		goto destroy_wq;
+
+	for (vf = 0; vf < num_vfs; vf++) {
+		cptpf->flr_work[vf].pf = cptpf;
+		INIT_WORK(&cptpf->flr_work[vf].work, cptpf_flr_wq_handler);
+	}
+
+	return 0;
+
+destroy_wq:
+	destroy_workqueue(cptpf->flr_wq);
+	return -ENOMEM;
 }
 
 static int cptpf_afpf_mbox_init(struct otx2_cptpf_dev *cptpf)
@@ -565,10 +650,14 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 	if (err)
 		goto destroy_afpf_mbox;
 
+	err = cptpf_flr_wq_init(cptpf);
+	if (err)
+		goto destroy_vfpf_mbox;
+
 	/* Register interrupts */
 	err = cptpf_register_interrupts(cptpf);
 	if (err)
-		goto destroy_vfpf_mbox;
+		goto destroy_flr;
 
 	/* Enable VF FLR interrupts */
 	cptpf_enable_vf_flr_intrs(cptpf);
@@ -605,6 +694,8 @@ unregister_interrupts:
 	cptpf_disable_afpf_mbox_intrs(cptpf);
 	cptpf_disable_vf_flr_intrs(cptpf);
 	cptpf_unregister_interrupts(cptpf);
+destroy_flr:
+	cptpf_flr_wq_destroy(cptpf);
 destroy_vfpf_mbox:
 	cptpf_vfpf_mbox_destroy(cptpf);
 destroy_afpf_mbox:
@@ -650,6 +741,8 @@ static void otx2_cptpf_remove(struct pci_dev *pdev)
 	cptpf_disable_vf_flr_intrs(cptpf);
 	/* Unregister CPT interrupts */
 	cptpf_unregister_interrupts(cptpf);
+	/* Destroy FLR work queue */
+	cptpf_flr_wq_destroy(cptpf);
 	/* Destroy AF-PF mbox */
 	cptpf_afpf_mbox_destroy(cptpf);
 	/* Destroy VF-PF mbox */
