@@ -2198,6 +2198,7 @@ static void rvu_dbg_cgx_init(struct rvu *rvu)
 {
 	const struct device *dev = &rvu->pdev->dev;
 	struct cgx_mac_ops *mac_ops;
+	unsigned long lmac_bmap;
 	int rvu_def_cgx_id = 0;
 	struct dentry *pfile;
 	int i, lmac_id;
@@ -2215,11 +2216,12 @@ static void rvu_dbg_cgx_init(struct rvu *rvu)
 		cgx = rvu_cgx_pdata(i, rvu);
 		if (!cgx)
 			continue;
+		lmac_bmap = cgx_get_lmac_bmap(cgx);
 		/* cgx debugfs dir */
 		sprintf(dname, "%s%d", mac_ops->name, i);
 		rvu->rvu_dbg.cgx = debugfs_create_dir(dname,
 						      rvu->rvu_dbg.cgx_root);
-		for (lmac_id = 0; lmac_id < cgx_get_lmac_cnt(cgx); lmac_id++) {
+		for_each_set_bit(lmac_id, &lmac_bmap, MAX_LMAC_PER_CGX) {
 			/* lmac debugfs dir */
 			sprintf(dname, "lmac%d", lmac_id);
 			rvu->rvu_dbg.lmac =

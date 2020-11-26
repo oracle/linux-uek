@@ -94,6 +94,27 @@ static bool is_dev_rpm(void *cgxd)
 	return (cgx->pdev->device == PCI_DEVID_CN10K_RPM);
 }
 
+bool is_lmac_valid(struct cgx *cgx, int lmac_id)
+{
+	return cgx && test_bit(lmac_id, &cgx->lmac_bmap);
+}
+
+/* Helper function to get sequential index
+ * given the enabled LMAC of a CGX
+ */
+static int get_sequence_id_of_lmac(struct cgx *cgx, int lmac_id)
+{
+	int tmp, id = 0;
+
+	for_each_set_bit(tmp, &cgx->lmac_bmap, MAX_LMAC_PER_CGX) {
+		if (tmp == lmac_id)
+			break;
+		id++;
+	}
+
+	return id;
+}
+
 struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd)
 {
 	return ((struct cgx *)cgxd)->mac_ops;
@@ -159,6 +180,9 @@ void cgx_lmac_write(int cgx_id, int lmac_id, u64 offset, u64 val)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 
+	/* Software must not access disabled LMAC registers */
+	if (!is_lmac_valid(cgx_dev, lmac_id))
+		return;
 	cgx_write(cgx_dev, lmac_id, offset, val);
 }
 
@@ -166,6 +190,9 @@ u64 cgx_lmac_read(int cgx_id, int lmac_id, u64 offset)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 
+	/* Software must not access disabled LMAC registers */
+	if (!is_lmac_valid(cgx_dev, lmac_id))
+		return 0;
 	return cgx_read(cgx_dev, lmac_id, offset);
 }
 
@@ -221,7 +248,7 @@ int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
 	struct cgx_mac_ops *mac_ops;
-	int index;
+	int index, id;
 	u64 cfg;
 
 	/* access mac_ops to know csr_offset */
@@ -230,10 +257,11 @@ int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 	/* copy 6bytes from macaddr */
 	/* memcpy(&cfg, mac_addr, 6); */
 
-	/* Calculate real index of CGX DMAC table */
-	index = lmac_id * lmac->mac_to_index_bmap.max;
-
 	cfg = mac2u64 (mac_addr);
+
+	id = get_sequence_id_of_lmac(cgx_dev, lmac_id);
+
+	index = id * lmac->mac_to_index_bmap.max;
 
 	cgx_write(cgx_dev, 0, (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)),
 		  cfg | CGX_DMAC_CAM_ADDR_ENABLE | ((u64)lmac_id << 49));
@@ -253,6 +281,7 @@ int cgx_lmac_addr_add(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 	struct cgx_mac_ops *mac_ops;
 	int index, idx;
 	u64 cfg = 0;
+	int id;
 
 	if (!lmac)
 		return -ENODEV;
@@ -263,8 +292,9 @@ int cgx_lmac_addr_add(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 	if (idx < 0)
 		return idx;
 
-	/* Calculate real index of CGX DMAC table */
-	index = lmac_id * lmac->mac_to_index_bmap.max + idx;
+	id = get_sequence_id_of_lmac(cgx_dev, lmac_id);
+
+	index = id * lmac->mac_to_index_bmap.max + idx;
 
 	cfg = mac2u64 (mac_addr);
 	cfg |= CGX_DMAC_CAM_ADDR_ENABLE;
@@ -315,6 +345,7 @@ int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index)
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
 	struct cgx_mac_ops *mac_ops;
+	int id;
 
 	if (!lmac)
 		return -ENODEV;
@@ -330,7 +361,10 @@ int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index)
 
 	rvu_free_rsrc(&lmac->mac_to_index_bmap, index);
 
-	index = lmac_id * lmac->mac_to_index_bmap.max + index;
+	id = get_sequence_id_of_lmac(cgx_dev, lmac_id);
+
+	index = id * lmac->mac_to_index_bmap.max + index;
+
 	cgx_write(cgx_dev, 0, (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)), 0);
 
 	return 0;
@@ -356,11 +390,14 @@ u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id)
 	struct cgx_mac_ops *mac_ops;
 	int index;
 	u64 cfg;
+	int id;
 
 	mac_ops = cgx_dev->mac_ops;
 
-	/* Calculate real index of CGX DMAC table */
-	index = lmac_id * lmac->mac_to_index_bmap.max;
+	id = get_sequence_id_of_lmac(cgx_dev, lmac_id);
+
+	index = id * lmac->mac_to_index_bmap.max;
+
 	cfg = cgx_read(cgx_dev, 0, CGXX_CMRX_RX_DMAC_CAM0 + index * 0x8);
 	return cfg & CGX_RX_DMAC_ADR_MASK;
 }
@@ -369,7 +406,7 @@ int cgx_set_pkind(void *cgxd, u8 lmac_id, int pkind)
 {
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	cgx_write(cgx, lmac_id, CGXX_CMRX_RX_ID_MAP, (pkind & 0x3F));
@@ -380,7 +417,7 @@ int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind)
 {
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	*pkind = cgx_read(cgx, lmac_id, CGXX_CMRX_RX_ID_MAP);
@@ -404,7 +441,7 @@ int cgx_lmac_internal_loopback(void *cgxd, int lmac_id, bool enable)
 	u8 lmac_type;
 	u64 cfg;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	lmac_type = cgx->mac_ops->get_lmac_type(cgx, lmac_id);
@@ -434,9 +471,12 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 	struct cgx_mac_ops *mac_ops;
 	int index, i;
 	u64 cfg = 0;
+	int id;
 
 	if (!cgx)
 		return;
+
+	id = get_sequence_id_of_lmac(cgx, lmac_id);
 
 	mac_ops = cgx->mac_ops;
 	if (enable) {
@@ -447,7 +487,7 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 		cgx_write(cgx, lmac_id, CGXX_CMRX_RX_DMAC_CTL0, cfg);
 
 		for (i = 0; i < max_dmac; i++) {
-			index = lmac_id * max_dmac + i;
+			index = id * max_dmac + i;
 			cfg = cgx_read(cgx, 0,
 				       (CGXX_CMRX_RX_DMAC_CAM0 + index * 0x8));
 			cfg &= ~CGX_DMAC_CAM_ADDR_ENABLE;
@@ -460,7 +500,7 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 		cfg |= CGX_DMAC_CAM_ACCEPT | CGX_DMAC_MCAST_MODE;
 		cgx_write(cgx, lmac_id, CGXX_CMRX_RX_DMAC_CTL0, cfg);
 		for (i = 0; i < max_dmac; i++) {
-			index = lmac_id * max_dmac + i;
+			index = id * max_dmac + i;
 			cfg = cgx_read(cgx, 0,
 				       (CGXX_CMRX_RX_DMAC_CAM0 + index * 0x8));
 			if ((cfg & CGX_RX_DMAC_ADR_MASK) != 0) {
@@ -509,7 +549,7 @@ int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 {
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	/* pass lmac as 0 for CGX_CMR_RX_STAT9-12 */
@@ -524,7 +564,7 @@ int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 {
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	*tx_stat = cgx_read(cgx, lmac_id, CGXX_CMRX_TX_STAT0 + (idx * 8));
@@ -536,7 +576,7 @@ int cgx_stats_rst(void *cgxd, int lmac_id)
 	struct cgx *cgx = cgxd;
 	int stat_id;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	for (stat_id = 0 ; stat_id < CGX_RX_STATS_COUNT; stat_id++) {
@@ -592,7 +632,7 @@ int cgx_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp)
 	int corr_reg, uncorr_reg;
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 	fec_stats_count =
 		cgx_set_fec_stats_count(&cgx->lmac_idmap[lmac_id]->link_info);
@@ -616,7 +656,7 @@ u64 cgx_get_lmac_tx_fifo_status(void *cgxd, int lmac_id)
 {
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return 0;
 	return cgx_read(cgx, lmac_id, CGXX_CMRX_TX_FIFO_LEN);
 }
@@ -627,7 +667,7 @@ int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable)
 	struct cgx *cgx = cgxd;
 	u64 cfg;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	cfg = cgx_read(cgx, lmac_id, CGXX_CMRX_CFG);
@@ -644,7 +684,7 @@ int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable)
 	struct cgx *cgx = cgxd;
 	u64 cfg, last;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	cfg = cgx_read(cgx, lmac_id, CGXX_CMRX_CFG);
@@ -678,7 +718,7 @@ int cgx_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
 	struct cgx *cgx = cgxd;
 	u64 cfg;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	if (is_higig2_enabled(cgxd, lmac_id))
@@ -773,7 +813,7 @@ int cgx_lmac_enadis_pause_frm(void *cgxd, int lmac_id,
 	if (is_dev_rpm(cgx))
 		return 0;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	if (is_higig2_enabled(cgxd, lmac_id))
@@ -830,7 +870,7 @@ static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 	if (is_dev_rpm(cgx))
 		return;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return;
 	if (enable) {
 		/* Enable receive pause frames */
@@ -1320,14 +1360,16 @@ int cgx_get_fwdata_base(u64 *base)
 {
 	u64 req = 0, resp;
 	struct cgx *cgx;
+	int first_lmac;
 	int err;
 
 	cgx = list_first_entry_or_null(&cgx_list, struct cgx, cgx_list);
 	if (!cgx)
 		return -ENXIO;
 
+	first_lmac = find_first_bit(&cgx->lmac_bmap, MAX_LMAC_PER_CGX);
 	req = FIELD_SET(CMDREG_ID, CGX_CMD_GET_FWD_BASE, req);
-	err = cgx_fwi_cmd_generic(req, &resp, cgx, 0);
+	err = cgx_fwi_cmd_generic(req, &resp, cgx, first_lmac);
 	if (!err)
 		*base = FIELD_GET(RESP_FWD_BASE, resp);
 
@@ -1437,10 +1479,11 @@ static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool enable)
 
 static inline int cgx_fwi_read_version(u64 *resp, struct cgx *cgx)
 {
+	int first_lmac = find_first_bit(&cgx->lmac_bmap, MAX_LMAC_PER_CGX);
 	u64 req = 0;
 
 	req = FIELD_SET(CMDREG_ID, CGX_CMD_GET_FW_VER, req);
-	return cgx_fwi_cmd_generic(req, resp, cgx, 0);
+	return cgx_fwi_cmd_generic(req, resp, cgx, first_lmac);
 }
 
 static int cgx_lmac_verify_fwi_version(struct cgx *cgx)
@@ -1473,8 +1516,8 @@ static void cgx_lmac_linkup_work(struct work_struct *work)
 	struct device *dev = &cgx->pdev->dev;
 	int i, err;
 
-	/* Do Link up for all the lmacs */
-	for (i = 0; i < cgx->lmac_count; i++) {
+	/* Do Link up for all the enabled lmacs */
+	for_each_set_bit(i, &cgx->lmac_bmap, MAX_LMAC_PER_CGX) {
 		err = cgx_fwi_link_change(cgx, i, true);
 		if (err)
 			dev_info(dev, "cgx port %d:%d Link up command failed\n",
@@ -1585,6 +1628,13 @@ u8 cgx_get_lmacid(void *cgxd, u8 lmac_index)
 	return cgx->lmac_idmap[lmac_index]->lmac_id;
 }
 
+unsigned long cgx_get_lmac_bmap(void *cgxd)
+{
+	struct cgx *cgx = cgxd;
+
+	return cgx->lmac_bmap;
+}
+
 static int cgx_lmac_init(struct cgx *cgx)
 {
 	struct lmac *lmac;
@@ -1635,13 +1685,14 @@ static int cgx_lmac_init(struct cgx *cgx)
 		mutex_init(&lmac->cmd_lock);
 		spin_lock_init(&lmac->event_cb_lock);
 
-		err = cgx_configure_interrupt(cgx, lmac, i, false);
+		err = cgx_configure_interrupt(cgx, lmac, lmac->lmac_id, false);
 		if (err)
 			goto err_irq;
 
 		/* Add reference */
-		cgx->lmac_idmap[i] = lmac;
-		cgx_lmac_pause_frm_config(cgx, i, true);
+		cgx->lmac_idmap[lmac->lmac_id] = lmac;
+		cgx_lmac_pause_frm_config(cgx, lmac->lmac_id, true);
+		set_bit(lmac->lmac_id, &cgx->lmac_bmap);
 	}
 
 	return cgx_lmac_verify_fwi_version(cgx);

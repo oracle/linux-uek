@@ -49,6 +49,7 @@ struct cgx {
 	 * RPMX_MTI_STAT_DATA_HI_CDC etc
 	 */
 	struct mutex		lock;
+	unsigned long		lmac_bmap; /* bitmap of enabled lmacs */
 };
 
 /* Function Declarations */
@@ -57,3 +58,4 @@ u64 cgx_read(struct cgx *cgx, u64 lmac, u64 offset);
 struct lmac *lmac_pdata(u8 lmac_id, struct cgx *cgx);
 int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac);
 int cgx_fwi_cmd_generic(u64 req, u64 *resp, struct cgx *cgx, int lmac_id);
+bool is_lmac_valid(struct cgx *cgx, int lmac_id);
