@@ -884,6 +884,8 @@ again:
 		else
 			vma_changed = true;
 		vma->vm_end = end;
+		if (!next)
+			mm->highest_vm_end = vm_end_gap(vma);
 	}
 
 	if (vma_changed)
@@ -914,8 +916,6 @@ again:
 		 * (it may either follow vma or precede it).
 		 */
 		__insert_vm_struct(mm, insert);
-	} else if (vma_changed && !next) {
-		mm->highest_vm_end = vm_end_gap(vma);
 	}
 
 	if (anon_vma) {
