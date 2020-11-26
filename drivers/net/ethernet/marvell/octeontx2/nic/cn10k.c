@@ -84,6 +84,7 @@ int cn10k_vf_lmtst_init(struct otx2_nic *vf)
 	vf->nix_lmt_size = vf->nix_lmt_lines * LMT_LINE_SIZE;
 	return 0;
 }
+EXPORT_SYMBOL(cn10k_vf_lmtst_init);
 
 int cn10k_sq_aq_init(void *dev, u16 qidx, u16 sqb_aura)
 {

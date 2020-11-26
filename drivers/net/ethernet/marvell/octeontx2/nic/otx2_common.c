@@ -1677,6 +1677,7 @@ out:
 	}
 	return max_mtu;
 }
+EXPORT_SYMBOL(otx2_get_max_mtu);
 
 #define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 int __weak								\
