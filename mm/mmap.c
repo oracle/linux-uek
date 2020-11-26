@@ -236,7 +236,8 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 		mm->brk = brk;
 		goto success;
 	}
-
+	if (mm->brk > mm->start_brk)
+		mas_set(&mas, mm->brk - 1);
 	brkvma = mas_walk(&mas);
 	if (brkvma) {
 
@@ -2966,7 +2967,10 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 
 	arch_unmap(mm, newbrk, oldbrk);
 
-	if (vma->vm_start >= newbrk) { // remove entire mapping(s)
+	if (likely(vma->vm_start >= newbrk)) { // remove entire mapping(s)
+		mas_set(mas, newbrk);
+		if (vma->vm_start != newbrk)
+			mas_reset(mas); // cause a re-walk for the first overlap.
 		ret = do_mas_munmap(mas, mm, newbrk, oldbrk-newbrk, uf, true);
 		goto munmap_full_vma;
 	}
@@ -2981,9 +2985,15 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 
 	// Change the oldbrk of vma to the newbrk of the munmap area
 	vma_adjust_trans_huge(vma, vma->vm_start, newbrk, 0);
+	anon_vma_lock_write(vma->anon_vma);
+	anon_vma_interval_tree_pre_update_vma(vma);
+
 	vma->vm_end = newbrk;
 	if (vma_mas_remove(&unmap, mas))
 		goto mas_store_fail;
+
+	anon_vma_interval_tree_post_update_vma(vma);
+	anon_vma_unlock_write(vma->anon_vma);
 
 	unmap_pages = vma_pages(&unmap);
 	if (unmap.vm_flags & VM_LOCKED) {
@@ -3004,6 +3014,8 @@ munmap_full_vma:
 
 mas_store_fail:
 	vma->vm_end = oldbrk;
+	anon_vma_interval_tree_post_update_vma(vma);
+	anon_vma_unlock_write(vma->anon_vma);
 	return -ENOMEM;
 }
 
@@ -3052,17 +3064,24 @@ static int do_brk_flags(struct ma_state *mas, struct vm_area_struct **brkvma,
 	if (security_vm_enough_memory_mm(mm, len >> PAGE_SHIFT))
 		return -ENOMEM;
 
-	if (brkvma) {
+	if (brkvma && *brkvma) {
 		vma = *brkvma;
-		/* Fast path, expand the existing vma if possible */
-		if (vma && ((vma->vm_flags & ~VM_SOFTDIRTY) == flags)) {
+		/* Expand the existing vma if possible; almost never a singular
+		 * list, so this will almost always fail. */
+		if (list_is_singular(&vma->anon_vma_chain) &&
+		    ((vma->vm_flags & ~VM_SOFTDIRTY) == flags)) {
+			anon_vma_lock_write(vma->anon_vma);
+			anon_vma_interval_tree_pre_update_vma(vma);
 			vma->vm_end = addr + len;
 			mas->index = vma->vm_start;
 			mas->last = vma->vm_end - 1;
 			if (mas_store_gfp(mas, vma, GFP_KERNEL))
 				goto mas_mod_fail;
+			anon_vma_interval_tree_post_update_vma(vma);
+			anon_vma_unlock_write(vma->anon_vma);
 			goto out;
 		}
+		prev = vma;
 	}
 
 	/* create a vma struct for an anonymous mapping */
@@ -3079,9 +3098,9 @@ static int do_brk_flags(struct ma_state *mas, struct vm_area_struct **brkvma,
 	if (vma_mas_store(vma, mas))
 		goto mas_store_fail;
 
-	prev = mas_prev(mas, 0);
+	if (!prev)
+		prev = mas_prev(mas, 0);
 	__vma_link_list(mm, vma, prev);
-	__vma_link_file(vma);
 	mm->map_count++;
 	*brkvma = vma;
 out:
@@ -3102,6 +3121,8 @@ vma_alloc_fail:
 
 mas_mod_fail:
 	vma->vm_end = addr;
+	anon_vma_interval_tree_post_update_vma(vma);
+	anon_vma_unlock_write(vma->anon_vma);
 	return -ENOMEM;
 
 }
