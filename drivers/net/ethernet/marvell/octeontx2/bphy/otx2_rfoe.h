@@ -19,6 +19,7 @@
 #include <linux/ethtool.h>
 #include <linux/if_ether.h>
 #include <linux/net_tstamp.h>
+#include <linux/ptp_clock_kernel.h>
 
 #include "otx2_bphy.h"
 #include "otx2_bphy_hw.h"
@@ -274,6 +275,10 @@ struct otx2_rfoe_ndev_priv {
 	struct work_struct		ptp_tx_work;
 	struct work_struct		ptp_queue_work;
 	struct ptp_tx_skb_list		ptp_skb_list;
+	struct ptp_clock		*ptp_clock;
+	struct ptp_clock_info		ptp_clock_info;
+	/* ptp lock */
+	struct mutex			ptp_lock;
 	struct otx2_rfoe_stats		stats;
 	u8				mac_addr[ETH_ALEN];
 	struct ptp_bcn_off_cfg		*ptp_cfg;
@@ -293,5 +298,10 @@ void otx2_rfoe_disable_intf(int rfoe_num);
 
 /* ethtool */
 void otx2_rfoe_set_ethtool_ops(struct net_device *netdev);
+
+/* ptp */
+void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv, u64 *ts);
+int otx2_rfoe_ptp_init(struct otx2_rfoe_ndev_priv *priv);
+void otx2_rfoe_ptp_destroy(struct otx2_rfoe_ndev_priv *priv);
 
 #endif

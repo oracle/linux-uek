@@ -72,6 +72,8 @@ static void otx2_rfoe_get_drvinfo(struct net_device *netdev,
 static int otx2_rfoe_get_ts_info(struct net_device *netdev,
 				 struct ethtool_ts_info *info)
 {
+	struct otx2_rfoe_ndev_priv *priv = netdev_priv(netdev);
+
 	info->so_timestamping = SOF_TIMESTAMPING_TX_SOFTWARE |
 				SOF_TIMESTAMPING_RX_SOFTWARE |
 				SOF_TIMESTAMPING_SOFTWARE |
@@ -79,7 +81,7 @@ static int otx2_rfoe_get_ts_info(struct net_device *netdev,
 				SOF_TIMESTAMPING_RX_HARDWARE |
 				SOF_TIMESTAMPING_RAW_HARDWARE;
 
-	info->phc_index = -1;
+	info->phc_index =  ptp_clock_index(priv->ptp_clock);
 
 	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON);
 
