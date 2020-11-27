@@ -557,7 +557,7 @@ static void cpt_lf_disable_iqueue(struct rvu *rvu, int blkaddr, int slot)
 		 * knowing that no more instructions will be scheduled
 		 * (INFLIGHT == 0) && (GWB < 40) && (GRB == 0 OR 40)
 		 */
-		if (((inprog && 0x1FF) == 0) &&
+		if (((inprog & 0x1FF) == 0) &&
 		    (((inprog >> 40) & 0xFF) < 40) &&
 		    ((((inprog >> 32) & 0xFF) == 0) ||
 		    (((inprog >> 32) & 0xFF) == 40)))
