@@ -135,6 +135,7 @@ void otx2_bphy_rfoe_cleanup(void)
 				kfree(priv->ptp_cfg);
 				priv->ptp_cfg = NULL;
 			}
+			otx2_rfoe_ptp_destroy(priv);
 			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 				if (!(priv->pkt_type_mask & (1U << idx)))
@@ -149,8 +150,7 @@ void otx2_bphy_rfoe_cleanup(void)
 	}
 }
 
-static void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv,
-				  u64 *ts)
+void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv, u64 *ts)
 {
 	u64 ptp_diff_nsec, ptp_diff_psec;
 	struct ptp_bcn_off_cfg *ptp_cfg;
@@ -1316,6 +1316,7 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 				 "rfoe%d", intf_idx);
 			netdev->netdev_ops = &otx2_rfoe_netdev_ops;
 			otx2_rfoe_set_ethtool_ops(netdev);
+			otx2_rfoe_ptp_init(priv);
 			netdev->watchdog_timeo = (15 * HZ);
 			netdev->mtu = 1500U;
 			netdev->min_mtu = ETH_MIN_MTU;
@@ -1356,6 +1357,7 @@ err_exit:
 		if (drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
+			otx2_rfoe_ptp_destroy(priv);
 			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 				if (!(priv->pkt_type_mask & (1U << idx)))
