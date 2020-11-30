@@ -229,6 +229,7 @@ struct neigh_table {
 	struct neigh_statistics	__percpu *stats;
 	struct neigh_hash_table __rcu *nht;
 	struct pneigh_entry	**phash_buckets;
+	UEK_KABI_EXTEND(int (*is_multicast)(const void *pkey))
 };
 
 enum {

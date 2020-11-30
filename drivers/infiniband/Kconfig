@@ -91,6 +91,9 @@ config INFINIBAND_RESILIENT_RDMAIP
 	  Resilient RDMA IP support. This provides a HA solution for RDMA
 	  capable devices.
 
+config INFINIBAND_VIRT_DMA
+	def_bool !HIGHMEM
+
 if INFINIBAND_USER_ACCESS || !INFINIBAND_USER_ACCESS
 source "drivers/infiniband/hw/mthca/Kconfig"
 source "drivers/infiniband/hw/qib/Kconfig"
