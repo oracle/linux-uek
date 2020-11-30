@@ -117,11 +117,16 @@
 #define MT_MIB_SDR16(_band)		MT_WF_MIB(_band, 0x048)
 #define MT_MIB_SDR16_BUSY_MASK		GENMASK(23, 0)
 
+#define MT_MIB_SDR34(_band)		MT_WF_MIB(_band, 0x090)
+#define MT_MIB_MU_BF_TX_CNT		GENMASK(15, 0)
+
 #define MT_MIB_SDR36(_band)		MT_WF_MIB(_band, 0x098)
 #define MT_MIB_SDR36_TXTIME_MASK	GENMASK(23, 0)
 #define MT_MIB_SDR37(_band)		MT_WF_MIB(_band, 0x09c)
 #define MT_MIB_SDR37_RXTIME_MASK	GENMASK(23, 0)
 
+#define MT_MIB_DR8(_band)		MT_WF_MIB(_band, 0x0c0)
+#define MT_MIB_DR9(_band)		MT_WF_MIB(_band, 0x0c4)
 #define MT_MIB_DR11(_band)		MT_WF_MIB(_band, 0x0cc)
 
 #define MT_MIB_MB_SDR0(_band, n)	MT_WF_MIB(_band, 0x100 + ((n) << 4))
@@ -308,8 +313,16 @@
 #define MT_INT_RX_DONE_WA		BIT(1)
 #define MT_INT_RX_DONE(_n)		((_n) ? BIT((_n) - 1) : BIT(16))
 #define MT_INT_RX_DONE_ALL		(BIT(0) | BIT(1) | BIT(16))
-#define MT_INT_TX_DONE_ALL		(BIT(15) | GENMASK(27, 26) | BIT(30))
+#define MT_INT_TX_DONE_MCU_WA		BIT(15)
+#define MT_INT_TX_DONE_FWDL		BIT(26)
+#define MT_INT_TX_DONE_MCU_WM		BIT(27)
+#define MT_INT_TX_DONE_BAND0		BIT(30)
+#define MT_INT_TX_DONE_BAND1		BIT(31)
 #define MT_INT_MCU_CMD			BIT(29)
+
+#define MT_INT_TX_DONE_MCU		(MT_INT_TX_DONE_MCU_WA |	\
+					 MT_INT_TX_DONE_MCU_WM |	\
+					 MT_INT_TX_DONE_FWDL)
 
 #define MT_WFDMA_EXT_CSR_HIF_MISC	MT_WFDMA_EXT_CSR(0x44)
 #define MT_WFDMA_EXT_CSR_HIF_MISC_BUSY	BIT(0)
@@ -346,6 +359,13 @@
 #define MT_HIF_REMAP_L2_OFFSET		GENMASK(11, 0)
 #define MT_HIF_REMAP_L2_BASE		GENMASK(31, 12)
 #define MT_HIF_REMAP_BASE_L2		0x00000
+
+#define MT_SWDEF_BASE			0x41f200
+#define MT_SWDEF(ofs)			(MT_SWDEF_BASE + (ofs))
+#define MT_SWDEF_MODE			MT_SWDEF(0x3c)
+#define MT_SWDEF_NORMAL_MODE		0
+#define MT_SWDEF_ICAP_MODE		1
+#define MT_SWDEF_SPECTRUM_MODE		2
 
 #define MT_TOP_BASE			0x18060000
 #define MT_TOP(ofs)			(MT_TOP_BASE + (ofs))

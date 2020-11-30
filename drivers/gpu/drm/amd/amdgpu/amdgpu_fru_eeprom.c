@@ -26,28 +26,42 @@
 #include "amdgpu_i2c.h"
 #include "smu_v11_0_i2c.h"
 #include "atom.h"
+#include "amdgpu_fru_eeprom.h"
 
 #define I2C_PRODUCT_INFO_ADDR		0xAC
 #define I2C_PRODUCT_INFO_ADDR_SIZE	0x2
 #define I2C_PRODUCT_INFO_OFFSET		0xC0
 
-bool is_fru_eeprom_supported(struct amdgpu_device *adev)
+static bool is_fru_eeprom_supported(struct amdgpu_device *adev)
 {
-	/* TODO: Gaming SKUs don't have the FRU EEPROM.
-	 * Use this hack to address hangs on modprobe on gaming SKUs
-	 * until a proper solution can be implemented by only supporting
-	 * the explicit chip IDs for VG20 Server cards
-	 *
-	 * TODO: Add list of supported Arcturus DIDs once confirmed
+	/* Only server cards have the FRU EEPROM
+	 * TODO: See if we can figure this out dynamically instead of
+	 * having to parse VBIOS versions.
 	 */
-	if ((adev->asic_type == CHIP_VEGA20 && adev->pdev->device == 0x66a0) ||
-	    (adev->asic_type == CHIP_VEGA20 && adev->pdev->device == 0x66a1) ||
-	    (adev->asic_type == CHIP_VEGA20 && adev->pdev->device == 0x66a4))
-		return true;
-	return false;
+	struct atom_context *atom_ctx = adev->mode_info.atom_context;
+
+	/* VBIOS is of the format ###-DXXXYY-##. For SKU identification,
+	 * we can use just the "DXXX" portion. If there were more models, we
+	 * could convert the 3 characters to a hex integer and use a switch
+	 * for ease/speed/readability. For now, 2 string comparisons are
+	 * reasonable and not too expensive
+	 */
+	switch (adev->asic_type) {
+	case CHIP_VEGA20:
+		/* D161 and D163 are the VG20 server SKUs */
+		if (strnstr(atom_ctx->vbios_version, "D161",
+			    sizeof(atom_ctx->vbios_version)) ||
+		    strnstr(atom_ctx->vbios_version, "D163",
+			    sizeof(atom_ctx->vbios_version)))
+			return true;
+		else
+			return false;
+	default:
+		return false;
+	}
 }
 
-int amdgpu_fru_read_eeprom(struct amdgpu_device *adev, uint32_t addrptr,
+static int amdgpu_fru_read_eeprom(struct amdgpu_device *adev, uint32_t addrptr,
 			   unsigned char *buff)
 {
 	int ret, size;

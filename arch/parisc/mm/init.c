@@ -42,11 +42,11 @@ extern void parisc_kernel_start(void);	/* Kernel entry point in head.S */
  * guarantee that global objects will be laid out in memory in the same order
  * as the order of declaration, so put these in different sections and use
  * the linker script to order them. */
-pmd_t pmd0[PTRS_PER_PMD] __attribute__ ((__section__ (".data..vm0.pmd"), aligned(PAGE_SIZE)));
+pmd_t pmd0[PTRS_PER_PMD] __section(".data..vm0.pmd") __attribute__ ((aligned(PAGE_SIZE)));
 #endif
 
-pgd_t swapper_pg_dir[PTRS_PER_PGD] __attribute__ ((__section__ (".data..vm0.pgd"), aligned(PAGE_SIZE)));
-pte_t pg0[PT_INITIAL * PTRS_PER_PTE] __attribute__ ((__section__ (".data..vm0.pte"), aligned(PAGE_SIZE)));
+pgd_t swapper_pg_dir[PTRS_PER_PGD] __section(".data..vm0.pgd") __attribute__ ((aligned(PAGE_SIZE)));
+pte_t pg0[PT_INITIAL * PTRS_PER_PTE] __section(".data..vm0.pte") __attribute__ ((aligned(PAGE_SIZE)));
 
 static struct resource data_resource = {
 	.name	= "Kernel data",
@@ -689,11 +689,6 @@ void __init paging_init(void)
 	flush_cache_all_local(); /* start with known state */
 	flush_tlb_all_local(NULL);
 
-	/*
-	 * Mark all memblocks as present for sparsemem using
-	 * memory_present() and then initialize sparsemem.
-	 */
-	memblocks_present();
 	sparse_init();
 	parisc_bootmem_free();
 }
@@ -750,7 +745,7 @@ unsigned long alloc_sid(void)
 	free_space_ids--;
 
 	index = find_next_zero_bit(space_id, NR_SPACE_IDS, space_id_index);
-	space_id[index >> SHIFT_PER_LONG] |= (1L << (index & (BITS_PER_LONG - 1)));
+	space_id[BIT_WORD(index)] |= BIT_MASK(index);
 	space_id_index = index;
 
 	spin_unlock(&sid_lock);
@@ -761,16 +756,16 @@ unsigned long alloc_sid(void)
 void free_sid(unsigned long spaceid)
 {
 	unsigned long index = spaceid >> SPACEID_SHIFT;
-	unsigned long *dirty_space_offset;
+	unsigned long *dirty_space_offset, mask;
 
-	dirty_space_offset = dirty_space_id + (index >> SHIFT_PER_LONG);
-	index &= (BITS_PER_LONG - 1);
+	dirty_space_offset = &dirty_space_id[BIT_WORD(index)];
+	mask = BIT_MASK(index);
 
 	spin_lock(&sid_lock);
 
-	BUG_ON(*dirty_space_offset & (1L << index)); /* attempt to free space id twice */
+	BUG_ON(*dirty_space_offset & mask); /* attempt to free space id twice */
 
-	*dirty_space_offset |= (1L << index);
+	*dirty_space_offset |= mask;
 	dirty_space_ids++;
 
 	spin_unlock(&sid_lock);

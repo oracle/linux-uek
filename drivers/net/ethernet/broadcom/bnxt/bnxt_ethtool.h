@@ -84,11 +84,16 @@ struct hwrm_dbg_cmn_output {
 				  ETH_RESET_PHY | ETH_RESET_RAM)	\
 				 << ETH_RESET_SHARED_SHIFT)
 
+#define BNXT_PXP_REG_LEN	0x3110
+
 extern const struct ethtool_ops bnxt_ethtool_ops;
 
+u32 bnxt_get_rxfh_indir_size(struct net_device *dev);
 u32 _bnxt_fw_to_ethtool_adv_spds(u16, u8);
 u32 bnxt_fw_to_ethtool_speed(u16);
 u16 bnxt_get_fw_auto_link_speeds(u32);
+int bnxt_hwrm_nvm_get_dev_info(struct bnxt *bp,
+			       struct hwrm_nvm_get_dev_info_output *nvm_dev_info);
 int bnxt_flash_package_from_file(struct net_device *dev, const char *filename,
 				 u32 install_type);
 void bnxt_ethtool_init(struct bnxt *bp);

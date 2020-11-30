@@ -68,7 +68,7 @@ static void zfcp_erp_action_ready(struct zfcp_erp_action *act)
 {
 	struct zfcp_adapter *adapter = act->adapter;
 
-	list_move(&act->list, &act->adapter->erp_ready_head);
+	list_move(&act->list, &adapter->erp_ready_head);
 	zfcp_dbf_rec_run("erardy1", act);
 	wake_up(&adapter->erp_ready_wq);
 	zfcp_dbf_rec_run("erardy2", act);
@@ -577,7 +577,10 @@ static void zfcp_erp_strategy_check_fsfreq(struct zfcp_erp_action *act)
 				   ZFCP_STATUS_ERP_TIMEDOUT)) {
 			req->status |= ZFCP_STATUS_FSFREQ_DISMISSED;
 			zfcp_dbf_rec_run("erscf_1", act);
-			req->erp_action = NULL;
+			/* lock-free concurrent access with
+			 * zfcp_erp_timeout_handler()
+			 */
+			WRITE_ONCE(req->erp_action, NULL);
 		}
 		if (act->status & ZFCP_STATUS_ERP_TIMEDOUT)
 			zfcp_dbf_rec_run("erscf_2", act);
@@ -613,8 +616,14 @@ void zfcp_erp_notify(struct zfcp_erp_action *erp_action, unsigned long set_mask)
 void zfcp_erp_timeout_handler(struct timer_list *t)
 {
 	struct zfcp_fsf_req *fsf_req = from_timer(fsf_req, t, timer);
-	struct zfcp_erp_action *act = fsf_req->erp_action;
+	struct zfcp_erp_action *act;
 
+	if (fsf_req->status & ZFCP_STATUS_FSFREQ_DISMISSED)
+		return;
+	/* lock-free concurrent access with zfcp_erp_strategy_check_fsfreq() */
+	act = READ_ONCE(fsf_req->erp_action);
+	if (!act)
+		return;
 	zfcp_erp_notify(act, ZFCP_STATUS_ERP_TIMEDOUT);
 }
 
@@ -1598,7 +1607,6 @@ check_target:
 static int zfcp_erp_thread(void *data)
 {
 	struct zfcp_adapter *adapter = (struct zfcp_adapter *) data;
-	struct list_head *next;
 	struct zfcp_erp_action *act;
 	unsigned long flags;
 
@@ -1611,12 +1619,11 @@ static int zfcp_erp_thread(void *data)
 			break;
 
 		write_lock_irqsave(&adapter->erp_lock, flags);
-		next = adapter->erp_ready_head.next;
+		act = list_first_entry_or_null(&adapter->erp_ready_head,
+					       struct zfcp_erp_action, list);
 		write_unlock_irqrestore(&adapter->erp_lock, flags);
 
-		if (next != &adapter->erp_ready_head) {
-			act = list_entry(next, struct zfcp_erp_action, list);
-
+		if (act) {
 			/* there is more to come after dismission, no notify */
 			if (zfcp_erp_strategy(act) != ZFCP_ERP_DISMISSED)
 				zfcp_erp_wakeup(adapter);

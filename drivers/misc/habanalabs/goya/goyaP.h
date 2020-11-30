@@ -9,12 +9,12 @@
 #define GOYAP_H_
 
 #include <uapi/misc/habanalabs.h>
-#include "habanalabs.h"
-#include "include/hl_boot_if.h"
-#include "include/goya/goya_packets.h"
-#include "include/goya/goya.h"
-#include "include/goya/goya_async_events.h"
-#include "include/goya/goya_fw_if.h"
+#include "../common/habanalabs.h"
+#include "../include/common/hl_boot_if.h"
+#include "../include/goya/goya_packets.h"
+#include "../include/goya/goya.h"
+#include "../include/goya/goya_async_events.h"
+#include "../include/goya/goya_fw_if.h"
 
 #define NUMBER_OF_CMPLT_QUEUES		5
 #define NUMBER_OF_EXT_HW_QUEUES		5
@@ -30,10 +30,6 @@
  * The event queue has 1 ID
  */
 #define NUMBER_OF_INTERRUPTS		(NUMBER_OF_CMPLT_QUEUES + 1)
-
-#if (NUMBER_OF_HW_QUEUES >= HL_MAX_QUEUES)
-#error "Number of H/W queues must be smaller than HL_MAX_QUEUES"
-#endif
 
 #if (NUMBER_OF_INTERRUPTS > GOYA_MSIX_ENTRIES)
 #error "Number of MSIX interrupts must be smaller or equal to GOYA_MSIX_ENTRIES"
@@ -56,6 +52,12 @@
 #define DRAM_PHYS_DEFAULT_SIZE		0x100000000ull	/* 4GB */
 
 #define GOYA_DEFAULT_CARD_NAME		"HL1000"
+
+#define GOYA_MAX_PENDING_CS		64
+
+#if !IS_MAX_PENDING_CS_VALID(GOYA_MAX_PENDING_CS)
+#error "GOYA_MAX_PENDING_CS must be power of 2 and greater than 1"
+#endif
 
 /* DRAM Memory Map */
 
@@ -164,7 +166,7 @@ struct goya_device {
 	u8		device_cpu_mmu_mappings_done;
 };
 
-void goya_get_fixed_properties(struct hl_device *hdev);
+int goya_get_fixed_properties(struct hl_device *hdev);
 int goya_mmu_init(struct hl_device *hdev);
 void goya_init_dma_qmans(struct hl_device *hdev);
 void goya_init_mme_qmans(struct hl_device *hdev);
@@ -205,7 +207,7 @@ void goya_set_max_power(struct hl_device *hdev, u64 value);
 void goya_set_pll_profile(struct hl_device *hdev, enum hl_pll_frequency freq);
 void goya_add_device_attr(struct hl_device *hdev,
 			struct attribute_group *dev_attr_grp);
-int goya_armcp_info_get(struct hl_device *hdev);
+int goya_cpucp_info_get(struct hl_device *hdev);
 int goya_debug_coresight(struct hl_device *hdev, void *data);
 void goya_halt_coresight(struct hl_device *hdev);
 
@@ -215,7 +217,7 @@ int goya_resume(struct hl_device *hdev);
 void goya_handle_eqe(struct hl_device *hdev, struct hl_eq_entry *eq_entry);
 void *goya_get_events_stat(struct hl_device *hdev, bool aggregate, u32 *size);
 
-void goya_add_end_of_cb_packets(struct hl_device *hdev, u64 kernel_address,
+void goya_add_end_of_cb_packets(struct hl_device *hdev, void *kernel_address,
 				u32 len, u64 cq_addr, u32 cq_val, u32 msix_vec,
 				bool eb);
 int goya_cs_parser(struct hl_device *hdev, struct hl_cs_parser *parser);

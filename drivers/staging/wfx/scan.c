@@ -2,7 +2,7 @@
 /*
  * Scan related functions.
  *
- * Copyright (c) 2017-2019, Silicon Laboratories, Inc.
+ * Copyright (c) 2017-2020, Silicon Laboratories, Inc.
  * Copyright (c) 2010, ST-Ericsson
  */
 #include <net/mac80211.h>
@@ -56,10 +56,10 @@ static int send_scan_req(struct wfx_vif *wvif,
 	wfx_tx_lock_flush(wvif->wdev);
 	wvif->scan_abort = false;
 	reinit_completion(&wvif->scan_complete);
-	timeout = hif_scan(wvif, req, start_idx, i - start_idx);
-	if (timeout < 0) {
+	ret = hif_scan(wvif, req, start_idx, i - start_idx, &timeout);
+	if (ret) {
 		wfx_tx_unlock(wvif->wdev);
-		return timeout;
+		return -EIO;
 	}
 	ret = wait_for_completion_timeout(&wvif->scan_complete, timeout);
 	if (req->channels[start_idx]->max_power != wvif->vif->bss_conf.txpower)
@@ -113,10 +113,6 @@ int wfx_hw_scan(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	struct wfx_vif *wvif = (struct wfx_vif *)vif->drv_priv;
 
 	WARN_ON(hw_req->req.n_channels > HIF_API_MAX_NB_CHANNELS);
-
-	if (vif->type == NL80211_IFTYPE_AP)
-		return -EOPNOTSUPP;
-
 	wvif->scan_req = hw_req;
 	schedule_work(&wvif->scan_work);
 	return 0;

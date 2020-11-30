@@ -119,7 +119,7 @@ static int mcp23s08_spi_regmap_init(struct mcp23s08 *mcp, struct device *dev,
 		return -EINVAL;
 	}
 
-	copy = devm_kmemdup(dev, &config, sizeof(config), GFP_KERNEL);
+	copy = devm_kmemdup(dev, config, sizeof(*config), GFP_KERNEL);
 	if (!copy)
 		return -ENOMEM;
 
@@ -127,9 +127,8 @@ static int mcp23s08_spi_regmap_init(struct mcp23s08 *mcp, struct device *dev,
 
 	mcp->regmap = devm_regmap_init(dev, &mcp23sxx_spi_regmap, mcp, copy);
 	if (IS_ERR(mcp->regmap))
-		return PTR_ERR(mcp->regmap);
-
-	return 0;
+		dev_err(dev, "regmap init failed for %s\n", mcp->chip.label);
+	return PTR_ERR_OR_ZERO(mcp->regmap);
 }
 
 static int mcp23s08_probe(struct spi_device *spi)

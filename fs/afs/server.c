@@ -550,7 +550,12 @@ void afs_manage_servers(struct work_struct *work)
 
 		_debug("manage %pU %u", &server->uuid, active);
 
-		ASSERTIFCMP(purging, active, ==, 0);
+		if (purging) {
+			trace_afs_server(server, atomic_read(&server->ref),
+					 active, afs_server_trace_purging);
+			if (active != 0)
+				pr_notice("Can't purge s=%08x\n", server->debug_id);
+		}
 
 		if (active == 0) {
 			time64_t expire_at = server->unuse_time;
@@ -605,11 +610,12 @@ void afs_purge_servers(struct afs_net *net)
 	_enter("");
 
 	if (del_timer_sync(&net->fs_timer))
-		atomic_dec(&net->servers_outstanding);
+		afs_dec_servers_outstanding(net);
 
 	afs_queue_server_manager(net);
 
 	_debug("wait");
+	atomic_dec(&net->servers_outstanding);
 	wait_var_event(&net->servers_outstanding,
 		       !atomic_read(&net->servers_outstanding));
 	_leave("");

@@ -528,7 +528,7 @@ static void release_ixp_crypto(struct device *dev)
 
 	if (crypt_virt) {
 		dma_free_coherent(dev,
-			NPE_QLEN_TOTAL * sizeof( struct crypt_ctl),
+			NPE_QLEN * sizeof(struct crypt_ctl),
 			crypt_virt, crypt_phys);
 	}
 }
@@ -1402,7 +1402,8 @@ static int __init ixp_module_init(void)
 
 		/* block ciphers */
 		cra->base.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY |
-				      CRYPTO_ALG_ASYNC;
+				      CRYPTO_ALG_ASYNC |
+				      CRYPTO_ALG_ALLOCATES_MEMORY;
 		if (!cra->setkey)
 			cra->setkey = ablk_setkey;
 		if (!cra->encrypt)
@@ -1435,7 +1436,8 @@ static int __init ixp_module_init(void)
 
 		/* authenc */
 		cra->base.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY |
-				      CRYPTO_ALG_ASYNC;
+				      CRYPTO_ALG_ASYNC |
+				      CRYPTO_ALG_ALLOCATES_MEMORY;
 		cra->setkey = cra->setkey ?: aead_setkey;
 		cra->setauthsize = aead_setauthsize;
 		cra->encrypt = aead_encrypt;

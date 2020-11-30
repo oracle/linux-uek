@@ -38,7 +38,7 @@ struct _tlb_table {
 
 #define cpu_dev_register(cpu_devX) \
 	static const struct cpu_dev *const __cpu_dev_##cpu_devX __used \
-	__attribute__((__section__(".x86_cpu_dev.init"))) = \
+	__section(".x86_cpu_dev.init") = \
 	&cpu_devX;
 
 extern const struct cpu_dev *const __x86_cpu_dev_start[],
@@ -80,9 +80,5 @@ extern void x86_spec_ctrl_setup_ap(void);
 extern void update_srbds_msr(void);
 
 extern u64 x86_read_arch_cap_msr(void);
-
-#ifdef CONFIG_IA32_FEAT_CTL
-void init_ia32_feat_ctl(struct cpuinfo_x86 *c);
-#endif
 
 #endif /* ARCH_X86_CPU_H */

@@ -82,7 +82,7 @@ struct am65_cpsw_pdata {
 struct am65_cpsw_common {
 	struct device		*dev;
 	struct device		*mdio_dev;
-	const struct am65_cpsw_pdata *pdata;
+	struct am65_cpsw_pdata	pdata;
 
 	void __iomem		*ss_base;
 	void __iomem		*cpsw_base;
@@ -106,6 +106,7 @@ struct am65_cpsw_common {
 
 	u32			nuss_ver;
 	u32			cpsw_ver;
+	unsigned long		bus_freq;
 	bool			pf_p0_rx_ptype_rrobin;
 	struct am65_cpts	*cpts;
 	int			est_enabled;

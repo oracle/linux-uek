@@ -29,14 +29,16 @@ static struct xdp_buff **i40e_rx_bi(struct i40e_ring *rx_ring, u32 idx)
 }
 
 /**
- * i40e_xsk_umem_enable - Enable/associate a UMEM to a certain ring/qid
+ * i40e_xsk_pool_enable - Enable/associate an AF_XDP buffer pool to a
+ * certain ring/qid
  * @vsi: Current VSI
- * @umem: UMEM
- * @qid: Rx ring to associate UMEM to
+ * @pool: buffer pool
+ * @qid: Rx ring to associate buffer pool with
  *
  * Returns 0 on success, <0 on failure
  **/
-static int i40e_xsk_umem_enable(struct i40e_vsi *vsi, struct xdp_umem *umem,
+static int i40e_xsk_pool_enable(struct i40e_vsi *vsi,
+				struct xsk_buff_pool *pool,
 				u16 qid)
 {
 	struct net_device *netdev = vsi->netdev;
@@ -53,7 +55,7 @@ static int i40e_xsk_umem_enable(struct i40e_vsi *vsi, struct xdp_umem *umem,
 	    qid >= netdev->real_num_tx_queues)
 		return -EINVAL;
 
-	err = xsk_buff_dma_map(umem, &vsi->back->pdev->dev, I40E_RX_DMA_ATTR);
+	err = xsk_pool_dma_map(pool, &vsi->back->pdev->dev, I40E_RX_DMA_ATTR);
 	if (err)
 		return err;
 
@@ -80,21 +82,22 @@ static int i40e_xsk_umem_enable(struct i40e_vsi *vsi, struct xdp_umem *umem,
 }
 
 /**
- * i40e_xsk_umem_disable - Disassociate a UMEM from a certain ring/qid
+ * i40e_xsk_pool_disable - Disassociate an AF_XDP buffer pool from a
+ * certain ring/qid
  * @vsi: Current VSI
- * @qid: Rx ring to associate UMEM to
+ * @qid: Rx ring to associate buffer pool with
  *
  * Returns 0 on success, <0 on failure
  **/
-static int i40e_xsk_umem_disable(struct i40e_vsi *vsi, u16 qid)
+static int i40e_xsk_pool_disable(struct i40e_vsi *vsi, u16 qid)
 {
 	struct net_device *netdev = vsi->netdev;
-	struct xdp_umem *umem;
+	struct xsk_buff_pool *pool;
 	bool if_running;
 	int err;
 
-	umem = xdp_get_umem_from_qid(netdev, qid);
-	if (!umem)
+	pool = xsk_get_pool_from_qid(netdev, qid);
+	if (!pool)
 		return -EINVAL;
 
 	if_running = netif_running(vsi->netdev) && i40e_enabled_xdp_vsi(vsi);
@@ -106,7 +109,7 @@ static int i40e_xsk_umem_disable(struct i40e_vsi *vsi, u16 qid)
 	}
 
 	clear_bit(qid, vsi->af_xdp_zc_qps);
-	xsk_buff_dma_unmap(umem, I40E_RX_DMA_ATTR);
+	xsk_pool_dma_unmap(pool, I40E_RX_DMA_ATTR);
 
 	if (if_running) {
 		err = i40e_queue_pair_enable(vsi, qid);
@@ -118,20 +121,21 @@ static int i40e_xsk_umem_disable(struct i40e_vsi *vsi, u16 qid)
 }
 
 /**
- * i40e_xsk_umem_setup - Enable/disassociate a UMEM to/from a ring/qid
+ * i40e_xsk_pool_setup - Enable/disassociate an AF_XDP buffer pool to/from
+ * a ring/qid
  * @vsi: Current VSI
- * @umem: UMEM to enable/associate to a ring, or NULL to disable
- * @qid: Rx ring to (dis)associate UMEM (from)to
+ * @pool: Buffer pool to enable/associate to a ring, or NULL to disable
+ * @qid: Rx ring to (dis)associate buffer pool (from)to
  *
- * This function enables or disables a UMEM to a certain ring.
+ * This function enables or disables a buffer pool to a certain ring.
  *
  * Returns 0 on success, <0 on failure
  **/
-int i40e_xsk_umem_setup(struct i40e_vsi *vsi, struct xdp_umem *umem,
+int i40e_xsk_pool_setup(struct i40e_vsi *vsi, struct xsk_buff_pool *pool,
 			u16 qid)
 {
-	return umem ? i40e_xsk_umem_enable(vsi, umem, qid) :
-		i40e_xsk_umem_disable(vsi, qid);
+	return pool ? i40e_xsk_pool_enable(vsi, pool, qid) :
+		i40e_xsk_pool_disable(vsi, qid);
 }
 
 /**
@@ -168,10 +172,10 @@ static int i40e_run_xdp_zc(struct i40e_ring *rx_ring, struct xdp_buff *xdp)
 		break;
 	default:
 		bpf_warn_invalid_xdp_action(act);
-		/* fall through */
+		fallthrough;
 	case XDP_ABORTED:
 		trace_xdp_exception(rx_ring->netdev, xdp_prog, act);
-		/* fallthrough -- handle aborts by dropping packet */
+		fallthrough; /* handle aborts by dropping packet */
 	case XDP_DROP:
 		result = I40E_XDP_CONSUMED;
 		break;
@@ -191,7 +195,7 @@ bool i40e_alloc_rx_buffers_zc(struct i40e_ring *rx_ring, u16 count)
 	rx_desc = I40E_RX_DESC(rx_ring, ntu);
 	bi = i40e_rx_bi(rx_ring, ntu);
 	do {
-		xdp = xsk_buff_alloc(rx_ring->xsk_umem);
+		xdp = xsk_buff_alloc(rx_ring->xsk_pool);
 		if (!xdp) {
 			ok = false;
 			goto no_buffers;
@@ -254,6 +258,18 @@ static struct sk_buff *i40e_construct_skb_zc(struct i40e_ring *rx_ring,
 }
 
 /**
+ * i40e_inc_ntc: Advance the next_to_clean index
+ * @rx_ring: Rx ring
+ **/
+static void i40e_inc_ntc(struct i40e_ring *rx_ring)
+{
+	u32 ntc = rx_ring->next_to_clean + 1;
+
+	ntc = (ntc < rx_ring->count) ? ntc : 0;
+	rx_ring->next_to_clean = ntc;
+}
+
+/**
  * i40e_clean_rx_irq_zc - Consumes Rx packets from the hardware ring
  * @rx_ring: Rx ring
  * @budget: NAPI budget
@@ -273,13 +289,6 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 		struct xdp_buff **bi;
 		unsigned int size;
 		u64 qword;
-
-		if (cleaned_count >= I40E_RX_BUFFER_WRITE) {
-			failure = failure ||
-				  !i40e_alloc_rx_buffers_zc(rx_ring,
-							    cleaned_count);
-			cleaned_count = 0;
-		}
 
 		rx_desc = I40E_RX_DESC(rx_ring, rx_ring->next_to_clean);
 		qword = le64_to_cpu(rx_desc->wb.qword1.status_error_len);
@@ -310,7 +319,7 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 
 		bi = i40e_rx_bi(rx_ring, rx_ring->next_to_clean);
 		(*bi)->data_end = (*bi)->data + size;
-		xsk_buff_dma_sync_for_cpu(*bi);
+		xsk_buff_dma_sync_for_cpu(*bi, rx_ring->xsk_pool);
 
 		xdp_res = i40e_run_xdp_zc(rx_ring, *bi);
 		if (xdp_res) {
@@ -355,14 +364,17 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 		napi_gro_receive(&rx_ring->q_vector->napi, skb);
 	}
 
+	if (cleaned_count >= I40E_RX_BUFFER_WRITE)
+		failure = !i40e_alloc_rx_buffers_zc(rx_ring, cleaned_count);
+
 	i40e_finalize_xdp_rx(rx_ring, xdp_xmit);
 	i40e_update_rx_stats(rx_ring, total_rx_bytes, total_rx_packets);
 
-	if (xsk_umem_uses_need_wakeup(rx_ring->xsk_umem)) {
+	if (xsk_uses_need_wakeup(rx_ring->xsk_pool)) {
 		if (failure || rx_ring->next_to_clean == rx_ring->next_to_use)
-			xsk_set_rx_need_wakeup(rx_ring->xsk_umem);
+			xsk_set_rx_need_wakeup(rx_ring->xsk_pool);
 		else
-			xsk_clear_rx_need_wakeup(rx_ring->xsk_umem);
+			xsk_clear_rx_need_wakeup(rx_ring->xsk_pool);
 
 		return (int)total_rx_packets;
 	}
@@ -378,24 +390,18 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
  **/
 static bool i40e_xmit_zc(struct i40e_ring *xdp_ring, unsigned int budget)
 {
+	unsigned int sent_frames = 0, total_bytes = 0;
 	struct i40e_tx_desc *tx_desc = NULL;
 	struct i40e_tx_buffer *tx_bi;
-	bool work_done = true;
 	struct xdp_desc desc;
 	dma_addr_t dma;
 
 	while (budget-- > 0) {
-		if (!unlikely(I40E_DESC_UNUSED(xdp_ring))) {
-			xdp_ring->tx_stats.tx_busy++;
-			work_done = false;
-			break;
-		}
-
-		if (!xsk_umem_consume_tx(xdp_ring->xsk_umem, &desc))
+		if (!xsk_tx_peek_desc(xdp_ring->xsk_pool, &desc))
 			break;
 
-		dma = xsk_buff_raw_get_dma(xdp_ring->xsk_umem, desc.addr);
-		xsk_buff_raw_dma_sync_for_device(xdp_ring->xsk_umem, dma,
+		dma = xsk_buff_raw_get_dma(xdp_ring->xsk_pool, desc.addr);
+		xsk_buff_raw_dma_sync_for_device(xdp_ring->xsk_pool, dma,
 						 desc.len);
 
 		tx_bi = &xdp_ring->tx_bi[xdp_ring->next_to_use];
@@ -408,6 +414,9 @@ static bool i40e_xmit_zc(struct i40e_ring *xdp_ring, unsigned int budget)
 				   | I40E_TX_DESC_CMD_EOP,
 				   0, desc.len, 0);
 
+		sent_frames++;
+		total_bytes += tx_bi->bytecount;
+
 		xdp_ring->next_to_use++;
 		if (xdp_ring->next_to_use == xdp_ring->count)
 			xdp_ring->next_to_use = 0;
@@ -419,10 +428,11 @@ static bool i40e_xmit_zc(struct i40e_ring *xdp_ring, unsigned int budget)
 						 I40E_TXD_QW1_CMD_SHIFT);
 		i40e_xdp_ring_update_tail(xdp_ring);
 
-		xsk_umem_consume_tx_done(xdp_ring->xsk_umem);
+		xsk_tx_release(xdp_ring->xsk_pool);
+		i40e_update_tx_stats(xdp_ring, sent_frames, total_bytes);
 	}
 
-	return !!budget && work_done;
+	return !!budget;
 }
 
 /**
@@ -434,6 +444,7 @@ static void i40e_clean_xdp_tx_buffer(struct i40e_ring *tx_ring,
 				     struct i40e_tx_buffer *tx_bi)
 {
 	xdp_return_frame(tx_bi->xdpf);
+	tx_ring->xdp_tx_active--;
 	dma_unmap_single(tx_ring->dev,
 			 dma_unmap_addr(tx_bi, dma),
 			 dma_unmap_len(tx_bi, len), DMA_TO_DEVICE);
@@ -442,32 +453,29 @@ static void i40e_clean_xdp_tx_buffer(struct i40e_ring *tx_ring,
 
 /**
  * i40e_clean_xdp_tx_irq - Completes AF_XDP entries, and cleans XDP entries
+ * @vsi: Current VSI
  * @tx_ring: XDP Tx ring
- * @tx_bi: Tx buffer info to clean
  *
  * Returns true if cleanup/tranmission is done.
  **/
-bool i40e_clean_xdp_tx_irq(struct i40e_vsi *vsi,
-			   struct i40e_ring *tx_ring, int napi_budget)
+bool i40e_clean_xdp_tx_irq(struct i40e_vsi *vsi, struct i40e_ring *tx_ring)
 {
-	unsigned int ntc, total_bytes = 0, budget = vsi->work_limit;
-	u32 i, completed_frames, frames_ready, xsk_frames = 0;
-	struct xdp_umem *umem = tx_ring->xsk_umem;
+	struct xsk_buff_pool *bp = tx_ring->xsk_pool;
+	u32 i, completed_frames, xsk_frames = 0;
 	u32 head_idx = i40e_get_head(tx_ring);
-	bool work_done = true, xmit_done;
 	struct i40e_tx_buffer *tx_bi;
+	unsigned int ntc;
 
 	if (head_idx < tx_ring->next_to_clean)
 		head_idx += tx_ring->count;
-	frames_ready = head_idx - tx_ring->next_to_clean;
+	completed_frames = head_idx - tx_ring->next_to_clean;
 
-	if (frames_ready == 0) {
+	if (completed_frames == 0)
 		goto out_xmit;
-	} else if (frames_ready > budget) {
-		completed_frames = budget;
-		work_done = false;
-	} else {
-		completed_frames = frames_ready;
+
+	if (likely(!tx_ring->xdp_tx_active)) {
+		xsk_frames = completed_frames;
+		goto skip;
 	}
 
 	ntc = tx_ring->next_to_clean;
@@ -475,35 +483,32 @@ bool i40e_clean_xdp_tx_irq(struct i40e_vsi *vsi,
 	for (i = 0; i < completed_frames; i++) {
 		tx_bi = &tx_ring->tx_bi[ntc];
 
-		if (tx_bi->xdpf)
+		if (tx_bi->xdpf) {
 			i40e_clean_xdp_tx_buffer(tx_ring, tx_bi);
-		else
+			tx_bi->xdpf = NULL;
+		} else {
 			xsk_frames++;
-
-		tx_bi->xdpf = NULL;
-		total_bytes += tx_bi->bytecount;
+		}
 
 		if (++ntc >= tx_ring->count)
 			ntc = 0;
 	}
 
+skip:
 	tx_ring->next_to_clean += completed_frames;
 	if (unlikely(tx_ring->next_to_clean >= tx_ring->count))
 		tx_ring->next_to_clean -= tx_ring->count;
 
 	if (xsk_frames)
-		xsk_umem_complete_tx(umem, xsk_frames);
+		xsk_tx_completed(bp, xsk_frames);
 
-	i40e_arm_wb(tx_ring, vsi, budget);
-	i40e_update_tx_stats(tx_ring, completed_frames, total_bytes);
+	i40e_arm_wb(tx_ring, vsi, completed_frames);
 
 out_xmit:
-	if (xsk_umem_uses_need_wakeup(tx_ring->xsk_umem))
-		xsk_set_tx_need_wakeup(tx_ring->xsk_umem);
+	if (xsk_uses_need_wakeup(tx_ring->xsk_pool))
+		xsk_set_tx_need_wakeup(tx_ring->xsk_pool);
 
-	xmit_done = i40e_xmit_zc(tx_ring, budget);
-
-	return work_done && xmit_done;
+	return i40e_xmit_zc(tx_ring, I40E_DESC_UNUSED(tx_ring));
 }
 
 /**
@@ -533,7 +538,7 @@ int i40e_xsk_wakeup(struct net_device *dev, u32 queue_id, u32 flags)
 	if (queue_id >= vsi->num_queue_pairs)
 		return -ENXIO;
 
-	if (!vsi->xdp_rings[queue_id]->xsk_umem)
+	if (!vsi->xdp_rings[queue_id]->xsk_pool)
 		return -ENXIO;
 
 	ring = vsi->xdp_rings[queue_id];
@@ -567,12 +572,12 @@ void i40e_xsk_clean_rx_ring(struct i40e_ring *rx_ring)
 
 /**
  * i40e_xsk_clean_xdp_ring - Clean the XDP Tx ring on shutdown
- * @xdp_ring: XDP Tx ring
+ * @tx_ring: XDP Tx ring
  **/
 void i40e_xsk_clean_tx_ring(struct i40e_ring *tx_ring)
 {
 	u16 ntc = tx_ring->next_to_clean, ntu = tx_ring->next_to_use;
-	struct xdp_umem *umem = tx_ring->xsk_umem;
+	struct xsk_buff_pool *bp = tx_ring->xsk_pool;
 	struct i40e_tx_buffer *tx_bi;
 	u32 xsk_frames = 0;
 
@@ -592,14 +597,15 @@ void i40e_xsk_clean_tx_ring(struct i40e_ring *tx_ring)
 	}
 
 	if (xsk_frames)
-		xsk_umem_complete_tx(umem, xsk_frames);
+		xsk_tx_completed(bp, xsk_frames);
 }
 
 /**
- * i40e_xsk_any_rx_ring_enabled - Checks if Rx rings have AF_XDP UMEM attached
+ * i40e_xsk_any_rx_ring_enabled - Checks if Rx rings have an AF_XDP
+ * buffer pool attached
  * @vsi: vsi
  *
- * Returns true if any of the Rx rings has an AF_XDP UMEM attached
+ * Returns true if any of the Rx rings has an AF_XDP buffer pool attached
  **/
 bool i40e_xsk_any_rx_ring_enabled(struct i40e_vsi *vsi)
 {
@@ -607,7 +613,7 @@ bool i40e_xsk_any_rx_ring_enabled(struct i40e_vsi *vsi)
 	int i;
 
 	for (i = 0; i < vsi->num_queue_pairs; i++) {
-		if (xdp_get_umem_from_qid(netdev, i))
+		if (xsk_get_pool_from_qid(netdev, i))
 			return true;
 	}
 

@@ -1,17 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * devfreq_cooling: Thermal cooling device implementation for devices using
  *                  devfreq
  *
  * Copyright (C) 2014-2015 ARM Limited
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * TODO:
  *    - If OPPs are added or removed after devfreq cooling has
@@ -237,7 +229,6 @@ static inline unsigned long get_total_power(struct devfreq_cooling_device *dfc,
 
 
 static int devfreq_cooling_get_requested_power(struct thermal_cooling_device *cdev,
-					       struct thermal_zone_device *tz,
 					       u32 *power)
 {
 	struct devfreq_cooling_device *dfc = cdev->devdata;
@@ -297,7 +288,6 @@ fail:
 }
 
 static int devfreq_cooling_state2power(struct thermal_cooling_device *cdev,
-				       struct thermal_zone_device *tz,
 				       unsigned long state,
 				       u32 *power)
 {
@@ -316,7 +306,6 @@ static int devfreq_cooling_state2power(struct thermal_cooling_device *cdev,
 }
 
 static int devfreq_cooling_power2state(struct thermal_cooling_device *cdev,
-				       struct thermal_zone_device *tz,
 				       u32 power, unsigned long *state)
 {
 	struct devfreq_cooling_device *dfc = cdev->devdata;

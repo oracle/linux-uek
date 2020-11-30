@@ -270,7 +270,7 @@ BEGIN_FTR_SECTION
 END_FTR_SECTION_IFSET(CPU_FTR_CFAR)
 	.endif
 
-	ld	r10,PACA_EXGEN+EX_CTR(r13)
+	ld	r10,IAREA+EX_CTR(r13)
 	mtctr	r10
 BEGIN_FTR_SECTION
 	ld	r10,IAREA+EX_PPR(r13)
@@ -298,7 +298,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 
 	.if IKVM_SKIP
 89:	mtocrf	0x80,r9
-	ld	r10,PACA_EXGEN+EX_CTR(r13)
+	ld	r10,IAREA+EX_CTR(r13)
 	mtctr	r10
 	ld	r9,IAREA+EX_R9(r13)
 	ld	r10,IAREA+EX_R10(r13)
@@ -508,8 +508,24 @@ DEFINE_FIXED_SYMBOL(\name\()_common_real)
 
 .macro __GEN_COMMON_BODY name
 	.if IMASK
+		.if ! ISTACK
+		.error "No support for masked interrupt to use custom stack"
+		.endif
+
+		/* If coming from user, skip soft-mask tests. */
+		andi.	r10,r12,MSR_PR
+		bne	2f
+
+		/* Kernel code running below __end_interrupts is implicitly
+		 * soft-masked */
+		LOAD_HANDLER(r10, __end_interrupts)
+		cmpld	r11,r10
+		li	r10,IMASK
+		blt-	1f
+
+		/* Test the soft mask state against our interrupt's bit */
 		lbz	r10,PACAIRQSOFTMASK(r13)
-		andi.	r10,r10,IMASK
+1:		andi.	r10,r10,IMASK
 		/* Associate vector numbers with bits in paca->irq_happened */
 		.if IVEC == 0x500 || IVEC == 0xea0
 		li	r10,PACA_IRQ_EE
@@ -540,7 +556,7 @@ DEFINE_FIXED_SYMBOL(\name\()_common_real)
 
 	.if ISTACK
 	andi.	r10,r12,MSR_PR		/* See if coming from user	*/
-	mr	r10,r1			/* Save r1			*/
+2:	mr	r10,r1			/* Save r1			*/
 	subi	r1,r1,INT_FRAME_SIZE	/* alloc frame on kernel stack	*/
 	beq-	100f
 	ld	r1,PACAKSAVE(r13)	/* kernel stack to use		*/
@@ -740,6 +756,9 @@ END_FTR_SECTION_IFSET(CPU_FTR_CAN_NAP)
  * guarantee they will be delivered virtually. Some conditions (see the ISA)
  * cause exceptions to be delivered in real mode.
  *
+ * The scv instructions are a special case. They get a 0x3000 offset applied.
+ * scv exceptions have unique reentrancy properties, see below.
+ *
  * It's impossible to receive interrupts below 0x300 via AIL.
  *
  * KVM: None of the virtual exceptions are from the guest. Anything that
@@ -749,8 +768,8 @@ END_FTR_SECTION_IFSET(CPU_FTR_CAN_NAP)
  * We layout physical memory as follows:
  * 0x0000 - 0x00ff : Secondary processor spin code
  * 0x0100 - 0x18ff : Real mode pSeries interrupt vectors
- * 0x1900 - 0x3fff : Real mode trampolines
- * 0x4000 - 0x58ff : Relon (IR=1,DR=1) mode pSeries interrupt vectors
+ * 0x1900 - 0x2fff : Real mode trampolines
+ * 0x3000 - 0x58ff : Relon (IR=1,DR=1) mode pSeries interrupt vectors
  * 0x5900 - 0x6fff : Relon mode trampolines
  * 0x7000 - 0x7fff : FWNMI data area
  * 0x8000 -   .... : Common interrupt handlers, remaining early
@@ -761,8 +780,8 @@ END_FTR_SECTION_IFSET(CPU_FTR_CAN_NAP)
  * vectors there.
  */
 OPEN_FIXED_SECTION(real_vectors,        0x0100, 0x1900)
-OPEN_FIXED_SECTION(real_trampolines,    0x1900, 0x4000)
-OPEN_FIXED_SECTION(virt_vectors,        0x4000, 0x5900)
+OPEN_FIXED_SECTION(real_trampolines,    0x1900, 0x3000)
+OPEN_FIXED_SECTION(virt_vectors,        0x3000, 0x5900)
 OPEN_FIXED_SECTION(virt_trampolines,    0x5900, 0x7000)
 
 #ifdef CONFIG_PPC_POWERNV
@@ -797,6 +816,77 @@ USE_FIXED_SECTION(real_vectors)
  */
 	.globl __start_interrupts
 __start_interrupts:
+
+/**
+ * Interrupt 0x3000 - System Call Vectored Interrupt (syscall).
+ * This is a synchronous interrupt invoked with the "scv" instruction. The
+ * system call does not alter the HV bit, so it is directed to the OS.
+ *
+ * Handling:
+ * scv instructions enter the kernel without changing EE, RI, ME, or HV.
+ * In particular, this means we can take a maskable interrupt at any point
+ * in the scv handler, which is unlike any other interrupt. This is solved
+ * by treating the instruction addresses below __end_interrupts as being
+ * soft-masked.
+ *
+ * AIL-0 mode scv exceptions go to 0x17000-0x17fff, but we set AIL-3 and
+ * ensure scv is never executed with relocation off, which means AIL-0
+ * should never happen.
+ *
+ * Before leaving the below __end_interrupts text, at least of the following
+ * must be true:
+ * - MSR[PR]=1 (i.e., return to userspace)
+ * - MSR_EE|MSR_RI is set (no reentrant exceptions)
+ * - Standard kernel environment is set up (stack, paca, etc)
+ *
+ * Call convention:
+ *
+ * syscall register convention is in Documentation/powerpc/syscall64-abi.rst
+ */
+EXC_VIRT_BEGIN(system_call_vectored, 0x3000, 0x1000)
+	/* SCV 0 */
+	mr	r9,r13
+	GET_PACA(r13)
+	mflr	r11
+	mfctr	r12
+	li	r10,IRQS_ALL_DISABLED
+	stb	r10,PACAIRQSOFTMASK(r13)
+#ifdef CONFIG_RELOCATABLE
+	b	system_call_vectored_tramp
+#else
+	b	system_call_vectored_common
+#endif
+	nop
+
+	/* SCV 1 - 127 */
+	.rept	127
+	mr	r9,r13
+	GET_PACA(r13)
+	mflr	r11
+	mfctr	r12
+	li	r10,IRQS_ALL_DISABLED
+	stb	r10,PACAIRQSOFTMASK(r13)
+	li	r0,-1 /* cause failure */
+#ifdef CONFIG_RELOCATABLE
+	b	system_call_vectored_sigill_tramp
+#else
+	b	system_call_vectored_sigill
+#endif
+	.endr
+EXC_VIRT_END(system_call_vectored, 0x3000, 0x1000)
+
+#ifdef CONFIG_RELOCATABLE
+TRAMP_VIRT_BEGIN(system_call_vectored_tramp)
+	__LOAD_HANDLER(r10, system_call_vectored_common)
+	mtctr	r10
+	bctr
+
+TRAMP_VIRT_BEGIN(system_call_vectored_sigill_tramp)
+	__LOAD_HANDLER(r10, system_call_vectored_sigill)
+	mtctr	r10
+	bctr
+#endif
+
 
 /* No virt vectors corresponding with 0x0..0x100 */
 EXC_VIRT_NONE(0x4000, 0x100)
@@ -910,8 +1000,6 @@ TRAMP_REAL_BEGIN(system_reset_idle_wake)
  * Vectors for the FWNMI option.  Share common code.
  */
 TRAMP_REAL_BEGIN(system_reset_fwnmi)
-	/* XXX: fwnmi guest could run a nested/PR guest, so why no test?  */
-	__IKVM_REAL(system_reset)=0
 	GEN_INT_ENTRY system_reset, virt=0
 
 #endif /* CONFIG_PPC_PSERIES */
@@ -1322,6 +1410,11 @@ END_FTR_SECTION_IFSET(CPU_FTR_HVMODE)
  *   If none is found, do a Linux page fault. Linux page faults can happen in
  *   kernel mode due to user copy operations of course.
  *
+ *   KVM: The KVM HDSI handler may perform a load with MSR[DR]=1 in guest
+ *   MMU context, which may cause a DSI in the host, which must go to the
+ *   KVM handler. MSR[IR] is not enabled, so the real-mode handler will
+ *   always be used regardless of AIL setting.
+ *
  * - Radix MMU
  *   The hardware loads from the Linux page table directly, so a fault goes
  *   immediately to Linux page fault.
@@ -1332,10 +1425,8 @@ INT_DEFINE_BEGIN(data_access)
 	IVEC=0x300
 	IDAR=1
 	IDSISR=1
-#ifdef CONFIG_KVM_BOOK3S_PR_POSSIBLE
 	IKVM_SKIP=1
 	IKVM_REAL=1
-#endif
 INT_DEFINE_END(data_access)
 
 EXC_REAL_BEGIN(data_access, 0x300, 0x80)
@@ -1374,6 +1465,8 @@ ALT_MMU_FTR_SECTION_END_IFCLR(MMU_FTR_TYPE_RADIX)
  *   ppc64_bolted_size (first segment). The kernel handler must avoid stomping
  *   on user-handler data structures.
  *
+ *   KVM: Same as 0x300, DSLB must test for KVM guest.
+ *
  * A dedicated save area EXSLB is used (XXX: but it actually need not be
  * these days, we could use EXGEN).
  */
@@ -1382,10 +1475,8 @@ INT_DEFINE_BEGIN(data_access_slb)
 	IAREA=PACA_EXSLB
 	IRECONCILE=0
 	IDAR=1
-#ifdef CONFIG_KVM_BOOK3S_PR_POSSIBLE
 	IKVM_SKIP=1
 	IKVM_REAL=1
-#endif
 INT_DEFINE_END(data_access_slb)
 
 EXC_REAL_BEGIN(data_access_slb, 0x380, 0x80)
@@ -2551,7 +2642,7 @@ EXC_VIRT_NONE(0x5400, 0x100)
 INT_DEFINE_BEGIN(denorm_exception)
 	IVEC=0x1500
 	IHSRR=1
-	IBRANCH_COMMON=0
+	IBRANCH_TO_COMMON=0
 	IKVM_REAL=1
 INT_DEFINE_END(denorm_exception)
 
@@ -2838,7 +2929,8 @@ masked_interrupt:
 	ld	r10,PACA_EXGEN+EX_R10(r13)
 	ld	r11,PACA_EXGEN+EX_R11(r13)
 	ld	r12,PACA_EXGEN+EX_R12(r13)
-	/* returns to kernel where r13 must be set up, so don't restore it */
+	ld	r13,PACA_EXGEN+EX_R13(r13)
+	/* May return to masked low address where r13 is not set up */
 	.if \hsrr
 	HRFI_TO_KERNEL
 	.else
@@ -2860,15 +2952,8 @@ TRAMP_REAL_BEGIN(stf_barrier_fallback)
 	.endr
 	blr
 
-TRAMP_REAL_BEGIN(rfi_flush_fallback)
-	SET_SCRATCH0(r13);
-	GET_PACA(r13);
-	std	r1,PACA_EXRFI+EX_R12(r13)
-	ld	r1,PACAKSAVE(r13)
-	std	r9,PACA_EXRFI+EX_R9(r13)
-	std	r10,PACA_EXRFI+EX_R10(r13)
-	std	r11,PACA_EXRFI+EX_R11(r13)
-	mfctr	r9
+/* Clobbers r10, r11, ctr */
+.macro L1D_DISPLACEMENT_FLUSH
 	ld	r10,PACA_RFI_FLUSH_FALLBACK_AREA(r13)
 	ld	r11,PACA_L1D_FLUSH_SIZE(r13)
 	srdi	r11,r11,(7 + 3) /* 128 byte lines, unrolled 8x */
@@ -2879,7 +2964,7 @@ TRAMP_REAL_BEGIN(rfi_flush_fallback)
 	sync
 
 	/*
-	 * The load adresses are at staggered offsets within cachelines,
+	 * The load addresses are at staggered offsets within cachelines,
 	 * which suits some pipelines better (on others it should not
 	 * hurt).
 	 */
@@ -2894,7 +2979,30 @@ TRAMP_REAL_BEGIN(rfi_flush_fallback)
 	ld	r11,(0x80 + 8)*7(r10)
 	addi	r10,r10,0x80*8
 	bdnz	1b
+.endm
 
+TRAMP_REAL_BEGIN(entry_flush_fallback)
+	std	r9,PACA_EXRFI+EX_R9(r13)
+	std	r10,PACA_EXRFI+EX_R10(r13)
+	std	r11,PACA_EXRFI+EX_R11(r13)
+	mfctr	r9
+	L1D_DISPLACEMENT_FLUSH
+	mtctr	r9
+	ld	r9,PACA_EXRFI+EX_R9(r13)
+	ld	r10,PACA_EXRFI+EX_R10(r13)
+	ld	r11,PACA_EXRFI+EX_R11(r13)
+	blr
+
+TRAMP_REAL_BEGIN(rfi_flush_fallback)
+	SET_SCRATCH0(r13);
+	GET_PACA(r13);
+	std	r1,PACA_EXRFI+EX_R12(r13)
+	ld	r1,PACAKSAVE(r13)
+	std	r9,PACA_EXRFI+EX_R9(r13)
+	std	r10,PACA_EXRFI+EX_R10(r13)
+	std	r11,PACA_EXRFI+EX_R11(r13)
+	mfctr	r9
+	L1D_DISPLACEMENT_FLUSH
 	mtctr	r9
 	ld	r9,PACA_EXRFI+EX_R9(r13)
 	ld	r10,PACA_EXRFI+EX_R10(r13)
@@ -2912,6 +3020,22 @@ TRAMP_REAL_BEGIN(hrfi_flush_fallback)
 	std	r10,PACA_EXRFI+EX_R10(r13)
 	std	r11,PACA_EXRFI+EX_R11(r13)
 	mfctr	r9
+	L1D_DISPLACEMENT_FLUSH
+	mtctr	r9
+	ld	r9,PACA_EXRFI+EX_R9(r13)
+	ld	r10,PACA_EXRFI+EX_R10(r13)
+	ld	r11,PACA_EXRFI+EX_R11(r13)
+	ld	r1,PACA_EXRFI+EX_R12(r13)
+	GET_SCRATCH0(r13);
+	hrfid
+
+TRAMP_REAL_BEGIN(rfscv_flush_fallback)
+	/* system call volatile */
+	mr	r7,r13
+	GET_PACA(r13);
+	mr	r8,r1
+	ld	r1,PACAKSAVE(r13)
+	mfctr	r9
 	ld	r10,PACA_RFI_FLUSH_FALLBACK_AREA(r13)
 	ld	r11,PACA_L1D_FLUSH_SIZE(r13)
 	srdi	r11,r11,(7 + 3) /* 128 byte lines, unrolled 8x */
@@ -2939,16 +3063,29 @@ TRAMP_REAL_BEGIN(hrfi_flush_fallback)
 	bdnz	1b
 
 	mtctr	r9
-	ld	r9,PACA_EXRFI+EX_R9(r13)
-	ld	r10,PACA_EXRFI+EX_R10(r13)
-	ld	r11,PACA_EXRFI+EX_R11(r13)
-	ld	r1,PACA_EXRFI+EX_R12(r13)
-	GET_SCRATCH0(r13);
-	hrfid
+	li	r9,0
+	li	r10,0
+	li	r11,0
+	mr	r1,r8
+	mr	r13,r7
+	RFSCV
 
 USE_TEXT_SECTION()
-	MASKED_INTERRUPT
-	MASKED_INTERRUPT hsrr=1
+
+_GLOBAL(do_uaccess_flush)
+	UACCESS_FLUSH_FIXUP_SECTION
+	nop
+	nop
+	nop
+	blr
+	L1D_DISPLACEMENT_FLUSH
+	blr
+_ASM_NOKPROBE_SYMBOL(do_uaccess_flush)
+EXPORT_SYMBOL(do_uaccess_flush)
+
+
+MASKED_INTERRUPT
+MASKED_INTERRUPT hsrr=1
 
 #ifdef CONFIG_KVM_BOOK3S_64_HANDLER
 kvmppc_skip_interrupt:
@@ -2997,6 +3134,10 @@ EXC_COMMON_BEGIN(ppc64_runlatch_on_trampoline)
 
 USE_FIXED_SECTION(virt_trampolines)
 	/*
+	 * All code below __end_interrupts is treated as soft-masked. If
+	 * any code runs here with MSR[EE]=1, it must then cope with pending
+	 * soft interrupt being raised (i.e., by ensuring it is replayed).
+	 *
 	 * The __end_interrupts marker must be past the out-of-line (OOL)
 	 * handlers, so that they are copied to real address 0x100 when running
 	 * a relocatable kernel. This ensures they can be reached from the short
@@ -3072,10 +3213,18 @@ do_hash_page:
 	ori	r0,r0,DSISR_BAD_FAULT_64S@l
 	and.	r0,r5,r0		/* weird error? */
 	bne-	handle_page_fault	/* if not, try to insert a HPTE */
+
+	/*
+	 * If we are in an "NMI" (e.g., an interrupt when soft-disabled), then
+	 * don't call hash_page, just fail the fault. This is required to
+	 * prevent re-entrancy problems in the hash code, namely perf
+	 * interrupts hitting while something holds H_PAGE_BUSY, and taking a
+	 * hash fault. See the comment in hash_preload().
+	 */
 	ld	r11, PACA_THREAD_INFO(r13)
-	lwz	r0,TI_PREEMPT(r11)	/* If we're in an "NMI" */
-	andis.	r0,r0,NMI_MASK@h	/* (i.e. an irq when soft-disabled) */
-	bne	77f			/* then don't call hash_page now */
+	lwz	r0,TI_PREEMPT(r11)
+	andis.	r0,r0,NMI_MASK@h
+	bne	77f
 
 	/*
 	 * r3 contains the trap number

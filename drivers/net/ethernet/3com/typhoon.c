@@ -789,8 +789,8 @@ typhoon_start_tx(struct sk_buff *skb, struct net_device *dev)
 	 * it with zeros to ETH_ZLEN for us.
 	 */
 	if (skb_shinfo(skb)->nr_frags == 0) {
-		skb_dma = pci_map_single(tp->tx_pdev, skb->data, skb->len,
-				       PCI_DMA_TODEVICE);
+		skb_dma = dma_map_single(&tp->tx_pdev->dev, skb->data,
+					 skb->len, DMA_TO_DEVICE);
 		txd->flags = TYPHOON_FRAG_DESC | TYPHOON_DESC_VALID;
 		txd->len = cpu_to_le16(skb->len);
 		txd->frag.addr = cpu_to_le32(skb_dma);
@@ -800,8 +800,8 @@ typhoon_start_tx(struct sk_buff *skb, struct net_device *dev)
 		int i, len;
 
 		len = skb_headlen(skb);
-		skb_dma = pci_map_single(tp->tx_pdev, skb->data, len,
-				         PCI_DMA_TODEVICE);
+		skb_dma = dma_map_single(&tp->tx_pdev->dev, skb->data, len,
+					 DMA_TO_DEVICE);
 		txd->flags = TYPHOON_FRAG_DESC | TYPHOON_DESC_VALID;
 		txd->len = cpu_to_le16(len);
 		txd->frag.addr = cpu_to_le32(skb_dma);
@@ -818,8 +818,8 @@ typhoon_start_tx(struct sk_buff *skb, struct net_device *dev)
 
 			len = skb_frag_size(frag);
 			frag_addr = skb_frag_address(frag);
-			skb_dma = pci_map_single(tp->tx_pdev, frag_addr, len,
-					 PCI_DMA_TODEVICE);
+			skb_dma = dma_map_single(&tp->tx_pdev->dev, frag_addr,
+						 len, DMA_TO_DEVICE);
 			txd->flags = TYPHOON_FRAG_DESC | TYPHOON_DESC_VALID;
 			txd->len = cpu_to_le16(len);
 			txd->frag.addr = cpu_to_le32(skb_dma);
@@ -1349,12 +1349,12 @@ typhoon_download_firmware(struct typhoon *tp)
 	image_data = typhoon_fw->data;
 	fHdr = (struct typhoon_file_header *) image_data;
 
-	/* Cannot just map the firmware image using pci_map_single() as
+	/* Cannot just map the firmware image using dma_map_single() as
 	 * the firmware is vmalloc()'d and may not be physically contiguous,
-	 * so we allocate some consistent memory to copy the sections into.
+	 * so we allocate some coherent memory to copy the sections into.
 	 */
 	err = -ENOMEM;
-	dpage = pci_alloc_consistent(pdev, PAGE_SIZE, &dpage_dma);
+	dpage = dma_alloc_coherent(&pdev->dev, PAGE_SIZE, &dpage_dma, GFP_ATOMIC);
 	if (!dpage) {
 		netdev_err(tp->dev, "no DMA mem for firmware\n");
 		goto err_out;
@@ -1419,8 +1419,7 @@ typhoon_download_firmware(struct typhoon *tp)
 			 * the checksum, we can do this once, at the end.
 			 */
 			csum = csum_fold(csum_partial_copy_nocheck(image_data,
-								   dpage, len,
-								   0));
+								   dpage, len));
 
 			iowrite32(len, ioaddr + TYPHOON_REG_BOOT_LENGTH);
 			iowrite32(le16_to_cpu((__force __le16)csum),
@@ -1460,7 +1459,7 @@ err_out_irq:
 	iowrite32(irqMasked, ioaddr + TYPHOON_REG_INTR_MASK);
 	iowrite32(irqEnabled, ioaddr + TYPHOON_REG_INTR_ENABLE);
 
-	pci_free_consistent(pdev, PAGE_SIZE, dpage, dpage_dma);
+	dma_free_coherent(&pdev->dev, PAGE_SIZE, dpage, dpage_dma);
 
 err_out:
 	return err;
@@ -1527,8 +1526,8 @@ typhoon_clean_tx(struct typhoon *tp, struct transmit_ring *txRing,
 			 */
 			skb_dma = (dma_addr_t) le32_to_cpu(tx->frag.addr);
 			dma_len = le16_to_cpu(tx->len);
-			pci_unmap_single(tp->pdev, skb_dma, dma_len,
-				       PCI_DMA_TODEVICE);
+			dma_unmap_single(&tp->pdev->dev, skb_dma, dma_len,
+					 DMA_TO_DEVICE);
 		}
 
 		tx->flags = 0;
@@ -1609,8 +1608,8 @@ typhoon_alloc_rx_skb(struct typhoon *tp, u32 idx)
 	skb_reserve(skb, 2);
 #endif
 
-	dma_addr = pci_map_single(tp->pdev, skb->data,
-				  PKT_BUF_SZ, PCI_DMA_FROMDEVICE);
+	dma_addr = dma_map_single(&tp->pdev->dev, skb->data, PKT_BUF_SZ,
+				  DMA_FROM_DEVICE);
 
 	/* Since no card does 64 bit DAC, the high bits will never
 	 * change from zero.
@@ -1665,20 +1664,19 @@ typhoon_rx(struct typhoon *tp, struct basic_ring *rxRing, volatile __le32 * read
 		if (pkt_len < rx_copybreak &&
 		   (new_skb = netdev_alloc_skb(tp->dev, pkt_len + 2)) != NULL) {
 			skb_reserve(new_skb, 2);
-			pci_dma_sync_single_for_cpu(tp->pdev, dma_addr,
-						    PKT_BUF_SZ,
-						    PCI_DMA_FROMDEVICE);
+			dma_sync_single_for_cpu(&tp->pdev->dev, dma_addr,
+						PKT_BUF_SZ, DMA_FROM_DEVICE);
 			skb_copy_to_linear_data(new_skb, skb->data, pkt_len);
-			pci_dma_sync_single_for_device(tp->pdev, dma_addr,
-						       PKT_BUF_SZ,
-						       PCI_DMA_FROMDEVICE);
+			dma_sync_single_for_device(&tp->pdev->dev, dma_addr,
+						   PKT_BUF_SZ,
+						   DMA_FROM_DEVICE);
 			skb_put(new_skb, pkt_len);
 			typhoon_recycle_rx_skb(tp, idx);
 		} else {
 			new_skb = skb;
 			skb_put(new_skb, pkt_len);
-			pci_unmap_single(tp->pdev, dma_addr, PKT_BUF_SZ,
-				       PCI_DMA_FROMDEVICE);
+			dma_unmap_single(&tp->pdev->dev, dma_addr, PKT_BUF_SZ,
+					 DMA_FROM_DEVICE);
 			typhoon_alloc_rx_skb(tp, idx);
 		}
 		new_skb->protocol = eth_type_trans(new_skb, tp->dev);
@@ -1792,8 +1790,8 @@ typhoon_free_rx_rings(struct typhoon *tp)
 	for (i = 0; i < RXENT_ENTRIES; i++) {
 		struct rxbuff_ent *rxb = &tp->rxbuffers[i];
 		if (rxb->skb) {
-			pci_unmap_single(tp->pdev, rxb->dma_addr, PKT_BUF_SZ,
-				       PCI_DMA_FROMDEVICE);
+			dma_unmap_single(&tp->pdev->dev, rxb->dma_addr,
+					 PKT_BUF_SZ, DMA_FROM_DEVICE);
 			dev_kfree_skb(rxb->skb);
 			rxb->skb = NULL;
 		}
@@ -1801,9 +1799,8 @@ typhoon_free_rx_rings(struct typhoon *tp)
 }
 
 static int
-typhoon_sleep(struct typhoon *tp, pci_power_t state, __le16 events)
+typhoon_sleep_early(struct typhoon *tp, __le16 events)
 {
-	struct pci_dev *pdev = tp->pdev;
 	void __iomem *ioaddr = tp->ioaddr;
 	struct cmd_desc xp_cmd;
 	int err;
@@ -1832,19 +1829,28 @@ typhoon_sleep(struct typhoon *tp, pci_power_t state, __le16 events)
 	 */
 	netif_carrier_off(tp->dev);
 
+	return 0;
+}
+
+static int
+typhoon_sleep(struct typhoon *tp, pci_power_t state, __le16 events)
+{
+	int err;
+
+	err = typhoon_sleep_early(tp, events);
+
+	if (err)
+		return err;
+
 	pci_enable_wake(tp->pdev, state, 1);
-	pci_disable_device(pdev);
-	return pci_set_power_state(pdev, state);
+	pci_disable_device(tp->pdev);
+	return pci_set_power_state(tp->pdev, state);
 }
 
 static int
 typhoon_wakeup(struct typhoon *tp, int wait_type)
 {
-	struct pci_dev *pdev = tp->pdev;
 	void __iomem *ioaddr = tp->ioaddr;
-
-	pci_set_power_state(pdev, PCI_D0);
-	pci_restore_state(pdev);
 
 	/* Post 2.x.x versions of the Sleep Image require a reset before
 	 * we can download the Runtime Image. But let's not make users of
@@ -2049,6 +2055,9 @@ typhoon_open(struct net_device *dev)
 	if (err)
 		goto out;
 
+	pci_set_power_state(tp->pdev, PCI_D0);
+	pci_restore_state(tp->pdev);
+
 	err = typhoon_wakeup(tp, WaitSleep);
 	if (err < 0) {
 		netdev_err(dev, "unable to wakeup device\n");
@@ -2114,11 +2123,10 @@ typhoon_close(struct net_device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static int
-typhoon_resume(struct pci_dev *pdev)
+static int __maybe_unused
+typhoon_resume(struct device *dev_d)
 {
-	struct net_device *dev = pci_get_drvdata(pdev);
+	struct net_device *dev = dev_get_drvdata(dev_d);
 	struct typhoon *tp = netdev_priv(dev);
 
 	/* If we're down, resume when we are upped.
@@ -2144,9 +2152,10 @@ reset:
 	return -EBUSY;
 }
 
-static int
-typhoon_suspend(struct pci_dev *pdev, pm_message_t state)
+static int __maybe_unused
+typhoon_suspend(struct device *dev_d)
 {
+	struct pci_dev *pdev = to_pci_dev(dev_d);
 	struct net_device *dev = pci_get_drvdata(pdev);
 	struct typhoon *tp = netdev_priv(dev);
 	struct cmd_desc xp_cmd;
@@ -2190,18 +2199,19 @@ typhoon_suspend(struct pci_dev *pdev, pm_message_t state)
 		goto need_resume;
 	}
 
-	if (typhoon_sleep(tp, pci_choose_state(pdev, state), tp->wol_events) < 0) {
+	if (typhoon_sleep_early(tp, tp->wol_events) < 0) {
 		netdev_err(dev, "unable to put card to sleep\n");
 		goto need_resume;
 	}
 
+	device_wakeup_enable(dev_d);
+
 	return 0;
 
 need_resume:
-	typhoon_resume(pdev);
+	typhoon_resume(dev_d);
 	return -EBUSY;
 }
-#endif
 
 static int
 typhoon_test_mmio(struct pci_dev *pdev)
@@ -2294,7 +2304,7 @@ typhoon_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto error_out_disable;
 	}
 
-	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
+	err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if (err < 0) {
 		err_msg = "No usable DMA configuration";
 		goto error_out_mwi;
@@ -2343,8 +2353,8 @@ typhoon_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* allocate pci dma space for rx and tx descriptor rings
 	 */
-	shared = pci_alloc_consistent(pdev, sizeof(struct typhoon_shared),
-				      &shared_dma);
+	shared = dma_alloc_coherent(&pdev->dev, sizeof(struct typhoon_shared),
+				    &shared_dma, GFP_KERNEL);
 	if (!shared) {
 		err_msg = "could not allocate DMA memory";
 		err = -ENOMEM;
@@ -2497,8 +2507,8 @@ error_out_reset:
 	typhoon_reset(ioaddr, NoWait);
 
 error_out_dma:
-	pci_free_consistent(pdev, sizeof(struct typhoon_shared),
-			    shared, shared_dma);
+	dma_free_coherent(&pdev->dev, sizeof(struct typhoon_shared), shared,
+			  shared_dma);
 error_out_remap:
 	pci_iounmap(pdev, ioaddr);
 error_out_regions:
@@ -2525,23 +2535,22 @@ typhoon_remove_one(struct pci_dev *pdev)
 	pci_restore_state(pdev);
 	typhoon_reset(tp->ioaddr, NoWait);
 	pci_iounmap(pdev, tp->ioaddr);
-	pci_free_consistent(pdev, sizeof(struct typhoon_shared),
-			    tp->shared, tp->shared_dma);
+	dma_free_coherent(&pdev->dev, sizeof(struct typhoon_shared),
+			  tp->shared, tp->shared_dma);
 	pci_release_regions(pdev);
 	pci_clear_mwi(pdev);
 	pci_disable_device(pdev);
 	free_netdev(dev);
 }
 
+static SIMPLE_DEV_PM_OPS(typhoon_pm_ops, typhoon_suspend, typhoon_resume);
+
 static struct pci_driver typhoon_driver = {
 	.name		= KBUILD_MODNAME,
 	.id_table	= typhoon_pci_tbl,
 	.probe		= typhoon_init_one,
 	.remove		= typhoon_remove_one,
-#ifdef CONFIG_PM
-	.suspend	= typhoon_suspend,
-	.resume		= typhoon_resume,
-#endif
+	.driver.pm	= &typhoon_pm_ops,
 };
 
 static int __init

@@ -11,6 +11,8 @@
 
 #include <crypto/aes.h>
 #include <crypto/internal/des.h>
+#include <linux/device.h>
+#include <linux/dma-mapping.h>
 
 #include "cesa.h"
 
@@ -262,8 +264,7 @@ static int mv_cesa_aes_setkey(struct crypto_skcipher *cipher, const u8 *key,
 	remaining = (ctx->aes.key_length - 16) / 4;
 	offset = ctx->aes.key_length + 24 - remaining;
 	for (i = 0; i < remaining; i++)
-		ctx->aes.key_dec[4 + i] =
-			cpu_to_le32(ctx->aes.key_enc[offset + i]);
+		ctx->aes.key_dec[4 + i] = ctx->aes.key_enc[offset + i];
 
 	return 0;
 }
@@ -508,7 +509,8 @@ struct skcipher_alg mv_cesa_ecb_des_alg = {
 		.cra_name = "ecb(des)",
 		.cra_driver_name = "mv-ecb-des",
 		.cra_priority = 300,
-		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC,
+		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC |
+			     CRYPTO_ALG_ALLOCATES_MEMORY,
 		.cra_blocksize = DES_BLOCK_SIZE,
 		.cra_ctxsize = sizeof(struct mv_cesa_des_ctx),
 		.cra_alignmask = 0,
@@ -558,7 +560,8 @@ struct skcipher_alg mv_cesa_cbc_des_alg = {
 		.cra_name = "cbc(des)",
 		.cra_driver_name = "mv-cbc-des",
 		.cra_priority = 300,
-		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC,
+		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC |
+			     CRYPTO_ALG_ALLOCATES_MEMORY,
 		.cra_blocksize = DES_BLOCK_SIZE,
 		.cra_ctxsize = sizeof(struct mv_cesa_des_ctx),
 		.cra_alignmask = 0,
@@ -616,7 +619,8 @@ struct skcipher_alg mv_cesa_ecb_des3_ede_alg = {
 		.cra_name = "ecb(des3_ede)",
 		.cra_driver_name = "mv-ecb-des3-ede",
 		.cra_priority = 300,
-		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC,
+		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC |
+			     CRYPTO_ALG_ALLOCATES_MEMORY,
 		.cra_blocksize = DES3_EDE_BLOCK_SIZE,
 		.cra_ctxsize = sizeof(struct mv_cesa_des3_ctx),
 		.cra_alignmask = 0,
@@ -669,7 +673,8 @@ struct skcipher_alg mv_cesa_cbc_des3_ede_alg = {
 		.cra_name = "cbc(des3_ede)",
 		.cra_driver_name = "mv-cbc-des3-ede",
 		.cra_priority = 300,
-		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC,
+		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC |
+			     CRYPTO_ALG_ALLOCATES_MEMORY,
 		.cra_blocksize = DES3_EDE_BLOCK_SIZE,
 		.cra_ctxsize = sizeof(struct mv_cesa_des3_ctx),
 		.cra_alignmask = 0,
@@ -741,7 +746,8 @@ struct skcipher_alg mv_cesa_ecb_aes_alg = {
 		.cra_name = "ecb(aes)",
 		.cra_driver_name = "mv-ecb-aes",
 		.cra_priority = 300,
-		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC,
+		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC |
+			     CRYPTO_ALG_ALLOCATES_MEMORY,
 		.cra_blocksize = AES_BLOCK_SIZE,
 		.cra_ctxsize = sizeof(struct mv_cesa_aes_ctx),
 		.cra_alignmask = 0,
@@ -790,7 +796,8 @@ struct skcipher_alg mv_cesa_cbc_aes_alg = {
 		.cra_name = "cbc(aes)",
 		.cra_driver_name = "mv-cbc-aes",
 		.cra_priority = 300,
-		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC,
+		.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY | CRYPTO_ALG_ASYNC |
+			     CRYPTO_ALG_ALLOCATES_MEMORY,
 		.cra_blocksize = AES_BLOCK_SIZE,
 		.cra_ctxsize = sizeof(struct mv_cesa_aes_ctx),
 		.cra_alignmask = 0,

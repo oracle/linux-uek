@@ -49,7 +49,7 @@ static const struct cifs_sid sid_unix_groups = { 1, 1, {0, 0, 0, 0, 0, 22},
 		{cpu_to_le32(2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} };
 
 /*
- * See http://technet.microsoft.com/en-us/library/hh509017(v=ws.10).aspx
+ * See https://technet.microsoft.com/en-us/library/hh509017(v=ws.10).aspx
  */
 
 /* S-1-5-88 MS NFS and Apple style UID/GID/mode */
@@ -338,7 +338,7 @@ invalidate_key:
 	goto out_key_put;
 }
 
-static int
+int
 sid_to_id(struct cifs_sb_info *cifs_sb, struct cifs_sid *psid,
 		struct cifs_fattr *fattr, uint sidtype)
 {
@@ -359,7 +359,8 @@ sid_to_id(struct cifs_sb_info *cifs_sb, struct cifs_sid *psid,
 		return -EIO;
 	}
 
-	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_UID_FROM_ACL) {
+	if ((cifs_sb->mnt_cifs_flags & CIFS_MOUNT_UID_FROM_ACL) ||
+	    (cifs_sb_master_tcon(cifs_sb)->posix_extensions)) {
 		uint32_t unix_id;
 		bool is_group;
 
@@ -825,7 +826,7 @@ unsigned int setup_authusers_ACE(struct cifs_ace *pntace)
 
 /*
  * Fill in the special SID based on the mode. See
- * http://technet.microsoft.com/en-us/library/hh509017(v=ws.10).aspx
+ * https://technet.microsoft.com/en-us/library/hh509017(v=ws.10).aspx
  */
 unsigned int setup_special_mode_ACE(struct cifs_ace *pntace, __u64 nmode)
 {
@@ -1265,6 +1266,7 @@ cifs_acl_to_fattr(struct cifs_sb_info *cifs_sb, struct cifs_fattr *fattr,
 		cifs_dbg(VFS, "%s: error %d getting sec desc\n", __func__, rc);
 	} else if (mode_from_special_sid) {
 		rc = parse_sec_desc(cifs_sb, pntsd, acllen, fattr, true);
+		kfree(pntsd);
 	} else {
 		/* get approximated mode from ACL */
 		rc = parse_sec_desc(cifs_sb, pntsd, acllen, fattr, false);

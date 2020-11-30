@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2016-2018 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2016-2018 Texas Instruments Incorporated - https://www.ti.com/
  * Author: Jyri Sarha <jsarha@ti.com>
  */
 
@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
+#include <linux/sys_soc.h>
 
 #include <drm/drm_fourcc.h>
 #include <drm/drm_fb_cma_helper.h>
@@ -302,6 +303,8 @@ struct dispc_device {
 	u32 num_fourccs;
 
 	u32 memory_bandwidth_limit;
+
+	struct dispc_errata errata;
 };
 
 static void dispc_write(struct dispc_device *dispc, u16 reg, u32 val)
@@ -997,12 +1000,12 @@ void dispc_vp_enable(struct dispc_device *dispc, u32 hw_videoport,
 
 	ieo = !!(tstate->bus_flags & DRM_BUS_FLAG_DE_LOW);
 
-	ipc = !!(tstate->bus_flags & DRM_BUS_FLAG_PIXDATA_NEGEDGE);
+	ipc = !!(tstate->bus_flags & DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE);
 
 	/* always use the 'rf' setting */
 	onoff = true;
 
-	rf = !!(tstate->bus_flags & DRM_BUS_FLAG_SYNC_POSEDGE);
+	rf = !!(tstate->bus_flags & DRM_BUS_FLAG_SYNC_DRIVE_POSEDGE);
 
 	/* always use aligned syncs */
 	align = true;
@@ -2641,6 +2644,19 @@ static int dispc_init_am65x_oldi_io_ctrl(struct device *dev,
 	return 0;
 }
 
+static void dispc_init_errata(struct dispc_device *dispc)
+{
+	static const struct soc_device_attribute am65x_sr10_soc_devices[] = {
+		{ .family = "AM65X", .revision = "SR1.0" },
+		{ /* sentinel */ }
+	};
+
+	if (soc_device_match(am65x_sr10_soc_devices)) {
+		dispc->errata.i2000 = true;
+		dev_info(dispc->dev, "WA for erratum i2000: YUV formats disabled\n");
+	}
+}
+
 int dispc_init(struct tidss_device *tidss)
 {
 	struct device *dev = tidss->dev;
@@ -2664,19 +2680,27 @@ int dispc_init(struct tidss_device *tidss)
 	if (!dispc)
 		return -ENOMEM;
 
+	dispc->tidss = tidss;
+	dispc->dev = dev;
+	dispc->feat = feat;
+
+	dispc_init_errata(dispc);
+
 	dispc->fourccs = devm_kcalloc(dev, ARRAY_SIZE(dispc_color_formats),
 				      sizeof(*dispc->fourccs), GFP_KERNEL);
 	if (!dispc->fourccs)
 		return -ENOMEM;
 
 	num_fourccs = 0;
-	for (i = 0; i < ARRAY_SIZE(dispc_color_formats); ++i)
+	for (i = 0; i < ARRAY_SIZE(dispc_color_formats); ++i) {
+		if (dispc->errata.i2000 &&
+		    dispc_fourcc_is_yuv(dispc_color_formats[i].fourcc)) {
+			continue;
+		}
 		dispc->fourccs[num_fourccs++] = dispc_color_formats[i].fourcc;
+	}
 
 	dispc->num_fourccs = num_fourccs;
-	dispc->tidss = tidss;
-	dispc->dev = dev;
-	dispc->feat = feat;
 
 	dispc_common_regmap = dispc->feat->common_regs;
 

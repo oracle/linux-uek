@@ -205,8 +205,14 @@ static void check_syscall_restart(struct pt_regs *regs, struct k_sigaction *ka,
 		return;
 
 	/* error signalled ? */
-	if (!(regs->ccr & 0x10000000))
+	if (trap_is_scv(regs)) {
+		/* 32-bit compat mode sign extend? */
+		if (!IS_ERR_VALUE(ret))
+			return;
+		ret = -ret;
+	} else if (!(regs->ccr & 0x10000000)) {
 		return;
+	}
 
 	switch (ret) {
 	case ERESTART_RESTARTBLOCK:
@@ -239,9 +245,14 @@ static void check_syscall_restart(struct pt_regs *regs, struct k_sigaction *ka,
 		regs->nip -= 4;
 		regs->result = 0;
 	} else {
-		regs->result = -EINTR;
-		regs->gpr[3] = EINTR;
-		regs->ccr |= 0x10000000;
+		if (trap_is_scv(regs)) {
+			regs->result = -EINTR;
+			regs->gpr[3] = -EINTR;
+		} else {
+			regs->result = -EINTR;
+			regs->gpr[3] = EINTR;
+			regs->ccr |= 0x10000000;
+		}
 	}
 }
 
@@ -301,9 +312,6 @@ void do_notify_resume(struct pt_regs *regs, unsigned long thread_info_flags)
 {
 	user_exit();
 
-	/* Check valid addr_limit, TIF check is done there */
-	addr_limit_user_check();
-
 	if (thread_info_flags & _TIF_UPROBE)
 		uprobe_notify_resume(regs);
 
@@ -316,7 +324,6 @@ void do_notify_resume(struct pt_regs *regs, unsigned long thread_info_flags)
 	}
 
 	if (thread_info_flags & _TIF_NOTIFY_RESUME) {
-		clear_thread_flag(TIF_NOTIFY_RESUME);
 		tracehook_notify_resume(regs);
 		rseq_handle_notify_resume(NULL, regs);
 	}

@@ -380,7 +380,7 @@ static int dmfe_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return -ENOMEM;
 	SET_NETDEV_DEV(dev, &pdev->dev);
 
-	if (pci_set_dma_mask(pdev, DMA_BIT_MASK(32))) {
+	if (dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))) {
 		pr_warn("32-bit PCI DMA not available\n");
 		err = -ENODEV;
 		goto err_out_free;
@@ -422,15 +422,17 @@ static int dmfe_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	db = netdev_priv(dev);
 
 	/* Allocate Tx/Rx descriptor memory */
-	db->desc_pool_ptr = pci_alloc_consistent(pdev, sizeof(struct tx_desc) *
-			DESC_ALL_CNT + 0x20, &db->desc_pool_dma_ptr);
+	db->desc_pool_ptr = dma_alloc_coherent(&pdev->dev,
+					       sizeof(struct tx_desc) * DESC_ALL_CNT + 0x20,
+					       &db->desc_pool_dma_ptr, GFP_KERNEL);
 	if (!db->desc_pool_ptr) {
 		err = -ENOMEM;
 		goto err_out_res;
 	}
 
-	db->buf_pool_ptr = pci_alloc_consistent(pdev, TX_BUF_ALLOC *
-			TX_DESC_CNT + 4, &db->buf_pool_dma_ptr);
+	db->buf_pool_ptr = dma_alloc_coherent(&pdev->dev,
+					      TX_BUF_ALLOC * TX_DESC_CNT + 4,
+					      &db->buf_pool_dma_ptr, GFP_KERNEL);
 	if (!db->buf_pool_ptr) {
 		err = -ENOMEM;
 		goto err_out_free_desc;
@@ -492,11 +494,12 @@ static int dmfe_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 err_out_unmap:
 	pci_iounmap(pdev, db->ioaddr);
 err_out_free_buf:
-	pci_free_consistent(pdev, TX_BUF_ALLOC * TX_DESC_CNT + 4,
-			    db->buf_pool_ptr, db->buf_pool_dma_ptr);
+	dma_free_coherent(&pdev->dev, TX_BUF_ALLOC * TX_DESC_CNT + 4,
+			  db->buf_pool_ptr, db->buf_pool_dma_ptr);
 err_out_free_desc:
-	pci_free_consistent(pdev, sizeof(struct tx_desc) * DESC_ALL_CNT + 0x20,
-			    db->desc_pool_ptr, db->desc_pool_dma_ptr);
+	dma_free_coherent(&pdev->dev,
+			  sizeof(struct tx_desc) * DESC_ALL_CNT + 0x20,
+			  db->desc_pool_ptr, db->desc_pool_dma_ptr);
 err_out_res:
 	pci_release_regions(pdev);
 err_out_disable:
@@ -519,11 +522,12 @@ static void dmfe_remove_one(struct pci_dev *pdev)
 
 		unregister_netdev(dev);
 		pci_iounmap(db->pdev, db->ioaddr);
-		pci_free_consistent(db->pdev, sizeof(struct tx_desc) *
-					DESC_ALL_CNT + 0x20, db->desc_pool_ptr,
- 					db->desc_pool_dma_ptr);
-		pci_free_consistent(db->pdev, TX_BUF_ALLOC * TX_DESC_CNT + 4,
-					db->buf_pool_ptr, db->buf_pool_dma_ptr);
+		dma_free_coherent(&db->pdev->dev,
+				  sizeof(struct tx_desc) * DESC_ALL_CNT + 0x20,
+				  db->desc_pool_ptr, db->desc_pool_dma_ptr);
+		dma_free_coherent(&db->pdev->dev,
+				  TX_BUF_ALLOC * TX_DESC_CNT + 4,
+				  db->buf_pool_ptr, db->buf_pool_dma_ptr);
 		pci_release_regions(pdev);
 		free_netdev(dev);	/* free board information */
 	}
@@ -955,8 +959,8 @@ static void dmfe_rx_packet(struct net_device *dev, struct dmfe_board_info *db)
 		db->rx_avail_cnt--;
 		db->interval_rx_cnt++;
 
-		pci_unmap_single(db->pdev, le32_to_cpu(rxptr->rdes2),
-				 RX_ALLOC_SIZE, PCI_DMA_FROMDEVICE);
+		dma_unmap_single(&db->pdev->dev, le32_to_cpu(rxptr->rdes2),
+				 RX_ALLOC_SIZE, DMA_FROM_DEVICE);
 
 		if ( (rdes0 & 0x300) != 0x300) {
 			/* A packet without First/Last flag */
@@ -1329,8 +1333,8 @@ static void dmfe_reuse_skb(struct dmfe_board_info *db, struct sk_buff * skb)
 
 	if (!(rxptr->rdes0 & cpu_to_le32(0x80000000))) {
 		rxptr->rx_skb_ptr = skb;
-		rxptr->rdes2 = cpu_to_le32( pci_map_single(db->pdev,
-			    skb->data, RX_ALLOC_SIZE, PCI_DMA_FROMDEVICE) );
+		rxptr->rdes2 = cpu_to_le32(dma_map_single(&db->pdev->dev, skb->data,
+							  RX_ALLOC_SIZE, DMA_FROM_DEVICE));
 		wmb();
 		rxptr->rdes0 = cpu_to_le32(0x80000000);
 		db->rx_avail_cnt++;
@@ -1544,8 +1548,8 @@ static void allocate_rx_buffer(struct net_device *dev)
 		if ( ( skb = netdev_alloc_skb(dev, RX_ALLOC_SIZE) ) == NULL )
 			break;
 		rxptr->rx_skb_ptr = skb; /* FIXME (?) */
-		rxptr->rdes2 = cpu_to_le32( pci_map_single(db->pdev, skb->data,
-				    RX_ALLOC_SIZE, PCI_DMA_FROMDEVICE) );
+		rxptr->rdes2 = cpu_to_le32(dma_map_single(&db->pdev->dev, skb->data,
+							  RX_ALLOC_SIZE, DMA_FROM_DEVICE));
 		wmb();
 		rxptr->rdes0 = cpu_to_le32(0x80000000);
 		rxptr = rxptr->next_rx_desc;
@@ -2081,14 +2085,11 @@ static const struct pci_device_id dmfe_pci_tbl[] = {
 };
 MODULE_DEVICE_TABLE(pci, dmfe_pci_tbl);
 
-
-#ifdef CONFIG_PM
-static int dmfe_suspend(struct pci_dev *pci_dev, pm_message_t state)
+static int __maybe_unused dmfe_suspend(struct device *dev_d)
 {
-	struct net_device *dev = pci_get_drvdata(pci_dev);
+	struct net_device *dev = dev_get_drvdata(dev_d);
 	struct dmfe_board_info *db = netdev_priv(dev);
 	void __iomem *ioaddr = db->ioaddr;
-	u32 tmp;
 
 	/* Disable upper layer interface */
 	netif_device_detach(dev);
@@ -2105,63 +2106,35 @@ static int dmfe_suspend(struct pci_dev *pci_dev, pm_message_t state)
 	dmfe_free_rxbuffer(db);
 
 	/* Enable WOL */
-	pci_read_config_dword(pci_dev, 0x40, &tmp);
-	tmp &= ~(DMFE_WOL_LINKCHANGE|DMFE_WOL_MAGICPACKET);
-
-	if (db->wol_mode & WAKE_PHY)
-		tmp |= DMFE_WOL_LINKCHANGE;
-	if (db->wol_mode & WAKE_MAGIC)
-		tmp |= DMFE_WOL_MAGICPACKET;
-
-	pci_write_config_dword(pci_dev, 0x40, tmp);
-
-	pci_enable_wake(pci_dev, PCI_D3hot, 1);
-	pci_enable_wake(pci_dev, PCI_D3cold, 1);
-
-	/* Power down device*/
-	pci_save_state(pci_dev);
-	pci_set_power_state(pci_dev, pci_choose_state (pci_dev, state));
+	device_wakeup_enable(dev_d);
 
 	return 0;
 }
 
-static int dmfe_resume(struct pci_dev *pci_dev)
+static int __maybe_unused dmfe_resume(struct device *dev_d)
 {
-	struct net_device *dev = pci_get_drvdata(pci_dev);
-	u32 tmp;
-
-	pci_set_power_state(pci_dev, PCI_D0);
-	pci_restore_state(pci_dev);
+	struct net_device *dev = dev_get_drvdata(dev_d);
 
 	/* Re-initialize DM910X board */
 	dmfe_init_dm910x(dev);
 
 	/* Disable WOL */
-	pci_read_config_dword(pci_dev, 0x40, &tmp);
-
-	tmp &= ~(DMFE_WOL_LINKCHANGE | DMFE_WOL_MAGICPACKET);
-	pci_write_config_dword(pci_dev, 0x40, tmp);
-
-	pci_enable_wake(pci_dev, PCI_D3hot, 0);
-	pci_enable_wake(pci_dev, PCI_D3cold, 0);
+	device_wakeup_disable(dev_d);
 
 	/* Restart upper layer interface */
 	netif_device_attach(dev);
 
 	return 0;
 }
-#else
-#define dmfe_suspend NULL
-#define dmfe_resume NULL
-#endif
+
+static SIMPLE_DEV_PM_OPS(dmfe_pm_ops, dmfe_suspend, dmfe_resume);
 
 static struct pci_driver dmfe_driver = {
 	.name		= "dmfe",
 	.id_table	= dmfe_pci_tbl,
 	.probe		= dmfe_init_one,
 	.remove		= dmfe_remove_one,
-	.suspend        = dmfe_suspend,
-	.resume         = dmfe_resume
+	.driver.pm	= &dmfe_pm_ops,
 };
 
 MODULE_AUTHOR("Sten Wang, sten_wang@davicom.com.tw");

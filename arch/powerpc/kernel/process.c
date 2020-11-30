@@ -124,10 +124,8 @@ unsigned long notrace msr_check_and_set(unsigned long bits)
 
 	newmsr = oldmsr | bits;
 
-#ifdef CONFIG_VSX
 	if (cpu_has_feature(CPU_FTR_VSX) && (bits & MSR_FP))
 		newmsr |= MSR_VSX;
-#endif
 
 	if (oldmsr != newmsr)
 		mtmsr_isync(newmsr);
@@ -144,10 +142,8 @@ void notrace __msr_check_and_clear(unsigned long bits)
 
 	newmsr = oldmsr & ~bits;
 
-#ifdef CONFIG_VSX
 	if (cpu_has_feature(CPU_FTR_VSX) && (bits & MSR_FP))
 		newmsr &= ~MSR_VSX;
-#endif
 
 	if (oldmsr != newmsr)
 		mtmsr_isync(newmsr);
@@ -162,10 +158,8 @@ static void __giveup_fpu(struct task_struct *tsk)
 	save_fpu(tsk);
 	msr = tsk->thread.regs->msr;
 	msr &= ~(MSR_FP|MSR_FE0|MSR_FE1);
-#ifdef CONFIG_VSX
 	if (cpu_has_feature(CPU_FTR_VSX))
 		msr &= ~MSR_VSX;
-#endif
 	tsk->thread.regs->msr = msr;
 }
 
@@ -235,6 +229,8 @@ void enable_kernel_fp(void)
 	}
 }
 EXPORT_SYMBOL(enable_kernel_fp);
+#else
+static inline void __giveup_fpu(struct task_struct *tsk) { }
 #endif /* CONFIG_PPC_FPU */
 
 #ifdef CONFIG_ALTIVEC
@@ -245,10 +241,8 @@ static void __giveup_altivec(struct task_struct *tsk)
 	save_altivec(tsk);
 	msr = tsk->thread.regs->msr;
 	msr &= ~MSR_VEC;
-#ifdef CONFIG_VSX
 	if (cpu_has_feature(CPU_FTR_VSX))
 		msr &= ~MSR_VSX;
-#endif
 	tsk->thread.regs->msr = msr;
 }
 
@@ -414,21 +408,14 @@ static unsigned long msr_all_available;
 
 static int __init init_msr_all_available(void)
 {
-#ifdef CONFIG_PPC_FPU
-	msr_all_available |= MSR_FP;
-#endif
-#ifdef CONFIG_ALTIVEC
+	if (IS_ENABLED(CONFIG_PPC_FPU))
+		msr_all_available |= MSR_FP;
 	if (cpu_has_feature(CPU_FTR_ALTIVEC))
 		msr_all_available |= MSR_VEC;
-#endif
-#ifdef CONFIG_VSX
 	if (cpu_has_feature(CPU_FTR_VSX))
 		msr_all_available |= MSR_VSX;
-#endif
-#ifdef CONFIG_SPE
 	if (cpu_has_feature(CPU_FTR_SPE))
 		msr_all_available |= MSR_SPE;
-#endif
 
 	return 0;
 }
@@ -452,18 +439,12 @@ void giveup_all(struct task_struct *tsk)
 
 	WARN_ON((usermsr & MSR_VSX) && !((usermsr & MSR_FP) && (usermsr & MSR_VEC)));
 
-#ifdef CONFIG_PPC_FPU
 	if (usermsr & MSR_FP)
 		__giveup_fpu(tsk);
-#endif
-#ifdef CONFIG_ALTIVEC
 	if (usermsr & MSR_VEC)
 		__giveup_altivec(tsk);
-#endif
-#ifdef CONFIG_SPE
 	if (usermsr & MSR_SPE)
 		__giveup_spe(tsk);
-#endif
 
 	msr_check_and_clear(msr_all_available);
 }
@@ -471,49 +452,57 @@ EXPORT_SYMBOL(giveup_all);
 
 #ifdef CONFIG_PPC_BOOK3S_64
 #ifdef CONFIG_PPC_FPU
-static int restore_fp(struct task_struct *tsk)
+static bool should_restore_fp(void)
 {
-	if (tsk->thread.load_fp) {
-		load_fp_state(&current->thread.fp_state);
+	if (current->thread.load_fp) {
 		current->thread.load_fp++;
-		return 1;
+		return true;
 	}
-	return 0;
+	return false;
+}
+
+static void do_restore_fp(void)
+{
+	load_fp_state(&current->thread.fp_state);
 }
 #else
-static int restore_fp(struct task_struct *tsk) { return 0; }
+static bool should_restore_fp(void) { return false; }
+static void do_restore_fp(void) { }
 #endif /* CONFIG_PPC_FPU */
 
 #ifdef CONFIG_ALTIVEC
-#define loadvec(thr) ((thr).load_vec)
-static int restore_altivec(struct task_struct *tsk)
+static bool should_restore_altivec(void)
 {
-	if (cpu_has_feature(CPU_FTR_ALTIVEC) && (tsk->thread.load_vec)) {
-		load_vr_state(&tsk->thread.vr_state);
-		tsk->thread.used_vr = 1;
-		tsk->thread.load_vec++;
-
-		return 1;
+	if (cpu_has_feature(CPU_FTR_ALTIVEC) && (current->thread.load_vec)) {
+		current->thread.load_vec++;
+		return true;
 	}
-	return 0;
+	return false;
+}
+
+static void do_restore_altivec(void)
+{
+	load_vr_state(&current->thread.vr_state);
+	current->thread.used_vr = 1;
 }
 #else
-#define loadvec(thr) 0
-static inline int restore_altivec(struct task_struct *tsk) { return 0; }
+static bool should_restore_altivec(void) { return false; }
+static void do_restore_altivec(void) { }
 #endif /* CONFIG_ALTIVEC */
 
-#ifdef CONFIG_VSX
-static int restore_vsx(struct task_struct *tsk)
+static bool should_restore_vsx(void)
 {
-	if (cpu_has_feature(CPU_FTR_VSX)) {
-		tsk->thread.used_vsr = 1;
-		return 1;
-	}
-
-	return 0;
+	if (cpu_has_feature(CPU_FTR_VSX))
+		return true;
+	return false;
+}
+#ifdef CONFIG_VSX
+static void do_restore_vsx(void)
+{
+	current->thread.used_vsr = 1;
 }
 #else
-static inline int restore_vsx(struct task_struct *tsk) { return 0; }
+static void do_restore_vsx(void) { }
 #endif /* CONFIG_VSX */
 
 /*
@@ -529,34 +518,50 @@ static inline int restore_vsx(struct task_struct *tsk) { return 0; }
 void notrace restore_math(struct pt_regs *regs)
 {
 	unsigned long msr;
-
-	if (!MSR_TM_ACTIVE(regs->msr) &&
-		!current->thread.load_fp && !loadvec(current->thread))
-		return;
+	unsigned long new_msr = 0;
 
 	msr = regs->msr;
-	msr_check_and_set(msr_all_available);
 
 	/*
-	 * Only reload if the bit is not set in the user MSR, the bit BEING set
-	 * indicates that the registers are hot
+	 * new_msr tracks the facilities that are to be restored. Only reload
+	 * if the bit is not set in the user MSR (if it is set, the registers
+	 * are live for the user thread).
 	 */
-	if ((!(msr & MSR_FP)) && restore_fp(current))
-		msr |= MSR_FP | current->thread.fpexc_mode;
+	if ((!(msr & MSR_FP)) && should_restore_fp())
+		new_msr |= MSR_FP;
 
-	if ((!(msr & MSR_VEC)) && restore_altivec(current))
-		msr |= MSR_VEC;
+	if ((!(msr & MSR_VEC)) && should_restore_altivec())
+		new_msr |= MSR_VEC;
 
-	if ((msr & (MSR_FP | MSR_VEC)) == (MSR_FP | MSR_VEC) &&
-			restore_vsx(current)) {
-		msr |= MSR_VSX;
+	if ((!(msr & MSR_VSX)) && should_restore_vsx()) {
+		if (((msr | new_msr) & (MSR_FP | MSR_VEC)) == (MSR_FP | MSR_VEC))
+			new_msr |= MSR_VSX;
 	}
 
-	msr_check_and_clear(msr_all_available);
+	if (new_msr) {
+		unsigned long fpexc_mode = 0;
 
-	regs->msr = msr;
+		msr_check_and_set(new_msr);
+
+		if (new_msr & MSR_FP) {
+			do_restore_fp();
+
+			// This also covers VSX, because VSX implies FP
+			fpexc_mode = current->thread.fpexc_mode;
+		}
+
+		if (new_msr & MSR_VEC)
+			do_restore_altivec();
+
+		if (new_msr & MSR_VSX)
+			do_restore_vsx();
+
+		msr_check_and_clear(new_msr);
+
+		regs->msr |= new_msr | fpexc_mode;
+	}
 }
-#endif
+#endif /* CONFIG_PPC_BOOK3S_64 */
 
 static void save_all(struct task_struct *tsk)
 {
@@ -617,6 +622,44 @@ void do_send_trap(struct pt_regs *regs, unsigned long address,
 				    (void __user *)address);
 }
 #else	/* !CONFIG_PPC_ADV_DEBUG_REGS */
+
+static void do_break_handler(struct pt_regs *regs)
+{
+	struct arch_hw_breakpoint null_brk = {0};
+	struct arch_hw_breakpoint *info;
+	struct ppc_inst instr = ppc_inst(0);
+	int type = 0;
+	int size = 0;
+	unsigned long ea;
+	int i;
+
+	/*
+	 * If underneath hw supports only one watchpoint, we know it
+	 * caused exception. 8xx also falls into this category.
+	 */
+	if (nr_wp_slots() == 1) {
+		__set_breakpoint(0, &null_brk);
+		current->thread.hw_brk[0] = null_brk;
+		current->thread.hw_brk[0].flags |= HW_BRK_FLAG_DISABLED;
+		return;
+	}
+
+	/* Otherwise findout which DAWR caused exception and disable it. */
+	wp_get_instr_detail(regs, &instr, &type, &size, &ea);
+
+	for (i = 0; i < nr_wp_slots(); i++) {
+		info = &current->thread.hw_brk[i];
+		if (!info->address)
+			continue;
+
+		if (wp_check_constraints(regs, instr, ea, type, size, info)) {
+			__set_breakpoint(i, &null_brk);
+			current->thread.hw_brk[i] = null_brk;
+			current->thread.hw_brk[i].flags |= HW_BRK_FLAG_DISABLED;
+		}
+	}
+}
+
 void do_break (struct pt_regs *regs, unsigned long address,
 		    unsigned long error_code)
 {
@@ -627,6 +670,16 @@ void do_break (struct pt_regs *regs, unsigned long address,
 
 	if (debugger_break_match(regs))
 		return;
+
+	/*
+	 * We reach here only when watchpoint exception is generated by ptrace
+	 * event (or hw is buggy!). Now if CONFIG_HAVE_HW_BREAKPOINT is set,
+	 * watchpoint is already handled by hw_breakpoint_handler() so we don't
+	 * have to do anything. But when CONFIG_HAVE_HW_BREAKPOINT is not set,
+	 * we need to manually handle the watchpoint here.
+	 */
+	if (!IS_ENABLED(CONFIG_HAVE_HW_BREAKPOINT))
+		do_break_handler(regs);
 
 	/* Deliver the signal to userspace */
 	force_sig_fault(SIGTRAP, TRAP_HWBKPT, (void __user *)address);
@@ -758,9 +811,8 @@ static void switch_hw_breakpoint(struct task_struct *new)
 static inline int __set_dabr(unsigned long dabr, unsigned long dabrx)
 {
 	mtspr(SPRN_DAC1, dabr);
-#ifdef CONFIG_PPC_47x
-	isync();
-#endif
+	if (IS_ENABLED(CONFIG_PPC_47x))
+		isync();
 	return 0;
 }
 #elif defined(CONFIG_PPC_BOOK3S)
@@ -1231,15 +1283,17 @@ struct task_struct *__switch_to(struct task_struct *prev,
 		restore_math(current->thread.regs);
 
 		/*
-		 * The copy-paste buffer can only store into foreign real
-		 * addresses, so unprivileged processes can not see the
-		 * data or use it in any way unless they have foreign real
-		 * mappings. If the new process has the foreign real address
-		 * mappings, we must issue a cp_abort to clear any state and
-		 * prevent snooping, corruption or a covert channel.
+		 * On POWER9 the copy-paste buffer can only paste into
+		 * foreign real addresses, so unprivileged processes can not
+		 * see the data or use it in any way unless they have
+		 * foreign real mappings. If the new process has the foreign
+		 * real address mappings, we must issue a cp_abort to clear
+		 * any state and prevent snooping, corruption or a covert
+		 * channel. ISA v3.1 supports paste into local memory.
 		 */
 		if (current->mm &&
-			atomic_read(&current->mm->context.vas_windows))
+			(cpu_has_feature(CPU_FTR_ARCH_31) ||
+			atomic_read(&current->mm->context.vas_windows)))
 			asm volatile(PPC_CP_ABORT);
 	}
 #endif /* CONFIG_PPC_BOOK3S_64 */
@@ -1252,9 +1306,19 @@ struct task_struct *__switch_to(struct task_struct *prev,
 static void show_instructions(struct pt_regs *regs)
 {
 	int i;
+	unsigned long nip = regs->nip;
 	unsigned long pc = regs->nip - (NR_INSN_TO_PRINT * 3 / 4 * sizeof(int));
 
 	printk("Instruction dump:");
+
+	/*
+	 * If we were executing with the MMU off for instructions, adjust pc
+	 * rather than printing XXXXXXXX.
+	 */
+	if (!IS_ENABLED(CONFIG_BOOKE) && !(regs->msr & MSR_IR)) {
+		pc = (unsigned long)phys_to_virt(pc);
+		nip = (unsigned long)phys_to_virt(regs->nip);
+	}
 
 	for (i = 0; i < NR_INSN_TO_PRINT; i++) {
 		int instr;
@@ -1262,19 +1326,11 @@ static void show_instructions(struct pt_regs *regs)
 		if (!(i % 8))
 			pr_cont("\n");
 
-#if !defined(CONFIG_BOOKE)
-		/* If executing with the IMMU off, adjust pc rather
-		 * than print XXXXXXXX.
-		 */
-		if (!(regs->msr & MSR_IR))
-			pc = (unsigned long)phys_to_virt(pc);
-#endif
-
 		if (!__kernel_text_address(pc) ||
-		    probe_kernel_address((const void *)pc, instr)) {
+		    get_kernel_nofault(instr, (const void *)pc)) {
 			pr_cont("XXXXXXXX ");
 		} else {
-			if (regs->nip == pc)
+			if (nip == pc)
 				pr_cont("<%08x> ", instr);
 			else
 				pr_cont("%08x ", instr);
@@ -1305,7 +1361,8 @@ void show_user_instructions(struct pt_regs *regs)
 		for (i = 0; i < 8 && n; i++, n--, pc += sizeof(int)) {
 			int instr;
 
-			if (probe_user_read(&instr, (void __user *)pc, sizeof(instr))) {
+			if (copy_from_user_nofault(&instr, (void __user *)pc,
+					sizeof(instr))) {
 				seq_buf_printf(&s, "XXXXXXXX ");
 				continue;
 			}
@@ -1425,12 +1482,13 @@ void show_regs(struct pt_regs * regs)
 	trap = TRAP(regs);
 	if (!trap_is_syscall(regs) && cpu_has_feature(CPU_FTR_CFAR))
 		pr_cont("CFAR: "REG" ", regs->orig_gpr3);
-	if (trap == 0x200 || trap == 0x300 || trap == 0x600)
-#if defined(CONFIG_4xx) || defined(CONFIG_BOOKE)
-		pr_cont("DEAR: "REG" ESR: "REG" ", regs->dar, regs->dsisr);
-#else
-		pr_cont("DAR: "REG" DSISR: %08lx ", regs->dar, regs->dsisr);
-#endif
+	if (trap == 0x200 || trap == 0x300 || trap == 0x600) {
+		if (IS_ENABLED(CONFIG_4xx) || IS_ENABLED(CONFIG_BOOKE))
+			pr_cont("DEAR: "REG" ESR: "REG" ", regs->dar, regs->dsisr);
+		else
+			pr_cont("DAR: "REG" DSISR: %08lx ", regs->dar, regs->dsisr);
+	}
+
 #ifdef CONFIG_PPC64
 	pr_cont("IRQMASK: %lx ", regs->softe);
 #endif
@@ -1447,14 +1505,14 @@ void show_regs(struct pt_regs * regs)
 			break;
 	}
 	pr_cont("\n");
-#ifdef CONFIG_KALLSYMS
 	/*
 	 * Lookup NIP late so we have the best change of getting the
 	 * above info out without failing
 	 */
-	printk("NIP ["REG"] %pS\n", regs->nip, (void *)regs->nip);
-	printk("LR ["REG"] %pS\n", regs->link, (void *)regs->link);
-#endif
+	if (IS_ENABLED(CONFIG_KALLSYMS)) {
+		printk("NIP ["REG"] %pS\n", regs->nip, (void *)regs->nip);
+		printk("LR ["REG"] %pS\n", regs->link, (void *)regs->link);
+	}
 	show_stack(current, (unsigned long *) regs->gpr[1], KERN_DEFAULT);
 	if (!user_mode(regs))
 		show_instructions(regs);
@@ -1590,12 +1648,13 @@ static void setup_ksp_vsid(struct task_struct *p, unsigned long sp)
 /*
  * Copy architecture-specific thread state
  */
-int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
+int copy_thread(unsigned long clone_flags, unsigned long usp,
 		unsigned long kthread_arg, struct task_struct *p,
 		unsigned long tls)
 {
 	struct pt_regs *childregs, *kregs;
 	extern void ret_from_fork(void);
+	extern void ret_from_fork_scv(void);
 	extern void ret_from_kernel_thread(void);
 	void (*f)(void);
 	unsigned long sp = (unsigned long)task_stack_page(p) + THREAD_SIZE;
@@ -1632,7 +1691,9 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		if (usp)
 			childregs->gpr[1] = usp;
 		p->thread.regs = childregs;
-		childregs->gpr[3] = 0;  /* Result from fork() */
+		/* 64s sets this in ret_from_fork */
+		if (!IS_ENABLED(CONFIG_PPC_BOOK3S_64))
+			childregs->gpr[3] = 0;  /* Result from fork() */
 		if (clone_flags & CLONE_SETTLS) {
 			if (!is_32bit_task())
 				childregs->gpr[13] = tls;
@@ -1640,7 +1701,10 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 				childregs->gpr[2] = tls;
 		}
 
-		f = ret_from_fork;
+		if (trap_is_scv(regs))
+			f = ret_from_fork_scv;
+		else
+			f = ret_from_fork;
 	}
 	childregs->msr &= ~(MSR_FP|MSR_VEC|MSR_VSX);
 	sp -= STACK_FRAME_OVERHEAD;
@@ -1697,10 +1761,8 @@ void start_thread(struct pt_regs *regs, unsigned long start, unsigned long sp)
 #ifdef CONFIG_PPC64
 	unsigned long load_addr = regs->gpr[2];	/* saved by ELF_PLAT_INIT */
 
-#ifdef CONFIG_PPC_BOOK3S_64
-	if (!radix_enabled())
+	if (IS_ENABLED(CONFIG_PPC_BOOK3S_64) && !radix_enabled())
 		preload_new_slb_context(start, sp);
-#endif
 #endif
 
 	/*
@@ -1832,7 +1894,6 @@ int set_fpexc_mode(struct task_struct *tsk, unsigned int val)
 	 * fpexc_mode.  fpexc_mode is also used for setting FP exception
 	 * mode (asyn, precise, disabled) for 'Classic' FP. */
 	if (val & PR_FP_EXC_SW_ENABLE) {
-#ifdef CONFIG_SPE
 		if (cpu_has_feature(CPU_FTR_SPE)) {
 			/*
 			 * When the sticky exception bits are set
@@ -1846,16 +1907,15 @@ int set_fpexc_mode(struct task_struct *tsk, unsigned int val)
 			 * anyway to restore the prctl settings from
 			 * the saved environment.
 			 */
+#ifdef CONFIG_SPE
 			tsk->thread.spefscr_last = mfspr(SPRN_SPEFSCR);
 			tsk->thread.fpexc_mode = val &
 				(PR_FP_EXC_SW_ENABLE | PR_FP_ALL_EXCEPT);
+#endif
 			return 0;
 		} else {
 			return -EINVAL;
 		}
-#else
-		return -EINVAL;
-#endif
 	}
 
 	/* on a CONFIG_SPE this does not hurt us.  The bits that
@@ -1874,10 +1934,9 @@ int set_fpexc_mode(struct task_struct *tsk, unsigned int val)
 
 int get_fpexc_mode(struct task_struct *tsk, unsigned long adr)
 {
-	unsigned int val;
+	unsigned int val = 0;
 
-	if (tsk->thread.fpexc_mode & PR_FP_EXC_SW_ENABLE)
-#ifdef CONFIG_SPE
+	if (tsk->thread.fpexc_mode & PR_FP_EXC_SW_ENABLE) {
 		if (cpu_has_feature(CPU_FTR_SPE)) {
 			/*
 			 * When the sticky exception bits are set
@@ -1891,15 +1950,15 @@ int get_fpexc_mode(struct task_struct *tsk, unsigned long adr)
 			 * anyway to restore the prctl settings from
 			 * the saved environment.
 			 */
+#ifdef CONFIG_SPE
 			tsk->thread.spefscr_last = mfspr(SPRN_SPEFSCR);
 			val = tsk->thread.fpexc_mode;
+#endif
 		} else
 			return -EINVAL;
-#else
-		return -EINVAL;
-#endif
-	else
+	} else {
 		val = __unpack_fe01(tsk->thread.fpexc_mode);
+	}
 	return put_user(val, (unsigned int __user *) adr);
 }
 
@@ -2068,10 +2127,8 @@ void show_stack(struct task_struct *tsk, unsigned long *stack,
 	unsigned long sp, ip, lr, newsp;
 	int count = 0;
 	int firstframe = 1;
-#ifdef CONFIG_FUNCTION_GRAPH_TRACER
 	unsigned long ret_addr;
 	int ftrace_idx = 0;
-#endif
 
 	if (tsk == NULL)
 		tsk = current;
@@ -2099,12 +2156,10 @@ void show_stack(struct task_struct *tsk, unsigned long *stack,
 		if (!firstframe || ip != lr) {
 			printk("%s["REG"] ["REG"] %pS",
 				loglvl, sp, ip, (void *)ip);
-#ifdef CONFIG_FUNCTION_GRAPH_TRACER
 			ret_addr = ftrace_graph_ret_addr(current,
 						&ftrace_idx, ip, stack);
 			if (ret_addr != ip)
 				pr_cont(" (%pS)", (void *)ret_addr);
-#endif
 			if (firstframe)
 				pr_cont(" (unreliable)");
 			pr_cont("\n");

@@ -134,7 +134,6 @@ static const struct drm_display_mode lb035q02_mode = {
 	.vsync_start = 240 + 4,
 	.vsync_end = 240 + 4 + 2,
 	.vtotal = 240 + 4 + 2 + 18,
-	.vrefresh = 60,
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 	.width_mm = 70,
@@ -199,7 +198,9 @@ static int lb035q02_probe(struct spi_device *spi)
 	drm_panel_init(&lcd->panel, &lcd->spi->dev, &lb035q02_funcs,
 		       DRM_MODE_CONNECTOR_DPI);
 
-	return drm_panel_add(&lcd->panel);
+	drm_panel_add(&lcd->panel);
+
+	return 0;
 }
 
 static int lb035q02_remove(struct spi_device *spi)

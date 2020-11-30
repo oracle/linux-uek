@@ -128,6 +128,12 @@
 #define MX7D_USB_OTG_PHY_STATUS_VBUS_VLD	BIT(3)
 #define MX7D_USB_OTG_PHY_STATUS_CHRGDET		BIT(29)
 
+#define MX7D_USB_OTG_PHY_CFG1		0x30
+#define TXPREEMPAMPTUNE0_BIT		28
+#define TXPREEMPAMPTUNE0_MASK		(3 << 28)
+#define TXVREFTUNE0_BIT			20
+#define TXVREFTUNE0_MASK		(0xf << 20)
+
 #define MX6_USB_OTG_WAKEUP_BITS (MX6_BM_WAKEUP_ENABLE | MX6_BM_VBUS_WAKEUP | \
 				 MX6_BM_ID_WAKEUP)
 
@@ -367,10 +373,10 @@ static u32 usbmisc_wakeup_setting(struct imx_usbmisc_data *data)
 {
 	u32 wakeup_setting = MX6_USB_OTG_WAKEUP_BITS;
 
-	if (data->ext_id)
+	if (data->ext_id || data->available_role != USB_DR_MODE_OTG)
 		wakeup_setting &= ~MX6_BM_ID_WAKEUP;
 
-	if (data->ext_vbus)
+	if (data->ext_vbus || data->available_role == USB_DR_MODE_HOST)
 		wakeup_setting &= ~MX6_BM_VBUS_WAKEUP;
 
 	return wakeup_setting;
@@ -649,6 +655,21 @@ static int usbmisc_imx7d_init(struct imx_usbmisc_data *data)
 		writel(reg | MX7D_USB_VBUS_WAKEUP_SOURCE_BVALID
 			| MX7D_USBNC_AUTO_RESUME,
 			usbmisc->base + MX7D_USBNC_USB_CTRL2);
+		/* PHY tuning for signal quality */
+		reg = readl(usbmisc->base + MX7D_USB_OTG_PHY_CFG1);
+		if (data->emp_curr_control && data->emp_curr_control <=
+			(TXPREEMPAMPTUNE0_MASK >> TXPREEMPAMPTUNE0_BIT)) {
+			reg &= ~TXPREEMPAMPTUNE0_MASK;
+			reg |= (data->emp_curr_control << TXPREEMPAMPTUNE0_BIT);
+		}
+
+		if (data->dc_vol_level_adjust && data->dc_vol_level_adjust <=
+			(TXVREFTUNE0_MASK >> TXVREFTUNE0_BIT)) {
+			reg &= ~TXVREFTUNE0_MASK;
+			reg |= (data->dc_vol_level_adjust << TXVREFTUNE0_BIT);
+		}
+
+		writel(reg, usbmisc->base + MX7D_USB_OTG_PHY_CFG1);
 	}
 
 	spin_unlock_irqrestore(&usbmisc->lock, flags);
@@ -789,7 +810,7 @@ static int imx7d_charger_primary_detection(struct imx_usbmisc_data *data)
 	return 0;
 }
 
-/**
+/*
  * Whole charger detection process:
  * 1. OPMODE override to be non-driving
  * 2. Data contact check

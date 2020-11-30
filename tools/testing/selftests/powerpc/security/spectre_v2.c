@@ -134,6 +134,9 @@ int spectre_v2_test(void)
 	s64 miss_percent;
 	bool is_p9;
 
+	// The PMU events we use only work on Power8 or later
+	SKIP_IF(!have_hwcap2(PPC_FEATURE2_ARCH_2_07));
+
 	state = get_sysfs_state();
 	if (state == UNKNOWN) {
 		printf("Error: couldn't determine spectre_v2 mitigation state?\n");
@@ -183,6 +186,16 @@ int spectre_v2_test(void)
 		if (miss_percent > 15) {
 			printf("Branch misses > 15%% unexpected in this configuration!\n");
 			printf("Possible mis-match between reported & actual mitigation\n");
+			/*
+			 * Such a mismatch may be caused by a guest system
+			 * reporting as vulnerable when the host is mitigated.
+			 * Return skip code to avoid detecting this as an error.
+			 * We are not vulnerable and reporting otherwise, so
+			 * missing such a mismatch is safe.
+			 */
+			if (state == VULNERABLE)
+				return 4;
+
 			return 1;
 		}
 		break;

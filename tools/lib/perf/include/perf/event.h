@@ -111,6 +111,14 @@ struct perf_record_cgroup {
 	char			 path[PATH_MAX];
 };
 
+struct perf_record_text_poke_event {
+	struct perf_event_header header;
+	__u64			addr;
+	__u16			old_len;
+	__u16			new_len;
+	__u8			bytes[];
+};
+
 struct perf_record_sample {
 	struct perf_event_header header;
 	__u64			 array[];
@@ -193,10 +201,20 @@ struct perf_record_header_tracing_data {
 	__u32			 size;
 };
 
+#define PERF_RECORD_MISC_BUILD_ID_SIZE (1 << 15)
+
 struct perf_record_header_build_id {
 	struct perf_event_header header;
 	pid_t			 pid;
-	__u8			 build_id[24];
+	union {
+		__u8		 build_id[24];
+		struct {
+			__u8	 data[20];
+			__u8	 size;
+			__u8	 reserved1__;
+			__u16	 reserved2__;
+		};
+	};
 	char			 filename[];
 };
 
@@ -316,6 +334,10 @@ struct perf_record_time_conv {
 	__u64			 time_shift;
 	__u64			 time_mult;
 	__u64			 time_zero;
+	__u64			 time_cycles;
+	__u64			 time_mask;
+	bool			 cap_user_time_zero;
+	bool			 cap_user_time_short;
 };
 
 struct perf_record_header_feature {
@@ -367,6 +389,7 @@ union perf_event {
 	struct perf_record_sample		sample;
 	struct perf_record_bpf_event		bpf;
 	struct perf_record_ksymbol		ksymbol;
+	struct perf_record_text_poke_event	text_poke;
 	struct perf_record_header_attr		attr;
 	struct perf_record_event_update		event_update;
 	struct perf_record_header_event_type	event_type;

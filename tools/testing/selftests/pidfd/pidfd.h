@@ -22,6 +22,10 @@
 #define P_PIDFD 3
 #endif
 
+#ifndef CLONE_NEWTIME
+#define CLONE_NEWTIME 0x00000080
+#endif
+
 #ifndef CLONE_PIDFD
 #define CLONE_PIDFD 0x00001000
 #endif
@@ -40,6 +44,10 @@
 
 #ifndef __NR_pidfd_getfd
 #define __NR_pidfd_getfd -1
+#endif
+
+#ifndef PIDFD_NONBLOCK
+#define PIDFD_NONBLOCK O_NONBLOCK
 #endif
 
 /*
@@ -93,6 +101,11 @@ static inline int sys_pidfd_send_signal(int pidfd, int sig, siginfo_t *info,
 static inline int sys_pidfd_getfd(int pidfd, int fd, int flags)
 {
 	return syscall(__NR_pidfd_getfd, pidfd, fd, flags);
+}
+
+static inline int sys_memfd_create(const char *name, unsigned int flags)
+{
+	return syscall(__NR_memfd_create, name, flags);
 }
 
 #endif /* __PIDFD_H */

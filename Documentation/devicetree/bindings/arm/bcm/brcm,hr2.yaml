@@ -21,8 +21,10 @@ properties:
   compatible:
     items:
       - enum:
-        - ubnt,unifi-switch8
+          - ubnt,unifi-switch8
       - const: brcm,bcm53342
       - const: brcm,hr2
+
+additionalProperties: true
 
 ...

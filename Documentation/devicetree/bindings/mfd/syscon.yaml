@@ -38,12 +38,23 @@ properties:
               - allwinner,sun8i-h3-system-controller
               - allwinner,sun8i-v3s-system-controller
               - allwinner,sun50i-a64-system-controller
+              - hisilicon,dsa-subctrl
+              - hisilicon,hi6220-sramctrl
+              - hisilicon,pcie-sas-subctrl
+              - hisilicon,peri-subctrl
+              - microchip,sparx5-cpu-syscon
+              - mstar,msc313-pmsleep
+              - samsung,exynos3-sysreg
+              - samsung,exynos4-sysreg
+              - samsung,exynos5-sysreg
+              - samsung,exynos5433-sysreg
 
           - const: syscon
 
       - contains:
           const: syscon
-        additionalItems: true
+        minItems: 2
+        maxItems: 4  # Should be enough
 
   reg:
     maxItems: 1
@@ -64,7 +75,7 @@ required:
   - compatible
   - reg
 
-unevaluatedProperties: false
+additionalProperties: true
 
 examples:
   - |

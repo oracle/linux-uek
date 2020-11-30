@@ -37,6 +37,8 @@ properties:
 required:
   - compatible
 
+additionalProperties: false
+
 examples:
   - |
     #include <dt-bindings/gpio/gpio.h>
@@ -44,11 +46,11 @@ examples:
     uart1 {
         pinctrl-names = "default";
         pinctrl-0 = <&uart1_pins>, <&uart1_rts_cts_pins>;
-        uart-has-rtscts = <1>;
+        uart-has-rtscts;
 
         bluetooth {
             compatible = "realtek,rtl8723bs-bt";
             device-wake-gpios = <&r_pio 0 5 GPIO_ACTIVE_HIGH>; /* PL5 */
-            host-wakeup-gpios = <&r_pio 0 6 GPIO_ACTIVE_HIGH>; /* PL6 */
+            host-wake-gpios = <&r_pio 0 6 GPIO_ACTIVE_HIGH>; /* PL6 */
         };
     };

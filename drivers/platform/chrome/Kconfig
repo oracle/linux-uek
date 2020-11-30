@@ -3,16 +3,6 @@
 # Platform support for Chrome OS hardware (Chromebooks and Chromeboxes)
 #
 
-config MFD_CROS_EC
-	tristate "Platform support for Chrome hardware (transitional)"
-	select CHROME_PLATFORMS
-	select CROS_EC
-	select MFD_CROS_EC_DEV
-	depends on X86 || ARM || ARM64 || COMPILE_TEST
-	help
-	  This is a transitional Kconfig option and will be removed after
-	  everyone enables the parts individually.
-
 menuconfig CHROME_PLATFORMS
 	bool "Platform support for Chrome hardware"
 	depends on X86 || ARM || ARM64 || COMPILE_TEST
@@ -218,6 +208,7 @@ config CROS_EC_TYPEC
 	tristate "ChromeOS EC Type-C Connector Control"
 	depends on MFD_CROS_EC_DEV && TYPEC
 	depends on CROS_USBPD_NOTIFY
+	depends on USB_ROLE_SWITCH
 	default MFD_CROS_EC_DEV
 	help
 	  If you say Y here, you get support for accessing Type C connector

@@ -84,7 +84,7 @@ FS_IOC_ENABLE_VERITY
 --------------------
 
 The FS_IOC_ENABLE_VERITY ioctl enables fs-verity on a file.  It takes
-in a pointer to a :c:type:`struct fsverity_enable_arg`, defined as
+in a pointer to a struct fsverity_enable_arg, defined as
 follows::
 
     struct fsverity_enable_arg {
@@ -659,7 +659,7 @@ weren't already directly answered in other parts of this document.
       retrofit existing filesystems with new consistency mechanisms.
       Data journalling is available on ext4, but is very slow.
 
-    - Rebuilding the the Merkle tree after every write, which would be
+    - Rebuilding the Merkle tree after every write, which would be
       extremely inefficient.  Alternatively, a different authenticated
       dictionary structure such as an "authenticated skiplist" could
       be used.  However, this would be far more complex.

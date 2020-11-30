@@ -32,12 +32,20 @@ DC_LIBS += dcn10 dml
 DC_LIBS += dcn21
 endif
 
+ifdef CONFIG_DRM_AMD_DC_DCN3_0
+DC_LIBS += dcn30
+endif
+
 DC_LIBS += dce120
 
 DC_LIBS += dce112
 DC_LIBS += dce110
 DC_LIBS += dce100
 DC_LIBS += dce80
+
+ifdef CONFIG_DRM_AMD_DC_SI
+DC_LIBS += dce60
+endif
 
 ifdef CONFIG_DRM_AMD_DC_HDCP
 DC_LIBS += hdcp

@@ -1,14 +1,16 @@
 &l4_abe {						/* 0x40100000 */
-	compatible = "ti,omap4-l4-abe", "simple-bus";
+	compatible = "ti,omap4-l4-abe", "simple-pm-bus";
 	reg = <0x40100000 0x400>,
 	      <0x40100400 0x400>;
 	reg-names = "la", "ap";
+	power-domains = <&prm_abe>;
+	/* OMAP4_L4_ABE_CLKCTRL is read-only */
 	#address-cells = <1>;
 	#size-cells = <1>;
 	ranges = <0x00000000 0x40100000 0x100000>,	/* segment 0 */
 		 <0x49000000 0x49000000 0x100000>;
 	segment@0 {					/* 0x40100000 */
-		compatible = "simple-bus";
+		compatible = "simple-pm-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges =
@@ -333,8 +335,9 @@
 				compatible = "ti,omap4430-timer";
 				reg = <0x00000000 0x80>,
 				      <0x49038000 0x80>;
-				clocks = <&abe_clkctrl OMAP4_TIMER5_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&abe_clkctrl OMAP4_TIMER5_CLKCTRL 24>,
+					 <&syc_clk_div_ck>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
 				ti,timer-dsp;
 			};
@@ -363,8 +366,9 @@
 				compatible = "ti,omap4430-timer";
 				reg = <0x00000000 0x80>,
 				      <0x4903a000 0x80>;
-				clocks = <&abe_clkctrl OMAP4_TIMER6_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&abe_clkctrl OMAP4_TIMER6_CLKCTRL 24>,
+					 <&syc_clk_div_ck>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
 				ti,timer-dsp;
 			};
@@ -393,8 +397,9 @@
 				compatible = "ti,omap4430-timer";
 				reg = <0x00000000 0x80>,
 				      <0x4903c000 0x80>;
-				clocks = <&abe_clkctrl OMAP4_TIMER7_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&abe_clkctrl OMAP4_TIMER7_CLKCTRL 24>,
+					 <&syc_clk_div_ck>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 43 IRQ_TYPE_LEVEL_HIGH>;
 				ti,timer-dsp;
 			};
@@ -423,8 +428,9 @@
 				compatible = "ti,omap4430-timer";
 				reg = <0x00000000 0x80>,
 				      <0x4903e000 0x80>;
-				clocks = <&abe_clkctrl OMAP4_TIMER8_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&abe_clkctrl OMAP4_TIMER8_CLKCTRL 24>,
+					 <&syc_clk_div_ck>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>;
 				ti,timer-pwm;
 				ti,timer-dsp;

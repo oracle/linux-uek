@@ -22,6 +22,7 @@ struct insn_state {
 struct instruction {
 	struct list_head list;
 	struct hlist_node hash;
+	struct list_head static_call_node;
 	struct section *sec;
 	unsigned long offset;
 	unsigned int len;
@@ -37,13 +38,21 @@ struct instruction {
 	struct symbol *call_dest;
 	struct instruction *jump_dest;
 	struct instruction *first_jump_src;
-	struct rela *jump_table;
+	struct reloc *jump_table;
 	struct list_head alts;
 	struct symbol *func;
 	struct list_head stack_ops;
 	struct cfi_state cfi;
+#ifdef INSN_USE_ORC
 	struct orc_entry orc;
+#endif
 };
+
+static inline bool is_static_jump(struct instruction *insn)
+{
+	return insn->type == INSN_JUMP_CONDITIONAL ||
+	       insn->type == INSN_JUMP_UNCONDITIONAL;
+}
 
 struct instruction *find_insn(struct objtool_file *file,
 			      struct section *sec, unsigned long offset);
@@ -56,6 +65,5 @@ struct instruction *find_insn(struct objtool_file *file,
 	     insn && &insn->list != &file->insn_list &&			\
 			insn->sec == sec;				\
 	     insn = list_next_entry(insn, list))
-
 
 #endif /* _CHECK_H */

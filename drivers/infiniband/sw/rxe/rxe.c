@@ -1,34 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0 OR Linux-OpenIB
 /*
  * Copyright (c) 2016 Mellanox Technologies Ltd. All rights reserved.
  * Copyright (c) 2015 System Fabric Works, Inc. All rights reserved.
- *
- * This software is available to you under a choice of one of two
- * licenses.  You may choose to be licensed under the terms of the GNU
- * General Public License (GPL) Version 2, available from the file
- * COPYING in the main directory of this source tree, or the
- * OpenIB.org BSD license below:
- *
- *     Redistribution and use in source and binary forms, with or
- *     without modification, are permitted provided that the following
- *     conditions are met:
- *
- *	- Redistributions of source code must retain the above
- *	  copyright notice, this list of conditions and the following
- *	  disclaimer.
- *
- *	- Redistributions in binary form must reproduce the above
- *	  copyright notice, this list of conditions and the following
- *	  disclaimer in the documentation and/or other materials
- *	  provided with the distribution.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
  */
 
 #include <rdma/rdma_netlink.h>
@@ -40,13 +13,7 @@ MODULE_AUTHOR("Bob Pearson, Frank Zago, John Groves, Kamal Heib");
 MODULE_DESCRIPTION("Soft RDMA transport");
 MODULE_LICENSE("Dual BSD/GPL");
 
-/* free resources for all ports on a device */
-static void rxe_cleanup_ports(struct rxe_dev *rxe)
-{
-	kfree(rxe->port.pkey_tbl);
-	rxe->port.pkey_tbl = NULL;
-
-}
+bool rxe_initialized;
 
 /* free resources for a rxe device all objects created for this device must
  * have been destroyed
@@ -65,8 +32,6 @@ void rxe_dealloc(struct ib_device *ib_dev)
 	rxe_pool_cleanup(&rxe->mw_pool);
 	rxe_pool_cleanup(&rxe->mc_grp_pool);
 	rxe_pool_cleanup(&rxe->mc_elem_pool);
-
-	rxe_cleanup_ports(rxe);
 
 	if (rxe->tfm)
 		crypto_free_shash(rxe->tfm);
@@ -111,7 +76,7 @@ static void rxe_init_device_param(struct rxe_dev *rxe)
 }
 
 /* initialize port attributes */
-static int rxe_init_port_param(struct rxe_port *port)
+static void rxe_init_port_param(struct rxe_port *port)
 {
 	port->attr.state		= IB_PORT_DOWN;
 	port->attr.max_mtu		= IB_MTU_4096;
@@ -134,35 +99,19 @@ static int rxe_init_port_param(struct rxe_port *port)
 	port->attr.phys_state		= RXE_PORT_PHYS_STATE;
 	port->mtu_cap			= ib_mtu_enum_to_int(IB_MTU_256);
 	port->subnet_prefix		= cpu_to_be64(RXE_PORT_SUBNET_PREFIX);
-
-	return 0;
 }
 
 /* initialize port state, note IB convention that HCA ports are always
  * numbered from 1
  */
-static int rxe_init_ports(struct rxe_dev *rxe)
+static void rxe_init_ports(struct rxe_dev *rxe)
 {
 	struct rxe_port *port = &rxe->port;
 
 	rxe_init_port_param(port);
-
-	if (!port->attr.pkey_tbl_len || !port->attr.gid_tbl_len)
-		return -EINVAL;
-
-	port->pkey_tbl = kcalloc(port->attr.pkey_tbl_len,
-			sizeof(*port->pkey_tbl), GFP_KERNEL);
-
-	if (!port->pkey_tbl)
-		return -ENOMEM;
-
-	port->pkey_tbl[0] = 0xffff;
 	addrconf_addr_eui48((unsigned char *)&port->port_guid,
 			    rxe->ndev->dev_addr);
-
 	spin_lock_init(&port->port_lock);
-
-	return 0;
 }
 
 /* init pools of managed objects */
@@ -252,13 +201,11 @@ static int rxe_init(struct rxe_dev *rxe)
 	/* init default device parameters */
 	rxe_init_device_param(rxe);
 
-	err = rxe_init_ports(rxe);
-	if (err)
-		goto err1;
+	rxe_init_ports(rxe);
 
 	err = rxe_init_pools(rxe);
 	if (err)
-		goto err2;
+		return err;
 
 	/* init pending mmap list */
 	spin_lock_init(&rxe->mmap_offset_lock);
@@ -268,11 +215,6 @@ static int rxe_init(struct rxe_dev *rxe)
 	mutex_init(&rxe->usdev_lock);
 
 	return 0;
-
-err2:
-	rxe_cleanup_ports(rxe);
-err1:
-	return err;
 }
 
 void rxe_set_mtu(struct rxe_dev *rxe, unsigned int ndev_mtu)
@@ -310,6 +252,12 @@ static int rxe_newlink(const char *ibdev_name, struct net_device *ndev)
 	struct rxe_dev *exists;
 	int err = 0;
 
+	if (is_vlan_dev(ndev)) {
+		pr_err("rxe creation allowed on top of a real device only\n");
+		err = -EPERM;
+		goto err;
+	}
+
 	exists = rxe_get_dev_from_net(ndev);
 	if (exists) {
 		ib_device_put(&exists->ib_dev);
@@ -336,18 +284,12 @@ static int __init rxe_module_init(void)
 {
 	int err;
 
-	/* initialize slab caches for managed objects */
-	err = rxe_cache_init();
-	if (err) {
-		pr_err("unable to init object pools\n");
-		return err;
-	}
-
 	err = rxe_net_init();
 	if (err)
 		return err;
 
 	rdma_link_register(&rxe_link_ops);
+	rxe_initialized = true;
 	pr_info("loaded\n");
 	return 0;
 }
@@ -357,8 +299,8 @@ static void __exit rxe_module_exit(void)
 	rdma_link_unregister(&rxe_link_ops);
 	ib_unregister_driver(RDMA_DRIVER_RXE);
 	rxe_net_exit();
-	rxe_cache_exit();
 
+	rxe_initialized = false;
 	pr_info("unloaded\n");
 }
 

@@ -12,6 +12,7 @@
 #include <linux/io.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/of_device.h>
 #include <linux/pm_opp.h>
 #include <linux/platform_device.h>
@@ -20,6 +21,10 @@
 #include <linux/slab.h>
 #include "../jedec_ddr.h"
 #include "../of_memory.h"
+
+static int irqmode;
+module_param(irqmode, int, 0644);
+MODULE_PARM_DESC(irqmode, "Enable IRQ mode (0=off [default], 1=on)");
 
 #define EXYNOS5_DREXI_TIMINGAREF		(0x0030)
 #define EXYNOS5_DREXI_TIMINGROW0		(0x0034)
@@ -93,6 +98,8 @@
 
 /**
  * struct dmc_opp_table - Operating level desciption
+ * @freq_hz:		target frequency in Hz
+ * @volt_uv:		target voltage in uV
  *
  * Covers frequency and voltage settings of the DMC operating mode.
  */
@@ -103,6 +110,41 @@ struct dmc_opp_table {
 
 /**
  * struct exynos5_dmc - main structure describing DMC device
+ * @dev:		DMC device
+ * @df:			devfreq device structure returned by devfreq framework
+ * @gov_data:		configuration of devfreq governor
+ * @base_drexi0:	DREX0 registers mapping
+ * @base_drexi1:	DREX1 registers mapping
+ * @clk_regmap:		regmap for clock controller registers
+ * @lock:		protects curr_rate and frequency/voltage setting section
+ * @curr_rate:		current frequency
+ * @curr_volt:		current voltage
+ * @opp:		OPP table
+ * @opp_count:		number of 'opp' elements
+ * @timings_arr_size:	number of 'timings' elements
+ * @timing_row:		values for timing row register, for each OPP
+ * @timing_data:	values for timing data register, for each OPP
+ * @timing_power:	balues for timing power register, for each OPP
+ * @timings:		DDR memory timings, from device tree
+ * @min_tck:		DDR memory minimum timing values, from device tree
+ * @bypass_timing_row:	value for timing row register for bypass timings
+ * @bypass_timing_data:	value for timing data register for bypass timings
+ * @bypass_timing_power:	value for timing power register for bypass
+ *				timings
+ * @vdd_mif:		Memory interface regulator
+ * @fout_spll:		clock: SPLL
+ * @fout_bpll:		clock: BPLL
+ * @mout_spll:		clock: mux SPLL
+ * @mout_bpll:		clock: mux BPLL
+ * @mout_mclk_cdrex:	clock: mux mclk_cdrex
+ * @mout_mx_mspll_ccore:	clock: mux mx_mspll_ccore
+ * @counter:		devfreq events
+ * @num_counters:	number of 'counter' elements
+ * @last_overflow_ts:	time (in ns) of last overflow of each DREX
+ * @load:		utilization in percents
+ * @total:		total time between devfreq events
+ * @in_irq_mode:	whether running in interrupt mode (true)
+ *			or polling (false)
  *
  * The main structure for the Dynamic Memory Controller which covers clocks,
  * memory regions, HW information, parameters and current operating mode.
@@ -114,12 +156,11 @@ struct exynos5_dmc {
 	void __iomem *base_drexi0;
 	void __iomem *base_drexi1;
 	struct regmap *clk_regmap;
+	/* Protects curr_rate and frequency/voltage setting section */
 	struct mutex lock;
 	unsigned long curr_rate;
 	unsigned long curr_volt;
-	unsigned long bypass_rate;
 	struct dmc_opp_table *opp;
-	struct dmc_opp_table opp_bypass;
 	int opp_count;
 	u32 timings_arr_size;
 	u32 *timing_row;
@@ -137,8 +178,6 @@ struct exynos5_dmc {
 	struct clk *mout_bpll;
 	struct clk *mout_mclk_cdrex;
 	struct clk *mout_mx_mspll_ccore;
-	struct clk *mx_mspll_ccore_phy;
-	struct clk *mout_mx_mspll_ccore_phy;
 	struct devfreq_event_dev **counter;
 	int num_counters;
 	u64 last_overflow_ts[2];
@@ -164,7 +203,7 @@ struct timing_reg {
 	unsigned int val;
 };
 
-static const struct timing_reg timing_row[] = {
+static const struct timing_reg timing_row_reg_fields[] = {
 	TIMING_FIELD("tRFC", 24, 31),
 	TIMING_FIELD("tRRD", 20, 23),
 	TIMING_FIELD("tRP", 16, 19),
@@ -173,7 +212,7 @@ static const struct timing_reg timing_row[] = {
 	TIMING_FIELD("tRAS", 0, 5),
 };
 
-static const struct timing_reg timing_data[] = {
+static const struct timing_reg timing_data_reg_fields[] = {
 	TIMING_FIELD("tWTR", 28, 31),
 	TIMING_FIELD("tWR", 24, 27),
 	TIMING_FIELD("tRTP", 20, 23),
@@ -184,7 +223,7 @@ static const struct timing_reg timing_data[] = {
 	TIMING_FIELD("RL", 0, 3),
 };
 
-static const struct timing_reg timing_power[] = {
+static const struct timing_reg timing_power_reg_fields[] = {
 	TIMING_FIELD("tFAW", 26, 31),
 	TIMING_FIELD("tXSR", 16, 25),
 	TIMING_FIELD("tXP", 8, 15),
@@ -192,8 +231,9 @@ static const struct timing_reg timing_power[] = {
 	TIMING_FIELD("tMRD", 0, 3),
 };
 
-#define TIMING_COUNT (ARRAY_SIZE(timing_row) + ARRAY_SIZE(timing_data) + \
-		      ARRAY_SIZE(timing_power))
+#define TIMING_COUNT (ARRAY_SIZE(timing_row_reg_fields) + \
+		      ARRAY_SIZE(timing_data_reg_fields) + \
+		      ARRAY_SIZE(timing_power_reg_fields))
 
 static int exynos5_counters_set_event(struct exynos5_dmc *dmc)
 {
@@ -270,12 +310,14 @@ static int find_target_freq_idx(struct exynos5_dmc *dmc,
  * This function switches between these banks according to the
  * currently used clock source.
  */
-static void exynos5_switch_timing_regs(struct exynos5_dmc *dmc, bool set)
+static int exynos5_switch_timing_regs(struct exynos5_dmc *dmc, bool set)
 {
 	unsigned int reg;
 	int ret;
 
 	ret = regmap_read(dmc->clk_regmap, CDREX_LPDDR3PHY_CON3, &reg);
+	if (ret)
+		return ret;
 
 	if (set)
 		reg |= EXYNOS5_TIMING_SET_SWI;
@@ -283,6 +325,8 @@ static void exynos5_switch_timing_regs(struct exynos5_dmc *dmc, bool set)
 		reg &= ~EXYNOS5_TIMING_SET_SWI;
 
 	regmap_write(dmc->clk_regmap, CDREX_LPDDR3PHY_CON3, reg);
+
+	return 0;
 }
 
 /**
@@ -337,7 +381,6 @@ err_opp:
 /**
  * exynos5_set_bypass_dram_timings() - Low-level changes of the DRAM timings
  * @dmc:	device for which the new settings is going to be applied
- * @param:	DRAM parameters which passes timing data
  *
  * Low-level function for changing timings for DRAM memory clocking from
  * 'bypass' clock source (fixed frequency @400MHz).
@@ -444,9 +487,6 @@ static int exynos5_dmc_align_bypass_voltage(struct exynos5_dmc *dmc,
 					    unsigned long target_volt)
 {
 	int ret = 0;
-	unsigned long bypass_volt = dmc->opp_bypass.volt_uv;
-
-	target_volt = max(bypass_volt, target_volt);
 
 	if (dmc->curr_volt >= target_volt)
 		return 0;
@@ -516,7 +556,7 @@ exynos5_dmc_switch_to_bypass_configuration(struct exynos5_dmc *dmc,
 	/*
 	 * Delays are long enough, so use them for the new coming clock.
 	 */
-	exynos5_switch_timing_regs(dmc, USE_MX_MSPLL_TIMINGS);
+	ret = exynos5_switch_timing_regs(dmc, USE_MX_MSPLL_TIMINGS);
 
 	return ret;
 }
@@ -577,7 +617,9 @@ exynos5_dmc_change_freq_and_volt(struct exynos5_dmc *dmc,
 
 	clk_set_rate(dmc->fout_bpll, target_rate);
 
-	exynos5_switch_timing_regs(dmc, USE_BPLL_TIMINGS);
+	ret = exynos5_switch_timing_regs(dmc, USE_BPLL_TIMINGS);
+	if (ret)
+		goto disable_clocks;
 
 	ret = clk_set_parent(dmc->mout_mclk_cdrex, dmc->mout_bpll);
 	if (ret)
@@ -606,6 +648,7 @@ disable_clocks:
  *			requested
  * @target_volt:	returned voltage which corresponds to the returned
  *			frequency
+ * @flags:	devfreq flags provided for this frequency change request
  *
  * Function gets requested frequency and checks OPP framework for needed
  * frequency and voltage. It populates the values 'target_rate' and
@@ -897,7 +940,10 @@ static int exynos5_dmc_get_status(struct device *dev,
 	int ret;
 
 	if (dmc->in_irq_mode) {
+		mutex_lock(&dmc->lock);
 		stat->current_frequency = dmc->curr_rate;
+		mutex_unlock(&dmc->lock);
+
 		stat->busy_time = dmc->load;
 		stat->total_time = dmc->total;
 	} else {
@@ -939,12 +985,13 @@ static int exynos5_dmc_get_cur_freq(struct device *dev, unsigned long *freq)
 	return 0;
 }
 
-/**
+/*
  * exynos5_dmc_df_profile - Devfreq governor's profile structure
  *
  * It provides to the devfreq framework needed functions and polling period.
  */
 static struct devfreq_dev_profile exynos5_dmc_df_profile = {
+	.timer = DEVFREQ_TIMER_DELAYED,
 	.target = exynos5_dmc_target,
 	.get_dev_status = exynos5_dmc_get_status,
 	.get_cur_freq = exynos5_dmc_get_cur_freq,
@@ -981,7 +1028,9 @@ exynos5_dmc_align_init_freq(struct exynos5_dmc *dmc,
 /**
  * create_timings_aligned() - Create register values and align with standard
  * @dmc:	device for which the frequency is going to be set
- * @idx:	speed bin in the OPP table
+ * @reg_timing_row:	array to fill with values for timing row register
+ * @reg_timing_data:	array to fill with values for timing data register
+ * @reg_timing_power:	array to fill with values for timing power register
  * @clk_period_ps:	the period of the clock, known as tCK
  *
  * The function calculates timings and creates a register value ready for
@@ -1006,117 +1055,117 @@ static int create_timings_aligned(struct exynos5_dmc *dmc, u32 *reg_timing_row,
 	val = dmc->timings->tRFC / clk_period_ps;
 	val += dmc->timings->tRFC % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRFC);
-	reg = &timing_row[0];
+	reg = &timing_row_reg_fields[0];
 	*reg_timing_row |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tRRD / clk_period_ps;
 	val += dmc->timings->tRRD % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRRD);
-	reg = &timing_row[1];
+	reg = &timing_row_reg_fields[1];
 	*reg_timing_row |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tRPab / clk_period_ps;
 	val += dmc->timings->tRPab % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRPab);
-	reg = &timing_row[2];
+	reg = &timing_row_reg_fields[2];
 	*reg_timing_row |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tRCD / clk_period_ps;
 	val += dmc->timings->tRCD % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRCD);
-	reg = &timing_row[3];
+	reg = &timing_row_reg_fields[3];
 	*reg_timing_row |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tRC / clk_period_ps;
 	val += dmc->timings->tRC % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRC);
-	reg = &timing_row[4];
+	reg = &timing_row_reg_fields[4];
 	*reg_timing_row |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tRAS / clk_period_ps;
 	val += dmc->timings->tRAS % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRAS);
-	reg = &timing_row[5];
+	reg = &timing_row_reg_fields[5];
 	*reg_timing_row |= TIMING_VAL2REG(reg, val);
 
 	/* data related timings */
 	val = dmc->timings->tWTR / clk_period_ps;
 	val += dmc->timings->tWTR % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tWTR);
-	reg = &timing_data[0];
+	reg = &timing_data_reg_fields[0];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tWR / clk_period_ps;
 	val += dmc->timings->tWR % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tWR);
-	reg = &timing_data[1];
+	reg = &timing_data_reg_fields[1];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tRTP / clk_period_ps;
 	val += dmc->timings->tRTP % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRTP);
-	reg = &timing_data[2];
+	reg = &timing_data_reg_fields[2];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tW2W_C2C / clk_period_ps;
 	val += dmc->timings->tW2W_C2C % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tW2W_C2C);
-	reg = &timing_data[3];
+	reg = &timing_data_reg_fields[3];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tR2R_C2C / clk_period_ps;
 	val += dmc->timings->tR2R_C2C % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tR2R_C2C);
-	reg = &timing_data[4];
+	reg = &timing_data_reg_fields[4];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tWL / clk_period_ps;
 	val += dmc->timings->tWL % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tWL);
-	reg = &timing_data[5];
+	reg = &timing_data_reg_fields[5];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tDQSCK / clk_period_ps;
 	val += dmc->timings->tDQSCK % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tDQSCK);
-	reg = &timing_data[6];
+	reg = &timing_data_reg_fields[6];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tRL / clk_period_ps;
 	val += dmc->timings->tRL % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tRL);
-	reg = &timing_data[7];
+	reg = &timing_data_reg_fields[7];
 	*reg_timing_data |= TIMING_VAL2REG(reg, val);
 
 	/* power related timings */
 	val = dmc->timings->tFAW / clk_period_ps;
 	val += dmc->timings->tFAW % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tFAW);
-	reg = &timing_power[0];
+	reg = &timing_power_reg_fields[0];
 	*reg_timing_power |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tXSR / clk_period_ps;
 	val += dmc->timings->tXSR % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tXSR);
-	reg = &timing_power[1];
+	reg = &timing_power_reg_fields[1];
 	*reg_timing_power |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tXP / clk_period_ps;
 	val += dmc->timings->tXP % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tXP);
-	reg = &timing_power[2];
+	reg = &timing_power_reg_fields[2];
 	*reg_timing_power |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tCKE / clk_period_ps;
 	val += dmc->timings->tCKE % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tCKE);
-	reg = &timing_power[3];
+	reg = &timing_power_reg_fields[3];
 	*reg_timing_power |= TIMING_VAL2REG(reg, val);
 
 	val = dmc->timings->tMRD / clk_period_ps;
 	val += dmc->timings->tMRD % clk_period_ps ? 1 : 0;
 	val = max(val, dmc->min_tck->tMRD);
-	reg = &timing_power[4];
+	reg = &timing_power_reg_fields[4];
 	*reg_timing_power |= TIMING_VAL2REG(reg, val);
 
 	return 0;
@@ -1251,8 +1300,6 @@ static int exynos5_dmc_init_clks(struct exynos5_dmc *dmc)
 
 	clk_set_parent(dmc->mout_mx_mspll_ccore, dmc->mout_spll);
 
-	dmc->bypass_rate = clk_get_rate(dmc->mout_mx_mspll_ccore);
-
 	clk_prepare_enable(dmc->fout_bpll);
 	clk_prepare_enable(dmc->mout_bpll);
 
@@ -1281,7 +1328,8 @@ static int exynos5_performance_counters_init(struct exynos5_dmc *dmc)
 	int counters_size;
 	int ret, i;
 
-	dmc->num_counters = devfreq_event_get_edev_count(dmc->dev);
+	dmc->num_counters = devfreq_event_get_edev_count(dmc->dev,
+							"devfreq-events");
 	if (dmc->num_counters < 0) {
 		dev_err(dmc->dev, "could not get devfreq-event counters\n");
 		return dmc->num_counters;
@@ -1294,7 +1342,8 @@ static int exynos5_performance_counters_init(struct exynos5_dmc *dmc)
 
 	for (i = 0; i < dmc->num_counters; i++) {
 		dmc->counter[i] =
-			devfreq_event_get_edev_by_phandle(dmc->dev, i);
+			devfreq_event_get_edev_by_phandle(dmc->dev,
+						"devfreq-events", i);
 		if (IS_ERR_OR_NULL(dmc->counter[i]))
 			return -EPROBE_DEFER;
 	}
@@ -1318,7 +1367,6 @@ static int exynos5_performance_counters_init(struct exynos5_dmc *dmc)
 /**
  * exynos5_dmc_set_pause_on_switching() - Controls a pause feature in DMC
  * @dmc:	device which is used for changing this feature
- * @set:	a boolean state passing enable/disable request
  *
  * There is a need of pausing DREX DMC when divider or MUX in clock tree
  * changes its configuration. In such situation access to the memory is blocked
@@ -1392,7 +1440,7 @@ static int exynos5_dmc_probe(struct platform_device *pdev)
 		return PTR_ERR(dmc->base_drexi1);
 
 	dmc->clk_regmap = syscon_regmap_lookup_by_phandle(np,
-				"samsung,syscon-clk");
+							  "samsung,syscon-clk");
 	if (IS_ERR(dmc->clk_regmap))
 		return PTR_ERR(dmc->clk_regmap);
 
@@ -1427,7 +1475,7 @@ static int exynos5_dmc_probe(struct platform_device *pdev)
 	/* There is two modes in which the driver works: polling or IRQ */
 	irq[0] = platform_get_irq_byname(pdev, "drex_0");
 	irq[1] = platform_get_irq_byname(pdev, "drex_1");
-	if (irq[0] > 0 && irq[1] > 0) {
+	if (irq[0] > 0 && irq[1] > 0 && irqmode) {
 		ret = devm_request_threaded_irq(dev, irq[0], NULL,
 						dmc_irq_thread, IRQF_ONESHOT,
 						dev_name(dev), dmc);
@@ -1465,12 +1513,11 @@ static int exynos5_dmc_probe(struct platform_device *pdev)
 		 * Setup default thresholds for the devfreq governor.
 		 * The values are chosen based on experiments.
 		 */
-		dmc->gov_data.upthreshold = 30;
+		dmc->gov_data.upthreshold = 10;
 		dmc->gov_data.downdifferential = 5;
 
-		exynos5_dmc_df_profile.polling_ms = 500;
+		exynos5_dmc_df_profile.polling_ms = 100;
 	}
-
 
 	dmc->df = devm_devfreq_add_device(dev, &exynos5_dmc_df_profile,
 					  DEVFREQ_GOV_SIMPLE_ONDEMAND,
@@ -1484,7 +1531,7 @@ static int exynos5_dmc_probe(struct platform_device *pdev)
 	if (dmc->in_irq_mode)
 		exynos5_dmc_start_perf_events(dmc, PERF_COUNTER_START_VALUE);
 
-	dev_info(dev, "DMC initialized\n");
+	dev_info(dev, "DMC initialized, in irq mode: %d\n", dmc->in_irq_mode);
 
 	return 0;
 

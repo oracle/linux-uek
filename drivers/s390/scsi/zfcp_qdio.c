@@ -246,7 +246,7 @@ int zfcp_qdio_sbal_get(struct zfcp_qdio *qdio)
 }
 
 /**
- * zfcp_qdio_send - set PCI flag in first SBALE and send req to QDIO
+ * zfcp_qdio_send - send req to QDIO
  * @qdio: pointer to struct zfcp_qdio
  * @q_req: pointer to struct zfcp_qdio_req
  * Returns: 0 on success, error otherwise
@@ -260,17 +260,20 @@ int zfcp_qdio_send(struct zfcp_qdio *qdio, struct zfcp_qdio_req *q_req)
 	zfcp_qdio_account(qdio);
 	spin_unlock(&qdio->stat_lock);
 
+	atomic_sub(sbal_number, &qdio->req_q_free);
+
 	retval = do_QDIO(qdio->adapter->ccw_device, QDIO_FLAG_SYNC_OUTPUT, 0,
 			 q_req->sbal_first, sbal_number);
 
 	if (unlikely(retval)) {
+		/* Failed to submit the IO, roll back our modifications. */
+		atomic_add(sbal_number, &qdio->req_q_free);
 		zfcp_qdio_zero_sbals(qdio->req_q, q_req->sbal_first,
 				     sbal_number);
 		return retval;
 	}
 
 	/* account for transferred buffers */
-	atomic_sub(sbal_number, &qdio->req_q_free);
 	qdio->req_q_idx += sbal_number;
 	qdio->req_q_idx %= QDIO_MAX_BUFFERS_PER_Q;
 
@@ -377,8 +380,6 @@ int zfcp_qdio_open(struct zfcp_qdio *qdio)
 			  &qdio->adapter->status);
 
 	init_data.q_format = QDIO_ZFCP_QFMT;
-	memcpy(init_data.adapter_name, dev_name(&cdev->dev), 8);
-	ASCEBC(init_data.adapter_name, 8);
 	init_data.qib_rflags = QIB_RFLAGS_ENABLE_DATA_DIV;
 	if (enable_multibuffer)
 		init_data.qdr_ac |= QDR_AC_MULTI_BUFFER_ENABLE;

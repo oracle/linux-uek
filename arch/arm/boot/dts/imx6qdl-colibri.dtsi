@@ -94,7 +94,7 @@
 
 /* Colibri SSP */
 &ecspi4 {
-	cs-gpios = <&gpio5 2 GPIO_ACTIVE_HIGH>;
+	cs-gpios = <&gpio5 2 GPIO_ACTIVE_LOW>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi4>;
 	status = "disabled";
@@ -312,6 +312,7 @@
 
 /* Colibri PWM<A> */
 &pwm3 {
+	#pwm-cells = <2>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3>;
 	status = "disabled";
@@ -362,7 +363,6 @@
 };
 
 &usbotg {
-	pinctrl-names = "default";
 	disable-over-current;
 	dr_mode = "peripheral";
 	status = "disabled";

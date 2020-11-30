@@ -92,7 +92,8 @@ static int seiko_panel_get_fixed_modes(struct seiko_panel *panel,
 		mode = drm_mode_duplicate(connector->dev, m);
 		if (!mode) {
 			dev_err(panel->base.dev, "failed to add mode %ux%u@%u\n",
-				m->hdisplay, m->vdisplay, m->vrefresh);
+				m->hdisplay, m->vdisplay,
+				drm_mode_vrefresh(m));
 			continue;
 		}
 
@@ -257,9 +258,7 @@ static int seiko_panel_probe(struct device *dev,
 	if (err)
 		return err;
 
-	err = drm_panel_add(&panel->base);
-	if (err < 0)
-		return err;
+	drm_panel_add(&panel->base);
 
 	dev_set_drvdata(dev, panel);
 

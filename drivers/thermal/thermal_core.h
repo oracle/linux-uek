@@ -12,6 +12,8 @@
 #include <linux/device.h>
 #include <linux/thermal.h>
 
+#include "thermal_netlink.h"
+
 /* Default Thermal Governor */
 #if defined(CONFIG_THERMAL_DEFAULT_GOV_STEP_WISE)
 #define DEFAULT_THERMAL_GOVERNOR       "step_wise"
@@ -32,7 +34,7 @@ extern struct thermal_governor *__governor_thermal_table_end[];
 
 #define THERMAL_TABLE_ENTRY(table, name)			\
 	static typeof(name) *__thermal_table_entry_##name	\
-	__used __section(__##table##_thermal_table) = &name
+	__used __section("__" #table "_thermal_table") = &name
 
 #define THERMAL_GOVERNOR_DECLARE(name)	THERMAL_TABLE_ENTRY(governor, name)
 
@@ -40,6 +42,17 @@ extern struct thermal_governor *__governor_thermal_table_end[];
 	for (__governor = __governor_thermal_table;	\
 	     __governor < __governor_thermal_table_end;	\
 	     __governor++)
+
+int for_each_thermal_zone(int (*cb)(struct thermal_zone_device *, void *),
+			  void *);
+
+int for_each_thermal_cooling_device(int (*cb)(struct thermal_cooling_device *,
+					      void *), void *);
+
+int for_each_thermal_governor(int (*cb)(struct thermal_governor *, void *),
+			      void *thermal_governor);
+
+struct thermal_zone_device *thermal_zone_get_by_id(int id);
 
 struct thermal_attr {
 	struct device_attribute attr;
@@ -53,9 +66,9 @@ static inline bool cdev_is_power_actor(struct thermal_cooling_device *cdev)
 }
 
 int power_actor_get_max_power(struct thermal_cooling_device *cdev,
-			      struct thermal_zone_device *tz, u32 *max_power);
+			      u32 *max_power);
 int power_actor_get_min_power(struct thermal_cooling_device *cdev,
-			      struct thermal_zone_device *tz, u32 *min_power);
+			      u32 *min_power);
 int power_actor_set_power(struct thermal_cooling_device *cdev,
 			  struct thermal_instance *ti, u32 power);
 /**
@@ -165,5 +178,7 @@ of_thermal_get_trip_points(struct thermal_zone_device *tz)
 	return NULL;
 }
 #endif
+
+int thermal_zone_device_is_enabled(struct thermal_zone_device *tz);
 
 #endif /* __THERMAL_CORE_H__ */

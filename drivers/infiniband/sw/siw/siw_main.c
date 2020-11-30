@@ -67,12 +67,13 @@ static int siw_device_register(struct siw_device *sdev, const char *name)
 	static int dev_id = 1;
 	int rv;
 
-	rv = ib_register_device(base_dev, name);
+	sdev->vendor_part_id = dev_id++;
+
+	rv = ib_register_device(base_dev, name, NULL);
 	if (rv) {
 		pr_warn("siw: device registration error %d\n", rv);
 		return rv;
 	}
-	sdev->vendor_part_id = dev_id++;
 
 	siw_dbg(base_dev, "HWaddr=%pM\n", sdev->netdev->dev_addr);
 
@@ -288,7 +289,6 @@ static const struct ib_device_ops siw_device_ops = {
 	.post_srq_recv = siw_post_srq_recv,
 	.query_device = siw_query_device,
 	.query_gid = siw_query_gid,
-	.query_pkey = siw_query_pkey,
 	.query_port = siw_query_port,
 	.query_qp = siw_query_qp,
 	.query_srq = siw_query_srq,
@@ -306,6 +306,7 @@ static struct siw_device *siw_device_create(struct net_device *netdev)
 	struct siw_device *sdev = NULL;
 	struct ib_device *base_dev;
 	struct device *parent = netdev->dev.parent;
+	u64 dma_mask;
 	int rv;
 
 	if (!parent) {
@@ -382,10 +383,12 @@ static struct siw_device *siw_device_create(struct net_device *netdev)
 	 */
 	base_dev->phys_port_cnt = 1;
 	base_dev->dev.parent = parent;
-	base_dev->dev.dma_ops = &dma_virt_ops;
 	base_dev->dev.dma_parms = &sdev->dma_parms;
-	sdev->dma_parms = (struct device_dma_parameters)
-		{ .max_segment_size = SZ_2G };
+	dma_set_max_seg_size(&base_dev->dev, UINT_MAX);
+	dma_mask = IS_ENABLED(CONFIG_64BIT) ? DMA_BIT_MASK(64) : DMA_BIT_MASK(32);
+	if (dma_coerce_mask_and_coherent(&base_dev->dev, dma_mask))
+		goto error;
+
 	base_dev->num_comp_vectors = num_possible_cpus();
 
 	xa_init_flags(&sdev->qp_xa, XA_FLAGS_ALLOC1);

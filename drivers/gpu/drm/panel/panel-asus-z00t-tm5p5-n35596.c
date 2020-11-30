@@ -183,7 +183,6 @@ static const struct drm_display_mode tm5p5_nt35596_mode = {
 	.vsync_start = 1920 + 4,
 	.vsync_end = 1920 + 4 + 2,
 	.vtotal = 1920 + 4 + 2 + 4,
-	.vrefresh = 60,
 	.width_mm = 68,
 	.height_mm = 121,
 };
@@ -316,11 +315,7 @@ static int tm5p5_nt35596_probe(struct mipi_dsi_device *dsi)
 		return ret;
 	}
 
-	ret = drm_panel_add(&ctx->panel);
-	if (ret < 0) {
-		dev_err(dev, "Failed to add panel: %d\n", ret);
-		return ret;
-	}
+	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {

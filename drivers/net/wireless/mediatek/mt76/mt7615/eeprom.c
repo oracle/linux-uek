@@ -72,8 +72,7 @@ static int mt7615_eeprom_load(struct mt7615_dev *dev, u32 addr)
 {
 	int ret;
 
-	ret = mt76_eeprom_init(&dev->mt76, MT7615_EEPROM_SIZE +
-					   MT7615_EEPROM_EXTRA_DATA);
+	ret = mt76_eeprom_init(&dev->mt76, MT7615_EEPROM_FULL_SIZE);
 	if (ret < 0)
 		return ret;
 
@@ -126,6 +125,9 @@ mt7615_eeprom_parse_hw_band_cap(struct mt7615_dev *dev)
 	case MT_EE_2GHZ:
 		dev->mt76.cap.has_2ghz = true;
 		break;
+	case MT_EE_DBDC:
+		dev->dbdc_support = true;
+		/* fall through */
 	default:
 		dev->mt76.cap.has_2ghz = true;
 		dev->mt76.cap.has_5ghz = true;

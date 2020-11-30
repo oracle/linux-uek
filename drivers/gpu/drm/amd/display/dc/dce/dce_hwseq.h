@@ -78,6 +78,24 @@
 	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 4), \
 	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 5)
 
+#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
+#define HWSEQ_PIXEL_RATE_REG_LIST_3(blk) \
+	SRII(PIXEL_RATE_CNTL, blk, 0), \
+	SRII(PIXEL_RATE_CNTL, blk, 1),\
+	SRII(PIXEL_RATE_CNTL, blk, 2),\
+	SRII(PIXEL_RATE_CNTL, blk, 3), \
+	SRII(PIXEL_RATE_CNTL, blk, 4), \
+	SRII(PIXEL_RATE_CNTL, blk, 5)
+
+#define HWSEQ_PHYPLL_REG_LIST_3(blk) \
+	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 0), \
+	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 1),\
+	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 2),\
+	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 3), \
+	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 4), \
+	SRII(PHYPLL_PIXEL_RATE_CNTL, blk, 5)
+#endif
+
 #define HWSEQ_DCE11_REG_LIST_BASE() \
 	SR(DC_MEM_GLOBAL_PWR_REQ_CNTL), \
 	SR(DCFEV_CLOCK_CONTROL), \
@@ -91,6 +109,12 @@
 	SRII(BLND_CONTROL, BLND, 1),\
 	SR(BLNDV_CONTROL),\
 	HWSEQ_PIXEL_RATE_REG_LIST(CRTC)
+
+#if defined(CONFIG_DRM_AMD_DC_SI)
+#define HWSEQ_DCE6_REG_LIST() \
+	HWSEQ_DCEF_REG_LIST_DCE8(), \
+	HWSEQ_PIXEL_RATE_REG_LIST(CRTC)
+#endif
 
 #define HWSEQ_DCE8_REG_LIST() \
 	HWSEQ_DCEF_REG_LIST_DCE8(), \
@@ -200,6 +224,28 @@
 	SR(VGA_TEST_CONTROL), \
 	SR(DC_IP_REQUEST_CNTL)
 
+#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
+#define HWSEQ_DCN30_REG_LIST()\
+	HWSEQ_DCN2_REG_LIST(),\
+	HWSEQ_DCN_REG_LIST(), \
+	HWSEQ_PIXEL_RATE_REG_LIST_3(OTG), \
+	HWSEQ_PHYPLL_REG_LIST_3(OTG), \
+	SR(MICROSECOND_TIME_BASE_DIV), \
+	SR(MILLISECOND_TIME_BASE_DIV), \
+	SR(DISPCLK_FREQ_CHANGE_CNTL), \
+	SR(RBBMIF_TIMEOUT_DIS), \
+	SR(RBBMIF_TIMEOUT_DIS_2), \
+	SR(DCHUBBUB_CRC_CTRL), \
+	SR(DPP_TOP0_DPP_CRC_CTRL), \
+	SR(DPP_TOP0_DPP_CRC_VAL_B_A), \
+	SR(DPP_TOP0_DPP_CRC_VAL_R_G), \
+	SR(MPC_CRC_CTRL), \
+	SR(MPC_CRC_RESULT_GB), \
+	SR(MPC_CRC_RESULT_C), \
+	SR(MPC_CRC_RESULT_AR), \
+	SR(AZALIA_AUDIO_DTO), \
+	SR(AZALIA_CONTROLLER_CLOCK_GATING)
+#endif
 #define HWSEQ_DCN2_REG_LIST()\
 	HWSEQ_DCN_REG_LIST(), \
 	HSWEQ_DCN_PIXEL_RATE_REG_LIST(OTG, 0), \
@@ -448,6 +494,12 @@ struct dce_hwseq_registers {
 	HWS_SF1(blk, PHYPLL_PIXEL_RATE_CNTL, PHYPLL_PIXEL_RATE_SOURCE, mask_sh),\
 	HWS_SF1(blk, PHYPLL_PIXEL_RATE_CNTL, PIXEL_RATE_PLL_SOURCE, mask_sh)
 
+#if defined(CONFIG_DRM_AMD_DC_SI)
+#define HWSEQ_DCE6_MASK_SH_LIST(mask_sh)\
+	.DCFE_CLOCK_ENABLE = CRTC_DCFE_CLOCK_CONTROL__CRTC_DCFE_CLOCK_ENABLE ## mask_sh, \
+	HWSEQ_PIXEL_RATE_MASK_SH_LIST(mask_sh, CRTC0_)
+#endif
+
 #define HWSEQ_DCE8_MASK_SH_LIST(mask_sh)\
 	.DCFE_CLOCK_ENABLE = CRTC_DCFE_CLOCK_CONTROL__CRTC_DCFE_CLOCK_ENABLE ## mask_sh, \
 	HWS_SF(BLND_, V_UPDATE_LOCK, BLND_DCP_GRPH_V_UPDATE_LOCK, mask_sh),\
@@ -545,6 +597,12 @@ struct dce_hwseq_registers {
 	HWS_SF(, D4VGA_CONTROL, D4VGA_MODE_ENABLE, mask_sh),\
 	HWS_SF(, VGA_TEST_CONTROL, VGA_TEST_ENABLE, mask_sh),\
 	HWS_SF(, VGA_TEST_CONTROL, VGA_TEST_RENDER_START, mask_sh)
+
+#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
+#define HWSEQ_DCN30_MASK_SH_LIST(mask_sh)\
+	HWSEQ_DCN2_MASK_SH_LIST(mask_sh), \
+	HWS_SF(, AZALIA_AUDIO_DTO, AZALIA_AUDIO_DTO_MODULE, mask_sh)
+#endif
 
 #define HWSEQ_DCN2_MASK_SH_LIST(mask_sh)\
 	HWSEQ_DCN_MASK_SH_LIST(mask_sh), \
@@ -789,6 +847,12 @@ void dce_pipe_control_lock(struct dc *dc,
 
 void dce_set_blender_mode(struct dce_hwseq *hws,
 	unsigned int blnd_inst, enum blnd_mode mode);
+
+#if defined(CONFIG_DRM_AMD_DC_SI)
+void dce60_pipe_control_lock(struct dc *dc,
+		struct pipe_ctx *pipe,
+		bool lock);
+#endif
 
 void dce_clock_gating_power_up(struct dce_hwseq *hws,
 		bool enable);

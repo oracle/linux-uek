@@ -100,7 +100,7 @@ struct dc_link {
 	bool link_state_valid;
 	bool aux_access_disabled;
 	bool sync_lt_in_progress;
-	bool is_lttpr_mode_transparent;
+	bool lttpr_non_transparent_mode;
 
 	/* caps is the same as reported_link_cap. link_traing use
 	 * reported_link_cap. Will clean up.  TODO
@@ -237,6 +237,8 @@ enum dc_detect_reason {
 	DETECT_REASON_BOOT,
 	DETECT_REASON_HPD,
 	DETECT_REASON_HPDRX,
+	DETECT_REASON_FALLBACK,
+	DETECT_REASON_RETRAIN
 };
 
 bool dc_link_detect(struct dc_link *dc_link, enum dc_detect_reason reason);
@@ -311,8 +313,8 @@ bool dc_link_detect_sink(struct dc_link *link, enum dc_connection_type *type);
  */
 
 #ifdef CONFIG_DRM_AMD_DC_HDCP
-bool dc_link_is_hdcp14(struct dc_link *link);
-bool dc_link_is_hdcp22(struct dc_link *link);
+bool dc_link_is_hdcp14(struct dc_link *link, enum signal_type signal);
+bool dc_link_is_hdcp22(struct dc_link *link, enum signal_type signal);
 #endif
 void dc_link_set_drive_settings(struct dc *dc,
 				struct link_training_settings *lt_settings,

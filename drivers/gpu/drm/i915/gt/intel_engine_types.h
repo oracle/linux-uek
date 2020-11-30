@@ -22,8 +22,10 @@
 #include "i915_pmu.h"
 #include "i915_priolist_types.h"
 #include "i915_selftest.h"
+#include "intel_breadcrumbs_types.h"
 #include "intel_sseu.h"
 #include "intel_timeline_types.h"
+#include "intel_uncore.h"
 #include "intel_wakeref.h"
 #include "intel_workarounds_types.h"
 
@@ -176,8 +178,12 @@ struct intel_engine_execlists {
 	 * the first error interrupt, record the EIR and schedule the tasklet.
 	 * In the tasklet, we process the pending CS events to ensure we have
 	 * the guilty request, and then reset the engine.
+	 *
+	 * Low 16b are used by HW, with the upper 16b used as the enabling mask.
+	 * Reserve the upper 16b for tracking internal errors.
 	 */
 	u32 error_interrupt;
+#define ERROR_CSB BIT(31)
 
 	/**
 	 * @reset_ccid: Active CCID [EXECLISTS_STATUS_HI] at the time of reset
@@ -272,7 +278,7 @@ struct intel_engine_execlists {
 	 *
 	 * Note these register may be either mmio or HWSP shadow.
 	 */
-	u32 *csb_status;
+	u64 *csb_status;
 
 	/**
 	 * @csb_size: context status buffer FIFO size
@@ -313,6 +319,16 @@ struct intel_engine_cs {
 	u32 context_size;
 	u32 mmio_base;
 
+	/*
+	 * Some w/a require forcewake to be held (which prevents RC6) while
+	 * a particular engine is active. If so, we set fw_domain to which
+	 * domains need to be held for the duration of request activity,
+	 * and 0 if none. We try to limit the duration of the hold as much
+	 * as possible.
+	 */
+	enum forcewake_domains fw_domain;
+	atomic_t fw_active;
+
 	unsigned long context_tag;
 
 	struct rb_node uabi_node;
@@ -337,6 +353,7 @@ struct intel_engine_cs {
 	struct {
 		struct delayed_work work;
 		struct i915_request *systole;
+		unsigned long blocked;
 	} heartbeat;
 
 	unsigned long serial;
@@ -357,34 +374,8 @@ struct intel_engine_cs {
 	 */
 	struct ewma__engine_latency latency;
 
-	/* Rather than have every client wait upon all user interrupts,
-	 * with the herd waking after every interrupt and each doing the
-	 * heavyweight seqno dance, we delegate the task (of being the
-	 * bottom-half of the user interrupt) to the first client. After
-	 * every interrupt, we wake up one client, who does the heavyweight
-	 * coherent seqno read and either goes back to sleep (if incomplete),
-	 * or wakes up all the completed clients in parallel, before then
-	 * transferring the bottom-half status to the next client in the queue.
-	 *
-	 * Compared to walking the entire list of waiters in a single dedicated
-	 * bottom-half, we reduce the latency of the first waiter by avoiding
-	 * a context switch, but incur additional coherent seqno reads when
-	 * following the chain of request breadcrumbs. Since it is most likely
-	 * that we have a single client waiting on each seqno, then reducing
-	 * the overhead of waking that client is much preferred.
-	 */
-	struct intel_breadcrumbs {
-		spinlock_t irq_lock;
-		struct list_head signalers;
-
-		struct list_head signaled_requests;
-
-		struct irq_work irq_work; /* for use from inside irq_lock */
-
-		unsigned int irq_enabled;
-
-		bool irq_armed;
-	} breadcrumbs;
+	/* Keep track of all the seqno used, a trail of breadcrumbs */
+	struct intel_breadcrumbs *breadcrumbs;
 
 	struct intel_engine_pmu {
 		/**

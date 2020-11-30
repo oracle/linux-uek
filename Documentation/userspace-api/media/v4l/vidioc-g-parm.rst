@@ -1,11 +1,5 @@
-.. Permission is granted to copy, distribute and/or modify this
-.. document under the terms of the GNU Free Documentation License,
-.. Version 1.1 or any later version published by the Free Software
-.. Foundation, with no Invariant Sections, no Front-Cover Texts
-.. and no Back-Cover Texts. A copy of the license is included at
-.. Documentation/userspace-api/media/fdl-appendix.rst.
-..
-.. TODO: replace it to GFDL-1.1-or-later WITH no-invariant-sections
+.. SPDX-License-Identifier: GFDL-1.1-no-invariants-or-later
+.. c:namespace:: V4L
 
 .. _VIDIOC_G_PARM:
 
@@ -18,49 +12,49 @@ Name
 
 VIDIOC_G_PARM - VIDIOC_S_PARM - Get or set streaming parameters
 
-
 Synopsis
 ========
 
-.. c:function:: int ioctl( int fd, VIDIOC_G_PARM, v4l2_streamparm *argp )
-    :name: VIDIOC_G_PARM
+.. c:macro:: VIDIOC_G_PARM
 
-.. c:function:: int ioctl( int fd, VIDIOC_S_PARM, v4l2_streamparm *argp )
-    :name: VIDIOC_S_PARM
+``int ioctl(int fd, VIDIOC_G_PARM, v4l2_streamparm *argp)``
 
+.. c:macro:: VIDIOC_S_PARM
+
+``int ioctl(int fd, VIDIOC_S_PARM, v4l2_streamparm *argp)``
 
 Arguments
 =========
 
 ``fd``
-    File descriptor returned by :ref:`open() <func-open>`.
+    File descriptor returned by :c:func:`open()`.
 
 ``argp``
     Pointer to struct :c:type:`v4l2_streamparm`.
 
-
 Description
 ===========
 
-The current video standard determines a nominal number of frames per
-second. If less than this number of frames is to be captured or output,
-applications can request frame skipping or duplicating on the driver
-side. This is especially useful when using the :ref:`read() <func-read>` or
-:ref:`write() <func-write>`, which are not augmented by timestamps or sequence
-counters, and to avoid unnecessary data copying.
+Applications can request a different frame interval. The capture or
+output device will be reconfigured to support the requested frame
+interval if possible. Optionally drivers may choose to skip or
+repeat frames to achieve the requested frame interval.
+
+For stateful encoders (see :ref:`encoder`) this represents the
+frame interval that is typically embedded in the encoded video stream.
 
 Changing the frame interval shall never change the format. Changing the
 format, on the other hand, may change the frame interval.
 
 Further these ioctls can be used to determine the number of buffers used
 internally by a driver in read/write mode. For implications see the
-section discussing the :ref:`read() <func-read>` function.
+section discussing the :c:func:`read()` function.
 
 To get and set the streaming parameters applications call the
-:ref:`VIDIOC_G_PARM <VIDIOC_G_PARM>` and :ref:`VIDIOC_S_PARM <VIDIOC_G_PARM>` ioctl, respectively. They take a
+:ref:`VIDIOC_G_PARM <VIDIOC_G_PARM>` and
+:ref:`VIDIOC_S_PARM <VIDIOC_G_PARM>` ioctl, respectively. They take a
 pointer to a struct :c:type:`v4l2_streamparm` which contains a
 union holding separate parameters for input and output devices.
-
 
 .. tabularcolumns:: |p{3.5cm}|p{3.5cm}|p{3.5cm}|p{7.0cm}|
 
@@ -94,7 +88,6 @@ union holding separate parameters for input and output devices.
       -
 
 
-
 .. tabularcolumns:: |p{4.4cm}|p{4.4cm}|p{8.7cm}|
 
 .. c:type:: v4l2_captureparm
@@ -113,14 +106,21 @@ union holding separate parameters for input and output devices.
     * - struct :c:type:`v4l2_fract`
       - ``timeperframe``
       - This is the desired period between successive frames captured by
-	the driver, in seconds. The field is intended to skip frames on
-	the driver side, saving I/O bandwidth.
+	the driver, in seconds.
+    * - :cspan:`2`
+
+	This will configure the speed at which the video source (e.g. a sensor)
+	generates video frames. If the speed is fixed, then the driver may
+	choose to skip or repeat frames in order to achieve the requested
+	frame rate.
+
+	For stateful encoders (see :ref:`encoder`) this represents the
+	frame interval that is typically embedded in the encoded video stream.
 
 	Applications store here the desired frame period, drivers return
-	the actual frame period, which must be greater or equal to the
-	nominal frame period determined by the current video standard
-	(struct :c:type:`v4l2_standard` ``frameperiod``
-	field). Changing the video standard (also implicitly by switching
+	the actual frame period.
+
+	Changing the video standard (also implicitly by switching
 	the video input) may reset this parameter to the nominal frame
 	period. To reset manually applications can just set this field to
 	zero.
@@ -136,7 +136,7 @@ union holding separate parameters for input and output devices.
     * - __u32
       - ``readbuffers``
       - Applications set this field to the desired number of buffers used
-	internally by the driver in :ref:`read() <func-read>` mode.
+	internally by the driver in :c:func:`read()` mode.
 	Drivers return the actual number of buffers. When an application
 	requests zero buffers, drivers should just return the current
 	setting rather than the minimum or an error code. For details see
@@ -145,7 +145,6 @@ union holding separate parameters for input and output devices.
       - ``reserved``\ [4]
       - Reserved for future extensions. Drivers and applications must set
 	the array to zero.
-
 
 
 .. tabularcolumns:: |p{4.4cm}|p{4.4cm}|p{8.7cm}|
@@ -170,14 +169,18 @@ union holding separate parameters for input and output devices.
     * - :cspan:`2`
 
 	The field is intended to repeat frames on the driver side in
-	:ref:`write() <func-write>` mode (in streaming mode timestamps
+	:c:func:`write()` mode (in streaming mode timestamps
 	can be used to throttle the output), saving I/O bandwidth.
 
+	For stateful encoders (see :ref:`encoder`) this represents the
+	frame interval that is typically embedded in the encoded video stream
+	and it provides a hint to the encoder of the speed at which raw
+	frames are queued up to the encoder.
+
 	Applications store here the desired frame period, drivers return
-	the actual frame period, which must be greater or equal to the
-	nominal frame period determined by the current video standard
-	(struct :c:type:`v4l2_standard` ``frameperiod``
-	field). Changing the video standard (also implicitly by switching
+	the actual frame period.
+
+	Changing the video standard (also implicitly by switching
 	the video output) may reset this parameter to the nominal frame
 	period. To reset manually applications can just set this field to
 	zero.
@@ -193,7 +196,7 @@ union holding separate parameters for input and output devices.
     * - __u32
       - ``writebuffers``
       - Applications set this field to the desired number of buffers used
-	internally by the driver in :ref:`write() <func-write>` mode. Drivers
+	internally by the driver in :c:func:`write()` mode. Drivers
 	return the actual number of buffers. When an application requests
 	zero buffers, drivers should just return the current setting
 	rather than the minimum or an error code. For details see
@@ -202,7 +205,6 @@ union holding separate parameters for input and output devices.
       - ``reserved``\ [4]
       - Reserved for future extensions. Drivers and applications must set
 	the array to zero.
-
 
 
 .. tabularcolumns:: |p{6.6cm}|p{2.2cm}|p{8.7cm}|
@@ -216,9 +218,8 @@ union holding separate parameters for input and output devices.
 
     * - ``V4L2_CAP_TIMEPERFRAME``
       - 0x1000
-      - The frame skipping/repeating controlled by the ``timeperframe``
-	field is supported.
-
+      - The frame period can be modified by setting the ``timeperframe``
+	field.
 
 
 .. tabularcolumns:: |p{6.6cm}|p{2.2cm}|p{8.7cm}|
@@ -259,8 +260,7 @@ union holding separate parameters for input and output devices.
 
 	-  Moving objects in the image might have excessive motion blur.
 
-	-  Capture might only work through the :ref:`read() <func-read>` call.
-
+	-  Capture might only work through the :c:func:`read()` call.
 
 Return Value
 ============

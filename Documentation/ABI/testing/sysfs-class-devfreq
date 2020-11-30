@@ -62,7 +62,8 @@ Description:
 		driver should provide the list of available frequencies
 		with its profile. If need to reset the statistics of devfreq
 		behavior on a specific device, enter 0(zero) to 'trans_stat'
-		as following:
+		as following::
+
 			echo 0 > /sys/class/devfreq/.../trans_stat
 
 What:		/sys/class/devfreq/.../userspace/set_freq
@@ -108,3 +109,16 @@ Description:
 		frequency requested by governors and min_freq.
 		The max_freq overrides min_freq because max_freq may be
 		used to throttle devices to avoid overheating.
+
+What:		/sys/class/devfreq/.../timer
+Date:		July 2020
+Contact:	Chanwoo Choi <cw00.choi@samsung.com>
+Description:
+		This ABI shows and stores the kind of work timer by users.
+		This work timer is used by devfreq workqueue in order to
+		monitor the device status such as utilization. The user
+		can change the work timer on runtime according to their demand
+		as following::
+
+			echo deferrable > /sys/class/devfreq/.../timer
+			echo delayed > /sys/class/devfreq/.../timer

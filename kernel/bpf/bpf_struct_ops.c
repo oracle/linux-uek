@@ -298,8 +298,7 @@ static int check_zero_holes(const struct btf_type *t, void *data)
 			return -EINVAL;
 
 		mtype = btf_type_by_id(btf_vmlinux, member->type);
-		mtype = btf_resolve_size(btf_vmlinux, mtype, &msize,
-					 NULL, NULL);
+		mtype = btf_resolve_size(btf_vmlinux, mtype, &msize);
 		if (IS_ERR(mtype))
 			return PTR_ERR(mtype);
 		prev_mend = moff + msize;
@@ -396,8 +395,7 @@ static int bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 			u32 msize;
 
 			mtype = btf_type_by_id(btf_vmlinux, member->type);
-			mtype = btf_resolve_size(btf_vmlinux, mtype, &msize,
-						 NULL, NULL);
+			mtype = btf_resolve_size(btf_vmlinux, mtype, &msize);
 			if (IS_ERR(mtype)) {
 				err = PTR_ERR(mtype);
 				goto reset_unlock;
@@ -611,6 +609,7 @@ static struct bpf_map *bpf_struct_ops_map_alloc(union bpf_attr *attr)
 	return map;
 }
 
+static int bpf_struct_ops_map_btf_id;
 const struct bpf_map_ops bpf_struct_ops_map_ops = {
 	.map_alloc_check = bpf_struct_ops_map_alloc_check,
 	.map_alloc = bpf_struct_ops_map_alloc,
@@ -620,6 +619,8 @@ const struct bpf_map_ops bpf_struct_ops_map_ops = {
 	.map_delete_elem = bpf_struct_ops_map_delete_elem,
 	.map_update_elem = bpf_struct_ops_map_update_elem,
 	.map_seq_show_elem = bpf_struct_ops_map_seq_show_elem,
+	.map_btf_name = "bpf_struct_ops_map",
+	.map_btf_id = &bpf_struct_ops_map_btf_id,
 };
 
 /* "const void *" because some subsystem is

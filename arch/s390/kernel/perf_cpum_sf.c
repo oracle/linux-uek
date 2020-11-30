@@ -672,7 +672,7 @@ static void cpumsf_output_event_pid(struct perf_event *event,
 	rcu_read_lock();
 
 	perf_prepare_sample(&header, data, event, regs);
-	if (perf_output_begin(&handle, event, header.size))
+	if (perf_output_begin(&handle, data, event, header.size))
 		goto out;
 
 	/* Update the process ID (see also kernel/events/core.c) */
@@ -881,12 +881,21 @@ out:
 	return err;
 }
 
+static bool is_callchain_event(struct perf_event *event)
+{
+	u64 sample_type = event->attr.sample_type;
+
+	return sample_type & (PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER |
+			      PERF_SAMPLE_STACK_USER);
+}
+
 static int cpumsf_pmu_event_init(struct perf_event *event)
 {
 	int err;
 
 	/* No support for taken branch sampling */
-	if (has_branch_stack(event))
+	/* No support for callchain, stacks and registers */
+	if (has_branch_stack(event) || is_callchain_event(event))
 		return -EOPNOTSUPP;
 
 	switch (event->attr.type) {
@@ -2219,4 +2228,4 @@ out:
 }
 
 arch_initcall(init_cpum_sampling_pmu);
-core_param(cpum_sfb_size, CPUM_SF_MAX_SDB, sfb_size, 0640);
+core_param(cpum_sfb_size, CPUM_SF_MAX_SDB, sfb_size, 0644);

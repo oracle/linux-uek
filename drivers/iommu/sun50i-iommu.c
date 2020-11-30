@@ -313,9 +313,9 @@ static int sun50i_iommu_flush_all_tlb(struct sun50i_iommu *iommu)
 		    IOMMU_TLB_FLUSH_MICRO_TLB(1) |
 		    IOMMU_TLB_FLUSH_MICRO_TLB(0));
 
-	ret = readl_poll_timeout(iommu->base + IOMMU_TLB_FLUSH_REG,
-				 reg, !reg,
-				 1, 2000);
+	ret = readl_poll_timeout_atomic(iommu->base + IOMMU_TLB_FLUSH_REG,
+					reg, !reg,
+					1, 2000);
 	if (ret)
 		dev_warn(iommu->dev, "TLB Flush timed out!\n");
 
@@ -556,7 +556,6 @@ static size_t sun50i_iommu_unmap(struct iommu_domain *domain, unsigned long iova
 {
 	struct sun50i_iommu_domain *sun50i_domain = to_sun50i_domain(domain);
 	phys_addr_t pt_phys;
-	dma_addr_t pte_dma;
 	u32 *pte_addr;
 	u32 dte;
 
@@ -566,7 +565,6 @@ static size_t sun50i_iommu_unmap(struct iommu_domain *domain, unsigned long iova
 
 	pt_phys = sun50i_dte_get_pt_address(dte);
 	pte_addr = (u32 *)phys_to_virt(pt_phys) + sun50i_iova_get_pte_index(iova);
-	pte_dma = pt_phys + sun50i_iova_get_pte_index(iova) * PT_ENTRY_SIZE;
 
 	if (!sun50i_pte_is_page_valid(*pte_addr))
 		return 0;
@@ -883,7 +881,6 @@ static phys_addr_t sun50i_iommu_handle_perm_irq(struct sun50i_iommu *iommu)
 static irqreturn_t sun50i_iommu_irq(int irq, void *dev_id)
 {
 	struct sun50i_iommu *iommu = dev_id;
-	phys_addr_t iova;
 	u32 status;
 
 	spin_lock(&iommu->iommu_lock);
@@ -895,15 +892,15 @@ static irqreturn_t sun50i_iommu_irq(int irq, void *dev_id)
 	}
 
 	if (status & IOMMU_INT_INVALID_L2PG)
-		iova = sun50i_iommu_handle_pt_irq(iommu,
-						  IOMMU_INT_ERR_ADDR_L2_REG,
-						  IOMMU_L2PG_INT_REG);
+		sun50i_iommu_handle_pt_irq(iommu,
+					    IOMMU_INT_ERR_ADDR_L2_REG,
+					    IOMMU_L2PG_INT_REG);
 	else if (status & IOMMU_INT_INVALID_L1PG)
-		iova = sun50i_iommu_handle_pt_irq(iommu,
-						  IOMMU_INT_ERR_ADDR_L1_REG,
-						  IOMMU_L1PG_INT_REG);
+		sun50i_iommu_handle_pt_irq(iommu,
+					   IOMMU_INT_ERR_ADDR_L1_REG,
+					   IOMMU_L1PG_INT_REG);
 	else
-		iova = sun50i_iommu_handle_perm_irq(iommu);
+		sun50i_iommu_handle_perm_irq(iommu);
 
 	iommu_write(iommu, IOMMU_INT_CLR_REG, status);
 

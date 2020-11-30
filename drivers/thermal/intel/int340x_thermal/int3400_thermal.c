@@ -14,6 +14,7 @@
 
 #define INT3400_THERMAL_TABLE_CHANGED 0x83
 #define INT3400_ODVP_CHANGED 0x88
+#define INT3400_KEEP_ALIVE 0xA0
 
 enum int3400_thermal_uuid {
 	INT3400_THERMAL_PASSIVE_1,
@@ -48,7 +49,6 @@ struct int3400_thermal_priv {
 	struct acpi_device *adev;
 	struct platform_device *pdev;
 	struct thermal_zone_device *thermal;
-	int mode;
 	int art_count;
 	struct art *arts;
 	int trt_count;
@@ -84,8 +84,33 @@ static struct bin_attribute *data_attributes[] = {
 	NULL,
 };
 
+static ssize_t imok_store(struct device *dev, struct device_attribute *attr,
+			  const char *buf, size_t count)
+{
+	struct int3400_thermal_priv *priv = dev_get_drvdata(dev);
+	acpi_status status;
+	int input, ret;
+
+	ret = kstrtouint(buf, 10, &input);
+	if (ret)
+		return ret;
+	status = acpi_execute_simple_method(priv->adev->handle, "IMOK", input);
+	if (ACPI_FAILURE(status))
+		return -EIO;
+
+	return count;
+}
+
+static DEVICE_ATTR_WO(imok);
+
+static struct attribute *imok_attr[] = {
+	&dev_attr_imok.attr,
+	NULL
+};
+
 static const struct attribute_group data_attribute_group = {
 	.bin_attrs = data_attributes,
+	.attrs = imok_attr,
 };
 
 static ssize_t available_uuids_show(struct device *dev,
@@ -216,10 +241,15 @@ static int int3400_thermal_run_osc(acpi_handle handle,
 	acpi_status status;
 	int result = 0;
 	struct acpi_osc_context context = {
-		.uuid_str = int3400_thermal_uuids[uuid],
+		.uuid_str = NULL,
 		.rev = 1,
 		.cap.length = 8,
 	};
+
+	if (uuid < 0 || uuid >= INT3400_THERMAL_MAXIMUM_UUID)
+		return -EINVAL;
+
+	context.uuid_str = int3400_thermal_uuids[uuid];
 
 	buf[OSC_QUERY_DWORD] = 0;
 	buf[OSC_SUPPORT_DWORD] = enable;
@@ -345,30 +375,33 @@ static void int3400_notify(acpi_handle handle,
 {
 	struct int3400_thermal_priv *priv = data;
 	char *thermal_prop[5];
+	int therm_event;
 
 	if (!priv)
 		return;
 
 	switch (event) {
 	case INT3400_THERMAL_TABLE_CHANGED:
-		thermal_prop[0] = kasprintf(GFP_KERNEL, "NAME=%s",
-				priv->thermal->type);
-		thermal_prop[1] = kasprintf(GFP_KERNEL, "TEMP=%d",
-				priv->thermal->temperature);
-		thermal_prop[2] = kasprintf(GFP_KERNEL, "TRIP=");
-		thermal_prop[3] = kasprintf(GFP_KERNEL, "EVENT=%d",
-				THERMAL_TABLE_CHANGED);
-		thermal_prop[4] = NULL;
-		kobject_uevent_env(&priv->thermal->device.kobj, KOBJ_CHANGE,
-				thermal_prop);
+		therm_event = THERMAL_TABLE_CHANGED;
+		break;
+	case INT3400_KEEP_ALIVE:
+		therm_event = THERMAL_EVENT_KEEP_ALIVE;
 		break;
 	case INT3400_ODVP_CHANGED:
 		evaluate_odvp(priv);
+		therm_event = THERMAL_DEVICE_POWER_CAPABILITY_CHANGED;
 		break;
 	default:
 		/* Ignore unknown notification codes sent to INT3400 device */
-		break;
+		return;
 	}
+
+	thermal_prop[0] = kasprintf(GFP_KERNEL, "NAME=%s", priv->thermal->type);
+	thermal_prop[1] = kasprintf(GFP_KERNEL, "TEMP=%d", priv->thermal->temperature);
+	thermal_prop[2] = kasprintf(GFP_KERNEL, "TRIP=");
+	thermal_prop[3] = kasprintf(GFP_KERNEL, "EVENT=%d", therm_event);
+	thermal_prop[4] = NULL;
+	kobject_uevent_env(&priv->thermal->device.kobj, KOBJ_CHANGE, thermal_prop);
 }
 
 static int int3400_thermal_get_temp(struct thermal_zone_device *thermal,
@@ -378,42 +411,20 @@ static int int3400_thermal_get_temp(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-static int int3400_thermal_get_mode(struct thermal_zone_device *thermal,
-				enum thermal_device_mode *mode)
+static int int3400_thermal_change_mode(struct thermal_zone_device *thermal,
+				       enum thermal_device_mode mode)
 {
 	struct int3400_thermal_priv *priv = thermal->devdata;
-
-	if (!priv)
-		return -EINVAL;
-
-	*mode = priv->mode;
-
-	return 0;
-}
-
-static int int3400_thermal_set_mode(struct thermal_zone_device *thermal,
-				enum thermal_device_mode mode)
-{
-	struct int3400_thermal_priv *priv = thermal->devdata;
-	bool enable;
 	int result = 0;
 
 	if (!priv)
 		return -EINVAL;
 
-	if (mode == THERMAL_DEVICE_ENABLED)
-		enable = true;
-	else if (mode == THERMAL_DEVICE_DISABLED)
-		enable = false;
-	else
-		return -EINVAL;
-
-	if (enable != priv->mode) {
-		priv->mode = enable;
+	if (mode != thermal->mode)
 		result = int3400_thermal_run_osc(priv->adev->handle,
-						 priv->current_uuid_index,
-						 enable);
-	}
+						priv->current_uuid_index,
+						mode == THERMAL_DEVICE_ENABLED);
+
 
 	evaluate_odvp(priv);
 
@@ -422,8 +433,7 @@ static int int3400_thermal_set_mode(struct thermal_zone_device *thermal,
 
 static struct thermal_zone_device_ops int3400_thermal_ops = {
 	.get_temp = int3400_thermal_get_temp,
-	.get_mode = int3400_thermal_get_mode,
-	.set_mode = int3400_thermal_set_mode,
+	.change_mode = int3400_thermal_change_mode,
 };
 
 static struct thermal_zone_params int3400_thermal_params = {

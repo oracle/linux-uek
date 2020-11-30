@@ -496,8 +496,8 @@ xs_read_stream_request(struct sock_xprt *transport, struct msghdr *msg,
 		int flags, struct rpc_rqst *req)
 {
 	struct xdr_buf *buf = &req->rq_private_buf;
-	size_t want, uninitialized_var(read);
-	ssize_t uninitialized_var(ret);
+	size_t want, read;
+	ssize_t ret;
 
 	xs_read_header(transport, buf);
 
@@ -762,10 +762,7 @@ static int xs_nospace(struct rpc_rqst *req)
 	struct sock *sk = transport->inet;
 	int ret = -EAGAIN;
 
-	dprintk("RPC: %5u xmit incomplete (%u left of %u)\n",
-			req->rq_task->tk_pid,
-			req->rq_slen - transport->xmit.offset,
-			req->rq_slen);
+	trace_rpc_socket_nospace(req, transport);
 
 	/* Protect against races with write_space */
 	spin_lock(&xprt->transport_lock);
@@ -844,7 +841,7 @@ static int xs_local_send_request(struct rpc_rqst *req)
 	struct msghdr msg = {
 		.msg_flags	= XS_SENDMSG_FLAGS,
 	};
-	unsigned int uninitialized_var(sent);
+	unsigned int sent;
 	int status;
 
 	/* Close the stream if the previous transmission was incomplete */
@@ -885,7 +882,7 @@ static int xs_local_send_request(struct rpc_rqst *req)
 	default:
 		dprintk("RPC:       sendmsg returned unrecognized error %d\n",
 			-status);
-		/* fall through */
+		fallthrough;
 	case -EPIPE:
 		xs_close(xprt);
 		status = -ENOTCONN;
@@ -915,7 +912,7 @@ static int xs_udp_send_request(struct rpc_rqst *req)
 		.msg_namelen	= xprt->addrlen,
 		.msg_flags	= XS_SENDMSG_FLAGS,
 	};
-	unsigned int uninitialized_var(sent);
+	unsigned int sent;
 	int status;
 
 	xs_pktdump("packet data:",
@@ -999,7 +996,7 @@ static int xs_tcp_send_request(struct rpc_rqst *req)
 		.msg_flags	= XS_SENDMSG_FLAGS,
 	};
 	bool vm_wait = false;
-	unsigned int uninitialized_var(sent);
+	unsigned int sent;
 	int status;
 
 	/* Close the stream if the previous transmission was incomplete */
@@ -1436,7 +1433,7 @@ static void xs_tcp_state_change(struct sock *sk)
 		xprt->connect_cookie++;
 		clear_bit(XPRT_CONNECTED, &xprt->state);
 		xs_run_error_worker(transport, XPRT_SOCK_WAKE_DISCONNECT);
-		/* fall through */
+		fallthrough;
 	case TCP_CLOSING:
 		/*
 		 * If the server closed down the connection, make sure that
@@ -2202,7 +2199,7 @@ static int xs_tcp_finish_connecting(struct rpc_xprt *xprt, struct socket *sock)
 	switch (ret) {
 	case 0:
 		xs_set_srcport(transport, sock);
-		/* fall through */
+		fallthrough;
 	case -EINPROGRESS:
 		/* SYN_SENT! */
 		if (xprt->reestablish_timeout < XS_TCP_INIT_REEST_TO)
@@ -2255,7 +2252,7 @@ static void xs_tcp_setup_socket(struct work_struct *work)
 	default:
 		printk("%s: connect returned unhandled error %d\n",
 			__func__, status);
-		/* fall through */
+		fallthrough;
 	case -EADDRNOTAVAIL:
 		/* We're probably in TIME_WAIT. Get rid of existing socket,
 		 * and retry

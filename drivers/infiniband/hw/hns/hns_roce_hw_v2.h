@@ -60,6 +60,7 @@
 #define HNS_ROCE_V2_MAX_SQ_SGE_NUM		64
 #define HNS_ROCE_V2_MAX_EXTEND_SGE_NUM		0x200000
 #define HNS_ROCE_V2_MAX_SQ_INLINE		0x20
+#define HNS_ROCE_V2_MAX_RC_INL_INN_SZ		32
 #define HNS_ROCE_V2_UAR_NUM			256
 #define HNS_ROCE_V2_PHY_UAR_NUM			1
 #define HNS_ROCE_V2_MAX_IRQ_NUM			65
@@ -77,7 +78,6 @@
 #define HNS_ROCE_V2_MAX_SQ_DESC_SZ		64
 #define HNS_ROCE_V2_MAX_RQ_DESC_SZ		16
 #define HNS_ROCE_V2_MAX_SRQ_DESC_SZ		64
-#define HNS_ROCE_V2_QPC_ENTRY_SZ		256
 #define HNS_ROCE_V2_IRRL_ENTRY_SZ		64
 #define HNS_ROCE_V2_TRRL_ENTRY_SZ		48
 #define HNS_ROCE_V2_EXT_ATOMIC_TRRL_ENTRY_SZ	100
@@ -86,15 +86,15 @@
 #define HNS_ROCE_V2_MTPT_ENTRY_SZ		64
 #define HNS_ROCE_V2_MTT_ENTRY_SZ		64
 #define HNS_ROCE_V2_IDX_ENTRY_SZ		4
-#define HNS_ROCE_V2_CQE_ENTRY_SIZE		32
-#define HNS_ROCE_V2_SCCC_ENTRY_SZ		32
+
+#define HNS_ROCE_V2_SCCC_SZ			32
+#define HNS_ROCE_V3_SCCC_SZ			64
+
 #define HNS_ROCE_V2_QPC_TIMER_ENTRY_SZ		PAGE_SIZE
 #define HNS_ROCE_V2_CQC_TIMER_ENTRY_SZ		PAGE_SIZE
 #define HNS_ROCE_V2_PAGE_SIZE_SUPPORTED		0xFFFFF000
 #define HNS_ROCE_V2_MAX_INNER_MTPT_NUM		2
-#define HNS_ROCE_INVALID_LKEY			0x0
-#define HNS_ROCE_INVALID_SGE_LENGTH		0x80000000
-
+#define HNS_ROCE_INVALID_LKEY			0x100
 #define HNS_ROCE_CMQ_TX_TIMEOUT			30000
 #define HNS_ROCE_V2_UC_RC_SGE_NUM_IN_WQE	2
 #define HNS_ROCE_V2_RSV_QPS			8
@@ -179,24 +179,8 @@ enum {
 	HNS_ROCE_V2_WQE_OP_ATOM_MSK_FETCH_AND_ADD	= 0x9,
 	HNS_ROCE_V2_WQE_OP_FAST_REG_PMR			= 0xa,
 	HNS_ROCE_V2_WQE_OP_LOCAL_INV			= 0xb,
-	HNS_ROCE_V2_WQE_OP_BIND_MW_TYPE			= 0xc,
+	HNS_ROCE_V2_WQE_OP_BIND_MW			= 0xc,
 	HNS_ROCE_V2_WQE_OP_MASK				= 0x1f,
-};
-
-enum {
-	HNS_ROCE_SQ_OPCODE_SEND = 0x0,
-	HNS_ROCE_SQ_OPCODE_SEND_WITH_INV = 0x1,
-	HNS_ROCE_SQ_OPCODE_SEND_WITH_IMM = 0x2,
-	HNS_ROCE_SQ_OPCODE_RDMA_WRITE = 0x3,
-	HNS_ROCE_SQ_OPCODE_RDMA_WRITE_WITH_IMM = 0x4,
-	HNS_ROCE_SQ_OPCODE_RDMA_READ = 0x5,
-	HNS_ROCE_SQ_OPCODE_ATOMIC_COMP_AND_SWAP = 0x6,
-	HNS_ROCE_SQ_OPCODE_ATOMIC_FETCH_AND_ADD = 0x7,
-	HNS_ROCE_SQ_OPCODE_ATOMIC_MASK_COMP_AND_SWAP = 0x8,
-	HNS_ROCE_SQ_OPCODE_ATOMIC_MASK_FETCH_AND_ADD = 0x9,
-	HNS_ROCE_SQ_OPCODE_FAST_REG_WR = 0xa,
-	HNS_ROCE_SQ_OPCODE_LOCAL_INV = 0xb,
-	HNS_ROCE_SQ_OPCODE_BIND_MW = 0xc,
 };
 
 enum {
@@ -230,6 +214,7 @@ enum {
 	HNS_ROCE_CQE_V2_TRANSPORT_RETRY_EXC_ERR		= 0x15,
 	HNS_ROCE_CQE_V2_RNR_RETRY_EXC_ERR		= 0x16,
 	HNS_ROCE_CQE_V2_REMOTE_ABORT_ERR		= 0x22,
+	HNS_ROCE_CQE_V2_GENERAL_ERR			= 0x23,
 
 	HNS_ROCE_V2_CQE_STATUS_MASK			= 0xff,
 };
@@ -246,6 +231,7 @@ enum hns_roce_opcode_type {
 	HNS_ROCE_OPC_CFG_TMOUT_LLM			= 0x8404,
 	HNS_ROCE_OPC_QUERY_PF_TIMER_RES			= 0x8406,
 	HNS_ROCE_OPC_QUERY_PF_CAPS_NUM                  = 0x8408,
+	HNS_ROCE_OPC_CFG_ENTRY_SIZE			= 0x8409,
 	HNS_ROCE_OPC_CFG_SGID_TB			= 0x8500,
 	HNS_ROCE_OPC_CFG_SMAC_TB			= 0x8501,
 	HNS_ROCE_OPC_POST_MB				= 0x8504,
@@ -325,6 +311,9 @@ struct hns_roce_v2_cq_context {
 
 #define	V2_CQC_BYTE_8_CQN_S 0
 #define V2_CQC_BYTE_8_CQN_M GENMASK(23, 0)
+
+#define V2_CQC_BYTE_8_CQE_SIZE_S 27
+#define V2_CQC_BYTE_8_CQE_SIZE_M GENMASK(28, 27)
 
 #define	V2_CQC_BYTE_16_CQE_CUR_BLK_ADDR_S 0
 #define V2_CQC_BYTE_16_CQE_CUR_BLK_ADDR_M GENMASK(19, 0)
@@ -529,6 +518,7 @@ struct hns_roce_v2_qp_context {
 	__le32	byte_248_ack_psn;
 	__le32	byte_252_err_txcqn;
 	__le32	byte_256_sqflush_rqcqe;
+	__le32	ext[64];
 };
 
 #define	V2_QPC_BYTE_4_TST_S 0
@@ -913,6 +903,7 @@ struct hns_roce_v2_cqe {
 	u8	smac[4];
 	__le32	byte_28;
 	__le32	byte_32;
+	__le32	rsv[8];
 };
 
 #define	V2_CQE_BYTE_4_OPCODE_S 0
@@ -1203,6 +1194,8 @@ struct hns_roce_v2_rc_send_wqe {
 
 #define V2_RC_SEND_WQE_BYTE_20_MSG_START_SGE_IDX_S 0
 #define V2_RC_SEND_WQE_BYTE_20_MSG_START_SGE_IDX_M GENMASK(23, 0)
+
+#define V2_RC_SEND_WQE_BYTE_20_INL_TYPE_S 31
 
 struct hns_roce_wqe_frmr_seg {
 	__le32	pbl_size;
@@ -1554,6 +1547,18 @@ struct hns_roce_cfg_sgid_tb {
 	__le32	vf_sgid_h;
 	__le32	vf_sgid_type_rsv;
 };
+
+enum {
+	HNS_ROCE_CFG_QPC_SIZE = BIT(0),
+	HNS_ROCE_CFG_SCCC_SIZE = BIT(1),
+};
+
+struct hns_roce_cfg_entry_size {
+	__le32	type;
+	__le32	rsv[4];
+	__le32	size;
+};
+
 #define CFG_SGID_TB_TABLE_IDX_S 0
 #define CFG_SGID_TB_TABLE_IDX_M GENMASK(7, 0)
 
@@ -1588,7 +1593,7 @@ struct hns_roce_query_pf_caps_a {
 	u8 max_sq_desc_sz;
 	u8 max_rq_desc_sz;
 	u8 max_srq_desc_sz;
-	u8 cq_entry_sz;
+	u8 cqe_sz;
 };
 
 struct hns_roce_query_pf_caps_b {
@@ -1598,9 +1603,9 @@ struct hns_roce_query_pf_caps_b {
 	u8 cqc_entry_sz;
 	u8 srqc_entry_sz;
 	u8 idx_entry_sz;
-	u8 scc_ctx_entry_sz;
+	u8 sccc_sz;
 	u8 max_mtu;
-	__le16 qpc_entry_sz;
+	__le16 qpc_sz;
 	__le16 qpc_timer_entry_sz;
 	__le16 cqc_timer_entry_sz;
 	u8 min_cqes;
@@ -1656,7 +1661,7 @@ struct hns_roce_query_pf_caps_d {
 	__le32 rsv_uars_rsv_qps;
 };
 #define V2_QUERY_PF_CAPS_D_NUM_SRQS_S 0
-#define V2_QUERY_PF_CAPS_D_NUM_SRQS_M GENMASK(20, 0)
+#define V2_QUERY_PF_CAPS_D_NUM_SRQS_M GENMASK(19, 0)
 
 #define V2_QUERY_PF_CAPS_D_RQWQE_HOP_NUM_S 20
 #define V2_QUERY_PF_CAPS_D_RQWQE_HOP_NUM_M GENMASK(21, 20)
@@ -1794,8 +1799,8 @@ struct hns_roce_eq_context {
 	__le32	byte_28;
 	__le32	byte_32;
 	__le32	byte_36;
-	__le32	nxt_eqe_ba0;
-	__le32	nxt_eqe_ba1;
+	__le32	byte_40;
+	__le32	byte_44;
 	__le32	rsv[5];
 };
 
@@ -1937,6 +1942,9 @@ struct hns_roce_eq_context {
 #define HNS_ROCE_EQC_NXT_EQE_BA_H_S 0
 #define HNS_ROCE_EQC_NXT_EQE_BA_H_M GENMASK(19, 0)
 
+#define HNS_ROCE_EQC_EQE_SIZE_S 20
+#define HNS_ROCE_EQC_EQE_SIZE_M GENMASK(21, 20)
+
 #define HNS_ROCE_V2_CEQE_COMP_CQN_S 0
 #define HNS_ROCE_V2_CEQE_COMP_CQN_M GENMASK(23, 0)
 
@@ -1957,6 +1965,8 @@ struct hns_roce_eq_context {
 
 #define HNS_ROCE_V2_AEQE_EVENT_QUEUE_NUM_S 0
 #define HNS_ROCE_V2_AEQE_EVENT_QUEUE_NUM_M GENMASK(23, 0)
+
+#define MAX_SERVICE_LEVEL 0x7
 
 struct hns_roce_wqe_atomic_seg {
 	__le64          fetchadd_swap_data;

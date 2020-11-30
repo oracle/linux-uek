@@ -15,7 +15,9 @@ properties:
   compatible:
     items:
       - enum:
-        - brcm,bcm21664-garnet
+          - brcm,bcm21664-garnet
       - const: brcm,bcm21664
+
+additionalProperties: true
 
 ...

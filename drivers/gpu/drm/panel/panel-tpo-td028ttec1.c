@@ -281,7 +281,6 @@ static const struct drm_display_mode td028ttec1_mode = {
 	.vsync_start = 640 + 4,
 	.vsync_end = 640 + 4 + 2,
 	.vtotal = 640 + 4 + 2 + 2,
-	.vrefresh = 66,
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 	.width_mm = 43,
@@ -351,7 +350,9 @@ static int td028ttec1_probe(struct spi_device *spi)
 	if (ret)
 		return ret;
 
-	return drm_panel_add(&lcd->panel);
+	drm_panel_add(&lcd->panel);
+
+	return 0;
 }
 
 static int td028ttec1_remove(struct spi_device *spi)

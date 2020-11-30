@@ -116,7 +116,6 @@ static const struct drm_display_mode nl8048_mode = {
 	.vsync_start = 480 + 3,
 	.vsync_end = 480 + 3 + 1,
 	.vtotal = 480 + 3 + 1 + 4,
-	.vrefresh = 60,
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 	.width_mm = 89,
@@ -208,7 +207,9 @@ static int nl8048_probe(struct spi_device *spi)
 	drm_panel_init(&lcd->panel, &lcd->spi->dev, &nl8048_funcs,
 		       DRM_MODE_CONNECTOR_DPI);
 
-	return drm_panel_add(&lcd->panel);
+	drm_panel_add(&lcd->panel);
+
+	return 0;
 }
 
 static int nl8048_remove(struct spi_device *spi)

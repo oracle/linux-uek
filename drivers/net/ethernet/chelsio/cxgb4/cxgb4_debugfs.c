@@ -2379,7 +2379,6 @@ static const struct file_operations rss_vf_config_debugfs_fops = {
 };
 
 #ifdef CONFIG_CHELSIO_T4_DCB
-extern char *dcb_ver_array[];
 
 /* Data Center Briging information for each port.
  */
@@ -2743,6 +2742,58 @@ do { \
 	}
 
 	r -= eth_entries;
+	for_each_port(adap, j) {
+		struct port_info *pi = adap2pinfo(adap, j);
+		const struct sge_eth_rxq *rx;
+
+		mutex_lock(&pi->vi_mirror_mutex);
+		if (!pi->vi_mirror_count) {
+			mutex_unlock(&pi->vi_mirror_mutex);
+			continue;
+		}
+
+		if (r >= DIV_ROUND_UP(pi->nmirrorqsets, 4)) {
+			r -= DIV_ROUND_UP(pi->nmirrorqsets, 4);
+			mutex_unlock(&pi->vi_mirror_mutex);
+			continue;
+		}
+
+		rx = &s->mirror_rxq[j][r * 4];
+		n = min(4, pi->nmirrorqsets - 4 * r);
+
+		S("QType:", "Mirror-Rxq");
+		S("Interface:",
+		  rx[i].rspq.netdev ? rx[i].rspq.netdev->name : "N/A");
+		R("RspQ ID:", rspq.abs_id);
+		R("RspQ size:", rspq.size);
+		R("RspQE size:", rspq.iqe_len);
+		R("RspQ CIDX:", rspq.cidx);
+		R("RspQ Gen:", rspq.gen);
+		S3("u", "Intr delay:", qtimer_val(adap, &rx[i].rspq));
+		S3("u", "Intr pktcnt:", s->counter_val[rx[i].rspq.pktcnt_idx]);
+		R("FL ID:", fl.cntxt_id);
+		R("FL size:", fl.size - 8);
+		R("FL pend:", fl.pend_cred);
+		R("FL avail:", fl.avail);
+		R("FL PIDX:", fl.pidx);
+		R("FL CIDX:", fl.cidx);
+		RL("RxPackets:", stats.pkts);
+		RL("RxCSO:", stats.rx_cso);
+		RL("VLANxtract:", stats.vlan_ex);
+		RL("LROmerged:", stats.lro_merged);
+		RL("LROpackets:", stats.lro_pkts);
+		RL("RxDrops:", stats.rx_drops);
+		RL("RxBadPkts:", stats.bad_rx_pkts);
+		RL("FLAllocErr:", fl.alloc_failed);
+		RL("FLLrgAlcErr:", fl.large_alloc_failed);
+		RL("FLMapErr:", fl.mapping_err);
+		RL("FLLow:", fl.low);
+		RL("FLStarving:", fl.starving);
+
+		mutex_unlock(&pi->vi_mirror_mutex);
+		goto out;
+	}
+
 	if (!adap->tc_mqprio)
 		goto skip_mqprio;
 
@@ -3099,9 +3150,10 @@ unlock:
 	return 0;
 }
 
-static int sge_queue_entries(const struct adapter *adap)
+static int sge_queue_entries(struct adapter *adap)
 {
 	int i, tot_uld_entries = 0, eohw_entries = 0, eosw_entries = 0;
+	int mirror_rxq_entries = 0;
 
 	if (adap->tc_mqprio) {
 		struct cxgb4_tc_port_mqprio *port_mqprio;
@@ -3124,6 +3176,15 @@ static int sge_queue_entries(const struct adapter *adap)
 		mutex_unlock(&adap->tc_mqprio->mqprio_mutex);
 	}
 
+	for_each_port(adap, i) {
+		struct port_info *pi = adap2pinfo(adap, i);
+
+		mutex_lock(&pi->vi_mirror_mutex);
+		if (pi->vi_mirror_count)
+			mirror_rxq_entries += DIV_ROUND_UP(pi->nmirrorqsets, 4);
+		mutex_unlock(&pi->vi_mirror_mutex);
+	}
+
 	if (!is_uld(adap))
 		goto lld_only;
 
@@ -3138,7 +3199,7 @@ static int sge_queue_entries(const struct adapter *adap)
 	mutex_unlock(&uld_mutex);
 
 lld_only:
-	return DIV_ROUND_UP(adap->sge.ethqsets, 4) +
+	return DIV_ROUND_UP(adap->sge.ethqsets, 4) + mirror_rxq_entries +
 	       eohw_entries + eosw_entries + tot_uld_entries +
 	       DIV_ROUND_UP(MAX_CTRL_QUEUES, 4) + 1;
 }
@@ -3466,6 +3527,10 @@ DEFINE_SHOW_ATTRIBUTE(meminfo);
 
 static int chcr_stats_show(struct seq_file *seq, void *v)
 {
+#if IS_ENABLED(CONFIG_CHELSIO_TLS_DEVICE)
+	struct ch_ktls_port_stats_debug *ktls_port;
+	int i = 0;
+#endif
 	struct adapter *adap = seq->private;
 
 	seq_puts(seq, "Chelsio Crypto Accelerator Stats \n");
@@ -3481,52 +3546,47 @@ static int chcr_stats_show(struct seq_file *seq, void *v)
 		   atomic_read(&adap->chcr_stats.error));
 	seq_printf(seq, "Fallback: %10u \n",
 		   atomic_read(&adap->chcr_stats.fallback));
-	seq_printf(seq, "IPSec PDU: %10u\n",
-		   atomic_read(&adap->chcr_stats.ipsec_cnt));
 	seq_printf(seq, "TLS PDU Tx: %10u\n",
 		   atomic_read(&adap->chcr_stats.tls_pdu_tx));
 	seq_printf(seq, "TLS PDU Rx: %10u\n",
 		   atomic_read(&adap->chcr_stats.tls_pdu_rx));
 	seq_printf(seq, "TLS Keys (DDR) Count: %10u\n",
 		   atomic_read(&adap->chcr_stats.tls_key));
-#ifdef CONFIG_CHELSIO_TLS_DEVICE
+#if IS_ENABLED(CONFIG_CHELSIO_IPSEC_INLINE)
+	seq_puts(seq, "\nChelsio Inline IPsec Crypto Accelerator Stats\n");
+	seq_printf(seq, "IPSec PDU: %10u\n",
+		   atomic_read(&adap->ch_ipsec_stats.ipsec_cnt));
+#endif
+#if IS_ENABLED(CONFIG_CHELSIO_TLS_DEVICE)
 	seq_puts(seq, "\nChelsio KTLS Crypto Accelerator Stats\n");
 	seq_printf(seq, "Tx TLS offload refcount:          %20u\n",
 		   refcount_read(&adap->chcr_ktls.ktls_refcount));
-	seq_printf(seq, "Tx HW offload contexts added:     %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_ctx));
-	seq_printf(seq, "Tx connection created:            %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_connection_open));
-	seq_printf(seq, "Tx connection failed:             %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_connection_fail));
-	seq_printf(seq, "Tx connection closed:             %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_connection_close));
-	seq_printf(seq, "Packets passed for encryption :   %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_encrypted_packets));
-	seq_printf(seq, "Bytes passed for encryption :     %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_encrypted_bytes));
 	seq_printf(seq, "Tx records send:                  %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_send_records));
+		   atomic64_read(&adap->ch_ktls_stats.ktls_tx_send_records));
 	seq_printf(seq, "Tx partial start of records:      %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_start_pkts));
+		   atomic64_read(&adap->ch_ktls_stats.ktls_tx_start_pkts));
 	seq_printf(seq, "Tx partial middle of records:     %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_middle_pkts));
+		   atomic64_read(&adap->ch_ktls_stats.ktls_tx_middle_pkts));
 	seq_printf(seq, "Tx partial end of record:         %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_end_pkts));
+		   atomic64_read(&adap->ch_ktls_stats.ktls_tx_end_pkts));
 	seq_printf(seq, "Tx complete records:              %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_complete_pkts));
+		   atomic64_read(&adap->ch_ktls_stats.ktls_tx_complete_pkts));
 	seq_printf(seq, "TX trim pkts :                    %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_trimmed_pkts));
-	seq_printf(seq, "Tx out of order packets:          %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_ooo));
-	seq_printf(seq, "Tx drop pkts before HW offload:   %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_skip_no_sync_data));
-	seq_printf(seq, "Tx drop not synced packets:       %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_drop_no_sync_data));
-	seq_printf(seq, "Tx drop bypass req:               %20llu\n",
-		   atomic64_read(&adap->chcr_stats.ktls_tx_drop_bypass_req));
+		   atomic64_read(&adap->ch_ktls_stats.ktls_tx_trimmed_pkts));
+	seq_printf(seq, "TX sw fallback :                  %20llu\n",
+		   atomic64_read(&adap->ch_ktls_stats.ktls_tx_fallback));
+	while (i < MAX_NPORTS) {
+		ktls_port = &adap->ch_ktls_stats.ktls_port[i];
+		seq_printf(seq, "Port %d\n", i);
+		seq_printf(seq, "Tx connection created:            %20llu\n",
+			   atomic64_read(&ktls_port->ktls_tx_connection_open));
+		seq_printf(seq, "Tx connection failed:             %20llu\n",
+			   atomic64_read(&ktls_port->ktls_tx_connection_fail));
+		seq_printf(seq, "Tx connection closed:             %20llu\n",
+			   atomic64_read(&ktls_port->ktls_tx_connection_close));
+		i++;
+	}
 #endif
-
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(chcr_stats);

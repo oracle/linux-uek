@@ -12,6 +12,7 @@
 
 #ifndef __RT1015_H__
 #define __RT1015_H__
+#include <sound/rt1015.h>
 
 #define RT1015_DEVICE_ID_VAL			0x1011
 #define RT1015_DEVICE_ID_VAL2			0x1015
@@ -21,6 +22,12 @@
 #define RT1015_CLK3				0x0006
 #define RT1015_PLL1				0x000a
 #define RT1015_PLL2				0x000c
+#define RT1015_DUM_RW1				0x000e
+#define RT1015_DUM_RW2				0x0010
+#define RT1015_DUM_RW3				0x0012
+#define RT1015_DUM_RW4				0x0014
+#define RT1015_DUM_RW5				0x0016
+#define RT1015_DUM_RW6				0x0018
 #define RT1015_CLK_DET				0x0020
 #define RT1015_SIL_DET				0x0022
 #define RT1015_CUSTOMER_ID			0x0076
@@ -32,6 +39,7 @@
 #define RT1015_PAD_DRV2				0x00f2
 #define RT1015_GAT_BOOST			0x00f3
 #define RT1015_PRO_ALT				0x00f4
+#define RT1015_OSCK_STA				0x00f6
 #define RT1015_MAN_I2C				0x0100
 #define RT1015_DAC1				0x0102
 #define RT1015_DAC2				0x0104
@@ -70,7 +78,13 @@
 #define RT1015_ANA_CTRL1			0x0334
 #define RT1015_ANA_CTRL2			0x0336
 #define RT1015_PWR_STATE_CTRL			0x0338
-#define RT1015_SPK_VOL				0x0506
+#define RT1015_MONO_DYNA_CTRL			0x04fa
+#define RT1015_MONO_DYNA_CTRL1			0x04fc
+#define RT1015_MONO_DYNA_CTRL2			0x04fe
+#define RT1015_MONO_DYNA_CTRL3			0x0500
+#define RT1015_MONO_DYNA_CTRL4			0x0502
+#define RT1015_MONO_DYNA_CTRL5			0x0504
+#define RT1015_SPK_VOL					0x0506
 #define RT1015_SHORT_DETTOP1			0x0508
 #define RT1015_SHORT_DETTOP2			0x050a
 #define RT1015_SPK_DC_DETECT1			0x0519
@@ -355,8 +369,19 @@ enum {
 	FIXED_ADAPTIVE,
 };
 
+enum {
+	RT1015_Enable_Boost = 0,
+	RT1015_Bypass_Boost,
+};
+
+enum {
+	RT1015_HW_28 = 0,
+	RT1015_HW_29,
+};
+
 struct rt1015_priv {
 	struct snd_soc_component *component;
+	struct rt1015_platform_data pdata;
 	struct regmap *regmap;
 	int sysclk;
 	int sysclk_src;
@@ -371,6 +396,9 @@ struct rt1015_priv {
 	int bypass_boost;
 	int amp_ver;
 	int dac_is_used;
+	int cali_done;
+	int hw_config;
+	struct delayed_work flush_work;
 };
 
 #endif /* __RT1015_H__ */

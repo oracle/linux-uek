@@ -258,7 +258,7 @@ Configuring the kernel
 Compiling the kernel
 --------------------
 
- - Make sure you have at least gcc 4.6 available.
+ - Make sure you have at least gcc 4.9 available.
    For more information, refer to :ref:`Documentation/process/changes.rst <changes>`.
 
    Please note that you can still run a.out user programs with this kernel.
@@ -322,9 +322,9 @@ Compiling the kernel
    reboot, and enjoy!
 
    If you ever need to change the default root device, video mode,
-   ramdisk size, etc.  in the kernel image, use the ``rdev`` program (or
-   alternatively the LILO boot options when appropriate).  No need to
-   recompile the kernel to change these parameters.
+   etc. in the kernel image, use your bootloader's boot options
+   where appropriate.  No need to recompile the kernel to change
+   these parameters.
 
  - Reboot with the new kernel and enjoy.
 

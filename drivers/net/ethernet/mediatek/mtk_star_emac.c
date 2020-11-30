@@ -966,6 +966,7 @@ static int mtk_star_enable(struct net_device *ndev)
 				      mtk_star_adjust_link, 0, priv->phy_intf);
 	if (!priv->phydev) {
 		netdev_err(ndev, "failed to connect to PHY\n");
+		ret = -ENODEV;
 		goto err_free_irq;
 	}
 
@@ -1053,7 +1054,7 @@ static int mtk_star_netdev_start_xmit(struct sk_buff *skb,
 err_drop_packet:
 	dev_kfree_skb(skb);
 	ndev->stats.tx_dropped++;
-	return NETDEV_TX_BUSY;
+	return NETDEV_TX_OK;
 }
 
 /* Returns the number of bytes sent or a negative number on the first
@@ -1389,7 +1390,7 @@ static int mtk_star_mdio_init(struct net_device *ndev)
 	priv->mii->write = mtk_star_mdio_write;
 	priv->mii->priv = priv;
 
-	ret = of_mdiobus_register(priv->mii, mdio_node);
+	ret = devm_of_mdiobus_register(dev, priv->mii, mdio_node);
 
 out_put_node:
 	of_node_put(mdio_node);
@@ -1439,13 +1440,6 @@ static void mtk_star_clk_disable_unprepare(void *data)
 	struct mtk_star_priv *priv = data;
 
 	clk_bulk_disable_unprepare(MTK_STAR_NCLKS, priv->clks);
-}
-
-static void mtk_star_mdiobus_unregister(void *data)
-{
-	struct mtk_star_priv *priv = data;
-
-	mdiobus_unregister(priv->mii);
 }
 
 static int mtk_star_probe(struct platform_device *pdev)
@@ -1546,10 +1540,6 @@ static int mtk_star_probe(struct platform_device *pdev)
 	mtk_star_init_config(priv);
 
 	ret = mtk_star_mdio_init(ndev);
-	if (ret)
-		return ret;
-
-	ret = devm_add_action_or_reset(dev, mtk_star_mdiobus_unregister, priv);
 	if (ret)
 		return ret;
 

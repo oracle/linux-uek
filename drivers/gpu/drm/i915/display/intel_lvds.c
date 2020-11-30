@@ -456,12 +456,6 @@ static int intel_lvds_compute_config(struct intel_encoder *intel_encoder,
 	return 0;
 }
 
-static enum drm_connector_status
-intel_lvds_detect(struct drm_connector *connector, bool force)
-{
-	return connector_status_connected;
-}
-
 /*
  * Return the list of DDC modes if available, or the BIOS fixed mode otherwise.
  */
@@ -490,7 +484,7 @@ static const struct drm_connector_helper_funcs intel_lvds_connector_helper_funcs
 };
 
 static const struct drm_connector_funcs intel_lvds_connector_funcs = {
-	.detect = intel_lvds_detect,
+	.detect = intel_panel_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.atomic_get_property = intel_digital_connector_atomic_get_property,
 	.atomic_set_property = intel_digital_connector_atomic_set_property,
@@ -784,8 +778,8 @@ static bool compute_is_dual_link_lvds(struct intel_lvds_encoder *lvds_encoder)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 
 	/* use the module option value if specified */
-	if (i915_modparams.lvds_channel_mode > 0)
-		return i915_modparams.lvds_channel_mode == 2;
+	if (dev_priv->params.lvds_channel_mode > 0)
+		return dev_priv->params.lvds_channel_mode == 2;
 
 	/* single channel LVDS is limited to 112 MHz */
 	if (lvds_encoder->attached_connector->panel.fixed_mode->clock > 112999)

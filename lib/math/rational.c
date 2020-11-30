@@ -11,7 +11,7 @@
 #include <linux/rational.h>
 #include <linux/compiler.h>
 #include <linux/export.h>
-#include <linux/kernel.h>
+#include <linux/minmax.h>
 
 /*
  * calculate best rational approximation for a given fraction
@@ -27,7 +27,7 @@
  * with the fractional part size described in given_denominator.
  *
  * for theoretical background, see:
- * http://en.wikipedia.org/wiki/Continued_fraction
+ * https://en.wikipedia.org/wiki/Continued_fraction
  */
 
 void rational_best_approximation(

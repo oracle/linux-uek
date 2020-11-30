@@ -29,7 +29,6 @@ enum dm_queue_mode {
 	DM_TYPE_BIO_BASED	 = 1,
 	DM_TYPE_REQUEST_BASED	 = 2,
 	DM_TYPE_DAX_BIO_BASED	 = 3,
-	DM_TYPE_NVME_BIO_BASED	 = 4,
 };
 
 typedef enum { STATUSTYPE_INFO, STATUSTYPE_TABLE } status_type_t;
@@ -252,6 +251,12 @@ struct target_type {
 #define DM_TARGET_ZONED_HM		0x00000040
 #define dm_target_supports_zoned_hm(type) ((type)->features & DM_TARGET_ZONED_HM)
 
+/*
+ * A target handles REQ_NOWAIT
+ */
+#define DM_TARGET_NOWAIT		0x00000080
+#define dm_target_supports_nowait(type) ((type)->features & DM_TARGET_NOWAIT)
+
 struct dm_target {
 	struct dm_table *table;
 	struct target_type *type;
@@ -320,12 +325,6 @@ struct dm_target {
 	 * whether or not its underlying devices have support.
 	 */
 	bool discards_supported:1;
-};
-
-/* Each target can link one of these into the table */
-struct dm_target_callbacks {
-	struct list_head list;
-	int (*congested_fn) (struct dm_target_callbacks *, int);
 };
 
 void *dm_per_bio_data(struct bio *bio, size_t data_size);
@@ -426,6 +425,7 @@ const char *dm_device_name(struct mapped_device *md);
 int dm_copy_name_and_uuid(struct mapped_device *md, char *name, char *uuid);
 struct gendisk *dm_disk(struct mapped_device *md);
 int dm_suspended(struct dm_target *ti);
+int dm_post_suspending(struct dm_target *ti);
 int dm_noflush_suspending(struct dm_target *ti);
 void dm_accept_partial_bio(struct bio *bio, unsigned n_sectors);
 union map_info *dm_get_rq_mapinfo(struct request *rq);
@@ -476,11 +476,6 @@ int dm_table_create(struct dm_table **result, fmode_t mode,
  */
 int dm_table_add_target(struct dm_table *t, const char *type,
 			sector_t start, sector_t len, char *params);
-
-/*
- * Target_ctr should call this if it needs to add any callbacks.
- */
-void dm_table_add_target_callbacks(struct dm_table *t, struct dm_target_callbacks *cb);
 
 /*
  * Target can use this to set the table's type.

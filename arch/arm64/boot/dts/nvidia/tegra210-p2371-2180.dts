@@ -86,9 +86,10 @@
 			compatible = "atmel,24c02";
 			reg = <0x57>;
 
+			label = "system";
 			vcc-supply = <&vdd_1v8>;
-			address-bits = <8>;
-			page-size = <8>;
+			address-width = <8>;
+			pagesize = <8>;
 			size = <256>;
 			read-only;
 		};
@@ -122,7 +123,7 @@
 			status = "okay";
 		};
 
-		agic@702f9000 {
+		interrupt-controller@702f9000 {
 			status = "okay";
 		};
 	};

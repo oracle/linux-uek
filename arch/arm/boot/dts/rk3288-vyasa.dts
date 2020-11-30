@@ -99,8 +99,6 @@
 		pinctrl-0 = <&otg_vbus_drv>;
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
-		regulator-always-on;
-		regulator-boot-on;
 		vin-supply = <&vsus_5v>;
 	};
 
@@ -127,7 +125,19 @@
 };
 
 &cpu0 {
-	cpu0-supply = <&vdd_cpu>;
+	cpu-supply = <&vdd_cpu>;
+};
+
+&cpu1 {
+	cpu-supply = <&vdd_cpu>;
+};
+
+&cpu2 {
+	cpu-supply = <&vdd_cpu>;
+};
+
+&cpu3 {
+	cpu-supply = <&vdd_cpu>;
 };
 
 &emmc {
@@ -416,6 +426,7 @@
 };
 
 &usb_otg {
+	vbus-supply = <&vusb1_5v>;
 	status = "okay";
 };
 

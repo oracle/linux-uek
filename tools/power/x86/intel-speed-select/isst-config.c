@@ -15,7 +15,7 @@ struct process_cmd_struct {
 	int arg;
 };
 
-static const char *version_str = "v1.4";
+static const char *version_str = "v1.6";
 static const int supported_api_ver = 1;
 static struct isst_if_platform_info isst_platform_info;
 static char *progname;
@@ -43,6 +43,9 @@ static int cmd_help;
 static int force_online_offline;
 static int auto_mode;
 static int fact_enable_fail;
+
+static int mbox_delay;
+static int mbox_retries = 3;
 
 /* clos related */
 static int current_clos = -1;
@@ -198,7 +201,7 @@ int out_format_is_json(void)
 
 static int get_stored_topology_info(int cpu, int *core_id, int *pkg_id, int *die_id)
 {
-	const char *pathname = "/tmp/isst_cpu_topology.dat";
+	const char *pathname = "/var/run/isst_cpu_topology.dat";
 	struct cpu_topology cpu_top;
 	FILE *fp;
 	int ret;
@@ -230,7 +233,7 @@ err_ret:
 
 static void store_cpu_topology(void)
 {
-	const char *pathname = "/tmp/isst_cpu_topology.dat";
+	const char *pathname = "/var/run/isst_cpu_topology.dat";
 	FILE *fp;
 	int i;
 
@@ -246,6 +249,8 @@ static void store_cpu_topology(void)
 		fprintf(stderr, "Can't create file:%s\n", pathname);
 		return;
 	}
+
+	fprintf(stderr, "Caching topology information\n");
 
 	for (i = 0; i < topo_max_cpus; ++i) {
 		struct cpu_topology cpu_top;
@@ -540,20 +545,23 @@ static void set_cpu_present_cpu_mask(void)
 	}
 }
 
-int get_core_count(int pkg_id, int die_id)
+int get_max_punit_core_id(int pkg_id, int die_id)
 {
-	int cnt = 0;
+	int max_id = 0;
+	int i;
 
-	if (pkg_id < MAX_PACKAGE_COUNT && die_id < MAX_DIE_PER_PACKAGE) {
-		int i;
+	for (i = 0; i < topo_max_cpus; ++i)
+	{
+		if (!CPU_ISSET_S(i, present_cpumask_size, present_cpumask))
+			continue;
 
-		for (i = 0; i < sizeof(long long) * 8; ++i) {
-			if (core_mask[pkg_id][die_id] & (1ULL << i))
-				cnt++;
-		}
+		if (cpu_map[i].pkg_id == pkg_id &&
+			cpu_map[i].die_id == die_id &&
+			cpu_map[i].punit_cpu_core > max_id)
+			max_id = cpu_map[i].punit_cpu_core;
 	}
 
-	return cnt;
+	return max_id;
 }
 
 int get_cpu_count(int pkg_id, int die_id)
@@ -734,7 +742,7 @@ int isst_send_mbox_command(unsigned int cpu, unsigned char command,
 			   unsigned int req_data, unsigned int *resp)
 {
 	const char *pathname = "/dev/isst_interface";
-	int fd;
+	int fd, retry;
 	struct isst_if_mbox_cmds mbox_cmds = { 0 };
 
 	debug_printf(
@@ -786,29 +794,42 @@ int isst_send_mbox_command(unsigned int cpu, unsigned char command,
 	mbox_cmds.mbox_cmd[0].parameter = parameter;
 	mbox_cmds.mbox_cmd[0].req_data = req_data;
 
+	if (mbox_delay)
+		usleep(mbox_delay * 1000);
+
 	fd = open(pathname, O_RDWR);
 	if (fd < 0)
 		err(-1, "%s open failed", pathname);
 
-	if (ioctl(fd, ISST_IF_MBOX_COMMAND, &mbox_cmds) == -1) {
-		if (errno == ENOTTY) {
-			perror("ISST_IF_MBOX_COMMAND\n");
-			fprintf(stderr, "Check presence of kernel modules: isst_if_mbox_pci or isst_if_mbox_msr\n");
-			exit(0);
+	retry = mbox_retries;
+
+	do {
+		if (ioctl(fd, ISST_IF_MBOX_COMMAND, &mbox_cmds) == -1) {
+			if (errno == ENOTTY) {
+				perror("ISST_IF_MBOX_COMMAND\n");
+				fprintf(stderr, "Check presence of kernel modules: isst_if_mbox_pci or isst_if_mbox_msr\n");
+				exit(0);
+			}
+			debug_printf(
+				"Error: mbox_cmd cpu:%d command:%x sub_command:%x parameter:%x req_data:%x errorno:%d\n",
+				cpu, command, sub_command, parameter, req_data, errno);
+			--retry;
+		} else {
+			*resp = mbox_cmds.mbox_cmd[0].resp_data;
+			debug_printf(
+				"mbox_cmd response: cpu:%d command:%x sub_command:%x parameter:%x req_data:%x resp:%x\n",
+				cpu, command, sub_command, parameter, req_data, *resp);
+			break;
 		}
-		debug_printf(
-			"Error: mbox_cmd cpu:%d command:%x sub_command:%x parameter:%x req_data:%x errorno:%d\n",
-			cpu, command, sub_command, parameter, req_data, errno);
-		return -1;
-	} else {
-		*resp = mbox_cmds.mbox_cmd[0].resp_data;
-		debug_printf(
-			"mbox_cmd response: cpu:%d command:%x sub_command:%x parameter:%x req_data:%x resp:%x\n",
-			cpu, command, sub_command, parameter, req_data, *resp);
-	}
+	} while (retry);
 
 	close(fd);
 
+	if (!retry) {
+		debug_printf("Failed mbox command even after retries\n");
+		return -1;
+
+	}
 	return 0;
 }
 
@@ -1245,7 +1266,11 @@ static void set_tdp_level_for_cpu(int cpu, void *arg1, void *arg2, void *arg3,
 			fprintf(stderr, "Option is set to online/offline\n");
 			ctdp_level.core_cpumask_size =
 				alloc_cpu_set(&ctdp_level.core_cpumask);
-			isst_get_coremask_info(cpu, tdp_level, &ctdp_level);
+			ret = isst_get_coremask_info(cpu, tdp_level, &ctdp_level);
+			if (ret) {
+				isst_display_error_info_message(1, "Can't get coremask, online/offline option is ignored", 0, 0);
+				return;
+			}
 			if (ctdp_level.cpu_count) {
 				int i, max_cpus = get_topo_max_cpus();
 				for (i = 0; i < max_cpus; ++i) {
@@ -2593,6 +2618,8 @@ static void usage(void)
 	printf("\t[-i|--info] : Print platform information\n");
 	printf("\t[-o|--out] : Output file\n");
 	printf("\t\t\tDefault : stderr\n");
+	printf("\t[-p|--pause] : Delay between two mail box commands in milliseconds\n");
+	printf("\t[-r|--retry] : Retry count for mail box commands on failure, default 3\n");
 	printf("\t[-v|--version] : Print version\n");
 
 	printf("\nResult format\n");
@@ -2624,6 +2651,7 @@ static void print_version(void)
 static void cmdline(int argc, char **argv)
 {
 	const char *pathname = "/dev/isst_interface";
+	char *ptr;
 	FILE *fp;
 	int opt;
 	int option_index = 0;
@@ -2635,7 +2663,9 @@ static void cmdline(int argc, char **argv)
 		{ "format", required_argument, 0, 'f' },
 		{ "help", no_argument, 0, 'h' },
 		{ "info", no_argument, 0, 'i' },
+		{ "pause", required_argument, 0, 'p' },
 		{ "out", required_argument, 0, 'o' },
+		{ "retry", required_argument, 0, 'r' },
 		{ "version", no_argument, 0, 'v' },
 		{ 0, 0, 0, 0 }
 	};
@@ -2687,6 +2717,20 @@ static void cmdline(int argc, char **argv)
 			if (outf)
 				fclose(outf);
 			outf = fopen_or_exit(optarg, "w");
+			break;
+		case 'p':
+			ret = strtol(optarg, &ptr, 10);
+			if (!ret)
+				fprintf(stderr, "Invalid pause interval, ignore\n");
+			else
+				mbox_delay = ret;
+			break;
+		case 'r':
+			ret = strtol(optarg, &ptr, 10);
+			if (!ret)
+				fprintf(stderr, "Invalid retry count, ignore\n");
+			else
+				mbox_retries = ret;
 			break;
 		case 'v':
 			print_version();

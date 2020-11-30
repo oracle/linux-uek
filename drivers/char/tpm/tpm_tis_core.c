@@ -239,6 +239,17 @@ static u8 tpm_tis_status(struct tpm_chip *chip)
 	if (rc < 0)
 		return 0;
 
+	if (unlikely((status & TPM_STS_READ_ZERO) != 0)) {
+		/*
+		 * If this trips, the chances are the read is
+		 * returning 0xff because the locality hasn't been
+		 * acquired.  Usually because tpm_try_get_ops() hasn't
+		 * been called before doing a TPM operation.
+		 */
+		WARN_ONCE(1, "TPM returned invalid status\n");
+		return 0;
+	}
+
 	return status;
 }
 
@@ -1085,7 +1096,7 @@ int tpm_tis_core_init(struct device *dev, struct tpm_tis_data *priv, int irq,
 
 	return 0;
 out_err:
-	if ((chip->ops != NULL) && (chip->ops->clk_enable != NULL))
+	if (chip->ops->clk_enable != NULL)
 		chip->ops->clk_enable(chip, false);
 
 	tpm_tis_remove(chip);

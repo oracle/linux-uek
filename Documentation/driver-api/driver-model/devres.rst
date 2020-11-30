@@ -263,7 +263,7 @@ DMA
   dmam_pool_destroy()
 
 DRM
-  devm_drm_dev_init()
+  devm_drm_dev_alloc()
 
 GPIO
   devm_gpiod_get()
@@ -342,7 +342,8 @@ LED
 MDIO
   devm_mdiobus_alloc()
   devm_mdiobus_alloc_size()
-  devm_mdiobus_free()
+  devm_mdiobus_register()
+  devm_of_mdiobus_register()
 
 MEM
   devm_free_pages()
@@ -353,6 +354,7 @@ MEM
   devm_kmalloc()
   devm_kmalloc_array()
   devm_kmemdup()
+  devm_krealloc()
   devm_kstrdup()
   devm_kvasprintf()
   devm_kzalloc()

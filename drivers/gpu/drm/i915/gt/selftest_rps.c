@@ -12,6 +12,7 @@
 #include "intel_gt_clock_utils.h"
 #include "intel_gt_pm.h"
 #include "intel_rc6.h"
+#include "selftest_engine_heartbeat.h"
 #include "selftest_rps.h"
 #include "selftests/igt_flush_test.h"
 #include "selftests/igt_spinner.h"
@@ -19,26 +20,6 @@
 
 /* Try to isolate the impact of cstates from determing frequency response */
 #define CPU_LATENCY 0 /* -1 to disable pm_qos, 0 to disable cstates */
-
-static unsigned long engine_heartbeat_disable(struct intel_engine_cs *engine)
-{
-	unsigned long old;
-
-	old = fetch_and_zero(&engine->props.heartbeat_interval_ms);
-
-	intel_engine_pm_get(engine);
-	intel_engine_park_heartbeat(engine);
-
-	return old;
-}
-
-static void engine_heartbeat_enable(struct intel_engine_cs *engine,
-				    unsigned long saved)
-{
-	intel_engine_pm_put(engine);
-
-	engine->props.heartbeat_interval_ms = saved;
-}
 
 static void dummy_rps_work(struct work_struct *wrk)
 {
@@ -48,9 +29,9 @@ static int cmp_u64(const void *A, const void *B)
 {
 	const u64 *a = A, *b = B;
 
-	if (a < b)
+	if (*a < *b)
 		return -1;
-	else if (a > b)
+	else if (*a > *b)
 		return 1;
 	else
 		return 0;
@@ -60,9 +41,9 @@ static int cmp_u32(const void *A, const void *B)
 {
 	const u32 *a = A, *b = B;
 
-	if (a < b)
+	if (*a < *b)
 		return -1;
-	else if (a > b)
+	else if (*a > *b)
 		return 1;
 	else
 		return 0;
@@ -96,20 +77,20 @@ create_spin_counter(struct intel_engine_cs *engine,
 
 	vma = i915_vma_instance(obj, vm, NULL);
 	if (IS_ERR(vma)) {
-		i915_gem_object_put(obj);
-		return vma;
+		err = PTR_ERR(vma);
+		goto err_put;
 	}
 
 	err = i915_vma_pin(vma, 0, 0, PIN_USER);
-	if (err) {
-		i915_vma_put(vma);
-		return ERR_PTR(err);
-	}
+	if (err)
+		goto err_unlock;
+
+	i915_vma_lock(vma);
 
 	base = i915_gem_object_pin_map(obj, I915_MAP_WC);
 	if (IS_ERR(base)) {
-		i915_gem_object_put(obj);
-		return ERR_CAST(base);
+		err = PTR_ERR(base);
+		goto err_unpin;
 	}
 	cs = base;
 
@@ -153,6 +134,14 @@ create_spin_counter(struct intel_engine_cs *engine,
 	*cancel = base + loop;
 	*counter = srm ? memset32(base + end, 0, 1) : NULL;
 	return vma;
+
+err_unpin:
+	i915_vma_unpin(vma);
+err_unlock:
+	i915_vma_unlock(vma);
+err_put:
+	i915_gem_object_put(obj);
+	return ERR_PTR(err);
 }
 
 static u8 wait_for_freq(struct intel_rps *rps, u8 freq, int timeout_ms)
@@ -246,7 +235,6 @@ int live_rps_clock_interval(void *arg)
 	intel_gt_check_clock_frequency(gt);
 
 	for_each_engine(engine, gt, id) {
-		unsigned long saved_heartbeat;
 		struct i915_request *rq;
 		u32 cycles;
 		u64 dt;
@@ -254,13 +242,13 @@ int live_rps_clock_interval(void *arg)
 		if (!intel_engine_can_store_dword(engine))
 			continue;
 
-		saved_heartbeat = engine_heartbeat_disable(engine);
+		st_engine_heartbeat_disable(engine);
 
 		rq = igt_spinner_create_request(&spin,
 						engine->kernel_context,
 						MI_NOOP);
 		if (IS_ERR(rq)) {
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			err = PTR_ERR(rq);
 			break;
 		}
@@ -271,7 +259,7 @@ int live_rps_clock_interval(void *arg)
 			pr_err("%s: RPS spinner did not start\n",
 			       engine->name);
 			igt_spinner_end(&spin);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			intel_gt_set_wedged(engine->gt);
 			err = -EIO;
 			break;
@@ -327,7 +315,7 @@ int live_rps_clock_interval(void *arg)
 		intel_uncore_forcewake_put(gt->uncore, FORCEWAKE_ALL);
 
 		igt_spinner_end(&spin);
-		engine_heartbeat_enable(engine, saved_heartbeat);
+		st_engine_heartbeat_enable(engine);
 
 		if (err == 0) {
 			u64 time = intel_gt_pm_interval_to_ns(gt, cycles);
@@ -405,7 +393,6 @@ int live_rps_control(void *arg)
 
 	intel_gt_pm_get(gt);
 	for_each_engine(engine, gt, id) {
-		unsigned long saved_heartbeat;
 		struct i915_request *rq;
 		ktime_t min_dt, max_dt;
 		int f, limit;
@@ -414,7 +401,7 @@ int live_rps_control(void *arg)
 		if (!intel_engine_can_store_dword(engine))
 			continue;
 
-		saved_heartbeat = engine_heartbeat_disable(engine);
+		st_engine_heartbeat_disable(engine);
 
 		rq = igt_spinner_create_request(&spin,
 						engine->kernel_context,
@@ -430,7 +417,7 @@ int live_rps_control(void *arg)
 			pr_err("%s: RPS spinner did not start\n",
 			       engine->name);
 			igt_spinner_end(&spin);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			intel_gt_set_wedged(engine->gt);
 			err = -EIO;
 			break;
@@ -440,7 +427,7 @@ int live_rps_control(void *arg)
 			pr_err("%s: could not set minimum frequency [%x], only %x!\n",
 			       engine->name, rps->min_freq, read_cagf(rps));
 			igt_spinner_end(&spin);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			show_pstate_limits(rps);
 			err = -EINVAL;
 			break;
@@ -457,7 +444,7 @@ int live_rps_control(void *arg)
 			pr_err("%s: could not restore minimum frequency [%x], only %x!\n",
 			       engine->name, rps->min_freq, read_cagf(rps));
 			igt_spinner_end(&spin);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			show_pstate_limits(rps);
 			err = -EINVAL;
 			break;
@@ -472,7 +459,7 @@ int live_rps_control(void *arg)
 		min_dt = ktime_sub(ktime_get(), min_dt);
 
 		igt_spinner_end(&spin);
-		engine_heartbeat_enable(engine, saved_heartbeat);
+		st_engine_heartbeat_enable(engine);
 
 		pr_info("%s: range:[%x:%uMHz, %x:%uMHz] limit:[%x:%uMHz], %x:%x response %lluns:%lluns\n",
 			engine->name,
@@ -635,7 +622,6 @@ int live_rps_frequency_cs(void *arg)
 	rps->work.func = dummy_rps_work;
 
 	for_each_engine(engine, gt, id) {
-		unsigned long saved_heartbeat;
 		struct i915_request *rq;
 		struct i915_vma *vma;
 		u32 *cancel, *cntr;
@@ -644,14 +630,14 @@ int live_rps_frequency_cs(void *arg)
 			int freq;
 		} min, max;
 
-		saved_heartbeat = engine_heartbeat_disable(engine);
+		st_engine_heartbeat_disable(engine);
 
 		vma = create_spin_counter(engine,
 					  engine->kernel_context->vm, false,
 					  &cancel, &cntr);
 		if (IS_ERR(vma)) {
 			err = PTR_ERR(vma);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			break;
 		}
 
@@ -661,7 +647,6 @@ int live_rps_frequency_cs(void *arg)
 			goto err_vma;
 		}
 
-		i915_vma_lock(vma);
 		err = i915_request_await_object(rq, vma->obj, false);
 		if (!err)
 			err = i915_vma_move_to_active(vma, rq, 0);
@@ -669,7 +654,6 @@ int live_rps_frequency_cs(void *arg)
 			err = rq->engine->emit_bb_start(rq,
 							vma->node.start,
 							PAGE_SIZE, 0);
-		i915_vma_unlock(vma);
 		i915_request_add(rq);
 		if (err)
 			goto err_vma;
@@ -722,7 +706,7 @@ int live_rps_frequency_cs(void *arg)
 				f = act; /* may skip ahead [pcu granularity] */
 			}
 
-			err = -EINVAL;
+			err = -EINTR; /* ignore error, continue on with test */
 		}
 
 err_vma:
@@ -730,9 +714,10 @@ err_vma:
 		i915_gem_object_flush_map(vma->obj);
 		i915_gem_object_unpin_map(vma->obj);
 		i915_vma_unpin(vma);
+		i915_vma_unlock(vma);
 		i915_vma_put(vma);
 
-		engine_heartbeat_enable(engine, saved_heartbeat);
+		st_engine_heartbeat_enable(engine);
 		if (igt_flush_test(gt->i915))
 			err = -EIO;
 		if (err)
@@ -778,7 +763,6 @@ int live_rps_frequency_srm(void *arg)
 	rps->work.func = dummy_rps_work;
 
 	for_each_engine(engine, gt, id) {
-		unsigned long saved_heartbeat;
 		struct i915_request *rq;
 		struct i915_vma *vma;
 		u32 *cancel, *cntr;
@@ -787,14 +771,14 @@ int live_rps_frequency_srm(void *arg)
 			int freq;
 		} min, max;
 
-		saved_heartbeat = engine_heartbeat_disable(engine);
+		st_engine_heartbeat_disable(engine);
 
 		vma = create_spin_counter(engine,
 					  engine->kernel_context->vm, true,
 					  &cancel, &cntr);
 		if (IS_ERR(vma)) {
 			err = PTR_ERR(vma);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			break;
 		}
 
@@ -804,7 +788,6 @@ int live_rps_frequency_srm(void *arg)
 			goto err_vma;
 		}
 
-		i915_vma_lock(vma);
 		err = i915_request_await_object(rq, vma->obj, false);
 		if (!err)
 			err = i915_vma_move_to_active(vma, rq, 0);
@@ -812,7 +795,6 @@ int live_rps_frequency_srm(void *arg)
 			err = rq->engine->emit_bb_start(rq,
 							vma->node.start,
 							PAGE_SIZE, 0);
-		i915_vma_unlock(vma);
 		i915_request_add(rq);
 		if (err)
 			goto err_vma;
@@ -864,7 +846,7 @@ int live_rps_frequency_srm(void *arg)
 				f = act; /* may skip ahead [pcu granularity] */
 			}
 
-			err = -EINVAL;
+			err = -EINTR; /* ignore error, continue on with test */
 		}
 
 err_vma:
@@ -872,9 +854,10 @@ err_vma:
 		i915_gem_object_flush_map(vma->obj);
 		i915_gem_object_unpin_map(vma->obj);
 		i915_vma_unpin(vma);
+		i915_vma_unlock(vma);
 		i915_vma_put(vma);
 
-		engine_heartbeat_enable(engine, saved_heartbeat);
+		st_engine_heartbeat_enable(engine);
 		if (igt_flush_test(gt->i915))
 			err = -EIO;
 		if (err)
@@ -1066,16 +1049,14 @@ int live_rps_interrupt(void *arg)
 	for_each_engine(engine, gt, id) {
 		/* Keep the engine busy with a spinner; expect an UP! */
 		if (pm_events & GEN6_PM_RP_UP_THRESHOLD) {
-			unsigned long saved_heartbeat;
-
 			intel_gt_pm_wait_for_idle(engine->gt);
 			GEM_BUG_ON(intel_rps_is_active(rps));
 
-			saved_heartbeat = engine_heartbeat_disable(engine);
+			st_engine_heartbeat_disable(engine);
 
 			err = __rps_up_interrupt(rps, engine, &spin);
 
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			if (err)
 				goto out;
 
@@ -1084,15 +1065,13 @@ int live_rps_interrupt(void *arg)
 
 		/* Keep the engine awake but idle and check for DOWN */
 		if (pm_events & GEN6_PM_RP_DOWN_THRESHOLD) {
-			unsigned long saved_heartbeat;
-
-			saved_heartbeat = engine_heartbeat_disable(engine);
+			st_engine_heartbeat_disable(engine);
 			intel_rc6_disable(&gt->rc6);
 
 			err = __rps_down_interrupt(rps, engine);
 
 			intel_rc6_enable(&gt->rc6);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			if (err)
 				goto out;
 		}
@@ -1168,7 +1147,6 @@ int live_rps_power(void *arg)
 	rps->work.func = dummy_rps_work;
 
 	for_each_engine(engine, gt, id) {
-		unsigned long saved_heartbeat;
 		struct i915_request *rq;
 		struct {
 			u64 power;
@@ -1178,13 +1156,13 @@ int live_rps_power(void *arg)
 		if (!intel_engine_can_store_dword(engine))
 			continue;
 
-		saved_heartbeat = engine_heartbeat_disable(engine);
+		st_engine_heartbeat_disable(engine);
 
 		rq = igt_spinner_create_request(&spin,
 						engine->kernel_context,
 						MI_NOOP);
 		if (IS_ERR(rq)) {
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			err = PTR_ERR(rq);
 			break;
 		}
@@ -1195,7 +1173,7 @@ int live_rps_power(void *arg)
 			pr_err("%s: RPS spinner did not start\n",
 			       engine->name);
 			igt_spinner_end(&spin);
-			engine_heartbeat_enable(engine, saved_heartbeat);
+			st_engine_heartbeat_enable(engine);
 			intel_gt_set_wedged(engine->gt);
 			err = -EIO;
 			break;
@@ -1208,7 +1186,7 @@ int live_rps_power(void *arg)
 		min.power = measure_power_at(rps, &min.freq);
 
 		igt_spinner_end(&spin);
-		engine_heartbeat_enable(engine, saved_heartbeat);
+		st_engine_heartbeat_enable(engine);
 
 		pr_info("%s: min:%llumW @ %uMHz, max:%llumW @ %uMHz\n",
 			engine->name,
@@ -1264,6 +1242,11 @@ int live_rps_dynamic(void *arg)
 
 	if (igt_spinner_init(&spin, gt))
 		return -ENOMEM;
+
+	if (intel_rps_has_interrupts(rps))
+		pr_info("RPS has interrupt support\n");
+	if (intel_rps_uses_timer(rps))
+		pr_info("RPS has timer support\n");
 
 	for_each_engine(engine, gt, id) {
 		struct i915_request *rq;

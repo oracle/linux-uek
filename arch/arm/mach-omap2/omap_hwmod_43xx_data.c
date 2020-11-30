@@ -85,49 +85,6 @@ static struct omap_hwmod am43xx_control_hwmod = {
 	},
 };
 
-static struct omap_hwmod_class_sysconfig am43xx_usb_otg_ss_sysc = {
-	.rev_offs	= 0x0000,
-	.sysc_offs	= 0x0010,
-	.sysc_flags	= (SYSC_HAS_DMADISABLE | SYSC_HAS_MIDLEMODE |
-				SYSC_HAS_SIDLEMODE),
-	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
-				SIDLE_SMART_WKUP | MSTANDBY_FORCE |
-				MSTANDBY_NO | MSTANDBY_SMART |
-				MSTANDBY_SMART_WKUP),
-	.sysc_fields	= &omap_hwmod_sysc_type2,
-};
-
-static struct omap_hwmod_class am43xx_usb_otg_ss_hwmod_class = {
-	.name	= "usb_otg_ss",
-	.sysc	= &am43xx_usb_otg_ss_sysc,
-};
-
-static struct omap_hwmod am43xx_usb_otg_ss0_hwmod = {
-	.name		= "usb_otg_ss0",
-	.class		= &am43xx_usb_otg_ss_hwmod_class,
-	.clkdm_name	= "l3s_clkdm",
-	.main_clk	= "l3s_gclk",
-	.prcm = {
-		.omap4 = {
-			.clkctrl_offs	= AM43XX_CM_PER_USB_OTG_SS0_CLKCTRL_OFFSET,
-			.modulemode	= MODULEMODE_SWCTRL,
-		},
-	},
-};
-
-static struct omap_hwmod am43xx_usb_otg_ss1_hwmod = {
-	.name		= "usb_otg_ss1",
-	.class		= &am43xx_usb_otg_ss_hwmod_class,
-	.clkdm_name	= "l3s_clkdm",
-	.main_clk	= "l3s_gclk",
-	.prcm = {
-		.omap4 = {
-			.clkctrl_offs	= AM43XX_CM_PER_USB_OTG_SS1_CLKCTRL_OFFSET,
-			.modulemode	= MODULEMODE_SWCTRL,
-		},
-	},
-};
-
 /* Interfaces */
 static struct omap_hwmod_ocp_if am43xx_l3_main__emif = {
 	.master		= &am33xx_l3_main_hwmod,
@@ -178,20 +135,6 @@ static struct omap_hwmod_ocp_if am43xx_l4_wkup__control = {
 	.user		= OCP_USER_MPU,
 };
 
-static struct omap_hwmod_ocp_if am43xx_l3_s__usbotgss0 = {
-	.master         = &am33xx_l3_s_hwmod,
-	.slave          = &am43xx_usb_otg_ss0_hwmod,
-	.clk            = "l3s_gclk",
-	.user           = OCP_USER_MPU | OCP_USER_SDMA,
-};
-
-static struct omap_hwmod_ocp_if am43xx_l3_s__usbotgss1 = {
-	.master         = &am33xx_l3_s_hwmod,
-	.slave          = &am43xx_usb_otg_ss1_hwmod,
-	.clk            = "l3s_gclk",
-	.user           = OCP_USER_MPU | OCP_USER_SDMA,
-};
-
 static struct omap_hwmod_ocp_if *am43xx_hwmod_ocp_ifs[] __initdata = {
 	&am33xx_mpu__l3_main,
 	&am33xx_mpu__prcm,
@@ -200,24 +143,15 @@ static struct omap_hwmod_ocp_if *am43xx_hwmod_ocp_ifs[] __initdata = {
 	&am43xx_l3_main__l4_hs,
 	&am33xx_l3_main__l3_s,
 	&am33xx_l3_main__l3_instr,
-	&am33xx_l3_main__gfx,
 	&am33xx_l3_s__l3_main,
 	&am43xx_l3_main__emif,
 	&am43xx_wkup_m3__l4_wkup,
-	&am33xx_gfx__l3_main,
 	&am43xx_l4_wkup__wkup_m3,
 	&am43xx_l4_wkup__control,
 	&am43xx_l4_wkup__smartreflex0,
 	&am43xx_l4_wkup__smartreflex1,
 	&am33xx_l3_s__gpmc,
 	&am33xx_l3_main__ocmc,
-	&am43xx_l3_s__usbotgss0,
-	&am43xx_l3_s__usbotgss1,
-	NULL,
-};
-
-static struct omap_hwmod_ocp_if *am43xx_rtc_hwmod_ocp_ifs[] __initdata = {
-	&am33xx_l4_wkup__rtc,
 	NULL,
 };
 
@@ -228,9 +162,6 @@ int __init am43xx_hwmod_init(void)
 	omap_hwmod_am43xx_reg();
 	omap_hwmod_init();
 	ret = omap_hwmod_register_links(am43xx_hwmod_ocp_ifs);
-
-	if (!ret && of_machine_is_compatible("ti,am4372"))
-		ret = omap_hwmod_register_links(am43xx_rtc_hwmod_ocp_ifs);
 
 	return ret;
 }

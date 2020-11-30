@@ -182,7 +182,6 @@ static int ve_spc_cpufreq_set_target(struct cpufreq_policy *policy,
 {
 	u32 cpu = policy->cpu, cur_cluster, new_cluster, actual_cluster;
 	unsigned int freqs_new;
-	int ret;
 
 	cur_cluster = cpu_to_cluster(cpu);
 	new_cluster = actual_cluster = per_cpu(physical_cluster, cpu);
@@ -197,15 +196,8 @@ static int ve_spc_cpufreq_set_target(struct cpufreq_policy *policy,
 			new_cluster = A15_CLUSTER;
 	}
 
-	ret = ve_spc_cpufreq_set_rate(cpu, actual_cluster, new_cluster,
-				      freqs_new);
-
-	if (!ret) {
-		arch_set_freq_scale(policy->related_cpus, freqs_new,
-				    policy->cpuinfo.max_freq);
-	}
-
-	return ret;
+	return ve_spc_cpufreq_set_rate(cpu, actual_cluster, new_cluster,
+				       freqs_new);
 }
 
 static inline u32 get_table_count(struct cpufreq_frequency_table *table)
@@ -450,7 +442,7 @@ static int ve_spc_cpufreq_init(struct cpufreq_policy *policy)
 	policy->freq_table = freq_table[cur_cluster];
 	policy->cpuinfo.transition_latency = 1000000; /* 1 ms */
 
-	dev_pm_opp_of_register_em(policy->cpus);
+	dev_pm_opp_of_register_em(cpu_dev, policy->cpus);
 
 	if (is_bL_switching_enabled())
 		per_cpu(cpu_last_req_freq, policy->cpu) =

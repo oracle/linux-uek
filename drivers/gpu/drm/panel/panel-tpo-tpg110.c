@@ -12,7 +12,6 @@
  */
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_print.h>
 
 #include <linux/bitops.h>
 #include <linux/delay.h>
@@ -112,7 +111,6 @@ static const struct tpg110_panel_mode tpg110_modes[] = {
 			.vsync_start = 480 + 10,
 			.vsync_end = 480 + 10 + 1,
 			.vtotal = 480 + 10 + 1 + 35,
-			.vrefresh = 60,
 		},
 		.bus_flags = DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE,
 	},
@@ -129,7 +127,6 @@ static const struct tpg110_panel_mode tpg110_modes[] = {
 			.vsync_start = 480 + 18,
 			.vsync_end = 480 + 18 + 1,
 			.vtotal = 480 + 18 + 1 + 27,
-			.vrefresh = 60,
 		},
 		.bus_flags = DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE,
 	},
@@ -146,7 +143,6 @@ static const struct tpg110_panel_mode tpg110_modes[] = {
 			.vsync_start = 272 + 2,
 			.vsync_end = 272 + 2 + 1,
 			.vtotal = 272 + 2 + 1 + 12,
-			.vrefresh = 60,
 		},
 		.bus_flags = DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE,
 	},
@@ -163,7 +159,6 @@ static const struct tpg110_panel_mode tpg110_modes[] = {
 			.vsync_start = 640 + 4,
 			.vsync_end = 640 + 4 + 1,
 			.vtotal = 640 + 4 + 1 + 8,
-			.vrefresh = 60,
 		},
 		.bus_flags = DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE,
 	},
@@ -180,7 +175,6 @@ static const struct tpg110_panel_mode tpg110_modes[] = {
 			.vsync_start = 240 + 2,
 			.vsync_end = 240 + 2 + 1,
 			.vtotal = 240 + 2 + 1 + 20,
-			.vrefresh = 60,
 		},
 		.bus_flags = DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE,
 	},
@@ -243,7 +237,7 @@ static u8 tpg110_readwrite_reg(struct tpg110 *tpg, bool write,
 	spi_message_add_tail(&t[1], &m);
 	ret = spi_sync(tpg->spi, &m);
 	if (ret) {
-		DRM_DEV_ERROR(tpg->dev, "SPI message error %d\n", ret);
+		dev_err(tpg->dev, "SPI message error %d\n", ret);
 		return ret;
 	}
 	if (write)
@@ -270,18 +264,18 @@ static int tpg110_startup(struct tpg110 *tpg)
 	/* De-assert the reset signal */
 	gpiod_set_value_cansleep(tpg->grestb, 0);
 	usleep_range(1000, 2000);
-	DRM_DEV_DEBUG(tpg->dev, "de-asserted GRESTB\n");
+	dev_dbg(tpg->dev, "de-asserted GRESTB\n");
 
 	/* Test display communication */
 	tpg110_write_reg(tpg, TPG110_TEST, 0x55);
 	val = tpg110_read_reg(tpg, TPG110_TEST);
 	if (val != 0x55) {
-		DRM_DEV_ERROR(tpg->dev, "failed communication test\n");
+		dev_err(tpg->dev, "failed communication test\n");
 		return -ENODEV;
 	}
 
 	val = tpg110_read_reg(tpg, TPG110_CHIPID);
-	DRM_DEV_INFO(tpg->dev, "TPG110 chip ID: %d version: %d\n",
+	dev_info(tpg->dev, "TPG110 chip ID: %d version: %d\n",
 		 val >> 4, val & 0x0f);
 
 	/* Show display resolution */
@@ -289,27 +283,25 @@ static int tpg110_startup(struct tpg110 *tpg)
 	val &= TPG110_RES_MASK;
 	switch (val) {
 	case TPG110_RES_400X240_D:
-		DRM_DEV_INFO(tpg->dev,
-			 "IN 400x240 RGB -> OUT 800x480 RGB (dual scan)\n");
+		dev_info(tpg->dev, "IN 400x240 RGB -> OUT 800x480 RGB (dual scan)\n");
 		break;
 	case TPG110_RES_480X272_D:
-		DRM_DEV_INFO(tpg->dev,
-			 "IN 480x272 RGB -> OUT 800x480 RGB (dual scan)\n");
+		dev_info(tpg->dev, "IN 480x272 RGB -> OUT 800x480 RGB (dual scan)\n");
 		break;
 	case TPG110_RES_480X640:
-		DRM_DEV_INFO(tpg->dev, "480x640 RGB\n");
+		dev_info(tpg->dev, "480x640 RGB\n");
 		break;
 	case TPG110_RES_480X272:
-		DRM_DEV_INFO(tpg->dev, "480x272 RGB\n");
+		dev_info(tpg->dev, "480x272 RGB\n");
 		break;
 	case TPG110_RES_640X480:
-		DRM_DEV_INFO(tpg->dev, "640x480 RGB\n");
+		dev_info(tpg->dev, "640x480 RGB\n");
 		break;
 	case TPG110_RES_800X480:
-		DRM_DEV_INFO(tpg->dev, "800x480 RGB\n");
+		dev_info(tpg->dev, "800x480 RGB\n");
 		break;
 	default:
-		DRM_DEV_ERROR(tpg->dev, "ILLEGAL RESOLUTION 0x%02x\n", val);
+		dev_err(tpg->dev, "ILLEGAL RESOLUTION 0x%02x\n", val);
 		break;
 	}
 
@@ -327,13 +319,12 @@ static int tpg110_startup(struct tpg110 *tpg)
 		}
 	}
 	if (i == ARRAY_SIZE(tpg110_modes)) {
-		DRM_DEV_ERROR(tpg->dev, "unsupported mode (%02x) detected\n",
-			val);
+		dev_err(tpg->dev, "unsupported mode (%02x) detected\n", val);
 		return -ENODEV;
 	}
 
 	val = tpg110_read_reg(tpg, TPG110_CTRL2);
-	DRM_DEV_INFO(tpg->dev, "resolution and standby is controlled by %s\n",
+	dev_info(tpg->dev, "resolution and standby is controlled by %s\n",
 		 (val & TPG110_CTRL2_RES_PM_CTRL) ? "software" : "hardware");
 	/* Take control over resolution and standby */
 	val |= TPG110_CTRL2_RES_PM_CTRL;
@@ -419,15 +410,15 @@ static int tpg110_probe(struct spi_device *spi)
 	/* We get the physical display dimensions from the DT */
 	ret = of_property_read_u32(np, "width-mm", &tpg->width);
 	if (ret)
-		DRM_DEV_ERROR(dev, "no panel width specified\n");
+		dev_err(dev, "no panel width specified\n");
 	ret = of_property_read_u32(np, "height-mm", &tpg->height);
 	if (ret)
-		DRM_DEV_ERROR(dev, "no panel height specified\n");
+		dev_err(dev, "no panel height specified\n");
 
 	/* This asserts the GRESTB signal, putting the display into reset */
 	tpg->grestb = devm_gpiod_get(dev, "grestb", GPIOD_OUT_HIGH);
 	if (IS_ERR(tpg->grestb)) {
-		DRM_DEV_ERROR(dev, "no GRESTB GPIO\n");
+		dev_err(dev, "no GRESTB GPIO\n");
 		return -ENODEV;
 	}
 
@@ -435,7 +426,7 @@ static int tpg110_probe(struct spi_device *spi)
 	spi->mode |= SPI_3WIRE_HIZ;
 	ret = spi_setup(spi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "spi setup failed.\n");
+		dev_err(dev, "spi setup failed.\n");
 		return ret;
 	}
 	tpg->spi = spi;
@@ -453,7 +444,9 @@ static int tpg110_probe(struct spi_device *spi)
 
 	spi_set_drvdata(spi, tpg);
 
-	return drm_panel_add(&tpg->panel);
+	drm_panel_add(&tpg->panel);
+
+	return 0;
 }
 
 static int tpg110_remove(struct spi_device *spi)

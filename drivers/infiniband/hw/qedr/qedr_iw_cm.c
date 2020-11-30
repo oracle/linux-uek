@@ -150,8 +150,17 @@ qedr_iw_issue_event(void *context,
 	if (params->cm_info) {
 		event.ird = params->cm_info->ird;
 		event.ord = params->cm_info->ord;
-		event.private_data_len = params->cm_info->private_data_len;
-		event.private_data = (void *)params->cm_info->private_data;
+		/* Only connect_request and reply have valid private data
+		 * the rest of the events this may be left overs from
+		 * connection establishment. CONNECT_REQUEST is issued via
+		 * qedr_iw_mpa_request
+		 */
+		if (event_type == IW_CM_EVENT_CONNECT_REPLY) {
+			event.private_data_len =
+				params->cm_info->private_data_len;
+			event.private_data =
+				(void *)params->cm_info->private_data;
+		}
 	}
 
 	if (ep->cm_id)
@@ -718,6 +727,7 @@ int qedr_iw_destroy_listen(struct iw_cm_id *cm_id)
 						    listener->qed_handle);
 
 	cm_id->rem_ref(cm_id);
+	kfree(listener);
 	return rc;
 }
 
@@ -727,7 +737,7 @@ int qedr_iw_accept(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 	struct qedr_dev *dev = ep->dev;
 	struct qedr_qp *qp;
 	struct qed_iwarp_accept_in params;
-	int rc = 0;
+	int rc;
 
 	DP_DEBUG(dev, QEDR_MSG_IWARP, "Accept on qpid=%d\n", conn_param->qpn);
 
@@ -750,8 +760,10 @@ int qedr_iw_accept(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 	params.ord = conn_param->ord;
 
 	if (test_and_set_bit(QEDR_IWARP_CM_WAIT_FOR_CONNECT,
-			     &qp->iwarp_cm_flags))
+			     &qp->iwarp_cm_flags)) {
+		rc = -EINVAL;
 		goto err; /* QP already destroyed */
+	}
 
 	rc = dev->ops->iwarp_accept(dev->rdma_ctx, &params);
 	if (rc) {

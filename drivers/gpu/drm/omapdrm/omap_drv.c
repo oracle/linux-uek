@@ -349,13 +349,6 @@ static int omap_modeset_init(struct drm_device *dev)
 
 		drm_connector_attach_encoder(pipe->connector, encoder);
 
-		if (pipe->output->panel) {
-			ret = drm_panel_attach(pipe->output->panel,
-					       pipe->connector);
-			if (ret < 0)
-				return ret;
-		}
-
 		crtc = omap_crtc_init(dev, pipe, priv->planes[i]);
 		if (IS_ERR(crtc))
 			return PTR_ERR(crtc);
@@ -394,17 +387,7 @@ static int omap_modeset_init(struct drm_device *dev)
 
 static void omap_modeset_fini(struct drm_device *ddev)
 {
-	struct omap_drm_private *priv = ddev->dev_private;
-	unsigned int i;
-
 	omap_drm_irq_uninstall(ddev);
-
-	for (i = 0; i < priv->num_pipes; i++) {
-		struct omap_drm_pipeline *pipe = &priv->pipes[i];
-
-		if (pipe->output->panel)
-			drm_panel_detach(pipe->output->panel);
-	}
 
 	drm_mode_config_cleanup(ddev);
 }
@@ -503,7 +486,7 @@ static int ioctl_gem_info(struct drm_device *dev, void *data,
 	args->size = omap_gem_mmap_size(obj);
 	args->offset = omap_gem_mmap_offset(obj);
 
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 
 	return ret;
 }
@@ -595,7 +578,6 @@ static int omapdrm_init(struct omap_drm_private *priv, struct device *dev)
 {
 	const struct soc_device_attribute *soc;
 	struct drm_device *ddev;
-	unsigned int i;
 	int ret;
 
 	DBG("%s", dev_name(dev));
@@ -641,9 +623,6 @@ static int omapdrm_init(struct omap_drm_private *priv, struct device *dev)
 		dev_err(priv->dev, "could not init vblank\n");
 		goto err_cleanup_modeset;
 	}
-
-	for (i = 0; i < priv->num_pipes; i++)
-		drm_crtc_vblank_off(priv->pipes[i].crtc);
 
 	omap_fbdev_init(ddev);
 

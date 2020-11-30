@@ -78,6 +78,8 @@ gt-y += \
 	gt/debugfs_engines.o \
 	gt/debugfs_gt.o \
 	gt/debugfs_gt_pm.o \
+	gt/gen2_engine_cs.o \
+	gt/gen6_engine_cs.o \
 	gt/gen6_ppgtt.o \
 	gt/gen7_renderclear.o \
 	gt/gen8_ppgtt.o \
@@ -110,6 +112,7 @@ gt-y += \
 	gt/intel_ring_submission.o \
 	gt/intel_rps.o \
 	gt/intel_sseu.o \
+	gt/intel_sseu_debugfs.o \
 	gt/intel_timeline.o \
 	gt/intel_workarounds.o \
 	gt/shmem_utils.o \
@@ -231,6 +234,7 @@ i915-y += \
 	display/intel_ddi.o \
 	display/intel_dp.o \
 	display/intel_dp_aux_backlight.o \
+	display/intel_dp_hdcp.o \
 	display/intel_dp_link_training.o \
 	display/intel_dp_mst.o \
 	display/intel_dsi.o \

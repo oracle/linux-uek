@@ -29,7 +29,6 @@ config ARC
 	select GENERIC_SMP_IDLE_THREAD
 	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_TRACEHOOK
-	select HAVE_COPY_THREAD_TLS
 	select HAVE_DEBUG_STACKOVERFLOW
 	select HAVE_DEBUG_KMEMLEAK
 	select HAVE_FUTEX_CMPXCHG if FUTEX
@@ -49,6 +48,7 @@ config ARC
 	select PCI_SYSCALL if PCI
 	select PERF_USE_VMALLOC if ARC_CACHE_VIPT_ALIASING
 	select HAVE_ARCH_JUMP_LABEL if ISA_ARCV2 && !CPU_ENDIAN_BE32
+	select SET_FS
 
 config ARCH_HAS_CACHE_LINE_SIZE
 	def_bool y
@@ -97,8 +97,6 @@ menu "ARC Platform/SoC/Board"
 
 source "arch/arc/plat-tb10x/Kconfig"
 source "arch/arc/plat-axs10x/Kconfig"
-#New platform adds here
-source "arch/arc/plat-eznps/Kconfig"
 source "arch/arc/plat-hsdk/Kconfig"
 
 endmenu
@@ -169,6 +167,15 @@ config ARC_CPU_HS
 		* SETcc, BMSKN, XBFU...
 
 endchoice
+
+config ARC_TUNE_MCPU
+	string "Override default -mcpu compiler flag"
+	default ""
+	help
+	  Override default -mcpu=xxx compiler flag (which is set depending on
+	  the ISA version) with the specified value.
+	  NOTE: If specified flag isn't supported by current compiler the
+	  ISA default value will be used as a fallback.
 
 config CPU_BIG_ENDIAN
 	bool "Enable Big Endian Mode"
@@ -464,6 +471,12 @@ config ARC_IRQ_NO_AUTOSAVE
 	  On HS cores, taken interrupt auto saves the regfile on stack.
 	  This is programmable and can be optionally disabled in which case
 	  software INTERRUPT_PROLOGUE/EPILGUE do the needed work
+
+config ARC_LPB_DISABLE
+	bool "Disable loop buffer (LPB)"
+	help
+	  On HS cores, loop buffer (LPB) is programmable in runtime and can
+	  be optionally disabled.
 
 endif # ISA_ARCV2
 

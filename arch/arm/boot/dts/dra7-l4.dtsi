@@ -1207,9 +1207,8 @@
 					<SYSC_IDLE_SMART>,
 					<SYSC_IDLE_SMART_WKUP>;
 			/* Domains (P, C): l4per_pwrdm, l4per_clkdm */
-			clocks = <&l4per_clkctrl DRA7_L4PER_TIMER4_CLKCTRL 0>,
-				 <&timer_sys_clk_div>;
-			clock-names = "fck", "timer_sys_ck";
+			clocks = <&l4per_clkctrl DRA7_L4PER_TIMER4_CLKCTRL 0>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges = <0x0 0x36000 0x1000>;
@@ -3039,60 +3038,6 @@
 			 */
 			ti,no-idle;
 
-			mac: ethernet@0 {
-				compatible = "ti,dra7-cpsw","ti,cpsw";
-				clocks = <&gmac_main_clk>, <&gmac_clkctrl DRA7_GMAC_GMAC_CLKCTRL 25>;
-				clock-names = "fck", "cpts";
-				cpdma_channels = <8>;
-				ale_entries = <1024>;
-				bd_ram_size = <0x2000>;
-				mac_control = <0x20>;
-				slaves = <2>;
-				active_slave = <0>;
-				cpts_clock_mult = <0x784CFE14>;
-				cpts_clock_shift = <29>;
-				reg = <0x0 0x1000
-				       0x1200 0x2e00>;
-				#address-cells = <1>;
-				#size-cells = <1>;
-
-				/*
-				 * rx_thresh_pend
-				 * rx_pend
-				 * tx_pend
-				 * misc_pend
-				 */
-				interrupts = <GIC_SPI 334 IRQ_TYPE_LEVEL_HIGH>,
-					     <GIC_SPI 335 IRQ_TYPE_LEVEL_HIGH>,
-					     <GIC_SPI 336 IRQ_TYPE_LEVEL_HIGH>,
-					     <GIC_SPI 337 IRQ_TYPE_LEVEL_HIGH>;
-				ranges = <0 0 0x4000>;
-				syscon = <&scm_conf>;
-				status = "disabled";
-
-				davinci_mdio: mdio@1000 {
-					compatible = "ti,cpsw-mdio","ti,davinci_mdio";
-					clocks = <&gmac_main_clk>;
-					clock-names = "fck";
-					#address-cells = <1>;
-					#size-cells = <0>;
-					bus_freq = <1000000>;
-					reg = <0x1000 0x100>;
-				};
-
-				cpsw_emac0: slave@200 {
-					/* Filled in by U-Boot */
-					mac-address = [ 00 00 00 00 00 00 ];
-					phys = <&phy_gmii_sel 1>;
-				};
-
-				cpsw_emac1: slave@300 {
-					/* Filled in by U-Boot */
-					mac-address = [ 00 00 00 00 00 00 ];
-					phys = <&phy_gmii_sel 2>;
-				};
-			};
-
 			mac_sw: switch@0 {
 				compatible = "ti,dra7-cpsw-switch","ti,cpsw-switch";
 				reg = <0x0 0x4000>;
@@ -3352,8 +3297,8 @@
 					<SYSC_IDLE_SMART>,
 					<SYSC_IDLE_SMART_WKUP>;
 			/* Domains (P, C): ipu_pwrdm, ipu_clkdm */
-			clocks = <&ipu_clkctrl DRA7_IPU_TIMER5_CLKCTRL 0>, <&timer_sys_clk_div>;
-			clock-names = "fck", "timer_sys_ck";
+			clocks = <&ipu_clkctrl DRA7_IPU_TIMER5_CLKCTRL 0>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges = <0x0 0x20000 0x1000>;
@@ -3361,8 +3306,8 @@
 			timer5: timer@0 {
 				compatible = "ti,omap5430-timer";
 				reg = <0x0 0x80>;
-				clocks = <&ipu_clkctrl DRA7_IPU_TIMER5_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&ipu_clkctrl DRA7_IPU_TIMER5_CLKCTRL 24>, <&timer_sys_clk_div>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
 			};
 		};
@@ -3379,9 +3324,8 @@
 					<SYSC_IDLE_SMART>,
 					<SYSC_IDLE_SMART_WKUP>;
 			/* Domains (P, C): ipu_pwrdm, ipu_clkdm */
-			clocks = <&ipu_clkctrl DRA7_IPU_TIMER6_CLKCTRL 0>,
-				 <&timer_sys_clk_div>;
-			clock-names = "fck", "timer_sys_ck";
+			clocks = <&ipu_clkctrl DRA7_IPU_TIMER6_CLKCTRL 0>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges = <0x0 0x22000 0x1000>;
@@ -3389,8 +3333,8 @@
 			timer6: timer@0 {
 				compatible = "ti,omap5430-timer";
 				reg = <0x0 0x80>;
-				clocks = <&ipu_clkctrl DRA7_IPU_TIMER6_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&ipu_clkctrl DRA7_IPU_TIMER6_CLKCTRL 24>, <&timer_sys_clk_div>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
 			};
 		};
@@ -3498,8 +3442,8 @@
 			timer14: timer@0 {
 				compatible = "ti,omap5430-timer";
 				reg = <0x0 0x80>;
-				clocks = <&l4per3_clkctrl DRA7_L4PER3_TIMER14_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&l4per3_clkctrl DRA7_L4PER3_TIMER14_CLKCTRL 24>, <&timer_sys_clk_div>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 340 IRQ_TYPE_LEVEL_HIGH>;
 				ti,timer-pwm;
 			};
@@ -3526,8 +3470,8 @@
 			timer15: timer@0 {
 				compatible = "ti,omap5430-timer";
 				reg = <0x0 0x80>;
-				clocks = <&l4per3_clkctrl DRA7_L4PER3_TIMER15_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&l4per3_clkctrl DRA7_L4PER3_TIMER15_CLKCTRL 24>, <&timer_sys_clk_div>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 341 IRQ_TYPE_LEVEL_HIGH>;
 				ti,timer-pwm;
 			};
@@ -3554,8 +3498,8 @@
 			timer16: timer@0 {
 				compatible = "ti,omap5430-timer";
 				reg = <0x0 0x80>;
-				clocks = <&l4per3_clkctrl DRA7_L4PER3_TIMER16_CLKCTRL 24>;
-				clock-names = "fck";
+				clocks = <&l4per3_clkctrl DRA7_L4PER3_TIMER16_CLKCTRL 24>, <&timer_sys_clk_div>;
+				clock-names = "fck", "timer_sys_ck";
 				interrupts = <GIC_SPI 342 IRQ_TYPE_LEVEL_HIGH>;
 				ti,timer-pwm;
 			};
@@ -3563,7 +3507,6 @@
 
 		rtctarget: target-module@38000 {			/* 0x48838000, ap 29 12.0 */
 			compatible = "ti,sysc-omap4-simple", "ti,sysc";
-			ti,hwmods = "rtcss";
 			reg = <0x38074 0x4>,
 			      <0x38078 0x4>;
 			reg-names = "rev", "sysc";
@@ -4007,7 +3950,6 @@
 
 		target-module@80000 {			/* 0x48880000, ap 83 0e.1 */
 			compatible = "ti,sysc-omap4", "ti,sysc";
-			ti,hwmods = "usb_otg_ss1";
 			reg = <0x80000 0x4>,
 			      <0x80010 0x4>;
 			reg-names = "rev", "sysc";
@@ -4057,7 +3999,6 @@
 
 		target-module@c0000 {			/* 0x488c0000, ap 79 06.0 */
 			compatible = "ti,sysc-omap4", "ti,sysc";
-			ti,hwmods = "usb_otg_ss2";
 			reg = <0xc0000 0x4>,
 			      <0xc0010 0x4>;
 			reg-names = "rev", "sysc";
@@ -4108,7 +4049,6 @@
 
 		usb3_tm: target-module@100000 {		/* 0x48900000, ap 85 04.0 */
 			compatible = "ti,sysc-omap4", "ti,sysc";
-			ti,hwmods = "usb_otg_ss3";
 			reg = <0x100000 0x4>,
 			      <0x100010 0x4>;
 			reg-names = "rev", "sysc";
@@ -4157,7 +4097,6 @@
 
 		usb4_tm: target-module@140000 {		/* 0x48940000, ap 75 3c.0 */
 			compatible = "ti,sysc-omap4", "ti,sysc";
-			ti,hwmods = "usb_otg_ss4";
 			reg = <0x140000 0x4>,
 			      <0x140010 0x4>;
 			reg-names = "rev", "sysc";

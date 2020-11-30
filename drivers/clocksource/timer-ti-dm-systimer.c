@@ -19,7 +19,7 @@
 /* For type1, set SYSC_OMAP2_CLOCKACTIVITY for fck off on idle, l4 clock on */
 #define DMTIMER_TYPE1_ENABLE	((1 << 9) | (SYSC_IDLE_SMART << 3) | \
 				 SYSC_OMAP2_ENAWAKEUP | SYSC_OMAP2_AUTOIDLE)
-
+#define DMTIMER_TYPE1_DISABLE	(SYSC_OMAP2_SOFTRESET | SYSC_OMAP2_AUTOIDLE)
 #define DMTIMER_TYPE2_ENABLE	(SYSC_IDLE_SMART_WKUP << 2)
 #define DMTIMER_RESET_WAIT	100000
 
@@ -44,6 +44,8 @@ struct dmtimer_systimer {
 	u8 ctrl;
 	u8 wakeup;
 	u8 ifctrl;
+	struct clk *fck;
+	struct clk *ick;
 	unsigned long rate;
 };
 
@@ -67,12 +69,33 @@ static bool dmtimer_systimer_revision1(struct dmtimer_systimer *t)
 	return !(tidr >> 16);
 }
 
+static void dmtimer_systimer_enable(struct dmtimer_systimer *t)
+{
+	u32 val;
+
+	if (dmtimer_systimer_revision1(t))
+		val = DMTIMER_TYPE1_ENABLE;
+	else
+		val = DMTIMER_TYPE2_ENABLE;
+
+	writel_relaxed(val, t->base + t->sysc);
+}
+
+static void dmtimer_systimer_disable(struct dmtimer_systimer *t)
+{
+	if (!dmtimer_systimer_revision1(t))
+		return;
+
+	writel_relaxed(DMTIMER_TYPE1_DISABLE, t->base + t->sysc);
+}
+
 static int __init dmtimer_systimer_type1_reset(struct dmtimer_systimer *t)
 {
 	void __iomem *syss = t->base + OMAP_TIMER_V1_SYS_STAT_OFFSET;
 	int ret;
 	u32 l;
 
+	dmtimer_systimer_enable(t);
 	writel_relaxed(BIT(1) | BIT(2), t->base + t->ifctrl);
 	ret = readl_poll_timeout_atomic(syss, l, l & BIT(0), 100,
 					DMTIMER_RESET_WAIT);
@@ -86,6 +109,7 @@ static int __init dmtimer_systimer_type2_reset(struct dmtimer_systimer *t)
 	void __iomem *sysc = t->base + t->sysc;
 	u32 l;
 
+	dmtimer_systimer_enable(t);
 	l = readl_relaxed(sysc);
 	l |= BIT(0);
 	writel_relaxed(l, sysc);
@@ -298,16 +322,20 @@ static void __init dmtimer_systimer_select_best(void)
 }
 
 /* Interface clocks are only available on some SoCs variants */
-static int __init dmtimer_systimer_init_clock(struct device_node *np,
+static int __init dmtimer_systimer_init_clock(struct dmtimer_systimer *t,
+					      struct device_node *np,
 					      const char *name,
 					      unsigned long *rate)
 {
 	struct clk *clock;
 	unsigned long r;
+	bool is_ick = false;
 	int error;
 
+	is_ick = !strncmp(name, "ick", 3);
+
 	clock = of_clk_get_by_name(np, name);
-	if ((PTR_ERR(clock) == -EINVAL) && !strncmp(name, "ick", 3))
+	if ((PTR_ERR(clock) == -EINVAL) && is_ick)
 		return 0;
 	else if (IS_ERR(clock))
 		return PTR_ERR(clock);
@@ -320,26 +348,14 @@ static int __init dmtimer_systimer_init_clock(struct device_node *np,
 	if (!r)
 		return -ENODEV;
 
+	if (is_ick)
+		t->ick = clock;
+	else
+		t->fck = clock;
+
 	*rate = r;
 
 	return 0;
-}
-
-static void dmtimer_systimer_enable(struct dmtimer_systimer *t)
-{
-	u32 val;
-
-	if (dmtimer_systimer_revision1(t))
-		val = DMTIMER_TYPE1_ENABLE;
-	else
-		val = DMTIMER_TYPE2_ENABLE;
-
-	writel_relaxed(val, t->base + t->sysc);
-}
-
-static void dmtimer_systimer_disable(struct dmtimer_systimer *t)
-{
-	writel_relaxed(0, t->base + t->sysc);
 }
 
 static int __init dmtimer_systimer_setup(struct device_node *np,
@@ -366,13 +382,13 @@ static int __init dmtimer_systimer_setup(struct device_node *np,
 		pr_err("%s: clock source init failed: %i\n", __func__, error);
 
 	/* For ti-sysc, we have timer clocks at the parent module level */
-	error = dmtimer_systimer_init_clock(np->parent, "fck", &rate);
+	error = dmtimer_systimer_init_clock(t, np->parent, "fck", &rate);
 	if (error)
 		goto err_unmap;
 
 	t->rate = rate;
 
-	error = dmtimer_systimer_init_clock(np->parent, "ick", &rate);
+	error = dmtimer_systimer_init_clock(t, np->parent, "ick", &rate);
 	if (error)
 		goto err_unmap;
 
@@ -395,8 +411,8 @@ static int __init dmtimer_systimer_setup(struct device_node *np,
 	t->wakeup = regbase + _OMAP_TIMER_WAKEUP_EN_OFFSET;
 	t->ifctrl = regbase + _OMAP_TIMER_IF_CTRL_OFFSET;
 
-	dmtimer_systimer_enable(t);
 	dmtimer_systimer_reset(t);
+	dmtimer_systimer_enable(t);
 	pr_debug("dmtimer rev %08x sysc %08x\n", readl_relaxed(t->base),
 		 readl_relaxed(t->base + t->sysc));
 
@@ -496,12 +512,18 @@ static void omap_clockevent_idle(struct clock_event_device *evt)
 	struct dmtimer_systimer *t = &clkevt->t;
 
 	dmtimer_systimer_disable(t);
+	clk_disable(t->fck);
 }
 
 static void omap_clockevent_unidle(struct clock_event_device *evt)
 {
 	struct dmtimer_clockevent *clkevt = to_dmtimer_clockevent(evt);
 	struct dmtimer_systimer *t = &clkevt->t;
+	int error;
+
+	error = clk_enable(t->fck);
+	if (error)
+		pr_err("could not enable timer fck on resume: %i\n", error);
 
 	dmtimer_systimer_enable(t);
 	writel_relaxed(OMAP_TIMER_INT_OVERFLOW, t->base + t->irq_ena);
@@ -570,8 +592,8 @@ static int __init dmtimer_clockevent_init(struct device_node *np)
 					3, /* Timer internal resynch latency */
 					0xffffffff);
 
-	if (of_device_is_compatible(np, "ti,am33xx") ||
-	    of_device_is_compatible(np, "ti,am43")) {
+	if (of_machine_is_compatible("ti,am33xx") ||
+	    of_machine_is_compatible("ti,am43")) {
 		dev->suspend = omap_clockevent_idle;
 		dev->resume = omap_clockevent_unidle;
 	}
@@ -616,12 +638,18 @@ static void dmtimer_clocksource_suspend(struct clocksource *cs)
 
 	clksrc->loadval = readl_relaxed(t->base + t->counter);
 	dmtimer_systimer_disable(t);
+	clk_disable(t->fck);
 }
 
 static void dmtimer_clocksource_resume(struct clocksource *cs)
 {
 	struct dmtimer_clocksource *clksrc = to_dmtimer_clocksource(cs);
 	struct dmtimer_systimer *t = &clksrc->t;
+	int error;
+
+	error = clk_enable(t->fck);
+	if (error)
+		pr_err("could not enable timer fck on resume: %i\n", error);
 
 	dmtimer_systimer_enable(t);
 	writel_relaxed(clksrc->loadval, t->base + t->counter);
@@ -653,8 +681,8 @@ static int __init dmtimer_clocksource_init(struct device_node *np)
 	dev->mask = CLOCKSOURCE_MASK(32);
 	dev->flags = CLOCK_SOURCE_IS_CONTINUOUS;
 
-	if (of_device_is_compatible(np, "ti,am33xx") ||
-	    of_device_is_compatible(np, "ti,am43")) {
+	/* Unlike for clockevent, legacy code sets suspend only for am4 */
+	if (of_machine_is_compatible("ti,am43")) {
 		dev->suspend = dmtimer_clocksource_suspend;
 		dev->resume = dmtimer_clocksource_resume;
 	}

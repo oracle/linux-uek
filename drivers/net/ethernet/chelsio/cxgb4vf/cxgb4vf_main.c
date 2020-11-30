@@ -260,8 +260,7 @@ static int cxgb4vf_set_addr_hash(struct port_info *pi)
  *	@tcam_idx: TCAM index of existing filter for old value of MAC address,
  *		   or -1
  *	@addr: the new MAC address value
- *	@persist: whether a new MAC allocation should be persistent
- *	@add_smt: if true also add the address to the HW SMT
+ *	@persistent: whether a new MAC allocation should be persistent
  *
  *	Modifies an MPS filter and sets it to the new MAC address if
  *	@tcam_idx >= 0, or adds the MAC address to a new filter if
@@ -518,7 +517,7 @@ static int fwevtq_handler(struct sge_rspq *rspq, const __be64 *rsp,
 		}
 		cpl = (void *)p;
 	}
-		/* Fall through */
+		fallthrough;
 
 	case CPL_SGE_EGR_UPDATE: {
 		/*
@@ -2018,33 +2017,14 @@ static void mboxlog_stop(struct seq_file *seq, void *v)
 {
 }
 
-static const struct seq_operations mboxlog_seq_ops = {
+static const struct seq_operations mboxlog_sops = {
 	.start = mboxlog_start,
 	.next  = mboxlog_next,
 	.stop  = mboxlog_stop,
 	.show  = mboxlog_show
 };
 
-static int mboxlog_open(struct inode *inode, struct file *file)
-{
-	int res = seq_open(file, &mboxlog_seq_ops);
-
-	if (!res) {
-		struct seq_file *seq = file->private_data;
-
-		seq->private = inode->i_private;
-	}
-	return res;
-}
-
-static const struct file_operations mboxlog_fops = {
-	.owner   = THIS_MODULE,
-	.open    = mboxlog_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
-};
-
+DEFINE_SEQ_ATTRIBUTE(mboxlog);
 /*
  * Show SGE Queue Set information.  We display QPL Queues Sets per line.
  */
@@ -2172,31 +2152,14 @@ static void *sge_queue_next(struct seq_file *seq, void *v, loff_t *pos)
 	return *pos < entries ? (void *)((uintptr_t)*pos + 1) : NULL;
 }
 
-static const struct seq_operations sge_qinfo_seq_ops = {
+static const struct seq_operations sge_qinfo_sops = {
 	.start = sge_queue_start,
 	.next  = sge_queue_next,
 	.stop  = sge_queue_stop,
 	.show  = sge_qinfo_show
 };
 
-static int sge_qinfo_open(struct inode *inode, struct file *file)
-{
-	int res = seq_open(file, &sge_qinfo_seq_ops);
-
-	if (!res) {
-		struct seq_file *seq = file->private_data;
-		seq->private = inode->i_private;
-	}
-	return res;
-}
-
-static const struct file_operations sge_qinfo_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = sge_qinfo_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
-};
+DEFINE_SEQ_ATTRIBUTE(sge_qinfo);
 
 /*
  * Show SGE Queue Set statistics.  We display QPL Queues Sets per line.
@@ -2318,31 +2281,14 @@ static void *sge_qstats_next(struct seq_file *seq, void *v, loff_t *pos)
 	return *pos < entries ? (void *)((uintptr_t)*pos + 1) : NULL;
 }
 
-static const struct seq_operations sge_qstats_seq_ops = {
+static const struct seq_operations sge_qstats_sops = {
 	.start = sge_qstats_start,
 	.next  = sge_qstats_next,
 	.stop  = sge_qstats_stop,
 	.show  = sge_qstats_show
 };
 
-static int sge_qstats_open(struct inode *inode, struct file *file)
-{
-	int res = seq_open(file, &sge_qstats_seq_ops);
-
-	if (res == 0) {
-		struct seq_file *seq = file->private_data;
-		seq->private = inode->i_private;
-	}
-	return res;
-}
-
-static const struct file_operations sge_qstats_proc_fops = {
-	.owner   = THIS_MODULE,
-	.open    = sge_qstats_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
-};
+DEFINE_SEQ_ATTRIBUTE(sge_qstats);
 
 /*
  * Show PCI-E SR-IOV Virtual Function Resource Limits.
@@ -2416,31 +2362,14 @@ static void interfaces_stop(struct seq_file *seq, void *v)
 {
 }
 
-static const struct seq_operations interfaces_seq_ops = {
+static const struct seq_operations interfaces_sops = {
 	.start = interfaces_start,
 	.next  = interfaces_next,
 	.stop  = interfaces_stop,
 	.show  = interfaces_show
 };
 
-static int interfaces_open(struct inode *inode, struct file *file)
-{
-	int res = seq_open(file, &interfaces_seq_ops);
-
-	if (res == 0) {
-		struct seq_file *seq = file->private_data;
-		seq->private = inode->i_private;
-	}
-	return res;
-}
-
-static const struct file_operations interfaces_proc_fops = {
-	.owner   = THIS_MODULE,
-	.open    = interfaces_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
-};
+DEFINE_SEQ_ATTRIBUTE(interfaces);
 
 /*
  * /sys/kernel/debugfs/cxgb4vf/ files list.
@@ -2453,10 +2382,10 @@ struct cxgb4vf_debugfs_entry {
 
 static struct cxgb4vf_debugfs_entry debugfs_files[] = {
 	{ "mboxlog",    0444, &mboxlog_fops },
-	{ "sge_qinfo",  0444, &sge_qinfo_debugfs_fops },
-	{ "sge_qstats", 0444, &sge_qstats_proc_fops },
+	{ "sge_qinfo",  0444, &sge_qinfo_fops },
+	{ "sge_qstats", 0444, &sge_qstats_fops },
 	{ "resources",  0444, &resources_fops },
-	{ "interfaces", 0444, &interfaces_proc_fops },
+	{ "interfaces", 0444, &interfaces_fops },
 };
 
 /*
@@ -2917,6 +2846,39 @@ static const struct net_device_ops cxgb4vf_netdev_ops	= {
 #endif
 };
 
+/**
+ *	cxgb4vf_get_port_mask - Get port mask for the VF based on mac
+ *				address stored on the adapter
+ *	@adapter: The adapter
+ *
+ *	Find the the port mask for the VF based on the index of mac
+ *	address stored in the adapter. If no mac address is stored on
+ *	the adapter for the VF, use the port mask received from the
+ *	firmware.
+ */
+static unsigned int cxgb4vf_get_port_mask(struct adapter *adapter)
+{
+	unsigned int naddr = 1, pidx = 0;
+	unsigned int pmask, rmask = 0;
+	u8 mac[ETH_ALEN];
+	int err;
+
+	pmask = adapter->params.vfres.pmask;
+	while (pmask) {
+		if (pmask & 1) {
+			err = t4vf_get_vf_mac_acl(adapter, pidx, &naddr, mac);
+			if (!err && !is_zero_ether_addr(mac))
+				rmask |= (1 << pidx);
+		}
+		pmask >>= 1;
+		pidx++;
+	}
+	if (!rmask)
+		rmask = adapter->params.vfres.pmask;
+
+	return rmask;
+}
+
 /*
  * "Probe" a device: initialize a device and construct all kernel and driver
  * state needed to manage the device.  This routine is called "init_one" in
@@ -2925,13 +2887,12 @@ static const struct net_device_ops cxgb4vf_netdev_ops	= {
 static int cxgb4vf_pci_probe(struct pci_dev *pdev,
 			     const struct pci_device_id *ent)
 {
+	struct adapter *adapter;
+	struct net_device *netdev;
+	struct port_info *pi;
+	unsigned int pmask;
 	int pci_using_dac;
 	int err, pidx;
-	unsigned int pmask;
-	struct adapter *adapter;
-	struct port_info *pi;
-	struct net_device *netdev;
-	unsigned int pf;
 
 	/*
 	 * Initialize generic PCI device state.
@@ -3074,8 +3035,7 @@ static int cxgb4vf_pci_probe(struct pci_dev *pdev,
 	/*
 	 * Allocate our "adapter ports" and stitch everything together.
 	 */
-	pmask = adapter->params.vfres.pmask;
-	pf = t4vf_get_pf_from_vf(adapter);
+	pmask = cxgb4vf_get_port_mask(adapter);
 	for_each_port(adapter, pidx) {
 		int port_id, viid;
 		u8 mac[ETH_ALEN];
@@ -3158,7 +3118,7 @@ static int cxgb4vf_pci_probe(struct pci_dev *pdev,
 			goto err_free_dev;
 		}
 
-		err = t4vf_get_vf_mac_acl(adapter, pf, &naddr, mac);
+		err = t4vf_get_vf_mac_acl(adapter, port_id, &naddr, mac);
 		if (err) {
 			dev_err(&pdev->dev,
 				"unable to determine MAC ACL address, "

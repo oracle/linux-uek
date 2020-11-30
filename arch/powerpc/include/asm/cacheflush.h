@@ -6,6 +6,7 @@
 
 #include <linux/mm.h>
 #include <asm/cputable.h>
+#include <asm/cpu_has_feature.h>
 
 #ifdef CONFIG_PPC_BOOK3S_64
 /*
@@ -96,6 +97,16 @@ static inline void invalidate_dcache_range(unsigned long start,
 		dcbi(addr);
 	mb();	/* sync */
 }
+
+#ifdef CONFIG_4xx
+static inline void flush_instruction_cache(void)
+{
+	iccci((void *)KERNELBASE);
+	isync();
+}
+#else
+void flush_instruction_cache(void);
+#endif
 
 #include <asm-generic/cacheflush.h>
 

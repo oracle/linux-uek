@@ -936,7 +936,7 @@ static int cmd_reg_handler(struct parser_exec_state *s,
 		return -EFAULT;
 	}
 
-	if (!intel_gvt_mmio_is_cmd_access(gvt, offset)) {
+	if (!intel_gvt_mmio_is_cmd_accessible(gvt, offset)) {
 		gvt_vgpu_err("%s access to non-render register (%x)\n",
 				cmd, offset);
 		return -EBADRQC;
@@ -976,7 +976,7 @@ static int cmd_reg_handler(struct parser_exec_state *s,
 	 * inhibit context will restore with correct values
 	 */
 	if (IS_GEN(s->engine->i915, 9) &&
-	    intel_gvt_mmio_is_in_ctx(gvt, offset) &&
+	    intel_gvt_mmio_is_sr_in_ctx(gvt, offset) &&
 	    !strncmp(cmd, "lri", 3)) {
 		intel_gvt_hypervisor_read_gpa(s->vgpu,
 			s->workload->ring_context_gpa + 12, &ctx_sr_ctl, 4);
@@ -992,8 +992,6 @@ static int cmd_reg_handler(struct parser_exec_state *s,
 		}
 	}
 
-	/* TODO: Update the global mask if this MMIO is a masked-MMIO */
-	intel_gvt_mmio_set_cmd_accessed(gvt, offset);
 	return 0;
 }
 
@@ -1904,19 +1902,10 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 		goto err_free_bb;
 	}
 
-	ret = i915_gem_object_prepare_write(bb->obj, &bb->clflush);
-	if (ret)
-		goto err_free_obj;
-
 	bb->va = i915_gem_object_pin_map(bb->obj, I915_MAP_WB);
 	if (IS_ERR(bb->va)) {
 		ret = PTR_ERR(bb->va);
-		goto err_finish_shmem_access;
-	}
-
-	if (bb->clflush & CLFLUSH_BEFORE) {
-		drm_clflush_virt_range(bb->va, bb->obj->base.size);
-		bb->clflush &= ~CLFLUSH_BEFORE;
+		goto err_free_obj;
 	}
 
 	ret = copy_gma_to_hva(s->vgpu, mm,
@@ -1932,10 +1921,10 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 	if (ret)
 		goto err_unmap;
 
+	i915_gem_object_unlock(bb->obj);
 	INIT_LIST_HEAD(&bb->list);
 	list_add(&bb->list, &s->workload->shadow_bb);
 
-	bb->accessing = true;
 	bb->bb_start_cmd_va = s->ip_va;
 
 	if ((s->buf_type == BATCH_BUFFER_INSTRUCTION) && (!s->is_ctx_wa))
@@ -1956,8 +1945,6 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 	return 0;
 err_unmap:
 	i915_gem_object_unpin_map(bb->obj);
-err_finish_shmem_access:
-	i915_gem_object_finish_access(bb->obj);
 err_free_obj:
 	i915_gem_object_put(bb->obj);
 err_free_bb:
@@ -2994,7 +2981,7 @@ static int shadow_indirect_ctx(struct intel_shadow_wa_ctx *wa_ctx)
 		goto put_obj;
 	}
 
-	i915_gem_object_lock(obj);
+	i915_gem_object_lock(obj, NULL);
 	ret = i915_gem_object_set_to_cpu_domain(obj, false);
 	i915_gem_object_unlock(obj);
 	if (ret) {

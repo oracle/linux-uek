@@ -28,18 +28,23 @@
 
 #include "i915_drv.h"
 #include "i915_trace.h"
+#include "intel_breadcrumbs.h"
+#include "intel_context.h"
+#include "intel_engine_pm.h"
 #include "intel_gt_pm.h"
 #include "intel_gt_requests.h"
 
-static void irq_enable(struct intel_engine_cs *engine)
+static bool irq_enable(struct intel_engine_cs *engine)
 {
 	if (!engine->irq_enable)
-		return;
+		return false;
 
 	/* Caller disables interrupts */
 	spin_lock(&engine->gt->irq_lock);
 	engine->irq_enable(engine);
 	spin_unlock(&engine->gt->irq_lock);
+
+	return true;
 }
 
 static void irq_disable(struct intel_engine_cs *engine)
@@ -53,33 +58,61 @@ static void irq_disable(struct intel_engine_cs *engine)
 	spin_unlock(&engine->gt->irq_lock);
 }
 
-static void __intel_breadcrumbs_disarm_irq(struct intel_breadcrumbs *b)
+static void __intel_breadcrumbs_arm_irq(struct intel_breadcrumbs *b)
 {
-	struct intel_engine_cs *engine =
-		container_of(b, struct intel_engine_cs, breadcrumbs);
-
-	lockdep_assert_held(&b->irq_lock);
-
-	GEM_BUG_ON(!b->irq_enabled);
-	if (!--b->irq_enabled)
-		irq_disable(engine);
-
-	WRITE_ONCE(b->irq_armed, false);
-	intel_gt_pm_put_async(engine->gt);
-}
-
-void intel_engine_disarm_breadcrumbs(struct intel_engine_cs *engine)
-{
-	struct intel_breadcrumbs *b = &engine->breadcrumbs;
-	unsigned long flags;
-
-	if (!READ_ONCE(b->irq_armed))
+	/*
+	 * Since we are waiting on a request, the GPU should be busy
+	 * and should have its own rpm reference.
+	 */
+	if (GEM_WARN_ON(!intel_gt_pm_get_if_awake(b->irq_engine->gt)))
 		return;
 
-	spin_lock_irqsave(&b->irq_lock, flags);
-	if (b->irq_armed)
-		__intel_breadcrumbs_disarm_irq(b);
-	spin_unlock_irqrestore(&b->irq_lock, flags);
+	/*
+	 * The breadcrumb irq will be disarmed on the interrupt after the
+	 * waiters are signaled. This gives us a single interrupt window in
+	 * which we can add a new waiter and avoid the cost of re-enabling
+	 * the irq.
+	 */
+	WRITE_ONCE(b->irq_armed, true);
+
+	/* Requests may have completed before we could enable the interrupt. */
+	if (!b->irq_enabled++ && irq_enable(b->irq_engine))
+		irq_work_queue(&b->irq_work);
+}
+
+static void intel_breadcrumbs_arm_irq(struct intel_breadcrumbs *b)
+{
+	if (!b->irq_engine)
+		return;
+
+	spin_lock(&b->irq_lock);
+	if (!b->irq_armed)
+		__intel_breadcrumbs_arm_irq(b);
+	spin_unlock(&b->irq_lock);
+}
+
+static void __intel_breadcrumbs_disarm_irq(struct intel_breadcrumbs *b)
+{
+	GEM_BUG_ON(!b->irq_enabled);
+	if (!--b->irq_enabled)
+		irq_disable(b->irq_engine);
+
+	WRITE_ONCE(b->irq_armed, false);
+	intel_gt_pm_put_async(b->irq_engine->gt);
+}
+
+static void add_signaling_context(struct intel_breadcrumbs *b,
+				  struct intel_context *ce)
+{
+	intel_context_get(ce);
+	list_add_tail(&ce->signal_link, &b->signalers);
+}
+
+static void remove_signaling_context(struct intel_breadcrumbs *b,
+				     struct intel_context *ce)
+{
+	list_del(&ce->signal_link);
+	intel_context_put(ce);
 }
 
 static inline bool __request_completed(const struct i915_request *rq)
@@ -90,6 +123,9 @@ static inline bool __request_completed(const struct i915_request *rq)
 __maybe_unused static bool
 check_signal_order(struct intel_context *ce, struct i915_request *rq)
 {
+	if (rq->context != ce)
+		return false;
+
 	if (!list_is_last(&rq->signal_link, &ce->signals) &&
 	    i915_seqno_passed(rq->fence.seqno,
 			      list_next_entry(rq, signal_link)->fence.seqno))
@@ -133,41 +169,68 @@ __dma_fence_signal__notify(struct dma_fence *fence,
 
 static void add_retire(struct intel_breadcrumbs *b, struct intel_timeline *tl)
 {
-	struct intel_engine_cs *engine =
-		container_of(b, struct intel_engine_cs, breadcrumbs);
-
-	if (unlikely(intel_engine_is_virtual(engine)))
-		engine = intel_virtual_engine_get_sibling(engine, 0);
-
-	intel_engine_add_retire(engine, tl);
+	if (b->irq_engine)
+		intel_engine_add_retire(b->irq_engine, tl);
 }
 
-static void __signal_request(struct i915_request *rq, struct list_head *signals)
+static bool __signal_request(struct i915_request *rq)
 {
-	GEM_BUG_ON(!test_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags));
-	clear_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags);
+	if (!__dma_fence_signal(&rq->fence)) {
+		i915_request_put(rq);
+		return false;
+	}
 
-	if (!__dma_fence_signal(&rq->fence))
-		return;
+	return true;
+}
 
-	i915_request_get(rq);
-	list_add_tail(&rq->signal_link, signals);
+static struct llist_node *
+slist_add(struct llist_node *node, struct llist_node *head)
+{
+	node->next = head;
+	return node;
 }
 
 static void signal_irq_work(struct irq_work *work)
 {
 	struct intel_breadcrumbs *b = container_of(work, typeof(*b), irq_work);
 	const ktime_t timestamp = ktime_get();
+	struct llist_node *signal, *sn;
 	struct intel_context *ce, *cn;
 	struct list_head *pos, *next;
-	LIST_HEAD(signal);
+
+	signal = NULL;
+	if (unlikely(!llist_empty(&b->signaled_requests)))
+		signal = llist_del_all(&b->signaled_requests);
 
 	spin_lock(&b->irq_lock);
 
-	if (b->irq_armed && list_empty(&b->signalers))
+	/*
+	 * Keep the irq armed until the interrupt after all listeners are gone.
+	 *
+	 * Enabling/disabling the interrupt is rather costly, roughly a couple
+	 * of hundred microseconds. If we are proactive and enable/disable
+	 * the interrupt around every request that wants a breadcrumb, we
+	 * quickly drown in the extra orders of magnitude of latency imposed
+	 * on request submission.
+	 *
+	 * So we try to be lazy, and keep the interrupts enabled until no
+	 * more listeners appear within a breadcrumb interrupt interval (that
+	 * is until a request completes that no one cares about). The
+	 * observation is that listeners come in batches, and will often
+	 * listen to a bunch of requests in succession. Though note on icl+,
+	 * interrupts are always enabled due to concerns with rc6 being
+	 * dysfunctional with per-engine interrupt masking.
+	 *
+	 * We also try to avoid raising too many interrupts, as they may
+	 * be generated by userspace batches and it is unfortunately rather
+	 * too easy to drown the CPU under a flood of GPU interrupts. Thus
+	 * whenever no one appears to be listening, we turn off the interrupts.
+	 * Fewer interrupts should conserve power -- at the very least, fewer
+	 * interrupt draw less ire from other users of the system and tools
+	 * like powertop.
+	 */
+	if (!signal && b->irq_armed && list_empty(&b->signalers))
 		__intel_breadcrumbs_disarm_irq(b);
-
-	list_splice_init(&b->signaled_requests, &signal);
 
 	list_for_each_entry_safe(ce, cn, &b->signalers, signal_link) {
 		GEM_BUG_ON(list_empty(&ce->signals));
@@ -185,7 +248,10 @@ static void signal_irq_work(struct irq_work *work)
 			 * spinlock as the callback chain may end up adding
 			 * more signalers to the same context or engine.
 			 */
-			__signal_request(rq, &signal);
+			clear_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags);
+			if (__signal_request(rq))
+				/* We own signal_node now, xfer to local list */
+				signal = slist_add(&rq->signal_node, signal);
 		}
 
 		/*
@@ -197,17 +263,17 @@ static void signal_irq_work(struct irq_work *work)
 			/* Advance the list to the first incomplete request */
 			__list_del_many(&ce->signals, pos);
 			if (&ce->signals == pos) { /* now empty */
-				list_del_init(&ce->signal_link);
 				add_retire(b, ce->timeline);
+				remove_signaling_context(b, ce);
 			}
 		}
 	}
 
 	spin_unlock(&b->irq_lock);
 
-	list_for_each_safe(pos, next, &signal) {
+	llist_for_each_safe(signal, sn, signal) {
 		struct i915_request *rq =
-			list_entry(pos, typeof(*rq), signal_link);
+			llist_entry(signal, typeof(*rq), signal_node);
 		struct list_head cb_list;
 
 		spin_lock(&rq->lock);
@@ -218,113 +284,96 @@ static void signal_irq_work(struct irq_work *work)
 
 		i915_request_put(rq);
 	}
+
+	if (!READ_ONCE(b->irq_armed) && !list_empty(&b->signalers))
+		intel_breadcrumbs_arm_irq(b);
 }
 
-static bool __intel_breadcrumbs_arm_irq(struct intel_breadcrumbs *b)
+struct intel_breadcrumbs *
+intel_breadcrumbs_create(struct intel_engine_cs *irq_engine)
 {
-	struct intel_engine_cs *engine =
-		container_of(b, struct intel_engine_cs, breadcrumbs);
+	struct intel_breadcrumbs *b;
 
-	lockdep_assert_held(&b->irq_lock);
-	if (b->irq_armed)
-		return true;
-
-	if (!intel_gt_pm_get_if_awake(engine->gt))
-		return false;
-
-	/*
-	 * The breadcrumb irq will be disarmed on the interrupt after the
-	 * waiters are signaled. This gives us a single interrupt window in
-	 * which we can add a new waiter and avoid the cost of re-enabling
-	 * the irq.
-	 */
-	WRITE_ONCE(b->irq_armed, true);
-
-	/*
-	 * Since we are waiting on a request, the GPU should be busy
-	 * and should have its own rpm reference. This is tracked
-	 * by i915->gt.awake, we can forgo holding our own wakref
-	 * for the interrupt as before i915->gt.awake is released (when
-	 * the driver is idle) we disarm the breadcrumbs.
-	 */
-
-	if (!b->irq_enabled++)
-		irq_enable(engine);
-
-	return true;
-}
-
-void intel_engine_init_breadcrumbs(struct intel_engine_cs *engine)
-{
-	struct intel_breadcrumbs *b = &engine->breadcrumbs;
+	b = kzalloc(sizeof(*b), GFP_KERNEL);
+	if (!b)
+		return NULL;
 
 	spin_lock_init(&b->irq_lock);
 	INIT_LIST_HEAD(&b->signalers);
-	INIT_LIST_HEAD(&b->signaled_requests);
+	init_llist_head(&b->signaled_requests);
 
 	init_irq_work(&b->irq_work, signal_irq_work);
+
+	b->irq_engine = irq_engine;
+
+	return b;
 }
 
-void intel_engine_reset_breadcrumbs(struct intel_engine_cs *engine)
+void intel_breadcrumbs_reset(struct intel_breadcrumbs *b)
 {
-	struct intel_breadcrumbs *b = &engine->breadcrumbs;
 	unsigned long flags;
+
+	if (!b->irq_engine)
+		return;
 
 	spin_lock_irqsave(&b->irq_lock, flags);
 
 	if (b->irq_enabled)
-		irq_enable(engine);
+		irq_enable(b->irq_engine);
 	else
-		irq_disable(engine);
+		irq_disable(b->irq_engine);
 
 	spin_unlock_irqrestore(&b->irq_lock, flags);
 }
 
-void intel_engine_transfer_stale_breadcrumbs(struct intel_engine_cs *engine,
-					     struct intel_context *ce)
+void intel_breadcrumbs_park(struct intel_breadcrumbs *b)
 {
-	struct intel_breadcrumbs *b = &engine->breadcrumbs;
-	unsigned long flags;
-
-	spin_lock_irqsave(&b->irq_lock, flags);
-	if (!list_empty(&ce->signals)) {
-		struct i915_request *rq, *next;
-
-		/* Queue for executing the signal callbacks in the irq_work */
-		list_for_each_entry_safe(rq, next, &ce->signals, signal_link) {
-			GEM_BUG_ON(rq->engine != engine);
-			GEM_BUG_ON(!__request_completed(rq));
-
-			__signal_request(rq, &b->signaled_requests);
-		}
-
-		INIT_LIST_HEAD(&ce->signals);
-		list_del_init(&ce->signal_link);
-
-		irq_work_queue(&b->irq_work);
+	/* Kick the work once more to drain the signalers */
+	irq_work_sync(&b->irq_work);
+	while (unlikely(READ_ONCE(b->irq_armed))) {
+		local_irq_disable();
+		signal_irq_work(&b->irq_work);
+		local_irq_enable();
+		cond_resched();
 	}
-	spin_unlock_irqrestore(&b->irq_lock, flags);
+	GEM_BUG_ON(!list_empty(&b->signalers));
 }
 
-void intel_engine_fini_breadcrumbs(struct intel_engine_cs *engine)
+void intel_breadcrumbs_free(struct intel_breadcrumbs *b)
 {
+	irq_work_sync(&b->irq_work);
+	GEM_BUG_ON(!list_empty(&b->signalers));
+	GEM_BUG_ON(b->irq_armed);
+	kfree(b);
 }
 
-bool i915_request_enable_breadcrumb(struct i915_request *rq)
+static void insert_breadcrumb(struct i915_request *rq,
+			      struct intel_breadcrumbs *b)
 {
-	lockdep_assert_held(&rq->lock);
+	struct intel_context *ce = rq->context;
+	struct list_head *pos;
 
-	if (test_bit(I915_FENCE_FLAG_ACTIVE, &rq->fence.flags)) {
-		struct intel_breadcrumbs *b = &rq->engine->breadcrumbs;
-		struct intel_context *ce = rq->context;
-		struct list_head *pos;
+	if (test_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags))
+		return;
 
-		spin_lock(&b->irq_lock);
-		GEM_BUG_ON(test_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags));
+	i915_request_get(rq);
 
-		if (!__intel_breadcrumbs_arm_irq(b))
-			goto unlock;
+	/*
+	 * If the request is already completed, we can transfer it
+	 * straight onto a signaled list, and queue the irq worker for
+	 * its signal completion.
+	 */
+	if (__request_completed(rq)) {
+		if (__signal_request(rq) &&
+		    llist_add(&rq->signal_node, &b->signaled_requests))
+			irq_work_queue(&b->irq_work);
+		return;
+	}
 
+	if (list_empty(&ce->signals)) {
+		add_signaling_context(b, ce);
+		pos = &ce->signals;
+	} else {
 		/*
 		 * We keep the seqno in retirement order, so we can break
 		 * inside intel_engine_signal_breadcrumbs as soon as we've
@@ -346,24 +395,78 @@ bool i915_request_enable_breadcrumb(struct i915_request *rq)
 			if (i915_seqno_passed(rq->fence.seqno, it->fence.seqno))
 				break;
 		}
-		list_add(&rq->signal_link, pos);
-		if (pos == &ce->signals) /* catch transitions from empty list */
-			list_move_tail(&ce->signal_link, &b->signalers);
-		GEM_BUG_ON(!check_signal_order(ce, rq));
+	}
+	list_add(&rq->signal_link, pos);
+	GEM_BUG_ON(!check_signal_order(ce, rq));
+	set_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags);
 
-		set_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags);
-unlock:
+	/*
+	 * Defer enabling the interrupt to after HW submission and recheck
+	 * the request as it may have completed and raised the interrupt as
+	 * we were attaching it into the lists.
+	 */
+	irq_work_queue(&b->irq_work);
+}
+
+bool i915_request_enable_breadcrumb(struct i915_request *rq)
+{
+	struct intel_breadcrumbs *b;
+
+	/* Serialises with i915_request_retire() using rq->lock */
+	if (test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &rq->fence.flags))
+		return true;
+
+	/*
+	 * Peek at i915_request_submit()/i915_request_unsubmit() status.
+	 *
+	 * If the request is not yet active (and not signaled), we will
+	 * attach the breadcrumb later.
+	 */
+	if (!test_bit(I915_FENCE_FLAG_ACTIVE, &rq->fence.flags))
+		return true;
+
+	/*
+	 * rq->engine is locked by rq->engine->active.lock. That however
+	 * is not known until after rq->engine has been dereferenced and
+	 * the lock acquired. Hence we acquire the lock and then validate
+	 * that rq->engine still matches the lock we hold for it.
+	 *
+	 * Here, we are using the breadcrumb lock as a proxy for the
+	 * rq->engine->active.lock, and we know that since the breadcrumb
+	 * will be serialised within i915_request_submit/i915_request_unsubmit,
+	 * the engine cannot change while active as long as we hold the
+	 * breadcrumb lock on that engine.
+	 *
+	 * From the dma_fence_enable_signaling() path, we are outside of the
+	 * request submit/unsubmit path, and so we must be more careful to
+	 * acquire the right lock.
+	 */
+	b = READ_ONCE(rq->engine)->breadcrumbs;
+	spin_lock(&b->irq_lock);
+	while (unlikely(b != READ_ONCE(rq->engine)->breadcrumbs)) {
 		spin_unlock(&b->irq_lock);
+		b = READ_ONCE(rq->engine)->breadcrumbs;
+		spin_lock(&b->irq_lock);
 	}
 
-	return !__request_completed(rq);
+	/*
+	 * Now that we are finally serialised with request submit/unsubmit,
+	 * [with b->irq_lock] and with i915_request_retire() [via checking
+	 * SIGNALED with rq->lock] confirm the request is indeed active. If
+	 * it is no longer active, the breadcrumb will be attached upon
+	 * i915_request_submit().
+	 */
+	if (test_bit(I915_FENCE_FLAG_ACTIVE, &rq->fence.flags))
+		insert_breadcrumb(rq, b);
+
+	spin_unlock(&b->irq_lock);
+
+	return true;
 }
 
 void i915_request_cancel_breadcrumb(struct i915_request *rq)
 {
-	struct intel_breadcrumbs *b = &rq->engine->breadcrumbs;
-
-	lockdep_assert_held(&rq->lock);
+	struct intel_breadcrumbs *b = rq->engine->breadcrumbs;
 
 	/*
 	 * We must wait for b->irq_lock so that we know the interrupt handler
@@ -377,22 +480,18 @@ void i915_request_cancel_breadcrumb(struct i915_request *rq)
 
 		list_del(&rq->signal_link);
 		if (list_empty(&ce->signals))
-			list_del_init(&ce->signal_link);
+			remove_signaling_context(b, ce);
 
 		clear_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags);
+		i915_request_put(rq);
 	}
 	spin_unlock(&b->irq_lock);
 }
 
-void intel_engine_print_breadcrumbs(struct intel_engine_cs *engine,
-				    struct drm_printer *p)
+static void print_signals(struct intel_breadcrumbs *b, struct drm_printer *p)
 {
-	struct intel_breadcrumbs *b = &engine->breadcrumbs;
 	struct intel_context *ce;
 	struct i915_request *rq;
-
-	if (list_empty(&b->signalers))
-		return;
 
 	drm_printf(p, "Signals:\n");
 
@@ -408,4 +507,18 @@ void intel_engine_print_breadcrumbs(struct intel_engine_cs *engine,
 		}
 	}
 	spin_unlock_irq(&b->irq_lock);
+}
+
+void intel_engine_print_breadcrumbs(struct intel_engine_cs *engine,
+				    struct drm_printer *p)
+{
+	struct intel_breadcrumbs *b;
+
+	b = engine->breadcrumbs;
+	if (!b)
+		return;
+
+	drm_printf(p, "IRQ: %s\n", enableddisabled(b->irq_armed));
+	if (!list_empty(&b->signalers))
+		print_signals(b, p);
 }

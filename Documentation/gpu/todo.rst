@@ -157,8 +157,8 @@ private lock. The tricky part is the BO free functions, since those can't
 reliably take that lock any more. Instead state needs to be protected with
 suitable subordinate locks or some cleanup work pushed to a worker thread. For
 performance-critical drivers it might also be better to go with a more
-fine-grained per-buffer object and per-context lockings scheme. Currently only the
-``msm`` driver still use ``struct_mutex``.
+fine-grained per-buffer object and per-context lockings scheme. Currently only
+the ``msm`` and `i915` drivers use ``struct_mutex``.
 
 Contact: Daniel Vetter, respective driver maintainers
 
@@ -305,7 +305,7 @@ acquire context. Replace the boilerplate code surrounding
 drm_modeset_lock_all_ctx() with DRM_MODESET_LOCK_ALL_BEGIN() and
 DRM_MODESET_LOCK_ALL_END() instead.
 
-This should also be done for all places where drm_modest_lock_all() is still
+This should also be done for all places where drm_modeset_lock_all() is still
 used.
 
 As a reference, take a look at the conversions already completed in drm core.
@@ -326,26 +326,6 @@ Contact: Laurent Pinchart, Daniel Vetter
 
 Level: Intermediate (mostly because it is a huge tasks without good partial
 milestones, not technically itself that challenging)
-
-Convert direct mode.vrefresh accesses to use drm_mode_vrefresh()
-----------------------------------------------------------------
-
-drm_display_mode.vrefresh isn't guaranteed to be populated. As such, using it
-is risky and has been known to cause div-by-zero bugs. Fortunately, drm core
-has helper which will use mode.vrefresh if it's !0 and will calculate it from
-the timings when it's 0.
-
-Use simple search/replace, or (more fun) cocci to replace instances of direct
-vrefresh access with a call to the helper. Check out
-https://lists.freedesktop.org/archives/dri-devel/2019-January/205186.html for
-inspiration.
-
-Once all instances of vrefresh have been converted, remove vrefresh from
-drm_display_mode to avoid future use.
-
-Contact: Sean Paul
-
-Level: Starter
 
 connector register/unregister fixes
 -----------------------------------
@@ -391,6 +371,84 @@ drm_display_info.is_hdmi if applicable.
 Contact: Laurent Pinchart, respective driver maintainers
 
 Level: Intermediate
+
+Consolidate custom driver modeset properties
+--------------------------------------------
+
+Before atomic modeset took place, many drivers where creating their own
+properties. Among other things, atomic brought the requirement that custom,
+driver specific properties should not be used.
+
+For this task, we aim to introduce core helpers or reuse the existing ones
+if available:
+
+A quick, unconfirmed, examples list.
+
+Introduce core helpers:
+- audio (amdgpu, intel, gma500, radeon)
+- brightness, contrast, etc (armada, nouveau) - overlay only (?)
+- broadcast rgb (gma500, intel)
+- colorkey (armada, nouveau, rcar) - overlay only (?)
+- dither (amdgpu, nouveau, radeon) - varies across drivers
+- underscan family (amdgpu, radeon, nouveau)
+
+Already in core:
+- colorspace (sti)
+- tv format names, enhancements (gma500, intel)
+- tv overscan, margins, etc. (gma500, intel)
+- zorder (omapdrm) - same as zpos (?)
+
+
+Contact: Emil Velikov, respective driver maintainers
+
+Level: Intermediate
+
+Plumb drm_atomic_state all over
+-------------------------------
+
+Currently various atomic functions take just a single or a handful of
+object states (eg. plane state). While that single object state can
+suffice for some simple cases, we often have to dig out additional
+object states for dealing with various dependencies between the individual
+objects or the hardware they represent. The process of digging out the
+additional states is rather non-intuitive and error prone.
+
+To fix that most functions should rather take the overall
+drm_atomic_state as one of their parameters. The other parameters
+would generally be the object(s) we mainly want to interact with.
+
+For example, instead of
+
+.. code-block:: c
+
+   int (*atomic_check)(struct drm_plane *plane, struct drm_plane_state *state);
+
+we would have something like
+
+.. code-block:: c
+
+   int (*atomic_check)(struct drm_plane *plane, struct drm_atomic_state *state);
+
+The implementation can then trivially gain access to any required object
+state(s) via drm_atomic_get_plane_state(), drm_atomic_get_new_plane_state(),
+drm_atomic_get_old_plane_state(), and their equivalents for
+other object types.
+
+Additionally many drivers currently access the object->state pointer
+directly in their commit functions. That is not going to work if we
+eg. want to allow deeper commit pipelines as those pointers could
+then point to the states corresponding to a future commit instead of
+the current commit we're trying to process. Also non-blocking commits
+execute locklessly so there are serious concerns with dereferencing
+the object->state pointers without holding the locks that protect them.
+Use of drm_atomic_get_new_plane_state(), drm_atomic_get_old_plane_state(),
+etc. avoids these problems as well since they relate to a specific
+commit via the passed in drm_atomic_state.
+
+Contact: Ville Syrjälä, Daniel Vetter
+
+Level: Intermediate
+
 
 Core refactorings
 =================

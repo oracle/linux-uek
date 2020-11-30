@@ -118,6 +118,7 @@ properties:
         items:
           - enum:
               - hoperun,hihope-rzg2m # HopeRun HiHope RZ/G2M platform
+              - beacon,beacon-rzg2m # Beacon EmbeddedWorks RZ/G2M Kit
           - const: renesas,r8a774a1
 
       - items:
@@ -149,6 +150,18 @@ properties:
               - si-linux,cat875 # Silicon Linux sub board for CAT874 (CAT875)
           - const: si-linux,cat874
           - const: renesas,r8a774c0
+
+      - description: RZ/G2H (R8A774E1)
+        items:
+          - enum:
+              - hoperun,hihope-rzg2h # HopeRun HiHope RZ/G2H platform
+          - const: renesas,r8a774e1
+
+      - items:
+          - enum:
+              - hoperun,hihope-rzg2-ex # HopeRun expansion board for HiHope RZ/G2 platforms
+          - const: hoperun,hihope-rzg2h
+          - const: renesas,r8a774e1
 
       - description: R-Car M1A (R8A77781)
         items:
@@ -268,10 +281,24 @@ properties:
               - renesas,draak # Draak (RTP0RC77995SEB0010S)
           - const: renesas,r8a77995
 
+      - description: R-Car V3U (R8A779A0)
+        items:
+          - enum:
+              - renesas,falcon-cpu # Falcon CPU board (RTP0RC779A0CPB0010S)
+          - const: renesas,r8a779a0
+
+      - items:
+          - enum:
+              - renesas,falcon-breakout # Falcon BreakOut board (RTP0RC779A0BOB0010S)
+          - const: renesas,falcon-cpu
+          - const: renesas,r8a779a0
+
       - description: RZ/N1D (R9A06G032)
         items:
           - enum:
               - renesas,rzn1d400-db # RZN1D-DB (RZ/N1D Demo Board for the RZ/N1D 400 pins package)
           - const: renesas,r9a06g032
+
+additionalProperties: true
 
 ...

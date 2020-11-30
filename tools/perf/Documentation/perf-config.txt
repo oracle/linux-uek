@@ -242,6 +242,11 @@ annotate.*::
 	These are in control of addresses, jump function, source code
 	in lines of assembly code from a specific program.
 
+	annotate.disassembler_style:
+		Use this to change the default disassembler style to some other value
+		supported by binutils, such as "intel", see the '-M' option help in the
+		'objdump' man page.
+
 	annotate.hide_src_code::
 		If a program which is analyzed has source code,
 		this option lets 'annotate' print a list of assembly code with the source code.
@@ -614,8 +619,9 @@ trace.*::
 
 ftrace.*::
 	ftrace.tracer::
-		Can be used to select the default tracer. Possible values are
-		'function' and 'function_graph'.
+		Can be used to select the default tracer when neither -G nor
+		-F option is not specified. Possible values are 'function' and
+		'function_graph'.
 
 llvm.*::
 	llvm.clang-path::

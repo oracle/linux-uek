@@ -162,7 +162,7 @@ enum hinic_eqe_state {
 
 struct hinic_aeq_elem {
 	u8      data[HINIC_AEQE_DATA_SIZE];
-	u32     desc;
+	__be32  desc;
 };
 
 struct hinic_eq_work {
@@ -186,6 +186,7 @@ struct hinic_eq {
 	int                     num_elem_in_pg;
 
 	struct msix_entry       msix_entry;
+	char			irq_name[64];
 
 	dma_addr_t              *dma_addr;
 	void                    **virt_addr;
@@ -253,5 +254,9 @@ int hinic_ceqs_init(struct hinic_ceqs *ceqs, struct hinic_hwif *hwif,
 		    struct msix_entry *msix_entries);
 
 void hinic_ceqs_free(struct hinic_ceqs *ceqs);
+
+void hinic_dump_ceq_info(struct hinic_hwdev *hwdev);
+
+void hinic_dump_aeq_info(struct hinic_hwdev *hwdev);
 
 #endif

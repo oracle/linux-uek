@@ -23,7 +23,6 @@
 #include <linux/cpu.h>
 #include <linux/sched/task_stack.h>
 
-#include <asm/mshyperv.h>
 #include <linux/delay.h>
 #include <linux/notifier.h>
 #include <linux/ptrace.h>
@@ -48,6 +47,10 @@ static struct completion probe_event;
 static int hyperv_cpuhp_online;
 
 static void *hv_panic_page;
+
+/* Values parsed from ACPI DSDT */
+static int vmbus_irq;
+int vmbus_interrupt;
 
 /*
  * Boolean to control whether to report panic messages over Hyper-V.
@@ -84,8 +87,12 @@ static int hyperv_panic_event(struct notifier_block *nb, unsigned long val,
 static int hyperv_die_event(struct notifier_block *nb, unsigned long val,
 			    void *args)
 {
-	struct die_args *die = (struct die_args *)args;
+	struct die_args *die = args;
 	struct pt_regs *regs = die->regs;
+
+	/* Don't notify Hyper-V if the die event is other than oops */
+	if (val != DIE_OOPS)
+		return NOTIFY_DONE;
 
 	/*
 	 * Hyper-V should be notified only once about a panic.  If we will be
@@ -227,7 +234,7 @@ static ssize_t numa_node_show(struct device *dev,
 	if (!hv_dev->channel)
 		return -ENODEV;
 
-	return sprintf(buf, "%d\n", hv_dev->channel->numa_node);
+	return sprintf(buf, "%d\n", cpu_to_node(hv_dev->channel->target_cpu));
 }
 static DEVICE_ATTR_RO(numa_node);
 #endif
@@ -508,17 +515,16 @@ static ssize_t channel_vp_mapping_show(struct device *dev,
 {
 	struct hv_device *hv_dev = device_to_hv_device(dev);
 	struct vmbus_channel *channel = hv_dev->channel, *cur_sc;
-	unsigned long flags;
 	int buf_size = PAGE_SIZE, n_written, tot_written;
 	struct list_head *cur;
 
 	if (!channel)
 		return -ENODEV;
 
+	mutex_lock(&vmbus_connection.channel_mutex);
+
 	tot_written = snprintf(buf, buf_size, "%u:%u\n",
 		channel->offermsg.child_relid, channel->target_cpu);
-
-	spin_lock_irqsave(&channel->lock, flags);
 
 	list_for_each(cur, &channel->sc_list) {
 		if (tot_written >= buf_size - 1)
@@ -533,7 +539,7 @@ static ssize_t channel_vp_mapping_show(struct device *dev,
 		tot_written += n_written;
 	}
 
-	spin_unlock_irqrestore(&channel->lock, flags);
+	mutex_unlock(&vmbus_connection.channel_mutex);
 
 	return tot_written;
 }
@@ -1345,7 +1351,7 @@ static void vmbus_isr(void)
 			tasklet_schedule(&hv_cpu->msg_dpc);
 	}
 
-	add_interrupt_randomness(HYPERVISOR_CALLBACK_VECTOR, 0);
+	add_interrupt_randomness(hv_get_vector(), 0);
 }
 
 /*
@@ -1368,7 +1374,7 @@ static void hv_kmsg_dump(struct kmsg_dumper *dumper,
 	 * Write dump contents to the page. No need to synchronize; panic should
 	 * be single-threaded.
 	 */
-	kmsg_dump_get_buffer(dumper, true, hv_panic_page, HV_HYP_PAGE_SIZE,
+	kmsg_dump_get_buffer(dumper, false, hv_panic_page, HV_HYP_PAGE_SIZE,
 			     &bytes_written);
 	if (bytes_written)
 		hyperv_report_panic_msg(panic_pa, bytes_written);
@@ -1428,7 +1434,9 @@ static int vmbus_bus_init(void)
 	if (ret)
 		return ret;
 
-	hv_setup_vmbus_irq(vmbus_isr);
+	ret = hv_setup_vmbus_irq(vmbus_irq, vmbus_isr);
+	if (ret)
+		goto err_setup;
 
 	ret = hv_synic_alloc();
 	if (ret)
@@ -1503,7 +1511,7 @@ err_cpuhp:
 	hv_synic_free();
 err_alloc:
 	hv_remove_vmbus_irq();
-
+err_setup:
 	bus_unregister(&hv_bus);
 	unregister_sysctl_table(hv_ctl_table_hdr);
 	hv_ctl_table_hdr = NULL;
@@ -1717,7 +1725,7 @@ static ssize_t target_cpu_store(struct vmbus_channel *channel,
 	/* No CPUs should come up or down during this. */
 	cpus_read_lock();
 
-	if (!cpumask_test_cpu(target_cpu, cpu_online_mask)) {
+	if (!cpu_online(target_cpu)) {
 		cpus_read_unlock();
 		return -EINVAL;
 	}
@@ -1779,8 +1787,6 @@ static ssize_t target_cpu_store(struct vmbus_channel *channel,
 	 */
 
 	channel->target_cpu = target_cpu;
-	channel->target_vp = hv_cpu_number_to_vp_number(target_cpu);
-	channel->numa_node = cpu_to_node(target_cpu);
 
 	/* See init_vp_index(). */
 	if (hv_is_perf_channel(channel))
@@ -2070,6 +2076,7 @@ static acpi_status vmbus_walk_resources(struct acpi_resource *res, void *ctx)
 	struct resource *new_res;
 	struct resource **old_res = &hyperv_mmio;
 	struct resource **prev_res = NULL;
+	struct resource r;
 
 	switch (res->type) {
 
@@ -2087,6 +2094,23 @@ static acpi_status vmbus_walk_resources(struct acpi_resource *res, void *ctx)
 		start = res->data.address64.address.minimum;
 		end = res->data.address64.address.maximum;
 		break;
+
+	/*
+	 * The IRQ information is needed only on ARM64, which Hyper-V
+	 * sets up in the extended format. IRQ information is present
+	 * on x86/x64 in the non-extended format but it is not used by
+	 * Linux. So don't bother checking for the non-extended format.
+	 */
+	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ:
+		if (!acpi_dev_resource_interrupt(res, 0, &r)) {
+			pr_err("Unable to parse Hyper-V ACPI interrupt\n");
+			return AE_ERROR;
+		}
+		/* ARM64 INTID for VMbus */
+		vmbus_interrupt = res->data.extended_irq.interrupts[0];
+		/* Linux IRQ number */
+		vmbus_irq = r.start;
+		return AE_OK;
 
 	default:
 		/* Unused resource type */
@@ -2347,7 +2371,6 @@ acpi_walk_err:
 static int vmbus_bus_suspend(struct device *dev)
 {
 	struct vmbus_channel *channel, *sc;
-	unsigned long flags;
 
 	while (atomic_read(&vmbus_connection.offer_in_progress) != 0) {
 		/*
@@ -2383,7 +2406,10 @@ static int vmbus_bus_suspend(struct device *dev)
 	if (atomic_read(&vmbus_connection.nr_chan_close_on_suspend) > 0)
 		wait_for_completion(&vmbus_connection.ready_for_suspend_event);
 
-	WARN_ON(atomic_read(&vmbus_connection.nr_chan_fixup_on_resume) != 0);
+	if (atomic_read(&vmbus_connection.nr_chan_fixup_on_resume) != 0) {
+		pr_err("Can not suspend due to a previous failed resuming\n");
+		return -EBUSY;
+	}
 
 	mutex_lock(&vmbus_connection.channel_mutex);
 
@@ -2405,12 +2431,10 @@ static int vmbus_bus_suspend(struct device *dev)
 			continue;
 		}
 
-		spin_lock_irqsave(&channel->lock, flags);
 		list_for_each_entry(sc, &channel->sc_list, sc_list) {
 			pr_err("Sub-channel not deleted!\n");
 			WARN_ON_ONCE(1);
 		}
-		spin_unlock_irqrestore(&channel->lock, flags);
 
 		atomic_inc(&vmbus_connection.nr_chan_fixup_on_resume);
 	}
@@ -2459,7 +2483,9 @@ static int vmbus_bus_resume(struct device *dev)
 
 	vmbus_request_offers();
 
-	wait_for_completion(&vmbus_connection.ready_for_resume_event);
+	if (wait_for_completion_timeout(
+		&vmbus_connection.ready_for_resume_event, 10 * HZ) == 0)
+		pr_err("Some vmbus device is missing after suspending?\n");
 
 	/* Reset the event for the next suspend. */
 	reinit_completion(&vmbus_connection.ready_for_suspend_event);

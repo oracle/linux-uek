@@ -66,8 +66,6 @@
 #define SEC_SQE_AEAD_FLAG	3
 #define SEC_SQE_DONE		0x1
 
-static atomic_t sec_active_devs;
-
 /* Get an en/de-cipher queue cyclically to balance load over queues of TFM */
 static inline int sec_alloc_queue_id(struct sec_ctx *ctx, struct sec_req *req)
 {
@@ -166,6 +164,7 @@ static void sec_req_cb(struct hisi_qp *qp, void *resp)
 	req = qp_ctx->req_list[le16_to_cpu(bd->type2.tag)];
 	if (unlikely(!req)) {
 		atomic64_inc(&dfx->invalid_req_cnt);
+		atomic_inc(&qp->qp_status.used);
 		return;
 	}
 	req->err_type = bd->type2.error_type;
@@ -198,21 +197,30 @@ static int sec_bd_send(struct sec_ctx *ctx, struct sec_req *req)
 	struct sec_qp_ctx *qp_ctx = req->qp_ctx;
 	int ret;
 
+	if (ctx->fake_req_limit <=
+	    atomic_read(&qp_ctx->qp->qp_status.used) &&
+	    !(req->flag & CRYPTO_TFM_REQ_MAY_BACKLOG))
+		return -EBUSY;
+
 	mutex_lock(&qp_ctx->req_lock);
 	ret = hisi_qp_send(qp_ctx->qp, &req->sec_sqe);
+
+	if (ctx->fake_req_limit <=
+	    atomic_read(&qp_ctx->qp->qp_status.used) && !ret) {
+		list_add_tail(&req->backlog_head, &qp_ctx->backlog);
+		atomic64_inc(&ctx->sec->debug.dfx.send_cnt);
+		atomic64_inc(&ctx->sec->debug.dfx.send_busy_cnt);
+		mutex_unlock(&qp_ctx->req_lock);
+		return -EBUSY;
+	}
 	mutex_unlock(&qp_ctx->req_lock);
-	atomic64_inc(&ctx->sec->debug.dfx.send_cnt);
 
 	if (unlikely(ret == -EBUSY))
 		return -ENOBUFS;
 
-	if (!ret) {
-		if (req->fake_busy) {
-			atomic64_inc(&ctx->sec->debug.dfx.send_busy_cnt);
-			ret = -EBUSY;
-		} else {
-			ret = -EINPROGRESS;
-		}
+	if (likely(!ret)) {
+		ret = -EINPROGRESS;
+		atomic64_inc(&ctx->sec->debug.dfx.send_cnt);
 	}
 
 	return ret;
@@ -332,11 +340,14 @@ static int sec_alg_resource_alloc(struct sec_ctx *ctx,
 		ret = sec_alloc_pbuf_resource(dev, res);
 		if (ret) {
 			dev_err(dev, "fail to alloc pbuf dma resource!\n");
-			goto alloc_fail;
+			goto alloc_pbuf_fail;
 		}
 	}
 
 	return 0;
+alloc_pbuf_fail:
+	if (ctx->alg_type == SEC_AEAD)
+		sec_free_mac_resource(dev, qp_ctx->res);
 alloc_fail:
 	sec_free_civ_resource(dev, res);
 
@@ -373,8 +384,8 @@ static int sec_create_qp_ctx(struct hisi_qm *qm, struct sec_ctx *ctx,
 	qp_ctx->ctx = ctx;
 
 	mutex_init(&qp_ctx->req_lock);
-	atomic_set(&qp_ctx->pending_reqs, 0);
 	idr_init(&qp_ctx->req_idr);
+	INIT_LIST_HEAD(&qp_ctx->backlog);
 
 	qp_ctx->c_in_pool = hisi_acc_create_sgl_pool(dev, QM_Q_DEPTH,
 						     SEC_SGL_SGE_NR);
@@ -447,8 +458,10 @@ static int sec_ctx_base_init(struct sec_ctx *ctx)
 	ctx->fake_req_limit = QM_Q_DEPTH >> 1;
 	ctx->qp_ctx = kcalloc(sec->ctx_q_num, sizeof(struct sec_qp_ctx),
 			      GFP_KERNEL);
-	if (!ctx->qp_ctx)
-		return -ENOMEM;
+	if (!ctx->qp_ctx) {
+		ret = -ENOMEM;
+		goto err_destroy_qps;
+	}
 
 	for (i = 0; i < sec->ctx_q_num; i++) {
 		ret = sec_create_qp_ctx(&sec->qm, ctx, i, 0);
@@ -457,12 +470,15 @@ static int sec_ctx_base_init(struct sec_ctx *ctx)
 	}
 
 	return 0;
+
 err_sec_release_qp_ctx:
 	for (i = i - 1; i >= 0; i--)
 		sec_release_qp_ctx(ctx, &ctx->qp_ctx[i]);
 
-	sec_destroy_qps(ctx->qps, sec->ctx_q_num);
 	kfree(ctx->qp_ctx);
+err_destroy_qps:
+	sec_destroy_qps(ctx->qps, sec->ctx_q_num);
+
 	return ret;
 }
 
@@ -1048,21 +1064,49 @@ static void sec_update_iv(struct sec_req *req, enum sec_alg_type alg_type)
 		dev_err(SEC_CTX_DEV(req->ctx), "copy output iv error!\n");
 }
 
+static struct sec_req *sec_back_req_clear(struct sec_ctx *ctx,
+				struct sec_qp_ctx *qp_ctx)
+{
+	struct sec_req *backlog_req = NULL;
+
+	mutex_lock(&qp_ctx->req_lock);
+	if (ctx->fake_req_limit >=
+	    atomic_read(&qp_ctx->qp->qp_status.used) &&
+	    !list_empty(&qp_ctx->backlog)) {
+		backlog_req = list_first_entry(&qp_ctx->backlog,
+				typeof(*backlog_req), backlog_head);
+		list_del(&backlog_req->backlog_head);
+	}
+	mutex_unlock(&qp_ctx->req_lock);
+
+	return backlog_req;
+}
+
 static void sec_skcipher_callback(struct sec_ctx *ctx, struct sec_req *req,
 				  int err)
 {
 	struct skcipher_request *sk_req = req->c_req.sk_req;
 	struct sec_qp_ctx *qp_ctx = req->qp_ctx;
+	struct skcipher_request *backlog_sk_req;
+	struct sec_req *backlog_req;
 
-	atomic_dec(&qp_ctx->pending_reqs);
 	sec_free_req_id(req);
 
 	/* IV output at encrypto of CBC mode */
 	if (!err && ctx->c_ctx.c_mode == SEC_CMODE_CBC && req->c_req.encrypt)
 		sec_update_iv(req, SEC_SKCIPHER);
 
-	if (req->fake_busy)
-		sk_req->base.complete(&sk_req->base, -EINPROGRESS);
+	while (1) {
+		backlog_req = sec_back_req_clear(ctx, qp_ctx);
+		if (!backlog_req)
+			break;
+
+		backlog_sk_req = backlog_req->c_req.sk_req;
+		backlog_sk_req->base.complete(&backlog_sk_req->base,
+						-EINPROGRESS);
+		atomic64_inc(&ctx->sec->debug.dfx.recv_busy_cnt);
+	}
+
 
 	sk_req->base.complete(&sk_req->base, err);
 }
@@ -1133,9 +1177,9 @@ static void sec_aead_callback(struct sec_ctx *c, struct sec_req *req, int err)
 	struct sec_cipher_req *c_req = &req->c_req;
 	size_t authsize = crypto_aead_authsize(tfm);
 	struct sec_qp_ctx *qp_ctx = req->qp_ctx;
+	struct aead_request *backlog_aead_req;
+	struct sec_req *backlog_req;
 	size_t sz;
-
-	atomic_dec(&qp_ctx->pending_reqs);
 
 	if (!err && c->c_ctx.c_mode == SEC_CMODE_CBC && c_req->encrypt)
 		sec_update_iv(req, SEC_AEAD);
@@ -1157,17 +1201,22 @@ static void sec_aead_callback(struct sec_ctx *c, struct sec_req *req, int err)
 
 	sec_free_req_id(req);
 
-	if (req->fake_busy)
-		a_req->base.complete(&a_req->base, -EINPROGRESS);
+	while (1) {
+		backlog_req = sec_back_req_clear(c, qp_ctx);
+		if (!backlog_req)
+			break;
+
+		backlog_aead_req = backlog_req->aead_req.aead_req;
+		backlog_aead_req->base.complete(&backlog_aead_req->base,
+						-EINPROGRESS);
+		atomic64_inc(&c->sec->debug.dfx.recv_busy_cnt);
+	}
 
 	a_req->base.complete(&a_req->base, err);
 }
 
 static void sec_request_uninit(struct sec_ctx *ctx, struct sec_req *req)
 {
-	struct sec_qp_ctx *qp_ctx = req->qp_ctx;
-
-	atomic_dec(&qp_ctx->pending_reqs);
 	sec_free_req_id(req);
 	sec_free_queue_id(ctx, req);
 }
@@ -1186,11 +1235,6 @@ static int sec_request_init(struct sec_ctx *ctx, struct sec_req *req)
 		sec_free_queue_id(ctx, req);
 		return req->req_id;
 	}
-
-	if (ctx->fake_req_limit <= atomic_inc_return(&qp_ctx->pending_reqs))
-		req->fake_busy = true;
-	else
-		req->fake_busy = false;
 
 	return 0;
 }
@@ -1213,7 +1257,8 @@ static int sec_process(struct sec_ctx *ctx, struct sec_req *req)
 		sec_update_iv(req, ctx->alg_type);
 
 	ret = ctx->req_op->bd_send(ctx, req);
-	if (unlikely(ret != -EBUSY && ret != -EINPROGRESS)) {
+	if (unlikely((ret != -EBUSY && ret != -EINPROGRESS) ||
+		(ret == -EBUSY && !(req->flag & CRYPTO_TFM_REQ_MAY_BACKLOG)))) {
 		dev_err_ratelimited(SEC_CTX_DEV(ctx), "send sec request failed!\n");
 		goto err_send_req;
 	}
@@ -1407,6 +1452,7 @@ static int sec_skcipher_crypto(struct skcipher_request *sk_req, bool encrypt)
 	if (!sk_req->cryptlen)
 		return 0;
 
+	req->flag = sk_req->base.flags;
 	req->c_req.sk_req = sk_req;
 	req->c_req.encrypt = encrypt;
 	req->ctx = ctx;
@@ -1435,7 +1481,7 @@ static int sec_skcipher_decrypt(struct skcipher_request *sk_req)
 		.cra_name = sec_cra_name,\
 		.cra_driver_name = "hisi_sec_"sec_cra_name,\
 		.cra_priority = SEC_PRIORITY,\
-		.cra_flags = CRYPTO_ALG_ASYNC,\
+		.cra_flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_ALLOCATES_MEMORY,\
 		.cra_blocksize = blk_size,\
 		.cra_ctxsize = sizeof(struct sec_ctx),\
 		.cra_module = THIS_MODULE,\
@@ -1530,6 +1576,7 @@ static int sec_aead_crypto(struct aead_request *a_req, bool encrypt)
 	struct sec_ctx *ctx = crypto_aead_ctx(tfm);
 	int ret;
 
+	req->flag = a_req->base.flags;
 	req->aead_req.aead_req = a_req;
 	req->c_req.encrypt = encrypt;
 	req->ctx = ctx;
@@ -1558,7 +1605,7 @@ static int sec_aead_decrypt(struct aead_request *a_req)
 		.cra_name = sec_cra_name,\
 		.cra_driver_name = "hisi_sec_"sec_cra_name,\
 		.cra_priority = SEC_PRIORITY,\
-		.cra_flags = CRYPTO_ALG_ASYNC,\
+		.cra_flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_ALLOCATES_MEMORY,\
 		.cra_blocksize = blk_size,\
 		.cra_ctxsize = sizeof(struct sec_ctx),\
 		.cra_module = THIS_MODULE,\
@@ -1592,33 +1639,24 @@ static struct aead_alg sec_aeads[] = {
 
 int sec_register_to_crypto(void)
 {
-	int ret = 0;
+	int ret;
 
 	/* To avoid repeat register */
-	if (atomic_add_return(1, &sec_active_devs) == 1) {
-		ret = crypto_register_skciphers(sec_skciphers,
-						ARRAY_SIZE(sec_skciphers));
-		if (ret)
-			return ret;
+	ret = crypto_register_skciphers(sec_skciphers,
+					ARRAY_SIZE(sec_skciphers));
+	if (ret)
+		return ret;
 
-		ret = crypto_register_aeads(sec_aeads, ARRAY_SIZE(sec_aeads));
-		if (ret)
-			goto reg_aead_fail;
-	}
-
-	return ret;
-
-reg_aead_fail:
-	crypto_unregister_skciphers(sec_skciphers, ARRAY_SIZE(sec_skciphers));
-
+	ret = crypto_register_aeads(sec_aeads, ARRAY_SIZE(sec_aeads));
+	if (ret)
+		crypto_unregister_skciphers(sec_skciphers,
+					    ARRAY_SIZE(sec_skciphers));
 	return ret;
 }
 
 void sec_unregister_from_crypto(void)
 {
-	if (atomic_sub_return(1, &sec_active_devs) == 0) {
-		crypto_unregister_skciphers(sec_skciphers,
-					    ARRAY_SIZE(sec_skciphers));
-		crypto_unregister_aeads(sec_aeads, ARRAY_SIZE(sec_aeads));
-	}
+	crypto_unregister_skciphers(sec_skciphers,
+				    ARRAY_SIZE(sec_skciphers));
+	crypto_unregister_aeads(sec_aeads, ARRAY_SIZE(sec_aeads));
 }

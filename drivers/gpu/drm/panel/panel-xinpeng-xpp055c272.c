@@ -12,7 +12,6 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_print.h>
 
 #include <video/display_timing.h>
 #include <video/mipi_display.h>
@@ -62,9 +61,9 @@ static inline struct xpp055c272 *panel_to_xpp055c272(struct drm_panel *panel)
 }
 
 #define dsi_generic_write_seq(dsi, cmd, seq...) do {			\
-		static const u8 d[] = { seq };				\
+		static const u8 b[] = { cmd, seq };			\
 		int ret;						\
-		ret = mipi_dsi_dcs_write(dsi, cmd, d, ARRAY_SIZE(d));	\
+		ret = mipi_dsi_dcs_write_buffer(dsi, b, ARRAY_SIZE(b));	\
 		if (ret < 0)						\
 			return ret;					\
 	} while (0)
@@ -135,7 +134,7 @@ static int xpp055c272_init_sequence(struct xpp055c272 *ctx)
 
 	msleep(60);
 
-	DRM_DEV_DEBUG_DRIVER(dev, "Panel init sequence done\n");
+	dev_dbg(dev, "Panel init sequence done\n");
 	return 0;
 }
 
@@ -150,13 +149,11 @@ static int xpp055c272_unprepare(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev, "failed to set display off: %d\n",
-			      ret);
+		dev_err(ctx->dev, "failed to set display off: %d\n", ret);
 
 	mipi_dsi_dcs_enter_sleep_mode(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "failed to enter sleep mode: %d\n",
-			      ret);
+		dev_err(ctx->dev, "failed to enter sleep mode: %d\n", ret);
 		return ret;
 	}
 
@@ -177,17 +174,15 @@ static int xpp055c272_prepare(struct drm_panel *panel)
 	if (ctx->prepared)
 		return 0;
 
-	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Resetting the panel\n");
+	dev_dbg(ctx->dev, "Resetting the panel\n");
 	ret = regulator_enable(ctx->vci);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enable vci supply: %d\n", ret);
+		dev_err(ctx->dev, "Failed to enable vci supply: %d\n", ret);
 		return ret;
 	}
 	ret = regulator_enable(ctx->iovcc);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enable iovcc supply: %d\n", ret);
+		dev_err(ctx->dev, "Failed to enable iovcc supply: %d\n", ret);
 		goto disable_vci;
 	}
 
@@ -201,14 +196,13 @@ static int xpp055c272_prepare(struct drm_panel *panel)
 
 	ret = xpp055c272_init_sequence(ctx);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "Panel init sequence failed: %d\n",
-			      ret);
+		dev_err(ctx->dev, "Panel init sequence failed: %d\n", ret);
 		goto disable_iovcc;
 	}
 
 	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
+		dev_err(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
 		goto disable_iovcc;
 	}
 
@@ -217,7 +211,7 @@ static int xpp055c272_prepare(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_set_display_on(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to set display on: %d\n", ret);
+		dev_err(ctx->dev, "Failed to set display on: %d\n", ret);
 		goto disable_iovcc;
 	}
 
@@ -243,7 +237,6 @@ static const struct drm_display_mode default_mode = {
 	.vsync_start	= 1280 + 22,
 	.vsync_end	= 1280 + 22 + 4,
 	.vtotal		= 1280 + 22 + 4 + 11,
-	.vrefresh	= 60,
 	.clock		= 64000,
 	.width_mm	= 68,
 	.height_mm	= 121,
@@ -257,9 +250,9 @@ static int xpp055c272_get_modes(struct drm_panel *panel,
 
 	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to add mode %ux%u@%u\n",
-			      default_mode.hdisplay, default_mode.vdisplay,
-			      default_mode.vrefresh);
+		dev_err(ctx->dev, "Failed to add mode %ux%u@%u\n",
+			default_mode.hdisplay, default_mode.vdisplay,
+			drm_mode_vrefresh(&default_mode));
 		return -ENOMEM;
 	}
 
@@ -291,7 +284,7 @@ static int xpp055c272_probe(struct mipi_dsi_device *dsi)
 
 	ctx->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->reset_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get reset gpio\n");
+		dev_err(dev, "cannot get reset gpio\n");
 		return PTR_ERR(ctx->reset_gpio);
 	}
 
@@ -299,9 +292,7 @@ static int xpp055c272_probe(struct mipi_dsi_device *dsi)
 	if (IS_ERR(ctx->vci)) {
 		ret = PTR_ERR(ctx->vci);
 		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(dev,
-				      "Failed to request vci regulator: %d\n",
-				      ret);
+			dev_err(dev, "Failed to request vci regulator: %d\n", ret);
 		return ret;
 	}
 
@@ -309,9 +300,7 @@ static int xpp055c272_probe(struct mipi_dsi_device *dsi)
 	if (IS_ERR(ctx->iovcc)) {
 		ret = PTR_ERR(ctx->iovcc);
 		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(dev,
-				      "Failed to request iovcc regulator: %d\n",
-				      ret);
+			dev_err(dev, "Failed to request iovcc regulator: %d\n", ret);
 		return ret;
 	}
 
@@ -335,7 +324,7 @@ static int xpp055c272_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "mipi_dsi_attach failed: %d\n", ret);
+		dev_err(dev, "mipi_dsi_attach failed: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
 		return ret;
 	}
@@ -350,13 +339,11 @@ static void xpp055c272_shutdown(struct mipi_dsi_device *dsi)
 
 	ret = drm_panel_unprepare(&ctx->panel);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to unprepare panel: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to unprepare panel: %d\n", ret);
 
 	ret = drm_panel_disable(&ctx->panel);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to disable panel: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to disable panel: %d\n", ret);
 }
 
 static int xpp055c272_remove(struct mipi_dsi_device *dsi)
@@ -368,8 +355,7 @@ static int xpp055c272_remove(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to detach from DSI host: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to detach from DSI host: %d\n", ret);
 
 	drm_panel_remove(&ctx->panel);
 

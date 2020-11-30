@@ -90,6 +90,11 @@ enum iwl_regulatory_and_nvm_subcmd_ids {
 	 * @TAS_CONFIG: &struct iwl_tas_config_cmd
 	 */
 	TAS_CONFIG = 0x3,
+
+	/**
+	 * @PNVM_INIT_COMPLETE_NTFY: &struct iwl_pnvm_init_complete_ntfy
+	 */
+	PNVM_INIT_COMPLETE_NTFY = 0xFE,
 };
 
 /**
@@ -361,7 +366,7 @@ struct iwl_mcc_update_resp_v3 {
 	__le16 time;
 	__le16 geo_info;
 	__le32 n_channels;
-	__le32 channels[0];
+	__le32 channels[];
 } __packed; /* LAR_UPDATE_MCC_CMD_RESP_S_VER_3 */
 
 /**
@@ -390,7 +395,7 @@ struct iwl_mcc_update_resp {
 	u8 source_id;
 	u8 reserved[3];
 	__le32 n_channels;
-	__le32 channels[0];
+	__le32 channels[];
 } __packed; /* LAR_UPDATE_MCC_CMD_RESP_S_VER_4 */
 
 /**
@@ -475,5 +480,13 @@ enum iwl_lari_config_masks {
 struct iwl_lari_config_change_cmd {
 	__le32 config_bitmap;
 } __packed; /* LARI_CHANGE_CONF_CMD_S_VER_1 */
+
+/**
+ * struct iwl_pnvm_init_complete_ntfy - PNVM initialization complete
+ * @status: PNVM image loading status
+ */
+struct iwl_pnvm_init_complete_ntfy {
+	__le32 status;
+} __packed; /* PNVM_INIT_COMPLETE_NTFY_S_VER_1 */
 
 #endif /* __iwl_fw_api_nvm_reg_h__ */

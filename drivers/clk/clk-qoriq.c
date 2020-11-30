@@ -31,7 +31,7 @@
 #define CGA_PLL4	4	/* only on clockgen-1.0, which lacks CGB */
 #define CGB_PLL1	4
 #define CGB_PLL2	5
-#define MAX_PLL_DIV	16
+#define MAX_PLL_DIV	32
 
 struct clockgen_pll_div {
 	struct clk *clk;
@@ -242,6 +242,14 @@ static const struct clockgen_muxinfo clockgen2_cmux_cgb = {
 		{ CLKSEL_VALID, CGB_PLL2, PLL_DIV2 },
 		{ CLKSEL_VALID, CGB_PLL2, PLL_DIV4 },
 	},
+};
+
+static const struct clockgen_muxinfo ls1021a_cmux = {
+	{
+		{ CLKSEL_VALID, CGA_PLL1, PLL_DIV1 },
+		{ CLKSEL_VALID, CGA_PLL1, PLL_DIV2 },
+		{ CLKSEL_VALID, CGA_PLL1, PLL_DIV4 },
+	}
 };
 
 static const struct clockgen_muxinfo ls1028a_hwa1 = {
@@ -577,7 +585,7 @@ static const struct clockgen_chipinfo chipinfo[] = {
 	{
 		.compat = "fsl,ls1021a-clockgen",
 		.cmux_groups = {
-			&t1023_cmux
+			&ls1021a_cmux
 		},
 		.cmux_to_group = {
 			0, -1

@@ -302,7 +302,7 @@
 			mboxes = <&mailbox 1 0 11>;
 		};
 
-		uart0: uart@f8015000 {	/* console */
+		uart0: serial@f8015000 {	/* console */
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0x0 0xf8015000 0x0 0x1000>;
 			interrupts = <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
@@ -311,7 +311,7 @@
 			clock-names = "uartclk", "apb_pclk";
 		};
 
-		uart1: uart@f7111000 {
+		uart1: serial@f7111000 {
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0x0 0xf7111000 0x0 0x1000>;
 			interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
@@ -325,7 +325,7 @@
 			status = "disabled";
 		};
 
-		uart2: uart@f7112000 {
+		uart2: serial@f7112000 {
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0x0 0xf7112000 0x0 0x1000>;
 			interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
@@ -337,7 +337,7 @@
 			status = "disabled";
 		};
 
-		uart3: uart@f7113000 {
+		uart3: serial@f7113000 {
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0x0 0xf7113000 0x0 0x1000>;
 			interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
@@ -349,7 +349,7 @@
 			status = "disabled";
 		};
 
-		uart4: uart@f7114000 {
+		uart4: serial@f7114000 {
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0x0 0xf7114000 0x0 0x1000>;
 			interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
@@ -371,7 +371,7 @@
 			clocks = <&sys_ctrl HI6220_EDMAC_ACLK>;
 			dma-no-cci;
 			dma-type = "hi6220_dma";
-			status = "ok";
+			status = "okay";
 		};
 
 		dual_timer0: timer@f8008000 {
@@ -843,8 +843,9 @@
 			compatible = "arm,sp805-wdt", "arm,primecell";
 			reg = <0x0 0xf8005000 0x0 0x1000>;
 			interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&ao_ctrl HI6220_WDT0_PCLK>;
-			clock-names = "apb_pclk";
+			clocks = <&ao_ctrl HI6220_WDT0_PCLK>,
+				 <&ao_ctrl HI6220_WDT0_PCLK>;
+			clock-names = "wdog_clk", "apb_pclk";
 		};
 
 		tsensor: tsensor@0,f7030700 {

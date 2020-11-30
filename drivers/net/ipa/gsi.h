@@ -150,7 +150,6 @@ struct gsi {
 	struct net_device dummy_dev;	/* needed for NAPI */
 	void __iomem *virt;
 	u32 irq;
-	bool irq_wake_enabled;
 	u32 channel_count;
 	u32 evt_ring_count;
 	struct gsi_channel channel[GSI_CHANNEL_COUNT_MAX];
@@ -167,7 +166,7 @@ struct gsi {
  * @gsi:	Address of GSI structure embedded in an IPA structure
  * @legacy:	Set up for legacy hardware
  *
- * @Return:	0 if successful, or a negative error code
+ * Return:	0 if successful, or a negative error code
  *
  * Performs initialization that must wait until the GSI hardware is
  * ready (including firmware loaded).
@@ -185,7 +184,7 @@ void gsi_teardown(struct gsi *gsi);
  * @gsi:	GSI pointer
  * @channel_id:	Channel whose limit is to be returned
  *
- * @Return:	 The maximum number of TREs oustanding on the channel
+ * Return:	 The maximum number of TREs oustanding on the channel
  */
 u32 gsi_channel_tre_max(struct gsi *gsi, u32 channel_id);
 
@@ -194,7 +193,7 @@ u32 gsi_channel_tre_max(struct gsi *gsi, u32 channel_id);
  * @gsi:	GSI pointer
  * @channel_id:	Channel whose limit is to be returned
  *
- * @Return:	 The maximum TRE count per transaction on the channel
+ * Return:	 The maximum TRE count per transaction on the channel
  */
 u32 gsi_channel_trans_tre_max(struct gsi *gsi, u32 channel_id);
 
@@ -203,7 +202,7 @@ u32 gsi_channel_trans_tre_max(struct gsi *gsi, u32 channel_id);
  * @gsi:	GSI pointer
  * @channel_id:	Channel to start
  *
- * @Return:	0 if successful, or a negative error code
+ * Return:	0 if successful, or a negative error code
  */
 int gsi_channel_start(struct gsi *gsi, u32 channel_id);
 
@@ -212,7 +211,7 @@ int gsi_channel_start(struct gsi *gsi, u32 channel_id);
  * @gsi:	GSI pointer returned by gsi_setup()
  * @channel_id:	Channel to stop
  *
- * @Return:	0 if successful, or a negative error code
+ * Return:	0 if successful, or a negative error code
  */
 int gsi_channel_stop(struct gsi *gsi, u32 channel_id);
 
@@ -238,7 +237,7 @@ int gsi_channel_resume(struct gsi *gsi, u32 channel_id, bool start);
  * @gsi:	Address of GSI structure embedded in an IPA structure
  * @pdev:	IPA platform device
  *
- * @Return:	0 if successful, or a negative error code
+ * Return:	0 if successful, or a negative error code
  *
  * Early stage initialization of the GSI subsystem, performing tasks
  * that can be done before the GSI hardware is ready to use.

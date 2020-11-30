@@ -55,22 +55,18 @@ static int amdgpu_ih_clientid_jpeg[] = {
 static int jpeg_v2_5_early_init(void *handle)
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
-	if (adev->asic_type == CHIP_ARCTURUS) {
-		u32 harvest;
-		int i;
+	u32 harvest;
+	int i;
 
-		adev->jpeg.num_jpeg_inst = JPEG25_MAX_HW_INSTANCES_ARCTURUS;
-		for (i = 0; i < adev->jpeg.num_jpeg_inst; i++) {
-			harvest = RREG32_SOC15(JPEG, i, mmCC_UVD_HARVESTING);
-			if (harvest & CC_UVD_HARVESTING__UVD_DISABLE_MASK)
-				adev->jpeg.harvest_config |= 1 << i;
-		}
-
-		if (adev->jpeg.harvest_config == (AMDGPU_JPEG_HARVEST_JPEG0 |
-						 AMDGPU_JPEG_HARVEST_JPEG1))
-			return -ENOENT;
-	} else
-		adev->jpeg.num_jpeg_inst = 1;
+	adev->jpeg.num_jpeg_inst = JPEG25_MAX_HW_INSTANCES_ARCTURUS;
+	for (i = 0; i < adev->jpeg.num_jpeg_inst; i++) {
+		harvest = RREG32_SOC15(JPEG, i, mmCC_UVD_HARVESTING);
+		if (harvest & CC_UVD_HARVESTING__UVD_DISABLE_MASK)
+			adev->jpeg.harvest_config |= 1 << i;
+	}
+	if (adev->jpeg.harvest_config == (AMDGPU_JPEG_HARVEST_JPEG0 |
+					 AMDGPU_JPEG_HARVEST_JPEG1))
+		return -ENOENT;
 
 	jpeg_v2_5_set_dec_ring_funcs(adev);
 	jpeg_v2_5_set_irq_funcs(adev);
@@ -449,20 +445,20 @@ static bool jpeg_v2_5_is_idle(void *handle)
 static int jpeg_v2_5_wait_for_idle(void *handle)
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
-	int i, ret = 0;
+	int i, ret;
 
 	for (i = 0; i < adev->jpeg.num_jpeg_inst; ++i) {
 		if (adev->jpeg.harvest_config & (1 << i))
 			continue;
 
-		SOC15_WAIT_ON_RREG(JPEG, i, mmUVD_JRBC_STATUS,
+		ret = SOC15_WAIT_ON_RREG(JPEG, i, mmUVD_JRBC_STATUS,
 			UVD_JRBC_STATUS__RB_JOB_DONE_MASK,
-			UVD_JRBC_STATUS__RB_JOB_DONE_MASK, ret);
+			UVD_JRBC_STATUS__RB_JOB_DONE_MASK);
 		if (ret)
 			return ret;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int jpeg_v2_5_set_clockgating_state(void *handle,

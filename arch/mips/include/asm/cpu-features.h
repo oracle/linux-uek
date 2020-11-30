@@ -171,9 +171,6 @@
 #ifndef cpu_has_llsc
 #define cpu_has_llsc		__isa_ge_or_opt(1, MIPS_CPU_LLSC)
 #endif
-#ifndef cpu_has_bp_ghist
-#define cpu_has_bp_ghist	__opt(MIPS_CPU_BP_GHIST)
-#endif
 #ifndef kernel_uses_llsc
 #define kernel_uses_llsc	cpu_has_llsc
 #endif
@@ -566,6 +563,14 @@
 
 #ifndef cpu_has_mac2008_only
 # define cpu_has_mac2008_only	__opt(MIPS_CPU_MAC_2008_ONLY)
+#endif
+
+#ifndef cpu_has_ftlbparex
+# define cpu_has_ftlbparex	__opt(MIPS_CPU_FTLBPAREX)
+#endif
+
+#ifndef cpu_has_gsexcex
+# define cpu_has_gsexcex	__opt(MIPS_CPU_GSEXCEX)
 #endif
 
 #ifdef CONFIG_SMP

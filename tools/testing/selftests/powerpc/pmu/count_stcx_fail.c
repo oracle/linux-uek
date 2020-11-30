@@ -104,6 +104,9 @@ static int test_body(void)
 	struct event events[3];
 	u64 overhead;
 
+	// The STCX_FAIL event we use works on Power8 or later
+	SKIP_IF(!have_hwcap2(PPC_FEATURE2_ARCH_2_07));
+
 	setup_event(&events[0], PERF_COUNT_HW_INSTRUCTIONS, PERF_TYPE_HARDWARE, "instructions");
 	setup_event(&events[1], PERF_COUNT_HW_CPU_CYCLES, PERF_TYPE_HARDWARE, "cycles");
 	setup_event(&events[2], PM_STCX_FAIL, PERF_TYPE_RAW, "stcx_fail");

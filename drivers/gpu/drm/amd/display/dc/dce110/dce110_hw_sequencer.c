@@ -720,6 +720,7 @@ void dce110_edp_wait_for_hpd_ready(
 	struct dc_context *ctx = link->ctx;
 	struct graphics_object_id connector = link->link_enc->connector;
 	struct gpio *hpd;
+	struct dc_sink *sink = link->local_sink;
 	bool edp_hpd_high = false;
 	uint32_t time_elapsed = 0;
 	uint32_t timeout = power_up ?
@@ -750,6 +751,14 @@ void dce110_edp_wait_for_hpd_ready(
 	if (!hpd) {
 		BREAK_TO_DEBUGGER();
 		return;
+	}
+
+	if (sink != NULL) {
+		if (sink->edid_caps.panel_patch.extra_t3_ms > 0) {
+			int extra_t3_in_ms = sink->edid_caps.panel_patch.extra_t3_ms;
+
+			msleep(extra_t3_in_ms);
+		}
 	}
 
 	dal_gpio_open(hpd, GPIO_MODE_INTERRUPT);
@@ -801,37 +810,66 @@ void dce110_edp_power_control(
 
 	if (power_up !=
 		link->panel_cntl->funcs->is_panel_powered_on(link->panel_cntl)) {
+
+		unsigned long long current_ts = dm_get_timestamp(ctx);
+		unsigned long long time_since_edp_poweroff_ms =
+				div64_u64(dm_get_elapse_time_in_ns(
+						ctx,
+						current_ts,
+						link->link_trace.time_stamp.edp_poweroff), 1000000);
+		unsigned long long time_since_edp_poweron_ms =
+				div64_u64(dm_get_elapse_time_in_ns(
+						ctx,
+						current_ts,
+						link->link_trace.time_stamp.edp_poweron), 1000000);
+		DC_LOG_HW_RESUME_S3(
+				"%s: transition: power_up=%d current_ts=%llu edp_poweroff=%llu edp_poweron=%llu time_since_edp_poweroff_ms=%llu time_since_edp_poweron_ms=%llu",
+				__func__,
+				power_up,
+				current_ts,
+				link->link_trace.time_stamp.edp_poweroff,
+				link->link_trace.time_stamp.edp_poweron,
+				time_since_edp_poweroff_ms,
+				time_since_edp_poweron_ms);
+
 		/* Send VBIOS command to prompt eDP panel power */
 		if (power_up) {
-			unsigned long long current_ts = dm_get_timestamp(ctx);
-			unsigned long long duration_in_ms =
-					div64_u64(dm_get_elapse_time_in_ns(
-							ctx,
-							current_ts,
-							link->link_trace.time_stamp.edp_poweroff), 1000000);
-			unsigned long long wait_time_ms = 0;
+			/* edp requires a min of 500ms from LCDVDD off to on */
+			unsigned long long remaining_min_edp_poweroff_time_ms = 500;
 
-			/* max 500ms from LCDVDD off to on */
-			unsigned long long edp_poweroff_time_ms = 500;
-
+			/* add time defined by a patch, if any (usually patch extra_t12_ms is 0) */
 			if (link->local_sink != NULL)
-				edp_poweroff_time_ms =
-						500 + link->local_sink->edid_caps.panel_patch.extra_t12_ms;
-			if (link->link_trace.time_stamp.edp_poweroff == 0)
-				wait_time_ms = edp_poweroff_time_ms;
-			else if (duration_in_ms < edp_poweroff_time_ms)
-				wait_time_ms = edp_poweroff_time_ms - duration_in_ms;
+				remaining_min_edp_poweroff_time_ms +=
+					link->local_sink->edid_caps.panel_patch.extra_t12_ms;
 
-			if (wait_time_ms) {
-				msleep(wait_time_ms);
-				dm_output_to_console("%s: wait %lld ms to power on eDP.\n",
-						__func__, wait_time_ms);
+			/* Adjust remaining_min_edp_poweroff_time_ms if this is not the first time. */
+			if (link->link_trace.time_stamp.edp_poweroff != 0) {
+				if (time_since_edp_poweroff_ms < remaining_min_edp_poweroff_time_ms)
+					remaining_min_edp_poweroff_time_ms =
+						remaining_min_edp_poweroff_time_ms - time_since_edp_poweroff_ms;
+				else
+					remaining_min_edp_poweroff_time_ms = 0;
 			}
 
+			if (remaining_min_edp_poweroff_time_ms) {
+				DC_LOG_HW_RESUME_S3(
+						"%s: remaining_min_edp_poweroff_time_ms=%llu: begin wait.\n",
+						__func__, remaining_min_edp_poweroff_time_ms);
+				msleep(remaining_min_edp_poweroff_time_ms);
+				DC_LOG_HW_RESUME_S3(
+						"%s: remaining_min_edp_poweroff_time_ms=%llu: end wait.\n",
+						__func__, remaining_min_edp_poweroff_time_ms);
+				dm_output_to_console("%s: wait %lld ms to power on eDP.\n",
+						__func__, remaining_min_edp_poweroff_time_ms);
+			} else {
+				DC_LOG_HW_RESUME_S3(
+						"%s: remaining_min_edp_poweroff_time_ms=%llu: no wait required.\n",
+						__func__, remaining_min_edp_poweroff_time_ms);
+			}
 		}
 
 		DC_LOG_HW_RESUME_S3(
-				"%s: Panel Power action: %s\n",
+				"%s: BEGIN: Panel Power action: %s\n",
 				__func__, (power_up ? "On":"Off"));
 
 		cntl.action = power_up ?
@@ -842,13 +880,35 @@ void dce110_edp_power_control(
 		cntl.coherent = false;
 		cntl.lanes_number = LANE_COUNT_FOUR;
 		cntl.hpd_sel = link->link_enc->hpd_source;
+
+		if (ctx->dc->ctx->dmub_srv &&
+				ctx->dc->debug.dmub_command_table) {
+			if (cntl.action == TRANSMITTER_CONTROL_POWER_ON)
+				bp_result = ctx->dc_bios->funcs->enable_lvtma_control(ctx->dc_bios,
+						LVTMA_CONTROL_POWER_ON);
+			else
+				bp_result = ctx->dc_bios->funcs->enable_lvtma_control(ctx->dc_bios,
+						LVTMA_CONTROL_POWER_OFF);
+		}
+
 		bp_result = link_transmitter_control(ctx->dc_bios, &cntl);
+
+		DC_LOG_HW_RESUME_S3(
+				"%s: END: Panel Power action: %s bp_result=%u\n",
+				__func__, (power_up ? "On":"Off"),
+				bp_result);
 
 		if (!power_up)
 			/*save driver power off time stamp*/
 			link->link_trace.time_stamp.edp_poweroff = dm_get_timestamp(ctx);
 		else
 			link->link_trace.time_stamp.edp_poweron = dm_get_timestamp(ctx);
+
+		DC_LOG_HW_RESUME_S3(
+				"%s: updated values: edp_poweroff=%llu edp_poweron=%llu\n",
+				__func__,
+				link->link_trace.time_stamp.edp_poweroff,
+				link->link_trace.time_stamp.edp_poweron);
 
 		if (bp_result != BP_RESULT_OK)
 			DC_LOG_ERROR(
@@ -919,7 +979,20 @@ void dce110_edp_backlight_control(
 		/*edp 1.2*/
 	if (cntl.action == TRANSMITTER_CONTROL_BACKLIGHT_ON)
 		edp_receiver_ready_T7(link);
+
+	if (ctx->dc->ctx->dmub_srv &&
+			ctx->dc->debug.dmub_command_table) {
+		if (cntl.action == TRANSMITTER_CONTROL_BACKLIGHT_ON)
+			ctx->dc_bios->funcs->enable_lvtma_control(ctx->dc_bios,
+					LVTMA_CONTROL_LCD_BLON);
+		else
+			ctx->dc_bios->funcs->enable_lvtma_control(ctx->dc_bios,
+					LVTMA_CONTROL_LCD_BLOFF);
+	}
+
 	link_transmitter_control(ctx->dc_bios, &cntl);
+
+
 
 	if (enable && link->dpcd_sink_ext_caps.bits.oled)
 		msleep(OLED_POST_T7_DELAY);
@@ -1069,8 +1142,17 @@ void dce110_blank_stream(struct pipe_ctx *pipe_ctx)
 		link->dc->hwss.set_abm_immediate_disable(pipe_ctx);
 	}
 
-	if (dc_is_dp_signal(pipe_ctx->stream->signal))
+	if (dc_is_dp_signal(pipe_ctx->stream->signal)) {
 		pipe_ctx->stream_res.stream_enc->funcs->dp_blank(pipe_ctx->stream_res.stream_enc);
+
+		/*
+		 * After output is idle pattern some sinks need time to recognize the stream
+		 * has changed or they enter protection state and hang.
+		 */
+		if (!dc_is_embedded_signal(pipe_ctx->stream->signal))
+			msleep(60);
+	}
+
 }
 
 
@@ -1148,7 +1230,7 @@ static void build_audio_output(
 			pipe_ctx->stream_res.pix_clk_params.requested_pix_clk_100hz;
 
 /*for HDMI, audio ACR is with deep color ratio factor*/
-	if (dc_is_hdmi_signal(pipe_ctx->stream->signal) &&
+	if (dc_is_hdmi_tmds_signal(pipe_ctx->stream->signal) &&
 		audio_output->crtc_info.requested_pixel_clock_100Hz ==
 				(stream->timing.pix_clk_100hz)) {
 		if (pipe_ctx->stream_res.pix_clk_params.pixel_encoding == PIXEL_ENCODING_YCBCR420) {
@@ -1443,6 +1525,8 @@ static void power_down_encoders(struct dc *dc)
 
 		dc->links[i]->link_enc->funcs->disable_output(
 				dc->links[i]->link_enc, signal);
+
+		dc->links[i]->link_status.link_active = false;
 	}
 }
 
@@ -1570,7 +1654,7 @@ void dce110_enable_accelerated_mode(struct dc *dc, struct dc_state *context)
 		// enable fastboot if backend is enabled on eDP
 		if (edp_link->link_enc->funcs->is_dig_enabled(edp_link->link_enc)) {
 			/* Set optimization flag on eDP stream*/
-			if (edp_stream) {
+			if (edp_stream && edp_link->link_status.link_active) {
 				edp_stream->apply_edp_fast_boot_optimization = true;
 				can_apply_edp_fast_boot = true;
 			}
@@ -1961,10 +2045,8 @@ static void dce110_setup_audio_dto(
 
 		if (pipe_ctx->top_pipe)
 			continue;
-
 		if (pipe_ctx->stream->signal != SIGNAL_TYPE_HDMI_TYPE_A)
 			continue;
-
 		if (pipe_ctx->stream_res.audio != NULL) {
 			struct audio_output audio_output;
 
@@ -2655,7 +2737,7 @@ static void program_output_csc(struct dc *dc,
 	}
 }
 
-void dce110_set_cursor_position(struct pipe_ctx *pipe_ctx)
+static void dce110_set_cursor_position(struct pipe_ctx *pipe_ctx)
 {
 	struct dc_cursor_position pos_cpy = pipe_ctx->stream->cursor_position;
 	struct input_pixel_processor *ipp = pipe_ctx->plane_res.ipp;
@@ -2700,7 +2782,7 @@ void dce110_set_cursor_position(struct pipe_ctx *pipe_ctx)
 		mi->funcs->set_cursor_position(mi, &pos_cpy, &param);
 }
 
-void dce110_set_cursor_attribute(struct pipe_ctx *pipe_ctx)
+static void dce110_set_cursor_attribute(struct pipe_ctx *pipe_ctx)
 {
 	struct dc_cursor_attributes *attributes = &pipe_ctx->stream->cursor_attributes;
 
@@ -2767,6 +2849,16 @@ void dce110_set_abm_immediate_disable(struct pipe_ctx *pipe_ctx)
 		panel_cntl->funcs->store_backlight_level(panel_cntl);
 }
 
+void dce110_set_pipe(struct pipe_ctx *pipe_ctx)
+{
+	struct abm *abm = pipe_ctx->stream_res.abm;
+	struct panel_cntl *panel_cntl = pipe_ctx->stream->link->panel_cntl;
+	uint32_t otg_inst = pipe_ctx->stream_res.tg->inst + 1;
+
+	if (abm && panel_cntl)
+		abm->funcs->set_pipe(abm, otg_inst, panel_cntl->inst);
+}
+
 static const struct hw_sequencer_funcs dce110_funcs = {
 	.program_gamut_remap = program_gamut_remap,
 	.program_output_csc = program_output_csc,
@@ -2798,12 +2890,14 @@ static const struct hw_sequencer_funcs dce110_funcs = {
 	.setup_stereo = NULL,
 	.set_avmute = dce110_set_avmute,
 	.wait_for_mpcc_disconnect = dce110_wait_for_mpcc_disconnect,
+	.edp_backlight_control = dce110_edp_backlight_control,
 	.edp_power_control = dce110_edp_power_control,
 	.edp_wait_for_hpd_ready = dce110_edp_wait_for_hpd_ready,
 	.set_cursor_position = dce110_set_cursor_position,
 	.set_cursor_attribute = dce110_set_cursor_attribute,
 	.set_backlight_level = dce110_set_backlight_level,
 	.set_abm_immediate_disable = dce110_set_abm_immediate_disable,
+	.set_pipe = dce110_set_pipe,
 };
 
 static const struct hwseq_private_funcs dce110_private_funcs = {

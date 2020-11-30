@@ -75,7 +75,7 @@ static int __igt_client_fill(struct intel_engine_cs *engine)
 		if (err)
 			goto err_unpin;
 
-		i915_gem_object_lock(obj);
+		i915_gem_object_lock(obj, NULL);
 		err = i915_gem_object_set_to_cpu_domain(obj, false);
 		i915_gem_object_unlock(obj);
 		if (err)
@@ -700,9 +700,6 @@ int i915_gem_client_blt_live_selftests(struct drm_i915_private *i915)
 	};
 
 	if (intel_gt_is_wedged(&i915->gt))
-		return 0;
-
-	if (!HAS_ENGINE(i915, BCS0))
 		return 0;
 
 	return i915_live_subtests(tests, i915);

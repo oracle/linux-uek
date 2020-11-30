@@ -24,6 +24,32 @@
 		stdout-path = &serial2;
 	};
 
+	i2c-gpio-0 {
+		compatible = "i2c-gpio";
+		sda-gpios = <&gpio2 14 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
+		scl-gpios = <&gpio2 13 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&i2c_gpio_0_default>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		touchkey@20 {
+			compatible = "coreriver,tc360-touchkey";
+			reg = <0x20>;
+			vdd-supply = <&ab8500_ldo_aux4_reg>;
+			vcc-supply = <&ab8500_ldo_aux6_reg>;
+
+			interrupt-parent = <&gpio2>;
+			interrupts = <15 IRQ_TYPE_EDGE_FALLING>;
+
+			pinctrl-names = "default";
+			pinctrl-0 = <&touchkey_default>;
+			linux,keycodes = <KEY_MENU KEY_BACK>;
+		};
+	};
+
 	i2c-gpio-1 {
 		compatible = "i2c-gpio";
 		sda-gpios = <&gpio4 24 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
@@ -290,6 +316,28 @@
 				};
 			};
 		};
+
+		mcde@a0350000 {
+			status = "okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&dsi_default_mode>;
+
+			dsi-controller@a0351000 {
+				panel@0 {
+					compatible = "samsung,s6e63m0";
+					reg = <0>;
+					vdd3-supply = <&panel_reg_3v0>;
+					vci-supply = <&panel_reg_1v8>;
+					reset-gpios = <&gpio4 11 GPIO_ACTIVE_LOW>;
+					/* ESD (electrostatic discharge) detection interrupt */
+					interrupt-parent = <&gpio2>;
+					interrupts = <18 IRQ_TYPE_EDGE_RISING>;
+					interrupt-names = "esd";
+					pinctrl-names = "default";
+					pinctrl-0 = <&display_default_mode>;
+				};
+			};
+		};
 	};
 
 	gpio-keys {
@@ -389,6 +437,40 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&wlan_en_default>;
 	};
+
+	/* MIC5366 GPIO-controlled regulator */
+	panel_reg_1v8: regulator-panel-1v8 {
+		compatible = "regulator-fixed";
+
+		regulator-name = "panel-fixed-supply";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		/* GPIO219 */
+		gpio = <&gpio6 27 GPIO_ACTIVE_HIGH>;
+
+		startup-delay-us = <200>;
+		enable-active-high;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&panel_reg_default_mode>;
+	};
+
+	/* MIC5366 GPIO-controlled regulator */
+	panel_reg_3v0: regulator-panel-3v0 {
+		compatible = "regulator-fixed";
+
+		regulator-name = "panel-fixed-supply";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		/* GPIO219 */
+		gpio = <&gpio6 27 GPIO_ACTIVE_HIGH>;
+
+		startup-delay-us = <200>;
+		enable-active-high;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&panel_reg_default_mode>;
+	};
 };
 
 &pinctrl {
@@ -403,11 +485,30 @@
 		};
 	};
 
+	i2c-gpio-0 {
+		i2c_gpio_0_default: i2c_gpio_0 {
+			golden_cfg1 {
+				pins = "GPIO77",	/* TOUCHKEY_SCL */
+				       "GPIO78";	/* TOUCHKEY_SDA */
+				ste,config = <&gpio_in_nopull>;
+			};
+		};
+	};
+
 	i2c-gpio-1 {
 		i2c_gpio_1_default: i2c_gpio_1 {
 			golden_cfg1 {
 				pins = "GPIO151",	/* COMP_SCL */
 				       "GPIO152";	/* COMP_SDA */
+				ste,config = <&gpio_in_nopull>;
+			};
+		};
+	};
+
+	touchkey {
+		touchkey_default: touchkey_default {
+			golden_cfg1 {
+				pins = "GPIO79";	/* TOUCHKEY_INT */
 				ste,config = <&gpio_in_nopull>;
 			};
 		};
@@ -427,6 +528,41 @@
 			golden_cfg1 {
 				pins = "GPIO223_AH9";	/* MEM_LDO_EN */
 				ste,config = <&gpio_out_hi>;
+			};
+		};
+	};
+
+	mcde {
+		dsi_default_mode: dsi_default {
+			default_mux1 {
+				/* Mux in VSI0 used for DSI TE */
+				function = "lcd";
+				groups =
+				"lcdvsi0_a_1"; /* VSI0 for LCD */
+			};
+			default_cfg1 {
+				pins =
+				"GPIO68_E1"; /* VSI0 */
+				ste,config = <&in_nopull>;
+			};
+		};
+	};
+
+	display {
+		display_default_mode: display_default {
+			golden_cfg1 {
+				pins = "GPIO139_C9"; /* MIPI_DSI0_RESET_N */
+				ste,config = <&gpio_out_lo>;
+			};
+			golden_cfg2 {
+				pins = "GPIO82_C1"; /* LDI_ESD_DET */
+				ste,config = <&gpio_in_pu>;
+			};
+		};
+		panel_reg_default_mode: panel_reg_default {
+			golden_cfg1 {
+				pins = "GPIO219_AG10"; /* LCD_PWR_EN */
+				ste,config = <&gpio_out_lo>;
 			};
 		};
 	};

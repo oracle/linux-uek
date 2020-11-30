@@ -520,10 +520,8 @@
 
 &pfc {
 	avb_pins: avb {
-		mux {
-			groups = "avb_link", "avb_mii";
-			function = "avb";
-		};
+		groups = "avb_link", "avb_mii";
+		function = "avb";
 	};
 
 	canfd0_pins: canfd0 {
@@ -715,6 +713,7 @@
 	mmc-hs400-1_8v;
 	bus-width = <8>;
 	non-removable;
+	full-pwr-cycle-in-suspend;
 	status = "okay";
 };
 

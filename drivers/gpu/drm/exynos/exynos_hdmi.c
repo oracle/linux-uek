@@ -921,7 +921,8 @@ static int hdmi_mode_valid(struct drm_connector *connector,
 
 	DRM_DEV_DEBUG_KMS(hdata->dev,
 			  "xres=%d, yres=%d, refresh=%d, intl=%d clock=%d\n",
-			  mode->hdisplay, mode->vdisplay, mode->vrefresh,
+			  mode->hdisplay, mode->vdisplay,
+			  drm_mode_vrefresh(mode),
 			  (mode->flags & DRM_MODE_FLAG_INTERLACE) ? true :
 			  false, mode->clock * 1000);
 
@@ -1020,7 +1021,7 @@ static bool hdmi_mode_fixup(struct drm_encoder *encoder,
 			DRM_DEV_DEBUG_KMS(dev->dev,
 					  "Adjusted Mode: [%d]x[%d] [%d]Hz\n",
 					  m->hdisplay, m->vdisplay,
-					  m->vrefresh);
+					  drm_mode_vrefresh(m));
 
 			drm_mode_copy(adjusted_mode, m);
 			break;
@@ -1604,7 +1605,8 @@ static int hdmi_audio_hw_params(struct device *dev, void *data,
 	return 0;
 }
 
-static int hdmi_audio_digital_mute(struct device *dev, void *data, bool mute)
+static int hdmi_audio_mute(struct device *dev, void *data,
+			   bool mute, int direction)
 {
 	struct hdmi_context *hdata = dev_get_drvdata(dev);
 
@@ -1634,8 +1636,9 @@ static int hdmi_audio_get_eld(struct device *dev, void *data, uint8_t *buf,
 static const struct hdmi_codec_ops audio_codec_ops = {
 	.hw_params = hdmi_audio_hw_params,
 	.audio_shutdown = hdmi_audio_shutdown,
-	.digital_mute = hdmi_audio_digital_mute,
+	.mute_stream = hdmi_audio_mute,
 	.get_eld = hdmi_audio_get_eld,
+	.no_capture_mute = 1,
 };
 
 static int hdmi_register_audio_device(struct hdmi_context *hdata)
@@ -1794,11 +1797,8 @@ static int hdmi_resources_init(struct hdmi_context *hdata)
 		hdata->regul_bulk[i].supply = supply[i];
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(supply), hdata->regul_bulk);
-	if (ret) {
-		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(dev, "failed to get regulators\n");
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(dev, ret, "failed to get regulators\n");
 
 	hdata->reg_hdmi_en = devm_regulator_get_optional(dev, "hdmi-en");
 

@@ -103,6 +103,10 @@ unsigned int mlx5e_stats_total_num(struct mlx5e_priv *priv);
 void mlx5e_stats_update(struct mlx5e_priv *priv);
 void mlx5e_stats_fill(struct mlx5e_priv *priv, u64 *data, int idx);
 void mlx5e_stats_fill_strings(struct mlx5e_priv *priv, u8 *data);
+void mlx5e_stats_update_ndo_stats(struct mlx5e_priv *priv);
+
+void mlx5e_stats_pause_get(struct mlx5e_priv *priv,
+			   struct ethtool_pause_stats *pause_stats);
 
 /* Concrete NIC Stats */
 
@@ -117,8 +121,11 @@ struct mlx5e_sw_stats {
 	u64 tx_tso_inner_bytes;
 	u64 tx_added_vlan_packets;
 	u64 tx_nop;
+	u64 tx_mpwqe_blks;
+	u64 tx_mpwqe_pkts;
 	u64 rx_lro_packets;
 	u64 rx_lro_bytes;
+	u64 rx_mcast_packets;
 	u64 rx_ecn_mark;
 	u64 rx_removed_vlan_packets;
 	u64 rx_csum_unnecessary;
@@ -186,6 +193,18 @@ struct mlx5e_sw_stats {
 	u64 tx_tls_skip_no_sync_data;
 	u64 tx_tls_drop_no_sync_data;
 	u64 tx_tls_drop_bypass_req;
+
+	u64 rx_tls_decrypted_packets;
+	u64 rx_tls_decrypted_bytes;
+	u64 rx_tls_ctx;
+	u64 rx_tls_del;
+	u64 rx_tls_resync_req_pkt;
+	u64 rx_tls_resync_req_start;
+	u64 rx_tls_resync_req_end;
+	u64 rx_tls_resync_req_skip;
+	u64 rx_tls_resync_res_ok;
+	u64 rx_tls_resync_res_skip;
+	u64 rx_tls_err;
 #endif
 
 	u64 rx_xsk_packets;
@@ -286,6 +305,7 @@ struct mlx5e_rq_stats {
 	u64 csum_none;
 	u64 lro_packets;
 	u64 lro_bytes;
+	u64 mcast_packets;
 	u64 ecn_mark;
 	u64 removed_vlan_packets;
 	u64 xdp_drop;
@@ -305,6 +325,19 @@ struct mlx5e_rq_stats {
 	u64 congst_umr;
 	u64 arfs_err;
 	u64 recover;
+#ifdef CONFIG_MLX5_EN_TLS
+	u64 tls_decrypted_packets;
+	u64 tls_decrypted_bytes;
+	u64 tls_ctx;
+	u64 tls_del;
+	u64 tls_resync_req_pkt;
+	u64 tls_resync_req_start;
+	u64 tls_resync_req_end;
+	u64 tls_resync_req_skip;
+	u64 tls_resync_res_ok;
+	u64 tls_resync_res_skip;
+	u64 tls_err;
+#endif
 };
 
 struct mlx5e_sq_stats {
@@ -320,6 +353,8 @@ struct mlx5e_sq_stats {
 	u64 csum_partial_inner;
 	u64 added_vlan_packets;
 	u64 nop;
+	u64 mpwqe_blks;
+	u64 mpwqe_pkts;
 #ifdef CONFIG_MLX5_EN_TLS
 	u64 tls_encrypted_packets;
 	u64 tls_encrypted_bytes;

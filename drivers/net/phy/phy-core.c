@@ -6,9 +6,14 @@
 #include <linux/phy.h>
 #include <linux/of.h>
 
+/**
+ * phy_speed_to_str - Return a string representing the PHY link speed
+ *
+ * @speed: Speed of the link
+ */
 const char *phy_speed_to_str(int speed)
 {
-	BUILD_BUG_ON_MSG(__ETHTOOL_LINK_MODE_MASK_NBITS != 75,
+	BUILD_BUG_ON_MSG(__ETHTOOL_LINK_MODE_MASK_NBITS != 92,
 		"Enum ethtool_link_mode_bit_indices and phylib are out of sync. "
 		"If a speed or mode has been added please update phy_speed_to_str "
 		"and the PHY settings array.\n");
@@ -52,6 +57,11 @@ const char *phy_speed_to_str(int speed)
 }
 EXPORT_SYMBOL_GPL(phy_speed_to_str);
 
+/**
+ * phy_duplex_to_str - Return string describing the duplex
+ *
+ * @duplex: Duplex setting to describe
+ */
 const char *phy_duplex_to_str(unsigned int duplex)
 {
 	if (duplex == DUPLEX_HALF)
@@ -78,12 +88,22 @@ static const struct phy_setting settings[] = {
 	PHY_SETTING( 400000, FULL, 400000baseLR8_ER8_FR8_Full	),
 	PHY_SETTING( 400000, FULL, 400000baseDR8_Full		),
 	PHY_SETTING( 400000, FULL, 400000baseSR8_Full		),
+	PHY_SETTING( 400000, FULL, 400000baseCR4_Full		),
+	PHY_SETTING( 400000, FULL, 400000baseKR4_Full		),
+	PHY_SETTING( 400000, FULL, 400000baseLR4_ER4_FR4_Full	),
+	PHY_SETTING( 400000, FULL, 400000baseDR4_Full		),
+	PHY_SETTING( 400000, FULL, 400000baseSR4_Full		),
 	/* 200G */
 	PHY_SETTING( 200000, FULL, 200000baseCR4_Full		),
 	PHY_SETTING( 200000, FULL, 200000baseKR4_Full		),
 	PHY_SETTING( 200000, FULL, 200000baseLR4_ER4_FR4_Full	),
 	PHY_SETTING( 200000, FULL, 200000baseDR4_Full		),
 	PHY_SETTING( 200000, FULL, 200000baseSR4_Full		),
+	PHY_SETTING( 200000, FULL, 200000baseCR2_Full		),
+	PHY_SETTING( 200000, FULL, 200000baseKR2_Full		),
+	PHY_SETTING( 200000, FULL, 200000baseLR2_ER2_FR2_Full	),
+	PHY_SETTING( 200000, FULL, 200000baseDR2_Full		),
+	PHY_SETTING( 200000, FULL, 200000baseSR2_Full		),
 	/* 100G */
 	PHY_SETTING( 100000, FULL, 100000baseCR4_Full		),
 	PHY_SETTING( 100000, FULL, 100000baseKR4_Full		),
@@ -94,6 +114,11 @@ static const struct phy_setting settings[] = {
 	PHY_SETTING( 100000, FULL, 100000baseLR2_ER2_FR2_Full	),
 	PHY_SETTING( 100000, FULL, 100000baseDR2_Full		),
 	PHY_SETTING( 100000, FULL, 100000baseSR2_Full		),
+	PHY_SETTING( 100000, FULL, 100000baseCR_Full		),
+	PHY_SETTING( 100000, FULL, 100000baseKR_Full		),
+	PHY_SETTING( 100000, FULL, 100000baseLR_ER_FR_Full	),
+	PHY_SETTING( 100000, FULL, 100000baseDR_Full		),
+	PHY_SETTING( 100000, FULL, 100000baseSR_Full		),
 	/* 56G */
 	PHY_SETTING(  56000, FULL,  56000baseCR4_Full	  	),
 	PHY_SETTING(  56000, FULL,  56000baseKR4_Full	  	),
@@ -145,6 +170,8 @@ static const struct phy_setting settings[] = {
 	PHY_SETTING(    100, FULL,    100baseT_Full		),
 	PHY_SETTING(    100, FULL,    100baseT1_Full		),
 	PHY_SETTING(    100, HALF,    100baseT_Half		),
+	PHY_SETTING(    100, HALF,    100baseFX_Half		),
+	PHY_SETTING(    100, FULL,    100baseFX_Full		),
 	/* 10M */
 	PHY_SETTING(     10, FULL,     10baseT_Full		),
 	PHY_SETTING(     10, HALF,     10baseT_Half		),
@@ -235,6 +262,16 @@ static int __set_phy_supported(struct phy_device *phydev, u32 max_speed)
 	return __set_linkmode_max_speed(max_speed, phydev->supported);
 }
 
+/**
+ * phy_set_max_speed - Set the maximum speed the PHY should support
+ *
+ * @phydev: The phy_device struct
+ * @max_speed: Maximum speed
+ *
+ * The PHY might be more capable than the MAC. For example a Fast Ethernet
+ * is connected to a 1G PHY. This function allows the MAC to indicate its
+ * maximum speed, and so limit what the PHY will advertise.
+ */
 int phy_set_max_speed(struct phy_device *phydev, u32 max_speed)
 {
 	int err;
@@ -291,6 +328,16 @@ void of_set_phy_eee_broken(struct phy_device *phydev)
 	phydev->eee_broken_modes = broken;
 }
 
+/**
+ * phy_resolve_aneg_pause - Determine pause autoneg results
+ *
+ * @phydev: The phy_device struct
+ *
+ * Once autoneg has completed the local pause settings can be
+ * resolved.  Determine if pause and asymmetric pause should be used
+ * by the MAC.
+ */
+
 void phy_resolve_aneg_pause(struct phy_device *phydev)
 {
 	if (phydev->duplex == DUPLEX_FULL) {
@@ -304,7 +351,7 @@ void phy_resolve_aneg_pause(struct phy_device *phydev)
 EXPORT_SYMBOL_GPL(phy_resolve_aneg_pause);
 
 /**
- * phy_resolve_aneg_linkmode - resolve the advertisements into phy settings
+ * phy_resolve_aneg_linkmode - resolve the advertisements into PHY settings
  * @phydev: The phy_device struct
  *
  * Resolve our and the link partner advertisements into their corresponding

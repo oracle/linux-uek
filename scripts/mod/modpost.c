@@ -138,11 +138,20 @@ char *read_text_file(const char *filename)
 
 char *get_line(char **stringp)
 {
+	char *orig = *stringp, *next;
+
 	/* do not return the unwanted extra line at EOF */
-	if (*stringp && **stringp == '\0')
+	if (!orig || *orig == '\0')
 		return NULL;
 
-	return strsep(stringp, "\n");
+	/* don't use strsep here, it is not available everywhere */
+	next = strchr(orig, '\n');
+	if (next)
+		*next++ = '\0';
+
+	*stringp = next;
+
+	return orig;
 }
 
 /* A list of all modules we processed */
@@ -2245,7 +2254,7 @@ static void add_header(struct buffer *b, struct module *mod)
 	buf_printf(b, "MODULE_INFO(name, KBUILD_MODNAME);\n");
 	buf_printf(b, "\n");
 	buf_printf(b, "__visible struct module __this_module\n");
-	buf_printf(b, "__section(.gnu.linkonce.this_module) = {\n");
+	buf_printf(b, "__section(\".gnu.linkonce.this_module\") = {\n");
 	buf_printf(b, "\t.name = KBUILD_MODNAME,\n");
 	if (mod->has_init)
 		buf_printf(b, "\t.init = init_module,\n");
@@ -2299,7 +2308,7 @@ static int add_versions(struct buffer *b, struct module *mod)
 
 	buf_printf(b, "\n");
 	buf_printf(b, "static const struct modversion_info ____versions[]\n");
-	buf_printf(b, "__used __section(__versions) = {\n");
+	buf_printf(b, "__used __section(\"__versions\") = {\n");
 
 	for (s = mod->unres; s; s = s->next) {
 		if (!s->module)

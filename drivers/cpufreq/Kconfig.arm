@@ -41,6 +41,7 @@ config ARM_ARMADA_37XX_CPUFREQ
 config ARM_ARMADA_8K_CPUFREQ
 	tristate "Armada 8K CPUFreq driver"
 	depends on ARCH_MVEBU && CPUFREQ_DT
+	select ARMADA_AP_CPU_CLK
 	help
 	  This enables the CPUFreq driver support for Marvell
 	  Armada8k SOCs.
@@ -93,6 +94,7 @@ config ARM_IMX6Q_CPUFREQ
 	tristate "Freescale i.MX6 cpufreq support"
 	depends on ARCH_MXC
 	depends on REGULATOR_ANATOP
+	select NVMEM_IMX_OCOTP
 	select PM_OPP
 	help
 	  This adds cpufreq driver support for Freescale i.MX6 series SoCs.
@@ -194,7 +196,6 @@ config ARM_S3C24XX_CPUFREQ_DEBUGFS
 config ARM_S3C2410_CPUFREQ
 	bool
 	depends on ARM_S3C24XX_CPUFREQ && CPU_S3C2410
-	select S3C2410_CPUFREQ_UTILS
 	help
 	  CPU Frequency scaling support for S3C2410
 
@@ -231,7 +232,6 @@ config ARM_S3C2416_CPUFREQ_VCORESCALE
 config ARM_S3C2440_CPUFREQ
 	bool "S3C2440/S3C2442 CPU Frequency scaling support"
 	depends on ARM_S3C24XX_CPUFREQ && (CPU_S3C2440 || CPU_S3C2442)
-	select S3C2410_CPUFREQ_UTILS
 	default y
 	help
 	  CPU Frequency scaling support for S3C2440 and S3C2442 SoC CPUs.
@@ -281,7 +281,7 @@ config ARM_SPEAR_CPUFREQ
 
 config ARM_STI_CPUFREQ
 	tristate "STi CPUFreq support"
-	depends on SOC_STIH407
+	depends on CPUFREQ_DT && SOC_STIH407
 	help
 	  This driver uses the generic OPP framework to match the running
 	  platform with a predefined set of suitable values.  If not provided
@@ -313,6 +313,13 @@ config ARM_TEGRA186_CPUFREQ
 	depends on ARCH_TEGRA && TEGRA_BPMP
 	help
 	  This adds the CPUFreq driver support for Tegra186 SOCs.
+
+config ARM_TEGRA194_CPUFREQ
+	tristate "Tegra194 CPUFreq support"
+	depends on ARCH_TEGRA_194_SOC && TEGRA_BPMP
+	default y
+	help
+	  This adds CPU frequency driver support for Tegra194 SOCs.
 
 config ARM_TI_CPUFREQ
 	bool "Texas Instruments CPUFreq support"

@@ -148,9 +148,9 @@ static inline bool hv_reenlightenment_available(void)
 	 * Check for required features and priviliges to make TSC frequency
 	 * change notifications work.
 	 */
-	return ms_hyperv.features & HV_X64_ACCESS_FREQUENCY_MSRS &&
+	return ms_hyperv.features & HV_ACCESS_FREQUENCY_MSRS &&
 		ms_hyperv.misc_features & HV_FEATURE_FREQUENCY_MSRS_AVAILABLE &&
-		ms_hyperv.features & HV_X64_ACCESS_REENLIGHTENMENT;
+		ms_hyperv.features & HV_ACCESS_REENLIGHTENMENT;
 }
 
 DEFINE_IDTENTRY_SYSVEC(sysvec_hyperv_reenlightenment)
@@ -330,8 +330,8 @@ void __init hyperv_init(void)
 		return;
 
 	/* Absolutely required MSRs */
-	required_msrs = HV_X64_MSR_HYPERCALL_AVAILABLE |
-		HV_X64_MSR_VP_INDEX_AVAILABLE;
+	required_msrs = HV_MSR_HYPERCALL_AVAILABLE |
+		HV_MSR_VP_INDEX_AVAILABLE;
 
 	if ((ms_hyperv.features & required_msrs) != required_msrs)
 		return;
@@ -375,7 +375,10 @@ void __init hyperv_init(void)
 	guest_id = generate_guest_id(0, LINUX_VERSION_CODE, 0);
 	wrmsrl(HV_X64_MSR_GUEST_OS_ID, guest_id);
 
-	hv_hypercall_pg = vmalloc_exec(PAGE_SIZE);
+	hv_hypercall_pg = __vmalloc_node_range(PAGE_SIZE, 1, VMALLOC_START,
+			VMALLOC_END, GFP_KERNEL, PAGE_KERNEL_ROX,
+			VM_FLUSH_RESET_PERMS, NUMA_NO_NODE,
+			__builtin_return_address(0));
 	if (hv_hypercall_pg == NULL) {
 		wrmsrl(HV_X64_MSR_GUEST_OS_ID, 0);
 		goto remove_cpuhp_state;

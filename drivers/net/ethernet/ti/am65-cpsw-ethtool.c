@@ -445,7 +445,7 @@ static int am65_cpsw_set_channels(struct net_device *ndev,
 	/* Check if interface is up. Can change the num queues when
 	 * the interface is down.
 	 */
-	if (netif_running(ndev))
+	if (common->usage_count)
 		return -EBUSY;
 
 	am65_cpsw_nuss_remove_tx_chns(common);
@@ -572,13 +572,14 @@ static int am65_cpsw_nway_reset(struct net_device *ndev)
 static int am65_cpsw_get_regs_len(struct net_device *ndev)
 {
 	struct am65_cpsw_common *common = am65_ndev_to_common(ndev);
-	u32 i, regdump_len = 0;
+	u32 ale_entries, i, regdump_len = 0;
 
+	ale_entries = cpsw_ale_get_num_entries(common->ale);
 	for (i = 0; i < ARRAY_SIZE(am65_cpsw_regdump); i++) {
 		if (am65_cpsw_regdump[i].hdr.module_id ==
 		    AM65_CPSW_REGDUMP_MOD_CPSW_ALE_TBL) {
 			regdump_len += sizeof(struct am65_cpsw_regdump_hdr);
-			regdump_len += common->ale->params.ale_entries *
+			regdump_len += ale_entries *
 				       ALE_ENTRY_WORDS * sizeof(u32);
 			continue;
 		}
@@ -592,10 +593,11 @@ static void am65_cpsw_get_regs(struct net_device *ndev,
 			       struct ethtool_regs *regs, void *p)
 {
 	struct am65_cpsw_common *common = am65_ndev_to_common(ndev);
-	u32 i, j, pos, *reg = p;
+	u32 ale_entries, i, j, pos, *reg = p;
 
 	/* update CPSW IP version */
 	regs->version = AM65_CPSW_REGDUMP_VER;
+	ale_entries = cpsw_ale_get_num_entries(common->ale);
 
 	pos = 0;
 	for (i = 0; i < ARRAY_SIZE(am65_cpsw_regdump); i++) {
@@ -603,7 +605,7 @@ static void am65_cpsw_get_regs(struct net_device *ndev,
 
 		if (am65_cpsw_regdump[i].hdr.module_id ==
 		    AM65_CPSW_REGDUMP_MOD_CPSW_ALE_TBL) {
-			u32 ale_tbl_len = common->ale->params.ale_entries *
+			u32 ale_tbl_len = ale_entries *
 					  ALE_ENTRY_WORDS * sizeof(u32) +
 					  sizeof(struct am65_cpsw_regdump_hdr);
 			reg[pos++] = ale_tbl_len;
@@ -734,6 +736,9 @@ static int am65_cpsw_set_ethtool_priv_flags(struct net_device *ndev, u32 flags)
 
 	rrobin = !!(flags & AM65_CPSW_PRIV_P0_RX_PTYPE_RROBIN);
 
+	if (common->usage_count)
+		return -EBUSY;
+
 	if (common->est_enabled && rrobin) {
 		netdev_err(ndev,
 			   "p0-rx-ptype-rrobin flag conflicts with QOS\n");
@@ -741,7 +746,6 @@ static int am65_cpsw_set_ethtool_priv_flags(struct net_device *ndev, u32 flags)
 	}
 
 	common->pf_p0_rx_ptype_rrobin = rrobin;
-	am65_cpsw_nuss_set_p0_ptype(common);
 
 	return 0;
 }

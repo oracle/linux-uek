@@ -21,9 +21,9 @@
  *
  */
 
-#ifndef __AMDGPU_PRODINFO_H__
-#define __AMDGPU_PRODINFO_H__
+#ifndef __AMDGPU_FRU_EEPROM_H__
+#define __AMDGPU_FRU_EEPROM_H__
 
 int amdgpu_fru_get_product_info(struct amdgpu_device *adev);
 
-#endif  // __AMDGPU_PRODINFO_H__
+#endif  // __AMDGPU_FRU_EEPROM_H__

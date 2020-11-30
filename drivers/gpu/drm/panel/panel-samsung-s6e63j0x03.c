@@ -19,7 +19,6 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_print.h>
 
 #define MCS_LEVEL2_KEY		0xf0
 #define MCS_MTP_KEY		0xf1
@@ -52,7 +51,6 @@ static const struct drm_display_mode default_mode = {
 	.vsync_start = 320 + 150,
 	.vsync_end = 320 + 150 + 1,
 	.vtotal = 320 + 150 + 1 + 2,
-	.vrefresh = 30,
 	.flags = 0,
 };
 
@@ -407,9 +405,9 @@ static int s6e63j0x03_get_modes(struct drm_panel *panel,
 
 	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
-		DRM_ERROR("failed to add mode %ux%ux@%u\n",
+		dev_err(panel->dev, "failed to add mode %ux%u@%u\n",
 			default_mode.hdisplay, default_mode.vdisplay,
-			default_mode.vrefresh);
+			drm_mode_vrefresh(&default_mode));
 		return -ENOMEM;
 	}
 
@@ -480,9 +478,7 @@ static int s6e63j0x03_probe(struct mipi_dsi_device *dsi)
 	ctx->bl_dev->props.brightness = DEFAULT_BRIGHTNESS;
 	ctx->bl_dev->props.power = FB_BLANK_POWERDOWN;
 
-	ret = drm_panel_add(&ctx->panel);
-	if (ret < 0)
-		goto unregister_backlight;
+	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
@@ -492,8 +488,6 @@ static int s6e63j0x03_probe(struct mipi_dsi_device *dsi)
 
 remove_panel:
 	drm_panel_remove(&ctx->panel);
-
-unregister_backlight:
 	backlight_device_unregister(ctx->bl_dev);
 
 	return ret;

@@ -1,11 +1,5 @@
-.. Permission is granted to copy, distribute and/or modify this
-.. document under the terms of the GNU Free Documentation License,
-.. Version 1.1 or any later version published by the Free Software
-.. Foundation, with no Invariant Sections, no Front-Cover Texts
-.. and no Back-Cover Texts. A copy of the license is included at
-.. Documentation/userspace-api/media/fdl-appendix.rst.
-..
-.. TODO: replace it to GFDL-1.1-or-later WITH no-invariant-sections
+.. SPDX-License-Identifier: GFDL-1.1-no-invariants-or-later
+.. c:namespace:: V4L
 
 .. _buffer:
 
@@ -23,8 +17,8 @@ argument to the :ref:`VIDIOC_QUERYBUF`,
 :ref:`VIDIOC_QBUF <VIDIOC_QBUF>` and
 :ref:`VIDIOC_DQBUF <VIDIOC_QBUF>` ioctl. In the multi-planar API,
 some plane-specific members of struct :c:type:`v4l2_buffer`,
-such as pointers and sizes for each plane, are stored in struct
-struct :c:type:`v4l2_plane` instead. In that case, struct
+such as pointers and sizes for each plane, are stored in
+struct :c:type:`v4l2_plane` instead. In that case,
 struct :c:type:`v4l2_buffer` contains an array of plane structures.
 
 Dequeued video buffers come with timestamps. The driver decides at which
@@ -39,7 +33,6 @@ stream. Changes in these flags may take place as a side effect of
 mem-to-mem devices is an exception to the rule: the timestamp source
 flags are copied from the OUTPUT video buffer to the CAPTURE video
 buffer.
-
 
 Interactions between formats, controls and buffers
 ==================================================
@@ -159,7 +152,6 @@ based on the queried sizes (for instance by allocating a set of buffers large
 enough for all the desired formats and controls, or by allocating separate set
 of appropriately sized buffers for each use case).
 
-
 .. c:type:: v4l2_buffer
 
 struct v4l2_buffer
@@ -264,7 +256,7 @@ struct v4l2_buffer
 	``V4L2_MEMORY_MMAP`` this is the offset of the buffer from the
 	start of the device memory. The value is returned by the driver
 	and apart of serving as parameter to the
-	:ref:`mmap() <func-mmap>` function not useful for applications.
+	:c:func:`mmap()` function not useful for applications.
 	See :ref:`mmap` for details
     * - unsigned long
       - ``userptr``
@@ -317,7 +309,6 @@ struct v4l2_buffer
 	given, then ``EINVAL`` will be returned.
 
 
-
 .. c:type:: v4l2_plane
 
 struct v4l2_plane
@@ -357,7 +348,7 @@ struct v4l2_plane
       - ``mem_offset``
       - When the memory type in the containing struct
 	:c:type:`v4l2_buffer` is ``V4L2_MEMORY_MMAP``, this
-	is the value that should be passed to :ref:`mmap() <func-mmap>`,
+	is the value that should be passed to :c:func:`mmap()`,
 	similar to the ``offset`` field in struct
 	:c:type:`v4l2_buffer`.
     * - unsigned long
@@ -389,7 +380,6 @@ struct v4l2_plane
       - ``reserved[11]``
       - Reserved for future use. Should be zeroed by drivers and
 	applications.
-
 
 
 .. c:type:: v4l2_buf_type
@@ -453,7 +443,6 @@ enum v4l2_buf_type
     * - ``V4L2_BUF_TYPE_META_OUTPUT``
       - 14
       - Buffer for metadata output, see :ref:`metadata`.
-
 
 
 .. _buffer-flags:
@@ -577,7 +566,10 @@ Buffer Flags
 	applications shall use this flag if the data captured in the
 	buffer is not going to be touched by the CPU, instead the buffer
 	will, probably, be passed on to a DMA-capable hardware unit for
-	further processing or output.
+	further processing or output. This flag is ignored unless the
+	queue is used for :ref:`memory mapping <mmap>` streaming I/O and
+	reports :ref:`V4L2_BUF_CAP_SUPPORTS_MMAP_CACHE_HINTS
+	<V4L2-BUF-CAP-SUPPORTS-MMAP-CACHE-HINTS>` capability.
     * .. _`V4L2-BUF-FLAG-NO-CACHE-CLEAN`:
 
       - ``V4L2_BUF_FLAG_NO_CACHE_CLEAN``
@@ -585,7 +577,10 @@ Buffer Flags
       - Caches do not have to be cleaned for this buffer. Typically
 	applications shall use this flag for output buffers if the data in
 	this buffer has not been created by the CPU but by some
-	DMA-capable unit, in which case caches have not been used.
+	DMA-capable unit, in which case caches have not been used. This flag
+	is ignored unless the queue is used for :ref:`memory mapping <mmap>`
+	streaming I/O and reports :ref:`V4L2_BUF_CAP_SUPPORTS_MMAP_CACHE_HINTS
+	<V4L2-BUF-CAP-SUPPORTS-MMAP-CACHE-HINTS>` capability.
     * .. _`V4L2-BUF-FLAG-M2M-HOLD-CAPTURE-BUF`:
 
       - ``V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF``
@@ -681,8 +676,7 @@ Buffer Flags
 
     \normalsize
 
-
-.. c:type:: v4l2_memory
+.. _memory-flags:
 
 enum v4l2_memory
 ================
@@ -708,7 +702,6 @@ enum v4l2_memory
       - The buffer is used for :ref:`DMA shared buffer <dmabuf>` I/O.
 
 
-
 Timecodes
 =========
 
@@ -716,7 +709,6 @@ The :c:type:`v4l2_buffer_timecode` structure is designed to hold a
 :ref:`smpte12m` or similar timecode.
 (struct :c:type:`timeval` timestamps are stored in the struct
 :c:type:`v4l2_buffer` ``timestamp`` field.)
-
 
 .. c:type:: v4l2_timecode
 
@@ -754,7 +746,6 @@ struct v4l2_timecode
       - The "user group" bits from the timecode.
 
 
-
 .. _timecode-type:
 
 Timecode Types
@@ -782,7 +773,6 @@ Timecode Types
     * - ``V4L2_TC_TYPE_60FPS``
       - 5
       -
-
 
 
 .. _timecode-flags:

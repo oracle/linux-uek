@@ -32,6 +32,8 @@ void *mlxsw_core_driver_priv(struct mlxsw_core *mlxsw_core);
 
 bool mlxsw_core_res_query_enabled(const struct mlxsw_core *mlxsw_core);
 
+bool mlxsw_core_temp_warn_enabled(const struct mlxsw_core *mlxsw_core);
+
 bool
 mlxsw_core_fw_rev_minor_subminor_validate(const struct mlxsw_fw_rev *rev,
 					  const struct mlxsw_fw_rev *req_rev);
@@ -61,6 +63,7 @@ void mlxsw_core_ptp_transmitted(struct mlxsw_core *mlxsw_core,
 struct mlxsw_rx_listener {
 	void (*func)(struct sk_buff *skb, u8 local_port, void *priv);
 	u8 local_port;
+	u8 mirror_reason;
 	u16 trap_id;
 };
 
@@ -88,13 +91,15 @@ struct mlxsw_listener {
 };
 
 #define __MLXSW_RXL(_func, _trap_id, _en_action, _is_ctrl, _en_trap_group,	\
-		    _dis_action, _enabled_on_register, _dis_trap_group)		\
+		    _dis_action, _enabled_on_register, _dis_trap_group,		\
+		    _mirror_reason)						\
 	{									\
 		.trap_id = MLXSW_TRAP_ID_##_trap_id,				\
 		.rx_listener =							\
 		{								\
 			.func = _func,						\
 			.local_port = MLXSW_PORT_DONT_CARE,			\
+			.mirror_reason = _mirror_reason,			\
 			.trap_id = MLXSW_TRAP_ID_##_trap_id,			\
 		},								\
 		.en_action = MLXSW_REG_HPKT_ACTION_##_en_action,		\
@@ -108,12 +113,17 @@ struct mlxsw_listener {
 #define MLXSW_RXL(_func, _trap_id, _en_action, _is_ctrl, _trap_group,		\
 		  _dis_action)							\
 	__MLXSW_RXL(_func, _trap_id, _en_action, _is_ctrl, _trap_group,		\
-		    _dis_action, true, _trap_group)
+		    _dis_action, true, _trap_group, 0)
 
 #define MLXSW_RXL_DIS(_func, _trap_id, _en_action, _is_ctrl, _en_trap_group,	\
 		      _dis_action, _dis_trap_group)				\
 	__MLXSW_RXL(_func, _trap_id, _en_action, _is_ctrl, _en_trap_group,	\
-		    _dis_action, false, _dis_trap_group)
+		    _dis_action, false, _dis_trap_group, 0)
+
+#define MLXSW_RXL_MIRROR(_func, _session_id, _trap_group, _mirror_reason)	\
+	__MLXSW_RXL(_func, MIRROR_SESSION##_session_id,	TRAP_TO_CPU, false,	\
+		    _trap_group, TRAP_TO_CPU, true, _trap_group,		\
+		    _mirror_reason)
 
 #define MLXSW_EVENTL(_func, _trap_id, _trap_group)				\
 	{									\
@@ -176,6 +186,7 @@ struct mlxsw_rx_info {
 		u16 lag_id;
 	} u;
 	u8 lag_port_index;
+	u8 mirror_reason;
 	int trap_id;
 };
 
@@ -191,8 +202,8 @@ void mlxsw_core_lag_mapping_clear(struct mlxsw_core *mlxsw_core,
 
 void *mlxsw_core_port_driver_priv(struct mlxsw_core_port *mlxsw_core_port);
 int mlxsw_core_port_init(struct mlxsw_core *mlxsw_core, u8 local_port,
-			 u32 port_number, bool split,
-			 u32 split_port_subnumber,
+			 u32 port_number, bool split, u32 split_port_subnumber,
+			 bool splittable, u32 lanes,
 			 const unsigned char *switch_id,
 			 unsigned char switch_id_len);
 void mlxsw_core_port_fini(struct mlxsw_core *mlxsw_core, u8 local_port);
@@ -212,6 +223,8 @@ enum devlink_port_type mlxsw_core_port_type_get(struct mlxsw_core *mlxsw_core,
 struct devlink_port *
 mlxsw_core_port_devlink_port_get(struct mlxsw_core *mlxsw_core,
 				 u8 local_port);
+struct mlxsw_env *mlxsw_core_env(const struct mlxsw_core *mlxsw_core);
+bool mlxsw_core_is_initialized(const struct mlxsw_core *mlxsw_core);
 int mlxsw_core_module_max_width(struct mlxsw_core *mlxsw_core, u8 module);
 
 int mlxsw_core_schedule_dw(struct delayed_work *dwork, unsigned long delay);
@@ -271,6 +284,8 @@ struct mlxsw_driver {
 	struct list_head list;
 	const char *kind;
 	size_t priv_size;
+	const struct mlxsw_fw_rev *fw_req_rev;
+	const char *fw_filename;
 	int (*init)(struct mlxsw_core *mlxsw_core,
 		    const struct mlxsw_bus_info *mlxsw_bus_info,
 		    struct netlink_ext_ack *extack);
@@ -315,21 +330,20 @@ struct mlxsw_driver {
 				       unsigned int sb_index, u16 tc_index,
 				       enum devlink_sb_pool_type pool_type,
 				       u32 *p_cur, u32 *p_max);
-	int (*flash_update)(struct mlxsw_core *mlxsw_core,
-			    const char *file_name, const char *component,
-			    struct netlink_ext_ack *extack);
 	int (*trap_init)(struct mlxsw_core *mlxsw_core,
 			 const struct devlink_trap *trap, void *trap_ctx);
 	void (*trap_fini)(struct mlxsw_core *mlxsw_core,
 			  const struct devlink_trap *trap, void *trap_ctx);
 	int (*trap_action_set)(struct mlxsw_core *mlxsw_core,
 			       const struct devlink_trap *trap,
-			       enum devlink_trap_action action);
+			       enum devlink_trap_action action,
+			       struct netlink_ext_ack *extack);
 	int (*trap_group_init)(struct mlxsw_core *mlxsw_core,
 			       const struct devlink_trap_group *group);
 	int (*trap_group_set)(struct mlxsw_core *mlxsw_core,
 			      const struct devlink_trap_group *group,
-			      const struct devlink_trap_policer *policer);
+			      const struct devlink_trap_policer *policer,
+			      struct netlink_ext_ack *extack);
 	int (*trap_policer_init)(struct mlxsw_core *mlxsw_core,
 				 const struct devlink_trap_policer *policer);
 	void (*trap_policer_fini)(struct mlxsw_core *mlxsw_core,
@@ -360,15 +374,14 @@ struct mlxsw_driver {
 	u8 txhdr_len;
 	const struct mlxsw_config_profile *profile;
 	bool res_query_enabled;
+	bool fw_fatal_enabled;
+	bool temp_warn_enabled;
 };
 
 int mlxsw_core_kvd_sizes_get(struct mlxsw_core *mlxsw_core,
 			     const struct mlxsw_config_profile *profile,
 			     u64 *p_single_size, u64 *p_double_size,
 			     u64 *p_linear_size);
-
-void mlxsw_core_fw_flash_start(struct mlxsw_core *mlxsw_core);
-void mlxsw_core_fw_flash_end(struct mlxsw_core *mlxsw_core);
 
 u32 mlxsw_core_read_frc_h(struct mlxsw_core *mlxsw_core);
 u32 mlxsw_core_read_frc_l(struct mlxsw_core *mlxsw_core);

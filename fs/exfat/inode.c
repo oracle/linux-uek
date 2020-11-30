@@ -39,7 +39,7 @@ static int __exfat_write_inode(struct inode *inode, int sync)
 	if (is_dir && ei->dir.dir == sbi->root_dir && ei->entry == -1)
 		return 0;
 
-	exfat_set_vol_flags(sb, VOL_DIRTY);
+	exfat_set_volume_dirty(sb);
 
 	/* get the directory entry of given file or directory */
 	es = exfat_get_dentry_set(sb, &(ei->dir), ei->entry, ES_ALL_ENTRIES);
@@ -77,8 +77,7 @@ static int __exfat_write_inode(struct inode *inode, int sync)
 	ep2->dentry.stream.size = ep2->dentry.stream.valid_size;
 
 	exfat_update_dir_chksum_with_entry_set(es);
-	exfat_free_dentry_set(es, sync);
-	return 0;
+	return exfat_free_dentry_set(es, sync);
 }
 
 int exfat_write_inode(struct inode *inode, struct writeback_control *wbc)
@@ -114,8 +113,6 @@ static int exfat_map_cluster(struct inode *inode, unsigned int clu_offset,
 	struct exfat_inode_info *ei = EXFAT_I(inode);
 	unsigned int local_clu_offset = clu_offset;
 	unsigned int num_to_be_allocated = 0, num_clusters = 0;
-
-	ei->rwoffset = EXFAT_CLU_TO_B(clu_offset, sbi);
 
 	if (EXFAT_I(inode)->i_size_ondisk > 0)
 		num_clusters =
@@ -168,7 +165,7 @@ static int exfat_map_cluster(struct inode *inode, unsigned int clu_offset,
 	}
 
 	if (*clu == EXFAT_EOF_CLUSTER) {
-		exfat_set_vol_flags(sb, VOL_DIRTY);
+		exfat_set_volume_dirty(sb);
 
 		new_clu.dir = (last_clu == EXFAT_EOF_CLUSTER) ?
 				EXFAT_EOF_CLUSTER : last_clu + 1;
@@ -222,6 +219,7 @@ static int exfat_map_cluster(struct inode *inode, unsigned int clu_offset,
 		if (ei->dir.dir != DIR_DELETED && modified) {
 			struct exfat_dentry *ep;
 			struct exfat_entry_set_cache *es;
+			int err;
 
 			es = exfat_get_dentry_set(sb, &(ei->dir), ei->entry,
 				ES_ALL_ENTRIES);
@@ -240,8 +238,9 @@ static int exfat_map_cluster(struct inode *inode, unsigned int clu_offset,
 				ep->dentry.stream.valid_size;
 
 			exfat_update_dir_chksum_with_entry_set(es);
-			exfat_free_dentry_set(es, inode_needs_sync(inode));
-
+			err = exfat_free_dentry_set(es, inode_needs_sync(inode));
+			if (err)
+				return err;
 		} /* end of if != DIR_DELETED */
 
 		inode->i_blocks +=
@@ -555,7 +554,7 @@ static int exfat_fill_inode(struct inode *inode, struct exfat_dir_entry *info)
 	struct exfat_inode_info *ei = EXFAT_I(inode);
 	loff_t size = info->size;
 
-	memcpy(&ei->dir, &info->dir, sizeof(struct exfat_chain));
+	ei->dir = info->dir;
 	ei->entry = info->entry;
 	ei->attr = info->attr;
 	ei->start_clu = info->start_clu;
@@ -566,7 +565,6 @@ static int exfat_fill_inode(struct inode *inode, struct exfat_dir_entry *info)
 	ei->hint_stat.eidx = 0;
 	ei->hint_stat.clu = info->start_clu;
 	ei->hint_femp.eidx = EXFAT_HINT_NONE;
-	ei->rwoffset = 0;
 	ei->hint_bmap.off = EXFAT_EOF_CLUSTER;
 	ei->i_pos = 0;
 
@@ -609,8 +607,6 @@ static int exfat_fill_inode(struct inode *inode, struct exfat_dir_entry *info)
 	inode->i_ctime = info->mtime;
 	ei->i_crtime = info->crtime;
 	inode->i_atime = info->atime;
-
-	exfat_cache_init_inode(inode);
 
 	return 0;
 }

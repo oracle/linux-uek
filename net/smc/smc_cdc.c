@@ -66,9 +66,13 @@ int smc_cdc_get_free_slot(struct smc_connection *conn,
 	rc = smc_wr_tx_get_free_slot(link, smc_cdc_tx_handler, wr_buf,
 				     wr_rdma_buf,
 				     (struct smc_wr_tx_pend_priv **)pend);
-	if (conn->killed)
+	if (conn->killed) {
 		/* abnormal termination */
+		if (!rc)
+			smc_wr_tx_put_slot(link,
+					   (struct smc_wr_tx_pend_priv *)pend);
 		rc = -EPIPE;
+	}
 	return rc;
 }
 
@@ -295,7 +299,7 @@ static void smc_cdc_msg_validate(struct smc_sock *smc, struct smc_cdc_msg *cdc,
 		conn->lnk = link;
 		spin_unlock_bh(&conn->send_lock);
 		sock_hold(&smc->sk); /* sock_put in abort_work */
-		if (!schedule_work(&conn->abort_work))
+		if (!queue_work(smc_close_wq, &conn->abort_work))
 			sock_put(&smc->sk);
 	}
 }
@@ -364,7 +368,7 @@ static void smc_cdc_msg_recv_action(struct smc_sock *smc,
 			smc->clcsock->sk->sk_shutdown |= RCV_SHUTDOWN;
 		sock_set_flag(&smc->sk, SOCK_DONE);
 		sock_hold(&smc->sk); /* sock_put in close_work */
-		if (!schedule_work(&conn->close_work))
+		if (!queue_work(smc_close_wq, &conn->close_work))
 			sock_put(&smc->sk);
 	}
 }

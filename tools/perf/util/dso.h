@@ -42,13 +42,14 @@ enum dso_binary_type {
 	DSO_BINARY_TYPE__OPENEMBEDDED_DEBUGINFO,
 	DSO_BINARY_TYPE__BPF_PROG_INFO,
 	DSO_BINARY_TYPE__BPF_IMAGE,
+	DSO_BINARY_TYPE__OOL,
 	DSO_BINARY_TYPE__NOT_FOUND,
 };
 
-enum dso_kernel_type {
-	DSO_TYPE_USER = 0,
-	DSO_TYPE_KERNEL,
-	DSO_TYPE_GUEST_KERNEL
+enum dso_space_type {
+	DSO_SPACE__USER = 0,
+	DSO_SPACE__KERNEL,
+	DSO_SPACE__KERNEL_GUEST
 };
 
 enum dso_swap_type {
@@ -159,7 +160,7 @@ struct dso {
 	void		 *a2l;
 	char		 *symsrc_filename;
 	unsigned int	 a2l_fails;
-	enum dso_kernel_type	kernel;
+	enum dso_space_type	kernel;
 	enum dso_swap_type	needs_swap;
 	enum dso_binary_type	symtab_type;
 	enum dso_binary_type	binary_type;
@@ -175,7 +176,7 @@ struct dso {
 	bool		 sorted_by_name;
 	bool		 loaded;
 	u8		 rel;
-	u8		 build_id[BUILD_ID_SIZE];
+	struct build_id	 bid;
 	u64		 text_offset;
 	const char	 *short_name;
 	const char	 *long_name;
@@ -259,8 +260,8 @@ bool dso__sorted_by_name(const struct dso *dso);
 void dso__set_sorted_by_name(struct dso *dso);
 void dso__sort_by_name(struct dso *dso);
 
-void dso__set_build_id(struct dso *dso, void *build_id);
-bool dso__build_id_equal(const struct dso *dso, u8 *build_id);
+void dso__set_build_id(struct dso *dso, struct build_id *bid);
+bool dso__build_id_equal(const struct dso *dso, struct build_id *bid);
 void dso__read_running_kernel_build_id(struct dso *dso,
 				       struct machine *machine);
 int dso__kernel_module_get_build_id(struct dso *dso, const char *root_dir);
@@ -361,7 +362,6 @@ struct dso *machine__findnew_kernel(struct machine *machine, const char *name,
 
 void dso__reset_find_symbol_cache(struct dso *dso);
 
-size_t dso__fprintf_buildid(struct dso *dso, FILE *fp);
 size_t dso__fprintf_symbols_by_name(struct dso *dso, FILE *fp);
 size_t dso__fprintf(struct dso *dso, FILE *fp);
 

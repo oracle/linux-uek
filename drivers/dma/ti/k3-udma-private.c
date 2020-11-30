@@ -42,6 +42,7 @@ struct udma_dev *of_xudma_dev_get(struct device_node *np, const char *property)
 	ud = platform_get_drvdata(pdev);
 	if (!ud) {
 		pr_debug("UDMA has not been probed\n");
+		put_device(&pdev->dev);
 		return ERR_PTR(-EPROBE_DEFER);
 	}
 
@@ -82,7 +83,7 @@ EXPORT_SYMBOL(xudma_rflow_is_gp);
 #define XUDMA_GET_PUT_RESOURCE(res)					\
 struct udma_##res *xudma_##res##_get(struct udma_dev *ud, int id)	\
 {									\
-	return __udma_reserve_##res(ud, false, id);			\
+	return __udma_reserve_##res(ud, UDMA_TP_NORMAL, id);		\
 }									\
 EXPORT_SYMBOL(xudma_##res##_get);					\
 									\
@@ -120,13 +121,17 @@ XUDMA_GET_RESOURCE_ID(rflow);
 #define XUDMA_RT_IO_FUNCTIONS(res)					\
 u32 xudma_##res##rt_read(struct udma_##res *p, int reg)			\
 {									\
-	return udma_##res##rt_read(p, reg);				\
+	if (!p)								\
+		return 0;						\
+	return udma_read(p->reg_rt, reg);				\
 }									\
 EXPORT_SYMBOL(xudma_##res##rt_read);					\
 									\
 void xudma_##res##rt_write(struct udma_##res *p, int reg, u32 val)	\
 {									\
-	udma_##res##rt_write(p, reg, val);				\
+	if (!p)								\
+		return;							\
+	udma_write(p->reg_rt, reg, val);				\
 }									\
 EXPORT_SYMBOL(xudma_##res##rt_write)
 XUDMA_RT_IO_FUNCTIONS(tchan);

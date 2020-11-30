@@ -20,7 +20,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/reset-controller.h>
-#include <dt-bindings/phy/phy.h>
 
 #define WIZ_SERDES_CTRL		0x404
 #define WIZ_SERDES_TOP_CTRL	0x408
@@ -117,7 +116,7 @@ struct wiz_clk_mux {
 struct wiz_clk_divider {
 	struct clk_hw		hw;
 	struct regmap_field	*field;
-	struct clk_div_table	*table;
+	const struct clk_div_table	*table;
 	struct clk_init_data	clk_data;
 };
 
@@ -131,7 +130,7 @@ struct wiz_clk_mux_sel {
 
 struct wiz_clk_div_sel {
 	struct regmap_field	*field;
-	struct clk_div_table	*table;
+	const struct clk_div_table	*table;
 	const char		*node_name;
 };
 
@@ -173,7 +172,7 @@ static struct wiz_clk_mux_sel clk_mux_sel_10g[] = {
 	},
 };
 
-static struct clk_div_table clk_div_table[] = {
+static const struct clk_div_table clk_div_table[] = {
 	{ .val = 0, .div = 1, },
 	{ .val = 1, .div = 2, },
 	{ .val = 2, .div = 4, },
@@ -559,7 +558,7 @@ static const struct clk_ops wiz_clk_div_ops = {
 
 static int wiz_div_clk_register(struct wiz *wiz, struct device_node *node,
 				struct regmap_field *field,
-				struct clk_div_table *table)
+				const struct clk_div_table *table)
 {
 	struct device *dev = wiz->dev;
 	struct wiz_clk_divider *div;
@@ -756,7 +755,7 @@ static const struct reset_control_ops wiz_phy_reset_ops = {
 	.deassert = wiz_phy_reset_deassert,
 };
 
-static struct regmap_config wiz_regmap_config = {
+static const struct regmap_config wiz_regmap_config = {
 	.reg_bits = 32,
 	.val_bits = 32,
 	.reg_stride = 4,

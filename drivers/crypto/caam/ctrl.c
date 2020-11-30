@@ -13,6 +13,7 @@
 #include <linux/fsl/mc.h>
 
 #include "compat.h"
+#include "debugfs.h"
 #include "regs.h"
 #include "intern.h"
 #include "jr.h"
@@ -54,7 +55,7 @@ static void build_instantiation_desc(u32 *desc, int handle, int do_sk)
 
 		/*
 		 * load 1 to clear written reg:
-		 * resets the done interrrupt and returns the RNG to idle.
+		 * resets the done interrupt and returns the RNG to idle.
 		 */
 		append_load_imm_u32(desc, 1, LDST_SRCDST_WORD_CLRW);
 
@@ -156,7 +157,7 @@ static inline int run_descriptor_deco0(struct device *ctrldev, u32 *desc,
 				     DESC_DER_DECO_STAT_SHIFT;
 
 		/*
-		 * If an error occured in the descriptor, then
+		 * If an error occurred in the descriptor, then
 		 * the DECO status field will be set to 0x0D
 		 */
 		if (deco_state == DECO_STAT_HOST_ERR)
@@ -264,7 +265,7 @@ static void devm_deinstantiate_rng(void *data)
  *	   - -ENODEV if DECO0 couldn't be acquired
  *	   - -EAGAIN if an error occurred when executing the descriptor
  *	      f.i. there was a RNG hardware error due to not "good enough"
- *	      entropy being aquired.
+ *	      entropy being acquired.
  */
 static int instantiate_rng(struct device *ctrldev, int state_handle_mask,
 			   int gen_sk)
@@ -332,11 +333,10 @@ static int instantiate_rng(struct device *ctrldev, int state_handle_mask,
 
 	kfree(desc);
 
-	if (!ret)
-		ret = devm_add_action_or_reset(ctrldev, devm_deinstantiate_rng,
-					       ctrldev);
+	if (ret)
+		return ret;
 
-	return ret;
+	return devm_add_action_or_reset(ctrldev, devm_deinstantiate_rng, ctrldev);
 }
 
 /*
@@ -443,7 +443,9 @@ static int caam_get_era_from_hw(struct caam_ctrl __iomem *ctrl)
  * by u-boot.
  * In case this property is not passed an attempt to retrieve the CAAM
  * era via register reads will be made.
- **/
+ *
+ * @ctrl:	controller region
+ */
 static int caam_get_era(struct caam_ctrl __iomem *ctrl)
 {
 	struct device_node *caam_node;
@@ -469,7 +471,7 @@ static int caam_get_era(struct caam_ctrl __iomem *ctrl)
  * pipeline to a depth of 1 (from it's default of 4) to preclude this situation
  * from occurring.
  */
-static void handle_imx6_err005766(u32 *mcr)
+static void handle_imx6_err005766(u32 __iomem *mcr)
 {
 	if (of_machine_is_compatible("fsl,imx6q") ||
 	    of_machine_is_compatible("fsl,imx6dl") ||
@@ -527,11 +529,21 @@ static const struct caam_imx_data caam_imx6ul_data = {
 	.num_clks = ARRAY_SIZE(caam_imx6ul_clks),
 };
 
+static const struct clk_bulk_data caam_vf610_clks[] = {
+	{ .id = "ipg" },
+};
+
+static const struct caam_imx_data caam_vf610_data = {
+	.clks = caam_vf610_clks,
+	.num_clks = ARRAY_SIZE(caam_vf610_clks),
+};
+
 static const struct soc_device_attribute caam_imx_soc_table[] = {
 	{ .soc_id = "i.MX6UL", .data = &caam_imx6ul_data },
 	{ .soc_id = "i.MX6*",  .data = &caam_imx6_data },
 	{ .soc_id = "i.MX7*",  .data = &caam_imx7_data },
 	{ .soc_id = "i.MX8M*", .data = &caam_imx7_data },
+	{ .soc_id = "VF*",     .data = &caam_vf610_data },
 	{ .family = "Freescale i.MX" },
 	{ /* sentinel */ }
 };
@@ -572,12 +584,10 @@ static int init_clocks(struct device *dev, const struct caam_imx_data *data)
 	return devm_add_action_or_reset(dev, disable_clocks, ctrlpriv);
 }
 
-#ifdef CONFIG_DEBUG_FS
 static void caam_remove_debugfs(void *root)
 {
 	debugfs_remove_recursive(root);
 }
-#endif
 
 #ifdef CONFIG_FSL_MC_BUS
 static bool check_version(struct fsl_mc_version *mc_version, u32 major,
@@ -609,10 +619,7 @@ static int caam_probe(struct platform_device *pdev)
 	struct device_node *nprop, *np;
 	struct caam_ctrl __iomem *ctrl;
 	struct caam_drv_private *ctrlpriv;
-#ifdef CONFIG_DEBUG_FS
-	struct caam_perfmon *perfmon;
 	struct dentry *dfs_root;
-#endif
 	u32 scfgr, comp_params;
 	u8 rng_vid;
 	int pg_size;
@@ -733,8 +740,8 @@ static int caam_probe(struct platform_device *pdev)
 	handle_imx6_err005766(&ctrl->mcr);
 
 	/*
-	 *  Read the Compile Time paramters and SCFGR to determine
-	 * if Virtualization is enabled for this platform
+	 *  Read the Compile Time parameters and SCFGR to determine
+	 * if virtualization is enabled for this platform
 	 */
 	scfgr = rd_reg32(&ctrl->scfgr);
 
@@ -767,21 +774,15 @@ static int caam_probe(struct platform_device *pdev)
 	ctrlpriv->era = caam_get_era(ctrl);
 	ctrlpriv->domain = iommu_get_domain_for_dev(dev);
 
-#ifdef CONFIG_DEBUG_FS
-	/*
-	 * FIXME: needs better naming distinction, as some amalgamation of
-	 * "caam" and nprop->full_name. The OF name isn't distinctive,
-	 * but does separate instances
-	 */
-	perfmon = (struct caam_perfmon __force *)&ctrl->perfmon;
-
 	dfs_root = debugfs_create_dir(dev_name(dev), NULL);
-	ret = devm_add_action_or_reset(dev, caam_remove_debugfs, dfs_root);
-	if (ret)
-		return ret;
+	if (IS_ENABLED(CONFIG_DEBUG_FS)) {
+		ret = devm_add_action_or_reset(dev, caam_remove_debugfs,
+					       dfs_root);
+		if (ret)
+			return ret;
+	}
 
-	ctrlpriv->ctl = debugfs_create_dir("ctl", dfs_root);
-#endif
+	caam_debugfs_init(ctrlpriv, dfs_root);
 
 	/* Check to see if (DPAA 1.x) QI present. If so, enable */
 	if (ctrlpriv->qi_present && !caam_dpaa2) {
@@ -863,9 +864,9 @@ static int caam_probe(struct platform_device *pdev)
 			}
 			/*
 			 * if instantiate_rng(...) fails, the loop will rerun
-			 * and the kick_trng(...) function will modfiy the
+			 * and the kick_trng(...) function will modify the
 			 * upper and lower limits of the entropy sampling
-			 * interval, leading to a sucessful initialization of
+			 * interval, leading to a successful initialization of
 			 * the RNG.
 			 */
 			ret = instantiate_rng(dev, inst_handles,
@@ -882,8 +883,8 @@ static int caam_probe(struct platform_device *pdev)
 			return ret;
 		}
 		/*
-		 * Set handles init'ed by this module as the complement of the
-		 * already initialized ones
+		 * Set handles initialized by this module as the complement of
+		 * the already initialized ones
 		 */
 		ctrlpriv->rng4_sh_init = ~ctrlpriv->rng4_sh_init & RDSTA_MASK;
 
@@ -901,57 +902,6 @@ static int caam_probe(struct platform_device *pdev)
 		 ctrlpriv->era);
 	dev_info(dev, "job rings = %d, qi = %d\n",
 		 ctrlpriv->total_jobrs, ctrlpriv->qi_present);
-
-#ifdef CONFIG_DEBUG_FS
-	debugfs_create_file("rq_dequeued", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->req_dequeued,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ob_rq_encrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ob_enc_req,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ib_rq_decrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ib_dec_req,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ob_bytes_encrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ob_enc_bytes,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ob_bytes_protected", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ob_prot_bytes,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ib_bytes_decrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ib_dec_bytes,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ib_bytes_validated", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ib_valid_bytes,
-			    &caam_fops_u64_ro);
-
-	/* Controller level - global status values */
-	debugfs_create_file("fault_addr", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->faultaddr,
-			    &caam_fops_u32_ro);
-	debugfs_create_file("fault_detail", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->faultdetail,
-			    &caam_fops_u32_ro);
-	debugfs_create_file("fault_status", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->status,
-			    &caam_fops_u32_ro);
-
-	/* Internal covering keys (useful in non-secure mode only) */
-	ctrlpriv->ctl_kek_wrap.data = (__force void *)&ctrlpriv->ctrl->kek[0];
-	ctrlpriv->ctl_kek_wrap.size = KEK_KEY_SIZE * sizeof(u32);
-	debugfs_create_blob("kek", S_IRUSR | S_IRGRP | S_IROTH, ctrlpriv->ctl,
-			    &ctrlpriv->ctl_kek_wrap);
-
-	ctrlpriv->ctl_tkek_wrap.data = (__force void *)&ctrlpriv->ctrl->tkek[0];
-	ctrlpriv->ctl_tkek_wrap.size = KEK_KEY_SIZE * sizeof(u32);
-	debugfs_create_blob("tkek", S_IRUSR | S_IRGRP | S_IROTH, ctrlpriv->ctl,
-			    &ctrlpriv->ctl_tkek_wrap);
-
-	ctrlpriv->ctl_tdsk_wrap.data = (__force void *)&ctrlpriv->ctrl->tdsk[0];
-	ctrlpriv->ctl_tdsk_wrap.size = KEK_KEY_SIZE * sizeof(u32);
-	debugfs_create_blob("tdsk", S_IRUSR | S_IRGRP | S_IROTH, ctrlpriv->ctl,
-			    &ctrlpriv->ctl_tdsk_wrap);
-#endif
 
 	ret = devm_of_platform_populate(dev);
 	if (ret)

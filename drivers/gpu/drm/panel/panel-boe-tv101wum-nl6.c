@@ -11,6 +11,7 @@
 #include <linux/of_device.h>
 #include <linux/regulator/consumer.h>
 
+#include <drm/drm_connector.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
@@ -43,6 +44,7 @@ struct boe_panel {
 
 	const struct panel_desc *desc;
 
+	enum drm_panel_orientation orientation;
 	struct regulator *pp1800;
 	struct regulator *avee;
 	struct regulator *avdd;
@@ -594,7 +596,6 @@ static const struct drm_display_mode boe_tv101wum_nl6_default_mode = {
 	.vsync_start = 1920 + 10,
 	.vsync_end = 1920 + 10 + 14,
 	.vtotal = 1920 + 10 + 14 + 4,
-	.vrefresh = 60,
 };
 
 static const struct panel_desc boe_tv101wum_nl6_desc = {
@@ -615,14 +616,13 @@ static const struct panel_desc boe_tv101wum_nl6_desc = {
 static const struct drm_display_mode auo_kd101n80_45na_default_mode = {
 	.clock = 157000,
 	.hdisplay = 1200,
-	.hsync_start = 1200 + 80,
-	.hsync_end = 1200 + 80 + 24,
-	.htotal = 1200 + 80 + 24 + 36,
+	.hsync_start = 1200 + 60,
+	.hsync_end = 1200 + 60 + 24,
+	.htotal = 1200 + 60 + 24 + 56,
 	.vdisplay = 1920,
 	.vsync_start = 1920 + 16,
 	.vsync_end = 1920 + 16 + 4,
 	.vtotal = 1920 + 16 + 4 + 16,
-	.vrefresh = 60,
 };
 
 static const struct panel_desc auo_kd101n80_45na_desc = {
@@ -650,7 +650,6 @@ static const struct drm_display_mode boe_tv101wum_n53_default_mode = {
 	.vsync_start = 1920 + 20,
 	.vsync_end = 1920 + 20 + 4,
 	.vtotal = 1920 + 20 + 4 + 10,
-	.vrefresh = 60,
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 };
 
@@ -678,7 +677,6 @@ static const struct drm_display_mode auo_b101uan08_3_default_mode = {
 	.vsync_start = 1920 + 34,
 	.vsync_end = 1920 + 34 + 2,
 	.vtotal = 1920 + 34 + 2 + 24,
-	.vrefresh = 60,
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 };
 
@@ -706,7 +704,6 @@ static const struct drm_display_mode boe_tv105wum_nw0_default_mode = {
 	.vsync_start = 1920 + 20,
 	.vsync_end = 1920 + 20 + 4,
 	.vtotal = 1920 + 20 + 4 + 10,
-	.vrefresh = 60,
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 };
 
@@ -734,7 +731,7 @@ static int boe_panel_get_modes(struct drm_panel *panel,
 	mode = drm_mode_duplicate(connector->dev, m);
 	if (!mode) {
 		dev_err(panel->dev, "failed to add mode %ux%u@%u\n",
-			m->hdisplay, m->vdisplay, m->vrefresh);
+			m->hdisplay, m->vdisplay, drm_mode_vrefresh(m));
 		return -ENOMEM;
 	}
 
@@ -745,6 +742,7 @@ static int boe_panel_get_modes(struct drm_panel *panel,
 	connector->display_info.width_mm = boe->desc->size.width_mm;
 	connector->display_info.height_mm = boe->desc->size.height_mm;
 	connector->display_info.bpc = boe->desc->bpc;
+	drm_connector_set_panel_orientation(connector, boe->orientation);
 
 	return 1;
 }
@@ -784,6 +782,11 @@ static int boe_panel_add(struct boe_panel *boe)
 
 	drm_panel_init(&boe->base, dev, &boe_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
+	err = of_drm_get_panel_orientation(dev->of_node, &boe->orientation);
+	if (err < 0) {
+		dev_err(dev, "%pOF: failed to get orientation %d\n", dev->of_node, err);
+		return err;
+	}
 
 	err = drm_panel_of_backlight(&boe->base);
 	if (err)
@@ -792,7 +795,9 @@ static int boe_panel_add(struct boe_panel *boe)
 	boe->base.funcs = &boe_panel_funcs;
 	boe->base.dev = &boe->dsi->dev;
 
-	return drm_panel_add(&boe->base);
+	drm_panel_add(&boe->base);
+
+	return 0;
 }
 
 static int boe_panel_probe(struct mipi_dsi_device *dsi)

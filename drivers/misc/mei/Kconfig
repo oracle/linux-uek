@@ -9,7 +9,7 @@ config INTEL_MEI
 	  if selected /dev/mei misc device will be created.
 
 	  For more information see
-	  <http://software.intel.com/en-us/manageability/>
+	  <https://software.intel.com/en-us/manageability/>
 
 config INTEL_MEI_ME
 	tristate "ME Enabled Intel Chipsets"
@@ -45,5 +45,15 @@ config INTEL_MEI_TXE
 
 	  Supported SoCs:
 	  Intel Bay Trail
+
+config INTEL_MEI_VIRTIO
+	tristate "Intel MEI interface emulation with virtio framework"
+	select INTEL_MEI
+	depends on X86 && PCI && VIRTIO_PCI
+	help
+	  This module implements mei hw emulation over virtio transport.
+	  The module will be called mei_virtio.
+	  Enable this if your virtual machine supports virtual mei
+	  device over virtio.
 
 source "drivers/misc/mei/hdcp/Kconfig"

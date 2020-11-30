@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018 Texas Instruments Incorporated - https://www.ti.com/
  * Author: Tomi Valkeinen <tomi.valkeinen@ti.com>
  */
 
@@ -44,6 +44,10 @@ struct dispc_features_scaling {
 	u32 downscale_limit_5tap;
 	u32 downscale_limit_3tap;
 	u32 xinc_max;
+};
+
+struct dispc_errata {
+	bool i2000; /* DSS Does Not Support YUV Pixel Data Formats */
 };
 
 enum dispc_vp_bus_type {

@@ -6,6 +6,7 @@
 
 #include "i915_drv.h"
 
+#include "intel_breadcrumbs.h"
 #include "intel_context.h"
 #include "intel_engine.h"
 #include "intel_engine_heartbeat.h"
@@ -142,6 +143,7 @@ static bool switch_to_kernel_context(struct intel_engine_cs *engine)
 		return true;
 
 	GEM_BUG_ON(!intel_context_is_barrier(ce));
+	GEM_BUG_ON(ce->timeline->hwsp_ggtt != engine->status_page.vma);
 
 	/* Already inside the kernel context, safe to power down. */
 	if (engine->wakeref_serial == engine->serial)
@@ -246,7 +248,7 @@ static int __engine_park(struct intel_wakeref *wf)
 	call_idle_barriers(engine); /* cleanup after wedging */
 
 	intel_engine_park_heartbeat(engine);
-	intel_engine_disarm_breadcrumbs(engine);
+	intel_breadcrumbs_park(engine->breadcrumbs);
 
 	/* Must be reset upon idling, or we may miss the busy wakeup. */
 	GEM_BUG_ON(engine->execlists.queue_priority_hint != INT_MIN);

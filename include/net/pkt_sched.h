@@ -19,12 +19,9 @@ struct qdisc_walker {
 	int	(*fn)(struct Qdisc *, unsigned long cl, struct qdisc_walker *);
 };
 
-#define QDISC_ALIGNTO		64
-#define QDISC_ALIGN(len)	(((len) + QDISC_ALIGNTO-1) & ~(QDISC_ALIGNTO-1))
-
 static inline void *qdisc_priv(struct Qdisc *q)
 {
-	return (char *) q + QDISC_ALIGN(sizeof(struct Qdisc));
+	return &q->privdata;
 }
 
 /* 
@@ -134,17 +131,6 @@ static inline void qdisc_run(struct Qdisc *q)
 			__qdisc_run(q);
 		qdisc_run_end(q);
 	}
-}
-
-static inline __be16 tc_skb_protocol(const struct sk_buff *skb)
-{
-	/* We need to take extra care in case the skb came via
-	 * vlan accelerated path. In that case, use skb->vlan_proto
-	 * as the original vlan header was already stripped.
-	 */
-	if (skb_vlan_tag_present(skb))
-		return skb->vlan_proto;
-	return skb->protocol;
 }
 
 /* Calculate maximal size of packet seen by hard_start_xmit

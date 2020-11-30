@@ -13,7 +13,6 @@
 #include <asm/fixmap.h>
 #include <asm/code-patching.h>
 #include <asm/inst.h>
-#include <asm/pgalloc.h>
 
 #include <mm/mmu_decl.h>
 
@@ -243,13 +242,6 @@ void set_context(unsigned long id, pgd_t *pgd)
 	mtspr(SPRN_M_CASID, id - 1);
 	/* sync */
 	mb();
-}
-
-void flush_instruction_cache(void)
-{
-	isync();
-	mtspr(SPRN_IC_CST, IDC_INVALL);
-	isync();
 }
 
 #ifdef CONFIG_PPC_KUEP

@@ -511,8 +511,8 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 #endif
 };
 
-const struct atomisp_format_bridge *atomisp_get_format_bridge(
-    unsigned int pixelformat)
+const struct atomisp_format_bridge *
+atomisp_get_format_bridge(unsigned int pixelformat)
 {
 	unsigned int i;
 
@@ -524,8 +524,8 @@ const struct atomisp_format_bridge *atomisp_get_format_bridge(
 	return NULL;
 }
 
-const struct atomisp_format_bridge *atomisp_get_format_bridge_from_mbus(
-    u32 mbus_code)
+const struct atomisp_format_bridge *
+atomisp_get_format_bridge_from_mbus(u32 mbus_code)
 {
 	unsigned int i;
 
@@ -549,8 +549,7 @@ static int atomisp_querycap(struct file *file, void *fh,
 
 	strscpy(cap->driver, DRIVER, sizeof(cap->driver));
 	strscpy(cap->card, CARD, sizeof(cap->card));
-	snprintf(cap->bus_info, sizeof(cap->bus_info), "PCI:%s",
-		 pci_name(isp->pdev));
+	snprintf(cap->bus_info, sizeof(cap->bus_info), "PCI:%s", dev_name(isp->dev));
 
 	return 0;
 }
@@ -606,8 +605,8 @@ static int atomisp_enum_input(struct file *file, void *fh,
 	return 0;
 }
 
-static unsigned int atomisp_subdev_streaming_count(
-    struct atomisp_sub_device *asd)
+static unsigned int
+atomisp_subdev_streaming_count(struct atomisp_sub_device *asd)
 {
 	return asd->video_out_preview.capq.streaming
 	       + asd->video_out_capture.capq.streaming
@@ -798,7 +797,7 @@ static int atomisp_enum_fmt_cap(struct file *file, void *fh,
 			continue;
 		}
 
-		strlcpy(f->description, format->description,
+		strscpy(f->description, format->description,
 			sizeof(f->description));
 		f->pixelformat = format->pixelformat;
 		return 0;
@@ -1275,13 +1274,15 @@ done:
 		}
 	}
 
-	/* Workaround: Due to the design of HALv3,
+	/*
+	 * Workaround: Due to the design of HALv3,
 	 * sometimes in ZSL or SDV mode HAL needs to
 	 * capture multiple images within one streaming cycle.
 	 * But the capture number cannot be determined by HAL.
 	 * So HAL only sets the capture number to be 1 and queue multiple
 	 * buffers. Atomisp driver needs to check this case and re-trigger
-	 * CSS to do capture when new buffer is queued. */
+	 * CSS to do capture when new buffer is queued.
+	 */
 	if (asd->continuous_mode->val &&
 	    atomisp_subdev_source_pad(vdev)
 	    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
@@ -1468,7 +1469,6 @@ enum ia_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_sub_device *asd)
 	case ATOMISP_RUN_MODE_VIDEO:
 		return IA_CSS_PIPE_ID_VIDEO;
 	case ATOMISP_RUN_MODE_STILL_CAPTURE:
-	/* fall through */
 	default:
 		return IA_CSS_PIPE_ID_CAPTURE;
 	}
@@ -1635,6 +1635,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct atomisp_sub_device *asd = pipe->asd;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct pci_dev *pdev = to_pci_dev(isp->dev);
 	enum ia_css_pipe_id css_pipe_id;
 	unsigned int sensor_start_stream;
 	unsigned int wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
@@ -1806,7 +1807,7 @@ start_sensor:
 		/*
 		 * set freq to max when streaming count > 1 which indicate
 		 * dual camera would run
-		*/
+		 */
 		if (atomisp_streaming_count(isp) > 1) {
 			if (atomisp_freq_scaling(isp,
 						 ATOMISP_DFS_MODE_MAX, false) < 0)
@@ -1828,11 +1829,10 @@ start_sensor:
 			dev_err(isp->dev, "master slave sensor stream on failed!\n");
 			goto out;
 		}
-		if (!IS_ISP2401) {
+		if (!IS_ISP2401)
 			__wdt_on_master_slave_sensor(isp, wdt_duration);
-		} else {
+		else
 			__wdt_on_master_slave_sensor_pipe(pipe, wdt_duration, true);
-		}
 		goto start_delay_wq;
 	} else if (asd->depth_mode->val && (atomisp_streaming_count(isp) <
 					    ATOMISP_DEPTH_SENSOR_STREAMON_COUNT)) {
@@ -1844,9 +1844,8 @@ start_sensor:
 	/* Enable the CSI interface on ANN B0/K0 */
 	if (isp->media_dev.hw_revision >= ((ATOMISP_HW_REVISION_ISP2401 <<
 					    ATOMISP_HW_REVISION_SHIFT) | ATOMISP_HW_STEPPING_B0)) {
-		pci_write_config_word(isp->pdev, MRFLD_PCI_CSI_CONTROL,
-				      isp->saved_regs.csi_control |
-				      MRFLD_PCI_CSI_CONTROL_CSI_READY);
+		pci_write_config_word(pdev, MRFLD_PCI_CSI_CONTROL,
+				      isp->saved_regs.csi_control | MRFLD_PCI_CSI_CONTROL_CSI_READY);
 	}
 
 	/* stream on the sensor */
@@ -1891,6 +1890,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct pci_dev *pdev = to_pci_dev(isp->dev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct atomisp_sub_device *asd = pipe->asd;
 	struct atomisp_video_pipe *capture_pipe = NULL;
@@ -2076,9 +2076,8 @@ stopsensor:
 	/* Disable the CSI interface on ANN B0/K0 */
 	if (isp->media_dev.hw_revision >= ((ATOMISP_HW_REVISION_ISP2401 <<
 					    ATOMISP_HW_REVISION_SHIFT) | ATOMISP_HW_STEPPING_B0)) {
-		pci_write_config_word(isp->pdev, MRFLD_PCI_CSI_CONTROL,
-				      isp->saved_regs.csi_control &
-				      ~MRFLD_PCI_CSI_CONTROL_CSI_READY);
+		pci_write_config_word(pdev, MRFLD_PCI_CSI_CONTROL,
+				      isp->saved_regs.csi_control & ~MRFLD_PCI_CSI_CONTROL_CSI_READY);
 	}
 
 	if (atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW, false))
@@ -2111,8 +2110,8 @@ stopsensor:
 		}
 
 		/* disable  PUNIT/ISP acknowlede/handshake - SRSE=3 */
-		pci_write_config_dword(isp->pdev, PCI_I_CONTROL, isp->saved_regs.i_control |
-				       MRFLD_PCI_I_CONTROL_SRSE_RESET_MASK);
+		pci_write_config_dword(pdev, PCI_I_CONTROL,
+				       isp->saved_regs.i_control | MRFLD_PCI_I_CONTROL_SRSE_RESET_MASK);
 		dev_err(isp->dev, "atomisp_reset");
 		atomisp_reset(isp);
 		for (i = 0; i < isp->num_of_streams; i++) {
@@ -2437,8 +2436,10 @@ static int atomisp_g_ext_ctrls(struct file *file, void *fh,
 	struct v4l2_control ctrl;
 	int i, ret = 0;
 
-	/* input_lock is not need for the Camera related IOCTLs
-	 * The input_lock downgrade the FPS of 3A*/
+	/*
+	 * input_lock is not need for the Camera related IOCTLs
+	 * The input_lock downgrade the FPS of 3A
+	 */
 	ret = atomisp_camera_g_ext_ctrls(file, fh, c);
 	if (ret != -EINVAL)
 		return ret;
@@ -2520,8 +2521,10 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 				ret =
 				    v4l2_s_ctrl(NULL, isp->flash->ctrl_handler,
 						&ctrl);
-				/* When flash mode is changed we need to reset
-				 * flash state */
+				/*
+				 * When flash mode is changed we need to reset
+				 * flash state
+				 */
 				if (ctrl.id == V4L2_CID_FLASH_MODE) {
 					asd->params.flash_state =
 					    ATOMISP_FLASH_IDLE;
@@ -2559,8 +2562,10 @@ static int atomisp_s_ext_ctrls(struct file *file, void *fh,
 	struct v4l2_control ctrl;
 	int i, ret = 0;
 
-	/* input_lock is not need for the Camera related IOCTLs
-	 * The input_lock downgrade the FPS of 3A*/
+	/*
+	 * input_lock is not need for the Camera related IOCTLs
+	 * The input_lock downgrade the FPS of 3A
+	 */
 	ret = atomisp_camera_s_ext_ctrls(file, fh, c);
 	if (ret != -EINVAL)
 		return ret;
@@ -2589,7 +2594,7 @@ static int atomisp_g_parm(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		dev_err(isp->dev, "unsupport v4l2 buf type\n");
+		dev_err(isp->dev, "unsupported v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -2611,7 +2616,7 @@ static int atomisp_s_parm(struct file *file, void *fh,
 	int fps;
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		dev_err(isp->dev, "unsupport v4l2 buf type\n");
+		dev_err(isp->dev, "unsupported v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -2669,7 +2674,7 @@ static int atomisp_s_parm_file(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_OUTPUT) {
-		dev_err(isp->dev, "unsupport v4l2 buf type for output\n");
+		dev_err(isp->dev, "unsupported v4l2 buf type for output\n");
 		return -EINVAL;
 	}
 

@@ -309,6 +309,10 @@
 	};
 };
 
+&gpbr {
+	status = "okay";
+};
+
 &i2s {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2s_default>;
@@ -470,9 +474,9 @@
 		pinctrl_classd_default: classd {
 			atmel,pins =
 				<AT91_PIOA 24 AT91_PERIPH_C AT91_PINCTRL_PULL_UP
-				 AT91_PIOA 25 AT91_PERIPH_C AT91_PINCTRL_PULL_UP
+				 AT91_PIOA 25 AT91_PERIPH_C AT91_PINCTRL_PULL_DOWN
 				 AT91_PIOA 26 AT91_PERIPH_C AT91_PINCTRL_PULL_UP
-				 AT91_PIOA 27 AT91_PERIPH_C AT91_PINCTRL_PULL_UP>;
+				 AT91_PIOA 27 AT91_PERIPH_C AT91_PINCTRL_PULL_DOWN>;
 		};
 	};
 
@@ -559,6 +563,12 @@
 			atmel,pins = <AT91_PIOD 18 AT91_PERIPH_GPIO AT91_PINCTRL_NONE>;
 		};
 	};
+
+	usb0 {
+		pinctrl_usba_vbus: usba_vbus {
+			atmel,pins = <AT91_PIOB 16 AT91_PERIPH_GPIO AT91_PINCTRL_NONE>;
+		};
+	};
 }; /* pinctrl */
 
 &pmc {
@@ -636,6 +646,11 @@
 	};
 };
 
+&rtt {
+	atmel,rtt-rtc-time-reg = <&gpbr 0x0>;
+	status = "okay";
+};
+
 &shutdown_controller {
 	atmel,shdwc-debouncer = <976>;
 	status = "okay";
@@ -655,6 +670,13 @@
 		compatible = "atmel,tcb-timer";
 		reg = <1>;
 	};
+};
+
+&usb0 {
+	atmel,vbus-gpio = <&pioB 16 GPIO_ACTIVE_HIGH>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usba_vbus>;
+	status = "okay";
 };
 
 &usb1 {

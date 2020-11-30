@@ -59,7 +59,7 @@ static inline bool
 mlx5e_xmit_xdp_buff(struct mlx5e_xdpsq *sq, struct mlx5e_rq *rq,
 		    struct mlx5e_dma_info *di, struct xdp_buff *xdp)
 {
-	struct mlx5e_xdp_xmit_data xdptxd;
+	struct mlx5e_xmit_data xdptxd;
 	struct mlx5e_xdp_info xdpi;
 	struct xdp_frame *xdpf;
 	dma_addr_t dma_addr;
@@ -114,14 +114,15 @@ mlx5e_xmit_xdp_buff(struct mlx5e_xdpsq *sq, struct mlx5e_rq *rq,
 		xdpi.page.di    = *di;
 	}
 
-	return sq->xmit_xdp_frame(sq, &xdptxd, &xdpi, 0);
+	return INDIRECT_CALL_2(sq->xmit_xdp_frame, mlx5e_xmit_xdp_frame_mpwqe,
+			       mlx5e_xmit_xdp_frame, sq, &xdptxd, &xdpi, 0);
 }
 
 /* returns true if packet was consumed by xdp */
 bool mlx5e_xdp_handle(struct mlx5e_rq *rq, struct mlx5e_dma_info *di,
 		      u32 *len, struct xdp_buff *xdp)
 {
-	struct bpf_prog *prog = READ_ONCE(rq->xdp_prog);
+	struct bpf_prog *prog = rcu_dereference(rq->xdp_prog);
 	u32 act;
 	int err;
 
@@ -151,11 +152,11 @@ bool mlx5e_xdp_handle(struct mlx5e_rq *rq, struct mlx5e_dma_info *di,
 		return true;
 	default:
 		bpf_warn_invalid_xdp_action(act);
-		/* fall through */
+		fallthrough;
 	case XDP_ABORTED:
 xdp_abort:
 		trace_xdp_exception(rq->netdev, prog, act);
-		/* fall through */
+		fallthrough;
 	case XDP_DROP:
 		rq->stats->xdp_drop++;
 		return true;
@@ -193,18 +194,22 @@ static u16 mlx5e_xdpsq_get_next_pi(struct mlx5e_xdpsq *sq, u16 size)
 
 static void mlx5e_xdp_mpwqe_session_start(struct mlx5e_xdpsq *sq)
 {
-	struct mlx5e_xdp_mpwqe *session = &sq->mpwqe;
+	struct mlx5e_tx_mpwqe *session = &sq->mpwqe;
 	struct mlx5e_xdpsq_stats *stats = sq->stats;
+	struct mlx5e_tx_wqe *wqe;
 	u16 pi;
 
-	pi = mlx5e_xdpsq_get_next_pi(sq, MLX5_SEND_WQE_MAX_WQEBBS);
-	session->wqe = MLX5E_TX_FETCH_WQE(sq, pi);
+	pi = mlx5e_xdpsq_get_next_pi(sq, MLX5E_TX_MPW_MAX_WQEBBS);
+	wqe = MLX5E_TX_FETCH_WQE(sq, pi);
+	net_prefetchw(wqe->data);
 
-	prefetchw(session->wqe->data);
-	session->ds_count  = MLX5E_XDP_TX_EMPTY_DS_COUNT;
-	session->pkt_count = 0;
-
-	mlx5e_xdp_update_inline_state(sq);
+	*session = (struct mlx5e_tx_mpwqe) {
+		.wqe = wqe,
+		.bytes_count = 0,
+		.ds_count = MLX5E_TX_WQE_EMPTY_DS_COUNT,
+		.pkt_count = 0,
+		.inline_on = mlx5e_xdp_get_inline_state(sq, session->inline_on),
+	};
 
 	stats->mpwqe++;
 }
@@ -212,7 +217,7 @@ static void mlx5e_xdp_mpwqe_session_start(struct mlx5e_xdpsq *sq)
 void mlx5e_xdp_mpwqe_complete(struct mlx5e_xdpsq *sq)
 {
 	struct mlx5_wq_cyc       *wq    = &sq->wq;
-	struct mlx5e_xdp_mpwqe *session = &sq->mpwqe;
+	struct mlx5e_tx_mpwqe *session = &sq->mpwqe;
 	struct mlx5_wqe_ctrl_seg *cseg = &session->wqe->ctrl;
 	u16 ds_count = session->ds_count;
 	u16 pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
@@ -237,7 +242,7 @@ enum {
 	MLX5E_XDP_CHECK_START_MPWQE = 2,
 };
 
-static int mlx5e_xmit_xdp_frame_check_mpwqe(struct mlx5e_xdpsq *sq)
+INDIRECT_CALLABLE_SCOPE int mlx5e_xmit_xdp_frame_check_mpwqe(struct mlx5e_xdpsq *sq)
 {
 	if (unlikely(!sq->mpwqe.wqe)) {
 		const u16 stop_room = mlx5e_stop_room_for_wqe(MLX5_SEND_WQE_MAX_WQEBBS);
@@ -256,12 +261,11 @@ static int mlx5e_xmit_xdp_frame_check_mpwqe(struct mlx5e_xdpsq *sq)
 	return MLX5E_XDP_CHECK_OK;
 }
 
-static bool mlx5e_xmit_xdp_frame_mpwqe(struct mlx5e_xdpsq *sq,
-				       struct mlx5e_xdp_xmit_data *xdptxd,
-				       struct mlx5e_xdp_info *xdpi,
-				       int check_result)
+INDIRECT_CALLABLE_SCOPE bool
+mlx5e_xmit_xdp_frame_mpwqe(struct mlx5e_xdpsq *sq, struct mlx5e_xmit_data *xdptxd,
+			   struct mlx5e_xdp_info *xdpi, int check_result)
 {
-	struct mlx5e_xdp_mpwqe *session = &sq->mpwqe;
+	struct mlx5e_tx_mpwqe *session = &sq->mpwqe;
 	struct mlx5e_xdpsq_stats *stats = sq->stats;
 
 	if (unlikely(xdptxd->len > sq->hw_mtu)) {
@@ -284,8 +288,7 @@ static bool mlx5e_xmit_xdp_frame_mpwqe(struct mlx5e_xdpsq *sq,
 
 	mlx5e_xdp_mpwqe_add_dseg(sq, xdptxd, stats);
 
-	if (unlikely(mlx5e_xdp_no_room_for_inline_pkt(session) ||
-		     session->ds_count == MLX5E_XDP_MPW_MAX_NUM_DS))
+	if (unlikely(mlx5e_xdp_mpqwe_is_full(session)))
 		mlx5e_xdp_mpwqe_complete(sq);
 
 	mlx5e_xdpi_fifo_push(&sq->db.xdpi_fifo, xdpi);
@@ -293,7 +296,7 @@ static bool mlx5e_xmit_xdp_frame_mpwqe(struct mlx5e_xdpsq *sq,
 	return true;
 }
 
-static int mlx5e_xmit_xdp_frame_check(struct mlx5e_xdpsq *sq)
+INDIRECT_CALLABLE_SCOPE int mlx5e_xmit_xdp_frame_check(struct mlx5e_xdpsq *sq)
 {
 	if (unlikely(!mlx5e_wqc_has_room_for(&sq->wq, sq->cc, sq->pc, 1))) {
 		/* SQ is full, ring doorbell */
@@ -305,10 +308,9 @@ static int mlx5e_xmit_xdp_frame_check(struct mlx5e_xdpsq *sq)
 	return MLX5E_XDP_CHECK_OK;
 }
 
-static bool mlx5e_xmit_xdp_frame(struct mlx5e_xdpsq *sq,
-				 struct mlx5e_xdp_xmit_data *xdptxd,
-				 struct mlx5e_xdp_info *xdpi,
-				 int check_result)
+INDIRECT_CALLABLE_SCOPE bool
+mlx5e_xmit_xdp_frame(struct mlx5e_xdpsq *sq, struct mlx5e_xmit_data *xdptxd,
+		     struct mlx5e_xdp_info *xdpi, int check_result)
 {
 	struct mlx5_wq_cyc       *wq   = &sq->wq;
 	u16                       pi   = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
@@ -323,7 +325,7 @@ static bool mlx5e_xmit_xdp_frame(struct mlx5e_xdpsq *sq,
 
 	struct mlx5e_xdpsq_stats *stats = sq->stats;
 
-	prefetchw(wqe);
+	net_prefetchw(wqe);
 
 	if (unlikely(dma_len < MLX5E_XDP_MIN_INLINE || sq->hw_mtu < dma_len)) {
 		stats->err++;
@@ -446,7 +448,7 @@ bool mlx5e_poll_xdpsq_cq(struct mlx5e_cq *cq)
 	} while ((++i < MLX5E_TX_CQ_POLL_BUDGET) && (cqe = mlx5_cqwq_get_cqe(&cq->wq)));
 
 	if (xsk_frames)
-		xsk_umem_complete_tx(sq->umem, xsk_frames);
+		xsk_tx_completed(sq->xsk_pool, xsk_frames);
 
 	sq->stats->cqes += i;
 
@@ -476,7 +478,7 @@ void mlx5e_free_xdpsq_descs(struct mlx5e_xdpsq *sq)
 	}
 
 	if (xsk_frames)
-		xsk_umem_complete_tx(sq->umem, xsk_frames);
+		xsk_tx_completed(sq->xsk_pool, xsk_frames);
 }
 
 int mlx5e_xdp_xmit(struct net_device *dev, int n, struct xdp_frame **frames,
@@ -504,8 +506,9 @@ int mlx5e_xdp_xmit(struct net_device *dev, int n, struct xdp_frame **frames,
 
 	for (i = 0; i < n; i++) {
 		struct xdp_frame *xdpf = frames[i];
-		struct mlx5e_xdp_xmit_data xdptxd;
+		struct mlx5e_xmit_data xdptxd;
 		struct mlx5e_xdp_info xdpi;
+		bool ret;
 
 		xdptxd.data = xdpf->data;
 		xdptxd.len = xdpf->len;
@@ -522,7 +525,9 @@ int mlx5e_xdp_xmit(struct net_device *dev, int n, struct xdp_frame **frames,
 		xdpi.frame.xdpf     = xdpf;
 		xdpi.frame.dma_addr = xdptxd.dma_addr;
 
-		if (unlikely(!sq->xmit_xdp_frame(sq, &xdptxd, &xdpi, 0))) {
+		ret = INDIRECT_CALL_2(sq->xmit_xdp_frame, mlx5e_xmit_xdp_frame_mpwqe,
+				      mlx5e_xmit_xdp_frame, sq, &xdptxd, &xdpi, 0);
+		if (unlikely(!ret)) {
 			dma_unmap_single(sq->pdev, xdptxd.dma_addr,
 					 xdptxd.len, DMA_TO_DEVICE);
 			xdp_return_frame_rx_napi(xdpf);
@@ -561,4 +566,3 @@ void mlx5e_set_xmit_fp(struct mlx5e_xdpsq *sq, bool is_mpw)
 	sq->xmit_xdp_frame = is_mpw ?
 		mlx5e_xmit_xdp_frame_mpwqe : mlx5e_xmit_xdp_frame;
 }
-

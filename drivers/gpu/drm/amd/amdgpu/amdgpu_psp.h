@@ -29,6 +29,7 @@
 #include "psp_gfx_if.h"
 #include "ta_xgmi_if.h"
 #include "ta_ras_if.h"
+#include "ta_rap_if.h"
 
 #define PSP_FENCE_BUFFER_SIZE	0x1000
 #define PSP_CMD_BUFFER_SIZE	0x1000
@@ -38,6 +39,7 @@
 #define PSP_TMR_SIZE	0x400000
 #define PSP_HDCP_SHARED_MEM_SIZE	0x4000
 #define PSP_DTM_SHARED_MEM_SIZE	0x4000
+#define PSP_RAP_SHARED_MEM_SIZE	0x4000
 #define PSP_SHARED_MEM_SIZE		0x4000
 
 struct psp_context;
@@ -50,6 +52,7 @@ enum psp_bootloader_cmd {
 	PSP_BL__LOAD_KEY_DATABASE	= 0x80000,
 	PSP_BL__DRAM_LONG_TRAIN		= 0x100000,
 	PSP_BL__DRAM_SHORT_TRAIN	= 0x200000,
+	PSP_BL__LOAD_TOS_SPL_TABLE	= 0x10000000,
 };
 
 enum psp_ring_type
@@ -84,6 +87,7 @@ struct psp_funcs
 {
 	int (*init_microcode)(struct psp_context *psp);
 	int (*bootloader_load_kdb)(struct psp_context *psp);
+	int (*bootloader_load_spl)(struct psp_context *psp);
 	int (*bootloader_load_sysdrv)(struct psp_context *psp);
 	int (*bootloader_load_sos)(struct psp_context *psp);
 	int (*ring_init)(struct psp_context *psp, enum psp_ring_type ring_type);
@@ -95,8 +99,6 @@ struct psp_funcs
 			    enum psp_ring_type ring_type);
 	bool (*smu_reload_quirk)(struct psp_context *psp);
 	int (*mode1_reset)(struct psp_context *psp);
-	int (*mem_training_init)(struct psp_context *psp);
-	void (*mem_training_fini)(struct psp_context *psp);
 	int (*mem_training)(struct psp_context *psp, uint32_t ops);
 	uint32_t (*ring_get_wptr)(struct psp_context *psp);
 	void (*ring_set_wptr)(struct psp_context *psp, uint32_t value);
@@ -156,6 +158,15 @@ struct psp_dtm_context {
 	struct amdgpu_bo	*dtm_shared_bo;
 	uint64_t		dtm_shared_mc_addr;
 	void			*dtm_shared_buf;
+	struct mutex		mutex;
+};
+
+struct psp_rap_context {
+	bool			rap_initialized;
+	uint32_t		session_id;
+	struct amdgpu_bo	*rap_shared_bo;
+	uint64_t		rap_shared_mc_addr;
+	void			*rap_shared_buf;
 	struct mutex		mutex;
 };
 
@@ -224,10 +235,12 @@ struct psp_context
 	uint32_t			sos_bin_size;
 	uint32_t			toc_bin_size;
 	uint32_t			kdb_bin_size;
+	uint32_t			spl_bin_size;
 	uint8_t				*sys_start_addr;
 	uint8_t				*sos_start_addr;
 	uint8_t				*toc_start_addr;
 	uint8_t				*kdb_start_addr;
+	uint8_t				*spl_start_addr;
 
 	/* tmr buffer */
 	struct amdgpu_bo		*tmr_bo;
@@ -275,11 +288,16 @@ struct psp_context
 	uint32_t			ta_dtm_ucode_size;
 	uint8_t				*ta_dtm_start_addr;
 
+	uint32_t			ta_rap_ucode_version;
+	uint32_t			ta_rap_ucode_size;
+	uint8_t				*ta_rap_start_addr;
+
 	struct psp_asd_context		asd_context;
 	struct psp_xgmi_context		xgmi_context;
 	struct psp_ras_context		ras;
 	struct psp_hdcp_context 	hdcp_context;
 	struct psp_dtm_context		dtm_context;
+	struct psp_rap_context		rap_context;
 	struct mutex			mutex;
 	struct psp_memory_training_context mem_train_ctx;
 };
@@ -298,6 +316,8 @@ struct amdgpu_psp_funcs {
 		((psp)->funcs->init_microcode ? (psp)->funcs->init_microcode((psp)) : 0)
 #define psp_bootloader_load_kdb(psp) \
 		((psp)->funcs->bootloader_load_kdb ? (psp)->funcs->bootloader_load_kdb((psp)) : 0)
+#define psp_bootloader_load_spl(psp) \
+		((psp)->funcs->bootloader_load_spl ? (psp)->funcs->bootloader_load_spl((psp)) : 0)
 #define psp_bootloader_load_sysdrv(psp) \
 		((psp)->funcs->bootloader_load_sysdrv ? (psp)->funcs->bootloader_load_sysdrv((psp)) : 0)
 #define psp_bootloader_load_sos(psp) \
@@ -306,10 +326,6 @@ struct amdgpu_psp_funcs {
 		((psp)->funcs->smu_reload_quirk ? (psp)->funcs->smu_reload_quirk((psp)) : false)
 #define psp_mode1_reset(psp) \
 		((psp)->funcs->mode1_reset ? (psp)->funcs->mode1_reset((psp)) : false)
-#define psp_mem_training_init(psp) \
-	((psp)->funcs->mem_training_init ? (psp)->funcs->mem_training_init((psp)) : 0)
-#define psp_mem_training_fini(psp) \
-	((psp)->funcs->mem_training_fini ? (psp)->funcs->mem_training_fini((psp)) : 0)
 #define psp_mem_training(psp, ops) \
 	((psp)->funcs->mem_training ? (psp)->funcs->mem_training((psp), (ops)) : 0)
 
@@ -357,6 +373,7 @@ int psp_ras_trigger_error(struct psp_context *psp,
 
 int psp_hdcp_invoke(struct psp_context *psp, uint32_t ta_cmd_id);
 int psp_dtm_invoke(struct psp_context *psp, uint32_t ta_cmd_id);
+int psp_rap_invoke(struct psp_context *psp, uint32_t ta_cmd_id);
 
 int psp_rlc_autoload_start(struct psp_context *psp);
 
@@ -371,4 +388,6 @@ int psp_init_asd_microcode(struct psp_context *psp,
 			   const char *chip_name);
 int psp_init_sos_microcode(struct psp_context *psp,
 			   const char *chip_name);
+int psp_init_ta_microcode(struct psp_context *psp,
+			  const char *chip_name);
 #endif

@@ -10,13 +10,12 @@ purposes of authentication.)
 
 RPCGSS is specified in a few IETF documents:
 
- - RFC2203 v1: http://tools.ietf.org/rfc/rfc2203.txt
- - RFC5403 v2: http://tools.ietf.org/rfc/rfc5403.txt
+ - RFC2203 v1: https://tools.ietf.org/rfc/rfc2203.txt
+ - RFC5403 v2: https://tools.ietf.org/rfc/rfc5403.txt
 
-and there is a 3rd version  being proposed:
+There is a third version that we don't currently implement:
 
- - http://tools.ietf.org/id/draft-williams-rpcsecgssv3.txt
-   (At draft n. 02 at the time of writing)
+ - RFC7861 v3: https://tools.ietf.org/rfc/rfc7861.txt
 
 Background
 ==========

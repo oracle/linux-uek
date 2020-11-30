@@ -9,7 +9,8 @@
 #include <linux/skbuff.h>
 #include <linux/ethtool.h>
 #include <linux/if_vlan.h>
-#include <linux/phy.h>
+#include <linux/phylink.h>
+#include <linux/dim.h>
 
 #include "enetc_hw.h"
 
@@ -44,8 +45,9 @@ struct enetc_ring_stats {
 	unsigned int rx_alloc_errs;
 };
 
-#define ENETC_BDR_DEFAULT_SIZE	1024
-#define ENETC_DEFAULT_TX_WORK	256
+#define ENETC_RX_RING_DEFAULT_SIZE	512
+#define ENETC_TX_RING_DEFAULT_SIZE	256
+#define ENETC_DEFAULT_TX_WORK		(ENETC_TX_RING_DEFAULT_SIZE / 2)
 
 struct enetc_bdr {
 	struct device *dev; /* for DMA mapping */
@@ -189,14 +191,19 @@ static inline bool enetc_si_is_pf(struct enetc_si *si)
 struct enetc_int_vector {
 	void __iomem *rbier;
 	void __iomem *tbier_base;
+	void __iomem *ricr1;
 	unsigned long tx_rings_map;
 	int count_tx_rings;
-	struct napi_struct napi;
+	u32 rx_ictt;
+	u16 comp_cnt;
+	bool rx_dim_en, rx_napi_work;
+	struct napi_struct napi ____cacheline_aligned_in_smp;
+	struct dim rx_dim ____cacheline_aligned_in_smp;
 	char name[ENETC_INT_NAME_MAX];
 
-	struct enetc_bdr rx_ring ____cacheline_aligned_in_smp;
+	struct enetc_bdr rx_ring;
 	struct enetc_bdr tx_ring[];
-};
+} ____cacheline_aligned_in_smp;
 
 struct enetc_cls_rule {
 	struct ethtool_rx_flow_spec fs;
@@ -220,6 +227,21 @@ enum enetc_active_offloads {
 	ENETC_F_QCI		= BIT(3),
 };
 
+/* interrupt coalescing modes */
+enum enetc_ic_mode {
+	/* one interrupt per frame */
+	ENETC_IC_NONE = 0,
+	/* activated when int coalescing time is set to a non-0 value */
+	ENETC_IC_RX_MANUAL = BIT(0),
+	ENETC_IC_TX_MANUAL = BIT(1),
+	/* use dynamic interrupt moderation */
+	ENETC_IC_RX_ADAPTIVE = BIT(2),
+};
+
+#define ENETC_RXIC_PKTTHR	min_t(u32, 256, ENETC_RX_RING_DEFAULT_SIZE / 2)
+#define ENETC_TXIC_PKTTHR	min_t(u32, 128, ENETC_TX_RING_DEFAULT_SIZE / 2)
+#define ENETC_TXIC_TIMETHR	enetc_usecs_to_cycles(600)
+
 struct enetc_ndev_priv {
 	struct net_device *ndev;
 	struct device *dev; /* dma-mapping device */
@@ -242,8 +264,9 @@ struct enetc_ndev_priv {
 
 	struct psfp_cap psfp_cap;
 
-	struct device_node *phy_node;
-	phy_interface_t if_mode;
+	struct phylink *phylink;
+	int ic_mode;
+	u32 tx_ictt;
 };
 
 /* Messaging */
@@ -273,6 +296,8 @@ void enetc_free_si_resources(struct enetc_ndev_priv *priv);
 
 int enetc_open(struct net_device *ndev);
 int enetc_close(struct net_device *ndev);
+void enetc_start(struct net_device *ndev);
+void enetc_stop(struct net_device *ndev);
 netdev_tx_t enetc_xmit(struct sk_buff *skb, struct net_device *ndev);
 struct net_device_stats *enetc_get_stats(struct net_device *ndev);
 int enetc_set_features(struct net_device *ndev,
@@ -297,7 +322,7 @@ int enetc_send_cmd(struct enetc_si *si, struct enetc_cbd *cbd);
 
 #ifdef CONFIG_FSL_ENETC_QOS
 int enetc_setup_tc_taprio(struct net_device *ndev, void *type_data);
-void enetc_sched_speed_set(struct net_device *ndev);
+void enetc_sched_speed_set(struct enetc_ndev_priv *priv, int speed);
 int enetc_setup_tc_cbs(struct net_device *ndev, void *type_data);
 int enetc_setup_tc_txtime(struct net_device *ndev, void *type_data);
 int enetc_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
@@ -362,7 +387,7 @@ static inline int enetc_psfp_disable(struct enetc_ndev_priv *priv)
 
 #else
 #define enetc_setup_tc_taprio(ndev, type_data) -EOPNOTSUPP
-#define enetc_sched_speed_set(ndev) (void)0
+#define enetc_sched_speed_set(priv, speed) (void)0
 #define enetc_setup_tc_cbs(ndev, type_data) -EOPNOTSUPP
 #define enetc_setup_tc_txtime(ndev, type_data) -EOPNOTSUPP
 #define enetc_setup_tc_psfp(ndev, type_data) -EOPNOTSUPP

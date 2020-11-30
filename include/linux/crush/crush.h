@@ -17,7 +17,7 @@
  * The algorithm was originally described in detail in this paper
  * (although the algorithm has evolved somewhat since then):
  *
- *     http://www.ssrc.ucsc.edu/Papers/weil-sc06.pdf
+ *     https://www.ssrc.ucsc.edu/Papers/weil-sc06.pdf
  *
  * LGPL2
  */
@@ -346,6 +346,9 @@ struct crush_work_bucket {
 
 struct crush_work {
 	struct crush_work_bucket **work; /* Per-bucket working store */
+#ifdef __KERNEL__
+	struct list_head item;
+#endif
 };
 
 #ifdef __KERNEL__

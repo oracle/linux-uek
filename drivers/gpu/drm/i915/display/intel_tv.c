@@ -1038,9 +1038,6 @@ intel_tv_mode_to_mode(struct drm_display_mode *mode,
 	/* TV has it's own notion of sync and other mode flags, so clear them. */
 	mode->flags = 0;
 
-	mode->vrefresh = 0;
-	mode->vrefresh = drm_mode_vrefresh(mode);
-
 	snprintf(mode->name, sizeof(mode->name),
 		 "%dx%d%c (%s)",
 		 mode->hdisplay, mode->vdisplay,
@@ -1161,7 +1158,7 @@ intel_tv_get_config(struct intel_encoder *encoder,
 
 	/* pixel counter doesn't work on i965gm TV output */
 	if (IS_I965GM(dev_priv))
-		adjusted_mode->private_flags |=
+		pipe_config->mode_flags |=
 			I915_MODE_FLAG_USE_SCANLINE_COUNTER;
 }
 
@@ -1331,7 +1328,7 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 
 	/* pixel counter doesn't work on i965gm TV output */
 	if (IS_I965GM(dev_priv))
-		adjusted_mode->private_flags |=
+		pipe_config->mode_flags |=
 			I915_MODE_FLAG_USE_SCANLINE_COUNTER;
 
 	return 0;
@@ -1708,6 +1705,9 @@ intel_tv_detect(struct drm_connector *connector,
 
 	drm_dbg_kms(&i915->drm, "[CONNECTOR:%d:%s] force=%d\n",
 		    connector->base.id, connector->name, force);
+
+	if (!INTEL_DISPLAY_ENABLED(i915))
+		return connector_status_disconnected;
 
 	if (force) {
 		struct intel_load_detect_pipe tmp;

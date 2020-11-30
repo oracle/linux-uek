@@ -285,8 +285,9 @@ config INTEL_IDMA64
 config INTEL_IDXD
 	tristate "Intel Data Accelerators support"
 	depends on PCI && X86_64
+	depends on PCI_MSI
+	depends on SBITMAP
 	select DMA_ENGINE
-	select SBITMAP
 	help
 	  Enable support for the Intel(R) data accelerators present
 	  in Intel Xeon CPU.
@@ -316,24 +317,6 @@ config INTEL_IOP_ADMA
 	select ASYNC_TX_ENABLE_CHANNEL_SWITCH
 	help
 	  Enable support for the Intel(R) IOP Series RAID engines.
-
-config INTEL_MIC_X100_DMA
-	tristate "Intel MIC X100 DMA Driver"
-	depends on 64BIT && X86 && INTEL_MIC_BUS
-	select DMA_ENGINE
-	help
-	  This enables DMA support for the Intel Many Integrated Core
-	  (MIC) family of PCIe form factor coprocessor X100 devices that
-	  run a 64 bit Linux OS. This driver will be used by both MIC
-	  host and card drivers.
-
-	  If you are building host kernel with a MIC device or a card
-	  kernel for a MIC device, then say M (recommended) or Y, else
-	  say N. If unsure say N.
-
-	  More information about the Intel MIC family as well as the Linux
-	  OS and tools for MIC to use with this driver are available from
-	  <http://software.intel.com/en-us/mic-developer>.
 
 config K3_DMA
 	tristate "Hisilicon K3 DMA support"
@@ -706,6 +689,16 @@ config XILINX_ZYNQMP_DMA
 	select DMA_ENGINE
 	help
 	  Enable support for Xilinx ZynqMP DMA controller.
+
+config XILINX_ZYNQMP_DPDMA
+	tristate "Xilinx DPDMA Engine"
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Enable support for Xilinx ZynqMP DisplayPort DMA. Choose this option
+	  if you have a Xilinx ZynqMP SoC with a DisplayPort subsystem. The
+	  driver provides the dmaengine required by the DisplayPort subsystem
+	  display driver.
 
 config ZX_DMA
 	tristate "ZTE ZX DMA support"

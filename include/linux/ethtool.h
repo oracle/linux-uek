@@ -86,6 +86,22 @@ struct net_device;
 u32 ethtool_op_get_link(struct net_device *dev);
 int ethtool_op_get_ts_info(struct net_device *dev, struct ethtool_ts_info *eti);
 
+
+/**
+ * struct ethtool_link_ext_state_info - link extended state and substate.
+ */
+struct ethtool_link_ext_state_info {
+	enum ethtool_link_ext_state link_ext_state;
+	union {
+		enum ethtool_link_ext_substate_autoneg autoneg;
+		enum ethtool_link_ext_substate_link_training link_training;
+		enum ethtool_link_ext_substate_link_logical_mismatch link_logical_mismatch;
+		enum ethtool_link_ext_substate_bad_signal_integrity bad_signal_integrity;
+		enum ethtool_link_ext_substate_cable_issue cable_issue;
+		u8 __link_ext_substate;
+	};
+};
+
 /**
  * ethtool_rxfh_indir_default - get default value for RX flow hash indirection
  * @index: Index in RX flow hash indirection table
@@ -225,6 +241,27 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
 	 ETHTOOL_COALESCE_PKT_RATE_LOW | ETHTOOL_COALESCE_PKT_RATE_HIGH | \
 	 ETHTOOL_COALESCE_RATE_SAMPLE_INTERVAL)
 
+#define ETHTOOL_STAT_NOT_SET	(~0ULL)
+
+/**
+ * struct ethtool_pause_stats - statistics for IEEE 802.3x pause frames
+ * @tx_pause_frames: transmitted pause frame count. Reported to user space
+ *	as %ETHTOOL_A_PAUSE_STAT_TX_FRAMES.
+ *
+ *	Equivalent to `30.3.4.2 aPAUSEMACCtrlFramesTransmitted`
+ *	from the standard.
+ *
+ * @rx_pause_frames: received pause frame count. Reported to user space
+ *	as %ETHTOOL_A_PAUSE_STAT_RX_FRAMES. Equivalent to:
+ *
+ *	Equivalent to `30.3.4.3 aPAUSEMACCtrlFramesReceived`
+ *	from the standard.
+ */
+struct ethtool_pause_stats {
+	u64 tx_pause_frames;
+	u64 rx_pause_frames;
+};
+
 /**
  * struct ethtool_ops - optional netdev operations
  * @supported_coalesce_params: supported types of interrupt coalescing.
@@ -245,6 +282,11 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
  * @get_link: Report whether physical link is up.  Will only be called if
  *	the netdev is up.  Should usually be set to ethtool_op_get_link(),
  *	which uses netif_carrier_ok().
+ * @get_link_ext_state: Report link extended state. Should set link_ext_state and
+ *	link_ext_substate (link_ext_substate of 0 means link_ext_substate is unknown,
+ *	do not attach ext_substate attribute to netlink message). If link_ext_state
+ *	and link_ext_substate are unknown, return -ENODATA. If not implemented,
+ *	link_ext_state and link_ext_substate will not be sent to userspace.
  * @get_eeprom: Read data from the device EEPROM.
  *	Should fill in the magic field.  Don't need to check len for zero
  *	or wraparound.  Fill in the data argument with the eeprom values
@@ -261,6 +303,9 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
  *	Returns a negative error code or zero.
  * @get_ringparam: Report ring sizes
  * @set_ringparam: Set ring sizes.  Returns a negative error code or zero.
+ * @get_pause_stats: Report pause frame statistics. Drivers must not zero
+ *	statistics which they don't report. The stats structure is initialized
+ *	to ETHTOOL_STAT_NOT_SET indicating driver does not report statistics.
  * @get_pauseparam: Report pause parameters
  * @set_pauseparam: Set pause parameters.  Returns a negative error code
  *	or zero.
@@ -384,6 +429,8 @@ struct ethtool_ops {
 	void	(*set_msglevel)(struct net_device *, u32);
 	int	(*nway_reset)(struct net_device *);
 	u32	(*get_link)(struct net_device *);
+	int	(*get_link_ext_state)(struct net_device *,
+				      struct ethtool_link_ext_state_info *);
 	int	(*get_eeprom_len)(struct net_device *);
 	int	(*get_eeprom)(struct net_device *,
 			      struct ethtool_eeprom *, u8 *);
@@ -395,6 +442,8 @@ struct ethtool_ops {
 				 struct ethtool_ringparam *);
 	int	(*set_ringparam)(struct net_device *,
 				 struct ethtool_ringparam *);
+	void	(*get_pause_stats)(struct net_device *dev,
+				   struct ethtool_pause_stats *pause_stats);
 	void	(*get_pauseparam)(struct net_device *,
 				  struct ethtool_pauseparam*);
 	int	(*set_pauseparam)(struct net_device *,
@@ -456,6 +505,10 @@ struct ethtool_ops {
 				      struct ethtool_fecparam *);
 	void	(*get_ethtool_phy_stats)(struct net_device *,
 					 struct ethtool_stats *, u64 *);
+	int	(*get_phy_tunable)(struct net_device *,
+				   const struct ethtool_tunable *, void *);
+	int	(*set_phy_tunable)(struct net_device *,
+				   const struct ethtool_tunable *, const void *);
 };
 
 int ethtool_check_ops(const struct ethtool_ops *ops);
@@ -479,5 +532,37 @@ int ethtool_virtdev_set_link_ksettings(struct net_device *dev,
 				       const struct ethtool_link_ksettings *cmd,
 				       u32 *dev_speed, u8 *dev_duplex);
 
+struct netlink_ext_ack;
+struct phy_device;
+struct phy_tdr_config;
+
+/**
+ * struct ethtool_phy_ops - Optional PHY device options
+ * @get_sset_count: Get number of strings that @get_strings will write.
+ * @get_strings: Return a set of strings that describe the requested objects
+ * @get_stats: Return extended statistics about the PHY device.
+ * @start_cable_test - Start a cable test
+ * @start_cable_test_tdr - Start a Time Domain Reflectometry cable test
+ *
+ * All operations are optional (i.e. the function pointer may be set to %NULL)
+ * and callers must take this into account. Callers must hold the RTNL lock.
+ */
+struct ethtool_phy_ops {
+	int (*get_sset_count)(struct phy_device *dev);
+	int (*get_strings)(struct phy_device *dev, u8 *data);
+	int (*get_stats)(struct phy_device *dev,
+			 struct ethtool_stats *stats, u64 *data);
+	int (*start_cable_test)(struct phy_device *phydev,
+				struct netlink_ext_ack *extack);
+	int (*start_cable_test_tdr)(struct phy_device *phydev,
+				    struct netlink_ext_ack *extack,
+				    const struct phy_tdr_config *config);
+};
+
+/**
+ * ethtool_set_ethtool_phy_ops - Set the ethtool_phy_ops singleton
+ * @ops: Ethtool PHY operations to set
+ */
+void ethtool_set_ethtool_phy_ops(const struct ethtool_phy_ops *ops);
 
 #endif /* _LINUX_ETHTOOL_H */

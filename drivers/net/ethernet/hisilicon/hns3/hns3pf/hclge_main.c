@@ -84,6 +84,7 @@ static const struct pci_device_id ae_algo_pci_tbl[] = {
 	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_50GE_RDMA), 0},
 	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_50GE_RDMA_MACSEC), 0},
 	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_100G_RDMA_MACSEC), 0},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_200G_RDMA), 0},
 	/* required last entry */
 	{0, }
 };
@@ -622,7 +623,7 @@ static u8 *hclge_tqps_get_strings(struct hnae3_handle *handle, u8 *data)
 {
 	struct hnae3_knic_private_info *kinfo = &handle->kinfo;
 	u8 *buff = data;
-	int i = 0;
+	int i;
 
 	for (i = 0; i < kinfo->num_tqps; i++) {
 		struct hclge_tqp *tqp = container_of(handle->kinfo.tqp[i],
@@ -739,7 +740,7 @@ static int hclge_get_sset_count(struct hnae3_handle *handle, int stringset)
 	if (stringset == ETH_SS_TEST) {
 		/* clear loopback bit flags at first */
 		handle->flags = (handle->flags & (~HCLGE_LOOPBACK_TEST_FLAGS));
-		if (hdev->pdev->revision >= 0x21 ||
+		if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2 ||
 		    hdev->hw.mac.speed == HCLGE_MAC_SPEED_10M ||
 		    hdev->hw.mac.speed == HCLGE_MAC_SPEED_100M ||
 		    hdev->hw.mac.speed == HCLGE_MAC_SPEED_1G) {
@@ -965,6 +966,9 @@ static int hclge_parse_speed(int speed_cmd, int *speed)
 	case 5:
 		*speed = HCLGE_MAC_SPEED_100G;
 		break;
+	case 8:
+		*speed = HCLGE_MAC_SPEED_200G;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1004,6 +1008,9 @@ static int hclge_check_port_speed(struct hnae3_handle *handle, u32 speed)
 	case HCLGE_MAC_SPEED_100G:
 		speed_bit = HCLGE_SUPPORT_100G_BIT;
 		break;
+	case HCLGE_MAC_SPEED_200G:
+		speed_bit = HCLGE_SUPPORT_200G_BIT;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1014,7 +1021,7 @@ static int hclge_check_port_speed(struct hnae3_handle *handle, u32 speed)
 	return -EINVAL;
 }
 
-static void hclge_convert_setting_sr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_convert_setting_sr(struct hclge_mac *mac, u16 speed_ability)
 {
 	if (speed_ability & HCLGE_SUPPORT_10G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseSR_Full_BIT,
@@ -1031,9 +1038,12 @@ static void hclge_convert_setting_sr(struct hclge_mac *mac, u8 speed_ability)
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseSR4_Full_BIT,
 				 mac->supported);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_200000baseSR4_Full_BIT,
+				 mac->supported);
 }
 
-static void hclge_convert_setting_lr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_convert_setting_lr(struct hclge_mac *mac, u16 speed_ability)
 {
 	if (speed_ability & HCLGE_SUPPORT_10G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseLR_Full_BIT,
@@ -1050,9 +1060,13 @@ static void hclge_convert_setting_lr(struct hclge_mac *mac, u8 speed_ability)
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseLR4_ER4_Full_BIT,
 				 mac->supported);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(
+			ETHTOOL_LINK_MODE_200000baseLR4_ER4_FR4_Full_BIT,
+			mac->supported);
 }
 
-static void hclge_convert_setting_cr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_convert_setting_cr(struct hclge_mac *mac, u16 speed_ability)
 {
 	if (speed_ability & HCLGE_SUPPORT_10G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseCR_Full_BIT,
@@ -1069,9 +1083,12 @@ static void hclge_convert_setting_cr(struct hclge_mac *mac, u8 speed_ability)
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseCR4_Full_BIT,
 				 mac->supported);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_200000baseCR4_Full_BIT,
+				 mac->supported);
 }
 
-static void hclge_convert_setting_kr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_convert_setting_kr(struct hclge_mac *mac, u16 speed_ability)
 {
 	if (speed_ability & HCLGE_SUPPORT_1G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseKX_Full_BIT,
@@ -1090,6 +1107,9 @@ static void hclge_convert_setting_kr(struct hclge_mac *mac, u8 speed_ability)
 				 mac->supported);
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT,
+				 mac->supported);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_200000baseKR4_Full_BIT,
 				 mac->supported);
 }
 
@@ -1115,6 +1135,7 @@ static void hclge_convert_setting_fec(struct hclge_mac *mac)
 			BIT(HNAE3_FEC_AUTO);
 		break;
 	case HCLGE_MAC_SPEED_100G:
+	case HCLGE_MAC_SPEED_200G:
 		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT, mac->supported);
 		mac->fec_ability = BIT(HNAE3_FEC_RS) | BIT(HNAE3_FEC_AUTO);
 		break;
@@ -1125,7 +1146,7 @@ static void hclge_convert_setting_fec(struct hclge_mac *mac)
 }
 
 static void hclge_parse_fiber_link_mode(struct hclge_dev *hdev,
-					u8 speed_ability)
+					u16 speed_ability)
 {
 	struct hclge_mac *mac = &hdev->hw.mac;
 
@@ -1136,7 +1157,7 @@ static void hclge_parse_fiber_link_mode(struct hclge_dev *hdev,
 	hclge_convert_setting_sr(mac, speed_ability);
 	hclge_convert_setting_lr(mac, speed_ability);
 	hclge_convert_setting_cr(mac, speed_ability);
-	if (hdev->pdev->revision >= 0x21)
+	if (hnae3_dev_fec_supported(hdev))
 		hclge_convert_setting_fec(mac);
 
 	linkmode_set_bit(ETHTOOL_LINK_MODE_FIBRE_BIT, mac->supported);
@@ -1145,12 +1166,12 @@ static void hclge_parse_fiber_link_mode(struct hclge_dev *hdev,
 }
 
 static void hclge_parse_backplane_link_mode(struct hclge_dev *hdev,
-					    u8 speed_ability)
+					    u16 speed_ability)
 {
 	struct hclge_mac *mac = &hdev->hw.mac;
 
 	hclge_convert_setting_kr(mac, speed_ability);
-	if (hdev->pdev->revision >= 0x21)
+	if (hnae3_dev_fec_supported(hdev))
 		hclge_convert_setting_fec(mac);
 	linkmode_set_bit(ETHTOOL_LINK_MODE_Backplane_BIT, mac->supported);
 	linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, mac->supported);
@@ -1158,7 +1179,7 @@ static void hclge_parse_backplane_link_mode(struct hclge_dev *hdev,
 }
 
 static void hclge_parse_copper_link_mode(struct hclge_dev *hdev,
-					 u8 speed_ability)
+					 u16 speed_ability)
 {
 	unsigned long *supported = hdev->hw.mac.supported;
 
@@ -1188,7 +1209,7 @@ static void hclge_parse_copper_link_mode(struct hclge_dev *hdev,
 	linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, supported);
 }
 
-static void hclge_parse_link_mode(struct hclge_dev *hdev, u8 speed_ability)
+static void hclge_parse_link_mode(struct hclge_dev *hdev, u16 speed_ability)
 {
 	u8 media_type = hdev->hw.mac.media_type;
 
@@ -1200,8 +1221,11 @@ static void hclge_parse_link_mode(struct hclge_dev *hdev, u8 speed_ability)
 		hclge_parse_backplane_link_mode(hdev, speed_ability);
 }
 
-static u32 hclge_get_max_speed(u8 speed_ability)
+static u32 hclge_get_max_speed(u16 speed_ability)
 {
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		return HCLGE_MAC_SPEED_200G;
+
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		return HCLGE_MAC_SPEED_100G;
 
@@ -1231,8 +1255,11 @@ static u32 hclge_get_max_speed(u8 speed_ability)
 
 static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 {
+#define SPEED_ABILITY_EXT_SHIFT			8
+
 	struct hclge_cfg_param_cmd *req;
 	u64 mac_addr_tmp_high;
+	u16 speed_ability_ext;
 	u64 mac_addr_tmp;
 	unsigned int i;
 
@@ -1281,6 +1308,11 @@ static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 	cfg->speed_ability = hnae3_get_field(__le32_to_cpu(req->param[1]),
 					     HCLGE_CFG_SPEED_ABILITY_M,
 					     HCLGE_CFG_SPEED_ABILITY_S);
+	speed_ability_ext = hnae3_get_field(__le32_to_cpu(req->param[1]),
+					    HCLGE_CFG_SPEED_ABILITY_EXT_M,
+					    HCLGE_CFG_SPEED_ABILITY_EXT_S);
+	cfg->speed_ability |= speed_ability_ext << SPEED_ABILITY_EXT_SHIFT;
+
 	cfg->umv_space = hnae3_get_field(__le32_to_cpu(req->param[1]),
 					 HCLGE_CFG_UMV_TBL_SPACE_M,
 					 HCLGE_CFG_UMV_TBL_SPACE_S);
@@ -1320,6 +1352,78 @@ static int hclge_get_cfg(struct hclge_dev *hdev, struct hclge_cfg *hcfg)
 	}
 
 	hclge_parse_cfg(hcfg, desc);
+
+	return 0;
+}
+
+static void hclge_set_default_dev_specs(struct hclge_dev *hdev)
+{
+#define HCLGE_MAX_NON_TSO_BD_NUM			8U
+
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+
+	ae_dev->dev_specs.max_non_tso_bd_num = HCLGE_MAX_NON_TSO_BD_NUM;
+	ae_dev->dev_specs.rss_ind_tbl_size = HCLGE_RSS_IND_TBL_SIZE;
+	ae_dev->dev_specs.rss_key_size = HCLGE_RSS_KEY_SIZE;
+	ae_dev->dev_specs.max_tm_rate = HCLGE_ETHER_MAX_RATE;
+}
+
+static void hclge_parse_dev_specs(struct hclge_dev *hdev,
+				  struct hclge_desc *desc)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+	struct hclge_dev_specs_0_cmd *req0;
+
+	req0 = (struct hclge_dev_specs_0_cmd *)desc[0].data;
+
+	ae_dev->dev_specs.max_non_tso_bd_num = req0->max_non_tso_bd_num;
+	ae_dev->dev_specs.rss_ind_tbl_size =
+		le16_to_cpu(req0->rss_ind_tbl_size);
+	ae_dev->dev_specs.rss_key_size = le16_to_cpu(req0->rss_key_size);
+	ae_dev->dev_specs.max_tm_rate = le32_to_cpu(req0->max_tm_rate);
+}
+
+static void hclge_check_dev_specs(struct hclge_dev *hdev)
+{
+	struct hnae3_dev_specs *dev_specs = &hdev->ae_dev->dev_specs;
+
+	if (!dev_specs->max_non_tso_bd_num)
+		dev_specs->max_non_tso_bd_num = HCLGE_MAX_NON_TSO_BD_NUM;
+	if (!dev_specs->rss_ind_tbl_size)
+		dev_specs->rss_ind_tbl_size = HCLGE_RSS_IND_TBL_SIZE;
+	if (!dev_specs->rss_key_size)
+		dev_specs->rss_key_size = HCLGE_RSS_KEY_SIZE;
+	if (!dev_specs->max_tm_rate)
+		dev_specs->max_tm_rate = HCLGE_ETHER_MAX_RATE;
+}
+
+static int hclge_query_dev_specs(struct hclge_dev *hdev)
+{
+	struct hclge_desc desc[HCLGE_QUERY_DEV_SPECS_BD_NUM];
+	int ret;
+	int i;
+
+	/* set default specifications as devices lower than version V3 do not
+	 * support querying specifications from firmware.
+	 */
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V3) {
+		hclge_set_default_dev_specs(hdev);
+		return 0;
+	}
+
+	for (i = 0; i < HCLGE_QUERY_DEV_SPECS_BD_NUM - 1; i++) {
+		hclge_cmd_setup_basic_desc(&desc[i], HCLGE_OPC_QUERY_DEV_SPECS,
+					   true);
+		desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+	}
+	hclge_cmd_setup_basic_desc(&desc[i], HCLGE_OPC_QUERY_DEV_SPECS, true);
+
+	ret = hclge_cmd_send(&hdev->hw, desc, HCLGE_QUERY_DEV_SPECS_BD_NUM);
+	if (ret)
+		return ret;
+
+	hclge_parse_dev_specs(hdev, desc);
+	hclge_check_dev_specs(hdev);
 
 	return 0;
 }
@@ -2422,6 +2526,10 @@ static int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed,
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
 				HCLGE_CFG_SPEED_S, 5);
 		break;
+	case HCLGE_MAC_SPEED_200G:
+		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
+				HCLGE_CFG_SPEED_S, 8);
+		break;
 	default:
 		dev_err(&hdev->pdev->dev, "invalid speed (%d)\n", speed);
 		return -EINVAL;
@@ -2673,11 +2781,10 @@ void hclge_task_schedule(struct hclge_dev *hdev, unsigned long delay_time)
 				    delay_time);
 }
 
-static int hclge_get_mac_link_status(struct hclge_dev *hdev)
+static int hclge_get_mac_link_status(struct hclge_dev *hdev, int *link_status)
 {
 	struct hclge_link_status_cmd *req;
 	struct hclge_desc desc;
-	int link_status;
 	int ret;
 
 	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_QUERY_LINK_STATUS, true);
@@ -2689,33 +2796,25 @@ static int hclge_get_mac_link_status(struct hclge_dev *hdev)
 	}
 
 	req = (struct hclge_link_status_cmd *)desc.data;
-	link_status = req->status & HCLGE_LINK_STATUS_UP_M;
+	*link_status = (req->status & HCLGE_LINK_STATUS_UP_M) > 0 ?
+		HCLGE_LINK_STATUS_UP : HCLGE_LINK_STATUS_DOWN;
 
-	return !!link_status;
+	return 0;
 }
 
-static int hclge_get_mac_phy_link(struct hclge_dev *hdev)
+static int hclge_get_mac_phy_link(struct hclge_dev *hdev, int *link_status)
 {
-	unsigned int mac_state;
-	int link_stat;
+	struct phy_device *phydev = hdev->hw.mac.phydev;
+
+	*link_status = HCLGE_LINK_STATUS_DOWN;
 
 	if (test_bit(HCLGE_STATE_DOWN, &hdev->state))
 		return 0;
 
-	mac_state = hclge_get_mac_link_status(hdev);
+	if (phydev && (phydev->state != PHY_RUNNING || !phydev->link))
+		return 0;
 
-	if (hdev->hw.mac.phydev) {
-		if (hdev->hw.mac.phydev->state == PHY_RUNNING)
-			link_stat = mac_state &
-				hdev->hw.mac.phydev->link;
-		else
-			link_stat = 0;
-
-	} else {
-		link_stat = mac_state;
-	}
-
-	return !!link_stat;
+	return hclge_get_mac_link_status(hdev, link_status);
 }
 
 static void hclge_update_link_status(struct hclge_dev *hdev)
@@ -2725,6 +2824,7 @@ static void hclge_update_link_status(struct hclge_dev *hdev)
 	struct hnae3_handle *rhandle;
 	struct hnae3_handle *handle;
 	int state;
+	int ret;
 	int i;
 
 	if (!client)
@@ -2733,7 +2833,12 @@ static void hclge_update_link_status(struct hclge_dev *hdev)
 	if (test_and_set_bit(HCLGE_STATE_LINK_UPDATING, &hdev->state))
 		return;
 
-	state = hclge_get_mac_phy_link(hdev);
+	ret = hclge_get_mac_phy_link(hdev, &state);
+	if (ret) {
+		clear_bit(HCLGE_STATE_LINK_UPDATING, &hdev->state);
+		return;
+	}
+
 	if (state != hdev->hw.mac.link) {
 		for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
 			handle = &hdev->vport[i].nic;
@@ -2859,7 +2964,7 @@ static int hclge_update_port_info(struct hclge_dev *hdev)
 	if (!hdev->support_sfp_query)
 		return 0;
 
-	if (hdev->pdev->revision >= 0x21)
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2)
 		ret = hclge_get_sfp_info(hdev, mac);
 	else
 		ret = hclge_get_sfp_speed(hdev, &speed);
@@ -2871,7 +2976,7 @@ static int hclge_update_port_info(struct hclge_dev *hdev)
 		return ret;
 	}
 
-	if (hdev->pdev->revision >= 0x21) {
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		if (mac->speed_type == QUERY_ACTIVE_SPEED) {
 			hclge_update_port_capability(mac);
 			return 0;
@@ -3064,7 +3169,7 @@ static irqreturn_t hclge_misc_irq_handle(int irq, void *data)
 		 *    by first decoding the types of errors.
 		 */
 		set_bit(HNAE3_UNKNOWN_RESET, &hdev->reset_request);
-		/* fall through */
+		fallthrough;
 	case HCLGE_VECTOR0_EVENT_RST:
 		hclge_reset_task_schedule(hdev);
 		break;
@@ -3214,7 +3319,7 @@ static int hclge_notify_roce_client(struct hclge_dev *hdev,
 				    enum hnae3_reset_notify_type type)
 {
 	struct hnae3_client *client = hdev->roce_client;
-	int ret = 0;
+	int ret;
 	u16 i;
 
 	if (!test_bit(HCLGE_STATE_ROCE_REGISTERED, &hdev->state) || !client)
@@ -3536,7 +3641,7 @@ static void hclge_clear_reset_cause(struct hclge_dev *hdev)
 	/* For revision 0x20, the reset interrupt source
 	 * can only be cleared after hardware reset done
 	 */
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		hclge_write_dev(&hdev->hw, HCLGE_MISC_RESET_STS_REG,
 				clearval);
 
@@ -3689,12 +3794,10 @@ static int hclge_reset_prepare_up(struct hclge_dev *hdev)
 
 	switch (hdev->reset_type) {
 	case HNAE3_FUNC_RESET:
-		/* fall through */
 	case HNAE3_FLR_RESET:
 		ret = hclge_set_all_vf_rst(hdev, false);
 		break;
 	case HNAE3_GLOBAL_RESET:
-		/* fall through */
 	case HNAE3_IMP_RESET:
 		ret = hclge_set_rst_done(hdev);
 		break;
@@ -3948,6 +4051,9 @@ static void hclge_update_vport_alive(struct hclge_dev *hdev)
 static void hclge_periodic_service_task(struct hclge_dev *hdev)
 {
 	unsigned long delta = round_jiffies_relative(HZ);
+
+	if (test_bit(HCLGE_STATE_RST_FAIL, &hdev->state))
+		return;
 
 	/* Always handle the link updating to make sure link state is
 	 * updated when it is triggered by mbx.
@@ -4542,7 +4648,7 @@ static void hclge_rss_init_cfg(struct hclge_dev *hdev)
 	int i, rss_algo = HCLGE_RSS_HASH_ALGO_TOEPLITZ;
 	struct hclge_vport *vport = hdev->vport;
 
-	if (hdev->pdev->revision >= 0x21)
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2)
 		rss_algo = HCLGE_RSS_HASH_ALGO_SIMPLE;
 
 	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
@@ -4742,13 +4848,14 @@ static int hclge_set_promisc_mode(struct hnae3_handle *handle, bool en_uc_pmc,
 				  bool en_mc_pmc)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_dev *hdev = vport->back;
 	bool en_bc_pmc = true;
 
-	/* For revision 0x20, if broadcast promisc enabled, vlan filter is
-	 * always bypassed. So broadcast promisc should be disabled until
-	 * user enable promisc mode
+	/* For device whose version below V2, if broadcast promisc enabled,
+	 * vlan filter is always bypassed. So broadcast promisc should be
+	 * disabled until user enable promisc mode
 	 */
-	if (handle->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		en_bc_pmc = handle->netdev_flags & HNAE3_BPE ? true : false;
 
 	return hclge_set_vport_promisc_mode(vport, en_uc_pmc, en_mc_pmc,
@@ -5809,9 +5916,9 @@ static int hclge_add_fd_entry(struct hnae3_handle *handle,
 	/* to avoid rule conflict, when user configure rule by ethtool,
 	 * we need to clear all arfs rules
 	 */
+	spin_lock_bh(&hdev->fd_rule_lock);
 	hclge_clear_arfs_rules(handle);
 
-	spin_lock_bh(&hdev->fd_rule_lock);
 	ret = hclge_fd_config_rule(hdev, rule);
 
 	spin_unlock_bh(&hdev->fd_rule_lock);
@@ -5854,6 +5961,7 @@ static int hclge_del_fd_entry(struct hnae3_handle *handle,
 	return ret;
 }
 
+/* make sure being called after lock up with fd_rule_lock */
 static void hclge_del_all_fd_entries(struct hnae3_handle *handle,
 				     bool clear_list)
 {
@@ -5866,7 +5974,6 @@ static void hclge_del_all_fd_entries(struct hnae3_handle *handle,
 	if (!hnae3_dev_fd_supported(hdev))
 		return;
 
-	spin_lock_bh(&hdev->fd_rule_lock);
 	for_each_set_bit(location, hdev->fd_bmap,
 			 hdev->fd_cfg.rule_num[HCLGE_FD_STAGE_1])
 		hclge_fd_tcam_config(hdev, HCLGE_FD_STAGE_1, true, location,
@@ -5883,8 +5990,6 @@ static void hclge_del_all_fd_entries(struct hnae3_handle *handle,
 		bitmap_zero(hdev->fd_bmap,
 			    hdev->fd_cfg.rule_num[HCLGE_FD_STAGE_1]);
 	}
-
-	spin_unlock_bh(&hdev->fd_rule_lock);
 }
 
 static int hclge_restore_fd_entries(struct hnae3_handle *handle)
@@ -6266,7 +6371,7 @@ static int hclge_add_fd_entry_by_arfs(struct hnae3_handle *handle, u16 queue_id,
 				      u16 flow_id, struct flow_keys *fkeys)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
-	struct hclge_fd_rule_tuples new_tuples;
+	struct hclge_fd_rule_tuples new_tuples = {};
 	struct hclge_dev *hdev = vport->back;
 	struct hclge_fd_rule *rule;
 	u16 tmp_queue_id;
@@ -6276,18 +6381,16 @@ static int hclge_add_fd_entry_by_arfs(struct hnae3_handle *handle, u16 queue_id,
 	if (!hnae3_dev_fd_supported(hdev))
 		return -EOPNOTSUPP;
 
-	memset(&new_tuples, 0, sizeof(new_tuples));
-	hclge_fd_get_flow_tuples(fkeys, &new_tuples);
-
-	spin_lock_bh(&hdev->fd_rule_lock);
-
 	/* when there is already fd rule existed add by user,
 	 * arfs should not work
 	 */
+	spin_lock_bh(&hdev->fd_rule_lock);
 	if (hdev->fd_active_type == HCLGE_FD_EP_ACTIVE) {
 		spin_unlock_bh(&hdev->fd_rule_lock);
 		return -EOPNOTSUPP;
 	}
+
+	hclge_fd_get_flow_tuples(fkeys, &new_tuples);
 
 	/* check is there flow director filter existed for this flow,
 	 * if not, create a new filter for it;
@@ -6371,6 +6474,7 @@ static void hclge_rfs_filter_expire(struct hclge_dev *hdev)
 #endif
 }
 
+/* make sure being called after lock up with fd_rule_lock */
 static void hclge_clear_arfs_rules(struct hnae3_handle *handle)
 {
 #ifdef CONFIG_RFS_ACCEL
@@ -6423,10 +6527,14 @@ static void hclge_enable_fd(struct hnae3_handle *handle, bool enable)
 
 	hdev->fd_en = enable;
 	clear = hdev->fd_active_type == HCLGE_FD_ARFS_ACTIVE;
-	if (!enable)
+
+	if (!enable) {
+		spin_lock_bh(&hdev->fd_rule_lock);
 		hclge_del_all_fd_entries(handle, clear);
-	else
+		spin_unlock_bh(&hdev->fd_rule_lock);
+	} else {
 		hclge_restore_fd_entries(handle);
+	}
 }
 
 static void hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable)
@@ -6524,14 +6632,15 @@ static int hclge_mac_link_status_wait(struct hclge_dev *hdev, int link_ret)
 {
 #define HCLGE_MAC_LINK_STATUS_NUM  100
 
+	int link_status;
 	int i = 0;
 	int ret;
 
 	do {
-		ret = hclge_get_mac_link_status(hdev);
-		if (ret < 0)
+		ret = hclge_get_mac_link_status(hdev, &link_status);
+		if (ret)
 			return ret;
-		else if (ret == link_ret)
+		if (link_status == link_ret)
 			return 0;
 
 		msleep(HCLGE_LINK_STATUS_MS);
@@ -6542,9 +6651,6 @@ static int hclge_mac_link_status_wait(struct hclge_dev *hdev, int link_ret)
 static int hclge_mac_phy_link_status_wait(struct hclge_dev *hdev, bool en,
 					  bool is_phy)
 {
-#define HCLGE_LINK_STATUS_DOWN 0
-#define HCLGE_LINK_STATUS_UP   1
-
 	int link_ret;
 
 	link_ret = en ? HCLGE_LINK_STATUS_UP : HCLGE_LINK_STATUS_DOWN;
@@ -6764,7 +6870,7 @@ static int hclge_set_loopback(struct hnae3_handle *handle,
 	 * the same, the packets are looped back in the SSU. If SSU loopback
 	 * is disabled, packets can reach MAC even if SMAC is the same as DMAC.
 	 */
-	if (hdev->pdev->revision >= 0x21) {
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		u8 switch_param = en ? 0 : BIT(HCLGE_SWITCH_ALW_LPBK_B);
 
 		ret = hclge_config_switch_param(hdev, PF_VPORT_ID, switch_param,
@@ -6891,8 +6997,9 @@ static void hclge_ae_stop(struct hnae3_handle *handle)
 	int i;
 
 	set_bit(HCLGE_STATE_DOWN, &hdev->state);
-
+	spin_lock_bh(&hdev->fd_rule_lock);
 	hclge_clear_arfs_rules(handle);
+	spin_unlock_bh(&hdev->fd_rule_lock);
 
 	/* If it is not PF reset, the firmware will disable the MAC,
 	 * so it only need to stop phy here.
@@ -8265,7 +8372,7 @@ static void hclge_enable_vlan_filter(struct hnae3_handle *handle, bool enable)
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
 
-	if (hdev->pdev->revision >= 0x21) {
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		hclge_set_vlan_filter_ctrl(hdev, HCLGE_FILTER_TYPE_VF,
 					   HCLGE_FILTER_FE_EGRESS, enable, 0);
 		hclge_set_vlan_filter_ctrl(hdev, HCLGE_FILTER_TYPE_PORT,
@@ -8625,7 +8732,7 @@ static int hclge_init_vlan_config(struct hclge_dev *hdev)
 	int ret;
 	int i;
 
-	if (hdev->pdev->revision >= 0x21) {
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		/* for revision 0x21, vf vlan filter is per function */
 		for (i = 0; i < hdev->num_alloc_vport; i++) {
 			vport = &hdev->vport[i];
@@ -8980,7 +9087,7 @@ static int hclge_set_vf_vlan_filter(struct hnae3_handle *handle, int vfid,
 	u16 state;
 	int ret;
 
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		return -EOPNOTSUPP;
 
 	vport = hclge_get_vf_vport(hdev, vfid);
@@ -9045,11 +9152,12 @@ int hclge_set_vlan_filter(struct hnae3_handle *handle, __be16 proto,
 	bool writen_to_tbl = false;
 	int ret = 0;
 
-	/* When device is resetting, firmware is unable to handle
-	 * mailbox. Just record the vlan id, and remove it after
+	/* When device is resetting or reset failed, firmware is unable to
+	 * handle mailbox. Just record the vlan id, and remove it after
 	 * reset finished.
 	 */
-	if (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state) && is_kill) {
+	if ((test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state) ||
+	     test_bit(HCLGE_STATE_RST_FAIL, &hdev->state)) && is_kill) {
 		set_bit(vlan_id, vport->vlan_del_fail_bmap);
 		return -EBUSY;
 	}
@@ -9859,7 +9967,7 @@ retry:
 	set_bit(HCLGE_STATE_RST_HANDLING, &hdev->state);
 	hdev->reset_type = HNAE3_FLR_RESET;
 	ret = hclge_reset_prepare(hdev);
-	if (ret) {
+	if (ret || hdev->reset_pending) {
 		dev_err(&hdev->pdev->dev, "fail to prepare FLR, ret=%d\n",
 			ret);
 		if (hdev->reset_pending ||
@@ -9953,6 +10061,13 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 	ret = hclge_get_cap(hdev);
 	if (ret)
 		goto err_cmd_uninit;
+
+	ret = hclge_query_dev_specs(hdev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to query dev specifications, ret = %d.\n",
+			ret);
+		goto err_cmd_uninit;
+	}
 
 	ret = hclge_configure(hdev);
 	if (ret) {
@@ -10151,7 +10266,7 @@ static int hclge_set_vf_spoofchk(struct hnae3_handle *handle, int vf,
 	u32 new_spoofchk = enable ? 1 : 0;
 	int ret;
 
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		return -EOPNOTSUPP;
 
 	vport = hclge_get_vf_vport(hdev, vf);
@@ -10184,7 +10299,7 @@ static int hclge_reset_vport_spoofchk(struct hclge_dev *hdev)
 	int ret;
 	int i;
 
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		return 0;
 
 	/* resume the vf spoof check state after reset */
@@ -10204,6 +10319,7 @@ static int hclge_set_vf_trust(struct hnae3_handle *handle, int vf, bool enable)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
+	struct hnae3_ae_dev *ae_dev = hdev->ae_dev;
 	u32 new_trusted = enable ? 1 : 0;
 	bool en_bc_pmc;
 	int ret;
@@ -10217,7 +10333,7 @@ static int hclge_set_vf_trust(struct hnae3_handle *handle, int vf, bool enable)
 
 	/* Disable promisc mode for VF if it is not trusted any more. */
 	if (!enable && vport->vf_info.promisc_enable) {
-		en_bc_pmc = hdev->pdev->revision != 0x20;
+		en_bc_pmc = ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2;
 		ret = hclge_set_vport_promisc_mode(vport, false, false,
 						   en_bc_pmc);
 		if (ret)
@@ -11094,7 +11210,7 @@ static void hclge_sync_promisc_mode(struct hclge_dev *hdev)
 {
 	struct hclge_vport *vport = &hdev->vport[0];
 	struct hnae3_handle *handle = &vport->nic;
-	u8 tmp_flags = 0;
+	u8 tmp_flags;
 	int ret;
 
 	if (vport->last_promisc_flags != vport->overflow_promisc_flags) {

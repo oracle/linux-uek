@@ -64,7 +64,7 @@ static void enter_exception64(struct kvm_vcpu *vcpu, unsigned long target_mode,
 	case PSR_MODE_EL1h:
 		vbar = vcpu_read_sys_reg(vcpu, VBAR_EL1);
 		sctlr = vcpu_read_sys_reg(vcpu, SCTLR_EL1);
-		vcpu_write_elr_el1(vcpu, *vcpu_pc(vcpu));
+		vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL1);
 		break;
 	default:
 		/* Don't do that */
@@ -202,6 +202,7 @@ void kvm_inject_pabt(struct kvm_vcpu *vcpu, unsigned long addr)
 
 /**
  * kvm_inject_undefined - inject an undefined instruction into the guest
+ * @vcpu: The vCPU in which to inject the exception
  *
  * It is assumed that this code is called from the VCPU thread and that the
  * VCPU therefore is not currently executing guest code.

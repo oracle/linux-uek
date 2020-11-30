@@ -13,7 +13,7 @@ bool __mt76_poll(struct mt76_dev *dev, u32 offset, u32 mask, u32 val,
 
 	timeout /= 10;
 	do {
-		cur = dev->bus->rr(dev, offset) & mask;
+		cur = __mt76_rr(dev, offset) & mask;
 		if (cur == val)
 			return true;
 
@@ -31,7 +31,7 @@ bool __mt76_poll_msec(struct mt76_dev *dev, u32 offset, u32 mask, u32 val,
 
 	timeout /= 10;
 	do {
-		cur = dev->bus->rr(dev, offset) & mask;
+		cur = __mt76_rr(dev, offset) & mask;
 		if (cur == val)
 			return true;
 
@@ -109,5 +109,33 @@ int mt76_get_min_avg_rssi(struct mt76_dev *dev, bool ext_phy)
 	return min_rssi;
 }
 EXPORT_SYMBOL_GPL(mt76_get_min_avg_rssi);
+
+int __mt76_worker_fn(void *ptr)
+{
+	struct mt76_worker *w = ptr;
+
+	while (!kthread_should_stop()) {
+		set_current_state(TASK_INTERRUPTIBLE);
+
+		if (kthread_should_park()) {
+			kthread_parkme();
+			continue;
+		}
+
+		if (!test_and_clear_bit(MT76_WORKER_SCHEDULED, &w->state)) {
+			schedule();
+			continue;
+		}
+
+		set_bit(MT76_WORKER_RUNNING, &w->state);
+		set_current_state(TASK_RUNNING);
+		w->fn(w);
+		cond_resched();
+		clear_bit(MT76_WORKER_RUNNING, &w->state);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(__mt76_worker_fn);
 
 MODULE_LICENSE("Dual BSD/GPL");

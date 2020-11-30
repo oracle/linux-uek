@@ -46,14 +46,14 @@ static int call_clone3_set_tid(pid_t *set_tid,
 	int status;
 	pid_t pid = -1;
 
-	struct clone_args args = {
+	struct __clone_args args = {
 		.flags = flags,
 		.exit_signal = SIGCHLD,
 		.set_tid = ptr_to_u64(set_tid),
 		.set_tid_size = set_tid_size,
 	};
 
-	pid = sys_clone3(&args, sizeof(struct clone_args));
+	pid = sys_clone3(&args, sizeof(args));
 	if (pid < 0) {
 		ksft_print_msg("%s - Failed to create new process\n",
 			       strerror(errno));
@@ -157,8 +157,8 @@ int main(int argc, char *argv[])
 	pid_t set_tid[MAX_PID_NS_LEVEL * 2];
 
 	ksft_print_header();
-	test_clone3_supported();
 	ksft_set_plan(29);
+	test_clone3_supported();
 
 	if (pipe(pipe_1) < 0 || pipe(pipe_2) < 0)
 		ksft_exit_fail_msg("pipe() failed\n");

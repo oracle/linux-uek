@@ -833,7 +833,10 @@ intel_crt_detect(struct drm_connector *connector,
 		    connector->base.id, connector->name,
 		    force);
 
-	if (i915_modparams.load_detect_test) {
+	if (!INTEL_DISPLAY_ENABLED(dev_priv))
+		return connector_status_disconnected;
+
+	if (dev_priv->params.load_detect_test) {
 		wakeref = intel_display_power_get(dev_priv,
 						  intel_encoder->power_domain);
 		goto load_detect;
@@ -889,7 +892,7 @@ load_detect:
 		else if (INTEL_GEN(dev_priv) < 4)
 			status = intel_crt_load_detect(crt,
 				to_intel_crtc(connector->state->crtc)->pipe);
-		else if (i915_modparams.load_detect_test)
+		else if (dev_priv->params.load_detect_test)
 			status = connector_status_disconnected;
 		else
 			status = connector_status_unknown;

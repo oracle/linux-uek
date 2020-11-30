@@ -1002,7 +1002,7 @@ static void __arm_spe_pmu_dev_probe(void *info)
 	default:
 		dev_warn(dev, "unknown PMSIDR_EL1.Interval [%d]; assuming 8\n",
 			 fld);
-		/* Fallthrough */
+		fallthrough;
 	case 8:
 		spe_pmu->min_period = 4096;
 	}
@@ -1021,7 +1021,7 @@ static void __arm_spe_pmu_dev_probe(void *info)
 	default:
 		dev_warn(dev, "unknown PMSIDR_EL1.CountSize [%d]; assuming 2\n",
 			 fld);
-		/* Fallthrough */
+		fallthrough;
 	case 2:
 		spe_pmu->counter_sz = 12;
 	}
@@ -1226,6 +1226,7 @@ static struct platform_driver arm_spe_pmu_driver = {
 	.driver	= {
 		.name		= DRVNAME,
 		.of_match_table	= of_match_ptr(arm_spe_pmu_of_match),
+		.suppress_bind_attrs = true,
 	},
 	.probe	= arm_spe_pmu_device_probe,
 	.remove	= arm_spe_pmu_device_remove,

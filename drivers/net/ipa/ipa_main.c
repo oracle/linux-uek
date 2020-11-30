@@ -75,17 +75,19 @@
  * @ipa:	IPA pointer
  * @irq_id:	IPA interrupt type (unused)
  *
- * When in suspended state, the IPA can trigger a resume by sending a SUSPEND
- * IPA interrupt.
+ * If an RX endpoint is in suspend state, and the IPA has a packet
+ * destined for that endpoint, the IPA generates a SUSPEND interrupt
+ * to inform the AP that it should resume the endpoint.  If we get
+ * one of these interrupts we just resume everything.
  */
 static void ipa_suspend_handler(struct ipa *ipa, enum ipa_irq_id irq_id)
 {
-	/* Take a a single clock reference to prevent suspend.  All
-	 * endpoints will be resumed as a result.  This reference will
-	 * be dropped when we get a power management suspend request.
+	/* Just report the event, and let system resume handle the rest.
+	 * More than one endpoint could signal this; if so, ignore
+	 * all but the first.
 	 */
-	if (!atomic_xchg(&ipa->suspend_ref, 1))
-		ipa_clock_get(ipa);
+	if (!test_and_set_bit(IPA_FLAG_RESUMED, ipa->flags))
+		pm_wakeup_dev_event(&ipa->pdev->dev, 0, true);
 
 	/* Acknowledge/clear the suspend interrupt on all endpoints */
 	ipa_interrupt_suspend_clear_all(ipa->interrupt);
@@ -106,6 +108,7 @@ int ipa_setup(struct ipa *ipa)
 {
 	struct ipa_endpoint *exception_endpoint;
 	struct ipa_endpoint *command_endpoint;
+	struct device *dev = &ipa->pdev->dev;
 	int ret;
 
 	/* Setup for IPA v3.5.1 has some slight differences */
@@ -122,6 +125,10 @@ int ipa_setup(struct ipa *ipa)
 			  ipa_suspend_handler);
 
 	ipa_uc_setup(ipa);
+
+	ret = device_init_wakeup(dev, true);
+	if (ret)
+		goto err_uc_teardown;
 
 	ipa_endpoint_setup(ipa);
 
@@ -158,7 +165,7 @@ int ipa_setup(struct ipa *ipa)
 
 	ipa->setup_complete = true;
 
-	dev_info(&ipa->pdev->dev, "IPA driver setup completed successfully\n");
+	dev_info(dev, "IPA driver setup completed successfully\n");
 
 	return 0;
 
@@ -173,6 +180,8 @@ err_command_disable:
 	ipa_endpoint_disable_one(command_endpoint);
 err_endpoint_teardown:
 	ipa_endpoint_teardown(ipa);
+	(void)device_init_wakeup(dev, false);
+err_uc_teardown:
 	ipa_uc_teardown(ipa);
 	ipa_interrupt_remove(ipa->interrupt, IPA_IRQ_TX_SUSPEND);
 	ipa_interrupt_teardown(ipa->interrupt);
@@ -200,6 +209,7 @@ static void ipa_teardown(struct ipa *ipa)
 	command_endpoint = ipa->name_map[IPA_ENDPOINT_AP_COMMAND_TX];
 	ipa_endpoint_disable_one(command_endpoint);
 	ipa_endpoint_teardown(ipa);
+	(void)device_init_wakeup(&ipa->pdev->dev, false);
 	ipa_uc_teardown(ipa);
 	ipa_interrupt_remove(ipa->interrupt, IPA_IRQ_TX_SUSPEND);
 	ipa_interrupt_teardown(ipa->interrupt);
@@ -277,6 +287,7 @@ static void ipa_idle_indication_cfg(struct ipa *ipa,
 
 /**
  * ipa_hardware_dcd_config() - Enable dynamic clock division on IPA
+ * @ipa:	IPA pointer
  *
  * Configures when the IPA signals it is idle to the global clock
  * controller, which can respond by scalling down the clock to
@@ -495,6 +506,7 @@ static void ipa_resource_deconfig(struct ipa *ipa)
 /**
  * ipa_config() - Configure IPA hardware
  * @ipa:	IPA pointer
+ * @data:	IPA configuration data
  *
  * Perform initialization requiring IPA clock to be enabled.
  */
@@ -506,7 +518,6 @@ static int ipa_config(struct ipa *ipa, const struct ipa_data *data)
 	 * is held after initialization completes, and won't get dropped
 	 * unless/until a system suspend request arrives.
 	 */
-	atomic_set(&ipa->suspend_ref, 1);
 	ipa_clock_get(ipa);
 
 	ipa_hardware_config(ipa);
@@ -542,7 +553,6 @@ err_endpoint_deconfig:
 err_hardware_deconfig:
 	ipa_hardware_deconfig(ipa);
 	ipa_clock_put(ipa);
-	atomic_set(&ipa->suspend_ref, 0);
 
 	return ret;
 }
@@ -560,7 +570,6 @@ static void ipa_deconfig(struct ipa *ipa)
 	ipa_endpoint_deconfig(ipa);
 	ipa_hardware_deconfig(ipa);
 	ipa_clock_put(ipa);
-	atomic_set(&ipa->suspend_ref, 0);
 }
 
 static int ipa_firmware_load(struct device *dev)
@@ -674,6 +683,11 @@ static void ipa_validate_build(void)
 
 	/* This is used as a divisor */
 	BUILD_BUG_ON(!IPA_AGGR_GRANULARITY);
+
+	/* Aggregation granularity value can't be 0, and must fit */
+	BUILD_BUG_ON(!ipa_aggr_granularity_val(IPA_AGGR_GRANULARITY));
+	BUILD_BUG_ON(ipa_aggr_granularity_val(IPA_AGGR_GRANULARITY) >
+			field_max(AGGR_GRANULARITY));
 #endif /* IPA_VALIDATE */
 }
 
@@ -681,7 +695,7 @@ static void ipa_validate_build(void)
  * ipa_probe() - IPA platform driver probe function
  * @pdev:	Platform device pointer
  *
- * @Return:	0 if successful, or a negative error code (possibly
+ * Return:	0 if successful, or a negative error code (possibly
  *		EPROBE_DEFER)
  *
  * This is the main entry point for the IPA driver.  Initialization proceeds
@@ -702,7 +716,6 @@ static void ipa_validate_build(void)
  */
 static int ipa_probe(struct platform_device *pdev)
 {
-	struct wakeup_source *wakeup_source;
 	struct device *dev = &pdev->dev;
 	const struct ipa_data *data;
 	struct ipa_clock *clock;
@@ -710,8 +723,8 @@ static int ipa_probe(struct platform_device *pdev)
 	bool modem_alloc;
 	bool modem_init;
 	struct ipa *ipa;
-	phandle phandle;
 	bool prefetch;
+	phandle ph;
 	int ret;
 
 	ipa_validate_build();
@@ -723,13 +736,13 @@ static int ipa_probe(struct platform_device *pdev)
 			return -EPROBE_DEFER;
 
 	/* We rely on remoteproc to tell us about modem state changes */
-	phandle = of_property_read_phandle(dev->of_node, "modem-remoteproc");
-	if (!phandle) {
+	ph = of_property_read_phandle(dev->of_node, "modem-remoteproc");
+	if (!ph) {
 		dev_err(dev, "DT missing \"modem-remoteproc\" property\n");
 		return -EINVAL;
 	}
 
-	rproc = rproc_get_by_phandle(phandle);
+	rproc = rproc_get_by_phandle(ph);
 	if (!rproc)
 		return -EPROBE_DEFER;
 
@@ -751,27 +764,17 @@ static int ipa_probe(struct platform_device *pdev)
 		goto err_clock_exit;
 	}
 
-	/* Create a wakeup source. */
-	wakeup_source = wakeup_source_register(dev, "ipa");
-	if (!wakeup_source) {
-		/* The most likely reason for failure is memory exhaustion */
-		ret = -ENOMEM;
-		goto err_clock_exit;
-	}
-
 	/* Allocate and initialize the IPA structure */
 	ipa = kzalloc(sizeof(*ipa), GFP_KERNEL);
 	if (!ipa) {
 		ret = -ENOMEM;
-		goto err_wakeup_source_unregister;
+		goto err_clock_exit;
 	}
 
 	ipa->pdev = pdev;
 	dev_set_drvdata(dev, ipa);
 	ipa->modem_rproc = rproc;
 	ipa->clock = clock;
-	atomic_set(&ipa->suspend_ref, 0);
-	ipa->wakeup_source = wakeup_source;
 	ipa->version = data->version;
 
 	ret = ipa_reg_init(ipa);
@@ -850,8 +853,6 @@ err_reg_exit:
 	ipa_reg_exit(ipa);
 err_kfree_ipa:
 	kfree(ipa);
-err_wakeup_source_unregister:
-	wakeup_source_unregister(wakeup_source);
 err_clock_exit:
 	ipa_clock_exit(clock);
 err_rproc_put:
@@ -865,10 +866,7 @@ static int ipa_remove(struct platform_device *pdev)
 	struct ipa *ipa = dev_get_drvdata(&pdev->dev);
 	struct rproc *rproc = ipa->modem_rproc;
 	struct ipa_clock *clock = ipa->clock;
-	struct wakeup_source *wakeup_source;
 	int ret;
-
-	wakeup_source = ipa->wakeup_source;
 
 	if (ipa->setup_complete) {
 		ret = ipa_modem_stop(ipa);
@@ -886,7 +884,6 @@ static int ipa_remove(struct platform_device *pdev)
 	ipa_mem_exit(ipa);
 	ipa_reg_exit(ipa);
 	kfree(ipa);
-	wakeup_source_unregister(wakeup_source);
 	ipa_clock_exit(clock);
 	rproc_put(rproc);
 
@@ -897,16 +894,25 @@ static int ipa_remove(struct platform_device *pdev)
  * ipa_suspend() - Power management system suspend callback
  * @dev:	IPA device structure
  *
- * @Return:	Zero
+ * Return:	Always returns zero
  *
  * Called by the PM framework when a system suspend operation is invoked.
+ * Suspends endpoints and releases the clock reference held to keep
+ * the IPA clock running until this point.
  */
 static int ipa_suspend(struct device *dev)
 {
 	struct ipa *ipa = dev_get_drvdata(dev);
 
+	/* When a suspended RX endpoint has a packet ready to receive, we
+	 * get an IPA SUSPEND interrupt.  We trigger a system resume in
+	 * that case, but only on the first such interrupt since suspend.
+	 */
+	__clear_bit(IPA_FLAG_RESUMED, ipa->flags);
+
+	ipa_endpoint_suspend(ipa);
+
 	ipa_clock_put(ipa);
-	atomic_set(&ipa->suspend_ref, 0);
 
 	return 0;
 }
@@ -915,9 +921,11 @@ static int ipa_suspend(struct device *dev)
  * ipa_resume() - Power management system resume callback
  * @dev:	IPA device structure
  *
- * @Return:	Always returns 0
+ * Return:	Always returns 0
  *
  * Called by the PM framework when a system resume operation is invoked.
+ * Takes an IPA clock reference to keep the clock running until suspend,
+ * and resumes endpoints.
  */
 static int ipa_resume(struct device *dev)
 {
@@ -926,8 +934,9 @@ static int ipa_resume(struct device *dev)
 	/* This clock reference will keep the IPA out of suspend
 	 * until we get a power management suspend request.
 	 */
-	atomic_set(&ipa->suspend_ref, 1);
 	ipa_clock_get(ipa);
+
+	ipa_endpoint_resume(ipa);
 
 	return 0;
 }

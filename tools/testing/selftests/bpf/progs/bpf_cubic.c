@@ -15,6 +15,8 @@
  */
 
 #include <linux/bpf.h>
+#include <linux/stddef.h>
+#include <linux/tcp.h>
 #include "bpf_tcp_helpers.h"
 
 char _license[] SEC("license") = "GPL";
@@ -480,10 +482,9 @@ static __always_inline void hystart_update(struct sock *sk, __u32 delay)
 
 	if (hystart_detect & HYSTART_DELAY) {
 		/* obtain the minimum delay of more than sampling packets */
+		if (ca->curr_rtt > delay)
+			ca->curr_rtt = delay;
 		if (ca->sample_cnt < HYSTART_MIN_SAMPLES) {
-			if (ca->curr_rtt > delay)
-				ca->curr_rtt = delay;
-
 			ca->sample_cnt++;
 		} else {
 			if (ca->curr_rtt > ca->delay_min +
