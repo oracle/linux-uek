@@ -1955,7 +1955,7 @@ lpfc_cmpl_els_plogi(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 				 irsp->un.elsreq64.remoteID,
 				 irsp->ulpStatus, irsp->un.ulpWord[4],
 				 irsp->ulpIoTag);
-		goto out;
+		goto out_freeiocb;
 	}
 
 	/* Since ndlp can be freed in the disc state machine, note if this node
@@ -2051,6 +2051,7 @@ out:
 			      "PLOGI Cmpl PUT:     did:x%x refcnt %d",
 			      ndlp->nlp_DID, kref_read(&ndlp->kref), 0);
 
+out_freeiocb:
 	/* Release the reference on the original I/O request. */
 	free_ndlp = (struct lpfc_nodelist *)cmdiocb->context1;
 
