@@ -203,7 +203,6 @@ int virtio_gpu_object_kmap(struct virtio_gpu_object *bo)
 int virtio_gpu_object_get_sg_table(struct virtio_gpu_device *qdev,
 				   struct virtio_gpu_object *bo)
 {
-	int ret;
 	struct scatterlist *sg;
 	struct page **pages = bo->tbo.ttm->pages;
 	int nr_pages = bo->tbo.num_pages;
