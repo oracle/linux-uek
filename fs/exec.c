@@ -791,8 +791,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 		stack_base = vma->vm_start - stack_expand;
 #endif
 	current->mm->start_stack = bprm->p;
-	ret = expand_stack(vma, stack_base);
-	if (ret)
+	if (vma != find_extend_vma(mm, stack_base))
 		ret = -EFAULT;
 
 out_unlock:
