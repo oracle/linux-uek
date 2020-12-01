@@ -649,14 +649,11 @@ err_rq_wq_destroy:
 
 static void mlx5e_free_rq(struct mlx5e_rq *rq)
 {
-	struct mlx5e_channel *c = rq->channel;
-	struct bpf_prog *old_prog = NULL;
+	struct bpf_prog *old_prog;
 	int i;
 
-	/* drop_rq has neither channel nor xdp_prog. */
-	if (c)
-		old_prog = rcu_dereference_protected(rq->xdp_prog,
-						     lockdep_is_held(&c->priv->state_lock));
+	old_prog = rcu_dereference_protected(rq->xdp_prog,
+					     lockdep_is_held(&rq->channel->priv->state_lock));
 	if (old_prog)
 		bpf_prog_put(old_prog);
 
@@ -3206,6 +3203,11 @@ int mlx5e_close(struct net_device *netdev)
 	return err;
 }
 
+static void mlx5e_free_drop_rq(struct mlx5e_rq *rq)
+{
+	mlx5_wq_destroy(&rq->wq_ctrl);
+}
+
 static int mlx5e_alloc_drop_rq(struct mlx5_core_dev *mdev,
 			       struct mlx5e_rq *rq,
 			       struct mlx5e_rq_param *param)
@@ -3273,7 +3275,7 @@ int mlx5e_open_drop_rq(struct mlx5e_priv *priv,
 	return 0;
 
 err_free_rq:
-	mlx5e_free_rq(drop_rq);
+	mlx5e_free_drop_rq(drop_rq);
 
 err_destroy_cq:
 	mlx5e_destroy_cq(cq);
@@ -3287,7 +3289,7 @@ err_free_cq:
 void mlx5e_close_drop_rq(struct mlx5e_rq *drop_rq)
 {
 	mlx5e_destroy_rq(drop_rq);
-	mlx5e_free_rq(drop_rq);
+	mlx5e_free_drop_rq(drop_rq);
 	mlx5e_destroy_cq(&drop_rq->cq);
 	mlx5e_free_cq(&drop_rq->cq);
 }
