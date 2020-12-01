@@ -2775,7 +2775,7 @@ cannot_expand:
 	 * and so the call to vma_mas_link()->vma_mas_store()->mas_store_gfp()
 	 * will detect the write as a spanning store and reset mas if necessary.
 	 */
-	mas_set(&mas, addr);
+	mas.index = mas.last = addr;
 	mas_walk(&mas);
 	vma_mas_link(mm, vma, &mas, prev);
 	/* Once vma denies write, undo our temporary denial count */
