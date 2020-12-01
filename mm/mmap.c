@@ -2965,12 +2965,16 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	struct mm_struct *mm = vma->vm_mm;
 	struct vm_area_struct unmap;
 	unsigned long unmap_pages;
-	int ret = 1;
+	int ret;
 
 	arch_unmap(mm, newbrk, oldbrk);
 
-	if (likely(vma->vm_start >= newbrk)) { // remove entire mapping(s)
-		ret = do_mas_munmap(mas, mm, newbrk, oldbrk-newbrk, uf, true);
+	if (likely((vma->vm_end < oldbrk) ||
+		   ((vma->vm_start == newbrk) && (vma->vm_end == oldbrk)))) {
+		// remove entire mapping(s)
+		mas->last = oldbrk - 1;
+		ret = do_mas_align_munmap(mas, vma, mm, newbrk, oldbrk, uf,
+					  true);
 		goto munmap_full_vma;
 	}
 
