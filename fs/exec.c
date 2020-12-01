@@ -696,7 +696,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	unsigned long stack_shift;
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma = bprm->vma;
-	struct vm_area_struct *prev = NULL;
+	struct vm_area_struct *prev = vma->vm_prev;
 	unsigned long vm_flags;
 	unsigned long stack_base;
 	unsigned long stack_size;
