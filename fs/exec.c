@@ -721,7 +721,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	unsigned long stack_shift;
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma = bprm->vma;
-	struct vm_area_struct *prev = NULL;
+	struct vm_area_struct *prev;
 	unsigned long vm_flags;
 	unsigned long stack_base;
 	unsigned long stack_size;
@@ -786,6 +786,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 
 	vma_iter_init(&vmi, mm, vma->vm_start);
 
+	prev = vma_prev(&vmi);
 	tlb_gather_mmu(&tlb, mm);
 	ret = mprotect_fixup(&vmi, &tlb, vma, &prev, vma->vm_start, vma->vm_end,
 			vm_flags);
