@@ -1057,7 +1057,11 @@ out_put:
 	return ret;
 }
 
-#define TP_VEC_MAX (PAGE_SIZE / sizeof(struct text_poke_loc))
+/*
+ * Because UEK needs to support runtime switching of labels we
+ * cannot patch in batches.
+ */
+#define TP_VEC_MAX 1
 static struct text_poke_loc tp_vec[TP_VEC_MAX];
 static int tp_vec_nr;
 
