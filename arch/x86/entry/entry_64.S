@@ -871,7 +871,6 @@ SYM_CODE_START_LOCAL(paranoid_entry)
 	 * be retrieved from a kernel internal table.
 	 */
 	SAVE_AND_SWITCH_TO_KERNEL_CR3 scratch_reg=%rax save_reg=%r14
-	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d /* Clobbers: %[rax,rcx,rdx] */
 
 	/*
 	 * Handling GSBASE depends on the availability of FSGSBASE.
@@ -893,7 +892,7 @@ SYM_CODE_START_LOCAL(paranoid_entry)
 	 * is needed here.
 	 */
 	SAVE_AND_SET_GSBASE scratch_reg=%rax save_reg=%rbx
-	ret
+	jmp .Librs_return
 
 .Lparanoid_entry_checkgs:
 	/* EBX = 1 -> kernel GSBASE active, no restore required */
@@ -906,7 +905,7 @@ SYM_CODE_START_LOCAL(paranoid_entry)
 	rdmsr
 	testl	%edx, %edx
 	jns	.Lparanoid_entry_swapgs
-	ret
+	jmp .Librs_return
 
 .Lparanoid_entry_swapgs:
 	swapgs
@@ -920,6 +919,9 @@ SYM_CODE_START_LOCAL(paranoid_entry)
 
 	/* EBX = 0 -> SWAPGS required on exit */
 	xorl	%ebx, %ebx
+
+.Librs_return:
+	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d /* Clobbers: %[rax,rcx,rdx] */
 	ret
 SYM_CODE_END(paranoid_entry)
 
