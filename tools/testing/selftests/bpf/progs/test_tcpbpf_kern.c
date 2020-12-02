@@ -50,11 +50,34 @@ static inline void update_event_map(int event)
 
 int _version SEC("version") = 1;
 
+/**
+ * SOL_TCP is defined in <netinet/tcp.h> while
+ * TCP_SAVED_SYN is defined in already included <linux/tcp.h>
+ */
+#ifndef SOL_TCP
+#define SOL_TCP 6
+#endif
+
+static __always_inline int get_tp_window_clamp(struct bpf_sock_ops *skops)
+{
+	struct bpf_sock *sk;
+	struct tcp_sock *tp;
+
+	sk = skops->sk;
+	if (!sk)
+		return -1;
+	tp = bpf_skc_to_tcp_sock(sk);
+	if (!tp)
+		return -1;
+	return tp->window_clamp;
+}
+
 SEC("sockops")
 int bpf_testcb(struct bpf_sock_ops *skops)
 {
 	char header[sizeof(struct ipv6hdr) + sizeof(struct tcphdr)];
 	struct tcphdr *thdr;
+	int window_clamp;
 	int good_call_rv = 0;
 	int bad_call_rv = 0;
 	int save_syn = 1;
@@ -67,6 +90,9 @@ int bpf_testcb(struct bpf_sock_ops *skops)
 	update_event_map(op);
 
 	switch (op) {
+	case BPF_SOCK_OPS_TCP_CONNECT_CB:
+		window_clamp = get_tp_window_clamp(skops);
+		break;
 	case BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB:
 		/* Test failure to set largest cb flag (assumes not defined) */
 		bad_call_rv = bpf_sock_ops_cb_flags_set(skops, 0x80);
@@ -108,6 +134,7 @@ int bpf_testcb(struct bpf_sock_ops *skops)
 						    BPF_ANY);
 			}
 		}
+		window_clamp = get_tp_window_clamp(skops);
 		break;
 	case BPF_SOCK_OPS_RTO_CB:
 		break;
