@@ -346,6 +346,10 @@ static inline bool is_data_mapping(vm_flags_t flags)
 	return (flags & (VM_WRITE | VM_SHARED | VM_STACK)) == VM_WRITE;
 }
 
+/* mm/gup.c */
+extern void mm_populate_vma(struct vm_area_struct *vma, unsigned long start,
+			    unsigned long end);
+
 /* Maple tree operations using VMAs */
 /*
  * vma_mas_store() - Store a VMA in the maple tree.
