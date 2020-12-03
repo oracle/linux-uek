@@ -35396,7 +35396,7 @@ static noinline void bench_forking(struct maple_tree *mt)
 {
 
 	struct maple_tree newmt;
-	int i, nr_entries = 134, nr_fork = 60000;
+	int i, nr_entries = 134, nr_fork = 80000;
 	void *val;
 	MA_STATE(mas, mt, 0, 0);
 	MA_STATE(newmas, mt, 0, 0);
