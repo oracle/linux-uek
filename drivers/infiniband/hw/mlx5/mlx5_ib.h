@@ -610,7 +610,6 @@ struct mlx5_ib_mr {
 	int			order;
 	bool			allocated_from_cache;
 	int			npages;
-	struct mlx5_ib_dev     *dev;
 	u32 out[MLX5_ST_SZ_DW(create_mkey_out)];
 	struct mlx5_core_sig_ctx    *sig;
 	void			*descs_alloc;
@@ -1036,6 +1035,11 @@ static inline struct mlx5_ib_xrcd *to_mxrcd(struct ib_xrcd *ibxrcd)
 static inline struct mlx5_ib_dev *to_mdev(struct ib_device *ibdev)
 {
 	return container_of(ibdev, struct mlx5_ib_dev, ib_dev);
+}
+
+static inline struct mlx5_ib_dev *mr_to_mdev(struct mlx5_ib_mr *mr)
+{
+	return to_mdev(mr->ibmr.device);
 }
 
 static inline struct mlx5_ib_dev *mlx5_udata_to_mdev(struct ib_udata *udata)

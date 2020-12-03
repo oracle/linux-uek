@@ -83,7 +83,7 @@ static void reg_mr_callback(int status, struct mlx5_async_work *context)
 {
 	struct mlx5_ib_mr *mr =
 		container_of(context, struct mlx5_ib_mr, cb_work);
-	struct mlx5_ib_dev *dev = mr->dev;
+	struct mlx5_ib_dev *dev = mr_to_mdev(mr);
 	struct mlx5_mr_cache *cache = &dev->cache;
 	int c = order2idx(dev, mr->order);
 	struct mlx5_cache_ent *ent = &cache->ent[c];
@@ -148,7 +148,7 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 		}
 		mr->order = ent->order;
 		mr->allocated_from_cache = 1;
-		mr->dev = dev;
+		mr->ibmr.device = &dev->ib_dev;
 
 		MLX5_SET(mkc, mkc, free, 1);
 		MLX5_SET(mkc, mkc, umr_en, 1);
@@ -873,7 +873,7 @@ static struct mlx5_ib_mr *alloc_mr_from_cache(
 int mlx5_ib_update_xlt(struct mlx5_ib_mr *mr, u64 idx, int npages,
 		       int page_shift, int flags)
 {
-	struct mlx5_ib_dev *dev = mr->dev;
+	struct mlx5_ib_dev *dev = mr_to_mdev(mr);
 	struct device *ddev = dev->ib_dev.dev.parent;
 	int size;
 	void *xlt;
@@ -1088,7 +1088,6 @@ static struct mlx5_ib_mr *reg_create(struct ib_mr *ibmr, struct ib_pd *pd,
 	}
 	mr->mmkey.type = MLX5_MKEY_MR;
 	mr->desc_size = sizeof(struct mlx5_mtt);
-	mr->dev = dev;
 	kvfree(in);
 
 	mlx5_ib_dbg(dev, "mkey = 0x%x\n", mr->mmkey.key);
@@ -1113,6 +1112,7 @@ static void set_mr_fields(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr,
 	mr->ibmr.lkey = mr->mmkey.key;
 	mr->ibmr.rkey = mr->mmkey.key;
 	mr->ibmr.length = length;
+	mr->ibmr.device = &dev->ib_dev;
 	mr->access_flags = access_flags;
 }
 
@@ -1339,17 +1339,17 @@ int mlx5_mr_cache_invalidate(struct mlx5_ib_mr *mr)
 {
 	struct mlx5_umr_wr umrwr = {};
 
-	if (mr->dev->mdev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR)
+	if (mr_to_mdev(mr)->mdev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR)
 		return 0;
 
 	umrwr.wr.send_flags = MLX5_IB_SEND_UMR_DISABLE_MR |
 			      MLX5_IB_SEND_UMR_UPDATE_PD_ACCESS;
 	umrwr.wr.opcode = MLX5_IB_WR_UMR;
-	umrwr.pd = mr->dev->umrc.pd;
+	umrwr.pd = mr_to_mdev(mr)->umrc.pd;
 	umrwr.mkey = mr->mmkey.key;
 	umrwr.ignore_free_state = 1;
 
-	return mlx5_ib_post_send_wait(mr->dev, &umrwr);
+	return mlx5_ib_post_send_wait(mr_to_mdev(mr), &umrwr);
 }
 
 static int rereg_umr(struct ib_pd *pd, struct mlx5_ib_mr *mr,
