@@ -396,8 +396,12 @@ kernel/drivers/nvme/host/nvme-core.ko
 kernel/drivers/nvme/host/nvme-fabrics.ko
 kernel/drivers/nvme/host/nvme-fc.ko
 kernel/drivers/nvme/host/nvme.ko
+kernel/drivers/nvme/host/nvme-tcp.ko
+kernel/drivers/nvme/host/nvme-rdma.ko
 kernel/drivers/nvme/target/nvmet-fc.ko
 kernel/drivers/nvme/target/nvmet.ko
+kernel/drivers/nvme/target/nvmet-tcp.ko
+kernel/drivers/nvme/target/nvmet-rdma.ko
 kernel/drivers/parport/parport.ko
 kernel/drivers/pci/controller/pci-hyperv-intf.ko
 kernel/drivers/pci/controller/vmd.ko
