@@ -3050,7 +3050,8 @@ bool mas_wr_walk(struct ma_state *mas, unsigned long *range_min,
 		// Traverse.
 		mas->max = *range_max;
 		mas->min = *range_min;
-		mas->node = mas_get_slot(mas, mas->offset);
+		mas->node = mas_slot_locked(mas, ma_slots(mas_mn(mas), type),
+				     mas->offset);
 		mas->offset = 0;
 	}
 	return true;
@@ -3129,7 +3130,7 @@ static inline bool __mas_walk(struct ma_state *mas, unsigned long *range_min,
 		if (unlikely(ma_is_leaf(type)))
 			return true;
 
-		next = mas_get_slot(mas, mas->offset);
+		next = mas_slot(mas, ma_slots(mas_mn(mas), type), mas->offset);
 		if (unlikely(!next))
 			return false;
 
