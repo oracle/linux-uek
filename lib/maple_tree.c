@@ -2853,8 +2853,9 @@ static inline int mas_commit_b_node(struct ma_state *mas,
 		return mas_rebalance(mas, b_node);
 
 
-	if (b_node->b_end >= mt_slots[b_node->type])
+	if (b_node->b_end >= mt_slots[b_node->type]) {
 		return mas_split(mas, b_node);
+	}
 
 	if (mas_reuse_node(mas, b_node, end))
 		goto reused_node;
@@ -3472,7 +3473,6 @@ static inline void *_mas_store(struct ma_state *mas, void *entry, bool overwrite
 	b_node.type = mte_node_type(mas->node);
 	b_node.b_end = mas_store_b_node(mas, &b_node, entry, end);
 	b_node.min = mas->min;
-
 
 	if (!mas_commit_b_node(mas, &b_node, end))
 		return NULL;
