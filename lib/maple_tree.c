@@ -3216,6 +3216,45 @@ static inline int mas_spanning_store(struct ma_state *mas, void *entry)
 	return mas_spanning_rebalance(mas, &mast, height + 1);
 }
 
+static inline bool mas_append(struct ma_state *mas, void *entry,
+			      unsigned long min, unsigned char end,
+			      void *content, enum maple_type mt)
+{
+	void **slots = ma_slots(mas_mn(mas), mt);
+	unsigned long *pivots = ma_pivots(mas_mn(mas), mt);
+	unsigned char new_end;
+	unsigned char max_slots = mt_slots[mt];
+
+	/* slot store would happen if the last entry wasn't being split, so add
+	 * one.
+	 */
+	new_end = end + 1;
+	//printk("store %lu - %lu| %lu %lu\n", mas->index, mas->last, min, mas->max);
+	if (min < mas->index)
+		new_end++;
+
+	if (new_end >= max_slots)
+		return false;
+
+	//printk("move last to %u\n", new_end);
+	if (new_end < max_slots - 1)
+		pivots[new_end] = pivots[end];
+	slots[new_end--] = content;
+
+	//printk("store to %u\n", new_end);
+	if (new_end < max_slots - 1)
+		pivots[new_end] = mas->last;
+	slots[new_end--] = entry;
+
+	if (min < mas->index) {
+		//printk("fix min in %u\n", new_end);
+		pivots[new_end] = mas->index - 1;
+		mas->offset++;
+	}
+
+	mas_update_gap(mas);
+	return true;
+}
 static inline bool mas_node_store(struct ma_state *mas, void *entry,
 				  unsigned long min, unsigned long max,
 				  unsigned char end, void *content,
@@ -3339,8 +3378,13 @@ static inline bool mas_slot_store(struct ma_state *mas, void *entry,
 	if (offset + 1 >= mt_slots[mt]) // out of room.
 		return false;
 
-	if (max > mas->last) // going to split a single entry.
+	if (max > mas->last){ // going to split a single entry.
+		if ((offset == end) &&
+		    mas_append(mas, entry, min, end, content, mt))
+		    return true;
+
 		goto try_node_store;
+	}
 
 	lmax = mas_logical_pivot(mas, pivots, offset + 1, mt);
 	if (lmax < mas->last) // going to overwrite too many slots.
