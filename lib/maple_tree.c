@@ -2954,12 +2954,13 @@ exists:
 bool mas_is_span_wr(struct ma_state *mas, unsigned long piv,
 				  enum maple_type type, void *entry)
 {
+	unsigned long max;
 	unsigned long last = mas->last;
-	unsigned long max = mas->max;
 
 	if (piv > last) // Contained in this pivot
 		return false;
 
+	max = mas->max;
 	if (unlikely(ma_is_leaf(type))) {
 		if (last < max) // Fits in the node, but may span slots.
 			return false;
@@ -3002,11 +3003,9 @@ static inline void mas_node_walk(struct ma_state *mas, enum maple_type type,
 
 	index = mas->index;
 	while (offset < count) {
-
 		max = pivots[offset];
-		if (unlikely(!max && offset)) {
+		if (unlikely(!max && offset))
 			break;
-		}
 
 		if (index <= max)
 			goto done;
