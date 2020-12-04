@@ -1487,21 +1487,29 @@ static inline int mab_calc_split(struct ma_state *mas,
 				 unsigned char *mid_split)
 {
 	int split = b_node->b_end / 2; // Assume equal split.
-	unsigned char slot_count = mt_slots[b_node->type];
+	unsigned char min, slot_count = mt_slots[b_node->type];
 
-	if (mab_middle_node(b_node, split, slot_count)) {
+	if (unlikely((mas->mas_flags & MA_STATE_BULK))) {
+		*mid_split = 0;
+		if (ma_is_leaf(b_node->type))
+			min = 2;
+		else
+			return b_node->b_end - mt_min_slots[b_node->type];
+
+		split = b_node->b_end - min;
+		mas->mas_flags |= MA_STATE_REBALANCE;
+		if (!b_node->slot[split])
+			split--;
+		return split;
+	}
+
+	if (unlikely(mab_middle_node(b_node, split, slot_count))) {
 		split = b_node->b_end / 3;
 		*mid_split = split * 2;
 	} else {
-		unsigned char min = mt_min_slots[b_node->type] - 1;
+		min = mt_min_slots[b_node->type];
 
 		*mid_split = 0;
-		if ((mas->mas_flags & MA_STATE_BULK) &&
-		    ma_is_leaf(b_node->type)) {
-			min = 2;
-			split = mt_slots[b_node->type] - min;
-			mas->mas_flags |= MA_STATE_REBALANCE;
-		}
 		/* Avoid having a range less than the slot count unless it
 		 * causes one node to be deficient.
 		 * NOTE: mt_min_slots is 1 based, b_end and split are zero.

@@ -35051,7 +35051,7 @@ static noinline void check_gap_combining(struct maple_tree *mt)
 
 	unsigned long seq100[] = {
 		/* 0-5 */
-		78, 79, 80,
+		74, 75, 76,
 		50, 100, 2,
 
 		/* 6-12 */
@@ -35237,9 +35237,8 @@ static void check_dfs_preorder(struct maple_tree *mt)
 		count++;
 		mas_dfs_preorder(&mas);
 	} while (!mas_is_none(&mas));
-	// 68 + MAS_START = 69 + 1 for no jitter
 	//printk("count %lu\n", count);
-	MT_BUG_ON(mt, count != 70);
+	MT_BUG_ON(mt, count != 74);
 	mtree_destroy(mt);
 
 	mtree_init(mt, MAPLE_ALLOC_RANGE);
@@ -35251,8 +35250,7 @@ static void check_dfs_preorder(struct maple_tree *mt)
 		mas_dfs_preorder(&mas);
 	} while (!mas_is_none(&mas));
 	//printk("count %lu\n", count);
-	// 71 + MAS_START = 72 + 1 for no jitter
-	MT_BUG_ON(mt, count != 72);
+	MT_BUG_ON(mt, count != 77);
 	mtree_destroy(mt);
 
 	mtree_init(mt, MAPLE_ALLOC_RANGE);
@@ -35263,7 +35261,6 @@ static void check_dfs_preorder(struct maple_tree *mt)
 		count++;
 		mas_dfs_preorder(&mas);
 	} while (!mas_is_none(&mas));
-	// 71 + MAS_START = 72
 	//printk("count %lu\n", count);
 	MT_BUG_ON(mt, count != 77);
 	mtree_destroy(mt);
