@@ -998,7 +998,7 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_recv;
 
-	rds_aux_wq = alloc_workqueue("krdsd_aux", WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
+	rds_aux_wq = alloc_workqueue("krdsd_aux", WQ_UNBOUND, 0);
 	if (!rds_aux_wq) {
 		pr_err("RDS/IB: failed to create aux workqueue\n");
 		goto out_ibreg;
