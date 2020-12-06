@@ -1226,8 +1226,7 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_sysctl;
 
-	rds_aux_wq = alloc_workqueue("%s", WQ_UNBOUND | WQ_MEM_RECLAIM, 0,
-				     "krdsd_aux");
+	rds_aux_wq = alloc_workqueue("%s", WQ_UNBOUND, 0, "krdsd_aux");
 	if (!rds_aux_wq) {
 		pr_err("%s: failed to create aux workqueue\n", __func__);
 		goto out_recv;
