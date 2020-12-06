@@ -46,6 +46,15 @@
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 
+struct rds_rdma_cm_event_handler_info {
+	struct work_struct     work;
+	struct rdma_cm_id     *cm_id;
+	struct rdma_cm_event   event;
+	struct rds_connection *conn;
+	bool                   isv6;
+	char                   private_data[];
+};
+
 struct mutex cm_id_map_lock;
 DEFINE_IDR(cm_id_map);
 /* Global IPv4 and IPv6 RDS RDMA listener cm_id */
@@ -100,13 +109,13 @@ static inline bool __rds_rdma_chk_dev(struct rds_connection *conn)
 		return true;
 }
 
-static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
-					 struct rdma_cm_event *event,
-					 bool isv6)
+static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
+					  struct rdma_cm_event *event,
+					  struct rds_connection *conn,
+					  bool isv6)
 {
-	/* this can be null in the listening path */
-	struct rds_connection *conn = cm_id->context;
 	struct rds_transport *trans = &rds_ib_transport;
+	struct rds_connection *new_conn;
 	struct rds_ib_connection *ic;
 	int ret = 0;
 	char *reason = NULL;
@@ -128,20 +137,22 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			/* make sure that ic and cm_id are disassocated
 			 * before cm_id gets destroyed
 			 */
-			conn = cm_id->context;
-			if (conn) {
-				mutex_lock(&conn->c_cm_lock);
-				ic = conn->c_transport_data;
+			new_conn = cm_id->context;
+			if (new_conn) {
+				mutex_lock(&new_conn->c_cm_lock);
+				ic = new_conn->c_transport_data;
 				BUG_ON(!ic);
 				down_write(&ic->i_cm_id_free_lock);
 				ic->i_cm_id = NULL;
 				cm_id->context = NULL;
 				up_write(&ic->i_cm_id_free_lock);
-				mutex_unlock(&conn->c_cm_lock);
+				mutex_unlock(&new_conn->c_cm_lock);
 			}
+
+			rdma_destroy_id(cm_id);
 		}
 
-		return ret;
+		return;
 	}
 
 	/* Prevent shutdown from tearing down the connection
@@ -169,28 +180,24 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	ic = conn->c_transport_data;
 	BUG_ON(!ic);
 
-        /* If we can't acquire a read-lock on "i_cm_id_free_lock", "ic->i_cm_id" is being destroyed.
+        /* If we can't acquire a read-lock on "i_cm_id_free_lock",
+	 * "ic->i_cm_id" is in the process of being disassociated.
 	 * Just ignore the event in that case.
 	 */
         if (!down_read_trylock(&ic->i_cm_id_free_lock)) {
 		mutex_unlock(&conn->c_cm_lock);
-                return 0;
+                return;
 	}
 
-	if (!cm_id->context) {
-		/* Connection is being destroyed.
-		 * This must have happened just before we acquired "i_cm_id_free_lock".
-		 * Just ignore the event in this case as well.
-		 */
+	/* If the connection no longer points to this cm_id,
+	 * it already has been disassociated and possibly destroyed.
+	 * Just ignore the event in this case as well.
+	 */
+	if (ic->i_cm_id != cm_id) {
 		up_read(&ic->i_cm_id_free_lock);
 		mutex_unlock(&conn->c_cm_lock);
-                return 0;
+                return;
 	}
-
-	/* If the bottom-up pointer "cm_id->context" is inconsistent with
-	 * the top-down pointer "ic->i_cm_id", it must be a bug.
-	 */
-	BUG_ON(ic->i_cm_id != cm_id);
 
 	/* Even though this function no longer accesses "ic->i_cm_id" past this point
 	 * and "cma.c" always blocks "rdma_destroy_id" until "event_callback" is done,
@@ -199,9 +206,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	 * "ic->i_cm_id" without any checks.
 	 */
 
-	/* If the connection is being shut down, bail out
-	 * right away. We return 0 so cm_id doesn't get
-	 * destroyed prematurely.
+	/* If the connection is being shut down, bail out right away.
 	 *
 	 * Events RDMA_CM_EVENT_ADDR_CHANGE and RDMA_CM_EVENT_DISCONNECTED
 	 * need to be processed regardless of the connection state
@@ -343,30 +348,81 @@ out:
 		 */
 
 		rds_conn_drop(conn, DR_IB_SHUTDOWN_NEEDED, ret);
-
-		/* prevent double rdma_destroy_id,
-		 * as the shutdown-path will destroy this cm_id
-		 */
-		ret = 0;
 	}
 
         up_read(&ic->i_cm_id_free_lock);
 	mutex_unlock(&conn->c_cm_lock);
+}
 
-	return ret;
+static void rds_rdma_cm_event_handler_worker(struct work_struct *work)
+{
+	struct rds_rdma_cm_event_handler_info *info = container_of(work,
+								   struct rds_rdma_cm_event_handler_info,
+								   work);
+
+	rds_rdma_cm_event_handler_cmn(info->cm_id, &info->event, info->conn, info->isv6);
+
+	kfree(info);
+}
+
+static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
+					    struct rdma_cm_event *event,
+					    bool isv6)
+{
+	struct rds_connection *conn = cm_id->context;
+	struct workqueue_struct *wq;
+	struct rds_rdma_cm_event_handler_info *info;
+
+	if (event->event != RDMA_CM_EVENT_CONNECT_REQUEST)
+		wq = conn ? conn->c_path->cp_wq : NULL;
+	else
+		wq = rds_aux_wq;
+
+	if (!wq) {
+		rds_rdma_cm_event_handler_cmn(cm_id, event, conn, isv6);
+		return;
+	}
+
+	info = kmalloc(sizeof(*info) + event->param.conn.private_data_len, GFP_KERNEL);
+	if (!info) {
+		rds_rdma_cm_event_handler_cmn(cm_id, event, conn, isv6);
+		return;
+	}
+
+	INIT_WORK(&info->work, rds_rdma_cm_event_handler_worker);
+
+	info->cm_id = cm_id;
+	memcpy(&info->event, event, sizeof(*event));
+	info->conn = conn;
+	info->isv6 = isv6;
+
+	if (event->param.conn.private_data &&
+	    event->param.conn.private_data_len) {
+		memcpy(info->private_data,
+		       event->param.conn.private_data,
+		       event->param.conn.private_data_len);
+		info->event.param.conn.private_data = info->private_data;
+	} else {
+		info->event.param.conn.private_data = NULL;
+		info->event.param.conn.private_data_len = 0;
+	}
+
+	queue_work(wq, &info->work);
 }
 
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			      struct rdma_cm_event *event)
 {
-	return rds_rdma_cm_event_handler_cmn(cm_id, event, false);
+	rds_spawn_rdma_cm_event_handler(cm_id, event, false);
+	return 0;
 }
 
 #if IS_ENABLED(CONFIG_IPV6)
 int rds6_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			       struct rdma_cm_event *event)
 {
-	return rds_rdma_cm_event_handler_cmn(cm_id, event, true);
+	rds_spawn_rdma_cm_event_handler(cm_id, event, true);
+	return 0;
 }
 #endif
 
