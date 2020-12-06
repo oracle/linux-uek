@@ -786,6 +786,8 @@ mwifiex_cmd_802_11_ad_hoc_start(struct mwifiex_private *priv,
 
 	memset(adhoc_start->ssid, 0, IEEE80211_MAX_SSID_LEN);
 
+	if (req_ssid->ssid_len > IEEE80211_MAX_SSID_LEN)
+		req_ssid->ssid_len = IEEE80211_MAX_SSID_LEN;
 	memcpy(adhoc_start->ssid,
 	       ((struct mwifiex_802_11_ssid *) data_buf)->ssid,
 	       ((struct mwifiex_802_11_ssid *) data_buf)->ssid_len);
