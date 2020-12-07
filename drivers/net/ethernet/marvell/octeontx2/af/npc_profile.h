@@ -145,7 +145,7 @@
 #define NPC_DSA_EDSA		0x8000
 #define NPC_DSA_FDSA		0xc000
 
-#define NPC_KEXOF_DMAC	8
+#define NPC_KEXOF_DMAC	9
 #define MKEX_SIGN      0x19bbfdbd15f
 #define KEX_LD_CFG(bytesm1, hdr_ofs, ena, flags_ena, key_ofs)		\
 			(((bytesm1) << 16) | ((hdr_ofs) << 8) | ((ena) << 7) | \
@@ -14019,8 +14019,8 @@ static struct npc_mcam_kex npc_mkex_default = {
 	.name = "default",
 	.kpu_version = NPC_KPU_PROFILE_VER,
 	.keyx_cfg = {
-		/* nibble: LA..LE (ltype only) + Channel */
-		[NIX_INTF_RX] = ((u64)NPC_MCAM_KEY_X2 << 32) | 0x249207,
+		/* nibble: LA..LE (ltype only) + Error code + Channel */
+		[NIX_INTF_RX] = ((u64)NPC_MCAM_KEY_X2 << 32) | 0x249237,
 		[NIX_INTF_TX] = ((u64)NPC_MCAM_KEY_X2 << 32) | 0x249200,
 	},
 	.intf_lid_lt_ld = {
@@ -14029,38 +14029,40 @@ static struct npc_mcam_kex npc_mkex_default = {
 		[NPC_LID_LA] = {
 			/* Layer A: Ethernet: */
 			[NPC_LT_LA_ETHER] = {
-				/* DMAC: 6 bytes, KW1[47:0] */
+				/* DMAC: 6 bytes, KW1[55:8] */
 				KEX_LD_CFG(0x05, 0x0, 0x1, 0x0, NPC_KEXOF_DMAC),
-				/* Ethertype: 2 bytes, KW0[47:32] */
-				KEX_LD_CFG(0x01, 0xc, 0x1, 0x0, 0x4),
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_LD_CFG(0x01, 0xc, 0x1, 0x0, 0x5),
 			},
 			/* Layer A: HiGig2: */
 			[NPC_LT_LA_HIGIG2_ETHER] = {
-				/* Classification: 2 bytes, KW1[15:0] */
+				/* Classification: 2 bytes, KW1[23:8] */
 				KEX_LD_CFG(0x01, 0x8, 0x1, 0x0, NPC_KEXOF_DMAC),
-				/* VID: 2 bytes, KW1[31:16] */
+				/* VID: 2 bytes, KW1[39:24] */
 				KEX_LD_CFG(0x01, 0xc, 0x1, 0x0,
 					   NPC_KEXOF_DMAC + 2),
 			},
 		},
 		[NPC_LID_LB] = {
 			/* Layer B: Single VLAN (CTAG) */
-			/* CTAG VLAN[2..3] + Ethertype, 4 bytes, KW0[63:32] */
 			[NPC_LT_LB_CTAG] = {
-				KEX_LD_CFG(0x03, 0x2, 0x1, 0x0, 0x4),
+				/* CTAG VLAN: 2 bytes, KW1[7:0], KW0[63:56] */
+				KEX_LD_CFG(0x01, 0x2, 0x1, 0x0, 0x7),
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_LD_CFG(0x01, 0x4, 0x1, 0x0, 0x5),
 			},
 			/* Layer B: Stacked VLAN (STAG|QinQ) */
 			[NPC_LT_LB_STAG_QINQ] = {
-				/* Outer VLAN: 2 bytes, KW0[63:48] */
-				KEX_LD_CFG(0x01, 0x2, 0x1, 0x0, 0x6),
-				/* Ethertype: 2 bytes, KW0[47:32] */
-				KEX_LD_CFG(0x01, 0x8, 0x1, 0x0, 0x4),
+				/* Outer VLAN: 2 bytes, KW1[7:0], KW0[63:56] */
+				KEX_LD_CFG(0x01, 0x2, 0x1, 0x0, 0x7),
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_LD_CFG(0x01, 0x8, 0x1, 0x0, 0x5),
 			},
 			[NPC_LT_LB_FDSA] = {
-				/* SWITCH PORT: 1 byte, KW0[63:48] */
-				KEX_LD_CFG(0x0, 0x1, 0x1, 0x0, 0x6),
-				/* Ethertype: 2 bytes, KW0[47:32] */
-				KEX_LD_CFG(0x01, 0x4, 0x1, 0x0, 0x4),
+				/* SWITCH PORT: 1 byte, KW0[63:56] */
+				KEX_LD_CFG(0x0, 0x1, 0x1, 0x0, 0x7),
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_LD_CFG(0x01, 0x4, 0x1, 0x0, 0x5),
 			},
 		},
 		[NPC_LID_LC] = {
