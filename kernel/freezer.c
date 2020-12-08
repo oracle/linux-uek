@@ -43,6 +43,9 @@ bool freezing_slow_path(struct task_struct *p)
 	if (test_tsk_thread_flag(p, TIF_MEMDIE))
 		return false;
 
+	if (test_tsk_thread_flag(p, TIF_KSPLICE_FREEZING))
+		return true;
+
 	if (pm_nosig_freezing || cgroup_freezing(p))
 		return true;
 
