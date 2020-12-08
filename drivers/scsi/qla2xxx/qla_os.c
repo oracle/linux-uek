@@ -28,6 +28,8 @@
  */
 char qla2x00_version_str[40];
 
+MODULE_VERSION(QLA2XXX_VERSION);
+
 static int apidev_major;
 
 /*
