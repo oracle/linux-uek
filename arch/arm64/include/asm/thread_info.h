@@ -71,6 +71,7 @@ void arch_setup_new_exec(void);
 #define TIF_SECCOMP		11	/* syscall secure computing */
 #define TIF_SYSCALL_EMU		12	/* syscall emulation active */
 #define TIF_PATCH_PENDING	13	/* pending live patching update */
+#define TIF_KSPLICE_FREEZING	14
 #define TIF_MEMDIE		18	/* is terminating due to OOM killer */
 #define TIF_FREEZE		19
 #define TIF_RESTORE_SIGMASK	20
@@ -86,6 +87,7 @@ void arch_setup_new_exec(void);
 #define TIF_TSC_SIGSEGV		30	/* SIGSEGV on counter-timer access */
 #define TIF_LAZY_MMU_PENDING	31	/* Ops pending for lazy mmu mode exit */
 
+#define _TIF_KSPLICE_FREEZING	(1 << TIF_KSPLICE_FREEZING)
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
 #define _TIF_NEED_RESCHED_LAZY	(1 << TIF_NEED_RESCHED_LAZY)
