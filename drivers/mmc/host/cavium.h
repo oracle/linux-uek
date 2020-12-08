@@ -181,10 +181,10 @@ struct cvm_mmc_slot {
 	u64 want_switch;
 	u32 hs400_tuning_block;		/* Block number used for tuning */
 	bool hs400_tuning_block_present;
-	u32 cmd_out_hs200_dly;		/* Normally 800ps */
-	u32 data_out_hs200_dly;		/* Normally 800ps */
-	u32 cmd_out_hs400_dly;		/* Normally 800ps */
-	u32 data_out_hs400_dly;		/* Normally 400ps */
+
+#define MMC_OUT_TAPS_DELAY_COUNT	((MMC_TIMING_MMC_HS400) + 1)
+	u32 data_out_taps_dly[MMC_OUT_TAPS_DELAY_COUNT];
+	u32 cmd_out_taps_dly[MMC_OUT_TAPS_DELAY_COUNT];
 };
 
 struct cvm_mmc_cr_type {

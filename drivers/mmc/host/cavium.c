@@ -122,6 +122,59 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{0, 0}		/* CMD63 */
 };
 
+/*
+ * EMM_CMD hold time from rising edge of EMMC_CLK.
+ * Typically 3.0 ns at frequencies < 26 MHz.
+ * Typically 3.0 ns at frequencies <= 52 MHz SDR.
+ * Typically 2.5 ns at frequencies <= 52 MHz DDR.
+ * Typically 0.8 ns at frequencies > 52 MHz SDR.
+ * Typically 0.8 ns at frequencies > 52 MHz DDR.
+ *
+ * Values are expressed in picoseconds (ps)
+ */
+static const u32 default_cmd_out_taps_dly[MMC_OUT_TAPS_DELAY_COUNT] = {
+	5000, /* Legacy */
+	2500, /* MMC_HS */
+	2000, /* SD_HS */
+	3000, /* UHS_SDR12 */
+	2000, /* UHS_SDR25 */
+	2000, /* UHS_SDR50 */
+	 800, /* UHS_SDR104 */
+	1500, /* UHS_DDR50 */
+	1500, /* MMC_DDR52 */
+	 800, /* HS200 */
+	 800  /* HS400 */
+};
+
+/* Hints are expressed as number of taps (clock cycles) */
+static const u32 default_hints_taps_dly[MMC_OUT_TAPS_DELAY_COUNT] = {
+	39, /* Legacy */
+	32, /* MMC_HS */
+	26, /* SD_HS */
+	39, /* UHS_SDR12 */
+	26, /* UHS_SDR25 */
+	26, /* UHS_SDR50 */
+	10, /* UHS_SDR104 */
+	20, /* UHS_DDR50 */
+	20, /* MMC_DDR52 */
+	10, /* HS200 */
+	10  /* HS400 */
+};
+
+static const char * const mmc_modes_name[] = {
+	"Legacy",
+	"MMC HS",
+	"SD HS",
+	"SD UHS SDR12",
+	"SD UHS SDR25",
+	"SD UHS SDR50",
+	"SD UHS SDR104",
+	"SD UHS DDR50",
+	"MMC DDR52",
+	"MMC HS200",
+	"MMC HS400"
+};
+
 static int tapdance;
 module_param(tapdance, int, 0644);
 MODULE_PARM_DESC(tapdance, "adjust bus-timing: (0=mid-eye, positive=Nth_fastest_tap)");
@@ -138,14 +191,22 @@ static bool ddr_cmd_taps;
 module_param(ddr_cmd_taps, bool, 0644);
 MODULE_PARM_DESC(ddr_cmd_taps, "reduce cmd_out_taps in DDR modes, as before");
 
+static bool __cvm_is_mmc_timing_ddr(unsigned char timing)
+{
+	switch (timing) {
+	case MMC_TIMING_UHS_DDR50:
+	case MMC_TIMING_MMC_DDR52:
+	case MMC_TIMING_MMC_HS400:
+		return true;
+	default:
+		return false;
+	}
+	return false;
+}
+
 bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
 {
-	if ((slot->mmc->ios.timing == MMC_TIMING_UHS_DDR50) ||
-	   (slot->mmc->ios.timing == MMC_TIMING_MMC_DDR52) ||
-	   (slot->mmc->ios.timing == MMC_TIMING_MMC_HS400))
-		return true;
-	else
-		return false;
+	return __cvm_is_mmc_timing_ddr(slot->mmc->ios.timing);
 }
 
 static void cvm_mmc_clk_config(struct cvm_mmc_host *host, bool flag)
@@ -246,68 +307,19 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 
 		if (!slot->taps)
 			cin = din = half;
-		/*
-		 * EMM_CMD hold time from rising edge of EMMC_CLK.
-		 * Typically 3.0 ns at frequencies < 26 MHz.
-		 * Typically 3.0 ns at frequencies <= 52 MHz SDR.
-		 * Typically 2.5 ns at frequencies <= 52 MHz DDR.
-		 * Typically 0.8 ns at frequencies > 52 MHz SDR.
-		 * Typically 0.8 ns at frequencies > 52 MHz DDR.
-		 *
-		 * Note that in DDR cases typically the data hold time is
-		 * half of the command hold time.
-		 */
-		switch (mmc->ios.timing) {
-		default:
-		case MMC_TIMING_LEGACY:
-			if (mmc->card && mmc_card_mmc(mmc->card))
-				cout = tout(slot, 5000, 39);
-			else
-				cout = tout(slot, 8000, 63);
-			dout = cout;
-			mode = "legacy";
-			break;
-		case MMC_TIMING_UHS_SDR12:
-			cout = tout(slot, 3000, 39);
-			dout = cout;
-			mode = "SDR 12";
-			break;
-		case MMC_TIMING_MMC_HS:
-			cout = tout(slot, 2500, 32);
-			dout = cout;
-			mode = "MMC HS";
-			break;
-		case MMC_TIMING_SD_HS:
-		case MMC_TIMING_UHS_SDR25:
-		case MMC_TIMING_UHS_SDR50:
-			cout = tout(slot, 2000, 26);
-			dout = cout;
-			mode = "SD HS/25/50";
-			break;
-		case MMC_TIMING_UHS_DDR50:
-		case MMC_TIMING_MMC_DDR52:
-			mode = "SD DDR50/MMC DDR52";
-			cout = tout(slot, 1500, 20);
-			dout = cout / 2;
-			if (ddr_cmd_taps)
-				cout = cout / 2;
-			break;
-		case MMC_TIMING_UHS_SDR104:
-			cout = tout(slot, 800, 10);
-			dout = cout;
-			mode = "SD UHS104";
-			break;
-		case MMC_TIMING_MMC_HS200:
-			mode = "MMC HS200";
-			cout = tout(slot, slot->cmd_out_hs200_dly, 10);
-			dout = tout(slot, slot->data_out_hs200_dly, 10);
-			break;
-		case MMC_TIMING_MMC_HS400:
-			mode = "MMC HS400";
-			cout = tout(slot, slot->cmd_out_hs400_dly, 10);
-			dout = tout(slot, slot->data_out_hs400_dly, 10);
-			break;
-		}
+
+		dev_dbg(host->dev, "%s: mode=%s, cmd=%ups, data=%ups\n",
+			__func__, mmc_modes_name[mmc->ios.timing],
+			slot->cmd_out_taps_dly[mmc->ios.timing],
+			slot->data_out_taps_dly[mmc->ios.timing]);
+		/* Configure timings */
+		cout = tout(slot,
+			    slot->cmd_out_taps_dly[mmc->ios.timing],
+			    default_hints_taps_dly[mmc->ios.timing]);
+		dout = tout(slot,
+			    slot->data_out_taps_dly[mmc->ios.timing],
+			    default_hints_taps_dly[mmc->ios.timing]);
+		mode = mmc_modes_name[mmc->ios.timing];
 
 		dev_dbg(host->dev,
 			"%s: command in tap: %d, command out tap: %d, data in tap: %d, data out tap: %d\n",
@@ -2054,7 +2066,7 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	struct device_node *node = dev->of_node;
 	struct mmc_host *mmc = slot->mmc;
 	u32 max_frequency, current_drive, clk_slew;
-	int ret;
+	int ret, i;
 
 	ret = of_property_read_u32(node, "reg", &id);
 	if (ret) {
@@ -2100,18 +2112,27 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 			mmc->caps |= MMC_CAP_4_BIT_DATA;
 	}
 
-	slot->cmd_out_hs200_dly = PS_800;
-	slot->data_out_hs200_dly = PS_800;
+
+	/* Initialize list of bus modes timings and customize it by DT */
+	memcpy(slot->cmd_out_taps_dly, default_cmd_out_taps_dly,
+	       sizeof(slot->cmd_out_taps_dly));
+
+	for (i = 0; i < MMC_OUT_TAPS_DELAY_COUNT; i++) {
+		u32 val = slot->cmd_out_taps_dly[i];
+
+		if (__cvm_is_mmc_timing_ddr(i))
+			val = DIV_ROUND_UP(val, 2);
+		slot->data_out_taps_dly[i] = val;
+	}
+
 	of_property_read_u32(node, "marvell,cmd-out-hs200-dly",
-			     &slot->cmd_out_hs200_dly);
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS200]);
 	of_property_read_u32(node, "marvell,data-out-hs200-dly",
-			     &slot->data_out_hs200_dly);
-	slot->cmd_out_hs400_dly = PS_800;
-	slot->data_out_hs400_dly = PS_400;
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS200]);
 	of_property_read_u32(node, "marvell,cmd-out-hs400-dly",
-			     &slot->cmd_out_hs400_dly);
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS400]);
 	of_property_read_u32(node, "marvell,data-out-hs400-dly",
-			     &slot->data_out_hs400_dly);
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS400]);
 	max_frequency = max_supported_frequency(slot->host);
 
 	/* Set maximum and minimum frequency */
