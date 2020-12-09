@@ -1057,27 +1057,25 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	if (!PageHuge(hpage)) {
 		unmap_success = try_to_unmap(hpage, ttu);
 	} else {
-		/*
-		 * For hugetlb pages, try_to_unmap could potentially call
-		 * huge_pmd_unshare.  Because of this, take semaphore in
-		 * write mode here and set TTU_RMAP_LOCKED to indicate we
-		 * have taken the lock at this higer level.
-		 *
-		 * Note that the call to hugetlb_page_mapping_lock_write
-		 * is necessary even if mapping is already set.  It handles
-		 * ugliness of potentially having to drop page lock to obtain
-		 * i_mmap_rwsem.
-		 */
-		mapping = hugetlb_page_mapping_lock_write(hpage);
-
-		if (mapping) {
-			unmap_success = try_to_unmap(hpage,
+		if (!PageAnon(hpage)) {
+			/*
+			 * For hugetlb pages in shared mappings, try_to_unmap
+			 * could potentially call huge_pmd_unshare.  Because of
+			 * this, take semaphore in write mode here and set
+			 * TTU_RMAP_LOCKED to indicate we have taken the lock
+			 * at this higer level.
+			 */
+			mapping = hugetlb_page_mapping_lock_write(hpage);
+			if (mapping) {
+				unmap_success = try_to_unmap(hpage,
 						     ttu|TTU_RMAP_LOCKED);
-			i_mmap_unlock_write(mapping);
+				i_mmap_unlock_write(mapping);
+			} else {
+				pr_info("Memory failure: %#lx: could not lock mapping for mapped huge page\n", pfn);
+				unmap_success = false;
+			}
 		} else {
-			pr_info("Memory failure: %#lx: could not find mapping for mapped huge page\n",
-				pfn);
-			unmap_success = false;
+			unmap_success = try_to_unmap(hpage, ttu);
 		}
 	}
 	if (!unmap_success)
@@ -1673,16 +1671,6 @@ int unpoison_memory(unsigned long pfn)
 }
 EXPORT_SYMBOL(unpoison_memory);
 
-static struct page *new_page(struct page *p, unsigned long private)
-{
-	struct migration_target_control mtc = {
-		.nid = page_to_nid(p),
-		.gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL,
-	};
-
-	return alloc_migration_target(p, (unsigned long)&mtc);
-}
-
 /*
  * Safely get reference count of an arbitrary page.
  * Returns 0 for a free page, -EIO for a zero refcount page
@@ -1797,6 +1785,10 @@ static int __soft_offline_page(struct page *page)
 	char const *msg_page[] = {"page", "hugepage"};
 	bool huge = PageHuge(page);
 	LIST_HEAD(pagelist);
+	struct migration_target_control mtc = {
+		.nid = NUMA_NO_NODE,
+		.gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL,
+	};
 
 	/*
 	 * Check PageHWPoison again inside page lock because PageHWPoison
@@ -1833,8 +1825,8 @@ static int __soft_offline_page(struct page *page)
 	}
 
 	if (isolate_page(hpage, &pagelist)) {
-		ret = migrate_pages(&pagelist, new_page, NULL, MPOL_MF_MOVE_ALL,
-					MIGRATE_SYNC, MR_MEMORY_FAILURE);
+		ret = migrate_pages(&pagelist, alloc_migration_target, NULL,
+			(unsigned long)&mtc, MIGRATE_SYNC, MR_MEMORY_FAILURE);
 		if (!ret) {
 			bool release = !huge;
 
