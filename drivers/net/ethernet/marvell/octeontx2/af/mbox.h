@@ -221,6 +221,7 @@ M(CPT_RD_WR_REGISTER,	0xA02, cpt_rd_wr_register,  cpt_rd_wr_reg_msg,	\
 			       cpt_rd_wr_reg_msg)			\
 M(CPT_INLINE_IPSEC_CFG,	0xA04, cpt_inline_ipsec_cfg,			\
 			       cpt_inline_ipsec_cfg_msg, msg_rsp)	\
+M(CPT_STATS,            0xA05, cpt_sts, cpt_sts_req, cpt_sts_rsp)	\
 /* REE mbox IDs (range 0xE00 - 0xFFF) */				\
 M(REE_CONFIG_LF,	0xE01, ree_config_lf, ree_lf_req_msg,		\
 				msg_rsp)				\
@@ -1684,6 +1685,50 @@ struct cpt_inline_ipsec_cfg_msg {
 	u8 sso_pf_func_ovrd;
 	u16 sso_pf_func; /* inbound path SSO_PF_FUNC */
 	u16 nix_pf_func; /* outbound path NIX_PF_FUNC */
+};
+
+/* Mailbox message request and response format for CPT stats. */
+struct cpt_sts_req {
+	struct mbox_msghdr hdr;
+	u8 blkaddr;
+};
+
+struct cpt_sts_rsp {
+	struct mbox_msghdr hdr;
+	u64 inst_req_pc;
+	u64 inst_lat_pc;
+	u64 rd_req_pc;
+	u64 rd_lat_pc;
+	u64 rd_uc_pc;
+	u64 active_cycles_pc;
+	u64 ctx_mis_pc;
+	u64 ctx_hit_pc;
+	u64 ctx_aop_pc;
+	u64 ctx_aop_lat_pc;
+	u64 ctx_ifetch_pc;
+	u64 ctx_ifetch_lat_pc;
+	u64 ctx_ffetch_pc;
+	u64 ctx_ffetch_lat_pc;
+	u64 ctx_wback_pc;
+	u64 ctx_wback_lat_pc;
+	u64 ctx_psh_pc;
+	u64 ctx_psh_lat_pc;
+	u64 ctx_err;
+	u64 ctx_enc_id;
+	u64 ctx_flush_timer;
+	u64 rxc_time;
+	u64 rxc_time_cfg;
+	u64 rxc_active_sts;
+	u64 rxc_zombie_sts;
+	u64 busy_sts_ae;
+	u64 free_sts_ae;
+	u64 busy_sts_se;
+	u64 free_sts_se;
+	u64 busy_sts_ie;
+	u64 free_sts_ie;
+	u64 exe_err_info;
+	u64 cptclk_cnt;
+	u64 diag;
 };
 
 /* REE mailbox error codes
