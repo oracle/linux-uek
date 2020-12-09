@@ -236,21 +236,17 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
 			rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
 
-		/* XXX do we need to clean up if this fails? */
+		conn->c_to_index = 0;
 		ret = rdma_resolve_route(cm_id,
 				rds_rdma_resolve_to_ms[conn->c_to_index]);
 		if (ret) {
 			reason = "resolve route failed";
 			rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL, ret);
 			ret = 0;
-		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
-				conn->c_to_index++;
+		}
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
-		/* XXX worry about racing with listen acceptance */
-		conn->c_to_index = 0;
-
 		/* Connection could have been dropped so make sure the
 		 * cm_id is valid before proceeding */
 
@@ -268,7 +264,16 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
-		rds_conn_drop(conn, DR_IB_ROUTE_ERR, 0);
+		if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
+			conn->c_to_index++;
+
+		ret = rdma_resolve_route(cm_id,
+				rds_rdma_resolve_to_ms[conn->c_to_index]);
+		if (ret) {
+			reason = "resolve route failed";
+			rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL, ret);
+			ret = 0;
+		}
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
