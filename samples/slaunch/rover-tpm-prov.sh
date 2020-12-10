@@ -2,20 +2,23 @@
 
 #=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 #
-#  Part 1:
-#
-#  Pre-provisioning Stage
+#  Provisioning Input
 #
 #=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-# Script Input #1: RSA Public Key
+# Script Input #1: Management Policy RSA Public Key
 #
 # A 4096 bit RSA key pair must be generated. This will be used to sign
-# the policy files. The public key is input to this script.
+# the management policy files. The public key is input to this script.
 
-# Script Input #2: MLE PCR Values
+# Script Input #2: Security Policy RSA Public Key
 #
-# The real MLE must run once first, read PCRs 17 and 18 and write them to
+# A 4096 bit RSA key pair must be generated. This will be used to sign
+# the security policy files. The public key is input to this script.
+
+# Script Input #3: Management MLE PCR Values
+#
+# The management MLE must run once first, read PCRs 17 and 18 and write them to
 # a file. This needs to be the same format as
 #
 # tpm2_pcrread sha256:17,18 -o mle-pcr-values.dat
@@ -23,133 +26,135 @@
 # u-root already has the wrapper function readPCR20() that can do this. This
 # can be done on every boot to make it simple.
 
-# Script Input #3: LUKS key
+# Script Input #4: Runtime MLE PCR Values
+#
+# The runtime MLE must run once first, read PCRs 17 and 18 and write them to
+# a file.
+
+# Script Input #5: LUKS key
 #
 # The key used to LUKS encrypt the partitions which will be sealed to the
 # PCR values in locality 2.
 
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-#
-#  Part 2:
-#
-#  Generic TPM Provisioning
-#
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# NOTE: This will be done booted to a non-MLE environment in locality 0
+# with the Linux TPM2 tools. The safest approach would be to live boot and only
+# use tmpfs storage.
 
-# This will be done booted to a non-MLE environment in locality 0
-# with the Linux TPM2 tools.
-
-if [ $# -ne 3 ]; then
-    echo "Usage: rover-tpm-prov.sh <pubkey-file> <mle-pcr-file> <luks-key-file>"
-    exit 1
-fi
-
-PUBKEY_FILE=$1
-PCR_FILE=$2
-LUKS_KEY=$3
-
-# Take ownership
 export OWNER_AUTH=hex:`tpm2_getrandom -T device --hex 32 2>/dev/null`
 
-tpm2_changeauth -T device -c o $OWNER_AUTH
+usage()
+{
+    echo "Usage: rover-tpm-prov.sh <mgmt-pubkey-file> <rt-pubkey-file>"
+    echo "                         <mgmt-pcrs-file> <rt-pcrs-file>"
+    echo "                         <luks-key-file>"
+    exit 1
+}
 
-# ***TODO*** DONT DO THIS IN PROD, JUST POINTING OUT IT NEEDS TO BE DONE
-echo $OWNER_AUTH > owner-auth.txt
+tpm_take_ownership()
+{
+    tpm2_changeauth -T device -c o $OWNER_AUTH
 
-echo "Changed owner auth"
+    # ***TODO*** DONT DO THIS IN PROD, JUST POINTING OUT IT NEEDS TO BE DONE. BOTH
+    # OWNER AUTH VALUE AND LUKS KEY NEED TO BE ESCROWED. THE MANAGEMENT DATA FILE
+    # COULD BE USED FOR THIS.
+    echo $OWNER_AUTH > owner-auth.txt
 
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-#
-# Provision NVRAM Index with Policy Key Hash
-#
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    echo "Changed owner auth"
+}
 
-POLICY_HASH=`sha256sum $PUBKEY_FILE | cut -d ' ' -f 1 | xxd -r -p`
-POLICY_INDEX=0x01800180
+tpm_provision_policy_pubkey()
+{
+    local pubkey_file=$1
+    local policy_index=$2
 
-tpm2_nvdefine -T device -C o -P $OWNER_AUTH -s 256 -a "authread|ownerread|policywrite|ownerwrite" $POLICY_INDEX
+    sha256sum $pubkey_file | cut -d ' ' -f 1 | xxd -r -p > pubkey.hash
 
-tpm2_nvwrite -T device -C o -P $OWNER_AUTH -i- $POLICY_INDEX <<< $POLICY_HASH
+    tpm2_nvdefine -T device -C o -P $OWNER_AUTH -s 256 -a "authread|ownerread|policywrite|ownerwrite" $policy_index
 
-echo "Stored Rover public key hash at NV index $POLICY_INDEX"
+    tpm2_nvwrite -T device -C o -P $OWNER_AUTH -i pubkey.hash $policy_index
 
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-#
-# Prepare the policy object for sealing
-#
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    rm -f pubkey.hash
 
-#
-# Create a key we can use for sealing
-#
-tpm2_createprimary -T device -C o -P $OWNER_AUTH -g sha256 -G rsa -c sealing-key.ctx
+    echo "Stored Rover key hash at NV index $policy_index"
+}
 
-#
-# Create the policy object
-#
-tpm2_startauthsession -T device -S trial-session.dat
+tpm_seal_secrets()
+{
+    local pcrs_file=$1
+    local secrets_file=$2
+    local persist_handle=$3
 
-tpm2_policypcr -T device -S trial-session.dat -l "sha256:17,18" -f $PCR_FILE -L mle-policy.dat
+    # Create a root key as parent for sealing context
+    tpm2_createprimary -T device -C o -P $OWNER_AUTH -g sha256 -G rsa -c sealing-key.ctx
 
-# Now mle-policy.dat is our policy object
+    # Create the policy object
+    tpm2_startauthsession -T device -S trial-session.dat
 
-tpm2_flushcontext -T device trial-session.dat
+    tpm2_policypcr -T device -S trial-session.dat -l "sha256:17,18" -f $pcrs_file -L mle-policy.dat
 
-echo "Created sealing auth policy: mle-policy.dat"
+    # Now mle-policy.dat is our policy object
 
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-#
-# Seal LUKS key into a persistent TPM object
-#
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    tpm2_flushcontext -T device trial-session.dat
 
-PERSIST_HANDLE=0x81000000
+    echo "Created sealing auth policy: mle-policy.dat"
 
-cat $LUKS_KEY | tpm2_create -T device -C sealing-key.ctx -u sealing-key.pub -r sealing-key.priv -L mle-policy.dat -i-
+    # Seal managemet data into a persistent TPM object
 
-tpm2_load -T device -C sealing-key.ctx -u sealing-key.pub -r sealing-key.priv -n sealing.name -c sealing.ctx
+    cat $secrets_file | tpm2_create -T device -C sealing-key.ctx -u sealing-key.pub -r sealing-key.priv -L mle-policy.dat -i-
 
-EVICT_RESULT=`tpm2_evictcontrol -T device -C o -P $OWNER_AUTH -c sealing.ctx $PERSIST_HANDLE`
+    tpm2_load -T device -C sealing-key.ctx -u sealing-key.pub -r sealing-key.priv -n sealing.name -c sealing.ctx
 
-# Return value should be requested persistent-handle: 0x81000000
-if [ ! -z "`echo $EVICT_RESULT | grep $PERSIST_HANDLE`" ]; then
-    echo "Sealed LUKS key to PCRs 17 and 18 in the TPM, provisioning successful"
-else
-    echo "Provisioning failed persisting sealing context, invalid handle"
+    MGMT_EVICT_RESULT=`tpm2_evictcontrol -T device -C o -P $OWNER_AUTH -c sealing.ctx $persist_handle`
+
+    rm -f mle-policy.dat trial-session.dat
+    rm -f sealing.ctx sealing-key.ctx sealing-key.priv sealing-key.pub sealing.name
+
+    # Return value should be requested persistent-handle: 0x8100000x
+    if [ ! -z "`echo $MGMT_EVICT_RESULT | grep $persist_handle`" ]; then
+        echo "Sealed data to PCRs 17 and 18 in the TPM, provisioning successful"
+    else
+        echo "Provisioning failed persisting sealing context, invalid handle"
+        exit 1
+    fi
+}
+
+MGMT_PUBKEY_FILE=$1
+RT_PUBKEY_FILE=$2
+MGMT_PCRS_FILE=$3
+RT_PCRS_FILE=$4
+LUKS_KEY=$5
+
+MGMT_POLICY_INDEX=0x01800182
+MGMT_KEY_PERSIST_HANDLE=0x81000002
+MGMT_AUTH_PERSIST_HANDLE=0x81000004
+RT_POLICY_INDEX=0x01800180
+RT_PERSIST_HANDLE=0x81000000
+
+if [ $# -ne 5 ]; then
+	usage
 fi
 
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-#
-# Provisioning is complete. Cleanup.
-#
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Take ownership with random hex owner auth value
+tpm_take_ownership
 
-rm -f mle-policy.dat trial-session.dat
-rm -f sealing.ctx sealing-key.ctx sealing-key.priv sealing-key.pub sealing.name
+# Provision management NVRAM index with policy key hash
+tpm_provision_policy_pubkey "$MGMT_PUBKEY_FILE" "$MGMT_POLICY_INDEX"
+echo "Provisioned management policy NVRAM index"
 
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-#
-#  Part 3:
-#
-#  MLE Runtime Operations
-#
-#=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# Sealing management key secret
+tpm_seal_secrets "$MGMT_PCRS_FILE" "$LUKS_KEY" "$MGMT_KEY_PERSIST_HANDLE"
+echo "Sealed management LUKS key secret"
 
-# This is the TPM2 tools equivalent of the wrapper that is needed
-# in the u-root tpm/tss code. The calls in the TPM library that
-# will be needed in the wrapper are:
-# StartAuthSession(), PolicyPCR(), UnsealWithSession(), FlushContext()
+# Sealing management owner auth secret
+echo $OWNER_AUTH | cut -c 5- | xxd -r -p > mgmt-tmp.bin
+tpm_seal_secrets "$MGMT_PCRS_FILE" "mgmt-tmp.bin" "$MGMT_AUTH_PERSIST_HANDLE"
+rm -f mgmt-tmp.bin
+echo "Sealed management owner auth secret"
 
-#tpm2_startauthsession --policy-session -S unseal-session.dat
+# Provision runtime NVRAM index with policy key hash
+tpm_provision_policy_pubkey "$RT_PUBKEY_FILE" "$RT_POLICY_INDEX"
+echo "Provisioned runtime policy NVRAM index"
 
-#tpm2_policypcr -S unseal-session.dat -l "sha256:17,18" -L unseal-policy.dat
-
-#tpm2_unseal -p session:unseal-session.dat -c 0x81000000 > luks-key-out.bin
-
-#tpm2_flushcontext unseal-session.dat
-
-# After the LUKS key is unsealed, PCRs 17 and 18 need to be capped off. This
-# is basically 2 extendPCR20() calls with the hashes set to all bits set
-# (i.e. ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff).
-#
-# This prevents the unseal from being able to happen outside the MLE/locality 2.
+# Sealing runtime key secret
+tpm_seal_secrets "$RT_PCRS_FILE" "$LUKS_KEY" "$RT_PERSIST_HANDLE"
+echo "Sealed runtime LUKS key secret"
