@@ -1510,12 +1510,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 * is UP. So we're better of accepting the call
 		 * than hanging on to a connection that no longer works.
 		 *
-		 * If we're the 'active side' and our own connection
-		 * attempts didn't make any progress thus far,
-		 * we're also better off just accepting the one
-		 * from the peer rather than stubbornly insisting
-		 * we get the right_of_way.
-		 *
 		 * If we're the 'active side' but haven't even come
 		 * as far as trying to connect, we yield as well.
 		 */
@@ -1531,9 +1525,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 					trace_rds_ib_conn_yield_expired(NULL, ic->rds_ibdev,
 									conn, ic, "expired", 0);
 				}
-			} else {
-				conn_age = 0;
-				yield = true;
 			}
 		}
 		if (yield) {
