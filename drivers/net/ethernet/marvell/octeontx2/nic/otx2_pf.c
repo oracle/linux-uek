@@ -1142,6 +1142,7 @@ int otx2_cgx_features_get(struct otx2_nic *pfvf)
 	struct msg_req *msg;
 	int err;
 
+	mutex_lock(&pfvf->mbox.lock);
 	msg = otx2_mbox_alloc_msg_cgx_features_get(&pfvf->mbox);
 
 	if (!msg) {
