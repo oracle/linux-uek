@@ -9,7 +9,8 @@ config OCTEONTX2_MBOX
 config OCTEONTX2_AF
 	tristate "Marvell OcteonTX2 RVU Admin Function driver"
 	select OCTEONTX2_MBOX
-	depends on PCI
+	select NET_DEVLINK
+	depends on (64BIT && COMPILE_TEST) || ARM64
 	help
 	  This driver supports Marvell's OcteonTX2 Resource Virtualization
 	  Unit's admin function manager which manages all RVU HW resources
