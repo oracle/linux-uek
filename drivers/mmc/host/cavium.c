@@ -2133,6 +2133,19 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS400]);
 	of_property_read_u32(node, "marvell,data-out-hs400-dly",
 			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS400]);
+	of_property_read_u32(node, "marvell,cmd-out-hs-sdr-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,data-out-hs-sdr-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,cmd-out-hs-ddr-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,data-out-hs-ddr-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,cmd-out-legacy-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_LEGACY]);
+	of_property_read_u32(node, "marvell,data-out-legacy-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_LEGACY]);
+
 	max_frequency = max_supported_frequency(slot->host);
 
 	/* Set maximum and minimum frequency */
