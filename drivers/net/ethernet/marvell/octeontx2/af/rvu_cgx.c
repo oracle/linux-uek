@@ -1181,9 +1181,12 @@ u32 rvu_cgx_get_fifolen(struct rvu *rvu)
 {
 	struct cgx_mac_ops *mac_ops;
 	int rvu_def_cgx_id = 0;
+	u32 fifo_len;
 
 	mac_ops = cgx_get_mac_ops(rvu_cgx_pdata(rvu_def_cgx_id, rvu));
-	return mac_ops->fifo_len;
+	fifo_len = mac_ops ? mac_ops->fifo_len : 0;
+
+	return fifo_len;
 }
 
 int rvu_mbox_handler_cgx_stats(struct rvu *rvu, struct msg_req *req,
