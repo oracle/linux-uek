@@ -223,7 +223,7 @@ static void sl_tpm12_log_event(u32 pcr, u8 *digest,
 
 	total_size = sizeof(struct tpm12_pcr_event) + event_size;
 
-	if (tpm12_log_event(evtlog_base, total_size, pcr_event))
+	if (tpm12_log_event(evtlog_base, evtlog_size, total_size, pcr_event))
 		sl_txt_reset(SL_ERROR_TPM_LOGGING_FAILED);
 }
 
@@ -274,7 +274,7 @@ static void sl_tpm20_log_event(u32 pcr, u8 *digest, u16 algo,
 	total_size = (u32)((u8 *)tail - (u8 *)head) +
 		sizeof(struct tpm20_pcr_event_tail) + event_size;
 
-	if (tpm20_log_event(log20_elem, evtlog_base, total_size, &log_buf[0]))
+	if (tpm20_log_event(log20_elem, evtlog_base, evtlog_size, total_size, &log_buf[0]))
 		sl_txt_reset(SL_ERROR_TPM_LOGGING_FAILED);
 }
 

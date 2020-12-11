@@ -597,9 +597,10 @@ static ssize_t sl_evtlog_write(struct file *file, const char __user *buf,
 	mutex_lock(&sl_evt_log_mutex);
 	if (evtlog20)
 		result = tpm20_log_event(evtlog20, sl_evtlog.addr,
-					 datalen, data);
+					 sl_evtlog.size, datalen, data);
 	else
-		result = tpm12_log_event(sl_evtlog.addr, datalen, data);
+		result = tpm12_log_event(sl_evtlog.addr, sl_evtlog.size,
+					 datalen, data);
 	mutex_unlock(&sl_evt_log_mutex);
 
 	kfree(data);

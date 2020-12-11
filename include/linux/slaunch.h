@@ -482,7 +482,7 @@ tpm20_find_log2_1_element(struct txt_os_sinit_data *os_sinit_data)
 	return NULL;
 }
 
-static inline int tpm12_log_event(void *evtlog_base,
+static inline int tpm12_log_event(void *evtlog_base, u32 evtlog_size,
 				  u32 event_size, void *event)
 {
 	struct tpm12_event_log_header *evtlog =
@@ -490,6 +490,9 @@ static inline int tpm12_log_event(void *evtlog_base,
 
 	if (memcmp(evtlog->signature, TPM12_EVTLOG_SIGNATURE,
 		   sizeof(TPM12_EVTLOG_SIGNATURE)))
+		return -EINVAL;
+
+	if (evtlog->container_size > evtlog_size)
 		return -EINVAL;
 
 	if (evtlog->next_event_offset + event_size > evtlog->container_size)
@@ -502,7 +505,7 @@ static inline int tpm12_log_event(void *evtlog_base,
 }
 
 static inline int tpm20_log_event(struct txt_heap_event_log_pointer2_1_element *elem,
-				  void *evtlog_base,
+				  void *evtlog_base, u32 evtlog_size,
 				  u32 event_size, void *event)
 {
 	struct tpm12_pcr_event *header =
@@ -514,6 +517,9 @@ static inline int tpm20_log_event(struct txt_heap_event_log_pointer2_1_element *
 
 	if (memcmp((u8 *)header + sizeof(struct tpm12_pcr_event),
 		   TPM20_EVTLOG_SIGNATURE, sizeof(TPM20_EVTLOG_SIGNATURE)))
+		return -EINVAL;
+
+	if (elem->allocated_event_container_size > evtlog_size)
 		return -EINVAL;
 
 	if (elem->next_record_offset + event_size >
