@@ -13,6 +13,7 @@
 #include <asm/processor-flags.h>
 #include <asm/asm-offsets.h>
 #include <asm/bootparam.h>
+#include <asm/page_types.h>
 #include <asm/irq_vectors.h>
 #include <linux/slaunch.h>
 
@@ -158,13 +159,9 @@ ENTRY(sl_stub)
 	/* Skip over BIOS data and size of OS to MLE data section */
 	leal	8(%eax, %ecx), %eax
 
-	/* Check that the AP wake block is big enough */
-	cmpl	$(sl_txt_ap_wake_end - sl_txt_ap_wake_begin), \
-		SL_ap_wake_block_size(%eax)
-	jae	.Lwake_block_ok
-	TXT_RESET $(SL_ERROR_WAKE_BLOCK_TOO_SMALL)
+	/* Need to verify the values in the OS-MLE struct passed in */
+	call	sl_txt_verify_os_mle_struct
 
-.Lwake_block_ok:
 	/*
 	 * Get the boot params address from the heap. Note %esi and %ebx MUST
 	 * be preserved across calls and operations.
@@ -220,6 +217,82 @@ ENTRY(sl_stub)
 	/* Done, jump to normal 32b pm entry */
 	jmp	startup_32
 ENDPROC(sl_stub)
+
+ENTRY(sl_check_buffer_mle_overlap)
+	/* %ecx: buffer begin %edx: buffer end */
+	/* %ebx: MLE begin %edi: MLE end */
+
+	cmpl	%edi, %ecx
+	jb	.Lnext_check
+	cmpl	%edi, %edx
+	jbe	.Lnext_check
+	jmp	.Lvalid /* Buffer above MLE */
+
+.Lnext_check:
+	cmpl	%ebx, %edx
+	ja	.Linvalid
+	cmpl	%ebx, %ecx
+	jae	.Linvalid
+	jmp	.Lvalid /* Buffer below MLE */
+
+.Linvalid:
+	TXT_RESET $(SL_ERROR_MLE_BUFFER_OVERLAP)
+
+.Lvalid:
+	ret
+ENDPROC(sl_check_buffer_mle_overlap)
+
+ENTRY(sl_txt_verify_os_mle_struct)
+	/*
+	 * %eax points to the base of the OS-MLE struct. Need to also
+	 * read some values from the OS-SINIT struct too.
+	 */
+	movl	-8(%eax), %ecx
+	/* Skip over OS to MLE data section and size of OS-SINIT structure */
+	leal	(%eax, %ecx), %edx
+
+	/* Save MLE image base for sl_main's use */
+	movl	%ebx, sl_mle_start(%ebx)
+
+	/* Verify the value of the low PMR base. It should always be 0. */
+	movl	SL_vtd_pmr_lo_base(%edx), %esi
+	cmpl	$0, %esi
+	jz	.Lvalid_pmr_base
+	TXT_RESET $(SL_ERROR_LO_PMR_BASE)
+
+.Lvalid_pmr_base:
+	/* Grab some values from OS-SINIT structure */
+	movl	SL_mle_size(%edx), %edi
+	leal	(%ebx, %edi), %edi
+	movl	SL_vtd_pmr_lo_size(%edx), %esi
+
+	/* Check the AP wake block */
+	movl	SL_ap_wake_block(%eax), %ecx
+	movl	SL_ap_wake_block_size(%eax), %edx
+	leal	(%ecx, %edx), %edx
+	call	sl_check_buffer_mle_overlap
+	cmpl	%esi, %edx
+	ja	.Lbuffer_beyond_pmr
+
+	/* Check the boot params */
+	movl	SL_boot_params_addr(%eax), %ecx
+	leal	PAGE_SIZE(%ecx), %edx
+	call	sl_check_buffer_mle_overlap
+	cmpl	%esi, %edx
+	ja	.Lbuffer_beyond_pmr
+
+	/* Check that the AP wake block is big enough */
+	cmpl	$(sl_txt_ap_wake_end - sl_txt_ap_wake_begin), \
+		SL_ap_wake_block_size(%eax)
+	jae	.Lwake_block_ok
+	TXT_RESET $(SL_ERROR_WAKE_BLOCK_TOO_SMALL)
+
+.Lwake_block_ok:
+	ret
+
+.Lbuffer_beyond_pmr:
+	TXT_RESET $(SL_ERROR_BUFFER_BEYOND_PMR)
+ENDPROC(sl_txt_verify_os_mle_struct)
 
 ENTRY(sl_txt_ap_entry)
 	cli
@@ -590,6 +663,9 @@ sl_smx_rlp_mle_join:
 	.long	0x00000000	/* Entry point physical address */
 
 GLOBAL(sl_cpu_type)
+	.long	0x00000000
+
+GLOBAL(sl_mle_start)
 	.long	0x00000000
 
 sl_txt_spin_lock:
