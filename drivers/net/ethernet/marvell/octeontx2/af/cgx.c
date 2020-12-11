@@ -117,6 +117,9 @@ static int get_sequence_id_of_lmac(struct cgx *cgx, int lmac_id)
 
 struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd)
 {
+	if (!cgxd)
+		return cgxd;
+
 	return ((struct cgx *)cgxd)->mac_ops;
 }
 
