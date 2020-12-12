@@ -80,6 +80,19 @@ struct devlink_port_pci_vf_attrs {
 };
 
 /**
+ * struct devlink_port_pci_sf_attrs - devlink port's PCI SF attributes
+ * @controller: Associated controller number
+ * @sf: Associated PCI SF for of the PCI PF for this port.
+ * @pf: Associated PCI PF number for this port.
+ */
+struct devlink_port_pci_sf_attrs {
+	/* KABI note: entire struct size should not exceed 12 bytes */
+	u32 controller;
+	u32 sf;
+	u16 pf;
+};
+
+/**
  * struct devlink_port_attrs - devlink port object
  * @flavour: flavour of the port
  * @split: indicates if this is split port
@@ -87,6 +100,7 @@ struct devlink_port_pci_vf_attrs {
  * @phys: physical port attributes
  * @pci_pf: PCI PF port attributes
  * @pci_vf: PCI VF port attributes
+ * @pci_sf: PCI SF port attributes
  */
 struct devlink_port_attrs {
 	u8 set:1,
@@ -98,6 +112,7 @@ struct devlink_port_attrs {
 		struct devlink_port_phys_attrs phys;
 		struct devlink_port_pci_pf_attrs pci_pf;
 		struct devlink_port_pci_vf_attrs pci_vf;
+		UEK_KABI_EXTEND(struct devlink_port_pci_sf_attrs pci_sf)
 	};
 };
 
@@ -863,6 +878,8 @@ void devlink_port_attrs_pci_vf_set_ext(struct devlink_port *devlink_port,
 				       unsigned char switch_id_len,
 				       u32 controller,
 				       u16 pf, u16 vf, bool external);
+void devlink_port_attrs_pci_sf_set(struct devlink_port *devlink_port,
+				   u32 controller, u16 pf, u32 sf);
 int devlink_sb_register(struct devlink *devlink, unsigned int sb_index,
 			u32 size, u16 ingress_pools_count,
 			u16 egress_pools_count, u16 ingress_tc_count,
