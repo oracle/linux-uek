@@ -87,7 +87,6 @@ MODULE_PARM_DESC(debug_mask, "debug mask: 1 = dump cmd data, 2 = dump cmd exec t
 #define MLX5_UEK_QP_LIMITATION  20
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
-#define MLX5_DEFAULT_PROF	2
 static unsigned int prof_sel = MLX5_DEFAULT_PROF;
 module_param_named(prof_sel, prof_sel, uint, 0444);
 MODULE_PARM_DESC(prof_sel, "profile selector. Valid range 0 - 2");
@@ -1283,7 +1282,7 @@ out:
 	mutex_unlock(&dev->intf_state_mutex);
 }
 
-static int mlx5_mdev_init(struct mlx5_core_dev *dev, int profile_idx)
+int mlx5_mdev_init(struct mlx5_core_dev *dev, int profile_idx)
 {
 	struct mlx5_priv *priv = &dev->priv;
 	int err;
@@ -1340,7 +1339,7 @@ err_dbg_root:
 	return err;
 }
 
-static void mlx5_mdev_uninit(struct mlx5_core_dev *dev)
+void mlx5_mdev_uninit(struct mlx5_core_dev *dev)
 {
 	struct mlx5_priv *priv = &dev->priv;
 
@@ -1678,6 +1677,10 @@ static int __init init(void)
 	if (err)
 		goto err_debug;
 
+	err = mlx5_sf_driver_register();
+	if (err)
+		goto err_sf;
+
 #ifdef CONFIG_MLX5_CORE_EN
 	err = mlx5e_init();
 	if (err) {
@@ -1688,6 +1691,8 @@ static int __init init(void)
 
 	return 0;
 
+err_sf:
+	pci_unregister_driver(&mlx5_core_driver);
 err_debug:
 	mlx5_unregister_debugfs();
 	return err;
@@ -1698,6 +1703,7 @@ static void __exit cleanup(void)
 #ifdef CONFIG_MLX5_CORE_EN
 	mlx5e_cleanup();
 #endif
+	mlx5_sf_driver_unregister();
 	pci_unregister_driver(&mlx5_core_driver);
 	mlx5_unregister_debugfs();
 }
