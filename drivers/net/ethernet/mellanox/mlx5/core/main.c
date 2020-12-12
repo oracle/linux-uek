@@ -72,6 +72,7 @@
 #include "ecpf.h"
 #include "lib/hv_vhca.h"
 #include "sf/vhca_event.h"
+#include "sf/dev/dev.h"
 
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox 5th generation network adapters (ConnectX series) core driver");
@@ -1144,6 +1145,8 @@ static int mlx5_load(struct mlx5_core_dev *dev)
 		goto err_sriov;
 	}
 
+	mlx5_sf_dev_table_create(dev);
+
 	return 0;
 
 err_sriov:
@@ -1173,6 +1176,7 @@ err_irq_table:
 
 static void mlx5_unload(struct mlx5_core_dev *dev)
 {
+	mlx5_sf_dev_table_destroy(dev);
 	mlx5_sriov_detach(dev);
 	mlx5_ec_cleanup(dev);
 	mlx5_vhca_event_stop(dev);
