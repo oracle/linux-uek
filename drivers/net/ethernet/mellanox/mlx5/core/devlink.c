@@ -6,6 +6,7 @@
 #include "mlx5_core.h"
 #include "fs_core.h"
 #include "eswitch.h"
+#include "sf/dev/dev.h"
 
 static int mlx5_devlink_flash_update(struct devlink *devlink,
 				     const char *file_name,
@@ -101,6 +102,17 @@ static int mlx5_devlink_reload_up(struct devlink *devlink,
 				  struct netlink_ext_ack *extack)
 {
 	struct mlx5_core_dev *dev = devlink_priv(devlink);
+	bool sf_dev_allocated;
+
+	sf_dev_allocated = mlx5_sf_dev_allocated(dev);
+	if (sf_dev_allocated) {
+		/* Reload results in deleting SF device which further results in
+		 * unregistering devlink instance while holding devlink_mutext.
+		 * Hence, do not support reload.
+		 */
+		NL_SET_ERR_MSG_MOD(extack, "reload is unsupported when SFs are allocated\n");
+		return -EOPNOTSUPP;
+	}
 
 	return mlx5_load_one(dev, false);
 }
