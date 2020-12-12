@@ -192,6 +192,10 @@ enum devlink_port_flavour {
 	DEVLINK_PORT_FLAVOUR_UNUSED, /* Port which exists in the switch, but
 				      * is not used in any way.
 				      */
+	DEVLINK_PORT_FLAVOUR_PCI_SF, /* Represents eswitch port
+				      * for the PCI SF. It is an internal
+				      * port that faces the PCI SF.
+				      */
 #endif
 };
 
@@ -448,6 +452,24 @@ enum devlink_attr {
 
 	DEVLINK_ATTR_PORT_EXTERNAL,		/* u8 */
 	DEVLINK_ATTR_PORT_CONTROLLER_NUMBER,	/* u32 */
+
+	DEVLINK_ATTR_FLASH_UPDATE_STATUS_TIMEOUT,	/* u64 */
+	DEVLINK_ATTR_FLASH_UPDATE_OVERWRITE_MASK,	/* bitfield32 */
+
+	DEVLINK_ATTR_RELOAD_ACTION,		/* u8 */
+	DEVLINK_ATTR_RELOAD_ACTIONS_PERFORMED,	/* bitfield32 */
+	DEVLINK_ATTR_RELOAD_LIMITS,		/* bitfield32 */
+
+	DEVLINK_ATTR_DEV_STATS,			/* nested */
+	DEVLINK_ATTR_RELOAD_STATS,		/* nested */
+	DEVLINK_ATTR_RELOAD_STATS_ENTRY,	/* nested */
+	DEVLINK_ATTR_RELOAD_STATS_LIMIT,	/* u8 */
+	DEVLINK_ATTR_RELOAD_STATS_VALUE,	/* u32 */
+	DEVLINK_ATTR_REMOTE_RELOAD_STATS,	/* nested */
+	DEVLINK_ATTR_RELOAD_ACTION_INFO,        /* nested */
+	DEVLINK_ATTR_RELOAD_ACTION_STATS,       /* nested */
+
+	DEVLINK_ATTR_PORT_PCI_SF_NUMBER,	/* u32 */
 	/* add new attributes above here, update the policy in devlink.c */
 
 	__DEVLINK_ATTR_MAX,
