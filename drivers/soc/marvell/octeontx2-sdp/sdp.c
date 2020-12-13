@@ -42,7 +42,8 @@ union ring {
 		u64 rpvf:8;
 		u64 rppf:8;
 		u64 numvf:8;
-		u64 rsvd:10;
+		u64 pf_srn:8;
+		u64 rsvd:2;
 		u64 raz:28;
 	} s;
 };
@@ -1176,6 +1177,11 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	fw_rinfo.s.rppf = num_pf_rings;
 	fw_rinfo.s.rpvf = vf_rings[0];
 	fw_rinfo.s.numvf = max_vfs-1;
+	/*
+	 * For 98xx there are 2xSDPs so start the PF ring from 128 for SDP1
+	 * SDP0 has PCI revid 0 and SDP1 has PCI revid 1
+	 */
+	fw_rinfo.s.pf_srn = pdev->revision ? 128 : pf_srn;
 
 	dev_info(&pdev->dev, "Ring info 0x%llx\n", fw_rinfo.u);
 	writeq(fw_rinfo.u, sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
