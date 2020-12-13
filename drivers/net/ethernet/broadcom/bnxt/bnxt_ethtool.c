@@ -2154,8 +2154,12 @@ static int bnxt_flash_firmware_from_file(struct net_device *dev,
 	return rc;
 }
 
+#define BNXT_PKG_DMA_SIZE	0x40000
+#define BNXT_NVM_MORE_FLAG	(cpu_to_le16(NVM_MODIFY_REQ_FLAGS_BATCH_MODE))
+#define BNXT_NVM_LAST_FLAG	(cpu_to_le16(NVM_MODIFY_REQ_FLAGS_BATCH_LAST))
+
 static int bnxt_flash_package_from_file(struct net_device *dev,
-					char *filename, u32 install_type)
+                                        char *filename, u32 install_type)
 {
 	struct hwrm_nvm_install_update_input install = {0};
 	const struct firmware *fw;
@@ -2165,6 +2169,7 @@ static int bnxt_flash_package_from_file(struct net_device *dev,
 	bool defrag_attempted = false;
 	dma_addr_t dma_handle;
 	u8 *kmem = NULL;
+	u32 modify_len;
 	u32 item_len;
 	int rc = 0;
 	u16 index;
@@ -2173,8 +2178,19 @@ static int bnxt_flash_package_from_file(struct net_device *dev,
 
 	bnxt_hwrm_cmd_hdr_init(bp, &modify, HWRM_NVM_MODIFY, -1, -1);
 
-	kmem = dma_alloc_coherent(&bp->pdev->dev, fw->size, &dma_handle,
-				  GFP_KERNEL);
+	/* Try allocating a large DMA buffer first.  Older fw will
+	 * cause excessive NVRAM erases when using small blocks.
+	 */
+	modify_len = roundup_pow_of_two(fw->size);
+	modify_len = min_t(u32, modify_len, BNXT_PKG_DMA_SIZE);
+	while (1) {
+		kmem = dma_alloc_coherent(&bp->pdev->dev, modify_len,
+					  &dma_handle, GFP_KERNEL);
+		if (!kmem && modify_len > PAGE_SIZE)
+			modify_len /= 2;
+		else
+			break;
+	}
 	if (!kmem)
 		return -ENOMEM;
 
@@ -2186,6 +2202,8 @@ static int bnxt_flash_package_from_file(struct net_device *dev,
 	install.install_type = cpu_to_le32(install_type);
 
 	do {
+		u32 copied = 0, len = modify_len;
+
 		rc = bnxt_find_nvram_item(dev, BNX_DIR_TYPE_UPDATE,
 					  BNX_DIR_ORDINAL_FIRST,
 					  BNX_DIR_EXT_NONE,
@@ -2210,15 +2228,26 @@ static int bnxt_flash_package_from_file(struct net_device *dev,
                 }
 
 		modify.dir_idx = cpu_to_le16(index);
-		modify.len = cpu_to_le32(fw->size);
+		if (fw->size > modify_len)
+			modify.flags = BNXT_NVM_MORE_FLAG;
+		while (copied < fw->size) {
+			u32 balance = fw->size - copied;
 
-		memcpy(kmem, fw->data, fw->size);
-		rc = hwrm_send_message(bp, &modify, sizeof(modify),
-				       FLASH_PACKAGE_TIMEOUT);
-	        release_firmware(fw);
-		if (rc)
-			break;
-
+			if (balance <= modify_len) {
+				len = balance;
+				if (copied)
+					modify.flags |= BNXT_NVM_LAST_FLAG;
+			}
+			memcpy(kmem, fw->data + copied, len);
+			modify.len = cpu_to_le32(len);
+			modify.offset = cpu_to_le32(copied);
+			rc = hwrm_send_message(bp, &modify, sizeof(modify),
+					       FLASH_PACKAGE_TIMEOUT);
+			if (rc)
+				goto pkg_abort;
+			copied += len;
+		}
+		release_firmware(fw);
 		mutex_lock(&bp->hwrm_cmd_lock);
 		rc = _hwrm_send_message_silent(bp, &install, sizeof(install),
 					       INSTALL_PACKAGE_TIMEOUT);
@@ -2262,7 +2291,8 @@ static int bnxt_flash_package_from_file(struct net_device *dev,
 		mutex_unlock(&bp->hwrm_cmd_lock);
 	} while (defrag_attempted && !rc);
 
-	dma_free_coherent(&bp->pdev->dev, fw->size, kmem, dma_handle);
+pkg_abort:
+	dma_free_coherent(&bp->pdev->dev, modify_len, kmem, dma_handle);
 	if (resp.result) {
 		netdev_err(dev, "PKG install error = %d, problem_item = %d\n",
 			   (s8)resp.result, (int)resp.problem_item);
