@@ -62,6 +62,14 @@ struct xenbus_watch
 	/* Callback (executed in a process context with no locks held). */
 	void (*callback)(struct xenbus_watch *,
 			 const char *path, const char *token);
+#ifndef __GENKSYMS__
+	/*
+	 * Called just before enqueing new event while a spinlock is held.
+	 * The event will be discarded if this callback returns false.
+	 */
+	bool (*will_handle)(struct xenbus_watch *,
+			      const char *path, const char *token);
+#endif
 };
 
 
