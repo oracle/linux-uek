@@ -86,7 +86,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # kernel-headers
 %define with_headers   1
 # dtrace
-%define with_dtrace    1
+%define with_dtrace 0
 # perf
 %define with_perf      1
 # bpftools
@@ -120,7 +120,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_kabichk 0
 %define fancy_debuginfo 0
 %else
-%define with_kabichk 1
+%define with_kabichk 0
 %define fancy_debuginfo 0
 %endif
 
@@ -306,7 +306,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 # Enable dtrace
 %ifarch x86_64 aarch64
-%define with_dtrace 1
+%define with_dtrace 0
 %endif
 
 # Enable perf
