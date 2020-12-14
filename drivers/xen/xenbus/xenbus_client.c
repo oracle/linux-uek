@@ -120,6 +120,7 @@ int xenbus_watch_path(struct xenbus_device *dev, const char *path,
 	int err;
 
 	watch->node = path;
+	watch->will_handle = NULL;
 	watch->callback = callback;
 	watch->callback_ = NULL;
 
