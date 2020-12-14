@@ -995,7 +995,7 @@ static struct npc_kpu_profile_action ikpu_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		44, 48, 52, 0, 0,
+		54, 58, 62, 0, 0,
 		NPC_S_KPU1_CPT_HDR, 0, 0,
 		NPC_LID_LA, NPC_LT_NA,
 		0,
@@ -8699,7 +8699,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 3, 0,
-		NPC_S_KPU5_IP, 46, 1,
+		NPC_S_KPU5_IP, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		0,
 		0, 0, 0, 0,
@@ -8707,7 +8707,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 3, 0,
-		NPC_S_KPU5_IP6, 46, 1,
+		NPC_S_KPU5_IP6, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		0,
 		0, 0, 0, 0,
@@ -8715,7 +8715,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 3, 0,
-		NPC_S_KPU5_ARP, 46, 1,
+		NPC_S_KPU5_ARP, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		0,
 		0, 0, 0, 0,
@@ -8723,7 +8723,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 3, 0,
-		NPC_S_KPU5_RARP, 46, 1,
+		NPC_S_KPU5_RARP, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		0,
 		0, 0, 0, 0,
@@ -8731,7 +8731,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 3, 0,
-		NPC_S_KPU5_PTP, 46, 1,
+		NPC_S_KPU5_PTP, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		0,
 		0, 0, 0, 0,
@@ -8739,7 +8739,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 3, 0,
-		NPC_S_KPU5_FCOE, 46, 1,
+		NPC_S_KPU5_FCOE, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		0,
 		0, 0, 0, 0,
@@ -8747,7 +8747,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 12, 0, 0, 0,
-		NPC_S_KPU2_CTAG2, 44, 1,
+		NPC_S_KPU2_CTAG2, 54, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
@@ -8755,7 +8755,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		4, 8, 0, 0, 0,
-		NPC_S_KPU2_CTAG, 44, 1,
+		NPC_S_KPU2_CTAG, 54, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
@@ -8763,7 +8763,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		4, 8, 22, 0, 0,
-		NPC_S_KPU2_SBTAG, 44, 1,
+		NPC_S_KPU2_SBTAG, 54, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
@@ -8771,7 +8771,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		4, 8, 0, 0, 0,
-		NPC_S_KPU2_QINQ, 44, 1,
+		NPC_S_KPU2_QINQ, 54, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
@@ -8779,7 +8779,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 12, 26, 0, 0,
-		NPC_S_KPU2_ETAG, 44, 1,
+		NPC_S_KPU2_ETAG, 54, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_ETAG,
 		0, 0, 0, 0,
@@ -8787,7 +8787,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		18, 22, 26, 0, 0,
-		NPC_S_KPU2_ITAG, 44, 1,
+		NPC_S_KPU2_ITAG, 54, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -8795,7 +8795,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 2, 0,
-		NPC_S_KPU4_MPLS, 46, 1,
+		NPC_S_KPU4_MPLS, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_L_WITH_MPLS,
 		0, 0, 0, 0,
@@ -8803,7 +8803,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 2, 0,
-		NPC_S_KPU4_MPLS, 46, 1,
+		NPC_S_KPU4_MPLS, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_L_WITH_MPLS,
 		0, 0, 0, 0,
@@ -8811,7 +8811,7 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 2, 0,
-		NPC_S_KPU4_NSH, 46, 1,
+		NPC_S_KPU4_NSH, 56, 1,
 		NPC_LID_LA, NPC_LT_LA_CPT_HDR,
 		NPC_F_LA_L_WITH_NSH,
 		0, 0, 0, 0,
