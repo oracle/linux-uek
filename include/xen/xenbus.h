@@ -65,6 +65,9 @@ struct xenbus_watch
 			  const char **vec, unsigned int len);
 	void (*callback)(struct xenbus_watch *,
 			 const char *path, const char *token);
+
+	unsigned int nr_pending;
+
 	/*
 	 * Called just before enqueing new event while a spinlock is held.
 	 * The event will be discarded if this callback returns false.
