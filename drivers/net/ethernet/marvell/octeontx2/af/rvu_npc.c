@@ -24,10 +24,6 @@
 #define RSVD_MCAM_ENTRIES_PER_PF	2 /* Bcast & Promisc */
 #define RSVD_MCAM_ENTRIES_PER_NIXLF	1 /* Ucast for LFs */
 
-#define NIXLF_UCAST_ENTRY	0
-#define NIXLF_BCAST_ENTRY	1
-#define NIXLF_PROMISC_ENTRY	2
-
 #define NPC_KEX_CHAN_MASK	0xFFFULL
 #define NPC_KEX_PF_FUNC_MASK    0xFFFFULL
 
@@ -87,6 +83,10 @@ int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel)
 	int base = 0, end;
 
 	if (is_npc_intf_tx(intf))
+		return 0;
+
+	/* return in case of AF installed rules */
+	if (is_pffunc_af(pcifunc))
 		return 0;
 
 	if (is_afvf(pcifunc)) {
@@ -186,8 +186,8 @@ static int npc_get_ucast_mcam_index(struct npc_mcam *mcam, u16 pcifunc,
 	return mcam->nixlf_offset + (max + nixlf) * RSVD_MCAM_ENTRIES_PER_NIXLF;
 }
 
-static int npc_get_nixlf_mcam_index(struct npc_mcam *mcam,
-				    u16 pcifunc, int nixlf, int type)
+int npc_get_nixlf_mcam_index(struct npc_mcam *mcam,
+			     u16 pcifunc, int nixlf, int type)
 {
 	int pf = rvu_get_pf(pcifunc);
 	int index;
@@ -220,8 +220,8 @@ int npc_get_bank(struct npc_mcam *mcam, int index)
 	return bank;
 }
 
-static bool is_mcam_entry_enabled(struct rvu *rvu, struct npc_mcam *mcam,
-				  int blkaddr, int index)
+bool is_mcam_entry_enabled(struct rvu *rvu, struct npc_mcam *mcam,
+			   int blkaddr, int index)
 {
 	int bank = npc_get_bank(mcam, index);
 	u64 cfg;
@@ -1896,6 +1896,9 @@ void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
 static int npc_mcam_verify_entry(struct npc_mcam *mcam,
 				 u16 pcifunc, int entry)
 {
+	/* verify AF installed entries */
+	if (is_pffunc_af(pcifunc))
+		return 0;
 	/* Verify if entry is valid and if it is indeed
 	 * allocated to the requesting PFFUNC.
 	 */
@@ -2961,30 +2964,6 @@ int rvu_mbox_handler_npc_get_kex_cfg(struct rvu *rvu, struct msg_req *req,
 	}
 	memcpy(rsp->mkex_pfl_name, rvu->mkex_pfl_name, MKEX_NAME_LEN);
 	return 0;
-}
-
-bool rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
-				u16 pcifunc, u8 intf, struct mcam_entry *entry,
-				int *index)
-{
-	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
-	struct npc_mcam *mcam = &rvu->hw->mcam;
-	bool enable;
-	u8 nix_intf;
-
-	if (is_npc_intf_tx(intf))
-		nix_intf = pfvf->nix_tx_intf;
-	else
-		nix_intf = pfvf->nix_rx_intf;
-
-	*index = npc_get_nixlf_mcam_index(mcam, pcifunc,
-					  nixlf, NIXLF_UCAST_ENTRY);
-	/* dont force enable unicast entry  */
-	enable = is_mcam_entry_enabled(rvu, mcam, blkaddr, *index);
-	npc_config_mcam_entry(rvu, mcam, blkaddr, *index, nix_intf,
-			      entry, enable);
-
-	return enable;
 }
 
 int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
