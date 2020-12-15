@@ -4046,6 +4046,7 @@ int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 				     struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_pfvf *pfvf;
 	int nixlf, err;
 
 	err = nix_get_nixlf(rvu, pcifunc, &nixlf, NULL);
@@ -4056,6 +4057,9 @@ int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 
 	npc_mcam_enable_flows(rvu, pcifunc);
 
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	set_bit(NIXLF_INITIALIZED, &pfvf->flags);
+
 	return rvu_cgx_start_stop_io(rvu, pcifunc, true);
 }
 
@@ -4063,6 +4067,7 @@ int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 				    struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_pfvf *pfvf;
 	int nixlf, err;
 
 	err = nix_get_nixlf(rvu, pcifunc, &nixlf, NULL);
@@ -4072,6 +4077,9 @@ int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
 
 	npc_mcam_disable_flows(rvu, pcifunc);
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	clear_bit(NIXLF_INITIALIZED, &pfvf->flags);
 
 	return rvu_cgx_start_stop_io(rvu, pcifunc, false);
 }
@@ -4093,6 +4101,8 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 	nix_interface_deinit(rvu, pcifunc, nixlf);
 	nix_rx_sync(rvu, blkaddr);
 	nix_txschq_free(rvu, pcifunc);
+
+	clear_bit(NIXLF_INITIALIZED, &pfvf->flags);
 
 	rvu_cgx_start_stop_io(rvu, pcifunc, false);
 

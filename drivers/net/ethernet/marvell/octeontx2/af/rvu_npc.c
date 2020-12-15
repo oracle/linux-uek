@@ -401,37 +401,49 @@ static void npc_fill_entryword(struct mcam_entry *entry, int idx,
 	}
 }
 
-static void npc_get_default_entry_action(struct rvu *rvu, struct npc_mcam *mcam,
-					 int blkaddr, int index,
-					 struct mcam_entry *entry)
+static u64 npc_get_default_entry_action(struct rvu *rvu, struct npc_mcam *mcam,
+					int blkaddr, u16 pf_func)
+{
+	int bank, nixlf, index;
+
+	/* get ucast entry rule entry index */
+	nix_get_nixlf(rvu, pf_func, &nixlf, NULL);
+	index = npc_get_nixlf_mcam_index(mcam, pf_func, nixlf,
+					 NIXLF_UCAST_ENTRY);
+	bank = npc_get_bank(mcam, index);
+	index &= (mcam->banksize - 1);
+
+	return rvu_read64(rvu, blkaddr,
+			  NPC_AF_MCAMEX_BANKX_ACTION(index, bank));
+}
+
+static void npc_fixup_vf_rule(struct rvu *rvu, struct npc_mcam *mcam,
+			      int blkaddr, int index, struct mcam_entry *entry,
+			      bool *enable)
 {
 	u16 owner, target_func;
 	struct rvu_pfvf *pfvf;
-	int bank, nixlf;
 	u64 rx_action;
 
 	owner = mcam->entry2pfvf_map[index];
 	target_func = (entry->action >> 4) & 0xffff;
-	/* return incase target is PF or LBK or rule owner is not PF */
+	/* do nothing when target is LBK/PF or owner is not PF */
 	if (is_afvf(target_func) || (owner & RVU_PFVF_FUNC_MASK) ||
 	    !(target_func & RVU_PFVF_FUNC_MASK))
 		return;
 
+	/* save entry2target_pffunc */
 	pfvf = rvu_get_pfvf(rvu, target_func);
 	mcam->entry2target_pffunc[index] = target_func;
-	/* return if nixlf is not attached or initialized */
-	if (!is_nixlf_attached(rvu, target_func) || !pfvf->def_rule)
-		return;
 
-	/* get VF ucast entry rule */
-	nix_get_nixlf(rvu, target_func, &nixlf, NULL);
-	index = npc_get_nixlf_mcam_index(mcam, target_func,
-					 nixlf, NIXLF_UCAST_ENTRY);
-	bank = npc_get_bank(mcam, index);
-	index &= (mcam->banksize - 1);
+	/* don't enable rule when nixlf not attached or initialized */
+	if (!(is_nixlf_attached(rvu, target_func) &&
+	      test_bit(NIXLF_INITIALIZED, &pfvf->flags)))
+		*enable = false;
 
-	rx_action = rvu_read64(rvu, blkaddr,
-			       NPC_AF_MCAMEX_BANKX_ACTION(index, bank));
+	/* copy VF default entry action to the VF mcam entry */
+	rx_action = npc_get_default_entry_action(rvu, mcam, blkaddr,
+						 target_func);
 	if (rx_action)
 		entry->action = rx_action;
 }
@@ -483,10 +495,9 @@ static void npc_config_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 			    NPC_AF_MCAMEX_BANKX_CAMX_W1(index, bank, 0), cam0);
 	}
 
-	/* copy VF default entry action to the VF mcam entry */
+	/* PF installing VF rule */
 	if (is_npc_intf_rx(intf) && actindex < mcam->bmap_entries)
-		npc_get_default_entry_action(rvu, mcam, blkaddr, actindex,
-					     entry);
+		npc_fixup_vf_rule(rvu, mcam, blkaddr, index, entry, &enable);
 
 	/* Set 'action' */
 	rvu_write64(rvu, blkaddr,
@@ -978,7 +989,6 @@ void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 
 void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 {
-	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule *rule;
 	int blkaddr;
@@ -996,9 +1006,6 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 			npc_enable_mcam_entry(rvu, mcam, blkaddr,
 					      rule->entry, false);
 			rule->enable = false;
-			/* Indicate that default rule is disabled */
-			if (rule->default_rule)
-				pfvf->def_rule = NULL;
 		}
 	}
 
