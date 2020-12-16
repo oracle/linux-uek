@@ -32,7 +32,6 @@
 #include <linux/relay.h>
 #include <linux/slab.h>
 #include <linux/percpu-rwsem.h>
-#include <linux/cpuset.h>
 
 #include <trace/events/power.h>
 #define CREATE_TRACE_POINTS
@@ -1987,39 +1986,6 @@ int cpuhp_smt_disable(enum cpuhp_smt_control ctrlval)
 		 * serialized against the regular offline usage.
 		 */
 		cpuhp_offline_cpu_device(cpu);
-
-		/*
-		 * Waiting here for the cpuset hotplug work to finish while
-		 * this task holds cpu_add_remove_lock prevents a later offline
-		 * of CPU N from racing with it:
-		 *
-		 * cpuset_hotplug_workfn
-		 *  ...
-		 *    compute_effective_cpumask
-		 *      // build effective_cpumask
-		 *      // using cpu_active_mask
-		 *      // still containing cpu N
-		 *
-		 *                                _cpu_down(N, ...)
-		 *                                  // N is cleared from
-		 *                                  // cpu_active_mask
-		 *                                  ...kicks migration/N...
-		 *                                    remove_siblinginfo
-		 *                                      // clear cpu N's sibling
-		 *                                      // cpumask
-		 *  rebuild_sched_domains
-		 *    ...
-		 *      generate_sched_domains
-		 *        // read effective_cpumask still
-		 *        // containing cpu N, pass to
-		 *        // scheduler domain rebuild
-		 *    ...
-		 *      sd_init
-		 *        tl->mask(cpu=N)  // returns empty mask, produces
-		 *                         // invalid value that leads to BUG
-		 */
-		cpuset_wait_for_hotplug();
-
 	}
 	if (!ret)
 		cpu_smt_control = ctrlval;
