@@ -22,8 +22,8 @@
 
 #include "rvu_trace.h"
 
-#define DRV_NAME	"octeontx2-af"
-#define DRV_STRING      "Marvell OcteonTX2 RVU Admin Function Driver"
+#define DRV_NAME	"RVU-af"
+#define DRV_STRING      "Marvell RVU Admin Function Driver"
 
 static int rvu_get_hwvf(struct rvu *rvu, int pcifunc);
 
