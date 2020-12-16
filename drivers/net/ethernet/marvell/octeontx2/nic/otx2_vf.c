@@ -16,8 +16,8 @@
 #include "otx2_reg.h"
 #include "cn10k.h"
 
-#define DRV_NAME	"octeontx2-nicvf"
-#define DRV_STRING	"Marvell OcteonTX2 NIC Virtual Function Driver"
+#define DRV_NAME	"RVU-nicvf"
+#define DRV_STRING	"Marvell RVU NIC Virtual Function Driver"
 #define DRV_VERSION	"1.0"
 
 static const struct pci_device_id otx2_vf_id_table[] = {
