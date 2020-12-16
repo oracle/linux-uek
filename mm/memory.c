@@ -4340,7 +4340,6 @@ int follow_pte_pmd(struct mm_struct *mm, unsigned long address,
 						    ptepp, pmdpp, NULL, ptlp)));
 	return res;
 }
-EXPORT_SYMBOL(follow_pte_pmd);
 
 static int follow_pte_pud(struct mm_struct *mm, unsigned long address,
 			  struct mmu_notifier_range *range,
