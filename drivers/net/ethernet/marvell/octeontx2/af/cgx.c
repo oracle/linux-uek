@@ -24,8 +24,8 @@
 #include "rvu.h"
 #include "lmac_common.h"
 
-#define DRV_NAME	"octeontx2-cgx"
-#define DRV_STRING      "Marvell OcteonTX2 CGX/MAC Driver"
+#define DRV_NAME	"Marvell-CGX/RPM"
+#define DRV_STRING      "Marvell CGX/RPM Driver"
 
 #define CGX_RX_STAT_GLOBAL_INDEX	9
 
