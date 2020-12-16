@@ -285,7 +285,8 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 		pfvf->tx_chan_cnt = 1;
 		rsp->tx_link = hw->cgx_links + lbkid;
 		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
-					      pfvf->rx_chan_base, false);
+					      pfvf->rx_chan_base,
+					      pfvf->rx_chan_cnt, false);
 		break;
 	case NIX_INTF_TYPE_SDP:
 		/* Added single interface and single channel support for now */
@@ -295,7 +296,8 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 		pfvf->tx_chan_cnt = 1;
 		rsp->tx_link = hw->cgx_links + hw->lbk_links;
 		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
-					      pfvf->rx_chan_base, false);
+					      pfvf->rx_chan_base,
+					      pfvf->rx_chan_cnt, false);
 		break;
 	}
 
@@ -3419,7 +3421,8 @@ int rvu_mbox_handler_nix_set_rx_mode(struct rvu *rvu, struct nix_rx_mode *req,
 		rvu_npc_disable_promisc_entry(rvu, pcifunc, nixlf);
 	else
 		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
-					      pfvf->rx_chan_base, allmulti);
+					      pfvf->rx_chan_base,
+					      pfvf->rx_chan_cnt, allmulti);
 	return 0;
 }
 
