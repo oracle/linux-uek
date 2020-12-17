@@ -688,6 +688,8 @@ static int unlazy_walk(struct nameidata *nd)
 	BUG_ON(!(nd->flags & LOOKUP_RCU));
 
 	nd->flags &= ~LOOKUP_RCU;
+	if (nd->flags & LOOKUP_CACHED)
+		goto out1;
 	if (unlikely(!legitimize_links(nd)))
 		goto out1;
 	if (unlikely(!legitimize_path(nd, &nd->path, nd->seq)))
@@ -724,6 +726,8 @@ static int unlazy_child(struct nameidata *nd, struct dentry *dentry, unsigned se
 	BUG_ON(!(nd->flags & LOOKUP_RCU));
 
 	nd->flags &= ~LOOKUP_RCU;
+	if (nd->flags & LOOKUP_CACHED)
+		goto out2;
 	if (unlikely(!legitimize_links(nd)))
 		goto out2;
 	if (unlikely(!legitimize_mnt(nd->path.mnt, nd->m_seq)))
@@ -794,6 +798,7 @@ static int complete_walk(struct nameidata *nd)
 		 */
 		if (!(nd->flags & (LOOKUP_ROOT | LOOKUP_IS_SCOPED)))
 			nd->root.mnt = NULL;
+		nd->flags &= ~LOOKUP_CACHED;
 		if (unlikely(unlazy_walk(nd)))
 			return -ECHILD;
 	}
@@ -2274,6 +2279,10 @@ static const char *path_init(struct nameidata *nd, unsigned flags)
 {
 	int error;
 	const char *s = nd->name->name;
+
+	/* LOOKUP_CACHED requires RCU, ask caller to retry */
+	if ((flags & (LOOKUP_RCU | LOOKUP_CACHED)) == LOOKUP_CACHED)
+		return ERR_PTR(-EAGAIN);
 
 	if (!*s)
 		flags &= ~LOOKUP_RCU;
