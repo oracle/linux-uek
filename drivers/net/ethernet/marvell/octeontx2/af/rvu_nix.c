@@ -4074,9 +4074,7 @@ int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 	if (err)
 		return err;
 
-	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
-
-	npc_mcam_disable_flows(rvu, pcifunc);
+	rvu_npc_disable_mcam_entries(rvu, pcifunc, nixlf);
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	clear_bit(NIXLF_INITIALIZED, &pfvf->flags);
