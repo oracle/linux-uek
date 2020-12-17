@@ -376,6 +376,16 @@ static int cpt_inline_ipsec_cfg_inbound(struct rvu *rvu, int blkaddr, u8 cptlf,
 		/* Set SSO_PF_FUNC_OVRD for inline IPSec */
 		rvu_write64(rvu, blkaddr, CPT_AF_ECO, 0x1);
 
+	/* Configure the X2P Link register with the cpt base channel number and
+	 * range of channels it should propagate to X2P
+	 */
+	if (!is_rvu_otx2(rvu)) {
+		val |= (ilog2(NIX_CHAN_CPT_X2P_MASK + 1) << 16);
+		val |= rvu->hw->cpt_chan_base;
+
+		rvu_write64(rvu, blkaddr, CPT_AF_X2PX_LINK_CFG(0), val);
+		rvu_write64(rvu, blkaddr, CPT_AF_X2PX_LINK_CFG(1), val);
+	}
 
 	return 0;
 }
