@@ -198,7 +198,7 @@ struct hw_perf_event {
 	 * The period to start the next sample with.
 	 */
 	u64				sample_period;
-
+#ifndef __GENKSYMS__
 	union {
 		struct { /* Sampling */
 			/*
@@ -219,7 +219,10 @@ struct hw_perf_event {
 			u64				saved_slots;
 		};
 	};
-
+#else
+	u64				last_period;
+	local64_t			period_left;
+#endif
 	/*
 	 * State for throttling the event, see __perf_event_overflow() and
 	 * perf_adjust_freq_unthr_context().
