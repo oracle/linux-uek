@@ -1613,11 +1613,13 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 	int free_lfs, mappedlfs, blkaddr;
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
+	int ret;
 
-	if (rvu_check_rsrc_policy(rvu, req, pcifunc)) {
+	ret = rvu_check_rsrc_policy(rvu, req, pcifunc);
+	if (ret) {
 		dev_err(rvu->dev, "Func 0x%x: Resource policy check failed\n",
 			pcifunc);
-		return -EINVAL;
+		return ret;
 	}
 
 	/* Only one NPA LF can be attached */
