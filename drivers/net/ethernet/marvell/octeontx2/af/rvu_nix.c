@@ -4518,8 +4518,12 @@ int rvu_mbox_handler_nix_inline_ipsec_cfg(struct rvu *rvu,
 		return NIX_AF_ERR_AF_LF_INVALID;
 
 	if (req->enable) {
+		/* Enable context prefetching */
+		if (!is_rvu_otx2(rvu))
+			val = BIT_ULL(51);
+
 		/* Set OPCODE and EGRP */
-		val = (u64)req->gen_cfg.egrp << 48 |
+		val |= (u64)req->gen_cfg.egrp << 48 |
 		      (u64)req->gen_cfg.opcode << 32;
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_IPSEC_GEN_CFG, val);
 

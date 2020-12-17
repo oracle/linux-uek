@@ -715,6 +715,7 @@
 #define CPT_AF_RXC_TIME_CFG             (0x50018ull)
 #define CPT_AF_RXC_ACTIVE_STS           (0x50028ull)
 #define CPT_AF_RXC_ZOMBIE_STS           (0x50030ull)
+#define CPT_AF_X2PX_LINK_CFG(a)         (0x51000ull | (u64)(a) << 3)
 
 #define CPT_AF_BAR2_SEL                 0x9000000
 #define CPT_AF_BAR2_ALIASX(a, b)        AF_BAR2_ALIASX(a, b)
