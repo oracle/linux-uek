@@ -668,6 +668,7 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	if (blkaddr < 0)
 		return;
 
+	*(u64 *)&action = 0x00;
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
 
@@ -989,8 +990,9 @@ void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 
 void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 {
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	struct rvu_npc_mcam_rule *rule;
+	struct rvu_npc_mcam_rule *rule, *tmp;
 	int blkaddr;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -1000,12 +1002,18 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 	mutex_lock(&mcam->lock);
 
 	/* Disable MCAM entries directing traffic to this 'pcifunc' */
-	list_for_each_entry(rule, &mcam->mcam_rules, list) {
+	list_for_each_entry_safe(rule, tmp, &mcam->mcam_rules, list) {
 		if (is_npc_intf_rx(rule->intf) &&
 		    rule->rx_action.pf_func == pcifunc) {
 			npc_enable_mcam_entry(rvu, mcam, blkaddr,
 					      rule->entry, false);
 			rule->enable = false;
+			/* Indicate that default rule is disabled */
+			if (rule->default_rule) {
+				pfvf->def_rule = NULL;
+				list_del(&rule->list);
+				kfree(rule);
+			}
 		}
 	}
 
