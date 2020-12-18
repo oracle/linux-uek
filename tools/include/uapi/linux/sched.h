@@ -51,9 +51,32 @@
  *               sent when the child exits.
  * @stack:       Specify the location of the stack for the
  *               child process.
+ *               Note, @stack is expected to point to the
+ *               lowest address. The stack direction will be
+ *               determined by the kernel and set up
+ *               appropriately based on @stack_size.
  * @stack_size:  The size of the stack for the child process.
  * @tls:         If CLONE_SETTLS is set, the tls descriptor
  *               is set to tls.
+ *
+ * The following structure members are not yet utilized by UEK6.
+ *
+ * @set_tid:      Pointer to an array of type *pid_t. The size
+ *                of the array is defined using @set_tid_size.
+ *                This array is used to select PIDs/TIDs for
+ *                newly created processes. The first element in
+ *                this defines the PID in the most nested PID
+ *                namespace. Each additional element in the array
+ *                defines the PID in the parent PID namespace of
+ *                the original PID namespace. If the array has
+ *                less entries than the number of currently
+ *                nested PID namespaces only the PIDs in the
+ *                corresponding namespaces are set.
+ * @set_tid_size: This defines the size of the array referenced
+ *                in @set_tid. This cannot be larger than the
+ *                kernel's limit of nested PID namespaces.
+ * @cgroup:       If CLONE_INTO_CGROUP is specified set this to
+ *                a file descriptor for the cgroup.
  *
  * The structure is versioned by size and thus extensible.
  * New struct members must go at the end of the struct and
@@ -68,10 +91,23 @@ struct clone_args {
 	__aligned_u64 stack;
 	__aligned_u64 stack_size;
 	__aligned_u64 tls;
+	/*
+	 * The following attributes were cherry-picked from commits
+	 * 49cb2fc42ce4b and ef2c41cf38a75 in Tejun Heo's "for-5.7" branch
+	 * in https://git.kernel.org/pub/scm/linux/kernel/git/tj/cgroup.git/
+	 *
+	 * Note that these values are currently unused but are reserved for
+	 * use if/when these clone3 features are added to UEK6.
+	 */
+	__aligned_u64 set_tid;
+	__aligned_u64 set_tid_size;
+	__aligned_u64 cgroup;
 };
 #endif
 
 #define CLONE_ARGS_SIZE_VER0 64 /* sizeof first published struct */
+#define CLONE_ARGS_SIZE_VER1 80 /* sizeof second published struct */
+#define CLONE_ARGS_SIZE_VER2 88 /* sizeof third published struct */
 
 /*
  * Scheduling policies
