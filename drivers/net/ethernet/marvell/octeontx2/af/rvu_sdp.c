@@ -20,7 +20,7 @@
 /* SDP PF number */
 static int sdp_pf_num[MAX_SDP] = {-1, -1};
 
-bool is_sdp_pf(u16 pcifunc)
+bool is_sdp_pfvf(u16 pcifunc)
 {
 	u16 pf = rvu_get_pf(pcifunc);
 	u32 found = 0, i = 0;
@@ -34,10 +34,19 @@ bool is_sdp_pf(u16 pcifunc)
 	if (!found)
 		return false;
 
-	if (pcifunc & RVU_PFVF_FUNC_MASK)
-		return false;
-
 	return true;
+}
+
+bool is_sdp_pf(u16 pcifunc)
+{
+	return (is_sdp_pfvf(pcifunc) &&
+		!(pcifunc & RVU_PFVF_FUNC_MASK));
+}
+
+bool is_sdp_vf(u16 pcifunc)
+{
+	return (is_sdp_pfvf(pcifunc) &&
+		!!(pcifunc & RVU_PFVF_FUNC_MASK));
 }
 
 int rvu_sdp_init(struct rvu *rvu)
