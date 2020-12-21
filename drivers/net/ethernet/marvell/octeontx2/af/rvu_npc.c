@@ -661,7 +661,8 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	u64 relaxed_mask;
 
 	/* Only PF or AF VF can add a promiscuous entry */
-	if ((pcifunc & RVU_PFVF_FUNC_MASK) && !is_afvf(pcifunc))
+	if ((pcifunc & RVU_PFVF_FUNC_MASK) && !is_afvf(pcifunc) &&
+	    !is_sdp_vf(pcifunc))
 		return;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
