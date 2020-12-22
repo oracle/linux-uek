@@ -66,7 +66,7 @@ static int npc_mcam_verify_pf_func(struct rvu *rvu,
 		NPC_KEX_PF_FUNC_MASK;
 	pf_func = (entry_data->kw[0] >> 32) & NPC_KEX_PF_FUNC_MASK;
 
-	pf_func = htons(pf_func);
+	pf_func = be16_to_cpu((__force __be16)pf_func);
 	if (pf_func_mask != NPC_KEX_PF_FUNC_MASK ||
 	    ((pf_func & ~RVU_PFVF_FUNC_MASK) !=
 	     (pcifunc & ~RVU_PFVF_FUNC_MASK)))
@@ -909,8 +909,8 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 
 	/* update the action change in default rule */
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
-	if (pfvf->def_rule)
-		pfvf->def_rule->rx_action = action;
+	if (pfvf->def_ucast_rule)
+		pfvf->def_ucast_rule->rx_action = action;
 
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
@@ -1011,7 +1011,7 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 			rule->enable = false;
 			/* Indicate that default rule is disabled */
 			if (rule->default_rule) {
-				pfvf->def_rule = NULL;
+				pfvf->def_ucast_rule = NULL;
 				list_del(&rule->list);
 				kfree(rule);
 			}

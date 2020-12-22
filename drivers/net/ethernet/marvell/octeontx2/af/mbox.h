@@ -1444,26 +1444,6 @@ struct ptp_rsp {
 	u64 tsc;
 };
 
-enum header_fields {
-	NPC_DMAC,
-	NPC_SMAC,
-	NPC_ETYPE,
-	NPC_OUTER_VID,
-	NPC_TOS,
-	NPC_SIP_IPV4,
-	NPC_DIP_IPV4,
-	NPC_SIP_IPV6,
-	NPC_DIP_IPV6,
-	NPC_SPORT_TCP,
-	NPC_DPORT_TCP,
-	NPC_SPORT_UDP,
-	NPC_DPORT_UDP,
-	NPC_SPORT_SCTP,
-	NPC_DPORT_SCTP,
-	NPC_FDSA_VAL,
-	NPC_HEADER_FIELDS_MAX,
-};
-
 struct flow_msg {
 	unsigned char dmac[6];
 	unsigned char smac[6];

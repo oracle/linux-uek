@@ -147,6 +147,11 @@ enum npc_kpu_lh_ltype {
 	NPC_LT_LH_CUSTOM1 = 0xF,
 };
 
+/* NPC port kind defines how the incoming or outgoing packets
+ * are processed. NPC accepts packets from up to 64 pkinds.
+ * Software assigns pkind for each incoming port such as CGX
+ * Ethernet interfaces, LBK interfaces, etc.
+ */
 enum npc_pkind_type {
 	NPC_RX_CHLEN24B_PKIND = 57ULL,
 	NPC_RX_CPT_HDR_PKIND,
@@ -154,7 +159,7 @@ enum npc_pkind_type {
 	NPC_TX_HIGIG_PKIND,
 	NPC_RX_HIGIG_PKIND,
 	NPC_RX_EDSA_PKIND,
-	NPC_TX_DEF_PKIND,
+	NPC_TX_DEF_PKIND,	/* NIX-TX PKIND */
 };
 
 enum npc_interface_type {
@@ -162,6 +167,55 @@ enum npc_interface_type {
 	NPC_INTF_MODE_EDSA,
 	NPC_INTF_MODE_HIGIG,
 	NPC_INTF_MODE_FDSA,
+};
+
+/* list of known and supported fields in packet header and
+ * fields present in key structure.
+ */
+enum key_fields {
+	NPC_DMAC,
+	NPC_SMAC,
+	NPC_ETYPE,
+	NPC_OUTER_VID,
+	NPC_TOS,
+	NPC_SIP_IPV4,
+	NPC_DIP_IPV4,
+	NPC_SIP_IPV6,
+	NPC_DIP_IPV6,
+	NPC_SPORT_TCP,
+	NPC_DPORT_TCP,
+	NPC_SPORT_UDP,
+	NPC_DPORT_UDP,
+	NPC_SPORT_SCTP,
+	NPC_DPORT_SCTP,
+	NPC_FDSA_VAL,
+	NPC_HEADER_FIELDS_MAX,
+	NPC_CHAN = NPC_HEADER_FIELDS_MAX, /* Valid when Rx */
+	NPC_PF_FUNC, /* Valid when Tx */
+	NPC_ERRLEV,
+	NPC_ERRCODE,
+	NPC_LXMB,
+	NPC_LA,
+	NPC_LB,
+	NPC_LC,
+	NPC_LD,
+	NPC_LE,
+	NPC_LF,
+	NPC_LG,
+	NPC_LH,
+	/* Ethertype for untagged frame */
+	NPC_ETYPE_ETHER,
+	/* Ethertype for single tagged frame */
+	NPC_ETYPE_TAG1,
+	/* Ethertype for double tagged frame */
+	NPC_ETYPE_TAG2,
+	/* outer vlan tci for single tagged frame */
+	NPC_VLAN_TAG1,
+	/* outer vlan tci for double tagged frame */
+	NPC_VLAN_TAG2,
+	/* other header fields programmed to extract but not of our interest */
+	NPC_UNKNOWN,
+	NPC_KEY_FIELDS_MAX,
 };
 
 struct npc_kpu_profile_cam {
@@ -339,6 +393,28 @@ struct nix_tx_action {
 
 /* NPC_AF_INTFX_KEX_CFG field masks */
 #define NPC_PARSE_NIBBLE		GENMASK_ULL(30, 0)
+
+/* NPC_PARSE_KEX_S nibble definitions for each field */
+#define NPC_PARSE_NIBBLE_CHAN		GENMASK_ULL(2, 0)
+#define NPC_PARSE_NIBBLE_ERRLEV		BIT_ULL(3)
+#define NPC_PARSE_NIBBLE_ERRCODE	GENMASK_ULL(5, 4)
+#define NPC_PARSE_NIBBLE_L2L3_BCAST	BIT_ULL(6)
+#define NPC_PARSE_NIBBLE_LA_FLAGS	GENMASK_ULL(8, 7)
+#define NPC_PARSE_NIBBLE_LA_LTYPE	BIT_ULL(9)
+#define NPC_PARSE_NIBBLE_LB_FLAGS	GENMASK_ULL(11, 10)
+#define NPC_PARSE_NIBBLE_LB_LTYPE	BIT_ULL(12)
+#define NPC_PARSE_NIBBLE_LC_FLAGS	GENMASK_ULL(14, 13)
+#define NPC_PARSE_NIBBLE_LC_LTYPE	BIT_ULL(15)
+#define NPC_PARSE_NIBBLE_LD_FLAGS	GENMASK_ULL(17, 16)
+#define NPC_PARSE_NIBBLE_LD_LTYPE	BIT_ULL(18)
+#define NPC_PARSE_NIBBLE_LE_FLAGS	GENMASK_ULL(20, 19)
+#define NPC_PARSE_NIBBLE_LE_LTYPE	BIT_ULL(21)
+#define NPC_PARSE_NIBBLE_LF_FLAGS	GENMASK_ULL(23, 22)
+#define NPC_PARSE_NIBBLE_LF_LTYPE	BIT_ULL(24)
+#define NPC_PARSE_NIBBLE_LG_FLAGS	GENMASK_ULL(26, 25)
+#define NPC_PARSE_NIBBLE_LG_LTYPE	BIT_ULL(27)
+#define NPC_PARSE_NIBBLE_LH_FLAGS	GENMASK_ULL(29, 28)
+#define NPC_PARSE_NIBBLE_LH_LTYPE	BIT_ULL(30)
 
 /* NIX Receive Vtag Action Structure */
 #define RX_VTAG0_VALID_BIT		BIT_ULL(15)
