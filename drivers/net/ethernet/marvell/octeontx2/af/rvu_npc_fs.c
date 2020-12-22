@@ -218,7 +218,7 @@ static int npc_check_field(struct rvu *rvu, int blkaddr, enum key_fields type,
 {
 	if (!npc_is_field_present(rvu, type, intf) ||
 	    npc_check_overlap(rvu, blkaddr, type, 0, intf))
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	return 0;
 }
 
@@ -312,11 +312,11 @@ static void npc_handle_multi_layer_fields(struct rvu *rvu, int blkaddr, u8 intf)
 	vlan_tag1 = &key_fields[NPC_VLAN_TAG1];
 	vlan_tag2 = &key_fields[NPC_VLAN_TAG2];
 
-	/* if key profile programmed does not extract ether type at all */
+	/* if key profile programmed does not extract Ethertype at all */
 	if (!etype_ether->nr_kws && !etype_tag1->nr_kws && !etype_tag2->nr_kws)
 		goto vlan_tci;
 
-	/* if key profile programmed extracts ether type from one layer */
+	/* if key profile programmed extracts Ethertype from one layer */
 	if (etype_ether->nr_kws && !etype_tag1->nr_kws && !etype_tag2->nr_kws)
 		key_fields[NPC_ETYPE] = *etype_ether;
 	if (!etype_ether->nr_kws && etype_tag1->nr_kws && !etype_tag2->nr_kws)
@@ -324,7 +324,7 @@ static void npc_handle_multi_layer_fields(struct rvu *rvu, int blkaddr, u8 intf)
 	if (!etype_ether->nr_kws && !etype_tag1->nr_kws && etype_tag2->nr_kws)
 		key_fields[NPC_ETYPE] = *etype_tag2;
 
-	/* if key profile programmed extracts ether type from multiple layers */
+	/* if key profile programmed extracts Ethertype from multiple layers */
 	if (etype_ether->nr_kws && etype_tag1->nr_kws) {
 		for (i = 0; i < NPC_MAX_KWS_IN_KEY; i++) {
 			if (etype_ether->kw_mask[i] != etype_tag1->kw_mask[i])
@@ -347,7 +347,7 @@ static void npc_handle_multi_layer_fields(struct rvu *rvu, int blkaddr, u8 intf)
 		key_fields[NPC_ETYPE] = *etype_tag2;
 	}
 
-	/* check none of higher layers overwrite ether type */
+	/* check none of higher layers overwrite Ethertype */
 	start_lid = key_fields[NPC_ETYPE].layer_mdata.lid + 1;
 	if (npc_check_overlap(rvu, blkaddr, NPC_ETYPE, start_lid, intf))
 		goto vlan_tci;
@@ -585,7 +585,7 @@ static int npc_check_unsupported_flows(struct rvu *rvu, u64 features, u8 intf)
 		dev_info(rvu->dev, "Unsupported flow(s):\n");
 		for_each_set_bit(bit, (unsigned long *)&unsupported, 64)
 			dev_info(rvu->dev, "%s ", npc_get_field_name(bit));
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	return 0;
@@ -747,17 +747,7 @@ static void npc_update_flow(struct rvu *rvu, struct mcam_entry *entry,
 	if (!features)
 		return;
 
-#define NPC_WRITE_FLOW(field, member, val_lo, val_hi, mask_lo, mask_hi)	      \
-do {									      \
-	if (features & BIT_ULL(field)) {				      \
-		npc_update_entry(rvu, field, entry, val_lo, val_hi,	      \
-				 mask_lo, mask_hi, intf);		      \
-		memcpy(&opkt->member, &pkt->member, sizeof(pkt->member));     \
-		memcpy(&omask->member, &mask->member, sizeof(mask->member));  \
-	}								      \
-} while (0)
-
-	 /* For tcp/udp/sctp LTYPE should be present in entry */
+	/* For tcp/udp/sctp LTYPE should be present in entry */
 	if (features & (BIT_ULL(NPC_SPORT_TCP) | BIT_ULL(NPC_DPORT_TCP)))
 		npc_update_entry(rvu, NPC_LD, entry, NPC_LT_LD_TCP,
 				 0, ~0ULL, 0, intf);
@@ -775,6 +765,16 @@ do {									      \
 	if (features & BIT_ULL(NPC_FDSA_VAL))
 		npc_update_entry(rvu, NPC_LB, entry, NPC_LT_LB_FDSA,
 				 0, ~0ULL, 0, intf);
+
+#define NPC_WRITE_FLOW(field, member, val_lo, val_hi, mask_lo, mask_hi)	      \
+do {									      \
+	if (features & BIT_ULL((field))) {				      \
+		npc_update_entry(rvu, (field), entry, (val_lo), (val_hi),     \
+				 (mask_lo), (mask_hi), intf);		      \
+		memcpy(&opkt->member, &pkt->member, sizeof(pkt->member));     \
+		memcpy(&omask->member, &mask->member, sizeof(mask->member));  \
+	}								      \
+} while (0)
 
 	NPC_WRITE_FLOW(NPC_DMAC, dmac, dmac_val, 0, dmac_mask, 0);
 	NPC_WRITE_FLOW(NPC_SMAC, smac, smac_val, 0, smac_mask, 0);
@@ -900,8 +900,8 @@ static void npc_update_rx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	action.match_id = req->match_id;
 	action.flow_key_alg = req->flow_key_alg;
 
-	if (req->op == NIX_RX_ACTION_DEFAULT && pfvf->def_rule)
-		action = pfvf->def_rule->rx_action;
+	if (req->op == NIX_RX_ACTION_DEFAULT && pfvf->def_ucast_rule)
+		action = pfvf->def_ucast_rule->rx_action;
 
 	entry->action = *(u64 *)&action;
 
@@ -953,13 +953,13 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 			       struct npc_install_flow_rsp *rsp, bool enable,
 			       bool pf_set_vfs_mac)
 {
+	struct rvu_npc_mcam_rule *def_ucast_rule = pfvf->def_ucast_rule;
 	u64 features, installed_features, missing_features = 0;
-	struct rvu_npc_mcam_rule *def_rule = pfvf->def_rule;
 	struct npc_mcam_write_entry_req write_req = { 0 };
-	bool new = false, msg_from_vf;
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule dummy = { 0 };
 	struct rvu_npc_mcam_rule *rule;
+	bool new = false, msg_from_vf;
 	u16 owner = req->hdr.pcifunc;
 	struct msg_rsp write_rsp;
 	struct mcam_entry *entry;
@@ -991,12 +991,12 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	}
 
 	/* update mcam entry with default unicast rule attributes */
-	if (def_rule && (msg_from_vf || (req->default_rule && req->append))) {
-		missing_features = (def_rule->features ^ features) &
-					def_rule->features;
+	if (def_ucast_rule && (msg_from_vf || (req->default_rule && req->append))) {
+		missing_features = (def_ucast_rule->features ^ features) &
+					def_ucast_rule->features;
 		if (missing_features)
 			npc_update_flow(rvu, entry, missing_features,
-					&def_rule->packet, &def_rule->mask,
+					&def_ucast_rule->packet, &def_ucast_rule->mask,
 					&dummy, req->intf);
 		installed_features = req->features | missing_features;
 	}
@@ -1059,7 +1059,7 @@ find_rule:
 	if (new)
 		rvu_mcam_add_rule(mcam, rule);
 	if (req->default_rule)
-		pfvf->def_rule = rule;
+		pfvf->def_ucast_rule = rule;
 
 	/* VF's MAC address is being changed via PF  */
 	if (pf_set_vfs_mac) {
@@ -1119,7 +1119,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 		req->chan_mask = 0xFFF;
 
 	if (npc_check_unsupported_flows(rvu, req->features, req->intf))
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 
 	if (npc_mcam_verify_channel(rvu, target, req->intf, req->channel))
 		return -EINVAL;
@@ -1135,7 +1135,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	    req->intf == NIX_INTF_RX &&
 	    is_zero_ether_addr(req->packet.dmac)) {
 		ether_addr_copy(req->packet.dmac, pfvf->mac_addr);
-		u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
+		eth_broadcast_addr((u8 *)&req->mask.dmac);
 	}
 
 	err = nix_get_nixlf(rvu, target, &nixlf, NULL);
@@ -1161,8 +1161,8 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	/* If message is from VF then its flow should not overlap with
 	 * reserved unicast flow.
 	 */
-	if (from_vf && pfvf->def_rule && is_npc_intf_rx(req->intf) &&
-	    pfvf->def_rule->features & req->features)
+	if (from_vf && pfvf->def_ucast_rule && is_npc_intf_rx(req->intf) &&
+	    pfvf->def_ucast_rule->features & req->features)
 		return -EINVAL;
 
 	return npc_install_flow(rvu, blkaddr, target, nixlf, pfvf,
@@ -1221,11 +1221,13 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	mutex_unlock(&mcam->lock);
 
 	list_for_each_entry_safe(iter, tmp, &del_list, list) {
-		if (npc_delete_flow(rvu, iter, pcifunc))
-			dev_err(rvu->dev, "rule deletion failed for entry:%d",
-				iter->entry);
+		u16 entry = iter->entry;
+
 		/* clear the mcam entry target pcifunc */
-		mcam->entry2target_pffunc[iter->entry] = 0x0;
+		mcam->entry2target_pffunc[entry] = 0x0;
+		if (npc_delete_flow(rvu, iter, pcifunc))
+			dev_err(rvu->dev, "rule deletion failed for entry:%u",
+				entry);
 	}
 
 	return 0;
@@ -1238,19 +1240,19 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 	struct npc_mcam_write_entry_req write_req = { 0 };
 	struct mcam_entry *entry = &write_req.entry_data;
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	struct npc_mcam_read_entry_rsp wrsp;
 	struct msg_rsp rsp;
+	u8 intf, enable;
 	int err;
 
 	ether_addr_copy(rule->packet.dmac, pfvf->mac_addr);
 
 	npc_read_mcam_entry(rvu, mcam, npcblkaddr, rule->entry,
-			    entry, &wrsp.intf,
-			    &wrsp.enable);
+			    entry, &intf,
+			    &enable);
 
 	npc_update_entry(rvu, NPC_DMAC, entry,
 			 ether_addr_to_u64(pfvf->mac_addr), 0,
-			 0xffffffffffffull, 0, wrsp.intf);
+			 0xffffffffffffull, 0, intf);
 
 	write_req.hdr.pcifunc = rule->owner;
 	write_req.entry = rule->entry;
@@ -1289,11 +1291,11 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 				npc_update_dmac_value(rvu, blkaddr, rule, pfvf);
 
 			if (rule->rx_action.op == NIX_RX_ACTION_DEFAULT) {
-				if (!pfvf->def_rule)
+				if (!pfvf->def_ucast_rule)
 					continue;
 				/* Use default unicast entry action */
-				rule->rx_action = pfvf->def_rule->rx_action;
-				def_action = *(u64 *)&pfvf->def_rule->rx_action;
+				rule->rx_action = pfvf->def_ucast_rule->rx_action;
+				def_action = *(u64 *)&pfvf->def_ucast_rule->rx_action;
 				bank = npc_get_bank(mcam, rule->entry);
 				rvu_write64(rvu, blkaddr,
 					    NPC_AF_MCAMEX_BANKX_ACTION

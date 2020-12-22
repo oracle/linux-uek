@@ -1247,11 +1247,11 @@ int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 	/* Configure RX VTAG Type 7 (strip) for vf vlan */
 	rvu_write64(rvu, blkaddr,
 		    NIX_AF_LFX_RX_VTAG_TYPEX(nixlf, NIX_AF_LFX_RX_VTAG_TYPE7),
-		    VTAGSIZE_T4 | BIT_ULL(4));
+		    VTAGSIZE_T4 | VTAG_STRIP);
 	/* Configure RX VTAG Type 6 (strip) for fdsa */
 	rvu_write64(rvu, blkaddr,
 		    NIX_AF_LFX_RX_VTAG_TYPEX(nixlf, NIX_AF_LFX_RX_VTAG_TYPE6),
-		    VTAGSIZE_T4 | BIT_ULL(4) | BIT_ULL(5));
+		    VTAGSIZE_T4 | VTAG_STRIP | VTAG_CAPTURE);
 
 	goto exit;
 
