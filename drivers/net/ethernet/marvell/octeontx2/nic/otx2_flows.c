@@ -12,14 +12,6 @@
 
 #include "otx2_common.h"
 
-/* helper macros to support mcam flows */
-#define OTX2_MAX_NTUPLE_FLOWS	32
-#define OTX2_MAX_UNICAST_FLOWS	8
-#define OTX2_MAX_VLAN_FLOWS	1
-#define OTX2_MCAM_COUNT		(OTX2_MAX_NTUPLE_FLOWS + \
-				 OTX2_MAX_UNICAST_FLOWS + \
-				 OTX2_MAX_VLAN_FLOWS)
-
 #define OTX2_DEFAULT_ACTION	0x1
 #define FDSA_MAX_SPORT		32
 #define FDSA_SPORT_MASK         0xf8
@@ -33,58 +25,15 @@ struct otx2_flow {
 	int vf;
 };
 
-int otx2_mcam_flow_init(struct otx2_nic *pf)
-{
-	pf->flow_cfg = devm_kzalloc(pf->dev, sizeof(struct otx2_flow_config),
-				    GFP_KERNEL);
-	if (!pf->flow_cfg)
-		return -ENOMEM;
-
-	INIT_LIST_HEAD(&pf->flow_cfg->flow_list);
-
-	pf->flow_cfg->ntuple_max_flows = OTX2_MAX_NTUPLE_FLOWS;
-
-	pf->flags |= (OTX2_FLAG_NTUPLE_SUPPORT |
-		      OTX2_FLAG_UCAST_FLTR_SUPPORT |
-		      OTX2_FLAG_RX_VLAN_SUPPORT |
-		      OTX2_FLAG_VF_VLAN_SUPPORT);
-
-	pf->mac_table = devm_kzalloc(pf->dev, sizeof(struct otx2_mac_table)
-					* OTX2_MAX_UNICAST_FLOWS, GFP_KERNEL);
-
-	if (!pf->mac_table)
-		return -ENOMEM;
-
-	/* register work queue for ndo callbacks */
-	pf->otx2_wq = create_singlethread_workqueue("otx2_ndo_work_queue");
-	if (!pf->otx2_wq)
-		return -ENOMEM;
-	INIT_WORK(&pf->rx_mode_work, otx2_do_set_rx_mode);
-	return 0;
-}
-
-void otx2_mcam_flow_del(struct otx2_nic *pf)
-{
-	otx2_destroy_mcam_flows(pf);
-	if (pf->otx2_wq)
-		destroy_workqueue(pf->otx2_wq);
-}
-
 int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 {
 	struct otx2_flow_config *flow_cfg = pfvf->flow_cfg;
-	netdev_features_t wanted = NETIF_F_HW_VLAN_STAG_RX |
-				   NETIF_F_HW_VLAN_CTAG_RX;
 	struct npc_mcam_alloc_entry_req *req;
 	struct npc_mcam_alloc_entry_rsp *rsp;
 	int vf_vlan_max_flows;
 	int i;
 
 	mutex_lock(&pfvf->mbox.lock);
-	if (pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return 0;
-	}
 
 	req = otx2_mbox_alloc_msg_npc_mcam_alloc_entry(&pfvf->mbox);
 	if (!req) {
@@ -106,19 +55,13 @@ int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 	       (&pfvf->mbox.mbox, 0, &req->hdr);
 
 	if (rsp->count != req->count) {
-		netdev_info(pfvf->netdev, "number of rules truncated to %d\n",
-			    rsp->count);
 		netdev_info(pfvf->netdev,
-			    "Disabling RX VLAN offload due to non-availability of MCAM space\n");
+			    "Unable to allocate %d MCAM entries, got %d\n",
+			    req->count, rsp->count);
 		/* support only ntuples here */
 		flow_cfg->ntuple_max_flows = rsp->count;
 		flow_cfg->ntuple_offset = 0;
-		pfvf->netdev->priv_flags &= ~IFF_UNICAST_FLT;
-		pfvf->flags &= ~OTX2_FLAG_UCAST_FLTR_SUPPORT;
-		pfvf->flags &= ~OTX2_FLAG_RX_VLAN_SUPPORT;
-		pfvf->flags &= ~OTX2_FLAG_VF_VLAN_SUPPORT;
-		pfvf->netdev->features &= ~wanted;
-		pfvf->netdev->hw_features &= ~wanted;
+		pfvf->flags |= OTX2_FLAG_NTUPLE_SUPPORT;
 	} else {
 		flow_cfg->vf_vlan_offset = 0;
 		flow_cfg->ntuple_offset = flow_cfg->vf_vlan_offset +
@@ -127,15 +70,51 @@ int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 						OTX2_MAX_NTUPLE_FLOWS;
 		flow_cfg->rx_vlan_offset = flow_cfg->unicast_offset +
 						OTX2_MAX_UNICAST_FLOWS;
+		pfvf->flags |= OTX2_FLAG_NTUPLE_SUPPORT;
+		pfvf->flags |= OTX2_FLAG_UCAST_FLTR_SUPPORT;
+		pfvf->flags |= OTX2_FLAG_RX_VLAN_SUPPORT;
+		pfvf->flags |= OTX2_FLAG_VF_VLAN_SUPPORT;
 	}
 
 	for (i = 0; i < rsp->count; i++)
 		flow_cfg->entry[i] = rsp->entry_list[i];
 
 	pfvf->flags |= OTX2_FLAG_MCAM_ENTRIES_ALLOC;
+
 	mutex_unlock(&pfvf->mbox.lock);
 
 	return 0;
+}
+
+int otx2_mcam_flow_init(struct otx2_nic *pf)
+{
+	int err;
+
+	pf->flow_cfg = devm_kzalloc(pf->dev, sizeof(struct otx2_flow_config),
+				    GFP_KERNEL);
+	if (!pf->flow_cfg)
+		return -ENOMEM;
+
+	INIT_LIST_HEAD(&pf->flow_cfg->flow_list);
+
+	pf->flow_cfg->ntuple_max_flows = OTX2_MAX_NTUPLE_FLOWS;
+
+	err = otx2_alloc_mcam_entries(pf);
+	if (err)
+		return err;
+
+	pf->mac_table = devm_kzalloc(pf->dev, sizeof(struct otx2_mac_table)
+					* OTX2_MAX_UNICAST_FLOWS, GFP_KERNEL);
+
+	if (!pf->mac_table)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void otx2_mcam_flow_del(struct otx2_nic *pf)
+{
+	otx2_destroy_mcam_flows(pf);
 }
 
 /*  On success adds mcam entry
@@ -146,12 +125,6 @@ static int otx2_do_add_macfilter(struct otx2_nic *pf, const u8 *mac)
 	struct otx2_flow_config *flow_cfg = pf->flow_cfg;
 	struct npc_install_flow_req *req;
 	int err, i;
-
-	if (!(pf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC)) {
-		err = otx2_alloc_mcam_entries(pf);
-		if (err)
-			return err;
-	}
 
 	if (!(pf->flags & OTX2_FLAG_UCAST_FLTR_SUPPORT))
 		return -ENOMEM;
@@ -180,7 +153,7 @@ static int otx2_do_add_macfilter(struct otx2_nic *pf, const u8 *mac)
 	}
 
 	ether_addr_copy(req->packet.dmac, mac);
-	u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
+	eth_broadcast_addr((u8 *)&req->mask.dmac);
 	req->features = BIT_ULL(NPC_DMAC);
 	req->channel = pf->hw.rx_chan_base;
 	req->intf = NIX_INTF_RX;
@@ -196,14 +169,8 @@ static int otx2_do_add_macfilter(struct otx2_nic *pf, const u8 *mac)
 int otx2_add_macfilter(struct net_device *netdev, const u8 *mac)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
-	int err;
 
-	err = otx2_do_add_macfilter(pf, mac);
-	if (err) {
-		netdev->flags |= IFF_PROMISC;
-		return err;
-	}
-	return 0;
+	return otx2_do_add_macfilter(pf, mac);
 }
 
 static bool otx2_get_mcamentry_for_mac(struct otx2_nic *pf, const u8 *mac,
@@ -523,7 +490,7 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 		otx2_prepare_ipv6_flow(fsp, req, flow_type);
 		break;
 	default:
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 	if (fsp->flow_type & FLOW_EXT) {
 		int skip_user_def = false;
@@ -577,7 +544,7 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 	}
 
 	if (!req->features)
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 
 	return 0;
 }
@@ -644,14 +611,11 @@ int otx2_add_flow(struct otx2_nic *pfvf, struct ethtool_rx_flow_spec *fsp)
 	bool new = false;
 	int err;
 
+	if (!(pfvf->flags & OTX2_FLAG_NTUPLE_SUPPORT))
+		return -ENOMEM;
+
 	if (ring >= pfvf->hw.rx_queues && fsp->ring_cookie != RX_CLS_FLOW_DISC)
 		return -EINVAL;
-
-	if (!(pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC)) {
-		err = otx2_alloc_mcam_entries(pfvf);
-		if (err)
-			return err;
-	}
 
 	if (fsp->location >= flow_cfg->ntuple_max_flows)
 		return -EINVAL;
@@ -738,7 +702,7 @@ int otx2_destroy_ntuple_flows(struct otx2_nic *pfvf)
 	struct otx2_flow *iter, *tmp;
 	int err;
 
-	if (!(pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC))
+	if (!(pfvf->flags & OTX2_FLAG_NTUPLE_SUPPORT))
 		return 0;
 
 	mutex_lock(&pfvf->mbox.lock);
@@ -810,9 +774,6 @@ int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
 	struct npc_install_flow_req *req;
 	int err;
 
-	if (!(pfvf->flags & OTX2_FLAG_MCAM_ENTRIES_ALLOC))
-		return -ENOMEM;
-
 	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_install_flow(&pfvf->mbox);
 	if (!req) {
@@ -823,7 +784,7 @@ int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
 	req->entry = flow_cfg->entry[flow_cfg->rx_vlan_offset];
 	req->intf = NIX_INTF_RX;
 	ether_addr_copy(req->packet.dmac, pfvf->netdev->dev_addr);
-	u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
+	eth_broadcast_addr((u8 *)&req->mask.dmac);
 	req->channel = pfvf->hw.rx_chan_base;
 	req->op = NIX_RX_ACTION_DEFAULT;
 	req->features = BIT_ULL(NPC_OUTER_VID) | BIT_ULL(NPC_DMAC);

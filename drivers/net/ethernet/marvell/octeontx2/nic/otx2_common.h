@@ -269,6 +269,12 @@ struct otx2_mac_table {
 struct otx2_flow_config {
 	u16			entry[NPC_MAX_NONCONTIG_ENTRIES];
 	u32			nr_flows;
+#define OTX2_MAX_NTUPLE_FLOWS	32
+#define OTX2_MAX_UNICAST_FLOWS	8
+#define OTX2_MAX_VLAN_FLOWS	1
+#define OTX2_MCAM_COUNT		(OTX2_MAX_NTUPLE_FLOWS + \
+				 OTX2_MAX_UNICAST_FLOWS + \
+				 OTX2_MAX_VLAN_FLOWS)
 	u32			vf_vlan_offset;
 	u32			ntuple_offset;
 	u32			unicast_offset;
