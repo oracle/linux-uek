@@ -1,0 +1,16 @@
+* Marvell MUSDK continuous memory allocation driver (BM)
+
+Required properties:
+
+- compatible: should be "marvell,musdk-cma".
+
+Optional properties:
+
+- dma-coherent
+
+Example:
+
+musdk_cma {
+	compatible = "marvell,musdk-cma";
+	dma-coherent;
+};
