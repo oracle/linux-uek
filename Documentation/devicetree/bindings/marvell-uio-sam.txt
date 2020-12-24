@@ -1,0 +1,13 @@
+* Marvell UIO for Security Acceleration Module (SAM)
+
+Required properties:
+
+- compatible: should be "marvell,uio-sam".
+- eip_access: phandler to EIP crypto driver
+
+Example:
+
+CP110_LABEL(uio_sam): uio_sam@800000 {
+	compatible = "marvell,uio-sam";
+	eip_access = <&CP110_LABEL(crypto)>;
+};
