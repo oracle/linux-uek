@@ -1,0 +1,16 @@
+* Marvell generic UIO
+
+Required properties:
+
+- compatible: should be "marvell,generic-uio".
+- reg: reg address
+- reg-name: reg name
+
+Example:
+
+CP11X_LABEL(uio_ethernet): EVALUATOR(uio_pp_, CP11X_NUM)@0 {
+		compatible = "generic-uio";
+		reg = <0x0 0x90000>, <0x130000 0x6000>,
+				<0x220000 0x1000>;
+		reg-names = "pp", "mspg", "cm3";
+};
