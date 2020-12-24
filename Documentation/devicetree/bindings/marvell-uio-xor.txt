@@ -1,0 +1,12 @@
+* Marvell UIO for XOR driver
+
+Required properties:
+
+- compatible: should be "marvell,uio-xor-v2".
+- xor_access: phandler to XOR driver
+
+Example:
+P110_LABEL(uio_xor1) {
+	compatible = "marvell,uio-xor-v2";
+	xor_access = <&CP110_LABEL(xor1)>;
+};
