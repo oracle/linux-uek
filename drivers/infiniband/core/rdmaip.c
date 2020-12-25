@@ -1980,6 +1980,28 @@ static struct rdmaip_device *rdmaip_is_roce_device(struct net_device *dev,
 }
 
 /*
+ * If the rdmaip_ndev_include_list is NULL, we include the interface,
+ * subject to other constraints. Otherwise, the net_device name must
+ * match an entry in the table.
+ */
+static bool rdmaip_include_this_ndev(struct net_device *ndev)
+{
+	int i;
+
+	if (!rdmaip_ndev_include_list)
+		return true;
+
+	for (i = 0; i < include_ndevs_cnt; ++i)
+		if (!strcmp(include_ndevs_tbl[i], ndev->name)) {
+			pr_notice("rdmaip: Including net_device %s\n",
+				  ndev->name);
+			return true;
+		}
+
+	return false;
+}
+
+/*
  * Returns rdmaip_dev correstpoing to the netdevice if ndev a RDMA capable
  * adapter. Otherwise, it returns NULL. Also, it returns Pkey for IB devices
  * and Vlan ID for RoCE devices
@@ -1989,6 +2011,9 @@ static struct rdmaip_device *rdmaip_get_rdmaip_dev(struct net_device *ndev,
 {
 	struct rdmaip_device	*rdmaip_dev = NULL;
 	union ib_gid		gid;
+
+	if (!rdmaip_include_this_ndev(ndev))
+		return NULL;
 
 	if (ndev->type == ARPHRD_INFINIBAND) {
 
@@ -2184,6 +2209,63 @@ void rdmaip_read_exclude_ip_list(void)
 
 		tok = nxt_tok;
 	}
+}
+
+/*
+ * Expect a single string, aka eth4
+ */
+static void rdmaip_parse_ndev_include_token(char *str)
+{
+	if (include_ndevs_cnt >= RDMAIP_MAX_INCLUDE_NDEVS)
+		return;
+
+	include_ndevs_tbl[include_ndevs_cnt] = kstrdup(str, GFP_KERNEL);
+
+	if (!include_ndevs_tbl[include_ndevs_cnt])
+		return;
+
+	RDMAIP_DBG2("Entry %d of include_ndevs_tbl contains \"%s\"\n",
+		    include_ndevs_cnt, include_ndevs_tbl[include_ndevs_cnt]);
+
+	++include_ndevs_cnt;
+}
+
+static void rdmaip_parse_ndev_include_list(void)
+{
+	char *nxt_tok;
+	char *tok;
+	char *str;
+
+	if (!rdmaip_ndev_include_list)
+		return;
+
+	str = kmalloc(strlen(rdmaip_ndev_include_list), GFP_KERNEL);
+	if (!str)
+		return;
+
+	strcpy(str, rdmaip_ndev_include_list);
+
+	tok = str;
+	while (tok) {
+		nxt_tok = strchr(tok, ',');
+		if (nxt_tok) {
+			*nxt_tok = '\0';
+			nxt_tok++;
+		}
+
+		rdmaip_parse_ndev_include_token(tok);
+
+		tok = nxt_tok;
+	}
+	kfree(str);
+}
+
+static void rdmaip_release_ndev_include_tbl(void)
+{
+	int i;
+
+	for (i = 0; i < RDMAIP_MAX_INCLUDE_NDEVS; ++i)
+		kfree(include_ndevs_tbl[i]);
 }
 
 /*
@@ -2877,6 +2959,7 @@ void rdmaip_cleanup(void)
 	kfree(ip_config);
 
 	rdmaip_clear_busy_flag();
+	rdmaip_release_ndev_include_tbl();
 
 	RDMAIP_DBG2("%s done rdmaip_init_flag = 0x%x\n", __func__,
 		    rdmaip_init_flag);
@@ -2909,6 +2992,8 @@ void rdmaip_cleanup(void)
 int rdmaip_init(void)
 {
 	int ret = 0;
+
+	rdmaip_parse_ndev_include_list();
 
 	if (!rdmaip_active_bonding_enabled) {
 		RDMAIP_DBG2("%s: Active Bonding is DISABLED\n", __func__);
