@@ -190,6 +190,15 @@ module_param(rdmaip_active_bonding_arps_gap_ms, int, 0644);
 MODULE_PARM_DESC(rdmaip_active_bonding_arps_gap_ms,
 		 " Number of msecs between gARPs sent");
 
+/*
+ * rdmaip_ndev_include_list
+ *     Contains comma separated list of netdev names
+ */
+static char *rdmaip_ndev_include_list;
+module_param(rdmaip_ndev_include_list, charp, 0444);
+MODULE_PARM_DESC(rdmaip_ndev_include_list,
+		 "[ndev_ifname[,ndev_ifname]*]");
+
 struct socket	*rdmaip_inet_socket;
 struct socket	*rdmaip_inet6_socket;
 
@@ -210,6 +219,10 @@ struct rdmaip_exclude_ips {
 
 static struct	rdmaip_exclude_ips exclude_ips_tbl[RDMAIP_MAX_EXCLUDE_IPS];
 static u8	exclude_ips_cnt;
+
+#define RDMAIP_MAX_INCLUDE_NDEVS 16
+static char *include_ndevs_tbl[RDMAIP_MAX_INCLUDE_NDEVS];
+static u8 include_ndevs_cnt;
 
 static int initial_failovers_iterations; /* = 0 */
 
