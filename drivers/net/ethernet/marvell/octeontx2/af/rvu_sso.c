@@ -318,9 +318,9 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Read hardware capabilities */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
-	has_lsw = reg & SSO_AF_CONST1_LSW_PRESENT;
-	has_nsched = !(reg & SSO_AF_CONST1_NO_NSCHED);
-	has_prefetch = reg & SSO_AF_CONST1_PRF_PRESENT;
+	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
+	has_nsched = !!!(reg & SSO_AF_CONST1_NO_NSCHED);
+	has_prefetch = !!(reg & SSO_AF_CONST1_PRF_PRESENT);
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -597,8 +597,8 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Read hardware capabilities */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
-	has_lsw = reg & SSO_AF_CONST1_LSW_PRESENT;
-	has_prefetch = reg & SSO_AF_CONST1_PRF_PRESENT;
+	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
+	has_prefetch = !!(reg & SSO_AF_CONST1_PRF_PRESENT);
 
 	/* Enable BAR2 alias access. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -1109,6 +1109,52 @@ int rvu_mbox_handler_ssow_lf_free(struct rvu *rvu,
 		if (err)
 			dev_err(rvu->dev, "SSOW%d free: failed to reset\n",
 				ssowlf);
+	}
+
+	return 0;
+}
+
+int rvu_mbox_handler_ssow_config_lsw(struct rvu *rvu,
+				     struct ssow_config_lsw *req,
+				     struct msg_rsp *rsp)
+{
+	int num_lfs, ssowlf, hws, blkaddr;
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	bool has_lsw;
+	u64 val;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, pcifunc);
+	if (blkaddr < 0)
+		return SSOW_AF_ERR_LF_INVALID;
+
+	block = &hw->block[blkaddr];
+
+	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
+					block->addr);
+	if (!num_lfs)
+		return SSOW_AF_ERR_LF_INVALID;
+
+	/* SSO HWS LSW config registers are part of SSO AF */
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	val = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
+	has_lsw = !!(val & SSO_AF_CONST1_LSW_PRESENT);
+
+	if (!has_lsw || req->lsw_mode > SSOW_LSW_GW_IMM ||
+	    req->wqe_release > SSOW_WQE_REL_IMM)
+		return SSOW_AF_ERR_INVALID_CFG;
+
+	for (hws = 0; hws < num_lfs; hws++) {
+		ssowlf = rvu_get_lf(rvu, block, pcifunc, hws);
+		if (ssowlf < 0)
+			return SSOW_AF_ERR_LF_INVALID;
+		val = req->wqe_release << 2;
+		val |= req->lsw_mode;
+		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(ssowlf), val);
 	}
 
 	return 0;

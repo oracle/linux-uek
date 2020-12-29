@@ -211,6 +211,8 @@ M(SSO_GRP_GET_STATS,	0x609, sso_grp_get_stats, sso_info_req, sso_grp_stats)\
 M(SSO_HWS_GET_STATS,	0x610, sso_hws_get_stats, sso_info_req, sso_hws_stats)\
 M(SSO_HW_RELEASE_XAQ,	0x611, sso_hw_release_xaq_aura,			\
 				sso_release_xaq, msg_rsp)	\
+M(SSO_CONFIG_LSW,	0x612, ssow_config_lsw,			\
+				ssow_config_lsw, msg_rsp)	\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 M(CPT_LF_ALLOC,		0xA00, cpt_lf_alloc, cpt_lf_alloc_req_msg,	\
@@ -1449,6 +1451,7 @@ enum ssow_af_status {
 	SSOW_AF_ERR_PARAM	= -601,
 	SSOW_AF_ERR_LF_INVALID	= -602,
 	SSOW_AF_ERR_AF_LF_ALLOC	= -603,
+	SSOW_AF_ERR_INVALID_CFG	= -604,
 };
 
 struct ssow_lf_alloc_req {
@@ -1461,6 +1464,17 @@ struct ssow_lf_free_req {
 	struct mbox_msghdr hdr;
 	int node;
 	u16 hws;
+};
+
+struct ssow_config_lsw {
+	struct mbox_msghdr hdr;
+#define SSOW_LSW_DIS		0
+#define SSOW_LSW_GW_WAIT	1
+#define SSOW_LSW_GW_IMM		2
+	u8 lsw_mode;
+#define SSOW_WQE_REL_LSW_WAIT	0
+#define SSOW_WQE_REL_IMM	1
+	u8 wqe_release;
 };
 
 struct sso_grp_qos_cfg {
