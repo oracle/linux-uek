@@ -17,6 +17,7 @@
 
 #include "x86.h"
 #include "svm.h"
+#include "svm_ops.h"
 
 static int sev_flush_asids(void);
 static DECLARE_RWSEM(sev_deactivate_lock);
