@@ -711,21 +711,6 @@ static u32 svm_msrpm_offset(u32 msr)
 
 #define MAX_INST_SIZE 15
 
-static inline void clgi(void)
-{
-	asm volatile (__ex("clgi"));
-}
-
-static inline void stgi(void)
-{
-	asm volatile (__ex("stgi"));
-}
-
-static inline void invlpga(unsigned long addr, u32 asid)
-{
-	asm volatile (__ex("invlpga %1, %0") : : "c"(asid), "a"(addr));
-}
-
 static int get_npt_level(struct kvm_vcpu *vcpu)
 {
 #ifdef CONFIG_X86_64
