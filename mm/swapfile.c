@@ -2104,9 +2104,10 @@ static int unuse_mm(struct mm_struct *mm, unsigned int type,
 {
 	struct vm_area_struct *vma;
 	int ret = 0;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	mmap_read_lock(mm);
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (vma->anon_vma) {
 			ret = unuse_vma(vma, type, frontswap,
 					fs_pages_to_unuse);
