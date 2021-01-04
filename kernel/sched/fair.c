@@ -2723,6 +2723,7 @@ static void task_numa_work(struct callback_head *work)
 	unsigned long start, end;
 	unsigned long nr_pte_updates = 0;
 	long pages, virtpages;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	SCHED_WARN_ON(p != container_of(work, struct task_struct, numa_work));
 
@@ -2775,13 +2776,16 @@ static void task_numa_work(struct callback_head *work)
 
 	if (!mmap_read_trylock(mm))
 		return;
-	vma = find_vma(mm, start);
+
+	mas_set(&mas, start);
+	vma = mas_walk(&mas);
 	if (!vma) {
 		reset_ptenuma_scan(p);
 		start = 0;
-		vma = mm->mmap;
+		mas_set(&mas, start);
 	}
-	for (; vma; vma = vma->vm_next) {
+
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (!vma_migratable(vma) || !vma_policy_mof(vma) ||
 			is_vm_hugetlb_page(vma) || (vma->vm_flags & VM_MIXEDMAP)) {
 			continue;
