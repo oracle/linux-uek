@@ -975,10 +975,12 @@ static int unmerge_and_remove_all_rmap_items(void)
 	spin_unlock(&ksm_mmlist_lock);
 
 	for (mm_slot = ksm_scan.mm_slot;
-			mm_slot != &ksm_mm_head; mm_slot = ksm_scan.mm_slot) {
-		mm = mm_slot->mm;
+			mm_slot != &ksm_mm_head; mm_slot = ksm_scan.mm_slot, mm = mm_slot->mm) {
+		MA_STATE(mas, &mm->mm_mt, 0, 0);
+
 		mmap_read_lock(mm);
-		for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		mas_set(&mas, 0);
+		mas_for_each(&mas, vma, ULONG_MAX) {
 			if (ksm_test_exit(mm))
 				break;
 			if (!(vma->vm_flags & VM_MERGEABLE) || !vma->anon_vma)
@@ -2286,13 +2288,14 @@ next_mm:
 	}
 
 	mm = slot->mm;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
+
 	mmap_read_lock(mm);
 	if (ksm_test_exit(mm))
-		vma = NULL;
-	else
-		vma = find_vma(mm, ksm_scan.address);
+		goto no_vmas;
 
-	for (; vma; vma = vma->vm_next) {
+	mas_set(&mas, ksm_scan.address);
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (!(vma->vm_flags & VM_MERGEABLE))
 			continue;
 		if (ksm_scan.address < vma->vm_start)
@@ -2330,6 +2333,7 @@ next_mm:
 	}
 
 	if (ksm_test_exit(mm)) {
+no_vmas:
 		ksm_scan.address = 0;
 		ksm_scan.rmap_list = &slot->rmap_list;
 	}
