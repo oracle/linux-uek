@@ -2697,6 +2697,18 @@ struct vm_area_struct *vma_lookup(struct mm_struct *mm, unsigned long addr)
        return mtree_load(&mm->mm_mt, addr);
 }
 
+static inline struct vm_area_struct *vma_next(struct mm_struct *mm,
+			const struct vm_area_struct *vma)
+{
+	return mt_next(&mm->mm_mt, vma->vm_end, ULONG_MAX);
+}
+
+static inline struct vm_area_struct *vma_prev(struct mm_struct *mm,
+			const struct vm_area_struct *vma)
+{
+	return mt_prev(&mm->mm_mt, vma->vm_start, 0);
+}
+
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 {
 	unsigned long vm_start = vma->vm_start;
@@ -2738,6 +2750,21 @@ static inline struct vm_area_struct *find_exact_vma(struct mm_struct *mm,
 	return vma;
 }
 
+static inline struct vm_area_struct *vma_mas_next(struct ma_state *mas)
+{
+	struct ma_state tmp;
+
+	memcpy(&tmp, mas, sizeof(tmp));
+	return mas_next(&tmp, ULONG_MAX);
+}
+
+static inline struct vm_area_struct *vma_mas_prev(struct ma_state *mas)
+{
+	struct ma_state tmp;
+
+	memcpy(&tmp, mas, sizeof(tmp));
+	return mas_prev(&tmp, 0);
+}
 static inline bool range_in_vma(struct vm_area_struct *vma,
 				unsigned long start, unsigned long end)
 {
