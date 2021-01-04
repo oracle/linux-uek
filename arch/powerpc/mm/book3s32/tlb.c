@@ -81,6 +81,7 @@ EXPORT_SYMBOL(hash__flush_range);
 void hash__flush_tlb_mm(struct mm_struct *mm)
 {
 	struct vm_area_struct *mp;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	/*
 	 * It is safe to go down the mm's list of vmas when called
@@ -88,8 +89,10 @@ void hash__flush_tlb_mm(struct mm_struct *mm)
 	 * unmap_region or exit_mmap, but not from vmtruncate on SMP -
 	 * but it seems dup_mmap is the only SMP case which gets here.
 	 */
-	for (mp = mm->mmap; mp != NULL; mp = mp->vm_next)
+	rcu_read_lock();
+	mas_for_each(&mas, mp, ULONG_MAX)
 		hash__flush_range(mp->vm_mm, mp->vm_start, mp->vm_end);
+	rcu_read_unlock();
 }
 EXPORT_SYMBOL(hash__flush_tlb_mm);
 
