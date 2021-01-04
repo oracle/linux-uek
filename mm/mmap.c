@@ -481,7 +481,7 @@ static bool range_has_overlap(struct mm_struct *mm, unsigned long start,
 }
 
 /*
- * vma_next() - Get the next VMA.
+ * _vma_next() - Get the next VMA or the first.
  * @mm: The mm_struct.
  * @vma: The current vma.
  *
@@ -489,7 +489,7 @@ static bool range_has_overlap(struct mm_struct *mm, unsigned long start,
  *
  * Returns: The next VMA after @vma.
  */
-static inline struct vm_area_struct *vma_next(struct mm_struct *mm,
+static inline struct vm_area_struct *_vma_next(struct mm_struct *mm,
 					 struct vm_area_struct *vma)
 {
 	if (!vma)
@@ -1144,7 +1144,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	if (vm_flags & VM_SPECIAL)
 		return NULL;
 
-	next = vma_next(mm, prev);
+	next = _vma_next(mm, prev);
 	area = next;
 	if (area && area->vm_end == end)		/* cases 6, 7, 8 */
 		next = next->vm_next;
@@ -2302,7 +2302,7 @@ static void unmap_region(struct mm_struct *mm,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
 		unsigned long start, unsigned long end)
 {
-	struct vm_area_struct *next = vma_next(mm, prev);
+	struct vm_area_struct *next = _vma_next(mm, prev);
 	struct mmu_gather tlb;
 
 	lru_add_drain();
@@ -2453,7 +2453,7 @@ static int do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		if (error)
 			return error;
 		prev = vma;
-		vma = vma_next(mm, prev);
+		vma = _vma_next(mm, prev);
 		mas->index = start;
 		mas_reset(mas);
 	} else {
@@ -2470,7 +2470,7 @@ static int do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		int error = __split_vma(mm, last, end, 1);
 		if (error)
 			return error;
-		vma = vma_next(mm, prev);
+		vma = _vma_next(mm, prev);
 		mas_reset(mas);
 	}
 
