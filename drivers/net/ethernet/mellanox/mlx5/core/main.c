@@ -1471,8 +1471,10 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 			 MLX5_COREDEV_VF : MLX5_COREDEV_PF;
 
 	dev->priv.adev_idx = mlx5_adev_idx_alloc();
-	if (dev->priv.adev_idx < 0)
-		return dev->priv.adev_idx;
+	if (dev->priv.adev_idx < 0) {
+		err = dev->priv.adev_idx;
+		goto adev_init_err;
+	}
 
 	err = mlx5_mdev_init(dev, prof_sel);
 	if (err)
@@ -1507,6 +1509,7 @@ pci_init_err:
 	mlx5_mdev_uninit(dev);
 mdev_init_err:
 	mlx5_adev_idx_free(dev->priv.adev_idx);
+adev_init_err:
 	mlx5_devlink_free(devlink);
 
 	return err;
