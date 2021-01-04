@@ -355,13 +355,16 @@ static bool valid_ref_ctr_vma(struct uprobe *uprobe,
 static struct vm_area_struct *
 find_ref_ctr_vma(struct uprobe *uprobe, struct mm_struct *mm)
 {
-	struct vm_area_struct *tmp;
+	struct vm_area_struct *tmp = NULL;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
-	for (tmp = mm->mmap; tmp; tmp = tmp->vm_next)
+	rcu_read_lock();
+	mas_for_each(&mas, tmp, ULONG_MAX)
 		if (valid_ref_ctr_vma(uprobe, tmp))
-			return tmp;
+			break;
+	rcu_read_unlock();
 
-	return NULL;
+	return tmp;
 }
 
 static int
@@ -1237,9 +1240,10 @@ static int unapply_uprobe(struct uprobe *uprobe, struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
 	int err = 0;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	mmap_read_lock(mm);
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		unsigned long vaddr;
 		loff_t offset;
 
@@ -1988,8 +1992,10 @@ bool uprobe_deny_signal(void)
 static void mmf_recalc_uprobes(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	rcu_read_lock();
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (!valid_vma(vma, false))
 			continue;
 		/*
@@ -1999,10 +2005,15 @@ static void mmf_recalc_uprobes(struct mm_struct *mm)
 		 * Or this uprobe can be filtered out.
 		 */
 		if (vma_has_uprobes(vma, vma->vm_start, vma->vm_end))
-			return;
+			goto completed;
 	}
+	rcu_read_unlock();
 
 	clear_bit(MMF_HAS_UPROBES, &mm->flags);
+	return;
+
+completed:
+	rcu_read_unlock();
 }
 
 static int is_trap_at_addr(struct mm_struct *mm, unsigned long vaddr)
