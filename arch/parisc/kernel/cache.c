@@ -520,9 +520,13 @@ static inline unsigned long mm_total_size(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
 	unsigned long usize = 0;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next)
+	rcu_read_lock();
+	mas_for_each(&mas, vma, ULONG_MAX)
 		usize += vma->vm_end - vma->vm_start;
+	rcu_read_unlock();
+
 	return usize;
 }
 
@@ -548,6 +552,7 @@ void flush_cache_mm(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
 	pgd_t *pgd;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	/* Flushing the whole cache on each cpu takes forever on
 	   rp3440, etc.  So, avoid it if the mm isn't too big.  */
@@ -560,17 +565,20 @@ void flush_cache_mm(struct mm_struct *mm)
 	}
 
 	if (mm->context == mfsp(3)) {
-		for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		rcu_read_lock();
+		mas_for_each(&mas, vma, ULONG_MAX) {
 			flush_user_dcache_range_asm(vma->vm_start, vma->vm_end);
 			if (vma->vm_flags & VM_EXEC)
 				flush_user_icache_range_asm(vma->vm_start, vma->vm_end);
 			flush_tlb_range(vma, vma->vm_start, vma->vm_end);
 		}
+		rcu_read_unlock();
 		return;
 	}
 
 	pgd = mm->pgd;
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	rcu_read_lock();
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		unsigned long addr;
 
 		for (addr = vma->vm_start; addr < vma->vm_end;
@@ -590,6 +598,7 @@ void flush_cache_mm(struct mm_struct *mm)
 			}
 		}
 	}
+	rcu_read_unlock();
 }
 
 void flush_cache_range(struct vm_area_struct *vma,
