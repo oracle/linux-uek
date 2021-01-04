@@ -313,6 +313,7 @@ static void cxl_prefault_vma(struct cxl_context *ctx)
 	struct vm_area_struct *vma;
 	int rc;
 	struct mm_struct *mm;
+	MA_STATE(mas, NULL, 0, 0);
 
 	mm = get_mem_context(ctx);
 	if (mm == NULL) {
@@ -321,8 +322,10 @@ static void cxl_prefault_vma(struct cxl_context *ctx)
 		return;
 	}
 
+	mas.tree = &mm->mm_mt;
 	mmap_read_lock(mm);
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	rcu_read_lock();
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		for (ea = vma->vm_start; ea < vma->vm_end;
 				ea = next_segment(ea, slb.vsid)) {
 			rc = copro_calculate_slb(mm, ea, &slb);
@@ -336,6 +339,7 @@ static void cxl_prefault_vma(struct cxl_context *ctx)
 			last_esid = slb.esid;
 		}
 	}
+	rcu_read_unlock();
 	mmap_read_unlock(mm);
 
 	mmput(mm);
