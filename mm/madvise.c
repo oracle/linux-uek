@@ -1151,7 +1151,7 @@ int do_madvise(struct mm_struct *mm, unsigned long start, size_t len_in, int beh
 		if (start >= end)
 			goto out;
 		if (prev)
-			vma = prev->vm_next;
+			vma = vma_next(mm, prev);
 		else	/* madvise_remove dropped mmap_lock */
 			vma = find_vma(mm, start);
 	}
