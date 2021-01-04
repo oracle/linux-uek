@@ -363,7 +363,6 @@ struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 		 */
 		*new = data_race(*orig);
 		INIT_LIST_HEAD(&new->anon_vma_chain);
-		new->vm_next = new->vm_prev = NULL;
 	}
 	return new;
 }
@@ -468,7 +467,7 @@ EXPORT_SYMBOL(free_task);
 static __latent_entropy int dup_mmap(struct mm_struct *mm,
 					struct mm_struct *oldmm)
 {
-	struct vm_area_struct *mpnt, *tmp, *prev, **pprev;
+	struct vm_area_struct *mpnt, *tmp;
 	int retval;
 	unsigned long charge = 0;
 	MA_STATE(old_mas, &oldmm->mm_mt, 0, 0);
@@ -495,15 +494,12 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 	mm->exec_vm = oldmm->exec_vm;
 	mm->stack_vm = oldmm->stack_vm;
 
-	pprev = &mm->mmap;
 	retval = ksm_fork(mm, oldmm);
 	if (retval)
 		goto out;
 	retval = khugepaged_fork(mm, oldmm);
 	if (retval)
 		goto out;
-
-	prev = NULL;
 
 	retval = mas_entry_count(&mas, oldmm->map_count);
 	if (retval)
@@ -578,14 +574,6 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 		 */
 		if (is_vm_hugetlb_page(tmp))
 			reset_vma_resv_huge_pages(tmp);
-
-		/*
-		 * Link in the new vma and copy the page table entries.
-		 */
-		*pprev = tmp;
-		pprev = &tmp->vm_next;
-		tmp->vm_prev = prev;
-		prev = tmp;
 
 		/* Link the vma into the MT */
 		mas.index = tmp->vm_start;
@@ -1008,7 +996,6 @@ static void mm_init_uprobes_state(struct mm_struct *mm)
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	struct user_namespace *user_ns)
 {
-	mm->mmap = NULL;
 	mt_init_flags(&mm->mm_mt, MAPLE_ALLOC_RANGE);
 	atomic_set(&mm->mm_users, 1);
 	atomic_set(&mm->mm_count, 1);
