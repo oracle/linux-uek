@@ -2701,6 +2701,18 @@ struct vm_area_struct *vma_lookup(struct mm_struct *mm, unsigned long addr)
        return mtree_load(&mm->mm_mt, addr);
 }
 
+static inline struct vm_area_struct *vma_next(struct mm_struct *mm,
+			const struct vm_area_struct *vma)
+{
+	return mt_next(&mm->mm_mt, vma->vm_end - 1, ULONG_MAX);
+}
+
+static inline struct vm_area_struct *vma_prev(struct mm_struct *mm,
+			const struct vm_area_struct *vma)
+{
+	return mt_prev(&mm->mm_mt, vma->vm_start, 0);
+}
+
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 {
 	unsigned long vm_start = vma->vm_start;
