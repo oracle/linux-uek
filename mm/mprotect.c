@@ -518,6 +518,7 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	const int grows = prot & (PROT_GROWSDOWN|PROT_GROWSUP);
 	const bool rier = (current->personality & READ_IMPLIES_EXEC) &&
 				(prot & PROT_READ);
+	MA_STATE(mas, &current->mm->mm_mt, start, start);
 
 	start = untagged_addr(start);
 
@@ -549,11 +550,12 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	if ((pkey != -1) && !mm_pkey_is_allocated(current->mm, pkey))
 		goto out;
 
-	vma = find_vma(current->mm, start);
+	mas_set(&mas, start);
+	vma = mas_walk(&mas);
 	error = -ENOMEM;
 	if (!vma)
 		goto out;
-	prev = vma->vm_prev;
+	prev = mas_prev(&mas, 0);
 	if (unlikely(grows & PROT_GROWSDOWN)) {
 		if (vma->vm_start >= end)
 			goto out;
@@ -626,7 +628,7 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 		if (nstart >= end)
 			goto out;
 
-		vma = prev->vm_next;
+		vma = mas_next(&mas, ULONG_MAX);
 		if (!vma || vma->vm_start != nstart) {
 			error = -ENOMEM;
 			goto out;
