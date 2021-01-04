@@ -617,8 +617,6 @@ static void add_vma_to_mm(struct mm_struct *mm, struct vm_area_struct *vma)
 	prev = NULL;
 	if (rb_prev)
 		prev = rb_entry(rb_prev, struct vm_area_struct, vm_rb);
-
-	__vma_link_list(mm, vma, prev);
 }
 
 /*
@@ -653,8 +651,6 @@ static void delete_vma_from_mm(struct vm_area_struct *vma)
 
 	/* remove from the MM's tree and list */
 	rb_erase(&vma->vm_rb, &mm->mm_rb);
-
-	__vma_unlink_list(mm, vma);
 }
 
 /*
