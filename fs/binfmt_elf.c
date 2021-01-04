@@ -1622,6 +1622,7 @@ static void fill_siginfo_note(struct memelfnote *note, user_siginfo_t *csigdata,
 static int fill_files_note(struct memelfnote *note)
 {
 	struct mm_struct *mm = current->mm;
+	VMA_ITERATOR(vmi, mm, 0);
 	struct vm_area_struct *vma;
 	unsigned count, size, names_ofs, remaining, n;
 	user_long_t *data;
@@ -1652,7 +1653,7 @@ static int fill_files_note(struct memelfnote *note)
 	remaining = size - names_ofs;
 	count = 0;
 	mmap_read_lock(mm);
-	for (vma = mm->mmap; vma != NULL; vma = vma->vm_next) {
+	for_each_vma(vmi, vma) {
 		struct file *file;
 		const char *filename;
 
