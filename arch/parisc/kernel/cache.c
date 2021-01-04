@@ -519,9 +519,11 @@ static inline unsigned long mm_total_size(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
 	unsigned long usize = 0;
+	VMA_ITERATOR(vmi, mm, 0);
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next)
+	for_each_vma(vmi, vma)
 		usize += vma->vm_end - vma->vm_start;
+
 	return usize;
 }
 
@@ -570,6 +572,7 @@ static void flush_user_cache_tlb(struct vm_area_struct *vma,
 void flush_cache_mm(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
+	VMA_ITERATOR(vmi, mm, 0);
 
 	/* Flushing the whole cache on each cpu takes forever on
 	   rp3440, etc.  So, avoid it if the mm isn't too big.  */
@@ -583,13 +586,13 @@ void flush_cache_mm(struct mm_struct *mm)
 
 	preempt_disable();
 	if (mm->context == mfsp(3)) {
-		for (vma = mm->mmap; vma; vma = vma->vm_next)
+		for_each_vma(vmi, vma)
 			flush_user_cache_tlb(vma, vma->vm_start, vma->vm_end);
 		preempt_enable();
 		return;
 	}
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next)
+	for_each_vma(vmi, vma)
 		flush_cache_pages(vma, mm, vma->vm_start, vma->vm_end);
 	preempt_enable();
 }
