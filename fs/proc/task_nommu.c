@@ -246,7 +246,7 @@ static void *m_next(struct seq_file *m, void *_p, loff_t *pos)
 	struct vm_area_struct *vma = _p;
 
 	*pos = vma->vm_end;
-	return vma->vm_next;
+	return vma_next(vma->vm_mm, vma);
 }
 
 static const struct seq_operations proc_pid_maps_ops = {

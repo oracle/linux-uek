@@ -577,7 +577,6 @@ static void add_vma_to_mm(struct mm_struct *mm, struct vm_area_struct *vma)
 	mas_reset(&mas);
 	/* add the VMA to the tree */
 	vma_mas_store(vma, &mas);
-	__vma_link_list(mm, vma, prev);
 }
 
 /*
@@ -602,7 +601,6 @@ static void delete_vma_from_mm(struct vm_area_struct *vma)
 
 	/* remove from the MM's tree and list */
 	vma_mas_remove(vma, &mas);
-	__vma_unlink_list(vma->vm_mm, vma);
 }
 
 /*
@@ -1415,7 +1413,7 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len, struct list
 				return -EINVAL;
 			if (end == vma->vm_end)
 				goto erase_whole_vma;
-			vma = vma->vm_next;
+			vma =  vma_next(mm, vma);
 		} while (vma);
 		return -EINVAL;
 	} else {
@@ -1472,7 +1470,7 @@ void exit_mmap(struct mm_struct *mm)
 	mm->total_vm = 0;
 
 	while ((vma = mm->mmap)) {
-		mm->mmap = vma->vm_next;
+		mm->mmap = vma_next(mm, vma);
 		delete_vma_from_mm(vma);
 		delete_vma(mm, vma);
 		cond_resched();
