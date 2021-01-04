@@ -399,13 +399,18 @@ void free_pgd_range(struct mmu_gather *tlb,
 	} while (pgd++, addr = next, addr != end);
 }
 
-void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
-		unsigned long floor, unsigned long ceiling)
+void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
+	struct vm_area_struct *vma, unsigned long floor, unsigned long ceiling)
 {
-	while (vma) {
-		struct vm_area_struct *next = vma->vm_next;
+	struct vm_area_struct *next;
+	struct ma_state ma_next = *mas;
+
+	do {
 		unsigned long addr = vma->vm_start;
 
+		next = mas_find(&ma_next, ceiling - 1);
+		BUG_ON(vma->vm_start < floor);
+		BUG_ON(vma->vm_end - 1 > ceiling - 1);
 		/*
 		 * Hide vma from rmap and truncate_pagecache before freeing
 		 * pgtables
@@ -422,16 +427,20 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 			 */
 			while (next && next->vm_start <= vma->vm_end + PMD_SIZE
 			       && !is_vm_hugetlb_page(next)) {
+				*mas = ma_next;
 				vma = next;
-				next = vma->vm_next;
+				next = mas_find(&ma_next, ceiling - 1);
+				BUG_ON(vma->vm_start < floor);
+				BUG_ON(vma->vm_end -1 > ceiling - 1);
 				unlink_anon_vmas(vma);
 				unlink_file_vma(vma);
 			}
 			free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		}
+		*mas = ma_next;
 		vma = next;
-	}
+	} while (vma);
 }
 
 int __pte_alloc(struct mm_struct *mm, pmd_t *pmd)
@@ -1510,16 +1519,19 @@ static void unmap_single_vma(struct mmu_gather *tlb,
  * drops the lock and schedules.
  */
 void unmap_vmas(struct mmu_gather *tlb,
-		struct vm_area_struct *vma, unsigned long start_addr,
-		unsigned long end_addr)
+		struct vm_area_struct *vma, struct ma_state *mas,
+		unsigned long start_addr, unsigned long end_addr)
 {
 	struct mmu_notifier_range range;
 
 	mmu_notifier_range_init(&range, MMU_NOTIFY_UNMAP, 0, vma, vma->vm_mm,
 				start_addr, end_addr);
 	mmu_notifier_invalidate_range_start(&range);
-	for ( ; vma && vma->vm_start < end_addr; vma = vma->vm_next)
+	do {
+		BUG_ON(vma->vm_start < start_addr);
+		BUG_ON(vma->vm_end > end_addr);
 		unmap_single_vma(tlb, vma, start_addr, end_addr, NULL);
+	} while ((vma = mas_find(mas, end_addr - 1)) != NULL);
 	mmu_notifier_invalidate_range_end(&range);
 }
 
@@ -1536,15 +1548,20 @@ void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 {
 	struct mmu_notifier_range range;
 	struct mmu_gather tlb;
+	unsigned long end = start + size;
+	MA_STATE(mas, &vma->vm_mm->mm_mt, start, start);
 
 	lru_add_drain();
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma, vma->vm_mm,
-				start, start + size);
+				start, end);
 	tlb_gather_mmu(&tlb, vma->vm_mm);
 	update_hiwater_rss(vma->vm_mm);
 	mmu_notifier_invalidate_range_start(&range);
-	for ( ; vma && vma->vm_start < range.end; vma = vma->vm_next)
-		unmap_single_vma(&tlb, vma, start, range.end, NULL);
+	rcu_read_lock();
+	mas_for_each(&mas, vma, end - 1)
+		unmap_single_vma(&tlb, vma, start, end, NULL);
+	rcu_read_unlock();
+
 	mmu_notifier_invalidate_range_end(&range);
 	tlb_finish_mmu(&tlb);
 }
