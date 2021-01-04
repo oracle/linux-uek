@@ -1568,7 +1568,6 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 	long ret = 0;
 
 	end = start + len;
-
 	for (nstart = start; nstart < end; nstart = nend) {
 		/*
 		 * We want to fault in pages for [nstart; end) address range.
@@ -1577,10 +1576,10 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 		if (!locked) {
 			locked = 1;
 			mmap_read_lock(mm);
-			vma = find_vma(mm, nstart);
+			vma = find_vma_intersection(mm, start, end);
 		} else if (nstart >= vma->vm_end)
-			vma = vma->vm_next;
-		if (!vma || vma->vm_start >= end)
+			vma = vma_next(mm, vma);
+		if (!vma)
 			break;
 		/*
 		 * Set [nstart; nend) to intersection of desired address
