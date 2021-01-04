@@ -408,7 +408,7 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 		} else { /* inside vma */
 			walk.vma = vma;
 			next = min(end, vma->vm_end);
-			vma = vma->vm_next;
+			vma = vma_next(mm, vma);;
 
 			err = walk_page_test(start, next, &walk);
 			if (err > 0) {
