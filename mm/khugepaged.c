@@ -2063,6 +2063,7 @@ static unsigned int khugepaged_scan_mm_slot(unsigned int pages,
 	struct mm_struct *mm;
 	struct vm_area_struct *vma;
 	int progress = 0;
+	MA_STATE(mas, NULL, 0, 0);
 
 	VM_BUG_ON(!pages);
 	lockdep_assert_held(&khugepaged_mm_lock);
@@ -2079,18 +2080,22 @@ static unsigned int khugepaged_scan_mm_slot(unsigned int pages,
 	khugepaged_collapse_pte_mapped_thps(mm_slot);
 
 	mm = mm_slot->mm;
+	mas.tree = &mm->mm_mt;
 	/*
 	 * Don't wait for semaphore (to avoid long wait times).  Just move to
 	 * the next mm on the list.
 	 */
 	vma = NULL;
+	mas_set(&mas, khugepaged_scan.address);
 	if (unlikely(!mmap_read_trylock(mm)))
 		goto breakouterloop_mmap_lock;
+
+	rcu_read_lock();
 	if (likely(!khugepaged_test_exit(mm)))
-		vma = find_vma(mm, khugepaged_scan.address);
+		vma = mas_find(&mas, ULONG_MAX);
 
 	progress++;
-	for (; vma; vma = vma->vm_next) {
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		unsigned long hstart, hend;
 
 		cond_resched();
@@ -2129,6 +2134,7 @@ skip:
 				pgoff_t pgoff = linear_page_index(vma,
 						khugepaged_scan.address);
 
+				rcu_read_unlock();
 				mmap_read_unlock(mm);
 				ret = 1;
 				khugepaged_scan_file(mm, file, pgoff, hpage);
@@ -2149,6 +2155,7 @@ skip:
 		}
 	}
 breakouterloop:
+	rcu_read_unlock();
 	mmap_read_unlock(mm); /* exit_mmap will destroy ptes after this */
 breakouterloop_mmap_lock:
 
