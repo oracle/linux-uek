@@ -1428,7 +1428,8 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len, struct list
 				return -EINVAL;
 			if (end == vma->vm_end)
 				goto erase_whole_vma;
-			vma =  vma_next(mm, vma);
+
+			vma = vma_next(mm, vma);
 		} while (vma);
 		return -EINVAL;
 	} else {
@@ -1479,14 +1480,13 @@ SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)
 void exit_mmap(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
+	unsigned long addr = 0;
 
 	if (!mm)
 		return;
 
 	mm->total_vm = 0;
-
-	while ((vma = mm->mmap)) {
-		mm->mmap = vma_next(mm, vma);
+	mt_for_each(&mm->mm_mt, vma, addr, ULONG_MAX) {
 		delete_vma_from_mm(vma);
 		delete_vma(mm, vma);
 		cond_resched();
