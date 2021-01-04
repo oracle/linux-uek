@@ -677,6 +677,7 @@ static void delete_vma(struct mm_struct *mm, struct vm_area_struct *vma)
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct vm_area_struct *vma;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	/* check the cache first */
 	vma = vmacache_find(mm, addr);
@@ -685,7 +686,7 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 
 	/* trawl the list (there may be multiple mappings in which addr
 	 * resides) */
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (vma->vm_start > addr)
 			return NULL;
 		if (vma->vm_end > addr) {
@@ -726,6 +727,7 @@ static struct vm_area_struct *find_vma_exact(struct mm_struct *mm,
 {
 	struct vm_area_struct *vma;
 	unsigned long end = addr + len;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	/* check the cache first */
 	vma = vmacache_find_exact(mm, addr, end);
@@ -734,7 +736,7 @@ static struct vm_area_struct *find_vma_exact(struct mm_struct *mm,
 
 	/* trawl the list (there may be multiple mappings in which addr
 	 * resides) */
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (vma->vm_start < addr)
 			continue;
 		if (vma->vm_start > addr)
@@ -1485,7 +1487,7 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len, struct list
 				return -EINVAL;
 			if (end == vma->vm_end)
 				goto erase_whole_vma;
-			vma = vma->vm_next;
+			vma = vma_next(vma);
 		} while (vma);
 		return -EINVAL;
 	} else {
@@ -1543,7 +1545,7 @@ void exit_mmap(struct mm_struct *mm)
 	mm->total_vm = 0;
 
 	while ((vma = mm->mmap)) {
-		mm->mmap = vma->vm_next;
+		mm->mmap = vma_next(vma);
 		delete_vma_from_mm(vma);
 		delete_vma(mm, vma);
 		cond_resched();
