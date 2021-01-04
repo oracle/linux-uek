@@ -253,15 +253,12 @@ done:
 static unsigned long
 lookup_dcookie(struct mm_struct *mm, unsigned long addr, off_t *offset)
 {
-	unsigned long cookie = NO_COOKIE;
+	unsigned long cookie = INVALID_COOKIE;
 	struct vm_area_struct *vma;
 
 	mmap_read_lock(mm);
-	for (vma = find_vma(mm, addr); vma; vma = vma->vm_next) {
-
-		if (addr < vma->vm_start || addr >= vma->vm_end)
-			continue;
-
+	vma = find_vma_intersection(mm, addr, addr + 1);
+	if (vma) {
 		if (vma->vm_file) {
 			cookie = fast_get_dcookie(&vma->vm_file->f_path);
 			*offset = (vma->vm_pgoff << PAGE_SHIFT) + addr -
@@ -269,13 +266,10 @@ lookup_dcookie(struct mm_struct *mm, unsigned long addr, off_t *offset)
 		} else {
 			/* must be an anonymous map */
 			*offset = addr;
+			cookie = NO_COOKIE;
 		}
-
-		break;
 	}
 
-	if (!vma)
-		cookie = INVALID_COOKIE;
 	mmap_read_unlock(mm);
 
 	return cookie;
