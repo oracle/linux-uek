@@ -681,6 +681,7 @@ static int shift_arg_pages(struct vm_area_struct *vma, unsigned long shift)
 	unsigned long length = old_end - old_start;
 	unsigned long new_start = old_start - shift;
 	unsigned long new_end = old_end - shift;
+	struct vm_area_struct *next;
 	struct mmu_gather tlb;
 
 	BUG_ON(new_start > new_end);
@@ -708,12 +709,13 @@ static int shift_arg_pages(struct vm_area_struct *vma, unsigned long shift)
 
 	lru_add_drain();
 	tlb_gather_mmu(&tlb, mm);
+	next = vma_next(mm, vma);
 	if (new_end > old_start) {
 		/*
 		 * when the old and new regions overlap clear from new_end.
 		 */
 		free_pgd_range(&tlb, new_end, old_end, new_end,
-			vma->vm_next ? vma->vm_next->vm_start : USER_PGTABLES_CEILING);
+			next ? next->vm_start : USER_PGTABLES_CEILING);
 	} else {
 		/*
 		 * otherwise, clean from old_start; this is done to not touch
@@ -722,7 +724,7 @@ static int shift_arg_pages(struct vm_area_struct *vma, unsigned long shift)
 		 * for the others its just a little faster.
 		 */
 		free_pgd_range(&tlb, old_start, old_end, new_end,
-			vma->vm_next ? vma->vm_next->vm_start : USER_PGTABLES_CEILING);
+			next ? next->vm_start : USER_PGTABLES_CEILING);
 	}
 	tlb_finish_mmu(&tlb);
 
