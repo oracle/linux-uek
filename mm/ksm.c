@@ -970,11 +970,14 @@ static int unmerge_and_remove_all_rmap_items(void)
 						struct mm_slot, mm_list);
 	spin_unlock(&ksm_mmlist_lock);
 
-	for (mm_slot = ksm_scan.mm_slot;
-			mm_slot != &ksm_mm_head; mm_slot = ksm_scan.mm_slot) {
+	for (mm_slot = ksm_scan.mm_slot; mm_slot != &ksm_mm_head;
+	     mm_slot = ksm_scan.mm_slot) {
+		MA_STATE(mas, &mm_slot->mm->mm_mt, 0, 0);
+
 		mm = mm_slot->mm;
 		mmap_read_lock(mm);
-		for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		rcu_read_lock();
+		mas_for_each(&mas, vma, ULONG_MAX) {
 			if (ksm_test_exit(mm))
 				break;
 			if (!(vma->vm_flags & VM_MERGEABLE) || !vma->anon_vma)
@@ -986,6 +989,7 @@ static int unmerge_and_remove_all_rmap_items(void)
 		}
 
 		remove_trailing_rmap_items(&mm_slot->rmap_list);
+		rcu_read_unlock();
 		mmap_read_unlock(mm);
 
 		spin_lock(&ksm_mmlist_lock);
@@ -1009,6 +1013,7 @@ static int unmerge_and_remove_all_rmap_items(void)
 	return 0;
 
 error:
+	rcu_read_unlock();
 	mmap_read_unlock(mm);
 	spin_lock(&ksm_mmlist_lock);
 	ksm_scan.mm_slot = &ksm_mm_head;
@@ -2223,6 +2228,7 @@ static struct rmap_item *scan_get_next_rmap_item(struct page **page)
 	struct vm_area_struct *vma;
 	struct rmap_item *rmap_item;
 	int nid;
+	MA_STATE(mas, NULL, 0, 0);
 
 	if (list_empty(&ksm_mm_head.mm_list))
 		return NULL;
@@ -2280,13 +2286,15 @@ next_mm:
 	}
 
 	mm = slot->mm;
-	mmap_read_lock(mm);
-	if (ksm_test_exit(mm))
-		vma = NULL;
-	else
-		vma = find_vma(mm, ksm_scan.address);
+	mas.tree = &mm->mm_mt;
 
-	for (; vma; vma = vma->vm_next) {
+	mmap_read_lock(mm);
+	rcu_read_lock();
+	if (ksm_test_exit(mm))
+		goto no_vmas;
+
+	mas_set(&mas, ksm_scan.address);
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (!(vma->vm_flags & VM_MERGEABLE))
 			continue;
 		if (ksm_scan.address < vma->vm_start)
@@ -2314,6 +2322,7 @@ next_mm:
 					ksm_scan.address += PAGE_SIZE;
 				} else
 					put_page(*page);
+				rcu_read_unlock();
 				mmap_read_unlock(mm);
 				return rmap_item;
 			}
@@ -2324,6 +2333,7 @@ next_mm:
 	}
 
 	if (ksm_test_exit(mm)) {
+no_vmas:
 		ksm_scan.address = 0;
 		ksm_scan.rmap_list = &slot->rmap_list;
 	}
@@ -2352,9 +2362,11 @@ next_mm:
 
 		free_mm_slot(slot);
 		clear_bit(MMF_VM_MERGEABLE, &mm->flags);
+		rcu_read_unlock();
 		mmap_read_unlock(mm);
 		mmdrop(mm);
 	} else {
+		rcu_read_unlock();
 		mmap_read_unlock(mm);
 		/*
 		 * mmap_read_unlock(mm) first because after
