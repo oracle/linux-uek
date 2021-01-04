@@ -585,7 +585,6 @@ static void vma_mas_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	}
 
 	vma_mas_store(vma, mas);
-	__vma_link_list(mm, vma, prev);
 	__vma_link_file(vma);
 
 	if (mapping)
@@ -606,7 +605,6 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	}
 
 	vma_mt_store(mm, vma);
-	__vma_link_list(mm, vma, prev);
 	__vma_link_file(vma);
 
 	if (mapping)
@@ -626,7 +624,6 @@ static void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 
 	BUG_ON(range_has_overlap(mm, vma->vm_start, vma->vm_end, &prev));
 	vma_mt_store(mm, vma);
-	__vma_link_list(mm, vma, prev);
 	mm->map_count++;
 }
 
@@ -683,13 +680,8 @@ inline int vma_expand(struct ma_state *mas, struct vm_area_struct *vma,
 	}
 
 	/* Expanding over the next vma */
-	if (remove_next) {
-		/* Remove from mm linked list - also updates highest_vm_end */
-		__vma_unlink_list(mm, next);
-
-		if (file)
-			__remove_shared_vm_struct(next, file, mapping);
-
+	if (remove_next && file) {
+		__remove_shared_vm_struct(next, file, mapping);
 	} else if (!next) {
 		mm->highest_vm_end = vm_end_gap(vma);
 	}
@@ -898,10 +890,8 @@ again:
 		flush_dcache_mmap_unlock(mapping);
 	}
 
-	if (remove_next) {
-		__vma_unlink_list(mm, next);
-		if (file)
-			__remove_shared_vm_struct(next, file, mapping);
+	if (remove_next && file) {
+		__remove_shared_vm_struct(next, file, mapping);
 	} else if (insert) {
 		/*
 		 * split_vma has split insert from vma, and needs
@@ -3125,7 +3115,6 @@ static int do_brk_flags(struct ma_state *mas, struct vm_area_struct **brkvma,
 	if (!prev)
 		prev = mas_prev(mas, 0);
 
-	__vma_link_list(mm, vma, prev);
 	mm->map_count++;
 	*brkvma = vma;
 out:
