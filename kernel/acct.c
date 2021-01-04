@@ -534,16 +534,16 @@ void acct_collect(long exitcode, int group_dead)
 	struct pacct_struct *pacct = &current->signal->pacct;
 	u64 utime, stime;
 	unsigned long vsize = 0;
+	MA_STATE(mas, &current->mm->mm_mt, 0, 0);
 
 	if (group_dead && current->mm) {
 		struct vm_area_struct *vma;
 
 		mmap_read_lock(current->mm);
-		vma = current->mm->mmap;
-		while (vma) {
+		rcu_read_lock();
+		mas_for_each(&mas, vma, ULONG_MAX)
 			vsize += vma->vm_end - vma->vm_start;
-			vma = vma->vm_next;
-		}
+		rcu_read_unlock();
 		mmap_read_unlock(current->mm);
 	}
 
