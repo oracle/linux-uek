@@ -1437,6 +1437,9 @@ lpfc_els_abort_flogi(struct lpfc_hba *phba)
 							   NULL);
 		}
 	}
+	/* Make sure HBA is alive */
+	lpfc_issue_hb_tmo(phba);
+
 	spin_unlock_irq(&phba->hbalock);
 
 	return 0;
@@ -8136,6 +8139,9 @@ lpfc_els_timeout_handler(struct lpfc_vport *vport)
 		spin_unlock_irq(&phba->hbalock);
 	}
 
+	/* Make sure HBA is alive */
+	lpfc_issue_hb_tmo(phba);
+
 	if (!list_empty(&pring->txcmplq))
 		if (!(phba->pport->load_flag & FC_UNLOADING))
 			mod_timer(&vport->els_tmofunc,
@@ -8235,6 +8241,9 @@ lpfc_els_flush_cmd(struct lpfc_vport *vport)
 		lpfc_sli_issue_abort_iotag(phba, pring, piocb, NULL);
 		spin_unlock_irqrestore(&phba->hbalock, iflags);
 	}
+	/* Make sure HBA is alive */
+	lpfc_issue_hb_tmo(phba);
+
 	if (!list_empty(&abort_list))
 		lpfc_printf_vlog(vport, KERN_ERR, LOG_TRACE_EVENT,
 				 "3387 abort list for txq not empty\n");
