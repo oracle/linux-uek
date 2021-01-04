@@ -1229,14 +1229,19 @@ int replace_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 	/* Forbid mm->exe_file change if old file still mapped. */
 	old_exe_file = get_mm_exe_file(mm);
 	if (old_exe_file) {
+		MA_STATE(mas, &mm->mm_mt, 0, 0);
 		mmap_read_lock(mm);
-		for (vma = mm->mmap; vma && !ret; vma = vma->vm_next) {
+		rcu_read_lock();
+		mas_for_each(&mas, vma, ULONG_MAX) {
 			if (!vma->vm_file)
 				continue;
 			if (path_equal(&vma->vm_file->f_path,
-				       &old_exe_file->f_path))
+				       &old_exe_file->f_path)) {
 				ret = -EBUSY;
+				break;
+			}
 		}
+		rcu_read_unlock();
 		mmap_read_unlock(mm);
 		fput(old_exe_file);
 		if (ret)
