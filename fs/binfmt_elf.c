@@ -1612,6 +1612,7 @@ static int fill_files_note(struct memelfnote *note)
 	user_long_t *data;
 	user_long_t *start_end_ofs;
 	char *name_base, *name_curpos;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	/* *Estimated* file count and total data size needed */
 	count = mm->map_count;
@@ -1636,7 +1637,8 @@ static int fill_files_note(struct memelfnote *note)
 	name_base = name_curpos = ((char *)data) + names_ofs;
 	remaining = size - names_ofs;
 	count = 0;
-	for (vma = mm->mmap; vma != NULL; vma = vma->vm_next) {
+	rcu_read_lock();
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		struct file *file;
 		const char *filename;
 
@@ -1665,6 +1667,7 @@ static int fill_files_note(struct memelfnote *note)
 		*start_end_ofs++ = vma->vm_pgoff;
 		count++;
 	}
+	rcu_read_unlock();
 
 	/* Now we know exact count of files, can store it */
 	data[0] = count;
