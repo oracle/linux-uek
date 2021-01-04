@@ -16,7 +16,7 @@ properties: {}
 patternProperties:
   # Prefixes which are not vendors, but followed the pattern
   # DO NOT ADD NEW PROPERTIES TO THIS LIST
-  "^(at25|devbus|dmacap|dsa|exynos|fsi[ab]|gpio-fan|gpio|gpmc|hdmi|i2c-gpio),.*": true
+  "^(at25|bm|devbus|dmacap|dsa|exynos|fsi[ab]|gpio-fan|gpio-key|gpio|gpmc|hdmi|i2c-gpio),.*": true
   "^(keypad|m25p|max8952|max8997|max8998|mpmc),.*": true
   "^(pinctrl-single|#pinctrl-single|PowerPC),.*": true
   "^(pl022|pxa-mmc|rcar_sound|rotary-encoder|s5m8767|sdhci),.*": true
@@ -29,6 +29,8 @@ patternProperties:
     description: Abilis Systems
   "^abracon,.*":
     description: Abracon Corporation
+  "^abt,.*":
+    description: ShenZhen Asia Better Technology Ltd.
   "^acer,.*":
     description: Acer Inc.
   "^acme,.*":
@@ -79,6 +81,8 @@ patternProperties:
     description: Shenzhen Amediatech Technology Co., Ltd
   "^amlogic,.*":
     description: Amlogic, Inc.
+  "^ampere,.*":
+    description: Ampere Computing LLC
   "^ampire,.*":
     description: Ampire Co., Ltd.
   "^ams,.*":
@@ -377,6 +381,8 @@ patternProperties:
     description: Shenzhen Feixin Photoelectic Co., Ltd
   "^feiyang,.*":
     description: Shenzhen Fly Young Technology Co.,LTD.
+  "^fii,.*":
+    description: Foxconn Industrial Internet
   "^firefly,.*":
     description: Firefly
   "^focaltech,.*":
@@ -441,6 +447,8 @@ patternProperties:
     description: HiDeep Inc.
   "^himax,.*":
     description: Himax Technologies, Inc.
+  "^hirschmann,.*":
+    description: Hirschmann Automation and Control GmbH
   "^hisilicon,.*":
     description: Hisilicon Limited.
   "^hit,.*":
@@ -655,6 +663,8 @@ patternProperties:
     description: MEMSIC Inc.
   "^menlo,.*":
     description: Menlo Systems GmbH
+  "^mentor,.*":
+    description: Mentor Graphics
   "^meraki,.*":
     description: Cisco Meraki, LLC
   "^merrii,.*":
@@ -681,6 +691,8 @@ patternProperties:
     description: MiraMEMS Sensing Technology Co., Ltd.
   "^mitsubishi,.*":
     description: Mitsubishi Electric Corporation
+  "^modtronix,.*":
+    description: Modtronix Engineering
   "^mosaixtech,.*":
     description: Mosaix Technologies, Inc.
   "^motorola,.*":
@@ -1053,6 +1065,8 @@ patternProperties:
     description: Trusted Computing Group
   "^tcl,.*":
     description: Toby Churchill Ltd.
+  "^tdo,.*":
+    description: Shangai Top Display Optoelectronics Co., Ltd
   "^technexion,.*":
     description: TechNexion
   "^technologic,.*":
@@ -1097,7 +1111,7 @@ patternProperties:
   "^tpo,.*":
     description: TPO
   "^tq,.*":
-    description: TQ Systems GmbH
+    description: TQ-Systems GmbH
   "^tronfy,.*":
     description: Tronfy
   "^tronsmart,.*":
@@ -1210,6 +1224,8 @@ patternProperties:
     description: Shenzhen Xunlong Software CO.,Limited
   "^xylon,.*":
     description: Xylon
+  "^yes-optoelectronics,.*":
+    description: Yes Optoelectronics Co.,Ltd.
   "^ylm,.*":
     description: Shenzhen Yangliming Electronic Technology Co., Ltd.
   "^yna,.*":
