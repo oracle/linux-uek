@@ -2304,12 +2304,12 @@ void vma_adjust_trans_huge(struct vm_area_struct *vma,
 		split_huge_pmd_address(vma, end, false, NULL);
 
 	/*
-	 * If we're also updating the vma->vm_next->vm_start, if the new
-	 * vm_next->vm_start isn't hpage aligned and it could previously
+	 * If we're also updating the vma_next(vma)->vm_start, if the new
+	 * vma_next()->vm_start isn't hpage aligned and it could previously
 	 * contain an hugepage: check if we need to split an huge pmd.
 	 */
 	if (adjust_next > 0) {
-		struct vm_area_struct *next = vma->vm_next;
+		struct vm_area_struct *next = vma_next(vma->vm_mm, vma);
 		unsigned long nstart = next->vm_start;
 		nstart += adjust_next;
 		if (nstart & ~HPAGE_PMD_MASK &&
