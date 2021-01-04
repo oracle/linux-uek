@@ -2318,6 +2318,7 @@ proc_map_files_readdir(struct file *file, struct dir_context *ctx)
 	GENRADIX(struct map_files_info) fa;
 	struct map_files_info *p;
 	int ret;
+	MA_STATE(mas, NULL, 0, 0);
 
 	genradix_init(&fa);
 
@@ -2343,8 +2344,10 @@ proc_map_files_readdir(struct file *file, struct dir_context *ctx)
 		mmput(mm);
 		goto out_put_task;
 	}
+	rcu_read_lock();
 
 	nr_files = 0;
+	mas.tree = &mm->mm_mt;
 
 	/*
 	 * We need two passes here:
@@ -2356,7 +2359,8 @@ proc_map_files_readdir(struct file *file, struct dir_context *ctx)
 	 * routine might require mmap_lock taken in might_fault().
 	 */
 
-	for (vma = mm->mmap, pos = 2; vma; vma = vma->vm_next) {
+	pos = 2;
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (!vma->vm_file)
 			continue;
 		if (++pos <= ctx->pos)
@@ -2374,6 +2378,7 @@ proc_map_files_readdir(struct file *file, struct dir_context *ctx)
 		p->end = vma->vm_end;
 		p->mode = vma->vm_file->f_mode;
 	}
+	rcu_read_unlock();
 	mmap_read_unlock(mm);
 	mmput(mm);
 
