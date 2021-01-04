@@ -1465,6 +1465,7 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 	struct vm_area_struct *vma = NULL;
 	int locked = 0;
 	long ret = 0;
+	MA_STATE(mas, &mm->mm_mt, start, start);
 
 	end = start + len;
 
@@ -1476,10 +1477,10 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 		if (!locked) {
 			locked = 1;
 			mmap_read_lock(mm);
-			vma = find_vma(mm, nstart);
+			vma = mas_find(&mas, end);
 		} else if (nstart >= vma->vm_end)
-			vma = vma->vm_next;
-		if (!vma || vma->vm_start >= end)
+			vma = mas_next(&mas, end);
+		if (!vma)
 			break;
 		/*
 		 * Set [nstart; nend) to intersection of desired address
