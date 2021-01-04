@@ -2508,7 +2508,7 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		 * split, despite we could. This is unlikely enough
 		 * failure that it's not worth optimizing it for.
 		 */
-		int error = userfaultfd_unmap_prep(vma, start, end, uf);
+		int error = userfaultfd_unmap_prep(mm, start, end, uf);
 
 		if (error)
 			return error;
@@ -2990,10 +2990,7 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		goto munmap_full_vma;
 	}
 
-	vma_init(&unmap, mm);
-	unmap.vm_start = newbrk;
-	unmap.vm_end = oldbrk;
-	ret = userfaultfd_unmap_prep(&unmap, newbrk, oldbrk, uf);
+	ret = userfaultfd_unmap_prep(mm, newbrk, oldbrk, uf);
 	if (ret)
 		return ret;
 	ret = 1;
@@ -3006,6 +3003,9 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	}
 
 	vma->vm_end = newbrk;
+	vma_init(&unmap, mm);
+	unmap.vm_start = newbrk;
+	unmap.vm_end = oldbrk;
 	if (vma_mas_remove(&unmap, mas))
 		goto mas_store_fail;
 
