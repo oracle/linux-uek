@@ -1764,7 +1764,7 @@ size_t fault_in_safe_writeable(const char __user *uaddr, size_t size)
 			mmap_read_lock(mm);
 			vma = find_vma(mm, nstart);
 		} else if (nstart >= vma->vm_end)
-			vma = vma->vm_next;
+			vma = find_vma(mm, vma->vm_end);
 		if (!vma || vma->vm_start >= end)
 			break;
 		nend = end ? min(end, vma->vm_end) : vma->vm_end;
