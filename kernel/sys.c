@@ -1864,9 +1864,11 @@ static int prctl_set_mm_exe_file(struct mm_struct *mm, unsigned int fd)
 	err = -EBUSY;
 	if (exe_file) {
 		struct vm_area_struct *vma;
+		MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 		mmap_read_lock(mm);
-		for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		rcu_read_lock();
+		mas_for_each(&mas, vma, ULONG_MAX) {
 			if (!vma->vm_file)
 				continue;
 			if (path_equal(&vma->vm_file->f_path,
@@ -1874,6 +1876,7 @@ static int prctl_set_mm_exe_file(struct mm_struct *mm, unsigned int fd)
 				goto exit_err;
 		}
 
+		rcu_read_unlock();
 		mmap_read_unlock(mm);
 		fput(exe_file);
 	}
@@ -1888,6 +1891,7 @@ exit:
 	fdput(exe);
 	return err;
 exit_err:
+	rcu_read_unlock();
 	mmap_read_unlock(mm);
 	fput(exe_file);
 	goto exit;
