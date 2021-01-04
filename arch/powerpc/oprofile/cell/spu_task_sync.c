@@ -333,19 +333,17 @@ get_exec_dcookie_and_offset(struct spu *spu, unsigned int *offsetp,
 	}
 
 	mmap_read_lock(mm);
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (vma->vm_start > spu_ref || vma->vm_end <= spu_ref)
-			continue;
-		my_offset = spu_ref - vma->vm_start;
-		if (!vma->vm_file)
-			goto fail_no_image_cookie;
+	vma = find_vma_intersection(mm, spu_ref, spu_ref + 1);
+	if (!vma)
+		goto fail_no_image_cookie;
 
-		pr_debug("Found spu ELF at %X(object-id:%lx) for file %pD\n",
-			 my_offset, spu_ref, vma->vm_file);
-		*offsetp = my_offset;
-		break;
-	}
+	my_offset = spu_ref - vma->vm_start;
+	if (!vma->vm_file)
+		goto fail_no_image_cookie;
 
+	pr_debug("Found spu ELF at %X(object-id:%lx) for file %pD\n",
+		 my_offset, spu_ref, vma->vm_file);
+	*offsetp = my_offset;
 	*spu_bin_dcookie = fast_get_dcookie(&vma->vm_file->f_path);
 	pr_debug("got dcookie for %pD\n", vma->vm_file);
 
