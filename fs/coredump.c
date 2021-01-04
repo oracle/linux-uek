@@ -1040,10 +1040,10 @@ whole:
 	return vma->vm_end - vma->vm_start;
 }
 
-static struct vm_area_struct *first_vma(struct task_struct *tsk,
+static struct vm_area_struct *first_vma(struct mm_struct *mm,
 					struct vm_area_struct *gate_vma)
 {
-	struct vm_area_struct *ret = tsk->mm->mmap;
+	struct vm_area_struct *ret = find_vma(mm, 0);
 
 	if (ret)
 		return ret;
@@ -1054,12 +1054,13 @@ static struct vm_area_struct *first_vma(struct task_struct *tsk,
  * Helper function for iterating across a vma list.  It ensures that the caller
  * will visit `gate_vma' prior to terminating the search.
  */
-static struct vm_area_struct *next_vma(struct vm_area_struct *this_vma,
+static struct vm_area_struct *next_vma(struct mm_struct *mm,
+				       struct vm_area_struct *this_vma,
 				       struct vm_area_struct *gate_vma)
 {
 	struct vm_area_struct *ret;
 
-	ret = this_vma->vm_next;
+	ret = vma_next(mm, this_vma);
 	if (ret)
 		return ret;
 	if (this_vma == gate_vma)
@@ -1097,8 +1098,8 @@ int dump_vma_snapshot(struct coredump_params *cprm, int *vma_count,
 		return -ENOMEM;
 	}
 
-	for (i = 0, vma = first_vma(current, gate_vma); vma != NULL;
-			vma = next_vma(vma, gate_vma), i++) {
+	for (i = 0, vma = first_vma(mm, gate_vma); vma != NULL;
+			vma = next_vma(mm, vma, gate_vma), i++) {
 		struct core_vma_metadata *m = (*vma_meta) + i;
 
 		m->start = vma->vm_start;
