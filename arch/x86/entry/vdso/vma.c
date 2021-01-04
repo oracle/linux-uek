@@ -128,15 +128,19 @@ int vdso_join_timens(struct task_struct *task, struct time_namespace *ns)
 	struct mm_struct *mm = task->mm;
 	struct vm_area_struct *vma;
 
-	mmap_read_lock(mm);
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	mmap_read_lock(mm);
+	rcu_read_lock();
+
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		unsigned long size = vma->vm_end - vma->vm_start;
 
 		if (vma_is_special_mapping(vma, &vvar_mapping))
 			zap_page_range(vma, vma->vm_start, size);
 	}
 
+	rcu_read_unlock();
 	mmap_read_unlock(mm);
 	return 0;
 }
@@ -354,6 +358,7 @@ int map_vdso_once(const struct vdso_image *image, unsigned long addr)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
+	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	mmap_write_lock(mm);
 	/*
@@ -363,13 +368,16 @@ int map_vdso_once(const struct vdso_image *image, unsigned long addr)
 	 * We could search vma near context.vdso, but it's a slowpath,
 	 * so let's explicitly check all VMAs to be completely sure.
 	 */
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+	mas_lock(&mas);
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (vma_is_special_mapping(vma, &vdso_mapping) ||
 				vma_is_special_mapping(vma, &vvar_mapping)) {
+			mas_unlock(&mas);
 			mmap_write_unlock(mm);
 			return -EEXIST;
 		}
 	}
+	mas_unlock(&mas);
 	mmap_write_unlock(mm);
 
 	return map_vdso(image, addr);
