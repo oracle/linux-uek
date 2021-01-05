@@ -644,6 +644,7 @@ kernel/fs/mbcache.ko
 kernel/fs/nfs/blocklayout/blocklayoutdriver.ko
 kernel/fs/nfs_common/grace.ko
 kernel/fs/nfs_common/nfs_acl.ko
+kernel/fs/nfs_common/nfs_ssc.ko
 kernel/fs/nfsd/nfsd.ko
 kernel/fs/nfs/filelayout/nfs_layout_nfsv41_files.ko
 kernel/fs/nfs/flexfilelayout/nfs_layout_flexfiles.ko
