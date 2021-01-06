@@ -21,8 +21,6 @@
 #include <limits.h>
 #include <unistd.h>
 
-#include <linux/rds.h>
-
 #define RDS_ECHOBUF_MAX	2048
 
 static int usage(const char *prog)
