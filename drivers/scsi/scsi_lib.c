@@ -747,6 +747,7 @@ static blk_status_t __scsi_error_from_host_byte(struct scsi_cmnd *cmd,
 {
 	switch (host_byte(result)) {
 	case DID_TRANSPORT_FAILFAST:
+	case DID_TRANSPORT_MARGINAL:
 		return BLK_STS_TRANSPORT;
 	case DID_TARGET_FAILURE:
 		set_host_byte(cmd, DID_OK);
