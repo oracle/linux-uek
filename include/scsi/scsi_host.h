@@ -505,7 +505,14 @@ struct scsi_host_template {
 	struct scsi_host_cmd_pool *cmd_pool;
 
 	/* Space for future expansion without breaking kABI. */
-	UEK_KABI_RESERVED_P(1);
+
+	/*
+	 * Optional routine that allows the transport to decide if a cmd
+	 * is retryable. Return true if the transport is in a state the
+	 * cmd should be retried on.
+	 */
+
+	UEK_KABI_REPLACE(UEK_KABI_RESERVED_P(1), bool (*eh_should_retry_cmd)(struct scsi_cmnd *scmd))
 	UEK_KABI_RESERVED_P(2);
 	UEK_KABI_RESERVED_P(3);
 	UEK_KABI_RESERVED_P(4);
