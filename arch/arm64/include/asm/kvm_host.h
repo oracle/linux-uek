@@ -684,4 +684,6 @@ static inline enum mitigation_state kvm_arm_get_spectre_bhb_state(void)
 	return arm64_get_spectre_bhb_state();
 }
 
+int kvm_trng_call(struct kvm_vcpu *vcpu);
+
 #endif /* __ARM64_KVM_HOST_H__ */
