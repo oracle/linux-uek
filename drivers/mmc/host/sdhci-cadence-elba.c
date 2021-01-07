@@ -22,10 +22,8 @@
 #include "sdhci-cadence.h"
 
 // delay regs address
-#define SDIO_REG_HRS0		0x00
 #define SDIO_REG_HRS4		0x10
 #define SDIO_REG_HRS6		0x18
-#define SDIO_REG_CRS63		0xfc
 #define SDIO_REG_HRS44		0xb0
 #define REG_DELAY_HS		0x00
 #define REG_DELAY_DEFAULT	0x01
@@ -33,9 +31,6 @@
 #define REG_DELAY_UHSI_SDR25	0x03
 #define REG_DELAY_UHSI_SDR50	0x04
 #define REG_DELAY_UHSI_DDR50	0x05
-#define REG_DELAY_MMC_LEGACY	0x06
-#define REG_DELAY_MMC_SDR	0x07
-#define REG_DELAY_MMC_DDR	0x08
 
 static u32 elba_read_l(struct sdhci_host *host, int reg)
 {
@@ -48,9 +43,17 @@ static u32 elba_read_l(struct sdhci_host *host, int reg)
 static u16 elba_read_w(struct sdhci_host *host, int reg)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	u16 res;
 
 	writel(0x0, priv->ctl_addr + 0x44);
-	return readw(host->ioaddr + reg);
+	res = readw(host->ioaddr + reg);
+
+	if (unlikely(reg == SDHCI_HOST_VERSION)) {
+		/* claim to be spec 3.00 to avoid "Unknown version" warning */
+		res = (res & SDHCI_VENDOR_VER_MASK) | SDHCI_SPEC_300;
+	}
+
+	return res;
 }
 
 static u8 elba_read_b(struct sdhci_host *host, int reg)
@@ -105,24 +108,6 @@ static const struct sdhci_ops sdhci_elba_ops = {
 	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
 };
 
-static void sd3_set_dlyvr(struct sdhci_host *host, uint8_t slot_nr,
-			  unsigned char addr, unsigned char data)
-{
-	unsigned long dlyrv_reg;
-
-	dlyrv_reg = ((unsigned long)data << 8);
-	dlyrv_reg |= addr;
-
-	// set data and address
-	writel(dlyrv_reg, host->ioaddr + SDIO_REG_HRS44 + slot_nr * 4);
-	dlyrv_reg |= (1uL << 24uL);
-	// send write request
-	writel(dlyrv_reg, host->ioaddr + SDIO_REG_HRS44 + slot_nr * 4);
-	dlyrv_reg &= ~(1uL << 24);
-	// clear write request
-	writel(dlyrv_reg, host->ioaddr + SDIO_REG_HRS44 + slot_nr * 4);
-}
-
 static void sd4_set_dlyvr(struct sdhci_host *host,
 			  unsigned char addr, unsigned char data)
 {
@@ -141,27 +126,12 @@ static void sd4_set_dlyvr(struct sdhci_host *host,
 	writel(dlyrv_reg, host->ioaddr + SDIO_REG_HRS4);
 }
 
-#define CRS63_GET_SPEC_VERSION(val)	(((val >> 16) & 0xff) + 1)
 static void phy_config(struct sdhci_host *host)
 {
-	int tmp = readl(host->ioaddr + SDIO_REG_CRS63);
-	int host_version = CRS63_GET_SPEC_VERSION(tmp);
-
-	if (host_version > 3) {
-		sd4_set_dlyvr(host, REG_DELAY_DEFAULT, 0x04);
-		sd4_set_dlyvr(host, REG_DELAY_HS, 0x04);
-		sd4_set_dlyvr(host, REG_DELAY_UHSI_SDR50, 0x06);
-		sd4_set_dlyvr(host, REG_DELAY_UHSI_DDR50, 0x16);
-	} else {
-		int i;
-		for (i = 0; i < 1; i++) {
-			sd3_set_dlyvr(host, i, REG_DELAY_DEFAULT, 0x04);
-			sd3_set_dlyvr(host, i, REG_DELAY_HS, 0x04);
-			sd3_set_dlyvr(host, i, REG_DELAY_UHSI_SDR50, 0x00);
-			sd3_set_dlyvr(host, i, REG_DELAY_MMC_LEGACY, 0x01);
-			sd3_set_dlyvr(host, i, REG_DELAY_MMC_SDR, 0x01);
-		}
-	}
+	sd4_set_dlyvr(host, REG_DELAY_DEFAULT, 0x04);
+	sd4_set_dlyvr(host, REG_DELAY_HS, 0x04);
+	sd4_set_dlyvr(host, REG_DELAY_UHSI_SDR50, 0x06);
+	sd4_set_dlyvr(host, REG_DELAY_UHSI_DDR50, 0x16);
 }
 
 static int elba_drv_init(struct platform_device *pdev)
@@ -172,7 +142,6 @@ static int elba_drv_init(struct platform_device *pdev)
 	void __iomem *ioaddr;
 
 	host->mmc->caps |= (MMC_CAP_1_8V_DDR | MMC_CAP_8_BIT_DATA);
-	phy_config(host);
 	iomem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (!iomem)
 		return -ENOMEM;
@@ -180,6 +149,8 @@ static int elba_drv_init(struct platform_device *pdev)
 	if (IS_ERR(ioaddr))
 		return PTR_ERR(ioaddr);
 	priv->ctl_addr = ioaddr;
+	writel(0x78, priv->ctl_addr + 0x44);
+	phy_config(host);
 	return 0;
 }
 
