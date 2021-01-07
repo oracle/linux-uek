@@ -269,7 +269,7 @@ cvmx_helper_link_info_t __cvmx_helper_rgmii_link_get(int ipd_port)
  */
 cvmx_helper_link_info_t __cvmx_helper_gmii_link_get(int ipd_port)
 {
-	cvmx_helper_link_info_t result;
+	cvmx_helper_link_info_t result = {};
 	int index = cvmx_helper_get_interface_index_num(ipd_port);
 
 	if (index == 0)
