@@ -236,14 +236,14 @@ EXPORT_SYMBOL(__cvmx_ila_link_get);
  */
 int cvmx_ila_initialize(int lane_mask)
 {
-	cvmx_ila_rxx_cfg0_t rx_cfg0;
-	cvmx_ila_txx_cfg0_t tx_cfg0;
-	cvmx_ila_rxx_cfg1_t rx_cfg1;
-	cvmx_ila_txx_cfg1_t tx_cfg1;
-	cvmx_ila_txx_cha_xon_t tx_cha_xon;
-	cvmx_ila_ser_cfg_t ser_cfg;
+	cvmx_ila_rxx_cfg0_t rx_cfg0 = {};
+	cvmx_ila_txx_cfg0_t tx_cfg0 = {};
+	cvmx_ila_rxx_cfg1_t rx_cfg1 = {};
+	cvmx_ila_txx_cfg1_t tx_cfg1 = {};
+	cvmx_ila_txx_cha_xon_t tx_cha_xon = {};
+	cvmx_ila_ser_cfg_t ser_cfg = {}; 
 	int node = cvmx_get_node_num();
-	cvmx_helper_link_info_t result;
+	cvmx_helper_link_info_t result = {};
 	int retry_count = 0;
 
 	ser_cfg.u64 = cvmx_read_csr_node(node, CVMX_ILA_SER_CFG);
