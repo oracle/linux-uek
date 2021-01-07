@@ -1134,8 +1134,8 @@ EXPORT_SYMBOL(cvmx_l2c_tqdl2d_to_index_7xxx);
  */
 uint64_t cvmx_l2c_ttgx_to_index_7xxx(int node, int tad, bool remote)
 {
-	union cvmx_l2c_ttgx_err l2c_ttgx_err;
-	union cvmx_l2c_rtgx_err l2c_rtgx_err;
+        union cvmx_l2c_ttgx_err l2c_ttgx_err = {};
+	union cvmx_l2c_rtgx_err l2c_rtgx_err = {};
 	uint64_t cindex;
 
 	if (remote)
