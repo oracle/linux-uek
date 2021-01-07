@@ -116,6 +116,10 @@
 				#gpio-cells = <2>;
 				snps,nr-gpios = <8>;
 				reg = <0>;
+				interrupts = <GIC_SPI 1 IRQ_TYPE_LEVEL_HIGH>;
+				interrupt-controller;
+				interrupt-parent = <&gic>;
+				#interrupt-cells = <2>;
 			};
 			portb: gpio-controller@1 {
 				compatible = "snps,dw-apb-gpio-port";

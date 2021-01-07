@@ -92,11 +92,13 @@
 		reg = <1>;
 	};
 	cpld@2 {
-		compatible = "pensando,cpld";
+		compatible = "pensando,cpld-rd1173";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		spi-max-frequency = <12000000>;
 		reg = <2>;
+		interrupt-parent = <&porta>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 	};
 	cpld@3 {
 		compatible = "pensando,cpld";
