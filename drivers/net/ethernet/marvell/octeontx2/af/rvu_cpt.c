@@ -546,7 +546,7 @@ error:
 	return CPT_AF_ERR_ACCESS_DENIED;
 }
 
-void get_ctx_pc(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
+static void get_ctx_pc(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
 {
 	rsp->ctx_mis_pc = rvu_read64(rvu, blkaddr, CPT_AF_CTX_MIS_PC);
 	rsp->ctx_hit_pc = rvu_read64(rvu, blkaddr, CPT_AF_CTX_HIT_PC);
@@ -575,7 +575,7 @@ void get_ctx_pc(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
 	rsp->rxc_zombie_sts = rvu_read64(rvu, blkaddr, CPT_AF_RXC_ZOMBIE_STS);
 }
 
-void get_eng_sts(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
+static void get_eng_sts(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
 {
 	u16 max_ses, max_ies, max_aes;
 	u32 e_min = 0, e_max = 0;
