@@ -197,6 +197,20 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 				      faddr->s6_addr32[3],
 				      tos,
 				      0) % RDS_NMBR_CP_WQS;
+	int check_tcp = 0;
+
+	/* Mark a connection where the transport is TCP and
+	 * source and destination address are same, or
+	 * faddr is local for checking loopback connectivity.
+	 * checking for same address is added to catch if the
+	 * inet_addr_type fails.
+	 */
+
+	if ((trans->t_type == RDS_TRANS_TCP) &&
+	    (ipv6_addr_equal(laddr, faddr) ||
+	    (inet_addr_type(net, faddr->s6_addr32[3]) == RTN_LOCAL))) {
+		check_tcp = 1;
+	}
 
 	rcu_read_lock();
 	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos, dev_if);
@@ -246,6 +260,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	 */
 	loop_trans = rds_trans_get_preferred(net, faddr, conn->c_dev_if);
 	if (loop_trans) {
+set_loopback:
 		rds_trans_put(loop_trans);
 		conn->c_loopback = 1;
 		if (is_outgoing && trans->t_prefer_loopback) {
@@ -257,6 +272,20 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		}
 	}
 
+	if (check_tcp && !loop_trans) {
+		/* Print error, but fix the issue */
+		printk(KERN_CRIT "RDS/TCP: No loopback for laddr %pI6c "
+		       "faddr %pI6c v4mapped %x inet_addr_type %d trans %s "
+		       "loopback_pref %x scope_id %x "
+		       "laddr_check %x owner/module_get %x\n",
+		       laddr, faddr, ipv6_addr_v4mapped(faddr),
+		       inet_addr_type(net, faddr->s6_addr32[3]),
+		       trans->t_name, trans->t_prefer_loopback, conn->c_dev_if,
+		       trans->laddr_check(net, faddr, conn->c_dev_if),
+		       trans->t_owner ? try_module_get(trans->t_owner) : 0xBAD);
+		loop_trans = trans;
+		goto set_loopback;
+	}
 	npaths = (trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
 	conn->c_path = kcalloc(npaths, sizeof(struct rds_conn_path), gfp);
 	if (!conn->c_path) {
