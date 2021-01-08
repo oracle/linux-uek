@@ -597,6 +597,12 @@ bool xen_set_default_idle(void)
 void stop_this_cpu(void *dummy)
 {
 	local_irq_disable();
+
+	/*
+	 * Mark cpu inactive before offlining.
+	 */
+	set_cpu_active(smp_processor_id(), false);
+
 	/*
 	 * Remove this CPU:
 	 */
