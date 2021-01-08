@@ -46,6 +46,10 @@ static struct cgx_mac_ops	otx2_mac_ops    = {
 	.mac_lmac_intl_lbk =    cgx_lmac_internal_loopback,
 	.mac_get_rx_stats  =	cgx_get_rx_stats,
 	.mac_get_tx_stats  =	cgx_get_tx_stats,
+	.mac_enadis_rx_pause_fwding =	cgx_lmac_enadis_rx_pause_fwding,
+	.mac_get_pause_frm_status =	cgx_lmac_get_pause_frm_status,
+	.mac_enadis_pause_frm =		cgx_lmac_enadis_pause_frm,
+	.mac_pause_frm_config =		cgx_lmac_pause_frm_config,
 };
 
 static struct cgx_mac_ops	cn10k_mac_ops   = {
@@ -65,6 +69,10 @@ static struct cgx_mac_ops	cn10k_mac_ops   = {
 	.mac_lmac_intl_lbk =    rpm_lmac_internal_loopback,
 	.mac_get_rx_stats  =	rpm_get_rx_stats,
 	.mac_get_tx_stats  =	rpm_get_tx_stats,
+	.mac_enadis_rx_pause_fwding =	rpm_lmac_enadis_rx_pause_fwding,
+	.mac_get_pause_frm_status =	rpm_lmac_get_pause_frm_status,
+	.mac_enadis_pause_frm =		rpm_lmac_enadis_pause_frm,
+	.mac_pause_frm_config =		rpm_lmac_pause_frm_config,
 };
 
 static LIST_HEAD(cgx_list);
@@ -523,9 +531,6 @@ void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable)
 	u64 cfg;
 
 	/* FIXME add support rx pause forwarding */
-	if (is_dev_rpm(cgx))
-		return;
-
 	if (!cgx)
 		return;
 
@@ -735,7 +740,6 @@ int cgx_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
 	*tx_pause = !!(cfg & CGX_SMUX_TX_CTL_L2P_BP_CONV);
 	return 0;
 }
-EXPORT_SYMBOL(cgx_lmac_get_pause_frm_status);
 
 static int cgx_lmac_enadis_higig2_pause_frm(void *cgxd, int lmac_id,
 					    u8 tx_pause, u8 rx_pause)
@@ -810,12 +814,6 @@ int cgx_lmac_enadis_pause_frm(void *cgxd, int lmac_id,
 {
 	struct cgx *cgx = cgxd;
 
-	/* flow control configuration logic is changed for RPM.
-	 * Will add the support later
-	 */
-	if (is_dev_rpm(cgx))
-		return 0;
-
 	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
@@ -865,16 +863,14 @@ void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable)
 }
 EXPORT_SYMBOL(cgx_lmac_ptp_config);
 
-static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
+void cgx_lmac_pause_frm_config(void *cgxd, int lmac_id, bool enable)
 {
+	struct cgx *cgx = cgxd;
 	u64 cfg;
-
-	/* FIXME add support for pause frame */
-	if (is_dev_rpm(cgx))
-		return;
 
 	if (!is_lmac_valid(cgx, lmac_id))
 		return;
+
 	if (enable) {
 		/* Enable receive pause frames */
 		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL);
@@ -1698,7 +1694,7 @@ static int cgx_lmac_init(struct cgx *cgx)
 
 		/* Add reference */
 		cgx->lmac_idmap[lmac->lmac_id] = lmac;
-		cgx_lmac_pause_frm_config(cgx, lmac->lmac_id, true);
+		cgx->mac_ops->mac_pause_frm_config(cgx, lmac->lmac_id, true);
 		set_bit(lmac->lmac_id, &cgx->lmac_bmap);
 		/* Disable packet I/O for a sane state */
 		cgx_lmac_rx_tx_enable(cgx, lmac->lmac_id, false);
@@ -1729,7 +1725,7 @@ static int cgx_lmac_exit(struct cgx *cgx)
 		lmac = cgx->lmac_idmap[i];
 		if (!lmac)
 			continue;
-		cgx_lmac_pause_frm_config(cgx, lmac->lmac_id, false);
+		cgx->mac_ops->mac_pause_frm_config(cgx, i, false);
 		cgx_configure_interrupt(cgx, lmac, lmac->lmac_id, true);
 		kfree(lmac->mac_to_index_bmap.bmap);
 		kfree(lmac->name);
@@ -1742,7 +1738,8 @@ static int cgx_lmac_exit(struct cgx *cgx)
 static void cgx_populate_features(struct cgx *cgx)
 {
 	if (is_dev_rpm(cgx))
-		cgx->hw_features = RVU_LMAC_FEAT_DMACF | RVU_MAC_RPM;
+		cgx->hw_features = (RVU_LMAC_FEAT_DMACF | RVU_MAC_RPM |
+				    RVU_LMAC_FEAT_FC);
 	else
 		cgx->hw_features = (RVU_LMAC_FEAT_FC  | RVU_LMAC_FEAT_HIGIG2 |
 				    RVU_LMAC_FEAT_PTP | RVU_LMAC_FEAT_DMACF);
