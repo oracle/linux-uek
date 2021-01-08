@@ -36,6 +36,7 @@
 
 #include <linux/types.h>
 #include <linux/socket.h>		/* For __kernel_sockaddr_storage. */
+#include <linux/in.h>			/* For struct in_addr. */
 #include <linux/in6.h>			/* For struct in6_addr. */
 /* XXX <net/sock.h> was included as part of NETFILTER support (commit f13bbf62)
  * but <net/sock.h> is not exported to uapi, although <linux/rds.h> is
@@ -43,15 +44,9 @@
  */
 #ifdef __KERNEL__
 #include <net/sock.h>
-#endif
-
-/* These sparse annotated types shouldn't be in any user
- * visible header file. We should clean this up rather
- * than kludging around them. */
-#ifndef __KERNEL__
-#define __be16	u_int16_t
-#define __be32	u_int32_t
-#define __be64	u_int64_t
+#else
+#include <time.h>
+#include <limits.h>
 #endif
 
 #define RDS_IB_ABI_VERSION		0x301
@@ -327,9 +322,9 @@ struct rds6_info_rdma_connection {
 };
 
 struct rds_path_info {
-	time64_t	attempt_time;
-	time64_t	connect_time;
-	time64_t	reset_time;
+	__kernel_time_t	attempt_time;
+	__kernel_time_t	connect_time;
+	__kernel_time_t	reset_time;
 	__u32		disconnect_reason;
 	__u32		connect_attempts;
 	unsigned int	index;
