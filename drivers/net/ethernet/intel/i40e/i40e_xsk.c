@@ -9,23 +9,9 @@
 #include "i40e_txrx_common.h"
 #include "i40e_xsk.h"
 
-int i40e_alloc_rx_bi_zc(struct i40e_ring *rx_ring)
+static struct i40e_rx_buffer *i40e_rx_bi(struct i40e_ring *rx_ring, u32 idx)
 {
-	unsigned long sz = sizeof(*rx_ring->rx_bi_zc) * rx_ring->count;
-
-	rx_ring->rx_bi_zc = kzalloc(sz, GFP_KERNEL);
-	return rx_ring->rx_bi_zc ? 0 : -ENOMEM;
-}
-
-void i40e_clear_rx_bi_zc(struct i40e_ring *rx_ring)
-{
-	memset(rx_ring->rx_bi_zc, 0,
-	       sizeof(*rx_ring->rx_bi_zc) * rx_ring->count);
-}
-
-static struct i40e_rx_buffer_zc *i40e_rx_bi(struct i40e_ring *rx_ring, u32 idx)
-{
-	return &rx_ring->rx_bi_zc[idx];
+	return &rx_ring->rx_bi[idx];
 }
 
 /**
@@ -262,7 +248,7 @@ static int i40e_run_xdp_zc(struct i40e_ring *rx_ring, struct xdp_buff *xdp)
  * Returns true for a successful allocation, false otherwise
  **/
 static bool i40e_alloc_buffer_zc(struct i40e_ring *rx_ring,
-				 struct i40e_rx_buffer_zc *bi)
+				 struct i40e_rx_buffer *bi)
 {
 	struct xdp_umem *umem = rx_ring->xsk_umem;
 	void *addr = bi->addr;
@@ -303,7 +289,7 @@ static bool i40e_alloc_buffer_zc(struct i40e_ring *rx_ring,
  * Returns true for a successful allocation, false otherwise
  **/
 static bool i40e_alloc_buffer_slow_zc(struct i40e_ring *rx_ring,
-				      struct i40e_rx_buffer_zc *bi)
+				      struct i40e_rx_buffer *bi)
 {
 	struct xdp_umem *umem = rx_ring->xsk_umem;
 	u64 handle, hr;
@@ -332,11 +318,11 @@ static bool i40e_alloc_buffer_slow_zc(struct i40e_ring *rx_ring,
 static __always_inline bool
 __i40e_alloc_rx_buffers_zc(struct i40e_ring *rx_ring, u16 count,
 			   bool alloc(struct i40e_ring *rx_ring,
-				      struct i40e_rx_buffer_zc *bi))
+				      struct i40e_rx_buffer *bi))
 {
 	u16 ntu = rx_ring->next_to_use;
 	union i40e_rx_desc *rx_desc;
-	struct i40e_rx_buffer_zc *bi;
+	struct i40e_rx_buffer *bi;
 	bool ok = true;
 
 	rx_desc = I40E_RX_DESC(rx_ring, ntu);
@@ -416,11 +402,11 @@ static bool i40e_alloc_rx_buffers_fast_zc(struct i40e_ring *rx_ring, u16 count)
  *
  * Returns the received Rx buffer
  **/
-static struct i40e_rx_buffer_zc *i40e_get_rx_buffer_zc(
+static struct i40e_rx_buffer *i40e_get_rx_buffer_zc(
 	struct i40e_ring *rx_ring,
 	const unsigned int size)
 {
-	struct i40e_rx_buffer_zc *bi;
+	struct i40e_rx_buffer *bi;
 
 	bi = i40e_rx_bi(rx_ring, rx_ring->next_to_clean);
 
@@ -442,10 +428,10 @@ static struct i40e_rx_buffer_zc *i40e_get_rx_buffer_zc(
  * recycle queue (next_to_alloc).
  **/
 static void i40e_reuse_rx_buffer_zc(struct i40e_ring *rx_ring,
-				    struct i40e_rx_buffer_zc *old_bi)
+				    struct i40e_rx_buffer *old_bi)
 {
-	struct i40e_rx_buffer_zc *new_bi = i40e_rx_bi(rx_ring,
-						      rx_ring->next_to_alloc);
+	struct i40e_rx_buffer *new_bi = i40e_rx_bi(rx_ring,
+						   rx_ring->next_to_alloc);
 	u16 nta = rx_ring->next_to_alloc;
 
 	/* update, and store next to alloc */
@@ -467,7 +453,7 @@ static void i40e_reuse_rx_buffer_zc(struct i40e_ring *rx_ring,
  **/
 void i40e_zca_free(struct zero_copy_allocator *alloc, unsigned long handle)
 {
-	struct i40e_rx_buffer_zc *bi;
+	struct i40e_rx_buffer *bi;
 	struct i40e_ring *rx_ring;
 	u64 hr, mask;
 	u16 nta;
@@ -505,7 +491,7 @@ void i40e_zca_free(struct zero_copy_allocator *alloc, unsigned long handle)
  * Returns the skb, or NULL on failure.
  **/
 static struct sk_buff *i40e_construct_skb_zc(struct i40e_ring *rx_ring,
-					     struct i40e_rx_buffer_zc *bi,
+					     struct i40e_rx_buffer *bi,
 					     struct xdp_buff *xdp)
 {
 	unsigned int metasize = xdp->data - xdp->data_meta;
@@ -547,7 +533,7 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 	xdp.rxq = &rx_ring->xdp_rxq;
 
 	while (likely(total_rx_packets < (unsigned int)budget)) {
-		struct i40e_rx_buffer_zc *bi;
+		struct i40e_rx_buffer *bi;
 		union i40e_rx_desc *rx_desc;
 		unsigned int size;
 		u64 qword;
@@ -829,7 +815,7 @@ void i40e_xsk_clean_rx_ring(struct i40e_ring *rx_ring)
 	u16 i;
 
 	for (i = 0; i < rx_ring->count; i++) {
-		struct i40e_rx_buffer_zc *rx_bi = i40e_rx_bi(rx_ring, i);
+		struct i40e_rx_buffer *rx_bi = i40e_rx_bi(rx_ring, i);
 
 		if (!rx_bi->addr)
 			continue;

@@ -3,6 +3,7 @@
 #define _LINUX_TRACE_SEQ_H
 
 #include <linux/seq_buf.h>
+#include <linux/uek_kabi.h>
 
 #include <asm/page.h>
 
@@ -12,7 +13,11 @@
  */
 
 struct trace_seq {
+#ifndef __GENKSYMS__
+	char			buffer[PAGE_SIZE];
+#else
 	unsigned char		buffer[PAGE_SIZE];
+#endif
 	struct seq_buf		seq;
 	int			full;
 };
@@ -51,7 +56,7 @@ static inline int trace_seq_used(struct trace_seq *s)
  * that is about to be written to and then return the result
  * of that write.
  */
-static inline unsigned char *
+static inline char *
 trace_seq_buffer_ptr(struct trace_seq *s)
 {
 	return s->buffer + seq_buf_used(&s->seq);
