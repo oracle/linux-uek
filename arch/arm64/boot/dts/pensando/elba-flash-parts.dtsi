@@ -7,6 +7,10 @@
 			label = "flash";
 			reg = <0x00010000 0x0fff0000>;
 		};
+		partition@000f0000 {
+			label = "golduenv";
+			reg = <0x000f0000 0x00010000>;
+		};
 		partition@100000 {
 			label = "boot0";
 			reg = <0x00100000 0x00080000>;
@@ -35,6 +39,10 @@
 			label = "panicbuf";
 			reg = <0x040b0000 0x00020000>;
 		};
+		partition@040d0000 {
+			label = "uservars";
+			reg = <0x040d0000 0x00020000>;
+		};
 		partition@4200000 {
 			label = "uboota";
 			reg = <0x04200000 0x00400000>;
@@ -54,6 +62,10 @@
 		partition@8000000 {
 			label = "diagfw";
 			reg = <0x08000000 0x07fe0000>;
+		};
+		partition@0ffe0000 {
+			label = "ubootenv";
+			reg = <0x0ffe0000 0x00010000>;
 		};
 	};
 };
