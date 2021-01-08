@@ -174,6 +174,22 @@ struct cgx_mac_ops {
 						    int idx, u64 *rx_stat);
 	int			(*mac_get_tx_stats)(void *cgx, int lmac_id,
 						    int idx, u64 *tx_stat);
+	/* Enable LMAC Pause Frame Configuration */
+	void			(*mac_enadis_rx_pause_fwding)(void *cgxd,
+							      int lmac_id,
+							      bool enable);
+	int			(*mac_get_pause_frm_status)(void *cgxd,
+							    int lmac_id,
+							    u8 *tx_pause,
+							    u8 *rx_pause);
+	int			(*mac_enadis_pause_frm)(void *cgxd,
+							int lmac_id,
+							u8 tx_pause,
+							u8 rx_pause);
+	void			(*mac_pause_frm_config)(void  *cgxd,
+							int lmac_id,
+							bool enable);
+
 };
 
 extern struct pci_driver cgx_driver;
@@ -212,6 +228,7 @@ int cgx_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
 				  u8 *tx_pause, u8 *rx_pause);
 int cgx_lmac_enadis_pause_frm(void *cgxd, int lmac_id,
 			      u8 tx_pause, u8 rx_pause);
+void cgx_lmac_pause_frm_config(void *cgxd, int lmac_id, bool enable);
 void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable);
 int cgx_set_link_state(void *cgxd, int lmac_id, bool enable);
 int cgx_set_phy_mod_type(int mod, void *cgxd, int lmac_id);

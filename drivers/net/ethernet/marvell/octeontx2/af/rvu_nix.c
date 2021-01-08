@@ -223,6 +223,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct rvu_hwinfo *hw = rvu->hw;
+	struct cgx_mac_ops *mac_ops;
 	int pkind, pf, vf, lbkid;
 	u8 cgx_id, lmac_id;
 	int err;
@@ -255,10 +256,13 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 			rvu_npc_set_pkind(rvu, pkind, pfvf);
 		}
 
+		mac_ops = cgx_get_mac_ops(rvu_cgx_pdata(cgx_id, rvu));
+
 		/* By default we enable pause frames */
 		if ((pcifunc & RVU_PFVF_FUNC_MASK) == 0)
-			cgx_lmac_enadis_pause_frm(rvu_cgx_pdata(cgx_id, rvu),
-						  lmac_id, true, true);
+			mac_ops->mac_enadis_pause_frm(rvu_cgx_pdata(cgx_id,
+								    rvu),
+						      lmac_id, true, true);
 		break;
 	case NIX_INTF_TYPE_LBK:
 		vf = (pcifunc & RVU_PFVF_FUNC_MASK) - 1;
