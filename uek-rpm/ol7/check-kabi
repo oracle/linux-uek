@@ -66,8 +66,10 @@ def check_kabi(symvers,kabi):
 
 	fail=0
 	warn=0
+	typeerr=0
 	changed_symbols=[]
 	moved_symbols=[]
+	retyped_symbols=[]
 
 	for symbol in kabi:
 		abi_hash,abi_sym,abi_dir,abi_type = string.split(kabi[symbol])
@@ -80,6 +82,10 @@ def check_kabi(symvers,kabi):
 			if abi_dir != sym_dir:
 				warn=1
 				moved_symbols.append(symbol)
+
+			if abi_type != sym_type:
+				typeerr=1
+				retyped_symbols.append(symbol)
 		else:
 			fail=1
 			changed_symbols.append(symbol)
@@ -93,6 +99,15 @@ def check_kabi(symvers,kabi):
 			print symbol
 		print ""
 
+	if typeerr:
+		print "*** ERROR - SYMBOL LICENSE HAS CHANGED ***"
+		print ""
+		print "The usage license for the following symbols has changed (this will cause an ABI breakage):"
+		print ""
+		for symbol in retyped_symbols:
+			print symbol
+		print ""
+
 	if warn:
 		print "*** WARNING - ABI SYMBOLS MOVED ***"
 		print ""
@@ -103,7 +118,7 @@ def check_kabi(symvers,kabi):
 			print symbol
 		print ""
 
-	if fail:
+	if fail or typeerr:
 		sys.exit(1)
 	else:
 		sys.exit(0)
