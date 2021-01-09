@@ -1748,13 +1748,11 @@ int rvu_mbox_handler_nix_txsch_alloc(struct rvu *rvu,
 	int link, blkaddr, rc = 0;
 	int lvl, idx, start, end;
 	struct nix_txsch *txsch;
-	struct rvu_pfvf *pfvf;
 	struct nix_hw *nix_hw;
 	u32 *pfvf_map;
 	int nixlf;
 	u16 schq;
 
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	rc = nix_get_nixlf(rvu, pcifunc, &nixlf, &blkaddr);
 	if (rc)
 		return rc;
@@ -2831,7 +2829,7 @@ static int nix_af_mark_format_setup(struct rvu *rvu, struct nix_hw *nix_hw,
 	return 0;
 }
 
-void rvu_get_lbk_link_max_frs(struct rvu *rvu,  u16 *max_mtu)
+static void rvu_get_lbk_link_max_frs(struct rvu *rvu,  u16 *max_mtu)
 {
 	/* CN10K supports LBK FIFO size 72 KB */
 	if (rvu->hw->lbk_bufsize == 0x12000)
@@ -2840,7 +2838,7 @@ void rvu_get_lbk_link_max_frs(struct rvu *rvu,  u16 *max_mtu)
 		*max_mtu = NIC_HW_MAX_FRS;
 }
 
-void rvu_get_lmac_link_max_frs(struct rvu *rvu, u16 *max_mtu)
+static void rvu_get_lmac_link_max_frs(struct rvu *rvu, u16 *max_mtu)
 {
 	/* RPM supports FIFO len 128 KB */
 	if (rvu_cgx_get_fifolen(rvu) == 0x20000)

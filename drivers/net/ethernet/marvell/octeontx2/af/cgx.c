@@ -1582,7 +1582,7 @@ bool is_higig2_enabled(void *cgxd, int lmac_id)
 	return (cfg & CGXX_SMUX_TX_CTL_HIGIG_EN);
 }
 
-void cgx_lmac_get_fifolen(struct cgx *cgx)
+static void cgx_lmac_get_fifolen(struct cgx *cgx)
 {
 	u64 cfg;
 

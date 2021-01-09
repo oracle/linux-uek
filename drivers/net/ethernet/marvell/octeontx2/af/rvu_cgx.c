@@ -503,8 +503,8 @@ int rvu_mbox_handler_cgx_stop_rxtx(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_lmac_get_stats(struct rvu *rvu, struct msg_req *req,
-		       void *rsp)
+static int rvu_lmac_get_stats(struct rvu *rvu, struct msg_req *req,
+			      void *rsp)
 {
 	int pf = rvu_get_pf(req->hdr.pcifunc);
 	struct cgx_mac_ops *mac_ops;
