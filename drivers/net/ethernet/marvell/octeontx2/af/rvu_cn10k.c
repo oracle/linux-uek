@@ -266,8 +266,8 @@ void rvu_program_channels(struct rvu *rvu)
 	rvu_rpm_set_channels(rvu);
 }
 
-int lmtst_map_table_ops(struct rvu *rvu, u32 index, u64 *val,
-			int lmt_tbl_op)
+static int lmtst_map_table_ops(struct rvu *rvu, u32 index, u64 *val,
+			       int lmt_tbl_op)
 {
 	void __iomem *lmt_map_base;
 	u64 tbl_base;
