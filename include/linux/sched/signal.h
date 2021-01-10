@@ -235,10 +235,11 @@ struct signal_struct {
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 #else
-	struct mutex exec_update_mutex;	/* Held while task_struct is being
-					 * updated during exec, and may have
-					 * inconsistent permissions.
-					 */
+	struct rw_semaphore exec_update_lock;	/* Held while task_struct is
+						 * being updated during exec,
+						 * and may have inconsistent
+						 * permissions.
+						 */
 #endif
 } __randomize_layout;
 
