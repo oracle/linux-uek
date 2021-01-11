@@ -825,6 +825,7 @@ int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 
 /* SDP APIs */
 int rvu_sdp_init(struct rvu *rvu);
+bool is_sdp_pfvf(u16 pcifunc);
 bool is_sdp_pf(u16 pcifunc);
 bool is_sdp_vf(u16 pcifunc);
 
