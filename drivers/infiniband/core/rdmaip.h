@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affilicates.  All rights reserved.
+ * Copyright (c) 2019, 2021 Oracle and/or its affiliates.  All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -381,6 +381,7 @@ struct rdmaip_dly_work_req {
 	int			net_event;
 	unsigned char		*dev_addr;
 	unsigned long		delay;
+	unsigned long		go_failback_jiffies;
 	__be32			ip_addr;
 	int			garps_left;
 	bool			queued;
@@ -465,6 +466,10 @@ unsigned long rdmaip_roce_active_bonding_failback_min_ms = 1000;
 unsigned long rdmaip_roce_active_bonding_failback_max_ms = 60000;
 unsigned long rdmaip_sysctl_roce_active_bonding_failback_ms = 20000;
 
+unsigned int rdmaip_active_bonding_bundle_max_ms = 10 * 60 * 1000;
+unsigned int rdmaip_sysctl_failback_bundle_interval_ms = 60 * 1000;
+unsigned int rdmaip_sysctl_failback_bundle_delay_ms = 13 * 1000;
+
 static struct ctl_table_header *rdmaip_sysctl_hdr;
 
 static struct ctl_table rdmaip_sysctl_table[] = {
@@ -506,6 +511,22 @@ static struct ctl_table rdmaip_sysctl_table[] = {
 		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
 		.extra1		= &rdmaip_roce_active_bonding_failback_min_ms,
 		.extra2		= &rdmaip_roce_active_bonding_failback_max_ms,
+	},
+	{
+		.procname       = "failback_bundle_interval_ms",
+		.data           = &rdmaip_sysctl_failback_bundle_interval_ms,
+		.maxlen         = sizeof(rdmaip_sysctl_failback_bundle_interval_ms),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec_minmax,
+		.extra2		= &rdmaip_active_bonding_bundle_max_ms,
+	},
+	{
+		.procname       = "failback_bundle_delay_ms",
+		.data           = &rdmaip_sysctl_failback_bundle_delay_ms,
+		.maxlen         = sizeof(rdmaip_sysctl_failback_bundle_delay_ms),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec_minmax,
+		.extra2		= &rdmaip_active_bonding_bundle_max_ms,
 	},
 	{ }
 };
