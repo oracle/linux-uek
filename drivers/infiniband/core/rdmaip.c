@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affilicates.
+ * Copyright (c) 2019, 2021 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -45,6 +45,7 @@
 #include <net/ipoib/if_ipoib.h>
 #include <linux/rtnetlink.h>
 #include <linux/time.h>
+#include <linux/timekeeping.h>
 #include <rdma/ib_cache.h>
 #include <rdma/ib_verbs.h>
 #include "rdmaip.h"
@@ -243,10 +244,38 @@ rdmaip_port_all_layers_up(struct rdmaip_port *rdmaip_port)
 static unsigned long
 rdmaip_get_failback_sync_jiffies(u8 port)
 {
-	if (ip_config[port].device_type == RDMAIP_DEV_TYPE_IB)
+	unsigned int bundle_interval_ms = rdmaip_sysctl_failback_bundle_interval_ms;
+	unsigned int bundle_delay_ms    = rdmaip_sysctl_failback_bundle_delay_ms;
+	struct timespec64 now;
+	u64 now_ms;
+
+	if (bundle_interval_ms) {
+		ktime_get_real_ts64(&now);
+		now_ms = now.tv_sec * 1000 + now.tv_nsec / 1000000;
+		return msecs_to_jiffies(bundle_delay_ms + bundle_interval_ms
+					- now_ms % bundle_interval_ms);
+	} else if (ip_config[port].device_type == RDMAIP_DEV_TYPE_IB) {
 		return msecs_to_jiffies(rdmaip_sysctl_active_bonding_failback_ms);
-	else
+	} else {
 		return msecs_to_jiffies(rdmaip_sysctl_roce_active_bonding_failback_ms);
+	}
+}
+
+static bool reschedule_failback(struct rdmaip_dly_work_req *work)
+{
+	/* step down timer wheel levels for synchronous failback execution
+	 * see comments in "kernel/time/timer.c" about levels and granularity
+	 */
+	long jiffies_left = work->go_failback_jiffies - jiffies;
+
+	if (jiffies_left >= 64)
+		jiffies_left /= 2;
+	else if (jiffies_left <= 0)
+		return false;
+
+	queue_delayed_work(rdmaip_wq, &work->work, jiffies_left);
+
+	return true;
 }
 
 /*
@@ -1234,6 +1263,10 @@ static void rdmaip_failback(struct work_struct *_work)
 		container_of(_work, struct rdmaip_dly_work_req, work.work);
 	u8				i, ip_active_port, port = work->port;
 
+	if (reschedule_failback(work))
+		/* too early */
+		return;
+
 	if (work->queued) {
 		list_del(&work->list);
 		work->queued = false;
@@ -1456,8 +1489,10 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 			RDMAIP_DBG2("Schedule failback\n");
 			work->queued = true;
 			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
-			queue_delayed_work(rdmaip_wq, &work->work,
-					   rdmaip_get_failback_sync_jiffies(port));
+			work->go_failback_jiffies = jiffies + rdmaip_get_failback_sync_jiffies(port);
+			if (!reschedule_failback(work))
+				/* failback needs to happen, even if it's late */
+				queue_delayed_work(rdmaip_wq, &work->work, 0);
 			list_add(&work->list, &rdmaip_delayed_work_list);
 			RDMAIP_DBG3("Adding %p work to the list\n", work);
 		} else {
