@@ -617,17 +617,19 @@ static irqreturn_t rvu_npa_af_gen_intr_handler(int irq, void *rvu_irq)
 	intr = rvu_read64(rvu, blkaddr, NPA_AF_GEN_INT);
 
 	if (intr & BIT_ULL(32))
-		dev_err(rvu->dev, "NPA: Unmapped PF func error\n");
+		dev_err_ratelimited(rvu->dev, "NPA: Unmapped PF func error\n");
 
 	val = FIELD_GET(GENMASK(31, 16), intr);
 	err_msg = rvu_npa_inpq_to_str(val);
 	if (err_msg)
-		dev_err(rvu->dev, "NPA: Alloc disabled for %s\n", err_msg);
+		dev_err_ratelimited(rvu->dev, "NPA: Alloc disabled for %s\n",
+				    err_msg);
 
 	val = FIELD_GET(GENMASK(15, 0), intr);
 	err_msg = rvu_npa_inpq_to_str(val);
 	if (err_msg)
-		dev_err(rvu->dev, "NPA: Free disabled for %s\n", err_msg);
+		dev_err_ratelimited(rvu->dev, "NPA: Free disabled for %s\n",
+				    err_msg);
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, NPA_AF_GEN_INT, intr);
@@ -647,13 +649,15 @@ static irqreturn_t rvu_npa_af_err_intr_handler(int irq, void *rvu_irq)
 	intr = rvu_read64(rvu, blkaddr, NPA_AF_ERR_INT);
 
 	if (intr & BIT_ULL(14))
-		dev_err(rvu->dev, "NPA: Memory fault on NPA_AQ_INST_S read\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NPA: Memory fault on NPA_AQ_INST_S read\n");
 
 	if (intr & BIT_ULL(13))
-		dev_err(rvu->dev, "NPA: Memory fault on NPA_AQ_RES_S write\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NPA: Memory fault on NPA_AQ_RES_S write\n");
 
 	if (intr & BIT_ULL(12))
-		dev_err(rvu->dev, "NPA: AQ doorbell error\n");
+		dev_err_ratelimited(rvu->dev, "NPA: AQ doorbell error\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, NPA_AF_ERR_INT, intr);
@@ -673,13 +677,16 @@ static irqreturn_t rvu_npa_af_ras_intr_handler(int irq, void *rvu_irq)
 	intr = rvu_read64(rvu, blkaddr, NPA_AF_RAS);
 
 	if (intr & BIT_ULL(34))
-		dev_err(rvu->dev, "NPA: Poisoned data on NPA_AQ_INST_S read\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NPA: Poisoned data on NPA_AQ_INST_S read\n");
 
 	if (intr & BIT_ULL(33))
-		dev_err(rvu->dev, "NPA: Poisoned data on NPA_AQ_RES_S write\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NPA: Poisoned data on NPA_AQ_RES_S write\n");
 
 	if (intr & BIT_ULL(32))
-		dev_err(rvu->dev, "NPA: Poisoned data on HW context read\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NPA: Poisoned data on HW context read\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, NPA_AF_RAS, intr);

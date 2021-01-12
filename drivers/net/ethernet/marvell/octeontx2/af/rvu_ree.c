@@ -939,11 +939,11 @@ static irqreturn_t rvu_ree_af_ras_intr_handler(int irq, void *ptr)
 
 	intr = rvu_read64(block->rvu, blkaddr, REE_AF_RAS);
 	if (intr & REE_AF_RAS_DAT_PSN)
-		dev_err(rvu->dev, "REE: Poison received on a NCB data response\n");
+		dev_err_ratelimited(rvu->dev, "REE: Poison received on a NCB data response\n");
 	if (intr & REE_AF_RAS_LD_CMD_PSN)
-		dev_err(rvu->dev, "REE: Poison received on a NCB instruction response\n");
+		dev_err_ratelimited(rvu->dev, "REE: Poison received on a NCB instruction response\n");
 	if (intr & REE_AF_RAS_LD_REEX_PSN)
-		dev_err(rvu->dev, "REE: Poison received on a REEX response\n");
+		dev_err_ratelimited(rvu->dev, "REE: Poison received on a REEX response\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, REE_AF_RAS, intr);
@@ -963,7 +963,7 @@ static irqreturn_t rvu_ree_af_rvu_intr_handler(int irq, void *ptr)
 
 	intr = rvu_read64(rvu, blkaddr, REE_AF_RVU_INT);
 	if (intr & REE_AF_RVU_INT_UNMAPPED_SLOT)
-		dev_err(rvu->dev, "REE: Unmapped slot error\n");
+		dev_err_ratelimited(rvu->dev, "REE: Unmapped slot error\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, REE_AF_RVU_INT, intr);
@@ -984,13 +984,13 @@ static irqreturn_t rvu_ree_af_aq_intr_handler(int irq, void *ptr)
 	intr = rvu_read64(rvu, blkaddr, REE_AF_AQ_INT);
 
 	if (intr & REE_AF_AQ_INT_DOVF)
-		dev_err(rvu->dev, "REE: DOORBELL overflow\n");
+		dev_err_ratelimited(rvu->dev, "REE: DOORBELL overflow\n");
 	if (intr & REE_AF_AQ_INT_IRDE)
-		dev_err(rvu->dev, "REE: Instruction NCB read response error\n");
+		dev_err_ratelimited(rvu->dev, "REE: Instruction NCB read response error\n");
 	if (intr & REE_AF_AQ_INT_PRDE)
-		dev_err(rvu->dev, "REE: Payload NCB read response error\n");
+		dev_err_ratelimited(rvu->dev, "REE: Payload NCB read response error\n");
 	if (intr & REE_AF_AQ_INT_PLLE)
-		dev_err(rvu->dev, "REE: Payload length error\n");
+		dev_err_ratelimited(rvu->dev, "REE: Payload length error\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, REE_AF_AQ_INT, intr);
