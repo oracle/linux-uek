@@ -1757,8 +1757,10 @@ out:
 
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
-	if (err)
+	if (err) {
+		err = htonl(err);
 		rdma_reject(cm_id, &err, sizeof(int));
+	}
 
 	return destroy;
 }
@@ -1822,7 +1824,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	conn->c_acl_en = ret;
 	conn->c_acl_init = 1;
 
-	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
 	/* Use ic->i_flowctl as the first post credit to enable
 	 * IB transport flow control. This first post credit is
