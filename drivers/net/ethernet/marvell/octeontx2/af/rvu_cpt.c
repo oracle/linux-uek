@@ -57,8 +57,8 @@ static irqreturn_t rvu_cpt_af_flr_intr_handler(int irq, void *ptr)
 
 	reg0 = rvu_read64(rvu, blkaddr, CPT_AF_FLTX_INT(0));
 	reg1 = rvu_read64(rvu, blkaddr, CPT_AF_FLTX_INT(1));
-	dev_err(rvu->dev, "Received CPTAF FLT irq : 0x%llx, 0x%llx",
-		reg0, reg1);
+	dev_err_ratelimited(rvu->dev, "Received CPTAF FLT irq : 0x%llx, 0x%llx",
+			    reg0, reg1);
 
 	rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT(0), reg0);
 	rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT(1), reg1);
@@ -76,7 +76,7 @@ static irqreturn_t rvu_cpt_af_rvu_intr_handler(int irq, void *ptr)
 		return IRQ_NONE;
 
 	reg = rvu_read64(rvu, blkaddr, CPT_AF_RVU_INT);
-	dev_err(rvu->dev, "Received CPTAF RVU irq : 0x%llx", reg);
+	dev_err_ratelimited(rvu->dev, "Received CPTAF RVU irq : 0x%llx", reg);
 
 	rvu_write64(rvu, blkaddr, CPT_AF_RVU_INT, reg);
 	return IRQ_HANDLED;
@@ -93,7 +93,7 @@ static irqreturn_t rvu_cpt_af_ras_intr_handler(int irq, void *ptr)
 		return IRQ_NONE;
 
 	reg = rvu_read64(rvu, blkaddr, CPT_AF_RAS_INT);
-	dev_err(rvu->dev, "Received CPTAF RAS irq : 0x%llx", reg);
+	dev_err_ratelimited(rvu->dev, "Received CPTAF RAS irq : 0x%llx", reg);
 
 	rvu_write64(rvu, blkaddr, CPT_AF_RAS_INT, reg);
 	return IRQ_HANDLED;

@@ -4349,28 +4349,32 @@ static irqreturn_t rvu_nix_af_ras_intr_handler(int irq, void *rvu_irq)
 	intr = rvu_read64(rvu, blkaddr, NIX_AF_RAS);
 
 	if (intr & BIT_ULL(34))
-		dev_err(rvu->dev, "NIX: Poisoned data on NIX_AQ_INST_S read\n");
+		dev_err_ratelimited(rvu->dev, "NIX: Poisoned data on NIX_AQ_INST_S read\n");
 
 	if (intr & BIT_ULL(33))
-		dev_err(rvu->dev, "NIX: Poisoned data on NIX_AQ_RES_S write\n");
+		dev_err_ratelimited(rvu->dev, "NIX: Poisoned data on NIX_AQ_RES_S write\n");
 
 	if (intr & BIT_ULL(32))
-		dev_err(rvu->dev, "NIX: Poisoned data on HW context read\n");
+		dev_err_ratelimited(rvu->dev, "NIX: Poisoned data on HW context read\n");
 
 	if (intr & BIT_ULL(4))
-		dev_err(rvu->dev, "NIX: Poisoned data on packet read from mirror buffer\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Poisoned data on packet read from mirror buffer\n");
 
 	if (intr & BIT_ULL(3))
-		dev_err(rvu->dev, "NIX: Poisoned data on packet read from multicast buffer\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Poisoned data on packet read from multicast buffer\n");
 
 	if (intr & BIT_ULL(2))
-		dev_err(rvu->dev, "NIX: Poisoned data on WQE read from mirror buffer\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Poisoned data on WQE read from mirror buffer\n");
 
 	if (intr & BIT_ULL(1))
-		dev_err(rvu->dev, "NIX: Poisoned data on WQE read from multicast buffer\n");
+		dev_err_ratelimited(rvu->dev,
+				    "NIX: Poisoned data on WQE read from multicast buffer\n");
 
 	if (intr & BIT_ULL(0))
-		dev_err(rvu->dev, "NIX: Poisoned data on NIX_RX_MCE_S read\n");
+		dev_err_ratelimited(rvu->dev, "NIX: Poisoned data on NIX_RX_MCE_S read\n");
 
 	/* Clear interrupts */
 	rvu_write64(rvu, blkaddr, NIX_AF_RAS, intr);
