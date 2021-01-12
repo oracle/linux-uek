@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2009, 2021 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -119,7 +119,6 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	struct rds_ib_connection *ic;
 	int ret = 0;
 	char *reason = NULL;
-	int *err;
 
 	if (!conn) {
 		trace_rds_rdma_cm_event_handler(NULL, NULL, NULL,
@@ -290,33 +289,64 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		rds_conn_drop(conn, DR_IB_CONNECT_ERR, 0);
 		break;
 
-	case RDMA_CM_EVENT_REJECTED:
-		err = (int *)event->param.conn.private_data;
+	case RDMA_CM_EVENT_REJECTED: {
+		const int *rej_data;
+		u8 rej_data_len;
 
-		if (event->status == RDS_REJ_CONSUMER_DEFINED && (*err) == 0) {
-			/* Rejection from RDSV3.1 */
-			pr_warn("Rejected: CSR_DEF err 0, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				&conn->c_laddr,
-				&conn->c_faddr, conn->c_tos);
-			if (!conn->c_tos)
+		rej_data = rdma_consumer_reject_data(cm_id, event,
+						     &rej_data_len);
+		if (!rej_data || rej_data_len < sizeof(*rej_data))  {
+			/* Rejection coming from the peer's RDMA layer.
+			 * Note that rej_data_len is currently always set to
+			 * IB_CM_REJ_PRIVATE_DATA_SIZE.  That may be changed
+			 * in future.  So also check for that.
+			 */
+			pr_warn("Rejected: <%pI6c,%pI6c,%d>: %s\n",
+				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				rdma_reject_msg(cm_id, event->status));
+			rds_conn_drop(conn, DR_IB_REJECTED_EVENT, 0);
+			reason = "rejection from RDMA";
+			break;
+		}
+
+		if (*rej_data) {
+			if (ntohl(*rej_data) == RDS_ACL_FAILURE) {
+				pr_err("Rejected: <%pI6c,%pI6c,%d>: ACL violation\n",
+				       &conn->c_laddr, &conn->c_faddr,
+				       conn->c_tos);
+				reason = "rejection ACL violation";
+				rds_ib_conn_destroy_init(conn);
+				break;
+			}
+
+			pr_err("Rejected: <%pI6c,%pI6c,%d>: error %d\n",
+			       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			       ntohl(*rej_data));
+			reason = "rejection with error code";
+		} else {
+			/* Only retry with old version if this connection
+			 * has never been established.  This assumes that
+			 * the peer will not suddenly be downgraded to an
+			 * old version.
+			 */
+			if (!conn->c_version && !conn->c_tos) {
 				conn->c_proposed_version =
 					RDS_PROTOCOL_COMPAT_VERSION;
-			rds_conn_drop(conn,
-				      DR_IB_CONSUMER_DEFINED_REJ, *err);
-			reason = "rejection from RDS";
-		} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
-			   (*err) == RDS_ACL_FAILURE) {
-			/* Rejection due to ACL violation */
-			pr_err("RDS: IB: conn %p <%pI6c,%pI6c,%d> destroyed due to ACL violation\n",
-			       conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-
-			reason = "ACL violation";
-			rds_ib_conn_destroy_init(conn);
-		} else {
-			rds_conn_drop(conn, DR_IB_REJECTED_EVENT, *err);
-			reason = "connection rejected";
+				pr_warn("Rejected: <%pI6c,%pI6c,%d>: retry with old protocol version\n",
+					&conn->c_laddr,	&conn->c_faddr,
+					conn->c_tos);
+				reason = "rejection and retry with old version";
+			} else {
+				pr_warn("Rejected: <%pI6c,%pI6c,%d>: no error code\n",
+					&conn->c_laddr,	&conn->c_faddr,
+					conn->c_tos);
+				reason = "rejection with no error code";
+			}
 		}
+		rds_conn_drop(conn, DR_IB_CONSUMER_DEFINED_REJ,
+			      ntohl(*rej_data));
 		break;
+	}
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 		rds_conn_drop(conn, DR_IB_ADDR_CHANGE, 0);
