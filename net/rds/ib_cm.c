@@ -348,7 +348,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	/* Post receive buffers - as a side effect, this will update
 	 * the posted credit count. */
 	if (!rds_ib_srq_enabled) {
-		rds_ib_recv_refill(conn, 1, 1);
+		rds_ib_recv_refill(conn, 1, GFP_KERNEL);
 		rds_ib_stats_inc(s_ib_rx_refill_from_cm);
 	}
 
