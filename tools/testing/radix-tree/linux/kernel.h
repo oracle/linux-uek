@@ -31,4 +31,6 @@
 # define fallthrough                    do {} while (0)  /* fallthrough */
 #endif /* __has_attribute */
 
+#define __must_be_array(a) BUILD_BUG_ON_ZERO(__same_type((a), &(a)[0]))
+
 #endif /* _KERNEL_H */
