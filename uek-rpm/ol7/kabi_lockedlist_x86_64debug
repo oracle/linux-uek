@@ -1,4 +1,4 @@
-[ol7_x86_64_whitelist]
+[ol8_x86_64_lockedlist]
 	PDE_DATA
 	__alloc_disk_node
 	__alloc_pages_nodemask
@@ -734,6 +734,7 @@
 	scsi_req_init
 	scsi_unblock_requests
 	scsicam_bios_param
+	security_inode_init_security
 	send_sig
 	send_sig_info
 	seq_escape
