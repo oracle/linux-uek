@@ -2199,6 +2199,27 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 			     &slot->cmd_out_taps_dly[MMC_TIMING_LEGACY]);
 	of_property_read_u32(node, "marvell,data-out-legacy-dly",
 			     &slot->data_out_taps_dly[MMC_TIMING_LEGACY]);
+	/* Modify the input timings using user inputs */
+	of_property_read_u32(node, "marvell,cmd-in-hs200-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS200]);
+	of_property_read_u32(node, "marvell,data-in-hs200-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS200]);
+	of_property_read_u32(node, "marvell,cmd-in-hs400-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS400]);
+	of_property_read_u32(node, "marvell,data-in-hs400-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS400]);
+	of_property_read_u32(node, "marvell,cmd-in-hs-sdr-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,data-in-hs-sdr-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,cmd-in-hs-ddr-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,data-in-hs-ddr-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,cmd-in-legacy-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_LEGACY]);
+	of_property_read_u32(node, "marvell,data-in-legacy-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_LEGACY]);
 
 	max_frequency = max_supported_frequency(slot->host);
 
