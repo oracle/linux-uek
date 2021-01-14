@@ -314,16 +314,6 @@ reply_free_rsrc_cnt(struct sdp_dev *sdp, struct rvu_vf *vf,
 }
 
 static int
-check_attach_rsrcs_req(struct sdp_dev *sdp, struct rvu_vf *vf,
-		       struct mbox_msghdr *req, int size)
-{
-	struct rsrc_attach *rsrc_req;
-
-	rsrc_req = (struct rsrc_attach *)req;
-	return forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
-}
-
-static int
 handle_vf_req(struct sdp_dev *sdp, struct rvu_vf *vf, struct mbox_msghdr *req,
 	      int size)
 {
@@ -364,7 +354,7 @@ handle_vf_req(struct sdp_dev *sdp, struct rvu_vf *vf, struct mbox_msghdr *req,
 				req->ver, OTX2_MBOX_VERSION);
 			return -EINVAL;
 		}
-		err = check_attach_rsrcs_req(sdp, vf, req, size);
+		err = forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
 		break;
 	default:
 		err = forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
@@ -1004,7 +994,7 @@ static struct attribute_group sdp_ring_attr_group = {
 	.attrs = sdp_ring_attrs,
 };
 
-int sdp_sysfs_init(struct device *dev)
+static int sdp_sysfs_init(struct device *dev)
 {
 	int ret;
 
@@ -1017,7 +1007,7 @@ int sdp_sysfs_init(struct device *dev)
 	return 0;
 }
 
-void sdp_sysfs_remove(struct device *dev)
+static void sdp_sysfs_remove(struct device *dev)
 {
 	sysfs_remove_group(&dev->kobj, &sdp_ring_attr_group);
 }
