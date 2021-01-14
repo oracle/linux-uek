@@ -613,6 +613,7 @@
 0x9d6ccd75	scsi_remove_host	vmlinux	EXPORT_SYMBOL
 0x1c28668c	scsi_unblock_requests	vmlinux	EXPORT_SYMBOL
 0x8692df46	scsicam_bios_param	vmlinux	EXPORT_SYMBOL
+0x4ad261a0	security_inode_init_security	vmlinux	EXPORT_SYMBOL
 0x38242828	send_sig	vmlinux	EXPORT_SYMBOL
 0x8c815370	send_sig_info	vmlinux	EXPORT_SYMBOL
 0x0c045738	seq_escape	vmlinux	EXPORT_SYMBOL
