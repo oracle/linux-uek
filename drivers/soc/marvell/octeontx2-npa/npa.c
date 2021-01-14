@@ -373,16 +373,6 @@ reply_free_rsrc_cnt(struct npa_dev_t *npa, struct rvu_vf *vf,
 }
 
 static int
-check_attach_rsrcs_req(struct npa_dev_t *npa, struct rvu_vf *vf,
-		       struct mbox_msghdr *req, int size)
-{
-	struct rsrc_attach *rsrc_req;
-
-	rsrc_req = (struct rsrc_attach *)req;
-	return forward_to_mbox(npa, &npa->afpf_mbox, 0, req, size, "AF");
-}
-
-static int
 handle_vf_req(struct npa_dev_t *npa, struct rvu_vf *vf, struct mbox_msghdr *req,
 	      int size)
 {
@@ -409,9 +399,6 @@ handle_vf_req(struct npa_dev_t *npa, struct rvu_vf *vf, struct mbox_msghdr *req,
 		break;
 	case MBOX_MSG_FREE_RSRC_CNT:
 		err = reply_free_rsrc_cnt(npa, vf, req, size);
-		break;
-	case MBOX_MSG_ATTACH_RESOURCES:
-		err = check_attach_rsrcs_req(npa, vf, req, size);
 		break;
 	default:
 		err = forward_to_mbox(npa, &npa->afpf_mbox, 0, req, size, "AF");
@@ -777,15 +764,13 @@ store_ptrs:
 	return 0;
 }
 
-dma_addr_t otx2_alloc_npa_buf(struct npa_dev_t *pfvf,
-			      struct otx2_npa_pool *pool, gfp_t gfp,
-			      struct device *owner)
+static dma_addr_t otx2_alloc_npa_buf(struct npa_dev_t *pfvf,
+				     struct otx2_npa_pool *pool, gfp_t gfp,
+				     struct device *owner)
 {
 	dma_addr_t iova;
-	struct device *dev;
 	struct iommu_domain *iommu_domain;
 
-	dev = &pfvf->pdev->dev;
 	/* Check if request can be accommodated in previous allocated page */
 	if (pool->page && ((pool->page_offset + pool->rbsize) <= PAGE_SIZE)) {
 		page_ref_inc(pool->page);
@@ -1122,12 +1107,10 @@ static int npa_lf_aura_pool_fini(struct npa_dev_t *npa, u16 aura_id)
 {
 	struct npa_aq_enq_req *aura_req, *pool_req;
 	struct ndc_sync_op *ndc_req;
-	struct otx2_mbox_dev *mdev;
 	struct otx2_mbox *mbox;
 	int rc;
 
 	mbox = &npa->afpf_mbox;
-	mdev = &mbox->dev[0];
 	/* Procedure for disabling an aura/pool */
 	usleep_range(10, 11);
 
@@ -1291,10 +1274,8 @@ static void npa_afpf_mbox_destroy(struct npa_dev_t *npa_pf_dev)
 static int otx2_npa_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct npa_dev_t *npa;
-	struct device *dev;
 	int err, pos;
 
-	dev = &pdev->dev;
 	err = pcim_enable_device(pdev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to enable PCI device\n");
