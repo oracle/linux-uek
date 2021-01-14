@@ -161,6 +161,20 @@ static const u32 default_hints_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
 	10  /* HS400 */
 };
 
+static const u32 default_cmd_in_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
+	4000, /* Legacy */
+	4000, /* MMC_HS */
+	4000, /* SD_HS */
+	4000, /* UHS_SDR12 */
+	4000, /* UHS_SDR25 */
+	4000, /* UHS_SDR50 */
+	4000, /* UHS_SDR104 */
+	4000, /* UHS_DDR50 */
+	4000, /* MMC_DDR52 */
+	4000, /* HS200 */
+	4000  /* HS400 */
+};
+
 static const char * const mmc_modes_name[MAX_NO_OF_MMC_TIMINGS] = {
 	"Legacy",
 	"MMC HS",
@@ -300,19 +314,22 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 			FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
 		writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
 	} else {
-		int half = MAX_NO_OF_TAPS / 2;
-		int cin = FIELD_GET(MIO_EMM_TIMING_CMD_IN, slot->taps);
-		int din = FIELD_GET(MIO_EMM_TIMING_DATA_IN, slot->taps);
-		int cout, dout;
+		int cin, din, cout, dout;
 
-		if (!slot->taps)
-			cin = din = half;
-
-		dev_dbg(host->dev, "%s: mode=%s, cmd=%ups, data=%ups\n",
+		dev_dbg(host->dev,
+			"%s: mode=%s, cmd_in=%ups, data_in=%ups, cmd_out=%ups, data_out=%ups\n",
 			__func__, mmc_modes_name[mmc->ios.timing],
+			slot->cmd_in_taps_dly[mmc->ios.timing],
+			slot->data_in_taps_dly[mmc->ios.timing],
 			slot->cmd_out_taps_dly[mmc->ios.timing],
 			slot->data_out_taps_dly[mmc->ios.timing]);
 		/* Configure timings */
+		cin = tout(slot,
+			   slot->cmd_in_taps_dly[mmc->ios.timing],
+			   MAX_NO_OF_TAPS / 2);
+		din = tout(slot,
+			   slot->data_in_taps_dly[mmc->ios.timing],
+			   MAX_NO_OF_TAPS / 2);
 		cout = tout(slot,
 			    slot->cmd_out_taps_dly[mmc->ios.timing],
 			    default_hints_taps_dly[mmc->ios.timing]);
@@ -1791,6 +1808,7 @@ static int tune_hs400(struct cvm_mmc_slot *slot)
 		best_start + best_run, how);
 	slot->taps &= ~MIO_EMM_TIMING_DATA_IN;
 	slot->taps |= FIELD_PREP(MIO_EMM_TIMING_DATA_IN, tap);
+	slot->data_in_taps_dly[MMC_TIMING_MMC_HS400] = tap * slot->host->per_tap_delay;
 	dev_dbg(host->dev, "HS400 data input tap: %d\n", tap);
 	dev_dbg(host->dev, "%s\n", how);
 	cvm_mmc_set_timing(slot);
@@ -2246,6 +2264,12 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 			val = DIV_ROUND_UP(val, 2);
 		slot->data_out_taps_dly[i] = val;
 	}
+	/* Set default input timings for the driver*/
+	memcpy(slot->cmd_in_taps_dly, default_cmd_in_taps_dly,
+	       sizeof(slot->cmd_in_taps_dly));
+	/* Input timings for DAT lines are the same as CMD line timings */
+	memcpy(slot->data_in_taps_dly, default_cmd_in_taps_dly,
+	       sizeof(slot->data_in_taps_dly));
 
 	ret = cvm_mmc_of_parse(dev, slot);
 	if (ret < 0)
