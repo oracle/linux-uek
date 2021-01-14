@@ -735,6 +735,7 @@
 0xe2ffeef3	scsi_req_init	vmlinux	EXPORT_SYMBOL	
 0x19761c73	scsi_unblock_requests	vmlinux	EXPORT_SYMBOL	
 0x45757222	scsicam_bios_param	vmlinux	EXPORT_SYMBOL	
+0xdedc9881	security_inode_init_security	vmlinux	EXPORT_SYMBOL	
 0xc6a482fe	send_sig	vmlinux	EXPORT_SYMBOL	
 0xd6467fe6	send_sig_info	vmlinux	EXPORT_SYMBOL	
 0xd0759ed7	seq_escape	vmlinux	EXPORT_SYMBOL	
