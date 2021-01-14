@@ -189,6 +189,8 @@ struct cvm_mmc_slot {
 #define MAX_NO_OF_MMC_TIMINGS	((MMC_TIMING_MMC_HS400) + 1)
 	u32 data_out_taps_dly[MAX_NO_OF_MMC_TIMINGS];
 	u32 cmd_out_taps_dly[MAX_NO_OF_MMC_TIMINGS];
+	u32 data_in_taps_dly[MAX_NO_OF_MMC_TIMINGS];
+	u32 cmd_in_taps_dly[MAX_NO_OF_MMC_TIMINGS];
 };
 
 struct cvm_mmc_cr_type {
