@@ -2249,11 +2249,9 @@ static void rdmaip_parse_ndev_include_list(void)
 	if (!rdmaip_ndev_include_list)
 		return;
 
-	str = kmalloc(strlen(rdmaip_ndev_include_list), GFP_KERNEL);
+	str = kstrdup(rdmaip_ndev_include_list, GFP_KERNEL);
 	if (!str)
 		return;
-
-	strcpy(str, rdmaip_ndev_include_list);
 
 	tok = str;
 	while (tok) {
