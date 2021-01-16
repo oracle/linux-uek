@@ -1304,7 +1304,7 @@ static void ionic_tx_calc_csum(struct ionic_queue *q, struct sk_buff *skb,
 
 #ifdef IONIC_DEBUG_STATS
 #ifdef HAVE_CSUM_NOT_INET
-	if (skb->csum_not_inet)
+	if (skb_csum_is_sctp(skb))
 		stats->crc32_csum++;
 	else
 #endif
