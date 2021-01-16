@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1437,11 +1437,12 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 			    u8 responder_resources,
 			    u8 initiator_depth)
 {
-	int err;
-	struct rds_ib_connection *ic;
 	const struct rds_ib_conn_priv_cmn *dp_cmn;
 	struct rdma_conn_param conn_param;
+	union rds_ib_conn_priv dp_rep;
+	struct rds_ib_connection *ic;
 	u16 frag;
+	int err;
 
 	ic = conn->c_transport_data;
 
@@ -1484,7 +1485,7 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 
 	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp_cmn->ricpc_frag_sz));
 
-	rds_ib_cm_fill_conn_param(conn, &conn_param, NULL, version,
+	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp_rep, version,
 				  responder_resources,
 				  initiator_depth,
 				  frag, isv6);
