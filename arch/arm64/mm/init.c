@@ -59,7 +59,7 @@ EXPORT_SYMBOL(memstart_addr);
  * bit addressable memory area.
  */
 phys_addr_t arm64_dma_phys_limit __ro_after_init;
-static phys_addr_t arm64_dma32_phys_limit __ro_after_init;
+phys_addr_t arm64_dma32_phys_limit __ro_after_init;
 
 #ifdef CONFIG_KEXEC_CORE
 /*
@@ -294,6 +294,9 @@ void __init arm64_memblock_init(void)
 	 */
 	memstart_addr = round_down(memblock_start_of_DRAM(),
 				   ARM64_MEMSTART_ALIGN);
+
+	if ((memblock_end_of_DRAM() - memstart_addr) > linear_region_size)
+		pr_warn("Memory doesn't fit in the linear mapping, VA_BITS too small\n");
 
 	/*
 	 * Remove the memory that we will not be able to cover with the
