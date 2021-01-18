@@ -169,12 +169,16 @@ static void sl_find_event_log(struct tpm *tpm)
 
 static void sl_validate_event_log_buffer(void)
 {
-	void *evtlog_end = evtlog_base + evtlog_size;
 	void *mle_base = (void *)(u64)sl_mle_start;
 	void *mle_end;
 	struct txt_os_sinit_data *os_sinit_data;
 	void *txt_heap;
 	void *txt_heap_end;
+	void *evtlog_end;
+
+	if ((u64)evtlog_size > (LLONG_MAX - (u64)evtlog_base))
+		sl_txt_reset(SL_ERROR_INTEGER_OVERFLOW);
+	evtlog_end = evtlog_base + evtlog_size;
 
 	txt_heap = (void *)sl_txt_read(TXT_CR_HEAP_BASE);
 	txt_heap_end = txt_heap + sl_txt_read(TXT_CR_HEAP_SIZE);
@@ -204,6 +208,11 @@ pmr_check:
 	if ((evtlog_end <= (void *)0x100000000ULL) &&
 	    (evtlog_end > (void *)os_sinit_data->vtd_pmr_lo_size))
 		sl_txt_reset(SL_ERROR_BUFFER_BEYOND_PMR);
+
+	/*
+ 	 * Note that the late stub code validates that the hi PMR covers
+	 * all memory above 4G before the event log buffer is ever read.
+	 */
 }
 
 static void sl_tpm12_log_event(u32 pcr, u8 *digest,

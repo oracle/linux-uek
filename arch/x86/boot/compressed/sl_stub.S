@@ -263,20 +263,24 @@ ENTRY(sl_txt_verify_os_mle_struct)
 .Lvalid_pmr_base:
 	/* Grab some values from OS-SINIT structure */
 	movl	SL_mle_size(%edx), %edi
-	leal	(%ebx, %edi), %edi
+	addl	%ebx, %edi
+	jc	.Loverflow_detected
 	movl	SL_vtd_pmr_lo_size(%edx), %esi
 
 	/* Check the AP wake block */
 	movl	SL_ap_wake_block(%eax), %ecx
 	movl	SL_ap_wake_block_size(%eax), %edx
-	leal	(%ecx, %edx), %edx
+	addl	%ecx, %edx
+	jc	.Loverflow_detected
 	call	sl_check_buffer_mle_overlap
 	cmpl	%esi, %edx
 	ja	.Lbuffer_beyond_pmr
 
 	/* Check the boot params */
 	movl	SL_boot_params_addr(%eax), %ecx
-	leal	PAGE_SIZE(%ecx), %edx
+	movl	$(PAGE_SIZE), %edx
+	addl	%ecx, %edx
+	jc	.Loverflow_detected
 	call	sl_check_buffer_mle_overlap
 	cmpl	%esi, %edx
 	ja	.Lbuffer_beyond_pmr
@@ -289,6 +293,9 @@ ENTRY(sl_txt_verify_os_mle_struct)
 
 .Lwake_block_ok:
 	ret
+
+.Loverflow_detected:
+	TXT_RESET $(SL_ERROR_INTEGER_OVERFLOW)
 
 .Lbuffer_beyond_pmr:
 	TXT_RESET $(SL_ERROR_BUFFER_BEYOND_PMR)

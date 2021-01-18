@@ -185,12 +185,10 @@ static void __init slaunch_verify_pmrs(void __iomem *txt)
 		}
 	}
 
-	/* Lo PMR base should always be 0 */
-	if (os_sinit_data->vtd_pmr_lo_base != 0x0ULL) {
-		err = SL_ERROR_LO_PMR_BASE;
-		errmsg = "Error lo PMR base\n";
-		goto out;
-	}
+	/*
+	 * Lo PMR base should always be 0. This was already checked in
+	 * early stub.
+	 */
 
 	/*
 	 * Check that if the kernel was loaded below 4G, that it is protected
@@ -204,12 +202,10 @@ static void __init slaunch_verify_pmrs(void __iomem *txt)
 		goto out;
 	}
 
-	/* Check that the AP wake block is protected by the lo PMR. */
-	if (ap_wake_info.ap_wake_block + PAGE_SIZE >
-	    os_sinit_data->vtd_pmr_lo_size) {
-		err = SL_ERROR_LO_PMR_MLE;
-		errmsg = "Error lo PMR does not cover AP wake block\n";
-	}
+	/*
+	 * AP wake block already checked for protection by the lo PMR in
+	 * early stub code.
+	 */
 
 	/*
 	 * If an external initrd is present and loaded below 4G, check
