@@ -1282,6 +1282,7 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 
 	write_req.hdr.pcifunc = rule->owner;
 	write_req.entry = rule->entry;
+	write_req.intf = pfvf->nix_rx_intf;
 
 	mutex_unlock(&mcam->lock);
 	err = rvu_mbox_handler_npc_mcam_write_entry(rvu, &write_req, &rsp);
