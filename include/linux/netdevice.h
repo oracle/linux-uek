@@ -883,6 +883,9 @@ enum tc_setup_type {
 	TC_SETUP_ROOT_QDISC,
 	TC_SETUP_QDISC_GRED,
 	TC_SETUP_QDISC_TAPRIO,
+#ifndef __GENKSYMS__
+	TC_SETUP_QDISC_HTB,
+#endif
 };
 
 /* These structures hold the attributes of bpf state that are being passed
