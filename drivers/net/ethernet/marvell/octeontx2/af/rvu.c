@@ -1630,7 +1630,7 @@ static int rvu_get_attach_blkaddr(struct rvu *rvu, int blktype,
 		break;
 	default:
 		return rvu_get_blkaddr(rvu, blktype, 0);
-	};
+	}
 
 	if (is_block_implemented(rvu->hw, blkaddr))
 		return blkaddr;
