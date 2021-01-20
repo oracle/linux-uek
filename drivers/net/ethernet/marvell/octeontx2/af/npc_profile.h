@@ -23,6 +23,7 @@
 #define NPC_ETYPE_IP6		0x86dd
 #define NPC_ETYPE_ARP		0x0806
 #define NPC_ETYPE_RARP		0x8035
+#define NPC_ETYPE_NGIO		0x8842
 #define NPC_ETYPE_MPLSU		0x8847
 #define NPC_ETYPE_MPLSM		0x8848
 #define NPC_ETYPE_ETAG		0x893f
@@ -185,6 +186,7 @@ enum npc_kpu_parser_state {
 	NPC_S_KPU2_ITAG,
 	NPC_S_KPU2_PREHEADER,
 	NPC_S_KPU2_EXDSA,
+	NPC_S_KPU2_NGIO,
 	NPC_S_KPU3_CTAG,
 	NPC_S_KPU3_STAG,
 	NPC_S_KPU3_QINQ,
@@ -1103,6 +1105,15 @@ static struct npc_kpu_profile_cam kpu1_cam_entries[] = {
 		0xffff,
 		0x0000,
 		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU1_ETHER, 0xff,
+		NPC_ETYPE_CTAG,
+		0xffff,
+		NPC_ETYPE_NGIO,
+		0xffff,
 		0x0000,
 		0x0000,
 	},
@@ -3275,6 +3286,15 @@ static struct npc_kpu_profile_cam kpu2_cam_entries[] = {
 		NPC_S_KPU2_EXDSA, 0xff,
 		0x0000,
 		NPC_DSA_EDSA,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU2_NGIO, 0xff,
+		0x0000,
+		0x0000,
 		0x0000,
 		0x0000,
 		0x0000,
@@ -8005,6 +8025,14 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 12, 0, 0, 0,
+		NPC_S_KPU2_NGIO, 12, 1,
+		NPC_LID_LA, NPC_LT_LA_ETHER,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		8, 12, 0, 0, 0,
 		NPC_S_KPU2_CTAG2, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_VLAN,
@@ -9955,6 +9983,14 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 		NPC_S_NA, 0, 1,
 		NPC_LID_LB, NPC_LT_LB_EXDSA,
 		NPC_F_LB_U_UNK_ETYPE | NPC_F_LB_L_EXDSA,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		0, 0, 0, 0, 1,
+		NPC_S_NA, 0, 1,
+		NPC_LID_LC, NPC_LT_LC_NGIO,
+		0,
 		0, 0, 0, 0,
 	},
 	{

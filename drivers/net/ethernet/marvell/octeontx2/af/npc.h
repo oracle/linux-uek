@@ -72,6 +72,7 @@ enum npc_kpu_lc_ltype {
 	NPC_LT_LC_MPLS,
 	NPC_LT_LC_NSH,
 	NPC_LT_LC_FCOE,
+	NPC_LT_LC_NGIO,
 	NPC_LT_LC_CUSTOM0 = 0xE,
 	NPC_LT_LC_CUSTOM1 = 0xF,
 };
