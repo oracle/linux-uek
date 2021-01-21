@@ -66,6 +66,21 @@
 #define RFOEX_TX_PTP_TSTMP_W1(a, b)	(0x7C0ULL | \
 					 (((unsigned long)(a) << 36)) | \
 					 ((b) << 3))
+#define RFOEX_TX_PKT_STAT(a, b)		(0x720ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_TX_OCTS_STAT(a, b)	(0x740ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_RX_VLAN_DROP_STAT(a, b)	(0x8A0ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_RX_CGX_PKT_STAT(a, b)	(0x15C0ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_RX_CGX_OCTS_STAT(a, b)	(0x15E0ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
 
 /* PTP register offsets */
 #define MIO_PTP_CLOCK_HI		0x10
