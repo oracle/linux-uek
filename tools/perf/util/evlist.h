@@ -105,6 +105,8 @@ int __perf_evlist__add_default_attrs(struct evlist *evlist,
 #define perf_evlist__add_default_attrs(evlist, array) \
 	__perf_evlist__add_default_attrs(evlist, array, ARRAY_SIZE(array))
 
+int arch_evlist__add_default_attrs(struct evlist *evlist);
+
 int perf_evlist__add_dummy(struct evlist *evlist);
 
 int perf_evlist__add_sb_event(struct evlist **evlist,
