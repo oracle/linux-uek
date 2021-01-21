@@ -1725,12 +1725,12 @@ static int cgx_lmac_exit(struct cgx *cgx)
 	}
 
 	/* Free all lmac related resources */
-	for (i = 0; i < cgx->lmac_count; i++) {
-		cgx_lmac_pause_frm_config(cgx, i, false);
+	for_each_set_bit(i, &cgx->lmac_bmap, MAX_LMAC_PER_CGX) {
 		lmac = cgx->lmac_idmap[i];
 		if (!lmac)
 			continue;
-		cgx_configure_interrupt(cgx, lmac, i, true);
+		cgx_lmac_pause_frm_config(cgx, lmac->lmac_id, false);
+		cgx_configure_interrupt(cgx, lmac, lmac->lmac_id, true);
 		kfree(lmac->mac_to_index_bmap.bmap);
 		kfree(lmac->name);
 		kfree(lmac);
@@ -1788,14 +1788,6 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_release_regions;
 	}
 
-	nvec = pci_msix_vec_count(cgx->pdev);
-
-	err = pci_alloc_irq_vectors(pdev, nvec, nvec, PCI_IRQ_MSIX);
-	if (err < 0 || err != nvec) {
-		dev_err(dev, "Request for %d msix vectors failed, err %d\n",
-			nvec, err);
-		goto err_release_regions;
-	}
 
 	cgx->cgx_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
 		& CGX_ID_MASK;
@@ -1804,6 +1796,15 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!is_cgx_mapped_to_nix(pdev->subsystem_device, cgx->cgx_id)) {
 		dev_notice(dev, "skip cgx%d probe\n", cgx->cgx_id);
 		err = -ENOMEM;
+		goto err_release_regions;
+	}
+
+	nvec = pci_msix_vec_count(cgx->pdev);
+
+	err = pci_alloc_irq_vectors(pdev, nvec, nvec, PCI_IRQ_MSIX);
+	if (err < 0 || err != nvec) {
+		dev_err(dev, "Request for %d msix vectors failed, err %d\n",
+			nvec, err);
 		goto err_release_regions;
 	}
 
