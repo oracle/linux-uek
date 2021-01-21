@@ -195,6 +195,13 @@ struct otx2_rfoe_stats {
 	u64 ptp_tx_dropped;	/* ptp tx dropped */
 	u64 ecpri_tx_dropped;	/* ptp tx dropped */
 
+	/* per LMAC stats */
+	u64 EthIfInFrames;
+	u64 EthIfInOctets;
+	u64 EthIfOutFrames;
+	u64 EthIfOutOctets;
+	u64 EthIfInUnknownVlan;
+
 	/* stats update lock */
 	spinlock_t lock;
 };
