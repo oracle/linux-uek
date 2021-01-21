@@ -270,6 +270,11 @@ int __perf_evlist__add_default_attrs(struct evlist *evlist,
 	return evlist__add_attrs(evlist, attrs, nr_attrs);
 }
 
+__weak int arch_evlist__add_default_attrs(struct evlist *evlist __maybe_unused)
+{
+	return 0;
+}
+
 struct evsel *
 perf_evlist__find_tracepoint_by_id(struct evlist *evlist, int id)
 {
