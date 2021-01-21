@@ -715,6 +715,7 @@
 #define CPT_AF_CTX_PSH_LATENCY_PC       (0x49458ull)
 #define CPT_AF_RXC_TIME                 (0x50010ull)
 #define CPT_AF_RXC_TIME_CFG             (0x50018ull)
+#define CPT_AF_RXC_DFRG                 (0x50020ull)
 #define CPT_AF_RXC_ACTIVE_STS           (0x50028ull)
 #define CPT_AF_RXC_ZOMBIE_STS           (0x50030ull)
 #define CPT_AF_X2PX_LINK_CFG(a)         (0x51000ull | (u64)(a) << 3)
