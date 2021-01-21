@@ -29,12 +29,24 @@
 	.long 999b;						\
 	.popsection;
 
+.macro STACK_FRAME_NON_STANDARD func:req
+	.pushsection .discard.func_stack_frame_non_standard, "aw"
+		.long \func - .
+	.popsection
+.endm
+
 #endif /* __ASSEMBLY__ */
 
 #else /* !CONFIG_STACK_VALIDATION */
 
+#ifndef __ASSEMBLY__
+
 #define STACK_FRAME_NON_STANDARD(func)
+#else
 #define ANNOTATE_INTRA_FUNCTION_CALL
+.macro STACK_FRAME_NON_STANDARD func:req
+.endm
+#endif
 
 #endif /* CONFIG_STACK_VALIDATION */
 
