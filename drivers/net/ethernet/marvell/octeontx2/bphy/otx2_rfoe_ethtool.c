@@ -25,6 +25,11 @@ static const char ethtool_stat_strings[][ETH_GSTRING_LEN] = {
 	"oth_tx_dropped",
 	"ptp_tx_dropped",
 	"ecpri_tx_dropped",
+	"EthIfInFrames",
+	"EthIfInOctets",
+	"EthIfOutFrames",
+	"EthIfOutOctets",
+	"EthIfInUnknownVlan",
 };
 
 static void otx2_rfoe_get_strings(struct net_device *netdev, u32 sset, u8 *data)
@@ -47,12 +52,35 @@ static int otx2_rfoe_get_sset_count(struct net_device *netdev, int sset)
 	}
 }
 
+static void otx2_rfoe_update_lmac_stats(struct otx2_rfoe_ndev_priv *priv)
+{
+	struct otx2_rfoe_stats *stats = &priv->stats;
+
+	stats->EthIfInFrames = readq(priv->rfoe_reg_base +
+				     RFOEX_RX_CGX_PKT_STAT(priv->rfoe_num,
+							   priv->lmac_id));
+	stats->EthIfInOctets = readq(priv->rfoe_reg_base +
+				     RFOEX_RX_CGX_OCTS_STAT(priv->rfoe_num,
+							    priv->lmac_id));
+	stats->EthIfOutFrames = readq(priv->rfoe_reg_base +
+				      RFOEX_TX_PKT_STAT(priv->rfoe_num,
+							priv->lmac_id));
+	stats->EthIfOutOctets = readq(priv->rfoe_reg_base +
+				      RFOEX_TX_OCTS_STAT(priv->rfoe_num,
+							 priv->lmac_id));
+	stats->EthIfInUnknownVlan =
+				readq(priv->rfoe_reg_base +
+				      RFOEX_RX_VLAN_DROP_STAT(priv->rfoe_num,
+							      priv->lmac_id));
+}
+
 static void otx2_rfoe_get_ethtool_stats(struct net_device *netdev,
 					struct ethtool_stats *stats,
 					u64 *data)
 {
 	struct otx2_rfoe_ndev_priv *priv = netdev_priv(netdev);
 
+	otx2_rfoe_update_lmac_stats(priv);
 	spin_lock(&priv->stats.lock);
 	memcpy(data, &priv->stats,
 	       ARRAY_SIZE(ethtool_stat_strings) * sizeof(u64));
