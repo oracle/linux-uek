@@ -222,6 +222,8 @@ M(CPT_RD_WR_REGISTER,	0xA02, cpt_rd_wr_register,  cpt_rd_wr_reg_msg,	\
 M(CPT_INLINE_IPSEC_CFG,	0xA04, cpt_inline_ipsec_cfg,			\
 			       cpt_inline_ipsec_cfg_msg, msg_rsp)	\
 M(CPT_STATS,            0xA05, cpt_sts, cpt_sts_req, cpt_sts_rsp)	\
+M(CPT_RXC_TIME_CFG,     0xA06, cpt_rxc_time_cfg, cpt_rxc_time_cfg_req,  \
+			       msg_rsp)                                 \
 /* REE mbox IDs (range 0xE00 - 0xFFF) */				\
 M(REE_CONFIG_LF,	0xE01, ree_config_lf, ree_lf_req_msg,		\
 				msg_rsp)				\
@@ -1714,6 +1716,17 @@ struct cpt_sts_rsp {
 	u64 exe_err_info;
 	u64 cptclk_cnt;
 	u64 diag;
+};
+
+/* Mailbox message request format to configure reassembly timeout. */
+struct cpt_rxc_time_cfg_req {
+	struct mbox_msghdr hdr;
+	int blkaddr;
+	u32 step;
+	u16 zombie_thres;
+	u16 zombie_limit;
+	u16 active_thres;
+	u16 active_limit;
 };
 
 /* REE mailbox error codes

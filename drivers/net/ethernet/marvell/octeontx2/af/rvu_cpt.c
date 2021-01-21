@@ -146,6 +146,14 @@ void rvu_cpt_unregister_interrupts(struct rvu *rvu)
 		}
 }
 
+static bool is_cpt_blkaddr(int blkaddr)
+{
+	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
+		return false;
+
+	return true;
+}
+
 static bool is_cpt_pf(u16 pcifunc)
 {
 	if (rvu_get_pf(pcifunc) != cpt_pf_num)
@@ -249,8 +257,8 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 	u64 val;
 
 	blkaddr = req->blkaddr ? req->blkaddr : BLKADDR_CPT0;
-	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
-		return -ENODEV;
+	if (!is_cpt_blkaddr(blkaddr))
+		return -EINVAL;
 
 	if (req->eng_grpmsk == 0x0)
 		return CPT_AF_ERR_GRP_INVALID;
@@ -470,8 +478,8 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	struct rvu_block *block;
 
 	blkaddr = req->blkaddr ? req->blkaddr : BLKADDR_CPT0;
-	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
-		return -ENODEV;
+	if (!is_cpt_blkaddr(blkaddr))
+		return -EINVAL;
 
 	/* This message is accepted only if sent from CPT PF/VF */
 	if (!is_cpt_pf(req->hdr.pcifunc) &&
@@ -606,8 +614,8 @@ int rvu_mbox_handler_cpt_sts(struct rvu *rvu, struct cpt_sts_req *req,
 	int blkaddr;
 
 	blkaddr = req->blkaddr ? req->blkaddr : BLKADDR_CPT0;
-	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
-		return -ENODEV;
+	if (!is_cpt_blkaddr(blkaddr))
+		return -EINVAL;
 
 	/* This message is accepted only if sent from CPT PF/VF */
 	if (!is_cpt_pf(req->hdr.pcifunc) &&
@@ -631,6 +639,33 @@ int rvu_mbox_handler_cpt_sts(struct rvu *rvu, struct cpt_sts_req *req,
 	rsp->exe_err_info = rvu_read64(rvu, blkaddr, CPT_AF_EXE_ERR_INFO);
 	rsp->cptclk_cnt = rvu_read64(rvu, blkaddr, CPT_AF_CPTCLK_CNT);
 	rsp->diag = rvu_read64(rvu, blkaddr, CPT_AF_DIAG);
+
+	return 0;
+}
+
+int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
+				      struct cpt_rxc_time_cfg_req *req,
+				      struct msg_rsp *rsp)
+{
+	u64 dfrg_reg;
+	int blkaddr;
+
+	blkaddr = req->blkaddr ? req->blkaddr : BLKADDR_CPT0;
+	if (!is_cpt_blkaddr(blkaddr))
+		return -EINVAL;
+
+	/* This message is accepted only if sent from CPT PF/VF */
+	if (!is_cpt_pf(req->hdr.pcifunc) &&
+	    !is_cpt_vf(req->hdr.pcifunc))
+		return CPT_AF_ERR_ACCESS_DENIED;
+
+	dfrg_reg = (u64)req->zombie_thres << 48;
+	dfrg_reg |= (u64)req->zombie_limit << 32;
+	dfrg_reg |= (u64)req->active_thres << 16;
+	dfrg_reg |= (u64)req->active_limit;
+
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG, req->step);
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_DFRG, dfrg_reg);
 
 	return 0;
 }
@@ -690,8 +725,8 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	u64 reg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, pcifunc);
-	if (blkaddr != BLKADDR_CPT0 && blkaddr != BLKADDR_CPT1)
-		return -EINVAL;
+	if (blkaddr < 0)
+		return blkaddr;
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
