@@ -390,16 +390,18 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		if (priv->link_state != cfg.link_state) {
 			if (cfg.link_state == LINK_STATE_DOWN) {
 				netdev_info(netdev, "Link DOWN\n");
-				netif_carrier_off(netdev);
-				netif_stop_queue(netdev);
-				set_bit(RFOE_INTF_DOWN, &priv->state);
 				priv->link_state = 0;
+				if (netif_running(netdev)) {
+					netif_carrier_off(netdev);
+					netif_stop_queue(netdev);
+				}
 			} else {
 				netdev_info(netdev, "Link UP\n");
-				netif_carrier_on(netdev);
-				netif_start_queue(netdev);
-				clear_bit(RFOE_INTF_DOWN, &priv->state);
 				priv->link_state = 1;
+				if (netif_running(netdev)) {
+					netif_carrier_on(netdev);
+					netif_start_queue(netdev);
+				}
 			}
 		}
 		ret = 0;
@@ -441,16 +443,18 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		if (priv->link_state != cfg.link_state) {
 			if (cfg.link_state == LINK_STATE_DOWN) {
 				netdev_info(netdev, "Link DOWN\n");
-				netif_carrier_off(netdev);
-				netif_stop_queue(netdev);
-				set_bit(CPRI_INTF_DOWN, &priv->state);
 				priv->link_state = 0;
+				if (netif_running(netdev)) {
+					netif_carrier_off(netdev);
+					netif_stop_queue(netdev);
+				}
 			} else {
 				netdev_info(netdev, "Link UP\n");
-				netif_carrier_on(netdev);
-				netif_start_queue(netdev);
-				clear_bit(CPRI_INTF_DOWN, &priv->state);
 				priv->link_state = 1;
+				if (netif_running(netdev)) {
+					netif_carrier_on(netdev);
+					netif_start_queue(netdev);
+				}
 			}
 		}
 		ret = 0;
