@@ -1358,12 +1358,39 @@ static void otx2_free_sq_res(struct otx2_nic *pf)
 	}
 }
 
+static int otx2_get_rbuf_size(struct otx2_nic *pf, int mtu)
+{
+	int frame_size;
+	int total_size;
+	int rbuf_size;
+
+	/* The data transferred by NIX to memory consists of actual packet
+	 * plus additional data which has timestamp and/or EDSA/HIGIG2
+	 * headers if interface is configured in corresponding modes.
+	 * NIX transfers entire data using 6 segments/buffers and writes
+	 * a CQE_RX descriptor with those segment addresses. First segment
+	 * has additional data prepended to packet. Also software omits a
+	 * headroom of 128 bytes and sizeof(struct skb_shared_info) in
+	 * each segment. Hence the total size of memory needed
+	 * to receive a packet with 'mtu' is:
+	 * frame size =  mtu + additional data;
+	 * memory = frame_size + (headroom + struct skb_shared_info size) * 6;
+	 * each receive buffer size = memory / 6;
+	 */
+	frame_size = mtu + OTX2_ETH_HLEN + OTX2_HW_TIMESTAMP_LEN +
+		     pf->addl_mtu + pf->xtra_hdr;
+	total_size = frame_size + (OTX2_HEAD_ROOM +
+		     OTX2_DATA_ALIGN(sizeof(struct skb_shared_info))) * 6;
+	rbuf_size = total_size / 6;
+
+	return ALIGN(rbuf_size, 2048);
+}
+
 static int otx2_init_hw_resources(struct otx2_nic *pf)
 {
 	struct nix_lf_free_req *free_req;
 	struct mbox *mbox = &pf->mbox;
 	struct otx2_hw *hw = &pf->hw;
-	size_t max_pkt_bytes;
 	struct msg_req *req;
 	int err = 0, lvl;
 
@@ -1379,29 +1406,7 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	pf->max_frs = pf->netdev->mtu + OTX2_ETH_HLEN + pf->addl_mtu +
 		      OTX2_HW_TIMESTAMP_LEN + pf->xtra_hdr;
 
-	/* The data transferred by NIX to memory consists of actual packet
-	 * plus additional data which has timestamp and/or EDSA/HIGIG2
-	 * headers if interface is configured in corresponding modes.
-	 * NIX transfers entire data using 6 segments/buffers and writes
-	 * a CQE_RX descriptor with those segment addresses. First segment
-	 * has additional data prepended to packet. Also software omits a
-	 * headroom of 128 bytes in each receive buffer. Hence the maximum
-	 * number of actual packet bytes per one CQE_RX descriptor with a
-	 * receive buffer of size 4K is:
-	 * ((4k - 128) * 6) - additional bytes in segment 1.
-	 */
-	max_pkt_bytes = DMA_BUFFER_LEN(0x1000) * 6;
-	max_pkt_bytes -= OTX2_ETH_HLEN + OTX2_HW_TIMESTAMP_LEN +
-			 pf->addl_mtu + pf->xtra_hdr;
-
-	/* Use packet receive buffers of size 4K since hardware can support
-	 * MTU of size 16K for RPM and 64K for LBK. If MTU is more than
-	 * maximum pkt_bytes then use receive buffers of size 12K so that
-	 * it works for 64K MTU.
-	 */
-	pf->rbsize = 0x1000;
-	if (pf->netdev->mtu > max_pkt_bytes)
-		pf->rbsize = 0x3000;
+	pf->rbsize = otx2_get_rbuf_size(pf, pf->netdev->mtu);
 
 	mutex_lock(&mbox->lock);
 	/* NPA init */
