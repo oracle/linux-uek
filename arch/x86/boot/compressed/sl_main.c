@@ -198,6 +198,14 @@ static void sl_validate_event_log_buffer(void)
 
 pmr_check:
 	/*
+	 * Have to restrict the event log to below 4G since there is
+	 * no easy way to validate the hi PMR values.
+	 */
+	if ((evtlog_end >= (void *)0x100000000ULL) ||
+	    (evtlog_base >= (void *)0x100000000ULL))
+		sl_txt_reset(SL_ERROR_REGION_ABOVE_4GB);
+
+	/*
 	 * The TXT heap is protected by the DPR. If the TPM event log is
 	 * inside the TXT heap, there is no need for a PMR check.
 	 */
@@ -205,8 +213,7 @@ pmr_check:
 	    (evtlog_end < txt_heap_end))
 		return;
 
-	if ((evtlog_end <= (void *)0x100000000ULL) &&
-	    (evtlog_end > (void *)os_sinit_data->vtd_pmr_lo_size))
+	if (evtlog_end > (void *)os_sinit_data->vtd_pmr_lo_size)
 		sl_txt_reset(SL_ERROR_BUFFER_BEYOND_PMR);
 
 	/*
@@ -344,7 +351,24 @@ void sl_tpm_extend_pcr(struct tpm *tpm, u32 pcr, const u8 *data, u32 length,
 				   (const u8 *)desc, strlen(desc));
 }
 
-void sl_main(u8 *bootparams)
+asmlinkage __visible void sl_check_region(void *base, u32 size)
+{
+	void *end = base + size;
+	struct txt_os_sinit_data *os_sinit_data;
+	void *txt_heap;
+
+	txt_heap = (void *)sl_txt_read(TXT_CR_HEAP_BASE);
+	os_sinit_data = txt_os_sinit_data_start(txt_heap);
+
+	if ((end >= (void *)0x100000000ULL) ||
+	    (base >= (void *)0x100000000ULL))
+		sl_txt_reset(SL_ERROR_REGION_ABOVE_4GB);
+
+	if (end > (void *)os_sinit_data->vtd_pmr_lo_size)
+		sl_txt_reset(SL_ERROR_BUFFER_BEYOND_PMR);
+}
+
+asmlinkage __visible void sl_main(void *bootparams)
 {
 	struct tpm *tpm;
 	struct boot_params *bp;

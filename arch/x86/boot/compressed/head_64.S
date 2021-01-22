@@ -379,6 +379,21 @@ lvl5:
 	pushq	$0
 	popfq
 
+#ifdef CONFIG_SECURE_LAUNCH
+	pushq	%rbp
+	pushq	%rsi
+	pushq	%rbx
+
+	/* Ensure the relocation region coverd by a PMR */
+	movq	%rbx, %rdi
+	movq	$_bss, %rsi
+	callq	sl_check_region
+
+	popq	%rbx
+	popq	%rsi
+	popq	%rbp
+#endif
+
 /*
  * Copy the compressed kernel to the end of our buffer
  * where decompression in place becomes safe.
@@ -505,10 +520,19 @@ relocated:
 	 * to do anything about the use of kernel_alignment or init_size
 	 * though these seem low risk.
 	 */
+	pushq	%rbp
 	pushq	%rsi
+
 	movq	%rsi, %rdi
 	callq	sl_main
+
+	/* Ensure the decompression location is coverd by a PMR */
+	movq	%rbp, %rdi
+	movq	$z_output_len, %rsi
+	callq	sl_check_region
+
 	popq	%rsi
+	popq	%rbp
 #endif
 
 /*
