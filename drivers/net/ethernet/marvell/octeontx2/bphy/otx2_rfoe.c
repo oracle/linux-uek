@@ -906,8 +906,8 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	/* hw timestamp */
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 	    priv->tx_hw_tstamp_en) {
-		if (!test_and_set_bit_lock(PTP_TX_IN_PROGRESS, &priv->state) &&
-		    list_empty(&priv->ptp_skb_list.list)) {
+		if (list_empty(&priv->ptp_skb_list.list) &&
+		    !test_and_set_bit_lock(PTP_TX_IN_PROGRESS, &priv->state)) {
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 			priv->ptp_tx_skb = skb;
 			psm_cmd_lo = (struct psm_cmd_addjob_s *)
