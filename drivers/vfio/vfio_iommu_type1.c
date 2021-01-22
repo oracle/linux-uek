@@ -800,9 +800,9 @@ static size_t unmap_unpin_slow(struct vfio_domain *domain,
 }
 
 static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
-			     dma_addr_t iova, dma_addr_t end,
 			     bool do_accounting)
 {
+	dma_addr_t iova = dma->iova, end = dma->iova + dma->size;
 	struct vfio_domain *domain, *d;
 	LIST_HEAD(unmapped_region_list);
 	struct iommu_iotlb_gather iotlb_gather;
@@ -869,6 +869,8 @@ static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
 		}
 	}
 
+	dma->iommu_mapped = false;
+
 	if (unmapped_region_cnt) {
 		unlocked += vfio_sync_unpin(dma, domain, &unmapped_region_list,
 					    &iotlb_gather);
@@ -881,20 +883,14 @@ static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
 	return unlocked;
 }
 
-static void vfio_remove_dma_finish(struct vfio_iommu *iommu,
-				   struct vfio_dma *dma)
+static void vfio_remove_dma(struct vfio_iommu *iommu, struct vfio_dma *dma)
 {
-	dma->iommu_mapped = false;
+	WARN_ON(!RB_EMPTY_ROOT(&dma->pfn_list));
+	vfio_unmap_unpin(iommu, dma, true);
 	vfio_unlink_dma(iommu, dma);
 	put_task_struct(dma->task);
 	kfree(dma);
 	iommu->dma_avail++;
-}
-
-static void vfio_remove_dma(struct vfio_iommu *iommu, struct vfio_dma *dma)
-{
-	vfio_unmap_unpin(iommu, dma, dma->iova, dma->iova + dma->size, true);
-	vfio_remove_dma_finish(iommu, dma);
 }
 
 static unsigned long vfio_pgsize_bitmap(struct vfio_iommu *iommu)
@@ -1072,11 +1068,8 @@ static void vfio_pin_map_dma_undo(unsigned long start_vaddr,
 				  unsigned long end_vaddr, void *arg)
 {
 	struct vfio_pin_args *args = arg;
-	struct vfio_dma *dma = args->dma;
-	dma_addr_t iova = dma->iova + (start_vaddr - dma->vaddr);
-	dma_addr_t end  = dma->iova + (end_vaddr   - dma->vaddr);
 
-	vfio_unmap_unpin(args->iommu, args->dma, iova, end, true);
+	vfio_unmap_unpin(args->iommu, args->dma, true);
 }
 
 /*
@@ -1169,7 +1162,7 @@ static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
 	dma->iommu_mapped = true;
 
 	if (ret)
-		vfio_remove_dma_finish(iommu, dma);
+		vfio_remove_dma(iommu, dma);
 	else
 		dma->size += map_size;
 
@@ -2062,8 +2055,7 @@ static void vfio_iommu_unmap_unpin_reaccount(struct vfio_iommu *iommu)
 		long locked = 0, unlocked = 0;
 
 		dma = rb_entry(n, struct vfio_dma, node);
-		unlocked += vfio_unmap_unpin(iommu, dma, dma->iova,
-					     dma->iova + dma->size, false);
+		unlocked += vfio_unmap_unpin(iommu, dma, false);
 		dma->iommu_mapped = false;
 		p = rb_first(&dma->pfn_list);
 		for (; p; p = rb_next(p)) {
@@ -2075,23 +2067,6 @@ static void vfio_iommu_unmap_unpin_reaccount(struct vfio_iommu *iommu)
 		}
 		vfio_lock_acct(dma, locked - unlocked, true);
 	}
-}
-
-static void vfio_sanity_check_pfn_list(struct vfio_iommu *iommu)
-{
-	struct rb_node *n;
-
-	n = rb_first(&iommu->dma_list);
-	for (; n; n = rb_next(n)) {
-		struct vfio_dma *dma;
-
-		dma = rb_entry(n, struct vfio_dma, node);
-
-		if (WARN_ON(!RB_EMPTY_ROOT(&dma->pfn_list)))
-			break;
-	}
-	/* mdev vendor driver must unregister notifier */
-	WARN_ON(iommu->notifier.head);
 }
 
 /*
@@ -2191,10 +2166,10 @@ static void vfio_iommu_type1_detach_group(void *iommu_data,
 			kfree(group);
 
 			if (list_empty(&iommu->external_domain->group_list)) {
-				vfio_sanity_check_pfn_list(iommu);
-
-				if (!IS_IOMMU_CAP_DOMAIN_IN_CONTAINER(iommu))
+				if (!IS_IOMMU_CAP_DOMAIN_IN_CONTAINER(iommu)) {
+					WARN_ON(iommu->notifier.head);
 					vfio_iommu_unmap_unpin_all(iommu);
+				}
 
 				kfree(iommu->external_domain);
 				iommu->external_domain = NULL;
@@ -2227,10 +2202,12 @@ static void vfio_iommu_type1_detach_group(void *iommu_data,
 		 */
 		if (list_empty(&domain->group_list)) {
 			if (list_is_singular(&iommu->domain_list)) {
-				if (!iommu->external_domain)
+				if (!iommu->external_domain) {
+					WARN_ON(iommu->notifier.head);
 					vfio_iommu_unmap_unpin_all(iommu);
-				else
+				} else {
 					vfio_iommu_unmap_unpin_reaccount(iommu);
+				}
 			}
 			iommu_domain_free(domain->domain);
 			list_del(&domain->next);
@@ -2304,7 +2281,6 @@ static void vfio_iommu_type1_release(void *iommu_data)
 
 	if (iommu->external_domain) {
 		vfio_release_domain(iommu->external_domain, true);
-		vfio_sanity_check_pfn_list(iommu);
 		kfree(iommu->external_domain);
 	}
 
