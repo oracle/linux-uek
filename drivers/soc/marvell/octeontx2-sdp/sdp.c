@@ -1232,6 +1232,24 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto get_rinfo_failed;
 	}
 
+	/* To differentiate a PF between SDP0 or SDP1 we make use of the
+	 * revision ID field in the config space. The revision is filled
+	 * by the firmware.
+	 * 0 means SDP0
+	 * 1 means SDP1
+	 */
+	if (pdev->revision)
+		info.node_id = 1;
+	else
+		info.node_id = 0;
+
+
+	/*
+	 * For 98xx there are 2xSDPs so start the PF ring from 128 for SDP1
+	 * SDP0 has PCI revid 0 and SDP1 has PCI revid 1
+	 */
+	info.pf_srn = pdev->revision ? 128 : info.pf_srn;
+
 	err = send_chan_info(sdp, &info);
 	if (err) {
 		err = -EINVAL;
@@ -1243,11 +1261,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	fw_rinfo.s.rppf = info.num_pf_rings;
 	fw_rinfo.s.rpvf = info.vf_rings[0];
 	fw_rinfo.s.numvf = info.max_vfs - 1;
-	/*
-	 * For 98xx there are 2xSDPs so start the PF ring from 128 for SDP1
-	 * SDP0 has PCI revid 0 and SDP1 has PCI revid 1
-	 */
-	fw_rinfo.s.pf_srn = pdev->revision ? 128 : info.pf_srn;
+	fw_rinfo.s.pf_srn = info.pf_srn;
 
 	dev_info(&pdev->dev, "Ring info 0x%llx\n", fw_rinfo.u);
 	writeq(fw_rinfo.u, sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
