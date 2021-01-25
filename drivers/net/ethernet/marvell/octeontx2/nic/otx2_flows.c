@@ -327,14 +327,14 @@ static int otx2_prepare_ipv4_flow(struct ethtool_rx_flow_spec *fsp,
 			req->features |= BIT_ULL(NPC_DIP_IPV4);
 		}
 		pkt->etype = cpu_to_be16(ETH_P_IP);
-		pmask->etype = 0xFFFFU;
+		pmask->etype = cpu_to_be16(0xFFFF);
 		req->features |= BIT_ULL(NPC_ETYPE);
 		break;
 	case TCP_V4_FLOW:
 	case UDP_V4_FLOW:
 	case SCTP_V4_FLOW:
 		pkt->etype = cpu_to_be16(ETH_P_IP);
-		pmask->etype = 0xFFFFU;
+		pmask->etype = cpu_to_be16(0xFFFF);
 		req->features |= BIT_ULL(NPC_ETYPE);
 		if (ipv4_l4_mask->ip4src) {
 			memcpy(&pkt->ip4src, &ipv4_l4_hdr->ip4src,
@@ -384,7 +384,7 @@ static int otx2_prepare_ipv4_flow(struct ethtool_rx_flow_spec *fsp,
 	case AH_V4_FLOW:
 	case ESP_V4_FLOW:
 		pkt->etype = cpu_to_be16(ETH_P_IP);
-		pmask->etype = 0xFFFFU;
+		pmask->etype = cpu_to_be16(0xFFFF);
 		req->features |= BIT_ULL(NPC_ETYPE);
 		if (ah_esp_mask->ip4src) {
 			memcpy(&pkt->ip4src, &ah_esp_hdr->ip4src,
@@ -448,14 +448,14 @@ static int otx2_prepare_ipv6_flow(struct ethtool_rx_flow_spec *fsp,
 			req->features |= BIT_ULL(NPC_DIP_IPV6);
 		}
 		pkt->etype = cpu_to_be16(ETH_P_IPV6);
-		pmask->etype = 0xFFFFU;
+		pmask->etype = cpu_to_be16(0xFFFF);
 		req->features |= BIT_ULL(NPC_ETYPE);
 		break;
 	case TCP_V6_FLOW:
 	case UDP_V6_FLOW:
 	case SCTP_V6_FLOW:
 		pkt->etype = cpu_to_be16(ETH_P_IPV6);
-		pmask->etype = 0xFFFFU;
+		pmask->etype = cpu_to_be16(0xFFFF);
 		req->features |= BIT_ULL(NPC_ETYPE);
 		if (!ipv6_addr_any((struct in6_addr *)ipv6_l4_mask->ip6src)) {
 			memcpy(&pkt->ip6src, &ipv6_l4_hdr->ip6src,
@@ -505,7 +505,7 @@ static int otx2_prepare_ipv6_flow(struct ethtool_rx_flow_spec *fsp,
 	case AH_V6_FLOW:
 	case ESP_V6_FLOW:
 		pkt->etype = cpu_to_be16(ETH_P_IPV6);
-		pmask->etype = 0xFFFFU;
+		pmask->etype = cpu_to_be16(0xFFFF);
 		req->features |= BIT_ULL(NPC_ETYPE);
 		if (!ipv6_addr_any((struct in6_addr *)ah_esp_hdr->ip6src)) {
 			memcpy(&pkt->ip6src, &ah_esp_hdr->ip6src,
