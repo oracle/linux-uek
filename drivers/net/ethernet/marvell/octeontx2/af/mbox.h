@@ -235,6 +235,8 @@ M(REE_RULE_DB_LEN_GET,	0xE04, ree_rule_db_len_get, ree_req_msg,	\
 M(REE_RULE_DB_GET,	0xE05, ree_rule_db_get,				\
 				ree_rule_db_get_req_msg,		\
 				ree_rule_db_get_rsp_msg)		\
+/* SDP mbox IDs (range 0x1000 - 0x11FF) */				\
+M(SET_SDP_CHAN_INFO, 0x1000, set_sdp_chan_info, sdp_chan_info_msg, msg_rsp) \
 /* NPC mbox IDs (range 0x6000 - 0x7FFF) */				\
 M(NPC_MCAM_ALLOC_ENTRY,	0x6000, npc_mcam_alloc_entry, npc_mcam_alloc_entry_req,\
 				npc_mcam_alloc_entry_rsp)		\
@@ -1809,4 +1811,18 @@ struct ree_rule_db_get_rsp_msg {
 	u8 is_last;		/* Is this the last block */
 };
 
+struct sdp_node_info {
+	/* Node to which this PF belons to */
+	u8 node_id;
+	u8 max_vfs;
+	u8 num_pf_rings;
+	u8 pf_srn;
+#define SDP_MAX_VFS	128
+	u8 vf_rings[SDP_MAX_VFS];
+};
+
+struct sdp_chan_info_msg {
+	struct mbox_msghdr hdr;
+	struct sdp_node_info info;
+};
 #endif /* MBOX_H */

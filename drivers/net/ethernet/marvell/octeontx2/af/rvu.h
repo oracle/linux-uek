@@ -290,11 +290,10 @@ struct rvu_pfvf {
 	int     intf_mode;
 	u8	nix_rx_intf; /* NIX0_RX/NIX1_RX interface to NPC */
 	u8	nix_tx_intf; /* NIX0_TX/NIX1_TX interface to NPC */
-	bool	is_sdp0; /* is this PF mapped to SDP0 */
-	bool	is_sdp1; /* is this PF mapped to SDP1 */
 	u64     lmt_base_addr; /* Preseving the pcifunc's lmtst base addr*/
 	u64     lmt_map_ent_w1; /*Preseving the word1 of lmtst map table entry*/
 	unsigned long flags;
+	struct  sdp_node_info *sdp_info;
 };
 
 enum rvu_pfvf_flags {
@@ -694,13 +693,17 @@ int rvu_aq_alloc(struct rvu *rvu, struct admin_queue **ad_queue,
 		 int qsize, int inst_size, int res_size);
 void rvu_aq_free(struct rvu *rvu, struct admin_queue *aq);
 
+/* SDP APIs */
+int rvu_sdp_init(struct rvu *rvu);
+bool is_sdp_pfvf(u16 pcifunc);
+bool is_sdp_pf(u16 pcifunc);
+bool is_sdp_vf(u16 pcifunc);
+
 /* CGX APIs */
 static inline bool is_pf_cgxmapped(struct rvu *rvu, u8 pf)
 {
-	struct rvu_pfvf *pfvf = &rvu->pf[pf];
-
 	return (pf >= PF_CGXMAP_BASE && pf <= rvu->cgx_mapped_pfs) &&
-		(!pfvf->is_sdp0 && !pfvf->is_sdp1);
+		!is_sdp_pf(pf << RVU_PFVF_PF_SHIFT);
 }
 
 static inline void rvu_get_cgx_lmac_id(u8 map, u8 *cgx_id, u8 *lmac_id)
@@ -822,12 +825,6 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
-
-/* SDP APIs */
-int rvu_sdp_init(struct rvu *rvu);
-bool is_sdp_pfvf(u16 pcifunc);
-bool is_sdp_pf(u16 pcifunc);
-bool is_sdp_vf(u16 pcifunc);
 
 /* REE APIs */
 int rvu_ree_init(struct rvu *rvu);

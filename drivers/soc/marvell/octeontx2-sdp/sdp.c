@@ -17,6 +17,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 
+#include "rvu.h"
 #include "rvu_reg.h"
 #include "rvu_struct.h"
 #include "sdp.h"
@@ -34,6 +35,7 @@
 
 #define FW_TO_HOST 0x2
 #define HOST_TO_FW 0x1
+#define SDP_PPAIR_THOLD 0x400
 
 union ring {
 	u64 u;
@@ -70,10 +72,8 @@ struct host_hs_work {
 };
 struct host_hs_work hs_work;
 static int sdp_sriov_configure(struct pci_dev *pdev, int num_vfs);
-
-static u32 num_pf_rings, pf_srn;
-static u32 vf_rings[SDP_MAX_VFS];
-static u32 neg_vf0_rings, neg_vfx_rings, max_vfs, neg_vf;
+struct sdp_node_info info;
+static u32 neg_vf0_rings, neg_vfx_rings, neg_vf;
 
 static void
 sdp_write64(struct sdp_dev *rvu, u64 b, u64 s, u64 o, u64 v)
@@ -201,6 +201,7 @@ static void sdp_afpf_mbox_handler_up(struct work_struct *work)
 
 static void sdp_afpf_mbox_handler(struct work_struct *work)
 {
+	struct nix_lf_alloc_rsp *alloc_rsp;
 	struct otx2_mbox *af_mbx, *vf_mbx;
 	struct mbox_msghdr *msg, *fwd;
 	struct free_rsrcs_rsp *rsp;
@@ -239,6 +240,19 @@ static void sdp_afpf_mbox_handler(struct work_struct *work)
 		}
 
 		vf_id = (msg->pcifunc & RVU_PFVF_FUNC_MASK);
+
+		if (msg->id == MBOX_MSG_NIX_LF_ALLOC) {
+			alloc_rsp = (struct nix_lf_alloc_rsp *)msg;
+			/* Adjust the rings for vf according to the values
+			 * agreed through handshake
+			 */
+			if (vf_id == 1)
+				alloc_rsp->rx_chan_cnt = neg_vf0_rings;
+			else
+				alloc_rsp->rx_chan_cnt = neg_vfx_rings;
+			alloc_rsp->tx_chan_cnt = alloc_rsp->rx_chan_cnt;
+		}
+
 		if (vf_id > 0) {
 			if (vf_id > sdp->num_vfs) {
 				dev_err(&sdp->pdev->dev,
@@ -281,6 +295,9 @@ static void sdp_afpf_mbox_handler(struct work_struct *work)
 				rsp = (struct free_rsrcs_rsp *)msg;
 				memcpy(&sdp->limits, msg, sizeof(*rsp));
 				break;
+			case MBOX_MSG_SET_SDP_CHAN_INFO:
+				/* Nothing to do */
+				break;
 			default:
 				dev_err(&sdp->pdev->dev,
 					"Unsupported msg %d received.\n",
@@ -317,7 +334,10 @@ static int
 handle_vf_req(struct sdp_dev *sdp, struct rvu_vf *vf, struct mbox_msghdr *req,
 	      int size)
 {
-	int err = 0;
+	int err = 0, chan_idx, chan_diff, reg_off = 0, vf_id;
+	uint64_t en_bp;
+	u16 chan_base;
+	u8 chan_cnt;
 
 	/* Check if valid, if not reply with a invalid msg */
 	if (req->sig != OTX2_MBOX_REQ_SIG) {
@@ -356,6 +376,26 @@ handle_vf_req(struct sdp_dev *sdp, struct rvu_vf *vf, struct mbox_msghdr *req,
 		}
 		err = forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
 		break;
+	case MBOX_MSG_NIX_LF_ALLOC:
+		chan_base = NIX_CHAN_SDP_CHX(0) + info.num_pf_rings;
+		for (vf_id = 0; vf_id < vf->vf_id; vf_id++)
+			chan_base += info.vf_rings[vf_id];
+		chan_cnt = info.vf_rings[vf->vf_id];
+		for (chan_idx = 0; chan_idx < chan_cnt; chan_idx++) {
+			chan_diff = chan_base + chan_idx - NIX_CHAN_SDP_CHX(0);
+			reg_off = 0;
+			while (chan_diff > 63) {
+				reg_off += 1;
+				chan_diff -= 64;
+			}
+
+			en_bp = readq(sdp->sdp_base +
+				      SDPX_OUT_BP_ENX_W1S(reg_off));
+			en_bp |= (1ULL << chan_diff);
+			writeq(en_bp, sdp->sdp_base +
+			       SDPX_OUT_BP_ENX_W1S(reg_off));
+		}
+		/* Fall through */
 	default:
 		err = forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
 		break;
@@ -895,22 +935,23 @@ static int sdp_check_pf_usable(struct sdp_dev *sdp)
 	return 0;
 }
 
-static int sdp_parse_rinfo(struct sdp_dev *sdp)
+static int sdp_parse_rinfo(struct pci_dev *pdev,
+			   struct sdp_node_info *info)
 {
+	u32 vf_ring_cnts, vf_rings;
 	struct device_node *dev;
 	struct device *sdev;
-	u32 vf_ring_cnts;
 	const void *ptr;
 	int len, vfid;
 
-	sdev = &sdp->pdev->dev;
+	sdev = &pdev->dev;
 	dev = of_find_node_by_name(NULL, "rvu-sdp");
 	if (dev == NULL) {
 		dev_err(sdev, "can't find FDT dev %s\n", "rvu-sdp");
 		return -EINVAL;
 	}
 
-	max_vfs = pci_sriov_get_totalvfs(sdp->pdev);
+	info->max_vfs = pci_sriov_get_totalvfs(pdev);
 
 	ptr = of_get_property(dev, "num-pf-rings", &len);
 	if (ptr == NULL) {
@@ -921,7 +962,7 @@ static int sdp_parse_rinfo(struct sdp_dev *sdp)
 		dev_err(sdev, "SDP DTS: Wrong field length: num-pf-rings\n");
 		return -EINVAL;
 	}
-	num_pf_rings = be32_to_cpup((u32 *)ptr);
+	info->num_pf_rings = be32_to_cpup((u32 *)ptr);
 
 	ptr = of_get_property(dev, "pf-srn", &len);
 	if (ptr == NULL) {
@@ -932,7 +973,7 @@ static int sdp_parse_rinfo(struct sdp_dev *sdp)
 		dev_err(sdev, "SDP DTS: Wrong field length: pf-srn\n");
 		return -EINVAL;
 	}
-	pf_srn = be32_to_cpup((u32 *)ptr);
+	info->pf_srn = be32_to_cpup((u32 *)ptr);
 
 	ptr = of_get_property(dev, "num-vf-rings", &len);
 	if (ptr == NULL) {
@@ -941,28 +982,29 @@ static int sdp_parse_rinfo(struct sdp_dev *sdp)
 	}
 
 	vf_ring_cnts = len / sizeof(u32);
-	if (vf_ring_cnts > max_vfs) {
+	if (vf_ring_cnts > info->max_vfs) {
 		dev_err(sdev, "SDP DTS: Wrong field length: num-vf-rings\n");
 		return -EINVAL;
 	}
 
-	for (vfid = 0; vfid < max_vfs; vfid++) {
+	for (vfid = 0; vfid < info->max_vfs; vfid++) {
 		if (vfid < vf_ring_cnts) {
 			if (of_property_read_u32_index(dev, "num-vf-rings",
-					vfid, &vf_rings[vfid])) {
+					vfid, &vf_rings)) {
 				dev_err(sdev, "SDP DTS: Failed to get vf ring count\n");
 				return -EINVAL;
 			}
+			info->vf_rings[vfid] = vf_rings;
 		} else {
 			/*
 			 * Rest of the VFs use the same last ring count
 			 * specified
 			 */
-			vf_rings[vfid] = vf_rings[vf_ring_cnts - 1];
+			info->vf_rings[vfid] = info->vf_rings[vf_ring_cnts - 1];
 		}
 	}
 	dev_info(sdev, "pf start ring number:%d num_pf_rings:%d max_vfs:%d vf_ring_cnts:%d\n",
-		 pf_srn, num_pf_rings, max_vfs, vf_ring_cnts);
+		 info->pf_srn, info->num_pf_rings, info->max_vfs, vf_ring_cnts);
 
 	return 0;
 }
@@ -1043,13 +1085,41 @@ static void sdp_host_handshake_fn(struct work_struct *wrk)
 	queue_delayed_work(sdp->sdp_host_handshake, &sdp->sdp_work,  HZ * 1);
 }
 
+static int send_chan_info(struct sdp_dev *sdp, struct sdp_node_info *info)
+{
+	struct sdp_chan_info_msg *cinfo;
+	int res = 0;
+
+	cinfo = (struct sdp_chan_info_msg *)
+		otx2_mbox_alloc_msg(&sdp->afpf_mbox, 0, sizeof(*cinfo));
+	if (cinfo == NULL) {
+		dev_err(&sdp->pdev->dev, "RVU MBOX failed to get message.\n");
+		return -EFAULT;
+	}
+	cinfo->hdr.id = MBOX_MSG_SET_SDP_CHAN_INFO;
+	cinfo->hdr.sig = OTX2_MBOX_REQ_SIG;
+	cinfo->hdr.pcifunc = RVU_PFFUNC(sdp->pf, 0);
+
+	memcpy(&cinfo->info, info, sizeof(struct sdp_node_info));
+	otx2_mbox_msg_send(&sdp->afpf_mbox, 0);
+	res = otx2_mbox_wait_for_rsp(&sdp->afpf_mbox, 0);
+	if (res == -EIO) {
+		dev_err(&sdp->pdev->dev, "RVU AF MBOX timeout.\n");
+	} else if (res) {
+		dev_err(&sdp->pdev->dev, "RVU MBOX error: %d.\n", res);
+		res = -EFAULT;
+	}
+
+	return res;
+}
+
 static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
+	uint64_t inst, sdp_gbl_ctl;
 	struct sdp_dev *sdp;
 	union ring fw_rinfo;
 	int err;
-	uint64_t inst;
 
 	sdp = devm_kzalloc(dev, sizeof(struct sdp_dev), GFP_KERNEL);
 	if (sdp == NULL)
@@ -1156,7 +1226,13 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto get_pcifunc_failed;
 	}
 
-	err = sdp_parse_rinfo(sdp);
+	err = sdp_parse_rinfo(pdev, &info);
+	if (err) {
+		err = -EINVAL;
+		goto get_rinfo_failed;
+	}
+
+	err = send_chan_info(sdp, &info);
 	if (err) {
 		err = -EINVAL;
 		goto get_rinfo_failed;
@@ -1164,17 +1240,23 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	fw_rinfo.u = 0;
 	fw_rinfo.s.dir = FW_TO_HOST;
-	fw_rinfo.s.rppf = num_pf_rings;
-	fw_rinfo.s.rpvf = vf_rings[0];
-	fw_rinfo.s.numvf = max_vfs-1;
+	fw_rinfo.s.rppf = info.num_pf_rings;
+	fw_rinfo.s.rpvf = info.vf_rings[0];
+	fw_rinfo.s.numvf = info.max_vfs - 1;
 	/*
 	 * For 98xx there are 2xSDPs so start the PF ring from 128 for SDP1
 	 * SDP0 has PCI revid 0 and SDP1 has PCI revid 1
 	 */
-	fw_rinfo.s.pf_srn = pdev->revision ? 128 : pf_srn;
+	fw_rinfo.s.pf_srn = pdev->revision ? 128 : info.pf_srn;
 
 	dev_info(&pdev->dev, "Ring info 0x%llx\n", fw_rinfo.u);
 	writeq(fw_rinfo.u, sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
+
+	/* Water mark for backpressuring NIX Tx when enabled */
+	writeq(SDP_PPAIR_THOLD, sdp->sdp_base + SDPX_OUT_WMARK);
+	sdp_gbl_ctl = readq(sdp->sdp_base + SDPX_GBL_CONTROL);
+	sdp_gbl_ctl |= (1 << 2); /* BPFLR_D disable clearing BP in FLR */
+	writeq(sdp_gbl_ctl, sdp->sdp_base + SDPX_GBL_CONTROL);
 
 	sdp->sdp_host_handshake = alloc_workqueue("sdp_epmode_fw_hs",
 						     WQ_MEM_RECLAIM, 0);

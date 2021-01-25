@@ -1099,7 +1099,6 @@ cpt:
 			       sizeof(struct rvu_pfvf), GFP_KERNEL);
 	if (!rvu->pf)
 		return -ENOMEM;
-
 	rvu->hwvf = devm_kcalloc(rvu->dev, hw->total_vfs,
 				 sizeof(struct rvu_pfvf), GFP_KERNEL);
 	if (!rvu->hwvf)
@@ -1515,7 +1514,7 @@ static int rvu_get_nix_blkaddr(struct rvu *rvu, u16 pcifunc)
 	}
 
 	/* if SDP1 then the blkaddr is NIX1 */
-	if (pf->is_sdp1)
+	if (is_sdp_pfvf(pcifunc) && pf->sdp_info->node_id == 1)
 		blkaddr = BLKADDR_NIX1;
 
 	switch (blkaddr) {
