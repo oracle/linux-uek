@@ -61,19 +61,23 @@ int rvu_sdp_init(struct rvu *rvu)
 		/* The RVU PF number is one less than bus number */
 		sdp_pf_num[i] = pdev->bus->number - 1;
 		pfvf = &rvu->pf[sdp_pf_num[i]];
+
+		pfvf->sdp_info = devm_kzalloc(rvu->dev,
+					      sizeof(struct sdp_node_info),
+					      GFP_KERNEL);
+		if (!pfvf->sdp_info)
+			return -ENOMEM;
+
 		/* To differentiate a PF between SDP0 or SDP1 we make use of the
 		 * revision ID field in the config space. The revision is filled
 		 * by the firmware.
 		 * 0 means SDP0
 		 * 1 means SDP1
 		 */
-		if (pdev->revision) {
-			pfvf->is_sdp0 = 0;
-			pfvf->is_sdp1 = 1;
-		} else {
-			pfvf->is_sdp0 = 1;
-			pfvf->is_sdp1 = 0;
-		}
+		if (pdev->revision)
+			pfvf->sdp_info->node_id = 1;
+		else
+			pfvf->sdp_info->node_id = 0;
 
 		dev_info(rvu->dev, "SDP PF number:%d\n", sdp_pf_num[i]);
 
@@ -81,5 +85,18 @@ int rvu_sdp_init(struct rvu *rvu)
 		i++;
 	}
 
+	return 0;
+}
+
+int
+rvu_mbox_handler_set_sdp_chan_info(struct rvu *rvu,
+				   struct sdp_chan_info_msg *req,
+				   struct msg_rsp *rsp)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
+
+	memcpy(pfvf->sdp_info, &req->info, sizeof(struct sdp_node_info));
+	dev_info(rvu->dev, "AF: max_vfs %d num_pf_rings %d pf_srn %d\n",
+		 req->info.max_vfs, req->info.num_pf_rings, req->info.pf_srn);
 	return 0;
 }
