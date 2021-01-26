@@ -148,7 +148,7 @@ static int pl030_probe(struct amba_device *dev, const struct amba_id *id)
 	return ret;
 }
 
-static int pl030_remove(struct amba_device *dev)
+static void pl030_remove(struct amba_device *dev)
 {
 	struct pl030_rtc *rtc = amba_get_drvdata(dev);
 
@@ -157,8 +157,6 @@ static int pl030_remove(struct amba_device *dev)
 	free_irq(dev->irq[0], rtc);
 	iounmap(rtc->base);
 	amba_release_regions(dev);
-
-	return 0;
 }
 
 static struct amba_id pl030_ids[] = {
