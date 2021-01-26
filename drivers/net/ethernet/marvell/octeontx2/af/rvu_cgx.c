@@ -14,6 +14,7 @@
 
 #include "rvu.h"
 #include "cgx.h"
+#include "lmac_common.h"
 #include "rvu_reg.h"
 #include "rvu_trace.h"
 
@@ -403,7 +404,7 @@ inline bool is_cgx_config_permitted(struct rvu *rvu, u16 pcifunc)
 
 void rvu_cgx_enadis_rx_bp(struct rvu *rvu, int pf, bool enable)
 {
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	u8 cgx_id, lmac_id;
 	void *cgxd;
 
@@ -413,7 +414,7 @@ void rvu_cgx_enadis_rx_bp(struct rvu *rvu, int pf, bool enable)
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
 
-	mac_ops = cgx_get_mac_ops(cgxd);
+	mac_ops = get_mac_ops(cgxd);
 	/* Set / clear CTL_BCK to control pause frame forwarding to NIX */
 	if (enable)
 		mac_ops->mac_enadis_rx_pause_fwding(cgxd, lmac_id, true);
@@ -509,7 +510,7 @@ static int rvu_lmac_get_stats(struct rvu *rvu, struct msg_req *req,
 			      void *rsp)
 {
 	int pf = rvu_get_pf(req->hdr.pcifunc);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	int stat = 0, err = 0;
 	u64 tx_stat, rx_stat;
 	u8 cgx_idx, lmac;
@@ -520,7 +521,7 @@ static int rvu_lmac_get_stats(struct rvu *rvu, struct msg_req *req,
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_idx, &lmac);
 	cgxd = rvu_cgx_pdata(cgx_idx, rvu);
-	mac_ops = cgx_get_mac_ops(cgxd);
+	mac_ops = get_mac_ops(cgxd);
 
 	while (stat < mac_ops->rx_stats_cnt) {
 		err = mac_ops->mac_get_rx_stats(cgxd, lmac, stat, &rx_stat);
@@ -858,14 +859,14 @@ int rvu_mbox_handler_cgx_get_linkinfo(struct rvu *rvu, struct msg_req *req,
 static int rvu_cgx_config_intlbk(struct rvu *rvu, u16 pcifunc, bool en)
 {
 	int pf = rvu_get_pf(pcifunc);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	u8 cgx_id, lmac_id;
 
 	if (!is_cgx_config_permitted(rvu, pcifunc))
 		return -EPERM;
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
-	mac_ops = cgx_get_mac_ops(rvu_cgx_pdata(cgx_id, rvu));
+	mac_ops = get_mac_ops(rvu_cgx_pdata(cgx_id, rvu));
 
 	return mac_ops->mac_lmac_intl_lbk(rvu_cgx_pdata(cgx_id, rvu),
 					  lmac_id, en);
@@ -890,7 +891,7 @@ int rvu_mbox_handler_cgx_cfg_pause_frm(struct rvu *rvu,
 				       struct cgx_pause_frm_cfg *rsp)
 {
 	int pf = rvu_get_pf(req->hdr.pcifunc);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	u8 cgx_id, lmac_id;
 	void *cgxd;
 
@@ -905,7 +906,7 @@ int rvu_mbox_handler_cgx_cfg_pause_frm(struct rvu *rvu,
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
-	mac_ops = cgx_get_mac_ops(cgxd);
+	mac_ops = get_mac_ops(cgxd);
 
 	if (req->set)
 		mac_ops->mac_enadis_pause_frm(cgxd, lmac_id,
@@ -1185,11 +1186,11 @@ int rvu_mbox_handler_cgx_features_get(struct rvu *rvu,
 
 u32 rvu_cgx_get_fifolen(struct rvu *rvu)
 {
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	int rvu_def_cgx_id = 0;
 	u32 fifo_len;
 
-	mac_ops = cgx_get_mac_ops(rvu_cgx_pdata(rvu_def_cgx_id, rvu));
+	mac_ops = get_mac_ops(rvu_cgx_pdata(rvu_def_cgx_id, rvu));
 	fifo_len = mac_ops ? mac_ops->fifo_len : 0;
 
 	return fifo_len;
