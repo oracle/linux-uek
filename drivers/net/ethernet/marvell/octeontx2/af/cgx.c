@@ -29,52 +29,6 @@
 
 #define CGX_RX_STAT_GLOBAL_INDEX	9
 
-static struct cgx_mac_ops	otx2_mac_ops    = {
-	.name		=       "cgx",
-	.csr_offset	=       0,
-	.lmac_offset    =       18,
-	.int_register	=       CGXX_CMRX_INT,
-	.int_set_reg	=       CGXX_CMRX_INT_ENA_W1S,
-	.irq_offset	=       9,
-	.int_ena_bit    =       FW_CGX_INT,
-	.lmac_fwi	=	CGX_LMAC_FWI,
-	.non_contiguous_serdes_lane = false,
-	.rx_stats_cnt   =       9,
-	.tx_stats_cnt   =       18,
-	.get_nr_lmacs	=	cgx_get_nr_lmacs,
-	.get_lmac_type  =       cgx_get_lmac_type,
-	.mac_lmac_intl_lbk =    cgx_lmac_internal_loopback,
-	.mac_get_rx_stats  =	cgx_get_rx_stats,
-	.mac_get_tx_stats  =	cgx_get_tx_stats,
-	.mac_enadis_rx_pause_fwding =	cgx_lmac_enadis_rx_pause_fwding,
-	.mac_get_pause_frm_status =	cgx_lmac_get_pause_frm_status,
-	.mac_enadis_pause_frm =		cgx_lmac_enadis_pause_frm,
-	.mac_pause_frm_config =		cgx_lmac_pause_frm_config,
-};
-
-static struct cgx_mac_ops	cn10k_mac_ops   = {
-	.name		=       "rpm",
-	.csr_offset     =       0x4e00,
-	.lmac_offset    =       20,
-	.int_register	=       RPMX_CMRX_SW_INT,
-	.int_set_reg    =       RPMX_CMRX_SW_INT_ENA_W1S,
-	.irq_offset     =       1,
-	.int_ena_bit    =       BIT_ULL(0),
-	.lmac_fwi	=	RPM_LMAC_FWI,
-	.non_contiguous_serdes_lane = true,
-	.rx_stats_cnt   =       43,
-	.tx_stats_cnt   =       34,
-	.get_nr_lmacs	=	rpm_get_nr_lmacs,
-	.get_lmac_type  =       rpm_get_lmac_type,
-	.mac_lmac_intl_lbk =    rpm_lmac_internal_loopback,
-	.mac_get_rx_stats  =	rpm_get_rx_stats,
-	.mac_get_tx_stats  =	rpm_get_tx_stats,
-	.mac_enadis_rx_pause_fwding =	rpm_lmac_enadis_rx_pause_fwding,
-	.mac_get_pause_frm_status =	rpm_lmac_get_pause_frm_status,
-	.mac_enadis_pause_frm =		rpm_lmac_enadis_pause_frm,
-	.mac_pause_frm_config =		rpm_lmac_pause_frm_config,
-};
-
 static LIST_HEAD(cgx_list);
 
 /* Convert firmware speed encoding to user format(Mbps) */
@@ -123,7 +77,7 @@ static int get_sequence_id_of_lmac(struct cgx *cgx, int lmac_id)
 	return id;
 }
 
-struct cgx_mac_ops *cgx_get_mac_ops(void *cgxd)
+struct mac_ops *get_mac_ops(void *cgxd)
 {
 	if (!cgxd)
 		return cgxd;
@@ -258,7 +212,7 @@ int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	int index, id;
 	u64 cfg;
 
@@ -289,7 +243,7 @@ int cgx_lmac_addr_add(u8 cgx_id, u8 lmac_id, u8 *mac_addr)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	int index, idx;
 	u64 cfg = 0;
 	int id;
@@ -325,7 +279,7 @@ int cgx_lmac_addr_reset(u8 cgx_id, u8 lmac_id)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	u8 index = 0;
 	u64 cfg;
 
@@ -355,7 +309,7 @@ int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	int id;
 
 	if (!lmac)
@@ -398,7 +352,7 @@ u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	int index;
 	u64 cfg;
 	int id;
@@ -479,7 +433,7 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 	struct cgx *cgx = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx);
 	u16 max_dmac = lmac->mac_to_index_bmap.max;
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	int index, i;
 	u64 cfg = 0;
 	int id;
@@ -1593,7 +1547,7 @@ static void cgx_lmac_get_fifolen(struct cgx *cgx)
 static int cgx_configure_interrupt(struct cgx *cgx, struct lmac *lmac,
 				   int cnt, bool req_free)
 {
-	struct cgx_mac_ops     *mac_ops = cgx->mac_ops;
+	struct mac_ops     *mac_ops = cgx->mac_ops;
 	u64 offset, ena_bit;
 	unsigned int irq;
 	int err;
@@ -1745,6 +1699,29 @@ static void cgx_populate_features(struct cgx *cgx)
 				    RVU_LMAC_FEAT_PTP | RVU_LMAC_FEAT_DMACF);
 }
 
+struct mac_ops		cgx_mac_ops    = {
+	.name		=       "cgx",
+	.csr_offset	=       0,
+	.lmac_offset    =       18,
+	.int_register	=       CGXX_CMRX_INT,
+	.int_set_reg	=       CGXX_CMRX_INT_ENA_W1S,
+	.irq_offset	=       9,
+	.int_ena_bit    =       FW_CGX_INT,
+	.lmac_fwi	=	CGX_LMAC_FWI,
+	.non_contiguous_serdes_lane = false,
+	.rx_stats_cnt   =       9,
+	.tx_stats_cnt   =       18,
+	.get_nr_lmacs	=	cgx_get_nr_lmacs,
+	.get_lmac_type  =       cgx_get_lmac_type,
+	.mac_lmac_intl_lbk =    cgx_lmac_internal_loopback,
+	.mac_get_rx_stats  =	cgx_get_rx_stats,
+	.mac_get_tx_stats  =	cgx_get_tx_stats,
+	.mac_enadis_rx_pause_fwding =	cgx_lmac_enadis_rx_pause_fwding,
+	.mac_get_pause_frm_status =	cgx_lmac_get_pause_frm_status,
+	.mac_enadis_pause_frm =		cgx_lmac_enadis_pause_frm,
+	.mac_pause_frm_config =		cgx_lmac_pause_frm_config,
+};
+
 static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
@@ -1760,9 +1737,9 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	/* Use mac_ops to get MAC specific features */
 	if (pdev->device == PCI_DEVID_CN10K_RPM)
-		cgx->mac_ops = &cn10k_mac_ops;
+		cgx->mac_ops = rpm_get_mac_ops();
 	else
-		cgx->mac_ops = &otx2_mac_ops;
+		cgx->mac_ops = &cgx_mac_ops;
 
 	err = pci_enable_device(pdev);
 	if (err) {

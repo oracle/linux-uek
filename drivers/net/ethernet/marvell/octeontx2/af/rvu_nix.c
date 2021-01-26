@@ -16,6 +16,7 @@
 #include "rvu.h"
 #include "npc.h"
 #include "cgx.h"
+#include "lmac_common.h"
 #include "rvu_fixes.h"
 
 static void nix_free_tx_vtag_entries(struct rvu *rvu, u16 pcifunc);
@@ -226,7 +227,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct sdp_node_info *sdp_info;
 	int pkind, pf, vf, lbkid, vfid;
-	struct cgx_mac_ops *mac_ops;
+	struct mac_ops *mac_ops;
 	u8 cgx_id, lmac_id;
 	bool from_vf;
 	int err;
@@ -259,7 +260,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 			rvu_npc_set_pkind(rvu, pkind, pfvf);
 		}
 
-		mac_ops = cgx_get_mac_ops(rvu_cgx_pdata(cgx_id, rvu));
+		mac_ops = get_mac_ops(rvu_cgx_pdata(cgx_id, rvu));
 
 		/* By default we enable pause frames */
 		if ((pcifunc & RVU_PFVF_FUNC_MASK) == 0)

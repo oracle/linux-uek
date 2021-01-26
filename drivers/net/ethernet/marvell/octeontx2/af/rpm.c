@@ -8,26 +8,54 @@
 #include "cgx.h"
 #include "lmac_common.h"
 
-static void rpm_write(struct cgx *rpm, u64 lmac, u64 offset, u64 val)
+static struct mac_ops		rpm_mac_ops   = {
+	.name		=       "rpm",
+	.csr_offset     =       0x4e00,
+	.lmac_offset    =       20,
+	.int_register	=       RPMX_CMRX_SW_INT,
+	.int_set_reg    =       RPMX_CMRX_SW_INT_ENA_W1S,
+	.irq_offset     =       1,
+	.int_ena_bit    =       BIT_ULL(0),
+	.lmac_fwi	=	RPM_LMAC_FWI,
+	.non_contiguous_serdes_lane = true,
+	.rx_stats_cnt   =       43,
+	.tx_stats_cnt   =       34,
+	.get_nr_lmacs	=	rpm_get_nr_lmacs,
+	.get_lmac_type  =       rpm_get_lmac_type,
+	.mac_lmac_intl_lbk =    rpm_lmac_internal_loopback,
+	.mac_get_rx_stats  =	rpm_get_rx_stats,
+	.mac_get_tx_stats  =	rpm_get_tx_stats,
+	.mac_enadis_rx_pause_fwding =	rpm_lmac_enadis_rx_pause_fwding,
+	.mac_get_pause_frm_status =	rpm_lmac_get_pause_frm_status,
+	.mac_enadis_pause_frm =		rpm_lmac_enadis_pause_frm,
+	.mac_pause_frm_config =		rpm_lmac_pause_frm_config,
+};
+
+struct mac_ops *rpm_get_mac_ops(void)
+{
+	return &rpm_mac_ops;
+}
+
+static void rpm_write(rpm_t *rpm, u64 lmac, u64 offset, u64 val)
 {
 	cgx_write(rpm, lmac, offset, val);
 }
 
-static u64 rpm_read(struct cgx *rpm, u64 lmac, u64 offset)
+static u64 rpm_read(rpm_t *rpm, u64 lmac, u64 offset)
 {
 	return	cgx_read(rpm, lmac, offset);
 }
 
 int rpm_get_nr_lmacs(void *rpmd)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 
 	return hweight8(rpm_read(rpm, 0, CGXX_CMRX_RX_LMACS) & 0xFULL);
 }
 
 u8 rpm_get_lmac_type(void *rpmd, int lmac_id)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 	u64 req = 0, resp;
 	int err;
 
@@ -40,7 +68,7 @@ u8 rpm_get_lmac_type(void *rpmd, int lmac_id)
 
 int rpm_lmac_internal_loopback(void *rpmd, int lmac_id, bool enable)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 	u8 lmac_type;
 	u64 cfg;
 
@@ -69,7 +97,7 @@ int rpm_lmac_internal_loopback(void *rpmd, int lmac_id, bool enable)
 
 int rpm_get_rx_stats(void *rpmd, int lmac_id, int idx, u64 *rx_stat)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 	u64 val_lo, val_hi;
 
 	if (!is_lmac_valid(rpm, lmac_id))
@@ -97,7 +125,7 @@ int rpm_get_rx_stats(void *rpmd, int lmac_id, int idx, u64 *rx_stat)
 
 int rpm_get_tx_stats(void *rpmd, int lmac_id, int idx, u64 *tx_stat)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 	u64 val_lo, val_hi;
 
 	if (!is_lmac_valid(rpm, lmac_id))
@@ -120,7 +148,7 @@ int rpm_get_tx_stats(void *rpmd, int lmac_id, int idx, u64 *tx_stat)
 
 void rpm_lmac_enadis_rx_pause_fwding(void *rpmd, int lmac_id, bool enable)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 	u64 cfg;
 
 	if (!rpm)
@@ -137,10 +165,10 @@ void rpm_lmac_enadis_rx_pause_fwding(void *rpmd, int lmac_id, bool enable)
 	}
 }
 
-int rpm_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
+int rpm_lmac_get_pause_frm_status(void *rpmd, int lmac_id,
 				  u8 *tx_pause, u8 *rx_pause)
 {
-	struct cgx *rpm = cgxd;
+	rpm_t *rpm = rpmd;
 	u64 cfg;
 
 	if (!is_lmac_valid(rpm, lmac_id))
@@ -157,7 +185,7 @@ int rpm_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
 static int rpm_lmac_enadis_8023_pause_frm(void *rpmd, int lmac_id, u8 tx_pause,
 					  u8 rx_pause)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 	u64 cfg;
 
 	cfg = rpm_read(rpm, lmac_id, RPMX_MTI_MAC100X_COMMAND_CONFIG);
@@ -186,7 +214,7 @@ static int rpm_lmac_enadis_8023_pause_frm(void *rpmd, int lmac_id, u8 tx_pause,
 int rpm_lmac_enadis_pause_frm(void *rpmd, int lmac_id,
 			      u8 tx_pause, u8 rx_pause)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 
 	if (!is_lmac_valid(rpm, lmac_id))
 		return -ENODEV;
@@ -197,7 +225,7 @@ int rpm_lmac_enadis_pause_frm(void *rpmd, int lmac_id,
 
 void rpm_lmac_pause_frm_config(void *rpmd, int lmac_id, bool enable)
 {
-	struct cgx *rpm = rpmd;
+	rpm_t *rpm = rpmd;
 	u64 cfg;
 
 	if (enable) {
@@ -228,7 +256,7 @@ void rpm_lmac_pause_frm_config(void *rpmd, int lmac_id, bool enable)
 		rpm_write(rpm, lmac_id, RPMX_MTI_MAC100X_CL01_PAUSE_QUANTA,
 			  cfg | RPM_DEFAULT_PAUSE_TIME);
 		/* Set pause interval as the hardware default is too short */
-		cfg = cgx_read(rpm, lmac_id,
+		cfg = rpm_read(rpm, lmac_id,
 			       RPMX_MTI_MAC100X_CL01_QUANTA_THRESH);
 		cfg &= ~0xFFFFULL;
 		rpm_write(rpm, lmac_id, RPMX_MTI_MAC100X_CL01_QUANTA_THRESH,

@@ -34,6 +34,65 @@ struct lmac {
 	char *name;
 };
 
+/* CGX & RPM has different feature set
+ * update the structure fields with different one
+ */
+struct mac_ops {
+	char		       *name;
+	/* Features like  DMAC FILTER csrs differs by fixed
+	 * bar offset for example
+	 * CGX DMAC_CTL0  0x1f8
+	 * RPM DMAC_CTL0  0x4ff8
+	 */
+	u64			csr_offset;
+	/* For ATF to send events to kernel, there is no dedicated interrupt
+	 * defined hence CGX uses OVERFLOW bit in CMR_INT. RPM block supports
+	 * SW_INT so that ATF triggers this interrupt after processing of
+	 * requested command
+	 */
+	u64			int_register;
+	u64			int_set_reg;
+	/* lmac offset is different is RPM */
+	u8			lmac_offset;
+	u8			irq_offset;
+	u8			int_ena_bit;
+	u8			lmac_fwi;
+	u32			fifo_len;
+	bool			non_contiguous_serdes_lane;
+	/* RPM & CGX differs in number of Receive/transmit stats */
+	u8			rx_stats_cnt;
+	u8			tx_stats_cnt;
+
+	/* Incase of RPM get number of lmacs from RPMX_CMR_RX_LMACS[LMAC_EXIST]
+	 * number of setbits in lmac_exist tells number of lmacs
+	 */
+	int			(*get_nr_lmacs)(void *cgx);
+	u8                      (*get_lmac_type)(void *cgx, int lmac_id);
+	int                     (*mac_lmac_intl_lbk)(void *cgx, int lmac_id,
+						     bool enable);
+	/* Register Stats related functions */
+	int			(*mac_get_rx_stats)(void *cgx, int lmac_id,
+						    int idx, u64 *rx_stat);
+	int			(*mac_get_tx_stats)(void *cgx, int lmac_id,
+						    int idx, u64 *tx_stat);
+	/* Enable LMAC Pause Frame Configuration */
+	void			(*mac_enadis_rx_pause_fwding)(void *cgxd,
+							      int lmac_id,
+							      bool enable);
+	int			(*mac_get_pause_frm_status)(void *cgxd,
+							    int lmac_id,
+							    u8 *tx_pause,
+							    u8 *rx_pause);
+	int			(*mac_enadis_pause_frm)(void *cgxd,
+							int lmac_id,
+							u8 tx_pause,
+							u8 rx_pause);
+	void			(*mac_pause_frm_config)(void  *cgxd,
+							int lmac_id,
+							bool enable);
+
+};
+
 struct cgx {
 	void __iomem            *reg_base;
 	struct pci_dev          *pdev;
@@ -44,13 +103,15 @@ struct cgx {
 	struct                  workqueue_struct *cgx_cmd_workq;
 	struct list_head        cgx_list;
 	u64                     hw_features;
-	struct cgx_mac_ops     *mac_ops;
+	struct mac_ops     *mac_ops;
 	/* Lock to serialize read/write of global csrs like
 	 * RPMX_MTI_STAT_DATA_HI_CDC etc
 	 */
 	struct mutex		lock;
 	unsigned long		lmac_bmap; /* bitmap of enabled lmacs */
 };
+
+typedef struct cgx rpm_t;
 
 /* Function Declarations */
 void cgx_write(struct cgx *cgx, u64 lmac, u64 offset, u64 val);
@@ -59,3 +120,4 @@ struct lmac *lmac_pdata(u8 lmac_id, struct cgx *cgx);
 int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac);
 int cgx_fwi_cmd_generic(u64 req, u64 *resp, struct cgx *cgx, int lmac_id);
 bool is_lmac_valid(struct cgx *cgx, int lmac_id);
+struct mac_ops *rpm_get_mac_ops(void);
