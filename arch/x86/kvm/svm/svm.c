@@ -974,7 +974,15 @@ static __init int svm_hardware_setup(void)
 		}
 	}
 
-	vgif = false; /* Disabled for CVE-2021-3653 */
+	if (boot_cpu_has(X86_FEATURE_SVME_ADDR_CHK))
+		svm_gp_erratum_intercept = false;
+
+	if (vgif) {
+		if (!boot_cpu_has(X86_FEATURE_VGIF))
+			vgif = false;
+		else
+			pr_info("Virtual GIF supported\n");
+	}
 
 	svm_set_cpu_caps();
 
