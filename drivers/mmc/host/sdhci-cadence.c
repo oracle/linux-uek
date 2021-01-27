@@ -97,17 +97,17 @@ static int sdhci_cdns_write_phy_reg(struct sdhci_cdns_priv *priv,
 
 	tmp = FIELD_PREP(SDHCI_CDNS_HRS04_WDATA, data) |
 	      FIELD_PREP(SDHCI_CDNS_HRS04_ADDR, addr);
-	writel(tmp, reg);
+	sdhci_cdns_priv_writel(priv, tmp, reg);
 
 	tmp |= SDHCI_CDNS_HRS04_WR;
-	writel(tmp, reg);
+	sdhci_cdns_priv_writel(priv, tmp, reg);
 
 	ret = readl_poll_timeout(reg, tmp, tmp & SDHCI_CDNS_HRS04_ACK, 0, 10);
 	if (ret)
 		return ret;
 
 	tmp &= ~SDHCI_CDNS_HRS04_WR;
-	writel(tmp, reg);
+	sdhci_cdns_priv_writel(priv, tmp, reg);
 
 	ret = readl_poll_timeout(reg, tmp, !(tmp & SDHCI_CDNS_HRS04_ACK),
 				 0, 10);
@@ -177,7 +177,7 @@ static void sdhci_cdns_set_emmc_mode(struct sdhci_cdns_priv *priv, u32 mode)
 	tmp = readl(priv->hrs_addr + SDHCI_CDNS_HRS06);
 	tmp &= ~SDHCI_CDNS_HRS06_MODE;
 	tmp |= FIELD_PREP(SDHCI_CDNS_HRS06_MODE, mode);
-	writel(tmp, priv->hrs_addr + SDHCI_CDNS_HRS06);
+	sdhci_cdns_priv_writel(priv, tmp, priv->hrs_addr + SDHCI_CDNS_HRS06);
 }
 
 static u32 sdhci_cdns_get_emmc_mode(struct sdhci_cdns_priv *priv)
@@ -264,7 +264,7 @@ static int sdhci_cdns_set_tune_val(struct sdhci_host *host, unsigned int val)
 	 */
 	for (i = 0; i < 2; i++) {
 		tmp |= SDHCI_CDNS_HRS06_TUNE_UP;
-		writel(tmp, reg);
+		sdhci_cdns_priv_writel(priv, tmp, reg);
 
 		ret = readl_poll_timeout(reg, tmp,
 					 !(tmp & SDHCI_CDNS_HRS06_TUNE_UP),
@@ -311,6 +311,9 @@ static int sdhci_cdns_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		dev_err(mmc_dev(host->mmc), "no tuning point found\n");
 		return -EIO;
 	}
+
+	dev_info(mmc_dev(host->mmc), "tuning val %d streak end %d max %d\n",
+		 end_of_streak - max_streak / 2, end_of_streak, max_streak);
 
 	return sdhci_cdns_set_tune_val(host, end_of_streak - max_streak / 2);
 }
@@ -374,8 +377,7 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	priv->hrs_addr = host->ioaddr;
 	priv->enhanced_strobe = false;
 	host->ioaddr += SDHCI_CDNS_SRS_BASE;
-	if (!data->no_retune)
-		host->mmc_host_ops.execute_tuning = sdhci_cdns_execute_tuning;
+	host->mmc_host_ops.execute_tuning = sdhci_cdns_execute_tuning;
 	host->mmc_host_ops.hs400_enhanced_strobe =
 				sdhci_cdns_hs400_enhanced_strobe;
 
@@ -385,17 +387,17 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	if (ret)
 		goto free;
 
-	sdhci_cdns_phy_param_parse(dev->of_node, priv);
-
-	ret = sdhci_cdns_phy_init(priv);
-	if (ret)
-		goto free;
-
 	if (data->init) {
 		ret = data->init(pdev);
 		if (ret)
 			goto free;
 	}
+
+	sdhci_cdns_phy_param_parse(dev->of_node, priv);
+
+	ret = sdhci_cdns_phy_init(priv);
+	if (ret)
+		goto free;
 
 	ret = sdhci_add_host(host);
 	if (ret)
