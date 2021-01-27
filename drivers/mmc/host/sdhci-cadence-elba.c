@@ -23,81 +23,72 @@
 
 // delay regs address
 #define SDIO_REG_HRS4		0x10
-#define SDIO_REG_HRS6		0x18
-#define SDIO_REG_HRS44		0xb0
 #define REG_DELAY_HS		0x00
 #define REG_DELAY_DEFAULT	0x01
-#define REG_DELAY_UHSI_SDR12	0x02
-#define REG_DELAY_UHSI_SDR25	0x03
 #define REG_DELAY_UHSI_SDR50	0x04
 #define REG_DELAY_UHSI_DDR50	0x05
 
-static u32 elba_read_l(struct sdhci_host *host, int reg)
-{
-	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
-
-	writel(0x0, priv->ctl_addr + 0x44);
-	return readl(host->ioaddr + reg);
-}
-
 static u16 elba_read_w(struct sdhci_host *host, int reg)
 {
-	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
-	u16 res;
-
-	writel(0x0, priv->ctl_addr + 0x44);
-	res = readw(host->ioaddr + reg);
+	u16 res = readw(host->ioaddr + reg);
 
 	if (unlikely(reg == SDHCI_HOST_VERSION)) {
 		/* claim to be spec 3.00 to avoid "Unknown version" warning */
 		res = (res & SDHCI_VENDOR_VER_MASK) | SDHCI_SPEC_300;
 	}
-
 	return res;
-}
-
-static u8 elba_read_b(struct sdhci_host *host, int reg)
-{
-	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
-
-	writel(0x0, priv->ctl_addr + 0x44);
-	return readb(host->ioaddr + reg);
 }
 
 static void elba_write_l(struct sdhci_host *host, u32 val, int reg)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	unsigned long flags;
 
-	writel(0x78, priv->ctl_addr + 0x44);
+	spin_lock_irqsave(&priv->wrlock, flags);
+	writel(0x78, priv->ctl_addr);
 	writel(val, host->ioaddr + reg);
+	spin_unlock_irqrestore(&priv->wrlock, flags);
 }
 
 static void elba_write_w(struct sdhci_host *host, u16 val, int reg)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	unsigned long flags;
 	u32 m = (reg & 0x3);
 	u32 msk = (0x3 << (m));
 
-	writel(msk << 3, priv->ctl_addr + 0x44);
+	spin_lock_irqsave(&priv->wrlock, flags);
+	writel(msk << 3, priv->ctl_addr);
 	writew(val, host->ioaddr + reg);
-	writel(0x78, priv->ctl_addr + 0x44);
+	spin_unlock_irqrestore(&priv->wrlock, flags);
 }
 
 static void elba_write_b(struct sdhci_host *host, u8 val, int reg)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	unsigned long flags;
 	u32 m = (reg & 0x3);
 	u32 msk = (0x1 << (m));
 
-	writel(msk << 3, priv->ctl_addr + 0x44);
+	spin_lock_irqsave(&priv->wrlock, flags);
+	writel(msk << 3, priv->ctl_addr);
 	writeb(val, host->ioaddr + reg);
-	writel(0x78, priv->ctl_addr + 0x44);
+	spin_unlock_irqrestore(&priv->wrlock, flags);
+}
+
+static void elba_priv_write_l(struct sdhci_cdns_priv *priv,
+		u32 val, void __iomem *reg)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&priv->wrlock, flags);
+	writel(0x78, priv->ctl_addr);
+	writel(val, reg);
+	spin_unlock_irqrestore(&priv->wrlock, flags);
 }
 
 static const struct sdhci_ops sdhci_elba_ops = {
-	.read_l = elba_read_l,
 	.read_w = elba_read_w,
-	.read_b = elba_read_b,
 	.write_l = elba_write_l,
 	.write_w = elba_write_w,
 	.write_b = elba_write_b,
@@ -149,7 +140,9 @@ static int elba_drv_init(struct platform_device *pdev)
 	if (IS_ERR(ioaddr))
 		return PTR_ERR(ioaddr);
 	priv->ctl_addr = ioaddr;
-	writel(0x78, priv->ctl_addr + 0x44);
+	priv->priv_write_l = elba_priv_write_l;
+	spin_lock_init(&priv->wrlock);
+	writel(0x78, priv->ctl_addr);
 	phy_config(host);
 	return 0;
 }
@@ -160,5 +153,4 @@ const struct sdhci_cdns_drv_data sdhci_elba_drv_data = {
 		.ops = &sdhci_elba_ops,
 		.quirks = SDHCI_QUIRK_BROKEN_TIMEOUT_VAL,
 	},
-	.no_retune = 1,
 };

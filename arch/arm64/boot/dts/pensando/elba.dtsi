@@ -235,7 +235,7 @@
 			clocks = <&emmc_clk>;
 			interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
 			reg = <0x0 0x30440000 0x0 0x10000
-			       0x0 0x30480000 0x0 0x1000>;
+			       0x0 0x30480044 0x0 0x4>;
 			cdns,phy-input-delay-sd-highspeed = <0x4>;
 			cdns,phy-input-delay-legacy = <0x4>;
 			cdns,phy-input-delay-sd-uhs-sdr50 = <0x6>;
