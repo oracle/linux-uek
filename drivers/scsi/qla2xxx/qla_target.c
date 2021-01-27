@@ -926,7 +926,7 @@ static void qlt_free_session_done(struct work_struct *work)
 	struct qla_hw_data *ha = vha->hw;
 	unsigned long flags;
 	bool logout_started = false;
-	scsi_qla_host_t *base_vha;
+	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
 
 	ql_dbg(ql_dbg_disc, vha, 0xf084,
 		"%s: se_sess %p / sess %p from port %8phC loop_id %#04x"
@@ -1054,6 +1054,7 @@ static void qlt_free_session_done(struct work_struct *work)
 	}
 
 	spin_unlock_irqrestore(&ha->tgt.sess_lock, flags);
+	sess->free_pending = 0;
 
 	ql_dbg(ql_dbg_disc, vha, 0xf001,
 	    "Unregistration of sess %p %8phC finished fcp_cnt %d\n",
@@ -1062,16 +1063,23 @@ static void qlt_free_session_done(struct work_struct *work)
 	if (tgt && (tgt->sess_count == 0))
 		wake_up_all(&tgt->waitQ);
 
+	if (!test_bit(PFLG_DRIVER_REMOVING, &base_vha->pci_flags) &&
+		(!tgt || !tgt->tgt_stop) && !LOOP_TRANSITION(vha)) {
+		switch (vha->host->active_mode) {
+		case MODE_INITIATOR:
+		case MODE_DUAL:
+			set_bit(RELOGIN_NEEDED, &vha->dpc_flags);
+			qla2xxx_wake_dpc(vha);
+			break;
+		case MODE_TARGET:
+		default:
+			/* no-op */
+			break;
+		}
+	}
+
 	if (vha->fcport_count == 0)
 		wake_up_all(&vha->fcport_waitQ);
-
-	base_vha = pci_get_drvdata(ha->pdev);
-
-	sess->free_pending = 0;
-
-	if (test_bit(PFLG_DRIVER_REMOVING, &base_vha->pci_flags))
-		return;
-
 }
 
 /* ha->tgt.sess_lock supposed to be held on entry */
