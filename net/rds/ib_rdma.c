@@ -1373,21 +1373,15 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 void rds_ib_flush_mrs(void)
 {
 	struct rds_ib_device *rds_ibdev;
-	int all;
 
 	down_read(&rds_ib_devices_lock);
 	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		all = 0;
-
-		/* we need clean_list flush for frwr */
-		if (rds_ibdev->use_fastreg)
-			all = 1;
 
 		if (rds_ibdev->mr_8k_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, all, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 0, NULL);
 
 		if (rds_ibdev->mr_1m_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, all, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 0, NULL);
 	}
 	up_read(&rds_ib_devices_lock);
 }
