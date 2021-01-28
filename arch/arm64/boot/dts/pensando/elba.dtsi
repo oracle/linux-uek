@@ -79,6 +79,22 @@
 			};
 		};
 
+		/*
+		 * Until we  know the interrupt domain following this, we
+		 * are forced to use this is the place where interrupts from
+		 * PCI converge. In the ideal case, we use one domain higher,
+		 * where the PCI-ness has been shed.
+		 */
+		pxc0_intr: intc@20102200 {
+			compatible = "pensando,soc-ictlr-csrintr";
+			interrupt-controller;
+			reg = <0x0 0x20102200 0x0 0x4>;
+			#interrupt-cells = <3>;
+			interrupt-parent = <&gic>;
+			interrupts = <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "pxc0_intr";
+		};
+
 		uart0: serial@4800 {
 			device_type = "serial";
 			compatible = "ns16550a";
@@ -181,6 +197,36 @@
 		mnet9: mnet9 {
 			compatible = "pensando,mnet";
 			msi-parent = <&its 0x9>;
+		};
+
+		/* UIO device using interrupt line PCIEMAC */
+		pciemac {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			#interrupt-cells = <3>;
+
+			compatible = "pensando,uio_pciemac";
+			register-type = "csr-interrupt";
+			interrupt-parent = <&pxc0_intr>;
+			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
+			reg = <0x0 0x20102200 0x0 0x10>; /* pxc0_intr */
+
+			enable_csr_paddr = <0x0 0x20102200 0x0 0x10>;
+			enable_mask = <(1 << 0)>;
+		};
+
+		/* Common UIO device for MSI drivers */
+		uio_penmsi {
+			compatible = "pensando,uio_penmsi";
+			name = "uio_penmsi";
+		};
+
+		/* MSI UIO device 1 */
+		uio_penmsi1 {
+			compatible = "pensando,uio_penmsi1";
+			reg = <0x0 0x520000 0x0 0x10000>;
+			msi-parent = <&its 0xa>;
+			num-interrupts = <16>;  /* # MSI interrupts to get */
 		};
 
 		spics: spics@307c2468 {
