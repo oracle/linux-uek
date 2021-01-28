@@ -50,6 +50,44 @@
 #include <rdma/ib_verbs.h>
 #include "rdmaip.h"
 
+#define CREATE_TRACE_POINTS
+
+#include "rdmaip_trace.h"
+
+#define declare_rdmaip_dbg(__lvl)					\
+	static inline void rdmaip_dbg##__lvl(const char *func,		\
+					     const char *format, ...)	\
+	{								\
+		struct va_format vaf = {				\
+			.fmt = format,                                  \
+		};							\
+		va_list args;						\
+									\
+		va_start(args, format);					\
+		vaf.va = &args;						\
+		trace_rdmaip_debug_##__lvl(__lvl, func, &vaf);		\
+		va_end(args);						\
+	}
+
+declare_rdmaip_dbg(1)
+declare_rdmaip_dbg(2)
+declare_rdmaip_dbg(3)
+
+#define RDMAIP_DBG1_PTR(format, ...)				\
+	rdmaip_dbg1(__func__, format, ##__VA_ARGS__)
+
+#define RDMAIP_DBG1(format, ...)				\
+	rdmaip_dbg1(__func__, format, ##__VA_ARGS__)
+
+#define RDMAIP_DBG2_PTR(format, ...)				\
+	rdmaip_dbg2(__func__, format, ##__VA_ARGS__)
+
+#define RDMAIP_DBG2(format, ...)				\
+	rdmaip_dbg2(__func__, format, ##__VA_ARGS__)
+
+#define RDMAIP_DBG3(format, ...)				\
+	rdmaip_dbg3(__func__, format, ##__VA_ARGS__)
+
 static struct workqueue_struct *rdmaip_wq;
 
 static void rdmaip_device_add(struct ib_device *device);
@@ -3061,6 +3099,33 @@ void rdmaip_cleanup(void)
 		    rdmaip_init_flag);
 }
 
+/* enable tracepoint if flag value is set */
+#define RDMAIP_DEBUG_ENABLE(flag, lvl)					\
+	trace_set_clr_event("rdmaip", "rdmaip_debug_"#lvl,		\
+			    (flag & (1 << (lvl - 1))) != 0)
+
+static void rdmaip_debug_set(void)
+{
+	RDMAIP_DEBUG_ENABLE(rdmaip_sysctl_debug_flag, 1);
+	RDMAIP_DEBUG_ENABLE(rdmaip_sysctl_debug_flag, 2);
+	RDMAIP_DEBUG_ENABLE(rdmaip_sysctl_debug_flag, 3);
+}
+
+/* update tracepoint enablings based on debug flag setting */
+int rdmaip_debug_flag_handler(struct ctl_table *table, int write,
+			      void __user *buffer, size_t *lenp,
+			      loff_t *ppos)
+{
+	int ret;
+
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+
+	if (write && ret == 0)
+		rdmaip_debug_set();
+
+	return ret;
+}
+
 /*
  * module initialization function
  *
@@ -3090,6 +3155,8 @@ int rdmaip_init(void)
 	int ret = 0;
 
 	rdmaip_parse_ndev_include_list();
+
+	rdmaip_debug_set();
 
 	if (!rdmaip_active_bonding_enabled) {
 		RDMAIP_DBG2("%s: Active Bonding is DISABLED\n", __func__);
