@@ -38,6 +38,9 @@
 #include <rdma/rdma_cm.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
+#include <linux/trace_events.h>
+
+#include "rdmaip_trace.h"
 
 #define	RDMAIP_IPv4_SOCK_CREATED	0x1
 #define	RDMAIP_IPv6_SOCK_CREATED	0x2
@@ -411,34 +414,6 @@ enum {
 u32 rdmaip_sysctl_debug_flag	= RDMAIP_DEBUG_L1 |
 				  RDMAIP_DEBUG_L2;
 
-#define rdmaip_printk(format, arg...)		\
-	trace_printk("%d: " format, __LINE__, ## arg)
-
-#define RDMAIP_DBG1_PTR(format, arg...)				\
-	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L1)	\
-		__trace_printk(_THIS_IP_, "%d: " format, __LINE__, ## arg); \
-	} while (0)
-
-#define RDMAIP_DBG1(format, arg...)				\
-	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L1)	\
-		 rdmaip_printk(format, ## arg);			\
-	} while (0)
-
-#define RDMAIP_DBG2_PTR(format, arg...)				\
-	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L2)	\
-		__trace_printk(_THIS_IP_, "%d: " format, __LINE__, ## arg); \
-	} while (0)
-
-#define RDMAIP_DBG2(format, arg...)				\
-	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L2)	\
-		 rdmaip_printk(format, ## arg);			\
-	} while (0)
-
-#define RDMAIP_DBG3(format, arg...)				\
-	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L3)	\
-		 rdmaip_printk(format, ## arg);			\
-	} while (0)
-
 /*
  * Sysctl variable that allows to enable or disable active
  * bonding on a running system.
@@ -473,6 +448,10 @@ unsigned int rdmaip_sysctl_failback_bundle_delay_ms = 13 * 1000;
 
 static struct ctl_table_header *rdmaip_sysctl_hdr;
 
+int rdmaip_debug_flag_handler(struct ctl_table *table, int write,
+			      void __user *buffer, size_t *lenp,
+			      loff_t *ppos);
+
 static struct ctl_table rdmaip_sysctl_table[] = {
 	{
 		.procname       = "active_bonding",
@@ -502,7 +481,7 @@ static struct ctl_table rdmaip_sysctl_table[] = {
 		.data           = &rdmaip_sysctl_debug_flag,
 		.maxlen         = sizeof(rdmaip_sysctl_active_bonding),
 		.mode           = 0644,
-		.proc_handler   = &proc_dointvec,
+		.proc_handler   = rdmaip_debug_flag_handler,
 	},
 	{
 		.procname       = "roce_active_bonding_failback_ms",
