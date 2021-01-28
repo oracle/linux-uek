@@ -2006,15 +2006,24 @@ config SECURE_LAUNCH_SHA512
 
 endchoice
 
-config SECURE_LAUNCH_ALT_PCRS
-	bool "Secure Launch Alternate PCR usage"
+config SECURE_LAUNCH_ALT_PCR19
+	bool "Secure Launch Alternate PCR 19 usage"
 	default n
 	depends on SECURE_LAUNCH
 	help
 	   In the post ACM environment, Secure Launch by default measures
-	   configuration information into PCR18 and image data into PCR17.
-	   This feature allows finer control over measurements by moving
-	   configuration measurements into PCR19 and image measurements
+	   configuration information into PCR18. This feature allows finer
+	   control over measurements by moving configuration measurements
+	   into PCR19.
+
+config SECURE_LAUNCH_ALT_PCR20
+	bool "Secure Launch Alternate PCR 20 usage"
+	default n
+	depends on SECURE_LAUNCH
+	help
+	   In the post ACM environment, Secure Launch by default measures
+	   image data like any external initrd into PCR17. This feature
+	   allows finer control over measurements by moving image measurements
 	   into PCR20.
 
 config SECCOMP

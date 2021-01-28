@@ -49,12 +49,16 @@ static void *evtlog_base;
 static u32 evtlog_size;
 static struct txt_heap_event_log_pointer2_1_element *log20_elem;
 
-#ifndef CONFIG_SECURE_LAUNCH_ALT_PCRS
-static u32 pcr_image = SL_DEF_IMAGE_PCR17;
+#ifndef CONFIG_SECURE_LAUNCH_ALT_PCR19
 static u32 pcr_config = SL_DEF_CONFIG_PCR18;
 #else
-static u32 pcr_image = SL_ALT_IMAGE_PCR20;
 static u32 pcr_config = SL_ALT_CONFIG_PCR19;
+#endif
+
+#ifndef CONFIG_SECURE_LAUNCH_ALT_PCR20
+static u32 pcr_image = SL_DEF_IMAGE_PCR17;
+#else
+static u32 pcr_image = SL_ALT_IMAGE_PCR20;
 #endif
 
 extern u32 sl_cpu_type;
