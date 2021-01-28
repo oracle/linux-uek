@@ -244,6 +244,13 @@
 			status = "disabled";
 		} ;
 
+		pcie {
+			compatible = "pensando,pcie";
+			reg = <0x0 0x307c2480 0x0 0x4   /* MS CFG_WDT */
+			       0x0 0x00001400 0x0 0x10  /* WDT0 */
+			       0x0 0x20000000 0x0 0x00380000>; /* PXB Base */
+		};
+
 		panic: panicdump {
 			compatible = "pensando,capri-crash";
 			status = "disabled";
