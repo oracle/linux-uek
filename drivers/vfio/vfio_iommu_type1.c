@@ -933,24 +933,26 @@ static unsigned long vfio_pgsize_bitmap(struct vfio_iommu *iommu)
 static int vfio_dma_do_unmap(struct vfio_iommu *iommu,
 			     struct vfio_iommu_type1_dma_unmap *unmap)
 {
-	uint64_t mask;
+	uint64_t mask = ((uint64_t)1 << __ffs(vfio_pgsize_bitmap(iommu))) - 1;
 	struct vfio_dma *dma, *dma_last = NULL;
 	size_t unmapped = 0;
-	int ret = 0, retries = 0;
+	int ret = -EINVAL, retries = 0;
+	dma_addr_t iova = unmap->iova;
+	unsigned long size = unmap->size;
 
-	mask = ((uint64_t)1 << __ffs(vfio_pgsize_bitmap(iommu))) - 1;
+	mutex_lock(&iommu->lock);
 
-	if (unmap->iova & mask)
-		return -EINVAL;
-	if (!unmap->size || unmap->size & mask)
-		return -EINVAL;
-	if (unmap->iova + unmap->size - 1 < unmap->iova ||
-	    unmap->size > SIZE_MAX)
-		return -EINVAL;
+	if (iova & mask)
+		goto unlock;
+
+	if (!size || size & mask)
+		goto unlock;
+
+	if (iova + size - 1 < iova || size > SIZE_MAX)
+		goto unlock;
 
 	WARN_ON(mask & PAGE_MASK);
 again:
-	mutex_lock(&iommu->lock);
 
 	/*
 	 * vfio-iommu-type1 (v1) - User mappings were coalesced together to
@@ -984,20 +986,18 @@ again:
 	 * mappings within the range.
 	 */
 	if (iommu->v2) {
-		dma = vfio_find_dma(iommu, unmap->iova, 1);
-		if (dma && dma->iova != unmap->iova) {
-			ret = -EINVAL;
+		dma = vfio_find_dma(iommu, iova, 1);
+		if (dma && dma->iova != iova)
 			goto unlock;
-		}
-		dma = vfio_find_dma(iommu, unmap->iova + unmap->size - 1, 0);
-		if (dma && dma->iova + dma->size != unmap->iova + unmap->size) {
-			ret = -EINVAL;
+
+		dma = vfio_find_dma(iommu, iova + size - 1, 0);
+		if (dma && dma->iova + dma->size != iova + size)
 			goto unlock;
-		}
 	}
 
-	while ((dma = vfio_find_dma(iommu, unmap->iova, unmap->size))) {
-		if (!iommu->v2 && unmap->iova > dma->iova)
+	ret = 0;
+	while ((dma = vfio_find_dma(iommu, iova, size))) {
+		if (!iommu->v2 && iova > dma->iova)
 			break;
 		/*
 		 * Task with same address space who mapped this iova range is
