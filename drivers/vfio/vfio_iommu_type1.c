@@ -935,6 +935,7 @@ static int vfio_dma_do_unmap(struct vfio_iommu *iommu,
 	int ret = -EINVAL, retries = 0;
 	dma_addr_t iova = unmap->iova;
 	unsigned long size = unmap->size;
+	bool unmap_all = unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL;
 
 	mask = ((uint64_t)1 << __ffs(vfio_pgsize_bitmap(iommu))) - 1;
 	mutex_lock(&iommu->lock);
@@ -942,8 +943,13 @@ static int vfio_dma_do_unmap(struct vfio_iommu *iommu,
 	if (iova & mask)
 		goto unlock;
 
-	if (!size || size & mask)
+	if (unmap_all) {
+		if (iova || size)
+			goto unlock;
+		size = SIZE_MAX;
+	} else if (!size || size & mask) {
 		goto unlock;
+	}
 
 	if (iova + size - 1 < iova || size > SIZE_MAX)
 		goto unlock;
@@ -982,7 +988,7 @@ again:
 	 * will only return success and a size of zero if there were no
 	 * mappings within the range.
 	 */
-	if (iommu->v2) {
+	if (iommu->v2 && !unmap_all) {
 		dma = vfio_find_dma(iommu, iova, 1);
 		if (dma && dma->iova != iova)
 			goto unlock;
@@ -1888,6 +1894,7 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 		case VFIO_TYPE1_IOMMU:
 		case VFIO_TYPE1v2_IOMMU:
 		case VFIO_TYPE1_NESTING_IOMMU:
+		case VFIO_UNMAP_ALL:
 			return 1;
 		case VFIO_DMA_CC_IOMMU:
 			if (!iommu)
@@ -1931,6 +1938,7 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 
 	} else if (cmd == VFIO_IOMMU_UNMAP_DMA) {
 		struct vfio_iommu_type1_dma_unmap unmap;
+		uint32_t mask = VFIO_DMA_UNMAP_FLAG_ALL;
 		long ret;
 
 		minsz = offsetofend(struct vfio_iommu_type1_dma_unmap, size);
@@ -1938,7 +1946,7 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 		if (copy_from_user(&unmap, (void __user *)arg, minsz))
 			return -EFAULT;
 
-		if (unmap.argsz < minsz || unmap.flags)
+		if (unmap.argsz < minsz || unmap.flags & ~mask)
 			return -EINVAL;
 
 		ret = vfio_dma_do_unmap(iommu, &unmap);
