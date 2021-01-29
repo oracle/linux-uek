@@ -194,6 +194,7 @@ struct otx2_rfoe_stats {
 	u64 tx_dropped;		/* tx dropped */
 	u64 ptp_tx_dropped;	/* ptp tx dropped */
 	u64 ecpri_tx_dropped;	/* ptp tx dropped */
+	u64 tx_hwtstamp_failures; /* ptp tx timestamp failures */
 
 	/* per LMAC stats */
 	u64 EthIfInFrames;

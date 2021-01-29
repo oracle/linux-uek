@@ -317,6 +317,8 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 	spin_unlock_irqrestore(&job_cfg->lock, flags);
 }
 
+#define OTX2_RFOE_PTP_TSTMP_POLL_CNT	100
+
 /* ptp interrupt processing bottom half */
 static void otx2_rfoe_ptp_tx_work(struct work_struct *work)
 {
@@ -326,6 +328,7 @@ static void otx2_rfoe_ptp_tx_work(struct work_struct *work)
 	struct skb_shared_hwtstamps ts;
 	u64 timestamp, tstmp_w1;
 	u16 jobid;
+	int cnt;
 
 	if (!priv->ptp_tx_skb) {
 		netif_err(priv, tx_done, priv->netdev,
@@ -333,40 +336,49 @@ static void otx2_rfoe_ptp_tx_work(struct work_struct *work)
 		goto submit_next_req;
 	}
 
-	/* read RFOE(0..2)_TX_PTP_TSTMP_W1(0..3) */
-	tstmp_w1 = readq(priv->rfoe_reg_base +
-			 RFOEX_TX_PTP_TSTMP_W1(priv->rfoe_num, priv->lmac_id));
-
-	/* check valid bit */
-	if (tstmp_w1 & (1ULL << 63)) {
-		/* check err or drop condition */
-		if ((tstmp_w1 & (1ULL << 21)) || (tstmp_w1 & (1ULL << 20))) {
-			netif_err(priv, tx_done, priv->netdev,
-				  "ptp timestamp error tstmp_w1=0x%llx\n",
-				  tstmp_w1);
-			goto submit_next_req;
-		}
-		/* match job id */
-		jobid = (tstmp_w1 >> 4) & 0xffff;
-		if (jobid != priv->ptp_job_tag) {
-			netif_err(priv, tx_done, priv->netdev,
-				  "ptp job id doesn't match, tstmp_w1->job_id=0x%x skb->job_tag=0x%x\n",
-				  jobid, priv->ptp_job_tag);
-			goto submit_next_req;
-		}
-		/* update timestamp value in skb */
-		timestamp = readq(priv->rfoe_reg_base +
-				  RFOEX_TX_PTP_TSTMP_W0(priv->rfoe_num,
-							priv->lmac_id));
-		otx2_rfoe_calc_ptp_ts(priv, &timestamp);
-		memset(&ts, 0, sizeof(ts));
-		ts.hwtstamp = ns_to_ktime(timestamp);
-		skb_tstamp_tx(priv->ptp_tx_skb, &ts);
-	} else {
-		/* reschedule to check later */
-		schedule_work(&priv->ptp_tx_work);
-		return;
+	/* poll for timestamp valid bit to go high */
+	for (cnt = 0; cnt < OTX2_RFOE_PTP_TSTMP_POLL_CNT; cnt++) {
+		/* read RFOE(0..2)_TX_PTP_TSTMP_W1(0..3) */
+		tstmp_w1 = readq(priv->rfoe_reg_base +
+				 RFOEX_TX_PTP_TSTMP_W1(priv->rfoe_num,
+						       priv->lmac_id));
+		/* check valid bit */
+		if (tstmp_w1 & (1ULL << 63))
+			break;
+		usleep_range(5, 10);
 	}
+
+	if (cnt >= OTX2_RFOE_PTP_TSTMP_POLL_CNT) {
+		netif_err(priv, tx_err, priv->netdev,
+			  "ptp tx timestamp polling timeout, skb=%pS\n",
+			  priv->ptp_tx_skb);
+		priv->stats.tx_hwtstamp_failures++;
+		goto submit_next_req;
+	}
+
+	/* check err or drop condition */
+	if ((tstmp_w1 & (1ULL << 21)) || (tstmp_w1 & (1ULL << 20))) {
+		netif_err(priv, tx_done, priv->netdev,
+			  "ptp timestamp error tstmp_w1=0x%llx\n",
+			  tstmp_w1);
+		goto submit_next_req;
+	}
+	/* match job id */
+	jobid = (tstmp_w1 >> 4) & 0xffff;
+	if (jobid != priv->ptp_job_tag) {
+		netif_err(priv, tx_done, priv->netdev,
+			  "ptp job id doesn't match, tstmp_w1->job_id=0x%x skb->job_tag=0x%x\n",
+			  jobid, priv->ptp_job_tag);
+		goto submit_next_req;
+	}
+	/* update timestamp value in skb */
+	timestamp = readq(priv->rfoe_reg_base +
+			  RFOEX_TX_PTP_TSTMP_W0(priv->rfoe_num,
+						priv->lmac_id));
+	otx2_rfoe_calc_ptp_ts(priv, &timestamp);
+	memset(&ts, 0, sizeof(ts));
+	ts.hwtstamp = ns_to_ktime(timestamp);
+	skb_tstamp_tx(priv->ptp_tx_skb, &ts);
 
 submit_next_req:
 	if (priv->ptp_tx_skb)
