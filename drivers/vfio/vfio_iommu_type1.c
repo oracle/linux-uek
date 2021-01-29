@@ -146,6 +146,31 @@ static struct vfio_dma *vfio_find_dma(struct vfio_iommu *iommu,
 	return NULL;
 }
 
+static struct rb_node *vfio_find_dma_first_node(struct vfio_iommu *iommu,
+						dma_addr_t start, size_t size)
+{
+	struct rb_node *res = NULL;
+	struct rb_node *node = iommu->dma_list.rb_node;
+	struct vfio_dma *dma_res = NULL;
+
+	while (node) {
+		struct vfio_dma *dma = rb_entry(node, struct vfio_dma, node);
+
+		if (start < dma->iova + dma->size) {
+			res = node;
+			dma_res = dma;
+			if (start >= dma->iova)
+				break;
+			node = node->rb_left;
+		} else {
+			node = node->rb_right;
+		}
+	}
+	if (res && size && dma_res->iova >= start + size)
+		res = NULL;
+	return res;
+}
+
 static void vfio_link_dma(struct vfio_iommu *iommu, struct vfio_dma *new)
 {
 	struct rb_node **link = &iommu->dma_list.rb_node, *parent = NULL;
@@ -936,6 +961,7 @@ static int vfio_dma_do_unmap(struct vfio_iommu *iommu,
 	dma_addr_t iova = unmap->iova;
 	unsigned long size = unmap->size;
 	bool unmap_all = unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL;
+	struct rb_node *n;
 
 	mask = ((uint64_t)1 << __ffs(vfio_pgsize_bitmap(iommu))) - 1;
 	mutex_lock(&iommu->lock);
@@ -999,7 +1025,13 @@ again:
 	}
 
 	ret = 0;
-	while ((dma = vfio_find_dma(iommu, iova, size))) {
+	n = vfio_find_dma_first_node(iommu, iova, size);
+
+	while (n) {
+		dma = rb_entry(n, struct vfio_dma, node);
+		if (dma->iova >= iova + size)
+			break;
+
 		if (!iommu->v2 && iova > dma->iova)
 			break;
 		/*
@@ -1036,6 +1068,7 @@ again:
 			goto again;
 		}
 		unmapped += dma->size;
+		n = rb_next(n);
 		vfio_remove_dma(iommu, dma);
 	}
 
