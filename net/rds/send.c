@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -515,7 +515,7 @@ restart:
 				ret -= tmp;
 				if (cp->cp_xmit_data_off == sg->length) {
 					cp->cp_xmit_data_off = 0;
-					sg++;
+					sg = sg_next(sg);
 					cp->cp_xmit_sg++;
 					BUG_ON(ret != 0 && cp->cp_xmit_sg ==
 					       rm->data.op_nents);
