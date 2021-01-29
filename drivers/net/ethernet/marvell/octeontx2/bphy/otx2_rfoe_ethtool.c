@@ -25,6 +25,7 @@ static const char ethtool_stat_strings[][ETH_GSTRING_LEN] = {
 	"oth_tx_dropped",
 	"ptp_tx_dropped",
 	"ecpri_tx_dropped",
+	"ptp_tx_hwtstamp_failures",
 	"EthIfInFrames",
 	"EthIfInOctets",
 	"EthIfOutFrames",
