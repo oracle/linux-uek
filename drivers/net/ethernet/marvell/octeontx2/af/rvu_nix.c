@@ -1920,6 +1920,7 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct nix_txsch *txsch;
 	struct nix_hw *nix_hw;
+	u16 map_func;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
@@ -1957,7 +1958,11 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 	if (!(pcifunc & RVU_PFVF_FUNC_MASK)) {
 		txsch = &nix_hw->txsch[NIX_TXSCH_LVL_TL1];
 		schq = nix_get_tx_link(rvu, pcifunc);
-		txsch->pfvf_map[schq] = TXSCH_SET_FLAG(0x0, 0x0);
+		/* Do not clear pcifunc in txsch->pfvf_map[schq] because
+		 * VF might be using this TL1 queue
+		 */
+		map_func = TXSCH_MAP_FUNC(txsch->pfvf_map[schq]);
+		txsch->pfvf_map[schq] = TXSCH_SET_FLAG(map_func, 0x0);
 	}
 
 	/* Flush SMQs */
