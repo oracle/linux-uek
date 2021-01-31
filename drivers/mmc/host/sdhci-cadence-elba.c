@@ -151,6 +151,5 @@ const struct sdhci_cdns_drv_data sdhci_elba_drv_data = {
 	.init = elba_drv_init,
 	.pltfm_data = {
 		.ops = &sdhci_elba_ops,
-		.quirks = SDHCI_QUIRK_BROKEN_TIMEOUT_VAL,
 	},
 };
