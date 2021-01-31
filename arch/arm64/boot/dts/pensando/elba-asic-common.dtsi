@@ -30,7 +30,7 @@
 &qspi {
 	status = "okay";
 	flash0: mt25q@0 {
-		compatile = "jdec,spi-nor";
+		compatible = "jdec,spi-nor";
 		reg = <0>;
 		spi-max-frequency = <40000000>;
 		spi-rx-bus-width = <2>;
