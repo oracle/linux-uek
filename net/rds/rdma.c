@@ -544,6 +544,9 @@ static int rds_rdma_pages(struct rds_rdma_args *args)
 	if (args->nr_local == 0)
 		return -EINVAL;
 
+	if (args->nr_local > UIO_MAXIOV)
+		return -EMSGSIZE;
+
 	/* figure out the number of pages in the vector */
 	for (i = 0; i < args->nr_local; i++) {
 		if (copy_from_user(&vec, &local_vec[i],
