@@ -47,7 +47,12 @@ int iommu_detected __read_mostly = 0;
  * by default make sense. Pass iommu=nopt in kernel command-line to
  * explicitly disable pt mode.
  */
+#if !IS_ENABLED(CONFIG_SECURE_LAUNCH)
 int iommu_pass_through __read_mostly = 1;
+#else
+/* Do not allow ident mapping IOMMU configuration in Secure Launch kernels */
+int iommu_pass_through __read_mostly = 0;
+#endif
 
 extern struct iommu_table_entry __iommu_table[], __iommu_table_end[];
 
@@ -210,10 +215,14 @@ static __init int iommu_setup(char *p)
 		if (!strncmp(p, "soft", 4))
 			swiotlb = 1;
 #endif
-		if (!strncmp(p, "pt", 2))
-			iommu_pass_through = 1;
-		if (!strncmp(p, "nopt", 4))
-			iommu_pass_through = 0;
+
+/* Do not allow changing IOMMU pt configuration in Secure Launch kernels */
+		if (!IS_ENABLED(CONFIG_SECURE_LAUNCH)) {
+			if (!strncmp(p, "pt", 2))
+				iommu_pass_through = 1;
+			if (!strncmp(p, "nopt", 4))
+				iommu_pass_through = 0;
+		}
 
 		gart_parse_options(p);
 

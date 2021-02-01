@@ -357,6 +357,9 @@ asmlinkage __visible void sl_check_region(void *base, u32 size)
 	struct txt_os_sinit_data *os_sinit_data;
 	void *txt_heap;
 
+	if (!(sl_cpu_type & SL_CPU_INTEL))
+		return;
+
 	txt_heap = (void *)sl_txt_read(TXT_CR_HEAP_BASE);
 	os_sinit_data = txt_os_sinit_data_start(txt_heap);
 

@@ -124,10 +124,18 @@ static int __init iommu_set_def_domain_type(char *str)
 {
 	bool pt;
 
-	if (!str || strtobool(str, &pt))
-		return -EINVAL;
+	/*
+	 * Do not allow changing IOMMU pt configuration in Secure
+	 * Launch kernels.
+	 */
+	if (!IS_ENABLED(CONFIG_SECURE_LAUNCH)) {
+		if (!str || strtobool(str, &pt))
+			return -EINVAL;
 
-	iommu_def_domain_type = pt ? IOMMU_DOMAIN_IDENTITY : IOMMU_DOMAIN_DMA;
+		iommu_def_domain_type = pt ? IOMMU_DOMAIN_IDENTITY :
+					     IOMMU_DOMAIN_DMA;
+	}
+
 	return 0;
 }
 early_param("iommu.passthrough", iommu_set_def_domain_type);
