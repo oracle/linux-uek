@@ -16,7 +16,7 @@
 #include "otx2_reg.h"
 #include "cn10k.h"
 
-#define DRV_NAME	"RVU-nicvf"
+#define DRV_NAME	"rvu_nicvf"
 #define DRV_STRING	"Marvell RVU NIC Virtual Function Driver"
 #define DRV_VERSION	"1.0"
 

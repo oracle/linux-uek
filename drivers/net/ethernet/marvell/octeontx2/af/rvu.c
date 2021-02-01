@@ -22,7 +22,7 @@
 
 #include "rvu_trace.h"
 
-#define DRV_NAME	"RVU-af"
+#define DRV_NAME	"rvu_af"
 #define DRV_STRING      "Marvell RVU Admin Function Driver"
 
 static int rvu_get_hwvf(struct rvu *rvu, int pcifunc);
