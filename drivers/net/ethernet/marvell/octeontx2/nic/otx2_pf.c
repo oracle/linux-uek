@@ -27,7 +27,7 @@
 #include "cn10k.h"
 #include <rvu_trace.h>
 
-#define DRV_NAME	"RVU-nicpf"
+#define DRV_NAME	"rvu_nicpf"
 #define DRV_STRING	"Marvell RVU NIC Physical Function Driver"
 #define DRV_VERSION	"1.0"
 
