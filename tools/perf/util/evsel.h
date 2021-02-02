@@ -115,6 +115,7 @@ struct perf_missing_features {
 	bool ksymbol;
 	bool bpf;
 	bool aux_output;
+	bool weight_struct;
 };
 
 extern struct perf_missing_features perf_missing_features;
@@ -221,6 +222,9 @@ int perf_evsel__set_filter(struct evsel *evsel, const char *filter);
 int perf_evsel__append_tp_filter(struct evsel *evsel, const char *filter);
 int perf_evsel__append_addr_filter(struct evsel *evsel,
 				   const char *filter);
+
+void arch_evsel__set_sample_weight(struct evsel *evsel);
+
 int evsel__enable(struct evsel *evsel);
 int evsel__disable(struct evsel *evsel);
 
