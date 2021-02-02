@@ -257,6 +257,10 @@ unsigned long kallsyms_lookup_name(const char *name)
 }
 EXPORT_SYMBOL_GPL(kallsyms_lookup_name);
 
+/*
+ * Iterate over all symbols in vmlinux.  For symbols from modules use
+ * module_kallsyms_on_each_symbol instead.
+ */
 int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
 				      unsigned long),
 			    void *data)
@@ -272,7 +276,7 @@ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
 		if (ret != 0)
 			return ret;
 	}
-	return module_kallsyms_on_each_symbol(fn, data);
+	return 0;
 }
 EXPORT_SYMBOL_GPL(kallsyms_on_each_symbol);
 
