@@ -374,6 +374,7 @@ int c2c_decode_stats(struct c2c_stats *stats, struct mem_info *mi)
 	u64 lvl    = data_src->mem_lvl;
 	u64 snoop  = data_src->mem_snoop;
 	u64 lock   = data_src->mem_lock;
+	u64 blk    = data_src->mem_blk;
 	/*
 	 * Skylake might report unknown remote level via this
 	 * bit, consider it when evaluating remote HITMs.
@@ -392,6 +393,9 @@ do {				\
 	stats->nr_entries++;
 
 	if (lock & P(LOCK, LOCKED)) stats->locks++;
+
+	if (blk & P(BLK, DATA)) stats->blk_data++;
+	if (blk & P(BLK, ADDR)) stats->blk_addr++;
 
 	if (op & P(OP, LOAD)) {
 		/* load */
@@ -504,6 +508,8 @@ void c2c_add_stats(struct c2c_stats *stats, struct c2c_stats *add)
 	stats->rmt_hit		+= add->rmt_hit;
 	stats->lcl_dram		+= add->lcl_dram;
 	stats->rmt_dram		+= add->rmt_dram;
+	stats->blk_data		+= add->blk_data;
+	stats->blk_addr		+= add->blk_addr;
 	stats->nomap		+= add->nomap;
 	stats->noparse		+= add->noparse;
 }
