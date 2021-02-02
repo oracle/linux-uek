@@ -66,7 +66,7 @@ static int of_mdiobus_register_phy(struct mii_bus *mdio,
 			dev_err(&mdio->dev,
 				"cannot create PHY at address %i\n",
 				addr);
-			return;
+			return PTR_ERR(phy);
 		}
 	}
 
