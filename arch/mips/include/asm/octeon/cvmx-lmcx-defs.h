@@ -805,6 +805,7 @@ static inline uint64_t CVMX_LMCX_ECC_SYND(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180088000038ull) + (offset) * 0x1000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180088000038ull) + (offset) * 0x1000000ull;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180088000038ull) + (offset) * 0x1000000ull;
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
@@ -907,6 +908,7 @@ static inline uint64_t CVMX_LMCX_FADR(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180088000020ull) + (offset) * 0x1000000ull;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180088000020ull) + (offset) * 0x1000000ull;
+			/* fall through */
 		case OCTEON_CN68XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180088000020ull) + (offset) * 0x1000000ull;
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
