@@ -288,12 +288,15 @@ static int pcibios_enable_resources(struct pci_dev *dev, int mask)
 int pcibios_enable_device(struct pci_dev *dev, int mask)
 {
 	int err;
+	struct pci_dev *_dev;
+	struct pci_host_bridge *hbrg;
 
 	if ((err = pcibios_enable_resources(dev, mask)) < 0)
 		return err;
 
-	struct pci_dev *_dev = NULL;
-	struct pci_host_bridge *hbrg = NULL;
+	_dev = NULL;
+	hbrg = NULL;
+
 	for_each_pci_dev(_dev) {
 		hbrg = pci_find_host_bridge(_dev->bus);
 		hbrg->swizzle_irq = pci_common_swizzle;
