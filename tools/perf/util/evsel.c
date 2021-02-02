@@ -905,6 +905,11 @@ static bool is_dummy_event(struct evsel *evsel)
 	       (evsel->core.attr.config == PERF_COUNT_SW_DUMMY);
 }
 
+void __weak arch_evsel__set_sample_weight(struct evsel *evsel)
+{
+	perf_evsel__set_sample_bit(evsel, WEIGHT);
+}
+
 /*
  * The enable_on_exec/disabled value strategy:
  *
@@ -1053,7 +1058,7 @@ void perf_evsel__config(struct evsel *evsel, struct record_opts *opts,
 	}
 
 	if (opts->sample_weight)
-		perf_evsel__set_sample_bit(evsel, WEIGHT);
+		arch_evsel__set_sample_weight(evsel);
 
 	attr->task  = track;
 	attr->mmap  = track;
@@ -1604,6 +1609,10 @@ int evsel__open(struct evsel *evsel, struct perf_cpu_map *cpus,
 	}
 
 fallback_missing_features:
+	if (perf_missing_features.weight_struct) {
+		perf_evsel__set_sample_bit(evsel, WEIGHT);
+		perf_evsel__reset_sample_bit(evsel, WEIGHT_STRUCT);
+	}
 	if (perf_missing_features.clockid_wrong)
 		evsel->core.attr.clockid = CLOCK_MONOTONIC; /* should always work */
 	if (perf_missing_features.clockid) {
@@ -1736,7 +1745,12 @@ try_fallback:
 	 * Must probe features in the order they were added to the
 	 * perf_event_attr interface.
 	 */
-	if (!perf_missing_features.aux_output && evsel->core.attr.aux_output) {
+	if (!perf_missing_features.weight_struct &&
+	    (evsel->core.attr.sample_type & PERF_SAMPLE_WEIGHT_STRUCT)) {
+		perf_missing_features.weight_struct = true;
+		pr_debug2("switching off weight struct support\n");
+		goto fallback_missing_features;
+	} else if (!perf_missing_features.aux_output && evsel->core.attr.aux_output) {
 		perf_missing_features.aux_output = true;
 		pr_debug2("Kernel has no attr.aux_output support, bailing out\n");
 		goto out_close;
@@ -2149,9 +2163,15 @@ int perf_evsel__parse_sample(struct evsel *evsel, union perf_event *event,
 		}
 	}
 
-	if (type & PERF_SAMPLE_WEIGHT) {
+	if (type & PERF_SAMPLE_WEIGHT_TYPE) {
+		union perf_sample_weight weight;
+
 		OVERFLOW_CHECK_u64(array);
-		data->weight = *array;
+		weight.full = *array;
+		if (type & PERF_SAMPLE_WEIGHT)
+			data->weight = weight.full;
+		else
+			data->weight = weight.var1_dw;
 		array++;
 	}
 
