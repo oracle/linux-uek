@@ -619,6 +619,8 @@ DECLARE_EVENT_CLASS(rds_ib,
 	),
 
 	TP_fast_assign(
+		struct rds_ib_connection *ic;
+		struct rdma_cm_id *cm_id;
 		struct rds_conn_path *cp;
 		struct in6_addr *in6;
 		struct cgroup *cgrp;
@@ -650,16 +652,15 @@ DECLARE_EVENT_CLASS(rds_ib,
 		__entry->cp = cp;
 		__entry->dev = dev;
 		__entry->rds_ibdev = rds_ibdev;
-		__entry->cm_id = ic ? ic->i_cm_id : NULL;
+		cm_id = ic ? ic->i_cm_id : NULL;
+		__entry->cm_id = cm_id;
 		__entry->pd = ic ? ic->i_pd : NULL;
 		__entry->rcq = ic ? ic->i_rcq : NULL;
-		__entry->qp = ic && ic->i_cm_id ? ic->i_cm_id->qp : NULL;
-		__entry->lguid = __entry->cm_id ?
-				((struct rdma_cm_id *)__entry->cm_id)
-				->route.path_rec->sgid.global.interface_id : 0;
-		__entry->fguid = __entry->cm_id ?
-				((struct rdma_cm_id *)__entry->cm_id)
-				->route.path_rec->dgid.global.interface_id : 0;
+		__entry->qp = cm_id ? cm_id->qp : NULL;
+		__entry->lguid = cm_id && cm_id->route.path_rec ?
+			cm_id->route.path_rec->sgid.global.interface_id : 0;
+		__entry->fguid = cm_id && cm_id->route.path_rec ?
+			cm_id->route.path_rec->dgid.global.interface_id : 0;
 	),
 
 	TP_printk("RDS/IB: <%pI6c,%pI6c,%d> lguid 0x%llx fguid 0x%llx qps <%d,%d> dev %s reason [%s], err [%d]",
