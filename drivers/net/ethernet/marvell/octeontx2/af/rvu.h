@@ -1106,6 +1106,7 @@ int rvu_ndc_fix_locked_cacheline(struct rvu *rvu, int blkaddr);
 /* HW workarounds/fixes */
 int rvu_tim_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
 			u16 pcifunc, int slot);
+void rvu_tim_hw_fixes(struct rvu *rvu, int blkaddr);
 
 /* RVU Switch */
 void rvu_switch_enable(struct rvu *rvu);

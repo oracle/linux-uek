@@ -522,5 +522,8 @@ int rvu_tim_init(struct rvu *rvu)
 		 BIT_ULL(0); /* ENA_TIM */
 	rvu_write64(rvu, blkaddr, TIM_AF_FLAGS_REG, regval);
 
+	if(is_rvu_otx2(rvu))
+		rvu_tim_hw_fixes(rvu, blkaddr);
+
 	return rc;
 }
