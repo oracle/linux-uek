@@ -1002,3 +1002,14 @@ void rvu_smqvf_xmit(struct rvu *rvu)
 		otx2smqvf_xmit();
 	}
 }
+
+void rvu_tim_hw_fixes(struct rvu *rvu, int blkaddr)
+{
+	u64 cfg;
+	/* Due wrong clock gating, TIM expire counter is updated wrongly.
+	 * Workaround is to enable force clock (FORCE_CSCLK_ENA = 1).
+	 */
+	cfg = rvu_read64(rvu, blkaddr, TIM_AF_FLAGS_REG);
+	cfg |= BIT_ULL(1);
+	rvu_write64(rvu, blkaddr, TIM_AF_FLAGS_REG, cfg);
+}
