@@ -1046,8 +1046,7 @@ static int otx2_rfoe_eth_stop(struct net_device *netdev)
 	struct ptp_tstamp_skb *ts_skb, *ts_skb2;
 	int idx;
 
-	if (test_and_set_bit(RFOE_INTF_DOWN, &priv->state))
-		return 0;
+	set_bit(RFOE_INTF_DOWN, &priv->state);
 
 	netif_stop_queue(netdev);
 	netif_carrier_off(netdev);

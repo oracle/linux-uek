@@ -440,8 +440,7 @@ static int otx2_cpri_eth_stop(struct net_device *netdev)
 {
 	struct otx2_cpri_ndev_priv *priv = netdev_priv(netdev);
 
-	if (test_and_set_bit(CPRI_INTF_DOWN, &priv->state))
-		return 0;
+	set_bit(CPRI_INTF_DOWN, &priv->state);
 
 	netif_stop_queue(netdev);
 	netif_carrier_off(netdev);
