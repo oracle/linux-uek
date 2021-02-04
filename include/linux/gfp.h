@@ -570,8 +570,16 @@ extern void free_unref_page_list(struct list_head *list);
 
 struct page_frag_cache;
 extern void __page_frag_cache_drain(struct page *page, unsigned int count);
-extern void *page_frag_alloc(struct page_frag_cache *nc,
-			     unsigned int fragsz, gfp_t gfp_mask);
+extern void *page_frag_alloc_align(struct page_frag_cache *nc,
+				   unsigned int fragsz, gfp_t gfp_mask,
+				   unsigned int align_mask);
+
+static inline void *page_frag_alloc(struct page_frag_cache *nc,
+			     unsigned int fragsz, gfp_t gfp_mask)
+{
+	return page_frag_alloc_align(nc, fragsz, gfp_mask, ~0u);
+}
+
 extern void page_frag_free(void *addr);
 
 #define __free_page(page) __free_pages((page), 0)
