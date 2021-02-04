@@ -160,7 +160,10 @@ static inline struct task_struct *alloc_task_struct_node(int node)
 
 static inline void free_task_struct(struct task_struct *tsk)
 {
-	kfree(tsk->futex_exit_mutex);
+	if (tsk->futex_exit_mutex != NULL) {
+		kfree(tsk->futex_exit_mutex);
+		tsk->futex_exit_mutex = NULL;
+	}
 	kmem_cache_free(task_struct_cachep, tsk);
 }
 #endif
@@ -540,6 +543,8 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	if (!tsk)
 		return NULL;
 
+	tsk->futex_exit_mutex = NULL;
+
 	stack = alloc_thread_stack_node(tsk, node);
 	if (!stack)
 		goto free_tsk;
@@ -548,7 +553,6 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 
 	err = arch_dup_task_struct(tsk, orig);
 
-	tsk->futex_exit_mutex = NULL;
 
 	/*
 	 * arch_dup_task_struct() clobbers the stack-related fields.  Make
