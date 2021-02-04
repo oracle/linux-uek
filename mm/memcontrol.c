@@ -3247,7 +3247,7 @@ static void refill_obj_stock(struct obj_cgroup *objcg, unsigned int nr_bytes)
 	}
 	stock->nr_bytes += nr_bytes;
 
-	if (stock->nr_bytes > PAGE_SIZE)
+	if (stock->nr_bytes > KMALLOC_MAX_CACHE_SIZE * 2)
 		drain_obj_stock(stock);
 
 	local_irq_restore(flags);
