@@ -391,4 +391,7 @@ extern int sysctl_perf_event_max_stack;
 extern int sysctl_perf_event_max_contexts_per_stack;
 extern unsigned int proc_map_timeout;
 
+void arch_perf_parse_sample_weight(struct perf_sample *data, const __u64 *array, u64 type);
+void arch_perf_synthesize_sample_weight(const struct perf_sample *data, __u64 *array, u64 type);
+
 #endif /* __PERF_RECORD_H */
