@@ -2194,6 +2194,32 @@ static int nix_txschq_cfg_read(struct rvu *rvu, struct nix_hw *nix_hw,
 	return 0;
 }
 
+static void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr,
+			       u16 pcifunc, struct nix_txsch *txsch)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u8 pf = rvu_get_pf(pcifunc);
+	int lbk_link, lbkid;
+	int schq;
+
+	if (!is_pf_cgxmapped(rvu, pf))
+		return;
+
+	lbkid = blkaddr == BLKADDR_NIX0 ? 0 : 1;
+	lbk_link = hw->cgx_links + lbkid;
+
+	for (schq = 0; schq < txsch->schq.max; schq++) {
+		if (TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) != pcifunc)
+			continue;
+		/* Enable LBK link with channel 63 by default so that packets
+		 * can be sent to LBK with a NPC TX MCAM rule
+		 */
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_TL3_TL2X_LINKX_CFG(schq, lbk_link),
+			    BIT_ULL(12) | 63);
+	}
+}
+
 int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 				    struct nix_txschq_config *req,
 				    struct nix_txschq_config *rsp)
@@ -2298,6 +2324,8 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 		rvu_write64(rvu, blkaddr, reg, regval);
 	}
 
+	rvu_nix_tx_tl2_cfg(rvu, blkaddr, pcifunc,
+			   &nix_hw->txsch[NIX_TXSCH_LVL_TL2]);
 	rvu_nix_txsch_config_changed(nix_hw);
 	rvu_nix_txsch_unlock(nix_hw);
 	return 0;
