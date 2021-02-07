@@ -103,9 +103,9 @@ anon_vma_interval_tree_iter_next(struct anon_vma_chain *node,
 }
 
 #ifdef CONFIG_DEBUG_VM_RB
-void anon_vma_interval_tree_verify(struct anon_vma_chain *node)
+bool anon_vma_interval_tree_verify(struct anon_vma_chain *node)
 {
-	WARN_ON_ONCE(node->cached_vma_start != avc_start_pgoff(node));
-	WARN_ON_ONCE(node->cached_vma_last != avc_last_pgoff(node));
+	return WARN_ON_ONCE(node->cached_vma_start != avc_start_pgoff(node)) ||
+		WARN_ON_ONCE(node->cached_vma_last != avc_last_pgoff(node));
 }
 #endif

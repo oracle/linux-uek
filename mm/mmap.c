@@ -326,8 +326,10 @@ static void validate_mm(struct mm_struct *mm)
 		struct anon_vma_chain *avc;
 		if (anon_vma) {
 			anon_vma_lock_read(anon_vma);
-			list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
-				anon_vma_interval_tree_verify(avc);
+			list_for_each_entry(avc, &vma->anon_vma_chain, same_vma) {
+				if (anon_vma_interval_tree_verify(avc))
+					pr_warn("Interval tree issue in %px", vma);
+			}
 			anon_vma_unlock_read(anon_vma);
 		}
 #endif
@@ -339,6 +341,7 @@ static void validate_mm(struct mm_struct *mm)
 		pr_emerg("map_count %d mas_for_each %d\n", mm->map_count, i);
 		bug = 1;
 	}
+
 	VM_BUG_ON_MM(bug, mm);
 }
 
