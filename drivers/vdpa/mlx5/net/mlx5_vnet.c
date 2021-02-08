@@ -33,6 +33,10 @@
 	(VIRTIO_CONFIG_S_ACKNOWLEDGE | VIRTIO_CONFIG_S_DRIVER | VIRTIO_CONFIG_S_DRIVER_OK |        \
 	 VIRTIO_CONFIG_S_FEATURES_OK | VIRTIO_CONFIG_S_NEEDS_RESET | VIRTIO_CONFIG_S_FAILED)
 
+static unsigned int default_mtu __read_mostly;
+module_param_named(default_mtu, default_mtu, uint, 0444);
+MODULE_PARM_DESC(default_mtu, "0 (no override), or else valid in 68-9978.");
+
 struct mlx5_vdpa_net_resources {
 	u32 tisn;
 	u32 tdn;
@@ -1944,6 +1948,7 @@ void *mlx5_vdpa_add_dev(struct mlx5_core_dev *mdev)
 	struct virtio_net_config *config;
 	struct mlx5_vdpa_dev *mvdev;
 	struct mlx5_vdpa_net *ndev;
+	u16 saved_mtu = 0;
 	u32 max_vqs;
 	int err;
 
@@ -1965,6 +1970,18 @@ void *mlx5_vdpa_add_dev(struct mlx5_core_dev *mdev)
 	err = query_mtu(mdev, &ndev->mtu);
 	if (err)
 		goto err_mtu;
+
+	if (unlikely(default_mtu) && default_mtu != ndev->mtu) {
+		err = mlx5_modify_nic_vport_mtu(mdev, default_mtu + MLX5V_ETH_HARD_MTU);
+		if (err) {
+			mlx5_vdpa_warn(&ndev->mvdev,
+				       "changed to default mtu %d failed\n",
+				       default_mtu);
+			goto err_mtu;
+		}
+		saved_mtu = ndev->mtu;
+		ndev->mtu = default_mtu;
+	}
 
 	err = mlx5_query_nic_vport_mac_address(mdev, 0, 0, config->mac);
 	if (err)
@@ -1990,6 +2007,8 @@ err_reg:
 err_res:
 	mlx5_vdpa_free_resources(&ndev->mvdev);
 err_mtu:
+	if (saved_mtu)
+		mlx5_modify_nic_vport_mtu(mdev, saved_mtu + MLX5V_ETH_HARD_MTU);
 	mutex_destroy(&ndev->reslock);
 	put_device(&mvdev->vdev.dev);
 	return ERR_PTR(err);
