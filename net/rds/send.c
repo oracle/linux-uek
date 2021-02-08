@@ -198,7 +198,6 @@ int rds_send_xmit(struct rds_conn_path *cp)
 	unsigned long send_gen = 0;
 
 restart:
-
 	batch_count = 0;
 
 	/*
@@ -209,7 +208,7 @@ restart:
 	 * caches per message.
 	 */
 	if (!acquire_in_xmit(cp)) {
-		trace_rds_drop_egress(rm, rm ? rm->m_rs : NULL, conn, cp,
+		trace_rds_drop_egress(NULL, NULL, conn, cp,
 				      &conn->c_laddr, &conn->c_faddr,
 				      "send lock contention");
 		rds_stats_inc(s_send_lock_contention);
@@ -233,7 +232,7 @@ restart:
 	 * we do the opposite to avoid races.
 	 */
 	if (!rds_conn_path_up(cp)) {
-		trace_rds_drop_egress(rm, rm ? rm->m_rs : NULL, conn, cp,
+		trace_rds_drop_egress(NULL, NULL, conn, cp,
 				      &conn->c_laddr, &conn->c_faddr,
 				      "conn path is down");
 		release_in_xmit(cp);
