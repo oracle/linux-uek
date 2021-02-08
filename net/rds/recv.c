@@ -699,7 +699,6 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 				rds_start_mprds(cp->cp_conn);
 			}
 		}
-		dropreason = "ignoring invalid ping with 0 dport";
 		goto out;
 	}
 	if (conn->c_trans->t_mp_capable &&
