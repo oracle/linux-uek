@@ -2841,7 +2841,7 @@ int mlx5e_safe_switch_params(struct mlx5e_priv *priv,
 
 	new_chs.params = *params;
 
-	mlx5e_selq_prepare(&priv->selq, &new_chs.params, !!priv->htb.maj_id);
+	mlx5e_selq_prepare_params(&priv->selq, &new_chs.params);
 
 	err = mlx5e_open_channels(priv, &new_chs);
 	if (err)
@@ -2897,7 +2897,7 @@ int mlx5e_open_locked(struct net_device *netdev)
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	int err;
 
-	mlx5e_selq_prepare(&priv->selq, &priv->channels.params, !!priv->htb.maj_id);
+	mlx5e_selq_prepare_params(&priv->selq, &priv->channels.params);
 
 	set_bit(MLX5E_STATE_OPENED, &priv->state);
 
@@ -3394,7 +3394,7 @@ static int mlx5e_setup_tc_mqprio(struct mlx5e_priv *priv,
 	/* MQPRIO is another toplevel qdisc that can't be attached
 	 * simultaneously with the offloaded HTB.
 	 */
-	if (WARN_ON(priv->htb.maj_id))
+	if (WARN_ON(mlx5e_selq_is_htb_enabled(&priv->selq)))
 		return -EINVAL;
 
 	switch (mqprio->mode) {
@@ -3660,6 +3660,7 @@ static int set_feature_cvlan_filter(struct net_device *netdev, bool enable)
 static int set_feature_hw_tc(struct net_device *netdev, bool enable)
 {
 	struct mlx5e_priv *priv = netdev_priv(netdev);
+	int err = 0;
 
 #if IS_ENABLED(CONFIG_MLX5_CLS_ACT)
 	int tc_flag = mlx5e_is_uplink_rep(priv) ? MLX5_TC_FLAG(ESW_OFFLOAD) :
@@ -3671,12 +3672,14 @@ static int set_feature_hw_tc(struct net_device *netdev, bool enable)
 	}
 #endif
 
-	if (!enable && priv->htb.maj_id) {
+	mutex_lock(&priv->state_lock);
+	if (!enable && mlx5e_selq_is_htb_enabled(&priv->selq)) {
 		netdev_err(netdev, "Active HTB offload, can't turn hw_tc_offload off\n");
-		return -EINVAL;
+		err = -EINVAL;
 	}
+	mutex_unlock(&priv->state_lock);
 
-	return 0;
+	return err;
 }
 
 static int set_feature_rx_all(struct net_device *netdev, bool enable)
