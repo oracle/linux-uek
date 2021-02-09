@@ -1347,9 +1347,6 @@ out:
 static int rdmaip_find_port_tstate(u8 port)
 {
 	int	tstate = RDMAIP_PORT_TRANSITION_NOOP;
-	struct	rdmaip_device	*rdmaip_dev;
-
-	rdmaip_dev = ip_config[port].rdmaip_dev;
 
 	switch (ip_config[port].port_state) {
 	case RDMAIP_PORT_INIT:
@@ -1379,8 +1376,19 @@ static int rdmaip_find_port_tstate(u8 port)
 			}
 		} else {
 			tstate = RDMAIP_PORT_TRANSITION_NOOP;
+
+			down_read(&rdmaip_dev_lock);
+			if (!ip_config[port].rdmaip_dev) {
+				up_read(&rdmaip_dev_lock);
+				RDMAIP_DBG2("RDMAIP_PORT_INIT rdmaip_dev is NULL port state %d"
+					     " port index %u devname %s\n",
+					     ip_config[port].port_state, port,
+					     ip_config[port].netdev->name);
+				return tstate;
+			}
 			pr_warn("rdmaip: %s active bonding is disabled using sysctl\n",
-				rdmaip_dev->ibdev->name);
+				ip_config[port].rdmaip_dev->ibdev->name);
+			up_read(&rdmaip_dev_lock);
 		}
 		break;
 
@@ -1540,6 +1548,15 @@ static void rdmaip_process_async_event(u8 port, int event_type, int event)
 	/*
 	 * Log the event details and its disposition
 	 */
+	down_read(&rdmaip_dev_lock);
+	if (!ip_config[port].rdmaip_dev) {
+		up_read(&rdmaip_dev_lock);
+		RDMAIP_DBG2("rdmaip: RDMA device is NULL port state %d "
+			     "port index %u devname %s\n",
+			     ip_config[port].port_state, port,
+			     ip_config[port].netdev->name);
+		return;
+	}
 	pr_notice("rdmaip: NET-EVENT: %s, PORT %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
 		  ((event_type == RDMAIP_EVENT_IB) ?
 		  ib_event_msg(event) : rdmaip_netdevevent2name(event)),
@@ -1550,6 +1567,7 @@ static void rdmaip_process_async_event(u8 port, int event_type, int event)
 		  "port state transition to "),
 		  rdmaip_portstate2name(ip_config[port].port_state),
 		  ip_config[port].port_layerflags);
+	up_read(&rdmaip_dev_lock);
 
 	if ((port_tstate == RDMAIP_PORT_TRANSITION_NOOP) ||
 		!ip_config[port].failover_group)
@@ -1573,7 +1591,7 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 	if (rdmaip_is_busy_flag_set() || rdmaip_is_teardown_flag_set()) {
 		rdmaip_set_event_pending();
 		RDMAIP_DBG2("Busy/Teardown flag is set: skip ibevent processing %s\n",
-			    rdmaip_dev->ibdev->name);
+			    work->rdmaip_dev_name);
 		mutex_unlock(&rdmaip_global_flag_lock);
 		kfree(work);
 		return;
@@ -1581,9 +1599,10 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 	mutex_unlock(&rdmaip_global_flag_lock);
 
 	RDMAIP_DBG2("rdmaip: RDMA device %s ip_port_cnt %d, event: %s\n",
-		    rdmaip_dev->ibdev->name, ip_port_cnt,
+		    work->rdmaip_dev_name, ip_port_cnt,
 		    ib_event_msg(work->ib_event));
 
+	down_read(&rdmaip_dev_lock);	
 	for (port = 1; port <= ip_port_cnt; port++) {
 		if (ip_config[port].port_num != work->ib_port ||
 			ip_config[port].rdmaip_dev != rdmaip_dev)
@@ -1591,15 +1610,16 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 		found = true;
 		break;
 	}
+	up_read(&rdmaip_dev_lock);
 
 	if (!found) {
-		RDMAIP_DBG2("ERROR: No rdmaip_port found\n");
+		RDMAIP_DBG2("ERROR: No matching rdmaip_port/rdmaip_dev found\n");
 		kfree(work);
 		return;
 	}
 
 	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s\n",
-		    rdmaip_dev->ibdev->name, work->ib_port,
+		    work->rdmaip_dev_name, work->ib_port,
 		    ip_config[port].if_name, ib_event_msg(work->ib_event));
 
 	rdmaip_process_async_event(port, RDMAIP_EVENT_IB, work->ib_event);
@@ -1652,6 +1672,9 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	work->rdmaip_dev	= container_of(handler,
 					typeof(struct rdmaip_device),
 					       event_handler);
+	strlcpy(work->rdmaip_dev_name, handler->device->name,
+		sizeof(work->rdmaip_dev_name));
+
 	work->event_type	= RDMAIP_EVENT_IB;
 	work->ib_event		= event->event;
 	work->ib_port		= event->element.port_num;
@@ -1956,7 +1979,8 @@ static int rdmaip_get_all_roce_netdevs(void)
         int gid_tbl_len;
         struct rdmaip_device    *rdmaip_dev;
 
-	list_for_each_entry_rcu(rdmaip_dev, &rdmaip_devlist_head, list) {
+	down_read(&rdmaip_dev_lock);
+	list_for_each_entry(rdmaip_dev, &rdmaip_devlist_head, list) {
 		nports = rdmaip_dev->ibdev->phys_port_cnt;
 		for (i = 0; i < nports; i++) {
 			gid_tbl_len = rdmaip_dev->pinfo[i].gid_tbl_len;
@@ -1983,6 +2007,7 @@ static int rdmaip_get_all_roce_netdevs(void)
 			}
 		}
 	}
+	up_read(&rdmaip_dev_lock);
 
 	return found;
 }
@@ -2001,7 +2026,8 @@ static struct rdmaip_device *rdmaip_is_roce_device(struct net_device *dev,
 	struct net_device *real_dev = rdma_vlan_dev_real_dev(dev) ? : dev;
 	int port, nports, found = 0;
 
-	list_for_each_entry_rcu(rdmaip_dev, &rdmaip_devlist_head, list) {
+	down_read(&rdmaip_dev_lock);
+	list_for_each_entry(rdmaip_dev, &rdmaip_devlist_head, list) {
 		nports = rdmaip_dev->ibdev->phys_port_cnt;
 		for (port = 0; (port < nports) && !found; port++) {
 			if (rdmaip_dev->pinfo[port].real_netdev == real_dev) {
@@ -2016,6 +2042,7 @@ static struct rdmaip_device *rdmaip_is_roce_device(struct net_device *dev,
 		if (found)
 			break;
 	}
+	up_read(&rdmaip_dev_lock);
 	return found ? rdmaip_dev : NULL;
 }
 
@@ -2086,17 +2113,20 @@ static struct rdmaip_device *rdmaip_get_rdmaip_dev(struct net_device *ndev,
 		 */
 
 		memcpy(&gid, ndev->dev_addr + 4, sizeof(gid));
-		list_for_each_entry_rcu(rdmaip_dev, &rdmaip_devlist_head,
+		down_read(&rdmaip_dev_lock);
+		list_for_each_entry(rdmaip_dev, &rdmaip_devlist_head,
 		    list) {
-                        const struct ib_gid_attr *attrp =
-                                rdma_find_gid(rdmaip_dev->ibdev, &gid,
-                                    IB_GID_TYPE_IB, NULL);
+			const struct ib_gid_attr *attrp =
+				rdma_find_gid(rdmaip_dev->ibdev, &gid,
+				    IB_GID_TYPE_IB, NULL);
 
-                        if (!IS_ERR(attrp)) {
-                                rdma_put_gid_attr(attrp);
-                                return rdmaip_dev;
-                        }
+			if (!IS_ERR(attrp)) {
+				up_read(&rdmaip_dev_lock);
+				rdma_put_gid_attr(attrp);
+				return rdmaip_dev;
+			}
 		}
+		up_read(&rdmaip_dev_lock);
 	} else {
 		*pkey_vid = rdma_vlan_dev_vlan_id(ndev);
 		rdmaip_dev = rdmaip_is_roce_device(ndev, port_num);
@@ -2425,9 +2455,9 @@ static void rdmaip_device_add(struct ib_device *device)
 			    rdmaip_dev->pinfo[i-1].gid_tbl_len, i);
 	}
 
-	down_write(&rdmaip_devlist_lock);
-	list_add_tail_rcu(&rdmaip_dev->list, &rdmaip_devlist_head);
-	up_write(&rdmaip_devlist_lock);
+	down_write(&rdmaip_dev_lock);
+	list_add_tail(&rdmaip_dev->list, &rdmaip_devlist_head);
+	up_write(&rdmaip_dev_lock);
 
 	ib_set_client_data(device, &rdmaip_client, rdmaip_dev);
 }
@@ -2450,22 +2480,25 @@ static void rdmaip_device_remove(struct ib_device *device, void *client_data)
 		return;
 	}
 
-	for (i = 1; i <= ip_port_cnt; i++) {
-		if (ip_config[i].rdmaip_dev == rdmaip_dev)
-			ip_config[i].rdmaip_dev = NULL;
-	}
 	ib_unregister_event_handler(&rdmaip_dev->event_handler);
 
 	/* stop connection attempts from getting a reference to this device. */
 	ib_set_client_data(device, &rdmaip_client, NULL);
 
-	down_write(&rdmaip_devlist_lock);
-	list_del_rcu(&rdmaip_dev->list);
-	up_write(&rdmaip_devlist_lock);
+	down_write(&rdmaip_dev_lock);
 
-	RDMAIP_DBG2("Deallocating  rdmaip_dev %p name: %s\n",
+	RDMAIP_DBG2("Deallocating rdmaip_dev %p name: %s\n",
 		    rdmaip_dev, device->name);
+
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (ip_config[i].rdmaip_dev == rdmaip_dev)
+			ip_config[i].rdmaip_dev = NULL;
+	}
+
+	list_del(&rdmaip_dev->list);
 	kfree(rdmaip_dev);
+
+	up_write(&rdmaip_dev_lock);
 }
 
 
@@ -2485,10 +2518,21 @@ static void rdmaip_update_ip_config(void)
 				if (!strcmp(dev->name, ip_config[i].if_name)) {
 					if (ip_config[i].netdev != dev) {
 						ip_config[i].netdev = dev;
-						RDMAIP_DBG2("RDMA device %s/port_%d/%s updated",
-							    ip_config[i].rdmaip_dev->ibdev->name,
-							    ip_config[i].port_num,
-							    dev->name);
+						/* Do not block here since we're holding
+						   dev_base_lock already */
+						if (down_read_trylock(&rdmaip_dev_lock)) {
+							if (ip_config[i].rdmaip_dev)
+								RDMAIP_DBG2(
+								"RDMA device "
+								"%s/port_%d/%s updated",
+								ip_config[i].rdmaip_dev->ibdev->name,
+								ip_config[i].port_num,
+								dev->name);
+							else
+								RDMAIP_DBG2(
+								"net device %s updated", dev->name);
+							up_read(&rdmaip_dev_lock);
+						}
 					}
 				}
 			}
@@ -2677,10 +2721,19 @@ static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 		return;
 	}
 
+	down_read(&rdmaip_dev_lock);
+	if (!ip_config[port].rdmaip_dev) {
+		up_read(&rdmaip_dev_lock);
+		RDMAIP_DBG2("rdmaip_dev is NULL for port index %d devname %s\n",
+			    port, ndev->name);
+		kfree(work);
+		return;
+	}
 	RDMAIP_DBG2("PORT %s/port_%d/%s received NET-EVENT %s\n",
 		    ip_config[port].rdmaip_dev->ibdev->name,
 		    ip_config[port].port_num, ndev->name,
 		    rdmaip_netdevevent2name(event));
+	up_read(&rdmaip_dev_lock);
 
 	rdmaip_process_async_event(port, RDMAIP_EVENT_NET, event);
 	kfree(work);
