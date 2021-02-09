@@ -9108,10 +9108,10 @@ static int fixup_bpf_calls(struct bpf_verifier_env *env)
 				*insn,
 			};
 			struct bpf_insn chk_and_mod[] = {
-				/* [R,W]x mod 0 -> [R,W]x */
+				/* Rx mod 0 -> Rx */
 				BPF_RAW_INSN((is64 ? BPF_JMP : BPF_JMP32) |
 					     BPF_JEQ | BPF_K, insn->src_reg,
-					     0, 1 + (is64 ? 0 : 1), 0),
+					     0, 1, 0),
 				*insn,
 				BPF_JMP_IMM(BPF_JA, 0, 0, 1),
 				BPF_MOV32_REG(insn->dst_reg, insn->dst_reg),
@@ -9119,7 +9119,7 @@ static int fixup_bpf_calls(struct bpf_verifier_env *env)
 
 			patchlet = isdiv ? chk_and_div : chk_and_mod;
 			cnt = isdiv ? ARRAY_SIZE(chk_and_div) :
-				      ARRAY_SIZE(chk_and_mod) - (is64 ? 2 : 0);
+				      ARRAY_SIZE(chk_and_mod);
 
 			new_prog = bpf_patch_insn_data(env, i + delta, patchlet, cnt);
 			if (!new_prog)
