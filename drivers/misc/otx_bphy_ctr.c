@@ -18,26 +18,29 @@
 #include <linux/mmu_context.h>
 #include <linux/ioctl.h>
 #include <linux/fs.h>
+#include <linux/slab.h>
 
 #define DEVICE_NAME	"otx-bphy-ctr"
 #define OTX_IOC_MAGIC	0xF3
-#define MAX_IRQ		27
 
+static unsigned long bphy_max_irq;
 static struct device *otx_device;
 static struct class *otx_class;
 static struct cdev *otx_cdev;
 static dev_t otx_dev;
 static DEFINE_SPINLOCK(el3_inthandler_lock);
 static int in_use;
-static int irq_installed[MAX_IRQ];
-static struct thread_info *irq_installed_threads[MAX_IRQ];
-static struct task_struct *irq_installed_tasks[MAX_IRQ];
+static int *irq_installed;
+static struct thread_info **irq_installed_threads;
+static struct task_struct **irq_installed_tasks;
 
 /* SMC definitons */
 /* X1 - irq_num, X2 - sp, X3 - cpu, X4 - ttbr0 */
 #define OCTEONTX_INSTALL_BPHY_PSM_ERRINT       0xc2000803
 /* X1 - irq_num */
 #define OCTEONTX_REMOVE_BPHY_PSM_ERRINT        0xc2000804
+/* no params */
+#define OCTEONTX_GET_BPHY_PSM_MAX_IRQ          0xc2000805
 
 struct otx_irq_usr_data {
 	u64	isr_base;
@@ -134,7 +137,7 @@ static long otx_dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 	case OTX_IOC_SET_BPHY_HANDLER: /*Install ISR handler*/
 		ret = copy_from_user(&irq_usr, (void *)arg, _IOC_SIZE(cmd));
-		if (irq_usr.irq_num >= MAX_IRQ)
+		if (irq_usr.irq_num >= bphy_max_irq)
 			return -EINVAL;
 		if (ret)
 			return -EFAULT;
@@ -152,14 +155,14 @@ static long otx_dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		break;
 	case OTX_IOC_CLR_BPHY_HANDLER: /*Clear ISR handler*/
 		irq_usr.irq_num = arg;
-		if (irq_usr.irq_num >= MAX_IRQ)
+		if (irq_usr.irq_num >= bphy_max_irq)
 			return -EINVAL;
 		ret = __remove_el3_inthandler(irq_usr.irq_num);
 		if (ret != 0)
 			return -ENOENT;
 		break;
 	case OTX_IOC_GET_BPHY_MAX_IRQ:
-		irq_num = MAX_IRQ;
+		irq_num = bphy_max_irq;
 		if (copy_to_user((u64 *)arg, &irq_num, sizeof(irq_num)))
 			return -EFAULT;
 		break;
@@ -173,7 +176,7 @@ static void cleanup_el3_irqs(struct task_struct *task)
 {
 	int i;
 
-	for (i = 0; i < MAX_IRQ; i++) {
+	for (i = 0; i < bphy_max_irq; i++) {
 		if (irq_installed[i] &&
 		    irq_installed_tasks[i] &&
 		    (irq_installed_tasks[i] == task)) {
@@ -190,10 +193,26 @@ static void cleanup_el3_irqs(struct task_struct *task)
 					 i);
 		}
 	}
+
+	kfree(irq_installed);
+	kfree(irq_installed_threads);
+	kfree(irq_installed_tasks);
 }
 
 static int otx_dev_open(struct inode *inode, struct file *fp)
 {
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(OCTEONTX_GET_BPHY_PSM_MAX_IRQ, 0,
+		      0, 0, 0, 0, 0, 0, &res);
+	bphy_max_irq = res.a0;
+
+	irq_installed = kcalloc(bphy_max_irq, sizeof(int), GFP_KERNEL);
+	irq_installed_threads = (struct thread_info **)
+		kcalloc(bphy_max_irq, sizeof(struct thread_info *), GFP_KERNEL);
+	irq_installed_tasks = (struct task_struct **)
+		kcalloc(bphy_max_irq, sizeof(struct task_struct *), GFP_KERNEL);
+
 	in_use = 1;
 	return 0;
 }
