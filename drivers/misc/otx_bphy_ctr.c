@@ -53,6 +53,9 @@ struct otx_irq_usr_data {
 #define OTX_IOC_CLR_BPHY_HANDLER \
 	_IO(OTX_IOC_MAGIC, 2)
 
+#define OTX_IOC_GET_BPHY_MAX_IRQ \
+	_IOR(OTX_IOC_MAGIC, 3, u64)
+
 static inline int __install_el3_inthandler(unsigned long irq_num,
 					   unsigned long sp,
 					   unsigned long cpu,
@@ -154,6 +157,11 @@ static long otx_dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		ret = __remove_el3_inthandler(irq_usr.irq_num);
 		if (ret != 0)
 			return -ENOENT;
+		break;
+	case OTX_IOC_GET_BPHY_MAX_IRQ:
+		irq_num = MAX_IRQ;
+		if (copy_to_user((u64 *)arg, &irq_num, sizeof(irq_num)))
+			return -EFAULT;
 		break;
 	default:
 		return -ENOTTY;
