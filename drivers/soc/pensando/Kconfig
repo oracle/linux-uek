@@ -19,6 +19,13 @@ config PENSANDO_SOC_CAPMEM
 	help
 	  Support for the Pensando SoC memory driver
 
+config PENSANDO_SOC_CAPMEM_HUGEPAGE
+	tristate "enable hugepage support in capmem"
+	select TRANSPARENT_HUGEPAGE
+	default n
+	help
+	  Support for Huge pages in Pensando SoC memory driver
+
 config PENSANDO_SOC_PCIE
 	tristate "PCIe driver for Pensando SoCs"
 	depends on OF

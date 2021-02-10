@@ -12,9 +12,12 @@
 #include <linux/fcntl.h>
 #include <linux/init.h>
 #include <linux/pagemap.h>
+#include <linux/pfn_t.h>
 #include "capmem_dev.h"
 
-#define PFX			CAPMEM_NAME ": "
+#define PFX				CAPMEM_NAME ": "
+#define CAPMEM_REGION_ALIGN		PMD_SIZE
+
 
 /*
  * Memory range information provided by U-Boot
@@ -56,6 +59,145 @@ static int capmem_add_range(uint64_t start, uint64_t len, int type)
 	return 0;
 }
 
+#ifdef CONFIG_PENSANDO_SOC_CAPMEM_HUGEPAGE
+static int cap_mem_pte_fault(struct vm_fault *vmf)
+{
+	struct vm_area_struct *vma = vmf->vma;
+	phys_addr_t phys;
+	pgoff_t pgoff;
+	int rc;
+
+	pgoff = vmf->pgoff;
+	phys = (phys_addr_t)pgoff << PAGE_SHIFT;
+
+	rc = vm_insert_pfn(vma, vmf->address, phys >> PAGE_SHIFT);
+	if (rc == -ENOMEM)
+		return VM_FAULT_OOM;
+	if (rc < 0 && rc != -EBUSY)
+		return VM_FAULT_SIGBUS;
+
+	return VM_FAULT_NOPAGE;
+}
+
+static int cap_mem_pmd_fault(struct vm_fault *vmf)
+{
+	unsigned long pmd_addr = vmf->address & PMD_MASK;
+	struct vm_area_struct *vma = vmf->vma;
+	phys_addr_t phys;
+	pgoff_t pgoff;
+	pfn_t pfn;
+
+	if (pmd_addr < vma->vm_start || (pmd_addr + PMD_SIZE) > vma->vm_end)
+		return VM_FAULT_FALLBACK;
+
+	pgoff = linear_page_index(vma, pmd_addr);
+	phys = (phys_addr_t)pgoff << PAGE_SHIFT;
+	pfn = phys_to_pfn_t(phys, PFN_DEV|PFN_MAP);
+
+	return vmf_insert_pfn_pmd(vma, vmf->address, vmf->pmd, pfn,
+			vmf->flags & FAULT_FLAG_WRITE);
+}
+
+#ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
+static int cap_mem_pud_fault(struct vm_fault *vmf)
+{
+	unsigned long pud_addr = vmf->address & PUD_MASK;
+	struct vm_area_struct *vma = vmf->vma;
+	phys_addr_t phys;
+	pgoff_t pgoff;
+	pfn_t pfn;
+
+	if (pud_addr < vma->vm_start || (pud_addr + PUD_SIZE) > vma->vm_end)
+		return VM_FAULT_FALLBACK;
+
+	pgoff = linear_page_index(vma, pud_addr);
+	phys = (phys_addr_t)pgoff << PAGE_SHIFT;
+	pfn = phys_to_pfn_t(phys, PFN_DEV|PFN_MAP);
+
+	return vmf_insert_pfn_pud(vma, vmf->address, vmf->pud, pfn,
+			vmf->flags & FAULT_FLAG_WRITE);
+}
+#else
+static int cap_mem_pud_fault(struct vm_fault *vmf)
+{
+	return VM_FAULT_FALLBACK;
+}
+#endif /* !CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD */
+
+static int cap_mem_huge_fault(struct vm_fault *vmf,
+		enum page_entry_size pe_size)
+{
+	int rc;
+
+	switch (pe_size) {
+	case PE_SIZE_PTE:
+		rc = cap_mem_pte_fault(vmf);
+		break;
+	case PE_SIZE_PMD:
+		rc = cap_mem_pmd_fault(vmf);
+		break;
+	case PE_SIZE_PUD:
+		rc = cap_mem_pud_fault(vmf);
+		break;
+	default:
+		rc = VM_FAULT_SIGBUS;
+	}
+
+	return rc;
+}
+
+static int cap_mem_fault(struct vm_fault *vmf)
+{
+	return cap_mem_huge_fault(vmf, PE_SIZE_PTE);
+}
+
+static int cap_mem_split(struct vm_area_struct *vma, unsigned long addr)
+{
+	if (!IS_ALIGNED(addr, CAPMEM_REGION_ALIGN))
+		return -EINVAL;
+	return 0;
+}
+
+static const struct vm_operations_struct cap_mem_vm_ops = {
+	.fault = cap_mem_fault,
+	.huge_fault = cap_mem_huge_fault,
+	.split = cap_mem_split,
+};
+
+static unsigned long cap_mem_get_unmapped_area(struct file *filp,
+		unsigned long addr, unsigned long len, unsigned long pgoff,
+		unsigned long flags)
+{
+	unsigned long off, off_end, off_align, len_align, addr_align, align;
+
+	align = CAPMEM_REGION_ALIGN;
+
+	if (len < align)
+		goto out;
+
+	off = pgoff << PAGE_SHIFT;
+	off_end = off + len;
+	off_align = round_up(off, align);
+
+	if ((off_end <= off_align) || ((off_end - off_align) < align))
+		goto out;
+
+	len_align = len + align;
+	if ((off + len_align) < off)
+		goto out;
+
+	addr_align = current->mm->get_unmapped_area(filp, addr, len_align,
+			pgoff, flags);
+	if (!IS_ERR_VALUE(addr_align)) {
+		addr_align += (off - addr_align) & (align - 1);
+		return addr_align;
+	}
+
+out:
+	return current->mm->get_unmapped_area(filp, addr, len, pgoff, flags);
+}
+#endif
+
 static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	size_t size = vma->vm_end - vma->vm_start;
@@ -84,6 +226,7 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 	case CAPMEM_TYPE_DEVICE:
 		/* register space must be device-mapped */
 		pgprot = pgprot_device(pgprot);
+		vma->vm_flags |= VM_IO;
 		break;
 
 	case CAPMEM_TYPE_NONCOHERENT:
@@ -102,6 +245,10 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	vma->vm_page_prot = pgprot;
 
+#ifdef CONFIG_PENSANDO_SOC_CAPMEM_HUGEPAGE
+	vma->vm_ops = &cap_mem_vm_ops;
+	vma->vm_flags |= VM_PFNMAP | VM_HUGEPAGE | VM_DONTEXPAND | VM_DONTDUMP;
+#else
 	/* Remap-pfn-range will mark the range VM_IO */
 	if (remap_pfn_range(vma,
 			    vma->vm_start,
@@ -110,6 +257,8 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 			    vma->vm_page_prot)) {
 		return -EAGAIN;
 	}
+#endif
+
 	return 0;
 }
 
@@ -147,6 +296,9 @@ const struct file_operations cap_mem_fops = {
 	.owner		= THIS_MODULE,
 	.mmap		= cap_mem_mmap,
 	.unlocked_ioctl	= cap_mem_unlocked_ioctl,
+#ifdef CONFIG_PENSANDO_SOC_CAPMEM_HUGEPAGE
+	.get_unmapped_area = cap_mem_get_unmapped_area,
+#endif
 };
 
 static struct miscdevice cap_mem_dev = {
@@ -201,7 +353,7 @@ static const struct {
 	uint64_t start;
 	uint64_t len;
 } init_device_ranges[] = {
-	{ 0x00000000, 0x80000000 },
+	{ 0x00000000, 0x70000000 },
 };
 
 static int __init cap_mem_init(void)
