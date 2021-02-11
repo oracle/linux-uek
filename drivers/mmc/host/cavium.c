@@ -132,7 +132,7 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
  *
  * Values are expressed in picoseconds (ps)
  */
-static const u32 default_cmd_out_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
+static const u32 default_cmd_out_taps_dly[MMC_TIMINGS_COUNT] = {
 	5000, /* Legacy */
 	2500, /* MMC_HS */
 	2000, /* SD_HS */
@@ -147,7 +147,7 @@ static const u32 default_cmd_out_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
 };
 
 /* Hints are expressed as number of taps (clock cycles) */
-static const u32 default_hints_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
+static const u32 default_hints_taps_dly[MMC_TIMINGS_COUNT] = {
 	39, /* Legacy */
 	32, /* MMC_HS */
 	26, /* SD_HS */
@@ -161,7 +161,7 @@ static const u32 default_hints_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
 	10  /* HS400 */
 };
 
-static const u32 default_cmd_in_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
+static const u32 default_cmd_in_taps_dly[MMC_TIMINGS_COUNT] = {
 	4000, /* Legacy */
 	4000, /* MMC_HS */
 	4000, /* SD_HS */
@@ -175,7 +175,7 @@ static const u32 default_cmd_in_taps_dly[MAX_NO_OF_MMC_TIMINGS] = {
 	4000  /* HS400 */
 };
 
-static const char * const mmc_modes_name[MAX_NO_OF_MMC_TIMINGS] = {
+static const char * const mmc_modes_name[MMC_TIMINGS_COUNT] = {
 	"Legacy",
 	"MMC HS",
 	"SD HS",
@@ -2126,6 +2126,71 @@ static int cvm_mmc_init_lowlevel(struct cvm_mmc_slot *slot)
 	return 0;
 }
 
+/**
+ * Reads device tree entries for bus timings
+ *
+ * @param node	device tree node for the slot
+ * @param slot  the slot device
+ *
+ */
+static void cvm_mmc_of_parse_timings(const struct device_node *node,
+				     struct cvm_mmc_slot *slot)
+{
+	int ret;
+
+	/* Provide user overrides for default output timings */
+	of_property_read_u32(node, "marvell,cmd-out-hs200-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS200]);
+	of_property_read_u32(node, "marvell,data-out-hs200-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS200]);
+	of_property_read_u32(node, "marvell,cmd-out-hs400-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS400]);
+	of_property_read_u32(node, "marvell,data-out-hs400-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS400]);
+	of_property_read_u32(node, "marvell,cmd-out-hs-sdr-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,data-out-hs-sdr-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,cmd-out-hs-ddr-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,data-out-hs-ddr-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,cmd-out-legacy-dly",
+			     &slot->cmd_out_taps_dly[MMC_TIMING_LEGACY]);
+	of_property_read_u32(node, "marvell,data-out-legacy-dly",
+			     &slot->data_out_taps_dly[MMC_TIMING_LEGACY]);
+	/* Modify the input timings using user inputs */
+	ret = of_property_read_u32(node, "marvell,cmd-in-hs200-dly",
+				   &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS200]);
+	if (!ret)
+		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS200);
+	ret = of_property_read_u32(node, "marvell,data-in-hs200-dly",
+				   &slot->data_in_taps_dly[MMC_TIMING_MMC_HS200]);
+	if (!ret)
+		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS200);
+	ret = of_property_read_u32(node, "marvell,cmd-in-hs400-dly",
+				   &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS400]);
+	if (!ret)
+		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS400);
+	ret = of_property_read_u32(node, "marvell,data-in-hs400-dly",
+				   &slot->data_in_taps_dly[MMC_TIMING_MMC_HS400]);
+	if (!ret)
+		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS400);
+
+	of_property_read_u32(node, "marvell,cmd-in-hs-sdr-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,data-in-hs-sdr-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS]);
+	of_property_read_u32(node, "marvell,cmd-in-hs-ddr-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,data-in-hs-ddr-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_MMC_DDR52]);
+	of_property_read_u32(node, "marvell,cmd-in-legacy-dly",
+			     &slot->cmd_in_taps_dly[MMC_TIMING_LEGACY]);
+	of_property_read_u32(node, "marvell,data-in-legacy-dly",
+			     &slot->data_in_taps_dly[MMC_TIMING_LEGACY]);
+}
+
 static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 {
 	u32 id, cmd_skew = 0, dat_skew = 0, bus_width = 0;
@@ -2178,48 +2243,8 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 			mmc->caps |= MMC_CAP_4_BIT_DATA;
 	}
 
-	/* Provide user overrides for default output timings */
-	of_property_read_u32(node, "marvell,cmd-out-hs200-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS200]);
-	of_property_read_u32(node, "marvell,data-out-hs200-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS200]);
-	of_property_read_u32(node, "marvell,cmd-out-hs400-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS400]);
-	of_property_read_u32(node, "marvell,data-out-hs400-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS400]);
-	of_property_read_u32(node, "marvell,cmd-out-hs-sdr-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,data-out-hs-sdr-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,cmd-out-hs-ddr-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,data-out-hs-ddr-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,cmd-out-legacy-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_LEGACY]);
-	of_property_read_u32(node, "marvell,data-out-legacy-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_LEGACY]);
-	/* Modify the input timings using user inputs */
-	of_property_read_u32(node, "marvell,cmd-in-hs200-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS200]);
-	of_property_read_u32(node, "marvell,data-in-hs200-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS200]);
-	of_property_read_u32(node, "marvell,cmd-in-hs400-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS400]);
-	of_property_read_u32(node, "marvell,data-in-hs400-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS400]);
-	of_property_read_u32(node, "marvell,cmd-in-hs-sdr-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,data-in-hs-sdr-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,cmd-in-hs-ddr-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,data-in-hs-ddr-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,cmd-in-legacy-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_LEGACY]);
-	of_property_read_u32(node, "marvell,data-in-legacy-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_LEGACY]);
+	/* Configure bus timings */
+	cvm_mmc_of_parse_timings(node, slot);
 
 	max_frequency = max_supported_frequency(slot->host);
 
@@ -2274,23 +2299,28 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 	slot->mmc = mmc;
 	slot->host = host;
 
-	/* Set default output timings for the driver */
+	/*
+	 * Initialize output timings for the bus.
+	 * DAT[0..7] timings are half of CMD line timings in case of DDR mode.
+	 */
 	memcpy(slot->cmd_out_taps_dly, default_cmd_out_taps_dly,
 	       sizeof(slot->cmd_out_taps_dly));
 
-	for (i = 0; i < MAX_NO_OF_MMC_TIMINGS; i++) {
+	for (i = 0; i < MMC_TIMINGS_COUNT; i++) {
 		u32 val = slot->cmd_out_taps_dly[i];
 
 		if (__cvm_is_mmc_timing_ddr(i))
 			val = DIV_ROUND_UP(val, 2);
 		slot->data_out_taps_dly[i] = val;
 	}
-	/* Set default input timings for the driver*/
+	/* Initialize input timings */
 	memcpy(slot->cmd_in_taps_dly, default_cmd_in_taps_dly,
 	       sizeof(slot->cmd_in_taps_dly));
 	/* Input timings for DAT lines are the same as CMD line timings */
 	memcpy(slot->data_in_taps_dly, default_cmd_in_taps_dly,
 	       sizeof(slot->data_in_taps_dly));
+	/* Mark all timings as defaults */
+	slot->in_timings_ctl = 0;
 
 	ret = cvm_mmc_of_parse(dev, slot);
 	if (ret < 0)
