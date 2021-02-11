@@ -8,6 +8,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/bitfield.h>
 #include <linux/pci.h>
 #include "rvu_struct.h"
 #include "rvu_reg.h"
@@ -643,11 +644,31 @@ int rvu_mbox_handler_cpt_sts(struct rvu *rvu, struct cpt_sts_req *req,
 	return 0;
 }
 
+#define RXC_ZOMBIE_THRES  GENMASK_ULL(59, 48)
+#define RXC_ZOMBIE_LIMIT  GENMASK_ULL(43, 32)
+#define RXC_ACTIVE_THRES  GENMASK_ULL(27, 16)
+#define RXC_ACTIVE_LIMIT  GENMASK_ULL(11, 0)
+#define RXC_ACTIVE_COUNT  GENMASK_ULL(60, 48)
+#define RXC_ZOMBIE_COUNT  GENMASK_ULL(60, 48)
+
+static void cpt_rxc_time_cfg(struct rvu *rvu, struct cpt_rxc_time_cfg_req *req,
+			     int blkaddr)
+{
+	u64 dfrg_reg;
+
+	dfrg_reg = FIELD_PREP(RXC_ZOMBIE_THRES, req->zombie_thres);
+	dfrg_reg |= FIELD_PREP(RXC_ZOMBIE_LIMIT, req->zombie_limit);
+	dfrg_reg |= FIELD_PREP(RXC_ACTIVE_THRES, req->active_thres);
+	dfrg_reg |= FIELD_PREP(RXC_ACTIVE_LIMIT, req->active_limit);
+
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG, req->step);
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_DFRG, dfrg_reg);
+}
+
 int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
 				      struct cpt_rxc_time_cfg_req *req,
 				      struct msg_rsp *rsp)
 {
-	u64 dfrg_reg;
 	int blkaddr;
 
 	blkaddr = req->blkaddr ? req->blkaddr : BLKADDR_CPT0;
@@ -659,15 +680,55 @@ int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
 	    !is_cpt_vf(req->hdr.pcifunc))
 		return CPT_AF_ERR_ACCESS_DENIED;
 
-	dfrg_reg = (u64)req->zombie_thres << 48;
-	dfrg_reg |= (u64)req->zombie_limit << 32;
-	dfrg_reg |= (u64)req->active_thres << 16;
-	dfrg_reg |= (u64)req->active_limit;
-
-	rvu_write64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG, req->step);
-	rvu_write64(rvu, blkaddr, CPT_AF_RXC_DFRG, dfrg_reg);
+	cpt_rxc_time_cfg(rvu, req, blkaddr);
 
 	return 0;
+}
+
+static void cpt_rxc_teardown(struct rvu *rvu, int blkaddr)
+{
+	struct cpt_rxc_time_cfg_req req;
+	int timeout = 2000;
+	u64 reg;
+
+	if (is_rvu_otx2(rvu))
+		return;
+
+	/* Set time limit to minimum values, so that rxc entries will be
+	 * flushed out quickly.
+	 */
+	req.step = 1;
+	req.zombie_thres = 1;
+	req.zombie_limit = 1;
+	req.active_thres = 1;
+	req.active_limit = 1;
+
+	cpt_rxc_time_cfg(rvu, &req, blkaddr);
+
+	do {
+		reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_ACTIVE_STS);
+		udelay(1);
+		if (FIELD_GET(RXC_ACTIVE_COUNT, reg))
+			timeout--;
+		else
+			break;
+	} while (timeout);
+
+	if (timeout == 0)
+		dev_warn(rvu->dev, "Poll for RXC active count hits hard loop counter\n");
+
+	timeout = 2000;
+	do {
+		reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_ZOMBIE_STS);
+		udelay(1);
+		if (FIELD_GET(RXC_ZOMBIE_COUNT, reg))
+			timeout--;
+		else
+			break;
+	} while (timeout);
+
+	if (timeout == 0)
+		dev_warn(rvu->dev, "Poll for RXC zombie count hits hard loop counter\n");
 }
 
 static void cpt_lf_disable_iqueue(struct rvu *rvu, int blkaddr, int slot)
@@ -727,6 +788,8 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, pcifunc);
 	if (blkaddr < 0)
 		return blkaddr;
+
+	cpt_rxc_teardown(rvu, blkaddr);
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
