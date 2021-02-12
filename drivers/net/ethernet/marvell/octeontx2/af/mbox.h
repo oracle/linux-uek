@@ -1716,6 +1716,9 @@ struct cpt_sts_rsp {
 	u64 exe_err_info;
 	u64 cptclk_cnt;
 	u64 diag;
+	u64 rxc_dfrg;
+	u64 x2p_link_cfg0;
+	u64 x2p_link_cfg1;
 };
 
 /* Mailbox message request format to configure reassembly timeout. */
