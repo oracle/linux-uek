@@ -318,6 +318,7 @@ static void nic_set_lmac_vf_mapping(struct nicpf *nic)
 {
 	unsigned bgx_map = bgx_get_map(nic->node);
 	int bgx, next_bgx_lmac = 0;
+	unsigned long lmac_bmap;
 	int lmac, lmac_cnt = 0;
 	u64 lmac_credit;
 
@@ -327,7 +328,9 @@ static void nic_set_lmac_vf_mapping(struct nicpf *nic)
 		if (!(bgx_map & (1 << bgx)))
 			continue;
 		lmac_cnt = bgx_get_lmac_count(nic->node, bgx);
-		for (lmac = 0; lmac < lmac_cnt; lmac++)
+		lmac_bmap = bgx_get_lmac_bmap(nic->node, bgx);
+
+		for_each_set_bit(lmac, &lmac_bmap, MAX_LMAC_PER_BGX)
 			nic->vf_lmac_map[next_bgx_lmac++] =
 						NIC_SET_VF_LMAC_MAP(bgx, lmac);
 		nic->num_vf_en += lmac_cnt;

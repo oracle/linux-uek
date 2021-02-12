@@ -240,6 +240,7 @@ u64 bgx_get_rx_stats(int node, int bgx_idx, int lmac, int idx);
 u64 bgx_get_tx_stats(int node, int bgx_idx, int lmac, int idx);
 #define BGX_RX_STATS_COUNT 11
 #define BGX_TX_STATS_COUNT 18
+unsigned long bgx_get_lmac_bmap(int node, int bgx);
 
 struct bgx_stats {
 	u64 rx_stats[BGX_RX_STATS_COUNT];
