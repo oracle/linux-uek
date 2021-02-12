@@ -15,6 +15,7 @@
 #include <linux/ptp_clock_kernel.h>
 #include <linux/timecounter.h>
 #include <linux/iommu.h>
+#include <net/pkt_cls.h>
 
 #include <mbox.h>
 #include <npc.h>
@@ -276,6 +277,7 @@ struct otx2_flow_config {
 #define OTX2_MAX_NTUPLE_FLOWS	32
 #define OTX2_MAX_UNICAST_FLOWS	8
 #define OTX2_MAX_VLAN_FLOWS	1
+#define OTX2_MAX_TC_FLOWS	OTX2_MAX_NTUPLE_FLOWS
 #define OTX2_MCAM_COUNT		(OTX2_MAX_NTUPLE_FLOWS + \
 				 OTX2_MAX_UNICAST_FLOWS + \
 				 OTX2_MAX_VLAN_FLOWS)
@@ -286,8 +288,18 @@ struct otx2_flow_config {
 #define OTX2_PER_VF_VLAN_FLOWS	2 /* rx+tx per VF */
 #define OTX2_VF_VLAN_RX_INDEX	0
 #define OTX2_VF_VLAN_TX_INDEX	1
+	u32			tc_flower_offset;
 	u32                     ntuple_max_flows;
+	u32			tc_max_flows;
 	struct list_head	flow_list;
+};
+
+struct otx2_tc_info {
+	/* hash table to store TC offloaded flows */
+	struct rhashtable		flow_table;
+	struct rhashtable_params	flow_ht_params;
+	DECLARE_BITMAP(tc_entries_bitmap, OTX2_MAX_TC_FLOWS);
+	unsigned long			num_entries;
 };
 
 struct dev_hw_ops {
@@ -318,6 +330,7 @@ struct otx2_nic {
 #define OTX2_FLAG_PF_SHUTDOWN			BIT_ULL(8)
 #define OTX2_FLAG_RX_PAUSE_ENABLED		BIT_ULL(9)
 #define OTX2_FLAG_TX_PAUSE_ENABLED		BIT_ULL(10)
+#define OTX2_FLAG_TC_FLOWER_SUPPORT		BIT_ULL(11)
 	u64			flags;
 
 	struct bpf_prog		*xdp_prog;
@@ -381,6 +394,7 @@ struct otx2_nic {
 	u16			tot_lmt_lines;
 	u16			nix_lmt_lines;
 	u32			nix_lmt_size;
+	struct otx2_tc_info	tc_info;
 };
 
 static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
@@ -906,4 +920,9 @@ int otx2smqvf_remove(struct otx2_nic *vf);
 bool otx2_xdp_sq_append_pkt(struct otx2_nic *pfvf, u64 iova, int len, u16 qidx);
 int otx2_cgx_features_get(struct otx2_nic *pfvf);
 u16 otx2_get_max_mtu(struct otx2_nic *pfvf);
+/* tc support */
+int otx2_init_tc(struct otx2_nic *nic);
+void otx2_shutdown_tc(struct otx2_nic *nic);
+int otx2_setup_tc(struct net_device *netdev, enum tc_setup_type type,
+		  void *type_data);
 #endif /* OTX2_COMMON_H */

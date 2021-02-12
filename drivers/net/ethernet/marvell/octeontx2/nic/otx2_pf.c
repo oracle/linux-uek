@@ -1863,6 +1863,18 @@ static netdev_features_t otx2_fix_features(struct net_device *dev,
 	else
 		features &= ~NETIF_F_HW_VLAN_STAG_RX;
 
+	/* check if n-tuple filters are ON */
+	if ((features & NETIF_F_HW_TC) && (dev->features & NETIF_F_NTUPLE)) {
+		netdev_info(dev, "Disabling n-tuple filters\n");
+		features &= ~NETIF_F_NTUPLE;
+	}
+
+	/* check if tc hw offload is ON */
+	if ((features & NETIF_F_NTUPLE) && (dev->features & NETIF_F_HW_TC)) {
+		netdev_info(dev, "Disabling TC hardware offload\n");
+		features &= ~NETIF_F_HW_TC;
+	}
+
 	return features;
 }
 
@@ -1940,6 +1952,12 @@ static int otx2_set_features(struct net_device *netdev,
 
 	if ((changed & NETIF_F_NTUPLE) && !ntuple)
 		otx2_destroy_ntuple_flows(pf);
+
+	if ((netdev->features & NETIF_F_HW_TC) > (features & NETIF_F_HW_TC) &&
+	    pf->tc_info.num_entries) {
+		netdev_err(netdev, "Can't disable TC hardware offload while flows are active\n");
+		return -EBUSY;
+	}
 
 	return 0;
 }
@@ -2441,6 +2459,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_get_vf_config	= otx2_get_vf_config,
 	.ndo_bpf		= otx2_xdp,
 	.ndo_xdp_xmit           = otx2_xdp_xmit,
+	.ndo_setup_tc		= otx2_setup_tc,
 };
 
 static int otx2_wq_init(struct otx2_nic *pf)
@@ -2671,6 +2690,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 				       NETIF_F_HW_VLAN_STAG_RX;
 	netdev->features |= netdev->hw_features;
 
+	/* HW supports tc offload but mutually exclusive with n-tuple filters */
+	if (pf->flags & OTX2_FLAG_TC_FLOWER_SUPPORT)
+		netdev->hw_features |= NETIF_F_HW_TC;
+
 	netdev->gso_max_segs = OTX2_MAX_GSO_SEGS;
 	netdev->watchdog_timeo = netdev->watchdog_timeo ?
 				 netdev->watchdog_timeo : OTX2_TX_TIMEOUT;
@@ -2695,6 +2718,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	otx2_cgx_features_get(pf);
 
+	err = otx2_init_tc(pf);
+	if (err)
+		goto err_mcam_flow_del;
+
 	/* Enable link notifications */
 	otx2_cgx_config_linkevents(pf, true);
 
@@ -2707,6 +2734,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	return 0;
 
+err_mcam_flow_del:
+	otx2_mcam_flow_del(pf);
 err_unreg_netdev:
 	unregister_netdev(netdev);
 err_del_mcam_entries:
@@ -2909,6 +2938,7 @@ static void otx2_remove(struct pci_dev *pdev)
 		destroy_workqueue(pf->otx2_wq);
 	otx2_ptp_destroy(pf);
 	otx2_mcam_flow_del(pf);
+	otx2_shutdown_tc(pf);
 	otx2_detach_resources(&pf->mbox);
 	if (pf->hw.lmt_base)
 		iounmap(pf->hw.lmt_base);

@@ -1868,7 +1868,7 @@ static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
 			break;
 		case NPC_OUTER_VID:
 		case NPC_FDSA_VAL:
-			seq_printf(s, "%d ", ntohs(rule->packet.vlan_tci));
+			seq_printf(s, "0x%x ", ntohs(rule->packet.vlan_tci));
 			seq_printf(s, "mask 0x%x\n",
 				   ntohs(rule->mask.vlan_tci));
 			break;
