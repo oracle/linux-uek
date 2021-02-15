@@ -354,12 +354,9 @@ int gntdev_map_grant_pages(struct gntdev_grant_map *map)
 		if (map->flags & GNTMAP_device_map)
 			map->unmap_ops[i].dev_bus_addr = map->map_ops[i].dev_bus_addr;
 
-		if (use_ptemod) {
-			if (map->kmap_ops[i].status == GNTST_okay)
-				map->kunmap_ops[i].handle = map->kmap_ops[i].handle;
-			else if (!err)
-				err = -EINVAL;
-		}
+		map->unmap_ops[i].handle = map->map_ops[i].handle;
+		if (use_ptemod)
+			map->kunmap_ops[i].handle = map->kmap_ops[i].handle;
 	}
 	return err;
 }
