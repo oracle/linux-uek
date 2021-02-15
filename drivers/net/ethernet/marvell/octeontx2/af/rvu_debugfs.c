@@ -2038,33 +2038,14 @@ RVU_DEBUG_SEQ_FOPS(npc_mcam_rules, npc_mcam_show_rules, NULL);
 
 static void rvu_dbg_npc_init(struct rvu *rvu)
 {
-	const struct device *dev = &rvu->pdev->dev;
-	struct dentry *pfile;
-
 	rvu->rvu_dbg.npc = debugfs_create_dir("npc", rvu->rvu_dbg.root);
-	if (!rvu->rvu_dbg.npc)
-		return;
 
-	pfile = debugfs_create_file("mcam_info", 0444, rvu->rvu_dbg.npc,
-				    rvu, &rvu_dbg_npc_mcam_info_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("mcam_rules", 0444, rvu->rvu_dbg.npc,
-				    rvu, &rvu_dbg_npc_mcam_rules_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("rx_miss_act_stats", 0444, rvu->rvu_dbg.npc,
-				    rvu, &rvu_dbg_npc_rx_miss_act_fops);
-	if (!pfile)
-		goto create_failed;
-
-	return;
-
-create_failed:
-	dev_err(dev, "Failed to create debugfs dir/file for NPC\n");
-	debugfs_remove_recursive(rvu->rvu_dbg.npc);
+	debugfs_create_file("mcam_info", 0444, rvu->rvu_dbg.npc, rvu,
+			    &rvu_dbg_npc_mcam_info_fops);
+	debugfs_create_file("mcam_rules", 0444, rvu->rvu_dbg.npc, rvu,
+			    &rvu_dbg_npc_mcam_rules_fops);
+	debugfs_create_file("rx_miss_act_stats", 0444, rvu->rvu_dbg.npc, rvu,
+			    &rvu_dbg_npc_rx_miss_act_fops);
 }
 
 static void print_nix_qctx_qsize(struct seq_file *filp, int qsize,
@@ -2130,92 +2111,47 @@ RVU_DEBUG_FOPS(nix_tx_stall_hwissue, nix_tx_stall_hwissue_display, NULL);
 
 static void rvu_dbg_nix_init(struct rvu *rvu, int blkaddr)
 {
-	const struct device *dev = &rvu->pdev->dev;
 	struct nix_hw *nix_hw;
-	struct dentry *pfile;
 
 	if (!is_block_implemented(rvu->hw, blkaddr))
 		return;
 
 	if (blkaddr == BLKADDR_NIX0) {
 		rvu->rvu_dbg.nix = debugfs_create_dir("nix", rvu->rvu_dbg.root);
-		if (!rvu->rvu_dbg.nix) {
-			dev_err(rvu->dev, "create debugfs dir failed for nix\n");
-			return;
-		}
 		nix_hw = &rvu->hw->nix[0];
 	} else {
 		rvu->rvu_dbg.nix = debugfs_create_dir("nix1",
 						      rvu->rvu_dbg.root);
-		if (!rvu->rvu_dbg.nix) {
-			dev_err(rvu->dev,
-				"create debugfs dir failed for nix1\n");
-			return;
-		}
 		nix_hw = &rvu->hw->nix[1];
 	}
 
-	pfile = debugfs_create_file("sq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
-				    &rvu_dbg_nix_sq_ctx_fops);
-	if (!pfile)
-		goto create_failed;
-
-	 debugfs_create_file("rq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
-			     &rvu_dbg_nix_rq_ctx_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("cq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
-				    &rvu_dbg_nix_cq_ctx_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("ndc_tx_cache", 0600, rvu->rvu_dbg.nix,
-				    nix_hw, &rvu_dbg_nix_ndc_tx_cache_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("ndc_rx_cache", 0600, rvu->rvu_dbg.nix,
-				    nix_hw, &rvu_dbg_nix_ndc_rx_cache_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("ndc_tx_hits_miss", 0600, rvu->rvu_dbg.nix,
-				    nix_hw, &rvu_dbg_nix_ndc_tx_hits_miss_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("ndc_rx_hits_miss", 0600, rvu->rvu_dbg.nix,
-				    nix_hw, &rvu_dbg_nix_ndc_rx_hits_miss_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("qsize", 0600, rvu->rvu_dbg.nix, rvu,
-				    &rvu_dbg_nix_qsize_fops);
-	if (!pfile)
-		goto create_failed;
-
+	debugfs_create_file("sq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_sq_ctx_fops);
+	debugfs_create_file("rq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_rq_ctx_fops);
+	debugfs_create_file("cq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_cq_ctx_fops);
+	debugfs_create_file("ndc_tx_cache", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_tx_cache_fops);
+	debugfs_create_file("ndc_rx_cache", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_rx_cache_fops);
+	debugfs_create_file("ndc_tx_hits_miss", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_tx_hits_miss_fops);
+	debugfs_create_file("ndc_rx_hits_miss", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_rx_hits_miss_fops);
+	debugfs_create_file("qsize", 0600, rvu->rvu_dbg.nix, rvu,
+			    &rvu_dbg_nix_qsize_fops);
 	if (is_rvu_96xx_A0(rvu)) {
-		pfile = debugfs_create_file("tx_stall_hwissue", 0600,
-					    rvu->rvu_dbg.nix, nix_hw,
-					    &rvu_dbg_nix_tx_stall_hwissue_fops);
-		if (!pfile)
-			goto create_failed;
+		debugfs_create_file("tx_stall_hwissue", 0600,
+				    rvu->rvu_dbg.nix, nix_hw,
+				    &rvu_dbg_nix_tx_stall_hwissue_fops);
 	}
-
-	return;
-create_failed:
-	dev_err(dev,
-		"Failed to create debugfs dir/file for NIX blk\n");
-	debugfs_remove_recursive(rvu->rvu_dbg.nix);
 }
 
 static void rvu_dbg_cgx_init(struct rvu *rvu)
 {
-	const struct device *dev = &rvu->pdev->dev;
 	struct mac_ops *mac_ops;
 	unsigned long lmac_bmap;
-	struct dentry *pfile;
 	int i, lmac_id;
 	char dname[20];
 	void *cgx;
@@ -2224,9 +2160,9 @@ static void rvu_dbg_cgx_init(struct rvu *rvu)
 		return;
 
 	mac_ops = get_mac_ops(rvu_first_cgx_pdata(rvu));
-	/* There can be no CGX devices at all */
 	if (!mac_ops)
 		return;
+
 	rvu->rvu_dbg.cgx_root = debugfs_create_dir(mac_ops->name,
 						   rvu->rvu_dbg.root);
 
@@ -2245,60 +2181,26 @@ static void rvu_dbg_cgx_init(struct rvu *rvu)
 			rvu->rvu_dbg.lmac =
 				debugfs_create_dir(dname, rvu->rvu_dbg.cgx);
 
-			pfile =	debugfs_create_file("stats", 0600,
-						    rvu->rvu_dbg.lmac, cgx,
-						    &rvu_dbg_cgx_stat_fops);
-			if (!pfile)
-				goto create_failed;
+				debugfs_create_file("stats", 0600, rvu->rvu_dbg.lmac,
+						    cgx, &rvu_dbg_cgx_stat_fops);
 		}
 	}
-	return;
-
-create_failed:
-	dev_err(dev, "Failed to create debugfs dir/file for %s\n",
-		mac_ops->name);
-	debugfs_remove_recursive(rvu->rvu_dbg.cgx_root);
 }
 
 static void rvu_dbg_npa_init(struct rvu *rvu)
 {
-	const struct device *dev = &rvu->pdev->dev;
-	struct dentry *pfile;
-
 	rvu->rvu_dbg.npa = debugfs_create_dir("npa", rvu->rvu_dbg.root);
-	if (!rvu->rvu_dbg.npa)
-		return;
 
-	pfile = debugfs_create_file("qsize", 0600, rvu->rvu_dbg.npa, rvu,
-				    &rvu_dbg_npa_qsize_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("aura_ctx", 0600, rvu->rvu_dbg.npa, rvu,
-				    &rvu_dbg_npa_aura_ctx_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("pool_ctx", 0600, rvu->rvu_dbg.npa, rvu,
-				    &rvu_dbg_npa_pool_ctx_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("ndc_cache", 0600, rvu->rvu_dbg.npa, rvu,
-				    &rvu_dbg_npa_ndc_cache_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("ndc_hits_miss", 0600, rvu->rvu_dbg.npa,
-				    rvu, &rvu_dbg_npa_ndc_hits_miss_fops);
-	if (!pfile)
-		goto create_failed;
-
-	return;
-
-create_failed:
-	dev_err(dev, "Failed to create debugfs dir/file for NPA\n");
-	debugfs_remove_recursive(rvu->rvu_dbg.npa);
+	debugfs_create_file("qsize", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_qsize_fops);
+	debugfs_create_file("aura_ctx", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_aura_ctx_fops);
+	debugfs_create_file("pool_ctx", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_pool_ctx_fops);
+	debugfs_create_file("ndc_cache", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_ndc_cache_fops);
+	debugfs_create_file("ndc_hits_miss", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_ndc_hits_miss_fops);
 }
 
 static int parse_sso_cmd_buffer(char *cmd_buf, size_t *count,
@@ -2932,74 +2834,34 @@ RVU_DEBUG_FOPS(sso_hws_info, NULL, sso_hws_info_display);
 
 static void rvu_dbg_sso_init(struct rvu *rvu)
 {
-	const struct device *dev = &rvu->pdev->dev;
-	struct dentry *pfile;
-
 	rvu->rvu_dbg.sso = debugfs_create_dir("sso", rvu->rvu_dbg.root);
-	if (!rvu->rvu_dbg.sso)
-		return;
-
 	rvu->rvu_dbg.sso_hwgrp = debugfs_create_dir("hwgrp", rvu->rvu_dbg.sso);
-	if (!rvu->rvu_dbg.sso_hwgrp)
-		return;
-
 	rvu->rvu_dbg.sso_hws = debugfs_create_dir("hws", rvu->rvu_dbg.sso);
-	if (!rvu->rvu_dbg.sso_hws)
-		return;
 
-	pfile = debugfs_create_file("sso_pc", 0600,
-				    rvu->rvu_dbg.sso, rvu,
-			&rvu_dbg_sso_pc_fops);
-	if (!pfile)
-		goto create_failed;
+	debugfs_create_file("sso_pc", 0600, rvu->rvu_dbg.sso, rvu,
+			    &rvu_dbg_sso_pc_fops);
 
-	pfile = debugfs_create_file("sso_hwgrp_pc", 0600,
-				    rvu->rvu_dbg.sso_hwgrp, rvu,
-			&rvu_dbg_sso_hwgrp_pc_fops);
-	if (!pfile)
-		goto create_failed;
+	debugfs_create_file("sso_hwgrp_pc", 0600, rvu->rvu_dbg.sso_hwgrp,
+			    rvu, &rvu_dbg_sso_hwgrp_pc_fops);
 
-	pfile = debugfs_create_file("sso_hwgrp_thresh", 0600,
-				    rvu->rvu_dbg.sso_hwgrp, rvu,
-			&rvu_dbg_sso_hwgrp_thresh_fops);
-	if (!pfile)
-		goto create_failed;
+	debugfs_create_file("sso_hwgrp_thresh", 0600, rvu->rvu_dbg.sso_hwgrp,
+			    rvu, &rvu_dbg_sso_hwgrp_thresh_fops);
 
-	pfile = debugfs_create_file("sso_hwgrp_taq_walk", 0600,
-				    rvu->rvu_dbg.sso_hwgrp, rvu,
-			&rvu_dbg_sso_hwgrp_taq_wlk_fops);
-	if (!pfile)
-		goto create_failed;
+	debugfs_create_file("sso_hwgrp_taq_walk", 0600, rvu->rvu_dbg.sso_hwgrp,
+			    rvu, &rvu_dbg_sso_hwgrp_taq_wlk_fops);
 
-	pfile = debugfs_create_file("sso_hwgrp_iaq_walk", 0600,
-				    rvu->rvu_dbg.sso_hwgrp, rvu,
-			&rvu_dbg_sso_hwgrp_iaq_wlk_fops);
-	if (!pfile)
-		goto create_failed;
+	debugfs_create_file("sso_hwgrp_iaq_walk", 0600, rvu->rvu_dbg.sso_hwgrp,
+			    rvu, &rvu_dbg_sso_hwgrp_iaq_wlk_fops);
 
-	pfile = debugfs_create_file("sso_hwgrp_ient_walk", 0600,
-				    rvu->rvu_dbg.sso_hwgrp, rvu,
-			&rvu_dbg_sso_hwgrp_ient_wlk_fops);
-	if (!pfile)
-		goto create_failed;
+	debugfs_create_file("sso_hwgrp_ient_walk", 0600, rvu->rvu_dbg.sso_hwgrp,
+			    rvu, &rvu_dbg_sso_hwgrp_ient_wlk_fops);
 
-	pfile = debugfs_create_file("sso_hwgrp_free_list_walk", 0600,
-				    rvu->rvu_dbg.sso_hwgrp, rvu,
-			&rvu_dbg_sso_hwgrp_fl_wlk_fops);
-	if (!pfile)
-		goto create_failed;
+	debugfs_create_file("sso_hwgrp_free_list_walk", 0600,
+			    rvu->rvu_dbg.sso_hwgrp, rvu,
+			    &rvu_dbg_sso_hwgrp_fl_wlk_fops);
 
-	pfile = debugfs_create_file("sso_hws_info", 0600,
-				    rvu->rvu_dbg.sso_hws, rvu,
-			&rvu_dbg_sso_hws_info_fops);
-	if (!pfile)
-		goto create_failed;
-
-	return;
-
-create_failed:
-	dev_err(dev, "Failed to create debugfs dir/file for SSO\n");
-	debugfs_remove_recursive(rvu->rvu_dbg.sso);
+	debugfs_create_file("sso_hws_info", 0600, rvu->rvu_dbg.sso_hws,
+			    rvu, &rvu_dbg_sso_hws_info_fops);
 }
 
 /* CPT debugfs APIs */
@@ -3302,61 +3164,26 @@ RVU_DEBUG_SEQ_FOPS(cpt_pc, cpt_pc_display, NULL);
 
 static void rvu_dbg_cpt_init(struct rvu *rvu, int blkaddr)
 {
-	const struct device *dev = &rvu->pdev->dev;
-	struct dentry *pfile;
-
 	if (!is_block_implemented(rvu->hw, blkaddr))
 		return;
 
 	if (blkaddr == BLKADDR_CPT0) {
 		rvu->rvu_dbg.cpt = debugfs_create_dir("cpt", rvu->rvu_dbg.root);
-		if (!rvu->rvu_dbg.cpt) {
-			dev_err(rvu->dev, "create debugfs dir failed for cpt\n");
-			return;
-		}
 	} else {
 		rvu->rvu_dbg.cpt = debugfs_create_dir("cpt1",
 						      rvu->rvu_dbg.root);
-		if (!rvu->rvu_dbg.cpt) {
-			dev_err(rvu->dev, "create debugfs dir failed for cpt1\n");
-			return;
-		}
 	}
-	pfile = debugfs_create_file("cpt_pc", 0600,
-				    rvu->rvu_dbg.cpt, rvu,
-				    &rvu_dbg_cpt_pc_fops);
-	if (!pfile)
-		goto create_failed;
 
-	pfile = debugfs_create_file("cpt_engines_sts", 0600,
-				    rvu->rvu_dbg.cpt, rvu,
-				    &rvu_dbg_cpt_engines_sts_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("cpt_engines_info", 0600,
-				    rvu->rvu_dbg.cpt, rvu,
-				    &rvu_dbg_cpt_engines_info_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("cpt_lfs_info", 0600,
-				    rvu->rvu_dbg.cpt, rvu,
-				    &rvu_dbg_cpt_lfs_info_fops);
-	if (!pfile)
-		goto create_failed;
-
-	pfile = debugfs_create_file("cpt_err_info", 0600,
-				    rvu->rvu_dbg.cpt, rvu,
-				    &rvu_dbg_cpt_err_info_fops);
-	if (!pfile)
-		goto create_failed;
-
-	return;
-
-create_failed:
-	dev_err(dev, "Failed to create debugfs dir/file for CPT\n");
-	debugfs_remove_recursive(rvu->rvu_dbg.cpt);
+	debugfs_create_file("cpt_pc", 0600, rvu->rvu_dbg.cpt, rvu,
+			    &rvu_dbg_cpt_pc_fops);
+	debugfs_create_file("cpt_engines_sts", 0600, rvu->rvu_dbg.cpt, rvu,
+			    &rvu_dbg_cpt_engines_sts_fops);
+	debugfs_create_file("cpt_engines_info", 0600, rvu->rvu_dbg.cpt, rvu,
+			    &rvu_dbg_cpt_engines_info_fops);
+	debugfs_create_file("cpt_lfs_info", 0600, rvu->rvu_dbg.cpt, rvu,
+			    &rvu_dbg_cpt_lfs_info_fops);
+	debugfs_create_file("cpt_err_info", 0600, rvu->rvu_dbg.cpt, rvu,
+			    &rvu_dbg_cpt_err_info_fops);
 }
 
 static const char *rvu_get_dbg_dir_name(struct rvu *rvu)
@@ -3366,48 +3193,34 @@ static const char *rvu_get_dbg_dir_name(struct rvu *rvu)
 	else
 		return "octeontx2";
 }
+
 void rvu_dbg_init(struct rvu *rvu)
 {
-	struct device *dev = &rvu->pdev->dev;
-	struct dentry *pfile;
-
 	rvu->rvu_dbg.root = debugfs_create_dir(rvu_get_dbg_dir_name(rvu), NULL);
-	if (!rvu->rvu_dbg.root) {
-		dev_err(rvu->dev, "%s failed\n", __func__);
-		return;
-	}
-	pfile = debugfs_create_file("rsrc_alloc", 0444, rvu->rvu_dbg.root, rvu,
-				    &rvu_dbg_rsrc_status_fops);
-	if (!pfile)
-		goto create_failed;
+
+	debugfs_create_file("rsrc_alloc", 0444, rvu->rvu_dbg.root, rvu,
+			    &rvu_dbg_rsrc_status_fops);
 
 	if (!cgx_get_cgxcnt_max())
 		goto create;
 
 	if (is_rvu_otx2(rvu))
-		pfile = debugfs_create_file("rvu_pf_cgx_map", 0444, rvu->rvu_dbg.root,
-					    rvu, &rvu_dbg_rvu_pf_cgx_map_fops);
+		debugfs_create_file("rvu_pf_cgx_map", 0444, rvu->rvu_dbg.root,
+				    rvu, &rvu_dbg_rvu_pf_cgx_map_fops);
 	else
-		pfile = debugfs_create_file("rvu_pf_rpm_map", 0444, rvu->rvu_dbg.root,
-					    rvu, &rvu_dbg_rvu_pf_cgx_map_fops);
-	if (!pfile)
-		goto create_failed;
+		debugfs_create_file("rvu_pf_rpm_map", 0444, rvu->rvu_dbg.root,
+				    rvu, &rvu_dbg_rvu_pf_cgx_map_fops);
 
 create:
 	rvu_dbg_npa_init(rvu);
-	rvu_dbg_cgx_init(rvu);
 	rvu_dbg_nix_init(rvu, BLKADDR_NIX0);
+
 	rvu_dbg_nix_init(rvu, BLKADDR_NIX1);
+	rvu_dbg_cgx_init(rvu);
 	rvu_dbg_npc_init(rvu);
 	rvu_dbg_sso_init(rvu);
 	rvu_dbg_cpt_init(rvu, BLKADDR_CPT0);
 	rvu_dbg_cpt_init(rvu, BLKADDR_CPT1);
-
-	return;
-
-create_failed:
-	dev_err(dev, "Failed to create debugfs dir\n");
-	debugfs_remove_recursive(rvu->rvu_dbg.root);
 }
 
 void rvu_dbg_exit(struct rvu *rvu)
