@@ -1371,14 +1371,9 @@ int rvu_register_dl(struct rvu *rvu)
 	struct devlink *dl;
 	int err;
 
-	rvu_dl = kzalloc(sizeof(*rvu_dl), GFP_KERNEL);
-	if (!rvu_dl)
-		return -ENOMEM;
-
 	dl = devlink_alloc(&rvu_devlink_ops, sizeof(struct rvu_devlink));
 	if (!dl) {
 		dev_warn(rvu->dev, "devlink_alloc failed\n");
-		kfree(rvu_dl);
 		return -ENOMEM;
 	}
 
@@ -1386,10 +1381,10 @@ int rvu_register_dl(struct rvu *rvu)
 	if (err) {
 		dev_err(rvu->dev, "devlink register failed with error %d\n", err);
 		devlink_free(dl);
-		kfree(rvu_dl);
 		return err;
 	}
 
+	rvu_dl = devlink_priv(dl);
 	rvu_dl->dl = dl;
 	rvu_dl->rvu = rvu;
 	rvu->rvu_dl = rvu_dl;
