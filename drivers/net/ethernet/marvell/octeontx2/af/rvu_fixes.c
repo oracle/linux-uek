@@ -884,7 +884,7 @@ int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 	if (is_rvu_96xx_A0(rvu))
 		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
 			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
-	if (!is_rvu_post_96xx_C0(rvu))
+	if (is_rvu_pre_96xx_C0(rvu))
 		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
 			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x40ULL);
 

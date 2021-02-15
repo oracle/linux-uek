@@ -530,13 +530,13 @@ static inline u64 rvupf_read64(struct rvu *rvu, u64 offset)
 }
 
 /* Silicon revisions */
-
-static inline bool is_rvu_post_96xx_C0(struct rvu *rvu)
+static inline bool is_rvu_pre_96xx_C0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
-
-	return (pdev->revision == 0x08) || (pdev->revision == 0x30) ||
-		(pdev->revision == 0x20);
+	/* 96XX A0/B0, 95XX A0/A1/B0 chips */
+	return ((pdev->revision == 0x00) || (pdev->revision == 0x01) ||
+		(pdev->revision == 0x10) || (pdev->revision == 0x11) ||
+		(pdev->revision == 0x14));
 }
 
 static inline bool is_rvu_96xx_A0(struct rvu *rvu)
@@ -551,13 +551,6 @@ static inline bool is_rvu_96xx_B0(struct rvu *rvu)
 	struct pci_dev *pdev = rvu->pdev;
 
 	return (pdev->revision == 0x00) || (pdev->revision == 0x01);
-}
-
-static inline bool is_rvu_95xx_B0(struct rvu *rvu)
-{
-	struct pci_dev *pdev = rvu->pdev;
-
-	return (pdev->revision == 0x14);
 }
 
 static inline bool is_rvu_95xx_A0(struct rvu *rvu)
@@ -576,6 +569,7 @@ static inline bool is_rvu_95xx_A0(struct rvu *rvu)
 #define PCI_REVISION_ID_LOKI		0x20
 #define PCI_REVISION_ID_98XX		0x30
 #define PCI_REVISION_ID_95XXMM		0x40
+#define PCI_REVISION_ID_95XXO		0xE0
 
 static inline bool is_rvu_otx2(struct rvu *rvu)
 {
@@ -585,7 +579,7 @@ static inline bool is_rvu_otx2(struct rvu *rvu)
 
 	return (midr == PCI_REVISION_ID_96XX || midr == PCI_REVISION_ID_95XX ||
 		midr == PCI_REVISION_ID_LOKI || midr == PCI_REVISION_ID_98XX ||
-		midr == PCI_REVISION_ID_95XXMM);
+		midr == PCI_REVISION_ID_95XXMM || midr == PCI_REVISION_ID_95XXO);
 }
 
 static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)

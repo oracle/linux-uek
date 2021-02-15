@@ -388,11 +388,6 @@ static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
 	return pdev->device == PCI_DEVID_OCTEONTX2_RVU_AFVF;
 }
 
-static inline bool is_dev_post_96xx_C0(struct pci_dev *pdev)
-{
-	return (pdev->revision == 0x08) || (pdev->revision == 0x30);
-}
-
 static inline bool is_96xx_A0(struct pci_dev *pdev)
 {
 	return (pdev->revision == 0x00);
@@ -418,6 +413,7 @@ static inline bool is_95xx_A0(struct pci_dev *pdev)
 #define PCI_REVISION_ID_LOKI		0x20
 #define PCI_REVISION_ID_98XX		0x30
 #define PCI_REVISION_ID_95XXMM		0x40
+#define PCI_REVISION_ID_95XXO		0xE0
 
 static inline bool is_dev_otx2(struct pci_dev *pdev)
 {
@@ -425,7 +421,7 @@ static inline bool is_dev_otx2(struct pci_dev *pdev)
 
 	return (midr == PCI_REVISION_ID_96XX || midr == PCI_REVISION_ID_95XX ||
 		midr == PCI_REVISION_ID_LOKI || midr == PCI_REVISION_ID_98XX ||
-		midr == PCI_REVISION_ID_95XXMM);
+		midr == PCI_REVISION_ID_95XXMM || midr == PCI_REVISION_ID_95XXO);
 }
 
 static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
@@ -455,6 +451,9 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 		 */
 		pfvf->netdev->watchdog_timeo = 10000 * HZ;
 	}
+	if (is_96xx_B0(pfvf->pdev))
+		__clear_bit(HW_TSO, &hw->cap_flag);
+
 	if (!is_dev_otx2(pfvf->pdev)) {
 		__set_bit(CN10K_MBOX, &hw->cap_flag);
 		__set_bit(CN10K_LMTST, &hw->cap_flag);
