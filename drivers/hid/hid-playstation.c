@@ -9,7 +9,6 @@
 #include <linux/crc32.h>
 #include <linux/device.h>
 #include <linux/hid.h>
-#include <linux/idr.h>
 #include <linux/input/mt.h>
 #include <linux/leds.h>
 #include <linux/led-class-multicolor.h>
@@ -23,8 +22,6 @@
 static DEFINE_MUTEX(ps_devices_lock);
 static LIST_HEAD(ps_devices_list);
 
-static DEFINE_IDA(ps_player_id_allocator);
-
 #define HID_PLAYSTATION_VERSION_PATCH 0x8000
 
 /* Base class for playstation devices. */
@@ -32,8 +29,6 @@ struct ps_device {
 	struct list_head list;
 	struct hid_device *hdev;
 	spinlock_t lock;
-
-	uint32_t player_id;
 
 	struct power_supply_desc battery_desc;
 	struct power_supply *battery;
@@ -324,24 +319,6 @@ static int ps_devices_list_remove(struct ps_device *dev)
 	list_del(&dev->list);
 	mutex_unlock(&ps_devices_lock);
 	return 0;
-}
-
-static int ps_device_set_player_id(struct ps_device *dev)
-{
-	int ret = ida_alloc(&ps_player_id_allocator, GFP_KERNEL);
-
-	if (ret < 0)
-		return ret;
-
-	dev->player_id = ret;
-	return 0;
-}
-
-static void ps_device_release_player_id(struct ps_device *dev)
-{
-	ida_free(&ps_player_id_allocator, dev->player_id);
-
-	dev->player_id = U32_MAX;
 }
 
 static struct input_dev *ps_allocate_input_dev(struct hid_device *hdev, const char *name_suffix)
@@ -1179,29 +1156,6 @@ static int dualsense_reset_leds(struct dualsense *ds)
 	return 0;
 }
 
-static void dualsense_set_player_leds(struct dualsense *ds)
-{
-	/*
-	 * The DualSense controller has a row of 5 LEDs used for player ids.
-	 * Behavior on the PlayStation 5 console is to center the player id
-	 * across the LEDs, so e.g. player 1 would be "--x--" with x being 'on'.
-	 * Follow a similar mapping here.
-	 */
-	static const int player_ids[5] = {
-		BIT(2),
-		BIT(3) | BIT(1),
-		BIT(4) | BIT(2) | BIT(0),
-		BIT(4) | BIT(3) | BIT(1) | BIT(0),
-		BIT(4) | BIT(3) | BIT(2) | BIT(1) | BIT(0)
-	};
-
-	uint8_t player_id = ds->base.player_id % ARRAY_SIZE(player_ids);
-
-	ds->update_player_leds = true;
-	ds->player_leds_state = player_ids[player_id];
-	schedule_work(&ds->output_worker);
-}
-
 static struct ps_device *dualsense_create(struct hid_device *hdev)
 {
 	struct dualsense *ds;
@@ -1310,15 +1264,6 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
 			goto err;
 	}
 
-	ret = ps_device_set_player_id(ps_dev);
-	if (ret) {
-		hid_err(hdev, "Failed to assign player id for DualSense: %d\n", ret);
-		goto err;
-	}
-
-	/* Set player LEDs to our player id. */
-	dualsense_set_player_leds(ds);
-
 	return &ds->base;
 
 err:
@@ -1383,7 +1328,6 @@ static void ps_remove(struct hid_device *hdev)
 	struct ps_device *dev = hid_get_drvdata(hdev);
 
 	ps_devices_list_remove(dev);
-	ps_device_release_player_id(dev);
 
 	hid_hw_close(hdev);
 	hid_hw_stop(hdev);
@@ -1404,19 +1348,7 @@ static struct hid_driver ps_driver = {
 	.raw_event	= ps_raw_event,
 };
 
-static int __init ps_init(void)
-{
-	return hid_register_driver(&ps_driver);
-}
-
-static void __exit ps_exit(void)
-{
-	hid_unregister_driver(&ps_driver);
-	ida_destroy(&ps_player_id_allocator);
-}
-
-module_init(ps_init);
-module_exit(ps_exit);
+module_hid_driver(ps_driver);
 
 MODULE_AUTHOR("Sony Interactive Entertainment");
 MODULE_DESCRIPTION("HID Driver for PlayStation peripherals.");
