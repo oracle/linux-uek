@@ -10,7 +10,6 @@
 #include <linux/device.h>
 #include <linux/hid.h>
 #include <linux/input/mt.h>
-#include <linux/led-class-multicolor.h>
 #include <linux/module.h>
 
 #include <asm/unaligned.h>
@@ -100,10 +99,6 @@ struct ps_calibration_data {
 /* Flags for DualSense output report. */
 #define DS_OUTPUT_VALID_FLAG0_COMPATIBLE_VIBRATION BIT(0)
 #define DS_OUTPUT_VALID_FLAG0_HAPTICS_SELECT BIT(1)
-#define DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE BIT(2)
-#define DS_OUTPUT_VALID_FLAG1_RELEASE_LEDS BIT(3)
-#define DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE BIT(1)
-#define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT BIT(1)
 
 /* DualSense hardware limits */
 #define DS_ACC_RES_PER_G	8192
@@ -132,13 +127,6 @@ struct dualsense {
 	bool update_rumble;
 	uint8_t motor_left;
 	uint8_t motor_right;
-
-	/* RGB lightbar */
-	struct led_classdev_mc lightbar;
-	bool update_lightbar;
-	uint8_t lightbar_red;
-	uint8_t lightbar_green;
-	uint8_t lightbar_blue;
 
 	struct work_struct output_worker;
 	void *output_report_dmabuf;
@@ -485,45 +473,6 @@ static int ps_get_report(struct hid_device *hdev, uint8_t report_id, uint8_t *bu
 	return 0;
 }
 
-/* Register a DualSense/DualShock4 RGB lightbar represented by a multicolor LED. */
-static int ps_lightbar_register(struct ps_device *ps_dev, struct led_classdev_mc *lightbar_mc_dev,
-	int (*brightness_set)(struct led_classdev *, enum led_brightness))
-{
-	struct hid_device *hdev = ps_dev->hdev;
-	struct mc_subled *mc_led_info;
-	struct led_classdev *led_cdev;
-	int ret;
-
-	mc_led_info = devm_kmalloc_array(&hdev->dev, 3, sizeof(*mc_led_info),
-					 GFP_KERNEL | __GFP_ZERO);
-	if (!mc_led_info)
-		return -ENOMEM;
-
-	mc_led_info[0].color_index = LED_COLOR_ID_RED;
-	mc_led_info[1].color_index = LED_COLOR_ID_GREEN;
-	mc_led_info[2].color_index = LED_COLOR_ID_BLUE;
-
-	lightbar_mc_dev->subled_info = mc_led_info;
-	lightbar_mc_dev->num_colors = 3;
-
-	led_cdev = &lightbar_mc_dev->led_cdev;
-	led_cdev->name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "playstation::%pMR::rgb",
-			ps_dev->mac_address);
-	if (!led_cdev->name)
-		return -ENOMEM;
-	led_cdev->brightness = 255;
-	led_cdev->max_brightness = 255;
-	led_cdev->brightness_set_blocking = brightness_set;
-
-	ret = devm_led_classdev_multicolor_register(&hdev->dev, lightbar_mc_dev);
-	if (ret < 0) {
-		hid_err(hdev, "Cannot register multicolor LED device\n");
-		return ret;
-	}
-
-	return 0;
-}
-
 static struct input_dev *ps_sensors_create(struct hid_device *hdev, int accel_range, int accel_res,
 		int gyro_range, int gyro_res)
 {
@@ -702,26 +651,6 @@ err_free:
 	return ret;
 }
 
-static int dualsense_lightbar_set_brightness(struct led_classdev *cdev,
-	enum led_brightness brightness)
-{
-	struct led_classdev_mc *mc_cdev = lcdev_to_mccdev(cdev);
-	struct dualsense *ds = container_of(mc_cdev, struct dualsense, lightbar);
-	unsigned long flags;
-
-	led_mc_calc_color_components(mc_cdev, brightness);
-
-	spin_lock_irqsave(&ds->base.lock, flags);
-	ds->update_lightbar = true;
-	ds->lightbar_red = mc_cdev->subled_info[0].brightness;
-	ds->lightbar_green = mc_cdev->subled_info[1].brightness;
-	ds->lightbar_blue = mc_cdev->subled_info[2].brightness;
-	spin_unlock_irqrestore(&ds->base.lock, flags);
-
-	schedule_work(&ds->output_worker);
-	return 0;
-}
-
 static void dualsense_init_output_report(struct dualsense *ds, struct dualsense_output_report *rp,
 		void *buf)
 {
@@ -803,15 +732,6 @@ static void dualsense_output_worker(struct work_struct *work)
 		common->motor_left = ds->motor_left;
 		common->motor_right = ds->motor_right;
 		ds->update_rumble = false;
-	}
-
-	if (ds->update_lightbar) {
-		common->valid_flag1 |= DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE;
-		common->lightbar_red = ds->lightbar_red;
-		common->lightbar_green = ds->lightbar_green;
-		common->lightbar_blue = ds->lightbar_blue;
-
-		ds->update_lightbar = false;
 	}
 
 	spin_unlock_irqrestore(&ds->base.lock, flags);
@@ -998,31 +918,6 @@ static int dualsense_play_effect(struct input_dev *dev, void *data, struct ff_ef
 	return 0;
 }
 
-static int dualsense_reset_leds(struct dualsense *ds)
-{
-	struct dualsense_output_report report;
-	uint8_t *buf;
-
-	buf = kzalloc(sizeof(struct dualsense_output_report_bt), GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	dualsense_init_output_report(ds, &report, buf);
-	/*
-	 * On Bluetooth the DualSense outputs an animation on the lightbar
-	 * during startup and maintains a color afterwards. We need to explicitly
-	 * reconfigure the lightbar before we can do any programming later on.
-	 * In USB the lightbar is not on by default, but redoing the setup there
-	 * doesn't hurt.
-	 */
-	report.common->valid_flag2 = DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE;
-	report.common->lightbar_setup = DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT; /* Fade light out. */
-	dualsense_send_output_report(ds, &report);
-
-	kfree(buf);
-	return 0;
-}
-
 static struct ps_device *dualsense_create(struct hid_device *hdev)
 {
 	struct dualsense *ds;
@@ -1091,19 +986,6 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
 	}
 
 	ret = ps_device_register_battery(ps_dev);
-	if (ret)
-		goto err;
-
-	/*
-	 * The hardware may have control over the LEDs (e.g. in Bluetooth on startup).
-	 * Reset the LEDs (lightbar, mute, player leds), so we can control them
-	 * from software.
-	 */
-	ret = dualsense_reset_leds(ds);
-	if (ret)
-		goto err;
-
-	ret = ps_lightbar_register(ps_dev, &ds->lightbar, dualsense_lightbar_set_brightness);
 	if (ret)
 		goto err;
 
