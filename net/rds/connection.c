@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -483,6 +483,9 @@ static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 	}
 
 	rds_clear_shutdown_pending_work_bit(cp);
+
+	if (cp->cp_shutdown_final)
+		complete(cp->cp_shutdown_final);
 }
 
 static void rds_conn_shutdown_check_wait(struct work_struct *work)
@@ -613,6 +616,7 @@ void rds_conn_init_shutdown(struct rds_conn_path *cp)
  */
 static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 {
+	DECLARE_COMPLETION(shutdown_final);
 	struct rds_message *rm, *rtmp;
 	LIST_HEAD(to_be_dropped);
 
@@ -633,11 +637,10 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 		rds_queue_cancel_work(cp, &cp->cp_recv_w,
 				      "conn path destroy recv work");
 
+	cp->cp_shutdown_final = &shutdown_final;
 	rds_conn_path_drop(cp, DR_CONN_DESTROY, 0);
 	rds_queue_flush_work(cp, &cp->cp_down_w, "conn path destroy down work");
-
-	rds_queue_cancel_work(cp, &cp->cp_conn_w,
-			      "conn path destroy conn work");
+	wait_for_completion(&shutdown_final);
 
 	/* tear down queued messages */
 	list_for_each_entry_safe(rm, rtmp,
