@@ -308,6 +308,8 @@ struct rds_conn_path {
 	time64_t		cp_connection_initiated;
 	time64_t		cp_connection_established;
 	u32			cp_connection_attempts;
+
+	struct completion	*cp_shutdown_final;
 };
 
 struct rds_conn_ha_changed_work {
