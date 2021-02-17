@@ -539,6 +539,16 @@ int enter_svm_guest_mode(struct vcpu_svm *svm, u64 vmcb12_gpa,
 
 
 	svm->nested.vmcb12_gpa = vmcb12_gpa;
+
+	/*
+	 * The Virtual SPEC_CTRL feature is not supported in the nested
+	 * hypervisor, so any writes to SPEC_CTRL MSR originating from the
+	 * L2 guest must be be reflected in the L1 hypervisor SPEC_CTRL. In
+	 * other words, this specific VMCB state is shared between L1 and L2,
+	 * and the current vmcb->save.spec_ctrl field doesn't need to be
+	 * saved/restored.
+	 */
+
 	nested_prepare_vmcb_control(svm, vmcb12->save.rip, vmcb12->save.cs.base);
 	nested_prepare_vmcb_save(svm, vmcb12);
 

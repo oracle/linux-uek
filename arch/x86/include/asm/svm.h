@@ -297,12 +297,13 @@ struct __attribute__ ((__packed__)) vmcb_save_area {
 	u64 br_to;
 	u64 last_excp_from;
 	u64 last_excp_to;
+	u8 reserved_7[72];
+	u32 spec_ctrl;          /* Guest version of SPEC_CTRL at 0x2E0 */
 };
-
 
 static inline void __unused_size_checks(void)
 {
-	BUILD_BUG_ON(sizeof(struct vmcb_save_area) != 0x298);
+	BUILD_BUG_ON(sizeof(struct vmcb_save_area) != 0x2e4);
 	BUILD_BUG_ON(sizeof(struct vmcb_control_area) != 256);
 }
 
