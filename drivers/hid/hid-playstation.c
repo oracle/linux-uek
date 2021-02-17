@@ -9,10 +9,7 @@
 #include <linux/crc32.h>
 #include <linux/device.h>
 #include <linux/hid.h>
-#include <linux/idr.h>
 #include <linux/input/mt.h>
-#include <linux/leds.h>
-#include <linux/led-class-multicolor.h>
 #include <linux/module.h>
 
 #include <asm/unaligned.h>
@@ -23,8 +20,6 @@
 static DEFINE_MUTEX(ps_devices_lock);
 static LIST_HEAD(ps_devices_list);
 
-static DEFINE_IDA(ps_player_id_allocator);
-
 #define HID_PLAYSTATION_VERSION_PATCH 0x8000
 
 /* Base class for playstation devices. */
@@ -33,16 +28,12 @@ struct ps_device {
 	struct hid_device *hdev;
 	spinlock_t lock;
 
-	uint32_t player_id;
-
 	struct power_supply_desc battery_desc;
 	struct power_supply *battery;
 	uint8_t battery_capacity;
 	int battery_status;
 
 	uint8_t mac_address[6]; /* Note: stored in little endian order. */
-	uint32_t hw_version;
-	uint32_t fw_version;
 
 	int (*parse_report)(struct ps_device *dev, struct hid_report *report, u8 *data, int size);
 };
@@ -53,12 +44,6 @@ struct ps_calibration_data {
 	short bias;
 	int sens_numer;
 	int sens_denom;
-};
-
-struct ps_led_info {
-	const char *name;
-	enum led_brightness (*brightness_get)(struct led_classdev *cdev);
-	void (*brightness_set)(struct led_classdev *cdev, enum led_brightness);
 };
 
 /* Seed values for DualShock4 / DualSense CRC32 for different report types. */
@@ -79,8 +64,6 @@ struct ps_led_info {
 #define DS_FEATURE_REPORT_CALIBRATION_SIZE	41
 #define DS_FEATURE_REPORT_PAIRING_INFO		0x09
 #define DS_FEATURE_REPORT_PAIRING_INFO_SIZE	20
-#define DS_FEATURE_REPORT_FIRMWARE_INFO		0x20
-#define DS_FEATURE_REPORT_FIRMWARE_INFO_SIZE	64
 
 /* Button masks for DualSense input report. */
 #define DS_BUTTONS0_HAT_SWITCH	GENMASK(3, 0)
@@ -98,7 +81,6 @@ struct ps_led_info {
 #define DS_BUTTONS1_R3		BIT(7)
 #define DS_BUTTONS2_PS_HOME	BIT(0)
 #define DS_BUTTONS2_TOUCHPAD	BIT(1)
-#define DS_BUTTONS2_MIC_MUTE	BIT(2)
 
 /* Status field of DualSense input report. */
 #define DS_STATUS_BATTERY_CAPACITY	GENMASK(3, 0)
@@ -117,14 +99,6 @@ struct ps_led_info {
 /* Flags for DualSense output report. */
 #define DS_OUTPUT_VALID_FLAG0_COMPATIBLE_VIBRATION BIT(0)
 #define DS_OUTPUT_VALID_FLAG0_HAPTICS_SELECT BIT(1)
-#define DS_OUTPUT_VALID_FLAG1_MIC_MUTE_LED_CONTROL_ENABLE BIT(0)
-#define DS_OUTPUT_VALID_FLAG1_POWER_SAVE_CONTROL_ENABLE BIT(1)
-#define DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE BIT(2)
-#define DS_OUTPUT_VALID_FLAG1_RELEASE_LEDS BIT(3)
-#define DS_OUTPUT_VALID_FLAG1_PLAYER_INDICATOR_CONTROL_ENABLE BIT(4)
-#define DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE BIT(1)
-#define DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE BIT(4)
-#define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT BIT(1)
 
 /* DualSense hardware limits */
 #define DS_ACC_RES_PER_G	8192
@@ -153,24 +127,6 @@ struct dualsense {
 	bool update_rumble;
 	uint8_t motor_left;
 	uint8_t motor_right;
-
-	/* RGB lightbar */
-	struct led_classdev_mc lightbar;
-	bool update_lightbar;
-	uint8_t lightbar_red;
-	uint8_t lightbar_green;
-	uint8_t lightbar_blue;
-
-	/* Microphone */
-	bool update_mic_mute;
-	bool mic_muted;
-	bool last_btn_mic_state;
-	struct led_classdev mute_led;
-
-	/* Player leds */
-	bool update_player_leds;
-	uint8_t player_leds_state;
-	struct led_classdev player_leds[5];
 
 	struct work_struct output_worker;
 	void *output_report_dmabuf;
@@ -330,24 +286,6 @@ static int ps_devices_list_remove(struct ps_device *dev)
 	return 0;
 }
 
-static int ps_device_set_player_id(struct ps_device *dev)
-{
-	int ret = ida_alloc(&ps_player_id_allocator, GFP_KERNEL);
-
-	if (ret < 0)
-		return ret;
-
-	dev->player_id = ret;
-	return 0;
-}
-
-static void ps_device_release_player_id(struct ps_device *dev)
-{
-	ida_free(&ps_player_id_allocator, dev->player_id);
-
-	dev->player_id = U32_MAX;
-}
-
 static struct input_dev *ps_allocate_input_dev(struct hid_device *hdev, const char *name_suffix)
 {
 	struct input_dev *input_dev;
@@ -391,7 +329,7 @@ static int ps_battery_get_property(struct power_supply *psy,
 	uint8_t battery_capacity;
 	int battery_status;
 	unsigned long flags;
-	int ret = 0;
+	int ret;
 
 	spin_lock_irqsave(&dev->lock, flags);
 	battery_capacity = dev->battery_capacity;
@@ -416,7 +354,7 @@ static int ps_battery_get_property(struct power_supply *psy,
 		break;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int ps_device_register_battery(struct ps_device *dev)
@@ -535,71 +473,6 @@ static int ps_get_report(struct hid_device *hdev, uint8_t report_id, uint8_t *bu
 	return 0;
 }
 
-static int ps_led_register(struct ps_device *ps_dev, struct led_classdev *led,
-		const struct ps_led_info *led_info)
-{
-	int ret;
-
-	led->name = devm_kasprintf(&ps_dev->hdev->dev, GFP_KERNEL,
-			"playstation::%pMR::%s", ps_dev->mac_address, led_info->name);
-
-	if (!led->name)
-		return -ENOMEM;
-
-	led->brightness = 0;
-	led->max_brightness = 1;
-	led->flags = LED_CORE_SUSPENDRESUME;
-	led->brightness_get = led_info->brightness_get;
-	led->brightness_set = led_info->brightness_set;
-
-	ret = devm_led_classdev_register(&ps_dev->hdev->dev, led);
-	if (ret) {
-		hid_err(ps_dev->hdev, "Failed to register LED %s: %d\n", led_info->name, ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-/* Register a DualSense/DualShock4 RGB lightbar represented by a multicolor LED. */
-static int ps_lightbar_register(struct ps_device *ps_dev, struct led_classdev_mc *lightbar_mc_dev,
-	int (*brightness_set)(struct led_classdev *, enum led_brightness))
-{
-	struct hid_device *hdev = ps_dev->hdev;
-	struct mc_subled *mc_led_info;
-	struct led_classdev *led_cdev;
-	int ret;
-
-	mc_led_info = devm_kmalloc_array(&hdev->dev, 3, sizeof(*mc_led_info),
-					 GFP_KERNEL | __GFP_ZERO);
-	if (!mc_led_info)
-		return -ENOMEM;
-
-	mc_led_info[0].color_index = LED_COLOR_ID_RED;
-	mc_led_info[1].color_index = LED_COLOR_ID_GREEN;
-	mc_led_info[2].color_index = LED_COLOR_ID_BLUE;
-
-	lightbar_mc_dev->subled_info = mc_led_info;
-	lightbar_mc_dev->num_colors = 3;
-
-	led_cdev = &lightbar_mc_dev->led_cdev;
-	led_cdev->name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "playstation::%pMR::rgb",
-			ps_dev->mac_address);
-	if (!led_cdev->name)
-		return -ENOMEM;
-	led_cdev->brightness = 255;
-	led_cdev->max_brightness = 255;
-	led_cdev->brightness_set_blocking = brightness_set;
-
-	ret = devm_led_classdev_multicolor_register(&hdev->dev, lightbar_mc_dev);
-	if (ret < 0) {
-		hid_err(hdev, "Cannot register multicolor LED device\n");
-		return ret;
-	}
-
-	return 0;
-}
-
 static struct input_dev *ps_sensors_create(struct hid_device *hdev, int accel_range, int accel_res,
 		int gyro_range, int gyro_res)
 {
@@ -664,40 +537,6 @@ static struct input_dev *ps_touchpad_create(struct hid_device *hdev, int width, 
 
 	return touchpad;
 }
-
-static ssize_t firmware_version_show(struct device *dev,
-				struct device_attribute
-				*attr, char *buf)
-{
-	struct hid_device *hdev = to_hid_device(dev);
-	struct ps_device *ps_dev = hid_get_drvdata(hdev);
-
-	return sysfs_emit(buf, "0x%08x\n", ps_dev->fw_version);
-}
-
-static DEVICE_ATTR_RO(firmware_version);
-
-static ssize_t hardware_version_show(struct device *dev,
-				struct device_attribute
-				*attr, char *buf)
-{
-	struct hid_device *hdev = to_hid_device(dev);
-	struct ps_device *ps_dev = hid_get_drvdata(hdev);
-
-	return sysfs_emit(buf, "0x%08x\n", ps_dev->hw_version);
-}
-
-static DEVICE_ATTR_RO(hardware_version);
-
-static struct attribute *ps_device_attributes[] = {
-	&dev_attr_firmware_version.attr,
-	&dev_attr_hardware_version.attr,
-	NULL
-};
-
-static const struct attribute_group ps_device_attribute_group = {
-	.attrs = ps_device_attributes,
-};
 
 static int dualsense_get_calibration_data(struct dualsense *ds)
 {
@@ -789,30 +628,6 @@ err_free:
 	return ret;
 }
 
-static int dualsense_get_firmware_info(struct dualsense *ds)
-{
-	uint8_t *buf;
-	int ret;
-
-	buf = kzalloc(DS_FEATURE_REPORT_FIRMWARE_INFO_SIZE, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	ret = ps_get_report(ds->base.hdev, DS_FEATURE_REPORT_FIRMWARE_INFO, buf,
-			DS_FEATURE_REPORT_FIRMWARE_INFO_SIZE);
-	if (ret) {
-		hid_err(ds->base.hdev, "Failed to retrieve DualSense firmware info: %d\n", ret);
-		goto err_free;
-	}
-
-	ds->base.hw_version = get_unaligned_le32(&buf[24]);
-	ds->base.fw_version = get_unaligned_le32(&buf[28]);
-
-err_free:
-	kfree(buf);
-	return ret;
-}
-
 static int dualsense_get_mac_address(struct dualsense *ds)
 {
 	uint8_t *buf;
@@ -834,68 +649,6 @@ static int dualsense_get_mac_address(struct dualsense *ds)
 err_free:
 	kfree(buf);
 	return ret;
-}
-
-static int dualsense_lightbar_set_brightness(struct led_classdev *cdev,
-	enum led_brightness brightness)
-{
-	struct led_classdev_mc *mc_cdev = lcdev_to_mccdev(cdev);
-	struct dualsense *ds = container_of(mc_cdev, struct dualsense, lightbar);
-	unsigned long flags;
-
-	led_mc_calc_color_components(mc_cdev, brightness);
-
-	spin_lock_irqsave(&ds->base.lock, flags);
-	ds->update_lightbar = true;
-	ds->lightbar_red = mc_cdev->subled_info[0].brightness;
-	ds->lightbar_green = mc_cdev->subled_info[1].brightness;
-	ds->lightbar_blue = mc_cdev->subled_info[2].brightness;
-	spin_unlock_irqrestore(&ds->base.lock, flags);
-
-	schedule_work(&ds->output_worker);
-	return 0;
-}
-
-static enum led_brightness dualsense_mute_led_get_brightness(struct led_classdev *led)
-{
-	struct dualsense *ds = container_of(led, struct dualsense, mute_led);
-
-	return ds->mic_muted;
-}
-
-/* The mute LED is treated as read-only. This set call prevents ENOTSUP errors e.g. on unload. */
-static void dualsense_mute_led_set_brightness(struct led_classdev *led, enum led_brightness value)
-{
-
-}
-
-static enum led_brightness dualsense_player_led_get_brightness(struct led_classdev *led)
-{
-	struct hid_device *hdev = to_hid_device(led->dev->parent);
-	struct dualsense *ds = hid_get_drvdata(hdev);
-
-	return !!(ds->player_leds_state & BIT(led - ds->player_leds));
-}
-
-static void dualsense_player_led_set_brightness(struct led_classdev *led, enum led_brightness value)
-{
-	struct hid_device *hdev = to_hid_device(led->dev->parent);
-	struct dualsense *ds = hid_get_drvdata(hdev);
-	unsigned long flags;
-	unsigned int led_index;
-
-	spin_lock_irqsave(&ds->base.lock, flags);
-
-	led_index = led - ds->player_leds;
-	if (value == LED_OFF)
-		ds->player_leds_state &= ~BIT(led_index);
-	else
-		ds->player_leds_state |= BIT(led_index);
-
-	ds->update_player_leds = true;
-	spin_unlock_irqrestore(&ds->base.lock, flags);
-
-	schedule_work(&ds->output_worker);
 }
 
 static void dualsense_init_output_report(struct dualsense *ds, struct dualsense_output_report *rp,
@@ -981,39 +734,6 @@ static void dualsense_output_worker(struct work_struct *work)
 		ds->update_rumble = false;
 	}
 
-	if (ds->update_lightbar) {
-		common->valid_flag1 |= DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE;
-		common->lightbar_red = ds->lightbar_red;
-		common->lightbar_green = ds->lightbar_green;
-		common->lightbar_blue = ds->lightbar_blue;
-
-		ds->update_lightbar = false;
-	}
-
-	if (ds->update_player_leds) {
-		common->valid_flag1 |= DS_OUTPUT_VALID_FLAG1_PLAYER_INDICATOR_CONTROL_ENABLE;
-		common->player_leds = ds->player_leds_state;
-
-		ds->update_player_leds = false;
-	}
-
-	if (ds->update_mic_mute) {
-		common->valid_flag1 |= DS_OUTPUT_VALID_FLAG1_MIC_MUTE_LED_CONTROL_ENABLE;
-		common->mute_button_led = ds->mic_muted;
-
-		if (ds->mic_muted) {
-			/* Disable microphone */
-			common->valid_flag1 |= DS_OUTPUT_VALID_FLAG1_POWER_SAVE_CONTROL_ENABLE;
-			common->power_save_control |= DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE;
-		} else {
-			/* Enable microphone */
-			common->valid_flag1 |= DS_OUTPUT_VALID_FLAG1_POWER_SAVE_CONTROL_ENABLE;
-			common->power_save_control &= ~DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE;
-		}
-
-		ds->update_mic_mute = false;
-	}
-
 	spin_unlock_irqrestore(&ds->base.lock, flags);
 
 	dualsense_send_output_report(ds, &report);
@@ -1028,7 +748,6 @@ static int dualsense_parse_report(struct ps_device *ps_dev, struct hid_report *r
 	uint8_t battery_data, battery_capacity, charging_status, value;
 	int battery_status;
 	uint32_t sensor_timestamp;
-	bool btn_mic_state;
 	unsigned long flags;
 	int i;
 
@@ -1083,23 +802,6 @@ static int dualsense_parse_report(struct ps_device *ps_dev, struct hid_report *r
 	input_report_key(ds->gamepad, BTN_THUMBR, ds_report->buttons[1] & DS_BUTTONS1_R3);
 	input_report_key(ds->gamepad, BTN_MODE,   ds_report->buttons[2] & DS_BUTTONS2_PS_HOME);
 	input_sync(ds->gamepad);
-
-	/*
-	 * The DualSense has an internal microphone, which can be muted through a mute button
-	 * on the device. The driver is expected to read the button state and program the device
-	 * to mute/unmute audio at the hardware level.
-	 */
-	btn_mic_state = !!(ds_report->buttons[2] & DS_BUTTONS2_MIC_MUTE);
-	if (btn_mic_state && !ds->last_btn_mic_state) {
-		spin_lock_irqsave(&ps_dev->lock, flags);
-		ds->update_mic_mute = true;
-		ds->mic_muted = !ds->mic_muted; /* toggle */
-		spin_unlock_irqrestore(&ps_dev->lock, flags);
-
-		/* Schedule updating of microphone state at hardware level. */
-		schedule_work(&ds->output_worker);
-	}
-	ds->last_btn_mic_state = btn_mic_state;
 
 	/* Parse and calibrate gyroscope data. */
 	for (i = 0; i < ARRAY_SIZE(ds_report->gyro); i++) {
@@ -1216,72 +918,12 @@ static int dualsense_play_effect(struct input_dev *dev, void *data, struct ff_ef
 	return 0;
 }
 
-static int dualsense_reset_leds(struct dualsense *ds)
-{
-	struct dualsense_output_report report;
-	uint8_t *buf;
-
-	buf = kzalloc(sizeof(struct dualsense_output_report_bt), GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	dualsense_init_output_report(ds, &report, buf);
-	/*
-	 * On Bluetooth the DualSense outputs an animation on the lightbar
-	 * during startup and maintains a color afterwards. We need to explicitly
-	 * reconfigure the lightbar before we can do any programming later on.
-	 * In USB the lightbar is not on by default, but redoing the setup there
-	 * doesn't hurt.
-	 */
-	report.common->valid_flag2 = DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE;
-	report.common->lightbar_setup = DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT; /* Fade light out. */
-	dualsense_send_output_report(ds, &report);
-
-	kfree(buf);
-	return 0;
-}
-
-static void dualsense_set_player_leds(struct dualsense *ds)
-{
-	/*
-	 * The DualSense controller has a row of 5 LEDs used for player ids.
-	 * Behavior on the PlayStation 5 console is to center the player id
-	 * across the LEDs, so e.g. player 1 would be "--x--" with x being 'on'.
-	 * Follow a similar mapping here.
-	 */
-	static const int player_ids[5] = {
-		BIT(2),
-		BIT(3) | BIT(1),
-		BIT(4) | BIT(2) | BIT(0),
-		BIT(4) | BIT(3) | BIT(1) | BIT(0),
-		BIT(4) | BIT(3) | BIT(2) | BIT(1) | BIT(0)
-	};
-
-	uint8_t player_id = ds->base.player_id % ARRAY_SIZE(player_ids);
-
-	ds->update_player_leds = true;
-	ds->player_leds_state = player_ids[player_id];
-	schedule_work(&ds->output_worker);
-}
-
 static struct ps_device *dualsense_create(struct hid_device *hdev)
 {
 	struct dualsense *ds;
 	struct ps_device *ps_dev;
 	uint8_t max_output_report_size;
-	int i, ret;
-
-	static const struct ps_led_info mute_led_info = {
-		"micmute", dualsense_mute_led_get_brightness, dualsense_mute_led_set_brightness
-	};
-
-	static const struct ps_led_info player_leds_info[] = {
-		{ "led1", dualsense_player_led_get_brightness, dualsense_player_led_set_brightness },
-		{ "led2", dualsense_player_led_get_brightness, dualsense_player_led_set_brightness },
-		{ "led3", dualsense_player_led_get_brightness, dualsense_player_led_set_brightness },
-		{ "led4", dualsense_player_led_get_brightness, dualsense_player_led_set_brightness },
-		{ "led5", dualsense_player_led_get_brightness, dualsense_player_led_set_brightness }
-	};
+	int ret;
 
 	ds = devm_kzalloc(&hdev->dev, sizeof(*ds), GFP_KERNEL);
 	if (!ds)
@@ -1313,12 +955,6 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
 		return ERR_PTR(ret);
 	}
 	snprintf(hdev->uniq, sizeof(hdev->uniq), "%pMR", ds->base.mac_address);
-
-	ret = dualsense_get_firmware_info(ds);
-	if (ret) {
-		hid_err(hdev, "Failed to get firmware info from DualSense\n");
-		return ERR_PTR(ret);
-	}
 
 	ret = ps_devices_list_add(ps_dev);
 	if (ret)
@@ -1352,47 +988,6 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
 	ret = ps_device_register_battery(ps_dev);
 	if (ret)
 		goto err;
-
-	/*
-	 * The hardware may have control over the LEDs (e.g. in Bluetooth on startup).
-	 * Reset the LEDs (lightbar, mute, player leds), so we can control them
-	 * from software.
-	 */
-	ret = dualsense_reset_leds(ds);
-	if (ret)
-		goto err;
-
-	ret = ps_lightbar_register(ps_dev, &ds->lightbar, dualsense_lightbar_set_brightness);
-	if (ret)
-		goto err;
-
-	ret = ps_led_register(ps_dev, &ds->mute_led, &mute_led_info);
-	if (ret)
-		goto err;
-
-	for (i = 0; i < ARRAY_SIZE(player_leds_info); i++) {
-		const struct ps_led_info *led_info = &player_leds_info[i];
-
-		ret = ps_led_register(ps_dev, &ds->player_leds[i], led_info);
-		if (ret < 0)
-			goto err;
-	}
-
-	ret = ps_device_set_player_id(ps_dev);
-	if (ret) {
-		hid_err(hdev, "Failed to assign player id for DualSense: %d\n", ret);
-		goto err;
-	}
-
-	/* Set player LEDs to our player id. */
-	dualsense_set_player_leds(ds);
-
-	/*
-	 * Reporting hardware and firmware is important as there are frequent updates, which
-	 * can change behavior.
-	 */
-	hid_info(hdev, "Registered DualSense controller hw_version=0x%08x fw_version=0x%08x\n",
-			ds->base.hw_version, ds->base.fw_version);
 
 	return &ds->base;
 
@@ -1444,12 +1039,6 @@ static int ps_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		}
 	}
 
-	ret = devm_device_add_group(&hdev->dev, &ps_device_attribute_group);
-	if (ret) {
-		hid_err(hdev, "Failed to register sysfs nodes.\n");
-		goto err_close;
-	}
-
 	return ret;
 
 err_close:
@@ -1464,7 +1053,6 @@ static void ps_remove(struct hid_device *hdev)
 	struct ps_device *dev = hid_get_drvdata(hdev);
 
 	ps_devices_list_remove(dev);
-	ps_device_release_player_id(dev);
 
 	hid_hw_close(hdev);
 	hid_hw_stop(hdev);
@@ -1485,19 +1073,7 @@ static struct hid_driver ps_driver = {
 	.raw_event	= ps_raw_event,
 };
 
-static int __init ps_init(void)
-{
-	return hid_register_driver(&ps_driver);
-}
-
-static void __exit ps_exit(void)
-{
-	hid_unregister_driver(&ps_driver);
-	ida_destroy(&ps_player_id_allocator);
-}
-
-module_init(ps_init);
-module_exit(ps_exit);
+module_hid_driver(ps_driver);
 
 MODULE_AUTHOR("Sony Interactive Entertainment");
 MODULE_DESCRIPTION("HID Driver for PlayStation peripherals.");
