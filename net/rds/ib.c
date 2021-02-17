@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1095,9 +1095,7 @@ void rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	rds_ibdev->rid_dev_wq = alloc_workqueue("rds_%s_wq",
-						WQ_UNBOUND |
-						WQ_MEM_RECLAIM, 0,
+	rds_ibdev->rid_dev_wq = alloc_workqueue("rds_%s_wq", WQ_UNBOUND, 0,
 						device->name);
 	if (!rds_ibdev->rid_dev_wq) {
 		reason = "no wq";
