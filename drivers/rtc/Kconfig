@@ -187,11 +187,14 @@ config RTC_DRV_ABB5ZES3
 	  will be called rtc-ab-b5ze-s3.
 
 config RTC_DRV_ABEOZ9
-	select REGMAP_I2C
-	tristate "Abracon AB-RTCMC-32.768kHz-EOZ9"
+	tristate "Abracon AB-RTCMC-32.768kHz-EOx9"
+	depends on RTC_I2C_AND_SPI
+	select REGMAP_I2C if I2C
+	select REGMAP_SPI if SPI_MASTER
 	help
 	  If you say yes here you get support for the Abracon
-	  AB-RTCMC-32.768kHz-EOA9 I2C RTC chip.
+	  AB-RTCMC-32.768kHz-EOA9 I2C and AB-RTCMC-32.768kHz-EOA9-S3
+	  RTC chips.
 
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-ab-e0z9.
