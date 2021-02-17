@@ -1046,6 +1046,13 @@ find_rule:
 		rvu_mcam_remove_counter_from_rule(rvu, owner, rule);
 
 	write_req.hdr.pcifunc = owner;
+
+	/* AF owns the default rules so change the owner just to relax
+	 * the checks in rvu_mbox_handler_npc_mcam_write_entry
+	 */
+	if (req->default_rule)
+		write_req.hdr.pcifunc = 0;
+
 	write_req.entry = entry_index;
 	write_req.intf = req->intf;
 	write_req.enable_entry = (u8)enable;
