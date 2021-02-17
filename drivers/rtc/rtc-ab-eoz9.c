@@ -8,6 +8,7 @@
 #include <linux/module.h>
 #include <linux/rtc.h>
 #include <linux/i2c.h>
+#include <linux/spi/spi.h>
 #include <linux/bcd.h>
 #include <linux/of.h>
 #include <linux/regmap.h>
@@ -77,6 +78,15 @@ struct abeoz9_rtc_data {
 	struct regmap *regmap;
 	struct device *hwmon_dev;
 };
+
+#ifdef CONFIG_OF
+static const struct of_device_id abeoz9_dt_match[] = {
+	{ .compatible = "abracon,abeoz9" },
+	{ .compatible = "abracon,abeoa9" },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, abeoz9_dt_match);
+#endif
 
 static int abeoz9_check_validity(struct device *dev)
 {
@@ -380,25 +390,11 @@ static void abeoz9_hwmon_register(struct device *dev,
 
 #endif
 
-static int abeoz9_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int abeox9_probe(struct device *dev, struct regmap *regmap, int irq,
+			const char *name)
 {
 	struct abeoz9_rtc_data *data = NULL;
-	struct device *dev = &client->dev;
-	struct regmap *regmap;
 	int ret;
-
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C |
-				     I2C_FUNC_SMBUS_BYTE_DATA |
-				     I2C_FUNC_SMBUS_I2C_BLOCK))
-		return -ENODEV;
-
-	regmap = devm_regmap_init_i2c(client, &abeoz9_rtc_regmap_config);
-	if (IS_ERR(regmap)) {
-		ret = PTR_ERR(regmap);
-		dev_err(dev, "regmap allocation failed: %d\n", ret);
-		return ret;
-	}
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -407,7 +403,7 @@ static int abeoz9_probe(struct i2c_client *client,
 	data->regmap = regmap;
 	dev_set_drvdata(dev, data);
 
-	ret = abeoz9_rtc_setup(dev, client->dev.of_node);
+	ret = abeoz9_rtc_setup(dev, dev->of_node);
 	if (ret)
 		return ret;
 
@@ -428,13 +424,30 @@ static int abeoz9_probe(struct i2c_client *client,
 	return 0;
 }
 
-#ifdef CONFIG_OF
-static const struct of_device_id abeoz9_dt_match[] = {
-	{ .compatible = "abracon,abeoz9" },
-	{ },
-};
-MODULE_DEVICE_TABLE(of, abeoz9_dt_match);
-#endif
+#if IS_ENABLED(CONFIG_I2C)
+static int abeoz9_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
+{
+
+	struct device *dev = &client->dev;
+	struct regmap *regmap;
+	int ret;
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C |
+				     I2C_FUNC_SMBUS_BYTE_DATA |
+				     I2C_FUNC_SMBUS_I2C_BLOCK))
+		return -ENODEV;
+
+	regmap = devm_regmap_init_i2c(client, &abeoz9_rtc_regmap_config);
+	if (IS_ERR(regmap)) {
+		ret = PTR_ERR(regmap);
+		dev_err(dev, "regmap allocation failed: %d\n", ret);
+		return ret;
+	}
+
+	return abeox9_probe(&client->dev, regmap, client->irq, client->name);
+
+}
 
 static const struct i2c_device_id abeoz9_id[] = {
 	{ "abeoz9", 0 },
@@ -450,7 +463,117 @@ static struct i2c_driver abeoz9_driver = {
 	.id_table = abeoz9_id,
 };
 
-module_i2c_driver(abeoz9_driver);
+static int abeoz9_register_driver(void)
+{
+	return i2c_add_driver(&abeoz9_driver);
+}
+
+static void abeoz9_unregister_driver(void)
+{
+	i2c_del_driver(&abeoz9_driver);
+}
+
+#else
+
+static int abeoz9_register_driver(void)
+{
+	return 0;
+}
+
+static void abeoz9_unregister_driver(void)
+{
+}
+
+#endif
+
+#if IS_ENABLED(CONFIG_SPI_MASTER)
+static int abeoa9_probe(struct spi_device *spi)
+{
+	struct regmap *regmap;
+
+	static const struct regmap_config config = {
+		.reg_bits = 8,
+		.val_bits = 8,
+	};
+
+	spi->mode = SPI_CS_HIGH|SPI_MODE_0;
+	spi->bits_per_word = 8;
+	spi->max_speed_hz = 5000;
+	spi_setup(spi);
+
+	regmap = devm_regmap_init_spi(spi, &config);
+	if (IS_ERR(regmap)) {
+		dev_err(&spi->dev, "%s: regmap allocation failed: %ld\n",
+			__func__, PTR_ERR(regmap));
+		return PTR_ERR(regmap);
+	}
+
+	return abeox9_probe(&spi->dev, regmap, spi->irq, "abeoa9");
+}
+
+static const struct spi_device_id abeoa9_id[] = {
+	{ "abeoa9", 0 },
+	{ }
+};
+MODULE_DEVICE_TABLE(spi, abeoa9_id);
+
+static struct spi_driver abeoa9_driver = {
+	.driver = {
+		.name    = "rtc-ab-eoa9",
+		.of_match_table = of_match_ptr(abeoz9_dt_match),
+	},
+	.probe		= abeoa9_probe,
+	.id_table       = abeoa9_id,
+};
+
+static int abeoa9_register_driver(void)
+{
+	return spi_register_driver(&abeoa9_driver);
+}
+
+static void abeoa9_unregister_driver(void)
+{
+	spi_unregister_driver(&abeoa9_driver);
+}
+
+#else
+
+static int abeoa9_register_driver(void)
+{
+	return 0;
+}
+
+static void abeoa9_unregister_driver(void)
+{
+}
+#endif
+
+static int __init abeox9_init(void)
+{
+	int ret;
+
+	ret = abeoz9_register_driver();
+	if (ret) {
+		pr_err("Failed to register abeoz9 driver: %d\n", ret);
+		return ret;
+	}
+
+	ret = abeoa9_register_driver();
+	if (ret) {
+		pr_err("Failed to register abeoa9 driver: %d\n", ret);
+		abeoz9_unregister_driver();
+	}
+
+	return ret;
+}
+module_init(abeox9_init)
+
+static void __exit abeox9_exit(void)
+{
+	abeoz9_unregister_driver();
+	abeoa9_unregister_driver();
+}
+module_exit(abeox9_exit)
 
 MODULE_AUTHOR("Artem Panfilov <panfilov.artyom@gmail.com>");
 MODULE_DESCRIPTION("Abracon AB-RTCMC-32.768kHz-EOZ9 RTC driver");
