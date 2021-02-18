@@ -204,7 +204,6 @@ int virtio_gpu_object_get_sg_table(struct virtio_gpu_device *qdev,
 				   struct virtio_gpu_object *bo)
 {
 	int ret;
-	struct scatterlist *sg;
 	struct page **pages = bo->tbo.ttm->pages;
 	int nr_pages = bo->tbo.num_pages;
 	struct ttm_operation_ctx ctx = {
@@ -227,10 +226,10 @@ int virtio_gpu_object_get_sg_table(struct virtio_gpu_device *qdev,
 	max_segment &= PAGE_MASK;
 	if (max_segment > SCATTERLIST_MAX_SEGMENT)
 		max_segment = SCATTERLIST_MAX_SEGMENT;
-	sg = __sg_alloc_table_from_pages(bo->pages, pages, nr_pages, 0,
-					 nr_pages << PAGE_SHIFT,
-					 max_segment, NULL, 0, GFP_KERNEL);
-	if (IS_ERR(sg))
+	ret = __sg_alloc_table_from_pages(bo->pages, pages, nr_pages, 0,
+					  nr_pages << PAGE_SHIFT,
+					  max_segment, GFP_KERNEL);
+	if (ret)
 		goto out;
 	return 0;
 out:

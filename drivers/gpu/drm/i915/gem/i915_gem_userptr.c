@@ -432,7 +432,6 @@ __i915_gem_userptr_alloc_pages(struct drm_i915_gem_object *obj,
 	unsigned int max_segment = i915_sg_segment_size();
 	struct sg_table *st;
 	unsigned int sg_page_sizes;
-	struct scatterlist *sg;
 	int ret;
 
 	st = kmalloc(sizeof(*st), GFP_KERNEL);
@@ -440,12 +439,13 @@ __i915_gem_userptr_alloc_pages(struct drm_i915_gem_object *obj,
 		return ERR_PTR(-ENOMEM);
 
 alloc_table:
-	sg = __sg_alloc_table_from_pages(st, pvec, num_pages, 0,
-					 num_pages << PAGE_SHIFT, max_segment,
-					 NULL, 0, GFP_KERNEL);
-	if (IS_ERR(sg)) {
+	ret = __sg_alloc_table_from_pages(st, pvec, num_pages,
+					  0, num_pages << PAGE_SHIFT,
+					  max_segment,
+					  GFP_KERNEL);
+	if (ret) {
 		kfree(st);
-		return ERR_CAST(sg);
+		return ERR_PTR(ret);
 	}
 
 	ret = i915_gem_gtt_prepare_pages(obj, st);
