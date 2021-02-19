@@ -473,8 +473,8 @@ Requires(pre): kernel-firmware = %{rpmversion}-%{pkg_release}\
 %endif\
 %if "x%{?-r}" != "x"\
 Requires(pre): linux-nano-firmware >= 20171128-56.git17e62881.0.1\
-Conflicts: shim-x64 <= 15-1.0.5.el6\
-Provides: oracle(kernel-sig-key) = 202007\
+Conflicts: shim-x64 <= 15-2.0.7.el6\
+Provides: oracle(kernel-sig-key) = 202102\
 %else\
 Requires(pre): linux-firmware >= 20171128-56.git17e62881.0.2\
 %endif\
