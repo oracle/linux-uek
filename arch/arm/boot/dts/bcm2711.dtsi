@@ -493,7 +493,8 @@
 		pin-sda {
 			function = "alt5";
 			pins = "gpio6";
-			bias-pull-up;
+			bias-pull-down;
+			output-low;
 		};
 		pin-scl {
 			function = "alt5";
