@@ -396,6 +396,7 @@ static int cpt_process_ccode(struct pci_dev *pdev,
 		return 1;
 
 	case CN10K_CPT_COMP_E_GOOD:
+	case CN10K_CPT_COMP_E_WARN:
 		/*
 		 * Check microcode completion code, it is only valid
 		 * when completion code is CPT_COMP_E::GOOD
