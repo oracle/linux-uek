@@ -591,6 +591,7 @@ BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
 BuildRequires: numactl-devel
+BuildRequires: audit-libs-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
@@ -611,7 +612,6 @@ BuildRequires: slang-devel, slang-static
 %endif
 %if %{with_perf}
 BuildRequires: zlib-devel binutils-devel newt-devel python-devel bison flex xz-devel
-BuildRequires: audit-libs-devel
 %endif
 %if %{with_tools}
 BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
