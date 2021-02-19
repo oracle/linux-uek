@@ -34,6 +34,7 @@
 
 #include <linux/amba/bus.h>
 
+#define ARM_SMMU_CMDQ_DRAIN_TIMEOUT_US	1000000 /* 1s! */
 /* MMIO registers */
 #define ARM_SMMU_IDR0			0x0
 #define IDR0_ST_LVL			GENMASK(28, 27)
@@ -386,6 +387,11 @@
 #define MSI_IOVA_BASE			0x8000000
 #define MSI_IOVA_LENGTH			0x100000
 
+#define ARM_SMMU_IIDR			0x18
+#define IIDR_MRVL_CN96XX_A0		0x2b20034c
+#define IIDR_MRVL_CN96XX_B0		0x2b20134c
+#define IIDR_MRVL_CN95XX_A0		0x2b30034c
+#define IIDR_MRVL_CN95XX_B0		0x2b30134c
 /*
  * not really modular, but the easiest way to keep compat with existing
  * bootargs behaviour is to continue using module_param_named here.
@@ -530,6 +536,7 @@ struct arm_smmu_cmdq {
 	atomic_long_t			*valid_map;
 	atomic_t			owner_prod;
 	atomic_t			lock;
+	spinlock_t			spin_lock;
 };
 
 struct arm_smmu_evtq {
@@ -602,6 +609,7 @@ struct arm_smmu_device {
 
 #define ARM_SMMU_OPT_SKIP_PREFETCH	(1 << 0)
 #define ARM_SMMU_OPT_PAGE0_REGS_ONLY	(1 << 1)
+#define ARM_SMMU_OPT_FORCE_QDRAIN	(1 << 2)
 	u32				options;
 
 	struct arm_smmu_cmdq		cmdq;
@@ -738,6 +746,13 @@ static bool queue_empty(struct arm_smmu_ll_queue *q)
 	       Q_WRP(q, q->prod) == Q_WRP(q, q->cons);
 }
 
+static void queue_sync_cons(struct arm_smmu_queue *qw)
+{
+	struct arm_smmu_ll_queue *q = &qw->llq;
+
+	q->cons = readl_relaxed(qw->cons_reg);
+}
+
 static bool queue_consumed(struct arm_smmu_ll_queue *q, u32 prod)
 {
 	return ((Q_WRP(q, q->cons) == Q_WRP(q, prod)) &&
@@ -780,6 +795,46 @@ static u32 queue_inc_prod_n(struct arm_smmu_ll_queue *q, int n)
 	return Q_OVF(q->prod) | Q_WRP(q, prod) | Q_IDX(q, prod);
 }
 
+static void queue_inc_prod(struct arm_smmu_queue *qw)
+{
+	struct arm_smmu_ll_queue *q = &qw->llq;
+	u32 prod = (Q_WRP(q, q->prod) | Q_IDX(q, q->prod)) + 1;
+
+	q->prod = Q_OVF(q->prod) | Q_WRP(q, prod) | Q_IDX(q, prod);
+	writel(q->prod, qw->prod_reg);
+}
+
+/*
+ * Wait for the SMMU to consume items. If drain is true, wait until the queue
+ * is empty. Otherwise, wait until there is at least one free slot.
+ */
+static int queue_poll_cons(struct arm_smmu_queue *qw, bool drain, bool wfe)
+{
+	ktime_t timeout;
+	unsigned int delay = 1;
+	struct arm_smmu_ll_queue *q = &qw->llq;
+
+	/* Wait longer if it's queue drain */
+	timeout = ktime_add_us(ktime_get(), drain ?
+					    ARM_SMMU_CMDQ_DRAIN_TIMEOUT_US :
+					    ARM_SMMU_POLL_TIMEOUT_US);
+
+	while (queue_sync_cons(qw), (drain ? !queue_empty(q) : queue_full(q))) {
+		if (ktime_compare(ktime_get(), timeout) > 0)
+			return -ETIMEDOUT;
+
+		if (wfe) {
+			wfe();
+		} else {
+			cpu_relax();
+			udelay(delay);
+			delay *= 2;
+		}
+	}
+
+	return 0;
+}
+
 static void queue_poll_init(struct arm_smmu_device *smmu,
 			    struct arm_smmu_queue_poll *qp)
 {
@@ -813,6 +868,18 @@ static void queue_write(__le64 *dst, u64 *src, size_t n_dwords)
 
 	for (i = 0; i < n_dwords; ++i)
 		*dst++ = cpu_to_le64(*src++);
+}
+
+static int queue_insert_raw(struct arm_smmu_queue *qw, u64 *ent)
+{
+	struct arm_smmu_ll_queue *q = &qw->llq;
+
+	if (queue_full(q))
+		return -ENOSPC;
+
+	queue_write(Q_ENT(qw, qw->llq.prod), ent, qw->ent_dwords);
+	queue_inc_prod(qw);
+	return 0;
 }
 
 static void queue_read(__le64 *dst, u64 *src, size_t n_dwords)
@@ -1290,6 +1357,30 @@ static void arm_smmu_cmdq_write_entries(struct arm_smmu_cmdq *cmdq, u64 *cmds,
 	}
 }
 
+static void arm_smmu_cmdq_insert_cmd(struct arm_smmu_device *smmu, u64 *cmd)
+{
+	unsigned long flags;
+	bool wfe = !!(smmu->features & ARM_SMMU_FEAT_SEV);
+	struct arm_smmu_queue *qw = &smmu->cmdq.q;
+	struct arm_smmu_ll_queue *q = &qw->llq;
+
+	spin_lock_irqsave(&smmu->cmdq.spin_lock, flags);
+	if (true) {
+		/* Ensure command queue has atmost two entries */
+		if (!(q->prod & 0x1)  && queue_poll_cons(qw, true, false))
+			dev_err(smmu->dev, "command drain timeout\n");
+	}
+
+	while (queue_insert_raw(qw, cmd) == -ENOSPC) {
+		if (queue_poll_cons(qw, false, wfe))
+			dev_err_ratelimited(smmu->dev, "CMDQ timeout\n");
+	}
+
+	if (cmd[0] && 0xff == CMDQ_OP_CMD_SYNC && queue_poll_cons(qw, true, wfe))
+		dev_err_ratelimited(smmu->dev, "CMD_SYNC timeout\n");
+	spin_unlock_irqrestore(&smmu->cmdq.spin_lock, flags);
+}
+
 /*
  * This is the actual insertion function, and provides the following
  * ordering guarantees to callers:
@@ -1317,7 +1408,17 @@ static int arm_smmu_cmdq_issue_cmdlist(struct arm_smmu_device *smmu,
 	struct arm_smmu_ll_queue llq = {
 		.max_n_shift = cmdq->q.llq.max_n_shift,
 	}, head = llq;
-	int ret = 0;
+	int i, ret = 0;
+
+	if (smmu->options & ARM_SMMU_OPT_FORCE_QDRAIN) {
+		for (i = 0; i < n; ++i) {
+			u64 *cmd = &cmds[i * CMDQ_ENT_DWORDS];
+
+			arm_smmu_cmdq_insert_cmd(smmu, cmd);
+		}
+		return 0;
+	}
+
 
 	/* 1. Allocate some space in the queue */
 	local_irq_save(flags);
@@ -1709,9 +1810,7 @@ static irqreturn_t arm_smmu_evtq_thread(int irq, void *dev)
 			for (i = 0; i < ARRAY_SIZE(evt); ++i)
 				dev_info(smmu->dev, "\t0x%016llx\n",
 					 (unsigned long long)evt[i]);
-
 		}
-
 		/*
 		 * Not much we can do on overflow, so scream and pretend we're
 		 * trying harder.
@@ -2802,6 +2901,7 @@ static int arm_smmu_cmdq_init(struct arm_smmu_device *smmu)
 
 	atomic_set(&cmdq->owner_prod, 0);
 	atomic_set(&cmdq->lock, 0);
+	spin_lock_init(&cmdq->spin_lock);
 
 	bitmap = (atomic_long_t *)bitmap_zalloc(nents, GFP_KERNEL);
 	if (!bitmap) {
@@ -3499,6 +3599,24 @@ static int arm_smmu_device_hw_probe(struct arm_smmu_device *smmu)
 
 	dev_info(smmu->dev, "ias %lu-bit, oas %lu-bit (features 0x%08x)\n",
 		 smmu->ias, smmu->oas, smmu->features);
+
+	/* Options based on implementation */
+	reg = readl_relaxed(smmu->base + ARM_SMMU_IIDR);
+
+	/* Marvell Octeontx2 SMMU wrongly issues unsupported
+	 * 64 byte memory reads under certain conditions for
+	 * reading commands from the command queue.
+	 * Force command queue drain for every two writes,
+	 * so that SMMU issues only 32 byte reads.
+	 */
+	switch (reg) {
+	case IIDR_MRVL_CN96XX_A0:
+	case IIDR_MRVL_CN96XX_B0:
+	case IIDR_MRVL_CN95XX_A0:
+	case IIDR_MRVL_CN95XX_B0:
+		smmu->options |= ARM_SMMU_OPT_FORCE_QDRAIN;
+		break;
+	}
 	return 0;
 }
 
