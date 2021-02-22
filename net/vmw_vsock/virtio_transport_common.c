@@ -1104,8 +1104,8 @@ void virtio_transport_recv_pkt(struct virtio_transport *t,
 
 	lock_sock(sk);
 
-	/* Check if sk has been released before lock_sock */
-	if (sk->sk_shutdown == SHUTDOWN_MASK) {
+	/* Check if sk has been closed before lock_sock */
+	if (sock_flag(sk, SOCK_DONE)) {
 		(void)virtio_transport_reset_no_sock(t, pkt);
 		release_sock(sk);
 		sock_put(sk);
