@@ -53,6 +53,7 @@ struct ib_update_work {
 	struct work_struct work;
 	struct ib_device  *device;
 	u8                 port_num;
+	enum ib_event_type event;
 	bool		   enforce_security;
 };
 
@@ -1035,12 +1036,15 @@ int ib_get_cached_port_state(struct ib_device   *device,
 }
 EXPORT_SYMBOL(ib_get_cached_port_state);
 
-static void ib_cache_update(struct ib_device *device,
-			    u8                port,
-			    bool	      enforce_security)
+static void ib_cache_update(struct ib_device  *device,
+			    u8                 port,
+			    bool	       update_gids,
+			    bool	       update_pkeys,
+			    bool	       enforce_security)
 {
 	struct ib_port_attr       *tprops = NULL;
-	struct ib_pkey_cache      *pkey_cache = NULL, *old_pkey_cache;
+	struct ib_pkey_cache      *pkey_cache = NULL;
+	struct ib_pkey_cache	  *old_pkey_cache = NULL;
 	struct ib_gid_cache {
 		int             table_len;
 		union ib_gid    table[0];
@@ -1048,8 +1052,8 @@ static void ib_cache_update(struct ib_device *device,
 	int                        i;
 	int                        ret;
 	struct ib_gid_table	  *table;
-	bool			   use_roce_gid_table =
-					rdma_cap_roce_gid_table(device, port);
+
+	update_gids &= !rdma_cap_roce_gid_table(device, port);
 
 	if (!rdma_is_port_valid(device, port))
 		return;
@@ -1067,32 +1071,32 @@ static void ib_cache_update(struct ib_device *device,
 		goto err;
 	}
 
-	pkey_cache = kmalloc(sizeof *pkey_cache + tprops->pkey_tbl_len *
-			     sizeof *pkey_cache->table, GFP_KERNEL);
-	if (!pkey_cache)
-		goto err;
+	if (update_pkeys) {
+		pkey_cache = kmalloc(sizeof(*pkey_cache) + tprops->pkey_tbl_len *
+				     sizeof(*pkey_cache->table), GFP_KERNEL);
+		if (!pkey_cache)
+			goto err;
 
-	pkey_cache->table_len = tprops->pkey_tbl_len;
+		pkey_cache->table_len = tprops->pkey_tbl_len;
 
-	if (!use_roce_gid_table) {
+		for (i = 0; i < pkey_cache->table_len; ++i) {
+			ret = ib_query_pkey(device, port, i, pkey_cache->table + i);
+			if (ret) {
+				pr_warn("ib_query_pkey failed (%d) for %s (index %d)\n",
+					ret, device->name, i);
+				goto err;
+			}
+		}
+	}
+
+	if (update_gids) {
 		gid_cache = kmalloc(sizeof(*gid_cache) + tprops->gid_tbl_len *
 			    sizeof(*gid_cache->table), GFP_KERNEL);
 		if (!gid_cache)
 			goto err;
 
 		gid_cache->table_len = tprops->gid_tbl_len;
-	}
 
-	for (i = 0; i < pkey_cache->table_len; ++i) {
-		ret = ib_query_pkey(device, port, i, pkey_cache->table + i);
-		if (ret) {
-			pr_warn("ib_query_pkey failed (%d) for %s (index %d)\n",
-				ret, device->name, i);
-			goto err;
-		}
-	}
-
-	if (!use_roce_gid_table) {
 		for (i = 0;  i < gid_cache->table_len; ++i) {
 			ret = ib_query_gid(device, port, i,
 					   gid_cache->table + i, NULL);
@@ -1106,11 +1110,14 @@ static void ib_cache_update(struct ib_device *device,
 
 	write_lock_irq(&device->cache.lock);
 
-	old_pkey_cache = device->cache.ports[port -
-		rdma_start_port(device)].pkey;
+	if (update_pkeys) {
+		old_pkey_cache = device->cache.ports[port -
+						     rdma_start_port(device)].pkey;
 
-	device->cache.ports[port - rdma_start_port(device)].pkey = pkey_cache;
-	if (!use_roce_gid_table) {
+		device->cache.ports[port - rdma_start_port(device)].pkey = pkey_cache;
+	}
+
+	if (update_gids) {
 		write_lock(&table->rwlock);
 		for (i = 0; i < gid_cache->table_len; i++) {
 			modify_gid(device, port, table, i, gid_cache->table + i,
@@ -1150,6 +1157,8 @@ static void ib_cache_task(struct work_struct *_work)
 
 	ib_cache_update(work->device,
 			work->port_num,
+			work->event == IB_EVENT_GID_CHANGE,
+			work->event == IB_EVENT_PKEY_CHANGE,
 			work->enforce_security);
 	kfree(work);
 }
@@ -1171,6 +1180,7 @@ static void ib_cache_event(struct ib_event_handler *handler,
 			INIT_WORK(&work->work, ib_cache_task);
 			work->device   = event->device;
 			work->port_num = event->element.port_num;
+			work->event    = event->event;
 			if (event->event == IB_EVENT_PKEY_CHANGE ||
 			    event->event == IB_EVENT_GID_CHANGE)
 				work->enforce_security = true;
@@ -1203,7 +1213,8 @@ int ib_cache_setup_one(struct ib_device *device)
 	}
 
 	for (p = 0; p <= rdma_end_port(device) - rdma_start_port(device); ++p)
-		ib_cache_update(device, p + rdma_start_port(device), true);
+		ib_cache_update(device, p + rdma_start_port(device),
+				true, true, true);
 
 	INIT_IB_EVENT_HANDLER(&device->cache.event_handler,
 			      device, ib_cache_event);
