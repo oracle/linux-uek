@@ -570,7 +570,7 @@ static void cs_etm_get_metadata(int cpu, u32 *offset,
 				struct auxtrace_record *itr,
 				struct perf_record_auxtrace_info *info)
 {
-	u32 increment;
+	u32 increment, nr_trc_params;
 	u64 magic;
 	struct cs_etm_recording *ptr =
 			container_of(itr, struct cs_etm_recording, itr);
@@ -605,6 +605,7 @@ static void cs_etm_get_metadata(int cpu, u32 *offset,
 
 		/* How much space was used */
 		increment = CS_ETMV4_PRIV_MAX;
+		nr_trc_params = CS_ETMV4_PRIV_MAX - CS_ETMV4_TRCCONFIGR;
 	} else {
 		magic = __perf_cs_etmv3_magic;
 		/* Get configuration register */
@@ -622,11 +623,13 @@ static void cs_etm_get_metadata(int cpu, u32 *offset,
 
 		/* How much space was used */
 		increment = CS_ETM_PRIV_MAX;
+		nr_trc_params = CS_ETM_PRIV_MAX - CS_ETM_ETMCR;
 	}
 
 	/* Build generic header portion */
 	info->priv[*offset + CS_ETM_MAGIC] = magic;
 	info->priv[*offset + CS_ETM_CPU] = cpu;
+	info->priv[*offset + CS_ETM_NR_TRC_PARAMS] = nr_trc_params;
 	/* Where the next CPU entry should start from */
 	*offset += increment;
 }
@@ -672,7 +675,7 @@ static int cs_etm_info_fill(struct auxtrace_record *itr,
 
 	/* First fill out the session header */
 	info->type = PERF_AUXTRACE_CS_ETM;
-	info->priv[CS_HEADER_VERSION_0] = 0;
+	info->priv[CS_HEADER_VERSION] = CS_HEADER_CURRENT_VERSION;
 	info->priv[CS_PMU_TYPE_CPUS] = type << 32;
 	info->priv[CS_PMU_TYPE_CPUS] |= nr_cpu;
 	info->priv[CS_ETM_SNAPSHOT] = ptr->snapshot_mode;
