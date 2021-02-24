@@ -11,7 +11,11 @@
 #include "rds_single_path.h"
 #include "lfstack.h"
 
-#define RDS_FMR_1M_POOL_SIZE		(8192 * 3 / 4)
+/* 1M MR pool size is doubled from 6144[=8192*3/4]. This is done to address the
+ * scaling challenges seen with 6144 value. However we have to revisit this to
+ * undrestand what needs to be done as a permanent fix.
+ */
+#define RDS_FMR_1M_POOL_SIZE		12288
 #define RDS_FMR_1M_MSG_SIZE		256  /* 1M */
 #define RDS_FMR_8K_MSG_SIZE             2
 #define RDS_FMR_8K_POOL_SIZE		((256 / (RDS_FMR_8K_MSG_SIZE + 1)) * (8192 / 4))
