@@ -923,9 +923,14 @@ static void rvu_mcam_add_counter_to_rule(struct rvu *rvu, u16 pcifunc,
 
 static void npc_update_rx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 				struct mcam_entry *entry,
-				struct npc_install_flow_req *req, u16 target)
+				struct npc_install_flow_req *req,
+				u16 target, bool pf_set_vfs_mac)
 {
+	struct rvu_switch *rswitch = &rvu->rswitch;
 	struct nix_rx_action action;
+
+	if (rswitch->mode == DEVLINK_ESWITCH_MODE_SWITCHDEV && pf_set_vfs_mac)
+		req->chan_mask = 0x0; /* Do not care channel */
 
 	npc_update_entry(rvu, NPC_CHAN, entry, req->channel, 0, req->chan_mask,
 			 0, NIX_INTF_RX);
@@ -1020,7 +1025,7 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 			req->intf);
 
 	if (is_npc_intf_rx(req->intf))
-		npc_update_rx_entry(rvu, pfvf, entry, req, target);
+		npc_update_rx_entry(rvu, pfvf, entry, req, target, pf_set_vfs_mac);
 	else
 		npc_update_tx_entry(rvu, pfvf, entry, req, target);
 
@@ -1129,6 +1134,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 				      struct npc_install_flow_rsp *rsp)
 {
 	bool from_vf = !!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK);
+	struct rvu_switch *rswitch = &rvu->rswitch;
 	bool pf_set_vfs_mac = false;
 	int blkaddr, nixlf, err;
 	struct rvu_pfvf *pfvf;
@@ -1220,8 +1226,12 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	    pfvf->def_ucast_rule->features & req->features)
 		return -EINVAL;
 
-	return npc_install_flow(rvu, blkaddr, target, nixlf, pfvf,
-				req, rsp, enable, pf_set_vfs_mac);
+	mutex_lock(&rswitch->switch_lock);
+	err = npc_install_flow(rvu, blkaddr, target, nixlf, pfvf,
+			       req, rsp, enable, pf_set_vfs_mac);
+	mutex_unlock(&rswitch->switch_lock);
+
+	return err;
 }
 
 static int npc_delete_flow(struct rvu *rvu, struct rvu_npc_mcam_rule *rule,
