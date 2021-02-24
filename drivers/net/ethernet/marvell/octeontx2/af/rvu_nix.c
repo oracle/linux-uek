@@ -3475,6 +3475,8 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 	rvu_npc_install_ucast_entry(rvu, pcifunc, nixlf,
 				    pfvf->rx_chan_base, req->mac_addr);
 
+	rvu_switch_update_rules(rvu, pcifunc);
+
 	return 0;
 }
 
@@ -4192,6 +4194,8 @@ int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	set_bit(NIXLF_INITIALIZED, &pfvf->flags);
+
+	rvu_switch_update_rules(rvu, pcifunc);
 
 	return rvu_cgx_start_stop_io(rvu, pcifunc, true);
 }
