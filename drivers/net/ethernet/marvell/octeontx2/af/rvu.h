@@ -444,6 +444,8 @@ struct rvu_fwdata {
 
 struct ptp;
 
+#define RVU_SWITCH_LBK_CHAN	63
+
 struct rvu {
 	void __iomem		*afreg_base;
 	void __iomem		*pfreg_base;

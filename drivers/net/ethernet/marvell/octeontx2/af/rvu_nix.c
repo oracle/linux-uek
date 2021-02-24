@@ -2198,25 +2198,28 @@ static void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr,
 			       u16 pcifunc, struct nix_txsch *txsch)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
+	int lbk_link_start, lbk_links;
 	u8 pf = rvu_get_pf(pcifunc);
-	int lbk_link, lbkid;
 	int schq;
 
 	if (!is_pf_cgxmapped(rvu, pf))
 		return;
 
-	lbkid = blkaddr == BLKADDR_NIX0 ? 0 : 1;
-	lbk_link = hw->cgx_links + lbkid;
+	lbk_link_start = hw->cgx_links;
+	lbk_links = hw->lbk_links;
 
 	for (schq = 0; schq < txsch->schq.max; schq++) {
 		if (TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) != pcifunc)
 			continue;
-		/* Enable LBK link with channel 63 by default so that packets
-		 * can be sent to LBK with a NPC TX MCAM rule
+		/* Enable all LBK links with channel 63 by default so that
+		 * packets can be sent to LBK with a NPC TX MCAM rule
 		 */
-		rvu_write64(rvu, blkaddr,
-			    NIX_AF_TL3_TL2X_LINKX_CFG(schq, lbk_link),
-			    BIT_ULL(12) | 63);
+		while (lbk_links--)
+			rvu_write64(rvu, blkaddr,
+				    NIX_AF_TL3_TL2X_LINKX_CFG(schq,
+							      lbk_link_start +
+							      lbk_links),
+				    BIT_ULL(12) | RVU_SWITCH_LBK_CHAN);
 	}
 }
 
