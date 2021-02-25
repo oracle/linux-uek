@@ -58,7 +58,7 @@
 static int rdmaip_init_flag;
 
 struct list_head rdmaip_devlist_head;
-DECLARE_RWSEM(rdmaip_devlist_lock);
+DECLARE_RWSEM(rdmaip_dev_lock);
 
 #define RDMAIP_FLAG_BUSY		1
 #define RDMAIP_FLAG_EVENT_PENDING	2
@@ -386,6 +386,7 @@ struct rdmaip_dly_work_req {
 	int			garps_left;
 	bool			queued;
 	struct list_head	list;
+	char			rdmaip_dev_name[IB_DEVICE_NAME_MAX];
 };
 
 enum {
