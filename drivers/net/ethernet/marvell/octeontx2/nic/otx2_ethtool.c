@@ -1643,12 +1643,15 @@ static void otx2vf_get_ethtool_stats(struct net_device *netdev,
 static int otx2vf_get_sset_count(struct net_device *netdev, int sset)
 {
 	struct otx2_nic *vf = netdev_priv(netdev);
+	int qstats_count;
 
 	if (sset != ETH_SS_STATS)
 		return -EINVAL;
 
-	return otx2_n_dev_stats +
-	       otx2_n_queue_stats * (vf->hw.rx_queues + vf->hw.tot_tx_queues);
+	qstats_count = otx2_n_queue_stats *
+		       (vf->hw.rx_queues + vf->hw.tx_queues);
+
+	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count + 1;
 }
 
 static int otx2vf_get_link_ksettings(struct net_device *netdev,
