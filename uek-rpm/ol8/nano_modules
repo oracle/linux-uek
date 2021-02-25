@@ -212,6 +212,7 @@ kernel/drivers/hwmon/ltc4261.ko
 kernel/drivers/hwmon/max1619.ko
 kernel/drivers/hwmon/max6639.ko
 kernel/drivers/hwmon/max6650.ko
+kernel/drivers/hwmon/opbmc.ko
 kernel/drivers/hwmon/pc87360.ko
 kernel/drivers/hwmon/pc87427.ko
 kernel/drivers/hwmon/pcf8591.ko
