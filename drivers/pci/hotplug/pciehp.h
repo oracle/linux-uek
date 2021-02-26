@@ -27,6 +27,7 @@
 
 extern bool pciehp_poll_mode;
 extern int pciehp_poll_time;
+extern bool pciehp_user_ledctrl;
 
 /*
  * Set CONFIG_DYNAMIC_DEBUG=y and boot with 'dyndbg="file pciehp* +p"' to
