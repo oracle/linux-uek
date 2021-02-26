@@ -25,5 +25,7 @@ void arch_crash_save_vmcoreinfo(void)
 						PHYS_OFFSET);
 	vmcoreinfo_append_str("NUMBER(tcr_el1_t1sz)=0x%llx\n",
 						get_tcr_el1_t1sz());
+	vmcoreinfo_append_str("NUMBER(TCR_EL1_T1SZ)=0x%llx\n",
+						get_tcr_el1_t1sz());
 	vmcoreinfo_append_str("KERNELOFFSET=%lx\n", kaslr_offset());
 }
