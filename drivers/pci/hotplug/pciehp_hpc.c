@@ -1000,7 +1000,7 @@ struct controller *pcie_init(struct pcie_device *dev)
 	ctrl->depth = pcie_hotplug_depth(dev->port);
 	pcie_capability_read_dword(pdev, PCI_EXP_SLTCAP, &slot_cap);
 
-	if (pdev->hotplug_user_indicators)
+	if (pciehp_user_ledctrl && pdev->hotplug_user_indicators)
 		slot_cap &= ~(PCI_EXP_SLTCAP_AIP | PCI_EXP_SLTCAP_PIP);
 
 	/*
