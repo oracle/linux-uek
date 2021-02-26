@@ -190,7 +190,7 @@ struct flow_action_entry {
 			bool			truncate;
 		} sample;
 		struct {				/* FLOW_ACTION_POLICE */
-			s64			burst;
+			u32			burst;
 			u64			rate_bytes_ps;
 		} police;
 		struct {				/* FLOW_ACTION_CT */
