@@ -104,6 +104,11 @@ static unsigned long pfn_end(struct dev_pagemap *pgmap)
 	return (res->start + resource_size(res)) >> PAGE_SHIFT;
 }
 
+bool pgmap_pfn_valid(struct dev_pagemap *pgmap, unsigned long pfn)
+{
+	return ((pfn >= pfn_first(pgmap)) && (pfn <= pfn_end(pgmap)));
+}
+
 static unsigned long pfn_next(unsigned long pfn)
 {
 	if (pfn % 1024 == 0)
