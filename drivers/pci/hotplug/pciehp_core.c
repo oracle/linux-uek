@@ -33,6 +33,7 @@
 /* Global variables */
 bool pciehp_poll_mode;
 int pciehp_poll_time;
+bool pciehp_user_ledctrl = true;
 
 /*
  * not really modular, but the easiest way to keep compat with existing
@@ -40,8 +41,10 @@ int pciehp_poll_time;
  */
 module_param(pciehp_poll_mode, bool, 0644);
 module_param(pciehp_poll_time, int, 0644);
+module_param(pciehp_user_ledctrl, bool, 0644);
 MODULE_PARM_DESC(pciehp_poll_mode, "Using polling mechanism for hot-plug events or not");
 MODULE_PARM_DESC(pciehp_poll_time, "Polling mechanism frequency, in seconds");
+MODULE_PARM_DESC(pciehp_user_ledctrl, "Allowing user application to control LEDs (default=true)");
 
 static int set_attention_status(struct hotplug_slot *slot, u8 value);
 static int get_power_status(struct hotplug_slot *slot, u8 *value);
