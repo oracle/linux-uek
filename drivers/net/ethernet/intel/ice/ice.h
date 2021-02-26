@@ -562,6 +562,7 @@ void ice_vsi_manage_fdir(struct ice_vsi *vsi, bool ena);
 void ice_fdir_release_flows(struct ice_hw *hw);
 int ice_fdir_create_dflt_rules(struct ice_pf *pf);
 int ice_open(struct net_device *netdev);
+int ice_open_internal(struct net_device *netdev);
 int ice_stop(struct net_device *netdev);
 
 #endif /* _ICE_H_ */
