@@ -91,7 +91,7 @@ alternative_else_nop_endif
 	ptrauth_switch_to_guest x18, x0, x1, x2
 
 	// Restore the guest's sp_el0
-	restore_sp_el0 x29, x0
+	restore_sp_el0 x18, x0
 
 	// Restore guest regs x0-x17
 	ldp	x0, x1,   [x18, #CPU_XREG_OFFSET(0)]
