@@ -145,7 +145,6 @@ int cgx_lmac_evh_unregister(void *cgxd, int lmac_id);
 int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat);
 int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat);
 int cgx_stats_rst(void *cgxd, int lmac_id);
-int cgx_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp);
 u64 cgx_get_lmac_tx_fifo_status(void *cgxd, int lmac_id);
 int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable);
@@ -162,7 +161,6 @@ int cgx_get_link_info(void *cgxd, int lmac_id,
 		      struct cgx_link_user_info *linfo);
 int cgx_lmac_linkup_start(void *cgxd);
 int cgx_get_fwdata_base(u64 *base);
-int cgx_set_fec(u64 fec, int cgx_id, int lmac_id);
 int cgx_set_link_mode(void *cgxd, struct cgx_set_link_mode_args args,
 		      int cgx_id, int lmac_id);
 int cgx_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
@@ -174,11 +172,13 @@ void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable);
 int cgx_set_link_state(void *cgxd, int lmac_id, bool enable);
 int cgx_set_phy_mod_type(int mod, void *cgxd, int lmac_id);
 int cgx_get_phy_mod_type(void *cgxd, int lmac_id);
-int cgx_get_phy_fec_stats(void *cgxd, int lmac_id);
 void cgx_lmac_enadis_higig2(void *cgxd, int lmac_id, bool enable);
 bool is_higig2_enabled(void *cgxd, int lmac_id);
 int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind);
 u8 cgx_lmac_get_p2x(int cgx_id, int lmac_id);
+int cgx_set_fec(u64 fec, int cgx_id, int lmac_id);
+int cgx_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp);
+int cgx_get_phy_fec_stats(void *cgxd, int lmac_id);
 u64 cgx_features_get(void *cgxd);
 struct mac_ops *get_mac_ops(void *cgxd);
 int cgx_get_nr_lmacs(void *cgxd);

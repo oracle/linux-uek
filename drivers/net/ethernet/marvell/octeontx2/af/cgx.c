@@ -1350,6 +1350,18 @@ int cgx_set_fec(u64 fec, int cgx_id, int lmac_id)
 	return err;
 }
 
+int cgx_get_phy_fec_stats(void *cgxd, int lmac_id)
+{
+	struct cgx *cgx = cgxd;
+	u64 req = 0, resp;
+
+	if (!cgx)
+		return -ENODEV;
+
+	req = FIELD_SET(CMDREG_ID, CGX_CMD_GET_PHY_FEC_STATS, req);
+	return cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
+}
+
 int cgx_set_phy_mod_type(int mod, void *cgxd, int lmac_id)
 {
 	struct cgx *cgx = cgxd;
@@ -1377,18 +1389,6 @@ int cgx_get_phy_mod_type(void *cgxd, int lmac_id)
 	if (!err)
 		return FIELD_GET(RESP_GETPHYMODTYPE, resp);
 	return err;
-}
-
-int cgx_get_phy_fec_stats(void *cgxd, int lmac_id)
-{
-	struct cgx *cgx = cgxd;
-	u64 req = 0, resp;
-
-	if (!cgx)
-		return -ENODEV;
-
-	req = FIELD_SET(CMDREG_ID, CGX_CMD_GET_PHY_FEC_STATS, req);
-	return cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
 }
 
 int cgx_set_link_mode(void *cgxd, struct cgx_set_link_mode_args args,

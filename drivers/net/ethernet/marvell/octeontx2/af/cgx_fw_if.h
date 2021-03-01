@@ -260,6 +260,7 @@ struct cgx_lnk_sts {
 #define CMDLINKCHANGE_LINKUP	BIT_ULL(8)
 #define CMDLINKCHANGE_FULLDPLX	BIT_ULL(9)
 #define CMDLINKCHANGE_SPEED	GENMASK_ULL(13, 10)
+
 #define CMDSETFEC		GENMASK_ULL(9, 8)
 /* command argument to be passed for cmd ID - CGX_CMD_MODE_CHANGE */
 #define CMDMODECHANGE_SPEED		GENMASK_ULL(11, 8)

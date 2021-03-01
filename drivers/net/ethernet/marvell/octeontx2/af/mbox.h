@@ -544,6 +544,17 @@ struct cgx_pause_frm_cfg {
 	u8 tx_pause;
 };
 
+enum fec_type {
+	OTX2_FEC_NONE,
+	OTX2_FEC_BASER,
+	OTX2_FEC_RS,
+};
+
+struct fec_mode {
+	struct mbox_msghdr hdr;
+	int fec;
+};
+
 struct sfp_eeprom_s {
 #define SFP_EEPROM_SIZE 256
 	u16 sff_id;
@@ -551,17 +562,11 @@ struct sfp_eeprom_s {
 	u64 reserved;
 };
 
-enum fec_type {
-	OTX2_FEC_NONE,
-	OTX2_FEC_BASER,
-	OTX2_FEC_RS,
-};
-
 struct phy_s {
 	struct {
-		u64 can_change_mod_type : 1;
-		u64 mod_type            : 1;
-		u64 has_fec_stats       : 1;
+		u64 can_change_mod_type:1;
+		u64 mod_type:1;
+		u64 has_fec_stats:1;
 	} misc;
 	struct fec_stats_s {
 		u32 rsfec_corr_cws;
@@ -589,11 +594,6 @@ struct cgx_lmac_fwdata_s {
 struct cgx_fw_data {
 	struct mbox_msghdr hdr;
 	struct cgx_lmac_fwdata_s fwdata;
-};
-
-struct fec_mode {
-	struct mbox_msghdr hdr;
-	int fec;
 };
 
 struct cgx_set_link_state_msg {
