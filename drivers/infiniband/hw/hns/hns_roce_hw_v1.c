@@ -713,7 +713,7 @@ static int hns_roce_v1_rsv_lp_qp(struct hns_roce_dev *hr_dev)
 	int i, j;
 	u8 queue_en[HNS_ROCE_V1_RESV_QP] = { 0 };
 	u8 phy_port;
-	u8 port = 0;
+	u32 port = 0;
 	u8 sl;
 
 	priv = (struct hns_roce_v1_priv *)hr_dev->priv;
@@ -1735,7 +1735,7 @@ static int hns_roce_v1_chk_mbox(struct hns_roce_dev *hr_dev,
 	return 0;
 }
 
-static int hns_roce_v1_set_gid(struct hns_roce_dev *hr_dev, u8 port,
+static int hns_roce_v1_set_gid(struct hns_roce_dev *hr_dev, u32 port,
 			       int gid_index, const union ib_gid *gid,
 			       const struct ib_gid_attr *attr)
 {
@@ -2724,8 +2724,8 @@ static int hns_roce_v1_m_qp(struct ib_qp *ibqp, const struct ib_qp_attr *attr,
 	u64 *mtts_2 = NULL;
 	int ret = -EINVAL;
 	u64 *mtts = NULL;
-	int port;
-	u8 port_num;
+	u32 port;
+	u32 port_num;
 	u8 *dmac;
 	u8 *smac;
 

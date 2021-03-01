@@ -2157,7 +2157,7 @@ static int hns_roce_config_sgid_table(struct hns_roce_dev *hr_dev,
 	return hns_roce_cmq_send(hr_dev, &desc, 1);
 }
 
-static int hns_roce_v2_set_gid(struct hns_roce_dev *hr_dev, u8 port,
+static int hns_roce_v2_set_gid(struct hns_roce_dev *hr_dev, u32 port,
 			       int gid_index, const union ib_gid *gid,
 			       const struct ib_gid_attr *attr)
 {

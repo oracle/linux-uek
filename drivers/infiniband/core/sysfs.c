@@ -65,7 +65,7 @@ struct ib_port {
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	struct attribute_group *hw_stats_ag;
 	struct rdma_hw_stats   *hw_stats;
-	u8                     port_num;
+	u32                     port_num;
 };
 
 struct port_attribute {
@@ -97,7 +97,7 @@ struct hw_stats_attribute {
 					 const char *buf,
 					 size_t count);
 	int			index;
-	u8			port_num;
+	u32			port_num;
 };
 
 static ssize_t port_attr_show(struct kobject *kobj,
@@ -835,7 +835,7 @@ static struct attribute_group *get_counter_table(struct ib_device *dev,
 }
 
 static int update_hw_stats(struct ib_device *dev, struct rdma_hw_stats *stats,
-			   u8 port_num, int index)
+			   u32 port_num, int index)
 {
 	int ret;
 
@@ -961,7 +961,7 @@ static void free_hsag(struct kobject *kobj, struct attribute_group *attr_group)
 	kfree(attr_group);
 }
 
-static struct attribute *alloc_hsa(int index, u8 port_num, const char *name)
+static struct attribute *alloc_hsa(int index, u32 port_num, const char *name)
 {
 	struct hw_stats_attribute *hsa;
 
@@ -979,7 +979,7 @@ static struct attribute *alloc_hsa(int index, u8 port_num, const char *name)
 	return &hsa->attr;
 }
 
-static struct attribute *alloc_hsa_lifespan(char *name, u8 port_num)
+static struct attribute *alloc_hsa_lifespan(char *name, u32 port_num)
 {
 	struct hw_stats_attribute *hsa;
 
@@ -1064,7 +1064,7 @@ static struct attribute *alloc_hsa_clear_stats(char *name, u8 port_num)
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
-			   u8 port_num)
+			   u32 port_num)
 {
 	struct attribute_group *hsag;
 	struct rdma_hw_stats *stats;
@@ -1474,7 +1474,7 @@ void ib_free_port_attrs(struct ib_core_device *coredev)
 int ib_setup_port_attrs(struct ib_core_device *coredev)
 {
 	struct ib_device *device = rdma_device_to_ibdev(&coredev->dev);
-	unsigned int port;
+	u32 port;
 	int ret;
 
 	coredev->ports_kobj = kobject_create_and_add("ports",
@@ -1528,7 +1528,7 @@ void ib_device_unregister_sysfs(struct ib_device *device)
  * @ktype: pointer to the ktype for this kobject.
  * @name: the name of the kobject
  */
-int ib_port_register_module_stat(struct ib_device *device, u8 port_num,
+int ib_port_register_module_stat(struct ib_device *device, u32 port_num,
 				 struct kobject *kobj, struct kobj_type *ktype,
 				 const char *name)
 {

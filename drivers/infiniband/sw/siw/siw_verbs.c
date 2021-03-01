@@ -193,7 +193,7 @@ int siw_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 	return 0;
 }
 
-int siw_query_port(struct ib_device *base_dev, u8 port,
+int siw_query_port(struct ib_device *base_dev, u32 port,
 		   struct ib_port_attr *attr)
 {
 	struct siw_device *sdev = to_siw_dev(base_dev);
@@ -227,7 +227,7 @@ int siw_query_port(struct ib_device *base_dev, u8 port,
 	return 0;
 }
 
-int siw_get_port_immutable(struct ib_device *base_dev, u8 port,
+int siw_get_port_immutable(struct ib_device *base_dev, u32 port,
 			   struct ib_port_immutable *port_immutable)
 {
 	struct ib_port_attr attr;
@@ -243,14 +243,14 @@ int siw_get_port_immutable(struct ib_device *base_dev, u8 port,
 	return 0;
 }
 
-int siw_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pkey)
+int siw_query_pkey(struct ib_device *base_dev, u32 port, u16 idx, u16 *pkey)
 {
 	/* Report the default pkey */
 	*pkey = 0xffff;
 	return 0;
 }
 
-int siw_query_gid(struct ib_device *base_dev, u8 port, int idx,
+int siw_query_gid(struct ib_device *base_dev, u32 port, int idx,
 		  union ib_gid *gid)
 {
 	struct siw_device *sdev = to_siw_dev(base_dev);
@@ -1855,7 +1855,7 @@ void siw_srq_event(struct siw_srq *srq, enum ib_event_type etype)
 	}
 }
 
-void siw_port_event(struct siw_device *sdev, u8 port, enum ib_event_type etype)
+void siw_port_event(struct siw_device *sdev, u32 port, enum ib_event_type etype)
 {
 	struct ib_event event;
 
