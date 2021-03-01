@@ -564,28 +564,30 @@ u64 cgx_features_get(void *cgxd)
 
 static int cgx_set_fec_stats_count(struct cgx_link_user_info *linfo)
 {
-	if (linfo->fec) {
-		switch (linfo->lmac_type_id) {
-		case LMAC_MODE_SGMII:
-		case LMAC_MODE_XAUI:
-		case LMAC_MODE_RXAUI:
-		case LMAC_MODE_QSGMII:
-			return 0;
-		case LMAC_MODE_10G_R:
-		case LMAC_MODE_25G_R:
-		case LMAC_MODE_100G_R:
-		case LMAC_MODE_USXGMII:
+	if (!linfo->fec)
+		return 0;
+
+	switch (linfo->lmac_type_id) {
+	case LMAC_MODE_SGMII:
+	case LMAC_MODE_XAUI:
+	case LMAC_MODE_RXAUI:
+	case LMAC_MODE_QSGMII:
+		return 0;
+	case LMAC_MODE_10G_R:
+	case LMAC_MODE_25G_R:
+	case LMAC_MODE_100G_R:
+	case LMAC_MODE_USXGMII:
+		return 1;
+	case LMAC_MODE_40G_R:
+		return 4;
+	case LMAC_MODE_50G_R:
+		if (linfo->fec == OTX2_FEC_BASER)
+			return 2;
+		else
 			return 1;
-		case LMAC_MODE_40G_R:
-			return 4;
-		case LMAC_MODE_50G_R:
-			if (linfo->fec == OTX2_FEC_BASER)
-				return 2;
-			else
-				return 1;
-		}
+	default:
+		return 0;
 	}
-	return 0;
 }
 
 int cgx_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp)
@@ -1342,12 +1344,12 @@ int cgx_set_fec(u64 fec, int cgx_id, int lmac_id)
 	req = FIELD_SET(CMDREG_ID, CGX_CMD_SET_FEC, req);
 	req = FIELD_SET(CMDSETFEC, fec, req);
 	err = cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
-	if (!err) {
-		cgx->lmac_idmap[lmac_id]->link_info.fec =
+	if (err)
+		return err;
+
+	cgx->lmac_idmap[lmac_id]->link_info.fec =
 			FIELD_GET(RESP_LINKSTAT_FEC, resp);
-		return cgx->lmac_idmap[lmac_id]->link_info.fec;
-	}
-	return err;
+	return cgx->lmac_idmap[lmac_id]->link_info.fec;
 }
 
 int cgx_get_phy_fec_stats(void *cgxd, int lmac_id)
