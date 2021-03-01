@@ -310,7 +310,7 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		}
 
 		if (*rej_data) {
-			if (ntohl(*rej_data) == RDS_ACL_FAILURE) {
+			if (*rej_data == RDS_ACL_FAILURE) {
 				pr_err("Rejected: <%pI6c,%pI6c,%d>: ACL violation\n",
 				       &conn->c_laddr, &conn->c_faddr,
 				       conn->c_tos);
@@ -321,7 +321,7 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 			pr_err("Rejected: <%pI6c,%pI6c,%d>: error %d\n",
 			       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-			       ntohl(*rej_data));
+			       *rej_data);
 			reason = "rejection with error code";
 		} else {
 			/* Only retry with old version if this connection
@@ -343,8 +343,7 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				reason = "rejection with no error code";
 			}
 		}
-		rds_conn_drop(conn, DR_IB_CONSUMER_DEFINED_REJ,
-			      ntohl(*rej_data));
+		rds_conn_drop(conn, DR_IB_CONSUMER_DEFINED_REJ, *rej_data);
 		break;
 	}
 
