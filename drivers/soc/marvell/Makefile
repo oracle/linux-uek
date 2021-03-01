@@ -5,4 +5,6 @@ obj-y		+= octeontx2-dpi/
 obj-y		+= octeontx2-sdp/
 obj-y		+= octeontx2-npa/
 obj-y		+= octeontx2-llc/
+obj-y 		+= csr-access/
+
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
