@@ -523,6 +523,7 @@ int cvm_oct_common_init(struct net_device *dev)
 {
 	unsigned long flags;
 	cvmx_pko_port_status_t tx_status;
+	cvmx_pip_port_status_t rx_status;
 	struct octeon_ethernet *priv = netdev_priv(dev);
 	const u8 *mac = NULL;
 	struct sockaddr sa;
@@ -551,6 +552,7 @@ int cvm_oct_common_init(struct net_device *dev)
 	cvm_oct_common_set_mac_address(dev, &sa, priv->gmx_base, &priv->poll_lock);
 	dev->netdev_ops->ndo_change_mtu(dev, dev->mtu);
 
+	cvmx_pip_get_port_status(priv->ipd_port, 1, &rx_status);
 	spin_lock_irqsave(&cvm_oct_tx_stat_lock, flags);
 	cvmx_pko_get_port_status(priv->ipd_port, 0, &tx_status);
 	priv->last_tx_packets = tx_status.packets;
