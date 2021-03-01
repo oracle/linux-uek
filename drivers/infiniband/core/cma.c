@@ -355,7 +355,7 @@ struct cma_device *cma_enum_devices_by_ibdev(cma_device_filter	filter,
 }
 
 int cma_get_default_gid_type(struct cma_device *cma_dev,
-			     unsigned int port)
+			     u32 port)
 {
 	if (!rdma_is_port_valid(cma_dev->device, port))
 		return -EINVAL;
@@ -364,7 +364,7 @@ int cma_get_default_gid_type(struct cma_device *cma_dev,
 }
 
 int cma_set_default_gid_type(struct cma_device *cma_dev,
-			     unsigned int port,
+			     u32 port,
 			     enum ib_gid_type default_gid_type)
 {
 	unsigned long supported_gids;
@@ -387,7 +387,7 @@ int cma_set_default_gid_type(struct cma_device *cma_dev,
 	return 0;
 }
 
-int cma_get_default_roce_tos(struct cma_device *cma_dev, unsigned int port)
+int cma_get_default_roce_tos(struct cma_device *cma_dev, u32 port)
 {
 	if (!rdma_is_port_valid(cma_dev->device, port))
 		return -EINVAL;
@@ -395,7 +395,7 @@ int cma_get_default_roce_tos(struct cma_device *cma_dev, unsigned int port)
 	return cma_dev->default_roce_tos[port - rdma_start_port(cma_dev->device)];
 }
 
-int cma_set_default_roce_tos(struct cma_device *cma_dev, unsigned int port,
+int cma_set_default_roce_tos(struct cma_device *cma_dev, u32 port,
 			     u8 default_roce_tos)
 {
 	if (!rdma_is_port_valid(cma_dev->device, port))
@@ -691,7 +691,7 @@ static int cma_translate_addr(struct sockaddr *addr, struct rdma_dev_addr *dev_a
 }
 
 static const struct ib_gid_attr *
-cma_validate_port(struct ib_device *device, u8 port,
+cma_validate_port(struct ib_device *device, u32 port,
 		  enum ib_gid_type gid_type,
 		  union ib_gid *gid,
 		  struct rdma_id_private *id_priv)
@@ -749,7 +749,7 @@ static int cma_acquire_dev_by_src_ip(struct rdma_id_private *id_priv)
 	struct cma_device *cma_dev;
 	enum ib_gid_type gid_type;
 	int ret = -ENODEV;
-	unsigned int port;
+	u32 port;
 
 	if (dev_addr->dev_type != ARPHRD_INFINIBAND &&
 	    id_priv->id.ps == RDMA_PS_IPOIB)
@@ -841,7 +841,7 @@ static int cma_iw_acquire_dev(struct rdma_id_private *id_priv,
 	enum ib_gid_type gid_type;
 	int ret = -ENODEV;
 	union ib_gid gid;
-	u8 port;
+	u32 port;
 
 	if (dev_addr->dev_type != ARPHRD_INFINIBAND &&
 	    id_priv->id.ps == RDMA_PS_IPOIB)
@@ -1652,7 +1652,7 @@ static bool cma_match_private_data(struct rdma_id_private *id_priv,
 static bool cma_protocol_roce(const struct rdma_cm_id *id)
 {
 	struct ib_device *device = id->device;
-	const int port_num = id->port_num ?: rdma_start_port(device);
+	const u32 port_num = id->port_num ?: rdma_start_port(device);
 
 	return rdma_protocol_roce(device, port_num);
 }
@@ -4962,8 +4962,8 @@ static void cma_add_one(struct ib_device *device)
 {
 	struct cma_device *cma_dev;
 	struct rdma_id_private *id_priv;
-	unsigned int i;
 	unsigned long supported_gids = 0;
+	u32 i;
 
 	cma_dev = kmalloc(sizeof *cma_dev, GFP_KERNEL);
 	if (!cma_dev)

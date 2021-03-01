@@ -58,7 +58,7 @@ int ocrdma_query_ah(struct ib_ah *ah, struct rdma_ah_attr *ah_attr);
 
 int ocrdma_process_mad(struct ib_device *,
 		       int process_mad_flags,
-		       u8 port_num,
+		       u32 port_num,
 		       const struct ib_wc *in_wc,
 		       const struct ib_grh *in_grh,
 		       const struct ib_mad_hdr *in, size_t in_mad_size,

@@ -24,7 +24,7 @@ MODULE_PARM_DESC(force_mr, "Force usage of MRs for RDMA READ/WRITE operations");
  * true for iWarp devices. In the future we can hopefully fine tune this based
  * on HCA driver input.
  */
-static inline bool rdma_rw_can_use_mr(struct ib_device *dev, u8 port_num)
+static inline bool rdma_rw_can_use_mr(struct ib_device *dev, u32 port_num)
 {
 	if (rdma_protocol_iwarp(dev, port_num))
 		return true;
@@ -41,7 +41,7 @@ static inline bool rdma_rw_can_use_mr(struct ib_device *dev, u8 port_num)
  * XXX: In the future we can hopefully fine tune this based on HCA driver
  * input.
  */
-static inline bool rdma_rw_io_needs_mr(struct ib_device *dev, u8 port_num,
+static inline bool rdma_rw_io_needs_mr(struct ib_device *dev, u32 port_num,
 		enum dma_data_direction dir, int dma_nents)
 {
 	if (rdma_protocol_iwarp(dev, port_num) && dir == DMA_FROM_DEVICE)
@@ -82,7 +82,7 @@ static inline int rdma_rw_inv_key(struct rdma_rw_reg_ctx *reg)
 }
 
 /* Caller must have zero-initialized *reg. */
-static int rdma_rw_init_one_mr(struct ib_qp *qp, u8 port_num,
+static int rdma_rw_init_one_mr(struct ib_qp *qp, u32 port_num,
 		struct rdma_rw_reg_ctx *reg, struct scatterlist *sg,
 		u32 sg_cnt, u32 offset)
 {
@@ -116,7 +116,7 @@ static int rdma_rw_init_one_mr(struct ib_qp *qp, u8 port_num,
 }
 
 static int rdma_rw_init_mr_wrs(struct rdma_rw_ctx *ctx, struct ib_qp *qp,
-		u8 port_num, struct scatterlist *sg, u32 sg_cnt, u32 offset,
+		u32 port_num, struct scatterlist *sg, u32 sg_cnt, u32 offset,
 		u64 remote_addr, u32 rkey, enum dma_data_direction dir)
 {
 	struct rdma_rw_reg_ctx *prev = NULL;
@@ -300,7 +300,7 @@ static int rdma_rw_map_sg(struct ib_device *dev, struct scatterlist *sg,
  * Returns the number of WQEs that will be needed on the workqueue if
  * successful, or a negative error code.
  */
-int rdma_rw_ctx_init(struct rdma_rw_ctx *ctx, struct ib_qp *qp, u8 port_num,
+int rdma_rw_ctx_init(struct rdma_rw_ctx *ctx, struct ib_qp *qp, u32 port_num,
 		struct scatterlist *sg, u32 sg_cnt, u32 sg_offset,
 		u64 remote_addr, u32 rkey, enum dma_data_direction dir)
 {
@@ -369,7 +369,7 @@ EXPORT_SYMBOL(rdma_rw_ctx_init);
  * successful, or a negative error code.
  */
 int rdma_rw_ctx_signature_init(struct rdma_rw_ctx *ctx, struct ib_qp *qp,
-		u8 port_num, struct scatterlist *sg, u32 sg_cnt,
+		u32 port_num, struct scatterlist *sg, u32 sg_cnt,
 		struct scatterlist *prot_sg, u32 prot_sg_cnt,
 		struct ib_sig_attrs *sig_attrs,
 		u64 remote_addr, u32 rkey, enum dma_data_direction dir)
@@ -497,7 +497,7 @@ static void rdma_rw_update_lkey(struct rdma_rw_reg_ctx *reg, bool need_inval)
  * completion notification.
  */
 struct ib_send_wr *rdma_rw_ctx_wrs(struct rdma_rw_ctx *ctx, struct ib_qp *qp,
-		u8 port_num, struct ib_cqe *cqe, struct ib_send_wr *chain_wr)
+		u32 port_num, struct ib_cqe *cqe, struct ib_send_wr *chain_wr)
 {
 	struct ib_send_wr *first_wr, *last_wr;
 	int i;
@@ -555,7 +555,7 @@ EXPORT_SYMBOL(rdma_rw_ctx_wrs);
  * is not set @cqe must be set so that the caller gets a completion
  * notification.
  */
-int rdma_rw_ctx_post(struct rdma_rw_ctx *ctx, struct ib_qp *qp, u8 port_num,
+int rdma_rw_ctx_post(struct rdma_rw_ctx *ctx, struct ib_qp *qp, u32 port_num,
 		struct ib_cqe *cqe, struct ib_send_wr *chain_wr)
 {
 	struct ib_send_wr *first_wr;
@@ -574,8 +574,9 @@ EXPORT_SYMBOL(rdma_rw_ctx_post);
  * @sg_cnt:	number of entries in @sg
  * @dir:	%DMA_TO_DEVICE for RDMA WRITE, %DMA_FROM_DEVICE for RDMA READ
  */
-void rdma_rw_ctx_destroy(struct rdma_rw_ctx *ctx, struct ib_qp *qp, u8 port_num,
-		struct scatterlist *sg, u32 sg_cnt, enum dma_data_direction dir)
+void rdma_rw_ctx_destroy(struct rdma_rw_ctx *ctx, struct ib_qp *qp,
+			 u32 port_num, struct scatterlist *sg, u32 sg_cnt,
+			 enum dma_data_direction dir)
 {
 	int i;
 
@@ -613,7 +614,7 @@ EXPORT_SYMBOL(rdma_rw_ctx_destroy);
  * @dir:	%DMA_TO_DEVICE for RDMA WRITE, %DMA_FROM_DEVICE for RDMA READ
  */
 void rdma_rw_ctx_destroy_signature(struct rdma_rw_ctx *ctx, struct ib_qp *qp,
-		u8 port_num, struct scatterlist *sg, u32 sg_cnt,
+		u32 port_num, struct scatterlist *sg, u32 sg_cnt,
 		struct scatterlist *prot_sg, u32 prot_sg_cnt,
 		enum dma_data_direction dir)
 {
@@ -640,7 +641,7 @@ EXPORT_SYMBOL(rdma_rw_ctx_destroy_signature);
  * compute max_rdma_ctxts and the size of the transport's Send and
  * Send Completion Queues.
  */
-unsigned int rdma_rw_mr_factor(struct ib_device *device, u8 port_num,
+unsigned int rdma_rw_mr_factor(struct ib_device *device, u32 port_num,
 			       unsigned int maxpages)
 {
 	unsigned int mr_pages;

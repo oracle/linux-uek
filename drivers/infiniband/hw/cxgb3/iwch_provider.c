@@ -909,14 +909,14 @@ static struct ib_qp *iwch_get_qp(struct ib_device *dev, int qpn)
 
 
 static int iwch_query_pkey(struct ib_device *ibdev,
-			   u8 port, u16 index, u16 * pkey)
+			   u32 port, u16 index, u16 * pkey)
 {
 	pr_debug("%s ibdev %p\n", __func__, ibdev);
 	*pkey = 0;
 	return 0;
 }
 
-static int iwch_query_gid(struct ib_device *ibdev, u8 port,
+static int iwch_query_gid(struct ib_device *ibdev, u32 port,
 			  int index, union ib_gid *gid)
 {
 	struct iwch_dev *dev;
@@ -989,7 +989,7 @@ static int iwch_query_device(struct ib_device *ibdev, struct ib_device_attr *pro
 }
 
 static int iwch_query_port(struct ib_device *ibdev,
-			   u8 port, struct ib_port_attr *props)
+			   u32 port, struct ib_port_attr *props)
 {
 	pr_debug("%s ibdev %p\n", __func__, ibdev);
 
@@ -1103,7 +1103,7 @@ static const char * const names[] = {
 };
 
 static struct rdma_hw_stats *iwch_alloc_stats(struct ib_device *ibdev,
-					      u8 port_num)
+					      u32 port_num)
 {
 	BUILD_BUG_ON(ARRAY_SIZE(names) != NR_COUNTERS);
 
@@ -1116,7 +1116,7 @@ static struct rdma_hw_stats *iwch_alloc_stats(struct ib_device *ibdev,
 }
 
 static int iwch_get_mib(struct ib_device *ibdev, struct rdma_hw_stats *stats,
-			u8 port, int index)
+			u32 port, int index)
 {
 	struct iwch_dev *dev;
 	struct tp_mib_stats m;
@@ -1171,7 +1171,7 @@ static const struct attribute_group iwch_attr_group = {
 	.attrs = iwch_class_attributes,
 };
 
-static int iwch_port_immutable(struct ib_device *ibdev, u8 port_num,
+static int iwch_port_immutable(struct ib_device *ibdev, u32 port_num,
 			       struct ib_port_immutable *immutable)
 {
 	struct ib_port_attr attr;

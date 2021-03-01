@@ -36,18 +36,18 @@ static inline void siw_copy_sgl(struct ib_sge *sge, struct siw_sge *siw_sge,
 
 int siw_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata);
 void siw_dealloc_ucontext(struct ib_ucontext *base_ctx);
-int siw_query_port(struct ib_device *base_dev, u8 port,
+int siw_query_port(struct ib_device *base_dev, u32 port,
 		   struct ib_port_attr *attr);
-int siw_get_port_immutable(struct ib_device *base_dev, u8 port,
+int siw_get_port_immutable(struct ib_device *base_dev, u32 port,
 			   struct ib_port_immutable *port_immutable);
 int siw_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 		     struct ib_udata *udata);
 int siw_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
 		  struct ib_udata *udata);
-int siw_query_port(struct ib_device *base_dev, u8 port,
+int siw_query_port(struct ib_device *base_dev, u32 port,
 		   struct ib_port_attr *attr);
-int siw_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pkey);
-int siw_query_gid(struct ib_device *base_dev, u8 port, int idx,
+int siw_query_pkey(struct ib_device *base_dev, u32 port, u16 idx, u16 *pkey);
+int siw_query_gid(struct ib_device *base_dev, u32 port, int idx,
 		  union ib_gid *gid);
 int siw_alloc_pd(struct ib_pd *base_pd, struct ib_udata *udata);
 void siw_dealloc_pd(struct ib_pd *base_pd, struct ib_udata *udata);
@@ -86,6 +86,6 @@ int siw_mmap(struct ib_ucontext *ctx, struct vm_area_struct *vma);
 void siw_qp_event(struct siw_qp *qp, enum ib_event_type type);
 void siw_cq_event(struct siw_cq *cq, enum ib_event_type type);
 void siw_srq_event(struct siw_srq *srq, enum ib_event_type type);
-void siw_port_event(struct siw_device *dev, u8 port, enum ib_event_type type);
+void siw_port_event(struct siw_device *dev, u32 port, enum ib_event_type type);
 
 #endif

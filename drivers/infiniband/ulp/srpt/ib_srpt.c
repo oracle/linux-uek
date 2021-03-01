@@ -3112,7 +3112,8 @@ static void srpt_add_one(struct ib_device *device)
 {
 	struct srpt_device *sdev;
 	struct srpt_port *sport;
-	int i, ret;
+	int ret;
+	u32 i;
 
 	pr_debug("device = %p\n", device);
 

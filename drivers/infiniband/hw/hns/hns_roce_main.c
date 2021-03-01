@@ -58,7 +58,7 @@ int hns_get_gid_index(struct hns_roce_dev *hr_dev, u8 port, int gid_index)
 	return gid_index * hr_dev->caps.num_ports + port;
 }
 
-static int hns_roce_set_mac(struct hns_roce_dev *hr_dev, u8 port, u8 *addr)
+static int hns_roce_set_mac(struct hns_roce_dev *hr_dev, u32 port, u8 *addr)
 {
 	u8 phy_port;
 	u32 i = 0;
@@ -76,7 +76,7 @@ static int hns_roce_set_mac(struct hns_roce_dev *hr_dev, u8 port, u8 *addr)
 static int hns_roce_add_gid(const struct ib_gid_attr *attr, void **context)
 {
 	struct hns_roce_dev *hr_dev = to_hr_dev(attr->device);
-	u8 port = attr->port_num - 1;
+	u32 port = attr->port_num - 1;
 	int ret;
 
 	if (port >= hr_dev->caps.num_ports)
@@ -91,7 +91,7 @@ static int hns_roce_del_gid(const struct ib_gid_attr *attr, void **context)
 {
 	struct hns_roce_dev *hr_dev = to_hr_dev(attr->device);
 	struct ib_gid_attr zattr = { };
-	u8 port = attr->port_num - 1;
+	u32 port = attr->port_num - 1;
 	int ret;
 
 	if (port >= hr_dev->caps.num_ports)
@@ -102,7 +102,7 @@ static int hns_roce_del_gid(const struct ib_gid_attr *attr, void **context)
 	return ret;
 }
 
-static int handle_en_event(struct hns_roce_dev *hr_dev, u8 port,
+static int handle_en_event(struct hns_roce_dev *hr_dev, u32 port,
 			   unsigned long event)
 {
 	struct device *dev = hr_dev->dev;
@@ -141,7 +141,7 @@ static int hns_roce_netdev_event(struct notifier_block *self,
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct hns_roce_ib_iboe *iboe = NULL;
 	struct hns_roce_dev *hr_dev = NULL;
-	u8 port = 0;
+	u32 port = 0;
 	int ret = 0;
 
 	hr_dev = container_of(self, struct hns_roce_dev, iboe.nb);
@@ -223,7 +223,7 @@ static int hns_roce_query_device(struct ib_device *ib_dev,
 	return 0;
 }
 
-static int hns_roce_query_port(struct ib_device *ib_dev, u8 port_num,
+static int hns_roce_query_port(struct ib_device *ib_dev, u32 port_num,
 			       struct ib_port_attr *props)
 {
 	struct hns_roce_dev *hr_dev = to_hr_dev(ib_dev);
@@ -231,7 +231,7 @@ static int hns_roce_query_port(struct ib_device *ib_dev, u8 port_num,
 	struct net_device *net_dev;
 	unsigned long flags;
 	enum ib_mtu mtu;
-	u8 port;
+	u32 port;
 
 	assert(port_num > 0);
 	port = port_num - 1;
@@ -271,12 +271,12 @@ static int hns_roce_query_port(struct ib_device *ib_dev, u8 port_num,
 }
 
 static enum rdma_link_layer hns_roce_get_link_layer(struct ib_device *device,
-						    u8 port_num)
+						    u32 port_num)
 {
 	return IB_LINK_LAYER_ETHERNET;
 }
 
-static int hns_roce_query_pkey(struct ib_device *ib_dev, u8 port, u16 index,
+static int hns_roce_query_pkey(struct ib_device *ib_dev, u32 port, u16 index,
 			       u16 *pkey)
 {
 	*pkey = PKEY_ID;
@@ -379,7 +379,7 @@ static int hns_roce_mmap(struct ib_ucontext *context,
 	}
 }
 
-static int hns_roce_port_immutable(struct ib_device *ib_dev, u8 port_num,
+static int hns_roce_port_immutable(struct ib_device *ib_dev, u32 port_num,
 				   struct ib_port_immutable *immutable)
 {
 	struct ib_port_attr attr;
