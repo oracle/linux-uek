@@ -1724,10 +1724,8 @@ out:
 
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
-	if (err) {
-		err = htonl(err);
+	if (err)
 		rdma_reject(cm_id, &err, sizeof(int));
-	}
 
 	return destroy;
 }
