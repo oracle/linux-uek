@@ -548,6 +548,8 @@ enum fec_type {
 	OTX2_FEC_NONE,
 	OTX2_FEC_BASER,
 	OTX2_FEC_RS,
+	OTX2_FEC_STATS_CNT = 2,
+	OTX2_FEC_OFF,
 };
 
 struct fec_mode {
