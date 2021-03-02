@@ -34,6 +34,7 @@ static inline int rtnl_msg_family(const struct nlmsghdr *nlh)
  *
  *	@list: Used internally
  *	@kind: Identifier
+ *	@netns_refund: Physical device, move to init_net on netns exit
  *	@maxtype: Highest device specific netlink attribute number
  *	@policy: Netlink policy for device specific attribute validation
  *	@validate: Optional validation function for netlink/changelink parameters
@@ -112,7 +113,7 @@ struct rtnl_link_ops {
 						   const struct net_device *dev,
 						   int *prividx, int attr);
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, bool netns_refund)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
