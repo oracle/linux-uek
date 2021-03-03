@@ -350,9 +350,9 @@ TRACE_EVENT(rds_receive,
 		struct cgroup *cgrp;
 
 		in6 = (struct in6_addr *)__entry->faddr;
-		*in6 = *saddr;
+		*in6 = saddr ? *saddr : in6addr_any;
 		in6 = (struct in6_addr *)__entry->laddr;
-		*in6 = *daddr;
+		*in6 = daddr ? *daddr : in6addr_any;
 		__entry->tos = conn ? conn->c_tos : 0;
 		__entry->transport = conn ? conn->c_trans->t_type :
 					    RDS_TRANS_NONE;
@@ -416,9 +416,9 @@ TRACE_EVENT(rds_drop_ingress,
 		struct cgroup *cgrp;
 
 		in6 = (struct in6_addr *)__entry->faddr;
-		*in6 = *saddr;
+		*in6 = saddr ? *saddr : in6addr_any;
 		in6 = (struct in6_addr *)__entry->laddr;
-		*in6 = *daddr;
+		*in6 = daddr ? *daddr : in6addr_any;
 		__entry->tos = conn ? conn->c_tos : 0;
 		__entry->transport = conn ? conn->c_trans->t_type :
 					    RDS_TRANS_NONE;
@@ -469,9 +469,9 @@ TRACE_EVENT(rds_send,
 		struct cgroup *cgrp;
 
 		in6 = (struct in6_addr *)__entry->laddr;
-		*in6 = *saddr;
+		*in6 = saddr ? *saddr : in6addr_any;
 		in6 = (struct in6_addr *)__entry->faddr;
-		*in6 = *daddr;
+		*in6 = daddr ? *daddr : in6addr_any;
 		__entry->tos = conn ? conn->c_tos : 0;
 		__entry->transport = conn ? conn->c_trans->t_type :
 					    RDS_TRANS_NONE;
@@ -567,9 +567,9 @@ TRACE_EVENT(rds_drop_egress,
 		struct cgroup *cgrp;
 
 		in6 = (struct in6_addr *)__entry->laddr;
-		*in6 = *saddr;
+		*in6 = saddr ? *saddr : in6addr_any;
 		in6 = (struct in6_addr *)__entry->faddr;
-		*in6 = *daddr;
+		*in6 = daddr ? *daddr : in6addr_any;
 		__entry->tos = conn ? conn->c_tos : 0;
 		__entry->transport = conn ? conn->c_trans->t_type :
 					    RDS_TRANS_NONE;
