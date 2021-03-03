@@ -1248,7 +1248,7 @@ qla2x00_sns_gnn_id(scsi_qla_host_t *vha, sw_info_t *list)
 }
 
 /**
- * qla2x00_snd_rft_id() - SNS Register FC-4 TYPEs (RFT_ID) supported by the HBA.
+ * qla2x00_sns_rft_id() - SNS Register FC-4 TYPEs (RFT_ID) supported by the HBA.
  * @vha: HA context
  *
  * This command uses the old Exectute SNS Command mailbox routine.
@@ -1480,7 +1480,7 @@ qla2x00_update_ms_fdmi_iocb(scsi_qla_host_t *vha, uint32_t req_size)
 }
 
 /**
- * qla2x00_prep_ct_req() - Prepare common CT request fields for SNS query.
+ * qla2x00_prep_ct_fdmi_req() - Prepare common CT request fields for SNS query.
  * @p: CT request buffer
  * @cmd: GS command
  * @rsp_size: response size in bytes
@@ -1583,7 +1583,7 @@ qla25xx_fdmi_port_speed_currently(struct qla_hw_data *ha)
 }
 
 /**
- * qla2x00_hba_attributes() perform HBA attributes registration
+ * qla2x00_hba_attributes() - perform HBA attributes registration
  * @vha: HA context
  * @entries: number of entries to use
  * @callopt: Option to issue extended or standard FDMI
@@ -1838,7 +1838,7 @@ done:
 }
 
 /**
- * qla2x00_port_attributes() perform Port attributes registration
+ * qla2x00_port_attributes() - perform Port attributes registration
  * @vha: HA context
  * @entries: number of entries to use
  * @callopt: Option to issue extended or standard FDMI
@@ -2273,7 +2273,7 @@ qla2x00_fdmi_dhba(scsi_qla_host_t *vha)
 }
 
 /**
- * qla2x00_fdmi_rprt() perform RPRT registration
+ * qla2x00_fdmi_rprt() - perform RPRT registration
  * @vha: HA context
  * @callopt: Option to issue extended or standard FDMI
  *           command parameter
