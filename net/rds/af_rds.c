@@ -103,7 +103,7 @@ static struct rt_debug_tp rt_debug_tp_map[] = {
 	{ RDS_RTD_RCV_EXT,
 	  { "rds_receive_worker_err", NULL }},
 	{ RDS_RTD_SND,
-	  { "rds_send_err", NULL }},
+	  { "rds_send_err", "rds_drop_egress", NULL }},
 	{ RDS_RTD_SND_EXT,
 	  { "rds_send_worker_err", NULL }},
 	{ RDS_RTD_FLOW_CNTRL,
