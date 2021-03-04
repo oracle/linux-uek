@@ -279,6 +279,14 @@ DEFINE_EVENT(rds_status, rds_send_worker_err,
 
 );
 
+DEFINE_EVENT(rds_status, rds_send_lock_contention,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_conn_path *cp, char *reason, int err),
+
+	TP_ARGS(rs, conn, cp, reason, err)
+);
+
 DEFINE_EVENT(rds_status, rds_receive_err,
 
 	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
