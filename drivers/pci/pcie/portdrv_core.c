@@ -355,16 +355,7 @@ int pcie_port_device_register(struct pci_dev *dev)
 	}
 	if (!nr_service)
 		goto error_cleanup_irqs;
-#ifdef CONFIG_PCIEAER
-       /*
-        * Enable error reporting for this port in case AER probing has already
-        * run on the root bus or this port device is hot-inserted
-        */
-       if (dev->aer_cap && pci_aer_available() &&
-	  (pcie_ports_native || pci_find_host_bridge(dev->bus)->native_aer)){
-                       pci_enable_pcie_error_reporting(dev);
-       }
-#endif
+
 	return 0;
 
 error_cleanup_irqs:
