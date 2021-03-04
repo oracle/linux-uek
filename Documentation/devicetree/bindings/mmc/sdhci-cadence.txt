@@ -3,6 +3,7 @@
 Required properties:
 - compatible: should be one of the following:
     "cdns,sd4hc"               - default of the IP
+    "cdns,sd6hc"               - for Cadence SD host controller version 6
     "socionext,uniphier-sd4hc" - for Socionext UniPhier SoCs
 - reg: offset and length of the register set for the device.
 - interrupts: a single interrupt specifier.
