@@ -102,7 +102,7 @@ struct aer_stats {
 #define ERR_UNCOR_ID(d)			(d >> 16)
 
 static int pcie_aer_disable;
-static pci_ers_result_t aer_reset_link(struct pci_dev *dev);
+static pci_ers_result_t aer_root_reset(struct pci_dev *dev);
 
 void pci_no_aer(void)
 {
@@ -1068,9 +1068,9 @@ static void handle_error_source(struct pci_dev *dev, struct aer_err_info *info)
 					info->status);
 		pci_aer_clear_device_status(dev);
 	} else if (info->severity == AER_NONFATAL)
-		pcie_do_recovery(dev, pci_channel_io_normal, aer_reset_link);
+		pcie_do_recovery(dev, pci_channel_io_normal, aer_root_reset);
 	else if (info->severity == AER_FATAL)
-		pcie_do_recovery(dev, pci_channel_io_frozen, aer_reset_link);
+		pcie_do_recovery(dev, pci_channel_io_frozen, aer_root_reset);
 	pci_dev_put(dev);
 }
 
@@ -1107,10 +1107,10 @@ static void aer_recover_work_func(struct work_struct *work)
 		cper_print_aer(pdev, entry.severity, entry.regs);
 		if (entry.severity == AER_NONFATAL)
 			pcie_do_recovery(pdev, pci_channel_io_normal,
-					 aer_reset_link);
+					 aer_root_reset);
 		else if (entry.severity == AER_FATAL)
 			pcie_do_recovery(pdev, pci_channel_io_frozen,
-					 aer_reset_link);
+					 aer_root_reset);
 		pci_dev_put(pdev);
 	}
 }
@@ -1386,6 +1386,12 @@ static void aer_enable_rootport(struct aer_rpc *rpc)
 	pci_read_config_dword(pdev, aer_pos + PCI_ERR_UNCOR_STATUS, &reg32);
 	pci_write_config_dword(pdev, aer_pos + PCI_ERR_UNCOR_STATUS, reg32);
 
+	/*
+	 * Enable error reporting for the root port device and downstream port
+	 * devices.
+	 */
+	set_downstream_devices_error_reporting(pdev, true);
+
 	/* Enable Root Port's interrupt in response to error messages */
 	pci_read_config_dword(pdev, aer_pos + PCI_ERR_ROOT_COMMAND, &reg32);
 	reg32 |= ROOT_PORT_INTR_ON_MESG_MASK;
@@ -1429,12 +1435,9 @@ static void aer_disable_rootport(struct aer_rpc *rpc)
  */
 static void aer_remove(struct pcie_device *dev)
 {
-	struct aer_rpc *rpc;
+	struct aer_rpc *rpc = get_service_data(dev);
 
-	if (pci_pcie_type(dev->port) == PCI_EXP_TYPE_ROOT_PORT) {
-		rpc = get_service_data(dev);
-		aer_disable_rootport(rpc);
-       }
+	aer_disable_rootport(rpc);
 }
 
 /**
@@ -1445,17 +1448,10 @@ static void aer_remove(struct pcie_device *dev)
  */
 static int aer_probe(struct pcie_device *dev)
 {
-	struct pci_dev *pdev = dev->port;
-	int type = pci_pcie_type(pdev);
 	int status;
 	struct aer_rpc *rpc;
 	struct device *device = &dev->device;
 	struct pci_dev *port = dev->port;
-
-	 if (type == PCI_EXP_TYPE_UPSTREAM || type == PCI_EXP_TYPE_DOWNSTREAM) {
-		pci_enable_pcie_error_reporting(pdev);
-		return 0;
-	}
 
 	rpc = devm_kzalloc(device, sizeof(struct aer_rpc), GFP_KERNEL);
 	if (!rpc)
@@ -1473,52 +1469,47 @@ static int aer_probe(struct pcie_device *dev)
 	}
 
 	aer_enable_rootport(rpc);
-	pci_enable_pcie_error_reporting(pdev);
 	pci_info(port, "enabled with IRQ %d\n", dev->irq);
 	return 0;
 }
 
 /**
- * aer_reset_link - reset link
- * @dev: pointer to pci_dev data structure
+ * aer_root_reset - reset link on Root Port
+ * @dev: pointer to Root Port's pci_dev data structure
  *
- * Invoked by Port Bus driver when performing link reset.
+ * Invoked by Port Bus driver when performing link reset at Root Port.
  */
-static pci_ers_result_t aer_reset_link(struct pci_dev *dev)
+static pci_ers_result_t aer_root_reset(struct pci_dev *dev)
 {
 	u32 reg32;
+	int pos;
 	int rc;
 
-	int root = (pci_pcie_type(dev) == PCI_EXP_TYPE_ROOT_PORT);
-	int pos = dev->aer_cap;
+	pos = dev->aer_cap;
 
-	if (root) {
-		/* Disable Root's interrupt in response to error messages */
-		pci_read_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, &reg32);
-		reg32 &= ~ROOT_PORT_INTR_ON_MESG_MASK;
-		pci_write_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, reg32);
-	}
+	/* Disable Root's interrupt in response to error messages */
+	pci_read_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, &reg32);
+	reg32 &= ~ROOT_PORT_INTR_ON_MESG_MASK;
+	pci_write_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, reg32);
 
 	rc = pci_bus_error_reset(dev);
-	pci_info(dev, "downstream link has been reset\n");
+	pci_info(dev, "Root Port link has been reset\n");
 
-	if (root) {
-		/* Clear Root Error Status */
-		pci_read_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, &reg32);
-		pci_write_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, reg32);
+	/* Clear Root Error Status */
+	pci_read_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, &reg32);
+	pci_write_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, reg32);
 
-		/* Enable Root Port's interrupt in response to error messages */
-		pci_read_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, &reg32);
-		reg32 |= ROOT_PORT_INTR_ON_MESG_MASK;
-		pci_write_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, reg32);
-	}
+	/* Enable Root Port's interrupt in response to error messages */
+	pci_read_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, &reg32);
+	reg32 |= ROOT_PORT_INTR_ON_MESG_MASK;
+	pci_write_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, reg32);
 
 	return rc ? PCI_ERS_RESULT_DISCONNECT : PCI_ERS_RESULT_RECOVERED;
 }
 
 static struct pcie_port_service_driver aerdriver = {
 	.name		= "aer",
-	.port_type	= PCIE_ANY_PORT,
+	.port_type	= PCI_EXP_TYPE_ROOT_PORT,
 	.service	= PCIE_PORT_SERVICE_AER,
 
 	.probe		= aer_probe,
