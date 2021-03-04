@@ -208,9 +208,9 @@ restart:
 	 * caches per message.
 	 */
 	if (!acquire_in_xmit(cp)) {
-		trace_rds_drop_egress(NULL, NULL, conn, cp,
-				      &conn->c_laddr, &conn->c_faddr,
-				      "send lock contention");
+		trace_rds_send_lock_contention(NULL, conn, cp,
+					       "send lock contention",
+					       -ENOMEM);
 		rds_stats_inc(s_send_lock_contention);
 		ret = -ENOMEM;
 		goto out;
