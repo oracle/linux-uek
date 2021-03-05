@@ -157,12 +157,10 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 
 	strcpy(data, "reset_count");
 	data += ETH_GSTRING_LEN;
-	if (pfvf->linfo.fec) {
-		sprintf(data, "Fec Corrected Errors: ");
-		data += ETH_GSTRING_LEN;
-		sprintf(data, "Fec Uncorrected Errors: ");
-		data += ETH_GSTRING_LEN;
-	}
+	sprintf(data, "Fec Corrected Errors: ");
+	data += ETH_GSTRING_LEN;
+	sprintf(data, "Fec Uncorrected Errors: ");
+	data += ETH_GSTRING_LEN;
 }
 
 static void otx2_get_qset_stats(struct otx2_nic *pfvf,
@@ -198,7 +196,7 @@ static void otx2_get_qset_stats(struct otx2_nic *pfvf,
 static int otx2_get_phy_fec_stats(struct otx2_nic *pfvf)
 {
 	struct msg_req *req;
-	int rc = -EAGAIN;
+	int rc = -ENOMEM;
 
 	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_cgx_get_phy_fec_stats(&pfvf->mbox);
@@ -238,9 +236,6 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 		*(data++) = pfvf->hw.cgx_tx_stats[stat];
 	*(data++) = pfvf->reset_count;
 
-	if (pfvf->linfo.fec == OTX2_FEC_NONE)
-		return;
-
 	fec_corr_blks = pfvf->hw.cgx_fec_corr_blks;
 	fec_uncorr_blks = pfvf->hw.cgx_fec_uncorr_blks;
 
@@ -271,8 +266,7 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 static int otx2_get_sset_count(struct net_device *netdev, int sset)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	int qstats_count, fec_stats_count = 0;
-	bool if_up = netif_running(netdev);
+	int qstats_count;
 
 	if (sset == ETH_SS_PRIV_FLAGS)
 		return ARRAY_SIZE(otx2_priv_flags_strings);
@@ -283,16 +277,10 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 	qstats_count = otx2_n_queue_stats *
 		       (pfvf->hw.rx_queues + pfvf->hw.tot_tx_queues);
 
-	if (!if_up || !pfvf->linfo.fec) {
-		return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
-		       pfvf->hw.lmac_rx_stats_cnt + pfvf->hw.lmac_tx_stats_cnt
-		       + 1;
-	}
-	fec_stats_count = 2;
 	otx2_update_lmac_fec_stats(pfvf);
 	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
-	       pfvf->hw.lmac_rx_stats_cnt + pfvf->hw.lmac_tx_stats_cnt + 1 +
-	       fec_stats_count;
+	       pfvf->hw.lmac_rx_stats_cnt + pfvf->hw.lmac_tx_stats_cnt +
+	       OTX2_FEC_STATS_CNT + 1;
 }
 
 /* Get no of queues device supports and current queue count */
@@ -979,16 +967,17 @@ static int otx2_get_fecparam(struct net_device *netdev,
 		ETHTOOL_FEC_OFF,
 		ETHTOOL_FEC_BASER,
 		ETHTOOL_FEC_RS,
-		ETHTOOL_FEC_BASER | ETHTOOL_FEC_RS};
-#define FEC_MAX_INDEX 3
-	if (pfvf->linfo.fec < FEC_MAX_INDEX)
+		ETHTOOL_FEC_BASER | ETHTOOL_FEC_RS
+	};
+
+	if (pfvf->linfo.fec < ARRAY_SIZE(fec))
 		fecparam->active_fec = fec[pfvf->linfo.fec];
 
 	rsp = otx2_get_fwdata(pfvf);
 	if (IS_ERR(rsp))
 		return PTR_ERR(rsp);
 
-	if (rsp->fwdata.supported_fec <= FEC_MAX_INDEX) {
+	if (rsp->fwdata.supported_fec < ARRAY_SIZE(fec)) {
 		if (!rsp->fwdata.supported_fec)
 			fecparam->fec = ETHTOOL_FEC_NONE;
 		else
@@ -1001,12 +990,15 @@ static int otx2_set_fecparam(struct net_device *netdev,
 			     struct ethtool_fecparam *fecparam)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct mbox *mbox = &pfvf->mbox;
 	struct fec_mode *req, *rsp;
 	int err = 0, fec = 0;
 
 	switch (fecparam->fec) {
+	/* Firmware does not support AUTO mode consider it as FEC_OFF */
 	case ETHTOOL_FEC_OFF:
-		fec = OTX2_FEC_NONE;
+	case ETHTOOL_FEC_AUTO:
+		fec = OTX2_FEC_OFF;
 		break;
 	case ETHTOOL_FEC_RS:
 		fec = OTX2_FEC_RS;
@@ -1015,17 +1007,18 @@ static int otx2_set_fecparam(struct net_device *netdev,
 		fec = OTX2_FEC_BASER;
 		break;
 	default:
-		fec = OTX2_FEC_NONE;
-		break;
+		netdev_warn(pfvf->netdev, "Unsupported FEC mode: %d",
+			    fecparam->fec);
+		return -EINVAL;
 	}
 
 	if (fec == pfvf->linfo.fec)
 		return 0;
 
-	mutex_lock(&pfvf->mbox.lock);
+	mutex_lock(&mbox->lock);
 	req = otx2_mbox_alloc_msg_cgx_set_fec_param(&pfvf->mbox);
 	if (!req) {
-		err = -EAGAIN;
+		err = -ENOMEM;
 		goto end;
 	}
 	req->fec = fec;
@@ -1035,17 +1028,12 @@ static int otx2_set_fecparam(struct net_device *netdev,
 
 	rsp = (struct fec_mode *)otx2_mbox_get_rsp(&pfvf->mbox.mbox,
 						   0, &req->hdr);
-	if (rsp->fec >= 0) {
+	if (rsp->fec >= 0)
 		pfvf->linfo.fec = rsp->fec;
-		pfvf->hw.cgx_fec_corr_blks = 0;
-		pfvf->hw.cgx_fec_uncorr_blks = 0;
-
-	} else {
+	else
 		err = rsp->fec;
-	}
-
 end:
-	mutex_unlock(&pfvf->mbox.lock);
+	mutex_unlock(&mbox->lock);
 	return err;
 }
 

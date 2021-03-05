@@ -74,11 +74,8 @@ void otx2_update_lmac_fec_stats(struct otx2_nic *pfvf)
 		return;
 	mutex_lock(&pfvf->mbox.lock);
 	req = otx2_mbox_alloc_msg_cgx_fec_stats(&pfvf->mbox);
-	if (!req) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return;
-	}
-	otx2_sync_mbox_msg(&pfvf->mbox);
+	if (req)
+		otx2_sync_mbox_msg(&pfvf->mbox);
 	mutex_unlock(&pfvf->mbox.lock);
 }
 
