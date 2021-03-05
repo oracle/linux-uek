@@ -23,8 +23,6 @@
 #define DRV_VF_NAME	"octeontx2-nicvf"
 #define DRV_VF_VERSION	"1.0"
 
-static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf);
-
 static const char otx2_priv_flags_strings[][ETH_GSTRING_LEN] = {
 	"pam4",
 	"edsa",
@@ -85,6 +83,8 @@ static const struct otx2_stat otx2_queue_stats[] = {
 static const unsigned int otx2_n_dev_stats = ARRAY_SIZE(otx2_dev_stats);
 static const unsigned int otx2_n_drv_stats = ARRAY_SIZE(otx2_drv_stats);
 static const unsigned int otx2_n_queue_stats = ARRAY_SIZE(otx2_queue_stats);
+
+static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf);
 
 static void otx2_get_drvinfo(struct net_device *netdev,
 			     struct ethtool_drvinfo *info)
@@ -945,6 +945,110 @@ static int otx2_get_ts_info(struct net_device *netdev,
 	return 0;
 }
 
+static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
+{
+	struct cgx_fw_data *rsp = NULL;
+	struct msg_req *req;
+	int err = 0;
+
+	mutex_lock(&pfvf->mbox.lock);
+	req = otx2_mbox_alloc_msg_cgx_get_aux_link_info(&pfvf->mbox);
+	if (!req) {
+		mutex_unlock(&pfvf->mbox.lock);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (!err) {
+		rsp = (struct cgx_fw_data *)
+			otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+	} else {
+		rsp = ERR_PTR(err);
+	}
+
+	mutex_unlock(&pfvf->mbox.lock);
+	return rsp;
+}
+
+static int otx2_get_fecparam(struct net_device *netdev,
+			     struct ethtool_fecparam *fecparam)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+	const int fec[] = {
+		ETHTOOL_FEC_OFF,
+		ETHTOOL_FEC_BASER,
+		ETHTOOL_FEC_RS,
+		ETHTOOL_FEC_BASER | ETHTOOL_FEC_RS};
+#define FEC_MAX_INDEX 3
+	if (pfvf->linfo.fec < FEC_MAX_INDEX)
+		fecparam->active_fec = fec[pfvf->linfo.fec];
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
+	if (rsp->fwdata.supported_fec <= FEC_MAX_INDEX) {
+		if (!rsp->fwdata.supported_fec)
+			fecparam->fec = ETHTOOL_FEC_NONE;
+		else
+			fecparam->fec = fec[rsp->fwdata.supported_fec];
+	}
+	return 0;
+}
+
+static int otx2_set_fecparam(struct net_device *netdev,
+			     struct ethtool_fecparam *fecparam)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct fec_mode *req, *rsp;
+	int err = 0, fec = 0;
+
+	switch (fecparam->fec) {
+	case ETHTOOL_FEC_OFF:
+		fec = OTX2_FEC_NONE;
+		break;
+	case ETHTOOL_FEC_RS:
+		fec = OTX2_FEC_RS;
+		break;
+	case ETHTOOL_FEC_BASER:
+		fec = OTX2_FEC_BASER;
+		break;
+	default:
+		fec = OTX2_FEC_NONE;
+		break;
+	}
+
+	if (fec == pfvf->linfo.fec)
+		return 0;
+
+	mutex_lock(&pfvf->mbox.lock);
+	req = otx2_mbox_alloc_msg_cgx_set_fec_param(&pfvf->mbox);
+	if (!req) {
+		err = -EAGAIN;
+		goto end;
+	}
+	req->fec = fec;
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		goto end;
+
+	rsp = (struct fec_mode *)otx2_mbox_get_rsp(&pfvf->mbox.mbox,
+						   0, &req->hdr);
+	if (rsp->fec >= 0) {
+		pfvf->linfo.fec = rsp->fec;
+		pfvf->hw.cgx_fec_corr_blks = 0;
+		pfvf->hw.cgx_fec_uncorr_blks = 0;
+
+	} else {
+		err = rsp->fec;
+	}
+
+end:
+	mutex_unlock(&pfvf->mbox.lock);
+	return err;
+}
+
 static u32 otx2_get_msglevel(struct net_device *netdev)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
@@ -1067,31 +1171,6 @@ static void otx2_get_link_mode_info(u64 index, int mode,
 			*link_ksettings->link_modes.supported |=
 							ethtool_link_mode;
 	}
-}
-
-static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
-{
-	struct cgx_fw_data *rsp = NULL;
-	struct msg_req *req;
-	int err = 0;
-
-	mutex_lock(&pfvf->mbox.lock);
-	req = otx2_mbox_alloc_msg_cgx_get_aux_link_info(&pfvf->mbox);
-	if (!req) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (!err) {
-		rsp = (struct cgx_fw_data *)
-			otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
-	} else {
-		rsp = ERR_PTR(err);
-	}
-
-	mutex_unlock(&pfvf->mbox.lock);
-	return rsp;
 }
 
 static int otx2_get_module_info(struct net_device *netdev,
@@ -1232,85 +1311,6 @@ static u32 otx2_get_link(struct net_device *netdev)
 	if (is_otx2_lbkvf(pfvf->pdev))
 		return 1;
 	return pfvf->linfo.link_up;
-}
-
-static int otx2_get_fecparam(struct net_device *netdev,
-			     struct ethtool_fecparam *fecparam)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct cgx_fw_data *rsp;
-	int fec[] = {
-		ETHTOOL_FEC_OFF,
-		ETHTOOL_FEC_BASER,
-		ETHTOOL_FEC_RS,
-		ETHTOOL_FEC_BASER | ETHTOOL_FEC_RS};
-#define FEC_MAX_INDEX 3
-	if (pfvf->linfo.fec < FEC_MAX_INDEX)
-		fecparam->active_fec = fec[pfvf->linfo.fec];
-
-	rsp = otx2_get_fwdata(pfvf);
-	if (IS_ERR(rsp))
-		return PTR_ERR(rsp);
-
-	if (rsp->fwdata.supported_fec <= FEC_MAX_INDEX) {
-		if (!rsp->fwdata.supported_fec)
-			fecparam->fec = ETHTOOL_FEC_NONE;
-		else
-			fecparam->fec = fec[rsp->fwdata.supported_fec];
-	}
-	return 0;
-}
-
-static int otx2_set_fecparam(struct net_device *netdev,
-			     struct ethtool_fecparam *fecparam)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct fec_mode *req, *rsp;
-	int err = 0, fec = 0;
-
-	switch (fecparam->fec) {
-	case ETHTOOL_FEC_OFF:
-		fec = OTX2_FEC_NONE;
-		break;
-	case ETHTOOL_FEC_RS:
-		fec = OTX2_FEC_RS;
-		break;
-	case ETHTOOL_FEC_BASER:
-		fec = OTX2_FEC_BASER;
-		break;
-	default:
-		fec = OTX2_FEC_NONE;
-		break;
-	}
-
-	if (fec == pfvf->linfo.fec)
-		return 0;
-
-	mutex_lock(&pfvf->mbox.lock);
-	req = otx2_mbox_alloc_msg_cgx_set_fec_param(&pfvf->mbox);
-	if (!req) {
-		err = -EAGAIN;
-		goto end;
-	}
-	req->fec = fec;
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
-		goto end;
-
-	rsp = (struct fec_mode *)otx2_mbox_get_rsp(&pfvf->mbox.mbox,
-						   0, &req->hdr);
-	if (rsp->fec >= 0) {
-		pfvf->linfo.fec = rsp->fec;
-		pfvf->hw.cgx_fec_corr_blks = 0;
-		pfvf->hw.cgx_fec_uncorr_blks = 0;
-
-	} else {
-		err = rsp->fec;
-	}
-
-end:
-	mutex_unlock(&pfvf->mbox.lock);
-	return err;
 }
 
 static u32 otx2_get_priv_flags(struct net_device *netdev)

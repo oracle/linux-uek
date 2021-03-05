@@ -1541,8 +1541,8 @@ void mbox_handler_rpm_stats(struct otx2_nic *pfvf,
 void mbox_handler_cgx_fec_stats(struct otx2_nic *pfvf,
 				struct cgx_fec_stats_rsp *rsp)
 {
-		pfvf->hw.cgx_fec_corr_blks += rsp->fec_corr_blks;
-		pfvf->hw.cgx_fec_uncorr_blks += rsp->fec_uncorr_blks;
+	pfvf->hw.cgx_fec_corr_blks += rsp->fec_corr_blks;
+	pfvf->hw.cgx_fec_uncorr_blks += rsp->fec_uncorr_blks;
 }
 
 void mbox_handler_nix_txsch_alloc(struct otx2_nic *pf,
