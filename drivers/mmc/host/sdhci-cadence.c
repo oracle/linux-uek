@@ -15,6 +15,8 @@
 
 #include "sdhci-pltfm.h"
 
+#define CN10K_ASIM	1
+
 #define SDHCI_CDNS_HRS04			0x10		/* PHY access port */
 /* SD 4.0 Controller HRS - Host Register Set (specific to Cadence) */
 #define SDHCI_CDNS_SD4_HRS04_ACK		BIT(26)
@@ -400,6 +402,106 @@ static void (*(init_timings[]))(struct sdhci_cdns_sd6_phy_timings*, int) = {
 	&init_uhs_sdr25, &init_uhs_sdr50, &init_uhs_sdr104, &init_uhs_ddr50,
 	&init_emmc_ddr, &init_emmc_hs200, &init_emmc_hs400
 };
+
+#ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
+static u32 sdhci_cdns_sd6_readl(struct sdhci_host *host, int reg)
+{
+	return readl(host->ioaddr + reg);
+}
+
+static void sdhci_cdns_sd6_writel(struct sdhci_host *host, u32 val, int reg)
+{
+	writel(val, host->ioaddr + reg);
+}
+
+static u16 sdhci_cdns_sd6_readw(struct sdhci_host *host, int reg)
+{
+	u32 val, regoff;
+
+	regoff = reg & ~3;
+
+	val = readl(host->ioaddr + regoff);
+	if ((reg & 0x3) == 0)
+		return (val & 0xFFFF);
+	else
+		return ((val >> 16) & 0xFFFF);
+}
+
+static void sdhci_cdns_sd6_writew(struct sdhci_host *host, u16 val, int reg)
+{
+#ifdef CN10K_ASIM
+
+	u32 regval, regoff;
+
+	regoff = reg & ~3;
+	regval = readl(host->ioaddr + regoff);
+
+	if ((reg & 3) == 0) {
+		regval &= ~0xFFFF;
+		regval |= val;
+	} else {
+		regval &= ~(0xFFFF << 16);
+		regval |= (val << 16);
+	}
+	writel(regval, host->ioaddr + regoff);
+#else
+	writew(val, host->ioaddr + reg);
+#endif
+}
+
+static u8 sdhci_cdns_sd6_readb(struct sdhci_host *host, int reg)
+{
+	u32 val, regoff;
+
+	regoff = reg & ~3;
+
+	val = readl(host->ioaddr + regoff);
+	switch (reg & 3) {
+	case 0:
+		return (val & 0xFF);
+	case 1:
+		return ((val >> 8) & 0xFF);
+	case 2:
+		return ((val >> 16) & 0xFF);
+	case 3:
+		return ((val >> 24) & 0xFF);
+	}
+	return 0;
+}
+
+static void sdhci_cdns_sd6_writeb(struct sdhci_host *host, u8 val, int reg)
+{
+#ifdef CN10K_ASIM
+
+	u32 regval, regoff;
+
+	regoff = reg & ~3;
+	regval = readl(host->ioaddr + regoff);
+
+	switch (reg & 3) {
+	case 0:
+		regval &= ~0xFF;
+		regval |= val;
+		break;
+	case 1:
+		regval &= ~(0xFF << 8);
+		regval |= (val << 8);
+		break;
+	case 2:
+		regval &= ~(0xFF << 16);
+		regval |= (val << 16);
+		break;
+	case 3:
+		regval &= ~(0xFF << 24);
+		regval |= (val << 24);
+		break;
+	}
+	writel(regval, host->ioaddr + regoff);
+#else
+	writeb(val, host->ioaddr + reg);
+#endif
+}
+#endif
 
 static int sdhci_cdns_sd6_phy_clock_validate(struct sdhci_cdns_sd6_phy *phy)
 {
@@ -948,11 +1050,12 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 		reg &= ~SDHCI_CDNS_HRS09_EXTENDED_RD_MODE;
 
 	reg |= SDHCI_CDNS_HRS09_RDDATA_EN | SDHCI_CDNS_HRS09_RDCMD_EN;
-	writel(reg, priv->hrs_addr + SDHCI_CDNS_HRS09);
+	writel(0x1800c, priv->hrs_addr + SDHCI_CDNS_HRS09);
+	// FIXME J writel(reg, priv->hrs_addr + SDHCI_CDNS_HRS09);
 
 	reg = 0x0;
-	reg = FIELD_PREP(SDHCI_CDNS_HRS10_HCSDCLKADJ,
-			 phy->settings.sdhc_hcsdclkadj);
+	reg = FIELD_PREP(SDHCI_CDNS_HRS10_HCSDCLKADJ, 0x6);
+			// FIXME J phy->settings.sdhc_hcsdclkadj);
 	writel(reg, priv->hrs_addr + SDHCI_CDNS_HRS10);
 
 	reg = 0x0;
@@ -1058,8 +1161,7 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 		mode = SDHCI_CDNS_HRS06_MODE_SD;
 		break;
 	default:
-		mode = SDHCI_CDNS_HRS06_MODE_LEGACY; //SDHCI_CDNS_HRS06_MODE_MMC_HS200;
-		//mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
+		mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
 		break;
 	}
 
@@ -1157,7 +1259,6 @@ static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host,
 		mode = SDHCI_CDNS_HRS06_MODE_SD;
 		break;
 	default:
-		//mode = SDHCI_CDNS_HRS06_MODE_SD;
 		mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
 		break;
 	}
@@ -1191,8 +1292,12 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
+#ifdef CN10K_ASIM
+	return;
+#endif
+
 	phy->mode = sdhci_cdns_sd6_get_mode(host, host->mmc->ios.timing);
-	phy->t_sdclk = 2500000; //DIV_ROUND_DOWN_ULL(1e12, clock);
+	phy->t_sdclk = DIV_ROUND_DOWN_ULL(1e12, clock);
 
 	dev_info(mmc_dev(host->mmc), "%s %d %d\n", __func__, phy->mode, clock);
 
@@ -1201,7 +1306,6 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 
 	if (sdhci_cdns_sd6_phy_init(priv))
 		dev_info(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
-
 
 	// TODO rozwazyc dll reset przed set clock i wyjscie z resetu za
 	// set clock
@@ -1268,7 +1372,7 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 		return ret;
 
 	phy->d.delay_element_org = phy->d.delay_element;
-	phy->mode = SDHCI_CDNS_HRS06_MODE_SD;
+	phy->mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
 	phy->t_sdclk = 1000000 / 50;
 
 	priv->phy = phy;
@@ -1362,6 +1466,14 @@ static const struct sdhci_ops sdhci_cdns_sd4_ops = {
 };
 
 static const struct sdhci_ops sdhci_cdns_sd6_ops = {
+#ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
+	.read_l = sdhci_cdns_sd6_readl,
+	.write_l = sdhci_cdns_sd6_writel,
+	.read_w = sdhci_cdns_sd6_readw,
+	.write_w = sdhci_cdns_sd6_writew,
+	.read_b = sdhci_cdns_sd6_readb,
+	.write_b = sdhci_cdns_sd6_writeb,
+#endif
 	.set_clock = sdhci_cdns_sd6_set_clock,
 	.get_timeout_clock = sdhci_cdns_get_timeout_clock,
 	.set_bus_width = sdhci_set_bus_width,
