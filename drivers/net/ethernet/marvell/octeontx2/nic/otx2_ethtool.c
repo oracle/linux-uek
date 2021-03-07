@@ -44,7 +44,6 @@ struct otx2_stat {
 
 /* Physical link config */
 #define OTX2_ETHTOOL_SUPPORTED_MODES 0x638CFFF //110001110001100111111111111
-#define OTX2_ETHTOOL_ALL_MODES (BIT_ULL(ETHTOOL_LINK_MODE_FEC_BASER_BIT) - 1)
 
 enum link_mode {
 	OTX2_MODE_SUPPORTED,
@@ -1222,75 +1221,73 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 	return 0;
 }
 
-#define OTX2_OVERWRITE_DEF	0x1
-static int otx2_populate_input_params(struct otx2_nic *pfvf,
-				      struct cgx_set_link_mode_req *req,
-				      u32 speed, u8 duplex, u8 autoneg,
-				      u8 phy_address)
+static void otx2_get_advertised_mode(const struct ethtool_link_ksettings *cmd,
+				     u64 *mode)
 {
-	if (!ethtool_validate_speed(speed) ||
-	    !ethtool_validate_duplex(duplex))
+	u32 bit_pos;
+
+	/* Firmware does not support requesting multiple advertised modes
+	 * return first set bit
+	 */
+	bit_pos = find_first_bit(cmd->link_modes.advertising,
+				 __ETHTOOL_LINK_MODE_MASK_NBITS);
+	if (bit_pos != __ETHTOOL_LINK_MODE_MASK_NBITS)
+		*mode = bit_pos;
+}
+
+#define OTX2_OVERWRITE_DEF 1
+static int otx2_set_link_ksettings(struct net_device *netdev,
+				   const struct ethtool_link_ksettings *cmd)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct ethtool_link_ksettings cur_ks;
+	struct cgx_set_link_mode_req *req;
+	struct mbox *mbox = &pf->mbox;
+	int err = 0;
+
+	memset(&cur_ks, 0, sizeof(struct ethtool_link_ksettings));
+
+	if (!ethtool_validate_speed(cmd->base.speed) ||
+	    !ethtool_validate_duplex(cmd->base.duplex))
 		return -EINVAL;
 
-	if (autoneg != AUTONEG_ENABLE && autoneg != AUTONEG_DISABLE)
+	if (cmd->base.autoneg != AUTONEG_ENABLE &&
+	    cmd->base.autoneg != AUTONEG_DISABLE)
 		return -EINVAL;
 
-	if (phy_address == OTX2_OVERWRITE_DEF) {
-		req->args.speed = speed;
+	otx2_get_link_ksettings(netdev, &cur_ks);
+
+	/* Check requested modes against supported modes by hardware */
+	if (!bitmap_subset(cmd->link_modes.advertising,
+			   cur_ks.link_modes.supported,
+			   __ETHTOOL_LINK_MODE_MASK_NBITS))
+		return -EINVAL;
+
+	mutex_lock(&mbox->lock);
+	req = otx2_mbox_alloc_msg_cgx_set_link_mode(&pf->mbox);
+	if (!req) {
+		err = -ENOMEM;
+		goto end;
+	}
+
+	if (cmd->base.phy_address == OTX2_OVERWRITE_DEF) {
+		req->args.speed = cmd->base.speed;
 		/* firmware expects 1 for half duplex and 0 for full duplex
 		 * hence inverting
 		 */
-		req->args.duplex = duplex ^ 0x1;
-		req->args.an = autoneg;
+		req->args.duplex = cmd->base.duplex ^ 0x1;
+		req->args.an = cmd->base.autoneg;
 	} else {
 		req->args.speed = SPEED_UNKNOWN;
 		req->args.duplex = DUPLEX_UNKNOWN;
 		req->args.an = AUTONEG_UNKNOWN;
 	}
 
-	return 0;
-}
+	otx2_get_advertised_mode(cmd, &req->args.mode);
 
-static int otx2_set_link_ksettings(struct net_device *netdev,
-				   const struct ethtool_link_ksettings *cmd)
-{
-	unsigned long advertising = 0;
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct cgx_set_link_mode_req *req;
-	struct cgx_set_link_mode_rsp *rsp;
-	int err = 0;
-
-	mutex_lock(&pfvf->mbox.lock);
-	req = otx2_mbox_alloc_msg_cgx_set_link_mode(&pfvf->mbox);
-	if (!req) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return -EAGAIN;
-	}
-
-	advertising = (*cmd->link_modes.advertising) & (OTX2_ETHTOOL_ALL_MODES);
-	if (!(advertising & (advertising - 1)) &&
-	    (advertising <= BIT_ULL(ETHTOOL_LINK_MODE_10000baseLRM_Full_BIT))) {
-		req->args.mode = advertising;
-	} else {
-		mutex_unlock(&pfvf->mbox.lock);
-		return -EINVAL;
-	}
-
-	if (otx2_populate_input_params(pfvf, req, cmd->base.speed,
-				       cmd->base.duplex, cmd->base.autoneg,
-				       cmd->base.phy_address)) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return -EINVAL;
-	}
-
-	err =  otx2_sync_mbox_msg(&pfvf->mbox);
-	if (!err) {
-		rsp = (struct cgx_set_link_mode_rsp *)
-			otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
-		if (rsp->status)
-			err =  rsp->status;
-	}
-	mutex_unlock(&pfvf->mbox.lock);
+	err = otx2_sync_mbox_msg(&pf->mbox);
+end:
+	mutex_unlock(&mbox->lock);
 	return err;
 }
 
