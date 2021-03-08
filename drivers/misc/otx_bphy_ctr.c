@@ -24,6 +24,7 @@
 #define OTX_IOC_MAGIC	0xF3
 
 static unsigned long bphy_max_irq;
+static unsigned long bphy_irq_bmask;
 static struct device *otx_device;
 static struct class *otx_class;
 static struct cdev *otx_cdev;
@@ -41,6 +42,8 @@ static struct task_struct **irq_installed_tasks;
 #define OCTEONTX_REMOVE_BPHY_PSM_ERRINT        0xc2000804
 /* no params */
 #define OCTEONTX_GET_BPHY_PSM_MAX_IRQ          0xc2000805
+/* no params */
+#define OCTEONTX_GET_BPHY_PSM_IRQS_BITMASK     0xc2000806
 
 struct otx_irq_usr_data {
 	u64	isr_base;
@@ -58,6 +61,9 @@ struct otx_irq_usr_data {
 
 #define OTX_IOC_GET_BPHY_MAX_IRQ \
 	_IOR(OTX_IOC_MAGIC, 3, u64)
+
+#define OTX_IOC_GET_BPHY_BMASK_IRQ \
+	_IOR(OTX_IOC_MAGIC, 4, u64)
 
 static inline int __install_el3_inthandler(unsigned long irq_num,
 					   unsigned long sp,
@@ -166,6 +172,11 @@ static long otx_dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		if (copy_to_user((u64 *)arg, &irq_num, sizeof(irq_num)))
 			return -EFAULT;
 		break;
+	case OTX_IOC_GET_BPHY_BMASK_IRQ:
+		if (copy_to_user((u64 *)arg, &bphy_irq_bmask,
+				 sizeof(bphy_irq_bmask)))
+			return -EFAULT;
+		break;
 	default:
 		return -ENOTTY;
 	}
@@ -202,6 +213,10 @@ static void cleanup_el3_irqs(struct task_struct *task)
 static int otx_dev_open(struct inode *inode, struct file *fp)
 {
 	struct arm_smccc_res res;
+
+	arm_smccc_smc(OCTEONTX_GET_BPHY_PSM_IRQS_BITMASK, 0,
+		      0, 0, 0, 0, 0, 0, &res);
+	bphy_irq_bmask = res.a0;
 
 	arm_smccc_smc(OCTEONTX_GET_BPHY_PSM_MAX_IRQ, 0,
 		      0, 0, 0, 0, 0, 0, &res);
