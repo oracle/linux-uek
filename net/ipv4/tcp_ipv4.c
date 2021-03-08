@@ -984,7 +984,8 @@ static int tcp_v4_send_synack(const struct sock *sk, struct dst_entry *dst,
 		__tcp_v4_send_check(skb, ireq->ir_loc_addr, ireq->ir_rmt_addr);
 
 		tos = sock_net(sk)->ipv4.sysctl_tcp_reflect_tos ?
-				tcp_rsk(req)->syn_tos & ~INET_ECN_MASK :
+				(tcp_rsk(req)->syn_tos & ~INET_ECN_MASK) |
+				(inet_sk(sk)->tos & INET_ECN_MASK) :
 				inet_sk(sk)->tos;
 
 		if (!INET_ECN_is_capable(tos) &&
@@ -1444,9 +1445,15 @@ static void tcp_v4_init_req(struct request_sock *req,
 }
 
 static struct dst_entry *tcp_v4_route_req(const struct sock *sk,
+					  struct sk_buff *skb,
 					  struct flowi *fl,
-					  const struct request_sock *req)
+					  struct request_sock *req)
 {
+	tcp_v4_init_req(req, sk, skb);
+
+	if (security_inet_conn_request(sk, skb, req))
+		return NULL;
+
 	return inet_csk_route_req(sk, &fl->u.ip4, req);
 }
 
@@ -1466,7 +1473,6 @@ const struct tcp_request_sock_ops tcp_request_sock_ipv4_ops = {
 	.req_md5_lookup	=	tcp_v4_md5_lookup,
 	.calc_md5_hash	=	tcp_v4_md5_hash_skb,
 #endif
-	.init_req	=	tcp_v4_init_req,
 #ifdef CONFIG_SYN_COOKIES
 	.cookie_init_seq =	cookie_v4_init_sequence,
 #endif
@@ -1541,7 +1547,9 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 		inet_csk(newsk)->icsk_ext_hdr_len = inet_opt->opt.optlen;
 	newinet->inet_id = prandom_u32();
 
-	/* Set ToS of the new socket based upon the value of incoming SYN. */
+	/* Set ToS of the new socket based upon the value of incoming SYN.
+	 * ECT bits are set later in tcp_init_transfer().
+	 */
 	if (sock_net(sk)->ipv4.sysctl_tcp_reflect_tos)
 		newinet->tos = tcp_rsk(req)->syn_tos & ~INET_ECN_MASK;
 
@@ -1587,6 +1595,8 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 		tcp_move_syn(newtp, req);
 		ireq->ireq_opt = NULL;
 	} else {
+		newinet->inet_opt = NULL;
+
 		if (!req_unhash && found_dup_sk) {
 			/* This code path should only be executed in the
 			 * syncookie case only
@@ -1594,8 +1604,6 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 			bh_unlock_sock(newsk);
 			sock_put(newsk);
 			newsk = NULL;
-		} else {
-			newinet->inet_opt = NULL;
 		}
 	}
 	return newsk;
@@ -1752,6 +1760,7 @@ int tcp_v4_early_demux(struct sk_buff *skb)
 bool tcp_add_backlog(struct sock *sk, struct sk_buff *skb)
 {
 	u32 limit = READ_ONCE(sk->sk_rcvbuf) + READ_ONCE(sk->sk_sndbuf);
+	u32 tail_gso_size, tail_gso_segs;
 	struct skb_shared_info *shinfo;
 	const struct tcphdr *th;
 	struct tcphdr *thtail;
@@ -1759,6 +1768,7 @@ bool tcp_add_backlog(struct sock *sk, struct sk_buff *skb)
 	unsigned int hdrlen;
 	bool fragstolen;
 	u32 gso_segs;
+	u32 gso_size;
 	int delta;
 
 	/* In case all data was pulled from skb frags (in __pskb_pull_tail()),
@@ -1784,13 +1794,6 @@ bool tcp_add_backlog(struct sock *sk, struct sk_buff *skb)
 	 */
 	th = (const struct tcphdr *)skb->data;
 	hdrlen = th->doff * 4;
-	shinfo = skb_shinfo(skb);
-
-	if (!shinfo->gso_size)
-		shinfo->gso_size = skb->len - hdrlen;
-
-	if (!shinfo->gso_segs)
-		shinfo->gso_segs = 1;
 
 	tail = sk->sk_backlog.tail;
 	if (!tail)
@@ -1813,6 +1816,15 @@ bool tcp_add_backlog(struct sock *sk, struct sk_buff *skb)
 		goto no_coalesce;
 
 	__skb_pull(skb, hdrlen);
+
+	shinfo = skb_shinfo(skb);
+	gso_size = shinfo->gso_size ?: skb->len;
+	gso_segs = shinfo->gso_segs ?: 1;
+
+	shinfo = skb_shinfo(tail);
+	tail_gso_size = shinfo->gso_size ?: (tail->len - hdrlen);
+	tail_gso_segs = shinfo->gso_segs ?: 1;
+
 	if (skb_try_coalesce(tail, skb, &fragstolen, &delta)) {
 		TCP_SKB_CB(tail)->end_seq = TCP_SKB_CB(skb)->end_seq;
 
@@ -1839,11 +1851,8 @@ bool tcp_add_backlog(struct sock *sk, struct sk_buff *skb)
 		}
 
 		/* Not as strict as GRO. We only need to carry mss max value */
-		skb_shinfo(tail)->gso_size = max(shinfo->gso_size,
-						 skb_shinfo(tail)->gso_size);
-
-		gso_segs = skb_shinfo(tail)->gso_segs + shinfo->gso_segs;
-		skb_shinfo(tail)->gso_segs = min_t(u32, gso_segs, 0xFFFF);
+		shinfo->gso_size = max(gso_size, tail_gso_size);
+		shinfo->gso_segs = min_t(u32, gso_segs + tail_gso_segs, 0xFFFF);
 
 		sk->sk_backlog.len += delta;
 		__NET_INC_STATS(sock_net(sk),
@@ -2755,6 +2764,20 @@ void tcp4_proc_exit(void)
 	unregister_pernet_subsys(&tcp4_net_ops);
 }
 #endif /* CONFIG_PROC_FS */
+
+/* @wake is one when sk_stream_write_space() calls us.
+ * This sends EPOLLOUT only if notsent_bytes is half the limit.
+ * This mimics the strategy used in sock_def_write_space().
+ */
+bool tcp_stream_memory_free(const struct sock *sk, int wake)
+{
+	const struct tcp_sock *tp = tcp_sk(sk);
+	u32 notsent_bytes = READ_ONCE(tp->write_seq) -
+			    READ_ONCE(tp->snd_nxt);
+
+	return (notsent_bytes << wake) < tcp_notsent_lowat(tp);
+}
+EXPORT_SYMBOL(tcp_stream_memory_free);
 
 struct proto tcp_prot = {
 	.name			= "TCP",
