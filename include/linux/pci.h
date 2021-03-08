@@ -160,7 +160,18 @@ static inline const char *pci_power_name(pci_power_t state)
  * has crashed or locked up, this info is reflected here.
  */
 typedef unsigned int __bitwise pci_channel_state_t;
+#ifdef __GENKSYMS__
+enum pci_channel_state {
+	/* I/O channel is in normal state */
+	pci_channel_io_normal = (__force pci_channel_state_t) 1,
 
+	/* I/O to channel is blocked */
+	pci_channel_io_frozen = (__force pci_channel_state_t) 2,
+
+	/* PCI card is dead */
+	pci_channel_io_perm_failure = (__force pci_channel_state_t) 3,
+};
+#else
 enum {
 	/* I/O channel is in normal state */
 	pci_channel_io_normal = (__force pci_channel_state_t) 1,
@@ -171,6 +182,7 @@ enum {
 	/* PCI card is dead */
 	pci_channel_io_perm_failure = (__force pci_channel_state_t) 3,
 };
+#endif
 
 typedef unsigned int __bitwise pcie_reset_state_t;
 
@@ -311,10 +323,6 @@ struct pci_dev {
 	u16		aer_cap;	/* AER capability offset */
 	struct aer_stats *aer_stats;	/* AER stats for this device */
 #endif
-#ifdef CONFIG_PCIEPORTBUS
-	struct rcec_ea	*rcec_ea;	/* RCEC cached endpoint association */
-	struct pci_dev  *rcec;          /* Associated RCEC device */
-#endif
 	u8		pcie_cap;	/* PCIe capability offset */
 	u8		msi_cap;	/* MSI capability offset */
 	u8		msix_cap;	/* MSI-X capability offset */
@@ -423,6 +431,8 @@ struct pci_dev {
 	 * mappings to make sure they cannot access arbitrary memory.
 	 */
 	unsigned int	untrusted:1;
+	UEK_KABI_DEPRECATE(unsigned int, __aer_firmware_first_valid:1)
+	UEK_KABI_DEPRECATE(unsigned int, __aer_firmware_first:1)
 	unsigned int	broken_intx_masking:1;	/* INTx masking can't be used */
 	unsigned int	io_window_1k:1;		/* Intel bridge 1K I/O windows */
 	unsigned int	irq_managed:1;
@@ -483,8 +493,13 @@ struct pci_dev {
 
 	unsigned long	priv_flags;	/* Private flags for the PCI driver */
 
+#ifdef CONFIG_PCIEPORTBUS
+	UEK_KABI_USE(1, struct rcec_ea *rcec_ea) /* RCEC cached endpoint association */
+	UEK_KABI_USE(2, struct pci_dev *rcec) /* Associated RCEC device */
+#else
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
+#endif
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
@@ -791,8 +806,13 @@ enum pci_ers_result {
 /* PCI bus error event callbacks */
 struct pci_error_handlers {
 	/* PCI bus error detected on this device */
+#ifdef __GENKSYMS__
+	pci_ers_result_t (*error_detected)(struct pci_dev *dev,
+					   enum pci_channel_state error);
+#else
 	pci_ers_result_t (*error_detected)(struct pci_dev *dev,
 					   pci_channel_state_t error);
+#endif
 
 	/* MMIO has been re-enabled, but not DMA */
 	pci_ers_result_t (*mmio_enabled)(struct pci_dev *dev);
