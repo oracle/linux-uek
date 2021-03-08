@@ -598,6 +598,25 @@ struct cgx_fw_data {
 	struct cgx_lmac_fwdata_s fwdata;
 };
 
+struct cgx_set_link_mode_args {
+	u32 speed;
+	u8 duplex;
+	u8 an;
+	u8 ports;
+	u64 mode;
+};
+
+struct cgx_set_link_mode_req {
+#define AUTONEG_UNKNOWN		0xff
+	struct mbox_msghdr hdr;
+	struct cgx_set_link_mode_args args;
+};
+
+struct cgx_set_link_mode_rsp {
+	struct mbox_msghdr hdr;
+	int status;
+};
+
 struct cgx_set_link_state_msg {
 	struct mbox_msghdr hdr;
 	u8 enable; /* '1' for link up, '0' for link down */
@@ -643,24 +662,7 @@ struct npc_set_pkind {
 	u8 dir;
 	u8 pkind; /* valid only in case custom flag */
 };
-struct cgx_set_link_mode_args {
-	u32 speed;
-	u8 duplex;
-	u8 an;
-	u8 ports;
-	u64 mode;
-};
 
-struct cgx_set_link_mode_req {
-#define AUTONEG_UNKNOWN		0xff
-	struct mbox_msghdr hdr;
-	struct cgx_set_link_mode_args args;
-};
-
-struct cgx_set_link_mode_rsp {
-	struct mbox_msghdr hdr;
-	int status;
-};
 /* NPA mbox message formats */
 
 /* NPA mailbox error codes

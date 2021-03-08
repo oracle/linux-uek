@@ -989,7 +989,7 @@ static inline void cgx_link_usertable_init(void)
 	cgx_lmactype_string[LMAC_MODE_USXGMII] = "USXGMII";
 }
 
-static inline int cgx_link_usertable_index_map(int speed)
+static int cgx_link_usertable_index_map(int speed)
 {
 	switch (speed) {
 	case SPEED_10:
@@ -1025,7 +1025,9 @@ static inline int cgx_link_usertable_index_map(int speed)
 static void set_mod_args(struct cgx_set_link_mode_args *args,
 			 u32 speed, u8 duplex, u8 autoneg, u64 mode)
 {
-	/* firmware requires this value in the reverse format */
+	/* Fill default values incase of user did not pass
+	 * valid parameters
+	 */
 	if (args->duplex == DUPLEX_UNKNOWN)
 		args->duplex = duplex;
 	if (args->speed == SPEED_UNKNOWN)
@@ -1331,6 +1333,31 @@ int cgx_get_fwdata_base(u64 *base)
 	return err;
 }
 
+int cgx_set_link_mode(void *cgxd, struct cgx_set_link_mode_args args,
+		      int cgx_id, int lmac_id)
+{
+	struct cgx *cgx = cgxd;
+	u64 req = 0, resp;
+
+	if (!cgx)
+		return -ENODEV;
+
+	if (args.mode)
+		otx2_map_ethtool_link_modes(args.mode, &args);
+	if (!args.speed && args.duplex && !args.an)
+		return -EINVAL;
+
+	req = FIELD_SET(CMDREG_ID, CGX_CMD_MODE_CHANGE, req);
+	req = FIELD_SET(CMDMODECHANGE_SPEED,
+			cgx_link_usertable_index_map(args.speed), req);
+	req = FIELD_SET(CMDMODECHANGE_DUPLEX, args.duplex, req);
+	req = FIELD_SET(CMDMODECHANGE_AN, args.an, req);
+	req = FIELD_SET(CMDMODECHANGE_PORT, args.ports, req);
+	req = FIELD_SET(CMDMODECHANGE_FLAGS, args.mode, req);
+
+	return cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
+}
+
 int cgx_set_fec(u64 fec, int cgx_id, int lmac_id)
 {
 	u64 req = 0, resp;
@@ -1390,32 +1417,6 @@ int cgx_get_phy_mod_type(void *cgxd, int lmac_id)
 	err = cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
 	if (!err)
 		return FIELD_GET(RESP_GETPHYMODTYPE, resp);
-	return err;
-}
-
-int cgx_set_link_mode(void *cgxd, struct cgx_set_link_mode_args args,
-		      int cgx_id, int lmac_id)
-{
-	struct cgx *cgx = cgxd;
-	u64 req = 0, resp;
-	int err = 0;
-
-	if (!cgx)
-		return -ENODEV;
-
-	if (args.mode)
-		otx2_map_ethtool_link_modes(args.mode, &args);
-	if (!args.speed && args.duplex && !args.an)
-		return -EINVAL;
-
-	req = FIELD_SET(CMDREG_ID, CGX_CMD_MODE_CHANGE, req);
-	req = FIELD_SET(CMDMODECHANGE_SPEED,
-			cgx_link_usertable_index_map(args.speed), req);
-	req = FIELD_SET(CMDMODECHANGE_DUPLEX, args.duplex, req);
-	req = FIELD_SET(CMDMODECHANGE_AN, args.an, req);
-	req = FIELD_SET(CMDMODECHANGE_PORT, args.ports, req);
-	req = FIELD_SET(CMDMODECHANGE_FLAGS, args.mode, req);
-	err = cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
 	return err;
 }
 
