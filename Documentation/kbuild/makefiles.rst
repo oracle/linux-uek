@@ -461,10 +461,8 @@ more details, with real examples.
 
 		# drivers/scsi/Makefile
 		CFLAGS_aha152x.o =   -DAHA152X_STAT -DAUTOCONF
-		CFLAGS_gdth.o    = # -DDEBUG_GDTH=2 -D__SERIAL__ -D__COM2__ \
-				     -DGDTH_STATISTICS
 
-	These two lines specify compilation flags for aha152x.o and gdth.o.
+	This line specify compilation flags for aha152x.o.
 
 	$(AFLAGS_$@) is a similar feature for source files in assembly
 	languages.
@@ -755,7 +753,7 @@ more details, with real examples.
 	bits on the scripts nonetheless.
 
 	Kbuild provides variables $(CONFIG_SHELL), $(AWK), $(PERL),
-	$(PYTHON) and $(PYTHON3) to refer to interpreters for the respective
+	and $(PYTHON3) to refer to interpreters for the respective
 	scripts.
 
 	Example::
@@ -1317,7 +1315,6 @@ When kbuild executes, the following steps are followed (roughly):
 		libs-y                 += arch/sparc/lib/
 
 		drivers-$(CONFIG_PM) += arch/sparc/power/
-		drivers-$(CONFIG_OPROFILE)	+= arch/sparc/oprofile/
 
 7.5 Architecture-specific boot images
 -------------------------------------
