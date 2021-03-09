@@ -2182,6 +2182,178 @@ static void unmap_region(struct mm_struct *mm,
 		      max);
 	tlb_finish_mmu(&tlb);
 }
+
+/*
+ *
+ * Does not support inserting a new vma and modifying the other side of the vma
+ * mas will point to insert or the new zeroed area.
+ */
+static inline
+int vma_shrink(struct ma_state *mas, struct vm_area_struct *vma,
+	       unsigned long start, unsigned long end, pgoff_t pgoff,
+	       struct vm_area_struct *insert)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct address_space *mapping = NULL;
+	struct rb_root_cached *root = NULL;
+	struct anon_vma *anon_vma = NULL;
+	struct file *file = vma->vm_file;
+	unsigned long old_end = vma->vm_end, old_start = vma->vm_start;
+
+	validate_mm(mm);
+	vma_adjust_trans_huge(vma, start, end, 0);
+	if (file) {
+		mapping = file->f_mapping;
+		root = &mapping->i_mmap;
+		uprobe_munmap(vma, vma->vm_start, vma->vm_end);
+
+		i_mmap_lock_write(mapping);
+		/*
+		 * Put into interval tree now, so instantiated pages are visible
+		 * to arm/parisc __flush_dcache_page throughout; but we cannot
+		 * insert into address space until vma start or end is updated.
+		 */
+
+		if (insert)
+			__vma_link_file(insert);
+	}
+
+	anon_vma = vma->anon_vma;
+	if (anon_vma) {
+		anon_vma_lock_write(anon_vma);
+		anon_vma_interval_tree_pre_update_vma(vma);
+	}
+
+	if (file) {
+		flush_dcache_mmap_lock(mapping);
+		vma_interval_tree_remove(vma, root);
+	}
+
+	vma->vm_start = start;
+	vma->vm_end = end;
+	vma->vm_pgoff = pgoff;
+	if (!insert) {
+
+		/* If vm_start changed, and the insert does not end at the old
+		 * start, then that area needs to be zeroed
+		 */
+		if (old_start != vma->vm_start) {
+			mas->last = end;
+			mas_store_gfp(mas, NULL, GFP_KERNEL);
+		}
+
+		/* If vm_end changed, and the insert does not start at the new
+		 * end, then that area needs to be zeroed
+		 */
+		if (old_end != vma->vm_end) {
+			mas->index = end;
+			mas->last = old_end;
+			mas_store_gfp(mas, NULL, GFP_KERNEL);
+		}
+	}
+
+	if (file) {
+		vma_interval_tree_insert(vma, root);
+		flush_dcache_mmap_unlock(mapping);
+	}
+
+	if (insert) {  // Insert.
+		vma_mas_store(insert, mas);
+		mm->map_count++;
+	}
+
+	if (anon_vma) {
+		anon_vma_interval_tree_post_update_vma(vma);
+		anon_vma_unlock_write(anon_vma);
+	}
+
+	if (file) {
+		i_mmap_unlock_write(mapping);
+		uprobe_mmap(vma);
+		if (insert)
+			uprobe_mmap(insert);
+	}
+
+	validate_mm(mm);
+	return 0;
+}
+
+/*
+ * mas_split_vma() - Split the VMA into two.
+ *
+ * @mm: The mm_struct
+ * @mas: The maple state - must point to the vma being altered
+ * @vma: The vma to split
+ * @addr: The address to split @vma
+ * @new_below: Add the new vma at the lower address (first part) of vma.
+ *
+ * Note: The @mas must point to the vma that is being split or MAS_START.
+ * Upon return, @mas points to the new VMA.  sysctl_max_map_count is not
+ * checked.
+ */
+int mas_split_vma(struct mm_struct *mm, struct ma_state *mas,
+		  struct vm_area_struct *vma, unsigned long addr, int new_below)
+{
+	struct vm_area_struct *new;
+	int err;
+
+	validate_mm(mm);
+	if (vma->vm_ops && vma->vm_ops->may_split) {
+		err = vma->vm_ops->may_split(vma, addr);
+		if (err)
+			return err;
+	}
+
+	new = vm_area_dup(vma);
+	if (!new)
+		return -ENOMEM;
+
+	if (new_below)
+		new->vm_end = addr;
+	else {
+		new->vm_start = addr;
+		new->vm_pgoff += ((addr - vma->vm_start) >> PAGE_SHIFT);
+	}
+
+	err = vma_dup_policy(vma, new);
+	if (err)
+		goto out_free_vma;
+
+	err = anon_vma_clone(new, vma);
+	if (err)
+		goto out_free_mpol;
+
+	if (new->vm_file)
+		get_file(new->vm_file);
+
+	if (new->vm_ops && new->vm_ops->open)
+		new->vm_ops->open(new);
+
+	if (new_below)
+		err = vma_shrink(mas, vma, addr, vma->vm_end, vma->vm_pgoff +
+			((addr - new->vm_start) >> PAGE_SHIFT), new);
+	else
+		err = vma_shrink(mas, vma, vma->vm_start, addr, vma->vm_pgoff,
+				 new);
+
+	validate_mm(mm);
+	/* Success. */
+	if (!err)
+		return 0;
+
+	/* Clean everything up if vma_adjust failed. */
+	if (new->vm_ops && new->vm_ops->close)
+		new->vm_ops->close(new);
+	if (new->vm_file)
+		fput(new->vm_file);
+	unlink_anon_vmas(new);
+ out_free_mpol:
+	mpol_put(vma_policy(new));
+ out_free_vma:
+	vm_area_free(new);
+	return err;
+}
+
 /*
  * __split_vma() bypasses sysctl_max_map_count checking.  We use this where it
  * has already been checked or doesn't make sense to fail.
@@ -2330,12 +2502,11 @@ static int do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		if (end < vma->vm_end && mm->map_count >= sysctl_max_map_count)
 			return -ENOMEM;
 
-		error = __split_vma(mm, vma, start, 0);
+		error = mas_split_vma(mm, mas, vma, start, 0);
 		if (error)
 			return error;
 
 		prev = vma;
-		mas_set_range(mas, start, end - 1);
 		vma = mas_walk(mas);
 
 	} else {
@@ -2353,11 +2524,10 @@ static int do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	/* Does it split the last one? */
 	if (last && end < last->vm_end) {
 		int error;
-		error = __split_vma(mm, last, end, 1);
+		error = mas_split_vma(mm, mas, last, end, 1);
 		if (error)
 			return error;
-		mas_set(mas, end - 1);
-		last = mas_walk(mas);
+		validate_mm(mm);
 	}
 	next = mas_next(mas, ULONG_MAX);
 
@@ -2518,11 +2688,8 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		vm_flags |= VM_ACCOUNT;
 	}
 
-	mas_set_range(&mas, addr, end - 1);
-	mas_walk(&mas);  // Walk to the empty area (munmapped above)
 	ma_prev = mas;
 	prev = mas_prev(&ma_prev, 0);
-
 	if (vm_flags & VM_SPECIAL)
 		goto cannot_expand;
 
@@ -2694,10 +2861,8 @@ expanded:
 	 * a completely new data area).
 	 */
 	vma->vm_flags |= VM_SOFTDIRTY;
-
 	vma_set_page_prot(vma);
 	validate_mm(mm);
-
 	return addr;
 
 unmap_and_free_vma:
