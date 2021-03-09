@@ -153,14 +153,7 @@ const char * const vm_guest_mode_string[] = {
 _Static_assert(sizeof(vm_guest_mode_string)/sizeof(char *) == NUM_VM_MODES,
 	       "Missing new mode strings?");
 
-struct vm_guest_mode_params {
-	unsigned int pa_bits;
-	unsigned int va_bits;
-	unsigned int page_size;
-	unsigned int page_shift;
-};
-
-static const struct vm_guest_mode_params vm_guest_mode_params[] = {
+const struct vm_guest_mode_params vm_guest_mode_params[] = {
 	{ 52, 48,  0x1000, 12 },
 	{ 52, 48, 0x10000, 16 },
 	{ 48, 48,  0x1000, 12 },
@@ -1808,6 +1801,7 @@ static struct exit_reason {
 	{KVM_EXIT_DIRTY_RING_FULL, "DIRTY_RING_FULL"},
 	{KVM_EXIT_X86_RDMSR, "RDMSR"},
 	{KVM_EXIT_X86_WRMSR, "WRMSR"},
+	{KVM_EXIT_XEN, "XEN"},
 #ifdef KVM_EXIT_MEMORY_NOT_PRESENT
 	{KVM_EXIT_MEMORY_NOT_PRESENT, "MEMORY_NOT_PRESENT"},
 #endif

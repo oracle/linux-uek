@@ -51,6 +51,8 @@ struct iommu_dma_cookie {
 	struct iommu_domain		*fq_domain;
 };
 
+static DEFINE_STATIC_KEY_FALSE(iommu_deferred_attach_enabled);
+
 void iommu_dma_free_cpu_cached_iovas(unsigned int cpu,
 		struct iommu_domain *domain)
 {
@@ -378,21 +380,6 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 	return iova_reserve_iommu_regions(dev, domain);
 }
 
-static int iommu_dma_deferred_attach(struct device *dev,
-		struct iommu_domain *domain)
-{
-	const struct iommu_ops *ops = domain->ops;
-
-	if (!is_kdump_kernel())
-		return 0;
-
-	if (unlikely(ops->is_attach_deferred &&
-			ops->is_attach_deferred(domain, dev)))
-		return iommu_attach_device(domain, dev);
-
-	return 0;
-}
-
 /**
  * dma_info_to_prot - Translate DMA API directions and attributes to IOMMU API
  *                    page flags.
@@ -535,7 +522,8 @@ static dma_addr_t __iommu_dma_map(struct device *dev, phys_addr_t phys,
 	size_t iova_off = iova_offset(iovad, phys);
 	dma_addr_t iova;
 
-	if (unlikely(iommu_dma_deferred_attach(dev, domain)))
+	if (static_branch_unlikely(&iommu_deferred_attach_enabled) &&
+	    iommu_deferred_attach(dev, domain))
 		return DMA_MAPPING_ERROR;
 
 	size = iova_align(iovad, size + iova_off);
@@ -693,7 +681,8 @@ static void *iommu_dma_alloc_remap(struct device *dev, size_t size,
 
 	*dma_handle = DMA_MAPPING_ERROR;
 
-	if (unlikely(iommu_dma_deferred_attach(dev, domain)))
+	if (static_branch_unlikely(&iommu_deferred_attach_enabled) &&
+	    iommu_deferred_attach(dev, domain))
 		return NULL;
 
 	min_size = alloc_sizes & -alloc_sizes;
@@ -863,33 +852,6 @@ static int __finalise_sg(struct device *dev, struct scatterlist *sg, int nents,
 	unsigned int cur_len = 0, max_len = dma_get_max_seg_size(dev);
 	int i, count = 0;
 
-	/*
-	 * The Intel graphic driver is used to assume that the returned
-	 * sg list is not combound. This blocks the efforts of converting
-	 * Intel IOMMU driver to dma-iommu api's. Add this quirk to make the
-	 * device driver work and should be removed once it's fixed in i915
-	 * driver.
-	 */
-	if (IS_ENABLED(CONFIG_DRM_I915) && dev_is_pci(dev) &&
-	    to_pci_dev(dev)->vendor == PCI_VENDOR_ID_INTEL &&
-	    (to_pci_dev(dev)->class >> 16) == PCI_BASE_CLASS_DISPLAY) {
-		for_each_sg(sg, s, nents, i) {
-			unsigned int s_iova_off = sg_dma_address(s);
-			unsigned int s_length = sg_dma_len(s);
-			unsigned int s_iova_len = s->length;
-
-			s->offset += s_iova_off;
-			s->length = s_length;
-			sg_dma_address(s) = dma_addr + s_iova_off;
-			sg_dma_len(s) = s_length;
-			dma_addr += s_iova_len;
-
-			pr_info_once("sg combining disabled due to i915 driver\n");
-		}
-
-		return nents;
-	}
-
 	for_each_sg(sg, s, nents, i) {
 		/* Restore this segment's original unaligned fields first */
 		unsigned int s_iova_off = sg_dma_address(s);
@@ -1003,7 +965,8 @@ static int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 	unsigned long mask = dma_get_seg_boundary(dev);
 	int i;
 
-	if (unlikely(iommu_dma_deferred_attach(dev, domain)))
+	if (static_branch_unlikely(&iommu_deferred_attach_enabled) &&
+	    iommu_deferred_attach(dev, domain))
 		return 0;
 
 	if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC))
@@ -1451,6 +1414,9 @@ void iommu_dma_compose_msi_msg(struct msi_desc *desc,
 
 static int iommu_dma_init(void)
 {
+	if (is_kdump_kernel())
+		static_branch_enable(&iommu_deferred_attach_enabled);
+
 	return iova_cache_get();
 }
 arch_initcall(iommu_dma_init);

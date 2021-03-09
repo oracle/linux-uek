@@ -58,7 +58,7 @@ static u64 nested_svm_get_tdp_pdptr(struct kvm_vcpu *vcpu, int index)
 	u64 pdpte;
 	int ret;
 
-	ret = kvm_vcpu_read_guest_page(vcpu, gpa_to_gfn(__sme_clr(cr3)), &pdpte,
+	ret = kvm_vcpu_read_guest_page(vcpu, gpa_to_gfn(cr3), &pdpte,
 				       offset_in_page(cr3) + index * 8, 8);
 	if (ret)
 		return 0;
@@ -199,6 +199,10 @@ static bool nested_svm_vmrun_msrpm(struct vcpu_svm *svm)
 static bool svm_get_nested_state_pages(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
+
+	if (WARN_ON(!is_guest_mode(vcpu)))
+		return true;
+
 	if (!nested_svm_vmrun_msrpm(svm)) {
 		vcpu->run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
 		vcpu->run->internal.suberror =
@@ -227,6 +231,7 @@ static bool nested_vmcb_check_controls(struct vmcb_control_area *control)
 
 static bool nested_vmcb_checks(struct vcpu_svm *svm, struct vmcb *vmcb12)
 {
+	struct kvm_vcpu *vcpu = &svm->vcpu;
 	bool vmcb12_lma;
 
 	if ((vmcb12->save.efer & EFER_SVME) == 0)
@@ -240,18 +245,10 @@ static bool nested_vmcb_checks(struct vcpu_svm *svm, struct vmcb *vmcb12)
 
 	vmcb12_lma = (vmcb12->save.efer & EFER_LME) && (vmcb12->save.cr0 & X86_CR0_PG);
 
-	if (!vmcb12_lma) {
-		if (vmcb12->save.cr4 & X86_CR4_PAE) {
-			if (vmcb12->save.cr3 & MSR_CR3_LEGACY_PAE_RESERVED_MASK)
-				return false;
-		} else {
-			if (vmcb12->save.cr3 & MSR_CR3_LEGACY_RESERVED_MASK)
-				return false;
-		}
-	} else {
+	if (vmcb12_lma) {
 		if (!(vmcb12->save.cr4 & X86_CR4_PAE) ||
 		    !(vmcb12->save.cr0 & X86_CR0_PE) ||
-		    (vmcb12->save.cr3 & MSR_CR3_LONG_MBZ_MASK))
+		    kvm_vcpu_is_illegal_gpa(vcpu, vmcb12->save.cr3))
 			return false;
 	}
 	if (!kvm_is_valid_cr4(&svm->vcpu, vmcb12->save.cr4))
@@ -348,7 +345,7 @@ static inline bool nested_npt_enabled(struct vcpu_svm *svm)
 static int nested_svm_load_cr3(struct kvm_vcpu *vcpu, unsigned long cr3,
 			       bool nested_npt)
 {
-	if (cr3 & rsvd_bits(cpuid_maxphyaddr(vcpu), 63))
+	if (kvm_vcpu_is_illegal_gpa(vcpu, cr3))
 		return -EINVAL;
 
 	if (!nested_npt && is_pae_paging(vcpu) &&
@@ -395,7 +392,7 @@ static void nested_prepare_vmcb_save(struct vcpu_svm *svm, struct vmcb *vmcb12)
 	svm->vmcb->save.rsp = vmcb12->save.rsp;
 	svm->vmcb->save.rip = vmcb12->save.rip;
 	svm->vmcb->save.dr7 = vmcb12->save.dr7 | DR7_FIXED_1;
-	svm->vcpu.arch.dr6  = vmcb12->save.dr6 | DR6_FIXED_1 | DR6_RTM;
+	svm->vcpu.arch.dr6  = vmcb12->save.dr6 | DR6_ACTIVE_LOW;
 	svm->vmcb->save.cpl = vmcb12->save.cpl;
 }
 
@@ -595,6 +592,8 @@ int nested_svm_vmexit(struct vcpu_svm *svm)
 	svm->nested.vmcb12_gpa = 0;
 	WARN_ON_ONCE(svm->nested.nested_run_pending);
 
+	kvm_clear_request(KVM_REQ_GET_NESTED_STATE_PAGES, &svm->vcpu);
+
 	/* in case we halted in L2 */
 	svm->vcpu.arch.mp_state = KVM_MP_STATE_RUNNABLE;
 
@@ -754,6 +753,7 @@ void svm_leave_nested(struct vcpu_svm *svm)
 		leave_guest_mode(&svm->vcpu);
 		copy_vmcb_control_area(&vmcb->control, &hsave->control);
 		nested_svm_uninit_mmu_context(&svm->vcpu);
+		vmcb_mark_all_dirty(svm->vmcb);
 	}
 
 	kvm_clear_request(KVM_REQ_GET_NESTED_STATE_PAGES, &svm->vcpu);
@@ -1194,6 +1194,10 @@ static int svm_set_nested_state(struct kvm_vcpu *vcpu,
 	 * in the registers, the save area of the nested state instead
 	 * contains saved L1 state.
 	 */
+
+	svm->nested.nested_run_pending =
+		!!(kvm_state->flags & KVM_STATE_NESTED_RUN_PENDING);
+
 	copy_vmcb_control_area(&hsave->control, &svm->vmcb->control);
 	hsave->save = *save;
 
