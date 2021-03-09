@@ -466,6 +466,15 @@ static void npa_pfvf_flr_handler(struct work_struct *work)
 	otx2_enable_afpf_mbox_intr(npa);
 	npa_write64(npa, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(vf->vf_id / 64),
 		    BIT_ULL(vf->intr_idx));
+
+	/* Re-enable MBOX and FLR interrupt as it gets cleared
+	 * in HWVF_RST reset
+	 */
+	npa_write64(npa, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(vf->vf_id),
+		   BIT_ULL(vf->intr_idx));
+	npa_write64(npa, BLKADDR_RVUM, 0,
+		   RVU_PF_VFPF_MBOX_INT_ENA_W1SX(vf->vf_id / 64),
+		   BIT_ULL(vf->intr_idx));
 }
 
 static void npa_pfvf_mbox_handler_up(struct work_struct *work)
