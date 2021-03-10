@@ -1036,13 +1036,16 @@ struct rq {
 	struct cpuidle_state	*idle_state;
 #endif
  
-
 #ifdef CONFIG_SCHED_CORE
 	UEK_KABI_USE(1, struct rq_kabi_extra *rke)
 #else
 	UEK_KABI_RESERVE(1)
 #endif
+#ifdef CONFIG_SCHED_HRTICK
+	UEK_KABI_USE(2, ktime_t	hrtick_time)	
+#else
 	UEK_KABI_RESERVE(2)
+#endif
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
