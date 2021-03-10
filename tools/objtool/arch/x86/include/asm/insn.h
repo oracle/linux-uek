@@ -220,7 +220,7 @@ static inline int insn_offset_immediate(struct insn *insn)
  * Since prefixes.nbytes can be bigger than 4 if some prefixes
  * are repeated, it cannot be used for looping over the prefixes.
  */
-#define for_each_insn_prefix(insn, idx, prefix)        \
+#define for_each_insn_prefix(insn, idx, prefix)	\
 	for (idx = 0; idx < ARRAY_SIZE(insn->prefixes.bytes) && (prefix = insn->prefixes.bytes[idx]) != 0; idx++)
 
 #define POP_SS_OPCODE 0x1f
