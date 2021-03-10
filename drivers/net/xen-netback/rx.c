@@ -34,7 +34,8 @@
 #include <xen/events.h>
 
 static bool xenvif_rx_ring_slots_available(struct xenvif_queue *queue,
-					   struct sk_buff *skb)
+					   struct sk_buff *skb,
+					   unsigned long *flags)
 {
 	RING_IDX prod, cons;
 	int needed;
@@ -44,6 +45,9 @@ static bool xenvif_rx_ring_slots_available(struct xenvif_queue *queue,
 		needed++;
 	if (skb->sw_hash)
 		needed++;
+
+	if (flags)
+		spin_unlock_irqrestore(&queue->rx_queue.lock, *flags);
 
 	do {
 		prod = queue->rx.sring->req_prod;
@@ -66,12 +70,17 @@ static bool xenvif_rx_ring_slots_available(struct xenvif_queue *queue,
 static bool xenvif_rx_queue_slots_available(struct xenvif_queue *queue)
 {
 	struct sk_buff *skb;
+	unsigned long flags;
+
+	spin_lock_irqsave(&queue->rx_queue.lock, flags);
 
 	skb = skb_peek(&queue->rx_queue);
-	if (!skb)
+	if (!skb) {
+		spin_unlock_irqrestore(&queue->rx_queue.lock, flags);
 		return false;
+	}
 
-	return xenvif_rx_ring_slots_available(queue, skb);
+	return xenvif_rx_ring_slots_available(queue, skb, &flags);
 }
 
 void xenvif_rx_queue_tail(struct xenvif_queue *queue, struct sk_buff *skb)
@@ -464,7 +473,7 @@ int xenvif_rx_one_skb(struct xenvif_queue *queue, struct sk_buff *skb)
 	unsigned long flags;
 
 	spin_lock_irqsave(&queue->rx_lock, flags);
-	if (!xenvif_rx_ring_slots_available(queue, skb)) {
+	if (!xenvif_rx_ring_slots_available(queue, skb, NULL)) {
 		netif_stop_subqueue(queue->vif->dev, queue->id);
 		spin_unlock_irqrestore(&queue->rx_lock, flags);
 		return -ENOSPC;
