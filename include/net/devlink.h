@@ -84,12 +84,14 @@ struct devlink_port_pci_vf_attrs {
  * @controller: Associated controller number
  * @sf: Associated PCI SF for of the PCI PF for this port.
  * @pf: Associated PCI PF number for this port.
+ * @external: when set, indicates if a port is for an external controller
  */
 struct devlink_port_pci_sf_attrs {
 	/* KABI note: entire struct size should not exceed 12 bytes */
 	u32 controller;
 	u32 sf;
 	u16 pf;
+	u8 external:1;
 };
 
 /**
@@ -964,7 +966,8 @@ void devlink_port_attrs_pci_vf_set_ext(struct devlink_port *devlink_port,
 				       u32 controller,
 				       u16 pf, u16 vf, bool external);
 void devlink_port_attrs_pci_sf_set(struct devlink_port *devlink_port,
-				   u32 controller, u16 pf, u32 sf);
+				   u32 controller, u16 pf, u32 sf,
+				   bool external);
 int devlink_sb_register(struct devlink *devlink, unsigned int sb_index,
 			u32 size, u16 ingress_pools_count,
 			u16 egress_pools_count, u16 ingress_tc_count,
