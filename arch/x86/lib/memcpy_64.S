@@ -5,7 +5,7 @@
 #include <asm/errno.h>
 #include <asm/cpufeatures.h>
 #include <asm/mcsafe_test.h>
-#include <asm/alternative-asm.h>
+#include <asm/alternative.h>
 #include <asm/export.h>
 
 /*

@@ -4,7 +4,7 @@
 #include <linux/stringify.h>
 #include <asm/msr-index.h>
 #include <asm/cpufeatures.h>
-#include <asm/alternative-asm.h>
+#include <asm/alternative.h>
 
 /*
  * IBRS Flags.
