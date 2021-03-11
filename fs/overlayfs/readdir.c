@@ -695,7 +695,9 @@ static int ovl_iterate(struct file *file, struct dir_context *ctx)
 		if (ovl_same_sb(dentry->d_sb) &&
 		    (ovl_is_impure_dir(file) ||
 		     OVL_TYPE_MERGE(ovl_path_type(dentry->d_parent)))) {
-			return ovl_iterate_real(file, ctx);
+			err = ovl_iterate_real(file, ctx);
+		} else {
+			err = iterate_dir(od->realfile, ctx);
 		}
 		goto out;
 	}
