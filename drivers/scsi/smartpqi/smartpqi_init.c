@@ -285,7 +285,7 @@ static inline void pqi_scsi_block_requests(struct pqi_ctrl_info *ctrl_info)
 
 	num_loops = 0;
 	msecs_sleep = 20;
-	while (scsi_host_busy(shost)) {
+	while (atomic_read(&shost->host_busy) > 0) {
 		num_loops++;
 		if (num_loops == 10)
 			msecs_sleep = 500;
@@ -8646,13 +8646,20 @@ static __maybe_unused int pqi_resume(struct pci_dev *pci_dev)
 				pci_dev->irq, rc);
 			return rc;
 		}
+		pqi_ctrl_unblock_device_reset(ctrl_info);
 		pqi_ctrl_unblock_requests(ctrl_info);
 		pqi_scsi_unblock_requests(ctrl_info);
+		pqi_ctrl_unblock_scan(ctrl_info);
 		return 0;
 	}
 
 	pci_set_power_state(pci_dev, PCI_D0);
 	pci_restore_state(pci_dev);
+
+	pqi_ctrl_unblock_device_reset(ctrl_info);
+	pqi_ctrl_unblock_requests(ctrl_info);
+	pqi_scsi_unblock_requests(ctrl_info);
+	pqi_ctrl_unblock_scan(ctrl_info);
 
 	return pqi_ctrl_init_resume(ctrl_info);
 }
