@@ -239,6 +239,7 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 		goto success;
 	}
 
+	mas_lock(&mas);
 	mas_set(&mas, newbrk);
 	brkvma = mas_walk(&mas);
 	if (brkvma) { // munmap necessary, there is something at newbrk.
@@ -289,19 +290,21 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 		goto out;
 
 	mm->brk = brk;
-
 success:
 	populate = newbrk > oldbrk && (mm->def_flags & VM_LOCKED) != 0;
 	if (downgraded)
 		mmap_read_unlock(mm);
-	else
+	else {
+		mas_unlock(&mas);
 		mmap_write_unlock(mm);
+	}
 	userfaultfd_unmap_complete(mm, &uf);
 	if (populate)
 		mm_populate_vma(brkvma, oldbrk, newbrk);
 	return brk;
 
 out:
+	mas_unlock(&mas);
 	mmap_write_unlock(mm);
 	return origbrk;
 }
@@ -501,7 +504,9 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
 {
 	MA_STATE(mas, &mm->mm_mt, vma->vm_start, vma->vm_end - 1);
 
+	mas_lock(&mas);
 	vma_mas_link(mm, vma, &mas);
+	mas_unlock(&mas);
 }
 
 /*
@@ -2442,8 +2447,6 @@ static inline void detach_range(struct mm_struct *mm, struct ma_state *mas,
 	do {
 		count++;
 		*vma = mas_prev(mas, start);
-		BUG_ON((*vma)->vm_start < start);
-		BUG_ON((*vma)->vm_end > end + 1);
 		vma_mas_store(*vma, dst);
 		if ((*vma)->vm_flags & VM_LOCKED) {
 			mm->locked_vm -= vma_pages(*vma);
@@ -2548,14 +2551,12 @@ static int do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	}
 
 	/* Point of no return */
-	mas_lock(mas);
 	if (next)
 		max = next->vm_start;
 
 	mtree_init(&mt_detach, MAPLE_ALLOC_RANGE);
 	dst.tree = &mt_detach;
 	detach_range(mm, mas, &dst, &vma);
-	mas_unlock(mas);
 
 	/*
 	 * Do not downgrade mmap_lock if we are next to VM_GROWSDOWN or
@@ -2567,8 +2568,10 @@ static int do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 			downgrade = false;
 		else if (prev && (prev->vm_flags & VM_GROWSUP))
 			downgrade = false;
-		else
+		else {
+			mas_unlock(mas);
 			mmap_write_downgrade(mm);
+		}
 	}
 
 	/* Unmap the region */
@@ -2634,7 +2637,9 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	int ret;
 	MA_STATE(mas, &mm->mm_mt, start, start);
 
+	mas_lock(&mas);
 	ret = do_mas_munmap(&mas, mm, start, len, uf, false);
+	mas_unlock(&mas);
 	return ret;
 }
 
@@ -2651,11 +2656,12 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	unsigned long merge_start = addr, merge_end = end;
 	unsigned long max = USER_PGTABLES_CEILING;
 	pgoff_t vm_pgoff;
-	int error;
+	int error = ENOMEM;
 	struct ma_state ma_prev, tmp;
 	MA_STATE(mas, &mm->mm_mt, addr, end - 1);
 
 
+	mas_lock(&mas);
 	/* Check against address space limit. */
 	if (!may_expand_vm(mm, vm_flags, len >> PAGE_SHIFT)) {
 		unsigned long nr_pages;
@@ -2668,23 +2674,21 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 
 		if (!may_expand_vm(mm, vm_flags,
 					(len >> PAGE_SHIFT) - nr_pages))
-			return -ENOMEM;
+			goto no_mem;
 	}
 
 	validate_mm(mm);
 	/* Unmap any existing mapping in the area */
-	if (do_mas_munmap(&mas, mm, addr, len, uf, false)) {
-		return -ENOMEM;
-	}
+	if (do_mas_munmap(&mas, mm, addr, len, uf, false))
+		goto no_mem;
 
 	/*
 	 * Private writable mapping: check memory availability
 	 */
 	if (accountable_mapping(file, vm_flags)) {
 		charged = len >> PAGE_SHIFT;
-		if (security_vm_enough_memory_mm(mm, charged)) {
-			return -ENOMEM;
-		}
+		if (security_vm_enough_memory_mm(mm, charged))
+			goto no_mem;
 		vm_flags |= VM_ACCOUNT;
 	}
 
@@ -2735,10 +2739,8 @@ cannot_expand:
 	 * not unmapped, but the maps are removed from the list.
 	 */
 	vma = vm_area_alloc(mm);
-	if (!vma) {
-		error = -ENOMEM;
+	if (!vma)
 		goto unacct_error;
-	}
 
 	vma->vm_start = addr;
 	vma->vm_end = end;
@@ -2863,6 +2865,7 @@ expanded:
 	vma->vm_flags |= VM_SOFTDIRTY;
 	vma_set_page_prot(vma);
 	validate_mm(mm);
+	mas_unlock(&mas);
 	return addr;
 
 unmap_and_free_vma:
@@ -2883,6 +2886,8 @@ free_vma:
 unacct_error:
 	if (charged)
 		vm_unacct_memory(charged);
+no_mem:
+	mas_unlock(&mas);
 	return error;
 }
 
@@ -2895,6 +2900,7 @@ static int __vm_munmap(unsigned long start, size_t len, bool downgrade)
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
+	mas_lock(&mas);
 	ret = do_mas_munmap(&mas, mm, start, len, &uf, downgrade);
 	/*
 	 * Returning 1 indicates mmap_lock is downgraded.
@@ -2904,8 +2910,10 @@ static int __vm_munmap(unsigned long start, size_t len, bool downgrade)
 	if (ret == 1) {
 		mmap_read_unlock(mm);
 		ret = 0;
-	} else
+	} else {
+		mas_unlock(&mas);
 		mmap_write_unlock(mm);
+	}
 
 	userfaultfd_unmap_complete(mm, &uf);
 	return ret;
@@ -2957,6 +2965,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
+	rcu_read_lock();
 	mas_set(&mas, start);
 	vma = mas_walk(&mas);
 
@@ -3005,6 +3014,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 			prot, flags, pgoff, &populate, NULL);
 	fput(file);
 out:
+	rcu_read_unlock();
 	mmap_write_unlock(mm);
 	if (populate)
 		mm_populate(ret, populate);
@@ -3021,7 +3031,8 @@ out:
  * @oldbrk: The end of the address to unmap
  * @uf: The userfaultfd list_head
  *
- * Returns: 0 on success.
+ * Returns: 0 on success, 1 on success and downgraded write lock, negative
+ * otherwise.
  * unmaps a partial VMA mapping.  Does not handle alignment, downgrades lock if
  * possible.
  */
@@ -3083,6 +3094,7 @@ static int do_brk_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		munlock_vma_pages_range(&unmap, newbrk, oldbrk);
 	}
 
+	mas_unlock(mas);
 	mmap_write_downgrade(mm);
 	unmap_region(mm, &unmap, mas, newbrk, oldbrk, vma,
 		     next ? next->vm_start : 0);
@@ -3165,13 +3177,10 @@ static int do_brk_flags(struct ma_state *mas, struct ma_state *ma_prev,
 				anon_vma_lock_write(vma->anon_vma);
 				anon_vma_interval_tree_pre_update_vma(vma);
 			}
-			mas_lock(ma_prev);
 			vma->vm_end = addr + len;
 			vma->vm_flags |= VM_SOFTDIRTY;
-			if (mas_store_gfp(ma_prev, vma, GFP_KERNEL)) {
-				mas_unlock(ma_prev);
+			if (mas_store_gfp(ma_prev, vma, GFP_KERNEL))
 				goto mas_mod_fail;
-			}
 
 			if (vma->anon_vma) {
 				anon_vma_interval_tree_post_update_vma(vma);
@@ -3242,10 +3251,12 @@ int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
+	mas_lock(&mas);
 	// This vma left intentionally blank.
 	mas_walk(&mas);
 	ret = do_brk_flags(&mas, &mas, &vma, addr, len, flags);
 	populate = ((mm->def_flags & VM_LOCKED) != 0);
+	mas_unlock(&mas);
 	mmap_write_unlock(mm);
 	if (populate && !ret)
 		mm_populate_vma(vma, addr, addr + len);
@@ -3307,9 +3318,10 @@ void exit_mmap(struct mm_struct *mm)
 
 	arch_exit_mmap(mm);
 
+	mas_lock(&mas);
 	vma = mas_find(&mas, ULONG_MAX);
 	if (!vma) { /* Can happen if dup_mmap() received an OOM */
-		rcu_read_unlock();
+		mas_unlock(&mas);
 		return;
 	}
 
@@ -3322,6 +3334,7 @@ void exit_mmap(struct mm_struct *mm)
 	unmap_vmas(&tlb, vma, &mas, 0, -1);
 	free_pgtables(&tlb, &mas2, vma, FIRST_USER_ADDRESS, USER_PGTABLES_CEILING);
 	tlb_finish_mmu(&tlb);
+	mas_unlock(&mas);
 
 	/*
 	 * Walk the list again, actually closing and freeing it,
@@ -3346,12 +3359,16 @@ void exit_mmap(struct mm_struct *mm)
  */
 int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 {
-	if (find_vma_intersection(mm, vma->vm_start, vma->vm_end))
-		return -ENOMEM;
+	MA_STATE(mas, &mm->mm_mt, vma->vm_start, vma->vm_end - 1);
+
+	mas_lock(&mas);
+	if (mas_find(&mas, vma->vm_end - 1))
+		goto no_mem;
 
 	if ((vma->vm_flags & VM_ACCOUNT) &&
 	     security_vm_enough_memory_mm(mm, vma_pages(vma)))
-		return -ENOMEM;
+		goto no_mem;
+
 
 	/*
 	 * The vm_pgoff of a purely anonymous vma should be irrelevant
@@ -3370,8 +3387,14 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 		vma->vm_pgoff = vma->vm_start >> PAGE_SHIFT;
 	}
 
-	vma_link(mm, vma);
+	mas_reset(&mas);
+	vma_mas_link(mm, vma, &mas);
+	mas_unlock(&mas);
 	return 0;
+
+no_mem:
+	mas_unlock(&mas);
+	return -ENOMEM;
 }
 
 /*
