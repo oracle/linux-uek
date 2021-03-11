@@ -369,9 +369,7 @@ static inline int vma_mas_store(struct vm_area_struct *vma, struct ma_state *mas
 
 	mas->index = vma->vm_start;
 	mas->last = vma->vm_end - 1;
-	mas_lock(mas);
 	ret = mas_store_gfp(mas, vma, GFP_KERNEL);
-	mas_unlock(mas);
 	return ret;
 }
 
@@ -390,9 +388,7 @@ static inline int vma_mas_remove(struct vm_area_struct *vma, struct ma_state *ma
 
 	mas->index = vma->vm_start;
 	mas->last = vma->vm_end - 1;
-	mas_lock(mas);
 	ret = mas_store_gfp(mas, NULL, GFP_KERNEL);
-	mas_unlock(mas);
 	return ret;
 }
 

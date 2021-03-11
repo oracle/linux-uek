@@ -571,6 +571,7 @@ static void add_vma_to_mm(struct mm_struct *mm, struct vm_area_struct *vma)
 
 	BUG_ON(!vma->vm_region);
 
+	mas_lock(&mas);
 	mm->map_count++;
 	printk("mm at %u\n", mm->map_count);
 	vma->vm_mm = mm;
@@ -592,6 +593,7 @@ static void add_vma_to_mm(struct mm_struct *mm, struct vm_area_struct *vma)
 	mas_reset(&mas);
 	/* add the VMA to the tree */
 	vma_mas_store(vma, &mas);
+	mas_unlock(&mas);
 }
 
 /*
@@ -601,6 +603,7 @@ static void delete_vma_from_mm(struct vm_area_struct *vma)
 {
 	MA_STATE(mas, &vma->vm_mm->mm_mt, 0, 0);
 
+	mas_lock(&mas);
 	vma->vm_mm->map_count--;
 	/* remove the VMA from the mapping */
 	if (vma->vm_file) {
@@ -616,6 +619,7 @@ static void delete_vma_from_mm(struct vm_area_struct *vma)
 
 	/* remove from the MM's tree and list */
 	vma_mas_remove(vma, &mas);
+	mas_unlock(&mas);
 }
 
 /*
