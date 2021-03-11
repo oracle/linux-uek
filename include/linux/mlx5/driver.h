@@ -346,16 +346,16 @@ struct mlx5_cq_table {
 };
 
 struct mlx5_eq {
+	struct mlx5_frag_buf_ctrl fbc;
+	struct mlx5_frag_buf    frag_buf;
 	struct mlx5_core_dev    *dev;
 	struct mlx5_cq_table    cq_table;
 	u32                     cq_count;
-	__be32 __iomem          *doorbell;
+	__be32 __iomem	        *doorbell;
 	u32                     cons_index;
-	struct mlx5_frag_buf    buf;
 	unsigned int            vecidx;
 	unsigned int            irqn;
 	u8                      eqn;
-	int                     nent;
 	struct mlx5_rsc_debug   *dbg;
 };
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
@@ -903,6 +903,11 @@ static inline u16 cmdif_rev(struct mlx5_core_dev *dev)
 static inline u32 mlx5_base_mkey(const u32 key)
 {
 	return key & 0xffffff00u;
+}
+
+static inline u32 wq_get_byte_sz(u8 log_sz, u8 log_stride)
+{
+	return ((u32)1 << log_sz) << log_stride;
 }
 
 static inline void mlx5_init_fbc_offset(struct mlx5_buf_list *frags,
