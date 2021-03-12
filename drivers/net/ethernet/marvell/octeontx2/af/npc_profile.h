@@ -15899,6 +15899,16 @@ static struct npc_lt_def_cfg npc_lt_defaults = {
 		.ltype_match = NPC_LT_LA_ETHER,
 		.ltype_mask = 0x0F,
 	},
+	.ovlan = {
+		.lid = NPC_LID_LB,
+		.ltype_match = NPC_LT_LB_CTAG,
+		.ltype_mask = 0x0F,
+	},
+	.ivlan = {
+		.lid = NPC_LID_LB,
+		.ltype_match = NPC_LT_LB_STAG_QINQ,
+		.ltype_mask = 0x0F,
+	},
 	.rx_oip4 = {
 		.lid = NPC_LID_LC,
 		.ltype_match = NPC_LT_LC_IP,

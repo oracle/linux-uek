@@ -328,7 +328,11 @@ M(NIX_INLINE_IPSEC_LF_CFG, 0x801a, nix_inline_ipsec_lf_cfg,		\
 				nix_inline_ipsec_lf_cfg, msg_rsp)	\
 M(NIX_CN10K_AQ_ENQ,	0x801b, nix_cn10k_aq_enq, nix_cn10k_aq_enq_req, \
 				nix_cn10k_aq_enq_rsp)			\
-M(NIX_GET_HW_INFO,	0x801c, nix_get_hw_info, msg_req, nix_hw_info)
+M(NIX_GET_HW_INFO,	0x801c, nix_get_hw_info, msg_req, nix_hw_info)	\
+M(NIX_BANDPROF_ALLOC,	0x801d, nix_bandprof_alloc, nix_bandprof_alloc_req, \
+				nix_bandprof_alloc_rsp)			    \
+M(NIX_BANDPROF_FREE,	0x801e, nix_bandprof_free, nix_bandprof_free_req,   \
+				msg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -769,6 +773,10 @@ enum nix_af_status {
 	NIX_AF_ERR_RX_VTAG_INUSE    = -422,
 	NIX_AF_ERR_PTP_CONFIG_FAIL  = -423,
 	NIX_AF_ERR_NPC_KEY_NOT_SUPP = -424,
+	NIX_AF_ERR_INVALID_NIXBLK   = -425,
+	NIX_AF_ERR_INVALID_BANDPROF = -426,
+	NIX_AF_ERR_IPOLICER_NOTSUPP = -427,
+	NIX_AF_ERR_BANDPROF_INVAL_REQ  = -428,
 };
 
 /* For NIX RX vtag action  */
@@ -841,6 +849,7 @@ struct nix_cn10k_aq_enq_req {
 		struct nix_cq_ctx_s cq;
 		struct nix_rsse_s   rss;
 		struct nix_rx_mce_s mce;
+		struct nix_bandprof_s prof;
 	};
 	union {
 		struct nix_cn10k_rq_ctx_s rq_mask;
@@ -848,6 +857,7 @@ struct nix_cn10k_aq_enq_req {
 		struct nix_cq_ctx_s cq_mask;
 		struct nix_rsse_s   rss_mask;
 		struct nix_rx_mce_s mce_mask;
+		struct nix_bandprof_s prof_mask;
 	};
 };
 
@@ -859,6 +869,7 @@ struct nix_cn10k_aq_enq_rsp {
 		struct nix_cq_ctx_s cq;
 		struct nix_rsse_s   rss;
 		struct nix_rx_mce_s mce;
+		struct nix_bandprof_s prof;
 	};
 };
 
@@ -874,6 +885,7 @@ struct nix_aq_enq_req {
 		struct nix_cq_ctx_s cq;
 		struct nix_rsse_s   rss;
 		struct nix_rx_mce_s mce;
+		u64 prof;
 	};
 	union {
 		struct nix_rq_ctx_s rq_mask;
@@ -881,6 +893,7 @@ struct nix_aq_enq_req {
 		struct nix_cq_ctx_s cq_mask;
 		struct nix_rsse_s   rss_mask;
 		struct nix_rx_mce_s mce_mask;
+		u64 prof_mask;
 	};
 };
 
@@ -892,6 +905,7 @@ struct nix_aq_enq_rsp {
 		struct nix_cq_ctx_s cq;
 		struct nix_rsse_s   rss;
 		struct nix_rx_mce_s mce;
+		u64 prof;
 	};
 };
 
@@ -1183,6 +1197,31 @@ struct nix_hw_info {
 	u16 max_mtu;
 	u16 min_mtu;
 	u16 rsvd[13];
+};
+
+struct nix_bandprof_alloc_req {
+	struct mbox_msghdr hdr;
+	/* Count of profiles needed per layer */
+	u16 prof_count[BAND_PROF_NUM_LAYERS];
+};
+
+struct nix_bandprof_alloc_rsp {
+	struct mbox_msghdr hdr;
+	u16 prof_count[BAND_PROF_NUM_LAYERS];
+
+	/* There is no need to allocate morethan 1 bandwidth profile
+	 * per RQ of a PF_FUNC's NIXLF. So limit the maximum
+	 * profiles to 64 per PF_FUNC.
+	 */
+#define MAX_BANDPROF_PER_PFFUNC	64
+	u16 prof_idx[BAND_PROF_NUM_LAYERS][MAX_BANDPROF_PER_PFFUNC];
+};
+
+struct nix_bandprof_free_req {
+	struct mbox_msghdr hdr;
+	u8 free_all;
+	u16 prof_count[BAND_PROF_NUM_LAYERS];
+	u16 prof_idx[BAND_PROF_NUM_LAYERS][MAX_BANDPROF_PER_PFFUNC];
 };
 
 /* SSO mailbox error codes
