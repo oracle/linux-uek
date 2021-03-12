@@ -528,6 +528,8 @@ struct npc_lt_def_et {
 
 struct npc_lt_def_cfg {
 	struct npc_lt_def	rx_ol2;
+	struct npc_lt_def	ovlan;
+	struct npc_lt_def	ivlan;
 	struct npc_lt_def	rx_oip4;
 	struct npc_lt_def	rx_iip4;
 	struct npc_lt_def	rx_oip6;
