@@ -180,3 +180,283 @@ void cn10k_sqe_flush(void *dev, struct otx2_snd_queue *sq, int size, int qidx)
 	sq->head++;
 	sq->head &= (sq->sqe_cnt - 1);
 }
+
+int cn10k_free_all_ipolicers(struct otx2_nic *pfvf)
+{
+	struct nix_bandprof_free_req *req;
+	int rc;
+
+	if (is_dev_otx2(pfvf->pdev))
+		return 0;
+
+	mutex_lock(&pfvf->mbox.lock);
+
+	req = otx2_mbox_alloc_msg_nix_bandprof_free(&pfvf->mbox);
+	if (!req) {
+		rc =  -ENOMEM;
+		goto out;
+	}
+
+	/* Free all bandwidth profiles allocated */
+	req->free_all = true;
+
+	rc = otx2_sync_mbox_msg(&pfvf->mbox);
+out:
+	mutex_unlock(&pfvf->mbox.lock);
+	return rc;
+}
+
+int cn10k_alloc_leaf_profile(struct otx2_nic *pfvf, u16 *leaf)
+{
+	struct nix_bandprof_alloc_req *req;
+	struct nix_bandprof_alloc_rsp *rsp;
+	int rc;
+
+	req = otx2_mbox_alloc_msg_nix_bandprof_alloc(&pfvf->mbox);
+	if (!req)
+		return  -ENOMEM;
+
+	req->prof_count[BAND_PROF_LEAF_LAYER] = 1;
+
+	rc = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (rc)
+		goto out;
+
+	rsp = (struct  nix_bandprof_alloc_rsp *)
+	       otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+	if (!rsp->prof_count[BAND_PROF_LEAF_LAYER]) {
+		rc = -EIO;
+		goto out;
+	}
+
+	*leaf = rsp->prof_idx[BAND_PROF_LEAF_LAYER][0];
+out:
+	if (rc) {
+		dev_warn(pfvf->dev,
+			 "Failed to allocate ingress bandwidth policer\n");
+	}
+
+	return rc;
+}
+
+int cn10k_alloc_matchall_ipolicer(struct otx2_nic *pfvf)
+{
+	struct otx2_hw *hw = &pfvf->hw;
+	int ret;
+
+	mutex_lock(&pfvf->mbox.lock);
+
+	ret = cn10k_alloc_leaf_profile(pfvf, &hw->matchall_ipolicer);
+
+	mutex_unlock(&pfvf->mbox.lock);
+
+	return ret;
+}
+
+#define POLICER_TIMESTAMP	  1  /* 1 second */
+#define MAX_RATE_EXP		  22 /* Valid rate exponent range: 0 - 22 */
+
+static void cn10k_get_ingress_burst_cfg(u32 burst, u32 *burst_exp,
+					u32 *burst_mantissa)
+{
+	int tmp;
+
+	/* Burst is calculated as
+	 * (1+[BURST_MANTISSA]/256)*2^[BURST_EXPONENT]
+	 * This is the upper limit on number tokens (bytes) that
+	 * can be accumilated in the bucket.
+	 *
+	 * Max burst exponent is 31, so need to check for the max
+	 * burst size since size of 'police.burst' is also 32bit.
+	 */
+	*burst_exp = ilog2(burst);
+	if (burst < 256) {
+		/* No float: can't express mantissa in this case */
+		*burst_mantissa = 0;
+		return;
+	}
+
+	/* Calculate mantissa
+	 * Find remaining bytes 'burst - 2^burst_exp'
+	 * mantissa = (remaining bytes) / 2^ (burst_exp - 8)
+	 */
+	tmp = burst - rounddown_pow_of_two(burst);
+	*burst_mantissa = tmp / (1UL << (*burst_exp - 8));
+}
+
+static void cn10k_get_ingress_rate_cfg(u64 rate, u32 *rate_exp,
+				       u32 *rate_mantissa, u32 *rdiv)
+{
+	int tmp, comp, mul = 1000;
+	int div = 0, exp;
+
+	/* Policer timeunit is configured as 1usec
+	 *
+	 * tmp = rate * T * 32;
+	 * For rate in bps, T is timeunit in seconds
+	 * For rate in Kbps, T is timeunit in msecs
+	 * For rate in Mbps, T is timeunit in usecs
+	 * For rate in Gbps, T is timeunit in nsecs
+	 *
+	 * Since the rate passed to this fn() is in bps, T would be 0.000001
+	 * (1usec in secs). Since float cannot be used, convert rate to kbps
+	 * and hike the comparator by 1000, so that T becomes 1.
+	 */
+	rate = (rate < 1000) ? 1000 : rate;
+	rate = rate / mul;
+	tmp = rate * POLICER_TIMESTAMP * 32;
+	comp = 256 * mul;
+
+	/* Figure out mantissa, exponent and divider from given max pkt rate
+	 *
+	 * To achieve desired rate HW adds
+	 * (1+[RATE_MANTISSA]/256)*2^[RATE_EXPONENT] tokens (bytes) at every
+	 * policer timeunit * 2^rdiv ie 2^rdiv usecs, to the token bucket.
+	 */
+	if (tmp < comp) {
+		while (tmp < comp) {
+			div++;
+			tmp *= 2;
+		}
+		*rate_exp = 0;
+		goto done;
+	}
+
+	comp = 512 * mul;
+	for (exp = 0; exp <= MAX_RATE_EXP && tmp >= comp; exp++)
+		tmp = tmp / 2;
+
+	if (exp > MAX_RATE_EXP)
+		exp = MAX_RATE_EXP;
+	*rate_exp = exp;
+done:
+	tmp = tmp / mul;
+	*rate_mantissa = tmp - 256;
+	*rdiv = div;
+}
+
+int cn10k_map_unmap_rq_policer(struct otx2_nic *pfvf, int rq_idx,
+			       u16 policer, bool map)
+{
+	struct nix_cn10k_aq_enq_req *aq;
+
+	aq = otx2_mbox_alloc_msg_nix_cn10k_aq_enq(&pfvf->mbox);
+	if (!aq)
+		return -ENOMEM;
+
+	/* Enable policing and set the bandwidth profile (policer) index */
+	if (map)
+		aq->rq.policer_ena = 1;
+	else
+		aq->rq.policer_ena = 0;
+	aq->rq_mask.policer_ena = 1;
+
+	aq->rq.band_prof_id = policer;
+	aq->rq_mask.band_prof_id = GENMASK(9, 0);
+
+	/* Fill AQ info */
+	aq->qidx = rq_idx;
+	aq->ctype = NIX_AQ_CTYPE_RQ;
+	aq->op = NIX_AQ_INSTOP_WRITE;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int cn10k_free_leaf_profile(struct otx2_nic *pfvf, u16 leaf)
+{
+	struct nix_bandprof_free_req *req;
+
+	req = otx2_mbox_alloc_msg_nix_bandprof_free(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->prof_count[BAND_PROF_LEAF_LAYER] = 1;
+	req->prof_idx[BAND_PROF_LEAF_LAYER][0] = leaf;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int cn10k_free_matchall_ipolicer(struct otx2_nic *pfvf)
+{
+	struct otx2_hw *hw = &pfvf->hw;
+	int qidx, rc;
+
+	mutex_lock(&pfvf->mbox.lock);
+
+	/* Remove RQ's policer mapping */
+	for (qidx = 0; qidx < hw->rx_queues; qidx++)
+		cn10k_map_unmap_rq_policer(pfvf, qidx,
+					   hw->matchall_ipolicer, false);
+
+	rc = cn10k_free_leaf_profile(pfvf, hw->matchall_ipolicer);
+
+	mutex_unlock(&pfvf->mbox.lock);
+	return rc;
+}
+
+int cn10k_set_ipolicer_rate(struct otx2_nic *pfvf, u16 profile,
+			    u32 burst, u64 rate)
+{
+	struct nix_cn10k_aq_enq_req *aq;
+	u32 burst_exp, burst_mantissa;
+	u32 rate_exp, rate_mantissa;
+	u32 rdiv;
+
+	/* Get exponent and mantissa values for the desired rate */
+	cn10k_get_ingress_burst_cfg(burst, &burst_exp, &burst_mantissa);
+	cn10k_get_ingress_rate_cfg(rate, &rate_exp, &rate_mantissa, &rdiv);
+
+	/* Init bandwidth profile */
+	aq = otx2_mbox_alloc_msg_nix_cn10k_aq_enq(&pfvf->mbox);
+	if (!aq)
+		return -ENOMEM;
+
+	/* Set initial color mode to blind */
+	aq->prof.icolor = 0x03;
+
+	/* Set rate and burst values */
+	aq->prof.cir_exponent = rate_exp;
+	aq->prof.cir_mantissa = rate_mantissa;
+	aq->prof.cbs_exponent = burst_exp;
+	aq->prof.cbs_mantissa = burst_mantissa;
+	aq->prof.rdiv = rdiv;
+
+	/* Two rate three color marker
+	 * With PEIR/EIR set to zero, color will be either green or red
+	 */
+	aq->prof.meter_algo = 2;
+	aq->prof.rc_action = NIX_RX_BAND_PROF_ACTIONRESULT_DROP;
+	aq->prof.yc_action = NIX_RX_BAND_PROF_ACTIONRESULT_PASS;
+	aq->prof.gc_action = NIX_RX_BAND_PROF_ACTIONRESULT_PASS;
+
+	/* Fill AQ info */
+	aq->qidx = profile;
+	aq->ctype = NIX_AQ_CTYPE_BANDPROF;
+	aq->op = NIX_AQ_INSTOP_WRITE;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int cn10k_set_matchall_ipolicer_rate(struct otx2_nic *pfvf,
+				     u32 burst, u64 rate)
+{
+	struct otx2_hw *hw = &pfvf->hw;
+	int qidx, rc;
+
+	mutex_lock(&pfvf->mbox.lock);
+
+	rc = cn10k_set_ipolicer_rate(pfvf, hw->matchall_ipolicer, burst, rate);
+	if (rc)
+		goto out;
+
+	for (qidx = 0; qidx < hw->rx_queues; qidx++) {
+		rc = cn10k_map_unmap_rq_policer(pfvf, qidx,
+						hw->matchall_ipolicer, true);
+		if (rc)
+			break;
+	}
+
+out:
+	mutex_unlock(&pfvf->mbox.lock);
+	return rc;
+}
