@@ -231,14 +231,11 @@ static int free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 			 struct free_rsrcs_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	u16 pcifunc = req->hdr.pcifunc;
 	struct rvu_block *block;
 	struct nix_txsch *txsch;
 	struct nix_hw *nix_hw;
-	int pf;
 
 	mutex_lock(&rvu->rsrc_lock);
-	pf = rvu_get_pf(pcifunc);
 
 	block = &hw->block[BLKADDR_NPA];
 	rsp->npa = rvu_rsrc_free_count(&block->lf);

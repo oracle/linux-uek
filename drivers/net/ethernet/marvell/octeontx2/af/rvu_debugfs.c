@@ -228,7 +228,7 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 					  char __user *buffer,
 					  size_t count, loff_t *ppos)
 {
-	int index, off = 0, flag = 0, go_back = 0, off_prev, len = 0;
+	int index, off = 0, flag = 0, go_back = 0, len = 0;
 	struct rvu *rvu = filp->private_data;
 	int lf, pf, vf, pcifunc;
 	struct rvu_block block;
@@ -281,7 +281,6 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 				block = rvu->hw->block[index];
 				if (!strlen(block.name))
 					continue;
-				off_prev = off;
 				len = 0;
 				lfs[len] = '\0';
 				for (lf = 0; lf < block.lf.max; lf++) {
