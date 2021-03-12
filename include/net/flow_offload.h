@@ -192,6 +192,8 @@ struct flow_action_entry {
 		struct {				/* FLOW_ACTION_POLICE */
 			u32			burst;
 			u64			rate_bytes_ps;
+			u64			burst_pkt;
+			u64			rate_pkt_ps;
 		} police;
 		struct {				/* FLOW_ACTION_CT */
 			int action;
