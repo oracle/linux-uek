@@ -1126,6 +1126,10 @@ find_rule:
 	if (pfvf->pf_set_vf_cfg && req->vtag0_type == NIX_AF_LFX_RX_VTAG_TYPE7)
 		rule->vfvlan_cfg = true;
 
+	if (is_npc_intf_rx(req->intf) && req->match_id &&
+	    (req->op == NIX_RX_ACTIONOP_UCAST || req->op == NIX_RX_ACTIONOP_RSS))
+		return rvu_nix_setup_ratelimit_aggr(rvu, req->hdr.pcifunc,
+					     req->index, req->match_id);
 	return 0;
 }
 

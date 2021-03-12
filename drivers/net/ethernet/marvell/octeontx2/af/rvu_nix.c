@@ -28,6 +28,8 @@ static void nix_ipolicer_freemem(struct nix_hw *nix_hw);
 static int nix_verify_bandprof(struct nix_cn10k_aq_enq_req *req,
 			       struct nix_hw *nix_hw, u16 pcifunc);
 static int nix_free_all_bandprof(struct rvu *rvu, u16 pcifunc);
+static void nix_clear_ratelimit_aggr(struct rvu *rvu, struct nix_hw *nix_hw,
+				     u32 leaf_prof);
 
 enum mc_tbl_sz {
 	MC_TBL_SZ_256,
@@ -4668,6 +4670,13 @@ static int nix_setup_ipolicers(struct rvu *rvu,
 						  sizeof(u16), GFP_KERNEL);
 		if (!ipolicer->pfvf_map)
 			return -ENOMEM;
+
+		ipolicer->match_id = devm_kcalloc(rvu->dev,
+						  ipolicer->band_prof.max,
+						  sizeof(u16), GFP_KERNEL);
+		if (!ipolicer->match_id)
+			return -ENOMEM;
+
 		for (prof_idx = 0;
 		     prof_idx < ipolicer->band_prof.max; prof_idx++) {
 			/* Set AF as current owner for INIT ops to succeed */
@@ -4683,6 +4692,17 @@ static int nix_setup_ipolicers(struct rvu *rvu,
 			if (err)
 				return err;
 		}
+
+		/* Allocate memory for maintaining ref_counts for MID level
+		 * profiles, this will be needed for leaf layer profiles'
+		 * aggregation.
+		 */
+		if (layer != BAND_PROF_MID_LAYER)
+			continue;
+
+		ipolicer->ref_count = devm_kcalloc(rvu->dev,
+						   ipolicer->band_prof.max,
+						   sizeof(u16), GFP_KERNEL);
 	}
 
 	/* Set policer timeunit to 1us ie  (9 + 1) * 100 nsec = 1us */
@@ -4719,10 +4739,13 @@ static int nix_verify_bandprof(struct nix_cn10k_aq_enq_req *req,
 	prof_idx = req->qidx & 0x3FFF;
 
 	ipolicer = &nix_hw->ipolicer[layer];
+	if (prof_idx >= ipolicer->band_prof.max)
+		return -EINVAL;
 
-	/* Check if the profile is allocated to the requesting PCIFUNC or not */
-	if (prof_idx >= ipolicer->band_prof.max ||
-	    ipolicer->pfvf_map[prof_idx] != pcifunc)
+	/* Check if the profile is allocated to the requesting PCIFUNC or not
+	 * with the exception of AF. AF is allowed to read and update contexts.
+	 */
+	if (pcifunc && ipolicer->pfvf_map[prof_idx] != pcifunc)
 		return -EINVAL;
 
 	/* If this profile is linked to higher layer profile then check
@@ -4816,8 +4839,14 @@ static int nix_free_all_bandprof(struct rvu *rvu, u16 pcifunc)
 			if (ipolicer->pfvf_map[prof_idx] != pcifunc)
 				continue;
 
-			rvu_free_rsrc(&ipolicer->band_prof, prof_idx);
+			/* Clear ratelimit aggregation, if any */
+			if (layer == BAND_PROF_LEAF_LAYER &&
+			    ipolicer->match_id[prof_idx])
+				nix_clear_ratelimit_aggr(rvu, nix_hw, prof_idx);
+
 			ipolicer->pfvf_map[prof_idx] = 0x00;
+			ipolicer->match_id[prof_idx] = 0;
+			rvu_free_rsrc(&ipolicer->band_prof, prof_idx);
 		}
 	}
 	mutex_unlock(&rvu->rsrc_lock);
@@ -4858,12 +4887,256 @@ int rvu_mbox_handler_nix_bandprof_free(struct rvu *rvu,
 			    ipolicer->pfvf_map[prof_idx] != pcifunc)
 				continue;
 
-			rvu_free_rsrc(&ipolicer->band_prof, prof_idx);
+			/* Clear ratelimit aggregation, if any */
+			if (layer == BAND_PROF_LEAF_LAYER &&
+			    ipolicer->match_id[prof_idx])
+				nix_clear_ratelimit_aggr(rvu, nix_hw, prof_idx);
+
 			ipolicer->pfvf_map[prof_idx] = 0x00;
+			ipolicer->match_id[prof_idx] = 0;
+			rvu_free_rsrc(&ipolicer->band_prof, prof_idx);
 			if (idx == MAX_BANDPROF_PER_PFFUNC)
 				break;
 		}
 	}
 	mutex_unlock(&rvu->rsrc_lock);
 	return 0;
+}
+
+static int nix_aq_context_read(struct rvu *rvu, struct nix_hw *nix_hw,
+			       struct nix_cn10k_aq_enq_req *aq_req,
+			       struct nix_cn10k_aq_enq_rsp *aq_rsp,
+			       u16 pcifunc, u8 ctype, u32 qidx)
+{
+	memset(aq_req, 0, sizeof(struct nix_cn10k_aq_enq_req));
+	aq_req->hdr.pcifunc = pcifunc;
+	aq_req->ctype = ctype;
+	aq_req->op = NIX_AQ_INSTOP_READ;
+	aq_req->qidx = qidx;
+
+	return rvu_nix_blk_aq_enq_inst(rvu, nix_hw,
+				       (struct nix_aq_enq_req *)aq_req,
+				       (struct nix_aq_enq_rsp *)aq_rsp);
+}
+
+static int nix_ipolicer_map_leaf_midprofs(struct rvu *rvu,
+					  struct nix_hw *nix_hw,
+					  struct nix_cn10k_aq_enq_req *aq_req,
+					  struct nix_cn10k_aq_enq_rsp *aq_rsp,
+					  u32 leaf_prof, u16 mid_prof)
+{
+	memset(aq_req, 0, sizeof(struct nix_cn10k_aq_enq_req));
+	aq_req->hdr.pcifunc = 0x00;
+	aq_req->ctype = NIX_AQ_CTYPE_BANDPROF;
+	aq_req->op = NIX_AQ_INSTOP_WRITE;
+	aq_req->qidx = leaf_prof;
+
+	aq_req->prof.band_prof_id = mid_prof;
+	aq_req->prof_mask.band_prof_id = GENMASK(6, 0);
+	aq_req->prof.hl_en = 1;
+	aq_req->prof_mask.hl_en = 1;
+
+	return rvu_nix_blk_aq_enq_inst(rvu, nix_hw,
+				       (struct nix_aq_enq_req *)aq_req,
+				       (struct nix_aq_enq_rsp *)aq_rsp);
+}
+
+int rvu_nix_setup_ratelimit_aggr(struct rvu *rvu, u16 pcifunc,
+				 u16 rq_idx, u16 match_id)
+{
+	int leaf_prof, mid_prof, leaf_match;
+	struct nix_cn10k_aq_enq_req aq_req;
+	struct nix_cn10k_aq_enq_rsp aq_rsp;
+	struct nix_ipolicer *ipolicer;
+	struct nix_hw *nix_hw;
+	int blkaddr, idx, rc;
+
+	if (!rvu->hw->cap.ipolicer)
+		return 0;
+
+	rc = nix_get_struct_ptrs(rvu, pcifunc, &nix_hw, &blkaddr);
+	if (rc)
+		return rc;
+
+	/* Fetch the RQ's context to see if policing is enabled */
+	rc = nix_aq_context_read(rvu, nix_hw, &aq_req, &aq_rsp, pcifunc,
+				 NIX_AQ_CTYPE_RQ, rq_idx);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s: Failed to fetch RQ%d context of PFFUNC 0x%x\n",
+			__func__, rq_idx, pcifunc);
+		return rc;
+	}
+
+	if (!aq_rsp.rq.policer_ena)
+		return 0;
+
+	/* Get the bandwidth profile ID mapped to this RQ */
+	leaf_prof = aq_rsp.rq.band_prof_id;
+
+	ipolicer = &nix_hw->ipolicer[BAND_PROF_LEAF_LAYER];
+	ipolicer->match_id[leaf_prof] = match_id;
+
+	/* Check if any other leaf profile is marked with same match_id */
+	for (idx = 0; idx < ipolicer->band_prof.max; idx++) {
+		if (idx == leaf_prof)
+			continue;
+		if (ipolicer->match_id[idx] != match_id)
+			continue;
+
+		leaf_match = idx;
+		break;
+	}
+
+	if (idx == ipolicer->band_prof.max)
+		return 0;
+
+	/* Fetch the matching profile's context to check if it's already
+	 * mapped to a mid level profile.
+	 */
+	rc = nix_aq_context_read(rvu, nix_hw, &aq_req, &aq_rsp, 0x00,
+				 NIX_AQ_CTYPE_BANDPROF, leaf_match);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s: Failed to fetch context of leaf profile %d\n",
+			__func__, leaf_match);
+		return rc;
+	}
+
+	ipolicer = &nix_hw->ipolicer[BAND_PROF_MID_LAYER];
+	if (aq_rsp.prof.hl_en) {
+		/* Get Mid layer prof index and map leaf_prof index
+		 * also such that flows that are being steered
+		 * to different RQs and marked with same match_id
+		 * are rate limited in a aggregate fashion
+		 */
+		mid_prof = aq_rsp.prof.band_prof_id;
+		rc = nix_ipolicer_map_leaf_midprofs(rvu, nix_hw,
+						    &aq_req, &aq_rsp,
+						    leaf_prof, mid_prof);
+		if (rc) {
+			dev_err(rvu->dev,
+				"%s: Failed to map leaf(%d) and mid(%d) profiles\n",
+				__func__, leaf_prof, mid_prof);
+			goto exit;
+		}
+
+		mutex_lock(&rvu->rsrc_lock);
+		ipolicer->ref_count[mid_prof]++;
+		mutex_unlock(&rvu->rsrc_lock);
+		goto exit;
+	}
+
+	/* Allocate a mid layer profile and
+	 * map both 'leaf_prof' and 'leaf_match' profiles to it.
+	 */
+	mutex_lock(&rvu->rsrc_lock);
+	mid_prof = rvu_alloc_rsrc(&ipolicer->band_prof);
+	if (mid_prof < 0) {
+		dev_err(rvu->dev,
+			"%s: Unable to allocate mid layer profile\n", __func__);
+		mutex_unlock(&rvu->rsrc_lock);
+		goto exit;
+	}
+	mutex_unlock(&rvu->rsrc_lock);
+	ipolicer->pfvf_map[mid_prof] = 0x00;
+	ipolicer->ref_count[mid_prof] = 0;
+
+	/* Initialize mid layer profile same as 'leaf_prof' */
+	rc = nix_aq_context_read(rvu, nix_hw, &aq_req, &aq_rsp, 0x00,
+				 NIX_AQ_CTYPE_BANDPROF, leaf_prof);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s: Failed to fetch context of leaf profile %d\n",
+			__func__, leaf_prof);
+		goto exit;
+	}
+
+	memset(&aq_req, 0, sizeof(struct nix_cn10k_aq_enq_req));
+	aq_req.hdr.pcifunc = 0x00;
+	aq_req.qidx = (mid_prof & 0x3FFF) | (BAND_PROF_MID_LAYER << 14);
+	aq_req.ctype = NIX_AQ_CTYPE_BANDPROF;
+	aq_req.op = NIX_AQ_INSTOP_WRITE;
+	memcpy(&aq_req.prof, &aq_rsp.prof, sizeof(struct nix_bandprof_s));
+	/* Clear higher layer enable bit in the mid profile, just in case */
+	aq_req.prof.hl_en = 0;
+	aq_req.prof_mask.hl_en = 1;
+
+	rc = rvu_nix_blk_aq_enq_inst(rvu, nix_hw,
+				     (struct nix_aq_enq_req *)&aq_req, NULL);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s: Failed to INIT context of mid layer profile %d\n",
+			__func__, mid_prof);
+		goto exit;
+	}
+
+	/* Map both leaf profiles to this mid layer profile */
+	rc = nix_ipolicer_map_leaf_midprofs(rvu, nix_hw,
+					    &aq_req, &aq_rsp,
+					    leaf_prof, mid_prof);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s: Failed to map leaf(%d) and mid(%d) profiles\n",
+			__func__, leaf_prof, mid_prof);
+		goto exit;
+	}
+
+	mutex_lock(&rvu->rsrc_lock);
+	ipolicer->ref_count[mid_prof]++;
+	mutex_unlock(&rvu->rsrc_lock);
+
+	rc = nix_ipolicer_map_leaf_midprofs(rvu, nix_hw,
+					    &aq_req, &aq_rsp,
+					    leaf_match, mid_prof);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s: Failed to map leaf(%d) and mid(%d) profiles\n",
+			__func__, leaf_match, mid_prof);
+		ipolicer->ref_count[mid_prof]--;
+		goto exit;
+	}
+
+	mutex_lock(&rvu->rsrc_lock);
+	ipolicer->ref_count[mid_prof]++;
+	mutex_unlock(&rvu->rsrc_lock);
+
+exit:
+	return rc;
+}
+
+/* Called with mutex rsrc_lock */
+static void nix_clear_ratelimit_aggr(struct rvu *rvu, struct nix_hw *nix_hw,
+				     u32 leaf_prof)
+{
+	struct nix_cn10k_aq_enq_req aq_req;
+	struct nix_cn10k_aq_enq_rsp aq_rsp;
+	struct nix_ipolicer *ipolicer;
+	u16 mid_prof;
+	int rc;
+
+	mutex_unlock(&rvu->rsrc_lock);
+
+	rc = nix_aq_context_read(rvu, nix_hw, &aq_req, &aq_rsp, 0x00,
+				 NIX_AQ_CTYPE_BANDPROF, leaf_prof);
+
+	mutex_lock(&rvu->rsrc_lock);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s: Failed to fetch context of leaf profile %d\n",
+			__func__, leaf_prof);
+		return;
+	}
+
+	if (!aq_rsp.prof.hl_en)
+		return;
+
+	mid_prof = aq_rsp.prof.band_prof_id;
+	ipolicer = &nix_hw->ipolicer[BAND_PROF_MID_LAYER];
+	ipolicer->ref_count[mid_prof]--;
+	/* If ref_count is zero, free mid layer profile */
+	if (!ipolicer->ref_count[mid_prof]) {
+		ipolicer->pfvf_map[mid_prof] = 0x00;
+		rvu_free_rsrc(&ipolicer->band_prof, mid_prof);
+	}
 }
