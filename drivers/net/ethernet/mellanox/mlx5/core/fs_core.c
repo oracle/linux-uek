@@ -588,7 +588,7 @@ static void del_sw_fte(struct fs_node *node)
 				     &fte->hash,
 				     rhash_fte);
 	WARN_ON(err);
-	ida_simple_remove(&fg->fte_allocator, fte->index - fg->start_index);
+	ida_free(&fg->fte_allocator, fte->index - fg->start_index);
 	kmem_cache_free(steering->ftes_cache, fte);
 }
 
@@ -638,7 +638,7 @@ static int insert_fte(struct mlx5_flow_group *fg, struct fs_fte *fte)
 	int index;
 	int ret;
 
-	index = ida_simple_get(&fg->fte_allocator, 0, fg->max_ftes, GFP_KERNEL);
+	index = ida_alloc_max(&fg->fte_allocator, fg->max_ftes - 1, GFP_KERNEL);
 	if (index < 0)
 		return index;
 
@@ -654,7 +654,7 @@ static int insert_fte(struct mlx5_flow_group *fg, struct fs_fte *fte)
 	return 0;
 
 err_ida_remove:
-	ida_simple_remove(&fg->fte_allocator, index);
+	ida_free(&fg->fte_allocator, index);
 	return ret;
 }
 
