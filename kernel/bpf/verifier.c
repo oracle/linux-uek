@@ -4583,6 +4583,14 @@ static int adjust_ptr_min_max_vals(struct bpf_verifier_env *env,
 
 	switch (opcode) {
 	case BPF_ADD:
+<<<<<<< HEAD
+=======
+		ret = sanitize_ptr_alu(env, insn, ptr_reg, dst_reg, smin_val < 0);
+		if (ret < 0) {
+			verbose(env, "R%d tried to add from different maps, paths, or prohibited types\n", dst);
+			return ret;
+		}
+>>>>>>> ea8fb45eaac14... bpf: Prohibit alu ops for pointer types not defining ptr_limit
 		/* We can take a fixed offset as long as it doesn't overflow
 		 * the s32 'off' field
 		 */
@@ -4633,6 +4641,14 @@ static int adjust_ptr_min_max_vals(struct bpf_verifier_env *env,
 		}
 		break;
 	case BPF_SUB:
+<<<<<<< HEAD
+=======
+		ret = sanitize_ptr_alu(env, insn, ptr_reg, dst_reg, smin_val < 0);
+		if (ret < 0) {
+			verbose(env, "R%d tried to sub from different maps, paths, or prohibited types\n", dst);
+			return ret;
+		}
+>>>>>>> ea8fb45eaac14... bpf: Prohibit alu ops for pointer types not defining ptr_limit
 		if (dst_reg == off_reg) {
 			/* scalar -= pointer.  Creates an unknown scalar */
 			verbose(env, "R%d tried to subtract pointer from scalar\n",
