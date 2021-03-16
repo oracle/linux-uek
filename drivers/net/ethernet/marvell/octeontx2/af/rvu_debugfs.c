@@ -1017,153 +1017,6 @@ static int rvu_dbg_nix_ndc_tx_hits_miss_display(struct seq_file *filp,
 
 RVU_DEBUG_SEQ_FOPS(nix_ndc_tx_hits_miss, nix_ndc_tx_hits_miss_display, NULL);
 
-#define PRINT_CGX_CUML_NIXRX_STATUS(idx, name)				\
-	({								\
-		u64 cnt;						\
-		err = rvu_cgx_nix_cuml_stats(rvu, cgxd, lmac_id, (idx),	\
-					     NIX_STATS_RX, &(cnt));	\
-		if (!err)						\
-			seq_printf(s, "%s: %llu\n", name, cnt);		\
-		cnt;							\
-	})
-
-#define PRINT_CGX_CUML_NIXTX_STATUS(idx, name)			\
-	({								\
-		u64 cnt;						\
-		err = rvu_cgx_nix_cuml_stats(rvu, cgxd, lmac_id, (idx),	\
-					  NIX_STATS_TX, &(cnt));	\
-		if (!err)						\
-			seq_printf(s, "%s: %llu\n", name, cnt);		\
-		cnt;							\
-	})
-
-static int cgx_print_stats(struct seq_file *s, int lmac_id)
-{
-	struct cgx_link_user_info linfo;
-	struct mac_ops *mac_ops;
-	void *cgxd = s->private;
-	u64 ucast, mcast, bcast;
-	int stat = 0, err = 0;
-	u64 tx_stat, rx_stat;
-	struct rvu *rvu;
-
-	rvu = pci_get_drvdata(pci_get_device(PCI_VENDOR_ID_CAVIUM,
-					     PCI_DEVID_OCTEONTX2_RVU_AF, NULL));
-	if (!rvu)
-		return -ENODEV;
-
-	mac_ops = get_mac_ops(cgxd);
-	/* There can be no CGX devices at all */
-	if (!mac_ops)
-		return 0;
-
-	/* Link status */
-	seq_puts(s, "\n=======Link Status======\n\n");
-	err = cgx_get_link_info(cgxd, lmac_id, &linfo);
-	if (err)
-		seq_puts(s, "Failed to read link status\n");
-	seq_printf(s, "\nLink is %s %d Mbps\n\n",
-		   linfo.link_up ? "UP" : "DOWN", linfo.speed);
-
-	/* Rx stats */
-	seq_printf(s, "\n=======NIX RX_STATS(%s port level)======\n\n",
-		   mac_ops->name);
-	ucast = PRINT_CGX_CUML_NIXRX_STATUS(RX_UCAST, "rx_ucast_frames");
-	if (err)
-		return err;
-	mcast = PRINT_CGX_CUML_NIXRX_STATUS(RX_MCAST, "rx_mcast_frames");
-	if (err)
-		return err;
-	bcast = PRINT_CGX_CUML_NIXRX_STATUS(RX_BCAST, "rx_bcast_frames");
-	if (err)
-		return err;
-	seq_printf(s, "rx_frames: %llu\n", ucast + mcast + bcast);
-	PRINT_CGX_CUML_NIXRX_STATUS(RX_OCTS, "rx_bytes");
-	if (err)
-		return err;
-	PRINT_CGX_CUML_NIXRX_STATUS(RX_DROP, "rx_drops");
-	if (err)
-		return err;
-	PRINT_CGX_CUML_NIXRX_STATUS(RX_ERR, "rx_errors");
-	if (err)
-		return err;
-
-	/* Tx stats */
-	seq_printf(s, "\n=======NIX TX_STATS(%s port level)======\n\n",
-		   mac_ops->name);
-	ucast = PRINT_CGX_CUML_NIXTX_STATUS(TX_UCAST, "tx_ucast_frames");
-	if (err)
-		return err;
-	mcast = PRINT_CGX_CUML_NIXTX_STATUS(TX_MCAST, "tx_mcast_frames");
-	if (err)
-		return err;
-	bcast = PRINT_CGX_CUML_NIXTX_STATUS(TX_BCAST, "tx_bcast_frames");
-	if (err)
-		return err;
-	seq_printf(s, "tx_frames: %llu\n", ucast + mcast + bcast);
-	PRINT_CGX_CUML_NIXTX_STATUS(TX_OCTS, "tx_bytes");
-	if (err)
-		return err;
-	PRINT_CGX_CUML_NIXTX_STATUS(TX_DROP, "tx_drops");
-	if (err)
-		return err;
-
-	/* Rx stats */
-	seq_printf(s, "\n=======%s RX_STATS======\n\n", mac_ops->name);
-	while (stat < mac_ops->rx_stats_cnt) {
-		err = mac_ops->mac_get_rx_stats(cgxd, lmac_id, stat, &rx_stat);
-		if (err)
-			return err;
-		if (is_rvu_otx2(rvu))
-			seq_printf(s, "%s: %llu\n", cgx_rx_stats_fields[stat],
-				   rx_stat);
-		else
-			seq_printf(s, "%s: %llu\n", rpm_rx_stats_fields[stat],
-				   rx_stat);
-		stat++;
-	}
-
-	/* Tx stats */
-	stat = 0;
-	seq_printf(s, "\n=======%s TX_STATS======\n\n", mac_ops->name);
-	while (stat < mac_ops->tx_stats_cnt) {
-		err = mac_ops->mac_get_tx_stats(cgxd, lmac_id, stat, &tx_stat);
-		if (err)
-			return err;
-		if (is_rvu_otx2(rvu))
-			seq_printf(s, "%s: %llu\n", cgx_tx_stats_fields[stat],
-				   tx_stat);
-		else
-			seq_printf(s, "%s: %llu\n", rpm_tx_stats_fields[stat],
-				   tx_stat);
-		stat++;
-	}
-
-	return err;
-}
-
-static int rvu_dbg_cgx_stat_display(struct seq_file *filp, void *unused)
-{
-	struct dentry *current_dir;
-	int err, lmac_id;
-	char *buf;
-
-	current_dir = filp->file->f_path.dentry->d_parent;
-	buf = strrchr(current_dir->d_name.name, 'c');
-	if (!buf)
-		return -EINVAL;
-
-	err = kstrtoint(buf + 1, 10, &lmac_id);
-	if (!err) {
-		err = cgx_print_stats(filp, lmac_id);
-		if (err)
-			return err;
-	}
-	return err;
-}
-
-RVU_DEBUG_SEQ_FOPS(cgx_stat, cgx_stat_display, NULL);
-
 static void print_nix_cn10k_sq_ctx(struct seq_file *m,
 				   struct nix_cn10k_sq_ctx_s *sq_ctx)
 {
@@ -1719,6 +1572,308 @@ static int rvu_dbg_nix_cq_ctx_display(struct seq_file *filp, void *unused)
 
 RVU_DEBUG_SEQ_FOPS(nix_cq_ctx, nix_cq_ctx_display, nix_cq_ctx_write);
 
+static void print_nix_qctx_qsize(struct seq_file *filp, int qsize,
+				 unsigned long *bmap, char *qtype)
+{
+	char *buf;
+
+	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!buf)
+		return;
+
+	bitmap_print_to_pagebuf(false, buf, bmap, qsize);
+	seq_printf(filp, "%s context count : %d\n", qtype, qsize);
+	seq_printf(filp, "%s context ena/dis bitmap : %s\n",
+		   qtype, buf);
+	kfree(buf);
+}
+
+static void print_nix_qsize(struct seq_file *filp, struct rvu_pfvf *pfvf)
+{
+	if (!pfvf->cq_ctx)
+		seq_puts(filp, "cq context is not initialized\n");
+	else
+		print_nix_qctx_qsize(filp, pfvf->cq_ctx->qsize, pfvf->cq_bmap,
+				     "cq");
+
+	if (!pfvf->rq_ctx)
+		seq_puts(filp, "rq context is not initialized\n");
+	else
+		print_nix_qctx_qsize(filp, pfvf->rq_ctx->qsize, pfvf->rq_bmap,
+				     "rq");
+
+	if (!pfvf->sq_ctx)
+		seq_puts(filp, "sq context is not initialized\n");
+	else
+		print_nix_qctx_qsize(filp, pfvf->sq_ctx->qsize, pfvf->sq_bmap,
+				     "sq");
+}
+
+static ssize_t rvu_dbg_nix_qsize_write(struct file *filp,
+				       const char __user *buffer,
+				       size_t count, loff_t *ppos)
+{
+	return rvu_dbg_qsize_write(filp, buffer, count, ppos,
+				   BLKTYPE_NIX);
+}
+
+static int rvu_dbg_nix_qsize_display(struct seq_file *filp, void *unused)
+{
+	return rvu_dbg_qsize_display(filp, unused, BLKTYPE_NIX);
+}
+
+RVU_DEBUG_SEQ_FOPS(nix_qsize, nix_qsize_display, nix_qsize_write);
+
+static ssize_t rvu_dbg_nix_tx_stall_hwissue_display(struct file *filp,
+						    char __user *buffer,
+						    size_t count, loff_t *ppos)
+{
+	return rvu_nix_get_tx_stall_counters(filp->private_data, buffer, ppos);
+}
+
+RVU_DEBUG_FOPS(nix_tx_stall_hwissue, nix_tx_stall_hwissue_display, NULL);
+
+static void rvu_dbg_nix_init(struct rvu *rvu, int blkaddr)
+{
+	struct nix_hw *nix_hw;
+
+	if (!is_block_implemented(rvu->hw, blkaddr))
+		return;
+
+	if (blkaddr == BLKADDR_NIX0) {
+		rvu->rvu_dbg.nix = debugfs_create_dir("nix", rvu->rvu_dbg.root);
+		nix_hw = &rvu->hw->nix[0];
+	} else {
+		rvu->rvu_dbg.nix = debugfs_create_dir("nix1",
+						      rvu->rvu_dbg.root);
+		nix_hw = &rvu->hw->nix[1];
+	}
+
+	debugfs_create_file("sq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_sq_ctx_fops);
+	debugfs_create_file("rq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_rq_ctx_fops);
+	debugfs_create_file("cq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_cq_ctx_fops);
+	debugfs_create_file("ndc_tx_cache", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_tx_cache_fops);
+	debugfs_create_file("ndc_rx_cache", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_rx_cache_fops);
+	debugfs_create_file("ndc_tx_hits_miss", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_tx_hits_miss_fops);
+	debugfs_create_file("ndc_rx_hits_miss", 0600, rvu->rvu_dbg.nix, nix_hw,
+			    &rvu_dbg_nix_ndc_rx_hits_miss_fops);
+	debugfs_create_file("qsize", 0600, rvu->rvu_dbg.nix, rvu,
+			    &rvu_dbg_nix_qsize_fops);
+	if (is_rvu_96xx_A0(rvu)) {
+		debugfs_create_file("tx_stall_hwissue", 0600,
+				    rvu->rvu_dbg.nix, nix_hw,
+				    &rvu_dbg_nix_tx_stall_hwissue_fops);
+	}
+}
+
+static void rvu_dbg_npa_init(struct rvu *rvu)
+{
+	rvu->rvu_dbg.npa = debugfs_create_dir("npa", rvu->rvu_dbg.root);
+
+	debugfs_create_file("qsize", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_qsize_fops);
+	debugfs_create_file("aura_ctx", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_aura_ctx_fops);
+	debugfs_create_file("pool_ctx", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_pool_ctx_fops);
+	debugfs_create_file("ndc_cache", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_ndc_cache_fops);
+	debugfs_create_file("ndc_hits_miss", 0600, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_ndc_hits_miss_fops);
+}
+
+#define PRINT_CGX_CUML_NIXRX_STATUS(idx, name)				\
+	({								\
+		u64 cnt;						\
+		err = rvu_cgx_nix_cuml_stats(rvu, cgxd, lmac_id, (idx),	\
+					     NIX_STATS_RX, &(cnt));	\
+		if (!err)						\
+			seq_printf(s, "%s: %llu\n", name, cnt);		\
+		cnt;							\
+	})
+
+#define PRINT_CGX_CUML_NIXTX_STATUS(idx, name)			\
+	({								\
+		u64 cnt;						\
+		err = rvu_cgx_nix_cuml_stats(rvu, cgxd, lmac_id, (idx),	\
+					  NIX_STATS_TX, &(cnt));	\
+		if (!err)						\
+			seq_printf(s, "%s: %llu\n", name, cnt);		\
+		cnt;							\
+	})
+
+static int cgx_print_stats(struct seq_file *s, int lmac_id)
+{
+	struct cgx_link_user_info linfo;
+	struct mac_ops *mac_ops;
+	void *cgxd = s->private;
+	u64 ucast, mcast, bcast;
+	int stat = 0, err = 0;
+	u64 tx_stat, rx_stat;
+	struct rvu *rvu;
+
+	rvu = pci_get_drvdata(pci_get_device(PCI_VENDOR_ID_CAVIUM,
+					     PCI_DEVID_OCTEONTX2_RVU_AF, NULL));
+	if (!rvu)
+		return -ENODEV;
+
+	mac_ops = get_mac_ops(cgxd);
+	/* There can be no CGX devices at all */
+	if (!mac_ops)
+		return 0;
+
+	/* Link status */
+	seq_puts(s, "\n=======Link Status======\n\n");
+	err = cgx_get_link_info(cgxd, lmac_id, &linfo);
+	if (err)
+		seq_puts(s, "Failed to read link status\n");
+	seq_printf(s, "\nLink is %s %d Mbps\n\n",
+		   linfo.link_up ? "UP" : "DOWN", linfo.speed);
+
+	/* Rx stats */
+	seq_printf(s, "\n=======NIX RX_STATS(%s port level)======\n\n",
+		   mac_ops->name);
+	ucast = PRINT_CGX_CUML_NIXRX_STATUS(RX_UCAST, "rx_ucast_frames");
+	if (err)
+		return err;
+	mcast = PRINT_CGX_CUML_NIXRX_STATUS(RX_MCAST, "rx_mcast_frames");
+	if (err)
+		return err;
+	bcast = PRINT_CGX_CUML_NIXRX_STATUS(RX_BCAST, "rx_bcast_frames");
+	if (err)
+		return err;
+	seq_printf(s, "rx_frames: %llu\n", ucast + mcast + bcast);
+	PRINT_CGX_CUML_NIXRX_STATUS(RX_OCTS, "rx_bytes");
+	if (err)
+		return err;
+	PRINT_CGX_CUML_NIXRX_STATUS(RX_DROP, "rx_drops");
+	if (err)
+		return err;
+	PRINT_CGX_CUML_NIXRX_STATUS(RX_ERR, "rx_errors");
+	if (err)
+		return err;
+
+	/* Tx stats */
+	seq_printf(s, "\n=======NIX TX_STATS(%s port level)======\n\n",
+		   mac_ops->name);
+	ucast = PRINT_CGX_CUML_NIXTX_STATUS(TX_UCAST, "tx_ucast_frames");
+	if (err)
+		return err;
+	mcast = PRINT_CGX_CUML_NIXTX_STATUS(TX_MCAST, "tx_mcast_frames");
+	if (err)
+		return err;
+	bcast = PRINT_CGX_CUML_NIXTX_STATUS(TX_BCAST, "tx_bcast_frames");
+	if (err)
+		return err;
+	seq_printf(s, "tx_frames: %llu\n", ucast + mcast + bcast);
+	PRINT_CGX_CUML_NIXTX_STATUS(TX_OCTS, "tx_bytes");
+	if (err)
+		return err;
+	PRINT_CGX_CUML_NIXTX_STATUS(TX_DROP, "tx_drops");
+	if (err)
+		return err;
+
+	/* Rx stats */
+	seq_printf(s, "\n=======%s RX_STATS======\n\n", mac_ops->name);
+	while (stat < mac_ops->rx_stats_cnt) {
+		err = mac_ops->mac_get_rx_stats(cgxd, lmac_id, stat, &rx_stat);
+		if (err)
+			return err;
+		if (is_rvu_otx2(rvu))
+			seq_printf(s, "%s: %llu\n", cgx_rx_stats_fields[stat],
+				   rx_stat);
+		else
+			seq_printf(s, "%s: %llu\n", rpm_rx_stats_fields[stat],
+				   rx_stat);
+		stat++;
+	}
+
+	/* Tx stats */
+	stat = 0;
+	seq_printf(s, "\n=======%s TX_STATS======\n\n", mac_ops->name);
+	while (stat < mac_ops->tx_stats_cnt) {
+		err = mac_ops->mac_get_tx_stats(cgxd, lmac_id, stat, &tx_stat);
+		if (err)
+			return err;
+		if (is_rvu_otx2(rvu))
+			seq_printf(s, "%s: %llu\n", cgx_tx_stats_fields[stat],
+				   tx_stat);
+		else
+			seq_printf(s, "%s: %llu\n", rpm_tx_stats_fields[stat],
+				   tx_stat);
+		stat++;
+	}
+
+	return err;
+}
+
+static int rvu_dbg_cgx_stat_display(struct seq_file *filp, void *unused)
+{
+	struct dentry *current_dir;
+	int err, lmac_id;
+	char *buf;
+
+	current_dir = filp->file->f_path.dentry->d_parent;
+	buf = strrchr(current_dir->d_name.name, 'c');
+	if (!buf)
+		return -EINVAL;
+
+	err = kstrtoint(buf + 1, 10, &lmac_id);
+	if (!err) {
+		err = cgx_print_stats(filp, lmac_id);
+		if (err)
+			return err;
+	}
+	return err;
+}
+
+RVU_DEBUG_SEQ_FOPS(cgx_stat, cgx_stat_display, NULL);
+
+static void rvu_dbg_cgx_init(struct rvu *rvu)
+{
+	struct mac_ops *mac_ops;
+	unsigned long lmac_bmap;
+	int i, lmac_id;
+	char dname[20];
+	void *cgx;
+
+	if (!cgx_get_cgxcnt_max())
+		return;
+
+	mac_ops = get_mac_ops(rvu_first_cgx_pdata(rvu));
+	if (!mac_ops)
+		return;
+
+	rvu->rvu_dbg.cgx_root = debugfs_create_dir(mac_ops->name,
+						   rvu->rvu_dbg.root);
+
+	for (i = 0; i < cgx_get_cgxcnt_max(); i++) {
+		cgx = rvu_cgx_pdata(i, rvu);
+		if (!cgx)
+			continue;
+		lmac_bmap = cgx_get_lmac_bmap(cgx);
+		/* cgx debugfs dir */
+		sprintf(dname, "%s%d", mac_ops->name, i);
+		rvu->rvu_dbg.cgx = debugfs_create_dir(dname,
+						      rvu->rvu_dbg.cgx_root);
+		for_each_set_bit(lmac_id, &lmac_bmap, MAX_LMAC_PER_CGX) {
+			/* lmac debugfs dir */
+			sprintf(dname, "lmac%d", lmac_id);
+			rvu->rvu_dbg.lmac =
+				debugfs_create_dir(dname, rvu->rvu_dbg.cgx);
+
+				debugfs_create_file("stats", 0600, rvu->rvu_dbg.lmac,
+						    cgx, &rvu_dbg_cgx_stat_fops);
+		}
+	}
+}
+
 /* NPC debugfs APIs */
 static inline void rvu_print_npc_mcam_info(struct seq_file *s,
 					   u16 pcifunc, int blkaddr)
@@ -2047,162 +2202,6 @@ static void rvu_dbg_npc_init(struct rvu *rvu)
 	debugfs_create_file("rx_miss_act_stats", 0444, rvu->rvu_dbg.npc, rvu,
 			    &rvu_dbg_npc_rx_miss_act_fops);
 }
-
-static void print_nix_qctx_qsize(struct seq_file *filp, int qsize,
-				 unsigned long *bmap, char *qtype)
-{
-	char *buf;
-
-	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!buf)
-		return;
-
-	bitmap_print_to_pagebuf(false, buf, bmap, qsize);
-	seq_printf(filp, "%s context count : %d\n", qtype, qsize);
-	seq_printf(filp, "%s context ena/dis bitmap : %s\n",
-		   qtype, buf);
-	kfree(buf);
-}
-
-static void print_nix_qsize(struct seq_file *filp, struct rvu_pfvf *pfvf)
-{
-	if (!pfvf->cq_ctx)
-		seq_puts(filp, "cq context is not initialized\n");
-	else
-		print_nix_qctx_qsize(filp, pfvf->cq_ctx->qsize, pfvf->cq_bmap,
-				     "cq");
-
-	if (!pfvf->rq_ctx)
-		seq_puts(filp, "rq context is not initialized\n");
-	else
-		print_nix_qctx_qsize(filp, pfvf->rq_ctx->qsize, pfvf->rq_bmap,
-				     "rq");
-
-	if (!pfvf->sq_ctx)
-		seq_puts(filp, "sq context is not initialized\n");
-	else
-		print_nix_qctx_qsize(filp, pfvf->sq_ctx->qsize, pfvf->sq_bmap,
-				     "sq");
-}
-
-static ssize_t rvu_dbg_nix_qsize_write(struct file *filp,
-				       const char __user *buffer,
-				       size_t count, loff_t *ppos)
-{
-	return rvu_dbg_qsize_write(filp, buffer, count, ppos,
-				   BLKTYPE_NIX);
-}
-
-static int rvu_dbg_nix_qsize_display(struct seq_file *filp, void *unused)
-{
-	return rvu_dbg_qsize_display(filp, unused, BLKTYPE_NIX);
-}
-
-RVU_DEBUG_SEQ_FOPS(nix_qsize, nix_qsize_display, nix_qsize_write);
-
-static ssize_t rvu_dbg_nix_tx_stall_hwissue_display(struct file *filp,
-						    char __user *buffer,
-						    size_t count, loff_t *ppos)
-{
-	return rvu_nix_get_tx_stall_counters(filp->private_data, buffer, ppos);
-}
-
-RVU_DEBUG_FOPS(nix_tx_stall_hwissue, nix_tx_stall_hwissue_display, NULL);
-
-static void rvu_dbg_nix_init(struct rvu *rvu, int blkaddr)
-{
-	struct nix_hw *nix_hw;
-
-	if (!is_block_implemented(rvu->hw, blkaddr))
-		return;
-
-	if (blkaddr == BLKADDR_NIX0) {
-		rvu->rvu_dbg.nix = debugfs_create_dir("nix", rvu->rvu_dbg.root);
-		nix_hw = &rvu->hw->nix[0];
-	} else {
-		rvu->rvu_dbg.nix = debugfs_create_dir("nix1",
-						      rvu->rvu_dbg.root);
-		nix_hw = &rvu->hw->nix[1];
-	}
-
-	debugfs_create_file("sq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
-			    &rvu_dbg_nix_sq_ctx_fops);
-	debugfs_create_file("rq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
-			    &rvu_dbg_nix_rq_ctx_fops);
-	debugfs_create_file("cq_ctx", 0600, rvu->rvu_dbg.nix, nix_hw,
-			    &rvu_dbg_nix_cq_ctx_fops);
-	debugfs_create_file("ndc_tx_cache", 0600, rvu->rvu_dbg.nix, nix_hw,
-			    &rvu_dbg_nix_ndc_tx_cache_fops);
-	debugfs_create_file("ndc_rx_cache", 0600, rvu->rvu_dbg.nix, nix_hw,
-			    &rvu_dbg_nix_ndc_rx_cache_fops);
-	debugfs_create_file("ndc_tx_hits_miss", 0600, rvu->rvu_dbg.nix, nix_hw,
-			    &rvu_dbg_nix_ndc_tx_hits_miss_fops);
-	debugfs_create_file("ndc_rx_hits_miss", 0600, rvu->rvu_dbg.nix, nix_hw,
-			    &rvu_dbg_nix_ndc_rx_hits_miss_fops);
-	debugfs_create_file("qsize", 0600, rvu->rvu_dbg.nix, rvu,
-			    &rvu_dbg_nix_qsize_fops);
-	if (is_rvu_96xx_A0(rvu)) {
-		debugfs_create_file("tx_stall_hwissue", 0600,
-				    rvu->rvu_dbg.nix, nix_hw,
-				    &rvu_dbg_nix_tx_stall_hwissue_fops);
-	}
-}
-
-static void rvu_dbg_cgx_init(struct rvu *rvu)
-{
-	struct mac_ops *mac_ops;
-	unsigned long lmac_bmap;
-	int i, lmac_id;
-	char dname[20];
-	void *cgx;
-
-	if (!cgx_get_cgxcnt_max())
-		return;
-
-	mac_ops = get_mac_ops(rvu_first_cgx_pdata(rvu));
-	if (!mac_ops)
-		return;
-
-	rvu->rvu_dbg.cgx_root = debugfs_create_dir(mac_ops->name,
-						   rvu->rvu_dbg.root);
-
-	for (i = 0; i < cgx_get_cgxcnt_max(); i++) {
-		cgx = rvu_cgx_pdata(i, rvu);
-		if (!cgx)
-			continue;
-		lmac_bmap = cgx_get_lmac_bmap(cgx);
-		/* cgx debugfs dir */
-		sprintf(dname, "%s%d", mac_ops->name, i);
-		rvu->rvu_dbg.cgx = debugfs_create_dir(dname,
-						      rvu->rvu_dbg.cgx_root);
-		for_each_set_bit(lmac_id, &lmac_bmap, MAX_LMAC_PER_CGX) {
-			/* lmac debugfs dir */
-			sprintf(dname, "lmac%d", lmac_id);
-			rvu->rvu_dbg.lmac =
-				debugfs_create_dir(dname, rvu->rvu_dbg.cgx);
-
-				debugfs_create_file("stats", 0600, rvu->rvu_dbg.lmac,
-						    cgx, &rvu_dbg_cgx_stat_fops);
-		}
-	}
-}
-
-static void rvu_dbg_npa_init(struct rvu *rvu)
-{
-	rvu->rvu_dbg.npa = debugfs_create_dir("npa", rvu->rvu_dbg.root);
-
-	debugfs_create_file("qsize", 0600, rvu->rvu_dbg.npa, rvu,
-			    &rvu_dbg_npa_qsize_fops);
-	debugfs_create_file("aura_ctx", 0600, rvu->rvu_dbg.npa, rvu,
-			    &rvu_dbg_npa_aura_ctx_fops);
-	debugfs_create_file("pool_ctx", 0600, rvu->rvu_dbg.npa, rvu,
-			    &rvu_dbg_npa_pool_ctx_fops);
-	debugfs_create_file("ndc_cache", 0600, rvu->rvu_dbg.npa, rvu,
-			    &rvu_dbg_npa_ndc_cache_fops);
-	debugfs_create_file("ndc_hits_miss", 0600, rvu->rvu_dbg.npa, rvu,
-			    &rvu_dbg_npa_ndc_hits_miss_fops);
-}
-
 static int parse_sso_cmd_buffer(char *cmd_buf, size_t *count,
 				const char __user *buffer, int *ssolf,
 				bool *all)
