@@ -244,7 +244,7 @@ static struct notifier_block secure_notifier_block = {
 
 static int __init secure_pm_init(void)
 {
-	if (omap_type() == OMAP2_DEVICE_TYPE_GP)
+	if (omap_type() == OMAP2_DEVICE_TYPE_GP || !soc_is_omap44xx())
 		return 0;
 
 	cpu_pm_register_notifier(&secure_notifier_block);
