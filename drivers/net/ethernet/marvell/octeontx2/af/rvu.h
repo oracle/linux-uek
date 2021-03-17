@@ -822,6 +822,7 @@ int rvu_get_num_lbk_chans(void);
 int rvu_ndc_sync(struct rvu *rvu, int lfblkid, int lfidx, u64 lfoffset);
 int rvu_get_blkaddr_from_slot(struct rvu *rvu, int blktype, u16 pcifunc,
 			      u16 global_slot, u16 *slot_in_block);
+int rvu_set_lbk_pkind(struct rvu *rvu, int lbkvf, int pkind);
 
 /* RVU HW reg validation */
 enum regmap_block {

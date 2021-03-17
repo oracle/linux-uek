@@ -3269,15 +3269,22 @@ rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 	}
 
 	if (dir & PKIND_RX) {
-		/* rx pkind set req valid only for cgx mapped PFs */
-		if (!is_cgx_config_permitted(rvu, pcifunc))
-			return 0;
-		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+		if ((pcifunc & RVU_PFVF_FUNC_MASK) && is_afvf(pcifunc)) {
+			/* LBK VF */
+			rc = rvu_set_lbk_pkind(rvu, (pcifunc & RVU_PFVF_FUNC_MASK) - 1, rxpkind);
+			if (rc)
+				return rc;
+		} else {
+			/* rx pkind set req valid only for cgx mapped PFs */
+			if (!is_cgx_config_permitted(rvu, pcifunc))
+				return 0;
+			rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 
-		rc = cgx_set_pkind(rvu_cgx_pdata(cgx_id, rvu),
-				   lmac_id, rxpkind);
-		if (rc)
-			return rc;
+			rc = cgx_set_pkind(rvu_cgx_pdata(cgx_id, rvu),
+					   lmac_id, rxpkind);
+			if (rc)
+				return rc;
+		}
 	}
 
 	if (dir & PKIND_TX) {

@@ -3466,6 +3466,32 @@ err:
 	return ret;
 }
 
+int rvu_set_lbk_pkind(struct rvu *rvu, int lbkvf, int pkind)
+{
+	struct pci_dev *pdev;
+	void __iomem *base;
+	int ret = -EIO, lbk_link;
+
+	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_LBK,
+			      NULL);
+	if (!pdev)
+		goto err;
+
+	base = pci_ioremap_bar(pdev, 0);
+	if (!base)
+		goto err_put;
+
+	for (lbk_link = 0; lbk_link < rvu->hw->lbk_links; lbk_link++)
+		/* write pkind to LBK(0..3)_CH(0..63)_PKIND. */
+		writeq(pkind, base + LBK_CH_PKIND(lbk_link, lbkvf));
+	iounmap(base);
+	ret = 0;
+err_put:
+	pci_dev_put(pdev);
+err:
+	return ret;
+}
+
 static int rvu_enable_sriov(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
