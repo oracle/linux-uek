@@ -91,6 +91,19 @@ config INFINIBAND_RESILIENT_RDMAIP
 	  Resilient RDMA IP support. This provides a HA solution for RDMA
 	  capable devices.
 
+config INFINIBAND_RDMAIP_NOTIFY
+	tristate "The /sys/kernel/rdmaip_notify interface"
+	depends on INET
+	depends on INFINIBAND
+	---help---
+	  Support for the /sys/kernel/rdmaip_notify interface.
+	  Enables user-space processes to trigger kernel functions:
+	  * rdma_notify_addr_change
+	    In order to send out RDMA_CM_EVENT_ADDR_CHANGE events.
+	  * netdev_notify_peers
+	    In order to send out gratuitous ARP or
+	    unsolicited neighbor advertisement packets.
+
 config INFINIBAND_VIRT_DMA
 	def_bool !HIGHMEM
 
