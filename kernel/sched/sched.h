@@ -784,9 +784,6 @@ struct rq {
 	u64 max_idle_balance_cost;
 #endif
 
-#ifdef CONFIG_IRQ_TIME_ACCOUNTING
-	u64 prev_irq_time;
-#endif
 #ifdef CONFIG_PARAVIRT
 	u64 prev_steal_time;
 #endif
@@ -801,6 +798,13 @@ struct rq {
 #ifdef CONFIG_SCHED_HRTICK
 #ifdef CONFIG_SMP
 	int hrtick_csd_pending;
+#endif
+#endif
+#ifdef CONFIG_IRQ_TIME_ACCOUNTING
+	UEK_KABI_FILL_HOLE(u64 prev_irq_time)
+#endif
+#ifdef CONFIG_SCHED_HRTICK
+#ifdef CONFIG_SMP
 	call_single_data_t hrtick_csd;
 #endif
 	struct hrtimer hrtick_timer;
