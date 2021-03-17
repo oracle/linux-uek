@@ -8,13 +8,12 @@
 
 #include <linux/spinlock.h>
 #include <linux/module.h>
-#include <linux/idr.h>
 #include <linux/kernel.h>
 #include <linux/timer.h>
 #include <linux/parser.h>
 #include <linux/vmalloc.h>
 #include <linux/uio_driver.h>
-#include <linux/radix-tree.h>
+#include <linux/xarray.h>
 #include <linux/stringify.h>
 #include <linux/bitops.h>
 #include <linux/highmem.h>
@@ -145,9 +144,9 @@ struct tcmu_dev {
 	uint32_t dbi_max;
 	uint32_t dbi_thresh;
 	unsigned long *data_bitmap;
-	struct radix_tree_root data_blocks;
+	struct xarray data_blocks;
 
-	struct idr commands;
+	struct xarray commands;
 
 	struct timer_list cmd_timer;
 	unsigned int cmd_time_out;
@@ -502,13 +501,13 @@ static inline int tcmu_get_empty_block(struct tcmu_dev *udev,
 				       int prev_dbi, int *iov_cnt)
 {
 	struct page *page;
-	int ret, dbi;
+	int dbi;
 
 	dbi = find_first_zero_bit(udev->data_bitmap, udev->dbi_thresh);
 	if (dbi == udev->dbi_thresh)
 		return -1;
 
-	page = radix_tree_lookup(&udev->data_blocks, dbi);
+	page = xa_load(&udev->data_blocks, dbi);
 	if (!page) {
 		if (atomic_add_return(1, &global_db_count) >
 				      tcmu_global_max_blocks)
@@ -519,8 +518,7 @@ static inline int tcmu_get_empty_block(struct tcmu_dev *udev,
 		if (!page)
 			goto err_alloc;
 
-		ret = radix_tree_insert(&udev->data_blocks, dbi, page);
-		if (ret)
+		if (xa_store(&udev->data_blocks, dbi, page, GFP_NOIO))
 			goto err_insert;
 	}
 
@@ -559,7 +557,7 @@ static int tcmu_get_empty_blocks(struct tcmu_dev *udev,
 static inline struct page *
 tcmu_get_block_page(struct tcmu_dev *udev, uint32_t dbi)
 {
-	return radix_tree_lookup(&udev->data_blocks, dbi);
+	return xa_load(&udev->data_blocks, dbi);
 }
 
 static inline void tcmu_free_cmd(struct tcmu_cmd *tcmu_cmd)
@@ -998,8 +996,8 @@ static int queue_cmd_ring(struct tcmu_cmd *tcmu_cmd, sense_reason_t *scsi_err)
 	struct tcmu_mailbox *mb = udev->mb_addr;
 	struct tcmu_cmd_entry *entry;
 	struct iovec *iov;
-	int iov_cnt, iov_bidi_cnt, cmd_id;
-	uint32_t cmd_head;
+	int iov_cnt, iov_bidi_cnt;
+	uint32_t cmd_id, cmd_head;
 	uint64_t cdb_off;
 	/* size of data buffer needed */
 	size_t data_length = (size_t)tcmu_cmd->dbi_cnt * DATA_BLOCK_SIZE;
@@ -1052,8 +1050,8 @@ static int queue_cmd_ring(struct tcmu_cmd *tcmu_cmd, sense_reason_t *scsi_err)
 		 */
 		goto free_and_queue;
 
-	cmd_id = idr_alloc(&udev->commands, tcmu_cmd, 1, USHRT_MAX, GFP_NOWAIT);
-	if (cmd_id < 0) {
+	if (xa_alloc(&udev->commands, &cmd_id, tcmu_cmd, XA_LIMIT(1, 0xffff),
+		     GFP_NOWAIT) < 0) {
 		pr_err("tcmu: Could not allocate cmd id.\n");
 
 		tcmu_cmd_free_data(tcmu_cmd, tcmu_cmd->dbi_cnt);
@@ -1274,7 +1272,7 @@ tcmu_tmr_notify(struct se_device *se_dev, enum tcm_tmreq_table tmf,
 	pr_debug("TMR event %d on dev %s, aborted cmds %d, afflicted cmd_ids %d\n",
 		 tcmu_tmr_type(tmf), udev->name, i, cmd_cnt);
 
-	tmr = kmalloc(sizeof(*tmr) + cmd_cnt * sizeof(*cmd_ids), GFP_KERNEL);
+	tmr = kmalloc(sizeof(*tmr) + cmd_cnt * sizeof(*cmd_ids), GFP_NOIO);
 	if (!tmr)
 		goto unlock;
 
@@ -1436,7 +1434,7 @@ static unsigned int tcmu_handle_completions(struct tcmu_dev *udev)
 		}
 		WARN_ON(tcmu_hdr_get_op(entry->hdr.len_op) != TCMU_OP_CMD);
 
-		cmd = idr_remove(&udev->commands, entry->hdr.cmd_id);
+		cmd = xa_erase(&udev->commands, entry->hdr.cmd_id);
 		if (!cmd) {
 			pr_err("cmd_id %u not found, ring is broken\n",
 			       entry->hdr.cmd_id);
@@ -1454,7 +1452,7 @@ static unsigned int tcmu_handle_completions(struct tcmu_dev *udev)
 		free_space = tcmu_run_tmr_queue(udev);
 
 	if (atomic_read(&global_db_count) > tcmu_global_max_blocks &&
-	    idr_is_empty(&udev->commands) && list_empty(&udev->qfull_queue)) {
+	    xa_empty(&udev->commands) && list_empty(&udev->qfull_queue)) {
 		/*
 		 * Allocated blocks exceeded global block limit, currently no
 		 * more pending or waiting commands so try to reclaim blocks.
@@ -1577,12 +1575,12 @@ static struct se_device *tcmu_alloc_device(struct se_hba *hba, const char *name)
 	INIT_LIST_HEAD(&udev->qfull_queue);
 	INIT_LIST_HEAD(&udev->tmr_queue);
 	INIT_LIST_HEAD(&udev->inflight_queue);
-	idr_init(&udev->commands);
+	xa_init_flags(&udev->commands, XA_FLAGS_ALLOC1);
 
 	timer_setup(&udev->qfull_timer, tcmu_qfull_timedout, 0);
 	timer_setup(&udev->cmd_timer, tcmu_cmd_timedout, 0);
 
-	INIT_RADIX_TREE(&udev->data_blocks, GFP_KERNEL);
+	xa_init(&udev->data_blocks);
 
 	return &udev->se_dev;
 }
@@ -1606,19 +1604,19 @@ static int tcmu_check_and_free_pending_cmd(struct tcmu_cmd *cmd)
 	return -EINVAL;
 }
 
-static void tcmu_blocks_release(struct radix_tree_root *blocks,
-				int start, int end)
+static void tcmu_blocks_release(struct xarray *blocks, unsigned long first,
+				unsigned long last)
 {
-	int i;
+	XA_STATE(xas, blocks, first);
 	struct page *page;
 
-	for (i = start; i < end; i++) {
-		page = radix_tree_delete(blocks, i);
-		if (page) {
-			__free_page(page);
-			atomic_dec(&global_db_count);
-		}
+	xas_lock(&xas);
+	xas_for_each(&xas, page, last) {
+		xas_store(&xas, NULL);
+		__free_page(page);
+		atomic_dec(&global_db_count);
 	}
+	xas_unlock(&xas);
 }
 
 static void tcmu_remove_all_queued_tmr(struct tcmu_dev *udev)
@@ -1637,7 +1635,7 @@ static void tcmu_dev_kref_release(struct kref *kref)
 	struct se_device *dev = &udev->se_dev;
 	struct tcmu_cmd *cmd;
 	bool all_expired = true;
-	int i;
+	unsigned long i;
 
 	vfree(udev->mb_addr);
 	udev->mb_addr = NULL;
@@ -1649,7 +1647,7 @@ static void tcmu_dev_kref_release(struct kref *kref)
 
 	/* Upper layer should drain all requests before calling this */
 	mutex_lock(&udev->cmdr_lock);
-	idr_for_each_entry(&udev->commands, cmd, i) {
+	xa_for_each(&udev->commands, i, cmd) {
 		if (tcmu_check_and_free_pending_cmd(cmd) != 0)
 			all_expired = false;
 	}
@@ -1657,7 +1655,7 @@ static void tcmu_dev_kref_release(struct kref *kref)
 	tcmu_remove_all_queued_tmr(udev);
 	if (!list_empty(&udev->qfull_queue))
 		all_expired = false;
-	idr_destroy(&udev->commands);
+	xa_destroy(&udev->commands);
 	WARN_ON(!all_expired);
 
 	tcmu_blocks_release(&udev->data_blocks, 0, udev->dbi_max + 1);
@@ -2247,16 +2245,16 @@ static void tcmu_reset_ring(struct tcmu_dev *udev, u8 err_level)
 {
 	struct tcmu_mailbox *mb;
 	struct tcmu_cmd *cmd;
-	int i;
+	unsigned long i;
 
 	mutex_lock(&udev->cmdr_lock);
 
-	idr_for_each_entry(&udev->commands, cmd, i) {
+	xa_for_each(&udev->commands, i, cmd) {
 		pr_debug("removing cmd %u on dev %s from ring (is expired %d)\n",
 			  cmd->cmd_id, udev->name,
 			  test_bit(TCMU_CMD_BIT_EXPIRED, &cmd->flags));
 
-		idr_remove(&udev->commands, i);
+		xa_erase(&udev->commands, i);
 		if (!test_bit(TCMU_CMD_BIT_EXPIRED, &cmd->flags)) {
 			WARN_ON(!cmd->se_cmd);
 			list_del_init(&cmd->queue_entry);
@@ -2946,7 +2944,7 @@ static void find_free_blocks(void)
 		unmap_mapping_range(udev->inode->i_mapping, off, 0, 1);
 
 		/* Release the block pages */
-		tcmu_blocks_release(&udev->data_blocks, start, end);
+		tcmu_blocks_release(&udev->data_blocks, start, end - 1);
 		mutex_unlock(&udev->cmdr_lock);
 
 		total_freed += end - start;
