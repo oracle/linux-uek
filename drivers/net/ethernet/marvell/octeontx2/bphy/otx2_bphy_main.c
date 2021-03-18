@@ -182,12 +182,18 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 	}
 	case OTX2_RFOE_IOCTL_ODP_DEINIT:
 	{
-		otx2_bphy_rfoe_cleanup();
-		otx2_bphy_cpri_cleanup();
+		u32 status;
 
 		/* Disable GPINT Rx and Tx interrupts */
-		writeq(0xFFFFFFFF,
-		       bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+		writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+
+		/* clear interrupt status */
+		status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(1)) &
+				0xFFFFFFFF;
+		writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
+
+		otx2_bphy_rfoe_cleanup();
+		otx2_bphy_cpri_cleanup();
 
 		cdev->odp_intf_cfg = 0;
 
@@ -498,17 +504,22 @@ error:
 static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
 {
 	struct otx2_bphy_cdev_priv *cdev = filp->private_data;
+	u32 status;
 
 	mutex_lock(&cdev->mutex_lock);
 
 	if (!cdev->odp_intf_cfg)
 		goto cdev_release_exit;
 
-	otx2_bphy_rfoe_cleanup();
-	otx2_bphy_cpri_cleanup();
-
 	/* Disable GPINT Rx and Tx interrupts */
 	writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+
+	/* clear interrupt status */
+	status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(1)) & 0xFFFFFFFF;
+	writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
+
+	otx2_bphy_rfoe_cleanup();
+	otx2_bphy_cpri_cleanup();
 
 	cdev->odp_intf_cfg = 0;
 
