@@ -2276,6 +2276,7 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/weak-updates\
+%{_datadir}/doc/kernel-keys/%{KVERREL}%{?2:.%{2}}/kernel-signing.cer\
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
 /etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
