@@ -82,6 +82,8 @@ struct scmi_clk_proto_ops {
 			u64 rate);
 	int (*enable)(const struct scmi_protocol_handle *ph, u32 clk_id);
 	int (*disable)(const struct scmi_protocol_handle *ph, u32 clk_id);
+	int (*available_rates)(const struct scmi_protocol_handle *ph, u32 clk_id,
+			       u64 *rates);
 };
 
 /**

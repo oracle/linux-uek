@@ -21,6 +21,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/sched.h>
 #include <linux/clkdev.h>
+#include <linux/uaccess.h>
 
 #include "clk.h"
 
@@ -3383,6 +3384,97 @@ static int clk_max_rate_show(struct seq_file *s, void *data)
 }
 DEFINE_SHOW_ATTRIBUTE(clk_max_rate);
 
+static ssize_t clk_clock_freq_get(struct file *file, char __user *user_buf,
+				  size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int len;
+	struct clk_core *core = file->f_inode->i_private;
+	u32 clk_cur_freq = clk_core_get_rate_recalc(core);
+
+	len = snprintf(buf, sizeof(buf), "%u\n", clk_cur_freq);
+	return simple_read_from_buffer(user_buf, count, ppos, buf, (size_t)len);
+}
+
+static ssize_t clk_clock_freq_set(struct file *file,
+				  const char __user *user_buf,
+				  size_t count, loff_t *ppos)
+{
+	struct clk_core *core = file->f_inode->i_private;
+	char buf[32];
+	size_t len;
+	u32 new_clk_freq;
+
+	len = min(count, sizeof(buf) - 1);
+	if (copy_from_user(buf, user_buf, len))
+		return -EFAULT;
+
+	/* Make the buffer a valid string that we can not overrun */
+	buf[len] = '\0';
+	if (kstrtouint(buf, 0, &new_clk_freq))
+		return -EINVAL;
+	/* Set for clock without parent */
+	if (core->ops->set_rate) {
+		core->ops->set_rate(core->hw, new_clk_freq, 0);
+		return len;
+	}
+
+	return -EPERM;
+}
+
+static int clk_clock_freq_dummy(struct seq_file *s, void *unused)
+{
+	return 0;
+}
+
+static int clk_clock_freq_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, clk_clock_freq_dummy, inode->i_private);
+}
+
+/* File operations for reading or setting vaious device clock fequencies */
+static const struct file_operations clk_clock_freq_fops = {
+	.open  = clk_clock_freq_open,
+	.read  = clk_clock_freq_get,
+	.write = clk_clock_freq_set,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int clk_core_get_available_rate(struct clk_core *core, u64 *rates)
+{
+	if (core->ops->get_available_rates)
+		return core->ops->get_available_rates(core->hw, rates);
+
+	return -EPERM;
+}
+
+static int clk_available_clock_freq_show(struct seq_file *s, void *data)
+{
+#define MAX_NO_OF_RATES 16
+	u64 rates_buf[MAX_NO_OF_RATES];
+	int no_of_freqs, i;
+	struct clk_core *core = s->private;
+
+	no_of_freqs = clk_core_get_available_rate(core, rates_buf);
+	if (no_of_freqs < 0)
+		return no_of_freqs;
+
+	/* no freq found */
+	if (no_of_freqs <= 0 || no_of_freqs > MAX_NO_OF_RATES) {
+		pr_err("Fail to get available fequencies (%d)\n", no_of_freqs);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < no_of_freqs; i++)
+		seq_printf(s, "%llu ", rates_buf[i]);
+	seq_puts(s, "\n");
+
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(clk_available_clock_freq);
+
 static void clk_debug_create_one(struct clk_core *core, struct dentry *pdentry)
 {
 	struct dentry *root;
@@ -3395,6 +3487,8 @@ static void clk_debug_create_one(struct clk_core *core, struct dentry *pdentry)
 
 	debugfs_create_file("clk_rate", clk_rate_mode, root, core,
 			    &clk_rate_fops);
+	debugfs_create_file("clk_available_freq", 0444, root, core,
+			    &clk_available_clock_freq_fops);
 	debugfs_create_file("clk_min_rate", 0444, root, core, &clk_min_rate_fops);
 	debugfs_create_file("clk_max_rate", 0444, root, core, &clk_max_rate_fops);
 	debugfs_create_ulong("clk_accuracy", 0444, root, &core->accuracy);

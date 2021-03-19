@@ -216,6 +216,23 @@ err:
 }
 
 static int
+scmi_clock_available_rates(const struct scmi_protocol_handle *ph, u32 clk_id,
+			   u64 *rates)
+{
+	struct clock_info *cinfo = ph->get_priv(ph);
+	struct scmi_clock_info *clk = cinfo->clk + clk_id;
+
+	if (!rates)
+		return -EINVAL;
+
+	/* Copy all the rates into user specified buffer */
+	memcpy(rates, &clk->list.rates[0],
+	       clk->list.num_rates * sizeof(*rates));
+
+	return clk->list.num_rates;
+}
+
+static int
 scmi_clock_rate_get(const struct scmi_protocol_handle *ph,
 		    u32 clk_id, u64 *value)
 {
@@ -335,6 +352,7 @@ static const struct scmi_clk_proto_ops clk_proto_ops = {
 	.rate_set = scmi_clock_rate_set,
 	.enable = scmi_clock_enable,
 	.disable = scmi_clock_disable,
+	.available_rates = scmi_clock_available_rates,
 };
 
 static int scmi_clock_protocol_init(const struct scmi_protocol_handle *ph)
