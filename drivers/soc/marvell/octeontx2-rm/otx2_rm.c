@@ -458,14 +458,8 @@ static void rm_pfvf_flr_handler(struct work_struct *work)
 	rm_write64(rm, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(idx),
 		   BIT_ULL(vf->intr_idx));
 
-	/* Re-enable MBOX, FLR, and ME interrupt as it gets cleared
-	 * in HWVF_RST reset
-	 */
-	rm_write64(rm, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(idx),
-		   BIT_ULL(vf->intr_idx));
+	/* Re-enable ME interrupt as it gets cleared in HWVF_RST reset */
 	rm_write64(rm, BLKADDR_RVUM, 0, RVU_PF_VFME_INT_ENA_W1SX(idx),
-		   BIT_ULL(vf->intr_idx));
-	rm_write64(rm, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INT_ENA_W1SX(idx),
 		   BIT_ULL(vf->intr_idx));
 }
 
