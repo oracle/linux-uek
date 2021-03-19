@@ -36,6 +36,15 @@ config ARM_MHU_V3
 	  that provides different means of transports: supported extensions
 	  will be discovered and possibly managed at probe-time.
 
+config MVL_MHU
+	tristate "Marvell MHU Mailbox"
+	depends on ARM_AMBA
+	help
+	  Say Y here if you want to build the Marvell MHU controller driver.
+	  The driver implements SCMI and AVS support for OcteonTX2 platform.
+	  The controller supports single channel between SCP and AP.
+	  The MHU implementation uses CPC RAM for creating mailbox memory.
+
 config IMX_MBOX
 	tristate "i.MX Mailbox"
 	depends on ARCH_MXC || COMPILE_TEST
