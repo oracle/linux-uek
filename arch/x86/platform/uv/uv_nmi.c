@@ -2,7 +2,6 @@
 /*
  * SGI NMI support routines
  *
- * (C) Copyright 2020 Hewlett Packard Enterprise Development LP
  * Copyright (C) 2007-2017 Silicon Graphics, Inc. All rights reserved.
  * Copyright (c) Mike Travis
  */
