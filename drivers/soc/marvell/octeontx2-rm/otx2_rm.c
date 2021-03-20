@@ -70,8 +70,7 @@ static dev_t devno; /* Char device major:minor */
 static spinlock_t rm_lst_lock;
 LIST_HEAD(rm_dev_lst_head);
 
-static void
-rm_write64(struct rm_dev *rvu, u64 b, u64 s, u64 o, u64 v)
+static void rm_write64(struct rm_dev *rvu, u64 b, u64 s, u64 o, u64 v)
 {
 	writeq_relaxed(v, rvu->bar2 + ((b << 20) | (s << 12) | o));
 }
@@ -456,10 +455,6 @@ static void rm_pfvf_flr_handler(struct work_struct *work)
 	enable_af_mbox_int(rm->pdev);
 	idx = vf->vf_id / 64;
 	rm_write64(rm, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(idx),
-		   BIT_ULL(vf->intr_idx));
-
-	/* Re-enable ME interrupt as it gets cleared in HWVF_RST reset */
-	rm_write64(rm, BLKADDR_RVUM, 0, RVU_PF_VFME_INT_ENA_W1SX(idx),
 		   BIT_ULL(vf->intr_idx));
 }
 
@@ -1716,7 +1711,6 @@ static int mem_read(struct otx_mem *umem)
 {
 	struct otx_mem mem;
 	uint8_t *base;
-	int rc;
 
 	if (copy_from_user(&mem, umem, sizeof(struct otx_mem)))
 		return -EIO;
@@ -1725,8 +1719,42 @@ static int mem_read(struct otx_mem *umem)
 	if (base == NULL)
 		return -ENOMEM;
 
-	rc = copy_to_user(mem.buf, base, mem.nbytes);
-	iounmap(base);
+	return copy_to_user(mem.buf, base, mem.nbytes);
+}
+
+static int mem_readv(struct otx_memv *umemv)
+{
+	struct otx_memv memv;
+	struct otx_mem *mm;
+	uint8_t *base, *addr;
+	int i, rc = 0;
+
+	if (copy_from_user(&memv, umemv, sizeof(struct otx_memv)))
+		return -EIO;
+
+	mm = kcalloc(memv.msize, sizeof(struct otx_mem), GFP_KERNEL);
+	if (mm == NULL)
+		return -ENOMEM;
+
+	base = phys_to_virt(memv.pbase);
+	if (base == NULL) {
+		rc = -ENOMEM;
+		goto eexit;
+	}
+	for (i = 0; i < memv.msize; i++) {
+		if (copy_from_user(&mm[i], &memv.mm[i],
+				   sizeof(struct otx_mem))) {
+			rc = -EIO;
+			goto eexit;
+		}
+		addr = base + mm[i].pa;
+		if (copy_to_user(mm[i].buf, addr, mm[i].nbytes)) {
+			rc = -EIO;
+			goto eexit;
+		}
+	}
+eexit:
+	kfree(mm);
 	return rc;
 }
 
@@ -1737,6 +1765,9 @@ static ssize_t rm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 	case IOC_MEMREAD:
 		rc = mem_read((void *)arg);
+		break;
+	case IOC_MEMREADV:
+		rc = mem_readv((void *)arg);
 		break;
 	default:
 		return -EINVAL;

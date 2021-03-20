@@ -21,14 +21,22 @@
 
 /* MEM */
 struct otx_mem {
-	uint64_t pa; /* Phys.base address */
-	uint64_t nbytes; /* Number of bytes to read */
-	uint8_t  *buf; /* Buffer address for return memory values */
+	uint64_t pa; /* Phys.base address or offset from base address */
+	uint16_t nbytes; /* Number of bytes to read */
+	uint8_t *buf; /* Buffer address for return memory values */
+} __packed;
+
+/* MEMV */
+struct otx_memv {
+	uint64_t pbase; /* Base physical address */
+	uint16_t msize; /* Array of mem size */
+	struct otx_mem *mm; /* Array of mem */
 } __packed;
 
 /* OTXRM IOCTL commands/messages */
 #define IOC_TYPE	110
 
 #define IOC_MEMREAD     _IOWR(IOC_TYPE, 1, struct otx_mem *)
+#define IOC_MEMREADV    _IOWR(IOC_TYPE, 2, struct otx_memv *)
 
 #endif /* __OTXRMCMD_H__ */
