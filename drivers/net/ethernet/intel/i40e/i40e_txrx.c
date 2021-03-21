@@ -1399,7 +1399,15 @@ void i40e_free_rx_resources(struct i40e_ring *rx_ring)
 int i40e_setup_rx_descriptors(struct i40e_ring *rx_ring)
 {
 	struct device *dev = rx_ring->dev;
-	int err;
+	int err = -ENOMEM;
+	int bi_size;
+
+	/* warn if we are about to overwrite the pointer */
+	WARN_ON(rx_ring->rx_bi);
+	bi_size = sizeof(struct i40e_rx_buffer) * rx_ring->count;
+	rx_ring->rx_bi = kzalloc(bi_size, GFP_KERNEL);
+	if (!rx_ring->rx_bi)
+		goto err;
 
 	u64_stats_init(&rx_ring->syncp);
 
@@ -1430,6 +1438,10 @@ int i40e_setup_rx_descriptors(struct i40e_ring *rx_ring)
 	rx_ring->xdp_prog = rx_ring->vsi->xdp_prog;
 
 	return 0;
+err:
+	kfree(rx_ring->rx_bi);
+	rx_ring->rx_bi = NULL;
+	return err;
 }
 
 /**
