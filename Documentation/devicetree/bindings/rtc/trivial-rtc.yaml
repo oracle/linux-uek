@@ -22,6 +22,8 @@ properties:
     enum:
       # AB-RTCMC-32.768kHz-B5ZE-S3: Real Time Clock/Calendar Module with I2C Interface
       - abracon,abb5zes3
+      # AB-RTCMC-32.768kHz-EOA9: Real Time Clock/Calendar Module with SPI bus
+      - abracon,abeoa9
       # AB-RTCMC-32.768kHz-EOZ9: Real Time Clock/Calendar Module with I2C Interface
       - abracon,abeoz9
       # I2C, 32-Bit Binary Counter Watchdog RTC with Trickle Charger and Reset Input/Output
