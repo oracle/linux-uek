@@ -2003,7 +2003,8 @@ static int cm_req_handler(struct cm_work *work)
 	cm_id_priv->id.service_id = req_msg->service_id;
 	cm_id_priv->id.service_mask = ~cpu_to_be64(0);
 
-	cm_process_routed_req(req_msg, work->mad_recv_wc->wc);
+	if (cm_id_priv->av.ah_attr.type != RDMA_AH_ATTR_TYPE_ROCE)
+		cm_process_routed_req(req_msg, work->mad_recv_wc->wc);
 
 	memset(&work->path[0], 0, sizeof(work->path[0]));
 	if (cm_req_has_alt_path(req_msg))
