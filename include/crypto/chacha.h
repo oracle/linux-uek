@@ -96,4 +96,12 @@ static inline void chacha20_crypt(u32 *state, u8 *dst, const u8 *src,
 	chacha_crypt(state, dst, src, bytes, 20);
 }
 
+static inline void chacha_init_consts(u32 *state)
+{
+	state[0]  = 0x61707865; /* "expa" */
+	state[1]  = 0x3320646e; /* "nd 3" */
+	state[2]  = 0x79622d32; /* "2-by" */
+	state[3]  = 0x6b206574; /* "te k" */
+}
+
 #endif /* _CRYPTO_CHACHA_H */
