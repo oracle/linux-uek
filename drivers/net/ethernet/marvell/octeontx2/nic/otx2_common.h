@@ -875,6 +875,8 @@ int otx2_stop(struct net_device *netdev);
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues);
 int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind);
+int otx2_ioctl(struct net_device *netdev, struct ifreq *req, int cmd);
+int otx2_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr);
 
 /* MCAM filter related APIs */
 int otx2_mcam_flow_init(struct otx2_nic *pf);

@@ -11,9 +11,11 @@
 #include <linux/etherdevice.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/net_tstamp.h>
 
 #include "otx2_common.h"
 #include "otx2_reg.h"
+#include "otx2_ptp.h"
 #include "cn10k.h"
 
 #define DRV_NAME	"rvu_nicvf"
@@ -515,6 +517,7 @@ static const struct net_device_ops otx2vf_netdev_ops = {
 	.ndo_set_features = otx2vf_set_features,
 	.ndo_get_stats64 = otx2_get_stats64,
 	.ndo_tx_timeout = otx2_tx_timeout,
+	.ndo_do_ioctl	= otx2_ioctl,
 };
 
 static int otx2_wq_init(struct otx2_nic *vf)
@@ -664,6 +667,9 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return 0;
 	else if (err == -EINVAL)
 		goto err_detach_rsrc;
+
+	/* Don't check for error.  Proceed without ptp */
+	otx2_ptp_init(vf);
 
 	/* Assign default mac address */
 	otx2_get_mac_from_af(netdev);
