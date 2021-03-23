@@ -2645,11 +2645,11 @@ static void rvu_npa_lf_mapped_nix_lf_teardown(struct rvu *rvu, u16 pcifunc)
 
 static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 {
-	u16 *pcifunc_arr;
 	u16 sso_pcifunc, match_cnt = 0;
+	int npa_blkaddr, blkaddr, lf;
 	struct rvu_block *sso_block;
 	struct rsrc_detach detach;
-	int blkaddr, lf;
+	u16 *pcifunc_arr;
 	u64 regval;
 
 	pcifunc_arr = kcalloc(rvu->hw->total_pfs + rvu->hw->total_vfs,
@@ -2661,7 +2661,42 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 	if (blkaddr < 0)
 		return;
 
+	npa_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, 0);
+	if (blkaddr < 0)
+		return;
+
+	regval = BIT_ULL(16) | pcifunc;
+	rvu_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, regval);
+
 	sso_block = &rvu->hw->block[blkaddr];
+	for (lf = 0; lf < sso_block->lf.max; lf++) {
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
+		if ((regval & 0xFFFF) != pcifunc)
+			continue;
+
+		regval = rvu_read64(rvu, blkaddr, sso_block->lfcfg_reg |
+				    (lf << sso_block->lfshift));
+		rvu_sso_lf_drain_queues(rvu, sso_pcifunc, lf, regval & 0xF);
+
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
+		rvu_sso_deinit_xaq_aura(rvu, sso_pcifunc, pcifunc, regval, lf);
+	}
+
+	for (lf = 0; lf < sso_block->lf.max; lf++) {
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
+		if ((regval & 0xFFFF) != pcifunc)
+			continue;
+
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
+		if (rvu_sso_poll_aura_cnt(rvu, npa_blkaddr, regval))
+			dev_err(rvu->dev,
+				"[%d]Failed to free XAQs to aura[%lld]\n",
+				__LINE__, regval);
+
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf), 0);
+		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf), 0);
+	}
+
 	for (lf = 0; lf < sso_block->lf.max; lf++) {
 		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
 		if ((regval & 0xFFFF) != pcifunc)
@@ -2698,6 +2733,17 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 					block->addr);
 	if (!num_lfs)
 		return;
+
+	if (block->addr == BLKADDR_SSO) {
+		for (slot = 0; slot < num_lfs; slot++) {
+			lf = rvu_get_lf(rvu, block, pcifunc, slot);
+			if (lf < 0)
+				continue;
+			rvu_sso_lf_drain_queues(rvu, pcifunc, lf, slot);
+		}
+		rvu_sso_cleanup_xaq_aura(rvu, pcifunc, num_lfs);
+	}
+
 	for (slot = 0; slot < num_lfs; slot++) {
 		lf = rvu_get_lf(rvu, block, pcifunc, slot);
 		if (lf < 0)

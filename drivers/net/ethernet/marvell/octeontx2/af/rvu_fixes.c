@@ -338,7 +338,6 @@ static void rvu_nix_scan_txsch_hierarchy(struct rvu *rvu,
 
 #define TX_OCTS 4
 #define RVU_AF_BAR2_SEL			(0x9000000ull)
-#define RVU_AF_BAR2_ALIASX(a, b)	(0x9100000ull | (a) << 12 | (b))
 #define	NIX_LF_SQ_OP_OCTS		(0xa10)
 
 static bool is_sq_stalled(struct rvu *rvu, struct nix_hw *nix_hw, int smq)

@@ -55,6 +55,8 @@
 #define RVU_AF_SMMU_ADDR_TLN		    (0x6018)
 #define RVU_AF_SMMU_TLN_FLIT1		    (0x6030)
 
+#define RVU_AF_BAR2_ALIASX(a, b)	    (0x9100000ull | (a) << 12 | (b))
+
 /* Admin function's privileged PF/VF registers */
 #define RVU_PRIV_CONST                      (0x8000000)
 #define RVU_PRIV_GEN_CFG                    (0x8000010)
@@ -168,6 +170,9 @@
 #define NPA_PRIV_LFX_CFG		(0x10010)
 #define NPA_PRIV_LFX_INT_CFG		(0x10020)
 #define NPA_AF_RVU_LF_CFG_DEBUG         (0x10030)
+
+#define NPA_AF_BAR2_SEL			(0x9000000ull)
+#define NPA_AF_BAR2_ALIASX(a, b)	RVU_AF_BAR2_ALIASX(a, b)
 
 /* NIX block's admin function registers */
 #define NIX_AF_CFG			(0x0000)
@@ -584,6 +589,7 @@
 #define SSO_HWGRP_AW_CFG_LDT		BIT_ULL(2)
 #define SSO_HWGRP_AW_CFG_STT		BIT_ULL(3)
 #define SSO_HWGRP_AW_CFG_XAQ_BYP_DIS	BIT_ULL(4)
+#define SSO_HWGRP_AW_CFG_XAQ_ALLOC_DIS	BIT_ULL(6)
 
 #define SSO_HWGRP_AW_STS_TPTR_VLD	BIT_ULL(8)
 #define SSO_HWGRP_AW_STS_NPA_FETCH	BIT_ULL(9)
@@ -635,6 +641,12 @@
 #define SSOW_LF_GWS_TAG_PEND_DESCHED	BIT_ULL(58)
 #define SSOW_LF_GWS_TAG_PEND_SWITCH	BIT_ULL(62)
 #define SSOW_LF_GWS_TAG_PEND_GET_WORK	BIT_ULL(63)
+
+#define SSOW_AF_BAR2_SEL		(0x9000000ull)
+#define SSOW_AF_BAR2_ALIASX(a, b)	RVU_AF_BAR2_ALIASX(a, b)
+
+#define SSO_AF_BAR2_SEL			(0x9000000ull)
+#define SSO_AF_BAR2_ALIASX(a, b)	RVU_AF_BAR2_ALIASX(a, b)
 
 /* TIM */
 #define TIM_AF_CONST			(0x90)
@@ -735,7 +747,7 @@
 #define CPT_AF_X2PX_LINK_CFG(a)         (0x51000ull | (u64)(a) << 3)
 
 #define CPT_AF_BAR2_SEL                 0x9000000
-#define CPT_AF_BAR2_ALIASX(a, b)        AF_BAR2_ALIASX(a, b)
+#define CPT_AF_BAR2_ALIASX(a, b)        RVU_AF_BAR2_ALIASX(a, b)
 
 #define CPT_AF_LF_CTL2_SHIFT		3
 #define CPT_AF_LF_SSO_PF_FUNC_SHIFT	32
@@ -884,14 +896,6 @@
 		(0x00F00 | (a) << 5 | (b) << 4)
 #define NDC_AF_BANKX_HIT_PC(a)		(0x01000 | (a) << 3)
 #define NDC_AF_BANKX_MISS_PC(a)		(0x01100 | (a) << 3)
-
-#define AF_BAR2_ALIASX_SIZE		(0x100000ull)
-#define SSOW_AF_BAR2_SEL		(0x9000000ull)
-#define SSO_AF_BAR2_SEL			(0x9000000ull)
-
-#define AF_BAR2_ALIASX(a, b)		(0x9100000ull | (a) << 12 | b)
-#define SSOW_AF_BAR2_ALIASX(a, b)	AF_BAR2_ALIASX(a, b)
-#define SSO_AF_BAR2_ALIASX(a, b)	AF_BAR2_ALIASX(a, b)
 
 /* REE */
 #define REE_AF_CMD_CTL			(0x00ull)
