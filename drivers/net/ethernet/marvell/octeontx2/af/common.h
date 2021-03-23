@@ -204,8 +204,6 @@ enum nix_scheduler {
  */
 #define NIX_CHAN_CPT_X2P_MASK          (0x3ffull)
 
-#define SDP_CHANNELS			256
-
 /* NIX LSO format indices.
  * As of now TSO is the only one using, so statically assigning indices.
  */
