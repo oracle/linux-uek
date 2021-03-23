@@ -1,0 +1,36 @@
+arm/soc
+
+arm/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.13-tag1
+
+arm/drivers
+	drivers/tee
+		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-tracepoints-for-v5.13
+	renesas/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-drivers-for-v5.13-tag1
+
+arm/defconfig
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-defconfig-for-v5.13-tag1
+
+arm/newsoc
+
+arm/late
+
+arm/fixes
+	patch
+		MAINTAINERS: Update some st.com email addresses to foss.st.com
+		MAINTAINERS: Remove Vincent Abriou for STM/STI DRM drivers.
+		MAINTAINERS: Add Alain Volmat as STM32 I2C/SMBUS maintainer
+	<no branch> (b22ac48b0a4d74415beef10e49e434e8f228a2bf)
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.12/drivers-part2
+	<no branch> (effe89e40037038db7711bdab5d3401fe297d72c)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.12/fixes-rc1-signed
+	<no branch> (2c69c8a1736eace8de491d480e6e577a27c2087c)
+		git://git.kernel.org/pub/scm/linux/kernel/git/at91/linux tags/at91-fixes-5.12
+	<no branch> (e4817a1b6b77db538bc0141c3b138f2df803ce87)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-5.12
+
+arm/omap-genpd
+
