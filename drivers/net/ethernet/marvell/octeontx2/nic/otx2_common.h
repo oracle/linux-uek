@@ -398,6 +398,7 @@ struct otx2_nic {
 	u16			nix_lmt_lines;
 	u32			nix_lmt_size;
 	struct otx2_tc_info	tc_info;
+	unsigned long		rq_bmap;
 };
 
 static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
