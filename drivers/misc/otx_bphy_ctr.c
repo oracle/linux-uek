@@ -204,30 +204,10 @@ static void cleanup_el3_irqs(struct task_struct *task)
 					 i);
 		}
 	}
-
-	kfree(irq_installed);
-	kfree(irq_installed_threads);
-	kfree(irq_installed_tasks);
 }
 
 static int otx_dev_open(struct inode *inode, struct file *fp)
 {
-	struct arm_smccc_res res;
-
-	arm_smccc_smc(OCTEONTX_GET_BPHY_PSM_IRQS_BITMASK, 0,
-		      0, 0, 0, 0, 0, 0, &res);
-	bphy_irq_bmask = res.a0;
-
-	arm_smccc_smc(OCTEONTX_GET_BPHY_PSM_MAX_IRQ, 0,
-		      0, 0, 0, 0, 0, 0, &res);
-	bphy_max_irq = res.a0;
-
-	irq_installed = kcalloc(bphy_max_irq, sizeof(int), GFP_KERNEL);
-	irq_installed_threads = (struct thread_info **)
-		kcalloc(bphy_max_irq, sizeof(struct thread_info *), GFP_KERNEL);
-	irq_installed_tasks = (struct task_struct **)
-		kcalloc(bphy_max_irq, sizeof(struct task_struct *), GFP_KERNEL);
-
 	in_use = 1;
 	return 0;
 }
@@ -236,6 +216,7 @@ static int otx_dev_release(struct inode *inode, struct file *fp)
 {
 	if (in_use == 0)
 		return -EINVAL;
+
 	in_use = 0;
 	return 0;
 }
@@ -249,6 +230,7 @@ static const struct file_operations fops = {
 
 static int __init otx_ctr_dev_init(void)
 {
+	struct arm_smccc_res res;
 	int err = 0;
 
 	/* create a character device */
@@ -293,7 +275,26 @@ static int __init otx_ctr_dev_init(void)
 		goto cleanup_handler_err;
 	}
 
+	arm_smccc_smc(OCTEONTX_GET_BPHY_PSM_MAX_IRQ, 0,
+		      0, 0, 0, 0, 0, 0, &res);
+	bphy_max_irq = res.a0;
+
+	irq_installed = kcalloc(bphy_max_irq, sizeof(int), GFP_KERNEL);
+	irq_installed_threads = (struct thread_info **)
+		kcalloc(bphy_max_irq, sizeof(struct thread_info *), GFP_KERNEL);
+	irq_installed_tasks = (struct task_struct **)
+		kcalloc(bphy_max_irq, sizeof(struct task_struct *), GFP_KERNEL);
+	if (!irq_installed || !irq_installed_threads || !irq_installed_tasks) {
+		err = -ENOMEM;
+		goto alloc_err;
+	}
+
 	return err;
+
+alloc_err:
+	kfree(irq_installed);
+	kfree(irq_installed_threads);
+	kfree(irq_installed_tasks);
 
 device_create_err:
 	class_destroy(otx_class);
@@ -317,6 +318,10 @@ static void __exit otx_ctr_dev_exit(void)
 	unregister_chrdev_region(otx_dev, 1);
 
 	task_cleanup_handler_remove(cleanup_el3_irqs);
+
+	kfree(irq_installed);
+	kfree(irq_installed_threads);
+	kfree(irq_installed_tasks);
 }
 
 module_init(otx_ctr_dev_init);
