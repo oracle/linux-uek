@@ -14,6 +14,7 @@
  /* PCI device IDs */
 #define PCI_DEVID_OCTEONTX2_DPI_PF	0xA080
 #define PCI_DEVID_OCTEONTX2_DPI_VF	0xA081
+#define PCI_SUBDEVID_OCTEONTX3_DPI_PF	0xB900
 
 /* PCI BAR nos */
 #define PCI_DPI_PF_CFG_BAR		0
@@ -24,8 +25,13 @@
 #define DPI_VF_OFFSET(x)		(0x20000000 | 0x100000 * (x))
 
 /* MSI-X interrupts */
-#define DPI_VF_MSIX_COUNT		1
-#define DPI_MAX_REQQ_INT		8
+#define DPI_MAX_REQQ_INT ({				\
+	u32 val;					\
+	val = 8;					\
+	if (is_otx3_dpi(dpi))				\
+		val = 32;				\
+	val; })						\
+
 #define DPI_MAX_CC_INT			64
 
 /* MSI-X interrupt vectors indexes */
@@ -41,7 +47,7 @@
 #define DPI_PF_RAS_IDX			0xA8
 
 #define DPI_MAX_ENGINES			6
-#define DPI_MAX_VFS			8
+#define DPI_MAX_VFS			32
 
 /****************  Macros for register modification ************/
 #define DPI_DMA_IBUFF_CSIZE_CSIZE(x)		((x) & 0x1fff)
@@ -135,55 +141,117 @@
 #define DPI_DMAX_QRST(x)			(0x30ULL | ((x) << 11))
 #define DPI_DMAX_ERR_RSP_STATUS(x)		(0x38ULL | ((x) << 11))
 
-#define DPI_CSCLK_ACTIVE_PC			(0x4000ULL)
-#define DPI_CTL					(0x4010ULL)
-#define DPI_DMA_CONTROL				(0x4018ULL)
-#define DPI_DMA_ENGX_EN(x)			(0x4040ULL | ((x) << 3))
-#define DPI_REQ_ERR_RSP				(0x4078ULL)
-#define DPI_REQ_ERR_RSP_EN			(0x4088ULL)
-#define DPI_PKT_ERR_RSP				(0x4098ULL)
-#define DPI_NCB_CFG				(0x40A0ULL)
-#define DPI_BP_TEST0				(0x40B0ULL)
-#define DPI_ENGX_BUF(x)				(0x40C0ULL | ((x) << 3))
-#define DPI_EBUS_RECAL				(0x40F0ULL)
-#define DPI_EBUS_PORTX_CFG(x)			(0x4100ULL | ((x) << 3))
-#define DPI_EBUS_PORTX_SCFG(x)			(0x4180ULL | ((x) << 3))
-#define DPI_EBUS_PORTX_ERR_INFO(x)		(0x4200ULL | ((x) << 3))
-#define DPI_EBUS_PORTX_ERR(x)			(0x4280ULL | ((x) << 3))
-#define DPI_INFO_REG				(0x4300ULL)
-#define DPI_PF_RAS				(0x4308ULL)
-#define DPI_PF_RAS_W1S				(0x4310ULL)
-#define DPI_PF_RAS_ENA_W1C			(0x4318ULL)
-#define DPI_PF_RAS_ENA_W1S			(0x4320ULL)
-#define DPI_DMA_CCX_INT(x)			(0x5000ULL | ((x) << 3))
-#define DPI_DMA_CCX_INT_W1S(x)			(0x5400ULL | ((x) << 3))
-#define DPI_DMA_CCX_INT_ENA_W1C(x)		(0x5800ULL | ((x) << 3))
-#define DPI_DMA_CCX_INT_ENA_W1S(x)		(0x5C00ULL | ((x) << 3))
-#define DPI_DMA_CCX_CNT(x)			(0x6000ULL | ((x) << 3))
-#define DPI_REQQX_INT(x)			(0x6600ULL | ((x) << 3))
-#define DPI_REQQX_INT_W1S(x)			(0x6640ULL | ((x) << 3))
-#define DPI_REQQX_INT_ENA_W1C(x)		(0x6680ULL | ((x) << 3))
-#define DPI_REQQX_INT_ENA_W1S(x)		(0x66C0ULL | ((x) << 3))
-#define DPI_EPFX_DMA_VF_LINTX(x, y)		(0x6800ULL | ((x) << 5) |\
-								((y) << 4))
-#define DPI_EPFX_DMA_VF_LINTX_W1S(x, y)		(0x6A00ULL | ((x) << 5) |\
-								((y) << 4))
-#define DPI_EPFX_DMA_VF_LINTX_ENA_W1C(x, y)	(0x6C00ULL | ((x) << 5) |\
-								((y) << 4))
-#define DPI_EPFX_DMA_VF_LINTX_ENA_W1S(x, y)	(0x6E00ULL | ((x) << 5) |\
-								((y) << 4))
-#define DPI_EPFX_MISC_LINT(x)			(0x7000ULL | ((x) << 5))
-#define DPI_EPFX_MISC_LINT_W1S(x)		(0x7008ULL | ((x) << 5))
-#define DPI_EPFX_MISC_LINT_ENA_W1C(x)		(0x7010ULL | ((x) << 5))
-#define DPI_EPFX_MISC_LINT_ENA_W1S(x)		(0x7018ULL | ((x) << 5))
-#define DPI_EPFX_PP_VF_LINTX(x, y)		(0x7200ULL | ((x) << 5) |\
-								((y) << 4))
-#define DPI_EPFX_PP_VF_LINTX_W1S(x, y)		(0x7400ULL | ((x) << 5) |\
-								((y) << 4))
-#define DPI_EPFX_PP_VF_LINTX_ENA_W1C(x, y)	(0x7600ULL | ((x) << 5) |\
-								((y) << 4))
-#define DPI_EPFX_PP_VF_LINTX_ENA_W1S(x, y)	(0x7800ULL | ((x) << 5) |\
-								((y) << 4))
+#define DPI_CSCLK_ACTIVE_PC ({				\
+	u64 offset;					\
+							\
+	offset = (0x4000ULL);				\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10000ULL);			\
+	offset; })					\
+
+#define DPI_CTL ({					\
+	u64 offset;					\
+							\
+	offset = (0x4010ULL);				\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10010ULL);			\
+	offset; })					\
+
+#define DPI_DMA_CONTROL ({				\
+	u64 offset;					\
+							\
+	offset = (0x4018ULL);				\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10018ULL);			\
+	offset; })					\
+
+#define DPI_DMA_ENGX_EN(x) ({				\
+	u64 offset;					\
+							\
+	offset = (0x4040ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10040ULL | ((x) << 3));	\
+	offset; })					\
+
+#define DPI_ENGX_BUF(x)	({				\
+	u64 offset;					\
+							\
+	offset = (0x40C0ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x100C0ULL | ((x) << 3));	\
+	offset; })					\
+
+#define DPI_EBUS_PORTX_CFG(x) ({			\
+	u64 offset;					\
+							\
+	offset = (0x4100ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10100ULL | ((x) << 3));	\
+	offset; })					\
+
+#define DPI_PF_RAS ({					\
+	u64 offset;					\
+							\
+	offset = (0x4308ULL);				\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10308ULL);			\
+	offset; })					\
+
+#define DPI_PF_RAS_ENA_W1C ({				\
+	u64 offset;					\
+							\
+	offset = (0x4318ULL);				\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10318ULL);			\
+	offset; })					\
+
+#define DPI_PF_RAS_ENA_W1S ({				\
+	u64 offset;					\
+							\
+	offset = (0x4320ULL);				\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x10320ULL);			\
+	offset; })					\
+
+#define DPI_DMA_CCX_INT(x) ({				\
+	u64 offset;					\
+							\
+	offset = (0x5000ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x11000ULL | ((x) << 3));	\
+	offset; })					\
+
+#define DPI_DMA_CCX_INT_ENA_W1C(x) ({			\
+	u64 offset;					\
+							\
+	offset = (0x5800ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x11800ULL | ((x) << 3));	\
+	offset; })					\
+
+#define DPI_REQQX_INT(x) ({				\
+	u64 offset;					\
+							\
+	offset = (0x6600ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x12C00ULL | ((x) << 5));	\
+	offset; })					\
+
+#define DPI_REQQX_INT_ENA_W1C(x) ({			\
+	u64 offset;					\
+							\
+	offset = (0x6680ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x13800ULL | ((x) << 5));	\
+	offset; })					\
+
+#define DPI_REQQX_INT_ENA_W1S(x) ({			\
+	u64 offset;					\
+							\
+	offset = (0x66C0ULL | (x) << 3);		\
+	if (is_otx3_dpi(dpi))				\
+		offset = (0x13C00ULL | ((x) << 5));	\
+	offset; })					\
 
 #define DPI_EBUS_MRRS_MIN			128
 #define DPI_EBUS_MRRS_MAX			1024

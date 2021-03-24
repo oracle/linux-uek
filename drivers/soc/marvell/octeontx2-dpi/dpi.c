@@ -40,6 +40,14 @@ MODULE_DESCRIPTION(DPI_DRV_STRING);
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DPI_DRV_VERSION);
 
+static inline bool is_otx3_dpi(struct dpipf *dpi)
+{
+	if (dpi->pdev->subsystem_device >= PCI_SUBDEVID_OCTEONTX3_DPI_PF)
+		return 1;
+
+	return 0;
+}
+
 static void dpi_reg_write(struct dpipf *dpi, u64 offset, u64 val)
 {
 	writeq(val, dpi->reg_base + offset);
@@ -68,18 +76,20 @@ static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	dpi_reg_write(dpi, DPI_DMAX_IBUFF_CSIZE(queue),
 		      DPI_DMA_IBUFF_CSIZE_CSIZE((u64)(buf_size / 8)));
 
-	/* IDs are already configured while crating the domains.
-	 * No need to configure here.
-	 */
-	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
-		/* Dont configure the queus for PKT engines */
-		if (engine >= 4)
-			break;
+	if (!is_otx3_dpi(dpi)) {
+		/* IDs are already configured while creating the domains.
+		 * No need to configure here.
+		 */
+		for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
+			/* Dont configure the queus for PKT engines */
+			if (engine >= 4)
+				break;
 
-		reg = 0;
-		reg = dpi_reg_read(dpi, DPI_DMA_ENGX_EN(engine));
-		reg |= DPI_DMA_ENG_EN_QEN(0x1 << queue);
-		dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), reg);
+			reg = 0;
+			reg = dpi_reg_read(dpi, DPI_DMA_ENGX_EN(engine));
+			reg |= DPI_DMA_ENG_EN_QEN(0x1 << queue);
+			dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), reg);
+		}
 	}
 
 	reg = dpi_reg_read(dpi, DPI_DMAX_IDS2(queue));
@@ -151,13 +161,18 @@ static int dpi_init(struct dpipf *dpi)
 		 * When a VF is initialised corresponding bit
 		 * in the qmap will be set for all engines.
 		 */
-		dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), 0x0ULL);
+		if (!is_otx3_dpi(dpi))
+			dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), 0x0ULL);
 	}
 
 	reg = 0ULL;
 	reg =  (DPI_DMA_CONTROL_ZBWCSEN | DPI_DMA_CONTROL_PKT_EN |
-		DPI_DMA_CONTROL_LDWB | DPI_DMA_CONTROL_O_MODE |
-		DPI_DMA_CONTROL_DMA_ENB(0xfULL));
+		DPI_DMA_CONTROL_LDWB | DPI_DMA_CONTROL_O_MODE);
+
+	if (is_otx3_dpi(dpi))
+		reg |= DPI_DMA_CONTROL_DMA_ENB(0x3fULL);
+	else
+		reg |= DPI_DMA_CONTROL_DMA_ENB(0xfULL);
 
 	dpi_reg_write(dpi, DPI_DMA_CONTROL, reg);
 	dpi_reg_write(dpi, DPI_CTL, DPI_CTL_EN);
@@ -200,7 +215,8 @@ static int dpi_fini(struct dpipf *dpi)
 	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
 
 		dpi_reg_write(dpi, DPI_ENGX_BUF(engine), reg);
-		dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), 0x0ULL);
+		if (!is_otx3_dpi(dpi))
+			dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), 0x0ULL);
 	}
 
 	reg = 0ULL;
@@ -403,7 +419,7 @@ static ssize_t dpi_device_config_show(struct device *dev,
 	struct dpipf *dpi = pci_get_drvdata(pdev);
 	int vf_idx;
 
-	for (vf_idx = 0; vf_idx < DPI_MAX_VFS; vf_idx++) {
+	for (vf_idx = 0; vf_idx < dpi->total_vfs; vf_idx++) {
 		struct dpipf_vf *dpivf = &dpi->vf[vf_idx];
 
 		if (!dpivf->setup_done)
@@ -452,7 +468,7 @@ static int dpi_queue_config(struct pci_dev *pfdev,
 	struct dpipf *dpi = pci_get_drvdata(pfdev);
 	struct dpipf_vf *dpivf;
 
-	if (msg->s.vfid > DPI_MAX_VFS) {
+	if (msg->s.vfid > dpi->total_vfs) {
 		dev_err(dev, "Invalid vfid:%d\n", msg->s.vfid);
 		return -1;
 	}
@@ -476,7 +492,7 @@ static ssize_t dpi_device_config_store(struct device *dev,
 	struct dpipf_vf *dpivf;
 
 	memcpy(&mbox_msg, buf, count);
-	if (mbox_msg.s.vfid > DPI_MAX_VFS) {
+	if (mbox_msg.s.vfid > dpi->total_vfs) {
 		dev_err(dev, "Invalid vfid:%d\n", mbox_msg.s.vfid);
 		return -1;
 	}
