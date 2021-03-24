@@ -534,6 +534,13 @@ static int otx2_tc_add_flow(struct otx2_nic *nic,
 		return -ENOMEM;
 	new_node->cookie = tc_flow_cmd->cookie;
 
+	/* If a flow exists with the same cookie, delete it */
+	old_node = rhashtable_lookup_fast(&tc_info->flow_table,
+					  &tc_flow_cmd->cookie,
+					  tc_info->flow_ht_params);
+	if (old_node)
+		otx2_tc_del_flow(nic, tc_flow_cmd);
+
 	mutex_lock(&nic->mbox.lock);
 	req = otx2_mbox_alloc_msg_npc_install_flow(&nic->mbox);
 	if (!req) {
@@ -547,13 +554,6 @@ static int otx2_tc_add_flow(struct otx2_nic *nic,
 		mutex_unlock(&nic->mbox.lock);
 		return rc;
 	}
-
-	/* If a flow exists with the same cookie, delete it */
-	old_node = rhashtable_lookup_fast(&tc_info->flow_table,
-					  &tc_flow_cmd->cookie,
-					  tc_info->flow_ht_params);
-	if (old_node)
-		otx2_tc_del_flow(nic, tc_flow_cmd);
 
 	if (bitmap_full(tc_info->tc_entries_bitmap, nic->flow_cfg->tc_max_flows)) {
 		netdev_err(nic->netdev, "Not enough MCAM space to add the flow\n");
