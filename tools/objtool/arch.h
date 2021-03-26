@@ -82,4 +82,6 @@ unsigned long arch_jump_destination(struct instruction *insn);
 
 unsigned long arch_dest_reloc_offset(int addend);
 
+bool arch_is_retpoline(struct symbol *sym);
+
 #endif /* _ARCH_H */
