@@ -302,7 +302,10 @@ enum rvu_pfvf_flags {
 	NIXLF_INITIALIZED = 0,
 	PF_SET_VF_MAC,
 	PF_SET_VF_CFG,
+	PF_SET_VF_TRUSTED,
 };
+
+#define RVU_CLEAR_VF_PERM  ~GENMASK(PF_SET_VF_TRUSTED, PF_SET_VF_MAC)
 
 struct nix_txsch {
 	struct rsrc_bmap schq;

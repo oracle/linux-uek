@@ -3503,10 +3503,11 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 
-	/* VF can't overwrite admin(PF) changes */
-	if (from_vf && test_bit(PF_SET_VF_MAC, &pfvf->flags)) {
+	/* untrusted VF can't overwrite admin(PF) changes */
+	if (!test_bit(PF_SET_VF_TRUSTED, &pfvf->flags) &&
+	    (from_vf && test_bit(PF_SET_VF_MAC, &pfvf->flags))) {
 		dev_warn(rvu->dev,
-			 "MAC address set by admin(PF) cannot be overwritten by VF");
+			 "MAC address set by admin(PF) cannot be overwritten by untrusted VF");
 		return -EPERM;
 	}
 
@@ -3514,6 +3515,9 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 
 	rvu_npc_install_ucast_entry(rvu, pcifunc, nixlf,
 				    pfvf->rx_chan_base, req->mac_addr);
+
+	if (test_bit(PF_SET_VF_TRUSTED, &pfvf->flags) && from_vf)
+		ether_addr_copy(pfvf->default_mac, req->mac_addr);
 
 	rvu_switch_update_rules(rvu, pcifunc);
 
