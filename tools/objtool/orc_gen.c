@@ -146,9 +146,6 @@ int create_orc_sections(struct objtool_file *file)
 	if (!sec)
 		return -1;
 
-	if (!elf_create_reloc_section(file->elf, sec, SHT_RELA))
-		return -1;
-
 	/* create .orc_unwind section */
 	u_sec = elf_create_section(file->elf, ".orc_unwind",
 				   sizeof(struct orc_entry), idx);
