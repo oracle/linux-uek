@@ -2891,12 +2891,12 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 	if (!numvfs)
 		return 0;
 
-	pci_disable_sriov(pdev);
-
 	for (i = 0; i < pci_num_vf(pdev); i++) {
 		cancel_delayed_work_sync(&pf->vf_configs[i].link_event_work);
 		cancel_delayed_work_sync(&pf->vf_configs[i].ptp_info_work);
 	}
+
+	pci_disable_sriov(pdev);
 	kfree(pf->vf_configs);
 
 	otx2_disable_flr_me_intr(pf);
