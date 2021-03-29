@@ -1602,12 +1602,14 @@ qla24xx_start_scsi(srb_t *sp)
 	uint16_t	req_cnt;
 	uint16_t	tot_dsds;
 	struct req_que *req = NULL;
+	struct rsp_que *rsp;
 	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
 	struct scsi_qla_host *vha = sp->vha;
 	struct qla_hw_data *ha = vha->hw;
 
 	/* Setup device pointers. */
 	req = vha->req;
+	rsp = req->rsp;
 
 	/* So we know we haven't pci_map'ed anything yet */
 	tot_dsds = 0;
@@ -1708,6 +1710,11 @@ qla24xx_start_scsi(srb_t *sp)
 
 	/* Set chip new ring index. */
 	wrt_reg_dword(req->req_q_in, req->ring_index);
+
+	/* Manage unprocessed RIO/ZIO commands in response queue. */
+	if (vha->flags.process_response_queue &&
+	    rsp->ring_ptr->signature != RESPONSE_PROCESSED)
+		qla24xx_process_response_queue(vha, rsp);
 
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	return QLA_SUCCESS;
@@ -1899,6 +1906,11 @@ qla24xx_dif_start_scsi(srb_t *sp)
 	/* Set chip new ring index. */
 	wrt_reg_dword(req->req_q_in, req->ring_index);
 
+	/* Manage unprocessed RIO/ZIO commands in response queue. */
+	if (vha->flags.process_response_queue &&
+	    rsp->ring_ptr->signature != RESPONSE_PROCESSED)
+		qla24xx_process_response_queue(vha, rsp);
+
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	return QLA_SUCCESS;
@@ -1933,6 +1945,7 @@ qla2xxx_start_scsi_mq(srb_t *sp)
 	uint16_t	req_cnt;
 	uint16_t	tot_dsds;
 	struct req_que *req = NULL;
+	struct rsp_que *rsp;
 	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
 	struct scsi_qla_host *vha = sp->fcport->vha;
 	struct qla_hw_data *ha = vha->hw;
@@ -1943,6 +1956,7 @@ qla2xxx_start_scsi_mq(srb_t *sp)
 
 	/* Setup qpair pointers */
 	req = qpair->req;
+	rsp = qpair->rsp;
 
 	/* So we know we haven't pci_map'ed anything yet */
 	tot_dsds = 0;
@@ -2042,6 +2056,11 @@ qla2xxx_start_scsi_mq(srb_t *sp)
 
 	/* Set chip new ring index. */
 	wrt_reg_dword(req->req_q_in, req->ring_index);
+
+	/* Manage unprocessed RIO/ZIO commands in response queue. */
+	if (vha->flags.process_response_queue &&
+	    rsp->ring_ptr->signature != RESPONSE_PROCESSED)
+		qla24xx_process_response_queue(vha, rsp);
 
 	spin_unlock_irqrestore(&qpair->qp_lock, flags);
 	return QLA_SUCCESS;
