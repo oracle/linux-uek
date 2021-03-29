@@ -103,7 +103,7 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 	int		rval, i;
 	unsigned long    flags = 0;
 	device_reg_t *reg;
-	uint8_t		abort_active;
+	uint8_t		abort_active, eeh_delay;
 	uint8_t		io_lock_on;
 	uint16_t	command = 0;
 	uint16_t	*iptr;
@@ -137,7 +137,7 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		    "PCI error, exiting.\n");
 		return QLA_FUNCTION_TIMEOUT;
 	}
-
+	eeh_delay = 0;
 	reg = ha->iobase;
 	io_lock_on = base_vha->flags.init_done;
 
@@ -160,11 +160,10 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 	}
 
 	/* check if ISP abort is active and return cmd with timeout */
-	if ((test_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags) ||
-	    test_bit(ISP_ABORT_RETRY, &base_vha->dpc_flags) ||
-	    test_bit(ISP_ABORT_NEEDED, &base_vha->dpc_flags) ||
-	    ha->flags.eeh_busy) &&
-	    !is_rom_cmd(mcp->mb[0])) {
+	if (((test_bit(ABORT_ISP_ACTIVE, &base_vha->dpc_flags) ||
+	      test_bit(ISP_ABORT_RETRY, &base_vha->dpc_flags) ||
+	      test_bit(ISP_ABORT_NEEDED, &base_vha->dpc_flags)) &&
+	      !is_rom_cmd(mcp->mb[0])) || ha->flags.eeh_busy) {
 		ql_log(ql_log_info, vha, 0x1005,
 		    "Cmd 0x%x aborted with timeout since ISP Abort is pending\n",
 		    mcp->mb[0]);
@@ -187,7 +186,11 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		return QLA_FUNCTION_TIMEOUT;
 	}
 	atomic_dec(&ha->num_pend_mbx_stage1);
-	if (ha->flags.purge_mbox || chip_reset != ha->chip_reset) {
+	if (ha->flags.purge_mbox || chip_reset != ha->chip_reset ||
+	    ha->flags.eeh_busy) {
+		ql_log(ql_log_warn, vha, 0xd035,
+		       "Error detected: purge[%d] eeh[%d] cmd=0x%x, Exiting.\n",
+		       ha->flags.purge_mbox, ha->flags.eeh_busy, mcp->mb[0]);
 		rval = QLA_ABORTED;
 		goto premature_exit;
 	}
@@ -267,6 +270,8 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		if (!wait_for_completion_timeout(&ha->mbx_intr_comp,
 		    mcp->tov * HZ)) {
 			if (chip_reset != ha->chip_reset) {
+				eeh_delay = ha->flags.eeh_busy ? 1 : 0;
+
 				spin_lock_irqsave(&ha->hardware_lock, flags);
 				ha->flags.mbox_busy = 0;
 				spin_unlock_irqrestore(&ha->hardware_lock,
@@ -284,6 +289,8 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 
 		} else if (ha->flags.purge_mbox ||
 		    chip_reset != ha->chip_reset) {
+			eeh_delay = ha->flags.eeh_busy ? 1 : 0;
+
 			spin_lock_irqsave(&ha->hardware_lock, flags);
 			ha->flags.mbox_busy = 0;
 			spin_unlock_irqrestore(&ha->hardware_lock, flags);
@@ -325,6 +332,8 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		while (!ha->flags.mbox_int) {
 			if (ha->flags.purge_mbox ||
 			    chip_reset != ha->chip_reset) {
+				eeh_delay = ha->flags.eeh_busy ? 1 : 0;
+
 				spin_lock_irqsave(&ha->hardware_lock, flags);
 				ha->flags.mbox_busy = 0;
 				spin_unlock_irqrestore(&ha->hardware_lock,
@@ -533,7 +542,8 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 				clear_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
 				/* Allow next mbx cmd to come in. */
 				complete(&ha->mbx_cmd_comp);
-				if (ha->isp_ops->abort_isp(vha)) {
+				if (ha->isp_ops->abort_isp(vha) &&
+				    !ha->flags.eeh_busy) {
 					/* Failed. retry later. */
 					set_bit(ISP_ABORT_NEEDED,
 					    &vha->dpc_flags);
@@ -586,6 +596,17 @@ mbx_done:
 		ql_dbg(ql_dbg_mbx, base_vha, 0x1021, "Done %s.\n", __func__);
 	}
 
+	i = 500;
+	while (i && eeh_delay && (ha->pci_error_state < QLA_PCI_SLOT_RESET)) {
+		/*
+		 * The caller of this mailbox encounter pci error.
+		 * Hold the thread until PCIE link reset complete to make
+		 * sure caller does not unmap dma while recovery is
+		 * in progress.
+		 */
+		msleep(1);
+		i--;
+	}
 	return rval;
 }
 
