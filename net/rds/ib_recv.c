@@ -508,11 +508,6 @@ out:
 
 
 
-static int acquire_refill(struct rds_connection *conn)
-{
-	return test_and_set_bit(RDS_RECV_REFILL, &conn->c_flags) == 0;
-}
-
 static void release_refill(struct rds_connection *conn)
 {
 	clear_bit(RDS_RECV_REFILL, &conn->c_flags);
@@ -537,7 +532,7 @@ static void release_refill(struct rds_connection *conn)
  *
  * -1 is returned if posting fails due to temporary resource exhaustion.
  */
-void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
+void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_recv_work *recv;
@@ -556,14 +551,6 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 	int ring_low = 0;
 	int ring_empty = 0;
 	u32 pos;
-
-	/*
-	 * the goal here is to just make sure that someone, somewhere
-	 * is posting buffers.  If we can't get the refill lock,
-	 * let them do their thing
-	 */
-	if (!acquire_refill(conn))
-		return;
 
 	ring_low = rds_ib_ring_low(&ic->i_recv_ring);
 	ring_empty = rds_ib_ring_empty(&ic->i_recv_ring);
@@ -1413,8 +1400,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 				mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
 		}
 
-		rds_ib_recv_refill(conn, 0, GFP_NOWAIT);
-		rds_ib_stats_inc(s_ib_rx_refill_from_cq);
+		RDS_IB_RECV_REFILL(conn, 0, GFP_NOWAIT, s_ib_rx_refill_from_cq);
 	} else {
 		recv->r_ic = ic;
 		recv->r_posted = 0;
@@ -1546,8 +1532,7 @@ int rds_ib_recv_path(struct rds_conn_path *cp)
 	rdsdebug("conn %p\n", conn);
 	if (!rds_ib_srq_enabled && rds_conn_up(conn)) {
 		rds_ib_attempt_ack(ic);
-		rds_ib_recv_refill(conn, 0, GFP_KERNEL);
-		rds_ib_stats_inc(s_ib_rx_refill_from_thread);
+		RDS_IB_RECV_REFILL(conn, 0, GFP_KERNEL, s_ib_rx_refill_from_thread);
 	}
 
 	return ret;
