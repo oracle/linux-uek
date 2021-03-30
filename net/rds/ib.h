@@ -512,6 +512,7 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_rx_refill_from_cm;
 	uint64_t	s_ib_rx_refill_from_cq;
 	uint64_t	s_ib_rx_refill_from_thread;
+	uint64_t	s_ib_rx_refill_lock_taken;
 	uint64_t        s_ib_rx_alloc_limit;
 	uint64_t        s_ib_rx_total_frags;
 	uint64_t        s_ib_rx_total_incs;
@@ -701,7 +702,7 @@ int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic, gfp_t gfp);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent);
-void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
+void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
 void rds_ib_inc_free(struct rds_incoming *inc);
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
 void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
@@ -717,6 +718,24 @@ u64 rds_ib_piggyb_ack(struct rds_ib_connection *ic);
 void rds_ib_srq_refill(struct work_struct *work);
 void rds_ib_srq_rearm(struct work_struct *work);
 void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq, int ack_required);
+static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
+{
+	return test_and_set_bit(RDS_RECV_REFILL, &conn->c_flags) == 0;
+}
+
+/* The goal here is to just make sure that someone, somewhere
+ * is posting buffers.  If we can't get the refill lock,
+ * let them do their thing
+ */
+#define RDS_IB_RECV_REFILL(conn, prefill, gfp, where) do {	\
+	struct rds_connection *c = (conn);			\
+	if (rds_ib_recv_acquire_refill(c)) {			\
+		rds_ib_stats_inc(where);			\
+		__rds_ib_recv_refill(c, prefill, gfp);		\
+	} else {						\
+		rds_ib_stats_inc(s_ib_rx_refill_lock_taken);	\
+	}							\
+} while (false)
 
 /* ib_ring.c */
 void rds_ib_ring_init(struct rds_ib_work_ring *ring, u32 nr);
