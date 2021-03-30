@@ -24,13 +24,35 @@
 struct cn10k_rng {
 	void __iomem *reg_base;
 	struct hwrng ops;
+	struct pci_dev *pdev;
 };
+
+static int check_rng_health(struct cn10k_rng *rng)
+{
+	u64 status;
+
+	/* Skip checking health */
+	if (!rng->reg_base)
+		return 0;
+
+	status = readq(rng->reg_base + RNM_PF_EBG_HEALTH);
+	if (status & BIT_ULL(20)) {
+		dev_err(&rng->pdev->dev, "HWRNG: Continuous health test failed\n");
+		return -EIO;
+	}
+	return 0;
+}
 
 static int cn10k_rng_read(struct hwrng *hwrng, void *data,
 			  size_t max, bool wait)
 {
 	struct cn10k_rng *rng = (struct cn10k_rng *)hwrng->priv;
 	unsigned int size = max;
+	int err = 0;
+
+	err = check_rng_health(rng);
+	if (err)
+		return err;
 
 	while (size >= 8) {
 		*((u64 *)data) = readq(rng->reg_base + RNM_PF_RANDOM);
@@ -54,6 +76,7 @@ static int cn10k_rng_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!rng)
 		return -ENOMEM;
 
+	rng->pdev = pdev;
 	pci_set_drvdata(pdev, rng);
 
 	rng->reg_base = pcim_iomap(pdev, 0, 0);
