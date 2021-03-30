@@ -28,7 +28,7 @@
 
 # Script Input #4: Runtime MLE PCR Values
 #
-# The runtime MLE must run once first, read PCRs 17 and 18 and write them to
+# The runtime MLE must run once first, read PCRs 17, 18 and 19 and write them to
 # a file.
 
 # Script Input #5: LUKS key
@@ -80,17 +80,18 @@ tpm_provision_policy_pubkey()
 
 tpm_seal_secrets()
 {
-    local pcrs_file=$1
-    local secrets_file=$2
-    local persist_handle=$3
+    local pcrs_list=$1
+    local pcrs_file=$2
+    local secrets_file=$3
+    local persist_handle=$4
 
     # Create a root key as parent for sealing context
     tpm2_createprimary -T device -C o -P $OWNER_AUTH -g sha256 -G rsa -c sealing-key.ctx
 
     # Create the policy object
     tpm2_startauthsession -T device -S trial-session.dat
-
-    tpm2_policypcr -T device -S trial-session.dat -l "sha256:17,18" -f $pcrs_file -L mle-policy.dat
+    
+    tpm2_policypcr -T device -S trial-session.dat -l "sha256:$pcrs_list" -f $pcrs_file -L mle-policy.dat
 
     # Now mle-policy.dat is our policy object
 
@@ -111,7 +112,7 @@ tpm_seal_secrets()
 
     # Return value should be requested persistent-handle: 0x8100000x
     if [ ! -z "`echo $MGMT_EVICT_RESULT | grep $persist_handle`" ]; then
-        echo "Sealed data to PCRs 17 and 18 in the TPM, provisioning successful"
+        echo "Provising successful. Sealed data to PCRs: $pcrs_list"
     else
         echo "Provisioning failed persisting sealing context, invalid handle"
         exit 1
@@ -130,6 +131,9 @@ MGMT_AUTH_PERSIST_HANDLE=0x81000004
 RT_POLICY_INDEX=0x01800180
 RT_PERSIST_HANDLE=0x81000000
 
+MGMT_SEAL_PCRS="17,18,19"
+RT_SEAL_PCRS="17,18,19"
+
 if [ $# -ne 5 ]; then
 	usage
 fi
@@ -142,12 +146,12 @@ tpm_provision_policy_pubkey "$MGMT_PUBKEY_FILE" "$MGMT_POLICY_INDEX"
 echo "Provisioned management policy NVRAM index"
 
 # Sealing management key secret
-tpm_seal_secrets "$MGMT_PCRS_FILE" "$LUKS_KEY" "$MGMT_KEY_PERSIST_HANDLE"
+tpm_seal_secrets $MGMT_SEAL_PCRS "$MGMT_PCRS_FILE" "$LUKS_KEY" "$MGMT_KEY_PERSIST_HANDLE"
 echo "Sealed management LUKS key secret"
 
 # Sealing management owner auth secret
 echo $OWNER_AUTH | cut -c 5- | xxd -r -p > mgmt-tmp.bin
-tpm_seal_secrets "$MGMT_PCRS_FILE" "mgmt-tmp.bin" "$MGMT_AUTH_PERSIST_HANDLE"
+tpm_seal_secrets $MGMT_SEAL_PCRS "$MGMT_PCRS_FILE" "mgmt-tmp.bin" "$MGMT_AUTH_PERSIST_HANDLE"
 rm -f mgmt-tmp.bin
 echo "Sealed management owner auth secret"
 
@@ -156,5 +160,5 @@ tpm_provision_policy_pubkey "$RT_PUBKEY_FILE" "$RT_POLICY_INDEX"
 echo "Provisioned runtime policy NVRAM index"
 
 # Sealing runtime key secret
-tpm_seal_secrets "$RT_PCRS_FILE" "$LUKS_KEY" "$RT_PERSIST_HANDLE"
+tpm_seal_secrets $RT_SEAL_PCRS "$RT_PCRS_FILE" "$LUKS_KEY" "$RT_PERSIST_HANDLE"
 echo "Sealed runtime LUKS key secret"
