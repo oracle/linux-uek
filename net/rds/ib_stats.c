@@ -55,6 +55,7 @@ static char *rds_ib_stat_names[] = {
 	"ib_rx_refill_from_cm",
 	"ib_rx_refill_from_cq",
 	"ib_rx_refill_from_thread",
+	"ib_rx_refill_lock_taken",
 	"ib_rx_alloc_limit",
 	"ib_rx_total_frags",
 	"ib_rx_total_incs",
