@@ -262,7 +262,7 @@ static void __up_console_sem(unsigned long ip)
  * definitely not the perfect debug tool (we don't know if _WE_
  * hold it and are racing, but it helps tracking those weird code
  * paths in the console code where we end up in places I want
- * locked without the console sempahore held).
+ * locked without the console semaphore held).
  */
 static int console_locked, console_suspended;
 
@@ -2180,12 +2180,6 @@ asmlinkage int vprintk_emit(int facility, int level,
 }
 EXPORT_SYMBOL(vprintk_emit);
 
-asmlinkage int vprintk(const char *fmt, va_list args)
-{
-	return vprintk_func(fmt, args);
-}
-EXPORT_SYMBOL(vprintk);
-
 int vprintk_default(const char *fmt, va_list args)
 {
 	return vprintk_emit(0, LOGLEVEL_DEFAULT, NULL, fmt, args);
@@ -2219,7 +2213,7 @@ asmlinkage __visible int printk(const char *fmt, ...)
 	int r;
 
 	va_start(args, fmt);
-	r = vprintk_func(fmt, args);
+	r = vprintk(fmt, args);
 	va_end(args);
 
 	return r;
@@ -2337,7 +2331,7 @@ static int __init console_setup(char *str)
 	/*
 	 * console="" or console=null have been suggested as a way to
 	 * disable console output. Use ttynull that has been created
-	 * for exacly this purpose.
+	 * for exactly this purpose.
 	 */
 	if (str[0] == 0 || strcmp(str, "null") == 0) {
 		__add_preferred_console("ttynull", 0, NULL, NULL, true);
@@ -3112,7 +3106,7 @@ void __init console_init(void)
  *
  * To mitigate this problem somewhat, only unregister consoles whose memory
  * intersects with the init section. Note that all other boot consoles will
- * get unregistred when the real preferred console is registered.
+ * get unregistered when the real preferred console is registered.
  */
 static int __init printk_late_init(void)
 {
