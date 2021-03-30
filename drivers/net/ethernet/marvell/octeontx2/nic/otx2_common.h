@@ -245,6 +245,11 @@ struct vfvlan {
 	u8 qos;
 };
 
+enum vfperm {
+	OTX2_RESET_VF_PERM,
+	OTX2_TRUSTED_VF,
+};
+
 struct otx2_vf_config {
 	struct otx2_nic *pf;
 	struct delayed_work link_event_work;
@@ -254,6 +259,7 @@ struct otx2_vf_config {
 	u16 vlan;
 	int tx_vtag_idx;
 	struct vfvlan rule;
+	bool trusted;
 };
 
 struct flr_work {

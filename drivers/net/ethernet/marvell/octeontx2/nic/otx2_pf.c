@@ -2337,6 +2337,7 @@ static int otx2_get_vf_config(struct net_device *netdev, int vf,
 	ivi->vf = vf;
 	ether_addr_copy(ivi->mac, config->mac);
 	ivi->vlan = config->vlan;
+	ivi->trusted = config->trusted;
 
 	return 0;
 }
@@ -2447,6 +2448,58 @@ static int otx2_xdp(struct net_device *netdev, struct netdev_bpf *xdp)
 	}
 }
 
+static int otx2_set_vf_permissions(struct otx2_nic *pf, int vf,
+				   int req_perm)
+{
+	struct set_vf_perm *req;
+	int rc;
+
+	mutex_lock(&pf->mbox.lock);
+	req = otx2_mbox_alloc_msg_set_vf_perm(&pf->mbox);
+	if (!req) {
+		rc = -ENOMEM;
+		goto out;
+	}
+
+	/* Let AF reset VF permissions as sriov is disabled */
+	if (req_perm == OTX2_RESET_VF_PERM) {
+		req->flags |= RESET_VF_PERM;
+	} else if (req_perm == OTX2_TRUSTED_VF) {
+		if (pf->vf_configs[vf].trusted)
+			req->flags |= VF_TRUSTED;
+	}
+
+	req->vf = vf;
+	rc = otx2_sync_mbox_msg(&pf->mbox);
+out:
+	mutex_unlock(&pf->mbox.lock);
+	return rc;
+}
+
+static int otx2_ndo_set_vf_trust(struct net_device *netdev, int vf,
+				 bool enable)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct pci_dev *pdev = pf->pdev;
+	int rc;
+
+	if (vf >= pci_num_vf(pdev))
+		return -EINVAL;
+
+	if (pf->vf_configs[vf].trusted == enable)
+		return 0;
+
+	pf->vf_configs[vf].trusted = enable;
+	rc = otx2_set_vf_permissions(pf, vf, OTX2_TRUSTED_VF);
+
+	if (rc)
+		pf->vf_configs[vf].trusted = !enable;
+	else
+		netdev_info(pf->netdev, "VF %d is %strusted\n",
+			    vf, enable ? "" : "not ");
+	return rc;
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
@@ -2465,6 +2518,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_bpf		= otx2_xdp,
 	.ndo_xdp_xmit           = otx2_xdp_xmit,
 	.ndo_setup_tc		= otx2_setup_tc,
+	.ndo_set_vf_trust	= otx2_ndo_set_vf_trust,
 };
 
 static int otx2_wq_init(struct otx2_nic *pf)
@@ -2849,6 +2903,7 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 	for (i = 0; i < numvfs; i++) {
 		pf->vf_configs[i].pf = pf;
 		pf->vf_configs[i].intf_down = true;
+		pf->vf_configs[i].trusted = false;
 		INIT_DELAYED_WORK(&pf->vf_configs[i].link_event_work,
 				  otx2_vf_link_event_task);
 		INIT_DELAYED_WORK(&pf->vf_configs[i].ptp_info_work,
@@ -2894,6 +2949,7 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 	for (i = 0; i < pci_num_vf(pdev); i++) {
 		cancel_delayed_work_sync(&pf->vf_configs[i].link_event_work);
 		cancel_delayed_work_sync(&pf->vf_configs[i].ptp_info_work);
+		otx2_set_vf_permissions(pf, i, OTX2_RESET_VF_PERM);
 	}
 
 	pci_disable_sriov(pdev);
