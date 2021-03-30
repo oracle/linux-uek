@@ -394,6 +394,7 @@ MODULE_DEVICE_TABLE(of, gpio_sim_of_match);
 static struct platform_driver gpio_sim_driver = {
 	.driver = {
 		.name = "gpio-sim",
+		.of_match_table = gpio_sim_of_match,
 	},
 	.probe = gpio_sim_probe,
 };
