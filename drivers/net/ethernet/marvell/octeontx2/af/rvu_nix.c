@@ -3504,7 +3504,7 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 
 	/* VF can't overwrite admin(PF) changes */
-	if (from_vf && pfvf->pf_set_vf_cfg) {
+	if (from_vf && test_bit(PF_SET_VF_MAC, &pfvf->flags)) {
 		dev_warn(rvu->dev,
 			 "MAC address set by admin(PF) cannot be overwritten by VF");
 		return -EPERM;

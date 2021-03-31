@@ -1121,9 +1121,11 @@ find_rule:
 	if (pf_set_vfs_mac) {
 		ether_addr_copy(pfvf->default_mac, req->packet.dmac);
 		ether_addr_copy(pfvf->mac_addr, req->packet.dmac);
+		set_bit(PF_SET_VF_MAC, &pfvf->flags);
 	}
 
-	if (pfvf->pf_set_vf_cfg && req->vtag0_type == NIX_AF_LFX_RX_VTAG_TYPE7)
+	if (test_bit(PF_SET_VF_CFG, &pfvf->flags) &&
+	    req->vtag0_type == NIX_AF_LFX_RX_VTAG_TYPE7)
 		rule->vfvlan_cfg = true;
 
 	if (is_npc_intf_rx(req->intf) && req->match_id &&
@@ -1192,7 +1194,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 
 	/* PF installing for its VF */
 	if (req->hdr.pcifunc && !from_vf && req->vf)
-		pfvf->pf_set_vf_cfg = 1;
+		set_bit(PF_SET_VF_CFG, &pfvf->flags);
 
 	/* update req destination mac addr */
 	if ((req->features & BIT_ULL(NPC_DMAC)) &&
