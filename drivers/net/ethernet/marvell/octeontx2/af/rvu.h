@@ -272,7 +272,6 @@ struct rvu_pfvf {
 	u16		minlen;
 
 	bool		hw_rx_tstamp_en; /* Is rx_tstamp enabled */
-	u8		pf_set_vf_cfg;
 	u8		mac_addr[ETH_ALEN]; /* MAC address of this PF/VF */
 	u8		default_mac[ETH_ALEN]; /* MAC address from FWdata */
 
@@ -301,6 +300,8 @@ struct rvu_pfvf {
 
 enum rvu_pfvf_flags {
 	NIXLF_INITIALIZED = 0,
+	PF_SET_VF_MAC,
+	PF_SET_VF_CFG,
 };
 
 struct nix_txsch {
