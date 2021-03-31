@@ -120,31 +120,6 @@ static void rds_ib_set_flow_control(struct rds_connection *conn, u32 credits)
 	}
 }
 
-/*
- * Tune RNR behavior. Without flow control, we use a rather
- * low timeout, but not the absolute minimum - this should
- * be tunable.
- *
- * We already set the RNR retry count to 7 (which is the
- * smallest infinite number :-) above.
- * If flow control is off, we want to change this back to 0
- * so that we learn quickly when our credit accounting is
- * buggy.
- *
- * Caller passes in a qp_attr pointer - don't waste stack spacv
- * by allocation this twice.
- */
-static void
-rds_ib_tune_rnr(struct rds_ib_connection *ic, struct ib_qp_attr *attr)
-{
-	int ret;
-
-	attr->min_rnr_timer = IB_RNR_TIMER_000_32;
-	ret = ib_modify_qp(ic->i_cm_id->qp, attr, IB_QP_MIN_RNR_TIMER);
-	if (ret)
-		printk(KERN_NOTICE "ib_modify_qp(IB_QP_MIN_RNR_TIMER): err=%d\n", -ret);
-}
-
 static inline u16 rds_ib_get_frag(unsigned int version, u16 ib_frag)
 {
 	u16 frag = RDS_FRAG_SIZE;
@@ -270,7 +245,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	const union rds_ib_conn_priv *dp = NULL;
-	struct ib_qp_attr qp_attr;
 	__be16 frag_sz = 0;
 	__be64 ack_seq = 0;
 	__be32 credit = 0;
@@ -351,14 +325,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 * the posted credit count. */
 	if (!rds_ib_srq_enabled)
 		RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
-
-	/* Tune RNR behavior */
-	rds_ib_tune_rnr(ic, &qp_attr);
-
-	qp_attr.qp_state = IB_QPS_RTS;
-	err = ib_modify_qp(ic->i_cm_id->qp, &qp_attr, IB_QP_STATE);
-	if (err)
-		printk(KERN_NOTICE "ib_modify_qp(IB_QP_STATE, RTS): err=%d\n", err);
 
 	/* update ib_device with this local ipaddr */
 	err = rds_ib_update_ipaddr(ic->rds_ibdev, &conn->c_laddr);
@@ -1528,6 +1494,8 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 	if (rds_ib_sysctl_local_ack_timeout &&
 	    rdma_port_get_link_layer(cm_id->device, cm_id->port_num) == IB_LINK_LAYER_ETHERNET)
 		rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
+
+	rdma_set_min_rnr_timer(cm_id, IB_RNR_TIMER_000_32);
 	err = rdma_accept(cm_id, &conn_param);
 	if (err) {
 		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL, err);
@@ -1850,6 +1818,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
 				  conn->c_proposed_version, UINT_MAX, UINT_MAX,
 				  frag, isv6);
+	rdma_set_min_rnr_timer(cm_id, IB_RNR_TIMER_000_32);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		reason = "rdma_connect failed";
