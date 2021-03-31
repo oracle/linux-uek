@@ -413,21 +413,38 @@ int cn10k_set_ipolicer_rate(struct otx2_nic *pfvf, u16 profile,
 
 	/* Set initial color mode to blind */
 	aq->prof.icolor = 0x03;
+	aq->prof_mask.icolor = 0x03;
 
 	/* Set rate and burst values */
 	aq->prof.cir_exponent = rate_exp;
+	aq->prof_mask.cir_exponent = 0x1F;
+
 	aq->prof.cir_mantissa = rate_mantissa;
+	aq->prof_mask.cir_mantissa = 0xFF;
+
 	aq->prof.cbs_exponent = burst_exp;
+	aq->prof_mask.cbs_exponent = 0x1F;
+
 	aq->prof.cbs_mantissa = burst_mantissa;
+	aq->prof_mask.cbs_mantissa = 0xFF;
+
 	aq->prof.rdiv = rdiv;
+	aq->prof_mask.rdiv = 0xF;
 
 	/* Two rate three color marker
 	 * With PEIR/EIR set to zero, color will be either green or red
 	 */
 	aq->prof.meter_algo = 2;
+	aq->prof_mask.meter_algo = 0x3;
+
 	aq->prof.rc_action = NIX_RX_BAND_PROF_ACTIONRESULT_DROP;
+	aq->prof_mask.rc_action = 0x3;
+
 	aq->prof.yc_action = NIX_RX_BAND_PROF_ACTIONRESULT_PASS;
+	aq->prof_mask.yc_action = 0x3;
+
 	aq->prof.gc_action = NIX_RX_BAND_PROF_ACTIONRESULT_PASS;
+	aq->prof_mask.gc_action = 0x3;
 
 	/* Fill AQ info */
 	aq->qidx = profile;
