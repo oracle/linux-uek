@@ -627,7 +627,7 @@ struct rxe_mr *lookup_mr(struct rxe_pd *pd, int access, u32 key,
 	if (unlikely((type == RXE_LOOKUP_LOCAL && mr->lkey != key) ||
 		     (type == RXE_LOOKUP_REMOTE && mr->rkey != key) ||
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-		     (mr_pd(mr)->real_rxepd != mr_pd(mr)->real_rxepd) ||
+		     (mr_pd(mr)->real_rxepd != pd->real_rxepd) ||
 #else
 		     (mr_pd(mr) != pd) ||
 #endif
