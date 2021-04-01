@@ -3,12 +3,67 @@ arm/soc
 arm/dt
 	renesas/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.13-tag1
+	patch
+		ARM: mstar: Select MSTAR_MSC313_MPLL
+		ARM: mstar: Add the external clocks to the base dsti
+		ARM: mstar: Add mpll to base dtsi
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/dts-genpd-signed
+	socfpga/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_dts_update_for_v5.13
+	broadcom/dt
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/devicetree
+	broadcom/dt64
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/devicetre-arm64
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-bindgins-5.13
+	<no branch> (45b78dd39f04f6198f8e2e9fe9d155a5e8326aab)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-5.13
+	imx/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt64-5.13
+	juno/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/juno-updates-5.13
+	ux500/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik tags/ux500-dts-v5.13
+	stm32/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/atorgue/stm32 tags/stm32-dt-for-v5.13-1
+	tegra/dt-bindings
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-dt-bindings
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-arm-dt
+	tegra/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-arm64-dt
+	mediatek/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-dts32
+	mediatek/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-dts64
 
 arm/drivers
 	drivers/tee
 		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-tracepoints-for-v5.13
 	renesas/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-drivers-for-v5.13-tag1
+	<no branch> (7ccdcaace80810175bd20b2ece856b42edd43991)
+		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-tracepoints-fix-for-v5.13
+	drivers/rpi-firmware
+drivers/rpi-poe
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsaenz/linux-rpi tags/rpi-poe-v5.13
+	omap/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/ti-sysc-signed
+	drivers/optee-memref
+		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-memref-size-for-v5.13
+	broadcom/drivers
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/drivers
+	imx/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-drivers-5.13
+	tegra/clk
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-clk
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-soc
+	mediatek/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-soc
+	socfpga/rename
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_update_for_v5.13
 
 arm/defconfig
 	renesas/defconfig
@@ -19,18 +74,15 @@ arm/newsoc
 arm/late
 
 arm/fixes
+	<no branch> (443f0bb8e29fa031ec4d5beb3c3143350438dc97)
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.12/devicetree-part2
+	<no branch> (b3d09a06d89f474cb52664e016849315a97e09d9)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.12/fixes-rc4-signed
+	<no branch> (f57011e72f5fe0421ec7a812beb1b57bdf4bb47f)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-5.12-2
 	patch
-		MAINTAINERS: Update some st.com email addresses to foss.st.com
-		MAINTAINERS: Remove Vincent Abriou for STM/STI DRM drivers.
-		MAINTAINERS: Add Alain Volmat as STM32 I2C/SMBUS maintainer
-	<no branch> (b22ac48b0a4d74415beef10e49e434e8f228a2bf)
-		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.12/drivers-part2
-	<no branch> (effe89e40037038db7711bdab5d3401fe297d72c)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.12/fixes-rc1-signed
-	<no branch> (2c69c8a1736eace8de491d480e6e577a27c2087c)
-		git://git.kernel.org/pub/scm/linux/kernel/git/at91/linux tags/at91-fixes-5.12
-	<no branch> (e4817a1b6b77db538bc0141c3b138f2df803ce87)
-		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-5.12
-
-arm/omap-genpd
-
+		ARM: keystone: fix integer overflow warning
+		soc/fsl: qbman: fix conflicting alignment attributes
+		ARM: omap1: fix building with clang IAS
+		ARM: pxa: mainstone: avoid -Woverride-init warning
+		ARM: mvebu: avoid clang -Wtautological-constant warning
