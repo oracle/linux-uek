@@ -587,9 +587,9 @@ struct rxe_mem *lookup_mem(struct rxe_pd *pd, int access, u32 key,
 		goto err2;
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (mem->pd != pd->real_rxepd)
+	if (mem->pd && mem->pd->real_rxepd != pd->real_rxepd)
 #else
-	if ((mem->pd != pd)
+	if (mem->pd != pd)
 #endif
 		goto err2;
 
