@@ -580,7 +580,7 @@ struct rxe_mem *lookup_mem(struct rxe_pd *pd, int access, u32 key,
 	if (unlikely((type == lookup_local && mem->lkey != key) ||
 		     (type == lookup_remote && mem->rkey != key) ||
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-		     (mem->pd != pd->real_rxepd) ||
+		     (mem->pd && mem->pd->real_rxepd != pd->real_rxepd) ||
 #else
 		     (mem->pd != pd) ||
 #endif
