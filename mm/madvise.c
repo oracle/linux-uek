@@ -29,6 +29,8 @@
 
 #include "internal.h"
 
+int madv_doexec_flag = MADV_DOEXEC;
+
 /*
  * Any behaviour which results in changes to the vma->vm_flags needs to
  * take mmap_sem for writing. Others, which simply traverse vmas, need
