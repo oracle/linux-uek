@@ -1014,10 +1014,11 @@ static int vma_dup_some(struct mm_struct *old_mm, struct mm_struct *new_mm)
 	return 0;
 }
 
-static int exec_mmap(struct mm_struct *mm)
+static int exec_mmap(struct linux_binprm *bprm)
 {
 	struct task_struct *tsk;
 	struct mm_struct *old_mm, *active_mm;
+	struct mm_struct *mm = bprm->mm;
 	int ret;
 
 	/* Notify parent that we're no longer interested in the old VM */
@@ -1038,10 +1039,12 @@ static int exec_mmap(struct mm_struct *mm)
 			up_read(&old_mm->mmap_sem);
 			return -EINTR;
 		}
-		ret = vma_dup_some(old_mm, mm);
-		if (ret) {
-			up_read(&old_mm->mmap_sem);
-			return ret;
+		if (bprm->accepts_preserved_mem) {
+			ret = vma_dup_some(old_mm, mm);
+			if (ret) {
+				up_read(&old_mm->mmap_sem);
+				return ret;
+			}
 		}
 	}
 	task_lock(tsk);
@@ -1304,7 +1307,7 @@ int flush_old_exec(struct linux_binprm * bprm)
 	 * Release all of the old mmap stuff
 	 */
 	acct_arg_size(bprm, 0);
-	retval = exec_mmap(bprm->mm);
+	retval = exec_mmap(bprm);
 	if (retval)
 		goto out;
 
