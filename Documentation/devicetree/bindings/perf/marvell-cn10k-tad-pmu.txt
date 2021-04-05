@@ -1,0 +1,20 @@
+* Marvell CN10K LLC-TAD performace monitor unit
+
+Required properties:
+- compatible: must be:
+	"marvell,cn10k-tad-pmu"
+- tad-cnt: number of tad pmu regions
+- tad-page-size: size of entire tad block
+- tad-pmu-page-size: size of one tad pmu region
+- reg: physical address and size
+
+Example:
+
+/* Actual values updated by firmware at boot time */
+tad_pmu {
+	compatible = "marvell,cn10k-tad-pmu";
+	tad-cnt = <1>;
+	tad-page-size = <0x1000>;
+	tad-pmu-page-size = <0x1000>;
+	reg = <0x87e2 0x80000000 0x0 0x1000>;
+};
