@@ -71,6 +71,26 @@ static long madvise_behavior(struct vm_area_struct *vma,
 		}
 		new_flags &= ~VM_DONTCOPY;
 		break;
+	case MADV_DOEXEC:
+		/*
+		 * MADV_DOEXEC is only supported on private, non-executable,
+		 * non-stack anonymous memory and if the VM_EXEC_KEEP flag
+		 * is available.
+		 */
+		if (!VM_EXEC_KEEP || vma->vm_ops || vma->vm_flags & (VM_EXEC|VM_SHARED|VM_GROWSUP|VM_GROWSDOWN)) {
+			error = -EINVAL;
+			goto out;
+		}
+		new_flags |= (new_flags & ~VM_MAYEXEC) | VM_EXEC_KEEP;
+		break;
+	case MADV_DONTEXEC:
+		if (!VM_EXEC_KEEP) {
+			error = -EINVAL;
+			goto out;
+		}
+		if (new_flags & VM_EXEC_KEEP)
+			new_flags |= (new_flags & ~VM_EXEC_KEEP) | VM_MAYEXEC;
+		break;
 	case MADV_DONTDUMP:
 		new_flags |= VM_DONTDUMP;
 		break;
@@ -405,6 +425,8 @@ madvise_behavior_valid(int behavior)
 #endif
 	case MADV_DONTDUMP:
 	case MADV_DODUMP:
+	case MADV_DOEXEC:
+	case MADV_DONTEXEC:
 		return 1;
 
 	default:
@@ -442,6 +464,9 @@ madvise_behavior_valid(int behavior)
  *  MADV_MERGEABLE - the application recommends that KSM try to merge pages in
  *		this area with pages of identical content from other such areas.
  *  MADV_UNMERGEABLE- cancel MADV_MERGEABLE: no longer merge pages with others.
+ *  MADV_DOEXEC - On exec, preserve and duplicate this area in the new process
+ *  		if the new process allows it.
+ *  MADV_DONTEXEC - Undo the effect of MADV_DOEXEC.
  *
  * return values:
  *  zero    - success
