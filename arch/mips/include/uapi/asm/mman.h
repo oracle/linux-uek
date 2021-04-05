@@ -97,6 +97,9 @@
 #define MADV_WIPEONFORK 18		/* Zero memory on fork, child only */
 #define MADV_KEEPONFORK 19		/* Undo MADV_WIPEONFORK */
 
+#define MADV_DOEXEC	22		/* do inherit across exec */
+#define MADV_DONTEXEC	23		/* don't inherit across exec */
+
 /* compatibility flags */
 #define MAP_FILE	0
 
