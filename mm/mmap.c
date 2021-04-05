@@ -3058,6 +3058,73 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 }
 
 /*
+ * Duplicate an anonymous VMA into a new mm as part of preserving
+ * it across exec.
+ */
+int vma_dup(struct vm_area_struct *old_vma, struct mm_struct *mm)
+{
+	struct mm_struct *old_mm = old_vma->vm_mm;
+	struct vm_area_struct *vma;
+	unsigned long npages;
+	int ret = -ENOMEM;
+
+	if (WARN_ON(old_vma->vm_ops))
+		return -EINVAL;
+
+	if (find_vma_intersection(mm, old_vma->vm_start, old_vma->vm_end))
+		return -EEXIST;
+
+	npages = vma_pages(old_vma);
+	vm_stat_account(mm, old_vma->vm_flags, NULL, npages);
+
+	vma = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
+	if (!vma)
+		goto fail_nomem;
+	*vma = *old_vma;
+	INIT_LIST_HEAD(&vma->anon_vma_chain);
+
+	ret = vma_dup_policy(old_vma, vma);
+	if (ret)
+		goto fail_nomem_policy;
+
+	vma->vm_mm = mm;
+	ret = anon_vma_fork(vma, old_vma);
+	if (ret)
+		goto fail_nomem_anon_vma_fork;
+
+	/*
+	 * Clear functionality that should not carry over to the new
+	 * process which includes memory locking, userfaultfd, and
+	 * preservation over exec flags.
+	 */
+	vma->vm_flags &= ~(VM_LOCKED|VM_UFFD_MISSING|VM_UFFD_WP|VM_EXEC_KEEP);
+	vma->vm_next = vma->vm_prev = NULL;
+	vma->vm_userfaultfd_ctx = NULL_VM_UFFD_CTX;
+
+	__insert_vm_struct(mm, vma);
+
+	/*
+	 * Now that the dup vma is inserted into the mm, clear VM_ACCOUNT
+	 * from old_vma.  Since vma_dup() is only called during exec to
+	 * duplicate a vma from the outgoing mm into the mm of the new
+	 * process, this effectively transfers the accounting from the old
+	 * vma to new one.
+	 */
+	old_vma->vm_flags &= ~VM_ACCOUNT;
+
+	ret = copy_page_range(mm, old_mm, old_vma);
+	return ret;
+
+fail_nomem_anon_vma_fork:
+	mpol_put(vma_policy(vma));
+fail_nomem_policy:
+	kmem_cache_free(vm_area_cachep, vma);
+fail_nomem:
+	vm_stat_account(mm, old_vma->vm_flags, NULL, -npages);
+	return -ENOMEM;
+}
+
+/*
  * Return true if the calling process may expand its vm space by the passed
  * number of pages
  */

@@ -155,6 +155,12 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_NOHUGEPAGE	0x40000000	/* MADV_NOHUGEPAGE marked this vma */
 #define VM_MERGEABLE	0x80000000	/* KSM may merge identical pages */
 
+#ifdef CONFIG_64BIT
+# define VM_EXEC_KEEP	(1UL << 50)	/* preserve segment across exec */
+#else
+# define VM_EXEC_KEEP  VM_NONE
+#endif
+
 #if defined(CONFIG_X86)
 # define VM_PAT		VM_ARCH_1	/* PAT reserves whole VMA at once (x86) */
 #elif defined(CONFIG_PPC)
@@ -1899,6 +1905,7 @@ extern struct vm_area_struct *copy_vma(struct vm_area_struct **,
 	unsigned long addr, unsigned long len, pgoff_t pgoff,
 	bool *need_rmap_locks);
 extern void exit_mmap(struct mm_struct *);
+extern int vma_dup(struct vm_area_struct *vma, struct mm_struct *mm);
 
 static inline int check_data_rlimit(unsigned long rlim,
 				    unsigned long new,

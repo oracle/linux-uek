@@ -862,10 +862,25 @@ ssize_t read_code(struct file *file, unsigned long addr, loff_t pos, size_t len)
 }
 EXPORT_SYMBOL(read_code);
 
+static int vma_dup_some(struct mm_struct *old_mm, struct mm_struct *new_mm)
+{
+	struct vm_area_struct *vma;
+	int ret;
+
+	for (vma = old_mm->mmap; vma; vma = vma->vm_next)
+		if (vma->vm_flags & VM_EXEC_KEEP) {
+			ret = vma_dup(vma, new_mm);
+			if (ret)
+				return ret;
+		}
+	return 0;
+}
+
 static int exec_mmap(struct mm_struct *mm)
 {
 	struct task_struct *tsk;
 	struct mm_struct *old_mm, *active_mm;
+	int ret;
 
 	/* Notify parent that we're no longer interested in the old VM */
 	tsk = current;
@@ -884,6 +899,11 @@ static int exec_mmap(struct mm_struct *mm)
 		if (unlikely(old_mm->core_state)) {
 			up_read(&old_mm->mmap_sem);
 			return -EINTR;
+		}
+		ret = vma_dup_some(old_mm, mm);
+		if (ret) {
+			up_read(&old_mm->mmap_sem);
+			return ret;
 		}
 	}
 	task_lock(tsk);
