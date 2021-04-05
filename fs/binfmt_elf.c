@@ -373,6 +373,11 @@ static unsigned long elf_map(struct file *filep, unsigned long addr,
 	* the end. (which unmap is needed for ELF images with holes.)
 	*/
 	if (total_size) {
+		if ((type & MAP_FIXED) && find_vma_intersection(current->mm, addr, addr+total_size)) {
+			pr_info("%d (%s): Uhuuh, elf segment at %px requested but the memory is mapped already\n",
+			    task_pid_nr(current), current->comm, (void *)addr);
+			return -EEXIST;
+		}
 		total_size = ELF_PAGEALIGN(total_size);
 		map_addr = vm_mmap(filep, addr, total_size, prot, type, off);
 		if (!BAD_ADDR(map_addr))
