@@ -764,9 +764,13 @@ void del_gendisk(struct gendisk *disk)
 {
 	struct disk_part_iter piter;
 	struct hd_struct *part;
+	struct block_device *bdev;
 
 	blk_integrity_del(disk);
 	disk_del_events(disk);
+
+	bdev = bdget_disk(disk, 0);
+	mutex_lock(&bdev->bd_mutex);
 
 	/* invalidate stuff */
 	disk_part_iter_init(&piter, disk,
@@ -777,6 +781,9 @@ void del_gendisk(struct gendisk *disk)
 		delete_partition(disk, part->partno);
 	}
 	disk_part_iter_exit(&piter);
+
+	mutex_unlock(&bdev->bd_mutex);
+	bdput(bdev);
 
 	invalidate_partition(disk, 0);
 	bdev_unhash_inode(disk_devt(disk));
