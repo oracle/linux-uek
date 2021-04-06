@@ -61,6 +61,7 @@ struct sighand_struct;
 struct signal_struct;
 struct task_delay_info;
 struct task_group;
+struct io_uring_task;
 
 /*
  * Task state bitmask. NOTE! These bits are also
@@ -1292,7 +1293,11 @@ struct task_struct {
 	UEK_KABI_RESERVE(5)
 #endif
 
+#ifdef CONFIG_IO_URING
+	UEK_KABI_USE(6, struct io_uring_task *io_uring)
+#else
 	UEK_KABI_RESERVE(6)
+#endif
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
 
