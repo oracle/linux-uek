@@ -528,8 +528,6 @@ struct npc_lt_def_et {
 
 struct npc_lt_def_cfg {
 	struct npc_lt_def	rx_ol2;
-	struct npc_lt_def	ovlan;
-	struct npc_lt_def	ivlan;
 	struct npc_lt_def	rx_oip4;
 	struct npc_lt_def	rx_iip4;
 	struct npc_lt_def	rx_oip6;
@@ -547,8 +545,8 @@ struct npc_lt_def_cfg {
 	struct npc_lt_def	pck_iip4;
 	struct npc_lt_def_apad	rx_apad0;
 	struct npc_lt_def_apad	rx_apad1;
-	struct npc_lt_def_color	rx_ovlan;
-	struct npc_lt_def_color	rx_ivlan;
+	struct npc_lt_def_color	ovlan;
+	struct npc_lt_def_color	ivlan;
 	struct npc_lt_def_color	rx_gen0_color;
 	struct npc_lt_def_color	rx_gen1_color;
 	struct npc_lt_def_et	rx_et[2];
