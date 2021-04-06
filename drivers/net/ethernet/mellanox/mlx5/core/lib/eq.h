@@ -33,6 +33,7 @@ struct mlx5_eq {
 	unsigned int            irqn;
 	u8                      eqn;
 	struct mlx5_rsc_debug   *dbg;
+	struct mlx5_irq         *irq;
 };
 #endif /* WITHOUT_ORACLE_EXTENSIONS */
 
