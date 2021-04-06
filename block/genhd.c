@@ -827,6 +827,7 @@ void del_gendisk(struct gendisk *disk)
 {
 	struct disk_part_iter piter;
 	struct hd_struct *part;
+	struct block_device *bdev;
 
 	blk_integrity_del(disk);
 	disk_del_events(disk);
@@ -836,6 +837,9 @@ void del_gendisk(struct gendisk *disk)
 	 * disk is marked as dead (GENHD_FL_UP cleared).
 	 */
 	down_write(&disk->lookup_sem);
+
+	bdev = bdget_disk(disk, 0);
+	mutex_lock(&bdev->bd_mutex);
 	/* invalidate stuff */
 	disk_part_iter_init(&piter, disk,
 			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
@@ -845,7 +849,8 @@ void del_gendisk(struct gendisk *disk)
 		delete_partition(disk, part->partno);
 	}
 	disk_part_iter_exit(&piter);
-
+	mutex_unlock(&bdev->bd_mutex);
+	bdput(bdev);
 	invalidate_partition(disk, 0);
 	bdev_unhash_inode(disk_devt(disk));
 	set_capacity(disk, 0);
@@ -924,6 +929,7 @@ static ssize_t disk_badblocks_store(struct device *dev,
 struct gendisk *get_gendisk(dev_t devt, int *partno)
 {
 	struct gendisk *disk = NULL;
+	struct block_device *bdev;
 
 	if (MAJOR(devt) != BLOCK_EXT_MAJOR) {
 		struct kobject *kobj;
@@ -951,12 +957,18 @@ struct gendisk *get_gendisk(dev_t devt, int *partno)
 	 * destroyed.
 	 */
 	down_read(&disk->lookup_sem);
+	bdev = bdget_disk(disk, 0);
+	mutex_lock(&bdev->bd_mutex);
 	if (unlikely((disk->flags & GENHD_FL_HIDDEN) ||
 		     !(disk->flags & GENHD_FL_UP))) {
 		up_read(&disk->lookup_sem);
+		mutex_unlock(&bdev->bd_mutex);
+		bdput(bdev);
 		put_disk_and_module(disk);
 		disk = NULL;
 	} else {
+		mutex_unlock(&bdev->bd_mutex);
+		bdput(bdev);
 		up_read(&disk->lookup_sem);
 	}
 	return disk;
