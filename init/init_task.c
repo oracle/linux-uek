@@ -183,6 +183,9 @@ struct task_struct init_task
 #ifdef CONFIG_SECURITY
 	.security	= NULL,
 #endif
+#ifdef CONFIG_IO_URING
+	.io_uring	= NULL,
+#endif
 };
 EXPORT_SYMBOL(init_task);
 
