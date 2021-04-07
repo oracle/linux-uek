@@ -1740,6 +1740,7 @@ qla24xx_start_scsi(srb_t *sp)
 	} else
 		req->ring_ptr++;
 
+	sp->qpair->cmd_cnt++;
 	sp->flags |= SRB_DMA_VALID;
 
 	/* Set chip new ring index. */
@@ -1948,6 +1949,7 @@ qla24xx_dif_start_scsi(srb_t *sp)
 	} else
 		req->ring_ptr++;
 
+	sp->qpair->cmd_cnt++;
 	/* Set chip new ring index. */
 	WRT_REG_DWORD(req->req_q_in, req->ring_index);
 	RD_REG_DWORD_RELAXED(&ha->iobase->isp24.hccr);
@@ -2105,6 +2107,7 @@ qla2xxx_start_scsi_mq(srb_t *sp)
 	} else
 		req->ring_ptr++;
 
+	sp->qpair->cmd_cnt++;
 	sp->flags |= SRB_DMA_VALID;
 
 	/* Set chip new ring index. */
@@ -2324,6 +2327,7 @@ qla2xxx_dif_start_scsi_mq(srb_t *sp)
 	} else
 		req->ring_ptr++;
 
+	sp->qpair->cmd_cnt++;
 	/* Set chip new ring index. */
 	WRT_REG_DWORD(req->req_q_in, req->ring_index);
 
