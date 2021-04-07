@@ -1490,11 +1490,24 @@ int check_disk_change(struct block_device *bdev)
 
 EXPORT_SYMBOL(check_disk_change);
 
-void bd_set_nr_sectors(struct block_device *bdev, sector_t sectors)
+static inline void __bd_set_size(struct block_device *bdev, loff_t size)
 {
 	spin_lock(&bdev->bd_size_lock);
-	i_size_write(bdev->bd_inode, (loff_t)sectors << SECTOR_SHIFT);
+	i_size_write(bdev->bd_inode, size);
 	spin_unlock(&bdev->bd_size_lock);
+}
+
+
+void bd_set_size(struct block_device *bdev, loff_t size)
+{
+	__bd_set_size(bdev, size);
+}
+EXPORT_SYMBOL(bd_set_size);
+
+
+void bd_set_nr_sectors(struct block_device *bdev, sector_t sectors)
+{
+	__bd_set_size(bdev, (loff_t)sectors << SECTOR_SHIFT);
 }
 EXPORT_SYMBOL(bd_set_nr_sectors);
 
