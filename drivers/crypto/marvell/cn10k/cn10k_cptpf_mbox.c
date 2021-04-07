@@ -225,24 +225,6 @@ static int forward_to_af(struct cn10k_cptpf_dev *cptpf,
 	return 0;
 }
 
-static int check_attach_rsrcs_req(struct cn10k_cptpf_dev *cptpf,
-				  struct cn10k_cptvf_info *vf,
-				  struct mbox_msghdr *req, int size)
-{
-	struct rsrc_attach *rsrc_req = (struct rsrc_attach *)req;
-
-	if (rsrc_req->sso > 0 || rsrc_req->ssow > 0 || rsrc_req->npalf > 0 ||
-	    rsrc_req->timlfs > 0 || rsrc_req->nixlf > 0) {
-		dev_err(&cptpf->pdev->dev,
-			"Invalid ATTACH_RESOURCES request from %s\n",
-			dev_name(&vf->vf_dev->dev));
-
-		return -EINVAL;
-	}
-
-	return forward_to_af(cptpf, vf, req, size);
-}
-
 static int reply_eng_grp_num_msg(struct cn10k_cptpf_dev *cptpf,
 				 struct cn10k_cptvf_info *vf,
 				 struct mbox_msghdr *req)
@@ -422,10 +404,6 @@ static int cptpf_handle_vf_req(struct cn10k_cptpf_dev *cptpf,
 		return otx2_reply_invalid_msg(&cptpf->vfpf_mbox, vf->vf_id,
 					      req->pcifunc, req->id);
 	switch (req->id) {
-	case MBOX_MSG_ATTACH_RESOURCES:
-		err = check_attach_rsrcs_req(cptpf, vf, req, size);
-		break;
-
 	case MBOX_MSG_GET_ENG_GRP_NUM:
 		err = reply_eng_grp_num_msg(cptpf, vf, req);
 		break;
