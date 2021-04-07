@@ -46,6 +46,20 @@ arm/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-dts32
 	mediatek/dt64
 		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-dts64
+	renesas/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.13-tag2
+	sunxi/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/sunxi/linux tags/sunxi-dt-for-5.13-1
+	mvebu/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/gclement/mvebu tags/mvebu-dt64-5.13-1
+	qcom/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13
+	patch
+		ARM: dts: clps711x: Add SYSCON nodes where it is used
+		ARM: dts: clps711x: Add keypad node
+		ARM: dts: clps711x: Fix serial port names
+		ARM: dts: clps711x: edb7211: Add unit-address to memory node
+		ARM: dts: clps711x: Add an empty chosen node to top level DTSI
 
 arm/drivers
 	drivers/tee
@@ -106,4 +120,6 @@ arm/fixes
 		ARM: omap1: fix building with clang IAS
 		ARM: pxa: mainstone: avoid -Woverride-init warning
 		ARM: mvebu: avoid clang -Wtautological-constant warning
+	<no branch> (a26c56ae67fa9fbb45a8a232dcd7ebaa7af16086)
+		git://git.kernel.org/pub/scm/linux/kernel/git/gclement/mvebu tags/mvebu-fixes-5.12-1
 
