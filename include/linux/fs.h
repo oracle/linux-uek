@@ -502,7 +502,6 @@ struct block_device {
 	unsigned		bd_part_count;
 	int			bd_invalidated;
 	struct gendisk *	bd_disk;
-	spinlock_t		bd_size_lock; /* for bd_inode->i_size updates */
 	struct request_queue *  bd_queue;
 	struct backing_dev_info *bd_bdi;
 	struct list_head	bd_list;
@@ -518,8 +517,8 @@ struct block_device {
 	int			bd_fsfreeze_count;
 	/* Mutex for freeze */
 	struct mutex		bd_fsfreeze_mutex;
- 
-	UEK_KABI_RESERVE(1)
+
+	UEK_KABI_USE(1, spinlock_t bd_size_lock)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
