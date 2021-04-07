@@ -80,6 +80,10 @@ $(obj)/kvm_nvhe.rel.o: $(obj)/kvm_nvhe.tmp.o $(obj)/hyp-reloc.o FORCE
 #    Prefixes names of ELF symbols with '__kvm_nvhe_'.
 $(obj)/kvm_nvhe.o: $(obj)/kvm_nvhe.rel.o FORCE
 	$(call if_changed,hypcopy)
+#
+# Remove ksplice KBUILD_CFLAGS options for this file,
+# or we'll error out when cmd_hypcopy is called below.
+ccflags-remove-y += -ffunction-sections -fdata-sections
 
 # The HYPREL command calls `gen-hyprel` to generate an assembly file with
 # a list of relocations targeting hyp code/data.
