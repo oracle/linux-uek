@@ -2276,6 +2276,7 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 		qla24xx_tm_iocb_entry(vha, req, pkt);
 		return;
 	}
+	sp->qpair->cmd_completion_cnt++;
 
 	/* Fast path completion. */
 	if (comp_status == CS_COMPLETE && scsi_status == 0) {

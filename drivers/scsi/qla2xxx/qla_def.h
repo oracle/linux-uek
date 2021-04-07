@@ -3312,6 +3312,8 @@ struct qla_qpair {
 	struct list_head qp_list_elem; /* vha->qp_list */
 	struct scsi_qla_host *vha;
 	struct qla_fw_resources fwres ____cacheline_aligned;
+	u32     cmd_cnt;
+	u32 	cmd_completion_cnt;
 };
 
 struct qla_percpu_qp_hint {
@@ -3998,6 +4000,7 @@ struct qla_hw_data {
 	unsigned long long dif_bundle_writes;
 	unsigned long long dif_bundle_kallocs;
 	unsigned long long dif_bundle_dma_allocs;
+	u64 prev_cmd_cnt;
 };
 
 struct qla_tgt_counters {
@@ -4080,6 +4083,7 @@ typedef struct scsi_qla_host {
 #define FX00_CRITEMP_RECOVERY	25
 #define FX00_HOST_INFO_RESEND	26
 #define QPAIR_ONLINE_CHECK_NEEDED	27
+#define HEARTBEAT_CHK		38
 
 	unsigned long	pci_flags;
 #define PFLG_DISCONNECTED	0	/* PCI device removed */
