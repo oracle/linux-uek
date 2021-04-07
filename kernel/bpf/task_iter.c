@@ -400,10 +400,10 @@ again:
 
 	switch (op) {
 	case task_vma_iter_first_vma:
-		curr_vma = curr_task->mm->mmap;
+		curr_vma = find_vma(curr_task->mm, 0);
 		break;
 	case task_vma_iter_next_vma:
-		curr_vma = curr_vma->vm_next;
+		curr_vma = vma_next(curr_vma->vm_mm, curr_vma);
 		break;
 	case task_vma_iter_find_vma:
 		/* We dropped mmap_lock so it is necessary to use find_vma
@@ -417,7 +417,7 @@ again:
 		if (curr_vma &&
 		    curr_vma->vm_start == info->prev_vm_start &&
 		    curr_vma->vm_end == info->prev_vm_end)
-			curr_vma = curr_vma->vm_next;
+			curr_vma = vma_next(curr_vma->vm_mm, curr_vma);
 		break;
 	}
 	if (!curr_vma) {
