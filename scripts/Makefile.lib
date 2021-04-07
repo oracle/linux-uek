@@ -151,6 +151,16 @@ _c_flags += $(if $(patsubst n%,, \
 endif
 
 #
+# Enable clang's PGO profiling flags for a file or directory depending on
+# variables PGO_PROFILE_obj.o and PGO_PROFILE.
+#
+ifeq ($(CONFIG_PGO_CLANG),y)
+_c_flags += $(if $(patsubst n%,, \
+		$(PGO_PROFILE_$(basetarget).o)$(PGO_PROFILE)y), \
+		$(CFLAGS_PGO_CLANG))
+endif
+
+#
 # Enable address sanitizer flags for kernel except some files or directories
 # we don't want to check (depends on variables KASAN_SANITIZE_obj.o, KASAN_SANITIZE)
 #

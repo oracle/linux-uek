@@ -86,6 +86,9 @@ nhpoly1305-sse2-y := nh-sse2-x86_64.o nhpoly1305-sse2-glue.o
 obj-$(CONFIG_CRYPTO_NHPOLY1305_AVX2) += nhpoly1305-avx2.o
 nhpoly1305-avx2-y := nh-avx2-x86_64.o nhpoly1305-avx2-glue.o
 
+# Disable PGO for curve25519-x86_64. With PGO enabled, clang runs out of
+# registers for some of the functions.
+PGO_PROFILE_curve25519-x86_64.o := n
 obj-$(CONFIG_CRYPTO_CURVE25519_X86) += curve25519-x86_64.o
 
 quiet_cmd_perlasm = PERLASM $@
