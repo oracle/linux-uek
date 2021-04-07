@@ -480,6 +480,7 @@ int qla24xx_gidlist_wait(struct scsi_qla_host *, void *, dma_addr_t,
     uint16_t *);
 int __qla24xx_parse_gpdb(struct scsi_qla_host *, fc_port_t *,
 	struct port_database_24xx *);
+void qla_no_op_mb(struct scsi_qla_host *vha);
 
 /*
  * Global Function Prototypes in qla_isr.c source file.

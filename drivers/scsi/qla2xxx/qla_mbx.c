@@ -5804,3 +5804,29 @@ int qla24xx_gidlist_wait(struct scsi_qla_host *vha,
 done:
 	return rval;
 }
+
+
+/* This MB is use to check if FW is still alive and able to generate an interrupt.
+ * Otherwise, a timeout will trigger FW dump + reset
+ */
+void qla_no_op_mb(struct scsi_qla_host *vha)
+{
+	mbx_cmd_t mc;
+	mbx_cmd_t *mcp = &mc;
+	int rval;
+
+	memset(&mc, 0, sizeof(mc));
+	mcp->mb[0] = 0; // noop cmd= 0
+	mcp->out_mb = MBX_0;
+	mcp->in_mb = MBX_0;
+	mcp->tov = 5;
+	mcp->flags = 0;
+	rval = qla2x00_mailbox_command(vha, mcp);
+
+	if (rval) {
+		ql_dbg(ql_dbg_async, vha, 0x7071,
+			"Failed %s %x \n", __func__, rval);
+	}
+
+	return;
+}
