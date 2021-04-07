@@ -5660,6 +5660,7 @@ qla2x00_abort_isp_cleanup(scsi_qla_host_t *vha)
 	struct scsi_qla_host *vp;
 	unsigned long flags;
 	fc_port_t *fcport;
+	int i;
 
 	/* For ISP82XX, driver waits for completion of the commands.
 	 * online flag should be set.
@@ -5686,6 +5687,14 @@ qla2x00_abort_isp_cleanup(scsi_qla_host_t *vha)
 	ha->flags.fw_started = 0;
 	ha->flags.fw_init_done = 0;
 	ha->chip_reset++;
+	ha->base_qpair->cmd_cnt = ha->base_qpair->cmd_completion_cnt = 0;
+
+	for (i = 0; i < ha->max_qpairs; i++) {
+		if (ha->queue_pair_map[i]) {
+			ha->queue_pair_map[i]->cmd_cnt =
+				ha->queue_pair_map[i]->cmd_completion_cnt = 0;
+		}
+	}
 
 	atomic_set(&vha->loop_down_timer, LOOP_DOWN_TIME);
 	if (atomic_read(&vha->loop_state) != LOOP_DOWN) {
