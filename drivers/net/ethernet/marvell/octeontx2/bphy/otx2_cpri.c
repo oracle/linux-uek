@@ -106,6 +106,7 @@ void otx2_bphy_cpri_cleanup(void)
 			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
 			kfree(priv->cpri_common);
+			priv->cpri_common = NULL;
 			free_netdev(netdev);
 			drv_ctx->valid = 0;
 		}
@@ -621,6 +622,7 @@ err_exit:
 			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
 			kfree(priv->cpri_common);
+			priv->cpri_common = NULL;
 			free_netdev(netdev);
 			drv_ctx->valid = 0;
 		}

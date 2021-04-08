@@ -144,6 +144,7 @@ void otx2_bphy_rfoe_cleanup(void)
 				netif_napi_del(&ft_cfg->napi);
 			}
 			kfree(priv->rfoe_common);
+			priv->rfoe_common = NULL;
 			free_netdev(netdev);
 			drv_ctx->valid = 0;
 		}
@@ -1377,6 +1378,7 @@ err_exit:
 				netif_napi_del(&ft_cfg->napi);
 			}
 			kfree(priv->rfoe_common);
+			priv->rfoe_common = NULL;
 			free_netdev(netdev);
 			drv_ctx->valid = 0;
 		}
