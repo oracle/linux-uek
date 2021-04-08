@@ -60,6 +60,18 @@ arm/dt
 		ARM: dts: clps711x: Fix serial port names
 		ARM: dts: clps711x: edb7211: Add unit-address to memory node
 		ARM: dts: clps711x: Add an empty chosen node to top level DTSI
+	k3/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nmenon/linux tags/ti-k3-dt-for-v5.13
+	amlogic/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-dt64
+	omap/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/dt-v2-signed
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-5.13
+	samsung/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt64-5.13
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/at91/linux tags/at91-dt-5.13
 
 arm/drivers
 	drivers/tee
@@ -86,6 +98,18 @@ arm/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-soc
 	socfpga/rename
 		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_update_for_v5.13
+	drivers/scmi
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/scmi-updates-5.13
+	qcom/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-for-5.13
+	socfpga/drivers-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_update_for_v5.13_part2
+	mediatek/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-soc.2
+	drivers/memory
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-5.13
+	drivers/memory-tegra
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-tegra-5.13
 
 arm/defconfig
 	renesas/defconfig
@@ -108,18 +132,8 @@ arm/newsoc
 arm/late
 
 arm/fixes
-	<no branch> (443f0bb8e29fa031ec4d5beb3c3143350438dc97)
-		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.12/devicetree-part2
-	<no branch> (b3d09a06d89f474cb52664e016849315a97e09d9)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.12/fixes-rc4-signed
-	<no branch> (f57011e72f5fe0421ec7a812beb1b57bdf4bb47f)
-		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-5.12-2
-	patch
-		ARM: keystone: fix integer overflow warning
-		soc/fsl: qbman: fix conflicting alignment attributes
-		ARM: omap1: fix building with clang IAS
-		ARM: pxa: mainstone: avoid -Woverride-init warning
-		ARM: mvebu: avoid clang -Wtautological-constant warning
-	<no branch> (a26c56ae67fa9fbb45a8a232dcd7ebaa7af16086)
-		git://git.kernel.org/pub/scm/linux/kernel/git/gclement/mvebu tags/mvebu-fixes-5.12-1
+	<no branch> (7a2f6e69e9c1060a7a09c1f8322ccb8d942b3078)
+		git://git.kernel.org/pub/scm/linux/kernel/git/sunxi/linux tags/sunxi-fixes-for-5.12-1
+	<no branch> (0c9fdcdba68208270ae85d39600ea97da1718344)
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-fixes-for-5.12
 
