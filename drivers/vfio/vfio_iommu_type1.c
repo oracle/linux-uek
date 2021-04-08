@@ -1019,16 +1019,16 @@ static size_t unmap_unpin_slow(struct vfio_domain *domain,
 }
 
 static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
+			     dma_addr_t iova, dma_addr_t end,
 			     bool do_accounting)
 {
-	dma_addr_t iova = dma->iova, end = dma->iova + dma->size;
 	struct vfio_domain *domain, *d;
 	LIST_HEAD(unmapped_region_list);
 	struct iommu_iotlb_gather iotlb_gather;
 	int unmapped_region_cnt = 0;
 	long unlocked = 0;
 
-	if (!dma->size)
+	if (iova == end)
 		return 0;
 
 	if (list_empty(&iommu->domain_list))
@@ -1045,7 +1045,7 @@ static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
 				      struct vfio_domain, next);
 
 	list_for_each_entry_continue(d, &iommu->domain_list, next) {
-		iommu_unmap(d->domain, dma->iova, dma->size);
+		iommu_unmap(d->domain, iova, end - iova);
 		cond_resched();
 	}
 
@@ -1088,8 +1088,6 @@ static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
 		}
 	}
 
-	dma->iommu_mapped = false;
-
 	if (unmapped_region_cnt) {
 		unlocked += vfio_sync_unpin(dma, domain, &unmapped_region_list,
 					    &iotlb_gather);
@@ -1102,10 +1100,11 @@ static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
 	return unlocked;
 }
 
-static void vfio_remove_dma(struct vfio_iommu *iommu, struct vfio_dma *dma)
+static void vfio_remove_dma_finish(struct vfio_iommu *iommu,
+				   struct vfio_dma *dma)
 {
 	WARN_ON(!RB_EMPTY_ROOT(&dma->pfn_list));
-	vfio_unmap_unpin(iommu, dma, true);
+	dma->iommu_mapped = false;
 	vfio_unlink_dma(iommu, dma);
 	put_task_struct(dma->task);
 	mmdrop(dma->mm);
@@ -1114,6 +1113,12 @@ static void vfio_remove_dma(struct vfio_iommu *iommu, struct vfio_dma *dma)
 		iommu->vaddr_invalid_count--;
 	kfree(dma);
 	iommu->dma_avail++;
+}
+
+static void vfio_remove_dma(struct vfio_iommu *iommu, struct vfio_dma *dma)
+{
+	vfio_unmap_unpin(iommu, dma, dma->iova, dma->iova + dma->size, true);
+	vfio_remove_dma_finish(iommu, dma);
 }
 
 static void vfio_update_pgsize_bitmap(struct vfio_iommu *iommu)
@@ -2354,7 +2359,9 @@ static void vfio_iommu_unmap_unpin_reaccount(struct vfio_iommu *iommu)
 		long locked = 0, unlocked = 0;
 
 		dma = rb_entry(n, struct vfio_dma, node);
-		unlocked += vfio_unmap_unpin(iommu, dma, false);
+		unlocked += vfio_unmap_unpin(iommu, dma, dma->iova,
+					     dma->iova + dma->size, false);
+		dma->iommu_mapped = false;
 		p = rb_first(&dma->pfn_list);
 		for (; p; p = rb_next(p)) {
 			struct vfio_pfn *vpfn = rb_entry(p, struct vfio_pfn,
