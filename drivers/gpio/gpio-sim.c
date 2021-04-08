@@ -284,6 +284,7 @@ static int gpio_sim_setup_sysfs(struct gpio_sim_chip *chip)
 		line_attr->offset = i;
 
 		dev_attr = &line_attr->dev_attr;
+		sysfs_attr_init(&dev_attr->attr);
 
 		dev_attr->attr.name = devm_kasprintf(dev, GFP_KERNEL,
 						     "gpio%u", i);
