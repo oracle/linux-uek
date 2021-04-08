@@ -1547,16 +1547,6 @@ static void teardown_virtqueues(struct mlx5_vdpa_net *ndev)
 	}
 }
 
-static void clear_virtqueues(struct mlx5_vdpa_net *ndev)
-{
-	int i;
-
-	for (i = ndev->mvdev.max_vqs - 1; i >= 0; i--) {
-		ndev->vqs[i].avail_idx = 0;
-		ndev->vqs[i].used_idx = 0;
-	}
-}
-
 /* TODO: cross-endian support */
 static inline bool mlx5_vdpa_is_little_endian(struct mlx5_vdpa_dev *mvdev)
 {
@@ -1792,7 +1782,6 @@ static void mlx5_vdpa_set_status(struct vdpa_device *vdev, u8 status)
 	if (!status) {
 		mlx5_vdpa_info(mvdev, "performing device reset\n");
 		teardown_driver(ndev);
-		clear_virtqueues(ndev);
 		mlx5_vdpa_destroy_mr(&ndev->mvdev);
 		ndev->mvdev.status = 0;
 		ndev->mvdev.mlx_features = 0;
