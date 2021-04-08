@@ -596,10 +596,10 @@ done:
  */
 static long vfio_pin_pages_remote(struct vfio_dma *dma, unsigned long vaddr,
 				  long npage, unsigned long *pfn_base,
-				  unsigned long limit, struct vfio_batch *batch)
+				  unsigned long limit, struct vfio_batch *batch,
+				  struct mm_struct *mm)
 {
 	unsigned long pfn;
-	struct mm_struct *mm = current->mm;
 	long ret, pinned = 0, lock_acct = 0;
 	bool rsvd;
 	dma_addr_t iova = vaddr - dma->vaddr + dma->iova;
@@ -1455,7 +1455,7 @@ static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
 		/* Pin a contiguous chunk of memory */
 		npage = vfio_pin_pages_remote(dma, vaddr + dma->size,
 					      size >> PAGE_SHIFT, &pfn, limit,
-					      &batch);
+					      &batch, current->mm);
 		if (npage <= 0) {
 			WARN_ON(!npage);
 			ret = (int)npage;
@@ -1722,7 +1722,8 @@ static int vfio_iommu_replay(struct vfio_iommu *iommu,
 				npage = vfio_pin_pages_remote(dma, vaddr,
 							      n >> PAGE_SHIFT,
 							      &pfn, limit,
-							      &batch);
+							      &batch,
+							      current->mm);
 				if (npage <= 0) {
 					WARN_ON(!npage);
 					ret = (int)npage;
