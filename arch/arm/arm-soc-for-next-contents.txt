@@ -14,6 +14,10 @@ arm/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/soc-signed
 	samsung/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-soc-5.13
+	patch
+		MAINTAINERS: Update ARM/UniPhier SoCs maintainers and status
+	broadcom/maintainer
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/maintainers
 
 arm/dt
 	renesas/dt
@@ -87,6 +91,12 @@ arm/dt
 	patch
 		ARM: dts: mvebu: fix SPI device node
 		ARM: dts: clps711x: fix missing interrupt parent
+	qcom/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-dts-for-5.13
+	qcom/dt64-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13-2
+	amlogic/dt64-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-dt64-2
 
 arm/drivers
 	drivers/tee
@@ -129,6 +139,8 @@ arm/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/aspeed-5.13-lpc
 	patch
 		clk: socfpga: fix iomem pointer cast on 64-bit
+	qcom/drivers-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-for-5.13-2
 
 arm/defconfig
 	renesas/defconfig
