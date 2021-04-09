@@ -186,12 +186,20 @@ void mlx5e_deactivate_xsk(struct mlx5e_channel *c)
 
 int mlx5e_xsk_redirect_rqt_to_channel(struct mlx5e_priv *priv, struct mlx5e_channel *c)
 {
+#if 0
 	return mlx5e_rqt_redirect_direct(&priv->rx_res->channels[c->ix].xsk_rqt, c->xskrq.rqn);
+#else
+	return -ENOTSUPP;
+#endif
 }
 
 int mlx5e_xsk_redirect_rqt_to_drop(struct mlx5e_priv *priv, u16 ix)
 {
+#if 0
 	return mlx5e_rqt_redirect_direct(&priv->rx_res->channels[ix].xsk_rqt, priv->drop_rq.rqn);
+#else
+	return -ENOTSUPP;
+#endif
 }
 
 int mlx5e_xsk_redirect_rqts_to_channels(struct mlx5e_priv *priv, struct mlx5e_channels *chs)
