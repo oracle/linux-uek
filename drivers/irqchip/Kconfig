@@ -9,6 +9,7 @@ config ARM_GIC
 	bool
 	select IRQ_DOMAIN_HIERARCHY
 	select GENERIC_IRQ_EFFECTIVE_AFF_MASK if SMP
+	select ACPI_IRQCHIP_FWSPEC_ARG0 if ACPI
 
 config ARM_GIC_PM
 	bool

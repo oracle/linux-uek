@@ -7,6 +7,8 @@
 #include <asm-generic/irq.h>
 #include <linux/irqchip/arm-gic-common.h>
 
+#define ACPI_IRQCHIP_FWSPEC_ARG0	GIC_IRQ_TYPE_GSI
+
 struct pt_regs;
 
 int set_handle_irq(void (*handle_irq)(struct pt_regs *));

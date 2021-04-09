@@ -15,6 +15,7 @@
  */
 #define GIC_IRQ_TYPE_LPI               0xa110c8ed
 #define GIC_IRQ_TYPE_PARTITION         (GIC_IRQ_TYPE_LPI + 1)
+#define GIC_IRQ_TYPE_GSI               (GIC_IRQ_TYPE_LPI + 2)
 
 #define GICD_INT_DEF_PRI		0xa0
 #define GICD_INT_DEF_PRI_X4		((GICD_INT_DEF_PRI << 24) |\
