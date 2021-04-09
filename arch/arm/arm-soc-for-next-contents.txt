@@ -82,6 +82,11 @@ arm/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/gclement/mvebu tags/mvebu-dt-5.13-1
 	patch
 		ARM: dts: owl-s500-roseapplepi: Add ATC2603C PMIC
+	bmc/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/bmc-5.13-devicetree
+	patch
+		ARM: dts: mvebu: fix SPI device node
+		ARM: dts: clps711x: fix missing interrupt parent
 
 arm/drivers
 	drivers/tee
@@ -120,6 +125,10 @@ arm/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-5.13
 	drivers/memory-tegra
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-tegra-5.13
+	aspeed/lpc
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/aspeed-5.13-lpc
+	patch
+		clk: socfpga: fix iomem pointer cast on 64-bit
 
 arm/defconfig
 	renesas/defconfig
@@ -142,6 +151,8 @@ arm/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/defconfig-signed
 
 arm/newsoc
+	bmc/wpcm450
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/bmc-5.13-wpcm450
 
 arm/late
 
@@ -158,4 +169,6 @@ arm/apple-m1
 		Merge branch 'apple/m1-dependency' into arm/apple-m1
 	apple/m1-main
 		https://github.com/AsahiLinux/linux tags/m1-soc-bringup-v5
+	patch
+		asm-generic/io.h: Unbork ioremap_np() declaration
 
