@@ -955,7 +955,7 @@ int mlx5_ib_update_xlt(struct mlx5_ib_mr *mr, u64 idx, int npages,
 	}
 
 	gfp = flags & MLX5_IB_UPD_XLT_ATOMIC ? GFP_ATOMIC : GFP_KERNEL;
-	gfp |= __GFP_ZERO | __GFP_NOWARN;
+	gfp |= __GFP_ZERO | __GFP_NOWARN | __GFP_NORETRY;
 
 	pages_to_map = ALIGN(npages, page_align);
 	size = desc_size * pages_to_map;
