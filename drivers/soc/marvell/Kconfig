@@ -121,6 +121,14 @@ config OCTEONTX_INFO
 	mac addresses, board serial number and more. These are boards housing Marvell
 	OcteonTX family chipsets.
 
+config MVMDIO_UIO
+	tristate "Marvell MDIO interface driver"
+	  default m
+	select MDIO_THUNDER
+	help
+	  Select this option if you want to provide an interface for userspace
+	  PHY drivers to access Marvell's MDIO bus.
+
 config HW_CSR_ACCESS
        tristate "Access HW Device Config Space Registers"
         default m
