@@ -8,3 +8,4 @@ obj-y		+= octeontx2-llc/
 obj-y 		+= csr-access/
 
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
+obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
