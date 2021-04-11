@@ -1,3 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0
-obj-$(CONFIG_MARVELL_FWLOG) += fwlog.o
 obj-y 		+= hw-access/
+obj-$(CONFIG_MARVELL_FWLOG) += fwlog.o
+obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
