@@ -37,20 +37,13 @@ struct wm_list {
 static LIST_HEAD(wm_lists);
 static DEFINE_RWLOCK(wm_lists_lock);
 
-void *ksmbd_alloc(size_t size)
-{
-	return kvmalloc(size, GFP_KERNEL | __GFP_ZERO);
-}
-
-void ksmbd_free(void *ptr)
-{
-	kvfree(ptr);
-}
-
 static struct wm *wm_alloc(size_t sz, gfp_t flags)
 {
 	struct wm *wm;
 	size_t alloc_sz = sz + sizeof(struct wm);
+
+	if (sz > SIZE_MAX - sizeof(struct wm))
+		return NULL;
 
 	wm = kvmalloc(alloc_sz, flags);
 	if (!wm)
@@ -78,7 +71,7 @@ static int register_wm_size_class(size_t sz)
 	list_for_each_entry(l, &wm_lists, list) {
 		if (l->sz == sz) {
 			write_unlock(&wm_lists_lock);
-			kvfree(nl);
+			kfree(nl);
 			return 0;
 		}
 	}
@@ -169,7 +162,7 @@ static void release_wm(struct wm *wm, struct wm_list *wm_list)
 
 	wm_list->avail_wm--;
 	spin_unlock(&wm_list->wm_lock);
-	ksmbd_free(wm);
+	kvfree(wm);
 }
 
 static void wm_list_free(struct wm_list *l)
@@ -181,7 +174,7 @@ static void wm_list_free(struct wm_list *l)
 		list_del(&wm->list);
 		kvfree(wm);
 	}
-	kvfree(l);
+	kfree(l);
 }
 
 static void wm_lists_destroy(void)
@@ -193,26 +186,6 @@ static void wm_lists_destroy(void)
 		list_del(&l->list);
 		wm_list_free(l);
 	}
-}
-
-void ksmbd_free_request(void *addr)
-{
-	kvfree(addr);
-}
-
-void *ksmbd_alloc_request(size_t size)
-{
-	return kvmalloc(size, GFP_KERNEL);
-}
-
-void ksmbd_free_response(void *buffer)
-{
-	kvfree(buffer);
-}
-
-void *ksmbd_alloc_response(size_t size)
-{
-	return kvmalloc(size, GFP_KERNEL | __GFP_ZERO);
 }
 
 void *ksmbd_find_buffer(size_t size)
@@ -247,11 +220,11 @@ void *ksmbd_realloc_response(void *ptr, size_t old_sz, size_t new_sz)
 	size_t sz = min(old_sz, new_sz);
 	void *nptr;
 
-	nptr = ksmbd_alloc_response(new_sz);
+	nptr = kvmalloc(new_sz, GFP_KERNEL | __GFP_ZERO);
 	if (!nptr)
 		return ptr;
 	memcpy(nptr, ptr, sz);
-	ksmbd_free_response(ptr);
+	kvfree(ptr);
 	return nptr;
 }
 

@@ -9,7 +9,6 @@
 #include <linux/uaccess.h>
 #include <linux/backing-dev.h>
 #include <linux/writeback.h>
-#include <linux/version.h>
 #include <linux/xattr.h>
 #include <linux/falloc.h>
 #include <linux/genhd.h>
@@ -67,46 +66,6 @@ static void ksmbd_vfs_inherit_owner(struct ksmbd_work *work,
 		return;
 
 	i_uid_write(inode, i_uid_read(parent_inode));
-}
-
-static void ksmbd_vfs_inherit_smack(struct ksmbd_work *work,
-		struct dentry *dir_dentry, struct dentry *dentry)
-{
-	char *name, *xattr_list = NULL, *smack_buf;
-	int value_len, xattr_list_len;
-
-	if (!test_share_config_flag(work->tcon->share_conf,
-				    KSMBD_SHARE_FLAG_INHERIT_SMACK))
-		return;
-
-	xattr_list_len = ksmbd_vfs_listxattr(dir_dentry, &xattr_list);
-	if (xattr_list_len < 0) {
-		goto out;
-	} else if (!xattr_list_len) {
-		ksmbd_err("no ea data in the file\n");
-		return;
-	}
-
-	for (name = xattr_list; name - xattr_list < xattr_list_len;
-			name += strlen(name) + 1) {
-		int rc;
-
-		ksmbd_debug(VFS, "%s, len %zd\n", name, strlen(name));
-		if (strcmp(name, XATTR_NAME_SMACK))
-			continue;
-
-		value_len = ksmbd_vfs_getxattr(dir_dentry, name, &smack_buf);
-		if (value_len <= 0)
-			continue;
-
-		rc = ksmbd_vfs_setxattr(dentry, XATTR_NAME_SMACK, smack_buf,
-					value_len, 0);
-		ksmbd_free(smack_buf);
-		if (rc < 0)
-			ksmbd_err("ksmbd_vfs_setxattr() failed: %d\n", rc);
-	}
-out:
-	ksmbd_vfs_xattr_free(xattr_list);
 }
 
 int ksmbd_vfs_inode_permission(struct dentry *dentry, int acc_mode, bool delete)
@@ -198,7 +157,6 @@ int ksmbd_vfs_create(struct ksmbd_work *work, const char *name, umode_t mode)
 	if (!err) {
 		ksmbd_vfs_inherit_owner(work, d_inode(path.dentry),
 			d_inode(dentry));
-		ksmbd_vfs_inherit_smack(work, path.dentry, dentry);
 	} else {
 		ksmbd_err("File(%s): creation failed (err:%d)\n", name, err);
 	}
@@ -231,15 +189,32 @@ int ksmbd_vfs_mkdir(struct ksmbd_work *work, const char *name, umode_t mode)
 
 	mode |= S_IFDIR;
 	err = vfs_mkdir(&init_user_ns, d_inode(path.dentry), dentry, mode);
-	if (!err) {
-		ksmbd_vfs_inherit_owner(work, d_inode(path.dentry),
-			d_inode(dentry));
-		ksmbd_vfs_inherit_smack(work, path.dentry, dentry);
-	} else {
-		ksmbd_err("mkdir(%s): creation failed (err:%d)\n", name, err);
-	}
+	if (err)
+		goto out;
+	else if (d_unhashed(dentry)) {
+		struct dentry *d;
 
+		d = lookup_one_len(dentry->d_name.name,
+			       dentry->d_parent,
+			       dentry->d_name.len);
+		if (IS_ERR(d)) {
+			err = PTR_ERR(d);
+			goto out;
+		}
+		if (unlikely(d_is_negative(d))) {
+			dput(d);
+			err = -ENOENT;
+			goto out;
+		}
+
+		ksmbd_vfs_inherit_owner(work, d_inode(path.dentry),
+			d_inode(d));
+		dput(d);
+	}
+out:
 	done_path_create(&path, dentry);
+	if (err)
+		ksmbd_err("mkdir(%s): creation failed (err:%d)\n", name, err);
 	return err;
 }
 
@@ -268,7 +243,7 @@ static ssize_t ksmbd_vfs_getcasexattr(struct dentry *dentry, char *attr_name,
 	}
 
 out:
-	ksmbd_vfs_xattr_free(xattr_list);
+	kvfree(xattr_list);
 	return value_len;
 }
 
@@ -354,13 +329,12 @@ int ksmbd_vfs_read(struct ksmbd_work *work, struct ksmbd_file *fp, size_t count,
 {
 	struct file *filp;
 	ssize_t nbytes = 0;
-	char *rbuf, *name;
+	char *rbuf;
 	struct inode *inode;
-	char namebuf[NAME_MAX];
 
 	rbuf = work->aux_payload_buf;
 	filp = fp->filp;
-	inode = d_inode(filp->f_path.dentry);
+	inode = file_inode(filp);
 	if (S_ISDIR(inode->i_mode))
 		return -EISDIR;
 
@@ -390,11 +364,8 @@ int ksmbd_vfs_read(struct ksmbd_work *work, struct ksmbd_file *fp, size_t count,
 
 	nbytes = kernel_read(filp, rbuf, count, pos);
 	if (nbytes < 0) {
-		name = d_path(&filp->f_path, namebuf, sizeof(namebuf));
-		if (IS_ERR(name))
-			name = "(error)";
 		ksmbd_err("smb read failed for (%s), err = %zd\n",
-				name, nbytes);
+				fp->filename, nbytes);
 		return nbytes;
 	}
 
@@ -429,7 +400,7 @@ static int ksmbd_vfs_stream_write(struct ksmbd_file *fp, char *buf, loff_t *pos,
 	}
 
 	if (v_len < size) {
-		wbuf = ksmbd_alloc(size);
+		wbuf = kvmalloc(size, GFP_KERNEL | __GFP_ZERO);
 		if (!wbuf) {
 			err = -ENOMEM;
 			goto out;
@@ -453,7 +424,7 @@ static int ksmbd_vfs_stream_write(struct ksmbd_file *fp, char *buf, loff_t *pos,
 	fp->filp->f_pos = *pos;
 	err = 0;
 out:
-	ksmbd_free(stream_buf);
+	kvfree(stream_buf);
 	return err;
 }
 
@@ -578,7 +549,7 @@ int ksmbd_vfs_fsync(struct ksmbd_work *work, u64 fid, u64 p_id)
 int ksmbd_vfs_remove_file(struct ksmbd_work *work, char *name)
 {
 	struct path parent;
-	struct dentry *dir, *dentry;
+	struct dentry *dentry;
 	char *last;
 	int err;
 
@@ -597,12 +568,8 @@ int ksmbd_vfs_remove_file(struct ksmbd_work *work, char *name)
 		return err;
 	}
 
-	dir = parent.dentry;
-	if (!d_inode(dir))
-		goto out;
-
-	inode_lock_nested(d_inode(dir), I_MUTEX_PARENT);
-	dentry = lookup_one_len(last, dir, strlen(last));
+	inode_lock_nested(d_inode(parent.dentry), I_MUTEX_PARENT);
+	dentry = lookup_one_len(last, parent.dentry, strlen(last));
 	if (IS_ERR(dentry)) {
 		err = PTR_ERR(dentry);
 		ksmbd_debug(VFS, "%s: lookup failed, err %d\n", last, err);
@@ -616,12 +583,12 @@ int ksmbd_vfs_remove_file(struct ksmbd_work *work, char *name)
 	}
 
 	if (S_ISDIR(d_inode(dentry)->i_mode)) {
-		err = vfs_rmdir(&init_user_ns, d_inode(dir), dentry);
+		err = vfs_rmdir(&init_user_ns, d_inode(parent.dentry), dentry);
 		if (err && err != -ENOTEMPTY)
 			ksmbd_debug(VFS, "%s: rmdir failed, err %d\n", name,
 				err);
 	} else {
-		err = vfs_unlink(&init_user_ns, d_inode(dir), dentry, NULL);
+		err = vfs_unlink(&init_user_ns, d_inode(parent.dentry), dentry, NULL);
 		if (err)
 			ksmbd_debug(VFS, "%s: unlink failed, err %d\n", name,
 				err);
@@ -629,8 +596,7 @@ int ksmbd_vfs_remove_file(struct ksmbd_work *work, char *name)
 
 	dput(dentry);
 out_err:
-	inode_unlock(d_inode(dir));
-out:
+	inode_unlock(d_inode(parent.dentry));
 	rollback_path_modification(last);
 	path_put(&parent);
 	ksmbd_revert_fsids(work);
@@ -877,7 +843,7 @@ ssize_t ksmbd_vfs_listxattr(struct dentry *dentry, char **list)
 	if (size <= 0)
 		return size;
 
-	vlist = ksmbd_alloc(size);
+	vlist = kvmalloc(size, GFP_KERNEL | __GFP_ZERO);
 	if (!vlist)
 		return -ENOMEM;
 
@@ -885,7 +851,7 @@ ssize_t ksmbd_vfs_listxattr(struct dentry *dentry, char **list)
 	size = vfs_listxattr(dentry, vlist, size);
 	if (size < 0) {
 		ksmbd_debug(VFS, "listxattr failed\n");
-		ksmbd_vfs_xattr_free(vlist);
+		kvfree(vlist);
 		*list = NULL;
 	}
 
@@ -1080,11 +1046,6 @@ int ksmbd_vfs_fqar_lseek(struct ksmbd_file *fp, loff_t start, loff_t length,
 int ksmbd_vfs_remove_xattr(struct dentry *dentry, char *attr_name)
 {
 	return vfs_removexattr(&init_user_ns, dentry, attr_name);
-}
-
-void ksmbd_vfs_xattr_free(char *xattr)
-{
-	ksmbd_free(xattr);
 }
 
 int ksmbd_vfs_unlink(struct dentry *dir, struct dentry *dentry)
@@ -1330,7 +1291,7 @@ int ksmbd_vfs_remove_acl_xattrs(struct dentry *dentry)
 		}
 	}
 out:
-	ksmbd_vfs_xattr_free(xattr_list);
+	kvfree(xattr_list);
 	return err;
 }
 
@@ -1359,7 +1320,7 @@ int ksmbd_vfs_remove_sd_xattrs(struct dentry *dentry)
 		}
 	}
 out:
-	ksmbd_vfs_xattr_free(xattr_list);
+	kvfree(xattr_list);
 	return err;
 }
 
@@ -1591,7 +1552,7 @@ int ksmbd_vfs_get_dos_attrib_xattr(struct dentry *dentry,
 		n.length = err;
 		if (ndr_decode_dos_attr(&n, da))
 			err = -EINVAL;
-		ksmbd_free(n.data);
+		kfree(n.data);
 	} else {
 		ksmbd_debug(SMB, "failed to load dos attribute in xattr\n");
 	}
@@ -1716,7 +1677,7 @@ ssize_t ksmbd_vfs_casexattr_len(struct dentry *dentry, char *attr_name,
 	}
 
 out:
-	ksmbd_vfs_xattr_free(xattr_list);
+	kvfree(xattr_list);
 	return value_len;
 }
 

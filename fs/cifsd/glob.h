@@ -8,7 +8,6 @@
 #define __KSMBD_GLOB_H
 
 #include <linux/ctype.h>
-#include <linux/version.h>
 
 #include "unicode.h"
 #include "vfs_cache.h"
@@ -19,7 +18,6 @@
 /* @FIXME clean up this code */
 
 extern int ksmbd_debug_types;
-extern int ksmbd_caseless_search;
 
 #define DATA_STREAM	1
 #define DIR_STREAM	2
