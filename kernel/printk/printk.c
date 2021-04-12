@@ -410,6 +410,8 @@ static u64 clear_seq;
 #else
 #define PREFIX_MAX		32
 #endif
+
+/* Keep in sync with rust/kernel/print.rs */
 #define LOG_LINE_MAX		(1024 - PREFIX_MAX)
 
 #define LOG_LEVEL(v)		((v) & 0x07)
