@@ -31,6 +31,8 @@ you probably needn't concern yourself with pcmciautils.
 ====================== ===============  ========================================
 GNU C                  4.9              gcc --version
 Clang/LLVM (optional)  10.0.1           clang --version
+rustc (optional)       nightly          rustc --version
+bindgen (optional)     0.56.0           bindgen --version
 GNU make               3.81             make --version
 binutils               2.23             ld -v
 flex                   2.5.35           flex --version
@@ -56,6 +58,7 @@ iptables               1.4.2            iptables -V
 openssl & libcrypto    1.0.0            openssl version
 bc                     1.06.95          bc --version
 Sphinx\ [#f1]_	       1.3		sphinx-build --version
+rustdoc (optional)     nightly          rustdoc --version
 ====================== ===============  ========================================
 
 .. [#f1] Sphinx is needed only to build the Kernel documentation
@@ -329,6 +332,12 @@ Sphinx
 
 Please see :ref:`sphinx_install` in :ref:`Documentation/doc-guide/sphinx.rst <sphinxdoc>`
 for details about Sphinx requirements.
+
+rustdoc
+-------
+
+``rustdoc`` is used to generate Rust documentation. Please see
+:ref:`Documentation/rust/docs.rst <rust_docs>` for more information.
 
 Getting updated software
 ========================
