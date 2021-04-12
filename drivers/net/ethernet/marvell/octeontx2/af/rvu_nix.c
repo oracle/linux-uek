@@ -4488,6 +4488,9 @@ int rvu_mbox_handler_nix_inline_ipsec_cfg(struct rvu *rvu,
 		/* Set CPT queue for inline IPSec */
 		val = (u64)req->inst_qsel.cpt_pf_func << 8 |
 		      req->inst_qsel.cpt_slot;
+
+		if (!is_rvu_otx2(rvu))
+			val |= BLKADDR_CPT0 << 24;
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_CPTX_INST_QSEL(0), val);
 
 		/* Set CPT credit */
