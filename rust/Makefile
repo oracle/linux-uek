@@ -3,6 +3,8 @@
 obj-$(CONFIG_RUST) += core.o compiler_builtins.o helpers.o
 extra-$(CONFIG_RUST) += exports_core_generated.h
 
+extra-$(CONFIG_RUST) += libmodule.so
+
 RUSTDOC = rustdoc
 
 quiet_cmd_rustdoc = RUSTDOC $<
