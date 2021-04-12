@@ -1258,8 +1258,9 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	fw_rinfo.u = 0;
 	fw_rinfo.s.dir = FW_TO_HOST;
-	fw_rinfo.s.rppf = info.num_pf_rings;
-	fw_rinfo.s.rpvf = info.vf_rings[0];
+	/* PF doesn't have any rings */
+	fw_rinfo.s.rppf = info.vf_rings[0];
+	fw_rinfo.s.rpvf = info.vf_rings[1];
 	fw_rinfo.s.numvf = info.max_vfs - 1;
 	fw_rinfo.s.pf_srn = info.pf_srn;
 
