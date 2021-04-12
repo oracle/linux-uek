@@ -9,6 +9,8 @@ extra-$(CONFIG_RUST) += bindings_generated.rs
 obj-$(CONFIG_RUST) += alloc.o kernel.o
 extra-$(CONFIG_RUST) += exports_alloc_generated.h exports_kernel_generated.h
 
+obj-$(CONFIG_RUST) += exports.o
+
 RUSTDOC = rustdoc
 
 quiet_cmd_rustdoc = RUSTDOC $<
