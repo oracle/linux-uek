@@ -97,6 +97,14 @@ arm/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13-2
 	amlogic/dt64-2
 		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-dt64-2
+	patch
+		ARM: dts: at91: sama5d2/trivial: fix letter case for etm hex address
+	rockchip/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v5.13-rockchip-dts32
+	rockchip/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v5.13-rockchip-dts64
+	zynq/dt
+		https://github.com/Xilinx/linux-xlnx tags/zynqmp-dt-for-v5.13
 
 arm/drivers
 	drivers/tee
@@ -141,6 +149,10 @@ arm/drivers
 		clk: socfpga: fix iomem pointer cast on 64-bit
 	qcom/drivers-2
 		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-for-5.13-2
+	zynq/soc
+		https://github.com/Xilinx/linux-xlnx tags/zynqmp-soc-for-v5.13
+	fsl/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/leo/linux tags/soc-fsl-next-v5.13
 
 arm/defconfig
 	renesas/defconfig
