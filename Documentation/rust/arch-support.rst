@@ -26,7 +26,7 @@ support corresponds to ``S`` values in the ``MAINTAINERS`` file.
      - None
    * - ``powerpc``
      - Maintained
-     - ``ppc64le`` only, ``RUST_OPT_LEVEL >= 2``
+     - ``ppc64le`` only, ``RUST_OPT_LEVEL < 2`` requires ``CONFIG_THREAD_SHIFT=15``
    * - ``x86``
      - Maintained
      - ``x86_64`` only
