@@ -1723,6 +1723,8 @@ void bitmap_flush(struct mddev *mddev)
 	bitmap_daemon_work(mddev);
 	bitmap->daemon_lastrun -= sleep;
 	bitmap_daemon_work(mddev);
+	if (mddev->bitmap_info.external)
+		md_super_wait(mddev);
 	bitmap_update_sb(bitmap);
 }
 
