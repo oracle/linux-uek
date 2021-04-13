@@ -1433,6 +1433,7 @@ static void virtnet_poll_cleantx(struct receive_queue *rq)
 		return;
 
 	if (__netif_tx_trylock(txq)) {
+		virtqueue_disable_cb(sq->vq);
 		free_old_xmit_skbs(sq, true);
 
 		if (sq->vq->num_free >= 2 + MAX_SKB_FRAGS)
@@ -1607,6 +1608,7 @@ static netdev_tx_t start_xmit(struct sk_buff *skb, struct net_device *dev)
 	bool use_napi = sq->napi.weight;
 
 	/* Free up any pending old buffers before queueing new ones. */
+	virtqueue_disable_cb(sq->vq);
 	free_old_xmit_skbs(sq, false);
 
 	if (use_napi && kick)
