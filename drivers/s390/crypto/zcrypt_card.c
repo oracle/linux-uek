@@ -77,6 +77,8 @@ static ssize_t online_store(struct device *dev,
 
 	ZCRYPT_DBF(DBF_INFO, "card=%02x online=%d\n", id, online);
 
+	ap_send_online_uevent(&ac->ap_dev, online);
+
 	spin_lock(&zcrypt_list_lock);
 	list_for_each_entry(zq, &zc->zqueues, list)
 		zcrypt_queue_force_online(zq, online);
