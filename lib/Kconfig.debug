@@ -2607,11 +2607,17 @@ config RUST_OPT_LEVEL_0
 	  directly). Use the corresponding configuration options to control
 	  that instead, orthogonally.
 
+	  Note this level may cause excessive stack usage, which can lead to stack
+	  overflow and subsequent crashes.
+
 config RUST_OPT_LEVEL_1
 	bool "Basic optimizations (-Copt-level=1)"
 	help
 	  Useful for debugging without getting too lost, but without
 	  the overhead and boilerplate of no optimizations at all.
+
+	  Note this level may cause excessive stack usage, which can lead to stack
+	  overflow and subsequent crashes.
 
 config RUST_OPT_LEVEL_2
 	bool "Some optimizations (-Copt-level=2)"
