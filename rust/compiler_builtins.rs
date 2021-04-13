@@ -49,6 +49,8 @@ define_panicking_intrinsics!("non-inline stack probes should not be used", {
 define_panicking_intrinsics!("`f32` should not be used", {
     __addsf3,
     __addsf3vfp,
+    __aeabi_fcmpeq,
+    __aeabi_ul2f,
     __divsf3,
     __divsf3vfp,
     __eqsf2,
@@ -86,6 +88,8 @@ define_panicking_intrinsics!("`f32` should not be used", {
 define_panicking_intrinsics!("`f64` should not be used", {
     __adddf3,
     __adddf3vfp,
+    __aeabi_dcmpeq,
+    __aeabi_ul2d,
     __divdf3,
     __divdf3vfp,
     __eqdf2,
@@ -132,6 +136,12 @@ define_panicking_intrinsics!("`u128` should not be used", {
     __udivmodti4,
     __udivti3,
     __umodti3,
+});
+
+#[cfg(target_arch = "arm")]
+define_panicking_intrinsics!("`u64` division/modulo should not be used", {
+    __aeabi_uldivmod,
+    __mulodi4,
 });
 
 extern "C" {
