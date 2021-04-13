@@ -399,7 +399,7 @@ static int mpc_i2c_get_fdr_8xxx(struct device_node *node, u32 clock,
 	}
 
 	*real_clk = fsl_get_sys_freq() / prescaler / div->divider;
-	return div ? (int)div->fdr : -EINVAL;
+	return (int)div->fdr;
 }
 
 static void mpc_i2c_setup_8xxx(struct device_node *node,
@@ -759,12 +759,6 @@ static int fsl_i2c_remove(struct platform_device *op)
 	if (i2c->clk_per)
 		clk_disable_unprepare(i2c->clk_per);
 
-	if (i2c->irq)
-		free_irq(i2c->irq, i2c);
-
-	irq_dispose_mapping(i2c->irq);
-	iounmap(i2c->base);
-	kfree(i2c);
 	return 0;
 };
 
