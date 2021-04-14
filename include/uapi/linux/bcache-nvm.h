@@ -116,6 +116,8 @@ struct bch_pgalloc_rec {
 	__u64	reserved:6;
 };
 
+#define BCH_PGOFF_TO_KVADDR(pgoff) ((void *)((unsigned long)pgoff << PAGE_SHIFT))
+
 struct bch_nvm_pgalloc_recs {
 union {
 	struct {
@@ -132,10 +134,14 @@ union {
 };
 };
 
-#define BCH_MAX_RECS					\
-	((sizeof(struct bch_nvm_pgalloc_recs) -		\
-	 offsetof(struct bch_nvm_pgalloc_recs, recs)) /	\
+#define BCH_MAX_RECS							\
+	((sizeof(struct bch_nvm_pgalloc_recs) -				\
+	 offsetof(struct bch_nvm_pgalloc_recs, recs)) /			\
 	 sizeof(struct bch_pgalloc_rec))
+
+#define BCH_MAX_PGALLOC_RECS						\
+	((BCH_NVM_PAGES_OFFSET - BCH_NVM_PAGES_SYS_RECS_HEAD_OFFSET) /	\
+	 sizeof(struct bch_nvm_pgalloc_recs))
 
 struct bch_nvm_pages_owner_head {
 	unsigned char			uuid[16];

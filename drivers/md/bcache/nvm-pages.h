@@ -16,6 +16,7 @@
  * to which owner. After reboot from power failure, they will be initialized
  * based on nvm pages superblock in NVDIMM device.
  */
+#define BCH_MAX_ORDER 20
 struct bch_nvm_namespace {
 	struct bch_nvm_pages_sb *sb;
 	void *kaddr;
@@ -26,6 +27,11 @@ struct bch_nvm_namespace {
 	u64 pages_offset;
 	u64 pages_total;
 	pfn_t start_pfn;
+
+	unsigned long *pages_bitmap;
+	struct list_head free_area[BCH_MAX_ORDER];
+
+	unsigned long *pgalloc_recs_bitmap;
 
 	struct dax_device *dax_dev;
 	struct block_device *bdev;
