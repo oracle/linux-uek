@@ -62,6 +62,7 @@ extern struct bch_nvm_set *only_set;
 struct bch_nvm_namespace *bch_register_namespace(const char *dev_path);
 int bch_nvm_init(void);
 void bch_nvm_exit(void);
+void *bch_nvm_alloc_pages(int order, const char *owner_uuid);
 
 #else
 
@@ -74,6 +75,11 @@ static inline int bch_nvm_init(void)
 	return 0;
 }
 static inline void bch_nvm_exit(void) { }
+static inline void *bch_nvm_alloc_pages(int order, const char *owner_uuid)
+{
+	return NULL;
+}
+
 
 #endif /* CONFIG_BCACHE_NVM_PAGES */
 
