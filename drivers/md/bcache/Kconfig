@@ -35,3 +35,12 @@ config BCACHE_ASYNC_REGISTRATION
 	device path into this file will returns immediately and the real
 	registration work is handled in kernel work queue in asynchronous
 	way.
+
+config BCACHE_NVM_PAGES
+	bool "NVDIMM support for bcache (EXPERIMENTAL)"
+	depends on BCACHE
+	depends on PHYS_ADDR_T_64BIT
+	select LIBNVDIMM
+	select DAX
+	help
+	nvm pages allocator for bcache.
