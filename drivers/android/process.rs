@@ -905,12 +905,12 @@ impl FileOperations for Process {
             return Err(Error::EINVAL);
         }
 
-        if (vma.vm_flags & (bindings::VM_WRITE as u64)) != 0 {
+        if (vma.vm_flags & (bindings::VM_WRITE as c_types::c_ulong)) != 0 {
             return Err(Error::EPERM);
         }
 
-        vma.vm_flags |= (bindings::VM_DONTCOPY | bindings::VM_MIXEDMAP) as u64;
-        vma.vm_flags &= !(bindings::VM_MAYWRITE as u64);
+        vma.vm_flags |= (bindings::VM_DONTCOPY | bindings::VM_MIXEDMAP) as c_types::c_ulong;
+        vma.vm_flags &= !(bindings::VM_MAYWRITE as c_types::c_ulong);
 
         // TODO: Set ops. We need to learn when the user unmaps so that we can stop using it.
         self.create_mapping(vma)
