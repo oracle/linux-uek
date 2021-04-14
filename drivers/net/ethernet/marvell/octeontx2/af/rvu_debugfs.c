@@ -287,6 +287,8 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 			}
 
 			for (index = 0; index < BLK_COUNT; index++) {
+				int lfs_off;
+
 				block = rvu->hw->block[index];
 				if (!strlen(block.name))
 					continue;
@@ -296,7 +298,16 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 					if (block.fn_map[lf] != pcifunc)
 						continue;
 					flag = 1;
-					len += sprintf(&lfs[len], "%d,", lf);
+					lfs_off = scnprintf(&lfs[len],
+							    lf_str_size - len,
+							    "%d,", lf);
+					if (lfs_off <= 0) {
+						len = len > 1 ? len : 1;
+						lfs[len - 1] = '!';
+						len++;
+						break;
+					}
+					len += lfs_off;
 				}
 
 				if (flag && len)
