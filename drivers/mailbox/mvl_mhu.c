@@ -22,7 +22,8 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_address.h>
-#include <linux/atomic.h>
+#include <linux/spinlock.h>
+#include <linux/mutex.h>
 
 #define MHU_NUM_PCHANS 2
 
@@ -79,22 +80,26 @@
 	((uint64_t)(device_id) << 4))
 #define SCP_TO_AP0_MBOX_RINT  XCPX_XCP_DEVY_MBOX_RINT(SCP_INDEX, DEV_AP0)
 
+/**
+ * MHU link is a structure that describes SCMI memory and irq for the mailbox
+ *
+ */
 struct mvl_mhu_link {
+	struct device *dev;
+	bool initialized;
 	unsigned int irq;
 	void __iomem *tx_reg;
 	void __iomem *rx_reg;
 	void __iomem *shared_mem;
-	struct device *dev;
-	/* Protects IRQ from multiple initialization */
-	atomic_t initialized;
 };
 
 struct mvl_mhu {
+	struct pci_dev *pdev;
+	struct device *dev;
 	void __iomem *base;
 	struct mvl_mhu_link mlink;
 	struct mbox_chan chan[MHU_NUM_PCHANS];
 	struct mbox_controller mbox;
-	struct device *dev;
 	void __iomem *payload;
 	const char *name;
 };
@@ -168,6 +173,7 @@ static irqreturn_t mvl_mhu_rx_interrupt_thread(int irq, void *p)
 		/* Update the memory to prepare for next */
 		event_counter[INDEX_INT_SRC_AVS_STS] = avs_failure_cnt;
 	}
+
 	return IRQ_HANDLED;
 }
 
@@ -180,11 +186,12 @@ static irqreturn_t mvl_mhu_rx_interrupt(int irq, void *p)
 
 	/* Read interrupt status register */
 	val = readq_relaxed(base + SCP_TO_AP0_MBOX_RINT);
-	if (!val)
+	if (val) {
+		/* Clear the interrupt : Write on clear */
+		writeq_relaxed(0x1, base + SCP_TO_AP0_MBOX_RINT);
+	} else {
 		return IRQ_NONE;
-
-	/* Clear the interrupt : Write on clear */
-	writeq_relaxed(0x1, base + SCP_TO_AP0_MBOX_RINT);
+	}
 
 	return IRQ_WAKE_THREAD;
 }
@@ -193,7 +200,9 @@ static bool mvl_mhu_last_tx_done(struct mbox_chan *chan)
 {
 	struct mvl_mhu_link *mlink = chan->con_priv;
 	void __iomem *base = mlink->tx_reg;
-	u64 val = readq_relaxed(base + SCP_TO_AP0_MBOX_RINT);
+	u64 val;
+
+	val = readq_relaxed(base + SCP_TO_AP0_MBOX_RINT);
 
 	return (val == 0);
 }
@@ -204,27 +213,33 @@ static int mvl_mhu_send_data(struct mbox_chan *chan, void *data)
 	void __iomem *base = mlink->tx_reg;
 
 	writeq_relaxed(DONT_CARE_DATA, base + AP0_TO_SCP_MBOX);
+
 	return 0;
 }
+
+/* Channels initialization might be called multiple times at once */
+static DEFINE_MUTEX(mhu_startup_mutex);
 
 static int mvl_mhu_startup(struct mbox_chan *chan)
 {
 	int ret = 0;
 	struct mvl_mhu_link *mlink = chan->con_priv;
 
-	/* register interrupts */
-	if (!atomic_inc_and_test(&mlink->initialized)) {
+	mutex_lock(&mhu_startup_mutex);
+	if (likely(!mlink->initialized)) {
 		ret =  request_threaded_irq(mlink->irq, mvl_mhu_rx_interrupt,
 					    mvl_mhu_rx_interrupt_thread, 0,
 					    DRV_NAME, chan);
-		if (ret) {
-			dev_err(mlink->dev, "request_irq failed:%d\n", ret);
-			atomic_set(&mlink->initialized, 0);
+		if (!ret) {
+			/* Enable interrupt from SCP to NS_AP */
+			writeq_relaxed(0x1, mlink->tx_reg + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
+			mlink->initialized = true;
 		}
-
-		/* Enable interrupt from SCP to NS_AP */
-		writeq_relaxed(0x1, mlink->tx_reg + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
 	}
+	mutex_unlock(&mhu_startup_mutex);
+
+	if (ret)
+		dev_err(mlink->dev, "request_irq failed:%d\n", ret);
 
 	return ret;
 }
@@ -241,49 +256,78 @@ static const struct mvl_mhu_mbox_pdata mvl_mhu_pdata = {
 	.support_doorbells = false,
 };
 
+static int mvl_mhu_mlink_init(struct mvl_mhu *mhu)
+{
+	int ret;
+
+	ret = pci_irq_vector(mhu->pdev, SCP_TO_AP_INTERRUPT);
+	if (ret < 0)
+		return ret;
+
+	mhu->mlink.dev = mhu->dev;
+	mhu->mlink.irq = ret;
+	mhu->mlink.initialized = false;
+	mhu->mlink.tx_reg = mhu->base;
+	mhu->mlink.rx_reg = mhu->base;
+	mhu->mlink.shared_mem = mhu->payload;
+
+	return 0;
+}
+
 static int mvl_mhu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
-	int i, err, ret, nvec;
 	struct mvl_mhu *mhu;
+	int i, ret, nvec;
 	struct resource res;
 	resource_size_t size;
-	struct device *dev = &pdev->dev;
-	struct device_node *shmem, *np = dev->of_node;
+	struct device_node *shmem, *np;
 
-	if (!np)
+	if (!pdev || !pdev->dev.of_node)
 		return -ENODEV;
 
-	if (mvl_mhu_pdata.num_pchans > MHU_NUM_PCHANS) {
-		dev_err(dev, "Number of physical channel can't exceed %d\n",
-			MHU_NUM_PCHANS);
-		return -EINVAL;
-	}
-	dev->platform_data = (void *)&mvl_mhu_pdata;
-
-	mhu = devm_kzalloc(dev, sizeof(*mhu), GFP_KERNEL);
+	np = pdev->dev.of_node;
+	mhu = devm_kzalloc(&pdev->dev, sizeof(*mhu), GFP_KERNEL);
 	if (!mhu)
 		return -ENOMEM;
 
-	err = pci_enable_device(pdev);
-	if (err) {
-		dev_err(dev, "Failed to enable PCI device: err %d\n", err);
-		return err;
-	}
+	mhu->pdev = pdev;
+	mhu->dev = &pdev->dev;
+	pci_set_drvdata(pdev, mhu);
 
-	ret = pci_request_region(pdev, BAR0, DRV_NAME);
+	if (mvl_mhu_pdata.num_pchans > MHU_NUM_PCHANS) {
+		dev_err(mhu->dev, "Number of physical channel can't exceed %d\n",
+			MHU_NUM_PCHANS);
+		return -EINVAL;
+	}
+	mhu->dev->platform_data = (void *)&mvl_mhu_pdata;
+
+	ret = pcim_enable_device(mhu->pdev);
 	if (ret) {
-		dev_err(dev, "Failed requested region PCI dev err:%d\n", err);
+		dev_err(mhu->dev, "Failed to enable PCI device: err %d\n", ret);
 		return ret;
 	}
 
-	mhu->base = pcim_iomap(pdev, BAR0, pci_resource_len(pdev, BAR0));
+	ret = pci_request_region(mhu->pdev, BAR0, DRV_NAME);
+	if (ret) {
+		dev_err(mhu->dev, "Failed requested region PCI dev err:%d\n",
+			ret);
+		return ret;
+	}
+
+	mhu->base = pcim_iomap(pdev, BAR0, pci_resource_len(mhu->pdev, BAR0));
 	if (!mhu->base) {
-		dev_err(dev, "Failed to iomap PCI device: err %d\n", err);
+		dev_err(mhu->dev, "Failed to iomap PCI device: err %d\n", ret);
 		return -EINVAL;
 	}
 
-	err = of_property_read_string(np, "mbox-name", &mhu->name);
-	if (err)
+	nvec = pci_alloc_irq_vectors(pdev, 0, 3, PCI_IRQ_MSIX);
+	if (nvec < 0) {
+		dev_err(mhu->dev, "irq vectors allocation failed:%d\n", nvec);
+		return nvec;
+	}
+
+	ret = of_property_read_string(np, "mbox-name", &mhu->name);
+	if (ret)
 		mhu->name = np->full_name;
 
 	/* get shared memory details between NS AP & SCP */
@@ -291,19 +335,24 @@ static int mvl_mhu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	ret = of_address_to_resource(shmem, 0, &res);
 	of_node_put(shmem);
 	if (ret) {
-		dev_err(dev, "failed to get CPC COMMON payload mem resource\n");
+		dev_err(mhu->dev, "failed to get CPC COMMON payload mem resource\n");
 		return ret;
 	}
 	size = resource_size(&res);
 
-	mhu->payload = devm_ioremap(dev, res.start, size);
+	mhu->payload = devm_ioremap(mhu->dev, res.start, size);
 	if (!mhu->payload) {
-		dev_err(dev, "failed to ioremap CPC COMMON payload\n");
+		dev_err(mhu->dev, "failed to ioremap CPC COMMON payload\n");
 		return -EADDRNOTAVAIL;
 	}
 
-	mhu->dev = dev;
-	mhu->mbox.dev = dev;
+	ret = mvl_mhu_mlink_init(mhu);
+	if (ret) {
+		dev_err(mhu->dev, "failed to initialize mlink (%d)\n", ret);
+		return ret;
+	}
+
+	mhu->mbox.dev = mhu->dev;
 	mhu->mbox.chans = &mhu->chan[0];
 	mhu->mbox.num_chans = MHU_NUM_PCHANS;
 	mhu->mbox.txdone_irq = false;
@@ -311,30 +360,14 @@ static int mvl_mhu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mhu->mbox.txpoll_period = 1;
 	mhu->mbox.ops = &mvl_mhu_ops;
 
-	pci_set_drvdata(pdev, mhu);
-
-	err = mbox_controller_register(&mhu->mbox);
-	if (err) {
-		dev_err(dev, "Failed to register mailboxes %d\n", err);
-		return err;
-	}
-
-	nvec = pci_alloc_irq_vectors(pdev, 0, 3, PCI_IRQ_MSIX);
-	if (nvec < 0) {
-		dev_err(dev, "irq vectors allocation failed:%d\n", nvec);
-		return nvec;
-	}
-
-	atomic_set(&mhu->mlink.initialized, 0);
-	mhu->mlink.tx_reg = mhu->base;
-	mhu->mlink.rx_reg = mhu->base;
-	mhu->mlink.dev = dev;
-	mhu->mlink.shared_mem = mhu->payload;
-	/* Enable scp to AP interrupt */
-	mhu->mlink.irq = pci_irq_vector(pdev, SCP_TO_AP_INTERRUPT);
-
 	for (i = 0; i < mvl_mhu_pdata.num_pchans; i++)
 		mhu->chan[i].con_priv = &mhu->mlink;
+
+	ret = mbox_controller_register(&mhu->mbox);
+	if (ret) {
+		dev_err(mhu->dev, "Failed to register mailboxes %d\n", ret);
+		return ret;
+	}
 
 	return 0;
 }
