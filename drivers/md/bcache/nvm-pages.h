@@ -5,6 +5,7 @@
 
 #ifdef CONFIG_BCACHE_NVM_PAGES
 #include <linux/bcache-nvm.h>
+#include <linux/libnvdimm.h>
 #endif /* CONFIG_BCACHE_NVM_PAGES */
 
 /*

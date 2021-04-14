@@ -596,6 +596,8 @@ static void do_journal_discard(struct cache *ca)
 		return;
 	}
 
+	BUG_ON(bch_has_feature_nvdimm_meta(&ca->sb));
+
 	switch (atomic_read(&ja->discard_in_flight)) {
 	case DISCARD_IN_FLIGHT:
 		return;
@@ -661,9 +663,13 @@ static void journal_reclaim(struct cache_set *c)
 		goto out;
 
 	ja->cur_idx = next;
-	k->ptr[0] = MAKE_PTR(0,
-			     bucket_to_sector(c, ca->sb.d[ja->cur_idx]),
-			     ca->sb.nr_this_dev);
+	if (!bch_has_feature_nvdimm_meta(&ca->sb))
+		k->ptr[0] = MAKE_PTR(0,
+			bucket_to_sector(c, ca->sb.d[ja->cur_idx]),
+			ca->sb.nr_this_dev);
+	else
+		k->ptr[0] = ca->sb.d[ja->cur_idx];
+
 	atomic_long_inc(&c->reclaimed_journal_buckets);
 
 	bkey_init(k);
@@ -729,20 +735,93 @@ static void journal_write_unlock(struct closure *cl)
 	spin_unlock(&c->journal.lock);
 }
 
-static void journal_write_unlocked(struct closure *cl)
+
+static void __journal_write_unlocked(struct cache_set *c)
 	__releases(c->journal.lock)
+{
+	struct bkey *k = &c->journal.key;
+	struct journal_write *w = c->journal.cur;
+	struct closure *cl = &c->journal.io;
+	struct cache *ca = c->cache;
+	struct bio *bio;
+	struct bio_list list;
+	unsigned int i, sectors = set_blocks(w->data, block_bytes(ca)) *
+		ca->sb.block_size;
+
+	bio_list_init(&list);
+
+	for (i = 0; i < KEY_PTRS(k); i++) {
+		ca = c->cache;
+		bio = &ca->journal.bio;
+
+		atomic_long_add(sectors, &ca->meta_sectors_written);
+
+		bio_reset(bio);
+		bio->bi_iter.bi_sector	= PTR_OFFSET(k, i);
+		bio_set_dev(bio, ca->bdev);
+		bio->bi_iter.bi_size = sectors << 9;
+
+		bio->bi_end_io	= journal_write_endio;
+		bio->bi_private = w;
+		bio_set_op_attrs(bio, REQ_OP_WRITE,
+				 REQ_SYNC|REQ_META|REQ_PREFLUSH|REQ_FUA);
+		bch_bio_map(bio, w->data);
+
+		trace_bcache_journal_write(bio, w->data->keys);
+		bio_list_add(&list, bio);
+
+		SET_PTR_OFFSET(k, i, PTR_OFFSET(k, i) + sectors);
+
+		ca->journal.seq[ca->journal.cur_idx] = w->data->seq;
+	}
+	/* If KEY_PTRS(k) == 0, this jset gets lost in air */
+	BUG_ON(i == 0);
+
+	atomic_dec_bug(&fifo_back(&c->journal.pin));
+	bch_journal_next(&c->journal);
+	journal_reclaim(c);
+
+	spin_unlock(&c->journal.lock);
+
+	while ((bio = bio_list_pop(&list)))
+		closure_bio_submit(c, bio, cl);
+}
+
+#ifdef CONFIG_BCACHE_NVM_PAGES
+
+static void __journal_nvdimm_write_unlocked(struct cache_set *c)
+	__releases(c->journal.lock)
+{
+	struct journal_write *w = c->journal.cur;
+	struct cache *ca = c->cache;
+	unsigned int sectors;
+
+	sectors = set_blocks(w->data, block_bytes(ca)) * ca->sb.block_size;
+	atomic_long_add(sectors, &ca->meta_sectors_written);
+
+	memcpy_flushcache((void *)c->journal.key.ptr[0], w->data, sectors << 9);
+
+	c->journal.key.ptr[0] += sectors << 9;
+	ca->journal.seq[ca->journal.cur_idx] = w->data->seq;
+
+	atomic_dec_bug(&fifo_back(&c->journal.pin));
+	bch_journal_next(&c->journal);
+	journal_reclaim(c);
+
+	spin_unlock(&c->journal.lock);
+}
+
+#else /* CONFIG_BCACHE_NVM_PAGES */
+
+static void __journal_nvdimm_write_unlocked(struct cache_set *c) { }
+
+#endif /* CONFIG_BCACHE_NVM_PAGES */
+
+static void journal_write_unlocked(struct closure *cl)
 {
 	struct cache_set *c = container_of(cl, struct cache_set, journal.io);
 	struct cache *ca = c->cache;
 	struct journal_write *w = c->journal.cur;
-	struct bkey *k = &c->journal.key;
-	unsigned int i, sectors = set_blocks(w->data, block_bytes(ca)) *
-		ca->sb.block_size;
-
-	struct bio *bio;
-	struct bio_list list;
-
-	bio_list_init(&list);
 
 	if (!w->need_write) {
 		closure_return_with_destructor(cl, journal_write_unlock);
@@ -769,42 +848,10 @@ static void journal_write_unlocked(struct closure *cl)
 	w->data->last_seq	= last_seq(&c->journal);
 	w->data->csum		= csum_set(w->data);
 
-	for (i = 0; i < KEY_PTRS(k); i++) {
-		ca = c->cache;
-		bio = &ca->journal.bio;
-
-		atomic_long_add(sectors, &ca->meta_sectors_written);
-
-		bio_reset(bio);
-		bio->bi_iter.bi_sector	= PTR_OFFSET(k, i);
-		bio_set_dev(bio, ca->bdev);
-		bio->bi_iter.bi_size = sectors << 9;
-
-		bio->bi_end_io	= journal_write_endio;
-		bio->bi_private = w;
-		bio_set_op_attrs(bio, REQ_OP_WRITE,
-				 REQ_SYNC|REQ_META|REQ_PREFLUSH|REQ_FUA);
-		bch_bio_map(bio, w->data);
-
-		trace_bcache_journal_write(bio, w->data->keys);
-		bio_list_add(&list, bio);
-
-		SET_PTR_OFFSET(k, i, PTR_OFFSET(k, i) + sectors);
-
-		ca->journal.seq[ca->journal.cur_idx] = w->data->seq;
-	}
-
-	/* If KEY_PTRS(k) == 0, this jset gets lost in air */
-	BUG_ON(i == 0);
-
-	atomic_dec_bug(&fifo_back(&c->journal.pin));
-	bch_journal_next(&c->journal);
-	journal_reclaim(c);
-
-	spin_unlock(&c->journal.lock);
-
-	while ((bio = bio_list_pop(&list)))
-		closure_bio_submit(c, bio, cl);
+	if (!bch_has_feature_nvdimm_meta(&ca->sb))
+		__journal_write_unlocked(c);
+	else
+		__journal_nvdimm_write_unlocked(c);
 
 	continue_at(cl, journal_write_done, NULL);
 }

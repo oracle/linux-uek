@@ -1685,7 +1685,29 @@ void bch_cache_set_release(struct kobject *kobj)
 static void cache_set_free(struct closure *cl)
 {
 	struct cache_set *c = container_of(cl, struct cache_set, cl);
-	struct cache *ca;
+	struct cache *ca = c->cache;
+
+#ifdef CONFIG_BCACHE_NVM_PAGES
+	/* Flush cache if journal stored in NVDIMM */
+	if (ca && bch_has_feature_nvdimm_meta(&ca->sb)) {
+		unsigned long bucket_size = ca->sb.bucket_size;
+		int i;
+
+		for (i = 0; i < ca->sb.keys; i++) {
+			unsigned long offset = 0;
+			unsigned int len = round_down(UINT_MAX, 2);
+
+			while (bucket_size > 0) {
+				if (len > bucket_size)
+					len = bucket_size;
+				arch_invalidate_pmem(
+					(void *)(ca->sb.d[i] + offset), len);
+				offset += len;
+				bucket_size -= len;
+			}
+		}
+	}
+#endif /* CONFIG_BCACHE_NVM_PAGES */
 
 	debugfs_remove(c->debug);
 
@@ -1697,7 +1719,6 @@ static void cache_set_free(struct closure *cl)
 	bch_bset_sort_state_free(&c->sort);
 	free_pages((unsigned long) c->uuids, ilog2(meta_bucket_pages(&c->cache->sb)));
 
-	ca = c->cache;
 	if (ca) {
 		ca->set = NULL;
 		c->cache = NULL;
