@@ -9,6 +9,8 @@
 #include "btree.h"
 #include "debug.h"
 #include "extents.h"
+#include "nvm-pages.h"
+#include "features.h"
 
 #include <trace/events/bcache.h>
 
@@ -981,4 +983,107 @@ int bch_journal_alloc(struct cache_set *c)
 		return -ENOMEM;
 
 	return 0;
+}
+
+#ifdef CONFIG_BCACHE_NVM_PAGES
+
+static void *find_journal_nvm_base(struct bch_nvm_pages_owner_head *owner_list,
+				   struct cache *ca)
+{
+	unsigned long addr = 0;
+	struct bch_nvm_pgalloc_recs *recs_list = owner_list->recs[0];
+
+	while (recs_list) {
+		struct bch_pgalloc_rec *rec;
+		unsigned long jnl_pgoff;
+		int i;
+
+		jnl_pgoff = ((unsigned long)ca->sb.d[0]) >> PAGE_SHIFT;
+		rec = recs_list->recs;
+		for (i = 0; i < recs_list->used; i++) {
+			if (rec->pgoff == jnl_pgoff)
+				break;
+			rec++;
+		}
+		if (i < recs_list->used) {
+			addr = rec->pgoff << PAGE_SHIFT;
+			break;
+		}
+		recs_list = recs_list->next;
+	}
+	return (void *)addr;
+}
+
+static void *get_nvdimm_journal_space(struct cache *ca)
+{
+	struct bch_nvm_pages_owner_head *owner_list = NULL;
+	void *ret = NULL;
+	int order;
+
+	owner_list = bch_get_allocated_pages(ca->sb.set_uuid);
+	if (owner_list) {
+		ret = find_journal_nvm_base(owner_list, ca);
+		if (ret)
+			goto found;
+	}
+
+	order = ilog2(ca->sb.bucket_size *
+		      ca->sb.njournal_buckets / PAGE_SECTORS);
+	ret = bch_nvm_alloc_pages(order, ca->sb.set_uuid);
+	if (ret)
+		memset(ret, 0, (1 << order) * PAGE_SIZE);
+
+found:
+	return ret;
+}
+
+static int __bch_journal_nvdimm_init(struct cache *ca)
+{
+	int i, ret = 0;
+	void *journal_nvm_base = NULL;
+
+	journal_nvm_base = get_nvdimm_journal_space(ca);
+	if (!journal_nvm_base) {
+		pr_err("Failed to get journal space from nvdimm\n");
+		ret = -1;
+		goto out;
+	}
+
+	/* Iniialized and reloaded from on-disk super block already */
+	if (ca->sb.d[0] != 0)
+		goto out;
+
+	for (i = 0; i < ca->sb.keys; i++)
+		ca->sb.d[i] =
+			(u64)(journal_nvm_base + (ca->sb.bucket_size * i));
+
+out:
+	return ret;
+}
+
+#else /* CONFIG_BCACHE_NVM_PAGES */
+
+static int __bch_journal_nvdimm_init(struct cache *ca)
+{
+	return -1;
+}
+
+#endif /* CONFIG_BCACHE_NVM_PAGES */
+
+int bch_journal_init(struct cache_set *c)
+{
+	int i, ret = 0;
+	struct cache *ca = c->cache;
+
+	ca->sb.keys = clamp_t(int, ca->sb.nbuckets >> 7,
+				2, SB_JOURNAL_BUCKETS);
+
+	if (!bch_has_feature_nvdimm_meta(&ca->sb)) {
+		for (i = 0; i < ca->sb.keys; i++)
+			ca->sb.d[i] = ca->sb.first_bucket + i;
+	} else {
+		ret = __bch_journal_nvdimm_init(ca);
+	}
+
+	return ret;
 }
