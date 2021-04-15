@@ -2793,7 +2793,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 		warn_alloc(gfp_mask, NULL,
 			   "vmalloc size %lu allocation failure: "
 			   "page array size %lu allocation failed",
-			   area->nr_pages * PAGE_SIZE, array_size);
+			   nr_small_pages * PAGE_SIZE, array_size);
 		return NULL;
 	}
 
