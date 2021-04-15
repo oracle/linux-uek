@@ -415,13 +415,8 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 		 * engaged in dumping all cpu back traces.
 		 */
 		if (softlockup_all_cpu_backtrace) {
-			if (test_and_set_bit(0, &soft_lockup_nmi_warn))
+			if (test_and_set_bit_lock(0, &soft_lockup_nmi_warn))
 				return HRTIMER_RESTART;
-			/*
-			 * Make sure that reports are serialized. Start
-			 * printing after getting the exclusive rights.
-			 */
-			smp_mb__after_atomic();
 		}
 
 		/* Start period for the next softlockup warning. */
@@ -439,13 +434,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 
 		if (softlockup_all_cpu_backtrace) {
 			trigger_allbutself_cpu_backtrace();
-			/*
-			 * Make sure that everything is printed before
-			 * another CPU is allowed to report lockup again.
-			 */
-			smp_mb__before_atomic();
-			/* Allow a further report. */
-			clear_bit(0, &soft_lockup_nmi_warn);
+			clear_bit_unlock(0, &soft_lockup_nmi_warn);
 		}
 
 		add_taint(TAINT_SOFTLOCKUP, LOCKDEP_STILL_OK);
