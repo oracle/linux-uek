@@ -5411,7 +5411,7 @@ _base_reduce_hba_queue_depth(struct MPT3SAS_ADAPTER *ioc)
  *			for pcie sgl pools.
  * @ioc: Adapter object
  * @sz: DMA Pool size
- * @ct: Chain tracker
+ *
  * Return: 0 for success, non-zero for failure.
  */
 
@@ -5475,7 +5475,7 @@ _base_allocate_pcie_sgl_pool(struct MPT3SAS_ADAPTER *ioc, u32 sz)
  *			for chain dma pool.
  * @ioc: Adapter object
  * @sz: DMA Pool size
- * @ctr: Chain tracker
+ *
  * Return: 0 for success, non-zero for failure.
  */
 static int
