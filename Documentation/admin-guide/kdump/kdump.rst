@@ -285,7 +285,8 @@ This would mean:
     2) if the RAM size is between 512M and 2G (exclusive), then reserve 64M
     3) if the RAM size is larger than 2G, then reserve 128M
 
-
+Or you can use crashkernel=auto to choose the crash kernel memory size
+based on the recommended configuration set for each arch.
 
 Boot into System Kernel
 =======================
