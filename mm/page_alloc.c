@@ -9042,7 +9042,8 @@ void zone_pcp_reset(struct zone *zone)
  * All pages in the range must be in a single zone, must not contain holes,
  * must span full sections, and must be isolated before calling this function.
  */
-void __offline_isolated_pages(unsigned long start_pfn, unsigned long end_pfn)
+void __offline_isolated_pages(unsigned long start_pfn, unsigned long end_pfn,
+			      unsigned long buddy_start_pfn)
 {
 	unsigned long pfn = start_pfn;
 	struct page *page;
@@ -9053,6 +9054,7 @@ void __offline_isolated_pages(unsigned long start_pfn, unsigned long end_pfn)
 	offline_mem_sections(pfn, end_pfn);
 	zone = page_zone(pfn_to_page(pfn));
 	spin_lock_irqsave(&zone->lock, flags);
+	pfn = buddy_start_pfn;
 	while (pfn < end_pfn) {
 		page = pfn_to_page(pfn);
 		/*
