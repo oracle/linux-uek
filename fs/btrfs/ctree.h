@@ -954,10 +954,14 @@ struct btrfs_fs_info {
 	struct work_struct async_data_reclaim_work;
 	struct work_struct preempt_reclaim_work;
 
+	/* Used to reclaim data space in the background */
+	struct work_struct reclaim_bgs_work;
+
 	spinlock_t unused_bgs_lock;
 	struct list_head unused_bgs;
 	struct mutex unused_bg_unpin_mutex;
 	struct mutex reclaim_bgs_lock;
+	struct list_head reclaim_bgs;
 
 	/* Cached block sizes */
 	u32 nodesize;
@@ -997,6 +1001,8 @@ struct btrfs_fs_info {
 	struct mutex zoned_meta_io_lock;
 	spinlock_t treelog_bg_lock;
 	u64 treelog_bg;
+
+	int bg_reclaim_threshold;
 
 #ifdef CONFIG_BTRFS_FS_REF_VERIFY
 	spinlock_t ref_verify_lock;
