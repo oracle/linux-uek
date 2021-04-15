@@ -124,7 +124,7 @@ static int hfsplus_cat_build_record(hfsplus_cat_entry *entry,
 		hfsplus_cat_set_perms(inode, &folder->permissions);
 		if (inode == sbi->hidden_dir)
 			/* invisible and namelocked */
-			folder->user_info.frFlags = cpu_to_be16(0x5000);
+			folder->info.user.frFlags = cpu_to_be16(0x5000);
 		return sizeof(*folder);
 	} else {
 		struct hfsplus_cat_file *file;
@@ -142,14 +142,14 @@ static int hfsplus_cat_build_record(hfsplus_cat_entry *entry,
 		if (cnid == inode->i_ino) {
 			hfsplus_cat_set_perms(inode, &file->permissions);
 			if (S_ISLNK(inode->i_mode)) {
-				file->user_info.fdType =
+				file->info.user.fdType =
 					cpu_to_be32(HFSP_SYMLINK_TYPE);
-				file->user_info.fdCreator =
+				file->info.user.fdCreator =
 					cpu_to_be32(HFSP_SYMLINK_CREATOR);
 			} else {
-				file->user_info.fdType =
+				file->info.user.fdType =
 					cpu_to_be32(sbi->type);
-				file->user_info.fdCreator =
+				file->info.user.fdCreator =
 					cpu_to_be32(sbi->creator);
 			}
 			if (HFSPLUS_FLG_IMMUTABLE &
@@ -158,11 +158,11 @@ static int hfsplus_cat_build_record(hfsplus_cat_entry *entry,
 				file->flags |=
 					cpu_to_be16(HFSPLUS_FILE_LOCKED);
 		} else {
-			file->user_info.fdType =
+			file->info.user.fdType =
 				cpu_to_be32(HFSP_HARDLINK_TYPE);
-			file->user_info.fdCreator =
+			file->info.user.fdCreator =
 				cpu_to_be32(HFSP_HFSPLUS_CREATOR);
-			file->user_info.fdFlags =
+			file->info.user.fdFlags =
 				cpu_to_be16(0x100);
 			file->create_date =
 				HFSPLUS_I(sbi->hidden_dir)->create_date;
