@@ -24,7 +24,7 @@
 	MODULE_PARM_DESC(name, msg)				\
 
 __param(int, nr_threads, 0,
-	"Number of workers to perform tests(min: 1 max: 1024)");
+	"Number of workers to perform tests(min: 1 max: USHRT_MAX)");
 
 __param(bool, sequential_test_order, false,
 	"Use sequential stress tests order");
@@ -469,13 +469,13 @@ init_test_configurtion(void)
 {
 	/*
 	 * A maximum number of workers is defined as hard-coded
-	 * value and set to 1024. We add such gap just in case
-	 * and for potential heavy stressing.
+	 * value and set to USHRT_MAX. We add such gap just in
+	 * case and for potential heavy stressing.
 	 */
-	nr_threads = clamp(nr_threads, 1, 1024);
+	nr_threads = clamp(nr_threads, 1, (int) USHRT_MAX);
 
 	/* Allocate the space for test instances. */
-	tdriver = kcalloc(nr_threads, sizeof(*tdriver), GFP_KERNEL);
+	tdriver = kvcalloc(nr_threads, sizeof(*tdriver), GFP_KERNEL);
 	if (tdriver == NULL)
 		return -1;
 
@@ -555,7 +555,7 @@ static void do_concurrent_test(void)
 			i, t->stop - t->start);
 	}
 
-	kfree(tdriver);
+	kvfree(tdriver);
 }
 
 static int vmalloc_test_init(void)
