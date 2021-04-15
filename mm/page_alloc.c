@@ -5019,7 +5019,7 @@ static inline bool prepare_alloc_pages(gfp_t gfp_mask, unsigned int order,
  *
  * Returns the number of pages on the list.
  */
-int __alloc_pages_bulk(gfp_t gfp, int preferred_nid,
+unsigned long __alloc_pages_bulk(gfp_t gfp, int preferred_nid,
 			nodemask_t *nodemask, int nr_pages,
 			struct list_head *page_list)
 {
