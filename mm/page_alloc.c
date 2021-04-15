@@ -5040,7 +5040,6 @@ unsigned long __alloc_pages_bulk(gfp_t gfp, int preferred_nid,
 	struct alloc_context ac;
 	gfp_t alloc_gfp;
 	unsigned int alloc_flags = ALLOC_WMARK_LOW;
-	int allocated = 0;
 	int nr_populated = 0;
 
 	if (WARN_ON_ONCE(nr_pages <= 0))
