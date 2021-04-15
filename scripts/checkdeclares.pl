@@ -15,8 +15,8 @@
 use strict;
 
 sub usage {
-	print "Usage: checkdeclares.pl \n";
-	print "We just warn of struct declaration duplicates\n";
+	print "Usage: checkdeclares.pl file1.h ...\n";
+	print "Warns of struct declaration duplicates\n";
 	exit 1;
 }
 
