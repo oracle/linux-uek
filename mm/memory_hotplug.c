@@ -1097,7 +1097,7 @@ bool mhp_supports_memmap_on_memory(unsigned long size)
 	 * Besides having arch support and the feature enabled at runtime, we
 	 * need a few more assumptions to hold true:
 	 *
-	 * a) We span a single memory block: memory onlining/offlinin;g happens
+	 * a) We span a single memory block: memory onlining/offlining happens
 	 *    in memory block granularity. We don't want the vmemmap of online
 	 *    memory blocks to reside on offline memory blocks. In the future,
 	 *    we might want to support variable-sized memory blocks to make the
@@ -1123,7 +1123,7 @@ bool mhp_supports_memmap_on_memory(unsigned long size)
 	       IS_ENABLED(CONFIG_MHP_MEMMAP_ON_MEMORY) &&
 	       size == memory_block_size_bytes() &&
 	       IS_ALIGNED(vmemmap_size, PMD_SIZE) &&
-	       IS_ALIGNED(remaining_size, (pageblock_nr_pages << PAGE_SHIFT));
+	       IS_ALIGNED(remaining_size, pageblock_nr_pages << PAGE_SHIFT);
 }
 
 /*
