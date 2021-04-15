@@ -239,7 +239,7 @@ void free_shrinker_info(struct mem_cgroup *memcg)
 
 	for_each_node(nid) {
 		pn = memcg->nodeinfo[nid];
-		info = shrinker_info_protected(memcg, nid);
+		info = rcu_dereference_protected(pn->shrinker_info, true);
 		kvfree(info);
 		rcu_assign_pointer(pn->shrinker_info, NULL);
 	}
