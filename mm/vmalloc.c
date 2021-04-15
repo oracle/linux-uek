@@ -413,7 +413,7 @@ void vunmap_range_noflush(unsigned long start, unsigned long end)
 }
 
 /**
- * vunmap_range_noflush - unmap kernel virtual addresses
+ * vunmap_range - unmap kernel virtual addresses
  * @addr: start of the VM area to unmap
  * @end: end of the VM area to unmap (non-inclusive)
  *

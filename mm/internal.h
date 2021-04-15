@@ -541,6 +541,9 @@ static inline int node_reclaim(struct pglist_data *pgdat, gfp_t mask,
 {
 	return NODE_RECLAIM_NOSCAN;
 }
+static inline void vunmap_range_noflush(unsigned long start, unsigned long end)
+{
+}
 #endif
 
 extern int hwpoison_filter(struct page *p);
