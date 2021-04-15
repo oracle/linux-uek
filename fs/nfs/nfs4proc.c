@@ -10459,9 +10459,3 @@ const struct xattr_handler *nfs4_xattr_handlers[] = {
 #endif
 	NULL
 };
-
-/*
- * Local variables:
- *  c-basic-offset: 8
- * End:
- */
