@@ -3270,7 +3270,11 @@ void split_page_memcg(struct page *head, unsigned int nr)
 
 	for (i = 1; i < nr; i++)
 		head[i].memcg_data = head->memcg_data;
-	css_get_many(&memcg->css, nr - 1);
+
+	if (PageMemcgKmem(head))
+		obj_cgroup_get_many(__page_objcg(head), nr - 1);
+	else
+		css_get_many(&memcg->css, nr - 1);
 }
 
 #ifdef CONFIG_MEMCG_SWAP

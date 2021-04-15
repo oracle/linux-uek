@@ -798,6 +798,12 @@ static inline void obj_cgroup_get(struct obj_cgroup *objcg)
 	percpu_ref_get(&objcg->refcnt);
 }
 
+static inline void obj_cgroup_get_many(struct obj_cgroup *objcg,
+				       unsigned long nr)
+{
+	percpu_ref_get_many(&objcg->refcnt, nr);
+}
+
 static inline void obj_cgroup_put(struct obj_cgroup *objcg)
 {
 	percpu_ref_put(&objcg->refcnt);
