@@ -51,6 +51,14 @@ int smp_call_function_single(int cpuid, smp_call_func_t func, void *info,
 			     int wait);
 
 /*
+ * Cpus stopping functions in panic. All have default weak definitions.
+ * Architecture-dependent code may override them.
+ */
+void panic_smp_self_stop(void);
+void nmi_panic_self_stop(struct pt_regs *regs);
+void crash_smp_send_stop(void);
+
+/*
  * Call a function on all processors
  */
 void on_each_cpu(smp_call_func_t func, void *info, int wait);
