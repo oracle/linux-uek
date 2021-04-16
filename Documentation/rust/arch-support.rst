@@ -18,6 +18,9 @@ support corresponds to ``S`` values in the ``MAINTAINERS`` file.
    * - Architecture
      - Level of support
      - Constraints
+   * - ``arm``
+     - Maintained
+     - ``armv6`` and compatible only, ``RUST_OPT_LEVEL >= 2``
    * - ``arm64``
      - Maintained
      - None
