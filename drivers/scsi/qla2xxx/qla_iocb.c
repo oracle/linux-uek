@@ -2847,7 +2847,6 @@ static void qla2x00_els_dcmd2_sp_done(srb_t *sp, int res)
 			ea.rc = res;
 			qla_handle_els_plogi_done(vha, &ea);
 			break;
-
 		case CS_IOCB_ERROR:
 			switch (le32_to_cpu(fw_status[1])) {
 			case LSC_SCODE_PORTID_USED:
@@ -2977,6 +2976,7 @@ qla24xx_els_dcmd2_iocb(scsi_qla_host_t *vha, int els_opcode,
 	ql_dbg(ql_dbg_io, vha, 0x3073,
 	    "Enter: PLOGI portid=%06x\n", fcport->d_id.b24);
 
+	fcport->flags |= FCF_ASYNC_SENT;
 	sp->type = SRB_ELS_DCMD;
 	sp->name = "ELS_DCMD";
 	sp->fcport = fcport;
