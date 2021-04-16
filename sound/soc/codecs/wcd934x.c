@@ -1565,8 +1565,6 @@ static int wcd934x_set_interpolator_rate(struct snd_soc_dai *dai,
 		return ret;
 	ret = wcd934x_set_mix_interpolator_rate(dai, (u8)rate_val,
 						sample_rate);
-	if (ret)
-		return ret;
 
 	return ret;
 }
@@ -1948,7 +1946,7 @@ static int wcd934x_get_channel_map(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static struct snd_soc_dai_ops wcd934x_dai_ops = {
+static const struct snd_soc_dai_ops wcd934x_dai_ops = {
 	.hw_params = wcd934x_hw_params,
 	.hw_free = wcd934x_hw_free,
 	.trigger = wcd934x_trigger,
@@ -5042,7 +5040,7 @@ static int wcd934x_codec_probe(struct platform_device *pdev)
 
 	ret = devm_request_threaded_irq(dev, irq, NULL,
 					wcd934x_slim_irq_handler,
-					IRQF_TRIGGER_RISING,
+					IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 					"slim", wcd);
 	if (ret) {
 		dev_err(dev, "Failed to request slimbus irq\n");
