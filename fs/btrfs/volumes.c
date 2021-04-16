@@ -1458,8 +1458,8 @@ static bool dev_extent_hole_check_zoned(struct btrfs_device *device,
 		/* Given hole range was invalid (outside of device) */
 		if (ret == -ERANGE) {
 			*hole_start += *hole_size;
-			*hole_size = 0;
-			return 1;
+			*hole_size = false;
+			return true;
 		}
 
 		*hole_start += zone_size;
@@ -4989,6 +4989,8 @@ static void init_alloc_chunk_ctl_policy_zoned(
 		ctl->max_chunk_size = 2 * ctl->max_stripe_size;
 		ctl->devs_max = min_t(int, ctl->devs_max,
 				      BTRFS_MAX_DEVS_SYS_CHUNK);
+	} else {
+		BUG();
 	}
 
 	/* We don't want a chunk larger than 10% of writable space */
