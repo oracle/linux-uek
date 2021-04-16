@@ -364,6 +364,7 @@ kernel/drivers/misc/enclosure.ko
 kernel/drivers/mmc/core/mmc_core.ko
 kernel/drivers/net/bonding/bonding.ko
 kernel/drivers/net/dummy.ko
+kernel/drivers/net/ethernet/amazon/ena/ena.ko
 kernel/drivers/net/ethernet/broadcom/bnx2.ko
 kernel/drivers/net/ethernet/broadcom/bnx2x/bnx2x.ko
 kernel/drivers/net/ethernet/broadcom/bnxt/bnxt_en.ko
