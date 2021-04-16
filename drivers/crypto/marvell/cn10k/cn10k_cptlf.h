@@ -23,12 +23,22 @@
  */
 #define CN10K_CPT_INST_QLEN_MSGS  ((CN10K_CPT_SIZE_DIV40 - 1) * 40)
 
+/*
+ * LDWB is getting incorrectly used when IQB_LDWB = 1 and CPT instruction
+ * queue has less than 320 free entries. So, increase HW instruction queue
+ * size by 320 and give 320 entries less for SW/NIX RX as a workaround.
+ */
+#define CN10K_CPT_INST_QLEN_EXTRA_BYTES  (320 * CN10K_CPT_INST_SIZE)
+#define CN10K_CPT_EXTRA_SIZE_DIV40       (320/40)
+
 /* CPT instruction queue length in bytes */
-#define CN10K_CPT_INST_QLEN_BYTES (CN10K_CPT_SIZE_DIV40 * 40 * \
-				  CN10K_CPT_INST_SIZE)
+#define CN10K_CPT_INST_QLEN_BYTES                                              \
+		((CN10K_CPT_SIZE_DIV40 * 40 * CN10K_CPT_INST_SIZE) +           \
+		CN10K_CPT_INST_QLEN_EXTRA_BYTES)
 
 /* CPT instruction group queue length in bytes */
-#define CN10K_CPT_INST_GRP_QLEN_BYTES (CN10K_CPT_SIZE_DIV40 * 16)
+#define CN10K_CPT_INST_GRP_QLEN_BYTES                                          \
+		((CN10K_CPT_SIZE_DIV40 + CN10K_CPT_EXTRA_SIZE_DIV40) * 16)
 
 /* CPT FC length in bytes */
 #define CN10K_CPT_Q_FC_LEN 128
@@ -190,7 +200,8 @@ static inline void cn10k_cptlf_do_set_iqueue_size(struct cn10k_cptlf_info *lf)
 {
 	union cn10k_cptx_lf_q_size lf_q_size = { .u = 0x0 };
 
-	lf_q_size.s.size_div40 = CN10K_CPT_SIZE_DIV40;
+	lf_q_size.s.size_div40 = CN10K_CPT_SIZE_DIV40 +
+				 CN10K_CPT_EXTRA_SIZE_DIV40;
 	cn10k_cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
 			  CN10K_CPT_LF_Q_SIZE, lf_q_size.u);
 }
