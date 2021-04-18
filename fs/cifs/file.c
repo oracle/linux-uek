@@ -112,7 +112,7 @@ static inline int cifs_get_disposition(unsigned int flags)
 		return FILE_OPEN;
 }
 
-int cifs_posix_open(char *full_path, struct inode **pinode,
+int cifs_posix_open(const char *full_path, struct inode **pinode,
 			struct super_block *sb, int mode, unsigned int f_flags,
 			__u32 *poplock, __u16 *pnetfid, unsigned int xid)
 {
@@ -175,7 +175,7 @@ posix_open_ret:
 }
 
 static int
-cifs_nt_open(char *full_path, struct inode *inode, struct cifs_sb_info *cifs_sb,
+cifs_nt_open(const char *full_path, struct inode *inode, struct cifs_sb_info *cifs_sb,
 	     struct cifs_tcon *tcon, unsigned int f_flags, __u32 *oplock,
 	     struct cifs_fid *fid, unsigned int xid)
 {
@@ -322,9 +322,12 @@ cifs_new_fileinfo(struct cifs_fid *fid, struct file *file,
 	cfile->dentry = dget(dentry);
 	cfile->f_flags = file->f_flags;
 	cfile->invalidHandle = false;
+	cfile->oplock_break_received = false;
+	cfile->deferred_scheduled = false;
 	cfile->tlink = cifs_get_tlink(tlink);
 	INIT_WORK(&cfile->oplock_break, cifs_oplock_break);
 	INIT_WORK(&cfile->put, cifsFileInfo_put_work);
+	INIT_DELAYED_WORK(&cfile->deferred, smb2_deferred_work_close);
 	mutex_init(&cfile->fh_mutex);
 	spin_lock_init(&cfile->file_info_lock);
 
@@ -530,7 +533,8 @@ int cifs_open(struct inode *inode, struct file *file)
 	struct cifs_tcon *tcon;
 	struct tcon_link *tlink;
 	struct cifsFileInfo *cfile = NULL;
-	char *full_path = NULL;
+	void *page;
+	const char *full_path;
 	bool posix_open_ok = false;
 	struct cifs_fid fid;
 	struct cifs_pending_open open;
@@ -546,9 +550,10 @@ int cifs_open(struct inode *inode, struct file *file)
 	tcon = tlink_tcon(tlink);
 	server = tcon->ses->server;
 
-	full_path = build_path_from_dentry(file_dentry(file));
-	if (full_path == NULL) {
-		rc = -ENOMEM;
+	page = alloc_dentry_path();
+	full_path = build_path_from_dentry(file_dentry(file), page);
+	if (IS_ERR(full_path)) {
+		rc = PTR_ERR(full_path);
 		goto out;
 	}
 
@@ -561,6 +566,23 @@ int cifs_open(struct inode *inode, struct file *file)
 			file->f_op = &cifs_file_direct_nobrl_ops;
 		else
 			file->f_op = &cifs_file_direct_ops;
+	}
+
+	spin_lock(&CIFS_I(inode)->deferred_lock);
+	/* Get the cached handle as SMB2 close is deferred */
+	rc = cifs_get_readable_path(tcon, full_path, &cfile);
+	if (rc == 0) {
+		if (file->f_flags == cfile->f_flags) {
+			file->private_data = cfile;
+			cifs_del_deferred_close(cfile);
+			spin_unlock(&CIFS_I(inode)->deferred_lock);
+			goto out;
+		} else {
+			spin_unlock(&CIFS_I(inode)->deferred_lock);
+			_cifsFileInfo_put(cfile, true, false);
+		}
+	} else {
+		spin_unlock(&CIFS_I(inode)->deferred_lock);
 	}
 
 	if (server->oplocks)
@@ -640,7 +662,7 @@ int cifs_open(struct inode *inode, struct file *file)
 	}
 
 out:
-	kfree(full_path);
+	free_dentry_path(page);
 	free_xid(xid);
 	cifs_put_tlink(tlink);
 	return rc;
@@ -689,7 +711,8 @@ cifs_reopen_file(struct cifsFileInfo *cfile, bool can_flush)
 	struct TCP_Server_Info *server;
 	struct cifsInodeInfo *cinode;
 	struct inode *inode;
-	char *full_path = NULL;
+	void *page;
+	const char *full_path;
 	int desired_access;
 	int disposition = FILE_OPEN;
 	int create_options = CREATE_NOT_DIR;
@@ -699,9 +722,8 @@ cifs_reopen_file(struct cifsFileInfo *cfile, bool can_flush)
 	mutex_lock(&cfile->fh_mutex);
 	if (!cfile->invalidHandle) {
 		mutex_unlock(&cfile->fh_mutex);
-		rc = 0;
 		free_xid(xid);
-		return rc;
+		return 0;
 	}
 
 	inode = d_inode(cfile->dentry);
@@ -715,12 +737,13 @@ cifs_reopen_file(struct cifsFileInfo *cfile, bool can_flush)
 	 * called and if the server was down that means we end up here, and we
 	 * can never tell if the caller already has the rename_sem.
 	 */
-	full_path = build_path_from_dentry(cfile->dentry);
-	if (full_path == NULL) {
-		rc = -ENOMEM;
+	page = alloc_dentry_path();
+	full_path = build_path_from_dentry(cfile->dentry, page);
+	if (IS_ERR(full_path)) {
 		mutex_unlock(&cfile->fh_mutex);
+		free_dentry_path(page);
 		free_xid(xid);
-		return rc;
+		return PTR_ERR(full_path);
 	}
 
 	cifs_dbg(FYI, "inode = 0x%p file flags 0x%x for %s\n",
@@ -838,16 +861,57 @@ reopen_success:
 		cifs_relock_file(cfile);
 
 reopen_error_exit:
-	kfree(full_path);
+	free_dentry_path(page);
 	free_xid(xid);
 	return rc;
 }
 
+void smb2_deferred_work_close(struct work_struct *work)
+{
+	struct cifsFileInfo *cfile = container_of(work,
+			struct cifsFileInfo, deferred.work);
+
+	spin_lock(&CIFS_I(d_inode(cfile->dentry))->deferred_lock);
+	cifs_del_deferred_close(cfile);
+	cfile->deferred_scheduled = false;
+	spin_unlock(&CIFS_I(d_inode(cfile->dentry))->deferred_lock);
+	_cifsFileInfo_put(cfile, true, false);
+}
+
 int cifs_close(struct inode *inode, struct file *file)
 {
+	struct cifsFileInfo *cfile;
+	struct cifsInodeInfo *cinode = CIFS_I(inode);
+	struct cifs_sb_info *cifs_sb = CIFS_SB(inode->i_sb);
+	struct cifs_deferred_close *dclose;
+
 	if (file->private_data != NULL) {
-		_cifsFileInfo_put(file->private_data, true, false);
+		cfile = file->private_data;
 		file->private_data = NULL;
+		dclose = kmalloc(sizeof(struct cifs_deferred_close), GFP_KERNEL);
+		if ((cinode->oplock == CIFS_CACHE_RHW_FLG) &&
+		    dclose) {
+			if (test_bit(CIFS_INO_MODIFIED_ATTR, &cinode->flags))
+				inode->i_ctime = inode->i_mtime = current_time(inode);
+			spin_lock(&cinode->deferred_lock);
+			cifs_add_deferred_close(cfile, dclose);
+			if (cfile->deferred_scheduled) {
+				mod_delayed_work(deferredclose_wq,
+						&cfile->deferred, cifs_sb->ctx->acregmax);
+			} else {
+				/* Deferred close for files */
+				queue_delayed_work(deferredclose_wq,
+						&cfile->deferred, cifs_sb->ctx->acregmax);
+				cfile->deferred_scheduled = true;
+				spin_unlock(&cinode->deferred_lock);
+				return 0;
+			}
+			spin_unlock(&cinode->deferred_lock);
+			_cifsFileInfo_put(cfile, true, false);
+		} else {
+			_cifsFileInfo_put(cfile, true, false);
+			kfree(dclose);
+		}
 	}
 
 	/* return code from the ->release op is always ignored */
@@ -1944,7 +2008,8 @@ struct cifsFileInfo *find_readable_file(struct cifsInodeInfo *cifs_inode,
 		if (fsuid_only && !uid_eq(open_file->uid, current_fsuid()))
 			continue;
 		if (OPEN_FMODE(open_file->f_flags) & FMODE_READ) {
-			if (!open_file->invalidHandle) {
+			if ((!open_file->invalidHandle) &&
+				(!open_file->oplock_break_received)) {
 				/* found a good file */
 				/* lock it so it will not be closed on us */
 				cifsFileInfo_get(open_file);
@@ -2069,34 +2134,31 @@ cifs_get_writable_path(struct cifs_tcon *tcon, const char *name,
 		       int flags,
 		       struct cifsFileInfo **ret_file)
 {
-	struct list_head *tmp;
 	struct cifsFileInfo *cfile;
-	struct cifsInodeInfo *cinode;
-	char *full_path;
+	void *page = alloc_dentry_path();
 
 	*ret_file = NULL;
 
 	spin_lock(&tcon->open_file_lock);
-	list_for_each(tmp, &tcon->openFileList) {
-		cfile = list_entry(tmp, struct cifsFileInfo,
-			     tlist);
-		full_path = build_path_from_dentry(cfile->dentry);
-		if (full_path == NULL) {
+	list_for_each_entry(cfile, &tcon->openFileList, tlist) {
+		struct cifsInodeInfo *cinode;
+		const char *full_path = build_path_from_dentry(cfile->dentry, page);
+		if (IS_ERR(full_path)) {
 			spin_unlock(&tcon->open_file_lock);
-			return -ENOMEM;
+			free_dentry_path(page);
+			return PTR_ERR(full_path);
 		}
-		if (strcmp(full_path, name)) {
-			kfree(full_path);
+		if (strcmp(full_path, name))
 			continue;
-		}
 
-		kfree(full_path);
 		cinode = CIFS_I(d_inode(cfile->dentry));
 		spin_unlock(&tcon->open_file_lock);
+		free_dentry_path(page);
 		return cifs_get_writable_file(cinode, flags, ret_file);
 	}
 
 	spin_unlock(&tcon->open_file_lock);
+	free_dentry_path(page);
 	return -ENOENT;
 }
 
@@ -2104,35 +2166,32 @@ int
 cifs_get_readable_path(struct cifs_tcon *tcon, const char *name,
 		       struct cifsFileInfo **ret_file)
 {
-	struct list_head *tmp;
 	struct cifsFileInfo *cfile;
-	struct cifsInodeInfo *cinode;
-	char *full_path;
+	void *page = alloc_dentry_path();
 
 	*ret_file = NULL;
 
 	spin_lock(&tcon->open_file_lock);
-	list_for_each(tmp, &tcon->openFileList) {
-		cfile = list_entry(tmp, struct cifsFileInfo,
-			     tlist);
-		full_path = build_path_from_dentry(cfile->dentry);
-		if (full_path == NULL) {
+	list_for_each_entry(cfile, &tcon->openFileList, tlist) {
+		struct cifsInodeInfo *cinode;
+		const char *full_path = build_path_from_dentry(cfile->dentry, page);
+		if (IS_ERR(full_path)) {
 			spin_unlock(&tcon->open_file_lock);
-			return -ENOMEM;
+			free_dentry_path(page);
+			return PTR_ERR(full_path);
 		}
-		if (strcmp(full_path, name)) {
-			kfree(full_path);
+		if (strcmp(full_path, name))
 			continue;
-		}
 
-		kfree(full_path);
 		cinode = CIFS_I(d_inode(cfile->dentry));
 		spin_unlock(&tcon->open_file_lock);
+		free_dentry_path(page);
 		*ret_file = find_readable_file(cinode, 0);
 		return *ret_file ? 0 : -ENOENT;
 	}
 
 	spin_unlock(&tcon->open_file_lock);
+	free_dentry_path(page);
 	return -ENOENT;
 }
 
@@ -2479,6 +2538,8 @@ retry:
 	if (cfile)
 		cifsFileInfo_put(cfile);
 	free_xid(xid);
+	/* Indication to update ctime and mtime as close is deferred */
+	set_bit(CIFS_INO_MODIFIED_ATTR, &CIFS_I(inode)->flags);
 	return rc;
 }
 
@@ -2587,6 +2648,8 @@ static int cifs_write_end(struct file *file, struct address_space *mapping,
 
 	unlock_page(page);
 	put_page(page);
+	/* Indication to update ctime and mtime as close is deferred */
+	set_bit(CIFS_INO_MODIFIED_ATTR, &CIFS_I(inode)->flags);
 
 	return rc;
 }
@@ -4747,6 +4810,8 @@ void cifs_oplock_break(struct work_struct *work)
 	struct TCP_Server_Info *server = tcon->ses->server;
 	int rc = 0;
 	bool purge_cache = false;
+	bool is_deferred = false;
+	struct cifs_deferred_close *dclose;
 
 	wait_on_bit(&cinode->flags, CIFS_INODE_PENDING_WRITERS,
 			TASK_UNINTERRUPTIBLE);
@@ -4794,6 +4859,18 @@ oplock_break_ack:
 		cifs_dbg(FYI, "Oplock release rc = %d\n", rc);
 	}
 	_cifsFileInfo_put(cfile, false /* do not wait for ourself */, false);
+	/*
+	 * When oplock break is received and there are no active
+	 * file handles but cached, then set the flag oplock_break_received.
+	 * So, new open will not use cached handle.
+	 */
+	spin_lock(&CIFS_I(inode)->deferred_lock);
+	is_deferred = cifs_is_deferred_close(cfile, &dclose);
+	if (is_deferred) {
+		cfile->oplock_break_received = true;
+		mod_delayed_work(deferredclose_wq, &cfile->deferred, 0);
+	}
+	spin_unlock(&CIFS_I(inode)->deferred_lock);
 	cifs_done_oplock_break(cinode);
 }
 

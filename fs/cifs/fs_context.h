@@ -13,7 +13,12 @@
 #include <linux/parser.h>
 #include <linux/fs_parser.h>
 
-#define cifs_invalf(fc, fmt, ...) invalf(fc, fmt, ## __VA_ARGS__)
+/* Log errors in fs_context (new mount api) but also in dmesg (old style) */
+#define cifs_errorf(fc, fmt, ...)			\
+	do {						\
+		errorf(fc, fmt, ## __VA_ARGS__);	\
+		cifs_dbg(VFS, fmt, ## __VA_ARGS__);	\
+	} while (0)
 
 enum smb_version {
 	Smb_1 = 1,
@@ -257,10 +262,6 @@ struct smb3_fs_context {
 
 extern const struct fs_parameter_spec smb3_fs_parameters[];
 
-extern int cifs_parse_cache_flavor(char *value,
-				   struct smb3_fs_context *ctx);
-extern int cifs_parse_security_flavors(char *value,
-				       struct smb3_fs_context *ctx);
 extern int smb3_init_fs_context(struct fs_context *fc);
 extern void smb3_cleanup_fs_context_contents(struct smb3_fs_context *ctx);
 extern void smb3_cleanup_fs_context(struct smb3_fs_context *ctx);
