@@ -14,6 +14,7 @@
 #include "request.h"
 #include "writeback.h"
 #include "features.h"
+#include "nvm-pages.h"
 
 #include <linux/blkdev.h>
 #include <linux/debugfs.h>
@@ -145,10 +146,15 @@ static const char *read_super_common(struct cache_sb *sb,  struct block_device *
 		goto err;
 
 	err = "Journal buckets not sequential";
+#ifdef CONFIG_BCACHE_NVM_PAGES
+	if (!bch_has_feature_nvdimm_meta(sb)) {
+#endif
 	for (i = 0; i < sb->keys; i++)
 		if (sb->d[i] != sb->first_bucket + i)
 			goto err;
-
+#ifdef CONFIG_BCACHE_NVM_PAGES
+	} /* bch_has_feature_nvdimm_meta */
+#endif
 	err = "Too many journal buckets";
 	if (sb->first_bucket + sb->keys > sb->nbuckets)
 		goto err;
@@ -1052,6 +1058,7 @@ static int cached_dev_status_update(void *arg)
 
 int bch_cached_dev_run(struct cached_dev *dc)
 {
+	int ret = 0;
 	struct bcache_device *d = &dc->disk;
 	char *buf = kmemdup_nul(dc->sb.label, SB_LABEL_SIZE, GFP_KERNEL);
 	char *env[] = {
@@ -1064,19 +1071,15 @@ int bch_cached_dev_run(struct cached_dev *dc)
 	if (dc->io_disable) {
 		pr_err("I/O disabled on cached dev %s\n",
 		       dc->backing_dev_name);
-		kfree(env[1]);
-		kfree(env[2]);
-		kfree(buf);
-		return -EIO;
+		ret = -EIO;
+		goto out;
 	}
 
 	if (atomic_xchg(&dc->running, 1)) {
-		kfree(env[1]);
-		kfree(env[2]);
-		kfree(buf);
 		pr_info("cached dev %s is running already\n",
 		       dc->backing_dev_name);
-		return -EBUSY;
+		ret = -EBUSY;
+		goto out;
 	}
 
 	if (!d->c &&
@@ -1097,15 +1100,13 @@ int bch_cached_dev_run(struct cached_dev *dc)
 	 * only class / kset properties are persistent
 	 */
 	kobject_uevent_env(&disk_to_dev(d->disk)->kobj, KOBJ_CHANGE, env);
-	kfree(env[1]);
-	kfree(env[2]);
-	kfree(buf);
 
 	if (sysfs_create_link(&d->kobj, &disk_to_dev(d->disk)->kobj, "dev") ||
 	    sysfs_create_link(&disk_to_dev(d->disk)->kobj,
 			      &d->kobj, "bcache")) {
 		pr_err("Couldn't create bcache dev <-> disk sysfs symlinks\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out;
 	}
 
 	dc->status_update_thread = kthread_run(cached_dev_status_update,
@@ -1114,7 +1115,11 @@ int bch_cached_dev_run(struct cached_dev *dc)
 		pr_warn("failed to create bcache_status_update kthread, continue to run without monitoring backing device status\n");
 	}
 
-	return 0;
+out:
+	kfree(env[1]);
+	kfree(env[2]);
+	kfree(buf);
+	return ret;
 }
 
 /*
@@ -1680,7 +1685,29 @@ void bch_cache_set_release(struct kobject *kobj)
 static void cache_set_free(struct closure *cl)
 {
 	struct cache_set *c = container_of(cl, struct cache_set, cl);
-	struct cache *ca;
+	struct cache *ca = c->cache;
+
+#ifdef CONFIG_BCACHE_NVM_PAGES
+	/* Flush cache if journal stored in NVDIMM */
+	if (ca && bch_has_feature_nvdimm_meta(&ca->sb)) {
+		unsigned long bucket_size = ca->sb.bucket_size;
+		int i;
+
+		for (i = 0; i < ca->sb.keys; i++) {
+			unsigned long offset = 0;
+			unsigned int len = round_down(UINT_MAX, 2);
+
+			while (bucket_size > 0) {
+				if (len > bucket_size)
+					len = bucket_size;
+				arch_invalidate_pmem(
+					(void *)(ca->sb.d[i] + offset), len);
+				offset += len;
+				bucket_size -= len;
+			}
+		}
+	}
+#endif /* CONFIG_BCACHE_NVM_PAGES */
 
 	debugfs_remove(c->debug);
 
@@ -1692,7 +1719,6 @@ static void cache_set_free(struct closure *cl)
 	bch_bset_sort_state_free(&c->sort);
 	free_pages((unsigned long) c->uuids, ilog2(meta_bucket_pages(&c->cache->sb)));
 
-	ca = c->cache;
 	if (ca) {
 		ca->set = NULL;
 		c->cache = NULL;
@@ -2071,14 +2097,11 @@ static int run_cache_set(struct cache_set *c)
 		if (bch_journal_replay(c, &journal))
 			goto err;
 	} else {
-		unsigned int j;
-
 		pr_notice("invalidating existing data\n");
-		ca->sb.keys = clamp_t(int, ca->sb.nbuckets >> 7,
-					2, SB_JOURNAL_BUCKETS);
 
-		for (j = 0; j < ca->sb.keys; j++)
-			ca->sb.d[j] = ca->sb.first_bucket + j;
+		err = "error initializing journal";
+		if (bch_journal_init(c))
+			goto err;
 
 		bch_initial_gc_finish(c);
 
@@ -2412,10 +2435,18 @@ static ssize_t register_bcache(struct kobject *k, struct kobj_attribute *attr,
 static ssize_t bch_pending_bdevs_cleanup(struct kobject *k,
 					 struct kobj_attribute *attr,
 					 const char *buffer, size_t size);
+#ifdef CONFIG_BCACHE_NVM_PAGES
+static ssize_t register_nvdimm_meta(struct kobject *k,
+				    struct kobj_attribute *attr,
+				    const char *buffer, size_t size);
+#endif
 
 kobj_attribute_write(register,		register_bcache);
 kobj_attribute_write(register_quiet,	register_bcache);
 kobj_attribute_write(pendings_cleanup,	bch_pending_bdevs_cleanup);
+#ifdef CONFIG_BCACHE_NVM_PAGES
+kobj_attribute_write(register_nvdimm_meta, register_nvdimm_meta);
+#endif
 
 static bool bch_is_open_backing(dev_t dev)
 {
@@ -2528,6 +2559,24 @@ static void register_device_async(struct async_reg_args *args)
 	/* 10 jiffies is enough for a delay */
 	queue_delayed_work(system_wq, &args->reg_work, 10);
 }
+
+#ifdef CONFIG_BCACHE_NVM_PAGES
+static ssize_t register_nvdimm_meta(struct kobject *k, struct kobj_attribute *attr,
+				    const char *buffer, size_t size)
+{
+	ssize_t ret = size;
+
+	struct bch_nvm_namespace *ns = bch_register_namespace(buffer);
+
+	if (IS_ERR(ns)) {
+		pr_err("register nvdimm namespace %s for meta device failed.\n",
+			buffer);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+#endif
 
 static ssize_t register_bcache(struct kobject *k, struct kobj_attribute *attr,
 			       const char *buffer, size_t size)
@@ -2816,6 +2865,7 @@ static void bcache_exit(void)
 {
 	bch_debug_exit();
 	bch_request_exit();
+	bch_nvm_exit();
 	if (bcache_kobj)
 		kobject_put(bcache_kobj);
 	if (bcache_wq)
@@ -2863,6 +2913,9 @@ static int __init bcache_init(void)
 	static const struct attribute *files[] = {
 		&ksysfs_register.attr,
 		&ksysfs_register_quiet.attr,
+#ifdef CONFIG_BCACHE_NVM_PAGES
+		&ksysfs_register_nvdimm_meta.attr,
+#endif
 		&ksysfs_pendings_cleanup.attr,
 		NULL
 	};
@@ -2914,6 +2967,7 @@ static int __init bcache_init(void)
 
 	bch_debug_init();
 	closure_debug_init();
+	bch_nvm_init();
 
 	bcache_is_reboot = false;
 
