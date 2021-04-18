@@ -287,6 +287,14 @@ enum rdma_nldev_command {
 
 	RDMA_NLDEV_CMD_STAT_DEL,
 
+	GAP_FILLER_RDMA_NLDEV_CMD_RES_QP_GET_RAW,
+
+	GAP_FILLER_RDMA_NLDEV_CMD_RES_CQ_GET_RAW,
+
+	GAP_FILLER_RDMA_NLDEV_CMD_RES_MR_GET_RAW,
+
+	RDMA_NLDEV_CMD_RES_CTX_GET, /* can dump */
+
 	RDMA_NLDEV_NUM_OPS
 };
 
@@ -524,6 +532,11 @@ enum rdma_nldev_attr {
 	 * CQ adaptive moderatio (DIM)
 	 */
 	RDMA_NLDEV_ATTR_DEV_DIM,                /* u8 */
+
+	GAP_FILLER_RDMA_NLDEV_ATTR_RES_RAW,	/* binary */
+
+	RDMA_NLDEV_ATTR_RES_CTX,		/* nested table */
+	RDMA_NLDEV_ATTR_RES_CTX_ENTRY,		/* nested table */
 
 	/*
 	 * Always the end
