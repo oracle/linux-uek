@@ -281,6 +281,83 @@ static struct acpi_pptt_processor *acpi_find_processor_node(struct acpi_table_he
 	return NULL;
 }
 
+/**
+ * acpi_pptt_for_each_container() - Iterate over all processor containers
+ *
+ * Not all 'Processor' entries in the PPTT are either a CPU or a Processor
+ * Container, they may exist purely to describe a Private resource. CPUs
+ * have to be leaves, so a Processor Container is a non-leaf that has the
+ * 'ACPI Processor ID valid' flag set.
+ *
+ * Return: 0 for a complete walk, or the first non-zero value from the callback
+ *         that stopped the walk.
+ */
+int acpi_pptt_for_each_container(acpi_pptt_cpu_callback_t callback, void *arg)
+{
+	struct acpi_pptt_processor *cpu_node;
+	struct acpi_table_header *table_hdr;
+	struct acpi_subtable_header *entry;
+	bool leaf_flag, has_leaf_flag = false;
+	unsigned long table_end;
+	acpi_status status;
+	u32 proc_sz;
+	int ret = 0;
+
+	status = acpi_get_table(ACPI_SIG_PPTT, 0, &table_hdr);
+	if (ACPI_FAILURE(status))
+		return 0;
+
+	if (table_hdr->revision > 1)
+		has_leaf_flag = true;
+
+	table_end = (unsigned long)table_hdr + table_hdr->length;
+	entry = ACPI_ADD_PTR(struct acpi_subtable_header, table_hdr,
+			     sizeof(struct acpi_table_pptt));
+	proc_sz = sizeof(struct acpi_pptt_processor);
+	while ((unsigned long)entry + proc_sz < table_end) {
+		cpu_node = (struct acpi_pptt_processor *)entry;
+		if (entry->type == ACPI_PPTT_TYPE_PROCESSOR &&
+		    cpu_node->flags & ACPI_PPTT_ACPI_PROCESSOR_ID_VALID)
+		{
+			leaf_flag = cpu_node->flags & ACPI_PPTT_ACPI_LEAF_NODE;
+			if ((has_leaf_flag && !leaf_flag) ||
+			    (!has_leaf_flag && !acpi_pptt_leaf_node(table_hdr, cpu_node)))
+			{
+				ret = callback(cpu_node, arg);
+				if (ret)
+					break;
+			}
+		}
+		entry = ACPI_ADD_PTR(struct acpi_subtable_header, entry,
+				     entry->length);
+	}
+
+	acpi_put_table(table_hdr);
+
+	return ret;
+}
+
+static int __count_containers(struct acpi_pptt_processor *ignored, void *arg)
+{
+	u32 *count = arg;
+	(*count)++;
+	return 0;
+}
+
+/**
+ * acpi_pptt_count_containers() - Count the number of processor structures
+ * that are flagged as matching a Processor Container in the namespace.
+ *
+ * Return: the count, which may also be 0 if there is no PPTT table.
+ */
+u32 acpi_pptt_count_containers(void)
+{
+	u32 count = 0;
+	acpi_pptt_for_each_container(&__count_containers, &count);
+	return count;
+}
+
+
 static int acpi_find_cache_levels(struct acpi_table_header *table_hdr,
 				  u32 acpi_cpu_id)
 {
