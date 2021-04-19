@@ -154,3 +154,10 @@ static void via_no_dac(struct pci_dev *dev)
 DECLARE_PCI_FIXUP_CLASS_FINAL(PCI_VENDOR_ID_VIA, PCI_ANY_ID,
 				PCI_CLASS_BRIDGE_PCI, 8, via_no_dac);
 #endif
+
+#ifdef CONFIG_ARCH_HAS_TEARDOWN_DMA_OPS
+void arch_teardown_dma_ops(struct device *dev)
+{
+	set_dma_ops(dev, NULL);
+}
+#endif

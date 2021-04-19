@@ -751,7 +751,7 @@ static ktime_t tick_nohz_next_event(struct tick_sched *ts, int cpu)
 	 * Aside of that check whether the local timer softirq is
 	 * pending. If so its a bad idea to call get_next_timer_interrupt()
 	 * because there is an already expired timer, so it will request
-	 * immeditate expiry, which rearms the hardware timer with a
+	 * immediate expiry, which rearms the hardware timer with a
 	 * minimal delta which brings us back to this place
 	 * immediately. Lather, rinse and repeat...
 	 */
@@ -973,7 +973,7 @@ static bool can_stop_idle_tick(int cpu, struct tick_sched *ts)
 	if (unlikely(local_softirq_pending())) {
 		static int ratelimit;
 
-		if (ratelimit < 10 &&
+		if (ratelimit < 10 && !local_bh_blocked() &&
 		    (local_softirq_pending() & SOFTIRQ_STOP_IDLE_MASK)) {
 			pr_warn("NOHZ tick-stop error: Non-RCU local softirq work is pending, handler #%02x!!!\n",
 				(unsigned int) local_softirq_pending());
