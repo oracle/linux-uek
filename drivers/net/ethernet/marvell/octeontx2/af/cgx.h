@@ -50,6 +50,7 @@
 #define CGX_DMAC_BCAST_MODE		BIT_ULL(0)
 #define CGXX_CMRX_RX_DMAC_CAM0		(0x200 + mac_ops->csr_offset)
 #define CGX_DMAC_CAM_ADDR_ENABLE	BIT_ULL(48)
+#define CGX_DMAC_CAM_ENTRY_LMACID	GENMASK_ULL(50, 49)
 #define CGXX_CMRX_RX_DMAC_CAM1		0x400
 #define CGX_RX_DMAC_ADR_MASK		GENMASK_ULL(47, 0)
 #define CGXX_CMRX_TX_FIFO_LEN		0x618
@@ -187,4 +188,6 @@ u64 cgx_lmac_read(int cgx_id, int lmac_id, u64 offset);
 u8 cgx_get_lmac_type(void *cgx, int lmac_id);
 u8 cgx_get_lmacid(void *cgxd, u8 lmac_index);
 unsigned long cgx_get_lmac_bmap(void *cgxd);
+u64 cgx_read_dmac_ctrl(void *cgxd, int lmac_id);
+u64 cgx_read_dmac_entry(void *cgxd, int index);
 #endif /* CGX_H */
