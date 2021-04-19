@@ -255,6 +255,25 @@ static ssize_t ari_enabled_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(ari_enabled);
 
+static ssize_t vpd_read(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *bin_attr, char *buf,
+			loff_t off, size_t count)
+{
+	struct pci_dev *dev = to_pci_dev(kobj_to_dev(kobj));
+
+	return pci_read_vpd(dev, off, count, buf);
+}
+
+static ssize_t vpd_write(struct file *filp, struct kobject *kobj,
+			 struct bin_attribute *bin_attr, char *buf,
+			 loff_t off, size_t count)
+{
+	struct pci_dev *dev = to_pci_dev(kobj_to_dev(kobj));
+
+	return pci_write_vpd(dev, off, count, buf);
+}
+static BIN_ATTR_RW(vpd, 0);
+
 static ssize_t modalias_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
@@ -618,6 +637,11 @@ static struct attribute *pci_dev_attrs[] = {
 #endif
 	&dev_attr_driver_override.attr,
 	&dev_attr_ari_enabled.attr,
+	NULL,
+};
+
+static struct bin_attribute *pci_dev_bin_attrs[] = {
+	&bin_attr_vpd,
 	NULL,
 };
 
@@ -1330,20 +1354,10 @@ static DEVICE_ATTR(reset, 0200, NULL, reset_store);
 
 static int pci_create_capabilities_sysfs(struct pci_dev *dev)
 {
-	int retval;
+	if (!dev->reset_fn)
+		return 0;
 
-	pcie_vpd_create_sysfs_dev_files(dev);
-
-	if (dev->reset_fn) {
-		retval = device_create_file(&dev->dev, &dev_attr_reset);
-		if (retval)
-			goto error;
-	}
-	return 0;
-
-error:
-	pcie_vpd_remove_sysfs_dev_files(dev);
-	return retval;
+	return device_create_file(&dev->dev, &dev_attr_reset);
 }
 
 int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
@@ -1416,7 +1430,6 @@ err:
 
 static void pci_remove_capabilities_sysfs(struct pci_dev *dev)
 {
-	pcie_vpd_remove_sysfs_dev_files(dev);
 	if (dev->reset_fn) {
 		device_remove_file(&dev->dev, &dev_attr_reset);
 		dev->reset_fn = 0;
@@ -1534,8 +1547,21 @@ static umode_t pcie_dev_attrs_are_visible(struct kobject *kobj,
 	return 0;
 }
 
+static umode_t pci_dev_bin_attrs_visible(struct kobject *kobj,
+					 struct bin_attribute *a, int n)
+{
+	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+
+	if (a == &bin_attr_vpd && !pdev->vpd)
+		return 0;
+
+	return a->attr.mode;
+}
+
 static const struct attribute_group pci_dev_group = {
 	.attrs = pci_dev_attrs,
+	.bin_attrs = pci_dev_bin_attrs,
+	.is_bin_visible = pci_dev_bin_attrs_visible,
 };
 
 const struct attribute_group *pci_dev_groups[] = {
