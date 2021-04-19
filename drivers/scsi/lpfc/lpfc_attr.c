@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2020 Broadcom. All Rights Reserved. The term *
+ * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.  *
  * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -512,11 +512,9 @@ lpfc_nvme_info_show(struct device *dev, struct device_attribute *attr,
 				"6314 Catching potential buffer "
 				"overflow > PAGE_SIZE = %lu bytes\n",
 				PAGE_SIZE);
-		strlcpy(buf + PAGE_SIZE - 1 -
-			strnlen(LPFC_NVME_INFO_MORE_STR, PAGE_SIZE - 1),
+		strlcpy(buf + PAGE_SIZE - 1 - sizeof(LPFC_NVME_INFO_MORE_STR),
 			LPFC_NVME_INFO_MORE_STR,
-			strnlen(LPFC_NVME_INFO_MORE_STR, PAGE_SIZE - 1)
-			+ 1);
+			sizeof(LPFC_NVME_INFO_MORE_STR) + 1);
 	}
 
 	return len;
@@ -864,7 +862,7 @@ lpfc_option_rom_version_show(struct device *dev, struct device_attribute *attr,
 }
 
 /**
- * lpfc_state_show - Return the link state of the port
+ * lpfc_link_state_show - Return the link state of the port
  * @dev: class converted to a Scsi_host structure.
  * @attr: device attribute, not used.
  * @buf: on return contains text describing the state of the link.
@@ -3819,7 +3817,7 @@ lpfc_vport_param_init(tgt_queue_depth, LPFC_MAX_TGT_QDEPTH,
 		      LPFC_MIN_TGT_QDEPTH, LPFC_MAX_TGT_QDEPTH);
 
 /**
- * lpfc_tgt_queue_depth_store: Sets an attribute value.
+ * lpfc_tgt_queue_depth_set: Sets an attribute value.
  * @vport: lpfc vport structure pointer.
  * @val: integer attribute value.
  *
@@ -4004,7 +4002,7 @@ LPFC_ATTR(topology, 0, 0, 6,
 	"Select Fibre Channel topology");
 
 /**
- * lpfc_topology_set - Set the adapters topology field
+ * lpfc_topology_store - Set the adapters topology field
  * @dev: class device that is converted into a scsi_host.
  * @attr:device attribute, not used.
  * @buf: buffer for passing information.
@@ -4457,7 +4455,7 @@ static struct bin_attribute sysfs_drvr_stat_data_attr = {
 # Value range is [0,16]. Default value is 0.
 */
 /**
- * lpfc_link_speed_set - Set the adapters link speed
+ * lpfc_link_speed_store - Set the adapters link speed
  * @dev: Pointer to class device.
  * @attr: Unused.
  * @buf: Data buffer.
@@ -4858,7 +4856,7 @@ lpfc_param_show(sriov_nr_virtfn)
 static DEVICE_ATTR_RW(lpfc_sriov_nr_virtfn);
 
 /**
- * lpfc_request_firmware_store - Request for Linux generic firmware upgrade
+ * lpfc_request_firmware_upgrade_store - Request for Linux generic firmware upgrade
  *
  * @dev: class device that is converted into a Scsi_host.
  * @attr: device attribute, not used.
@@ -5222,7 +5220,7 @@ lpfc_cq_max_proc_limit_init(struct lpfc_hba *phba, int val)
 static DEVICE_ATTR_RW(lpfc_cq_max_proc_limit);
 
 /**
- * lpfc_state_show - Display current driver CPU affinity
+ * lpfc_fcp_cpu_map_show - Display current driver CPU affinity
  * @dev: class converted to a Scsi_host structure.
  * @attr: device attribute, not used.
  * @buf: on return contains text describing the state of the link.

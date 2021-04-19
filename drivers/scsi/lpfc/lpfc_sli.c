@@ -1,8 +1,8 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2020 Broadcom. All Rights Reserved. The term *
- * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.  *
+ * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
+ * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.     *
  * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.broadcom.com                                                *
@@ -987,15 +987,9 @@ lpfc_clr_rrq_active(struct lpfc_hba *phba,
 {
 	struct lpfc_nodelist *ndlp = NULL;
 
+	/* Lookup did to verify if did is still active on this vport */
 	if (rrq->vport)
 		ndlp = lpfc_findnode_did(rrq->vport, rrq->nlp_DID);
-
-	/* The target DID could have been swapped (cable swap)
-	 * we should use the ndlp from the findnode if it is
-	 * available.
-	 */
-	if ((!ndlp) && rrq->ndlp)
-		ndlp = rrq->ndlp;
 
 	if (!ndlp)
 		goto out;
@@ -1118,9 +1112,14 @@ lpfc_cleanup_vports_rrqs(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 		lpfc_sli4_vport_delete_fcp_xri_aborted(vport);
 	}
 	spin_lock_irqsave(&phba->hbalock, iflags);
-	list_for_each_entry_safe(rrq, nextrrq, &phba->active_rrq_list, list)
-		if ((rrq->vport == vport) && (!ndlp  || rrq->ndlp == ndlp))
+	list_for_each_entry_safe(rrq, nextrrq, &phba->active_rrq_list, list) {
+		if (rrq->vport != vport)
+			continue;
+
+		if (!ndlp || ndlp == lpfc_findnode_did(vport, rrq->nlp_DID))
 			list_move(&rrq->list, &rrq_list);
+
+	}
 	spin_unlock_irqrestore(&phba->hbalock, iflags);
 
 	list_for_each_entry_safe(rrq, nextrrq, &rrq_list, list) {
@@ -1213,7 +1212,6 @@ lpfc_set_rrq_active(struct lpfc_hba *phba, struct lpfc_nodelist *ndlp,
 	rrq->xritag = xritag;
 	rrq->rrq_stop_time = jiffies +
 				msecs_to_jiffies(1000 * (phba->fc_ratov + 1));
-	rrq->ndlp = ndlp;
 	rrq->nlp_DID = ndlp->nlp_DID;
 	rrq->vport = ndlp->vport;
 	rrq->rxid = rxid;
@@ -1405,7 +1403,6 @@ __lpfc_sli_release_iocbq_s4(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq)
 			goto out;
 		}
 
-		pring = phba->sli4_hba.els_wq->pring;
 		if ((iocbq->iocb_flag & LPFC_EXCHANGE_BUSY) &&
 			(sglq->state != SGL_XRI_ABORTED)) {
 			spin_lock_irqsave(&phba->sli4_hba.sgl_list_lock,
@@ -1428,9 +1425,9 @@ __lpfc_sli_release_iocbq_s4(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq)
 				      &phba->sli4_hba.lpfc_els_sgl_list);
 			spin_unlock_irqrestore(
 				&phba->sli4_hba.sgl_list_lock, iflag);
-
+			pring = lpfc_phba_elsring(phba);
 			/* Check if TXQ queue needs to be serviced */
-			if (!list_empty(&pring->txq))
+			if (pring && (!list_empty(&pring->txq)))
 				lpfc_worker_wake_up(phba);
 		}
 	}
@@ -9635,7 +9632,7 @@ lpfc_sli4_bpl2sgl(struct lpfc_hba *phba, struct lpfc_iocbq *piocbq,
 }
 
 /**
- * lpfc_sli_iocb2wqe - Convert the IOCB to a work queue entry.
+ * lpfc_sli4_iocb2wqe - Convert the IOCB to a work queue entry.
  * @phba: Pointer to HBA context object.
  * @iocbq: Pointer to command iocb.
  * @wqe: Pointer to the work queue entry.
@@ -10421,7 +10418,7 @@ __lpfc_sli_issue_iocb_s4(struct lpfc_hba *phba, uint32_t ring_number,
 	return 0;
 }
 
-/**
+/*
  * lpfc_sli_issue_fcp_io - Wrapper func for issuing fcp i/o
  *
  * This routine wraps the actual fcp i/o function for issusing WQE for sli-4
@@ -11593,7 +11590,7 @@ release_iocb:
  * which are aborted. The function frees memory resources used for
  * the aborted ELS commands.
  **/
-static void
+void
 lpfc_ignore_els_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 		     struct lpfc_iocbq *rspiocb)
 {
@@ -14170,7 +14167,7 @@ rearm_and_exit:
 }
 
 /**
- * lpfc_sli4_sp_process_cq - Process a slow-path event queue entry
+ * __lpfc_sli4_sp_process_cq - Process a slow-path event queue entry
  * @cq: pointer to CQ to process
  *
  * This routine calls the cq processing routine with a handler specific
@@ -14744,7 +14741,7 @@ lpfc_sli4_hba_process_cq(struct work_struct *work)
 }
 
 /**
- * lpfc_sli4_hba_process_cq - fast-path work handler when started by timer
+ * lpfc_sli4_dly_hba_process_cq - fast-path work handler when started by timer
  * @work: pointer to work element
  *
  * translates from the work handler and calls the fast-path handler.
@@ -17218,7 +17215,7 @@ lpfc_sli4_alloc_xri(struct lpfc_hba *phba)
 }
 
 /**
- * lpfc_sli4_free_xri - Release an xri for reuse.
+ * __lpfc_sli4_free_xri - Release an xri for reuse.
  * @phba: pointer to lpfc hba data structure.
  * @xri: xri to release.
  *
@@ -18938,7 +18935,7 @@ lpfc_sli4_alloc_rpi(struct lpfc_hba *phba)
 }
 
 /**
- * lpfc_sli4_free_rpi - Release an rpi for reuse.
+ * __lpfc_sli4_free_rpi - Release an rpi for reuse.
  * @phba: pointer to lpfc hba data structure.
  * @rpi: rpi to free
  *

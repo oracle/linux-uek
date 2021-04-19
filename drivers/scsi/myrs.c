@@ -1190,7 +1190,6 @@ static ssize_t consistency_check_show(struct device *dev,
 	struct myrs_hba *cs = shost_priv(sdev->host);
 	struct myrs_ldev_info *ldev_info;
 	unsigned short ldev_num;
-	unsigned char status;
 
 	if (sdev->channel < cs->ctlr_info->physchan_present)
 		return snprintf(buf, 32, "physical device - not checking\n");
@@ -1199,7 +1198,7 @@ static ssize_t consistency_check_show(struct device *dev,
 	if (!ldev_info)
 		return -ENXIO;
 	ldev_num = ldev_info->ldev_num;
-	status = myrs_get_ldev_info(cs, ldev_num, ldev_info);
+	myrs_get_ldev_info(cs, ldev_num, ldev_info);
 	if (ldev_info->cc_active)
 		return snprintf(buf, 32, "checking block %zu of %zu\n",
 				(size_t)ldev_info->cc_lba,
@@ -1959,7 +1958,7 @@ static struct myrs_hba *myrs_alloc_host(struct pci_dev *pdev,
 
 /**
  * myrs_is_raid - return boolean indicating device is raid volume
- * @dev the device struct object
+ * @dev: the device struct object
  */
 static int
 myrs_is_raid(struct device *dev)
@@ -1972,7 +1971,7 @@ myrs_is_raid(struct device *dev)
 
 /**
  * myrs_get_resync - get raid volume resync percent complete
- * @dev the device struct object
+ * @dev: the device struct object
  */
 static void
 myrs_get_resync(struct device *dev)
@@ -1981,14 +1980,13 @@ myrs_get_resync(struct device *dev)
 	struct myrs_hba *cs = shost_priv(sdev->host);
 	struct myrs_ldev_info *ldev_info = sdev->hostdata;
 	u64 percent_complete = 0;
-	u8 status;
 
 	if (sdev->channel < cs->ctlr_info->physchan_present || !ldev_info)
 		return;
 	if (ldev_info->rbld_active) {
 		unsigned short ldev_num = ldev_info->ldev_num;
 
-		status = myrs_get_ldev_info(cs, ldev_num, ldev_info);
+		myrs_get_ldev_info(cs, ldev_num, ldev_info);
 		percent_complete = ldev_info->rbld_lba * 100;
 		do_div(percent_complete, ldev_info->cfg_devsize);
 	}
@@ -1997,7 +1995,7 @@ myrs_get_resync(struct device *dev)
 
 /**
  * myrs_get_state - get raid volume status
- * @dev the device struct object
+ * @dev: the device struct object
  */
 static void
 myrs_get_state(struct device *dev)
@@ -2658,7 +2656,7 @@ static irqreturn_t DAC960_GEM_intr_handler(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-struct myrs_privdata DAC960_GEM_privdata = {
+static struct myrs_privdata DAC960_GEM_privdata = {
 	.hw_init =		DAC960_GEM_hw_init,
 	.irq_handler =		DAC960_GEM_intr_handler,
 	.mmio_size =		DAC960_GEM_mmio_size,
@@ -2908,7 +2906,7 @@ static irqreturn_t DAC960_BA_intr_handler(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-struct myrs_privdata DAC960_BA_privdata = {
+static struct myrs_privdata DAC960_BA_privdata = {
 	.hw_init =		DAC960_BA_hw_init,
 	.irq_handler =		DAC960_BA_intr_handler,
 	.mmio_size =		DAC960_BA_mmio_size,
@@ -3158,7 +3156,7 @@ static irqreturn_t DAC960_LP_intr_handler(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-struct myrs_privdata DAC960_LP_privdata = {
+static struct myrs_privdata DAC960_LP_privdata = {
 	.hw_init =		DAC960_LP_hw_init,
 	.irq_handler =		DAC960_LP_intr_handler,
 	.mmio_size =		DAC960_LP_mmio_size,

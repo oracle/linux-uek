@@ -5,6 +5,7 @@
 #include <linux/device.h>
 #include <linux/async.h>
 #include <scsi/scsi_device.h>
+#include <linux/sbitmap.h>
 
 struct request_queue;
 struct request;
@@ -96,8 +97,6 @@ extern int scsi_mq_setup_tags(struct Scsi_Host *shost);
 extern void scsi_mq_destroy_tags(struct Scsi_Host *shost);
 extern void scsi_exit_queue(void);
 extern void scsi_evt_thread(struct work_struct *work);
-struct request_queue;
-struct request;
 
 /* scsi_proc.c */
 #ifdef CONFIG_SCSI_PROC_FS
@@ -181,6 +180,8 @@ void scsi_dh_release_device(struct scsi_device *sdev);
 static inline void scsi_dh_add_device(struct scsi_device *sdev) { }
 static inline void scsi_dh_release_device(struct scsi_device *sdev) { }
 #endif
+
+extern int scsi_device_max_queue_depth(struct scsi_device *sdev);
 
 /* 
  * internal scsi timeout functions: for use by mid-layer and transport
