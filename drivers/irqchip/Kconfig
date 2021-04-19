@@ -585,4 +585,10 @@ config APPLE_AIC
 	  Support for the Apple Interrupt Controller found on Apple Silicon SoCs,
 	  such as the M1.
 
+config WPCM450_AIC
+	bool "Nuvoton WPCM450 Advanced Interrupt Controller"
+	depends on ARCH_WPCM450
+	help
+	  Support for the interrupt controller in the Nuvoton WPCM450 BMC SoC.
+
 endmenu
