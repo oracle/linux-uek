@@ -21,6 +21,7 @@
 #include <linux/bitops.h>
 #include <linux/mutex.h>
 #include <linux/compat.h>
+#include "tty.h"
 
 #include <asm/io.h>
 #include <linux/uaccess.h>
@@ -773,8 +774,8 @@ int tty_mode_ioctl(struct tty_struct *tty, struct file *file,
 	case TCSETX:
 	case TCSETXW:
 	case TCSETXF:
-		return -EINVAL;
-#endif		
+		return -ENOTTY;
+#endif
 	case TIOCGSOFTCAR:
 		copy_termios(real_tty, &kterm);
 		ret = put_user((kterm.c_cflag & CLOCAL) ? 1 : 0,
