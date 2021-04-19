@@ -20,6 +20,9 @@ mkdir $T
 
 cd `dirname $scriptname`/../../../../../
 
+# This script knows only English.
+LANG=en_US.UTF-8; export LANG
+
 dur=$((30*60))
 dryrun=""
 KVM="`pwd`/tools/testing/selftests/rcutorture"; export KVM
@@ -64,7 +67,7 @@ usage () {
 	echo "       --cpus N"
 	echo "       --datestamp string"
 	echo "       --defconfig string"
-	echo "       --dryrun batches|sched|script"
+	echo "       --dryrun batches|scenarios|sched|script"
 	echo "       --duration minutes | <seconds>s | <hours>h | <days>d"
 	echo "       --gdb"
 	echo "       --help"
@@ -130,7 +133,7 @@ do
 		shift
 		;;
 	--dryrun)
-		checkarg --dryrun "batches|sched|script" $# "$2" 'batches\|sched\|script' '^--'
+		checkarg --dryrun "batches|sched|script" $# "$2" 'batches\|scenarios\|sched\|script' '^--'
 		dryrun=$2
 		shift
 		;;
@@ -550,20 +553,7 @@ END {
 	if (ncpus != 0)
 		dump(first, i, batchnum);
 }' >> $T/script
-
-cat << '___EOF___' >> $T/script
-echo | tee -a $TORTURE_RESDIR/log
-echo | tee -a $TORTURE_RESDIR/log
-echo " --- `date` Test summary:" | tee -a $TORTURE_RESDIR/log
-___EOF___
-cat << ___EOF___ >> $T/script
-echo Results directory: $resdir/$ds | tee -a $resdir/$ds/log
-kcsan-collapse.sh $resdir/$ds | tee -a $resdir/$ds/log
-kvm-recheck.sh $resdir/$ds > $T/kvm-recheck.sh.out 2>&1
-___EOF___
-echo 'ret=$?' >> $T/script
-echo "cat $T/kvm-recheck.sh.out | tee -a $resdir/$ds/log" >> $T/script
-echo 'exit $ret' >> $T/script
+echo kvm-end-run-stats.sh "$resdir/$ds" "$starttime" >> $T/script
 
 # Extract the tests and their batches from the script.
 egrep 'Start batch|Starting build\.' $T/script | grep -v ">>" |
@@ -576,6 +566,25 @@ egrep 'Start batch|Starting build\.' $T/script | grep -v ">>" |
 	{
 		print batchno, $1, $2
 	}' > $T/batches
+
+# As above, but one line per batch.
+grep -v '^#' $T/batches | awk '
+BEGIN {
+	oldbatch = 1;
+}
+
+{
+	if (oldbatch != $1) {
+		print ++n ". " curbatch;
+		curbatch = "";
+		oldbatch = $1;
+	}
+	curbatch = curbatch " " $2;
+}
+
+END {
+	print ++n ". " curbatch;
+}' > $T/scenarios
 
 if test "$dryrun" = script
 then
@@ -597,13 +606,17 @@ elif test "$dryrun" = batches
 then
 	cat $T/batches
 	exit 0
+elif test "$dryrun" = scenarios
+then
+	cat $T/scenarios
+	exit 0
 else
 	# Not a dryrun.  Record the batches and the number of CPUs, then run the script.
 	bash $T/script
 	ret=$?
 	cp $T/batches $resdir/$ds/batches
+	cp $T/scenarios $resdir/$ds/scenarios
 	echo '#' cpus=$cpus >> $resdir/$ds/batches
-	echo " --- Done at `date` (`get_starttime_duration $starttime`) exitcode $ret" | tee -a $resdir/$ds/log
 	exit $ret
 fi
 
