@@ -1258,11 +1258,34 @@ static int pinctrl_commit_state(struct pinctrl *p, struct pinctrl_state *state)
 
 	p->state = NULL;
 
-	/* Apply all the settings for the new state */
+	/* Apply all the settings for the new state - pinmux first */
 	list_for_each_entry(setting, &state->settings, node) {
 		switch (setting->type) {
 		case PIN_MAP_TYPE_MUX_GROUP:
 			ret = pinmux_enable_setting(setting);
+			break;
+		case PIN_MAP_TYPE_CONFIGS_PIN:
+		case PIN_MAP_TYPE_CONFIGS_GROUP:
+			ret = 0;
+			break;
+		default:
+			ret = -EINVAL;
+			break;
+		}
+
+		if (ret < 0)
+			goto unapply_new_state;
+
+		/* Do not link hogs (circular dependency) */
+		if (p != setting->pctldev->p)
+			pinctrl_link_add(setting->pctldev, p->dev);
+	}
+
+	/* Apply all the settings for the new state - pinconf after */
+	list_for_each_entry(setting, &state->settings, node) {
+		switch (setting->type) {
+		case PIN_MAP_TYPE_MUX_GROUP:
+			ret = 0;
 			break;
 		case PIN_MAP_TYPE_CONFIGS_PIN:
 		case PIN_MAP_TYPE_CONFIGS_GROUP:
@@ -1890,11 +1913,11 @@ static void pinctrl_init_device_debugfs(struct pinctrl_dev *pctldev)
 			dev_name(pctldev->dev));
 		return;
 	}
-	debugfs_create_file("pins", S_IFREG | S_IRUGO,
+	debugfs_create_file("pins", 0444,
 			    device_root, pctldev, &pinctrl_pins_fops);
-	debugfs_create_file("pingroups", S_IFREG | S_IRUGO,
+	debugfs_create_file("pingroups", 0444,
 			    device_root, pctldev, &pinctrl_groups_fops);
-	debugfs_create_file("gpio-ranges", S_IFREG | S_IRUGO,
+	debugfs_create_file("gpio-ranges", 0444,
 			    device_root, pctldev, &pinctrl_gpioranges_fops);
 	if (pctldev->desc->pmxops)
 		pinmux_init_device_debugfs(device_root, pctldev);
@@ -1916,11 +1939,11 @@ static void pinctrl_init_debugfs(void)
 		return;
 	}
 
-	debugfs_create_file("pinctrl-devices", S_IFREG | S_IRUGO,
+	debugfs_create_file("pinctrl-devices", 0444,
 			    debugfs_root, NULL, &pinctrl_devices_fops);
-	debugfs_create_file("pinctrl-maps", S_IFREG | S_IRUGO,
+	debugfs_create_file("pinctrl-maps", 0444,
 			    debugfs_root, NULL, &pinctrl_maps_fops);
-	debugfs_create_file("pinctrl-handles", S_IFREG | S_IRUGO,
+	debugfs_create_file("pinctrl-handles", 0444,
 			    debugfs_root, NULL, &pinctrl_fops);
 }
 
