@@ -105,8 +105,9 @@ void otx2_bphy_cpri_cleanup(void)
 			priv = netdev_priv(netdev);
 			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
-			kfree(priv->cpri_common);
-			priv->cpri_common = NULL;
+			--(priv->cpri_common->refcnt);
+			if (priv->cpri_common->refcnt == 0)
+				kfree(priv->cpri_common);
 			free_netdev(netdev);
 			drv_ctx->valid = 0;
 		}
@@ -539,6 +540,7 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 					ret = -ENOMEM;
 					goto err_exit;
 				}
+				priv->cpri_common->refcnt = 1;
 			}
 			spin_lock_init(&priv->lock);
 			priv->netdev = netdev;
@@ -568,6 +570,7 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			} else {
 				/* share cpri_common data */
 				priv->cpri_common = priv2->cpri_common;
+				++(priv->cpri_common->refcnt);
 			}
 
 			netif_napi_add(priv->netdev, &priv->napi,
@@ -621,8 +624,9 @@ err_exit:
 			priv = netdev_priv(netdev);
 			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
-			kfree(priv->cpri_common);
-			priv->cpri_common = NULL;
+			--(priv->cpri_common->refcnt);
+			if (priv->cpri_common->refcnt == 0)
+				kfree(priv->cpri_common);
 			free_netdev(netdev);
 			drv_ctx->valid = 0;
 		}

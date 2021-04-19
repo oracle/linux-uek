@@ -162,6 +162,7 @@ struct tx_job_queue_cfg {
 /* rfoe common (for all lmac's) */
 struct rfoe_common_cfg {
 	struct tx_job_queue_cfg		tx_oth_job_cfg;
+	u8				refcnt;
 };
 
 /* ptp pending skb list */
@@ -244,6 +245,7 @@ struct ptp_bcn_off_cfg {
 	struct ptp_clk_cfg		clk_cfg;
 	struct timer_list		ptp_timer;
 	int				use_ptp_alg;
+	u8				refcnt;
 	/* protection lock for updating ref */
 	spinlock_t			lock;
 };
