@@ -94,6 +94,7 @@ struct ul_cbuf_cfg {
 struct cpri_common_cfg {
 	struct dl_cbuf_cfg		dl_cfg;
 	struct ul_cbuf_cfg		ul_cfg;
+	u8				refcnt;
 };
 
 struct otx2_cpri_link_event {
