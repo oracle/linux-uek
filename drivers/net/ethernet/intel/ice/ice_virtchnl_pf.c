@@ -202,6 +202,25 @@ static void ice_vf_vsi_release(struct ice_vf *vf)
 }
 
 /**
+ * ice_vf_ctrl_invalidate_vsi - invalidate ctrl_vsi_idx to remove VSI access
+ * @vf: VF that control VSI is being invalidated on
+ */
+static void ice_vf_ctrl_invalidate_vsi(struct ice_vf *vf)
+{
+	vf->ctrl_vsi_idx = ICE_NO_VSI;
+}
+
+/**
+ * ice_vf_ctrl_vsi_release - invalidate the VF's control VSI after freeing it
+ * @vf: VF that control VSI is being released on
+ */
+static void ice_vf_ctrl_vsi_release(struct ice_vf *vf)
+{
+	ice_vsi_release(vf->pf->vsi[vf->ctrl_vsi_idx]);
+	ice_vf_ctrl_invalidate_vsi(vf);
+}
+
+/**
  * ice_free_vf_res - Free a VF's resources
  * @vf: pointer to the VF info
  */
@@ -214,6 +233,10 @@ static void ice_free_vf_res(struct ice_vf *vf)
 	 * accessing the VF's VSI after it's freed or invalidated.
 	 */
 	clear_bit(ICE_VF_STATE_INIT, vf->vf_states);
+	ice_vf_fdir_exit(vf);
+	/* free VF control VSI */
+	if (vf->ctrl_vsi_idx != ICE_NO_VSI)
+		ice_vf_ctrl_vsi_release(vf);
 
 	/* free VSI and disconnect it from the parent uplink */
 	if (vf->lan_vsi_idx != ICE_NO_VSI) {
@@ -348,7 +371,7 @@ void ice_free_vfs(struct ice_pf *pf)
 	if (!pf->vf)
 		return;
 
-	while (test_and_set_bit(__ICE_VF_DIS, pf->state))
+	while (test_and_set_bit(ICE_VF_DIS, pf->state))
 		usleep_range(1000, 2000);
 
 	/* Disable IOV before freeing resources. This lets any VF drivers
@@ -401,7 +424,7 @@ void ice_free_vfs(struct ice_pf *pf)
 			wr32(hw, GLGEN_VFLRSTAT(reg_idx), BIT(bit_idx));
 		}
 	}
-	clear_bit(__ICE_VF_DIS, pf->state);
+	clear_bit(ICE_VF_DIS, pf->state);
 	clear_bit(ICE_FLAG_SRIOV_ENA, pf->flags);
 }
 
@@ -555,6 +578,28 @@ static struct ice_vsi *ice_vf_vsi_setup(struct ice_vf *vf)
 
 	vf->lan_vsi_idx = vsi->idx;
 	vf->lan_vsi_num = vsi->vsi_num;
+
+	return vsi;
+}
+
+/**
+ * ice_vf_ctrl_vsi_setup - Set up a VF control VSI
+ * @vf: VF to setup control VSI for
+ *
+ * Returns pointer to the successfully allocated VSI struct on success,
+ * otherwise returns NULL on failure.
+ */
+struct ice_vsi *ice_vf_ctrl_vsi_setup(struct ice_vf *vf)
+{
+	struct ice_port_info *pi = ice_vf_get_port_info(vf);
+	struct ice_pf *pf = vf->pf;
+	struct ice_vsi *vsi;
+
+	vsi = ice_vsi_setup(pf, pi, ICE_VSI_CTRL, vf->vf_id);
+	if (!vsi) {
+		dev_err(ice_pf_to_dev(pf), "Failed to create VF control VSI\n");
+		ice_vf_ctrl_invalidate_vsi(vf);
+	}
 
 	return vsi;
 }
@@ -1213,7 +1258,7 @@ bool ice_reset_all_vfs(struct ice_pf *pf, bool is_vflr)
 		return false;
 
 	/* If VFs have been disabled, there is no need to reset */
-	if (test_and_set_bit(__ICE_VF_DIS, pf->state))
+	if (test_and_set_bit(ICE_VF_DIS, pf->state))
 		return false;
 
 	/* Begin reset on all VFs at once */
@@ -1256,13 +1301,20 @@ bool ice_reset_all_vfs(struct ice_pf *pf, bool is_vflr)
 	ice_for_each_vf(pf, v) {
 		vf = &pf->vf[v];
 
+		ice_vf_fdir_exit(vf);
+		/* clean VF control VSI when resetting VFs since it should be
+		 * setup only when VF creates its first FDIR rule.
+		 */
+		if (vf->ctrl_vsi_idx != ICE_NO_VSI)
+			ice_vf_ctrl_invalidate_vsi(vf);
+
 		ice_vf_pre_vsi_rebuild(vf);
 		ice_vf_rebuild_vsi(vf);
 		ice_vf_post_vsi_rebuild(vf);
 	}
 
 	ice_flush(hw);
-	clear_bit(__ICE_VF_DIS, pf->state);
+	clear_bit(ICE_VF_DIS, pf->state);
 
 	return true;
 }
@@ -1282,7 +1334,7 @@ static bool ice_is_vf_disabled(struct ice_vf *vf)
 	 * means something else is resetting the VF, so we shouldn't continue.
 	 * Otherwise, set disable VF state bit for actual reset, and continue.
 	 */
-	return (test_bit(__ICE_VF_DIS, pf->state) ||
+	return (test_bit(ICE_VF_DIS, pf->state) ||
 		test_bit(ICE_VF_STATE_DIS, vf->vf_states));
 }
 
@@ -1307,7 +1359,7 @@ bool ice_reset_vf(struct ice_vf *vf, bool is_vflr)
 
 	dev = ice_pf_to_dev(pf);
 
-	if (test_bit(__ICE_VF_RESETS_DISABLED, pf->state)) {
+	if (test_bit(ICE_VF_RESETS_DISABLED, pf->state)) {
 		dev_dbg(dev, "Trying to reset VF %d, but all VF resets are disabled\n",
 			vf->vf_id);
 		return true;
@@ -1373,6 +1425,13 @@ bool ice_reset_vf(struct ice_vf *vf, bool is_vflr)
 		if (ice_vf_set_vsi_promisc(vf, vsi, promisc_m, true))
 			dev_err(dev, "disabling promiscuous mode failed\n");
 	}
+
+	ice_vf_fdir_exit(vf);
+	/* clean VF control VSI when resetting VF since it should be setup
+	 * only when VF creates its first FDIR rule.
+	 */
+	if (vf->ctrl_vsi_idx != ICE_NO_VSI)
+		ice_vf_ctrl_vsi_release(vf);
 
 	ice_vf_pre_vsi_rebuild(vf);
 	ice_vf_rebuild_vsi_with_release(vf);
@@ -1532,7 +1591,7 @@ teardown:
 }
 
 /**
- * ice_set_dflt_settings - set VF defaults during initialization/creation
+ * ice_set_dflt_settings_vfs - set VF defaults during initialization/creation
  * @pf: PF holding reference to all VFs for default configuration
  */
 static void ice_set_dflt_settings_vfs(struct ice_pf *pf)
@@ -1549,6 +1608,12 @@ static void ice_set_dflt_settings_vfs(struct ice_pf *pf)
 		set_bit(ICE_VIRTCHNL_VF_CAP_L2, &vf->vf_caps);
 		vf->spoofchk = true;
 		vf->num_vf_qs = pf->num_qps_per_vf;
+
+		/* ctrl_vsi_idx will be set to a valid value only when VF
+		 * creates its first fdir rule.
+		 */
+		ice_vf_ctrl_invalidate_vsi(vf);
+		ice_vf_fdir_init(vf);
 	}
 }
 
@@ -1586,7 +1651,7 @@ static int ice_ena_vfs(struct ice_pf *pf, u16 num_vfs)
 	/* Disable global interrupt 0 so we don't try to handle the VFLR. */
 	wr32(hw, GLINT_DYN_CTL(pf->oicr_idx),
 	     ICE_ITR_NONE << GLINT_DYN_CTL_ITR_INDX_S);
-	set_bit(__ICE_OICR_INTR_DIS, pf->state);
+	set_bit(ICE_OICR_INTR_DIS, pf->state);
 	ice_flush(hw);
 
 	ret = pci_enable_sriov(pf->pdev, num_vfs);
@@ -1614,7 +1679,7 @@ static int ice_ena_vfs(struct ice_pf *pf, u16 num_vfs)
 		goto err_unroll_sriov;
 	}
 
-	clear_bit(__ICE_VF_DIS, pf->state);
+	clear_bit(ICE_VF_DIS, pf->state);
 	return 0;
 
 err_unroll_sriov:
@@ -1626,7 +1691,7 @@ err_pci_disable_sriov:
 err_unroll_intr:
 	/* rearm interrupts here */
 	ice_irq_dynamic_ena(hw, NULL, NULL);
-	clear_bit(__ICE_OICR_INTR_DIS, pf->state);
+	clear_bit(ICE_OICR_INTR_DIS, pf->state);
 	return ret;
 }
 
@@ -1744,7 +1809,7 @@ void ice_process_vflr_event(struct ice_pf *pf)
 	unsigned int vf_id;
 	u32 reg;
 
-	if (!test_and_clear_bit(__ICE_VFLR_EVENT_PENDING, pf->state) ||
+	if (!test_and_clear_bit(ICE_VFLR_EVENT_PENDING, pf->state) ||
 	    !pf->num_alloc_vfs)
 		return;
 
@@ -1848,7 +1913,7 @@ ice_vf_lan_overflow_event(struct ice_pf *pf, struct ice_rq_event_info *event)
  *
  * send msg to VF
  */
-static int
+int
 ice_vc_send_msg_to_vf(struct ice_vf *vf, u32 v_opcode,
 		      enum virtchnl_status_code v_retval, u8 *msg, u16 msglen)
 {
@@ -1996,6 +2061,9 @@ static int ice_vc_get_vf_res_msg(struct ice_vf *vf, u8 *msg)
 			vfres->vf_cap_flags |= VIRTCHNL_VF_OFFLOAD_RSS_REG;
 	}
 
+	if (vf->driver_caps & VIRTCHNL_VF_OFFLOAD_FDIR_PF)
+		vfres->vf_cap_flags |= VIRTCHNL_VF_OFFLOAD_FDIR_PF;
+
 	if (vf->driver_caps & VIRTCHNL_VF_OFFLOAD_RSS_PCTYPE_V2)
 		vfres->vf_cap_flags |= VIRTCHNL_VF_OFFLOAD_RSS_PCTYPE_V2;
 
@@ -2084,7 +2152,7 @@ static struct ice_vsi *ice_find_vsi_from_id(struct ice_pf *pf, u16 id)
  *
  * check for the valid VSI ID
  */
-static bool ice_vc_isvalid_vsi_id(struct ice_vf *vf, u16 vsi_id)
+bool ice_vc_isvalid_vsi_id(struct ice_vf *vf, u16 vsi_id)
 {
 	struct ice_pf *pf = vf->pf;
 	struct ice_vsi *vsi;
@@ -2165,7 +2233,7 @@ static int ice_vc_config_rss_key(struct ice_vf *vf, u8 *msg)
 		goto error_param;
 	}
 
-	if (ice_set_rss(vsi, vrk->key, NULL, 0))
+	if (ice_set_rss_key(vsi, vrk->key))
 		v_ret = VIRTCHNL_STATUS_ERR_ADMIN_QUEUE_ERROR;
 error_param:
 	return ice_vc_send_msg_to_vf(vf, VIRTCHNL_OP_CONFIG_RSS_KEY, v_ret,
@@ -2212,7 +2280,7 @@ static int ice_vc_config_rss_lut(struct ice_vf *vf, u8 *msg)
 		goto error_param;
 	}
 
-	if (ice_set_rss(vsi, NULL, vrl->lut, ICE_VSIQF_HLUT_ARRAY_SIZE))
+	if (ice_set_rss_lut(vsi, vrl->lut, ICE_VSIQF_HLUT_ARRAY_SIZE))
 		v_ret = VIRTCHNL_STATUS_ERR_ADMIN_QUEUE_ERROR;
 error_param:
 	return ice_vc_send_msg_to_vf(vf, VIRTCHNL_OP_CONFIG_RSS_LUT, v_ret,
@@ -3816,6 +3884,12 @@ error_handler:
 	case VIRTCHNL_OP_DISABLE_VLAN_STRIPPING:
 		err = ice_vc_dis_vlan_stripping(vf);
 		break;
+	case VIRTCHNL_OP_ADD_FDIR_FILTER:
+		err = ice_vc_add_fdir_fltr(vf, msg);
+		break;
+	case VIRTCHNL_OP_DEL_FDIR_FILTER:
+		err = ice_vc_del_fdir_fltr(vf, msg);
+		break;
 	case VIRTCHNL_OP_UNKNOWN:
 	default:
 		dev_err(dev, "Unsupported opcode %d from VF %d\n", v_opcode,
@@ -4108,7 +4182,7 @@ void ice_print_vf_rx_mdd_event(struct ice_vf *vf)
 }
 
 /**
- * ice_print_vfs_mdd_event - print VFs malicious driver detect event
+ * ice_print_vfs_mdd_events - print VFs malicious driver detect event
  * @pf: pointer to the PF structure
  *
  * Called from ice_handle_mdd_event to rate limit and print VFs MDD events.
@@ -4120,7 +4194,7 @@ void ice_print_vfs_mdd_events(struct ice_pf *pf)
 	int i;
 
 	/* check that there are pending MDD events to print */
-	if (!test_and_clear_bit(__ICE_MDD_VF_PRINT_PENDING, pf->state))
+	if (!test_and_clear_bit(ICE_MDD_VF_PRINT_PENDING, pf->state))
 		return;
 
 	/* VF MDD event logs are rate limited to one second intervals */
@@ -4160,7 +4234,6 @@ void ice_print_vfs_mdd_events(struct ice_pf *pf)
  */
 void ice_restore_all_vfs_msi_state(struct pci_dev *pdev)
 {
-	struct pci_dev *vfdev;
 	u16 vf_id;
 	int pos;
 
@@ -4169,6 +4242,8 @@ void ice_restore_all_vfs_msi_state(struct pci_dev *pdev)
 
 	pos = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_SRIOV);
 	if (pos) {
+		struct pci_dev *vfdev;
+
 		pci_read_config_word(pdev, pos + PCI_SRIOV_VF_DID,
 				     &vf_id);
 		vfdev = pci_get_device(pdev->vendor, vf_id, NULL);

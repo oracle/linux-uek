@@ -51,6 +51,7 @@
  */
 
 /* Reserve some destination PGIDs at the end of the range:
+ * PGID_BLACKHOLE: used for not forwarding the frames
  * PGID_CPU: used for whitelisting certain MAC addresses, such as the addresses
  *           of the switch port net devices, towards the CPU port module.
  * PGID_UC: the flooding destinations for unknown unicast traffic.
@@ -59,6 +60,7 @@
  * PGID_MCIPV6: the flooding destinations for IPv6 multicast traffic.
  * PGID_BC: the flooding destinations for broadcast traffic.
  */
+#define PGID_BLACKHOLE			57
 #define PGID_CPU			58
 #define PGID_UC				59
 #define PGID_MC				60
@@ -73,7 +75,7 @@
 
 #define for_each_nonreserved_multicast_dest_pgid(ocelot, pgid)	\
 	for ((pgid) = (ocelot)->num_phys_ports + 1;		\
-	     (pgid) < PGID_CPU;					\
+	     (pgid) < PGID_BLACKHOLE;				\
 	     (pgid)++)
 
 #define for_each_aggr_pgid(ocelot, pgid)			\
@@ -611,6 +613,11 @@ struct ocelot_port {
 
 	struct net_device		*bond;
 	bool				lag_tx_active;
+
+	u16				mrp_ring_id;
+
+	struct net_device		*bridge;
+	u8				stp_state;
 };
 
 struct ocelot {
@@ -629,10 +636,6 @@ struct ocelot {
 	int				packet_buffer_size;
 	int				num_frame_refs;
 	int				num_mact_rows;
-
-	struct net_device		*hw_bridge_dev;
-	u16				bridge_mask;
-	u16				bridge_fwd_mask;
 
 	struct ocelot_port		**ports;
 
@@ -679,12 +682,6 @@ struct ocelot {
 	/* Protects the PTP clock */
 	spinlock_t			ptp_clock_lock;
 	struct ptp_pin_desc		ptp_pins[OCELOT_PTP_PINS_NUM];
-
-#if IS_ENABLED(CONFIG_BRIDGE_MRP)
-	u16				mrp_ring_id;
-	struct net_device		*mrp_p_port;
-	struct net_device		*mrp_s_port;
-#endif
 };
 
 struct ocelot_policer {
@@ -806,10 +803,10 @@ int ocelot_port_pre_bridge_flags(struct ocelot *ocelot, int port,
 				 struct switchdev_brport_flags val);
 void ocelot_port_bridge_flags(struct ocelot *ocelot, int port,
 			      struct switchdev_brport_flags val);
-int ocelot_port_bridge_join(struct ocelot *ocelot, int port,
-			    struct net_device *bridge);
-int ocelot_port_bridge_leave(struct ocelot *ocelot, int port,
+void ocelot_port_bridge_join(struct ocelot *ocelot, int port,
 			     struct net_device *bridge);
+void ocelot_port_bridge_leave(struct ocelot *ocelot, int port,
+			      struct net_device *bridge);
 int ocelot_fdb_dump(struct ocelot *ocelot, int port,
 		    dsa_fdb_dump_cb_t *cb, void *data);
 int ocelot_fdb_add(struct ocelot *ocelot, int port,

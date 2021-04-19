@@ -49,10 +49,12 @@ struct phylink_link_state;
 #define DSA_TAG_PROTO_XRS700X_VALUE		19
 #define DSA_TAG_PROTO_OCELOT_8021Q_VALUE	20
 #define DSA_TAG_PROTO_SEVILLE_VALUE		21
+#define DSA_TAG_PROTO_BRCM_LEGACY_VALUE		22
 
 enum dsa_tag_protocol {
 	DSA_TAG_PROTO_NONE		= DSA_TAG_PROTO_NONE_VALUE,
 	DSA_TAG_PROTO_BRCM		= DSA_TAG_PROTO_BRCM_VALUE,
+	DSA_TAG_PROTO_BRCM_LEGACY	= DSA_TAG_PROTO_BRCM_LEGACY_VALUE,
 	DSA_TAG_PROTO_BRCM_PREPEND	= DSA_TAG_PROTO_BRCM_PREPEND_VALUE,
 	DSA_TAG_PROTO_DSA		= DSA_TAG_PROTO_DSA_VALUE,
 	DSA_TAG_PROTO_EDSA		= DSA_TAG_PROTO_EDSA_VALUE,
@@ -258,7 +260,7 @@ struct dsa_port {
 	unsigned int		index;
 	const char		*name;
 	struct dsa_port		*cpu_dp;
-	const char		*mac;
+	u8			mac[ETH_ALEN];
 	struct device_node	*dn;
 	unsigned int		ageing_time;
 	bool			vlan_filtering;
@@ -489,6 +491,20 @@ static inline bool dsa_port_is_vlan_filtering(const struct dsa_port *dp)
 		return ds->vlan_filtering;
 	else
 		return dp->vlan_filtering;
+}
+
+static inline
+struct net_device *dsa_port_to_bridge_port(const struct dsa_port *dp)
+{
+	if (!dp->bridge_dev)
+		return NULL;
+
+	if (dp->lag_dev)
+		return dp->lag_dev;
+	else if (dp->hsr_dev)
+		return dp->hsr_dev;
+
+	return dp->slave;
 }
 
 typedef int dsa_fdb_dump_cb_t(const unsigned char *addr, u16 vid,

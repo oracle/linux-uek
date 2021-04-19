@@ -74,13 +74,13 @@ struct otx2_mbox {
 	struct otx2_mbox_dev *dev;
 };
 
-/* Header which preceeds all mbox messages */
+/* Header which precedes all mbox messages */
 struct mbox_hdr {
 	u64 msg_size;	/* Total msgs size embedded */
 	u16  num_msgs;   /* No of msgs embedded */
 };
 
-/* Header which preceeds every msg and is also part of it */
+/* Header which precedes every msg and is also part of it */
 struct mbox_msghdr {
 	u16 pcifunc;     /* Who's sending this msg */
 	u16 id;          /* Mbox message ID */
@@ -216,6 +216,9 @@ M(NPC_MCAM_READ_ENTRY,	  0x600f, npc_mcam_read_entry,			\
 				  npc_mcam_read_entry_rsp)		\
 M(NPC_MCAM_READ_BASE_RULE, 0x6011, npc_read_base_steer_rule,            \
 				   msg_req, npc_mcam_read_base_rule_rsp)  \
+M(NPC_MCAM_GET_STATS, 0x6012, npc_mcam_entry_stats,                     \
+				   npc_mcam_get_stats_req,              \
+				   npc_mcam_get_stats_rsp)              \
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -277,8 +280,8 @@ struct msg_req {
 	struct mbox_msghdr hdr;
 };
 
-/* Generic rsponse msg used a ack or response for those mbox
- * messages which doesn't have a specific rsp msg format.
+/* Generic response msg used an ack or response for those mbox
+ * messages which don't have a specific rsp msg format.
  */
 struct msg_rsp {
 	struct mbox_msghdr hdr;
@@ -299,7 +302,7 @@ struct ready_msg_rsp {
 
 /* Structure for requesting resource provisioning.
  * 'modify' flag to be used when either requesting more
- * or to detach partial of a cetain resource type.
+ * or to detach partial of a certain resource type.
  * Rest of the fields specify how many of what type to
  * be attached.
  * To request LFs from two blocks of same type this mailbox
@@ -489,7 +492,7 @@ struct cgx_set_link_mode_rsp {
 };
 
 #define RVU_LMAC_FEAT_FC		BIT_ULL(0) /* pause frames */
-#define RVU_LMAC_FEAT_PTP		BIT_ULL(1) /* precison time protocol */
+#define RVU_LMAC_FEAT_PTP		BIT_ULL(1) /* precision time protocol */
 #define RVU_MAC_VERSION			BIT_ULL(2)
 #define RVU_MAC_CGX			BIT_ULL(3)
 #define RVU_MAC_RPM			BIT_ULL(4)
@@ -605,6 +608,7 @@ enum nix_af_status {
 	NIX_AF_INVAL_SSO_PF_FUNC    = -420,
 	NIX_AF_ERR_TX_VTAG_NOSPC    = -421,
 	NIX_AF_ERR_RX_VTAG_INUSE    = -422,
+	NIX_AF_ERR_NPC_KEY_NOT_SUPP = -423,
 };
 
 /* For NIX RX vtag action  */
@@ -1141,6 +1145,7 @@ struct npc_install_flow_req {
 	u64 features;
 	u16 entry;
 	u16 channel;
+	u16 chan_mask;
 	u8 intf;
 	u8 set_cntr; /* If counter is available set counter for this entry ? */
 	u8 default_rule;
@@ -1191,6 +1196,17 @@ struct npc_mcam_read_entry_rsp {
 struct npc_mcam_read_base_rule_rsp {
 	struct mbox_msghdr hdr;
 	struct mcam_entry entry;
+};
+
+struct npc_mcam_get_stats_req {
+	struct mbox_msghdr hdr;
+	u16 entry; /* mcam entry */
+};
+
+struct npc_mcam_get_stats_rsp {
+	struct mbox_msghdr hdr;
+	u64 stat;  /* counter stats */
+	u8 stat_ena; /* enabled */
 };
 
 enum ptp_op {

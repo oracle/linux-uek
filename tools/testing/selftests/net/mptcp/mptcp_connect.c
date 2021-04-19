@@ -55,7 +55,9 @@ static int cfg_sndbuf;
 static int cfg_rcvbuf;
 static bool cfg_join;
 static bool cfg_remove;
+static unsigned int cfg_do_w;
 static int cfg_wait;
+static uint32_t cfg_mark;
 
 static void die_usage(void)
 {
@@ -68,6 +70,7 @@ static void die_usage(void)
 	fprintf(stderr, "\t-p num -- use port num\n");
 	fprintf(stderr, "\t-s [MPTCP|TCP] -- use mptcp(default) or tcp sockets\n");
 	fprintf(stderr, "\t-m [poll|mmap|sendfile] -- use poll(default)/mmap+write/sendfile\n");
+	fprintf(stderr, "\t-M mark -- set socket packet mark\n");
 	fprintf(stderr, "\t-u -- check mptcp ulp\n");
 	fprintf(stderr, "\t-w num -- wait num sec before closing the socket\n");
 	exit(1);
@@ -135,6 +138,17 @@ static void set_sndbuf(int fd, unsigned int size)
 	err = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
 	if (err) {
 		perror("set SO_SNDBUF");
+		exit(1);
+	}
+}
+
+static void set_mark(int fd, uint32_t mark)
+{
+	int err;
+
+	err = setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark));
+	if (err) {
+		perror("set SO_MARK");
 		exit(1);
 	}
 }
@@ -247,6 +261,9 @@ static int sock_connect_mptcp(const char * const remoteaddr,
 			continue;
 		}
 
+		if (cfg_mark)
+			set_mark(sock, cfg_mark);
+
 		if (connect(sock, a->ai_addr, a->ai_addrlen) == 0)
 			break; /* success */
 
@@ -272,8 +289,8 @@ static size_t do_rnd_write(const int fd, char *buf, const size_t len)
 	if (cfg_join && first && do_w > 100)
 		do_w = 100;
 
-	if (cfg_remove && do_w > 50)
-		do_w = 50;
+	if (cfg_remove && do_w > cfg_do_w)
+		do_w = cfg_do_w;
 
 	bw = write(fd, buf, do_w);
 	if (bw < 0)
@@ -829,7 +846,7 @@ static void parse_opts(int argc, char **argv)
 {
 	int c;
 
-	while ((c = getopt(argc, argv, "6jrlp:s:hut:m:S:R:w:")) != -1) {
+	while ((c = getopt(argc, argv, "6jr:lp:s:hut:m:S:R:w:M:")) != -1) {
 		switch (c) {
 		case 'j':
 			cfg_join = true;
@@ -840,6 +857,9 @@ static void parse_opts(int argc, char **argv)
 			cfg_remove = true;
 			cfg_mode = CFG_MODE_POLL;
 			cfg_wait = 400000;
+			cfg_do_w = atoi(optarg);
+			if (cfg_do_w <= 0)
+				cfg_do_w = 50;
 			break;
 		case 'l':
 			listen_mode = true;
@@ -876,6 +896,9 @@ static void parse_opts(int argc, char **argv)
 		case 'w':
 			cfg_wait = atoi(optarg)*1000000;
 			break;
+		case 'M':
+			cfg_mark = strtol(optarg, NULL, 0);
+			break;
 		}
 	}
 
@@ -907,6 +930,8 @@ int main(int argc, char *argv[])
 			set_rcvbuf(fd, cfg_rcvbuf);
 		if (cfg_sndbuf)
 			set_sndbuf(fd, cfg_sndbuf);
+		if (cfg_mark)
+			set_mark(fd, cfg_mark);
 
 		return main_loop_s(fd);
 	}

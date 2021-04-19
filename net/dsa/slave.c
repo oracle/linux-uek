@@ -1278,14 +1278,32 @@ static int dsa_slave_setup_tc_block(struct net_device *dev,
 	}
 }
 
+static int dsa_slave_setup_ft_block(struct dsa_switch *ds, int port,
+				    void *type_data)
+{
+	struct dsa_port *cpu_dp = dsa_to_port(ds, port)->cpu_dp;
+	struct net_device *master = cpu_dp->master;
+
+	if (!master->netdev_ops->ndo_setup_tc)
+		return -EOPNOTSUPP;
+
+	return master->netdev_ops->ndo_setup_tc(master, TC_SETUP_FT, type_data);
+}
+
 static int dsa_slave_setup_tc(struct net_device *dev, enum tc_setup_type type,
 			      void *type_data)
 {
 	struct dsa_port *dp = dsa_slave_to_port(dev);
 	struct dsa_switch *ds = dp->ds;
 
-	if (type == TC_SETUP_BLOCK)
+	switch (type) {
+	case TC_SETUP_BLOCK:
 		return dsa_slave_setup_tc_block(dev, type_data);
+	case TC_SETUP_FT:
+		return dsa_slave_setup_ft_block(ds, dp->index, type_data);
+	default:
+		break;
+	}
 
 	if (!ds->ops->port_setup_tc)
 		return -EOPNOTSUPP;
@@ -1654,6 +1672,21 @@ static void dsa_slave_get_stats64(struct net_device *dev,
 		dev_get_tstats64(dev, s);
 }
 
+static int dsa_slave_fill_forward_path(struct net_device_path_ctx *ctx,
+				       struct net_device_path *path)
+{
+	struct dsa_port *dp = dsa_slave_to_port(ctx->dev);
+	struct dsa_port *cpu_dp = dp->cpu_dp;
+
+	path->dev = ctx->dev;
+	path->type = DEV_PATH_DSA;
+	path->dsa.proto = cpu_dp->tag_ops->proto;
+	path->dsa.port = dp->index;
+	ctx->dev = cpu_dp->master;
+
+	return 0;
+}
+
 static const struct net_device_ops dsa_slave_netdev_ops = {
 	.ndo_open	 	= dsa_slave_open,
 	.ndo_stop		= dsa_slave_close,
@@ -1679,6 +1712,7 @@ static const struct net_device_ops dsa_slave_netdev_ops = {
 	.ndo_vlan_rx_kill_vid	= dsa_slave_vlan_rx_kill_vid,
 	.ndo_get_devlink_port	= dsa_slave_get_devlink_port,
 	.ndo_change_mtu		= dsa_slave_change_mtu,
+	.ndo_fill_forward_path	= dsa_slave_fill_forward_path,
 };
 
 static struct device_type dsa_type = {
@@ -1862,7 +1896,7 @@ int dsa_slave_create(struct dsa_port *port)
 	slave_dev->hw_features |= NETIF_F_HW_TC;
 	slave_dev->features |= NETIF_F_LLTX;
 	slave_dev->ethtool_ops = &dsa_slave_ethtool_ops;
-	if (!IS_ERR_OR_NULL(port->mac))
+	if (!is_zero_ether_addr(port->mac))
 		ether_addr_copy(slave_dev->dev_addr, port->mac);
 	else
 		eth_hw_addr_inherit(slave_dev, master);
@@ -1976,11 +2010,14 @@ static int dsa_slave_changeupper(struct net_device *dev,
 				 struct netdev_notifier_changeupper_info *info)
 {
 	struct dsa_port *dp = dsa_slave_to_port(dev);
+	struct netlink_ext_ack *extack;
 	int err = NOTIFY_DONE;
+
+	extack = netdev_notifier_info_to_extack(&info->info);
 
 	if (netif_is_bridge_master(info->upper_dev)) {
 		if (info->linking) {
-			err = dsa_port_bridge_join(dp, info->upper_dev);
+			err = dsa_port_bridge_join(dp, info->upper_dev, extack);
 			if (!err)
 				dsa_bridge_mtu_normalization(dp);
 			err = notifier_from_errno(err);
@@ -1991,7 +2028,7 @@ static int dsa_slave_changeupper(struct net_device *dev,
 	} else if (netif_is_lag_master(info->upper_dev)) {
 		if (info->linking) {
 			err = dsa_port_lag_join(dp, info->upper_dev,
-						info->upper_info);
+						info->upper_info, extack);
 			if (err == -EOPNOTSUPP) {
 				NL_SET_ERR_MSG_MOD(info->info.extack,
 						   "Offloading not supported");
@@ -2292,7 +2329,7 @@ static int dsa_slave_switchdev_event(struct notifier_block *unused,
 		fdb_info = ptr;
 
 		if (dsa_slave_dev_check(dev)) {
-			if (!fdb_info->added_by_user)
+			if (!fdb_info->added_by_user || fdb_info->is_local)
 				return NOTIFY_OK;
 
 			dp = dsa_slave_to_port(dev);
@@ -2389,11 +2426,11 @@ static struct notifier_block dsa_slave_nb __read_mostly = {
 	.notifier_call  = dsa_slave_netdevice_event,
 };
 
-static struct notifier_block dsa_slave_switchdev_notifier = {
+struct notifier_block dsa_slave_switchdev_notifier = {
 	.notifier_call = dsa_slave_switchdev_event,
 };
 
-static struct notifier_block dsa_slave_switchdev_blocking_notifier = {
+struct notifier_block dsa_slave_switchdev_blocking_notifier = {
 	.notifier_call = dsa_slave_switchdev_blocking_event,
 };
 

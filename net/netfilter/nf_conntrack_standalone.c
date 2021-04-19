@@ -1028,6 +1028,7 @@ static void nf_conntrack_standalone_init_gre_sysctl(struct net *net,
 
 static int nf_conntrack_standalone_init_sysctl(struct net *net)
 {
+	struct nf_conntrack_net *cnet = net_generic(net, nf_conntrack_net_id);
 	struct nf_udp_net *un = nf_udp_pernet(net);
 	struct ctl_table *table;
 
@@ -1060,21 +1061,15 @@ static int nf_conntrack_standalone_init_sysctl(struct net *net)
 	nf_conntrack_standalone_init_dccp_sysctl(net, table);
 	nf_conntrack_standalone_init_gre_sysctl(net, table);
 
-	/* Don't allow unprivileged users to alter certain sysctls */
-	if (net->user_ns != &init_user_ns) {
+	/* Don't allow non-init_net ns to alter global sysctls */
+	if (!net_eq(&init_net, net)) {
 		table[NF_SYSCTL_CT_MAX].mode = 0444;
 		table[NF_SYSCTL_CT_EXPECT_MAX].mode = 0444;
-		table[NF_SYSCTL_CT_HELPER].mode = 0444;
-#ifdef CONFIG_NF_CONNTRACK_EVENTS
-		table[NF_SYSCTL_CT_EVENTS].mode = 0444;
-#endif
-		table[NF_SYSCTL_CT_BUCKETS].mode = 0444;
-	} else if (!net_eq(&init_net, net)) {
 		table[NF_SYSCTL_CT_BUCKETS].mode = 0444;
 	}
 
-	net->ct.sysctl_header = register_net_sysctl(net, "net/netfilter", table);
-	if (!net->ct.sysctl_header)
+	cnet->sysctl_header = register_net_sysctl(net, "net/netfilter", table);
+	if (!cnet->sysctl_header)
 		goto out_unregister_netfilter;
 
 	return 0;
@@ -1086,10 +1081,11 @@ out_unregister_netfilter:
 
 static void nf_conntrack_standalone_fini_sysctl(struct net *net)
 {
+	struct nf_conntrack_net *cnet = net_generic(net, nf_conntrack_net_id);
 	struct ctl_table *table;
 
-	table = net->ct.sysctl_header->ctl_table_arg;
-	unregister_net_sysctl_table(net->ct.sysctl_header);
+	table = cnet->sysctl_header->ctl_table_arg;
+	unregister_net_sysctl_table(cnet->sysctl_header);
 	kfree(table);
 }
 #else

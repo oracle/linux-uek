@@ -55,10 +55,6 @@
 #include "libbpf_internal.h"
 #include "hashmap.h"
 
-#ifndef EM_BPF
-#define EM_BPF 247
-#endif
-
 #ifndef BPF_FS_MAGIC
 #define BPF_FS_MAGIC		0xcafe4a11
 #endif
@@ -178,6 +174,8 @@ enum kern_feature_id {
 	FEAT_PROG_BIND_MAP,
 	/* Kernel support for module BTFs */
 	FEAT_MODULE_BTF,
+	/* BTF_KIND_FLOAT support */
+	FEAT_BTF_FLOAT,
 	__FEAT_CNT,
 };
 
@@ -187,7 +185,9 @@ enum reloc_type {
 	RELO_LD64,
 	RELO_CALL,
 	RELO_DATA,
-	RELO_EXTERN,
+	RELO_EXTERN_VAR,
+	RELO_EXTERN_FUNC,
+	RELO_SUBPROG_ADDR,
 };
 
 struct reloc_desc {
@@ -572,6 +572,21 @@ static bool insn_is_subprog_call(const struct bpf_insn *insn)
 	       insn->src_reg == BPF_PSEUDO_CALL &&
 	       insn->dst_reg == 0 &&
 	       insn->off == 0;
+}
+
+static bool is_ldimm64_insn(struct bpf_insn *insn)
+{
+	return insn->code == (BPF_LD | BPF_IMM | BPF_DW);
+}
+
+static bool is_call_insn(const struct bpf_insn *insn)
+{
+	return insn->code == (BPF_JMP | BPF_CALL);
+}
+
+static bool insn_is_pseudo_func(struct bpf_insn *insn)
+{
+	return is_ldimm64_insn(insn) && insn->src_reg == BPF_PSEUDO_FUNC;
 }
 
 static int
@@ -1120,11 +1135,6 @@ static void bpf_object__elf_finish(struct bpf_object *obj)
 	obj->efile.obj_buf = NULL;
 	obj->efile.obj_buf_sz = 0;
 }
-
-/* if libelf is old and doesn't support mmap(), fall back to read() */
-#ifndef ELF_C_READ_MMAP
-#define ELF_C_READ_MMAP ELF_C_READ
-#endif
 
 static int bpf_object__elf_init(struct bpf_object *obj)
 {
@@ -1917,9 +1927,9 @@ resolve_func_ptr(const struct btf *btf, __u32 id, __u32 *res_id)
 	return btf_is_func_proto(t) ? t : NULL;
 }
 
-static const char *btf_kind_str(const struct btf_type *t)
+static const char *__btf_kind_str(__u16 kind)
 {
-	switch (btf_kind(t)) {
+	switch (kind) {
 	case BTF_KIND_UNKN: return "void";
 	case BTF_KIND_INT: return "int";
 	case BTF_KIND_PTR: return "ptr";
@@ -1936,8 +1946,19 @@ static const char *btf_kind_str(const struct btf_type *t)
 	case BTF_KIND_FUNC_PROTO: return "func_proto";
 	case BTF_KIND_VAR: return "var";
 	case BTF_KIND_DATASEC: return "datasec";
+	case BTF_KIND_FLOAT: return "float";
 	default: return "unknown";
 	}
+}
+
+static const char *btf_kind_str(const struct btf_type *t)
+{
+	return __btf_kind_str(btf_kind(t));
+}
+
+static enum btf_func_linkage btf_func_linkage(const struct btf_type *t)
+{
+	return (enum btf_func_linkage)BTF_INFO_VLEN(t->info);
 }
 
 /*
@@ -2385,15 +2406,17 @@ static bool btf_needs_sanitization(struct bpf_object *obj)
 {
 	bool has_func_global = kernel_supports(FEAT_BTF_GLOBAL_FUNC);
 	bool has_datasec = kernel_supports(FEAT_BTF_DATASEC);
+	bool has_float = kernel_supports(FEAT_BTF_FLOAT);
 	bool has_func = kernel_supports(FEAT_BTF_FUNC);
 
-	return !has_func || !has_datasec || !has_func_global;
+	return !has_func || !has_datasec || !has_func_global || !has_float;
 }
 
 static void bpf_object__sanitize_btf(struct bpf_object *obj, struct btf *btf)
 {
 	bool has_func_global = kernel_supports(FEAT_BTF_GLOBAL_FUNC);
 	bool has_datasec = kernel_supports(FEAT_BTF_DATASEC);
+	bool has_float = kernel_supports(FEAT_BTF_FLOAT);
 	bool has_func = kernel_supports(FEAT_BTF_FUNC);
 	struct btf_type *t;
 	int i, j, vlen;
@@ -2446,6 +2469,13 @@ static void bpf_object__sanitize_btf(struct bpf_object *obj, struct btf *btf)
 		} else if (!has_func_global && btf_is_func(t)) {
 			/* replace BTF_FUNC_GLOBAL with BTF_FUNC_STATIC */
 			t->info = BTF_INFO_ENC(BTF_KIND_FUNC, 0, 0);
+		} else if (!has_float && btf_is_float(t)) {
+			/* replace FLOAT with an equally-sized empty STRUCT;
+			 * since C compilers do not accept e.g. "float" as a
+			 * valid struct name, make it anonymous
+			 */
+			t->name_off = 0;
+			t->info = BTF_INFO_ENC(BTF_KIND_STRUCT, 0, 0);
 		}
 	}
 }
@@ -2785,7 +2815,7 @@ static bool ignore_elf_section(GElf_Shdr *hdr, const char *name)
 		return true;
 
 	/* ignore .llvm_addrsig section as well */
-	if (hdr->sh_type == 0x6FFF4C03 /* SHT_LLVM_ADDRSIG */)
+	if (hdr->sh_type == SHT_LLVM_ADDRSIG)
 		return true;
 
 	/* no subprograms will lead to an empty .text section, ignore it */
@@ -2975,10 +3005,27 @@ static bool sym_is_extern(const GElf_Sym *sym)
 	       GELF_ST_TYPE(sym->st_info) == STT_NOTYPE;
 }
 
+static bool sym_is_subprog(const GElf_Sym *sym, int text_shndx)
+{
+	int bind = GELF_ST_BIND(sym->st_info);
+	int type = GELF_ST_TYPE(sym->st_info);
+
+	/* in .text section */
+	if (sym->st_shndx != text_shndx)
+		return false;
+
+	/* local function */
+	if (bind == STB_LOCAL && type == STT_SECTION)
+		return true;
+
+	/* global function */
+	return bind == STB_GLOBAL && type == STT_FUNC;
+}
+
 static int find_extern_btf_id(const struct btf *btf, const char *ext_name)
 {
 	const struct btf_type *t;
-	const char *var_name;
+	const char *tname;
 	int i, n;
 
 	if (!btf)
@@ -2988,14 +3035,18 @@ static int find_extern_btf_id(const struct btf *btf, const char *ext_name)
 	for (i = 1; i <= n; i++) {
 		t = btf__type_by_id(btf, i);
 
-		if (!btf_is_var(t))
+		if (!btf_is_var(t) && !btf_is_func(t))
 			continue;
 
-		var_name = btf__name_by_offset(btf, t->name_off);
-		if (strcmp(var_name, ext_name))
+		tname = btf__name_by_offset(btf, t->name_off);
+		if (strcmp(tname, ext_name))
 			continue;
 
-		if (btf_var(t)->linkage != BTF_VAR_GLOBAL_EXTERN)
+		if (btf_is_var(t) &&
+		    btf_var(t)->linkage != BTF_VAR_GLOBAL_EXTERN)
+			return -EINVAL;
+
+		if (btf_is_func(t) && btf_func_linkage(t) != BTF_FUNC_EXTERN)
 			return -EINVAL;
 
 		return i;
@@ -3108,12 +3159,48 @@ static int find_int_btf_id(const struct btf *btf)
 	return 0;
 }
 
+static int add_dummy_ksym_var(struct btf *btf)
+{
+	int i, int_btf_id, sec_btf_id, dummy_var_btf_id;
+	const struct btf_var_secinfo *vs;
+	const struct btf_type *sec;
+
+	sec_btf_id = btf__find_by_name_kind(btf, KSYMS_SEC,
+					    BTF_KIND_DATASEC);
+	if (sec_btf_id < 0)
+		return 0;
+
+	sec = btf__type_by_id(btf, sec_btf_id);
+	vs = btf_var_secinfos(sec);
+	for (i = 0; i < btf_vlen(sec); i++, vs++) {
+		const struct btf_type *vt;
+
+		vt = btf__type_by_id(btf, vs->type);
+		if (btf_is_func(vt))
+			break;
+	}
+
+	/* No func in ksyms sec.  No need to add dummy var. */
+	if (i == btf_vlen(sec))
+		return 0;
+
+	int_btf_id = find_int_btf_id(btf);
+	dummy_var_btf_id = btf__add_var(btf,
+					"dummy_ksym",
+					BTF_VAR_GLOBAL_ALLOCATED,
+					int_btf_id);
+	if (dummy_var_btf_id < 0)
+		pr_warn("cannot create a dummy_ksym var\n");
+
+	return dummy_var_btf_id;
+}
+
 static int bpf_object__collect_externs(struct bpf_object *obj)
 {
 	struct btf_type *sec, *kcfg_sec = NULL, *ksym_sec = NULL;
 	const struct btf_type *t;
 	struct extern_desc *ext;
-	int i, n, off;
+	int i, n, off, dummy_var_btf_id;
 	const char *ext_name, *sec_name;
 	Elf_Scn *scn;
 	GElf_Shdr sh;
@@ -3124,6 +3211,10 @@ static int bpf_object__collect_externs(struct bpf_object *obj)
 	scn = elf_sec_by_idx(obj, obj->efile.symbols_shndx);
 	if (elf_sec_hdr(obj, scn, &sh))
 		return -LIBBPF_ERRNO__FORMAT;
+
+	dummy_var_btf_id = add_dummy_ksym_var(obj->btf);
+	if (dummy_var_btf_id < 0)
+		return dummy_var_btf_id;
 
 	n = sh.sh_size / sh.sh_entsize;
 	pr_debug("looking for externs among %d symbols...\n", n);
@@ -3169,6 +3260,11 @@ static int bpf_object__collect_externs(struct bpf_object *obj)
 		sec_name = btf__name_by_offset(obj->btf, sec->name_off);
 
 		if (strcmp(sec_name, KCONFIG_SEC) == 0) {
+			if (btf_is_func(t)) {
+				pr_warn("extern function %s is unsupported under %s section\n",
+					ext->name, KCONFIG_SEC);
+				return -ENOTSUP;
+			}
 			kcfg_sec = sec;
 			ext->type = EXT_KCFG;
 			ext->kcfg.sz = btf__resolve_size(obj->btf, t->type);
@@ -3190,6 +3286,11 @@ static int bpf_object__collect_externs(struct bpf_object *obj)
 				return -ENOTSUP;
 			}
 		} else if (strcmp(sec_name, KSYMS_SEC) == 0) {
+			if (btf_is_func(t) && ext->is_weak) {
+				pr_warn("extern weak function %s is unsupported\n",
+					ext->name);
+				return -ENOTSUP;
+			}
 			ksym_sec = sec;
 			ext->type = EXT_KSYM;
 			skip_mods_and_typedefs(obj->btf, t->type,
@@ -3216,7 +3317,14 @@ static int bpf_object__collect_externs(struct bpf_object *obj)
 		 * extern variables in DATASEC
 		 */
 		int int_btf_id = find_int_btf_id(obj->btf);
+		/* For extern function, a dummy_var added earlier
+		 * will be used to replace the vs->type and
+		 * its name string will be used to refill
+		 * the missing param's name.
+		 */
+		const struct btf_type *dummy_var;
 
+		dummy_var = btf__type_by_id(obj->btf, dummy_var_btf_id);
 		for (i = 0; i < obj->nr_extern; i++) {
 			ext = &obj->externs[i];
 			if (ext->type != EXT_KSYM)
@@ -3235,12 +3343,32 @@ static int bpf_object__collect_externs(struct bpf_object *obj)
 			ext_name = btf__name_by_offset(obj->btf, vt->name_off);
 			ext = find_extern_by_name(obj, ext_name);
 			if (!ext) {
-				pr_warn("failed to find extern definition for BTF var '%s'\n",
-					ext_name);
+				pr_warn("failed to find extern definition for BTF %s '%s'\n",
+					btf_kind_str(vt), ext_name);
 				return -ESRCH;
 			}
-			btf_var(vt)->linkage = BTF_VAR_GLOBAL_ALLOCATED;
-			vt->type = int_btf_id;
+			if (btf_is_func(vt)) {
+				const struct btf_type *func_proto;
+				struct btf_param *param;
+				int j;
+
+				func_proto = btf__type_by_id(obj->btf,
+							     vt->type);
+				param = btf_params(func_proto);
+				/* Reuse the dummy_var string if the
+				 * func proto does not have param name.
+				 */
+				for (j = 0; j < btf_vlen(func_proto); j++)
+					if (param[j].type && !param[j].name_off)
+						param[j].name_off =
+							dummy_var->name_off;
+				vs->type = dummy_var_btf_id;
+				vt->info &= ~0xffff;
+				vt->info |= BTF_FUNC_GLOBAL;
+			} else {
+				btf_var(vt)->linkage = BTF_VAR_GLOBAL_ALLOCATED;
+				vt->type = int_btf_id;
+			}
 			vs->offset = off;
 			vs->size = sizeof(int);
 		}
@@ -3372,31 +3500,7 @@ static int bpf_program__record_reloc(struct bpf_program *prog,
 
 	reloc_desc->processed = false;
 
-	/* sub-program call relocation */
-	if (insn->code == (BPF_JMP | BPF_CALL)) {
-		if (insn->src_reg != BPF_PSEUDO_CALL) {
-			pr_warn("prog '%s': incorrect bpf_call opcode\n", prog->name);
-			return -LIBBPF_ERRNO__RELOC;
-		}
-		/* text_shndx can be 0, if no default "main" program exists */
-		if (!shdr_idx || shdr_idx != obj->efile.text_shndx) {
-			sym_sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, shdr_idx));
-			pr_warn("prog '%s': bad call relo against '%s' in section '%s'\n",
-				prog->name, sym_name, sym_sec_name);
-			return -LIBBPF_ERRNO__RELOC;
-		}
-		if (sym->st_value % BPF_INSN_SZ) {
-			pr_warn("prog '%s': bad call relo against '%s' at offset %zu\n",
-				prog->name, sym_name, (size_t)sym->st_value);
-			return -LIBBPF_ERRNO__RELOC;
-		}
-		reloc_desc->type = RELO_CALL;
-		reloc_desc->insn_idx = insn_idx;
-		reloc_desc->sym_off = sym->st_value;
-		return 0;
-	}
-
-	if (insn->code != (BPF_LD | BPF_IMM | BPF_DW)) {
+	if (!is_call_insn(insn) && !is_ldimm64_insn(insn)) {
 		pr_warn("prog '%s': invalid relo against '%s' for insns[%d].code 0x%x\n",
 			prog->name, sym_name, insn_idx, insn->code);
 		return -LIBBPF_ERRNO__RELOC;
@@ -3419,9 +3523,36 @@ static int bpf_program__record_reloc(struct bpf_program *prog,
 		}
 		pr_debug("prog '%s': found extern #%d '%s' (sym %d) for insn #%u\n",
 			 prog->name, i, ext->name, ext->sym_idx, insn_idx);
-		reloc_desc->type = RELO_EXTERN;
+		if (insn->code == (BPF_JMP | BPF_CALL))
+			reloc_desc->type = RELO_EXTERN_FUNC;
+		else
+			reloc_desc->type = RELO_EXTERN_VAR;
 		reloc_desc->insn_idx = insn_idx;
 		reloc_desc->sym_off = i; /* sym_off stores extern index */
+		return 0;
+	}
+
+	/* sub-program call relocation */
+	if (is_call_insn(insn)) {
+		if (insn->src_reg != BPF_PSEUDO_CALL) {
+			pr_warn("prog '%s': incorrect bpf_call opcode\n", prog->name);
+			return -LIBBPF_ERRNO__RELOC;
+		}
+		/* text_shndx can be 0, if no default "main" program exists */
+		if (!shdr_idx || shdr_idx != obj->efile.text_shndx) {
+			sym_sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, shdr_idx));
+			pr_warn("prog '%s': bad call relo against '%s' in section '%s'\n",
+				prog->name, sym_name, sym_sec_name);
+			return -LIBBPF_ERRNO__RELOC;
+		}
+		if (sym->st_value % BPF_INSN_SZ) {
+			pr_warn("prog '%s': bad call relo against '%s' at offset %zu\n",
+				prog->name, sym_name, (size_t)sym->st_value);
+			return -LIBBPF_ERRNO__RELOC;
+		}
+		reloc_desc->type = RELO_CALL;
+		reloc_desc->insn_idx = insn_idx;
+		reloc_desc->sym_off = sym->st_value;
 		return 0;
 	}
 
@@ -3429,6 +3560,23 @@ static int bpf_program__record_reloc(struct bpf_program *prog,
 		pr_warn("prog '%s': invalid relo against '%s' in special section 0x%x; forgot to initialize global var?..\n",
 			prog->name, sym_name, shdr_idx);
 		return -LIBBPF_ERRNO__RELOC;
+	}
+
+	/* loading subprog addresses */
+	if (sym_is_subprog(sym, obj->efile.text_shndx)) {
+		/* global_func: sym->st_value = offset in the section, insn->imm = 0.
+		 * local_func: sym->st_value = 0, insn->imm = offset in the section.
+		 */
+		if ((sym->st_value % BPF_INSN_SZ) || (insn->imm % BPF_INSN_SZ)) {
+			pr_warn("prog '%s': bad subprog addr relo against '%s' at offset %zu+%d\n",
+				prog->name, sym_name, (size_t)sym->st_value, insn->imm);
+			return -LIBBPF_ERRNO__RELOC;
+		}
+
+		reloc_desc->type = RELO_SUBPROG_ADDR;
+		reloc_desc->insn_idx = insn_idx;
+		reloc_desc->sym_off = sym->st_value;
+		return 0;
 	}
 
 	type = bpf_object__section_to_libbpf_map_type(obj, shdr_idx);
@@ -3883,6 +4031,18 @@ static int probe_kern_btf_datasec(void)
 					     strs, sizeof(strs)));
 }
 
+static int probe_kern_btf_float(void)
+{
+	static const char strs[] = "\0float";
+	__u32 types[] = {
+		/* float */
+		BTF_TYPE_FLOAT_ENC(1, 4),
+	};
+
+	return probe_fd(libbpf__load_raw_btf((char *)types, sizeof(types),
+					     strs, sizeof(strs)));
+}
+
 static int probe_kern_array_mmap(void)
 {
 	struct bpf_create_map_attr attr = {
@@ -4061,6 +4221,9 @@ static struct kern_feature_desc {
 	},
 	[FEAT_MODULE_BTF] = {
 		"module BTF support", probe_module_btf,
+	},
+	[FEAT_BTF_FLOAT] = {
+		"BTF_KIND_FLOAT support", probe_kern_btf_float,
 	},
 };
 
@@ -4796,8 +4959,8 @@ static int load_module_btfs(struct bpf_object *obj)
 			goto err_out;
 		}
 
-		err = btf_ensure_mem((void **)&obj->btf_modules, &obj->btf_module_cap,
-				     sizeof(*obj->btf_modules), obj->btf_module_cnt + 1);
+		err = libbpf_ensure_mem((void **)&obj->btf_modules, &obj->btf_module_cap,
+				        sizeof(*obj->btf_modules), obj->btf_module_cnt + 1);
 		if (err)
 			goto err_out;
 
@@ -5567,11 +5730,6 @@ static void bpf_core_poison_insn(struct bpf_program *prog, int relo_idx,
 	insn->imm = 195896080; /* => 0xbad2310 => "bad relo" */
 }
 
-static bool is_ldimm64(struct bpf_insn *insn)
-{
-	return insn->code == (BPF_LD | BPF_IMM | BPF_DW);
-}
-
 static int insn_bpf_size_to_bytes(struct bpf_insn *insn)
 {
 	switch (BPF_SIZE(insn->code)) {
@@ -5637,7 +5795,7 @@ poison:
 		/* poison second part of ldimm64 to avoid confusing error from
 		 * verifier about "unknown opcode 00"
 		 */
-		if (is_ldimm64(insn))
+		if (is_ldimm64_insn(insn))
 			bpf_core_poison_insn(prog, relo_idx, insn_idx + 1, insn + 1);
 		bpf_core_poison_insn(prog, relo_idx, insn_idx, insn);
 		return 0;
@@ -5713,7 +5871,7 @@ poison:
 	case BPF_LD: {
 		__u64 imm;
 
-		if (!is_ldimm64(insn) ||
+		if (!is_ldimm64_insn(insn) ||
 		    insn[0].src_reg != 0 || insn[0].off != 0 ||
 		    insn_idx + 1 >= prog->insns_cnt ||
 		    insn[1].code != 0 || insn[1].dst_reg != 0 ||
@@ -6155,7 +6313,7 @@ bpf_object__relocate_data(struct bpf_object *obj, struct bpf_program *prog)
 			insn[0].imm = obj->maps[relo->map_idx].fd;
 			relo->processed = true;
 			break;
-		case RELO_EXTERN:
+		case RELO_EXTERN_VAR:
 			ext = &obj->externs[relo->sym_off];
 			if (ext->type == EXT_KCFG) {
 				insn[0].src_reg = BPF_PSEUDO_MAP_VALUE;
@@ -6172,6 +6330,16 @@ bpf_object__relocate_data(struct bpf_object *obj, struct bpf_program *prog)
 				}
 			}
 			relo->processed = true;
+			break;
+		case RELO_EXTERN_FUNC:
+			ext = &obj->externs[relo->sym_off];
+			insn[0].src_reg = BPF_PSEUDO_KFUNC_CALL;
+			insn[0].imm = ext->ksym.kernel_btf_id;
+			relo->processed = true;
+			break;
+		case RELO_SUBPROG_ADDR:
+			insn[0].src_reg = BPF_PSEUDO_FUNC;
+			/* will be handled as a follow up pass */
 			break;
 		case RELO_CALL:
 			/* will be handled as a follow up pass */
@@ -6359,11 +6527,11 @@ bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 
 	for (insn_idx = 0; insn_idx < prog->sec_insn_cnt; insn_idx++) {
 		insn = &main_prog->insns[prog->sub_insn_off + insn_idx];
-		if (!insn_is_subprog_call(insn))
+		if (!insn_is_subprog_call(insn) && !insn_is_pseudo_func(insn))
 			continue;
 
 		relo = find_prog_insn_relo(prog, insn_idx);
-		if (relo && relo->type != RELO_CALL) {
+		if (relo && relo->type != RELO_CALL && relo->type != RELO_SUBPROG_ADDR) {
 			pr_warn("prog '%s': unexpected relo for insn #%zu, type %d\n",
 				prog->name, insn_idx, relo->type);
 			return -LIBBPF_ERRNO__RELOC;
@@ -6375,8 +6543,22 @@ bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 			 * call always has imm = -1, but for static functions
 			 * relocation is against STT_SECTION and insn->imm
 			 * points to a start of a static function
+			 *
+			 * for subprog addr relocation, the relo->sym_off + insn->imm is
+			 * the byte offset in the corresponding section.
 			 */
-			sub_insn_idx = relo->sym_off / BPF_INSN_SZ + insn->imm + 1;
+			if (relo->type == RELO_CALL)
+				sub_insn_idx = relo->sym_off / BPF_INSN_SZ + insn->imm + 1;
+			else
+				sub_insn_idx = (relo->sym_off + insn->imm) / BPF_INSN_SZ;
+		} else if (insn_is_pseudo_func(insn)) {
+			/*
+			 * RELO_SUBPROG_ADDR relo is always emitted even if both
+			 * functions are in the same section, so it shouldn't reach here.
+			 */
+			pr_warn("prog '%s': missing subprog addr relo for insn #%zu\n",
+				prog->name, insn_idx);
+			return -LIBBPF_ERRNO__RELOC;
 		} else {
 			/* if subprogram call is to a static function within
 			 * the same ELF section, there won't be any relocation
@@ -7275,6 +7457,7 @@ static int bpf_object__read_kallsyms_file(struct bpf_object *obj)
 {
 	char sym_type, sym_name[500];
 	unsigned long long sym_addr;
+	const struct btf_type *t;
 	struct extern_desc *ext;
 	int ret, err = 0;
 	FILE *f;
@@ -7301,6 +7484,10 @@ static int bpf_object__read_kallsyms_file(struct bpf_object *obj)
 		if (!ext || ext->type != EXT_KSYM)
 			continue;
 
+		t = btf__type_by_id(obj->btf, ext->btf_id);
+		if (!btf_is_var(t))
+			continue;
+
 		if (ext->is_set && ext->ksym.addr != sym_addr) {
 			pr_warn("extern (ksym) '%s' resolution is ambiguous: 0x%llx or 0x%llx\n",
 				sym_name, ext->ksym.addr, sym_addr);
@@ -7319,75 +7506,151 @@ out:
 	return err;
 }
 
+static int find_ksym_btf_id(struct bpf_object *obj, const char *ksym_name,
+			    __u16 kind, struct btf **res_btf,
+			    int *res_btf_fd)
+{
+	int i, id, btf_fd, err;
+	struct btf *btf;
+
+	btf = obj->btf_vmlinux;
+	btf_fd = 0;
+	id = btf__find_by_name_kind(btf, ksym_name, kind);
+
+	if (id == -ENOENT) {
+		err = load_module_btfs(obj);
+		if (err)
+			return err;
+
+		for (i = 0; i < obj->btf_module_cnt; i++) {
+			btf = obj->btf_modules[i].btf;
+			/* we assume module BTF FD is always >0 */
+			btf_fd = obj->btf_modules[i].fd;
+			id = btf__find_by_name_kind(btf, ksym_name, kind);
+			if (id != -ENOENT)
+				break;
+		}
+	}
+	if (id <= 0) {
+		pr_warn("extern (%s ksym) '%s': failed to find BTF ID in kernel BTF(s).\n",
+			__btf_kind_str(kind), ksym_name);
+		return -ESRCH;
+	}
+
+	*res_btf = btf;
+	*res_btf_fd = btf_fd;
+	return id;
+}
+
+static int bpf_object__resolve_ksym_var_btf_id(struct bpf_object *obj,
+					       struct extern_desc *ext)
+{
+	const struct btf_type *targ_var, *targ_type;
+	__u32 targ_type_id, local_type_id;
+	const char *targ_var_name;
+	int id, btf_fd = 0, err;
+	struct btf *btf = NULL;
+
+	id = find_ksym_btf_id(obj, ext->name, BTF_KIND_VAR, &btf, &btf_fd);
+	if (id < 0)
+		return id;
+
+	/* find local type_id */
+	local_type_id = ext->ksym.type_id;
+
+	/* find target type_id */
+	targ_var = btf__type_by_id(btf, id);
+	targ_var_name = btf__name_by_offset(btf, targ_var->name_off);
+	targ_type = skip_mods_and_typedefs(btf, targ_var->type, &targ_type_id);
+
+	err = bpf_core_types_are_compat(obj->btf, local_type_id,
+					btf, targ_type_id);
+	if (err <= 0) {
+		const struct btf_type *local_type;
+		const char *targ_name, *local_name;
+
+		local_type = btf__type_by_id(obj->btf, local_type_id);
+		local_name = btf__name_by_offset(obj->btf, local_type->name_off);
+		targ_name = btf__name_by_offset(btf, targ_type->name_off);
+
+		pr_warn("extern (var ksym) '%s': incompatible types, expected [%d] %s %s, but kernel has [%d] %s %s\n",
+			ext->name, local_type_id,
+			btf_kind_str(local_type), local_name, targ_type_id,
+			btf_kind_str(targ_type), targ_name);
+		return -EINVAL;
+	}
+
+	ext->is_set = true;
+	ext->ksym.kernel_btf_obj_fd = btf_fd;
+	ext->ksym.kernel_btf_id = id;
+	pr_debug("extern (var ksym) '%s': resolved to [%d] %s %s\n",
+		 ext->name, id, btf_kind_str(targ_var), targ_var_name);
+
+	return 0;
+}
+
+static int bpf_object__resolve_ksym_func_btf_id(struct bpf_object *obj,
+						struct extern_desc *ext)
+{
+	int local_func_proto_id, kfunc_proto_id, kfunc_id;
+	const struct btf_type *kern_func;
+	struct btf *kern_btf = NULL;
+	int ret, kern_btf_fd = 0;
+
+	local_func_proto_id = ext->ksym.type_id;
+
+	kfunc_id = find_ksym_btf_id(obj, ext->name, BTF_KIND_FUNC,
+				    &kern_btf, &kern_btf_fd);
+	if (kfunc_id < 0) {
+		pr_warn("extern (func ksym) '%s': not found in kernel BTF\n",
+			ext->name);
+		return kfunc_id;
+	}
+
+	if (kern_btf != obj->btf_vmlinux) {
+		pr_warn("extern (func ksym) '%s': function in kernel module is not supported\n",
+			ext->name);
+		return -ENOTSUP;
+	}
+
+	kern_func = btf__type_by_id(kern_btf, kfunc_id);
+	kfunc_proto_id = kern_func->type;
+
+	ret = bpf_core_types_are_compat(obj->btf, local_func_proto_id,
+					kern_btf, kfunc_proto_id);
+	if (ret <= 0) {
+		pr_warn("extern (func ksym) '%s': func_proto [%d] incompatible with kernel [%d]\n",
+			ext->name, local_func_proto_id, kfunc_proto_id);
+		return -EINVAL;
+	}
+
+	ext->is_set = true;
+	ext->ksym.kernel_btf_obj_fd = kern_btf_fd;
+	ext->ksym.kernel_btf_id = kfunc_id;
+	pr_debug("extern (func ksym) '%s': resolved to kernel [%d]\n",
+		 ext->name, kfunc_id);
+
+	return 0;
+}
+
 static int bpf_object__resolve_ksyms_btf_id(struct bpf_object *obj)
 {
+	const struct btf_type *t;
 	struct extern_desc *ext;
-	struct btf *btf;
-	int i, j, id, btf_fd, err;
+	int i, err;
 
 	for (i = 0; i < obj->nr_extern; i++) {
-		const struct btf_type *targ_var, *targ_type;
-		__u32 targ_type_id, local_type_id;
-		const char *targ_var_name;
-		int ret;
-
 		ext = &obj->externs[i];
 		if (ext->type != EXT_KSYM || !ext->ksym.type_id)
 			continue;
 
-		btf = obj->btf_vmlinux;
-		btf_fd = 0;
-		id = btf__find_by_name_kind(btf, ext->name, BTF_KIND_VAR);
-		if (id == -ENOENT) {
-			err = load_module_btfs(obj);
-			if (err)
-				return err;
-
-			for (j = 0; j < obj->btf_module_cnt; j++) {
-				btf = obj->btf_modules[j].btf;
-				/* we assume module BTF FD is always >0 */
-				btf_fd = obj->btf_modules[j].fd;
-				id = btf__find_by_name_kind(btf, ext->name, BTF_KIND_VAR);
-				if (id != -ENOENT)
-					break;
-			}
-		}
-		if (id <= 0) {
-			pr_warn("extern (ksym) '%s': failed to find BTF ID in kernel BTF(s).\n",
-				ext->name);
-			return -ESRCH;
-		}
-
-		/* find local type_id */
-		local_type_id = ext->ksym.type_id;
-
-		/* find target type_id */
-		targ_var = btf__type_by_id(btf, id);
-		targ_var_name = btf__name_by_offset(btf, targ_var->name_off);
-		targ_type = skip_mods_and_typedefs(btf, targ_var->type, &targ_type_id);
-
-		ret = bpf_core_types_are_compat(obj->btf, local_type_id,
-						btf, targ_type_id);
-		if (ret <= 0) {
-			const struct btf_type *local_type;
-			const char *targ_name, *local_name;
-
-			local_type = btf__type_by_id(obj->btf, local_type_id);
-			local_name = btf__name_by_offset(obj->btf, local_type->name_off);
-			targ_name = btf__name_by_offset(btf, targ_type->name_off);
-
-			pr_warn("extern (ksym) '%s': incompatible types, expected [%d] %s %s, but kernel has [%d] %s %s\n",
-				ext->name, local_type_id,
-				btf_kind_str(local_type), local_name, targ_type_id,
-				btf_kind_str(targ_type), targ_name);
-			return -EINVAL;
-		}
-
-		ext->is_set = true;
-		ext->ksym.kernel_btf_obj_fd = btf_fd;
-		ext->ksym.kernel_btf_id = id;
-		pr_debug("extern (ksym) '%s': resolved to [%d] %s %s\n",
-			 ext->name, id, btf_kind_str(targ_var), targ_var_name);
+		t = btf__type_by_id(obj->btf, ext->btf_id);
+		if (btf_is_var(t))
+			err = bpf_object__resolve_ksym_var_btf_id(obj, ext);
+		else
+			err = bpf_object__resolve_ksym_func_btf_id(obj, ext);
+		if (err)
+			return err;
 	}
 	return 0;
 }
@@ -8194,6 +8457,16 @@ int bpf_object__btf_fd(const struct bpf_object *obj)
 	return obj->btf ? btf__fd(obj->btf) : -1;
 }
 
+int bpf_object__set_kversion(struct bpf_object *obj, __u32 kern_version)
+{
+	if (obj->loaded)
+		return -EINVAL;
+
+	obj->kern_version = kern_version;
+
+	return 0;
+}
+
 int bpf_object__set_priv(struct bpf_object *obj, void *priv,
 			 bpf_object_clear_priv_t clear_priv)
 {
@@ -8382,7 +8655,7 @@ int bpf_program__nth_fd(const struct bpf_program *prog, int n)
 	return fd;
 }
 
-enum bpf_prog_type bpf_program__get_type(struct bpf_program *prog)
+enum bpf_prog_type bpf_program__get_type(const struct bpf_program *prog)
 {
 	return prog->type;
 }
@@ -8427,7 +8700,7 @@ BPF_PROG_TYPE_FNS(extension, BPF_PROG_TYPE_EXT);
 BPF_PROG_TYPE_FNS(sk_lookup, BPF_PROG_TYPE_SK_LOOKUP);
 
 enum bpf_attach_type
-bpf_program__get_expected_attach_type(struct bpf_program *prog)
+bpf_program__get_expected_attach_type(const struct bpf_program *prog)
 {
 	return prog->expected_attach_type;
 }

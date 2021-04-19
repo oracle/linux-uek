@@ -152,6 +152,7 @@ enum hclgevf_states {
 	HCLGEVF_STATE_LINK_UPDATING,
 	HCLGEVF_STATE_PROMISC_CHANGED,
 	HCLGEVF_STATE_RST_FAIL,
+	HCLGEVF_STATE_PF_PUSH_LINK_STATUS,
 };
 
 struct hclgevf_mac {
@@ -192,7 +193,6 @@ struct hclgevf_tqp {
 };
 
 struct hclgevf_cfg {
-	u8 vmdq_vport_num;
 	u8 tc_num;
 	u16 tqp_desc_num;
 	u16 rx_buf_len;
