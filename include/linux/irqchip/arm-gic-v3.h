@@ -605,12 +605,6 @@
 
 #ifndef __ASSEMBLY__
 
-/*
- * We need a value to serve as a irq-type for LPIs. Choose one that will
- * hopefully pique the interest of the reviewer.
- */
-#define GIC_IRQ_TYPE_LPI		0xa110c8ed
-
 struct rdists {
 	struct {
 		raw_spinlock_t	rd_lock;

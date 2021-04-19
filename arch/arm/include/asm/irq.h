@@ -23,6 +23,8 @@
 #endif
 
 #ifndef __ASSEMBLY__
+#include <linux/irqchip/arm-gic-common.h>
+
 struct irqaction;
 struct pt_regs;
 

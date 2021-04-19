@@ -5,6 +5,7 @@
 #ifndef __ASSEMBLER__
 
 #include <asm-generic/irq.h>
+#include <linux/irqchip/arm-gic-common.h>
 
 struct pt_regs;
 
