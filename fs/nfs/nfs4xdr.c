@@ -7673,9 +7673,3 @@ const struct rpc_version nfs_version4 = {
 	.procs			= nfs4_procedures,
 	.counts			= nfs_version4_counts,
 };
-
-/*
- * Local variables:
- *  c-basic-offset: 8
- * End:
- */

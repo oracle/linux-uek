@@ -898,6 +898,9 @@ config MAPPING_DIRTY_HELPERS
 config KMAP_LOCAL
 	bool
 
+config SECRETMEM
+	def_bool ARCH_HAS_SET_DIRECT_MAP && !EMBEDDED
+
 # struct io_mapping based helper.  Selected by drivers that need them
 config IO_MAPPING
 	bool
