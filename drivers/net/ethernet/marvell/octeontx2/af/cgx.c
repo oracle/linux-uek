@@ -333,6 +333,43 @@ int cgx_lmac_addr_reset(u8 cgx_id, u8 lmac_id)
 }
 EXPORT_SYMBOL(cgx_lmac_addr_reset);
 
+/* Allows caller to change macaddress associated with index
+ * in dmac filter table including index 0 reserved for
+ * interface mac address
+ */
+int cgx_lmac_addr_update(u8 cgx_id, u8 lmac_id, u8 *mac_addr, u8 index)
+{
+	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
+	struct mac_ops *mac_ops;
+	struct lmac *lmac;
+	u64 cfg;
+	int id;
+
+	lmac = lmac_pdata(lmac_id, cgx_dev);
+	if (!lmac)
+		return -ENODEV;
+
+	mac_ops = cgx_dev->mac_ops;
+	/* Validate the index */
+	if (index >= lmac->mac_to_index_bmap.max)
+		return -EINVAL;
+
+	/* ensure index is already set */
+	if (!test_bit(index, lmac->mac_to_index_bmap.bmap))
+		return -EINVAL;
+
+	id = get_sequence_id_of_lmac(cgx_dev, lmac_id);
+
+	index = id * lmac->mac_to_index_bmap.max + index;
+
+	cfg = cgx_read(cgx_dev, 0, (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)));
+	cfg &= ~CGX_RX_DMAC_ADR_MASK;
+	cfg |= mac2u64 (mac_addr);
+
+	cgx_write(cgx_dev, 0, (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)), cfg);
+	return 0;
+}
+
 int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index)
 {
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
