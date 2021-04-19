@@ -3646,6 +3646,11 @@ int rvu_mbox_handler_nix_set_rx_mode(struct rvu *rvu, struct nix_rx_mode *req,
 		return 0;
 	}
 
+	/* untrusted VF can't configure promisc/allmulti */
+	if (is_vf(pcifunc) && !test_bit(PF_SET_VF_TRUSTED, &pfvf->flags) &&
+	    (promisc || allmulti))
+		return 0;
+
 	err = nix_get_nixlf(rvu, pcifunc, &nixlf, NULL);
 	if (err)
 		return err;
