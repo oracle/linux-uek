@@ -195,7 +195,6 @@ struct reloc_desc {
 	int insn_idx;
 	int map_idx;
 	int sym_off;
-	bool processed;
 };
 
 struct bpf_sec_def;
@@ -2194,6 +2193,7 @@ static int parse_btf_map_def(struct bpf_object *obj,
 			map->inner_map = calloc(1, sizeof(*map->inner_map));
 			if (!map->inner_map)
 				return -ENOMEM;
+			map->inner_map->fd = -1;
 			map->inner_map->sec_idx = obj->efile.btf_maps_shndx;
 			map->inner_map->name = malloc(strlen(map->name) +
 						      sizeof(".inner") + 1);
@@ -3498,8 +3498,6 @@ static int bpf_program__record_reloc(struct bpf_program *prog,
 	const char *sym_sec_name;
 	struct bpf_map *map;
 
-	reloc_desc->processed = false;
-
 	if (!is_call_insn(insn) && !is_ldimm64_insn(insn)) {
 		pr_warn("prog '%s': invalid relo against '%s' for insns[%d].code 0x%x\n",
 			prog->name, sym_name, insn_idx, insn->code);
@@ -3843,6 +3841,14 @@ err_free_new_name:
 __u32 bpf_map__max_entries(const struct bpf_map *map)
 {
 	return map->def.max_entries;
+}
+
+struct bpf_map *bpf_map__inner_map(struct bpf_map *map)
+{
+	if (!bpf_map_type__is_map_in_map(map->def.type))
+		return NULL;
+
+	return map->inner_map;
 }
 
 int bpf_map__set_max_entries(struct bpf_map *map, __u32 max_entries)
@@ -6305,13 +6311,11 @@ bpf_object__relocate_data(struct bpf_object *obj, struct bpf_program *prog)
 		case RELO_LD64:
 			insn[0].src_reg = BPF_PSEUDO_MAP_FD;
 			insn[0].imm = obj->maps[relo->map_idx].fd;
-			relo->processed = true;
 			break;
 		case RELO_DATA:
 			insn[0].src_reg = BPF_PSEUDO_MAP_VALUE;
 			insn[1].imm = insn[0].imm + relo->sym_off;
 			insn[0].imm = obj->maps[relo->map_idx].fd;
-			relo->processed = true;
 			break;
 		case RELO_EXTERN_VAR:
 			ext = &obj->externs[relo->sym_off];
@@ -6329,13 +6333,11 @@ bpf_object__relocate_data(struct bpf_object *obj, struct bpf_program *prog)
 					insn[1].imm = ext->ksym.addr >> 32;
 				}
 			}
-			relo->processed = true;
 			break;
 		case RELO_EXTERN_FUNC:
 			ext = &obj->externs[relo->sym_off];
 			insn[0].src_reg = BPF_PSEUDO_KFUNC_CALL;
 			insn[0].imm = ext->ksym.kernel_btf_id;
-			relo->processed = true;
 			break;
 		case RELO_SUBPROG_ADDR:
 			insn[0].src_reg = BPF_PSEUDO_FUNC;
@@ -6621,9 +6623,6 @@ bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 		 * different main programs */
 		insn->imm = subprog->sub_insn_off - (prog->sub_insn_off + insn_idx) - 1;
 
-		if (relo)
-			relo->processed = true;
-
 		pr_debug("prog '%s': insn #%zu relocated, imm %d points to subprog '%s' (now at %zu offset)\n",
 			 prog->name, insn_idx, insn->imm, subprog->name, subprog->sub_insn_off);
 	}
@@ -6716,7 +6715,7 @@ static int
 bpf_object__relocate_calls(struct bpf_object *obj, struct bpf_program *prog)
 {
 	struct bpf_program *subprog;
-	int i, j, err;
+	int i, err;
 
 	/* mark all subprogs as not relocated (yet) within the context of
 	 * current main program
@@ -6727,9 +6726,6 @@ bpf_object__relocate_calls(struct bpf_object *obj, struct bpf_program *prog)
 			continue;
 
 		subprog->sub_insn_off = 0;
-		for (j = 0; j < subprog->nr_reloc; j++)
-			if (subprog->reloc_desc[j].type == RELO_CALL)
-				subprog->reloc_desc[j].processed = false;
 	}
 
 	err = bpf_object__reloc_code(obj, prog, prog);
@@ -9476,6 +9472,7 @@ int bpf_map__set_inner_map_fd(struct bpf_map *map, int fd)
 		pr_warn("error: inner_map_fd already specified\n");
 		return -EINVAL;
 	}
+	zfree(&map->inner_map);
 	map->inner_map_fd = fd;
 	return 0;
 }
