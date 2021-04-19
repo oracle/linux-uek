@@ -429,7 +429,6 @@ static int atmel_pwm_probe(struct platform_device *pdev)
 	atmel_pwm->chip.ops = &atmel_pwm_ops;
 	atmel_pwm->chip.of_xlate = of_pwm_xlate_with_flags;
 	atmel_pwm->chip.of_pwm_n_cells = 3;
-	atmel_pwm->chip.base = -1;
 	atmel_pwm->chip.npwm = 4;
 
 	ret = pwmchip_add(&atmel_pwm->chip);
@@ -451,10 +450,12 @@ static int atmel_pwm_remove(struct platform_device *pdev)
 {
 	struct atmel_pwm_chip *atmel_pwm = platform_get_drvdata(pdev);
 
+	pwmchip_remove(&atmel_pwm->chip);
+
 	clk_unprepare(atmel_pwm->clk);
 	mutex_destroy(&atmel_pwm->isr_lock);
 
-	return pwmchip_remove(&atmel_pwm->chip);
+	return 0;
 }
 
 static struct platform_driver atmel_pwm_driver = {
