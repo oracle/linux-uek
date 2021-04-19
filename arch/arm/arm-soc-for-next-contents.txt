@@ -105,6 +105,12 @@ arm/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v5.13-rockchip-dts64
 	zynq/dt
 		https://github.com/Xilinx/linux-xlnx tags/zynqmp-dt-for-v5.13
+	patch
+		arm64: dts: mt8183-pumpkin: fix dtbs_check warning
+		arm64: dts: mt8183: fix dtbs_check warning
+		dt-bindings: vendor-prefixes: Add vendor prefix for M5Stack
+		dt-bindings: arm: mstar: Add compatible for M5Stack UnitV2
+		ARM: dts: mstar: Add a dts for M5Stack UnitV2
 
 arm/drivers
 	drivers/tee
@@ -153,6 +159,8 @@ arm/drivers
 		https://github.com/Xilinx/linux-xlnx tags/zynqmp-soc-for-v5.13
 	fsl/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/leo/linux tags/soc-fsl-next-v5.13
+	drivers/memory-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-5.13-2
 
 arm/defconfig
 	renesas/defconfig
@@ -181,12 +189,6 @@ arm/newsoc
 arm/late
 
 arm/fixes
-	<no branch> (7a2f6e69e9c1060a7a09c1f8322ccb8d942b3078)
-		git://git.kernel.org/pub/scm/linux/kernel/git/sunxi/linux tags/sunxi-fixes-for-5.12-1
-	<no branch> (0c9fdcdba68208270ae85d39600ea97da1718344)
-		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-fixes-for-5.12
-	<no branch> (fc85dc42a38405099f97aa2af709fe9504a82508)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.12/fixes-rc6-signed
 
 arm/apple-m1
 	apple/m1-dependency
