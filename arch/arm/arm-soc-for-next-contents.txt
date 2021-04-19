@@ -111,6 +111,10 @@ arm/dt
 		dt-bindings: vendor-prefixes: Add vendor prefix for M5Stack
 		dt-bindings: arm: mstar: Add compatible for M5Stack UnitV2
 		ARM: dts: mstar: Add a dts for M5Stack UnitV2
+	qcom/dt-3
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-dts-for-5.13-2
+	qcom/dt-4
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13-3
 
 arm/drivers
 	drivers/tee
@@ -181,6 +185,8 @@ arm/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-defconfig-for-5.13
 	omap/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/defconfig-signed
+	qcom/defconfig-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-defconfig-for-5.13
 
 arm/newsoc
 	bmc/wpcm450
