@@ -505,20 +505,6 @@ static int scmi_iio_set_sampling_freq_avail(struct iio_dev *iio_dev)
 	return 0;
 }
 
-static int scmi_iio_buffers_setup(struct iio_dev *scmi_iiodev)
-{
-	struct iio_buffer *buffer;
-
-	buffer = devm_iio_kfifo_allocate(&scmi_iiodev->dev);
-	if (!buffer)
-		return -ENOMEM;
-
-	iio_device_attach_buffer(scmi_iiodev, buffer);
-	scmi_iiodev->modes |= INDIO_BUFFER_SOFTWARE;
-	scmi_iiodev->setup_ops = &scmi_iio_buffer_ops;
-	return 0;
-}
-
 static struct iio_dev *
 scmi_alloc_iiodev(struct scmi_device *sdev,
 		  const struct scmi_sensor_proto_ops *ops,
@@ -644,7 +630,10 @@ static int scmi_iio_dev_probe(struct scmi_device *sdev)
 			return PTR_ERR(scmi_iio_dev);
 		}
 
-		err = scmi_iio_buffers_setup(scmi_iio_dev);
+		err = devm_iio_kfifo_buffer_setup(&scmi_iio_dev->dev,
+						  scmi_iio_dev,
+						  INDIO_BUFFER_SOFTWARE,
+						  &scmi_iio_buffer_ops);
 		if (err < 0) {
 			dev_err(dev,
 				"IIO buffer setup error at sensor %s: %d\n",
