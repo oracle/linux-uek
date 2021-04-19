@@ -944,6 +944,8 @@ static int wsa_macro_set_interpolator_rate(struct snd_soc_dai *dai,
 		goto prim_rate;
 
 	ret = wsa_macro_set_mix_interpolator_rate(dai, (u8) rate_val, sample_rate);
+	if (ret < 0)
+		return ret;
 prim_rate:
 	/* set primary path sample rate */
 	for (i = 0; i < ARRAY_SIZE(int_prim_sample_rate_val); i++) {
@@ -1029,7 +1031,7 @@ static int wsa_macro_get_channel_map(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static struct snd_soc_dai_ops wsa_macro_dai_ops = {
+static const struct snd_soc_dai_ops wsa_macro_dai_ops = {
 	.hw_params = wsa_macro_hw_params,
 	.get_channel_map = wsa_macro_get_channel_map,
 };
