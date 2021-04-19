@@ -137,22 +137,21 @@ static struct kvm_mmu_page *alloc_tdp_mmu_page(struct kvm_vcpu *vcpu, gfn_t gfn,
 	return sp;
 }
 
-static struct kvm_mmu_page *get_tdp_mmu_vcpu_root(struct kvm_vcpu *vcpu)
+hpa_t kvm_tdp_mmu_get_vcpu_root_hpa(struct kvm_vcpu *vcpu)
 {
 	union kvm_mmu_page_role role;
 	struct kvm *kvm = vcpu->kvm;
 	struct kvm_mmu_page *root;
 
-	role = page_role_for_level(vcpu, vcpu->arch.mmu->shadow_root_level);
+	lockdep_assert_held_write(&kvm->mmu_lock);
 
-	write_lock(&kvm->mmu_lock);
+	role = page_role_for_level(vcpu, vcpu->arch.mmu->shadow_root_level);
 
 	/* Check for an existing root before allocating a new one. */
 	for_each_tdp_mmu_root(kvm, root) {
 		if (root->role.word == role.word) {
 			kvm_mmu_get_root(kvm, root);
-			write_unlock(&kvm->mmu_lock);
-			return root;
+			goto out;
 		}
 	}
 
@@ -161,19 +160,7 @@ static struct kvm_mmu_page *get_tdp_mmu_vcpu_root(struct kvm_vcpu *vcpu)
 
 	list_add(&root->link, &kvm->arch.tdp_mmu_roots);
 
-	write_unlock(&kvm->mmu_lock);
-
-	return root;
-}
-
-hpa_t kvm_tdp_mmu_get_vcpu_root_hpa(struct kvm_vcpu *vcpu)
-{
-	struct kvm_mmu_page *root;
-
-	root = get_tdp_mmu_vcpu_root(vcpu);
-	if (!root)
-		return INVALID_PAGE;
-
+out:
 	return __pa(root->spt);
 }
 
@@ -205,13 +192,12 @@ static void handle_changed_spte(struct kvm *kvm, int as_id, gfn_t gfn,
 
 static void handle_changed_spte_acc_track(u64 old_spte, u64 new_spte, int level)
 {
-	bool pfn_changed = spte_to_pfn(old_spte) != spte_to_pfn(new_spte);
-
 	if (!is_shadow_present_pte(old_spte) || !is_last_spte(old_spte, level))
 		return;
 
 	if (is_accessed_spte(old_spte) &&
-	    (!is_accessed_spte(new_spte) || pfn_changed))
+	    (!is_shadow_present_pte(new_spte) || !is_accessed_spte(new_spte) ||
+	     spte_to_pfn(old_spte) != spte_to_pfn(new_spte)))
 		kvm_set_pfn_accessed(spte_to_pfn(old_spte));
 }
 
@@ -455,7 +441,7 @@ static void __handle_changed_spte(struct kvm *kvm, int as_id, gfn_t gfn,
 
 
 	if (was_leaf && is_dirty_spte(old_spte) &&
-	    (!is_dirty_spte(new_spte) || pfn_changed))
+	    (!is_present || !is_dirty_spte(new_spte) || pfn_changed))
 		kvm_set_pfn_dirty(spte_to_pfn(old_spte));
 
 	/*
@@ -498,7 +484,7 @@ static inline bool tdp_mmu_set_spte_atomic(struct kvm *kvm,
 	 * Do not change removed SPTEs. Only the thread that froze the SPTE
 	 * may modify it.
 	 */
-	if (iter->old_spte == REMOVED_SPTE)
+	if (is_removed_spte(iter->old_spte))
 		return false;
 
 	if (cmpxchg64(rcu_dereference(iter->sptep), iter->old_spte,
@@ -569,7 +555,7 @@ static inline void __tdp_mmu_set_spte(struct kvm *kvm, struct tdp_iter *iter,
 	 * should be used. If operating under the MMU lock in write mode, the
 	 * use of the removed SPTE should not be necessary.
 	 */
-	WARN_ON(iter->old_spte == REMOVED_SPTE);
+	WARN_ON(is_removed_spte(iter->old_spte));
 
 	WRITE_ONCE(*rcu_dereference(iter->sptep), new_spte);
 
@@ -777,12 +763,11 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu, int write,
 		trace_mark_mmio_spte(rcu_dereference(iter->sptep), iter->gfn,
 				     new_spte);
 		ret = RET_PF_EMULATE;
-	} else
+	} else {
 		trace_kvm_mmu_set_spte(iter->level, iter->gfn,
 				       rcu_dereference(iter->sptep));
+	}
 
-	trace_kvm_mmu_set_spte(iter->level, iter->gfn,
-			       rcu_dereference(iter->sptep));
 	if (!prefault)
 		vcpu->stat.pf_fixed++;
 
@@ -882,17 +867,15 @@ int kvm_tdp_mmu_map(struct kvm_vcpu *vcpu, gpa_t gpa, u32 error_code,
 	return ret;
 }
 
-static __always_inline int
-kvm_tdp_mmu_handle_hva_range(struct kvm *kvm,
-			     unsigned long start,
-			     unsigned long end,
-			     unsigned long data,
-			     int (*handler)(struct kvm *kvm,
-					    struct kvm_memory_slot *slot,
-					    struct kvm_mmu_page *root,
-					    gfn_t start,
-					    gfn_t end,
-					    unsigned long data))
+typedef int (*tdp_handler_t)(struct kvm *kvm, struct kvm_memory_slot *slot,
+			     struct kvm_mmu_page *root, gfn_t start, gfn_t end,
+			     unsigned long data);
+
+static __always_inline int kvm_tdp_mmu_handle_hva_range(struct kvm *kvm,
+							unsigned long start,
+							unsigned long end,
+							unsigned long data,
+							tdp_handler_t handler)
 {
 	struct kvm_memslots *slots;
 	struct kvm_memory_slot *memslot;
@@ -925,6 +908,14 @@ kvm_tdp_mmu_handle_hva_range(struct kvm *kvm,
 	}
 
 	return ret;
+}
+
+static __always_inline int kvm_tdp_mmu_handle_hva(struct kvm *kvm,
+						  unsigned long addr,
+						  unsigned long data,
+						  tdp_handler_t handler)
+{
+	return kvm_tdp_mmu_handle_hva_range(kvm, addr, addr + 1, data, handler);
 }
 
 static int zap_gfn_range_hva_wrapper(struct kvm *kvm,
@@ -1000,12 +991,12 @@ int kvm_tdp_mmu_age_hva_range(struct kvm *kvm, unsigned long start,
 }
 
 static int test_age_gfn(struct kvm *kvm, struct kvm_memory_slot *slot,
-			struct kvm_mmu_page *root, gfn_t gfn, gfn_t unused,
-			unsigned long unused2)
+			struct kvm_mmu_page *root, gfn_t gfn, gfn_t end,
+			unsigned long unused)
 {
 	struct tdp_iter iter;
 
-	tdp_root_for_each_leaf_pte(iter, root, gfn, gfn + 1)
+	tdp_root_for_each_leaf_pte(iter, root, gfn, end)
 		if (is_accessed_spte(iter.old_spte))
 			return 1;
 
@@ -1014,8 +1005,7 @@ static int test_age_gfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 
 int kvm_tdp_mmu_test_age_hva(struct kvm *kvm, unsigned long hva)
 {
-	return kvm_tdp_mmu_handle_hva_range(kvm, hva, hva + 1, 0,
-					    test_age_gfn);
+	return kvm_tdp_mmu_handle_hva(kvm, hva, 0, test_age_gfn);
 }
 
 /*
@@ -1025,7 +1015,7 @@ int kvm_tdp_mmu_test_age_hva(struct kvm *kvm, unsigned long hva)
  * Returns non-zero if a flush is needed before releasing the MMU lock.
  */
 static int set_tdp_spte(struct kvm *kvm, struct kvm_memory_slot *slot,
-			struct kvm_mmu_page *root, gfn_t gfn, gfn_t unused,
+			struct kvm_mmu_page *root, gfn_t gfn, gfn_t end,
 			unsigned long data)
 {
 	struct tdp_iter iter;
@@ -1036,7 +1026,7 @@ static int set_tdp_spte(struct kvm *kvm, struct kvm_memory_slot *slot,
 
 	rcu_read_lock();
 
-	WARN_ON(pte_huge(*ptep));
+	WARN_ON(pte_huge(*ptep) || (gfn + 1) != end);
 
 	new_pfn = pte_pfn(*ptep);
 
@@ -1047,9 +1037,13 @@ static int set_tdp_spte(struct kvm *kvm, struct kvm_memory_slot *slot,
 		if (!is_shadow_present_pte(iter.old_spte))
 			break;
 
+		/*
+		 * Note, when changing a read-only SPTE, it's not strictly
+		 * necessary to zero the SPTE before setting the new PFN, but
+		 * doing so preserves the invariant that the PFN of a present
+		 * leaf SPTE can never change.  See __handle_changed_spte().
+		 */
 		tdp_mmu_set_spte(kvm, &iter, 0);
-
-		kvm_flush_remote_tlbs_with_address(kvm, iter.gfn, 1);
 
 		if (!pte_write(*ptep)) {
 			new_spte = kvm_mmu_changed_pte_notifier_make_spte(
@@ -1072,9 +1066,8 @@ static int set_tdp_spte(struct kvm *kvm, struct kvm_memory_slot *slot,
 int kvm_tdp_mmu_set_spte_hva(struct kvm *kvm, unsigned long address,
 			     pte_t *host_ptep)
 {
-	return kvm_tdp_mmu_handle_hva_range(kvm, address, address + 1,
-					    (unsigned long)host_ptep,
-					    set_tdp_spte);
+	return kvm_tdp_mmu_handle_hva(kvm, address, (unsigned long)host_ptep,
+				      set_tdp_spte);
 }
 
 /*
@@ -1334,7 +1327,7 @@ void kvm_tdp_mmu_zap_collapsible_sptes(struct kvm *kvm,
 
 /*
  * Removes write access on the last level SPTE mapping this GFN and unsets the
- * SPTE_MMU_WRITABLE bit to ensure future writes continue to be intercepted.
+ * MMU-writable bit to ensure future writes continue to be intercepted.
  * Returns true if an SPTE was set and a TLB flush is needed.
  */
 static bool write_protect_gfn(struct kvm *kvm, struct kvm_mmu_page *root,
@@ -1351,7 +1344,7 @@ static bool write_protect_gfn(struct kvm *kvm, struct kvm_mmu_page *root,
 			break;
 
 		new_spte = iter.old_spte &
-			~(PT_WRITABLE_MASK | SPTE_MMU_WRITEABLE);
+			~(PT_WRITABLE_MASK | shadow_mmu_writable_mask);
 
 		tdp_mmu_set_spte(kvm, &iter, new_spte);
 		spte_set = true;
@@ -1364,7 +1357,7 @@ static bool write_protect_gfn(struct kvm *kvm, struct kvm_mmu_page *root,
 
 /*
  * Removes write access on the last level SPTE mapping this GFN and unsets the
- * SPTE_MMU_WRITABLE bit to ensure future writes continue to be intercepted.
+ * MMU-writable bit to ensure future writes continue to be intercepted.
  * Returns true if an SPTE was set and a TLB flush is needed.
  */
 bool kvm_tdp_mmu_write_protect_gfn(struct kvm *kvm,
