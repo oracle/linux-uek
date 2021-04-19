@@ -14425,6 +14425,15 @@ F:	include/linux/pm_*
 F:	include/linux/powercap.h
 F:	kernel/configs/nopm.config
 
+DYNAMIC THERMAL POWER MANAGEMENT (DTPM)
+M:	Daniel Lezcano <daniel.lezcano@kernel.org>
+L:	linux-pm@vger.kernel.org
+S:	Supported
+B:	https://bugzilla.kernel.org
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/rafael/linux-pm
+F:	drivers/powercap/dtpm*
+F:	include/linux/dtpm.h
+
 POWER STATE COORDINATION INTERFACE (PSCI)
 M:	Mark Rutland <mark.rutland@arm.com>
 M:	Lorenzo Pieralisi <lorenzo.pieralisi@arm.com>
@@ -16712,6 +16721,13 @@ F:	Documentation/devicetree/bindings/arm/firmware/sdei.txt
 F:	drivers/firmware/arm_sdei.c
 F:	include/linux/arm_sdei.h
 F:	include/uapi/linux/arm_sdei.h
+
+SOFTWARE NODES
+R:	Andy Shevchenko <andriy.shevchenko@linux.intel.com>
+R:	Heikki Krogerus <heikki.krogerus@linux.intel.com>
+L:	linux-acpi@vger.kernel.org
+S:	Maintained
+F:	drivers/base/swnode.c
 
 SOFTWARE RAID (Multiple Disks) SUPPORT
 M:	Song Liu <song@kernel.org>
