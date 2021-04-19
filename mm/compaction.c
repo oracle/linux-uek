@@ -2319,7 +2319,8 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 	trace_mm_compaction_begin(start_pfn, cc->migrate_pfn,
 				cc->free_pfn, end_pfn, sync);
 
-	migrate_prep_local();
+	/* lru_add_drain_all could be expensive with involving other CPUs */
+	lru_add_drain();
 
 	while ((ret = compact_finished(cc)) == COMPACT_CONTINUE) {
 		int err;
@@ -2494,6 +2495,14 @@ static enum compact_result compact_zone_order(struct zone *zone, int order,
 	 */
 	WRITE_ONCE(current->capture_control, NULL);
 	*capture = READ_ONCE(capc.page);
+	/*
+	 * Technically, it is also possible that compaction is skipped but
+	 * the page is still captured out of luck(IRQ came and freed the page).
+	 * Returning COMPACT_SUCCESS in such cases helps in properly accounting
+	 * the COMPACT[STALL|FAIL] when compaction is skipped.
+	 */
+	if (*capture)
+		ret = COMPACT_SUCCESS;
 
 	return ret;
 }
@@ -2656,9 +2665,6 @@ static void compact_nodes(void)
 	for_each_online_node(nid)
 		compact_node(nid);
 }
-
-/* The written value is actually unused, all memory is compacted */
-int sysctl_compact_memory;
 
 /*
  * Tunable for proactive compaction. It determines how
@@ -2844,7 +2850,7 @@ void wakeup_kcompactd(pg_data_t *pgdat, int order, int highest_zoneidx)
  */
 static int kcompactd(void *p)
 {
-	pg_data_t *pgdat = (pg_data_t*)p;
+	pg_data_t *pgdat = (pg_data_t *)p;
 	struct task_struct *tsk = current;
 	unsigned int proactive_defer = 0;
 
