@@ -145,6 +145,23 @@ the component manually::
 The standalone installers also come with ``rustdoc``.
 
 
+rust-analyzer
+*************
+
+The `rust-analyzer <https://rust-analyzer.github.io/>`_ language server can
+be used with many editors to enable syntax highlighting, completion, go to
+definition, and other features.
+
+``rust-analyzer`` will need to be
+`configured <https://rust-analyzer.github.io/manual.html#non-cargo-based-projects>`_
+to work with the kernel by adding a ``rust-project.json`` file in the root folder.
+The example ``Documentation/rust/rust-project.json`` can
+be used after updating ``sysroot_src`` and including the relevant modules.
+The path to ``sysroot_src`` is given by::
+
+    $(rustc --print sysroot)/lib/rustlib/src/rust/library
+
+
 Configuration
 -------------
 
