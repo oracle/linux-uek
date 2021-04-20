@@ -30,6 +30,8 @@ static int nix_verify_bandprof(struct nix_cn10k_aq_enq_req *req,
 static int nix_free_all_bandprof(struct rvu *rvu, u16 pcifunc);
 static void nix_clear_ratelimit_aggr(struct rvu *rvu, struct nix_hw *nix_hw,
 				     u32 leaf_prof);
+static int nix_update_mce_rule(struct rvu *rvu, u16 pcifunc,
+			       int type, bool add);
 
 enum mc_tbl_sz {
 	MC_TBL_SZ_256,
@@ -141,8 +143,8 @@ int nix_get_nixlf(struct rvu *rvu, u16 pcifunc, int *nixlf, int *nix_blkaddr)
 	return 0;
 }
 
-static int nix_get_struct_ptrs(struct rvu *rvu, u16 pcifunc,
-			       struct nix_hw **nix_hw, int *blkaddr)
+int nix_get_struct_ptrs(struct rvu *rvu, u16 pcifunc,
+			struct nix_hw **nix_hw, int *blkaddr)
 {
 	struct rvu_pfvf *pfvf;
 
@@ -318,7 +320,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 		rsp->tx_link = hw->cgx_links + lbkid;
 		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
 					      pfvf->rx_chan_base,
-					      pfvf->rx_chan_cnt, false);
+					      pfvf->rx_chan_cnt);
 		break;
 	case NIX_INTF_TYPE_SDP:
 		from_vf = !!(pcifunc & RVU_PFVF_FUNC_MASK);
@@ -356,7 +358,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 		rsp->tx_link = hw->cgx_links + hw->lbk_links;
 		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
 					      pfvf->rx_chan_base,
-					      pfvf->rx_chan_cnt, false);
+					      pfvf->rx_chan_cnt);
 		break;
 	}
 
@@ -367,16 +369,17 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 				    pfvf->rx_chan_base, pfvf->mac_addr);
 
 	/* Add this PF_FUNC to bcast pkt replication list */
-	err = nix_update_bcast_mce_list(rvu, pcifunc, true);
+	err = nix_update_mce_rule(rvu, pcifunc, NIXLF_BCAST_ENTRY, true);
 	if (err) {
 		dev_err(rvu->dev,
 			"Bcast list, failed to enable PF_FUNC 0x%x\n",
 			pcifunc);
 		return err;
 	}
-
+	/* Install MCAM rule matching Ethernet broadcast mac address */
 	rvu_npc_install_bcast_match_entry(rvu, pcifunc,
 					  nixlf, pfvf->rx_chan_base);
+
 	pfvf->maxlen = NIC_HW_MIN_FRS;
 	pfvf->minlen = NIC_HW_MIN_FRS;
 
@@ -392,7 +395,7 @@ static void nix_interface_deinit(struct rvu *rvu, u16 pcifunc, u8 nixlf)
 	pfvf->minlen = 0;
 
 	/* Remove this PF_FUNC from bcast pkt replication list */
-	err = nix_update_bcast_mce_list(rvu, pcifunc, false);
+	err = nix_update_mce_rule(rvu, pcifunc, NIXLF_BCAST_ENTRY, false);
 	if (err) {
 		dev_err(rvu->dev,
 			"Bcast list, failed to disable PF_FUNC 0x%x\n",
@@ -2614,8 +2617,8 @@ static int nix_blk_setup_mce(struct rvu *rvu, struct nix_hw *nix_hw,
 	return 0;
 }
 
-static int nix_update_mce_list(struct nix_mce_list *mce_list,
-			       u16 pcifunc, bool add)
+static int nix_update_mce_list_entry(struct nix_mce_list *mce_list,
+				     u16 pcifunc, bool add)
 {
 	struct mce *mce, *tail = NULL;
 	bool delete = false;
@@ -2626,6 +2629,9 @@ static int nix_update_mce_list(struct nix_mce_list *mce_list,
 		if (mce->pcifunc == pcifunc && !add) {
 			delete = true;
 			break;
+		} else if (mce->pcifunc == pcifunc && add) {
+			/* entry already exists */
+			return 0;
 		}
 		tail = mce;
 	}
@@ -2653,36 +2659,23 @@ static int nix_update_mce_list(struct nix_mce_list *mce_list,
 	return 0;
 }
 
-int nix_update_bcast_mce_list(struct rvu *rvu, u16 pcifunc, bool add)
+int nix_update_mce_list(struct rvu *rvu, u16 pcifunc,
+			struct nix_mce_list *mce_list,
+			int mce_idx, int mcam_index, bool add)
 {
-	int err = 0, idx, next_idx, last_idx;
-	struct nix_mce_list *mce_list;
+	int err = 0, idx, next_idx, last_idx, blkaddr, npc_blkaddr;
+	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct nix_mcast *mcast;
 	struct nix_hw *nix_hw;
-	struct rvu_pfvf *pfvf;
 	struct mce *mce;
-	int blkaddr;
 
-	/* Broadcast pkt replication is not needed for AF's VFs, hence skip */
-	if (is_afvf(pcifunc) || is_sdp_pfvf(pcifunc))
-		return 0;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
-	if (blkaddr < 0)
-		return 0;
-
-	nix_hw = get_nix_hw(rvu->hw, blkaddr);
-	if (!nix_hw)
-		return 0;
-
-	mcast = &nix_hw->mcast;
+	if (!mce_list)
+		return -EINVAL;
 
 	/* Get this PF/VF func's MCE index */
-	pfvf = rvu_get_pfvf(rvu, pcifunc & ~RVU_PFVF_FUNC_MASK);
-	idx = pfvf->bcast_mce_idx + (pcifunc & RVU_PFVF_FUNC_MASK);
+	idx = mce_idx + (pcifunc & RVU_PFVF_FUNC_MASK);
 
-	mce_list = &pfvf->bcast_mce_list;
-	if (idx > (pfvf->bcast_mce_idx + mce_list->max)) {
+	if (idx > (mce_idx + mce_list->max)) {
 		dev_err(rvu->dev,
 			"%s: Idx %d > max MCE idx %d, for PF%d bcast list\n",
 			__func__, idx, mce_list->max,
@@ -2690,20 +2683,26 @@ int nix_update_bcast_mce_list(struct rvu *rvu, u16 pcifunc, bool add)
 		return -EINVAL;
 	}
 
+	err = nix_get_struct_ptrs(rvu, pcifunc, &nix_hw, &blkaddr);
+	if (err)
+		return err;
+
+	mcast = &nix_hw->mcast;
 	mutex_lock(&mcast->mce_lock);
 
-	err = nix_update_mce_list(mce_list, pcifunc, add);
+	err = nix_update_mce_list_entry(mce_list, pcifunc, add);
 	if (err)
 		goto end;
 
 	/* Disable MCAM entry in NPC */
 	if (!mce_list->count) {
-		rvu_npc_enable_bcast_entry(rvu, pcifunc, false);
+		npc_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+		npc_enable_mcam_entry(rvu, mcam, npc_blkaddr, mcam_index, false);
 		goto end;
 	}
 
 	/* Dump the updated list to HW */
-	idx = pfvf->bcast_mce_idx;
+	idx = mce_idx;
 	last_idx = idx + mce_list->count - 1;
 	hlist_for_each_entry(mce, &mce_list->head, node) {
 		if (idx > last_idx)
@@ -2724,7 +2723,70 @@ end:
 	return err;
 }
 
-static int nix_setup_bcast_tables(struct rvu *rvu, struct nix_hw *nix_hw)
+void nix_get_mce_list(struct rvu *rvu, u16 pcifunc, int type,
+		      struct nix_mce_list **mce_list, int *mce_idx)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_pfvf *pfvf;
+
+	if (!hw->cap.nix_rx_multicast) {
+		*mce_list = NULL;
+		*mce_idx = 0;
+		return;
+	}
+
+	/* Get this PF/VF func's MCE index */
+	pfvf = rvu_get_pfvf(rvu, pcifunc & ~RVU_PFVF_FUNC_MASK);
+
+	if (type == NIXLF_BCAST_ENTRY) {
+		*mce_list = &pfvf->bcast_mce_list;
+		*mce_idx = pfvf->bcast_mce_idx;
+	} else if (type == NIXLF_ALLMULTI_ENTRY) {
+		*mce_list = &pfvf->mcast_mce_list;
+		*mce_idx = pfvf->mcast_mce_idx;
+	} else if (type == NIXLF_PROMISC_ENTRY) {
+		*mce_list = &pfvf->promisc_mce_list;
+		*mce_idx = pfvf->promisc_mce_idx;
+	}  else {
+		*mce_list = NULL;
+		*mce_idx = 0;
+	}
+}
+
+static int nix_update_mce_rule(struct rvu *rvu, u16 pcifunc,
+			       int type, bool add)
+{
+	int err = 0, nixlf, blkaddr, mcam_index, mce_idx;
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct nix_mce_list *mce_list;
+
+	/* skip multicast pkt replication for AF's VFs & SDP links */
+	if (is_afvf(pcifunc) || is_sdp_pfvf(pcifunc))
+		return 0;
+
+	if (!hw->cap.nix_rx_multicast)
+		return 0;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return -EINVAL;
+
+	nixlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
+	if (nixlf < 0)
+		return -EINVAL;
+
+	nix_get_mce_list(rvu, pcifunc, type, &mce_list, &mce_idx);
+
+	mcam_index = npc_get_nixlf_mcam_index(mcam,
+					      pcifunc & ~RVU_PFVF_FUNC_MASK,
+					      nixlf, type);
+	err = nix_update_mce_list(rvu, pcifunc, mce_list,
+				  mce_idx, mcam_index, add);
+	return err;
+}
+
+static int nix_setup_mce_tables(struct rvu *rvu, struct nix_hw *nix_hw)
 {
 	struct nix_mcast *mcast = &nix_hw->mcast;
 	int err, pf, numvfs, idx;
@@ -2747,10 +2809,17 @@ static int nix_setup_bcast_tables(struct rvu *rvu, struct nix_hw *nix_hw)
 		if (pfvf->nix_blkaddr != nix_hw->blkaddr)
 			continue;
 
-		/* Save the start MCE */
+		/* save start idx of broadcast mce list */
 		pfvf->bcast_mce_idx = nix_alloc_mce_list(mcast, numvfs + 1);
-
 		nix_mce_list_init(&pfvf->bcast_mce_list, numvfs + 1);
+
+		/* save start idx of multicast mce list */
+		pfvf->mcast_mce_idx = nix_alloc_mce_list(mcast, numvfs + 1);
+		nix_mce_list_init(&pfvf->mcast_mce_list, numvfs + 1);
+
+		/* save the start idx of promisc mce list */
+		pfvf->promisc_mce_idx = nix_alloc_mce_list(mcast, numvfs + 1);
+		nix_mce_list_init(&pfvf->promisc_mce_list, numvfs + 1);
 
 		for (idx = 0; idx < (numvfs + 1); idx++) {
 			/* idx-0 is for PF, followed by VFs */
@@ -2763,6 +2832,22 @@ static int nix_setup_bcast_tables(struct rvu *rvu, struct nix_hw *nix_hw)
 			 */
 			err = nix_blk_setup_mce(rvu, nix_hw,
 						pfvf->bcast_mce_idx + idx,
+						NIX_AQ_INSTOP_INIT,
+						pcifunc, 0, true);
+			if (err)
+				return err;
+
+			/* add dummy entries to multicast mce list */
+			err = nix_blk_setup_mce(rvu, nix_hw,
+						pfvf->mcast_mce_idx + idx,
+						NIX_AQ_INSTOP_INIT,
+						pcifunc, 0, true);
+			if (err)
+				return err;
+
+			/* add dummy entries to promisc mce list */
+			err = nix_blk_setup_mce(rvu, nix_hw,
+						pfvf->promisc_mce_idx + idx,
 						NIX_AQ_INSTOP_INIT,
 						pcifunc, 0, true);
 			if (err)
@@ -2813,7 +2898,7 @@ static int nix_setup_mcast(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 
 	mutex_init(&mcast->mce_lock);
 
-	return nix_setup_bcast_tables(rvu, nix_hw);
+	return nix_setup_mce_tables(rvu, nix_hw);
 }
 
 static int nix_setup_txvlan(struct rvu *rvu, struct nix_hw *nix_hw)
@@ -3544,30 +3629,68 @@ int rvu_mbox_handler_nix_get_mac_addr(struct rvu *rvu,
 int rvu_mbox_handler_nix_set_rx_mode(struct rvu *rvu, struct nix_rx_mode *req,
 				     struct msg_rsp *rsp)
 {
-	bool allmulti = false, disable_promisc = false;
+	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
-	int blkaddr, nixlf, err;
+	bool allmulti, promisc;
 	struct rvu_pfvf *pfvf;
+	int nixlf, err;
 
-	err = nix_get_nixlf(rvu, pcifunc, &nixlf, &blkaddr);
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	promisc = req->mode & NIX_RX_MODE_PROMISC ? true : false;
+	allmulti = req->mode & NIX_RX_MODE_ALLMULTI ? true : false;
+
+	if (is_vf(pcifunc) && !rvu->hw->cap.nix_rx_multicast &&
+	    (promisc || allmulti)) {
+		dev_warn_ratelimited(rvu->dev,
+				     "VF promisc/multicast not supported\n");
+		return 0;
+	}
+
+	err = nix_get_nixlf(rvu, pcifunc, &nixlf, NULL);
 	if (err)
 		return err;
 
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	if (hw->cap.nix_rx_multicast) {
+		/* add/del this PF_FUNC to/from mcast pkt replication list */
+		err = nix_update_mce_rule(rvu, pcifunc, NIXLF_ALLMULTI_ENTRY,
+					  allmulti);
+		if (err) {
+			dev_err(rvu->dev,
+				"Failed to update pcifunc 0x%x to multicast list\n",
+				pcifunc);
+			return err;
+		}
 
-	if (req->mode & NIX_RX_MODE_PROMISC)
-		allmulti = false;
-	else if (req->mode & NIX_RX_MODE_ALLMULTI)
-		allmulti = true;
-	else
-		disable_promisc = true;
+		/* add/del this PF_FUNC to/from promisc pkt replication list */
+		err = nix_update_mce_rule(rvu, pcifunc, NIXLF_PROMISC_ENTRY,
+					  promisc);
+		if (err) {
+			dev_err(rvu->dev,
+				"Failed to update pcifunc 0x%x to promisc list\n",
+				pcifunc);
+			return err;
+		}
+	}
 
-	if (disable_promisc)
-		rvu_npc_disable_promisc_entry(rvu, pcifunc, nixlf);
-	else
+	/* install/uninstall allmulti entry */
+	if (allmulti) {
+		rvu_npc_install_allmulti_entry(rvu, pcifunc, nixlf,
+					       pfvf->rx_chan_base);
+	} else {
+		if (!hw->cap.nix_rx_multicast)
+			rvu_npc_enable_allmulti_entry(rvu, pcifunc, nixlf, false);
+	}
+
+	/* install/uninstall promisc entry */
+	if (promisc) {
 		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
 					      pfvf->rx_chan_base,
-					      pfvf->rx_chan_cnt, allmulti);
+					      pfvf->rx_chan_cnt);
+	} else {
+		if (!hw->cap.nix_rx_multicast)
+			rvu_npc_enable_promisc_entry(rvu, pcifunc, nixlf, false);
+	}
+
 	return 0;
 }
 
