@@ -21,7 +21,7 @@
 #include "cgx.h"
 #include "npc_profile.h"
 
-#define RSVD_MCAM_ENTRIES_PER_PF	2 /* Bcast & Promisc */
+#define RSVD_MCAM_ENTRIES_PER_PF	3 /* Broadcast, Promisc and AllMulticast */
 #define RSVD_MCAM_ENTRIES_PER_NIXLF	1 /* Ucast for LFs */
 
 #define NPC_KEX_CHAN_MASK	0xFFFULL
@@ -207,8 +207,10 @@ int npc_get_nixlf_mcam_index(struct npc_mcam *mcam,
 		 */
 		if (type == NIXLF_BCAST_ENTRY)
 			return index;
-		else if (type == NIXLF_PROMISC_ENTRY)
+		else if (type == NIXLF_ALLMULTI_ENTRY)
 			return index + 1;
+		else if (type == NIXLF_PROMISC_ENTRY)
+			return index + 2;
 	}
 
 	return npc_get_ucast_mcam_index(mcam, pcifunc, nixlf);
@@ -666,28 +668,29 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 }
 
 void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
-				   int nixlf, u64 chan, u8 chan_cnt,
-				   bool allmulti)
+				   int nixlf, u64 chan, u8 chan_cnt)
 {
-	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct npc_install_flow_req req = { 0 };
 	struct npc_install_flow_rsp rsp = { 0 };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_hwinfo *hw = rvu->hw;
 	int blkaddr, ucast_idx, index;
-	u8 mac_addr[ETH_ALEN] = { 0 };
 	struct nix_rx_action action;
+	struct rvu_pfvf *pfvf;
 	u64 relaxed_mask;
+	u16 vf_func;
 
-	/* Only PF or AF VF can add a promiscuous entry */
-	if ((pcifunc & RVU_PFVF_FUNC_MASK) && !is_afvf(pcifunc) &&
-	    !is_sdp_vf(pcifunc))
+	if (!hw->cap.nix_rx_multicast && is_cgx_vf(rvu, pcifunc))
 		return;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return;
 
-	*(u64 *)&action = 0x00;
+	/* Get 'pcifunc' of PF device */
+	vf_func = pcifunc & RVU_PFVF_FUNC_MASK;
+	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
 
@@ -698,7 +701,7 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 					     nixlf, NIXLF_UCAST_ENTRY);
 	if (is_mcam_entry_enabled(rvu, mcam, blkaddr, ucast_idx))
 		*(u64 *)&action = npc_get_mcam_action(rvu, mcam,
-							blkaddr, ucast_idx);
+						      blkaddr, ucast_idx);
 
 	if (action.op != NIX_RX_ACTIONOP_RSS) {
 		*(u64 *)&action = 0x00;
@@ -706,11 +709,12 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 		action.pf_func = pcifunc;
 	}
 
-	if (allmulti) {
-		mac_addr[0] = 0x01;	/* LSB bit of 1st byte in DMAC */
-		ether_addr_copy(req.packet.dmac, mac_addr);
-		ether_addr_copy(req.mask.dmac, mac_addr);
-		req.features = BIT_ULL(NPC_DMAC);
+	/* RX_ACTION set to MCAST for CGX PF's */
+	if (hw->cap.nix_rx_multicast &&
+	    is_pf_cgxmapped(rvu, rvu_get_pf(pcifunc))) {
+		*(u64 *)&action = 0x00;
+		action.op = NIX_RX_ACTIONOP_MCAST;
+		action.index = pfvf->promisc_mce_idx;
 	}
 
 	/* For cn10k the upper two bits bits of the channel number are
@@ -740,7 +744,7 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	req.entry = index;
 	req.op = action.op;
 	req.hdr.pcifunc = 0; /* AF is requester */
-	req.vf = pcifunc;
+	req.vf = pcifunc | vf_func;
 	req.index = action.index;
 	req.match_id = action.match_id;
 	req.flow_key_alg = action.flow_key_alg;
@@ -748,8 +752,8 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
 }
 
-static void npc_enadis_promisc_entry(struct rvu *rvu, u16 pcifunc,
-				     int nixlf, bool enable)
+void rvu_npc_enable_promisc_entry(struct rvu *rvu, u16 pcifunc,
+				  int nixlf, bool enable)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int blkaddr, index;
@@ -758,23 +762,12 @@ static void npc_enadis_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	if (blkaddr < 0)
 		return;
 
-	/* Only PF's have a promiscuous entry */
-	if (pcifunc & RVU_PFVF_FUNC_MASK)
-		return;
+	/* Get 'pcifunc' of PF device */
+	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
 
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
-}
-
-void rvu_npc_disable_promisc_entry(struct rvu *rvu, u16 pcifunc, int nixlf)
-{
-	npc_enadis_promisc_entry(rvu, pcifunc, nixlf, false);
-}
-
-void rvu_npc_enable_promisc_entry(struct rvu *rvu, u16 pcifunc, int nixlf)
-{
-	npc_enadis_promisc_entry(rvu, pcifunc, nixlf, true);
 }
 
 void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
@@ -786,8 +779,6 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_hwinfo *hw = rvu->hw;
 	int blkaddr, index;
-	u32 req_index = 0;
-	u8 op;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -800,7 +791,7 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	/* If pkt replication is not supported,
 	 * then only PF is allowed to add a bcast match entry.
 	 */
-	if (!hw->cap.nix_rx_multicast && pcifunc & RVU_PFVF_FUNC_MASK)
+	if (!hw->cap.nix_rx_multicast && is_vf(pcifunc))
 		return;
 
 	/* Get 'pcifunc' of PF device */
@@ -814,10 +805,10 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 		 * so install entry with UCAST action, so that PF
 		 * receives all broadcast packets.
 		 */
-		op = NIX_RX_ACTIONOP_UCAST;
+		req.op = NIX_RX_ACTIONOP_UCAST;
 	} else {
-		op = NIX_RX_ACTIONOP_MCAST;
-		req_index = pfvf->bcast_mce_idx;
+		req.op = NIX_RX_ACTIONOP_MCAST;
+		req.index = pfvf->bcast_mce_idx;
 	}
 
 	eth_broadcast_addr((u8 *)&req.packet.dmac);
@@ -827,15 +818,14 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	req.chan_mask = 0xFFFU;
 	req.intf = pfvf->nix_rx_intf;
 	req.entry = index;
-	req.op = op;
 	req.hdr.pcifunc = 0; /* AF is requester */
 	req.vf = pcifunc;
-	req.index = req_index;
 
 	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
 }
 
-void rvu_npc_enable_bcast_entry(struct rvu *rvu, u16 pcifunc, bool enable)
+void rvu_npc_enable_bcast_entry(struct rvu *rvu, u16 pcifunc, int nixlf,
+				bool enable)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int blkaddr, index;
@@ -847,7 +837,104 @@ void rvu_npc_enable_bcast_entry(struct rvu *rvu, u16 pcifunc, bool enable)
 	/* Get 'pcifunc' of PF device */
 	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc, 0, NIXLF_BCAST_ENTRY);
+	index = npc_get_nixlf_mcam_index(mcam, pcifunc, nixlf,
+					 NIXLF_BCAST_ENTRY);
+	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
+}
+
+void rvu_npc_install_allmulti_entry(struct rvu *rvu, u16 pcifunc, int nixlf,
+				    u64 chan)
+{
+	struct npc_install_flow_req req = { 0 };
+	struct npc_install_flow_rsp rsp = { 0 };
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_hwinfo *hw = rvu->hw;
+	int blkaddr, ucast_idx, index;
+	u8 mac_addr[ETH_ALEN] = { 0 };
+	struct nix_rx_action action;
+	struct rvu_pfvf *pfvf;
+	u16 vf_func;
+
+	/* Only CGX PF/VF can add allmulticast entry */
+	if (is_afvf(pcifunc) && is_sdp_vf(pcifunc))
+		return;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return;
+
+	/* Get 'pcifunc' of PF device */
+	vf_func = pcifunc & RVU_PFVF_FUNC_MASK;
+	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+					 nixlf, NIXLF_ALLMULTI_ENTRY);
+
+	/* If the corresponding PF's ucast action is RSS,
+	 * use the same action for multicast entry also
+	 */
+	ucast_idx = npc_get_nixlf_mcam_index(mcam, pcifunc,
+					     nixlf, NIXLF_UCAST_ENTRY);
+	if (is_mcam_entry_enabled(rvu, mcam, blkaddr, ucast_idx))
+		*(u64 *)&action = npc_get_mcam_action(rvu, mcam,
+							blkaddr, ucast_idx);
+
+	if (action.op != NIX_RX_ACTIONOP_RSS) {
+		*(u64 *)&action = 0x00;
+		action.op = NIX_RX_ACTIONOP_UCAST;
+		action.pf_func = pcifunc;
+	}
+
+	/* RX_ACTION set to MCAST for CGX PF's */
+	if (hw->cap.nix_rx_multicast) {
+		*(u64 *)&action = 0x00;
+		action.op = NIX_RX_ACTIONOP_MCAST;
+		action.index = pfvf->mcast_mce_idx;
+	}
+
+	mac_addr[0] = 0x01;	/* LSB bit of 1st byte in DMAC */
+	ether_addr_copy(req.packet.dmac, mac_addr);
+	ether_addr_copy(req.mask.dmac, mac_addr);
+	req.features = BIT_ULL(NPC_DMAC);
+
+	/* For cn10k the upper two bits bits of the channel number are
+	 * cpt channel number. with masking out these bits in the
+	 * mcam entry, same entry used for NIX will allow packets
+	 * received from cpt for parsing.
+	 */
+	if (!is_rvu_otx2(rvu))
+		req.chan_mask = NIX_CHAN_CPT_X2P_MASK;
+	else
+		req.chan_mask = 0xFFFU;
+
+	req.channel = chan;
+	req.intf = pfvf->nix_rx_intf;
+	req.entry = index;
+	req.op = action.op;
+	req.hdr.pcifunc = 0; /* AF is requester */
+	req.vf = pcifunc | vf_func;
+	req.index = action.index;
+	req.match_id = action.match_id;
+	req.flow_key_alg = action.flow_key_alg;
+
+	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
+}
+
+void rvu_npc_enable_allmulti_entry(struct rvu *rvu, u16 pcifunc, int nixlf,
+				   bool enable)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	int blkaddr, index;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return;
+
+	/* Get 'pcifunc' of PF device */
+	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
+
+	index = npc_get_nixlf_mcam_index(mcam, pcifunc, nixlf,
+					 NIXLF_ALLMULTI_ENTRY);
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 }
 
@@ -889,6 +976,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 				    int group, int alg_idx, int mcam_index)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_hwinfo *hw = rvu->hw;
 	struct nix_rx_action action;
 	int blkaddr, index, bank;
 	struct rvu_pfvf *pfvf;
@@ -947,7 +1035,8 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	/* If PF's promiscuous entry is enabled,
 	 * Set RSS action for that entry as well
 	 */
-	if (is_mcam_entry_enabled(rvu, mcam, blkaddr, index)) {
+	if (!hw->cap.nix_rx_multicast &&
+	    is_mcam_entry_enabled(rvu, mcam, blkaddr, index)) {
 		bank = npc_get_bank(mcam, index);
 		index &= (mcam->banksize - 1);
 
@@ -957,12 +1046,40 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	}
 }
 
+void npc_enadis_default_mce_entry(struct rvu *rvu, u16 pcifunc,
+				  int nixlf, int type, bool enable)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct nix_mce_list *mce_list;
+	int index, blkaddr, mce_idx;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return;
+
+	index = npc_get_nixlf_mcam_index(mcam, pcifunc & ~RVU_PFVF_FUNC_MASK,
+					 nixlf, type);
+
+	/* disable MCAM entry when packet replication is not supported by hw */
+	if (!hw->cap.nix_rx_multicast && !is_vf(pcifunc)) {
+		npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
+		return;
+	}
+
+	nix_get_mce_list(rvu, pcifunc, type, &mce_list, &mce_idx);
+
+	nix_update_mce_list(rvu, pcifunc, mce_list,
+			    mce_idx, index, enable);
+	if (enable)
+		npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
+}
+
 static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 				       int nixlf, bool enable)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	struct nix_rx_action action;
-	int index, bank, blkaddr;
+	int index, blkaddr;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -973,48 +1090,33 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 					 nixlf, NIXLF_UCAST_ENTRY);
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 
-	/* For PF, ena/dis promisc and bcast MCAM match entries.
-	 * For VFs add/delete from bcast list when RX multicast
-	 * feature is present.
+	/* Nothing to do for VFs, on platforms where pkt replication
+	 * is not supported
 	 */
-	if (pcifunc & RVU_PFVF_FUNC_MASK && !rvu->hw->cap.nix_rx_multicast)
+	if ((pcifunc & RVU_PFVF_FUNC_MASK) && !rvu->hw->cap.nix_rx_multicast)
 		return;
 
-	/* For bcast, enable/disable only if it's action is not
-	 * packet replication, incase if action is replication
-	 * then this PF/VF's nixlf is removed from bcast replication
-	 * list.
-	 */
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc & ~RVU_PFVF_FUNC_MASK,
-					 nixlf, NIXLF_BCAST_ENTRY);
-	bank = npc_get_bank(mcam, index);
-	*(u64 *)&action = rvu_read64(rvu, blkaddr,
-	     NPC_AF_MCAMEX_BANKX_ACTION(index & (mcam->banksize - 1), bank));
-
-	/* VFs will not have BCAST entry */
-	if (action.op != NIX_RX_ACTIONOP_MCAST &&
-	    !(pcifunc & RVU_PFVF_FUNC_MASK)) {
-		npc_enable_mcam_entry(rvu, mcam,
-				      blkaddr, index, enable);
-	} else {
-		nix_update_bcast_mce_list(rvu, pcifunc, enable);
-		/* Enable PF's BCAST entry for packet replication */
-		rvu_npc_enable_bcast_entry(rvu, pcifunc, enable);
-	}
-
-	if (enable)
-		rvu_npc_enable_promisc_entry(rvu, pcifunc, nixlf);
-	else
-		rvu_npc_disable_promisc_entry(rvu, pcifunc, nixlf);
+	/* add/delete pf_func to broadcast MCE list */
+	npc_enadis_default_mce_entry(rvu, pcifunc, nixlf,
+				     NIXLF_BCAST_ENTRY, enable);
 }
 
 void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 {
 	npc_enadis_default_entries(rvu, pcifunc, nixlf, false);
+
+	/* Delete multicast and promisc MCAM entries */
+	npc_enadis_default_mce_entry(rvu, pcifunc, nixlf,
+				     NIXLF_ALLMULTI_ENTRY, false);
+	npc_enadis_default_mce_entry(rvu, pcifunc, nixlf,
+				     NIXLF_PROMISC_ENTRY, false);
 }
 
 void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 {
+	/* Enables only broadcast match entry. Promisc/Allmulti are enabled
+	 * in set_rx_mode mbox handler.
+	 */
 	npc_enadis_default_entries(rvu, pcifunc, nixlf, true);
 }
 
@@ -1034,7 +1136,8 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 	/* Disable MCAM entries directing traffic to this 'pcifunc' */
 	list_for_each_entry_safe(rule, tmp, &mcam->mcam_rules, list) {
 		if (is_npc_intf_rx(rule->intf) &&
-		    rule->rx_action.pf_func == pcifunc) {
+		    rule->rx_action.pf_func == pcifunc &&
+		    rule->rx_action.op != NIX_RX_ACTIONOP_MCAST) {
 			npc_enable_mcam_entry(rvu, mcam, blkaddr,
 					      rule->entry, false);
 			rule->enable = false;

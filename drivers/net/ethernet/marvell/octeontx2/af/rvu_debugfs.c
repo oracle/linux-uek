@@ -2379,6 +2379,7 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 	struct rvu *rvu = s->private;
 	struct npc_mcam *mcam;
 	int pf, vf = -1;
+	bool enabled;
 	int blkaddr;
 	u16 target;
 	u64 hits;
@@ -2420,7 +2421,9 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 		}
 
 		rvu_dbg_npc_mcam_show_action(s, iter);
-		seq_printf(s, "\tenabled: %s\n", iter->enable ? "yes" : "no");
+
+		enabled = is_mcam_entry_enabled(rvu, mcam, blkaddr, iter->entry);
+		seq_printf(s, "\tenabled: %s\n", enabled ? "yes" : "no");
 
 		if (!iter->has_cntr)
 			continue;
