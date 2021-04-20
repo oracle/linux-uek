@@ -115,6 +115,8 @@ arm/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-dts-for-5.13-2
 	qcom/dt-4
 		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13-3
+	bcm/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/bmc-5.13-devicetree-2
 
 arm/drivers
 	drivers/tee
