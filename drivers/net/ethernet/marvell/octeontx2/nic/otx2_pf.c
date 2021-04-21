@@ -1177,6 +1177,11 @@ static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
 	struct msg_req *msg;
 	int err;
 
+	if (enable && bitmap_weight(&pf->flow_cfg->dmacflt_bmap,
+				    pf->flow_cfg->dmacflt_max_flows))
+		netdev_warn(pf->netdev,
+			    "CGX/RPM internal loopback might not work as DMAC filters are active\n");
+
 	mutex_lock(&pf->mbox.lock);
 	if (enable)
 		msg = otx2_mbox_alloc_msg_cgx_intlbk_enable(&pf->mbox);
@@ -1758,6 +1763,10 @@ int otx2_open(struct net_device *netdev)
 
 	/* Set NPC parsing mode */
 	otx2_set_npc_parse_mode(pf, false);
+
+	/* Install DMAC Filters */
+	if (pf->flags & OTX2_FLAG_DMACFLTR_SUPPORT)
+		otx2_dmacflt_reinstall_flows(pf);
 
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
