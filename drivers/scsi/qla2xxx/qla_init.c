@@ -8676,6 +8676,11 @@ qla81xx_nvram_config(scsi_qla_host_t *vha)
 	/* Determine NVMe/FCP priority for target ports */
 	ha->fc4_type_priority = qla2xxx_get_fc4_priority(vha);
 
+	/* Determine NVMe/FCP priority for target ports */
+	ha->fc4_type_priority = qla2xxx_get_fc4_priority(vha);
+	ql_log(ql_log_info, vha, 0xffff, "FC4 priority set to %s\n",
+	    ha->fc4_type_priority & BIT_0 ? "FCP" : "NVMe");
+
 	if (rval) {
 		ql_log(ql_log_warn, vha, 0x0076,
 		    "NVRAM configuration failed.\n");

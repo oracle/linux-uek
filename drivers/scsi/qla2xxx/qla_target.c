@@ -1271,7 +1271,7 @@ void qlt_schedule_sess_for_deletion(struct fc_port *sess)
 	spin_unlock_irqrestore(&sess->vha->work_lock, flags);
 
 	sess->prli_pend_timer = 0;
-	sess->disc_state = DSC_DELETE_PEND;
+	qla2x00_set_fcport_disc_state(sess, DSC_DELETE_PEND);
 
 	qla24xx_chk_fcp_state(sess);
 
