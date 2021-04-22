@@ -10,6 +10,7 @@
 #include <linux/rmap.h>
 #include <linux/swap.h>
 #include <linux/swapops.h>
+#include <linux/secretmem.h>
 
 #include <linux/sched/signal.h>
 #include <linux/rwsem.h>
@@ -816,6 +817,9 @@ struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 	struct follow_page_context ctx = { NULL };
 	struct page *page;
 
+	if (vma_is_secretmem(vma))
+		return NULL;
+
 	page = follow_page_mask(vma, address, foll_flags, &ctx);
 	if (ctx.pgmap)
 		put_dev_pagemap(ctx.pgmap);
@@ -948,6 +952,9 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 
 	if ((gup_flags & FOLL_LONGTERM) && vma_is_fsdax(vma))
 		return -EOPNOTSUPP;
+
+	if (vma_is_secretmem(vma))
+		return -EFAULT;
 
 	if (write) {
 		if (!(vm_flags & VM_WRITE)) {
@@ -2072,6 +2079,9 @@ static int gup_pte_range(pmd_t pmd, unsigned long addr, unsigned long end,
 
 		VM_BUG_ON(!pfn_valid(pte_pfn(pte)));
 		page = pte_page(pte);
+
+		if (page_is_secretmem(page))
+			goto pte_unmap;
 
 		head = try_grab_compound_head(page, 1, flags);
 		if (!head)
