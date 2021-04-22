@@ -137,21 +137,11 @@ static void secretmem_freepage(struct page *page)
 	clear_highpage(page);
 }
 
-static const struct address_space_operations secretmem_aops = {
+const struct address_space_operations secretmem_aops = {
 	.freepage	= secretmem_freepage,
 	.migratepage	= secretmem_migratepage,
 	.isolate_page	= secretmem_isolate_page,
 };
-
-bool page_is_secretmem(struct page *page)
-{
-	struct address_space *mapping = page_mapping(page);
-
-	if (!mapping)
-		return false;
-
-	return mapping->a_ops == &secretmem_aops;
-}
 
 static struct vfsmount *secretmem_mnt;
 
