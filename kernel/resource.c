@@ -502,8 +502,8 @@ int __weak page_is_ram(unsigned long pfn)
 }
 EXPORT_SYMBOL_GPL(page_is_ram);
 
-int __region_intersects(resource_size_t start, size_t size, unsigned long flags,
-			unsigned long desc)
+static int __region_intersects(resource_size_t start, size_t size,
+			unsigned long flags, unsigned long desc)
 {
 	struct resource res;
 	int type = 0; int other = 0;
