@@ -133,6 +133,8 @@ struct kmem_cache {
 	unsigned int usersize;		/* Usercopy region size */
 
 	struct kmem_cache_node *node[MAX_NUMNODES];
+
+	int errors;			/* Number of errors in cache */
 };
 
 #ifdef CONFIG_SLUB_CPU_PARTIAL

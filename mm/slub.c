@@ -674,14 +674,16 @@ static void slab_bug(struct kmem_cache *s, char *fmt, ...)
 
 static void slab_fix(struct kmem_cache *s, char *fmt, ...)
 {
-	struct va_format vaf;
-	va_list args;
+	if (!(s->flags & SLAB_SILENT_ERRORS)) {
+		struct va_format vaf;
+		va_list args;
 
-	va_start(args, fmt);
-	vaf.fmt = fmt;
-	vaf.va = &args;
-	pr_err("FIX %s: %pV\n", s->name, &vaf);
-	va_end(args);
+		va_start(args, fmt);
+		vaf.fmt = fmt;
+		vaf.va = &args;
+		pr_err("FIX %s: %pV\n", s->name, &vaf);
+		va_end(args);
+	}
 }
 
 static bool freelist_corrupted(struct kmem_cache *s, struct page *page,
@@ -740,8 +742,10 @@ static void print_trailer(struct kmem_cache *s, struct page *page, u8 *p)
 void object_err(struct kmem_cache *s, struct page *page,
 			u8 *object, char *reason)
 {
-	slab_bug(s, "%s", reason);
-	print_trailer(s, page, object);
+	if (!(s->flags & SLAB_SILENT_ERRORS)) {
+		slab_bug(s, "%s", reason);
+		print_trailer(s, page, object);
+	}
 }
 
 static __printf(3, 4) void slab_err(struct kmem_cache *s, struct page *page,
@@ -753,9 +757,11 @@ static __printf(3, 4) void slab_err(struct kmem_cache *s, struct page *page,
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
-	slab_bug(s, "%s", buf);
-	print_page_info(page);
-	dump_stack();
+	if (!(s->flags & SLAB_SILENT_ERRORS)) {
+		slab_bug(s, "%s", buf);
+		print_page_info(page);
+		dump_stack();
+	}
 }
 
 static void init_object(struct kmem_cache *s, void *object, u8 val)
@@ -799,11 +805,13 @@ static int check_bytes_and_report(struct kmem_cache *s, struct page *page,
 	while (end > fault && end[-1] == value)
 		end--;
 
-	slab_bug(s, "%s overwritten", what);
-	pr_err("0x%p-0x%p @offset=%tu. First byte 0x%x instead of 0x%x\n",
+	if (!(s->flags & SLAB_SILENT_ERRORS)) {
+		slab_bug(s, "%s overwritten", what);
+		pr_err("INFO: 0x%p-0x%p @offset=%tu. First byte 0x%x instead of 0x%x\n",
 					fault, end - 1, fault - addr,
 					fault[0], value);
-	print_trailer(s, page, object);
+		print_trailer(s, page, object);
+	}
 
 	restore_bytes(s, what, value, fault, end);
 	return 0;
@@ -965,6 +973,7 @@ static int check_slab(struct kmem_cache *s, struct page *page)
 
 	if (!PageSlab(page)) {
 		slab_err(s, page, "Not a valid slab page");
+		s->errors += 1;
 		return 0;
 	}
 
@@ -972,11 +981,13 @@ static int check_slab(struct kmem_cache *s, struct page *page)
 	if (page->objects > maxobj) {
 		slab_err(s, page, "objects %u > max %u",
 			page->objects, maxobj);
+		s->errors += 1;
 		return 0;
 	}
 	if (page->inuse > page->objects) {
 		slab_err(s, page, "inuse %u > max %u",
 			page->inuse, page->objects);
+		s->errors += 1;
 		return 0;
 	}
 	/* Slab_pad_check fixes things up after itself */
@@ -1009,8 +1020,10 @@ static int on_freelist(struct kmem_cache *s, struct page *page, void *search)
 				page->freelist = NULL;
 				page->inuse = page->objects;
 				slab_fix(s, "Freelist cleared");
+				s->errors += 1;
 				return 0;
 			}
+			s->errors += 1;
 			break;
 		}
 		object = fp;
@@ -1027,12 +1040,14 @@ static int on_freelist(struct kmem_cache *s, struct page *page, void *search)
 			 page->objects, max_objects);
 		page->objects = max_objects;
 		slab_fix(s, "Number of objects adjusted.");
+		s->errors += 1;
 	}
 	if (page->inuse != page->objects - nr) {
 		slab_err(s, page, "Wrong object count. Counter is %d but counted were %d",
 			 page->inuse, page->objects - nr);
 		page->inuse = page->objects - nr;
 		slab_fix(s, "Object count adjusted.");
+		s->errors += 1;
 	}
 	return search == NULL;
 }
@@ -4641,8 +4656,10 @@ static void validate_slab(struct kmem_cache *s, struct page *page)
 		u8 val = test_bit(__obj_to_index(s, addr, p), map) ?
 			 SLUB_RED_INACTIVE : SLUB_RED_ACTIVE;
 
-		if (!check_object(s, page, p, val))
+		if (!check_object(s, page, p, val)) {
+			s->errors += 1;
 			break;
+		}
 	}
 	put_map(map);
 unlock:
@@ -4662,9 +4679,11 @@ static int validate_slab_node(struct kmem_cache *s,
 		validate_slab(s, page);
 		count++;
 	}
-	if (count != n->nr_partial)
+	if (count != n->nr_partial) {
 		pr_err("SLUB %s: %ld partial slabs counted but counter=%ld\n",
 		       s->name, count, n->nr_partial);
+		s->errors += 1;
+	}
 
 	if (!(s->flags & SLAB_STORE_USER))
 		goto out;
@@ -4673,20 +4692,23 @@ static int validate_slab_node(struct kmem_cache *s,
 		validate_slab(s, page);
 		count++;
 	}
-	if (count != atomic_long_read(&n->nr_slabs))
+	if (count != atomic_long_read(&n->nr_slabs)) {
 		pr_err("SLUB: %s %ld slabs counted but counter=%ld\n",
 		       s->name, count, atomic_long_read(&n->nr_slabs));
+		s->errors += 1;
+	}
 
 out:
 	spin_unlock_irqrestore(&n->list_lock, flags);
 	return count;
 }
 
-static long validate_slab_cache(struct kmem_cache *s)
+long validate_slab_cache(struct kmem_cache *s)
 {
 	int node;
 	unsigned long count = 0;
 	struct kmem_cache_node *n;
+	s->errors = 0;
 
 	flush_all(s);
 	for_each_kmem_cache_node(s, node, n)
@@ -4694,6 +4716,8 @@ static long validate_slab_cache(struct kmem_cache *s)
 
 	return count;
 }
+EXPORT_SYMBOL(validate_slab_cache);
+
 /*
  * Generate lists of code addresses where slabcache objects are allocated
  * and freed.
