@@ -117,6 +117,9 @@ arm/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13-3
 	bcm/dt-2
 		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/bmc-5.13-devicetree-2
+	patch
+		arm64: dts: amlogic: misc DT schema fixups
+		dt-bindings: mali-bifrost: add dma-coherent
 
 arm/drivers
 	drivers/tee
@@ -197,6 +200,8 @@ arm/newsoc
 arm/late
 
 arm/fixes
+	<no branch> (4d09ccc4a81e7de6b002482af554d8b5626f5041)
+		git://git.kernel.org/pub/scm/linux/kernel/git/sunxi/linux tags/sunxi-fixes-for-5.12-2
 
 arm/apple-m1
 	apple/m1-dependency
