@@ -35,7 +35,8 @@
 #define SSO_AF_INT_DIGEST_PRNT(reg)					\
 	for (i = 0; i < block->lf.max / 64; i++) {			\
 		reg0 = rvu_read64(rvu, blkaddr, reg##X(i));		\
-		dev_err(rvu->dev, #reg "(%d) : 0x%llx", i, reg0);	\
+		dev_err_ratelimited(rvu->dev, #reg "(%d) : 0x%llx", i,  \
+				    reg0);				\
 		rvu_write64(rvu, blkaddr, reg##X(i), reg0);		\
 	}
 
