@@ -116,6 +116,10 @@ struct vm_area_struct;
 extern void copy_user_highpage(struct page *to, struct page *from,
 	unsigned long vaddr, struct vm_area_struct *vma);
 
+#define clear_user_page_uncached(addr,vaddr,pg) clear_user_page(addr, vaddr, pg)
+
+#define clear_page_uncached_flush()	do { } while (0)
+
 #define __HAVE_ARCH_COPY_USER_HIGHPAGE
 
 /*
