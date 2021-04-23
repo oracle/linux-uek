@@ -203,7 +203,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # securelaunch (with embedded uroot initramfs)
 %define with_securelaunch %{?_with_securelaunch: 1} %{?!_with_securelaunch: 1}
 
-%define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}%{?with_securelaunch:.SL}
+%define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
 %if !%{debugbuildsenabled}
 %define with_debug 0
@@ -245,6 +245,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_dtrace 0
 %define with_fips 0
 %define with_doc 0
+%define with_sl 1
+%define with_pl 1
 %endif
 
 %define all_x86 i386 i686
@@ -584,7 +586,7 @@ AutoReq: no\
 AutoProv: yes\
 %{nil}
 
-%define variant %{?build_variant:%{build_variant}}%{!?build_variant:%{?with_securelaunch:-uek-SL}%{!?with_securelaunch:uek}}
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
@@ -647,7 +649,7 @@ BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 %if %{with_securelaunch}
-BuildRequires: u-root
+BuildRequires: u-root-sl u-root-pl
 %endif
 
 Source0: linux-%{kversion}.tar.bz2
@@ -680,7 +682,7 @@ Source1012: config-aarch64-embedded-debug
 Source1013: config-mips64-embedded-kdump
 Source1014: config-aarch64-embedded2
 Source1015: config-x86_64-sl
-Source1016: config-x86_64-sl-debug
+Source1016: config-x86_64-pl
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -746,11 +748,23 @@ Linux operating system.  The kernel handles the basic functions
 of the operating system: memory allocation, process allocation, device
 input and output, etc.
 
-%if %{with_securelaunch}
+%package SL
+Summary: The Linux kernel compiled for Secure Launch support
+Group: System Environment/Kernel
+%kernel_reqprovconf
+%description SL
 This package includes a version of the Linux kernel with support for Secure Launch.
-A Secure Launch kernel provides TPM measurement/attestation support as part of the
+A Secure Launch kernel provides TPM measurement/attestation support as a part of the
 Trenchboot architecture.
-%endif
+
+%package PL
+Summary: The Linux kernel compiled for Secure Launch support
+Group: System Environment/Kernel
+%kernel_reqprovconf
+%description PL
+This package includes a version of the Linux kernel with support for provisioning
+Secure Launch using TPM. A Secure Launch kernel provides TPM measurement/attestation
+support as a part of the Trenchboot architecture.
 
 %package doc
 Summary: Various documentation bits found in the kernel source
@@ -1279,8 +1293,8 @@ chmod +x %{_builddir}/find-debuginfo.sh
 mkdir -p configs
 %ifarch x86_64
 %if %{with_securelaunch}
-	cp %{SOURCE1016} configs/config-debug
-	cp %{SOURCE1015} configs/config
+	cp %{SOURCE1015} configs/config-sl
+	cp %{SOURCE1016} configs/config-pl
 %else
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
@@ -1394,6 +1408,10 @@ BuildKernel() {
 	cp configs/config-emb-kdump .config
     elif [ "$Flavour" == "emb2" ]; then
 	cp configs/config-embedded2 .config
+    elif [ "$Flavour" == "SL" ]; then
+	cp configs/config-sl .config
+    elif [ "$Flavour" == "PL" ]; then
+	cp configs/config-pl .config
     else
 	cp configs/config .config
     fi
@@ -1729,14 +1747,22 @@ BuildKernel %make_target %kernel_image emb-debug
 BuildKernel %make_target %kernel_image PAE
 %endif
 
-%if %{with_securelaunch}
+%if %{with_sl}
 # copy/gzip over the initramfs provided by the u-root package (for inclusion into kernel)
-gzip -c /boot/uroot-initramfs.cpio >> ./uroot-initramfs.cpio.gz
+gzip -c /boot/uroot-initramfs-sl.cpio >> ./uroot-initramfs.cpio.gz
 # copy over the policy file provided by the u-root package and version it.
 cp /boot/securelaunch.policy $RPM_BUILD_ROOT/boot/securelaunch.policy-%{KVERREL}
+BuildKernel %make_target %kernel_image SL
+%endif
+
+%if %{with_pl}
+# copy/gzip over the initramfs provided by the u-root package (for inclusion into kernel)
+gzip -c /boot/uroot-initramfs-pl.cpio >> ./uroot-initramfs.cpio.gz
+# copy over the policy file provided by the u-root package and version it.
+cp /boot/securelaunch-pl.policy $RPM_BUILD_ROOT/boot/securelaunch-pl.policy-%{KVERREL}
 cp samples/slaunch/rover-tpm-prov.sh $RPM_BUILD_ROOT/boot/rover-tpm-prov.sh
 cp samples/slaunch/sign-policy.sh $RPM_BUILD_ROOT/boot/sign-policy.sh
-BuildKernel %make_target %kernel_image
+BuildKernel %make_target %kernel_image PL
 %endif
 
 %if %{with_up}
@@ -2333,11 +2359,15 @@ fi
 /boot/System.map-%{KVERREL}%{?2:.%{2}}\
 /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 /boot/config-%{KVERREL}%{?2:.%{2}}\
-%if %{with_securelaunch}\
+%if %{2} == SL\
 /boot/securelaunch.policy-%{KVERREL}\
+%endif\
+%if %{2} == PL\
+/boot/securelaunch-pl.policy-%{KVERREL}\
 /boot/rover-tpm-prov.sh\
 /boot/sign-policy.sh\
-%else\
+%endif\
+%if !%{with_securelaunch}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 %if %{with_dtrace} && "%{2}" != "emb" && "%{2}" != "emb2"\
@@ -2399,7 +2429,8 @@ fi
 %endif
 %kernel_variant_files %{with_pae} PAE
 %kernel_variant_files %{with_pae_debug} PAEdebug
-%kernel_variant_files %{with_securelaunch}
+%kernel_variant_files %{with_sl} SL
+%kernel_variant_files %{with_pl} PL
 %kernel_variant_files %{with_kdump} kdump
 
 %kernel_variant_files %{with_4k_ps} 4k
