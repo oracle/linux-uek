@@ -641,7 +641,7 @@ pub fn module(ts: TokenStream) -> TokenStream {
             }}
 
             fn __init() -> kernel::c_types::c_int {{
-                match <{type_} as KernelModule>::init() {{
+                match <{type_} as kernel::KernelModule>::init() {{
                     Ok(m) => {{
                         unsafe {{
                             __MOD = Some(m);
@@ -682,4 +682,83 @@ pub fn module(ts: TokenStream) -> TokenStream {
         generated_array_types = generated_array_types,
         initcall_section = ".initcall6.init"
     ).parse().expect("Error parsing formatted string into token stream.")
+}
+
+/// Declares a kernel module that exposes a single misc device.
+///
+/// The `type` argument should be a type which implements the [`FileOpener`] trait. Also accepts
+/// various forms of kernel metadata.
+///
+/// [`FileOpener`]: ../kernel/file_operations/trait.FileOpener.html
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use kernel::prelude::*;
+///
+/// module_misc_device! {
+///     type: MyFile,
+///     name: b"my_miscdev_kernel_module",
+///     author: b"Rust for Linux Contributors",
+///     description: b"My very own misc device kernel module!",
+///     license: b"GPL v2",
+/// }
+///
+/// #[derive(Default)]
+/// struct MyFile;
+///
+/// impl kernel::file_operations::FileOperations for MyFile {
+///     kernel::declare_file_operations!();
+/// }
+/// ```
+#[proc_macro]
+pub fn module_misc_device(ts: TokenStream) -> TokenStream {
+    let mut it = ts.into_iter();
+
+    let type_ = get_ident(&mut it, "type");
+    let name = get_byte_string(&mut it, "name");
+    let author = get_byte_string(&mut it, "author");
+    let description = get_byte_string(&mut it, "description");
+    let license = get_byte_string(&mut it, "license");
+    expect_end(&mut it);
+
+    let module = format!("__internal_ModuleFor{}", type_);
+
+    format!(
+        "
+            #[doc(hidden)]
+            struct {module} {{
+                _dev: core::pin::Pin<alloc::boxed::Box<kernel::miscdev::Registration>>,
+            }}
+
+            impl kernel::KernelModule for {module} {{
+                fn init() -> kernel::KernelResult<Self> {{
+                    Ok(Self {{
+                        _dev: kernel::miscdev::Registration::new_pinned::<{type_}>(
+                            kernel::cstr!(\"{name}\"),
+                            None,
+                            (),
+                        )?,
+                    }})
+                }}
+            }}
+
+            kernel::prelude::module! {{
+                type: {module},
+                name: b\"{name}\",
+                author: b\"{author}\",
+                description: b\"{description}\",
+                license: b\"{license}\",
+                params: {{}},
+            }}
+        ",
+        module = module,
+        type_ = type_,
+        name = name,
+        author = author,
+        description = description,
+        license = license
+    )
+    .parse()
+    .expect("Error parsing formatted string into token stream.")
 }
