@@ -1,11 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0
- * Marvell CPT OcteonTX2 CPT driver
- *
- * Copyright (C) 2018 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+/* SPDX-License-Identifier: GPL-2.0-only
+ * Copyright (C) 2018 Marvell.
  */
 
 #ifndef __OTX2_CPT_REQMGR_H
@@ -15,17 +9,17 @@
 
 /* Completion code size and initial value */
 #define OTX2_CPT_COMPLETION_CODE_SIZE 8
-#define OTX2_CPT_COMPLETION_CODE_INIT 0
+#define OTX2_CPT_COMPLETION_CODE_INIT OTX2_CPT_COMP_E_NOTDONE
 /*
  * Maximum total number of SG buffers is 100, we divide it equally
  * between input and output
  */
-#define OTX2_CPT_MAX_SG_IN_CNT 50
+#define OTX2_CPT_MAX_SG_IN_CNT  50
 #define OTX2_CPT_MAX_SG_OUT_CNT 50
 
 /* DMA mode direct or SG */
-#define OTX2_CPT_DMA_DIRECT_DIRECT 0
-#define OTX2_CPT_DMA_GATHER_SCATTER 1
+#define OTX2_CPT_DMA_MODE_DIRECT 0
+#define OTX2_CPT_DMA_MODE_SG     1
 
 /* Context source CPTR or DPTR */
 #define OTX2_CPT_FROM_CPTR 0
@@ -33,7 +27,7 @@
 
 #define OTX2_CPT_MAX_REQ_SIZE 65535
 
-union otx2_cpt_opcode_info {
+union otx2_cpt_opcode {
 	u16 flags;
 	struct {
 		u8 major;
@@ -45,7 +39,7 @@ struct otx2_cptvf_request {
 	u32 param1;
 	u32 param2;
 	u16 dlen;
-	union otx2_cpt_opcode_info opcode;
+	union otx2_cpt_opcode opcode;
 };
 
 /*
@@ -53,25 +47,20 @@ struct otx2_cptvf_request {
  * Words EI (0-3)
  */
 union otx2_cpt_iq_cmd_word0 {
-	u64 u64;
+	u64 u;
 	struct {
-		u16 opcode;
-		u16 param1;
-		u16 param2;
-		u16 dlen;
+		__be16 opcode;
+		__be16 param1;
+		__be16 param2;
+		__be16 dlen;
 	} s;
 };
 
 union otx2_cpt_iq_cmd_word3 {
-	u64 u64;
+	u64 u;
 	struct {
-#if defined(__BIG_ENDIAN_BITFIELD)
-		u64 grp:3;
-		u64 cptr:61;
-#else
 		u64 cptr:61;
 		u64 grp:3;
-#endif
 	} s;
 };
 
@@ -83,7 +72,7 @@ struct otx2_cpt_iq_command {
 };
 
 struct otx2_cpt_pending_entry {
-	u64 *completion_addr;	/* Completion address */
+	void *completion_addr;	/* Completion address */
 	void *info;
 	/* Kernel async request callback */
 	void (*callback)(int status, void *arg1, void *arg2);
@@ -111,7 +100,7 @@ union otx2_cpt_ctrl_info {
 	u32 flags;
 	struct {
 #if defined(__BIG_ENDIAN_BITFIELD)
-		u32 reserved0:26;
+		u32 reserved_6_31:26;
 		u32 grp:3;	/* Group bits */
 		u32 dma_mode:2;	/* DMA mode */
 		u32 se_req:1;	/* To SE core */
@@ -119,7 +108,7 @@ union otx2_cpt_ctrl_info {
 		u32 se_req:1;	/* To SE core */
 		u32 dma_mode:2;	/* DMA mode */
 		u32 grp:3;	/* Group bits */
-		u32 reserved0:26;
+		u32 reserved_6_31:26;
 #endif
 	} s;
 };
@@ -134,18 +123,18 @@ struct otx2_cpt_req_info {
 	struct otx2_cpt_buf_ptr out[OTX2_CPT_MAX_SG_OUT_CNT];
 	u8 *iv_out;     /* IV to send back */
 	u16 rlen;	/* Output length */
-	u8 incnt;	/* Number of input buffers */
-	u8 outcnt;	/* Number of output buffers */
+	u8 in_cnt;	/* Number of input buffers */
+	u8 out_cnt;	/* Number of output buffers */
 	u8 req_type;	/* Type of request */
 	u8 is_enc;	/* Is a request an encryption request */
 	u8 is_trunc_hmac;/* Is truncated hmac used */
 };
 
-struct otx2_cpt_info_buffer {
+struct otx2_cpt_inst_info {
 	struct otx2_cpt_pending_entry *pentry;
 	struct otx2_cpt_req_info *req;
 	struct pci_dev *pdev;
-	u64 *completion_addr;
+	void *completion_addr;
 	u8 *out_buffer;
 	u8 *in_buffer;
 	dma_addr_t dptr_baddr;
@@ -158,23 +147,18 @@ struct otx2_cpt_info_buffer {
 };
 
 struct otx2_cpt_sglist_component {
-	union {
-		u64 len;
-		struct {
-			u16 len0;
-			u16 len1;
-			u16 len2;
-			u16 len3;
-		} s;
-	} u;
-	u64 ptr0;
-	u64 ptr1;
-	u64 ptr2;
-	u64 ptr3;
+	__be16 len0;
+	__be16 len1;
+	__be16 len2;
+	__be16 len3;
+	__be64 ptr0;
+	__be64 ptr1;
+	__be64 ptr2;
+	__be64 ptr3;
 };
 
-static inline void do_request_cleanup(struct pci_dev *pdev,
-				      struct otx2_cpt_info_buffer *info)
+static inline void otx2_cpt_info_destroy(struct pci_dev *pdev,
+					 struct otx2_cpt_inst_info *info)
 {
 	struct otx2_cpt_req_info *req;
 	int i;
@@ -185,7 +169,7 @@ static inline void do_request_cleanup(struct pci_dev *pdev,
 
 	if (info->req) {
 		req = info->req;
-		for (i = 0; i < req->outcnt; i++) {
+		for (i = 0; i < req->out_cnt; i++) {
 			if (req->out[i].dma_addr)
 				dma_unmap_single(&pdev->dev,
 						 req->out[i].dma_addr,
@@ -193,7 +177,7 @@ static inline void do_request_cleanup(struct pci_dev *pdev,
 						 DMA_BIDIRECTIONAL);
 		}
 
-		for (i = 0; i < req->incnt; i++) {
+		for (i = 0; i < req->in_cnt; i++) {
 			if (req->in[i].dma_addr)
 				dma_unmap_single(&pdev->dev,
 						 req->in[i].dma_addr,
@@ -201,13 +185,13 @@ static inline void do_request_cleanup(struct pci_dev *pdev,
 						 DMA_BIDIRECTIONAL);
 		}
 	}
-	kzfree(info);
+	kfree(info);
 }
 
 struct otx2_cptlf_wqe;
-int otx2_cpt_get_kcrypto_eng_grp_num(struct pci_dev *pdev);
 int otx2_cpt_do_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 			int cpu_num);
 void otx2_cpt_post_process(struct otx2_cptlf_wqe *wqe);
+int otx2_cpt_get_kcrypto_eng_grp_num(struct pci_dev *pdev);
 
 #endif /* __OTX2_CPT_REQMGR_H */

@@ -1,16 +1,12 @@
-/* SPDX-License-Identifier: GPL-2.0
- * Marvell OcteonTX2 CPT driver
- *
- * Copyright (C) 2018 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+/* SPDX-License-Identifier: GPL-2.0-only
+ * Copyright (C) 2018 Marvell.
  */
-
 #ifndef __OTX2_CPTLF_H
 #define __OTX2_CPTLF_H
 
+#include <mbox.h>
+#include <rvu.h>
+#include "otx2_cpt_common.h"
 #include "otx2_cpt_reqmgr.h"
 
 /*
@@ -22,14 +18,12 @@
  * CPT instruction queue size passed to HW is in units of 40*CPT_INST_S
  * messages.
  */
-#define DIV40 40
-#define OTX2_CPT_SIZE_DIV40 ((OTX2_CPT_USER_REQUESTED_QLEN_MSGS + \
-			      DIV40 - 1)/DIV40)
+#define OTX2_CPT_SIZE_DIV40 (OTX2_CPT_USER_REQUESTED_QLEN_MSGS/40)
 
 /*
  * CPT instruction and pending queues length in CPT_INST_S messages
  */
-#define OTX2_CPT_INST_QLEN_MSGS	((OTX2_CPT_SIZE_DIV40 - 1) * DIV40)
+#define OTX2_CPT_INST_QLEN_MSGS	((OTX2_CPT_SIZE_DIV40 - 1) * 40)
 
 /*
  * LDWB is getting incorrectly used when IQB_LDWB = 1 and CPT instruction
@@ -41,7 +35,7 @@
 
 /* CPT instruction queue length in bytes */
 #define OTX2_CPT_INST_QLEN_BYTES                                               \
-		((OTX2_CPT_SIZE_DIV40 * DIV40 * OTX2_CPT_INST_SIZE) +          \
+		((OTX2_CPT_SIZE_DIV40 * 40 * OTX2_CPT_INST_SIZE) +             \
 		OTX2_CPT_INST_QLEN_EXTRA_BYTES)
 
 /* CPT instruction group queue length in bytes */
@@ -52,26 +46,42 @@
 #define OTX2_CPT_Q_FC_LEN 128
 
 /* CPT instruction queue alignment */
-#define OTX2_CPT_INST_Q_ALIGNMENT 128
+#define OTX2_CPT_INST_Q_ALIGNMENT  128
 
 /* Mask which selects all engine groups */
 #define OTX2_CPT_ALL_ENG_GRPS_MASK 0xFF
 
+/* Maximum LFs supported in OcteonTX2 for CPT */
+#define OTX2_CPT_MAX_LFS_NUM    64
+
 /* Queue priority */
-#define OTX2_CPT_QUEUE_HI_PRIO	0x1
-#define OTX2_CPT_QUEUE_LOW_PRIO	0x0
+#define OTX2_CPT_QUEUE_HI_PRIO  0x1
+#define OTX2_CPT_QUEUE_LOW_PRIO 0x0
 
+#if defined(CONFIG_ARM64)
+/*
+ * otx2_lmt_flush is used for LMT store operation.
+ * On octeontx2 platform CPT instruction enqueue and
+ * NIX packet send are only possible via LMTST
+ * operations and it uses LDEOR instruction targeting
+ * the coprocessor address.
+ */
+#define otx2_lmt_flush(ioaddr)                          \
+({                                                      \
+	u64 result = 0;                                 \
+	__asm__ volatile(".cpu  generic+lse\n"          \
+			 "ldeor xzr, %x[rf], [%[rs]]"   \
+			 : [rf]"=r" (result)            \
+			 : [rs]"r" (ioaddr));           \
+	(result);                                       \
+})
+#else
+#define otx2_lmt_flush(ioaddr)          ({ 0; })
+#endif
 
-struct otx2_cptlf_sysfs_cfg {
-	char name[OTX2_CPT_NAME_LENGTH];
-	struct device_attribute eng_grps_mask_attr;
-	struct device_attribute coalesc_tw_attr;
-	struct device_attribute coalesc_nw_attr;
-	struct device_attribute prio_attr;
-#define ATTRS_NUM 5
-	struct attribute *attrs[ATTRS_NUM];
-	struct attribute_group attr_grp;
-	bool is_sysfs_grp_created;
+enum otx2_cptlf_state {
+	OTX2_CPTLF_IN_RESET,
+	OTX2_CPTLF_STARTED,
 };
 
 struct otx2_cpt_inst_queue {
@@ -90,19 +100,18 @@ struct otx2_cptlf_wqe {
 };
 
 struct otx2_cptlf_info {
-	struct otx2_cptlfs_info *lfs;		/* Ptr to cptlfs_info struct */
-	struct otx2_cptlf_sysfs_cfg sysfs_cfg;	/* LF sysfs config entries */
-	void *lmtline;				/* Address of LMTLINE */
-	void *ioreg;                            /* LMTLINE send register */
-	int msix_offset;			/* MSI-X interrupts offset */
-	cpumask_var_t affinity_mask;		/* IRQs affinity mask */
+	struct otx2_cptlfs_info *lfs;           /* Ptr to cptlfs_info struct */
+	void __iomem *lmtline;                  /* Address of LMTLINE */
+	void __iomem *ioreg;                    /* LMTLINE send register */
+	int msix_offset;                        /* MSI-X interrupts offset */
+	cpumask_var_t affinity_mask;            /* IRQs affinity mask */
 	u8 irq_name[OTX2_CPT_LF_MSIX_VECTORS][32];/* Interrupts name */
 	u8 is_irq_reg[OTX2_CPT_LF_MSIX_VECTORS];  /* Is interrupt registered */
-	u8 slot;				/* Slot number of this LF */
+	u8 slot;                                /* Slot number of this LF */
 
 	struct otx2_cpt_inst_queue iqueue;/* Instruction queue */
 	struct otx2_cpt_pending_queue pqueue; /* Pending queue */
-	struct otx2_cptlf_wqe *wqe;	/* Tasklet work info */
+	struct otx2_cptlf_wqe *wqe;       /* Tasklet work info */
 };
 
 struct otx2_cptlfs_info {
@@ -110,69 +119,64 @@ struct otx2_cptlfs_info {
 	void __iomem *reg_base;
 	struct pci_dev *pdev;   /* Device LFs are attached to */
 	struct otx2_cptlf_info lf[OTX2_CPT_MAX_LFS_NUM];
-	u8 kcrypto_eng_grp_num;	/* Kernel crypto engine group number */
+	struct otx2_mbox *mbox;
 	u8 are_lfs_attached;	/* Whether CPT LFs are attached */
 	u8 lfs_num;		/* Number of CPT LFs */
-	u8 kcrypto_limits;      /* Kernel crypto limits */
-	u8 blkaddr;             /* BLKADDR_CPT0/BLKADDR_CPT1 */
+	u8 kcrypto_eng_grp_num;	/* Kernel crypto engine group number */
+	u8 kvf_limits;          /* Kernel crypto limits */
+	atomic_t state;         /* LF's state. started/reset */
+	int blkaddr;            /* CPT blkaddr: BLKADDR_CPT0/BLKADDR_CPT1 */
 };
 
 static inline void otx2_cpt_free_instruction_queues(
 					struct otx2_cptlfs_info *lfs)
 {
+	struct otx2_cpt_inst_queue *iq;
 	int i;
 
 	for (i = 0; i < lfs->lfs_num; i++) {
-		if (lfs->lf[i].iqueue.real_vaddr)
+		iq = &lfs->lf[i].iqueue;
+		if (iq->real_vaddr)
 			dma_free_coherent(&lfs->pdev->dev,
-					  lfs->lf[i].iqueue.size,
-					  lfs->lf[i].iqueue.real_vaddr,
-					  lfs->lf[i].iqueue.real_dma_addr);
-		lfs->lf[i].iqueue.real_vaddr = NULL;
-		lfs->lf[i].iqueue.vaddr = NULL;
+					  iq->size,
+					  iq->real_vaddr,
+					  iq->real_dma_addr);
+		iq->real_vaddr = NULL;
+		iq->vaddr = NULL;
 	}
 }
 
 static inline int otx2_cpt_alloc_instruction_queues(
 					struct otx2_cptlfs_info *lfs)
 {
+	struct otx2_cpt_inst_queue *iq;
 	int ret = 0, i;
 
 	if (!lfs->lfs_num)
 		return -EINVAL;
 
 	for (i = 0; i < lfs->lfs_num; i++) {
-
-		lfs->lf[i].iqueue.size = OTX2_CPT_INST_QLEN_BYTES +
-					 OTX2_CPT_Q_FC_LEN +
-					 OTX2_CPT_INST_GRP_QLEN_BYTES +
-					 OTX2_CPT_INST_Q_ALIGNMENT;
-		lfs->lf[i].iqueue.real_vaddr =
-				dma_alloc_coherent(&lfs->pdev->dev,
-					lfs->lf[i].iqueue.size,
-					&lfs->lf[i].iqueue.real_dma_addr,
-					GFP_KERNEL);
-		if (!lfs->lf[i].iqueue.real_vaddr) {
-			dev_err(&lfs->pdev->dev,
-				"Inst queue allocation failed for LF %d\n", i);
+		iq = &lfs->lf[i].iqueue;
+		iq->size = OTX2_CPT_INST_QLEN_BYTES +
+			   OTX2_CPT_Q_FC_LEN +
+			   OTX2_CPT_INST_GRP_QLEN_BYTES +
+			   OTX2_CPT_INST_Q_ALIGNMENT;
+		iq->real_vaddr = dma_alloc_coherent(&lfs->pdev->dev, iq->size,
+					&iq->real_dma_addr, GFP_KERNEL);
+		if (!iq->real_vaddr) {
 			ret = -ENOMEM;
 			goto error;
 		}
-		lfs->lf[i].iqueue.vaddr = lfs->lf[i].iqueue.real_vaddr +
-					  OTX2_CPT_INST_GRP_QLEN_BYTES;
-		lfs->lf[i].iqueue.dma_addr = lfs->lf[i].iqueue.real_dma_addr +
-					     OTX2_CPT_INST_GRP_QLEN_BYTES;
+		iq->vaddr = iq->real_vaddr + OTX2_CPT_INST_GRP_QLEN_BYTES;
+		iq->dma_addr = iq->real_dma_addr + OTX2_CPT_INST_GRP_QLEN_BYTES;
 
 		/* Align pointers */
-		lfs->lf[i].iqueue.vaddr =
-			(uint8_t *) PTR_ALIGN(lfs->lf[i].iqueue.vaddr,
-					      OTX2_CPT_INST_Q_ALIGNMENT);
-		lfs->lf[i].iqueue.dma_addr =
-			(dma_addr_t) PTR_ALIGN(lfs->lf[i].iqueue.dma_addr,
-					       OTX2_CPT_INST_Q_ALIGNMENT);
+		iq->vaddr = PTR_ALIGN(iq->vaddr, OTX2_CPT_INST_Q_ALIGNMENT);
+		iq->dma_addr = PTR_ALIGN(iq->dma_addr,
+					 OTX2_CPT_INST_Q_ALIGNMENT);
 	}
-
 	return 0;
+
 error:
 	otx2_cpt_free_instruction_queues(lfs);
 	return ret;
@@ -317,10 +321,10 @@ static inline void otx2_cpt_fill_inst(union otx2_cpt_inst_s *cptinst,
 	cptinst->s.res_addr = comp_baddr;
 	cptinst->u[2] = 0x0;
 	cptinst->u[3] = 0x0;
-	cptinst->s.ei0 = iq_cmd->cmd.u64;
+	cptinst->s.ei0 = iq_cmd->cmd.u;
 	cptinst->s.ei1 = iq_cmd->dptr;
 	cptinst->s.ei2 = iq_cmd->rptr;
-	cptinst->s.ei3 = iq_cmd->cptr.u64;
+	cptinst->s.ei3 = iq_cmd->cptr.u;
 }
 
 /*
@@ -330,30 +334,21 @@ static inline void otx2_cpt_fill_inst(union otx2_cpt_inst_s *cptinst,
  * 2 - 2 CPT instructions will be enqueued during LMTST operation
  */
 static inline void otx2_cpt_send_cmd(union otx2_cpt_inst_s *cptinst,
-				     u32 insts_num, void *obj)
+				     u32 insts_num, struct otx2_cptlf_info *lf)
 {
-	struct otx2_cptlf_info *lf = obj;
-	void *lmtline = lf->lmtline;
-	void *ioreg = lf->ioreg;
+	void __iomem *lmtline = lf->lmtline;
 	long ret;
 
 	/*
 	 * Make sure memory areas pointed in CPT_INST_S
 	 * are flushed before the instruction is sent to CPT
 	 */
-	smp_wmb();
+	dma_wmb();
 
 	do {
 		/* Copy CPT command to LMTLINE */
-		memcpy(lmtline, cptinst, insts_num * OTX2_CPT_INST_SIZE);
+		memcpy_toio(lmtline, cptinst, insts_num * OTX2_CPT_INST_SIZE);
 
-		/*
-		 * Make sure compiler does not reorder memcpy and ldeor.
-		 * LMTST transactions are always flushed from the write
-		 * buffer immediately, a DMB is not required to push out
-		 * LMTSTs.
-		 */
-		barrier();
 		/*
 		 * LDEOR initiates atomic transfer to I/O device
 		 * The following will cause the LMTST to fail (the LDEOR
@@ -372,15 +367,22 @@ static inline void otx2_cpt_send_cmd(union otx2_cpt_inst_s *cptinst,
 		 * need to store to LMTCANCEL. Also note as LMTLINE data cannot
 		 * be read, there is no information leakage between processes.
 		 */
-		__asm__ volatile(
-			"  .cpu		generic+lse\n"
-			"  ldeor	xzr, %0, [%1]\n"
-			: "=r" (ret) : "r" (ioreg) : "memory");
+		ret = otx2_lmt_flush(lf->ioreg);
+
 	} while (!ret);
 }
 
-int otx2_cptvf_lf_init(struct pci_dev *pdev, void *reg_base,
-		       struct otx2_cptlfs_info *lfs, int lfs_num);
-int otx2_cptvf_lf_shutdown(struct pci_dev *pdev, struct otx2_cptlfs_info *lfs);
+static inline bool otx2_cptlf_started(struct otx2_cptlfs_info *lfs)
+{
+	return atomic_read(&lfs->state) == OTX2_CPTLF_STARTED;
+}
+
+int otx2_cptlf_init(struct otx2_cptlfs_info *lfs, u8 eng_grp_msk, int pri,
+		    int lfs_num);
+void otx2_cptlf_shutdown(struct otx2_cptlfs_info *lfs);
+int otx2_cptlf_register_interrupts(struct otx2_cptlfs_info *lfs);
+void otx2_cptlf_unregister_interrupts(struct otx2_cptlfs_info *lfs);
+void otx2_cptlf_free_irqs_affinity(struct otx2_cptlfs_info *lfs);
+int otx2_cptlf_set_irqs_affinity(struct otx2_cptlfs_info *lfs);
 
 #endif /* __OTX2_CPTLF_H */

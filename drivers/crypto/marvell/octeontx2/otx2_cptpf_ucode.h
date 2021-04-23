@@ -1,11 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0
- * Marvell OcteonTX2 CPT driver
- *
- * Copyright (C) 2018 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+/* SPDX-License-Identifier: GPL-2.0-only
+ * Copyright (C) 2018 Marvell.
  */
 
 #ifndef __OTX2_CPTPF_UCODE_H
@@ -23,9 +17,6 @@
  */
 #define OTX2_CPT_MAX_ETYPES_PER_GRP 2
 
-/* CPT ucode alignment */
-#define OTX2_CPT_UCODE_ALIGNMENT    128
-
 /* CPT ucode signature size */
 #define OTX2_CPT_UCODE_SIGN_LEN     256
 
@@ -35,8 +26,7 @@
 /* Maximum number of supported engines/cores on OcteonTX2 platform */
 #define OTX2_CPT_MAX_ENGINES        128
 
-#define OTX2_CPT_ENGS_BITMASK_LEN   (OTX2_CPT_MAX_ENGINES/(BITS_PER_BYTE * \
-					 sizeof(unsigned long)))
+#define OTX2_CPT_ENGS_BITMASK_LEN   BITS_TO_LONGS(OTX2_CPT_MAX_ENGINES)
 
 /* Microcode types */
 enum otx2_cpt_ucode_type {
@@ -76,7 +66,7 @@ struct otx2_cpt_ucode_ver_num {
 struct otx2_cpt_ucode_hdr {
 	struct otx2_cpt_ucode_ver_num ver_num;
 	u8 ver_str[OTX2_CPT_UCODE_VER_STR_SZ];
-	u32 code_length;
+	__be32 code_length;
 	u32 padding[3];
 };
 
@@ -88,17 +78,15 @@ struct otx2_cpt_ucode {
 	struct otx2_cpt_ucode_ver_num ver_num;/* ucode version number */
 	char filename[OTX2_CPT_NAME_LENGTH];/* ucode filename */
 	dma_addr_t dma;		/* phys address of ucode image */
-	dma_addr_t align_dma;	/* aligned phys address of ucode image */
 	void *va;		/* virt address of ucode image */
-	void *align_va;		/* aligned virt address of ucode image */
 	u32 size;		/* ucode image size */
 	int type;		/* ucode image type SE, IE, AE or SE+IE */
 };
 
-struct tar_ucode_info_t {
+struct otx2_cpt_uc_info_t {
 	struct list_head list;
 	struct otx2_cpt_ucode ucode;/* microcode information */
-	const u8 *ucode_ptr;	/* pointer to microcode in tar archive */
+	const struct firmware *fw;
 };
 
 /* Maximum and current number of engines available for all engine groups */
@@ -139,13 +127,10 @@ struct otx2_cpt_mirror_info {
 
 struct otx2_cpt_eng_grp_info {
 	struct otx2_cpt_eng_grps *g; /* pointer to engine_groups structure */
-	struct device_attribute info_attr; /* group info entry attr */
 	/* engines attached */
 	struct otx2_cpt_engs_rsvd engs[OTX2_CPT_MAX_ETYPES_PER_GRP];
 	/* ucodes information */
 	struct otx2_cpt_ucode ucode[OTX2_CPT_MAX_ETYPES_PER_GRP];
-	/* sysfs info entry name */
-	char sysfs_info_name[OTX2_CPT_NAME_LENGTH];
 	/* engine group mirroring information */
 	struct otx2_cpt_mirror_info mirror;
 	int idx;	 /* engine group index */
@@ -157,30 +142,21 @@ struct otx2_cpt_eng_grp_info {
 
 struct otx2_cpt_eng_grps {
 	struct otx2_cpt_eng_grp_info grp[OTX2_CPT_MAX_ENGINE_GROUPS];
-	struct device_attribute ucode_load_attr;/* ucode load attr */
 	struct otx2_cpt_engs_available avail;
-	struct mutex lock;
 	void *obj;			/* device specific data */
 	int engs_num;			/* total number of engines supported */
-	int eng_types_supported;	/* engine types supported SE, IE, AE */
 	u8 eng_ref_cnt[OTX2_CPT_MAX_ENGINES];/* engines reference count */
-	bool is_ucode_load_created;	/* is ucode_load sysfs entry created */
-	bool is_first_try; /* is this first try to create kcrypto engine grp */
-	bool is_rdonly;	/* do engine groups configuration can be modified */
+	bool is_grps_created; /* Is the engine groups are already created */
 };
 struct otx2_cptpf_dev;
 int otx2_cpt_init_eng_grps(struct pci_dev *pdev,
 			   struct otx2_cpt_eng_grps *eng_grps);
 void otx2_cpt_cleanup_eng_grps(struct pci_dev *pdev,
 			       struct otx2_cpt_eng_grps *eng_grps);
-int otx2_cpt_try_create_default_eng_grps(struct pci_dev *pdev,
-					 struct otx2_cpt_eng_grps *eng_grps);
-void otx2_cpt_set_eng_grps_is_rdonly(struct otx2_cpt_eng_grps *eng_grps,
-				     bool is_rdonly);
-int otx2_cpt_uc_supports_eng_type(struct otx2_cpt_ucode *ucode, int eng_type);
-int otx2_cpt_eng_grp_has_eng_type(struct otx2_cpt_eng_grp_info *eng_grp,
-				  int eng_type);
+int otx2_cpt_create_eng_grps(struct pci_dev *pdev,
+			     struct otx2_cpt_eng_grps *eng_grps);
 int otx2_cpt_disable_all_cores(struct otx2_cptpf_dev *cptpf);
-int otx2_cpt_discover_eng_capabilities(void *obj);
+int otx2_cpt_get_eng_grp(struct otx2_cpt_eng_grps *eng_grps, int eng_type);
+int otx2_cpt_discover_eng_capabilities(struct otx2_cptpf_dev *cptpf);
 
 #endif /* __OTX2_CPTPF_UCODE_H */

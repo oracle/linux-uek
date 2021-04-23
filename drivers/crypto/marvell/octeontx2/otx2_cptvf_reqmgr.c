@@ -1,16 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTX CPT driver
- *
- * Copyright (C) 2019 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0-only
+/* Copyright (C) 2019 Marvell. */
 
 #include "otx2_cptvf.h"
-#include "otx2_cptvf_algs.h"
-#include "otx2_cpt_mbox_common.h"
+#include "otx2_cpt_common.h"
 
 /* SG list header size in bytes */
 #define SG_LIST_HDR_SIZE	8
@@ -32,8 +24,8 @@ static void otx2_cpt_dump_sg_list(struct pci_dev *pdev,
 {
 	int i;
 
-	pr_debug("Gather list size %d\n", req->incnt);
-	for (i = 0; i < req->incnt; i++) {
+	pr_debug("Gather list size %d\n", req->in_cnt);
+	for (i = 0; i < req->in_cnt; i++) {
 		pr_debug("Buffer %d size %d, vptr 0x%p, dmaptr 0x%p\n", i,
 			 req->in[i].size, req->in[i].vptr,
 			 (void *) req->in[i].dma_addr);
@@ -42,9 +34,8 @@ static void otx2_cpt_dump_sg_list(struct pci_dev *pdev,
 		print_hex_dump_debug("", DUMP_PREFIX_NONE, 16, 1,
 				     req->in[i].vptr, req->in[i].size, false);
 	}
-
-	pr_debug("Scatter list size %d\n", req->outcnt);
-	for (i = 0; i < req->outcnt; i++) {
+	pr_debug("Scatter list size %d\n", req->out_cnt);
+	for (i = 0; i < req->out_cnt; i++) {
 		pr_debug("Buffer %d size %d, vptr 0x%p, dmaptr 0x%p\n", i,
 			 req->out[i].size, req->out[i].vptr,
 			 (void *) req->out[i].dma_addr);
@@ -107,27 +98,24 @@ static inline int setup_sgio_components(struct pci_dev *pdev,
 	}
 
 	for (i = 0; i < buf_count; i++) {
-		if (likely(list[i].vptr)) {
-			list[i].dma_addr = dma_map_single(&pdev->dev,
-							  list[i].vptr,
-							  list[i].size,
-							  DMA_BIDIRECTIONAL);
-			if (unlikely(dma_mapping_error(&pdev->dev,
-						       list[i].dma_addr))) {
-				dev_err(&pdev->dev, "Dma mapping failed\n");
-				ret = -EIO;
-				goto sg_cleanup;
-			}
+		if (unlikely(!list[i].vptr))
+			continue;
+		list[i].dma_addr = dma_map_single(&pdev->dev, list[i].vptr,
+						  list[i].size,
+						  DMA_BIDIRECTIONAL);
+		if (unlikely(dma_mapping_error(&pdev->dev, list[i].dma_addr))) {
+			dev_err(&pdev->dev, "Dma mapping failed\n");
+			ret = -EIO;
+			goto sg_cleanup;
 		}
 	}
-
 	components = buf_count / 4;
 	sg_ptr = (struct otx2_cpt_sglist_component *)buffer;
 	for (i = 0; i < components; i++) {
-		sg_ptr->u.s.len0 = cpu_to_be16(list[i * 4 + 0].size);
-		sg_ptr->u.s.len1 = cpu_to_be16(list[i * 4 + 1].size);
-		sg_ptr->u.s.len2 = cpu_to_be16(list[i * 4 + 2].size);
-		sg_ptr->u.s.len3 = cpu_to_be16(list[i * 4 + 3].size);
+		sg_ptr->len0 = cpu_to_be16(list[i * 4 + 0].size);
+		sg_ptr->len1 = cpu_to_be16(list[i * 4 + 1].size);
+		sg_ptr->len2 = cpu_to_be16(list[i * 4 + 2].size);
+		sg_ptr->len3 = cpu_to_be16(list[i * 4 + 3].size);
 		sg_ptr->ptr0 = cpu_to_be64(list[i * 4 + 0].dma_addr);
 		sg_ptr->ptr1 = cpu_to_be64(list[i * 4 + 1].dma_addr);
 		sg_ptr->ptr2 = cpu_to_be64(list[i * 4 + 2].dma_addr);
@@ -138,15 +126,15 @@ static inline int setup_sgio_components(struct pci_dev *pdev,
 
 	switch (components) {
 	case 3:
-		sg_ptr->u.s.len2 = cpu_to_be16(list[i * 4 + 2].size);
+		sg_ptr->len2 = cpu_to_be16(list[i * 4 + 2].size);
 		sg_ptr->ptr2 = cpu_to_be64(list[i * 4 + 2].dma_addr);
 		fallthrough;
 	case 2:
-		sg_ptr->u.s.len1 = cpu_to_be16(list[i * 4 + 1].size);
+		sg_ptr->len1 = cpu_to_be16(list[i * 4 + 1].size);
 		sg_ptr->ptr1 = cpu_to_be64(list[i * 4 + 1].dma_addr);
 		fallthrough;
 	case 1:
-		sg_ptr->u.s.len0 = cpu_to_be16(list[i * 4 + 0].size);
+		sg_ptr->len0 = cpu_to_be16(list[i * 4 + 0].size);
 		sg_ptr->ptr0 = cpu_to_be64(list[i * 4 + 0].dma_addr);
 		break;
 	default:
@@ -157,8 +145,8 @@ static inline int setup_sgio_components(struct pci_dev *pdev,
 sg_cleanup:
 	for (j = 0; j < i; j++) {
 		if (list[j].dma_addr) {
-			dma_unmap_single(&pdev->dev, list[i].dma_addr,
-					 list[i].size, DMA_BIDIRECTIONAL);
+			dma_unmap_single(&pdev->dev, list[j].dma_addr,
+					 list[j].size, DMA_BIDIRECTIONAL);
 		}
 
 		list[j].dma_addr = 0;
@@ -166,92 +154,87 @@ sg_cleanup:
 	return ret;
 }
 
-static inline int setup_sgio_list(struct pci_dev *pdev,
-				  struct otx2_cpt_info_buffer **pinfo,
-				  struct otx2_cpt_req_info *req, gfp_t gfp)
+static inline struct otx2_cpt_inst_info *info_create(struct pci_dev *pdev,
+					      struct otx2_cpt_req_info *req,
+					      gfp_t gfp)
 {
-	u32 dlen, align_dlen, info_len, rlen;
-	struct otx2_cpt_info_buffer *info;
 	int align = OTX2_CPT_DMA_MINALIGN;
+	struct otx2_cpt_inst_info *info;
+	u32 dlen, align_dlen, info_len;
 	u16 g_sz_bytes, s_sz_bytes;
 	u32 total_mem_len;
 
-	if (unlikely(req->incnt > OTX2_CPT_MAX_SG_IN_CNT ||
-		     req->outcnt > OTX2_CPT_MAX_SG_OUT_CNT)) {
+	if (unlikely(req->in_cnt > OTX2_CPT_MAX_SG_IN_CNT ||
+		     req->out_cnt > OTX2_CPT_MAX_SG_OUT_CNT)) {
 		dev_err(&pdev->dev, "Error too many sg components\n");
-		return -EINVAL;
+		return NULL;
 	}
 
-	g_sz_bytes = ((req->incnt + 3) / 4) *
+	g_sz_bytes = ((req->in_cnt + 3) / 4) *
 		      sizeof(struct otx2_cpt_sglist_component);
-	s_sz_bytes = ((req->outcnt + 3) / 4) *
+	s_sz_bytes = ((req->out_cnt + 3) / 4) *
 		      sizeof(struct otx2_cpt_sglist_component);
 
 	dlen = g_sz_bytes + s_sz_bytes + SG_LIST_HDR_SIZE;
 	align_dlen = ALIGN(dlen, align);
 	info_len = ALIGN(sizeof(*info), align);
-	rlen = ALIGN(sizeof(union otx2_cpt_res_s), align);
-	total_mem_len = align_dlen + info_len + rlen +
-			OTX2_CPT_COMPLETION_CODE_SIZE;
+	total_mem_len = align_dlen + info_len + sizeof(union otx2_cpt_res_s);
 
 	info = kzalloc(total_mem_len, gfp);
-	if (unlikely(!info)) {
-		dev_err(&pdev->dev, "Memory allocation failed\n");
-		return -ENOMEM;
-	}
-	*pinfo = info;
+	if (unlikely(!info))
+		return NULL;
+
 	info->dlen = dlen;
 	info->in_buffer = (u8 *)info + info_len;
 
-	((u16 *)info->in_buffer)[0] = req->outcnt;
-	((u16 *)info->in_buffer)[1] = req->incnt;
+	((u16 *)info->in_buffer)[0] = req->out_cnt;
+	((u16 *)info->in_buffer)[1] = req->in_cnt;
 	((u16 *)info->in_buffer)[2] = 0;
 	((u16 *)info->in_buffer)[3] = 0;
-	*(u64 *)info->in_buffer = cpu_to_be64p((u64 *)info->in_buffer);
+	cpu_to_be64s((u64 *)info->in_buffer);
 
 	/* Setup gather (input) components */
-	if (setup_sgio_components(pdev, req->in, req->incnt,
+	if (setup_sgio_components(pdev, req->in, req->in_cnt,
 				  &info->in_buffer[8])) {
 		dev_err(&pdev->dev, "Failed to setup gather list\n");
-		return -EFAULT;
+		goto destroy_info;
 	}
 
-	if (setup_sgio_components(pdev, req->out, req->outcnt,
+	if (setup_sgio_components(pdev, req->out, req->out_cnt,
 				  &info->in_buffer[8 + g_sz_bytes])) {
 		dev_err(&pdev->dev, "Failed to setup scatter list\n");
-		return -EFAULT;
+		goto destroy_info;
 	}
 
 	info->dma_len = total_mem_len - info_len;
-	info->dptr_baddr = dma_map_single(&pdev->dev, (void *)info->in_buffer,
+	info->dptr_baddr = dma_map_single(&pdev->dev, info->in_buffer,
 					  info->dma_len, DMA_BIDIRECTIONAL);
 	if (unlikely(dma_mapping_error(&pdev->dev, info->dptr_baddr))) {
 		dev_err(&pdev->dev, "DMA Mapping failed for cpt req\n");
-		return -EIO;
+		goto destroy_info;
 	}
 	/*
 	 * Get buffer for union otx2_cpt_res_s response
 	 * structure and its physical address
 	 */
-	info->completion_addr = (u64 *)(info->in_buffer + align_dlen);
+	info->completion_addr = info->in_buffer + align_dlen;
 	info->comp_baddr = info->dptr_baddr + align_dlen;
 
-	/* Create and initialize RPTR */
-	info->out_buffer = (u8 *)info->completion_addr + rlen;
-	info->rptr_baddr = info->comp_baddr + rlen;
+	return info;
 
-	*((u64 *) info->out_buffer) = ~((u64) OTX2_CPT_COMPLETION_CODE_INIT);
-
-	return 0;
+destroy_info:
+	otx2_cpt_info_destroy(pdev, info);
+	return NULL;
 }
 
 static int process_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
-			   struct otx2_cpt_pending_queue *pqueue, void *obj)
+			   struct otx2_cpt_pending_queue *pqueue,
+			   struct otx2_cptlf_info *lf)
 {
 	struct otx2_cptvf_request *cpt_req = &req->req;
 	struct otx2_cpt_pending_entry *pentry = NULL;
 	union otx2_cpt_ctrl_info *ctrl = &req->ctrl;
-	struct otx2_cpt_info_buffer *info = NULL;
+	struct otx2_cpt_inst_info *info = NULL;
 	union otx2_cpt_res_s *result = NULL;
 	struct otx2_cpt_iq_command iq_cmd;
 	union otx2_cpt_inst_s cptinst;
@@ -261,14 +244,17 @@ static int process_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 
 	gfp = (req->areq->flags & CRYPTO_TFM_REQ_MAY_SLEEP) ? GFP_KERNEL :
 							      GFP_ATOMIC;
-	ret = setup_sgio_list(pdev, &info, req, gfp);
-	if (unlikely(ret)) {
-		dev_err(&pdev->dev, "Setting up SG list failed");
-		goto request_cleanup;
+	if (unlikely(!otx2_cptlf_started(lf->lfs)))
+		return -ENODEV;
+
+	info = info_create(pdev, req, gfp);
+	if (unlikely(!info)) {
+		dev_err(&pdev->dev, "Setting up cpt inst info failed");
+		return -ENOMEM;
 	}
 	cpt_req->dlen = info->dlen;
 
-	result = (union otx2_cpt_res_s *) info->completion_addr;
+	result = info->completion_addr;
 	result->s.compcode = OTX2_CPT_COMPLETION_CODE_INIT;
 
 	spin_lock_bh(&pqueue->lock);
@@ -283,8 +269,7 @@ static int process_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 
 	if (unlikely(!pentry)) {
 		ret = -ENOSPC;
-		spin_unlock_bh(&pqueue->lock);
-		goto request_cleanup;
+		goto destroy_info;
 	}
 
 	/*
@@ -310,17 +295,17 @@ static int process_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 	info->req = req;
 
 	/* Fill in the command */
-	iq_cmd.cmd.u64 = 0;
+	iq_cmd.cmd.u = 0;
 	iq_cmd.cmd.s.opcode = cpu_to_be16(cpt_req->opcode.flags);
 	iq_cmd.cmd.s.param1 = cpu_to_be16(cpt_req->param1);
 	iq_cmd.cmd.s.param2 = cpu_to_be16(cpt_req->param2);
 	iq_cmd.cmd.s.dlen   = cpu_to_be16(cpt_req->dlen);
 
 	/* 64-bit swap for microcode data reads, not needed for addresses*/
-	iq_cmd.cmd.u64 = cpu_to_be64(iq_cmd.cmd.u64);
+	cpu_to_be64s(&iq_cmd.cmd.u);
 	iq_cmd.dptr = info->dptr_baddr;
-	iq_cmd.rptr = info->rptr_baddr;
-	iq_cmd.cptr.u64 = 0;
+	iq_cmd.rptr = 0;
+	iq_cmd.cptr.u = 0;
 	iq_cmd.cptr.s.grp = ctrl->s.grp;
 
 	/* Fill in the CPT_INST_S type command for HW interpretation */
@@ -335,7 +320,7 @@ static int process_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 			     cpt_req->dlen, false);
 
 	/* Send CPT command */
-	otx2_cpt_send_cmd(&cptinst, 1, obj);
+	otx2_cpt_send_cmd(&cptinst, 1, lf);
 
 	/*
 	 * We allocate and prepare pending queue entry in critical section
@@ -348,61 +333,58 @@ static int process_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 	ret = resume_sender ? -EBUSY : -EINPROGRESS;
 	return ret;
 
-request_cleanup:
-	do_request_cleanup(pdev, info);
+destroy_info:
+	spin_unlock_bh(&pqueue->lock);
+	otx2_cpt_info_destroy(pdev, info);
 	return ret;
-}
-
-int otx2_cpt_get_kcrypto_eng_grp_num(struct pci_dev *pdev)
-{
-	struct otx2_cptlfs_info *lfs = otx2_cpt_get_lfs_info(pdev);
-
-	return lfs->kcrypto_eng_grp_num;
 }
 
 int otx2_cpt_do_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 			int cpu_num)
 {
-	struct otx2_cptlfs_info *lfs = otx2_cpt_get_lfs_info(pdev);
+	struct otx2_cptvf_dev *cptvf = pci_get_drvdata(pdev);
+	struct otx2_cptlfs_info *lfs = &cptvf->lfs;
 
-	return process_request(pdev, req, &lfs->lf[cpu_num].pqueue,
+	return process_request(lfs->pdev, req, &lfs->lf[cpu_num].pqueue,
 			       &lfs->lf[cpu_num]);
 }
 
 static int cpt_process_ccode(struct pci_dev *pdev,
 			     union otx2_cpt_res_s *cpt_status,
-			     struct otx2_cpt_info_buffer *cpt_info,
-			     struct otx2_cpt_req_info *req, u32 *res_code)
+			     struct otx2_cpt_inst_info *info,
+			     u32 *res_code)
 {
+	u8 uc_ccode = cpt_status->s.uc_compcode;
 	u8 ccode = cpt_status->s.compcode;
 
 	switch (ccode) {
 	case OTX2_CPT_COMP_E_FAULT:
 		dev_err(&pdev->dev,
 			"Request failed with DMA fault\n");
-		otx2_cpt_dump_sg_list(pdev, req);
+		otx2_cpt_dump_sg_list(pdev, info->req);
 		break;
 
 	case OTX2_CPT_COMP_E_HWERR:
 		dev_err(&pdev->dev,
 			"Request failed with hardware error\n");
-		otx2_cpt_dump_sg_list(pdev, req);
+		otx2_cpt_dump_sg_list(pdev, info->req);
 		break;
 
 	case OTX2_CPT_COMP_E_INSTERR:
 		dev_err(&pdev->dev,
 			"Request failed with instruction error\n");
-		otx2_cpt_dump_sg_list(pdev, req);
+		otx2_cpt_dump_sg_list(pdev, info->req);
 		break;
 
-	case OTX2_CPT_COMPLETION_CODE_INIT:
+	case OTX2_CPT_COMP_E_NOTDONE:
 		/* check for timeout */
-		if (time_after_eq(jiffies, cpt_info->time_in +
+		if (time_after_eq(jiffies, info->time_in +
 				  CPT_COMMAND_TIMEOUT * HZ))
-			dev_warn(&pdev->dev, "Request timed out 0x%p", req);
-		else if (cpt_info->extra_time < CPT_TIME_IN_RESET_COUNT) {
-			cpt_info->time_in = jiffies;
-			cpt_info->extra_time++;
+			dev_warn(&pdev->dev,
+				 "Request timed out 0x%p", info->req);
+		else if (info->extra_time < CPT_TIME_IN_RESET_COUNT) {
+			info->time_in = jiffies;
+			info->extra_time++;
 		}
 		return 1;
 
@@ -411,7 +393,7 @@ static int cpt_process_ccode(struct pci_dev *pdev,
 		 * Check microcode completion code, it is only valid
 		 * when completion code is CPT_COMP_E::GOOD
 		 */
-		if (cpt_status->s.uc_compcode) {
+		if (uc_ccode != OTX2_CPT_UCC_SUCCESS) {
 			/*
 			 * If requested hmac is truncated and ucode returns
 			 * s/g write length error then we report success
@@ -420,8 +402,8 @@ static int cpt_process_ccode(struct pci_dev *pdev,
 			 * s/g write length error if number of bytes in gather
 			 * buffer is less than full hmac size.
 			 */
-			if (req->is_trunc_hmac && cpt_status->s.uc_compcode
-			    == ERR_SCATTER_GATHER_WRITE_LENGTH) {
+			if (info->req->is_trunc_hmac &&
+			    uc_ccode == OTX2_CPT_UCC_SG_WRITE_LENGTH) {
 				*res_code = 0;
 				break;
 			}
@@ -429,10 +411,9 @@ static int cpt_process_ccode(struct pci_dev *pdev,
 			dev_err(&pdev->dev,
 				"Request failed with software error code 0x%x\n",
 				cpt_status->s.uc_compcode);
-			otx2_cpt_dump_sg_list(pdev, req);
+			otx2_cpt_dump_sg_list(pdev, info->req);
 			break;
 		}
-
 		/* Request has been processed with success */
 		*res_code = 0;
 		break;
@@ -451,8 +432,8 @@ static inline void process_pending_queue(struct pci_dev *pdev,
 	struct otx2_cpt_pending_entry *resume_pentry = NULL;
 	void (*callback)(int status, void *arg, void *req);
 	struct otx2_cpt_pending_entry *pentry = NULL;
-	struct otx2_cpt_info_buffer *cpt_info = NULL;
 	union otx2_cpt_res_s *cpt_status = NULL;
+	struct otx2_cpt_inst_info *info = NULL;
 	struct otx2_cpt_req_info *req = NULL;
 	struct crypto_async_request *areq;
 	u32 res_code, resume_index;
@@ -477,30 +458,29 @@ static inline void process_pending_queue(struct pci_dev *pdev,
 			goto process_pentry;
 		}
 
-		cpt_info = pentry->info;
-		if (unlikely(!cpt_info)) {
+		info = pentry->info;
+		if (unlikely(!info)) {
 			dev_err(&pdev->dev, "Pending entry post arg NULL\n");
 			goto process_pentry;
 		}
 
-		req = cpt_info->req;
+		req = info->req;
 		if (unlikely(!req)) {
 			dev_err(&pdev->dev, "Request NULL\n");
 			goto process_pentry;
 		}
 
-		cpt_status = (union otx2_cpt_res_s *) pentry->completion_addr;
+		cpt_status = pentry->completion_addr;
 		if (unlikely(!cpt_status)) {
 			dev_err(&pdev->dev, "Completion address NULL\n");
 			goto process_pentry;
 		}
 
-		if (cpt_process_ccode(pdev, cpt_status, cpt_info, req,
-				      &res_code)) {
+		if (cpt_process_ccode(pdev, cpt_status, info, &res_code)) {
 			spin_unlock_bh(&pqueue->lock);
 			return;
 		}
-		cpt_info->pdev = pdev;
+		info->pdev = pdev;
 
 process_pentry:
 		/*
@@ -524,7 +504,7 @@ process_pentry:
 				 * EINPROGRESS is an indication for sending
 				 * side that it can resume sending requests
 				 */
-				callback(-EINPROGRESS, areq, cpt_info);
+				callback(-EINPROGRESS, areq, info);
 				spin_lock_bh(&pqueue->lock);
 			}
 		}
@@ -543,7 +523,7 @@ process_pentry:
 		 * invalid.
 		 */
 		if (callback)
-			callback(res_code, areq, cpt_info);
+			callback(res_code, areq, info);
 	}
 }
 
@@ -551,4 +531,11 @@ void otx2_cpt_post_process(struct otx2_cptlf_wqe *wqe)
 {
 	process_pending_queue(wqe->lfs->pdev,
 			      &wqe->lfs->lf[wqe->lf_num].pqueue);
+}
+
+int otx2_cpt_get_kcrypto_eng_grp_num(struct pci_dev *pdev)
+{
+	struct otx2_cptvf_dev *cptvf = pci_get_drvdata(pdev);
+
+	return cptvf->lfs.kcrypto_eng_grp_num;
 }
