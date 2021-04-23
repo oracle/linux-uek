@@ -471,6 +471,16 @@ void rvu_reset_lmt_map_tbl(struct rvu *rvu, u16 pcifunc)
 	}
 }
 
+void rvu_sso_block_cn10k_init(struct rvu *rvu, int blkaddr)
+{
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_WS_CFG);
+	/* Enable GET_WORK prefetching to the GWCs. */
+	reg &= ~BIT_ULL(4);
+	rvu_write64(rvu, blkaddr, SSO_AF_WS_CFG, reg);
+}
+
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)
 {
 	int blkaddr = nix_hw->blkaddr;

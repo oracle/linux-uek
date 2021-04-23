@@ -442,6 +442,7 @@
 #define SSO_AF_CONST1			(0x1008)
 #define SSO_AF_NOS_CNT			(0x1050)
 #define SSO_AF_AW_WE			(0x1080)
+#define SSO_AF_WS_CFG			(0x1088)
 #define SSO_AF_LF_HWGRP_RST		(0x10e0)
 #define SSO_AF_AW_CFG			(0x10f0)
 #define SSO_AF_BLK_RST			(0x10f8)
