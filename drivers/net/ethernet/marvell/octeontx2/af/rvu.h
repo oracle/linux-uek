@@ -768,6 +768,7 @@ void rvu_sso_unregister_interrupts(struct rvu *rvu);
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
 void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf);
+void rvu_sso_block_cn10k_init(struct rvu *rvu, int blkaddr);
 
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
