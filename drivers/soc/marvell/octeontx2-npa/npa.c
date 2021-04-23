@@ -1212,7 +1212,8 @@ static int npa_register_mbox_intr(struct npa_dev_t *npa_pf_dev, bool probe_af)
 	req = otx2_af_mbox_alloc_msg_ready(&npa_pf_dev->afpf_mbox);
 	if (!req) {
 		otx2_disable_afpf_mbox_intr(npa_pf_dev);
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto err_free_intr;
 	}
 
 	err = npa_sync_mbox_msg(&npa_pf_dev->afpf_mbox);
@@ -1229,7 +1230,8 @@ static int npa_register_mbox_intr(struct npa_dev_t *npa_pf_dev, bool probe_af)
 	    otx2_af_mbox_alloc_msg_attach_resources(&npa_pf_dev->afpf_mbox);
 	if (!attach) {
 		mutex_unlock(&npa_pf_dev->lock);
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto err_free_intr;
 	}
 
 	attach->npalf = true;
@@ -1237,25 +1239,30 @@ static int npa_register_mbox_intr(struct npa_dev_t *npa_pf_dev, bool probe_af)
 	err = npa_sync_mbox_msg(&npa_pf_dev->afpf_mbox);
 	if (err) {
 		mutex_unlock(&npa_pf_dev->lock);
-		return err;
+		goto err_free_intr;
 	}
 
 	/* Get NPA MSIX vector offsets */
 	msix = otx2_af_mbox_alloc_msg_msix_offset(&npa_pf_dev->afpf_mbox);
 	if (!msix) {
 		mutex_unlock(&npa_pf_dev->lock);
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto err_free_intr;
 	}
 
 	err = npa_sync_mbox_msg(&npa_pf_dev->afpf_mbox);
 	if (err) {
 		mutex_unlock(&npa_pf_dev->lock);
-		return err;
+		goto err_free_intr;
 	}
 
 	mutex_unlock(&npa_pf_dev->lock);
 
 	return 0;
+
+err_free_intr:
+	otx2_free_afpf_mbox_intr(npa_pf_dev);
+	return err;
 }
 
 static void npa_afpf_mbox_destroy(struct npa_dev_t *npa_pf_dev)
