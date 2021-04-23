@@ -29,6 +29,7 @@
 static const int amd_erratum_383[];
 static const int amd_erratum_400[];
 static const int amd_erratum_1054[];
+static const int amd_erratum_1215[];
 static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum);
 
 /*
@@ -828,6 +829,15 @@ static void init_amd_ln(struct cpuinfo_x86 *c)
 	msr_set_bit(MSR_AMD64_DE_CFG, 31);
 }
 
+static bool ibs_keep;
+
+static int __init ibs_keep_setup(char *__unused)
+{
+	ibs_keep = true;
+	return 1;
+}
+__setup("ibs_keep", ibs_keep_setup);
+
 static bool rdrand_force;
 
 static int __init rdrand_cmdline(char *str)
@@ -1015,6 +1025,13 @@ static void init_amd(struct cpuinfo_x86 *c)
 	if (cpu_has(c, X86_FEATURE_IRPERF) &&
 	    !cpu_has_amd_erratum(c, amd_erratum_1054))
 		msr_set_bit(MSR_K7_HWCR, MSR_K7_HWCR_IRPERF_EN_BIT);
+
+	/* Hide IBS availability if susceptible to Rome's erratum 1215 */
+	if (cpu_has(c, X86_FEATURE_IBS) &&
+	    cpu_has_amd_erratum(c, amd_erratum_1215) && !ibs_keep) {
+		clear_cpu_cap(c, X86_FEATURE_IBS);
+		pr_warn_once(FW_BUG "Erratum 1215 present, disabling IBS");
+	}
 }
 
 #ifdef CONFIG_X86_32
@@ -1145,6 +1162,13 @@ static const int amd_erratum_383[] =
 /* #1054: Instructions Retired Performance Counter May Be Inaccurate */
 static const int amd_erratum_1054[] =
 	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x17, 0, 0, 0x2f, 0xf));
+
+/*
+ * #1215: IBS (Instruction Based Sampling) Counter Valid Value May be
+ * Incorrect After Exit From Core C6 (CC6) State
+ */
+static const int amd_erratum_1215[] =
+	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x17, 0x30, 0, 0x3f, 0xf));
 
 static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum)
 {
