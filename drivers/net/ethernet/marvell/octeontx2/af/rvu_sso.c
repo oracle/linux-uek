@@ -1374,6 +1374,9 @@ int rvu_sso_init(struct rvu *rvu)
 	if (blkaddr < 0)
 		return 0;
 
+	if (!is_rvu_otx2(rvu))
+		rvu_sso_block_cn10k_init(rvu, blkaddr);
+
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST);
 	/* number of SSO hardware work slots */
 	sso->sso_hws = (reg >> 56) & 0xFF;
