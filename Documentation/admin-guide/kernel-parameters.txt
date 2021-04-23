@@ -2216,6 +2216,8 @@ Kernel parameters
 			syscalls, essentially overriding IA32_EMULATION_DEFAULT_DISABLED at
 			boot time. When false, unconditionally disables IA32 emulation.
 
+	ibs_keep
+			[X86,AMD] Keep IBS enabled even if erratum 1215 is present
 
 	idle=		[X86,EARLY]
 			Format: idle=poll, idle=halt, idle=nomwait
