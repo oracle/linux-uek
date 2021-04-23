@@ -792,6 +792,15 @@ static void init_amd_ln(struct cpuinfo_x86 *c)
 	msr_set_bit(MSR_AMD64_DE_CFG, 31);
 }
 
+static bool ibs_keep;
+
+static int __init ibs_keep_setup(char *__unused)
+{
+	ibs_keep = true;
+	return 1;
+}
+__setup("ibs_keep", ibs_keep_setup);
+
 static bool rdrand_force;
 
 static int __init rdrand_cmdline(char *str)
@@ -992,6 +1001,12 @@ static void init_amd_zen2(struct cpuinfo_x86 *c)
 
 	if (!cpu_has(c, X86_FEATURE_HYPERVISOR))
 		msr_set_bit(MSR_ZEN4_BP_CFG, MSR_ZEN2_BP_CFG_BUG_FIX_BIT);
+
+	/* UEK only, erratum 1215 */
+	if (cpu_has(c, X86_FEATURE_IBS) && !ibs_keep) {
+		clear_cpu_cap(c, X86_FEATURE_IBS);
+		pr_warn_once(FW_BUG "Erratum 1215 present, disabling IBS");
+	}
 }
 
 static void init_amd_zen3(struct cpuinfo_x86 *c)
