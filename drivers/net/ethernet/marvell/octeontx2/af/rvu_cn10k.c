@@ -551,3 +551,12 @@ void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)
 	/* Set vWQE timer interval to max possible value i.e. 102us. */
 	rvu_write64(rvu, blkaddr, NIX_AF_VWQE_TIMER, 0x3FFULL);
 }
+
+void rvu_apr_block_cn10k_init(struct rvu *rvu)
+{
+	u64 reg;
+
+	reg = rvu_read64(rvu, BLKADDR_APR, APR_AF_LMT_CFG);
+	reg |= 0xFULL << 35;
+	rvu_write64(rvu, BLKADDR_APR, APR_AF_LMT_CFG, reg);
+}
