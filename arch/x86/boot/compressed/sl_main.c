@@ -61,6 +61,9 @@ static u32 pcr_image = SL_DEF_IMAGE_PCR17;
 static u32 pcr_image = SL_ALT_IMAGE_PCR20;
 #endif
 
+static struct boot_e820_entry e820_temp[E820_MAX_ENTRIES_ZEROPAGE];
+#define E820_ARRAY_SIZE (E820_MAX_ENTRIES_ZEROPAGE*sizeof(struct boot_e820_entry))
+
 extern u32 sl_cpu_type;
 extern u32 sl_mle_start;
 
@@ -415,6 +418,7 @@ asmlinkage __visible void sl_main(void *bootparams)
 	const char *signature;
 	unsigned long mmap = 0;
 	void *txt_heap;
+	struct efi_info efi_temp;
 	u32 cmdline_len, data_count;
 
 	/*
@@ -451,6 +455,12 @@ asmlinkage __visible void sl_main(void *bootparams)
 	boot_params = (struct boot_params*)bootparams;
 	sanitize_boot_params(boot_params);
 
+	/* Custom step to skip the measurement of the EFI memory map, part 1 */
+	efi_temp = bp->efi_info;
+	memset(&bp->efi_info, 0, sizeof(struct efi_info));
+	memcpy(&e820_temp[0], &bp->e820_table[0], E820_ARRAY_SIZE);
+	memset(&bp->e820_table[0], 0, E820_ARRAY_SIZE);
+
 	/*
 	 * In case the command line length in the boot params is the actual
 	 * size, zero it temporarily.
@@ -463,6 +473,8 @@ asmlinkage __visible void sl_main(void *bootparams)
 			  "Measured boot parameters");
 
 	bp->hdr.cmdline_size = cmdline_len;
+	memcpy(&bp->e820_table[0], &e820_temp[0], E820_ARRAY_SIZE);
+	bp->efi_info = efi_temp;
 
 	/* Routine to locate and ignore special uroot parameter */
 	cmdline_len =
@@ -490,6 +502,8 @@ asmlinkage __visible void sl_main(void *bootparams)
 		data = (struct setup_data *)(unsigned long)data->next;
 	}
 
+	/* Custom step to skip the measurement of the EFI memory map, part 2 */
+#if 0
 	/* If bootloader was EFI, measure the memory map passed across */
 	signature =
 		(const char *)&bp->efi_info.efi_loader_signature;
@@ -504,6 +518,7 @@ asmlinkage __visible void sl_main(void *bootparams)
 		sl_tpm_extend_pcr(tpm, pcr_config, (void *)mmap,
 				  bp->efi_info.efi_memmap_size,
 				  "Measured EFI memory map");
+#endif
 
 	/* Measure any external initrd */
 	if (bp->hdr.ramdisk_image != 0 && bp->hdr.ramdisk_size != 0)
