@@ -106,6 +106,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 #build kernel with 4k & 64k page size for aarch64
 %define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
 %define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
+# build embedded kernels
+%define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -145,6 +147,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_smponly   %{?_with_smponly:      1} %{?!_with_smponly:      0}
 # Only build the 4k page size kernel (--with 4konly):
 %define with_4konly    %{?_with_4konly:       1} %{?!_with_4konly:       0}
+# Only build the embedded kernel (--with embeddedonly):
+%define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
 
 # should we do C=1 builds with sparse
 %define with_sparse	%{?_with_sparse:      1} %{?!_with_sparse:      0}
@@ -224,6 +228,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_debug 0
 %define with_4k_ps 0
 %define with_4k_ps_debug 0
+%define with_embedded 0
 %endif
 
 # if requested, only build smp kernel
@@ -233,6 +238,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_debug 0
 %define with_4k_ps 0
 %define with_4k_ps_debug 0
+%define with_embedded 0
 %endif
 
 # if requested, only build 4k page size kernel
@@ -242,6 +248,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_smp 0
 %define with_kdump 0
 %define with_debug 0
+%define with_embedded 0
 %endif
 
 %define all_x86 i386 i686
@@ -274,6 +281,10 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifnarch aarch64
 %define with_4k_ps      0
 %define with_4k_ps_debug 0
+%endif
+
+%ifnarch mips64
+%define with_embedded 0
 %endif
 
 # only package docs noarch
@@ -418,6 +429,29 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %endif
 %endif
 
+%ifarch mips64
+%define all_arch_configs kernel-%{version}-mips64*.config
+%define image_install_path boot
+%define asmarch mips
+%define hdrarch mips
+%define make_target vmlinux
+%define kernel_image vmlinux
+%define with_embedded   1
+%define with_headers   1
+%define with_perf 0
+%define with_tools 0
+%define with_up 0
+%define with_kdump 1
+%endif
+
+# if requested, only build emb kernel
+%if %{with_embeddedonly}
+%define with_up        0
+%define with_smp       0
+%define with_4k_ps     0
+%define with_4k_ps_debug 0
+%endif
+
 %if %{nopatches}
 # XXX temporary until last vdso patches are upstream
 %define vdso_arches ppc ppc64
@@ -510,8 +544,9 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 #	%%kernel_reqprovconf <subpackage>
 # It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
 # macros defined above.
+# -e flag denotes an embedded package
 #
-%define kernel_reqprovconf \
+%define kernel_reqprovconf(e) \
 Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
 Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-drm = 4.3.0\
@@ -519,19 +554,21 @@ Provides: kernel%{?variant}-drm-nouveau = 12\
 Provides: kernel%{?variant}-modeset = 1\
 Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
-%ifnarch sparc64 aarch64\
+%ifnarch sparc64 aarch64 mips64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
-%ifarch sparc64 aarch64\
+%ifarch sparc64 aarch64 mips64\
 Provides: kernel = %{rpmversion}-%{pkg_release}\
 Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
+%if 0%{!?-e:1}\
 Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
+%endif\
 Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
@@ -560,7 +597,7 @@ Version: %{rpmversion}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm} aarch64
+ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm} aarch64 mips64
 ExclusiveOS: Linux
 
 %kernel_reqprovconf
@@ -596,7 +633,9 @@ BuildRequires: sparse >= 0.4.1
 %endif
 %if %{signmodules}
 BuildRequires: gnupg
+%ifnarch mips64
 BuildRequires: pesign >= 0.10-4
+%endif #ifnarch mips64
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
@@ -650,6 +689,8 @@ Source1000: config-x86_64
 Source1001: config-x86_64-debug
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
+Source1009: config-mips64-embedded
+Source1013: config-mips64-embedded-kdump
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -702,7 +743,7 @@ Patch00: patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
-%ifnarch aarch64
+%ifnarch aarch64 mips64
 # Override find_provides to use a script that provides "kernel(symbol) = hash".
 # Pass path of the RPM temp dir containing kabideps to find-provides script.
 %global _use_internal_dependency_generator 0
@@ -941,7 +982,7 @@ Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: dtrace-kernel-headers = 1.2.0\
-%ifarch sparc64 aarch64\
+%ifarch sparc64 aarch64 mips64\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
@@ -961,13 +1002,14 @@ against the %{?2:%{2} }kernel package.\
 # This macro creates a kernel-<subpackage> and its -devel and -debuginfo too.
 #	%%define variant_summary The Linux kernel compiled for <configuration>
 #	%%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
+# -e flag denotes an embedded package
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(n:o) \
+%define kernel_variant_package(en:o) \
 %package -n kernel%{?variant}%{!-o:-}%1\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
-%kernel_reqprovconf\
+%{expand:%%kernel_reqprovconf %{?-e:-e} %1}\
 %{expand:%%kernel_devel_package %{-o:-o} %1 %{!?-n:%1}%{?-n:%{-n*}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %1}\
 %{nil}
@@ -1027,7 +1069,7 @@ on kernel bugs, as some of these options impact performance noticably.
 
 
 %define variant_summary A minimal Linux kernel compiled for crash dumps
-%kernel_variant_package kdump
+%kernel_variant_package -e kdump
 %description kdump
 This package includes a kdump version of the Linux kernel. It is
 required only on machines which will use the kexec-based kernel crash dump
@@ -1043,6 +1085,11 @@ This package includes 4k page size for aarch64 kernel.
 %description -n kernel%{?variant}4kdebug
 This package include debug kernel for 4k page size.
 
+%define variant_summary A kernel for embedded platform.
+%kernel_variant_package -eo emb
+%description -n kernel%{?variant}emb
+This package includes embedded kernel.
+
 %prep
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
@@ -1057,6 +1104,11 @@ exit 1
 echo "Cannot build --with smponly, smp build is disabled"
 exit 1
 %endif
+%endif
+
+%if %{with_embeddedonly} && !%{with_embedded}
+echo "Cannot build --with embeddedonly, embedded build is disabled"
+exit 1
 %endif
 
 patch_command='patch -p1 -F1 -s'
@@ -1234,6 +1286,11 @@ mkdir -p configs
 	cp %{SOURCE1007} configs/config
 %endif #ifarch aarch64
 
+%ifarch mips64
+	cp %{SOURCE1009} configs/config-emb
+	cp %{SOURCE1013} configs/config-emb-kdump
+%endif #ifarch mips64
+
 %if %{with_dtrace}
 	echo 'CONFIG_DTRACE=y' >> configs/config
 	echo 'CONFIG_DTRACE=y' >> configs/config-debug
@@ -1312,6 +1369,10 @@ BuildKernel() {
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
+    elif [ "$Flavour" == "emb" ]; then
+	cp configs/config-emb .config
+    elif [ "$Flavour" == "kdump" ]; then
+	cp configs/config-emb-kdump .config
     else
 	cp configs/config .config
     fi
@@ -1330,9 +1391,11 @@ BuildKernel() {
 %endif
 
 %if %{with_dtrace}
-    cp Module.symvers Module.symvers.save
-    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
-    mv -f Module.symvers.save Module.symvers
+    if [ "$Flavour" != "emb" ] ; then
+        cp Module.symvers Module.symvers.save
+        make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+        mv -f Module.symvers.save Module.symvers
+    fi
 %endif
 
     # Start installing the results
@@ -1372,7 +1435,7 @@ BuildKernel() {
 %ifarch %{vdso_arches}
     make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
 %endif
-%ifarch %{vdso_arches} sparc64 aarch64
+%ifarch %{vdso_arches} sparc64 aarch64 mips64
 %ifnarch noarch
 # build tools/perf:
     if [ -d tools/perf ]; then
@@ -1480,6 +1543,11 @@ fi
     cp -a --parents arch/arm/include/asm/xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/arm/include/asm/opcodes.h $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
+%ifarch mips64
+    cp -a --parents arch/%{asmarch}/Kbuild.platforms $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/cavium-octeon/Platform $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/generic/Platform $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+%endif
 %ifarch %{arm}
     if [ -d arch/%{asmarch}/mach-${Flavour}/include ]; then
       cp -a --parents arch/%{asmarch}/mach-${Flavour}/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -1491,7 +1559,7 @@ fi
     cp -a --parents Kbuild $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents kernel/bounds.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
-%ifnarch %{sparc} aarch64
+%ifnarch %{sparc} aarch64 mips64
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets_64.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
     cp -a --parents security/selinux/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -1633,6 +1701,10 @@ BuildKernel %make_target %kernel_image 4k
 BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
+%if %{with_embedded}
+BuildKernel %make_target %kernel_image emb
+%endif
+
 %global perf_make \
   make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS}" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix}
 %if %{with_perf}
@@ -1697,6 +1769,11 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
       mv certs/signing_key.pem.sign certs/signing_key.pem \
       mv certs/signing_key.x509.sign certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
+    fi \
+    if [ "%{with_embedded}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.emb certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
     fi \
     if [ "%{with_4k_ps}" -ne "0" ]; then \
        mv certs/signing_key.pem.sign.4k certs/signing_key.pem \
@@ -2066,6 +2143,11 @@ fi\
 %kernel_variant_postun -o 4kdebug
 %kernel_variant_post -o -v 4kdebug
 
+%kernel_variant_pre -o emb
+%kernel_variant_preun -o emb
+%kernel_variant_postun -o emb
+%kernel_variant_post -o -v emb -r (kernel%{variant}|kernel%{variant}-debug)
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2210,7 +2292,7 @@ fi
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-%if %{with_dtrace}\
+%if %{with_dtrace} && "%{2}" != "emb"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
@@ -2227,7 +2309,7 @@ fi
 %ifarch %{arm} aarch64\
 /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
 %endif\
-%ifnarch sparc64 aarch64\
+%ifnarch sparc64 aarch64 mips64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
 /usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
@@ -2271,5 +2353,7 @@ fi
 
 %kernel_variant_files -o %{with_4k_ps} 4k
 %kernel_variant_files -o %{with_4k_ps_debug} 4kdebug
+
+%kernel_variant_files -o %{with_embedded} emb
 
 %changelog
