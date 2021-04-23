@@ -17,7 +17,7 @@
 //! }
 //! ```
 
-use crate::{bindings, CStr};
+use crate::{bindings, c_types, CStr};
 use core::pin::Pin;
 
 mod arc;
@@ -33,6 +33,11 @@ pub use guard::{Guard, Lock};
 pub use locked_by::LockedBy;
 pub use mutex::Mutex;
 pub use spinlock::SpinLock;
+
+extern "C" {
+    fn rust_helper_signal_pending() -> c_types::c_int;
+    fn rust_helper_cond_resched() -> c_types::c_int;
+}
 
 /// Safely initialises an object that has an `init` function that takes a name and a lock class as
 /// arguments, examples of these are [`Mutex`] and [`SpinLock`]. Each of them also provides a more
@@ -65,4 +70,16 @@ pub trait NeedsLockClass {
     ///
     /// `key` must point to a valid memory location as it will be used by the kernel.
     unsafe fn init(self: Pin<&Self>, name: CStr<'static>, key: *mut bindings::lock_class_key);
+}
+
+/// Determines if a signal is pending on the current process.
+pub fn signal_pending() -> bool {
+    // SAFETY: No arguments, just checks `current` for pending signals.
+    unsafe { rust_helper_signal_pending() != 0 }
+}
+
+/// Reschedules the caller's task if needed.
+pub fn cond_resched() -> bool {
+    // SAFETY: No arguments, reschedules `current` if needed.
+    unsafe { rust_helper_cond_resched() != 0 }
 }

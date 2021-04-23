@@ -81,6 +81,12 @@ void rust_helper_kunmap(struct page *page)
 }
 EXPORT_SYMBOL_GPL(rust_helper_kunmap);
 
+int rust_helper_cond_resched(void)
+{
+	return cond_resched();
+}
+EXPORT_SYMBOL_GPL(rust_helper_cond_resched);
+
 #if !defined(CONFIG_ARM)
 // See https://github.com/rust-lang/rust-bindgen/issues/1671
 static_assert(__builtin_types_compatible_p(size_t, uintptr_t),

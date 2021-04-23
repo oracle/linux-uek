@@ -6,12 +6,11 @@
 //! variable.
 
 use super::{Guard, Lock, NeedsLockClass};
-use crate::{bindings, c_types, CStr};
+use crate::{bindings, CStr};
 use core::{cell::UnsafeCell, marker::PhantomPinned, mem::MaybeUninit, pin::Pin};
 
 extern "C" {
     fn rust_helper_init_wait(wq: *mut bindings::wait_queue_entry);
-    fn rust_helper_signal_pending() -> c_types::c_int;
 }
 
 /// Safely initialises a [`CondVar`] with the given name, generating a new lock class.
@@ -92,8 +91,7 @@ impl CondVar {
         // SAFETY: Both `wait` and `wait_list` point to valid memory.
         unsafe { bindings::finish_wait(self.wait_list.get(), wait.as_mut_ptr()) };
 
-        // SAFETY: No arguments, just checks `current` for pending signals.
-        unsafe { rust_helper_signal_pending() != 0 }
+        super::signal_pending()
     }
 
     /// Calls the kernel function to notify the appropriate number of threads with the given flags.
