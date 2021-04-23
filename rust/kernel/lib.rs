@@ -15,6 +15,7 @@
 #![feature(
     allocator_api,
     alloc_error_handler,
+    associated_type_defaults,
     const_fn,
     const_mut_refs,
     const_panic,

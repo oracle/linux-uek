@@ -520,6 +520,12 @@ pub trait FileOpener<T: ?Sized>: FileOperations {
     fn open(context: &T) -> KernelResult<Self::Wrapper>;
 }
 
+impl<T: FileOperations<Wrapper = Box<T>> + Default> FileOpener<()> for T {
+    fn open(_: &()) -> KernelResult<Self::Wrapper> {
+        Ok(Box::try_new(T::default())?)
+    }
+}
+
 /// Corresponds to the kernel's `struct file_operations`.
 ///
 /// You implement this trait whenever you would create a `struct file_operations`.
@@ -532,7 +538,7 @@ pub trait FileOperations: Send + Sync + Sized {
     const TO_USE: ToUse;
 
     /// The pointer type that will be used to hold ourselves.
-    type Wrapper: PointerWrapper<Self>;
+    type Wrapper: PointerWrapper<Self> = Box<Self>;
 
     /// Cleans up after the last reference to the file goes away.
     ///

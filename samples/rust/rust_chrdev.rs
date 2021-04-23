@@ -8,10 +8,7 @@
 use alloc::boxed::Box;
 use core::pin::Pin;
 use kernel::prelude::*;
-use kernel::{
-    chrdev, cstr,
-    file_operations::{FileOpener, FileOperations},
-};
+use kernel::{chrdev, cstr, file_operations::FileOperations};
 
 module! {
     type: RustChrdev,
@@ -23,18 +20,10 @@ module! {
     },
 }
 
+#[derive(Default)]
 struct RustFile;
 
-impl FileOpener<()> for RustFile {
-    fn open(_ctx: &()) -> KernelResult<Self::Wrapper> {
-        pr_info!("rust file was opened!\n");
-        Ok(Box::try_new(Self)?)
-    }
-}
-
 impl FileOperations for RustFile {
-    type Wrapper = Box<Self>;
-
     kernel::declare_file_operations!();
 }
 
