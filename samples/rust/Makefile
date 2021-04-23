@@ -9,3 +9,4 @@ obj-$(CONFIG_SAMPLE_RUST_MISCDEV)		+= rust_miscdev.o
 obj-$(CONFIG_SAMPLE_RUST_STACK_PROBING)		+= rust_stack_probing.o
 obj-$(CONFIG_SAMPLE_RUST_SEMAPHORE)		+= rust_semaphore.o
 obj-$(CONFIG_SAMPLE_RUST_SEMAPHORE_C)		+= rust_semaphore_c.o
+obj-$(CONFIG_SAMPLE_RUST_RANDOM)		+= rust_random.o
