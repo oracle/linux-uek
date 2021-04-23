@@ -1,18 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTX2 CPT driver
- *
- * Copyright (C) 2018 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0-only
+/* Copyright (C) 2018 Marvell. */
 
-#include "otx2_cpt_mbox_common.h"
-#include "rvu_reg.h"
+#include "otx2_cpt_common.h"
+#include "otx2_cptvf.h"
+#include "otx2_cptlf.h"
+#include "otx2_cptvf_algs.h"
+#include <rvu_reg.h>
 
-#define OTX2_CPT_DRV_NAME "octeontx2-cptvf"
-#define OTX2_CPT_DRV_VERSION "1.0"
+#define OTX2_CPTVF_DRV_NAME "octeontx2-cptvf"
 
 static unsigned int cpt_block_num;
 module_param(cpt_block_num, uint, 0644);
@@ -42,8 +37,8 @@ static void cptvf_disable_pfvf_mbox_intrs(struct otx2_cptvf_dev *cptvf)
 
 static int cptvf_register_interrupts(struct otx2_cptvf_dev *cptvf)
 {
-	u32 num_vec;
-	int ret;
+	int ret, irq;
+	int num_vec;
 
 	num_vec = pci_msix_vec_count(cptvf->pdev);
 	if (num_vec <= 0)
@@ -57,26 +52,24 @@ static int cptvf_register_interrupts(struct otx2_cptvf_dev *cptvf)
 			"Request for %d msix vectors failed\n", num_vec);
 		return ret;
 	}
-
-	/* Register VF-PF mailbox interrupt handler */
-	ret = request_irq(pci_irq_vector(cptvf->pdev,
-			  OTX2_CPT_VF_INT_VEC_E_MBOX),
-			  otx2_cptvf_pfvf_mbox_intr,
-			  0, "CPTPFVF Mbox", cptvf);
+	irq = pci_irq_vector(cptvf->pdev, OTX2_CPT_VF_INT_VEC_E_MBOX);
+	/* Register VF<=>PF mailbox interrupt handler */
+	ret = devm_request_irq(&cptvf->pdev->dev, irq,
+			       otx2_cptvf_pfvf_mbox_intr, 0,
+			       "CPTPFVF Mbox", cptvf);
 	if (ret)
-		goto free_irq;
-	return 0;
-free_irq:
-	dev_err(&cptvf->pdev->dev, "Failed to register interrupts\n");
-	pci_free_irq_vectors(cptvf->pdev);
-	return ret;
-}
+		return ret;
+	/* Enable PF-VF mailbox interrupts */
+	cptvf_enable_pfvf_mbox_intrs(cptvf);
 
-static void cptvf_unregister_interrupts(struct otx2_cptvf_dev *cptvf)
-{
-	free_irq(pci_irq_vector(cptvf->pdev, OTX2_CPT_VF_INT_VEC_E_MBOX),
-		 cptvf);
-	pci_free_irq_vectors(cptvf->pdev);
+	ret = otx2_cpt_send_ready_msg(&cptvf->pfvf_mbox, cptvf->pdev);
+	if (ret) {
+		dev_warn(&cptvf->pdev->dev,
+			 "PF not responding to mailbox, deferring probe\n");
+		cptvf_disable_pfvf_mbox_intrs(cptvf);
+		return -EPROBE_DEFER;
+	}
+	return 0;
 }
 
 static int cptvf_pfvf_mbox_init(struct otx2_cptvf_dev *cptvf)
@@ -96,118 +89,281 @@ static int cptvf_pfvf_mbox_init(struct otx2_cptvf_dev *cptvf)
 
 	INIT_WORK(&cptvf->pfvf_mbox_work, otx2_cptvf_pfvf_mbox_handler);
 	return 0;
+
 free_wqe:
-	flush_workqueue(cptvf->pfvf_mbox_wq);
 	destroy_workqueue(cptvf->pfvf_mbox_wq);
 	return ret;
 }
 
 static void cptvf_pfvf_mbox_destroy(struct otx2_cptvf_dev *cptvf)
 {
-	flush_workqueue(cptvf->pfvf_mbox_wq);
 	destroy_workqueue(cptvf->pfvf_mbox_wq);
 	otx2_mbox_destroy(&cptvf->pfvf_mbox);
+}
+
+static void cptlf_work_handler(unsigned long data)
+{
+	otx2_cpt_post_process((struct otx2_cptlf_wqe *) data);
+}
+
+static void cleanup_tasklet_work(struct otx2_cptlfs_info *lfs)
+{
+	int i;
+
+	for (i = 0; i <  lfs->lfs_num; i++) {
+		if (!lfs->lf[i].wqe)
+			continue;
+
+		tasklet_kill(&lfs->lf[i].wqe->work);
+		kfree(lfs->lf[i].wqe);
+		lfs->lf[i].wqe = NULL;
+	}
+}
+
+static int init_tasklet_work(struct otx2_cptlfs_info *lfs)
+{
+	struct otx2_cptlf_wqe *wqe;
+	int i, ret = 0;
+
+	for (i = 0; i < lfs->lfs_num; i++) {
+		wqe = kzalloc(sizeof(struct otx2_cptlf_wqe), GFP_KERNEL);
+		if (!wqe) {
+			ret = -ENOMEM;
+			goto cleanup_tasklet;
+		}
+
+		tasklet_init(&wqe->work, cptlf_work_handler, (u64) wqe);
+		wqe->lfs = lfs;
+		wqe->lf_num = i;
+		lfs->lf[i].wqe = wqe;
+	}
+	return 0;
+
+cleanup_tasklet:
+	cleanup_tasklet_work(lfs);
+	return ret;
+}
+
+static void free_pending_queues(struct otx2_cptlfs_info *lfs)
+{
+	int i;
+
+	for (i = 0; i < lfs->lfs_num; i++) {
+		kfree(lfs->lf[i].pqueue.head);
+		lfs->lf[i].pqueue.head = NULL;
+	}
+}
+
+static int alloc_pending_queues(struct otx2_cptlfs_info *lfs)
+{
+	int size, ret, i;
+
+	if (!lfs->lfs_num)
+		return -EINVAL;
+
+	for (i = 0; i < lfs->lfs_num; i++) {
+		lfs->lf[i].pqueue.qlen = OTX2_CPT_INST_QLEN_MSGS;
+		size = lfs->lf[i].pqueue.qlen *
+		       sizeof(struct otx2_cpt_pending_entry);
+
+		lfs->lf[i].pqueue.head = kzalloc(size, GFP_KERNEL);
+		if (!lfs->lf[i].pqueue.head) {
+			ret = -ENOMEM;
+			goto error;
+		}
+
+		/* Initialize spin lock */
+		spin_lock_init(&lfs->lf[i].pqueue.lock);
+	}
+	return 0;
+
+error:
+	free_pending_queues(lfs);
+	return ret;
+}
+
+static void lf_sw_cleanup(struct otx2_cptlfs_info *lfs)
+{
+	cleanup_tasklet_work(lfs);
+	free_pending_queues(lfs);
+}
+
+static int lf_sw_init(struct otx2_cptlfs_info *lfs)
+{
+	int ret;
+
+	ret = alloc_pending_queues(lfs);
+	if (ret) {
+		dev_err(&lfs->pdev->dev,
+			"Allocating pending queues failed\n");
+		return ret;
+	}
+	ret = init_tasklet_work(lfs);
+	if (ret) {
+		dev_err(&lfs->pdev->dev,
+			"Tasklet work init failed\n");
+		goto pending_queues_free;
+	}
+	return 0;
+
+pending_queues_free:
+	free_pending_queues(lfs);
+	return ret;
+}
+
+static void cptvf_lf_shutdown(struct otx2_cptlfs_info *lfs)
+{
+	atomic_set(&lfs->state, OTX2_CPTLF_IN_RESET);
+
+	/* Remove interrupts affinity */
+	otx2_cptlf_free_irqs_affinity(lfs);
+	/* Disable instruction queue */
+	otx2_cptlf_disable_iqueues(lfs);
+	/* Unregister crypto algorithms */
+	otx2_cpt_crypto_exit(lfs->pdev, THIS_MODULE);
+	/* Unregister LFs interrupts */
+	otx2_cptlf_unregister_interrupts(lfs);
+	/* Cleanup LFs software side */
+	lf_sw_cleanup(lfs);
+	/* Send request to detach LFs */
+	otx2_cpt_detach_rsrcs_msg(lfs);
+}
+
+static int cptvf_lf_init(struct otx2_cptvf_dev *cptvf)
+{
+	struct otx2_cptlfs_info *lfs = &cptvf->lfs;
+	struct device *dev = &cptvf->pdev->dev;
+	int ret, lfs_num;
+	u8 eng_grp_msk;
+
+	/* Get engine group number for symmetric crypto */
+	cptvf->lfs.kcrypto_eng_grp_num = OTX2_CPT_INVALID_CRYPTO_ENG_GRP;
+	ret = otx2_cptvf_send_eng_grp_num_msg(cptvf, OTX2_CPT_SE_TYPES);
+	if (ret)
+		return ret;
+
+	if (cptvf->lfs.kcrypto_eng_grp_num == OTX2_CPT_INVALID_CRYPTO_ENG_GRP) {
+		dev_err(dev, "Engine group for kernel crypto not available\n");
+		ret = -ENOENT;
+		return ret;
+	}
+	eng_grp_msk = 1 << cptvf->lfs.kcrypto_eng_grp_num;
+
+	ret = otx2_cptvf_send_kvf_limits_msg(cptvf);
+	if (ret)
+		return ret;
+
+	lfs->reg_base = cptvf->reg_base;
+	lfs->pdev = cptvf->pdev;
+	lfs->mbox = &cptvf->pfvf_mbox;
+	lfs->blkaddr = cptvf->blkaddr;
+
+	lfs_num = cptvf->lfs.kvf_limits ? cptvf->lfs.kvf_limits :
+		  num_online_cpus();
+	ret = otx2_cptlf_init(lfs, eng_grp_msk, OTX2_CPT_QUEUE_HI_PRIO,
+			      lfs_num);
+	if (ret)
+		return ret;
+
+	/* Get msix offsets for attached LFs */
+	ret = otx2_cpt_msix_offset_msg(lfs);
+	if (ret)
+		goto cleanup_lf;
+
+	/* Initialize LFs software side */
+	ret = lf_sw_init(lfs);
+	if (ret)
+		goto cleanup_lf;
+
+	/* Register LFs interrupts */
+	ret = otx2_cptlf_register_interrupts(lfs);
+	if (ret)
+		goto cleanup_lf_sw;
+
+	/* Set interrupts affinity */
+	ret = otx2_cptlf_set_irqs_affinity(lfs);
+	if (ret)
+		goto unregister_intr;
+
+	atomic_set(&lfs->state, OTX2_CPTLF_STARTED);
+	/* Register crypto algorithms */
+	ret = otx2_cpt_crypto_init(lfs->pdev, THIS_MODULE, lfs_num, 1);
+	if (ret) {
+		dev_err(&lfs->pdev->dev, "algorithms registration failed\n");
+		goto disable_irqs;
+	}
+	return 0;
+
+disable_irqs:
+	otx2_cptlf_free_irqs_affinity(lfs);
+unregister_intr:
+	otx2_cptlf_unregister_interrupts(lfs);
+cleanup_lf_sw:
+	lf_sw_cleanup(lfs);
+cleanup_lf:
+	otx2_cptlf_shutdown(lfs);
+
+	return ret;
 }
 
 static int otx2_cptvf_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *ent)
 {
 	struct device *dev = &pdev->dev;
+	resource_size_t offset, size;
 	struct otx2_cptvf_dev *cptvf;
-	int ret, kcrypto_lfs;
+	int ret;
 
-	cptvf = kzalloc(sizeof(*cptvf), GFP_KERNEL);
+	cptvf = devm_kzalloc(dev, sizeof(*cptvf), GFP_KERNEL);
 	if (!cptvf)
 		return -ENOMEM;
 
-	pci_set_drvdata(pdev, cptvf);
-	cptvf->pdev = pdev;
-
-	ret = pci_enable_device(pdev);
+	ret = pcim_enable_device(pdev);
 	if (ret) {
 		dev_err(dev, "Failed to enable PCI device\n");
 		goto clear_drvdata;
 	}
 
-	pci_set_master(pdev);
-
-	ret = pci_request_regions(pdev, OTX2_CPT_DRV_NAME);
-	if (ret) {
-		dev_err(dev, "PCI request regions failed 0x%x\n", ret);
-		goto disable_device;
-	}
-
-	ret = pci_set_dma_mask(pdev, DMA_BIT_MASK(48));
+	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48));
 	if (ret) {
 		dev_err(dev, "Unable to get usable DMA configuration\n");
-		goto release_regions;
+		goto clear_drvdata;
 	}
-
-	ret = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(48));
-	if (ret) {
-		dev_err(dev, "Unable to get 48-bit DMA for consistent allocations\n");
-		goto release_regions;
-	}
-
 	/* Map VF's configuration registers */
-	cptvf->reg_base = pci_iomap(pdev, PCI_PF_REG_BAR_NUM, 0);
-	if (!cptvf->reg_base) {
-		dev_err(dev, "Unable to map BAR2\n");
-		ret = -ENOMEM;
-		goto release_regions;
+	ret = pcim_iomap_regions_request_all(pdev, 1 << PCI_PF_REG_BAR_NUM,
+					     OTX2_CPTVF_DRV_NAME);
+	if (ret) {
+		dev_err(dev, "Couldn't get PCI resources 0x%x\n", ret);
+		goto clear_drvdata;
 	}
+	pci_set_master(pdev);
+	pci_set_drvdata(pdev, cptvf);
+	cptvf->pdev = pdev;
 
+	cptvf->reg_base = pcim_iomap_table(pdev)[PCI_PF_REG_BAR_NUM];
+
+	offset = pci_resource_start(pdev, PCI_MBOX_BAR_NUM);
+	size = pci_resource_len(pdev, PCI_MBOX_BAR_NUM);
 	/* Map PF-VF mailbox memory */
-	cptvf->pfvf_mbox_base = ioremap_wc(pci_resource_start(cptvf->pdev,
-					   PCI_MBOX_BAR_NUM),
-					   pci_resource_len(cptvf->pdev,
-					   PCI_MBOX_BAR_NUM));
+	cptvf->pfvf_mbox_base = devm_ioremap_wc(dev, offset, size);
 	if (!cptvf->pfvf_mbox_base) {
 		dev_err(&pdev->dev, "Unable to map BAR4\n");
 		ret = -ENODEV;
-		goto pci_unmap;
+		goto clear_drvdata;
 	}
-
-	/* Initialize PF-VF mailbox */
+	/* Initialize PF<=>VF mailbox */
 	ret = cptvf_pfvf_mbox_init(cptvf);
 	if (ret)
-		goto iounmap_pfvf;
+		goto clear_drvdata;
 
 	/* Register interrupts */
 	ret = cptvf_register_interrupts(cptvf);
 	if (ret)
 		goto destroy_pfvf_mbox;
 
-	/* Enable PF-VF mailbox interrupts */
-	cptvf_enable_pfvf_mbox_intrs(cptvf);
-
-	/* Send ready message */
-	ret = otx2_cpt_send_ready_msg(cptvf->pdev);
-	if (ret)
-		goto unregister_interrupts;
-
-	/* Get engine group number for symmetric crypto */
-	cptvf->lfs.kcrypto_eng_grp_num = OTX2_CPT_INVALID_CRYPTO_ENG_GRP;
-	ret = otx2_cptvf_send_eng_grp_num_msg(cptvf, OTX2_CPT_SE_TYPES);
-	if (ret)
-		goto unregister_interrupts;
-
-	if (cptvf->lfs.kcrypto_eng_grp_num == OTX2_CPT_INVALID_CRYPTO_ENG_GRP) {
-		dev_err(dev, "Engine group for kernel crypto not available\n");
-		ret = -ENOENT;
-		goto unregister_interrupts;
-	}
-	ret = otx2_cptvf_send_kcrypto_limits_msg(cptvf);
-	if (ret)
-		goto unregister_interrupts;
-
-	kcrypto_lfs = cptvf->lfs.kcrypto_limits ? cptvf->lfs.kcrypto_limits :
-		      num_online_cpus();
-
 	cptvf->blkaddr = (cpt_block_num == 0) ? BLKADDR_CPT0 : BLKADDR_CPT1;
 	/* Initialize CPT LFs */
-	ret = otx2_cptvf_lf_init(pdev, cptvf->reg_base, &cptvf->lfs,
-				 kcrypto_lfs);
+	ret = cptvf_lf_init(cptvf);
 	if (ret)
 		goto unregister_interrupts;
 
@@ -215,20 +371,10 @@ static int otx2_cptvf_probe(struct pci_dev *pdev,
 
 unregister_interrupts:
 	cptvf_disable_pfvf_mbox_intrs(cptvf);
-	cptvf_unregister_interrupts(cptvf);
 destroy_pfvf_mbox:
 	cptvf_pfvf_mbox_destroy(cptvf);
-iounmap_pfvf:
-	iounmap(cptvf->pfvf_mbox_base);
-pci_unmap:
-	pci_iounmap(pdev, cptvf->reg_base);
-release_regions:
-	pci_release_regions(pdev);
-disable_device:
-	pci_disable_device(pdev);
 clear_drvdata:
 	pci_set_drvdata(pdev, NULL);
-	kfree(cptvf);
 
 	return ret;
 }
@@ -241,23 +387,12 @@ static void otx2_cptvf_remove(struct pci_dev *pdev)
 		dev_err(&pdev->dev, "Invalid CPT VF device.\n");
 		return;
 	}
-
-	/* Shutdown CPT LFs */
-	if (otx2_cptvf_lf_shutdown(pdev, &cptvf->lfs))
-		dev_err(&pdev->dev, "CPT LFs shutdown failed.\n");
+	cptvf_lf_shutdown(&cptvf->lfs);
 	/* Disable PF-VF mailbox interrupt */
 	cptvf_disable_pfvf_mbox_intrs(cptvf);
-	/* Unregister interrupts */
-	cptvf_unregister_interrupts(cptvf);
 	/* Destroy PF-VF mbox */
 	cptvf_pfvf_mbox_destroy(cptvf);
-	/* Unmap PF-VF mailbox memory */
-	iounmap(cptvf->pfvf_mbox_base);
-	pci_iounmap(pdev, cptvf->reg_base);
-	pci_release_regions(pdev);
-	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
-	kfree(cptvf);
 }
 
 /* Supported devices */
@@ -267,7 +402,7 @@ static const struct pci_device_id otx2_cptvf_id_table[] = {
 };
 
 static struct pci_driver otx2_cptvf_pci_driver = {
-	.name = OTX2_CPT_DRV_NAME,
+	.name = OTX2_CPTVF_DRV_NAME,
 	.id_table = otx2_cptvf_id_table,
 	.probe = otx2_cptvf_probe,
 	.remove = otx2_cptvf_remove,
@@ -275,8 +410,7 @@ static struct pci_driver otx2_cptvf_pci_driver = {
 
 module_pci_driver(otx2_cptvf_pci_driver);
 
-MODULE_AUTHOR("Marvell International Ltd.");
+MODULE_AUTHOR("Marvell");
 MODULE_DESCRIPTION("Marvell OcteonTX2 CPT Virtual Function Driver");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION(OTX2_CPT_DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_cptvf_id_table);

@@ -1,11 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0
- * Marvell OcteonTX2 CPT driver
- *
- * Copyright (C) 2018 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+/* SPDX-License-Identifier: GPL-2.0-only
+ * Copyright (C) 2018 Marvell.
  */
 
 #ifndef __OTX2_CPTVF_H
@@ -25,12 +19,12 @@ struct otx2_cptvf_dev {
 	struct otx2_mbox	pfvf_mbox;
 	struct work_struct	pfvf_mbox_work;
 	struct workqueue_struct *pfvf_mbox_wq;
-	u8 blkaddr;
+	int blkaddr;
 };
 
 irqreturn_t otx2_cptvf_pfvf_mbox_intr(int irq, void *arg);
 void otx2_cptvf_pfvf_mbox_handler(struct work_struct *work);
 int otx2_cptvf_send_eng_grp_num_msg(struct otx2_cptvf_dev *cptvf, int eng_type);
-int otx2_cptvf_send_kcrypto_limits_msg(struct otx2_cptvf_dev *cptvf);
+int otx2_cptvf_send_kvf_limits_msg(struct otx2_cptvf_dev *cptvf);
 
 #endif /* __OTX2_CPTVF_H */

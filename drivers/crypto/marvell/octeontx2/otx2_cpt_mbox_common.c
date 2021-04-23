@@ -1,115 +1,11 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTX2 CPT driver
- *
- * Copyright (C) 2018 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0-only
+/* Copyright (C) 2018 Marvell. */
 
-#include "otx2_cpt_mbox_common.h"
+#include "otx2_cpt_common.h"
+#include "otx2_cptlf.h"
 
-static inline struct otx2_mbox *get_mbox(struct pci_dev *pdev)
+int otx2_cpt_send_mbox_msg(struct otx2_mbox *mbox, struct pci_dev *pdev)
 {
-	struct otx2_cptpf_dev *cptpf;
-	struct otx2_cptvf_dev *cptvf;
-
-	if (pdev->is_physfn) {
-		cptpf = (struct otx2_cptpf_dev *) pci_get_drvdata(pdev);
-		return &cptpf->afpf_mbox;
-	}
-
-	cptvf = (struct otx2_cptvf_dev *) pci_get_drvdata(pdev);
-	return &cptvf->pfvf_mbox;
-}
-
-static inline int get_pf_id(struct pci_dev *pdev)
-{
-	struct otx2_cptpf_dev *cptpf;
-
-	if (pdev->is_physfn) {
-		cptpf = (struct otx2_cptpf_dev *) pci_get_drvdata(pdev);
-		return cptpf->pf_id;
-	}
-
-	return 0;
-}
-
-static inline int get_vf_id(struct pci_dev *pdev)
-{
-	struct otx2_cptvf_dev *cptvf;
-
-	if (pdev->is_virtfn) {
-		cptvf = (struct otx2_cptvf_dev *) pci_get_drvdata(pdev);
-		return cptvf->vf_id;
-	}
-
-	return 0;
-}
-
-static inline u8 cpt_get_blkaddr(struct pci_dev *pdev)
-{
-	struct otx2_cptpf_dev *cptpf;
-	struct otx2_cptvf_dev *cptvf;
-
-	if (pdev->is_physfn) {
-		cptpf = (struct otx2_cptpf_dev *) pci_get_drvdata(pdev);
-		return cptpf->blkaddr;
-	}
-
-	cptvf = (struct otx2_cptvf_dev *) pci_get_drvdata(pdev);
-	return cptvf->blkaddr;
-}
-
-char *otx2_cpt_get_mbox_opcode_str(int msg_opcode)
-{
-	char *str = "Unknown";
-
-	switch (msg_opcode) {
-	case MBOX_MSG_READY:
-		str = "READY";
-		break;
-
-	case MBOX_MSG_ATTACH_RESOURCES:
-		str = "ATTACH_RESOURCES";
-		break;
-
-	case MBOX_MSG_DETACH_RESOURCES:
-		str = "DETACH_RESOURCES";
-		break;
-
-	case MBOX_MSG_MSIX_OFFSET:
-		str = "MSIX_OFFSET";
-		break;
-
-	case MBOX_MSG_CPT_RD_WR_REGISTER:
-		str = "RD_WR_REGISTER";
-		break;
-
-	case MBOX_MSG_GET_ENG_GRP_NUM:
-		str = "GET_ENG_GRP_NUM";
-		break;
-
-	case MBOX_MSG_RX_INLINE_IPSEC_LF_CFG:
-		str = "RX_INLINE_IPSEC_LF_CFG";
-		break;
-
-	case MBOX_MSG_GET_CAPS:
-		str = "GET_CAPS";
-		break;
-
-	case MBOX_MSG_GET_KCRYPTO_LIMITS:
-		str = "GET_KCRYPTO_LIMITS";
-		break;
-	}
-
-	return str;
-}
-
-int otx2_cpt_send_mbox_msg(struct pci_dev *pdev)
-{
-	struct otx2_mbox *mbox = get_mbox(pdev);
 	int ret;
 
 	otx2_mbox_msg_send(mbox, 0);
@@ -124,32 +20,105 @@ int otx2_cpt_send_mbox_msg(struct pci_dev *pdev)
 	return ret;
 }
 
-int otx2_cpt_send_ready_msg(struct pci_dev *pdev)
+int otx2_cpt_send_ready_msg(struct otx2_mbox *mbox, struct pci_dev *pdev)
 {
-	struct otx2_mbox *mbox = get_mbox(pdev);
 	struct mbox_msghdr *req;
-	int ret;
 
 	req = otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*req),
 				      sizeof(struct ready_msg_rsp));
-
 	if (req == NULL) {
 		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
 		return -EFAULT;
 	}
-
 	req->id = MBOX_MSG_READY;
 	req->sig = OTX2_MBOX_REQ_SIG;
-	req->pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev), get_vf_id(pdev));
-	ret = otx2_cpt_send_mbox_msg(pdev);
+	req->pcifunc = 0;
 
-	return ret;
+	return otx2_cpt_send_mbox_msg(mbox, pdev);
 }
 
-int otx2_cpt_attach_rscrs_msg(struct pci_dev *pdev)
+int otx2_cpt_send_af_reg_requests(struct otx2_mbox *mbox, struct pci_dev *pdev)
 {
-	struct otx2_cptlfs_info *lfs = otx2_cpt_get_lfs_info(pdev);
-	struct otx2_mbox *mbox = get_mbox(pdev);
+	return otx2_cpt_send_mbox_msg(mbox, pdev);
+}
+
+int otx2_cpt_add_read_af_reg(struct otx2_mbox *mbox, struct pci_dev *pdev,
+			     u64 reg, u64 *val, int blkaddr)
+{
+	struct cpt_rd_wr_reg_msg *reg_msg;
+
+	reg_msg = (struct cpt_rd_wr_reg_msg *)
+			otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*reg_msg),
+						sizeof(*reg_msg));
+	if (reg_msg == NULL) {
+		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+		return -EFAULT;
+	}
+
+	reg_msg->hdr.id = MBOX_MSG_CPT_RD_WR_REGISTER;
+	reg_msg->hdr.sig = OTX2_MBOX_REQ_SIG;
+	reg_msg->hdr.pcifunc = 0;
+
+	reg_msg->is_write = 0;
+	reg_msg->reg_offset = reg;
+	reg_msg->ret_val = val;
+	reg_msg->blkaddr = blkaddr;
+
+	return 0;
+}
+
+int otx2_cpt_add_write_af_reg(struct otx2_mbox *mbox, struct pci_dev *pdev,
+			      u64 reg, u64 val, int blkaddr)
+{
+	struct cpt_rd_wr_reg_msg *reg_msg;
+
+	reg_msg = (struct cpt_rd_wr_reg_msg *)
+			otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*reg_msg),
+						sizeof(*reg_msg));
+	if (reg_msg == NULL) {
+		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+		return -EFAULT;
+	}
+
+	reg_msg->hdr.id = MBOX_MSG_CPT_RD_WR_REGISTER;
+	reg_msg->hdr.sig = OTX2_MBOX_REQ_SIG;
+	reg_msg->hdr.pcifunc = 0;
+
+	reg_msg->is_write = 1;
+	reg_msg->reg_offset = reg;
+	reg_msg->val = val;
+	reg_msg->blkaddr = blkaddr;
+
+	return 0;
+}
+
+int otx2_cpt_read_af_reg(struct otx2_mbox *mbox, struct pci_dev *pdev,
+			 u64 reg, u64 *val, int blkaddr)
+{
+	int ret;
+
+	ret = otx2_cpt_add_read_af_reg(mbox, pdev, reg, val, blkaddr);
+	if (ret)
+		return ret;
+
+	return otx2_cpt_send_mbox_msg(mbox, pdev);
+}
+
+int otx2_cpt_write_af_reg(struct otx2_mbox *mbox, struct pci_dev *pdev,
+			  u64 reg, u64 val, int blkaddr)
+{
+	int ret;
+
+	ret = otx2_cpt_add_write_af_reg(mbox, pdev, reg, val, blkaddr);
+	if (ret)
+		return ret;
+
+	return otx2_cpt_send_mbox_msg(mbox, pdev);
+}
+
+int otx2_cpt_attach_rscrs_msg(struct otx2_cptlfs_info *lfs)
+{
+	struct otx2_mbox *mbox = lfs->mbox;
 	struct rsrc_attach *req;
 	int ret;
 
@@ -157,17 +126,16 @@ int otx2_cpt_attach_rscrs_msg(struct pci_dev *pdev)
 			otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*req),
 						sizeof(struct msg_rsp));
 	if (req == NULL) {
-		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+		dev_err(&lfs->pdev->dev, "RVU MBOX failed to get message.\n");
 		return -EFAULT;
 	}
 
 	req->hdr.id = MBOX_MSG_ATTACH_RESOURCES;
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
-	req->hdr.pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev),
-					       get_vf_id(pdev));
+	req->hdr.pcifunc = 0;
 	req->cptlfs = lfs->lfs_num;
 	req->cpt_blkaddr = lfs->blkaddr;
-	ret = otx2_cpt_send_mbox_msg(pdev);
+	ret = otx2_cpt_send_mbox_msg(mbox, lfs->pdev);
 	if (ret)
 		return ret;
 
@@ -177,10 +145,9 @@ int otx2_cpt_attach_rscrs_msg(struct pci_dev *pdev)
 	return ret;
 }
 
-int otx2_cpt_detach_rsrcs_msg(struct pci_dev *pdev)
+int otx2_cpt_detach_rsrcs_msg(struct otx2_cptlfs_info *lfs)
 {
-	struct otx2_cptlfs_info *lfs = otx2_cpt_get_lfs_info(pdev);
-	struct otx2_mbox *mbox = get_mbox(pdev);
+	struct otx2_mbox *mbox = lfs->mbox;
 	struct rsrc_detach *req;
 	int ret;
 
@@ -188,15 +155,14 @@ int otx2_cpt_detach_rsrcs_msg(struct pci_dev *pdev)
 				otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*req),
 							sizeof(struct msg_rsp));
 	if (req == NULL) {
-		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+		dev_err(&lfs->pdev->dev, "RVU MBOX failed to get message.\n");
 		return -EFAULT;
 	}
 
 	req->hdr.id = MBOX_MSG_DETACH_RESOURCES;
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
-	req->hdr.pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev),
-					       get_vf_id(pdev));
-	ret = otx2_cpt_send_mbox_msg(pdev);
+	req->hdr.pcifunc = 0;
+	ret = otx2_cpt_send_mbox_msg(mbox, lfs->pdev);
 	if (ret)
 		return ret;
 
@@ -206,10 +172,10 @@ int otx2_cpt_detach_rsrcs_msg(struct pci_dev *pdev)
 	return ret;
 }
 
-int otx2_cpt_msix_offset_msg(struct pci_dev *pdev)
+int otx2_cpt_msix_offset_msg(struct otx2_cptlfs_info *lfs)
 {
-	struct otx2_cptlfs_info *lfs = otx2_cpt_get_lfs_info(pdev);
-	struct otx2_mbox *mbox = get_mbox(pdev);
+	struct otx2_mbox *mbox = lfs->mbox;
+	struct pci_dev *pdev = lfs->pdev;
 	struct mbox_msghdr *req;
 	int ret, i;
 
@@ -222,8 +188,8 @@ int otx2_cpt_msix_offset_msg(struct pci_dev *pdev)
 
 	req->id = MBOX_MSG_MSIX_OFFSET;
 	req->sig = OTX2_MBOX_REQ_SIG;
-	req->pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev), get_vf_id(pdev));
-	ret = otx2_cpt_send_mbox_msg(pdev);
+	req->pcifunc = 0;
+	ret = otx2_cpt_send_mbox_msg(mbox, pdev);
 	if (ret)
 		return ret;
 
@@ -235,84 +201,5 @@ int otx2_cpt_msix_offset_msg(struct pci_dev *pdev)
 			return -EINVAL;
 		}
 	}
-	return ret;
-}
-
-int otx2_cpt_send_af_reg_requests(struct pci_dev *pdev)
-{
-	return otx2_cpt_send_mbox_msg(pdev);
-}
-
-int otx2_cpt_add_read_af_reg(struct pci_dev *pdev, u64 reg, u64 *val)
-{
-	struct otx2_mbox *mbox = get_mbox(pdev);
-	struct cpt_rd_wr_reg_msg *reg_msg;
-
-	reg_msg = (struct cpt_rd_wr_reg_msg *)
-			otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*reg_msg),
-						sizeof(*reg_msg));
-	if (reg_msg == NULL) {
-		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
-		return -EFAULT;
-	}
-
-	reg_msg->hdr.id = MBOX_MSG_CPT_RD_WR_REGISTER;
-	reg_msg->hdr.sig = OTX2_MBOX_REQ_SIG;
-	reg_msg->hdr.pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev),
-						   get_vf_id(pdev));
-	reg_msg->is_write = 0;
-	reg_msg->reg_offset = reg;
-	reg_msg->ret_val = val;
-	reg_msg->blkaddr = cpt_get_blkaddr(pdev);
-
-	return 0;
-}
-
-int otx2_cpt_add_write_af_reg(struct pci_dev *pdev, u64 reg, u64 val)
-{
-	struct otx2_mbox *mbox = get_mbox(pdev);
-	struct cpt_rd_wr_reg_msg *reg_msg;
-
-	reg_msg = (struct cpt_rd_wr_reg_msg *)
-			otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*reg_msg),
-						sizeof(*reg_msg));
-	if (reg_msg == NULL) {
-		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
-		return -EFAULT;
-	}
-
-	reg_msg->hdr.id = MBOX_MSG_CPT_RD_WR_REGISTER;
-	reg_msg->hdr.sig = OTX2_MBOX_REQ_SIG;
-	reg_msg->hdr.pcifunc = OTX2_CPT_RVU_PFFUNC(get_pf_id(pdev),
-						   get_vf_id(pdev));
-	reg_msg->is_write = 1;
-	reg_msg->reg_offset = reg;
-	reg_msg->val = val;
-	reg_msg->blkaddr = cpt_get_blkaddr(pdev);
-
-	return 0;
-}
-
-int otx2_cpt_read_af_reg(struct pci_dev *pdev, u64 reg, u64 *val)
-{
-	int ret;
-
-	ret = otx2_cpt_add_read_af_reg(pdev, reg, val);
-	if (ret)
-		return ret;
-	ret = otx2_cpt_send_mbox_msg(pdev);
-
-	return ret;
-}
-
-int otx2_cpt_write_af_reg(struct pci_dev *pdev, u64 reg, u64 val)
-{
-	int ret;
-
-	ret = otx2_cpt_add_write_af_reg(pdev, reg, val);
-	if (ret)
-		return ret;
-	ret = otx2_cpt_send_mbox_msg(pdev);
-
 	return ret;
 }
