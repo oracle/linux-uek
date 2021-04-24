@@ -587,7 +587,7 @@ pub fn module(ts: TokenStream) -> TokenStream {
             /// The module name.
             ///
             /// Used by the printing macros, e.g. [`info!`].
-            const __MODULE_NAME: &[u8] = b\"{name}\\0\";
+            const __LOG_PREFIX: &[u8] = b\"{name}\\0\";
 
             static mut __MOD: Option<{type_}> = None;
 

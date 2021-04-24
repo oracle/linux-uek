@@ -209,12 +209,13 @@ macro_rules! print_macro (
     ($format_string:path, false, $fmt:expr) => (
         // SAFETY: This hidden macro should only be called by the documented
         // printing macros which ensure the format string is one of the fixed
-        // ones. All `__MODULE_NAME`s are null-terminated as they are generated
-        // by the `module!` proc macro.
+        // ones. All `__LOG_PREFIX`s are null-terminated as they are generated
+        // by the `module!` proc macro or fixed values defined in a kernel
+        // crate.
         unsafe {
-            kernel::print::call_printk(
+            $crate::print::call_printk(
                 &$format_string,
-                crate::__MODULE_NAME,
+                crate::__LOG_PREFIX,
                 $fmt.as_bytes(),
             );
         }
@@ -222,7 +223,7 @@ macro_rules! print_macro (
 
     // Without extra arguments: no need to format anything (`CONT` case).
     ($format_string:path, true, $fmt:expr) => (
-        kernel::print::call_printk_cont(
+        $crate::print::call_printk_cont(
             $fmt.as_bytes(),
         );
     );
@@ -245,12 +246,13 @@ macro_rules! print_macro (
         //
         // SAFETY: This hidden macro should only be called by the documented
         // printing macros which ensure the format string is one of the fixed
-        // ones. All `__MODULE_NAME`s are null-terminated as they are generated
-        // by the `module!` proc macro.
+        // ones. All `__LOG_PREFIX`s are null-terminated as they are generated
+        // by the `module!` proc macro or fixed values defined in a kernel
+        // crate.
         unsafe {
-            kernel::print::format_and_call::<$cont>(
+            $crate::print::format_and_call::<$cont>(
                 &$format_string,
-                crate::__MODULE_NAME,
+                crate::__LOG_PREFIX,
                 format_args!($fmt, $($arg)*),
             );
         }
