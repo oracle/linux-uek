@@ -109,8 +109,6 @@ impl FileOperations for FileState {
     fn ioctl(&self, file: &File, cmd: &mut IoctlCommand) -> KernelResult<i32> {
         cmd.dispatch(self, file)
     }
-
-    fn release(_obj: Box<Self>, _file: &File) {}
 }
 
 struct RustSemaphore {
