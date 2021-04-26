@@ -56,6 +56,7 @@ struct ib_update_work {
 	struct work_struct work;
 	struct ib_device  *device;
 	u8                 port_num;
+	enum ib_event_type event;
 };
 
 static inline int start_port(struct ib_device *device)
@@ -266,12 +267,16 @@ int ib_get_cached_lmc(struct ib_device *device,
 }
 EXPORT_SYMBOL(ib_get_cached_lmc);
 
-static void ib_cache_update(struct ib_device *device,
-			    u8                port)
+static void ib_cache_update(struct ib_device  *device,
+			    u8                 port,
+			    bool 	       update_gids,
+			    bool  	       update_pkeys)
 {
 	struct ib_port_attr       *tprops = NULL;
-	struct ib_pkey_cache      *pkey_cache = NULL, *old_pkey_cache;
-	struct ib_gid_cache       *gid_cache = NULL, *old_gid_cache;
+	struct ib_pkey_cache      *pkey_cache = NULL;
+	struct ib_pkey_cache	  *old_pkey_cache = NULL;
+	struct ib_gid_cache       *gid_cache = NULL;
+	struct ib_gid_cache	  *old_gid_cache = NULL;
 	int                        i;
 	int                        ret;
 
@@ -290,45 +295,53 @@ static void ib_cache_update(struct ib_device *device,
 		goto err;
 	}
 
-	pkey_cache = kmalloc(sizeof *pkey_cache + tprops->pkey_tbl_len *
-			     sizeof *pkey_cache->table, GFP_KERNEL);
-	if (!pkey_cache)
-		goto err;
-
-	pkey_cache->table_len = tprops->pkey_tbl_len;
-
-	gid_cache = kmalloc(sizeof *gid_cache + tprops->gid_tbl_len *
-			    sizeof *gid_cache->table, GFP_KERNEL);
-	if (!gid_cache)
-		goto err;
-
-	gid_cache->table_len = tprops->gid_tbl_len;
-
-	for (i = 0; i < pkey_cache->table_len; ++i) {
-		ret = ib_query_pkey(device, port, i, pkey_cache->table + i);
-		if (ret) {
-			printk(KERN_WARNING "ib_query_pkey failed (%d) for %s (index %d)\n",
-			       ret, device->name, i);
+	if (update_pkeys) {
+		pkey_cache = kmalloc(sizeof(*pkey_cache) + tprops->pkey_tbl_len *
+				     sizeof(*pkey_cache->table), GFP_KERNEL);
+		if (!pkey_cache)
 			goto err;
+
+		pkey_cache->table_len = tprops->pkey_tbl_len;
+
+		for (i = 0; i < pkey_cache->table_len; ++i) {
+			ret = ib_query_pkey(device, port, i, pkey_cache->table + i);
+			if (ret) {
+				printk(KERN_WARNING "ib_query_pkey failed (%d) for %s (index %d)\n",
+				       ret, device->name, i);
+				goto err;
+			}
 		}
 	}
 
-	for (i = 0; i < gid_cache->table_len; ++i) {
-		ret = ib_query_gid(device, port, i, gid_cache->table + i);
-		if (ret) {
-			printk(KERN_WARNING "ib_query_gid failed (%d) for %s (index %d)\n",
-			       ret, device->name, i);
+	if (update_gids) {
+		gid_cache = kmalloc(sizeof(*gid_cache) + tprops->gid_tbl_len *
+				    sizeof(*gid_cache->table), GFP_KERNEL);
+		if (!gid_cache)
 			goto err;
+
+		gid_cache->table_len = tprops->gid_tbl_len;
+
+		for (i = 0; i < gid_cache->table_len; ++i) {
+			ret = ib_query_gid(device, port, i, gid_cache->table + i);
+			if (ret) {
+				printk(KERN_WARNING "ib_query_gid failed (%d) for %s (index %d)\n",
+				       ret, device->name, i);
+				goto err;
+			}
 		}
 	}
 
 	write_lock_irq(&device->cache.lock);
 
-	old_pkey_cache = device->cache.pkey_cache[port - start_port(device)];
-	old_gid_cache  = device->cache.gid_cache [port - start_port(device)];
+	if (update_pkeys) {
+		old_pkey_cache = device->cache.pkey_cache[port - start_port(device)];
+		device->cache.pkey_cache[port - start_port(device)] = pkey_cache;
+	}
 
-	device->cache.pkey_cache[port - start_port(device)] = pkey_cache;
-	device->cache.gid_cache [port - start_port(device)] = gid_cache;
+	if (update_gids) {
+		old_gid_cache  = device->cache.gid_cache [port - start_port(device)];
+		device->cache.gid_cache [port - start_port(device)] = gid_cache;
+	}
 
 	device->cache.lmc_cache[port - start_port(device)] = tprops->lmc;
 
@@ -350,7 +363,9 @@ static void ib_cache_task(struct work_struct *_work)
 	struct ib_update_work *work =
 		container_of(_work, struct ib_update_work, work);
 
-	ib_cache_update(work->device, work->port_num);
+	ib_cache_update(work->device, work->port_num,
+			work->event == IB_EVENT_GID_CHANGE,
+			work->event == IB_EVENT_PKEY_CHANGE);
 	kfree(work);
 }
 
@@ -371,6 +386,7 @@ static void ib_cache_event(struct ib_event_handler *handler,
 			INIT_WORK(&work->work, ib_cache_task);
 			work->device   = event->device;
 			work->port_num = event->element.port_num;
+			work->event    = event->event;
 			queue_work(ib_wq, &work->work);
 		}
 	}
@@ -404,7 +420,7 @@ static void ib_cache_setup_one(struct ib_device *device)
 	for (p = 0; p <= end_port(device) - start_port(device); ++p) {
 		device->cache.pkey_cache[p] = NULL;
 		device->cache.gid_cache [p] = NULL;
-		ib_cache_update(device, p + start_port(device));
+		ib_cache_update(device, p + start_port(device), true, true);
 	}
 
 	INIT_IB_EVENT_HANDLER(&device->cache.event_handler,
