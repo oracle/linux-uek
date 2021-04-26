@@ -13,6 +13,7 @@ bool fixup_vdso_exception(struct pt_regs *regs, int trapnr,
 			  unsigned long error_code, unsigned long fault_addr)
 {
 	const struct vdso_image *image = current->mm->context.vdso_image;
+	const struct vdso_image_ext *image_ext;
 	const struct vdso_exception_table_entry *extable;
 	unsigned int nr_entries, i;
 	unsigned long base;
@@ -28,9 +29,31 @@ bool fixup_vdso_exception(struct pt_regs *regs, int trapnr,
 	if (!current->mm->context.vdso)
 		return false;
 
-	base =  (unsigned long)current->mm->context.vdso + image->extable_base;
-	nr_entries = image->extable_len / (sizeof(*extable));
-	extable = image->extable;
+	/* use vdso_image_ext structure to access the extended members */
+#ifdef CONFIG_X86_64
+	if (image == &vdso_image_64)
+		image_ext = &vdso_image_64_ext;
+#endif
+
+#ifdef CONFIG_X86_X32
+	if (image == &vdso_image_x32)
+		image_ext = &vdso_image_x32_ext;
+#endif
+
+#if defined CONFIG_X86_32 || defined CONFIG_COMPAT
+	if (image == &vdso_image_32)
+		image_ext = &vdso_image_32_ext;
+#endif
+
+	if (!image_ext){
+		WARN_ONCE(true, "Cannot find extended vdso image structure for image address %p\n",
+			  image);
+		return false;
+	}
+
+	base =  (unsigned long)current->mm->context.vdso + image_ext->extable_base;
+	nr_entries = image_ext->extable_len / (sizeof(*extable));
+	extable = image_ext->extable;
 
 	for (i = 0; i < nr_entries; i++) {
 		if (regs->ip == base + extable[i].insn) {

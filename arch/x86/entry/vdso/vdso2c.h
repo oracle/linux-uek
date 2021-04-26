@@ -207,13 +207,6 @@ static void BITSFUNC(go)(void *raw_addr, size_t raw_len,
 		fprintf(outfile, "\t.alt_len = %lu,\n",
 			(unsigned long)GET_LE(&alt_sec->sh_size));
 	}
-	if (extable_sec) {
-		fprintf(outfile, "\t.extable_base = %lu,\n",
-			(unsigned long)GET_LE(&extable_sec->sh_offset));
-		fprintf(outfile, "\t.extable_len = %lu,\n",
-			(unsigned long)GET_LE(&extable_sec->sh_size));
-		fprintf(outfile, "\t.extable = extable,\n");
-	}
 
 	for (i = 0; i < NSYMS; i++) {
 		if (required_syms[i].export && syms[i])
@@ -221,4 +214,16 @@ static void BITSFUNC(go)(void *raw_addr, size_t raw_len,
 				required_syms[i].name, (int64_t)syms[i]);
 	}
 	fprintf(outfile, "};\n");
+
+	/* generate an extended vdso_image_ext structure to store the extended members */
+	fprintf(outfile, "\nconst struct vdso_image_ext %s_ext = {\n", image_name);
+	if (extable_sec) {
+		fprintf(outfile, "\t.extable_base = %lu,\n",
+			(unsigned long)GET_LE(&extable_sec->sh_offset));
+		fprintf(outfile, "\t.extable_len = %lu,\n",
+			(unsigned long)GET_LE(&extable_sec->sh_size));
+		fprintf(outfile, "\t.extable = extable,\n");
+	}
+	fprintf(outfile, "};\n");
+
 }
