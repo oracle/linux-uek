@@ -15,8 +15,6 @@ struct vdso_image {
 	unsigned long size;   /* Always a multiple of PAGE_SIZE */
 
 	unsigned long alt, alt_len;
-	unsigned long extable_base, extable_len;
-	const void *extable;
 
 	long sym_vvar_start;  /* Negative offset to the vvar area */
 
@@ -30,16 +28,26 @@ struct vdso_image {
 	long sym_int80_landing_pad;
 };
 
+/* extend the vdso_image to maintain a consistent kABI */
+struct vdso_image_ext {
+	unsigned long extable_base, extable_len;
+	const void *extable;
+};
+
+/* for each vdso_image instance, add a read-only vdso_image_ext instance */
 #ifdef CONFIG_X86_64
 extern const struct vdso_image vdso_image_64;
+extern const struct vdso_image_ext vdso_image_64_ext;
 #endif
 
 #ifdef CONFIG_X86_X32
 extern const struct vdso_image vdso_image_x32;
+extern const struct vdso_image_ext vdso_image_x32_ext;
 #endif
 
 #if defined CONFIG_X86_32 || defined CONFIG_COMPAT
 extern const struct vdso_image vdso_image_32;
+extern const struct vdso_image_ext vdso_image_32_ext;
 #endif
 
 extern void __init init_vdso_image(const struct vdso_image *image);
