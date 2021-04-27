@@ -473,7 +473,6 @@ static int otx2vf_realloc_msix_vectors(struct otx2_nic *vf)
 
 	otx2vf_disable_mbox_intr(vf);
 	pci_free_irq_vectors(hw->pdev);
-	pci_free_irq_vectors(hw->pdev);
 	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
 	if (err < 0) {
 		dev_err(vf->dev, "%s: Failed to realloc %d IRQ vectors\n",
