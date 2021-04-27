@@ -642,6 +642,18 @@ static inline pmd_t pmdp_huge_get_and_clear(struct mm_struct *mm,
 	return old;
 }
 
+static inline int pmd_special(pmd_t pmd)
+{
+	return !!(pmd_val(pmd) & _PAGE_SPECIAL);
+}
+
+static inline pmd_t pmd_mkspecial(pmd_t pmd)
+{
+	pmd_val(pmd) |= _PAGE_SPECIAL;
+
+	return pmd;
+}
+
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
 #define gup_fast_permitted(start, end)	(!cpu_has_dc_aliases)
