@@ -506,6 +506,16 @@ static inline int io_remap_pfn_range(struct vm_area_struct *vma,
 #define io_remap_pfn_range io_remap_pfn_range
 #endif
 
+static inline unsigned long pmd_pfn(pmd_t pmd)
+{
+	return pmd_val(pmd) >> _PFN_SHIFT;
+}
+
+static inline unsigned long pud_pfn(pud_t pud)
+{
+	return pud_val(pud) >> _PFN_SHIFT;
+}
+
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 
 /* We don't have hardware dirty/accessed bits, generic_pmdp_establish is fine.*/
@@ -594,11 +604,6 @@ static inline pmd_t pmd_mkyoung(pmd_t pmd)
 
 /* Extern to avoid header file madness */
 extern pmd_t mk_pmd(struct page *page, pgprot_t prot);
-
-static inline unsigned long pmd_pfn(pmd_t pmd)
-{
-	return pmd_val(pmd) >> _PFN_SHIFT;
-}
 
 static inline struct page *pmd_page(pmd_t pmd)
 {
