@@ -98,7 +98,7 @@ modpost_link()
 		info LD ${1}
 	fi
 
-        ${LD} -r --verbose | awk '
+        ${LD} ${KBUILD_LDFLAGS} -r --verbose | awk '
 		BEGIN { discards = 0; p = 0; }
 		/^====/ { p = 1; next; }
 		p && /\.ctf/ { next; }
