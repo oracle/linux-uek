@@ -1443,5 +1443,4 @@ void rvu_unregister_dl(struct rvu *rvu)
 	rvu_health_reporters_destroy(rvu);
 	devlink_unregister(dl);
 	devlink_free(dl);
-	kfree(rvu_dl);
 }
