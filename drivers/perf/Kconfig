@@ -143,4 +143,10 @@ config ARM_DMC620_PMU
 	  Support for PMU events monitoring on the ARM DMC-620 memory
 	  controller.
 
+config MARVELL_CN10K_DDR_PMU
+	tristate "MARVELL CN10K DRAM Subsystem(DSS) PMU Support"
+	depends on ARM64
+	help
+	  Support for Marvell DDR PMU event on CN10K platform
+
 endmenu
