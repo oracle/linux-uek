@@ -293,7 +293,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # don't build noarch kernels or headers (duh)
 %ifarch noarch
 %define with_up 0
-%define with_securelaunch 0
+%define with_sl 0
+%define with_pl 0
 %define with_compression 0
 %define with_headers 0
 %define with_tools 0
@@ -2394,12 +2395,20 @@ fi
 /usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/turbostat\
 %endif\
+%if %{2} == SL || %{2} == PL\
+%{expand:%%files -n kernel%{?variant}-devel}\
+%defattr(-,root,root)\
+%dir /usr/src/kernels\
+%verify(not mtime) /usr/src/kernels/%{KVERREL}\
+/usr/src/kernels/%{KVERREL}\
+%else\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
 %verify(not mtime) /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
+%endif\
 %endif\
 %if %{with_debuginfo}\
 %ifnarch noarch\
