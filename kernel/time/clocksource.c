@@ -199,8 +199,9 @@ void clocksource_mark_unstable(struct clocksource *cs)
 	spin_unlock_irqrestore(&watchdog_lock, flags);
 }
 
-static ulong max_read_retries = 3;
-module_param(max_read_retries, ulong, 0644);
+ulong max_cswd_read_retries = 3;
+module_param(max_cswd_read_retries, ulong, 0644);
+EXPORT_SYMBOL_GPL(max_cswd_read_retries);
 static int verify_n_cpus = 8;
 module_param(verify_n_cpus, int, 0644);
 
@@ -210,7 +211,7 @@ static bool cs_watchdog_read(struct clocksource *cs, u64 *csnow, u64 *wdnow)
 	u64 wd_end, wd_delta;
 	int64_t wd_delay;
 
-	for (nretries = 0; nretries <= max_read_retries; nretries++) {
+	for (nretries = 0; nretries <= max_cswd_read_retries; nretries++) {
 		local_irq_disable();
 		*wdnow = watchdog->read(watchdog);
 		*csnow = cs->read(cs);
@@ -220,7 +221,7 @@ static bool cs_watchdog_read(struct clocksource *cs, u64 *csnow, u64 *wdnow)
 		wd_delta = clocksource_delta(wd_end, *wdnow, watchdog->mask);
 		wd_delay = clocksource_cyc2ns(wd_delta, watchdog->mult, watchdog->shift);
 		if (wd_delay <= WATCHDOG_MAX_SKEW) {
-			if (nretries > 1 || nretries >= max_read_retries) {
+			if (nretries > 1 || nretries >= max_cswd_read_retries) {
 				pr_warn("timekeeping watchdog on CPU%d: %s retried %d times before success\n",
 					smp_processor_id(), watchdog->name, nretries);
 			}
@@ -293,7 +294,7 @@ static void clocksource_verify_one_cpu(void *csin)
 	csnow_mid = cs->read(cs);
 }
 
-static void clocksource_verify_percpu(struct clocksource *cs)
+void clocksource_verify_percpu(struct clocksource *cs)
 {
 	int64_t cs_nsec, cs_nsec_max = 0, cs_nsec_min = LLONG_MAX;
 	u64 csnow_begin, csnow_end;
@@ -346,6 +347,7 @@ static void clocksource_verify_percpu(struct clocksource *cs)
 		pr_warn("        CPU %d check durations %lldns - %lldns for clocksource %s.\n",
 			testcpu, cs_nsec_min, cs_nsec_max, cs->name);
 }
+EXPORT_SYMBOL_GPL(clocksource_verify_percpu);
 
 static void clocksource_watchdog(struct timer_list *unused)
 {
