@@ -29,6 +29,44 @@ struct follow_page_context {
 	unsigned int page_mask;
 };
 
+static void put_compound_head(struct page *page, int refs)
+{
+	VM_BUG_ON_PAGE(page_ref_count(page) < refs, page);
+	/*
+	 * Calling put_page() for each ref is unnecessarily slow. Only the last
+	 * ref needs a put_page().
+	 */
+	if (refs > 1)
+		page_ref_sub(page, refs - 1);
+	put_page(page);
+}
+
+static inline void compound_range_next(unsigned long i, unsigned long npages,
+				       struct page **list, struct page **head,
+				       unsigned int *ntails)
+{
+	struct page *next, *page;
+	unsigned int nr = 1;
+
+	if (i >= npages)
+		return;
+
+	next = *list + i;
+	page = compound_head(next);
+	if (PageCompound(page) && compound_order(page) >= 1)
+		nr = min_t(unsigned int,
+			   page + compound_nr(page) - next, npages - i);
+
+	*head = page;
+	*ntails = nr;
+}
+
+#define for_each_compound_range(__i, __list, __npages, __head, __ntails) \
+	for (__i = 0, \
+	     compound_range_next(__i, __npages, __list, &(__head), &(__ntails)); \
+	     __i < __npages; __i += __ntails, \
+	     compound_range_next(__i, __npages, __list, &(__head), &(__ntails)))
+
 /**
  * put_user_pages_dirty_lock() - release and optionally dirty gup-pinned pages
  * @pages:  array of pages to be maybe marked dirty, and definitely released.
@@ -95,6 +133,42 @@ void put_user_pages_dirty_lock(struct page **pages, unsigned long npages,
 	}
 }
 EXPORT_SYMBOL(put_user_pages_dirty_lock);
+
+/**
+ * put_user_page_range_dirty_lock() - release and optionally dirty
+ * gup-pinned page range
+ *
+ * @page:  the starting page of a range maybe marked dirty, and definitely released.
+ * @npages: number of consecutive pages to release.
+ * @make_dirty: whether to mark the pages dirty
+ *
+ * "gup-pinned page range" refers to a range of pages that has had one of the
+ * pin_user_pages() variants called on that page.
+ *
+ * For the page ranges defined by [page .. page+npages], make that range (or
+ * its head pages, if a compound page) dirty, if @make_dirty is true, and if the
+ * page range was previously listed as clean.
+ *
+ * set_page_dirty_lock() is used internally. If instead, set_page_dirty() is
+ * required, then the caller should a) verify that this is really correct,
+ * because _lock() is usually required, and b) hand code it:
+ * set_page_dirty_lock(), unpin_user_page().
+ *
+ */
+void put_user_page_range_dirty_lock(struct page *page, unsigned long npages,
+				    bool make_dirty)
+{
+	unsigned long index;
+	struct page *head;
+	unsigned int ntails;
+
+	for_each_compound_range(index, &page, npages, head, ntails) {
+		if (make_dirty && !PageDirty(head))
+			set_page_dirty_lock(head);
+		put_compound_head(head, ntails);
+	}
+}
+EXPORT_SYMBOL(put_user_page_range_dirty_lock);
 
 /**
  * put_user_pages() - release an array of gup-pinned pages.
