@@ -64,6 +64,38 @@ static void pack_fwspec(struct irq_fwspec *fwspec, u32 gsi, int trigger,
 }
 
 /**
+ * acpi_register_partitioned_percpu_gsi() - Map a GSI to a percpu IRQ in the
+ * provided partition.
+ * @dev: device for which IRQ has to be mapped
+ * @gsi: GSI IRQ number
+ * @trigger: trigger type of the GSI number to be mapped
+ * @polarity: polarity of the GSI to be mapped
+ * @processor_container_uid: Which group of CPUs the percpu interrupt can be
+ * 			     triggered on.
+ *
+ * Returns: a valid linux IRQ number on success
+ *          -EINVAL on failure
+ */
+int acpi_register_partitioned_percpu_gsi(struct device *dev, u32 gsi,
+					 int trigger, int polarity,
+					 u32 processor_container_uid)
+{
+	struct irq_fwspec fwspec;
+
+	fwspec.fwnode = acpi_get_gsi_domain_id(gsi);
+	if (WARN_ON(!fwspec.fwnode)) {
+		pr_warn("GSI: No registered irqchip, giving up\n");
+		return -EINVAL;
+	}
+
+	pack_fwspec(&fwspec, gsi, trigger, polarity);
+	fwspec.param[fwspec.param_count] = processor_container_uid;
+	fwspec.param_count++;
+
+	return irq_create_fwspec_mapping(&fwspec);
+}
+
+/**
  * acpi_register_gsi() - Map a GSI to a linux IRQ number
  * @dev: device for which IRQ has to be mapped
  * @gsi: GSI IRQ number
