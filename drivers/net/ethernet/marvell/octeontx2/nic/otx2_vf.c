@@ -449,6 +449,8 @@ static void otx2vf_do_set_rx_mode(struct work_struct *work)
 	if (flags & (IFF_ALLMULTI | IFF_MULTICAST))
 		req->mode |= NIX_RX_MODE_ALLMULTI;
 
+	req->mode |= NIX_RX_MODE_USE_MCE;
+
 	otx2_sync_mbox_msg(&vf->mbox);
 
 	mutex_unlock(&vf->mbox.lock);
