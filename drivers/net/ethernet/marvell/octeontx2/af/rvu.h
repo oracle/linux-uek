@@ -282,6 +282,7 @@ struct rvu_pfvf {
 	struct nix_mce_list	bcast_mce_list;
 	struct nix_mce_list	mcast_mce_list;
 	struct nix_mce_list	promisc_mce_list;
+	bool			use_mce_list;
 
 	/* For resource limits */
 	struct pci_dev	*pdev;
