@@ -224,7 +224,7 @@ static int otx2_tc_act_set_police(struct otx2_nic *nic,
 				  struct otx2_tc_flow *node,
 				  struct flow_cls_offload *f,
 				  u64 rate, u32 burst, u32 mark,
-				  struct npc_install_flow_req *req)
+				  struct npc_install_flow_req *req, bool pps)
 {
 	struct netlink_ext_ack *extack = f->common.extack;
 	struct otx2_hw *hw = &nic->hw;
@@ -244,7 +244,7 @@ static int otx2_tc_act_set_police(struct otx2_nic *nic,
 		return rc;
 	}
 
-	rc = cn10k_set_ipolicer_rate(nic, node->leaf_profile, burst, rate);
+	rc = cn10k_set_ipolicer_rate(nic, node->leaf_profile, burst, rate, pps);
 	if (rc)
 		goto free_leaf;
 
@@ -283,7 +283,8 @@ static int otx2_tc_parse_actions(struct otx2_nic *nic,
 	struct net_device *target;
 	struct otx2_nic *priv;
 	u32 burst, mark = 0;
-	bool act_police;
+	u8 nr_police = 0;
+	bool pps;
 	u64 rate;
 	int i;
 
@@ -325,9 +326,20 @@ static int otx2_tc_parse_actions(struct otx2_nic *nic,
 				return -EOPNOTSUPP;
 			}
 
-			act_police = true;
-			rate = act->police.rate_bytes_ps * 8;
-			burst = act->police.burst;
+			if (act->police.rate_bytes_ps > 0) {
+				rate = act->police.rate_bytes_ps * 8;
+				burst = act->police.burst;
+			} else if (act->police.rate_pkt_ps > 0) {
+				/* The algorithm used to calculate rate
+				 * mantissa, exponent values for a given token
+				 * rate (token can be byte or packet) requires
+				 * token rate to be mutiplied by 8.
+				 */
+				rate = act->police.rate_pkt_ps * 8;
+				burst = act->police.burst_pkt;
+				pps = true;
+			}
+			nr_police++;
 			break;
 		case FLOW_ACTION_MARK:
 			mark = act->mark;
@@ -337,10 +349,15 @@ static int otx2_tc_parse_actions(struct otx2_nic *nic,
 		}
 	}
 
-	if (act_police)
-		return otx2_tc_act_set_police(nic, node, f, rate, burst,
-					      mark, req);
+	if (nr_police > 1) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "rate limit police offload requires a single action");
+		return -EOPNOTSUPP;
+	}
 
+	if (nr_police)
+		return otx2_tc_act_set_police(nic, node, f, rate, burst,
+					      mark, req, pps);
 	return 0;
 }
 
