@@ -377,7 +377,7 @@ int cn10k_free_matchall_ipolicer(struct otx2_nic *pfvf)
 }
 
 int cn10k_set_ipolicer_rate(struct otx2_nic *pfvf, u16 profile,
-			    u32 burst, u64 rate)
+			    u32 burst, u64 rate, bool pps)
 {
 	struct nix_cn10k_aq_enq_req *aq;
 	u32 burst_exp, burst_mantissa;
@@ -413,6 +413,30 @@ int cn10k_set_ipolicer_rate(struct otx2_nic *pfvf, u16 profile,
 	aq->prof.rdiv = rdiv;
 	aq->prof_mask.rdiv = 0xF;
 
+	if (pps) {
+		/* The amount of decremented tokens is calculated according to
+		 * the following equation:
+		 * max([ LMODE ? 0 : (packet_length - LXPTR)] +
+		 *	     ([ADJUST_MANTISSA]/256 - 1) * 2^[ADJUST_EXPONENT],
+		 *	1/256)
+		 * if LMODE is 1 then rate limiting will be based on
+		 * PPS otherwise bps.
+		 * The aim of the ADJUST value is to specify a token cost per
+		 * packet in contrary to the packet length that specifies a
+		 * cost per byte. To rate limit based on PPS adjust mantissa
+		 * is set as 384 and exponent as 1 so that number of tokens
+		 * decremented becomes 1 i.e, 1 token per packeet.
+		 */
+		aq->prof.adjust_exponent = 1;
+		aq->prof_mask.adjust_exponent = 0x1F;
+
+		aq->prof.adjust_mantissa = 384;
+		aq->prof_mask.adjust_mantissa = 0x1FF;
+
+		aq->prof.lmode = 0x1;
+		aq->prof_mask.lmode = 0x1;
+	}
+
 	/* Two rate three color marker
 	 * With PEIR/EIR set to zero, color will be either green or red
 	 */
@@ -427,6 +451,23 @@ int cn10k_set_ipolicer_rate(struct otx2_nic *pfvf, u16 profile,
 
 	aq->prof.gc_action = NIX_RX_BAND_PROF_ACTIONRESULT_PASS;
 	aq->prof_mask.gc_action = 0x3;
+
+	/* Setting exponent value as 24 and mantissa as 0 configures
+	 * the bucket with zero values making bucket unused. Peak
+	 * information rate and Excess information rate buckets are
+	 * unused here.
+	 */
+	aq->prof.peir_exponent = 24;
+	aq->prof_mask.peir_exponent = 0x1F;
+
+	aq->prof.peir_mantissa = 0;
+	aq->prof_mask.peir_mantissa = 0xFF;
+
+	aq->prof.pebs_exponent = 24;
+	aq->prof_mask.pebs_exponent = 0x1F;
+
+	aq->prof.pebs_mantissa = 0;
+	aq->prof_mask.pebs_mantissa = 0xFF;
 
 	/* Fill AQ info */
 	aq->qidx = profile;
@@ -444,7 +485,8 @@ int cn10k_set_matchall_ipolicer_rate(struct otx2_nic *pfvf,
 
 	mutex_lock(&pfvf->mbox.lock);
 
-	rc = cn10k_set_ipolicer_rate(pfvf, hw->matchall_ipolicer, burst, rate);
+	rc = cn10k_set_ipolicer_rate(pfvf, hw->matchall_ipolicer, burst,
+				     rate, false);
 	if (rc)
 		goto out;
 

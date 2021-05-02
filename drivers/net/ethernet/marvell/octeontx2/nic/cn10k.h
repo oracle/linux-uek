@@ -22,6 +22,6 @@ int cn10k_map_unmap_rq_policer(struct otx2_nic *pfvf, int rq_idx,
 			       u16 policer, bool map);
 int cn10k_alloc_leaf_profile(struct otx2_nic *pfvf, u16 *leaf);
 int cn10k_set_ipolicer_rate(struct otx2_nic *pfvf, u16 profile,
-			    u32 burst, u64 rate);
+			    u32 burst, u64 rate, bool pps);
 int cn10k_free_leaf_profile(struct otx2_nic *pfvf, u16 leaf);
 #endif /* CN10K_H */
