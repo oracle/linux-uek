@@ -1,6 +1,6 @@
 
 /*
- * Copyright (c) 2019, Pensando Systems Inc.
+ * Copyright (c) 2019-2021, Pensando Systems Inc.
  */
 
 #include <linux/export.h>
@@ -9,6 +9,8 @@
 #include <linux/of_address.h>
 #include <linux/io.h>
 #include "bsm_dev.h"
+
+extern struct kobject *pensando_fw_kobj_get(void);
 
 struct bsm {
 	void __iomem *base;
@@ -82,7 +84,7 @@ static int bsm_probe(struct platform_device *pdev)
 		/* bsm not in device-tree */
 		return -ENODEV;
 	}
-	pensando_kobj = kobject_create_and_add("pensando", firmware_kobj);
+	pensando_kobj = pensando_fw_kobj_get();
 	if (!pensando_kobj)
 		return -ENOMEM;
 	for (i = 0; i < ARRAY_SIZE(bsm_attrs); i++) {
@@ -95,6 +97,7 @@ static int bsm_probe(struct platform_device *pdev)
 	r = sysfs_create_link(pensando_kobj, &pdev->dev.kobj, "bsm");
 	if (r) {
 		pr_err("failed to create sysfs symlink\n");
+		kobject_put(pensando_kobj);
 		return r;
 	}
 	return 0;

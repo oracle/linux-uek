@@ -18,6 +18,7 @@
 #include <linux/fs.h>
 #include <asm/daifflags.h>
 #include <asm/traps.h>
+#include "cap_rstcause.h"
 #include "cap_reboot.h"
 #include "penpcie_dev.h"
 #include "cap_pcie_elba.h"
@@ -285,6 +286,8 @@ static long pcie_panic_blink(int state)
 		while ((port = pcie_poll_for_hostdn()) < 0)
 			continue;
 		printk(PFX "port %d hostdn\n", port);
+		/* reflect the pcie reset state in the reset cause */
+		cap_rstcause_set(CAP_RSTCAUSE_EV_PCIE_RESET);
 	}
 	reset();
 

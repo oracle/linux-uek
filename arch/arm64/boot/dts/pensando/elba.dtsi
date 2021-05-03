@@ -52,6 +52,11 @@
 				IRQ_TYPE_LEVEL_LOW)>;
 	};
 
+	rstcause {
+		compatible = "pensando,rstcause";
+		pensando,causeregs = <&mssoc 0x2084>;
+	};
+
 	soc {
 		compatible = "simple-bus";
 		#address-cells = <2>;
@@ -247,7 +252,7 @@
 			cdns,phy-input-delay-sd-uhs-ddr50 = <0x16>;
 			cdns,mmc-ddr-1_8v;
 			status = "disabled";
-		} ;
+		};
 
 		pcie {
 			compatible = "pensando,pcie";
@@ -259,6 +264,11 @@
 		panic: panicdump {
 			compatible = "pensando,capri-crash";
 			status = "disabled";
+		};
+
+		mssoc: mssoc@307c0000 {
+			compatible = "pensando,mssoc", "syscon";
+			reg = <0x0 0x307c0000 0x0 0x3000>;
 		};
 
 		bsm {
