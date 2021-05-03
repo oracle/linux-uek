@@ -474,11 +474,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 #
 %define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14, device-mapper-multipath < 0.4.9-64, dracut < 004-303.0.3
 
-#
-# The ld.so.conf.d file we install uses syntax older ldconfig's don't grok.
-#
-%define kernel_xen_conflicts glibc < 2.3.5-1, xen < 3.0.1
-
 # upto and including kernel 2.4.9 rpms, the 4Gb+ kernel was called kernel-enterprise
 # now that the smp kernel offers this capability, obsolete the old kernel
 %define kernel_smp_obsoletes kernel-enterprise < 2.4.10
@@ -1249,21 +1244,6 @@ BuildKernel() {
 
 %ifarch %{vdso_arches}
     make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
-    if grep '^CONFIG_XEN=y$' .config >/dev/null; then
-      echo > ldconfig-kernel.conf "\
-# This directive teaches ldconfig to search in nosegneg subdirectories
-# and cache the DSOs there with extra bit 0 set in their hwcap match
-# fields.  In Xen guest kernels, the vDSO tells the dynamic linker to
-# search in nosegneg subdirectories and to match this extra hwcap bit
-# in the ld.so.cache file.
-hwcap 0 nosegneg"
-    fi
-    if [ ! -s ldconfig-kernel.conf ]; then
-      echo > ldconfig-kernel.conf "\
-# Placeholder file, no vDSO hwcap entries used in this kernel."
-    fi
-    %{__install} -D -m 444 ldconfig-kernel.conf \
-        $RPM_BUILD_ROOT/etc/ld.so.conf.d/kernel-$KernelVer.conf
 %endif
 %ifarch %{vdso_arches} sparc64 aarch64
 %ifnarch noarch
@@ -1761,9 +1741,6 @@ if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" 
    [ $1 -eq 1 ]; then\
   /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
-if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
-  sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
-fi\
 %{nil}
 
 #
@@ -1972,7 +1949,6 @@ fi
 %{_datadir}/doc/kernel-keys/%{KVERREL}%{?2:.%{2}}/kernel-signing.cer\
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
-/etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
