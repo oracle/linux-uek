@@ -680,6 +680,8 @@ struct dentry *ceph_handle_snapdir(struct ceph_mds_request *req,
 		struct dentry *res;
 		struct inode *inode = ceph_get_snapdir(parent);
 
+		if (IS_ERR(inode))
+			return ERR_CAST(inode);
 		res = d_splice_alias(inode, dentry);
 		dout("ENOENT on snapdir %p '%pd', linking to snapdir %p. Spliced dentry %p\n",
 		     dentry, dentry, inode, res);
