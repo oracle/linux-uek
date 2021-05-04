@@ -37,6 +37,7 @@ Required properties (port):
   GOP (Group Of Ports) point of view. This ID is used to index the
   per-port registers in the second register area.
 - phy-mode: See ethernet.txt file in the same directory
+- cm3-mem: phandle to CM3 SRAM definitions
 
 Optional properties (port):
 
@@ -61,6 +62,7 @@ ethernet@f0000 {
 	      <0xc5000 0x100>;
 	clocks = <&gateclk 3>, <&gateclk 19>;
 	clock-names = "pp_clk", "gop_clk";
+	cm3-mem = <&cm3_sram>;
 
 	eth0: eth0@c4000 {
 		interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
