@@ -1,0 +1,15 @@
+* Marvell CN10k DDR performance monitor
+
+Required properties:
+
+- compatible: should be one of:
+	"marvell,cn10k-ddr-pmu"
+
+- reg: physical address and size
+
+Example:
+
+	ddrcpmu {
+		compatible = "marvell,cn10k-ddr-pmu";
+		reg = <0x87e1 0xc0000000 0x0 0x10000>;
+	};
