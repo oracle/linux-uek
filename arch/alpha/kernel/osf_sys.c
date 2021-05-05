@@ -878,7 +878,7 @@ SYSCALL_DEFINE5(osf_setsysinfo, unsigned long, op, void __user *, buffer,
 
 			send_sig_fault(SIGFPE, si_code,
 				       (void __user *)NULL,  /* FIXME */
-				       0, current);
+				       current);
  		}
 		return 0;
 	}
