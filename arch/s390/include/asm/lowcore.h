@@ -13,9 +13,22 @@
 #include <asm/ptrace.h>
 #include <asm/cpu.h>
 #include <asm/types.h>
+#include <asm/schid.h>
 
 #define LC_ORDER 1
 #define LC_PAGES 2
+
+/* I/O-Interruption Code as stored by TEST PENDING INTERRUPTION (TPI). */
+struct tpi_info {
+	struct subchannel_id schid;
+	u32 intparm;
+	u32 adapter_IO:1;
+	u32 directed_irq:1;
+	u32 isc:3;
+	u32 :27;
+	u32 type:3;
+	u32 :12;
+} __packed __aligned(4);
 
 struct lowcore {
 	__u8	pad_0x0000[0x0014-0x0000];	/* 0x0000 */
@@ -46,14 +59,19 @@ struct lowcore {
 	__u64	monitor_code;			/* 0x00b0 */
 	union {
 		struct {
-			__u16	subchannel_id;	/* 0x00b8 */
-			__u16	subchannel_nr;	/* 0x00ba */
+			union {
+				struct {
+					__u16	subchannel_id;	/* 0x00b8 */
+					__u16	subchannel_nr;	/* 0x00ba */
+				} __packed;
+				__u32 subchannel;		/* 0x00b8 */
+			} __packed;
+			__u32	io_int_parm;			/* 0x00bc */
+			__u32	io_int_word;			/* 0x00c0 */
+			__u8	pad_0x00c4[0x00c8-0x00c4];	/* 0x00c4 */
 		} __packed;
-		__u32 subchannel;
-	} __packed;
-	__u32	io_int_parm;			/* 0x00bc */
-	__u32	io_int_word;			/* 0x00c0 */
-	__u8	pad_0x00c4[0x00c8-0x00c4];	/* 0x00c4 */
+		struct tpi_info tpi_info;			/* 0x00b8 */
+	} __packed __aligned(4);
 	__u32	stfl_fac_list;			/* 0x00c8 */
 	__u8	pad_0x00cc[0x00e8-0x00cc];	/* 0x00cc */
 	__u64	mcck_interruption_code;		/* 0x00e8 */
