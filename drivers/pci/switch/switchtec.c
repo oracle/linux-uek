@@ -1112,12 +1112,15 @@ static int ioctl_port_to_pff(struct switchtec_dev *stdev,
 	if (copy_from_user(&p, up, sizeof(p)))
 		return -EFAULT;
 
-	if (p.partition == SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX)
+	if (p.partition == SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX) {
 		pcfg = stdev->mmio_part_cfg;
-	else if (p.partition < stdev->partition_count)
+	} else if (p.partition < stdev->partition_count) {
+		p.partition = array_index_nospec(p.partition,
+						 stdev->partition_count);
 		pcfg = &stdev->mmio_part_cfg_all[p.partition];
-	else
+	} else {
 		return -EINVAL;
+	}
 
 	switch (p.port) {
 	case 0:
