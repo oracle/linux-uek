@@ -171,6 +171,10 @@ static void rvu_sso_ggrp_taq_flush(struct rvu *rvu, u16 pcifunc, int lf,
 	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_QCTL),
 		    0x1);
 
+	/* Make sure that all the in-flights are complete before invalidate. */
+	mb();
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
 	/* Prepare WS for GW operations. */
 	do {
 		reg = rvu_read64(rvu, ssow_blkaddr,
@@ -274,6 +278,12 @@ static void rvu_ssow_clean_prefetch(struct rvu *rvu, int slot)
 	u64 val, reg;
 
 	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+
+	/* Make sure that all the in-flights are complete before invalidate. */
+	mb();
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
+
 	err = rvu_poll_reg(rvu, ssow_blkaddr,
 			   SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_PRF_TAG),
 			   SSOW_LF_GWS_TAG_PEND_GET_WORK, true);
@@ -361,6 +371,10 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	if (has_lsw)
 		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(ssow_lf), 0x0);
 
+	/* Make sure that all the in-flights are complete before invalidate. */
+	mb();
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
 	/* Prepare WS for GW operations. */
 	rvu_poll_reg(rvu, ssow_blkaddr, SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_TAG),
 		     SSOW_LF_GWS_TAG_PEND_GET_WORK, true);
@@ -616,6 +630,10 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	if (has_lsw)
 		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(lf), 0x0);
 
+	/* Make sure that all the in-flights are complete before invalidate. */
+	mb();
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
 	/* HRM 14.13.4 (3) */
 	/* Wait till waitw/desched completes. */
 	rvu_poll_reg(rvu, ssow_blkaddr,
