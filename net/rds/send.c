@@ -212,9 +212,9 @@ restart:
 	if (!acquire_in_xmit(cp)) {
 		trace_rds_send_lock_contention(NULL, conn, cp,
 					       "send lock contention",
-					       -ENOMEM);
+					       -EBUSY);
 		rds_stats_inc(s_send_lock_contention);
-		ret = -ENOMEM;
+		ret = -EBUSY;
 		goto out;
 	}
 
@@ -1671,7 +1671,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		rds_stats_inc(s_send_ping);
 
 	ret = rds_send_xmit(cpath);
-	if (ret == -ENOMEM || ret == -EAGAIN)
+	if (ret == -ENOMEM || ret == -EAGAIN || ret == -EBUSY)
 		rds_cond_queue_send_work(cpath, 1);
 
 	rds_message_put(rm);
