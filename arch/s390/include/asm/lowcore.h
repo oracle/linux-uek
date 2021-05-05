@@ -44,8 +44,13 @@ struct lowcore {
 	__u8	pad_0x00a4[0x00a8-0x00a4];	/* 0x00a4 */
 	__u64	trans_exc_code;			/* 0x00a8 */
 	__u64	monitor_code;			/* 0x00b0 */
-	__u16	subchannel_id;			/* 0x00b8 */
-	__u16	subchannel_nr;			/* 0x00ba */
+	union {
+		struct {
+			__u16	subchannel_id;	/* 0x00b8 */
+			__u16	subchannel_nr;	/* 0x00ba */
+		} __packed;
+		__u32 subchannel;
+	} __packed;
 	__u32	io_int_parm;			/* 0x00bc */
 	__u32	io_int_word;			/* 0x00c0 */
 	__u8	pad_0x00c4[0x00c8-0x00c4];	/* 0x00c4 */
