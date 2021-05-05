@@ -1,0 +1,213 @@
+arm/soc
+	patch
+		ARM: ux500: make ux500_cpu_die static
+	omap/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/genpd-cleanup-signed
+		contains omap/dt
+	imx/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-5.13
+	at91/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/at91/linux tags/at91-soc-5.13
+	hisilicon/soc
+		git://github.com/hisilicon/linux-hisi tags/hisi-armv7soc-for-5.13
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/soc-signed
+	samsung/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-soc-5.13
+	patch
+		MAINTAINERS: Update ARM/UniPhier SoCs maintainers and status
+	broadcom/maintainer
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/maintainers
+
+arm/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.13-tag1
+	patch
+		ARM: mstar: Select MSTAR_MSC313_MPLL
+		ARM: mstar: Add the external clocks to the base dsti
+		ARM: mstar: Add mpll to base dtsi
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/dts-genpd-signed
+	socfpga/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_dts_update_for_v5.13
+	broadcom/dt
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/devicetree
+	broadcom/dt64
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/devicetre-arm64
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-bindgins-5.13
+	<no branch> (45b78dd39f04f6198f8e2e9fe9d155a5e8326aab)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-5.13
+	imx/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt64-5.13
+	juno/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/juno-updates-5.13
+	ux500/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik tags/ux500-dts-v5.13
+	stm32/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/atorgue/stm32 tags/stm32-dt-for-v5.13-1
+	tegra/dt-bindings
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-dt-bindings
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-arm-dt
+	tegra/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-arm64-dt
+	mediatek/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-dts32
+	mediatek/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-dts64
+	renesas/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.13-tag2
+	sunxi/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/sunxi/linux tags/sunxi-dt-for-5.13-1
+	mvebu/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/gclement/mvebu tags/mvebu-dt64-5.13-1
+	qcom/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13
+	patch
+		ARM: dts: clps711x: Add SYSCON nodes where it is used
+		ARM: dts: clps711x: Add keypad node
+		ARM: dts: clps711x: Fix serial port names
+		ARM: dts: clps711x: edb7211: Add unit-address to memory node
+		ARM: dts: clps711x: Add an empty chosen node to top level DTSI
+	k3/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nmenon/linux tags/ti-k3-dt-for-v5.13
+	amlogic/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-dt64
+	omap/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/dt-v2-signed
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-5.13
+	samsung/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt64-5.13
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/at91/linux tags/at91-dt-5.13
+	mvebu/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/gclement/mvebu tags/mvebu-dt-5.13-1
+	patch
+		ARM: dts: owl-s500-roseapplepi: Add ATC2603C PMIC
+	bmc/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/bmc-5.13-devicetree
+	patch
+		ARM: dts: mvebu: fix SPI device node
+		ARM: dts: clps711x: fix missing interrupt parent
+	qcom/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-dts-for-5.13
+	qcom/dt64-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13-2
+	amlogic/dt64-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-dt64-2
+	patch
+		ARM: dts: at91: sama5d2/trivial: fix letter case for etm hex address
+	rockchip/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v5.13-rockchip-dts32
+	rockchip/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v5.13-rockchip-dts64
+	zynq/dt
+		https://github.com/Xilinx/linux-xlnx tags/zynqmp-dt-for-v5.13
+	patch
+		arm64: dts: mt8183-pumpkin: fix dtbs_check warning
+		arm64: dts: mt8183: fix dtbs_check warning
+		dt-bindings: vendor-prefixes: Add vendor prefix for M5Stack
+		dt-bindings: arm: mstar: Add compatible for M5Stack UnitV2
+		ARM: dts: mstar: Add a dts for M5Stack UnitV2
+	qcom/dt-3
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-dts-for-5.13-2
+	qcom/dt-4
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-5.13-3
+	bcm/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/bmc-5.13-devicetree-2
+	patch
+		arm64: dts: amlogic: misc DT schema fixups
+		dt-bindings: mali-bifrost: add dma-coherent
+
+arm/drivers
+	drivers/tee
+		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-tracepoints-for-v5.13
+	renesas/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-drivers-for-v5.13-tag1
+	drivers/optee-fix
+		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-tracepoints-fix-for-v5.13
+	drivers/rpi-poe
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsaenz/linux-rpi tags/rpi-poe-v5.13
+	omap/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/ti-sysc-signed
+	drivers/optee-memref
+		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-memref-size-for-v5.13
+	broadcom/drivers
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.13/drivers
+	imx/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-drivers-5.13
+	tegra/clk
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-clk
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.13-soc
+	mediatek/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-soc
+	socfpga/rename
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_update_for_v5.13
+	drivers/scmi
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/scmi-updates-5.13
+	qcom/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-for-5.13
+	socfpga/drivers-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_update_for_v5.13_part2
+	mediatek/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-soc.2
+	drivers/memory
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-5.13
+	drivers/memory-tegra
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-tegra-5.13
+	aspeed/lpc
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/aspeed-5.13-lpc
+	patch
+		clk: socfpga: fix iomem pointer cast on 64-bit
+	qcom/drivers-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-for-5.13-2
+	zynq/soc
+		https://github.com/Xilinx/linux-xlnx tags/zynqmp-soc-for-v5.13
+	fsl/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/leo/linux tags/soc-fsl-next-v5.13
+	drivers/memory-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-5.13-2
+
+arm/defconfig
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-defconfig-for-v5.13-tag1
+	patch
+		ARM: configs: ux500: Update for new drivers
+	socfpga/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/arm64_defconfig_for_v5.13
+	imx/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-defconfig-5.13
+	patch
+		ARM: configs: Remove REGULATOR_USERSPACE_CONSUMER
+	mediatek/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.12-next-defconfig
+	at91/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/at91/linux tags/at91-defconfig-5.13
+	qcom/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-defconfig-for-5.13
+	omap/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.13/defconfig-signed
+	qcom/defconfig-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-defconfig-for-5.13
+
+arm/newsoc
+	bmc/wpcm450
+		git://git.kernel.org/pub/scm/linux/kernel/git/joel/bmc tags/bmc-5.13-wpcm450
+
+arm/late
+
+arm/fixes
+	<no branch> (4d09ccc4a81e7de6b002482af554d8b5626f5041)
+		git://git.kernel.org/pub/scm/linux/kernel/git/sunxi/linux tags/sunxi-fixes-for-5.12-2
+
+arm/apple-m1
+	apple/m1-dependency
+		Merge branch 'apple/m1-dependency' into arm/apple-m1
+	apple/m1-main
+		https://github.com/AsahiLinux/linux tags/m1-soc-bringup-v5
+	patch
+		asm-generic/io.h: Unbork ioremap_np() declaration
+
