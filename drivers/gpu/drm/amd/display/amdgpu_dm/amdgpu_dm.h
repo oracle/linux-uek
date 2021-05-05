@@ -135,6 +135,10 @@ struct amdgpu_dm_backlight_caps {
 
 /**
  * struct dal_allocation - Tracks mapped FB memory for SMU communication
+ * @list: list of dal allocations
+ * @bo: GPU buffer object
+ * @cpu_ptr: CPU virtual address of the GPU buffer object
+ * @gpu_addr: GPU virtual address of the GPU buffer object
  */
 struct dal_allocation {
 	struct list_head list;
@@ -164,6 +168,7 @@ struct dal_allocation {
  * @compressor: Frame buffer compression buffer. See &struct dm_compressor_info
  * @force_timing_sync: set via debugfs. When set, indicates that all connected
  *		       displays will be forced to synchronize.
+ * @dmcub_trace_event_en: enable dmcub trace events
  */
 struct amdgpu_display_manager {
 

@@ -658,11 +658,7 @@ static int __amdgpu_ras_feature_enable(struct amdgpu_device *adev,
 		con->features |= BIT(head->block);
 	} else {
 		if (obj && amdgpu_ras_is_feature_enabled(adev, head)) {
-			/* skip clean gfx ras context feature for VEGA20 Gaming.
-			 * will clean later
-			 */
-			if (!(!adev->ras_features && con->features & BIT(AMDGPU_RAS_BLOCK__GFX)))
-				con->features &= ~BIT(head->block);
+			con->features &= ~BIT(head->block);
 			put_obj(obj);
 		}
 	}
@@ -770,6 +766,10 @@ int amdgpu_ras_feature_enable_on_boot(struct amdgpu_device *adev,
 				con->features |= BIT(head->block);
 
 			ret = amdgpu_ras_feature_enable(adev, head, 0);
+
+			/* clean gfx block ras features flag */
+			if (adev->ras_features && head->block == AMDGPU_RAS_BLOCK__GFX)
+				con->features &= ~BIT(head->block);
 		}
 	} else
 		ret = amdgpu_ras_feature_enable(adev, head, enable);
@@ -901,17 +901,42 @@ int amdgpu_ras_query_error_status(struct amdgpu_device *adev,
 	info->ce_count = obj->err_data.ce_count;
 
 	if (err_data.ce_count) {
-		dev_info(adev->dev, "%ld correctable hardware errors "
+		if (adev->smuio.funcs &&
+		    adev->smuio.funcs->get_socket_id &&
+		    adev->smuio.funcs->get_die_id) {
+			dev_info(adev->dev, "socket: %d, die: %d "
+					"%ld correctable hardware errors "
+					"detected in %s block, no user "
+					"action is needed.\n",
+					adev->smuio.funcs->get_socket_id(adev),
+					adev->smuio.funcs->get_die_id(adev),
+					obj->err_data.ce_count,
+					ras_block_str(info->head.block));
+		} else {
+			dev_info(adev->dev, "%ld correctable hardware errors "
 					"detected in %s block, no user "
 					"action is needed.\n",
 					obj->err_data.ce_count,
 					ras_block_str(info->head.block));
+		}
 	}
 	if (err_data.ue_count) {
-		dev_info(adev->dev, "%ld uncorrectable hardware errors "
+		if (adev->smuio.funcs &&
+		    adev->smuio.funcs->get_socket_id &&
+		    adev->smuio.funcs->get_die_id) {
+			dev_info(adev->dev, "socket: %d, die: %d "
+					"%ld uncorrectable hardware errors "
+					"detected in %s block\n",
+					adev->smuio.funcs->get_socket_id(adev),
+					adev->smuio.funcs->get_die_id(adev),
+					obj->err_data.ue_count,
+					ras_block_str(info->head.block));
+		} else {
+			dev_info(adev->dev, "%ld uncorrectable hardware errors "
 					"detected in %s block\n",
 					obj->err_data.ue_count,
 					ras_block_str(info->head.block));
+		}
 	}
 
 	return 0;
@@ -2066,8 +2091,7 @@ static void amdgpu_ras_check_supported(struct amdgpu_device *adev,
 	} else {
 		/* driver only manages a few IP blocks RAS feature
 		 * when GPU is connected cpu through XGMI */
-		*hw_supported |= (1 << AMDGPU_RAS_BLOCK__GFX |
-				1 << AMDGPU_RAS_BLOCK__SDMA |
+		*hw_supported |= (1 << AMDGPU_RAS_BLOCK__SDMA |
 				1 << AMDGPU_RAS_BLOCK__MMHUB);
 	}
 
