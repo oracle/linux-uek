@@ -3322,7 +3322,7 @@ void free_unref_page_list(struct list_head *list)
 
 	local_irq_save(flags);
 	list_for_each_entry_safe(page, next, list, lru) {
-		unsigned long pfn = page_private(page);
+		pfn = page_private(page);
 
 		set_page_private(page, 0);
 		trace_mm_page_free_batched(page);

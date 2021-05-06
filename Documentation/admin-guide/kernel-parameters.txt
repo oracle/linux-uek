@@ -773,6 +773,12 @@
 			a memory unit (amount[KMG]). See also
 			Documentation/admin-guide/kdump/kdump.rst for an example.
 
+	crashkernel=auto
+			[KNL] This parameter will set the reserved memory for
+			the crash kernel based on the value of the CRASH_AUTO_STR
+			that is the best effort estimation for each arch. See also
+			arch/Kconfig for further details.
+
 	crashkernel=size[KMG],high
 			[KNL, X86-64] range could be above 4G. Allow kernel
 			to allocate physical memory region from top, so could
@@ -1856,6 +1862,18 @@
 	initcall_blacklist=  [KNL] Do not execute a comma-separated list of
 			initcall functions.  Useful for debugging built-in
 			modules and initcalls.
+
+	initramfs_async= [KNL]
+			Format: <bool>
+			Default: 1
+			This parameter controls whether the initramfs
+			image is unpacked asynchronously, concurrently
+			with devices being probed and
+			initialized. This should normally just work,
+			but as a debugging aid, one can get the
+			historical behaviour of the initramfs
+			unpacking being completed before device_ and
+			late_ initcalls.
 
 	initrd=		[BOOT] Specify the location of the initial ramdisk
 
