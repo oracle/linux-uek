@@ -334,7 +334,7 @@ static inline bool is_exec_mapping(vm_flags_t flags)
 }
 
 /*
- * Stack area - atomatically grows in one direction
+ * Stack area - automatically grows in one direction
  *
  * VM_GROWSUP / VM_GROWSDOWN VMAs are always private anonymous:
  * do_mmap() forbids all other combinations.
@@ -372,6 +372,9 @@ static inline void munlock_vma_pages_all(struct vm_area_struct *vma)
  */
 extern void mlock_vma_page(struct page *page);
 extern unsigned int munlock_vma_page(struct page *page);
+
+extern int mlock_future_check(struct mm_struct *mm, unsigned long flags,
+			      unsigned long len);
 
 /*
  * Clear the page's PageMlocked().  This can be useful in a situation where
