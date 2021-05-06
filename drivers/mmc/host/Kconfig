@@ -224,6 +224,17 @@ config MMC_SDHCI_CADENCE
 
 	  If unsure, say N.
 
+config MMC_SDHCI_CADENCE_WORKAROUND
+	bool "Unaligned access to Cadence SD host controller"
+	depends on MMC_SDHCI_CADENCE
+	help
+	  This selects workaround for accessing cadence SD host controller
+	  in CN10K ASIM Platform.
+
+	  If CN10K asim, Say Y.
+
+	  If unsure, say N.
+
 config MMC_SDHCI_CNS3XXX
 	tristate "SDHCI support on the Cavium Networks CNS3xxx SoC"
 	depends on ARCH_CNS3XXX

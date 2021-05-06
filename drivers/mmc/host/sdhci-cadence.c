@@ -15,8 +15,6 @@
 
 #include "sdhci-pltfm.h"
 
-#define CN10K_ASIM	1
-
 #define SDHCI_CDNS_HRS04			0x10		/* PHY access port */
 /* SD 4.0 Controller HRS - Host Register Set (specific to Cadence) */
 #define SDHCI_CDNS_SD4_HRS04_ACK		BIT(26)
@@ -429,7 +427,7 @@ static u16 sdhci_cdns_sd6_readw(struct sdhci_host *host, int reg)
 
 static void sdhci_cdns_sd6_writew(struct sdhci_host *host, u16 val, int reg)
 {
-#ifdef CN10K_ASIM
+#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
 
 	u32 regval, regoff;
 
@@ -471,7 +469,7 @@ static u8 sdhci_cdns_sd6_readb(struct sdhci_host *host, int reg)
 
 static void sdhci_cdns_sd6_writeb(struct sdhci_host *host, u8 val, int reg)
 {
-#ifdef CN10K_ASIM
+#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
 
 	u32 regval, regoff;
 
@@ -1292,7 +1290,7 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
-#ifdef CN10K_ASIM
+#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
 	return;
 #endif
 
