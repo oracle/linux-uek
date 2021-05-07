@@ -945,7 +945,7 @@ int rvu_policy_init(struct rvu *rvu)
 		goto error;
 	}
 
-	max = hw->block[BLKADDR_NIX0].lf.max;
+	max = hw->block[BLKADDR_NIX0].lf.max + hw->block[BLKADDR_NIX1].lf.max;
 	rvu->pf_limits.nix = quotas_alloc(rvu->hw->total_pfs, max, max,
 					  0, &rvu->rsrc_lock, &pf_limit_ops);
 	if (!rvu->pf_limits.nix) {
