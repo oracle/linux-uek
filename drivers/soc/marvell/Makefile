@@ -6,6 +6,6 @@ obj-y		+= octeontx2-sdp/
 obj-y		+= octeontx2-npa/
 obj-y		+= octeontx2-llc/
 obj-y 		+= csr-access/
-obj-y          += octeontx2-serdes/
+obj-y 		+= octeontx2-serdes/
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
 obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
