@@ -123,8 +123,8 @@ config OCTEONTX_INFO
 
 config MVMDIO_UIO
 	tristate "Marvell MDIO interface driver"
-	  default m
-	select MDIO_THUNDER
+	default m
+	depends on MDIO_THUNDER
 	help
 	  Select this option if you want to provide an interface for userspace
 	  PHY drivers to access Marvell's MDIO bus.
