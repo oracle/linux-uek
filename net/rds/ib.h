@@ -232,6 +232,9 @@ struct rds_ib_connection {
 	struct rds_ib_send_work *i_sends;
 	atomic_t		i_signaled_sends;
 
+	/* lock to serialize rds_ib_poll_tx() calls */
+	spinlock_t              i_poll_tx_lock;
+
 	/* rx */
 	struct tasklet_struct	i_recv_tasklet;
 	struct mutex		i_recv_mutex;
