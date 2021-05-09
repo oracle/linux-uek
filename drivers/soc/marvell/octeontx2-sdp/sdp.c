@@ -699,7 +699,7 @@ static int sdp_register_flr_irq(struct pci_dev *pdev)
 	for (vec = RVU_PF_INT_VEC_VFFLR0, i = 0;
 	     vec + i <= RVU_PF_INT_VEC_VFFLR1; i++) {
 		sprintf(&sdp->irq_names[(vec + i) * NAME_SIZE],
-			"PF%02d_VF_FLR_IRQ%d", pdev->devfn, i);
+			"SDP_PF%02d_VF_FLR%d", pdev->bus->number, i);
 		err = request_irq(pci_irq_vector(pdev, vec + i),
 				  sdp_pf_vf_flr_intr, 0,
 				  &sdp->irq_names[(vec + i) * NAME_SIZE], sdp);
@@ -1310,124 +1310,117 @@ enable_failed:
 static void enable_vf_flr_int(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp;
-	int ena_bits;
+	int ena_bits, idx;
 
 	sdp = pci_get_drvdata(pdev);
-	/* Clear any pending interrupts */
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(0), ~0x0ULL);
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(0), ~0x0ULL);
 
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(1), ~0x0ULL);
-		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(1),
+	/* Clear any pending interrupts */
+	for (idx = 0; idx  < 2; idx++) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(idx),
+			    ~0x0ULL);
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(idx),
 			    ~0x0ULL);
 	}
 
-	/* Enable for first 64 VFs here - upto number of VFs enabled */
-	ena_bits = ((sdp->num_vfs - 1) % 64);
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(0),
-		   GENMASK_ULL(ena_bits, 0));
-
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		/* Enable for VF interrupts for VFs 64  to 128 */
-		ena_bits = sdp->num_vfs - 64 - 1;
+	/* Enable for FLR interrupts for VFs */
+	if (sdp->num_vfs > 64) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(0),
+			    GENMASK_ULL(63, 0));
+		ena_bits = (sdp->num_vfs - 64) - 1;
 		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(1),
 			   GENMASK_ULL(ena_bits, 0));
+	} else {
+		ena_bits = sdp->num_vfs - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(0),
+			    GENMASK_ULL(ena_bits, 0));
 	}
 }
 
 static void disable_vf_flr_int(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp;
-	int ena_bits;
-	u64 intr;
+	int ena_bits, idx;
 
 	sdp = pci_get_drvdata(pdev);
-	/* clear any pending interrupt */
 
-	intr = sdp_read64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(0));
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(0), intr);
-	intr = sdp_read64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(0));
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(0), intr);
-
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		intr = sdp_read64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(1));
-		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(1), intr);
-		intr = sdp_read64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(1));
-		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(1), intr);
+	/* Clear any pending interrupts */
+	for (idx = 0; idx  < 2; idx++) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(idx),
+			    ~0x0ULL);
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(idx),
+			    ~0x0ULL);
 	}
 
-	/* Disable for first 64 VFs here - upto number of VFs enabled */
-	ena_bits = ((sdp->num_vfs - 1) % 64);
-
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1CX(0),
-		   GENMASK_ULL(ena_bits, 0));
-
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		/* Enable for VF interrupts for VFs 64  to 128 */
-		ena_bits = sdp->num_vfs - 64 - 1;
+	/* Disable the FLR interrupts for VFs */
+	if (sdp->num_vfs > 64) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1CX(0),
+			    GENMASK_ULL(63, 0));
+		ena_bits = (sdp->num_vfs - 64) - 1;
 		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1CX(1),
 			   GENMASK_ULL(ena_bits, 0));
+	} else {
+		ena_bits = sdp->num_vfs - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1CX(0),
+			    GENMASK_ULL(ena_bits, 0));
 	}
 }
 
 static void enable_vf_mbox_int(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp;
-	int ena_bits;
+	int ena_bits, idx;
 
 	sdp = pci_get_drvdata(pdev);
-	/* Clear any pending interrupts */
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INTX(0), ~0x0ULL);
 
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INTX(1),
-			   ~0x0ULL);
+	/* Clear any pending interrupts */
+	for (idx = 0; idx < 2; idx++) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INTX(idx),
+			    ~0x0ULL);
 	}
 
-	/* Enable for first 64 VFs here - upto number of VFs enabled */
-	ena_bits = ((sdp->num_vfs - 1) % 64);
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INT_ENA_W1SX(0),
-		   GENMASK_ULL(ena_bits, 0));
-
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		/* Enable for VF interrupts for VFs 64  to 128 */
-		ena_bits = sdp->num_vfs - 64 - 1;
+	/* Enable VF MBOX interrupts */
+	if (sdp->num_vfs > 64) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0,
+			    RVU_PF_VFPF_MBOX_INT_ENA_W1SX(0),
+			    GENMASK_ULL(63, 0));
+		ena_bits = (sdp->num_vfs - 64) - 1;
 		sdp_write64(sdp, BLKADDR_RVUM, 0,
 			   RVU_PF_VFPF_MBOX_INT_ENA_W1SX(1),
 			   GENMASK_ULL(ena_bits, 0));
+	} else {
+		ena_bits = sdp->num_vfs - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0,
+			    RVU_PF_VFPF_MBOX_INT_ENA_W1SX(0),
+			    GENMASK_ULL(ena_bits, 0));
 	}
 }
 
 static void disable_vf_mbox_int(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp;
-	int ena_bits;
-	u64 intr;
+	int ena_bits, idx;
 
 	sdp = pci_get_drvdata(pdev);
-	/* clear any pending interrupt */
 
-	intr = sdp_read64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INTX(0));
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INTX(0), intr);
-
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		intr = sdp_read64(sdp, BLKADDR_RVUM, 0,
-				  RVU_PF_VFPF_MBOX_INTX(1));
-		sdp_write64(sdp, BLKADDR_RVUM, 0,
-			    RVU_PF_VFPF_MBOX_INTX(1), intr);
+	/* Clear any pending interrupts */
+	for (idx = 0; idx < 2; idx++) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INTX(idx),
+			    ~0x0ULL);
 	}
 
-	/* Disable for first 64 VFs here - upto number of VFs enabled */
-	ena_bits = ((sdp->num_vfs - 1) % 64);
-	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFPF_MBOX_INT_ENA_W1CX(0),
-			GENMASK_ULL(ena_bits, 0));
-
-	if (sdp->num_vfs > 64) { /* For VF 64 to 127(MAX) */
-		/* Enable for VF interrupts for VFs 64  to 128 */
-		ena_bits = sdp->num_vfs - 64 - 1;
+	/* Disable the MBOX interrupts for VFs */
+	if (sdp->num_vfs > 64) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0,
+			    RVU_PF_VFPF_MBOX_INT_ENA_W1CX(0),
+			    GENMASK_ULL(63, 0));
+		ena_bits = (sdp->num_vfs - 64) - 1;
 		sdp_write64(sdp, BLKADDR_RVUM, 0,
 			   RVU_PF_VFPF_MBOX_INT_ENA_W1CX(1),
+			   GENMASK_ULL(ena_bits, 0));
+	} else {
+		ena_bits = sdp->num_vfs - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0,
+			   RVU_PF_VFPF_MBOX_INT_ENA_W1CX(0),
 			   GENMASK_ULL(ena_bits, 0));
 	}
 }
