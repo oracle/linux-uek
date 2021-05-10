@@ -39,6 +39,9 @@
 /* RFOE MHAB register offsets */
 #define RFOEX_RX_CTL(a)				(0x0818ULL | \
 						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_VLANX_CFG(a, b)		(0x0870ULL | \
+						 ((unsigned long)(a) << 36) | \
+						 ((b) << 3))
 #define RFOEX_RX_INDIRECT_INDEX_OFFSET(a)	(0x13F8ULL | \
 						 ((unsigned long)(a) << 36))
 #define RFOEX_RX_IND_FTX_CFG(a, b)	(0x1400ULL | \
@@ -50,6 +53,9 @@
 						 ((unsigned long)(a) << 36))
 #define RFOEX_RX_IND_MBT_SEG_STATE(a)		(0x1430ULL | \
 						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_IND_VLANX_FWD(a, b)		(0x14D0ULL | \
+						 ((unsigned long)(a) << 36) | \
+						 ((b) << 3))
 #define RFOEX_RX_IND_JDT_CFG0(a)		(0x1440ULL | \
 						 ((unsigned long)(a) << 36))
 #define RFOEX_RX_IND_JDT_CFG1(a)		(0x1448ULL | \
@@ -342,6 +348,10 @@ struct rfoex_abx_slotx_configuration2 {
 	u64 ecpri_id		: 16;
 	u64 ecpri_seq_id	: 16;
 	u64 reserved1		: 8;
+};
+
+struct rfoe_rx_ind_vlanx_fwd {
+	u64 fwd			: 64;
 };
 
 struct mhab_job_desc_cfg {
