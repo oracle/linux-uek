@@ -6100,23 +6100,6 @@ static void svm_cpuid_update(struct kvm_vcpu *vcpu)
 					 APICV_INHIBIT_REASON_NESTED);
 }
 
-static void svm_set_supported_cpuid(struct kvm_cpuid_entry2 *entry)
-{
-	switch (entry->function) {
-	case 0x8000000A:
-		if (!kvm_cpu_cap_has(X86_FEATURE_SVM)) {
-			entry->eax = entry->ebx = entry->ecx = entry->edx = 0;
-			break;
-		}
-		entry->eax = 1; /* SVM revision 1 */
-		entry->ebx = 8; /* Lets support 8 ASIDs in case we add proper
-				   ASID emulation to nested SVM */
-		entry->ecx = 0; /* Reserved */
-		cpuid_entry_override(entry, CPUID_8000_000A_EDX);
-		break;
-	}
-}
-
 static int svm_get_lpage_level(void)
 {
 	return PT_PDPE_LEVEL;
@@ -7501,8 +7484,6 @@ static struct kvm_x86_ops svm_x86_ops __ro_after_init = {
 	.get_lpage_level = svm_get_lpage_level,
 
 	.cpuid_update = svm_cpuid_update,
-
-	.set_supported_cpuid = svm_set_supported_cpuid,
 
 	.has_wbinvd_exit = svm_has_wbinvd_exit,
 
