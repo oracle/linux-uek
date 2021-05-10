@@ -1082,7 +1082,78 @@ static int otx2_rfoe_eth_stop(struct net_device *netdev)
 	return 0;
 }
 
+static int otx2_rfoe_init(struct net_device *netdev)
+{
+	struct otx2_rfoe_ndev_priv *priv = netdev_priv(netdev);
+
+	/* Enable VLAN TPID match */
+	writeq(0x18100, (priv->rfoe_reg_base +
+			 RFOEX_RX_VLANX_CFG(priv->rfoe_num, 0)));
+	netdev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+
+	return 0;
+}
+
+static int otx2_rfoe_vlan_rx_configure(struct net_device *netdev, u16 vid,
+				       bool forward)
+{
+	struct rfoe_rx_ind_vlanx_fwd fwd;
+	struct otx2_rfoe_ndev_priv *priv = netdev_priv(netdev);
+	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
+	u64 index = (vid >> 6) & 0x3F;
+	u64 mask = (0x1ll << (vid & 0x3F));
+	unsigned long flags;
+
+	if (vid >= VLAN_N_VID) {
+		netdev_err(netdev, "Invalid VLAN ID %d\n", vid);
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&cdev_priv->mbt_lock, flags);
+
+	if (forward && priv->rfoe_common->rx_vlan_fwd_refcnt[vid]++)
+		goto out;
+
+	if (!forward && --priv->rfoe_common->rx_vlan_fwd_refcnt[vid])
+		goto out;
+
+	/* read current fwd mask */
+	writeq(index, (priv->rfoe_reg_base +
+		       RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
+	fwd.fwd = readq(priv->rfoe_reg_base +
+			RFOEX_RX_IND_VLANX_FWD(priv->rfoe_num, 0));
+
+	if (forward)
+		fwd.fwd |= mask;
+	else
+		fwd.fwd &= ~mask;
+
+	/* write the new fwd mask */
+	writeq(index, (priv->rfoe_reg_base +
+		       RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
+	writeq(fwd.fwd, (priv->rfoe_reg_base +
+			 RFOEX_RX_IND_VLANX_FWD(priv->rfoe_num, 0)));
+
+out:
+	spin_unlock_irqrestore(&cdev_priv->mbt_lock, flags);
+
+	return 0;
+}
+
+static int otx2_rfoe_vlan_rx_add(struct net_device *netdev, __be16 proto,
+				 u16 vid)
+{
+	return otx2_rfoe_vlan_rx_configure(netdev, vid, true);
+}
+
+static int otx2_rfoe_vlan_rx_kill(struct net_device *netdev, __be16 proto,
+				  u16 vid)
+{
+	return otx2_rfoe_vlan_rx_configure(netdev, vid, false);
+}
+
 static const struct net_device_ops otx2_rfoe_netdev_ops = {
+	.ndo_init		= otx2_rfoe_init,
 	.ndo_open		= otx2_rfoe_eth_open,
 	.ndo_stop		= otx2_rfoe_eth_stop,
 	.ndo_start_xmit		= otx2_rfoe_eth_start_xmit,
@@ -1090,6 +1161,8 @@ static const struct net_device_ops otx2_rfoe_netdev_ops = {
 	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_get_stats64	= otx2_rfoe_get_stats64,
+	.ndo_vlan_rx_add_vid	= otx2_rfoe_vlan_rx_add,
+	.ndo_vlan_rx_kill_vid	= otx2_rfoe_vlan_rx_kill,
 };
 
 static void otx2_rfoe_dump_rx_ft_cfg(struct otx2_rfoe_ndev_priv *priv)
