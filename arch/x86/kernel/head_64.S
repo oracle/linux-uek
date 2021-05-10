@@ -71,7 +71,7 @@ startup_64:
 	 */
 
 	/* Set up the stack for verify_cpu(), similar to initial_stack below */
-	leaq	(__end_init_task - SIZEOF_PTREGS)(%rip), %rsp
+	leaq	(__end_init_task - FRAME_SIZE)(%rip), %rsp
 
 	/* Sanitize CPU configuration */
 	call verify_cpu
@@ -266,10 +266,10 @@ END(start_cpu0)
 	.quad	INIT_PER_CPU_VAR(fixed_percpu_data)
 	GLOBAL(initial_stack)
 	/*
-	 * The SIZEOF_PTREGS gap is a convention which helps the in-kernel
+	 * The FRAME_SIZE gap is a convention which helps the in-kernel
 	 * unwinder reliably detect the end of the stack.
 	 */
-	.quad  init_thread_union + THREAD_SIZE - SIZEOF_PTREGS
+	.quad  init_thread_union + THREAD_SIZE - FRAME_SIZE
 	__FINITDATA
 
 	__INIT
