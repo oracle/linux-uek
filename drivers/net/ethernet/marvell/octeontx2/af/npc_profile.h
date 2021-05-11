@@ -10410,7 +10410,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 1, 0,
-		NPC_S_KPU5_IP, 4, 0,
+		NPC_S_KPU5_IP, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10418,7 +10418,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 1, 0,
-		NPC_S_KPU5_IP6, 4, 0,
+		NPC_S_KPU5_IP6, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10426,7 +10426,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 1, 0,
-		NPC_S_KPU5_ARP, 4, 0,
+		NPC_S_KPU5_ARP, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10434,7 +10434,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 1, 0,
-		NPC_S_KPU5_RARP, 4, 0,
+		NPC_S_KPU5_RARP, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10442,7 +10442,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 1, 0,
-		NPC_S_KPU5_PTP, 4, 0,
+		NPC_S_KPU5_PTP, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10450,7 +10450,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 1, 0,
-		NPC_S_KPU5_FCOE, 4, 0,
+		NPC_S_KPU5_FCOE, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10458,7 +10458,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 0, 0,
-		NPC_S_KPU4_MPLS, 4, 0,
+		NPC_S_KPU4_MPLS, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10466,7 +10466,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 0, 0,
-		NPC_S_KPU4_MPLS, 4, 0,
+		NPC_S_KPU4_MPLS, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
@@ -10474,7 +10474,7 @@ static struct npc_kpu_profile_action kpu3_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 0, 0,
-		NPC_S_KPU4_NSH, 4, 0,
+		NPC_S_KPU4_NSH, 6, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
