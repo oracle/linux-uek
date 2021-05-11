@@ -28,9 +28,10 @@ struct lmac {
 	struct rsrc_bmap mac_to_index_bmap;
 	struct cgx_event_cb event_cb;
 	spinlock_t event_cb_lock;
-	bool cmd_pend;
 	struct cgx *cgx;
+	u8 mcast_filters_count;
 	u8 lmac_id;
+	bool cmd_pend;
 	char *name;
 };
 
