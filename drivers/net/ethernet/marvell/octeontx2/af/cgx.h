@@ -46,6 +46,7 @@
 #define CGXX_CMRX_RX_DMAC_CTL0		(0x1F8 + mac_ops->csr_offset)
 #define CGX_DMAC_CTL0_CAM_ENABLE	BIT_ULL(3)
 #define CGX_DMAC_CAM_ACCEPT		BIT_ULL(3)
+#define CGX_DMAC_MCAST_MODE_CAM		BIT_ULL(2)
 #define CGX_DMAC_MCAST_MODE		BIT_ULL(1)
 #define CGX_DMAC_BCAST_MODE		BIT_ULL(0)
 #define CGXX_CMRX_RX_DMAC_CAM0		(0x200 + mac_ops->csr_offset)
