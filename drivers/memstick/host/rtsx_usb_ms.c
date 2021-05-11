@@ -792,8 +792,6 @@ static int rtsx_usb_ms_drv_remove(struct platform_device *pdev)
 	mutex_unlock(&host->host_mutex);
 
 	wait_for_completion(&host->detect_ms_exit);
-	memstick_remove_host(msh);
-	memstick_free_host(msh);
 
 	/* Balance possible unbalanced usage count
 	 * e.g. unconditional module removal
@@ -802,10 +800,11 @@ static int rtsx_usb_ms_drv_remove(struct platform_device *pdev)
 		pm_runtime_put(ms_dev(host));
 
 	pm_runtime_disable(&pdev->dev);
-	platform_set_drvdata(pdev, NULL);
-
+	memstick_remove_host(msh);
 	dev_dbg(&(pdev->dev),
 		": Realtek USB Memstick controller has been removed\n");
+	memstick_free_host(msh);
+	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }
