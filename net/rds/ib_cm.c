@@ -653,6 +653,7 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	if (!ic->i_scq)
 		return;
 
+	rds_ib_clear_irq_miss(ic);
 	rds_ib_poll_tx(ic);
 
 	if (rds_conn_up(conn) &&
