@@ -43,7 +43,7 @@ void gfs2_pin(struct gfs2_sbd *sdp, struct buffer_head *bh)
 {
 	struct gfs2_bufdata *bd;
 
-	BUG_ON(!current->journal_info);
+	BUG_ON(!current_trans());
 
 	clear_buffer_dirty(bh);
 	if (test_set_buffer_pinned(bh))

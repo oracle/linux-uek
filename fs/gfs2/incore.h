@@ -871,5 +871,15 @@ static inline unsigned gfs2_max_stuffed_size(const struct gfs2_inode *ip)
 	return GFS2_SB(&ip->i_inode)->sd_sb.sb_bsize - sizeof(struct gfs2_dinode);
 }
 
+static inline struct gfs2_trans *current_trans(void)
+{
+	return current->journal_info;
+}
+
+static inline void set_current_trans(struct gfs2_trans *tr)
+{
+	current->journal_info = tr;
+}
+
 #endif /* __INCORE_DOT_H__ */
 

@@ -43,8 +43,8 @@ int __gfs2_trans_begin(struct gfs2_trans *tr, struct gfs2_sbd *sdp,
 {
 	unsigned int extra_revokes;
 
-	if (current->journal_info) {
-		gfs2_print_trans(sdp, current->journal_info);
+	if (current_trans()) {
+		gfs2_print_trans(sdp, current_trans());
 		BUG();
 	}
 	BUG_ON(blocks == 0 && revokes == 0);
@@ -101,7 +101,7 @@ reserved:
 		return -EROFS;
 	}
 
-	current->journal_info = tr;
+	set_current_trans(tr);
 
 	return 0;
 }
@@ -123,10 +123,10 @@ int gfs2_trans_begin(struct gfs2_sbd *sdp, unsigned int blocks,
 
 void gfs2_trans_end(struct gfs2_sbd *sdp)
 {
-	struct gfs2_trans *tr = current->journal_info;
+	struct gfs2_trans *tr = current_trans();
 	s64 nbuf;
 
-	current->journal_info = NULL;
+	set_current_trans(NULL);
 
 	if (!test_bit(TR_TOUCHED, &tr->tr_flags)) {
 		gfs2_log_release_revokes(sdp, tr->tr_revokes);
@@ -191,7 +191,7 @@ static struct gfs2_bufdata *gfs2_alloc_bufdata(struct gfs2_glock *gl,
  */
 void gfs2_trans_add_data(struct gfs2_glock *gl, struct buffer_head *bh)
 {
-	struct gfs2_trans *tr = current->journal_info;
+	struct gfs2_trans *tr = current_trans();
 	struct gfs2_sbd *sdp = gl->gl_name.ln_sbd;
 	struct gfs2_bufdata *bd;
 
@@ -232,7 +232,7 @@ void gfs2_trans_add_meta(struct gfs2_glock *gl, struct buffer_head *bh)
 	struct gfs2_sbd *sdp = gl->gl_name.ln_sbd;
 	struct gfs2_bufdata *bd;
 	struct gfs2_meta_header *mh;
-	struct gfs2_trans *tr = current->journal_info;
+	struct gfs2_trans *tr = current_trans();
 	enum gfs2_freeze_state state = atomic_read(&sdp->sd_freeze_state);
 
 	lock_buffer(bh);
@@ -288,7 +288,7 @@ out:
 
 void gfs2_trans_add_revoke(struct gfs2_sbd *sdp, struct gfs2_bufdata *bd)
 {
-	struct gfs2_trans *tr = current->journal_info;
+	struct gfs2_trans *tr = current_trans();
 
 	BUG_ON(!list_empty(&bd->bd_list));
 	gfs2_add_revoke(sdp, bd);

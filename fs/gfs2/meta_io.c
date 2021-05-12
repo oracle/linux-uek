@@ -294,7 +294,7 @@ int gfs2_meta_read(struct gfs2_glock *gl, u64 blkno, int flags,
 	bh = *bhp;
 	wait_on_buffer(bh);
 	if (unlikely(!buffer_uptodate(bh))) {
-		struct gfs2_trans *tr = current->journal_info;
+		struct gfs2_trans *tr = current_trans();
 		if (tr && test_bit(TR_TOUCHED, &tr->tr_flags))
 			gfs2_io_error_bh_wd(sdp, bh);
 		brelse(bh);
@@ -321,7 +321,7 @@ int gfs2_meta_wait(struct gfs2_sbd *sdp, struct buffer_head *bh)
 	wait_on_buffer(bh);
 
 	if (!buffer_uptodate(bh)) {
-		struct gfs2_trans *tr = current->journal_info;
+		struct gfs2_trans *tr = current_trans();
 		if (tr && test_bit(TR_TOUCHED, &tr->tr_flags))
 			gfs2_io_error_bh_wd(sdp, bh);
 		return -EIO;
@@ -337,7 +337,7 @@ void gfs2_remove_from_journal(struct buffer_head *bh, int meta)
 	struct address_space *mapping = bh->b_page->mapping;
 	struct gfs2_sbd *sdp = gfs2_mapping2sbd(mapping);
 	struct gfs2_bufdata *bd = bh->b_private;
-	struct gfs2_trans *tr = current->journal_info;
+	struct gfs2_trans *tr = current_trans();
 	int was_pinned = 0;
 
 	if (test_clear_buffer_pinned(bh)) {

@@ -1883,7 +1883,7 @@ static int gfs2_setattr_simple(struct inode *inode, struct iattr *attr)
 {
 	int error;
 
-	if (current->journal_info)
+	if (current_trans())
 		return __gfs2_setattr_simple(inode, attr);
 
 	error = gfs2_trans_begin(GFS2_SB(inode), RES_DINODE, 0);
