@@ -279,6 +279,7 @@ void rds_send_worker(struct work_struct *work)
 		case -ENOMEM:
 			rds_stats_inc(s_send_delayed_retry);
 			delay = 2;
+			break;
 		default:
 			return;
 		}
