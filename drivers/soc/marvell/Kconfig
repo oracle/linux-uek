@@ -129,6 +129,15 @@ config MVMDIO_UIO
 	  Select this option if you want to provide an interface for userspace
 	  PHY drivers to access Marvell's MDIO bus.
 
+config MRVL_PHY_DIAGNOSTICS
+	tristate "Marvell PHY diagnostics debugfs driver"
+	default m
+	depends on DEBUG_FS
+	help
+	  Select this option if you want an additional interface for
+	  extended diagnostics functions for the PHY. This complements
+	  functionality offered by ethtool. Requires PHY driver support in ATF.
+
 config HW_CSR_ACCESS
        tristate "Access HW Device Config Space Registers"
         default m
