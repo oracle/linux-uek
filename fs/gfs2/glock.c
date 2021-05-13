@@ -1427,6 +1427,11 @@ int gfs2_glock_nq(struct gfs2_holder *gh)
 	if (glock_blocked_by_withdraw(gl) && !(gh->gh_flags & LM_FLAG_NOEXP))
 		return -EIO;
 
+	if (gh->gh_flags & LM_FLAG_OUTER) {
+		BUG_ON(current_holds_glock());
+		set_current_holds_glock(true);
+	}
+
 	if (test_bit(GLF_LRU, &gl->gl_flags))
 		gfs2_glock_remove_from_lru(gl);
 
@@ -1514,6 +1519,11 @@ void gfs2_glock_dq(struct gfs2_holder *gh)
 		__gfs2_glock_queue_work(gl, delay);
 	}
 	spin_unlock(&gl->gl_lockref.lock);
+
+	if (gh->gh_flags & LM_FLAG_OUTER) {
+		BUG_ON(!current_holds_glock());
+		set_current_holds_glock(false);
+	}
 }
 
 void gfs2_glock_dq_wait(struct gfs2_holder *gh)
@@ -2068,6 +2078,8 @@ static const char *hflags2str(char *buf, u16 flags, unsigned long iflags)
 		*p++ = 'p';
 	if (flags & LM_FLAG_NODE_SCOPE)
 		*p++ = 'n';
+	if (flags & LM_FLAG_OUTER)
+		*p++ = 'o';
 	if (flags & GL_ASYNC)
 		*p++ = 'a';
 	if (flags & GL_EXACT)
