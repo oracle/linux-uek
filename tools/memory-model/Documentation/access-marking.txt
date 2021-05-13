@@ -319,6 +319,100 @@ of the ASSERT_EXCLUSIVE_WRITER() is to allow KCSAN to check for a buggy
 concurrent lockless write.
 
 
+Lock-Protected Writes With Heuristic Lockless Reads
+---------------------------------------------------
+
+For another example, suppose that the code can normally make use of
+a per-data-structure lock, but there are times when a global lock
+is required.  These times are indicated via a global flag.  The code
+might look as follows, and is based loosely on nf_conntrack_lock(),
+nf_conntrack_all_lock(), and nf_conntrack_all_unlock():
+
+	bool global_flag;
+	DEFINE_SPINLOCK(global_lock);
+	struct foo {
+		spinlock_t f_lock;
+		int f_data;
+	};
+
+	/* All foo structures are in the following array. */
+	int nfoo;
+	struct foo *foo_array;
+
+	void do_something_locked(struct foo *fp)
+	{
+		bool gf = true;
+
+		/* IMPORTANT: Heuristic plus spin_lock()! */
+		if (!data_race(global_flag)) {
+			spin_lock(&fp->f_lock);
+			if (!smp_load_acquire(&global_flag)) {
+				do_something(fp);
+				spin_unlock(&fp->f_lock);
+				return;
+			}
+			spin_unlock(&fp->f_lock);
+		}
+		spin_lock(&global_lock);
+		/* Lock held, thus global flag cannot change. */
+		if (!global_flag) {
+			spin_lock(&fp->f_lock);
+			spin_unlock(&global_lock);
+			gf = false;
+		}
+		do_something(fp);
+		if (fg)
+			spin_unlock(&global_lock);
+		else
+			spin_lock(&fp->f_lock);
+	}
+
+	void begin_global(void)
+	{
+		int i;
+
+		spin_lock(&global_lock);
+		WRITE_ONCE(global_flag, true);
+		for (i = 0; i < nfoo; i++) {
+			/* Wait for pre-existing local locks. */
+			spin_lock(&fp->f_lock);
+			spin_unlock(&fp->f_lock);
+		}
+	}
+
+	void end_global(void)
+	{
+		smp_store_release(&global_flag, false);
+		/* Pre-existing global lock acquisitions will recheck. */
+		spin_unlock(&global_lock);
+	}
+
+All code paths leading from the do_something_locked() function's first
+read from global_flag acquire a lock, so endless load fusing cannot
+happen.
+
+If the value read from global_flag is true, then global_flag is rechecked
+while holding global_lock, which prevents global_flag from changing.
+If this recheck finds that global_flag is now false, the acquisition
+of ->f_lock prior to the release of global_lock will result in any subsequent
+begin_global() invocation waiting to acquire ->f_lock.
+
+On the other hand, if the value read from global_flag is false, then
+global_flag, then rechecking under ->f_lock combined with synchronization
+with begin_global() guarantees than any erroneous read will cause the
+do_something_locked() function's first do_something() invocation to happen
+before begin_global() returns.  The combination of the smp_load_acquire()
+in do_something_locked() and the smp_store_release() in end_global()
+guarantees that either the do_something_locked() function's first
+do_something() invocation happens after the call to end_global() or that
+do_something_locked() acquires global_lock() and rechecks under the lock.
+
+For this to work, only those foo structures in foo_array[] may be
+passed to do_something_locked().  The reason for this is that the
+synchronization with begin_global() relies on momentarily locking each
+and every foo structure.
+
+
 Lockless Reads and Writes
 -------------------------
 
