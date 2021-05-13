@@ -9,3 +9,4 @@ obj-y 		+= csr-access/
 obj-y 		+= octeontx2-serdes/
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
 obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
+obj-$(CONFIG_MRVL_PHY_DIAGNOSTICS) += phy_diag.o
