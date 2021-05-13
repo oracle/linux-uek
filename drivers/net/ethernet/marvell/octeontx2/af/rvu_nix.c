@@ -4843,8 +4843,8 @@ static int nix_setup_ipolicers(struct rvu *rvu,
 						   sizeof(u16), GFP_KERNEL);
 	}
 
-	/* Set policer timeunit to 1us ie  (9 + 1) * 100 nsec = 1us */
-	rvu_write64(rvu, blkaddr, NIX_AF_PL_TS, 0x09);
+	/* Set policer timeunit to 2us ie  (19 + 1) * 100 nsec = 2us */
+	rvu_write64(rvu, blkaddr, NIX_AF_PL_TS, 19);
 
 	nix_config_rx_pkt_policer_precolor(rvu, blkaddr);
 

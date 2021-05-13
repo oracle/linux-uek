@@ -246,10 +246,7 @@ static void cn10k_get_ingress_burst_cfg(u32 burst, u32 *burst_exp,
 	/* Burst is calculated as
 	 * (1+[BURST_MANTISSA]/256)*2^[BURST_EXPONENT]
 	 * This is the upper limit on number tokens (bytes) that
-	 * can be accumilated in the bucket.
-	 *
-	 * Max burst exponent is 31, so need to check for the max
-	 * burst size since size of 'police.burst' is also 32bit.
+	 * can be accumulated in the bucket.
 	 */
 	*burst_exp = ilog2(burst);
 	if (burst < 256) {
@@ -257,6 +254,9 @@ static void cn10k_get_ingress_burst_cfg(u32 burst, u32 *burst_exp,
 		*burst_mantissa = 0;
 		return;
 	}
+
+	if (*burst_exp > MAX_RATE_EXP)
+		*burst_exp = MAX_RATE_EXP;
 
 	/* Calculate mantissa
 	 * Find remaining bytes 'burst - 2^burst_exp'
@@ -269,51 +269,35 @@ static void cn10k_get_ingress_burst_cfg(u32 burst, u32 *burst_exp,
 static void cn10k_get_ingress_rate_cfg(u64 rate, u32 *rate_exp,
 				       u32 *rate_mantissa, u32 *rdiv)
 {
-	int tmp, comp, mul = 1000;
-	int div = 0, exp;
-
-	/* Policer timeunit is configured as 1usec
-	 *
-	 * tmp = rate * T * 32;
-	 * For rate in bps, T is timeunit in seconds
-	 * For rate in Kbps, T is timeunit in msecs
-	 * For rate in Mbps, T is timeunit in usecs
-	 * For rate in Gbps, T is timeunit in nsecs
-	 *
-	 * Since the rate passed to this fn() is in bps, T would be 0.000001
-	 * (1usec in secs). Since float cannot be used, convert rate to kbps
-	 * and hike the comparator by 1000, so that T becomes 1.
-	 */
-	rate = (rate < 1000) ? 1000 : rate;
-	rate = rate / mul;
-	tmp = rate * POLICER_TIMESTAMP * 32;
-	comp = 256 * mul;
+	u32 div = 0;
+	u32 exp = 0;
+	u64 tmp;
 
 	/* Figure out mantissa, exponent and divider from given max pkt rate
 	 *
 	 * To achieve desired rate HW adds
 	 * (1+[RATE_MANTISSA]/256)*2^[RATE_EXPONENT] tokens (bytes) at every
-	 * policer timeunit * 2^rdiv ie 2^rdiv usecs, to the token bucket.
+	 * policer timeunit * 2^rdiv ie 2 * 2^rdiv usecs, to the token bucket.
+	 * Here policer timeunit is 2 usecs and rate is in bits per sec.
+	 * Since floating point cannot be used below algorithm uses 1000000
+	 * scale factor to support rates upto 100Gbps.
 	 */
-	if (tmp < comp) {
-		while (tmp < comp) {
+	tmp = rate * 32 * 2;
+	if (tmp < 256000000) {
+		while (tmp < 256000000) {
+			tmp = tmp * 2;
 			div++;
-			tmp *= 2;
 		}
-		*rate_exp = 0;
-		goto done;
+	} else {
+		for (exp = 0; tmp >= 512000000 && exp <= MAX_RATE_EXP; exp++)
+			tmp = tmp / 2;
+
+		if (exp > MAX_RATE_EXP)
+			exp = MAX_RATE_EXP;
 	}
 
-	comp = 512 * mul;
-	for (exp = 0; exp <= MAX_RATE_EXP && tmp >= comp; exp++)
-		tmp = tmp / 2;
-
-	if (exp > MAX_RATE_EXP)
-		exp = MAX_RATE_EXP;
+	*rate_mantissa = (tmp - 256000000) / 1000000;
 	*rate_exp = exp;
-done:
-	tmp = tmp / mul;
-	*rate_mantissa = tmp - 256;
 	*rdiv = div;
 }
 
