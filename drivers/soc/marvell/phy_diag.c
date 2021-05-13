@@ -20,6 +20,7 @@
 #define PLAT_OCTEONTX_PHY_LOOPBACK	0xc2000e01
 #define PLAT_OCTEONTX_PHY_GET_TEMP	0xc2000e02
 #define PLAT_OCTEONTX_PHY_SERDES_CFG	0xc2000e03
+#define PLAT_OCTEONTX_PHY_MDIO		0xc2000e04
 
 #define MAX_ETH				10
 #define MAX_LMAC_PER_ETH		4
@@ -153,6 +154,22 @@ static struct {
 DEFINE_STR_2_ENUM_FUNC(prbs_types)
 
 
+enum phy_mdio_clause {
+	CLAUSE_22 = 0,
+	CLAUSE_45,
+};
+
+static struct {
+	enum phy_mdio_clause e;
+	const char *s;
+} mdio_clause[] = {
+	{CLAUSE_22, "cl22"},
+	{CLAUSE_45, "cl45"},
+};
+DEFINE_STR_2_ENUM_FUNC(mdio_clause)
+
+
+
 static int copy_user_input(const char __user *buffer,
 			size_t count, char *cmd_buf, size_t buf_sz)
 {
@@ -168,6 +185,142 @@ static int copy_user_input(const char __user *buffer,
 	return 0;
 }
 
+
+static int parse_phy_mdio_op_data(char *cmd, int write,
+		int *clause, int *devad, int *reg, int *val)
+{
+	char *end;
+	char *token;
+
+	end = skip_spaces(cmd);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	*clause = mdio_clause_str2enum(token);
+	if (*clause == -1)
+		return -EINVAL;
+
+	if (*clause == CLAUSE_45) {
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, devad))
+			return -EINVAL;
+
+		/* device addr is 5 bits */
+		*devad &= 0x1f;
+	}
+
+	end = skip_spaces(end);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	if (kstrtouint(token, 16, reg))
+		return -EINVAL;
+
+	*reg &= (clause == CLAUSE_22) ? 0x1f : 0xffff;
+
+	if (write) {
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 16, val))
+			return -EINVAL;
+
+		*val &= 0xffff;
+	}
+
+	return 0;
+}
+
+
+static ssize_t phy_debug_read_reg_write(struct file *filp,
+					const char __user *buffer,
+					size_t count, loff_t *ppos)
+{
+	struct arm_smccc_res res;
+	int clause;
+	int devad = 0;
+	int reg;
+	int val;
+	int x1;
+	int x2;
+
+	if (copy_user_input(buffer, count, cmd_buf, CMD_SZ))
+		return -EFAULT;
+
+	if (parse_phy_mdio_op_data(cmd_buf, 0, &clause,
+				&devad, &reg, &val)) {
+		return -EINVAL;
+	}
+
+	x1 = (devad << 2) | (clause << 1) | 0;
+	x2 = reg;
+
+	arm_smccc_smc(PLAT_OCTEONTX_PHY_MDIO, x1, x2,
+		phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
+
+	if (res.a0) {
+		pr_warn("MDIO: Reading PHY register failed!\n");
+		return count;
+	}
+
+	val = res.a1 & 0xffff;
+
+	pr_info("MDIO: val=0x%x\n", val);
+
+	return count;
+}
+
+static int phy_debug_read_reg_read(struct seq_file *s, void *unused)
+{
+	return 0;
+}
+DEFINE_ATTRIBUTE(phy_debug_read_reg);
+
+static ssize_t phy_debug_write_reg_write(struct file *filp,
+					const char __user *buffer,
+					size_t count, loff_t *ppos)
+{
+	struct arm_smccc_res res;
+	int clause;
+	int devad = 0;
+	int reg;
+	int val;
+	int x1;
+	int x2;
+
+	if (copy_user_input(buffer, count, cmd_buf, CMD_SZ))
+		return -EFAULT;
+
+	if (parse_phy_mdio_op_data(cmd_buf, 1, &clause,
+				&devad, &reg, &val)) {
+		return -EINVAL;
+	}
+
+	x1 = (devad << 2) | (clause << 1) | 1;
+	x2 = (val << 16) | reg;
+
+	arm_smccc_smc(PLAT_OCTEONTX_PHY_MDIO, x1, x2,
+		phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
+
+	if (res.a0)
+		pr_warn("MDIO: Writing PHY register failed!\n");
+
+	return count;
+}
+
+static int phy_debug_write_reg_read(struct seq_file *s, void *unused)
+{
+	return 0;
+}
+DEFINE_ATTRIBUTE(phy_debug_write_reg);
 
 static ssize_t phy_debug_prbs_write(struct file *filp,
 					const char __user *buffer,
@@ -456,6 +609,17 @@ static int phy_dbg_setup_debugfs(void)
 				    &phy_debug_prbs_fops);
 	if (!dbg_file)
 		goto create_failed;
+
+	dbg_file = debugfs_create_file("write_reg", 0644, phy_dbgfs_root, NULL,
+				    &phy_debug_write_reg_fops);
+	if (!dbg_file)
+		goto create_failed;
+
+	dbg_file = debugfs_create_file("read_reg", 0644, phy_dbgfs_root, NULL,
+				    &phy_debug_read_reg_fops);
+	if (!dbg_file)
+		goto create_failed;
+
 
 	return 0;
 
