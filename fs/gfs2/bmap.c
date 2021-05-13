@@ -967,7 +967,8 @@ static int gfs2_write_lock(struct inode *inode)
 	struct gfs2_sbd *sdp = GFS2_SB(inode);
 	int error;
 
-	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, 0, &ip->i_gh);
+	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, LM_FLAG_OUTER,
+			 &ip->i_gh);
 	error = gfs2_glock_nq(&ip->i_gh);
 	if (error)
 		goto out_uninit;

@@ -431,21 +431,30 @@ static vm_fault_t gfs2_page_mkwrite(struct vm_fault *vmf)
 	vm_fault_t ret = VM_FAULT_LOCKED;
 	struct gfs2_holder gh;
 	unsigned int length;
+	u16 flags = 0;
 	loff_t size;
 	int err;
 
 	sb_start_pagefault(inode->i_sb);
 
-	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, 0, &gh);
+	if (current_holds_glock())
+		flags |= LM_FLAG_TRY;
+
+	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, flags, &gh);
 	if (likely(!outer_gh)) {
 		err = gfs2_glock_nq(&gh);
 		if (err) {
 			ret = block_page_mkwrite_return(err);
+			if (err == GLR_TRYFAILED) {
+				set_current_needs_retry(true);
+				ret = VM_FAULT_SIGBUS;
+			}
 			goto out_uninit;
 		}
 	} else {
 		if (!gfs2_holder_is_compatible(outer_gh, LM_ST_EXCLUSIVE)) {
 			/* We could try to upgrade outer_gh here. */
+			set_current_needs_retry(true);
 			ret = VM_FAULT_SIGBUS;
 			goto out_uninit;
 		}
@@ -568,18 +577,27 @@ static vm_fault_t gfs2_fault(struct vm_fault *vmf)
 	struct gfs2_holder *outer_gh = gfs2_glock_is_locked_by_me(ip->i_gl);
 	struct gfs2_holder gh;
 	vm_fault_t ret;
+	u16 flags = 0;
 	int err;
 
-	gfs2_holder_init(ip->i_gl, LM_ST_SHARED, 0, &gh);
+	if (current_holds_glock())
+		flags |= LM_FLAG_TRY;
+
+	gfs2_holder_init(ip->i_gl, LM_ST_SHARED, flags, &gh);
 	if (likely(!outer_gh)) {
 		err = gfs2_glock_nq(&gh);
 		if (err) {
 			ret = block_page_mkwrite_return(err);
+			if (err == GLR_TRYFAILED) {
+				set_current_needs_retry(true);
+				ret = VM_FAULT_SIGBUS;
+			}
 			goto out_uninit;
 		}
 	} else {
 		if (!gfs2_holder_is_compatible(outer_gh, LM_ST_SHARED)) {
 			/* We could try to upgrade outer_gh here. */
+			set_current_needs_retry(true);
 			ret = VM_FAULT_SIGBUS;
 			goto out_uninit;
 		}
@@ -805,13 +823,20 @@ static ssize_t gfs2_file_direct_read(struct kiocb *iocb, struct iov_iter *to,
 	if (!count)
 		return 0; /* skip atime */
 
-	gfs2_holder_init(ip->i_gl, LM_ST_DEFERRED, 0, gh);
+	gfs2_holder_init(ip->i_gl, LM_ST_DEFERRED, LM_FLAG_OUTER, gh);
+retry:
 	ret = gfs2_glock_nq(gh);
 	if (ret)
 		goto out_uninit;
 
 	ret = iomap_dio_rw(iocb, to, &gfs2_iomap_ops, NULL, 0);
 	gfs2_glock_dq(gh);
+	if (unlikely(current_needs_retry())) {
+		set_current_needs_retry(false);
+		if (ret == -EFAULT &&
+		    !iov_iter_fault_in_writeable(to, PAGE_SIZE))
+			goto retry;
+	}
 out_uninit:
 	gfs2_holder_uninit(gh);
 	return ret;
@@ -835,7 +860,8 @@ static ssize_t gfs2_file_direct_write(struct kiocb *iocb, struct iov_iter *from,
 	 * unfortunately, have the option of only flushing a range like the
 	 * VFS does.
 	 */
-	gfs2_holder_init(ip->i_gl, LM_ST_DEFERRED, 0, gh);
+	gfs2_holder_init(ip->i_gl, LM_ST_DEFERRED, LM_FLAG_OUTER, gh);
+retry:
 	ret = gfs2_glock_nq(gh);
 	if (ret)
 		goto out_uninit;
@@ -849,6 +875,12 @@ static ssize_t gfs2_file_direct_write(struct kiocb *iocb, struct iov_iter *from,
 		ret = 0;
 out:
 	gfs2_glock_dq(gh);
+	if (unlikely(current_needs_retry())) {
+		set_current_needs_retry(false);
+		if (ret == -EFAULT &&
+		    !iov_iter_fault_in_readable(from, PAGE_SIZE))
+			goto retry;
+	}
 out_uninit:
 	gfs2_holder_uninit(gh);
 	return ret;
@@ -881,7 +913,8 @@ static ssize_t gfs2_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 			return ret;
 	}
 	ip = GFS2_I(iocb->ki_filp->f_mapping->host);
-	gfs2_holder_init(ip->i_gl, LM_ST_SHARED, 0, &gh);
+	gfs2_holder_init(ip->i_gl, LM_ST_SHARED, LM_FLAG_OUTER, &gh);
+retry:
 	ret = gfs2_glock_nq(&gh);
 	if (ret)
 		goto out_uninit;
@@ -889,6 +922,12 @@ static ssize_t gfs2_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	if (ret > 0)
 		written += ret;
 	gfs2_glock_dq(&gh);
+	if (unlikely(current_needs_retry())) {
+		set_current_needs_retry(false);
+		if (ret == -EFAULT &&
+		    !iov_iter_fault_in_writeable(to, PAGE_SIZE))
+			goto retry;
+	}
 out_uninit:
 	gfs2_holder_uninit(&gh);
 	return written ? written : ret;
@@ -900,9 +939,17 @@ static ssize_t gfs2_file_buffered_write(struct kiocb *iocb, struct iov_iter *fro
 	struct inode *inode = file_inode(file);
 	ssize_t ret;
 
+retry:
 	current->backing_dev_info = inode_to_bdi(inode);
 	ret = iomap_file_buffered_write(iocb, from, &gfs2_iomap_ops);
 	current->backing_dev_info = NULL;
+	if (unlikely(current_needs_retry())) {
+		set_current_needs_retry(false);
+		if (ret == -EFAULT &&
+		    !iov_iter_fault_in_readable(from, PAGE_SIZE))
+			goto retry;
+	}
+
 	return ret;
 }
 
