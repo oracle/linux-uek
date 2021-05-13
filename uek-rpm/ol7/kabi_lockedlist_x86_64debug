@@ -27,6 +27,7 @@
 	__generic_file_write_iter
 	__get_free_pages
 	__get_user_2
+	__get_user_8
 	__get_vm_area
 	__init_rwsem
 	__init_waitqueue_head
@@ -454,6 +455,7 @@
 	igrab
 	ilookup
 	in4_pton
+	in_aton
 	in_egroup_p
 	in_group_p
 	inc_nlink
@@ -508,6 +510,7 @@
 	kernel_recvmsg
 	kernel_sendmsg
 	kernel_setsockopt
+	kernel_sigaction
 	kernel_write
 	kfree
 	kfree_link
@@ -515,6 +518,7 @@
 	kill_anon_super
 	kill_block_super
 	kill_fasync
+	kill_pid
 	kmalloc_caches
 	kmalloc_order_trace
 	kmem_cache_alloc
@@ -781,6 +785,7 @@
 	sn_partition_id
 	sn_region_size
 	snprintf
+	sock_create
 	sock_create_kern
 	sock_release
 	sockfd_lookup
