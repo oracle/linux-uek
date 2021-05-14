@@ -670,15 +670,14 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 				   int nixlf, u64 chan, u8 chan_cnt)
 {
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct npc_install_flow_req req = { 0 };
 	struct npc_install_flow_rsp rsp = { 0 };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_hwinfo *hw = rvu->hw;
 	int blkaddr, ucast_idx, index;
 	struct nix_rx_action action;
-	struct rvu_pfvf *pfvf;
 	u64 relaxed_mask;
-	u16 vf_func;
 
 	if (!hw->cap.nix_rx_multicast && is_cgx_vf(rvu, pcifunc))
 		return;
@@ -687,12 +686,12 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	if (blkaddr < 0)
 		return;
 
-	/* Get 'pcifunc' of PF device */
-	vf_func = pcifunc & RVU_PFVF_FUNC_MASK;
-	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
+	if (is_cgx_vf(rvu, pcifunc))
+		index = npc_get_nixlf_mcam_index(mcam,
+						 pcifunc & ~RVU_PFVF_FUNC_MASK,
+						 nixlf, NIXLF_PROMISC_ENTRY);
 
 	/* If the corresponding PF's ucast action is RSS,
 	 * use the same action for promisc also
@@ -706,7 +705,6 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	if (action.op != NIX_RX_ACTIONOP_RSS) {
 		*(u64 *)&action = 0x00;
 		action.op = NIX_RX_ACTIONOP_UCAST;
-		action.pf_func = pcifunc;
 	}
 
 	/* RX_ACTION set to MCAST for CGX PF's */
@@ -714,6 +712,7 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	    is_pf_cgxmapped(rvu, rvu_get_pf(pcifunc))) {
 		*(u64 *)&action = 0x00;
 		action.op = NIX_RX_ACTIONOP_MCAST;
+		pfvf = rvu_get_pfvf(rvu, pcifunc & ~RVU_PFVF_FUNC_MASK);
 		action.index = pfvf->promisc_mce_idx;
 	}
 
@@ -744,7 +743,7 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	req.entry = index;
 	req.op = action.op;
 	req.hdr.pcifunc = 0; /* AF is requester */
-	req.vf = pcifunc | vf_func;
+	req.vf = pcifunc;
 	req.index = action.index;
 	req.match_id = action.match_id;
 	req.flow_key_alg = action.flow_key_alg;
