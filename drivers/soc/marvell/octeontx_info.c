@@ -17,6 +17,7 @@
 
 #define OCTTX_NODE	"octeontx_brd"
 #define FW_LAYOUT_NODE	"firmware-layout"
+#define MAX_MACS	32  // Please keep this in sync with EBF
 
 struct octeontx_info_mac_addr {
 	union {
@@ -52,8 +53,10 @@ struct octtx_brd_info {
 	const char *board_serial;
 	const char *board_model;
 	const char *board_num_of_mac;
+	const char *board_num_of_mac_id;
 	int  dev_tree_parsed;
-	struct octeontx_info_mac_addr mac_addr;
+	int  use_mac_id;
+	struct octeontx_info_mac_addr mac_addrs[MAX_MACS];
 	struct octtx_fw_info *fw_info;
 };
 
@@ -64,6 +67,7 @@ static char null_string[5] = "NULL";
 static int oct_brd_proc_show(struct seq_file *seq, void *v)
 {
 	struct octtx_fw_info *fw_info = brd.fw_info;
+	struct octeontx_info_mac_addr *mac_addr;
 
 	if (!brd.dev_tree_parsed) {
 		seq_puts(seq, "No board info available!\n");
@@ -73,8 +77,30 @@ static int oct_brd_proc_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "board_model: %s\n", brd.board_model);
 	seq_printf(seq, "board_revision: %s\n", brd.board_revision);
 	seq_printf(seq, "board_serial_number: %s\n", brd.board_serial);
-	seq_printf(seq, "mac_addr_base: %pM\n", brd.mac_addr.s.bytes);
-	seq_printf(seq, "mac_addr_count: %s\n", brd.board_num_of_mac);
+	if (!brd.use_mac_id) {
+		mac_addr = &brd.mac_addrs[0];
+
+		seq_printf(seq, "mac_addr_count: %s\n", brd.board_num_of_mac);
+		seq_printf(seq, "mac_addr_base: %pM\n", mac_addr->s.bytes);
+	} else {
+		u32 u, num;
+
+		if (brd.board_num_of_mac_id == null_string)
+			seq_printf(seq, "mac_addr_count: %s\n",
+				   brd.board_num_of_mac_id);
+
+		if (!kstrtou32(brd.board_num_of_mac_id, 10, &num)) {
+			seq_printf(seq, "mac_addr_count: %s\n",
+				   brd.board_num_of_mac_id);
+
+			for (u = 0; u < num; u++) {
+				mac_addr = &brd.mac_addrs[u];
+
+				seq_printf(seq, "board-mac-addr-id%d: %pM\n",
+					   u, mac_addr->s.bytes);
+			}
+		}
+	}
 
 	while (fw_info) {
 		seq_printf(seq, "firmware-file: %s\n", fw_info->name);
@@ -114,6 +140,77 @@ static const struct file_operations oct_brd_fops = {
 	.llseek = seq_lseek,
 	.release = single_release,
 };
+
+static int octtx_parse_mac_info(struct device_node *node)
+{
+	const char *board_mac;
+	struct octeontx_info_mac_addr mac_addr;
+	int ret;
+	u32 num, id_num, u;
+
+	if (!node)
+		return -EINVAL;
+
+	/* Initialize variables */
+	memset(brd.mac_addrs, 0, sizeof(brd.mac_addrs));
+	brd.use_mac_id = 0;
+
+	ret = of_property_read_string(node, "BOARD-MAC-ADDRESS-NUM",
+				      &brd.board_num_of_mac);
+	if (ret) {
+		pr_warn("Board MAC address number not available\n");
+		brd.board_num_of_mac = null_string;
+		num = -1;
+	} else {
+		if (kstrtou32(brd.board_num_of_mac, 10, &num))
+			pr_warn("Board MAC address number is not available\n");
+	}
+
+	ret = of_property_read_string(node, "BOARD-MAC-ADDRESS", &board_mac);
+	if (ret) {
+		pr_warn("Board MAC address not available\n");
+		brd.mac_addrs[0].num = 0;
+	} else {
+		if (!kstrtoull(board_mac, 16, &mac_addr.num))
+			brd.mac_addrs[0].num = be64_to_cpu(mac_addr.num);
+	}
+
+	/* This part is not mandatory */
+	ret = of_property_read_string(node, "BOARD-MAC-ADDRESS-ID-NUM",
+				      &brd.board_num_of_mac_id);
+	if (ret) {
+		brd.board_num_of_mac_id = null_string;
+		id_num = -1;
+	} else {
+		if (kstrtou32(brd.board_num_of_mac_id, 10, &id_num))
+			pr_warn("Board MAC addressess IDs number is not available\n");
+	}
+
+	if ((brd.board_num_of_mac_id != null_string) && (id_num > 0)) {
+		for (u = 0; u < id_num; u++) {
+			char prop_name[32] = { 0 };
+
+			snprintf(prop_name, sizeof(prop_name),
+				 "BOARD-MAC-ADDRESS-ID%u",
+				 u);
+			ret = of_property_read_string(node, prop_name,
+						      &board_mac);
+			if (ret) {
+				pr_info("%s: %s = %s\n",
+					 module_name(THIS_MODULE),
+					 prop_name, board_mac);
+				brd.mac_addrs[u].num = 0;
+			} else {
+				if (!kstrtou64(board_mac, 16, &mac_addr.num))
+					brd.mac_addrs[u].num = be64_to_cpu(mac_addr.num);
+			}
+		}
+
+		brd.use_mac_id = 1;
+	}
+
+	return 0;
+}
 
 static int octtx_parse_firmware_layout(struct device_node *parent)
 {
@@ -232,12 +329,10 @@ static int octtx_parse_firmware_layout(struct device_node *parent)
 	return 0;
 }
 
-static int octtx_info_init(void)
+static int __init octtx_info_init(void)
 {
 	int ret;
-	const char *board_mac;
 	struct device_node *np = NULL;
-	struct octeontx_info_mac_addr mac_addr;
 
 	if (!brd.dev_tree_parsed) {
 		np = of_find_node_by_name(NULL, OCTTX_NODE);
@@ -267,22 +362,10 @@ static int octtx_info_init(void)
 			/* Default name is "NULL" */
 			brd.board_serial = null_string;
 		}
-		ret = of_property_read_string(np, "BOARD-MAC-ADDRESS",
-								&board_mac);
-		if (ret) {
-			pr_warn("Board mac address not available\n");
-			brd.mac_addr.num = 0;
-		} else {
-			if (!kstrtoull(board_mac, 16, &mac_addr.num))
-				brd.mac_addr.num = be64_to_cpu(mac_addr.num);
-		}
 
-
-		ret = of_property_read_string(np, "BOARD-MAC-ADDRESS-NUM",
-							&brd.board_num_of_mac);
+		ret = octtx_parse_mac_info(np);
 		if (ret) {
-			pr_warn("Board mac address number not available\n");
-			brd.board_num_of_mac = null_string;
+			pr_warn("Board MAC addess not available\n");
 		}
 
 		np = of_find_node_by_name(np, FW_LAYOUT_NODE);
@@ -305,7 +388,7 @@ static int octtx_info_init(void)
 	return 0;
 }
 
-static void octtx_info_cleanup(void)
+static void  __exit octtx_info_cleanup(void)
 {
 	proc_remove(ent);
 }
