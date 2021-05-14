@@ -212,7 +212,10 @@ struct gendisk {
 	void *private_data;
 
 	int flags;
+
+	/*Not used. Keeping here to avoid KABI breakage*/
 	struct rw_semaphore lookup_sem;
+
 	struct kobject *slave_dir;
 
 	struct timer_rand_state *random;
