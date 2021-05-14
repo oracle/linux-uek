@@ -10,3 +10,4 @@ obj-y 		+= octeontx2-serdes/
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
 obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
 obj-$(CONFIG_MRVL_PHY_DIAGNOSTICS) += phy_diag.o
+obj-$(CONFIG_MARVELL_CN10K_MAC_MGMT) += marvell_mac_mgmt.o
