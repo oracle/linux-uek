@@ -1454,6 +1454,9 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 
 	disk_block_events(disk);
 	mutex_lock_nested(&bdev->bd_mutex, for_part);
+	if (!(disk->flags & GENHD_FL_UP))
+		goto out_unlock_bdev;
+
 	if (!bdev->bd_openers) {
 		first_open = true;
 		bdev->bd_disk = disk;
@@ -1521,8 +1524,7 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 			}
 			bdev->bd_contains = whole;
 			bdev->bd_part = disk_get_part(disk, partno);
-			if (!(disk->flags & GENHD_FL_UP) ||
-			    !bdev->bd_part || !bdev->bd_part->nr_sects) {
+			if (!bdev->bd_part || !bdev->bd_part->nr_sects) {
 				ret = -ENXIO;
 				goto out_clear;
 			}
