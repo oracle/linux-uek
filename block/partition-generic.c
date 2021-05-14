@@ -512,6 +512,10 @@ int rescan_partitions(struct gendisk *disk, struct block_device *bdev)
 	struct parsed_partitions *state = NULL;
 	struct hd_struct *part;
 	int p, highest, res;
+
+	if (!(disk->flags & GENHD_FL_UP))
+		return -ENXIO;
+
 rescan:
 	if (state && !IS_ERR(state)) {
 		free_partitions(state);
