@@ -2100,21 +2100,20 @@ int rvu_mbox_handler_set_vf_perm(struct rvu *rvu, struct set_vf_perm *req,
 	target = (pcifunc & ~RVU_PFVF_FUNC_MASK) | (req->vf + 1);
 	pfvf = rvu_get_pfvf(rvu, target);
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, target);
-	if (blkaddr < 0)
-		return NPA_AF_ERR_AF_LF_INVALID;
-
-	nixlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
-	if (nixlf < 0)
-		return NPA_AF_ERR_AF_LF_INVALID;
-
 	if (req->flags & RESET_VF_PERM)
 		pfvf->flags &= RVU_CLEAR_VF_PERM;
 	else if (test_bit(PF_SET_VF_TRUSTED, &pfvf->flags) ^
 		 (req->flags & VF_TRUSTED)) {
 		change_bit(PF_SET_VF_TRUSTED, &pfvf->flags);
+		/* disable multicast and promisc entries */
 		if (!test_bit(PF_SET_VF_TRUSTED, &pfvf->flags)) {
-			/* Delete multicast and promisc MCAM entries */
+			blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, target);
+			if (blkaddr < 0)
+				return 0;
+			nixlf = rvu_get_lf(rvu, &hw->block[blkaddr],
+					   target, 0);
+			if (nixlf < 0)
+				return 0;
 			npc_enadis_default_mce_entry(rvu, target, nixlf,
 						     NIXLF_ALLMULTI_ENTRY,
 						     false);
