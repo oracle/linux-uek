@@ -49,6 +49,20 @@ enum {
 #define LM_ST_DEFERRED		2
 #define LM_ST_SHARED		3
 
+static inline bool gfs2_holder_is_compatible(struct gfs2_holder *gh, int state) {
+	BUG_ON(state == LM_ST_UNLOCKED);
+	switch(gh->gh_state) {
+	case LM_ST_EXCLUSIVE:
+		return state != LM_ST_DEFERRED;
+	case LM_ST_DEFERRED:
+		return state == LM_ST_DEFERRED;
+	case LM_ST_SHARED:
+		return state == LM_ST_SHARED;
+	default:
+		return false;
+	}
+}
+
 /*
  * lm_lock() flags
  *
