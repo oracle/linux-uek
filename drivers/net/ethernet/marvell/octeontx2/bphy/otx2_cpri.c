@@ -57,7 +57,7 @@
 /* global driver ctx */
 struct otx2_cpri_drv_ctx cpri_drv_ctx[OTX2_BPHY_CPRI_MAX_INTF];
 
-struct net_device *otx2_cpri_get_netdev(int mhab_id, int lmac_id)
+static struct net_device *otx2_cpri_get_netdev(int mhab_id, int lmac_id)
 {
 	struct net_device *netdev = NULL;
 	int idx;
@@ -126,16 +126,13 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 	struct otx2_cpri_ndev_priv *priv2;
 	struct cpri_pkt_ul_wqe_hdr *wqe;
 	struct ul_cbuf_cfg *ul_cfg;
-	u16 sw_rd_ptr, nxt_wr_ptr;
 	struct net_device *netdev;
+	u16 nxt_wr_ptr, len;
 	struct sk_buff *skb;
 	u8 *pkt_buf;
-	u16 len;
 
 	ul_cfg = &priv->cpri_common->ul_cfg;
 
-	sw_rd_ptr = readq(priv->cpri_reg_base +
-			  CPRIX_RXD_GMII_UL_SW_RD_PTR(priv->cpri_num)) & 0xFFFF;
 	nxt_wr_ptr = readq(priv->cpri_reg_base +
 			   CPRIX_RXD_GMII_UL_NXT_WR_PTR(priv->cpri_num)) &
 			0xFFFF;
