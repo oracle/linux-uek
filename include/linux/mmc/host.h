@@ -219,11 +219,6 @@ struct mmc_host_ops {
 
 	/* Initialize an SD express card, mandatory for MMC_CAP2_SD_EXP. */
 	int	(*init_sd_express)(struct mmc_host *host, struct mmc_ios *ios);
-#ifdef CONFIG_MMC_OOPS
-	void	(*req_cleanup_pending)(struct mmc_host *host);
-	int	(*req_completion_poll)(struct mmc_host *host,
-					unsigned long timeout);
-#endif
 };
 
 struct mmc_cqe_ops {
