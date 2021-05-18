@@ -27,11 +27,23 @@
 			 :						\
 			 [x0]"r"(val0), [x1]"r"(val1), [p1]"r"(addr));	\
 	})
+
+#define rvu_sso_ldadd(result, incr, ptr) ({				\
+	__asm__ volatile(".cpu   generic+lse\n"                         \
+			 "ldadd %x[i], %x[r], [%[b]]"                   \
+			 : [r] "=r" (result), "+m" (*ptr)               \
+			 : [i] "r" (incr), [b] "r" (ptr)                \
+			 : "memory");                                   \
+	})
 #else
 #define rvu_sso_store_pair(val0, val1, addr)				\
 	do {								\
 		*(uint64_t *)addr = val0;			\
 		*(uint64_t *)(((uint8_t *)addr) + 8) = val1;	\
+	} while (0)
+
+#define rvu_sso_ldadd(result, incr, ptr)				\
+	do {                                                            \
 	} while (0)
 #endif
 
@@ -691,7 +703,7 @@ int rvu_sso_poll_aura_cnt(struct rvu *rvu, int npa_blkaddr, int aura)
 	addr = rvu->afreg_base + ((npa_blkaddr << 28) |
 				  NPA_AF_BAR2_ALIASX(0, NPA_LF_AURA_OP_CNT));
 again:
-	res = atomic64_fetch_add_relaxed(wdata, (atomic64_t *)addr);
+	rvu_sso_ldadd(res, wdata, addr);
 	if (res & BIT_ULL(42))
 		return 0;
 	if (!(res & 0xFFFFFFFFF))
