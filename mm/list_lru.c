@@ -245,11 +245,13 @@ restart:
 			 */
 			assert_spin_locked(&nlru->lock);
 			goto restart;
+		case LRU_STOP:
+			goto out;
 		default:
 			BUG();
 		}
 	}
-
+out:
 	spin_unlock(&nlru->lock);
 	return isolated;
 }
