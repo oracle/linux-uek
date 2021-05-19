@@ -1220,8 +1220,8 @@ static int npa_register_mbox_intr(struct npa_dev_t *npa_pf_dev, bool probe_af)
 	if (err) {
 		dev_warn(&npa_pf_dev->pdev->dev,
 			 "AF not responding to mailbox, deferring probe\n");
-		otx2_disable_afpf_mbox_intr(npa_pf_dev);
-		return -EPROBE_DEFER;
+		err = -EPROBE_DEFER;
+		goto err_free_intr;
 	}
 
 	mutex_lock(&npa_pf_dev->lock);
