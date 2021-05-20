@@ -986,6 +986,9 @@ ifeq ($(ARCH),arm64)
 KBUILD_CFLAGS	+= $(call cc-option,-ffunction-sections,)
 KBUILD_CFLAGS	+= $(call cc-option,-fdata-sections,)
 endif
+
+KBUILD_CFLAGS	+= $(call cc-option,-fno-reorder-functions,)
+KBUILD_CFLAGS	+= $(call cc-option,-fno-section-anchors,)
 endif
 
 # arch Makefile may override CC so keep this after arch Makefile is included
