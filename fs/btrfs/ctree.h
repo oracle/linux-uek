@@ -3558,6 +3558,11 @@ do {								\
 			  (errno), fmt, ##args);		\
 } while (0)
 
+static inline bool btrfs_has_fs_error(struct btrfs_fs_info *fs_info)
+{
+	return test_bit(BTRFS_FS_STATE_ERROR, &fs_info->fs_state);
+}
+
 __printf(5, 6)
 __cold
 void __btrfs_panic(struct btrfs_fs_info *fs_info, const char *function,
