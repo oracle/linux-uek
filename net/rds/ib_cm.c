@@ -1661,6 +1661,9 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		goto out;
 	}
 
+	/* prevent the cm_id from being pulled right under our feet */
+	down_read(&ic->i_cm_id_free_lock);
+
 	/* There can only be a single alternative:
 	 * A new connection request can arrive
 	 * prior to this node having worked its way
@@ -1770,6 +1773,8 @@ out:
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
 		rdma_reject(cm_id, &err, sizeof(int));
+	if (ic)
+		up_read(&ic->i_cm_id_free_lock);
 
 	return destroy;
 }
