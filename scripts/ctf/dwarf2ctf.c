@@ -2973,6 +2973,7 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 	do {
 		const char *id_name;
 		const char *decl_file_name = dwarf_decl_file(die);
+		char *decl_file_name_alloc = NULL;
 		int decl_line_num;
 		int emitted_backwards = 0;
 		char locerrstr[1024];
@@ -3018,7 +3019,11 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		 */
 		if ((decl_file_name == NULL) ||
 		    (dwarf_decl_line(die, &decl_line_num) < 0)) {
-			decl_file_name = "global";
+			if (asprintf (&decl_file_name_alloc, "global:%s:%s",
+				      module_name, file_name) < 0)
+				decl_file_name = "global";
+			else
+				decl_file_name = decl_file_name_alloc;
 			decl_line_num = 0;
 		}
 
@@ -3044,8 +3049,10 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			       "%s with unknown DWARF tag %lx.\n",
 			       decl_file_name, decl_line_num, id_name,
 			       (unsigned long) dwarf_tag(die));
+			free (decl_file_name_alloc);
 			return -1;
 		}
+		free (decl_file_name_alloc);
 
 		*skip = SKIP_CONTINUE;
 
@@ -4092,6 +4099,21 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	if (!private_dwarf_hasattr(die, DW_AT_name)) {
 		Dwarf_Die child_die;
 		int dummy = 0;
+
+		/*
+		 * This might be a cv-qual terminated by a structure.
+		 * For now, just ignore the cv-qual: CTF can't encode it in
+		 * any useful fashion anyway.
+		 */
+		while (dwarf_tag(&type_die) == DW_TAG_const_type ||
+		       dwarf_tag(&type_die) == DW_TAG_volatile_type ||
+		       dwarf_tag(&type_die) == DW_TAG_restrict_type) {
+			if ((private_dwarf_type(&type_die,
+						&type_die)) == NULL) {
+				*skip = SKIP_ABORT;
+				return CTF_ERROR_REPORTED;
+			}
+		}
 
 		if ((dwarf_tag(&type_die) != DW_TAG_structure_type) &&
 		    (dwarf_tag(&type_die) != DW_TAG_union_type)) {
