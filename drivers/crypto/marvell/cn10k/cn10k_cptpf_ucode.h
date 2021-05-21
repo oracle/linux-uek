@@ -31,6 +31,8 @@
 
 #define CN10K_CPT_ENGS_BITMASK_LEN   BITS_TO_LONGS(CN10K_CPT_MAX_ENGINES)
 
+#define CN10K_CPT_UCODE_SZ           (64 * 1024)
+
 /* Microcode types */
 enum cn10k_cpt_ucode_type {
 	CN10K_CPT_AE_UC_TYPE = 1,  /* AE-MAIN */
