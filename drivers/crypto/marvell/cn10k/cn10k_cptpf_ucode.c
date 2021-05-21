@@ -975,7 +975,7 @@ static int create_sysfs_eng_grps_info(struct device *dev,
 static void ucode_unload(struct device *dev, struct cn10k_cpt_ucode *ucode)
 {
 	if (ucode->va) {
-		dma_free_coherent(dev, ucode->size, ucode->va, ucode->dma);
+		dma_free_coherent(dev, CN10K_CPT_UCODE_SZ, ucode->va, ucode->dma);
 		ucode->va = NULL;
 		ucode->dma = 0;
 		ucode->size = 0;
@@ -994,7 +994,7 @@ static int copy_ucode_to_dma_mem(struct device *dev,
 	u32 i;
 
 	/*  Allocate DMAable space */
-	ucode->va = dma_alloc_coherent(dev, ucode->size, &ucode->dma,
+	ucode->va = dma_alloc_coherent(dev, CN10K_CPT_UCODE_SZ, &ucode->dma,
 				       GFP_KERNEL);
 	if (!ucode->va)
 		return -ENOMEM;
