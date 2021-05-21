@@ -80,13 +80,17 @@ xfs_find_bdev_for_inode(
  */
 STATIC void
 xfs_destroy_ioend(
-	xfs_ioend_t		*ioend)
+	xfs_ioend_t		*ioend,
+	bool			atomic)
 {
 	struct buffer_head	*bh, *next;
+	int count = 0;
 
 	for (bh = ioend->io_buffer_head; bh; bh = next) {
 		next = bh->b_private;
 		bh->b_end_io(bh, !ioend->io_error);
+		if (!(++count % 1024) && !atomic)
+			cond_resched();
 	}
 
 	mempool_free(ioend, xfs_ioend_pool);
@@ -187,6 +191,15 @@ xfs_setfilesize_ioend(
 	return xfs_setfilesize(ip, tp, ioend->io_offset, ioend->io_size);
 }
 
+STATIC void
+xfs_destroy_ioend_work(
+	struct work_struct	*work)
+{
+	xfs_ioend_t *ioend = container_of(work, xfs_ioend_t, destroy_io_work);
+
+	xfs_destroy_ioend(ioend, false);
+}
+
 /*
  * Schedule IO completion handling on the final put of an ioend.
  *
@@ -204,8 +217,14 @@ xfs_finish_ioend(
 			queue_work(mp->m_unwritten_workqueue, &ioend->io_work);
 		else if (ioend->io_append_trans)
 			queue_work(mp->m_data_workqueue, &ioend->io_work);
-		else
-			xfs_destroy_ioend(ioend);
+		else {
+			/* To avoid lockup */
+			if (ioend->io_buffer_num > 128)
+				queue_work(mp->m_unwritten_workqueue,
+					&ioend->destroy_io_work);
+			else
+				xfs_destroy_ioend(ioend, true);
+		}
 	}
 }
 
@@ -244,7 +263,7 @@ done:
 		ioend->io_error = error;
 	if (ioend->io_append_trans)
 		xfs_setfilesize_ioend(ioend);
-	xfs_destroy_ioend(ioend);
+	xfs_destroy_ioend(ioend, false);
 }
 
 /*
@@ -274,11 +293,13 @@ xfs_alloc_ioend(
 	ioend->io_inode = inode;
 	ioend->io_buffer_head = NULL;
 	ioend->io_buffer_tail = NULL;
+	ioend->io_buffer_num = 0;
 	ioend->io_offset = 0;
 	ioend->io_size = 0;
 	ioend->io_append_trans = NULL;
 
 	INIT_WORK(&ioend->io_work, xfs_end_io);
+	INIT_WORK(&ioend->destroy_io_work, xfs_destroy_ioend_work);
 	return ioend;
 }
 
@@ -596,6 +617,7 @@ xfs_add_to_ioend(
 		ioend->io_buffer_tail->b_private = bh;
 		ioend->io_buffer_tail = bh;
 	}
+	ioend->io_buffer_num++;
 
 	bh->b_private = NULL;
 	ioend->io_size += bh->b_size;

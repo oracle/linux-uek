@@ -46,9 +46,11 @@ typedef struct xfs_ioend {
 	struct inode		*io_inode;	/* file being written to */
 	struct buffer_head	*io_buffer_head;/* buffer linked list head */
 	struct buffer_head	*io_buffer_tail;/* buffer linked list tail */
+	unsigned int		io_buffer_num;/* number of buffer in the list*/
 	size_t			io_size;	/* size of the extent */
 	xfs_off_t		io_offset;	/* offset in the file */
 	struct work_struct	io_work;	/* xfsdatad work queue */
+	struct work_struct	destroy_io_work;
 	struct xfs_trans	*io_append_trans;/* xact. for size update */
 } xfs_ioend_t;
 
