@@ -48,7 +48,7 @@ static inline bool mlx5_geneve_tx_allowed(struct mlx5_core_dev *mdev)
 }
 
 static inline void
-mlx5e_tx_tunnel_accel(struct sk_buff *skb, struct mlx5_wqe_eth_seg *eseg)
+mlx5e_tx_tunnel_accel(struct sk_buff *skb, struct mlx5_wqe_eth_seg *eseg, u16 ihs)
 {
 	struct mlx5e_swp_spec swp_spec = {};
 	unsigned int offset = 0;
@@ -82,6 +82,8 @@ mlx5e_tx_tunnel_accel(struct sk_buff *skb, struct mlx5_wqe_eth_seg *eseg)
 	}
 
 	mlx5e_set_eseg_swp(skb, eseg, &swp_spec);
+	if (skb_vlan_tag_present(skb) && ihs)
+		mlx5e_eseg_swp_offsets_add_vlan(eseg);
 }
 
 #else
