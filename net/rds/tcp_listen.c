@@ -156,6 +156,13 @@ int rds_tcp_accept_one(struct socket *sock)
 		 &new_sock->sk->sk_v6_rcv_saddr, ntohs(inet->inet_sport),
 		 &new_sock->sk->sk_v6_daddr, ntohs(inet->inet_dport));
 
+	if (!rds_tcp_laddr_check(sock_net(sock->sk), &new_sock->sk->sk_v6_daddr,
+				 new_sock->sk->sk_bound_dev_if)) {
+		/* local address connection is only allowed via loopback */
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
 	conn = rds_conn_create(sock_net(sock->sk),
 			       &new_sock->sk->sk_v6_rcv_saddr,
 			       &new_sock->sk->sk_v6_daddr,

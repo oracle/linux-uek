@@ -322,8 +322,8 @@ out:
 	spin_unlock_irqrestore(&rds_tcp_tc_list_lock, flags);
 }
 
-static int rds_tcp_laddr_check(struct net *net, const struct in6_addr *addr,
-			       __u32 scope_id)
+int rds_tcp_laddr_check(struct net *net, const struct in6_addr *addr,
+			__u32 scope_id)
 {
 	struct net_device *dev = NULL;
 	int ret;
