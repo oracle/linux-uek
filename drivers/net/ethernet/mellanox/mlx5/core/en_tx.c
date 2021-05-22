@@ -342,7 +342,7 @@ netdev_tx_t mlx5e_sq_xmit(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 
 #if IS_ENABLED(CONFIG_GENEVE)
 	if (skb->encapsulation)
-		mlx5e_tx_tunnel_accel(skb, eseg);
+		mlx5e_tx_tunnel_accel(skb, eseg, ihs);
 #endif
 	mlx5e_txwqe_build_eseg_csum(sq, skb, eseg);
 
