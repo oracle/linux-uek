@@ -93,7 +93,7 @@ static int pvpanic_mmio_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	pi = kmalloc(sizeof(*pi), GFP_ATOMIC);
+	pi = devm_kmalloc(dev, sizeof(*pi), GFP_ATOMIC);
 	if (!pi)
 		return -ENOMEM;
 
@@ -121,7 +121,6 @@ static int pvpanic_mmio_remove(struct platform_device *pdev)
 	struct pvpanic_instance *pi = dev_get_drvdata(dev);
 
 	pvpanic_remove(pi);
-	kfree(pi);
 
 	device_remove_groups(dev, pvpanic_mmio_dev_groups);
 
