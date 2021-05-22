@@ -101,25 +101,13 @@ static int pvpanic_pci_probe(struct pci_dev *pdev,
 		dev_err(dev, "device_add_groups() pvpanic_pci_dev_groups failed\n");
 	}
 
-	dev_set_drvdata(dev, pi);
-
-	return pvpanic_probe(pi);
-}
-
-static void pvpanic_pci_remove(struct pci_dev *pdev)
-{
-	struct device *dev = &pdev->dev;
-	struct pvpanic_instance *pi = dev_get_drvdata(dev);
-
-	pvpanic_remove(pi);
-	device_remove_groups(dev, pvpanic_pci_dev_groups);
+	return devm_pvpanic_probe(dev, pi);
 }
 
 static struct pci_driver pvpanic_pci_driver = {
 	.name =         "pvpanic-pci",
 	.id_table =     pvpanic_pci_id_tbl,
 	.probe =        pvpanic_pci_probe,
-	.remove =       pvpanic_pci_remove,
 };
 
 module_pci_driver(pvpanic_pci_driver);

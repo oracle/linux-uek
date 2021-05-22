@@ -108,23 +108,7 @@ static int pvpanic_mmio_probe(struct platform_device *pdev)
 		dev_err(dev, "device_add_groups() pvpanic_mmio_dev_groups failed\n");
 	}
 
-	pvpanic_probe(base, capability);
-
-	dev_set_drvdata(dev, pi);
-
-	return pvpanic_probe(pi);
-}
-
-static int pvpanic_mmio_remove(struct platform_device *pdev)
-{
-	struct device *dev = &pdev->dev;
-	struct pvpanic_instance *pi = dev_get_drvdata(dev);
-
-	pvpanic_remove(pi);
-
-	device_remove_groups(dev, pvpanic_mmio_dev_groups);
-
-	return 0;
+	return devm_pvpanic_probe(dev, pi);
 }
 
 static const struct of_device_id pvpanic_mmio_match[] = {
@@ -146,6 +130,5 @@ static struct platform_driver pvpanic_mmio_driver = {
 		.acpi_match_table = pvpanic_device_ids,
 	},
 	.probe = pvpanic_mmio_probe,
-	.remove = pvpanic_mmio_remove,
 };
 module_platform_driver(pvpanic_mmio_driver);
