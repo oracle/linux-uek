@@ -78,15 +78,15 @@ static int pvpanic_pci_probe(struct pci_dev *pdev,
 	void __iomem *base;
 	int ret;
 
-	ret = pci_enable_device(pdev);
+	ret = pcim_enable_device(pdev);
 	if (ret < 0)
 		return ret;
 
-	base = pci_iomap(pdev, 0, 0);
+	base = pcim_iomap(pdev, 0, 0);
 	if (!base)
 		return -ENOMEM;
 
-	pi = kmalloc(sizeof(*pi), GFP_ATOMIC);
+	pi = devm_kmalloc(&pdev->dev, sizeof(*pi), GFP_ATOMIC);
 	if (!pi)
 		return -ENOMEM;
 
@@ -112,10 +112,7 @@ static void pvpanic_pci_remove(struct pci_dev *pdev)
 	struct pvpanic_instance *pi = dev_get_drvdata(dev);
 
 	pvpanic_remove(pi);
-	iounmap(pi->base);
-	kfree(pi);
 	device_remove_groups(dev, pvpanic_pci_dev_groups);
-	pci_disable_device(pdev);
 }
 
 static struct pci_driver pvpanic_pci_driver = {
