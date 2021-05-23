@@ -111,13 +111,11 @@ static struct max31790_data *max31790_update_device(struct device *dev)
 				if (rv < 0)
 					goto abort;
 				data->pwm[i] = rv;
-
-				rv = i2c_smbus_read_word_swapped(client,
-						MAX31790_REG_TARGET_COUNT(i));
-				if (rv < 0)
-					goto abort;
-				data->target_count[i] = rv;
 			}
+			rv = i2c_smbus_read_word_swapped(client, MAX31790_REG_TARGET_COUNT(i));
+			if (rv < 0)
+				goto abort;
+			data->target_count[i] = rv;
 		}
 
 		data->last_updated = jiffies;
@@ -183,6 +181,21 @@ static int max31790_read_fan(struct device *dev, u32 attr, int channel,
 			rpm = RPM_FROM_REG(data->tach[channel], sr);
 		*val = rpm;
 		return 0;
+	case hwmon_fan_min:
+		channel %= NR_CHANNEL;
+		sr = get_tach_period(data->fan_dynamics[channel]);
+		if (!(data->fan_config[channel] & MAX31790_FAN_CFG_RPM_MODE) ||
+		    (data->fan_config[channel] & MAX31790_FAN_CFG_TACH_INPUT)) {
+			/* pwm mode: target == min */
+			rpm = RPM_FROM_REG(data->target_count[channel], sr);
+		} else {
+			/* rpm mode: min tach count is twice target count */
+			u16 tach = min(data->target_count[channel] * 2, FAN_COUNT_REG_MAX);
+
+			rpm = RPM_FROM_REG(tach, sr);
+		}
+		*val = rpm;
+		return 0;
 	case hwmon_fan_target:
 		sr = get_tach_period(data->fan_dynamics[channel]);
 		rpm = RPM_FROM_REG(data->target_count[channel], sr);
@@ -243,6 +256,20 @@ static int max31790_write_fan(struct device *dev, u32 attr, int channel,
 				data->fan_config[channel] = config;
 		}
 		break;
+	case hwmon_fan_min:
+		/*
+		 * The minimum fan speed is the same as the target fan speed in
+		 * PWM mode and if a PWM channel is disabled, or it is half the
+		 * target fan speed in RPM mode.
+		 */
+		if (!(data->fan_config[channel] & MAX31790_FAN_CFG_TACH_INPUT) &&
+		    (data->fan_config[channel] & MAX31790_FAN_CFG_RPM_MODE)) {
+			/* partial clamp to avoid overflow */
+			if (val > FAN_RPM_MAX / 2)
+				val = FAN_RPM_MAX / 2;
+			val *= 2;
+		}
+		fallthrough;
 	case hwmon_fan_target:
 		val = clamp_val(val, FAN_RPM_MIN, FAN_RPM_MAX);
 		bits = bits_for_tach_period(val);
@@ -282,6 +309,7 @@ static umode_t max31790_fan_is_visible(const void *_data, u32 attr, int channel)
 	u8 fan_config = data->fan_config[channel % NR_CHANNEL];
 
 	switch (attr) {
+	case hwmon_fan_min:
 	case hwmon_fan_enable:
 		if (channel < NR_CHANNEL)
 			return 0644;
@@ -452,18 +480,24 @@ static umode_t max31790_is_visible(const void *data,
 
 static const struct hwmon_channel_info *max31790_info[] = {
 	HWMON_CHANNEL_INFO(fan,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_TARGET | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_TARGET | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_TARGET | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_TARGET | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_TARGET | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_TARGET | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_FAULT,
-			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_FAULT),
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_TARGET |
+				HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_TARGET |
+				HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_TARGET |
+				HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_TARGET |
+				HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_TARGET |
+				HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_TARGET |
+				HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_FAULT,
+			   HWMON_F_ENABLE | HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_FAULT),
 	HWMON_CHANNEL_INFO(pwm,
 			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
 			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
