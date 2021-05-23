@@ -308,7 +308,7 @@ int cgx_lmac_addr_reset(u8 cgx_id, u8 lmac_id)
 	struct cgx *cgx_dev = cgx_get_pdata(cgx_id);
 	struct lmac *lmac = lmac_pdata(lmac_id, cgx_dev);
 	struct mac_ops *mac_ops;
-	u8 index = 0;
+	u8 index = 0, id;
 	u64 cfg;
 
 	if (!lmac)
@@ -320,7 +320,9 @@ int cgx_lmac_addr_reset(u8 cgx_id, u8 lmac_id)
 	 */
 	set_bit(0, lmac->mac_to_index_bmap.bmap);
 
-	index = lmac_id * lmac->mac_to_index_bmap.max + index;
+	id = get_sequence_id_of_lmac(cgx_dev, lmac_id);
+
+	index = id * lmac->mac_to_index_bmap.max + index;
 	cgx_write(cgx_dev, 0, (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)), 0);
 
 	/* Reset CGXX_CMRX_RX_DMAC_CTL0 register to default state */
