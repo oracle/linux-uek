@@ -162,10 +162,12 @@ static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
 			     wc_status, rds_rdma_send_complete);
 
 	if (op->op_write) {
-		rds_stats_add(s_send_rdma_bytes, op->op_bytes);
+		rds_stats_add(ic->conn->c_stats, s_send_rdma_bytes,
+			      op->op_bytes);
 		atomic64_add(op->op_bytes, &ic->i_r_write_bytes);
 	} else {
-		rds_stats_add(s_recv_rdma_bytes, op->op_bytes);
+		rds_stats_add(ic->conn->c_stats, s_recv_rdma_bytes,
+			      op->op_bytes);
 		atomic64_add(op->op_bytes, &ic->i_r_read_bytes);
 	}
 }
@@ -613,7 +615,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	/* Do not send cong updates to IB loopback */
 	if (conn->c_loopback
 	    && rm->m_inc.i_hdr.h_flags & RDS_FLAG_CONG_BITMAP) {
-		rds_cong_map_updated(conn->c_fcong, ~(u64) 0);
+		rds_cong_map_updated(conn, conn->c_fcong, ~(u64)0);
 		return sizeof(struct rds_header) + RDS_CONG_MAP_BYTES;
 	}
 
