@@ -2014,10 +2014,11 @@ int cn10k_cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 	}
 	/*
 	 * Configure engine group mask to allow context prefetching
-	 * for the groups.
+	 * for the groups and enable random number request, to enable
+	 * CPT to request random numbers from RNM.
 	 */
 	cn10k_cpt_write_af_reg(pdev, CPT_AF_CTL,
-			       CN10K_CPT_ALL_ENG_GRPS_MASK << 3);
+			       CN10K_CPT_ALL_ENG_GRPS_MASK << 3 | BIT_ULL(16));
 	/*
 	 * Set interval to periodically flush dirty data for the next
 	 * CTX cache entry. Set the interval count to maximum supported
