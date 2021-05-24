@@ -101,7 +101,9 @@ void rds_tcp_recv_exit(void);
 void rds_tcp_data_ready(struct sock *sk);
 int rds_tcp_recv_path(struct rds_conn_path *cp);
 void rds_tcp_inc_free(struct rds_incoming *inc);
-int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
+int rds_tcp_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
+			     struct iov_iter *to);
+
 
 /* tcp_send.c */
 void rds_tcp_xmit_path_prepare(struct rds_conn_path *cp);
@@ -113,7 +115,7 @@ void rds_tcp_write_space(struct sock *sk);
 
 /* tcp_stats.c */
 DECLARE_PER_CPU(struct rds_tcp_statistics, rds_tcp_stats);
-#define rds_tcp_stats_inc(member) rds_stats_inc_which(rds_tcp_stats, member)
+#define rds_tcp_stats_inc(member) rds_stats_inc_which(&rds_tcp_stats, member)
 unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 				     unsigned int avail);
 
