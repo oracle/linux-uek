@@ -465,22 +465,29 @@ EXPORT_SYMBOL_GPL(rds_conn_find);
 static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
+	bool reconnect;
 
 	/* Then reconnect if it's still live.
 	 * The passive side of an IB loopback connection is never added
-	 * to the conn hash, so we never trigger a reconnect on this
-	 * conn - the reconnect is always triggered by the active peer. */
+	 * to the conn hash, so we only trigger a reconnect on this
+	 * conn if there's a pending yield.
+	 * Otherwise, the reconnect is always triggered by the active peer.
+	 */
 
 	rds_queue_cancel_work(cp, &cp->cp_conn_w, "final shutdown");
 	rds_clear_reconnect_pending_work_bit(cp);
 
 	rcu_read_lock();
-	if (!hlist_unhashed(&conn->c_hash_node)) {
-		rcu_read_unlock();
+	reconnect = !hlist_unhashed(&conn->c_hash_node);
+	rcu_read_unlock();
+
+	/* also reconnect if we've got a pending yield */
+	if (conn->c_trans->conn_has_alt_conn &&
+	    conn->c_trans->conn_has_alt_conn(conn))
+		reconnect = true;
+
+	if (reconnect)
 		rds_queue_reconnect(cp, false);
-	} else {
-		rcu_read_unlock();
-	}
 
 	rds_clear_shutdown_pending_work_bit(cp);
 
