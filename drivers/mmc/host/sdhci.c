@@ -2491,7 +2491,7 @@ static int __sdhci_execute_tuning(struct sdhci_host *host, u32 opcode)
 {
 	int i;
 
-#ifndef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
+#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
 	return 0;
 #endif
 	/*
