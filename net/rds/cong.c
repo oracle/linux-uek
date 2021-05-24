@@ -322,7 +322,7 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 	list_for_each_entry(conn, &map->m_conn_list, c_map_item) {
 		if (!test_and_set_bit(RCMQ_BITOFF_CONGU_PENDING,
 				      &conn->c_map_queued)) {
-			rds_stats_inc(s_cong_update_queued);
+			rds_stats_inc(conn->c_stats, s_cong_update_queued);
 			rds_cond_queue_send_work(conn->c_path, 0);
 		}
 	}
@@ -330,7 +330,8 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 	spin_unlock_irqrestore(&map->m_rns->rns_cong_lock, flags);
 }
 
-void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
+void rds_cong_map_updated(struct rds_connection *conn,
+			  struct rds_cong_map *map, uint64_t portmask)
 {
 	bool qwork = false;
 	struct rds_net *rns;
@@ -340,7 +341,7 @@ void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 		 map, &map->m_addr);
 	rns = map->m_rns;
 	rds_cong_monitor = rns->rns_cong_monitor;
-	rds_stats_inc(s_cong_update_received);
+	rds_stats_inc(conn->c_stats, s_cong_update_received);
 	atomic_inc(&rns->rns_cong_generation);
 	if (waitqueue_active(&map->m_waitq))
 		wake_up(&map->m_waitq);
@@ -457,8 +458,16 @@ void rds_cong_remove_socket(struct rds_sock *rs)
 int rds_cong_wait(struct rds_cong_map *map, __be16 port, int nonblock,
 		  struct rds_sock *rs)
 {
+	struct rds_statistics __percpu *stats;
+
 	if (!rds_cong_test_bit(map, port))
 		return 0;
+
+	if (rs)
+		stats = rs->rs_stats;
+	else
+		stats = __rds_get_mod_stats(rds_ns(current->nsproxy->net_ns),
+					    RDS_MOD_RDS);
 	if (nonblock) {
 		if (rs && rs->rs_cong_monitor) {
 			atomic64_or(RDS_CONG_MONITOR_MASK(ntohs(port)), &rs->rs_cong_mask);
@@ -468,11 +477,11 @@ int rds_cong_wait(struct rds_cong_map *map, __be16 port, int nonblock,
 			if (!rds_cong_test_bit(map, port))
 				return 0;
 		}
-		rds_stats_inc(s_cong_send_error);
+		rds_stats_inc(stats, s_cong_send_error);
 		return -ENOBUFS;
 	}
 
-	rds_stats_inc(s_cong_send_blocked);
+	rds_stats_inc(stats, s_cong_send_blocked);
 	rdsdebug("waiting on map %p for port %u\n", map, be16_to_cpu(port));
 
 	return wait_event_interruptible(map->m_waitq,
