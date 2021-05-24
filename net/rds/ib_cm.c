@@ -1671,12 +1671,15 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING,
 				 DR_DEFAULT)) {
-		int delta;
 		bool yield;
 		ktime_t conn_ts;
 		s64 conn_age;
 
-		/* Yield if the peer is what has been considered
+		/* Passive connections (loopback, same IP-address)
+		 * always yield, since the "c_passive conn"
+		 * never initiates.
+		 *
+		 * Also yield if the peer is what has been considered
 		 * 'active side' (i.e. lower IP-address)
 		 * for compatibility reasons during unsynchronized
 		 * initial connection establishment races.
@@ -1694,9 +1697,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 * If we're the 'active side' but haven't even come
 		 * as far as trying to connect, we yield as well.
 		 */
-		delta = rds_addr_cmp(&conn->c_faddr, &conn->c_laddr);
-		yield = delta < 0;
-		if (!yield && delta > 0) {
+		yield = rds_addr_cmp(&conn->c_faddr, &conn->c_laddr) <= 0;
+		if (!yield) {
 			conn_ts = atomic64_read(&ic->i_connecting_ts);
 			if (conn_ts) {
 				conn_age = ktime_to_ms(ktime_sub(ktime_get(), conn_ts));
