@@ -721,7 +721,7 @@ out_ret:
 	if (ret)
 		rds_rdma_free_op(op);
 
-	rds_stats_inc(s_send_rdma);
+	rds_stats_inc(rs->rs_stats, s_send_rdma);
 
 	return ret;
 }
