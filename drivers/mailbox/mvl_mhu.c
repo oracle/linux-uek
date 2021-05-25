@@ -80,29 +80,24 @@
 	((uint64_t)(device_id) << 4))
 #define SCP_TO_AP0_MBOX_RINT  XCPX_XCP_DEVY_MBOX_RINT(SCP_INDEX, DEV_AP0)
 
-/**
- * MHU link is a structure that describes SCMI memory and irq for the mailbox
- *
- */
-struct mvl_mhu_link {
-	struct device *dev;
-	bool initialized;
-	unsigned int irq;
-	void __iomem *tx_reg;
-	void __iomem *rx_reg;
-	void __iomem *shared_mem;
-};
 
 struct mvl_mhu {
 	struct pci_dev *pdev;
 	struct device *dev;
-	void __iomem *base;
-	struct mvl_mhu_link mlink;
-	struct mbox_chan chan[MHU_NUM_PCHANS];
-	struct mbox_controller mbox;
-	void __iomem *payload;
+
+	/* SCP link information */
+	void __iomem *base; /* tx_reg, rx_reg */
+	void __iomem *payload; /* Shared mem */
+	unsigned int irq;
 	const char *name;
+	struct mutex link_mutex;
+
+	/* Mailbox controller */
+	struct mbox_controller mbox;
+	struct mbox_chan chan[MHU_NUM_PCHANS];
 };
+
+#define MHU_CHANNEL_INDEX(mhu, chan) (chan - &mhu->chan[0])
 
 /**
  * MVL MHU Mailbox platform specific configuration
@@ -142,14 +137,15 @@ struct int_src_data_s {
 	uint64_t int_src_data;
 };
 
+/* Secures static data processed in the handler */
+DEFINE_SPINLOCK(mhu_irq_spinlock);
+
 /* bottom half of rx interrupt */
 static irqreturn_t mvl_mhu_rx_interrupt_thread(int irq, void *p)
 {
-	struct mbox_chan *chan = p;
+	struct mvl_mhu *mhu = (struct mvl_mhu *)p;
+	struct int_src_data_s *data = (struct int_src_data_s *)mhu->payload;
 	u64 val, scmi_tx_cnt, avs_failure_cnt;
-	struct mvl_mhu_link *mlink = chan->con_priv;
-	struct int_src_data_s *data =
-		(struct int_src_data_s *)mlink->shared_mem;
 
 	/*
 	 * Local copy of event counters. A mismatch of received
@@ -158,10 +154,13 @@ static irqreturn_t mvl_mhu_rx_interrupt_thread(int irq, void *p)
 	 */
 	static u64 event_counter[INDEX_INT_SRC_NONE] = {0};
 
+	dev_dbg(mhu->dev, "%s\n", __func__);
+
+	spin_lock_irq(&mhu_irq_spinlock);
 	/* scmi interrupt */
 	scmi_tx_cnt = readq(&data[INDEX_INT_SRC_SCMI_TX].int_src_cnt);
 	if (event_counter[INDEX_INT_SRC_SCMI_TX] != scmi_tx_cnt) {
-		mbox_chan_received_data(chan, (void *)&val);
+		mbox_chan_received_data(&mhu->chan[0], (void *)&val);
 		/* Update the memory to prepare for next */
 		event_counter[INDEX_INT_SRC_SCMI_TX] = scmi_tx_cnt;
 	}
@@ -173,22 +172,21 @@ static irqreturn_t mvl_mhu_rx_interrupt_thread(int irq, void *p)
 		/* Update the memory to prepare for next */
 		event_counter[INDEX_INT_SRC_AVS_STS] = avs_failure_cnt;
 	}
+	spin_unlock_irq(&mhu_irq_spinlock);
 
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t mvl_mhu_rx_interrupt(int irq, void *p)
 {
-	struct mbox_chan *chan = p;
-	struct mvl_mhu_link *mlink = chan->con_priv;
-	void __iomem *base = mlink->tx_reg;
+	struct mvl_mhu *mhu = (struct mvl_mhu *)p;
 	u64 val;
 
 	/* Read interrupt status register */
-	val = readq_relaxed(base + SCP_TO_AP0_MBOX_RINT);
+	val = readq_relaxed(mhu->base + SCP_TO_AP0_MBOX_RINT);
 	if (val) {
 		/* Clear the interrupt : Write on clear */
-		writeq_relaxed(0x1, base + SCP_TO_AP0_MBOX_RINT);
+		writeq_relaxed(1ul, mhu->base + SCP_TO_AP0_MBOX_RINT);
 	} else {
 		return IRQ_NONE;
 	}
@@ -198,50 +196,36 @@ static irqreturn_t mvl_mhu_rx_interrupt(int irq, void *p)
 
 static bool mvl_mhu_last_tx_done(struct mbox_chan *chan)
 {
-	struct mvl_mhu_link *mlink = chan->con_priv;
-	void __iomem *base = mlink->tx_reg;
+	struct mvl_mhu *mhu = chan->con_priv;
 	u64 val;
 
-	val = readq_relaxed(base + SCP_TO_AP0_MBOX_RINT);
+	mutex_lock(&mhu->link_mutex);
+	val = readq_relaxed(mhu->base + SCP_TO_AP0_MBOX_RINT);
+	mutex_unlock(&mhu->link_mutex);
+
+	dev_dbg(mhu->dev, "%s\n", __func__);
 
 	return (val == 0);
 }
 
 static int mvl_mhu_send_data(struct mbox_chan *chan, void *data)
 {
-	struct mvl_mhu_link *mlink = chan->con_priv;
-	void __iomem *base = mlink->tx_reg;
+	struct mvl_mhu *mhu = chan->con_priv;
 
-	writeq_relaxed(DONT_CARE_DATA, base + AP0_TO_SCP_MBOX);
+	mutex_lock(&mhu->link_mutex);
+	writeq_relaxed(DONT_CARE_DATA, mhu->base + AP0_TO_SCP_MBOX);
+	mutex_unlock(&mhu->link_mutex);
 
 	return 0;
 }
 
-/* Channels initialization might be called multiple times at once */
-static DEFINE_MUTEX(mhu_startup_mutex);
-
 static int mvl_mhu_startup(struct mbox_chan *chan)
 {
-	int ret = 0;
-	struct mvl_mhu_link *mlink = chan->con_priv;
+	struct mvl_mhu *mhu = chan->con_priv;
 
-	mutex_lock(&mhu_startup_mutex);
-	if (likely(!mlink->initialized)) {
-		ret =  request_threaded_irq(mlink->irq, mvl_mhu_rx_interrupt,
-					    mvl_mhu_rx_interrupt_thread, 0,
-					    DRV_NAME, chan);
-		if (!ret) {
-			/* Enable interrupt from SCP to NS_AP */
-			writeq_relaxed(0x1, mlink->tx_reg + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
-			mlink->initialized = true;
-		}
-	}
-	mutex_unlock(&mhu_startup_mutex);
+	dev_dbg(mhu->dev, "Channel %ld started\n", MHU_CHANNEL_INDEX(mhu, chan));
 
-	if (ret)
-		dev_err(mlink->dev, "request_irq failed:%d\n", ret);
-
-	return ret;
+	return 0;
 }
 
 static const struct mbox_chan_ops mvl_mhu_ops = {
@@ -256,36 +240,89 @@ static const struct mvl_mhu_mbox_pdata mvl_mhu_pdata = {
 	.support_doorbells = false,
 };
 
-static int mvl_mhu_mlink_init(struct mvl_mhu *mhu)
+static int mvl_mhu_init_link(struct mvl_mhu *mhu)
 {
-	int ret;
+	int ret, irq;
+	struct resource res;
+	resource_size_t size;
+	struct device_node *shmem, *np;
 
-	ret = pci_irq_vector(mhu->pdev, SCP_TO_AP_INTERRUPT);
-	if (ret < 0)
+	np = mhu->pdev->dev.of_node;
+	dev_dbg(mhu->dev, "Node: %s\n", np && np->name ? np->name : "unknown");
+
+	ret = of_property_read_string(np, "mbox-name", &mhu->name);
+	if (ret)
+		mhu->name = np->full_name;
+
+	/* Get shared memory details between NS AP & SCP */
+	shmem = of_parse_phandle(np, "shmem", 0);
+	ret = of_address_to_resource(shmem, 0, &res);
+	of_node_put(shmem);
+	if (ret) {
+		dev_err(mhu->dev, "failed to get CPC COMMON payload mem resource\n");
+		return ret;
+	}
+	size = resource_size(&res);
+
+	mhu->payload = devm_ioremap(mhu->dev, res.start, size);
+	if (!mhu->payload) {
+		dev_err(mhu->dev, "failed to ioremap CPC COMMON payload\n");
+		return -EADDRNOTAVAIL;
+	}
+
+
+	irq = pci_irq_vector(mhu->pdev, SCP_TO_AP_INTERRUPT);
+	if (irq < 0)
+		return irq;
+
+	ret = request_threaded_irq(irq, mvl_mhu_rx_interrupt,
+				   mvl_mhu_rx_interrupt_thread, 0,
+				   module_name(THIS_MODULE), mhu);
+	if (ret)
 		return ret;
 
-	mhu->mlink.dev = mhu->dev;
-	mhu->mlink.irq = ret;
-	mhu->mlink.initialized = false;
-	mhu->mlink.tx_reg = mhu->base;
-	mhu->mlink.rx_reg = mhu->base;
-	mhu->mlink.shared_mem = mhu->payload;
+	/* Enable IRQ from SCP to AP */
+	writeq_relaxed(1ul, mhu->base + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
+
+	mhu->irq = irq;
+	mutex_init(&mhu->link_mutex);
+	dev_dbg(mhu->dev, "MHU @ 0x%llx [%llx], irq=%d\n", res.start, size, irq);
 
 	return 0;
+}
+
+static int mvl_mhu_init_mbox(struct mvl_mhu *mhu)
+{
+	int i, ret;
+
+	mhu->mbox.dev = mhu->dev;
+	mhu->mbox.chans = &mhu->chan[0];
+	mhu->mbox.num_chans = MHU_NUM_PCHANS;
+	mhu->mbox.txdone_irq = false;
+	mhu->mbox.txdone_poll = true;
+	mhu->mbox.txpoll_period = 1;
+	mhu->mbox.ops = &mvl_mhu_ops;
+
+	for (i = 0; i < mvl_mhu_pdata.num_pchans; i++)
+		mhu->chan[i].con_priv = mhu;
+
+	ret = mbox_controller_register(&mhu->mbox);
+	if (ret) {
+		dev_err(mhu->dev, "Failed to register mailbox controller %d\n",
+			ret);
+	}
+
+	return ret;
 }
 
 static int mvl_mhu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct mvl_mhu *mhu;
-	int i, ret, nvec;
-	struct resource res;
-	resource_size_t size;
-	struct device_node *shmem, *np;
+	int ret, nvec;
 
 	if (!pdev || !pdev->dev.of_node)
 		return -ENODEV;
 
-	np = pdev->dev.of_node;
 	mhu = devm_kzalloc(&pdev->dev, sizeof(*mhu), GFP_KERNEL);
 	if (!mhu)
 		return -ENOMEM;
@@ -326,48 +363,20 @@ static int mvl_mhu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return nvec;
 	}
 
-	ret = of_property_read_string(np, "mbox-name", &mhu->name);
-	if (ret)
-		mhu->name = np->full_name;
-
-	/* get shared memory details between NS AP & SCP */
-	shmem = of_parse_phandle(np, "shmem", 0);
-	ret = of_address_to_resource(shmem, 0, &res);
-	of_node_put(shmem);
+	ret = mvl_mhu_init_link(mhu);
 	if (ret) {
-		dev_err(mhu->dev, "failed to get CPC COMMON payload mem resource\n");
-		return ret;
-	}
-	size = resource_size(&res);
-
-	mhu->payload = devm_ioremap(mhu->dev, res.start, size);
-	if (!mhu->payload) {
-		dev_err(mhu->dev, "failed to ioremap CPC COMMON payload\n");
-		return -EADDRNOTAVAIL;
-	}
-
-	ret = mvl_mhu_mlink_init(mhu);
-	if (ret) {
-		dev_err(mhu->dev, "failed to initialize mlink (%d)\n", ret);
+		dev_err(mhu->dev, "Failed to setup SCP link (%d)\n", ret);
 		return ret;
 	}
 
-	mhu->mbox.dev = mhu->dev;
-	mhu->mbox.chans = &mhu->chan[0];
-	mhu->mbox.num_chans = MHU_NUM_PCHANS;
-	mhu->mbox.txdone_irq = false;
-	mhu->mbox.txdone_poll = true;
-	mhu->mbox.txpoll_period = 1;
-	mhu->mbox.ops = &mvl_mhu_ops;
-
-	for (i = 0; i < mvl_mhu_pdata.num_pchans; i++)
-		mhu->chan[i].con_priv = &mhu->mlink;
-
-	ret = mbox_controller_register(&mhu->mbox);
+	ret = mvl_mhu_init_mbox(mhu);
 	if (ret) {
-		dev_err(mhu->dev, "Failed to register mailboxes %d\n", ret);
+		dev_err(mhu->dev, "Failed to initialize mailbox controller (%d)\n",
+			ret);
 		return ret;
 	}
+
+	pr_info("Marvell Message Handling Unit\n");
 
 	return 0;
 }
