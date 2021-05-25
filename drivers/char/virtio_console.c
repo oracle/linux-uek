@@ -356,7 +356,7 @@ static void *get_inbuf(struct port *port)
 	vq = port->in_vq;
 	buf = virtqueue_get_buf(vq, &len);
 	if (buf) {
-		buf->len = len;
+		buf->len = min_t(size_t, len, buf->size);
 		buf->offset = 0;
 	}
 	return buf;
@@ -1445,7 +1445,7 @@ static void control_work_handler(struct work_struct *work)
 	while ((buf = virtqueue_get_buf(vq, &len))) {
 		spin_unlock(&portdev->cvq_lock);
 
-		buf->len = len;
+		buf->len = min_t(size_t, len, buf->size);
 		buf->offset = 0;
 
 		handle_control_message(portdev, buf);
