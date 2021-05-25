@@ -43,6 +43,8 @@
 #include <linux/mlx5/fs.h>
 #include <linux/mlx5/driver.h>
 
+#define DRIVER_VERSION "5.0-0"
+
 extern uint mlx5_core_debug_mask;
 
 #define mlx5_core_dbg(__dev, format, ...)				\
