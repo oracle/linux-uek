@@ -43,6 +43,9 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
+static void otx2_vf_link_event_task(struct work_struct *work);
+static void otx2_vf_ptp_info_task(struct work_struct *work);
+
 enum {
 	TYPE_PFAF,
 	TYPE_PFVF,
@@ -2145,7 +2148,7 @@ static int otx2_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 	if (!netif_running(netdev))
 		return -EAGAIN;
 
-	if (vf >= pci_num_vf(pdev))
+	if (vf >= pf->total_vfs)
 		return -EINVAL;
 
 	if (!is_valid_ether_addr(mac))
@@ -2156,7 +2159,8 @@ static int otx2_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 
 	ret = otx2_do_set_vf_mac(pf, vf, mac);
 	if (ret == 0)
-		dev_info(&pdev->dev, "Reload VF driver to apply the changes\n");
+		dev_info(&pdev->dev,
+			 "Load/Reload VF driver\n");
 
 	return ret;
 }
@@ -2584,6 +2588,43 @@ static int otx2_realloc_msix_vectors(struct otx2_nic *pf)
 	return otx2_register_mbox_intr(pf, false);
 }
 
+static int otx2_sriov_vfcfg_init(struct otx2_nic *pf)
+{
+	int i;
+
+	pf->vf_configs = devm_kcalloc(pf->dev, pf->total_vfs,
+				      sizeof(struct otx2_vf_config),
+				      GFP_KERNEL);
+	if (!pf->vf_configs)
+		return -ENOMEM;
+
+	for (i = 0; i < pf->total_vfs; i++) {
+		pf->vf_configs[i].pf = pf;
+		pf->vf_configs[i].intf_down = true;
+		pf->vf_configs[i].trusted = false;
+		INIT_DELAYED_WORK(&pf->vf_configs[i].link_event_work,
+				  otx2_vf_link_event_task);
+		INIT_DELAYED_WORK(&pf->vf_configs[i].ptp_info_work,
+				  otx2_vf_ptp_info_task);
+	}
+
+	return 0;
+}
+
+static void otx2_sriov_vfcfg_cleanup(struct otx2_nic *pf)
+{
+	int i;
+
+	if (!pf->vf_configs)
+		return;
+
+	for (i = 0; i < pf->total_vfs; i++) {
+		cancel_delayed_work_sync(&pf->vf_configs[i].link_event_work);
+		cancel_delayed_work_sync(&pf->vf_configs[i].ptp_info_work);
+		otx2_set_vf_permissions(pf, i, OTX2_RESET_VF_PERM);
+	}
+}
+
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
@@ -2790,6 +2831,11 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_mcam_flow_del;
 
+	/* Initialize SR-IOV resources */
+	err = otx2_sriov_vfcfg_init(pf);
+	if (err)
+		goto err_pf_sriov_init;
+
 	/* Enable link notifications */
 	otx2_cgx_config_linkevents(pf, true);
 
@@ -2802,6 +2848,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	return 0;
 
+err_pf_sriov_init:
+	otx2_shutdown_tc(pf);
 err_mcam_flow_del:
 	otx2_mcam_flow_del(pf);
 err_unreg_netdev:
@@ -2889,7 +2937,7 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct otx2_nic *pf = netdev_priv(netdev);
-	int ret, i;
+	int ret;
 
 	if (numvfs > pf->total_vfs)
 		numvfs = pf->total_vfs;
@@ -2903,26 +2951,9 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 	if (ret)
 		goto free_mbox;
 
-	pf->vf_configs = kcalloc(numvfs, sizeof(struct otx2_vf_config),
-				 GFP_KERNEL);
-	if (!pf->vf_configs) {
-		ret = -ENOMEM;
-		goto free_intr;
-	}
-
-	for (i = 0; i < numvfs; i++) {
-		pf->vf_configs[i].pf = pf;
-		pf->vf_configs[i].intf_down = true;
-		pf->vf_configs[i].trusted = false;
-		INIT_DELAYED_WORK(&pf->vf_configs[i].link_event_work,
-				  otx2_vf_link_event_task);
-		INIT_DELAYED_WORK(&pf->vf_configs[i].ptp_info_work,
-				  otx2_vf_ptp_info_task);
-	}
-
 	ret = otx2_pf_flr_init(pf, numvfs);
 	if (ret)
-		goto free_configs;
+		goto free_intr;
 
 	ret = otx2_register_flr_me_intr(pf);
 	if (ret)
@@ -2937,8 +2968,6 @@ free_flr_intr:
 	otx2_disable_flr_me_intr(pf);
 free_flr:
 	otx2_flr_wq_destroy(pf);
-free_configs:
-	kfree(pf->vf_configs);
 free_intr:
 	otx2_disable_pfvf_mbox_intr(pf);
 free_mbox:
@@ -2951,19 +2980,11 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct otx2_nic *pf = netdev_priv(netdev);
 	int numvfs = pci_num_vf(pdev);
-	int i;
 
 	if (!numvfs)
 		return 0;
 
-	for (i = 0; i < pci_num_vf(pdev); i++) {
-		cancel_delayed_work_sync(&pf->vf_configs[i].link_event_work);
-		cancel_delayed_work_sync(&pf->vf_configs[i].ptp_info_work);
-		otx2_set_vf_permissions(pf, i, OTX2_RESET_VF_PERM);
-	}
-
 	pci_disable_sriov(pdev);
-	kfree(pf->vf_configs);
 
 	otx2_disable_flr_me_intr(pf);
 	otx2_flr_wq_destroy(pf);
@@ -3004,6 +3025,7 @@ static void otx2_remove(struct pci_dev *pdev)
 
 	unregister_netdev(netdev);
 	otx2_sriov_disable(pf->pdev);
+	otx2_sriov_vfcfg_cleanup(pf);
 	if (pf->otx2_wq)
 		destroy_workqueue(pf->otx2_wq);
 	otx2_ptp_destroy(pf);

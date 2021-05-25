@@ -1206,7 +1206,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 
 	/* Proceed if NIXLF is attached or not for TX rules */
 	err = nix_get_nixlf(rvu, target, &nixlf, NULL);
-	if (err && is_npc_intf_rx(req->intf))
+	if (err && is_npc_intf_rx(req->intf) && !pf_set_vfs_mac)
 		return -EINVAL;
 
 	/* don't enable rule when nixlf not attached or initialized */
@@ -1224,6 +1224,14 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	/* Do not allow requests from uninitialized VFs */
 	if (from_vf && !enable)
 		return -EINVAL;
+
+	/* PF sets VF mac & VF NIXLF is not attached, update the mac addr */
+	if (pf_set_vfs_mac && !enable) {
+		ether_addr_copy(pfvf->default_mac, req->packet.dmac);
+		ether_addr_copy(pfvf->mac_addr, req->packet.dmac);
+		set_bit(PF_SET_VF_MAC, &pfvf->flags);
+		return 0;
+	}
 
 	/* If message is from VF then its flow should not overlap with
 	 * reserved unicast flow.
