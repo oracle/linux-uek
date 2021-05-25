@@ -7,6 +7,7 @@ obj-y		+= octeontx2-npa/
 obj-y		+= octeontx2-llc/
 obj-y 		+= csr-access/
 obj-y 		+= octeontx2-serdes/
+obj-y           += cn10ka-swup/
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
 obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
 obj-$(CONFIG_MRVL_PHY_DIAGNOSTICS) += phy_diag.o

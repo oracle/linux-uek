@@ -175,4 +175,14 @@ config MARVELL_CN10K_RPRAM
 	  requested by user. Enable this option if you are building for octeontx
 	  cn10k platforms and memory preservation feature is used.
 
+config MARVELL_CN10K_SWUP
+	tristate "CN10K firmware secure update"
+	depends on ARM64
+	help
+	  Provide debugfs interface for firmware update.
+	  Supported on cn10k family only.
+	  Currently supported operations:
+	    -> TIM Version check
+	    -> TIM Hash verification
+
 endmenu
