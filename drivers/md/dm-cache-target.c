@@ -1170,10 +1170,13 @@ static void copy(struct dm_cache_migration *mg, bool promote)
 	c_region.sector = from_cblock(mg->op->cblock) * cache->sectors_per_block;
 	c_region.count = cache->sectors_per_block;
 
-	if (promote)
-		dm_kcopyd_copy(cache->copier, &o_region, 1, &c_region, 0, copy_complete, &mg->k);
-	else
-		dm_kcopyd_copy(cache->copier, &c_region, 1, &o_region, 0, copy_complete, &mg->k);
+	if (promote) {
+		dm_kcopyd_copy(cache->copier, &o_region, 1, &c_region,
+			       BIT(DM_KCOPYD_EARLY_CALLBACK), copy_complete, &mg->k);
+	} else {
+		dm_kcopyd_copy(cache->copier, &c_region, 1, &o_region,
+			       BIT(DM_KCOPYD_EARLY_CALLBACK), copy_complete, &mg->k);
+	}
 }
 
 static void bio_drop_shared_lock(struct cache *cache, struct bio *bio)

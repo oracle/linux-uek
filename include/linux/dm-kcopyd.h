@@ -19,8 +19,9 @@
 /* FIXME: make this configurable */
 #define DM_KCOPYD_MAX_REGIONS 8
 
-#define DM_KCOPYD_IGNORE_ERROR 1
-#define DM_KCOPYD_WRITE_SEQ    2
+#define DM_KCOPYD_IGNORE_ERROR		1
+#define DM_KCOPYD_WRITE_SEQ		2
+#define DM_KCOPYD_EARLY_CALLBACK	3
 
 struct dm_kcopyd_throttle {
 	unsigned throttle;

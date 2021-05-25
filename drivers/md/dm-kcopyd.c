@@ -500,7 +500,8 @@ static int run_complete_job(struct kcopyd_job *job)
 		mutex_destroy(&job->lock);
 		mempool_free(job, &kc->job_pool);
 	}
-	fn(read_err, write_err, context);
+	if (fn)
+		fn(read_err, write_err, context);
 
 	if (atomic_dec_and_test(&kc->nr_jobs))
 		wake_up(&kc->destroyq);
@@ -530,10 +531,13 @@ static void complete_io(unsigned long error, void *context)
 		}
 	}
 
-	if (op_is_write(job->rw))
+	if (op_is_write(job->rw)) {
+		if (job->flags & BIT(DM_KCOPYD_EARLY_CALLBACK)) {
+			job->fn(job->read_err, job->write_err, job->context);
+			job->fn = NULL;
+		}
 		push(&kc->complete_jobs, job);
-
-	else {
+	} else {
 		job->rw = WRITE;
 		push(&kc->io_jobs, job);
 	}
@@ -732,6 +736,7 @@ static void segment_complete(int read_err, unsigned long write_err,
 			sub_job->dests[i].count = count;
 		}
 
+		sub_job->flags &= ~BIT(DM_KCOPYD_EARLY_CALLBACK);
 		sub_job->fn = segment_complete;
 		sub_job->context = sub_job;
 		dispatch_job(sub_job);

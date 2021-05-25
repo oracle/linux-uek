@@ -1359,7 +1359,7 @@ static void schedule_copy(struct thin_c *tc, dm_block_t virt_block,
 		to.count = len;
 
 		dm_kcopyd_copy(pool->copier, &from, 1, &to,
-			       0, copy_complete, m);
+			       BIT(DM_KCOPYD_EARLY_CALLBACK), copy_complete, m);
 
 		/*
 		 * Do we need to zero a tail region?
