@@ -2698,6 +2698,59 @@ static void sdhci_card_event(struct mmc_host *mmc)
 	spin_unlock_irqrestore(&host->lock, flags);
 }
 
+#ifdef CONFIG_MMC_PSTORE
+static int sdhci_req_completion_poll(struct mmc_host *host,
+					unsigned long msecs)
+{
+	struct sdhci_host *sdhci_host = mmc_priv(host);
+	u32 int_mask;
+
+	while (msecs) {
+		int_mask = sdhci_readl(sdhci_host, SDHCI_INT_STATUS);
+		if (int_mask & SDHCI_INT_DATA_END)
+			return 0;
+		else if (int_mask & SDHCI_INT_ADMA_ERROR)
+			return -EIO;
+		else if ((int_mask & SDHCI_INT_DATA_CRC) ||
+			 (int_mask & SDHCI_INT_DATA_END_BIT))
+			return -EILSEQ;
+		else if (int_mask & SDHCI_INT_DATA_TIMEOUT)
+			return -ETIMEDOUT;
+
+		mdelay(1);
+		msecs--;
+	}
+
+	return -ETIMEDOUT;
+}
+
+static void sdhci_req_cleanup_pending(struct mmc_host *host)
+{
+	struct sdhci_host *sdhci_host = mmc_priv(host);
+	u32 int_mask;
+
+	/* Clear pending DMA interrupts */
+	int_mask = sdhci_readl(sdhci_host, SDHCI_INT_STATUS);
+	int_mask &= ~(SDHCI_INT_CARD_INSERT | SDHCI_INT_CARD_REMOVE |
+				SDHCI_INT_CMD_MASK | SDHCI_INT_DATA_MASK |
+				SDHCI_INT_ERROR | SDHCI_INT_BUS_POWER |
+				SDHCI_INT_RETUNE | SDHCI_INT_CARD_INT);
+	if (int_mask)
+		sdhci_writel(sdhci_host, int_mask, SDHCI_INT_STATUS);
+
+	/* Clear fired or pending DMA requests */
+	if (sdhci_host->cmd || sdhci_host->data_cmd || sdhci_host->data) {
+		if (sdhci_host->cmd)
+			__sdhci_finish_mrq(sdhci_host, sdhci_host->cmd->mrq);
+		if (sdhci_host->data_cmd)
+			__sdhci_finish_mrq(sdhci_host,
+					   sdhci_host->data_cmd->mrq);
+		if (sdhci_host->data)
+			__sdhci_finish_mrq(sdhci_host, sdhci_host->data->mrq);
+	}
+}
+#endif
+
 static const struct mmc_host_ops sdhci_ops = {
 	.request	= sdhci_request,
 	.post_req	= sdhci_post_req,
@@ -2713,6 +2766,10 @@ static const struct mmc_host_ops sdhci_ops = {
 	.execute_tuning			= sdhci_execute_tuning,
 	.card_event			= sdhci_card_event,
 	.card_busy	= sdhci_card_busy,
+#ifdef CONFIG_MMC_PSTORE
+	.req_cleanup_pending = sdhci_req_cleanup_pending,
+	.req_completion_poll = sdhci_req_completion_poll,
+#endif
 };
 
 /*****************************************************************************\
