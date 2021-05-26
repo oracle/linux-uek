@@ -9492,3 +9492,5 @@ CONFIG_ARCH_USE_MEMTEST=y
 # CONFIG_HYPERV_TESTING is not set
 # end of Kernel Testing and Coverage
 # end of Kernel hacking
+CONFIG_NET_VENDOR_MICROSOFT=y
+CONFIG_MICROSOFT_MANA=m
