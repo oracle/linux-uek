@@ -1517,14 +1517,15 @@ static void writecache_copy_endio(int read_err, unsigned long write_err, void *p
 {
 	struct copy_struct *c = ptr;
 	struct dm_writecache *wc = c->wc;
+	unsigned long flags;
 
 	c->error = likely(!(read_err | write_err)) ? 0 : -EIO;
 
-	raw_spin_lock_irq(&wc->endio_list_lock);
+	raw_spin_lock_irqsave(&wc->endio_list_lock, flags);
 	if (unlikely(list_empty(&wc->endio_list)))
 		wake_up_process(wc->endio_thread);
 	list_add_tail(&c->endio_entry, &wc->endio_list);
-	raw_spin_unlock_irq(&wc->endio_list_lock);
+	raw_spin_unlock_irqrestore(&wc->endio_list_lock, flags);
 }
 
 static void __writecache_endio_pmem(struct dm_writecache *wc, struct list_head *list)
@@ -1778,7 +1779,8 @@ static void __writecache_writeback_ssd(struct dm_writecache *wc, struct writebac
 			from.count = to.count = wc->data_device_sectors - to.sector;
 		}
 
-		dm_kcopyd_copy(wc->dm_kcopyd, &from, 1, &to, 0, writecache_copy_endio, c);
+		dm_kcopyd_copy(wc->dm_kcopyd, &from, 1, &to,
+			       BIT(DM_KCOPYD_EARLY_CALLBACK), writecache_copy_endio, c);
 
 		__writeback_throttle(wc, wbl);
 	}
