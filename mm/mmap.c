@@ -502,25 +502,33 @@ static inline struct vm_area_struct *vma_next(struct mm_struct *mm,
 	return vma->vm_next;
 }
 
-static unsigned long count_vma_pages_range(struct mm_struct *mm,
-		unsigned long addr, unsigned long end)
+/*
+ * count_vma_pages_range() - Count the number of pages in a range.
+ * @mas: The maple state
+ *
+ * The start and end address are in the @mas
+ * @mas must be locked.
+ */
+static unsigned long count_vma_pages_range(struct ma_state *mas)
 {
 	unsigned long nr_pages = 0;
 	struct vm_area_struct *vma;
 	unsigned long vm_start, vm_end;
-	MA_STATE(mas, &mm->mm_mt, addr, addr);
+	unsigned long end = mas->last;
+	unsigned long addr = mas->index;
+	struct ma_state ma_count = *mas;
 
 	/* Find first overlapping mapping */
-	vma = mas_find(&mas, end - 1);
+	vma = mas_find(&ma_count, end);
 	if (!vma)
 		return 0;
 
 	vm_start = vma->vm_start;
 	vm_end = vma->vm_end;
-	nr_pages = (min(end, vm_end) - max(addr, vm_start)) >> PAGE_SHIFT;
+	nr_pages = (min(end + 1, vm_end) - max(addr, vm_start)) >> PAGE_SHIFT;
 
 	/* Iterate over the rest of the overlaps */
-	mas_for_each(&mas, vma, end) {
+	mas_for_each(&ma_count, vma, end) {
 		vm_start = vma->vm_start;
 		vm_end = vma->vm_end;
 		nr_pages += (min(end, vm_end) - vm_start) >> PAGE_SHIFT;
@@ -2606,7 +2614,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		 * MAP_FIXED may remove pages of mappings that intersects with
 		 * requested mapping. Account for the pages it would unmap.
 		 */
-		nr_pages = count_vma_pages_range(mm, addr, end);
+		nr_pages = count_vma_pages_range(&mas);
 
 		if (!may_expand_vm(mm, vm_flags,
 					(len >> PAGE_SHIFT) - nr_pages))
