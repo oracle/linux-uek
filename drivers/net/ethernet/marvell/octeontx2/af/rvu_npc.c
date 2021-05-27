@@ -1906,7 +1906,7 @@ static void rvu_npc_hw_init(struct rvu *rvu, int blkaddr)
 	if (npc_const1 & BIT_ULL(63))
 		npc_const2 = rvu_read64(rvu, blkaddr, NPC_AF_CONST2);
 
-	pkind->rsrc.max = (npc_const1 >> 12) & 0xFFULL;
+	pkind->rsrc.max = NPC_UNRESERVED_PKIND_COUNT;
 	hw->npc_kpu_entries = npc_const1 & 0xFFFULL;
 	hw->npc_kpus = (npc_const >> 8) & 0x1FULL;
 	hw->npc_intfs = npc_const & 0xFULL;
@@ -2031,6 +2031,10 @@ int rvu_npc_init(struct rvu *rvu)
 	err = rvu_alloc_bitmap(&pkind->rsrc);
 	if (err)
 		return err;
+	/* Reserve PKIND#0 for LBKs. Power reset value of LBK_CH_PKIND is '0',
+	 * no need to configure PKIND for all LBKs separately.
+	 */
+	rvu_alloc_rsrc(&pkind->rsrc);
 
 	/* Allocate mem for pkind to PF and channel mapping info */
 	pkind->pfchan_map = devm_kcalloc(rvu->dev, pkind->rsrc.max,
