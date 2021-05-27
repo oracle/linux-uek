@@ -58,6 +58,8 @@ struct module;
  * @shift:		cycle to nanosecond divisor (power of two)
  * @max_idle_ns:	max idle time permitted by the clocksource (nsecs)
  * @maxadj:		maximum adjustment value to mult (~11%)
+ * @uncertainty_margin:	Maximum uncertainty in nanoseconds per half second.
+ *				Zero says to use default WATCHDOG_THRESHOLD.
  * @max_cycles:		maximum safe cycle value which won't overflow on multiplication
  * @flags:		flags describing special properties
  * @archdata:		arch-specific data
@@ -84,6 +86,7 @@ struct clocksource {
 	u32 shift;
 	u64 max_idle_ns;
 	u32 maxadj;
+	u32 uncertainty_margin;
 #ifdef CONFIG_ARCH_CLOCKSOURCE_DATA
 	struct arch_clocksource_data archdata;
 #endif
