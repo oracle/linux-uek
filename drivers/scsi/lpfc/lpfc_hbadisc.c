@@ -77,9 +77,7 @@ static int
 lpfc_valid_xpt_node(struct lpfc_nodelist *ndlp)
 {
 	if (ndlp->nlp_fc4_type ||
-	    ndlp->nlp_DID == Fabric_DID ||
-	    ndlp->nlp_DID == NameServer_DID ||
-	    ndlp->nlp_DID == FDMI_DID)
+	    ndlp->nlp_type & NLP_FABRIC)
 		return 1;
 	return 0;
 }
@@ -826,7 +824,8 @@ lpfc_cleanup_rpis(struct lpfc_vport *vport, int remove)
 		if ((phba->sli3_options & LPFC_SLI3_VPORT_TEARDOWN) ||
 		    ((vport->port_type == LPFC_NPIV_PORT) &&
 		     ((ndlp->nlp_DID == NameServer_DID) ||
-		      (ndlp->nlp_DID == FDMI_DID))))
+		      (ndlp->nlp_DID == FDMI_DID) ||
+		      (ndlp->nlp_DID == Fabric_Cntl_DID))))
 			lpfc_unreg_rpi(vport, ndlp);
 
 		/* Leave Fabric nodes alone on link down */
@@ -4160,6 +4159,53 @@ out:
 	return;
 }
 
+/*
+ * This routine handles processing a Fabric Controller REG_LOGIN mailbox
+ * command upon completion. It is setup in the LPFC_MBOXQ
+ * as the completion routine when the command is handed off to the SLI layer.
+ */
+void
+lpfc_mbx_cmpl_fc_reg_login(struct lpfc_hba *phba, LPFC_MBOXQ_t *pmb)
+{
+	struct lpfc_vport *vport = pmb->vport;
+	MAILBOX_t *mb = &pmb->u.mb;
+	struct lpfc_dmabuf *mp = (struct lpfc_dmabuf *)(pmb->ctx_buf);
+	struct lpfc_nodelist *ndlp;
+
+	ndlp = (struct lpfc_nodelist *)pmb->ctx_ndlp;
+	pmb->ctx_ndlp = NULL;
+	pmb->ctx_buf = NULL;
+
+	if (mb->mbxStatus) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_TRACE_EVENT,
+				 "0933 %s: Register FC login error: 0x%x\n",
+				 __func__, mb->mbxStatus);
+		goto out;
+	}
+
+	if (phba->sli_rev < LPFC_SLI_REV4)
+		ndlp->nlp_rpi = mb->un.varWords[0];
+
+	lpfc_printf_vlog(vport, KERN_INFO, LOG_NODE,
+			 "0934 %s: Complete FC x%x RegLogin rpi x%x ste x%x\n",
+			 __func__, ndlp->nlp_DID, ndlp->nlp_rpi,
+			 ndlp->nlp_state);
+
+	ndlp->nlp_flag |= NLP_RPI_REGISTERED;
+	ndlp->nlp_type |= NLP_FABRIC;
+	lpfc_nlp_set_state(vport, ndlp, NLP_STE_UNMAPPED_NODE);
+
+ out:
+	lpfc_mbuf_free(phba, mp->virt, mp->phys);
+	kfree(mp);
+	mempool_free(pmb, phba->mbox_mem_pool);
+
+	/* Drop the reference count from the mbox at the end after
+	 * all the current reference to the ndlp have been done.
+	 */
+	lpfc_nlp_put(ndlp);
+}
+
 static void
 lpfc_register_remote_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 {
@@ -4789,12 +4835,17 @@ lpfc_nlp_logo_unreg(struct lpfc_hba *phba, LPFC_MBOXQ_t *pmb)
 		ndlp->nlp_defer_did = NLP_EVT_NOTHING_PENDING;
 		lpfc_issue_els_plogi(vport, ndlp->nlp_DID, 0);
 	} else {
+		/* NLP_RELEASE_RPI is only set for SLI4 ports. */
 		if (ndlp->nlp_flag & NLP_RELEASE_RPI) {
 			lpfc_sli4_free_rpi(vport->phba, ndlp->nlp_rpi);
+			spin_lock_irq(&ndlp->lock);
 			ndlp->nlp_flag &= ~NLP_RELEASE_RPI;
 			ndlp->nlp_rpi = LPFC_RPI_ALLOC_ERROR;
+			spin_unlock_irq(&ndlp->lock);
 		}
+		spin_lock_irq(&ndlp->lock);
 		ndlp->nlp_flag &= ~NLP_UNREG_INP;
+		spin_unlock_irq(&ndlp->lock);
 	}
 }
 
@@ -5129,8 +5180,10 @@ lpfc_cleanup_node(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	list_del_init(&ndlp->dev_loss_evt.evt_listp);
 	list_del_init(&ndlp->recovery_evt.evt_listp);
 	lpfc_cleanup_vports_rrqs(vport, ndlp);
+
 	if (phba->sli_rev == LPFC_SLI_REV4)
 		ndlp->nlp_flag |= NLP_RELEASE_RPI;
+
 	return 0;
 }
 
@@ -6176,8 +6229,23 @@ lpfc_nlp_release(struct kref *kref)
 	lpfc_cancel_retry_delay_tmo(vport, ndlp);
 	lpfc_cleanup_node(vport, ndlp);
 
-	/* Clear Node key fields to give other threads notice
-	 * that this node memory is not valid anymore.
+	/* Not all ELS transactions have registered the RPI with the port.
+	 * In these cases the rpi usage is temporary and the node is
+	 * released when the WQE is completed.  Catch this case to free the
+	 * RPI to the pool.  Because this node is in the release path, a lock
+	 * is unnecessary.  All references are gone and the node has been
+	 * dequeued.
+	 */
+	if (ndlp->nlp_flag & NLP_RELEASE_RPI) {
+		if (ndlp->nlp_rpi != LPFC_RPI_ALLOC_ERROR &&
+		    !(ndlp->nlp_flag & (NLP_RPI_REGISTERED | NLP_UNREG_INP))) {
+			lpfc_sli4_free_rpi(vport->phba, ndlp->nlp_rpi);
+			ndlp->nlp_rpi = LPFC_RPI_ALLOC_ERROR;
+		}
+	}
+
+	/* The node is not freed back to memory, it is released to a pool so
+	 * the node fields need to be cleaned up.
 	 */
 	ndlp->vport = NULL;
 	ndlp->nlp_state = NLP_STE_FREED_NODE;
@@ -6257,6 +6325,7 @@ lpfc_nlp_not_used(struct lpfc_nodelist *ndlp)
 		"node not used:   did:x%x flg:x%x refcnt:x%x",
 		ndlp->nlp_DID, ndlp->nlp_flag,
 		kref_read(&ndlp->kref));
+
 	if (kref_read(&ndlp->kref) == 1)
 		if (lpfc_nlp_put(ndlp))
 			return 1;

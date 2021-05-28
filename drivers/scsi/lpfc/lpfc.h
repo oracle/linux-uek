@@ -266,6 +266,7 @@ struct lpfc_stats {
 	uint32_t elsRcvECHO;
 	uint32_t elsRcvLCB;
 	uint32_t elsRcvRDP;
+	uint32_t elsRcvRDF;
 	uint32_t elsXmitFLOGI;
 	uint32_t elsXmitFDISC;
 	uint32_t elsXmitPLOGI;
@@ -915,6 +916,7 @@ struct lpfc_hba {
 	uint32_t cfg_request_firmware_upgrade;
 	uint32_t cfg_suppress_link_up;
 	uint32_t cfg_rrq_xri_bitmap_sz;
+	u32      cfg_fcp_wait_abts_rsp;
 	uint32_t cfg_delay_discovery;
 	uint32_t cfg_sli_mode;
 #define LPFC_INITIALIZE_LINK              0	/* do normal init_link mbox */
