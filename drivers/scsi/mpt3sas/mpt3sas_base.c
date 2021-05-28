@@ -4430,6 +4430,7 @@ _base_display_OEMs_branding(struct MPT3SAS_ADAPTER *ioc)
 				 ioc->pdev->subsystem_device);
 			break;
 		}
+		break;
 	default:
 		break;
 	}
