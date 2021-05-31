@@ -241,6 +241,33 @@ struct sta_ampdu_mlme {
 /* Value to indicate no TID reservation */
 #define IEEE80211_TID_UNRESERVED	0xff
 
+/*
+ * IEEE 802.11-2016 (10.6 "Defragmentation") recommends support for "concurrent
+ * reception of at least one MSDU per access category per associated STA"
+ * on APs, or "at least one MSDU per access category" on other interface types.
+ *
+ * This limit can be increased by changing this define, at the cost of slower
+ * frame reassembly and increased memory use while fragments are pending.
+ */
+#define IEEE80211_FRAGMENT_MAX 4
+
+struct ieee80211_fragment_entry {
+	struct sk_buff_head skb_list;
+	unsigned long first_frag_time;
+	u16 seq;
+	u16 extra_len;
+	u16 last_frag;
+	u8 rx_queue;
+	bool check_sequential_pn; /* needed for CCMP/GCMP */
+	u8 last_pn[6]; /* PN of the last fragment if CCMP was used */
+	unsigned int key_color;
+};
+
+struct ieee80211_fragment_cache {
+	struct ieee80211_fragment_entry	entries[IEEE80211_FRAGMENT_MAX];
+	unsigned int next;
+};
+
 /**
  * struct sta_info - STA information
  *
@@ -338,6 +365,7 @@ struct sta_ampdu_mlme {
  *	using IEEE80211_NUM_TID entry for non-QoS frames
  * @rx_msdu: MSDUs received from this station, using IEEE80211_NUM_TID
  *	entry for non-QoS frames
+ * @frags: fragment cache
  */
 struct sta_info {
 	/* General information, mostly static */
@@ -459,6 +487,8 @@ struct sta_info {
 	unsigned long last_tdls_pkt_time;
 
 	u8 reserved_tid;
+
+	struct ieee80211_fragment_cache frags;
 
 	/* keep last! */
 	struct ieee80211_sta sta;
