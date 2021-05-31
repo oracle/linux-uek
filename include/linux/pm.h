@@ -15,6 +15,7 @@
 #include <linux/timer.h>
 #include <linux/hrtimer.h>
 #include <linux/completion.h>
+#include <linux/uek_kabi.h>
 
 /*
  * Callbacks for platform drivers to implement.
@@ -619,6 +620,7 @@ struct dev_pm_info {
 	unsigned int		use_autosuspend:1;
 	unsigned int		timer_autosuspends:1;
 	unsigned int		memalloc_noio:1;
+	UEK_KABI_FILL_HOLE(unsigned int	needs_force_resume:1)
 	unsigned int		links_count;
 	enum rpm_request	request;
 	enum rpm_status		runtime_status;
