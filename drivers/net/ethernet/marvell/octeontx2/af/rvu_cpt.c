@@ -353,6 +353,7 @@ static int cpt_inline_ipsec_cfg_inbound(struct rvu *rvu, int blkaddr, u8 cptlf,
 					struct cpt_inline_ipsec_cfg_msg *req)
 {
 	u16 sso_pf_func = req->sso_pf_func;
+	u8 nix_sel;
 	u64 val;
 
 	val = rvu_read64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf));
@@ -367,11 +368,14 @@ static int cpt_inline_ipsec_cfg_inbound(struct rvu *rvu, int blkaddr, u8 cptlf,
 	if (sso_pf_func && !is_pffunc_map_valid(rvu, sso_pf_func, BLKTYPE_SSO))
 		return CPT_AF_ERR_SSO_PF_FUNC_INVALID;
 
+	nix_sel = (blkaddr == BLKADDR_CPT1) ? 1 : 0;
 	/* Set PF_FUNC_INST */
 	if (req->enable)
 		val |= BIT_ULL(9);
 	else
 		val &= ~BIT_ULL(9);
+
+	val |= (u64)nix_sel << 8;
 	rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
 
 	if (sso_pf_func) {
@@ -403,6 +407,8 @@ static int cpt_inline_ipsec_cfg_outbound(struct rvu *rvu, int blkaddr, u8 cptlf,
 					 struct cpt_inline_ipsec_cfg_msg *req)
 {
 	u16 nix_pf_func = req->nix_pf_func;
+	int nix_blkaddr;
+	u8 nix_sel;
 	u64 val;
 
 	val = rvu_read64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf));
@@ -430,6 +436,13 @@ static int cpt_inline_ipsec_cfg_outbound(struct rvu *rvu, int blkaddr, u8 cptlf,
 		val = rvu_read64(rvu, blkaddr, CPT_AF_LFX_CTL2(cptlf));
 		val |= (u64)nix_pf_func << 48;
 		rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL2(cptlf), val);
+
+		nix_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, nix_pf_func);
+		nix_sel = (nix_blkaddr == BLKADDR_NIX0) ? 0 : 1;
+
+		val = rvu_read64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf));
+		val |= (u64)nix_sel << 8;
+		rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
 	}
 
 	return 0;
