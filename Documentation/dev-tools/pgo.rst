@@ -76,7 +76,7 @@ The PGO kernel support creates the following files in debugfs:
 ``/sys/kernel/debug/pgo/reset``
 	Global reset file: resets all coverage data to zero when written to.
 
-``/sys/kernel/debug/profraw``
+``/sys/kernel/debug/pgo/vmlinux.profraw``
 	The raw PGO data that must be processed with ``llvm_profdata``.
 
 
@@ -108,7 +108,7 @@ using the result to optimize the kernel:
 
    .. code-block:: sh
 
-      $ cp -a /sys/kernel/debug/pgo/profraw /tmp/vmlinux.profraw
+      $ cp -a /sys/kernel/debug/pgo/vmlinux.profraw /tmp/vmlinux.profraw
 
 5) (Optional) Download the raw profile data to the HOST machine.
 
@@ -120,7 +120,7 @@ using the result to optimize the kernel:
 
    Note that multiple raw profile data files can be merged during this step.
 
-7) Rebuild the kernel using the profile data (PGO disabled)
+7) Rebuild the kernel using the processed profile data (PGO disabled)
 
    .. code-block:: sh
 

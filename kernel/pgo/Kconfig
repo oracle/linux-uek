@@ -17,10 +17,11 @@ config PGO_CLANG
 
 	  Run a representative workload for your application on a kernel
 	  compiled with this option and download the raw profile file from
-	  /sys/kernel/debug/pgo/profraw. This file needs to be processed with
-	  llvm-profdata. It may be merged with other collected raw profiles.
+	  /sys/kernel/debug/pgo/vmlinux.profraw. This file needs to be
+	  processed with llvm-profdata. It may be merged with other collected
+	  raw profiles.
 
-	  Copy the resulting profile file into vmlinux.profdata, and enable
+	  Copy the processed profile file into vmlinux.profdata, and enable
 	  KCFLAGS=-fprofile-use=vmlinux.profdata to produce an optimized
 	  kernel.
 

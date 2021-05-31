@@ -365,7 +365,7 @@ static int __init pgo_init(void)
 	if (!directory)
 		goto err_remove;
 
-	if (!debugfs_create_file("profraw", 0600, directory, NULL,
+	if (!debugfs_create_file("vmlinux.profraw", 0600, directory, NULL,
 				 &prf_fops))
 		goto err_remove;
 
