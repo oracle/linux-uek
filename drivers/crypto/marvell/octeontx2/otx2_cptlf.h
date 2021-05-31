@@ -377,6 +377,18 @@ static inline bool otx2_cptlf_started(struct otx2_cptlfs_info *lfs)
 	return atomic_read(&lfs->state) == OTX2_CPTLF_STARTED;
 }
 
+static inline void otx2_cptlf_set_dev_info(struct otx2_cptlfs_info *lfs,
+					   struct pci_dev *pdev,
+					   void __iomem *reg_base,
+					   struct otx2_mbox *mbox,
+					   int blkaddr)
+{
+	lfs->pdev = pdev;
+	lfs->reg_base = reg_base;
+	lfs->mbox = mbox;
+	lfs->blkaddr = blkaddr;
+}
+
 int otx2_cptlf_init(struct otx2_cptlfs_info *lfs, u8 eng_grp_msk, int pri,
 		    int lfs_num);
 void otx2_cptlf_shutdown(struct otx2_cptlfs_info *lfs);

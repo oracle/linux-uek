@@ -47,6 +47,9 @@ enum otx2_cpt_eng_type {
 struct otx2_cpt_rx_inline_lf_cfg {
 	struct mbox_msghdr hdr;
 	u16 sso_pf_func;
+	u16 param1;
+	u16 param2;
+	u16 reserved;
 };
 
 /*
