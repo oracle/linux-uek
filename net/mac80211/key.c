@@ -608,6 +608,7 @@ int ieee80211_key_link(struct ieee80211_key *key,
 		       struct sta_info *sta)
 {
 	struct ieee80211_local *local = sdata->local;
+	static atomic_t key_color = ATOMIC_INIT(0);
 	struct ieee80211_key *old_key;
 	int idx, ret;
 	bool pairwise;
@@ -626,6 +627,12 @@ int ieee80211_key_link(struct ieee80211_key *key,
 		old_key = key_mtx_dereference(sdata->local, sta->gtk[idx]);
 	else
 		old_key = key_mtx_dereference(sdata->local, sdata->keys[idx]);
+
+	/*
+	 * Assign a unique ID to every key so we can easily prevent mixed
+	 * key and fragment cache attacks.
+	 */
+	key->color = atomic_inc_return(&key_color);
 
 	increment_tailroom_need_count(sdata);
 
