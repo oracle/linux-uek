@@ -92,6 +92,7 @@ struct ieee80211_fragment_entry {
 	struct sk_buff_head skb_list;
 	bool check_sequential_pn; /* needed for CCMP/GCMP */
 	u8 last_pn[6]; /* PN of the last fragment if CCMP was used */
+	unsigned int key_color;
 };
 
 
