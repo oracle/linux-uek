@@ -13,19 +13,40 @@
 #include <asm/ptrace.h>
 #include <asm/cpu.h>
 #include <asm/types.h>
+#include <asm/schid.h>
 
 #define LC_ORDER 1
 #define LC_PAGES 2
+
+/* I/O-Interruption Code as stored by TEST PENDING INTERRUPTION (TPI). */
+struct tpi_info {
+	struct subchannel_id schid;
+	u32 intparm;
+	u32 adapter_IO:1;
+	u32 directed_irq:1;
+	u32 isc:3;
+	u32 :27;
+	u32 type:3;
+	u32 :12;
+} __packed __aligned(4);
+
+struct pgm_tdb {
+	u64 data[32];
+};
 
 struct lowcore {
 	__u8	pad_0x0000[0x0014-0x0000];	/* 0x0000 */
 	__u32	ipl_parmblock_ptr;		/* 0x0014 */
 	__u8	pad_0x0018[0x0080-0x0018];	/* 0x0018 */
 	__u32	ext_params;			/* 0x0080 */
-	__u16	ext_cpu_addr;			/* 0x0084 */
-	__u16	ext_int_code;			/* 0x0086 */
-	__u16	svc_ilc;			/* 0x0088 */
-	__u16	svc_code;			/* 0x008a */
+	union {
+		struct {
+			__u16 ext_cpu_addr;	/* 0x0084 */
+			__u16 ext_int_code;	/* 0x0086 */
+		} __packed;
+		__u32 ext_int_code_addr;
+	} __packed;
+	__u32	svc_int_code;			/* 0x0088 */
 	__u16	pgm_ilc;			/* 0x008c */
 	__u16	pgm_code;			/* 0x008e */
 	__u32	data_exc_code;			/* 0x0090 */
@@ -40,11 +61,21 @@ struct lowcore {
 	__u8	pad_0x00a4[0x00a8-0x00a4];	/* 0x00a4 */
 	__u64	trans_exc_code;			/* 0x00a8 */
 	__u64	monitor_code;			/* 0x00b0 */
-	__u16	subchannel_id;			/* 0x00b8 */
-	__u16	subchannel_nr;			/* 0x00ba */
-	__u32	io_int_parm;			/* 0x00bc */
-	__u32	io_int_word;			/* 0x00c0 */
-	__u8	pad_0x00c4[0x00c8-0x00c4];	/* 0x00c4 */
+	union {
+		struct {
+			union {
+				struct {
+					__u16	subchannel_id;	/* 0x00b8 */
+					__u16	subchannel_nr;	/* 0x00ba */
+				} __packed;
+				__u32 subchannel;		/* 0x00b8 */
+			} __packed;
+			__u32	io_int_parm;			/* 0x00bc */
+			__u32	io_int_word;			/* 0x00c0 */
+			__u8	pad_0x00c4[0x00c8-0x00c4];	/* 0x00c4 */
+		} __packed;
+		struct tpi_info tpi_info;			/* 0x00b8 */
+	} __packed __aligned(4);
 	__u32	stfl_fac_list;			/* 0x00c8 */
 	__u8	pad_0x00cc[0x00e8-0x00cc];	/* 0x00cc */
 	__u64	mcck_interruption_code;		/* 0x00e8 */
@@ -154,12 +185,7 @@ struct lowcore {
 	__u64	vmcore_info;			/* 0x0e0c */
 	__u8	pad_0x0e14[0x0e18-0x0e14];	/* 0x0e14 */
 	__u64	os_info;			/* 0x0e18 */
-	__u8	pad_0x0e20[0x0f00-0x0e20];	/* 0x0e20 */
-
-	/* Extended facility list */
-	__u64	stfle_fac_list[16];		/* 0x0f00 */
-	__u64	alt_stfle_fac_list[16];		/* 0x0f80 */
-	__u8	pad_0x1000[0x11b0-0x1000];	/* 0x1000 */
+	__u8	pad_0x0e20[0x11b0-0x0e20];	/* 0x0e20 */
 
 	/* Pointer to the machine check extended save area */
 	__u64	mcesad;				/* 0x11b0 */
@@ -185,7 +211,7 @@ struct lowcore {
 	__u8	pad_0x1400[0x1800-0x1400];	/* 0x1400 */
 
 	/* Transaction abort diagnostic block */
-	__u8	pgm_tdb[256];			/* 0x1800 */
+	struct pgm_tdb pgm_tdb;			/* 0x1800 */
 	__u8	pad_0x1900[0x2000-0x1900];	/* 0x1900 */
 } __packed __aligned(8192);
 

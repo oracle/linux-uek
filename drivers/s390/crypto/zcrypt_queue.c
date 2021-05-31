@@ -70,6 +70,8 @@ static ssize_t online_store(struct device *dev,
 		   AP_QID_QUEUE(zq->queue->qid),
 		   online);
 
+	ap_send_online_uevent(&aq->ap_dev, online);
+
 	if (!online)
 		ap_flush_queue(zq->queue);
 	return count;
@@ -100,9 +102,12 @@ static const struct attribute_group zcrypt_queue_attr_group = {
 
 void zcrypt_queue_force_online(struct zcrypt_queue *zq, int online)
 {
-	zq->online = online;
-	if (!online)
-		ap_flush_queue(zq->queue);
+	if (!!zq->online != !!online) {
+		zq->online = online;
+		ap_send_online_uevent(&zq->queue->ap_dev, online);
+		if (!online)
+			ap_flush_queue(zq->queue);
+	}
 }
 
 struct zcrypt_queue *zcrypt_queue_alloc(size_t max_response_size)
@@ -173,7 +178,6 @@ int zcrypt_queue_register(struct zcrypt_queue *zq)
 		   AP_QID_CARD(zq->queue->qid), AP_QID_QUEUE(zq->queue->qid));
 
 	list_add_tail(&zq->list, &zc->zqueues);
-	zcrypt_device_count++;
 	spin_unlock(&zcrypt_list_lock);
 
 	rc = sysfs_create_group(&zq->queue->ap_dev.device.kobj,
@@ -216,7 +220,6 @@ void zcrypt_queue_unregister(struct zcrypt_queue *zq)
 	zc = zq->zcard;
 	spin_lock(&zcrypt_list_lock);
 	list_del_init(&zq->list);
-	zcrypt_device_count--;
 	spin_unlock(&zcrypt_list_lock);
 	if (zq->ops->rng)
 		zcrypt_rng_device_remove();
