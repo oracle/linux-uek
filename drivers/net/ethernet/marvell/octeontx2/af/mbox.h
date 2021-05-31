@@ -1177,6 +1177,8 @@ struct nix_inline_ipsec_cfg {
 	struct {
 		u8 egrp;
 		u8 opcode;
+		u16 param1;
+		u16 param2;
 	} gen_cfg;
 	struct {
 		u16 cpt_pf_func;
