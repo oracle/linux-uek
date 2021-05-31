@@ -1389,7 +1389,6 @@ release_fw:
  */
 int otx2_cpt_discover_eng_capabilities(struct otx2_cptpf_dev *cptpf)
 {
-	struct otx2_cptlfs_info *lfs = &cptpf->lfs;
 	struct otx2_cpt_iq_command iq_cmd;
 	union otx2_cpt_opcode opcode;
 	union otx2_cpt_res_s *result;
@@ -1416,10 +1415,8 @@ int otx2_cpt_discover_eng_capabilities(struct otx2_cptpf_dev *cptpf)
 	if (ret)
 		goto delete_grps;
 
-	lfs->pdev = pdev;
-	lfs->reg_base = cptpf->reg_base;
-	lfs->mbox = &cptpf->afpf_mbox;
-	lfs->blkaddr = BLKADDR_CPT0;
+	otx2_cptlf_set_dev_info(&cptpf->lfs, cptpf->pdev, cptpf->reg_base,
+				&cptpf->afpf_mbox, BLKADDR_CPT1);
 	ret = otx2_cptlf_init(&cptpf->lfs, OTX2_CPT_ALL_ENG_GRPS_MASK,
 			      OTX2_CPT_QUEUE_HI_PRIO, 1);
 	if (ret)

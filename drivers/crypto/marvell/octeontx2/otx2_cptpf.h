@@ -31,6 +31,7 @@ struct otx2_cptpf_dev {
 	struct otx2_cptvf_info vf[OTX2_CPT_MAX_VFS_NUM];
 	struct otx2_cpt_eng_grps eng_grps;/* Engine groups information */
 	struct otx2_cptlfs_info lfs;      /* CPT LFs attached to this PF */
+	struct otx2_cptlfs_info cpt1_lfs; /* CPT1 LFs attached to this PF */
 	/* HW capabilities for each engine type */
 	union otx2_cpt_eng_caps eng_caps[OTX2_CPT_MAX_ENG_TYPES];
 	bool is_eng_caps_discovered;
@@ -53,6 +54,7 @@ struct otx2_cptpf_dev {
 	u8 sso_pf_func_ovrd;	/* SSO PF_FUNC override bit */
 	u8 kvf_limits;		/* Kernel VF limits */
 	bool has_cpt1;
+	u8 rsrc_req_blkaddr;
 };
 
 irqreturn_t otx2_cptpf_afpf_mbox_intr(int irq, void *arg);
