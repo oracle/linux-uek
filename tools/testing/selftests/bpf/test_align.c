@@ -474,6 +474,7 @@ static struct bpf_align_test tests[] = {
 		.result = REJECT,
 		.matches = {
 			{4, "R5=pkt(id=0,off=0,r=0,imm=0)"},
+			/* R5 bitwise operator &= on pointer prohibited */
 		}
 	},
 	{
