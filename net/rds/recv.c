@@ -206,6 +206,7 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 		struct rds_ext_header_version version;
 		struct rds_ext_header_rdma rdma;
 		struct rds_ext_header_rdma_dest rdma_dest;
+		struct rds_ext_header_cap_bits cap_bits;
 	} buffer;
 
 	while (1) {
@@ -226,6 +227,37 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 					be32_to_cpu(buffer.rdma_dest.h_rdma_rkey),
 					be32_to_cpu(buffer.rdma_dest.h_rdma_offset));
 
+			break;
+		}
+	}
+}
+
+/* Process heartbeat extension header that comes with this message. */
+static void rds_recv_incoming_hb_exthdr(struct rds_incoming *inc)
+{
+	struct rds_header *hdr = &inc->i_hdr;
+	unsigned int pos = 0;
+	unsigned int type;
+	unsigned int len;
+	u32 cap_bits = 0;
+	union {
+		struct rds_ext_header_version version;
+		struct rds_ext_header_rdma rdma;
+		struct rds_ext_header_rdma_dest rdma_dest;
+		struct rds_ext_header_cap_bits cap_bits;
+	} buffer;
+
+	while (1) {
+		len = sizeof(buffer);
+		type = rds_message_next_extension(hdr, &pos, &buffer, &len);
+		if (type == RDS_EXTHDR_NONE)
+			break;
+		/* Process extension header here */
+		if (type == RDS_EXTHDR_CAP_BITS) {
+			/* Enable HB if an incoming PING/PONG has the ext header cap bit */
+			cap_bits = be32_to_cpu(buffer.cap_bits.h_cap_bits);
+			inc->i_conn->c_is_hb_enabled =
+				cap_bits & RDS_FLAG_EXTHDR_CAP_BITS_HB;
 			break;
 		}
 	}
@@ -683,9 +715,11 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 		}
 		if (is_hb_ping) {
 			rds_stats_inc(s_recv_hb_ping);
+			rds_recv_incoming_hb_exthdr(inc);
 			rds_send_hb(conn, 1);
 		} else if (is_hb_pong) {
 			rds_stats_inc(s_recv_hb_pong);
+			rds_recv_incoming_hb_exthdr(inc);
 			WRITE_ONCE(cp->cp_hb_start, 0);
 		} else {
 			if (be16_to_cpu(inc->i_hdr.h_sport) == RDS_FLAG_PROBE_PORT)
