@@ -1980,6 +1980,14 @@ static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 					  RDS_EXTHDR_GEN_NUM,
 					  &my_gen_num);
 	}
+
+	if ((h_flags & RDS_FLAG_HB_PING) || (h_flags & RDS_FLAG_HB_PONG)) {
+		__be32 cap_bits = cpu_to_be32(RDS_FLAG_EXTHDR_CAP_BITS_HB);
+		rds_message_add_extension(&rm->m_inc.i_hdr,
+					  RDS_EXTHDR_CAP_BITS,
+					  &cap_bits);
+	}
+
 	spin_unlock_irqrestore(&cp->cp_lock, flags);
 
 	rds_stats_inc(s_send_queued);
