@@ -330,8 +330,10 @@ struct rds_connection {
 				c_isv6:1,
 				c_ping_triggered:1,
 				c_destroy_in_prog:1,
+				c_is_hb_enabled:1,
+				c_is_first_hb_ping:1,
 
-				c_pad_to_32:28;
+				c_pad_to_32:26;
 	int			c_npaths;
 	struct rds_connection	*c_passive;
 	struct rds_transport	*c_trans;
@@ -409,6 +411,7 @@ void rds_conn_net_set(struct rds_connection *conn, struct net *net)
 #define RDS_FLAG_ANY_HB			(RDS_FLAG_HB_PING | RDS_FLAG_HB_PONG)
 #define RDS_FLAG_EXTHDR_EXTENSION	0x20
 #define RDS_MAX_ADV_CREDIT		127
+#define RDS_FLAG_EXTHDR_CAP_BITS_HB	BIT(0)
 
 /* RDS_FLAG_PROBE_PORT is the reserved sport used for sending a ping
  * probe to exchange control information before establishing a connection.
@@ -496,8 +499,13 @@ struct rds_ext_header_rdma_bytes {
 
 #define RDS_EXTHDR_NPATHS	5
 #define RDS_EXTHDR_GEN_NUM	6
+#define RDS_EXTHDR_CAP_BITS	7
+struct rds_ext_header_cap_bits {
+	__be32			h_cap_bits;
+};
 
-#define __RDS_EXTHDR_MAX	16 /* for now */
+/* Remember to update __RDS_EXTHDR_MAX when new extension headers are added */
+#define __RDS_EXTHDR_MAX	RDS_EXTHDR_CAP_BITS
 #define RDS_RX_MAX_TRACES	(RDS_MSG_RX_DGRAM_TRACE_MAX + 1)
 #define	RDS_MSG_RX_HDR		0
 #define	RDS_MSG_RX_START	1
