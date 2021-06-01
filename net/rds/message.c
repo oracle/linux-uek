@@ -34,7 +34,7 @@
 
 #include "rds.h"
 
-static unsigned int	rds_exthdr_size[__RDS_EXTHDR_MAX] = {
+static unsigned int	rds_exthdr_size[] = {
 [RDS_EXTHDR_NONE]	= 0,
 [RDS_EXTHDR_VERSION]	= sizeof(struct rds_ext_header_version),
 [RDS_EXTHDR_RDMA]	= sizeof(struct rds_ext_header_rdma),
@@ -42,6 +42,7 @@ static unsigned int	rds_exthdr_size[__RDS_EXTHDR_MAX] = {
 [RDS_EXTHDR_RDMA_BYTES] = sizeof(struct rds_ext_header_rdma_bytes),
 [RDS_EXTHDR_NPATHS]     = sizeof(u16),
 [RDS_EXTHDR_GEN_NUM]    = sizeof(u32),
+[RDS_EXTHDR_CAP_BITS]   = sizeof(struct rds_ext_header_cap_bits),
 };
 
 
@@ -137,7 +138,7 @@ static int rds_find_next_ext_space(struct rds_header *hdr, unsigned int len,
 
 		type = hdr->h_exthdr[ind];
 
-		ext_len = (type < __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
+		ext_len = (type <= __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
 		WARN_ONCE(!ext_len, "Unknown ext hdr type %d\n", type);
 		if (!ext_len)
 			return -EINVAL;
@@ -157,7 +158,7 @@ int rds_message_add_extension(struct rds_header *hdr,
 	unsigned char *dst;
 	unsigned int len;
 
-	len = (type < __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
+	len = (type <= __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
 	if (!len)
 		return 0;
 
@@ -199,7 +200,10 @@ int rds_message_next_extension(struct rds_header *hdr,
 	 * length is implied by the extension type. */
 	ext_type = src[offset++];
 
-	if (ext_type == RDS_EXTHDR_NONE || ext_type >= __RDS_EXTHDR_MAX)
+	/* Unknown exthdr type */
+	WARN_ON_ONCE(ext_type > __RDS_EXTHDR_MAX);
+
+	if (ext_type == RDS_EXTHDR_NONE || ext_type > __RDS_EXTHDR_MAX)
 		goto none;
 	ext_len = rds_exthdr_size[ext_type];
 	if (offset + ext_len > RDS_HEADER_EXT_SPACE)
