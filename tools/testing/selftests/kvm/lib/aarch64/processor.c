@@ -6,6 +6,7 @@
  */
 
 #include <linux/compiler.h>
+#include <assert.h>
 
 #include "kvm_util.h"
 #include "../kvm_util_internal.h"
@@ -13,6 +14,8 @@
 
 #define KVM_GUEST_PAGE_TABLE_MIN_PADDR		0x180000
 #define DEFAULT_ARM64_GUEST_STACK_VADDR_MIN	0xac0000
+
+static vm_vaddr_t exception_handlers;
 
 static uint64_t page_align(struct kvm_vm *vm, uint64_t v)
 {
@@ -334,6 +337,134 @@ void vcpu_args_set(struct kvm_vm *vm, uint32_t vcpuid, unsigned int num, ...)
 	va_end(ap);
 }
 
+void kvm_exit_unexpected_vector(int vector)
+{
+	ucall(UCALL_UNHANDLED, 3, vector, 0, false /* !valid_ec */);
+	while (1)
+		;
+}
+
+static void kvm_exit_unexpected_exception(int vector, uint64_t ec)
+{
+	ucall(UCALL_UNHANDLED, 3, vector, ec, true /* valid_ec */);
+	while (1)
+		;
+}
+
 void assert_on_unhandled_exception(struct kvm_vm *vm, uint32_t vcpuid)
 {
+	struct ucall uc;
+
+	if (get_ucall(vm, vcpuid, &uc) != UCALL_UNHANDLED)
+		return;
+
+	if (uc.args[2]) /* valid_ec */ {
+		assert(VECTOR_IS_SYNC(uc.args[0]));
+		TEST_FAIL("Unexpected exception (vector:0x%lx, ec:0x%lx)",
+			  uc.args[0], uc.args[1]);
+	} else {
+		assert(!VECTOR_IS_SYNC(uc.args[0]));
+		TEST_FAIL("Unexpected exception (vector:0x%lx)",
+			  uc.args[0]);
+	}
+}
+
+/*
+ * This exception handling code was heavily inspired on kvm-unit-tests. There
+ * is a set of default vector handlers stored in vector_handlers. These default
+ * vector handlers call user-installed handlers stored in exception_handlers.
+ * Synchronous handlers are indexed by (vector, ec), and irq handlers by
+ * (vector, ec=0).
+ */
+
+typedef void(*vector_fn)(struct ex_regs *, int vector);
+
+struct handlers {
+	vector_fn vector_handlers[VECTOR_NUM];
+	handler_fn exception_handlers[VECTOR_NUM][ESR_EC_NUM];
+};
+
+void vcpu_init_descriptor_tables(struct kvm_vm *vm, uint32_t vcpuid)
+{
+	extern char vectors;
+
+	set_reg(vm, vcpuid, ARM64_SYS_REG(VBAR_EL1), (uint64_t)&vectors);
+}
+
+static void default_sync_handler(struct ex_regs *regs, int vector)
+{
+	struct handlers *handlers = (struct handlers *)exception_handlers;
+	uint64_t esr = read_sysreg(esr_el1);
+	uint64_t ec = (esr >> ESR_EC_SHIFT) & ESR_EC_MASK;
+
+	GUEST_ASSERT(VECTOR_IS_SYNC(vector));
+
+	if (handlers && handlers->exception_handlers[vector][ec])
+		handlers->exception_handlers[vector][ec](regs);
+	else
+		kvm_exit_unexpected_exception(vector, ec);
+}
+
+static void default_handler(struct ex_regs *regs, int vector)
+{
+	struct handlers *handlers = (struct handlers *)exception_handlers;
+
+	GUEST_ASSERT(!VECTOR_IS_SYNC(vector));
+
+	if (handlers && handlers->exception_handlers[vector][0])
+		handlers->exception_handlers[vector][0](regs);
+	else
+		kvm_exit_unexpected_vector(vector);
+}
+
+void route_exception(struct ex_regs *regs, int vector)
+{
+	struct handlers *handlers = (struct handlers *)exception_handlers;
+
+	if (handlers && handlers->vector_handlers[vector])
+		handlers->vector_handlers[vector](regs, vector);
+	else
+		kvm_exit_unexpected_vector(vector);
+}
+
+void vm_init_descriptor_tables(struct kvm_vm *vm)
+{
+	struct handlers *handlers;
+
+	vm->handlers = vm_vaddr_alloc(vm, sizeof(struct handlers),
+			vm->page_size, 0, 0);
+
+	handlers = (struct handlers *)addr_gva2hva(vm, vm->handlers);
+	handlers->vector_handlers[VECTOR_SYNC_CURRENT] = default_sync_handler;
+	handlers->vector_handlers[VECTOR_IRQ_CURRENT] = default_handler;
+	handlers->vector_handlers[VECTOR_FIQ_CURRENT] = default_handler;
+	handlers->vector_handlers[VECTOR_ERROR_CURRENT] = default_handler;
+
+	handlers->vector_handlers[VECTOR_SYNC_LOWER_64] = default_sync_handler;
+	handlers->vector_handlers[VECTOR_IRQ_LOWER_64] = default_handler;
+	handlers->vector_handlers[VECTOR_FIQ_LOWER_64] = default_handler;
+	handlers->vector_handlers[VECTOR_ERROR_LOWER_64] = default_handler;
+
+	*(vm_vaddr_t *)addr_gva2hva(vm, (vm_vaddr_t)(&exception_handlers)) = vm->handlers;
+}
+
+void vm_install_exception_handler(struct kvm_vm *vm, int vector, int ec,
+			 void (*handler)(struct ex_regs *))
+{
+	struct handlers *handlers = (struct handlers *)addr_gva2hva(vm, vm->handlers);
+
+	assert(VECTOR_IS_SYNC(vector));
+	assert(vector < VECTOR_NUM);
+	assert(ec < ESR_EC_NUM);
+	handlers->exception_handlers[vector][ec] = handler;
+}
+
+void vm_install_vector_handler(struct kvm_vm *vm, int vector,
+			 void (*handler)(struct ex_regs *))
+{
+	struct handlers *handlers = (struct handlers *)addr_gva2hva(vm, vm->handlers);
+
+	assert(!VECTOR_IS_SYNC(vector));
+	assert(vector < VECTOR_NUM);
+	handlers->exception_handlers[vector][0] = handler;
 }
