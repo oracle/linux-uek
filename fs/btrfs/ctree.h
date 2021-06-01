@@ -105,14 +105,6 @@ struct btrfs_ref;
 #define BTRFS_STAT_CURR		0
 #define BTRFS_STAT_PREV		1
 
-/*
- * Count how many BTRFS_MAX_EXTENT_SIZE cover the @size
- */
-static inline u32 count_max_extents(u64 size)
-{
-	return div_u64(size + BTRFS_MAX_EXTENT_SIZE - 1, BTRFS_MAX_EXTENT_SIZE);
-}
-
 static inline unsigned long btrfs_chunk_item_size(int num_stripes)
 {
 	BUG_ON(num_stripes == 0);
@@ -1377,6 +1369,21 @@ static inline u32 BTRFS_MAX_INLINE_DATA_SIZE(const struct btrfs_fs_info *info)
 static inline u32 BTRFS_MAX_XATTR_SIZE(const struct btrfs_fs_info *info)
 {
 	return BTRFS_MAX_ITEM_SIZE(info) - sizeof(struct btrfs_dir_item);
+}
+
+static inline u64 btrfs_get_max_extent_size(struct btrfs_fs_info *fs_info)
+{
+	return BTRFS_MAX_EXTENT_SIZE;
+}
+
+/*
+ * Count how many BTRFS_MAX_EXTENT_SIZE cover the @size
+ */
+static inline u32 count_max_extents(struct btrfs_fs_info *fs_info, u64 size)
+{
+	u64 max_extent_size = btrfs_get_max_extent_size(fs_info);
+
+	return div_u64(size + max_extent_size - 1, max_extent_size);
 }
 
 /*

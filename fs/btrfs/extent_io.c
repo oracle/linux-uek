@@ -1863,7 +1863,7 @@ noinline_for_stack bool find_lock_delalloc_range(struct inode *inode,
 				    u64 *end)
 {
 	struct extent_io_tree *tree = &BTRFS_I(inode)->io_tree;
-	u64 max_bytes = BTRFS_MAX_EXTENT_SIZE;
+	u64 max_bytes = btrfs_get_max_extent_size(btrfs_sb(inode->i_sb));
 	u64 delalloc_start;
 	u64 delalloc_end;
 	bool found;
