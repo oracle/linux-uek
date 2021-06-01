@@ -917,6 +917,7 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 	struct btrfs_fs_info *fs_info = NULL;
 	struct inode *inode = NULL;
 	struct btrfs_root *root = NULL;
+	u64 max_extent_size = btrfs_get_max_extent_size(NULL);
 	int ret = -ENOMEM;
 
 	test_msg("running outstanding_extents tests");
@@ -943,7 +944,7 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 
 	/* [BTRFS_MAX_EXTENT_SIZE] */
 	ret = btrfs_set_extent_delalloc(BTRFS_I(inode), 0,
-					BTRFS_MAX_EXTENT_SIZE - 1, 0, NULL);
+					max_extent_size - 1, 0, NULL);
 	if (ret) {
 		test_err("btrfs_set_extent_delalloc returned %d", ret);
 		goto out;
@@ -956,8 +957,8 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 	}
 
 	/* [BTRFS_MAX_EXTENT_SIZE][sectorsize] */
-	ret = btrfs_set_extent_delalloc(BTRFS_I(inode), BTRFS_MAX_EXTENT_SIZE,
-					BTRFS_MAX_EXTENT_SIZE + sectorsize - 1,
+	ret = btrfs_set_extent_delalloc(BTRFS_I(inode), max_extent_size,
+					max_extent_size + sectorsize - 1,
 					0, NULL);
 	if (ret) {
 		test_err("btrfs_set_extent_delalloc returned %d", ret);
@@ -972,8 +973,8 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 
 	/* [BTRFS_MAX_EXTENT_SIZE/2][sectorsize HOLE][the rest] */
 	ret = clear_extent_bit(&BTRFS_I(inode)->io_tree,
-			       BTRFS_MAX_EXTENT_SIZE >> 1,
-			       (BTRFS_MAX_EXTENT_SIZE >> 1) + sectorsize - 1,
+			       max_extent_size >> 1,
+			       (max_extent_size >> 1) + sectorsize - 1,
 			       EXTENT_DELALLOC | EXTENT_DELALLOC_NEW |
 			       EXTENT_UPTODATE, 0, 0, NULL);
 	if (ret) {
@@ -988,8 +989,8 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 	}
 
 	/* [BTRFS_MAX_EXTENT_SIZE][sectorsize] */
-	ret = btrfs_set_extent_delalloc(BTRFS_I(inode), BTRFS_MAX_EXTENT_SIZE >> 1,
-					(BTRFS_MAX_EXTENT_SIZE >> 1)
+	ret = btrfs_set_extent_delalloc(BTRFS_I(inode), max_extent_size >> 1,
+					(max_extent_size >> 1)
 					+ sectorsize - 1,
 					0, NULL);
 	if (ret) {
@@ -1007,8 +1008,8 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 	 * [BTRFS_MAX_EXTENT_SIZE+sectorsize][sectorsize HOLE][BTRFS_MAX_EXTENT_SIZE+sectorsize]
 	 */
 	ret = btrfs_set_extent_delalloc(BTRFS_I(inode),
-			BTRFS_MAX_EXTENT_SIZE + 2 * sectorsize,
-			(BTRFS_MAX_EXTENT_SIZE << 1) + 3 * sectorsize - 1,
+			max_extent_size + 2 * sectorsize,
+			(max_extent_size << 1) + 3 * sectorsize - 1,
 			0, NULL);
 	if (ret) {
 		test_err("btrfs_set_extent_delalloc returned %d", ret);
@@ -1025,8 +1026,8 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 	* [BTRFS_MAX_EXTENT_SIZE+sectorsize][sectorsize][BTRFS_MAX_EXTENT_SIZE+sectorsize]
 	*/
 	ret = btrfs_set_extent_delalloc(BTRFS_I(inode),
-			BTRFS_MAX_EXTENT_SIZE + sectorsize,
-			BTRFS_MAX_EXTENT_SIZE + 2 * sectorsize - 1, 0, NULL);
+			max_extent_size + sectorsize,
+			max_extent_size + 2 * sectorsize - 1, 0, NULL);
 	if (ret) {
 		test_err("btrfs_set_extent_delalloc returned %d", ret);
 		goto out;
@@ -1040,8 +1041,8 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 
 	/* [BTRFS_MAX_EXTENT_SIZE+4k][4K HOLE][BTRFS_MAX_EXTENT_SIZE+4k] */
 	ret = clear_extent_bit(&BTRFS_I(inode)->io_tree,
-			       BTRFS_MAX_EXTENT_SIZE + sectorsize,
-			       BTRFS_MAX_EXTENT_SIZE + 2 * sectorsize - 1,
+			       max_extent_size + sectorsize,
+			       max_extent_size + 2 * sectorsize - 1,
 			       EXTENT_DELALLOC | EXTENT_DELALLOC_NEW |
 			       EXTENT_UPTODATE, 0, 0, NULL);
 	if (ret) {
@@ -1060,8 +1061,8 @@ static int test_extent_accounting(u32 sectorsize, u32 nodesize)
 	 * might fail and I'd rather satisfy my paranoia at this point.
 	 */
 	ret = btrfs_set_extent_delalloc(BTRFS_I(inode),
-			BTRFS_MAX_EXTENT_SIZE + sectorsize,
-			BTRFS_MAX_EXTENT_SIZE + 2 * sectorsize - 1, 0, NULL);
+			max_extent_size + sectorsize,
+			max_extent_size + 2 * sectorsize - 1, 0, NULL);
 	if (ret) {
 		test_err("btrfs_set_extent_delalloc returned %d", ret);
 		goto out;
