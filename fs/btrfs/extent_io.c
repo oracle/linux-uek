@@ -1808,10 +1808,130 @@ out:
 	return found;
 }
 
+/*
+ * Process one page for __process_pages_contig().
+ *
+ * Return >0 if we hit @page == @locked_page.
+ * Return 0 if we updated the page status.
+ * Return -EGAIN if the we need to try again.
+ * (For PAGE_LOCK case but got dirty page or page not belong to mapping)
+ */
+static int process_one_page(struct btrfs_fs_info *fs_info,
+			    struct address_space *mapping,
+			    struct page *page, struct page *locked_page,
+			    unsigned long page_ops, u64 start, u64 end)
+{
+	u32 len;
+
+	ASSERT(end + 1 - start != 0 && end + 1 - start < U32_MAX);
+	len = end + 1 - start;
+
+	if (page_ops & PAGE_SET_ORDERED)
+		btrfs_page_clamp_set_ordered(fs_info, page, start, len);
+	if (page_ops & PAGE_SET_ERROR)
+		btrfs_page_clamp_set_error(fs_info, page, start, len);
+	if (page_ops & PAGE_START_WRITEBACK) {
+		btrfs_page_clamp_clear_dirty(fs_info, page, start, len);
+		btrfs_page_clamp_set_writeback(fs_info, page, start, len);
+	}
+	if (page_ops & PAGE_END_WRITEBACK)
+		btrfs_page_clamp_clear_writeback(fs_info, page, start, len);
+
+	if (page == locked_page)
+		return 1;
+
+	if (page_ops & PAGE_LOCK) {
+		int ret;
+
+		ret = btrfs_page_start_writer_lock(fs_info, page, start, len);
+		if (ret)
+			return ret;
+		if (!PageDirty(page) || page->mapping != mapping) {
+			btrfs_page_end_writer_lock(fs_info, page, start, len);
+			return -EAGAIN;
+		}
+	}
+	if (page_ops & PAGE_UNLOCK)
+		btrfs_page_end_writer_lock(fs_info, page, start, len);
+	return 0;
+}
+
 static int __process_pages_contig(struct address_space *mapping,
 				  struct page *locked_page,
-				  pgoff_t start_index, pgoff_t end_index,
-				  unsigned long page_ops, pgoff_t *index_ret);
+				  u64 start, u64 end, unsigned long page_ops,
+				  u64 *processed_end)
+{
+	struct btrfs_fs_info *fs_info = btrfs_sb(mapping->host->i_sb);
+	pgoff_t start_index = start >> PAGE_SHIFT;
+	pgoff_t end_index = end >> PAGE_SHIFT;
+	pgoff_t index = start_index;
+	unsigned long nr_pages = end_index - start_index + 1;
+	unsigned long pages_processed = 0;
+	struct page *pages[16];
+	int err = 0;
+	int i;
+
+	if (page_ops & PAGE_LOCK) {
+		ASSERT(page_ops == PAGE_LOCK);
+		ASSERT(processed_end && *processed_end == start);
+	}
+
+	if ((page_ops & PAGE_SET_ERROR) && nr_pages > 0)
+		mapping_set_error(mapping, -EIO);
+
+	while (nr_pages > 0) {
+		int found_pages;
+
+		found_pages = find_get_pages_contig(mapping, index,
+				     min_t(unsigned long,
+				     nr_pages, ARRAY_SIZE(pages)), pages);
+		if (found_pages == 0) {
+			/*
+			 * Only if we're going to lock these pages, we can find
+			 * nothing at @index.
+			 */
+			ASSERT(page_ops & PAGE_LOCK);
+			err = -EAGAIN;
+			goto out;
+		}
+
+		for (i = 0; i < found_pages; i++) {
+			int process_ret;
+
+			process_ret = process_one_page(fs_info, mapping,
+					pages[i], locked_page, page_ops,
+					start, end);
+			if (process_ret < 0) {
+				for (; i < found_pages; i++)
+					put_page(pages[i]);
+				err = -EAGAIN;
+				goto out;
+			}
+			put_page(pages[i]);
+			pages_processed++;
+		}
+		nr_pages -= found_pages;
+		index += found_pages;
+		cond_resched();
+	}
+out:
+	if (err && processed_end) {
+		/*
+		 * Update @processed_end. I know this is awful since it has
+		 * two different return value patterns (inclusive vs exclusive).
+		 *
+		 * But the exclusive pattern is necessary if @start is 0, or we
+		 * underflow and check against processed_end won't work as
+		 * expected.
+		 */
+		if (pages_processed)
+			*processed_end = min(end,
+			((u64)(start_index + pages_processed) << PAGE_SHIFT) - 1);
+		else
+			*processed_end = start;
+	}
+	return err;
+}
 
 static noinline void __unlock_for_delalloc(struct inode *inode,
 					   struct page *locked_page,
@@ -1824,7 +1944,7 @@ static noinline void __unlock_for_delalloc(struct inode *inode,
 	if (index == locked_page->index && end_index == index)
 		return;
 
-	__process_pages_contig(inode->i_mapping, locked_page, index, end_index,
+	__process_pages_contig(inode->i_mapping, locked_page, start, end,
 			       PAGE_UNLOCK, NULL);
 }
 
@@ -1834,19 +1954,19 @@ static noinline int lock_delalloc_pages(struct inode *inode,
 					u64 delalloc_end)
 {
 	unsigned long index = delalloc_start >> PAGE_SHIFT;
-	unsigned long index_ret = index;
 	unsigned long end_index = delalloc_end >> PAGE_SHIFT;
+	u64 processed_end = delalloc_start;
 	int ret;
 
 	ASSERT(locked_page);
 	if (index == locked_page->index && index == end_index)
 		return 0;
 
-	ret = __process_pages_contig(inode->i_mapping, locked_page, index,
-				     end_index, PAGE_LOCK, &index_ret);
-	if (ret == -EAGAIN)
+	ret = __process_pages_contig(inode->i_mapping, locked_page, delalloc_start,
+				     delalloc_end, PAGE_LOCK, &processed_end);
+	if (ret == -EAGAIN && processed_end > delalloc_start)
 		__unlock_for_delalloc(inode, locked_page, delalloc_start,
-				      (u64)index_ret << PAGE_SHIFT);
+				      processed_end);
 	return ret;
 }
 
@@ -1939,84 +2059,6 @@ out_failed:
 	return found;
 }
 
-static int __process_pages_contig(struct address_space *mapping,
-				  struct page *locked_page,
-				  pgoff_t start_index, pgoff_t end_index,
-				  unsigned long page_ops, pgoff_t *index_ret)
-{
-	unsigned long nr_pages = end_index - start_index + 1;
-	unsigned long pages_processed = 0;
-	pgoff_t index = start_index;
-	struct page *pages[16];
-	unsigned ret;
-	int err = 0;
-	int i;
-
-	if (page_ops & PAGE_LOCK) {
-		ASSERT(page_ops == PAGE_LOCK);
-		ASSERT(index_ret && *index_ret == start_index);
-	}
-
-	if ((page_ops & PAGE_SET_ERROR) && nr_pages > 0)
-		mapping_set_error(mapping, -EIO);
-
-	while (nr_pages > 0) {
-		ret = find_get_pages_contig(mapping, index,
-				     min_t(unsigned long,
-				     nr_pages, ARRAY_SIZE(pages)), pages);
-		if (ret == 0) {
-			/*
-			 * Only if we're going to lock these pages,
-			 * can we find nothing at @index.
-			 */
-			ASSERT(page_ops & PAGE_LOCK);
-			err = -EAGAIN;
-			goto out;
-		}
-
-		for (i = 0; i < ret; i++) {
-			if (page_ops & PAGE_SET_ORDERED)
-				SetPageOrdered(pages[i]);
-
-			if (locked_page && pages[i] == locked_page) {
-				put_page(pages[i]);
-				pages_processed++;
-				continue;
-			}
-			if (page_ops & PAGE_START_WRITEBACK) {
-				clear_page_dirty_for_io(pages[i]);
-				set_page_writeback(pages[i]);
-			}
-			if (page_ops & PAGE_SET_ERROR)
-				SetPageError(pages[i]);
-			if (page_ops & PAGE_END_WRITEBACK)
-				end_page_writeback(pages[i]);
-			if (page_ops & PAGE_UNLOCK)
-				unlock_page(pages[i]);
-			if (page_ops & PAGE_LOCK) {
-				lock_page(pages[i]);
-				if (!PageDirty(pages[i]) ||
-				    pages[i]->mapping != mapping) {
-					unlock_page(pages[i]);
-					for (; i < ret; i++)
-						put_page(pages[i]);
-					err = -EAGAIN;
-					goto out;
-				}
-			}
-			put_page(pages[i]);
-			pages_processed++;
-		}
-		nr_pages -= ret;
-		index += ret;
-		cond_resched();
-	}
-out:
-	if (err && index_ret)
-		*index_ret = start_index + pages_processed - 1;
-	return err;
-}
-
 void extent_clear_unlock_delalloc(struct btrfs_inode *inode, u64 start, u64 end,
 				  struct page *locked_page,
 				  u32 clear_bits, unsigned long page_ops)
@@ -2024,8 +2066,7 @@ void extent_clear_unlock_delalloc(struct btrfs_inode *inode, u64 start, u64 end,
 	clear_extent_bit(&inode->io_tree, start, end, clear_bits, 1, 0, NULL);
 
 	__process_pages_contig(inode->vfs_inode.i_mapping, locked_page,
-			       start >> PAGE_SHIFT, end >> PAGE_SHIFT,
-			       page_ops, NULL);
+			       start, end, page_ops, NULL);
 }
 
 /*
@@ -2795,25 +2836,20 @@ static void end_bio_extent_writepage(struct bio *bio)
 		struct page *page = bvec->bv_page;
 		struct inode *inode = page->mapping->host;
 		struct btrfs_fs_info *fs_info = btrfs_sb(inode->i_sb);
+		const u32 sectorsize = fs_info->sectorsize;
 
-		/* We always issue full-page reads, but if some block
-		 * in a page fails to read, blk_update_request() will
-		 * advance bv_offset and adjust bv_len to compensate.
-		 * Print a warning for nonzero offsets, and an error
-		 * if they don't add up to a full page.  */
-		if (bvec->bv_offset || bvec->bv_len != PAGE_SIZE) {
-			if (bvec->bv_offset + bvec->bv_len != PAGE_SIZE)
-				btrfs_err(fs_info,
-				   "partial page write in btrfs with offset %u and length %u",
-					bvec->bv_offset, bvec->bv_len);
-			else
-				btrfs_info(fs_info,
-				   "incomplete page write in btrfs with offset %u and length %u",
-					bvec->bv_offset, bvec->bv_len);
-		}
+		/* Our read/write should always be sector aligned. */
+		if (!IS_ALIGNED(bvec->bv_offset, sectorsize))
+			btrfs_err(fs_info,
+		"partial page write in btrfs with offset %u and length %u",
+				  bvec->bv_offset, bvec->bv_len);
+		else if (!IS_ALIGNED(bvec->bv_len, sectorsize))
+			btrfs_info(fs_info,
+		"incomplete page write with offset %u and length %u",
+				   bvec->bv_offset, bvec->bv_len);
 
-		start = page_offset(page);
-		end = start + bvec->bv_offset + bvec->bv_len - 1;
+		start = page_offset(page) + bvec->bv_offset;
+		end = start + bvec->bv_len - 1;
 
 		if (first_bvec) {
 			btrfs_record_physical_zoned(inode, start, bio);
@@ -2821,7 +2857,8 @@ static void end_bio_extent_writepage(struct bio *bio)
 		}
 
 		end_extent_writepage(page, error, start, end);
-		end_page_writeback(page);
+
+		btrfs_page_clear_writeback(fs_info, page, start, bvec->bv_len);
 	}
 
 	bio_put(bio);
@@ -3747,6 +3784,74 @@ static noinline_for_stack int writepage_delalloc(struct btrfs_inode *inode,
 }
 
 /*
+ * Find the first byte we need to write.
+ *
+ * For subpage, one page can contain several sectors, and
+ * __extent_writepage_io() will just grab all extent maps in the page
+ * range and try to submit all non-inline/non-compressed extents.
+ *
+ * This is a big problem for subpage, we shouldn't re-submit already written
+ * data at all.
+ * This function will lookup subpage dirty bit to find which range we really
+ * need to submit.
+ *
+ * Return the next dirty range in [@start, @end).
+ * If no dirty range is found, @start will be page_offset(page) + PAGE_SIZE.
+ */
+static void find_next_dirty_byte(struct btrfs_fs_info *fs_info,
+				 struct page *page, u64 *start, u64 *end)
+{
+	struct btrfs_subpage *subpage = (struct btrfs_subpage *)page->private;
+	u64 orig_start = *start;
+	u16 dirty_bitmap;
+	unsigned long flags;
+	int nbits = (orig_start - page_offset(page)) >> fs_info->sectorsize;
+	int first_bit_set;
+	int first_bit_zero;
+
+	/*
+	 * For regular sector size == page size case, since one page only
+	 * contains one sector, we return the page offset directly.
+	 */
+	if (fs_info->sectorsize == PAGE_SIZE) {
+		*start = page_offset(page);
+		*end = page_offset(page) + PAGE_SIZE;
+		return;
+	}
+
+	/* We should have the page locked, but just in case */
+	spin_lock_irqsave(&subpage->lock, flags);
+	dirty_bitmap = subpage->dirty_bitmap;
+	spin_unlock_irqrestore(&subpage->lock, flags);
+
+	/* Set bits lower than @nbits with 0 */
+	dirty_bitmap &= ~((1 << nbits) - 1);
+
+	first_bit_set = ffs(dirty_bitmap);
+	/* No dirty range found */
+	if (first_bit_set == 0) {
+		*start = page_offset(page) + PAGE_SIZE;
+		return;
+	}
+
+	ASSERT(first_bit_set > 0 && first_bit_set <= BTRFS_SUBPAGE_BITMAP_SIZE);
+	*start = page_offset(page) + (first_bit_set - 1) * fs_info->sectorsize;
+
+	/* Set all bits lower than @nbits to 1 for ffz() */
+	dirty_bitmap |= ((1 << nbits) - 1);
+
+	first_bit_zero = ffz(dirty_bitmap);
+	if (first_bit_zero == 0 || first_bit_zero > BTRFS_SUBPAGE_BITMAP_SIZE) {
+		*end = page_offset(page) + PAGE_SIZE;
+		return;
+	}
+	ASSERT(first_bit_zero > 0 &&
+	       first_bit_zero <= BTRFS_SUBPAGE_BITMAP_SIZE);
+	*end = page_offset(page) + first_bit_zero * fs_info->sectorsize;
+	ASSERT(*end > *start);
+}
+
+/*
  * helper for __extent_writepage.  This calls the writepage start hooks,
  * and does the loop to map the page into extents and bios.
  *
@@ -3763,7 +3868,6 @@ static noinline_for_stack int __extent_writepage_io(struct btrfs_inode *inode,
 				 int *nr_ret)
 {
 	struct btrfs_fs_info *fs_info = inode->root->fs_info;
-	struct extent_io_tree *tree = &inode->io_tree;
 	u64 start = page_offset(page);
 	u64 end = start + PAGE_SIZE - 1;
 	u64 cur = start;
@@ -3794,6 +3898,8 @@ static noinline_for_stack int __extent_writepage_io(struct btrfs_inode *inode,
 	while (cur <= end) {
 		u64 disk_bytenr;
 		u64 em_end;
+		u64 dirty_range_start = cur;
+		u64 dirty_range_end;
 		u32 iosize;
 
 		if (cur >= i_size) {
@@ -3801,9 +3907,17 @@ static noinline_for_stack int __extent_writepage_io(struct btrfs_inode *inode,
 							     end, 1);
 			break;
 		}
+
+		find_next_dirty_byte(fs_info, page, &dirty_range_start,
+				     &dirty_range_end);
+		if (cur < dirty_range_start) {
+			cur = dirty_range_start;
+			continue;
+		}
+
 		em = btrfs_get_extent(inode, NULL, 0, cur, end - cur + 1);
 		if (IS_ERR_OR_NULL(em)) {
-			SetPageError(page);
+			btrfs_page_set_error(fs_info, page, cur, end - cur + 1);
 			ret = PTR_ERR_OR_ZERO(em);
 			break;
 		}
@@ -3818,8 +3932,11 @@ static noinline_for_stack int __extent_writepage_io(struct btrfs_inode *inode,
 		compressed = test_bit(EXTENT_FLAG_COMPRESSED, &em->flags);
 		disk_bytenr = em->block_start + extent_offset;
 
-		/* Note that em_end from extent_map_end() is exclusive */
-		iosize = min(em_end, end + 1) - cur;
+		/*
+		 * Note that em_end from extent_map_end() and dirty_range_end from
+		 * find_next_dirty_byte() are all exclusive
+		 */
+		iosize = min(min(em_end, end + 1), dirty_range_end) - cur;
 
 		if (btrfs_use_zone_append(inode, em->block_start))
 			opf = REQ_OP_ZONE_APPEND;
@@ -3842,12 +3959,20 @@ static noinline_for_stack int __extent_writepage_io(struct btrfs_inode *inode,
 			continue;
 		}
 
-		btrfs_set_range_writeback(tree, cur, cur + iosize - 1);
+		btrfs_set_range_writeback(inode, cur, cur + iosize - 1);
 		if (!PageWriteback(page)) {
 			btrfs_err(inode->root->fs_info,
 				   "page %lu not writeback, cur %llu end %llu",
 			       page->index, cur, end);
 		}
+
+		/*
+		 * Although the PageDirty bit is cleared before entering this
+		 * function, subpage dirty bit is not cleared.
+		 * So clear subpage dirty bit here so next time we won't submit
+		 * page for range already written to disk.
+		 */
+		btrfs_page_clear_dirty(fs_info, page, cur, iosize);
 
 		ret = submit_extent_page(opf | write_flags, wbc,
 					 &epd->bio_ctrl, page,
@@ -3856,9 +3981,10 @@ static noinline_for_stack int __extent_writepage_io(struct btrfs_inode *inode,
 					 end_bio_extent_writepage,
 					 0, 0, false);
 		if (ret) {
-			SetPageError(page);
+			btrfs_page_set_error(fs_info, page, cur, iosize);
 			if (PageWriteback(page))
-				end_page_writeback(page);
+				btrfs_page_clear_writeback(fs_info, page, cur,
+							   iosize);
 		}
 
 		cur += iosize;
