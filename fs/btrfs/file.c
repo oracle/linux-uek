@@ -1094,7 +1094,7 @@ int btrfs_mark_extent_written(struct btrfs_trans_handle *trans,
 	int del_nr = 0;
 	int del_slot = 0;
 	int recow;
-	int ret;
+	int ret = 0;
 	u64 ino = btrfs_ino(inode);
 
 	path = btrfs_alloc_path();
@@ -1315,7 +1315,7 @@ again:
 	}
 out:
 	btrfs_free_path(path);
-	return 0;
+	return ret;
 }
 
 /*
@@ -3034,7 +3034,6 @@ struct falloc_range {
  */
 static int add_falloc_range(struct list_head *head, u64 start, u64 len)
 {
-	struct falloc_range *prev = NULL;
 	struct falloc_range *range = NULL;
 
 	if (list_empty(head))
@@ -3044,9 +3043,9 @@ static int add_falloc_range(struct list_head *head, u64 start, u64 len)
 	 * As fallocate iterate by bytenr order, we only need to check
 	 * the last range.
 	 */
-	prev = list_entry(head->prev, struct falloc_range, list);
-	if (prev->start + prev->len == start) {
-		prev->len += len;
+	range = list_last_entry(head, struct falloc_range, list);
+	if (range->start + range->len == start) {
+		range->len += len;
 		return 0;
 	}
 insert:

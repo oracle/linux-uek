@@ -974,14 +974,16 @@ static void btrfs_release_delayed_inode(struct btrfs_delayed_node *delayed_node)
 
 static void btrfs_release_delayed_iref(struct btrfs_delayed_node *delayed_node)
 {
-	struct btrfs_delayed_root *delayed_root;
 
-	ASSERT(delayed_node->root);
-	clear_bit(BTRFS_DELAYED_NODE_DEL_IREF, &delayed_node->flags);
-	delayed_node->count--;
+	if (test_and_clear_bit(BTRFS_DELAYED_NODE_DEL_IREF, &delayed_node->flags)) {
+		struct btrfs_delayed_root *delayed_root;
 
-	delayed_root = delayed_node->root->fs_info->delayed_root;
-	finish_one_item(delayed_root);
+		ASSERT(delayed_node->root);
+		delayed_node->count--;
+
+		delayed_root = delayed_node->root->fs_info->delayed_root;
+		finish_one_item(delayed_root);
+	}
 }
 
 static int __btrfs_update_delayed_inode(struct btrfs_trans_handle *trans,
@@ -1009,12 +1011,10 @@ static int __btrfs_update_delayed_inode(struct btrfs_trans_handle *trans,
 	nofs_flag = memalloc_nofs_save();
 	ret = btrfs_lookup_inode(trans, root, path, &key, mod);
 	memalloc_nofs_restore(nofs_flag);
-	if (ret > 0) {
-		btrfs_release_path(path);
-		return -ENOENT;
-	} else if (ret < 0) {
-		return ret;
-	}
+	if (ret > 0)
+		ret = -ENOENT;
+	if (ret < 0)
+		goto out;
 
 	leaf = path->nodes[0];
 	inode_item = btrfs_item_ptr(leaf, path->slots[0],
@@ -1024,7 +1024,7 @@ static int __btrfs_update_delayed_inode(struct btrfs_trans_handle *trans,
 	btrfs_mark_buffer_dirty(leaf);
 
 	if (!test_bit(BTRFS_DELAYED_NODE_DEL_IREF, &node->flags))
-		goto no_iref;
+		goto out;
 
 	path->slots[0]++;
 	if (path->slots[0] >= btrfs_header_nritems(leaf))
@@ -1046,11 +1046,18 @@ again:
 	btrfs_del_item(trans, root, path);
 out:
 	btrfs_release_delayed_iref(node);
-no_iref:
 	btrfs_release_path(path);
 err_out:
 	btrfs_delayed_inode_release_metadata(fs_info, node, (ret < 0));
 	btrfs_release_delayed_inode(node);
+
+	/*
+	 * If we fail to update the delayed inode we need to abort the
+	 * transaction, because we could leave the inode with the improper
+	 * counts behind.
+	 */
+	if (ret && ret != -ENOENT)
+		btrfs_abort_transaction(trans, ret);
 
 	return ret;
 
@@ -1898,8 +1905,7 @@ static void __btrfs_kill_delayed_node(struct btrfs_delayed_node *delayed_node)
 		btrfs_release_delayed_item(prev_item);
 	}
 
-	if (test_bit(BTRFS_DELAYED_NODE_DEL_IREF, &delayed_node->flags))
-		btrfs_release_delayed_iref(delayed_node);
+	btrfs_release_delayed_iref(delayed_node);
 
 	if (test_bit(BTRFS_DELAYED_NODE_INODE_DIRTY, &delayed_node->flags)) {
 		btrfs_delayed_inode_release_metadata(fs_info, delayed_node, false);
