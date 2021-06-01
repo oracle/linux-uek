@@ -170,6 +170,13 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	rds_cond_queue_send_work(cp, 0);
 	rds_clear_queued_recv_work_bit(cp);
 	rds_cond_queue_recv_work(cp, 0);
+
+	/* Ping once and check if the peer supports heartbeats.
+	 * Set c_is_hb_enabled in rds_recv_incoming_hb_exthdr()
+	 * if we receive a ping/pong with exthdr capability.
+	 */
+	conn->c_is_hb_enabled = 0;
+	conn->c_is_first_hb_ping = 1;
 	WRITE_ONCE(cp->cp_hb_start, 0);
 	WRITE_ONCE(cp->cp_hb_state, HB_PONG_RCVD);
 	rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_hb_w, 0,
@@ -354,13 +361,31 @@ void rds_hb_worker(struct work_struct *work)
 				/* Pseudo random from 50% to 150% of interval */
 				delay = msecs_to_jiffies(rds_sysctl_conn_hb_interval * 1000 / 2) +
 					msecs_to_jiffies(get_random_u32() % rds_sysctl_conn_hb_interval * 1000);
-			} else if (now - READ_ONCE(cp->cp_hb_start) > rds_sysctl_conn_hb_timeout) {
+			} else if ((now - READ_ONCE(cp->cp_hb_start) > rds_sysctl_conn_hb_timeout) &&
+				    conn->c_is_hb_enabled) {
+				/* Drop the conn only if both sides are (exthdr) HB capable */
 				rds_conn_path_drop(cp, DR_HB_TIMEOUT, 0);
+				return;
+			} else if (!conn->c_is_hb_enabled) {
+				/* Do not schedule further PINGs if:
+				 *  - we don't get a PONG
+				 *  - we get a PONG without an exthdr.
+				 */
 				return;
 			}
 			break;
 
 		case HB_PONG_RCVD:
+			/* On (re)connect always send out 1 ping
+			 * to check if peer is (exthdr) HB capable.
+			 */
+
+			if (!conn->c_is_first_hb_ping && !conn->c_is_hb_enabled) {
+				/* Peer does not support (exthdr) HB.
+				 * Do not ping again until reconnect.
+				 */
+				return;
+			}
 			ret = rds_send_hb(cp->cp_conn, 0);
 
 			if (ret) {
@@ -370,6 +395,10 @@ void rds_hb_worker(struct work_struct *work)
 				 */
 				return;
 			}
+
+			if (conn->c_is_first_hb_ping)
+				conn->c_is_first_hb_ping = 0;
+
 			WRITE_ONCE(cp->cp_hb_start, now);
 			WRITE_ONCE(cp->cp_hb_state, HB_PING_SENT);
 			break;

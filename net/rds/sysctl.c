@@ -63,7 +63,7 @@ unsigned int rds_sock_max_peers = 8192;
  */
 unsigned int rds_sysctl_min_conn_hb_timeout;
 unsigned int rds_sysctl_max_conn_hb_timeout = 60;
-unsigned int rds_sysctl_conn_hb_timeout;
+unsigned int rds_sysctl_conn_hb_timeout = 10;
 
 /* Heartbeat interval in seconds. The time from a successful heartbeat
  * pong has been received until a new heartbeat ping is sent out is
