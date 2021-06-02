@@ -1326,7 +1326,7 @@ static void userfaultfd_pagemap_test(unsigned int test_pgsize)
 	/* Flush so it doesn't flush twice in parent/child later */
 	fflush(stdout);
 
-	uffd_test_ops->release_pages(area_dst);
+	uffd_test_ctx_init(0);
 
 	if (test_pgsize > page_size) {
 		/* This is a thp test */
@@ -1337,9 +1337,6 @@ static void userfaultfd_pagemap_test(unsigned int test_pgsize)
 		if (madvise(area_dst, nr_pages * page_size, MADV_NOHUGEPAGE))
 			err("madvise(MADV_NOHUGEPAGE) failed");
 	}
-
-	if (userfaultfd_open(0))
-		err("userfaultfd_open");
 
 	uffdio_register.range.start = (unsigned long) area_dst;
 	uffdio_register.range.len = nr_pages * page_size;
@@ -1383,7 +1380,6 @@ static void userfaultfd_pagemap_test(unsigned int test_pgsize)
 	pagemap_check_wp(value, false);
 
 	close(pagemap_fd);
-	close(uffd);
 	printf("done\n");
 }
 
