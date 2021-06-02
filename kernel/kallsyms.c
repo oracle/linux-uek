@@ -451,7 +451,9 @@ static int __sprint_symbol(char *buffer, unsigned long address,
 #if IS_ENABLED(CONFIG_STACKTRACE_BUILD_ID)
 		if (add_buildid && buildid) {
 			/* build ID should match length of sprintf */
+#if IS_ENABLED(CONFIG_MODULES)
 			static_assert(sizeof(typeof_member(struct module, build_id)) == 20);
+#endif
 			len += sprintf(buffer + len, " %20phN", buildid);
 		}
 #endif
