@@ -619,7 +619,7 @@ static struct track *get_track(struct kmem_cache *s, void *object,
 }
 
 #ifdef CONFIG_STACKDEPOT
-static depot_stack_handle_t save_stack_trace(gfp_t flags)
+static depot_stack_handle_t save_stack_depot_trace(gfp_t flags)
 {
 	unsigned long entries[TRACK_ADDRS_COUNT];
 	depot_stack_handle_t handle;
@@ -638,7 +638,7 @@ static void set_track(struct kmem_cache *s, void *object,
 
 	if (addr) {
 #ifdef CONFIG_STACKDEPOT
-		p->handle = save_stack_trace(GFP_KERNEL);
+		p->handle = save_stack_depot_trace(GFP_KERNEL);
 #endif
 		p->addr = addr;
 		p->cpu = smp_processor_id();
