@@ -476,6 +476,19 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 #endif
 	if (pkt_type != PACKET_TYPE_ECPRI) {
 		psw0 = (struct rfoe_psw0_s *)buf_ptr;
+		if (psw0->pkt_err_sts || psw0->dma_error) {
+			net_warn_ratelimited("%s: psw0 pkt_err_sts = 0x%x, dma_err=0x%x\n",
+					     priv->netdev->name,
+					     psw0->pkt_err_sts,
+					     psw0->dma_error);
+			return;
+		}
+		/* check that the psw type is correct: */
+		if (unlikely(psw0->pswt == ECPRI_TYPE)) {
+			net_warn_ratelimited("%s: pswt is eCPRI for pkt_type = %d\n",
+					     priv->netdev->name, pkt_type);
+			return;
+		}
 		lmac_id = psw0->lmac_id;
 		jdt_iova_addr = (u64)psw0->jd_ptr;
 		psw1 = (struct rfoe_psw1_s *)(buf_ptr + 16);
@@ -483,6 +496,18 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 			tstamp = psw1->ptp_timestamp;
 	} else {
 		ecpri_psw0 = (struct rfoe_ecpri_psw0_s *)buf_ptr;
+		if (ecpri_psw0->err_sts & 0x1F) {
+			net_warn_ratelimited("%s: ecpri_psw0 err_sts = 0x%x\n",
+					     priv->netdev->name,
+					     ecpri_psw0->err_sts);
+			return;
+		}
+		/* check that the psw type is correct: */
+		if (unlikely(ecpri_psw0->pswt != ECPRI_TYPE)) {
+			net_warn_ratelimited("%s: pswt is not eCPRI for pkt_type = %d\n",
+					     priv->netdev->name, pkt_type);
+			return;
+		}
 		lmac_id = ecpri_psw0->src_id & 0x3;
 		jdt_iova_addr = (u64)ecpri_psw0->jd_ptr;
 		ecpri_psw1 = (struct rfoe_ecpri_psw1_s *)(buf_ptr + 16);
