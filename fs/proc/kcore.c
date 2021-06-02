@@ -660,7 +660,7 @@ static int mmap_kcore(struct file *file, struct vm_area_struct *vma)
 	vma->vm_ops = &kcore_mmap_ops;
 
 	if (kern_addr_valid(start)) {
-		if (m->type == KCORE_RAM || m->type == KCORE_REMAP)
+		if (m->type == KCORE_RAM)
 			pfn = __pa(start) >> PAGE_SHIFT;
 		else if (m->type == KCORE_TEXT)
 			pfn = __pa_symbol(start) >> PAGE_SHIFT;
