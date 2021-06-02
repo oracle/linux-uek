@@ -1465,10 +1465,8 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 
 	pmd = pmd_modify(oldpmd, vma->vm_page_prot);
 	page = vm_normal_page_pmd(vma, haddr, pmd);
-	if (!page) {
-		spin_unlock(vmf->ptl);
+	if (!page)
 		goto out_map;
-	}
 
 	/* See similar comment in do_numa_page for explanation */
 	if (!was_writable)
