@@ -254,7 +254,7 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
 	unsigned long pfn;
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
-	if (unlikely(!mem_section)) {
+	if (unlikely(!mem_sections)) {
 		unsigned long size, align;
 
 		size = sizeof(struct mem_section *) * NR_SECTION_ROOTS;
