@@ -205,6 +205,7 @@ void trace_mmap_lock_unreg(void)
 
 #endif /* CONFIG_MEMCG */
 
+#ifdef CONFIG_TRACING
 /*
  * Trace calls must be in a separate file, as otherwise there's a circular
  * dependency between linux/mmap_lock.h and trace/events/mmap_lock.h.
@@ -228,3 +229,4 @@ void __mmap_lock_do_trace_released(struct mm_struct *mm, bool write)
 	TRACE_MMAP_LOCK_EVENT(released, mm, write);
 }
 EXPORT_SYMBOL(__mmap_lock_do_trace_released);
+#endif /* CONFIG_TRACING */
