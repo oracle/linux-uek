@@ -312,16 +312,17 @@ static inline void __check_heap_object(const void *ptr, unsigned long n,
  */
 enum kmalloc_cache_type {
 	KMALLOC_NORMAL = 0,
-#ifdef CONFIG_MEMCG_KMEM
-	KMALLOC_CGROUP,
-#else
+#ifndef CONFIG_ZONE_DMA
+	KMALLOC_DMA = KMALLOC_NORMAL,
+#endif
+#ifndef CONFIG_MEMCG_KMEM
 	KMALLOC_CGROUP = KMALLOC_NORMAL,
+#else
+	KMALLOC_CGROUP,
 #endif
 	KMALLOC_RECLAIM,
 #ifdef CONFIG_ZONE_DMA
 	KMALLOC_DMA,
-#else
-	KMALLOC_DMA = KMALLOC_NORMAL,
 #endif
 	NR_KMALLOC_TYPES
 };
