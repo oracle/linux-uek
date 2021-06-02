@@ -1277,8 +1277,8 @@ EXPORT_SYMBOL_GPL(fixup_user_fault);
  */
 static inline void mm_set_has_pinned_flag(unsigned long *mm_flags)
 {
-       if (!test_bit(MMF_HAS_PINNED, mm_flags))
-               set_bit(MMF_HAS_PINNED, mm_flags);
+	if (!test_bit(MMF_HAS_PINNED, mm_flags))
+		set_bit(MMF_HAS_PINNED, mm_flags);
 }
 
 /*
