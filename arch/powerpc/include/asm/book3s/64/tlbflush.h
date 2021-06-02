@@ -80,6 +80,16 @@ static inline void flush_hugetlb_tlb_range(struct vm_area_struct *vma,
 	return flush_hugetlb_tlb_pwc_range(vma, start, end, false);
 }
 
+#define flush_pte_tlb_pwc_range flush_tlb_pwc_range
+static inline void flush_pte_tlb_pwc_range(struct vm_area_struct *vma,
+					   unsigned long start, unsigned long end)
+{
+	if (radix_enabled())
+		return radix__flush_tlb_pwc_range_psize(vma->vm_mm, start,
+							end, mmu_virtual_psize, true);
+	return hash__flush_tlb_range(vma, start, end);
+}
+
 static inline void flush_tlb_range(struct vm_area_struct *vma,
 				   unsigned long start, unsigned long end)
 {
