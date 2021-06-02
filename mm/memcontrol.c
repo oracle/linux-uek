@@ -2118,11 +2118,11 @@ static inline struct obj_stock *get_obj_stock(unsigned long *pflags)
 		preempt_disable();
 		stock = this_cpu_ptr(&memcg_stock);
 		return &stock->task_obj;
-	} else {
-		local_irq_save(*pflags);
-		stock = this_cpu_ptr(&memcg_stock);
-		return &stock->irq_obj;
 	}
+
+	local_irq_save(*pflags);
+	stock = this_cpu_ptr(&memcg_stock);
+	return &stock->irq_obj;
 }
 
 static inline void put_obj_stock(unsigned long flags)
