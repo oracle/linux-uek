@@ -1137,30 +1137,6 @@ noswap:
 	return n_ret;
 }
 
-/* The only caller of this function is now suspend routine */
-swp_entry_t get_swap_page_of_type(int type)
-{
-	struct swap_info_struct *si = swap_type_to_swap_info(type);
-	pgoff_t offset;
-
-	if (!si)
-		goto fail;
-
-	spin_lock(&si->lock);
-	if (si->flags & SWP_WRITEOK) {
-		/* This is called for allocating swap entry, not cache */
-		offset = scan_swap_map(si, 1);
-		if (offset) {
-			atomic_long_dec(&nr_swap_pages);
-			spin_unlock(&si->lock);
-			return swp_entry(type, offset);
-		}
-	}
-	spin_unlock(&si->lock);
-fail:
-	return (swp_entry_t) {0};
-}
-
 static struct swap_info_struct *__swap_info_get(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
@@ -1812,6 +1788,30 @@ int free_swap_and_cache(swp_entry_t entry)
 }
 
 #ifdef CONFIG_HIBERNATION
+
+swp_entry_t get_swap_page_of_type(int type)
+{
+	struct swap_info_struct *si = swap_type_to_swap_info(type);
+	pgoff_t offset;
+
+	if (!si)
+		goto fail;
+
+	spin_lock(&si->lock);
+	if (si->flags & SWP_WRITEOK) {
+		/* This is called for allocating swap entry, not cache */
+		offset = scan_swap_map(si, 1);
+		if (offset) {
+			atomic_long_dec(&nr_swap_pages);
+			spin_unlock(&si->lock);
+			return swp_entry(type, offset);
+		}
+	}
+	spin_unlock(&si->lock);
+fail:
+	return (swp_entry_t) {0};
+}
+
 /*
  * Find the swap type that corresponds to given device (if any).
  *
