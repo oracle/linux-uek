@@ -1424,8 +1424,8 @@ static int mlx5_vdpa_set_vq_state(struct vdpa_device *vdev, u16 idx,
 		return -EINVAL;
 	}
 
-	mvq->used_idx = state->avail_index;
-	mvq->avail_idx = state->avail_index;
+	mvq->used_idx = state->split.avail_index;
+	mvq->avail_idx = state->split.avail_index;
 	return 0;
 }
 
@@ -1446,7 +1446,7 @@ static int mlx5_vdpa_get_vq_state(struct vdpa_device *vdev, u16 idx, struct vdpa
 		 * Since both values should be identical, we take the value of
 		 * used_idx which is reported correctly.
 		 */
-		state->avail_index = mvq->used_idx;
+		state->split.avail_index = mvq->used_idx;
 		return 0;
 	}
 
@@ -1455,7 +1455,7 @@ static int mlx5_vdpa_get_vq_state(struct vdpa_device *vdev, u16 idx, struct vdpa
 		mlx5_vdpa_warn(mvdev, "failed to query virtqueue\n");
 		return err;
 	}
-	state->avail_index = attr.used_index;
+	state->split.avail_index = attr.used_index;
 	return 0;
 }
 
