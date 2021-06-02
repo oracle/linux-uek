@@ -850,8 +850,8 @@ copy_nonpresent_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		 * exclusive entries currently only support private writable
 		 * (ie. COW) mappings.
 		 */
-		VM_BUG_ON(!is_cow_mapping(vma->vm_flags));
-		if (try_restore_exclusive_pte(src_mm, src_pte, vma, addr))
+		VM_BUG_ON(!is_cow_mapping(dst_vma->vm_flags));
+		if (try_restore_exclusive_pte(src_mm, src_pte, dst_vma, addr))
 			return -EBUSY;
 		return -ENOENT;
 	}
