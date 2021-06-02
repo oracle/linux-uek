@@ -311,9 +311,10 @@ int kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize,
 	       !!__bpf_address_lookup(addr, symbolsize, offset, namebuf);
 }
 
-const char *kallsyms_lookup_buildid(unsigned long addr, unsigned long *symbolsize,
-				    unsigned long *offset, char **modname,
-				    const unsigned char **modbuildid, char *namebuf)
+static const char *kallsyms_lookup_buildid(unsigned long addr,
+			unsigned long *symbolsize,
+			unsigned long *offset, char **modname,
+			const unsigned char **modbuildid, char *namebuf)
 {
 	const char *ret;
 
