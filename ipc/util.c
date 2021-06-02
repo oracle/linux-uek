@@ -452,7 +452,7 @@ static void ipc_kht_remove(struct ipc_ids *ids, struct kern_ipc_perm *ipcp)
 }
 
 /**
- * ipc_search_maxidx - search the highest assigned index
+ * ipc_search_maxidx - search for the highest assigned index
  * @ids: ipc identifier set
  * @limit: known upper limit for highest assigned index
  *
@@ -462,7 +462,7 @@ static void ipc_kht_remove(struct ipc_ids *ids, struct kern_ipc_perm *ipcp)
  * object is deleted.
  * If no ipc object is allocated, then -1 is returned.
  *
- * ipc_ids.rwsem needs to be owned by the caller.
+ * ipc_ids.rwsem needs to be held by the caller.
  */
 static int ipc_search_maxidx(struct ipc_ids *ids, int limit)
 {
