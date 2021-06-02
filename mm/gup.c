@@ -392,6 +392,17 @@ void unpin_user_pages(struct page **pages, unsigned long npages)
 }
 EXPORT_SYMBOL(unpin_user_pages);
 
+/*
+ * Set the MMF_HAS_PINNED if not set yet; after set it'll be there for the mm's
+ * lifecycle.  Avoid setting the bit unless necessary, or it might cause write
+ * cache bouncing on large SMP machines for concurrent pinned gups.
+ */
+static inline void mm_set_has_pinned_flag(unsigned long *mm_flags)
+{
+	if (!test_bit(MMF_HAS_PINNED, mm_flags))
+		set_bit(MMF_HAS_PINNED, mm_flags);
+}
+
 #ifdef CONFIG_MMU
 static struct page *no_page_table(struct vm_area_struct *vma,
 		unsigned int flags)
@@ -1269,17 +1280,6 @@ retry:
 	return 0;
 }
 EXPORT_SYMBOL_GPL(fixup_user_fault);
-
-/*
- * Set the MMF_HAS_PINNED if not set yet; after set it'll be there for the mm's
- * lifecycle.  Avoid setting the bit unless necessary, or it might cause write
- * cache bouncing on large SMP machines for concurrent pinned gups.
- */
-static inline void mm_set_has_pinned_flag(unsigned long *mm_flags)
-{
-	if (!test_bit(MMF_HAS_PINNED, mm_flags))
-		set_bit(MMF_HAS_PINNED, mm_flags);
-}
 
 /*
  * Please note that this function, unlike __get_user_pages will not
