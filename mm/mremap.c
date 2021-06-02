@@ -258,7 +258,7 @@ static bool move_normal_pmd(struct vm_area_struct *vma, unsigned long old_addr,
 	pmd_clear(old_pmd);
 
 	VM_BUG_ON(!pmd_none(*new_pmd));
-	pmd_populate(mm, new_pmd, (pgtable_t)pmd_page_vaddr(pmd));
+	pmd_populate(mm, new_pmd, pmd_pgtable(pmd));
 
 	flush_tlb_range(vma, old_addr, old_addr + PMD_SIZE);
 	if (new_ptl != old_ptl)
