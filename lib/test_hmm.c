@@ -733,7 +733,8 @@ static int dmirror_exclusive(struct dmirror *dmirror,
 
 	mmap_read_lock(mm);
 	for (addr = start; addr < end; addr = next) {
-		int i, mapped;
+		unsigned long mapped;
+		int i;
 
 		if (end < addr + (ARRAY_SIZE(pages) << PAGE_SHIFT))
 			next = end;
