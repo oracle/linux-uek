@@ -2802,8 +2802,8 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	return __split_vma(mm, vma, addr, new_below);
 }
 
-static inline
-void unlock_range(struct vm_area_struct *start, unsigned long limit)
+static inline void
+unlock_range(struct vm_area_struct *start, unsigned long limit)
 {
 	struct mm_struct *mm = start->vm_mm;
 	struct vm_area_struct *tmp = start;
