@@ -518,8 +518,6 @@ BEGIN_FTR_SECTION
 	rlwinm	r1,r1,0,~_PAGE_COHERENT	/* clear M (coherence not required) */
 END_FTR_SECTION_IFCLR(CPU_FTR_NEED_COHERENT)
 	mtspr	SPRN_RPA,r1
-	mfspr	r2,SPRN_SRR1		/* Need to restore CR0 */
-	mtcrf	0x80,r2
 BEGIN_MMU_FTR_SECTION
 	li	r0,1
 	mfspr	r1,SPRN_SPRG_603_LRU
@@ -531,9 +529,15 @@ BEGIN_MMU_FTR_SECTION
 	mfspr	r2,SPRN_SRR1
 	rlwimi	r2,r0,31-14,14,14
 	mtspr   SPRN_SRR1,r2
-END_MMU_FTR_SECTION_IFSET(MMU_FTR_NEED_DTLB_SW_LRU)
+	mtcrf	0x80,r2
 	tlbld	r3
 	rfi
+MMU_FTR_SECTION_ELSE
+	mfspr	r2,SPRN_SRR1		/* Need to restore CR0 */
+	mtcrf	0x80,r2
+	tlbld	r3
+	rfi
+ALT_MMU_FTR_SECTION_END_IFSET(MMU_FTR_NEED_DTLB_SW_LRU)
 DataAddressInvalid:
 	mfspr	r3,SPRN_SRR1
 	rlwinm	r1,r3,9,6,6	/* Get load/store bit */
@@ -607,9 +611,15 @@ BEGIN_MMU_FTR_SECTION
 	mfspr	r2,SPRN_SRR1
 	rlwimi	r2,r0,31-14,14,14
 	mtspr   SPRN_SRR1,r2
-END_MMU_FTR_SECTION_IFSET(MMU_FTR_NEED_DTLB_SW_LRU)
+	mtcrf	0x80,r2
 	tlbld	r3
 	rfi
+MMU_FTR_SECTION_ELSE
+	mfspr	r2,SPRN_SRR1		/* Need to restore CR0 */
+	mtcrf	0x80,r2
+	tlbld	r3
+	rfi
+ALT_MMU_FTR_SECTION_END_IFSET(MMU_FTR_NEED_DTLB_SW_LRU)
 
 #ifndef CONFIG_ALTIVEC
 #define altivec_assist_exception	unknown_exception
@@ -1255,42 +1265,6 @@ setup_usbgecko_bat:
 	mtspr	SPRN_DBAT1U, r11
 	blr
 #endif
-
-#ifdef CONFIG_8260
-/* Jump into the system reset for the rom.
- * We first disable the MMU, and then jump to the ROM reset address.
- *
- * r3 is the board info structure, r4 is the location for starting.
- * I use this for building a small kernel that can load other kernels,
- * rather than trying to write or rely on a rom monitor that can tftp load.
- */
-       .globl  m8260_gorom
-m8260_gorom:
-	mfmsr	r0
-	rlwinm	r0,r0,0,17,15	/* clear MSR_EE in r0 */
-	sync
-	mtmsr	r0
-	sync
-	mfspr	r11, SPRN_HID0
-	lis	r10, 0
-	ori	r10,r10,HID0_ICE|HID0_DCE
-	andc	r11, r11, r10
-	mtspr	SPRN_HID0, r11
-	isync
-	li	r5, MSR_ME|MSR_RI
-	lis	r6,2f@h
-	addis	r6,r6,-KERNELBASE@h
-	ori	r6,r6,2f@l
-	mtspr	SPRN_SRR0,r6
-	mtspr	SPRN_SRR1,r5
-	isync
-	sync
-	rfi
-2:
-	mtlr	r4
-	blr
-#endif
-
 
 /*
  * We put a few things here that have to be page-aligned.
