@@ -13,8 +13,8 @@ struct rational_test_param {
 };
 
 static const struct rational_test_param test_parameters[] = {
-	{ 1230,	10,	100, 20,	100, 1,    "Exceeds bounds, semi-convergent term > ½ last term" },
-	{ 34567,100, 	120, 20,	120, 1,    "Exceeds bounds, semi-convergent term < ½ last term" },
+	{ 1230,	10,	100, 20,	100, 1,    "Exceeds bounds, semi-convergent term > 1/2 last term" },
+	{ 34567,100, 	120, 20,	120, 1,    "Exceeds bounds, semi-convergent term < 1/2 last term" },
 	{ 1, 30,	100, 10,	0, 1,	   "Closest to zero" },
 	{ 1, 19,	100, 10,	1, 10,     "Closest to smallest non-zero" },
 	{ 27,32,	16, 16,		11, 13,    "Use convergent" },
@@ -42,13 +42,13 @@ static void rational_test(struct kunit *test)
 }
 
 static struct kunit_case rational_test_cases[] = {
-       KUNIT_CASE_PARAM(rational_test, rational_gen_params),
-       {}
+	KUNIT_CASE_PARAM(rational_test, rational_gen_params),
+	{}
 };
 
 static struct kunit_suite rational_test_suite = {
-       .name = "rational",
-       .test_cases = rational_test_cases,
+	.name = "rational",
+	.test_cases = rational_test_cases,
 };
 
 kunit_test_suites(&rational_test_suite);
