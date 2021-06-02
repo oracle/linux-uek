@@ -1674,8 +1674,6 @@ void try_to_unmap(struct page *page, enum ttu_flags flags)
 		rmap_walk_locked(page, &rwc);
 	else
 		rmap_walk(page, &rwc);
-
-	return !page_mapcount(page) ? true : false;
 }
 
 /*
@@ -1947,6 +1945,8 @@ bool try_to_migrate(struct page *page, enum ttu_flags flags)
 		rmap_walk_locked(page, &rwc);
 	else
 		rmap_walk(page, &rwc);
+
+	return !page_mapcount(page) ? true : false;
 }
 
 /*
