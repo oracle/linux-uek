@@ -1510,9 +1510,9 @@ long faultin_vma_page_range(struct vm_area_struct *vma, unsigned long start,
 
 	/*
 	 * FOLL_TOUCH: Mark page accessed and thereby young; will also mark
-	 * 	       the page dirty with FOLL_WRITE -- which doesn't make a
-	 * 	       difference with !FOLL_FORCE, because the page is writable
-	 * 	       in the page table.
+	 *	       the page dirty with FOLL_WRITE -- which doesn't make a
+	 *	       difference with !FOLL_FORCE, because the page is writable
+	 *	       in the page table.
 	 * FOLL_HWPOISON: Return -EHWPOISON instead of -EFAULT when we hit
 	 *		  a poisoned page.
 	 * FOLL_POPULATE: Always populate memory with VM_LOCKONFAULT.
