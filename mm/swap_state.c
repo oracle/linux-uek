@@ -37,7 +37,6 @@ static const struct address_space_operations swap_aops = {
 };
 
 struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
-static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static bool enable_vma_readahead __read_mostly = true;
 
 #define SWAP_RA_WIN_SHIFT	(PAGE_SHIFT / 2)
@@ -685,7 +684,6 @@ int init_swap_address_space(unsigned int type, unsigned long nr_pages)
 		/* swap cache doesn't use writeback related tags */
 		mapping_set_no_writeback_tags(space);
 	}
-	nr_swapper_spaces[type] = nr;
 	swapper_spaces[type] = spaces;
 
 	return 0;
@@ -694,7 +692,6 @@ int init_swap_address_space(unsigned int type, unsigned long nr_pages)
 void exit_swap_address_space(unsigned int type)
 {
 	kvfree(swapper_spaces[type]);
-	nr_swapper_spaces[type] = 0;
 	swapper_spaces[type] = NULL;
 }
 
