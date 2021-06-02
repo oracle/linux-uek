@@ -2214,6 +2214,11 @@ static void nix_tl1_default_cfg(struct rvu *rvu, struct nix_hw *nix_hw,
 	pfvf_map[schq] = TXSCH_SET_FLAG(pfvf_map[schq], NIX_TXSCHQ_CFG_DONE);
 }
 
+/* Register offset - [15:0]
+ * Scheduler Queue number - [25:16]
+ */
+#define NIX_TX_SCHQ_MASK	GENMASK_ULL(25, 0)
+
 static int nix_txschq_cfg_read(struct rvu *rvu, struct nix_hw *nix_hw,
 			       int blkaddr, struct nix_txschq_config *req,
 			       struct nix_txschq_config *rsp)
@@ -2225,8 +2230,9 @@ static int nix_txschq_cfg_read(struct rvu *rvu, struct nix_hw *nix_hw,
 	rvu_nix_txsch_lock(nix_hw);
 	for (idx = 0; idx < req->num_regs; idx++) {
 		reg = req->reg[idx];
+		reg &= NIX_TX_SCHQ_MASK;
 		schq = TXSCHQ_IDX(reg, TXSCHQ_IDX_SHIFT);
-		if (!rvu_check_valid_reg(TXSCHQ_HWREGMAP, req->lvl, reg) &&
+		if (!rvu_check_valid_reg(TXSCHQ_HWREGMAP, req->lvl, reg) ||
 		    !is_valid_txschq(rvu, blkaddr, req->lvl, pcifunc, schq)) {
 			rvu_nix_txsch_unlock(nix_hw);
 			return NIX_AF_INVAL_TXSCHQ_CFG;
@@ -2311,6 +2317,7 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 	rvu_nix_txsch_lock(nix_hw);
 	for (idx = 0; idx < req->num_regs; idx++) {
 		reg = req->reg[idx];
+		reg &= NIX_TX_SCHQ_MASK;
 		regval = req->regval[idx];
 		schq_regbase = reg & 0xFFFF;
 		val_mask = req->regval_mask[idx];
