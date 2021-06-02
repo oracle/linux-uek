@@ -804,6 +804,8 @@ static void spi_set_cs(struct spi_device *spi, bool enable, bool force)
 	    (spi->controller->last_cs_mode_high == (spi->mode & SPI_CS_HIGH)))
 		return;
 
+	trace_spi_set_cs(spi, activate);
+
 	spi->controller->last_cs_enable = enable;
 	spi->controller->last_cs_mode_high = spi->mode & SPI_CS_HIGH;
 
@@ -1132,10 +1134,20 @@ static int spi_transfer_wait(struct spi_controller *ctlr,
 		if (!speed_hz)
 			speed_hz = 100000;
 
-		ms = 8LL * 1000LL * xfer->len;
+		/*
+		 * For each byte we wait for 8 cycles of the SPI clock.
+		 * Since speed is defined in Hz and we want milliseconds,
+		 * use respective multiplier, but before the division,
+		 * otherwise we may get 0 for short transfers.
+		 */
+		ms = 8LL * MSEC_PER_SEC * xfer->len;
 		do_div(ms, speed_hz);
-		ms += ms + 200; /* some tolerance */
 
+		/*
+		 * Increase it twice and add 200 ms tolerance, use
+		 * predefined maximum in case of overflow.
+		 */
+		ms += ms + 200;
 		if (ms > UINT_MAX)
 			ms = UINT_MAX;
 
@@ -1158,10 +1170,10 @@ static void _spi_transfer_delay_ns(u32 ns)
 {
 	if (!ns)
 		return;
-	if (ns <= 1000) {
+	if (ns <= NSEC_PER_USEC) {
 		ndelay(ns);
 	} else {
-		u32 us = DIV_ROUND_UP(ns, 1000);
+		u32 us = DIV_ROUND_UP(ns, NSEC_PER_USEC);
 
 		if (us <= 10)
 			udelay(us);
@@ -1181,21 +1193,25 @@ int spi_delay_to_ns(struct spi_delay *_delay, struct spi_transfer *xfer)
 
 	switch (unit) {
 	case SPI_DELAY_UNIT_USECS:
-		delay *= 1000;
+		delay *= NSEC_PER_USEC;
 		break;
-	case SPI_DELAY_UNIT_NSECS: /* nothing to do here */
+	case SPI_DELAY_UNIT_NSECS:
+		/* Nothing to do here */
 		break;
 	case SPI_DELAY_UNIT_SCK:
 		/* clock cycles need to be obtained from spi_transfer */
 		if (!xfer)
 			return -EINVAL;
-		/* if there is no effective speed know, then approximate
-		 * by underestimating with half the requested hz
+		/*
+		 * If there is unknown effective speed, approximate it
+		 * by underestimating with half of the requested hz.
 		 */
 		hz = xfer->effective_speed_hz ?: xfer->speed_hz / 2;
 		if (!hz)
 			return -EINVAL;
-		delay *= DIV_ROUND_UP(1000000000, hz);
+
+		/* Convert delay to nanoseconds */
+		delay *= DIV_ROUND_UP(NSEC_PER_SEC, hz);
 		break;
 	default:
 		return -EINVAL;
@@ -1227,6 +1243,7 @@ EXPORT_SYMBOL_GPL(spi_delay_exec);
 static void _spi_transfer_cs_change_delay(struct spi_message *msg,
 					  struct spi_transfer *xfer)
 {
+	u32 default_delay_ns = 10 * NSEC_PER_USEC;
 	u32 delay = xfer->cs_change_delay.value;
 	u32 unit = xfer->cs_change_delay.unit;
 	int ret;
@@ -1234,16 +1251,16 @@ static void _spi_transfer_cs_change_delay(struct spi_message *msg,
 	/* return early on "fast" mode - for everything but USECS */
 	if (!delay) {
 		if (unit == SPI_DELAY_UNIT_USECS)
-			_spi_transfer_delay_ns(10000);
+			_spi_transfer_delay_ns(default_delay_ns);
 		return;
 	}
 
 	ret = spi_delay_exec(&xfer->cs_change_delay, xfer);
 	if (ret) {
 		dev_err_once(&msg->spi->dev,
-			     "Use of unsupported delay unit %i, using default of 10us\n",
-			     unit);
-		_spi_transfer_delay_ns(10000);
+			     "Use of unsupported delay unit %i, using default of %luus\n",
+			     unit, default_delay_ns / NSEC_PER_USEC);
+		_spi_transfer_delay_ns(default_delay_ns);
 	}
 }
 
@@ -3442,8 +3459,10 @@ int spi_setup(struct spi_device *spi)
 		spi_set_thread_rt(spi->controller);
 	}
 
-	dev_dbg(&spi->dev, "setup mode %d, %s%s%s%s%u bits/w, %u Hz max --> %d\n",
-			(int) (spi->mode & (SPI_CPOL | SPI_CPHA)),
+	trace_spi_setup(spi, status);
+
+	dev_dbg(&spi->dev, "setup mode %lu, %s%s%s%s%u bits/w, %u Hz max --> %d\n",
+			spi->mode & SPI_MODE_X_MASK,
 			(spi->mode & SPI_CS_HIGH) ? "cs_high, " : "",
 			(spi->mode & SPI_LSB_FIRST) ? "lsb, " : "",
 			(spi->mode & SPI_3WIRE) ? "3wire, " : "",
