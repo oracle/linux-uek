@@ -108,6 +108,9 @@ unsigned long __bootdata_preserved(__edma);
 unsigned long __bootdata_preserved(__kaslr_offset);
 unsigned int __bootdata_preserved(zlib_dfltcc_support);
 EXPORT_SYMBOL(zlib_dfltcc_support);
+u64 __bootdata_preserved(stfle_fac_list[16]);
+EXPORT_SYMBOL(stfle_fac_list);
+u64 __bootdata_preserved(alt_stfle_fac_list[16]);
 
 unsigned long VMALLOC_START;
 EXPORT_SYMBOL(VMALLOC_START);
@@ -165,7 +168,7 @@ static void __init set_preferred_console(void)
 	else if (CONSOLE_IS_3270)
 		add_preferred_console("tty3270", 0, NULL);
 	else if (CONSOLE_IS_VT220)
-		add_preferred_console("ttyS", 1, NULL);
+		add_preferred_console("ttysclp", 0, NULL);
 	else if (CONSOLE_IS_HVC)
 		add_preferred_console("hvc", 0, NULL);
 }
@@ -338,27 +341,6 @@ int __init arch_early_irq_init(void)
 	return 0;
 }
 
-static int __init stack_realloc(void)
-{
-	unsigned long old, new;
-
-	old = S390_lowcore.async_stack - STACK_INIT_OFFSET;
-	new = stack_alloc();
-	if (!new)
-		panic("Couldn't allocate async stack");
-	WRITE_ONCE(S390_lowcore.async_stack, new + STACK_INIT_OFFSET);
-	free_pages(old, THREAD_SIZE_ORDER);
-
-	old = S390_lowcore.mcck_stack - STACK_INIT_OFFSET;
-	new = stack_alloc();
-	if (!new)
-		panic("Couldn't allocate machine check stack");
-	WRITE_ONCE(S390_lowcore.mcck_stack, new + STACK_INIT_OFFSET);
-	memblock_free_late(old, THREAD_SIZE);
-	return 0;
-}
-early_initcall(stack_realloc);
-
 void __init arch_call_rest_init(void)
 {
 	unsigned long stack;
@@ -413,11 +395,6 @@ static void __init setup_lowcore_dat_off(void)
 	lc->lpp = LPP_MAGIC;
 	lc->machine_flags = S390_lowcore.machine_flags;
 	lc->preempt_count = S390_lowcore.preempt_count;
-	lc->stfl_fac_list = S390_lowcore.stfl_fac_list;
-	memcpy(lc->stfle_fac_list, S390_lowcore.stfle_fac_list,
-	       sizeof(lc->stfle_fac_list));
-	memcpy(lc->alt_stfle_fac_list, S390_lowcore.alt_stfle_fac_list,
-	       sizeof(lc->alt_stfle_fac_list));
 	nmi_alloc_boot_cpu(lc);
 	lc->sys_enter_timer = S390_lowcore.sys_enter_timer;
 	lc->exit_timer = S390_lowcore.exit_timer;

@@ -146,7 +146,10 @@ void noinstr do_io_irq(struct pt_regs *regs)
 		account_idle_time_irq();
 
 	do {
-		memcpy(&regs->int_code, &S390_lowcore.subchannel_id, 12);
+		regs->int_code = S390_lowcore.subchannel;
+		regs->int_parm = S390_lowcore.io_int_parm;
+		regs->int_parm_long = (unsigned long)S390_lowcore.io_int_word << 32;
+
 		if (S390_lowcore.io_int_word & BIT(31))
 			do_irq_async(regs, THIN_INTERRUPT);
 		else
@@ -172,7 +175,7 @@ void noinstr do_ext_irq(struct pt_regs *regs)
 	if (user_mode(regs))
 		update_timer_sys();
 
-	memcpy(&regs->int_code, &S390_lowcore.ext_cpu_addr, 4);
+	regs->int_code = S390_lowcore.ext_int_code_addr;
 	regs->int_parm = S390_lowcore.ext_params;
 	regs->int_parm_long = S390_lowcore.ext_params2;
 
