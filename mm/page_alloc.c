@@ -124,9 +124,9 @@ static DEFINE_MUTEX(pcp_batch_high_lock);
 
 struct pagesets {
 	local_lock_t lock;
-#if defined(CONFIG_DEBUG_INFO_BTF) &&			\
-    !defined(CONFIG_DEBUG_LOCK_ALLOC) &&		\
-    !defined(CONFIG_PAHOLE_HAS_ZEROSIZE_PERCPU_SUPPORT)
+#if defined(CONFIG_DEBUG_INFO_BTF) &&				\
+	!defined(CONFIG_DEBUG_LOCK_ALLOC) &&			\
+	!defined(CONFIG_PAHOLE_HAS_ZEROSIZE_PERCPU_SUPPORT)
 	/*
 	 * pahole 1.21 and earlier gets confused by zero-sized per-CPU
 	 * variables and produces invalid BTF. Ensure that
