@@ -2353,7 +2353,7 @@ static void unmap_page(struct page *page)
 	VM_BUG_ON_PAGE(!PageHead(page), page);
 
 	if (PageAnon(page))
-		unmap_success = try_to_migrate(page, ttu_flags);
+		try_to_migrate(page, ttu_flags);
 	else
 		/*
 		 * Don't install migration entries for file backed pages. This
