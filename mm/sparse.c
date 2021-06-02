@@ -20,7 +20,7 @@
 /*
  * Permanent SPARSEMEM data:
  *
- * 1) mem_section	- memory sections, mem_map's for valid memory
+ * 1) mem_sections - memory sections, mem_map's for valid memory
  */
 #ifdef CONFIG_SPARSEMEM_EXTREME
 struct mem_section **mem_sections;
