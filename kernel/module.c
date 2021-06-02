@@ -4271,7 +4271,8 @@ void * __weak dereference_module_function_descriptor(struct module *mod,
 const char *module_address_lookup(unsigned long addr,
 			    unsigned long *size,
 			    unsigned long *offset,
-			    char **modname, const unsigned char **modbuildid,
+			    char **modname,
+			    const unsigned char **modbuildid,
 			    char *namebuf)
 {
 	const char *ret = NULL;

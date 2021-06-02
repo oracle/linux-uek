@@ -746,6 +746,7 @@ static inline const char *module_address_lookup(unsigned long addr,
 					  unsigned long *symbolsize,
 					  unsigned long *offset,
 					  char **modname,
+					  const unsigned char **modbuildid,
 					  char *namebuf)
 {
 	return NULL;
