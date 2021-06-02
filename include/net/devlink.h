@@ -127,9 +127,13 @@ struct devlink_rate {
 	u64 tx_share;
 	u64 tx_max;
 
+	struct devlink_rate *parent;
 	union {
 		struct devlink_port *devlink_port;
-		char *name;
+		struct {
+			char *name;
+			refcount_t refcnt;
+		};
 	};
 };
 
@@ -1005,6 +1009,14 @@ struct devlink_ops {
 					     struct netlink_ext_ack *extack))
 	UEK_KABI_EXTEND(int (*rate_node_del)(struct devlink_rate *rate_node, void *priv,
 					     struct netlink_ext_ack *extack))
+	UEK_KABI_EXTEND(int (*rate_leaf_parent_set)(struct devlink_rate *child,
+						    struct devlink_rate *parent,
+						    void *priv_child, void *priv_parent,
+						    struct netlink_ext_ack *extack))
+	UEK_KABI_EXTEND(int (*rate_node_parent_set)(struct devlink_rate *child,
+						    struct devlink_rate *parent,
+						    void *priv_child, void *priv_parent,
+						    struct netlink_ext_ack *extack))
 };
 
 static inline void *devlink_priv(struct devlink *devlink)
