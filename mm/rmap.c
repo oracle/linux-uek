@@ -1658,8 +1658,8 @@ static int page_not_mapped(struct page *page)
  * Tries to remove all the page table entries which are mapping this
  * page, used in the pageout path.  Caller must hold the page lock.
  *
- * It is the callers' responsibility to check if the page is still
- * mapped when needed.
+ * It is the caller's responsibility to check if the page is still mapped when
+ * needed.
  */
 void try_to_unmap(struct page *page, enum ttu_flags flags)
 {
