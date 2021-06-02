@@ -193,20 +193,10 @@ config REGULATOR_BCM590XX
 	  BCM590xx PMUs. This will enable support for the software
 	  controllable LDO/Switching regulators.
 
-config REGULATOR_BD70528
-	tristate "ROHM BD70528 Power Regulator"
-	depends on MFD_ROHM_BD70528
-	help
-	  This driver supports voltage regulators on ROHM BD70528 PMIC.
-	  This will enable support for the software controllable buck
-	  and LDO regulators.
-
-	  This driver can also be built as a module. If so, the module
-	  will be called bd70528-regulator.
-
 config REGULATOR_BD71815
 	tristate "ROHM BD71815 Power Regulator"
 	depends on MFD_ROHM_BD71828
+	select REGULATOR_ROHM
 	help
 	  This driver supports voltage regulators on ROHM BD71815 PMIC.
 	  This will enable support for the software controllable buck
@@ -1029,6 +1019,17 @@ config REGULATOR_RT5033
 	  This adds support for voltage and current regulators in Richtek
 	  RT5033 PMIC. The device supports multiple regulators like
 	  current source, LDO and Buck.
+
+config REGULATOR_RT6160
+	tristate "Richtek RT6160 BuckBoost voltage regulator"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  This adds support for voltage regulator in Richtek RT6160.
+	  This device automatically change voltage output mode from
+	  Buck or Boost. The mode transistion depend on the input source voltage.
+	  The wide output range is from 2025mV to 5200mV and can be used on most
+	  common application scenario.
 
 config REGULATOR_RTMV20
 	tristate "Richtek RTMV20 Laser Diode Regulator"
