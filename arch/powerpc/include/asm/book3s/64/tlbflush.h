@@ -59,7 +59,7 @@ static inline void flush_pmd_tlb_pwc_range(struct vm_area_struct *vma,
 static inline void flush_pmd_tlb_range(struct vm_area_struct *vma,
 				       unsigned long start, unsigned long end)
 {
-	return flush_pmd_tlb_pwc_range(vma, start, end, false);
+	flush_pmd_tlb_pwc_range(vma, start, end, false);
 }
 
 static inline void flush_hugetlb_tlb_pwc_range(struct vm_area_struct *vma,
