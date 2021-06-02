@@ -216,7 +216,7 @@ static inline void flush_pte_tlb_pwc_range(struct vm_area_struct *vma,
 					   unsigned long start,
 					   unsigned long end)
 {
-	return flush_tlb_range(vma, start, end);
+	flush_tlb_range(vma, start, end);
 }
 #endif
 
