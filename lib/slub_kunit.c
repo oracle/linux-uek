@@ -129,8 +129,6 @@ static int test_init(struct kunit *test)
 	return 0;
 }
 
-static void test_exit(struct kunit *test) {}
-
 static struct kunit_case test_cases[] = {
 	KUNIT_CASE(test_clobber_zone),
 
@@ -147,7 +145,6 @@ static struct kunit_case test_cases[] = {
 static struct kunit_suite test_suite = {
 	.name = "slub_test",
 	.init = test_init,
-	.exit = test_exit,
 	.test_cases = test_cases,
 };
 kunit_test_suite(test_suite);
