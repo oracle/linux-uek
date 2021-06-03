@@ -13,6 +13,8 @@
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
+#include <linux/gpio/consumer.h>
 #include <linux/regulator/driver.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
@@ -639,7 +641,6 @@ MODULE_DEVICE_TABLE(platform, bd7181x_pmic_id);
 static struct platform_driver bd7181x_regulator = {
 	.driver = {
 		.name = "bd7181x-pmic",
-		.owner = THIS_MODULE,
 	},
 	.probe = bd7181x_probe,
 	.id_table = bd7181x_pmic_id,
