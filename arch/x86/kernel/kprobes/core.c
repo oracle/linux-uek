@@ -674,7 +674,7 @@ static int prepare_emulation(struct kprobe *p, struct insn *insn)
 			break;
 
 		if (insn->addr_bytes != sizeof(unsigned long))
-			return -EOPNOTSUPP;	/* Don't support differnt size */
+			return -EOPNOTSUPP;	/* Don't support different size */
 		if (X86_MODRM_MOD(opcode) != 3)
 			return -EOPNOTSUPP;	/* TODO: support memory addressing */
 
@@ -1110,16 +1110,6 @@ int kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 		 * these specific fault cases.
 		 */
 		kprobes_inc_nmissed_count(cur);
-
-		/*
-		 * We come here because instructions in the pre/post
-		 * handler caused the page_fault, this could happen
-		 * if handler tries to access user space by
-		 * copy_from_user(), get_user() etc. Let the
-		 * user-specified handler try to fix it first.
-		 */
-		if (cur->fault_handler && cur->fault_handler(cur, regs, trapnr))
-			return 1;
 	}
 
 	return 0;
