@@ -398,6 +398,7 @@ static struct latched_seq clear_seq = {
 #define CONSOLE_LOG_MAX		1024
 
 /* the maximum size allowed to be reserved for a record */
+/* Keep in sync with rust/kernel/print.rs */
 #define LOG_LINE_MAX		(CONSOLE_LOG_MAX - PREFIX_MAX)
 
 #define LOG_LEVEL(v)		((v) & 0x07)

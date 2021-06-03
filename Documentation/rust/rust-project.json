@@ -1,0 +1,35 @@
+{
+    "sysroot_src": <path-to-sysroot-source>,
+    "crates": [
+        {
+            "root_module": "rust/module.rs",
+            "edition": "2018",
+            "deps": []
+        },
+        {
+            "root_module": "rust/kernel/lib.rs",
+            "edition": "2018",
+            "deps": [
+                {
+                    "crate": 0,
+                    "name": "module"
+                }
+            ]
+        },
+        {
+            "root_module": <path-to-module>,
+            "edition": "2018",
+            "deps": [
+                {
+                    "crate": 0,
+                    "name": "module"
+                },
+                {
+                    "crate": 1,
+                    "name": "kernel"
+                }
+            ]
+        },
+        <...entries for other modules...>
+    ]
+}
