@@ -197,11 +197,9 @@ static int csiphy_set_power(struct v4l2_subdev *sd, int on)
 	if (on) {
 		int ret;
 
-		ret = pm_runtime_get_sync(dev);
-		if (ret < 0) {
-			pm_runtime_put_sync(dev);
+		ret = pm_runtime_resume_and_get(dev);
+		if (ret < 0)
 			return ret;
-		}
 
 		ret = csiphy_set_clock_rates(csiphy);
 		if (ret < 0) {
@@ -591,16 +589,14 @@ int msm_csiphy_subdev_init(struct camss *camss,
 
 	/* Memory */
 
-	r = platform_get_resource_byname(pdev, IORESOURCE_MEM, res->reg[0]);
-	csiphy->base = devm_ioremap_resource(dev, r);
+	csiphy->base = devm_platform_ioremap_resource_byname(pdev, res->reg[0]);
 	if (IS_ERR(csiphy->base))
 		return PTR_ERR(csiphy->base);
 
 	if (camss->version == CAMSS_8x16 ||
 	    camss->version == CAMSS_8x96) {
-		r = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						 res->reg[1]);
-		csiphy->base_clk_mux = devm_ioremap_resource(dev, r);
+		csiphy->base_clk_mux =
+			devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
 		if (IS_ERR(csiphy->base_clk_mux))
 			return PTR_ERR(csiphy->base_clk_mux);
 	} else {
