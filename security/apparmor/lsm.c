@@ -1402,7 +1402,7 @@ static int param_set_aalockpolicy(const char *val, const struct kernel_param *kp
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_admin_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_admin_capable(NULL))
 		return -EPERM;
 	return param_set_bool(val, kp);
 }
@@ -1411,7 +1411,7 @@ static int param_get_aalockpolicy(char *buffer, const struct kernel_param *kp)
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_view_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_view_capable(NULL))
 		return -EPERM;
 	return param_get_bool(buffer, kp);
 }
@@ -1420,7 +1420,7 @@ static int param_set_aabool(const char *val, const struct kernel_param *kp)
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_admin_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_admin_capable(NULL))
 		return -EPERM;
 	return param_set_bool(val, kp);
 }
@@ -1429,7 +1429,7 @@ static int param_get_aabool(char *buffer, const struct kernel_param *kp)
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_view_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_view_capable(NULL))
 		return -EPERM;
 	return param_get_bool(buffer, kp);
 }
@@ -1455,7 +1455,7 @@ static int param_get_aauint(char *buffer, const struct kernel_param *kp)
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_view_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_view_capable(NULL))
 		return -EPERM;
 	return param_get_uint(buffer, kp);
 }
@@ -1526,7 +1526,7 @@ static int param_get_aacompressionlevel(char *buffer,
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_view_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_view_capable(NULL))
 		return -EPERM;
 	return param_get_int(buffer, kp);
 }
@@ -1535,7 +1535,7 @@ static int param_get_audit(char *buffer, const struct kernel_param *kp)
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_view_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_view_capable(NULL))
 		return -EPERM;
 	return sprintf(buffer, "%s", audit_mode_names[aa_g_audit]);
 }
@@ -1548,7 +1548,7 @@ static int param_set_audit(const char *val, const struct kernel_param *kp)
 		return -EINVAL;
 	if (!val)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_admin_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_admin_capable(NULL))
 		return -EPERM;
 
 	i = match_string(audit_mode_names, AUDIT_MAX_INDEX, val);
@@ -1563,7 +1563,7 @@ static int param_get_mode(char *buffer, const struct kernel_param *kp)
 {
 	if (!apparmor_enabled)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_view_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_view_capable(NULL))
 		return -EPERM;
 
 	return sprintf(buffer, "%s", aa_profile_mode_names[aa_g_profile_mode]);
@@ -1577,7 +1577,7 @@ static int param_set_mode(const char *val, const struct kernel_param *kp)
 		return -EINVAL;
 	if (!val)
 		return -EINVAL;
-	if (apparmor_initialized && !policy_admin_capable(NULL))
+	if (apparmor_initialized && !aa_current_policy_admin_capable(NULL))
 		return -EPERM;
 
 	i = match_string(aa_profile_mode_names, APPARMOR_MODE_NAMES_MAX_INDEX,
@@ -1713,7 +1713,7 @@ static int __init alloc_buffers(void)
 static int apparmor_dointvec(struct ctl_table *table, int write,
 			     void *buffer, size_t *lenp, loff_t *ppos)
 {
-	if (!policy_admin_capable(NULL))
+	if (!aa_current_policy_admin_capable(NULL))
 		return -EPERM;
 	if (!apparmor_enabled)
 		return -EINVAL;
