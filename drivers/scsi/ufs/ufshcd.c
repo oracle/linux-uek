@@ -4495,7 +4495,7 @@ EXPORT_SYMBOL_GPL(ufshcd_make_hba_operational);
  * ufshcd_hba_stop - Send controller to reset state
  * @hba: per adapter instance
  */
-static inline void ufshcd_hba_stop(struct ufs_hba *hba)
+void ufshcd_hba_stop(struct ufs_hba *hba)
 {
 	unsigned long flags;
 	int err;
@@ -4514,6 +4514,7 @@ static inline void ufshcd_hba_stop(struct ufs_hba *hba)
 	if (err)
 		dev_err(hba->dev, "%s: Controller disable failed\n", __func__);
 }
+EXPORT_SYMBOL_GPL(ufshcd_hba_stop);
 
 /**
  * ufshcd_hba_execute_hce - initialize the controller
@@ -8607,7 +8608,7 @@ static int ufshcd_set_dev_pwr_mode(struct ufs_hba *hba,
 		sdev_printk(KERN_WARNING, sdp,
 			    "START_STOP failed for power mode: %d, result %x\n",
 			    pwr_mode, ret);
-		if (driver_byte(ret) == DRIVER_SENSE)
+		if (ret > 0 && scsi_sense_valid(&sshdr))
 			scsi_print_sense_hdr(sdp, NULL, &sshdr);
 	}
 
@@ -9772,10 +9773,7 @@ static const struct dev_pm_ops ufs_rpmb_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(NULL, ufshcd_rpmb_resume)
 };
 
-/**
- * Describes the ufs rpmb wlun.
- * Used only to send uac.
- */
+/* ufs_rpmb_wlun_template - Describes UFS RPMB WLUN. Used only to send UAC. */
 static struct scsi_driver ufs_rpmb_wlun_template = {
 	.gendrv = {
 		.name = "ufs_rpmb_wlun",
