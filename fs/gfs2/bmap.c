@@ -967,7 +967,8 @@ static int gfs2_write_lock(struct inode *inode)
 	struct gfs2_sbd *sdp = GFS2_SB(inode);
 	int error;
 
-	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, 0, &ip->i_gh);
+	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, LM_FLAG_OUTER,
+			 &ip->i_gh);
 	error = gfs2_glock_nq(&ip->i_gh);
 	if (error)
 		goto out_uninit;
@@ -1016,7 +1017,7 @@ static void gfs2_iomap_page_done(struct inode *inode, loff_t pos,
 				 unsigned copied, struct page *page,
 				 struct iomap *iomap)
 {
-	struct gfs2_trans *tr = current->journal_info;
+	struct gfs2_trans *tr = current_trans();
 	struct gfs2_inode *ip = GFS2_I(inode);
 	struct gfs2_sbd *sdp = GFS2_SB(inode);
 
@@ -1099,7 +1100,7 @@ static int gfs2_iomap_begin_write(struct inode *inode, loff_t pos,
 			}
 		}
 
-		tr = current->journal_info;
+		tr = current_trans();
 		if (tr->tr_num_buf_new)
 			__mark_inode_dirty(inode, I_DIRTY_DATASYNC);
 
@@ -1347,7 +1348,7 @@ int gfs2_alloc_extent(struct inode *inode, u64 lblock, u64 *dblock,
 static int gfs2_block_zero_range(struct inode *inode, loff_t from,
 				 unsigned int length)
 {
-	BUG_ON(current->journal_info);
+	BUG_ON(current_trans());
 	return iomap_zero_range(inode, from, length, NULL, &gfs2_iomap_ops);
 }
 
@@ -1386,7 +1387,7 @@ static int gfs2_journaled_truncate(struct inode *inode, u64 oldsize, u64 newsize
 		truncate_pagecache(inode, oldsize - chunk);
 		oldsize -= chunk;
 
-		tr = current->journal_info;
+		tr = current_trans();
 		if (!test_bit(TR_TOUCHED, &tr->tr_flags))
 			continue;
 
@@ -1447,7 +1448,7 @@ static int trunc_start(struct inode *inode, u64 newsize)
 
 out:
 	brelse(dibh);
-	if (current->journal_info)
+	if (current_trans())
 		gfs2_trans_end(sdp);
 	return error;
 }
@@ -1555,7 +1556,7 @@ more_rgrps:
 		   the rgrp. So we estimate. We know it can't be more than
 		   the dinode's i_blocks and we don't want to exceed the
 		   journal flush threshold, sd_log_thresh2. */
-		if (current->journal_info == NULL) {
+		if (!current_trans()) {
 			unsigned int jblocks_rqsted, revokes;
 
 			jblocks_rqsted = rgd->rd_length + RES_DINODE +
@@ -1577,7 +1578,7 @@ more_rgrps:
 			down_write(&ip->i_rw_mutex);
 		}
 		/* check if we will exceed the transaction blocks requested */
-		tr = current->journal_info;
+		tr = current_trans();
 		if (tr->tr_num_buf_new + RES_STATFS +
 		    RES_QUOTA >= atomic_read(&sdp->sd_log_thresh2)) {
 			/* We set blks_outside_rgrp to ensure the loop will
@@ -1625,7 +1626,7 @@ out_unlock:
 	if (!ret && blks_outside_rgrp) { /* If buffer still has non-zero blocks
 					    outside the rgrp we just processed,
 					    do it all over again. */
-		if (current->journal_info) {
+		if (current_trans()) {
 			struct buffer_head *dibh;
 
 			ret = gfs2_meta_inode_buffer(ip, &dibh);
@@ -1991,7 +1992,7 @@ static int punch_hole(struct gfs2_inode *ip, u64 offset, u64 length)
 	}
 
 	if (btotal) {
-		if (current->journal_info == NULL) {
+		if (!current_trans()) {
 			ret = gfs2_trans_begin(sdp, RES_DINODE + RES_STATFS +
 					       RES_QUOTA, 0);
 			if (ret)
@@ -2011,7 +2012,7 @@ static int punch_hole(struct gfs2_inode *ip, u64 offset, u64 length)
 out:
 	if (gfs2_holder_initialized(&rd_gh))
 		gfs2_glock_dq_uninit(&rd_gh);
-	if (current->journal_info) {
+	if (current_trans()) {
 		up_write(&ip->i_rw_mutex);
 		gfs2_trans_end(sdp);
 		cond_resched();
@@ -2436,7 +2437,7 @@ static int gfs2_journaled_truncate_range(struct inode *inode, loff_t offset,
 		offset += chunk;
 		length -= chunk;
 
-		tr = current->journal_info;
+		tr = current_trans();
 		if (!test_bit(TR_TOUCHED, &tr->tr_flags))
 			continue;
 
@@ -2501,7 +2502,7 @@ int __gfs2_punch_hole(struct file *file, loff_t offset, loff_t length)
 	}
 
 	if (gfs2_is_jdata(ip)) {
-		BUG_ON(!current->journal_info);
+		BUG_ON(!current_trans());
 		gfs2_journaled_truncate_range(inode, offset, length);
 	} else
 		truncate_pagecache_range(inode, offset, offset + length - 1);
@@ -2509,14 +2510,14 @@ int __gfs2_punch_hole(struct file *file, loff_t offset, loff_t length)
 	file_update_time(file);
 	mark_inode_dirty(inode);
 
-	if (current->journal_info)
+	if (current_trans())
 		gfs2_trans_end(sdp);
 
 	if (!gfs2_is_stuffed(ip))
 		error = punch_hole(ip, offset, length);
 
 out:
-	if (current->journal_info)
+	if (current_trans())
 		gfs2_trans_end(sdp);
 	return error;
 }

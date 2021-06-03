@@ -49,6 +49,20 @@ enum {
 #define LM_ST_DEFERRED		2
 #define LM_ST_SHARED		3
 
+static inline bool gfs2_holder_is_compatible(struct gfs2_holder *gh, int state) {
+	BUG_ON(state == LM_ST_UNLOCKED);
+	switch(gh->gh_state) {
+	case LM_ST_EXCLUSIVE:
+		return state != LM_ST_DEFERRED;
+	case LM_ST_DEFERRED:
+		return state == LM_ST_DEFERRED;
+	case LM_ST_SHARED:
+		return state == LM_ST_SHARED;
+	default:
+		return false;
+	}
+}
+
 /*
  * lm_lock() flags
  *
@@ -80,6 +94,12 @@ enum {
  * This holder agrees to share the lock within this node. In other words,
  * the glock is held in EX mode according to DLM, but local holders on the
  * same node can share it.
+ *
+ * LM_FLAG_OUTER
+ * Use set_current_holds_glock() to indicate when the current task is holding
+ * this "upper" glock, and current_holds_glock() to detect when the current
+ * task is trying to take another glock.  Used to prevent deadlocks involving
+ * the inode glock during page faults.
  */
 
 #define LM_FLAG_TRY		0x0001
@@ -88,9 +108,10 @@ enum {
 #define LM_FLAG_ANY		0x0008
 #define LM_FLAG_PRIORITY	0x0010
 #define LM_FLAG_NODE_SCOPE	0x0020
-#define GL_ASYNC		0x0040
-#define GL_EXACT		0x0080
-#define GL_SKIP			0x0100
+#define LM_FLAG_OUTER		0x0040
+#define GL_ASYNC		0x0080
+#define GL_EXACT		0x0100
+#define GL_SKIP			0x0200
 #define GL_NOCACHE		0x0400
   
 /*

@@ -204,7 +204,7 @@ restart:
 	ret = 0;
 	if (time_after(jiffies, flush_start + (HZ * 600))) {
 		fs_err(sdp, "Error: In %s for ten minutes! t=%d\n",
-		       __func__, current->journal_info ? 1 : 0);
+		       __func__, current_trans() ? 1 : 0);
 		dump_ail_list(sdp);
 		goto out;
 	}
@@ -971,7 +971,7 @@ static void empty_ail1_list(struct gfs2_sbd *sdp)
 	for (;;) {
 		if (time_after(jiffies, start + (HZ * 600))) {
 			fs_err(sdp, "Error: In %s for 10 minutes! t=%d\n",
-			       __func__, current->journal_info ? 1 : 0);
+			       __func__, current_trans() ? 1 : 0);
 			dump_ail_list(sdp);
 			return;
 		}

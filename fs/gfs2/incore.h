@@ -871,5 +871,46 @@ static inline unsigned gfs2_max_stuffed_size(const struct gfs2_inode *ip)
 	return GFS2_SB(&ip->i_inode)->sd_sb.sb_bsize - sizeof(struct gfs2_dinode);
 }
 
+/*
+ * Transactions are always memory aligned, so we use bit 0 of
+ * current->journal_info to indicate when we're holding a glock and so taking
+ * random additional glocks might deadlock, and bit 1 to indicate when such an
+ * operation needs to be retried after dropping and re-acquiring that "outer"
+ * glock.
+ */
+
+static inline struct gfs2_trans *current_trans(void)
+{
+	return (void *)((long)current->journal_info & ~3);
+}
+
+static inline void set_current_trans(struct gfs2_trans *tr)
+{
+	long flags = (long)current->journal_info & 3;
+	current->journal_info = (void *)((long)tr | flags);
+}
+
+static inline bool current_holds_glock(void)
+{
+	return (long)current->journal_info & 1;
+}
+
+static inline bool current_needs_retry(void)
+{
+	return (long)current->journal_info & 2;
+}
+
+static inline void set_current_holds_glock(bool b)
+{
+	current->journal_info =
+		(void *)(((long)current->journal_info & ~1) | b);
+}
+
+static inline void set_current_needs_retry(bool b)
+{
+	current->journal_info =
+		(void *)(((long)current->journal_info & ~2) | (b << 1));
+}
+
 #endif /* __INCORE_DOT_H__ */
 

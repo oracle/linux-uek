@@ -95,7 +95,7 @@ static int gfs2_writepage(struct page *page, struct writeback_control *wbc)
 
 	if (gfs2_assert_withdraw(sdp, gfs2_glock_is_held_excl(ip->i_gl)))
 		goto out;
-	if (current->journal_info)
+	if (current_trans())
 		goto redirty;
 	return iomap_writepage(page, wbc, &wpc, &gfs2_writeback_ops);
 
@@ -182,7 +182,7 @@ static int gfs2_jdata_writepage(struct page *page, struct writeback_control *wbc
 
 	if (gfs2_assert_withdraw(sdp, gfs2_glock_is_held_excl(ip->i_gl)))
 		goto out;
-	if (PageChecked(page) || current->journal_info)
+	if (PageChecked(page) || current_trans())
 		goto out_ignore;
 	return __gfs2_jdata_writepage(page, wbc);
 
@@ -620,7 +620,7 @@ out:
  
 static int jdata_set_page_dirty(struct page *page)
 {
-	if (current->journal_info)
+	if (current_trans())
 		SetPageChecked(page);
 	return __set_page_dirty_buffers(page);
 }
