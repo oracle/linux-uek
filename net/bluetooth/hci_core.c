@@ -545,24 +545,24 @@ static void hci_set_event_mask_page_2(struct hci_request *req)
 	u8 events[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 	bool changed = false;
 
-	/* If Connectionless Slave Broadcast master role is supported
+	/* If Connectionless Peripheral Broadcast central role is supported
 	 * enable all necessary events for it.
 	 */
-	if (lmp_csb_master_capable(hdev)) {
+	if (lmp_cpb_central_capable(hdev)) {
 		events[1] |= 0x40;	/* Triggered Clock Capture */
 		events[1] |= 0x80;	/* Synchronization Train Complete */
-		events[2] |= 0x10;	/* Slave Page Response Timeout */
-		events[2] |= 0x20;	/* CSB Channel Map Change */
+		events[2] |= 0x10;	/* Peripheral Page Response Timeout */
+		events[2] |= 0x20;	/* CPB Channel Map Change */
 		changed = true;
 	}
 
-	/* If Connectionless Slave Broadcast slave role is supported
+	/* If Connectionless Peripheral Broadcast peripheral role is supported
 	 * enable all necessary events for it.
 	 */
-	if (lmp_csb_slave_capable(hdev)) {
+	if (lmp_cpb_peripheral_capable(hdev)) {
 		events[2] |= 0x01;	/* Synchronization Train Received */
-		events[2] |= 0x02;	/* CSB Receive */
-		events[2] |= 0x04;	/* CSB Timeout */
+		events[2] |= 0x02;	/* CPB Receive */
+		events[2] |= 0x04;	/* CPB Timeout */
 		events[2] |= 0x08;	/* Truncated Page Complete */
 		changed = true;
 	}
@@ -1716,15 +1716,8 @@ int hci_dev_do_close(struct hci_dev *hdev)
 
 	BT_DBG("%s %p", hdev->name, hdev);
 
-	if (!hci_dev_test_flag(hdev, HCI_UNREGISTER) &&
-	    !hci_dev_test_flag(hdev, HCI_USER_CHANNEL) &&
-	    test_bit(HCI_UP, &hdev->flags)) {
-		/* Execute vendor specific shutdown routine */
-		if (hdev->shutdown)
-			hdev->shutdown(hdev);
-	}
-
 	cancel_delayed_work(&hdev->power_off);
+	cancel_delayed_work(&hdev->ncmd_timer);
 
 	hci_request_cancel_all(hdev);
 	hci_req_sync_lock(hdev);
@@ -1798,6 +1791,14 @@ int hci_dev_do_close(struct hci_dev *hdev)
 		set_bit(HCI_INIT, &hdev->flags);
 		__hci_req_sync(hdev, hci_reset_req, 0, HCI_CMD_TIMEOUT, NULL);
 		clear_bit(HCI_INIT, &hdev->flags);
+	}
+
+	if (!hci_dev_test_flag(hdev, HCI_UNREGISTER) &&
+	    !hci_dev_test_flag(hdev, HCI_USER_CHANNEL) &&
+	    test_bit(HCI_UP, &hdev->flags)) {
+		/* Execute vendor specific shutdown routine */
+		if (hdev->shutdown)
+			hdev->shutdown(hdev);
 	}
 
 	/* flush cmd  work */
@@ -2770,6 +2771,24 @@ static void hci_cmd_timeout(struct work_struct *work)
 
 	atomic_set(&hdev->cmd_cnt, 1);
 	queue_work(hdev->workqueue, &hdev->cmd_work);
+}
+
+/* HCI ncmd timer function */
+static void hci_ncmd_timeout(struct work_struct *work)
+{
+	struct hci_dev *hdev = container_of(work, struct hci_dev,
+					    ncmd_timer.work);
+
+	bt_dev_err(hdev, "Controller not accepting commands anymore: ncmd = 0");
+
+	/* During HCI_INIT phase no events can be injected if the ncmd timer
+	 * triggers since the procedure has its own timeout handling.
+	 */
+	if (test_bit(HCI_INIT, &hdev->flags))
+		return;
+
+	/* This is an irrecoverable state, inject hardware error event */
+	hci_reset_dev(hdev);
 }
 
 struct oob_data *hci_find_remote_oob_data(struct hci_dev *hdev,
@@ -3836,6 +3855,7 @@ struct hci_dev *hci_alloc_dev(void)
 	init_waitqueue_head(&hdev->suspend_wait_q);
 
 	INIT_DELAYED_WORK(&hdev->cmd_timer, hci_cmd_timeout);
+	INIT_DELAYED_WORK(&hdev->ncmd_timer, hci_ncmd_timeout);
 
 	hci_request_setup(hdev);
 
@@ -4072,6 +4092,8 @@ int hci_reset_dev(struct hci_dev *hdev)
 
 	hci_skb_pkt_type(skb) = HCI_EVENT_PKT;
 	skb_put_data(skb, hw_err, 3);
+
+	bt_dev_err(hdev, "Injecting HCI hardware error event");
 
 	/* Send Hardware Error to upper stack */
 	return hci_recv_frame(hdev, skb);
