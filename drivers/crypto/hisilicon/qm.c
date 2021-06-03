@@ -95,6 +95,7 @@
 #define QM_DOORBELL_SQ_CQ_BASE_V2	0x1000
 #define QM_DOORBELL_EQ_AEQ_BASE_V2	0x2000
 #define QM_QUE_ISO_CFG_V		0x0030
+#define QM_PAGE_SIZE			0x0034
 #define QM_QUE_ISO_EN			0x100154
 #define QM_CAPBILITY			0x100158
 #define QM_QP_NUN_MASK			GENMASK(10, 0)
@@ -155,11 +156,15 @@
 #define QM_RAS_CE_THRESHOLD		0x1000f8
 #define QM_RAS_CE_TIMES_PER_IRQ		1
 #define QM_RAS_MSI_INT_SEL		0x1040f4
+#define QM_OOO_SHUTDOWN_SEL		0x1040f8
 
 #define QM_RESET_WAIT_TIMEOUT		400
 #define QM_PEH_VENDOR_ID		0x1000d8
 #define ACC_VENDOR_ID_VALUE		0x5a5a
 #define QM_PEH_DFX_INFO0		0x1000fc
+#define QM_PEH_DFX_INFO1		0x100100
+#define QM_PEH_DFX_MASK			(BIT(0) | BIT(2))
+#define QM_PEH_MSI_FINISH_MASK		GENMASK(19, 16)
 #define ACC_PEH_SRIOV_CTRL_VF_MSE_SHIFT	3
 #define ACC_PEH_MSI_DISABLE		GENMASK(31, 0)
 #define ACC_MASTER_GLOBAL_CTRL_SHUTDOWN	0x1
@@ -170,6 +175,7 @@
 #define QM_RAS_NFE_MBIT_DISABLE		~QM_ECC_MBIT
 #define ACC_AM_ROB_ECC_INT_STS		0x300104
 #define ACC_ROB_ECC_ERR_MULTPL		BIT(1)
+#define QM_MSI_CAP_ENABLE		BIT(16)
 
 #define QM_DFX_MB_CNT_VF		0x104010
 #define QM_DFX_DB_CNT_VF		0x104020
@@ -351,6 +357,7 @@ struct hisi_qm_hw_ops {
 	void (*hw_error_uninit)(struct hisi_qm *qm);
 	enum acc_err_result (*hw_error_handle)(struct hisi_qm *qm);
 	int (*stop_qp)(struct hisi_qp *qp);
+	int (*set_msi)(struct hisi_qm *qm, bool set);
 };
 
 struct qm_dfx_item {
@@ -788,6 +795,32 @@ static void qm_init_qp_status(struct hisi_qp *qp)
 	qp_status->cq_head = 0;
 	qp_status->cqc_phase = true;
 	atomic_set(&qp_status->used, 0);
+}
+
+static void qm_init_prefetch(struct hisi_qm *qm)
+{
+	struct device *dev = &qm->pdev->dev;
+	u32 page_type = 0x0;
+
+	if (qm->ver < QM_HW_V3)
+		return;
+
+	switch (PAGE_SIZE) {
+	case SZ_4K:
+		page_type = 0x0;
+		break;
+	case SZ_16K:
+		page_type = 0x1;
+		break;
+	case SZ_64K:
+		page_type = 0x2;
+		break;
+	default:
+		dev_err(dev, "system page size is not support: %lu, default set to 4KB",
+			PAGE_SIZE);
+	}
+
+	writel(page_type, qm->io_base + QM_PAGE_SIZE);
 }
 
 static void qm_vft_data_cfg(struct hisi_qm *qm, enum vft_type type, u32 base,
@@ -1623,13 +1656,9 @@ static void qm_hw_error_init_v1(struct hisi_qm *qm, u32 ce, u32 nfe, u32 fe)
 	writel(QM_ABNORMAL_INT_MASK_VALUE, qm->io_base + QM_ABNORMAL_INT_MASK);
 }
 
-static void qm_hw_error_init_v2(struct hisi_qm *qm, u32 ce, u32 nfe, u32 fe)
+static void qm_hw_error_cfg(struct hisi_qm *qm, u32 ce, u32 nfe, u32 fe)
 {
-	u32 irq_enable = ce | nfe | fe;
-	u32 irq_unmask = ~irq_enable;
-
 	qm->error_mask = ce | nfe | fe;
-
 	/* clear QM hw residual error source */
 	writel(QM_ABNORMAL_INT_SOURCE_CLR,
 	       qm->io_base + QM_ABNORMAL_INT_SOURCE);
@@ -1639,6 +1668,14 @@ static void qm_hw_error_init_v2(struct hisi_qm *qm, u32 ce, u32 nfe, u32 fe)
 	writel(QM_RAS_CE_TIMES_PER_IRQ, qm->io_base + QM_RAS_CE_THRESHOLD);
 	writel(nfe, qm->io_base + QM_RAS_NFE_ENABLE);
 	writel(fe, qm->io_base + QM_RAS_FE_ENABLE);
+}
+
+static void qm_hw_error_init_v2(struct hisi_qm *qm, u32 ce, u32 nfe, u32 fe)
+{
+	u32 irq_enable = ce | nfe | fe;
+	u32 irq_unmask = ~irq_enable;
+
+	qm_hw_error_cfg(qm, ce, nfe, fe);
 
 	irq_unmask &= readl(qm->io_base + QM_ABNORMAL_INT_MASK);
 	writel(irq_unmask, qm->io_base + QM_ABNORMAL_INT_MASK);
@@ -1647,6 +1684,28 @@ static void qm_hw_error_init_v2(struct hisi_qm *qm, u32 ce, u32 nfe, u32 fe)
 static void qm_hw_error_uninit_v2(struct hisi_qm *qm)
 {
 	writel(QM_ABNORMAL_INT_MASK_VALUE, qm->io_base + QM_ABNORMAL_INT_MASK);
+}
+
+static void qm_hw_error_init_v3(struct hisi_qm *qm, u32 ce, u32 nfe, u32 fe)
+{
+	u32 irq_enable = ce | nfe | fe;
+	u32 irq_unmask = ~irq_enable;
+
+	qm_hw_error_cfg(qm, ce, nfe, fe);
+
+	/* enable close master ooo when hardware error happened */
+	writel(nfe & (~QM_DB_RANDOM_INVALID), qm->io_base + QM_OOO_SHUTDOWN_SEL);
+
+	irq_unmask &= readl(qm->io_base + QM_ABNORMAL_INT_MASK);
+	writel(irq_unmask, qm->io_base + QM_ABNORMAL_INT_MASK);
+}
+
+static void qm_hw_error_uninit_v3(struct hisi_qm *qm)
+{
+	writel(QM_ABNORMAL_INT_MASK_VALUE, qm->io_base + QM_ABNORMAL_INT_MASK);
+
+	/* disable close master ooo when hardware error happened */
+	writel(0x0, qm->io_base + QM_OOO_SHUTDOWN_SEL);
 }
 
 static void qm_log_hw_error(struct hisi_qm *qm, u32 error_status)
@@ -1715,15 +1774,132 @@ static enum acc_err_result qm_hw_error_handle_v2(struct hisi_qm *qm)
 	return ACC_ERR_RECOVERED;
 }
 
+static u32 qm_get_hw_error_status(struct hisi_qm *qm)
+{
+	return readl(qm->io_base + QM_ABNORMAL_INT_STATUS);
+}
+
+static u32 qm_get_dev_err_status(struct hisi_qm *qm)
+{
+	return qm->err_ini->get_dev_hw_err_status(qm);
+}
+
+/* Check if the error causes the master ooo block */
+static int qm_check_dev_error(struct hisi_qm *qm)
+{
+	u32 val, dev_val;
+
+	if (qm->fun_type == QM_HW_VF)
+		return 0;
+
+	val = qm_get_hw_error_status(qm);
+	dev_val = qm_get_dev_err_status(qm);
+
+	if (qm->ver < QM_HW_V3)
+		return (val & QM_ECC_MBIT) ||
+		       (dev_val & qm->err_info.ecc_2bits_mask);
+
+	return (val & readl(qm->io_base + QM_OOO_SHUTDOWN_SEL)) ||
+	       (dev_val & (~qm->err_info.dev_ce_mask));
+}
+
 static int qm_stop_qp(struct hisi_qp *qp)
 {
 	return qm_mb(qp->qm, QM_MB_CMD_STOP_QP, 0, qp->qp_id, 0);
+}
+
+static int qm_set_msi(struct hisi_qm *qm, bool set)
+{
+	struct pci_dev *pdev = qm->pdev;
+
+	if (set) {
+		pci_write_config_dword(pdev, pdev->msi_cap + PCI_MSI_MASK_64,
+				       0);
+	} else {
+		pci_write_config_dword(pdev, pdev->msi_cap + PCI_MSI_MASK_64,
+				       ACC_PEH_MSI_DISABLE);
+		if (qm->err_status.is_qm_ecc_mbit ||
+		    qm->err_status.is_dev_ecc_mbit)
+			return 0;
+
+		mdelay(1);
+		if (readl(qm->io_base + QM_PEH_DFX_INFO0))
+			return -EFAULT;
+	}
+
+	return 0;
+}
+
+static void qm_wait_msi_finish(struct hisi_qm *qm)
+{
+	struct pci_dev *pdev = qm->pdev;
+	u32 cmd = ~0;
+	int cnt = 0;
+	u32 val;
+	int ret;
+
+	while (true) {
+		pci_read_config_dword(pdev, pdev->msi_cap +
+				      PCI_MSI_PENDING_64, &cmd);
+		if (!cmd)
+			break;
+
+		if (++cnt > MAX_WAIT_COUNTS) {
+			pci_warn(pdev, "failed to empty MSI PENDING!\n");
+			break;
+		}
+
+		udelay(1);
+	}
+
+	ret = readl_relaxed_poll_timeout(qm->io_base + QM_PEH_DFX_INFO0,
+					 val, !(val & QM_PEH_DFX_MASK),
+					 POLL_PERIOD, POLL_TIMEOUT);
+	if (ret)
+		pci_warn(pdev, "failed to empty PEH MSI!\n");
+
+	ret = readl_relaxed_poll_timeout(qm->io_base + QM_PEH_DFX_INFO1,
+					 val, !(val & QM_PEH_MSI_FINISH_MASK),
+					 POLL_PERIOD, POLL_TIMEOUT);
+	if (ret)
+		pci_warn(pdev, "failed to finish MSI operation!\n");
+}
+
+static int qm_set_msi_v3(struct hisi_qm *qm, bool set)
+{
+	struct pci_dev *pdev = qm->pdev;
+	int ret = -ETIMEDOUT;
+	u32 cmd, i;
+
+	pci_read_config_dword(pdev, pdev->msi_cap, &cmd);
+	if (set)
+		cmd |= QM_MSI_CAP_ENABLE;
+	else
+		cmd &= ~QM_MSI_CAP_ENABLE;
+
+	pci_write_config_dword(pdev, pdev->msi_cap, cmd);
+	if (set) {
+		for (i = 0; i < MAX_WAIT_COUNTS; i++) {
+			pci_read_config_dword(pdev, pdev->msi_cap, &cmd);
+			if (cmd & QM_MSI_CAP_ENABLE)
+				return 0;
+
+			udelay(1);
+		}
+	} else {
+		udelay(WAIT_PERIOD_US_MIN);
+		qm_wait_msi_finish(qm);
+		ret = 0;
+	}
+
+	return ret;
 }
 
 static const struct hisi_qm_hw_ops qm_hw_ops_v1 = {
 	.qm_db = qm_db_v1,
 	.get_irq_num = qm_get_irq_num_v1,
 	.hw_error_init = qm_hw_error_init_v1,
+	.set_msi = qm_set_msi,
 };
 
 static const struct hisi_qm_hw_ops qm_hw_ops_v2 = {
@@ -1733,16 +1909,18 @@ static const struct hisi_qm_hw_ops qm_hw_ops_v2 = {
 	.hw_error_init = qm_hw_error_init_v2,
 	.hw_error_uninit = qm_hw_error_uninit_v2,
 	.hw_error_handle = qm_hw_error_handle_v2,
+	.set_msi = qm_set_msi,
 };
 
 static const struct hisi_qm_hw_ops qm_hw_ops_v3 = {
 	.get_vft = qm_get_vft_v2,
 	.qm_db = qm_db_v2,
 	.get_irq_num = qm_get_irq_num_v2,
-	.hw_error_init = qm_hw_error_init_v2,
-	.hw_error_uninit = qm_hw_error_uninit_v2,
+	.hw_error_init = qm_hw_error_init_v3,
+	.hw_error_uninit = qm_hw_error_uninit_v3,
 	.hw_error_handle = qm_hw_error_handle_v2,
 	.stop_qp = qm_stop_qp,
+	.set_msi = qm_set_msi_v3,
 };
 
 static void *qm_get_avail_sqe(struct hisi_qp *qp)
@@ -2017,11 +2195,8 @@ static int qm_drain_qp(struct hisi_qp *qp)
 	int ret = 0, i = 0;
 	void *addr;
 
-	/*
-	 * No need to judge if ECC multi-bit error occurs because the
-	 * master OOO will be blocked.
-	 */
-	if (qm->err_status.is_qm_ecc_mbit || qm->err_status.is_dev_ecc_mbit)
+	/* No need to judge if master OOO is blocked. */
+	if (qm_check_dev_error(qm))
 		return 0;
 
 	/* Kunpeng930 supports drain qp by device */
@@ -2826,6 +3001,8 @@ static int __hisi_qm_start(struct hisi_qm *qm)
 	if (ret)
 		return ret;
 
+	qm_init_prefetch(qm);
+
 	writel(0x0, qm->io_base + QM_VF_EQ_INT_MASK);
 	writel(0x0, qm->io_base + QM_VF_AEQ_INT_MASK);
 
@@ -3527,16 +3704,14 @@ pci_ers_result_t hisi_qm_dev_err_detected(struct pci_dev *pdev,
 }
 EXPORT_SYMBOL_GPL(hisi_qm_dev_err_detected);
 
-static u32 qm_get_hw_error_status(struct hisi_qm *qm)
-{
-	return readl(qm->io_base + QM_ABNORMAL_INT_STATUS);
-}
-
 static int qm_check_req_recv(struct hisi_qm *qm)
 {
 	struct pci_dev *pdev = qm->pdev;
 	int ret;
 	u32 val;
+
+	if (qm->ver >= QM_HW_V3)
+		return 0;
 
 	writel(ACC_VENDOR_ID_VALUE, qm->io_base + QM_PEH_VENDOR_ID);
 	ret = readl_relaxed_poll_timeout(qm->io_base + QM_PEH_VENDOR_ID, val,
@@ -3606,28 +3781,6 @@ static int qm_set_vf_mse(struct hisi_qm *qm, bool set)
 	}
 
 	return -ETIMEDOUT;
-}
-
-static int qm_set_msi(struct hisi_qm *qm, bool set)
-{
-	struct pci_dev *pdev = qm->pdev;
-
-	if (set) {
-		pci_write_config_dword(pdev, pdev->msi_cap + PCI_MSI_MASK_64,
-				       0);
-	} else {
-		pci_write_config_dword(pdev, pdev->msi_cap + PCI_MSI_MASK_64,
-				       ACC_PEH_MSI_DISABLE);
-		if (qm->err_status.is_qm_ecc_mbit ||
-		    qm->err_status.is_dev_ecc_mbit)
-			return 0;
-
-		mdelay(1);
-		if (readl(qm->io_base + QM_PEH_DFX_INFO0))
-			return -EFAULT;
-	}
-
-	return 0;
 }
 
 static int qm_vf_reset_prepare(struct hisi_qm *qm,
@@ -3712,6 +3865,10 @@ static void qm_dev_ecc_mbit_handle(struct hisi_qm *qm)
 {
 	u32 nfe_enb = 0;
 
+	/* Kunpeng930 hardware automatically close master ooo when NFE occurs */
+	if (qm->ver >= QM_HW_V3)
+		return;
+
 	if (!qm->err_status.is_dev_ecc_mbit &&
 	    qm->err_status.is_qm_ecc_mbit &&
 	    qm->err_ini->close_axi_master_ooo) {
@@ -3748,7 +3905,7 @@ static int qm_soft_reset(struct hisi_qm *qm)
 		}
 	}
 
-	ret = qm_set_msi(qm, false);
+	ret = qm->ops->set_msi(qm, false);
 	if (ret) {
 		pci_err(pdev, "Fails to disable PEH MSI bit.\n");
 		return ret;
@@ -3769,6 +3926,9 @@ static int qm_soft_reset(struct hisi_qm *qm)
 		pci_emerg(pdev, "Bus lock! Please reset system.\n");
 		return ret;
 	}
+
+	if (qm->err_ini->close_sva_prefetch)
+		qm->err_ini->close_sva_prefetch(qm);
 
 	ret = qm_set_pf_mse(qm, false);
 	if (ret) {
@@ -3830,11 +3990,6 @@ restart_fail:
 	return ret;
 }
 
-static u32 qm_get_dev_err_status(struct hisi_qm *qm)
-{
-	return qm->err_ini->get_dev_hw_err_status(qm);
-}
-
 static int qm_dev_hw_init(struct hisi_qm *qm)
 {
 	return qm->err_ini->hw_init(qm);
@@ -3843,6 +3998,12 @@ static int qm_dev_hw_init(struct hisi_qm *qm)
 static void qm_restart_prepare(struct hisi_qm *qm)
 {
 	u32 value;
+
+	if (qm->err_ini->open_sva_prefetch)
+		qm->err_ini->open_sva_prefetch(qm);
+
+	if (qm->ver >= QM_HW_V3)
+		return;
 
 	if (!qm->err_status.is_qm_ecc_mbit &&
 	    !qm->err_status.is_dev_ecc_mbit)
@@ -3863,14 +4024,14 @@ static void qm_restart_prepare(struct hisi_qm *qm)
 
 	/* clear AM Reorder Buffer ecc mbit source */
 	writel(ACC_ROB_ECC_ERR_MULTPL, qm->io_base + ACC_AM_ROB_ECC_INT_STS);
-
-	if (qm->err_ini->open_axi_master_ooo)
-		qm->err_ini->open_axi_master_ooo(qm);
 }
 
 static void qm_restart_done(struct hisi_qm *qm)
 {
 	u32 value;
+
+	if (qm->ver >= QM_HW_V3)
+		goto clear_flags;
 
 	if (!qm->err_status.is_qm_ecc_mbit &&
 	    !qm->err_status.is_dev_ecc_mbit)
@@ -3881,6 +4042,7 @@ static void qm_restart_done(struct hisi_qm *qm)
 	value |= qm->err_info.msi_wr_port;
 	writel(value, qm->io_base + ACC_AM_CFG_PORT_WR_EN);
 
+clear_flags:
 	qm->err_status.is_qm_ecc_mbit = false;
 	qm->err_status.is_dev_ecc_mbit = false;
 }
@@ -3890,7 +4052,7 @@ static int qm_controller_reset_done(struct hisi_qm *qm)
 	struct pci_dev *pdev = qm->pdev;
 	int ret;
 
-	ret = qm_set_msi(qm, true);
+	ret = qm->ops->set_msi(qm, true);
 	if (ret) {
 		pci_err(pdev, "Fails to enable PEH MSI bit!\n");
 		return ret;
@@ -3917,6 +4079,9 @@ static int qm_controller_reset_done(struct hisi_qm *qm)
 	}
 
 	qm_restart_prepare(qm);
+	hisi_qm_dev_err_init(qm);
+	if (qm->err_ini->open_axi_master_ooo)
+		qm->err_ini->open_axi_master_ooo(qm);
 
 	ret = qm_restart(qm);
 	if (ret) {
@@ -3938,7 +4103,6 @@ static int qm_controller_reset_done(struct hisi_qm *qm)
 		return -EPERM;
 	}
 
-	hisi_qm_dev_err_init(qm);
 	qm_restart_done(qm);
 
 	clear_bit(QM_RESETTING, &qm->misc_ctl);
@@ -4005,21 +4169,6 @@ pci_ers_result_t hisi_qm_dev_slot_reset(struct pci_dev *pdev)
 }
 EXPORT_SYMBOL_GPL(hisi_qm_dev_slot_reset);
 
-/* check the interrupt is ecc-mbit error or not */
-static int qm_check_dev_error(struct hisi_qm *qm)
-{
-	int ret;
-
-	if (qm->fun_type == QM_HW_VF)
-		return 0;
-
-	ret = qm_get_hw_error_status(qm) & QM_ECC_MBIT;
-	if (ret)
-		return ret;
-
-	return (qm_get_dev_err_status(qm) & qm->err_info.ecc_2bits_mask);
-}
-
 void hisi_qm_reset_prepare(struct pci_dev *pdev)
 {
 	struct hisi_qm *pf_qm = pci_get_drvdata(pci_physfn(pdev));
@@ -4085,6 +4234,14 @@ void hisi_qm_reset_done(struct pci_dev *pdev)
 	struct hisi_qm *qm = pci_get_drvdata(pdev);
 	int ret;
 
+	if (qm->fun_type == QM_HW_PF) {
+		ret = qm_dev_hw_init(qm);
+		if (ret) {
+			pci_err(pdev, "Failed to init PF, ret = %d.\n", ret);
+			goto flr_done;
+		}
+	}
+
 	hisi_qm_dev_err_init(pf_qm);
 
 	ret = qm_restart(qm);
@@ -4094,12 +4251,6 @@ void hisi_qm_reset_done(struct pci_dev *pdev)
 	}
 
 	if (qm->fun_type == QM_HW_PF) {
-		ret = qm_dev_hw_init(qm);
-		if (ret) {
-			pci_err(pdev, "Failed to init PF, ret = %d.\n", ret);
-			goto flr_done;
-		}
-
 		if (!qm->vfs_num)
 			goto flr_done;
 
@@ -4120,7 +4271,7 @@ flr_done:
 	if (qm_flr_reset_complete(pdev))
 		pci_info(pdev, "FLR reset complete\n");
 
-	clear_bit(QM_RESETTING, &qm->misc_ctl);
+	clear_bit(QM_RESETTING, &pf_qm->misc_ctl);
 }
 EXPORT_SYMBOL_GPL(hisi_qm_reset_done);
 
@@ -4212,17 +4363,20 @@ static void hisi_qm_controller_reset(struct work_struct *rst_work)
  */
 int hisi_qm_alg_register(struct hisi_qm *qm, struct hisi_qm_list *qm_list)
 {
+	struct device *dev = &qm->pdev->dev;
 	int flag = 0;
 	int ret = 0;
-	/* HW V2 not support both use uacce sva mode and hardware crypto algs */
-	if (qm->ver <= QM_HW_V2 && qm->use_sva)
-		return 0;
 
 	mutex_lock(&qm_list->lock);
 	if (list_empty(&qm_list->list))
 		flag = 1;
 	list_add_tail(&qm->list, &qm_list->list);
 	mutex_unlock(&qm_list->lock);
+
+	if (qm->ver <= QM_HW_V2 && qm->use_sva) {
+		dev_info(dev, "HW V2 not both use uacce sva mode and hardware crypto algs.\n");
+		return 0;
+	}
 
 	if (flag) {
 		ret = qm_list->register_to_crypto(qm);
@@ -4248,12 +4402,12 @@ EXPORT_SYMBOL_GPL(hisi_qm_alg_register);
  */
 void hisi_qm_alg_unregister(struct hisi_qm *qm, struct hisi_qm_list *qm_list)
 {
-	if (qm->ver <= QM_HW_V2 && qm->use_sva)
-		return;
-
 	mutex_lock(&qm_list->lock);
 	list_del(&qm->list);
 	mutex_unlock(&qm_list->lock);
+
+	if (qm->ver <= QM_HW_V2 && qm->use_sva)
+		return;
 
 	if (list_empty(&qm_list->list))
 		qm_list->unregister_from_crypto(qm);
