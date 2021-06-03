@@ -1175,6 +1175,15 @@ stop_rr_fcf_flogi:
 			phba->fcf.fcf_redisc_attempted = 0; /* reset */
 			goto out;
 		}
+	} else if (vport->port_state > LPFC_FLOGI &&
+		   vport->fc_flag & FC_PT2PT) {
+		/*
+		 * In a p2p topology, it is possible that discovery has
+		 * already progressed, and this completion can be ignored.
+		 * Recheck the indicated topology.
+		 */
+		if (!sp->cmn.fPort)
+			goto out;
 	}
 
 flogifail:
@@ -1998,9 +2007,20 @@ lpfc_cmpl_els_plogi(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 			lpfc_disc_state_machine(vport, ndlp, cmdiocb,
 						NLP_EVT_CMPL_PLOGI);
 
-		/* As long as this node is not registered with the scsi or nvme
-		 * transport, it is no longer an active node.  Otherwise
-		 * devloss handles the final cleanup.
+		/* If a PLOGI collision occurred, the node needs to continue
+		 * with the reglogin process.
+		 */
+		spin_lock_irq(&ndlp->lock);
+		if ((ndlp->nlp_flag & (NLP_ACC_REGLOGIN | NLP_RCV_PLOGI)) &&
+		    ndlp->nlp_state == NLP_STE_REG_LOGIN_ISSUE) {
+			spin_unlock_irq(&ndlp->lock);
+			goto out;
+		}
+		spin_unlock_irq(&ndlp->lock);
+
+		/* No PLOGI collision and the node is not registered with the
+		 * scsi or nvme transport. It is no longer an active node. Just
+		 * start the device remove process.
 		 */
 		if (!(ndlp->fc4_xpt_flags & (SCSI_XPT_REGD | NVME_XPT_REGD))) {
 			spin_lock_irq(&ndlp->lock);
@@ -2869,6 +2889,11 @@ lpfc_cmpl_els_logo(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 	 * log into the remote port.
 	 */
 	if (ndlp->nlp_flag & NLP_TARGET_REMOVE) {
+		spin_lock_irq(&ndlp->lock);
+		if (phba->sli_rev == LPFC_SLI_REV4)
+			ndlp->nlp_flag |= NLP_RELEASE_RPI;
+		ndlp->nlp_flag &= ~NLP_NPR_2B_DISC;
+		spin_unlock_irq(&ndlp->lock);
 		lpfc_disc_state_machine(vport, ndlp, cmdiocb,
 					NLP_EVT_DEVICE_RM);
 		lpfc_els_free_iocb(phba, cmdiocb);
@@ -3061,6 +3086,95 @@ lpfc_cmpl_els_cmd(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 }
 
 /**
+ * lpfc_reg_fab_ctrl_node - RPI register the fabric controller node.
+ * @vport: pointer to lpfc_vport data structure.
+ * @fc_ndlp: pointer to the fabric controller (0xfffffd) node.
+ *
+ * This routine registers the rpi assigned to the fabric controller
+ * NPort_ID (0xfffffd) with the port and moves the node to UNMAPPED
+ * state triggering a registration with the SCSI transport.
+ *
+ * This routine is single out because the fabric controller node
+ * does not receive a PLOGI.  This routine is consumed by the
+ * SCR and RDF ELS commands.  Callers are expected to qualify
+ * with SLI4 first.
+ **/
+static int
+lpfc_reg_fab_ctrl_node(struct lpfc_vport *vport, struct lpfc_nodelist *fc_ndlp)
+{
+	int rc = 0;
+	struct lpfc_hba *phba = vport->phba;
+	struct lpfc_nodelist *ns_ndlp;
+	LPFC_MBOXQ_t *mbox;
+	struct lpfc_dmabuf *mp;
+
+	if (fc_ndlp->nlp_flag & NLP_RPI_REGISTERED)
+		return rc;
+
+	ns_ndlp = lpfc_findnode_did(vport, NameServer_DID);
+	if (!ns_ndlp)
+		return -ENODEV;
+
+	lpfc_printf_vlog(vport, KERN_INFO, LOG_NODE,
+			 "0935 %s: Reg FC RPI x%x on FC DID x%x NSSte: x%x\n",
+			 __func__, fc_ndlp->nlp_rpi, fc_ndlp->nlp_DID,
+			 ns_ndlp->nlp_state);
+	if (ns_ndlp->nlp_state != NLP_STE_UNMAPPED_NODE)
+		return -ENODEV;
+
+	mbox = mempool_alloc(phba->mbox_mem_pool, GFP_KERNEL);
+	if (!mbox) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_NODE,
+				 "0936 %s: no memory for reg_login "
+				 "Data: x%x x%x x%x x%x\n", __func__,
+				 fc_ndlp->nlp_DID, fc_ndlp->nlp_state,
+				 fc_ndlp->nlp_flag, fc_ndlp->nlp_rpi);
+		return -ENOMEM;
+	}
+	rc = lpfc_reg_rpi(phba, vport->vpi, fc_ndlp->nlp_DID,
+			  (u8 *)&vport->fc_sparam, mbox, fc_ndlp->nlp_rpi);
+	if (rc) {
+		rc = -EACCES;
+		goto out;
+	}
+
+	fc_ndlp->nlp_flag |= NLP_REG_LOGIN_SEND;
+	mbox->mbox_cmpl = lpfc_mbx_cmpl_fc_reg_login;
+	mbox->ctx_ndlp = lpfc_nlp_get(fc_ndlp);
+	if (!mbox->ctx_ndlp) {
+		rc = -ENOMEM;
+		goto out_mem;
+	}
+
+	mbox->vport = vport;
+	rc = lpfc_sli_issue_mbox(phba, mbox, MBX_NOWAIT);
+	if (rc == MBX_NOT_FINISHED) {
+		rc = -ENODEV;
+		lpfc_nlp_put(fc_ndlp);
+		goto out_mem;
+	}
+	/* Success path. Exit. */
+	lpfc_nlp_set_state(vport, fc_ndlp,
+			   NLP_STE_REG_LOGIN_ISSUE);
+	return 0;
+
+ out_mem:
+	fc_ndlp->nlp_flag &= ~NLP_REG_LOGIN_SEND;
+	mp = (struct lpfc_dmabuf *)mbox->ctx_buf;
+	lpfc_mbuf_free(phba, mp->virt, mp->phys);
+	kfree(mp);
+
+ out:
+	mempool_free(mbox, phba->mbox_mem_pool);
+	lpfc_printf_vlog(vport, KERN_ERR, LOG_NODE,
+			 "0938 %s: failed to format reg_login "
+			 "Data: x%x x%x x%x x%x\n", __func__,
+			 fc_ndlp->nlp_DID, fc_ndlp->nlp_state,
+			 fc_ndlp->nlp_flag, fc_ndlp->nlp_rpi);
+	return rc;
+}
+
+/**
  * lpfc_cmpl_els_disc_cmd - Completion callback function for Discovery ELS cmd
  * @phba: pointer to lpfc hba data structure.
  * @cmdiocb: pointer to lpfc command iocb data structure.
@@ -3206,10 +3320,18 @@ lpfc_issue_els_scr(struct lpfc_vport *vport, uint8_t retry)
 
 	elsiocb = lpfc_prep_els_iocb(vport, 1, cmdsize, retry, ndlp,
 				     ndlp->nlp_DID, ELS_CMD_SCR);
-
 	if (!elsiocb)
 		return 1;
 
+	if (phba->sli_rev == LPFC_SLI_REV4) {
+		rc = lpfc_reg_fab_ctrl_node(vport, ndlp);
+		if (rc) {
+			lpfc_printf_vlog(vport, KERN_ERR, LOG_NODE,
+					 "0937 %s: Failed to reg fc node, rc %d\n",
+					 __func__, rc);
+			return 1;
+		}
+	}
 	pcmd = (uint8_t *) (((struct lpfc_dmabuf *) elsiocb->context2)->virt);
 
 	*((uint32_t *) (pcmd)) = ELS_CMD_SCR;
@@ -3497,6 +3619,17 @@ lpfc_issue_els_rdf(struct lpfc_vport *vport, uint8_t retry)
 	if (!elsiocb)
 		return -ENOMEM;
 
+	if (phba->sli_rev == LPFC_SLI_REV4 &&
+	    !(ndlp->nlp_flag & NLP_RPI_REGISTERED)) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_NODE,
+				 "0939 %s: FC_NODE x%x RPI x%x flag x%x "
+				 "ste x%x type x%x Not registered\n",
+				 __func__, ndlp->nlp_DID, ndlp->nlp_rpi,
+				 ndlp->nlp_flag, ndlp->nlp_state,
+				 ndlp->nlp_type);
+		return -ENODEV;
+	}
+
 	/* Configure the payload for the supported FPIN events. */
 	prdf = (struct lpfc_els_rdf_req *)
 		(((struct lpfc_dmabuf *)elsiocb->context2)->virt);
@@ -3534,6 +3667,43 @@ lpfc_issue_els_rdf(struct lpfc_vport *vport, uint8_t retry)
 		lpfc_nlp_put(ndlp);
 		return -EIO;
 	}
+	return 0;
+}
+
+ /**
+  * lpfc_els_rcv_rdf - Receive RDF ELS request from the fabric.
+  * @vport: pointer to a host virtual N_Port data structure.
+  * @cmdiocb: pointer to lpfc command iocb data structure.
+  * @ndlp: pointer to a node-list data structure.
+  *
+  * A received RDF implies a possible change to fabric supported diagnostic
+  * functions.  This routine sends LS_ACC and then has the Nx_Port issue a new
+  * RDF request to reregister for supported diagnostic functions.
+  *
+  * Return code
+  *   0 - Success
+  *   -EIO - Failed to process received RDF
+  **/
+static int
+lpfc_els_rcv_rdf(struct lpfc_vport *vport, struct lpfc_iocbq *cmdiocb,
+		 struct lpfc_nodelist *ndlp)
+{
+	/* Send LS_ACC */
+	if (lpfc_els_rsp_acc(vport, ELS_CMD_RDF, cmdiocb, ndlp, NULL)) {
+		lpfc_printf_vlog(vport, KERN_INFO, LOG_ELS,
+				 "1623 Failed to RDF_ACC from x%x for x%x\n",
+				 ndlp->nlp_DID, vport->fc_myDID);
+		return -EIO;
+	}
+
+	/* Issue new RDF for reregistering */
+	if (lpfc_issue_els_rdf(vport, 0)) {
+		lpfc_printf_vlog(vport, KERN_INFO, LOG_ELS,
+				 "2623 Failed to re register RDF for x%x\n",
+				 vport->fc_myDID);
+		return -EIO;
+	}
+
 	return 0;
 }
 
@@ -4383,12 +4553,27 @@ lpfc_cmpl_els_logo_acc(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 			 ndlp->nlp_DID, kref_read(&ndlp->kref), ndlp->nlp_flag,
 			 ndlp->nlp_state, ndlp->nlp_rpi);
 
+	/* This clause allows the LOGO ACC to complete and free resources
+	 * for the Fabric Domain Controller.  It does deliberately skip
+	 * the unreg_rpi and release rpi because some fabrics send RDP
+	 * requests after logging out from the initiator.
+	 */
+	if (ndlp->nlp_type & NLP_FABRIC &&
+	    ((ndlp->nlp_DID & WELL_KNOWN_DID_MASK) != WELL_KNOWN_DID_MASK))
+		goto out;
+
 	if (ndlp->nlp_state == NLP_STE_NPR_NODE) {
 		/* NPort Recovery mode or node is just allocated */
 		if (!lpfc_nlp_not_used(ndlp)) {
-			/* If the ndlp is being used by another discovery
-			 * thread, just unregister the RPI.
+			/* A LOGO is completing and the node is in NPR state.
+			 * If this a fabric node that cleared its transport
+			 * registration, release the rpi.
 			 */
+			spin_lock_irq(&ndlp->lock);
+			ndlp->nlp_flag &= ~NLP_NPR_2B_DISC;
+			if (phba->sli_rev == LPFC_SLI_REV4)
+				ndlp->nlp_flag |= NLP_RELEASE_RPI;
+			spin_unlock_irq(&ndlp->lock);
 			lpfc_unreg_rpi(vport, ndlp);
 		} else {
 			/* Indicate the node has already released, should
@@ -4397,7 +4582,7 @@ lpfc_cmpl_els_logo_acc(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 			cmdiocb->context1 = NULL;
 		}
 	}
-
+ out:
 	/*
 	 * The driver received a LOGO from the rport and has ACK'd it.
 	 * At this point, the driver is done so release the IOCB
@@ -4424,28 +4609,37 @@ lpfc_mbx_cmpl_dflt_rpi(struct lpfc_hba *phba, LPFC_MBOXQ_t *pmb)
 {
 	struct lpfc_dmabuf *mp = (struct lpfc_dmabuf *)(pmb->ctx_buf);
 	struct lpfc_nodelist *ndlp = (struct lpfc_nodelist *)pmb->ctx_ndlp;
+	u32 mbx_flag = pmb->mbox_flag;
+	u32 mbx_cmd = pmb->u.mb.mbxCommand;
 
 	pmb->ctx_buf = NULL;
 	pmb->ctx_ndlp = NULL;
 
+	if (ndlp) {
+		lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
+				 "0006 rpi x%x DID:%x flg:%x %d x%px "
+				 "mbx_cmd x%x mbx_flag x%x x%px\n",
+				 ndlp->nlp_rpi, ndlp->nlp_DID, ndlp->nlp_flag,
+				 kref_read(&ndlp->kref), ndlp, mbx_cmd,
+				 mbx_flag, pmb);
+
+		/* This ends the default/temporary RPI cleanup logic for this
+		 * ndlp and the node and rpi needs to be released. Free the rpi
+		 * first on an UNREG_LOGIN and then release the final
+		 * references.
+		 */
+		spin_lock_irq(&ndlp->lock);
+		ndlp->nlp_flag &= ~NLP_REG_LOGIN_SEND;
+		if (mbx_cmd == MBX_UNREG_LOGIN)
+			ndlp->nlp_flag &= ~NLP_UNREG_INP;
+		spin_unlock_irq(&ndlp->lock);
+		lpfc_nlp_put(ndlp);
+		lpfc_drop_node(ndlp->vport, ndlp);
+	}
+
 	lpfc_mbuf_free(phba, mp->virt, mp->phys);
 	kfree(mp);
 	mempool_free(pmb, phba->mbox_mem_pool);
-	if (ndlp) {
-		lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
-				 "0006 rpi x%x DID:%x flg:%x %d x%px\n",
-				 ndlp->nlp_rpi, ndlp->nlp_DID, ndlp->nlp_flag,
-				 kref_read(&ndlp->kref),
-				 ndlp);
-		/* This is the end of the default RPI cleanup logic for
-		 * this ndlp and it could get released.  Clear the nlp_flags to
-		 * prevent any further processing.
-		 */
-		ndlp->nlp_flag &= ~NLP_REG_LOGIN_SEND;
-		lpfc_nlp_put(ndlp);
-		lpfc_nlp_not_used(ndlp);
-	}
-
 	return;
 }
 
@@ -4503,11 +4697,11 @@ lpfc_cmpl_els_rsp(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 	/* ELS response tag <ulpIoTag> completes */
 	lpfc_printf_vlog(vport, KERN_INFO, LOG_ELS,
 			 "0110 ELS response tag x%x completes "
-			 "Data: x%x x%x x%x x%x x%x x%x x%x\n",
+			 "Data: x%x x%x x%x x%x x%x x%x x%x x%x x%px\n",
 			 cmdiocb->iocb.ulpIoTag, rspiocb->iocb.ulpStatus,
 			 rspiocb->iocb.un.ulpWord[4], rspiocb->iocb.ulpTimeout,
 			 ndlp->nlp_DID, ndlp->nlp_flag, ndlp->nlp_state,
-			 ndlp->nlp_rpi);
+			 ndlp->nlp_rpi, kref_read(&ndlp->kref), mbox);
 	if (mbox) {
 		if ((rspiocb->iocb.ulpStatus == 0) &&
 		    (ndlp->nlp_flag & NLP_ACC_REGLOGIN)) {
@@ -4587,6 +4781,20 @@ out:
 		spin_unlock_irq(&ndlp->lock);
 	}
 
+	/* An SLI4 NPIV instance wants to drop the node at this point under
+	 * these conditions and release the RPI.
+	 */
+	if (phba->sli_rev == LPFC_SLI_REV4 &&
+	    (vport && vport->port_type == LPFC_NPIV_PORT) &&
+	    ndlp->nlp_flag & NLP_RELEASE_RPI) {
+		lpfc_sli4_free_rpi(phba, ndlp->nlp_rpi);
+		spin_lock_irq(&ndlp->lock);
+		ndlp->nlp_rpi = LPFC_RPI_ALLOC_ERROR;
+		ndlp->nlp_flag &= ~NLP_RELEASE_RPI;
+		spin_unlock_irq(&ndlp->lock);
+		lpfc_drop_node(vport, ndlp);
+	}
+
 	/* Release the originating I/O reference. */
 	lpfc_els_free_iocb(phba, cmdiocb);
 	lpfc_nlp_put(ndlp);
@@ -4632,6 +4840,7 @@ lpfc_els_rsp_acc(struct lpfc_vport *vport, uint32_t flag,
 	uint16_t cmdsize;
 	int rc;
 	ELS_PKT *els_pkt_ptr;
+	struct fc_els_rdf_resp *rdf_resp;
 
 	oldcmd = &oldiocb->iocb;
 
@@ -4743,6 +4952,29 @@ lpfc_els_rsp_acc(struct lpfc_vport *vport, uint32_t flag,
 			"Issue ACC PRLO:  did:x%x flg:x%x",
 			ndlp->nlp_DID, ndlp->nlp_flag, 0);
 		break;
+	case ELS_CMD_RDF:
+		cmdsize = sizeof(*rdf_resp);
+		elsiocb = lpfc_prep_els_iocb(vport, 0, cmdsize, oldiocb->retry,
+					     ndlp, ndlp->nlp_DID, ELS_CMD_ACC);
+		if (!elsiocb)
+			return 1;
+
+		icmd = &elsiocb->iocb;
+		icmd->ulpContext = oldcmd->ulpContext;	/* Xri / rx_id */
+		icmd->unsli3.rcvsli3.ox_id = oldcmd->unsli3.rcvsli3.ox_id;
+		pcmd = (((struct lpfc_dmabuf *)elsiocb->context2)->virt);
+		rdf_resp = (struct fc_els_rdf_resp *)pcmd;
+		memset(rdf_resp, 0, sizeof(*rdf_resp));
+		rdf_resp->acc_hdr.la_cmd = ELS_LS_ACC;
+
+		/* FC-LS-5 specifies desc_list_len shall be set to 12 */
+		rdf_resp->desc_list_len = cpu_to_be32(12);
+
+		/* FC-LS-5 specifies LS REQ Information descriptor */
+		rdf_resp->lsri.desc_tag = cpu_to_be32(1);
+		rdf_resp->lsri.desc_len = cpu_to_be32(sizeof(u32));
+		rdf_resp->lsri.rqst_w0.cmd = ELS_RDF;
+		break;
 	default:
 		return 1;
 	}
@@ -4775,10 +5007,10 @@ lpfc_els_rsp_acc(struct lpfc_vport *vport, uint32_t flag,
 	lpfc_printf_vlog(vport, KERN_INFO, LOG_ELS,
 			 "0128 Xmit ELS ACC response Status: x%x, IoTag: x%x, "
 			 "XRI: x%x, DID: x%x, nlp_flag: x%x nlp_state: x%x "
-			 "RPI: x%x, fc_flag x%x\n",
+			 "RPI: x%x, fc_flag x%x refcnt %d\n",
 			 rc, elsiocb->iotag, elsiocb->sli4_xritag,
 			 ndlp->nlp_DID, ndlp->nlp_flag, ndlp->nlp_state,
-			 ndlp->nlp_rpi, vport->fc_flag);
+			 ndlp->nlp_rpi, vport->fc_flag, kref_read(&ndlp->kref));
 	return 0;
 }
 
@@ -4854,6 +5086,17 @@ lpfc_els_rsp_reject(struct lpfc_vport *vport, uint32_t rejectError,
 	if (!elsiocb->context1) {
 		lpfc_els_free_iocb(phba, elsiocb);
 		return 1;
+	}
+
+	/* The NPIV instance is rejecting this unsolicited ELS. Make sure the
+	 * node's assigned RPI needs to be released as this node will get
+	 * freed.
+	 */
+	if (phba->sli_rev == LPFC_SLI_REV4 &&
+	    vport->port_type == LPFC_NPIV_PORT) {
+		spin_lock_irq(&ndlp->lock);
+		ndlp->nlp_flag |= NLP_RELEASE_RPI;
+		spin_unlock_irq(&ndlp->lock);
 	}
 
 	rc = lpfc_sli_issue_iocb(phba, LPFC_ELS_RING, elsiocb, 0);
@@ -8844,6 +9087,20 @@ lpfc_els_unsol_buffer(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 				  payload_len);
 
 		/* There are no replies, so no rjt codes */
+		break;
+	case ELS_CMD_RDF:
+		phba->fc_stat.elsRcvRDF++;
+		/* Accept RDF only from fabric controller */
+		if (did != Fabric_Cntl_DID) {
+			lpfc_printf_vlog(vport, KERN_WARNING, LOG_ELS,
+					 "1115 Received RDF from invalid DID "
+					 "x%x\n", did);
+			rjt_err = LSRJT_PROTOCOL_ERR;
+			rjt_exp = LSEXP_NOTHING_MORE;
+			goto lsrjt;
+		}
+
+		lpfc_els_rcv_rdf(vport, elsiocb, ndlp);
 		break;
 	default:
 		lpfc_debugfs_disc_trc(vport, LPFC_DISC_TRC_ELS_UNSOL,
