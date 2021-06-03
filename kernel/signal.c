@@ -412,8 +412,8 @@ __sigqueue_alloc(int sig, struct task_struct *t, gfp_t gfp_flags,
 		 int override_rlimit, const unsigned int sigqueue_flags)
 {
 	struct sigqueue *q = NULL;
-	struct user_struct *user;
-	int sigpending;
+	struct ucounts *ucounts = NULL;
+	long sigpending;
 
 	/*
 	 * Protect access to @t credentials. This can go away when all
@@ -424,13 +424,13 @@ __sigqueue_alloc(int sig, struct task_struct *t, gfp_t gfp_flags,
 	 * changes from/to zero.
 	 */
 	rcu_read_lock();
-	user = __task_cred(t)->user;
-	sigpending = atomic_inc_return(&user->sigpending);
+	ucounts = task_ucounts(t);
+	sigpending = inc_rlimit_ucounts(ucounts, UCOUNT_RLIMIT_SIGPENDING, 1);
 	if (sigpending == 1)
-		get_uid(user);
+		ucounts = get_ucounts(ucounts);
 	rcu_read_unlock();
 
-	if (override_rlimit || likely(sigpending <= task_rlimit(t, RLIMIT_SIGPENDING))) {
+	if (override_rlimit || (sigpending < LONG_MAX && sigpending <= task_rlimit(t, RLIMIT_SIGPENDING))) {
 		/*
 		 * Preallocation does not hold sighand::siglock so it can't
 		 * use the cache. The lockless caching requires that only
@@ -446,14 +446,13 @@ __sigqueue_alloc(int sig, struct task_struct *t, gfp_t gfp_flags,
 	}
 
 	if (unlikely(q == NULL)) {
-		if (atomic_dec_and_test(&user->sigpending))
-			free_uid(user);
+		if (ucounts && dec_rlimit_ucounts(ucounts, UCOUNT_RLIMIT_SIGPENDING, 1))
+			put_ucounts(ucounts);
 	} else {
 		INIT_LIST_HEAD(&q->list);
 		q->flags = sigqueue_flags;
-		q->user = user;
+		q->ucounts = ucounts;
 	}
-
 	return q;
 }
 
@@ -492,8 +491,10 @@ static void __sigqueue_free(struct sigqueue *q)
 {
 	if (q->flags & SIGQUEUE_PREALLOC)
 		return;
-	if (atomic_dec_and_test(&q->user->sigpending))
-		free_uid(q->user);
+	if (q->ucounts && dec_rlimit_ucounts(q->ucounts, UCOUNT_RLIMIT_SIGPENDING, 1)) {
+		put_ucounts(q->ucounts);
+		q->ucounts = NULL;
+	}
 	sigqueue_cache_or_free(q);
 }
 
