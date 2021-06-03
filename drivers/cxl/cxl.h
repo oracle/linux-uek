@@ -34,62 +34,40 @@
 #define CXLDEV_MBOX_BG_CMD_STATUS_OFFSET 0x18
 #define CXLDEV_MBOX_PAYLOAD_OFFSET 0x20
 
-/* CXL 2.0 8.2.8.5.1.1 Memory Device Status Register */
-#define CXLMDEV_STATUS_OFFSET 0x0
-#define   CXLMDEV_DEV_FATAL BIT(0)
-#define   CXLMDEV_FW_HALT BIT(1)
-#define   CXLMDEV_STATUS_MEDIA_STATUS_MASK GENMASK(3, 2)
-#define     CXLMDEV_MS_NOT_READY 0
-#define     CXLMDEV_MS_READY 1
-#define     CXLMDEV_MS_ERROR 2
-#define     CXLMDEV_MS_DISABLED 3
-#define CXLMDEV_READY(status)                                                  \
-	(FIELD_GET(CXLMDEV_STATUS_MEDIA_STATUS_MASK, status) ==                \
-	 CXLMDEV_MS_READY)
-#define   CXLMDEV_MBOX_IF_READY BIT(4)
-#define   CXLMDEV_RESET_NEEDED_MASK GENMASK(7, 5)
-#define     CXLMDEV_RESET_NEEDED_NOT 0
-#define     CXLMDEV_RESET_NEEDED_COLD 1
-#define     CXLMDEV_RESET_NEEDED_WARM 2
-#define     CXLMDEV_RESET_NEEDED_HOT 3
-#define     CXLMDEV_RESET_NEEDED_CXL 4
-#define CXLMDEV_RESET_NEEDED(status)                                           \
-	(FIELD_GET(CXLMDEV_RESET_NEEDED_MASK, status) !=                       \
-	 CXLMDEV_RESET_NEEDED_NOT)
-
-struct cxl_memdev;
-/**
- * struct cxl_mem - A CXL memory device
- * @pdev: The PCI device associated with this CXL device.
- * @regs: IO mappings to the device's MMIO
- * @status_regs: CXL 2.0 8.2.8.3 Device Status Registers
- * @mbox_regs: CXL 2.0 8.2.8.4 Mailbox Registers
- * @memdev_regs: CXL 2.0 8.2.8.5 Memory Device Registers
- * @payload_size: Size of space for payload
- *                (CXL 2.0 8.2.8.4.3 Mailbox Capabilities Register)
- * @mbox_mutex: Mutex to synchronize mailbox access.
- * @firmware_version: Firmware version for the memory device.
- * @enabled_commands: Hardware commands found enabled in CEL.
- * @pmem_range: Persistent memory capacity information.
- * @ram_range: Volatile memory capacity information.
+/*
+ * CXL_DEVICE_REGS - Common set of CXL Device register block base pointers
+ * @status: CXL 2.0 8.2.8.3 Device Status Registers
+ * @mbox: CXL 2.0 8.2.8.4 Mailbox Registers
+ * @memdev: CXL 2.0 8.2.8.5 Memory Device Registers
  */
-struct cxl_mem {
-	struct pci_dev *pdev;
-	void __iomem *regs;
-	struct cxl_memdev *cxlmd;
+#define CXL_DEVICE_REGS() \
+	void __iomem *status; \
+	void __iomem *mbox; \
+	void __iomem *memdev
 
-	void __iomem *status_regs;
-	void __iomem *mbox_regs;
-	void __iomem *memdev_regs;
-
-	size_t payload_size;
-	struct mutex mbox_mutex; /* Protects device mailbox and firmware */
-	char firmware_version[0x10];
-	unsigned long *enabled_cmds;
-
-	struct range pmem_range;
-	struct range ram_range;
+/* See note for 'struct cxl_regs' for the rationale of this organization */
+struct cxl_device_regs {
+	CXL_DEVICE_REGS();
 };
+
+/*
+ * Note, the anonymous union organization allows for per
+ * register-block-type helper routines, without requiring block-type
+ * agnostic code to include the prefix. I.e.
+ * cxl_setup_device_regs(&cxlm->regs.dev) vs readl(cxlm->regs.mbox).
+ * The specificity reads naturally from left-to-right.
+ */
+struct cxl_regs {
+	union {
+		struct {
+			CXL_DEVICE_REGS();
+		};
+		struct cxl_device_regs device_regs;
+	};
+};
+
+void cxl_setup_device_regs(struct device *dev, void __iomem *base,
+			   struct cxl_device_regs *regs);
 
 extern struct bus_type cxl_bus_type;
 #endif /* __CXL_H__ */
