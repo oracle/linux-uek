@@ -702,8 +702,6 @@ extern uintptr_t _dtb_early_pa;
 void paging_init(void);
 void misc_mem_init(void);
 
-#define FIRST_USER_ADDRESS  0
-
 /*
  * ZERO_PAGE is a global shared page that is always zero,
  * used for zero-mapped memory areas, etc.
