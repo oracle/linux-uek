@@ -870,10 +870,10 @@ static int vcc_write(struct tty_struct *tty, const unsigned char *buf,
 	return total_sent ? total_sent : rv;
 }
 
-static int vcc_write_room(struct tty_struct *tty)
+static unsigned int vcc_write_room(struct tty_struct *tty)
 {
 	struct vcc_port *port;
-	u64 num;
+	unsigned int num;
 
 	port = vcc_get_ne(tty->index);
 	if (unlikely(!port)) {
@@ -888,10 +888,10 @@ static int vcc_write_room(struct tty_struct *tty)
 	return num;
 }
 
-static int vcc_chars_in_buffer(struct tty_struct *tty)
+static unsigned int vcc_chars_in_buffer(struct tty_struct *tty)
 {
 	struct vcc_port *port;
-	u64 num;
+	unsigned int num;
 
 	port = vcc_get_ne(tty->index);
 	if (unlikely(!port)) {

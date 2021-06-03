@@ -54,7 +54,7 @@
  *	to be no queue on the device.
  */
 
-int tty_chars_in_buffer(struct tty_struct *tty)
+unsigned int tty_chars_in_buffer(struct tty_struct *tty)
 {
 	if (tty->ops->chars_in_buffer)
 		return tty->ops->chars_in_buffer(tty);
@@ -73,7 +73,7 @@ EXPORT_SYMBOL(tty_chars_in_buffer);
  *	returned and data may be lost as there will be no flow control.
  */
  
-int tty_write_room(struct tty_struct *tty)
+unsigned int tty_write_room(struct tty_struct *tty)
 {
 	if (tty->ops->write_room)
 		return tty->ops->write_room(tty);
@@ -95,28 +95,6 @@ void tty_driver_flush_buffer(struct tty_struct *tty)
 		tty->ops->flush_buffer(tty);
 }
 EXPORT_SYMBOL(tty_driver_flush_buffer);
-
-/**
- *	tty_throttle		-	flow control
- *	@tty: terminal
- *
- *	Indicate that a tty should stop transmitting data down the stack.
- *	Takes the termios rwsem to protect against parallel throttle/unthrottle
- *	and also to ensure the driver can consistently reference its own
- *	termios data at this point when implementing software flow control.
- */
-
-void tty_throttle(struct tty_struct *tty)
-{
-	down_write(&tty->termios_rwsem);
-	/* check TTY_THROTTLED first so it indicates our state */
-	if (!test_and_set_bit(TTY_THROTTLED, &tty->flags) &&
-	    tty->ops->throttle)
-		tty->ops->throttle(tty);
-	tty->flow_change = 0;
-	up_write(&tty->termios_rwsem);
-}
-EXPORT_SYMBOL(tty_throttle);
 
 /**
  *	tty_unthrottle		-	flow control
@@ -146,10 +124,11 @@ EXPORT_SYMBOL(tty_unthrottle);
  *	tty_throttle_safe	-	flow control
  *	@tty: terminal
  *
- *	Similar to tty_throttle() but will only attempt throttle
- *	if tty->flow_change is TTY_THROTTLE_SAFE. Prevents an accidental
- *	throttle due to race conditions when throttling is conditional
- *	on factors evaluated prior to throttling.
+ *	Indicate that a tty should stop transmitting data down the stack.
+ *	tty_throttle_safe will only attempt throttle if tty->flow_change is
+ *	TTY_THROTTLE_SAFE. Prevents an accidental throttle due to race
+ *	conditions when throttling is conditional on factors evaluated prior to
+ *	throttling.
  *
  *	Returns 0 if tty is throttled (or was already throttled)
  */
@@ -846,20 +825,20 @@ int n_tty_ioctl_helper(struct tty_struct *tty, struct file *file,
 			return retval;
 		switch (arg) {
 		case TCOOFF:
-			spin_lock_irq(&tty->flow_lock);
-			if (!tty->flow_stopped) {
-				tty->flow_stopped = 1;
+			spin_lock_irq(&tty->flow.lock);
+			if (!tty->flow.tco_stopped) {
+				tty->flow.tco_stopped = true;
 				__stop_tty(tty);
 			}
-			spin_unlock_irq(&tty->flow_lock);
+			spin_unlock_irq(&tty->flow.lock);
 			break;
 		case TCOON:
-			spin_lock_irq(&tty->flow_lock);
-			if (tty->flow_stopped) {
-				tty->flow_stopped = 0;
+			spin_lock_irq(&tty->flow.lock);
+			if (tty->flow.tco_stopped) {
+				tty->flow.tco_stopped = false;
 				__start_tty(tty);
 			}
-			spin_unlock_irq(&tty->flow_lock);
+			spin_unlock_irq(&tty->flow.lock);
 			break;
 		case TCIOFF:
 			if (STOP_CHAR(tty) != __DISABLED_CHAR)
