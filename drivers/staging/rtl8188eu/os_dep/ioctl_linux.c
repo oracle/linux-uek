@@ -224,12 +224,20 @@ static char *translate_scan(struct adapter *padapter,
 	/* parsing WPA/WPA2 IE */
 	{
 		u8 *buf;
-		u8 wpa_ie[255], rsn_ie[255];
+		u8 *wpa_ie, *rsn_ie;
 		u16 wpa_len = 0, rsn_len = 0;
 		u8 *p;
 
 		buf = kzalloc(MAX_WPA_IE_LEN, GFP_ATOMIC);
 		if (!buf)
+			return start;
+
+		wpa_ie = kzalloc(255, GFP_ATOMIC);
+		if (!wpa_ie)
+			return start;
+
+		rsn_ie = kzalloc(255, GFP_ATOMIC);
+		if (!rsn_ie)
 			return start;
 
 		rtw_get_sec_ie(pnetwork->network.ies, pnetwork->network.ie_length, rsn_ie, &rsn_len, wpa_ie, &wpa_len);
@@ -268,6 +276,8 @@ static char *translate_scan(struct adapter *padapter,
 			start = iwe_stream_add_point(info, start, stop, &iwe, rsn_ie);
 		}
 		kfree(buf);
+		kfree(wpa_ie);
+		kfree(rsn_ie);
 	}
 
 	{/* parsing WPS IE */
@@ -952,12 +962,9 @@ static int rtw_wx_set_wap(struct net_device *dev,
 	authmode = padapter->securitypriv.ndisauthtype;
 	spin_lock_bh(&queue->lock);
 	phead = get_list_head(queue);
-	pmlmepriv->pscanned = phead->next;
-
-	while (phead != pmlmepriv->pscanned) {
-		pnetwork = container_of(pmlmepriv->pscanned, struct wlan_network, list);
-
-		pmlmepriv->pscanned = pmlmepriv->pscanned->next;
+	list_for_each(pmlmepriv->pscanned, phead) {
+		pnetwork = list_entry(pmlmepriv->pscanned,
+				      struct wlan_network, list);
 
 		dst_bssid = pnetwork->network.MacAddress;
 
@@ -1211,21 +1218,17 @@ static int rtw_wx_get_scan(struct net_device *dev, struct iw_request_info *a,
 	spin_lock_bh(&pmlmepriv->scanned_queue.lock);
 
 	phead = get_list_head(queue);
-	plist = phead->next;
-
-	while (phead != plist) {
+	list_for_each(plist, phead) {
 		if ((stop - ev) < SCAN_ITEM_SIZE) {
 			ret = -E2BIG;
 			break;
 		}
 
-		pnetwork = container_of(plist, struct wlan_network, list);
+		pnetwork = list_entry(plist, struct wlan_network, list);
 
 		/* report network only if the current channel set contains the channel to which this network belongs */
 		if (rtw_ch_set_search_ch(padapter->mlmeextpriv.channel_set, pnetwork->network.Configuration.DSConfig) >= 0)
 			ev = translate_scan(padapter, a, pnetwork, ev, stop);
-
-		plist = plist->next;
 	}
 
 	spin_unlock_bh(&pmlmepriv->scanned_queue.lock);
@@ -1295,12 +1298,9 @@ static int rtw_wx_set_essid(struct net_device *dev,
 		RT_TRACE(_module_rtl871x_ioctl_os_c, _drv_info_, ("%s: ssid =[%s]\n", __func__, src_ssid));
 		spin_lock_bh(&queue->lock);
 		phead = get_list_head(queue);
-		pmlmepriv->pscanned = phead->next;
-
-		while (phead != pmlmepriv->pscanned) {
-			pnetwork = container_of(pmlmepriv->pscanned, struct wlan_network, list);
-
-			pmlmepriv->pscanned = pmlmepriv->pscanned->next;
+		list_for_each(pmlmepriv->pscanned, phead) {
+			pnetwork = list_entry(pmlmepriv->pscanned,
+					      struct wlan_network, list);
 
 			dst_ssid = pnetwork->network.ssid.ssid;
 

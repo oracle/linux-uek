@@ -4,8 +4,6 @@
  * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
  *
  ******************************************************************************/
-#define _OS_INTFS_C_
-
 #include <drv_types.h>
 #include <rtw_debug.h>
 #include <hal_data.h>
@@ -1152,14 +1150,13 @@ static void rtw_suspend_normal(struct adapter *padapter)
 		padapter->intf_deinit(adapter_to_dvobj(padapter));
 }
 
-int rtw_suspend_common(struct adapter *padapter)
+void rtw_suspend_common(struct adapter *padapter)
 {
 	struct dvobj_priv *psdpriv = padapter->dvobj;
 	struct debug_priv *pdbgpriv = &psdpriv->drv_dbg;
 	struct pwrctrl_priv *pwrpriv = dvobj_to_pwrctl(psdpriv);
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 
-	int ret = 0;
 	unsigned long start_time = jiffies;
 
 	netdev_dbg(padapter->pnetdev, " suspend start\n");
@@ -1192,8 +1189,6 @@ int rtw_suspend_common(struct adapter *padapter)
 
 	if (check_fwstate(pmlmepriv, WIFI_STATION_STATE))
 		rtw_suspend_normal(padapter);
-	else if (check_fwstate(pmlmepriv, WIFI_AP_STATE))
-		rtw_suspend_normal(padapter);
 	else
 		rtw_suspend_normal(padapter);
 
@@ -1202,7 +1197,7 @@ int rtw_suspend_common(struct adapter *padapter)
 
 exit:
 
-	return ret;
+	return;
 }
 
 static int rtw_resume_process_normal(struct adapter *padapter)
@@ -1274,8 +1269,6 @@ int rtw_resume_common(struct adapter *padapter)
 	netdev_dbg(padapter->pnetdev, "resume start\n");
 
 	if (check_fwstate(pmlmepriv, WIFI_STATION_STATE)) {
-		rtw_resume_process_normal(padapter);
-	} else if (check_fwstate(pmlmepriv, WIFI_AP_STATE)) {
 		rtw_resume_process_normal(padapter);
 	} else {
 		rtw_resume_process_normal(padapter);

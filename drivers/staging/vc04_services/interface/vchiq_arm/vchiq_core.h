@@ -539,7 +539,7 @@ get_conn_state_name(enum vchiq_connstate conn_state);
 extern struct vchiq_slot_zero *
 vchiq_init_slots(void *mem_base, int mem_size);
 
-extern enum vchiq_status
+extern int
 vchiq_init_state(struct vchiq_state *state, struct vchiq_slot_zero *slot_zero);
 
 extern enum vchiq_status
@@ -563,7 +563,7 @@ vchiq_terminate_service_internal(struct vchiq_service *service);
 extern void
 vchiq_free_service_internal(struct vchiq_service *service);
 
-extern enum vchiq_status
+extern void
 vchiq_shutdown_internal(struct vchiq_state *state, struct vchiq_instance *instance);
 
 extern void
@@ -644,7 +644,7 @@ vchiq_queue_message(unsigned int handle,
  * implementations must be provided.
  */
 
-extern enum vchiq_status
+extern int
 vchiq_prepare_bulk_data(struct vchiq_bulk *bulk, void *offset,
 			void __user *uoffset, int size, int dir);
 
@@ -667,10 +667,10 @@ extern int
 vchiq_dump_platform_service_state(void *dump_context,
 	struct vchiq_service *service);
 
-extern enum vchiq_status
+extern int
 vchiq_use_service_internal(struct vchiq_service *service);
 
-extern enum vchiq_status
+extern int
 vchiq_release_service_internal(struct vchiq_service *service);
 
 extern void
@@ -679,7 +679,7 @@ vchiq_on_remote_use(struct vchiq_state *state);
 extern void
 vchiq_on_remote_release(struct vchiq_state *state);
 
-extern enum vchiq_status
+extern int
 vchiq_platform_init_state(struct vchiq_state *state);
 
 extern enum vchiq_status
@@ -712,7 +712,7 @@ extern int vchiq_get_client_id(unsigned int service);
 
 extern void vchiq_get_config(struct vchiq_config *config);
 
-extern enum vchiq_status
+extern int
 vchiq_set_service_option(unsigned int service, enum vchiq_service_option option,
 			 int value);
 
