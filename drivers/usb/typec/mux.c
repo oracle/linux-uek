@@ -17,30 +17,18 @@
 #include "class.h"
 #include "mux.h"
 
-static bool dev_name_ends_with(struct device *dev, const char *suffix)
-{
-	const char *name = dev_name(dev);
-	const int name_len = strlen(name);
-	const int suffix_len = strlen(suffix);
-
-	if (suffix_len > name_len)
-		return false;
-
-	return strcmp(name + (name_len - suffix_len), suffix) == 0;
-}
-
 static int switch_fwnode_match(struct device *dev, const void *fwnode)
 {
-	return dev_fwnode(dev) == fwnode && dev_name_ends_with(dev, "-switch");
+	if (!is_typec_switch(dev))
+		return 0;
+
+	return dev_fwnode(dev) == fwnode;
 }
 
 static void *typec_switch_match(struct fwnode_handle *fwnode, const char *id,
 				void *data)
 {
 	struct device *dev;
-
-	if (id && !fwnode_property_present(fwnode, id))
-		return NULL;
 
 	dev = class_find_device(&typec_mux_class, NULL, fwnode,
 				switch_fwnode_match);
@@ -90,7 +78,7 @@ static void typec_switch_release(struct device *dev)
 	kfree(to_typec_switch(dev));
 }
 
-static const struct device_type typec_switch_dev_type = {
+const struct device_type typec_switch_dev_type = {
 	.name = "orientation_switch",
 	.release = typec_switch_release,
 };
@@ -180,7 +168,10 @@ EXPORT_SYMBOL_GPL(typec_switch_get_drvdata);
 
 static int mux_fwnode_match(struct device *dev, const void *fwnode)
 {
-	return dev_fwnode(dev) == fwnode && dev_name_ends_with(dev, "-mux");
+	if (!is_typec_mux(dev))
+		return 0;
+
+	return dev_fwnode(dev) == fwnode;
 }
 
 static void *typec_mux_match(struct fwnode_handle *fwnode, const char *id,
@@ -295,7 +286,7 @@ static void typec_mux_release(struct device *dev)
 	kfree(to_typec_mux(dev));
 }
 
-static const struct device_type typec_mux_dev_type = {
+const struct device_type typec_mux_dev_type = {
 	.name = "mode_switch",
 	.release = typec_mux_release,
 };
