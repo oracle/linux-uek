@@ -1014,8 +1014,7 @@ void __symbol_put(const char *symbol)
 	};
 
 	preempt_disable();
-	if (!find_symbol(&fsa))
-		BUG();
+	BUG_ON(!find_symbol(&fsa));
 	module_put(fsa.owner);
 	preempt_enable();
 }
@@ -4421,9 +4420,10 @@ int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 			ret = fn(data, kallsyms_symbol_name(kallsyms, i),
 				 mod, kallsyms_symbol_value(sym));
 			if (ret != 0)
-				break;
+				goto out;
 		}
 	}
+out:
 	mutex_unlock(&module_mutex);
 	return ret;
 }
