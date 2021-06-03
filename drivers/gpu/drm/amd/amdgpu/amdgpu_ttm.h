@@ -37,11 +37,6 @@
 
 #define AMDGPU_POISON	0xd0bed0be
 
-struct amdgpu_vram_reservation {
-	struct list_head node;
-	struct drm_mm_node mm_node;
-};
-
 struct amdgpu_vram_mgr {
 	struct ttm_resource_manager manager;
 	struct drm_mm mm;
@@ -147,7 +142,6 @@ int amdgpu_fill_buffer(struct amdgpu_bo *bo,
 			struct dma_resv *resv,
 			struct dma_fence **fence);
 
-int amdgpu_mmap(struct file *filp, struct vm_area_struct *vma);
 int amdgpu_ttm_alloc_gart(struct ttm_buffer_object *bo);
 int amdgpu_ttm_recover_gart(struct ttm_buffer_object *tbo);
 uint64_t amdgpu_ttm_domain_start(struct amdgpu_device *adev, uint32_t type);

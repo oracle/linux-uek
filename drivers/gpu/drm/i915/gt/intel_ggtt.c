@@ -18,6 +18,7 @@
 #include "i915_vgpu.h"
 
 #include "intel_gtt.h"
+#include "gen8_ppgtt.h"
 
 static int
 i915_get_ggtt_vma_pages(struct i915_vma *vma);
@@ -187,9 +188,9 @@ static void gmch_ggtt_invalidate(struct i915_ggtt *ggtt)
 	intel_gtt_chipset_flush();
 }
 
-static u64 gen8_ggtt_pte_encode(dma_addr_t addr,
-				enum i915_cache_level level,
-				u32 flags)
+u64 gen8_ggtt_pte_encode(dma_addr_t addr,
+			 enum i915_cache_level level,
+			 u32 flags)
 {
 	gen8_pte_t pte = addr | _PAGE_PRESENT;
 
@@ -657,7 +658,7 @@ static int init_aliasing_ppgtt(struct i915_ggtt *ggtt)
 		goto err_ppgtt;
 
 	i915_gem_object_lock(ppgtt->vm.scratch[0], NULL);
-	err = i915_vm_pin_pt_stash(&ppgtt->vm, &stash);
+	err = i915_vm_map_pt_stash(&ppgtt->vm, &stash);
 	i915_gem_object_unlock(ppgtt->vm.scratch[0]);
 	if (err)
 		goto err_stash;
@@ -906,9 +907,11 @@ static int gen8_gmch_probe(struct i915_ggtt *ggtt)
 
 	ggtt->vm.insert_entries = gen8_ggtt_insert_entries;
 
-	/* Serialize GTT updates with aperture access on BXT if VT-d is on. */
-	if (intel_ggtt_update_needs_vtd_wa(i915) ||
-	    IS_CHERRYVIEW(i915) /* fails with concurrent use/update */) {
+	/*
+	 * Serialize GTT updates with aperture access on BXT if VT-d is on,
+	 * and always on CHV.
+	 */
+	if (intel_vm_no_concurrent_access_wa(i915)) {
 		ggtt->vm.insert_entries = bxt_vtd_ggtt_insert_entries__BKL;
 		ggtt->vm.insert_page    = bxt_vtd_ggtt_insert_page__BKL;
 		ggtt->vm.bind_async_flags =

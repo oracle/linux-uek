@@ -107,6 +107,7 @@
 #include "amdgpu_gfxhub.h"
 #include "amdgpu_df.h"
 #include "amdgpu_smuio.h"
+#include "amdgpu_fdinfo.h"
 
 #define MAX_GPU_INSTANCE		16
 
@@ -1074,9 +1075,10 @@ struct amdgpu_device {
 
 	atomic_t			throttling_logging_enabled;
 	struct ratelimit_state		throttling_logging_rs;
-	uint32_t			ras_features;
+	uint32_t                        ras_hw_enabled;
+	uint32_t                        ras_enabled;
 
-	bool                            in_pci_err_recovery;
+	bool                            no_hw_access;
 	struct pci_saved_state          *pci_state;
 
 	struct amdgpu_reset_control     *reset_cntl;
@@ -1099,7 +1101,9 @@ static inline struct amdgpu_device *amdgpu_ttm_adev(struct ttm_device *bdev)
 
 int amdgpu_device_init(struct amdgpu_device *adev,
 		       uint32_t flags);
-void amdgpu_device_fini(struct amdgpu_device *adev);
+void amdgpu_device_fini_hw(struct amdgpu_device *adev);
+void amdgpu_device_fini_sw(struct amdgpu_device *adev);
+
 int amdgpu_gpu_wait_for_idle(struct amdgpu_device *adev);
 
 void amdgpu_device_vram_access(struct amdgpu_device *adev, loff_t pos,
@@ -1319,6 +1323,8 @@ void amdgpu_driver_lastclose_kms(struct drm_device *dev);
 int amdgpu_driver_open_kms(struct drm_device *dev, struct drm_file *file_priv);
 void amdgpu_driver_postclose_kms(struct drm_device *dev,
 				 struct drm_file *file_priv);
+void amdgpu_driver_release_kms(struct drm_device *dev);
+
 int amdgpu_device_ip_suspend(struct amdgpu_device *adev);
 int amdgpu_device_suspend(struct drm_device *dev, bool fbcon);
 int amdgpu_device_resume(struct drm_device *dev, bool fbcon);

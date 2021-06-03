@@ -180,6 +180,9 @@ struct page *__px_page(struct drm_i915_gem_object *p);
 dma_addr_t __px_dma(struct drm_i915_gem_object *p);
 #define px_dma(px) (__px_dma(px_base(px)))
 
+void *__px_vaddr(struct drm_i915_gem_object *p);
+#define px_vaddr(px) (__px_vaddr(px_base(px)))
+
 #define px_pt(px) \
 	__px_choose_expr(px, struct i915_page_table *, __x, \
 	__px_choose_expr(px, struct i915_page_directory *, &__x->pt, \
@@ -245,6 +248,7 @@ struct i915_address_space {
 	struct dma_resv resv; /* reservation lock for all pd objects, and buffer pool */
 #define VM_CLASS_GGTT 0
 #define VM_CLASS_PPGTT 1
+#define VM_CLASS_DPT 2
 
 	struct drm_i915_gem_object *scratch[4];
 	/**
@@ -254,6 +258,9 @@ struct i915_address_space {
 
 	/* Global GTT */
 	bool is_ggtt:1;
+
+	/* Display page table */
+	bool is_dpt:1;
 
 	/* Some systems support read-only mappings for GGTT and/or PPGTT */
 	bool has_read_only:1;
@@ -351,6 +358,7 @@ struct i915_ppgtt {
 };
 
 #define i915_is_ggtt(vm) ((vm)->is_ggtt)
+#define i915_is_dpt(vm) ((vm)->is_dpt)
 
 int __must_check
 i915_vm_lock_objects(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww);
@@ -511,8 +519,6 @@ struct i915_ppgtt *i915_ppgtt_create(struct intel_gt *gt);
 void i915_ggtt_suspend(struct i915_ggtt *gtt);
 void i915_ggtt_resume(struct i915_ggtt *ggtt);
 
-#define kmap_atomic_px(px) kmap_atomic(__px_page(px_base(px)))
-
 void
 fill_page_dma(struct drm_i915_gem_object *p, const u64 val, unsigned int count);
 
@@ -526,12 +532,13 @@ int setup_scratch_page(struct i915_address_space *vm);
 void free_scratch(struct i915_address_space *vm);
 
 struct drm_i915_gem_object *alloc_pt_dma(struct i915_address_space *vm, int sz);
+struct drm_i915_gem_object *alloc_pt_lmem(struct i915_address_space *vm, int sz);
 struct i915_page_table *alloc_pt(struct i915_address_space *vm);
 struct i915_page_directory *alloc_pd(struct i915_address_space *vm);
 struct i915_page_directory *__alloc_pd(int npde);
 
-int pin_pt_dma(struct i915_address_space *vm, struct drm_i915_gem_object *obj);
-int pin_pt_dma_locked(struct i915_address_space *vm, struct drm_i915_gem_object *obj);
+int map_pt_dma(struct i915_address_space *vm, struct drm_i915_gem_object *obj);
+int map_pt_dma_locked(struct i915_address_space *vm, struct drm_i915_gem_object *obj);
 
 void free_px(struct i915_address_space *vm,
 	     struct i915_page_table *pt, int lvl);
@@ -578,7 +585,7 @@ void setup_private_pat(struct intel_uncore *uncore);
 int i915_vm_alloc_pt_stash(struct i915_address_space *vm,
 			   struct i915_vm_pt_stash *stash,
 			   u64 size);
-int i915_vm_pin_pt_stash(struct i915_address_space *vm,
+int i915_vm_map_pt_stash(struct i915_address_space *vm,
 			 struct i915_vm_pt_stash *stash);
 void i915_vm_free_pt_stash(struct i915_address_space *vm,
 			   struct i915_vm_pt_stash *stash);

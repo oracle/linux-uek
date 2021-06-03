@@ -1257,11 +1257,7 @@ static int oa_get_render_ctx_id(struct i915_perf_stream *stream)
 	case 8:
 	case 9:
 	case 10:
-		if (intel_engine_in_execlists_submission_mode(ce->engine)) {
-			stream->specific_ctx_id_mask =
-				(1U << GEN8_CTX_ID_WIDTH) - 1;
-			stream->specific_ctx_id = stream->specific_ctx_id_mask;
-		} else {
+		if (intel_engine_uses_guc(ce->engine)) {
 			/*
 			 * When using GuC, the context descriptor we write in
 			 * i915 is read by GuC and rewritten before it's
@@ -1280,6 +1276,10 @@ static int oa_get_render_ctx_id(struct i915_perf_stream *stream)
 			 */
 			stream->specific_ctx_id_mask =
 				(1U << (GEN8_CTX_ID_WIDTH - 1)) - 1;
+		} else {
+			stream->specific_ctx_id_mask =
+				(1U << GEN8_CTX_ID_WIDTH) - 1;
+			stream->specific_ctx_id = stream->specific_ctx_id_mask;
 		}
 		break;
 
@@ -4318,6 +4318,7 @@ static void oa_init_supported_formats(struct i915_perf *perf)
 	case INTEL_ROCKETLAKE:
 	case INTEL_DG1:
 	case INTEL_ALDERLAKE_S:
+	case INTEL_ALDERLAKE_P:
 		oa_format_add(perf, I915_OA_FORMAT_A12);
 		oa_format_add(perf, I915_OA_FORMAT_A12_B8_C8);
 		oa_format_add(perf, I915_OA_FORMAT_A32u40_A4u32_B8_C8);
