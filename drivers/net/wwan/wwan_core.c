@@ -63,6 +63,20 @@ struct wwan_port {
 	wait_queue_head_t waitqueue;
 };
 
+static ssize_t index_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct wwan_device *wwan = to_wwan_dev(dev);
+
+	return sprintf(buf, "%d\n", wwan->id);
+}
+static DEVICE_ATTR_RO(index);
+
+static struct attribute *wwan_dev_attrs[] = {
+	&dev_attr_index.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(wwan_dev);
+
 static void wwan_dev_destroy(struct device *dev)
 {
 	struct wwan_device *wwandev = to_wwan_dev(dev);
@@ -74,6 +88,7 @@ static void wwan_dev_destroy(struct device *dev)
 static const struct device_type wwan_dev_type = {
 	.name    = "wwan_dev",
 	.release = wwan_dev_destroy,
+	.groups = wwan_dev_groups,
 };
 
 static int wwan_dev_parent_match(struct device *dev, const void *parent)
@@ -169,6 +184,30 @@ static void wwan_remove_dev(struct wwan_device *wwandev)
 
 /* ------- WWAN port management ------- */
 
+/* Keep aligned with wwan_port_type enum */
+static const char * const wwan_port_type_str[] = {
+	"AT",
+	"MBIM",
+	"QMI",
+	"QCDM",
+	"FIREHOSE"
+};
+
+static ssize_t type_show(struct device *dev, struct device_attribute *attr,
+			 char *buf)
+{
+	struct wwan_port *port = to_wwan_port(dev);
+
+	return sprintf(buf, "%s\n", wwan_port_type_str[port->type]);
+}
+static DEVICE_ATTR_RO(type);
+
+static struct attribute *wwan_port_attrs[] = {
+	&dev_attr_type.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(wwan_port);
+
 static void wwan_port_destroy(struct device *dev)
 {
 	struct wwan_port *port = to_wwan_port(dev);
@@ -182,6 +221,7 @@ static void wwan_port_destroy(struct device *dev)
 static const struct device_type wwan_port_dev_type = {
 	.name = "wwan_port",
 	.release = wwan_port_destroy,
+	.groups = wwan_port_groups,
 };
 
 static int wwan_port_minor_match(struct device *dev, const void *minor)
@@ -200,15 +240,6 @@ static struct wwan_port *wwan_port_get_by_minor(unsigned int minor)
 
 	return to_wwan_port(dev);
 }
-
-/* Keep aligned with wwan_port_type enum */
-static const char * const wwan_port_type_str[] = {
-	"AT",
-	"MBIM",
-	"QMI",
-	"QCDM",
-	"FIREHOSE"
-};
 
 struct wwan_port *wwan_create_port(struct device *parent,
 				   enum wwan_port_type type,

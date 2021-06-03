@@ -14,6 +14,7 @@
 #include "sja1105_static_config.h"
 
 #define SJA1105_NUM_PORTS		5
+#define SJA1105_MAX_NUM_PORTS		SJA1105_NUM_PORTS
 #define SJA1105_NUM_TC			8
 #define SJA1105ET_FDB_BIN_SIZE		4
 /* The hardware value is in multiples of 10 ms.
@@ -30,6 +31,14 @@ typedef enum {
 #include "sja1105_tas.h"
 #include "sja1105_ptp.h"
 
+enum sja1105_stats_area {
+	MAC,
+	HL1,
+	HL2,
+	ETHER,
+	__MAX_SJA1105_STATS_AREA,
+};
+
 /* Keeps the different addresses between E/T and P/Q/R/S */
 struct sja1105_regs {
 	u64 device_id;
@@ -39,7 +48,6 @@ struct sja1105_regs {
 	u64 rgu;
 	u64 vl_status;
 	u64 config;
-	u64 sgmii;
 	u64 rmii_pll1;
 	u64 ptppinst;
 	u64 ptppindur;
@@ -49,23 +57,28 @@ struct sja1105_regs {
 	u64 ptpclkcorp;
 	u64 ptpsyncts;
 	u64 ptpschtm;
-	u64 ptpegr_ts[SJA1105_NUM_PORTS];
-	u64 pad_mii_tx[SJA1105_NUM_PORTS];
-	u64 pad_mii_rx[SJA1105_NUM_PORTS];
-	u64 pad_mii_id[SJA1105_NUM_PORTS];
-	u64 cgu_idiv[SJA1105_NUM_PORTS];
-	u64 mii_tx_clk[SJA1105_NUM_PORTS];
-	u64 mii_rx_clk[SJA1105_NUM_PORTS];
-	u64 mii_ext_tx_clk[SJA1105_NUM_PORTS];
-	u64 mii_ext_rx_clk[SJA1105_NUM_PORTS];
-	u64 rgmii_tx_clk[SJA1105_NUM_PORTS];
-	u64 rmii_ref_clk[SJA1105_NUM_PORTS];
-	u64 rmii_ext_tx_clk[SJA1105_NUM_PORTS];
-	u64 mac[SJA1105_NUM_PORTS];
-	u64 mac_hl1[SJA1105_NUM_PORTS];
-	u64 mac_hl2[SJA1105_NUM_PORTS];
-	u64 ether_stats[SJA1105_NUM_PORTS];
-	u64 qlevel[SJA1105_NUM_PORTS];
+	u64 ptpegr_ts[SJA1105_MAX_NUM_PORTS];
+	u64 pad_mii_tx[SJA1105_MAX_NUM_PORTS];
+	u64 pad_mii_rx[SJA1105_MAX_NUM_PORTS];
+	u64 pad_mii_id[SJA1105_MAX_NUM_PORTS];
+	u64 cgu_idiv[SJA1105_MAX_NUM_PORTS];
+	u64 mii_tx_clk[SJA1105_MAX_NUM_PORTS];
+	u64 mii_rx_clk[SJA1105_MAX_NUM_PORTS];
+	u64 mii_ext_tx_clk[SJA1105_MAX_NUM_PORTS];
+	u64 mii_ext_rx_clk[SJA1105_MAX_NUM_PORTS];
+	u64 rgmii_tx_clk[SJA1105_MAX_NUM_PORTS];
+	u64 rmii_ref_clk[SJA1105_MAX_NUM_PORTS];
+	u64 rmii_ext_tx_clk[SJA1105_MAX_NUM_PORTS];
+	u64 stats[__MAX_SJA1105_STATS_AREA][SJA1105_MAX_NUM_PORTS];
+};
+
+enum {
+	SJA1105_SPEED_AUTO,
+	SJA1105_SPEED_10MBPS,
+	SJA1105_SPEED_100MBPS,
+	SJA1105_SPEED_1000MBPS,
+	SJA1105_SPEED_2500MBPS,
+	SJA1105_SPEED_MAX,
 };
 
 struct sja1105_info {
@@ -85,6 +98,7 @@ struct sja1105_info {
 	 */
 	int ptpegr_ts_bytes;
 	int num_cbs_shapers;
+	int max_frame_mem;
 	const struct sja1105_dynamic_table_ops *dyn_ops;
 	const struct sja1105_table_ops *static_ops;
 	const struct sja1105_regs *regs;
@@ -104,7 +118,14 @@ struct sja1105_info {
 			   const unsigned char *addr, u16 vid);
 	void (*ptp_cmd_packing)(u8 *buf, struct sja1105_ptp_cmd *cmd,
 				enum packing_op op);
+	int (*clocking_setup)(struct sja1105_private *priv);
 	const char *name;
+	bool supports_mii[SJA1105_MAX_NUM_PORTS];
+	bool supports_rmii[SJA1105_MAX_NUM_PORTS];
+	bool supports_rgmii[SJA1105_MAX_NUM_PORTS];
+	bool supports_sgmii[SJA1105_MAX_NUM_PORTS];
+	bool supports_2500basex[SJA1105_MAX_NUM_PORTS];
+	const u64 port_speed[SJA1105_SPEED_MAX];
 };
 
 enum sja1105_key_type {
@@ -202,20 +223,22 @@ enum sja1105_vlan_state {
 
 struct sja1105_private {
 	struct sja1105_static_config static_config;
-	bool rgmii_rx_delay[SJA1105_NUM_PORTS];
-	bool rgmii_tx_delay[SJA1105_NUM_PORTS];
+	bool rgmii_rx_delay[SJA1105_MAX_NUM_PORTS];
+	bool rgmii_tx_delay[SJA1105_MAX_NUM_PORTS];
+	phy_interface_t phy_mode[SJA1105_MAX_NUM_PORTS];
 	bool best_effort_vlan_filtering;
 	unsigned long learn_ena;
 	unsigned long ucast_egress_floods;
 	unsigned long bcast_egress_floods;
 	const struct sja1105_info *info;
+	size_t max_xfer_len;
 	struct gpio_desc *reset_gpio;
 	struct spi_device *spidev;
 	struct dsa_switch *ds;
 	struct list_head dsa_8021q_vlans;
 	struct list_head bridge_vlans;
 	struct sja1105_flow_block flow_block;
-	struct sja1105_port ports[SJA1105_NUM_PORTS];
+	struct sja1105_port ports[SJA1105_MAX_NUM_PORTS];
 	/* Serializes transmission of management frames so that
 	 * the switch doesn't confuse them with one another.
 	 */
@@ -300,13 +323,6 @@ typedef enum {
 	XMII_MODE_RGMII		= 2,
 	XMII_MODE_SGMII		= 3,
 } sja1105_phy_interface_t;
-
-typedef enum {
-	SJA1105_SPEED_10MBPS	= 3,
-	SJA1105_SPEED_100MBPS	= 2,
-	SJA1105_SPEED_1000MBPS	= 1,
-	SJA1105_SPEED_AUTO	= 0,
-} sja1105_speed_t;
 
 int sja1105pqrs_setup_rgmii_delay(const void *ctx, int port);
 int sja1105_clocking_setup_port(struct sja1105_private *priv, int port);

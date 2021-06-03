@@ -80,7 +80,7 @@ static int sja1105_init_mac_settings(struct sja1105_private *priv)
 		/* Always put the MAC speed in automatic mode, where it can be
 		 * adjusted at runtime by PHYLINK.
 		 */
-		.speed = SJA1105_SPEED_AUTO,
+		.speed = priv->info->port_speed[SJA1105_SPEED_AUTO],
 		/* No static correction for 1-step 1588 events */
 		.tp_delin = 0,
 		.tp_delout = 0,
@@ -107,6 +107,7 @@ static int sja1105_init_mac_settings(struct sja1105_private *priv)
 		.ingress = false,
 	};
 	struct sja1105_mac_config_entry *mac;
+	struct dsa_switch *ds = priv->ds;
 	struct sja1105_table *table;
 	int i;
 
@@ -118,16 +119,16 @@ static int sja1105_init_mac_settings(struct sja1105_private *priv)
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_NUM_PORTS,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
-	table->entry_count = SJA1105_NUM_PORTS;
+	table->entry_count = table->ops->max_entry_count;
 
 	mac = table->entries;
 
-	for (i = 0; i < SJA1105_NUM_PORTS; i++) {
+	for (i = 0; i < ds->num_ports; i++) {
 		mac[i] = default_mac;
 		if (i == dsa_upstream_port(priv->ds, i)) {
 			/* STP doesn't get called for CPU port, so we need to
@@ -142,26 +143,12 @@ static int sja1105_init_mac_settings(struct sja1105_private *priv)
 	return 0;
 }
 
-static bool sja1105_supports_sgmii(struct sja1105_private *priv, int port)
-{
-	if (priv->info->part_no != SJA1105R_PART_NO &&
-	    priv->info->part_no != SJA1105S_PART_NO)
-		return false;
-
-	if (port != SJA1105_SGMII_PORT)
-		return false;
-
-	if (dsa_is_unused_port(priv->ds, port))
-		return false;
-
-	return true;
-}
-
 static int sja1105_init_mii_settings(struct sja1105_private *priv,
 				     struct sja1105_dt_port *ports)
 {
 	struct device *dev = &priv->spidev->dev;
 	struct sja1105_xmii_params_entry *mii;
+	struct dsa_switch *ds = priv->ds;
 	struct sja1105_table *table;
 	int i;
 
@@ -173,49 +160,72 @@ static int sja1105_init_mii_settings(struct sja1105_private *priv,
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_MAX_XMII_PARAMS_COUNT,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
 	/* Override table based on PHYLINK DT bindings */
-	table->entry_count = SJA1105_MAX_XMII_PARAMS_COUNT;
+	table->entry_count = table->ops->max_entry_count;
 
 	mii = table->entries;
 
-	for (i = 0; i < SJA1105_NUM_PORTS; i++) {
+	for (i = 0; i < ds->num_ports; i++) {
 		if (dsa_is_unused_port(priv->ds, i))
 			continue;
 
 		switch (ports[i].phy_mode) {
 		case PHY_INTERFACE_MODE_MII:
+			if (!priv->info->supports_mii[i])
+				goto unsupported;
+
 			mii->xmii_mode[i] = XMII_MODE_MII;
 			break;
 		case PHY_INTERFACE_MODE_RMII:
+			if (!priv->info->supports_rmii[i])
+				goto unsupported;
+
 			mii->xmii_mode[i] = XMII_MODE_RMII;
 			break;
 		case PHY_INTERFACE_MODE_RGMII:
 		case PHY_INTERFACE_MODE_RGMII_ID:
 		case PHY_INTERFACE_MODE_RGMII_RXID:
 		case PHY_INTERFACE_MODE_RGMII_TXID:
+			if (!priv->info->supports_rgmii[i])
+				goto unsupported;
+
 			mii->xmii_mode[i] = XMII_MODE_RGMII;
 			break;
 		case PHY_INTERFACE_MODE_SGMII:
-			if (!sja1105_supports_sgmii(priv, i))
-				return -EINVAL;
+			if (!priv->info->supports_sgmii[i])
+				goto unsupported;
+
 			mii->xmii_mode[i] = XMII_MODE_SGMII;
 			break;
+		case PHY_INTERFACE_MODE_2500BASEX:
+			if (!priv->info->supports_2500basex[i])
+				goto unsupported;
+
+			mii->xmii_mode[i] = XMII_MODE_SGMII;
+			break;
+unsupported:
 		default:
-			dev_err(dev, "Unsupported PHY mode %s!\n",
-				phy_modes(ports[i].phy_mode));
+			dev_err(dev, "Unsupported PHY mode %s on port %d!\n",
+				phy_modes(ports[i].phy_mode), i);
 			return -EINVAL;
 		}
 
 		/* Even though the SerDes port is able to drive SGMII autoneg
 		 * like a PHY would, from the perspective of the XMII tables,
 		 * the SGMII port should always be put in MAC mode.
+		 * Similarly, RGMII is a symmetric protocol electrically
+		 * speaking, and the 'RGMII PHY' role does not mean anything to
+		 * hardware. Just keep the 'PHY role' notation relevant to the
+		 * driver to mean 'the switch port should apply RGMII delays',
+		 * but unconditionally put the port in the MAC role.
 		 */
-		if (ports[i].phy_mode == PHY_INTERFACE_MODE_SGMII)
+		if (ports[i].phy_mode == PHY_INTERFACE_MODE_SGMII ||
+		    phy_interface_mode_is_rgmii(ports[i].phy_mode))
 			mii->phy_mac[i] = XMII_MAC;
 		else
 			mii->phy_mac[i] = ports[i].role;
@@ -267,8 +277,6 @@ static int sja1105_init_static_fdb(struct sja1105_private *priv)
 
 static int sja1105_init_l2_lookup_params(struct sja1105_private *priv)
 {
-	struct sja1105_table *table;
-	u64 max_fdb_entries = SJA1105_MAX_L2_LOOKUP_COUNT / SJA1105_NUM_PORTS;
 	struct sja1105_l2_lookup_params_entry default_l2_lookup_params = {
 		/* Learned FDB entries are forgotten after 300 seconds */
 		.maxage = SJA1105_AGEING_TIME_MS(300000),
@@ -276,8 +284,6 @@ static int sja1105_init_l2_lookup_params(struct sja1105_private *priv)
 		.dyn_tbsz = SJA1105ET_FDB_BIN_SIZE,
 		/* And the P/Q/R/S equivalent setting: */
 		.start_dynspc = 0,
-		.maxaddrp = {max_fdb_entries, max_fdb_entries, max_fdb_entries,
-			     max_fdb_entries, max_fdb_entries, },
 		/* 2^8 + 2^5 + 2^3 + 2^2 + 2^1 + 1 in Koopman notation */
 		.poly = 0x97,
 		/* This selects between Independent VLAN Learning (IVL) and
@@ -301,6 +307,23 @@ static int sja1105_init_l2_lookup_params(struct sja1105_private *priv)
 		.owr_dyn = true,
 		.drpnolearn = true,
 	};
+	struct dsa_switch *ds = priv->ds;
+	int port, num_used_ports = 0;
+	struct sja1105_table *table;
+	u64 max_fdb_entries;
+
+	for (port = 0; port < ds->num_ports; port++)
+		if (!dsa_is_unused_port(ds, port))
+			num_used_ports++;
+
+	max_fdb_entries = SJA1105_MAX_L2_LOOKUP_COUNT / num_used_ports;
+
+	for (port = 0; port < ds->num_ports; port++) {
+		if (dsa_is_unused_port(ds, port))
+			continue;
+
+		default_l2_lookup_params.maxaddrp[port] = max_fdb_entries;
+	}
 
 	table = &priv->static_config.tables[BLK_IDX_L2_LOOKUP_PARAMS];
 
@@ -309,12 +332,12 @@ static int sja1105_init_l2_lookup_params(struct sja1105_private *priv)
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_MAX_L2_LOOKUP_PARAMS_COUNT,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
-	table->entry_count = SJA1105_MAX_L2_LOOKUP_PARAMS_COUNT;
+	table->entry_count = table->ops->max_entry_count;
 
 	/* This table only has a single entry */
 	((struct sja1105_l2_lookup_params_entry *)table->entries)[0] =
@@ -387,6 +410,7 @@ static int sja1105_init_static_vlan(struct sja1105_private *priv)
 static int sja1105_init_l2_forwarding(struct sja1105_private *priv)
 {
 	struct sja1105_l2_forwarding_entry *l2fwd;
+	struct dsa_switch *ds = priv->ds;
 	struct sja1105_table *table;
 	int i, j;
 
@@ -397,18 +421,21 @@ static int sja1105_init_l2_forwarding(struct sja1105_private *priv)
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_MAX_L2_FORWARDING_COUNT,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
-	table->entry_count = SJA1105_MAX_L2_FORWARDING_COUNT;
+	table->entry_count = table->ops->max_entry_count;
 
 	l2fwd = table->entries;
 
 	/* First 5 entries define the forwarding rules */
-	for (i = 0; i < SJA1105_NUM_PORTS; i++) {
+	for (i = 0; i < ds->num_ports; i++) {
 		unsigned int upstream = dsa_upstream_port(priv->ds, i);
+
+		if (dsa_is_unused_port(ds, i))
+			continue;
 
 		for (j = 0; j < SJA1105_NUM_TC; j++)
 			l2fwd[i].vlan_pmap[j] = j;
@@ -431,24 +458,25 @@ static int sja1105_init_l2_forwarding(struct sja1105_private *priv)
 		l2fwd[upstream].bc_domain |= BIT(i);
 		l2fwd[upstream].fl_domain |= BIT(i);
 	}
+
 	/* Next 8 entries define VLAN PCP mapping from ingress to egress.
 	 * Create a one-to-one mapping.
 	 */
-	for (i = 0; i < SJA1105_NUM_TC; i++)
-		for (j = 0; j < SJA1105_NUM_PORTS; j++)
-			l2fwd[SJA1105_NUM_PORTS + i].vlan_pmap[j] = i;
+	for (i = 0; i < SJA1105_NUM_TC; i++) {
+		for (j = 0; j < ds->num_ports; j++) {
+			if (dsa_is_unused_port(ds, j))
+				continue;
+
+			l2fwd[ds->num_ports + i].vlan_pmap[j] = i;
+		}
+	}
 
 	return 0;
 }
 
 static int sja1105_init_l2_forwarding_params(struct sja1105_private *priv)
 {
-	struct sja1105_l2_forwarding_params_entry default_l2fwd_params = {
-		/* Disallow dynamic reconfiguration of vlan_pmap */
-		.max_dynp = 0,
-		/* Use a single memory partition for all ingress queues */
-		.part_spc = { SJA1105_MAX_FRAME_MEMORY, 0, 0, 0, 0, 0, 0, 0 },
-	};
+	struct sja1105_l2_forwarding_params_entry *l2fwd_params;
 	struct sja1105_table *table;
 
 	table = &priv->static_config.tables[BLK_IDX_L2_FORWARDING_PARAMS];
@@ -458,16 +486,20 @@ static int sja1105_init_l2_forwarding_params(struct sja1105_private *priv)
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_MAX_L2_FORWARDING_PARAMS_COUNT,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
-	table->entry_count = SJA1105_MAX_L2_FORWARDING_PARAMS_COUNT;
+	table->entry_count = table->ops->max_entry_count;
 
 	/* This table only has a single entry */
-	((struct sja1105_l2_forwarding_params_entry *)table->entries)[0] =
-				default_l2fwd_params;
+	l2fwd_params = table->entries;
+
+	/* Disallow dynamic reconfiguration of vlan_pmap */
+	l2fwd_params->max_dynp = 0;
+	/* Use a single memory partition for all ingress queues */
+	l2fwd_params->part_spc[0] = priv->info->max_frame_mem;
 
 	return 0;
 }
@@ -476,16 +508,14 @@ void sja1105_frame_memory_partitioning(struct sja1105_private *priv)
 {
 	struct sja1105_l2_forwarding_params_entry *l2_fwd_params;
 	struct sja1105_vl_forwarding_params_entry *vl_fwd_params;
+	int max_mem = priv->info->max_frame_mem;
 	struct sja1105_table *table;
-	int max_mem;
 
 	/* VLAN retagging is implemented using a loopback port that consumes
 	 * frame buffers. That leaves less for us.
 	 */
 	if (priv->vlan_state == SJA1105_VLAN_BEST_EFFORT)
-		max_mem = SJA1105_MAX_FRAME_MEMORY_RETAGGING;
-	else
-		max_mem = SJA1105_MAX_FRAME_MEMORY;
+		max_mem -= SJA1105_FRAME_MEMORY_RETAGGING_OVERHEAD;
 
 	table = &priv->static_config.tables[BLK_IDX_L2_FORWARDING_PARAMS];
 	l2_fwd_params = table->entries;
@@ -530,9 +560,9 @@ static int sja1105_init_general_params(struct sja1105_private *priv)
 		 * receieved on host_port itself would be dropped, except
 		 * by installing a temporary 'management route'
 		 */
-		.host_port = dsa_upstream_port(priv->ds, 0),
+		.host_port = priv->ds->num_ports,
 		/* Default to an invalid value */
-		.mirr_port = SJA1105_NUM_PORTS,
+		.mirr_port = priv->ds->num_ports,
 		/* Link-local traffic received on casc_port will be forwarded
 		 * to host_port without embedding the source port and device ID
 		 * info in the destination MAC address (presumably because it
@@ -540,7 +570,7 @@ static int sja1105_init_general_params(struct sja1105_private *priv)
 		 * that). Default to an invalid port (to disable the feature)
 		 * and overwrite this if we find any DSA (cascaded) ports.
 		 */
-		.casc_port = SJA1105_NUM_PORTS,
+		.casc_port = priv->ds->num_ports,
 		/* No TTEthernet */
 		.vllupformat = SJA1105_VL_FORMAT_PSFP,
 		.vlmarker = 0,
@@ -553,7 +583,16 @@ static int sja1105_init_general_params(struct sja1105_private *priv)
 		.tpid = ETH_P_SJA1105,
 		.tpid2 = ETH_P_SJA1105,
 	};
+	struct dsa_switch *ds = priv->ds;
 	struct sja1105_table *table;
+	int port;
+
+	for (port = 0; port < ds->num_ports; port++) {
+		if (dsa_is_cpu_port(ds, port)) {
+			default_general_params.host_port = port;
+			break;
+		}
+	}
 
 	table = &priv->static_config.tables[BLK_IDX_GENERAL_PARAMS];
 
@@ -562,12 +601,12 @@ static int sja1105_init_general_params(struct sja1105_private *priv)
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_MAX_GENERAL_PARAMS_COUNT,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
-	table->entry_count = SJA1105_MAX_GENERAL_PARAMS_COUNT;
+	table->entry_count = table->ops->max_entry_count;
 
 	/* This table only has a single entry */
 	((struct sja1105_general_params_entry *)table->entries)[0] =
@@ -589,12 +628,12 @@ static int sja1105_init_avb_params(struct sja1105_private *priv)
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_MAX_AVB_PARAMS_COUNT,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
-	table->entry_count = SJA1105_MAX_AVB_PARAMS_COUNT;
+	table->entry_count = table->ops->max_entry_count;
 
 	avb = table->entries;
 
@@ -661,6 +700,7 @@ static int sja1105_init_avb_params(struct sja1105_private *priv)
 static int sja1105_init_l2_policing(struct sja1105_private *priv)
 {
 	struct sja1105_l2_policing_entry *policing;
+	struct dsa_switch *ds = priv->ds;
 	struct sja1105_table *table;
 	int port, tc;
 
@@ -672,27 +712,31 @@ static int sja1105_init_l2_policing(struct sja1105_private *priv)
 		table->entry_count = 0;
 	}
 
-	table->entries = kcalloc(SJA1105_MAX_L2_POLICING_COUNT,
+	table->entries = kcalloc(table->ops->max_entry_count,
 				 table->ops->unpacked_entry_size, GFP_KERNEL);
 	if (!table->entries)
 		return -ENOMEM;
 
-	table->entry_count = SJA1105_MAX_L2_POLICING_COUNT;
+	table->entry_count = table->ops->max_entry_count;
 
 	policing = table->entries;
 
 	/* Setup shared indices for the matchall policers */
-	for (port = 0; port < SJA1105_NUM_PORTS; port++) {
-		int bcast = (SJA1105_NUM_PORTS * SJA1105_NUM_TC) + port;
+	for (port = 0; port < ds->num_ports; port++) {
+		int mcast = (ds->num_ports * (SJA1105_NUM_TC + 1)) + port;
+		int bcast = (ds->num_ports * SJA1105_NUM_TC) + port;
 
 		for (tc = 0; tc < SJA1105_NUM_TC; tc++)
 			policing[port * SJA1105_NUM_TC + tc].sharindx = port;
 
 		policing[bcast].sharindx = port;
+		/* Only SJA1110 has multicast policers */
+		if (mcast <= table->ops->max_entry_count)
+			policing[mcast].sharindx = port;
 	}
 
 	/* Setup the matchall policer parameters */
-	for (port = 0; port < SJA1105_NUM_PORTS; port++) {
+	for (port = 0; port < ds->num_ports; port++) {
 		int mtu = VLAN_ETH_FRAME_LEN + ETH_FCS_LEN;
 
 		if (dsa_is_cpu_port(priv->ds, port))
@@ -758,9 +802,10 @@ static int sja1105_static_config_load(struct sja1105_private *priv,
 static int sja1105_parse_rgmii_delays(struct sja1105_private *priv,
 				      const struct sja1105_dt_port *ports)
 {
+	struct dsa_switch *ds = priv->ds;
 	int i;
 
-	for (i = 0; i < SJA1105_NUM_PORTS; i++) {
+	for (i = 0; i < ds->num_ports; i++) {
 		if (ports[i].role == XMII_MAC)
 			continue;
 
@@ -834,6 +879,8 @@ static int sja1105_parse_ports_node(struct sja1105_private *priv,
 			ports[index].role = XMII_MAC;
 		else if (of_property_read_bool(child, "sja1105,role-phy"))
 			ports[index].role = XMII_PHY;
+
+		priv->phy_mode[index] = phy_mode;
 	}
 
 	return 0;
@@ -848,6 +895,8 @@ static int sja1105_parse_dt(struct sja1105_private *priv,
 	int rc;
 
 	ports_node = of_get_child_by_name(switch_node, "ports");
+	if (!ports_node)
+		ports_node = of_get_child_by_name(switch_node, "ethernet-ports");
 	if (!ports_node) {
 		dev_err(dev, "Incorrect bindings: absent \"ports\" node\n");
 		return -ENODEV;
@@ -859,36 +908,41 @@ static int sja1105_parse_dt(struct sja1105_private *priv,
 	return rc;
 }
 
-static int sja1105_sgmii_read(struct sja1105_private *priv, int pcs_reg)
+static int sja1105_sgmii_read(struct sja1105_private *priv, int port, int mmd,
+			      int pcs_reg)
 {
-	const struct sja1105_regs *regs = priv->info->regs;
+	u64 addr = (mmd << 16) | pcs_reg;
 	u32 val;
 	int rc;
 
-	rc = sja1105_xfer_u32(priv, SPI_READ, regs->sgmii + pcs_reg, &val,
-			      NULL);
+	if (port != SJA1105_SGMII_PORT)
+		return -ENODEV;
+
+	rc = sja1105_xfer_u32(priv, SPI_READ, addr, &val, NULL);
 	if (rc < 0)
 		return rc;
 
 	return val;
 }
 
-static int sja1105_sgmii_write(struct sja1105_private *priv, int pcs_reg,
-			       u16 pcs_val)
+static int sja1105_sgmii_write(struct sja1105_private *priv, int port, int mmd,
+			       int pcs_reg, u16 pcs_val)
 {
-	const struct sja1105_regs *regs = priv->info->regs;
+	u64 addr = (mmd << 16) | pcs_reg;
 	u32 val = pcs_val;
 	int rc;
 
-	rc = sja1105_xfer_u32(priv, SPI_WRITE, regs->sgmii + pcs_reg, &val,
-			      NULL);
+	if (port != SJA1105_SGMII_PORT)
+		return -ENODEV;
+
+	rc = sja1105_xfer_u32(priv, SPI_WRITE, addr, &val, NULL);
 	if (rc < 0)
 		return rc;
 
 	return val;
 }
 
-static void sja1105_sgmii_pcs_config(struct sja1105_private *priv,
+static void sja1105_sgmii_pcs_config(struct sja1105_private *priv, int port,
 				     bool an_enabled, bool an_master)
 {
 	u16 ac = SJA1105_AC_AUTONEG_MODE_SGMII;
@@ -897,27 +951,29 @@ static void sja1105_sgmii_pcs_config(struct sja1105_private *priv,
 	 * stop the clock during LPI mode, make the MAC reconfigure
 	 * autonomously after PCS autoneg is done, flush the internal FIFOs.
 	 */
-	sja1105_sgmii_write(priv, SJA1105_DC1, SJA1105_DC1_EN_VSMMD1 |
-					       SJA1105_DC1_CLOCK_STOP_EN |
-					       SJA1105_DC1_MAC_AUTO_SW |
-					       SJA1105_DC1_INIT);
+	sja1105_sgmii_write(priv, port, MDIO_MMD_VEND2, SJA1105_DC1,
+			    SJA1105_DC1_EN_VSMMD1 |
+			    SJA1105_DC1_CLOCK_STOP_EN |
+			    SJA1105_DC1_MAC_AUTO_SW |
+			    SJA1105_DC1_INIT);
 	/* DIGITAL_CONTROL_2: No polarity inversion for TX and RX lanes */
-	sja1105_sgmii_write(priv, SJA1105_DC2, SJA1105_DC2_TX_POL_INV_DISABLE);
+	sja1105_sgmii_write(priv, port, MDIO_MMD_VEND2, SJA1105_DC2,
+			    SJA1105_DC2_TX_POL_INV_DISABLE);
 	/* AUTONEG_CONTROL: Use SGMII autoneg */
 	if (an_master)
 		ac |= SJA1105_AC_PHY_MODE | SJA1105_AC_SGMII_LINK;
-	sja1105_sgmii_write(priv, SJA1105_AC, ac);
+	sja1105_sgmii_write(priv, port, MDIO_MMD_VEND2, SJA1105_AC, ac);
 	/* BASIC_CONTROL: enable in-band AN now, if requested. Otherwise,
 	 * sja1105_sgmii_pcs_force_speed must be called later for the link
 	 * to become operational.
 	 */
 	if (an_enabled)
-		sja1105_sgmii_write(priv, MII_BMCR,
+		sja1105_sgmii_write(priv, port, MDIO_MMD_VEND2, MDIO_CTRL1,
 				    BMCR_ANENABLE | BMCR_ANRESTART);
 }
 
 static void sja1105_sgmii_pcs_force_speed(struct sja1105_private *priv,
-					  int speed)
+					  int port, int speed)
 {
 	int pcs_speed;
 
@@ -935,26 +991,32 @@ static void sja1105_sgmii_pcs_force_speed(struct sja1105_private *priv,
 		dev_err(priv->ds->dev, "Invalid speed %d\n", speed);
 		return;
 	}
-	sja1105_sgmii_write(priv, MII_BMCR, pcs_speed | BMCR_FULLDPLX);
+	sja1105_sgmii_write(priv, port, MDIO_MMD_VEND2, MDIO_CTRL1,
+			    pcs_speed | BMCR_FULLDPLX);
 }
 
 /* Convert link speed from SJA1105 to ethtool encoding */
-static int sja1105_speed[] = {
-	[SJA1105_SPEED_AUTO]		= SPEED_UNKNOWN,
-	[SJA1105_SPEED_10MBPS]		= SPEED_10,
-	[SJA1105_SPEED_100MBPS]		= SPEED_100,
-	[SJA1105_SPEED_1000MBPS]	= SPEED_1000,
-};
+static int sja1105_port_speed_to_ethtool(struct sja1105_private *priv,
+					 u64 speed)
+{
+	if (speed == priv->info->port_speed[SJA1105_SPEED_10MBPS])
+		return SPEED_10;
+	if (speed == priv->info->port_speed[SJA1105_SPEED_100MBPS])
+		return SPEED_100;
+	if (speed == priv->info->port_speed[SJA1105_SPEED_1000MBPS])
+		return SPEED_1000;
+	if (speed == priv->info->port_speed[SJA1105_SPEED_2500MBPS])
+		return SPEED_2500;
+	return SPEED_UNKNOWN;
+}
 
 /* Set link speed in the MAC configuration for a specific port. */
 static int sja1105_adjust_port_config(struct sja1105_private *priv, int port,
 				      int speed_mbps)
 {
-	struct sja1105_xmii_params_entry *mii;
 	struct sja1105_mac_config_entry *mac;
 	struct device *dev = priv->ds->dev;
-	sja1105_phy_interface_t phy_mode;
-	sja1105_speed_t speed;
+	u64 speed;
 	int rc;
 
 	/* On P/Q/R/S, one can read from the device via the MAC reconfiguration
@@ -964,7 +1026,6 @@ static int sja1105_adjust_port_config(struct sja1105_private *priv, int port,
 	 * reasonable approximation for both E/T and P/Q/R/S.
 	 */
 	mac = priv->static_config.tables[BLK_IDX_MAC_CONFIG].entries;
-	mii = priv->static_config.tables[BLK_IDX_XMII_PARAMS].entries;
 
 	switch (speed_mbps) {
 	case SPEED_UNKNOWN:
@@ -975,16 +1036,16 @@ static int sja1105_adjust_port_config(struct sja1105_private *priv, int port,
 		 * ok for power consumption in case AN will never complete -
 		 * otherwise PHYLINK should come back with a new update.
 		 */
-		speed = SJA1105_SPEED_AUTO;
+		speed = priv->info->port_speed[SJA1105_SPEED_AUTO];
 		break;
 	case SPEED_10:
-		speed = SJA1105_SPEED_10MBPS;
+		speed = priv->info->port_speed[SJA1105_SPEED_10MBPS];
 		break;
 	case SPEED_100:
-		speed = SJA1105_SPEED_100MBPS;
+		speed = priv->info->port_speed[SJA1105_SPEED_100MBPS];
 		break;
 	case SPEED_1000:
-		speed = SJA1105_SPEED_1000MBPS;
+		speed = priv->info->port_speed[SJA1105_SPEED_1000MBPS];
 		break;
 	default:
 		dev_err(dev, "Invalid speed %iMbps\n", speed_mbps);
@@ -998,8 +1059,8 @@ static int sja1105_adjust_port_config(struct sja1105_private *priv, int port,
 	 * Actually for the SGMII port, the MAC is fixed at 1 Gbps and
 	 * we need to configure the PCS only (if even that).
 	 */
-	if (sja1105_supports_sgmii(priv, port))
-		mac[port].speed = SJA1105_SPEED_1000MBPS;
+	if (priv->phy_mode[port] == PHY_INTERFACE_MODE_SGMII)
+		mac[port].speed = priv->info->port_speed[SJA1105_SPEED_1000MBPS];
 	else
 		mac[port].speed = speed;
 
@@ -1017,8 +1078,7 @@ static int sja1105_adjust_port_config(struct sja1105_private *priv, int port,
 	 * the clock setup does interrupt the clock signal for a certain time
 	 * which causes trouble for all PHYs relying on this signal.
 	 */
-	phy_mode = mii->xmii_mode[port];
-	if (phy_mode != XMII_MODE_RGMII)
+	if (!phy_interface_mode_is_rgmii(priv->phy_mode[port]))
 		return 0;
 
 	return sja1105_clocking_setup_port(priv, port);
@@ -1034,27 +1094,7 @@ static int sja1105_adjust_port_config(struct sja1105_private *priv, int port,
 static bool sja1105_phy_mode_mismatch(struct sja1105_private *priv, int port,
 				      phy_interface_t interface)
 {
-	struct sja1105_xmii_params_entry *mii;
-	sja1105_phy_interface_t phy_mode;
-
-	mii = priv->static_config.tables[BLK_IDX_XMII_PARAMS].entries;
-	phy_mode = mii->xmii_mode[port];
-
-	switch (interface) {
-	case PHY_INTERFACE_MODE_MII:
-		return (phy_mode != XMII_MODE_MII);
-	case PHY_INTERFACE_MODE_RMII:
-		return (phy_mode != XMII_MODE_RMII);
-	case PHY_INTERFACE_MODE_RGMII:
-	case PHY_INTERFACE_MODE_RGMII_ID:
-	case PHY_INTERFACE_MODE_RGMII_RXID:
-	case PHY_INTERFACE_MODE_RGMII_TXID:
-		return (phy_mode != XMII_MODE_RGMII);
-	case PHY_INTERFACE_MODE_SGMII:
-		return (phy_mode != XMII_MODE_SGMII);
-	default:
-		return true;
-	}
+	return priv->phy_mode[port] != interface;
 }
 
 static void sja1105_mac_config(struct dsa_switch *ds, int port,
@@ -1062,7 +1102,9 @@ static void sja1105_mac_config(struct dsa_switch *ds, int port,
 			       const struct phylink_link_state *state)
 {
 	struct sja1105_private *priv = ds->priv;
-	bool is_sgmii = sja1105_supports_sgmii(priv, port);
+	bool is_sgmii;
+
+	is_sgmii = (state->interface == PHY_INTERFACE_MODE_SGMII);
 
 	if (sja1105_phy_mode_mismatch(priv, port, state->interface)) {
 		dev_err(ds->dev, "Changing PHY mode to %s not supported!\n",
@@ -1076,7 +1118,8 @@ static void sja1105_mac_config(struct dsa_switch *ds, int port,
 	}
 
 	if (is_sgmii)
-		sja1105_sgmii_pcs_config(priv, phylink_autoneg_inband(mode),
+		sja1105_sgmii_pcs_config(priv, port,
+					 phylink_autoneg_inband(mode),
 					 false);
 }
 
@@ -1098,8 +1141,9 @@ static void sja1105_mac_link_up(struct dsa_switch *ds, int port,
 
 	sja1105_adjust_port_config(priv, port, speed);
 
-	if (sja1105_supports_sgmii(priv, port) && !phylink_autoneg_inband(mode))
-		sja1105_sgmii_pcs_force_speed(priv, speed);
+	if (priv->phy_mode[port] == PHY_INTERFACE_MODE_SGMII &&
+	    !phylink_autoneg_inband(mode))
+		sja1105_sgmii_pcs_force_speed(priv, port, speed);
 
 	sja1105_inhibit_tx(priv, BIT(port), false);
 }
@@ -1152,7 +1196,7 @@ static int sja1105_mac_pcs_get_state(struct dsa_switch *ds, int port,
 	int ais;
 
 	/* Read the vendor-specific AUTONEG_INTR_STATUS register */
-	ais = sja1105_sgmii_read(priv, SJA1105_AIS);
+	ais = sja1105_sgmii_read(priv, port, MDIO_MMD_VEND2, SJA1105_AIS);
 	if (ais < 0)
 		return ais;
 
@@ -1635,7 +1679,7 @@ static int sja1105_bridge_member(struct dsa_switch *ds, int port,
 
 	l2_fwd = priv->static_config.tables[BLK_IDX_L2_FORWARDING].entries;
 
-	for (i = 0; i < SJA1105_NUM_PORTS; i++) {
+	for (i = 0; i < ds->num_ports; i++) {
 		/* Add this port to the forwarding matrix of the
 		 * other ports in the same bridge, and viceversa.
 		 */
@@ -1833,12 +1877,12 @@ int sja1105_static_config_reload(struct sja1105_private *priv,
 {
 	struct ptp_system_timestamp ptp_sts_before;
 	struct ptp_system_timestamp ptp_sts_after;
+	int speed_mbps[SJA1105_MAX_NUM_PORTS];
+	u16 bmcr[SJA1105_MAX_NUM_PORTS] = {0};
 	struct sja1105_mac_config_entry *mac;
-	int speed_mbps[SJA1105_NUM_PORTS];
 	struct dsa_switch *ds = priv->ds;
 	s64 t1, t2, t3, t4;
 	s64 t12, t34;
-	u16 bmcr = 0;
 	int rc, i;
 	s64 now;
 
@@ -1851,13 +1895,16 @@ int sja1105_static_config_reload(struct sja1105_private *priv,
 	 * switch wants to see in the static config in order to allow us to
 	 * change it through the dynamic interface later.
 	 */
-	for (i = 0; i < SJA1105_NUM_PORTS; i++) {
-		speed_mbps[i] = sja1105_speed[mac[i].speed];
-		mac[i].speed = SJA1105_SPEED_AUTO;
-	}
+	for (i = 0; i < ds->num_ports; i++) {
+		speed_mbps[i] = sja1105_port_speed_to_ethtool(priv,
+							      mac[i].speed);
+		mac[i].speed = priv->info->port_speed[SJA1105_SPEED_AUTO];
 
-	if (sja1105_supports_sgmii(priv, SJA1105_SGMII_PORT))
-		bmcr = sja1105_sgmii_read(priv, MII_BMCR);
+		if (priv->phy_mode[i] == PHY_INTERFACE_MODE_SGMII)
+			bmcr[i] = sja1105_sgmii_read(priv, i,
+						     MDIO_MMD_VEND2,
+						     MDIO_CTRL1);
+	}
 
 	/* No PTP operations can run right now */
 	mutex_lock(&priv->ptp_data.lock);
@@ -1899,32 +1946,35 @@ out_unlock_ptp:
 	 * For these interfaces there is no dynamic configuration
 	 * needed, since PLLs have same settings at all speeds.
 	 */
-	rc = sja1105_clocking_setup(priv);
+	rc = priv->info->clocking_setup(priv);
 	if (rc < 0)
 		goto out;
 
-	for (i = 0; i < SJA1105_NUM_PORTS; i++) {
+	for (i = 0; i < ds->num_ports; i++) {
+		bool an_enabled;
+
 		rc = sja1105_adjust_port_config(priv, i, speed_mbps[i]);
 		if (rc < 0)
 			goto out;
-	}
 
-	if (sja1105_supports_sgmii(priv, SJA1105_SGMII_PORT)) {
-		bool an_enabled = !!(bmcr & BMCR_ANENABLE);
+		if (priv->phy_mode[i] != PHY_INTERFACE_MODE_SGMII)
+			continue;
 
-		sja1105_sgmii_pcs_config(priv, an_enabled, false);
+		an_enabled = !!(bmcr[i] & BMCR_ANENABLE);
+
+		sja1105_sgmii_pcs_config(priv, i, an_enabled, false);
 
 		if (!an_enabled) {
 			int speed = SPEED_UNKNOWN;
 
-			if (bmcr & BMCR_SPEED1000)
+			if (bmcr[i] & BMCR_SPEED1000)
 				speed = SPEED_1000;
-			else if (bmcr & BMCR_SPEED100)
+			else if (bmcr[i] & BMCR_SPEED100)
 				speed = SPEED_100;
 			else
 				speed = SPEED_10;
 
-			sja1105_sgmii_pcs_force_speed(priv, speed);
+			sja1105_sgmii_pcs_force_speed(priv, i, speed);
 		}
 	}
 
@@ -2611,7 +2661,7 @@ out:
 
 static int sja1105_build_vlan_table(struct sja1105_private *priv, bool notify)
 {
-	u16 subvlan_map[SJA1105_NUM_PORTS][DSA_8021Q_N_SUBVLAN];
+	u16 subvlan_map[SJA1105_MAX_NUM_PORTS][DSA_8021Q_N_SUBVLAN];
 	struct sja1105_retagging_entry *new_retagging;
 	struct sja1105_vlan_lookup_entry *new_vlan;
 	struct sja1105_table *table;
@@ -2958,7 +3008,7 @@ static const struct dsa_8021q_ops sja1105_dsa_8021q_ops = {
  */
 static int sja1105_setup(struct dsa_switch *ds)
 {
-	struct sja1105_dt_port ports[SJA1105_NUM_PORTS];
+	struct sja1105_dt_port ports[SJA1105_MAX_NUM_PORTS];
 	struct sja1105_private *priv = ds->priv;
 	int rc;
 
@@ -2989,7 +3039,7 @@ static int sja1105_setup(struct dsa_switch *ds)
 		goto out_ptp_clock_unregister;
 	}
 	/* Configure the CGU (PHY link modes and speeds) */
-	rc = sja1105_clocking_setup(priv);
+	rc = priv->info->clocking_setup(priv);
 	if (rc < 0) {
 		dev_err(ds->dev, "Failed to configure MII clocking: %d\n", rc);
 		goto out_static_config_free;
@@ -3043,7 +3093,7 @@ static void sja1105_teardown(struct dsa_switch *ds)
 	struct sja1105_bridge_vlan *v, *n;
 	int port;
 
-	for (port = 0; port < SJA1105_NUM_PORTS; port++) {
+	for (port = 0; port < ds->num_ports; port++) {
 		struct sja1105_port *sp = &priv->ports[port];
 
 		if (!dsa_is_user_port(ds, port))
@@ -3246,6 +3296,7 @@ static int sja1105_mirror_apply(struct sja1105_private *priv, int from, int to,
 {
 	struct sja1105_general_params_entry *general_params;
 	struct sja1105_mac_config_entry *mac;
+	struct dsa_switch *ds = priv->ds;
 	struct sja1105_table *table;
 	bool already_enabled;
 	u64 new_mirr_port;
@@ -3256,7 +3307,7 @@ static int sja1105_mirror_apply(struct sja1105_private *priv, int from, int to,
 
 	mac = priv->static_config.tables[BLK_IDX_MAC_CONFIG].entries;
 
-	already_enabled = (general_params->mirr_port != SJA1105_NUM_PORTS);
+	already_enabled = (general_params->mirr_port != ds->num_ports);
 	if (already_enabled && enabled && general_params->mirr_port != to) {
 		dev_err(priv->ds->dev,
 			"Delete mirroring rules towards port %llu first\n",
@@ -3270,7 +3321,7 @@ static int sja1105_mirror_apply(struct sja1105_private *priv, int from, int to,
 		int port;
 
 		/* Anybody still referencing mirr_port? */
-		for (port = 0; port < SJA1105_NUM_PORTS; port++) {
+		for (port = 0; port < ds->num_ports; port++) {
 			if (mac[port].ing_mirr || mac[port].egr_mirr) {
 				keep = true;
 				break;
@@ -3278,7 +3329,7 @@ static int sja1105_mirror_apply(struct sja1105_private *priv, int from, int to,
 		}
 		/* Unset already_enabled for next time */
 		if (!keep)
-			new_mirr_port = SJA1105_NUM_PORTS;
+			new_mirr_port = ds->num_ports;
 	}
 	if (new_mirr_port != general_params->mirr_port) {
 		general_params->mirr_port = new_mirr_port;
@@ -3584,6 +3635,7 @@ static int sja1105_probe(struct spi_device *spi)
 	struct sja1105_tagger_data *tagger_data;
 	struct device *dev = &spi->dev;
 	struct sja1105_private *priv;
+	size_t max_xfer, max_msg;
 	struct dsa_switch *ds;
 	int rc, port;
 
@@ -3617,6 +3669,33 @@ static int sja1105_probe(struct spi_device *spi)
 		return rc;
 	}
 
+	/* In sja1105_xfer, we send spi_messages composed of two spi_transfers:
+	 * a small one for the message header and another one for the current
+	 * chunk of the packed buffer.
+	 * Check that the restrictions imposed by the SPI controller are
+	 * respected: the chunk buffer is smaller than the max transfer size,
+	 * and the total length of the chunk plus its message header is smaller
+	 * than the max message size.
+	 * We do that during probe time since the maximum transfer size is a
+	 * runtime invariant.
+	 */
+	max_xfer = spi_max_transfer_size(spi);
+	max_msg = spi_max_message_size(spi);
+
+	/* We need to send at least one 64-bit word of SPI payload per message
+	 * in order to be able to make useful progress.
+	 */
+	if (max_msg < SJA1105_SIZE_SPI_MSG_HEADER + 8) {
+		dev_err(dev, "SPI master cannot send large enough buffers, aborting\n");
+		return -EINVAL;
+	}
+
+	priv->max_xfer_len = SJA1105_SIZE_SPI_MSG_MAXLEN;
+	if (priv->max_xfer_len > max_xfer)
+		priv->max_xfer_len = max_xfer;
+	if (priv->max_xfer_len > max_msg - SJA1105_SIZE_SPI_MSG_HEADER)
+		priv->max_xfer_len = max_msg - SJA1105_SIZE_SPI_MSG_HEADER;
+
 	priv->info = of_device_get_match_data(dev);
 
 	/* Detect hardware device */
@@ -3633,7 +3712,7 @@ static int sja1105_probe(struct spi_device *spi)
 		return -ENOMEM;
 
 	ds->dev = dev;
-	ds->num_ports = SJA1105_NUM_PORTS;
+	ds->num_ports = SJA1105_MAX_NUM_PORTS;
 	ds->ops = &sja1105_switch_ops;
 	ds->priv = priv;
 	priv->ds = ds;
@@ -3674,7 +3753,7 @@ static int sja1105_probe(struct spi_device *spi)
 	}
 
 	/* Connections between dsa_port and sja1105_port */
-	for (port = 0; port < SJA1105_NUM_PORTS; port++) {
+	for (port = 0; port < ds->num_ports; port++) {
 		struct sja1105_port *sp = &priv->ports[port];
 		struct dsa_port *dp = dsa_to_port(ds, port);
 		struct net_device *slave;

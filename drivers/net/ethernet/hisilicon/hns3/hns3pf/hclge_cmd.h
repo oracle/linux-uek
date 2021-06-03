@@ -236,6 +236,7 @@ enum hclge_opcode_type {
 	HCLGE_OPC_VLAN_FILTER_CTRL	    = 0x1100,
 	HCLGE_OPC_VLAN_FILTER_PF_CFG	= 0x1101,
 	HCLGE_OPC_VLAN_FILTER_VF_CFG	= 0x1102,
+	HCLGE_OPC_PORT_VLAN_BYPASS	= 0x1103,
 
 	/* Flow Director commands */
 	HCLGE_OPC_FD_MODE_CTRL		= 0x1200,
@@ -267,10 +268,10 @@ enum hclge_opcode_type {
 	/* NCL config command */
 	HCLGE_OPC_QUERY_NCL_CONFIG	= 0x7011,
 
-	/* M7 stats command */
-	HCLGE_OPC_M7_STATS_BD		= 0x7012,
-	HCLGE_OPC_M7_STATS_INFO		= 0x7013,
-	HCLGE_OPC_M7_COMPAT_CFG		= 0x701A,
+	/* IMP stats command */
+	HCLGE_OPC_IMP_STATS_BD		= 0x7012,
+	HCLGE_OPC_IMP_STATS_INFO		= 0x7013,
+	HCLGE_OPC_IMP_COMPAT_CFG		= 0x701A,
 
 	/* SFP command */
 	HCLGE_OPC_GET_SFP_EEPROM	= 0x7100,
@@ -391,6 +392,8 @@ enum HCLGE_CAP_BITS {
 	HCLGE_CAP_UDP_TUNNEL_CSUM_B,
 	HCLGE_CAP_FEC_B = 13,
 	HCLGE_CAP_PAUSE_B = 14,
+	HCLGE_CAP_RXD_ADV_LAYOUT_B = 15,
+	HCLGE_CAP_PORT_VLAN_BYPASS_B = 17,
 };
 
 enum HCLGE_API_CAP_BITS {
@@ -526,6 +529,8 @@ struct hclge_pf_res_cmd {
 #define HCLGE_CFG_SPEED_ABILITY_M	GENMASK(7, 0)
 #define HCLGE_CFG_SPEED_ABILITY_EXT_S	10
 #define HCLGE_CFG_SPEED_ABILITY_EXT_M	GENMASK(15, 10)
+#define HCLGE_CFG_VLAN_FLTR_CAP_S	8
+#define HCLGE_CFG_VLAN_FLTR_CAP_M	GENMASK(9, 8)
 #define HCLGE_CFG_UMV_TBL_SPACE_S	16
 #define HCLGE_CFG_UMV_TBL_SPACE_M	GENMASK(31, 16)
 #define HCLGE_CFG_PF_RSS_SIZE_S		0
@@ -808,6 +813,14 @@ struct hclge_vlan_filter_vf_cfg_cmd {
 	u8  vlan_cfg;
 	u8  rsv1[3];
 	u8  vf_bitmap[HCLGE_MAX_VF_BYTES];
+};
+
+#define HCLGE_INGRESS_BYPASS_B		0
+struct hclge_port_vlan_filter_bypass_cmd {
+	u8 bypass_state;
+	u8 rsv1[3];
+	u8 vf_id;
+	u8 rsv2[19];
 };
 
 #define HCLGE_SWITCH_ANTI_SPOOF_B	0U
@@ -1100,7 +1113,7 @@ struct hclge_fd_user_def_cfg_cmd {
 	u8 rsv[12];
 };
 
-struct hclge_get_m7_bd_cmd {
+struct hclge_get_imp_bd_cmd {
 	__le32 bd_num;
 	u8 rsv[20];
 };
