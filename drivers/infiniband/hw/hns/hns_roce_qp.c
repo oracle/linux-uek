@@ -761,7 +761,7 @@ static int alloc_qp_buf(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
 		goto err_inline;
 	}
 	ret = hns_roce_mtr_create(hr_dev, &hr_qp->mtr, &buf_attr,
-				  HNS_HW_PAGE_SHIFT + hr_dev->caps.mtt_ba_pg_sz,
+				  PAGE_SHIFT + hr_dev->caps.mtt_ba_pg_sz,
 				  udata, addr);
 	if (ret) {
 		ibdev_err(ibdev, "failed to create WQE mtr, ret = %d.\n", ret);
@@ -826,7 +826,7 @@ static int alloc_qp_db(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
 
 	if (udata) {
 		if (user_qp_has_sdb(hr_dev, init_attr, udata, resp, ucmd)) {
-			ret = hns_roce_db_map_user(uctx, udata, ucmd->sdb_addr,
+			ret = hns_roce_db_map_user(uctx, ucmd->sdb_addr,
 						   &hr_qp->sdb);
 			if (ret) {
 				ibdev_err(ibdev,
@@ -839,7 +839,7 @@ static int alloc_qp_db(struct hns_roce_dev *hr_dev, struct hns_roce_qp *hr_qp,
 		}
 
 		if (user_qp_has_rdb(hr_dev, init_attr, udata, resp)) {
-			ret = hns_roce_db_map_user(uctx, udata, ucmd->db_addr,
+			ret = hns_roce_db_map_user(uctx, ucmd->db_addr,
 						   &hr_qp->rdb);
 			if (ret) {
 				ibdev_err(ibdev,

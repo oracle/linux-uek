@@ -655,7 +655,6 @@ static void rtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			rtrs_err(con->c.sess, "rtrs_post_recv_empty(): %d\n",
 				  err);
 			rtrs_rdma_error_recovery(con);
-			break;
 		}
 		break;
 	case IB_WC_RECV:
@@ -814,6 +813,9 @@ static struct rtrs_clt_sess *get_next_path_min_inflight(struct path_it *it)
 	int inflight;
 
 	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry) {
+		if (unlikely(READ_ONCE(sess->state) != RTRS_CLT_CONNECTED))
+			continue;
+
 		if (unlikely(!list_empty(raw_cpu_ptr(sess->mp_skip_entry))))
 			continue;
 
@@ -1449,16 +1451,6 @@ static void rtrs_clt_init_hb(struct rtrs_clt_sess *sess)
 		      rtrs_wq);
 }
 
-static void rtrs_clt_start_hb(struct rtrs_clt_sess *sess)
-{
-	rtrs_start_hb(&sess->s);
-}
-
-static void rtrs_clt_stop_hb(struct rtrs_clt_sess *sess)
-{
-	rtrs_stop_hb(&sess->s);
-}
-
 static void rtrs_clt_reconnect_work(struct work_struct *work);
 static void rtrs_clt_close_work(struct work_struct *work);
 
@@ -1505,7 +1497,7 @@ static struct rtrs_clt_sess *alloc_sess(struct rtrs_clt *clt,
 	if (path->src)
 		memcpy(&sess->s.src_addr, path->src,
 		       rdma_addr_size((struct sockaddr *)path->src));
-	strlcpy(sess->s.sessname, clt->sessname, sizeof(sess->s.sessname));
+	strscpy(sess->s.sessname, clt->sessname, sizeof(sess->s.sessname));
 	sess->clt = clt;
 	sess->max_pages_per_mr = max_segments;
 	init_waitqueue_head(&sess->state_wq);
@@ -1783,12 +1775,19 @@ static int rtrs_rdma_conn_established(struct rtrs_clt_con *con,
 	if (con->c.cid == 0) {
 		queue_depth = le16_to_cpu(msg->queue_depth);
 
-		if (queue_depth > MAX_SESS_QUEUE_DEPTH) {
-			rtrs_err(clt, "Invalid RTRS message: queue=%d\n",
-				  queue_depth);
+		if (sess->queue_depth > 0 && queue_depth != sess->queue_depth) {
+			rtrs_err(clt, "Error: queue depth changed\n");
+
+			/*
+			 * Stop any more reconnection attempts
+			 */
+			sess->reconnect_attempts = -1;
+			rtrs_err(clt,
+				"Disabling auto-reconnect. Trigger a manual reconnect after issue is resolved\n");
 			return -ECONNRESET;
 		}
-		if (!sess->rbufs || sess->queue_depth < queue_depth) {
+
+		if (!sess->rbufs) {
 			kfree(sess->rbufs);
 			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
 					      GFP_KERNEL);
@@ -1802,7 +1801,7 @@ static int rtrs_rdma_conn_established(struct rtrs_clt_con *con,
 		sess->chunk_size = sess->max_io_size + sess->max_hdr_size;
 
 		/*
-		 * Global queue depth and IO size is always a minimum.
+		 * Global IO size is always a minimum.
 		 * If while a reconnection server sends us a value a bit
 		 * higher - client does not care and uses cached minimum.
 		 *
@@ -1810,8 +1809,7 @@ static int rtrs_rdma_conn_established(struct rtrs_clt_con *con,
 		 * connections in parallel, use lock.
 		 */
 		mutex_lock(&clt->paths_mutex);
-		clt->queue_depth = min_not_zero(sess->queue_depth,
-						clt->queue_depth);
+		clt->queue_depth = sess->queue_depth;
 		clt->max_io_size = min_not_zero(sess->max_io_size,
 						clt->max_io_size);
 		mutex_unlock(&clt->paths_mutex);
@@ -1869,7 +1867,7 @@ static int rtrs_rdma_conn_rejected(struct rtrs_clt_con *con,
 	return -ECONNRESET;
 }
 
-static void rtrs_clt_close_conns(struct rtrs_clt_sess *sess, bool wait)
+void rtrs_clt_close_conns(struct rtrs_clt_sess *sess, bool wait)
 {
 	if (rtrs_clt_change_state_get_old(sess, RTRS_CLT_CLOSING, NULL))
 		queue_work(rtrs_wq, &sess->close_work);
@@ -2098,7 +2096,7 @@ static void rtrs_clt_stop_and_destroy_conns(struct rtrs_clt_sess *sess)
 	 */
 	synchronize_rcu();
 
-	rtrs_clt_stop_hb(sess);
+	rtrs_stop_hb(&sess->s);
 
 	/*
 	 * The order it utterly crucial: firstly disconnect and complete all
@@ -2291,7 +2289,7 @@ static int init_conns(struct rtrs_clt_sess *sess)
 	if (err)
 		goto destroy;
 
-	rtrs_clt_start_hb(sess);
+	rtrs_start_hb(&sess->s);
 
 	return 0;
 
@@ -2465,7 +2463,7 @@ static int rtrs_send_sess_info(struct rtrs_clt_sess *sess)
 	int err;
 
 	rx_sz  = sizeof(struct rtrs_msg_info_rsp);
-	rx_sz += sizeof(u64) * MAX_SESS_QUEUE_DEPTH;
+	rx_sz += sizeof(struct rtrs_sg_desc) * sess->queue_depth;
 
 	tx_iu = rtrs_iu_alloc(1, sizeof(struct rtrs_msg_info_req), GFP_KERNEL,
 			       sess->s.dev->ib_dev, DMA_TO_DEVICE,
@@ -2652,7 +2650,7 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	clt->priv = priv;
 	clt->link_ev = link_ev;
 	clt->mp_policy = MP_POLICY_MIN_INFLIGHT;
-	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
+	strscpy(clt->sessname, sessname, sizeof(clt->sessname));
 	init_waitqueue_head(&clt->permits_wait);
 	mutex_init(&clt->paths_ev_mutex);
 	mutex_init(&clt->paths_mutex);
@@ -2762,6 +2760,8 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 		if (err) {
 			list_del_rcu(&sess->s.entry);
 			rtrs_clt_close_conns(sess, true);
+			free_percpu(sess->stats->pcpu_stats);
+			kfree(sess->stats);
 			free_sess(sess);
 			goto close_all_sess;
 		}
@@ -2770,6 +2770,8 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 		if (err) {
 			list_del_rcu(&sess->s.entry);
 			rtrs_clt_close_conns(sess, true);
+			free_percpu(sess->stats->pcpu_stats);
+			kfree(sess->stats);
 			free_sess(sess);
 			goto close_all_sess;
 		}
@@ -2839,13 +2841,6 @@ int rtrs_clt_reconnect_from_sysfs(struct rtrs_clt_sess *sess)
 	}
 
 	return err;
-}
-
-int rtrs_clt_disconnect_from_sysfs(struct rtrs_clt_sess *sess)
-{
-	rtrs_clt_close_conns(sess, true);
-
-	return 0;
 }
 
 int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
@@ -3052,6 +3047,8 @@ int rtrs_clt_create_path_from_sysfs(struct rtrs_clt *clt,
 close_sess:
 	rtrs_clt_remove_path_from_arr(sess);
 	rtrs_clt_close_conns(sess, true);
+	free_percpu(sess->stats->pcpu_stats);
+	kfree(sess->stats);
 	free_sess(sess);
 
 	return err;

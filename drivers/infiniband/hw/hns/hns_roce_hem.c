@@ -36,9 +36,6 @@
 #include "hns_roce_hem.h"
 #include "hns_roce_common.h"
 
-#define DMA_ADDR_T_SHIFT		12
-#define BT_BA_SHIFT			32
-
 #define HEM_INDEX_BUF			BIT(0)
 #define HEM_INDEX_L0			BIT(1)
 #define HEM_INDEX_L1			BIT(2)
@@ -271,7 +268,6 @@ static struct hns_roce_hem *hns_roce_alloc_hem(struct hns_roce_dev *hr_dev,
 	if (!hem)
 		return NULL;
 
-	hem->refcount = 0;
 	INIT_LIST_HEAD(&hem->chunk_list);
 
 	order = get_order(hem_alloc_size);
@@ -336,81 +332,6 @@ void hns_roce_free_hem(struct hns_roce_dev *hr_dev, struct hns_roce_hem *hem)
 	}
 
 	kfree(hem);
-}
-
-static int hns_roce_set_hem(struct hns_roce_dev *hr_dev,
-			    struct hns_roce_hem_table *table, unsigned long obj)
-{
-	spinlock_t *lock = &hr_dev->bt_cmd_lock;
-	struct device *dev = hr_dev->dev;
-	struct hns_roce_hem_iter iter;
-	void __iomem *bt_cmd;
-	__le32 bt_cmd_val[2];
-	__le32 bt_cmd_h = 0;
-	unsigned long flags;
-	__le32 bt_cmd_l;
-	int ret = 0;
-	u64 bt_ba;
-	long end;
-
-	/* Find the HEM(Hardware Entry Memory) entry */
-	unsigned long i = (obj & (table->num_obj - 1)) /
-			  (table->table_chunk_size / table->obj_size);
-
-	switch (table->type) {
-	case HEM_TYPE_QPC:
-	case HEM_TYPE_MTPT:
-	case HEM_TYPE_CQC:
-	case HEM_TYPE_SRQC:
-		roce_set_field(bt_cmd_h, ROCEE_BT_CMD_H_ROCEE_BT_CMD_MDF_M,
-			ROCEE_BT_CMD_H_ROCEE_BT_CMD_MDF_S, table->type);
-		break;
-	default:
-		return ret;
-	}
-
-	roce_set_field(bt_cmd_h, ROCEE_BT_CMD_H_ROCEE_BT_CMD_IN_MDF_M,
-		       ROCEE_BT_CMD_H_ROCEE_BT_CMD_IN_MDF_S, obj);
-	roce_set_bit(bt_cmd_h, ROCEE_BT_CMD_H_ROCEE_BT_CMD_S, 0);
-	roce_set_bit(bt_cmd_h, ROCEE_BT_CMD_H_ROCEE_BT_CMD_HW_SYNS_S, 1);
-
-	/* Currently iter only a chunk */
-	for (hns_roce_hem_first(table->hem[i], &iter);
-	     !hns_roce_hem_last(&iter); hns_roce_hem_next(&iter)) {
-		bt_ba = hns_roce_hem_addr(&iter) >> DMA_ADDR_T_SHIFT;
-
-		spin_lock_irqsave(lock, flags);
-
-		bt_cmd = hr_dev->reg_base + ROCEE_BT_CMD_H_REG;
-
-		end = HW_SYNC_TIMEOUT_MSECS;
-		while (end > 0) {
-			if (!(readl(bt_cmd) >> BT_CMD_SYNC_SHIFT))
-				break;
-
-			mdelay(HW_SYNC_SLEEP_TIME_INTERVAL);
-			end -= HW_SYNC_SLEEP_TIME_INTERVAL;
-		}
-
-		if (end <= 0) {
-			dev_err(dev, "Write bt_cmd err,hw_sync is not zero.\n");
-			spin_unlock_irqrestore(lock, flags);
-			return -EBUSY;
-		}
-
-		bt_cmd_l = cpu_to_le32(bt_ba);
-		roce_set_field(bt_cmd_h, ROCEE_BT_CMD_H_ROCEE_BT_CMD_BA_H_M,
-			       ROCEE_BT_CMD_H_ROCEE_BT_CMD_BA_H_S,
-			       bt_ba >> BT_BA_SHIFT);
-
-		bt_cmd_val[0] = bt_cmd_l;
-		bt_cmd_val[1] = bt_cmd_h;
-		hns_roce_write64_k(bt_cmd_val,
-				   hr_dev->reg_base + ROCEE_BT_CMD_L_REG);
-		spin_unlock_irqrestore(lock, flags);
-	}
-
-	return ret;
 }
 
 static int calc_hem_config(struct hns_roce_dev *hr_dev,
@@ -618,7 +539,7 @@ static int hns_roce_table_mhop_get(struct hns_roce_dev *hr_dev,
 
 	mutex_lock(&table->mutex);
 	if (table->hem[index.buf]) {
-		++table->hem[index.buf]->refcount;
+		refcount_inc(&table->hem[index.buf]->refcount);
 		goto out;
 	}
 
@@ -637,7 +558,7 @@ static int hns_roce_table_mhop_get(struct hns_roce_dev *hr_dev,
 		}
 	}
 
-	++table->hem[index.buf]->refcount;
+	refcount_set(&table->hem[index.buf]->refcount, 1);
 	goto out;
 
 err_alloc:
@@ -663,7 +584,7 @@ int hns_roce_table_get(struct hns_roce_dev *hr_dev,
 	mutex_lock(&table->mutex);
 
 	if (table->hem[i]) {
-		++table->hem[i]->refcount;
+		refcount_inc(&table->hem[i]->refcount);
 		goto out;
 	}
 
@@ -678,7 +599,7 @@ int hns_roce_table_get(struct hns_roce_dev *hr_dev,
 	}
 
 	/* Set HEM base address(128K/page, pa) to Hardware */
-	if (hns_roce_set_hem(hr_dev, table, obj)) {
+	if (hr_dev->hw->set_hem(hr_dev, table, obj, HEM_HOP_STEP_DIRECT)) {
 		hns_roce_free_hem(hr_dev, table->hem[i]);
 		table->hem[i] = NULL;
 		ret = -ENODEV;
@@ -686,7 +607,7 @@ int hns_roce_table_get(struct hns_roce_dev *hr_dev,
 		goto out;
 	}
 
-	++table->hem[i]->refcount;
+	refcount_set(&table->hem[i]->refcount, 1);
 out:
 	mutex_unlock(&table->mutex);
 	return ret;
@@ -753,11 +674,11 @@ static void hns_roce_table_mhop_put(struct hns_roce_dev *hr_dev,
 		return;
 	}
 
-	mutex_lock(&table->mutex);
-	if (check_refcount && (--table->hem[index.buf]->refcount > 0)) {
-		mutex_unlock(&table->mutex);
+	if (!check_refcount)
+		mutex_lock(&table->mutex);
+	else if (!refcount_dec_and_mutex_lock(&table->hem[index.buf]->refcount,
+					      &table->mutex))
 		return;
-	}
 
 	clear_mhop_hem(hr_dev, table, obj, &mhop, &index);
 	free_mhop_hem(hr_dev, table, &mhop, &index);
@@ -779,16 +700,15 @@ void hns_roce_table_put(struct hns_roce_dev *hr_dev,
 	i = (obj & (table->num_obj - 1)) /
 	    (table->table_chunk_size / table->obj_size);
 
-	mutex_lock(&table->mutex);
+	if (!refcount_dec_and_mutex_lock(&table->hem[i]->refcount,
+					 &table->mutex))
+		return;
 
-	if (--table->hem[i]->refcount == 0) {
-		/* Clear HEM base address */
-		if (hr_dev->hw->clear_hem(hr_dev, table, obj, 0))
-			dev_warn(dev, "Clear HEM base address failed.\n");
+	if (hr_dev->hw->clear_hem(hr_dev, table, obj, HEM_HOP_STEP_DIRECT))
+		dev_warn(dev, "failed to clear HEM base address.\n");
 
-		hns_roce_free_hem(hr_dev, table->hem[i]);
-		table->hem[i] = NULL;
-	}
+	hns_roce_free_hem(hr_dev, table->hem[i]);
+	table->hem[i] = NULL;
 
 	mutex_unlock(&table->mutex);
 }
@@ -1053,7 +973,7 @@ void hns_roce_cleanup_hem(struct hns_roce_dev *hr_dev)
 	hns_roce_cleanup_hem_table(hr_dev, &hr_dev->mr_table.mtpt_table);
 }
 
-struct roce_hem_item {
+struct hns_roce_hem_item {
 	struct list_head list; /* link all hems in the same bt level */
 	struct list_head sibling; /* link all hems in last hop for mtt */
 	void *addr;
@@ -1063,12 +983,18 @@ struct roce_hem_item {
 	int end; /* end buf offset in this hem */
 };
 
-static struct roce_hem_item *hem_list_alloc_item(struct hns_roce_dev *hr_dev,
-						   int start, int end,
-						   int count, bool exist_bt,
-						   int bt_level)
+/* All HEM items are linked in a tree structure */
+struct hns_roce_hem_head {
+	struct list_head branch[HNS_ROCE_MAX_BT_REGION];
+	struct list_head root;
+	struct list_head leaf;
+};
+
+static struct hns_roce_hem_item *
+hem_list_alloc_item(struct hns_roce_dev *hr_dev, int start, int end, int count,
+		    bool exist_bt, int bt_level)
 {
-	struct roce_hem_item *hem;
+	struct hns_roce_hem_item *hem;
 
 	hem = kzalloc(sizeof(*hem), GFP_KERNEL);
 	if (!hem)
@@ -1093,7 +1019,7 @@ static struct roce_hem_item *hem_list_alloc_item(struct hns_roce_dev *hr_dev,
 }
 
 static void hem_list_free_item(struct hns_roce_dev *hr_dev,
-			       struct roce_hem_item *hem, bool exist_bt)
+			       struct hns_roce_hem_item *hem, bool exist_bt)
 {
 	if (exist_bt)
 		dma_free_coherent(hr_dev->dev, hem->count * BA_BYTE_LEN,
@@ -1104,7 +1030,7 @@ static void hem_list_free_item(struct hns_roce_dev *hr_dev,
 static void hem_list_free_all(struct hns_roce_dev *hr_dev,
 			      struct list_head *head, bool exist_bt)
 {
-	struct roce_hem_item *hem, *temp_hem;
+	struct hns_roce_hem_item *hem, *temp_hem;
 
 	list_for_each_entry_safe(hem, temp_hem, head, list) {
 		list_del(&hem->list);
@@ -1120,24 +1046,24 @@ static void hem_list_link_bt(struct hns_roce_dev *hr_dev, void *base_addr,
 
 /* assign L0 table address to hem from root bt */
 static void hem_list_assign_bt(struct hns_roce_dev *hr_dev,
-			       struct roce_hem_item *hem, void *cpu_addr,
+			       struct hns_roce_hem_item *hem, void *cpu_addr,
 			       u64 phy_addr)
 {
 	hem->addr = cpu_addr;
 	hem->dma_addr = (dma_addr_t)phy_addr;
 }
 
-static inline bool hem_list_page_is_in_range(struct roce_hem_item *hem,
+static inline bool hem_list_page_is_in_range(struct hns_roce_hem_item *hem,
 					     int offset)
 {
 	return (hem->start <= offset && offset <= hem->end);
 }
 
-static struct roce_hem_item *hem_list_search_item(struct list_head *ba_list,
-						    int page_offset)
+static struct hns_roce_hem_item *hem_list_search_item(struct list_head *ba_list,
+						      int page_offset)
 {
-	struct roce_hem_item *hem, *temp_hem;
-	struct roce_hem_item *found = NULL;
+	struct hns_roce_hem_item *hem, *temp_hem;
+	struct hns_roce_hem_item *found = NULL;
 
 	list_for_each_entry_safe(hem, temp_hem, ba_list, list) {
 		if (hem_list_page_is_in_range(hem, page_offset)) {
@@ -1227,9 +1153,9 @@ static int hem_list_alloc_mid_bt(struct hns_roce_dev *hr_dev,
 				 int offset, struct list_head *mid_bt,
 				 struct list_head *btm_bt)
 {
-	struct roce_hem_item *hem_ptrs[HNS_ROCE_MAX_BT_LEVEL] = { NULL };
+	struct hns_roce_hem_item *hem_ptrs[HNS_ROCE_MAX_BT_LEVEL] = { NULL };
 	struct list_head temp_list[HNS_ROCE_MAX_BT_LEVEL];
-	struct roce_hem_item *cur, *pre;
+	struct hns_roce_hem_item *cur, *pre;
 	const int hopnum = r->hopnum;
 	int start_aligned;
 	int distance;
@@ -1307,56 +1233,96 @@ err_exit:
 	return ret;
 }
 
-static int hem_list_alloc_root_bt(struct hns_roce_dev *hr_dev,
-				  struct hns_roce_hem_list *hem_list, int unit,
-				  const struct hns_roce_buf_region *regions,
-				  int region_cnt)
+static struct hns_roce_hem_item *
+alloc_root_hem(struct hns_roce_dev *hr_dev, int unit, int *max_ba_num,
+	       const struct hns_roce_buf_region *regions, int region_cnt)
 {
-	struct list_head temp_list[HNS_ROCE_MAX_BT_REGION];
-	struct roce_hem_item *hem, *temp_hem, *root_hem;
 	const struct hns_roce_buf_region *r;
-	struct list_head temp_root;
-	struct list_head temp_btm;
-	void *cpu_base;
-	u64 phy_base;
-	int ret = 0;
+	struct hns_roce_hem_item *hem;
 	int ba_num;
 	int offset;
-	int total;
-	int step;
-	int i;
-
-	r = &regions[0];
-	root_hem = hem_list_search_item(&hem_list->root_bt, r->offset);
-	if (root_hem)
-		return 0;
 
 	ba_num = hns_roce_hem_list_calc_root_ba(regions, region_cnt, unit);
 	if (ba_num < 1)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	if (ba_num > unit)
-		return -ENOBUFS;
+		return ERR_PTR(-ENOBUFS);
 
-	ba_num = min_t(int, ba_num, unit);
-	INIT_LIST_HEAD(&temp_root);
-	offset = r->offset;
+	offset = regions[0].offset;
 	/* indicate to last region */
 	r = &regions[region_cnt - 1];
-	root_hem = hem_list_alloc_item(hr_dev, offset, r->offset + r->count - 1,
-				       ba_num, true, 0);
+	hem = hem_list_alloc_item(hr_dev, offset, r->offset + r->count - 1,
+				  ba_num, true, 0);
+	if (!hem)
+		return ERR_PTR(-ENOMEM);
+
+	*max_ba_num = ba_num;
+
+	return hem;
+}
+
+static int alloc_fake_root_bt(struct hns_roce_dev *hr_dev, void *cpu_base,
+			      u64 phy_base, const struct hns_roce_buf_region *r,
+			      struct list_head *branch_head,
+			      struct list_head *leaf_head)
+{
+	struct hns_roce_hem_item *hem;
+
+	hem = hem_list_alloc_item(hr_dev, r->offset, r->offset + r->count - 1,
+				  r->count, false, 0);
+	if (!hem)
+		return -ENOMEM;
+
+	hem_list_assign_bt(hr_dev, hem, cpu_base, phy_base);
+	list_add(&hem->list, branch_head);
+	list_add(&hem->sibling, leaf_head);
+
+	return r->count;
+}
+
+static int setup_middle_bt(struct hns_roce_dev *hr_dev, void *cpu_base,
+			   int unit, const struct hns_roce_buf_region *r,
+			   const struct list_head *branch_head)
+{
+	struct hns_roce_hem_item *hem, *temp_hem;
+	int total = 0;
+	int offset;
+	int step;
+
+	step = hem_list_calc_ba_range(r->hopnum, 1, unit);
+	if (step < 1)
+		return -EINVAL;
+
+	/* if exist mid bt, link L1 to L0 */
+	list_for_each_entry_safe(hem, temp_hem, branch_head, list) {
+		offset = (hem->start - r->offset) / step * BA_BYTE_LEN;
+		hem_list_link_bt(hr_dev, cpu_base + offset, hem->dma_addr);
+		total++;
+	}
+
+	return total;
+}
+
+static int
+setup_root_hem(struct hns_roce_dev *hr_dev, struct hns_roce_hem_list *hem_list,
+	       int unit, int max_ba_num, struct hns_roce_hem_head *head,
+	       const struct hns_roce_buf_region *regions, int region_cnt)
+{
+	const struct hns_roce_buf_region *r;
+	struct hns_roce_hem_item *root_hem;
+	void *cpu_base;
+	u64 phy_base;
+	int i, total;
+	int ret;
+
+	root_hem = list_first_entry(&head->root,
+				    struct hns_roce_hem_item, list);
 	if (!root_hem)
 		return -ENOMEM;
-	list_add(&root_hem->list, &temp_root);
-
-	hem_list->root_ba = root_hem->dma_addr;
-
-	INIT_LIST_HEAD(&temp_btm);
-	for (i = 0; i < region_cnt; i++)
-		INIT_LIST_HEAD(&temp_list[i]);
 
 	total = 0;
-	for (i = 0; i < region_cnt && total < ba_num; i++) {
+	for (i = 0; i < region_cnt && total < max_ba_num; i++) {
 		r = &regions[i];
 		if (!r->count)
 			continue;
@@ -1368,48 +1334,64 @@ static int hem_list_alloc_root_bt(struct hns_roce_dev *hr_dev,
 		/* if hopnum is 0 or 1, cut a new fake hem from the root bt
 		 * which's address share to all regions.
 		 */
-		if (hem_list_is_bottom_bt(r->hopnum, 0)) {
-			hem = hem_list_alloc_item(hr_dev, r->offset,
-						  r->offset + r->count - 1,
-						  r->count, false, 0);
-			if (!hem) {
-				ret = -ENOMEM;
-				goto err_exit;
-			}
-			hem_list_assign_bt(hr_dev, hem, cpu_base, phy_base);
-			list_add(&hem->list, &temp_list[i]);
-			list_add(&hem->sibling, &temp_btm);
-			total += r->count;
-		} else {
-			step = hem_list_calc_ba_range(r->hopnum, 1, unit);
-			if (step < 1) {
-				ret = -EINVAL;
-				goto err_exit;
-			}
-			/* if exist mid bt, link L1 to L0 */
-			list_for_each_entry_safe(hem, temp_hem,
-					  &hem_list->mid_bt[i][1], list) {
-				offset = (hem->start - r->offset) / step *
-					  BA_BYTE_LEN;
-				hem_list_link_bt(hr_dev, cpu_base + offset,
-						 hem->dma_addr);
-				total++;
-			}
-		}
+		if (hem_list_is_bottom_bt(r->hopnum, 0))
+			ret = alloc_fake_root_bt(hr_dev, cpu_base, phy_base, r,
+						 &head->branch[i], &head->leaf);
+		else
+			ret = setup_middle_bt(hr_dev, cpu_base, unit, r,
+					      &hem_list->mid_bt[i][1]);
+
+		if (ret < 0)
+			return ret;
+
+		total += ret;
 	}
 
-	list_splice(&temp_btm, &hem_list->btm_bt);
-	list_splice(&temp_root, &hem_list->root_bt);
+	list_splice(&head->leaf, &hem_list->btm_bt);
+	list_splice(&head->root, &hem_list->root_bt);
 	for (i = 0; i < region_cnt; i++)
-		list_splice(&temp_list[i], &hem_list->mid_bt[i][0]);
+		list_splice(&head->branch[i], &hem_list->mid_bt[i][0]);
 
 	return 0;
+}
 
-err_exit:
+static int hem_list_alloc_root_bt(struct hns_roce_dev *hr_dev,
+				  struct hns_roce_hem_list *hem_list, int unit,
+				  const struct hns_roce_buf_region *regions,
+				  int region_cnt)
+{
+	struct hns_roce_hem_item *root_hem;
+	struct hns_roce_hem_head head;
+	int max_ba_num;
+	int ret;
+	int i;
+
+	root_hem = hem_list_search_item(&hem_list->root_bt, regions[0].offset);
+	if (root_hem)
+		return 0;
+
+	max_ba_num = 0;
+	root_hem = alloc_root_hem(hr_dev, unit, &max_ba_num, regions,
+				  region_cnt);
+	if (IS_ERR(root_hem))
+		return PTR_ERR(root_hem);
+
+	/* List head for storing all allocated HEM items */
+	INIT_LIST_HEAD(&head.root);
+	INIT_LIST_HEAD(&head.leaf);
 	for (i = 0; i < region_cnt; i++)
-		hem_list_free_all(hr_dev, &temp_list[i], false);
+		INIT_LIST_HEAD(&head.branch[i]);
 
-	hem_list_free_all(hr_dev, &temp_root, true);
+	hem_list->root_ba = root_hem->dma_addr;
+	list_add(&root_hem->list, &head.root);
+	ret = setup_root_hem(hr_dev, hem_list, unit, max_ba_num, &head, regions,
+			     region_cnt);
+	if (ret) {
+		for (i = 0; i < region_cnt; i++)
+			hem_list_free_all(hr_dev, &head.branch[i], false);
+
+		hem_list_free_all(hr_dev, &head.root, true);
+	}
 
 	return ret;
 }
@@ -1495,7 +1477,7 @@ void *hns_roce_hem_list_find_mtt(struct hns_roce_dev *hr_dev,
 				 int offset, int *mtt_cnt, u64 *phy_addr)
 {
 	struct list_head *head = &hem_list->btm_bt;
-	struct roce_hem_item *hem, *temp_hem;
+	struct hns_roce_hem_item *hem, *temp_hem;
 	void *cpu_base = NULL;
 	u64 phy_base = 0;
 	int nr = 0;
