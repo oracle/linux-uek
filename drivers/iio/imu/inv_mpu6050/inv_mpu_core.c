@@ -1314,8 +1314,7 @@ static int inv_check_and_setup_chip(struct inv_mpu6050_state *st)
 		for (i = 0; i < INV_NUM_PARTS; ++i) {
 			if (regval == hw_info[i].whoami) {
 				dev_warn(regmap_get_device(st->map),
-					"whoami mismatch got %#02x (%s)"
-					"expected %#02hhx (%s)\n",
+					"whoami mismatch got %#02x (%s) expected %#02x (%s)\n",
 					regval, hw_info[i].name,
 					st->hw->whoami, st->hw->name);
 				break;
@@ -1323,7 +1322,7 @@ static int inv_check_and_setup_chip(struct inv_mpu6050_state *st)
 		}
 		if (i >= INV_NUM_PARTS) {
 			dev_err(regmap_get_device(st->map),
-				"invalid whoami %#02x expected %#02hhx (%s)\n",
+				"invalid whoami %#02x expected %#02x (%s)\n",
 				regval, st->hw->whoami, st->hw->name);
 			return -ENODEV;
 		}
@@ -1455,8 +1454,7 @@ int inv_mpu_core_probe(struct regmap *regmap, int irq, const char *name,
 
 	pdata = dev_get_platdata(dev);
 	if (!pdata) {
-		result = iio_read_mount_matrix(dev, "mount-matrix",
-					       &st->orientation);
+		result = iio_read_mount_matrix(dev, &st->orientation);
 		if (result) {
 			dev_err(dev, "Failed to retrieve mounting matrix %d\n",
 				result);
