@@ -35,9 +35,22 @@ Sysfs entries
 -------------
 
 ================== === =======================================================
+fan[1-12]_enable   RW  0=disable fan speed monitoring, 1=enable fan speed monitoring
+                       The value is RO for companion channels (7-12). For those
+                       channels, the value matches the value of the primary channel.
 fan[1-12]_input    RO  fan tachometer speed in RPM
 fan[1-12]_fault    RO  fan experienced fault
+fan[1-12]_min      RW  minimum fan speed in RPM. Equivalent to target fan speed
+                       in PWM mode and if PWM support is disabled for a channel.
+                       Equivalent to half the target fan speed in RPM mode.
+                       The value is RO for companion channels (7-12). For those
+                       channels, the value matches the value of the primary channel.
+                       Note: In RPM mode, if the pwm duty cycle is 100%, the
+                       minimum fan speed is equivalent to the target fan speed,
+                       and the chip will report a fault condition if the fan
+                       speed is below the target fan speed.
 fan[1-6]_target    RW  desired fan speed in RPM
-pwm[1-6]_enable    RW  regulator mode, 0=disabled, 1=manual mode, 2=rpm mode
-pwm[1-6]           RW  fan target duty cycle (0-255)
+pwm[1-6]_enable    RW  regulator mode, 0=disabled (duty cycle=0%), 1=manual mode, 2=rpm mode
+pwm[1-6]           RW  read: current pwm duty cycle,
+                       write: target pwm duty cycle (0-255)
 ================== === =======================================================
