@@ -789,6 +789,7 @@
 0x27ba8148	sock_create	vmlinux	EXPORT_SYMBOL
 0xbfd4cfb9	sock_create_kern	vmlinux	EXPORT_SYMBOL	
 0x340bdc26	sock_release	vmlinux	EXPORT_SYMBOL	
+0x8e97a7db	sock_setsockopt vmlinux EXPORT_SYMBOL
 0xa682ca47	sockfd_lookup	vmlinux	EXPORT_SYMBOL	
 0xe3a53f4c	sort	vmlinux	EXPORT_SYMBOL	
 0x3c3ff9fd	sprintf	vmlinux	EXPORT_SYMBOL	
