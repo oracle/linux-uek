@@ -653,6 +653,7 @@
 	snprintf
 	sock_create_kern
 	sock_release
+	sock_setsockopt
 	sockfd_lookup
 	sprintf
 	sscanf

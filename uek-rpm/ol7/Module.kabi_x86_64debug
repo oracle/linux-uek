@@ -652,6 +652,7 @@
 0x28318305	snprintf	vmlinux	EXPORT_SYMBOL
 0x27825fe6	sock_create_kern	vmlinux	EXPORT_SYMBOL
 0x0dea43ea	sock_release	vmlinux	EXPORT_SYMBOL
+0xcb1fe520	sock_setsockopt	vmlinux	EXPORT_SYMBOL
 0xe58c88ad	sockfd_lookup	vmlinux	EXPORT_SYMBOL
 0x91715312	sprintf	vmlinux	EXPORT_SYMBOL
 0x20c55ae0	sscanf	vmlinux	EXPORT_SYMBOL
