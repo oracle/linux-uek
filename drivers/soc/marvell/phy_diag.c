@@ -154,19 +154,19 @@ static struct {
 DEFINE_STR_2_ENUM_FUNC(prbs_types)
 
 
-enum phy_mdio_clause {
+enum phy_mdio_optype {
 	CLAUSE_22 = 0,
 	CLAUSE_45,
 };
 
 static struct {
-	enum phy_mdio_clause e;
+	enum phy_mdio_optype e;
 	const char *s;
-} mdio_clause[] = {
-	{CLAUSE_22, "cl22"},
-	{CLAUSE_45, "cl45"},
+} mdio_optype[] = {
+	{CLAUSE_22, "c22"},
+	{CLAUSE_45, "c45"},
 };
-DEFINE_STR_2_ENUM_FUNC(mdio_clause)
+DEFINE_STR_2_ENUM_FUNC(mdio_optype)
 
 
 
@@ -187,32 +187,43 @@ static int copy_user_input(const char __user *buffer,
 
 
 static int parse_phy_mdio_op_data(char *cmd, int write,
-		int *clause, int *devad, int *reg, int *val)
+		int *clause, int *dev_page, int *reg, int *val)
 {
 	char *end;
 	char *token;
+	int optype;
+	int devpage;
 
 	end = skip_spaces(cmd);
 	token = strsep(&end, " \t\n");
 	if (!token)
 		return -EINVAL;
 
-	*clause = mdio_clause_str2enum(token);
-	if (*clause == -1)
+	optype = mdio_optype_str2enum(token);
+	if (optype == -1)
 		return -EINVAL;
 
-	if (*clause == CLAUSE_45) {
-		end = skip_spaces(end);
-		token = strsep(&end, " \t\n");
-		if (!token)
-			return -EINVAL;
+	*clause = optype;
 
-		if (kstrtouint(token, 10, devad))
-			return -EINVAL;
+	end = skip_spaces(end);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
 
-		/* device addr is 5 bits */
-		*devad &= 0x1f;
+	if (kstrtoint(token, 10, &devpage))
+		return -EINVAL;
+
+	if (devpage >= 0) {
+		/* device addr or page nr are 5 bits */
+		devpage &= 0x1f;
+		*dev_page = devpage;
+	} else if (devpage != -1) {
+		return -EINVAL;
 	}
+
+	/* Cannot ignore devad when using clause 45 */
+	if (devpage == -1 && optype == CLAUSE_45)
+		return -EINVAL;
 
 	end = skip_spaces(end);
 	token = strsep(&end, " \t\n");
@@ -246,7 +257,7 @@ static ssize_t phy_debug_read_reg_write(struct file *filp,
 {
 	struct arm_smccc_res res;
 	int clause;
-	int devad = 0;
+	int dev_page = (1 << 5);
 	int reg;
 	int val;
 	int x1;
@@ -256,11 +267,11 @@ static ssize_t phy_debug_read_reg_write(struct file *filp,
 		return -EFAULT;
 
 	if (parse_phy_mdio_op_data(cmd_buf, 0, &clause,
-				&devad, &reg, &val)) {
+				&dev_page, &reg, &val)) {
 		return -EINVAL;
 	}
 
-	x1 = (devad << 2) | (clause << 1) | 0;
+	x1 = (dev_page << 2) | (clause << 1) | 0;
 	x2 = reg;
 
 	arm_smccc_smc(PLAT_OCTEONTX_PHY_MDIO, x1, x2,
@@ -290,7 +301,7 @@ static ssize_t phy_debug_write_reg_write(struct file *filp,
 {
 	struct arm_smccc_res res;
 	int clause;
-	int devad = 0;
+	int dev_page = (1 << 5);
 	int reg;
 	int val;
 	int x1;
@@ -300,11 +311,11 @@ static ssize_t phy_debug_write_reg_write(struct file *filp,
 		return -EFAULT;
 
 	if (parse_phy_mdio_op_data(cmd_buf, 1, &clause,
-				&devad, &reg, &val)) {
+				&dev_page, &reg, &val)) {
 		return -EINVAL;
 	}
 
-	x1 = (devad << 2) | (clause << 1) | 1;
+	x1 = (dev_page << 2) | (clause << 1) | 1;
 	x2 = (val << 16) | reg;
 
 	arm_smccc_smc(PLAT_OCTEONTX_PHY_MDIO, x1, x2,
