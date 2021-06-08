@@ -4823,6 +4823,9 @@ xlog_finish_defer_ops(
 	uint			resblks;
 	int			error;
 
+	if (!xfs_defer_has_unfinished_work(dfops))
+		return 0;
+
 	/*
 	 * We're finishing the defer_ops that accumulated as a result of
 	 * recovering unfinished intent items during log recovery.  We
