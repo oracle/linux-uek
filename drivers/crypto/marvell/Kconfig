@@ -51,21 +51,4 @@ config CRYPTO_DEV_OCTEONTX2_CPT
 		Accelerator Unit(CPT) found in OcteonTX2 series of processors.
 
 		To compile this driver as module, choose M here:
-		the modules will be called octeontx2-cpt and octeontx2-cptvf
-
-config CRYPTO_DEV_CN10K_CPT
-	tristate "Support for Marvell CN10K CPT driver"
-	depends on ARCH_THUNDER || COMPILE_TEST
-	depends on PCI_MSI && 64BIT
-	depends on CRYPTO_LIB_AES
-	select OCTEONTX2_MBOX
-	select CRYPTO_DEV_MARVELL
-	select CRYPTO_SKCIPHER
-	select CRYPTO_HASH
-	select CRYPTO_AEAD
-	help
-		This driver allows you to utilize the Marvell Cryptographic
-		Accelerator Unit(CPT) found in cn10xxx series of processors.
-
-		To compile this driver as module, choose M here:
-		the modules will be called cn10k-cpt and cn10k-cptvf
+		the modules will be called rvu_cptpf and rvu_cptvf

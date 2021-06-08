@@ -7,6 +7,18 @@
 
 /* Fastpath ipsec opcode with inplace processing */
 #define CPT_INLINE_RX_OPCODE (0x26 | (1 << 6))
+#define CN10K_CPT_INLINE_RX_OPCODE (0x29 | (1 << 6))
+
+#define cpt_inline_rx_opcode(pdev)                      \
+({                                                      \
+	u8 opcode;                                      \
+	if (is_dev_otx2(pdev))                          \
+		opcode = CPT_INLINE_RX_OPCODE;          \
+	else                                            \
+		opcode = CN10K_CPT_INLINE_RX_OPCODE;    \
+	(opcode);                                       \
+})
+
 /*
  * CPT PF driver version, It will be incremented by 1 for every feature
  * addition in CPT mailbox messages.
@@ -154,7 +166,7 @@ static int rx_inline_ipsec_lf_cfg(struct otx2_cptpf_dev *cptpf, u8 egrp,
 	nix_req->enable = 1;
 	nix_req->cpt_credit = OTX2_CPT_INST_QLEN_MSGS - 1;
 	nix_req->gen_cfg.egrp = egrp;
-	nix_req->gen_cfg.opcode = CPT_INLINE_RX_OPCODE;
+	nix_req->gen_cfg.opcode = cpt_inline_rx_opcode(pdev);
 	nix_req->gen_cfg.param1 = req->param1;
 	nix_req->gen_cfg.param2 = req->param2;
 	nix_req->inst_qsel.cpt_pf_func = OTX2_CPT_RVU_PFFUNC(cptpf->pf_id, 0);
