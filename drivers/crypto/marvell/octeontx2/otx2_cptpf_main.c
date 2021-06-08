@@ -6,10 +6,11 @@
 #include "otx2_cpt_common.h"
 #include "otx2_cptpf_ucode.h"
 #include "otx2_cptpf.h"
+#include "cn10k_cpt.h"
 #include "rvu_reg.h"
 
-#define OTX2_CPT_DRV_NAME    "octeontx2-cpt"
-#define OTX2_CPT_DRV_STRING  "Marvell OcteonTX2 CPT Physical Function Driver"
+#define OTX2_CPT_DRV_NAME    "rvu_cptpf"
+#define OTX2_CPT_DRV_STRING  "Marvell RVU CPT Physical Function Driver"
 
 static void cptpf_enable_vf_flr_me_intrs(struct otx2_cptpf_dev *cptpf,
 					 int numvfs)
@@ -387,6 +388,8 @@ static int cptpf_register_afpf_mbox_intr(struct otx2_cptpf_dev *cptpf)
 
 static int cptpf_afpf_mbox_init(struct otx2_cptpf_dev *cptpf)
 {
+	struct pci_dev *pdev = cptpf->pdev;
+	resource_size_t offset;
 	int err;
 
 	cptpf->afpf_mbox_wq = alloc_workqueue("cpt_afpf_mailbox",
@@ -395,8 +398,17 @@ static int cptpf_afpf_mbox_init(struct otx2_cptpf_dev *cptpf)
 	if (!cptpf->afpf_mbox_wq)
 		return -ENOMEM;
 
+	offset = pci_resource_start(pdev, PCI_MBOX_BAR_NUM);
+	/* Map AF-PF mailbox memory */
+	cptpf->afpf_mbox_base = devm_ioremap_wc(&pdev->dev, offset, MBOX_SIZE);
+	if (!cptpf->afpf_mbox_base) {
+		dev_err(&pdev->dev, "Unable to map BAR4\n");
+		err = -ENOMEM;
+		goto error;
+	}
+
 	err = otx2_mbox_init(&cptpf->afpf_mbox, cptpf->afpf_mbox_base,
-			     cptpf->pdev, cptpf->reg_base, MBOX_DIR_PFAF, 1);
+			     pdev, cptpf->reg_base, MBOX_DIR_PFAF, 1);
 	if (err)
 		goto error;
 
@@ -426,7 +438,11 @@ static int cptpf_vfpf_mbox_init(struct otx2_cptpf_dev *cptpf, int numvfs)
 		return -ENOMEM;
 
 	/* Map VF-PF mailbox memory */
-	vfpf_mbox_base = readq(cptpf->reg_base + RVU_PF_VF_BAR4_ADDR);
+	if (test_bit(CN10K_MBOX, &cptpf->cap_flag))
+		vfpf_mbox_base = readq(cptpf->reg_base + RVU_PF_VF_MBOX_ADDR);
+	else
+		vfpf_mbox_base = readq(cptpf->reg_base + RVU_PF_VF_BAR4_ADDR);
+
 	if (!vfpf_mbox_base) {
 		dev_err(dev, "VF-PF mailbox address not configured\n");
 		err = -ENOMEM;
@@ -669,7 +685,7 @@ static int cptpf_sriov_enable(struct pci_dev *pdev, int num_vfs)
 	if (ret)
 		goto disable_intr;
 
-	ret = otx2_cpt_create_eng_grps(cptpf->pdev, &cptpf->eng_grps);
+	ret = otx2_cpt_create_eng_grps(cptpf, &cptpf->eng_grps);
 	if (ret)
 		goto disable_intr;
 
@@ -706,7 +722,6 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *ent)
 {
 	struct device *dev = &pdev->dev;
-	resource_size_t offset, size;
 	struct otx2_cptpf_dev *cptpf;
 	int err;
 
@@ -743,15 +758,6 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 	if (err)
 		goto clear_drvdata;
 
-	offset = pci_resource_start(pdev, PCI_MBOX_BAR_NUM);
-	size = pci_resource_len(pdev, PCI_MBOX_BAR_NUM);
-	/* Map AF-PF mailbox memory */
-	cptpf->afpf_mbox_base = devm_ioremap_wc(dev, offset, size);
-	if (!cptpf->afpf_mbox_base) {
-		dev_err(&pdev->dev, "Unable to map BAR4\n");
-		err = -ENODEV;
-		goto clear_drvdata;
-	}
 	err = pci_alloc_irq_vectors(pdev, RVU_PF_INT_VEC_CNT,
 				    RVU_PF_INT_VEC_CNT, PCI_IRQ_MSIX);
 	if (err < 0) {
@@ -759,6 +765,7 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 			RVU_PF_INT_VEC_CNT);
 		goto clear_drvdata;
 	}
+	otx2_cpt_set_hw_caps(pdev, &cptpf->cap_flag);
 	/* Initialize AF-PF mailbox */
 	err = cptpf_afpf_mbox_init(cptpf);
 	if (err)
@@ -769,6 +776,10 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 		goto destroy_afpf_mbox;
 
 	cptpf->max_vfs = pci_sriov_get_totalvfs(pdev);
+
+	err = cn10k_cptpf_lmtst_init(cptpf);
+	if (err)
+		goto unregister_intr;
 
 	/* Initialize CPT PF device */
 	err = cptpf_device_init(cptpf);
@@ -818,6 +829,7 @@ static void otx2_cptpf_remove(struct pci_dev *pdev)
 /* Supported devices */
 static const struct pci_device_id otx2_cpt_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, OTX2_CPT_PCI_PF_DEVICE_ID) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, CN10K_CPT_PCI_PF_DEVICE_ID) },
 	{ 0, }  /* end of table */
 };
 
