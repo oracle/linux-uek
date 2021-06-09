@@ -237,6 +237,51 @@ out:
 
 #endif /* CONFIG_RDS_ACL */
 
+static void
+rds_ib_check_rnr_timer(struct rds_ib_connection *ic)
+{
+	struct ib_device *ibdev = ic->rds_ibdev->dev;
+	struct ib_qp_init_attr qp_init_attr;
+	struct ib_qp_attr attr;
+	int nmbr_checks = 1;
+	int sts;
+
+	/* Mitigaton for a bug in CX-5, RoCE mode, where the RNR Retry
+	 * Timer is not set correctly. Currently, Oracle only uses
+	 * ethernet link-layer in CX-5, hence this simple check.
+	 */
+
+	if (rdma_port_get_link_layer(ibdev, ic->i_cm_id->port_num) != IB_LINK_LAYER_ETHERNET)
+		return;
+
+check_again:
+	sts = ib_query_qp(ic->i_cm_id->qp, &attr, IB_QP_MIN_RNR_TIMER, &qp_init_attr);
+
+	if (sts) {
+		printk(KERN_NOTICE "ib_query_qp(IB_QP_MIN_RNR_TIMER): err=%d\n", -sts);
+	} else if (attr.min_rnr_timer != IB_RNR_TIMER_000_32) {
+		struct rds_connection *conn = ic->conn;
+		const int max_nmbr_checks = 5;
+
+		printk(KERN_NOTICE "WRONG RNR Retry Timer value: %d: Attempt: %d RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u\n",
+		       attr.min_rnr_timer, nmbr_checks, ic->i_active_side ? "Active " : "Passive",
+		       conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
+		       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		       RDS_PROTOCOL_MAJOR(conn->c_version),
+		       RDS_PROTOCOL_MINOR(conn->c_version));
+
+		if (++nmbr_checks > max_nmbr_checks)
+			return;
+
+		attr.min_rnr_timer = IB_RNR_TIMER_000_32;
+		sts = ib_modify_qp(ic->i_cm_id->qp, &attr, IB_QP_MIN_RNR_TIMER);
+		if (sts)
+			printk(KERN_NOTICE "ib_modify_qp(IB_QP_MIN_RNR_TIMER): err=%d\n", -sts);
+		else
+			goto check_again;
+	}
+}
+
 /*
  * Connection established.
  * We get here for both outgoing and incoming connection.
@@ -325,6 +370,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 * the posted credit count. */
 	if (!rds_ib_srq_enabled)
 		RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
+
+	rds_ib_check_rnr_timer(ic);
 
 	/* update ib_device with this local ipaddr */
 	err = rds_ib_update_ipaddr(ic->rds_ibdev, &conn->c_laddr);
