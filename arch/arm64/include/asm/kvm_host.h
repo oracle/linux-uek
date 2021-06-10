@@ -400,7 +400,7 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg);
 #define vcpu_cp15(v,r)		((v)->arch.ctxt.copro[(r) ^ CPx_BIAS])
 
 struct kvm_vm_stat {
-	ulong remote_tlb_flush;
+	u64 remote_tlb_flush;
 };
 
 struct kvm_vcpu_stat {
