@@ -1069,7 +1069,7 @@ static void sdp_host_handshake_fn(struct work_struct *wrk)
 		neg_vf0_rings = host_rinfo.s.rppf;
 		neg_vfx_rings = host_rinfo.s.rpvf;
 		neg_vf = host_rinfo.s.numvf;
-		dev_info(&sdp->pdev->dev, "Negotiated VF0 rings:%d VFx rings%d VFs:%d\n",
+		dev_info(&sdp->pdev->dev, "Negotiated VF0 rings:%d VFx rings:%d VFs:%d\n",
 			 neg_vf0_rings, neg_vfx_rings, neg_vf);
 		host_rinfo.s.dir = FW_TO_HOST;
 		writeq(host_rinfo.u,
