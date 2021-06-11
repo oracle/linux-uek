@@ -416,8 +416,7 @@ int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index)
 	index = id * lmac->mac_to_index_bmap.max + index;
 
 	/* Read MAC address to check whether it is ucast or mcast */
-	cfg = cgx_read(cgx_dev, lmac_id,
-		       (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)));
+	cfg = cgx_read(cgx_dev, 0, (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)));
 
 	cfg2mac(cfg, mac);
 	if (is_multicast_ether_addr(mac))
