@@ -712,8 +712,12 @@ struct x86_pmu {
 			pebs_broken		:1,
 			pebs_prec_dist		:1,
 			pebs_no_tlb		:1,
+#ifdef __GENKSYMS__
+			pebs_no_isolation       :1;
+#else
 			pebs_no_isolation	:1,
 			pebs_block		:1;
+#endif
 	int		pebs_record_size;
 	int		pebs_buffer_size;
 	int		max_pebs_events;
@@ -741,7 +745,6 @@ struct x86_pmu {
 	/*
 	 * Intel perf metrics
 	 */
-	int		num_topdown_events;
 	u64		(*update_topdown_event)(struct perf_event *event);
 	int		(*set_topdown_event_period)(struct perf_event *event);
 
@@ -756,6 +759,8 @@ struct x86_pmu {
 	 */
 	struct extra_reg *extra_regs;
 	unsigned int flags;
+
+	UEK_KABI_FILL_HOLE(int num_topdown_events)
 
 	/*
 	 * Intel host/guest support (KVM)
