@@ -1076,16 +1076,24 @@ union perf_mem_data_src {
 			mem_lvl_num:4,	/* memory hierarchy level number */
 			mem_remote:1,   /* remote */
 			mem_snoopx:2,	/* snoop mode, ext */
+#ifdef __GENKSYMS__
+			mem_rsvd:24;
+#else
 			mem_blk:3,	/* access blocked */
 			mem_rsvd:21;
+#endif
 	};
 };
 #elif defined(__BIG_ENDIAN_BITFIELD)
 union perf_mem_data_src {
 	__u64 val;
 	struct {
+#ifdef __GENKSYMS__
+		__u64   mem_rsvd:24,
+#else
 		__u64	mem_rsvd:21,
 			mem_blk:3,	/* access blocked */
+#endif
 			mem_snoopx:2,	/* snoop mode, ext */
 			mem_remote:1,   /* remote */
 			mem_lvl_num:4,	/* memory hierarchy level number */
