@@ -954,7 +954,11 @@ struct perf_sample_data {
 	struct perf_raw_record		*raw;
 	struct perf_branch_stack	*br_stack;
 	u64				period;
+#ifdef __GENKSYMS__
+	u64                             weight;
+#else
 	union perf_sample_weight	weight;
+#endif
 	u64				txn;
 	union  perf_mem_data_src	data_src;
 
