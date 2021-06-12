@@ -4709,7 +4709,7 @@ static int io_recv(struct io_kiocb *req, bool force_nonblock,
 	void __user *buf = sr->buf;
 	struct socket *sock;
 	struct iovec iov;
-	unsigned flags;
+	unsigned flags = 0;
 	int min_ret = 0;
 	int ret, cflags = 0;
 
