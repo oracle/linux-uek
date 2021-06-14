@@ -37,6 +37,8 @@
 #include "blk-wbt.h"
 #include "blk-mq-sched.h"
 
+static enum cpuhp_state blkmq_cpuhp_state;
+
 static bool blk_mq_poll(struct request_queue *q, blk_qc_t cookie);
 static void blk_mq_poll_stats_start(struct request_queue *q);
 static void blk_mq_poll_stats_fn(struct blk_stat_callback *cb);
@@ -2143,7 +2145,7 @@ static int blk_mq_hctx_notify_dead(unsigned int cpu, struct hlist_node *node)
 static void blk_mq_remove_cpuhp(struct blk_mq_hw_ctx *hctx)
 {
 	if (!(hctx->flags & BLK_MQ_F_STACKING))
-		cpuhp_state_remove_instance_nocalls(CPUHP_AP_BLK_MQ_ONLINE,
+		cpuhp_state_remove_instance_nocalls(blkmq_cpuhp_state,
 						    &hctx->cpuhp_online);
 	cpuhp_state_remove_instance_nocalls(CPUHP_BLK_MQ_DEAD,
 					    &hctx->cpuhp_dead);
@@ -2205,7 +2207,7 @@ static int blk_mq_init_hctx(struct request_queue *q,
 	hctx->flags = set->flags & ~BLK_MQ_F_TAG_SHARED;
 
 	if (!(hctx->flags & BLK_MQ_F_STACKING))
-		cpuhp_state_add_instance_nocalls(CPUHP_AP_BLK_MQ_ONLINE,
+		cpuhp_state_add_instance_nocalls(blkmq_cpuhp_state,
 				&hctx->cpuhp_online);
 	cpuhp_state_add_instance_nocalls(CPUHP_BLK_MQ_DEAD, &hctx->cpuhp_dead);
 
@@ -3159,11 +3161,17 @@ static bool blk_mq_poll(struct request_queue *q, blk_qc_t cookie)
 
 static int __init blk_mq_init(void)
 {
+	int ret;
+
 	cpuhp_setup_state_multi(CPUHP_BLK_MQ_DEAD, "block/mq:dead", NULL,
 				blk_mq_hctx_notify_dead);
-	cpuhp_setup_state_multi(CPUHP_AP_BLK_MQ_ONLINE, "block/mq:online",
+	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN, "block/mq:online",
 				blk_mq_hctx_notify_online,
 				blk_mq_hctx_notify_offline);
+	if (ret < 0)
+		return ret;
+
+	blkmq_cpuhp_state = ret;
 	return 0;
 }
 subsys_initcall(blk_mq_init);
