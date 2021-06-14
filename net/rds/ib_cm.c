@@ -1844,6 +1844,8 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		while (!wait_event_timeout(rds_ib_ring_empty_wait,
 				(rds_ib_ring_empty(&ic->i_recv_ring) &&
 				 rds_ib_ring_empty(&ic->i_send_ring) &&
+				 (!test_bit(IB_ACK_IN_FLIGHT,
+				 &ic->i_ack_flags)) &&
 				 (atomic_read(&ic->i_fastreg_wrs) ==
 				  RDS_IB_DEFAULT_FREG_WR)) ||
 				(ic->i_flags & RDS_IB_CQ_ERR),
@@ -1853,7 +1855,8 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 				break;
 
 			/* Try to reap pending TX completions every 5 second */
-			if (!rds_ib_ring_empty(&ic->i_send_ring))
+			if (!rds_ib_ring_empty(&ic->i_send_ring) ||
+			    test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags))
 				rds_ib_poll_tx(ic);
 
 			/* Try to reap pending RX completions every 5 secs */
