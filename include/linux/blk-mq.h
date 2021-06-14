@@ -55,8 +55,6 @@ struct blk_mq_hw_ctx {
 
 	atomic_t		nr_active;
 
-	/** @cpuhp_online: List to store request if CPU is going to die */
-	struct hlist_node	cpuhp_online;
 	struct hlist_node	cpuhp_dead;
 	struct kobject		kobj;
 
@@ -69,6 +67,8 @@ struct blk_mq_hw_ctx {
 	struct dentry		*sched_debugfs_dir;
 #endif
 
+	/** @cpuhp_online: List to store request if CPU is going to die */
+	UEK_KABI_EXTEND(struct hlist_node   cpuhp_online)
 	/* Must be the last member - see also blk_mq_hw_ctx_size(). */
 	struct srcu_struct	queue_rq_srcu[0];
 };
