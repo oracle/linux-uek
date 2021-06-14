@@ -21,6 +21,9 @@ struct xfs_ioend {
 	struct xfs_trans	*io_append_trans;/* xact. for size update */
 	struct bio		*io_bio;	/* bio being built */
 	struct bio		io_inline_bio;	/* MUST BE LAST! */
+	struct work_struct	destroy_io_work;
+	unsigned int		io_blocks_num;	/* number of blocks in bio list*/
+	int			io_status;
 };
 
 extern const struct address_space_operations xfs_address_space_operations;

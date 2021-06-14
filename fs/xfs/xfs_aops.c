@@ -83,13 +83,15 @@ xfs_finish_page_writeback(
 STATIC void
 xfs_destroy_ioend(
 	struct xfs_ioend	*ioend,
-	int			error)
+	int			error,
+	bool		atomic)
 {
 	struct inode		*inode = ioend->io_inode;
 	struct bio		*bio = &ioend->io_inline_bio;
 	struct bio		*last = ioend->io_bio, *next;
 	u64			start = bio->bi_iter.bi_sector;
 	bool			quiet = bio_flagged(bio, BIO_QUIET);
+	int			count = 0;
 
 	for (bio = &ioend->io_inline_bio; bio; bio = next) {
 		struct bio_vec	*bvec;
@@ -108,12 +110,25 @@ xfs_destroy_ioend(
 		bio_for_each_segment_all(bvec, bio, iter_all)
 			xfs_finish_page_writeback(inode, bvec, error);
 		bio_put(bio);
+		/* Each bio can take 256 pages, reschedule to avoid lockup. */
+		if (!(++count % 4) && !atomic)
+			cond_resched();
 	}
 
 	if (unlikely(error && !quiet)) {
 		xfs_err_ratelimited(XFS_I(inode)->i_mount,
 			"writeback error on sector %llu", start);
 	}
+}
+
+STATIC void
+xfs_destroy_ioend_work(
+	struct work_struct	*work)
+{
+	struct xfs_ioend *ioend = container_of(work, struct xfs_ioend,
+			destroy_io_work);
+
+	xfs_destroy_ioend(ioend, ioend->io_status, false);
 }
 
 /*
@@ -276,13 +291,13 @@ done:
 	if (ioend->io_append_trans)
 		error = xfs_setfilesize_ioend(ioend, error);
 	list_replace_init(&ioend->io_list, &ioend_list);
-	xfs_destroy_ioend(ioend, error);
+	xfs_destroy_ioend(ioend, error, false);
 
 	while (!list_empty(&ioend_list)) {
 		ioend = list_first_entry(&ioend_list, struct xfs_ioend,
 				io_list);
 		list_del_init(&ioend->io_list);
-		xfs_destroy_ioend(ioend, error);
+		xfs_destroy_ioend(ioend, error, false);
 	}
 
 	memalloc_nofs_restore(nofs_flag);
@@ -401,6 +416,7 @@ xfs_end_bio(
 	struct xfs_inode	*ip = XFS_I(ioend->io_inode);
 	struct xfs_mount	*mp = ip->i_mount;
 	unsigned long		flags;
+	int			io_status = blk_status_to_errno(bio->bi_status);
 
 	if (ioend->io_fork == XFS_COW_FORK ||
 	    ioend->io_state == XFS_EXT_UNWRITTEN ||
@@ -411,8 +427,15 @@ xfs_end_bio(
 						 &ip->i_ioend_work));
 		list_add_tail(&ioend->io_list, &ip->i_ioend_list);
 		spin_unlock_irqrestore(&ip->i_ioend_lock, flags);
-	} else
-		xfs_destroy_ioend(ioend, blk_status_to_errno(bio->bi_status));
+	} else {
+		/* To avoid lockup */
+		if (ioend->io_blocks_num > 128) {
+			ioend->io_status = io_status;
+			queue_work(mp->m_unwritten_workqueue,
+				&ioend->destroy_io_work);
+		} else
+			xfs_destroy_ioend(ioend, io_status, true);
+	}
 }
 
 /*
@@ -719,6 +742,8 @@ xfs_alloc_ioend(
 	ioend->io_offset = offset;
 	ioend->io_append_trans = NULL;
 	ioend->io_bio = bio;
+	INIT_WORK(&ioend->destroy_io_work, xfs_destroy_ioend_work);
+	ioend->io_blocks_num = 0;
 	return ioend;
 }
 
@@ -795,6 +820,7 @@ xfs_add_to_ioend(
 		bio_add_page(wpc->ioend->io_bio, page, len, poff);
 	}
 
+	wpc->ioend->io_blocks_num++;
 	wpc->ioend->io_size += len;
 	wbc_account_cgroup_owner(wbc, page, len);
 }
