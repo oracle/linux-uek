@@ -4507,6 +4507,11 @@ static netdev_features_t mlx5e_tunnel_features_check(struct mlx5e_priv *priv,
 		if (port == GENEVE_UDP_PORT && mlx5_geneve_tx_allowed(priv->mdev))
 			return features;
 #endif
+		break;
+#ifdef CONFIG_MLX5_EN_IPSEC
+	case IPPROTO_ESP:
+		return mlx5e_ipsec_feature_check(skb, features);
+#endif
 	}
 
 out:
@@ -4522,9 +4527,6 @@ netdev_features_t mlx5e_features_check(struct sk_buff *skb,
 
 	features = vlan_features_check(skb, features);
 	features = vxlan_features_check(skb, features);
-
-	if (mlx5e_ipsec_feature_check(skb, netdev, features))
-		return features;
 
 	/* Validate if the tunneled packet is being offloaded by HW */
 	if (skb->encapsulation &&
