@@ -603,6 +603,7 @@ BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
 BuildRequires: numactl-devel
+BuildRequires: dwarves >= 1.15
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
