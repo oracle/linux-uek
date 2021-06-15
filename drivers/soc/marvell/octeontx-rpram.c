@@ -11,10 +11,19 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/arm-smccc.h>
+#include <linux/of.h>
+#include <linux/of_fdt.h>
 
-/* Default size */
-#define MIN_USERDEF_PRESERVE_MEMSZ	16 /* in MB, 16MB is minimum */
-#define MAX_USERDEF_PRESERVE_MEMSZ	1024 /* in MB, 1GB is maximum */
+/* Minimum size in MB, 0 means region is disabled
+ * 16 MB is the minimum size when it is eanbled.
+ */
+#define MIN_USERDEF_PRESERVE_MEMSZ	0
+
+/* Maximum size is 1GB */
+#define MAX_USERDEF_PRESERVE_MEMSZ	1024
+
+/* Region size must be multiples of 16 MB */
+#define PRESERVE_MEMSZ_ALIGN		16
 
 /* SMC function id to update persistent memory */
 #define PLAT_OCTEONTX_PERSIST_DATA_COMMAND	0xc2000b0d
@@ -24,32 +33,64 @@
  */
 #define UPDATE_USERDEF_PRESERVE_MEMSZ		1
 
-static u32 preserve_mem_size = MIN_USERDEF_PRESERVE_MEMSZ;
+static u32 current_rpram_size;
+static u32 nextboot_rpram_size;
+static u64 current_rpram_base;
 static struct dentry *preserve_mem_root;
+static const size_t len = PAGE_SIZE;
 
-static int otx_debugfs_open(struct inode *inode, struct file *file)
+static ssize_t cn10k_rpram_info_read(struct file *f, char __user *user_buf,
+		size_t count, loff_t *off)
+{
+	ssize_t out, pos = 0;
+	unsigned long addr = get_zeroed_page(GFP_KERNEL);
+	char *buf = (char *)addr;
+
+	if (!buf)
+		return -ENOMEM;
+
+	pos += snprintf(buf+pos, len - pos, "RPRAM size %d MB @0x%llx\n",
+		current_rpram_size, (unsigned long long) current_rpram_base);
+
+	out = simple_read_from_buffer(user_buf, count, off,
+			buf, pos);
+
+	free_page(addr);
+	return out;
+}
+
+static ssize_t cn10k_rpram_info_write(struct file *f, const char __user *user_buf,
+		size_t count, loff_t *off)
 {
 	return 0;
 }
 
-static ssize_t otx_debugfs_read(struct file *f, char __user *user_buf,
+static ssize_t cn10k_rpram_config_read(struct file *f, char __user *user_buf,
 		size_t count, loff_t *off)
 {
-	char *buf = (char *)&preserve_mem_size;
-	ssize_t out;
+	ssize_t out, pos = 0;
+	unsigned long addr = get_zeroed_page(GFP_KERNEL);
+	char *buf = (char *)addr;
+
+	if (!buf)
+		return -ENOMEM;
+
+	pos += snprintf(buf+pos, len - pos, "Next boot RPRAM size %d MB\n",
+		nextboot_rpram_size);
 
 	out = simple_read_from_buffer(user_buf, count, off,
-			buf, sizeof(preserve_mem_size));
+			buf, pos);
 
+	free_page(addr);
 	return out;
 }
 
-static ssize_t otx_debugfs_write(struct file *f, const char __user *user_buf,
+static ssize_t cn10k_rpram_config_write(struct file *f, const char __user *user_buf,
 		size_t count, loff_t *off)
 {
 	struct arm_smccc_res res;
 	unsigned long function_id, arg0, arg1;
-	u32 value;
+	int value;
 	ssize_t rc;
 	char buf[20];
 
@@ -67,34 +108,60 @@ static ssize_t otx_debugfs_write(struct file *f, const char __user *user_buf,
 
 	/* size should be multiples of 16 in MB */
 	if ((value < MIN_USERDEF_PRESERVE_MEMSZ) || (value > MAX_USERDEF_PRESERVE_MEMSZ)
-		|| (value % MIN_USERDEF_PRESERVE_MEMSZ))
+		|| (value % PRESERVE_MEMSZ_ALIGN))
 		goto ret_err;
 
-	preserve_mem_size = value;
+	nextboot_rpram_size = value;
 
 	function_id = PLAT_OCTEONTX_PERSIST_DATA_COMMAND;
 	arg0 = UPDATE_USERDEF_PRESERVE_MEMSZ;
-	arg1 = preserve_mem_size;
+	arg1 = nextboot_rpram_size;
 
 	/* Secure firmware call to update the size of user defined memory */
 	arm_smccc_smc(function_id, arg0, arg1, 0, 0, 0, 0, 0, &res);
 	return count;
 
 ret_err:
-	pr_err("Invalid size, valid values: min 16, max 1024, multiples of 16\n");
+	pr_err("Invalid size, max 1024, multiples of 16\n");
 	return -EINVAL;
 }
 
-static const struct file_operations otx_debugfs_fops = {
-	.open = otx_debugfs_open,
-	.read = otx_debugfs_read,
-	.write = otx_debugfs_write,
+static const struct file_operations rpram_config_fops = {
+	.read = cn10k_rpram_config_read,
+	.write = cn10k_rpram_config_write,
+};
+
+static const struct file_operations rpram_currentsz_ops = {
+	.read = cn10k_rpram_info_read,
+	.write = cn10k_rpram_info_write,
 };
 
 /* module init */
-static int __init otx_rpram_init(void)
+static int __init cn10k_rpram_init(void)
 {
 	struct dentry *root, *entry;
+	struct device_node *parent, *node;
+
+	parent = of_find_node_by_path("/reserved-memory");
+	if (!parent) {
+		current_rpram_size = 0;
+	} else {
+		for_each_child_of_node(parent, node) {
+			const __be32 *prop;
+			u64 size;
+
+			if (of_node_name_prefix(node, "user-def")) {
+				prop = of_get_property(node, "reg", NULL);
+				if (!prop)
+					break;
+				current_rpram_base = be32_to_cpu(prop[1]) |
+					(unsigned long long)be32_to_cpu(prop[0]) << 32;
+				size = be32_to_cpu(prop[3]) |
+					(unsigned long long)be32_to_cpu(prop[2]) << 32;
+				current_rpram_size = size / 1024 / 1024;
+			}
+		}
+	}
 
 	/* root directory : rpram */
 	root = debugfs_create_dir("rpram", NULL);
@@ -104,13 +171,26 @@ static int __init otx_rpram_init(void)
 	}
 
 	preserve_mem_root = root;
+	nextboot_rpram_size = current_rpram_size;
 
 	/* root/preserve_memsz_inMB creation */
-	entry = debugfs_create_file("preserve_memsz_inMB", 0600, root,
-			&preserve_mem_size, &otx_debugfs_fops);
+	entry = debugfs_create_file("rpram_config_szMB", 0600, root,
+			&nextboot_rpram_size, &rpram_config_fops);
 
 	if (!entry) {
-		pr_err("rpram->preserve_memsz_inMB debugfs file creation failed\n");
+		pr_err("rpram->rpram_config_szMB debugfs file creation failed\n");
+		debugfs_remove_recursive(preserve_mem_root);
+		preserve_mem_root = NULL;
+		return -ENOMEM;
+	}
+
+	entry = debugfs_create_file("rpram_info", 0444, root,
+			&current_rpram_size, &rpram_currentsz_ops);
+
+	if (!entry) {
+		pr_err("rpram->rpram_info debugfs file creation failed\n");
+		debugfs_remove_recursive(preserve_mem_root);
+		preserve_mem_root = NULL;
 		return -ENOMEM;
 	}
 
@@ -118,14 +198,14 @@ static int __init otx_rpram_init(void)
 }
 
 /* module exit */
-static void __exit otx_rpram_exit(void)
+static void __exit cn10k_rpram_exit(void)
 {
 	if (preserve_mem_root != NULL)
 		debugfs_remove_recursive(preserve_mem_root);
 }
 
-module_init(otx_rpram_init);
-module_exit(otx_rpram_exit);
+module_init(cn10k_rpram_init);
+module_exit(cn10k_rpram_exit);
 
 MODULE_DESCRIPTION("Marvell driver for managing rpram");
 MODULE_AUTHOR("Jayanthi Annadurai <jannadurai@marvell.com>");
