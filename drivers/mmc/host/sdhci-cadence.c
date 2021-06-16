@@ -504,7 +504,12 @@ static void sdhci_cdns_sd6_writeb(struct sdhci_host *host, u8 val, int reg)
 static int sdhci_cdns_sd6_phy_clock_validate(struct sdhci_cdns_sd6_phy *phy)
 {
 	int status = 0;
-	u32 t_sdclk = phy->t_sdclk;
+	u32 t_sdclk;
+
+	if (phy->t_sdclk < phy->t.t_sdclk_min)
+		t_sdclk = phy->t.t_sdclk_min;
+	else
+		t_sdclk = phy->t_sdclk;
 
 	if (t_sdclk < phy->t_sdmclk)
 		status = -1;
@@ -1165,7 +1170,7 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 
 	phy->mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
 
-	dev_info(mmc_dev(host->mmc), "%s mode %d timing %d\n", __func__, mode, timing);
+	dev_dbg(mmc_dev(host->mmc), "%s mode %d timing %d\n", __func__, mode, timing);
 	sdhci_cdns_set_emmc_mode(priv, mode);
 
 	/* For SD, fall back to the default handler */
@@ -1281,7 +1286,7 @@ static void sdhci_cdns_sd6_set_uhs_signaling(struct sdhci_host *host,
 		dev_info(mmc_dev(host->mmc), "%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
-		dev_info(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
+		dev_dbg(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
 }
 
 static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
@@ -1297,13 +1302,13 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 	phy->mode = sdhci_cdns_sd6_get_mode(host, host->mmc->ios.timing);
 	phy->t_sdclk = DIV_ROUND_DOWN_ULL(1e12, clock);
 
-	dev_info(mmc_dev(host->mmc), "%s %d %d\n", __func__, phy->mode, clock);
+	dev_dbg(mmc_dev(host->mmc), "%s %d %d\n", __func__, phy->mode, clock);
 
 	if (sdhci_cdns_sd6_phy_update_timings(priv))
 		dev_info(mmc_dev(host->mmc), "%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
-		dev_info(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
+		dev_dbg(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
 
 	// TODO rozwazyc dll reset przed set clock i wyjscie z resetu za
 	// set clock
@@ -1347,12 +1352,12 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 	// TODO chyba to mozna wziac z rejestru
 	clk = devm_clk_get(dev, "sdmclk");
 	if (IS_ERR(clk)) {
-		dev_info(dev, "sdmclk get error\n");
+		dev_dbg(dev, "sdmclk get error\n");
 		return PTR_ERR(clk);
 	}
 
 	val = clk_get_rate(clk);
-	phy->t_sdmclk = 10000; //DIV_ROUND_DOWN_ULL(1e12, val);
+	phy->t_sdmclk = DIV_ROUND_DOWN_ULL(1e12, val);
 
 	ret = of_property_read_u32(dev->of_node, "cdns,iocell_input_delay",
 				   &phy->d.iocell_input_delay);
@@ -1371,7 +1376,7 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 
 	phy->d.delay_element_org = phy->d.delay_element;
 	phy->mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
-	phy->t_sdclk = 1000000 / 50;
+	phy->t_sdclk = phy->t_sdmclk;
 
 	priv->phy = phy;
 
