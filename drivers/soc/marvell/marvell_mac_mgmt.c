@@ -5,6 +5,7 @@
  */
 
 #include <linux/arm-smccc.h>
+#include <soc/marvell/octeontx/octeontx_smc.h>
 #include <linux/debugfs.h>
 #include <linux/fs.h>
 #include <linux/module.h>
@@ -28,18 +29,8 @@ struct mac_info {
 	} s;
 };
 
-/* Data and defines for SMC call */
-#define ARM_SMC_SVC_UID			0xc200ff01
 /* SMC call number used to set MAC address */
 #define PLAT_OCTEONTX_MAC_MGMT_SET_ADDR	0xc2000e10
-
-/* This is expected CN10k response for SVC UID command */
-static const int octeontx_svc_uuid[] = {
-	0x6ff498cf,
-	0x5a4e9cfa,
-	0x2f2a3aa4,
-	0x5945b105,
-};
 
 /** Set MAC address given by user
  *
@@ -62,26 +53,6 @@ static int mac_mgmt_set_addr(struct mac_info *minfo)
 		      &res);
 	if (res.a0)
 		return -EINVAL;
-
-	return 0;
-}
-
-/** Check software compatibility of ATF
- *
- * The call verifies ATF instance running on the system.
- *
- * @return 0 for success, error code otherwise
- *
- */
-static int mac_mgmt_check_smc(void)
-{
-	struct arm_smccc_res res;
-
-	/* Is the other side the CN10k? */
-	arm_smccc_smc(ARM_SMC_SVC_UID, 0, 0, 0, 0, 0, 0, 0, &res);
-	if (res.a0 != octeontx_svc_uuid[0] || res.a1 != octeontx_svc_uuid[1] ||
-	    res.a2 != octeontx_svc_uuid[2] || res.a3 != octeontx_svc_uuid[3])
-		return -EPERM;
 
 	return 0;
 }
@@ -249,7 +220,7 @@ static int __init mac_mgmt_init(void)
 {
 	int ret;
 
-	ret = mac_mgmt_check_smc();
+	ret = octeontx_soc_check_smc();
 	if (ret) {
 		pr_info("%s: UIID SVC doesn't match Marvell CN10k.\n",
 			module_name(THIS_MODULE));
@@ -278,4 +249,4 @@ module_exit(mac_mgmt_exit);
 
 MODULE_AUTHOR("Wojciech Bartczak <wbartczak@marvell.com>");
 MODULE_DESCRIPTION("MAC address management for Marvell CN10K");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
