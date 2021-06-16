@@ -360,7 +360,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
-	clear_bit(RDS_IB_CQ_ERR, &ic->i_flags);
+	clear_bit_mb(RDS_IB_CQ_ERR, &ic->i_flags);
 
 	/*
 	 * Init rings and fill recv. this needs to wait until protocol negotiation
@@ -524,7 +524,7 @@ static void rds_ib_cq_event_handler(struct ib_event *event, void *data)
 		event->event, rds_ib_event_str(event->event), conn,
 		&conn->c_laddr, &conn->c_faddr, conn->c_tos, ic, ic->i_cm_id);
 
-	set_ib_conn_flag(RDS_IB_CQ_ERR, ic);
+	set_bit_mb(RDS_IB_CQ_ERR, &ic->i_flags);
 	if (waitqueue_active(&rds_ib_ring_empty_wait))
 		wake_up(&rds_ib_ring_empty_wait);
 	if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
@@ -1165,7 +1165,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		return ret;
 	}
 
-	set_ib_conn_flag(RDS_IB_NEED_SHUTDOWN, ic);
+	set_bit_mb(RDS_IB_NEED_SHUTDOWN, &ic->i_flags);
 
 	/* In the case of FRWR, mr registration wrs use the
 	 * same work queue as the send wrs. To make sure that we are not
@@ -2049,7 +2049,6 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 			ic->i_alt.cm_id = NULL;
 		}
 
-		smp_mb();
 		if (test_bit(RDS_IB_NEED_SHUTDOWN, &ic->i_flags)) {
 			/* The shutdown-path hasn't completed yet,
 			 * so we can't make any progress quite yet.
@@ -2212,6 +2211,8 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		tasklet_kill(&ic->i_stasklet);
 		tasklet_kill(&ic->i_rtasklet);
 
+		clear_bit_mb(RDS_IB_CQ_ERR, &ic->i_flags);
+
 		/* first destroy the ib state that generates callbacks */
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
@@ -2245,8 +2246,12 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 
 		rds_spawn_destroy_cm_id(cm_id);
 
-		clear_bit(RDS_IB_NEED_SHUTDOWN, &ic->i_flags);
-		smp_mb();
+		ic->i_pd = NULL;
+		ic->i_mr = NULL;
+		ic->i_send_hdrs = NULL;
+		ic->i_recv_hdrs = NULL;
+		ic->i_ack = NULL;
+		clear_bit_sb(RDS_IB_NEED_SHUTDOWN, &ic->i_flags);
 	}
 
 	BUG_ON(ic->rds_ibdev);
