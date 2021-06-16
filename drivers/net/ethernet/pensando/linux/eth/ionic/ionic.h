@@ -14,7 +14,7 @@ struct ionic_lif;
 
 #define IONIC_DRV_NAME		"ionic"
 #define IONIC_DRV_DESCRIPTION	"Pensando Ethernet NIC Driver"
-#define IONIC_DRV_VERSION	drv_ver
+#define IONIC_DRV_VERSION	"1.15.8.12"
 
 #define PCI_VENDOR_ID_PENSANDO			0x1dd8
 
