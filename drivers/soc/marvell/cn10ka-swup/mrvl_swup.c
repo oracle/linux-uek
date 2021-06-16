@@ -22,6 +22,7 @@
 #include <linux/dmapool.h>
 #include <linux/device.h>
 
+#include <soc/marvell/octeontx/octeontx_smc.h>
 #include "mrvl_swup.h"
 
 /*Debugfs interface root */;
@@ -314,6 +315,12 @@ create_failed:
 static int __init mrvl_swup_init(void)
 {
 	int i, ret;
+
+	ret = octeontx_soc_check_smc();
+	if (ret) {
+		pr_err("SMC signature doesn't match OcteonTX. Failed to create device\n");
+		return ret;
+	}
 
 	dev_set_name(&dev, "mrvl_swup_dev");
 	ret = device_register(&dev);

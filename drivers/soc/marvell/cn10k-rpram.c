@@ -10,9 +10,10 @@
 #include <linux/debugfs.h>
 #include <linux/module.h>
 #include <linux/uaccess.h>
-#include <linux/arm-smccc.h>
 #include <linux/of.h>
 #include <linux/of_fdt.h>
+#include <linux/arm-smccc.h>
+#include <soc/marvell/octeontx/octeontx_smc.h>
 
 /* Minimum size in MB, 0 means region is disabled
  * 16 MB is the minimum size when it is eanbled.
@@ -40,27 +41,6 @@ static u32 nextboot_rpram_size;
 static u64 current_rpram_base;
 static struct dentry *preserve_mem_root;
 static const size_t len = PAGE_SIZE;
-
-/* This is expected CN10k response for SVC UID command */
-static const int octeontx_svc_uuid[] = {
-	0x6ff498cf,
-	0x5a4e9cfa,
-	0x2f2a3aa4,
-	0x5945b105,
-};
-
-static int check_marvell_soc_cn10k(void)
-{
-	struct arm_smccc_res res;
-
-	/* Is the other side the CN10k? */
-	arm_smccc_smc(ARM_SMC_SVC_UID, 0, 0, 0, 0, 0, 0, 0, &res);
-	if (res.a0 != octeontx_svc_uuid[0] || res.a1 != octeontx_svc_uuid[1] ||
-	    res.a2 != octeontx_svc_uuid[2] || res.a3 != octeontx_svc_uuid[3])
-		return -EPERM;
-
-	return 0;
-}
 
 static ssize_t cn10k_rpram_info_read(struct file *f, char __user *user_buf,
 		size_t count, loff_t *off)
@@ -166,7 +146,7 @@ static int __init cn10k_rpram_init(void)
 	struct device_node *parent, *node;
 	int ret;
 
-	ret = check_marvell_soc_cn10k();
+	ret = octeontx_soc_check_smc();
 	if (ret) {
 		pr_info("%s: UIID SVC doesn't match Marvell CN10k.\n",
 			module_name(THIS_MODULE));
