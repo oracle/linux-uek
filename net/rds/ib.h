@@ -61,6 +61,29 @@
 
 #define	RDS_IB_CQ_ERR		2
 #define	RDS_IB_NEED_SHUTDOWN	3
+static inline void set_bit_mb(long nr, unsigned long *flags)
+{
+	/* set_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	set_bit(nr, flags);
+	/* set_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
+
+static inline void clear_bit_mb(long nr, unsigned long *flags)
+{
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	clear_bit(nr, flags);
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
+
+enum rds_ib_conn_flags {
+	RDS_IB_CLEAN_CACHE,
+	RDS_IB_CQ_ERR,
+	RDS_IB_NEED_SHUTDOWN
+};
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
 
