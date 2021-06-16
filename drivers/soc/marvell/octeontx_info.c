@@ -196,9 +196,6 @@ static int octtx_parse_mac_info(struct device_node *node)
 			ret = of_property_read_string(node, prop_name,
 						      &board_mac);
 			if (ret) {
-				pr_info("%s: %s = %s\n",
-					 module_name(THIS_MODULE),
-					 prop_name, board_mac);
 				brd.mac_addrs[u].num = 0;
 			} else {
 				if (!kstrtou64(board_mac, 16, &mac_addr.num))
