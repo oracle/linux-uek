@@ -56,6 +56,19 @@ config PTP_1588_CLOCK_QORIQ
 	  To compile this driver as a module, choose M here: the module
 	  will be called ptp-qoriq.
 
+config PTP_1588_CLOCK_IDTCM
+	tristate "IDT CLOCKMATRIX as PTP clock"
+	select PTP_1588_CLOCK
+	select DEBUG_FS
+	default n
+	help
+	  This driver adds support for using IDT CLOCKMATRIX(TM) as a PTP
+	  clock. This clock is only useful if your time stamping MAC
+	  is connected to the IDT chip.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called ptp_clockmatrix.
+
 config PTP_1588_CLOCK_IXP46X
 	tristate "Intel IXP46x as PTP clock"
 	depends on IXP4XX_ETH
