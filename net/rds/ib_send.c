@@ -551,6 +551,27 @@ static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
 	return !!(send->s_wr.send_flags & IB_SEND_SIGNALED);
 }
 
+inline void rds_ib_clear_irq_miss(struct rds_ib_connection *ic)
+{
+	ic->i_irq_miss_ts = 0;
+}
+
+void rds_ib_check_irq_miss(struct rds_ib_connection *ic)
+{
+	struct rds_connection *conn = ic->conn;
+	unsigned long now = jiffies;
+
+	if (!ic->i_irq_miss_ts) {
+		ic->i_irq_miss_ts = now;
+	} else if (time_after(now, ic->i_irq_miss_ts + 5 * HZ)) {
+		trace_printk("RDS/IB: Detected stuck send on conn <%pI6c,%pI6c,%d> ts=%lu now=%lu. Polling for completions\n",
+			     &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			     ic->i_irq_miss_ts, now);
+		rds_ib_clear_irq_miss(ic);
+		rds_ib_poll_tx(ic);
+	}
+}
+
 /*
  * This can be called multiple times for a given message.  The first time
  * we see a message we map its scatterlist into the IB device so that
@@ -614,6 +635,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 		if (work_alloc == 0) {
 			rds_ib_stats_inc(s_ib_tx_ring_full);
+			rds_ib_check_irq_miss(ic);
 			reason = "rds_ib_ring_alloc failed";
 			ret = -ENOMEM;
 			goto out;
@@ -891,6 +913,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	if (work_alloc != 1) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_ring_full);
+		rds_ib_check_irq_miss(ic);
 		reason = "rds_ib_ring_alloc failed";
 		ret = -ENOMEM;
 		goto out;
@@ -1013,6 +1036,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	if (work_alloc != i) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_ring_full);
+		rds_ib_check_irq_miss(ic);
 		reason = "rds_ib_ring_alloc failed";
 		ret = -ENOMEM;
 		goto out;
@@ -1086,6 +1110,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 				op->op_mapped = 0;
 				rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 				rds_ib_stats_inc(s_ib_tx_ring_full);
+				rds_ib_check_irq_miss(ic);
 				reason = "ib tx ring full";
 				ret = -ENOMEM;
 				goto out;
