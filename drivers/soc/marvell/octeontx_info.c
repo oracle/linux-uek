@@ -89,7 +89,7 @@ static int oct_brd_proc_show(struct seq_file *seq, void *v)
 			seq_printf(seq, "mac_addr_count: %s\n",
 				   brd.board_num_of_mac_id);
 
-		if (!kstrtou32(brd.board_num_of_mac_id, 10, &num)) {
+		if (!kstrtou32(brd.board_num_of_mac_id, 16, &num)) {
 			seq_printf(seq, "mac_addr_count: %s\n",
 				   brd.board_num_of_mac_id);
 
