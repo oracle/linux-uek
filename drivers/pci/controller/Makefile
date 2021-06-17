@@ -57,6 +57,7 @@ ifdef CONFIG_ACPI
 ifdef CONFIG_PCI_QUIRKS
 obj-$(CONFIG_ARM64) += pci-thunder-ecam.o
 obj-$(CONFIG_ARM64) += pci-thunder-pem.o
+obj-$(CONFIG_ARM64) += pci-octeon-pem.o
 obj-$(CONFIG_ARM64) += pci-xgene.o
 endif
 endif
