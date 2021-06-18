@@ -353,6 +353,7 @@ static void rdmaip_garp_work_handler(struct work_struct *_work)
 		list_add(&garps->list, &rdmaip_delayed_work_list);
 		RDMAIP_DBG3("Adding %p GARP work to the list\n", garps);
 	} else {
+		dev_put(garps->netdev);
 		kfree(garps);
 	}
 }
@@ -416,6 +417,7 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 	garps->garps_left = rdmaip_active_bonding_arps;
 	garps->queued = false;
 
+	dev_hold(garps->netdev);
 	INIT_DELAYED_WORK(&garps->work, rdmaip_garp_work_handler);
 	queue_delayed_work(rdmaip_wq, &garps->work, 0);
 }
