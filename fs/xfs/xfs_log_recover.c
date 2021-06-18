@@ -4841,8 +4841,10 @@ xlog_finish_defer_ops(
 	resblks = (resblks * 15) >> 4;
 	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_itruncate, resblks,
 			0, XFS_TRANS_RESERVE, &tp);
-	if (error)
+	if (error) {
+		xfs_force_shutdown(mp, SHUTDOWN_LOG_IO_ERROR);
 		return error;
+	}
 
 	error = xfs_defer_finish(&tp, dfops);
 	if (error)
@@ -5856,6 +5858,7 @@ xlog_recover_finish(
 			 * this) before we get around to xfs_log_mount_cancel.
 			 */
 			xlog_recover_cancel_intents(log);
+			xfs_force_shutdown(log->l_mp, SHUTDOWN_LOG_IO_ERROR);
 			xfs_alert(log->l_mp, "Failed to recover intents");
 			return error;
 		}
