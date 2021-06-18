@@ -1827,6 +1827,11 @@ CONFIG_MDIO_BUS=y
 # CONFIG_MICREL_KS8995MA is not set
 # CONFIG_PPP is not set
 # CONFIG_SLIP is not set
+CONFIG_NET_VENDOR_PENSANDO=y
+CONFIG_MDEV=y
+CONFIG_MNET_UIO_PDRV_GENIRQ=y
+CONFIG_IONIC_MNIC=y
+CONFIG_IONIC=y
 
 #
 # Host-side USB support is needed for USB Network Adapter support
