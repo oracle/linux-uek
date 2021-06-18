@@ -20,3 +20,4 @@
 /demand_paging_test
 /dirty_log_test
 /kvm_create_max_vcpus
+/kvm_binary_stats_test
