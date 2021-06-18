@@ -2257,7 +2257,6 @@ static void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr,
 		return;
 
 	lbk_link_start = hw->cgx_links;
-	lbk_links = hw->lbk_links;
 
 	for (schq = 0; schq < txsch->schq.max; schq++) {
 		if (TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) != pcifunc)
@@ -2265,6 +2264,7 @@ static void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr,
 		/* Enable all LBK links with channel 63 by default so that
 		 * packets can be sent to LBK with a NPC TX MCAM rule
 		 */
+		lbk_links = hw->lbk_links;
 		while (lbk_links--)
 			rvu_write64(rvu, blkaddr,
 				    NIX_AF_TL3_TL2X_LINKX_CFG(schq,
