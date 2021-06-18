@@ -436,30 +436,6 @@ anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 }
 
 /*
- * range_has_overlap() - Check the @start - @end range for overlapping VMAs and
- * sets up a pointer to the previous VMA
- * @mm: the mm struct
- * @start: the start address of the range
- * @end: the end address of the range
- * @pprev: the pointer to the pointer of the previous VMA
- *
- * Returns: True if there is an overlapping VMA, false otherwise
- */
-static inline
-bool range_has_overlap(struct mm_struct *mm, unsigned long start,
-		       unsigned long end, struct vm_area_struct **pprev)
-{
-	struct vm_area_struct *existing;
-
-	MA_STATE(mas, &mm->mm_mt, start, start);
-	rcu_read_lock();
-	existing = mas_find(&mas, end - 1);
-	*pprev = mas_prev(&mas, 0);
-	rcu_read_unlock();
-	return existing ? true : false;
-}
-
-/*
  * count_vma_pages_range() - Count the number of pages in a range.
  * @mas: The maple state
  *
@@ -555,7 +531,7 @@ void vma_mt_store(struct mm_struct *mm, struct vm_area_struct *vma)
  * Must not hold the maple tree lock.
  */
 static void vma_mas_link(struct mm_struct *mm, struct vm_area_struct *vma,
-			 struct ma_state *mas, struct vm_area_struct *prev)
+			 struct ma_state *mas)
 {
 	struct address_space *mapping = NULL;
 
@@ -575,8 +551,7 @@ static void vma_mas_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	mm->map_count++;
 }
 
-static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
-			struct vm_area_struct *prev)
+static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
 {
 	struct address_space *mapping = NULL;
 
@@ -601,9 +576,7 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
  */
 static void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 {
-	struct vm_area_struct *prev;
-
-	BUG_ON(range_has_overlap(mm, vma->vm_start, vma->vm_end, &prev));
+	BUG_ON(find_vma_intersection(mm, vma->vm_start, vma->vm_end));
 	vma_mt_store(mm, vma);
 	mm->map_count++;
 }
@@ -2776,7 +2749,7 @@ cannot_expand:
 	}
 
 	mas_set(&mas, addr);
-	vma_mas_link(mm, vma, &mas, prev);
+	vma_mas_link(mm, vma, &mas);
 	/* Once vma denies write, undo our temporary denial count */
 	if (file) {
 unmap_writable:
@@ -3161,7 +3134,7 @@ static int do_brk_flags(struct ma_state *mas, struct ma_state *ma_prev,
 	vma->vm_pgoff = addr >> PAGE_SHIFT;
 	vma->vm_flags = flags;
 	vma->vm_page_prot = vm_get_page_prot(flags);
-	vma_mas_link(mm, vma, mas, NULL);
+	vma_mas_link(mm, vma, mas);
 	*brkvma = vma;
 out:
 	perf_event_mmap(vma);
@@ -3313,9 +3286,7 @@ void exit_mmap(struct mm_struct *mm)
  */
 int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 {
-	struct vm_area_struct *prev;
-
-	if (range_has_overlap(mm, vma->vm_start, vma->vm_end, &prev))
+	if (find_vma_intersection(mm, vma->vm_start, vma->vm_end))
 		return -ENOMEM;
 
 	if ((vma->vm_flags & VM_ACCOUNT) &&
@@ -3339,7 +3310,7 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 		vma->vm_pgoff = vma->vm_start >> PAGE_SHIFT;
 	}
 
-	vma_link(mm, vma, prev);
+	vma_link(mm, vma);
 	return 0;
 }
 
@@ -3354,7 +3325,8 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 	struct vm_area_struct *vma = *vmap;
 	unsigned long vma_start = vma->vm_start;
 	struct mm_struct *mm = vma->vm_mm;
-	struct vm_area_struct *new_vma, *prev;
+	struct vm_area_struct *new_vma;
+	struct vm_area_struct *prev;
 	bool faulted_in_anon_vma = true;
 
 	validate_mm_mt(mm);
@@ -3367,9 +3339,10 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 		faulted_in_anon_vma = false;
 	}
 
-	if (range_has_overlap(mm, addr, addr + len, &prev))
+	if (find_vma_intersection(mm, addr, addr + len))
 		return NULL;	/* should never get here */
 
+	prev = vma_prev(mm, vma);
 	new_vma = vma_merge(mm, prev, addr, addr + len, vma->vm_flags,
 			    vma->anon_vma, vma->vm_file, pgoff, vma_policy(vma),
 			    vma->vm_userfaultfd_ctx);
@@ -3410,7 +3383,7 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 			get_file(new_vma->vm_file);
 		if (new_vma->vm_ops && new_vma->vm_ops->open)
 			new_vma->vm_ops->open(new_vma);
-		vma_link(mm, new_vma, prev);
+		vma_link(mm, new_vma);
 		*need_rmap_locks = false;
 	}
 	validate_mm_mt(mm);
