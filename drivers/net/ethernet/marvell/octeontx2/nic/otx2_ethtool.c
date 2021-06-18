@@ -42,9 +42,6 @@ struct otx2_stat {
 	.index = offsetof(struct otx2_dev_stats, stat) / sizeof(u64), \
 }
 
-/* Physical link config */
-#define OTX2_ETHTOOL_SUPPORTED_MODES 0x630CDFF //110001100001100110111111111
-
 enum link_mode {
 	OTX2_MODE_SUPPORTED,
 	OTX2_MODE_ADVERTISED
@@ -1145,8 +1142,6 @@ static void otx2_get_link_mode_info(u64 link_mode_bmap,
 		ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT
 	};
 	u8 bit;
-
-	link_mode_bmap = link_mode_bmap & OTX2_ETHTOOL_SUPPORTED_MODES;
 
 	for_each_set_bit(bit, (unsigned long *)&link_mode_bmap, 27) {
 		/* SGMII mode is set */
