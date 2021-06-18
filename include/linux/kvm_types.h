@@ -56,4 +56,15 @@ struct gfn_to_pfn_cache {
 	bool dirty;
 };
 
+struct kvm_vm_stat_generic {
+	u64 remote_tlb_flush;
+};
+
+struct kvm_vcpu_stat_generic {
+	u64 halt_successful_poll;
+	u64 halt_attempted_poll;
+	u64 halt_poll_invalid;
+	u64 halt_wakeup;
+};
+
 #endif /* __KVM_TYPES_H__ */
