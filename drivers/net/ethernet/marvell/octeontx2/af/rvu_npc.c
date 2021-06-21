@@ -24,7 +24,6 @@
 #define RSVD_MCAM_ENTRIES_PER_PF	3 /* Broadcast, Promisc and AllMulticast */
 #define RSVD_MCAM_ENTRIES_PER_NIXLF	1 /* Ucast for LFs */
 
-#define NPC_KEX_CHAN_MASK	0xFFFULL
 #define NPC_KEX_PF_FUNC_MASK    0xFFFFULL
 
 #define NPC_HW_TSTAMP_OFFSET	8ULL
