@@ -245,6 +245,7 @@ M(REE_RULE_DB_GET,	0xE05, ree_rule_db_get,				\
 				ree_rule_db_get_rsp_msg)		\
 /* SDP mbox IDs (range 0x1000 - 0x11FF) */				\
 M(SET_SDP_CHAN_INFO, 0x1000, set_sdp_chan_info, sdp_chan_info_msg, msg_rsp) \
+M(GET_SDP_CHAN_INFO, 0x1001, get_sdp_chan_info, msg_req, sdp_get_chan_info_msg) \
 /* NPC mbox IDs (range 0x6000 - 0x7FFF) */				\
 M(NPC_MCAM_ALLOC_ENTRY,	0x6000, npc_mcam_alloc_entry, npc_mcam_alloc_entry_req,\
 				npc_mcam_alloc_entry_rsp)		\
@@ -1944,4 +1945,11 @@ struct sdp_chan_info_msg {
 	struct mbox_msghdr hdr;
 	struct sdp_node_info info;
 };
+
+struct sdp_get_chan_info_msg {
+	struct mbox_msghdr hdr;
+	u16 chan_base;
+	u16 num_chan;
+};
+
 #endif /* MBOX_H */

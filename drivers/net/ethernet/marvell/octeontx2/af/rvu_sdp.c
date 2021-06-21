@@ -90,3 +90,22 @@ rvu_mbox_handler_set_sdp_chan_info(struct rvu *rvu,
 		 req->info.pf_srn);
 	return 0;
 }
+
+int
+rvu_mbox_handler_get_sdp_chan_info(struct rvu *rvu, struct msg_req *req,
+				   struct sdp_get_chan_info_msg *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	int blkaddr;
+
+	if (!hw->cap.programmable_chans) {
+		rsp->chan_base = NIX_CHAN_SDP_CH_START;
+		rsp->num_chan = NIX_CHAN_SDP_NUM_CHANS;
+	} else {
+		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
+		rsp->chan_base = hw->sdp_chan_base;
+		rsp->num_chan = rvu_read64(rvu, blkaddr, NIX_AF_CONST1) & 0xFFFUL;
+	}
+
+	return 0;
+}
