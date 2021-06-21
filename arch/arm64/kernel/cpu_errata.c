@@ -818,6 +818,23 @@ static const struct arm64_cpu_capabilities erratum_843419_list[] = {
 	{},
 };
 #endif
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+static const struct midr_range marvell_erratum_38627_cpus[] = {
+	/* Marvell OcteonTX 2, 95xx all passes */
+	MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_95XX),
+	/* Marvell OcteonTX 2, 95MM all passes */
+	MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_95MM),
+	/* Marvell OcteonTX 2, LOKI all passes */
+	MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_LOKI),
+	/* Marvell OcteonTX 2, 96xx all passes */
+	MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_96XX),
+	/* Marvell OcteonTX 2, 98xx pass 1.0 */
+	MIDR_REV(MIDR_MRVL_OCTEONTX2_98XX, 0, 0),
+	/* Marvell OcteonTX 2, 95O pass 1.0 */
+	MIDR_REV(MIDR_MRVL_OCTEONTX2_95O, 0, 0),
+	{},
+};
+#endif
 
 static void __maybe_unused
 cpu_enable_trap_zva_access(const struct arm64_cpu_capabilities *__unused)
@@ -959,6 +976,13 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.desc = "ARM erratum 858921",
 		.capability = ARM64_WORKAROUND_858921,
 		ERRATA_MIDR_ALL_VERSIONS(MIDR_CORTEX_A73),
+	},
+#endif
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+	{
+		.desc = "MARVELL erratum 38627",
+		.capability = ARM64_WORKAROUND_MRVL_38627,
+		ERRATA_MIDR_RANGE_LIST(marvell_erratum_38627_cpus),
 	},
 #endif
 	{
