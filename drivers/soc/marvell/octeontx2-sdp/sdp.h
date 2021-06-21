@@ -36,8 +36,8 @@
 #define SDPX_RINGX_IN_PKT_CNT(a)	(0x10080ull | a << 17)
 #define SDPX_OUT_BP_ENX_W1S(a)		(0x80280ull | a << 4)
 #define SDPX_OUT_WMARK			(0x40060000ull)
+#define SDPX_LINK_CFG			(0x40080180ull)
 #define SDPX_GBL_CONTROL		(0x40080200ull)
-
 
 struct sdp_dev;
 
@@ -67,6 +67,8 @@ struct sdp_dev {
 #define SDP_VF_ENABLED 0x1
 	u32			flags;
 	u32			num_vfs;
+	u16			chan_base;
+	u16			num_chan;
 	bool			*irq_allocated;
 	char			*irq_names;
 	int			msix_count;

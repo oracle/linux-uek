@@ -298,6 +298,9 @@ static void sdp_afpf_mbox_handler(struct work_struct *work)
 			case MBOX_MSG_SET_SDP_CHAN_INFO:
 				/* Nothing to do */
 				break;
+			case MBOX_MSG_GET_SDP_CHAN_INFO:
+				/* Nothing to do */
+				break;
 			default:
 				dev_err(&sdp->pdev->dev,
 					"Unsupported msg %d received.\n",
@@ -1085,6 +1088,36 @@ static void sdp_host_handshake_fn(struct work_struct *wrk)
 	queue_delayed_work(sdp->sdp_host_handshake, &sdp->sdp_work,  HZ * 1);
 }
 
+static int get_chan_info(struct sdp_dev *sdp)
+{
+	struct sdp_get_chan_info_msg *rsp;
+	struct msg_req *req;
+	int res = 0;
+
+	req = (struct msg_req *) otx2_mbox_alloc_msg(&sdp->afpf_mbox, 0, sizeof(*req));
+	if (req == NULL) {
+		dev_err(&sdp->pdev->dev, "RVU Mbox failed to alloc\n");
+		return -EFAULT;
+	}
+	req->hdr.id = MBOX_MSG_GET_SDP_CHAN_INFO;
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;
+	req->hdr.pcifunc = RVU_PFFUNC(sdp->pf, 0);
+
+	otx2_mbox_msg_send(&sdp->afpf_mbox, 0);
+	res = otx2_mbox_wait_for_rsp(&sdp->afpf_mbox, 0);
+	if (res == -EIO)
+		dev_err(&sdp->pdev->dev, "RVU AF Mbox timeout\n");
+	else if (res) {
+		dev_err(&sdp->pdev->dev, "RVU Mbox error: %d\n", res);
+		res = -EFAULT;
+	}
+	rsp = (struct sdp_get_chan_info_msg *)otx2_mbox_get_rsp(&sdp->afpf_mbox, 0,
+								&req->hdr);
+	sdp->chan_base = rsp->chan_base;
+	sdp->num_chan = rsp->num_chan;
+
+	return res;
+}
 static int send_chan_info(struct sdp_dev *sdp, struct sdp_node_info *info)
 {
 	struct sdp_chan_info_msg *cinfo;
@@ -1119,6 +1152,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	uint64_t inst, sdp_gbl_ctl;
 	struct sdp_dev *sdp;
 	union ring fw_rinfo;
+	uint64_t regval;
 	int err;
 
 	sdp = devm_kzalloc(dev, sizeof(struct sdp_dev), GFP_KERNEL);
@@ -1226,6 +1260,22 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto get_pcifunc_failed;
 	}
 
+	err = get_chan_info(sdp);
+	if (err) {
+		dev_err(&pdev->dev, "SDP get channel info failed\n");
+		goto get_chan_info_failed;
+	}
+
+	dev_info(&sdp->pdev->dev, "SDP chan base: 0x%x, num chan: 0x%x\n",
+		 sdp->chan_base, sdp->num_chan);
+
+	/* From cn10k onwards the SDP channel configuration is programmable */
+	if (pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A) {
+		regval = sdp->chan_base;
+		regval |= sdp->num_chan << 16;
+		writeq(regval, sdp->sdp_base + SDPX_LINK_CFG);
+	}
+
 	err = sdp_parse_rinfo(pdev, &info);
 	if (err) {
 		err = -EINVAL;
@@ -1285,6 +1335,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	return 0;
 
+get_chan_info_failed:
 get_rinfo_failed:
 get_pcifunc_failed:
 	disable_af_mbox_int(pdev);
