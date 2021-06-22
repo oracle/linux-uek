@@ -15521,7 +15521,9 @@ static struct npc_lt_def_cfg npc_lt_defaults = {
 	},
 	.rx_et = {
 		{
-			.lid = NPC_LID_LB,
+			.offset = -2,
+			.valid = 1,
+			.lid = NPC_LID_LC,
 			.ltype_match = NPC_LT_NA,
 			.ltype_mask = 0x0,
 		},
