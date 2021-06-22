@@ -299,8 +299,13 @@ static int lmtst_map_table_ops(struct rvu *rvu, u32 index, u64 *val,
 		writeq((*val), (lmt_map_base + index));
 		/* Flushing the AP interceptor cache to make APR_LMT_MAP_ENTRY_S
 		 * changes effective.
+		 * First write 1 for one-time flush.
+		 * Read a 0 after writing 1 to confirm flush has been executed.
+		 * Write to 0 after a write to 1 to complete the flush.
 		 */
 		rvu_write64(rvu, BLKADDR_APR, APR_AF_LMT_CTL, BIT_ULL(0));
+		rvu_read64(rvu, BLKADDR_APR, APR_AF_LMT_CTL);
+		rvu_write64(rvu, BLKADDR_APR, APR_AF_LMT_CTL, 0x00);
 	}
 
 	iounmap(lmt_map_base);
