@@ -144,6 +144,8 @@
 # define __UEK_KABI_CHECK_SIZE_ALIGN(_orig, _new)
 #endif
 
+# define UEK_KABI_UNIQUE_ID			__PASTE(uek_kabi_hidden, \
+							__LINE__)
 # define _UEK_KABI_DEPRECATE(_type, _orig)	_type uek_reserved_##_orig
 # define _UEK_KABI_DEPRECATE_FN(_type, _orig, _args...)  \
 	_type (* uek_reserved_##_orig)(_args)
@@ -152,7 +154,7 @@
 		_new;					  \
 		struct {				  \
 			_orig;				  \
-		} __UNIQUE_ID(uek_kabi_hide);		  \
+		} UEK_KABI_UNIQUE_ID;			  \
 		__UEK_KABI_CHECK_SIZE_ALIGN(_orig, _new);  \
 	}
 # define _UEK_KABI_REPLACE_UNSAFE(_orig, _new)	_new
