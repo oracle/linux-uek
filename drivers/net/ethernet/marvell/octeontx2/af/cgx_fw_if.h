@@ -102,7 +102,18 @@ enum CGX_MODE_ {
 	CGX_MODE_100G_C2M,
 	CGX_MODE_100G_CR4,
 	CGX_MODE_100G_KR4,
-	CGX_MODE_MAX /* = 29 */
+	CGX_MODE_LAUI_2_C2C_BIT,
+	CGX_MODE_LAUI_2_C2M_BIT,
+	CGX_MODE_50GBASE_CR2_C_BIT,
+	CGX_MODE_50GBASE_KR2_C_BIT,     /* = 30 */
+	CGX_MODE_100GAUI_2_C2C_BIT,
+	CGX_MODE_100GAUI_2_C2M_BIT,
+	CGX_MODE_100GBASE_CR2_BIT,
+	CGX_MODE_100GBASE_KR2_BIT,
+	CGX_MODE_SFI_1G_BIT,
+	CGX_MODE_25GBASE_CR_C_BIT,
+	CGX_MODE_25GBASE_KR_C_BIT,
+	CGX_MODE_MAX /* = 38 */
 };
 
 /* REQUEST ID types. Input to firmware */
@@ -266,7 +277,12 @@ struct cgx_lnk_sts {
 #define CMDMODECHANGE_SPEED		GENMASK_ULL(11, 8)
 #define CMDMODECHANGE_DUPLEX		GENMASK_ULL(12, 12)
 #define CMDMODECHANGE_AN		GENMASK_ULL(13, 13)
-#define CMDMODECHANGE_PORT		GENMASK_ULL(21, 14)
+/* this field categorize the mode ID(FLAGS) range to accommodate
+ * more modes.
+ * To specify mode ID range of 0 - 41, this field will be 0.
+ * To specify mode ID range of 42 - 83, this field will be 1.
+ */
+#define CMDMODECHANGE_MODE_BASEIDX	GENMASK_ULL(21, 20)
 #define CMDMODECHANGE_FLAGS		GENMASK_ULL(63, 22)
 
 /* command argument to be passed for cmd ID - CGX_CMD_SET_PHY_MOD_TYPE */
