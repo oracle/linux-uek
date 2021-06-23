@@ -939,7 +939,7 @@ struct kvm_arch {
 	struct kvm_apic_map *apic_map;
 	atomic_t apic_map_dirty;
 
-	bool apic_access_page_done;
+	bool apic_access_memslot_enabled;
 	unsigned long apicv_inhibit_reasons;
 
 	gpa_t wall_clock;
