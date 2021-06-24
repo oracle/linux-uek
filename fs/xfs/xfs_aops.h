@@ -48,9 +48,12 @@ struct xfs_ioend {
 	size_t			io_size;	/* size of the extent */
 	xfs_off_t		io_offset;	/* offset in the file */
 	struct work_struct	io_work;	/* xfsdatad work queue */
+	struct work_struct	destroy_io_work;
 	struct xfs_trans	*io_append_trans;/* xact. for size update */
 	struct bio		*io_bio;	/* bio being built */
 	struct bio		io_inline_bio;	/* MUST BE LAST! */
+	unsigned int		io_blocks_num; /* number of blocks in bio list*/
+	int			io_status;
 };
 
 extern const struct address_space_operations xfs_address_space_operations;

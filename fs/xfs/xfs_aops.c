@@ -158,13 +158,15 @@ xfs_finish_page_writeback(
 STATIC void
 xfs_destroy_ioend(
 	struct xfs_ioend	*ioend,
-	int			error)
+	int			error,
+	bool		atomic)
 {
 	struct inode		*inode = ioend->io_inode;
 	struct bio		*bio = &ioend->io_inline_bio;
 	struct bio		*last = ioend->io_bio, *next;
 	u64			start = bio->bi_iter.bi_sector;
 	bool			quiet = bio_flagged(bio, BIO_QUIET);
+	int			count = 0;
 
 	for (bio = &ioend->io_inline_bio; bio; bio = next) {
 		struct bio_vec	*bvec;
@@ -184,12 +186,25 @@ xfs_destroy_ioend(
 			xfs_finish_page_writeback(inode, bvec, error);
 
 		bio_put(bio);
+		/* Each bio can take 256 pages, reschedule to avoid lockup. */
+		if (!(++count % 4) && !atomic)
+			cond_resched();
 	}
 
 	if (unlikely(error && !quiet)) {
 		xfs_err_ratelimited(XFS_I(inode)->i_mount,
 			"writeback error on sector %llu", start);
 	}
+}
+
+STATIC void
+xfs_destroy_ioend_work(
+	struct work_struct	*work)
+{
+	struct xfs_ioend *ioend = container_of(work, struct xfs_ioend,
+			destroy_io_work);
+
+	xfs_destroy_ioend(ioend, ioend->io_status, false);
 }
 
 /*
@@ -354,7 +369,7 @@ xfs_end_io(
 done:
 	if (ioend->io_append_trans)
 		error = xfs_setfilesize_ioend(ioend, error);
-	xfs_destroy_ioend(ioend, error);
+	xfs_destroy_ioend(ioend, error, false);
 }
 
 STATIC void
@@ -363,13 +378,21 @@ xfs_end_bio(
 {
 	struct xfs_ioend	*ioend = bio->bi_private;
 	struct xfs_mount	*mp = XFS_I(ioend->io_inode)->i_mount;
+	int			io_status = blk_status_to_errno(bio->bi_status);
 
 	if (ioend->io_type == XFS_IO_UNWRITTEN || ioend->io_type == XFS_IO_COW)
 		queue_work(mp->m_unwritten_workqueue, &ioend->io_work);
 	else if (ioend->io_append_trans)
 		queue_work(mp->m_data_workqueue, &ioend->io_work);
-	else
-		xfs_destroy_ioend(ioend, blk_status_to_errno(bio->bi_status));
+	else {
+		/* To avoid lockup */
+		if (ioend->io_blocks_num > 128) {
+			ioend->io_status = io_status;
+			queue_work(mp->m_unwritten_workqueue,
+				&ioend->destroy_io_work);
+		} else
+			xfs_destroy_ioend(ioend, io_status, true);
+	}
 }
 
 STATIC int
@@ -603,8 +626,10 @@ xfs_alloc_ioend(
 	ioend->io_size = 0;
 	ioend->io_offset = offset;
 	INIT_WORK(&ioend->io_work, xfs_end_io);
+	INIT_WORK(&ioend->destroy_io_work, xfs_destroy_ioend_work);
 	ioend->io_append_trans = NULL;
 	ioend->io_bio = bio;
+	ioend->io_blocks_num = 1;
 	return ioend;
 }
 
@@ -665,6 +690,7 @@ xfs_add_to_ioend(
 	while (xfs_bio_add_buffer(wpc->ioend->io_bio, bh) != bh->b_size)
 		xfs_chain_bio(wpc->ioend, wbc, bh);
 
+	wpc->ioend->io_blocks_num++;
 	wpc->ioend->io_size += bh->b_size;
 	wpc->last_block = bh->b_blocknr;
 	xfs_start_buffer_writeback(bh);
