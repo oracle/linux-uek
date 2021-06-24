@@ -2209,7 +2209,7 @@ int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
 		}
 		idx = ((vf * OTX2_PER_VF_VLAN_FLOWS) + OTX2_VF_VLAN_RX_INDEX);
 		del_req->entry =
-			flow_cfg->entry[flow_cfg->vf_vlan_offset + idx];
+			flow_cfg->def_ent[flow_cfg->vf_vlan_offset + idx];
 		err = otx2_sync_mbox_msg(&pf->mbox);
 		if (err)
 			goto out;
@@ -2222,7 +2222,7 @@ int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
 		}
 		idx = ((vf * OTX2_PER_VF_VLAN_FLOWS) + OTX2_VF_VLAN_TX_INDEX);
 		del_req->entry =
-			flow_cfg->entry[flow_cfg->vf_vlan_offset + idx];
+			flow_cfg->def_ent[flow_cfg->vf_vlan_offset + idx];
 		err = otx2_sync_mbox_msg(&pf->mbox);
 
 		if (!(pf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR))
@@ -2238,7 +2238,7 @@ int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
 	}
 
 	idx = ((vf * OTX2_PER_VF_VLAN_FLOWS) + OTX2_VF_VLAN_RX_INDEX);
-	req->entry = flow_cfg->entry[flow_cfg->vf_vlan_offset + idx];
+	req->entry = flow_cfg->def_ent[flow_cfg->vf_vlan_offset + idx];
 	req->packet.vlan_tci = htons(vlan);
 	req->mask.vlan_tci = htons(VLAN_VID_MASK);
 	/* af fills the destination mac addr */
@@ -2289,7 +2289,7 @@ int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
 
 	eth_zero_addr((u8 *)&req->mask.dmac);
 	idx = ((vf * OTX2_PER_VF_VLAN_FLOWS) + OTX2_VF_VLAN_TX_INDEX);
-	req->entry = flow_cfg->entry[flow_cfg->vf_vlan_offset + idx];
+	req->entry = flow_cfg->def_ent[flow_cfg->vf_vlan_offset + idx];
 	req->features = BIT_ULL(NPC_DMAC);
 	req->channel = pf->hw.tx_chan_base;
 	req->intf = NIX_INTF_TX;
