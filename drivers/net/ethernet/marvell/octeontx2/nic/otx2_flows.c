@@ -789,9 +789,29 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 	}
 	if (fsp->flow_type & FLOW_EXT) {
 		int skip_user_def = false;
+		u16 vlan_etype;
 
-		if (fsp->m_ext.vlan_etype)
-			return -EINVAL;
+		if (fsp->m_ext.vlan_etype) {
+			/* Partial masks not supported */
+			if (fsp->m_ext.vlan_etype != 0xFFFF)
+				return -EINVAL;
+
+			vlan_etype = be16_to_cpu(fsp->h_ext.vlan_etype);
+			/* Only ETH_P_8021Q and ETH_P_802AD types supported */
+			if (vlan_etype != ETH_P_8021Q &&
+			    vlan_etype != ETH_P_8021AD)
+				return -EINVAL;
+
+			memcpy(&pkt->vlan_etype, &fsp->h_ext.vlan_etype,
+			       sizeof(pkt->vlan_etype));
+			memcpy(&pmask->vlan_etype, &fsp->m_ext.vlan_etype,
+			       sizeof(pmask->vlan_etype));
+
+			if (vlan_etype == ETH_P_8021Q)
+				req->features |= BIT_ULL(NPC_VLAN_ETYPE_CTAG);
+			else
+				req->features |= BIT_ULL(NPC_VLAN_ETYPE_STAG);
+		}
 		if (fsp->m_ext.vlan_tci) {
 			if (fsp->m_ext.vlan_tci != cpu_to_be16(VLAN_VID_MASK))
 				return -EINVAL;
