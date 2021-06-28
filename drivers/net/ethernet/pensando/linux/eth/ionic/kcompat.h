@@ -920,9 +920,17 @@ struct _kc_ethtool_pauseparam {
        SLE_LOCALVERSION_CODE >= KERNEL_VERSION(25,23,0))
 /* SLES15 SP1 Beta1 is 4.12.14-25.23 */
 #define SLE_VERSION_CODE SLE_VERSION(15,1,0)
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,3,13))
+#elif (LINUX_VERSION_CODE == KERNEL_VERSION(5,3,13))
 /* SLES15 SP2 Beta1 is 5.3.13 */
 #define SLE_VERSION_CODE SLE_VERSION(15,2,0)
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5,3,18))
+#if (SLE_LOCALVERSION_CODE < KERNEL_VERSION(47,0,0))
+/* SLES15 SP2 Beta1 is 5.3.18 */
+#define SLE_VERSION_CODE SLE_VERSION(15,2,0)
+#else /* local version >= 47 */
+/* SLES15 SP3 Beta1 is 5.3.18 */
+#define SLE_VERSION_CODE SLE_VERSION(15,3,0)
+#endif
 
 /* new SLES kernels must be added here with >= based on kernel
  * the idea is to order from newest to oldest and just catch all
@@ -6691,7 +6699,8 @@ devlink_flash_update_status_notify(struct devlink __always_unused *devlink,
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,6,0))
 
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,3)))
+#if ((RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,3))) || \
+     (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,3,0))))
 #define HAVE_TX_TIMEOUT_TXQUEUE
 #endif
 
@@ -6708,29 +6717,6 @@ devlink_flash_update_status_notify(struct devlink __always_unused *devlink,
 #endif
 
 #ifdef HAVE_DEVLINK_REGIONS
-#if IS_ENABLED(CONFIG_NET_DEVLINK)
-#if (!RHEL_RELEASE_CODE || (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,3))))
-#include <net/devlink.h>
-
-struct devlink_region_ops {
-	const char *name;
-	void (*destructor)(const void *data);
-};
-
-#ifndef devlink_region_create
-static inline struct devlink_region *
-_kc_devlink_region_create(struct devlink *devlink,
-			  const struct devlink_region_ops *ops,
-			  u32 region_max_snapshots, u64 region_size)
-{
-	return devlink_region_create(devlink, ops->name, region_max_snapshots,
-				     region_size);
-}
-
-#define devlink_region_create _kc_devlink_region_create
-#endif /* devlink_region_create */
-#endif /* RHEL_RELEASE_CODE */
-#endif /* CONFIG_NET_DEVLINK */
 #define HAVE_DEVLINK_SNAPSHOT_CREATE_DESTRUCTOR
 #endif /* HAVE_DEVLINK_REGIONS */
 #else /* >= 5.7.0 */
@@ -6739,7 +6725,8 @@ _kc_devlink_region_create(struct devlink *devlink,
 #endif /* 5.7.0 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0))
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)) && \
+     !(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,3,0))))
 #else
 #define HAVE_DEVLINK_UPDATE_PARAMS
 #endif /* 5.10.0 */

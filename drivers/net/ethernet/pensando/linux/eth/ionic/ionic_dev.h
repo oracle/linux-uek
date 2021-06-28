@@ -140,6 +140,7 @@ struct ionic_dev {
 	u32 last_fw_hb;
 	bool fw_hb_ready;
 	bool fw_status_ready;
+	u8 fw_generation;
 
 	u64 __iomem *db_pages;
 	dma_addr_t phy_db_pages;
@@ -180,6 +181,7 @@ typedef void (*ionic_desc_cb)(struct ionic_queue *q,
 #define IONIC_PAGE_ORDER			0
 #define IONIC_PAGE_SIZE				(PAGE_SIZE << IONIC_PAGE_ORDER)
 #define IONIC_PAGE_SPLIT_SZ			(PAGE_SIZE / 2)
+#define IONIC_PAGE_SPLIT_MAX_MTU		1900
 #define IONIC_PAGE_GFP_MASK			(GFP_ATOMIC | __GFP_NOWARN |\
 	__GFP_COMP | __GFP_MEMALLOC)
 

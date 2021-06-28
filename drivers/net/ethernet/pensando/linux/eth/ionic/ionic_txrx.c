@@ -102,6 +102,7 @@ static inline void ionic_rx_page_free(struct ionic_queue *q,
 static bool ionic_rx_buf_recycle(struct ionic_queue *q,
 				 struct ionic_buf_info *buf_info, u32 used)
 {
+	struct net_device *netdev = q->lif->netdev;
 	u32 size;
 
 	/* don't re-use pages allocated in low-mem condition */
@@ -110,6 +111,9 @@ static bool ionic_rx_buf_recycle(struct ionic_queue *q,
 
 	/* don't re-use buffers from non-local numa nodes */
 	if (page_to_nid(buf_info->page) != numa_mem_id())
+		return false;
+
+	if (netdev->mtu > IONIC_PAGE_SPLIT_MAX_MTU)
 		return false;
 
 	size = ALIGN(used, IONIC_PAGE_SPLIT_SZ);

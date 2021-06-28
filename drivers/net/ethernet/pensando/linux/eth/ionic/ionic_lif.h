@@ -225,7 +225,6 @@ struct ionic_lif {
 	unsigned int nrxq_descs;
 	u64 rxq_features;
 	u16 rx_mode;
-	u16 rx_mode_request;
 	bool registered;
 	bool mc_overflow;
 	bool uc_overflow;
