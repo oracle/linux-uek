@@ -54,6 +54,10 @@ struct octtx_brd_info {
 	const char *board_model;
 	const char *board_num_of_mac;
 	const char *board_num_of_mac_id;
+	const char *reset_count_cold;
+	const char *reset_count_warm;
+	const char *reset_count_core_wdog;
+	const char *reset_count_scp_wdog;
 	int  dev_tree_parsed;
 	int  use_mac_id;
 	struct octeontx_info_mac_addr mac_addrs[MAX_MACS];
@@ -101,6 +105,11 @@ static int oct_brd_proc_show(struct seq_file *seq, void *v)
 			}
 		}
 	}
+
+	seq_printf(seq, "cold_reset_count: %s\n", brd.reset_count_cold);
+	seq_printf(seq, "warm_reset_count: %s\n", brd.reset_count_warm);
+	seq_printf(seq, "core_wdog_reset_count: %s\n", brd.reset_count_core_wdog);
+	seq_printf(seq, "scp_wdog_reset_count: %s\n", brd.reset_count_scp_wdog);
 
 	while (fw_info) {
 		seq_printf(seq, "firmware-file: %s\n", fw_info->name);
@@ -363,6 +372,38 @@ static int __init octtx_info_init(void)
 		ret = octtx_parse_mac_info(np);
 		if (ret) {
 			pr_warn("Board MAC addess not available\n");
+		}
+
+		ret = of_property_read_string(np, "RESET-COUNT-COLD",
+						&brd.reset_count_cold);
+		if (ret) {
+			pr_warn("Cold reset count not available\n");
+			/* Default name is "NULL" */
+			brd.reset_count_cold = null_string;
+		}
+
+		ret = of_property_read_string(np, "RESET-COUNT-WARM",
+						&brd.reset_count_warm);
+		if (ret) {
+			pr_warn("Warm reset count not available\n");
+			/* Default name is "NULL" */
+			brd.reset_count_warm = null_string;
+		}
+
+		ret = of_property_read_string(np, "RESET-COUNT-CORE-WDOG",
+						&brd.reset_count_core_wdog);
+		if (ret) {
+			pr_warn("Core Watchdog reset count not available\n");
+			/* Default name is "NULL" */
+			brd.reset_count_core_wdog = null_string;
+		}
+
+		ret = of_property_read_string(np, "RESET-COUNT-SCP-WDOG",
+						&brd.reset_count_scp_wdog);
+		if (ret) {
+			pr_warn("SCP Watchdog reset count not available\n");
+			/* Default name is "NULL" */
+			brd.reset_count_scp_wdog = null_string;
 		}
 
 		np = of_find_node_by_name(np, FW_LAYOUT_NODE);
