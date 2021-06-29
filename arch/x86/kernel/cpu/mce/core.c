@@ -1285,6 +1285,7 @@ void do_machine_check(struct pt_regs *regs, long error_code)
 	char *msg = "Unknown";
 	struct mce m, *final;
 	int worst = 0;
+	int ret;
 
 	/*
 	 * Establish sequential order between the CPUs entering the machine
@@ -1410,7 +1411,13 @@ void do_machine_check(struct pt_regs *regs, long error_code)
 		ist_begin_non_atomic(regs);
 		local_irq_enable();
 
-		if (kill_it || do_memory_failure(&m))
+		/*
+		 * -EHWPOISON from memory_failure() means that it already
+		 * sent SIGBUS to the current process with the proper error info,
+		 * so no need to send SIGBUS here again.
+		 */
+		ret = do_memory_failure(&m);
+		if (kill_it || (ret && (ret != -EHWPOISON)))
 			force_sig(SIGBUS);
 		local_irq_disable();
 		ist_end_non_atomic();
