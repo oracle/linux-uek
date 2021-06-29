@@ -995,7 +995,7 @@ static int rvu_nix_aq_enq_inst(struct rvu *rvu, struct nix_aq_enq_req *req,
 
 	nix_hw =  get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	return rvu_nix_blk_aq_enq_inst(rvu, nix_hw, req, rsp);
 }
@@ -1428,7 +1428,7 @@ int rvu_mbox_handler_nix_mark_format_cfg(struct rvu *rvu,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	cfg = (((u32)req->offset & 0x7) << 16) |
 	      (((u32)req->y_mask & 0xF) << 12) |
@@ -1839,7 +1839,7 @@ int rvu_mbox_handler_nix_txsch_alloc(struct rvu *rvu,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	mutex_lock(&rvu->rsrc_lock);
 
@@ -1973,7 +1973,7 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	nixlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
 	if (nixlf < 0)
@@ -2060,7 +2060,7 @@ static int nix_txschq_free_one(struct rvu *rvu,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	nixlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
 	if (nixlf < 0)
@@ -2297,7 +2297,7 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	if (req->read)
 		return nix_txschq_cfg_read(rvu, nix_hw, blkaddr, req, rsp);
@@ -2416,7 +2416,7 @@ static int nix_tx_vtag_free(struct rvu *rvu, int blkaddr,
 	struct nix_txvlan *vlan;
 
 	if (!nix_hw)
-		return -ENODEV;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	vlan = &nix_hw->txvlan;
 	if (vlan->entry2pfvf_map[index] != pcifunc)
@@ -2462,9 +2462,14 @@ static int nix_tx_vtag_alloc(struct rvu *rvu, int blkaddr,
 			     u64 vtag, u8 size)
 {
 	struct nix_hw *nix_hw = get_nix_hw(rvu->hw, blkaddr);
-	struct nix_txvlan *vlan = &nix_hw->txvlan;
+	struct nix_txvlan *vlan;
 	u64 regval;
 	int index;
+
+	if (!nix_hw)
+		return NIX_AF_ERR_INVALID_NIXBLK;
+
+	vlan = &nix_hw->txvlan;
 
 	mutex_lock(&vlan->rsrc_lock);
 
@@ -2497,7 +2502,7 @@ static int nix_tx_vtag_decfg(struct rvu *rvu, int blkaddr,
 	int err = 0;
 
 	if (!nix_hw)
-		return -ENODEV;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	vlan = &nix_hw->txvlan;
 	if (req->tx.free_vtag0 && req->tx.free_vtag1)
@@ -2530,7 +2535,7 @@ static int nix_tx_vtag_cfg(struct rvu *rvu, int blkaddr,
 	u16 pcifunc = req->hdr.pcifunc;
 
 	if (!nix_hw)
-		return -ENODEV;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	vlan = &nix_hw->txvlan;
 	if (req->tx.cfg_vtag0) {
@@ -3458,7 +3463,7 @@ static int reserve_flowkey_alg_idx(struct rvu *rvu, int blkaddr, u32 flow_cfg)
 
 	hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	/* No room to add new flow hash algoritham */
 	if (hw->flowkey.in_use >= NIX_FLOW_KEY_ALG_MAX)
@@ -3498,7 +3503,7 @@ int rvu_mbox_handler_nix_rss_flowkey_cfg(struct rvu *rvu,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	alg_idx = get_flowkey_alg_idx(nix_hw, req->flowkey_cfg);
 	/* Failed to get algo index from the exiting list, reserve new  */
@@ -3773,7 +3778,7 @@ nix_config_link_credits(struct rvu *rvu, int blkaddr, int link,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	if (tx_credits == nix_hw->tx_credits[link])
 		return 0;
@@ -3847,7 +3852,7 @@ int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	if (is_afvf(pcifunc))
 		rvu_get_lbk_link_max_frs(rvu, &max_mtu);
@@ -4540,7 +4545,7 @@ int rvu_mbox_handler_nix_lso_format_cfg(struct rvu *rvu,
 
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
-		return -EINVAL;
+		return NIX_AF_ERR_INVALID_NIXBLK;
 
 	/* Find existing matching LSO format, if any */
 	for (idx = 0; idx < nix_hw->lso.in_use; idx++) {
