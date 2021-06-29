@@ -110,4 +110,6 @@ static struct pci_driver pvpanic_pci_driver = {
 	.probe =        pvpanic_pci_probe,
 };
 
+MODULE_DEVICE_TABLE(pci, pvpanic_pci_id_tbl);
+
 module_pci_driver(pvpanic_pci_driver);
