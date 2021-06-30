@@ -1235,10 +1235,9 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 		return;
 
 	list_for_each_entry_safe(ibmr, tmp_ibmr, &free_list, pool_list) {
-		int ret;
 
 		cnt++;
-		ret = rds_ib_fastreg_inv(ibmr);
+		(void)rds_ib_fastreg_inv(ibmr);
 		__rds_ib_teardown_mr(ibmr);
 		if (ibmr->mr)
 			ib_dereg_mr(ibmr->mr);
