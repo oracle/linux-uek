@@ -1817,7 +1817,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
 	union rds_ib_conn_priv dp;
-	char *reason = NULL;
 	u16 frag;
 	int ret;
 
@@ -1857,7 +1856,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 
 	ret = rds_ib_setup_qp(conn);
 	if (ret) {
-		reason = "rds_ib_setup_qp failed";
 		rds_conn_drop(conn, DR_IB_ACT_SETUP_QP_FAIL, ret);
 		goto out;
 	}
@@ -1868,7 +1866,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	rdma_set_min_rnr_timer(cm_id, IB_RNR_TIMER_000_32);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
-		reason = "rdma_connect failed";
 		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL, ret);
 	}
 
