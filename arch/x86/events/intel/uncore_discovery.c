@@ -385,7 +385,7 @@ static struct intel_uncore_ops generic_uncore_msr_ops = {
 	.read_counter		= uncore_msr_read_counter,
 };
 
-static void intel_generic_uncore_pci_init_box(struct intel_uncore_box *box)
+void intel_generic_uncore_pci_init_box(struct intel_uncore_box *box)
 {
 	struct pci_dev *pdev = box->pci_dev;
 	int box_ctl = uncore_pci_box_ctl(box);
@@ -394,7 +394,7 @@ static void intel_generic_uncore_pci_init_box(struct intel_uncore_box *box)
 	pci_write_config_dword(pdev, box_ctl, GENERIC_PMON_BOX_CTL_INT);
 }
 
-static void intel_generic_uncore_pci_disable_box(struct intel_uncore_box *box)
+void intel_generic_uncore_pci_disable_box(struct intel_uncore_box *box)
 {
 	struct pci_dev *pdev = box->pci_dev;
 	int box_ctl = uncore_pci_box_ctl(box);
@@ -402,7 +402,7 @@ static void intel_generic_uncore_pci_disable_box(struct intel_uncore_box *box)
 	pci_write_config_dword(pdev, box_ctl, GENERIC_PMON_BOX_CTL_FRZ);
 }
 
-static void intel_generic_uncore_pci_enable_box(struct intel_uncore_box *box)
+void intel_generic_uncore_pci_enable_box(struct intel_uncore_box *box)
 {
 	struct pci_dev *pdev = box->pci_dev;
 	int box_ctl = uncore_pci_box_ctl(box);
@@ -419,8 +419,8 @@ static void intel_generic_uncore_pci_enable_event(struct intel_uncore_box *box,
 	pci_write_config_dword(pdev, hwc->config_base, hwc->config);
 }
 
-static void intel_generic_uncore_pci_disable_event(struct intel_uncore_box *box,
-					     struct perf_event *event)
+void intel_generic_uncore_pci_disable_event(struct intel_uncore_box *box,
+					    struct perf_event *event)
 {
 	struct pci_dev *pdev = box->pci_dev;
 	struct hw_perf_event *hwc = &event->hw;
@@ -428,8 +428,8 @@ static void intel_generic_uncore_pci_disable_event(struct intel_uncore_box *box,
 	pci_write_config_dword(pdev, hwc->config_base, 0);
 }
 
-static u64 intel_generic_uncore_pci_read_counter(struct intel_uncore_box *box,
-					   struct perf_event *event)
+u64 intel_generic_uncore_pci_read_counter(struct intel_uncore_box *box,
+					  struct perf_event *event)
 {
 	struct pci_dev *pdev = box->pci_dev;
 	struct hw_perf_event *hwc = &event->hw;
