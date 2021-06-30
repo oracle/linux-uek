@@ -620,6 +620,7 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
 
 struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
+void rds_ib_nodev_connect(void);
 extern struct ib_client rds_ib_client;
 
 extern unsigned int rds_ib_fmr_1m_pool_size;
@@ -661,6 +662,9 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn);
 void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev);
 int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev);
 void rds_ib_reset_fastreg(struct work_struct *work);
+void rds_ib_tasklet_fn_send(unsigned long data);
+void rds_ib_tasklet_fn_recv(unsigned long data);
+void rds_ib_conn_destroy_worker(struct work_struct *_work);
 u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
 #if IS_ENABLED(CONFIG_IPV6)
 u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
@@ -690,6 +694,8 @@ void rds_ib_fmr_exit(void);
 void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc);
 void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc);
 void rds_rrds_free(struct kref *kref);
+struct rds_ib_device *rds_rdma_rs_get_device(const struct in6_addr *addr,
+					     struct rds_sock *rs);
 
 /* ib_recv.c */
 extern struct kmem_cache *rds_ib_incoming_slab;
@@ -716,8 +722,12 @@ void rds_ib_attempt_ack(struct rds_ib_connection *ic);
 void rds_ib_ack_send_complete(struct rds_ib_connection *ic);
 u64 rds_ib_piggyb_ack(struct rds_ib_connection *ic);
 void rds_ib_srq_refill(struct work_struct *work);
+int rds_ib_srq_prefill_ring(struct rds_ib_device *rds_ibdev);
 void rds_ib_srq_rearm(struct work_struct *work);
 void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq, int ack_required);
+void rds_ib_srq_process_recv(struct rds_connection *conn,
+			     struct rds_ib_recv_work *recv, u32 data_len,
+			     struct rds_ib_ack_state *state);
 static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 {
 	return test_and_set_bit(RDS_RECV_REFILL, &conn->c_flags) == 0;
