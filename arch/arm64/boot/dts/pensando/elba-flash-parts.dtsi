@@ -19,6 +19,14 @@
 			label = "golduboot";
 			reg = <0x00180000 0x00200000>;
 		};
+		partition@380000 {
+			label = "brdcfg0";
+			reg = <0x00380000 0x00010000>;
+		};
+		partition@390000 {
+			label = "brdcfg1";
+			reg = <0x00390000 0x00010000>;
+		};
 		partition@400000 {
 			label = "goldfw";
 			reg = <0x00400000 0x03c00000>;
