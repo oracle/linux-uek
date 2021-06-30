@@ -121,12 +121,12 @@ int rds_tcp_accept_one(struct socket *sock)
 	struct socket *new_sock = NULL;
 	struct rds_connection *conn = NULL;
 	int ret;
-	struct inet_sock *inet;
 	struct rds_tcp_connection *rs_tcp = NULL;
 	int conn_state;
 	struct rds_conn_path *cp = NULL;
 	struct in6_addr *my_addr, *peer_addr;
 #if !IS_ENABLED(CONFIG_IPV6)
+	struct inet_sock *inet;
 	struct in6_addr saddr, daddr;
 #endif
 	int dev_if = 0;
@@ -170,12 +170,12 @@ int rds_tcp_accept_one(struct socket *sock)
 
 	rds_tcp_tune(new_sock);
 
-	inet = inet_sk(new_sock->sk);
 
 #if IS_ENABLED(CONFIG_IPV6)
 	my_addr = &new_sock->sk->sk_v6_rcv_saddr;
 	peer_addr = &new_sock->sk->sk_v6_daddr;
 #else
+	inet = inet_sk(new_sock->sk);
 	ipv6_addr_set_v4mapped(inet->inet_saddr, &saddr);
 	ipv6_addr_set_v4mapped(inet->inet_daddr, &daddr);
 	my_addr = &saddr;

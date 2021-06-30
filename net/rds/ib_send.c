@@ -353,11 +353,6 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	if (unlikely(wc->status == IB_WC_REM_ACCESS_ERR)) {
 		int y;
 		u32 len = 0;
-		u64 remote_addr = 0;
-		u32 rkey = 0;
-
-		remote_addr = send->s_rdma_wr.remote_addr;
-		rkey = send->s_rdma_wr.rkey;
 
 		for (y = 0; y < send->s_wr.num_sge; y++)
 			len += send->s_sge[y].length;
