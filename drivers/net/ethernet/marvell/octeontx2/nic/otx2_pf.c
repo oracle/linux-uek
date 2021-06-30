@@ -2058,6 +2058,11 @@ static int otx2_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr)
 	if (config.flags)
 		return -EINVAL;
 
+	if (OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+		netdev_info(netdev, "Can't support PTP HW timestamping when switch features are enabled\n");
+		return -EOPNOTSUPP;
+	}
+
 	switch (config.tx_type) {
 	case HWTSTAMP_TX_OFF:
 		otx2_config_hw_tx_tstamp(pfvf, false);

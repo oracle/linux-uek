@@ -1469,8 +1469,6 @@ static void otx2_endis_vfvlan_rules(struct otx2_nic *pfvf, bool enable)
 	}
 }
 
-#define OTX2_IS_INTFMOD_SET(flags) hweight32((flags) & OTX2_INTF_MOD_MASK)
-
 static int otx2_set_priv_flags(struct net_device *netdev, u32 new_flags)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
@@ -1492,6 +1490,11 @@ static int otx2_set_priv_flags(struct net_device *netdev, u32 new_flags)
 	bitnr = ffs(chg_flags) - 1;
 	if (new_flags & BIT(bitnr))
 		enable = true;
+
+	if ((BIT(bitnr) != OTX2_PRIV_FLAG_PAM4) && (pfvf->flags & OTX2_FLAG_RX_TSTAMP_ENABLED)) {
+		netdev_info(netdev, "Can't enable requested mode when PTP HW timestamping is ON\n");
+		return -EINVAL;
+	}
 
 	switch (BIT(bitnr)) {
 	case OTX2_PRIV_FLAG_PAM4:
