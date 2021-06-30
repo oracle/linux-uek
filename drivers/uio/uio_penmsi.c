@@ -427,15 +427,12 @@ static int penmsi_probe_one(struct devdata *devdata,
 	rc = uio_register_device(&pdev->dev, uio_info);
 	if (rc != 0) {
 		dev_err(&pdev->dev, "can't register UIO device");
-		pm_runtime_disable(&pdev->dev);
 		goto free_name;
 	}
 
 	rc = adorn_with_attrs(devdata);
 	if (rc != 0)
 		goto unregister_uio;
-
-	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 
@@ -538,6 +535,8 @@ int penmsi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "no valid coherent DMA mask");
 		goto free_msis;
 	}
+
+	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 
