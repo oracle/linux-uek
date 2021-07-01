@@ -19,6 +19,7 @@
 
 #define DEVICE_NAME			"hw_access"
 #define CLASS_NAME			"hw_access_class"
+
 /* Smallest start physical address of all HW devices */
 #define REG_PHYS_BASEADDR		0x802000000000
 /* Last physical address - First phsycial address + 1 will be the
@@ -29,16 +30,19 @@
  * devices.
  */
 #define REG_SPACE_MAPSIZE		0x7C0E2500000
-#define CSR_READ_IOCTL			0
-#define CSR_WRITE_IOCTL			1
 
 struct hw_reg_cfg {
 	u64	regaddr; /* Register physical address within a hw device */
 	u64	regval; /* Register value to be read or to write */
 };
 
+#define HW_ACCESS_TYPE			120
+
+#define HW_ACCESS_CSR_READ_IOCTL	_IO(HW_ACCESS_TYPE, 1)
+#define HW_ACCESS_CSR_WRITE_IOCTL	_IO(HW_ACCESS_TYPE, 2)
+
 static struct class *hw_reg_class;
-static int majorNumber;
+static int major_no;
 
 static int hw_access_open(struct inode *inode, struct file *filp)
 {
@@ -57,70 +61,85 @@ static int hw_access_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+static int
+hw_access_csr_read(void __iomem *regbase, unsigned long arg)
+{
+	struct hw_reg_cfg reg_cfg;
+	u64 regoff;
+
+	if (copy_from_user(&reg_cfg, (void __user *)arg,
+			   sizeof(struct hw_reg_cfg))) {
+		pr_err("Read Fault copy from user\n");
+
+		return -EFAULT;
+	}
+
+	if (reg_cfg.regaddr < REG_PHYS_BASEADDR ||
+	    reg_cfg.regaddr >= REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE) {
+		pr_err("Address [0x%llx] out of range [0x%lx - 0x%lx]\n",
+		       reg_cfg.regaddr, REG_PHYS_BASEADDR,
+		       REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE);
+
+		return -EFAULT;
+	}
+
+	/* Only 64 bit reads/writes are allowed */
+	reg_cfg.regaddr &= ~0x07ULL;
+	regoff = reg_cfg.regaddr - REG_PHYS_BASEADDR;
+	reg_cfg.regval = readq(regbase + regoff);
+
+	if (copy_to_user((void __user *)(unsigned long)arg,
+			 &reg_cfg,
+			 sizeof(struct hw_reg_cfg))) {
+		pr_err("Fault in copy to user\n");
+
+		return -EFAULT;
+	}
+	return 0;
+}
+
+static int
+hw_access_csr_write(void __iomem *regbase, unsigned long arg)
+{
+	struct hw_reg_cfg reg_cfg;
+	u64 regoff;
+
+	if (copy_from_user(&reg_cfg, (void __user *)arg,
+			   sizeof(struct hw_reg_cfg))) {
+		pr_err("Write Fault in copy from user\n");
+
+		return -EFAULT;
+	}
+
+	if (reg_cfg.regaddr < REG_PHYS_BASEADDR ||
+	    reg_cfg.regaddr >= REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE) {
+		pr_err("Address [0x%llx] out of range [0x%lx - 0x%lx]\n",
+		       reg_cfg.regaddr, REG_PHYS_BASEADDR,
+		       REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE);
+
+		return -EFAULT;
+	}
+
+	/* Only 64 bit reads/writes are allowed */
+	reg_cfg.regaddr &= ~0x07ULL;
+	regoff = reg_cfg.regaddr - REG_PHYS_BASEADDR;
+	writeq(reg_cfg.regval, regbase + regoff);
+
+	return 0;
+}
+
 static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 			   unsigned long arg)
 {
 	void __iomem *regbase = filp->private_data;
-	struct hw_reg_cfg reg_cfg;
-	u64 regoff;
 
 	switch (cmd) {
-	case CSR_READ_IOCTL:
-		if (copy_from_user(&reg_cfg, (void __user *)arg,
-				   sizeof(struct hw_reg_cfg))) {
-			pr_err("Read Fault copy from user\n");
+	case HW_ACCESS_CSR_READ_IOCTL:
+		return hw_access_csr_read(regbase, arg);
 
-			return -EFAULT;
-		}
+	case HW_ACCESS_CSR_WRITE_IOCTL:
+		return hw_access_csr_write(regbase, arg);
 
-		if (reg_cfg.regaddr < REG_PHYS_BASEADDR ||
-		    reg_cfg.regaddr >= REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE) {
-			pr_err("Address [0x%llx] out of range "
-			       "[0x%lx - 0x%lx]\n", reg_cfg.regaddr,
-			       REG_PHYS_BASEADDR,
-			       REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE);
-
-			return -EFAULT;
-		}
-
-		/* Only 64 bit reads/writes are allowed */
-		reg_cfg.regaddr &= ~0x07ULL;
-		regoff = reg_cfg.regaddr - REG_PHYS_BASEADDR;
-		reg_cfg.regval = readq(regbase + regoff);
-
-		if (copy_to_user((void __user *)(unsigned long)arg,
-				 &reg_cfg,
-				 sizeof(struct hw_reg_cfg))) {
-			pr_err("Fault in copy to user\n");
-
-			return -EFAULT;
-		}
-
-		return 0;
-	case CSR_WRITE_IOCTL:
-		if (copy_from_user(&reg_cfg, (void __user *)arg,
-				   sizeof(struct hw_reg_cfg))) {
-			pr_err("Write Fault in copy from user\n");
-
-			return -EFAULT;
-		}
-
-		if (reg_cfg.regaddr < REG_PHYS_BASEADDR ||
-		    reg_cfg.regaddr >= REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE) {
-			pr_err("Address [0x%llx] out of range "
-			       "[0x%lx - 0x%lx]\n", reg_cfg.regaddr,
-			       REG_PHYS_BASEADDR,
-			       REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE);
-
-			return -EFAULT;
-		}
-
-		/* Only 64 bit reads/writes are allowed */
-		reg_cfg.regaddr &= ~0x07ULL;
-		regoff = reg_cfg.regaddr - REG_PHYS_BASEADDR;
-		writeq(reg_cfg.regval, regbase + regoff);
-
-		return 0;
 	default:
 		pr_info("Invalid IOCTL: %d\n", cmd);
 
@@ -146,25 +165,25 @@ static int __init hw_access_module_init(void)
 {
 	static struct device *hw_reg_device;
 
-	majorNumber = register_chrdev(0, DEVICE_NAME, &mmap_fops);
-	if (majorNumber < 0) {
+	major_no = register_chrdev(0, DEVICE_NAME, &mmap_fops);
+	if (major_no < 0) {
 		pr_err("failed to register a major number for %s\n",
 		       DEVICE_NAME);
-		return majorNumber;
+		return major_no;
 	}
 
 	hw_reg_class = class_create(THIS_MODULE, CLASS_NAME);
 	if (IS_ERR(hw_reg_class)) {
-		unregister_chrdev(majorNumber, DEVICE_NAME);
+		unregister_chrdev(major_no, DEVICE_NAME);
 		return PTR_ERR(hw_reg_class);
 	}
 
 	hw_reg_device = device_create(hw_reg_class, NULL,
-				      MKDEV(majorNumber, 0), NULL,
+				      MKDEV(major_no, 0), NULL,
 				      DEVICE_NAME);
 	if (IS_ERR(hw_reg_device)) {
 		class_destroy(hw_reg_class);
-		unregister_chrdev(majorNumber, DEVICE_NAME);
+		unregister_chrdev(major_no, DEVICE_NAME);
 		return PTR_ERR(hw_reg_device);
 	}
 
@@ -173,9 +192,9 @@ static int __init hw_access_module_init(void)
 
 static void __exit hw_access_module_exit(void)
 {
-	device_destroy(hw_reg_class, MKDEV(majorNumber, 0));
+	device_destroy(hw_reg_class, MKDEV(major_no, 0));
 	class_destroy(hw_reg_class);
-	unregister_chrdev(majorNumber, DEVICE_NAME);
+	unregister_chrdev(major_no, DEVICE_NAME);
 }
 
 module_init(hw_access_module_init);
