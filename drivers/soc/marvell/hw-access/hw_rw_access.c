@@ -33,12 +33,12 @@
 #define REG_PHYS_BASEADDR		0x802000000000
 /* Last physical address - First phsycial address + 1 will be the
  * length of IO remapped block
- * 0x87E0E24FFFFF - 0x802000000000 + 1 = 0x7C0E2500000
+ * 0x87E0E48FFFFF - 0x802000000000 + 1 = 0x7C0E4800000
  * Last phsyical address is the highest end physical address of all HW devices.
  * First physical address is the smallest start physical address of all HW
  * devices.
  */
-#define REG_SPACE_MAPSIZE		0x7C0E2500000
+#define REG_SPACE_MAPSIZE		0x7C0E4800000
 
 struct hw_reg_cfg {
 	u64	regaddr; /* Register physical address within a hw device */
@@ -53,11 +53,19 @@ struct hw_ctx_cfg {
 	u8	op;
 };
 
+struct hw_cgx_info {
+	u8	pf;
+	u8	cgx_id;
+	u8	lmac_id;
+	u8	nix_idx;
+};
+
 #define HW_ACCESS_TYPE			120
 
 #define HW_ACCESS_CSR_READ_IOCTL	_IO(HW_ACCESS_TYPE, 1)
 #define HW_ACCESS_CSR_WRITE_IOCTL	_IO(HW_ACCESS_TYPE, 2)
 #define HW_ACCESS_CTX_READ_IOCTL	_IO(HW_ACCESS_TYPE, 3)
+#define HW_ACCESS_CGX_INFO_IOCTL	_IO(HW_ACCESS_TYPE, 4)
 
 struct hw_priv_data {
 	void __iomem *reg_base;
@@ -193,6 +201,43 @@ hw_access_ctx_read(struct rvu *rvu, unsigned long arg)
 	return 0;
 }
 
+static int
+hw_access_cgx_info(struct rvu *rvu, unsigned long arg)
+{
+	struct hw_cgx_info cgx_info;
+	struct rvu_pfvf *pfvf;
+	u8 cgx_id, lmac_id, pf;
+	u16 pcifunc;
+
+	if (copy_from_user(&cgx_info, (void __user *)arg, sizeof(struct hw_cgx_info))) {
+		pr_err("Reading PF value failed: copy from user\n");
+		return -EFAULT;
+	}
+
+	pf = cgx_info.pf;
+	if (!(pf >= PF_CGXMAP_BASE && pf <= rvu->cgx_mapped_pfs)) {
+		pr_err("Invalid PF value %d\n", pf);
+		return -EFAULT;
+	}
+
+	pcifunc = pf << 10;
+	pfvf = &rvu->pf[pf];
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id,
+			    &lmac_id);
+	cgx_info.cgx_id = cgx_id;
+	cgx_info.lmac_id = lmac_id;
+	cgx_info.nix_idx = (pfvf->nix_blkaddr == BLKADDR_NIX0) ? 0 : 1;
+
+	if (copy_to_user((void __user *)(unsigned long)arg,
+			 &cgx_info,
+			 sizeof(struct hw_cgx_info))) {
+		pr_err("Fault in copy to user\n");
+
+		return -EFAULT;
+	}
+	return 0;
+}
+
 static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 			   unsigned long arg)
 {
@@ -209,6 +254,9 @@ static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 
 	case HW_ACCESS_CTX_READ_IOCTL:
 		return hw_access_ctx_read(rvu, arg);
+
+	case HW_ACCESS_CGX_INFO_IOCTL:
+		return hw_access_cgx_info(rvu, arg);
 
 	default:
 		pr_info("Invalid IOCTL: %d\n", cmd);
