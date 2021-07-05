@@ -37,6 +37,7 @@ struct perf_guest_info_callbacks {
 #include <asm/hw_breakpoint.h>
 #endif
 
+#include <linux/uek_kabi.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/rculist.h>
@@ -685,7 +686,11 @@ struct perf_event {
 	struct mutex			mmap_mutex;
 	atomic_t			mmap_count;
 
+#ifdef __GENKSYMS__
 	struct ring_buffer		*rb;
+#else
+	void				*rb;
+#endif
 	struct list_head		rb_entry;
 	unsigned long			rcu_batches;
 	int				rcu_pending;
@@ -842,7 +847,11 @@ struct perf_cpu_context {
 
 struct perf_output_handle {
 	struct perf_event		*event;
+#ifdef __GENKSYMS__
 	struct ring_buffer		*rb;
+#else
+	void				*rb;
+#endif
 	unsigned long			wakeup;
 	unsigned long			size;
 	u64				aux_flags;

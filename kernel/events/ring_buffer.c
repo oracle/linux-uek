@@ -19,7 +19,7 @@
 
 static void perf_output_wakeup(struct perf_output_handle *handle)
 {
-	atomic_set(&handle->rb->poll, EPOLLIN);
+	atomic_set(&((struct ring_buffer *)handle->rb)->poll, EPOLLIN);
 
 	handle->event->pending_wakeup = 1;
 	irq_work_queue(&handle->event->pending);
@@ -435,7 +435,7 @@ void *perf_aux_output_begin(struct perf_output_handle *handle,
 		}
 	}
 
-	return handle->rb->aux_priv;
+	return ((struct ring_buffer *)handle->rb)->aux_priv;
 
 err_put:
 	/* can't be last */
@@ -558,7 +558,7 @@ void *perf_get_aux(struct perf_output_handle *handle)
 	if (!handle->event)
 		return NULL;
 
-	return handle->rb->aux_priv;
+	return ((struct ring_buffer *)handle->rb)->aux_priv;
 }
 EXPORT_SYMBOL_GPL(perf_get_aux);
 
