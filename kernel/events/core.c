@@ -5620,10 +5620,10 @@ static void perf_mmap_open(struct vm_area_struct *vma)
 	struct perf_event *event = vma->vm_file->private_data;
 
 	atomic_inc(&event->mmap_count);
-	atomic_inc(&event->rb->mmap_count);
+	atomic_inc(&((struct ring_buffer *)event->rb)->mmap_count);
 
 	if (vma->vm_pgoff)
-		atomic_inc(&event->rb->aux_mmap_count);
+		atomic_inc(&((struct ring_buffer *)event->rb)->aux_mmap_count);
 
 	if (event->pmu->event_mapped)
 		event->pmu->event_mapped(event, vma->vm_mm);
@@ -5856,12 +5856,13 @@ static int perf_mmap(struct file *file, struct vm_area_struct *vma)
 again:
 	mutex_lock(&event->mmap_mutex);
 	if (event->rb) {
-		if (event->rb->nr_pages != nr_pages) {
+		if (((struct ring_buffer *)event->rb)->nr_pages != nr_pages) {
 			ret = -EINVAL;
 			goto unlock;
 		}
 
-		if (!atomic_inc_not_zero(&event->rb->mmap_count)) {
+		if (!atomic_inc_not_zero(&((struct ring_buffer *)
+					    event->rb)->mmap_count)) {
 			/*
 			 * Raced against perf_mmap_close() through
 			 * perf_event_set_output(). Try again, hope for better
@@ -7042,7 +7043,9 @@ static void perf_pmu_output_stop(struct perf_event *event)
 
 restart:
 	rcu_read_lock();
-	list_for_each_entry_rcu(iter, &event->rb->event_list, rb_entry) {
+	list_for_each_entry_rcu(iter,
+				&((struct ring_buffer *)event->rb)->event_list,
+				rb_entry) {
 		/*
 		 * For per-CPU events, we need to make sure that neither they
 		 * nor their children are running; for cpu==-1 events it's
