@@ -517,17 +517,6 @@ int rvu_check_rsrc_policy(struct rvu *rvu, struct rsrc_attach *req,
 	if (!is_rvu_otx2(rvu))
 		return 0;
 
-	/* Only one NPA LF can be attached */
-	if (req->npalf) {
-		block = &hw->block[BLKADDR_NPA];
-		free_lfs = rvu_rsrc_free_count(&block->lf);
-		limit = rvu->pf_limits.npa->a[pf].val;
-		familylfs = rvu_blk_count_rsrc(block, pcifunc,
-					       RVU_PFVF_PF_SHIFT);
-		if (!free_lfs || (limit == familylfs))
-			goto fail;
-	}
-
 	/* Only one NIX LF can be attached */
 	if (req->nixlf) {
 		block = &hw->block[BLKADDR_NIX0];
@@ -705,9 +694,7 @@ static void rvu_set_default_limits(struct rvu *rvu)
 			break;
 		case PCI_DEVID_OCTEONTX2_SDP_RVU_PF:
 			nnix -= 1 + nvfs;
-			nnpa -= 1 + nvfs;
 			rvu->pf_limits.nix->a[i].val = nnix > 0 ? 1 + nvfs : 0;
-			rvu->pf_limits.npa->a[i].val = nnpa > 0 ? 1 + nvfs : 0;
 			if (rvu->hw->cap.nix_fixed_txschq_mapping)
 				break;
 			rvu->pf_limits.smq->a[i].val = nsmq;
