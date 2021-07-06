@@ -243,7 +243,13 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 		// CAPMEM_TYPE_COHERENT - default inner shareable mapping
 		break;
 	}
-	vma->vm_page_prot = pgprot;
+
+	/*
+	 * Clear the RDONLY bit and set the DIRTY bit to bypass the
+	 * kernel's clean/dirty page tracking, which uses a page fault on
+	 * first write behavior, which is undesirable for performance.
+	 */
+	vma->vm_page_prot = __pgprot_modify(pgprot, PTE_RDONLY, PTE_DIRTY);
 
 #ifdef CONFIG_PENSANDO_SOC_CAPMEM_HUGEPAGE
 	vma->vm_ops = &cap_mem_vm_ops;
