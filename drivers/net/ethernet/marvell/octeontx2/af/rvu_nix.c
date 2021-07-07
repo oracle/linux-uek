@@ -2775,12 +2775,17 @@ static int nix_update_mce_rule(struct rvu *rvu, u16 pcifunc,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct nix_mce_list *mce_list;
+	int pf;
 
 	/* skip multicast pkt replication for AF's VFs & SDP links */
 	if (is_afvf(pcifunc) || is_sdp_pfvf(pcifunc))
 		return 0;
 
 	if (!hw->cap.nix_rx_multicast)
+		return 0;
+
+	pf = rvu_get_pf(pcifunc);
+	if (!is_pf_cgxmapped(rvu, pf))
 		return 0;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
