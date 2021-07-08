@@ -60,14 +60,8 @@ SECTIONS
 
 	_end = .;
 
-	/DISCARD/ : {
-		EXIT_TEXT
-		EXIT_DATA
-		EXIT_CALL
-		*(.ctf)
-	}
-
 	STABS_DEBUG
 	DWARF_DEBUG
 
+	DISCARDS
 }
