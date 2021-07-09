@@ -527,7 +527,8 @@ static int tcp_v6_send_synack(const struct sock *sk, struct dst_entry *dst,
 					   int, DTRACE_NET_PROBE_OUTBOUND);
 		}
 
-		err = ip6_xmit(sk, skb, fl6, sk->sk_mark, opt, np->tclass);
+		err = ip6_xmit(sk, skb, fl6, skb->mark ? : sk->sk_mark, opt,
+			       np->tclass);
 		rcu_read_unlock();
 		err = net_xmit_eval(err);
 	}
