@@ -6,6 +6,7 @@ tegra-drm-y := \
 	uapi.o \
 	submit.o \
 	gather_bo.o \
+	firewall.o \
 	gem.o \
 	fb.o \
 	dp.o \
