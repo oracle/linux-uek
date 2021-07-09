@@ -35,7 +35,6 @@
 #include <linux/jhash.h>
 #include <linux/pagemap.h>
 #include <linux/syscalls.h>
-#include <linux/hugetlb.h>
 #include <linux/freezer.h>
 #include <linux/memblock.h>
 #include <linux/fault-inject.h>
@@ -650,7 +649,7 @@ again:
 
 		key->both.offset |= FUT_OFF_INODE; /* inode-based key */
 		key->shared.i_seq = get_inode_sequence_number(inode);
-		key->shared.pgoff = basepage_index(tail);
+		key->shared.pgoff = page_to_pgoff(tail);
 		rcu_read_unlock();
 	}
 
@@ -981,6 +980,7 @@ static inline void exit_pi_state_list(struct task_struct *curr) { }
  * p->pi_lock:
  *
  *	p->pi_state_list -> pi_state->list, relation
+ *	pi_mutex->owner -> pi_state->owner, relation
  *
  * pi_state->refcount:
  *
@@ -1494,13 +1494,14 @@ static void mark_wake_futex(struct wake_q_head *wake_q, struct futex_q *q)
 static int wake_futex_pi(u32 __user *uaddr, u32 uval, struct futex_pi_state *pi_state)
 {
 	u32 curval, newval;
+	struct rt_mutex_waiter *top_waiter;
 	struct task_struct *new_owner;
 	bool postunlock = false;
 	DEFINE_WAKE_Q(wake_q);
 	int ret = 0;
 
-	new_owner = rt_mutex_next_owner(&pi_state->pi_mutex);
-	if (WARN_ON_ONCE(!new_owner)) {
+	top_waiter = rt_mutex_top_waiter(&pi_state->pi_mutex);
+	if (WARN_ON_ONCE(!top_waiter)) {
 		/*
 		 * As per the comment in futex_unlock_pi() this should not happen.
 		 *
@@ -1512,6 +1513,8 @@ static int wake_futex_pi(u32 __user *uaddr, u32 uval, struct futex_pi_state *pi_
 		ret = -EAGAIN;
 		goto out_unlock;
 	}
+
+	new_owner = top_waiter->task;
 
 	/*
 	 * We pass it to the next owner. The WAITERS bit is always kept
@@ -1724,12 +1727,9 @@ retry_private:
 				return ret;
 		}
 
-		if (!(flags & FLAGS_SHARED)) {
-			cond_resched();
-			goto retry_private;
-		}
-
 		cond_resched();
+		if (!(flags & FLAGS_SHARED))
+			goto retry_private;
 		goto retry;
 	}
 
@@ -1870,7 +1870,7 @@ futex_proxy_trylock_atomic(u32 __user *pifutex, struct futex_hash_bucket *hb1,
 	 * If the caller intends to requeue more than 1 waiter to pifutex,
 	 * force futex_lock_pi_atomic() to set the FUTEX_WAITERS bit now,
 	 * as we have means to handle the possible fault.  If not, don't set
-	 * the bit unecessarily as it will force the subsequent unlock to enter
+	 * the bit unnecessarily as it will force the subsequent unlock to enter
 	 * the kernel.
 	 */
 	top_waiter = futex_top_waiter(hb1, key1);
@@ -2099,7 +2099,7 @@ retry_private:
 			continue;
 
 		/*
-		 * FUTEX_WAIT_REQEUE_PI and FUTEX_CMP_REQUEUE_PI should always
+		 * FUTEX_WAIT_REQUEUE_PI and FUTEX_CMP_REQUEUE_PI should always
 		 * be paired with each other and no other futex ops.
 		 *
 		 * We should never be requeueing a futex_q with a pi_state,
@@ -2314,20 +2314,16 @@ retry:
 }
 
 /*
- * PI futexes can not be requeued and must remove themself from the
- * hash bucket. The hash bucket lock (i.e. lock_ptr) is held on entry
- * and dropped here.
+ * PI futexes can not be requeued and must remove themselves from the
+ * hash bucket. The hash bucket lock (i.e. lock_ptr) is held.
  */
 static void unqueue_me_pi(struct futex_q *q)
-	__releases(q->lock_ptr)
 {
 	__unqueue_futex(q);
 
 	BUG_ON(!q->pi_state);
 	put_pi_state(q->pi_state);
 	q->pi_state = NULL;
-
-	spin_unlock(q->lock_ptr);
 }
 
 static int __fixup_pi_state_owner(u32 __user *uaddr, struct futex_q *q,
@@ -2786,7 +2782,7 @@ static int futex_lock_pi(u32 __user *uaddr, unsigned int flags,
 	if (refill_pi_state_cache())
 		return -ENOMEM;
 
-	to = futex_setup_timer(time, &timeout, FLAGS_CLOCKRT, 0);
+	to = futex_setup_timer(time, &timeout, flags, 0);
 
 retry:
 	ret = get_futex_key(uaddr, flags & FLAGS_SHARED, &q.key, FUTEX_WRITE);
@@ -2903,14 +2899,14 @@ no_block:
 	 */
 	res = fixup_owner(uaddr, &q, !ret);
 	/*
-	 * If fixup_owner() returned an error, proprogate that.  If it acquired
+	 * If fixup_owner() returned an error, propagate that.  If it acquired
 	 * the lock, clear our -ETIMEDOUT or -EINTR.
 	 */
 	if (res)
 		ret = (res < 0) ? res : 0;
 
-	/* Unqueue and drop the lock */
 	unqueue_me_pi(&q);
+	spin_unlock(q.lock_ptr);
 	goto out;
 
 out_unlock_put_key:
@@ -3237,15 +3233,14 @@ static int futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags,
 	 * reference count.
 	 */
 
-	/* Check if the requeue code acquired the second futex for us. */
+	/*
+	 * Check if the requeue code acquired the second futex for us and do
+	 * any pertinent fixup.
+	 */
 	if (!q.rt_waiter) {
-		/*
-		 * Got the lock. We might not be the anticipated owner if we
-		 * did a lock-steal - fix up the PI-state in that case.
-		 */
 		if (q.pi_state && (q.pi_state->owner != current)) {
 			spin_lock(q.lock_ptr);
-			ret = fixup_pi_state_owner(uaddr2, &q, current);
+			ret = fixup_owner(uaddr2, &q, true);
 			/*
 			 * Drop the reference to the pi state which
 			 * the requeue_pi() code acquired for us.
@@ -3281,14 +3276,14 @@ static int futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags,
 		 */
 		res = fixup_owner(uaddr2, &q, !ret);
 		/*
-		 * If fixup_owner() returned an error, proprogate that.  If it
+		 * If fixup_owner() returned an error, propagate that.  If it
 		 * acquired the lock, clear -ETIMEDOUT or -EINTR.
 		 */
 		if (res)
 			ret = (res < 0) ? res : 0;
 
-		/* Unqueue and drop the lock. */
 		unqueue_me_pi(&q);
+		spin_unlock(q.lock_ptr);
 	}
 
 	if (ret == -EINTR) {
@@ -3679,7 +3674,7 @@ void futex_exec_release(struct task_struct *tsk)
 {
 	/*
 	 * The state handling is done for consistency, but in the case of
-	 * exec() there is no way to prevent futher damage as the PID stays
+	 * exec() there is no way to prevent further damage as the PID stays
 	 * the same. But for the unlikely and arguably buggy case that a
 	 * futex is held on exec(), this provides at least as much state
 	 * consistency protection which is possible.
@@ -3711,13 +3706,14 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 
 	if (op & FUTEX_CLOCK_REALTIME) {
 		flags |= FLAGS_CLOCKRT;
-		if (cmd != FUTEX_WAIT && cmd != FUTEX_WAIT_BITSET && \
-		    cmd != FUTEX_WAIT_REQUEUE_PI)
+		if (cmd != FUTEX_WAIT_BITSET && cmd != FUTEX_WAIT_REQUEUE_PI &&
+		    cmd != FUTEX_LOCK_PI2)
 			return -ENOSYS;
 	}
 
 	switch (cmd) {
 	case FUTEX_LOCK_PI:
+	case FUTEX_LOCK_PI2:
 	case FUTEX_UNLOCK_PI:
 	case FUTEX_TRYLOCK_PI:
 	case FUTEX_WAIT_REQUEUE_PI:
@@ -3744,6 +3740,9 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 	case FUTEX_WAKE_OP:
 		return futex_wake_op(uaddr, flags, uaddr2, val, val2, val3);
 	case FUTEX_LOCK_PI:
+		flags |= FLAGS_CLOCKRT;
+		fallthrough;
+	case FUTEX_LOCK_PI2:
 		return futex_lock_pi(uaddr, flags, timeout, 0);
 	case FUTEX_UNLOCK_PI:
 		return futex_unlock_pi(uaddr, flags);
@@ -3759,42 +3758,53 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 	return -ENOSYS;
 }
 
+static __always_inline bool futex_cmd_has_timeout(u32 cmd)
+{
+	switch (cmd) {
+	case FUTEX_WAIT:
+	case FUTEX_LOCK_PI:
+	case FUTEX_LOCK_PI2:
+	case FUTEX_WAIT_BITSET:
+	case FUTEX_WAIT_REQUEUE_PI:
+		return true;
+	}
+	return false;
+}
+
+static __always_inline int
+futex_init_timeout(u32 cmd, u32 op, struct timespec64 *ts, ktime_t *t)
+{
+	if (!timespec64_valid(ts))
+		return -EINVAL;
+
+	*t = timespec64_to_ktime(*ts);
+	if (cmd == FUTEX_WAIT)
+		*t = ktime_add_safe(ktime_get(), *t);
+	else if (cmd != FUTEX_LOCK_PI && !(op & FUTEX_CLOCK_REALTIME))
+		*t = timens_ktime_to_host(CLOCK_MONOTONIC, *t);
+	return 0;
+}
 
 SYSCALL_DEFINE6(futex, u32 __user *, uaddr, int, op, u32, val,
 		const struct __kernel_timespec __user *, utime,
 		u32 __user *, uaddr2, u32, val3)
 {
-	struct timespec64 ts;
+	int ret, cmd = op & FUTEX_CMD_MASK;
 	ktime_t t, *tp = NULL;
-	u32 val2 = 0;
-	int cmd = op & FUTEX_CMD_MASK;
+	struct timespec64 ts;
 
-	if (utime && (cmd == FUTEX_WAIT || cmd == FUTEX_LOCK_PI ||
-		      cmd == FUTEX_WAIT_BITSET ||
-		      cmd == FUTEX_WAIT_REQUEUE_PI)) {
+	if (utime && futex_cmd_has_timeout(cmd)) {
 		if (unlikely(should_fail_futex(!(op & FUTEX_PRIVATE_FLAG))))
 			return -EFAULT;
 		if (get_timespec64(&ts, utime))
 			return -EFAULT;
-		if (!timespec64_valid(&ts))
-			return -EINVAL;
-
-		t = timespec64_to_ktime(ts);
-		if (cmd == FUTEX_WAIT)
-			t = ktime_add_safe(ktime_get(), t);
-		else if (!(op & FUTEX_CLOCK_REALTIME))
-			t = timens_ktime_to_host(CLOCK_MONOTONIC, t);
+		ret = futex_init_timeout(cmd, op, &ts, &t);
+		if (ret)
+			return ret;
 		tp = &t;
 	}
-	/*
-	 * requeue parameter in 'utime' if cmd == FUTEX_*_REQUEUE_*.
-	 * number of waiters to wake in 'utime' if cmd == FUTEX_WAKE_OP.
-	 */
-	if (cmd == FUTEX_REQUEUE || cmd == FUTEX_CMP_REQUEUE ||
-	    cmd == FUTEX_CMP_REQUEUE_PI || cmd == FUTEX_WAKE_OP)
-		val2 = (u32) (unsigned long) utime;
 
-	return do_futex(uaddr, op, val, tp, uaddr2, val2, val3);
+	return do_futex(uaddr, op, val, tp, uaddr2, (unsigned long)utime, val3);
 }
 
 #ifdef CONFIG_COMPAT
@@ -3960,31 +3970,20 @@ SYSCALL_DEFINE6(futex_time32, u32 __user *, uaddr, int, op, u32, val,
 		const struct old_timespec32 __user *, utime, u32 __user *, uaddr2,
 		u32, val3)
 {
-	struct timespec64 ts;
+	int ret, cmd = op & FUTEX_CMD_MASK;
 	ktime_t t, *tp = NULL;
-	int val2 = 0;
-	int cmd = op & FUTEX_CMD_MASK;
+	struct timespec64 ts;
 
-	if (utime && (cmd == FUTEX_WAIT || cmd == FUTEX_LOCK_PI ||
-		      cmd == FUTEX_WAIT_BITSET ||
-		      cmd == FUTEX_WAIT_REQUEUE_PI)) {
+	if (utime && futex_cmd_has_timeout(cmd)) {
 		if (get_old_timespec32(&ts, utime))
 			return -EFAULT;
-		if (!timespec64_valid(&ts))
-			return -EINVAL;
-
-		t = timespec64_to_ktime(ts);
-		if (cmd == FUTEX_WAIT)
-			t = ktime_add_safe(ktime_get(), t);
-		else if (!(op & FUTEX_CLOCK_REALTIME))
-			t = timens_ktime_to_host(CLOCK_MONOTONIC, t);
+		ret = futex_init_timeout(cmd, op, &ts, &t);
+		if (ret)
+			return ret;
 		tp = &t;
 	}
-	if (cmd == FUTEX_REQUEUE || cmd == FUTEX_CMP_REQUEUE ||
-	    cmd == FUTEX_CMP_REQUEUE_PI || cmd == FUTEX_WAKE_OP)
-		val2 = (int) (unsigned long) utime;
 
-	return do_futex(uaddr, op, val, tp, uaddr2, val2, val3);
+	return do_futex(uaddr, op, val, tp, uaddr2, (unsigned long)utime, val3);
 }
 #endif /* CONFIG_COMPAT_32BIT_TIME */
 

@@ -37,19 +37,18 @@
  */
 int
 xrep_attempt(
-	struct xfs_inode	*ip,
 	struct xfs_scrub	*sc)
 {
 	int			error = 0;
 
-	trace_xrep_attempt(ip, sc->sm, error);
+	trace_xrep_attempt(XFS_I(file_inode(sc->file)), sc->sm, error);
 
 	xchk_ag_btcur_free(&sc->sa);
 
 	/* Repair whatever's broken. */
 	ASSERT(sc->ops->repair);
 	error = sc->ops->repair(sc);
-	trace_xrep_done(ip, sc->sm, error);
+	trace_xrep_done(XFS_I(file_inode(sc->file)), sc->sm, error);
 	switch (error) {
 	case 0:
 		/*
@@ -207,7 +206,11 @@ xrep_calc_ag_resblks(
 
 	/* Now grab the block counters from the AGF. */
 	error = xfs_alloc_read_agf(mp, NULL, sm->sm_agno, 0, &bp);
-	if (!error) {
+	if (error) {
+		aglen = xfs_ag_block_count(mp, sm->sm_agno);
+		freelen = aglen;
+		usedlen = aglen;
+	} else {
 		struct xfs_agf	*agf = bp->b_addr;
 
 		aglen = be32_to_cpu(agf->agf_length);
@@ -944,7 +947,7 @@ xrep_ino_dqattach(
 			xrep_force_quotacheck(sc, XFS_DQTYPE_GROUP);
 		if (XFS_IS_PQUOTA_ON(sc->mp) && !sc->ip->i_pdquot)
 			xrep_force_quotacheck(sc, XFS_DQTYPE_PROJ);
-		/* fall through */
+		fallthrough;
 	case -ESRCH:
 		error = 0;
 		break;

@@ -228,7 +228,7 @@ static void init_pmd(pud_t *pudp, unsigned long addr, unsigned long end,
 		next = pmd_addr_end(addr, end);
 
 		/* try section mapping first */
-		if (((addr | next | phys) & ~SECTION_MASK) == 0 &&
+		if (((addr | next | phys) & ~PMD_MASK) == 0 &&
 		    (flags & NO_BLOCK_MAPPINGS) == 0) {
 			pmd_set_huge(pmdp, phys, prot);
 
@@ -515,7 +515,8 @@ static void __init map_mem(pgd_t *pgdp)
 	 */
 	BUILD_BUG_ON(pgd_index(direct_map_end - 1) == pgd_index(direct_map_end));
 
-	if (rodata_full || crash_mem_map || debug_pagealloc_enabled())
+	if (rodata_full || crash_mem_map || debug_pagealloc_enabled() ||
+	    IS_ENABLED(CONFIG_KFENCE))
 		flags |= NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
 
 	/*
@@ -1113,15 +1114,14 @@ static void free_empty_tables(unsigned long addr, unsigned long end,
 }
 #endif
 
-#ifdef CONFIG_SPARSEMEM_VMEMMAP
-#if !ARM64_SWAPPER_USES_SECTION_MAPS
+#if !ARM64_KERNEL_USES_PMD_MAPS
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 		struct vmem_altmap *altmap)
 {
 	WARN_ON((start < VMEMMAP_START) || (end > VMEMMAP_END));
 	return vmemmap_populate_basepages(start, end, node, altmap);
 }
-#else	/* !ARM64_SWAPPER_USES_SECTION_MAPS */
+#else	/* !ARM64_KERNEL_USES_PMD_MAPS */
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 		struct vmem_altmap *altmap)
 {
@@ -1166,18 +1166,18 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 
 	return 0;
 }
-#endif	/* !ARM64_SWAPPER_USES_SECTION_MAPS */
+#endif	/* !ARM64_KERNEL_USES_PMD_MAPS */
+
+#ifdef CONFIG_MEMORY_HOTPLUG
 void vmemmap_free(unsigned long start, unsigned long end,
 		struct vmem_altmap *altmap)
 {
-#ifdef CONFIG_MEMORY_HOTPLUG
 	WARN_ON((start < VMEMMAP_START) || (end > VMEMMAP_END));
 
 	unmap_hotplug_range(start, end, true, altmap);
 	free_empty_tables(start, end, VMEMMAP_START, VMEMMAP_END);
-#endif
 }
-#endif	/* CONFIG_SPARSEMEM_VMEMMAP */
+#endif /* CONFIG_MEMORY_HOTPLUG */
 
 static inline pud_t *fixmap_pud(unsigned long addr)
 {
@@ -1339,27 +1339,6 @@ void *__init fixmap_remap_fdt(phys_addr_t dt_phys, int *size, pgprot_t prot)
 	return dt_virt;
 }
 
-int __init arch_ioremap_p4d_supported(void)
-{
-	return 0;
-}
-
-int __init arch_ioremap_pud_supported(void)
-{
-	/*
-	 * Only 4k granule supports level 1 block mappings.
-	 * SW table walks can't handle removal of intermediate entries.
-	 */
-	return IS_ENABLED(CONFIG_ARM64_4K_PAGES) &&
-	       !IS_ENABLED(CONFIG_PTDUMP_DEBUGFS);
-}
-
-int __init arch_ioremap_pmd_supported(void)
-{
-	/* See arch_ioremap_pud_supported() */
-	return !IS_ENABLED(CONFIG_PTDUMP_DEBUGFS);
-}
-
 int pud_set_huge(pud_t *pudp, phys_addr_t phys, pgprot_t prot)
 {
 	pud_t new_pud = pfn_pud(__phys_to_pfn(phys), mk_pud_sect_prot(prot));
@@ -1449,11 +1428,6 @@ int pud_free_pmd_page(pud_t *pudp, unsigned long addr)
 	__flush_tlb_kernel_pgtable(addr);
 	pmd_free(NULL, table);
 	return 1;
-}
-
-int p4d_free_pud_page(p4d_t *p4d, unsigned long addr)
-{
-	return 0;	/* Don't attempt a block mapping */
 }
 
 #ifdef CONFIG_MEMORY_HOTPLUG

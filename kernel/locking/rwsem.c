@@ -632,7 +632,7 @@ static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem)
 }
 
 /*
- * The rwsem_spin_on_owner() function returns the folowing 4 values
+ * The rwsem_spin_on_owner() function returns the following 4 values
  * depending on the lock owner state.
  *   OWNER_NULL  : owner is currently NULL
  *   OWNER_WRITER: when owner changes and is a writer
@@ -819,7 +819,7 @@ static bool rwsem_optimistic_spin(struct rw_semaphore *sem)
 		 *    we try to get it. The new owner may be a spinnable
 		 *    writer.
 		 *
-		 * To take advantage of two scenarios listed agove, the RT
+		 * To take advantage of two scenarios listed above, the RT
 		 * task is made to retry one more time to see if it can
 		 * acquire the lock or continue spinning on the new owning
 		 * writer. Of course, if the time lag is long enough or the
@@ -889,7 +889,7 @@ rwsem_spin_on_owner(struct rw_semaphore *sem)
  * Wait for the read lock to be granted
  */
 static struct rw_semaphore __sched *
-rwsem_down_read_slowpath(struct rw_semaphore *sem, long count, int state)
+rwsem_down_read_slowpath(struct rw_semaphore *sem, long count, unsigned int state)
 {
 	long adjustment = -RWSEM_READER_BIAS;
 	long rcnt = (count >> RWSEM_READER_SHIFT);

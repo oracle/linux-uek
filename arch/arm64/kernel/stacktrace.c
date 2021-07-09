@@ -68,17 +68,17 @@ int notrace unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 	unsigned long fp = frame->fp;
 	struct stack_info info;
 
-	/* Terminal record; nothing to unwind */
-	if (!fp)
-		return -ENOENT;
-
-	if (fp & 0xf)
-		return -EINVAL;
-
 	if (!tsk)
 		tsk = current;
 
-	if (!on_accessible_stack(tsk, fp, &info))
+	/* Final frame; nothing to unwind */
+	if (fp == (unsigned long)task_pt_regs(tsk)->stackframe)
+		return -ENOENT;
+
+	if (fp & 0x7)
+		return -EINVAL;
+
+	if (!on_accessible_stack(tsk, fp, 16, &info))
 		return -EINVAL;
 
 	if (test_bit(info.type, frame->stacks_done))

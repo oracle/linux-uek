@@ -135,10 +135,8 @@
 #define MT_NORMAL		0
 #define MT_NORMAL_TAGGED	1
 #define MT_NORMAL_NC		2
-#define MT_NORMAL_WT		3
-#define MT_DEVICE_nGnRnE	4
-#define MT_DEVICE_nGnRE		5
-#define MT_DEVICE_GRE		6
+#define MT_DEVICE_nGnRnE	3
+#define MT_DEVICE_nGnRE		4
 
 /*
  * Memory types for Stage-2 translation
@@ -250,8 +248,8 @@ static inline const void *__tag_set(const void *addr, u8 tag)
 #define arch_init_tags(max_tag)			mte_init_tags(max_tag)
 #define arch_get_random_tag()			mte_get_random_tag()
 #define arch_get_mem_tag(addr)			mte_get_mem_tag(addr)
-#define arch_set_mem_tag_range(addr, size, tag)	\
-			mte_set_mem_tag_range((addr), (size), (tag))
+#define arch_set_mem_tag_range(addr, size, tag, init)	\
+			mte_set_mem_tag_range((addr), (size), (tag), (init))
 #endif /* CONFIG_KASAN_HW_TAGS */
 
 /*
@@ -345,7 +343,7 @@ static inline void *phys_to_virt(phys_addr_t x)
  */
 #define ARCH_PFN_OFFSET		((unsigned long)PHYS_PFN_OFFSET)
 
-#if !defined(CONFIG_SPARSEMEM_VMEMMAP) || defined(CONFIG_DEBUG_VIRTUAL)
+#if defined(CONFIG_DEBUG_VIRTUAL)
 #define page_to_virt(x)	({						\
 	__typeof__(x) __page = x;					\
 	void *__addr = __va(page_to_phys(__page));			\
@@ -365,7 +363,7 @@ static inline void *phys_to_virt(phys_addr_t x)
 	u64 __addr = VMEMMAP_START + (__idx * sizeof(struct page));	\
 	(struct page *)__addr;						\
 })
-#endif /* !CONFIG_SPARSEMEM_VMEMMAP || CONFIG_DEBUG_VIRTUAL */
+#endif /* CONFIG_DEBUG_VIRTUAL */
 
 #define virt_addr_valid(addr)	({					\
 	__typeof__(addr) __addr = __tag_reset(addr);			\

@@ -23,6 +23,7 @@
 
 #include <asm/cpuidle.h>
 #include <asm/cputype.h>
+#include <asm/hypervisor.h>
 #include <asm/system_misc.h>
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
@@ -138,7 +139,7 @@ static int psci_to_linux_errno(int errno)
 		return -EINVAL;
 	case PSCI_RET_DENIED:
 		return -EPERM;
-	};
+	}
 
 	return -EINVAL;
 }
@@ -334,10 +335,15 @@ int psci_cpu_suspend_enter(u32 state)
 {
 	int ret;
 
-	if (!psci_power_state_loses_context(state))
+	if (!psci_power_state_loses_context(state)) {
+		struct arm_cpuidle_irq_context context;
+
+		arm_cpuidle_save_irq_context(&context);
 		ret = psci_ops.cpu_suspend(state, 0);
-	else
+		arm_cpuidle_restore_irq_context(&context);
+	} else {
 		ret = cpu_suspend(state, psci_suspend_finisher);
+	}
 
 	return ret;
 }
@@ -501,6 +507,7 @@ static int __init psci_probe(void)
 		psci_init_cpu_suspend();
 		psci_init_system_suspend();
 		psci_init_system_reset2();
+		kvm_init_hyp_services();
 	}
 
 	return 0;

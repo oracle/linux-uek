@@ -43,6 +43,16 @@ unsigned int cal_debug;
 module_param_named(debug, cal_debug, uint, 0644);
 MODULE_PARM_DESC(debug, "activates debug info");
 
+#ifdef CONFIG_VIDEO_TI_CAL_MC
+#define CAL_MC_API_DEFAULT 1
+#else
+#define CAL_MC_API_DEFAULT 0
+#endif
+
+bool cal_mc_api = CAL_MC_API_DEFAULT;
+module_param_named(mc_api, cal_mc_api, bool, 0444);
+MODULE_PARM_DESC(mc_api, "activates the MC API");
+
 /* ------------------------------------------------------------------
  *	Format Handling
  * ------------------------------------------------------------------
@@ -660,13 +670,17 @@ static int cal_async_notifier_complete(struct v4l2_async_notifier *notifier)
 {
 	struct cal_dev *cal = container_of(notifier, struct cal_dev, notifier);
 	unsigned int i;
+	int ret = 0;
 
 	for (i = 0; i < ARRAY_SIZE(cal->ctx); ++i) {
 		if (cal->ctx[i])
 			cal_ctx_v4l2_register(cal->ctx[i]);
 	}
 
-	return 0;
+	if (cal_mc_api)
+		ret = v4l2_device_register_subdev_nodes(&cal->v4l2_dev);
+
+	return ret;
 }
 
 static const struct v4l2_async_notifier_operations cal_async_notifier_ops = {
@@ -1010,7 +1024,7 @@ static int cal_probe(struct platform_device *pdev)
 
 	/* Read the revision and hardware info to verify hardware access. */
 	pm_runtime_enable(&pdev->dev);
-	ret = pm_runtime_get_sync(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
 	if (ret)
 		goto error_pm_runtime;
 
@@ -1084,10 +1098,11 @@ static int cal_remove(struct platform_device *pdev)
 {
 	struct cal_dev *cal = platform_get_drvdata(pdev);
 	unsigned int i;
+	int ret;
 
 	cal_dbg(1, cal, "Removing %s\n", CAL_MODULE_NAME);
 
-	pm_runtime_get_sync(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
 
 	cal_media_unregister(cal);
 
@@ -1101,7 +1116,8 @@ static int cal_remove(struct platform_device *pdev)
 	for (i = 0; i < cal->data->num_csi2_phy; i++)
 		cal_camerarx_destroy(cal->phy[i]);
 
-	pm_runtime_put_sync(&pdev->dev);
+	if (ret >= 0)
+		pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
 	return 0;
