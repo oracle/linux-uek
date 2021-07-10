@@ -141,6 +141,7 @@ config MRVL_PHY_DIAGNOSTICS
 config HW_CSR_ACCESS
 	tristate "Access HW Device Config Space"
         default m
+	depends on OCTEONTX2_AF
 	help
 	  provides an interface which enables user space utility to read from or to write
 	  to HW Device Config Space Registers, Contexts, Memory.
