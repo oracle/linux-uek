@@ -76,6 +76,13 @@ struct rds_ib_mr {
 	/* For busy_list and clean_list */
 	struct list_head	pool_list;
 	u64			free_time;
+
+	/* manage MR lower rkey byte and iova entropy */
+	u32			init_iova;
+	u32			cur_iova;
+	u32			iova_incr;
+	u8			init_low_rkey_byte;
+	u8			cur_low_rkey_byte;
 };
 
 /*
@@ -118,13 +125,37 @@ struct rds_ib_mr_pool {
 	bool			condemned;
 };
 
+static inline u32 rds_frwr_iova_mask(struct rds_ib_mr_pool *pool)
+{
+	const u32 iova_nmbr_bits = (pool->pool_type == RDS_IB_MR_1M_POOL) ? 12 : 19;
+	const u32 iova_low_mask = BIT(iova_nmbr_bits) - 1;
+	const u32 iova_shift = sizeof(u32) * 8 - iova_nmbr_bits;
+
+	return iova_low_mask << iova_shift;
+}
+
+static inline u32 rds_frwr_iova_incr(struct rds_ib_mr_pool *pool)
+{
+	return (pool->pool_type == RDS_IB_MR_1M_POOL) ? SZ_1M : SZ_8K;
+}
+
+static inline void rds_frwr_adjust_iova_rkey(struct rds_ib_mr *ibmr)
+{
+	if (++ibmr->cur_low_rkey_byte == ibmr->init_low_rkey_byte)
+		ibmr->cur_iova += ibmr->iova_incr;
+
+	/* XXX if cur_iova == init_iova, it is exhausted */
+	ib_update_fast_reg_key(ibmr->mr, ibmr->cur_low_rkey_byte);
+}
+
 static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool, int free_all, struct rds_ib_mr **);
 static void rds_ib_teardown_mr(struct rds_ib_mr *ibmr);
 static void rds_ib_mr_pool_flush_worker(struct work_struct *work);
 
 static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				 struct rds_ib_mr *ibmr,
-				 struct scatterlist *sg, unsigned int sg_len);
+				 struct scatterlist *sg, unsigned int sg_len,
+				 u32 iova);
 
 static void rds_frwr_clean_worker(struct work_struct *work);
 static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool all);
@@ -601,6 +632,18 @@ static int rds_ib_init_fastreg_mr(struct rds_ib_device *rds_ibdev,
 	}
 
 	ibmr->mr = mr;
+
+	/* The low random byte is used for low rkey byte, the top 12
+	 * or 19 bits are used as initial iova.
+	 */
+	ibmr->init_iova = get_random_u32();
+	ibmr->init_low_rkey_byte = (u8)ibmr->init_iova;
+	ibmr->cur_low_rkey_byte = ibmr->init_low_rkey_byte;
+
+	ibmr->init_iova &= rds_frwr_iova_mask(pool);
+	ibmr->cur_iova = ibmr->init_iova;
+	ibmr->iova_incr = rds_frwr_iova_incr(pool);
+
 	return 0;
 }
 
@@ -1387,7 +1430,7 @@ void rds_ib_flush_mrs(void)
 }
 
 void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
-		    struct rds_sock *rs, u32 *key_ret,
+		    struct rds_sock *rs, u32 *key_ret, u32 *iova_ret,
 		    struct rds_connection *conn)
 {
 	struct rds_ib_device *rds_ibdev;
@@ -1421,15 +1464,24 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	ibmr->ic = ic;
 
 	if (rds_ibdev->use_fastreg) {
-		ret = rds_ib_map_fastreg_mr(rds_ibdev, ibmr, sg, nents);
-		if (ret == 0)
+		u32 iova;
+
+		rds_frwr_adjust_iova_rkey(ibmr);
+		iova = ibmr->cur_iova;
+
+		ret = rds_ib_map_fastreg_mr(rds_ibdev, ibmr, sg, nents, iova);
+		if (ret == 0) {
 			*key_ret = ibmr->mr->rkey;
+			*iova_ret = iova;
+		}
 	} else {
 		ret = rds_ib_map_fmr(rds_ibdev, ibmr, sg, nents);
-		if (ret == 0)
+		if (ret == 0) {
 			*key_ret = ibmr->fmr->rkey;
-		else
+			*iova_ret = 0;
+		} else {
 			pr_warn("RDS/IB: map_fmr failed (errno=%d)\n", ret);
+		}
 	}
 
 	ibmr->rs = rs;
@@ -1477,7 +1529,7 @@ out_unmap:
 }
 
 static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
-				     struct rds_ib_mr *ibmr)
+				     struct rds_ib_mr *ibmr, u32 iova)
 {
 	struct ib_reg_wr reg_wr;
 	struct ib_send_wr inv_wr, *first_wr = NULL;
@@ -1517,8 +1569,6 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 	} else
 		ibmr->fr_state = MR_IS_VALID;
 
-	ib_update_fast_reg_key(ibmr->mr, ibmr->remap_count++);
-
 	memset(&reg_wr, 0, sizeof(reg_wr));
 	reg_wr.wr.wr_id		= (u64)ibmr;
 	reg_wr.wr.opcode	= IB_WR_REG_MR;
@@ -1528,6 +1578,7 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 				  IB_ACCESS_REMOTE_READ |
 				  IB_ACCESS_REMOTE_WRITE;
 	reg_wr.wr.send_flags	= IB_SEND_SIGNALED;
+	reg_wr.mr->iova		= iova;
 
 	if (!first_wr)
 		first_wr = &reg_wr.wr;
@@ -1558,7 +1609,8 @@ out:
 
 static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				 struct rds_ib_mr *ibmr,
-				 struct scatterlist *sg, unsigned int sg_len)
+				 struct scatterlist *sg, unsigned int sg_len,
+				 u32 iova)
 {
 	int ret = 0;
 	int sg_dma_len = 0;
@@ -1568,7 +1620,7 @@ static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 		goto out;
 	sg_dma_len = ret;
 
-	ret = rds_ib_rdma_build_fastreg(rds_ibdev, ibmr);
+	ret = rds_ib_rdma_build_fastreg(rds_ibdev, ibmr, iova);
 	if (ret)
 		goto out;
 
