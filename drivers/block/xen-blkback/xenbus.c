@@ -489,9 +489,13 @@ static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
 	q = bdev_get_queue(bdev);
 	if (q && q->flush_flags)
 		vbd->flush_support = true;
+	else
+		vbd->flush_support = false;
 
 	if (q && blk_queue_secdiscard(q))
 		vbd->discard_secure = true;
+	else
+		vbd->discard_secure = false;
 
 	pr_debug("Successful creation of handle=%04x (dom=%u), device %x:%x\n",
 		handle, blkif->domid, p->major, p->minor);
@@ -782,7 +786,7 @@ static void backend_changed(struct xenbus_watch *watch,
 	struct xenbus_device *dev = be->dev;
 	unsigned long handle;
 	struct blkif_params oldp, newp;
-	struct xen_vbd vbd;
+	struct xen_vbd vbd = {0};
 	bool swap = false;
 	int locked = 0;
 
