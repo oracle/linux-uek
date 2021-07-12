@@ -100,6 +100,7 @@ struct otx2_rfoe_drv_ctx {
 	struct net_device               *netdev;
 	struct rx_ft_cfg		*ft_cfg;
 	int				tx_gpint_bit;
+	void				*debugfs;
 };
 
 extern struct otx2_rfoe_drv_ctx rfoe_drv_ctx[RFOE_MAX_INTF];
@@ -297,6 +298,14 @@ struct otx2_rfoe_ndev_priv {
 	s32				sec_bcn_offset;
 	int				if_type;
 	u8				link_state;
+	unsigned long			last_tx_jiffies;
+	unsigned long			last_tx_ptp_jiffies;
+	unsigned long			last_rx_jiffies;
+	unsigned long			last_rx_ptp_jiffies;
+	unsigned long			last_tx_dropped_jiffies;
+	unsigned long			last_tx_ptp_dropped_jiffies;
+	unsigned long			last_rx_dropped_jiffies;
+	unsigned long			last_rx_ptp_dropped_jiffies;
 };
 
 void otx2_rfoe_rx_napi_schedule(int rfoe_num, u32 status);

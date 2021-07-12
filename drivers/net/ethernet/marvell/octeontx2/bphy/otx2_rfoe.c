@@ -9,6 +9,7 @@
  */
 
 #include "otx2_rfoe.h"
+#include "otx2_bphy_debugfs.h"
 
 /*	                      Theory of Operation
  *
@@ -100,6 +101,13 @@
 /* global driver ctx */
 struct otx2_rfoe_drv_ctx rfoe_drv_ctx[RFOE_MAX_INTF];
 
+/* debugfs */
+static void otx2_rfoe_debugfs_reader(char *buffer, size_t count, void *priv);
+static const char *otx2_rfoe_debugfs_get_formatter(void);
+static size_t otx2_rfoe_debugfs_get_buffer_size(void);
+static void otx2_rfoe_debugfs_create(struct otx2_rfoe_drv_ctx *ctx);
+static void otx2_rfoe_debugfs_remove(struct otx2_rfoe_drv_ctx *ctx);
+
 void otx2_rfoe_disable_intf(int rfoe_num)
 {
 	struct otx2_rfoe_drv_ctx *drv_ctx;
@@ -128,6 +136,7 @@ void otx2_bphy_rfoe_cleanup(void)
 	for (i = 0; i < RFOE_MAX_INTF; i++) {
 		drv_ctx = &rfoe_drv_ctx[i];
 		if (drv_ctx->valid) {
+			otx2_rfoe_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
 			--(priv->ptp_cfg->refcnt);
@@ -272,6 +281,8 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 
 	netif_dbg(priv, tx_queued, priv->netdev,
 		  "submitting ptp tx skb %pS\n", skb);
+
+	priv->last_tx_ptp_jiffies = jiffies;
 
 	/* get the tx job entry */
 	job_entry = (struct tx_job_entry *)
@@ -561,12 +572,16 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 			  netdev->name, priv2->rfoe_num,
 			  priv2->lmac_id);
 		/* update stats */
-		if (pkt_type == PACKET_TYPE_PTP)
+		if (pkt_type == PACKET_TYPE_PTP) {
 			priv2->stats.ptp_rx_dropped++;
-		else if (pkt_type == PACKET_TYPE_ECPRI)
+			priv2->last_rx_ptp_dropped_jiffies = jiffies;
+		} else if (pkt_type == PACKET_TYPE_ECPRI) {
 			priv2->stats.ecpri_rx_dropped++;
-		else
+			priv2->last_rx_dropped_jiffies = jiffies;
+		} else {
 			priv2->stats.rx_dropped++;
+			priv2->last_rx_dropped_jiffies = jiffies;
+		}
 		return;
 	}
 
@@ -588,12 +603,16 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	netif_receive_skb(skb);
 
 	/* update stats */
-	if (pkt_type == PACKET_TYPE_PTP)
+	if (pkt_type == PACKET_TYPE_PTP) {
 		priv2->stats.ptp_rx_packets++;
-	else if (pkt_type == PACKET_TYPE_ECPRI)
+		priv2->last_rx_ptp_jiffies = jiffies;
+	} else if (pkt_type == PACKET_TYPE_ECPRI) {
 		priv2->stats.ecpri_rx_packets++;
-	else
+		priv2->last_rx_jiffies = jiffies;
+	} else {
 		priv2->stats.rx_packets++;
+		priv2->last_rx_jiffies = jiffies;
+	}
 	priv2->stats.rx_bytes += skb->len;
 }
 
@@ -868,6 +887,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			  netdev->name, priv->rfoe_num, priv->lmac_id);
 		/* update stats */
 		priv->stats.tx_dropped++;
+		priv->last_tx_dropped_jiffies = jiffies;
 		goto exit;
 	}
 
@@ -877,12 +897,16 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			  netdev->name, priv->rfoe_num,
 			  priv->lmac_id);
 		/* update stats */
-		if (pkt_type == PACKET_TYPE_ECPRI)
+		if (pkt_type == PACKET_TYPE_ECPRI) {
 			priv->stats.ecpri_tx_dropped++;
-		else if (pkt_type == PACKET_TYPE_PTP)
+			priv->last_tx_dropped_jiffies = jiffies;
+		} else if (pkt_type == PACKET_TYPE_PTP) {
 			priv->stats.ptp_tx_dropped++;
-		else
+			priv->last_tx_ptp_dropped_jiffies = jiffies;
+		} else {
 			priv->stats.tx_dropped++;
+			priv->last_tx_dropped_jiffies = jiffies;
+		}
 
 		goto exit;
 	}
@@ -893,12 +917,16 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			  netdev->name, priv->rfoe_num,
 			  priv->lmac_id);
 		/* update stats */
-		if (pkt_type == PACKET_TYPE_ECPRI)
+		if (pkt_type == PACKET_TYPE_ECPRI) {
 			priv->stats.ecpri_tx_dropped++;
-		else if (pkt_type == PACKET_TYPE_PTP)
+			priv->last_tx_dropped_jiffies = jiffies;
+		} else if (pkt_type == PACKET_TYPE_PTP) {
 			priv->stats.ptp_tx_dropped++;
-		else
+			priv->last_tx_ptp_dropped_jiffies = jiffies;
+		} else {
 			priv->stats.tx_dropped++;
+			priv->last_tx_dropped_jiffies = jiffies;
+		}
 
 		goto exit;
 	}
@@ -926,6 +954,8 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			priv->stats.ecpri_tx_dropped++;
 		else
 			priv->stats.tx_dropped++;
+
+		priv->last_tx_dropped_jiffies = jiffies;
 
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
@@ -958,12 +988,14 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 				netif_err(priv, tx_err, netdev,
 					  "ptp list full, dropping pkt\n");
 				priv->stats.ptp_tx_dropped++;
+				priv->last_tx_ptp_dropped_jiffies = jiffies;
 				goto exit;
 			}
 			/* allocate and add ptp req to queue */
 			ts_skb = kmalloc(sizeof(*ts_skb), GFP_ATOMIC);
 			if (!ts_skb) {
 				priv->stats.ptp_tx_dropped++;
+				priv->last_tx_ptp_dropped_jiffies = jiffies;
 				goto exit;
 			}
 			ts_skb->skb = skb;
@@ -1022,12 +1054,16 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
 
 	/* update stats */
-	if (pkt_type == PACKET_TYPE_ECPRI)
+	if (pkt_type == PACKET_TYPE_ECPRI) {
 		priv->stats.ecpri_tx_packets++;
-	else if (pkt_type == PACKET_TYPE_PTP)
+		priv->last_tx_jiffies = jiffies;
+	} else if (pkt_type == PACKET_TYPE_PTP) {
 		priv->stats.ptp_tx_packets++;
-	else
+		priv->last_tx_ptp_jiffies = jiffies;
+	} else {
 		priv->stats.tx_packets++;
+		priv->last_tx_jiffies = jiffies;
+	}
 	priv->stats.tx_bytes += skb->len;
 
 	/* increment queue index */
@@ -1459,6 +1495,9 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			drv_ctx->valid = 1;
 			drv_ctx->netdev = netdev;
 			drv_ctx->ft_cfg = &priv->rx_ft_cfg[0];
+
+			/* create debugfs entry */
+			otx2_rfoe_debugfs_create(drv_ctx);
 		}
 	}
 
@@ -1468,6 +1507,7 @@ err_exit:
 	for (i = 0; i < RFOE_MAX_INTF; i++) {
 		drv_ctx = &rfoe_drv_ctx[i];
 		if (drv_ctx->valid) {
+			otx2_rfoe_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
 			otx2_rfoe_ptp_destroy(priv);
@@ -1489,4 +1529,120 @@ err_exit:
 	kfree(ptp_cfg);
 
 	return ret;
+}
+
+static void otx2_rfoe_debugfs_reader(char *buffer, size_t count, void *priv)
+{
+	struct otx2_rfoe_drv_ctx *ctx;
+	struct otx2_rfoe_ndev_priv *netdev;
+	u8 ptp_tx_in_progress;
+	unsigned int queued_ptp_reqs;
+	u8 queue_stopped, state_up;
+	u16 other_tx_psm_space, ptp_tx_psm_space, queue_id;
+	u64 regval;
+	const char *formatter;
+
+	ctx = priv;
+	netdev = netdev_priv(ctx->netdev);
+	ptp_tx_in_progress = test_bit(PTP_TX_IN_PROGRESS, &netdev->state);
+	queued_ptp_reqs = netdev->ptp_skb_list.count;
+	queue_stopped = netif_queue_stopped(ctx->netdev);
+	state_up = netdev->link_state;
+	formatter = otx2_rfoe_debugfs_get_formatter();
+
+	/* other tx psm space */
+	queue_id = netdev->rfoe_common->tx_oth_job_cfg.psm_queue_id;
+	regval = readq(netdev->psm_reg_base + PSM_QUEUE_SPACE(queue_id));
+	other_tx_psm_space = regval & 0x7FFF;
+
+	/* ptp tx psm space */
+	queue_id = netdev->tx_ptp_job_cfg.psm_queue_id;
+	regval = readq(netdev->psm_reg_base + PSM_QUEUE_SPACE(queue_id));
+	ptp_tx_psm_space = regval & 0x7FFF;
+
+	snprintf(buffer, count, formatter,
+		 ptp_tx_in_progress,
+		 queued_ptp_reqs,
+		 queue_stopped,
+		 state_up,
+		 netdev->last_tx_jiffies,
+		 netdev->last_tx_dropped_jiffies,
+		 netdev->last_tx_ptp_jiffies,
+		 netdev->last_tx_ptp_dropped_jiffies,
+		 netdev->last_rx_jiffies,
+		 netdev->last_rx_dropped_jiffies,
+		 netdev->last_rx_ptp_jiffies,
+		 netdev->last_rx_ptp_dropped_jiffies,
+		 jiffies,
+		 other_tx_psm_space,
+		 ptp_tx_psm_space);
+}
+
+static const char *otx2_rfoe_debugfs_get_formatter(void)
+{
+	static const char *buffer_format = "ptp-tx-in-progress: %u\n"
+					   "queued-ptp-reqs: %u\n"
+					   "queue-stopped: %u\n"
+					   "state-up: %u\n"
+					   "last-tx-jiffies: %lu\n"
+					   "last-tx-dropped-jiffies: %lu\n"
+					   "last-tx-ptp-jiffies: %lu\n"
+					   "last-tx-ptp-dropped-jiffies: %lu\n"
+					   "last-rx-jiffies: %lu\n"
+					   "last-rx-dropped-jiffies: %lu\n"
+					   "last-rx-ptp-jiffies: %lu\n"
+					   "last-rx-ptp-dropped-jiffies: %lu\n"
+					   "current-jiffies: %lu\n"
+					   "other-tx-psm-space: %u\n"
+					   "ptp-tx-psm-space: %u\n";
+
+	return buffer_format;
+}
+
+static size_t otx2_rfoe_debugfs_get_buffer_size(void)
+{
+	static size_t buffer_size;
+
+	if (!buffer_size) {
+		const char *formatter = otx2_rfoe_debugfs_get_formatter();
+		u8 max_boolean = 1;
+		int max_ptp_req_count = max_ptp_req;
+		unsigned long max_jiffies = (unsigned long)-1;
+		u16 max_psm_space = (u16)-1;
+
+		buffer_size = snprintf(NULL, 0, formatter,
+				       max_boolean,
+				       max_ptp_req_count,
+				       max_boolean,
+				       max_boolean,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_psm_space,
+				       max_psm_space);
+		++buffer_size;
+	}
+
+	return buffer_size;
+}
+
+static void otx2_rfoe_debugfs_create(struct otx2_rfoe_drv_ctx *ctx)
+{
+	size_t buffer_size = otx2_rfoe_debugfs_get_buffer_size();
+
+	ctx->debugfs = otx2_bphy_debugfs_add_file(ctx->netdev->name,
+						  buffer_size, ctx,
+						  otx2_rfoe_debugfs_reader);
+}
+
+static void otx2_rfoe_debugfs_remove(struct otx2_rfoe_drv_ctx *ctx)
+{
+	if (ctx->debugfs)
+		otx2_bphy_debugfs_remove_file(ctx->debugfs);
 }

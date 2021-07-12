@@ -9,6 +9,7 @@
  */
 
 #include "otx2_cpri.h"
+#include "otx2_bphy_debugfs.h"
 
 /*	Theory of Operation
  *
@@ -57,6 +58,13 @@
 /* global driver ctx */
 struct otx2_cpri_drv_ctx cpri_drv_ctx[OTX2_BPHY_CPRI_MAX_INTF];
 
+/* debugfs */
+static void otx2_cpri_debugfs_reader(char *buffer, size_t count, void *priv);
+static const char *otx2_cpri_debugfs_get_formatter(void);
+static size_t otx2_cpri_debugfs_get_buffer_size(void);
+static void otx2_cpri_debugfs_create(struct otx2_cpri_drv_ctx *ctx);
+static void otx2_cpri_debugfs_remove(struct otx2_cpri_drv_ctx *ctx);
+
 static struct net_device *otx2_cpri_get_netdev(int mhab_id, int lmac_id)
 {
 	struct net_device *netdev = NULL;
@@ -101,6 +109,7 @@ void otx2_bphy_cpri_cleanup(void)
 	for (i = 0; i < OTX2_BPHY_CPRI_MAX_INTF; i++) {
 		drv_ctx = &cpri_drv_ctx[i];
 		if (drv_ctx->valid) {
+			otx2_cpri_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
 			unregister_netdev(netdev);
@@ -155,6 +164,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 			pr_err("CPRI Rx netdev not found, cpri%d lmac%d\n",
 			       wqe->mhab_id, wqe->lane_id);
 			priv->stats.rx_dropped++;
+			priv->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
 			continue;
 		}
@@ -165,6 +175,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 				  wqe->mhab_id, wqe->lane_id,
 				  ul_cfg->sw_rd_ptr);
 			priv2->stats.rx_dropped++;
+			priv2->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
 			continue;
 		}
@@ -174,6 +185,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 				  netdev->name, priv2->cpri_num,
 				  priv2->lmac_id);
 			priv2->stats.rx_dropped++;
+			priv2->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
 			continue;
 		}
@@ -194,6 +206,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 			netif_err(priv2, rx_err, netdev,
 				  "CPRI Rx: alloc skb failed\n");
 			priv->stats.rx_dropped++;
+			priv->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
 			continue;
 		}
@@ -208,6 +221,8 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 		ul_cfg->sw_rd_ptr++;
 		if (ul_cfg->sw_rd_ptr == ul_cfg->num_entries)
 			ul_cfg->sw_rd_ptr = 0;
+
+		priv2->last_rx_jiffies = jiffies;
 	}
 
 	if (processed_pkts)
@@ -354,12 +369,14 @@ static netdev_tx_t otx2_cpri_eth_start_xmit(struct sk_buff *skb,
 			  netdev->name, priv->cpri_num, priv->lmac_id);
 		/* update stats */
 		priv->stats.tx_dropped++;
+		priv->last_tx_dropped_jiffies = jiffies;
 		goto exit;
 	}
 
 	if (unlikely(!netif_carrier_ok(netdev))) {
 		/* update stats */
 		priv->stats.tx_dropped++;
+		priv->last_tx_dropped_jiffies = jiffies;
 		goto exit;
 	}
 
@@ -411,6 +428,8 @@ static netdev_tx_t otx2_cpri_eth_start_xmit(struct sk_buff *skb,
 	dl_cfg->sw_wr_ptr++;
 	if (dl_cfg->sw_wr_ptr == dl_cfg->num_entries)
 		dl_cfg->sw_wr_ptr = 0;
+
+	priv->last_tx_jiffies = jiffies;
 exit:
 	dev_kfree_skb_any(skb);
 	spin_unlock_irqrestore(&dl_cfg->lock, flags);
@@ -608,6 +627,9 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			drv_ctx->lmac_id = priv->lmac_id;
 			drv_ctx->valid = 1;
 			drv_ctx->netdev = netdev;
+
+			/* create debugfs entry */
+			otx2_cpri_debugfs_create(drv_ctx);
 		}
 	}
 
@@ -617,6 +639,7 @@ err_exit:
 	for (i = 0; i < OTX2_BPHY_CPRI_MAX_INTF; i++) {
 		drv_ctx = &cpri_drv_ctx[i];
 		if (drv_ctx->valid) {
+			otx2_cpri_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
 			unregister_netdev(netdev);
@@ -629,4 +652,78 @@ err_exit:
 		}
 	}
 	return ret;
+}
+
+static void otx2_cpri_debugfs_reader(char *buffer, size_t count, void *priv)
+{
+	struct otx2_cpri_drv_ctx *ctx;
+	struct otx2_cpri_ndev_priv *netdev;
+	u8 queue_stopped, state_up;
+	const char *formatter;
+
+	ctx = priv;
+	netdev = netdev_priv(ctx->netdev);
+	queue_stopped = netif_queue_stopped(ctx->netdev);
+	state_up = netdev->link_state;
+	formatter = otx2_cpri_debugfs_get_formatter();
+
+	snprintf(buffer, count, formatter,
+		 queue_stopped,
+		 state_up,
+		 netdev->last_tx_jiffies,
+		 netdev->last_tx_dropped_jiffies,
+		 netdev->last_rx_jiffies,
+		 netdev->last_rx_dropped_jiffies,
+		 jiffies);
+}
+
+static const char *otx2_cpri_debugfs_get_formatter(void)
+{
+	static const char *buffer_format = "queue-stopped: %u\n"
+					   "state-up: %u\n"
+					   "last-tx-jiffies: %lu\n"
+					   "last-tx-dropped-jiffies: %lu\n"
+					   "last-rx-jiffies: %lu\n"
+					   "last-rx-dropped-jiffies: %lu\n"
+					   "current-jiffies: %lu\n";
+
+	return buffer_format;
+}
+
+static size_t otx2_cpri_debugfs_get_buffer_size(void)
+{
+	static size_t buffer_size;
+
+	if (!buffer_size) {
+		const char *formatter = otx2_cpri_debugfs_get_formatter();
+		u8 max_boolean = 1;
+		unsigned long max_jiffies = (unsigned long)-1;
+
+		buffer_size = snprintf(NULL, 0, formatter,
+				       max_boolean,
+				       max_boolean,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies,
+				       max_jiffies);
+		++buffer_size;
+	}
+
+	return buffer_size;
+}
+
+static void otx2_cpri_debugfs_create(struct otx2_cpri_drv_ctx *ctx)
+{
+	size_t buffer_size = otx2_cpri_debugfs_get_buffer_size();
+
+	ctx->debugfs = otx2_bphy_debugfs_add_file(ctx->netdev->name,
+						  buffer_size, ctx,
+						  otx2_cpri_debugfs_reader);
+}
+
+static void otx2_cpri_debugfs_remove(struct otx2_cpri_drv_ctx *ctx)
+{
+	if (ctx->debugfs)
+		otx2_bphy_debugfs_remove_file(ctx->debugfs);
 }
