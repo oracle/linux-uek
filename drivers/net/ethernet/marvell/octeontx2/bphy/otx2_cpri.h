@@ -46,6 +46,7 @@ struct otx2_cpri_drv_ctx {
 	u8				cpri_num;
 	u8				lmac_id;
 	int				valid;
+	void				*debugfs;
 	struct net_device               *netdev;
 };
 
@@ -123,6 +124,10 @@ struct otx2_cpri_ndev_priv {
 	spinlock_t			lock;
 	int				if_type;
 	u8				link_state;
+	unsigned long			last_tx_jiffies;
+	unsigned long			last_rx_jiffies;
+	unsigned long			last_tx_dropped_jiffies;
+	unsigned long			last_rx_dropped_jiffies;
 };
 
 int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,

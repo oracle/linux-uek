@@ -18,6 +18,7 @@
 #include "otx2_bphy.h"
 #include "otx2_rfoe.h"
 #include "otx2_cpri.h"
+#include "otx2_bphy_debugfs.h"
 
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION(DRV_STRING);
@@ -777,11 +778,15 @@ static int __init otx2_bphy_init(void)
 	if (ret < 0)
 		return ret;
 
+	otx2_bphy_debugfs_init();
+
 	return 0;
 }
 
 static void __exit otx2_bphy_exit(void)
 {
+	otx2_bphy_debugfs_exit();
+
 	platform_driver_unregister(&otx2_bphy_driver);
 }
 
