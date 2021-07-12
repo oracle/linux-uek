@@ -188,6 +188,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	rds_rdma_cookie_t cookie;
 	unsigned int nents;
 	char *reason;
+	u32 iova;
 	long i;
 	int ret;
 
@@ -293,7 +294,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	 * this get_mr() does not hold a reference on it.
 	 */
 	trans_private = rs->rs_transport->get_mr(sg, nents, rs,
-						 &mr->r_key,
+						 &mr->r_key, &iova,
 						 cp ? cp->cp_conn : NULL);
 
 	if (IS_ERR(trans_private)) {
@@ -314,7 +315,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	 * map page aligned regions. So we keep the offset, and build
 	 * a 64bit cookie containing <R_Key, offset> and pass that
 	 * around. */
-	cookie = rds_rdma_make_cookie(mr->r_key, args->vec.addr & ~PAGE_MASK);
+	cookie = rds_rdma_make_cookie(mr->r_key, iova | (args->vec.addr & ~PAGE_MASK));
 	if (cookie_ret)
 		*cookie_ret = cookie;
 
