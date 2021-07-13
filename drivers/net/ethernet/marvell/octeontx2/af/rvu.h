@@ -293,10 +293,11 @@ struct rvu_pfvf {
 	bool	cgx_in_use; /* this PF/VF using CGX? */
 	int	cgx_users;  /* number of cgx users - used only by PFs */
 
-	u8	nix_blkaddr; /* BLKADDR_NIX0/1 assigned to this PF */
 	int     intf_mode;
+	u8	nix_blkaddr; /* BLKADDR_NIX0/1 assigned to this PF */
 	u8	nix_rx_intf; /* NIX0_RX/NIX1_RX interface to NPC */
 	u8	nix_tx_intf; /* NIX0_TX/NIX1_TX interface to NPC */
+	u8	lbkid;	     /* NIX0/1 lbk link ID */
 	u64     lmt_base_addr; /* Preseving the pcifunc's lmtst base addr*/
 	u64     lmt_map_ent_w1; /*Preseving the word1 of lmtst map table entry*/
 	unsigned long flags;
