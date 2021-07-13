@@ -458,9 +458,9 @@ int rvu_mbox_handler_nix_bp_disable(struct rvu *rvu,
 static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 			    int type, int chan_id)
 {
-	int bpid, blkaddr, lmac_chan_cnt;
+	int bpid, blkaddr, lmac_chan_cnt, sdp_chan_cnt;
+	u16 cgx_bpid_cnt, lbk_bpid_cnt, sdp_bpid_cnt;
 	struct rvu_hwinfo *hw = rvu->hw;
-	u16 cgx_bpid_cnt, lbk_bpid_cnt;
 	struct rvu_pfvf *pfvf;
 	u8 cgx_id, lmac_id;
 	u64 cfg;
@@ -469,8 +469,12 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST);
 	lmac_chan_cnt = cfg & 0xFF;
 
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST1);
+	sdp_chan_cnt = cfg & 0xFFF;
+
 	cgx_bpid_cnt = hw->cgx_links * lmac_chan_cnt;
 	lbk_bpid_cnt = hw->lbk_links * ((cfg >> 16) & 0xFF);
+	sdp_bpid_cnt = hw->sdp_links * sdp_chan_cnt;
 
 	pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
 
@@ -508,6 +512,17 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 		if (bpid > (cgx_bpid_cnt + lbk_bpid_cnt))
 			return -EINVAL;
 		break;
+	case NIX_INTF_TYPE_SDP:
+		if ((req->chan_base + req->chan_cnt) > 255)
+			return -EINVAL;
+
+		bpid = sdp_bpid_cnt + req->chan_base;
+		if (req->bpid_per_chan)
+			bpid += chan_id;
+
+		if (bpid > (cgx_bpid_cnt + lbk_bpid_cnt + sdp_bpid_cnt))
+			return -EINVAL;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -527,9 +542,12 @@ int rvu_mbox_handler_nix_bp_enable(struct rvu *rvu,
 
 	pf = rvu_get_pf(pcifunc);
 	type = is_afvf(pcifunc) ? NIX_INTF_TYPE_LBK : NIX_INTF_TYPE_CGX;
+	if (is_sdp_pfvf(pcifunc))
+		type = NIX_INTF_TYPE_SDP;
 
-	/* Enable backpressure only for CGX mapped PFs and LBK interface */
-	if (!is_pf_cgxmapped(rvu, pf) && type != NIX_INTF_TYPE_LBK)
+	/* Enable backpressure only for CGX mapped PFs and LBK/SDP interface */
+	if (!is_pf_cgxmapped(rvu, pf) && type != NIX_INTF_TYPE_LBK &&
+	    type != NIX_INTF_TYPE_SDP)
 		return 0;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
