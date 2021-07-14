@@ -9,6 +9,7 @@
 #include <linux/sysfs.h>
 #include "coresight-etm4x.h"
 #include "coresight-priv.h"
+#include "coresight-quirks.h"
 
 static int etm4_set_mode_exclude(struct etmv4_drvdata *drvdata, bool exclude)
 {
@@ -2341,8 +2342,26 @@ static u32 etmv4_cross_read(const struct etmv4_drvdata *drvdata, u32 offset)
 	/*
 	 * smp cross call ensures the CPU will be powered up before
 	 * accessing the ETMv4 trace core registers
+	 *
+	 * Note: When task isolation is enabled, the target cpu used
+	 * is always primary core and hence the above assumption of
+	 * cpu associated with the ETM being in powered up state during
+	 * register writes is not valid.
+	 * But on the other hand, using smp call ensures that atomicity is
+	 * not broken as well.
 	 */
-	smp_call_function_single(drvdata->cpu, do_smp_cross_read, &reg, 1);
+	smp_call_function_single(drvdata->rc_cpu, do_smp_cross_read, &reg, 1);
+
+	/* OcteonTX2 hardware reports version as ETMv4.2 but it supports
+	 * Ignore Packet feature of ETMv4.3. Hence, treat this as comaptible
+	 * with ETMv4.3.
+	 */
+	if ((offset == TRCIDR1) &&
+	    (drvdata->etm_quirks & CORESIGHT_QUIRK_ETM_TREAT_ETMv43)) {
+		reg.data &= ~0xF0;
+		reg.data |= 0x30;
+	}
+
 	return reg.data;
 }
 
