@@ -932,6 +932,9 @@ struct etmv4_drvdata {
 	struct coresight_device		*csdev;
 	spinlock_t			spinlock;
 	local_t				mode;
+	u32				etm_quirks;
+	int				hw_state;
+	int				rc_cpu;
 	int				cpu;
 	u8				arch;
 	u8				nr_pe;
