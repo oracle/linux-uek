@@ -13,6 +13,8 @@
 #include <linux/mutex.h>
 #include <linux/refcount.h>
 
+#include "coresight-quirks.h"
+
 #define TMC_RSZ			0x004
 #define TMC_STS			0x00c
 #define TMC_RRD			0x010
@@ -92,6 +94,7 @@
 #define TMC_DEVID_AXIAW_MASK	0x7f
 
 #define TMC_AUTH_NSID_MASK	GENMASK(1, 0)
+#define TMC_AUTH_SID_MASK	GENMASK(5, 4)
 
 enum tmc_config_type {
 	TMC_CONFIG_TYPE_ETB,
@@ -130,10 +133,14 @@ enum tmc_mem_intf_width {
 #define CORESIGHT_SOC_600_ETR_CAPS	\
 	(TMC_ETR_SAVE_RESTORE | TMC_ETR_AXI_ARCACHE)
 
+/* Marvell OcteonTx CN9xxx TMC-ETR unadvertised capabilities */
+#define OCTEONTX_CN9XXX_ETR_CAPS	(TMC_ETR_SAVE_RESTORE)
+
 enum etr_mode {
 	ETR_MODE_FLAT,		/* Uses contiguous flat buffer */
 	ETR_MODE_ETR_SG,	/* Uses in-built TMC ETR SG mechanism */
 	ETR_MODE_CATU,		/* Use SG mechanism in CATU */
+	ETR_MODE_SECURE,	/* Use Secure buffer */
 };
 
 struct etr_buf_operations;
@@ -160,6 +167,20 @@ struct etr_buf {
 	s64				len;
 	const struct etr_buf_operations	*ops;
 	void				*private;
+};
+
+/**
+ * struct etr_tsync_data - Timer based sync insertion data management
+ * @syncs_per_fill:    syncs inserted per buffer wrap
+ * @prev_rwp:          writepointer for the last sync insertion
+ * @len_thold:         Buffer length threshold for inserting syncs
+ * @tick:              Tick interval in ns
+ */
+struct etr_tsync_data {
+	int syncs_per_fill;
+	u64 prev_rwp;
+	u64 len_thold;
+	u64 tick;
 };
 
 /**
@@ -199,6 +220,9 @@ struct tmc_drvdata {
 	u32			len;
 	u32			size;
 	u32			mode;
+	u32			etr_quirks;
+	int			cpu;
+	int			rc_cpu;
 	enum tmc_config_type	config_type;
 	enum tmc_mem_intf_width	memwidth;
 	u32			trigger_cntr;
@@ -207,6 +231,9 @@ struct tmc_drvdata {
 	struct mutex		idr_mutex;
 	struct etr_buf		*sysfs_buf;
 	struct etr_buf		*perf_buf;
+	void			*etm_source;
+	struct etr_tsync_data	tsync_data;
+	struct hrtimer		timer;
 };
 
 struct etr_buf_operations {
@@ -288,7 +315,24 @@ tmc_write_##name(struct tmc_drvdata *drvdata, u64 val)			\
 
 TMC_REG_PAIR(rrp, TMC_RRP, TMC_RRPHI)
 TMC_REG_PAIR(rwp, TMC_RWP, TMC_RWPHI)
-TMC_REG_PAIR(dba, TMC_DBALO, TMC_DBAHI)
+
+static inline u64 tmc_read_dba(struct tmc_drvdata *drvdata)
+{
+	if (drvdata->etr_quirks & CORESIGHT_QUIRK_ETR_FORCE_64B_DBA_RW)
+		return readq(drvdata->base + TMC_DBALO);
+
+	return coresight_read_reg_pair(drvdata->base, TMC_DBALO, TMC_DBAHI);
+}
+
+static inline void tmc_write_dba(struct tmc_drvdata *drvdata, u64 val)
+{
+	if (drvdata->etr_quirks & CORESIGHT_QUIRK_ETR_FORCE_64B_DBA_RW) {
+		writeq(val, drvdata->base + TMC_DBALO);
+		return;
+	}
+
+	coresight_write_reg_pair(drvdata->base, val, TMC_DBALO, TMC_DBAHI);
+}
 
 /* Initialise the caps from unadvertised static capabilities of the device */
 static inline void tmc_etr_init_caps(struct tmc_drvdata *drvdata, u32 dev_caps)

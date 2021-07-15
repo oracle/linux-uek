@@ -125,3 +125,31 @@ cpumask_t coresight_etm_active_list(void)
 	return etm_active_list;
 }
 EXPORT_SYMBOL(coresight_etm_active_list);
+
+/* ETR quirks on OcteonTX */
+u32 coresight_get_etr_quirks(unsigned int id)
+{
+	u32 quirks = 0; /* reset */
+
+	if (midr_is_cpu_model_range(read_cpuid_id(),
+				    MIDR_MRVL_OCTEONTX2_96XX,
+				    MIDR_CPU_VAR_REV(0, 0),
+				    MIDR_CPU_VAR_REV(3, 1)) ||
+	    midr_is_cpu_model_range(read_cpuid_id(),
+				    MIDR_MRVL_OCTEONTX2_95XX,
+				    MIDR_CPU_VAR_REV(0, 0),
+				    MIDR_CPU_VAR_REV(2, 0)))
+		quirks |= CORESIGHT_QUIRK_ETR_RESET_CTL_REG |
+			  CORESIGHT_QUIRK_ETR_BUFFSIZE_8BX |
+			  CORESIGHT_QUIRK_ETR_NO_STOP_FLUSH;
+
+	/* Common across all Chip variants and revisions */
+	if (id == OCTEONTX_CN9XXX_ETR) {
+		quirks |= CORESIGHT_QUIRK_ETR_SECURE_BUFF |
+			  CORESIGHT_QUIRK_ETR_FORCE_64B_DBA_RW;
+		quirks |= coresight_get_etm_quirks(OCTEONTX_CN9XXX_ETM);
+	}
+
+	return quirks;
+}
+EXPORT_SYMBOL(coresight_get_etr_quirks);
