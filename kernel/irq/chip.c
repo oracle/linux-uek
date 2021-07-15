@@ -741,16 +741,13 @@ void handle_fasteoi_nmi(struct irq_desc *desc)
 	struct irq_chip *chip = irq_desc_get_chip(desc);
 	struct irqaction *action = desc->action;
 	unsigned int irq = irq_desc_get_irq(desc);
-	irqreturn_t res;
 
 	__kstat_incr_irqs_this_cpu(desc);
 
-	trace_irq_handler_entry(irq, action);
 	/*
 	 * NMIs cannot be shared, there is only one action.
 	 */
-	res = action->handler(irq, action->dev_id);
-	trace_irq_handler_exit(irq, action, res);
+	handle_irqaction(irq, action);
 
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);
@@ -914,7 +911,6 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 	struct irq_chip *chip = irq_desc_get_chip(desc);
 	struct irqaction *action = desc->action;
 	unsigned int irq = irq_desc_get_irq(desc);
-	irqreturn_t res;
 
 	/*
 	 * PER CPU interrupts are not serialized. Do not touch
@@ -926,9 +922,7 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 		chip->irq_ack(&desc->irq_data);
 
 	if (likely(action)) {
-		trace_irq_handler_entry(irq, action);
-		res = action->handler(irq, raw_cpu_ptr(action->percpu_dev_id));
-		trace_irq_handler_exit(irq, action, res);
+		handle_irqaction_percpu_devid(irq, action);
 	} else {
 		unsigned int cpu = smp_processor_id();
 		bool enabled = cpumask_test_cpu(cpu, desc->percpu_enabled);
@@ -957,13 +951,10 @@ void handle_percpu_devid_fasteoi_nmi(struct irq_desc *desc)
 	struct irq_chip *chip = irq_desc_get_chip(desc);
 	struct irqaction *action = desc->action;
 	unsigned int irq = irq_desc_get_irq(desc);
-	irqreturn_t res;
 
 	__kstat_incr_irqs_this_cpu(desc);
 
-	trace_irq_handler_entry(irq, action);
-	res = action->handler(irq, raw_cpu_ptr(action->percpu_dev_id));
-	trace_irq_handler_exit(irq, action, res);
+	handle_irqaction_percpu_devid(irq, action);
 
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);
