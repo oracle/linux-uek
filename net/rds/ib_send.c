@@ -566,9 +566,9 @@ void rds_ib_check_irq_miss(struct rds_ib_connection *ic)
 	if (!ic->i_irq_miss_ts) {
 		ic->i_irq_miss_ts = now;
 	} else if (time_after(now, ic->i_irq_miss_ts + 5 * HZ)) {
-		trace_printk("RDS/IB: Detected stuck send on conn <%pI6c,%pI6c,%d> ts=%lu now=%lu. Polling for completions\n",
-			     &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-			     ic->i_irq_miss_ts, now);
+		pr_warn_ratelimited("RDS/IB: Detected stuck send on conn <%pI6c,%pI6c,%d> ts=%lu now=%lu. Polling for completions\n",
+				    &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				    ic->i_irq_miss_ts, now);
 		rds_ib_clear_irq_miss(ic);
 		rds_ib_poll_tx(ic);
 	}
