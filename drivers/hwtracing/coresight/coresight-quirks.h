@@ -8,6 +8,16 @@
 #define CORESIGHT_QUIRK_ETM_SW_SYNC		0x1 /* No Hardware sync */
 #define CORESIGHT_QUIRK_ETM_TREAT_ETMv43	0x2 /* ETMv4.2 as ETMv4.3 */
 
+/* Marvell OcteonTx CN9xxx ETR device */
+#define OCTEONTX_CN9XXX_ETR			0x000cc213
+
+/* Coresight ETR Hardware quirks */
+#define CORESIGHT_QUIRK_ETR_BUFFSIZE_8BX	0x10 /* 8 byte size multiplier */
+#define CORESIGHT_QUIRK_ETR_SECURE_BUFF		0x20 /* Trace buffer is Secure */
+#define CORESIGHT_QUIRK_ETR_RESET_CTL_REG	0x40 /* Reset CTL on reset */
+#define CORESIGHT_QUIRK_ETR_NO_STOP_FLUSH	0x80 /* No Stop on flush */
+#define CORESIGHT_QUIRK_ETR_FORCE_64B_DBA_RW	0x100 /* 64b DBA read/write */
+
 /* ETM sync insertion modes
  * 1. MODE_HW
  *    Sync insertion is done by hardware without any software intervention
@@ -43,6 +53,7 @@ enum hw_state {
 };
 
 u32 coresight_get_etm_quirks(unsigned int id);
+u32 coresight_get_etr_quirks(unsigned int id);
 int coresight_get_etm_sync_mode(void);
 
 void etm4_enable_raw(struct coresight_device *csdev);
