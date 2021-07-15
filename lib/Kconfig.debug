@@ -1155,6 +1155,21 @@ config WQ_WATCHDOG
 	  state.  This can be configured through kernel parameter
 	  "workqueue.watchdog_thresh" and its sysfs counterpart.
 
+config DETECT_SLOW_IRQ_HANDLER
+	bool "Detect long-running IRQ handlers"
+	help
+	  Say Y here to enable detection of long-running IRQ handlers. When a
+	  (hard) IRQ handler returns after a given timeout value (1s by
+	  default) a warning will be printed with the name of the handler.
+
+	  This can help to identify specific IRQ handlers which are
+	  contributing to stalls.
+
+config IRQ_HANDLER_TIMEOUT_NS
+	int "Timeout for long-running IRQ handlers (in nanoseconds)"
+	depends on DETECT_SLOW_IRQ_HANDLER
+	default 1000000000
+
 config TEST_LOCKUP
 	tristate "Test module to generate lockups"
 	depends on m
