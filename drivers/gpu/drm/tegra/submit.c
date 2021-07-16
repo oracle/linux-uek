@@ -24,7 +24,7 @@
 #define SUBMIT_ERR(context, fmt, ...) \
 	dev_err_ratelimited(context->client->base.dev, \
 		"%s: job submission failed: " fmt "\n", \
-		current->comm __VA_OPT__(,) __VA_ARGS__)
+		current->comm, ##__VA_ARGS__)
 
 static struct tegra_drm_mapping *
 tegra_drm_mapping_get(struct tegra_drm_context *context, u32 id)
