@@ -1277,17 +1277,30 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 	if (list_empty(&free_list))
 		return;
 
+	/* unpin and unmap pages if mr is in clean_list for gc_time(1 sec) */
 	list_for_each_entry_safe(ibmr, tmp_ibmr, &free_list, pool_list) {
 		int ret;
 
-		cnt++;
 		ret = rds_ib_fastreg_inv(ibmr);
 		__rds_ib_teardown_mr(ibmr);
-		if (ibmr->mr)
-			ib_dereg_mr(ibmr->mr);
-		kfree(ibmr);
+		if (ret || clean_all) {
+			list_del_init(&ibmr->pool_list);
+			cnt++;
+			if (ibmr->mr)
+				ib_dereg_mr(ibmr->mr);
+			kfree(ibmr);
+		}
 	}
 	atomic_sub(cnt, &pool->item_count);
+
+	/* add it back to clean list for re-use if not given to device.
+	 * also maintain LIFO behavior of clean_list.
+	 */
+	if (!clean_all && !list_empty(&free_list)) {
+		spin_lock_irqsave(&pool->clean_lock, flags);
+		list_splice(&free_list, &pool->clean_list);
+		spin_unlock_irqrestore(&pool->clean_lock, flags);
+	}
 }
 
 static void rds_frwr_clean_worker(struct work_struct *work)
