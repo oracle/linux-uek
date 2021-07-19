@@ -771,6 +771,7 @@ int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
 	u16 pcifunc = req->hdr.pcifunc;
 	int pf = rvu_get_pf(pcifunc);
+	struct mac_ops *mac_ops;
 	u8 cgx_id, lmac_id;
 	void *cgxd;
 
@@ -789,7 +790,8 @@ int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
 
-	cgx_lmac_ptp_config(cgxd, lmac_id, true);
+	mac_ops = get_mac_ops(cgxd);
+	mac_ops->mac_enadis_ptp_config(cgxd, lmac_id, true);
 
 	/* Inform NPC that packets to be parsed by this PF
 	 * will have their data shifted by 8B
@@ -809,6 +811,7 @@ int rvu_mbox_handler_cgx_ptp_rx_disable(struct rvu *rvu, struct msg_req *req,
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
 	u16 pcifunc = req->hdr.pcifunc;
 	int pf = rvu_get_pf(pcifunc);
+	struct mac_ops *mac_ops;
 	u8 cgx_id, lmac_id;
 	void *cgxd;
 
@@ -823,7 +826,8 @@ int rvu_mbox_handler_cgx_ptp_rx_disable(struct rvu *rvu, struct msg_req *req,
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
 
-	cgx_lmac_ptp_config(cgxd, lmac_id, false);
+	mac_ops = get_mac_ops(cgxd);
+	mac_ops->mac_enadis_ptp_config(cgxd, lmac_id, false);
 
 	/* Inform NPC that 8B shift is cancelled */
 	if (npc_config_ts_kpuaction(rvu, pf, pcifunc, false))
