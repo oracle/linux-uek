@@ -29,6 +29,7 @@ static struct mac_ops		rpm_mac_ops   = {
 	.mac_get_pause_frm_status =	rpm_lmac_get_pause_frm_status,
 	.mac_enadis_pause_frm =		rpm_lmac_enadis_pause_frm,
 	.mac_pause_frm_config =		rpm_lmac_pause_frm_config,
+	.mac_enadis_ptp_config =	rpm_lmac_ptp_config,
 };
 
 struct mac_ops *rpm_get_mac_ops(void)
@@ -278,4 +279,20 @@ void rpm_lmac_pause_frm_config(void *rpmd, int lmac_id, bool enable)
 		cfg |= RPMX_MTI_MAC100X_COMMAND_CONFIG_TX_P_DISABLE;
 		rpm_write(rpm, lmac_id, RPMX_MTI_MAC100X_COMMAND_CONFIG, cfg);
 	}
+}
+
+void rpm_lmac_ptp_config(void *rpmd, int lmac_id, bool enable)
+{
+	rpm_t *rpm = rpmd;
+	u64 cfg;
+
+	if (!is_lmac_valid(rpm, lmac_id))
+		return;
+
+	cfg = rpm_read(rpm, lmac_id, RPMX_CMRX_CFG);
+	if (enable)
+		cfg |= RPMX_RX_TS_PREPEND;
+	else
+		cfg &= ~RPMX_RX_TS_PREPEND;
+	rpm_write(rpm, lmac_id, RPMX_CMRX_CFG, cfg);
 }
