@@ -906,23 +906,17 @@ int ib_get_cached_pkey(struct ib_device *device,
 }
 EXPORT_SYMBOL(ib_get_cached_pkey);
 
-int ib_get_cached_subnet_prefix(struct ib_device *device,
+void ib_get_cached_subnet_prefix(struct ib_device *device,
 				u8                port_num,
 				u64              *sn_pfx)
 {
 	unsigned long flags;
 	int p;
 
-	if (port_num < rdma_start_port(device) ||
-	    port_num > rdma_end_port(device))
-		return -EINVAL;
-
 	p = port_num - rdma_start_port(device);
 	read_lock_irqsave(&device->cache.lock, flags);
 	*sn_pfx = device->cache.ports[p].subnet_prefix;
 	read_unlock_irqrestore(&device->cache.lock, flags);
-
-	return 0;
 }
 EXPORT_SYMBOL(ib_get_cached_subnet_prefix);
 
