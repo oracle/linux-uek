@@ -1099,6 +1099,9 @@ static void ib_cache_update(struct ib_device  *device,
 					ret, device->name, i);
 				goto err;
 			}
+			tprops->subnet_prefix =
+			be64_to_cpu(
+				(gid_cache->table + i)->global.subnet_prefix);
 		}
 	}
 
@@ -1125,7 +1128,7 @@ static void ib_cache_update(struct ib_device  *device,
 		tprops->state;
 
 	device->cache.ports[port - rdma_start_port(device)].subnet_prefix =
-							tprops->subnet_prefix;
+						tprops->subnet_prefix;
 	write_unlock_irq(&device->cache.lock);
 
 	if (enforce_security)
@@ -1209,6 +1212,8 @@ int ib_cache_setup_one(struct ib_device *device)
 	for (p = 0; p <= rdma_end_port(device) - rdma_start_port(device); ++p)
 		ib_cache_update(device, p + rdma_start_port(device),
 				true, true, true);
+
+	device->cache.cache_is_initialised = 1;
 
 	INIT_IB_EVENT_HANDLER(&device->cache.event_handler,
 			      device, ib_cache_event);

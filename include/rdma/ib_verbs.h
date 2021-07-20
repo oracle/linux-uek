@@ -2206,6 +2206,7 @@ struct ib_cache {
 	rwlock_t                lock;
 	struct ib_event_handler event_handler;
 	struct ib_port_cache   *ports;
+	u8                      cache_is_initialised:1;
 };
 
 struct iw_cm_verbs;
