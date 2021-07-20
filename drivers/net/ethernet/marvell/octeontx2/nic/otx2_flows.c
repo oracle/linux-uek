@@ -98,7 +98,11 @@ static int otx2_alloc_ntuple_mcam_entries(struct otx2_nic *pfvf, u16 count)
 		req->contig = false;
 		req->count = (count - allocated) > NPC_MAX_NONCONTIG_ENTRIES ?
 				NPC_MAX_NONCONTIG_ENTRIES : count - allocated;
-		req->priority = NPC_MCAM_HIGHER_PRIO;
+		/* For VFs setting the priority to be of NPC_MCAM_ANY_PRIO so
+		 * that MCAM entries gets allocated from middle zone
+		 */
+		req->priority = (pfvf->pcifunc & RVU_PFVF_FUNC_MASK) ?
+				 NPC_MCAM_ANY_PRIO : NPC_MCAM_HIGHER_PRIO;
 		req->ref_entry = flow_cfg->def_ent[0];
 
 		/* Send message to AF */
@@ -204,6 +208,56 @@ int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 
 	pfvf->flags |= OTX2_FLAG_NTUPLE_SUPPORT;
 	pfvf->flags |= OTX2_FLAG_TC_FLOWER_SUPPORT;
+
+	return 0;
+}
+
+static void otx2vf_free_flow_cfg(struct otx2_nic *pfvf)
+{
+	if (pfvf->flow_cfg) {
+		if (pfvf->flow_cfg->def_ent) {
+			devm_kfree(pfvf->dev, pfvf->flow_cfg->def_ent);
+			pfvf->flow_cfg->def_ent = NULL;
+		}
+
+		devm_kfree(pfvf->dev, pfvf->flow_cfg);
+		pfvf->flow_cfg = NULL;
+	}
+}
+
+int otx2vf_mcam_flow_init(struct otx2_nic *pfvf)
+{
+	struct otx2_flow_config *flow_cfg;
+	int count;
+
+	pfvf->flow_cfg = devm_kzalloc(pfvf->dev,
+				      sizeof(struct otx2_flow_config),
+				      GFP_KERNEL);
+	if (!pfvf->flow_cfg)
+		return -ENOMEM;
+
+	flow_cfg = pfvf->flow_cfg;
+	INIT_LIST_HEAD(&flow_cfg->flow_list);
+	flow_cfg->ntuple_max_flows = 0;
+	flow_cfg->def_ent = devm_kmalloc_array(pfvf->dev,
+					       OTX2_DEFAULT_FLOWCOUNT,
+					       sizeof(u16), GFP_KERNEL);
+	if (!flow_cfg->def_ent) {
+		otx2vf_free_flow_cfg(pfvf);
+		return -ENOMEM;
+	}
+
+	count = otx2_alloc_ntuple_mcam_entries(pfvf, OTX2_DEFAULT_FLOWCOUNT);
+	if (count <= 0) {
+		netdev_info(pfvf->netdev, "Unable to allocate MCAM entries\n");
+		otx2vf_free_flow_cfg(pfvf);
+		return -ENOMEM;
+	}
+
+	flow_cfg->ntuple_max_flows = count;
+
+	pfvf->flags |= OTX2_FLAG_MCAM_ENTRIES_ALLOC;
+	pfvf->flags |= OTX2_FLAG_NTUPLE_SUPPORT;
 
 	return 0;
 }
@@ -1060,6 +1114,8 @@ int otx2_add_flow(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc)
 	}
 
 	if (err) {
+		if (err == 0xFFFEULL)
+			err = -EINVAL;
 		if (new)
 			kfree(flow);
 		return err;

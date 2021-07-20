@@ -1034,13 +1034,11 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule dummy = { 0 };
 	struct rvu_npc_mcam_rule *rule;
-	bool new = false, msg_from_vf;
 	u16 owner = req->hdr.pcifunc;
 	struct msg_rsp write_rsp;
 	struct mcam_entry *entry;
 	int entry_index, err;
-
-	msg_from_vf = !!(owner & RVU_PFVF_FUNC_MASK);
+	bool new = false;
 
 	installed_features = req->features;
 	features = req->features;
@@ -1066,7 +1064,7 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	}
 
 	/* update mcam entry with default unicast rule attributes */
-	if (def_ucast_rule && (msg_from_vf || (req->default_rule && req->append))) {
+	if (def_ucast_rule && (req->default_rule && req->append)) {
 		missing_features = (def_ucast_rule->features ^ features) &
 					def_ucast_rule->features;
 		if (missing_features)
@@ -1261,13 +1259,6 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 		set_bit(PF_SET_VF_MAC, &pfvf->flags);
 		return 0;
 	}
-
-	/* If message is from VF then its flow should not overlap with
-	 * reserved unicast flow.
-	 */
-	if (from_vf && pfvf->def_ucast_rule && is_npc_intf_rx(req->intf) &&
-	    pfvf->def_ucast_rule->features & req->features)
-		return NPC_FLOW_VF_OVERLAP;
 
 	mutex_lock(&rswitch->switch_lock);
 	err = npc_install_flow(rvu, blkaddr, target, nixlf, pfvf,

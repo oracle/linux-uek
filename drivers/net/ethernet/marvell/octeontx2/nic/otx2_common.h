@@ -878,6 +878,7 @@ int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind);
 
 /* MCAM filter related APIs */
 int otx2_mcam_flow_init(struct otx2_nic *pf);
+int otx2vf_mcam_flow_init(struct otx2_nic *pfvf);
 int otx2_alloc_mcam_entries(struct otx2_nic *pfvf);
 void otx2_mcam_flow_del(struct otx2_nic *pf);
 int otx2_destroy_ntuple_flows(struct otx2_nic *pf);
