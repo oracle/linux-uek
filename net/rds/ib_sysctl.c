@@ -65,6 +65,8 @@ u32 rds_frwr_wake_intrvl = 5000;
 /* Default FRWR ibmr idle time before garbage collection, in msec. */
 u32 rds_frwr_ibmr_gc_time = 1000;
 
+/* Default funky FRWR ibmr quarantine time to give to device, in msec. */
+u32 rds_frwr_ibmr_qrtn_time = 300000;
 /*
  * This sysctl does nothing.
  *
@@ -167,6 +169,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.procname       = "frwr_ibmr_gc_idle_time",
 		.data           = &rds_frwr_ibmr_gc_time,
 		.maxlen         = sizeof(rds_frwr_ibmr_gc_time),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "frwr_ibmr_qrtn_time",
+		.data           = &rds_frwr_ibmr_qrtn_time,
+		.maxlen         = sizeof(rds_frwr_ibmr_qrtn_time),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
 	},
