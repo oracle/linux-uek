@@ -766,7 +766,7 @@ extern unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu;
 extern int rds_ib_sysctl_local_ack_timeout;
 extern u32 rds_frwr_wake_intrvl;
 extern u32 rds_frwr_ibmr_gc_time;
+extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
-
 #endif
