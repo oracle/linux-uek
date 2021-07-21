@@ -266,4 +266,15 @@ config OCTEONTX2_CCU
 
 	  To compile as a module choose M here.
 
+config MARVELL_CN10K_FWLOG
+	tristate "CN10K firmware log interface"
+	depends on ARM64
+	help
+	  Provides interface to read firmware boot logs. Firmware bootlogs are saved
+	  in memory that is accessible from kernel. Enabling this option allows the
+	  user to dump the firmware boot logs.
+
+	  Say Y here if you want to dump the firmware boot logs from linux shell. This
+	  option is available only for CN10K platforms.
+
 endmenu
