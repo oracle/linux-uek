@@ -1225,6 +1225,19 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	return ret;
 }
 
+void rds_ib_free_ibmr(struct rds_ib_mr *ibmr)
+{
+	if (ibmr->pool->pool_type == RDS_IB_MR_8K_POOL)
+		rds_ib_stats_inc(s_ib_rdma_mr_8k_free);
+	else
+		rds_ib_stats_inc(s_ib_rdma_mr_1m_free);
+
+	list_del_init(&ibmr->pool_list);
+	if (ibmr->mr)
+		ib_dereg_mr(ibmr->mr);
+	kfree(ibmr);
+}
+
 /* FRWR rds_ib_mr GC function.  If an rds_ib_mr is freed more than
  * rds_frwr_ibmr_gc_time eariler, it will be cleaned.  If clean_all
  * is true, all rds_ib_mr will be cleaned regardless of their freed
@@ -1234,11 +1247,13 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 {
 	struct rds_ib_mr *ibmr, *tmp_ibmr;
 	LIST_HEAD(free_list);
+	LIST_HEAD(drop_list);
 	unsigned long flags;
-	u64 now, gc_time;
-	u32 cnt = 0;
+	u64 now, gc_time, qrtn_time;
+	u32 cnt = 0, drop_cnt = 0;
 
 	gc_time = msecs_to_jiffies(rds_frwr_ibmr_gc_time);
+	qrtn_time = msecs_to_jiffies(rds_frwr_ibmr_qrtn_time);
 	now = get_jiffies_64();
 
 	if (clean_all) {
@@ -1254,7 +1269,7 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 		 */
 		if (!ibmr || (now - ibmr->free_time < gc_time)) {
 			rcu_read_unlock();
-			return;
+			goto drop;
 		}
 		spin_lock_irqsave(&pool->clean_lock, flags);
 		list_for_each_entry_rcu(ibmr, &pool->clean_list, pool_list) {
@@ -1274,7 +1289,7 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 	}
 
 	if (list_empty(&free_list))
-		return;
+		goto drop;
 
 	/* unpin and unmap pages if mr is in clean_list for gc_time(1 sec) */
 	list_for_each_entry_safe(ibmr, tmp_ibmr, &free_list, pool_list) {
@@ -1282,12 +1297,14 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 
 		ret = rds_ib_fastreg_inv(ibmr);
 		__rds_ib_teardown_mr(ibmr);
-		if (ret || clean_all) {
+		if (ret) {
 			list_del_init(&ibmr->pool_list);
+			ibmr->free_time = get_jiffies_64();
+			atomic_dec(&pool->item_count);
+			xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->drop_list);
+		} else if (clean_all) {
 			cnt++;
-			if (ibmr->mr)
-				ib_dereg_mr(ibmr->mr);
-			kfree(ibmr);
+			rds_ib_free_ibmr(ibmr);
 		}
 	}
 	atomic_sub(cnt, &pool->item_count);
@@ -1299,6 +1316,15 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 		spin_lock_irqsave(&pool->clean_lock, flags);
 		list_splice(&free_list, &pool->clean_list);
 		spin_unlock_irqrestore(&pool->clean_lock, flags);
+	}
+
+drop:
+	drop_cnt = xlist_append_to_list(&pool->drop_list, &drop_list);
+	list_for_each_entry_safe(ibmr, tmp_ibmr, &drop_list, pool_list) {
+		if (clean_all || (now - ibmr->free_time >= qrtn_time))
+			rds_ib_free_ibmr(ibmr);
+		else /* not quarantined enough. Process at next gc_interval */
+			xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->drop_list);
 	}
 }
 
@@ -1347,21 +1373,22 @@ static inline void __rds_frwr_free_mr(struct rds_ib_mr_pool *pool,
 					    __func__, ret);
 	}
 
-	/* FWRW MR goes directly to the clean list for immediate
-	 * reuse.
+	ibmr->free_time = get_jiffies_64();
+
+	/* FWRW MR goes directly to the clean list for immediate reuse.
+	 * The FRWR clean list is LIFO.
 	 *
-	 * If it is stale, destroy it here as it should be an
-	 * uncommon case.  Otherwise, add it to the tail of clean
-	 * list.  The FRWR clean list is LIFO.
+	 * If it is stale, it is an uncommon case and mr could be funky.
+	 * Better to destroy it. Add it to drop_list here. gc will handle
+	 * the actual drop(destroy) in future.
 	 */
 	if (ibmr->fr_state == MR_IS_STALE) {
 		__rds_ib_teardown_mr(ibmr);
-		if (ibmr->mr)
-			ib_dereg_mr(ibmr->mr);
-		kfree(ibmr);
+
+		/* avoid pool depletion. Take it out of pool stat */
 		atomic_dec(&pool->item_count);
+		xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->drop_list);
 	} else {
-		ibmr->free_time = get_jiffies_64();
 		spin_lock_irqsave(&pool->clean_lock, flags);
 		list_add_tail_rcu(&ibmr->pool_list, &pool->clean_list);
 		spin_unlock_irqrestore(&pool->clean_lock, flags);
