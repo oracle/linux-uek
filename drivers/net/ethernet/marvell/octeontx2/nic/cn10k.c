@@ -117,12 +117,11 @@ void cn10k_refill_pool_ptrs(void *dev, struct otx2_cq_queue *cq)
 	struct otx2_nic *pfvf = dev;
 	u64 ptrs[NPA_MAX_BURST];
 	int num_ptrs = 1;
-	s64 bufptr;
+	dma_addr_t bufptr;
 
 	/* Refill pool with new buffers */
 	while (cq->pool_ptrs) {
-		bufptr = otx2_alloc_buffer(pfvf, cq);
-		if (unlikely(bufptr <= 0)) {
+		if (otx2_alloc_buffer(pfvf, cq, &bufptr)) {
 			if (num_ptrs--)
 				__cn10k_aura_freeptr(pfvf, cq->cq_idx, ptrs,
 						     num_ptrs,

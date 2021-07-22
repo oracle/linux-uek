@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Physcial Function ethernet driver
+/* Marvell OcteonTx2 RVU Physical Function ethernet driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -14,8 +14,8 @@
 #include <linux/etherdevice.h>
 #include <linux/of.h>
 #include <linux/if_vlan.h>
-#include <net/ip.h>
 #include <linux/iommu.h>
+#include <net/ip.h>
 #include <linux/bpf.h>
 #include <linux/bpf_trace.h>
 
@@ -29,7 +29,6 @@
 
 #define DRV_NAME	"rvu_nicpf"
 #define DRV_STRING	"Marvell RVU NIC Physical Function Driver"
-#define DRV_VERSION	"1.0"
 
 /* Supported devices */
 static const struct pci_device_id otx2_pf_id_table[] = {
@@ -40,7 +39,6 @@ static const struct pci_device_id otx2_pf_id_table[] = {
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION(DRV_STRING);
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
 static void otx2_vf_link_event_task(struct work_struct *work);
@@ -51,6 +49,8 @@ enum {
 	TYPE_PFVF,
 };
 
+static int otx2_config_hw_tx_tstamp(struct otx2_nic *pfvf, bool enable);
+static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable);
 static int otx2_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	bool if_up = netif_running(netdev);
@@ -190,10 +190,9 @@ static irqreturn_t otx2_pf_me_intr_handler(int irq, void *pf_irq)
 	return IRQ_HANDLED;
 }
 
-static int otx2_register_flr_me_intr(struct otx2_nic *pf)
+static int otx2_register_flr_me_intr(struct otx2_nic *pf, int numvfs)
 {
 	struct otx2_hw *hw = &pf->hw;
-	int vfs = pf->total_vfs;
 	char *irq_name;
 	int ret;
 
@@ -218,7 +217,7 @@ static int otx2_register_flr_me_intr(struct otx2_nic *pf)
 		return ret;
 	}
 
-	if (pf->total_vfs > 64) {
+	if (numvfs > 64) {
 		irq_name = &hw->irq_name[RVU_PF_INT_VEC_VFME1 * NAME_SIZE];
 		snprintf(irq_name, NAME_SIZE, "RVUPF%d_ME1",
 			 rvu_get_pf(pf->pcifunc));
@@ -243,21 +242,23 @@ static int otx2_register_flr_me_intr(struct otx2_nic *pf)
 	}
 
 	/* Enable ME interrupt for all VFs*/
-	otx2_write64(pf, RVU_PF_VFME_INTX(0), INTR_MASK(vfs));
-	otx2_write64(pf, RVU_PF_VFME_INT_ENA_W1SX(0), INTR_MASK(vfs));
+	otx2_write64(pf, RVU_PF_VFME_INTX(0), INTR_MASK(numvfs));
+	otx2_write64(pf, RVU_PF_VFME_INT_ENA_W1SX(0), INTR_MASK(numvfs));
 
 	/* Enable FLR interrupt for all VFs*/
-	otx2_write64(pf, RVU_PF_VFFLR_INTX(0), INTR_MASK(vfs));
-	otx2_write64(pf, RVU_PF_VFFLR_INT_ENA_W1SX(0), INTR_MASK(vfs));
+	otx2_write64(pf, RVU_PF_VFFLR_INTX(0), INTR_MASK(numvfs));
+	otx2_write64(pf, RVU_PF_VFFLR_INT_ENA_W1SX(0), INTR_MASK(numvfs));
 
-	if (pf->total_vfs > 64) {
-		vfs = pf->total_vfs - 64 - 1;
+	if (numvfs > 64) {
+		numvfs -= 64;
 
-		otx2_write64(pf, RVU_PF_VFME_INTX(1), INTR_MASK(vfs));
-		otx2_write64(pf, RVU_PF_VFME_INT_ENA_W1SX(1), INTR_MASK(vfs));
+		otx2_write64(pf, RVU_PF_VFME_INTX(1), INTR_MASK(numvfs));
+		otx2_write64(pf, RVU_PF_VFME_INT_ENA_W1SX(1),
+			     INTR_MASK(numvfs));
 
-		otx2_write64(pf, RVU_PF_VFFLR_INTX(1), INTR_MASK(vfs));
-		otx2_write64(pf, RVU_PF_VFFLR_INT_ENA_W1SX(1), INTR_MASK(vfs));
+		otx2_write64(pf, RVU_PF_VFFLR_INTX(1), INTR_MASK(numvfs));
+		otx2_write64(pf, RVU_PF_VFFLR_INT_ENA_W1SX(1),
+			     INTR_MASK(numvfs));
 	}
 	return 0;
 }
@@ -339,9 +340,6 @@ static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
 		}
 	}
 }
-
-static int otx2_config_hw_tx_tstamp(struct otx2_nic *pfvf, bool enable);
-static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable);
 
 static void otx2_forward_msg_pfvf(struct otx2_mbox_dev *mdev,
 				  struct otx2_mbox *pfvf_mbox, void *bbuf_base,
@@ -654,27 +652,22 @@ static void otx2_pfvf_mbox_destroy(struct otx2_nic *pf)
 	otx2_mbox_destroy(&mbox->mbox);
 }
 
-static void otx2_enable_pfvf_mbox_intr(struct otx2_nic *pf)
+static void otx2_enable_pfvf_mbox_intr(struct otx2_nic *pf, int numvfs)
 {
-	int bits;
-
 	/* Clear PF <=> VF mailbox IRQ */
 	otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(0), ~0ull);
 	otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(1), ~0ull);
 
 	/* Enable PF <=> VF mailbox IRQ */
-	bits = ((pf->total_vfs - 1) % 64);
-	otx2_write64(pf, RVU_PF_VFPF_MBOX_INT_ENA_W1SX(0),
-		     GENMASK_ULL(bits, 0));
-
-	if (pf->total_vfs > 64) {
-		bits = pf->total_vfs - 64 - 1;
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INT_ENA_W1SX(0), INTR_MASK(numvfs));
+	if (numvfs > 64) {
+		numvfs -= 64;
 		otx2_write64(pf, RVU_PF_VFPF_MBOX_INT_ENA_W1SX(1),
-			     GENMASK_ULL(bits, 0));
+			     INTR_MASK(numvfs));
 	}
 }
 
-static void otx2_disable_pfvf_mbox_intr(struct otx2_nic *pf)
+static void otx2_disable_pfvf_mbox_intr(struct otx2_nic *pf, int numvfs)
 {
 	int vector;
 
@@ -686,14 +679,14 @@ static void otx2_disable_pfvf_mbox_intr(struct otx2_nic *pf)
 	vector = pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_VFPF_MBOX0);
 	free_irq(vector, pf);
 
-	if (pf->total_vfs > 64) {
+	if (numvfs > 64) {
 		otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(1), ~0ull);
 		vector = pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_VFPF_MBOX1);
 		free_irq(vector, pf);
 	}
 }
 
-static int otx2_register_pfvf_mbox_intr(struct otx2_nic *pf)
+static int otx2_register_pfvf_mbox_intr(struct otx2_nic *pf, int numvfs)
 {
 	struct otx2_hw *hw = &pf->hw;
 	char *irq_name;
@@ -710,11 +703,11 @@ static int otx2_register_pfvf_mbox_intr(struct otx2_nic *pf)
 			  otx2_pfvf_mbox_intr_handler, 0, irq_name, pf);
 	if (err) {
 		dev_err(pf->dev,
-			"RVUPF: IRQ registration failed for PFAF mbox0 irq\n");
+			"RVUPF: IRQ registration failed for PFVF mbox0 irq\n");
 		return err;
 	}
 
-	if (pf->total_vfs > 64) {
+	if (numvfs > 64) {
 		/* Register MBOX1 interrupt handler */
 		irq_name = &hw->irq_name[RVU_PF_INT_VEC_VFPF_MBOX1 * NAME_SIZE];
 		if (pf->pcifunc)
@@ -733,7 +726,7 @@ static int otx2_register_pfvf_mbox_intr(struct otx2_nic *pf)
 		}
 	}
 
-	otx2_enable_pfvf_mbox_intr(pf);
+	otx2_enable_pfvf_mbox_intr(pf, numvfs);
 
 	return 0;
 }
@@ -1740,18 +1733,10 @@ int otx2_open(struct net_device *netdev)
 
 	otx2_set_cints_affinity(pf);
 
-	pf->flags &= ~OTX2_FLAG_INTF_DOWN;
-	/* 'intf_down' may be checked on any cpu */
-	smp_wmb();
-
-	/* we have already received link status notification */
-	if (pf->linfo.link_up && !(pf->pcifunc & RVU_PFVF_FUNC_MASK))
-		otx2_handle_link_event(pf);
-
 	if (pf->flags & OTX2_FLAG_RX_VLAN_SUPPORT)
 		otx2_enable_rxvlan(pf, true);
 
-	/* When reinitializing enable time stamping if it was enabled before */
+	/* When reinitializing enable time stamping if it is enabled before */
 	if (pf->flags & OTX2_FLAG_TX_TSTAMP_ENABLED) {
 		pf->flags &= ~OTX2_FLAG_TX_TSTAMP_ENABLED;
 		otx2_config_hw_tx_tstamp(pf, true);
@@ -1760,6 +1745,14 @@ int otx2_open(struct net_device *netdev)
 		pf->flags &= ~OTX2_FLAG_RX_TSTAMP_ENABLED;
 		otx2_config_hw_rx_tstamp(pf, true);
 	}
+
+	pf->flags &= ~OTX2_FLAG_INTF_DOWN;
+	/* 'intf_down' may be checked on any cpu */
+	smp_wmb();
+
+	/* we have already received link status notification */
+	if (pf->linfo.link_up && !(pf->pcifunc & RVU_PFVF_FUNC_MASK))
+		otx2_handle_link_event(pf);
 
 	/* Restore pause frame settings */
 	otx2_config_pause_frm(pf);
@@ -1900,7 +1893,7 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 	queue_work(pf->otx2_wq, &pf->rx_mode_work);
 }
 
-void otx2_do_set_rx_mode(struct work_struct *work)
+static void otx2_do_set_rx_mode(struct work_struct *work)
 {
 	struct otx2_nic *pf = container_of(work, struct otx2_nic, rx_mode_work);
 	struct net_device *netdev = pf->netdev;
@@ -1939,19 +1932,6 @@ void otx2_do_set_rx_mode(struct work_struct *work)
 	mutex_unlock(&pf->mbox.lock);
 }
 
-static void otx2_reset_task(struct work_struct *work)
-{
-	struct otx2_nic *pf = container_of(work, struct otx2_nic, reset_task);
-
-	if (!netif_running(pf->netdev))
-		return;
-
-	otx2_stop(pf->netdev);
-	pf->reset_count++;
-	otx2_open(pf->netdev);
-	netif_trans_update(pf->netdev);
-}
-
 static int otx2_set_features(struct net_device *netdev,
 			     netdev_features_t features)
 {
@@ -1977,6 +1957,21 @@ static int otx2_set_features(struct net_device *netdev,
 	}
 
 	return 0;
+}
+
+static void otx2_reset_task(struct work_struct *work)
+{
+	struct otx2_nic *pf = container_of(work, struct otx2_nic, reset_task);
+
+	if (!netif_running(pf->netdev))
+		return;
+
+	rtnl_lock();
+	otx2_stop(pf->netdev);
+	pf->reset_count++;
+	otx2_open(pf->netdev);
+	netif_trans_update(pf->netdev);
+	rtnl_unlock();
 }
 
 static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable)
@@ -2099,10 +2094,9 @@ static int otx2_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr)
 		return -ERANGE;
 	}
 
-	if (copy_to_user(ifr->ifr_data, &config, sizeof(config)))
-		return -EFAULT;
+	return copy_to_user(ifr->ifr_data, &config,
+			    sizeof(config)) ? -EFAULT : 0;
 
-	return 0;
 }
 
 static int otx2_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
@@ -2350,6 +2344,9 @@ static int otx2_get_vf_config(struct net_device *netdev, int vf,
 	struct pci_dev *pdev = pf->pdev;
 	struct otx2_vf_config *config;
 
+	if (!netif_running(netdev))
+		return -EAGAIN;
+
 	if (vf >= pci_num_vf(pdev))
 		return -EINVAL;
 
@@ -2371,14 +2368,13 @@ static int otx2_xdp_xmit_tx(struct otx2_nic *pf, struct xdp_frame *xdpf,
 
 	dma_addr = otx2_dma_map_page(pf, virt_to_page(xdpf->data),
 				     offset_in_page(xdpf->data), xdpf->len,
-				     DMA_TO_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+				     DMA_TO_DEVICE);
 	if (dma_mapping_error(pf->dev, dma_addr))
 		return -ENOMEM;
 
 	err = otx2_xdp_sq_append_pkt(pf, dma_addr, xdpf->len, qidx);
 	if (!err) {
-		otx2_dma_unmap_page(pf, dma_addr, xdpf->len, DMA_TO_DEVICE,
-				    DMA_ATTR_SKIP_CPU_SYNC);
+		otx2_dma_unmap_page(pf, dma_addr, xdpf->len, DMA_TO_DEVICE);
 		page = virt_to_page(xdpf->data);
 		put_page(page);
 		return -ENOMEM;
@@ -2864,8 +2860,8 @@ err_del_mcam_entries:
 err_ptp_destroy:
 	otx2_ptp_destroy(pf);
 err_detach_rsrc:
-	if (hw->lmt_base)
-		iounmap(hw->lmt_base);
+	if (test_bit(CN10K_LMTST, &pf->hw.cap_flag))
+		qmem_free(pf->dev, pf->dync_lmt);
 	otx2_detach_resources(&pf->mbox);
 err_disable_mbox_intr:
 	otx2_disable_mbox_intr(pf);
@@ -2944,15 +2940,12 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 	struct otx2_nic *pf = netdev_priv(netdev);
 	int ret;
 
-	if (numvfs > pf->total_vfs)
-		numvfs = pf->total_vfs;
-
 	/* Init PF <=> VF mailbox stuff */
 	ret = otx2_pfvf_mbox_init(pf, numvfs);
 	if (ret)
 		return ret;
 
-	ret = otx2_register_pfvf_mbox_intr(pf);
+	ret = otx2_register_pfvf_mbox_intr(pf, numvfs);
 	if (ret)
 		goto free_mbox;
 
@@ -2960,7 +2953,7 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 	if (ret)
 		goto free_intr;
 
-	ret = otx2_register_flr_me_intr(pf);
+	ret = otx2_register_flr_me_intr(pf, numvfs);
 	if (ret)
 		goto free_flr;
 
@@ -2974,7 +2967,7 @@ free_flr_intr:
 free_flr:
 	otx2_flr_wq_destroy(pf);
 free_intr:
-	otx2_disable_pfvf_mbox_intr(pf);
+	otx2_disable_pfvf_mbox_intr(pf, numvfs);
 free_mbox:
 	otx2_pfvf_mbox_destroy(pf);
 	return ret;
@@ -2993,7 +2986,7 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 
 	otx2_disable_flr_me_intr(pf);
 	otx2_flr_wq_destroy(pf);
-	otx2_disable_pfvf_mbox_intr(pf);
+	otx2_disable_pfvf_mbox_intr(pf, numvfs);
 	otx2_pfvf_mbox_destroy(pf);
 
 	return 0;
