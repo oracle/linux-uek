@@ -220,6 +220,13 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	rdsdebug("RDS: get_mr addr %llx len %llu nr_pages %u\n",
 		args->vec.addr, args->vec.bytes, nr_pages);
 
+	/* RDS_RDMA_INVALIDATE is not allowed when creating an MR */
+	if (args->flags & ~(RDS_RDMA_USE_ONCE | RDS_RDMA_READWRITE)) {
+		ret = -EINVAL;
+		reason = "only USE_ONCE and READWRITE is supported";
+		goto out;
+	}
+
 	/* XXX clamp nr_pages to limit the size of this alloc? */
 	pages = kcalloc(nr_pages, sizeof(struct page *), GFP_KERNEL);
 	if (!pages) {
@@ -242,8 +249,6 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 
 	if (args->flags & RDS_RDMA_USE_ONCE)
 		mr->r_use_once = 1;
-	if (args->flags & RDS_RDMA_INVALIDATE)
-		mr->r_invalidate = 1;
 	if (args->flags & RDS_RDMA_READWRITE)
 		mr->r_write = 1;
 
