@@ -9803,6 +9803,7 @@ M:	Boris Brezillon <bbrezillon@kernel.org>
 M:	Arnaud Ebalard <arno@natisbad.org>
 M:	Srujana Challa <schalla@marvell.com>
 F:	drivers/crypto/marvell/
+F:	include/linux/soc/marvell/octeontx2/
 S:	Maintained
 L:	linux-crypto@vger.kernel.org
 
