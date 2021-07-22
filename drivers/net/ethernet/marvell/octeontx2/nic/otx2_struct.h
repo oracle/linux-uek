@@ -82,19 +82,11 @@ enum nix_sendmemalg {
 
 /* NIX CQE header structure */
 struct nix_cqe_hdr_s {
-#if defined(__BIG_ENDIAN_BITFIELD)
-	u64 cqe_type              : 4;
-	u64 node                  : 2;
-	u64 reserved_52_57        : 6;
-	u64 q                     : 20;
-	u64 flow_tag              : 32;
-#else
 	u64 flow_tag              : 32;
 	u64 q                     : 20;
 	u64 reserved_52_57        : 6;
 	u64 node                  : 2;
 	u64 cqe_type              : 4;
-#endif
 };
 
 /* NIX CQE RX parse structure */

@@ -67,8 +67,7 @@ static dma_addr_t otx2_dma_map_skb_frag(struct otx2_nic *pfvf,
 		offset = skb_frag_off(frag);
 		*len = skb_frag_size(frag);
 	}
-	return otx2_dma_map_page(pfvf, page, offset, *len,
-				 DMA_TO_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+	return otx2_dma_map_page(pfvf, page, offset, *len, DMA_TO_DEVICE);
 }
 
 static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
@@ -77,8 +76,7 @@ static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
 
 	for (seg = 0; seg < sg->num_segs; seg++) {
 		otx2_dma_unmap_page(pfvf, sg->dma_addr[seg],
-				    sg->size[seg], DMA_TO_DEVICE,
-				    DMA_ATTR_SKIP_CPU_SYNC);
+				    sg->size[seg], DMA_TO_DEVICE);
 	}
 	sg->num_segs = 0;
 }
@@ -96,8 +94,7 @@ static void otx2_xdp_snd_pkt_handler(struct otx2_nic *pfvf,
 
 	pa = otx2_iova_to_phys(pfvf->iommu_domain, sg->dma_addr[0]);
 	otx2_dma_unmap_page(pfvf, sg->dma_addr[0],
-			    sg->size[0], DMA_TO_DEVICE,
-			    DMA_ATTR_SKIP_CPU_SYNC);
+			    sg->size[0], DMA_TO_DEVICE);
 	page = virt_to_page(phys_to_virt(pa));
 	put_page(page);
 }
@@ -167,28 +164,6 @@ static inline void otx2_set_taginfo(struct nix_rx_parse_s *parse,
 	}
 }
 
-static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
-				   struct nix_cqe_rx_s *cqe,
-				   struct sk_buff *skb)
-{
-	enum pkt_hash_types hash_type = PKT_HASH_TYPE_NONE;
-	struct otx2_rss_info *rss;
-	u32 hash = 0;
-
-	if (!(pfvf->netdev->features & NETIF_F_RXHASH))
-		return;
-
-	rss = &pfvf->hw.rss_info;
-	if (rss->flowkey_cfg) {
-		if (rss->flowkey_cfg &
-		    ~(NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6))
-			hash_type = PKT_HASH_TYPE_L4;
-		else
-			hash_type = PKT_HASH_TYPE_L3;
-		hash = cqe->hdr.flow_tag;
-	}
-	skb_set_hash(skb, hash, hash_type);
-}
 
 static inline void otx2_set_rxtstamp(struct otx2_nic *pfvf,
 				     struct sk_buff *skb, void *data)
@@ -233,8 +208,31 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf, struct sk_buff *skb,
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
 			va - page_address(page) + off, len - off, pfvf->rbsize);
 
-	otx2_dma_unmap_page(pfvf, iova - OTX2_HEAD_ROOM, pfvf->rbsize,
-			    DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+	otx2_dma_unmap_page(pfvf, iova - OTX2_HEAD_ROOM,
+			    pfvf->rbsize, DMA_FROM_DEVICE);
+}
+
+static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
+				   struct nix_cqe_rx_s *cqe,
+				   struct sk_buff *skb)
+{
+	enum pkt_hash_types hash_type = PKT_HASH_TYPE_NONE;
+	struct otx2_rss_info *rss;
+	u32 hash = 0;
+
+	if (!(pfvf->netdev->features & NETIF_F_RXHASH))
+		return;
+
+	rss = &pfvf->hw.rss_info;
+	if (rss->flowkey_cfg) {
+		if (rss->flowkey_cfg &
+		    ~(NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6))
+			hash_type = PKT_HASH_TYPE_L4;
+		else
+			hash_type = PKT_HASH_TYPE_L3;
+		hash = cqe->hdr.flow_tag;
+	}
+	skb_set_hash(skb, hash, hash_type);
 }
 
 static void otx2_free_rcv_seg(struct otx2_nic *pfvf, struct nix_cqe_rx_s *cqe,
@@ -251,7 +249,8 @@ static void otx2_free_rcv_seg(struct otx2_nic *pfvf, struct nix_cqe_rx_s *cqe,
 		sg = (struct nix_rx_sg_s *)start;
 		seg_addr = &sg->seg_addr;
 		for (seg = 0; seg < sg->segs; seg++, seg_addr++)
-			pfvf->hw_ops->aura_freeptr(pfvf, qidx, *seg_addr & ~0x07ULL);
+			pfvf->hw_ops->aura_freeptr(pfvf, qidx,
+						   *seg_addr & ~0x07ULL);
 		start += sizeof(*sg);
 	}
 }
@@ -353,7 +352,8 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 		seg_addr = &sg->seg_addr;
 		seg_size = (void *)sg;
 		for (seg = 0; seg < sg->segs; seg++, seg_addr++) {
-			otx2_skb_add_frag(pfvf, skb, *seg_addr, seg_size[seg], parse);
+			otx2_skb_add_frag(pfvf, skb, *seg_addr, seg_size[seg],
+					  parse);
 			cq->pool_ptrs++;
 		}
 		start += sizeof(*sg);
@@ -403,35 +403,14 @@ static int otx2_rx_napi_handler(struct otx2_nic *pfvf,
 	return processed_cqe;
 }
 
-s64 otx2_alloc_buffer(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
-{
-	s64 bufptr;
-
-	bufptr = __otx2_alloc_rbuf(pfvf, cq->rbpool);
-	if (unlikely(bufptr <= 0)) {
-		struct refill_work *work;
-		struct delayed_work *dwork;
-
-		work = &pfvf->refill_wrk[cq->cq_idx];
-		dwork = &work->pool_refill_work;
-		/* Schedule a task if no other task is running */
-		if (!cq->refill_task_sched) {
-			cq->refill_task_sched = true;
-			schedule_delayed_work(dwork, msecs_to_jiffies(100));
-		}
-	}
-	return bufptr;
-}
-
 void otx2_refill_pool_ptrs(void *dev, struct otx2_cq_queue *cq)
 {
 	struct otx2_nic *pfvf = dev;
-	s64 bufptr;
+	dma_addr_t bufptr;
 
 	/* Refill pool with new buffers */
 	while (cq->pool_ptrs) {
-		bufptr = otx2_alloc_buffer(pfvf, cq);
-		if (unlikely(bufptr <= 0))
+		if (otx2_alloc_buffer(pfvf, cq, &bufptr))
 			break;
 		otx2_aura_freeptr(pfvf, cq->cq_idx, bufptr + OTX2_HEAD_ROOM);
 		cq->pool_ptrs--;
@@ -929,8 +908,8 @@ static int otx2_get_sqe_count(struct otx2_nic *pfvf, struct sk_buff *skb)
 	return skb_shinfo(skb)->gso_segs;
 }
 
-static inline void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
-				     struct otx2_snd_queue *sq, int *offset)
+static void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
+			      struct otx2_snd_queue *sq, int *offset)
 {
 	u64 iova;
 
@@ -1031,8 +1010,7 @@ void otx2_cleanup_rx_cqes(struct otx2_nic *pfvf, struct otx2_cq_queue *cq)
 		}
 		iova = cqe->sg.seg_addr - OTX2_HEAD_ROOM;
 		pa = otx2_iova_to_phys(pfvf->iommu_domain, iova);
-		otx2_dma_unmap_page(pfvf, iova, pfvf->rbsize,
-				    DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+		otx2_dma_unmap_page(pfvf, iova, pfvf->rbsize, DMA_FROM_DEVICE);
 		put_page(virt_to_page(phys_to_virt(pa)));
 	}
 
@@ -1181,7 +1159,7 @@ static inline bool otx2_xdp_rcv_pkt_handler(struct otx2_nic *pfvf,
 		err = xdp_do_redirect(pfvf->netdev, &xdp, xdp_prog);
 
 		otx2_dma_unmap_page(pfvf, iova, pfvf->rbsize,
-				    DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+				    DMA_FROM_DEVICE);
 		if (!err)
 			return true;
 		put_page(page);
@@ -1194,7 +1172,7 @@ static inline bool otx2_xdp_rcv_pkt_handler(struct otx2_nic *pfvf,
 		break;
 	case XDP_DROP:
 		otx2_dma_unmap_page(pfvf, iova, pfvf->rbsize,
-				    DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+				    DMA_FROM_DEVICE);
 		put_page(page);
 		cq->pool_ptrs++;
 		return true;
