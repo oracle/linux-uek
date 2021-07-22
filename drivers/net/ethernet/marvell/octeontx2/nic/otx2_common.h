@@ -14,6 +14,7 @@
 #include <linux/pci.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/timecounter.h>
+#include <linux/soc/marvell/octeontx2/asm.h>
 #include <linux/iommu.h>
 #include <net/pkt_cls.h>
 
@@ -619,17 +620,6 @@ static inline u64 otx2_atomic64_add(u64 incr, u64 *ptr)
 	return result;
 }
 
-static inline u64 otx2_lmt_flush(uint64_t addr)
-{
-	u64 result = 0;
-
-	__asm__ volatile(".cpu  generic+lse\n"
-			 "ldeor xzr,%x[rf],[%[rs]]"
-			 : [rf]"=r"(result)
-			 : [rs]"r"(addr));
-	return result;
-}
-
 static inline void cn10k_lmt_flush(u64 val, uint64_t addr)
 {
 	__asm__ volatile(".cpu  generic+lse\n"
@@ -642,7 +632,6 @@ static inline void cn10k_lmt_flush(u64 val, uint64_t addr)
 #define otx2_write128(lo, hi, addr)
 #define otx2_atomic64_add(incr, ptr)		({ *(ptr) += incr; })
 #define otx2_read128(addr)			({ 0; })
-#define otx2_lmt_flush(addr)			({ 0; })
 #define cn10k_lmt_flush(val, addr)
 #endif
 
