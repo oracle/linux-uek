@@ -1371,6 +1371,21 @@ static int pci_scan_bridge_extend(struct pci_bus *bus, struct pci_dev *dev,
 		/* We need to blast all three values with a single write */
 		pci_write_config_dword(dev, PCI_PRIMARY_BUS, buses);
 
+		/* When Marvell PCI Bridge links up in Gen1 speed,
+		 * back-to-back write to primary bus register
+		 * and immediate scan for devices on secondary
+		 * bus will not reach end-point devices.
+		 * Before the write takes in effect in hardware,
+		 * read of vendor & device id on endpoint may return
+		 * 0xffff as bus numbers are set to 0 in earlier
+		 * write on primary bus register.
+		 * To workaround this issue perform a read of primary bus
+		 * register after the write which allows write to go
+		 * through only for this bridge.
+		 */
+		if (dev->vendor == PCI_VENDOR_ID_CAVIUM && dev->device == 0xa02d)
+			pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
+
 		if (!is_cardbus) {
 			child->bridge_ctl = bctl;
 			max = pci_scan_child_bus_extend(child, available_buses);
