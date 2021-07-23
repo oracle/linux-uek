@@ -28,8 +28,25 @@
 #define SMC_VERSION_CHECK_SPECIFIC_OBJECTS	BIT(2)
 #define SMC_VERSION_CHECK_VALIDATE_HASH		BIT(3)
 
+/**
+ * Set this to copy objects to the backup flash after verification.
+ * Do not set this and SCM_VERSION_COPY_TO_BACKUP_EMMC.
+ */
+#define SMC_VERSION_COPY_TO_BACKUP_FLASH	BIT(4)
+
+/**
+ * Set this to copy objects to the backup eMMC after verification.
+ * Do not set this and SCM_VERSION_COPY_TO_BACKUP_FLASH.
+ */
+#define SMC_VERSION_COPY_TO_BACKUP_EMMC		BIT(5)
+
+/**
+ * Set this to copy objects to the backup flash offset after verification.
+ */
+#define SMC_VERSION_COPY_TO_BACKUP_OFFSET	BIT(6)
+
 #define VERSION_MAGIC		0x4e535256	/** VRSN */
-#define VERSION_INFO_VERSION	0x0100	/** 1.0.0.0 */
+#define VERSION_INFO_VERSION	0x0101	/** 1.0.0.0 */
 
 struct memory_desc {
 	void	   *virt;
@@ -64,6 +81,18 @@ enum smc_version_ret {
 	TOO_MANY_OBJECTS,
 	INVALID_DEVICE_TREE,
 	VERSION_NOT_SUPPORTED,
+		/** SMC_VERSION_CHECK_VALIDATE_HASH must be set */
+	BACKUP_SRC_NOT_VALIDATED,
+	/** An object failed the verification stage */
+	BACKUP_SRC_FAILED_VALIDATION,
+	/** Both the source and destination are the same */
+	BACKUP_SRC_AND_DEST_ARE_SAME,
+	/** An I/O error with the source occurred copying an object */
+	BACKUP_IO_SRC_ERROR,
+	/** An I/O error with the destination occurred writing an object */
+	BACKUP_IO_DST_ERROR,
+	/** An I/O error with the destination occurred erasing the media */
+	BACKUP_IO_ERASE_ERROR,
 };
 
 /** This is used for each object (version entry) */
@@ -88,13 +117,14 @@ struct smc_version_info_entry {
 	uint8_t tim_hash[HASH_SIZE];	/** Hash value stored in the TIM */
 	uint8_t obj_hash[HASH_SIZE];	/** Calculated hash value */
 	uint64_t tim_address;		/** Address of TIM in flash */
+	uint64_t tim_size;		/** Size of TIM in bytes */
 	uint64_t max_size;		/** Maximum space for object and TIM */
 	uint64_t object_size;		/** Size of flash object in bytes */
 	uint64_t object_address;	/** Address of object in flash */
 	uint16_t hash_size;		/** Size of hash in bytes */
 	uint16_t flags;			/** Flags for this object */
 	enum smc_version_entry_retcode retcode;	/** Return code if error */
-	uint64_t reserved[8];		/** Reserved for future growth */
+	uint64_t reserved[7];		/** Reserved for future growth */
 	uint8_t log[VERIFY_LOG_SIZE];	/** Log for object */
 };
 
@@ -104,13 +134,15 @@ struct smc_version_info {
 	uint16_t	version_flags;	/** Flags passed to version process */
 	uint32_t	bus;		/** SPI BUS number */
 	uint32_t	cs;		/** SPI chip select number */
+	uint32_t	target_bus;	/** Target bus used for copying */
+	uint32_t	target_cs;	/** Target CS used for copying */
 	uintptr_t	work_buffer_addr;/** Used to decompress objects */
 	uint64_t	work_buffer_size;/** Size of decompression buffer */
 	enum smc_version_ret	retcode;
 	uint32_t	num_objects;
 	uint32_t	timeout;	/** Timeout in ms */
-	uint32_t	pad32;		/** Pad to 64 bits */
-	uint64_t	reserved[5];	/** Reserved for future growth */
+	uint32_t	reserved32;		/** Pad to 64 bits */
+	uint64_t	reserved[4];	/** Reserved for future growth */
 	struct smc_version_info_entry objects[SMC_MAX_VERSION_ENTRIES];
 };
 
@@ -206,13 +238,20 @@ struct smc_update_descriptor {
 	struct smc_update_obj_info object_retinfo[SMC_MAX_OBJECTS];
 };
 
+
+enum marlin_bootflash_clone_op {
+	CLONE_SPI = 0,
+	CLONE_MMC = 1,
+	CLONE_OFFSET = 2,
+};
+
+
 /* IOCTL interface
  * Use same data structure for:
  * get_version
  * verify_hash
  */
-
-struct marlin_bootflash_get_versions {
+struct mrvl_get_versions {
 	uint32_t  bus;              /** SPI BUS number */
 	uint32_t  cs;               /** SPI chip select number */
 	uintptr_t log_addr;         /** Pointer to a buffer where to store log */
@@ -224,7 +263,20 @@ struct marlin_bootflash_get_versions {
 	struct smc_version_info_entry desc[SMC_MAX_VERSION_ENTRIES];
 } __packed;
 
-struct marlin_bootflash_phys_buffer {
+struct mrvl_clone_fw {
+	uint32_t bus;              /** SPI BUS number */
+	uint32_t cs;               /** SPI chip select number */
+	uint32_t target_bus;	   /** Target SPI BUS number */
+	uint32_t target_cs;	   /** Target SPI chip select number */
+	enum marlin_bootflash_clone_op	clone_op; /** Clone configuration */
+	uint16_t  version_flags;    /** Flags to specify options */
+	uint32_t  selected_objects; /** Mask of a selection of TIMs (32 max) */
+	uint64_t reserved[5];	   /** Reserved for future growth */
+	enum smc_version_ret	retcode;
+	struct smc_version_info_entry desc[SMC_MAX_VERSION_ENTRIES];
+} __packed;
+
+struct mrvl_phys_buffer {
 	uint64_t cpio_buf;
 	uint64_t cpio_buf_size;
 	uint64_t sign_buf;
@@ -233,7 +285,7 @@ struct marlin_bootflash_phys_buffer {
 	uint64_t reserved_buf_size;
 } __packed;
 
-struct marlin_bootflash_update {
+struct mrvl_update {
 	uint32_t bus;
 	uint32_t cs;
 	uint64_t image_size;
@@ -245,9 +297,10 @@ struct marlin_bootflash_update {
 } __packed;
 
 
-#define GET_VERSION _IOWR('a', 'a', struct marlin_bootflash_get_versions*)
-#define VERIFY_HASH _IOWR('a', 'b', struct marlin_bootflash_get_versions*)
-#define GET_MEMBUF  _IOWR('a', 'c', struct marlin_bootflash_phys_buffer*)
-#define RUN_UPDATE  _IOWR('a', 'd', struct marlin_bootflash_update*)
+#define GET_VERSION _IOWR('a', 'a', struct mrvl_get_versions*)
+#define VERIFY_HASH _IOWR('a', 'b', struct mrvl_get_versions*)
+#define GET_MEMBUF  _IOWR('a', 'c', struct mrvl_phys_buffer*)
+#define RUN_UPDATE  _IOWR('a', 'd', struct mrvl_update*)
+#define CLONE_FW    _IOWR('a', 'e', struct mrvl_clone_fw*)
 
 #endif	/* __TIM_UPDATE_H__ */
