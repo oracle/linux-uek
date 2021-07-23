@@ -693,7 +693,7 @@ static int otx2_tc_add_flow(struct otx2_nic *nic,
 					       nic->flow_cfg->tc_max_flows);
 	req->channel = nic->hw.rx_chan_base;
 	req->entry = nic->flow_cfg->flow_ent[nic->flow_cfg->tc_flower_offset +
-				nic->flow_cfg->tc_max_flows - new_node->bitpos];
+				nic->flow_cfg->tc_max_flows - new_node->bitpos - 1];
 	req->intf = NIX_INTF_RX;
 	req->set_cntr = 1;
 	new_node->entry = req->entry;
