@@ -428,6 +428,10 @@ static int check_acpi_ids(struct acpi_processor *pr_backup)
 upload:
 	if (!bitmap_equal(acpi_id_present, acpi_ids_done, nr_acpi_bits)) {
 		unsigned int i;
+
+		/* Preserve the coordination type from Dom0 CPU. */
+		u64 coord_type = pr_backup->performance->domain_info.coord_type;
+
 		for_each_set_bit(i, acpi_id_present, nr_acpi_bits) {
 			pr_backup->acpi_id = i;
 			/* Mask out C-states if there are no _CST or PBLK */
@@ -437,6 +441,27 @@ upload:
 				memcpy(&pr_backup->performance->domain_info,
 				       &acpi_psd[i],
 				       sizeof(struct acpi_psd_package));
+				/*
+				 * Some BIOSes _PSD method returns the value
+				 * coord_type that depends on PCD bits set.
+				 * It is expected that the coordination type is
+				 * the same for CPUs from the same domain.
+				 * For Dom0 CPUs and for non-Dom0 CPUs the
+				 * coordination type can be different because
+				 * Dom0 CPUs _PSD eval is done during CPUs bring
+				 * up, and for non-Dom0 CPUs the _PSD is
+				 * evaluated above.
+				 * As a workaround, adjust the coord_type to
+				 * the one that was evaluated for Dom0 first
+				 * CPU to resolve this.
+				 */
+				if (acpi_psd[i].coord_type != coord_type) {
+					pr_debug("Updating CPU%i coordination type for domain %llu from %llu to %llu\n",
+						 i, acpi_psd[i].domain,
+						 acpi_psd[i].coord_type,
+						 coord_type);
+					acpi_psd[i].coord_type = coord_type;
+				}
 			}
 			(void)upload_pm_data(pr_backup);
 		}
