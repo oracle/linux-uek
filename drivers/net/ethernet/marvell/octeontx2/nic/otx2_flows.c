@@ -125,6 +125,7 @@ exit:
 
 	flow_cfg->ntuple_offset = 0;
 	flow_cfg->ntuple_max_flows = allocated;
+	flow_cfg->tc_flower_offset = flow_cfg->ntuple_offset;
 	flow_cfg->tc_max_flows = allocated;
 
 	if (allocated != count)
