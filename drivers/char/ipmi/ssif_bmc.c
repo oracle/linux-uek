@@ -85,9 +85,8 @@ static ssize_t ssif_bmc_write(struct file *file, const char __user *buf, size_t 
 	if (count > sizeof(struct ssif_msg))
 		return -EINVAL;
 
-	ret = copy_from_user(&msg, buf, count);
-	if (ret)
-		return ret;
+	if (copy_from_user(&msg, buf, count))
+		return -EFAULT;
 
 	if (!msg.len || count < ssif_msg_len(&msg))
 		return -EINVAL;
