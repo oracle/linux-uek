@@ -2023,7 +2023,6 @@ static int __ib_query_port(struct ib_device *device,
 			   u8 port_num,
 			   struct ib_port_attr *port_attr)
 {
-	union ib_gid gid = {};
 	int err;
 
 	memset(port_attr, 0, sizeof(*port_attr));
@@ -2036,11 +2035,8 @@ static int __ib_query_port(struct ib_device *device,
 	    IB_LINK_LAYER_INFINIBAND)
 		return 0;
 
-	err = device->ops.query_gid(device, port_num, 0, &gid);
-	if (err)
-		return err;
-
-	port_attr->subnet_prefix = be64_to_cpu(gid.global.subnet_prefix);
+	ib_get_cached_subnet_prefix(device, port_num,
+		&port_attr->subnet_prefix);
 	return 0;
 }
 
