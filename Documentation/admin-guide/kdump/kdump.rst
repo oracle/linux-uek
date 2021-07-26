@@ -317,6 +317,26 @@ crashkernel syntax
        2) if the RAM size is between 512M and 2G (exclusive), then reserve 64M
        3) if the RAM size is larger than 2G, then reserve 128M
 
+   On UEK kernels you can use crashkernel=auto if you have enough memory.  The threshold
+   1G on x86_64, 2G on arm64, ppc64 and ppc64le. The threshold is 4G for s390x.
+   your system memory is less than the threshold crashkernel=auto will not
+   memory.
+
+   automatically reserved memory size varies based on architecture.
+   size changes according to system memory size like below:
+
+        x86_64: 1G-64G:280M,64G-:512M
+        arm64:  2G-8G:256M,8G-:896M
+        s390x:  4G-64G:160M,64G-1T:256M,1T-:512M
+        ppc64:  2G-4G:384M,4G-16G:512M,16G-64G:1G,64G-128G:2G,128G-:4G
+
+   The settings are adequate when the vmcore is created on the local filesystem
+   under /var/crash. If advanced kdump features that require the network to be
+   brought up for NFS, or scp, the size will likely need to be increased
+   substantially.
+
+
+
 3) crashkernel=size,high and crashkernel=size,low
 
    If memory above 4G is preferred, crashkernel=size,high can be used to
