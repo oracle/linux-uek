@@ -1550,8 +1550,6 @@ int ib_cache_setup_one(struct ib_device *device)
 	unsigned int p;
 	int err;
 
-	rwlock_init(&device->cache.lock);
-
 	err = gid_table_setup_one(device);
 	if (err)
 		return err;

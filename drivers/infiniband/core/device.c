@@ -604,6 +604,8 @@ struct ib_device *_ib_alloc_device(size_t size)
 	init_completion(&device->unreg_completion);
 	INIT_WORK(&device->unregistration_work, ib_unregister_work);
 
+	rwlock_init(&device->cache.lock);
+
 	return device;
 }
 EXPORT_SYMBOL(_ib_alloc_device);
