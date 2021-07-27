@@ -11,6 +11,7 @@ obj-y           += cn10ka-swup/
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
 obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
 obj-$(CONFIG_MRVL_PHY_DIAGNOSTICS) += phy_diag.o
+obj-$(CONFIG_MARVELL_CN10K_SERDES_DIAGNOSTICS) += cn10k_serdes_diag.o
 obj-$(CONFIG_MARVELL_CN10K_MAC_MGMT) += marvell_mac_mgmt.o
 obj-$(CONFIG_MARVELL_CN10K_RPRAM) += cn10k-rpram.o
 obj-$(CONFIG_MARVELL_SDEI_GHES) += cn10k-ghes/

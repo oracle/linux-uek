@@ -138,6 +138,15 @@ config MRVL_PHY_DIAGNOSTICS
 	  extended diagnostics functions for the PHY. This complements
 	  functionality offered by ethtool. Requires PHY driver support in ATF.
 
+config MARVELL_CN10K_SERDES_DIAGNOSTICS
+	tristate "Marvell SerDes diagnostics debugfs driver"
+	default m
+	depends on DEBUG_FS
+	help
+	  Select this option if you want to enable SerDes diagnostics
+	  interface for performing PRBS, setting Loopback mode or
+	  reading/writing Tx/Rx tuning parameters.
+
 config HW_CSR_ACCESS
 	tristate "Access HW Device Config Space"
         default m
