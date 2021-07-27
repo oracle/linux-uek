@@ -524,6 +524,14 @@ static void __init map_mem(pgd_t *pgdp)
 		memblock_clear_nomap(crashk_res.start,
 				     resource_size(&crashk_res));
 	}
+	if (crashk_low_res.end) {
+		__map_memblock(pgdp, crashk_low_res.start,
+			crashk_low_res.end + 1,
+			PAGE_KERNEL,
+			NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS);
+		memblock_clear_nomap(crashk_low_res.start,
+				resource_size(&crashk_low_res));
+	}
 #endif
 }
 
