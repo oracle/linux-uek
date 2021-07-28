@@ -1351,7 +1351,7 @@ program_mkex:
 }
 
 static void npc_config_kpuaction(struct rvu *rvu, int blkaddr,
-				 struct npc_kpu_profile_action *kpuaction,
+				 const struct npc_kpu_profile_action *kpuaction,
 				 int kpu, int entry, bool pkind)
 {
 	struct npc_kpu_action0 action0 = {0};
@@ -1393,7 +1393,7 @@ static void npc_config_kpuaction(struct rvu *rvu, int blkaddr,
 }
 
 static void npc_config_kpucam(struct rvu *rvu, int blkaddr,
-			      struct npc_kpu_profile_cam *kpucam,
+			      const struct npc_kpu_profile_cam *kpucam,
 			      int kpu, int entry)
 {
 	struct npc_kpu_cam cam0 = {0};
@@ -1421,7 +1421,7 @@ static inline u64 enable_mask(int count)
 }
 
 static void npc_program_kpu_profile(struct rvu *rvu, int blkaddr, int kpu,
-				    struct npc_kpu_profile *profile)
+				    const struct npc_kpu_profile *profile)
 {
 	int entry, num_entries, max_entries;
 	u64 entry_mask;
@@ -1516,7 +1516,7 @@ static int npc_apply_custom_kpu(struct rvu *rvu,
 	if (NPC_KPU_VER_MIN(profile->version) <
 	    NPC_KPU_VER_MIN(NPC_KPU_PROFILE_VER)) {
 		dev_warn(rvu->dev,
-			 "Invalid KPU profile version: %d.%d.%d expected vesion <= %d.%d.%d\n",
+			 "Invalid KPU profile version: %d.%d.%d expected version <= %d.%d.%d\n",
 			 NPC_KPU_VER_MAJ(profile->version),
 			 NPC_KPU_VER_MIN(profile->version),
 			 NPC_KPU_VER_PATCH(profile->version),
@@ -1592,7 +1592,7 @@ static int npc_fwdb_detect_load_prfl_img(struct rvu *rvu, uint64_t prfl_sz,
 {
 	struct npc_coalesced_kpu_prfl *img_data = NULL;
 	int i = 0, rc = -EINVAL;
-	void *kpu_prfl_addr;
+	void __iomem *kpu_prfl_addr;
 	u16 offset;
 
 	img_data = (struct npc_coalesced_kpu_prfl __force *)rvu->kpu_prfl_addr;
@@ -1611,7 +1611,7 @@ static int npc_fwdb_detect_load_prfl_img(struct rvu *rvu, uint64_t prfl_sz,
 	while (i < img_data->num_prfl) {
 		/* Profile image offsets are rounded up to next 8 multiple.*/
 		offset = ALIGN_8B_CEIL(offset);
-		kpu_prfl_addr = (void *)((uintptr_t)rvu->kpu_prfl_addr +
+		kpu_prfl_addr = (void __iomem *)((uintptr_t)rvu->kpu_prfl_addr +
 					 offset);
 		rc = npc_load_kpu_prfl_img(rvu, kpu_prfl_addr,
 					   img_data->prfl_sz[i], kpu_profile);

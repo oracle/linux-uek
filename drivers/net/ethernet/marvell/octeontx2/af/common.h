@@ -156,7 +156,7 @@ enum nix_scheduler {
 #define	NIC_HW_MAX_FRS			9212
 #define	SDP_HW_MAX_FRS			65535
 #define CN10K_LMAC_LINK_MAX_FRS		16380 /* 16k - FCS */
-#define CN10K_LBK_LINK_MAX_FRS		65535
+#define CN10K_LBK_LINK_MAX_FRS		65535 /* 64k */
 
 /* NIX RX action operation*/
 #define NIX_RX_ACTIONOP_DROP		(0x0ull)
@@ -165,7 +165,7 @@ enum nix_scheduler {
 #define NIX_RX_ACTIONOP_MCAST		(0x3ull)
 #define NIX_RX_ACTIONOP_RSS		(0x4ull)
 /* Use the RX action set in the default unicast entry */
-#define NIX_RX_ACTION_DEFAULT	(0xfull)
+#define NIX_RX_ACTION_DEFAULT		(0xfull)
 
 /* NIX TX action operation*/
 #define NIX_TX_ACTIONOP_DROP		(0x0ull)
