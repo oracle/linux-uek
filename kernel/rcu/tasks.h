@@ -925,7 +925,7 @@ reset_ipi:
 static bool trc_inspect_reader(struct task_struct *t, void *arg)
 {
 	int cpu = task_cpu(t);
-	bool in_qs = false;
+	int nesting;
 	bool ofl = cpu_is_offline(cpu);
 
 	if (task_curr(t)) {
@@ -945,17 +945,20 @@ static bool trc_inspect_reader(struct task_struct *t, void *arg)
 		n_heavy_reader_updates++;
 		if (ofl)
 			n_heavy_reader_ofl_updates++;
-		in_qs = true;
+		nesting = 0;
 	} else {
 		// The task is not running, so C-language access is safe.
-		in_qs = likely(!t->trc_reader_nesting);
+		nesting = t->trc_reader_nesting;
 	}
 
 	// Mark as checked so that the grace-period kthread will
 	// remove it from the holdout list.
 	t->trc_reader_checked = true;
 
-	if (in_qs)
+	// The task is not running, so being on the way out of the
+	// read-side critical section is as good as is being all the way out.
+	// This relies on the barrier() in rcu_read_unlock_trace().
+	if (nesting <= 0)
 		return true;  // Already in quiescent state, done!!!
 
 	// The task is in a read-side critical section, so set up its
