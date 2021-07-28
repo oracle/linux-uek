@@ -4178,8 +4178,8 @@ static int nix_aq_init(struct rvu *rvu, struct rvu_block *block)
 
 static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 {
+	const struct npc_lt_def_cfg *ltdefs;
 	struct rvu_hwinfo *hw = rvu->hw;
-	struct npc_lt_def_cfg *ltdefs;
 	int blkaddr = nix_hw->blkaddr;
 	struct rvu_block *block;
 	int err;
@@ -4802,7 +4802,7 @@ bool rvu_nix_is_ptp_tx_enabled(struct rvu *rvu, u16 pcifunc)
 /* NIX ingress policers or bandwidth profiles APIs */
 static void nix_config_rx_pkt_policer_precolor(struct rvu *rvu, int blkaddr)
 {
-	struct npc_lt_def_cfg *ltdefs;
+	const struct npc_lt_def_cfg *ltdefs;
 
 	ltdefs = rvu->kpu.lt_def;
 

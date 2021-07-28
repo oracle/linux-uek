@@ -713,7 +713,7 @@ setup_vfmsix:
 	}
 
 	/* HW interprets RVU_AF_MSIXTR_BASE address as an IOVA, hence
-	 * create a IOMMU mapping for the physcial address configured by
+	 * create an IOMMU mapping for the physical address configured by
 	 * firmware and reconfig RVU_AF_MSIXTR_BASE with IOVA.
 	 */
 	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
@@ -722,8 +722,6 @@ setup_vfmsix:
 		phy_addr = rvu->fwdata->msixtr_base;
 	else
 		phy_addr = rvu_read64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE);
-	/* Register save */
-	rvu->msixtr_base_phy = phy_addr;
 	iova = dma_map_resource(rvu->dev, phy_addr,
 				max_msix * PCI_MSIX_ENTRY_SIZE,
 				DMA_BIDIRECTIONAL, 0);
@@ -733,6 +731,7 @@ setup_vfmsix:
 
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE, (u64)iova);
 	rvu->msix_base_iova = iova;
+	rvu->msixtr_base_phy = phy_addr;
 
 	return 0;
 }
@@ -764,7 +763,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 		kfree(block->lf.bmap);
 	}
 
-	/* Free MSIX and TIM bitmaps */
+	/* Free MSIX bitmaps */
 	for (id = 0; id < hw->total_pfs; id++) {
 		pfvf = &rvu->pf[id];
 		kfree(pfvf->msix.bmap);
@@ -796,7 +795,7 @@ static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
 	u64 *mac;
 
 	for (pf = 0; pf < hw->total_pfs; pf++) {
-		/* For PF0 (AF) get mac address only for AFVFs (LBKVFs) */
+		/* For PF0(AF), Assign MAC address to only VFs (LBKVFs) */
 		if (!pf)
 			goto lbkvf;
 
@@ -819,7 +818,7 @@ lbkvf:
 		/* Assign MAC address to VFs*/
 		rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvf);
 		for (vf = 0; vf < numvfs; vf++, hwvf++) {
-			pfvf =  &rvu->hwvf[hwvf];
+			pfvf = &rvu->hwvf[hwvf];
 			if (rvu->fwdata && hwvf < VF_MACNUM_MAX) {
 				mac = &rvu->fwdata->vf_macs[hwvf];
 				if (*mac)
@@ -829,7 +828,7 @@ lbkvf:
 			} else {
 				eth_random_addr(pfvf->mac_addr);
 			}
-		ether_addr_copy(pfvf->default_mac, pfvf->mac_addr);
+			ether_addr_copy(pfvf->default_mac, pfvf->mac_addr);
 		}
 	}
 }
@@ -2100,9 +2099,9 @@ int rvu_mbox_handler_set_vf_perm(struct rvu *rvu, struct set_vf_perm *req,
 	target = (pcifunc & ~RVU_PFVF_FUNC_MASK) | (req->vf + 1);
 	pfvf = rvu_get_pfvf(rvu, target);
 
-	if (req->flags & RESET_VF_PERM)
+	if (req->flags & RESET_VF_PERM) {
 		pfvf->flags &= RVU_CLEAR_VF_PERM;
-	else if (test_bit(PF_SET_VF_TRUSTED, &pfvf->flags) ^
+	} else if (test_bit(PF_SET_VF_TRUSTED, &pfvf->flags) ^
 		 (req->flags & VF_TRUSTED)) {
 		change_bit(PF_SET_VF_TRUSTED, &pfvf->flags);
 		/* disable multicast and promisc entries */
@@ -2366,7 +2365,7 @@ static int rvu_get_mbox_regions(struct rvu *rvu, void **mbox_addr,
 				bar4 = rvupf_read64(rvu, RVU_PF_VF_BAR4_ADDR);
 				bar4 += region * MBOX_SIZE;
 			}
-			mbox_addr[region] = ioremap_wc(bar4, MBOX_SIZE);
+			mbox_addr[region] = (void *)ioremap_wc(bar4, MBOX_SIZE);
 			if (!mbox_addr[region])
 				goto error;
 		}
@@ -2386,7 +2385,7 @@ static int rvu_get_mbox_regions(struct rvu *rvu, void **mbox_addr,
 					  RVU_AF_PF_BAR4_ADDR);
 			bar4 += region * MBOX_SIZE;
 		}
-		mbox_addr[region] = ioremap_wc(bar4, MBOX_SIZE);
+		mbox_addr[region] = (void *)ioremap_wc(bar4, MBOX_SIZE);
 		if (!mbox_addr[region])
 			goto error;
 	}
@@ -2394,7 +2393,7 @@ static int rvu_get_mbox_regions(struct rvu *rvu, void **mbox_addr,
 
 error:
 	while (region--)
-		iounmap(mbox_addr[region]);
+		iounmap((void __iomem *)mbox_addr[region]);
 	return -ENOMEM;
 }
 
@@ -2484,7 +2483,7 @@ exit:
 	destroy_workqueue(mw->mbox_wq);
 unmap_regions:
 	while (num--)
-		iounmap(mbox_regions[num]);
+		iounmap((void __iomem *)mbox_regions[num]);
 free_regions:
 	kfree(mbox_regions);
 	return err;
@@ -2874,12 +2873,11 @@ static void rvu_afvf_queue_flr_work(struct rvu *rvu, int start_vf, int numvfs)
 	for (vf = 0; vf < numvfs; vf++) {
 		if (!(intr & BIT_ULL(vf)))
 			continue;
+		dev = vf + start_vf + rvu->hw->total_pfs;
+		queue_work(rvu->flr_wq, &rvu->flr_wrk[dev].work);
 		/* Clear and disable the interrupt */
 		rvupf_write64(rvu, RVU_PF_VFFLR_INTX(reg), BIT_ULL(vf));
 		rvupf_write64(rvu, RVU_PF_VFFLR_INT_ENA_W1CX(reg), BIT_ULL(vf));
-
-		dev = vf + start_vf + rvu->hw->total_pfs;
-		queue_work(rvu->flr_wq, &rvu->flr_wrk[dev].work);
 	}
 }
 
@@ -2895,14 +2893,14 @@ static irqreturn_t rvu_flr_intr_handler(int irq, void *rvu_irq)
 
 	for (pf = 0; pf < rvu->hw->total_pfs; pf++) {
 		if (intr & (1ULL << pf)) {
+			/* PF is already dead do only AF related operations */
+			queue_work(rvu->flr_wq, &rvu->flr_wrk[pf].work);
 			/* clear interrupt */
 			rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT,
 				    BIT_ULL(pf));
 			/* Disable the interrupt */
 			rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT_ENA_W1C,
 				    BIT_ULL(pf));
-			/* PF is already dead do only AF related operations */
-			queue_work(rvu->flr_wq, &rvu->flr_wrk[pf].work);
 		}
 	}
 
@@ -3430,15 +3428,9 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_disable_device;
 	}
 
-	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(48));
+	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48));
 	if (err) {
-		dev_err(dev, "Unable to set DMA mask\n");
-		goto err_release_regions;
-	}
-
-	err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(48));
-	if (err) {
-		dev_err(dev, "Unable to set consistent DMA mask\n");
+		dev_err(dev, "DMA mask config failed, abort\n");
 		goto err_release_regions;
 	}
 
