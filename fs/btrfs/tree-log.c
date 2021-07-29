@@ -3308,7 +3308,7 @@ int btrfs_sync_log(struct btrfs_trans_handle *trans,
 	 * writing the super here would result in transid mismatches.  If there
 	 * is an error here just bail.
 	 */
-	if (test_bit(BTRFS_FS_STATE_ERROR, &fs_info->fs_state)) {
+	if (btrfs_has_fs_error(fs_info)) {
 		ret = -EIO;
 		btrfs_set_log_full_commit(trans);
 		btrfs_abort_transaction(trans, ret);
@@ -6315,8 +6315,7 @@ again:
 		ret = btrfs_search_slot(NULL, log_root_tree, &key, path, 0, 0);
 
 		if (ret < 0) {
-			btrfs_handle_fs_error(fs_info, ret,
-				    "Couldn't find tree log root.");
+			btrfs_abort_transaction(trans, ret);
 			goto error;
 		}
 		if (ret > 0) {
@@ -6333,8 +6332,7 @@ again:
 		log = btrfs_read_tree_root(log_root_tree, &found_key);
 		if (IS_ERR(log)) {
 			ret = PTR_ERR(log);
-			btrfs_handle_fs_error(fs_info, ret,
-				    "Couldn't read tree log root.");
+			btrfs_abort_transaction(trans, ret);
 			goto error;
 		}
 
@@ -6362,8 +6360,7 @@ again:
 
 			if (!ret)
 				goto next;
-			btrfs_handle_fs_error(fs_info, ret,
-				"Couldn't read target root for tree log recovery.");
+			btrfs_abort_transaction(trans, ret);
 			goto error;
 		}
 
@@ -6371,14 +6368,15 @@ again:
 		ret = btrfs_record_root_in_trans(trans, wc.replay_dest);
 		if (ret)
 			/* The loop needs to continue due to the root refs */
-			btrfs_handle_fs_error(fs_info, ret,
-				"failed to record the log root in transaction");
+			btrfs_abort_transaction(trans, ret);
 		else
 			ret = walk_log_tree(trans, log, &wc);
 
 		if (!ret && wc.stage == LOG_WALK_REPLAY_ALL) {
 			ret = fixup_inode_link_counts(trans, wc.replay_dest,
 						      path);
+			if (ret)
+				btrfs_abort_transaction(trans, ret);
 		}
 
 		if (!ret && wc.stage == LOG_WALK_REPLAY_ALL) {
@@ -6395,6 +6393,8 @@ again:
 			 * could only happen during mount.
 			 */
 			ret = btrfs_init_root_free_objectid(root);
+			if (ret)
+				btrfs_abort_transaction(trans, ret);
 		}
 
 		wc.replay_dest->log_root = NULL;
