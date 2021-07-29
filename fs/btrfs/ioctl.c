@@ -3199,13 +3199,14 @@ out:
 	return ret;
 }
 
-static long btrfs_ioctl_rm_dev_v2(struct file *file, void __user *arg)
+static long btrfs_do_device_removal(struct file *file, const char *path,
+				    u64 devid, bool cancel)
 {
 	struct inode *inode = file_inode(file);
 	struct btrfs_fs_info *fs_info = btrfs_sb(inode->i_sb);
-	struct btrfs_ioctl_vol_args_v2 *vol_args;
+	struct block_device *bdev = NULL;
+	fmode_t mode;
 	int ret;
-	bool cancel = false;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -3214,11 +3215,37 @@ static long btrfs_ioctl_rm_dev_v2(struct file *file, void __user *arg)
 	if (ret)
 		return ret;
 
-	vol_args = memdup_user(arg, sizeof(*vol_args));
-	if (IS_ERR(vol_args)) {
-		ret = PTR_ERR(vol_args);
-		goto err_drop;
+	ret = exclop_start_or_cancel_reloc(fs_info, BTRFS_EXCLOP_DEV_REMOVE,
+					   cancel);
+	if (ret)
+		goto out;
+
+	/* Exclusive operation is now claimed */
+	ret = btrfs_rm_device(fs_info, path, devid, &bdev, &mode);
+	btrfs_exclop_finish(fs_info);
+
+	if (!ret) {
+		if (path)
+			btrfs_info(fs_info, "device deleted: %s", path);
+		else
+			btrfs_info(fs_info, "device deleted: id %llu", devid);
 	}
+out:
+	mnt_drop_write_file(file);
+	if (bdev)
+		blkdev_put(bdev, mode);
+	return ret;
+}
+
+static long btrfs_ioctl_rm_dev_v2(struct file *file, void __user *arg)
+{
+	struct btrfs_ioctl_vol_args_v2 *vol_args;
+	int ret = 0;
+	bool cancel = false;
+
+	vol_args = memdup_user(arg, sizeof(*vol_args));
+	if (IS_ERR(vol_args))
+		return PTR_ERR(vol_args);
 
 	if (vol_args->flags & ~BTRFS_DEVICE_REMOVE_ARGS_MASK) {
 		ret = -EOPNOTSUPP;
@@ -3229,70 +3256,31 @@ static long btrfs_ioctl_rm_dev_v2(struct file *file, void __user *arg)
 	    strcmp("cancel", vol_args->name) == 0)
 		cancel = true;
 
-	ret = exclop_start_or_cancel_reloc(fs_info, BTRFS_EXCLOP_DEV_REMOVE,
-					   cancel);
-	if (ret)
-		goto out;
-	/* Exclusive operation is now claimed */
-
 	if (vol_args->flags & BTRFS_DEVICE_SPEC_BY_ID)
-		ret = btrfs_rm_device(fs_info, NULL, vol_args->devid);
+		ret = btrfs_do_device_removal(file, NULL, vol_args->devid,
+					      cancel);
 	else
-		ret = btrfs_rm_device(fs_info, vol_args->name, 0);
-
-	btrfs_exclop_finish(fs_info);
-
-	if (!ret) {
-		if (vol_args->flags & BTRFS_DEVICE_SPEC_BY_ID)
-			btrfs_info(fs_info, "device deleted: id %llu",
-					vol_args->devid);
-		else
-			btrfs_info(fs_info, "device deleted: %s",
-					vol_args->name);
-	}
+		ret = btrfs_do_device_removal(file, vol_args->name, 0, cancel);
 out:
 	kfree(vol_args);
-err_drop:
-	mnt_drop_write_file(file);
 	return ret;
 }
 
 static long btrfs_ioctl_rm_dev(struct file *file, void __user *arg)
 {
-	struct inode *inode = file_inode(file);
-	struct btrfs_fs_info *fs_info = btrfs_sb(inode->i_sb);
 	struct btrfs_ioctl_vol_args *vol_args;
 	int ret;
 	bool cancel;
 
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
-
-	ret = mnt_want_write_file(file);
-	if (ret)
-		return ret;
-
 	vol_args = memdup_user(arg, sizeof(*vol_args));
-	if (IS_ERR(vol_args)) {
-		ret = PTR_ERR(vol_args);
-		goto out_drop_write;
-	}
+	if (IS_ERR(vol_args))
+		return PTR_ERR(vol_args);
 	vol_args->name[BTRFS_PATH_NAME_MAX] = '\0';
 	cancel = (strcmp("cancel", vol_args->name) == 0);
 
-	ret = exclop_start_or_cancel_reloc(fs_info, BTRFS_EXCLOP_DEV_REMOVE,
-					   cancel);
-	if (ret == 0) {
-		ret = btrfs_rm_device(fs_info, vol_args->name, 0);
-		if (!ret)
-			btrfs_info(fs_info, "disk deleted %s", vol_args->name);
-		btrfs_exclop_finish(fs_info);
-	}
+	ret = btrfs_do_device_removal(file, vol_args->name, 0, cancel);
 
 	kfree(vol_args);
-out_drop_write:
-	mnt_drop_write_file(file);
-
 	return ret;
 }
 
