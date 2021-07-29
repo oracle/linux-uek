@@ -32,14 +32,6 @@ MODULE_LICENSE("GPL v2");
 #define OCTEONTX_SERDES_DBG_SET_TUNE	0xc2000d08
 #define OCTEONTX_SERDES_DBG_SET_LOOP	0xc2000d09
 
-/* This is expected OcteonTX response for SVC UID command */
-static const int octeontx_svc_uuid[] = {
-	0x6ff498cf,
-	0x5a4e9cfa,
-	0x2f2a3aa4,
-	0x5945b105,
-};
-
 #define MAX_LMAC_PER_CGX		4
 
 #define OCTEONTX_SMC_PENDING		0x1
@@ -942,11 +934,9 @@ static int serdes_dbg_init(void)
 	 * Compare response for standard SVC_UID commandi with OcteonTX UUID.
 	 * Continue only if it is OcteonTX.
 	 */
-	arm_smccc_smc(ARM_SMC_SVC_UID, 0, 0, 0, 0, 0, 0, 0, &res);
-	if (res.a0 != octeontx_svc_uuid[0] || res.a1 != octeontx_svc_uuid[1] ||
-	    res.a2 != octeontx_svc_uuid[2] || res.a3 != octeontx_svc_uuid[3]) {
-		pr_info("UIID SVC doesn't match OcteonTX. No serdes cmds.\n");
-		return 0;
+	if (octeontx_soc_check_smc() != 0)
+		pr_info("OcteonTX2 serdes diagnostics not support\n");
+		return -EPERM;
 	}
 
 	arm_smccc_smc(OCTEONTX_SERDES_DBG_GET_MEM, 0, 0, 0, 0, 0, 0, 0, &res);

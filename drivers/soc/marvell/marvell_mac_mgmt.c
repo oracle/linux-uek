@@ -91,7 +91,7 @@ static ssize_t mac_mgmt_parse_buffer(const char *buffer, size_t n,
 	minfo->index = index;
 	minfo->s.mac_addr = mac_addr & 0xffffffffffff;
 
-	pr_debug("%s: Idx: %u, addr: %llx\n", module_name(THIS_MODULE),
+	pr_debug("%s: Idx: %u, addr: %llx\n", __func__,
 		 minfo->index, minfo->s.mac_addr);
 
 	return n;
@@ -133,7 +133,7 @@ static ssize_t mac_mgmt_write(struct file *filp, const char __user *buffer,
 
 	bytes = mac_mgmt_parse_buffer(mac_text_data, cnt, &minfo);
 	if (bytes < 0) {
-		pr_warn("%s: Invalid text format!\n", module_name(THIS_MODULE));
+		pr_warn("%s: Invalid text format!\n", __func__);
 		ret = bytes;
 		goto done;
 	}
@@ -141,7 +141,7 @@ static ssize_t mac_mgmt_write(struct file *filp, const char __user *buffer,
 	ret = mac_mgmt_set_addr(&minfo);
 	if (!ret)
 		pr_info("%s: MAC addresses has been updated, change takes effect after reboot\n",
-			module_name(THIS_MODULE));
+			__func__);
 done:
 	kfree(mac_text_data);
 	return ret ? ret : bytes;
@@ -216,21 +216,20 @@ static int mac_mgmt_setup_debugfs(void)
 	return 0;
 }
 
-static int __init mac_mgmt_init(void)
+static int __init cn10k_mac_mgmt_init(void)
 {
 	int ret;
 
 	ret = octeontx_soc_check_smc();
-	if (ret) {
-		pr_info("%s: UIID SVC doesn't match Marvell CN10k.\n",
-			module_name(THIS_MODULE));
-		return ret;
+	if (ret != 2) {
+		pr_info("%s: Not supported\n", __func__);
+		return -EPERM;
 	}
 
 	ret = mac_mgmt_setup_debugfs();
 	if (ret) {
 		pr_err("%s: Can't create debugfs entries! (%d)\n",
-		       module_name(THIS_MODULE), ret);
+			__func__, ret);
 		return ret;
 	}
 
@@ -239,13 +238,13 @@ static int __init mac_mgmt_init(void)
 	return 0;
 }
 
-static void __exit mac_mgmt_exit(void)
+static void __exit cn10k_mac_mgmt_exit(void)
 {
 	debugfs_remove_recursive(mac_dbgfs_root);
 }
 
-module_init(mac_mgmt_init);
-module_exit(mac_mgmt_exit);
+module_init(cn10k_mac_mgmt_init);
+module_exit(cn10k_mac_mgmt_exit);
 
 MODULE_AUTHOR("Wojciech Bartczak <wbartczak@marvell.com>");
 MODULE_DESCRIPTION("MAC address management for Marvell CN10K");

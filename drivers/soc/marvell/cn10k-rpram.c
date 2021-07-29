@@ -147,10 +147,10 @@ static int __init cn10k_rpram_init(void)
 	int ret;
 
 	ret = octeontx_soc_check_smc();
-	if (ret) {
-		pr_info("%s: UIID SVC doesn't match Marvell CN10k.\n",
-			module_name(THIS_MODULE));
-		return ret;
+
+	if (ret != 2) {
+		pr_info("%s: Not supported\n", __func__);
+		return -EPERM;
 	}
 
 	parent = of_find_node_by_path("/reserved-memory");

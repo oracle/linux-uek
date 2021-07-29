@@ -10,6 +10,7 @@
 
 #include <linux/errno.h>
 #include <linux/arm-smccc.h>
+#include <asm/cputype.h>
 
 /* Data and defines for SMC call */
 #define OCTEONTX_ARM_SMC_SVC_UID			0xc200ff01
@@ -19,11 +20,15 @@
  *
  * The call verifies ATF instance running on the system.
  *
- * @return 0 for success, error code otherwise
+ * @return
+ *	0 (T9x) and 2 (cn10k) on success
+ *	error code on failure
  *
  */
 static inline int octeontx_soc_check_smc(void)
 {
+#define CPU_MODEL_CN10KX_PART	0xd49
+
 	const int octeontx_svc_uuid[] = {
 		0x6ff498cf,
 		0x5a4e9cfa,
@@ -38,6 +43,9 @@ static inline int octeontx_soc_check_smc(void)
 	if (res.a0 != octeontx_svc_uuid[0] || res.a1 != octeontx_svc_uuid[1] ||
 	    res.a2 != octeontx_svc_uuid[2] || res.a3 != octeontx_svc_uuid[3])
 		return -EPERM;
+
+	if (MIDR_PARTNUM(read_cpuid_id()) == CPU_MODEL_CN10KX_PART)
+		return 2;
 
 	return 0;
 }
