@@ -19,6 +19,7 @@
 #include <linux/sched/mm.h>
 #include <asm/unaligned.h>
 #include <crypto/hash.h>
+#include "misc.h"
 #include "ctree.h"
 #include "disk-io.h"
 #include "transaction.h"
@@ -633,7 +634,7 @@ out:
 static int validate_subpage_buffer(struct page *page, u64 start, u64 end,
 				   int mirror)
 {
-	struct btrfs_fs_info *fs_info = btrfs_sb(page->mapping->host->i_sb);
+	struct btrfs_fs_info *fs_info = page_to_fs_info(page);
 	struct extent_buffer *eb;
 	bool reads_done;
 	int ret = 0;
@@ -693,7 +694,7 @@ int btrfs_validate_metadata_buffer(struct btrfs_io_bio *io_bio,
 
 	ASSERT(page->private);
 
-	if (btrfs_sb(page->mapping->host->i_sb)->sectorsize < PAGE_SIZE)
+	if (page_to_fs_info(page)->sectorsize < PAGE_SIZE)
 		return validate_subpage_buffer(page, start, end, mirror);
 
 	eb = (struct extent_buffer *)page->private;
@@ -876,14 +877,14 @@ blk_status_t btrfs_wq_submit_bio(struct inode *inode, struct bio *bio,
 static blk_status_t btree_csum_one_bio(struct bio *bio)
 {
 	struct bio_vec *bvec;
-	struct btrfs_root *root;
 	int ret = 0;
 	struct bvec_iter_all iter_all;
 
 	ASSERT(!bio_flagged(bio, BIO_CLONED));
 	bio_for_each_segment_all(bvec, bio, iter_all) {
-		root = BTRFS_I(bvec->bv_page->mapping->host)->root;
-		ret = csum_dirty_buffer(root->fs_info, bvec);
+		struct btrfs_fs_info *fs_info = page_to_fs_info(bvec->bv_page);
+
+		ret = csum_dirty_buffer(fs_info, bvec);
 		if (ret)
 			break;
 	}
@@ -1010,11 +1011,13 @@ static void btree_invalidatepage(struct page *page, unsigned int offset,
 				 unsigned int length)
 {
 	struct extent_io_tree *tree;
-	tree = &BTRFS_I(page->mapping->host)->io_tree;
+	struct btrfs_inode *inode = page_to_inode(page);
+
+	tree = &inode->io_tree;
 	extent_invalidatepage(tree, page, offset);
 	btree_releasepage(page, GFP_NOFS);
 	if (PagePrivate(page)) {
-		btrfs_warn(BTRFS_I(page->mapping->host)->root->fs_info,
+		btrfs_warn(inode->root->fs_info,
 			   "page private not zero on page %llu",
 			   (unsigned long long)page_offset(page));
 		detach_page_private(page);
@@ -1024,7 +1027,7 @@ static void btree_invalidatepage(struct page *page, unsigned int offset,
 static int btree_set_page_dirty(struct page *page)
 {
 #ifdef DEBUG
-	struct btrfs_fs_info *fs_info = btrfs_sb(page->mapping->host->i_sb);
+	struct btrfs_fs_info *fs_info = page_to_fs_info(page);
 	struct btrfs_subpage *subpage;
 	struct extent_buffer *eb;
 	int cur_bit = 0;
@@ -3392,11 +3395,16 @@ int __cold open_ctree(struct super_block *sb, struct btrfs_fs_devices *fs_device
 		goto fail_alloc;
 	}
 
-	/* For 4K sector size support, it's only read-only */
-	if (PAGE_SIZE == SZ_64K && sectorsize == SZ_4K) {
-		if (!sb_rdonly(sb) || btrfs_super_log_root(disk_super)) {
+	if (sectorsize != PAGE_SIZE) {
+		btrfs_warn(fs_info,
+		"read-write for sector size %u with page size %lu is experimental",
+			   sectorsize, PAGE_SIZE);
+	}
+	if (sectorsize != PAGE_SIZE) {
+		if (btrfs_super_incompat_flags(fs_info->super_copy) &
+			BTRFS_FEATURE_INCOMPAT_RAID56) {
 			btrfs_err(fs_info,
-	"subpage sectorsize %u only supported read-only for page size %lu",
+		"RAID56 is not yet supported for sector size %u with page size %lu",
 				sectorsize, PAGE_SIZE);
 			err = -EINVAL;
 			goto fail_alloc;
@@ -4437,14 +4445,13 @@ int btrfs_buffer_uptodate(struct extent_buffer *buf, u64 parent_transid,
 			  int atomic)
 {
 	int ret;
-	struct inode *btree_inode = buf->pages[0]->mapping->host;
+	struct btrfs_inode *inode = page_to_inode(buf->pages[0]);
 
 	ret = extent_buffer_uptodate(buf);
 	if (!ret)
 		return ret;
 
-	ret = verify_parent_transid(&BTRFS_I(btree_inode)->io_tree, buf,
-				    parent_transid, atomic);
+	ret = verify_parent_transid(&inode->io_tree, buf, parent_transid, atomic);
 	if (ret == -EAGAIN)
 		return ret;
 	return !ret;
