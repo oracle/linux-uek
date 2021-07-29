@@ -317,9 +317,9 @@ static int __init mrvl_swup_init(void)
 	int i, ret;
 
 	ret = octeontx_soc_check_smc();
-	if (ret) {
-		pr_err("SMC signature doesn't match OcteonTX. Failed to create device\n");
-		return ret;
+	if (ret != 2) {
+		pr_info("%s: Not supported\n", __func__);
+		return -EPERM;
 	}
 
 	dev_set_name(&dev, "mrvl_swup_dev");

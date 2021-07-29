@@ -634,8 +634,8 @@ create_failed:
 
 static int __init phy_dbg_init(void)
 {
-	if (octeontx_soc_check_smc()) {
-		pr_err("SMC signature doesn't match OcteonTX\n");
+	if (octeontx_soc_check_smc() < 0) {
+		pr_info("PHY diagnostics: Not supported\n");
 		return -EPERM;
 	}
 
