@@ -1332,7 +1332,11 @@ struct device {
 	bool			dma_coherent:1;
 #endif
 
+#ifdef CONFIG_GENERIC_MSI_IRQ
+	UEK_KABI_USE(1, raw_spinlock_t msi_lock)
+#else
 	UEK_KABI_RESERVE(1)
+#endif
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
