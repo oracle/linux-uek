@@ -6876,6 +6876,7 @@ static int bnxt_hwrm_func_backing_store_cfg(struct bnxt *bp, u32 enables)
 	struct hwrm_func_backing_store_cfg_input req = {0};
 	struct bnxt_ctx_mem_info *ctx = bp->ctx;
 	struct bnxt_ctx_pg_info *ctx_pg;
+	u32 req_len = sizeof(req);
 	__le32 *num_entries;
 	__le64 *pg_dir;
 	u32 flags = 0;
@@ -6886,6 +6887,8 @@ static int bnxt_hwrm_func_backing_store_cfg(struct bnxt *bp, u32 enables)
 	if (!ctx)
 		return 0;
 
+	if (req_len > bp->hwrm_max_ext_req_len)
+		req_len = BNXT_BACKING_STORE_CFG_LEGACY_LEN;
 	bnxt_hwrm_cmd_hdr_init(bp, &req, HWRM_FUNC_BACKING_STORE_CFG, -1, -1);
 	req.enables = cpu_to_le32(enables);
 
@@ -6969,7 +6972,7 @@ static int bnxt_hwrm_func_backing_store_cfg(struct bnxt *bp, u32 enables)
 		bnxt_hwrm_set_pg_attr(&ctx_pg->ring_mem, pg_attr, pg_dir);
 	}
 	req.flags = cpu_to_le32(flags);
-	rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
+	rc = hwrm_send_message(bp, &req, req_len, HWRM_CMD_TIMEOUT);
 	return rc;
 }
 
