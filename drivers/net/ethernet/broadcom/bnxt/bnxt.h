@@ -16,7 +16,7 @@
 
 #define DRV_VER_MAJ	1
 #define DRV_VER_MIN	10
-#define DRV_VER_UPD	1
+#define DRV_VER_UPD	2
 
 #include <linux/interrupt.h>
 #include <linux/rhashtable.h>
