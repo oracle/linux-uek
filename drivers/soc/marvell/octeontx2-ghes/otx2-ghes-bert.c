@@ -18,8 +18,8 @@
 #include <acpi/apei.h>
 #include <linux/pci.h>
 #include <linux/crash_dump.h>
-#include "mrvl-ghes-bert.h"
-#include "mrvl-sdei-ghes.h"
+#include "otx2-ghes-bert.h"
+#include "otx2-sdei-ghes.h"
 
 #define DRV_NAME	"bed-bert"
 
