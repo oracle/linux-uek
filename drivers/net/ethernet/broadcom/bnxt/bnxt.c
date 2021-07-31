@@ -69,6 +69,7 @@
 #include "bnxt_debugfs.h"
 
 #define BNXT_TX_TIMEOUT		(5 * HZ)
+#define BNXT_DEF_MSG_ENABLE	(NETIF_MSG_DRV | NETIF_MSG_HW)
 
 static const char version[] =
 	"Broadcom NetXtreme-C/E driver " DRV_MODULE_NAME " v" DRV_MODULE_VERSION "\n";
@@ -10789,7 +10790,7 @@ static void bnxt_rx_ring_reset(struct bnxt *bp)
 			else
 				netdev_warn(bp->dev, "RX ring reset failed, rc = %d, falling back to global reset\n",
 					    rc);
-			bnxt_reset_task(bp, false);
+			bnxt_reset_task(bp, true);
 			break;
 		}
 		bnxt_free_one_rx_ring_skbs(bp, i);
@@ -12548,6 +12549,7 @@ static int bnxt_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return -ENOMEM;
 
 	bp = netdev_priv(dev);
+	bp->msg_enable = BNXT_DEF_MSG_ENABLE;
 	bnxt_set_max_func_irqs(bp, max_irqs);
 
 	if (bnxt_vf_pciid(ent->driver_data))
