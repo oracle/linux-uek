@@ -154,8 +154,7 @@ static void rds_ib_mr_pool_flush_worker(struct work_struct *work);
 
 static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				 struct rds_ib_mr *ibmr,
-				 struct scatterlist *sg, unsigned int sg_len,
-				 u32 iova);
+				 struct scatterlist *sg, unsigned int sg_len);
 
 static void rds_frwr_clean_worker(struct work_struct *work);
 static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool all);
@@ -1477,15 +1476,10 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	ibmr->ic = ic;
 
 	if (rds_ibdev->use_fastreg) {
-		u32 iova;
-
-		rds_frwr_adjust_iova_rkey(ibmr);
-		iova = ibmr->cur_iova;
-
-		ret = rds_ib_map_fastreg_mr(rds_ibdev, ibmr, sg, nents, iova);
+		ret = rds_ib_map_fastreg_mr(rds_ibdev, ibmr, sg, nents);
 		if (ret == 0) {
 			*key_ret = ibmr->mr->rkey;
-			*iova_ret = iova;
+			*iova_ret = ibmr->cur_iova;
 		}
 	} else {
 		ret = rds_ib_map_fmr(rds_ibdev, ibmr, sg, nents);
@@ -1542,7 +1536,7 @@ out_unmap:
 }
 
 static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
-				     struct rds_ib_mr *ibmr, u32 iova)
+				     struct rds_ib_mr *ibmr)
 {
 	struct ib_reg_wr reg_wr;
 	struct ib_send_wr inv_wr, *first_wr = NULL;
@@ -1582,6 +1576,8 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 	} else
 		ibmr->fr_state = MR_IS_VALID;
 
+	rds_frwr_adjust_iova_rkey(ibmr);
+
 	memset(&reg_wr, 0, sizeof(reg_wr));
 	reg_wr.wr.wr_id		= (u64)ibmr;
 	reg_wr.wr.opcode	= IB_WR_REG_MR;
@@ -1591,7 +1587,7 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 				  IB_ACCESS_REMOTE_READ |
 				  IB_ACCESS_REMOTE_WRITE;
 	reg_wr.wr.send_flags	= IB_SEND_SIGNALED;
-	reg_wr.mr->iova		= iova;
+	reg_wr.mr->iova		= ibmr->cur_iova;
 
 	if (!first_wr)
 		first_wr = &reg_wr.wr;
@@ -1622,8 +1618,7 @@ out:
 
 static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				 struct rds_ib_mr *ibmr,
-				 struct scatterlist *sg, unsigned int sg_len,
-				 u32 iova)
+				 struct scatterlist *sg, unsigned int sg_len)
 {
 	int ret = 0;
 	int sg_dma_len = 0;
@@ -1633,7 +1628,7 @@ static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 		goto out;
 	sg_dma_len = ret;
 
-	ret = rds_ib_rdma_build_fastreg(rds_ibdev, ibmr, iova);
+	ret = rds_ib_rdma_build_fastreg(rds_ibdev, ibmr);
 	if (ret)
 		goto out;
 
