@@ -195,8 +195,8 @@ config MARVELL_CN10K_SWUP
 	    -> TIM Version check
 	    -> TIM Hash verification
 
-config MARVELL_SDEI_GHES
-	bool "Marvell Generic Hardware Error Source (GHES) support"
+config OCTEONTX2_SDEI_GHES
+	bool "OcteonTX2 Generic Hardware Error Source (GHES) support"
 	select ARM_SDE_INTERFACE
 	select ACPI_APEI
 	select ACPI_APEI_GHES
@@ -207,9 +207,9 @@ config MARVELL_SDEI_GHES
 	  This will allow RAS errors that are detected by the Marvell to
 	  be reported using kernel logging.
 
-config MARVELL_SDEI_GHES_DEBUG
-	bool "Marvell Generic Hardware Error Source (GHES) verbose debug msgs"
-	depends on MARVELL_SDEI_GHES
+config OCTEONTX2_SDEI_GHES_DEBUG
+	bool "OcteonTX2 Generic Hardware Error Source (GHES) verbose debug msgs"
+	depends on OCTEONTX2_SDEI_GHES
 	default n
 	help
 	  Say Y here if you want the Marvell GHES support to
@@ -218,9 +218,9 @@ config MARVELL_SDEI_GHES_DEBUG
 	  and want to see more details.
 	  If you are unsure about this, say N here.
 
-config MARVELL_GHES_BERT
-	bool "Marvell GHES Boot Error Record Table (BERT) support"
-	depends on MARVELL_SDEI_GHES
+config OCTEONTX2_GHES_BERT
+	bool "OcteonTX2 GHES Boot Error Record Table (BERT) support"
+	depends on OCTEONTX2_SDEI_GHES
 	default y
 	help
 	  Select this option to enable reporting of fatal Marvell GHES
@@ -228,16 +228,4 @@ config MARVELL_GHES_BERT
 	  reset the system.  Enabling support here will allow such errors
 	  to be reported when Linux is started again.
 
-config MARVELL_EINJ
-	tristate "Marvell EDAC ECC Injection"
-	depends on MARVELL_SDEI_GHES
-	help
-	  Provides support for error injection to MARVELL
-	  memory controllers (LMC) and cache blocks.
-	  This facilitates testing of the memory controller RAS features and
-	  is intended to be used by test personnel when conducting system tests.
-
-	  To compile this as a module, choose M here. The module will be
-	  called mrvl-einj.
-	  Unless testing, say N here.
 endmenu
