@@ -8816,7 +8816,8 @@ static void bnxt_del_napi(struct bnxt *bp)
 {
 	int i;
 
-	if (!bp->bnapi)
+	if (!bp->bnapi ||
+	    test_and_set_bit(BNXT_STATE_NAPI_DISABLED, &bp->state))
 		return;
 
 	for (i = 0; i < bp->cp_nr_rings; i++) {
@@ -8880,6 +8881,7 @@ static void bnxt_enable_napi(struct bnxt *bp)
 {
 	int i;
 
+	clear_bit(BNXT_STATE_NAPI_DISABLED, &bp->state);
 	for (i = 0; i < bp->cp_nr_rings; i++) {
 		struct bnxt_napi *bnapi = bp->bnapi[i];
 		struct bnxt_cp_ring_info *cpr;
