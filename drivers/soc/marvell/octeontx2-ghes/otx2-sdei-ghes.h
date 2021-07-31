@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Marvell CN10K Generic Hardware Error Source[s] (GHES)
+ * Supports OcteonTX2 Generic Hardware Error Source[s] (GHES).
  * GHES ACPI HEST & DT
  *
  * Copyright (C) 2021 Marvell.
  */
 
-#ifndef __MRVL_SDEI_GHES_H__
-#define __MRVL_SDEI_GHES_H__
+#ifndef __OTX2_SDEI_GHES_H__
+#define __OTX2_SDEI_GHES_H__
 
 #define SDEI_GHES_EVENT_NAME_MAX_CHARS 16
 /*
@@ -42,26 +42,24 @@ struct mrvl_ghes_source {
 /**
  * struct mrvl_sdei_ghes_drv: driver state
  *
- * @of_node:                  associated device tree node
  * @source_list:              list of [SDEI] producers
  *                            (1 for each error source)
  * @source_count:             count of [SDEI] producers
  *                            (size of @source_list)
  */
 struct mrvl_sdei_ghes_drv {
-	struct device_node                   *of_node;  //remove TODO:
-	struct mrvl_ghes_source              *source_list;
-	size_t                               source_count;
+	struct device           *dev;
+	struct mrvl_ghes_source *source_list;
+	size_t                  source_count;
 };
 
 #define MRVL_GHES_ERR_REC_FRU_TEXT_LEN 32
 /* This is shared with ATF */
 struct mrvl_ghes_err_record {
 	union {
-		struct cper_sec_mem_err_old  mcc;
-		struct cper_sec_mem_err_old  mdc;
-		struct cper_sec_mem_err_old  lmc;
-		struct cper_arm_err_info     ap; /* application processor */
+		struct cper_sec_mem_err_old mcc;
+		struct cper_sec_mem_err_old mdc;
+		struct cper_sec_mem_err_old lmc;
 	} u;
 	uint32_t severity; /* CPER_SEV_xxx */
 	char fru_text[MRVL_GHES_ERR_REC_FRU_TEXT_LEN];
@@ -79,4 +77,4 @@ struct mrvl_ghes_err_ring {
 	struct mrvl_ghes_err_record records[1] __aligned(8);
 };
 
-#endif // __MRVL_SDEI_GHES_H__
+#endif // __OTX2_SDEI_GHES_H__
