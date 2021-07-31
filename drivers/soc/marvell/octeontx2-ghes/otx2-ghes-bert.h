@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Marvell CN10K Generic Hardware Error Source
- * Boot Error Data (BED) ACPI BERT & DT
+ * Supports OcteonTX2 Generic Hardware Error Source (BED)
+ * Boot Error Data (BED) from BERT table DT and ACPI
  *
  * Copyright (C) 2021 Marvell.
  */
 
-#ifndef __MRVL_GHES_BERT_H__
-#define __MRVL_GHES_BERT_H__
+#ifndef __OTX2_GHES_BERT_H__
+#define __OTX2_GHES_BERT_H__
 
 /*
  * Boot Error Data Source
@@ -32,4 +32,4 @@ struct bed_bert_mem_entry {
 	struct cper_sec_mem_err_old     mem_err;
 } __packed;
 
-#endif //__MRVL_GHES_BERT_H__
+#endif //__OTX2_GHES_BERT_H__

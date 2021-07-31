@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Marvell CN10K Generic Hardware Error Source
- * Boot Error Data (BED) ACPI BERT & DT
+ * Supports OcteonTX2 Generic Hardware Error Source (BED)
+ * Boot Error Data (BED) from BERT table DT and ACPI
  *
  * Copyright (C) 2021 Marvell.
  */
@@ -24,13 +24,13 @@
 #define DRV_NAME	"bed-bert"
 
 #define initerrmsg(fmt, ...) pr_err(DRV_NAME ":" fmt, __VA_ARGS__)
-#ifdef CONFIG_MARVELL_SDEI_GHES_DEBUG
+#ifdef CONFIG_OCTEONTX2_SDEI_GHES_DEBUG
 #  define initdbgmsg(fmt, ...) pr_info(DRV_NAME ":" fmt, __VA_ARGS__)
 #  define dbgmsg(dev, ...) dev_info((dev), __VA_ARGS__)
 #else
 #  define initdbgmsg(fmt, ...) (void)(fmt)
 #  define dbgmsg(dev, ...) (void)(dev)
-#endif // CONFIG_MARVELL_SDEI_GHES_DEBUG
+#endif // CONFIG_OCTEONTX2_SDEI_GHES_DEBUG
 
 #define BERT_TBL_OEM_ID	"OTX2    "
 #define BERT_OEM_ID     "MRVL  "
@@ -417,4 +417,3 @@ module_init(ghes_bert_init);
 MODULE_DESCRIPTION("OcteonTX2 GHES BERT Module");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" DRV_NAME);
-
