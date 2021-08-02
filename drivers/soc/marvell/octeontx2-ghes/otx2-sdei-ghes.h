@@ -32,8 +32,14 @@ struct mrvl_ghes_source {
 	phys_addr_t                     esb_pa;
 	phys_addr_t                     ring_pa;
 	phys_addr_t                     *esa_va;
-	struct acpi_hest_generic_status *esb_va;
-	struct mrvl_ghes_err_ring       *ring;
+	union {
+		struct acpi_hest_generic_status *esb_va;
+		struct mrvl_core_error_raport   *esb_core_va;
+	};
+	union {
+		struct mrvl_ghes_err_ring   *ring;
+		struct processor_error_ring *ring_core;
+	};
 	size_t                          ring_sz;
 	size_t                          esb_sz;
 	u32                             id;

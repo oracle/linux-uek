@@ -50,4 +50,11 @@ static inline int octeontx_soc_check_smc(void)
 	return 0;
 }
 
+static inline bool is_soc_cn10kx(void)
+{
+	if (MIDR_PARTNUM(read_cpuid_id()) == CPU_MODEL_CN10KX_PART)
+		return 1;
+	return 0;
+}
+
 #endif /* _SOC_MRVL_OCTEONTX_SMC_H */

@@ -18,7 +18,10 @@
 #include <acpi/apei.h>
 #include <linux/pci.h>
 #include <linux/crash_dump.h>
+#include <soc/marvell/octeontx/octeontx_smc.h>
+#include <asm/cputype.h>
 #include "otx2-sdei-ghes.h"
+#include "cn10k-core-cper.h"
 
 #define DRV_NAME       "sdei-ghes"
 
@@ -117,12 +120,6 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	estatus->data_length = gsrc->esb_sz - sizeof(*estatus);
 	estatus->error_severity = ring_rec->severity;
 
-	initdbgmsg("%s[%d] block_sz=0x%zx raw_data_offset=%d raw_data_length=%d "
-			"data_length=%d error_severity=%d\n",
-			gsrc->name, gsrc->id, gsrc->esb_sz, estatus->raw_data_offset,
-			estatus->raw_data_length, estatus->data_length,
-			estatus->error_severity);
-
 	memset(gdata, 0, sizeof(*gdata));
 	gdata->revision = 0x201; // ACPI 4.x
 	if (ring_rec->fru_text[0]) {
@@ -155,6 +152,74 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	return 0;
 }
 
+int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void *arg)
+{
+	struct mrvl_ghes_source *core = NULL;
+	struct mrvl_core_error_raport *raport = NULL;
+	struct acpi_hest_generic_status *estatus = NULL;
+	struct acpi_hest_generic_data *gdata = NULL;
+	struct processor_error *rec = NULL;
+	uint32_t head = 0;
+	uint32_t tail = 0;
+
+	if (!arg) {
+		initdbgmsg("%s %s failed argument\n", DRV_NAME, __func__);
+		return -EINVAL;
+	}
+
+	core = arg;
+
+	head = core->ring->head;
+	tail = core->ring->tail;
+
+	/*Ensure that head updated*/
+	rmb();
+
+	if (head == tail) {
+		initdbgmsg("%s event 0x%x ring is empty, head=%d, size=%d\n", DRV_NAME,
+				event_id, head, core->ring->size);
+		return -EINVAL;
+	}
+	rec = &core->ring_core->error[tail];
+
+	raport = core->esb_core_va;
+
+	estatus = &raport->estatus;
+	gdata = &raport->gdata;
+
+	estatus->raw_data_offset = sizeof(*estatus) + sizeof(*gdata);
+	estatus->raw_data_length = 0;
+	estatus->data_length = core->esb_sz - sizeof(*estatus);
+	estatus->error_severity = rec->severity;
+
+	memset(gdata, 0, sizeof(*gdata));
+	gdata->revision = 0x201; // ACPI 4.x
+	if (rec->fru_text[0]) {
+		gdata->validation_bits = ACPI_HEST_GEN_VALID_FRU_STRING;
+		strncpy(gdata->fru_text, rec->fru_text, sizeof(gdata->fru_text));
+	}
+	gdata->error_severity = estatus->error_severity;
+
+	guid_copy((guid_t *)gdata->section_type, &CPER_SEC_PROC_ARM);
+
+	gdata->error_data_length = core->esb_sz - (sizeof(*estatus) + sizeof(*gdata));
+
+	initdbgmsg("%s event 0x%x error severity=%x,\n", DRV_NAME, core->id,
+			rec->severity);
+
+	memcpy(&raport->desc, &rec->desc, gdata->error_data_length);
+
+	/*Ensure that error status is committed to memory prior to set status*/
+	wmb();
+
+	estatus->block_status = (1 << 4);
+
+	if (++tail >= core->ring->size)
+		tail = 0;
+	core->ring->tail = tail;
+
+	return 0;
+}
 
 /*
  * Enable MSIX at the device level (MSIX_CAPABILITIES Header).
@@ -227,7 +292,11 @@ static int sdei_ghes_driver_init(struct platform_device *pdev)
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
 
-		ret = sdei_event_register(gsrc->id, sdei_ghes_callback, gsrc);
+		if (!strncmp("core", gsrc->name, 4))
+			ret = sdei_event_register(gsrc->id, sdei_ras_core_callback, gsrc);
+		else
+			ret = sdei_event_register(gsrc->id, sdei_ghes_callback, gsrc);
+
 		if (ret < 0) {
 			dev_err(dev, "Error %d registering ghes 0x%x (%s)\n",
 				ret, gsrc->id, gsrc->name);
@@ -753,6 +822,7 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	const struct acpi_device_id *acpi_id = NULL;
 	int ret = -ENODEV;
+	bool cn10kx_model = is_soc_cn10kx();
 
 #ifdef CONFIG_CRASH_DUMP
 	if (is_kdump_kernel())
@@ -794,10 +864,12 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = sdei_ghes_adjust_error_status_block(ghes_drv);
-	if (ret) {
-		dev_err(dev, "Unable adjust status block.\n");
-		return ret;
+	if (!cn10kx_model) {
+		ret = sdei_ghes_adjust_error_status_block(ghes_drv);
+		if (ret) {
+			dev_err(dev, "Unable adjust status block.\n");
+			return ret;
+		}
 	}
 
 	ret = sdei_ghes_setup_resource(ghes_drv);
@@ -817,7 +889,8 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 		}
 	}
 
-	sdei_ghes_msix_init_t9x();
+	if (!cn10kx_model)
+		sdei_ghes_msix_init_t9x();
 
 	ret = sdei_ghes_driver_init(pdev);
 	if (ret) {
