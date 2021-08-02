@@ -1,0 +1,39 @@
+arm/soc
+
+arm/dt
+	patch
+		ARM: dts: owl-s500: Add ethernet support
+		ARM: dts: owl-s500-roseapplepi: Add ethernet support
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.15-tag1
+	renesas/dt-bindings
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-dt-bindings-for-v5.15-tag1
+
+arm/drivers
+	renesas/driver
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-drivers-for-v5.15-tag1
+
+arm/defconfig
+
+arm/newsoc
+
+arm/late
+
+arm/fixes
+	patch
+		ARM: dts: nomadik: Fix up interrupt controller node names
+	<no branch> (ba02920c51debb9198e72b3a8726a7c5ae4ffb41)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.14-rc3-arm64-dt
+	patch
+		soc/tegra: Make regulator couplers depend on CONFIG_REGULATOR
+		ARM: ixp4xx: fix compile-testing soc drivers
+		ARM: ixp4xx: goramo_mlr depends on old PCI driver
+	<no branch> (3d9e30a52047f2d464efdfd1d561ae1f707a0286)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-5.14
+	<no branch> (914ab19e471d8fb535ed50dff108b0a615f3c2d8)
+		git://git.linaro.org:/people/jens.wiklander/linux-tee tags/tee-kexec-fixes-for-v5.14
+	<no branch> (15f68f027ebd961b99a1c420f96ff3838c5e4450)
+		git://git.kernel.org/pub/scm/linux/kernel/git/atorgue/stm32 tags/stm32-dt-for-v5.14-fixes-1
+	<no branch> (ee7ab3f263f8131722cff3871b9618b1e7478f07)
+		git://git.kernel.org/pub/scm/linux/kernel/git/gclement/mvebu tags/mvebu-fixes-5.14-1
+
