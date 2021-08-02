@@ -1269,6 +1269,26 @@ static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host,
 	return mode;
 }
 
+#ifndef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
+static uint32_t sdhci_cdns_sd6_irq(struct sdhci_host *host, u32 intmask)
+{
+	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	uint64_t reg = readq(priv->hrs_addr + 0x718);
+	uint32_t status;
+
+	if (intmask)
+		sdhci_cdns_sd6_writel(host, intmask, SDHCI_INT_STATUS);
+
+	status = sdhci_cdns_sd6_readl(host, SDHCI_INT_STATUS);
+	if (!status) {
+		writeq(reg, priv->hrs_addr + 0x718);
+		reg = readq(priv->hrs_addr + 0x718);
+	}
+
+	return intmask;
+}
+#endif
+
 static void sdhci_cdns_sd6_set_uhs_signaling(struct sdhci_host *host,
 					     unsigned int timing)
 {
@@ -1483,6 +1503,9 @@ static const struct sdhci_ops sdhci_cdns_sd6_ops = {
 	.reset = sdhci_reset,
 	.platform_execute_tuning = sdhci_cdns_execute_tuning,
 	.set_uhs_signaling = sdhci_cdns_sd6_set_uhs_signaling,
+#ifndef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
+	.irq = sdhci_cdns_sd6_irq,
+#endif
 };
 static const struct sdhci_pltfm_data sdhci_cdns_uniphier_pltfm_data = {
 	.ops = &sdhci_cdns_sd4_ops,
