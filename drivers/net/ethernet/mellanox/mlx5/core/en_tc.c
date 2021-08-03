@@ -3814,7 +3814,6 @@ static struct net_device *get_fdb_out_dev(struct net_device *uplink_dev,
 static int add_vlan_push_action(struct mlx5e_priv *priv,
 				struct mlx5_flow_attr *attr,
 				struct net_device **out_dev,
-				u32 *action,
 				struct netlink_ext_ack *extack)
 {
 	struct net_device *vlan_dev = *out_dev;
@@ -3826,7 +3825,7 @@ static int add_vlan_push_action(struct mlx5e_priv *priv,
 	};
 	int err;
 
-	err = parse_tc_vlan_action(priv, &vlan_act, attr->esw_attr, action, extack);
+	err = parse_tc_vlan_action(priv, &vlan_act, attr->esw_attr, &attr->action, extack);
 	if (err)
 		return err;
 
@@ -3837,14 +3836,13 @@ static int add_vlan_push_action(struct mlx5e_priv *priv,
 		return -ENODEV;
 
 	if (is_vlan_dev(*out_dev))
-		err = add_vlan_push_action(priv, attr, out_dev, action, extack);
+		err = add_vlan_push_action(priv, attr, out_dev, extack);
 
 	return err;
 }
 
 static int add_vlan_pop_action(struct mlx5e_priv *priv,
 			       struct mlx5_flow_attr *attr,
-			       u32 *action,
 			       struct netlink_ext_ack *extack)
 {
 	struct flow_action_entry vlan_act = {
@@ -3855,7 +3853,8 @@ static int add_vlan_pop_action(struct mlx5e_priv *priv,
 	nest_level = attr->parse_attr->filter_dev->lower_level -
 						priv->netdev->lower_level;
 	while (nest_level--) {
-		err = parse_tc_vlan_action(priv, &vlan_act, attr->esw_attr, action, extack);
+		err = parse_tc_vlan_action(priv, &vlan_act, attr->esw_attr,
+					   &attr->action, extack);
 		if (err)
 			return err;
 	}
@@ -4225,16 +4224,13 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv,
 					return -ENODEV;
 
 				if (is_vlan_dev(out_dev)) {
-					err = add_vlan_push_action(priv, attr,
-								   &out_dev,
-								   &attr->action, extack);
+					err = add_vlan_push_action(priv, attr, &out_dev, extack);
 					if (err)
 						return err;
 				}
 
 				if (is_vlan_dev(parse_attr->filter_dev)) {
-					err = add_vlan_pop_action(priv, attr,
-								  &attr->action, extack);
+					err = add_vlan_pop_action(priv, attr, extack);
 					if (err)
 						return err;
 				}
