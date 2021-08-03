@@ -79,14 +79,25 @@ static inline void rds_ib_kmem_cache_free(struct kmem_cache *cachep, void *objp)
 	kmem_cache_free(cachep, objp);
 }
 
-void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
+void rds_ib_recv_init_ring(struct rds_ib_connection *ic, struct rds_ib_srq *srq)
 {
-	struct rds_ib_recv_work *recv;
+	struct rds_ib_recv_work *recv  = ic->i_recvs;
 	u32 i, j;
 	/* One entry for RDS header */
-	u32 num_send_sge = ic->i_frag_pages + 1;
+	u32 nmbr_sges = ic->i_cache_info.ci_frag_pages + 1;
+	u32 nmbr_recvs;
+	dma_addr_t *hdrs_dma;
 
-	for (i = 0, recv = ic->i_recvs; i < ic->i_recv_ring.w_nr; i++, recv++) {
+	if (!srq) {
+		recv  = ic->i_recvs;
+		nmbr_recvs = ic->i_recv_ring.w_nr;
+		hdrs_dma = ic->i_recv_hdrs_dma;
+	} else {
+		nmbr_recvs = srq->s_n_wr;
+		recv = srq->s_recvs;
+		hdrs_dma = srq->s_recv_hdrs_dma;
+	}
+	for (i = 0; i < nmbr_recvs; i++, recv++) {
 		struct ib_sge *sge;
 
 		recv->r_ibinc = NULL;
@@ -95,14 +106,14 @@ void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 		recv->r_wr.next = NULL;
 		recv->r_wr.wr_id = i;
 		recv->r_wr.sg_list = recv->r_sge;
-		recv->r_wr.num_sge = num_send_sge;
+		recv->r_wr.num_sge = nmbr_sges;
 
 		sge = recv->r_sge;
-		sge->addr = ic->i_recv_hdrs_dma[i];
+		sge->addr = hdrs_dma[i];
 		sge->length = sizeof(struct rds_header);
 		sge->lkey = ic->i_mr->lkey;
 
-		for (j = 1; j < num_send_sge; j++) {
+		for (j = 1; j < nmbr_sges; j++) {
 			sge = recv->r_sge + j;
 			sge->addr = 0;
 			sge->length = PAGE_SIZE;
@@ -132,19 +143,18 @@ static void rds_ib_recv_cache_put(int cpu,
 static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache);
 
 /* Recycle frag and attached recv buffer f_sg */
-static void rds_ib_frag_free(struct rds_ib_connection *ic,
+static void rds_ib_frag_free(struct rds_ib_cache_info *ci,
 			     struct rds_page_frag *frag)
 {
-	rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+	rds_ib_recv_cache_put(ci->ci_irq_local_cpu,
 			      &frag->f_cache_entry,
 			      &frag->f_cache_entry,
 			      frag->rds_ibdev->i_cache_frags +
-			      ic->i_frag_cache_inx,
+			      ci->ci_frag_cache_inx,
 			      1);
-
-	atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+	atomic_sub(ci->ci_frag_sz / 1024, &ci->ci_cache_allocs);
 	rds_ib_stats_inc(s_ib_recv_nmb_added_to_cache);
-	rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+	rds_ib_stats_add(s_ib_recv_added_to_cache, ci->ci_frag_sz);
 }
 
 static int sg_total_lens(struct scatterlist *sg)
@@ -164,7 +174,8 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	struct rds_ib_incoming *ibinc;
 	struct rds_page_frag *frag;
 	struct rds_page_frag *pos;
-	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
+	struct rds_ib_cache_info *ci = inc->i_cache_info;
+
 	int count = 0;
 
 	struct rds_page_frag *first_frag  = NULL;
@@ -173,8 +184,8 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	ibinc = container_of(inc, struct rds_ib_incoming, ii_inc);
 	/* Free attached frags */
 	list_for_each_entry_safe(frag, pos, &ibinc->ii_frags, f_item) {
-		if (sg_total_lens(frag->f_sg) != ic->i_frag_sz) {
-			rds_ib_recv_free_frag(frag, sg_total_lens(frag->f_sg) / PAGE_SIZE);
+		if (sg_total_lens(frag->f_sg) != ci->ci_frag_sz) {
+			rds_ib_recv_free_frag(frag, ci->ci_frag_pages);
 			kmem_cache_free(rds_ib_frag_slab, frag);
 			continue;
 		} else {
@@ -187,42 +198,43 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 		if (p_frag)
 			lfstack_link(&p_frag->f_cache_entry, &frag->f_cache_entry);
 
-		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+		atomic_sub(ci->ci_frag_sz / 1024, &ci->ci_cache_allocs);
 		rds_ib_stats_add(s_ib_recv_nmb_added_to_cache, count);
-		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+		rds_ib_stats_add(s_ib_recv_added_to_cache, ci->ci_frag_sz);
 
 		p_frag = frag;
 	}
 	rdsdebug("first_frag %p frag %p p_frag %p count %d inc %p\n", first_frag, p_frag, frag, count, inc);
 	if (first_frag)
-		rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+		rds_ib_recv_cache_put(ci->ci_irq_local_cpu,
 				      &first_frag->f_cache_entry,
 				      &p_frag->f_cache_entry,
 				      first_frag->rds_ibdev->i_cache_frags +
-				      ic->i_frag_cache_inx,
+				      ci->ci_frag_cache_inx,
 				      count);
 
 	WARN_ON(!list_empty(&ibinc->ii_frags));
 
 	rdsdebug("freeing ibinc %p inc %p\n", ibinc, inc);
-	rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+	rds_ib_recv_cache_put(ci->ci_irq_local_cpu,
 			      &ibinc->ii_cache_entry,
 			      &ibinc->ii_cache_entry,
 			      &ibinc->rds_ibdev->i_cache_incs,
 			      1);
 }
 
-static void rds_ib_recv_clear_one(struct rds_ib_connection *ic,
-				  struct rds_ib_recv_work *recv)
+static void rds_ib_clear_one(struct rds_ib_device *rds_ibdev,
+			     struct rds_ib_cache_info *ci,
+			     struct rds_ib_recv_work *recv)
 {
 	if (recv->r_ibinc) {
 		rds_inc_put(&recv->r_ibinc->ii_inc);
 		recv->r_ibinc = NULL;
 	}
 	if (recv->r_frag) {
-		ib_dma_unmap_sg(ic->i_cm_id->device, recv->r_frag->f_sg, ic->i_frag_pages,
+		ib_dma_unmap_sg(rds_ibdev->dev, recv->r_frag->f_sg, ci->ci_frag_pages,
 				DMA_FROM_DEVICE);
-		rds_ib_frag_free(ic, recv->r_frag);
+		rds_ib_frag_free(ci, recv->r_frag);
 		recv->r_frag = NULL;
 	}
 }
@@ -232,16 +244,30 @@ void rds_ib_recv_clear_ring(struct rds_ib_connection *ic)
 	u32 i;
 
 	for (i = 0; i < ic->i_recv_ring.w_nr; i++)
-		rds_ib_recv_clear_one(ic, &ic->i_recvs[i]);
+		rds_ib_clear_one(ic->rds_ibdev, &ic->i_cache_info, &ic->i_recvs[i]);
+}
+
+static void rds_ib_srq_clear_ring(struct rds_ib_device *rds_ibdev, struct rds_ib_srq *srq)
+{
+	u32 i;
+	struct rds_ib_recv_work *recv;
+
+	for (i = 0, recv = srq->s_recvs; i < srq->s_n_wr; i++, recv++)
+		rds_ib_clear_one(srq->rds_ibdev, &srq->s_cache_info, recv);
 }
 
 static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *ic,
+						     struct rds_ib_device *rds_ibdev,
+						     struct rds_ib_srq *srq,
 						     gfp_t slab_mask)
 {
 	struct rds_ib_incoming *ibinc;
-	struct lfstack_el *cache_item;
+	struct lfstack_el *cache_item = NULL;
 
-	cache_item = rds_ib_recv_cache_get(&ic->rds_ibdev->i_cache_incs);
+	if (!rds_ibdev)
+		return NULL;
+
+	cache_item = rds_ib_recv_cache_get(&rds_ibdev->i_cache_incs);
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 	} else {
@@ -250,38 +276,45 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 			return NULL;
 		rds_ib_stats_inc(s_ib_rx_total_incs);
 	}
+
 	INIT_LIST_HEAD(&ibinc->ii_frags);
-	rds_inc_init(&ibinc->ii_inc, ic->conn, &ic->conn->c_faddr);
-	ibinc->rds_ibdev = ic->rds_ibdev;
+	if (srq)
+		rds_inc_init(&ibinc->ii_inc, NULL, &srq->s_cache_info, NULL);
+	else
+		rds_inc_init(&ibinc->ii_inc, ic->conn, &ic->i_cache_info, &ic->conn->c_faddr);
+
+	ibinc->rds_ibdev = rds_ibdev;
 	return ibinc;
 }
 
-static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic,
+static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_cache_info *ci,
+						    struct rds_ib_device *rds_ibdev,
 						    gfp_t slab_mask, gfp_t page_mask)
 {
 	struct rds_page_frag *frag;
-	struct lfstack_el *cache_item;
+	struct lfstack_el *cache_item = NULL;
 	struct scatterlist *sg;
 	struct scatterlist *s;
 	int ret;
 	int i;
 	int j;
 
-	atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
-
-	cache_item = rds_ib_recv_cache_get(ic->rds_ibdev->i_cache_frags +
-					   ic->i_frag_cache_inx);
+	if (!rds_ibdev)
+		return NULL;
+	atomic_add(ci->ci_frag_sz / 1024, &ci->ci_cache_allocs);
+	cache_item = rds_ib_recv_cache_get(rds_ibdev->i_cache_frags +
+						   ci->ci_frag_cache_inx);
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
-		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
+		rds_ib_stats_add(s_ib_recv_removed_from_cache, ci->ci_frag_sz);
 	} else {
-		if (unlikely(atomic_add_return(ic->i_frag_pages,
+		if (unlikely(atomic_add_return(ci->ci_frag_pages,
 					       &rds_ib_allocation) >=
 		    rds_ib_sysctl_max_recv_allocation)) {
 			printk_once(KERN_NOTICE "RDS/IB: WARNING - recv memory exceeded max_recv_allocation %d\n",
 				    atomic_read(&rds_ib_allocation));
-			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
+			atomic_sub(ci->ci_frag_pages, &rds_ib_allocation);
 			rds_ib_stats_inc(s_ib_rx_alloc_limit);
 			rds_ib_stats_inc(s_ib_rx_cache_put_alloc);
 			return NULL;
@@ -289,23 +322,23 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 
 		frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
 		if (!frag) {
-			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
+			atomic_sub(ci->ci_frag_pages, &rds_ib_allocation);
 			rds_ib_stats_inc(s_ib_rx_cache_put_alloc);
 			return NULL;
 		}
 
-		sg_init_table(frag->f_sg, ic->i_frag_pages);
-		for_each_sg(frag->f_sg, sg, ic->i_frag_pages, i) {
+		sg_init_table(frag->f_sg, ci->ci_frag_pages);
+		for_each_sg(frag->f_sg, sg, ci->ci_frag_pages, i) {
 			ret = rds_page_remainder_alloc(sg,
 						       PAGE_SIZE, page_mask);
 			if (ret) {
-				for_each_sg(frag->f_sg, s, ic->i_frag_pages, j) {
+				for_each_sg(frag->f_sg, s, ci->ci_frag_pages, j) {
 					/* Its the ith fragment we couldn't allocate */
 					if (j < i)
 						rds_pages_free(sg_page(s), get_order(s->length));
 				}
 				rds_ib_kmem_cache_free(rds_ib_frag_slab, frag);
-				atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
+				atomic_sub(ci->ci_frag_pages, &rds_ib_allocation);
 				rds_ib_stats_inc(s_ib_rx_cache_put_free);
 				return NULL;
 			}
@@ -314,17 +347,21 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	}
 
 	INIT_LIST_HEAD(&frag->f_item);
-	frag->rds_ibdev = ic->rds_ibdev;
+	frag->rds_ibdev = rds_ibdev;
 
 	return frag;
 }
 
-static int rds_ib_recv_refill_one(struct rds_connection *conn,
-				  struct rds_ib_recv_work *recv, gfp_t gfp)
+static int rds_ib_refill_one(struct rds_connection *conn,
+			     struct rds_ib_device  *rds_ibdev,
+			     struct rds_ib_srq *srq,
+			     struct rds_ib_recv_work *recv, gfp_t gfp)
 {
-	struct rds_ib_connection *ic = conn->c_transport_data;
+	struct rds_ib_connection *ic;
 	struct scatterlist *sg;
 	struct ib_sge *sge;
+	dma_addr_t addr;
+	struct rds_ib_cache_info *ci;
 	int i;
 	int ret = -ENOMEM;
 	gfp_t slab_mask = GFP_NOWAIT | __GFP_NOWARN;
@@ -334,182 +371,46 @@ static int rds_ib_recv_refill_one(struct rds_connection *conn,
 		slab_mask = GFP_KERNEL;
 		page_mask = GFP_HIGHUSER;
 	}
-
+	if (srq) {
+		ci = &srq->s_cache_info;
+		addr = srq->s_recv_hdrs_dma[recv - srq->s_recvs];
+	} else {
+		ic = conn->c_transport_data;
+		ci = &ic->i_cache_info;
+		addr = ic->i_recv_hdrs_dma[recv - ic->i_recvs];
+	}
 	/*
 	 * ibinc was taken from recv if recv contained the start of a message.
 	 * recvs that were continuations will still have this allocated.
 	 */
 	if (!recv->r_ibinc) {
-		recv->r_ibinc = rds_ib_refill_one_inc(ic, slab_mask);
+		recv->r_ibinc = rds_ib_refill_one_inc(ic, rds_ibdev, srq, slab_mask);
 		if (!recv->r_ibinc)
 			goto out;
 	}
 
 	WARN_ON_ONCE(recv->r_frag); /* leak! */
-	recv->r_frag = rds_ib_refill_one_frag(ic, slab_mask, page_mask);
+	recv->r_frag = rds_ib_refill_one_frag(ci, rds_ibdev, slab_mask, page_mask);
 	if (!recv->r_frag)
 		goto out;
-
-	ret = ib_dma_map_sg(ic->i_cm_id->device, recv->r_frag->f_sg,
-			    ic->i_frag_pages, DMA_FROM_DEVICE);
-
-	sge = recv->r_sge;
-	sge->addr = ic->i_recv_hdrs_dma[recv - ic->i_recvs];
-	sge->length = sizeof(struct rds_header);
-
-	for_each_sg(recv->r_frag->f_sg, sg, ic->i_frag_pages, i) {
-		sge = recv->r_sge + i + 1;
-		sge->addr = sg_dma_address(sg);
-		sge->length = sg_dma_len(sg);
-	}
-
-	ret = 0;
-out:
-	return ret;
-}
-
-static void rds_ib_srq_clear_one(struct rds_ib_srq *srq,
-				struct rds_ib_recv_work *recv)
-{
-	if (recv->r_ibinc) {
-		if (recv->r_ic)
-			rds_inc_put(&recv->r_ibinc->ii_inc);
-		else
-			rds_ib_kmem_cache_free(rds_ib_incoming_slab, recv->r_ibinc);
-		recv->r_ibinc = NULL;
-	}
-	if (recv->r_frag) {
-		ib_dma_unmap_sg(srq->rds_ibdev->dev, recv->r_frag->f_sg,
-				NUM_RDS_RECV_SG, DMA_FROM_DEVICE);
-		if (recv->r_ic)
-			rds_ib_frag_free(recv->r_ic, recv->r_frag);
-		else
-			rds_ib_kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
-		recv->r_frag = NULL;
-		recv->r_posted = 0;
-	}
-}
-
-static int rds_ib_srq_refill_one(struct rds_ib_srq *srq,
-				 struct rds_ib_connection *ic,
-				 struct rds_ib_recv_work *recv)
-{
-	struct scatterlist *sg;
-	struct ib_sge *sge;
-	int i;
-	int ret = -ENOMEM;
-	gfp_t slab_mask = GFP_NOWAIT;
-	gfp_t page_mask = GFP_NOWAIT;
-
-
-	/*
-	* ibinc was taken from recv if recv contained the start of a message.
-	* recvs that were continuations will still have this allocated.
-	*/
-
-	if (!recv->r_ibinc) {
-		recv->r_ibinc = rds_ib_refill_one_inc(ic, slab_mask);
-		if (!recv->r_ibinc)
-			goto out;
-	}
-
-	WARN_ON_ONCE(recv->r_frag); /* leak! */
-	recv->r_frag = rds_ib_refill_one_frag(ic, slab_mask, page_mask);
-	if (!recv->r_frag)
-		goto out;
-
-	ret = ib_dma_map_sg(srq->rds_ibdev->dev, recv->r_frag->f_sg,
-			    ic->i_frag_pages, DMA_FROM_DEVICE);
-
-	sge = recv->r_sge;
-
-	sge->addr = srq->s_recv_hdrs_dma +
-		(recv - srq->s_recvs) *
-		sizeof(struct rds_header);
-
-	sge->length = sizeof(struct rds_header);
-
-	for_each_sg(recv->r_frag->f_sg, sg, ic->i_frag_pages, i) {
-		sge = recv->r_sge + i + 1;
-		sge->addr = sg_dma_address(sg);
-		sge->length = sg_dma_len(sg);
-	}
-
-	ret = 0;
-out:
-	return ret;
-}
-
-static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
-				struct rds_ib_recv_work *recv, int prefill)
-{
-	int num_sge = NUM_RDS_RECV_SG;
-	struct scatterlist *sg;
-	struct scatterlist *s;
-	struct ib_sge *sge;
-	int i;
-	int j;
-	int ret = -ENOMEM;
-	gfp_t slab_mask = GFP_NOWAIT;
-	gfp_t page_mask = GFP_NOWAIT;
-
-	if (prefill) {
-		slab_mask = GFP_KERNEL;
-		page_mask = GFP_HIGHUSER;
-	}
-
-	if (!recv->r_ibinc) {
-		recv->r_ibinc = rds_ib_kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
-		if (!recv->r_ibinc)
-			goto out;
-		rds_ib_stats_inc(s_ib_rx_total_incs);
-		INIT_LIST_HEAD(&recv->r_ibinc->ii_frags);
-	}
-
-	WARN_ON_ONCE(recv->r_frag); /* leak! */
-	recv->r_frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
-	if (!recv->r_frag)
-		goto out;
-	sg_init_table(recv->r_frag->f_sg, num_sge);
-	for_each_sg(recv->r_frag->f_sg, sg, num_sge, i) {
-		ret = rds_page_remainder_alloc(sg,
-					       PAGE_SIZE, page_mask);
-		if (ret) {
-			for_each_sg(recv->r_frag->f_sg, s, num_sge, j)
-				/* Its the ith fragment we couldn't allocate */
-				if (j < i)
-					rds_pages_free(sg_page(s), get_order(s->length));
-			rds_ib_kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
-			goto out;
-		}
-	}
-
-	rds_ib_stats_inc(s_ib_rx_total_frags);
-	INIT_LIST_HEAD(&recv->r_frag->f_item);
 
 	ret = ib_dma_map_sg(rds_ibdev->dev, recv->r_frag->f_sg,
-			    num_sge, DMA_FROM_DEVICE);
+			    ci->ci_frag_pages, DMA_FROM_DEVICE);
 
-	sge = &recv->r_sge[0];
-	sge->addr = rds_ibdev->srq->s_recv_hdrs_dma +
-			(recv - rds_ibdev->srq->s_recvs) *
-			sizeof(struct rds_header);
+	sge = recv->r_sge;
+	sge->addr = addr;
 	sge->length = sizeof(struct rds_header);
-	sge->lkey = rds_ibdev->mr->lkey;
 
-	for_each_sg(recv->r_frag->f_sg, sg, num_sge, i) {
+	for_each_sg(recv->r_frag->f_sg, sg, ci->ci_frag_pages, i) {
 		sge = recv->r_sge + i + 1;
 		sge->addr = sg_dma_address(sg);
 		sge->length = sg_dma_len(sg);
-		sge->lkey = rds_ibdev->mr->lkey;
 	}
 
 	ret = 0;
 out:
 	return ret;
 }
-
-
 
 static void release_refill(struct rds_connection *conn)
 {
@@ -580,7 +481,7 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 		}
 
 		recv = &ic->i_recvs[pos];
-		ret = rds_ib_recv_refill_one(conn, recv, gfp);
+		ret = rds_ib_refill_one(conn, ic->rds_ibdev, NULL, recv, gfp);
 		if (ret) {
 			static unsigned long warn_time;
 			/* warn max once per day. This should be enough to
@@ -595,7 +496,7 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 		}
 
 		if (recv->r_frag)
-			for_each_sg(recv->r_frag->f_sg, sg, ic->i_frag_pages, i)
+			for_each_sg(recv->r_frag->f_sg, sg, ic->i_cache_info.ci_frag_pages, i)
 				rdsdebug("recv %p ibinc %p page %p addr %lu\n", recv,
 					recv->r_ibinc, sg_page(sg),
 					(long) sg_dma_address(sg));
@@ -773,7 +674,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 			sg = sg_next(sg);
 		}
 
-		if (copied % ic->i_frag_sz == 0) {
+		if (copied % ic->i_cache_info.ci_frag_sz == 0) {
 			frag = list_entry(frag->f_item.next,
 					  struct rds_page_frag, f_item);
 			frag_off = 0;
@@ -1065,7 +966,7 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 		}
 
 		frag_off += to_copy;
-		if (frag_off == ic->i_frag_sz) {
+		if (frag_off == ic->i_cache_info.ci_frag_sz) {
 			frag = list_entry(frag->f_item.next,
 					  struct rds_page_frag, f_item);
 			frag_off = 0;
@@ -1088,12 +989,14 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 }
 
 static void rds_ib_process_recv(struct rds_connection *conn,
+				struct rds_ib_srq *srq,
 				struct rds_ib_recv_work *recv, u32 data_len,
-				struct rds_ib_ack_state *state)
+				struct rds_ib_ack_state *state,
+				struct rds_header *ihdr)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_incoming *ibinc = ic->i_ibinc;
-	struct rds_header *ihdr, *hdr;
+	struct rds_header *hdr;
 
 	/* XXX shut down the connection if port 0,0 are seen? */
 
@@ -1111,8 +1014,6 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		return;
 	}
 	data_len -= sizeof(struct rds_header);
-
-	ihdr = ic->i_recv_hdrs[recv - ic->i_recvs];
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
@@ -1160,7 +1061,10 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 *
 		 * FIXME: Fold this into the code path below.
 		 */
-		rds_ib_frag_free(ic, recv->r_frag);
+		if (srq)
+			rds_ib_frag_free(&srq->s_cache_info, recv->r_frag);
+		else
+			rds_ib_frag_free(&ic->i_cache_info, recv->r_frag);
 		recv->r_frag = NULL;
 		return;
 	}
@@ -1205,8 +1109,8 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 	list_add_tail(&recv->r_frag->f_item, &ibinc->ii_frags);
 	recv->r_frag = NULL;
 
-	if (ic->i_recv_data_rem > ic->i_frag_sz)
-		ic->i_recv_data_rem -= ic->i_frag_sz;
+	if (ic->i_recv_data_rem > ic->i_cache_info.ci_frag_sz)
+		ic->i_recv_data_rem -= ic->i_cache_info.ci_frag_sz;
 	else {
 		ic->i_recv_data_rem = 0;
 		ic->i_ibinc = NULL;
@@ -1232,109 +1136,6 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 	}
 }
 
-void rds_ib_srq_process_recv(struct rds_connection *conn,
-				struct rds_ib_recv_work *recv, u32 data_len,
-				struct rds_ib_ack_state *state)
-{
-	struct rds_ib_connection *ic = conn->c_transport_data;
-	struct rds_ib_incoming *ibinc = ic->i_ibinc;
-	struct rds_header *ihdr, *hdr;
-
-	if (data_len < sizeof(struct rds_header)) {
-		trace_rds_drop_ingress(NULL, NULL, conn, NULL,
-				       &conn->c_faddr, &conn->c_laddr,
-				       "no RDS header");
-		printk(KERN_WARNING "RDS: from %pI6c didn't inclue a "
-			"header, disconnecting and "
-			"reconnecting\n",
-			&conn->c_faddr);
-		rds_ib_frag_free(ic, recv->r_frag);
-		recv->r_frag = NULL;
-		return;
-	}
-	data_len -= sizeof(struct rds_header);
-
-	ihdr = &ic->rds_ibdev->srq->s_recv_hdrs[recv->r_wr.wr_id];
-
-	/* Validate the checksum. */
-	if (!rds_message_verify_checksum(ihdr)) {
-		trace_rds_drop_ingress(&ibinc->ii_inc, NULL, conn, NULL,
-				       &conn->c_faddr, &conn->c_laddr,
-				       "corrupted header");
-		printk(KERN_WARNING "RDS: from %pI6c has corrupted header - "
-			"forcing a reconnect\n",
-			&conn->c_faddr);
-		rds_stats_inc(s_recv_drop_bad_checksum);
-		rds_ib_frag_free(ic, recv->r_frag);
-		recv->r_frag = NULL;
-		return;
-	}
-
-	/* Process the ACK sequence which comes with every packet */
-	state->ack_recv = be64_to_cpu(ihdr->h_ack);
-	state->ack_recv = be64_to_cpu(ihdr->h_ack);
-	state->ack_recv_valid = 1;
-
-	if (ihdr->h_sport == 0 && ihdr->h_dport == 0 && data_len == 0) {
-		rds_ib_stats_inc(s_ib_ack_received);
-		rds_ib_frag_free(ic, recv->r_frag);
-		recv->r_frag = NULL;
-		return;
-	}
-
-	if (!ibinc) {
-		ibinc = recv->r_ibinc;
-		rds_inc_init(&ibinc->ii_inc, ic->conn, &ic->conn->c_faddr);
-		recv->r_ibinc = NULL;
-		ic->i_ibinc = ibinc;
-		hdr = &ibinc->ii_inc.i_hdr;
-		memcpy(hdr, ihdr, sizeof(*hdr));
-		ic->i_recv_data_rem = be32_to_cpu(hdr->h_len);
-	} else {
-		hdr = &ibinc->ii_inc.i_hdr;
-		if (hdr->h_sequence != ihdr->h_sequence
-			|| hdr->h_len != ihdr->h_len
-			|| hdr->h_sport != ihdr->h_sport
-			|| hdr->h_dport != ihdr->h_dport) {
-				trace_rds_drop_ingress(&ibinc->ii_inc, NULL,
-						       conn, NULL,
-						       &conn->c_faddr,
-						       &conn->c_laddr,
-						       "fragment header mismatch");
-				printk(KERN_WARNING "RDS: fragment header mismatch; "
-					"forcing reconnect\n");
-				rds_ib_frag_free(ic, recv->r_frag);
-				recv->r_frag = NULL;
-				return;
-		}
-	}
-
-	list_add_tail(&recv->r_frag->f_item, &ibinc->ii_frags);
-
-	recv->r_frag = NULL;
-
-	if (ic->i_recv_data_rem > ic->i_frag_sz)
-		ic->i_recv_data_rem -= ic->i_frag_sz;
-	else {
-		ic->i_recv_data_rem = 0;
-		ic->i_ibinc = NULL;
-
-		if (ibinc->ii_inc.i_hdr.h_flags == RDS_FLAG_CONG_BITMAP)
-			rds_ib_cong_recv(conn, ibinc);
-		else {
-			rds_recv_incoming(conn, &conn->c_faddr, &conn->c_laddr,
-					  &ibinc->ii_inc, GFP_ATOMIC);
-
-			state->ack_next = be64_to_cpu(hdr->h_sequence);
-			state->ack_next_valid = 1;
-		}
-		if (hdr->h_flags & RDS_FLAG_ACK_REQUIRED) {
-			rds_stats_inc(s_recv_ack_required);
-			state->ack_required = 1;
-		}
-		rds_inc_put(&ibinc->ii_inc);
-	}
-}
 
 void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			     struct ib_wc *wc,
@@ -1342,13 +1143,10 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 {
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_recv_work *recv;
-	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
+	struct rds_header *ihdr;
+	struct rds_ib_srq *c_srq = NULL;
 
-	if (ic->i_irq_local_cpu == NR_CPUS) {
-		ic->i_irq_local_cpu = smp_processor_id();
-		rdsdebug("Setting irq_local_cpu %d ic %p conn %p\n",
-			 ic->i_irq_local_cpu, ic, conn);
-	}
+	ic->i_cache_info.ci_irq_local_cpu = smp_processor_id();
 
 	rdsdebug("wc wr_id 0x%llx status %u (%s) byte_len %u imm_data %u\n",
 		 (unsigned long long)wc->wr_id, wc->status,
@@ -1358,18 +1156,21 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	rds_ib_stats_inc(s_ib_rx_cq_event);
 
 	if (rds_ib_srq_enabled) {
-		recv = &rds_ibdev->srq->s_recvs[wc->wr_id];
-		atomic_dec(&rds_ibdev->srq->s_num_posted);
-	} else
+		c_srq = conn->c_srq;
+		recv = c_srq->s_recvs + wc->wr_id;
+		ihdr = c_srq->s_recv_hdrs[wc->wr_id];
+		atomic_dec(&c_srq->s_num_posted);
+		recv->r_ibinc->ii_inc.i_saddr = conn->c_faddr;
+		recv->r_ibinc->ii_inc.i_conn = conn;
+		c_srq->s_cache_info.ci_irq_local_cpu = smp_processor_id();
+	} else {
 		recv = &ic->i_recvs[rds_ib_ring_oldest(&ic->i_recv_ring)];
-
-	ib_dma_unmap_sg(ic->i_cm_id->device, recv->r_frag->f_sg, ic->i_frag_pages, DMA_FROM_DEVICE);
+		ihdr = ic->i_recv_hdrs[recv - ic->i_recvs];
+	}
+	ib_dma_unmap_sg(ic->i_cm_id->device, recv->r_frag->f_sg, ic->i_cache_info.ci_frag_pages, DMA_FROM_DEVICE);
 
 	if (wc->status == IB_WC_SUCCESS) {
-		if (rds_ib_srq_enabled)
-			rds_ib_srq_process_recv(conn, recv, wc->byte_len, state);
-		else
-			rds_ib_process_recv(conn, recv, wc->byte_len, state);
+		rds_ib_process_recv(conn, c_srq, recv, wc->byte_len, state, ihdr);
 	} else {
 		trace_rds_drop_ingress(NULL, NULL, conn, NULL,
 				       &conn->c_faddr, &conn->c_laddr,
@@ -1395,15 +1196,17 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	 * promise by freeing a frag that's still on the ring.
 	 */
 	if (recv->r_frag) {
-		rds_ib_frag_free(ic, recv->r_frag);
+		if (c_srq)
+			rds_ib_frag_free(&c_srq->s_cache_info, recv->r_frag);
+		else
+			rds_ib_frag_free(&ic->i_cache_info, recv->r_frag);
 		recv->r_frag = NULL;
 	}
 
 	if (!rds_ib_srq_enabled) {
 		rds_ib_ring_free(&ic->i_recv_ring, 1);
-
 		if (rds_ib_ring_empty(&ic->i_recv_ring)) {
-			if (waitqueue_active(&rds_ib_ring_empty_wait))
+			if (wq_has_sleeper(&rds_ib_ring_empty_wait))
 				wake_up(&rds_ib_ring_empty_wait);
 			if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
 				mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
@@ -1411,32 +1214,113 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 
 		RDS_IB_RECV_REFILL(conn, 0, GFP_NOWAIT, s_ib_rx_refill_from_cq);
 	} else {
-		recv->r_ic = ic;
-		recv->r_posted = 0;
+		int ix = atomic_inc_return(&c_srq->s_release_ix) & (RDS_SRQ_NMBR_STACKS - 1);
+		union lfstack *stack = c_srq->s_stack + ix;
+
+		lfstack_push(stack, &recv->r_stack_entry);
+		clear_bit_mb(0, &recv->r_posted);
+
+		if (!test_bit(RDS_IB_SRQ_CQ_FLUSHED, &ic->i_flags)) {
+			if (wq_has_sleeper(&rds_ib_ring_empty_wait))
+				wake_up(&rds_ib_ring_empty_wait);
+			if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
+				mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
+		}
 	}
 }
 
-void rds_ib_srq_refill(struct work_struct *work)
+void rds_ib_srq_refill(struct rds_ib_srq *srq, bool prefill, gfp_t gfp, bool use_worker)
 {
-	struct rds_ib_srq *srq = container_of(work, struct rds_ib_srq, s_refill_w.work);
 	struct rds_ib_recv_work *prv = NULL, *cur = NULL, *tmp;
 	const struct ib_recv_wr *bad_wr;
-	int i, refills = 0, total_refills = 0;
+	int i, ix, w_ix, stack_refills = 0, refills = 0, max_refills, total_refills = 0;
+	int sts;
+	int n_sections = 8; /* Must be 2^ n*/
 
-	if (!test_bit(0, &srq->s_refill_gate))
-		return;
+	if (use_worker)
+		goto start_worker;
+
+	ix = atomic_inc_return(&srq->s_refill_ix);
+	max_refills =  (atomic_read(&srq->s_num_posted) < rds_ib_srq_lwm_refill) || prefill ?
+		srq->s_n_wr : 10;
 
 	rds_ib_stats_inc(s_ib_srq_refills);
+	if (!prefill) {
+		struct lfstack_el *item;
+		union lfstack *stack;
+		int six = ix & (RDS_SRQ_NMBR_STACKS - 1);
 
+		stack = srq->s_stack + six;
+		for (i = 0; i < max_refills; i++) {
+			item = lfstack_pop(stack);
+			if (!item) {
+				rdsdebug("%s %p not found %d %d %d\n", __func__, stack,
+					 atomic_read(&srq->s_num_posted),
+					 smp_processor_id(),
+					 srq->s_cache_info.ci_irq_local_cpu);
+
+				break;
+			}
+			tmp = container_of(item, struct rds_ib_recv_work, r_stack_entry);
+			rdsdebug("%s %p found %lx %d %d %d\n", __func__, stack,
+				 tmp - srq->s_recvs, atomic_read(&srq->s_num_posted),
+				 smp_processor_id(),
+				 srq->s_cache_info.ci_irq_local_cpu);
+
+			if (test_and_set_bit(0, &tmp->r_posted) != 0)
+				continue;
+			if (rds_ib_refill_one(NULL, srq->rds_ibdev, srq, tmp, gfp)) {
+				pr_err("rds_ib_refill_one failed\n");
+				break;
+			}
+
+			cur = tmp;
+			if (!prv) {
+				prv = cur;
+				prv->r_wr.next = NULL;
+			} else {
+				cur->r_wr.next = &prv->r_wr;
+				prv = cur;
+			}
+
+			total_refills++;
+			refills++;
+			stack_refills++;
+
+			if (total_refills >= max_refills) {
+				rdsdebug("%s found enough %d\n", __func__, total_refills);
+				goto put_rest;
+			}
+		}
+	}
+	rds_ib_stats_add(s_ib_srq_entries_from_stacks, stack_refills);
+
+	ix &= (n_sections - 1);
+	ix *= (srq->s_n_wr / n_sections);
+	if (prefill) {
+		ix = 0;
+		w_ix = 0;
+	}
 	for (i = 0; i < srq->s_n_wr; i++) {
-		tmp = &srq->s_recvs[i];
-		if (tmp->r_posted)
+		if (prefill) {
+			if (ix < 0 || ix >=  srq->s_n_wr)
+				ix = ++w_ix;
+			tmp = srq->s_recvs + ix;
+			ix += (srq->s_n_wr / n_sections);
+		} else {
+			if (ix < 0 || ix >=  srq->s_n_wr)
+				ix =  0;
+			tmp = srq->s_recvs + ix++;
+		}
+
+		if (test_and_set_bit(0, &tmp->r_posted) != 0)
 			continue;
 
-		if (rds_ib_srq_refill_one(srq, tmp->r_ic, tmp)) {
-			printk(KERN_ERR "rds_ib_srq_refill_one failed\n");
+		if (rds_ib_refill_one(NULL, srq->rds_ibdev, srq, tmp, gfp)) {
+			pr_err("rds_ib_refill_one failed\n");
 			break;
 		}
+
 		cur = tmp;
 
 		if (!prv) {
@@ -1446,91 +1330,120 @@ void rds_ib_srq_refill(struct work_struct *work)
 			cur->r_wr.next = &prv->r_wr;
 			prv = cur;
 		}
-		cur->r_posted = 1;
 
 		total_refills++;
-		if (++refills == RDS_IB_SRQ_POST_BATCH_COUNT) {
-			if (ib_post_srq_recv(srq->s_srq, &cur->r_wr, &bad_wr)) {
+		refills++;
+		if (total_refills > max_refills)
+			goto put_rest;
+
+		if (refills >= RDS_IB_SRQ_POST_BATCH_COUNT) {
+			sts = ib_post_srq_recv(srq->s_srq, &cur->r_wr, &bad_wr);
+			if (sts) {
 				struct ib_recv_wr *wr;
 				struct rds_ib_recv_work *recv;
 
 				for (wr = &cur->r_wr; wr; wr = wr->next) {
 					recv = container_of(wr, struct rds_ib_recv_work, r_wr);
-					rds_ib_srq_clear_one(srq, recv);
+					rds_ib_clear_one(srq->rds_ibdev, &srq->s_cache_info, recv);
 				}
-				printk(KERN_ERR "ib_post_srq_recv failed\n");
+				pr_err("ib_post_srq_recv failed %d %d %d %d\n",
+				       sts, atomic_read(&srq->s_num_posted), total_refills, refills);
 				goto out;
 			}
-			atomic_add(refills, &srq->s_num_posted);
 			prv = NULL;
 			refills = 0;
 			cur = NULL;
 		}
 	}
+
+put_rest:
 	if (cur) {
-		if (ib_post_srq_recv(srq->s_srq, &cur->r_wr, &bad_wr)) {
+		sts = ib_post_srq_recv(srq->s_srq, &cur->r_wr, &bad_wr);
+		if (sts) {
 			struct ib_recv_wr *wr;
 			struct rds_ib_recv_work *recv;
 
 			for (wr = &cur->r_wr; wr; wr = wr->next) {
 				recv = container_of(wr, struct rds_ib_recv_work, r_wr);
-				rds_ib_srq_clear_one(srq, recv);
+				rds_ib_clear_one(srq->rds_ibdev, &srq->s_cache_info, recv);
 			}
-			printk(KERN_ERR "ib_post_srq_recv failed\n");
+			pr_err("ib_post_srq_recv rest failed %d\n", sts);
 			goto out;
 		}
-		atomic_add(refills, &srq->s_num_posted);
+	}
+start_worker:
+	if (!total_refills) {
+		if (!use_worker)
+			rds_ib_stats_inc(s_ib_srq_empty_refills);
+		rds_queue_delayed_work(NULL, rds_wq,
+				       &srq->s_refill_w, 0,
+				       "srq refill");
+	} else {
+		atomic_add(total_refills, &srq->s_num_posted);
+		rds_ib_stats_add(s_ib_srq_entries_refilled, total_refills);
 	}
 
-	if (!total_refills)
-		rds_ib_stats_inc(s_ib_srq_empty_refills);
 out:
-	clear_bit(0, &srq->s_refill_gate);
+	return;
 }
 
-int rds_ib_srq_prefill_ring(struct rds_ib_device *rds_ibdev)
+static void rds_ib_srq_refill_worker(struct work_struct *work)
 {
-	struct rds_ib_recv_work *recv;
+	struct rds_ib_srq *srq = container_of(work, struct rds_ib_srq, s_refill_w.work);
+
+	rds_ib_srq_refill(srq, false, GFP_KERNEL, false);
+}
+
+static void rds_ib_srq_prefill(struct rds_ib_srq *srq, gfp_t gfp)
+{
+	struct rds_ib_recv_work  *tmp;
 	const struct ib_recv_wr *bad_wr;
-	u32 i;
-	int ret;
+	int i, ix, w_ix, refills = 0, max_refills, total_refills = 0;
+	int sts;
+	int n_sections = 8; /* Must be 2^ n*/
 
-	for (i = 0, recv = rds_ibdev->srq->s_recvs;
-		i < rds_ibdev->srq->s_n_wr; i++, recv++) {
-		recv->r_wr.next = NULL;
-		recv->r_wr.wr_id = i;
-		recv->r_wr.sg_list = recv->r_sge;
-		/* always posted with max supported SGE and one rds header */
-		recv->r_wr.num_sge = NUM_RDS_RECV_SG + 1;
-		recv->r_ibinc = NULL;
-		recv->r_frag = NULL;
-		recv->r_ic = NULL;
+	max_refills = srq->s_n_wr;
 
-		if (rds_ib_srq_prefill_one(rds_ibdev, recv, 1))
-			return 1;
+	rds_ib_stats_inc(s_ib_srq_refill_from_cm);
 
-		ret = ib_post_srq_recv(rds_ibdev->srq->s_srq,
-				&recv->r_wr, &bad_wr);
-		if (ret) {
-			printk(KERN_WARNING "RDS: ib_post_srq_recv failed %d\n", ret);
-			return 1;
+	ix = 0;
+	w_ix = 0;
+	for (i = 0; i < srq->s_n_wr; i++) {
+		if (ix < 0 || ix >=  srq->s_n_wr)
+			ix = ++w_ix;
+		tmp = srq->s_recvs + ix;
+		ix += (srq->s_n_wr / n_sections);
+		if (i < srq->s_n_wr) {
+			set_bit_mb(0, &tmp->r_posted);
+
+			if (rds_ib_refill_one(NULL, srq->rds_ibdev, srq, tmp, gfp)) {
+				pr_err("rds_ib_refill_one failed\n");
+				break;
+			}
+			tmp->r_wr.next = NULL;
+			sts = ib_post_srq_recv(srq->s_srq, &tmp->r_wr, &bad_wr);
+			if (sts) {
+				rds_ib_clear_one(srq->rds_ibdev, &srq->s_cache_info, tmp);
+				pr_err("ib_post_srq_recv failed %d %d %d %d\n",
+				       sts, atomic_read(&srq->s_num_posted), total_refills, refills);
+				break;
+			}
+			total_refills++;
+		} else {
+			int isx = i  & (RDS_SRQ_NMBR_STACKS - 1);
+			union lfstack *stack = srq->s_stack + isx;
+
+			rdsdebug("%s pushing %p %p %d\n", __func__,
+				 stack,  &tmp->r_stack_entry, i);
+			lfstack_push(stack, &tmp->r_stack_entry);
+			clear_bit_mb(0, &tmp->r_posted);
 		}
-		atomic_inc(&rds_ibdev->srq->s_num_posted);
-		recv->r_posted = 1;
 	}
-	return 0;
+
+	atomic_add(total_refills, &srq->s_num_posted);
+	pr_err("%s  %d %d\n", __func__, total_refills, atomic_read(&srq->s_num_posted));
+	return;
 }
-
-static void rds_ib_srq_clear_ring(struct rds_ib_device *rds_ibdev)
-{
-	u32 i;
-	struct rds_ib_recv_work *recv;
-
-	for (i = 0, recv = rds_ibdev->srq->s_recvs;
-		i < rds_ibdev->srq->s_n_wr; i++, recv++)
-			rds_ib_srq_clear_one(rds_ibdev->srq, recv);
-}
-
 
 int rds_ib_recv_path(struct rds_conn_path *cp)
 {
@@ -1601,24 +1514,20 @@ void rds_ib_srq_rearm(struct work_struct *work)
 static void rds_ib_srq_event(struct ib_event *event,
 				void *ctx)
 {
-	struct rds_ib_device *rds_ibdev = ctx;
+	struct rds_ib_srq *srq = ctx;
 
 	switch (event->event) {
 	case IB_EVENT_SRQ_ERR:
 		printk(KERN_ERR "RDS: event IB_EVENT_SRQ_ERR unhandled\n");
 		break;
 	case IB_EVENT_SRQ_LIMIT_REACHED:
-		rds_ib_stats_inc(s_ib_srq_lows);
-		rds_queue_delayed_work(NULL, rds_ibdev->rid_dev_wq,
-				       &rds_ibdev->srq->s_rearm_w, HZ,
+		rds_ib_stats_inc(s_ib_srq_limit_reached_event);
+		rds_queue_delayed_work(NULL, rds_wq,
+				       &srq->s_rearm_w, HZ,
 				       "srq rearm");
 
+		RDS_IB_SRQ_REFILL(srq, false, GFP_NOWAIT, s_ib_srq_refill_from_event, true);
 
-
-		if (!test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-			rds_queue_delayed_work(NULL, rds_ibdev->rid_dev_wq,
-					       &rds_ibdev->srq->s_refill_w, 0,
-					       "srq refill");
 		break;
 	default:
 		break;
@@ -1628,12 +1537,28 @@ static void rds_ib_srq_event(struct ib_event *event,
 /* Setup SRQ for a device */
 int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 {
+	mutex_init(&rds_ibdev->srq_get_lock);
+	return 0;
+}
+
+static int rds_ib_srqs_create_one(struct rds_ib_device *rds_ibdev,
+				  struct rds_connection *conn,
+				  struct rds_ib_srq **_srq)
+{
+	int ret = 0;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+	struct ib_device *dev = ic->i_cm_id->device;
+	struct rds_ib_srq *srq;
+	char *reason = NULL;
+	int ix;
+
 	struct ib_srq_init_attr srq_init_attr = {
 		rds_ib_srq_event,
-		(void *)rds_ibdev,
+		NULL,
 		.attr = {
 			.max_wr = rds_ib_srq_max_wr - 1,
-			.max_sge = rds_ibdev->max_sge
+			.max_sge = rds_ibdev->max_sge,
+			.srq_limit = rds_ib_srq_lwm_refill
 		}
 	};
 
@@ -1641,96 +1566,139 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 	 * 1) during insmod of rds_rdma module
 	 * 2) rds_rdma module is ready, a new ib_device added to kernel
 	 */
-	if (!rds_ib_srq_enabled)
-		return 0;
-
-	pr_warn("RDS/IB: SRQ support is experimental\n");
-
-	rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
-	if (!rds_ibdev->srq) {
-		pr_warn("RDS: allocating srq failed\n");
-		return 1;
+	if (!rds_ib_srq_enabled) {
+		ret = -EOPNOTSUPP;
+		goto out;
 	}
 
-	rds_ibdev->srq->rds_ibdev = rds_ibdev;
+	srq = vmalloc(sizeof(*srq));
+	if (!srq) {
+		ret = -ENOMEM;
+		trace_rds_ib_srqs_create_one_err(ic->rds_ibdev ?
+						 ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
+						 conn, ic, "failed to allocate srq", ret);
+		goto  out;
+	}
+	srq_init_attr.srq_context = srq;
+	srq->s_srq  = ib_create_srq(rds_ibdev->pd, &srq_init_attr);
 
-	rds_ibdev->srq->s_n_wr =  rds_ib_srq_max_wr - 1;
-	rds_ibdev->srq->s_srq = ib_create_srq(rds_ibdev->pd,
-				&srq_init_attr);
-
-	if (IS_ERR(rds_ibdev->srq->s_srq)) {
-		printk(KERN_WARNING "RDS: ib_create_srq failed %ld\n",
-		       PTR_ERR(rds_ibdev->srq->s_srq));
-		return 1;
+	if (IS_ERR(srq->s_srq)) {
+		ret = PTR_ERR(srq->s_srq);
+		trace_rds_ib_srqs_create_one_err(ic->rds_ibdev ?
+						 ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
+						 conn, ic, "ib_create_srq failed", ret);
+		goto srq_out;
 	}
 
-	rds_ibdev->srq->s_recv_hdrs = kzalloc_node(
-				rds_ibdev->srq->s_n_wr *
-				sizeof(struct rds_header),
-				GFP_KERNEL, ibdev_to_node(rds_ibdev->dev));
-	if (!rds_ibdev->srq->s_recv_hdrs) {
-		printk(KERN_WARNING "RDS: kzalloc_node failed\n");
-		return 1;
+	srq->rds_ibdev = rds_ibdev;
+	srq->s_n_wr =  srq_init_attr.attr.max_wr;
+	atomic_set(&srq->s_refill_ix, 0);
+	srq->s_recvs = vmalloc(srq->s_n_wr * sizeof(struct rds_ib_recv_work));
+
+	if (!srq->s_recvs) {
+		ret = -ENOMEM;
+		trace_rds_ib_srqs_create_one_err(ic->rds_ibdev ?
+						 ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
+						 conn, ic, "failed to allocate recvs", ret);
+		goto srq_srq_out;
 	}
 
-	rds_ibdev->srq->s_recv_hdrs_dma = ib_dma_map_single(rds_ibdev->dev,
-				rds_ibdev->srq->s_recv_hdrs,
-				rds_ibdev->srq->s_n_wr *
-				sizeof(struct rds_header),
-				DMA_BIDIRECTIONAL);
-	if (ib_dma_mapping_error(rds_ibdev->dev, rds_ibdev->srq->s_recv_hdrs_dma)) {
-		kfree(rds_ibdev->srq->s_recv_hdrs);
-		rds_ibdev->srq->s_recv_hdrs = NULL;
-		printk(KERN_WARNING "RDS: ib_dma_map_single failed\n");
-		return 1;
+	memset(srq->s_recvs, 0, srq->s_n_wr * sizeof(struct rds_ib_recv_work));
+
+	atomic_set(&srq->s_num_posted, 0);
+	ret = rds_ib_alloc_map_hdrs(dev,
+				    &srq->s_recv_hdrs,
+				    &srq->s_recv_hdrs_dma,
+				    &srq->s_recv_hdrs_sg,
+				    &reason,
+				    srq->s_n_wr,
+				    DMA_FROM_DEVICE);
+	if (ret) {
+		trace_rds_ib_srqs_create_one_err(ic->rds_ibdev ?
+						 ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
+						 conn, ic, "rds_ib_alloc_map_hdrs failed", ret);
+		goto recvs_out;
+	}
+	for (ix = 0; ix < RDS_SRQ_NMBR_STACKS; ix++)
+		lfstack_init(srq->s_stack + ix);
+
+	srq->s_cache_info = ic->i_cache_info;
+	rds_ib_recv_init_ring(conn->c_transport_data, srq);
+	rds_ib_srq_prefill(srq, GFP_KERNEL);
+	//RDS_IB_SRQ_REFILL(srq, true, GFP_KERNEL, s_ib_srq_refill_from_cm, false);
+
+	INIT_DELAYED_WORK(&srq->s_refill_w, rds_ib_srq_refill_worker);
+	INIT_DELAYED_WORK(&srq->s_rearm_w, rds_ib_srq_rearm);
+
+	queue_delayed_work(rds_wq, &srq->s_rearm_w, 0);
+	*_srq = srq;
+	goto out;
+
+recvs_out:
+	vfree(srq->s_recvs);
+srq_srq_out:
+	ib_destroy_srq(srq->s_srq);
+srq_out:
+	vfree(srq);
+out:
+	return ret;
+}
+
+struct rds_ib_srq *rds_ib_srq_get(struct rds_ib_device *rds_ibdev,
+				  struct rds_connection *conn)
+{
+	int ret = 0;
+	int ix;
+	struct rds_ib_connection *ic;
+
+	if (!rds_ibdev || !conn)
+		return ERR_PTR(-EINVAL);
+	ic = conn->c_transport_data;
+	ix = conn->c_tos;
+
+	if (!rds_ibdev->srqs[ix]) {
+		mutex_lock(&rds_ibdev->srq_get_lock);
+		if (!rds_ibdev->srqs[ix])
+			ret = rds_ib_srqs_create_one(rds_ibdev, conn, rds_ibdev->srqs + ix);
+		mutex_unlock(&rds_ibdev->srq_get_lock);
+		if (ret) {
+			trace_rds_ib_srq_get_err(NULL, rds_ibdev, conn, ic,
+						 "rds_ib_srqs_create_one failed", ret);
+			return ERR_PTR(-ENOMEM);
+		}
 	}
 
-	rds_ibdev->srq->s_recvs = vmalloc(rds_ibdev->srq->s_n_wr *
-				sizeof(struct rds_ib_recv_work));
+	return rds_ibdev->srqs[ix];
+}
 
-	if (!rds_ibdev->srq->s_recvs) {
-		printk(KERN_WARNING "RDS: vmalloc failed\n");
-		return 1;
-	}
+static void rds_ib_srq_destroy_one(struct rds_ib_device *rds_ibdev, int ix)
+{
+	struct rds_ib_srq *srq = rds_ibdev->srqs[ix];
+	struct ib_device  *dev = rds_ibdev->dev;
 
-	memset(rds_ibdev->srq->s_recvs, 0, rds_ibdev->srq->s_n_wr *
-				sizeof(struct rds_ib_recv_work));
+	if (!srq)
+		return;
+	cancel_delayed_work_sync(&srq->s_rearm_w);
+	cancel_delayed_work_sync(&srq->s_refill_w);
 
-	atomic_set(&rds_ibdev->srq->s_num_posted, 0);
-	clear_bit(0, &rds_ibdev->srq->s_refill_gate);
+	ib_destroy_srq(srq->s_srq);
 
-	if (rds_ib_srq_prefill_ring(rds_ibdev))
-		return 1;
+	rds_ib_free_unmap_hdrs(dev,
+			       &srq->s_recv_hdrs,
+			       &srq->s_recv_hdrs_dma,
+			       &srq->s_recv_hdrs_sg,
+			       srq->s_n_wr,
+			       DMA_FROM_DEVICE);
 
-	INIT_DELAYED_WORK(&rds_ibdev->srq->s_refill_w, rds_ib_srq_refill);
-
-	INIT_DELAYED_WORK(&rds_ibdev->srq->s_rearm_w, rds_ib_srq_rearm);
-
-	rds_queue_delayed_work(NULL, rds_ibdev->rid_dev_wq,
-			       &rds_ibdev->srq->s_rearm_w, 0,
-			       "srq rearm");
-
-	return 0;
+	rds_ib_srq_clear_ring(rds_ibdev, srq);
+	vfree(srq->s_recvs);
+	rds_ibdev->srqs[ix]  = NULL;
 }
 
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 {
-	cancel_delayed_work_sync(&rds_ibdev->srq->s_rearm_w);
-	cancel_delayed_work_sync(&rds_ibdev->srq->s_refill_w);
+	int i;
 
-	ib_destroy_srq(rds_ibdev->srq->s_srq);
-	rds_ibdev->srq->s_srq = NULL;
-
-	if (rds_ibdev->srq->s_recv_hdrs) {
-		ib_dma_unmap_single(rds_ibdev->dev,
-				    rds_ibdev->srq->s_recv_hdrs_dma,
-				    rds_ibdev->srq->s_n_wr *
-				    sizeof(struct rds_header),
-				    DMA_BIDIRECTIONAL);
-		kfree(rds_ibdev->srq->s_recv_hdrs);
-	}
-
-	rds_ib_srq_clear_ring(rds_ibdev);
-	vfree(rds_ibdev->srq->s_recvs);
-	rds_ibdev->srq->s_recvs = NULL;
+	for (i = 0; i < NMBR_QOS; i++)
+		rds_ib_srq_destroy_one(rds_ibdev, i);
 }
