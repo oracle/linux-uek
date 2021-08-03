@@ -81,6 +81,14 @@ static char *rds_ib_event_type_strings[] = {
 #undef RDS_IB_EVENT_STRING
 };
 
+static int rds_ib_get_nmb_hdr_pages(int n)
+{
+	int rounded_hdr_size =  roundup_pow_of_two(sizeof(struct rds_header));
+	int hdrs_per_page = PAGE_SIZE / rounded_hdr_size;
+	int nmbr_hdr_pages = (n + hdrs_per_page - 1) / hdrs_per_page;
+	return nmbr_hdr_pages;
+}
+
 static char *rds_ib_event_str(enum ib_event_type type)
 {
 	return rds_str_array(rds_ib_event_type_strings,
@@ -105,6 +113,20 @@ set_ib_conn_flag(unsigned long nr, struct rds_ib_connection *ic)
 	((ic->i_recv_ring.w_nr + HDRS_PER_PAGE - 1) / HDRS_PER_PAGE)
 
 static void rds_ib_cancel_cm_watchdog(struct rds_ib_connection *ic, char *reason);
+
+static inline int rds_ib_rx_emptied(struct rds_ib_connection *ic)
+{
+	int ret;
+
+	if (rds_ib_srq_enabled) {
+		ret = test_bit(RDS_IB_SRQ_CQ_FLUSHED, &ic->i_flags) ||
+			!test_bit(RDS_IB_SRQ_NEED_FLUSH, &ic->i_flags) ||
+			(ic->conn && rds_conn_state(ic->conn) == RDS_CONN_ERROR);
+	} else {
+		ret = rds_ib_ring_empty(&ic->i_recv_ring);
+	}
+	return ret;
+}
 
 /*
  * Set the selected protocol version
@@ -157,8 +179,12 @@ static inline u16 rds_ib_get_frag(unsigned int version, u16 ib_frag)
 /* Initialise the RDS IB frag size with host_ib_max_frag */
 void rds_ib_init_frag(unsigned int version)
 {
-	/* Initialise using Host module parameter */
-	ib_init_frag_size = rds_ib_get_frag(version, rds_ib_max_frag);
+	if (rds_ib_srq_enabled)
+		/* Override choise of frag_size if srq_enabled */
+		ib_init_frag_size = RDS_MAX_FRAG_SIZE;
+	else
+		/* Initialise using Host module parameter */
+		ib_init_frag_size = rds_ib_get_frag(version, rds_ib_max_frag);
 
 	pr_debug("RDS/IB: fragment size initialised to %uKB\n",
 		 ib_init_frag_size / SZ_1K);
@@ -168,7 +194,7 @@ void rds_ib_init_frag(unsigned int version)
 static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	u16 current_frag = ic->i_frag_sz;
+	u16 current_frag = ic->i_cache_info.ci_frag_sz;
 	u16 frag;
 
 	frag = min_t(unsigned int, ib_init_frag_size,
@@ -176,27 +202,27 @@ static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 
 	if (frag != dp_frag) {
 		frag = min_t(unsigned int, dp_frag, frag);
-		ic->i_frag_sz = rds_ib_get_frag(conn->c_version, frag);
+		ic->i_cache_info.ci_frag_sz = rds_ib_get_frag(conn->c_version, frag);
 	} else {
-		ic->i_frag_sz = frag;
+		ic->i_cache_info.ci_frag_sz = frag;
 	}
 
-	ic->i_frag_pages =  ceil(ic->i_frag_sz, PAGE_SIZE);
-	ic->i_frag_cache_inx = ilog2(ic->i_frag_pages);
-
+	ic->i_cache_info.ci_frag_pages =  ceil(ic->i_cache_info.ci_frag_sz, PAGE_SIZE);
+	ic->i_cache_info.ci_frag_cache_inx = ilog2(ic->i_cache_info.ci_frag_pages);
+	ic->i_cache_info.ci_trans = conn->c_trans;
 	pr_debug("RDS/IB: conn <%pI6c, %pI6c,%d>, Frags <init,ic,dp>: {%d,%d,%d}, updated {%d -> %d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-		 ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K, dp_frag /  SZ_1K,
-		 current_frag / SZ_1K, ic->i_frag_sz / SZ_1K);
+		 ib_init_frag_size / SZ_1K, ic->i_cache_info.ci_frag_sz / SZ_1K, dp_frag /  SZ_1K,
+		 current_frag / SZ_1K, ic->i_cache_info.ci_frag_sz / SZ_1K);
 
-	return ic->i_frag_sz;
+	return ic->i_cache_info.ci_frag_sz;
 }
 
 /* Init per IC frag size */
 static inline void rds_ib_init_ic_frag(struct rds_ib_connection *ic)
 {
 	if (ic)
-		ic->i_frag_sz = ib_init_frag_size;
+		ic->i_cache_info.ci_frag_sz = ib_init_frag_size;
 }
 
 #ifdef CONFIG_RDS_ACL
@@ -270,7 +296,7 @@ check_again:
 
 		printk(KERN_NOTICE "WRONG RNR Retry Timer value: %d: Attempt: %d RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u\n",
 		       attr.min_rnr_timer, nmbr_checks, ic->i_active_side ? "Active " : "Passive",
-		       conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
+		       conn, ic->i_cm_id, ic->i_cache_info.ci_frag_sz / SZ_1K,
 		       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		       RDS_PROTOCOL_MAJOR(conn->c_version),
 		       RDS_PROTOCOL_MINOR(conn->c_version));
@@ -346,7 +372,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u%s%s\n",
 	       ic->i_active_side ? "Active " : "Passive",
-	       conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
+	       conn, ic->i_cm_id, ic->i_cache_info.ci_frag_sz / SZ_1K,
 	       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 	       RDS_PROTOCOL_MAJOR(conn->c_version),
 	       RDS_PROTOCOL_MINOR(conn->c_version),
@@ -362,6 +388,10 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
 	clear_bit_mb(RDS_IB_CQ_ERR, &ic->i_flags);
 
+	set_bit_mb(RDS_IB_SRQ_NEED_FLUSH, &ic->i_flags);
+	clear_bit_mb(RDS_IB_SRQ_LAST_WQE_REACHED, &ic->i_flags);
+	clear_bit_mb(RDS_IB_SRQ_CQ_FLUSHED, &ic->i_flags);
+
 	/*
 	 * Init rings and fill recv. this needs to wait until protocol negotiation
 	 * is complete, since ring layout is different from 3.0 to 3.1.
@@ -369,7 +399,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	rds_ib_send_init_ring(ic);
 
 	if (!rds_ib_srq_enabled)
-		rds_ib_recv_init_ring(ic);
+		rds_ib_recv_init_ring(ic, NULL);
 
 	/* Post receive buffers - as a side effect, this will update
 	 * the posted credit count. */
@@ -641,6 +671,8 @@ static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 		if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT)
 			break;
 	}
+	if (test_bit(RDS_IB_SRQ_LAST_WQE_REACHED, &ic->i_flags))
+		set_bit(RDS_IB_SRQ_CQ_FLUSHED, &ic->i_flags);
 }
 
 static void rds_ib_tasklet_fn_fastreg(unsigned long data)
@@ -703,23 +735,15 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		rds_ib_attempt_ack(ic);
 
 	if (rds_ib_srq_enabled) {
-		struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
-		if (rds_ibdev &&
-		    (atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
-		    !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-			rds_queue_delayed_work_on(&conn->c_path[0],
-						  ic->i_irq_local_cpu,
-						  conn->c_path[0].cp_wq,
-						  &rds_ibdev->srq->s_refill_w,
-						  0,
-						  "srq refill");
+		conn->c_srq->s_cache_info.ci_irq_local_cpu = smp_processor_id();
+		RDS_IB_SRQ_REFILL(conn->c_srq, false,  GFP_KERNEL, s_ib_srq_refill_from_rx, false);
 	}
 
 	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
 		ic->i_rx_w.ic = ic;
 		/* Delay 10 msecs until the RX worker starts reaping again */
 		rds_queue_delayed_work_on(&conn->c_path[0],
-					  ic->i_irq_local_cpu,
+					  ic->i_cache_info.ci_irq_local_cpu,
 					  rds_aux_wq,
 					  &ic->i_rx_w.work,
 					  msecs_to_jiffies(10),
@@ -806,6 +830,8 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		rdma_notify(ic->i_cm_id, IB_EVENT_COMM_EST);
 		break;
 	case IB_EVENT_QP_LAST_WQE_REACHED:
+		rds_ib_event_str(event->event);
+		set_bit(RDS_IB_SRQ_LAST_WQE_REACHED, &ic->i_flags);
 		complete(&ic->i_last_wqe_complete);
 		break;
 	default:
@@ -953,17 +979,18 @@ static void rds_rdma_conn_delayed_free_worker(struct work_struct *work)
 	rds_ib_dev_put(rds_ibdev);
 }
 
-static void rds_ib_free_unmap_hdrs(struct ib_device *dev,
-				   struct rds_header ***_hdrs,
-				   dma_addr_t **_dma,
-				   struct scatterlist **_sg,
-				   const int nmbr_hdr_pages,
-				   enum dma_data_direction direction)
+void rds_ib_free_unmap_hdrs(struct ib_device *dev,
+			    struct rds_header ***_hdrs,
+			    dma_addr_t **_dma,
+			    struct scatterlist **_sg,
+			    const int n,
+			    enum dma_data_direction direction)
 {
 	struct rds_header **hdrs = *_hdrs;
 	struct scatterlist *sg = *_sg;
 	dma_addr_t *dma = *_dma;
 	int i;
+	int nmbr_hdr_pages = rds_ib_get_nmb_hdr_pages(n);
 
 	if (sg)
 		for (i = 0; i < nmbr_hdr_pages; ++i) {
@@ -979,20 +1006,20 @@ static void rds_ib_free_unmap_hdrs(struct ib_device *dev,
 	*_hdrs = NULL;
 }
 
-static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
-				 struct rds_header ***_hdrs,
-				 dma_addr_t **_dma,
-				 struct scatterlist **_sg,
-				 char **reason,
-				 const int n,
-				 const int nmbr_hdr_pages,
-				 enum dma_data_direction direction)
+int rds_ib_alloc_map_hdrs(struct ib_device *dev,
+			  struct rds_header ***_hdrs,
+			  dma_addr_t **_dma,
+			  struct scatterlist **_sg,
+			  char **reason,
+			  const int n,
+			  enum dma_data_direction direction)
 {
 	struct rds_header **hdrs;
 	struct scatterlist *sg;
 	dma_addr_t *dma;
 	int i, j, k;
 	int ret;
+	int nmbr_hdr_pages = rds_ib_get_nmb_hdr_pages(n);
 
 	hdrs = *_hdrs = vzalloc_node(sizeof(struct rds_header *) * n,
 				     ibdev_to_node(dev));
@@ -1027,6 +1054,7 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 				__free_page(sg_page(sg + j));
 			goto sg_out;
 		}
+		sg_mark_end(sg + i);
 	}
 
 	for (i = 0; i < nmbr_hdr_pages; i++) {
@@ -1092,14 +1120,14 @@ static void __rds_rdma_conn_dev_rele(struct rds_ib_connection *ic)
 			       &ic->i_send_hdrs,
 			       &ic->i_send_hdrs_dma,
 			       &ic->i_send_hdrs_sg,
-			       NMBR_SEND_HDR_PAGES,
+			       ic->i_send_ring.w_nr,
 			       DMA_TO_DEVICE);
 
 	rds_ib_free_unmap_hdrs(dev,
 			       &ic->i_recv_hdrs,
 			       &ic->i_recv_hdrs_dma,
 			       &ic->i_recv_hdrs_sg,
-			       NMBR_RECV_HDR_PAGES,
+			       ic->i_recv_ring.w_nr,
 			       DMA_FROM_DEVICE);
 
 	if (ic->i_ack) {
@@ -1166,6 +1194,9 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	}
 
 	set_bit_mb(RDS_IB_NEED_SHUTDOWN, &ic->i_flags);
+	clear_bit_mb(RDS_IB_SRQ_NEED_FLUSH, &ic->i_flags);
+	clear_bit_mb(RDS_IB_SRQ_LAST_WQE_REACHED, &ic->i_flags);
+	clear_bit_mb(RDS_IB_SRQ_CQ_FLUSHED, &ic->i_flags);
 
 	/* In the case of FRWR, mr registration wrs use the
 	 * same work queue as the send wrs. To make sure that we are not
@@ -1176,6 +1207,25 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		mr_reg = RDS_IB_DEFAULT_FREG_WR;
 	else
 		mr_reg = 0;
+
+	/* add the conn now so that connection establishment has the dev */
+	//rds_ib_add_conn(rds_ibdev, conn);
+
+	/* Protection domain and memory range */
+	ic->i_pd = rds_ibdev->pd;
+	ic->i_mr = rds_ibdev->mr;
+	if (rds_ib_srq_enabled) {
+		rdsdebug("%s conn <%pI6c,%pI6c,%d>\n", __func__,
+			 &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+		conn->c_srq = rds_ib_srq_get(rds_ibdev, conn);
+		if (IS_ERR(conn->c_srq)) {
+			rdsdebug("RDS/IB: rds_ib_srq_get failed for conn <%pI6c,%pI6c,%d>\n",
+				 &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+			rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL, 0);
+			ret = PTR_ERR(conn->c_srq);
+			goto out;
+		}
+	}
 
 	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_send_wr + 1  + mr_reg ?
 		rds_ibdev->max_wrs - 1 - mr_reg : rds_ib_sysctl_max_send_wr;
@@ -1276,7 +1326,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	if (rds_ib_srq_enabled) {
 		qp_attr.cap.max_recv_wr = 0;
-		qp_attr.srq = rds_ibdev->srq->s_srq;
+		qp_attr.cap.max_recv_sge = 0;
+		qp_attr.srq = conn->c_srq->s_srq;
 	}
 
 	ic->i_hca_sge = rds_ibdev->max_sge;
@@ -1331,21 +1382,20 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				    &ic->i_send_hdrs_sg,
 				    &reason,
 				    ic->i_send_ring.w_nr,
-				    NMBR_SEND_HDR_PAGES,
 				    DMA_TO_DEVICE);
 	if (ret)
 		goto recvs_out;
-
-	ret = rds_ib_alloc_map_hdrs(dev,
-				    &ic->i_recv_hdrs,
-				    &ic->i_recv_hdrs_dma,
-				    &ic->i_recv_hdrs_sg,
-				    &reason,
-				    ic->i_recv_ring.w_nr,
-				    NMBR_RECV_HDR_PAGES,
-				    DMA_FROM_DEVICE);
-	if (ret)
-		goto send_hdrs_out;
+	if (!rds_ib_srq_enabled) {
+		ret = rds_ib_alloc_map_hdrs(dev,
+					    &ic->i_recv_hdrs,
+					    &ic->i_recv_hdrs_dma,
+					    &ic->i_recv_hdrs_sg,
+					    &reason,
+					    ic->i_recv_ring.w_nr,
+					    DMA_FROM_DEVICE);
+		if (ret)
+			goto send_hdrs_out;
+	}
 
 	/* Everything is set up, add the conn now so that connection
 	 * establishment has the dev.
@@ -1363,7 +1413,7 @@ send_hdrs_out:
 			       &ic->i_send_hdrs,
 			       &ic->i_send_hdrs_dma,
 			       &ic->i_send_hdrs_sg,
-			       NMBR_SEND_HDR_PAGES,
+			       ic->i_send_ring.w_nr,
 			       DMA_TO_DEVICE);
 
 recvs_out:
@@ -1587,6 +1637,8 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 		rds_send_drop_acked(conn, be64_to_cpu(dp_cmn->ricpc_ack_seq),
 				    NULL);
 
+	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp_cmn->ricpc_frag_sz));
+
 	err = rds_ib_setup_qp(conn);
 	if (err) {
 		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL, err);
@@ -1594,8 +1646,6 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 					   conn, ic, "rds_ib_setup_qp error", err);
 		return err;
 	}
-
-	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp_cmn->ricpc_frag_sz));
 
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp_rep, version,
 				  responder_resources,
@@ -1926,12 +1976,12 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	    ic->rds_ibdev->dev : NULL, ic->rds_ibdev, conn, ic,
 	    "initiate conn", 0);
 
+	frag = rds_ib_set_frag_size(conn, ib_init_frag_size);
 	ret = rds_ib_setup_qp(conn);
 	if (ret) {
 		rds_conn_drop(conn, DR_IB_ACT_SETUP_QP_FAIL, ret);
 		goto out;
 	}
-	frag = rds_ib_set_frag_size(conn, ib_init_frag_size);
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
 				  conn->c_proposed_version, UINT_MAX, UINT_MAX,
 				  frag, isv6);
@@ -2153,6 +2203,26 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 
 	if (ic->i_cm_id) {
 		int err;
+		int ret;
+		struct ib_qp_attr qp_attr;
+		struct ib_qp_init_attr init_attr;
+
+		if (ic && ic->i_cm_id && ic->i_cm_id->qp) {
+			ret = ib_query_qp(ic->i_cm_id->qp, &qp_attr, IB_QP_STATE, &init_attr);
+			if (ret)
+				trace_rds_ib_conn_path_shutdown_prepare_err(ic->rds_ibdev ? ic->rds_ibdev->dev : NULL,
+									    ic->rds_ibdev,
+									    conn, ic,
+									    "ib_query_qp failed",
+									    ret);
+		} else {
+			qp_attr.qp_state = 99999;
+		}
+		if (qp_attr.qp_state != IB_QPS_RTS) {
+			clear_bit_mb(RDS_IB_SRQ_NEED_FLUSH, &ic->i_flags);
+			return;
+		}
+
 		err = rdma_disconnect(ic->i_cm_id);
 		if (err) {
 			/* Actually this may happen quite frequently, when
@@ -2162,13 +2232,12 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 				ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
 				conn, ic, "failed to disconnect", err);
 
-		} else if (rds_ib_srq_enabled && ic->rds_ibdev) {
+		} else if (rds_ib_srq_enabled && ic->rds_ibdev &&
+			   ic->i_cm_id->qp && qp_attr.qp_state == IB_QPS_RTS) {
 			/*
 			   wait for the last wqe to complete, then schedule
 			   the recv tasklet to drain the RX CQ.
 			*/
-			wait_for_completion(&ic->i_last_wqe_complete);
-			tasklet_schedule(&ic->i_rtasklet);
 		}
 	}
 }
@@ -2180,8 +2249,9 @@ unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 
 	return (!ic->i_cm_id ||
 		test_bit(RDS_IB_CQ_ERR, &ic->i_flags) ||
-		(rds_ib_ring_empty(&ic->i_recv_ring) &&
-		 (atomic_read(&ic->i_signaled_sends) == 0) &&
+		(rds_ib_rx_emptied(ic) &&
+		 rds_ib_ring_empty(&ic->i_send_ring) &&
+		 (!test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags)) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
 		  RDS_IB_DEFAULT_FREG_WR))) ? 0
 		: msecs_to_jiffies(1000);
@@ -2192,7 +2262,8 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
-	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
+	/* Try to reap pending RX completions every second */
+	if (!rds_ib_rx_emptied(ic)) {
 		spin_lock_bh(&ic->i_rx_lock);
 		rds_ib_rx(ic);
 		spin_unlock_bh(&ic->i_rx_lock);
@@ -2229,6 +2300,13 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 			clear_bit(RDS_IB_CQ_ERR, &ic->i_flags);
 		}
 
+		if (ic->i_sends)
+			rds_ib_send_clear_ring(ic);
+		if (ic->i_recvs)
+			rds_ib_recv_clear_ring(ic);
+
+		/* Move connection back to the nodev list.
+		 */
 		if (ic->rds_ibdev)
 			__rds_rdma_conn_dev_rele(ic);
 
@@ -2251,7 +2329,8 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		ic->i_send_hdrs = NULL;
 		ic->i_recv_hdrs = NULL;
 		ic->i_ack = NULL;
-		clear_bit_sb(RDS_IB_NEED_SHUTDOWN, &ic->i_flags);
+		clear_bit_mb(RDS_IB_NEED_SHUTDOWN, &ic->i_flags);
+		clear_bit_mb(RDS_IB_SRQ_LAST_WQE_REACHED, &ic->i_flags);
 	}
 
 	BUG_ON(ic->rds_ibdev);
@@ -2372,7 +2451,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
-	ic->i_irq_local_cpu = NR_CPUS;
+	ic->i_cache_info.ci_irq_local_cpu = NR_CPUS;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
 
