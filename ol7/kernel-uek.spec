@@ -2231,7 +2231,7 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/weak-updates\
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
-/etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
+%config /etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
