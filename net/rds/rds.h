@@ -50,7 +50,6 @@
 #ifdef ATOMIC64_INIT
 #define KERNEL_HAS_ATOMIC64
 #endif
-
 #ifdef RDS_DEBUG
 #define rdsdebug(fmt, args...) pr_debug("%s(): " fmt, __func__ , ##args)
 #else
@@ -387,6 +386,8 @@ struct rds_connection {
 
 	atomic_t		c_dr_sock_cancel_refs;
 	struct delayed_work	c_dr_sock_cancel_w;
+
+	struct rds_ib_srq       *c_srq;
 };
 
 static inline
@@ -525,6 +526,7 @@ struct rds_incoming {
 
 	struct rds_inc_usercopy i_usercopy;
 	u64			i_rx_lat_trace[RDS_RX_MAX_TRACES];
+	struct rds_ib_cache_info *i_cache_info;
 };
 
 struct rds_mr {
@@ -1316,7 +1318,7 @@ void rds_page_exit(void);
 
 /* recv.c */
 void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
-		  struct in6_addr *saddr);
+		  struct rds_ib_cache_info *ci,  struct in6_addr *saddr);
 void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *conn,
 		       struct in6_addr *saddr);
 void rds_inc_addref(struct rds_incoming *inc);
