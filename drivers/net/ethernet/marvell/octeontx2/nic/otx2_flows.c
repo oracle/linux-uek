@@ -261,6 +261,7 @@ int otx2vf_mcam_flow_init(struct otx2_nic *pfvf)
 
 	return 0;
 }
+EXPORT_SYMBOL(otx2vf_mcam_flow_init);
 
 int otx2_mcam_flow_init(struct otx2_nic *pf)
 {
@@ -309,6 +310,7 @@ void otx2_mcam_flow_del(struct otx2_nic *pf)
 {
 	otx2_destroy_mcam_flows(pf);
 }
+EXPORT_SYMBOL(otx2_mcam_flow_del);
 
 /*  On success adds mcam entry
  *  On failure enable promisous mode
