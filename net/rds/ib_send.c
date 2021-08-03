@@ -241,7 +241,7 @@ static struct rds_message *rds_ib_send_unmap_op(struct rds_ib_connection *ic,
 void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 {
 	struct rds_ib_send_work *send;
-	u32 num_send_sge = ic->i_frag_pages;
+	u32 num_send_sge = ic->i_cache_info.ci_frag_pages;
 	u32 i;
 	u32 j;
 
@@ -617,7 +617,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	if (be32_to_cpu(rm->m_inc.i_hdr.h_len) == 0)
 		i = 1;
 	else
-		i = ceil(be32_to_cpu(rm->m_inc.i_hdr.h_len), ic->i_frag_sz);
+		i = ceil(be32_to_cpu(rm->m_inc.i_hdr.h_len), ic->i_cache_info.ci_frag_sz);
 
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 	if (work_alloc == 0) {
@@ -770,7 +770,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		if (i < work_alloc
 		    && scat != &rm->data.op_sg[rm->data.op_count]) {
 			unsigned int num_sge = min_t(unsigned long, remaining_sge,
-						     ic->i_frag_pages);
+						     ic->i_cache_info.ci_frag_pages);
 			unsigned int j = 1;
 
 			send->s_wr.num_sge += num_sge;
