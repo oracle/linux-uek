@@ -74,6 +74,8 @@ dtb-$(CONFIG_SOC_SAM_V7) += \
 	at91-sama5d4_xplained.dtb \
 	at91-sama5d4ek.dtb \
 	at91-vinco.dtb
+dtb-$(CONFIG_SOC_SAMA7G5) += \
+	at91-sama7g5ek.dtb
 dtb-$(CONFIG_ARCH_AXXIA) += \
 	axm5516-amarillo.dtb
 dtb-$(CONFIG_ARCH_BCM2835) += \
@@ -1300,7 +1302,10 @@ dtb-$(CONFIG_ARCH_U8500) += \
 	ste-href520-tvk.dtb \
 	ste-ux500-samsung-golden.dtb \
 	ste-ux500-samsung-janice.dtb \
-	ste-ux500-samsung-skomer.dtb
+	ste-ux500-samsung-gavini.dtb \
+	ste-ux500-samsung-codina.dtb \
+	ste-ux500-samsung-skomer.dtb \
+	ste-ux500-samsung-kyle.dtb
 dtb-$(CONFIG_ARCH_UNIPHIER) += \
 	uniphier-ld4-ref.dtb \
 	uniphier-ld6b-ref.dtb \
