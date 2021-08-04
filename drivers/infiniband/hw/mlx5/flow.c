@@ -318,8 +318,7 @@ static int UVERBS_HANDLER(MLX5_IB_METHOD_FLOW_MATCHER_CREATE)(
 		goto end;
 
 	if (obj->ns_type == MLX5_FLOW_NAMESPACE_FDB &&
-	    mlx5_eswitch_mode(dev->mdev->priv.eswitch) !=
-			      MLX5_ESWITCH_OFFLOADS) {
+	    mlx5_eswitch_mode(dev->mdev) != MLX5_ESWITCH_OFFLOADS) {
 		err = -EINVAL;
 		goto end;
 	}
