@@ -13,10 +13,11 @@
 #include "ionic_debugfs.h"
 #include "ionic_lif.h"
 
-static void ionic_watchdog_cb(struct timer_list *t)
+void ionic_watchdog_cb(struct timer_list *t)
 {
 	struct ionic *ionic = from_timer(ionic, t, watchdog_timer);
 	struct ionic_lif *lif = ionic->lif;
+	struct ionic_deferred_work *work;
 	int hb;
 
 	mod_timer(&ionic->watchdog_timer,
@@ -36,6 +37,42 @@ static void ionic_watchdog_cb(struct timer_list *t)
 	    !test_bit(IONIC_LIF_F_FW_RESET, lif->state)) {
 		ionic_link_status_check_request(lif, CAN_NOT_SLEEP);
 	}
+
+	if (test_bit(IONIC_LIF_F_FILTER_SYNC_NEEDED, lif->state)) {
+		work = kzalloc(sizeof(*work), GFP_ATOMIC);
+		if (!work) {
+			netdev_err(lif->netdev, "rxmode change dropped\n");
+			return;
+		} else {
+			work->type = IONIC_DW_TYPE_RX_MODE;
+			netdev_dbg(lif->netdev, "deferred: rx_mode\n");
+			ionic_lif_deferred_enqueue(&lif->deferred, work);
+		}
+	}
+}
+
+void ionic_watchdog_init(struct ionic *ionic)
+{
+	struct ionic_dev *idev = &ionic->idev;
+
+	timer_setup(&ionic->watchdog_timer, ionic_watchdog_cb, 0);
+	if (ionic->pdev)
+		ionic->watchdog_period = IONIC_WATCHDOG_PCI_SECS * HZ;
+	else
+		ionic->watchdog_period = IONIC_WATCHDOG_PLAT_MSECS * HZ / 1000;
+
+	/* set times to ensure the first check will proceed */
+	atomic_long_set(&idev->last_check_time, jiffies - 2 * HZ);
+	idev->last_hb_time = jiffies - 2 * ionic->watchdog_period;
+	/* init as ready, so no transition if the first check succeeds */
+	idev->last_fw_hb = 0;
+	idev->fw_hb_ready = true;
+	idev->fw_status_ready = true;
+	idev->fw_generation = IONIC_FW_STS_F_GENERATION &
+			      ioread8(&idev->dev_info_regs->fw_status);
+
+	mod_timer(&ionic->watchdog_timer,
+		  round_jiffies(jiffies + ionic->watchdog_period));
 }
 
 void ionic_init_devinfo(struct ionic *ionic)
@@ -102,21 +139,7 @@ int ionic_dev_setup(struct ionic *ionic)
 		return -EFAULT;
 	}
 
-	timer_setup(&ionic->watchdog_timer, ionic_watchdog_cb, 0);
-	ionic->watchdog_period = IONIC_WATCHDOG_SECS * HZ;
-
-	/* set times to ensure the first check will proceed */
-	atomic_long_set(&idev->last_check_time, jiffies - 2 * HZ);
-	idev->last_hb_time = jiffies - 2 * ionic->watchdog_period;
-	/* init as ready, so no transition if the first check succeeds */
-	idev->last_fw_hb = 0;
-	idev->fw_hb_ready = true;
-	idev->fw_status_ready = true;
-	idev->fw_generation = IONIC_FW_STS_F_GENERATION &
-			      ioread8(&idev->dev_info_regs->fw_status);
-
-	mod_timer(&ionic->watchdog_timer,
-		  round_jiffies(jiffies + ionic->watchdog_period));
+	ionic_watchdog_init(ionic);
 
 	idev->db_pages = bar->vaddr;
 	idev->phy_db_pages = bar->bus_addr;
@@ -166,15 +189,12 @@ int ionic_heartbeat_check(struct ionic *ionic)
 	u8 fw_status;
 	u32 fw_hb;
 
-	/* don't check heartbeat on the internal platform device */
-	if (ionic->pfdev)
-		return 0;
-
 	/* wait at least one second before testing again */
 	check_time = jiffies;
 	last_check_time = atomic_long_read(&idev->last_check_time);
 do_check_time:
-	if (time_before(check_time, last_check_time + HZ))
+	/* on host device, wait at least one second before testing again */
+	if (ionic->pdev && time_before(check_time, last_check_time + HZ))
 		return 0;
 	if (!atomic_long_try_cmpxchg_relaxed(&idev->last_check_time,
 					     &last_check_time, check_time)) {
@@ -217,11 +237,11 @@ do_check_time:
 		idev->fw_status_ready = fw_status_ready;
 
 		if (!fw_status_ready) {
-			dev_info(ionic->dev, "FW stopped %u\n", fw_status);
+			dev_info(ionic->dev, "FW stopped 0x%02x\n", fw_status);
 			if (lif && !test_bit(IONIC_LIF_F_FW_RESET, lif->state))
 				trigger = true;
 		} else {
-			dev_info(ionic->dev, "FW running %u\n", fw_status);
+			dev_info(ionic->dev, "FW running 0x%02x\n", fw_status);
 			if (lif && test_bit(IONIC_LIF_F_FW_RESET, lif->state))
 				trigger = true;
 		}
@@ -241,9 +261,11 @@ do_check_time:
 	if (!fw_status_ready)
 		return -ENXIO;
 
-	/* wait at least one watchdog period since the last heartbeat */
+	/* Because of some variability in the actual FW heartbeat, we
+	 * wait 2 beats before checking again.
+	 */
 	last_check_time = idev->last_hb_time;
-	if (time_before(check_time, last_check_time + ionic->watchdog_period))
+	if (time_before(check_time, last_check_time + IONIC_HEARTBEAT_SECS * 2 * HZ))
 		return 0;
 
 	fw_hb = ioread32(&idev->dev_info_regs->fw_heartbeat);

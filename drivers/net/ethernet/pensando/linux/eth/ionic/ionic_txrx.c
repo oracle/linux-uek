@@ -508,11 +508,12 @@ void ionic_rx_empty(struct ionic_queue *q)
 	q->tail_idx = 0;
 }
 
-static void ionic_dim_update(struct ionic_qcq *qcq)
+static void ionic_dim_update(struct ionic_qcq *qcq, int napi_mode)
 {
 	struct dim_sample dim_sample;
 	struct ionic_lif *lif;
 	unsigned int qi;
+	u64 pkts, bytes;
 
 	if (!qcq->intr.dim_coal_hw)
 		return;
@@ -520,14 +521,23 @@ static void ionic_dim_update(struct ionic_qcq *qcq)
 	lif = qcq->q.lif;
 	qi = qcq->cq.bound_q->index;
 
-	ionic_intr_coal_init(lif->ionic->idev.intr_ctrl,
-			     lif->rxqcqs[qi]->intr.index,
-			     qcq->intr.dim_coal_hw);
+	switch (napi_mode) {
+	case IONIC_LIF_F_TX_DIM_INTR:
+		pkts = lif->txqstats[qi].pkts;
+		bytes = lif->txqstats[qi].bytes;
+		break;
+	case IONIC_LIF_F_RX_DIM_INTR:
+		pkts = lif->rxqstats[qi].pkts;
+		bytes = lif->rxqstats[qi].bytes;
+		break;
+	default:
+		pkts = lif->txqstats[qi].pkts + lif->rxqstats[qi].pkts;
+		bytes = lif->txqstats[qi].bytes + lif->rxqstats[qi].bytes;
+		break;
+	}
 
 	dim_update_sample(qcq->cq.bound_intr->rearm_count,
-			  lif->txqstats[qi].pkts,
-			  lif->txqstats[qi].bytes,
-			  &dim_sample);
+			  pkts, bytes, &dim_sample);
 
 	net_dim(&qcq->dim, dim_sample);
 }
@@ -557,7 +567,7 @@ int ionic_tx_napi(struct napi_struct *napi, int budget)
 		flags |= IONIC_INTR_CRED_RESET_COALESCE;
 		if (!lif->ionic->neth_eqs) {
 			if (flags & IONIC_INTR_CRED_UNMASK)
-				ionic_dim_update(qcq);
+				ionic_dim_update(qcq, IONIC_LIF_F_TX_DIM_INTR);
 			ionic_intr_credits(idev->intr_ctrl,
 					   cq->bound_intr->index,
 					   work_done, flags);
@@ -609,7 +619,7 @@ int ionic_rx_napi(struct napi_struct *napi, int budget)
 		flags |= IONIC_INTR_CRED_RESET_COALESCE;
 		if (!lif->ionic->neth_eqs) {
 			if (flags & IONIC_INTR_CRED_UNMASK)
-				ionic_dim_update(qcq);
+				ionic_dim_update(qcq, IONIC_LIF_F_RX_DIM_INTR);
 			ionic_intr_credits(idev->intr_ctrl,
 					   cq->bound_intr->index,
 					   work_done, flags);
@@ -669,7 +679,7 @@ int ionic_txrx_napi(struct napi_struct *napi, int budget)
 		flags |= IONIC_INTR_CRED_RESET_COALESCE;
 		if (!lif->ionic->neth_eqs) {
 			if (flags & IONIC_INTR_CRED_UNMASK)
-				ionic_dim_update(rxqcq);
+				ionic_dim_update(rxqcq, 0);
 			ionic_intr_credits(idev->intr_ctrl,
 					   rxcq->bound_intr->index,
 					   tx_work_done + rx_work_done, flags);

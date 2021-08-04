@@ -218,6 +218,7 @@ static int ionic_mnic_dev_setup(struct ionic *ionic)
 		return -EFAULT;
 
 	ionic_init_devinfo(ionic);
+	ionic_watchdog_init(ionic);
 
 	idev->db_pages = ionic->bars[IONIC_DOORBELL_BAR].vaddr;
 	idev->phy_db_pages = ionic->bars[IONIC_DOORBELL_BAR].bus_addr;
@@ -394,6 +395,7 @@ err_out_free_lifs:
 err_out_free_irqs:
 	ionic_bus_free_irq_vectors(ionic);
 err_out_unmap_bars:
+	del_timer_sync(&ionic->watchdog_timer);
 	ionic_unmap_bars(ionic);
 	ionic_debugfs_del_dev(ionic);
 	mutex_destroy(&ionic->dev_cmd_lock);
@@ -408,6 +410,7 @@ int ionic_remove(struct platform_device *pfdev)
 	struct ionic *ionic = platform_get_drvdata(pfdev);
 
 	if (ionic) {
+		del_timer_sync(&ionic->watchdog_timer);
 		ionic_lif_unregister(ionic->lif);
 		ionic_lif_deinit(ionic->lif);
 		ionic_lif_free(ionic->lif);

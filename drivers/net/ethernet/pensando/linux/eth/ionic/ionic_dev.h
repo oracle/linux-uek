@@ -19,7 +19,9 @@
 #define IONIC_RX_FILL_THRESHOLD	64
 #define IONIC_RX_FILL_DIV		8
 #define IONIC_LIFS_MAX			1024
-#define IONIC_WATCHDOG_SECS		5
+#define IONIC_WATCHDOG_PCI_SECS		5
+#define IONIC_WATCHDOG_PLAT_MSECS	100
+#define IONIC_HEARTBEAT_SECS		1
 #define IONIC_ITR_COAL_USEC_DEFAULT	8
 
 #define IONIC_DEV_CMD_REG_VERSION	1
@@ -401,5 +403,7 @@ void ionic_q_rewind(struct ionic_queue *q, struct ionic_desc_info *start);
 void ionic_q_service(struct ionic_queue *q, struct ionic_cq_info *cq_info,
 		     unsigned int stop_index);
 int ionic_heartbeat_check(struct ionic *ionic);
+void ionic_watchdog_cb(struct timer_list *t);
+void ionic_watchdog_init(struct ionic *ionic);
 
 #endif /* _IONIC_DEV_H_ */

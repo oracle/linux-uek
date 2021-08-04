@@ -18,6 +18,10 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(IONIC_DRV_VERSION);
 MODULE_INFO(supported, "external");
 
+bool port_init_up = 1;
+module_param(port_init_up, bool, 0);
+MODULE_PARM_DESC(max_slaves, "Set port to ADMIN_UP on init (default 1, 0 to disable)");
+
 unsigned int rx_copybreak = IONIC_RX_COPYBREAK_DEFAULT;
 module_param(rx_copybreak, uint, 0600);
 MODULE_PARM_DESC(rx_copybreak, "Maximum size of packet that is copied to a bounce buffer on RX");
@@ -341,6 +345,10 @@ int ionic_adminq_post_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx)
 {
 	int err;
 
+	/* if platform dev is resetting, don't bother with AdminQ, it's not there */
+	if (lif->ionic->pfdev && test_bit(IONIC_LIF_F_FW_STOPPING, lif->state))
+		return 0;
+
 	err = ionic_adminq_post(lif, ctx);
 
 	return ionic_adminq_wait(lif, ctx, err);
@@ -595,8 +603,10 @@ int ionic_port_init(struct ionic *ionic)
 	ionic_dev_cmd_port_init(idev);
 	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 
-	ionic_dev_cmd_port_state(&ionic->idev, IONIC_PORT_ADMIN_STATE_UP);
-	(void)ionic_dev_cmd_wait(ionic, devcmd_timeout);
+	if (port_init_up) {
+		ionic_dev_cmd_port_state(&ionic->idev, IONIC_PORT_ADMIN_STATE_UP);
+		(void)ionic_dev_cmd_wait(ionic, devcmd_timeout);
+	}
 
 	mutex_unlock(&ionic->dev_cmd_lock);
 	if (err) {

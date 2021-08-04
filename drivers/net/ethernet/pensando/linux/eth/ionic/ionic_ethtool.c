@@ -951,7 +951,7 @@ static int ionic_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 		set_bit(IONIC_LIF_F_RDMA_SNIFFER, lif->state);
 
 	if (rdma != test_bit(IONIC_LIF_F_RDMA_SNIFFER, lif->state))
-		ionic_set_rx_mode(netdev, CAN_SLEEP);
+		ionic_lif_rx_mode(lif);
 
 	cmb_now = test_bit(IONIC_LIF_F_CMB_RINGS, lif->state);
 	cmb_req = !!(priv_flags & IONIC_PRIV_F_CMB_RINGS);
