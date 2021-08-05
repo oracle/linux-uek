@@ -810,7 +810,7 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 			ether_addr_copy(pmask->dmac, eth_mask->h_dest);
 			req->features |= BIT_ULL(NPC_DMAC);
 		}
-		if (eth_mask->h_proto) {
+		if (eth_hdr->h_proto) {
 			memcpy(&pkt->etype, &eth_hdr->h_proto,
 			       sizeof(pkt->etype));
 			memcpy(&pmask->etype, &eth_mask->h_proto,
