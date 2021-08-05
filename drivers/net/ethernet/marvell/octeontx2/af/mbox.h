@@ -1213,7 +1213,9 @@ struct nix_hw_info {
 	u16 vwqe_delay;
 	u16 max_mtu;
 	u16 min_mtu;
-	u16 rsvd[13];
+	u32 rpm_dwrr_mtu;
+	u32 sdp_dwrr_mtu;
+	u64 rsvd[16]; /* Add reserved fields for future expansion */
 };
 
 struct nix_bandprof_alloc_req {
