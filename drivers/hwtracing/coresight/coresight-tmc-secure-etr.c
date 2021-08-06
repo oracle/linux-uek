@@ -366,7 +366,7 @@ static void tmc_etr_sync_secure_buf(struct etr_buf *etr_buf, u64 rrp, u64 rwp)
 	 * to copy the data to sysfs or perf buffer, we do not
 	 * generate SMC calls at different offsets everytime.
 	 */
-	tmc_copy_secure_buffer(secure_buf, etr_buf->offset, etr_buf->len);
+	tmc_copy_secure_buffer(secure_buf, 0x0, etr_buf->len);
 }
 
 static ssize_t tmc_etr_get_data_secure_buf(struct etr_buf *etr_buf,
