@@ -4003,8 +4003,7 @@ static int direct_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault
 		goto out_unlock;
 
 	if (is_tdp_mmu_fault) {
-		r = kvm_tdp_mmu_map(vcpu, gpa, error_code, fault->map_writable, fault->max_level,
-				    fault->pfn, fault->prefault);
+		r = kvm_tdp_mmu_map(vcpu, fault);
 	} else {
 		r = make_mmu_pages_available(vcpu);
 		if (r)
