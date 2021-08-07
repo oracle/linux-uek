@@ -18,7 +18,6 @@
 #include <linux/bio.h>
 #include <linux/stringify.h>
 #include <linux/gfp.h>
-#include <linux/bsg.h>
 #include <linux/smp.h>
 #include <linux/rcupdate.h>
 #include <linux/percpu-refcount.h>
@@ -33,7 +32,6 @@ struct elevator_queue;
 struct blk_trace;
 struct request;
 struct sg_io_hdr;
-struct bsg_job;
 struct blkcg_gq;
 struct blk_flush_queue;
 struct pr_ops;
@@ -273,9 +271,6 @@ enum blk_queue_state {
 #define BLK_TAG_ALLOC_FIFO 0 /* allocate starting from 0 */
 #define BLK_TAG_ALLOC_RR 1 /* allocate starting from last allocated tag */
 
-#define BLK_SCSI_MAX_CMDS	(256)
-#define BLK_SCSI_CMD_PER_LONG	(BLK_SCSI_MAX_CMDS / (sizeof(long) * 8))
-
 /*
  * Zoned block device models (zoned limit).
  *
@@ -504,11 +499,6 @@ struct request_queue {
 	unsigned int		max_active_zones;
 #endif /* CONFIG_BLK_DEV_ZONED */
 
-	/*
-	 * sg stuff
-	 */
-	unsigned int		sg_timeout;
-	unsigned int		sg_reserved_size;
 	int			node;
 	struct mutex		debugfs_mutex;
 #ifdef CONFIG_BLK_DEV_IO_TRACE
@@ -534,10 +524,6 @@ struct request_queue {
 	spinlock_t		unused_hctx_lock;
 
 	int			mq_freeze_depth;
-
-#if IS_ENABLED(CONFIG_BLK_DEV_BSG_COMMON)
-	struct bsg_class_device bsg_dev;
-#endif
 
 #ifdef CONFIG_BLK_DEV_THROTTLING
 	/* Throttle data */
