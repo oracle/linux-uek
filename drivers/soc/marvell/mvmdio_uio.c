@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Marvell's MDIO bus uio driver
  *
- * Copyright (C) 2021 Marvell International Ltd.
+ * Copyright (C) 2021 Marvell
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -43,20 +43,23 @@ static ssize_t mv_mdio_device_read(struct file *file,
 {
 	int ret;
 	struct mii_data mii;
+	struct mii_bus *bus;
 
 	if (copy_from_user(&mii, (struct mii_data *)buf, sizeof(struct mii_data))) {
 		pr_err("copy_from_user failed\n");
 		return -EFAULT;
 	}
 
-	if (mv_mii_buses[mii.bus_id] == NULL) {
+	if (mii.bus_id < 0 || mii.bus_id >= MAX_MDIO_BUS)
+		return -EINVAL;
+
+	bus = mv_mii_buses[mii.bus_id];
+	if (!bus) {
 		pr_err("invalid bus_id\n");
 		return -EINVAL;
 	}
 
-	ret = mv_mii_buses[mii.bus_id]->read(mv_mii_buses[mii.bus_id],
-		mii.phy_id, mii.reg);
-
+	ret = mdiobus_read(bus, mii.phy_id, mii.reg);
 	if (ret < 0) {
 		pr_err("smi read failed at Bus: %X, devAddr: %X, regAddr: %X\n",
 			mii.bus_id, mii.phy_id, mii.reg);
@@ -77,20 +80,23 @@ static ssize_t mv_mdio_device_write(struct file *file,
 {
 	int ret;
 	struct mii_data mii;
+	struct mii_bus *bus;
 
 	if (copy_from_user(&mii, (struct mii_data *)buf, sizeof(struct mii_data))) {
 		pr_err("copy_from_user failed\n");
 		return -EFAULT;
 	}
 
-	if (mv_mii_buses[mii.bus_id] == NULL) {
+	if (mii.bus_id < 0 || mii.bus_id >= MAX_MDIO_BUS)
+		return -EINVAL;
+
+	bus = mv_mii_buses[mii.bus_id];
+	if (!bus) {
 		pr_err("invalid bus_id\n");
 		return -EINVAL;
 	}
 
-	ret = mv_mii_buses[mii.bus_id]->write(mv_mii_buses[mii.bus_id],
-		mii.phy_id, mii.reg, mii.data);
-
+	ret = mdiobus_write(bus, mii.phy_id, mii.reg, mii.data);
 	if (ret < 0) {
 		pr_err("smi write failed at bus: %X, devAddr: %X, regAddr: %X\n",
 			mii.bus_id, mii.phy_id, mii.reg);
