@@ -20,3 +20,4 @@ Security Documentation
    landlock
    secrets/index
    ipe
+   launch-integrity/index
