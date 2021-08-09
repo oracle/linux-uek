@@ -21,9 +21,36 @@
 #define MVMDIO_CLASS_NAME "mvmdio-uio-class"
 #define MAX_MDIO_BUS 8
 
+static inline int mvmdio_read(struct mii_bus *bus, int bus_id,
+			int phy_addr, u32 reg)
+{
+	int ret;
+
+	ret = __mdiobus_read(bus, phy_addr, reg);
+	if (ret < 0) {
+		pr_err("smi read failed: bus:%d, phy:0x%x, reg:0x%x\n",
+			bus_id, phy_addr, reg);
+	}
+	return ret;
+}
+
+static inline int mvmdio_write(struct mii_bus *bus, int bus_id,
+			int phy_addr, u32 reg, u16 data)
+{
+	int ret;
+
+	ret = __mdiobus_write(bus, phy_addr, reg, data);
+	if (ret < 0) {
+		pr_err("smi write failed: bus:%d, phy:0x%x, reg:0x%x, data=0x%hx\n",
+			bus_id, phy_addr, reg, data);
+	}
+	return ret;
+}
+
 static struct mii_bus *mv_mii_buses[MAX_MDIO_BUS];
 static struct class *mv_cl;
 static int major;
+static int paged_access;
 
 struct mii_data {
 	int bus_id;
@@ -32,7 +59,12 @@ struct mii_data {
 	u16 data;
 };
 
-/* Create character device */
+struct mii_data_pgd_access {
+	struct mii_data md;
+	int page_reg;
+	int page_num;
+};
+
 static int mv_mdio_device_open(struct inode *inode, struct file *file)
 {
 	return 0;
@@ -42,68 +74,147 @@ static ssize_t mv_mdio_device_read(struct file *file,
 		char *buf, size_t count, loff_t *f_pos)
 {
 	int ret;
-	struct mii_data mii;
+	int page, prev_page;
+	struct mii_data_pgd_access mii;
 	struct mii_bus *bus;
+	size_t data_sz;
 
-	if (copy_from_user(&mii, (struct mii_data *)buf, sizeof(struct mii_data))) {
+	data_sz = paged_access ?
+		sizeof(struct mii_data_pgd_access) :
+		sizeof(struct mii_data);
+
+	if (copy_from_user(&mii, (struct mii_data_pgd_access *)buf, data_sz)) {
 		pr_err("copy_from_user failed\n");
 		return -EFAULT;
 	}
 
-	if (mii.bus_id < 0 || mii.bus_id >= MAX_MDIO_BUS)
+	page = paged_access ? mii.page_num : -1;
+
+	if (mii.md.bus_id < 0 || mii.md.bus_id >= MAX_MDIO_BUS)
 		return -EINVAL;
 
-	bus = mv_mii_buses[mii.bus_id];
+	bus = mv_mii_buses[mii.md.bus_id];
 	if (!bus) {
 		pr_err("invalid bus_id\n");
 		return -EINVAL;
 	}
 
-	ret = mdiobus_read(bus, mii.phy_id, mii.reg);
-	if (ret < 0) {
-		pr_err("smi read failed at Bus: %X, devAddr: %X, regAddr: %X\n",
-			mii.bus_id, mii.phy_id, mii.reg);
-		return ret;
-	}
-	mii.data = (u16)ret;
+	mutex_lock(&bus->mdio_lock);
 
-	if (copy_to_user((struct mii_data *)buf, &mii, sizeof(struct mii_data))) {
+	if (page != -1) {
+		/* Save the current page number */
+		ret = mvmdio_read(bus, mii.md.bus_id,
+			mii.md.phy_id, mii.page_reg);
+		if (ret < 0)
+			goto mdio_failed;
+
+		prev_page = ret;
+
+		/* Set a new page number */
+		ret = mvmdio_write(bus, mii.md.bus_id, mii.md.phy_id,
+			mii.page_reg, page);
+		if (ret < 0)
+			goto mdio_failed;
+	}
+
+	/* Read the target register */
+	ret = mvmdio_read(bus, mii.md.bus_id,
+			mii.md.phy_id, mii.md.reg);
+	if (ret < 0)
+		goto mdio_failed;
+
+	mii.md.data = (u16)ret;
+
+	if (page != -1) {
+		/* Restore the previous page number */
+		ret = mvmdio_write(bus, mii.md.bus_id, mii.md.phy_id,
+			mii.page_reg, prev_page);
+		if (ret < 0)
+			goto mdio_failed;
+	}
+
+	mutex_unlock(&bus->mdio_lock);
+
+	if (copy_to_user((struct mii_data_pgd_access *)buf, &mii, data_sz)) {
 		pr_err("copy_to_user failed\n");
 		return -EFAULT;
 	}
 
 	return 0;
+
+mdio_failed:
+	mutex_unlock(&bus->mdio_lock);
+	return ret;
 }
 
 static ssize_t mv_mdio_device_write(struct file *file,
 		const char *buf, size_t count, loff_t *f_pos)
 {
 	int ret;
-	struct mii_data mii;
+	int page, prev_page;
+	struct mii_data_pgd_access mii;
 	struct mii_bus *bus;
+	size_t data_sz;
 
-	if (copy_from_user(&mii, (struct mii_data *)buf, sizeof(struct mii_data))) {
+	data_sz = paged_access ?
+		sizeof(struct mii_data_pgd_access) :
+		sizeof(struct mii_data);
+
+	if (copy_from_user(&mii, (struct mii_data_pgd_access *)buf, data_sz)) {
 		pr_err("copy_from_user failed\n");
 		return -EFAULT;
 	}
 
-	if (mii.bus_id < 0 || mii.bus_id >= MAX_MDIO_BUS)
+	page = paged_access ? mii.page_num : -1;
+
+	if (mii.md.bus_id < 0 || mii.md.bus_id >= MAX_MDIO_BUS)
 		return -EINVAL;
 
-	bus = mv_mii_buses[mii.bus_id];
+	bus = mv_mii_buses[mii.md.bus_id];
 	if (!bus) {
 		pr_err("invalid bus_id\n");
 		return -EINVAL;
 	}
 
-	ret = mdiobus_write(bus, mii.phy_id, mii.reg, mii.data);
-	if (ret < 0) {
-		pr_err("smi write failed at bus: %X, devAddr: %X, regAddr: %X\n",
-			mii.bus_id, mii.phy_id, mii.reg);
-		return ret;
+	mutex_lock(&bus->mdio_lock);
+
+	if (page != -1) {
+		/* Save the current page number */
+		ret = mvmdio_read(bus, mii.md.bus_id,
+			mii.md.phy_id, mii.page_reg);
+		if (ret < 0)
+			goto mdio_failed;
+
+		prev_page = ret;
+
+		/* Set a new page number */
+		ret = mvmdio_write(bus, mii.md.bus_id, mii.md.phy_id,
+			mii.page_reg, page);
+		if (ret < 0)
+			goto mdio_failed;
 	}
 
+	/* Write the target register */
+	ret = mvmdio_write(bus, mii.md.bus_id,
+		mii.md.phy_id, mii.md.reg, mii.md.data);
+	if (ret < 0)
+		goto mdio_failed;
+
+	if (page != -1) {
+		/* Restore the previous page number */
+		ret = mvmdio_write(bus, mii.md.bus_id, mii.md.phy_id,
+			mii.page_reg, prev_page);
+		if (ret < 0)
+			goto mdio_failed;
+	}
+
+	mutex_unlock(&bus->mdio_lock);
+
 	return 0;
+
+mdio_failed:
+	mutex_unlock(&bus->mdio_lock);
+	return ret;
 }
 
 static int mv_mdio_device_close(struct inode *inode, struct file *file)
@@ -197,5 +308,7 @@ static void __exit mv_mdio_device_exit(void)
 late_initcall(mv_mdio_device_init);
 module_exit(mv_mdio_device_exit);
 
+module_param(paged_access, int, 0644);
+MODULE_PARM_DESC(paged_access, "Enable paged access support");
 MODULE_DESCRIPTION("Marvell MDIO uio driver");
 MODULE_LICENSE("GPL v2");
