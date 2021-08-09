@@ -1091,6 +1091,7 @@ static int ip6gre_tunnel_init_common(struct net_device *dev)
 
 	ip6gre_tnl_init_features(dev);
 
+	dev_hold(dev);
 	return 0;
 }
 
@@ -1421,7 +1422,6 @@ static int ip6gre_newlink(struct net *src_net, struct net_device *dev,
 	if (tb[IFLA_MTU])
 		ip6_tnl_change_mtu(dev, nla_get_u32(tb[IFLA_MTU]));
 
-	dev_hold(dev);
 	ip6gre_tunnel_link(ign, nt);
 
 out:
