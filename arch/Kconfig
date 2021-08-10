@@ -440,15 +440,16 @@ config MMU_LAZY_TLB_REFCOUNT
 	def_bool y
 	depends on !MMU_LAZY_TLB_SHOOTDOWN
 
-# Instead of refcounting the lazy mm struct for kernel thread references
-# (which can cause contention with multi-threaded apps on large multiprocessor
-# systems), this option causes __mmdrop to IPI all CPUs in the mm_cpumask and
-# switch to init_mm if they were using the to-be-freed mm as the lazy tlb. To
-# implement this, architectures must use _lazy_tlb variants of mm refcounting
-# when releasing kernel thread mm references, and mm_cpumask must include at
-# least all possible CPUs in which the mm might be lazy, at the time of the
-# final mmdrop. mmgrab/mmdrop in arch/ code must be switched to _lazy_tlb
-# postfix as necessary.
+# This option allows MMU_LAZY_TLB_REFCOUNT=n. It ensures no CPUs are using an
+# mm as a lazy tlb beyond its last reference count, by shooting down these
+# users before the mm is deallocated. __mmdrop() first IPIs all CPUs that may
+# be using the mm as a lazy tlb, so that they may switch themselves to using
+# init_mm for their active mm. mm_cpumask(mm) is used to determine which CPUs
+# may be using mm as a lazy tlb mm.
+#
+# To implement this, an arch must ensure mm_cpumask(mm) contains at least all
+# possible CPUs in which the mm is lazy, and it must meet the requirements for
+# MMU_LAZY_TLB_REFCOUNT=n (see above).
 config MMU_LAZY_TLB_SHOOTDOWN
 	bool
 
