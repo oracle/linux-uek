@@ -2253,14 +2253,14 @@ static int __gup_device_huge(unsigned long pfn, unsigned long addr,
 		pages[*nr] = page;
 		if (unlikely(!try_grab_page(page, flags))) {
 			undo_dev_pagemap(nr, nr_start, flags, pages);
+			put_dev_pagemap(pgmap);
 			return 0;
 		}
 		(*nr)++;
 		pfn++;
 	} while (addr += PAGE_SIZE, addr != end);
 
-	if (pgmap)
-		put_dev_pagemap(pgmap);
+	put_dev_pagemap(pgmap);
 	return 1;
 }
 
