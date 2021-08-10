@@ -136,7 +136,7 @@ static struct parsed_partitions *check_partition(struct gendisk *hd)
 	state->pp_buf[0] = '\0';
 
 	state->bdev = hd->part0;
-	disk_name(hd, 0, state->name);
+	snprintf(state->name, BDEVNAME_SIZE, "%s", hd->disk_name);
 	snprintf(state->pp_buf, PAGE_SIZE, " %s:", state->name);
 	if (isdigit(state->name[strlen(state->name)-1]))
 		sprintf(state->name, "p");
@@ -261,7 +261,8 @@ static void part_release(struct device *dev)
 {
 	if (MAJOR(dev->devt) == BLOCK_EXT_MAJOR)
 		blk_free_ext_minor(MINOR(dev->devt));
-	bdput(dev_to_bdev(dev));
+	put_disk(dev_to_bdev(dev)->bd_disk);
+	iput(dev_to_bdev(dev)->bd_inode);
 }
 
 static int part_uevent(struct device *dev, struct kobj_uevent_env *env)
@@ -281,12 +282,10 @@ struct device_type part_type = {
 	.uevent		= part_uevent,
 };
 
-/*
- * Must be called either with open_mutex held, before a disk can be opened or
- * after all disk users are gone.
- */
 static void delete_partition(struct block_device *part)
 {
+	lockdep_assert_held(&part->bd_disk->open_mutex);
+
 	fsync_bdev(part);
 	__invalidate_device(part, true);
 
@@ -351,19 +350,16 @@ static struct block_device *add_partition(struct gendisk *disk, int partno,
 	if (xa_load(&disk->part_tbl, partno))
 		return ERR_PTR(-EBUSY);
 
+	/* ensure we always have a reference to the whole disk */
+	get_device(disk_to_dev(disk));
+
+	err = -ENOMEM;
 	bdev = bdev_alloc(disk, partno);
 	if (!bdev)
-		return ERR_PTR(-ENOMEM);
+		goto out_put_disk;
 
 	bdev->bd_start_sect = start;
 	bdev_set_nr_sectors(bdev, len);
-
-	if (info) {
-		err = -ENOMEM;
-		bdev->bd_meta_info = kmemdup(info, sizeof(*info), GFP_KERNEL);
-		if (!bdev->bd_meta_info)
-			goto out_bdput;
-	}
 
 	pdev = &bdev->bd_device;
 	dname = dev_name(ddev);
@@ -387,6 +383,13 @@ static struct block_device *add_partition(struct gendisk *disk, int partno,
 		devt = MKDEV(BLOCK_EXT_MAJOR, err);
 	}
 	pdev->devt = devt;
+
+	if (info) {
+		err = -ENOMEM;
+		bdev->bd_meta_info = kmemdup(info, sizeof(*info), GFP_KERNEL);
+		if (!bdev->bd_meta_info)
+			goto out_put;
+	}
 
 	/* delay uevent until 'holders' subdir is created */
 	dev_set_uevent_suppress(pdev, 1);
@@ -417,14 +420,13 @@ static struct block_device *add_partition(struct gendisk *disk, int partno,
 		kobject_uevent(&pdev->kobj, KOBJ_ADD);
 	return bdev;
 
-out_bdput:
-	bdput(bdev);
-	return ERR_PTR(err);
 out_del:
 	kobject_put(bdev->bd_holder_dir);
 	device_del(pdev);
 out_put:
 	put_device(pdev);
+out_put_disk:
+	put_disk(disk);
 	return ERR_PTR(err);
 }
 
