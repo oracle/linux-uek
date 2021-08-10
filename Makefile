@@ -191,10 +191,9 @@ endif
 ifneq ($(abs_srctree),$(abs_objtree))
 # Look for make include files relative to root of kernel src
 #
-# This does not become effective immediately because MAKEFLAGS is re-parsed
-# once after the Makefile is read. We need to invoke sub-make.
+# --included-dir is added for backward compatibility, but you should not rely on
+# it. Please add $(srctree)/ prefix to include Makefiles in the source tree.
 MAKEFLAGS += --include-dir=$(abs_srctree)
-need-sub-make := 1
 endif
 
 ifneq ($(filter 3.%,$(MAKE_VERSION)),)
@@ -582,23 +581,10 @@ endif
 # Some architectures define CROSS_COMPILE in arch/$(SRCARCH)/Makefile.
 # CC_VERSION_TEXT is referenced from Kconfig (so it needs export),
 # and from include/config/auto.conf.cmd to detect the compiler upgrade.
-CC_VERSION_TEXT = $(subst $(pound),,$(shell $(CC) --version 2>/dev/null | head -n 1))
+CC_VERSION_TEXT = $(subst $(pound),,$(shell LC_ALL=C $(CC) --version 2>/dev/null | head -n 1))
 
 ifneq ($(findstring clang,$(CC_VERSION_TEXT)),)
-ifneq ($(CROSS_COMPILE),)
-CLANG_FLAGS	+= --target=$(notdir $(CROSS_COMPILE:%-=%))
-endif
-ifeq ($(LLVM_IAS),1)
-CLANG_FLAGS	+= -integrated-as
-else
-CLANG_FLAGS	+= -no-integrated-as
-GCC_TOOLCHAIN_DIR := $(dir $(shell which $(CROSS_COMPILE)elfedit))
-CLANG_FLAGS	+= --prefix=$(GCC_TOOLCHAIN_DIR)$(notdir $(CROSS_COMPILE))
-endif
-CLANG_FLAGS	+= -Werror=unknown-warning-option
-KBUILD_CFLAGS	+= $(CLANG_FLAGS)
-KBUILD_AFLAGS	+= $(CLANG_FLAGS)
-export CLANG_FLAGS
+include $(srctree)/scripts/Makefile.clang
 endif
 
 # Include this also for config targets because some architectures need
@@ -857,7 +843,7 @@ else
 DEBUG_CFLAGS	+= -g
 endif
 
-ifneq ($(LLVM_IAS),1)
+ifndef CONFIG_AS_IS_LLVM
 KBUILD_AFLAGS	+= -Wa,-gdwarf-2
 endif
 
@@ -1740,6 +1726,16 @@ clean-dirs := $(KBUILD_EXTMOD)
 clean: rm-files := $(KBUILD_EXTMOD)/Module.symvers $(KBUILD_EXTMOD)/modules.nsdeps \
 	$(KBUILD_EXTMOD)/compile_commands.json $(KBUILD_EXTMOD)/.thinlto-cache
 
+PHONY += prepare
+# now expand this into a simple variable to reduce the cost of shell evaluations
+prepare: CC_VERSION_TEXT := $(CC_VERSION_TEXT)
+prepare:
+	@if [ "$(CC_VERSION_TEXT)" != $(CONFIG_CC_VERSION_TEXT) ]; then \
+		echo >&2 "warning: the compiler differs from the one used to build the kernel"; \
+		echo >&2 "  The kernel was built by: "$(CONFIG_CC_VERSION_TEXT); \
+		echo >&2 "  You are using:           $(CC_VERSION_TEXT)"; \
+	fi
+
 PHONY += help
 help:
 	@echo  '  Building external modules.'
@@ -1751,7 +1747,7 @@ help:
 	@echo  ''
 
 # no-op for external module builds
-PHONY += prepare modules_prepare
+PHONY += modules_prepare
 
 endif # KBUILD_EXTMOD
 
