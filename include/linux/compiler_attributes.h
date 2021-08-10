@@ -37,6 +37,7 @@
 # define __GCC4_has_attribute___nonstring__           0
 # define __GCC4_has_attribute___no_sanitize_address__ 1
 # define __GCC4_has_attribute___no_sanitize_undefined__ 1
+# define __GCC4_has_attribute___no_sanitize_coverage__ 0
 # define __GCC4_has_attribute___fallthrough__         0
 #endif
 
