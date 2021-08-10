@@ -10,6 +10,7 @@
 #include <linux/damon.h>
 #include <linux/mm.h>
 #include <linux/mmu_notifier.h>
+#include <linux/highmem.h>
 #include <linux/page_idle.h>
 #include <linux/random.h>
 #include <linux/sched/mm.h>
