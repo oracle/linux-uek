@@ -2612,6 +2612,7 @@ config TEST_FPU
 config TEST_CLOCKSOURCE_WATCHDOG
 	tristate "Test clocksource watchdog in kernel space"
 	depends on CLOCKSOURCE_WATCHDOG
+	depends on HZ >= 100
 	help
 	  Enable this option to create a kernel module that will trigger
 	  a test of the clocksource watchdog.  This module may be loaded
