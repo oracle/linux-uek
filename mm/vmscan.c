@@ -519,7 +519,7 @@ static long add_nr_deferred(long nr, struct shrinker *shrinker,
 	return atomic_long_add_return(nr, &shrinker->nr_deferred[nid]);
 }
 
-static bool can_demote_anon_pages(int nid, struct scan_control *sc)
+static bool can_demote(int nid, struct scan_control *sc)
 {
 	if (sc->no_demotion)
 		return false;
@@ -1343,7 +1343,7 @@ static unsigned int shrink_page_list(struct list_head *page_list,
 
 	memset(stat, 0, sizeof(*stat));
 	cond_resched();
-	do_demote_pass = can_demote_anon_pages(pgdat->node_id, sc);
+	do_demote_pass = can_demote(pgdat->node_id, sc);
 
 retry:
 	while (!list_empty(page_list)) {
