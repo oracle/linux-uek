@@ -234,8 +234,11 @@ long oom_badness(struct task_struct *p, unsigned long totalpages)
 		mm_pgtables_bytes(p->mm) / PAGE_SIZE;
 	task_unlock(p);
 
-	/* Normalize to oom_score_adj units */
-	adj *= totalpages / 1000;
+	/*
+	 * Normalize to oom_score_adj units.  You should never
+	 * multiply by zero here, or oom_score_adj will not work.
+	 */
+	adj *= (totalpages + 1000) / 1000;
 	points += adj;
 
 	return points;
