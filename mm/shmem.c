@@ -1708,8 +1708,8 @@ static int shmem_swapin_page(struct inode *inode, pgoff_t index,
 	/* Prevent swapoff from happening to us. */
 	si = get_swap_device(swap);
 	if (!si) {
-		error = EINVAL;
-		goto failed;
+		error = -EEXIST;
+		goto unlock;
 	}
 	/* Look it up and read it in.. */
 	page = lookup_swap_cache(swap, NULL, 0);
