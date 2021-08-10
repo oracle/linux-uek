@@ -552,7 +552,7 @@ static inline bool can_reclaim_anon_pages(struct mem_cgroup *memcg,
 	 *
 	 * Can it be reclaimed from this node via demotion?
 	 */
-	return can_demote_anon_pages(nid, sc);
+	return can_demote(nid, sc);
 }
 
 /*
