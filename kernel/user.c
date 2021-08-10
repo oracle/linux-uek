@@ -133,8 +133,9 @@ static int user_epoll_alloc(struct user_struct *up)
 {
 #ifdef CONFIG_EPOLL
 	return percpu_counter_init(&up->epoll_watches, 0, GFP_KERNEL);
-#endif
+#else
 	return 0;
+#endif
 }
 
 static void user_epoll_free(struct user_struct *up)
