@@ -64,4 +64,13 @@ void stack_free(unsigned long stack);
 
 extern char kprobes_insn_page[];
 
+extern char _samode31[], _eamode31[];
+extern char _stext_amode31[], _etext_amode31[];
+extern struct exception_table_entry _start_amode31_ex_table[];
+extern struct exception_table_entry _stop_amode31_ex_table[];
+
+#define __amode31_data __section(".amode31.data")
+#define __amode31_ref __section(".amode31.refs")
+extern long _start_amode31_refs[], _end_amode31_refs[];
+
 #endif /* _ENTRY_H */
