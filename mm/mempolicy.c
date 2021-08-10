@@ -1438,6 +1438,7 @@ static int copy_nodes_to_user(unsigned long __user *mask, unsigned long maxnode,
 		if (clear_user((char __user *)mask + nbytes, copy - nbytes))
 			return -EFAULT;
 		copy = nbytes;
+		maxnode = nr_node_ids;
 	}
 
 	if (compat)
