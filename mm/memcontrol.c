@@ -5350,7 +5350,7 @@ void mem_cgroup_flush_stats(void)
 	if (!spin_trylock(&stats_flush_lock))
 		return;
 
-	cgroup_rstat_flush(root_mem_cgroup->css.cgroup);
+	cgroup_rstat_flush_irqsafe(root_mem_cgroup->css.cgroup);
 	spin_unlock(&stats_flush_lock);
 }
 
