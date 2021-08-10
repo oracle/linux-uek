@@ -939,6 +939,9 @@ struct kvm_arch {
 	struct kvm_apic_map *apic_map;
 	atomic_t apic_map_dirty;
 
+	/* Protects apic_access_memslot_enabled and apicv_inhibit_reasons */
+	struct mutex apicv_update_lock;
+
 	bool apic_access_memslot_enabled;
 	unsigned long apicv_inhibit_reasons;
 
@@ -1527,6 +1530,9 @@ bool kvm_apicv_activated(struct kvm *kvm);
 void kvm_vcpu_update_apicv(struct kvm_vcpu *vcpu);
 void kvm_request_apicv_update(struct kvm *kvm, bool activate,
 			      unsigned long bit);
+
+void __kvm_request_apicv_update(struct kvm *kvm, bool activate,
+				unsigned long bit);
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu);
 
