@@ -2909,11 +2909,11 @@ static int kcompactd(void *p)
 			kcompactd_do_work(pgdat);
 			psi_memstall_leave(&pflags);
 			/*
-			 * Reset the timeout value. The defer timeout by
-			 * proactive compaction can effectively lost
-			 * here but that is fine as the condition of the
-			 * zone changed substantionally and carrying on
-			 * with the previous defer is not useful.
+			 * Reset the timeout value. The defer timeout from
+			 * proactive compaction is lost here but that is fine
+			 * as the condition of the zone changing substantionally
+			 * then carrying on with the previous defer interval is
+			 * not useful.
 			 */
 			timeout = default_timeout;
 			continue;
