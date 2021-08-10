@@ -741,6 +741,7 @@ config DEFERRED_STRUCT_PAGE_INIT
 
 config PAGE_IDLE_FLAG
 	bool "Add PG_idle and PG_young flags"
+	select PAGE_EXTENSION if !64BIT
 	help
 	  This feature adds PG_idle and PG_young flags in 'struct page'.  PTE
 	  Accessed bit writers can set the state of the bit in the flags to let
@@ -749,7 +750,6 @@ config PAGE_IDLE_FLAG
 config IDLE_PAGE_TRACKING
 	bool "Enable idle page tracking"
 	depends on SYSFS && MMU && BROKEN
-	select PAGE_EXTENSION if !64BIT
 	select PAGE_IDLE_FLAG
 	help
 	  This feature allows to estimate the amount of user pages that have
