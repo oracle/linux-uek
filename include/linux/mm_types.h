@@ -159,10 +159,12 @@ struct page {
 				struct mm_struct *pt_mm; /* x86 pgds only */
 				atomic_t pt_frag_refcount; /* powerpc */
 			};
+#if USE_SPLIT_PTE_PTLOCKS
 #if ALLOC_SPLIT_PTLOCKS
 			spinlock_t *ptl;
 #else
 			spinlock_t ptl;
+#endif
 #endif
 		};
 		struct {	/* ZONE_DEVICE pages */
