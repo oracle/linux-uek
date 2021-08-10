@@ -63,7 +63,8 @@ static inline void mmdrop_lazy_tlb(struct mm_struct *mm)
 	} else {
 		/*
 		 * mmdrop_lazy_tlb must provide a full memory barrier, see the
-		 * membarrier comment finish_task_switch which relies on this.
+		 * membarrier comment in finish_task_switch which relies on
+		 * this.
 		 */
 		smp_mb();
 	}
