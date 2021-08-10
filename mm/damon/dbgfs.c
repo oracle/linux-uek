@@ -97,8 +97,10 @@ out:
 	return ret;
 }
 
-#define targetid_is_pid(ctx)	\
-	(ctx->primitive.target_valid == damon_va_target_valid)
+static inline bool targetid_is_pid(const struct damon_ctx *ctx)
+{
+	return ctx->primitive.target_valid == damon_va_target_valid;
+}
 
 static ssize_t sprint_target_ids(struct damon_ctx *ctx, char *buf, ssize_t len)
 {
