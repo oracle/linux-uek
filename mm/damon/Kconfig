@@ -15,7 +15,6 @@ config DAMON
 config DAMON_VADDR
 	bool "Data access monitoring primitives for virtual address spaces"
 	depends on DAMON && MMU
-	select PAGE_EXTENSION if !64BIT
 	select PAGE_IDLE_FLAG
 	help
 	  This builds the default data access monitoring primitives for DAMON
