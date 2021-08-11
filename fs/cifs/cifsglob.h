@@ -1964,4 +1964,9 @@ static inline bool is_tcon_dfs(struct cifs_tcon *tcon)
 		tcon->share_flags & (SHI1005_FLAGS_DFS | SHI1005_FLAGS_DFS_ROOT);
 }
 
+static inline u64 cifs_flock_len(struct file_lock *fl)
+{
+	return fl->fl_end == OFFSET_MAX ? fl->fl_end - fl->fl_start: fl->fl_end - fl->fl_start + 1;
+}
+
 #endif	/* _CIFS_GLOB_H */
