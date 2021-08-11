@@ -595,7 +595,7 @@ int renesas_xhci_check_request_fw(struct pci_dev *pdev,
 
 	err = renesas_fw_check_running(pdev);
 	/* Continue ahead, if the firmware is already running. */
-	if (err == 0)
+	if (!err)
 		return 0;
 
 	if (err != 1)
@@ -619,10 +619,5 @@ exit:
 	return err;
 }
 EXPORT_SYMBOL_GPL(renesas_xhci_check_request_fw);
-
-void renesas_xhci_pci_exit(struct pci_dev *dev)
-{
-}
-EXPORT_SYMBOL_GPL(renesas_xhci_pci_exit);
 
 MODULE_LICENSE("GPL v2");

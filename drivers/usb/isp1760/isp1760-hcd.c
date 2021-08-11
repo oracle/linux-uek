@@ -250,7 +250,7 @@ static int isp1760_hcd_set_and_wait(struct usb_hcd *hcd, u32 field,
 	isp1760_hcd_set(hcd, field);
 
 	return regmap_field_read_poll_timeout(priv->fields[field], val,
-					      val, 10, timeout_us);
+					      val, 0, timeout_us);
 }
 
 static int isp1760_hcd_set_and_wait_swap(struct usb_hcd *hcd, u32 field,
@@ -262,7 +262,7 @@ static int isp1760_hcd_set_and_wait_swap(struct usb_hcd *hcd, u32 field,
 	isp1760_hcd_set(hcd, field);
 
 	return regmap_field_read_poll_timeout(priv->fields[field], val,
-					      !val, 10, timeout_us);
+					      !val, 0, timeout_us);
 }
 
 static int isp1760_hcd_clear_and_wait(struct usb_hcd *hcd, u32 field,
@@ -274,7 +274,7 @@ static int isp1760_hcd_clear_and_wait(struct usb_hcd *hcd, u32 field,
 	isp1760_hcd_clear(hcd, field);
 
 	return regmap_field_read_poll_timeout(priv->fields[field], val,
-					      !val, 10, timeout_us);
+					      !val, 0, timeout_us);
 }
 
 static bool isp1760_hcd_is_set(struct usb_hcd *hcd, u32 field)
@@ -733,7 +733,6 @@ static int isp1760_hc_setup(struct usb_hcd *hcd)
 
 	/* Change bus pattern */
 	scratch = isp1760_hcd_read(hcd, HC_CHIP_ID_HIGH);
-	dev_err(hcd->self.controller, "Scratch test 0x%08x\n", scratch);
 	scratch = isp1760_hcd_read(hcd, HC_SCRATCH);
 	if (scratch != pattern) {
 		dev_err(hcd->self.controller, "Scratch test failed. 0x%08x\n", scratch);
@@ -2528,17 +2527,23 @@ int __init isp1760_init_kmem_once(void)
 			SLAB_MEM_SPREAD, NULL);
 
 	if (!qtd_cachep)
-		return -ENOMEM;
+		goto destroy_urb_listitem;
 
 	qh_cachep = kmem_cache_create("isp1760_qh", sizeof(struct isp1760_qh),
 			0, SLAB_TEMPORARY | SLAB_MEM_SPREAD, NULL);
 
-	if (!qh_cachep) {
-		kmem_cache_destroy(qtd_cachep);
-		return -ENOMEM;
-	}
+	if (!qh_cachep)
+		goto destroy_qtd;
 
 	return 0;
+
+destroy_qtd:
+	kmem_cache_destroy(qtd_cachep);
+
+destroy_urb_listitem:
+	kmem_cache_destroy(urb_listitem_cachep);
+
+	return -ENOMEM;
 }
 
 void isp1760_deinit_kmem_cache(void)
