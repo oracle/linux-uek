@@ -222,7 +222,7 @@ static int __init cn10k_mac_mgmt_init(void)
 
 	ret = octeontx_soc_check_smc();
 	if (ret != 2) {
-		pr_info("%s: Not supported\n", __func__);
+		pr_debug("%s: Not supported\n", __func__);
 		return -EPERM;
 	}
 

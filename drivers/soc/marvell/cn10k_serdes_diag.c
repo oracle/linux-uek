@@ -922,7 +922,7 @@ static int __init serdes_dbg_init(void)
 	struct arm_smccc_res res;
 
 	if (octeontx_soc_check_smc() != 2) {
-		pr_info(DRV_NAME": Not supported\n");
+		pr_debug(DRV_NAME": Not supported\n");
 		return -EPERM;
 	}
 
