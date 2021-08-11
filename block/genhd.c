@@ -29,6 +29,23 @@
 
 static struct kobject *block_depr;
 
+/*
+ * Unique, monotonically increasing sequential number associated with block
+ * devices instances (i.e. incremented each time a device is attached).
+ * Associating uevents with block devices in userspace is difficult and racy:
+ * the uevent netlink socket is lossy, and on slow and overloaded systems has
+ * a very high latency.
+ * Block devices do not have exclusive owners in userspace, any process can set
+ * one up (e.g. loop devices). Moreover, device names can be reused (e.g. loop0
+ * can be reused again and again).
+ * A userspace process setting up a block device and watching for its events
+ * cannot thus reliably tell whether an event relates to the device it just set
+ * up or another earlier instance with the same name.
+ * This sequential number allows userspace processes to solve this problem, and
+ * uniquely associate an uevent to the lifetime to a device.
+ */
+static atomic64_t diskseq;
+
 /* for extended dynamic devt allocation, currently only one major is used */
 #define NR_EXT_DEVT		(1 << MINORBITS)
 static DEFINE_IDA(ext_devt_ida);
@@ -78,11 +95,17 @@ bool set_capacity_and_notify(struct gendisk *disk, sector_t size)
 EXPORT_SYMBOL_GPL(set_capacity_and_notify);
 
 /*
- * Format the device name of the indicated disk into the supplied buffer and
- * return a pointer to that same buffer for convenience.
+ * Format the device name of the indicated block device into the supplied buffer
+ * and return a pointer to that same buffer for convenience.
+ *
+ * Note: do not use this in new code, use the %pg specifier to sprintf and
+ * printk insted.
  */
-char *disk_name(struct gendisk *hd, int partno, char *buf)
+const char *bdevname(struct block_device *bdev, char *buf)
 {
+	struct gendisk *hd = bdev->bd_disk;
+	int partno = bdev->bd_partno;
+
 	if (!partno)
 		snprintf(buf, BDEVNAME_SIZE, "%s", hd->disk_name);
 	else if (isdigit(hd->disk_name[strlen(hd->disk_name)-1]))
@@ -91,11 +114,6 @@ char *disk_name(struct gendisk *hd, int partno, char *buf)
 		snprintf(buf, BDEVNAME_SIZE, "%s%d", hd->disk_name, partno);
 
 	return buf;
-}
-
-const char *bdevname(struct block_device *bdev, char *buf)
-{
-	return disk_name(bdev->bd_disk, bdev->bd_partno, buf);
 }
 EXPORT_SYMBOL(bdevname);
 
@@ -429,6 +447,16 @@ static void register_disk(struct device *parent, struct gendisk *disk,
 		kobject_create_and_add("holders", &ddev->kobj);
 	disk->slave_dir = kobject_create_and_add("slaves", &ddev->kobj);
 
+	/*
+	 * XXX: this is a mess, can't wait for real error handling in add_disk.
+	 * Make sure ->slave_dir is NULL if we failed some of the registration
+	 * so that the cleanup in bd_unlink_disk_holder works properly.
+	 */
+	if (bd_register_pending_holders(disk) < 0) {
+		kobject_put(disk->slave_dir);
+		disk->slave_dir = NULL;
+	}
+
 	if (disk->flags & GENHD_FL_HIDDEN)
 		return;
 
@@ -438,29 +466,28 @@ static void register_disk(struct device *parent, struct gendisk *disk,
 	dev_set_uevent_suppress(ddev, 0);
 	disk_uevent(disk, KOBJ_ADD);
 
-	if (disk->queue->backing_dev_info->dev) {
-		err = sysfs_create_link(&ddev->kobj,
-			  &disk->queue->backing_dev_info->dev->kobj,
-			  "bdi");
+	if (disk->bdi->dev) {
+		err = sysfs_create_link(&ddev->kobj, &disk->bdi->dev->kobj,
+					"bdi");
 		WARN_ON(err);
 	}
 }
 
 /**
- * __device_add_disk - add disk information to kernel list
+ * device_add_disk - add disk information to kernel list
  * @parent: parent device for the disk
  * @disk: per-device partitioning information
  * @groups: Additional per-device sysfs groups
- * @register_queue: register the queue if set to true
  *
  * This function registers the partitioning information in @disk
  * with the kernel.
  *
  * FIXME: error handling
  */
-static void __device_add_disk(struct device *parent, struct gendisk *disk,
-			      const struct attribute_group **groups,
-			      bool register_queue)
+
+void device_add_disk(struct device *parent, struct gendisk *disk,
+		     const struct attribute_group **groups)
+
 {
 	int ret;
 
@@ -470,8 +497,7 @@ static void __device_add_disk(struct device *parent, struct gendisk *disk,
 	 * elevator if one is needed, that is, for devices requesting queue
 	 * registration.
 	 */
-	if (register_queue)
-		elevator_init_mq(disk->queue);
+	elevator_init_mq(disk->queue);
 
 	/*
 	 * If the driver provides an explicit major number it also must provide
@@ -513,20 +539,18 @@ static void __device_add_disk(struct device *parent, struct gendisk *disk,
 		disk->flags |= GENHD_FL_SUPPRESS_PARTITION_INFO;
 		disk->flags |= GENHD_FL_NO_PART_SCAN;
 	} else {
-		struct backing_dev_info *bdi = disk->queue->backing_dev_info;
 		struct device *dev = disk_to_dev(disk);
 
 		/* Register BDI before referencing it from bdev */
 		dev->devt = MKDEV(disk->major, disk->first_minor);
-		ret = bdi_register(bdi, "%u:%u",
+		ret = bdi_register(disk->bdi, "%u:%u",
 				   disk->major, disk->first_minor);
 		WARN_ON(ret);
-		bdi_set_owner(bdi, dev);
+		bdi_set_owner(disk->bdi, dev);
 		bdev_add(disk->part0, dev->devt);
 	}
 	register_disk(parent, disk, groups);
-	if (register_queue)
-		blk_register_queue(disk);
+	blk_register_queue(disk);
 
 	/*
 	 * Take an extra ref on queue which will be put on disk_release()
@@ -540,20 +564,7 @@ static void __device_add_disk(struct device *parent, struct gendisk *disk,
 	disk_add_events(disk);
 	blk_integrity_add(disk);
 }
-
-void device_add_disk(struct device *parent, struct gendisk *disk,
-		     const struct attribute_group **groups)
-
-{
-	__device_add_disk(parent, disk, groups, true);
-}
 EXPORT_SYMBOL(device_add_disk);
-
-void device_add_disk_no_queue_reg(struct device *parent, struct gendisk *disk)
-{
-	__device_add_disk(parent, disk, NULL, false);
-}
-EXPORT_SYMBOL(device_add_disk_no_queue_reg);
 
 /**
  * del_gendisk - remove the gendisk
@@ -585,18 +596,13 @@ void del_gendisk(struct gendisk *disk)
 	disk_del_events(disk);
 
 	mutex_lock(&disk->open_mutex);
+	remove_inode_hash(disk->part0->bd_inode);
 	disk->flags &= ~GENHD_FL_UP;
 	blk_drop_partitions(disk);
 	mutex_unlock(&disk->open_mutex);
 
 	fsync_bdev(disk->part0);
 	__invalidate_device(disk->part0, true);
-
-	/*
-	 * Unhash the bdev inode for this device so that it can't be looked
-	 * up any more even if openers still hold references to it.
-	 */
-	remove_inode_hash(disk->part0->bd_inode);
 
 	set_capacity(disk, 0);
 
@@ -607,7 +613,7 @@ void del_gendisk(struct gendisk *disk)
 		 * Unregister bdi before releasing device numbers (as they can
 		 * get reused and we'd get clashes in sysfs).
 		 */
-		bdi_unregister(disk->queue->backing_dev_info);
+		bdi_unregister(disk->bdi);
 	}
 
 	blk_unregister_queue(disk);
@@ -683,7 +689,6 @@ void __init printk_all_partitions(void)
 	while ((dev = class_dev_iter_next(&iter))) {
 		struct gendisk *disk = dev_to_disk(dev);
 		struct block_device *part;
-		char name_buf[BDEVNAME_SIZE];
 		char devt_buf[BDEVT_SIZE];
 		unsigned long idx;
 
@@ -703,11 +708,10 @@ void __init printk_all_partitions(void)
 		xa_for_each(&disk->part_tbl, idx, part) {
 			if (!bdev_nr_sectors(part))
 				continue;
-			printk("%s%s %10llu %s %s",
+			printk("%s%s %10llu %pg %s",
 			       bdev_is_partition(part) ? "  " : "",
 			       bdevt_str(part->bd_dev, devt_buf),
-			       bdev_nr_sectors(part) >> 1,
-			       disk_name(disk, part->bd_partno, name_buf),
+			       bdev_nr_sectors(part) >> 1, part,
 			       part->bd_meta_info ?
 					part->bd_meta_info->uuid : "");
 			if (bdev_is_partition(part))
@@ -785,7 +789,6 @@ static int show_partition(struct seq_file *seqf, void *v)
 	struct gendisk *sgp = v;
 	struct block_device *part;
 	unsigned long idx;
-	char buf[BDEVNAME_SIZE];
 
 	/* Don't show non-partitionable removeable devices or empty devices */
 	if (!get_capacity(sgp) || (!disk_max_parts(sgp) &&
@@ -798,10 +801,9 @@ static int show_partition(struct seq_file *seqf, void *v)
 	xa_for_each(&sgp->part_tbl, idx, part) {
 		if (!bdev_nr_sectors(part))
 			continue;
-		seq_printf(seqf, "%4d  %7d %10llu %s\n",
+		seq_printf(seqf, "%4d  %7d %10llu %pg\n",
 			   MAJOR(part->bd_dev), MINOR(part->bd_dev),
-			   bdev_nr_sectors(part) >> 1,
-			   disk_name(sgp, part->bd_partno, buf));
+			   bdev_nr_sectors(part) >> 1, part);
 	}
 	rcu_read_unlock();
 	return 0;
@@ -968,6 +970,14 @@ static ssize_t disk_discard_alignment_show(struct device *dev,
 	return sprintf(buf, "%d\n", queue_discard_alignment(disk->queue));
 }
 
+static ssize_t diskseq_show(struct device *dev,
+			    struct device_attribute *attr, char *buf)
+{
+	struct gendisk *disk = dev_to_disk(dev);
+
+	return sprintf(buf, "%llu\n", disk->diskseq);
+}
+
 static DEVICE_ATTR(range, 0444, disk_range_show, NULL);
 static DEVICE_ATTR(ext_range, 0444, disk_ext_range_show, NULL);
 static DEVICE_ATTR(removable, 0444, disk_removable_show, NULL);
@@ -980,6 +990,7 @@ static DEVICE_ATTR(capability, 0444, disk_capability_show, NULL);
 static DEVICE_ATTR(stat, 0444, part_stat_show, NULL);
 static DEVICE_ATTR(inflight, 0444, part_inflight_show, NULL);
 static DEVICE_ATTR(badblocks, 0644, disk_badblocks_show, disk_badblocks_store);
+static DEVICE_ATTR(diskseq, 0444, diskseq_show, NULL);
 
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 ssize_t part_fail_show(struct device *dev,
@@ -1025,6 +1036,7 @@ static struct attribute *disk_attrs[] = {
 	&dev_attr_events.attr,
 	&dev_attr_events_async.attr,
 	&dev_attr_events_poll_msecs.attr,
+	&dev_attr_diskseq.attr,
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 	&dev_attr_fail.attr,
 #endif
@@ -1074,6 +1086,7 @@ static void disk_release(struct device *dev)
 
 	might_sleep();
 
+	bdi_put(disk->bdi);
 	if (MAJOR(dev->devt) == BLOCK_EXT_MAJOR)
 		blk_free_ext_minor(MINOR(dev->devt));
 	disk_release_events(disk);
@@ -1081,10 +1094,19 @@ static void disk_release(struct device *dev)
 	xa_destroy(&disk->part_tbl);
 	if (test_bit(GD_QUEUE_REF, &disk->state) && disk->queue)
 		blk_put_queue(disk->queue);
-	bdput(disk->part0);	/* frees the disk */
+	iput(disk->part0->bd_inode);	/* frees the disk */
 }
+
+static int block_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	struct gendisk *disk = dev_to_disk(dev);
+
+	return add_uevent_var(env, "DISKSEQ=%llu", disk->diskseq);
+}
+
 struct class block_class = {
 	.name		= "block",
+	.dev_uevent	= block_uevent,
 };
 
 static char *block_devnode(struct device *dev, umode_t *mode,
@@ -1116,7 +1138,6 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 {
 	struct gendisk *gp = v;
 	struct block_device *hd;
-	char buf[BDEVNAME_SIZE];
 	unsigned int inflight;
 	struct disk_stats stat;
 	unsigned long idx;
@@ -1139,15 +1160,14 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 		else
 			inflight = part_in_flight(hd);
 
-		seq_printf(seqf, "%4d %7d %s "
+		seq_printf(seqf, "%4d %7d %pg "
 			   "%lu %lu %lu %u "
 			   "%lu %lu %lu %u "
 			   "%u %u %u "
 			   "%lu %lu %lu %u "
 			   "%lu %u"
 			   "\n",
-			   MAJOR(hd->bd_dev), MINOR(hd->bd_dev),
-			   disk_name(gp, hd->bd_partno, buf),
+			   MAJOR(hd->bd_dev), MINOR(hd->bd_dev), hd,
 			   stat.ios[STAT_READ],
 			   stat.merges[STAT_READ],
 			   stat.sectors[STAT_READ],
@@ -1247,9 +1267,13 @@ struct gendisk *__alloc_disk_node(int minors, int node_id)
 	if (!disk)
 		return NULL;
 
+	disk->bdi = bdi_alloc(node_id);
+	if (!disk->bdi)
+		goto out_free_disk;
+
 	disk->part0 = bdev_alloc(disk, 0);
 	if (!disk->part0)
-		goto out_free_disk;
+		goto out_free_bdi;
 
 	disk->node_id = node_id;
 	mutex_init(&disk->open_mutex);
@@ -1262,11 +1286,17 @@ struct gendisk *__alloc_disk_node(int minors, int node_id)
 	disk_to_dev(disk)->class = &block_class;
 	disk_to_dev(disk)->type = &disk_type;
 	device_initialize(disk_to_dev(disk));
+	inc_diskseq(disk);
+#ifdef CONFIG_BLOCK_HOLDER_DEPRECATED
+	INIT_LIST_HEAD(&disk->slave_bdevs);
+#endif
 	return disk;
 
 out_destroy_part_tbl:
 	xa_destroy(&disk->part_tbl);
-	bdput(disk->part0);
+	iput(disk->part0->bd_inode);
+out_free_bdi:
+	bdi_put(disk->bdi);
 out_free_disk:
 	kfree(disk);
 	return NULL;
@@ -1362,3 +1392,8 @@ int bdev_read_only(struct block_device *bdev)
 	return bdev->bd_read_only || get_disk_ro(bdev->bd_disk);
 }
 EXPORT_SYMBOL(bdev_read_only);
+
+void inc_diskseq(struct gendisk *disk)
+{
+	disk->diskseq = atomic64_inc_return(&diskseq);
+}
