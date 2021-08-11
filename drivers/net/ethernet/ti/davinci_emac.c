@@ -943,7 +943,7 @@ static int emac_dev_xmit(struct sk_buff *skb, struct net_device *ndev)
 		goto fail_tx;
 	}
 
-	ret_code = skb_padto(skb, EMAC_DEF_MIN_ETHPKTSIZE);
+	ret_code = skb_put_padto(skb, EMAC_DEF_MIN_ETHPKTSIZE);
 	if (unlikely(ret_code < 0)) {
 		if (netif_msg_tx_err(priv) && net_ratelimit())
 			dev_err(emac_dev, "DaVinci EMAC: packet pad failed");
@@ -1670,7 +1670,7 @@ static const struct net_device_ops emac_netdev_ops = {
 	.ndo_start_xmit		= emac_dev_xmit,
 	.ndo_set_rx_mode	= emac_dev_mcast_set,
 	.ndo_set_mac_address	= emac_dev_setmac_addr,
-	.ndo_do_ioctl		= emac_devioctl,
+	.ndo_eth_ioctl		= emac_devioctl,
 	.ndo_tx_timeout		= emac_dev_tx_timeout,
 	.ndo_get_stats		= emac_dev_getnetstats,
 #ifdef CONFIG_NET_POLL_CONTROLLER

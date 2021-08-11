@@ -34,19 +34,13 @@
 #include <net/flow_offload.h>
 #include <net/sch_generic.h>
 #include <net/pkt_cls.h>
-#include <net/tc_act/tc_gact.h>
-#include <net/tc_act/tc_skbedit.h>
 #include <linux/mlx5/fs.h>
 #include <linux/mlx5/device.h>
 #include <linux/rhashtable.h>
 #include <linux/refcount.h>
 #include <linux/completion.h>
-#include <net/tc_act/tc_mirred.h>
-#include <net/tc_act/tc_vlan.h>
-#include <net/tc_act/tc_tunnel_key.h>
 #include <net/tc_act/tc_pedit.h>
 #include <net/tc_act/tc_csum.h>
-#include <net/tc_act/tc_mpls.h>
 #include <net/psample.h>
 #include <net/arp.h>
 #include <net/ipv6_stubs.h>
@@ -340,12 +334,12 @@ struct mlx5e_hairpin {
 	struct mlx5_core_dev *func_mdev;
 	struct mlx5e_priv *func_priv;
 	u32 tdn;
-	u32 tirn;
+	struct mlx5e_tir direct_tir;
 
 	int num_channels;
 	struct mlx5e_rqt indir_rqt;
-	u32 indir_tirn[MLX5E_NUM_INDIR_TIRS];
-	struct mlx5e_ttc_table ttc;
+	struct mlx5e_tir indir_tir[MLX5E_NUM_INDIR_TIRS];
+	struct mlx5_ttc_table *ttc;
 };
 
 struct mlx5e_hairpin_entry {
@@ -482,126 +476,101 @@ struct mlx5_core_dev *mlx5e_hairpin_get_mdev(struct net *net, int ifindex)
 
 static int mlx5e_hairpin_create_transport(struct mlx5e_hairpin *hp)
 {
-	u32 in[MLX5_ST_SZ_DW(create_tir_in)] = {};
-	void *tirc;
+	struct mlx5e_tir_builder *builder;
 	int err;
+
+	builder = mlx5e_tir_builder_alloc(false);
+	if (!builder)
+		return -ENOMEM;
 
 	err = mlx5_core_alloc_transport_domain(hp->func_mdev, &hp->tdn);
 	if (err)
-		goto alloc_tdn_err;
+		goto out;
 
-	tirc = MLX5_ADDR_OF(create_tir_in, in, ctx);
-
-	MLX5_SET(tirc, tirc, disp_type, MLX5_TIRC_DISP_TYPE_DIRECT);
-	MLX5_SET(tirc, tirc, inline_rqn, hp->pair->rqn[0]);
-	MLX5_SET(tirc, tirc, transport_domain, hp->tdn);
-
-	err = mlx5_core_create_tir(hp->func_mdev, in, &hp->tirn);
+	mlx5e_tir_builder_build_inline(builder, hp->tdn, hp->pair->rqn[0]);
+	err = mlx5e_tir_init(&hp->direct_tir, builder, hp->func_mdev, false);
 	if (err)
 		goto create_tir_err;
 
-	return 0;
+out:
+	mlx5e_tir_builder_free(builder);
+	return err;
 
 create_tir_err:
 	mlx5_core_dealloc_transport_domain(hp->func_mdev, hp->tdn);
-alloc_tdn_err:
-	return err;
+
+	goto out;
 }
 
 static void mlx5e_hairpin_destroy_transport(struct mlx5e_hairpin *hp)
 {
-	mlx5_core_destroy_tir(hp->func_mdev, hp->tirn);
+	mlx5e_tir_destroy(&hp->direct_tir);
 	mlx5_core_dealloc_transport_domain(hp->func_mdev, hp->tdn);
-}
-
-static int mlx5e_hairpin_fill_rqt_rqns(struct mlx5e_hairpin *hp, void *rqtc)
-{
-	struct mlx5e_priv *priv = hp->func_priv;
-	int i, ix, sz = MLX5E_INDIR_RQT_SIZE;
-	u32 *indirection_rqt, rqn;
-
-	indirection_rqt = kcalloc(sz, sizeof(*indirection_rqt), GFP_KERNEL);
-	if (!indirection_rqt)
-		return -ENOMEM;
-
-	mlx5e_build_default_indir_rqt(indirection_rqt, sz,
-				      hp->num_channels);
-
-	for (i = 0; i < sz; i++) {
-		ix = i;
-		if (priv->rss_params.hfunc == ETH_RSS_HASH_XOR)
-			ix = mlx5e_bits_invert(i, ilog2(sz));
-		ix = indirection_rqt[ix];
-		rqn = hp->pair->rqn[ix];
-		MLX5_SET(rqtc, rqtc, rq_num[i], rqn);
-	}
-
-	kfree(indirection_rqt);
-	return 0;
 }
 
 static int mlx5e_hairpin_create_indirect_rqt(struct mlx5e_hairpin *hp)
 {
-	int inlen, err, sz = MLX5E_INDIR_RQT_SIZE;
 	struct mlx5e_priv *priv = hp->func_priv;
 	struct mlx5_core_dev *mdev = priv->mdev;
-	void *rqtc;
-	u32 *in;
+	struct mlx5e_rss_params_indir *indir;
+	int err;
 
-	inlen = MLX5_ST_SZ_BYTES(create_rqt_in) + sizeof(u32) * sz;
-	in = kvzalloc(inlen, GFP_KERNEL);
-	if (!in)
+	indir = kvmalloc(sizeof(*indir), GFP_KERNEL);
+	if (!indir)
 		return -ENOMEM;
 
-	rqtc = MLX5_ADDR_OF(create_rqt_in, in, rqt_context);
+	mlx5e_rss_params_indir_init_uniform(indir, hp->num_channels);
+	err = mlx5e_rqt_init_indir(&hp->indir_rqt, mdev, hp->pair->rqn, hp->num_channels,
+				   mlx5e_rx_res_get_current_hash(priv->rx_res).hfunc,
+				   indir);
 
-	MLX5_SET(rqtc, rqtc, rqt_actual_size, sz);
-	MLX5_SET(rqtc, rqtc, rqt_max_size, sz);
-
-	err = mlx5e_hairpin_fill_rqt_rqns(hp, rqtc);
-	if (err)
-		goto out;
-
-	err = mlx5_core_create_rqt(mdev, in, inlen, &hp->indir_rqt.rqtn);
-	if (!err)
-		hp->indir_rqt.enabled = true;
-
-out:
-	kvfree(in);
+	kvfree(indir);
 	return err;
 }
 
 static int mlx5e_hairpin_create_indirect_tirs(struct mlx5e_hairpin *hp)
 {
 	struct mlx5e_priv *priv = hp->func_priv;
-	u32 in[MLX5_ST_SZ_DW(create_tir_in)];
-	int tt, i, err;
-	void *tirc;
+	struct mlx5e_rss_params_hash rss_hash;
+	enum mlx5_traffic_types tt, max_tt;
+	struct mlx5e_tir_builder *builder;
+	int err = 0;
+
+	builder = mlx5e_tir_builder_alloc(false);
+	if (!builder)
+		return -ENOMEM;
+
+	rss_hash = mlx5e_rx_res_get_current_hash(priv->rx_res);
 
 	for (tt = 0; tt < MLX5E_NUM_INDIR_TIRS; tt++) {
-		struct mlx5e_tirc_config ttconfig = mlx5e_tirc_get_default_config(tt);
+		struct mlx5e_rss_params_traffic_type rss_tt;
 
-		memset(in, 0, MLX5_ST_SZ_BYTES(create_tir_in));
-		tirc = MLX5_ADDR_OF(create_tir_in, in, ctx);
+		rss_tt = mlx5e_rss_get_default_tt_config(tt);
 
-		MLX5_SET(tirc, tirc, transport_domain, hp->tdn);
-		MLX5_SET(tirc, tirc, disp_type, MLX5_TIRC_DISP_TYPE_INDIRECT);
-		MLX5_SET(tirc, tirc, indirect_table, hp->indir_rqt.rqtn);
-		mlx5e_build_indir_tir_ctx_hash(&priv->rss_params, &ttconfig, tirc, false);
+		mlx5e_tir_builder_build_rqt(builder, hp->tdn,
+					    mlx5e_rqt_get_rqtn(&hp->indir_rqt),
+					    false);
+		mlx5e_tir_builder_build_rss(builder, &rss_hash, &rss_tt, false);
 
-		err = mlx5_core_create_tir(hp->func_mdev, in,
-					   &hp->indir_tirn[tt]);
+		err = mlx5e_tir_init(&hp->indir_tir[tt], builder, hp->func_mdev, false);
 		if (err) {
 			mlx5_core_warn(hp->func_mdev, "create indirect tirs failed, %d\n", err);
 			goto err_destroy_tirs;
 		}
+
+		mlx5e_tir_builder_clear(builder);
 	}
-	return 0;
+
+out:
+	mlx5e_tir_builder_free(builder);
+	return err;
 
 err_destroy_tirs:
-	for (i = 0; i < tt; i++)
-		mlx5_core_destroy_tir(hp->func_mdev, hp->indir_tirn[i]);
-	return err;
+	max_tt = tt;
+	for (tt = 0; tt < max_tt; tt++)
+		mlx5e_tir_destroy(&hp->indir_tir[tt]);
+
+	goto out;
 }
 
 static void mlx5e_hairpin_destroy_indirect_tirs(struct mlx5e_hairpin *hp)
@@ -609,7 +578,7 @@ static void mlx5e_hairpin_destroy_indirect_tirs(struct mlx5e_hairpin *hp)
 	int tt;
 
 	for (tt = 0; tt < MLX5E_NUM_INDIR_TIRS; tt++)
-		mlx5_core_destroy_tir(hp->func_mdev, hp->indir_tirn[tt]);
+		mlx5e_tir_destroy(&hp->indir_tir[tt]);
 }
 
 static void mlx5e_hairpin_set_ttc_params(struct mlx5e_hairpin *hp,
@@ -620,12 +589,16 @@ static void mlx5e_hairpin_set_ttc_params(struct mlx5e_hairpin *hp,
 
 	memset(ttc_params, 0, sizeof(*ttc_params));
 
-	ttc_params->any_tt_tirn = hp->tirn;
+	ttc_params->ns = mlx5_get_flow_namespace(hp->func_mdev,
+						 MLX5_FLOW_NAMESPACE_KERNEL);
+	for (tt = 0; tt < MLX5_NUM_TT; tt++) {
+		ttc_params->dests[tt].type = MLX5_FLOW_DESTINATION_TYPE_TIR;
+		ttc_params->dests[tt].tir_num =
+			tt == MLX5_TT_ANY ?
+				mlx5e_tir_get_tirn(&hp->direct_tir) :
+				mlx5e_tir_get_tirn(&hp->indir_tir[tt]);
+	}
 
-	for (tt = 0; tt < MLX5E_NUM_INDIR_TIRS; tt++)
-		ttc_params->indir_tirn[tt] = hp->indir_tirn[tt];
-
-	ft_attr->max_fte = MLX5E_TTC_TABLE_SIZE;
 	ft_attr->level = MLX5E_TC_TTC_FT_LEVEL;
 	ft_attr->prio = MLX5E_TC_PRIO;
 }
@@ -645,30 +618,31 @@ static int mlx5e_hairpin_rss_init(struct mlx5e_hairpin *hp)
 		goto err_create_indirect_tirs;
 
 	mlx5e_hairpin_set_ttc_params(hp, &ttc_params);
-	err = mlx5e_create_ttc_table(priv, &ttc_params, &hp->ttc);
-	if (err)
+	hp->ttc = mlx5_create_ttc_table(priv->mdev, &ttc_params);
+	if (IS_ERR(hp->ttc)) {
+		err = PTR_ERR(hp->ttc);
 		goto err_create_ttc_table;
+	}
 
 	netdev_dbg(priv->netdev, "add hairpin: using %d channels rss ttc table id %x\n",
-		   hp->num_channels, hp->ttc.ft.t->id);
+		   hp->num_channels,
+		   mlx5_get_ttc_flow_table(priv->fs.ttc)->id);
 
 	return 0;
 
 err_create_ttc_table:
 	mlx5e_hairpin_destroy_indirect_tirs(hp);
 err_create_indirect_tirs:
-	mlx5e_destroy_rqt(priv, &hp->indir_rqt);
+	mlx5e_rqt_destroy(&hp->indir_rqt);
 
 	return err;
 }
 
 static void mlx5e_hairpin_rss_cleanup(struct mlx5e_hairpin *hp)
 {
-	struct mlx5e_priv *priv = hp->func_priv;
-
-	mlx5e_destroy_ttc_table(priv, &hp->ttc);
+	mlx5_destroy_ttc_table(hp->ttc);
 	mlx5e_hairpin_destroy_indirect_tirs(hp);
-	mlx5e_destroy_rqt(priv, &hp->indir_rqt);
+	mlx5e_rqt_destroy(&hp->indir_rqt);
 }
 
 static struct mlx5e_hairpin *
@@ -903,16 +877,17 @@ static int mlx5e_hairpin_flow_add(struct mlx5e_priv *priv,
 	}
 
 	netdev_dbg(priv->netdev, "add hairpin: tirn %x rqn %x peer %s sqn %x prio %d (log) data %d packets %d\n",
-		   hp->tirn, hp->pair->rqn[0],
+		   mlx5e_tir_get_tirn(&hp->direct_tir), hp->pair->rqn[0],
 		   dev_name(hp->pair->peer_mdev->device),
 		   hp->pair->sqn[0], match_prio, params.log_data_size, params.log_num_packets);
 
 attach_flow:
 	if (hpe->hp->num_channels > 1) {
 		flow_flag_set(flow, HAIRPIN_RSS);
-		flow->attr->nic_attr->hairpin_ft = hpe->hp->ttc.ft.t;
+		flow->attr->nic_attr->hairpin_ft =
+			mlx5_get_ttc_flow_table(hpe->hp->ttc);
 	} else {
-		flow->attr->nic_attr->hairpin_tirn = hpe->hp->tirn;
+		flow->attr->nic_attr->hairpin_tirn = mlx5e_tir_get_tirn(&hpe->hp->direct_tir);
 	}
 
 	flow->hpe = hpe;
@@ -1056,14 +1031,16 @@ err_ft_get:
 
 static int
 mlx5e_tc_add_nic_flow(struct mlx5e_priv *priv,
-		      struct mlx5e_tc_flow_parse_attr *parse_attr,
 		      struct mlx5e_tc_flow *flow,
 		      struct netlink_ext_ack *extack)
 {
+	struct mlx5e_tc_flow_parse_attr *parse_attr;
 	struct mlx5_flow_attr *attr = flow->attr;
 	struct mlx5_core_dev *dev = priv->mdev;
-	struct mlx5_fc *counter = NULL;
+	struct mlx5_fc *counter;
 	int err;
+
+	parse_attr = attr->parse_attr;
 
 	if (flow_flag_test(flow, HAIRPIN)) {
 		err = mlx5e_hairpin_flow_add(priv, flow, parse_attr, extack);
@@ -1384,9 +1361,9 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 	bool vf_tun = false, encap_valid = true;
 	struct net_device *encap_dev = NULL;
 	struct mlx5_esw_flow_attr *esw_attr;
-	struct mlx5_fc *counter = NULL;
 	struct mlx5e_rep_priv *rpriv;
 	struct mlx5e_priv *out_priv;
+	struct mlx5_fc *counter;
 	u32 max_prio, max_chain;
 	int err = 0;
 	int out_index;
@@ -3352,10 +3329,10 @@ static int validate_goto_chain(struct mlx5e_priv *priv,
 
 static int parse_tc_nic_actions(struct mlx5e_priv *priv,
 				struct flow_action *flow_action,
-				struct mlx5e_tc_flow_parse_attr *parse_attr,
 				struct mlx5e_tc_flow *flow,
 				struct netlink_ext_ack *extack)
 {
+	struct mlx5e_tc_flow_parse_attr *parse_attr;
 	struct mlx5_flow_attr *attr = flow->attr;
 	struct pedit_headers_action hdrs[2] = {};
 	const struct flow_action_entry *act;
@@ -3371,8 +3348,8 @@ static int parse_tc_nic_actions(struct mlx5e_priv *priv,
 		return -EOPNOTSUPP;
 
 	nic_attr = attr->nic_attr;
-
 	nic_attr->flow_tag = MLX5_FS_DEFAULT_FLOW_TAG;
+	parse_attr = attr->parse_attr;
 
 	flow_action_for_each(i, act, flow_action) {
 		switch (act->id) {
@@ -3381,10 +3358,8 @@ static int parse_tc_nic_actions(struct mlx5e_priv *priv,
 				  MLX5_FLOW_CONTEXT_ACTION_COUNT;
 			break;
 		case FLOW_ACTION_DROP:
-			action |= MLX5_FLOW_CONTEXT_ACTION_DROP;
-			if (MLX5_CAP_FLOWTABLE(priv->mdev,
-					       flow_table_properties_nic_receive.flow_counter))
-				action |= MLX5_FLOW_CONTEXT_ACTION_COUNT;
+			action |= MLX5_FLOW_CONTEXT_ACTION_DROP |
+				  MLX5_FLOW_CONTEXT_ACTION_COUNT;
 			break;
 		case FLOW_ACTION_MANGLE:
 		case FLOW_ACTION_ADD:
@@ -3425,7 +3400,7 @@ static int parse_tc_nic_actions(struct mlx5e_priv *priv,
 						   "device is not on same HW, can't offload");
 				netdev_warn(priv->netdev, "device %s not on same HW, can't offload\n",
 					    peer_dev->name);
-				return -EINVAL;
+				return -EOPNOTSUPP;
 			}
 			}
 			break;
@@ -3435,7 +3410,7 @@ static int parse_tc_nic_actions(struct mlx5e_priv *priv,
 			if (mark & ~MLX5E_TC_FLOW_ID_MASK) {
 				NL_SET_ERR_MSG_MOD(extack,
 						   "Bad flow mark - only 16 bit is supported");
-				return -EINVAL;
+				return -EOPNOTSUPP;
 			}
 
 			nic_attr->flow_tag = mark;
@@ -3732,8 +3707,7 @@ static int verify_uplink_forwarding(struct mlx5e_priv *priv,
 static int parse_tc_fdb_actions(struct mlx5e_priv *priv,
 				struct flow_action *flow_action,
 				struct mlx5e_tc_flow *flow,
-				struct netlink_ext_ack *extack,
-				struct net_device *filter_dev)
+				struct netlink_ext_ack *extack)
 {
 	struct pedit_headers_action hdrs[2] = {};
 	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
@@ -3798,7 +3772,7 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv,
 						   "mpls pop supported only as first action");
 				return -EOPNOTSUPP;
 			}
-			if (!netif_is_bareudp(filter_dev)) {
+			if (!netif_is_bareudp(parse_attr->filter_dev)) {
 				NL_SET_ERR_MSG_MOD(extack,
 						   "mpls pop supported only on bareudp devices");
 				return -EOPNOTSUPP;
@@ -3947,7 +3921,7 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv,
 					    "devices %s %s not on same switch HW, can't offload forwarding\n",
 					    priv->netdev->name,
 					    out_dev->name);
-				return -EINVAL;
+				return -EOPNOTSUPP;
 			}
 			}
 			break;
@@ -4300,7 +4274,7 @@ __mlx5e_add_fdb_flow(struct mlx5e_priv *priv,
 	if (err)
 		goto err_free;
 
-	err = parse_tc_fdb_actions(priv, &rule->action, flow, extack, filter_dev);
+	err = parse_tc_fdb_actions(priv, &rule->action, flow, extack);
 	if (err)
 		goto err_free;
 
@@ -4446,11 +4420,11 @@ mlx5e_add_nic_flow(struct mlx5e_priv *priv,
 	if (err)
 		goto err_free;
 
-	err = parse_tc_nic_actions(priv, &rule->action, parse_attr, flow, extack);
+	err = parse_tc_nic_actions(priv, &rule->action, flow, extack);
 	if (err)
 		goto err_free;
 
-	err = mlx5e_tc_add_nic_flow(priv, parse_attr, flow, extack);
+	err = mlx5e_tc_add_nic_flow(priv, flow, extack);
 	if (err)
 		goto err_free;
 
@@ -4877,6 +4851,7 @@ int mlx5e_tc_nic_init(struct mlx5e_priv *priv)
 	struct mlx5_core_dev *dev = priv->mdev;
 	struct mapping_ctx *chains_mapping;
 	struct mlx5_chains_attr attr = {};
+	u64 mapping_id;
 	int err;
 
 	mlx5e_mod_hdr_tbl_init(&tc->mod_hdr);
@@ -4890,8 +4865,12 @@ int mlx5e_tc_nic_init(struct mlx5e_priv *priv)
 
 	lockdep_set_class(&tc->ht.mutex, &tc_ht_lock_key);
 
-	chains_mapping = mapping_create(sizeof(struct mlx5_mapped_obj),
-					MLX5E_TC_TABLE_CHAIN_TAG_MASK, true);
+	mapping_id = mlx5_query_nic_system_image_guid(dev);
+
+	chains_mapping = mapping_create_for_id(mapping_id, MAPPING_TYPE_CHAIN,
+					       sizeof(struct mlx5_mapped_obj),
+					       MLX5E_TC_TABLE_CHAIN_TAG_MASK, true);
+
 	if (IS_ERR(chains_mapping)) {
 		err = PTR_ERR(chains_mapping);
 		goto err_mapping;
@@ -4980,6 +4959,7 @@ int mlx5e_tc_esw_init(struct rhashtable *tc_ht)
 	struct mapping_ctx *mapping;
 	struct mlx5_eswitch *esw;
 	struct mlx5e_priv *priv;
+	u64 mapping_id;
 	int err = 0;
 
 	uplink_priv = container_of(tc_ht, struct mlx5_rep_uplink_priv, tc_ht);
@@ -4996,8 +4976,12 @@ int mlx5e_tc_esw_init(struct rhashtable *tc_ht)
 	uplink_priv->esw_psample = mlx5_esw_sample_init(netdev_priv(priv->netdev));
 #endif
 
-	mapping = mapping_create(sizeof(struct tunnel_match_key),
-				 TUNNEL_INFO_BITS_MASK, true);
+	mapping_id = mlx5_query_nic_system_image_guid(esw->dev);
+
+	mapping = mapping_create_for_id(mapping_id, MAPPING_TYPE_TUNNEL,
+					sizeof(struct tunnel_match_key),
+					TUNNEL_INFO_BITS_MASK, true);
+
 	if (IS_ERR(mapping)) {
 		err = PTR_ERR(mapping);
 		goto err_tun_mapping;
@@ -5005,7 +4989,8 @@ int mlx5e_tc_esw_init(struct rhashtable *tc_ht)
 	uplink_priv->tunnel_mapping = mapping;
 
 	/* 0xFFF is reserved for stack devices slow path table mark */
-	mapping = mapping_create(sz_enc_opts, ENC_OPTS_BITS_MASK - 1, true);
+	mapping = mapping_create_for_id(mapping_id, MAPPING_TYPE_TUNNEL_ENC_OPTS,
+					sz_enc_opts, ENC_OPTS_BITS_MASK - 1, true);
 	if (IS_ERR(mapping)) {
 		err = PTR_ERR(mapping);
 		goto err_enc_opts_mapping;

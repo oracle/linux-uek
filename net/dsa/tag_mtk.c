@@ -61,8 +61,7 @@ static struct sk_buff *mtk_tag_xmit(struct sk_buff *skb,
 	return skb;
 }
 
-static struct sk_buff *mtk_tag_rcv(struct sk_buff *skb, struct net_device *dev,
-				   struct packet_type *pt)
+static struct sk_buff *mtk_tag_rcv(struct sk_buff *skb, struct net_device *dev)
 {
 	u16 hdr;
 	int port;
@@ -92,7 +91,7 @@ static struct sk_buff *mtk_tag_rcv(struct sk_buff *skb, struct net_device *dev,
 	if (!skb->dev)
 		return NULL;
 
-	skb->offload_fwd_mark = 1;
+	dsa_default_offload_fwd_mark(skb);
 
 	return skb;
 }

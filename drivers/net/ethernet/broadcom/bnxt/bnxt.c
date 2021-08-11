@@ -277,6 +277,8 @@ static const u16 bnxt_async_events_arr[] = {
 	ASYNC_EVENT_CMPL_EVENT_ID_DEBUG_NOTIFICATION,
 	ASYNC_EVENT_CMPL_EVENT_ID_RING_MONITOR_MSG,
 	ASYNC_EVENT_CMPL_EVENT_ID_ECHO_REQUEST,
+	ASYNC_EVENT_CMPL_EVENT_ID_PPS_TIMESTAMP,
+	ASYNC_EVENT_CMPL_EVENT_ID_ERROR_REPORT,
 };
 
 static struct workqueue_struct *bnxt_pf_wq;
@@ -2045,6 +2047,19 @@ static u16 bnxt_agg_ring_id_to_grp_idx(struct bnxt *bp, u16 ring_id)
 	return INVALID_HW_RING_ID;
 }
 
+static void bnxt_event_error_report(struct bnxt *bp, u32 data1, u32 data2)
+{
+	switch (BNXT_EVENT_ERROR_REPORT_TYPE(data1)) {
+	case ASYNC_EVENT_CMPL_ERROR_REPORT_BASE_EVENT_DATA1_ERROR_TYPE_INVALID_SIGNAL:
+		netdev_err(bp->dev, "1PPS: Received invalid signal on pin%lu from the external source. Please fix the signal and reconfigure the pin\n",
+			   BNXT_EVENT_INVALID_SIGNAL_DATA(data2));
+		break;
+	default:
+		netdev_err(bp->dev, "FW reported unknown error type\n");
+		break;
+	}
+}
+
 #define BNXT_GET_EVENT_PORT(data)	\
 	((data) &			\
 	 ASYNC_EVENT_CMPL_PORT_CONN_NOT_ALLOWED_EVENT_DATA1_PORT_ID_MASK)
@@ -2203,6 +2218,14 @@ static int bnxt_async_event_process(struct bnxt *bp,
 			set_bit(BNXT_FW_ECHO_REQUEST_SP_EVENT, &bp->sp_event);
 			break;
 		}
+		goto async_event_process_exit;
+	}
+	case ASYNC_EVENT_CMPL_EVENT_ID_PPS_TIMESTAMP: {
+		bnxt_ptp_pps_event(bp, data1, data2);
+		goto async_event_process_exit;
+	}
+	case ASYNC_EVENT_CMPL_EVENT_ID_ERROR_REPORT: {
+		bnxt_event_error_report(bp, data1, data2);
 		goto async_event_process_exit;
 	}
 	default:
@@ -3143,6 +3166,58 @@ static int bnxt_alloc_tx_rings(struct bnxt *bp)
 	return 0;
 }
 
+static void bnxt_free_cp_arrays(struct bnxt_cp_ring_info *cpr)
+{
+	kfree(cpr->cp_desc_ring);
+	cpr->cp_desc_ring = NULL;
+	kfree(cpr->cp_desc_mapping);
+	cpr->cp_desc_mapping = NULL;
+}
+
+static int bnxt_alloc_cp_arrays(struct bnxt_cp_ring_info *cpr, int n)
+{
+	cpr->cp_desc_ring = kcalloc(n, sizeof(*cpr->cp_desc_ring), GFP_KERNEL);
+	if (!cpr->cp_desc_ring)
+		return -ENOMEM;
+	cpr->cp_desc_mapping = kcalloc(n, sizeof(*cpr->cp_desc_mapping),
+				       GFP_KERNEL);
+	if (!cpr->cp_desc_mapping)
+		return -ENOMEM;
+	return 0;
+}
+
+static void bnxt_free_all_cp_arrays(struct bnxt *bp)
+{
+	int i;
+
+	if (!bp->bnapi)
+		return;
+	for (i = 0; i < bp->cp_nr_rings; i++) {
+		struct bnxt_napi *bnapi = bp->bnapi[i];
+
+		if (!bnapi)
+			continue;
+		bnxt_free_cp_arrays(&bnapi->cp_ring);
+	}
+}
+
+static int bnxt_alloc_all_cp_arrays(struct bnxt *bp)
+{
+	int i, n = bp->cp_nr_pages;
+
+	for (i = 0; i < bp->cp_nr_rings; i++) {
+		struct bnxt_napi *bnapi = bp->bnapi[i];
+		int rc;
+
+		if (!bnapi)
+			continue;
+		rc = bnxt_alloc_cp_arrays(&bnapi->cp_ring, n);
+		if (rc)
+			return rc;
+	}
+	return 0;
+}
+
 static void bnxt_free_cp_rings(struct bnxt *bp)
 {
 	int i;
@@ -3170,6 +3245,7 @@ static void bnxt_free_cp_rings(struct bnxt *bp)
 			if (cpr2) {
 				ring = &cpr2->cp_ring_struct;
 				bnxt_free_ring(bp, &ring->ring_mem);
+				bnxt_free_cp_arrays(cpr2);
 				kfree(cpr2);
 				cpr->cp_ring_arr[j] = NULL;
 			}
@@ -3188,6 +3264,12 @@ static struct bnxt_cp_ring_info *bnxt_alloc_cp_sub_ring(struct bnxt *bp)
 	if (!cpr)
 		return NULL;
 
+	rc = bnxt_alloc_cp_arrays(cpr, bp->cp_nr_pages);
+	if (rc) {
+		bnxt_free_cp_arrays(cpr);
+		kfree(cpr);
+		return NULL;
+	}
 	ring = &cpr->cp_ring_struct;
 	rmem = &ring->ring_mem;
 	rmem->nr_pages = bp->cp_nr_pages;
@@ -3198,6 +3280,7 @@ static struct bnxt_cp_ring_info *bnxt_alloc_cp_sub_ring(struct bnxt *bp)
 	rc = bnxt_alloc_ring(bp, rmem);
 	if (rc) {
 		bnxt_free_ring(bp, rmem);
+		bnxt_free_cp_arrays(cpr);
 		kfree(cpr);
 		cpr = NULL;
 	}
@@ -3630,9 +3713,15 @@ void bnxt_set_ring_params(struct bnxt *bp)
 		if (jumbo_factor > agg_factor)
 			agg_factor = jumbo_factor;
 	}
-	agg_ring_size = ring_size * agg_factor;
+	if (agg_factor) {
+		if (ring_size > BNXT_MAX_RX_DESC_CNT_JUM_ENA) {
+			ring_size = BNXT_MAX_RX_DESC_CNT_JUM_ENA;
+			netdev_warn(bp->dev, "RX ring size reduced from %d to %d because the jumbo ring is now enabled\n",
+				    bp->rx_ring_size, ring_size);
+			bp->rx_ring_size = ring_size;
+		}
+		agg_ring_size = ring_size * agg_factor;
 
-	if (agg_ring_size) {
 		bp->rx_agg_nr_pages = bnxt_calc_nr_ring_pages(agg_ring_size,
 							RX_DESC_CNT);
 		if (bp->rx_agg_nr_pages > MAX_RX_AGG_PAGES) {
@@ -4233,6 +4322,7 @@ static void bnxt_free_mem(struct bnxt *bp, bool irq_re_init)
 	bnxt_free_tx_rings(bp);
 	bnxt_free_rx_rings(bp);
 	bnxt_free_cp_rings(bp);
+	bnxt_free_all_cp_arrays(bp);
 	bnxt_free_ntp_fltrs(bp, irq_re_init);
 	if (irq_re_init) {
 		bnxt_free_ring_stats(bp);
@@ -4352,6 +4442,10 @@ static int bnxt_alloc_mem(struct bnxt *bp, bool irq_re_init)
 		if (rc)
 			goto alloc_mem_err;
 	}
+
+	rc = bnxt_alloc_all_cp_arrays(bp);
+	if (rc)
+		goto alloc_mem_err;
 
 	bnxt_init_ring_struct(bp);
 
@@ -7498,9 +7592,14 @@ static int __bnxt_hwrm_ptp_qcfg(struct bnxt *bp)
 		rc = -ENODEV;
 		goto no_ptp;
 	}
-	return 0;
+	rc = bnxt_ptp_init(bp);
+	if (!rc)
+		return 0;
+
+	netdev_warn(bp->dev, "PTP initialization failed.\n");
 
 no_ptp:
+	bnxt_ptp_clear(bp);
 	kfree(ptp);
 	bp->ptp_cfg = NULL;
 	return rc;
@@ -7543,6 +7642,8 @@ static int __bnxt_hwrm_func_qcaps(struct bnxt *bp)
 	flags_ext = le32_to_cpu(resp->flags_ext);
 	if (flags_ext & FUNC_QCAPS_RESP_FLAGS_EXT_EXT_HW_STATS_SUPPORTED)
 		bp->fw_cap |= BNXT_FW_CAP_EXT_HW_STATS_SUPPORTED;
+	if (BNXT_PF(bp) && (flags_ext & FUNC_QCAPS_RESP_FLAGS_EXT_PTP_PPS_SUPPORTED))
+		bp->fw_cap |= BNXT_FW_CAP_PTP_PPS;
 
 	bp->tx_push_thresh = 0;
 	if ((flags & FUNC_QCAPS_RESP_FLAGS_PUSH_MODE_SUPPORTED) &&
@@ -7580,6 +7681,7 @@ static int __bnxt_hwrm_func_qcaps(struct bnxt *bp)
 		if (flags & FUNC_QCAPS_RESP_FLAGS_PTP_SUPPORTED) {
 			__bnxt_hwrm_ptp_qcfg(bp);
 		} else {
+			bnxt_ptp_clear(bp);
 			kfree(bp->ptp_cfg);
 			bp->ptp_cfg = NULL;
 		}
@@ -10280,15 +10382,9 @@ static int bnxt_open(struct net_device *dev)
 	if (rc)
 		return rc;
 
-	if (bnxt_ptp_init(bp)) {
-		netdev_warn(dev, "PTP initialization failed.\n");
-		kfree(bp->ptp_cfg);
-		bp->ptp_cfg = NULL;
-	}
 	rc = __bnxt_open_nic(bp, true, true);
 	if (rc) {
 		bnxt_hwrm_if_change(bp, false);
-		bnxt_ptp_clear(bp);
 	} else {
 		if (test_and_clear_bit(BNXT_STATE_FW_RESET_DET, &bp->state)) {
 			if (!test_bit(BNXT_STATE_IN_FW_RESET, &bp->state)) {
@@ -10379,7 +10475,6 @@ static int bnxt_close(struct net_device *dev)
 {
 	struct bnxt *bp = netdev_priv(dev);
 
-	bnxt_ptp_clear(bp);
 	bnxt_hwmon_close(bp);
 	bnxt_close_nic(bp, true, true);
 	bnxt_hwrm_shutdown_link(bp);
@@ -11366,7 +11461,6 @@ static void bnxt_fw_reset_close(struct bnxt *bp)
 		bnxt_clear_int_mode(bp);
 		pci_disable_device(bp->pdev);
 	}
-	bnxt_ptp_clear(bp);
 	__bnxt_close_nic(bp, true, false);
 	bnxt_vf_reps_free(bp);
 	bnxt_clear_int_mode(bp);
@@ -11402,13 +11496,20 @@ static bool is_bnxt_fw_ok(struct bnxt *bp)
 static void bnxt_force_fw_reset(struct bnxt *bp)
 {
 	struct bnxt_fw_health *fw_health = bp->fw_health;
+	struct bnxt_ptp_cfg *ptp = bp->ptp_cfg;
 	u32 wait_dsecs;
 
 	if (!test_bit(BNXT_STATE_OPEN, &bp->state) ||
 	    test_bit(BNXT_STATE_IN_FW_RESET, &bp->state))
 		return;
 
-	set_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
+	if (ptp) {
+		spin_lock_bh(&ptp->ptp_lock);
+		set_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
+		spin_unlock_bh(&ptp->ptp_lock);
+	} else {
+		set_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
+	}
 	bnxt_fw_reset_close(bp);
 	wait_dsecs = fw_health->master_func_wait_dsecs;
 	if (fw_health->master) {
@@ -11464,9 +11565,16 @@ void bnxt_fw_reset(struct bnxt *bp)
 	bnxt_rtnl_lock_sp(bp);
 	if (test_bit(BNXT_STATE_OPEN, &bp->state) &&
 	    !test_bit(BNXT_STATE_IN_FW_RESET, &bp->state)) {
+		struct bnxt_ptp_cfg *ptp = bp->ptp_cfg;
 		int n = 0, tmo;
 
-		set_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
+		if (ptp) {
+			spin_lock_bh(&ptp->ptp_lock);
+			set_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
+			spin_unlock_bh(&ptp->ptp_lock);
+		} else {
+			set_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
+		}
 		if (bp->pf.active_vfs &&
 		    !test_bit(BNXT_STATE_FW_FATAL_COND, &bp->state))
 			n = bnxt_get_registered_vfs(bp);
@@ -12138,6 +12246,7 @@ static void bnxt_fw_reset_task(struct work_struct *work)
 		bnxt_reenable_sriov(bp);
 		bnxt_vf_reps_alloc(bp);
 		bnxt_vf_reps_open(bp);
+		bnxt_ptp_reapply_pps(bp);
 		bnxt_dl_health_recovery_done(bp);
 		bnxt_dl_health_status_update(bp, true);
 		rtnl_unlock();
@@ -12669,7 +12778,7 @@ static const struct net_device_ops bnxt_netdev_ops = {
 	.ndo_stop		= bnxt_close,
 	.ndo_get_stats64	= bnxt_get_stats64,
 	.ndo_set_rx_mode	= bnxt_set_rx_mode,
-	.ndo_do_ioctl		= bnxt_ioctl,
+	.ndo_eth_ioctl		= bnxt_ioctl,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_mac_address	= bnxt_change_mac_addr,
 	.ndo_change_mtu		= bnxt_change_mtu,
@@ -12708,6 +12817,7 @@ static void bnxt_remove_one(struct pci_dev *pdev)
 	if (BNXT_PF(bp))
 		devlink_port_type_clear(&bp->dl_port);
 
+	bnxt_ptp_clear(bp);
 	pci_disable_pcie_error_reporting(pdev);
 	unregister_netdev(dev);
 	clear_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
@@ -13320,6 +13430,7 @@ init_err_pci_clean:
 	bnxt_free_hwrm_short_cmd_req(bp);
 	bnxt_free_hwrm_resources(bp);
 	bnxt_ethtool_free(bp);
+	bnxt_ptp_clear(bp);
 	kfree(bp->ptp_cfg);
 	bp->ptp_cfg = NULL;
 	kfree(bp->fw_health);

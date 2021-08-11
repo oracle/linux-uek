@@ -168,6 +168,7 @@ struct bpf_map {
 	u32 max_entries;
 	u32 map_flags;
 	int spin_lock_off; /* >=0 valid offset, <0 error */
+	int timer_off; /* >=0 valid offset, <0 error */
 	u32 id;
 	int numa_node;
 	u32 btf_key_type_id;
@@ -197,30 +198,53 @@ static inline bool map_value_has_spin_lock(const struct bpf_map *map)
 	return map->spin_lock_off >= 0;
 }
 
-static inline void check_and_init_map_lock(struct bpf_map *map, void *dst)
+static inline bool map_value_has_timer(const struct bpf_map *map)
 {
-	if (likely(!map_value_has_spin_lock(map)))
-		return;
-	*(struct bpf_spin_lock *)(dst + map->spin_lock_off) =
-		(struct bpf_spin_lock){};
+	return map->timer_off >= 0;
 }
 
-/* copy everything but bpf_spin_lock */
+static inline void check_and_init_map_value(struct bpf_map *map, void *dst)
+{
+	if (unlikely(map_value_has_spin_lock(map)))
+		*(struct bpf_spin_lock *)(dst + map->spin_lock_off) =
+			(struct bpf_spin_lock){};
+	if (unlikely(map_value_has_timer(map)))
+		*(struct bpf_timer *)(dst + map->timer_off) =
+			(struct bpf_timer){};
+}
+
+/* copy everything but bpf_spin_lock and bpf_timer. There could be one of each. */
 static inline void copy_map_value(struct bpf_map *map, void *dst, void *src)
 {
-	if (unlikely(map_value_has_spin_lock(map))) {
-		u32 off = map->spin_lock_off;
+	u32 s_off = 0, s_sz = 0, t_off = 0, t_sz = 0;
 
-		memcpy(dst, src, off);
-		memcpy(dst + off + sizeof(struct bpf_spin_lock),
-		       src + off + sizeof(struct bpf_spin_lock),
-		       map->value_size - off - sizeof(struct bpf_spin_lock));
+	if (unlikely(map_value_has_spin_lock(map))) {
+		s_off = map->spin_lock_off;
+		s_sz = sizeof(struct bpf_spin_lock);
+	} else if (unlikely(map_value_has_timer(map))) {
+		t_off = map->timer_off;
+		t_sz = sizeof(struct bpf_timer);
+	}
+
+	if (unlikely(s_sz || t_sz)) {
+		if (s_off < t_off || !s_sz) {
+			swap(s_off, t_off);
+			swap(s_sz, t_sz);
+		}
+		memcpy(dst, src, t_off);
+		memcpy(dst + t_off + t_sz,
+		       src + t_off + t_sz,
+		       s_off - t_off - t_sz);
+		memcpy(dst + s_off + s_sz,
+		       src + s_off + s_sz,
+		       map->value_size - s_off - s_sz);
 	} else {
 		memcpy(dst, src, map->value_size);
 	}
 }
 void copy_map_value_locked(struct bpf_map *map, void *dst, void *src,
 			   bool lock_src);
+void bpf_timer_cancel_and_free(void *timer);
 int bpf_obj_name_cpy(char *dst, const char *src, unsigned int size);
 
 struct bpf_offload_dev;
@@ -314,6 +338,7 @@ enum bpf_arg_type {
 	ARG_PTR_TO_FUNC,	/* pointer to a bpf program function */
 	ARG_PTR_TO_STACK_OR_NULL,	/* pointer to stack or NULL */
 	ARG_PTR_TO_CONST_STR,	/* pointer to a null terminated read-only string */
+	ARG_PTR_TO_TIMER,	/* pointer to bpf_timer */
 	__BPF_ARG_TYPE_MAX,
 };
 
@@ -553,6 +578,11 @@ struct btf_func_model {
  * programs only. Should not be used with normal calls and indirect calls.
  */
 #define BPF_TRAMP_F_SKIP_FRAME		BIT(2)
+
+/* Store IP address of the caller on the trampoline stack,
+ * so it's available for trampoline's programs.
+ */
+#define BPF_TRAMP_F_IP_ARG		BIT(3)
 
 /* Each call __bpf_prog_enter + call bpf_func + call __bpf_prog_exit is ~50
  * bytes on x86.  Pick a number to fit into BPF_IMAGE_SIZE / 2
@@ -1112,38 +1142,40 @@ int bpf_prog_array_copy(struct bpf_prog_array *old_array,
 			struct bpf_prog *include_prog,
 			struct bpf_prog_array **new_array);
 
+struct bpf_run_ctx {};
+
+struct bpf_cg_run_ctx {
+	struct bpf_run_ctx run_ctx;
+	struct bpf_prog_array_item *prog_item;
+};
+
 /* BPF program asks to bypass CAP_NET_BIND_SERVICE in bind. */
 #define BPF_RET_BIND_NO_CAP_NET_BIND_SERVICE			(1 << 0)
 /* BPF program asks to set CN on the packet. */
 #define BPF_RET_SET_CN						(1 << 0)
 
-/* For BPF_PROG_RUN_ARRAY_FLAGS and __BPF_PROG_RUN_ARRAY,
- * if bpf_cgroup_storage_set() failed, the rest of programs
- * will not execute. This should be a really rare scenario
- * as it requires BPF_CGROUP_STORAGE_NEST_MAX number of
- * preemptions all between bpf_cgroup_storage_set() and
- * bpf_cgroup_storage_unset() on the same cpu.
- */
 #define BPF_PROG_RUN_ARRAY_FLAGS(array, ctx, func, ret_flags)		\
 	({								\
 		struct bpf_prog_array_item *_item;			\
 		struct bpf_prog *_prog;					\
 		struct bpf_prog_array *_array;				\
+		struct bpf_run_ctx *old_run_ctx;			\
+		struct bpf_cg_run_ctx run_ctx;				\
 		u32 _ret = 1;						\
 		u32 func_ret;						\
 		migrate_disable();					\
 		rcu_read_lock();					\
 		_array = rcu_dereference(array);			\
 		_item = &_array->items[0];				\
+		old_run_ctx = bpf_set_run_ctx(&run_ctx.run_ctx);	\
 		while ((_prog = READ_ONCE(_item->prog))) {		\
-			if (unlikely(bpf_cgroup_storage_set(_item->cgroup_storage)))	\
-				break;					\
+			run_ctx.prog_item = _item;			\
 			func_ret = func(_prog, ctx);			\
 			_ret &= (func_ret & 1);				\
-			*(ret_flags) |= (func_ret >> 1);			\
-			bpf_cgroup_storage_unset();			\
+			*(ret_flags) |= (func_ret >> 1);		\
 			_item++;					\
 		}							\
+		bpf_reset_run_ctx(old_run_ctx);				\
 		rcu_read_unlock();					\
 		migrate_enable();					\
 		_ret;							\
@@ -1154,6 +1186,8 @@ int bpf_prog_array_copy(struct bpf_prog_array *old_array,
 		struct bpf_prog_array_item *_item;	\
 		struct bpf_prog *_prog;			\
 		struct bpf_prog_array *_array;		\
+		struct bpf_run_ctx *old_run_ctx;	\
+		struct bpf_cg_run_ctx run_ctx;		\
 		u32 _ret = 1;				\
 		migrate_disable();			\
 		rcu_read_lock();			\
@@ -1161,17 +1195,13 @@ int bpf_prog_array_copy(struct bpf_prog_array *old_array,
 		if (unlikely(check_non_null && !_array))\
 			goto _out;			\
 		_item = &_array->items[0];		\
-		while ((_prog = READ_ONCE(_item->prog))) {		\
-			if (!set_cg_storage) {			\
-				_ret &= func(_prog, ctx);	\
-			} else {				\
-				if (unlikely(bpf_cgroup_storage_set(_item->cgroup_storage)))	\
-					break;			\
-				_ret &= func(_prog, ctx);	\
-				bpf_cgroup_storage_unset();	\
-			}				\
+		old_run_ctx = bpf_set_run_ctx(&run_ctx.run_ctx);\
+		while ((_prog = READ_ONCE(_item->prog))) {	\
+			run_ctx.prog_item = _item;	\
+			_ret &= func(_prog, ctx);	\
 			_item++;			\
 		}					\
+		bpf_reset_run_ctx(old_run_ctx);		\
 _out:							\
 		rcu_read_unlock();			\
 		migrate_enable();			\
@@ -1252,6 +1282,20 @@ static inline void bpf_enable_instrumentation(void)
 	else
 		__this_cpu_dec(bpf_prog_active);
 	migrate_enable();
+}
+
+static inline struct bpf_run_ctx *bpf_set_run_ctx(struct bpf_run_ctx *new_ctx)
+{
+	struct bpf_run_ctx *old_ctx;
+
+	old_ctx = current->bpf_ctx;
+	current->bpf_ctx = new_ctx;
+	return old_ctx;
+}
+
+static inline void bpf_reset_run_ctx(struct bpf_run_ctx *old_ctx)
+{
+	current->bpf_ctx = old_ctx;
 }
 
 extern const struct file_operations bpf_map_fops;
@@ -1398,6 +1442,9 @@ typedef void (*bpf_iter_show_fdinfo_t) (const struct bpf_iter_aux_info *aux,
 					struct seq_file *seq);
 typedef int (*bpf_iter_fill_link_info_t)(const struct bpf_iter_aux_info *aux,
 					 struct bpf_link_info *info);
+typedef const struct bpf_func_proto *
+(*bpf_iter_get_func_proto_t)(enum bpf_func_id func_id,
+			     const struct bpf_prog *prog);
 
 enum bpf_iter_feature {
 	BPF_ITER_RESCHED	= BIT(0),
@@ -1410,6 +1457,7 @@ struct bpf_iter_reg {
 	bpf_iter_detach_target_t detach_target;
 	bpf_iter_show_fdinfo_t show_fdinfo;
 	bpf_iter_fill_link_info_t fill_link_info;
+	bpf_iter_get_func_proto_t get_func_proto;
 	u32 ctx_arg_info_size;
 	u32 feature;
 	struct bpf_ctx_arg_aux ctx_arg_info[BPF_ITER_CTX_ARG_MAX];
@@ -1432,6 +1480,8 @@ struct bpf_iter__bpf_map_elem {
 int bpf_iter_reg_target(const struct bpf_iter_reg *reg_info);
 void bpf_iter_unreg_target(const struct bpf_iter_reg *reg_info);
 bool bpf_iter_prog_supported(struct bpf_prog *prog);
+const struct bpf_func_proto *
+bpf_iter_get_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog);
 int bpf_iter_link_attach(const union bpf_attr *attr, bpfptr_t uattr, struct bpf_prog *prog);
 int bpf_iter_new_fd(struct bpf_link *link);
 bool bpf_link_is_iter(struct bpf_link *link);
@@ -1509,12 +1559,12 @@ int dev_map_generic_redirect(struct bpf_dtab_netdev *dst, struct sk_buff *skb,
 int dev_map_redirect_multi(struct net_device *dev, struct sk_buff *skb,
 			   struct bpf_prog *xdp_prog, struct bpf_map *map,
 			   bool exclude_ingress);
-bool dev_map_can_have_prog(struct bpf_map *map);
 
 void __cpu_map_flush(void);
 int cpu_map_enqueue(struct bpf_cpu_map_entry *rcpu, struct xdp_buff *xdp,
 		    struct net_device *dev_rx);
-bool cpu_map_prog_allowed(struct bpf_map *map);
+int cpu_map_generic_redirect(struct bpf_cpu_map_entry *rcpu,
+			     struct sk_buff *skb);
 
 /* Return map's numa specified by userspace */
 static inline int bpf_map_attr_numa_node(const union bpf_attr *attr)
@@ -1711,6 +1761,12 @@ static inline int cpu_map_enqueue(struct bpf_cpu_map_entry *rcpu,
 	return 0;
 }
 
+static inline int cpu_map_generic_redirect(struct bpf_cpu_map_entry *rcpu,
+					   struct sk_buff *skb)
+{
+	return -EOPNOTSUPP;
+}
+
 static inline bool cpu_map_prog_allowed(struct bpf_map *map)
 {
 	return false;
@@ -1852,6 +1908,12 @@ void bpf_map_offload_map_free(struct bpf_map *map);
 int bpf_prog_test_run_syscall(struct bpf_prog *prog,
 			      const union bpf_attr *kattr,
 			      union bpf_attr __user *uattr);
+
+int sock_map_get_from_fd(const union bpf_attr *attr, struct bpf_prog *prog);
+int sock_map_prog_detach(const union bpf_attr *attr, enum bpf_prog_type ptype);
+int sock_map_update_elem_sys(struct bpf_map *map, void *key, void *value, u64 flags);
+void sock_map_unhash(struct sock *sk);
+void sock_map_close(struct sock *sk, long timeout);
 #else
 static inline int bpf_prog_offload_init(struct bpf_prog *prog,
 					union bpf_attr *attr)
@@ -1884,24 +1946,6 @@ static inline int bpf_prog_test_run_syscall(struct bpf_prog *prog,
 {
 	return -ENOTSUPP;
 }
-#endif /* CONFIG_NET && CONFIG_BPF_SYSCALL */
-
-#if defined(CONFIG_INET) && defined(CONFIG_BPF_SYSCALL)
-int sock_map_get_from_fd(const union bpf_attr *attr, struct bpf_prog *prog);
-int sock_map_prog_detach(const union bpf_attr *attr, enum bpf_prog_type ptype);
-int sock_map_update_elem_sys(struct bpf_map *map, void *key, void *value, u64 flags);
-void sock_map_unhash(struct sock *sk);
-void sock_map_close(struct sock *sk, long timeout);
-
-void bpf_sk_reuseport_detach(struct sock *sk);
-int bpf_fd_reuseport_array_lookup_elem(struct bpf_map *map, void *key,
-				       void *value);
-int bpf_fd_reuseport_array_update_elem(struct bpf_map *map, void *key,
-				       void *value, u64 map_flags);
-#else
-static inline void bpf_sk_reuseport_detach(struct sock *sk)
-{
-}
 
 #ifdef CONFIG_BPF_SYSCALL
 static inline int sock_map_get_from_fd(const union bpf_attr *attr,
@@ -1921,7 +1965,21 @@ static inline int sock_map_update_elem_sys(struct bpf_map *map, void *key, void 
 {
 	return -EOPNOTSUPP;
 }
+#endif /* CONFIG_BPF_SYSCALL */
+#endif /* CONFIG_NET && CONFIG_BPF_SYSCALL */
 
+#if defined(CONFIG_INET) && defined(CONFIG_BPF_SYSCALL)
+void bpf_sk_reuseport_detach(struct sock *sk);
+int bpf_fd_reuseport_array_lookup_elem(struct bpf_map *map, void *key,
+				       void *value);
+int bpf_fd_reuseport_array_update_elem(struct bpf_map *map, void *key,
+				       void *value, u64 map_flags);
+#else
+static inline void bpf_sk_reuseport_detach(struct sock *sk)
+{
+}
+
+#ifdef CONFIG_BPF_SYSCALL
 static inline int bpf_fd_reuseport_array_lookup_elem(struct bpf_map *map,
 						     void *key, void *value)
 {
@@ -1998,6 +2056,8 @@ extern const struct bpf_func_proto bpf_task_storage_get_proto;
 extern const struct bpf_func_proto bpf_task_storage_delete_proto;
 extern const struct bpf_func_proto bpf_for_each_map_elem_proto;
 extern const struct bpf_func_proto bpf_btf_find_by_name_kind_proto;
+extern const struct bpf_func_proto bpf_sk_setsockopt_proto;
+extern const struct bpf_func_proto bpf_sk_getsockopt_proto;
 
 const struct bpf_func_proto *bpf_tracing_func_proto(
 	enum bpf_func_id func_id, const struct bpf_prog *prog);

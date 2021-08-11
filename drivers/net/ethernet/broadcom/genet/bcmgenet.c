@@ -3659,7 +3659,7 @@ static const struct net_device_ops bcmgenet_netdev_ops = {
 	.ndo_tx_timeout		= bcmgenet_timeout,
 	.ndo_set_rx_mode	= bcmgenet_set_rx_mode,
 	.ndo_set_mac_address	= bcmgenet_set_mac_addr,
-	.ndo_do_ioctl		= phy_do_ioctl_running,
+	.ndo_eth_ioctl		= phy_do_ioctl_running,
 	.ndo_set_features	= bcmgenet_set_features,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= bcmgenet_poll_controller,
@@ -3971,8 +3971,6 @@ static int bcmgenet_probe(struct platform_device *pdev)
 	 * features enabling/disabling at runtime
 	 */
 	dev->needed_headroom += 64;
-
-	netdev_boot_setup_check(dev);
 
 	priv->dev = dev;
 	priv->pdev = pdev;

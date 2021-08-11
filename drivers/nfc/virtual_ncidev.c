@@ -65,7 +65,7 @@ static int virtual_nci_send(struct nci_dev *ndev, struct sk_buff *skb)
 	return 0;
 }
 
-static struct nci_ops virtual_nci_ops = {
+static const struct nci_ops virtual_nci_ops = {
 	.open = virtual_nci_open,
 	.close = virtual_nci_close,
 	.send = virtual_nci_send
@@ -170,7 +170,7 @@ static int virtual_ncidev_close(struct inode *inode, struct file *file)
 static long virtual_ncidev_ioctl(struct file *flip, unsigned int cmd,
 				 unsigned long arg)
 {
-	struct nfc_dev *nfc_dev = ndev->nfc_dev;
+	const struct nfc_dev *nfc_dev = ndev->nfc_dev;
 	void __user *p = (void __user *)arg;
 
 	if (cmd != IOCTL_GET_NCIDEV_IDX)

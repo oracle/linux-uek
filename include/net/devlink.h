@@ -55,8 +55,7 @@ struct devlink {
 			    * port, sb, dpipe, resource, params, region, traps and more.
 			    */
 	u8 reload_failed:1,
-	   reload_enabled:1,
-	   registered:1;
+	   reload_enabled:1;
 	char priv[0] __aligned(NETDEV_ALIGN);
 };
 
@@ -158,7 +157,6 @@ struct devlink_port {
 	struct list_head region_list;
 	struct devlink *devlink;
 	unsigned int index;
-	bool registered;
 	spinlock_t type_lock; /* Protects type and type_dev
 			       * pointer consistency.
 			       */
@@ -1398,8 +1396,8 @@ struct devlink_ops {
 	 *
 	 * Note: @extack can be NULL when port notifier queries the port function.
 	 */
-	int (*port_function_hw_addr_get)(struct devlink *devlink, struct devlink_port *port,
-					 u8 *hw_addr, int *hw_addr_len,
+	int (*port_function_hw_addr_get)(struct devlink_port *port, u8 *hw_addr,
+					 int *hw_addr_len,
 					 struct netlink_ext_ack *extack);
 	/**
 	 * @port_function_hw_addr_set: Port function's hardware address set function.
@@ -1408,7 +1406,7 @@ struct devlink_ops {
 	 * by the devlink port. Driver should return -EOPNOTSUPP if it doesn't support port
 	 * function handling for a particular port.
 	 */
-	int (*port_function_hw_addr_set)(struct devlink *devlink, struct devlink_port *port,
+	int (*port_function_hw_addr_set)(struct devlink_port *port,
 					 const u8 *hw_addr, int hw_addr_len,
 					 struct netlink_ext_ack *extack);
 	/**
@@ -1464,8 +1462,7 @@ struct devlink_ops {
 	 *
 	 * Return: 0 on success, negative value otherwise.
 	 */
-	int (*port_fn_state_get)(struct devlink *devlink,
-				 struct devlink_port *port,
+	int (*port_fn_state_get)(struct devlink_port *port,
 				 enum devlink_port_fn_state *state,
 				 enum devlink_port_fn_opstate *opstate,
 				 struct netlink_ext_ack *extack);
@@ -1480,8 +1477,7 @@ struct devlink_ops {
 	 *
 	 * Return: 0 on success, negative value otherwise.
 	 */
-	int (*port_fn_state_set)(struct devlink *devlink,
-				 struct devlink_port *port,
+	int (*port_fn_state_set)(struct devlink_port *port,
 				 enum devlink_port_fn_state state,
 				 struct netlink_ext_ack *extack);
 
@@ -1542,9 +1538,21 @@ static inline struct devlink *netdev_to_devlink(struct net_device *dev)
 struct ib_device;
 
 struct net *devlink_net(const struct devlink *devlink);
-void devlink_net_set(struct devlink *devlink, struct net *net);
-struct devlink *devlink_alloc(const struct devlink_ops *ops, size_t priv_size);
-int devlink_register(struct devlink *devlink, struct device *dev);
+/* This call is intended for software devices that can create
+ * devlink instances in other namespaces than init_net.
+ *
+ * Drivers that operate on real HW must use devlink_alloc() instead.
+ */
+struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
+				 size_t priv_size, struct net *net,
+				 struct device *dev);
+static inline struct devlink *devlink_alloc(const struct devlink_ops *ops,
+					    size_t priv_size,
+					    struct device *dev)
+{
+	return devlink_alloc_ns(ops, priv_size, &init_net, dev);
+}
+int devlink_register(struct devlink *devlink);
 void devlink_unregister(struct devlink *devlink);
 void devlink_reload_enable(struct devlink *devlink);
 void devlink_reload_disable(struct devlink *devlink);

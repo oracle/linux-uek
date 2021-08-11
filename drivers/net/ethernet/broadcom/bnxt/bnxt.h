@@ -496,6 +496,16 @@ struct rx_tpa_end_cmp_ext {
 	!!((data1) &							\
 	   ASYNC_EVENT_CMPL_ERROR_RECOVERY_EVENT_DATA1_FLAGS_RECOVERY_ENABLED)
 
+#define BNXT_EVENT_ERROR_REPORT_TYPE(data1)				\
+	(((data1) &							\
+	  ASYNC_EVENT_CMPL_ERROR_REPORT_BASE_EVENT_DATA1_ERROR_TYPE_MASK) >>\
+	 ASYNC_EVENT_CMPL_ERROR_REPORT_BASE_EVENT_DATA1_ERROR_TYPE_SFT)
+
+#define BNXT_EVENT_INVALID_SIGNAL_DATA(data2)				\
+	(((data2) &							\
+	  ASYNC_EVENT_CMPL_ERROR_REPORT_INVALID_SIGNAL_EVENT_DATA2_PIN_ID_MASK) >>\
+	 ASYNC_EVENT_CMPL_ERROR_REPORT_INVALID_SIGNAL_EVENT_DATA2_PIN_ID_SFT)
+
 struct nqe_cn {
 	__le16	type;
 	#define NQ_CN_TYPE_MASK           0x3fUL
@@ -586,15 +596,17 @@ struct nqe_cn {
 #define MAX_TPA_SEGS_P5	0x3f
 
 #if (BNXT_PAGE_SHIFT == 16)
-#define MAX_RX_PAGES	1
+#define MAX_RX_PAGES_AGG_ENA	1
+#define MAX_RX_PAGES	4
 #define MAX_RX_AGG_PAGES	4
 #define MAX_TX_PAGES	1
-#define MAX_CP_PAGES	8
+#define MAX_CP_PAGES	16
 #else
-#define MAX_RX_PAGES	8
+#define MAX_RX_PAGES_AGG_ENA	8
+#define MAX_RX_PAGES	32
 #define MAX_RX_AGG_PAGES	32
 #define MAX_TX_PAGES	8
-#define MAX_CP_PAGES	64
+#define MAX_CP_PAGES	128
 #endif
 
 #define RX_DESC_CNT (BNXT_PAGE_SIZE / sizeof(struct rx_bd))
@@ -612,6 +624,7 @@ struct nqe_cn {
 #define HW_CMPD_RING_SIZE (sizeof(struct tx_cmp) * CP_DESC_CNT)
 
 #define BNXT_MAX_RX_DESC_CNT		(RX_DESC_CNT * MAX_RX_PAGES - 1)
+#define BNXT_MAX_RX_DESC_CNT_JUM_ENA	(RX_DESC_CNT * MAX_RX_PAGES_AGG_ENA - 1)
 #define BNXT_MAX_RX_JUM_DESC_CNT	(RX_DESC_CNT * MAX_RX_AGG_PAGES - 1)
 #define BNXT_MAX_TX_DESC_CNT		(TX_DESC_CNT * MAX_TX_PAGES - 1)
 
@@ -962,11 +975,11 @@ struct bnxt_cp_ring_info {
 	struct dim		dim;
 
 	union {
-		struct tx_cmp	*cp_desc_ring[MAX_CP_PAGES];
-		struct nqe_cn	*nq_desc_ring[MAX_CP_PAGES];
+		struct tx_cmp	**cp_desc_ring;
+		struct nqe_cn	**nq_desc_ring;
 	};
 
-	dma_addr_t		cp_desc_mapping[MAX_CP_PAGES];
+	dma_addr_t		*cp_desc_mapping;
 
 	struct bnxt_stats_mem	stats;
 	u32			hw_stats_ctx_id;
@@ -1887,6 +1900,7 @@ struct bnxt {
 	#define BNXT_FW_CAP_VLAN_RX_STRIP		0x01000000
 	#define BNXT_FW_CAP_VLAN_TX_INSERT		0x02000000
 	#define BNXT_FW_CAP_EXT_HW_STATS_SUPPORTED	0x04000000
+	#define BNXT_FW_CAP_PTP_PPS			0x10000000
 	#define BNXT_FW_CAP_RING_MONITOR		0x40000000
 
 #define BNXT_NEW_RM(bp)		((bp)->fw_cap & BNXT_FW_CAP_NEW_RM)

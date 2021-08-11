@@ -431,10 +431,10 @@ config VSOCKMON
 config MHI_NET
 	tristate "MHI network driver"
 	depends on MHI_BUS
-	select WWAN
 	help
 	  This is the network driver for MHI bus.  It can be used with
-	  QCOM based WWAN modems (like SDX55).  Say Y or M.
+	  QCOM based WWAN modems for IP or QMAP/rmnet protocol (like SDX55).
+	  Say Y or M.
 
 endif # NET_CORE
 
@@ -482,6 +482,8 @@ config NET_SB1000
 	  If you don't have this card, of course say N.
 
 source "drivers/net/phy/Kconfig"
+
+source "drivers/net/mctp/Kconfig"
 
 source "drivers/net/mdio/Kconfig"
 
@@ -603,5 +605,12 @@ config NET_FAILOVER
 	  an alternate low latency datapath. It also enables live migration of
 	  a VM with direct attached VF by failing over to the paravirtual
 	  datapath when the VF is unplugged.
+
+config NETDEV_LEGACY_INIT
+	bool
+	depends on ISA
+	help
+	  Drivers that call netdev_boot_setup_check() should select this
+	  symbol, everything else no longer needs it.
 
 endif # NETDEVICES

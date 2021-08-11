@@ -1179,6 +1179,7 @@ static int mlx5_load(struct mlx5_core_dev *dev)
 		goto err_ec;
 	}
 
+	mlx5_lag_add_mdev(dev);
 	err = mlx5_sriov_attach(dev);
 	if (err) {
 		mlx5_core_err(dev, "sriov init failed %d\n", err);
@@ -1186,11 +1187,11 @@ static int mlx5_load(struct mlx5_core_dev *dev)
 	}
 
 	mlx5_sf_dev_table_create(dev);
-	mlx5_lag_add_mdev(dev);
 
 	return 0;
 
 err_sriov:
+	mlx5_lag_remove_mdev(dev);
 	mlx5_ec_cleanup(dev);
 err_ec:
 	mlx5_sf_hw_table_destroy(dev);
@@ -1222,9 +1223,9 @@ err_irq_table:
 
 static void mlx5_unload(struct mlx5_core_dev *dev)
 {
-	mlx5_lag_remove_mdev(dev);
 	mlx5_sf_dev_table_destroy(dev);
 	mlx5_sriov_detach(dev);
+	mlx5_lag_remove_mdev(dev);
 	mlx5_ec_cleanup(dev);
 	mlx5_sf_hw_table_destroy(dev);
 	mlx5_vhca_event_stop(dev);
@@ -1271,7 +1272,7 @@ int mlx5_init_one(struct mlx5_core_dev *dev)
 
 	set_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
 
-	err = mlx5_devlink_register(priv_to_devlink(dev), dev->device);
+	err = mlx5_devlink_register(priv_to_devlink(dev));
 	if (err)
 		goto err_devlink_reg;
 
@@ -1452,7 +1453,7 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct devlink *devlink;
 	int err;
 
-	devlink = mlx5_devlink_alloc();
+	devlink = mlx5_devlink_alloc(&pdev->dev);
 	if (!devlink) {
 		dev_err(&pdev->dev, "devlink alloc failed\n");
 		return -ENOMEM;

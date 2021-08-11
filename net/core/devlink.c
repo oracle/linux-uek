@@ -108,19 +108,6 @@ struct net *devlink_net(const struct devlink *devlink)
 }
 EXPORT_SYMBOL_GPL(devlink_net);
 
-static void __devlink_net_set(struct devlink *devlink, struct net *net)
-{
-	write_pnet(&devlink->_net, net);
-}
-
-void devlink_net_set(struct devlink *devlink, struct net *net)
-{
-	if (WARN_ON(devlink->registered))
-		return;
-	__devlink_net_set(devlink, net);
-}
-EXPORT_SYMBOL_GPL(devlink_net_set);
-
 static struct devlink *devlink_get_from_attrs(struct net *net,
 					      struct nlattr **attrs)
 {
@@ -817,10 +804,11 @@ static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 	return 0;
 }
 
-static int
-devlink_port_fn_hw_addr_fill(struct devlink *devlink, const struct devlink_ops *ops,
-			     struct devlink_port *port, struct sk_buff *msg,
-			     struct netlink_ext_ack *extack, bool *msg_updated)
+static int devlink_port_fn_hw_addr_fill(const struct devlink_ops *ops,
+					struct devlink_port *port,
+					struct sk_buff *msg,
+					struct netlink_ext_ack *extack,
+					bool *msg_updated)
 {
 	u8 hw_addr[MAX_ADDR_LEN];
 	int hw_addr_len;
@@ -829,7 +817,8 @@ devlink_port_fn_hw_addr_fill(struct devlink *devlink, const struct devlink_ops *
 	if (!ops->port_function_hw_addr_get)
 		return 0;
 
-	err = ops->port_function_hw_addr_get(devlink, port, hw_addr, &hw_addr_len, extack);
+	err = ops->port_function_hw_addr_get(port, hw_addr, &hw_addr_len,
+					     extack);
 	if (err) {
 		if (err == -EOPNOTSUPP)
 			return 0;
@@ -906,12 +895,11 @@ devlink_port_fn_opstate_valid(enum devlink_port_fn_opstate opstate)
 	       opstate == DEVLINK_PORT_FN_OPSTATE_ATTACHED;
 }
 
-static int
-devlink_port_fn_state_fill(struct devlink *devlink,
-			   const struct devlink_ops *ops,
-			   struct devlink_port *port, struct sk_buff *msg,
-			   struct netlink_ext_ack *extack,
-			   bool *msg_updated)
+static int devlink_port_fn_state_fill(const struct devlink_ops *ops,
+				      struct devlink_port *port,
+				      struct sk_buff *msg,
+				      struct netlink_ext_ack *extack,
+				      bool *msg_updated)
 {
 	enum devlink_port_fn_opstate opstate;
 	enum devlink_port_fn_state state;
@@ -920,7 +908,7 @@ devlink_port_fn_state_fill(struct devlink *devlink,
 	if (!ops->port_fn_state_get)
 		return 0;
 
-	err = ops->port_fn_state_get(devlink, port, &state, &opstate, extack);
+	err = ops->port_fn_state_get(port, &state, &opstate, extack);
 	if (err) {
 		if (err == -EOPNOTSUPP)
 			return 0;
@@ -948,7 +936,6 @@ static int
 devlink_nl_port_function_attrs_put(struct sk_buff *msg, struct devlink_port *port,
 				   struct netlink_ext_ack *extack)
 {
-	struct devlink *devlink = port->devlink;
 	const struct devlink_ops *ops;
 	struct nlattr *function_attr;
 	bool msg_updated = false;
@@ -958,13 +945,12 @@ devlink_nl_port_function_attrs_put(struct sk_buff *msg, struct devlink_port *por
 	if (!function_attr)
 		return -EMSGSIZE;
 
-	ops = devlink->ops;
-	err = devlink_port_fn_hw_addr_fill(devlink, ops, port, msg,
-					   extack, &msg_updated);
+	ops = port->devlink->ops;
+	err = devlink_port_fn_hw_addr_fill(ops, port, msg, extack,
+					   &msg_updated);
 	if (err)
 		goto out;
-	err = devlink_port_fn_state_fill(devlink, ops, port, msg, extack,
-					 &msg_updated);
+	err = devlink_port_fn_state_fill(ops, port, msg, extack, &msg_updated);
 out:
 	if (err || !msg_updated)
 		nla_nest_cancel(msg, function_attr);
@@ -1043,7 +1029,7 @@ static void devlink_port_notify(struct devlink_port *devlink_port,
 	struct sk_buff *msg;
 	int err;
 
-	if (!devlink_port->registered)
+	if (!devlink_port->devlink)
 		return;
 
 	WARN_ON(cmd != DEVLINK_CMD_PORT_NEW && cmd != DEVLINK_CMD_PORT_DEL);
@@ -1282,31 +1268,33 @@ out:
 	return msg->len;
 }
 
-static int devlink_port_type_set(struct devlink *devlink,
-				 struct devlink_port *devlink_port,
+static int devlink_port_type_set(struct devlink_port *devlink_port,
 				 enum devlink_port_type port_type)
 
 {
 	int err;
 
-	if (devlink->ops->port_type_set) {
-		if (port_type == devlink_port->type)
-			return 0;
-		err = devlink->ops->port_type_set(devlink_port, port_type);
-		if (err)
-			return err;
-		devlink_port->desired_type = port_type;
-		devlink_port_notify(devlink_port, DEVLINK_CMD_PORT_NEW);
+	if (!devlink_port->devlink->ops->port_type_set)
+		return -EOPNOTSUPP;
+
+	if (port_type == devlink_port->type)
 		return 0;
-	}
-	return -EOPNOTSUPP;
+
+	err = devlink_port->devlink->ops->port_type_set(devlink_port,
+							port_type);
+	if (err)
+		return err;
+
+	devlink_port->desired_type = port_type;
+	devlink_port_notify(devlink_port, DEVLINK_CMD_PORT_NEW);
+	return 0;
 }
 
-static int
-devlink_port_function_hw_addr_set(struct devlink *devlink, struct devlink_port *port,
-				  const struct nlattr *attr, struct netlink_ext_ack *extack)
+static int devlink_port_function_hw_addr_set(struct devlink_port *port,
+					     const struct nlattr *attr,
+					     struct netlink_ext_ack *extack)
 {
-	const struct devlink_ops *ops;
+	const struct devlink_ops *ops = port->devlink->ops;
 	const u8 *hw_addr;
 	int hw_addr_len;
 
@@ -1327,17 +1315,16 @@ devlink_port_function_hw_addr_set(struct devlink *devlink, struct devlink_port *
 		}
 	}
 
-	ops = devlink->ops;
 	if (!ops->port_function_hw_addr_set) {
 		NL_SET_ERR_MSG_MOD(extack, "Port doesn't support function attributes");
 		return -EOPNOTSUPP;
 	}
 
-	return ops->port_function_hw_addr_set(devlink, port, hw_addr, hw_addr_len, extack);
+	return ops->port_function_hw_addr_set(port, hw_addr, hw_addr_len,
+					      extack);
 }
 
-static int devlink_port_fn_state_set(struct devlink *devlink,
-				     struct devlink_port *port,
+static int devlink_port_fn_state_set(struct devlink_port *port,
 				     const struct nlattr *attr,
 				     struct netlink_ext_ack *extack)
 {
@@ -1345,18 +1332,18 @@ static int devlink_port_fn_state_set(struct devlink *devlink,
 	const struct devlink_ops *ops;
 
 	state = nla_get_u8(attr);
-	ops = devlink->ops;
+	ops = port->devlink->ops;
 	if (!ops->port_fn_state_set) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Function does not support state setting");
 		return -EOPNOTSUPP;
 	}
-	return ops->port_fn_state_set(devlink, port, state, extack);
+	return ops->port_fn_state_set(port, state, extack);
 }
 
-static int
-devlink_port_function_set(struct devlink *devlink, struct devlink_port *port,
-			  const struct nlattr *attr, struct netlink_ext_ack *extack)
+static int devlink_port_function_set(struct devlink_port *port,
+				     const struct nlattr *attr,
+				     struct netlink_ext_ack *extack)
 {
 	struct nlattr *tb[DEVLINK_PORT_FUNCTION_ATTR_MAX + 1];
 	int err;
@@ -1370,7 +1357,7 @@ devlink_port_function_set(struct devlink *devlink, struct devlink_port *port,
 
 	attr = tb[DEVLINK_PORT_FUNCTION_ATTR_HW_ADDR];
 	if (attr) {
-		err = devlink_port_function_hw_addr_set(devlink, port, attr, extack);
+		err = devlink_port_function_hw_addr_set(port, attr, extack);
 		if (err)
 			return err;
 	}
@@ -1380,7 +1367,7 @@ devlink_port_function_set(struct devlink *devlink, struct devlink_port *port,
 	 */
 	attr = tb[DEVLINK_PORT_FN_ATTR_STATE];
 	if (attr)
-		err = devlink_port_fn_state_set(devlink, port, attr, extack);
+		err = devlink_port_fn_state_set(port, attr, extack);
 
 	if (!err)
 		devlink_port_notify(port, DEVLINK_CMD_PORT_NEW);
@@ -1391,14 +1378,13 @@ static int devlink_nl_cmd_port_set_doit(struct sk_buff *skb,
 					struct genl_info *info)
 {
 	struct devlink_port *devlink_port = info->user_ptr[1];
-	struct devlink *devlink = devlink_port->devlink;
 	int err;
 
 	if (info->attrs[DEVLINK_ATTR_PORT_TYPE]) {
 		enum devlink_port_type port_type;
 
 		port_type = nla_get_u16(info->attrs[DEVLINK_ATTR_PORT_TYPE]);
-		err = devlink_port_type_set(devlink, devlink_port, port_type);
+		err = devlink_port_type_set(devlink_port, port_type);
 		if (err)
 			return err;
 	}
@@ -1407,7 +1393,7 @@ static int devlink_nl_cmd_port_set_doit(struct sk_buff *skb,
 		struct nlattr *attr = info->attrs[DEVLINK_ATTR_PORT_FUNCTION];
 		struct netlink_ext_ack *extack = info->extack;
 
-		err = devlink_port_function_set(devlink, devlink_port, attr, extack);
+		err = devlink_port_function_set(devlink_port, attr, extack);
 		if (err)
 			return err;
 	}
@@ -3801,10 +3787,12 @@ static void devlink_param_notify(struct devlink *devlink,
 				 struct devlink_param_item *param_item,
 				 enum devlink_command cmd);
 
-static void devlink_reload_netns_change(struct devlink *devlink,
-					struct net *dest_net)
+static void devlink_ns_change_notify(struct devlink *devlink,
+				     struct net *dest_net, struct net *curr_net,
+				     bool new)
 {
 	struct devlink_param_item *param_item;
+	enum devlink_command cmd;
 
 	/* Userspace needs to be notified about devlink objects
 	 * removed from original and entering new network namespace.
@@ -3812,17 +3800,18 @@ static void devlink_reload_netns_change(struct devlink *devlink,
 	 * reload process so the notifications are generated separatelly.
 	 */
 
-	list_for_each_entry(param_item, &devlink->param_list, list)
-		devlink_param_notify(devlink, 0, param_item,
-				     DEVLINK_CMD_PARAM_DEL);
-	devlink_notify(devlink, DEVLINK_CMD_DEL);
+	if (!dest_net || net_eq(dest_net, curr_net))
+		return;
 
-	__devlink_net_set(devlink, dest_net);
+	if (new)
+		devlink_notify(devlink, DEVLINK_CMD_NEW);
 
-	devlink_notify(devlink, DEVLINK_CMD_NEW);
+	cmd = new ? DEVLINK_CMD_PARAM_NEW : DEVLINK_CMD_PARAM_DEL;
 	list_for_each_entry(param_item, &devlink->param_list, list)
-		devlink_param_notify(devlink, 0, param_item,
-				     DEVLINK_CMD_PARAM_NEW);
+		devlink_param_notify(devlink, 0, param_item, cmd);
+
+	if (!new)
+		devlink_notify(devlink, DEVLINK_CMD_DEL);
 }
 
 static bool devlink_reload_supported(const struct devlink_ops *ops)
@@ -3902,6 +3891,7 @@ static int devlink_reload(struct devlink *devlink, struct net *dest_net,
 			  u32 *actions_performed, struct netlink_ext_ack *extack)
 {
 	u32 remote_reload_stats[DEVLINK_RELOAD_STATS_ARRAY_SIZE];
+	struct net *curr_net;
 	int err;
 
 	if (!devlink->reload_enabled)
@@ -3909,18 +3899,22 @@ static int devlink_reload(struct devlink *devlink, struct net *dest_net,
 
 	memcpy(remote_reload_stats, devlink->stats.remote_reload_stats,
 	       sizeof(remote_reload_stats));
+
+	curr_net = devlink_net(devlink);
+	devlink_ns_change_notify(devlink, dest_net, curr_net, false);
 	err = devlink->ops->reload_down(devlink, !!dest_net, action, limit, extack);
 	if (err)
 		return err;
 
-	if (dest_net && !net_eq(dest_net, devlink_net(devlink)))
-		devlink_reload_netns_change(devlink, dest_net);
+	if (dest_net && !net_eq(dest_net, curr_net))
+		write_pnet(&devlink->_net, dest_net);
 
 	err = devlink->ops->reload_up(devlink, action, limit, actions_performed, extack);
 	devlink_reload_failed_set(devlink, !!err);
 	if (err)
 		return err;
 
+	devlink_ns_change_notify(devlink, dest_net, curr_net, true);
 	WARN_ON(!(*actions_performed & BIT(action)));
 	/* Catch driver on updating the remote action within devlink reload */
 	WARN_ON(memcmp(remote_reload_stats, devlink->stats.remote_reload_stats,
@@ -8768,30 +8762,35 @@ static bool devlink_reload_actions_valid(const struct devlink_ops *ops)
 }
 
 /**
- *	devlink_alloc - Allocate new devlink instance resources
+ *	devlink_alloc_ns - Allocate new devlink instance resources
+ *	in specific namespace
  *
  *	@ops: ops
  *	@priv_size: size of user private data
+ *	@net: net namespace
+ *	@dev: parent device
  *
  *	Allocate new devlink instance resources, including devlink index
  *	and name.
  */
-struct devlink *devlink_alloc(const struct devlink_ops *ops, size_t priv_size)
+struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
+				 size_t priv_size, struct net *net,
+				 struct device *dev)
 {
 	struct devlink *devlink;
 
-	if (WARN_ON(!ops))
-		return NULL;
-
+	WARN_ON(!ops || !dev);
 	if (!devlink_reload_actions_valid(ops))
 		return NULL;
 
 	devlink = kzalloc(sizeof(*devlink) + priv_size, GFP_KERNEL);
 	if (!devlink)
 		return NULL;
+
+	devlink->dev = dev;
 	devlink->ops = ops;
 	xa_init_flags(&devlink->snapshot_ids, XA_FLAGS_ALLOC);
-	__devlink_net_set(devlink, &init_net);
+	write_pnet(&devlink->_net, net);
 	INIT_LIST_HEAD(&devlink->port_list);
 	INIT_LIST_HEAD(&devlink->rate_list);
 	INIT_LIST_HEAD(&devlink->sb_list);
@@ -8807,18 +8806,15 @@ struct devlink *devlink_alloc(const struct devlink_ops *ops, size_t priv_size)
 	mutex_init(&devlink->reporters_lock);
 	return devlink;
 }
-EXPORT_SYMBOL_GPL(devlink_alloc);
+EXPORT_SYMBOL_GPL(devlink_alloc_ns);
 
 /**
  *	devlink_register - Register devlink instance
  *
  *	@devlink: devlink
- *	@dev: parent device
  */
-int devlink_register(struct devlink *devlink, struct device *dev)
+int devlink_register(struct devlink *devlink)
 {
-	devlink->dev = dev;
-	devlink->registered = true;
 	mutex_lock(&devlink_mutex);
 	list_add_tail(&devlink->list, &devlink_list);
 	devlink_notify(devlink, DEVLINK_CMD_NEW);
@@ -8960,9 +8956,10 @@ int devlink_port_register(struct devlink *devlink,
 		mutex_unlock(&devlink->lock);
 		return -EEXIST;
 	}
+
+	WARN_ON(devlink_port->devlink);
 	devlink_port->devlink = devlink;
 	devlink_port->index = port_index;
-	devlink_port->registered = true;
 	spin_lock_init(&devlink_port->type_lock);
 	INIT_LIST_HEAD(&devlink_port->reporter_list);
 	mutex_init(&devlink_port->reporters_lock);
@@ -9001,7 +8998,7 @@ static void __devlink_port_type_set(struct devlink_port *devlink_port,
 				    enum devlink_port_type type,
 				    void *type_dev)
 {
-	if (WARN_ON(!devlink_port->registered))
+	if (WARN_ON(!devlink_port->devlink))
 		return;
 	devlink_port_type_warn_cancel(devlink_port);
 	spin_lock_bh(&devlink_port->type_lock);
@@ -9121,7 +9118,7 @@ void devlink_port_attrs_set(struct devlink_port *devlink_port,
 {
 	int ret;
 
-	if (WARN_ON(devlink_port->registered))
+	if (WARN_ON(devlink_port->devlink))
 		return;
 	devlink_port->attrs = *attrs;
 	ret = __devlink_port_attrs_set(devlink_port, attrs->flavour);
@@ -9145,7 +9142,7 @@ void devlink_port_attrs_pci_pf_set(struct devlink_port *devlink_port, u32 contro
 	struct devlink_port_attrs *attrs = &devlink_port->attrs;
 	int ret;
 
-	if (WARN_ON(devlink_port->registered))
+	if (WARN_ON(devlink_port->devlink))
 		return;
 	ret = __devlink_port_attrs_set(devlink_port,
 				       DEVLINK_PORT_FLAVOUR_PCI_PF);
@@ -9172,7 +9169,7 @@ void devlink_port_attrs_pci_vf_set(struct devlink_port *devlink_port, u32 contro
 	struct devlink_port_attrs *attrs = &devlink_port->attrs;
 	int ret;
 
-	if (WARN_ON(devlink_port->registered))
+	if (WARN_ON(devlink_port->devlink))
 		return;
 	ret = __devlink_port_attrs_set(devlink_port,
 				       DEVLINK_PORT_FLAVOUR_PCI_VF);
@@ -9200,7 +9197,7 @@ void devlink_port_attrs_pci_sf_set(struct devlink_port *devlink_port, u32 contro
 	struct devlink_port_attrs *attrs = &devlink_port->attrs;
 	int ret;
 
-	if (WARN_ON(devlink_port->registered))
+	if (WARN_ON(devlink_port->devlink))
 		return;
 	ret = __devlink_port_attrs_set(devlink_port,
 				       DEVLINK_PORT_FLAVOUR_PCI_SF);

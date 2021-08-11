@@ -855,6 +855,7 @@ enum {
 	IFLA_BOND_AD_ACTOR_SYSTEM,
 	IFLA_BOND_TLB_DYNAMIC_LB,
 	IFLA_BOND_PEER_NOTIF_DELAY,
+	IFLA_BOND_AD_LACP_ACTIVE,
 	__IFLA_BOND_MAX,
 };
 
@@ -1259,5 +1260,15 @@ struct ifla_rmnet_flags {
 	__u32	flags;
 	__u32	mask;
 };
+
+/* MCTP section */
+
+enum {
+	IFLA_MCTP_UNSPEC,
+	IFLA_MCTP_NET,
+	__IFLA_MCTP_MAX,
+};
+
+#define IFLA_MCTP_MAX (__IFLA_MCTP_MAX - 1)
 
 #endif /* _UAPI_LINUX_IF_LINK_H */

@@ -74,8 +74,7 @@ static struct sk_buff *lan9303_xmit(struct sk_buff *skb, struct net_device *dev)
 	return skb;
 }
 
-static struct sk_buff *lan9303_rcv(struct sk_buff *skb, struct net_device *dev,
-				   struct packet_type *pt)
+static struct sk_buff *lan9303_rcv(struct sk_buff *skb, struct net_device *dev)
 {
 	__be16 *lan9303_tag;
 	u16 lan9303_tag1;
@@ -115,7 +114,8 @@ static struct sk_buff *lan9303_rcv(struct sk_buff *skb, struct net_device *dev,
 	skb_pull_rcsum(skb, 2 + 2);
 	memmove(skb->data - ETH_HLEN, skb->data - (ETH_HLEN + LAN9303_TAG_LEN),
 		2 * ETH_ALEN);
-	skb->offload_fwd_mark = !(lan9303_tag1 & LAN9303_TAG_RX_TRAPPED_TO_CPU);
+	if (!(lan9303_tag1 & LAN9303_TAG_RX_TRAPPED_TO_CPU))
+		dsa_default_offload_fwd_mark(skb);
 
 	return skb;
 }

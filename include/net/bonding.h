@@ -129,6 +129,7 @@ struct bond_params {
 	int updelay;
 	int downdelay;
 	int peer_notif_delay;
+	int lacp_active;
 	int lacp_fast;
 	unsigned int min_links;
 	int ad_select;
@@ -258,6 +259,7 @@ struct bonding {
 	/* protecting ipsec_list */
 	spinlock_t ipsec_lock;
 #endif /* CONFIG_XFRM_OFFLOAD */
+	struct bpf_prog *xdp_prog;
 };
 
 #define bond_slave_get_rcu(dev) \
