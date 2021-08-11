@@ -314,12 +314,37 @@ int vma_is_stack_for_current(struct vm_area_struct *vma)
 /*
  * Change backing file, only valid to use during initial VMA setup.
  */
-void vma_set_file(struct vm_area_struct *vma, struct file *file)
+int vma_set_file(struct vm_area_struct *vma, struct file *file)
 {
+	vm_flags_t vm_flags = vma->vm_flags;
+	int err = 0;
+
 	/* Changing an anonymous vma with this is illegal */
 	get_file(file);
+
+	/* Get temporary denial counts on replacement */
+	if (vm_flags & VM_DENYWRITE) {
+		err = deny_write_access(file);
+		if (err)
+			goto out_put;
+	}
+	if (vm_flags & VM_SHARED) {
+		err = mapping_map_writable(file->f_mapping);
+		if (err)
+			goto out_allow;
+	}
+
 	swap(vma->vm_file, file);
+
+	/* Undo temporary denial counts on replaced */
+	if (vm_flags & VM_SHARED)
+		mapping_unmap_writable(file->f_mapping);
+out_allow:
+	if (vm_flags & VM_DENYWRITE)
+		allow_write_access(file);
+out_put:
 	fput(file);
+	return err;
 }
 EXPORT_SYMBOL(vma_set_file);
 
