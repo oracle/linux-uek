@@ -70,13 +70,13 @@ static int ufshpb_is_valid_srgn(struct ufshpb_region *rgn,
 
 static bool ufshpb_is_read_cmd(struct scsi_cmnd *cmd)
 {
-	return req_op(cmd->request) == REQ_OP_READ;
+	return req_op(scsi_cmd_to_rq(cmd)) == REQ_OP_READ;
 }
 
 static bool ufshpb_is_write_or_discard(struct scsi_cmnd *cmd)
 {
-	return op_is_write(req_op(cmd->request)) ||
-	       op_is_discard(req_op(cmd->request));
+	return op_is_write(req_op(scsi_cmd_to_rq(cmd))) ||
+	       op_is_discard(req_op(scsi_cmd_to_rq(cmd)));
 }
 
 static bool ufshpb_is_supported_chunk(struct ufshpb_lu *hpb, int transfer_len)
@@ -178,9 +178,19 @@ next_srgn:
 		set_bit_len = cnt;
 
 	spin_lock_irqsave(&hpb->rgn_state_lock, flags);
-	if (set_dirty && rgn->rgn_state != HPB_RGN_INACTIVE &&
-	    srgn->srgn_state == HPB_SRGN_VALID)
-		bitmap_set(srgn->mctx->ppn_dirty, srgn_offset, set_bit_len);
+	if (rgn->rgn_state != HPB_RGN_INACTIVE) {
+		if (set_dirty) {
+			if (srgn->srgn_state == HPB_SRGN_VALID)
+				bitmap_set(srgn->mctx->ppn_dirty, srgn_offset,
+					   set_bit_len);
+		} else if (hpb->is_hcm) {
+			 /* rewind the read timer for lru regions */
+			rgn->read_timeout = ktime_add_ms(ktime_get(),
+					rgn->hpb->params.read_timeout_ms);
+			rgn->read_timeout_expiries =
+				rgn->hpb->params.read_timeout_expiries;
+		}
+	}
 	spin_unlock_irqrestore(&hpb->rgn_state_lock, flags);
 
 	if (hpb->is_hcm && prev_srgn != srgn) {
@@ -516,9 +526,9 @@ static int ufshpb_execute_pre_req(struct ufshpb_lu *hpb, struct scsi_cmnd *cmd,
 
 	pre_req->hpb = hpb;
 	pre_req->wb.lpn = sectors_to_logical(cmd->device,
-					     blk_rq_pos(cmd->request));
+					     blk_rq_pos(scsi_cmd_to_rq(cmd)));
 	pre_req->wb.len = sectors_to_logical(cmd->device,
-					     blk_rq_sectors(cmd->request));
+					     blk_rq_sectors(scsi_cmd_to_rq(cmd)));
 	if (ufshpb_pre_req_add_bio_page(hpb, q, pre_req))
 		return -ENOMEM;
 
@@ -616,17 +626,17 @@ int ufshpb_prep(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 		return -ENODEV;
 	}
 
-	if (blk_rq_is_passthrough(cmd->request) ||
+	if (blk_rq_is_passthrough(scsi_cmd_to_rq(cmd)) ||
 	    (!ufshpb_is_write_or_discard(cmd) &&
 	     !ufshpb_is_read_cmd(cmd)))
 		return 0;
 
 	transfer_len = sectors_to_logical(cmd->device,
-					  blk_rq_sectors(cmd->request));
+					  blk_rq_sectors(scsi_cmd_to_rq(cmd)));
 	if (unlikely(!transfer_len))
 		return 0;
 
-	lpn = sectors_to_logical(cmd->device, blk_rq_pos(cmd->request));
+	lpn = sectors_to_logical(cmd->device, blk_rq_pos(scsi_cmd_to_rq(cmd)));
 	ufshpb_get_pos_from_lpn(hpb, lpn, &rgn_idx, &srgn_idx, &srgn_offset);
 	rgn = hpb->rgn_tbl + rgn_idx;
 	srgn = rgn->srgn_tbl + srgn_idx;
@@ -746,6 +756,7 @@ static struct ufshpb_req *ufshpb_get_map_req(struct ufshpb_lu *hpb,
 {
 	struct ufshpb_req *map_req;
 	struct bio *bio;
+	unsigned long flags;
 
 	if (hpb->is_hcm &&
 	    hpb->num_inflight_map_req >= hpb->params.inflight_map_req) {
@@ -770,7 +781,10 @@ static struct ufshpb_req *ufshpb_get_map_req(struct ufshpb_lu *hpb,
 
 	map_req->rb.srgn_idx = srgn->srgn_idx;
 	map_req->rb.mctx = srgn->mctx;
+
+	spin_lock_irqsave(&hpb->param_lock, flags);
 	hpb->num_inflight_map_req++;
+	spin_unlock_irqrestore(&hpb->param_lock, flags);
 
 	return map_req;
 }
@@ -778,9 +792,14 @@ static struct ufshpb_req *ufshpb_get_map_req(struct ufshpb_lu *hpb,
 static void ufshpb_put_map_req(struct ufshpb_lu *hpb,
 			       struct ufshpb_req *map_req)
 {
+	unsigned long flags;
+
 	bio_put(map_req->bio);
 	ufshpb_put_req(hpb, map_req);
+
+	spin_lock_irqsave(&hpb->param_lock, flags);
 	hpb->num_inflight_map_req--;
+	spin_unlock_irqrestore(&hpb->param_lock, flags);
 }
 
 static int ufshpb_clear_dirty_bitmap(struct ufshpb_lu *hpb,
@@ -1366,7 +1385,8 @@ static int ufshpb_add_region(struct ufshpb_lu *hpb, struct ufshpb_region *rgn)
 			victim_rgn = ufshpb_victim_lru_info(hpb);
 			if (!victim_rgn) {
 				dev_warn(&hpb->sdev_ufs_lu->sdev_dev,
-				    "cannot get victim region error\n");
+				    "cannot get victim region %s\n",
+				    hpb->is_hcm ? "" : "error");
 				ret = -ENOMEM;
 				goto out;
 			}
@@ -2377,6 +2397,7 @@ static int ufshpb_lu_hpb_init(struct ufs_hba *hba, struct ufshpb_lu *hpb)
 
 	spin_lock_init(&hpb->rgn_state_lock);
 	spin_lock_init(&hpb->rsp_list_lock);
+	spin_lock_init(&hpb->param_lock);
 
 	INIT_LIST_HEAD(&hpb->lru_info.lh_lru_rgn);
 	INIT_LIST_HEAD(&hpb->lh_act_srgn);
