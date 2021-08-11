@@ -3140,10 +3140,10 @@ struct ipv6_hoplimit_word {
 	__u8	hop_limit;
 };
 
-static int is_action_keys_supported(const struct flow_action_entry *act,
-				    bool ct_flow, bool *modify_ip_header,
-				    bool *modify_tuple,
-				    struct netlink_ext_ack *extack)
+static bool
+is_action_keys_supported(const struct flow_action_entry *act, bool ct_flow,
+			 bool *modify_ip_header, bool *modify_tuple,
+			 struct netlink_ext_ack *extack)
 {
 	u32 mask, offset;
 	u8 htype;
@@ -3171,7 +3171,7 @@ static int is_action_keys_supported(const struct flow_action_entry *act,
 		if (ct_flow && *modify_tuple) {
 			NL_SET_ERR_MSG_MOD(extack,
 					   "can't offload re-write of ipv4 address with action ct");
-			return -EOPNOTSUPP;
+			return false;
 		}
 	} else if (htype == FLOW_ACT_MANGLE_HDR_TYPE_IP6) {
 		struct ipv6_hoplimit_word *hoplimit_word =
@@ -3189,7 +3189,7 @@ static int is_action_keys_supported(const struct flow_action_entry *act,
 		if (ct_flow && *modify_tuple) {
 			NL_SET_ERR_MSG_MOD(extack,
 					   "can't offload re-write of ipv6 address with action ct");
-			return -EOPNOTSUPP;
+			return false;
 		}
 	} else if (htype == FLOW_ACT_MANGLE_HDR_TYPE_TCP ||
 		   htype == FLOW_ACT_MANGLE_HDR_TYPE_UDP) {
@@ -3197,11 +3197,11 @@ static int is_action_keys_supported(const struct flow_action_entry *act,
 		if (ct_flow) {
 			NL_SET_ERR_MSG_MOD(extack,
 					   "can't offload re-write of transport header ports with action ct");
-			return -EOPNOTSUPP;
+			return false;
 		}
 	}
 
-	return 0;
+	return true;
 }
 
 static bool modify_tuple_supported(bool modify_tuple, bool ct_clear,
@@ -3248,7 +3248,7 @@ static bool modify_header_match_supported(struct mlx5e_priv *priv,
 	void *headers_v;
 	u16 ethertype;
 	u8 ip_proto;
-	int i, err;
+	int i;
 
 	headers_c = get_match_headers_criteria(actions, spec);
 	headers_v = get_match_headers_value(actions, spec);
@@ -3266,11 +3266,10 @@ static bool modify_header_match_supported(struct mlx5e_priv *priv,
 		    act->id != FLOW_ACTION_ADD)
 			continue;
 
-		err = is_action_keys_supported(act, ct_flow,
-					       &modify_ip_header,
-					       &modify_tuple, extack);
-		if (err)
-			return err;
+		if (!is_action_keys_supported(act, ct_flow,
+					      &modify_ip_header,
+					      &modify_tuple, extack))
+			return false;
 	}
 
 	if (!modify_tuple_supported(modify_tuple, ct_clear, ct_flow, extack,
