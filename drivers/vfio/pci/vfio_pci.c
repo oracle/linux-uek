@@ -1347,20 +1347,15 @@ static int vfio_pci_zap_and_vma_lock(struct vfio_pci_device *vdev, bool try)
 			list_for_each_entry_safe(mmap_vma, tmp,
 						 &vdev->vma_list, vma_next) {
 				struct vm_area_struct *vma = mmap_vma->vma;
-				struct vdev_vma_priv *p;
 
 				if (vma->vm_mm != mm)
 					continue;
 
 				list_del(&mmap_vma->vma_next);
 				kfree(mmap_vma);
-				p = vma->vm_private_data;
 
-				mutex_lock(&vdev->map_lock);
 				zap_vma_ptes(vma, vma->vm_start,
 					     vma->vm_end - vma->vm_start);
-				p->vma_mapped = false;
-				mutex_unlock(&vdev->map_lock);
 			}
 			mutex_unlock(&vdev->vma_lock);
 		}
@@ -1417,19 +1412,12 @@ static int __vfio_pci_add_vma(struct vfio_pci_device *vdev,
  */
 static void vfio_pci_mmap_open(struct vm_area_struct *vma)
 {
-	struct vdev_vma_priv *p = vma->vm_private_data;
-	struct vfio_pci_device *vdev = p->vdev;
-
-	mutex_lock(&vdev->map_lock);
-	p->vma_mapped = false;
 	zap_vma_ptes(vma, vma->vm_start, vma->vm_end - vma->vm_start);
-	mutex_unlock(&vdev->map_lock);
 }
 
 static void vfio_pci_mmap_close(struct vm_area_struct *vma)
 {
-	struct vdev_vma_priv *p = vma->vm_private_data;
-	struct vfio_pci_device *vdev = p->vdev;
+	struct vfio_pci_device *vdev = vma->vm_private_data;
 	struct vfio_pci_mmap_vma *mmap_vma;
 
 	mutex_lock(&vdev->vma_lock);
@@ -1437,7 +1425,6 @@ static void vfio_pci_mmap_close(struct vm_area_struct *vma)
 		if (mmap_vma->vma == vma) {
 			list_del(&mmap_vma->vma_next);
 			kfree(mmap_vma);
-			kfree(p);
 			break;
 		}
 	}
@@ -1501,7 +1488,6 @@ static int vfio_pci_mmap(void *device_data, struct vm_area_struct *vma)
 	struct pci_dev *pdev = vdev->pdev;
 	unsigned int index;
 	u64 phys_len, req_len, pgoff, req_start;
-	struct vdev_vma_priv *priv;
 	int ret;
 
 	index = vma->vm_pgoff >> (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT);
@@ -1552,14 +1538,7 @@ static int vfio_pci_mmap(void *device_data, struct vm_area_struct *vma)
 		}
 	}
 
-	priv = kzalloc(sizeof(struct vdev_vma_priv), GFP_KERNEL);
-	if (!priv)
-		return -ENOMEM;
-
-	priv->vdev = vdev;
-	priv->vma_mapped = false;
-
-	vma->vm_private_data = priv;
+	vma->vm_private_data = vdev;
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	vma->vm_pgoff = (pci_resource_start(pdev, index) >> PAGE_SHIFT) + pgoff;
 
@@ -1648,7 +1627,6 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	INIT_LIST_HEAD(&vdev->dummy_resources_list);
 	INIT_LIST_HEAD(&vdev->ioeventfds_list);
 	mutex_init(&vdev->vma_lock);
-	mutex_init(&vdev->map_lock);
 	INIT_LIST_HEAD(&vdev->vma_list);
 	init_rwsem(&vdev->memory_lock);
 
