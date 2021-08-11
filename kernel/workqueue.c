@@ -524,7 +524,7 @@ static inline void debug_work_deactivate(struct work_struct *work) { }
 #endif
 
 /**
- * worker_pool_assign_id - allocate ID and assing it to @pool
+ * worker_pool_assign_id - allocate ID and assign it to @pool
  * @pool: the pool pointer of interest
  *
  * Returns 0 if ID in [0, WORK_OFFQ_POOL_NONE) is allocated and assigned
@@ -1912,14 +1912,14 @@ static void worker_detach_from_pool(struct worker *worker)
  */
 static struct worker *create_worker(struct worker_pool *pool)
 {
-	struct worker *worker = NULL;
-	int id = -1;
+	struct worker *worker;
+	int id;
 	char id_buf[16];
 
 	/* ID is needed to determine kthread name */
-	id = ida_simple_get(&pool->worker_ida, 0, 0, GFP_KERNEL);
+	id = ida_alloc(&pool->worker_ida, GFP_KERNEL);
 	if (id < 0)
-		goto fail;
+		return NULL;
 
 	worker = alloc_worker(pool->node);
 	if (!worker)
@@ -1954,8 +1954,7 @@ static struct worker *create_worker(struct worker_pool *pool)
 	return worker;
 
 fail:
-	if (id >= 0)
-		ida_simple_remove(&pool->worker_ida, id);
+	ida_free(&pool->worker_ida, id);
 	kfree(worker);
 	return NULL;
 }
@@ -2378,7 +2377,7 @@ woke_up:
 		set_pf_worker(false);
 
 		set_task_comm(worker->task, "kworker/dying");
-		ida_simple_remove(&pool->worker_ida, worker->id);
+		ida_free(&pool->worker_ida, worker->id);
 		worker_detach_from_pool(worker);
 		kfree(worker);
 		return 0;
@@ -3293,7 +3292,7 @@ int schedule_on_each_cpu(work_func_t func)
 	if (!works)
 		return -ENOMEM;
 
-	get_online_cpus();
+	cpus_read_lock();
 
 	for_each_online_cpu(cpu) {
 		struct work_struct *work = per_cpu_ptr(works, cpu);
@@ -3305,7 +3304,7 @@ int schedule_on_each_cpu(work_func_t func)
 	for_each_online_cpu(cpu)
 		flush_work(per_cpu_ptr(works, cpu));
 
-	put_online_cpus();
+	cpus_read_unlock();
 	free_percpu(works);
 	return 0;
 }
@@ -3763,7 +3762,7 @@ static void pwq_adjust_max_active(struct pool_workqueue *pwq)
 	raw_spin_unlock_irqrestore(&pwq->pool->lock, flags);
 }
 
-/* initialize newly alloced @pwq which is associated with @wq and @pool */
+/* initialize newly allocated @pwq which is associated with @wq and @pool */
 static void init_pwq(struct pool_workqueue *pwq, struct workqueue_struct *wq,
 		     struct worker_pool *pool)
 {
@@ -4016,14 +4015,14 @@ static void apply_wqattrs_commit(struct apply_wqattrs_ctx *ctx)
 static void apply_wqattrs_lock(void)
 {
 	/* CPUs should stay stable across pwq creations and installations */
-	get_online_cpus();
+	cpus_read_lock();
 	mutex_lock(&wq_pool_mutex);
 }
 
 static void apply_wqattrs_unlock(void)
 {
 	mutex_unlock(&wq_pool_mutex);
-	put_online_cpus();
+	cpus_read_unlock();
 }
 
 static int apply_workqueue_attrs_locked(struct workqueue_struct *wq,
@@ -4068,7 +4067,7 @@ static int apply_workqueue_attrs_locked(struct workqueue_struct *wq,
  *
  * Performs GFP_KERNEL allocations.
  *
- * Assumes caller has CPU hotplug read exclusion, i.e. get_online_cpus().
+ * Assumes caller has CPU hotplug read exclusion, i.e. cpus_read_lock().
  *
  * Return: 0 on success and -errno on failure.
  */
@@ -4196,7 +4195,7 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 		return 0;
 	}
 
-	get_online_cpus();
+	cpus_read_lock();
 	if (wq->flags & __WQ_ORDERED) {
 		ret = apply_workqueue_attrs(wq, ordered_wq_attrs[highpri]);
 		/* there should only be single pwq for ordering guarantee */
@@ -4206,7 +4205,7 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 	} else {
 		ret = apply_workqueue_attrs(wq, unbound_std_wq_attrs[highpri]);
 	}
-	put_online_cpus();
+	cpus_read_unlock();
 
 	return ret;
 }
@@ -5168,10 +5167,10 @@ long work_on_cpu_safe(int cpu, long (*fn)(void *), void *arg)
 {
 	long ret = -ENODEV;
 
-	get_online_cpus();
+	cpus_read_lock();
 	if (cpu_online(cpu))
 		ret = work_on_cpu(cpu, fn, arg);
-	put_online_cpus();
+	cpus_read_unlock();
 	return ret;
 }
 EXPORT_SYMBOL_GPL(work_on_cpu_safe);
@@ -5331,7 +5330,7 @@ static int workqueue_apply_unbound_cpumask(void)
  *  the affinity of all unbound workqueues.  This function check the @cpumask
  *  and apply it to all unbound workqueues and updates all pwqs of them.
  *
- *  Retun:	0	- Success
+ *  Return:	0	- Success
  *  		-EINVAL	- Invalid @cpumask
  *  		-ENOMEM	- Failed to allocate memory for attrs or pwqs.
  */
@@ -5443,7 +5442,7 @@ static ssize_t wq_pool_ids_show(struct device *dev,
 	const char *delim = "";
 	int node, written = 0;
 
-	get_online_cpus();
+	cpus_read_lock();
 	rcu_read_lock();
 	for_each_node(node) {
 		written += scnprintf(buf + written, PAGE_SIZE - written,
@@ -5453,7 +5452,7 @@ static ssize_t wq_pool_ids_show(struct device *dev,
 	}
 	written += scnprintf(buf + written, PAGE_SIZE - written, "\n");
 	rcu_read_unlock();
-	put_online_cpus();
+	cpus_read_unlock();
 
 	return written;
 }
@@ -5902,6 +5901,13 @@ static void __init wq_numa_init(void)
 		return;
 	}
 
+	for_each_possible_cpu(cpu) {
+		if (WARN_ON(cpu_to_node(cpu) == NUMA_NO_NODE)) {
+			pr_warn("workqueue: NUMA node mapping not available for cpu%d, disabling NUMA support\n", cpu);
+			return;
+		}
+	}
+
 	wq_update_unbound_numa_attrs_buf = alloc_workqueue_attrs();
 	BUG_ON(!wq_update_unbound_numa_attrs_buf);
 
@@ -5919,11 +5925,6 @@ static void __init wq_numa_init(void)
 
 	for_each_possible_cpu(cpu) {
 		node = cpu_to_node(cpu);
-		if (WARN_ON(node == NUMA_NO_NODE)) {
-			pr_warn("workqueue: NUMA node mapping not available for cpu%d, disabling NUMA support\n", cpu);
-			/* happens iff arch is bonkers, let's just proceed */
-			return;
-		}
 		cpumask_set_cpu(cpu, tbl[node]);
 	}
 
