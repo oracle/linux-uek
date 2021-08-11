@@ -4,7 +4,6 @@
  * Copyright(c) 2007 - 2013 Realtek Corporation. All rights reserved.
  *
  ******************************************************************************/
-#define _HAL_INIT_C_
 
 #include <linux/firmware.h>
 #include <linux/slab.h>
@@ -598,14 +597,12 @@ static void Hal_GetEfuseDefinition(
 }
 
 #define VOLTAGE_V25		0x03
-#define LDOE25_SHIFT	28
 
 /*  */
 /* 	The following is for compile ok */
 /* 	That should be merged with the original in the future */
 /*  */
 #define EFUSE_ACCESS_ON_8723			0x69	/*  For RTL8723 only. */
-#define EFUSE_ACCESS_OFF_8723			0x00	/*  For RTL8723 only. */
 #define REG_EFUSE_ACCESS_8723			0x00CF	/*  Efuse access protection for RTL8723 */
 
 /*  */
@@ -2061,56 +2058,18 @@ s32 rtl8723b_InitLLTTable(struct adapter *padapter)
 	return ret;
 }
 
-static bool Hal_GetChnlGroup8723B(u8 Channel, u8 *pGroup)
+static void hal_get_chnl_group_8723b(u8 channel, u8 *group)
 {
-	bool bIn24G = true;
-
-	if (Channel <= 14) {
-		bIn24G = true;
-
-		if (1  <= Channel && Channel <= 2)
-			*pGroup = 0;
-		else if (3  <= Channel && Channel <= 5)
-			*pGroup = 1;
-		else if (6  <= Channel && Channel <= 8)
-			*pGroup = 2;
-		else if (9  <= Channel && Channel <= 11)
-			*pGroup = 3;
-		else if (12 <= Channel && Channel <= 14)
-			*pGroup = 4;
-	} else {
-		bIn24G = false;
-
-		if (36   <= Channel && Channel <=  42)
-			*pGroup = 0;
-		else if (44   <= Channel && Channel <=  48)
-			*pGroup = 1;
-		else if (50   <= Channel && Channel <=  58)
-			*pGroup = 2;
-		else if (60   <= Channel && Channel <=  64)
-			*pGroup = 3;
-		else if (100  <= Channel && Channel <= 106)
-			*pGroup = 4;
-		else if (108  <= Channel && Channel <= 114)
-			*pGroup = 5;
-		else if (116  <= Channel && Channel <= 122)
-			*pGroup = 6;
-		else if (124  <= Channel && Channel <= 130)
-			*pGroup = 7;
-		else if (132  <= Channel && Channel <= 138)
-			*pGroup = 8;
-		else if (140  <= Channel && Channel <= 144)
-			*pGroup = 9;
-		else if (149  <= Channel && Channel <= 155)
-			*pGroup = 10;
-		else if (157  <= Channel && Channel <= 161)
-			*pGroup = 11;
-		else if (165  <= Channel && Channel <= 171)
-			*pGroup = 12;
-		else if (173  <= Channel && Channel <= 177)
-			*pGroup = 13;
-	}
-	return bIn24G;
+	if (1  <= channel && channel <= 2)
+		*group = 0;
+	else if (3  <= channel && channel <= 5)
+		*group = 1;
+	else if (6  <= channel && channel <= 8)
+		*group = 2;
+	else if (9  <= channel && channel <= 11)
+		*group = 3;
+	else if (12 <= channel && channel <= 14)
+		*group = 4;
 }
 
 void Hal_InitPGData(struct adapter *padapter, u8 *PROMContent)
@@ -2273,7 +2232,7 @@ void Hal_EfuseParseTxPowerInfo_8723B(
 		for (ch = 0 ; ch < CHANNEL_MAX_NUMBER; ch++) {
 			u8 group = 0;
 
-			Hal_GetChnlGroup8723B(ch+1, &group);
+			hal_get_chnl_group_8723b(ch + 1, &group);
 
 			if (ch == 14-1) {
 				pHalData->Index24G_CCK_Base[rfPath][ch] = pwrInfo24G.IndexCCK_Base[rfPath][5];

@@ -95,12 +95,6 @@ static int rtw_low_power;
 static int rtw_wifi_spec;
 static int rtw_channel_plan = RT_CHANNEL_DOMAIN_MAX;
 
-static int rtw_btcoex_enable = 1;
-module_param(rtw_btcoex_enable, int, 0644);
-MODULE_PARM_DESC(rtw_btcoex_enable, "Enable BT co-existence mechanism");
-static int rtw_bt_iso = 2;/*  0:Low, 1:High, 2:From Efuse */
-static int rtw_bt_sco = 3;/*  0:Idle, 1:None-SCO, 2:SCO, 3:From Counter, 4.Busy, 5.OtherBusy */
-static int rtw_bt_ampdu = 1 ;/*  0:Disable BT control A-MPDU, 1:Enable BT control A-MPDU. */
 static int rtw_ant_num = -1; /*  <0: undefined, >0: Antenna number */
 module_param(rtw_ant_num, int, 0644);
 MODULE_PARM_DESC(rtw_ant_num, "Antenna number setting");
@@ -117,7 +111,7 @@ static int rtw_hwpwrp_detect; /* HW power  ping detect 0:disable , 1:enable */
 
 static int rtw_hw_wps_pbc;
 
-int rtw_mc2u_disable = 0;
+int rtw_mc2u_disable;
 
 static int rtw_80211d;
 
@@ -128,7 +122,7 @@ static char *ifname = "wlan%d";
 module_param(ifname, charp, 0644);
 MODULE_PARM_DESC(ifname, "The default name to allocate for first interface");
 
-char *rtw_initmac = NULL;  /*  temp mac address if users want to use instead of the mac address in Efuse */
+char *rtw_initmac;  /*  temp mac address if users want to use instead of the mac address in Efuse */
 
 module_param(rtw_initmac, charp, 0644);
 module_param(rtw_channel_plan, int, 0644);
@@ -205,8 +199,8 @@ static void loadparam(struct adapter *padapter, struct net_device *pnetdev)
 	/* registry_par->hci = (u8)hci; */
 	registry_par->network_mode  = (u8)rtw_network_mode;
 
-	memcpy(registry_par->ssid.Ssid, "ANY", 3);
-	registry_par->ssid.SsidLength = 3;
+	memcpy(registry_par->ssid.ssid, "ANY", 3);
+	registry_par->ssid.ssid_length = 3;
 
 	registry_par->channel = (u8)rtw_channel;
 	registry_par->wireless_mode = (u8)rtw_wireless_mode;
@@ -263,10 +257,6 @@ static void loadparam(struct adapter *padapter, struct net_device *pnetdev)
 
 	registry_par->channel_plan = (u8)rtw_channel_plan;
 
-	registry_par->btcoex = (u8)rtw_btcoex_enable;
-	registry_par->bt_iso = (u8)rtw_bt_iso;
-	registry_par->bt_sco = (u8)rtw_bt_sco;
-	registry_par->bt_ampdu = (u8)rtw_bt_ampdu;
 	registry_par->ant_num = (s8)rtw_ant_num;
 
 	registry_par->accept_addba_req = true;

@@ -4,7 +4,6 @@
  * Copyright(c) 2007 - 2012 Realtek Corporation. All rights reserved.
  *
  ******************************************************************************/
-#define _IOCTL_LINUX_C_
 
 #include <linux/etherdevice.h>
 #include <drv_types.h>
@@ -54,9 +53,9 @@ void rtw_indicate_wx_assoc_event(struct adapter *padapter)
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 
 	if (check_fwstate(pmlmepriv, WIFI_ADHOC_MASTER_STATE) == true)
-		memcpy(wrqu.ap_addr.sa_data, pnetwork->MacAddress, ETH_ALEN);
+		memcpy(wrqu.ap_addr.sa_data, pnetwork->mac_address, ETH_ALEN);
 	else
-		memcpy(wrqu.ap_addr.sa_data, pmlmepriv->cur_network.network.MacAddress, ETH_ALEN);
+		memcpy(wrqu.ap_addr.sa_data, pmlmepriv->cur_network.network.mac_address, ETH_ALEN);
 
 	netdev_dbg(padapter->pnetdev, "assoc success\n");
 }
@@ -84,7 +83,7 @@ static char *translate_scan(struct adapter *padapter,
 	u32 i = 0;
 	u8 bw_40MHz = 0, short_GI = 0;
 	u16 mcs_rate = 0, vht_data_rate = 0;
-	u8 ie_offset = (pnetwork->network.Reserved[0] == 2 ? 0 : 12);
+	u8 ie_offset = (pnetwork->network.reserved[0] == 2 ? 0 : 12);
 	struct mlme_priv *pmlmepriv = &(padapter->mlmepriv);
 	u8 ss, sq;
 
@@ -92,20 +91,20 @@ static char *translate_scan(struct adapter *padapter,
 	iwe.cmd = SIOCGIWAP;
 	iwe.u.ap_addr.sa_family = ARPHRD_ETHER;
 
-	memcpy(iwe.u.ap_addr.sa_data, pnetwork->network.MacAddress, ETH_ALEN);
+	memcpy(iwe.u.ap_addr.sa_data, pnetwork->network.mac_address, ETH_ALEN);
 	start = iwe_stream_add_event(info, start, stop, &iwe, IW_EV_ADDR_LEN);
 
 	/* Add the ESSID */
 	iwe.cmd = SIOCGIWESSID;
 	iwe.u.data.flags = 1;
-	iwe.u.data.length = min((u16)pnetwork->network.Ssid.SsidLength, (u16)32);
-	start = iwe_stream_add_point(info, start, stop, &iwe, pnetwork->network.Ssid.Ssid);
+	iwe.u.data.length = min((u16)pnetwork->network.ssid.ssid_length, (u16)32);
+	start = iwe_stream_add_point(info, start, stop, &iwe, pnetwork->network.ssid.ssid);
 
 	/* parsing HT_CAP_IE */
-	if (pnetwork->network.Reserved[0] == 2) { /*  Probe Request */
-		p = rtw_get_ie(&pnetwork->network.IEs[0], WLAN_EID_HT_CAPABILITY, &ht_ielen, pnetwork->network.IELength);
+	if (pnetwork->network.reserved[0] == 2) { /*  Probe Request */
+		p = rtw_get_ie(&pnetwork->network.ies[0], WLAN_EID_HT_CAPABILITY, &ht_ielen, pnetwork->network.ie_length);
 	} else {
-		p = rtw_get_ie(&pnetwork->network.IEs[12], WLAN_EID_HT_CAPABILITY, &ht_ielen, pnetwork->network.IELength-12);
+		p = rtw_get_ie(&pnetwork->network.ies[12], WLAN_EID_HT_CAPABILITY, &ht_ielen, pnetwork->network.ie_length-12);
 	}
 	if (p && ht_ielen > 0) {
 		struct ieee80211_ht_cap *pht_capie;
@@ -118,25 +117,18 @@ static char *translate_scan(struct adapter *padapter,
 
 	/* Add the protocol name */
 	iwe.cmd = SIOCGIWNAME;
-	if (rtw_is_cckratesonly_included((u8 *)&pnetwork->network.SupportedRates)) {
+	if (rtw_is_cckratesonly_included((u8 *)&pnetwork->network.supported_rates)) {
 		if (ht_cap)
 			snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11bn");
 		else
 		snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11b");
-	} else if (rtw_is_cckrates_included((u8 *)&pnetwork->network.SupportedRates)) {
+	} else if (rtw_is_cckrates_included((u8 *)&pnetwork->network.supported_rates)) {
 		if (ht_cap)
 			snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11bgn");
 		else
 			snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11bg");
 	} else {
-		if (pnetwork->network.Configuration.DSConfig > 14) {
-			if (vht_cap)
-				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11AC");
-			else if (ht_cap)
-				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11an");
-			else
-				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11a");
-		} else {
+		if (pnetwork->network.configuration.ds_config <= 14) {
 			if (ht_cap)
 				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11gn");
 			else
@@ -147,13 +139,13 @@ static char *translate_scan(struct adapter *padapter,
 	start = iwe_stream_add_event(info, start, stop, &iwe, IW_EV_CHAR_LEN);
 
 	  /* Add mode */
-	if (pnetwork->network.Reserved[0] == 2) { /*  Probe Request */
+	if (pnetwork->network.reserved[0] == 2) { /*  Probe Request */
 		cap = 0;
 	} else {
 		__le16 le_tmp;
 
 	        iwe.cmd = SIOCGIWMODE;
-		memcpy((u8 *)&le_tmp, rtw_get_capability_from_ie(pnetwork->network.IEs), 2);
+		memcpy((u8 *)&le_tmp, rtw_get_capability_from_ie(pnetwork->network.ies), 2);
 		cap = le16_to_cpu(le_tmp);
 	}
 
@@ -166,14 +158,14 @@ static char *translate_scan(struct adapter *padapter,
 		start = iwe_stream_add_event(info, start, stop, &iwe, IW_EV_UINT_LEN);
 	}
 
-	if (pnetwork->network.Configuration.DSConfig < 1 /*|| pnetwork->network.Configuration.DSConfig > 14*/)
-		pnetwork->network.Configuration.DSConfig = 1;
+	if (pnetwork->network.configuration.ds_config < 1)
+		pnetwork->network.configuration.ds_config = 1;
 
 	 /* Add frequency/channel */
 	iwe.cmd = SIOCGIWFREQ;
-	iwe.u.freq.m = rtw_ch2freq(pnetwork->network.Configuration.DSConfig) * 100000;
+	iwe.u.freq.m = rtw_ch2freq(pnetwork->network.configuration.ds_config) * 100000;
 	iwe.u.freq.e = 1;
-	iwe.u.freq.i = pnetwork->network.Configuration.DSConfig;
+	iwe.u.freq.i = pnetwork->network.configuration.ds_config;
 	start = iwe_stream_add_event(info, start, stop, &iwe, IW_EV_FREQ_LEN);
 
 	/* Add encryption capability */
@@ -183,7 +175,7 @@ static char *translate_scan(struct adapter *padapter,
 	else
 		iwe.u.data.flags = IW_ENCODE_DISABLED;
 	iwe.u.data.length = 0;
-	start = iwe_stream_add_point(info, start, stop, &iwe, pnetwork->network.Ssid.Ssid);
+	start = iwe_stream_add_point(info, start, stop, &iwe, pnetwork->network.ssid.ssid);
 
 	/*Add basic and extended rates */
 	max_rate = 0;
@@ -192,8 +184,8 @@ static char *translate_scan(struct adapter *padapter,
 		return start;
 	p = custom;
 	p += scnprintf(p, MAX_CUSTOM_LEN - (p - custom), " Rates (Mb/s): ");
-	while (pnetwork->network.SupportedRates[i] != 0) {
-		rate = pnetwork->network.SupportedRates[i]&0x7F;
+	while (pnetwork->network.supported_rates[i] != 0) {
+		rate = pnetwork->network.supported_rates[i]&0x7F;
 		if (rate > max_rate)
 			max_rate = rate;
 		p += scnprintf(p, MAX_CUSTOM_LEN - (p - custom),
@@ -218,12 +210,12 @@ static char *translate_scan(struct adapter *padapter,
 	start = iwe_stream_add_event(info, start, stop, &iwe, IW_EV_PARAM_LEN);
 
 	/* parsing WPA/WPA2 IE */
-	if (pnetwork->network.Reserved[0] != 2) { /*  Probe Request */
+	if (pnetwork->network.reserved[0] != 2) { /*  Probe Request */
 		u8 *buf;
 		u8 wpa_ie[255], rsn_ie[255];
 		u16 wpa_len = 0, rsn_len = 0;
 		u8 *p;
-		rtw_get_sec_ie(pnetwork->network.IEs, pnetwork->network.IELength, rsn_ie, &rsn_len, wpa_ie, &wpa_len);
+		rtw_get_sec_ie(pnetwork->network.ies, pnetwork->network.ie_length, rsn_ie, &rsn_len, wpa_ie, &wpa_len);
 
 		buf = kzalloc(MAX_WPA_IE_LEN*2, GFP_ATOMIC);
 		if (!buf)
@@ -279,14 +271,14 @@ static char *translate_scan(struct adapter *padapter,
 		uint wps_ielen = 0;
 
 		u8 *ie_ptr;
-		total_ielen = pnetwork->network.IELength - ie_offset;
+		total_ielen = pnetwork->network.ie_length - ie_offset;
 
-		if (pnetwork->network.Reserved[0] == 2) { /*  Probe Request */
-			ie_ptr = pnetwork->network.IEs;
-			total_ielen = pnetwork->network.IELength;
+		if (pnetwork->network.reserved[0] == 2) { /*  Probe Request */
+			ie_ptr = pnetwork->network.ies;
+			total_ielen = pnetwork->network.ie_length;
 		} else {    /*  Beacon or Probe Respones */
-			ie_ptr = pnetwork->network.IEs + _FIXED_IE_LENGTH_;
-			total_ielen = pnetwork->network.IELength - _FIXED_IE_LENGTH_;
+			ie_ptr = pnetwork->network.ies + _FIXED_IE_LENGTH_;
+			total_ielen = pnetwork->network.ie_length - _FIXED_IE_LENGTH_;
 		}
 
 		while (cnt < total_ielen) {
@@ -310,8 +302,8 @@ static char *translate_scan(struct adapter *padapter,
 		ss = padapter->recvpriv.signal_strength;
 		sq = padapter->recvpriv.signal_qual;
 	} else {
-		ss = pnetwork->network.PhyInfo.SignalStrength;
-		sq = pnetwork->network.PhyInfo.SignalQuality;
+		ss = pnetwork->network.phy_info.signal_strength;
+		sq = pnetwork->network.phy_info.signal_quality;
 	}
 
 
@@ -331,7 +323,7 @@ static char *translate_scan(struct adapter *padapter,
 		if (!buf)
 			goto exit;
 
-		pos = pnetwork->network.Reserved;
+		pos = pnetwork->network.reserved;
 		memset(&iwe, 0, sizeof(iwe));
 		iwe.cmd = IWEVCUSTOM;
 		iwe.u.data.length = scnprintf(buf, MAX_WPA_IE_LEN, "fm =%02X%02X", pos[1], pos[0]);
@@ -349,16 +341,16 @@ static int wpa_set_auth_algs(struct net_device *dev, u32 value)
 	struct adapter *padapter = rtw_netdev_priv(dev);
 	int ret = 0;
 
-	if ((value & WLAN_AUTH_SHARED_KEY) && (value & WLAN_AUTH_OPEN)) {
+	if ((value & IW_AUTH_ALG_SHARED_KEY) && (value & IW_AUTH_ALG_OPEN_SYSTEM)) {
 		padapter->securitypriv.ndisencryptstatus = Ndis802_11Encryption1Enabled;
 		padapter->securitypriv.ndisauthtype = Ndis802_11AuthModeAutoSwitch;
 		padapter->securitypriv.dot11AuthAlgrthm = dot11AuthAlgrthm_Auto;
-	} else if (value & WLAN_AUTH_SHARED_KEY)	{
+	} else if (value & IW_AUTH_ALG_SHARED_KEY)	{
 		padapter->securitypriv.ndisencryptstatus = Ndis802_11Encryption1Enabled;
 
 		padapter->securitypriv.ndisauthtype = Ndis802_11AuthModeShared;
 		padapter->securitypriv.dot11AuthAlgrthm = dot11AuthAlgrthm_Shared;
-	} else if (value & WLAN_AUTH_OPEN) {
+	} else if (value & IW_AUTH_ALG_OPEN_SYSTEM) {
 		/* padapter->securitypriv.ndisencryptstatus = Ndis802_11EncryptionDisabled; */
 		if (padapter->securitypriv.ndisauthtype < Ndis802_11AuthModeWPAPSK) {
 			padapter->securitypriv.ndisauthtype = Ndis802_11AuthModeOpen;
@@ -418,15 +410,15 @@ static int wpa_set_encryption(struct net_device *dev, struct ieee_param *param, 
 
 		if (wep_key_len > 0) {
 			wep_key_len = wep_key_len <= 5 ? 5 : 13;
-			wep_total_len = wep_key_len + FIELD_OFFSET(struct ndis_802_11_wep, KeyMaterial);
+			wep_total_len = wep_key_len + FIELD_OFFSET(struct ndis_802_11_wep, key_material);
 			pwep = kzalloc(wep_total_len, GFP_KERNEL);
 			if (!pwep) {
 				ret = -ENOMEM;
 				goto exit;
 			}
 
-			pwep->KeyLength = wep_key_len;
-			pwep->Length = wep_total_len;
+			pwep->key_length = wep_key_len;
+			pwep->length = wep_total_len;
 
 			if (wep_key_len == 13) {
 				padapter->securitypriv.dot11PrivacyAlgrthm = _WEP104_;
@@ -437,10 +429,10 @@ static int wpa_set_encryption(struct net_device *dev, struct ieee_param *param, 
 			goto exit;
 		}
 
-		pwep->KeyIndex = wep_key_idx;
-		pwep->KeyIndex |= 0x80000000;
+		pwep->key_index = wep_key_idx;
+		pwep->key_index |= 0x80000000;
 
-		memcpy(pwep->KeyMaterial,  param->u.crypt.key, pwep->KeyLength);
+		memcpy(pwep->key_material,  param->u.crypt.key, pwep->key_length);
 
 		if (param->u.crypt.set_tx) {
 			if (rtw_set_802_11_add_wep(padapter, pwep) == (u8)_FAIL)
@@ -454,8 +446,8 @@ static int wpa_set_encryption(struct net_device *dev, struct ieee_param *param, 
 				goto exit;
 			}
 
-			memcpy(&(psecuritypriv->dot11DefKey[wep_key_idx].skey[0]), pwep->KeyMaterial, pwep->KeyLength);
-			psecuritypriv->dot11DefKeylen[wep_key_idx] = pwep->KeyLength;
+			memcpy(&(psecuritypriv->dot11DefKey[wep_key_idx].skey[0]), pwep->key_material, pwep->key_length);
+			psecuritypriv->dot11DefKeylen[wep_key_idx] = pwep->key_length;
 			rtw_set_key(padapter, psecuritypriv, wep_key_idx, 0, true);
 		}
 
@@ -683,18 +675,18 @@ static int rtw_wx_get_name(struct net_device *dev,
 	struct adapter *padapter = rtw_netdev_priv(dev);
 	u32 ht_ielen = 0;
 	char *p;
-	u8 ht_cap = false, vht_cap = false;
+	u8 ht_cap = false;
 	struct	mlme_priv *pmlmepriv = &(padapter->mlmepriv);
 	struct wlan_bssid_ex  *pcur_bss = &pmlmepriv->cur_network.network;
 	NDIS_802_11_RATES_EX *prates = NULL;
 
 	if (check_fwstate(pmlmepriv, _FW_LINKED|WIFI_ADHOC_MASTER_STATE) == true) {
 		/* parsing HT_CAP_IE */
-		p = rtw_get_ie(&pcur_bss->IEs[12], WLAN_EID_HT_CAPABILITY, &ht_ielen, pcur_bss->IELength-12);
+		p = rtw_get_ie(&pcur_bss->ies[12], WLAN_EID_HT_CAPABILITY, &ht_ielen, pcur_bss->ie_length-12);
 		if (p && ht_ielen > 0)
 			ht_cap = true;
 
-		prates = &pcur_bss->SupportedRates;
+		prates = &pcur_bss->supported_rates;
 
 		if (rtw_is_cckratesonly_included((u8 *)prates)) {
 			if (ht_cap)
@@ -707,14 +699,7 @@ static int rtw_wx_get_name(struct net_device *dev,
 			else
 				snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11bg");
 		} else {
-			if (pcur_bss->Configuration.DSConfig > 14) {
-				if (vht_cap)
-					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11AC");
-				else if (ht_cap)
-					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11an");
-				else
-					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11a");
-			} else {
+			if (pcur_bss->configuration.ds_config <= 14) {
 				if (ht_cap)
 					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11gn");
 				else
@@ -722,7 +707,7 @@ static int rtw_wx_get_name(struct net_device *dev,
 			}
 		}
 	} else {
-		/* prates = &padapter->registrypriv.dev_network.SupportedRates; */
+		/* prates = &padapter->registrypriv.dev_network.supported_rates; */
 		/* snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11g"); */
 		snprintf(wrqu->name, IFNAMSIZ, "unassociated");
 	}
@@ -745,10 +730,10 @@ static int rtw_wx_get_freq(struct net_device *dev,
 	struct wlan_bssid_ex  *pcur_bss = &pmlmepriv->cur_network.network;
 
 	if (check_fwstate(pmlmepriv, _FW_LINKED) == true) {
-		/* wrqu->freq.m = ieee80211_wlan_frequencies[pcur_bss->Configuration.DSConfig-1] * 100000; */
-		wrqu->freq.m = rtw_ch2freq(pcur_bss->Configuration.DSConfig) * 100000;
+		/* wrqu->freq.m = ieee80211_wlan_frequencies[pcur_bss->configuration.ds_config-1] * 100000; */
+		wrqu->freq.m = rtw_ch2freq(pcur_bss->configuration.ds_config) * 100000;
 		wrqu->freq.e = 1;
-		wrqu->freq.i = pcur_bss->Configuration.DSConfig;
+		wrqu->freq.i = pcur_bss->configuration.ds_config;
 
 	} else {
 		wrqu->freq.m = rtw_ch2freq(padapter->mlmeextpriv.cur_channel) * 100000;
@@ -1058,12 +1043,12 @@ static int rtw_wx_set_wap(struct net_device *dev,
 		pnetwork = list_entry(pmlmepriv->pscanned,
 				      struct wlan_network, list);
 
-		dst_bssid = pnetwork->network.MacAddress;
+		dst_bssid = pnetwork->network.mac_address;
 
 		src_bssid = temp->sa_data;
 
 		if ((!memcmp(dst_bssid, src_bssid, ETH_ALEN))) {
-			if (!rtw_set_802_11_infrastructure_mode(padapter, pnetwork->network.InfrastructureMode)) {
+			if (!rtw_set_802_11_infrastructure_mode(padapter, pnetwork->network.infrastructure_mode)) {
 				ret = -1;
 				spin_unlock_bh(&queue->lock);
 				goto exit;
@@ -1104,7 +1089,7 @@ static int rtw_wx_get_wap(struct net_device *dev,
 	if  (((check_fwstate(pmlmepriv, _FW_LINKED)) == true) ||
 			((check_fwstate(pmlmepriv, WIFI_ADHOC_MASTER_STATE)) == true) ||
 			((check_fwstate(pmlmepriv, WIFI_AP_STATE)) == true)) {
-		memcpy(wrqu->ap_addr.sa_data, pcur_bss->MacAddress, ETH_ALEN);
+		memcpy(wrqu->ap_addr.sa_data, pcur_bss->mac_address, ETH_ALEN);
 	} else {
 		eth_zero_addr(wrqu->ap_addr.sa_data);
 	}
@@ -1191,8 +1176,8 @@ static int rtw_wx_set_scan(struct net_device *dev, struct iw_request_info *a,
 		if (wrqu->data.flags & IW_SCAN_THIS_ESSID) {
 			int len = min((int)req->essid_len, IW_ESSID_MAX_SIZE);
 
-			memcpy(ssid[0].Ssid, req->essid, len);
-			ssid[0].SsidLength = len;
+			memcpy(ssid[0].ssid, req->essid, len);
+			ssid[0].ssid_length = len;
 
 			spin_lock_bh(&pmlmepriv->lock);
 
@@ -1223,8 +1208,8 @@ static int rtw_wx_set_scan(struct net_device *dev, struct iw_request_info *a,
 				sec_len = *(pos++); len -= 1;
 
 				if (sec_len > 0 && sec_len <= len) {
-					ssid[ssid_index].SsidLength = sec_len;
-					memcpy(ssid[ssid_index].Ssid, pos, ssid[ssid_index].SsidLength);
+					ssid[ssid_index].ssid_length = sec_len;
+					memcpy(ssid[ssid_index].ssid, pos, ssid[ssid_index].ssid_length);
 					ssid_index++;
 				}
 
@@ -1304,8 +1289,8 @@ static int rtw_wx_get_scan(struct net_device *dev, struct iw_request_info *a,
 		pnetwork = list_entry(plist, struct wlan_network, list);
 
 		/* report network only if the current channel set contains the channel to which this network belongs */
-		if (rtw_ch_set_search_ch(padapter->mlmeextpriv.channel_set, pnetwork->network.Configuration.DSConfig) >= 0
-			&& true == rtw_validate_ssid(&(pnetwork->network.Ssid))) {
+		if (rtw_ch_set_search_ch(padapter->mlmeextpriv.channel_set, pnetwork->network.configuration.ds_config) >= 0
+			&& true == rtw_validate_ssid(&(pnetwork->network.ssid))) {
 
 			ev = translate_scan(padapter, a, pnetwork, ev, stop);
 		}
@@ -1369,9 +1354,9 @@ static int rtw_wx_set_essid(struct net_device *dev,
 		len = (wrqu->essid.length < IW_ESSID_MAX_SIZE) ? wrqu->essid.length : IW_ESSID_MAX_SIZE;
 
 		memset(&ndis_ssid, 0, sizeof(struct ndis_802_11_ssid));
-		ndis_ssid.SsidLength = len;
-		memcpy(ndis_ssid.Ssid, extra, len);
-		src_ssid = ndis_ssid.Ssid;
+		ndis_ssid.ssid_length = len;
+		memcpy(ndis_ssid.ssid, extra, len);
+		src_ssid = ndis_ssid.ssid;
 
 		spin_lock_bh(&queue->lock);
 		phead = get_list_head(queue);
@@ -1379,16 +1364,16 @@ static int rtw_wx_set_essid(struct net_device *dev,
 			pnetwork = list_entry(pmlmepriv->pscanned,
 					      struct wlan_network, list);
 
-			dst_ssid = pnetwork->network.Ssid.Ssid;
+			dst_ssid = pnetwork->network.ssid.ssid;
 
-			if ((!memcmp(dst_ssid, src_ssid, ndis_ssid.SsidLength)) &&
-				(pnetwork->network.Ssid.SsidLength == ndis_ssid.SsidLength)) {
+			if ((!memcmp(dst_ssid, src_ssid, ndis_ssid.ssid_length)) &&
+				(pnetwork->network.ssid.ssid_length == ndis_ssid.ssid_length)) {
 				if (check_fwstate(pmlmepriv, WIFI_ADHOC_STATE) == true) {
-					if (pnetwork->network.InfrastructureMode != pmlmepriv->cur_network.network.InfrastructureMode)
+					if (pnetwork->network.infrastructure_mode != pmlmepriv->cur_network.network.infrastructure_mode)
 						continue;
 				}
 
-				if (rtw_set_802_11_infrastructure_mode(padapter, pnetwork->network.InfrastructureMode) == false) {
+				if (rtw_set_802_11_infrastructure_mode(padapter, pnetwork->network.infrastructure_mode) == false) {
 					ret = -1;
 					spin_unlock_bh(&queue->lock);
 					goto exit;
@@ -1424,11 +1409,11 @@ static int rtw_wx_get_essid(struct net_device *dev,
 
 	if ((check_fwstate(pmlmepriv, _FW_LINKED) == true) ||
 	      (check_fwstate(pmlmepriv, WIFI_ADHOC_MASTER_STATE) == true)) {
-		len = pcur_bss->Ssid.SsidLength;
+		len = pcur_bss->ssid.ssid_length;
 
 		wrqu->essid.length = len;
 
-		memcpy(extra, pcur_bss->Ssid.Ssid, len);
+		memcpy(extra, pcur_bss->ssid.ssid, len);
 
 		wrqu->essid.flags = 1;
 	} else {
@@ -1681,15 +1666,15 @@ static int rtw_wx_set_enc(struct net_device *dev,
 		padapter->securitypriv.ndisauthtype = authmode;
 	}
 
-	wep.KeyIndex = key;
+	wep.key_index = key;
 	if (erq->length > 0) {
-		wep.KeyLength = erq->length <= 5 ? 5 : 13;
+		wep.key_length = erq->length <= 5 ? 5 : 13;
 
-		wep.Length = wep.KeyLength + FIELD_OFFSET(struct ndis_802_11_wep, KeyMaterial);
+		wep.length = wep.key_length + FIELD_OFFSET(struct ndis_802_11_wep, key_material);
 	} else {
-		wep.KeyLength = 0;
+		wep.key_length = 0;
 
-		if (keyindex_provided == 1) { /*  set key_id only, no given KeyMaterial(erq->length == 0). */
+		if (keyindex_provided == 1) { /*  set key_id only, no given key_material(erq->length == 0). */
 			padapter->securitypriv.dot11PrivacyKeyIndex = key;
 
 			switch (padapter->securitypriv.dot11DefKeylen[key]) {
@@ -1710,9 +1695,9 @@ static int rtw_wx_set_enc(struct net_device *dev,
 
 	}
 
-	wep.KeyIndex |= 0x80000000;
+	wep.key_index |= 0x80000000;
 
-	memcpy(wep.KeyMaterial, keybuf, wep.KeyLength);
+	memcpy(wep.key_material, keybuf, wep.key_length);
 
 	if (rtw_set_802_11_add_wep(padapter, &wep) == false) {
 		if (rf_on == pwrpriv->rf_pwrstate)
@@ -2243,15 +2228,15 @@ static int rtw_get_ap_info(struct net_device *dev,
 		}
 
 
-		if (!memcmp(bssid, pnetwork->network.MacAddress, ETH_ALEN)) { /* BSSID match, then check if supporting wpa/wpa2 */
+		if (!memcmp(bssid, pnetwork->network.mac_address, ETH_ALEN)) { /* BSSID match, then check if supporting wpa/wpa2 */
 
-			pbuf = rtw_get_wpa_ie(&pnetwork->network.IEs[12], &wpa_ielen, pnetwork->network.IELength-12);
+			pbuf = rtw_get_wpa_ie(&pnetwork->network.ies[12], &wpa_ielen, pnetwork->network.ie_length-12);
 			if (pbuf && (wpa_ielen > 0)) {
 				pdata->flags = 1;
 				break;
 			}
 
-			pbuf = rtw_get_wpa2_ie(&pnetwork->network.IEs[12], &wpa_ielen, pnetwork->network.IELength-12);
+			pbuf = rtw_get_wpa2_ie(&pnetwork->network.ies[12], &wpa_ielen, pnetwork->network.ie_length-12);
 			if (pbuf && (wpa_ielen > 0)) {
 				pdata->flags = 2;
 				break;
@@ -2487,7 +2472,7 @@ static int rtw_dbg_port(struct net_device *dev,
 			}
 			break;
 		case 0x7a:
-			receive_disconnect(padapter, pmlmeinfo->network.MacAddress
+			receive_disconnect(padapter, pmlmeinfo->network.mac_address
 				, WLAN_REASON_EXPIRATION_CHK);
 			break;
 		case 0x7F:
@@ -2988,19 +2973,19 @@ static int rtw_set_encryption(struct net_device *dev, struct ieee_param *param, 
 
 		if (wep_key_len > 0) {
 			wep_key_len = wep_key_len <= 5 ? 5 : 13;
-			wep_total_len = wep_key_len + FIELD_OFFSET(struct ndis_802_11_wep, KeyMaterial);
+			wep_total_len = wep_key_len + FIELD_OFFSET(struct ndis_802_11_wep, key_material);
 			pwep = kzalloc(wep_total_len, GFP_KERNEL);
 			if (!pwep)
 				goto exit;
 
-			pwep->KeyLength = wep_key_len;
-			pwep->Length = wep_total_len;
+			pwep->key_length = wep_key_len;
+			pwep->length = wep_total_len;
 
 		}
 
-		pwep->KeyIndex = wep_key_idx;
+		pwep->key_index = wep_key_idx;
 
-		memcpy(pwep->KeyMaterial,  param->u.crypt.key, pwep->KeyLength);
+		memcpy(pwep->key_material,  param->u.crypt.key, pwep->key_length);
 
 		if (param->u.crypt.set_tx) {
 			psecuritypriv->dot11AuthAlgrthm = dot11AuthAlgrthm_Auto;
@@ -3008,7 +2993,7 @@ static int rtw_set_encryption(struct net_device *dev, struct ieee_param *param, 
 			psecuritypriv->dot11PrivacyAlgrthm = _WEP40_;
 			psecuritypriv->dot118021XGrpPrivacy = _WEP40_;
 
-			if (pwep->KeyLength == 13) {
+			if (pwep->key_length == 13) {
 				psecuritypriv->dot11PrivacyAlgrthm = _WEP104_;
 				psecuritypriv->dot118021XGrpPrivacy = _WEP104_;
 			}
@@ -3016,20 +3001,20 @@ static int rtw_set_encryption(struct net_device *dev, struct ieee_param *param, 
 
 			psecuritypriv->dot11PrivacyKeyIndex = wep_key_idx;
 
-			memcpy(&(psecuritypriv->dot11DefKey[wep_key_idx].skey[0]), pwep->KeyMaterial, pwep->KeyLength);
+			memcpy(&(psecuritypriv->dot11DefKey[wep_key_idx].skey[0]), pwep->key_material, pwep->key_length);
 
-			psecuritypriv->dot11DefKeylen[wep_key_idx] = pwep->KeyLength;
+			psecuritypriv->dot11DefKeylen[wep_key_idx] = pwep->key_length;
 
-			rtw_ap_set_wep_key(padapter, pwep->KeyMaterial, pwep->KeyLength, wep_key_idx, 1);
+			rtw_ap_set_wep_key(padapter, pwep->key_material, pwep->key_length, wep_key_idx, 1);
 		} else {
 			/* don't update "psecuritypriv->dot11PrivacyAlgrthm" and */
 			/* psecuritypriv->dot11PrivacyKeyIndex =keyid", but can rtw_set_key to cam */
 
-			memcpy(&(psecuritypriv->dot11DefKey[wep_key_idx].skey[0]), pwep->KeyMaterial, pwep->KeyLength);
+			memcpy(&(psecuritypriv->dot11DefKey[wep_key_idx].skey[0]), pwep->key_material, pwep->key_length);
 
-			psecuritypriv->dot11DefKeylen[wep_key_idx] = pwep->KeyLength;
+			psecuritypriv->dot11DefKeylen[wep_key_idx] = pwep->key_length;
 
-			rtw_ap_set_wep_key(padapter, pwep->KeyMaterial, pwep->KeyLength, wep_key_idx, 0);
+			rtw_ap_set_wep_key(padapter, pwep->key_material, pwep->key_length, wep_key_idx, 0);
 		}
 
 		goto exit;
@@ -3544,10 +3529,10 @@ static int rtw_set_hidden_ssid(struct net_device *dev, struct ieee_param *param,
 		memcpy(ssid, ssid_ie+2, ssid_len);
 		ssid[ssid_len] = 0x0;
 
-		memcpy(pbss_network->Ssid.Ssid, (void *)ssid, ssid_len);
-		pbss_network->Ssid.SsidLength = ssid_len;
-		memcpy(pbss_network_ext->Ssid.Ssid, (void *)ssid, ssid_len);
-		pbss_network_ext->Ssid.SsidLength = ssid_len;
+		memcpy(pbss_network->ssid.ssid, (void *)ssid, ssid_len);
+		pbss_network->ssid.ssid_length = ssid_len;
+		memcpy(pbss_network_ext->ssid.ssid, (void *)ssid, ssid_len);
+		pbss_network_ext->ssid.ssid_length = ssid_len;
 	}
 
 	return ret;

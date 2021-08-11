@@ -4,7 +4,6 @@
  * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
  *
  ******************************************************************************/
-#define _HAL_COM_C_
 
 #include <linux/kernel.h>
 #include <drv_types.h>
@@ -144,12 +143,12 @@ u8 hal_com_config_channel_plan(
 	return chnlPlan;
 }
 
-bool HAL_IsLegalChannel(struct adapter *Adapter, u32 Channel)
+bool HAL_IsLegalChannel(struct adapter *adapter, u32 Channel)
 {
 	bool bLegalChannel = true;
 
 	if ((Channel <= 14) && (Channel >= 1)) {
-		if (IsSupported24G(Adapter->registrypriv.wireless_mode) == false)
+		if (is_supported_24g(adapter->registrypriv.wireless_mode) == false)
 			bLegalChannel = false;
 	} else {
 		bLegalChannel = false;
@@ -923,7 +922,7 @@ u8 GetHalDefVar(
 
 			pmlmepriv = &adapter->mlmepriv;
 			pstapriv = &adapter->stapriv;
-			psta = rtw_get_stainfo(pstapriv, pmlmepriv->cur_network.network.MacAddress);
+			psta = rtw_get_stainfo(pstapriv, pmlmepriv->cur_network.network.mac_address);
 			if (psta)
 				*((int *)value) = psta->rssi_stat.UndecoratedSmoothedPWDB;
 		}
