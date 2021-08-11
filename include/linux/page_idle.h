@@ -6,7 +6,7 @@
 #include <linux/page-flags.h>
 #include <linux/page_ext.h>
 
-#ifdef CONFIG_IDLE_PAGE_TRACKING
+#ifdef CONFIG_PAGE_IDLE_FLAG
 
 #ifndef CONFIG_64BIT
 /*
@@ -76,7 +76,7 @@ static inline void folio_clear_idle(struct folio *folio)
 }
 #endif /* !CONFIG_64BIT */
 
-#else /* !CONFIG_IDLE_PAGE_TRACKING */
+#else /* !CONFIG_PAGE_IDLE_FLAG */
 
 static inline bool folio_test_young(struct folio *folio)
 {
@@ -105,7 +105,7 @@ static inline void folio_clear_idle(struct folio *folio)
 {
 }
 
-#endif /* CONFIG_IDLE_PAGE_TRACKING */
+#endif /* CONFIG_PAGE_IDLE_FLAG */
 
 static inline bool page_is_young(struct page *page)
 {
