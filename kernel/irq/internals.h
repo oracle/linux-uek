@@ -6,10 +6,13 @@
  * kernel/irq/. Do not even think about using any information outside
  * of this file for your non core code.
  */
+#include <linux/bug.h>
 #include <linux/irqdesc.h>
 #include <linux/kernel_stat.h>
 #include <linux/pm_runtime.h>
 #include <linux/sched/clock.h>
+
+#include <trace/events/irq.h>
 
 #ifdef CONFIG_SPARSE_IRQ
 # define IRQ_BITMAP_BITS	(NR_IRQS + 8196)
@@ -106,6 +109,60 @@ extern void init_kstat_irqs(struct irq_desc *desc, int node, int nr);
 irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc, unsigned int *flags);
 irqreturn_t handle_irq_event_percpu(struct irq_desc *desc);
 irqreturn_t handle_irq_event(struct irq_desc *desc);
+
+static inline irqreturn_t __handle_irqaction(unsigned int irq,
+					     struct irqaction *action,
+					     void *dev_id)
+{
+	irqreturn_t res;
+
+	trace_irq_handler_entry(irq, action);
+	res = action->handler(irq, dev_id);
+	trace_irq_handler_exit(irq, action, res);
+
+	return res;
+}
+
+#ifdef CONFIG_DETECT_SLOW_IRQ_HANDLER
+static inline irqreturn_t __handle_check_irqaction(unsigned int irq,
+						   struct irqaction *action,
+						   void *dev_id)
+{
+	u64 timeout = CONFIG_IRQ_HANDLER_TIMEOUT_NS;
+	u64 start, end, duration;
+	int res;
+
+	start = local_clock();
+	res = __handle_irqaction(irq, action, dev_id);
+	end = local_clock();
+
+	duration = end - start;
+	WARN(duration > timeout, "IRQ %d handler %ps took %llu ns\n",
+	     irq, action->handler, duration);
+
+	return res;
+}
+#else
+static inline irqreturn_t __handle_check_irqaction(unsigned int irq,
+						   struct irqaction *action,
+						   void *dev_id)
+{
+	return __handle_irqaction(irq, action, dev_id);
+}
+#endif
+
+static inline irqreturn_t handle_irqaction(unsigned int irq,
+					   struct irqaction *action)
+{
+	return __handle_check_irqaction(irq, action, action->dev_id);
+}
+
+static inline irqreturn_t handle_irqaction_percpu_devid(unsigned int irq,
+							struct irqaction *action)
+{
+	return __handle_check_irqaction(irq, action,
+					raw_cpu_ptr(action->percpu_dev_id));
+}
 
 /* Resending of interrupts :*/
 int check_irq_resend(struct irq_desc *desc, bool inject);
