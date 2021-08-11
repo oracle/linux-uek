@@ -632,7 +632,7 @@ static int qla_async_rftid(scsi_qla_host_t *vha, port_id_t *d_id)
 	ct_req->req.rft_id.port_id = port_id_to_be_id(vha->d_id);
 	ct_req->req.rft_id.fc4_types[2] = 0x01;		/* FCP-3 */
 
-	if (vha->flags.nvme_enabled)
+	if (vha->flags.nvme_enabled && qla_ini_mode_enabled(vha))
 		ct_req->req.rft_id.fc4_types[6] = 1;    /* NVMe type 28h */
 
 	sp->u.iocb_cmd.u.ctarg.req_size = RFT_ID_REQ_SIZE;
@@ -2824,6 +2824,10 @@ void qla24xx_handle_gpsc_event(scsi_qla_host_t *vha, struct event_arg *ea)
 	    ea->sp->gen2, fcport->rscn_gen|ea->sp->gen1, fcport->loop_id);
 
 	if (fcport->disc_state == DSC_DELETE_PEND)
+		return;
+
+	/* We will figure-out what happen after AUTH completes */
+	if (fcport->disc_state == DSC_LOGIN_AUTH_PEND)
 		return;
 
 	if (ea->sp->gen2 != fcport->login_gen) {

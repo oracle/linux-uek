@@ -20,7 +20,7 @@ CFLAGS_aha152x.o =   -DAHA152X_STAT -DAUTOCONF
 obj-$(CONFIG_PCMCIA)		+= pcmcia/
 
 obj-$(CONFIG_SCSI)		+= scsi_mod.o
-obj-$(CONFIG_BLK_SCSI_REQUEST)	+= scsi_common.o
+obj-$(CONFIG_SCSI_COMMON)	+= scsi_common.o
 
 obj-$(CONFIG_RAID_ATTRS)	+= raid_class.o
 
@@ -168,6 +168,7 @@ scsi_mod-$(CONFIG_BLK_DEBUG_FS)	+= scsi_debugfs.o
 scsi_mod-y			+= scsi_trace.o scsi_logging.o
 scsi_mod-$(CONFIG_PM)		+= scsi_pm.o
 scsi_mod-$(CONFIG_SCSI_DH)	+= scsi_dh.o
+scsi_mod-$(CONFIG_BLK_DEV_BSG)	+= scsi_bsg.o
 
 hv_storvsc-y			:= storvsc_drv.o
 

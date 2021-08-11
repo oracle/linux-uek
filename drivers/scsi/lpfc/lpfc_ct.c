@@ -2846,6 +2846,8 @@ lpfc_fdmi_port_attr_support_speed(struct lpfc_vport *vport,
 
 	ae->un.AttrInt = 0;
 	if (!(phba->hba_flag & HBA_FCOE_MODE)) {
+		if (phba->lmt & LMT_256Gb)
+			ae->un.AttrInt |= HBA_PORTSPEED_256GFC;
 		if (phba->lmt & LMT_128Gb)
 			ae->un.AttrInt |= HBA_PORTSPEED_128GFC;
 		if (phba->lmt & LMT_64Gb)
@@ -2926,6 +2928,9 @@ lpfc_fdmi_port_attr_speed(struct lpfc_vport *vport,
 			break;
 		case LPFC_LINK_SPEED_128GHZ:
 			ae->un.AttrInt = HBA_PORTSPEED_128GFC;
+			break;
+		case LPFC_LINK_SPEED_256GHZ:
+			ae->un.AttrInt = HBA_PORTSPEED_256GFC;
 			break;
 		default:
 			ae->un.AttrInt = HBA_PORTSPEED_UNKNOWN;
@@ -3884,9 +3889,8 @@ lpfc_cmpl_ct_cmd_vmid(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 /**
  * lpfc_vmid_cmd - Build and send a FDMI cmd to the specified NPort
  * @vport: pointer to a host virtual N_Port data structure.
- * @ndlp: ndlp to send FDMI cmd to (if NULL use FDMI_DID)
- * cmdcode: FDMI command to send
- * mask: Mask of HBA or PORT Attributes to send
+ * @cmdcode: application server command code to send
+ * @vmid: pointer to vmid info structure
  *
  * Builds and sends a FDMI command using the CT subsystem.
  */

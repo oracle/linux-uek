@@ -110,6 +110,7 @@ static void sd_shutdown(struct device *);
 static int sd_suspend_system(struct device *);
 static int sd_suspend_runtime(struct device *);
 static int sd_resume(struct device *);
+static int sd_resume_runtime(struct device *);
 static void sd_rescan(struct device *);
 static blk_status_t sd_init_command(struct scsi_cmnd *SCpnt);
 static void sd_uninit_command(struct scsi_cmnd *SCpnt);
@@ -604,7 +605,7 @@ static const struct dev_pm_ops sd_pm_ops = {
 	.poweroff		= sd_suspend_system,
 	.restore		= sd_resume,
 	.runtime_suspend	= sd_suspend_runtime,
-	.runtime_resume		= sd_resume,
+	.runtime_resume		= sd_resume_runtime,
 };
 
 static struct scsi_driver sd_template = {
@@ -1529,11 +1530,11 @@ static int sd_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 }
 
 /**
- *	sd_ioctl_common - process an ioctl
+ *	sd_ioctl - process an ioctl
  *	@bdev: target block device
  *	@mode: FMODE_* mask
  *	@cmd: ioctl command number
- *	@p: this is third argument given to ioctl(2) system call.
+ *	@arg: this is third argument given to ioctl(2) system call.
  *	Often contains a pointer.
  *
  *	Returns 0 if successful (some ioctls return positive numbers on
@@ -1542,20 +1543,20 @@ static int sd_getgeo(struct block_device *bdev, struct hd_geometry *geo)
  *	Note: most ioctls are forward onto the block subsystem or further
  *	down in the scsi subsystem.
  **/
-static int sd_ioctl_common(struct block_device *bdev, fmode_t mode,
-			   unsigned int cmd, void __user *p)
+static int sd_ioctl(struct block_device *bdev, fmode_t mode,
+		    unsigned int cmd, unsigned long arg)
 {
 	struct gendisk *disk = bdev->bd_disk;
 	struct scsi_disk *sdkp = scsi_disk(disk);
 	struct scsi_device *sdp = sdkp->device;
+	void __user *p = (void __user *)arg;
 	int error;
     
 	SCSI_LOG_IOCTL(1, sd_printk(KERN_INFO, sdkp, "sd_ioctl: disk=%s, "
 				    "cmd=0x%x\n", disk->disk_name, cmd));
 
-	error = scsi_verify_blk_ioctl(bdev, cmd);
-	if (error < 0)
-		return error;
+	if (bdev_is_partition(bdev) && !capable(CAP_SYS_RAWIO))
+		return -ENOIOCTLCMD;
 
 	/*
 	 * If we are in the middle of error recovery, don't let anyone
@@ -1566,27 +1567,11 @@ static int sd_ioctl_common(struct block_device *bdev, fmode_t mode,
 	error = scsi_ioctl_block_when_processing_errors(sdp, cmd,
 			(mode & FMODE_NDELAY) != 0);
 	if (error)
-		goto out;
+		return error;
 
 	if (is_sed_ioctl(cmd))
 		return sed_ioctl(sdkp->opal_dev, cmd, p);
-
-	/*
-	 * Send SCSI addressing ioctls directly to mid level, send other
-	 * ioctls to block level and then onto mid level if they can't be
-	 * resolved.
-	 */
-	switch (cmd) {
-		case SCSI_IOCTL_GET_IDLUN:
-		case SCSI_IOCTL_GET_BUS_NUMBER:
-			error = scsi_ioctl(sdp, cmd, p);
-			break;
-		default:
-			error = scsi_cmd_blk_ioctl(bdev, mode, cmd, p);
-			break;
-	}
-out:
-	return error;
+	return scsi_ioctl(sdp, disk, mode, cmd, p);
 }
 
 static void set_media_not_present(struct scsi_disk *sdkp)
@@ -1769,34 +1754,6 @@ static void sd_rescan(struct device *dev)
 	sd_revalidate_disk(sdkp->disk);
 }
 
-static int sd_ioctl(struct block_device *bdev, fmode_t mode,
-		    unsigned int cmd, unsigned long arg)
-{
-	void __user *p = (void __user *)arg;
-	int ret;
-
-	ret = sd_ioctl_common(bdev, mode, cmd, p);
-	if (ret != -ENOTTY)
-		return ret;
-
-	return scsi_ioctl(scsi_disk(bdev->bd_disk)->device, cmd, p);
-}
-
-#ifdef CONFIG_COMPAT
-static int sd_compat_ioctl(struct block_device *bdev, fmode_t mode,
-			   unsigned int cmd, unsigned long arg)
-{
-	void __user *p = compat_ptr(arg);
-	int ret;
-
-	ret = sd_ioctl_common(bdev, mode, cmd, p);
-	if (ret != -ENOTTY)
-		return ret;
-
-	return scsi_compat_ioctl(scsi_disk(bdev->bd_disk)->device, cmd, p);
-}
-#endif
-
 static char sd_pr_type(enum pr_type type)
 {
 	switch (type) {
@@ -1897,9 +1854,7 @@ static const struct block_device_operations sd_fops = {
 	.release		= sd_release,
 	.ioctl			= sd_ioctl,
 	.getgeo			= sd_getgeo,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl		= sd_compat_ioctl,
-#endif
+	.compat_ioctl		= blkdev_compat_ptr_ioctl,
 	.check_events		= sd_check_events,
 	.unlock_native_capacity	= sd_unlock_native_capacity,
 	.report_zones		= sd_zbc_report_zones,
@@ -3714,6 +3669,25 @@ static int sd_resume(struct device *dev)
 	if (!ret)
 		opal_unlock_from_suspend(sdkp->opal_dev);
 	return ret;
+}
+
+static int sd_resume_runtime(struct device *dev)
+{
+	struct scsi_disk *sdkp = dev_get_drvdata(dev);
+	struct scsi_device *sdp = sdkp->device;
+
+	if (sdp->ignore_media_change) {
+		/* clear the device's sense data */
+		static const u8 cmd[10] = { REQUEST_SENSE };
+
+		if (scsi_execute(sdp, cmd, DMA_NONE, NULL, 0, NULL,
+				 NULL, sdp->request_queue->rq_timeout, 1, 0,
+				 RQF_PM, NULL))
+			sd_printk(KERN_NOTICE, sdkp,
+				  "Failed to clear sense data\n");
+	}
+
+	return sd_resume(dev);
 }
 
 /**

@@ -5674,16 +5674,20 @@ lpfc_sli4_get_ctl_attr(struct lpfc_hba *phba)
 		bf_get(lpfc_cntl_attr_lnk_type, cntl_attr);
 	phba->sli4_hba.lnk_info.lnk_no =
 		bf_get(lpfc_cntl_attr_lnk_numb, cntl_attr);
+	phba->sli4_hba.flash_id = bf_get(lpfc_cntl_attr_flash_id, cntl_attr);
+	phba->sli4_hba.asic_rev = bf_get(lpfc_cntl_attr_asic_rev, cntl_attr);
 
 	memset(phba->BIOSVersion, 0, sizeof(phba->BIOSVersion));
 	strlcat(phba->BIOSVersion, (char *)cntl_attr->bios_ver_str,
 		sizeof(phba->BIOSVersion));
 
 	lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
-			"3086 lnk_type:%d, lnk_numb:%d, bios_ver:%s\n",
+			"3086 lnk_type:%d, lnk_numb:%d, bios_ver:%s, "
+			"flash_id: x%02x, asic_rev: x%02x\n",
 			phba->sli4_hba.lnk_info.lnk_tp,
 			phba->sli4_hba.lnk_info.lnk_no,
-			phba->BIOSVersion);
+			phba->BIOSVersion, phba->sli4_hba.flash_id,
+			phba->sli4_hba.asic_rev);
 out_free_mboxq:
 	if (bf_get(lpfc_mqe_command, &mboxq->u.mqe) == MBX_SLI4_CONFIG)
 		lpfc_sli4_mbox_cmd_free(phba, mboxq);
@@ -8790,8 +8794,11 @@ static int
 lpfc_sli4_async_mbox_block(struct lpfc_hba *phba)
 {
 	struct lpfc_sli *psli = &phba->sli;
+	LPFC_MBOXQ_t *mboxq;
 	int rc = 0;
 	unsigned long timeout = 0;
+	u32 sli_flag;
+	u8 cmd, subsys, opcode;
 
 	/* Mark the asynchronous mailbox command posting as blocked */
 	spin_lock_irq(&phba->hbalock);
@@ -8809,12 +8816,37 @@ lpfc_sli4_async_mbox_block(struct lpfc_hba *phba)
 	if (timeout)
 		lpfc_sli4_process_missed_mbox_completions(phba);
 
-	/* Wait for the outstnading mailbox command to complete */
+	/* Wait for the outstanding mailbox command to complete */
 	while (phba->sli.mbox_active) {
 		/* Check active mailbox complete status every 2ms */
 		msleep(2);
 		if (time_after(jiffies, timeout)) {
-			/* Timeout, marked the outstanding cmd not complete */
+			/* Timeout, mark the outstanding cmd not complete */
+
+			/* Sanity check sli.mbox_active has not completed or
+			 * cancelled from another context during last 2ms sleep,
+			 * so take hbalock to be sure before logging.
+			 */
+			spin_lock_irq(&phba->hbalock);
+			if (phba->sli.mbox_active) {
+				mboxq = phba->sli.mbox_active;
+				cmd = mboxq->u.mb.mbxCommand;
+				subsys = lpfc_sli_config_mbox_subsys_get(phba,
+									 mboxq);
+				opcode = lpfc_sli_config_mbox_opcode_get(phba,
+									 mboxq);
+				sli_flag = psli->sli_flag;
+				spin_unlock_irq(&phba->hbalock);
+				lpfc_printf_log(phba, KERN_ERR, LOG_TRACE_EVENT,
+						"2352 Mailbox command x%x "
+						"(x%x/x%x) sli_flag x%x could "
+						"not complete\n",
+						cmd, subsys, opcode,
+						sli_flag);
+			} else {
+				spin_unlock_irq(&phba->hbalock);
+			}
+
 			rc = 1;
 			break;
 		}
@@ -10097,8 +10129,6 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		bf_set(wqe_ebde_cnt, &wqe->xmit_els_rsp.wqe_com, 0);
 		bf_set(wqe_rsp_temp_rpi, &wqe->xmit_els_rsp,
 		       phba->sli4_hba.rpi_ids[ndlp->nlp_rpi]);
-		pcmd = (uint32_t *) (((struct lpfc_dmabuf *)
-					iocbq->context2)->virt);
 		if (phba->fc_topology == LPFC_TOPOLOGY_LOOP) {
 				bf_set(els_rsp64_sp, &wqe->xmit_els_rsp, 1);
 				bf_set(els_rsp64_sid, &wqe->xmit_els_rsp,
@@ -11619,6 +11649,7 @@ void
 lpfc_ignore_els_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 		     struct lpfc_iocbq *rspiocb)
 {
+	struct lpfc_nodelist *ndlp = (struct lpfc_nodelist *) cmdiocb->context1;
 	IOCB_t *irsp = &rspiocb->iocb;
 
 	/* ELS cmd tag <ulpIoTag> completes */
@@ -11627,11 +11658,16 @@ lpfc_ignore_els_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 			"x%x x%x x%x\n",
 			irsp->ulpIoTag, irsp->ulpStatus,
 			irsp->un.ulpWord[4], irsp->ulpTimeout);
-	lpfc_nlp_put((struct lpfc_nodelist *)cmdiocb->context1);
+	/*
+	 * Deref the ndlp after free_iocb. sli_release_iocb will access the ndlp
+	 * if exchange is busy.
+	 */
 	if (cmdiocb->iocb.ulpCommand == CMD_GEN_REQUEST64_CR)
 		lpfc_ct_free_iocb(phba, cmdiocb);
 	else
 		lpfc_els_free_iocb(phba, cmdiocb);
+
+	lpfc_nlp_put(ndlp);
 }
 
 /**
@@ -20021,6 +20057,91 @@ out:
 }
 
 /**
+ * lpfc_log_fw_write_cmpl - logs firmware write completion status
+ * @phba: pointer to lpfc hba data structure
+ * @shdr_status: wr_object rsp's status field
+ * @shdr_add_status: wr_object rsp's add_status field
+ * @shdr_add_status_2: wr_object rsp's add_status_2 field
+ * @shdr_change_status: wr_object rsp's change_status field
+ * @shdr_csf: wr_object rsp's csf bit
+ *
+ * This routine is intended to be called after a firmware write completes.
+ * It will log next action items to be performed by the user to instantiate
+ * the newly downloaded firmware or reason for incompatibility.
+ **/
+static void
+lpfc_log_fw_write_cmpl(struct lpfc_hba *phba, u32 shdr_status,
+		       u32 shdr_add_status, u32 shdr_add_status_2,
+		       u32 shdr_change_status, u32 shdr_csf)
+{
+	lpfc_printf_log(phba, KERN_INFO, LOG_MBOX | LOG_SLI,
+			"4198 %s: flash_id x%02x, asic_rev x%02x, "
+			"status x%02x, add_status x%02x, add_status_2 x%02x, "
+			"change_status x%02x, csf %01x\n", __func__,
+			phba->sli4_hba.flash_id, phba->sli4_hba.asic_rev,
+			shdr_status, shdr_add_status, shdr_add_status_2,
+			shdr_change_status, shdr_csf);
+
+	if (shdr_add_status == LPFC_ADD_STATUS_INCOMPAT_OBJ) {
+		switch (shdr_add_status_2) {
+		case LPFC_ADD_STATUS_2_INCOMPAT_FLASH:
+			lpfc_printf_log(phba, KERN_WARNING, LOG_MBOX | LOG_SLI,
+					"4199 Firmware write failed: "
+					"image incompatible with flash x%02x\n",
+					phba->sli4_hba.flash_id);
+			break;
+		case LPFC_ADD_STATUS_2_INCORRECT_ASIC:
+			lpfc_printf_log(phba, KERN_WARNING, LOG_MBOX | LOG_SLI,
+					"4200 Firmware write failed: "
+					"image incompatible with ASIC "
+					"architecture x%02x\n",
+					phba->sli4_hba.asic_rev);
+			break;
+		default:
+			lpfc_printf_log(phba, KERN_WARNING, LOG_MBOX | LOG_SLI,
+					"4210 Firmware write failed: "
+					"add_status_2 x%02x\n",
+					shdr_add_status_2);
+			break;
+		}
+	} else if (!shdr_status && !shdr_add_status) {
+		if (shdr_change_status == LPFC_CHANGE_STATUS_FW_RESET ||
+		    shdr_change_status == LPFC_CHANGE_STATUS_PORT_MIGRATION) {
+			if (shdr_csf)
+				shdr_change_status =
+						   LPFC_CHANGE_STATUS_PCI_RESET;
+		}
+
+		switch (shdr_change_status) {
+		case (LPFC_CHANGE_STATUS_PHYS_DEV_RESET):
+			lpfc_printf_log(phba, KERN_INFO, LOG_MBOX | LOG_SLI,
+					"3198 Firmware write complete: System "
+					"reboot required to instantiate\n");
+			break;
+		case (LPFC_CHANGE_STATUS_FW_RESET):
+			lpfc_printf_log(phba, KERN_INFO, LOG_MBOX | LOG_SLI,
+					"3199 Firmware write complete: "
+					"Firmware reset required to "
+					"instantiate\n");
+			break;
+		case (LPFC_CHANGE_STATUS_PORT_MIGRATION):
+			lpfc_printf_log(phba, KERN_INFO, LOG_MBOX | LOG_SLI,
+					"3200 Firmware write complete: Port "
+					"Migration or PCI Reset required to "
+					"instantiate\n");
+			break;
+		case (LPFC_CHANGE_STATUS_PCI_RESET):
+			lpfc_printf_log(phba, KERN_INFO, LOG_MBOX | LOG_SLI,
+					"3201 Firmware write complete: PCI "
+					"Reset required to instantiate\n");
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+/**
  * lpfc_wr_object - write an object to the firmware
  * @phba: HBA structure that indicates port to create a queue on.
  * @dmabuf_list: list of dmabufs to write to the port.
@@ -20046,7 +20167,8 @@ lpfc_wr_object(struct lpfc_hba *phba, struct list_head *dmabuf_list,
 	struct lpfc_mbx_wr_object *wr_object;
 	LPFC_MBOXQ_t *mbox;
 	int rc = 0, i = 0;
-	uint32_t shdr_status, shdr_add_status, shdr_change_status, shdr_csf;
+	uint32_t shdr_status, shdr_add_status, shdr_add_status_2;
+	uint32_t shdr_change_status = 0, shdr_csf = 0;
 	uint32_t mbox_tmo;
 	struct lpfc_dmabuf *dmabuf;
 	uint32_t written = 0;
@@ -20100,58 +20222,36 @@ lpfc_wr_object(struct lpfc_hba *phba, struct list_head *dmabuf_list,
 			     &wr_object->header.cfg_shdr.response);
 	shdr_add_status = bf_get(lpfc_mbox_hdr_add_status,
 				 &wr_object->header.cfg_shdr.response);
+	shdr_add_status_2 = bf_get(lpfc_mbox_hdr_add_status_2,
+				   &wr_object->header.cfg_shdr.response);
 	if (check_change_status) {
 		shdr_change_status = bf_get(lpfc_wr_object_change_status,
 					    &wr_object->u.response);
-
-		if (shdr_change_status == LPFC_CHANGE_STATUS_FW_RESET ||
-		    shdr_change_status == LPFC_CHANGE_STATUS_PORT_MIGRATION) {
-			shdr_csf = bf_get(lpfc_wr_object_csf,
-					  &wr_object->u.response);
-			if (shdr_csf)
-				shdr_change_status =
-						   LPFC_CHANGE_STATUS_PCI_RESET;
-		}
-
-		switch (shdr_change_status) {
-		case (LPFC_CHANGE_STATUS_PHYS_DEV_RESET):
-			lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-					"3198 Firmware write complete: System "
-					"reboot required to instantiate\n");
-			break;
-		case (LPFC_CHANGE_STATUS_FW_RESET):
-			lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-					"3199 Firmware write complete: Firmware"
-					" reset required to instantiate\n");
-			break;
-		case (LPFC_CHANGE_STATUS_PORT_MIGRATION):
-			lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-					"3200 Firmware write complete: Port "
-					"Migration or PCI Reset required to "
-					"instantiate\n");
-			break;
-		case (LPFC_CHANGE_STATUS_PCI_RESET):
-			lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-					"3201 Firmware write complete: PCI "
-					"Reset required to instantiate\n");
-			break;
-		default:
-			break;
-		}
+		shdr_csf = bf_get(lpfc_wr_object_csf,
+				  &wr_object->u.response);
 	}
+
 	if (!phba->sli4_hba.intr_enable)
 		mempool_free(mbox, phba->mbox_mem_pool);
 	else if (rc != MBX_TIMEOUT)
 		mempool_free(mbox, phba->mbox_mem_pool);
-	if (shdr_status || shdr_add_status || rc) {
+	if (shdr_status || shdr_add_status || shdr_add_status_2 || rc) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_TRACE_EVENT,
 				"3025 Write Object mailbox failed with "
-				"status x%x add_status x%x, mbx status x%x\n",
-				shdr_status, shdr_add_status, rc);
+				"status x%x add_status x%x, add_status_2 x%x, "
+				"mbx status x%x\n",
+				shdr_status, shdr_add_status, shdr_add_status_2,
+				rc);
 		rc = -ENXIO;
 		*offset = shdr_add_status;
-	} else
+	} else {
 		*offset += wr_object->u.response.actual_write_length;
+	}
+
+	if (rc || check_change_status)
+		lpfc_log_fw_write_cmpl(phba, shdr_status, shdr_add_status,
+				       shdr_add_status_2, shdr_change_status,
+				       shdr_csf);
 	return rc;
 }
 

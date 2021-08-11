@@ -10,6 +10,7 @@
 #include <linux/atomic.h>
 #include <linux/sbitmap.h>
 
+struct bsg_device;
 struct device;
 struct request_queue;
 struct scsi_cmnd;
@@ -205,6 +206,7 @@ struct scsi_device {
 	unsigned unmap_limit_for_ws:1;	/* Use the UNMAP limit for WRITE SAME */
 	unsigned rpm_autosuspend:1;	/* Enable runtime autosuspend at device
 					 * creation time */
+	unsigned ignore_media_change:1; /* Ignore MEDIA CHANGE on resume */
 
 	bool offline_already;		/* Device offline message logged */
 
@@ -234,6 +236,10 @@ struct scsi_device {
 	size_t			dma_drain_len;
 	void			*dma_drain_buf;
 
+	unsigned int		sg_timeout;
+	unsigned int		sg_reserved_size;
+
+	struct bsg_device	*bsg_dev;
 	unsigned char		access_state;
 	struct mutex		state_mutex;
 	enum scsi_device_state sdev_state;

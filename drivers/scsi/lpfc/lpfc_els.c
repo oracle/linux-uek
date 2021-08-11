@@ -1664,6 +1664,12 @@ lpfc_plogi_confirm_nport(struct lpfc_hba *phba, uint32_t *prsp,
 	if (!new_ndlp || (new_ndlp == ndlp))
 		return ndlp;
 
+	/*
+	 * Unregister from backend if not done yet. Could have been skipped
+	 * due to ADISC
+	 */
+	lpfc_nlp_unreg_node(vport, new_ndlp);
+
 	if (phba->sli_rev == LPFC_SLI_REV4) {
 		active_rrqs_xri_bitmap = mempool_alloc(phba->active_rrq_pool,
 						       GFP_KERNEL);
@@ -2025,9 +2031,7 @@ lpfc_cmpl_els_plogi(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 				 irsp->un.ulpWord[4]);
 
 		/* Do not call DSM for lpfc_els_abort'ed ELS cmds */
-		if (lpfc_error_lost_link(irsp))
-			goto check_plogi;
-		else
+		if (!lpfc_error_lost_link(irsp))
 			lpfc_disc_state_machine(vport, ndlp, cmdiocb,
 						NLP_EVT_CMPL_PLOGI);
 
@@ -2080,7 +2084,6 @@ lpfc_cmpl_els_plogi(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 					NLP_EVT_CMPL_PLOGI);
 	}
 
- check_plogi:
 	if (disc && vport->num_disc_nodes) {
 		/* Check to see if there are more PLOGIs to be sent */
 		lpfc_more_plogi(vport);
@@ -2607,6 +2610,14 @@ lpfc_adisc_done(struct lpfc_vport *vport)
 	if ((phba->sli3_options & LPFC_SLI3_NPIV_ENABLED) &&
 	    !(vport->fc_flag & FC_RSCN_MODE) &&
 	    (phba->sli_rev < LPFC_SLI_REV4)) {
+
+		/*
+		 * If link is down, clear_la and reg_vpi will be done after
+		 * flogi following a link up event
+		 */
+		if (!lpfc_is_link_up(phba))
+			return;
+
 		/* The ADISCs are complete.  Doesn't matter if they
 		 * succeeded or failed because the ADISC completion
 		 * routine guarantees to call the state machine and
@@ -2749,12 +2760,9 @@ lpfc_cmpl_els_adisc(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 				 "2755 ADISC failure DID:%06X Status:x%x/x%x\n",
 				 ndlp->nlp_DID, irsp->ulpStatus,
 				 irsp->un.ulpWord[4]);
-		/* Do not call DSM for lpfc_els_abort'ed ELS cmds */
-		if (lpfc_error_lost_link(irsp))
-			goto check_adisc;
-		else
-			lpfc_disc_state_machine(vport, ndlp, cmdiocb,
-						NLP_EVT_CMPL_ADISC);
+
+		lpfc_disc_state_machine(vport, ndlp, cmdiocb,
+				NLP_EVT_CMPL_ADISC);
 
 		/* As long as this node is not registered with the SCSI or NVMe
 		 * transport, it is no longer an active node. Otherwise
@@ -2772,7 +2780,6 @@ lpfc_cmpl_els_adisc(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 		lpfc_disc_state_machine(vport, ndlp, cmdiocb,
 					NLP_EVT_CMPL_ADISC);
 
- check_adisc:
 	/* Check to see if there are more ADISCs to be sent */
 	if (disc && vport->num_disc_nodes)
 		lpfc_more_adisc(vport);
@@ -3375,6 +3382,7 @@ lpfc_issue_els_scr(struct lpfc_vport *vport, uint8_t retry)
 	if (phba->sli_rev == LPFC_SLI_REV4) {
 		rc = lpfc_reg_fab_ctrl_node(vport, ndlp);
 		if (rc) {
+			lpfc_els_free_iocb(phba, elsiocb);
 			lpfc_printf_vlog(vport, KERN_ERR, LOG_NODE,
 					 "0937 %s: Failed to reg fc node, rc %d\n",
 					 __func__, rc);
@@ -3413,7 +3421,6 @@ lpfc_issue_els_scr(struct lpfc_vport *vport, uint8_t retry)
 		return 1;
 	}
 
-	/* Keep the ndlp just in case RDF is being sent */
 	return 0;
 }
 
@@ -3657,27 +3664,14 @@ lpfc_issue_els_rdf(struct lpfc_vport *vport, uint8_t retry)
 		lpfc_enqueue_node(vport, ndlp);
 	}
 
-	/* RDF ELS is not required on an NPIV VN_Port.  */
-	if (vport->port_type == LPFC_NPIV_PORT) {
-		lpfc_nlp_put(ndlp);
+	/* RDF ELS is not required on an NPIV VN_Port. */
+	if (vport->port_type == LPFC_NPIV_PORT)
 		return -EACCES;
-	}
 
 	elsiocb = lpfc_prep_els_iocb(vport, 1, cmdsize, retry, ndlp,
 				     ndlp->nlp_DID, ELS_CMD_RDF);
 	if (!elsiocb)
 		return -ENOMEM;
-
-	if (phba->sli_rev == LPFC_SLI_REV4 &&
-	    !(ndlp->nlp_flag & NLP_RPI_REGISTERED)) {
-		lpfc_printf_vlog(vport, KERN_ERR, LOG_NODE,
-				 "0939 %s: FC_NODE x%x RPI x%x flag x%x "
-				 "ste x%x type x%x Not registered\n",
-				 __func__, ndlp->nlp_DID, ndlp->nlp_rpi,
-				 ndlp->nlp_flag, ndlp->nlp_state,
-				 ndlp->nlp_type);
-		return -ENODEV;
-	}
 
 	/* Configure the payload for the supported FPIN events. */
 	prdf = (struct lpfc_els_rdf_req *)
@@ -4378,7 +4372,7 @@ out_retry:
 			    (cmd == ELS_CMD_NVMEPRLI))
 				lpfc_nlp_set_state(vport, ndlp,
 					NLP_STE_PRLI_ISSUE);
-			else
+			else if (cmd != ELS_CMD_ADISC)
 				lpfc_nlp_set_state(vport, ndlp,
 					NLP_STE_NPR_NODE);
 			ndlp->nlp_last_elscmd = cmd;
@@ -4612,6 +4606,15 @@ lpfc_cmpl_els_logo_acc(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 		goto out;
 
 	if (ndlp->nlp_state == NLP_STE_NPR_NODE) {
+
+		/* If PLOGI is being retried, PLOGI completion will cleanup the
+		 * node. The NLP_NPR_2B_DISC flag needs to be retained to make
+		 * progress on nodes discovered from last RSCN.
+		 */
+		if ((ndlp->nlp_flag & NLP_DELAY_TMO) &&
+		    (ndlp->nlp_last_elscmd == ELS_CMD_PLOGI))
+			goto out;
+
 		/* NPort Recovery mode or node is just allocated */
 		if (!lpfc_nlp_not_used(ndlp)) {
 			/* A LOGO is completing and the node is in NPR state.
@@ -5657,25 +5660,40 @@ lpfc_els_disc_adisc(struct lpfc_vport *vport)
 
 	/* go thru NPR nodes and issue any remaining ELS ADISCs */
 	list_for_each_entry_safe(ndlp, next_ndlp, &vport->fc_nodes, nlp_listp) {
-		if (ndlp->nlp_state == NLP_STE_NPR_NODE &&
-		    (ndlp->nlp_flag & NLP_NPR_2B_DISC) != 0 &&
-		    (ndlp->nlp_flag & NLP_NPR_ADISC) != 0) {
-			spin_lock_irq(&ndlp->lock);
-			ndlp->nlp_flag &= ~NLP_NPR_ADISC;
-			spin_unlock_irq(&ndlp->lock);
-			ndlp->nlp_prev_state = ndlp->nlp_state;
-			lpfc_nlp_set_state(vport, ndlp, NLP_STE_ADISC_ISSUE);
-			lpfc_issue_els_adisc(vport, ndlp, 0);
-			sentadisc++;
-			vport->num_disc_nodes++;
-			if (vport->num_disc_nodes >=
-			    vport->cfg_discovery_threads) {
-				spin_lock_irq(shost->host_lock);
-				vport->fc_flag |= FC_NLP_MORE;
-				spin_unlock_irq(shost->host_lock);
-				break;
-			}
+
+		if (ndlp->nlp_state != NLP_STE_NPR_NODE ||
+		    !(ndlp->nlp_flag & NLP_NPR_ADISC))
+			continue;
+
+		spin_lock_irq(&ndlp->lock);
+		ndlp->nlp_flag &= ~NLP_NPR_ADISC;
+		spin_unlock_irq(&ndlp->lock);
+
+		if (!(ndlp->nlp_flag & NLP_NPR_2B_DISC)) {
+			/* This node was marked for ADISC but was not picked
+			 * for discovery. This is possible if the node was
+			 * missing in gidft response.
+			 *
+			 * At time of marking node for ADISC, we skipped unreg
+			 * from backend
+			 */
+			lpfc_nlp_unreg_node(vport, ndlp);
+			continue;
 		}
+
+		ndlp->nlp_prev_state = ndlp->nlp_state;
+		lpfc_nlp_set_state(vport, ndlp, NLP_STE_ADISC_ISSUE);
+		lpfc_issue_els_adisc(vport, ndlp, 0);
+		sentadisc++;
+		vport->num_disc_nodes++;
+		if (vport->num_disc_nodes >=
+				vport->cfg_discovery_threads) {
+			spin_lock_irq(shost->host_lock);
+			vport->fc_flag |= FC_NLP_MORE;
+			spin_unlock_irq(shost->host_lock);
+			break;
+		}
+
 	}
 	if (sentadisc == 0) {
 		spin_lock_irq(shost->host_lock);
@@ -6087,6 +6105,12 @@ lpfc_rdp_res_speed(struct fc_rdp_port_speed_desc *desc, struct lpfc_hba *phba)
 	case LPFC_LINK_SPEED_64GHZ:
 		rdp_speed = RDP_PS_64GB;
 		break;
+	case LPFC_LINK_SPEED_128GHZ:
+		rdp_speed = RDP_PS_128GB;
+		break;
+	case LPFC_LINK_SPEED_256GHZ:
+		rdp_speed = RDP_PS_256GB;
+		break;
 	default:
 		rdp_speed = RDP_PS_UNKNOWN;
 		break;
@@ -6094,6 +6118,8 @@ lpfc_rdp_res_speed(struct fc_rdp_port_speed_desc *desc, struct lpfc_hba *phba)
 
 	desc->info.port_speed.speed = cpu_to_be16(rdp_speed);
 
+	if (phba->lmt & LMT_256Gb)
+		rdp_cap |= RDP_PS_256GB;
 	if (phba->lmt & LMT_128Gb)
 		rdp_cap |= RDP_PS_128GB;
 	if (phba->lmt & LMT_64Gb)
@@ -6885,13 +6911,6 @@ lpfc_rscn_recovery_check(struct lpfc_vport *vport)
 		case  NLP_STE_LOGO_ISSUE:
 			continue;
 		}
-
-		/* Check to see if we need to NVME rescan this target
-		 * remoteport.
-		 */
-		if (ndlp->nlp_fc4_type & NLP_FC4_NVME &&
-		    ndlp->nlp_type & (NLP_NVME_TARGET | NLP_NVME_DISCOVERY))
-			lpfc_nvme_rescan_port(vport, ndlp);
 
 		lpfc_disc_state_machine(vport, ndlp, NULL,
 					NLP_EVT_DEVICE_RECOVERY);
@@ -8948,6 +8967,9 @@ lpfc_els_unsol_buffer(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 			break;
 		}
 		lpfc_disc_state_machine(vport, ndlp, elsiocb, NLP_EVT_RCV_LOGO);
+		if (newnode)
+			lpfc_disc_state_machine(vport, ndlp, NULL,
+					NLP_EVT_DEVICE_RM);
 		break;
 	case ELS_CMD_PRLO:
 		lpfc_debugfs_disc_trc(vport, LPFC_DISC_TRC_ELS_UNSOL,

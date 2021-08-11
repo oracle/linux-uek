@@ -4038,6 +4038,7 @@ lpfc_topology_store(struct device *dev, struct device_attribute *attr,
 	const char *val_buf = buf;
 	int err;
 	uint32_t prev_val;
+	u8 sli_family, if_type;
 
 	if (!strncmp(buf, "nolip ", strlen("nolip "))) {
 		nolip = 1;
@@ -4061,13 +4062,16 @@ lpfc_topology_store(struct device *dev, struct device_attribute *attr,
 		/*
 		 * The 'topology' is not a configurable parameter if :
 		 *   - persistent topology enabled
-		 *   - G7/G6 with no private loop support
+		 *   - ASIC_GEN_NUM >= 0xC, with no private loop support
 		 */
-
+		sli_family = bf_get(lpfc_sli_intf_sli_family,
+				    &phba->sli4_hba.sli_intf);
+		if_type = bf_get(lpfc_sli_intf_if_type,
+				 &phba->sli4_hba.sli_intf);
 		if ((phba->hba_flag & HBA_PERSISTENT_TOPO ||
-		     (!phba->sli4_hba.pc_sli4_params.pls &&
-		     (phba->pcidev->device == PCI_DEVICE_ID_LANCER_G6_FC ||
-		     phba->pcidev->device == PCI_DEVICE_ID_LANCER_G7_FC))) &&
+		    (!phba->sli4_hba.pc_sli4_params.pls &&
+		     (sli_family == LPFC_SLI_INTF_FAMILY_G6 ||
+		      if_type == LPFC_SLI_INTF_IF_TYPE_6))) &&
 		    val == 4) {
 			lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT,
 				"3114 Loop mode not supported\n");
@@ -5412,9 +5416,9 @@ LPFC_VPORT_ATTR_R(fcp_class, 3, 2, 3,
 
 /*
 # lpfc_use_adisc: Use ADISC for FCP rediscovery instead of PLOGI. Value range
-# is [0,1]. Default value is 0.
+# is [0,1]. Default value is 1.
 */
-LPFC_VPORT_ATTR_RW(use_adisc, 0, 0, 1,
+LPFC_VPORT_ATTR_RW(use_adisc, 1, 0, 1,
 		   "Use ADISC on rediscovery to authenticate FCP devices");
 
 /*
@@ -6740,6 +6744,9 @@ lpfc_get_host_speed(struct Scsi_Host *shost)
 			break;
 		case LPFC_LINK_SPEED_128GHZ:
 			fc_host_speed(shost) = FC_PORTSPEED_128GBIT;
+			break;
+		case LPFC_LINK_SPEED_256GHZ:
+			fc_host_speed(shost) = FC_PORTSPEED_256GBIT;
 			break;
 		default:
 			fc_host_speed(shost) = FC_PORTSPEED_UNKNOWN;
