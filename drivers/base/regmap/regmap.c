@@ -1126,10 +1126,10 @@ skip_format_initialization:
 		/* Make sure, that this register range has no selector
 		   or data window within its boundary */
 		for (j = 0; j < config->num_ranges; j++) {
-			unsigned sel_reg = config->ranges[j].selector_reg;
-			unsigned win_min = config->ranges[j].window_start;
-			unsigned win_max = win_min +
-					   config->ranges[j].window_len - 1;
+			unsigned int sel_reg = config->ranges[j].selector_reg;
+			unsigned int win_min = config->ranges[j].window_start;
+			unsigned int win_max = win_min +
+					       config->ranges[j].window_len - 1;
 
 			/* Allow data window inside its own virtual range */
 			if (j == i)
@@ -1298,7 +1298,7 @@ EXPORT_SYMBOL_GPL(devm_regmap_field_alloc);
  */
 int regmap_field_bulk_alloc(struct regmap *regmap,
 			    struct regmap_field **rm_field,
-			    struct reg_field *reg_field,
+			    const struct reg_field *reg_field,
 			    int num_fields)
 {
 	struct regmap_field *rf;
@@ -1334,7 +1334,7 @@ EXPORT_SYMBOL_GPL(regmap_field_bulk_alloc);
 int devm_regmap_field_bulk_alloc(struct device *dev,
 				 struct regmap *regmap,
 				 struct regmap_field **rm_field,
-				 struct reg_field *reg_field,
+				 const struct reg_field *reg_field,
 				 int num_fields)
 {
 	struct regmap_field *rf;
@@ -1667,7 +1667,7 @@ static int _regmap_raw_write_impl(struct regmap *map, unsigned int reg,
 			if (ret) {
 				dev_err(map->dev,
 					"Error in caching of register: %x ret: %d\n",
-					reg + i, ret);
+					reg + regmap_get_offset(map, i), ret);
 				return ret;
 			}
 		}
