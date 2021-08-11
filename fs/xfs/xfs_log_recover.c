@@ -26,6 +26,8 @@
 #include "xfs_error.h"
 #include "xfs_buf_item.h"
 #include "xfs_ag.h"
+#include "xfs_quota.h"
+
 
 #define BLK_AVG(blk1, blk2)	((blk1+blk2) >> 1)
 
@@ -79,8 +81,6 @@ xlog_alloc_buffer(
 	struct xlog	*log,
 	int		nbblks)
 {
-	int align_mask = xfs_buftarg_dma_alignment(log->l_targ);
-
 	/*
 	 * Pass log block 0 since we don't have an addr yet, buffer will be
 	 * verified on read.
@@ -108,7 +108,7 @@ xlog_alloc_buffer(
 	if (nbblks > 1 && log->l_sectBBsize > 1)
 		nbblks += log->l_sectBBsize;
 	nbblks = round_up(nbblks, log->l_sectBBsize);
-	return kmem_alloc_io(BBTOB(nbblks), align_mask, KM_MAYFAIL | KM_ZERO);
+	return kvzalloc(BBTOB(nbblks), GFP_KERNEL | __GFP_RETRY_MAYFAIL);
 }
 
 /*
@@ -1756,6 +1756,30 @@ xlog_recover_release_intent(
 	spin_unlock(&ailp->ail_lock);
 }
 
+int
+xlog_recover_iget(
+	struct xfs_mount	*mp,
+	xfs_ino_t		ino,
+	struct xfs_inode	**ipp)
+{
+	int			error;
+
+	error = xfs_iget(mp, NULL, ino, 0, 0, ipp);
+	if (error)
+		return error;
+
+	error = xfs_qm_dqattach(*ipp);
+	if (error) {
+		xfs_irele(*ipp);
+		return error;
+	}
+
+	if (VFS_I(*ipp)->i_nlink == 0)
+		xfs_iflags_set(*ipp, XFS_IRECOVERY);
+
+	return 0;
+}
+
 /******************************************************************************
  *
  *		Log recover routines
@@ -2062,7 +2086,9 @@ xlog_recover_add_to_cont_trans(
 	old_ptr = item->ri_buf[item->ri_cnt-1].i_addr;
 	old_len = item->ri_buf[item->ri_cnt-1].i_len;
 
-	ptr = krealloc(old_ptr, len + old_len, GFP_KERNEL | __GFP_NOFAIL);
+	ptr = kvrealloc(old_ptr, old_len, len + old_len, GFP_KERNEL);
+	if (!ptr)
+		return -ENOMEM;
 	memcpy(&ptr[old_len], dp, len);
 	item->ri_buf[item->ri_cnt-1].i_len += len;
 	item->ri_buf[item->ri_cnt-1].i_addr = ptr;
@@ -2786,6 +2812,13 @@ xlog_recover_process_iunlinks(
 		}
 		xfs_buf_rele(agibp);
 	}
+
+	/*
+	 * Flush the pending unlinked inodes to ensure that the inactivations
+	 * are fully completed on disk and the incore inodes can be reclaimed
+	 * before we signal that recovery is complete.
+	 */
+	xfs_inodegc_flush(mp);
 }
 
 STATIC void
@@ -3463,6 +3496,22 @@ xlog_recover_finish(
 		 * pushing the intents out of the way.
 		 */
 		xfs_log_force(log->l_mp, XFS_LOG_SYNC);
+
+		/*
+		 * Now that we've recovered the log and all the intents, we can
+		 * clear the log incompat feature bits in the superblock
+		 * because there's no longer anything to protect.  We rely on
+		 * the AIL push to write out the updated superblock after
+		 * everything else.
+		 */
+		if (xfs_clear_incompat_log_features(log->l_mp)) {
+			error = xfs_sync_sb(log->l_mp, false);
+			if (error < 0) {
+				xfs_alert(log->l_mp,
+	"Failed to clear log incompat features on recovery");
+				return error;
+			}
+		}
 
 		xlog_recover_process_iunlinks(log);
 

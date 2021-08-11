@@ -57,6 +57,18 @@ struct xfs_error_cfg {
 };
 
 /*
+ * Per-cpu deferred inode inactivation GC lists.
+ */
+struct xfs_inodegc {
+	struct llist_head	list;
+	struct work_struct	work;
+
+	/* approximate count of inodes in the list */
+	unsigned int		items;
+	unsigned int		shrinker_hits;
+};
+
+/*
  * The struct xfsmount layout is optimised to separate read-mostly variables
  * from variables that are frequently modified. We put the read-mostly variables
  * first, then place all the other variables at the end.
@@ -82,6 +94,9 @@ typedef struct xfs_mount {
 	xfs_buftarg_t		*m_ddev_targp;	/* saves taking the address */
 	xfs_buftarg_t		*m_logdev_targp;/* ptr to log device */
 	xfs_buftarg_t		*m_rtdev_targp;	/* ptr to rt device */
+	struct list_head	m_mount_list;	/* global mount list */
+	void __percpu		*m_inodegc;	/* percpu inodegc structures */
+
 	/*
 	 * Optional cache of rt summary level per bitmap block with the
 	 * invariant that m_rsum_cache[bbno] <= the minimum i for which
@@ -94,8 +109,9 @@ typedef struct xfs_mount {
 	struct workqueue_struct	*m_unwritten_workqueue;
 	struct workqueue_struct	*m_cil_workqueue;
 	struct workqueue_struct	*m_reclaim_workqueue;
-	struct workqueue_struct *m_gc_workqueue;
 	struct workqueue_struct	*m_sync_workqueue;
+	struct workqueue_struct *m_blockgc_wq;
+	struct workqueue_struct *m_inodegc_wq;
 
 	int			m_bsize;	/* fs logical block size */
 	uint8_t			m_blkbit_log;	/* blocklog + NBBY */
@@ -132,10 +148,12 @@ typedef struct xfs_mount {
 	int			m_fixedfsid[2];	/* unchanged for life of FS */
 	uint			m_qflags;	/* quota status flags */
 	uint64_t		m_flags;	/* global mount flags */
-	int64_t			m_low_space[XFS_LOWSP_MAX];
+	uint64_t		m_low_space[XFS_LOWSP_MAX];
+	uint64_t		m_low_rtexts[XFS_LOWSP_MAX];
 	struct xfs_ino_geometry	m_ino_geo;	/* inode geometry */
 	struct xfs_trans_resv	m_resv;		/* precomputed res values */
 						/* low free space thresholds */
+	unsigned long		m_opstate;	/* dynamic state flags */
 	bool			m_always_cow;
 	bool			m_fail_unmount;
 	bool			m_finobt_nores; /* no per-AG finobt resv. */
@@ -193,6 +211,8 @@ typedef struct xfs_mount {
 	xfs_agnumber_t		m_agirotor;	/* last ag dir inode alloced */
 	spinlock_t		m_agirotor_lock;/* .. and lock protecting it */
 
+	/* Memory shrinker to throttle and reprioritize inodegc */
+	struct shrinker		m_inodegc_shrinker;
 	/*
 	 * Workqueue item so that we can coalesce multiple inode flush attempts
 	 * into a single flush.
@@ -259,6 +279,40 @@ typedef struct xfs_mount {
 #define XFS_MOUNT_DAX_NEVER	(1ULL << 27)
 
 /*
+ * If set, inactivation worker threads will be scheduled to process queued
+ * inodegc work.  If not, queued inodes remain in memory waiting to be
+ * processed.
+ */
+#define XFS_OPSTATE_INODEGC_ENABLED	0
+/*
+ * If set, background speculative prealloc gc worker threads will be scheduled
+ * to process queued blockgc work.  If not, inodes retain their preallocations
+ * until explicitly deleted.
+ */
+#define XFS_OPSTATE_BLOCKGC_ENABLED	1
+
+#define __XFS_IS_OPSTATE(name, NAME) \
+static inline bool xfs_is_ ## name (struct xfs_mount *mp) \
+{ \
+	return test_bit(XFS_OPSTATE_ ## NAME, &mp->m_opstate); \
+} \
+static inline bool xfs_clear_ ## name (struct xfs_mount *mp) \
+{ \
+	return test_and_clear_bit(XFS_OPSTATE_ ## NAME, &mp->m_opstate); \
+} \
+static inline bool xfs_set_ ## name (struct xfs_mount *mp) \
+{ \
+	return test_and_set_bit(XFS_OPSTATE_ ## NAME, &mp->m_opstate); \
+}
+
+__XFS_IS_OPSTATE(inodegc_enabled, INODEGC_ENABLED)
+__XFS_IS_OPSTATE(blockgc_enabled, BLOCKGC_ENABLED)
+
+#define XFS_OPSTATE_STRINGS \
+	{ (1UL << XFS_OPSTATE_INODEGC_ENABLED),		"inodegc" }, \
+	{ (1UL << XFS_OPSTATE_BLOCKGC_ENABLED),		"blockgc" }
+
+/*
  * Max and min values for mount-option defined I/O
  * preallocation sizes.
  */
@@ -306,6 +360,15 @@ extern uint64_t xfs_default_resblks(xfs_mount_t *mp);
 extern int	xfs_mountfs(xfs_mount_t *mp);
 extern void	xfs_unmountfs(xfs_mount_t *);
 
+/*
+ * Deltas for the block count can vary from 1 to very large, but lock contention
+ * only occurs on frequent small block count updates such as in the delayed
+ * allocation path for buffered writes (page a time updates). Hence we set
+ * a large batch count (1024) to minimise global counter updates except when
+ * we get near to ENOSPC and we have to be very accurate with our updates.
+ */
+#define XFS_FDBLOCKS_BATCH	1024
+
 extern int	xfs_mod_fdblocks(struct xfs_mount *mp, int64_t delta,
 				 bool reserved);
 extern int	xfs_mod_frextents(struct xfs_mount *mp, int64_t delta);
@@ -325,6 +388,8 @@ int	xfs_zero_extent(struct xfs_inode *ip, xfs_fsblock_t start_fsb,
 struct xfs_error_cfg * xfs_error_get_cfg(struct xfs_mount *mp,
 		int error_class, int error);
 void xfs_force_summary_recalc(struct xfs_mount *mp);
+int xfs_add_incompat_log_feature(struct xfs_mount *mp, uint32_t feature);
+bool xfs_clear_incompat_log_features(struct xfs_mount *mp);
 void xfs_mod_delalloc(struct xfs_mount *mp, int64_t delta);
 
 #endif	/* __XFS_MOUNT_H__ */
