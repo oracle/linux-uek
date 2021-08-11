@@ -235,6 +235,7 @@ const struct _kvm_stats_desc kvm_vm_stats_desc[] = {
 	STATS_DESC_ICOUNTER(VM, mmu_unsync),
 	STATS_DESC_ICOUNTER(VM, lpages),
 	STATS_DESC_ICOUNTER(VM, nx_lpage_splits),
+	STATS_DESC_PCOUNTER(VM, max_mmu_rmap_size),
 	STATS_DESC_PCOUNTER(VM, max_mmu_page_hash_collisions)
 };
 static_assert(ARRAY_SIZE(kvm_vm_stats_desc) ==
@@ -6567,9 +6568,9 @@ static int vcpu_mmio_gva_to_gpa(struct kvm_vcpu *vcpu, unsigned long gva,
 	 * there is no pkey in EPT page table for L1 guest or EPT
 	 * shadow page table for L2 guest.
 	 */
-	if (vcpu_match_mmio_gva(vcpu, gva)
-	    && !permission_fault(vcpu, vcpu->arch.walk_mmu,
-				 vcpu->arch.mmio_access, 0, access)) {
+	if (vcpu_match_mmio_gva(vcpu, gva) && (!is_paging(vcpu) ||
+	    !permission_fault(vcpu, vcpu->arch.walk_mmu,
+			      vcpu->arch.mmio_access, 0, access))) {
 		*gpa = vcpu->arch.mmio_gfn << PAGE_SHIFT |
 					(gva & (PAGE_SIZE - 1));
 		trace_vcpu_match_mmio(gva, *gpa, write, false);
@@ -9263,7 +9264,6 @@ EXPORT_SYMBOL_GPL(kvm_vcpu_update_apicv);
  */
 void kvm_request_apicv_update(struct kvm *kvm, bool activate, ulong bit)
 {
-	struct kvm_vcpu *except;
 	unsigned long old, new, expected;
 
 	if (!kvm_x86_ops.check_apicv_inhibit_reasons ||
@@ -9289,16 +9289,7 @@ void kvm_request_apicv_update(struct kvm *kvm, bool activate, ulong bit)
 	if (kvm_x86_ops.pre_update_apicv_exec_ctrl)
 		static_call(kvm_x86_pre_update_apicv_exec_ctrl)(kvm, activate);
 
-	/*
-	 * Sending request to update APICV for all other vcpus,
-	 * while update the calling vcpu immediately instead of
-	 * waiting for another #VMEXIT to handle the request.
-	 */
-	except = kvm_get_running_vcpu();
-	kvm_make_all_cpus_request_except(kvm, KVM_REQ_APICV_UPDATE,
-					 except);
-	if (except)
-		kvm_vcpu_update_apicv(except);
+	kvm_make_all_cpus_request(kvm, KVM_REQ_APICV_UPDATE);
 }
 EXPORT_SYMBOL_GPL(kvm_request_apicv_update);
 
@@ -9395,6 +9386,10 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 	}
 
 	if (kvm_request_pending(vcpu)) {
+		if (kvm_check_request(KVM_REQ_VM_BUGGED, vcpu)) {
+			r = -EIO;
+			goto out;
+		}
 		if (kvm_check_request(KVM_REQ_GET_NESTED_STATE_PAGES, vcpu)) {
 			if (unlikely(!kvm_x86_ops.nested_ops->get_nested_state_pages(vcpu))) {
 				r = 0;
@@ -9976,7 +9971,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 		goto out;
 	}
 
-	if (kvm_run->kvm_valid_regs & ~KVM_SYNC_X86_VALID_FIELDS) {
+	if ((kvm_run->kvm_valid_regs & ~KVM_SYNC_X86_VALID_FIELDS) ||
+	    (kvm_run->kvm_dirty_regs & ~KVM_SYNC_X86_VALID_FIELDS)) {
 		r = -EINVAL;
 		goto out;
 	}
@@ -10581,9 +10577,6 @@ static void store_regs(struct kvm_vcpu *vcpu)
 
 static int sync_regs(struct kvm_vcpu *vcpu)
 {
-	if (vcpu->run->kvm_dirty_regs & ~KVM_SYNC_X86_VALID_FIELDS)
-		return -EINVAL;
-
 	if (vcpu->run->kvm_dirty_regs & KVM_SYNC_X86_REGS) {
 		__set_regs(vcpu, &vcpu->run->s.regs.regs);
 		vcpu->run->kvm_dirty_regs &= ~KVM_SYNC_X86_REGS;
@@ -10799,6 +10792,8 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 {
 	unsigned long old_cr0 = kvm_read_cr0(vcpu);
+	unsigned long new_cr0;
+	u32 eax, dummy;
 
 	kvm_lapic_reset(vcpu, init_event);
 
@@ -10865,9 +10860,40 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vcpu->arch.regs_avail = ~0;
 	vcpu->arch.regs_dirty = ~0;
 
+	/*
+	 * Fall back to KVM's default Family/Model/Stepping of 0x600 (P6/Athlon)
+	 * if no CPUID match is found.  Note, it's impossible to get a match at
+	 * RESET since KVM emulates RESET before exposing the vCPU to userspace,
+	 * i.e. it'simpossible for kvm_cpuid() to find a valid entry on RESET.
+	 * But, go through the motions in case that's ever remedied.
+	 */
+	eax = 1;
+	if (!kvm_cpuid(vcpu, &eax, &dummy, &dummy, &dummy, true))
+		eax = 0x600;
+	kvm_rdx_write(vcpu, eax);
+
 	vcpu->arch.ia32_xss = 0;
 
 	static_call(kvm_x86_vcpu_reset)(vcpu, init_event);
+
+	kvm_set_rflags(vcpu, X86_EFLAGS_FIXED);
+	kvm_rip_write(vcpu, 0xfff0);
+
+	/*
+	 * CR0.CD/NW are set on RESET, preserved on INIT.  Note, some versions
+	 * of Intel's SDM list CD/NW as being set on INIT, but they contradict
+	 * (or qualify) that with a footnote stating that CD/NW are preserved.
+	 */
+	new_cr0 = X86_CR0_ET;
+	if (init_event)
+		new_cr0 |= (old_cr0 & (X86_CR0_NW | X86_CR0_CD));
+	else
+		new_cr0 |= X86_CR0_NW | X86_CR0_CD;
+
+	static_call(kvm_x86_set_cr0)(vcpu, new_cr0);
+	static_call(kvm_x86_set_cr4)(vcpu, 0);
+	static_call(kvm_x86_set_efer)(vcpu, 0);
+	static_call(kvm_x86_update_exception_bitmap)(vcpu);
 
 	/*
 	 * Reset the MMU context if paging was enabled prior to INIT (which is
@@ -10879,7 +10905,20 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	 */
 	if (old_cr0 & X86_CR0_PG)
 		kvm_mmu_reset_context(vcpu);
+
+	/*
+	 * Intel's SDM states that all TLB entries are flushed on INIT.  AMD's
+	 * APM states the TLBs are untouched by INIT, but it also states that
+	 * the TLBs are flushed on "External initialization of the processor."
+	 * Flush the guest TLB regardless of vendor, there is no meaningful
+	 * benefit in relying on the guest to flush the TLB immediately after
+	 * INIT.  A spurious TLB flush is benign and likely negligible from a
+	 * performance perspective.
+	 */
+	if (init_event)
+		kvm_make_request(KVM_REQ_TLB_FLUSH_GUEST, vcpu);
 }
+EXPORT_SYMBOL_GPL(kvm_vcpu_reset);
 
 void kvm_vcpu_deliver_sipi_vector(struct kvm_vcpu *vcpu, u8 vector)
 {
@@ -11123,6 +11162,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	kvm_hv_init_vm(kvm);
 	kvm_page_track_init(kvm);
 	kvm_mmu_init_vm(kvm);
+	kvm_xen_init_vm(kvm);
 
 	return static_call(kvm_x86_vm_init)(kvm);
 }
@@ -11481,7 +11521,7 @@ static void kvm_mmu_update_cpu_dirty_logging(struct kvm *kvm, bool enable)
 
 static void kvm_mmu_slot_apply_flags(struct kvm *kvm,
 				     struct kvm_memory_slot *old,
-				     struct kvm_memory_slot *new,
+				     const struct kvm_memory_slot *new,
 				     enum kvm_mr_change change)
 {
 	bool log_dirty_pages = new->flags & KVM_MEM_LOG_DIRTY_PAGES;
@@ -11561,10 +11601,7 @@ void kvm_arch_commit_memory_region(struct kvm *kvm,
 		kvm_mmu_change_mmu_pages(kvm,
 				kvm_mmu_calculate_default_mmu_pages(kvm));
 
-	/*
-	 * FIXME: const-ify all uses of struct kvm_memory_slot.
-	 */
-	kvm_mmu_slot_apply_flags(kvm, old, (struct kvm_memory_slot *) new, change);
+	kvm_mmu_slot_apply_flags(kvm, old, new, change);
 
 	/* Free the arrays associated with the old memslot. */
 	if (change == KVM_MR_MOVE)

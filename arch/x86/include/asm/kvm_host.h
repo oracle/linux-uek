@@ -482,6 +482,7 @@ struct kvm_pmc {
 	 * ctrl value for fixed counters.
 	 */
 	u64 current_config;
+	bool is_paused;
 };
 
 struct kvm_pmu {
@@ -1002,9 +1003,8 @@ struct msr_bitmap_range {
 /* Xen emulation context */
 struct kvm_xen {
 	bool long_mode;
-	bool shinfo_set;
 	u8 upcall_vector;
-	struct gfn_to_hva_cache shinfo_cache;
+	gfn_t shinfo_gfn;
 };
 
 enum kvm_irqchip_mode {
@@ -1209,6 +1209,7 @@ struct kvm_vm_stat {
 	u64 lpages;
 	u64 nx_lpage_splits;
 	u64 max_mmu_page_hash_collisions;
+	u64 max_mmu_rmap_size;
 };
 
 struct kvm_vcpu_stat {
@@ -1536,12 +1537,12 @@ void kvm_mmu_uninit_vm(struct kvm *kvm);
 void kvm_mmu_after_set_cpuid(struct kvm_vcpu *vcpu);
 void kvm_mmu_reset_context(struct kvm_vcpu *vcpu);
 void kvm_mmu_slot_remove_write_access(struct kvm *kvm,
-				      struct kvm_memory_slot *memslot,
+				      const struct kvm_memory_slot *memslot,
 				      int start_level);
 void kvm_mmu_zap_collapsible_sptes(struct kvm *kvm,
 				   const struct kvm_memory_slot *memslot);
 void kvm_mmu_slot_leaf_clear_dirty(struct kvm *kvm,
-				   struct kvm_memory_slot *memslot);
+				   const struct kvm_memory_slot *memslot);
 void kvm_mmu_zap_all(struct kvm *kvm);
 void kvm_mmu_invalidate_mmio_sptes(struct kvm *kvm, u64 gen);
 unsigned long kvm_mmu_calculate_default_mmu_pages(struct kvm *kvm);
@@ -1771,11 +1772,6 @@ static inline unsigned long read_msr(unsigned long msr)
 	return value;
 }
 #endif
-
-static inline u32 get_rdx_init_val(void)
-{
-	return 0x600; /* P6 family */
-}
 
 static inline void kvm_inject_gp(struct kvm_vcpu *vcpu, u32 error_code)
 {

@@ -10,7 +10,7 @@
 #include <asm/cmpxchg.h>
 #include <trace/events/kvm.h>
 
-static bool __read_mostly tdp_mmu_enabled = false;
+static bool __read_mostly tdp_mmu_enabled = true;
 module_param_named(tdp_mmu, tdp_mmu_enabled, bool, 0644);
 
 /* Initializes the TDP MMU for the VM, if enabled. */
@@ -527,6 +527,10 @@ static inline bool tdp_mmu_set_spte_atomic_no_dirty_log(struct kvm *kvm,
 	if (is_removed_spte(iter->old_spte))
 		return false;
 
+	/*
+	 * Note, fast_pf_fix_direct_spte() can also modify TDP MMU SPTEs and
+	 * does not hold the mmu_lock.
+	 */
 	if (cmpxchg64(rcu_dereference(iter->sptep), iter->old_spte,
 		      new_spte) != iter->old_spte)
 		return false;
@@ -538,15 +542,40 @@ static inline bool tdp_mmu_set_spte_atomic_no_dirty_log(struct kvm *kvm,
 	return true;
 }
 
-static inline bool tdp_mmu_set_spte_atomic(struct kvm *kvm,
-					   struct tdp_iter *iter,
-					   u64 new_spte)
+/*
+ * tdp_mmu_map_set_spte_atomic - Set a leaf TDP MMU SPTE atomically to resolve a
+ * TDP page fault.
+ *
+ * @vcpu: The vcpu instance that took the TDP page fault.
+ * @iter: a tdp_iter instance currently on the SPTE that should be set
+ * @new_spte: The value the SPTE should be set to
+ *
+ * Returns: true if the SPTE was set, false if it was not. If false is returned,
+ *	    this function will have no side-effects.
+ */
+static inline bool tdp_mmu_map_set_spte_atomic(struct kvm_vcpu *vcpu,
+					       struct tdp_iter *iter,
+					       u64 new_spte)
 {
+	struct kvm *kvm = vcpu->kvm;
+
 	if (!tdp_mmu_set_spte_atomic_no_dirty_log(kvm, iter, new_spte))
 		return false;
 
-	handle_changed_spte_dirty_log(kvm, iter->as_id, iter->gfn,
-				      iter->old_spte, new_spte, iter->level);
+	/*
+	 * Use kvm_vcpu_gfn_to_memslot() instead of going through
+	 * handle_changed_spte_dirty_log() to leverage vcpu->last_used_slot.
+	 */
+	if (is_writable_pte(new_spte)) {
+		struct kvm_memory_slot *slot = kvm_vcpu_gfn_to_memslot(vcpu, iter->gfn);
+
+		if (slot && kvm_slot_dirty_track_enabled(slot)) {
+			/* Enforced by kvm_mmu_hugepage_adjust. */
+			WARN_ON_ONCE(iter->level > PG_LEVEL_4K);
+			mark_page_dirty_in_slot(kvm, slot, iter->gfn);
+		}
+	}
+
 	return true;
 }
 
@@ -559,7 +588,7 @@ static inline bool tdp_mmu_zap_spte_atomic(struct kvm *kvm,
 	 * immediately installing a present entry in its place
 	 * before the TLBs are flushed.
 	 */
-	if (!tdp_mmu_set_spte_atomic(kvm, iter, REMOVED_SPTE))
+	if (!tdp_mmu_set_spte_atomic_no_dirty_log(kvm, iter, REMOVED_SPTE))
 		return false;
 
 	kvm_flush_remote_tlbs_with_address(kvm, iter->gfn,
@@ -927,7 +956,7 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu, int write,
 
 	if (new_spte == iter->old_spte)
 		ret = RET_PF_SPURIOUS;
-	else if (!tdp_mmu_set_spte_atomic(vcpu->kvm, iter, new_spte))
+	else if (!tdp_mmu_map_set_spte_atomic(vcpu, iter, new_spte))
 		return RET_PF_RETRY;
 
 	/*
@@ -1031,8 +1060,7 @@ int kvm_tdp_mmu_map(struct kvm_vcpu *vcpu, gpa_t gpa, u32 error_code,
 			new_spte = make_nonleaf_spte(child_pt,
 						     !shadow_accessed_mask);
 
-			if (tdp_mmu_set_spte_atomic(vcpu->kvm, &iter,
-						    new_spte)) {
+			if (tdp_mmu_set_spte_atomic_no_dirty_log(vcpu->kvm, &iter, new_spte)) {
 				tdp_mmu_link_page(vcpu->kvm, sp, true,
 						  huge_page_disallowed &&
 						  req_level >= iter.level);
@@ -1242,8 +1270,8 @@ retry:
  * only affect leaf SPTEs down to min_level.
  * Returns true if an SPTE has been changed and the TLBs need to be flushed.
  */
-bool kvm_tdp_mmu_wrprot_slot(struct kvm *kvm, struct kvm_memory_slot *slot,
-			     int min_level)
+bool kvm_tdp_mmu_wrprot_slot(struct kvm *kvm,
+			     const struct kvm_memory_slot *slot, int min_level)
 {
 	struct kvm_mmu_page *root;
 	bool spte_set = false;
@@ -1313,7 +1341,8 @@ retry:
  * each SPTE. Returns true if an SPTE has been changed and the TLBs need to
  * be flushed.
  */
-bool kvm_tdp_mmu_clear_dirty_slot(struct kvm *kvm, struct kvm_memory_slot *slot)
+bool kvm_tdp_mmu_clear_dirty_slot(struct kvm *kvm,
+				  const struct kvm_memory_slot *slot)
 {
 	struct kvm_mmu_page *root;
 	bool spte_set = false;
@@ -1516,6 +1545,8 @@ bool kvm_tdp_mmu_write_protect_gfn(struct kvm *kvm,
 /*
  * Return the level of the lowest level SPTE added to sptes.
  * That SPTE may be non-present.
+ *
+ * Must be called between kvm_tdp_mmu_walk_lockless_{begin,end}.
  */
 int kvm_tdp_mmu_get_walk(struct kvm_vcpu *vcpu, u64 addr, u64 *sptes,
 			 int *root_level)
@@ -1527,14 +1558,47 @@ int kvm_tdp_mmu_get_walk(struct kvm_vcpu *vcpu, u64 addr, u64 *sptes,
 
 	*root_level = vcpu->arch.mmu->shadow_root_level;
 
-	rcu_read_lock();
-
 	tdp_mmu_for_each_pte(iter, mmu, gfn, gfn + 1) {
 		leaf = iter.level;
 		sptes[leaf] = iter.old_spte;
 	}
 
-	rcu_read_unlock();
-
 	return leaf;
+}
+
+/*
+ * Returns the last level spte pointer of the shadow page walk for the given
+ * gpa, and sets *spte to the spte value. This spte may be non-preset. If no
+ * walk could be performed, returns NULL and *spte does not contain valid data.
+ *
+ * Contract:
+ *  - Must be called between kvm_tdp_mmu_walk_lockless_{begin,end}.
+ *  - The returned sptep must not be used after kvm_tdp_mmu_walk_lockless_end.
+ *
+ * WARNING: This function is only intended to be called during fast_page_fault.
+ */
+u64 *kvm_tdp_mmu_fast_pf_get_last_sptep(struct kvm_vcpu *vcpu, u64 addr,
+					u64 *spte)
+{
+	struct tdp_iter iter;
+	struct kvm_mmu *mmu = vcpu->arch.mmu;
+	gfn_t gfn = addr >> PAGE_SHIFT;
+	tdp_ptep_t sptep = NULL;
+
+	tdp_mmu_for_each_pte(iter, mmu, gfn, gfn + 1) {
+		*spte = iter.old_spte;
+		sptep = iter.sptep;
+	}
+
+	/*
+	 * Perform the rcu_dereference to get the raw spte pointer value since
+	 * we are passing it up to fast_page_fault, which is shared with the
+	 * legacy MMU and thus does not retain the TDP MMU-specific __rcu
+	 * annotation.
+	 *
+	 * This is safe since fast_page_fault obeys the contracts of this
+	 * function as well as all TDP MMU contracts around modifying SPTEs
+	 * outside of mmu_lock.
+	 */
+	return rcu_dereference(sptep);
 }
