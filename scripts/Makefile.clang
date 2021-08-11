@@ -12,24 +12,31 @@ CLANG_TARGET_FLAGS_s390		:= s390x-linux-gnu
 CLANG_TARGET_FLAGS_x86		:= x86_64-linux-gnu
 CLANG_TARGET_FLAGS		:= $(CLANG_TARGET_FLAGS_$(SRCARCH))
 
+TENTATIVE_CLANG_FLAGS := -Werror=unknown-warning-option
+
 ifeq ($(CROSS_COMPILE),)
 ifeq ($(CLANG_TARGET_FLAGS),)
 $(error Specify CROSS_COMPILE or add '--target=' option to scripts/Makefile.clang)
 else
-CLANG_FLAGS	+= --target=$(CLANG_TARGET_FLAGS)
+TENTATIVE_CLANG_FLAGS	+= --target=$(CLANG_TARGET_FLAGS)
 endif # CLANG_TARGET_FLAGS
 else
-CLANG_FLAGS	+= --target=$(notdir $(CROSS_COMPILE:%-=%))
+TENTATIVE_CLANG_FLAGS	+= --target=$(notdir $(CROSS_COMPILE:%-=%))
 endif # CROSS_COMPILE
 
 ifeq ($(LLVM_IAS),0)
-CLANG_FLAGS	+= -no-integrated-as
+TENTATIVE_CLANG_FLAGS	+= -no-integrated-as
 GCC_TOOLCHAIN_DIR := $(dir $(shell which $(CROSS_COMPILE)elfedit))
-CLANG_FLAGS	+= --prefix=$(GCC_TOOLCHAIN_DIR)$(notdir $(CROSS_COMPILE))
+TENTATIVE_CLANG_FLAGS	+= --prefix=$(GCC_TOOLCHAIN_DIR)$(notdir $(CROSS_COMPILE))
 else
-CLANG_FLAGS	+= -integrated-as
+TENTATIVE_CLANG_FLAGS	+= -integrated-as
 endif
-CLANG_FLAGS	+= -Werror=unknown-warning-option
+
+export TENTATIVE_CLANG_FLAGS
+
+ifneq ($(findstring clang,$(CC_VERSION_TEXT)),)
+CLANG_FLAGS	+= $(TENTATIVE_CLANG_FLAGS)
 KBUILD_CFLAGS	+= $(CLANG_FLAGS)
 KBUILD_AFLAGS	+= $(CLANG_FLAGS)
 export CLANG_FLAGS
+endif
