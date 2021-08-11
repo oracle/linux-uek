@@ -48,6 +48,7 @@
  *
  */
 
+#include <linux/refcount.h>
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
@@ -1384,7 +1385,7 @@ struct hfi1_devdata {
 	/* Number of verbs contexts which have disabled ASPM */
 	atomic_t aspm_disabled_cnt;
 	/* Keeps track of user space clients */
-	atomic_t user_refcount;
+	refcount_t user_refcount;
 	/* Used to wait for outstanding user space clients before dev removal */
 	struct completion user_comp;
 
@@ -2601,7 +2602,7 @@ static inline bool hfi1_get_hdr_type(u32 lid, struct rdma_ah_attr *attr)
 			HFI1_PKT_TYPE_16B : HFI1_PKT_TYPE_9B;
 
 	/*
-	 * Return a 16B header type if either the the destination
+	 * Return a 16B header type if either the destination
 	 * or source lid is extended.
 	 */
 	if (hfi1_get_packet_type(rdma_ah_get_dlid(attr)) == HFI1_PKT_TYPE_16B)
