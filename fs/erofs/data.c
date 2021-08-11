@@ -5,31 +5,9 @@
  */
 #include "internal.h"
 #include <linux/prefetch.h>
-
+#include <linux/iomap.h>
+#include <linux/dax.h>
 #include <trace/events/erofs.h>
-
-static void erofs_readendio(struct bio *bio)
-{
-	struct bio_vec *bvec;
-	blk_status_t err = bio->bi_status;
-	struct bvec_iter_all iter_all;
-
-	bio_for_each_segment_all(bvec, bio, iter_all) {
-		struct page *page = bvec->bv_page;
-
-		/* page is already locked */
-		DBG_BUGON(PageUptodate(page));
-
-		if (err)
-			SetPageError(page);
-		else
-			SetPageUptodate(page);
-
-		unlock_page(page);
-		/* page could be reclaimed now */
-	}
-	bio_put(bio);
-}
 
 struct page *erofs_get_meta_page(struct super_block *sb, erofs_blk_t blkaddr)
 {
@@ -108,209 +86,175 @@ err_out:
 	return err;
 }
 
-static inline struct bio *erofs_read_raw_page(struct bio *bio,
-					      struct address_space *mapping,
-					      struct page *page,
-					      erofs_off_t *last_block,
-					      unsigned int nblocks,
-					      unsigned int *eblks,
-					      bool ra)
+static int erofs_iomap_begin(struct inode *inode, loff_t offset, loff_t length,
+		unsigned int flags, struct iomap *iomap, struct iomap *srcmap)
 {
-	struct inode *const inode = mapping->host;
-	struct super_block *const sb = inode->i_sb;
-	erofs_off_t current_block = (erofs_off_t)page->index;
-	int err;
+	int ret;
+	struct erofs_map_blocks map;
 
-	DBG_BUGON(!nblocks);
+	map.m_la = offset;
+	map.m_llen = length;
 
-	if (PageUptodate(page)) {
-		err = 0;
-		goto has_updated;
+	ret = erofs_map_blocks_flatmode(inode, &map, EROFS_GET_BLOCKS_RAW);
+	if (ret < 0)
+		return ret;
+
+	iomap->bdev = inode->i_sb->s_bdev;
+	iomap->dax_dev = EROFS_I_SB(inode)->dax_dev;
+	iomap->offset = map.m_la;
+	iomap->length = map.m_llen;
+	iomap->flags = 0;
+	iomap->private = NULL;
+
+	if (!(map.m_flags & EROFS_MAP_MAPPED)) {
+		iomap->type = IOMAP_HOLE;
+		iomap->addr = IOMAP_NULL_ADDR;
+		if (!iomap->length)
+			iomap->length = length;
+		return 0;
 	}
 
-	/* note that for readpage case, bio also equals to NULL */
-	if (bio &&
-	    (*last_block + 1 != current_block || !*eblks)) {
-submit_bio_retry:
-		submit_bio(bio);
-		bio = NULL;
+	if (map.m_flags & EROFS_MAP_META) {
+		struct page *ipage;
+
+		iomap->type = IOMAP_INLINE;
+		ipage = erofs_get_meta_page(inode->i_sb,
+					    erofs_blknr(map.m_pa));
+		if (IS_ERR(ipage))
+			return PTR_ERR(ipage);
+		iomap->inline_data = page_address(ipage) +
+					erofs_blkoff(map.m_pa);
+		iomap->private = ipage;
+	} else {
+		iomap->type = IOMAP_MAPPED;
+		iomap->addr = map.m_pa;
 	}
-
-	if (!bio) {
-		struct erofs_map_blocks map = {
-			.m_la = blknr_to_addr(current_block),
-		};
-		erofs_blk_t blknr;
-		unsigned int blkoff;
-
-		err = erofs_map_blocks_flatmode(inode, &map, EROFS_GET_BLOCKS_RAW);
-		if (err)
-			goto err_out;
-
-		/* zero out the holed page */
-		if (!(map.m_flags & EROFS_MAP_MAPPED)) {
-			zero_user_segment(page, 0, PAGE_SIZE);
-			SetPageUptodate(page);
-
-			/* imply err = 0, see erofs_map_blocks */
-			goto has_updated;
-		}
-
-		/* for RAW access mode, m_plen must be equal to m_llen */
-		DBG_BUGON(map.m_plen != map.m_llen);
-
-		blknr = erofs_blknr(map.m_pa);
-		blkoff = erofs_blkoff(map.m_pa);
-
-		/* deal with inline page */
-		if (map.m_flags & EROFS_MAP_META) {
-			void *vsrc, *vto;
-			struct page *ipage;
-
-			DBG_BUGON(map.m_plen > PAGE_SIZE);
-
-			ipage = erofs_get_meta_page(inode->i_sb, blknr);
-
-			if (IS_ERR(ipage)) {
-				err = PTR_ERR(ipage);
-				goto err_out;
-			}
-
-			vsrc = kmap_atomic(ipage);
-			vto = kmap_atomic(page);
-			memcpy(vto, vsrc + blkoff, map.m_plen);
-			memset(vto + map.m_plen, 0, PAGE_SIZE - map.m_plen);
-			kunmap_atomic(vto);
-			kunmap_atomic(vsrc);
-			flush_dcache_page(page);
-
-			SetPageUptodate(page);
-			/* TODO: could we unlock the page earlier? */
-			unlock_page(ipage);
-			put_page(ipage);
-
-			/* imply err = 0, see erofs_map_blocks */
-			goto has_updated;
-		}
-
-		/* pa must be block-aligned for raw reading */
-		DBG_BUGON(erofs_blkoff(map.m_pa));
-
-		/* max # of continuous pages */
-		if (nblocks > DIV_ROUND_UP(map.m_plen, PAGE_SIZE))
-			nblocks = DIV_ROUND_UP(map.m_plen, PAGE_SIZE);
-
-		*eblks = bio_max_segs(nblocks);
-		bio = bio_alloc(GFP_NOIO, *eblks);
-
-		bio->bi_end_io = erofs_readendio;
-		bio_set_dev(bio, sb->s_bdev);
-		bio->bi_iter.bi_sector = (sector_t)blknr <<
-			LOG_SECTORS_PER_BLOCK;
-		bio->bi_opf = REQ_OP_READ | (ra ? REQ_RAHEAD : 0);
-	}
-
-	err = bio_add_page(bio, page, PAGE_SIZE, 0);
-	/* out of the extent or bio is full */
-	if (err < PAGE_SIZE)
-		goto submit_bio_retry;
-	--*eblks;
-	*last_block = current_block;
-	return bio;
-
-err_out:
-	/* for sync reading, set page error immediately */
-	if (!ra) {
-		SetPageError(page);
-		ClearPageUptodate(page);
-	}
-has_updated:
-	unlock_page(page);
-
-	/* if updated manually, continuous pages has a gap */
-	if (bio)
-		submit_bio(bio);
-	return err ? ERR_PTR(err) : NULL;
+	return 0;
 }
+
+static int erofs_iomap_end(struct inode *inode, loff_t pos, loff_t length,
+		ssize_t written, unsigned int flags, struct iomap *iomap)
+{
+	struct page *ipage = iomap->private;
+
+	if (ipage) {
+		DBG_BUGON(iomap->type != IOMAP_INLINE);
+		unlock_page(ipage);
+		put_page(ipage);
+	} else {
+		DBG_BUGON(iomap->type == IOMAP_INLINE);
+	}
+	return written;
+}
+
+static const struct iomap_ops erofs_iomap_ops = {
+	.iomap_begin = erofs_iomap_begin,
+	.iomap_end = erofs_iomap_end,
+};
 
 /*
  * since we dont have write or truncate flows, so no inode
  * locking needs to be held at the moment.
  */
-static int erofs_raw_access_readpage(struct file *file, struct page *page)
+static int erofs_readpage(struct file *file, struct page *page)
 {
-	erofs_off_t last_block;
-	unsigned int eblks;
-	struct bio *bio;
-
-	trace_erofs_readpage(page, true);
-
-	bio = erofs_read_raw_page(NULL, page->mapping,
-				  page, &last_block, 1, &eblks, false);
-
-	if (IS_ERR(bio))
-		return PTR_ERR(bio);
-
-	if (bio)
-		submit_bio(bio);
-	return 0;
+	return iomap_readpage(page, &erofs_iomap_ops);
 }
 
-static void erofs_raw_access_readahead(struct readahead_control *rac)
+static void erofs_readahead(struct readahead_control *rac)
 {
-	erofs_off_t last_block;
-	unsigned int eblks;
-	struct bio *bio = NULL;
-	struct page *page;
-
-	trace_erofs_readpages(rac->mapping->host, readahead_index(rac),
-			readahead_count(rac), true);
-
-	while ((page = readahead_page(rac))) {
-		prefetchw(&page->flags);
-
-		bio = erofs_read_raw_page(bio, rac->mapping, page, &last_block,
-				readahead_count(rac), &eblks, true);
-
-		/* all the page errors are ignored when readahead */
-		if (IS_ERR(bio)) {
-			pr_err("%s, readahead error at page %lu of nid %llu\n",
-			       __func__, page->index,
-			       EROFS_I(rac->mapping->host)->nid);
-
-			bio = NULL;
-		}
-
-		put_page(page);
-	}
-
-	if (bio)
-		submit_bio(bio);
+	return iomap_readahead(rac, &erofs_iomap_ops);
 }
 
 static sector_t erofs_bmap(struct address_space *mapping, sector_t block)
 {
-	struct inode *inode = mapping->host;
-	struct erofs_map_blocks map = {
-		.m_la = blknr_to_addr(block),
-	};
+	return iomap_bmap(mapping, block, &erofs_iomap_ops);
+}
 
-	if (EROFS_I(inode)->datalayout == EROFS_INODE_FLAT_INLINE) {
-		erofs_blk_t blks = i_size_read(inode) >> LOG_BLOCK_SIZE;
+static int erofs_prepare_dio(struct kiocb *iocb, struct iov_iter *to)
+{
+	struct inode *inode = file_inode(iocb->ki_filp);
+	loff_t align = iocb->ki_pos | iov_iter_count(to) |
+		iov_iter_alignment(to);
+	struct block_device *bdev = inode->i_sb->s_bdev;
+	unsigned int blksize_mask;
 
-		if (block >> LOG_SECTORS_PER_BLOCK >= blks)
-			return 0;
-	}
+	if (bdev)
+		blksize_mask = (1 << ilog2(bdev_logical_block_size(bdev))) - 1;
+	else
+		blksize_mask = (1 << inode->i_blkbits) - 1;
 
-	if (!erofs_map_blocks_flatmode(inode, &map, EROFS_GET_BLOCKS_RAW))
-		return erofs_blknr(map.m_pa);
-
+	if (align & blksize_mask)
+		return -EINVAL;
 	return 0;
+}
+
+static ssize_t erofs_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+	/* no need taking (shared) inode lock since it's a ro filesystem */
+	if (!iov_iter_count(to))
+		return 0;
+
+#ifdef CONFIG_FS_DAX
+	if (IS_DAX(iocb->ki_filp->f_mapping->host))
+		return dax_iomap_rw(iocb, to, &erofs_iomap_ops);
+#endif
+	if (iocb->ki_flags & IOCB_DIRECT) {
+		int err = erofs_prepare_dio(iocb, to);
+
+		if (!err)
+			return iomap_dio_rw(iocb, to, &erofs_iomap_ops,
+					    NULL, 0);
+		if (err < 0)
+			return err;
+	}
+	return filemap_read(iocb, to, 0);
 }
 
 /* for uncompressed (aligned) files and raw access for other files */
 const struct address_space_operations erofs_raw_access_aops = {
-	.readpage = erofs_raw_access_readpage,
-	.readahead = erofs_raw_access_readahead,
+	.readpage = erofs_readpage,
+	.readahead = erofs_readahead,
 	.bmap = erofs_bmap,
+	.direct_IO = noop_direct_IO,
+};
+
+#ifdef CONFIG_FS_DAX
+static vm_fault_t erofs_dax_huge_fault(struct vm_fault *vmf,
+		enum page_entry_size pe_size)
+{
+	return dax_iomap_fault(vmf, pe_size, NULL, NULL, &erofs_iomap_ops);
+}
+
+static vm_fault_t erofs_dax_fault(struct vm_fault *vmf)
+{
+	return erofs_dax_huge_fault(vmf, PE_SIZE_PTE);
+}
+
+static const struct vm_operations_struct erofs_dax_vm_ops = {
+	.fault		= erofs_dax_fault,
+	.huge_fault	= erofs_dax_huge_fault,
+};
+
+static int erofs_file_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	if (!IS_DAX(file_inode(file)))
+		return generic_file_readonly_mmap(file, vma);
+
+	if ((vma->vm_flags & VM_SHARED) && (vma->vm_flags & VM_MAYWRITE))
+		return -EINVAL;
+
+	vma->vm_ops = &erofs_dax_vm_ops;
+	vma->vm_flags |= VM_HUGEPAGE;
+	return 0;
+}
+#else
+#define erofs_file_mmap	generic_file_readonly_mmap
+#endif
+
+const struct file_operations erofs_file_fops = {
+	.llseek		= generic_file_llseek,
+	.read_iter	= erofs_file_read_iter,
+	.mmap		= erofs_file_mmap,
+	.splice_read	= generic_file_splice_read,
 };
