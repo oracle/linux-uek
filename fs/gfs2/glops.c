@@ -33,16 +33,18 @@ extern struct workqueue_struct *gfs2_control_wq;
 
 static void gfs2_ail_error(struct gfs2_glock *gl, const struct buffer_head *bh)
 {
-	fs_err(gl->gl_name.ln_sbd,
+	struct gfs2_sbd *sdp = gl->gl_name.ln_sbd;
+
+	fs_err(sdp,
 	       "AIL buffer %p: blocknr %llu state 0x%08lx mapping %p page "
 	       "state 0x%lx\n",
 	       bh, (unsigned long long)bh->b_blocknr, bh->b_state,
 	       bh->b_page->mapping, bh->b_page->flags);
-	fs_err(gl->gl_name.ln_sbd, "AIL glock %u:%llu mapping %p\n",
+	fs_err(sdp, "AIL glock %u:%llu mapping %p\n",
 	       gl->gl_name.ln_type, gl->gl_name.ln_number,
 	       gfs2_glock2aspace(gl));
-	gfs2_lm(gl->gl_name.ln_sbd, "AIL error\n");
-	gfs2_withdraw(gl->gl_name.ln_sbd);
+	gfs2_lm(sdp, "AIL error\n");
+	gfs2_withdraw_delayed(sdp);
 }
 
 /**
@@ -595,11 +597,12 @@ static int freeze_go_sync(struct gfs2_glock *gl)
 }
 
 /**
- * freeze_go_xmote_bh - After promoting/demoting the freeze glock
+ * freeze_go_lock - After promoting/demoting the freeze glock
  * @gl: the glock
  */
-static int freeze_go_xmote_bh(struct gfs2_glock *gl)
+static int freeze_go_lock(struct gfs2_holder *gh)
 {
+	struct gfs2_glock *gl = gh->gh_gl;
 	struct gfs2_sbd *sdp = gl->gl_name.ln_sbd;
 	struct gfs2_inode *ip = GFS2_I(sdp->sd_jdesc->jd_inode);
 	struct gfs2_glock *j_gl = ip->i_gl;
@@ -610,16 +613,13 @@ static int freeze_go_xmote_bh(struct gfs2_glock *gl)
 		j_gl->gl_ops->go_inval(j_gl, DIO_METADATA);
 
 		error = gfs2_find_jhead(sdp->sd_jdesc, &head, false);
-		if (error)
-			gfs2_consist(sdp);
-		if (!(head.lh_flags & GFS2_LOG_HEAD_UNMOUNT))
-			gfs2_consist(sdp);
-
-		/*  Initialize some head of the log stuff  */
-		if (!gfs2_withdrawn(sdp)) {
-			sdp->sd_log_sequence = head.lh_sequence + 1;
-			gfs2_log_pointers_init(sdp, head.lh_blkno);
-		}
+		if (gfs2_assert_withdraw_delayed(sdp, !error))
+			return error;
+		if (gfs2_assert_withdraw_delayed(sdp, head.lh_flags &
+						 GFS2_LOG_HEAD_UNMOUNT))
+			return -EIO;
+		sdp->sd_log_sequence = head.lh_sequence + 1;
+		gfs2_log_pointers_init(sdp, head.lh_blkno);
 	}
 	return 0;
 }
@@ -759,7 +759,7 @@ const struct gfs2_glock_operations gfs2_rgrp_glops = {
 
 const struct gfs2_glock_operations gfs2_freeze_glops = {
 	.go_sync = freeze_go_sync,
-	.go_xmote_bh = freeze_go_xmote_bh,
+	.go_lock = freeze_go_lock,
 	.go_demote_ok = freeze_go_demote_ok,
 	.go_type = LM_TYPE_NONDISK,
 	.go_flags = GLOF_NONDISK,

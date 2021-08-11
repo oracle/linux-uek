@@ -384,7 +384,7 @@ static void do_error(struct gfs2_glock *gl, const int ret)
  * do_promote - promote as many requests as possible on the current queue
  * @gl: The glock
  * 
- * Returns: 1 if there is a blocked holder at the head of the list, or 2
+ * Returns: 1 if there is a blocked waiter at the head of the list, or 2
  *          if a type specific operation is underway.
  */
 
@@ -504,7 +504,6 @@ static void gfs2_demote_wake(struct gfs2_glock *gl)
 
 static void finish_xmote(struct gfs2_glock *gl, unsigned int ret)
 {
-	const struct gfs2_glock_operations *glops = gl->gl_ops;
 	struct gfs2_holder *gh;
 	unsigned state = ret & LM_OUT_ST_MASK;
 	int rv;
@@ -562,15 +561,6 @@ retry:
 	if (test_and_clear_bit(GLF_DEMOTE_IN_PROGRESS, &gl->gl_flags))
 		gfs2_demote_wake(gl);
 	if (state != LM_ST_UNLOCKED) {
-		if (glops->go_xmote_bh) {
-			spin_unlock(&gl->gl_lockref.lock);
-			rv = glops->go_xmote_bh(gl);
-			spin_lock(&gl->gl_lockref.lock);
-			if (rv) {
-				do_error(gl, rv);
-				goto out;
-			}
-		}
 		rv = do_promote(gl);
 		if (rv == 2)
 			goto out_locked;
@@ -1494,12 +1484,11 @@ void gfs2_glock_dq(struct gfs2_holder *gh)
 
 	list_del_init(&gh->gh_list);
 	clear_bit(HIF_HOLDER, &gh->gh_iflags);
-	if (find_first_holder(gl) == NULL) {
-		if (list_empty(&gl->gl_holders) &&
-		    !test_bit(GLF_PENDING_DEMOTE, &gl->gl_flags) &&
-		    !test_bit(GLF_DEMOTE, &gl->gl_flags))
-			fast_path = 1;
-	}
+	if (list_empty(&gl->gl_holders) &&
+	    !test_bit(GLF_PENDING_DEMOTE, &gl->gl_flags) &&
+	    !test_bit(GLF_DEMOTE, &gl->gl_flags))
+		fast_path = 1;
+
 	if (!test_bit(GLF_LFLUSH, &gl->gl_flags) && demote_ok(gl))
 		gfs2_glock_add_to_lru(gl);
 
@@ -2077,8 +2066,6 @@ static const char *hflags2str(char *buf, u16 flags, unsigned long iflags)
 		*p++ = 'H';
 	if (test_bit(HIF_WAIT, &iflags))
 		*p++ = 'W';
-	if (test_bit(HIF_FIRST, &iflags))
-		*p++ = 'F';
 	*p = 0;
 	return buf;
 }
