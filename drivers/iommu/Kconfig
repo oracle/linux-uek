@@ -90,6 +90,47 @@ config IOMMU_DEFAULT_PASSTHROUGH
 
 	  If unsure, say N here.
 
+choice
+	prompt "IOMMU default DMA IOTLB invalidation mode"
+	depends on IOMMU_DMA
+
+	default IOMMU_DEFAULT_LAZY if (AMD_IOMMU || INTEL_IOMMU)
+	default IOMMU_DEFAULT_STRICT
+	help
+	  This option allows an IOMMU DMA IOTLB invalidation mode to be
+	  chosen at build time, to override the default mode of each ARCH,
+	  removing the need to pass in kernel parameters through command line.
+	  It is still possible to provide common boot params to override this
+	  config.
+
+	  If unsure, keep the default.
+
+config IOMMU_DEFAULT_STRICT
+	bool "strict"
+	help
+	  For every IOMMU DMA unmap operation, the flush operation of IOTLB and
+	  the free operation of IOVA are guaranteed to be done in the unmap
+	  function.
+
+config IOMMU_DEFAULT_LAZY
+	bool "lazy"
+	help
+	  Support lazy mode, where for every IOMMU DMA unmap operation, the
+	  flush operation of IOTLB and the free operation of IOVA are deferred.
+	  They are only guaranteed to be done before the related IOVA will be
+	  reused.
+
+	  The isolation provided in this mode is not as secure as STRICT mode,
+	  such that a vulnerable time window may be created between the DMA
+	  unmap and the mappings cached in the IOMMU IOTLB or device TLB
+	  finally being invalidated, where the device could still access the
+	  memory which has already been unmapped by the device driver.
+	  However this mode may provide better performance in high throughput
+	  scenarios, and is still considerably more secure than passthrough
+	  mode or no IOMMU.
+
+endchoice
+
 config OF_IOMMU
 	def_bool y
 	depends on OF && IOMMU_API
@@ -248,6 +289,20 @@ config SPAPR_TCE_IOMMU
 	help
 	  Enables bits of IOMMU API required by VFIO. The iommu_ops
 	  is not implemented as it is not necessary for VFIO.
+
+config APPLE_DART
+	tristate "Apple DART IOMMU Support"
+	depends on ARM64 || (COMPILE_TEST && !GENERIC_ATOMIC64)
+	select IOMMU_API
+	select IOMMU_IO_PGTABLE_LPAE
+	default ARCH_APPLE
+	help
+	  Support for Apple DART (Device Address Resolution Table) IOMMUs
+	  found in Apple ARM SoCs like the M1.
+	  This IOMMU is required for most peripherals using DMA to access
+	  the main memory.
+
+	  Say Y here if you are using an Apple SoC.
 
 # ARM IOMMU support
 config ARM_SMMU
