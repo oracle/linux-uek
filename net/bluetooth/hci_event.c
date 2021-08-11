@@ -40,6 +40,8 @@
 #define ZERO_KEY "\x00\x00\x00\x00\x00\x00\x00\x00" \
 		 "\x00\x00\x00\x00\x00\x00\x00\x00"
 
+#define secs_to_jiffies(_secs) msecs_to_jiffies((_secs) * 1000)
+
 /* Handle HCI Event packets */
 
 static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb,
@@ -1171,6 +1173,12 @@ static void hci_cc_le_set_random_addr(struct hci_dev *hdev, struct sk_buff *skb)
 
 	bacpy(&hdev->random_addr, sent);
 
+	if (!bacmp(&hdev->rpa, sent)) {
+		hci_dev_clear_flag(hdev, HCI_RPA_EXPIRED);
+		queue_delayed_work(hdev->workqueue, &hdev->rpa_expired,
+				   secs_to_jiffies(hdev->rpa_timeout));
+	}
+
 	hci_dev_unlock(hdev);
 }
 
@@ -1201,24 +1209,30 @@ static void hci_cc_le_set_adv_set_random_addr(struct hci_dev *hdev,
 {
 	__u8 status = *((__u8 *) skb->data);
 	struct hci_cp_le_set_adv_set_rand_addr *cp;
-	struct adv_info *adv_instance;
+	struct adv_info *adv;
 
 	if (status)
 		return;
 
 	cp = hci_sent_cmd_data(hdev, HCI_OP_LE_SET_ADV_SET_RAND_ADDR);
-	if (!cp)
+	/* Update only in case the adv instance since handle 0x00 shall be using
+	 * HCI_OP_LE_SET_RANDOM_ADDR since that allows both extended and
+	 * non-extended adverting.
+	 */
+	if (!cp || !cp->handle)
 		return;
 
 	hci_dev_lock(hdev);
 
-	if (!cp->handle) {
-		/* Store in hdev for instance 0 (Set adv and Directed advs) */
-		bacpy(&hdev->random_addr, &cp->bdaddr);
-	} else {
-		adv_instance = hci_find_adv_instance(hdev, cp->handle);
-		if (adv_instance)
-			bacpy(&adv_instance->random_addr, &cp->bdaddr);
+	adv = hci_find_adv_instance(hdev, cp->handle);
+	if (adv) {
+		bacpy(&adv->random_addr, &cp->bdaddr);
+		if (!bacmp(&hdev->rpa, &cp->bdaddr)) {
+			adv->rpa_expired = false;
+			queue_delayed_work(hdev->workqueue,
+					   &adv->rpa_expired_cb,
+					   secs_to_jiffies(hdev->rpa_timeout));
+		}
 	}
 
 	hci_dev_unlock(hdev);
@@ -1277,7 +1291,9 @@ static void hci_cc_le_set_ext_adv_enable(struct hci_dev *hdev,
 					 struct sk_buff *skb)
 {
 	struct hci_cp_le_set_ext_adv_enable *cp;
+	struct hci_cp_ext_adv_set *set;
 	__u8 status = *((__u8 *) skb->data);
+	struct adv_info *adv = NULL, *n;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
 
@@ -1288,12 +1304,20 @@ static void hci_cc_le_set_ext_adv_enable(struct hci_dev *hdev,
 	if (!cp)
 		return;
 
+	set = (void *)cp->data;
+
 	hci_dev_lock(hdev);
+
+	if (cp->num_of_sets)
+		adv = hci_find_adv_instance(hdev, set->handle);
 
 	if (cp->enable) {
 		struct hci_conn *conn;
 
 		hci_dev_set_flag(hdev, HCI_LE_ADV);
+
+		if (adv)
+			adv->enabled = true;
 
 		conn = hci_lookup_le_connect(hdev);
 		if (conn)
@@ -1301,9 +1325,27 @@ static void hci_cc_le_set_ext_adv_enable(struct hci_dev *hdev,
 					   &conn->le_conn_timeout,
 					   conn->conn_timeout);
 	} else {
+		if (adv) {
+			adv->enabled = false;
+			/* If just one instance was disabled check if there are
+			 * any other instance enabled before clearing HCI_LE_ADV
+			 */
+			list_for_each_entry_safe(adv, n, &hdev->adv_instances,
+						 list) {
+				if (adv->enabled)
+					goto unlock;
+			}
+		} else {
+			/* All instances shall be considered disabled */
+			list_for_each_entry_safe(adv, n, &hdev->adv_instances,
+						 list)
+				adv->enabled = false;
+		}
+
 		hci_dev_clear_flag(hdev, HCI_LE_ADV);
 	}
 
+unlock:
 	hci_dev_unlock(hdev);
 }
 
@@ -4382,6 +4424,21 @@ static void hci_sync_conn_complete_evt(struct hci_dev *hdev,
 
 	switch (ev->status) {
 	case 0x00:
+		/* The synchronous connection complete event should only be
+		 * sent once per new connection. Receiving a successful
+		 * complete event when the connection status is already
+		 * BT_CONNECTED means that the device is misbehaving and sent
+		 * multiple complete event packets for the same new connection.
+		 *
+		 * Registering the device more than once can corrupt kernel
+		 * memory, hence upon detecting this invalid event, we report
+		 * an error and ignore the packet.
+		 */
+		if (conn->state == BT_CONNECTED) {
+			bt_dev_err(hdev, "Ignoring connect complete event for existing connection");
+			goto unlock;
+		}
+
 		conn->handle = __le16_to_cpu(ev->handle);
 		conn->state  = BT_CONNECTED;
 		conn->type   = ev->link_type;
