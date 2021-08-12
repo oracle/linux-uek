@@ -551,6 +551,11 @@ static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
 	return !!(send->s_wr.send_flags & IB_SEND_SIGNALED);
 }
 
+inline void rds_ib_clear_irq_miss(struct rds_ib_connection *ic)
+{
+	ic->i_irq_miss_ts = 0;
+}
+
 void rds_ib_check_irq_miss(struct rds_ib_connection *ic)
 {
 	struct rds_connection *conn = ic->conn;
