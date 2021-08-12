@@ -165,3 +165,26 @@ int rds_stats_init(void)
 	rds_info_register_func(RDS_INFO_COUNTERS, rds_stats_info);
 	return 0;
 }
+
+void rds_stats_print(const char *where)
+{
+	struct rds_statistics stats = {};
+	uint64_t *src;
+	uint64_t *sum;
+	size_t i;
+	int cpu;
+	size_t nstats = sizeof(stats) / sizeof(uint64_t);
+
+	for_each_online_cpu(cpu) {
+		src = (uint64_t *)&(per_cpu(rds_stats, cpu));
+		sum = (uint64_t *)&stats;
+		for (i = 0; i < nstats; i++)
+			*(sum++) += *(src++);
+	}
+
+	sum = (uint64_t *)&stats;
+	for (i = 0; i < nstats; i++)
+		if (sum[i])
+			pr_info("%s %s %lld\n", where, rds_stat_names[i], sum[i]);
+}
+EXPORT_SYMBOL_GPL(rds_stats_print);
