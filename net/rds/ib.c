@@ -1063,6 +1063,13 @@ void rds_ib_add_one(struct ib_device *device)
 
 	spin_lock_init(&rds_ibdev->spinlock);
 	atomic_set(&rds_ibdev->rid_refcount, 1);
+
+	/* rds_rdma_mod_ref must be incremented here, as any error condition
+	 * activating the work queue calling rds_ib_dev_free() will decrement
+	 * it.
+	 */
+	atomic_inc(&rds_rdma_mod_ref);
+
 	INIT_WORK(&rds_ibdev->rid_free_work, rds_ib_dev_free);
 	INIT_WORK(&rds_ibdev->rid_dev_rem_work, rds_dev_removal_worker);
 
@@ -1176,8 +1183,6 @@ void rds_ib_add_one(struct ib_device *device)
 	up_write(&rds_ib_devices_lock);
 
 	ib_set_client_data(device, &rds_ib_client, rds_ibdev);
-
-	atomic_inc(&rds_rdma_mod_ref);
 
 	/* Check if those connections not associated with a device can
 	 * make use of this newly added one.
