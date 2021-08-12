@@ -915,7 +915,7 @@ static void rds_ib_free_unmap_hdrs(struct ib_device *dev,
 	if (sg)
 		for (i = 0; i < nmbr_hdr_pages; ++i) {
 			ib_dma_unmap_sg(dev, sg + i, 1, direction);
-			__free_page(sg_page(sg + i));
+			rds_page_free(sg_page(sg + i));
 		}
 
 	vfree(sg);
