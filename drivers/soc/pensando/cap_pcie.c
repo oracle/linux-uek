@@ -66,8 +66,6 @@ static int pciep_bad_mode(struct pt_regs *regs)
 	struct pciedev_info *pi = &pciedev_info;
 
 	if (pi->pciep_access_address) {
-		pr_info("pcie access error: address 0x%llx\n",
-			pi->pciep_access_address);
 		pi->pciep_access_error++;
 		return 1;
 	}
