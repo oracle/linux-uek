@@ -97,6 +97,10 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	head = gsrc->ring->head;
 	tail = gsrc->ring->tail;
 
+	initerrmsg("%s head=%d (%llx), tail=%d (%llx), size=%d, sign=%x\n", __func__, head,
+			(long long)&gsrc->ring->head, tail, (long long)&gsrc->ring->tail,
+			gsrc->ring->size, *(int *)((&gsrc->ring->size) + 1));
+
 	/*Ensure that head updated*/
 	rmb();
 
@@ -112,8 +116,8 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	gdata = (struct acpi_hest_generic_data *)(estatus + 1);
 	esb_err = (gdata + 1);
 
-	initdbgmsg("%s esb=%p, gdata=%p, esb_err=%p\n", __func__,
-			estatus, gdata, esb_err);
+	initdbgmsg("%s esb=%llx, gdata=%llx, esb_err=%llx\n", __func__,
+			(long long)estatus, (long long)gdata, (long long)esb_err);
 
 	estatus->raw_data_offset = sizeof(*estatus) + sizeof(*gdata);
 	estatus->raw_data_length = 0;
@@ -362,7 +366,6 @@ static int sdei_ghes_driver_deinit(struct platform_device *pdev)
  * to this block; THIS driver does so, in response to SDEI
  * notifications).
  */
-//TODO: alloc pages fr all ghes
 static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_drv)
 {
 	struct mrvl_ghes_source *gsrc;
@@ -378,9 +381,6 @@ static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_d
 	} else
 		initdbgmsg("%s required\n", __func__);
 
-	if (ghes_drv->source_count > ARRAY_SIZE(sdei_ghes_mrvl_pci_tbl))
-		order = 4;
-
 	error_status_block_page = alloc_pages(GFP_KERNEL, order);
 	if (!error_status_block_page) {
 		pr_err("Unable to allocate error status block\n");
@@ -390,15 +390,16 @@ static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_d
 	pg_pa = PFN_PHYS(page_to_pfn(error_status_block_page));
 	pg_va = page_address(error_status_block_page);
 
-	initdbgmsg("! Allocated Error Status Address %p (%llx)\n",
-			pg_va, (unsigned long long)pg_pa);
+	initdbgmsg("Allocated Error Status Address %llx (%llx) pages=%d\n",
+			(unsigned long long)pg_va, (unsigned long long)pg_pa, 1 << order);
 
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
 
 		gsrc->esa_pa  = pg_pa + (gsrc->esa_pa & ~PAGE_MASK);
 		gsrc->esb_pa  = pg_pa + (gsrc->esb_pa & ~PAGE_MASK);
-		gsrc->ring_pa = pg_pa + (gsrc->ring_pa & ~PAGE_MASK);
+		initdbgmsg("GHES adj: %s 0x%llx/0x%llx/0x%llx, ID:0x%x)\n", gsrc->name,
+				gsrc->esa_pa, gsrc->esb_pa, gsrc->ring_pa, gsrc->id);
 	}
 
 	return 0;
@@ -608,54 +609,32 @@ static int  sdei_ghes_setup_resource(struct mrvl_sdei_ghes_drv *ghes_drv)
 
 		if (pfn_valid(PHYS_PFN(gsrc->esa_pa)))
 			gsrc->esa_va = phys_to_virt(gsrc->esa_pa);
+		else {
+			gsrc->esa_va = devm_ioremap(dev, gsrc->esa_pa, sizeof(gsrc->esa_va));
+			if (!gsrc->esa_va) {
+				dev_err(dev, "estatus unable map phys addr");
+				return -EFAULT;
+			}
+		}
 
 		if (pfn_valid(PHYS_PFN(gsrc->esb_pa)))
 			gsrc->esb_va = phys_to_virt(gsrc->esb_pa);
+		else {
+			gsrc->esb_va = devm_ioremap(dev, gsrc->esb_pa, gsrc->esb_sz);
+			if (!gsrc->esb_va) {
+				dev_err(dev, "gdata unable map phys addr");
+				return -EFAULT;
+			}
+		}
 
 		if (pfn_valid(PHYS_PFN(gsrc->ring_pa)))
 			gsrc->ring = phys_to_virt(gsrc->ring_pa);
-
-		initdbgmsg("%s %s 0x%llx/0x%llx/0x%llx\n", __func__, gsrc->name,
-				(unsigned long long)gsrc->esa_va,
-				(unsigned long long)gsrc->esb_va,
-				(unsigned long long)gsrc->ring);
-
-		if (!gsrc->esa_va || !gsrc->esb_va || !gsrc->ring) {
-			dev_err(dev, "estatus invalid phys addr");
-			return -EFAULT;
-		}
-	}
-
-	return 0;
-}
-
-static int  sdei_ghes_map_resource(struct mrvl_sdei_ghes_drv *ghes_drv)
-{
-	struct mrvl_ghes_source *gsrc;
-	size_t i;
-	struct device *dev = ghes_drv->dev;
-
-	initdbgmsg("%s: entry\n", __func__);
-
-	for (i = 0; i < ghes_drv->source_count; i++) {
-		gsrc = &ghes_drv->source_list[i];
-
-		gsrc->esa_va = devm_ioremap(dev, gsrc->esa_pa, sizeof(gsrc->esa_va));
-		if (!gsrc->esa_va) {
-			dev_err(dev, "estatus unable map phys addr");
-			return -EFAULT;
-		}
-
-		gsrc->esb_va = devm_ioremap(dev, gsrc->esb_pa, gsrc->esb_sz);
-		if (!gsrc->esb_va) {
-			dev_err(dev, "gdata unable map phys addr");
-			return -EFAULT;
-		}
-
-		gsrc->ring   = devm_ioremap(dev, gsrc->ring_pa, gsrc->ring_sz);
-		if (!gsrc->ring) {
-			dev_err(dev, "ring unable map phys addr");
-			return -EFAULT;
+		else {
+			gsrc->ring = devm_ioremap(dev, gsrc->ring_pa, gsrc->ring_sz);
+			if (!gsrc->ring) {
+				dev_err(dev, "ring unable map phys addr");
+				return -EFAULT;
+			}
 		}
 
 		initdbgmsg("%s %s 0x%llx/0x%llx/0x%llx\n", __func__, gsrc->name,
@@ -666,7 +645,6 @@ static int  sdei_ghes_map_resource(struct mrvl_sdei_ghes_drv *ghes_drv)
 
 	return 0;
 }
-
 
 static void sdei_ghes_init_source(struct mrvl_sdei_ghes_drv *ghes_drv)
 {
@@ -874,9 +852,7 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 
 	ret = sdei_ghes_setup_resource(ghes_drv);
 	if (ret) {
-		ret = sdei_ghes_map_resource(ghes_drv);
-		if (ret)
-			goto exit0;
+		goto exit0;
 	}
 
 	sdei_ghes_init_source(ghes_drv);
