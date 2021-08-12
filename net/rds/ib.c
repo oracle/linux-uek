@@ -66,6 +66,7 @@ MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
  */
 DECLARE_RWSEM(rds_ib_devices_lock);
 struct list_head rds_ib_devices;
+atomic_t rds_ib_devices_to_free = ATOMIC_INIT(0);
 
 /* NOTE: if also grabbing ibdev lock, grab this first */
 DEFINE_SPINLOCK(ib_nodev_conns_lock);
@@ -290,6 +291,8 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 			rds_ib_recv_free_frag(frag, cache_frag_pages);
 			atomic_sub(cache_frag_pages, &rds_ib_allocation);
 			kmem_cache_free(rds_ib_frag_slab, frag);
+			rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
+			rds_ib_stats_add(s_ib_recv_removed_from_cache, cache_sz);
 		}
 		lfstack_free(&head->stack);
 		atomic_set(&head->count, 0);
@@ -301,6 +304,8 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 		rds_ib_recv_free_frag(frag, cache_frag_pages);
 		atomic_sub(cache_frag_pages, &rds_ib_allocation);
 		kmem_cache_free(rds_ib_frag_slab, frag);
+		rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
+		rds_ib_stats_add(s_ib_recv_removed_from_cache, cache_sz);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
@@ -418,6 +423,8 @@ static void rds_ib_dev_free(struct work_struct *work)
 	struct rds_ib_ipaddr *i_ipaddr, *i_next;
 	struct rds_ib_device *rds_ibdev = container_of(work,
 					struct rds_ib_device, free_work);
+	bool last_to_free;
+	int allocated;
 
 	rds_ib_dev_free_dev(rds_ibdev);
 
@@ -425,7 +432,13 @@ static void rds_ib_dev_free(struct work_struct *work)
 		list_del(&i_ipaddr->list);
 		kfree(i_ipaddr);
 	}
-
+	last_to_free = atomic_dec_and_test(&rds_ib_devices_to_free);
+	allocated = atomic_read(&rds_ib_allocation);
+	if (WARN_ON(last_to_free && allocated)) {
+		pr_info("%s rds_ib_allocations %d\n", __func__, allocated);
+		rds_stats_print(__func__);
+		rds_ib_stats_print(__func__);
+	}
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
@@ -869,6 +882,8 @@ void rds_ib_add_one(struct ib_device *device)
 
 	rds_ibdev->max_initiator_depth = dev_attr->max_qp_init_rd_atom;
 	rds_ibdev->max_responder_resources = dev_attr->max_qp_rd_atom;
+
+	atomic_inc(&rds_ib_devices_to_free);
 
 	rds_ibdev->dev = device;
 	rds_ibdev->pd = ib_alloc_pd(device, 0);
