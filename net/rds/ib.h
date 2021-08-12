@@ -782,6 +782,7 @@ DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);
 		rds_stats_add_which(rds_ib_stats, member, count)
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 				    unsigned int avail);
+void rds_ib_stats_print(const char *where);
 
 /* ib_recv.c */
 extern unsigned int rds_ib_srq_max_wr;
