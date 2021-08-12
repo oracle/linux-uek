@@ -1381,6 +1381,7 @@ int rds_stats_init(void);
 void rds_stats_exit(void);
 void rds_stats_info_copy(struct rds_info_iterator *iter,
 			 uint64_t *values, char **names, size_t nr);
+void rds_stats_print(const char *where);
 
 /* sysctl.c */
 int rds_sysctl_init(void);
