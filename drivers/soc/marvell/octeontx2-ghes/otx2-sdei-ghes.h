@@ -78,7 +78,8 @@ struct mrvl_ghes_err_ring {
 	 */
 	uint32_t volatile head;
 	uint32_t          tail;
-	uint32_t          size;       /* ring size */
+	uint32_t          size;  /* ring size */
+	uint32_t          sig;   /* set to OTX2_GHES_ERR_RING_SIG if initialized */
 	/* ring of records */
 	struct mrvl_ghes_err_record records[1] __aligned(8);
 };
