@@ -187,6 +187,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 			lfstack_link(&p_frag->f_cache_entry, &frag->f_cache_entry);
 
 		atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+		rds_ib_stats_add(s_ib_recv_nmb_added_to_cache, count);
 		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
 
 		p_frag = frag;
