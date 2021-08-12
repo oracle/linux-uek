@@ -495,16 +495,20 @@ static int otx2vf_set_features(struct net_device *netdev,
 	netdev_features_t changed = features ^ netdev->features;
 	bool ntuple_enabled = !!(features & NETIF_F_NTUPLE);
 	struct otx2_nic *vf = netdev_priv(netdev);
-	int err = 0;
 
 	if (changed & NETIF_F_NTUPLE) {
-		if (ntuple_enabled)
-			err = otx2vf_mcam_flow_init(vf);
-		else
+		if (!ntuple_enabled) {
 			otx2_mcam_flow_del(vf);
-	}
+			return 0;
+		}
 
-	return err;
+		if (!otx2_get_maxflows(vf->flow_cfg)) {
+			netdev_err(netdev,
+				   "Can't enable NTUPLE, MCAM entries not allocated\n");
+			return -EINVAL;
+		}
+	}
+	return 0;
 }
 
 static const struct net_device_ops otx2vf_netdev_ops = {
@@ -719,6 +723,10 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	otx2vf_set_ethtool_ops(netdev);
 
 	otx2_cgx_features_get(vf);
+
+	err = otx2vf_mcam_flow_init(vf);
+	if (err)
+		goto err_unreg_netdev;
 
 	/* Enable pause frames by default */
 	vf->flags |= OTX2_FLAG_RX_PAUSE_ENABLED;
