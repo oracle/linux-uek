@@ -314,9 +314,6 @@ struct rds_ib_connection {
 	/* qp number info */
 	s32			i_qp_num;
 	s32			i_dst_qp_num;
-
-	/* track irq miss */
-	unsigned long		i_irq_miss_ts;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -670,7 +667,6 @@ u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
 #if IS_ENABLED(CONFIG_IPV6)
 u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
 #endif
-void rds_ib_poll_tx(struct rds_ib_connection *ic);
 
 /* ib_rdma.c */
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
@@ -740,8 +736,6 @@ extern wait_queue_head_t rds_ib_ring_empty_wait;
 /* ib_send.c */
 char *rds_ib_wc_status_str(enum ib_wc_status status);
 void rds_ib_xmit_path_complete(struct rds_conn_path *cp);
-inline void rds_ib_clear_irq_miss(struct rds_ib_connection *ic);
-void rds_ib_check_irq_miss(struct rds_ib_connection *ic);
 int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		unsigned int hdr_off, unsigned int sg, unsigned int off);
 void rds_ib_send_cqe_handler(struct rds_ib_connection *ic,
