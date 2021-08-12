@@ -740,12 +740,7 @@ extern wait_queue_head_t rds_ib_ring_empty_wait;
 /* ib_send.c */
 char *rds_ib_wc_status_str(enum ib_wc_status status);
 void rds_ib_xmit_path_complete(struct rds_conn_path *cp);
-
-static inline void rds_ib_clear_irq_miss(struct rds_ib_connection *ic)
-{
-	ic->i_irq_miss_ts = 0;
-}
-
+inline void rds_ib_clear_irq_miss(struct rds_ib_connection *ic);
 void rds_ib_check_irq_miss(struct rds_ib_connection *ic);
 int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		unsigned int hdr_off, unsigned int sg, unsigned int off);
