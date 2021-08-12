@@ -98,12 +98,14 @@ static int otx2_alloc_ntuple_mcam_entries(struct otx2_nic *pfvf, u16 count)
 		req->contig = false;
 		req->count = (count - allocated) > NPC_MAX_NONCONTIG_ENTRIES ?
 				NPC_MAX_NONCONTIG_ENTRIES : count - allocated;
-		/* For VFs setting the priority to be of NPC_MCAM_ANY_PRIO so
-		 * that MCAM entries gets allocated from middle zone
+
+		/* Allocate higher priority entries for PFs, so that VF's entries
+		 * will be on top of PF.
 		 */
-		req->priority = (pfvf->pcifunc & RVU_PFVF_FUNC_MASK) ?
-				 NPC_MCAM_ANY_PRIO : NPC_MCAM_HIGHER_PRIO;
-		req->ref_entry = flow_cfg->def_ent[0];
+		if (!is_otx2_vf(pfvf->pcifunc)) {
+			req->priority = NPC_MCAM_HIGHER_PRIO;
+			req->ref_entry = flow_cfg->def_ent[0];
+		}
 
 		/* Send message to AF */
 		if (otx2_sync_mbox_msg(&pfvf->mbox))
@@ -132,11 +134,13 @@ exit:
 	flow_cfg->tc_flower_offset = flow_cfg->ntuple_offset;
 	flow_cfg->tc_max_flows = allocated;
 
+	pfvf->flags |= OTX2_FLAG_MCAM_ENTRIES_ALLOC;
+	pfvf->flags |= OTX2_FLAG_NTUPLE_SUPPORT;
+
 	if (allocated != count)
 		netdev_info(pfvf->netdev,
-			    "Unable to allocate %d MCAM entries for ntuple, got %d\n",
+			    "Unable to allocate %d MCAM entries, got only %d\n",
 			    count, allocated);
-
 	return allocated;
 }
 
@@ -206,23 +210,9 @@ int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 		return 0;
 	}
 
-	pfvf->flags |= OTX2_FLAG_NTUPLE_SUPPORT;
 	pfvf->flags |= OTX2_FLAG_TC_FLOWER_SUPPORT;
 
 	return 0;
-}
-
-static void otx2vf_free_flow_cfg(struct otx2_nic *pfvf)
-{
-	if (pfvf->flow_cfg) {
-		if (pfvf->flow_cfg->def_ent) {
-			devm_kfree(pfvf->dev, pfvf->flow_cfg->def_ent);
-			pfvf->flow_cfg->def_ent = NULL;
-		}
-
-		devm_kfree(pfvf->dev, pfvf->flow_cfg);
-		pfvf->flow_cfg = NULL;
-	}
 }
 
 int otx2vf_mcam_flow_init(struct otx2_nic *pfvf)
@@ -239,25 +229,10 @@ int otx2vf_mcam_flow_init(struct otx2_nic *pfvf)
 	flow_cfg = pfvf->flow_cfg;
 	INIT_LIST_HEAD(&flow_cfg->flow_list);
 	flow_cfg->ntuple_max_flows = 0;
-	flow_cfg->def_ent = devm_kmalloc_array(pfvf->dev,
-					       OTX2_DEFAULT_FLOWCOUNT,
-					       sizeof(u16), GFP_KERNEL);
-	if (!flow_cfg->def_ent) {
-		otx2vf_free_flow_cfg(pfvf);
-		return -ENOMEM;
-	}
 
 	count = otx2_alloc_ntuple_mcam_entries(pfvf, OTX2_DEFAULT_FLOWCOUNT);
-	if (count <= 0) {
-		netdev_info(pfvf->netdev, "Unable to allocate MCAM entries\n");
-		otx2vf_free_flow_cfg(pfvf);
+	if (count <= 0)
 		return -ENOMEM;
-	}
-
-	flow_cfg->ntuple_max_flows = count;
-
-	pfvf->flags |= OTX2_FLAG_MCAM_ENTRIES_ALLOC;
-	pfvf->flags |= OTX2_FLAG_NTUPLE_SUPPORT;
 
 	return 0;
 }
@@ -442,8 +417,11 @@ static void otx2_add_flow_to_list(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	list_add(&flow->list, head);
 }
 
-static int otx2_get_maxflows(struct otx2_flow_config *flow_cfg)
+int otx2_get_maxflows(struct otx2_flow_config *flow_cfg)
 {
+	if (!flow_cfg)
+		return 0;
+
 	if (flow_cfg->nr_flows == flow_cfg->ntuple_max_flows ||
 	    bitmap_weight(&flow_cfg->dmacflt_bmap,
 			  flow_cfg->dmacflt_max_flows))
@@ -451,6 +429,7 @@ static int otx2_get_maxflows(struct otx2_flow_config *flow_cfg)
 	else
 		return flow_cfg->ntuple_max_flows;
 }
+EXPORT_SYMBOL(otx2_get_maxflows);
 
 int otx2_get_flow(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc,
 		  u32 location)

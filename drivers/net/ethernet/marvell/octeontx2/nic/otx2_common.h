@@ -767,6 +767,11 @@ MBOX_UP_CGX_MESSAGES
 #define	RVU_PFVF_FUNC_SHIFT	0
 #define	RVU_PFVF_FUNC_MASK	0x3FF
 
+static inline bool is_otx2_vf(u16 pcifunc)
+{
+	return !!(pcifunc & RVU_PFVF_FUNC_MASK);
+}
+
 static inline int rvu_get_pf(u16 pcifunc)
 {
 	return (pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
@@ -896,6 +901,7 @@ int otx2_get_all_flows(struct otx2_nic *pfvf,
 int otx2_add_flow(struct otx2_nic *pfvf,
 		  struct ethtool_rxnfc *nfc);
 int otx2_remove_flow(struct otx2_nic *pfvf, u32 location);
+int otx2_get_maxflows(struct otx2_flow_config *flow_cfg);
 void otx2_rss_ctx_flow_del(struct otx2_nic *pfvf, int ctx_id);
 int otx2_del_macfilter(struct net_device *netdev, const u8 *mac);
 int otx2_add_macfilter(struct net_device *netdev, const u8 *mac);
