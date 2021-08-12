@@ -22,6 +22,7 @@
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 #include "oracle_ext.h"
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
+#include "devlink.h"
 
 enum {
 	MLX5_EQE_OWNER_INIT_VAL	= 0x1,
@@ -816,7 +817,7 @@ static int create_comp_eqs(struct mlx5_core_dev *dev)
 
 	INIT_LIST_HEAD(&table->comp_eqs_list);
 	ncomp_eqs = table->num_comp_eqs;
-	nent = MLX5_COMP_EQ_SIZE;
+	nent = mlx5_devlink_res_size(dev, MLX5_DL_RES_COMP_EQ);
 	for (i = 0; i < ncomp_eqs; i++) {
 		struct mlx5_eq_param param = {};
 		int vecidx = i;
