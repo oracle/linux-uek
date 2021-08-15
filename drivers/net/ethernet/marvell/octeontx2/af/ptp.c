@@ -23,10 +23,8 @@
 #define PCI_SUBSYS_DEVID_OCTX2_95XXN_PTP	0xB400
 #define PCI_SUBSYS_DEVID_OCTX2_95MM_PTP		0xB500
 #define PCI_SUBSYS_DEVID_OCTX2_95XXO_PTP	0xB600
-#define PCI_SUBSYS_DEVID_CN10K_A_PTP		0xB900
-#define PCI_SUBSYS_DEVID_CNF10K_A_PTP		0xBA00
-#define PCI_SUBSYS_DEVID_CNF10K_B_PTP		0xBC00
 #define PCI_DEVID_OCTEONTX2_RST			0xA085
+#define PCI_DEVID_CN10K_PTP			0xA09E
 
 #define PCI_PTP_BAR_NO	0
 #define PCI_RST_BAR_NO	0
@@ -39,6 +37,9 @@
 
 #define RST_BOOT	0x1600ULL
 #define CLOCK_BASE_RATE	50000000ULL
+
+static struct ptp *first_ptp_block;
+static const struct pci_device_id ptp_id_table[];
 
 static u64 get_clock_rate(void)
 {
@@ -68,19 +69,14 @@ error:
 
 struct ptp *ptp_get(void)
 {
-	struct pci_dev *pdev;
-	struct ptp *ptp;
+	struct ptp *ptp = first_ptp_block;
 
-	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
-			      PCI_DEVID_OCTEONTX2_PTP, NULL);
-	if (!pdev)
+	/* Check PTP block is present in hardware */
+	if (!pci_dev_present(ptp_id_table))
 		return ERR_PTR(-ENODEV);
-
-	ptp = pci_get_drvdata(pdev);
+	/* Check driver is bound to PTP block */
 	if (!ptp)
 		ptp = ERR_PTR(-EPROBE_DEFER);
-	if (IS_ERR(ptp))
-		pci_dev_put(pdev);
 
 	return ptp;
 }
@@ -196,6 +192,8 @@ static int ptp_probe(struct pci_dev *pdev,
 	writeq(clock_comp, ptp->reg_base + PTP_CLOCK_COMP);
 
 	pci_set_drvdata(pdev, ptp);
+	if (!first_ptp_block)
+		first_ptp_block = ptp;
 
 	return 0;
 
@@ -210,6 +208,9 @@ error:
 	 * `dev->driver_data`.
 	 */
 	pci_set_drvdata(pdev, ERR_PTR(err));
+	if (!first_ptp_block)
+		first_ptp_block = ERR_PTR(err);
+
 	return 0;
 }
 
@@ -245,15 +246,7 @@ static const struct pci_device_id ptp_id_table[] = {
 	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_PTP,
 			 PCI_VENDOR_ID_CAVIUM,
 			 PCI_SUBSYS_DEVID_OCTX2_95XXO_PTP) },
-	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_PTP,
-			 PCI_VENDOR_ID_CAVIUM,
-			 PCI_SUBSYS_DEVID_CN10K_A_PTP) },
-	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_PTP,
-			 PCI_VENDOR_ID_CAVIUM,
-			 PCI_SUBSYS_DEVID_CNF10K_A_PTP) },
-	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_PTP,
-			 PCI_VENDOR_ID_CAVIUM,
-			 PCI_SUBSYS_DEVID_CNF10K_B_PTP) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_CN10K_PTP) },
 	{ 0, }
 };
 
