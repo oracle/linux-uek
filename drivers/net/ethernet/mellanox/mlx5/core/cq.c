@@ -201,6 +201,8 @@ int mlx5_core_destroy_cq(struct mlx5_core_dev *dev, struct mlx5_core_cq *cq)
 	struct mlx5_core_cq *tmp;
 	int err;
 
+	mlx5_debug_cq_remove(dev, cq);
+
 	spin_lock_irq(&table->lock);
 	tmp = radix_tree_delete(&table->tree, cq->cqn);
 	spin_unlock_irq(&table->lock);
@@ -216,17 +218,14 @@ int mlx5_core_destroy_cq(struct mlx5_core_dev *dev, struct mlx5_core_cq *cq)
 	MLX5_SET(destroy_cq_in, in, opcode, MLX5_CMD_OP_DESTROY_CQ);
 	MLX5_SET(destroy_cq_in, in, cqn, cq->cqn);
 	err = mlx5_cmd_exec(dev, in, sizeof(in), out, sizeof(out));
-	if (err)
-		return err;
 
 	synchronize_irq(cq->irqn);
 
-	mlx5_debug_cq_remove(dev, cq);
 	if (atomic_dec_and_test(&cq->refcount))
 		complete(&cq->free);
 	wait_for_completion(&cq->free);
 
-	return 0;
+	return err;
 }
 EXPORT_SYMBOL(mlx5_core_destroy_cq);
 
