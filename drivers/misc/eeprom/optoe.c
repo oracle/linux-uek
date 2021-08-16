@@ -822,6 +822,39 @@ static int optoe_remove(struct i2c_client *client)
 	return 0;
 }
 
+static ssize_t show_dev_write_max_size(struct device *dev,
+			struct device_attribute *dattr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct optoe_data *optoe = i2c_get_clientdata(client);
+	ssize_t count;
+
+	mutex_lock(&optoe->lock);
+	count = sprintf(buf, "%u\n", optoe->write_max);
+	mutex_unlock(&optoe->lock);
+
+	return count;
+}
+
+static ssize_t set_dev_write_max_size(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct optoe_data *optoe = i2c_get_clientdata(client);
+	int write_max_size;
+
+	if (kstrtouint(buf, 0, &write_max_size) != 0 ||
+		write_max_size < 1 || write_max_size > OPTOE_PAGE_SIZE)
+		return -EINVAL;
+
+	mutex_lock(&optoe->lock);
+	optoe->write_max = write_max_size;
+	mutex_unlock(&optoe->lock);
+
+	return count;
+}
+
 static ssize_t show_dev_class(struct device *dev,
 			struct device_attribute *dattr, char *buf)
 {
@@ -928,12 +961,15 @@ static ssize_t set_port_name(struct device *dev,
 static DEVICE_ATTR(port_name,  0644, show_port_name, set_port_name);
 #endif  /* if NOT defined EEPROM_CLASS, the common case */
 
+static DEVICE_ATTR(write_max, 0644, show_dev_write_max_size,
+					set_dev_write_max_size);
 static DEVICE_ATTR(dev_class,  0644, show_dev_class, set_dev_class);
 
 static struct attribute *optoe_attrs[] = {
 #ifndef EEPROM_CLASS
 	&dev_attr_port_name.attr,
 #endif
+	&dev_attr_write_max.attr,
 	&dev_attr_dev_class.attr,
 	NULL,
 };
