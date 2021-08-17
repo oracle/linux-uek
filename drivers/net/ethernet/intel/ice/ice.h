@@ -160,6 +160,7 @@
 
 enum ice_feature {
 	ICE_F_DSCP,
+	ICE_F_SMA_CTRL,
 	ICE_F_MAX
 };
 
