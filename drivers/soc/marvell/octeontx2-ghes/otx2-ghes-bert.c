@@ -390,19 +390,33 @@ exit0:
 	return ret;
 }
 
+static void ghes_bert_shutdown(struct platform_device *pdev)
+{
+	initerrmsg("%s: entry\n", __func__);
+}
+
+static int ghes_bert_remove(struct platform_device *pdev)
+{
+	initerrmsg("%s: entry\n", __func__);
+	return 0;
+}
+
+
 static const struct platform_device_id ghes_bert_pdev_match[] = {
 	{ .name = DRV_NAME, },
 	{},
 };
 MODULE_DEVICE_TABLE(platform, ghes_bert_pdev_match);
 
-static struct platform_driver ghes_bert_drv __initdata = {
+static struct platform_driver ghes_bert_drv = {
 	.driver = {
 		.name             = DRV_NAME,
 		.of_match_table   = bed_bert_of_match,
 		.acpi_match_table = ACPI_PTR(bed_bert_acpi_match),
 	},
 	.probe    = ghes_bert_probe,
+	.remove   = ghes_bert_remove,
+	.shutdown = ghes_bert_shutdown,
 	.id_table = ghes_bert_pdev_match,
 };
 
@@ -412,7 +426,13 @@ static int __init ghes_bert_init(void)
 	return 0;
 }
 
+static void __exit ghes_bert_exit(void)
+{
+	platform_driver_unregister(&ghes_bert_drv);
+}
+
 module_init(ghes_bert_init);
+module_exit(ghes_bert_exit);
 
 MODULE_DESCRIPTION("OcteonTX2 GHES BERT Module");
 MODULE_LICENSE("GPL v2");
