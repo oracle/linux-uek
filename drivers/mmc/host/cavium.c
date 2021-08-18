@@ -1321,8 +1321,8 @@ static void cvm_mmc_wait_done(struct mmc_request *cvm_mrq)
 
 static int cvm_mmc_r1_cmd(struct mmc_host *mmc, u32 opcode, int *statp)
 {
-	static struct mmc_command cmd = {};
-	static struct mmc_request cvm_mrq = {};
+	struct mmc_command cmd = {};
+	struct mmc_request cvm_mrq = {};
 
 	if (!opcode)
 		opcode = MMC_SEND_STATUS;
