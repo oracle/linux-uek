@@ -50,6 +50,20 @@ change with not instrumented initrds.
 
 How does it work
 ================
+
+Add the raw ACPI tables to an uncompressed cpio archive. The raw ACPI tables
+must be put into a /kernel/firmware/acpi directory inside the cpio archive.
+
+If the initrd is made up of multiple cpio archives, the uncompressed archive
+that holds the raw ACPI tables must be the first. Other compressed cpio
+archives can be concatenated after the uncompressed one.
+
+Note: that if the table put here matches a platform table (similar Table
+Signature, and similar OEMID, and similar OEM Table ID) with a more recent OEM
+Revision, the platform table will be upgraded by this table. If the table put
+here doesn't match a platform table (dissimilar Table Signature, or dissimilar
+OEMID, or dissimilar OEM Table ID), this table will be appended.
+
 ::
 
   # Extract the machine's ACPI tables:
@@ -66,14 +80,6 @@ How does it work
   # After modification:
   DefinitionBlock ("DSDT.aml", "DSDT", 2, "INTEL ", "TEMPLATE", 0x00000001)
   iasl -sa dsdt.dsl
-  # Add the raw ACPI tables to an uncompressed cpio archive.
-  # They must be put into a /kernel/firmware/acpi directory inside the cpio
-  # archive. Note that if the table put here matches a platform table
-  # (similar Table Signature, and similar OEMID, and similar OEM Table ID)
-  # with a more recent OEM Revision, the platform table will be upgraded by
-  # this table. If the table put here doesn't match a platform table
-  # (dissimilar Table Signature, or dissimilar OEMID, or dissimilar OEM Table
-  # ID), this table will be appended.
   mkdir -p kernel/firmware/acpi
   cp dsdt.aml kernel/firmware/acpi
   # A maximum of "NR_ACPI_INITRD_TABLES (64)" tables are currently allowed
@@ -82,9 +88,7 @@ How does it work
   iasl -sa ssdt1.dsl
   cp facp.aml kernel/firmware/acpi
   cp ssdt1.aml kernel/firmware/acpi
-  # The uncompressed cpio archive must be the first. Other, typically
-  # compressed cpio archives, must be concatenated on top of the uncompressed
-  # one. Following command creates the uncompressed cpio archive and
+  # Following command creates the uncompressed cpio archive and
   # concatenates the original initrd on top:
   find kernel | cpio -H newc --create > /boot/instrumented_initrd
   cat /boot/initrd >>/boot/instrumented_initrd
