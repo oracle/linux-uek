@@ -321,6 +321,7 @@ kernel/drivers/leds/leds-lp3944.ko
 kernel/drivers/md/dm-bio-prison.ko
 kernel/drivers/md/dm-bufio.ko
 kernel/drivers/md/dm-cache.ko
+kernel/drivers/md/dm-cache-smq.ko
 kernel/drivers/md/dm-crypt.ko
 kernel/drivers/md/dm-delay.ko
 kernel/drivers/md/dm-era.ko
