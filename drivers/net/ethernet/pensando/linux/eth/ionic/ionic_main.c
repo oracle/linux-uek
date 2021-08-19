@@ -432,7 +432,7 @@ try_again:
 		 * heartbeat check but is still alive and will process this
 		 * request, so don't clean the dev_cmd in this case.
 		 */
-		dev_warn(ionic->dev, "DEVCMD %s (%d) failed - FW halted\n",
+		dev_dbg(ionic->dev, "DEVCMD %s (%d) failed - FW halted\n",
 			 ionic_opcode_to_str(opcode), opcode);
 		return -ENXIO;
 	}
