@@ -1560,6 +1560,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	const struct rds_ib_conn_priv_cmn *dp_cmn;
 	struct rds_ib_connection *ic = NULL;
 	struct rds_connection *conn = NULL;
+	struct rds_ib_device *rds_ibdev;
 	struct rds_conn_path *cp;
 	const union rds_ib_conn_priv *dp;
 	struct in6_addr s_mapped_addr;
@@ -1762,17 +1763,22 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				       isv6, dp, version,
 				       event->param.conn.responder_resources,
 				       event->param.conn.initiator_depth);
+		if (err)
+			reason = "rds_ib_cm_accept failed";
 	}
 
 out:
-	if (reason) {
-		struct rds_ib_device *rds_ibdev = ic ? ic->rds_ibdev : NULL;
-
+	rds_ibdev = ic ? ic->rds_ibdev : NULL;
+	if (reason)
 		trace_rds_ib_cm_handle_connect_err(rds_ibdev ?
 						   rds_ibdev->dev : NULL,
 						   rds_ibdev,
 						   conn, ic, reason, err);
-	}
+	else
+		trace_rds_ib_cm_handle_connect(rds_ibdev ?
+					       rds_ibdev->dev : NULL,
+					       rds_ibdev,
+					       conn, ic, reason, err);
 
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
