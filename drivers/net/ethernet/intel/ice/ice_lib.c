@@ -24,6 +24,8 @@ const char *ice_vsi_type_str(enum ice_vsi_type vsi_type)
 		return "ICE_VSI_CTRL";
 	case ICE_VSI_LB:
 		return "ICE_VSI_LB";
+	case ICE_VSI_SWITCHDEV_CTRL:
+		return "ICE_VSI_SWITCHDEV_CTRL";
 	default:
 		return "unknown";
 	}
@@ -137,6 +139,7 @@ static void ice_vsi_set_num_desc(struct ice_vsi *vsi)
 {
 	switch (vsi->type) {
 	case ICE_VSI_PF:
+	case ICE_VSI_SWITCHDEV_CTRL:
 	case ICE_VSI_CTRL:
 	case ICE_VSI_LB:
 		/* a user could change the values of num_[tr]x_desc using
@@ -204,6 +207,14 @@ static void ice_vsi_set_num_qs(struct ice_vsi *vsi, u16 vf_id)
 		vsi->num_q_vectors = min_t(int, pf->num_lan_msix,
 					   max_t(int, vsi->alloc_rxq,
 						 vsi->alloc_txq));
+		break;
+	case ICE_VSI_SWITCHDEV_CTRL:
+		/* The number of queues for ctrl VSI is equal to number of VFs.
+		 * Each ring is associated to the corresponding VF_PR netdev.
+		 */
+		vsi->alloc_txq = pf->num_alloc_vfs;
+		vsi->alloc_rxq = pf->num_alloc_vfs;
+		vsi->num_q_vectors = 1;
 		break;
 	case ICE_VSI_VF:
 		vf = &pf->vf[vsi->vf_id];
@@ -413,6 +424,21 @@ static irqreturn_t ice_msix_clean_rings(int __always_unused irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t ice_eswitch_msix_clean_rings(int __always_unused irq, void *data)
+{
+	struct ice_q_vector *q_vector = (struct ice_q_vector *)data;
+	struct ice_pf *pf = q_vector->vsi->back;
+	int i;
+
+	if (!q_vector->tx.ring && !q_vector->rx.ring)
+		return IRQ_HANDLED;
+
+	ice_for_each_vf(pf, i)
+		napi_schedule(&pf->vf[i].repr->q_vector->napi);
+
+	return IRQ_HANDLED;
+}
+
 /**
  * ice_vsi_alloc - Allocates the next available struct VSI in the PF
  * @pf: board private structure
@@ -453,6 +479,13 @@ ice_vsi_alloc(struct ice_pf *pf, enum ice_vsi_type vsi_type, u16 vf_id)
 		ice_vsi_set_num_qs(vsi, ICE_INVAL_VFID);
 
 	switch (vsi->type) {
+	case ICE_VSI_SWITCHDEV_CTRL:
+		if (ice_vsi_alloc_arrays(vsi))
+			goto err_rings;
+
+		/* Setup eswitch MSIX irq handler for VSI */
+		vsi->irq_handler = ice_eswitch_msix_clean_rings;
+		break;
 	case ICE_VSI_PF:
 		if (ice_vsi_alloc_arrays(vsi))
 			goto err_rings;
@@ -711,6 +744,12 @@ static void ice_vsi_set_rss_params(struct ice_vsi *vsi)
 		vsi->rss_size = min_t(u16, num_online_cpus(),
 				      BIT(cap->rss_table_entry_width));
 		vsi->rss_lut_type = ICE_AQC_GSET_RSS_LUT_TABLE_TYPE_PF;
+		break;
+	case ICE_VSI_SWITCHDEV_CTRL:
+		vsi->rss_table_size = ICE_VSIQF_HLUT_ARRAY_SIZE;
+		vsi->rss_size = min_t(u16, num_online_cpus(),
+				      BIT(cap->rss_table_entry_width));
+		vsi->rss_lut_type = ICE_AQC_GSET_RSS_LUT_TABLE_TYPE_VSI;
 		break;
 	case ICE_VSI_VF:
 		/* VF VSI will get a small RSS table.
@@ -984,6 +1023,9 @@ static int ice_vsi_init(struct ice_vsi *vsi, bool init_vsi)
 	case ICE_VSI_LB:
 	case ICE_VSI_PF:
 		ctxt->flags = ICE_AQ_VSI_TYPE_PF;
+		break;
+	case ICE_VSI_SWITCHDEV_CTRL:
+		ctxt->flags = ICE_AQ_VSI_TYPE_VMDQ2;
 		break;
 	case ICE_VSI_VF:
 		ctxt->flags = ICE_AQ_VSI_TYPE_VF;
@@ -2309,6 +2351,7 @@ static void ice_set_agg_vsi(struct ice_vsi *vsi)
 	case ICE_VSI_CTRL:
 	case ICE_VSI_LB:
 	case ICE_VSI_PF:
+	case ICE_VSI_SWITCHDEV_CTRL:
 		max_agg_nodes = ICE_MAX_PF_AGG_NODES;
 		agg_node_id_start = ICE_PF_AGG_NODE_ID_START;
 		agg_node_iter = &pf->pf_agg_node[0];
@@ -2460,6 +2503,7 @@ ice_vsi_setup(struct ice_pf *pf, struct ice_port_info *pi,
 
 	switch (vsi->type) {
 	case ICE_VSI_CTRL:
+	case ICE_VSI_SWITCHDEV_CTRL:
 	case ICE_VSI_PF:
 		ret = ice_vsi_alloc_q_vectors(vsi);
 		if (ret)
@@ -2769,7 +2813,8 @@ void ice_dis_vsi(struct ice_vsi *vsi, bool locked)
 		} else {
 			ice_vsi_close(vsi);
 		}
-	} else if (vsi->type == ICE_VSI_CTRL) {
+	} else if (vsi->type == ICE_VSI_CTRL ||
+		   vsi->type == ICE_VSI_SWITCHDEV_CTRL) {
 		ice_vsi_close(vsi);
 	}
 }
@@ -3159,6 +3204,7 @@ int ice_vsi_rebuild(struct ice_vsi *vsi, bool init_vsi)
 
 	switch (vtype) {
 	case ICE_VSI_CTRL:
+	case ICE_VSI_SWITCHDEV_CTRL:
 	case ICE_VSI_PF:
 		ret = ice_vsi_alloc_q_vectors(vsi);
 		if (ret)
