@@ -59,6 +59,8 @@ struct octtx_brd_info {
 	const char *reset_count_warm;
 	const char *reset_count_core_wdog;
 	const char *reset_count_scp_wdog;
+	const char *reset_count_mcp_wdog;
+	const char *reset_count_ecp_wdog;
 	int  dev_tree_parsed;
 	int  use_mac_id;
 	struct octeontx_info_mac_addr mac_addrs[MAX_MACS];
@@ -114,6 +116,10 @@ static int oct_brd_proc_show(struct seq_file *seq, void *v)
 			   brd.reset_count_core_wdog);
 		seq_printf(seq, "scp_wdog_reset_count: %s\n",
 			   brd.reset_count_scp_wdog);
+		seq_printf(seq, "mcp_wdog_reset_count: %s\n",
+			   brd.reset_count_mcp_wdog);
+		seq_printf(seq, "ecp_wdog_reset_count: %s\n",
+			   brd.reset_count_ecp_wdog);
 	}
 
 	while (fw_info) {
@@ -262,6 +268,22 @@ static void octtx_parse_reset_couters(struct device_node *np)
 		pr_warn("SCP Watchdog reset count not available\n");
 		/* Default name is "NULL" */
 		brd.reset_count_scp_wdog = null_string;
+	}
+
+	ret = of_property_read_string(np, "RESET-COUNT-MCP-WDOG",
+					&brd.reset_count_mcp_wdog);
+	if (ret) {
+		pr_warn("MCP Watchdog reset count not available\n");
+		/* Default name is "NULL" */
+		brd.reset_count_mcp_wdog = null_string;
+	}
+
+	ret = of_property_read_string(np, "RESET-COUNT-ECP-WDOG",
+					&brd.reset_count_ecp_wdog);
+	if (ret) {
+		pr_warn("ECP Watchdog reset count not available\n");
+		/* Default name is "NULL" */
+		brd.reset_count_ecp_wdog = null_string;
 	}
 }
 
