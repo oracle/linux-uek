@@ -132,7 +132,6 @@ struct xenvif_copy_state {
 	struct gnttab_copy op[COPY_BATCH_SIZE];
 	RING_IDX idx[COPY_BATCH_SIZE];
 	unsigned int num;
-	struct sk_buff_head *completed;
 };
 
 /* This is the maximum number of grefs per queue in the grant cache. */
