@@ -623,8 +623,13 @@ BuildConflicts: rpm < 4.13.0.1-19
 %undefine _unique_debug_srcs
 %undefine _debugsource_packages
 %undefine _debuginfo_subpackages
-%undefine _missing_build_ids_terminate_build
-%undefine _no_recompute_build_ids
+
+# Terminate the build if the ELF file processed by find-debuginfo.sh has no build ID
+%global _missing_build_ids_terminate_build 1
+
+# Do not recompute build-ids but keep whatever is in the ELF file already.
+%global _no_recompute_build_ids 1
+
 %endif
 
 Source0: linux-%{kversion}.tar.bz2
