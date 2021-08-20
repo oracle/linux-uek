@@ -540,26 +540,35 @@ void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 						  oldval);
 }
 
-static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
-					     struct rds_ib_send_work *send,
-					     bool notify)
+#define FLAGS_FORCE_SEND_SIGNALED  BIT(0)
+#define FLAGS_FORCE_SEND_SOLICITED BIT(1)
+#define FLAGS_NO_SEND_SOLICITED    BIT(2)
+
+static inline int rds_ib_set_wr_send_flags(struct rds_ib_connection *ic,
+					   struct rds_ib_send_work *send,
+					   unsigned int flags)
 {
 	/*
 	 * We want to delay signaling completions just enough to get
 	 * the batching benefits but not so much that we create dead time
 	 * on the wire.
 	 */
-	if (ic->i_unsignaled_wrs-- == 0 || notify) {
+	if (ic->i_unsignaled_wrs-- == 0 || flags & FLAGS_FORCE_SEND_SIGNALED) {
 		ic->i_unsignaled_wrs = rds_ib_sysctl_max_unsig_wrs;
 		send->s_wr.send_flags |= IB_SEND_SIGNALED;
 	}
 
 	/* To keep the rx pipeline going, add SEND_SOLIICITED once in a while */
-	if (rds_ib_sysctl_max_unsolicited_wrs && --ic->i_unsolicited_wrs == 0) {
+	if (flags & FLAGS_NO_SEND_SOLICITED)
+		goto no_solicited;
+
+	if ((rds_ib_sysctl_max_unsolicited_wrs && --ic->i_unsolicited_wrs == 0) ||
+	    flags & FLAGS_FORCE_SEND_SOLICITED) {
 		ic->i_unsolicited_wrs = rds_ib_sysctl_max_unsolicited_wrs;
 		send->s_wr.send_flags |= IB_SEND_SOLICITED;
 	}
 
+no_solicited:
 	return !!(send->s_wr.send_flags & IB_SEND_SIGNALED);
 }
 
@@ -789,15 +798,15 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			}
 		}
 
-		rds_ib_set_wr_signal_state(ic, send, false);
+		rds_ib_set_wr_send_flags(ic, send, 0);
 
 		/*
 		 * Always signal the last one if we're stopping due to flow control.
 		 */
-		if (ic->i_flowctl && flow_controlled && i == (work_alloc - 1)) {
-			rds_ib_set_wr_signal_state(ic, send, true);
-			send->s_wr.send_flags |= IB_SEND_SOLICITED;
-		}
+		if (ic->i_flowctl && flow_controlled && i == (work_alloc - 1))
+			rds_ib_set_wr_send_flags(ic, send,
+						 FLAGS_FORCE_SEND_SIGNALED |
+						 FLAGS_FORCE_SEND_SOLICITED);
 
 		if (send->s_wr.send_flags & IB_SEND_SIGNALED)
 			nr_sig++;
@@ -837,8 +846,14 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		prev->s_wr.send_flags |= IB_SEND_SOLICITED;
 		if (!(prev->s_wr.send_flags & IB_SEND_SIGNALED) ||
 		    (rm->rdma.op_active && rm->rdma.op_remote_complete))
-			nr_sig += rds_ib_set_wr_signal_state(ic, prev, true);
+			nr_sig += rds_ib_set_wr_send_flags(ic, prev,
+							   FLAGS_FORCE_SEND_SIGNALED |
+							   FLAGS_FORCE_SEND_SOLICITED);
 		ic->i_data_op = NULL;
+	} else if (!(prev->s_wr.send_flags & IB_SEND_SIGNALED)) {
+		nr_sig += rds_ib_set_wr_send_flags(ic, prev,
+						   FLAGS_FORCE_SEND_SIGNALED |
+						   FLAGS_FORCE_SEND_SOLICITED);
 	}
 
 	/* Put back wrs & credits we didn't use */
@@ -897,7 +912,6 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	u32 pos;
 	u32 work_alloc;
 	int ret;
-	int nr_sig = 0;
 	char *reason = NULL;
 
 	rds_ibdev = ib_get_client_data(ic->i_cm_id->device, &rds_ib_client);
@@ -924,7 +938,8 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 		send->s_atomic_wr.compare_add = op->op_swap_add;
 		send->s_atomic_wr.swap = 0;
 	}
-	nr_sig = rds_ib_set_wr_signal_state(ic, send, op->op_notify);
+	send->s_wr.send_flags = 0;
+	rds_ib_set_wr_send_flags(ic, send, FLAGS_FORCE_SEND_SIGNALED | FLAGS_NO_SEND_SOLICITED);
 	send->s_wr.num_sge = 1;
 	send->s_wr.next = NULL;
 	send->s_atomic_wr.remote_addr = op->op_remote_addr;
@@ -951,8 +966,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	rdsdebug("rva %Lx rpa %Lx len %u\n", op->op_remote_addr,
 		 send->s_sge[0].addr, send->s_sge[0].length);
 
-	if (nr_sig)
-		atomic_add(nr_sig, &ic->i_signaled_sends);
+	atomic_inc(&ic->i_signaled_sends);
 
 	failed_wr = &send->s_wr;
 	ret = ib_post_send(ic->i_cm_id->qp, &send->s_wr, &failed_wr);
@@ -964,7 +978,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 		       &conn->c_faddr, ret);
 		reason = "atomic ib_post_send failed";
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
-		rds_ib_sub_signaled(ic, nr_sig);
+		rds_ib_sub_signaled(ic, 1);
 		goto out;
 	}
 
@@ -999,7 +1013,6 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	int sent;
 	int ret;
 	int num_sge;
-	int nr_sig;
 	char *reason = NULL;
 
 	/* map the op the first time we see it */
@@ -1112,6 +1125,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 				(rcomp->s_sge[0].length - sizeof(u8));
 			rcomp->s_sge[0].length = sizeof(u8);
 
+			rcomp->s_wr.send_flags = 0;
 			rcomp->s_wr.num_sge = 1;
 			rcomp->s_wr.opcode = IB_WR_RDMA_READ;
 			rcomp->s_wr.next = NULL;
@@ -1125,10 +1139,8 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		prev->s_op = op;
 		rds_message_addref(container_of(op, struct rds_message, rdma));
 	}
-	nr_sig = rds_ib_set_wr_signal_state(ic, prev, true);
-
-	if (nr_sig)
-		atomic_add(nr_sig, &ic->i_signaled_sends);
+	rds_ib_set_wr_send_flags(ic, prev, FLAGS_FORCE_SEND_SIGNALED | FLAGS_NO_SEND_SOLICITED);
+	atomic_inc(&ic->i_signaled_sends);
 
 	failed_wr = &first->s_wr;
 	ret = ib_post_send(ic->i_cm_id->qp, &first->s_wr, &failed_wr);
@@ -1140,7 +1152,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		       "returned %d\n", &conn->c_faddr, ret);
 		reason = "rdma ib_post_send failed";
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
-		rds_ib_sub_signaled(ic, nr_sig);
+		rds_ib_sub_signaled(ic, 1);
 		goto out;
 	}
 
