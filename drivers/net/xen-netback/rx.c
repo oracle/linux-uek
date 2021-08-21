@@ -178,9 +178,6 @@ static void xenvif_rx_copy_flush(struct xenvif_queue *queue)
 	RING_PUSH_RESPONSES_AND_CHECK_NOTIFY(&queue->rx, notify);
 	if (notify)
 		notify_remote_via_irq(queue->rx_irq);
-
-	if (queue->rx_copy.completed)
-		__skb_queue_purge(queue->rx_copy.completed);
 }
 
 static void xenvif_rx_copy_add(struct xenvif_queue *queue,
@@ -496,20 +493,20 @@ void xenvif_rx_action(struct xenvif_queue *queue)
 
 	spin_lock_irq(&queue->rx_lock);
 	__skb_queue_head_init(&completed_skbs);
-	queue->rx_copy.completed = &completed_skbs;
 
 	while (xenvif_rx_queue_slots_available(queue) &&
 	       work_done < RX_BATCH_SIZE) {
 		skb = xenvif_rx_dequeue(queue);
 		xenvif_rx_skb(queue, skb);
-		__skb_queue_tail(queue->rx_copy.completed, skb);
+		__skb_queue_tail(&completed_skbs, skb);
 		work_done++;
 	}
 
 	/* Flush any pending copies and complete all skbs. */
 	xenvif_rx_copy_flush(queue);
-	queue->rx_copy.completed = NULL;
 	spin_unlock_irq(&queue->rx_lock);
+
+	__skb_queue_purge(&completed_skbs);
 }
 
 static bool xenvif_rx_queue_stalled(struct xenvif_queue *queue)
