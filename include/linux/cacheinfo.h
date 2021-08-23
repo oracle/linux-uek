@@ -111,6 +111,9 @@ static inline int get_cpu_cacheinfo_id(int cpu, int level)
 	struct cpu_cacheinfo *ci = get_cpu_cacheinfo(cpu);
 	int i;
 
+	if (!ci->info_list)
+		return -1;
+
 	for (i = 0; i < ci->num_leaves; i++) {
 		if (ci->info_list[i].level == level) {
 			if (ci->info_list[i].attributes & CACHE_ID)
