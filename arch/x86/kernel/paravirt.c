@@ -281,6 +281,9 @@ struct paravirt_patch_template pv_ops = {
 	.mmu.exit_mmap		= paravirt_nop,
 
 #ifdef CONFIG_PARAVIRT_XXL
+	/* Located within CONFIG_PARAVIRT_XXL for KABI reasons */
+	.mmu.notify_page_enc_status_changed	= paravirt_nop,
+
 	.mmu.read_cr2		= __PV_IS_CALLEE_SAVE(native_read_cr2),
 	.mmu.write_cr2		= native_write_cr2,
 	.mmu.read_cr3		= __native_read_cr3,

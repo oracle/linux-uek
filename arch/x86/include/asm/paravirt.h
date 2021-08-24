@@ -98,6 +98,17 @@ static inline void paravirt_arch_exit_mmap(struct mm_struct *mm)
 }
 
 #ifdef CONFIG_PARAVIRT_XXL
+/*
+ * Due to the pv_mmu_ops KABI reservations being inside CONFIG_PARAVIRT_XXL
+ * we cannot backport outside of CONFIG_PARAVIRT_XXL. Placing it here
+ * is KABI compliant.
+ */
+static inline void notify_page_enc_status_changed(unsigned long pfn,
+						  int npages, bool enc)
+{
+	PVOP_VCALL3(mmu.notify_page_enc_status_changed, pfn, npages, enc);
+}
+
 static inline void load_sp0(unsigned long sp0)
 {
 	PVOP_VCALL1(cpu.load_sp0, sp0);

@@ -249,7 +249,7 @@ struct pv_mmu_ops {
 	void (*set_fixmap)(unsigned /* enum fixed_addresses */ idx,
 			   phys_addr_t phys, pgprot_t flags);
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, void (*notify_page_enc_status_changed)(unsigned long pfn, int npages, bool enc))
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
