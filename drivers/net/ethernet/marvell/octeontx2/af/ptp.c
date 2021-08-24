@@ -1,20 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Marvell PTP driver
  *
- * Copyright (C) 2018 Marvell International Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright (C) 2021 Marvell
  */
 
+#include <linux/bitfield.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/pci.h>
 
 #include "ptp.h"
+#include "mbox.h"
+#include "rvu.h"
 
-#define DRV_NAME	"Marvell PTP Driver"
+#define DRV_NAME				"Marvell PTP Driver"
 
 #define PCI_DEVID_OCTEONTX2_PTP			0xA00C
 #define PCI_SUBSYS_DEVID_OCTX2_98xx_PTP		0xB100
@@ -26,27 +25,34 @@
 #define PCI_DEVID_OCTEONTX2_RST			0xA085
 #define PCI_DEVID_CN10K_PTP			0xA09E
 
-#define PCI_PTP_BAR_NO	0
-#define PCI_RST_BAR_NO	0
+#define PCI_PTP_BAR_NO				0
+#define PCI_RST_BAR_NO				0
 
-#define PTP_CLOCK_CFG		0xF00ULL
-#define  PTP_CLOCK_CFG_PTP_EN		BIT(0)
-#define PTP_CLOCK_LO		0xF08ULL
-#define PTP_CLOCK_HI		0xF10ULL
-#define PTP_CLOCK_COMP		0xF18ULL
+#define PTP_CLOCK_CFG				0xF00ULL
+#define PTP_CLOCK_CFG_PTP_EN			BIT_ULL(0)
+#define PTP_CLOCK_LO				0xF08ULL
+#define PTP_CLOCK_HI				0xF10ULL
+#define PTP_CLOCK_COMP				0xF18ULL
 
-#define RST_BOOT	0x1600ULL
-#define CLOCK_BASE_RATE	50000000ULL
+#define RST_BOOT				0x1600ULL
+#define RST_MUL_BITS				GENMASK_ULL(38, 33)
+#define CLOCK_BASE_RATE				50000000ULL
 
 static struct ptp *first_ptp_block;
 static const struct pci_device_id ptp_id_table[];
 
 static u64 get_clock_rate(void)
 {
-	u64 ret = CLOCK_BASE_RATE * 16;
+	u64 cfg, ret = CLOCK_BASE_RATE * 16;
 	struct pci_dev *pdev;
 	void __iomem *base;
 
+	/* To get the input clock frequency with which PTP co-processor
+	 * block is running the base frequency(50 MHz) needs to be multiplied
+	 * with multiplier bits present in RST_BOOT register of RESET block.
+	 * Hence below code gets the multiplier bits from the RESET PCI
+	 * device present in the system.
+	 */
 	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
 			      PCI_DEVID_OCTEONTX2_RST, NULL);
 	if (!pdev)
@@ -56,7 +62,8 @@ static u64 get_clock_rate(void)
 	if (!base)
 		goto error_put_pdev;
 
-	ret = CLOCK_BASE_RATE * ((readq(base + RST_BOOT) >> 33) & 0x3f);
+	cfg = readq(base + RST_BOOT);
+	ret = CLOCK_BASE_RATE * FIELD_GET(RST_MUL_BITS, cfg);
 
 	iounmap(base);
 
@@ -89,7 +96,7 @@ void ptp_put(struct ptp *ptp)
 	pci_dev_put(ptp->pdev);
 }
 
-int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
+static int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 {
 	bool neg_adj = false;
 	u64 comp;
@@ -107,14 +114,13 @@ int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 	 * convention compensation value is in 64 bit fixed-point
 	 * representation where upper 32 bits are number of nanoseconds
 	 * and lower is fractions of nanosecond.
-	 * The scaled_ppm represent the ratio in "parts per bilion" by which the
-	 * compensation value should be corrected.
+	 * The scaled_ppm represent the ratio in "parts per million" by which
+	 * the compensation value should be corrected.
 	 * To calculate new compenstation value we use 64bit fixed point
 	 * arithmetic on following formula
 	 * comp = tbase + tbase * scaled_ppm / (1M * 2^16)
-	 * where tbase is the basic compensation value calculated initialy
-	 * in cavium_ptp_init() -> tbase = 1/Hz. Then we use endian
-	 * independent structure definition to write data to PTP register.
+	 * where tbase is the basic compensation value calculated
+	 * initialy in the probe function.
 	 */
 	comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
 	/* convert scaled_ppm to ppb */
@@ -139,7 +145,7 @@ static inline u64 get_tsc(bool is_pmu)
 #endif
 }
 
-int ptp_get_clock(struct ptp *ptp, bool is_pmu, u64 *clk, u64 *tsc)
+static int ptp_get_clock(struct ptp *ptp, bool is_pmu, u64 *clk, u64 *tsc)
 {
 	u64 end, start;
 	u8 retries = 0;
@@ -184,11 +190,13 @@ static int ptp_probe(struct pci_dev *pdev,
 
 	ptp->clock_rate = get_clock_rate();
 
+	/* Enable PTP clock */
 	clock_cfg = readq(ptp->reg_base + PTP_CLOCK_CFG);
 	clock_cfg |= PTP_CLOCK_CFG_PTP_EN;
 	writeq(clock_cfg, ptp->reg_base + PTP_CLOCK_CFG);
 
 	clock_comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
+	/* Initial compensation value to start the nanosecs counter */
 	writeq(clock_comp, ptp->reg_base + PTP_CLOCK_COMP);
 
 	pci_set_drvdata(pdev, ptp);
@@ -222,6 +230,7 @@ static void ptp_remove(struct pci_dev *pdev)
 	if (IS_ERR_OR_NULL(ptp))
 		return;
 
+	/* Disable PTP clock */
 	clock_cfg = readq(ptp->reg_base + PTP_CLOCK_CFG);
 	clock_cfg &= ~PTP_CLOCK_CFG_PTP_EN;
 	writeq(clock_cfg, ptp->reg_base + PTP_CLOCK_CFG);
@@ -256,3 +265,27 @@ struct pci_driver ptp_driver = {
 	.probe = ptp_probe,
 	.remove = ptp_remove,
 };
+
+int rvu_mbox_handler_ptp_op(struct rvu *rvu, struct ptp_req *req,
+			    struct ptp_rsp *rsp)
+{
+	int err = 0;
+
+	if (!rvu->ptp)
+		return -ENODEV;
+
+	switch (req->op) {
+	case PTP_OP_ADJFINE:
+		err = ptp_adjfine(rvu->ptp, req->scaled_ppm);
+		break;
+	case PTP_OP_GET_CLOCK:
+		err = ptp_get_clock(rvu->ptp, req->is_pmu, &rsp->clk,
+				    &rsp->tsc);
+		break;
+	default:
+		err = -EINVAL;
+		break;
+	}
+
+	return err;
+}
