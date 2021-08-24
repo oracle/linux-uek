@@ -14,7 +14,7 @@
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM	rdmaip
 
-#define MAX_MSG_LEN	100
+#define MAX_MSG_LEN	256
 
 DECLARE_EVENT_CLASS(rdmaip_debug,
 	TP_PROTO(int level, const char *func, struct va_format *vaf),
