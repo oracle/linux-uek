@@ -1339,7 +1339,7 @@ void rds_rt_debug_tp_enable(void);
 
 /* page.c */
 int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
-			     gfp_t gfp);
+			     gfp_t gfp, int nid);
 void rds_page_exit(void);
 
 /* recv.c */
