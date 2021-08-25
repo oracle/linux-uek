@@ -1030,7 +1030,8 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 	sg_init_table(sg, nmbr_hdr_pages);
 
 	for (i = 0; i < nmbr_hdr_pages; i++) {
-		ret = rds_page_remainder_alloc(sg + i, PAGE_SIZE, GFP_KERNEL);
+		ret = rds_page_remainder_alloc(sg + i, PAGE_SIZE, GFP_KERNEL,
+					       ibdev_to_node(dev));
 		if (ret) {
 			*reason = "rds_page_remainder_alloc failed";
 			for (j = 0; j < i; ++j)
