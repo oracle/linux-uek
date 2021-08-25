@@ -62,7 +62,7 @@ DEFINE_PER_CPU(struct rds_page_remainder, rds_page_remainders) ____cacheline_ali
  * reference until they are done with the region.
  */
 int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
-			     gfp_t gfp)
+			     gfp_t gfp, int nid)
 {
 	struct rds_page_remainder *rem;
 	unsigned long flags;
@@ -73,7 +73,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 
 	/* jump straight to allocation if we're trying for a huge page */
 	if (bytes >= PAGE_SIZE) {
-		page = alloc_page(gfp);
+		page = alloc_pages_node(nid, gfp, 0);
 		if (!page) {
 			ret = -ENOMEM;
 		} else {
@@ -118,7 +118,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 		local_irq_restore(flags);
 		put_cpu();
 
-		page = alloc_page(gfp);
+		page = alloc_pages_node(nid, gfp, 0);
 
 		rem = &per_cpu(rds_page_remainders, get_cpu());
 		local_irq_save(flags);
