@@ -13,6 +13,7 @@
 #include <linux/cpumask.h>
 #include <linux/init.h>
 #include <linux/llist.h>
+#include <linux/uek_kabi.h>
 
 typedef void (*smp_call_func_t)(void *info);
 struct __call_single_data {
@@ -21,7 +22,8 @@ struct __call_single_data {
 	void *info;
 	unsigned int flags;
 #ifdef CONFIG_64BIT
-	u16 src, dst;
+	UEK_KABI_FILL_HOLE(u16 src)
+	UEK_KABI_FILL_HOLE(u16 dst)
 #endif
 };
 
