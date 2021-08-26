@@ -6,6 +6,7 @@
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/msi.h>
 #include <linux/interrupt.h>
 
@@ -298,6 +299,7 @@ phys_addr_t ionic_bus_phys_dbpage(struct ionic *ionic, int page_num)
 int ionic_probe(struct platform_device *pfdev)
 {
 	struct device *dev = &pfdev->dev;
+	struct device_node *np;
 	struct ionic *ionic;
 	int err;
 
@@ -309,6 +311,18 @@ int ionic_probe(struct platform_device *pfdev)
 	platform_set_drvdata(pfdev, ionic);
 	ionic->dev = dev;
 	mutex_init(&ionic->dev_cmd_lock);
+
+	np = dev->of_node;
+	if (!np) {
+		dev_err(dev, "No device tree node\n");
+		return -EINVAL;
+	}
+
+	err = of_reserved_mem_device_init_by_idx(dev, np, 0);
+	if (err) {
+		dev_err(dev, "Failed to init reserved memory region\n");
+		return err;
+	}
 
 	err = ionic_set_dma_mask(ionic);
 	if (err) {
