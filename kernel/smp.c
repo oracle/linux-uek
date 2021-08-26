@@ -46,9 +46,8 @@ union cfd_seq_cnt {
 #define CFD_SEQ_PINGED	4
 #define CFD_SEQ_HANDLE	5
 #define CFD_SEQ_DEQUEUE	6
-#define CFD_SEQ_IDLE	7
-#define CFD_SEQ_GOTIPI	8
-#define CFD_SEQ_HDLEND	9
+#define CFD_SEQ_GOTIPI	7
+#define CFD_SEQ_HDLEND	8
 		u64	cnt:28;
 	}		u;
 };
@@ -61,7 +60,6 @@ static char *seq_type[] = {
 	[CFD_SEQ_PINGED]	= "pinged",
 	[CFD_SEQ_HANDLE]	= "handle",
 	[CFD_SEQ_DEQUEUE]	= "dequeue (src CPU 0 == empty)",
-	[CFD_SEQ_IDLE]		= "idle",
 	[CFD_SEQ_GOTIPI]	= "gotipi",
 	[CFD_SEQ_HDLEND]	= "hdlend (src CPU 0 == early)",
 };
@@ -71,7 +69,6 @@ struct cfd_seq_local {
 	u64	pinged;
 	u64	handle;
 	u64	dequeue;
-	u64	idle;
 	u64	gotipi;
 	u64	hdlend;
 };
@@ -296,7 +293,6 @@ static void csd_lock_print_extended(call_single_data_t *csd, int cpu)
 	cfd_seq_data_add(per_cpu(cfd_seq_local.ping, srccpu),	srccpu, CFD_SEQ_NOCPU, CFD_SEQ_PING,   data, &n_data, now);
 	cfd_seq_data_add(per_cpu(cfd_seq_local.pinged, srccpu), srccpu, CFD_SEQ_NOCPU, CFD_SEQ_PINGED, data, &n_data, now);
 
-	cfd_seq_data_add(seq->idle,    CFD_SEQ_NOCPU, cpu, CFD_SEQ_IDLE,    data, &n_data, now);
 	cfd_seq_data_add(seq->gotipi,  CFD_SEQ_NOCPU, cpu, CFD_SEQ_GOTIPI,  data, &n_data, now);
 	cfd_seq_data_add(seq->handle,  CFD_SEQ_NOCPU, cpu, CFD_SEQ_HANDLE,  data, &n_data, now);
 	cfd_seq_data_add(seq->dequeue, CFD_SEQ_NOCPU, cpu, CFD_SEQ_DEQUEUE, data, &n_data, now);
