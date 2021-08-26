@@ -20,6 +20,7 @@
 	__cpuhp_remove_state
 	__cpuhp_setup_state
 	__default_kernel_pte_mask
+	__dev_kfree_skb_any
 	__fdget
 	__fentry__
 	__free_pages
@@ -45,6 +46,8 @@
 	__module_get
 	__msecs_to_jiffies
 	__mutex_init
+	__napi_schedule
+	__napi_schedule_irqoff
 	__netdev_alloc_skb
 	__netlink_kernel_create
 	__nlmsg_put
@@ -57,6 +60,7 @@
 	__per_cpu_offset
 	__platform_driver_register
 	__preempt_count
+	__pskb_pull_tail
 	__put_cred
 	__put_devmap_managed_page
 	__put_page
@@ -72,6 +76,7 @@
 	__root_device_register
 	__set_page_dirty_buffers
 	__set_page_dirty_nobuffers
+	__skb_flow_dissect
 	__skb_gso_segment
 	__stack_chk_fail
 	__sw_hweight32
@@ -137,6 +142,8 @@
 	add_wait_queue
 	address_space_init_once
 	alloc_chrdev_region
+	alloc_cpu_rmap
+	alloc_etherdev_mqs
 	alloc_file_pseudo
 	alloc_netdev_mqs
 	alloc_pages_current
@@ -157,6 +164,7 @@
 	bio_integrity_add_page
 	bio_integrity_alloc
 	bio_put
+	bitmap_find_next_zero_area_off
 	blk_alloc_queue
 	blk_cleanup_queue
 	blk_execute_rq
@@ -199,7 +207,14 @@
 	blkdev_issue_discard
 	blkdev_put
 	boot_cpu_data
+	bpf_trace_run1
+	bpf_trace_run10
+	bpf_trace_run2
+	bpf_trace_run4
 	bsg_job_done
+	bus_register
+	bus_unregister
+	call_netdevice_notifiers
 	cancel_delayed_work
 	cancel_delayed_work_sync
 	cancel_work_sync
@@ -222,8 +237,10 @@
 	cpu_sibling_map
 	cpu_tlbstate
 	cpufreq_quick_get
+	cpumask_local_spread
 	cpumask_next
 	crc32_le
+	csum_ipv6_magic
 	current_task
 	d_add
 	d_alloc
@@ -254,10 +271,13 @@
 	dentry_path_raw
 	destroy_workqueue
 	dev_add_pack
+	dev_close
 	dev_driver_string
 	dev_get_flags
+	dev_open
 	dev_queue_xmit
 	dev_remove_pack
+	dev_set_name
 	dev_set_promiscuity
 	device_add_disk
 	device_create_file
@@ -373,8 +393,10 @@
 	empty_zero_page
 	end_page_writeback
 	eth_type_trans
+	eth_validate_addr
 	ether_setup
 	ethtool_op_get_link
+	event_triggers_call
 	ex_handler_default
 	fasync_helper
 	fb_deferred_io_cleanup
@@ -401,6 +423,9 @@
 	finish_no_open
 	finish_open
 	finish_wait
+	flow_get_u32_dst
+	flow_get_u32_src
+	flow_keys_dissector
 	flush_signals
 	flush_work
 	flush_workqueue
@@ -410,6 +435,7 @@
 	free_buffer_head
 	free_cpumask_var
 	free_irq
+	free_irq_cpu_rmap
 	free_netdev
 	free_pages
 	freeze_bdev
@@ -492,6 +518,7 @@
 	iov_iter_revert
 	iov_iter_single_seg_count
 	iput
+	irq_cpu_rmap_add
 	irq_set_affinity_hint
 	is_bad_inode
 	is_uv_system
@@ -589,17 +616,35 @@
 	mutex_trylock
 	mutex_unlock
 	names_cachep
+	napi_complete_done
+	napi_consume_skb
+	napi_disable
+	napi_gro_receive
+	napi_schedule_prep
 	net_namespace_list
+	net_ratelimit
+	netdev_err
+	netdev_info
 	netdev_refcnt_read
+	netdev_rss_key_fill
+	netdev_warn
 	netif_carrier_off
 	netif_carrier_on
+	netif_napi_add
+	netif_napi_del
+	netif_receive_skb
 	netif_rx_ni
 	netif_schedule_queue
+	netif_set_real_num_rx_queues
+	netif_set_real_num_tx_queues
+	netif_set_xps_queue
+	netif_tx_wake_queue
 	netlink_kernel_release
 	netlink_unicast
 	new_inode
 	nf_register_net_hook
 	nf_unregister_net_hook
+	nla_put
 	no_llseek
 	nobh_truncate_page
 	nobh_write_begin
@@ -620,16 +665,22 @@
 	param_ops_int
 	param_ops_long
 	param_ops_string
+	param_ops_uint
 	param_ops_ulong
 	path_get
 	path_put
 	pci_choose_state
 	pci_disable_device
 	pci_disable_msix
+	pci_disable_sriov
 	pci_enable_device
+	pci_enable_device_mem
 	pci_enable_msix_range
+	pci_enable_sriov
+	pci_find_ext_capability
 	pci_iomap_range
 	pci_iounmap
+	pci_read_config_word
 	pci_release_regions
 	pci_request_regions
 	pci_restore_state
@@ -638,6 +689,8 @@
 	pci_set_power_state
 	pci_unregister_driver
 	pcie_capability_clear_and_set_word
+	perf_trace_buf_alloc
+	perf_trace_run_bpf_submit
 	pgdir_shift
 	phys_base
 	physical_mask
@@ -655,12 +708,14 @@
 	prepare_to_wait
 	prepare_to_wait_event
 	prepare_to_wait_exclusive
+	print_hex_dump
 	printk
 	proc_create
 	proc_create_data
 	proc_mkdir
 	proc_remove
 	ptrs_per_p4d
+	put_device
 	put_disk
 	put_pid
 	pv_ops
@@ -694,6 +749,8 @@
 	revalidate_disk
 	revert_creds
 	root_device_unregister
+	rps_may_expire_flow
+	rtnl_is_locked
 	rtnl_lock
 	rtnl_unlock
 	sas_attach_transport
@@ -715,6 +772,7 @@
 	schedule
 	schedule_hrtimeout_range
 	schedule_timeout
+	schedule_timeout_uninterruptible
 	scnprintf
 	scsi_add_device
 	scsi_add_host_with_dma
@@ -773,10 +831,12 @@
 	single_open
 	single_release
 	skb_checksum
+	skb_clone_tx_timestamp
 	skb_copy_bits
 	skb_pull
 	skb_push
 	skb_put
+	skb_tstamp_tx
 	sme_me_mask
 	smp_call_function
 	smp_call_function_many
@@ -816,6 +876,7 @@
 	submit_bio
 	super_setup_bdi
 	super_setup_bdi_name
+	synchronize_irq
 	synchronize_rcu
 	sys_tz
 	sysfs_create_bin_file
@@ -827,6 +888,16 @@
 	this_cpu_off
 	time64_to_tm
 	touch_atime
+	trace_define_field
+	trace_event_buffer_commit
+	trace_event_buffer_reserve
+	trace_event_ignore_this_pid
+	trace_event_raw_init
+	trace_event_reg
+	trace_handle_return
+	trace_print_hex_seq
+	trace_raw_output_prep
+	trace_seq_printf
 	truncate_inode_pages
 	truncate_inode_pages_range
 	truncate_pagecache
@@ -871,6 +942,7 @@
 	up_read
 	up_write
 	use_mm
+	usleep_range
 	utf32_to_utf8
 	utf8_to_utf32
 	uv_bios_call
