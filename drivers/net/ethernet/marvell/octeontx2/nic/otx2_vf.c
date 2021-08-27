@@ -407,12 +407,9 @@ static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 
 		/* Check again, incase SQBs got freed up */
 		smp_mb();
-		if ((sq->num_sqbs - *sq->aura_fc_addr) > 1)
-			netif_tx_start_queue(txq);
-		else
-			netdev_warn(netdev,
-				    "%s: No free SQE/SQB, stopping SQ%d\n",
-				     netdev->name, qidx);
+		if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb)
+							> sq->sqe_thresh)
+			netif_tx_wake_queue(txq);
 
 		return NETDEV_TX_BUSY;
 	}
