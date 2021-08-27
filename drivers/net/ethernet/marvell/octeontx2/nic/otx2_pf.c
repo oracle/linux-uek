@@ -43,6 +43,7 @@ MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
 static void otx2_vf_link_event_task(struct work_struct *work);
 static void otx2_vf_ptp_info_task(struct work_struct *work);
+static void otx2_do_set_rx_mode(struct otx2_nic *pf);
 
 enum {
 	TYPE_PFAF,
@@ -267,8 +268,8 @@ static int otx2_pf_flr_init(struct otx2_nic *pf, int num_vfs)
 {
 	int vf;
 
-	pf->flr_wq = alloc_workqueue("otx2_pf_flr_wq", WQ_UNBOUND | WQ_HIGHPRI
-				     | WQ_MEM_RECLAIM, 1);
+	pf->flr_wq = alloc_workqueue("otx2_pf_flr_wq",
+				     WQ_UNBOUND | WQ_HIGHPRI, 1);
 	if (!pf->flr_wq)
 		return -ENOMEM;
 
@@ -1562,76 +1563,6 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	mutex_unlock(&mbox->lock);
 }
 
-static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
-{
-	struct otx2_nic *pf = netdev_priv(netdev);
-	int qidx = skb_get_queue_mapping(skb);
-	struct otx2_snd_queue *sq;
-	struct netdev_queue *txq;
-
-	/* Check for minimum and maximum packet length */
-	if (skb->len <= ETH_HLEN ||
-	    (!skb_shinfo(skb)->gso_size && skb->len > pf->tx_max_pktlen)) {
-		dev_kfree_skb(skb);
-		return NETDEV_TX_OK;
-	}
-
-	sq = &pf->qset.sq[qidx];
-	txq = netdev_get_tx_queue(netdev, qidx);
-
-	if (!otx2_sq_append_skb(netdev, sq, skb, qidx)) {
-		netif_tx_stop_queue(txq);
-
-		/* Check again, incase SQBs got freed up */
-		smp_mb();
-		if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb)
-							> sq->sqe_thresh)
-			netif_tx_wake_queue(txq);
-
-		return NETDEV_TX_BUSY;
-	}
-
-	return NETDEV_TX_OK;
-}
-
-static void otx2_do_set_rx_mode(struct otx2_nic *pf)
-{
-	struct net_device *netdev = pf->netdev;
-	struct nix_rx_mode *req;
-	bool promisc = false;
-
-	if (!(netdev->flags & IFF_UP))
-		return;
-
-	if ((netdev->flags & IFF_PROMISC) ||
-	    (netdev_uc_count(netdev) > OTX2_MAX_UNICAST_FLOWS)) {
-		promisc = true;
-	}
-
-	/* Write unicast address to mcam entries or del from mcam */
-	if (!promisc && netdev->priv_flags & IFF_UNICAST_FLT)
-		__dev_uc_sync(netdev, otx2_add_macfilter, otx2_del_macfilter);
-
-	mutex_lock(&pf->mbox.lock);
-	req = otx2_mbox_alloc_msg_nix_set_rx_mode(&pf->mbox);
-	if (!req) {
-		mutex_unlock(&pf->mbox.lock);
-		return;
-	}
-
-	req->mode = NIX_RX_MODE_UCAST;
-
-	if (promisc)
-		req->mode |= NIX_RX_MODE_PROMISC;
-	if (netdev->flags & (IFF_ALLMULTI | IFF_MULTICAST))
-		req->mode |= NIX_RX_MODE_ALLMULTI;
-
-	req->mode |= NIX_RX_MODE_USE_MCE;
-
-	otx2_sync_mbox_msg(&pf->mbox);
-	mutex_unlock(&pf->mbox.lock);
-}
-
 int otx2_open(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
@@ -1902,6 +1833,38 @@ int otx2_stop(struct net_device *netdev)
 }
 EXPORT_SYMBOL(otx2_stop);
 
+static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	int qidx = skb_get_queue_mapping(skb);
+	struct otx2_snd_queue *sq;
+	struct netdev_queue *txq;
+
+	/* Check for minimum and maximum packet length */
+	if (skb->len <= ETH_HLEN ||
+	    (!skb_shinfo(skb)->gso_size && skb->len > pf->tx_max_pktlen)) {
+		dev_kfree_skb(skb);
+		return NETDEV_TX_OK;
+	}
+
+	sq = &pf->qset.sq[qidx];
+	txq = netdev_get_tx_queue(netdev, qidx);
+
+	if (!otx2_sq_append_skb(netdev, sq, skb, qidx)) {
+		netif_tx_stop_queue(txq);
+
+		/* Check again, incase SQBs got freed up */
+		smp_mb();
+		if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb)
+							> sq->sqe_thresh)
+			netif_tx_wake_queue(txq);
+
+		return NETDEV_TX_BUSY;
+	}
+
+	return NETDEV_TX_OK;
+}
+
 static netdev_features_t otx2_fix_features(struct net_device *dev,
 					   netdev_features_t features)
 {
@@ -1918,6 +1881,44 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 	struct otx2_nic *pf = netdev_priv(netdev);
 
 	queue_work(pf->otx2_wq, &pf->rx_mode_work);
+}
+
+static void otx2_do_set_rx_mode(struct otx2_nic *pf)
+{
+	struct net_device *netdev = pf->netdev;
+	struct nix_rx_mode *req;
+	bool promisc = false;
+
+	if (!(netdev->flags & IFF_UP))
+		return;
+
+	if ((netdev->flags & IFF_PROMISC) ||
+	    (netdev_uc_count(netdev) > OTX2_MAX_UNICAST_FLOWS)) {
+		promisc = true;
+	}
+
+	/* Write unicast address to mcam entries or del from mcam */
+	if (!promisc && netdev->priv_flags & IFF_UNICAST_FLT)
+		__dev_uc_sync(netdev, otx2_add_macfilter, otx2_del_macfilter);
+
+	mutex_lock(&pf->mbox.lock);
+	req = otx2_mbox_alloc_msg_nix_set_rx_mode(&pf->mbox);
+	if (!req) {
+		mutex_unlock(&pf->mbox.lock);
+		return;
+	}
+
+	req->mode = NIX_RX_MODE_UCAST;
+
+	if (promisc)
+		req->mode |= NIX_RX_MODE_PROMISC;
+	if (netdev->flags & (IFF_ALLMULTI | IFF_MULTICAST))
+		req->mode |= NIX_RX_MODE_ALLMULTI;
+
+	req->mode |= NIX_RX_MODE_USE_MCE;
+
+	otx2_sync_mbox_msg(&pf->mbox);
+	mutex_unlock(&pf->mbox.lock);
 }
 
 static void otx2_rx_mode_wrk_handler(struct work_struct *work)

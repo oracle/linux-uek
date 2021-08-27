@@ -287,9 +287,10 @@ int otx2_mcam_flow_init(struct otx2_nic *pf)
 	if (!pf->flow_cfg->dmacflt_max_flows)
 		return 0;
 
-	pf->flow_cfg->bmap_to_dmacindex = devm_kzalloc(pf->dev, sizeof(u8)
-						       * pf->flow_cfg->dmacflt_max_flows,
-						       GFP_KERNEL);
+	pf->flow_cfg->bmap_to_dmacindex =
+			devm_kzalloc(pf->dev, sizeof(u8) *
+				     pf->flow_cfg->dmacflt_max_flows,
+				     GFP_KERNEL);
 
 	if (!pf->flow_cfg->bmap_to_dmacindex)
 		return -ENOMEM;
@@ -998,7 +999,8 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	return err;
 }
 
-static int otx2_add_flow_with_pfmac(struct otx2_nic *pfvf, struct otx2_flow *flow)
+static int otx2_add_flow_with_pfmac(struct otx2_nic *pfvf,
+				    struct otx2_flow *flow)
 {
 	struct ethhdr *eth_hdr;
 	struct otx2_flow *pf_mac;
@@ -1081,7 +1083,8 @@ int otx2_add_flow(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc)
 				flow_cfg->dmacflt_max_flows)) {
 			netdev_warn(pfvf->netdev,
 				    "Can't insert the rule %d as max allowed dmac filters are %d\n",
-				    flow->location + flow_cfg->dmacflt_max_flows,
+				    flow->location +
+				    flow_cfg->dmacflt_max_flows,
 				    flow_cfg->dmacflt_max_flows);
 			err = -EINVAL;
 			if (new)
@@ -1107,7 +1110,8 @@ int otx2_add_flow(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc)
 		if (flow->location >= pfvf->flow_cfg->max_flows) {
 			netdev_warn(pfvf->netdev,
 				    "Can't insert non dmac ntuple rule at %d, allowed range %d-0\n",
-				    flow->location, flow_cfg->max_flows - 1);
+				    flow->location,
+				    flow_cfg->max_flows - 1);
 			err = -EINVAL;
 		} else {
 			err = otx2_add_flow_msg(pfvf, flow);
@@ -1115,7 +1119,7 @@ int otx2_add_flow(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc)
 	}
 
 	if (err) {
-		if (err == 0xFFFEULL)
+		if (err == MBOX_MSG_INVALID)
 			err = -EINVAL;
 		if (new)
 			kfree(flow);

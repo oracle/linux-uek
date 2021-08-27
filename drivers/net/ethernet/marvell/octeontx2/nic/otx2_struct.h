@@ -106,7 +106,7 @@ struct nix_rx_parse_s {
 	u64 lftype       : 4;
 	u64 lgtype       : 4;
 	u64 lhtype       : 4;
-	u64 pkt_lenm1    : 16;
+	u64 pkt_lenm1    : 16; /* W1 */
 	u64 l2m          : 1;
 	u64 l2b          : 1;
 	u64 l3m          : 1;
@@ -119,7 +119,7 @@ struct nix_rx_parse_s {
 	u64 rsvd_95_94   : 2;
 	u64 vtag0_tci    : 16;
 	u64 vtag1_tci    : 16;
-	u64 laflags      : 8;
+	u64 laflags      : 8; /* W2 */
 	u64 lbflags      : 8;
 	u64 lcflags      : 8;
 	u64 ldflags      : 8;
@@ -127,11 +127,11 @@ struct nix_rx_parse_s {
 	u64 lfflags      : 8;
 	u64 lgflags      : 8;
 	u64 lhflags      : 8;
-	u64 eoh_ptr      : 8;
+	u64 eoh_ptr      : 8; /* W3 */
 	u64 wqe_aura     : 20;
 	u64 pb_aura      : 20;
 	u64 match_id     : 16;
-	u64 laptr        : 8;
+	u64 laptr        : 8; /* W4 */
 	u64 lbptr        : 8;
 	u64 lcptr        : 8;
 	u64 ldptr        : 8;
@@ -139,18 +139,18 @@ struct nix_rx_parse_s {
 	u64 lfptr        : 8;
 	u64 lgptr        : 8;
 	u64 lhptr        : 8;
-	u64 vtag0_ptr    : 8;
+	u64 vtag0_ptr    : 8; /* W5 */
 	u64 vtag1_ptr    : 8;
 	u64 flow_key_alg : 5;
 	u64 rsvd_359_341 : 19;
 	u64 color	 : 2;
 	u64 rsvd_383_362 : 22;
-	u64 rsvd_447_384;		/* W6 */
+	u64 rsvd_447_384;     /* W6 */
 };
 
 /* NIX CQE RX scatter/gather subdescriptor structure */
 struct nix_rx_sg_s {
-	u64 seg_size   : 16;
+	u64 seg_size   : 16; /* W0 */
 	u64 seg2_size  : 16;
 	u64 seg3_size  : 16;
 	u64 segs       : 2;
@@ -180,27 +180,27 @@ struct nix_cqe_tx_s {
 
 /* NIX SQE header structure */
 struct nix_sqe_hdr_s {
-	u64 total		: 18;
+	u64 total		: 18; /* W0 */
 	u64 reserved_18		: 1;
 	u64 df			: 1;
 	u64 aura		: 20;
 	u64 sizem1		: 3;
 	u64 pnc			: 1;
 	u64 sq			: 20;
-	u64 ol3ptr		:8;
-	u64 ol4ptr		:8;
-	u64 il3ptr		:8;
-	u64 il4ptr		:8;
-	u64 ol3type		:4;
-	u64 ol4type		:4;
-	u64 il3type		:4;
-	u64 il4type		:4;
-	u64 sqe_id		:16;
+	u64 ol3ptr		: 8; /* W1 */
+	u64 ol4ptr		: 8;
+	u64 il3ptr		: 8;
+	u64 il4ptr		: 8;
+	u64 ol3type		: 4;
+	u64 ol4type		: 4;
+	u64 il3type		: 4;
+	u64 il4type		: 4;
+	u64 sqe_id		: 16;
 };
 
 /* NIX send extended header subdescriptor structure */
 struct nix_sqe_ext_s {
-	u64 lso_mps       : 14;
+	u64 lso_mps       : 14; /* W0 */
 	u64 lso           : 1;
 	u64 tstmp         : 1;
 	u64 lso_sb        : 8;
@@ -213,7 +213,7 @@ struct nix_sqe_ext_s {
 	u64 markform      : 7;
 	u64 mark_en       : 1;
 	u64 subdc         : 4;
-	u64 vlan0_ins_ptr : 8;
+	u64 vlan0_ins_ptr : 8; /* W1 */
 	u64 vlan0_ins_tci : 16;
 	u64 vlan1_ins_ptr : 8;
 	u64 vlan1_ins_tci : 16;
@@ -238,14 +238,14 @@ struct nix_sqe_sg_s {
 
 /* NIX send memory subdescriptor structure */
 struct nix_sqe_mem_s {
-	u64 offset        : 16;
+	u64 offset        : 16; /* W0 */
 	u64 rsvd_51_16    : 36;
 	u64 per_lso_seg   : 1;
 	u64 wmem          : 1;
 	u64 dsz           : 2;
 	u64 alg           : 4;
 	u64 subdc         : 4;
-	u64 addr;
+	u64 addr; /* W1 */
 };
 
 enum nix_cqerrint_e {
