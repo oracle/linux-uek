@@ -16,7 +16,6 @@ static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
 	struct ptp_req *req;
-	int err;
 
 	if (!ptp->nic)
 		return -ENODEV;
@@ -28,11 +27,7 @@ static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 	req->op = PTP_OP_ADJFINE;
 	req->scaled_ppm = scaled_ppm;
 
-	err = otx2_sync_mbox_msg(&ptp->nic->mbox);
-	if (err)
-		return err;
-
-	return 0;
+	return otx2_sync_mbox_msg(&ptp->nic->mbox);
 }
 
 static u64 ptp_cc_read(const struct cyclecounter *cc)
@@ -67,10 +62,11 @@ static int otx2_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
+	struct otx2_nic *pfvf = ptp->nic;
 
-	mutex_lock(&ptp->nic->mbox.lock);
+	mutex_lock(&pfvf->mbox.lock);
 	timecounter_adjtime(&ptp->time_counter, delta);
-	mutex_unlock(&ptp->nic->mbox.lock);
+	mutex_unlock(&pfvf->mbox.lock);
 
 	return 0;
 }
@@ -80,11 +76,12 @@ static int otx2_ptp_gettime(struct ptp_clock_info *ptp_info,
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
+	struct otx2_nic *pfvf = ptp->nic;
 	u64 nsec;
 
-	mutex_lock(&ptp->nic->mbox.lock);
+	mutex_lock(&pfvf->mbox.lock);
 	nsec = timecounter_read(&ptp->time_counter);
-	mutex_unlock(&ptp->nic->mbox.lock);
+	mutex_unlock(&pfvf->mbox.lock);
 
 	*ts = ns_to_timespec64(nsec);
 
@@ -96,13 +93,14 @@ static int otx2_ptp_settime(struct ptp_clock_info *ptp_info,
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
+	struct otx2_nic *pfvf = ptp->nic;
 	u64 nsec;
 
 	nsec = timespec64_to_ns(ts);
 
-	mutex_lock(&ptp->nic->mbox.lock);
+	mutex_lock(&pfvf->mbox.lock);
 	timecounter_init(&ptp->time_counter, &ptp->cycle_counter, nsec);
-	mutex_unlock(&ptp->nic->mbox.lock);
+	mutex_unlock(&pfvf->mbox.lock);
 
 	return 0;
 }
@@ -174,8 +172,9 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 	};
 
 	ptp_ptr->ptp_clock = ptp_clock_register(&ptp_ptr->ptp_info, pfvf->dev);
-	if (IS_ERR(ptp_ptr->ptp_clock)) {
-		err = PTR_ERR(ptp_ptr->ptp_clock);
+	if (IS_ERR_OR_NULL(ptp_ptr->ptp_clock)) {
+		err = ptp_ptr->ptp_clock ?
+		      PTR_ERR(ptp_ptr->ptp_clock) : -ENODEV;
 		kfree(ptp_ptr);
 		goto error;
 	}
