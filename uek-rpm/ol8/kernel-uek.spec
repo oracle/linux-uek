@@ -1778,19 +1778,19 @@ fi\
 
 #
 # This macro defines a %%post script for a kernel package and its devel package.
-#	%%kernel_variant_post [-o][-u][-v <subpackage>] [-r <replace>]
+#	%%kernel_variant_post [-o][-v <subpackage>] [-r <replace>]
 # -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
-%define kernel_variant_post(ouv:r:) \
-%{expand:%%kernel_devel_post %{-o:-o} %{!-u:%{?-v*}}}\
-%{expand:%%kernel_variant_posttrans %{-o:-o} %{!-u:%{?-v*}}}\
-%{expand:%%post -n kernel%{?variant}%{!-u:%{!-o:-}%{?-v*}}}\
+%define kernel_variant_post(ov:r:) \
+%{expand:%%kernel_devel_post %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%post -n kernel%{?variant}%{?-v:%{!-o:-}%{?-v*}}}\
 %{-r:\
 if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ] &&\
    [ $1 -eq 1 ]; then\
-  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
+  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
 %{nil}
 
@@ -1877,7 +1877,7 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %kernel_variant_postun
-%kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
+%kernel_variant_post -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 
 %kernel_variant_pre smp
 %kernel_variant_preun smp
