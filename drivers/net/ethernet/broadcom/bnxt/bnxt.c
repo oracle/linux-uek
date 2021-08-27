@@ -1640,6 +1640,7 @@ static inline struct sk_buff *bnxt_tpa_end(struct bnxt *bp,
 		skb = bnxt_copy_skb(bnapi, data_ptr, len, mapping);
 		if (!skb) {
 			bnxt_abort_tpa(cpr, idx, agg_bufs);
+			cpr->sw_stats.rx.rx_oom_discards += 1;
 			return NULL;
 		}
 	} else {
@@ -1649,6 +1650,7 @@ static inline struct sk_buff *bnxt_tpa_end(struct bnxt *bp,
 		new_data = __bnxt_alloc_rx_data(bp, &new_mapping, GFP_ATOMIC);
 		if (!new_data) {
 			bnxt_abort_tpa(cpr, idx, agg_bufs);
+			cpr->sw_stats.rx.rx_oom_discards += 1;
 			return NULL;
 		}
 
@@ -1664,6 +1666,7 @@ static inline struct sk_buff *bnxt_tpa_end(struct bnxt *bp,
 		if (!skb) {
 			kfree(data);
 			bnxt_abort_tpa(cpr, idx, agg_bufs);
+			cpr->sw_stats.rx.rx_oom_discards += 1;
 			return NULL;
 		}
 		skb_reserve(skb, bp->rx_offset);
@@ -1674,6 +1677,7 @@ static inline struct sk_buff *bnxt_tpa_end(struct bnxt *bp,
 		skb = bnxt_rx_pages(bp, cpr, skb, idx, agg_bufs, true);
 		if (!skb) {
 			/* Page reuse already handled by bnxt_rx_pages(). */
+			cpr->sw_stats.rx.rx_oom_discards += 1;
 			return NULL;
 		}
 	}
@@ -1877,6 +1881,7 @@ static int bnxt_rx_pkt(struct bnxt *bp, struct bnxt_cp_ring_info *cpr,
 			if (agg_bufs)
 				bnxt_reuse_rx_agg_bufs(cpr, cp_cons, 0,
 						       agg_bufs, false);
+			cpr->sw_stats.rx.rx_oom_discards += 1;
 			rc = -ENOMEM;
 			goto next_rx;
 		}
@@ -1890,6 +1895,7 @@ static int bnxt_rx_pkt(struct bnxt *bp, struct bnxt_cp_ring_info *cpr,
 		skb = bp->rx_skb_func(bp, rxr, cons, data, data_ptr, dma_addr,
 				      payload | len);
 		if (!skb) {
+			cpr->sw_stats.rx.rx_oom_discards += 1;
 			rc = -ENOMEM;
 			goto next_rx;
 		}
@@ -1898,6 +1904,7 @@ static int bnxt_rx_pkt(struct bnxt *bp, struct bnxt_cp_ring_info *cpr,
 	if (agg_bufs) {
 		skb = bnxt_rx_pages(bp, cpr, skb, cp_cons, agg_bufs, false);
 		if (!skb) {
+			cpr->sw_stats.rx.rx_oom_discards += 1;
 			rc = -ENOMEM;
 			goto next_rx;
 		}
@@ -10417,7 +10424,9 @@ static void bnxt_get_ring_stats(struct bnxt *bp,
 
 		stats->tx_dropped += BNXT_GET_RING_STATS64(sw, tx_error_pkts);
 
-		stats->rx_dropped += cpr->sw_stats.rx.rx_netpoll_discards;
+		stats->rx_dropped +=
+			cpr->sw_stats.rx.rx_netpoll_discards +
+			cpr->sw_stats.rx.rx_oom_discards;
 	}
 }
 
