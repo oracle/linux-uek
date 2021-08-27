@@ -18,6 +18,7 @@
 	__cpuhp_remove_state
 	__cpuhp_setup_state
 	__d_drop
+	__dev_kfree_skb_any
 	__elv_add_request
 	__fdget
 	__fentry__
@@ -33,11 +34,15 @@
 	__kmalloc_node
 	__list_add_valid
 	__list_del_entry_valid
+	__local_bh_enable_ip
 	__lock_page
 	__mark_inode_dirty
 	__module_get
 	__msecs_to_jiffies
 	__mutex_init
+	__napi_schedule
+	__napi_schedule_irqoff
+	__netdev_alloc_skb
 	__netlink_kernel_create
 	__nlmsg_put
 	__pagevec_lru_add
@@ -45,6 +50,7 @@
 	__pci_register_driver
 	__per_cpu_offset
 	__preempt_count
+	__pskb_pull_tail
 	__put_cred
 	__put_devmap_managed_page
 	__put_page
@@ -55,6 +61,7 @@
 	__request_module
 	__request_region
 	__set_page_dirty_nobuffers
+	__skb_flow_dissect
 	__stack_chk_fail
 	__tasklet_hi_schedule
 	__test_set_page_writeback
@@ -98,7 +105,9 @@
 	add_to_page_cache_locked
 	address_space_init_once
 	alloc_chrdev_region
+	alloc_cpu_rmap
 	alloc_disk
+	alloc_etherdev_mqs
 	alloc_file
 	alloc_pages_current
 	arch_dma_alloc_attrs
@@ -121,6 +130,7 @@
 	bioset_create
 	bioset_free
 	bitmap_find_free_region
+	bitmap_find_next_zero_area_off
 	blk_alloc_queue
 	blk_cleanup_queue
 	blk_complete_request
@@ -168,8 +178,12 @@
 	blkdev_issue_discard
 	blkdev_put
 	bsg_job_done
+	bus_register
+	bus_unregister
+	call_netdevice_notifiers
 	cancel_delayed_work
 	cancel_delayed_work_sync
+	cancel_work_sync
 	capable
 	cdev_add
 	cdev_del
@@ -181,12 +195,15 @@
 	clear_page_rep
 	complete
 	complete_and_exit
+	consume_skb
 	copy_user_enhanced_fast_string
 	copy_user_generic_string
 	copy_user_generic_unrolled
 	cpu_bit_bitmap
 	cpu_number
+	cpumask_local_spread
 	cpumask_next
+	csum_ipv6_magic
 	current_kernel_time64
 	current_task
 	d_add
@@ -211,10 +228,15 @@
 	delayed_work_timer_fn
 	dentry_open
 	destroy_workqueue
+	dev_close
 	dev_driver_string
 	dev_err
+	dev_open
+	dev_set_name
 	dev_warn
 	device_add_disk
+	device_register
+	device_unregister
 	devm_kmalloc
 	devmap_managed_key
 	dget_parent
@@ -314,8 +336,13 @@
 	drop_nlink
 	drop_super
 	dump_stack
+	elfcorehdr_addr
 	emergency_restart
 	end_page_writeback
+	eth_type_trans
+	eth_validate_addr
+	ethtool_op_get_link
+	event_triggers_call
 	ex_handler_default
 	fasync_helper
 	fb_deferred_io_init
@@ -337,6 +364,9 @@
 	find_vma
 	find_vpid
 	finish_wait
+	flow_get_u32_dst
+	flow_get_u32_src
+	flow_keys_dissector
 	flush_signals
 	flush_work
 	flush_workqueue
@@ -345,6 +375,8 @@
 	free_buffer_head
 	free_cpumask_var
 	free_irq
+	free_irq_cpu_rmap
+	free_netdev
 	free_pages
 	freeze_bdev
 	from_kgid
@@ -419,6 +451,7 @@
 	iov_iter_get_pages
 	iov_iter_init
 	iput
+	irq_cpu_rmap_add
 	irq_set_affinity_hint
 	iterate_dir
 	iunique
@@ -495,11 +528,31 @@
 	msleep_interruptible
 	mutex_unlock
 	names_cachep
+	napi_complete_done
+	napi_consume_skb
+	napi_disable
+	napi_gro_receive
+	napi_schedule_prep
+	net_ratelimit
+	netdev_err
+	netdev_info
+	netdev_rss_key_fill
+	netdev_warn
+	netif_carrier_off
+	netif_carrier_on
+	netif_napi_add
+	netif_napi_del
+	netif_receive_skb
+	netif_set_real_num_rx_queues
+	netif_set_real_num_tx_queues
+	netif_set_xps_queue
+	netif_tx_wake_queue
 	netlink_kernel_release
 	netlink_unicast
 	new_inode
 	nf_register_net_hook
 	nf_unregister_net_hook
+	nla_put
 	no_llseek
 	nobh_truncate_page
 	nobh_write_begin
@@ -520,16 +573,22 @@
 	param_ops_charp
 	param_ops_int
 	param_ops_string
+	param_ops_uint
 	param_ops_ulong
 	path_get
 	path_put
 	pci_choose_state
 	pci_disable_device
 	pci_disable_msix
+	pci_disable_sriov
 	pci_enable_device
+	pci_enable_device_mem
 	pci_enable_msix_range
+	pci_enable_sriov
+	pci_find_ext_capability
 	pci_iomap_range
 	pci_iounmap
+	pci_read_config_word
 	pci_release_regions
 	pci_request_regions
 	pci_restore_state
@@ -538,6 +597,8 @@
 	pci_set_power_state
 	pci_unregister_driver
 	pcie_capability_clear_and_set_word
+	perf_trace_buf_alloc
+	perf_trace_run_bpf_submit
 	phys_base
 	pid_task
 	posix_lock_file
@@ -546,10 +607,12 @@
 	prepare_to_wait
 	prepare_to_wait_event
 	prepare_to_wait_exclusive
+	print_hex_dump
 	printk
 	proc_create
 	proc_create_data
 	proc_mkdir
+	put_device
 	put_disk
 	put_pid
 	pv_irq_ops
@@ -567,6 +630,7 @@
 	register_blkdev
 	register_chrdev_region
 	register_filesystem
+	register_netdev
 	register_reboot_notifier
 	release_pages
 	release_sock
@@ -576,7 +640,11 @@
 	reset_devices
 	revalidate_disk
 	revert_creds
+	rps_may_expire_flow
 	rtc_time64_to_tm
+	rtnl_is_locked
+	rtnl_lock
+	rtnl_unlock
 	sas_attach_transport
 	sas_end_device_alloc
 	sas_expander_alloc
@@ -596,6 +664,7 @@
 	schedule
 	schedule_hrtimeout_range
 	schedule_timeout
+	schedule_timeout_uninterruptible
 	scnprintf
 	scsi_add_device
 	scsi_add_host_with_dma
@@ -645,6 +714,10 @@
 	simple_write_begin
 	single_open
 	single_release
+	skb_clone_tx_timestamp
+	skb_copy_bits
+	skb_put
+	skb_tstamp_tx
 	sme_active
 	sme_me_mask
 	smp_call_function
@@ -675,15 +748,27 @@
 	strstr
 	submit_bio
 	super_setup_bdi
+	synchronize_irq
 	sys_close
 	sys_tz
 	system_wq
 	tag_pages_for_writeback
 	tasklet_init
 	thaw_bdev
+	this_cpu_off
 	time64_to_tm
 	totalram_pages
 	touch_atime
+	trace_define_field
+	trace_event_buffer_commit
+	trace_event_buffer_reserve
+	trace_event_ignore_this_pid
+	trace_event_raw_init
+	trace_event_reg
+	trace_handle_return
+	trace_print_hex_seq
+	trace_raw_output_prep
+	trace_seq_printf
 	truncate_inode_pages
 	truncate_inode_pages_range
 	truncate_pagecache
@@ -722,10 +807,12 @@
 	unregister_blkdev
 	unregister_chrdev_region
 	unregister_filesystem
+	unregister_netdev
 	unregister_reboot_notifier
 	up
 	up_read
 	up_write
+	usleep_range
 	utf32_to_utf8
 	utf8_to_utf32
 	vfree
