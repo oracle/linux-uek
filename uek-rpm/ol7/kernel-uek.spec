@@ -1926,8 +1926,8 @@ fi\
 #
 %define kernel_variant_posttrans(o) \
 %{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
-%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
-%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?variant}%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?variant}%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
@@ -1936,29 +1936,29 @@ fi\
 
 #
 # This macro defines a %%post script for a kernel package and its devel package.
-#	%%kernel_variant_post [-o][-u][-v <subpackage>] [-r <replace>]
+#	%%kernel_variant_post [-o][-v <subpackage>] [-r <replace>]
 # -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
 %define kernel_variant_post(ouv:r:) \
-%{expand:%%kernel_devel_post %{-o:-o} %{!-u:%{?-v*}}}\
-%{expand:%%kernel_variant_posttrans %{-o:-o} %{!-u:%{?-v*}}}\
-%{expand:%%post -n kernel%{?variant}%{!-u:%{!-o:-}%{?-v*}}}\
+%{expand:%%kernel_devel_post %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%post -n kernel%{?variant}%{?-v:%{!-o:-}%{?-v*}}}\
 %{-r:\
 if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ] &&\
    [ $1 -eq 1 ]; then\
-  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
+  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
 [ -f /etc/default/grub ] && . /etc/default/grub\
-DIST_DTFILE="/boot/dtb-%{KVERREL}%{!-u:%{?-v:.%{-v*}}}/$GRUB_DEFAULT_DTB"\
+DIST_DTFILE="/boot/dtb-%{KVERREL}%{?-v:%{?-v:.%{-v*}}}/$GRUB_DEFAULT_DTB"\
 if [ -f "$DIST_DTFILE" ]; then\
-    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --dracut --depmod --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?variant}%{?-v:-%{-v*}} --mkinitrd --dracut --depmod --install %{KVERREL}%{?-v:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
 else\
-    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --dracut --depmod --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{?variant}%{?-v:-%{-v*}} --mkinitrd --dracut --depmod --install %{KVERREL}%{?-v:%{?-v:.%{-v*}}} || exit $?\
 fi\
 %{nil}
 
@@ -2045,7 +2045,7 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %kernel_variant_postun
-%kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
+%kernel_variant_post -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 
 %kernel_variant_pre smp
 %kernel_variant_preun smp
