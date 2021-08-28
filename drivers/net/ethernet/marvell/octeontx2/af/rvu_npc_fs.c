@@ -126,11 +126,8 @@ static bool npc_is_field_present(struct rvu *rvu, enum key_fields type, u8 intf)
 static bool npc_is_same(struct npc_key_field *input,
 			struct npc_key_field *field)
 {
-	int ret;
-
-	ret = memcmp(&input->layer_mdata, &field->layer_mdata,
-		     sizeof(struct npc_layer_mdata));
-	return ret == 0;
+	return memcmp(&input->layer_mdata, &field->layer_mdata,
+		     sizeof(struct npc_layer_mdata)) == 0;
 }
 
 static void npc_set_layer_mdata(struct npc_mcam *mcam, enum key_fields type,
@@ -421,8 +418,8 @@ do {									       \
 		if ((hstart) >= hdr &&					       \
 		    ((hstart) + (hlen)) <= (hdr + nr_bytes)) {	               \
 			bit_offset = (hdr + nr_bytes - (hstart) - (hlen)) * 8; \
-			npc_set_layer_mdata(mcam, name, cfg, lid, lt, intf);   \
-			npc_set_kw_masks(mcam, name, (hlen) * 8,	       \
+			npc_set_layer_mdata(mcam, (name), cfg, lid, lt, intf); \
+			npc_set_kw_masks(mcam, (name), (hlen) * 8,	       \
 					 start_kwi, offset + bit_offset, intf);\
 		}							       \
 	}								       \
@@ -999,7 +996,7 @@ static void npc_update_tx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	if (is_pffunc_af(req->hdr.pcifunc))
 		mask = 0;
 
-	npc_update_entry(rvu, NPC_PF_FUNC, entry, htons(target),
+	npc_update_entry(rvu, NPC_PF_FUNC, entry, (__force u16)htons(target),
 			 0, mask, 0, NIX_INTF_TX);
 
 	*(u64 *)&action = 0x00;
@@ -1023,10 +1020,10 @@ static void npc_update_tx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 }
 
 static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
-			       int nixlf, struct rvu_pfvf *pfvf,
-			       struct npc_install_flow_req *req,
-			       struct npc_install_flow_rsp *rsp, bool enable,
-			       bool pf_set_vfs_mac)
+			    int nixlf, struct rvu_pfvf *pfvf,
+			    struct npc_install_flow_req *req,
+			    struct npc_install_flow_rsp *rsp, bool enable,
+			    bool pf_set_vfs_mac)
 {
 	struct rvu_npc_mcam_rule *def_ucast_rule = pfvf->def_ucast_rule;
 	u64 features, installed_features, missing_features = 0;
@@ -1069,7 +1066,8 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 					def_ucast_rule->features;
 		if (missing_features)
 			npc_update_flow(rvu, entry, missing_features,
-					&def_ucast_rule->packet, &def_ucast_rule->mask,
+					&def_ucast_rule->packet,
+					&def_ucast_rule->mask,
 					&dummy, req->intf);
 		installed_features = req->features | missing_features;
 	}
@@ -1168,9 +1166,9 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 {
 	bool from_vf = !!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK);
 	struct rvu_switch *rswitch = &rvu->rswitch;
-	bool pf_set_vfs_mac = false;
 	int blkaddr, nixlf, err;
 	struct rvu_pfvf *pfvf;
+	bool pf_set_vfs_mac = false;
 	bool enable = true;
 	u16 target;
 
@@ -1219,8 +1217,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 		set_bit(PF_SET_VF_CFG, &pfvf->flags);
 
 	/* update req destination mac addr */
-	if ((req->features & BIT_ULL(NPC_DMAC)) &&
-	    req->intf == NIX_INTF_RX &&
+	if ((req->features & BIT_ULL(NPC_DMAC)) && is_npc_intf_rx(req->intf) &&
 	    is_zero_ether_addr(req->packet.dmac)) {
 		ether_addr_copy(req->packet.dmac, pfvf->mac_addr);
 		eth_broadcast_addr((u8 *)&req->mask.dmac);
@@ -1341,8 +1338,7 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 	ether_addr_copy(rule->packet.dmac, pfvf->mac_addr);
 
 	npc_read_mcam_entry(rvu, mcam, npcblkaddr, rule->entry,
-			    entry, &intf,
-			    &enable);
+			    entry, &intf,  &enable);
 
 	npc_update_entry(rvu, NPC_DMAC, entry,
 			 ether_addr_to_u64(pfvf->mac_addr), 0,
@@ -1362,6 +1358,7 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, target);
+	struct rvu_npc_mcam_rule *def_ucast_rule;
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule *rule;
 	int blkaddr, bank, index;
@@ -1370,6 +1367,8 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return;
+
+	def_ucast_rule = pfvf->def_ucast_rule;
 
 	mutex_lock(&mcam->lock);
 	list_for_each_entry(rule, &mcam->mcam_rules, list) {
@@ -1386,11 +1385,11 @@ void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
 				npc_update_dmac_value(rvu, blkaddr, rule, pfvf);
 
 			if (rule->rx_action.op == NIX_RX_ACTION_DEFAULT) {
-				if (!pfvf->def_ucast_rule)
+				if (!def_ucast_rule)
 					continue;
 				/* Use default unicast entry action */
-				rule->rx_action = pfvf->def_ucast_rule->rx_action;
-				def_action = *(u64 *)&pfvf->def_ucast_rule->rx_action;
+				rule->rx_action = def_ucast_rule->rx_action;
+				def_action = *(u64 *)&def_ucast_rule->rx_action;
 				bank = npc_get_bank(mcam, rule->entry);
 				rvu_write64(rvu, blkaddr,
 					    NPC_AF_MCAMEX_BANKX_ACTION
