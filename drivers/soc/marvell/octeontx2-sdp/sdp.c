@@ -1323,8 +1323,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	sdp_gbl_ctl |= (1 << 2); /* BPFLR_D disable clearing BP in FLR */
 	writeq(sdp_gbl_ctl, sdp->sdp_base + SDPX_GBL_CONTROL);
 
-	sdp->sdp_host_handshake = alloc_workqueue("sdp_epmode_fw_hs",
-						     WQ_MEM_RECLAIM, 0);
+	sdp->sdp_host_handshake = alloc_workqueue("sdp_epmode_fw_hs", 0, 0);
 	INIT_DELAYED_WORK(&sdp->sdp_work, sdp_host_handshake_fn);
 	queue_delayed_work(sdp->sdp_host_handshake, &sdp->sdp_work, 0);
 
