@@ -1542,12 +1542,6 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 	if (sdp->vf_info == NULL)
 		return -ENOMEM;
 
-	err = pci_enable_sriov(pdev, num_vfs);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to enable to SRIOV VFs: %d\n", err);
-		goto err_enable_sriov;
-	}
-
 	sdp->num_vfs = num_vfs;
 
 	/* Map PF-VF mailbox memory */
@@ -1608,8 +1602,18 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 
 	enable_vf_mbox_int(pdev);
 	enable_vf_flr_int(pdev);
+
+	err = pci_enable_sriov(pdev, num_vfs);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to enable to SRIOV VFs: %d\n", err);
+		goto err_enable_sriov;
+	}
+
 	return num_vfs;
 
+err_enable_sriov:
+	disable_vf_flr_int(pdev);
+	disable_vf_mbox_int(pdev);
 err_workqueue_alloc:
 	destroy_workqueue(sdp->pfvf_mbox_wq);
 	if (sdp->pfvf_mbox_up.dev != NULL)
@@ -1620,8 +1624,6 @@ err_mbox_up_init:
 err_mbox_init:
 	iounmap(sdp->pfvf_mbx_base);
 err_mbox_mem_map:
-	pci_disable_sriov(pdev);
-err_enable_sriov:
 	kfree(sdp->vf_info);
 
 	return err;
