@@ -154,21 +154,20 @@ void __init call_function_init(void)
 
 #ifdef CONFIG_CSD_LOCK_WAIT_DEBUG
 
-static DEFINE_STATIC_KEY_FALSE(csdlock_debug_enabled);
+static DEFINE_STATIC_KEY_TRUE(csdlock_debug_enabled);
 static DEFINE_STATIC_KEY_FALSE(csdlock_debug_extended);
 
 static int __init csdlock_debug(char *str)
 {
-	unsigned int val = 0;
+	unsigned int val = 1;
 
-	if (str && !strcmp(str, "ext")) {
-		val = 1;
+	if (str && !strcmp(str, "ext"))
 		static_branch_enable(&csdlock_debug_extended);
-	} else
+	else
 		get_option(&str, &val);
 
-	if (val)
-		static_branch_enable(&csdlock_debug_enabled);
+	if (val == 0)
+		static_branch_disable(&csdlock_debug_enabled);
 
 	return 0;
 }
@@ -224,7 +223,7 @@ static void __csd_lock_record(call_single_data_t *csd)
 
 static __always_inline void csd_lock_record(call_single_data_t *csd)
 {
-	if (static_branch_unlikely(&csdlock_debug_enabled))
+	if (static_branch_likely(&csdlock_debug_enabled))
 		__csd_lock_record(csd);
 }
 
@@ -391,7 +390,7 @@ static void __csd_lock_wait(call_single_data_t *csd)
 
 static __always_inline void csd_lock_wait(call_single_data_t *csd)
 {
-	if (static_branch_unlikely(&csdlock_debug_enabled)) {
+	if (static_branch_likely(&csdlock_debug_enabled)) {
 		__csd_lock_wait(csd);
 		return;
 	}
