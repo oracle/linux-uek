@@ -970,7 +970,7 @@ static int rvu_nix_blk_aq_enq_inst(struct rvu *rvu, struct nix_hw *nix_hw,
 		else if (req->ctype == NIX_AQ_CTYPE_BANDPROF)
 			memcpy(mask, &req->prof_mask,
 			       sizeof(struct nix_bandprof_s));
-		/* Fall through */
+		fallthrough;
 	case NIX_AQ_INSTOP_INIT:
 		if (req->ctype == NIX_AQ_CTYPE_RQ)
 			memcpy(ctx, &req->rq, sizeof(struct nix_rq_ctx_s));
@@ -3332,8 +3332,8 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 	struct nix_rx_flowkey_alg *field;
 	struct nix_rx_flowkey_alg tmp;
 	u32 key_type, valid_key;
+	int l4_key_offset = 0;
 	u32 l3_l4_src_dst;
-	int l4_key_offset;
 
 	if (!alg)
 		return -EINVAL;
@@ -4974,9 +4974,10 @@ bool rvu_nix_is_ptp_tx_enabled(struct rvu *rvu, u16 pcifunc)
 /* NIX ingress policers or bandwidth profiles APIs */
 static void nix_config_rx_pkt_policer_precolor(struct rvu *rvu, int blkaddr)
 {
-	const struct npc_lt_def_cfg *ltdefs;
+	struct npc_lt_def_cfg defs, *ltdefs;
 
-	ltdefs = rvu->kpu.lt_def;
+	ltdefs = &defs;
+	memcpy(ltdefs, rvu->kpu.lt_def, sizeof(struct npc_lt_def_cfg));
 
 	/* Extract PCP and DEI fields from outer VLAN from byte offset
 	 * 2 from the start of LB_PTR (ie TAG).
