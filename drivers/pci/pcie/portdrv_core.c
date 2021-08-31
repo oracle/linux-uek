@@ -221,7 +221,16 @@ static int get_port_device_capability(struct pci_dev *dev)
 	}
 
 #ifdef CONFIG_PCIEAER
+	/*
+	 * Some AER interrupt capability registers may not be present on
+	 * non Root ports. Since there is no way to check presence of
+	 * ROOT_ERR_COMMAND and ROOT_ERR_STATUS registers. Allow AER
+	 * service only on root ports. Refer PCIe rev5.0 spec v1.0 7.8.4.
+	 * Otherwise AER interrupt message number is read incorrectly
+	 * causing MSIX vector registration to fail and fallback to legacy.
+	 */
 	if (dev->aer_cap && pci_aer_available() &&
+	    pci_pcie_type(dev) == PCI_EXP_TYPE_ROOT_PORT &&
 	    (pcie_ports_native || host->native_aer)) {
 		services |= PCIE_PORT_SERVICE_AER;
 
