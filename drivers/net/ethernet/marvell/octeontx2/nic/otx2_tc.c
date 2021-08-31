@@ -205,13 +205,17 @@ static int otx2_tc_egress_matchall_install(struct otx2_nic *nic,
 
 	if (nic->flags & OTX2_FLAG_TC_MATCHALL_EGRESS_ENABLED) {
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Only one Egress MATCHALL ratelimitter can be offloaded");
+				   "Only one Egress MATCHALL ratelimiter can be offloaded");
 		return -ENOMEM;
 	}
 
 	entry = &cls->rule->action.entries[0];
 	switch (entry->id) {
 	case FLOW_ACTION_POLICE:
+		if (entry->police.rate_pkt_ps) {
+			NL_SET_ERR_MSG_MOD(extack, "QoS offload not support packets per second");
+			return -EOPNOTSUPP;
+		}
 		/* Convert bytes per second to Mbps */
 		rate = entry->police.rate_bytes_ps * 8;
 		rate = max_t(u32, rate / 1000000, 1);
@@ -298,10 +302,10 @@ free_leaf:
 }
 
 static int otx2_tc_parse_actions(struct otx2_nic *nic,
-				 struct otx2_tc_flow *node,
-				 struct flow_cls_offload *f,
 				 struct flow_action *flow_action,
-				 struct npc_install_flow_req *req)
+				 struct npc_install_flow_req *req,
+				 struct flow_cls_offload *f,
+				 struct otx2_tc_flow *node)
 {
 	struct netlink_ext_ack *extack = f->common.extack;
 	struct flow_action_entry *act;
@@ -309,7 +313,7 @@ static int otx2_tc_parse_actions(struct otx2_nic *nic,
 	struct otx2_nic *priv;
 	u32 burst, mark = 0;
 	u8 nr_police = 0;
-	bool pps;
+	bool pps = false;
 	u64 rate;
 	int i;
 
@@ -383,6 +387,7 @@ static int otx2_tc_parse_actions(struct otx2_nic *nic,
 	if (nr_police)
 		return otx2_tc_act_set_police(nic, node, f, rate, burst,
 					      mark, req, pps);
+
 	return 0;
 }
 
@@ -583,7 +588,7 @@ static int otx2_tc_prepare_flow(struct otx2_nic *nic, struct otx2_tc_flow *node,
 			req->features |= BIT_ULL(NPC_SPORT_SCTP);
 	}
 
-	return otx2_tc_parse_actions(nic, node, f, &rule->action, req);
+	return otx2_tc_parse_actions(nic, &rule->action, req, f, node);
 }
 
 static int otx2_del_mcam_flow_entry(struct otx2_nic *nic, u16 entry)
@@ -687,8 +692,9 @@ static int otx2_tc_add_flow(struct otx2_nic *nic,
 	new_node = kzalloc(sizeof(*new_node), GFP_KERNEL);
 	if (!new_node)
 		return -ENOMEM;
-
+	spin_lock_init(&new_node->lock);
 	new_node->cookie = tc_flow_cmd->cookie;
+
 	memset(&dummy, 0, sizeof(struct npc_install_flow_req));
 
 	rc = otx2_tc_prepare_flow(nic, new_node, tc_flow_cmd, &dummy);
@@ -705,7 +711,6 @@ static int otx2_tc_add_flow(struct otx2_nic *nic,
 		otx2_tc_del_flow(nic, tc_flow_cmd);
 
 	mutex_lock(&nic->mbox.lock);
-
 	req = otx2_mbox_alloc_msg_npc_install_flow(&nic->mbox);
 	if (!req) {
 		mutex_unlock(&nic->mbox.lock);

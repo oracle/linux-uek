@@ -587,14 +587,6 @@ static inline void otx2_sync_mbox_bbuf(struct otx2_mbox *mbox, int devid)
 /* With the absence of API for 128-bit IO memory access for arm64,
  * implement required operations at place.
  */
-#ifdef __BIG_ENDIAN
-#define otx2_high(high, low)   (low)
-#define otx2_low(high, low)    (high)
-#else
-#define otx2_high(high, low)   (high)
-#define otx2_low(high, low)    (low)
-#endif
-
 #if defined(CONFIG_ARM64)
 static inline void otx2_write128(u64 lo, u64 hi, void __iomem *addr)
 {
@@ -616,7 +608,7 @@ static inline u64 otx2_atomic64_add(u64 incr, u64 *ptr)
 
 #else
 #define otx2_write128(lo, hi, addr)		writeq((hi) | (lo), addr)
-#define otx2_atomic64_add(incr, ptr)		({ *(ptr) += incr; })
+#define otx2_atomic64_add(incr, ptr)		({ *ptr += incr; })
 #endif
 
 static inline void __cn10k_aura_freeptr(struct otx2_nic *pfvf, u64 aura,

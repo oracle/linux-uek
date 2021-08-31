@@ -856,6 +856,7 @@ int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
 {
 	int i;
 
+	/* Copy the link info sent by AF */
 	pf->linfo = msg->link_info;
 
 	/* notify VFs about link event */
@@ -2168,7 +2169,7 @@ static int otx2_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 	struct otx2_nic *pf = netdev_priv(netdev);
 	struct pci_dev *pdev = pf->pdev;
 	struct otx2_vf_config *config;
-	int ret = 0;
+	int ret;
 
 	if (!netif_running(netdev))
 		return -EAGAIN;
@@ -2673,13 +2674,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return err;
 	}
 
-	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(48));
-	if (err) {
-		dev_err(dev, "Unable to set DMA mask\n");
-		goto err_release_regions;
-	}
-
-	err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(48));
+	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48));
 	if (err) {
 		dev_err(dev, "DMA mask config failed, abort\n");
 		goto err_release_regions;
@@ -2778,11 +2773,11 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_detach_rsrc;
 
-	/* Don't check for error.  Proceed without ptp */
-	otx2_ptp_init(pf);
-
 	/* Assign default mac address */
 	otx2_get_mac_from_af(netdev);
+
+	/* Don't check for error.  Proceed without ptp */
+	otx2_ptp_init(pf);
 
 	/* NPA's pool is a stack to which SW frees buffer pointers via Aura.
 	 * HW allocates buffer pointer from stack and uses it for DMA'ing

@@ -62,7 +62,7 @@ int otx2_dmacflt_add(struct otx2_nic *pf, const u8 *mac, u8 bit_pos)
 	/* Store dmacindex returned by CGX/RPM driver which will
 	 * be used for macaddr update/remove
 	 */
-	dmacindex =  &pf->flow_cfg->bmap_to_dmacindex[bit_pos];
+	dmacindex = &pf->flow_cfg->bmap_to_dmacindex[bit_pos];
 
 	if (ether_addr_equal(mac, pf->netdev->dev_addr))
 		return otx2_dmacflt_add_pfmac(pf);
