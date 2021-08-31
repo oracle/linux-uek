@@ -17,9 +17,7 @@
 #include "otx2_ptp.h"
 
 #define DRV_NAME	"octeontx2-nicpf"
-#define DRV_VERSION	"1.0"
 #define DRV_VF_NAME	"octeontx2-nicvf"
-#define DRV_VF_VERSION	"1.0"
 
 static const char otx2_priv_flags_strings[][ETH_GSTRING_LEN] = {
 	"pam4",
@@ -92,7 +90,6 @@ static void otx2_get_drvinfo(struct net_device *netdev,
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 
 	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->version, DRV_VERSION, sizeof(info->version));
 	strlcpy(info->bus_info, pci_name(pfvf->pdev), sizeof(info->bus_info));
 }
 
@@ -763,6 +760,7 @@ static int otx2_rss_ctx_delete(struct otx2_nic *pfvf, int ctx_id)
 	otx2_rss_ctx_flow_del(pfvf, ctx_id);
 	kfree(rss->rss_ctx[ctx_id]);
 	rss->rss_ctx[ctx_id] = NULL;
+
 	return 0;
 }
 
@@ -810,6 +808,7 @@ static int otx2_set_rxfh_context(struct net_device *dev, const u32 *indir,
 		netdev_err(dev, "RSS is disabled, cannot change settings\n");
 		return -EIO;
 	}
+
 	if (hkey) {
 		memcpy(rss->key, hkey, sizeof(rss->key));
 		otx2_set_rss_key(pfvf);
@@ -886,6 +885,30 @@ static int otx2_set_rxfh(struct net_device *dev, const u32 *indir,
 	u32 rss_context = DEFAULT_RSS_CONTEXT_GROUP;
 
 	return otx2_set_rxfh_context(dev, indir, hkey, hfunc, &rss_context, 0);
+}
+
+static u32 otx2_get_msglevel(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	return pfvf->msg_enable;
+}
+
+static void otx2_set_msglevel(struct net_device *netdev, u32 val)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	pfvf->msg_enable = val;
+}
+
+static u32 otx2_get_link(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	/* LBK link is internal and always UP */
+	if (is_otx2_lbkvf(pfvf->pdev))
+		return 1;
+	return pfvf->linfo.link_up;
 }
 
 static int otx2_get_ts_info(struct net_device *netdev,
@@ -1015,20 +1038,6 @@ static int otx2_set_fecparam(struct net_device *netdev,
 end:
 	mutex_unlock(&mbox->lock);
 	return err;
-}
-
-static u32 otx2_get_msglevel(struct net_device *netdev)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-
-	return pfvf->msg_enable;
-}
-
-static void otx2_set_msglevel(struct net_device *netdev, u32 val)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-
-	pfvf->msg_enable = val;
 }
 
 static void otx2_get_fec_info(u64 index, int req_mode,
@@ -1275,15 +1284,6 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 end:
 	mutex_unlock(&mbox->lock);
 	return err;
-}
-
-static u32 otx2_get_link(struct net_device *netdev)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-
-	if (is_otx2_lbkvf(pfvf->pdev))
-		return 1;
-	return pfvf->linfo.link_up;
 }
 
 static u32 otx2_get_priv_flags(struct net_device *netdev)
@@ -1569,7 +1569,6 @@ static void otx2vf_get_drvinfo(struct net_device *netdev,
 	struct otx2_nic *vf = netdev_priv(netdev);
 
 	strlcpy(info->driver, DRV_VF_NAME, sizeof(info->driver));
-	strlcpy(info->version, DRV_VF_VERSION, sizeof(info->version));
 	strlcpy(info->bus_info, pci_name(vf->pdev), sizeof(info->bus_info));
 }
 

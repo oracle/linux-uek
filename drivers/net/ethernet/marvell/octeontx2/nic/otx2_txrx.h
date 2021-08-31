@@ -116,9 +116,6 @@ struct otx2_pool {
 	u16			rbsize;
 };
 
-#define CQ_OP_ERROR	BIT_ULL(63)
-#define CQ_CQ_ERROR	BIT_ULL(46)
-
 struct otx2_cq_queue {
 	u8			cq_idx;
 	u8			cq_type;
