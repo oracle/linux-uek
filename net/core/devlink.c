@@ -6903,7 +6903,7 @@ void devlink_port_type_eth_set(struct devlink_port *devlink_port,
 		int err;
 
 		err = ops->ndo_get_phys_port_name(netdev, name, sizeof(name));
-		WARN_ON(err != -EOPNOTSUPP);
+		WARN_ON(err != -EOPNOTSUPP && err != -ENODATA);
 	}
 	if (ops->ndo_get_port_parent_id) {
 		/* Some drivers use the same set of ndos for netdevs

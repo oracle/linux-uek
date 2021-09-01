@@ -66,6 +66,10 @@
 #include "en/devlink.h"
 #include "lib/mlx5.h"
 
+static bool expose_pf_phys_port_name = false;
+module_param(expose_pf_phys_port_name, bool, 0444);
+MODULE_PARM_DESC(expose_pf_phys_port_name, "0 - be backward compatible (default), 1 - bahave like the upstream");
+
 bool mlx5e_check_fragmented_striding_rq_cap(struct mlx5_core_dev *mdev)
 {
 	bool striding_rq_umr = MLX5_CAP_GEN(mdev, striding_rq) &&
@@ -4622,6 +4626,17 @@ static int mlx5e_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh,
 }
 #endif
 
+static int mlx5e_get_phys_port_name(struct net_device *dev,
+					char *buf, size_t len)
+{
+	/* On -EOPNOTSUPP kernel exposes port name through devlink */
+	if (expose_pf_phys_port_name)
+		return -EOPNOTSUPP;
+
+	/* On -ENODATA kernel skips devlink and does not expose port name */
+	return -ENODATA;
+}
+
 const struct net_device_ops mlx5e_netdev_ops = {
 	.ndo_open                = mlx5e_open,
 	.ndo_stop                = mlx5e_close,
@@ -4663,6 +4678,7 @@ const struct net_device_ops mlx5e_netdev_ops = {
 	.ndo_get_vf_stats        = mlx5e_get_vf_stats,
 #endif
 	.ndo_get_devlink_port    = mlx5e_get_devlink_port,
+	.ndo_get_phys_port_name  = mlx5e_get_phys_port_name,
 };
 
 void mlx5e_build_default_indir_rqt(u32 *indirection_rqt, int len,
