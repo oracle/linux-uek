@@ -427,24 +427,7 @@ static u16 sdhci_cdns_sd6_readw(struct sdhci_host *host, int reg)
 
 static void sdhci_cdns_sd6_writew(struct sdhci_host *host, u16 val, int reg)
 {
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-
-	u32 regval, regoff;
-
-	regoff = reg & ~3;
-	regval = readl(host->ioaddr + regoff);
-
-	if ((reg & 3) == 0) {
-		regval &= ~0xFFFF;
-		regval |= val;
-	} else {
-		regval &= ~(0xFFFF << 16);
-		regval |= (val << 16);
-	}
-	writel(regval, host->ioaddr + regoff);
-#else
 	writew(val, host->ioaddr + reg);
-#endif
 }
 
 static u8 sdhci_cdns_sd6_readb(struct sdhci_host *host, int reg)
@@ -469,35 +452,7 @@ static u8 sdhci_cdns_sd6_readb(struct sdhci_host *host, int reg)
 
 static void sdhci_cdns_sd6_writeb(struct sdhci_host *host, u8 val, int reg)
 {
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-
-	u32 regval, regoff;
-
-	regoff = reg & ~3;
-	regval = readl(host->ioaddr + regoff);
-
-	switch (reg & 3) {
-	case 0:
-		regval &= ~0xFF;
-		regval |= val;
-		break;
-	case 1:
-		regval &= ~(0xFF << 8);
-		regval |= (val << 8);
-		break;
-	case 2:
-		regval &= ~(0xFF << 16);
-		regval |= (val << 16);
-		break;
-	case 3:
-		regval &= ~(0xFF << 24);
-		regval |= (val << 24);
-		break;
-	}
-	writel(regval, host->ioaddr + regoff);
-#else
 	writeb(val, host->ioaddr + reg);
-#endif
 }
 #endif
 
@@ -1269,7 +1224,6 @@ static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host,
 	return mode;
 }
 
-#ifndef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
 static uint32_t sdhci_cdns_sd6_irq(struct sdhci_host *host, u32 intmask)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
@@ -1287,7 +1241,6 @@ static uint32_t sdhci_cdns_sd6_irq(struct sdhci_host *host, u32 intmask)
 
 	return intmask;
 }
-#endif
 
 static void sdhci_cdns_sd6_set_uhs_signaling(struct sdhci_host *host,
 					     unsigned int timing)
@@ -1314,10 +1267,6 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
-
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-	return;
-#endif
 
 	phy->mode = sdhci_cdns_sd6_get_mode(host, host->mmc->ios.timing);
 	phy->t_sdclk = DIV_ROUND_DOWN_ULL(1e12, clock);
@@ -1503,9 +1452,7 @@ static const struct sdhci_ops sdhci_cdns_sd6_ops = {
 	.reset = sdhci_reset,
 	.platform_execute_tuning = sdhci_cdns_execute_tuning,
 	.set_uhs_signaling = sdhci_cdns_sd6_set_uhs_signaling,
-#ifndef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
 	.irq = sdhci_cdns_sd6_irq,
-#endif
 };
 static const struct sdhci_pltfm_data sdhci_cdns_uniphier_pltfm_data = {
 	.ops = &sdhci_cdns_sd4_ops,

@@ -43,10 +43,6 @@
 
 #define MAX_TUNING_LOOP 40
 
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-static int trfr_mode;
-#endif
-
 static unsigned int debug_quirks = 0;
 static unsigned int debug_quirks2;
 
@@ -1205,13 +1201,8 @@ static inline void sdhci_auto_cmd_select(struct sdhci_host *host,
 		*mode |= SDHCI_TRNS_AUTO_CMD23;
 }
 
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-static u16 sdhci_set_transfer_mode(struct sdhci_host *host,
-	struct mmc_command *cmd)
-#else
 static void sdhci_set_transfer_mode(struct sdhci_host *host,
 	struct mmc_command *cmd)
-#endif
 {
 	u16 mode = 0;
 	struct mmc_data *data = cmd->data;
@@ -1221,28 +1212,16 @@ static void sdhci_set_transfer_mode(struct sdhci_host *host,
 			SDHCI_QUIRK2_CLEAR_TRANSFERMODE_REG_BEFORE_CMD) {
 			/* must not clear SDHCI_TRANSFER_MODE when tuning */
 			if (cmd->opcode != MMC_SEND_TUNING_BLOCK_HS200)
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-				mode = 0;
-#else
 				sdhci_writew(host, 0x0, SDHCI_TRANSFER_MODE);
-#endif
 		} else {
 		/* clear Auto CMD settings for no data CMDs */
 			mode = sdhci_readw(host, SDHCI_TRANSFER_MODE);
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-			mode = 0;
-#else
 			mode = (mode & ~(SDHCI_TRNS_AUTO_CMD12 |
 				SDHCI_TRNS_AUTO_CMD23));
 			sdhci_writew(host, mode & ~(SDHCI_TRNS_AUTO_CMD12 |
 				SDHCI_TRNS_AUTO_CMD23), SDHCI_TRANSFER_MODE);
-#endif
 		}
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-		return mode;
-#else
 		return;
-#endif
 	}
 
 	WARN_ON(!host->data);
@@ -1262,11 +1241,7 @@ static void sdhci_set_transfer_mode(struct sdhci_host *host,
 	if (host->flags & SDHCI_REQ_USE_DMA)
 		mode |= SDHCI_TRNS_DMA;
 
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-	return mode;
-#else
 	sdhci_writew(host, mode, SDHCI_TRANSFER_MODE);
-#endif
 }
 
 static bool sdhci_needs_reset(struct sdhci_host *host, struct mmc_request *mrq)
@@ -1387,9 +1362,6 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 	int flags;
 	u32 mask;
 	unsigned long timeout;
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-	u32 mode, cmdreg32;
-#endif
 
 	WARN_ON(host->cmd);
 
@@ -1435,11 +1407,7 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 
 	sdhci_writel(host, cmd->arg, SDHCI_ARGUMENT);
 
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-	mode = sdhci_set_transfer_mode(host, cmd);
-#else
 	sdhci_set_transfer_mode(host, cmd);
-#endif
 
 	if ((cmd->flags & MMC_RSP_136) && (cmd->flags & MMC_RSP_BUSY)) {
 		pr_err("%s: Unsupported response type!\n",
@@ -1478,17 +1446,7 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 
 	sdhci_mod_timer(host, cmd->mrq, timeout);
 
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-	if (trfr_mode) {
-		cmdreg32 = SDHCI_TRNS_READ | mode | (SDHCI_MAKE_CMD(cmd->opcode, flags) << 16);
-		trfr_mode = 0;
-	} else {
-		cmdreg32 = mode | (SDHCI_MAKE_CMD(cmd->opcode, flags) << 16);
-	}
-	sdhci_writel(host, cmdreg32, SDHCI_TRANSFER_MODE);
-#else
 	sdhci_writew(host, SDHCI_MAKE_CMD(cmd->opcode, flags), SDHCI_COMMAND);
-#endif
 }
 EXPORT_SYMBOL_GPL(sdhci_send_command);
 
@@ -2464,12 +2422,8 @@ void sdhci_send_tuning(struct sdhci_host *host, u32 opcode)
 	 * This also takes care of setting DMA Enable and Multi Block
 	 * Select in the same register to 0.
 	 */
-#ifndef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
 	sdhci_writew(host, SDHCI_TRNS_READ, SDHCI_TRANSFER_MODE);
 
-#else
-	trfr_mode = SDHCI_TRNS_READ;
-#endif
 	sdhci_send_command(host, &cmd);
 
 	host->cmd = NULL;
@@ -2491,9 +2445,6 @@ static int __sdhci_execute_tuning(struct sdhci_host *host, u32 opcode)
 {
 	int i;
 
-#ifdef CONFIG_MMC_SDHCI_CADENCE_WORKAROUND
-	return 0;
-#endif
 	/*
 	 * Issue opcode repeatedly till Execute Tuning is set to 0 or the number
 	 * of loops reaches tuning loop count.
