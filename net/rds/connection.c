@@ -758,7 +758,6 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 
 	atomic_dec(&conn->c_trans->t_conn_count);
 
-	put_net(conn->c_net);
 	kfree(conn->c_path);
 	kmem_cache_free(rds_conn_slab, conn);
 }
