@@ -74,6 +74,10 @@
 #include "lib/devcom.h"
 #include "lib/sd.h"
 
+static bool expose_pf_phys_port_name = false;
+module_param(expose_pf_phys_port_name, bool, 0444);
+MODULE_PARM_DESC(expose_pf_phys_port_name, "0 - be backward compatible (default), 1 - bahave like the upstream");
+
 bool mlx5e_check_fragmented_striding_rq_cap(struct mlx5_core_dev *mdev, u8 page_shift,
 					    enum mlx5e_mpwrq_umr_mode umr_mode)
 {
@@ -5102,6 +5106,17 @@ static int mlx5e_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh,
 }
 #endif
 
+static int mlx5e_get_phys_port_name(struct net_device *dev,
+					char *buf, size_t len)
+{
+	/* On -EOPNOTSUPP kernel exposes port name through devlink */
+	if (expose_pf_phys_port_name)
+		return -EOPNOTSUPP;
+
+	/* On -ENODATA kernel skips devlink and does not expose port name */
+	return -ENODATA;
+}
+
 const struct net_device_ops mlx5e_netdev_ops = {
 	.ndo_open                = mlx5e_open,
 	.ndo_stop                = mlx5e_close,
@@ -5142,6 +5157,7 @@ const struct net_device_ops mlx5e_netdev_ops = {
 	.ndo_has_offload_stats   = mlx5e_has_offload_stats,
 	.ndo_get_offload_stats   = mlx5e_get_offload_stats,
 #endif
+	.ndo_get_phys_port_name   = mlx5e_get_phys_port_name,
 };
 
 static u32 mlx5e_choose_lro_timeout(struct mlx5_core_dev *mdev, u32 wanted_timeout)
