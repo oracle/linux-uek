@@ -539,6 +539,7 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	} else if (!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK)) {
 		/* Registers that can be accessed from PF */
 		switch (req->reg_offset & 0xFF000) {
+		case CPT_AF_DIAG:
 		case CPT_AF_CTL:
 		case CPT_AF_PF_FUNC:
 		case CPT_AF_BLK_RST:
