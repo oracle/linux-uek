@@ -71,7 +71,7 @@ static const struct {
 	{"mcp_bl1.bin", 3},
 	{"ecp_bl1.bin", 4},
 	{"init.bin", 5},
-	{"gserm.fw", 6},
+	{"gserm-cn10xx.fw", 6},
 	{"bl2.bin", 7},
 	{"bl31.bin", 8},
 	{"u-boot-nodtb.bin", 9},
@@ -79,6 +79,7 @@ static const struct {
 	{"efi_app1.efi", 11},
 	{"switch_fw_ap.fw", 12},
 	{"switch_fw_super.fw", 13},
+	{"gserp-cn10xx.fw", 14},
 };
 
 static const char *obj_bit_to_str(uint32_t bit)
