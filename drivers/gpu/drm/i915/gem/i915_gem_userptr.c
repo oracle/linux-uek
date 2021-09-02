@@ -423,11 +423,12 @@ static int
 probe_range(struct mm_struct *mm, unsigned long addr, unsigned long len)
 {
 	const unsigned long end = addr + len;
+	MA_STATE(mas, &mm->mm_mt, addr, addr);
 	struct vm_area_struct *vma;
 	int ret = -EFAULT;
 
 	mmap_read_lock(mm);
-	for (vma = find_vma(mm, addr); vma; vma = vma->vm_next) {
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		/* Check for holes, note that we also update the addr below */
 		if (vma->vm_start > addr)
 			break;
