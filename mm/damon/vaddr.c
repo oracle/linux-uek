@@ -132,9 +132,10 @@ static int __damon_va_three_regions(struct vm_area_struct *vma,
 	struct vm_area_struct *last_vma = NULL;
 	unsigned long start = 0;
 	struct rb_root rbroot;
+	MA_STATE(mas, mm->mm_mt, vma->vm_start, vma->vm_start);
 
 	/* Find two biggest gaps so that first_gap > second_gap > others */
-	for (; vma; vma = vma->vm_next) {
+	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (!last_vma) {
 			start = vma->vm_start;
 			goto next;
