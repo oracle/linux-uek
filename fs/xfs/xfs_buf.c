@@ -1615,7 +1615,6 @@ xfs_buftarg_drain(
 {
 	LIST_HEAD(dispose);
 	int			loop = 0;
-	bool			write_fail = false;
 
 	xfs_buftarg_wait(btp);
 
