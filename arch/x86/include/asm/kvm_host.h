@@ -39,8 +39,20 @@
 
 #define KVM_MAX_VCPUS 288
 #define KVM_SOFT_MAX_VCPUS 240
-#define KVM_MAX_VCPU_ID 1023
 #define KVM_USER_MEM_SLOTS 1277
+
+/*
+ * In x86, the VCPU ID corresponds to the APIC ID, and APIC IDs
+ * might be larger than the actual number of VCPUs because the
+ * APIC ID encodes CPU topology information.
+ *
+ * In the worst case, we'll need less than one extra bit for the
+ * Core ID, and less than one extra bit for the Package (Die) ID,
+ * so ratio of 4 should be enough.
+ */
+#define KVM_VCPU_ID_RATIO 4
+#define KVM_MAX_VCPU_ID (KVM_MAX_VCPUS * KVM_VCPU_ID_RATIO)
+
 /* memory slots that are not exposed to userspace */
 #define KVM_PRIVATE_MEM_SLOTS 3
 #define KVM_MEM_SLOTS_NUM (KVM_USER_MEM_SLOTS + KVM_PRIVATE_MEM_SLOTS)
