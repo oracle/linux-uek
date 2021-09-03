@@ -40,6 +40,9 @@ void __iomem *bcn_reg_base;
 void __iomem *ptp_reg_base;
 void __iomem *cpri_reg_base;
 
+/* check if cpri block is available */
+#define cpri_available()		((cpri_reg_base) ? 1 : 0)
+
 /* GPINT(1) interrupt handler routine */
 static irqreturn_t otx2_bphy_intr_handler(int irq, void *dev_id)
 {
@@ -145,10 +148,12 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			goto out;
 		}
 
-		ret = otx2_cpri_parse_and_init_intf(cdev, intf_cfg);
-		if (ret < 0) {
-			dev_err(cdev->dev, "odp <-> netdev parse error\n");
-			goto out;
+		if (cpri_available()) {
+			ret = otx2_cpri_parse_and_init_intf(cdev, intf_cfg);
+			if (ret < 0) {
+				dev_err(cdev->dev, "odp <-> netdev parse error\n");
+				goto out;
+			}
 		}
 
 		/* The MSIXEN bit is getting cleared when ODP BPHY driver
@@ -194,7 +199,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
 
 		otx2_bphy_rfoe_cleanup();
-		otx2_bphy_cpri_cleanup();
+		if (cpri_available())
+			otx2_bphy_cpri_cleanup();
 
 		cdev->odp_intf_cfg = 0;
 
@@ -520,7 +526,8 @@ static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
 	writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
 
 	otx2_bphy_rfoe_cleanup();
-	otx2_bphy_cpri_cleanup();
+	if (cpri_available())
+		otx2_bphy_cpri_cleanup();
 
 	cdev->odp_intf_cfg = 0;
 
@@ -635,14 +642,14 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 5);
 	if (!res) {
 		dev_err(&pdev->dev, "failed to get cpri resource\n");
-		err = -ENXIO;
-		goto out_unmap_ptp_reg;
-	}
-	cpri_reg_base = ioremap_nocache(res->start, resource_size(res));
-	if (IS_ERR(cpri_reg_base)) {
-		dev_err(&pdev->dev, "failed to ioremap cpri registers\n");
-		err = PTR_ERR(cpri_reg_base);
-		goto out_unmap_ptp_reg;
+		cpri_reg_base = NULL;
+	} else {
+		cpri_reg_base = ioremap_nocache(res->start, resource_size(res));
+		if (IS_ERR(cpri_reg_base)) {
+			dev_err(&pdev->dev, "failed to ioremap cpri registers\n");
+			err = PTR_ERR(cpri_reg_base);
+			goto out_unmap_ptp_reg;
+		}
 	}
 	/* get irq */
 	cdev_priv->irq = platform_get_irq(pdev, 0);
