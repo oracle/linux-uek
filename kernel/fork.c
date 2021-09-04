@@ -1631,7 +1631,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	 */
 	if (p->mm && stack_start) {
 		dtrace_psinfo_alloc(p);
-		p->dtrace_psinfo->ustack = stack_start;
+		p->dtrace_psinfo->ustack = (void *)stack_start;
 	}
 
 	/*
