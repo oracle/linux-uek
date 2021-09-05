@@ -274,7 +274,7 @@ enum mlx5_flow_match_level {
 };
 
 /* current maximum for flow based vport multicasting */
-#define MLX5_MAX_FLOW_FWD_VPORTS 2
+#define MLX5_MAX_FLOW_FWD_VPORTS 32
 
 struct mlx5_esw_flow_attr {
 	struct mlx5_eswitch_rep *in_rep;
