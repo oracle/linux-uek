@@ -582,10 +582,11 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
  * Helper for vma_adjust() in the split_vma insert case: insert a vma into the
  * mm's list and the mm tree.  It has already been inserted into the interval tree.
  */
-static void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
+static void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma,
+			       unsigned long location)
 {
 	struct vm_area_struct *prev;
-	MA_STATE(mas, &mm->mm_mt, vma->vm_start, vma->vm_start);
+	MA_STATE(mas, &mm->mm_mt, location, location);
 
 	prev = mas_prev(&mas, 0);
 	vma_store(mm, vma);
@@ -613,6 +614,7 @@ int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	bool vma_changed = false;
 	long adjust_next = 0;
 	int remove_next = 0;
+	unsigned long ll_prev = vma->vm_start; /* linked list prev. */
 
 	if (next && !insert) {
 		struct vm_area_struct *exporter = NULL, *importer = NULL;
@@ -739,17 +741,27 @@ again:
 	}
 
 	if (start != vma->vm_start) {
-		if (vma->vm_start < start)
+		if ((vma->vm_start < start) &&
+		    (!insert || (insert->vm_end != start))) {
 			vma_mt_szero(mm, vma->vm_start, start);
-		else
+			VM_WARN_ON(insert && insert->vm_start > vma->vm_start);
+		} else {
 			vma_changed = true;
+		}
 		vma->vm_start = start;
 	}
 	if (end != vma->vm_end) {
-		if (vma->vm_end > end)
-			vma_mt_szero(mm, end, vma->vm_end);
-		else
+		if (vma->vm_end > end) {
+			if (!insert || (insert->vm_start != end)) {
+				vma_mt_szero(mm, end, vma->vm_end);
+				VM_WARN_ON(insert &&
+					   insert->vm_end < vma->vm_end);
+			} else if (insert->vm_start == end) {
+				ll_prev = vma->vm_end;
+			}
+		} else {
 			vma_changed = true;
+		}
 		vma->vm_end = end;
 		if (!next)
 			mm->highest_vm_end = vm_end_gap(vma);
@@ -784,7 +796,7 @@ again:
 		 * us to insert it before dropping the locks
 		 * (it may either follow vma or precede it).
 		 */
-		__insert_vm_struct(mm, insert);
+		__insert_vm_struct(mm, insert, ll_prev);
 	}
 
 	if (anon_vma) {
