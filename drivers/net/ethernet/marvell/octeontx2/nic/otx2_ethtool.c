@@ -142,12 +142,12 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 
 	otx2_get_qset_strings(pfvf, &data, 0);
 
-	for (stats = 0; stats < pfvf->hw.lmac_rx_stats_cnt; stats++) {
+	for (stats = 0; stats < CGX_RX_STATS_COUNT; stats++) {
 		sprintf(data, "%s_rxstat%d: ", mac_name, stats);
 		data += ETH_GSTRING_LEN;
 	}
 
-	for (stats = 0; stats < pfvf->hw.lmac_tx_stats_cnt; stats++) {
+	for (stats = 0; stats < CGX_TX_STATS_COUNT; stats++) {
 		sprintf(data, "%s_txstat%d: ", mac_name, stats);
 		data += ETH_GSTRING_LEN;
 	}
@@ -227,9 +227,9 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 
 	otx2_get_qset_stats(pfvf, stats, &data);
 	otx2_update_lmac_stats(pfvf);
-	for (stat = 0; stat < pfvf->hw.lmac_rx_stats_cnt; stat++)
+	for (stat = 0; stat < CGX_RX_STATS_COUNT; stat++)
 		*(data++) = pfvf->hw.cgx_rx_stats[stat];
-	for (stat = 0; stat < pfvf->hw.lmac_tx_stats_cnt; stat++)
+	for (stat = 0; stat < CGX_TX_STATS_COUNT; stat++)
 		*(data++) = pfvf->hw.cgx_tx_stats[stat];
 	*(data++) = pfvf->reset_count;
 
@@ -273,11 +273,11 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 
 	qstats_count = otx2_n_queue_stats *
 		       (pfvf->hw.rx_queues + pfvf->hw.tot_tx_queues);
-
 	otx2_update_lmac_fec_stats(pfvf);
+
 	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
-	       pfvf->hw.lmac_rx_stats_cnt + pfvf->hw.lmac_tx_stats_cnt +
-	       OTX2_FEC_STATS_CNT + 1;
+		CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + OTX2_FEC_STATS_CNT
+		+ 1;
 }
 
 /* Get no of queues device supports and current queue count */
