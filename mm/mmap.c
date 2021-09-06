@@ -626,6 +626,7 @@ int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	bool vma_changed = false;
 	long adjust_next = 0;
 	int remove_next = 0;
+	unsigned long old_start;
 
 	if (next && !insert) {
 		struct vm_area_struct *exporter = NULL, *importer = NULL;
@@ -751,25 +752,29 @@ again:
 			vma_interval_tree_remove(next, root);
 	}
 
+	old_start = vma->vm_start;
 	if (start != vma->vm_start) {
-		if (vma->vm_start < start)
-			vma_mt_szero(mm, vma->vm_start, start);
-		else
-			vma_changed = true;
+		vma_changed = true;
 		vma->vm_start = start;
 	}
 	if (end != vma->vm_end) {
-		if (vma->vm_end > end)
-			vma_mt_szero(mm, end, vma->vm_end);
-		else
+		if (vma->vm_end > end) {
+			if (!insert || (insert && (insert->vm_start != end)))
+				vma_mt_szero(mm, end, vma->vm_end);
+		} else
 			vma_changed = true;
 		vma->vm_end = end;
 		if (!next)
 			mm->highest_vm_end = vm_end_gap(vma);
 	}
 
-	if (vma_changed)
+	if (vma_changed) {
 		vma_mt_store(mm, vma);
+		if (old_start < start) {
+			if (insert && (insert->vm_start != old_start))
+				vma_mt_szero(mm, old_start, start);
+		}
+	}
 
 	vma->vm_pgoff = pgoff;
 	if (adjust_next) {
