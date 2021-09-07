@@ -4195,7 +4195,7 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 				((u64)lmac_max_frs << 16) | NIC_HW_MIN_FRS);
 	}
 
-	for (link = hw->cgx_links; link < hw->lbk_links; link++) {
+	for (link = hw->cgx_links; link < hw->cgx_links + hw->lbk_links; link++) {
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_LINKX_CFG(link),
 			    ((u64)lbk_max_frs << 16) | NIC_HW_MIN_FRS);
 	}
@@ -4203,6 +4203,16 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 		link = hw->cgx_links + hw->lbk_links;
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_LINKX_CFG(link),
 			    SDP_HW_MAX_FRS << 16 | NIC_HW_MIN_FRS);
+	}
+
+	/* Set CPT link i.e second pass config */
+	if (hw->cpt_links) {
+		link = hw->cgx_links + hw->lbk_links + hw->sdp_links;
+		/* Set default min/max packet lengths allowed to LBK as that
+		 * LBK link's range is max.
+		 */
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_LINKX_CFG(link),
+			    ((u64)lbk_max_frs << 16) | NIC_HW_MIN_FRS);
 	}
 
 	/* Set credits for Tx links assuming max packet length allowed.
