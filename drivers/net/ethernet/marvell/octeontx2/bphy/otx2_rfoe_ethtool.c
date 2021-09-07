@@ -9,6 +9,7 @@
  */
 
 #include "otx2_rfoe.h"
+#include "otx2_bphy_hw.h"
 
 static const char ethtool_stat_strings[][ETH_GSTRING_LEN] = {
 	"oth_rx_packets",

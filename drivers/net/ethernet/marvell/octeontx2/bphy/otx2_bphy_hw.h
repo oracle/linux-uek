@@ -13,10 +13,6 @@
 
 #include <linux/types.h>
 
-/* BPHY definitions */
-#define OTX2_BPHY_PCI_VENDOR_ID		0x177D
-#define OTX2_BPHY_PCI_DEVICE_ID		0xA089
-
 /* PSM register offsets */
 #define PSM_QUEUE_CMD_LO(a)		(0x0 + (a) * 0x10)
 #define PSM_QUEUE_CMD_HI(a)		(0x8 + (a) * 0x10)
@@ -87,9 +83,6 @@
 #define RFOEX_RX_CGX_OCTS_STAT(a, b)	(0x15E0ULL | \
 					 (((unsigned long)(a) << 36)) | \
 					 ((b) << 3))
-
-/* PTP register offsets */
-#define MIO_PTP_CLOCK_HI		0x10
 
 /* BCN register offsets and definitions */
 #define BCN_CAPTURE_CFG			0x10400
