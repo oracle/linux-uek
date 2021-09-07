@@ -8,29 +8,11 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef _BPHY_NETDEV_COMM_IF_H_
-#define _BPHY_NETDEV_COMM_IF_H_
+#ifndef _RFOE_BPHY_NETDEV_COMM_IF_H_
+#define _RFOE_BPHY_NETDEV_COMM_IF_H_
 
-#define ETH_ADDR_LEN		6	/* ethernet address len */
-#define MAX_RFOE_INTF		3	/* Max RFOE instances */
-#define MAX_LMAC_PER_RFOE	4	/* 2 rfoe x 4 lmac, 1 rfoe x 2 lmac */
-#define RFOE_MAX_INTF		10	/* 2 rfoe x 4 lmac + 1 rfoe x 2 lmac */
-#define INVALID_INTF		255
-
-#define MAX_PTP_MSG_PER_LMAC	4	/* 16 Per RFoE */
-#define MAX_OTH_MSG_PER_LMAC	16	/* 64 Per RFoE */
-/* 64 per RFoE; RFoE2 shall have 32 entries */
-#define MAX_OTH_MSG_PER_RFOE	(MAX_OTH_MSG_PER_LMAC * MAX_LMAC_PER_RFOE)
-
-/* CPRI ETH Macros */
-#define MAX_NUM_CPRI                3
-#define MAX_LANE_PER_CPRI           4
-#define CPRI_ETH_PAYLOAD_SIZE_MIN   64
-#define CPRI_ETH_PAYLOAD_SIZE_MAX   1536
-#define CPRI_ETH_PKT_HDR_SIZE       128
-
-#define CPRI_ETH_PKT_SIZE           (CPRI_ETH_PKT_HDR_SIZE + \
-				     CPRI_ETH_PAYLOAD_SIZE_MAX)
+#include <linux/etherdevice.h>
+#include "bphy_netdev_comm_if.h"
 
 /**
  * @enum bphy_netdev_tx_gpint
@@ -83,30 +65,6 @@ enum bphy_netdev_cpri_rx_gpint {
 };
 
 /**
- * @enum bphy_netdev_if_type
- * @brief BPHY Interface Types
- *
- */
-enum bphy_netdev_if_type {
-	IF_TYPE_ETHERNET    = 0,
-	IF_TYPE_CPRI        = 1,
-	IF_TYPE_NONE        = 2,
-	IF_TYPE_MAX,
-};
-
-/**
- * @enum bphy_netdev_packet_type
- * @brief Packet types
- *
- */
-enum bphy_netdev_packet_type {
-	PACKET_TYPE_PTP     = 0,
-	PACKET_TYPE_ECPRI   = 1,
-	PACKET_TYPE_OTHER   = 2,
-	PACKET_TYPE_MAX,
-};
-
-/**
  * @struct bphy_netdev_intf_info
  * @brief LMAC lane number, mac address and status information
  *
@@ -115,7 +73,7 @@ struct bphy_netdev_intf_info {
 	u8 rfoe_num;
 	u8 lane_num;
 	/* Source mac address */
-	u8 eth_addr[ETH_ADDR_LEN];
+	u8 eth_addr[ETH_ALEN];
 	/* LMAC interface status */
 	u8 status; //0-DOWN, 1-UP
 	/* Configuration valid status; This interface shall be
@@ -197,7 +155,7 @@ struct bphy_netdev_cpri_if {
 	u8 reserved[2];
 	u64 ul_buf_iova_addr;
 	u64 dl_buf_iova_addr;
-	u8 eth_addr[MAX_LANE_PER_CPRI][ETH_ADDR_LEN];
+	u8 eth_addr[MAX_LANE_PER_CPRI][ETH_ALEN];
 };
 
 /**

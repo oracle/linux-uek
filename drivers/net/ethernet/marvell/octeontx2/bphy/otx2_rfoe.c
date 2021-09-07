@@ -9,6 +9,7 @@
  */
 
 #include "otx2_rfoe.h"
+#include "otx2_bphy_hw.h"
 #include "otx2_bphy_debugfs.h"
 
 /*	                      Theory of Operation
