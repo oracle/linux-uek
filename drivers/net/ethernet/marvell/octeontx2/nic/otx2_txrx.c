@@ -103,8 +103,11 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 				 int budget, int *tx_pkts, int *tx_bytes)
 {
 	struct nix_send_comp_s *snd_comp = &cqe->comp;
+	struct skb_shared_hwtstamps ts;
 	struct sk_buff *skb = NULL;
+	u64 timestamp, tsns;
 	struct sg_list *sg;
+	int err;
 
 	if (unlikely(snd_comp->status) && netif_msg_tx_err(pfvf))
 		net_err_ratelimited("%s: TX%d: Error in send CQ status:%x\n",
@@ -119,16 +122,10 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 		return;
 
 	if (skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS) {
-		u64 timestamp = ((u64 *)sq->timestamps->base)[snd_comp->sqe_id];
-
+		timestamp = ((u64 *)sq->timestamps->base)[snd_comp->sqe_id];
 		if (timestamp != 1) {
-			u64 tsns;
-			int err;
-
 			err = otx2_ptp_tstamp2time(pfvf, timestamp, &tsns);
 			if (!err) {
-				struct skb_shared_hwtstamps ts;
-
 				memset(&ts, 0, sizeof(ts));
 				ts.hwtstamp = ns_to_ktime(tsns);
 				skb_tstamp_tx(skb, &ts);
@@ -172,7 +169,7 @@ static inline void otx2_set_rxtstamp(struct otx2_nic *pfvf,
 		return;
 
 	/* The first 8 bytes is the timestamp */
-	err = otx2_ptp_tstamp2time(pfvf, be64_to_cpu(*(u64 *)data), &tsns);
+	err = otx2_ptp_tstamp2time(pfvf, be64_to_cpu(*(__be64 *)data), &tsns);
 	if (err)
 		return;
 
@@ -209,9 +206,8 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf, struct sk_buff *skb,
 			    pfvf->rbsize, DMA_FROM_DEVICE);
 }
 
-static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
-				   struct nix_cqe_rx_s *cqe,
-				   struct sk_buff *skb)
+static void otx2_set_rxhash(struct otx2_nic *pfvf,
+			    struct nix_cqe_rx_s *cqe, struct sk_buff *skb)
 {
 	enum pkt_hash_types hash_type = PKT_HASH_TYPE_NONE;
 	struct otx2_rss_info *rss;
@@ -355,7 +351,6 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 		}
 		start += sizeof(*sg);
 	}
-
 	otx2_set_rxhash(pfvf, cqe, skb);
 
 	skb_record_rx_queue(skb, cq->cq_idx);
@@ -884,6 +879,7 @@ static bool is_hw_tso_supported(struct otx2_nic *pfvf,
 	 * segment is shorter than 16 bytes, some header fields may not
 	 * be correctly modified, hence don't offload such TSO segments.
 	 */
+
 	payload_len = skb->len - (skb_transport_offset(skb) + tcp_hdrlen(skb));
 	last_seg_size = payload_len % skb_shinfo(skb)->gso_size;
 	if (last_seg_size && last_seg_size < 16)
