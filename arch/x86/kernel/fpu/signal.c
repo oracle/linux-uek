@@ -307,8 +307,8 @@ retry:
 	return 0;
 }
 
-static int __fpu_restore_sig(void __user *buf, void __user *buf_fx,
-			     bool ia32_fxstate)
+static bool __fpu_restore_sig(void __user *buf, void __user *buf_fx,
+			      bool ia32_fxstate)
 {
 	int state_size = fpu_kernel_xstate_size;
 	struct task_struct *tsk = current;
@@ -316,14 +316,14 @@ static int __fpu_restore_sig(void __user *buf, void __user *buf_fx,
 	struct user_i387_ia32_struct env;
 	u64 user_xfeatures = 0;
 	bool fx_only = false;
-	int ret;
+	bool success;
+
 
 	if (use_xsave()) {
 		struct _fpx_sw_bytes fx_sw_user;
 
-		ret = check_xstate_in_sigframe(buf_fx, &fx_sw_user);
-		if (unlikely(ret))
-			return ret;
+		if (check_xstate_in_sigframe(buf_fx, &fx_sw_user))
+			return false;
 
 		fx_only = !fx_sw_user.magic1;
 		state_size = fx_sw_user.xstate_size;
@@ -339,8 +339,8 @@ static int __fpu_restore_sig(void __user *buf, void __user *buf_fx,
 		 * faults. If it does, fall back to the slow path below, going
 		 * through the kernel buffer with the enabled pagefault handler.
 		 */
-		return restore_fpregs_from_user(buf_fx, user_xfeatures, fx_only,
-						state_size);
+		return !restore_fpregs_from_user(buf_fx, user_xfeatures, fx_only,
+						 state_size);
 	}
 
 	/*
@@ -348,9 +348,8 @@ static int __fpu_restore_sig(void __user *buf, void __user *buf_fx,
 	 * to be ignored for histerical raisins. The legacy state is folded
 	 * in once the larger state has been copied.
 	 */
-	ret = __copy_from_user(&env, buf, sizeof(env));
-	if (ret)
-		return ret;
+	if (__copy_from_user(&env, buf, sizeof(env)))
+		return false;
 
 	/*
 	 * By setting TIF_NEED_FPU_LOAD it is ensured that our xstate is
@@ -377,18 +376,17 @@ static int __fpu_restore_sig(void __user *buf, void __user *buf_fx,
 	fpregs_unlock();
 
 	if (use_xsave() && !fx_only) {
-		ret = copy_sigframe_from_user_to_xstate(tsk, buf_fx);
-		if (ret)
-			return ret;
+		if (copy_sigframe_from_user_to_xstate(tsk, buf_fx))
+			return false;
 	} else {
 		if (__copy_from_user(&fpu->state.fxsave, buf_fx,
 				     sizeof(fpu->state.fxsave)))
-			return -EFAULT;
+			return false;
 
 		if (IS_ENABLED(CONFIG_X86_64)) {
 			/* Reject invalid MXCSR values. */
 			if (fpu->state.fxsave.mxcsr & ~mxcsr_feature_mask)
-				return -EINVAL;
+				return false;
 		} else {
 			/* Mask invalid bits out for historical reasons (broken hardware). */
 			fpu->state.fxsave.mxcsr &= mxcsr_feature_mask;
@@ -416,17 +414,18 @@ static int __fpu_restore_sig(void __user *buf, void __user *buf_fx,
 		u64 mask = user_xfeatures | xfeatures_mask_supervisor();
 
 		fpu->state.xsave.header.xfeatures &= mask;
-		ret = os_xrstor_safe(&fpu->state.xsave, xfeatures_mask_all);
+		success = !os_xrstor_safe(&fpu->state.xsave, xfeatures_mask_all);
 	} else {
-		ret = fxrstor_safe(&fpu->state.fxsave);
+		success = !fxrstor_safe(&fpu->state.fxsave);
 	}
 
-	if (likely(!ret))
+	if (likely(success))
 		fpregs_mark_activate();
 
 	fpregs_unlock();
-	return ret;
+	return success;
 }
+
 static inline int xstate_sigframe_size(void)
 {
 	return use_xsave() ? fpu_user_xstate_size + FP_XSTATE_MAGIC2_SIZE :
@@ -470,7 +469,7 @@ bool fpu__restore_sig(void __user *buf, int ia32_frame)
 					   sizeof(struct user_i387_ia32_struct),
 					   NULL, buf);
 	} else {
-		success = !__fpu_restore_sig(buf, buf_fx, ia32_fxstate);
+		success = __fpu_restore_sig(buf, buf_fx, ia32_fxstate);
 	}
 
 out:
