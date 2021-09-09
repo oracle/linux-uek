@@ -582,6 +582,7 @@ BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
 BuildRequires: numactl-devel
+BuildRequires: dwarves >= 1.15
 %ifarch x86_64
 BuildRequires: libcap-devel
 %endif
