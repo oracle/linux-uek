@@ -152,15 +152,15 @@ struct lpbk_cmd_params {
 enum tx_param {
 	TX_PARAM_PRE2,
 	TX_PARAM_PRE1,
-	TX_PARAM_MAIN,
 	TX_PARAM_POST,
+	TX_PARAM_MAIN,
 };
 
 struct tx_eq_params {
 	u16 pre2;
 	u16 pre1;
-	u16 main;
 	u16 post;
+	u16 main;
 };
 
 static struct {
@@ -169,8 +169,8 @@ static struct {
 } tx_param[] = {
 	{TX_PARAM_PRE2, "pre2"},
 	{TX_PARAM_PRE1, "pre1"},
-	{TX_PARAM_MAIN, "main"},
 	{TX_PARAM_POST, "post"},
+	{TX_PARAM_MAIN, "main"},
 };
 
 DEFINE_STR_2_ENUM_FUNC(tx_param)
@@ -180,7 +180,7 @@ static struct tx_eq_cmd_params {
 	int lane_idx;
 	int update;
 	u32 pre2_pre1;
-	u32 main_post;
+	u32 post_main;
 	u32 flags;
 } tx_eq_cmd;
 
@@ -515,13 +515,13 @@ static int parse_tx_eq_params(const char __user *buffer, size_t count,
 			params->flags |= BIT(1);
 			break;
 
-		case TX_PARAM_MAIN:
-			params->main_post |= value << 16;
+		case TX_PARAM_POST:
+			params->post_main |= value << 16;
 			params->flags |= BIT(2);
 			break;
 
-		case TX_PARAM_POST:
-			params->main_post |= value;
+		case TX_PARAM_MAIN:
+			params->post_main |= value;
 			params->flags |= BIT(3);
 			break;
 
@@ -563,7 +563,7 @@ static ssize_t serdes_dbg_tx_eq_write(struct file *filp,
 
 	x1 = (lane_idx << 8) | port;
 	x2 = tx_eq_cmd.pre2_pre1;
-	x3 = tx_eq_cmd.main_post;
+	x3 = tx_eq_cmd.post_main;
 	x4 = tx_eq_cmd.flags;
 
 	arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_TX_TUNING, x1, x2,
