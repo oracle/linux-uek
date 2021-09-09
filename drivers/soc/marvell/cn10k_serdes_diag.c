@@ -147,10 +147,9 @@ struct lpbk_cmd_params {
 	int type;
 };
 
-#define TX_EQ_PRMS_MAX 12
+#define TX_EQ_PRMS_MAX 10
 
 enum tx_param {
-	TX_PARAM_PRE3,
 	TX_PARAM_PRE2,
 	TX_PARAM_PRE1,
 	TX_PARAM_MAIN,
@@ -158,7 +157,6 @@ enum tx_param {
 };
 
 struct tx_eq_params {
-	u16 pre3;
 	u16 pre2;
 	u16 pre1;
 	u16 main;
@@ -169,7 +167,6 @@ static struct {
 	enum tx_param e;
 	const char *s;
 } tx_param[] = {
-	{TX_PARAM_PRE3, "pre3"},
 	{TX_PARAM_PRE2, "pre2"},
 	{TX_PARAM_PRE1, "pre1"},
 	{TX_PARAM_MAIN, "main"},
@@ -182,9 +179,9 @@ static struct tx_eq_cmd_params {
 	int port;
 	int lane_idx;
 	int update;
-	u32 pre3_pre2;
-	u32 pre1_main;
-	u32 post_flags;
+	u32 pre2_pre1;
+	u32 main_post;
+	u32 flags;
 } tx_eq_cmd;
 
 #define RX_EQ_PRMS_MAX 2
@@ -416,7 +413,7 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 
 	seq_puts(s, "SerDes Tx Tuning Parameters:\n");
 	seq_puts(s, "port#:\tlane#:\tgserm#:\tg-lane#:"
-			"\tpre3:\tpre2:\tpre1:\tmain:\tpost:\n");
+			"\tpre2:\tpre1:\tmain:\tpost:\n");
 
 	arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_TX_TUNING, x1, 0,
 		0, 0, 0, 0, 0, &res);
@@ -438,10 +435,9 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 	for (; lane_idx < max_idx; lane_idx++) {
 		int glane = (mapping >> 4 * lane_idx) & 0xf;
 
-		seq_printf(s, "%d\t%d\t%d\t%d\t\t0x%x\t0x%x\t0x%x\t0x%x\t0x%x\n",
+		seq_printf(s, "%d\t%d\t%d\t%d\t\t0x%x\t0x%x\t0x%x\t0x%x\n",
 		       port, lane_idx,
 		       gserm_idx, glane,
-		       tx_eq_params[lane_idx].pre3,
 		       tx_eq_params[lane_idx].pre2,
 		       tx_eq_params[lane_idx].pre1,
 		       tx_eq_params[lane_idx].main,
@@ -487,7 +483,7 @@ static int parse_tx_eq_params(const char __user *buffer, size_t count,
 		return 0;
 
 	params->update = 1;
-	params->post_flags = 0;
+	params->flags = 0;
 
 	/* Next parameters are optional and they should come in pairs
 	 * [name <value>], like: [pre1 <pre1>].
@@ -509,29 +505,24 @@ static int parse_tx_eq_params(const char __user *buffer, size_t count,
 		arg_idx++;
 
 		switch (param) {
-		case TX_PARAM_PRE3:
-			params->pre3_pre2 |= value << 16;
-			params->post_flags |= BIT(0);
-			break;
-
 		case TX_PARAM_PRE2:
-			params->pre3_pre2 |= value;
-			params->post_flags |= BIT(1);
+			params->pre2_pre1 |= value << 16;
+			params->flags |= BIT(0);
 			break;
 
 		case TX_PARAM_PRE1:
-			params->pre1_main |= value << 16;
-			params->post_flags |= BIT(2);
+			params->pre2_pre1 |= value;
+			params->flags |= BIT(1);
 			break;
 
 		case TX_PARAM_MAIN:
-			params->pre1_main |= value;
-			params->post_flags |= BIT(3);
+			params->main_post |= value << 16;
+			params->flags |= BIT(2);
 			break;
 
 		case TX_PARAM_POST:
-			params->post_flags |= value << 16;
-			params->post_flags |= BIT(4);
+			params->main_post |= value;
+			params->flags |= BIT(3);
 			break;
 
 		default:
@@ -571,9 +562,9 @@ static ssize_t serdes_dbg_tx_eq_write(struct file *filp,
 	pr_info("port#:\tlane#:\tgserm#:\tg-lane#:\tstatus:\n");
 
 	x1 = (lane_idx << 8) | port;
-	x2 = tx_eq_cmd.pre3_pre2;
-	x3 = tx_eq_cmd.pre1_main;
-	x4 = tx_eq_cmd.post_flags;
+	x2 = tx_eq_cmd.pre2_pre1;
+	x3 = tx_eq_cmd.main_post;
+	x4 = tx_eq_cmd.flags;
 
 	arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_TX_TUNING, x1, x2,
 		x3, x4, 0, 0, 0, &res);
