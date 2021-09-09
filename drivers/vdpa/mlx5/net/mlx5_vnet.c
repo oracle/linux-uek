@@ -162,7 +162,6 @@ struct mlx5_vdpa_net {
 	struct mlx5_fc *rx_counter;
 	struct mlx5_flow_handle *rx_rule;
 	bool setup;
-	u16 mtu;
 	u32 cur_num_vqs;
 };
 
@@ -1944,8 +1943,6 @@ static int mlx5_vdpa_set_features(struct vdpa_device *vdev, u64 features)
 		return err;
 
 	ndev->mvdev.actual_features = features & ndev->mvdev.mlx_features;
-	ndev->config.mtu = cpu_to_mlx5vdpa16(mvdev, ndev->mtu);
-	ndev->config.status |= cpu_to_mlx5vdpa16(mvdev, VIRTIO_NET_S_LINK_UP);
 	update_cvq_info(mvdev);
 	return err;
 }
@@ -2416,6 +2413,7 @@ static int mlx5_vdpa_dev_add(struct vdpa_mgmt_dev *v_mdev, const char *name)
 	struct mlx5_core_dev *mdev;
 	u16 saved_mtu = 0;
 	u32 max_vqs;
+	u16 mtu;
 	int err;
 
 	if (mgtdev->ndev)
@@ -2443,11 +2441,11 @@ static int mlx5_vdpa_dev_add(struct vdpa_mgmt_dev *v_mdev, const char *name)
 	init_mvqs(ndev);
 	mutex_init(&ndev->reslock);
 	config = &ndev->config;
-	err = query_mtu(mdev, &ndev->mtu);
+	err = query_mtu(mdev, &mtu);
 	if (err)
 		goto err_mtu;
 
-	if (unlikely(default_mtu) && default_mtu != ndev->mtu) {
+	if (unlikely(default_mtu) && default_mtu != mtu) {
 		err = mlx5_modify_nic_vport_mtu(mdev, default_mtu + MLX5V_ETH_HARD_MTU);
 		if (err) {
 			mlx5_vdpa_warn(&ndev->mvdev,
@@ -2455,9 +2453,11 @@ static int mlx5_vdpa_dev_add(struct vdpa_mgmt_dev *v_mdev, const char *name)
 				       default_mtu);
 			goto err_mtu;
 		}
-		saved_mtu = ndev->mtu;
-		ndev->mtu = default_mtu;
+		saved_mtu = mtu;
+		mtu = default_mtu;
 	}
+	ndev->config.mtu = cpu_to_mlx5vdpa16(mvdev, mtu);
+	ndev->config.status |= cpu_to_mlx5vdpa16(mvdev, VIRTIO_NET_S_LINK_UP);
 
 	err = mlx5_query_nic_vport_mac_address(mdev, 0, 0, config->mac);
 	if (err)
