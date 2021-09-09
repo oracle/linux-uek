@@ -204,7 +204,25 @@ static void __init xen_hvm_guest_init(void)
 	WARN_ON(xen_cpuhp_setup(xen_cpu_up_prepare_hvm, xen_cpu_dead_hvm));
 	xen_unplug_emulated_devices();
 	x86_init.irqs.intr_init = xen_init_IRQ;
-	xen_hvm_init_time_ops();
+
+	/*
+	 * Only MAX_VIRT_CPUS 'vcpu_info' are embedded inside 'shared_info'
+	 * and the VM would use them until xen_vcpu_setup() is used to
+	 * allocate/relocate them at at arbitrary address.
+	 *
+	 * However, when Xen HVM guest panic on vcpu >= MAX_VIRT_CPUS,
+	 * per_cpu(xen_vcpu, cpu) is still NULL at this stage. To access
+	 * per_cpu(xen_vcpu, cpu) via xen_clocksource_read() would panic.
+	 *
+	 * Therefore we delay xen_hvm_init_time_ops() to
+	 * xen_hvm_smp_prepare_boot_cpu() when boot vcpu is >= MAX_VIRT_CPUS.
+	 */
+	if (xen_vcpu_nr(0) >= MAX_VIRT_CPUS)
+		pr_info("Delay xen_hvm_init_time_ops() as kernel is running on vcpu=%d\n",
+			xen_vcpu_nr(0));
+	else
+		xen_hvm_init_time_ops();
+
 	xen_hvm_init_mmu_ops();
 
 #ifdef CONFIG_KEXEC_CORE
