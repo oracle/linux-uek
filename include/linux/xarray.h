@@ -17,6 +17,7 @@
 #include <linux/rcupdate.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/bitmap.h>
 
 /*
  * The bottom two bits of the entry determine how the XArray interprets
