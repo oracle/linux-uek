@@ -1047,11 +1047,12 @@ static int populate_pud(struct cpa_data *cpa, unsigned long start, pgd_t *pgd,
 	 * Map everything starting from the Gb boundary, possibly with 1G pages
 	 */
 	while (end - start >= PUD_SIZE) {
+		pudval_t v;
 		phys_addr_t pfn = (phys_addr_t)cpa->pfn << PAGE_SHIFT;
 		pfn ^= protnone_mask(pgprot_val(canon_pgprot(pud_pgprot)));
 		pfn &= ((((signed long)PUD_PAGE_MASK) & __PHYSICAL_MASK));
 
-		pudval_t v = native_pud_val(__pud(pfn | massage_pgprot(canon_pgprot(pud_pgprot))));
+		v = native_pud_val(__pud(pfn | massage_pgprot(canon_pgprot(pud_pgprot))));
 		set_pud(pud, native_make_pud(v | _PAGE_PSE));
 
 		start	  += PUD_SIZE;
