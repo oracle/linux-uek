@@ -155,9 +155,13 @@ struct uv_gam_range_s {
  * After setup, the struct is read only, so it should be readily
  * available in the L3 cache on the cpu socket for the node.
  */
+/* 
+ * UEK6: for backwards KABI compatibility, fields are in a different
+ * order than upstream.  This difference can be removed the next time a
+ * KABI breakage is allowed (probably UEK7?).
+ *
+ */
 struct uv_hub_info_s {
-	unsigned int		hub_type;
-	unsigned char		hub_revision;
 	unsigned long		global_mmr_base;
 	unsigned long		global_mmr_shift;
 	unsigned long		gpa_mask;
@@ -170,9 +174,9 @@ struct uv_hub_info_s {
 	unsigned char		m_val;
 	unsigned char		n_val;
 	unsigned char		gr_table_len;
+	unsigned char		hub_revision;
 	unsigned char		apic_pnode_shift;
 	unsigned char		gpa_shift;
-	unsigned char		nasid_shift;
 	unsigned char		m_shift;
 	unsigned char		n_lshift;
 	unsigned int		gnode_extra;
@@ -188,6 +192,8 @@ struct uv_hub_info_s {
 	unsigned short		nr_possible_cpus;
 	unsigned short		nr_online_cpus;
 	short			memory_nid;
+	unsigned int		hub_type;
+	unsigned char		nasid_shift;
 };
 
 /* CPU specific info with a pointer to the hub common info struct */
