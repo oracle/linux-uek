@@ -135,6 +135,56 @@ static int otx2_dl_tl1_rr_prio_set(struct devlink *devlink, u32 id,
 	return err;
 }
 
+static int otx2_dl_cqe_size_validate(struct devlink *devlink, u32 id,
+				     union devlink_param_value val,
+				     struct netlink_ext_ack *extack)
+{
+	if (val.vu16 != 128 && val.vu16 != 512) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Only 128 or 512 byte descriptor allowed");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int otx2_dl_cqe_size_set(struct devlink *devlink, u32 id,
+				struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+	struct net_device *netdev;
+	int err = 0;
+	bool if_up;
+
+	rtnl_lock();
+
+	netdev = pfvf->netdev;
+	if_up = netif_running(netdev);
+	if (if_up)
+		netdev->netdev_ops->ndo_stop(netdev);
+
+	pfvf->hw.xqe_size = ctx->val.vu16;
+
+	if (if_up)
+		err = netdev->netdev_ops->ndo_open(netdev);
+
+	rtnl_unlock();
+
+	return err;
+}
+
+static int otx2_dl_cqe_size_get(struct devlink *devlink, u32 id,
+				struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	ctx->val.vu16 = pfvf->hw.xqe_size;
+
+	return 0;
+}
+
 static int otx2_dl_ucast_flt_cnt_set(struct devlink *devlink, u32 id,
 				     struct devlink_param_gset_ctx *ctx)
 {
@@ -196,6 +246,7 @@ enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
 	OTX2_DEVLINK_PARAM_ID_MCAM_COUNT,
 	OTX2_DEVLINK_PARAM_ID_TL1_RR_PRIO,
+	OTX2_DEVLINK_PARAM_ID_CQE_SIZE,
 	OTX2_DEVLINK_PARAM_ID_UCAST_FLT_CNT,
 };
 
@@ -210,6 +261,11 @@ static const struct devlink_param otx2_dl_params[] = {
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     otx2_dl_tl1_rr_prio_get, otx2_dl_tl1_rr_prio_set,
 			     otx2_dl_tl1_rr_prio_validate),
+	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_CQE_SIZE,
+			     "completion_descriptor_size", DEVLINK_PARAM_TYPE_U16,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     otx2_dl_cqe_size_get, otx2_dl_cqe_size_set,
+			     otx2_dl_cqe_size_validate),
 	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_UCAST_FLT_CNT,
 			     "unicast_filter_count", DEVLINK_PARAM_TYPE_U8,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
