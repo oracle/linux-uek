@@ -55,7 +55,9 @@ static bool is_dev_rpm(void *cgxd)
 
 bool is_lmac_valid(struct cgx *cgx, int lmac_id)
 {
-	return cgx && test_bit(lmac_id, &cgx->lmac_bmap);
+	if (!cgx || lmac_id < 0 || lmac_id >= MAX_LMAC_PER_CGX)
+		return false;
+	return test_bit(lmac_id, &cgx->lmac_bmap);
 }
 
 /* Helper function to get sequential index
