@@ -38,6 +38,93 @@ static inline u64 get_tenns_clk(void)
 	return tsc;
 }
 
+static inline int tim_block_cn10k_init(struct rvu *rvu)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	int lf;
+
+	hw->tim.ring_intvls = kmalloc_array(hw->block[BLKTYPE_TIM].lf.max,
+					    sizeof(enum tim_ring_interval),
+					    GFP_KERNEL);
+	if (!hw->tim.ring_intvls)
+		return -ENOMEM;
+
+	for (lf = 0; lf < hw->block[BLKTYPE_TIM].lf.max; lf++)
+		hw->tim.ring_intvls[lf] = TIM_INTERVAL_INVAL;
+	hw->tim.rings_per_intvl[TIM_INTERVAL_1US] = 0;
+	hw->tim.rings_per_intvl[TIM_INTERVAL_10US] = 0;
+	hw->tim.rings_per_intvl[TIM_INTERVAL_1MS] = 0;
+
+	return 0;
+}
+
+static inline void tim_cn10k_clear_intvl(struct rvu *rvu, int lf)
+{
+	struct tim_rsrc *tim = &rvu->hw->tim;
+
+	if (tim->ring_intvls[lf] != TIM_INTERVAL_INVAL) {
+		tim->rings_per_intvl[tim->ring_intvls[lf]]--;
+		tim->ring_intvls[lf] = TIM_INTERVAL_INVAL;
+	}
+}
+
+static inline void tim_cn10k_record_intvl(struct rvu *rvu, int lf,
+					  u64 intervalns)
+{
+	struct tim_rsrc *tim = &rvu->hw->tim;
+	enum tim_ring_interval intvl;
+
+	tim_cn10k_clear_intvl(rvu, lf);
+
+	if (intervalns < (u64)1E4)
+		intvl = TIM_INTERVAL_1US;
+	else if (intervalns < (u64)1E6)
+		intvl = TIM_INTERVAL_10US;
+	else
+		intvl = TIM_INTERVAL_1MS;
+
+	tim->ring_intvls[lf] = intvl;
+	tim->rings_per_intvl[tim->ring_intvls[lf]]++;
+}
+
+static inline int tim_get_min_intvl(struct rvu *rvu, u8 clocksource,
+				    u64 clockfreq, u64 *intvl_ns,
+				    u64 *intvl_cyc)
+{
+	struct tim_rsrc *tim = &rvu->hw->tim;
+	int intvl;
+
+	if (is_rvu_otx2(rvu)) {
+		switch (clocksource) {
+		case TIM_CLK_SRCS_TENNS:
+		case TIM_CLK_SRCS_GPIO:
+			intvl = 256;
+			break;
+		case TIM_CLK_SRCS_GTI:
+		case TIM_CLK_SRCS_PTP:
+			intvl = 300;
+			break;
+		default:
+			return TIM_AF_INVALID_CLOCK_SOURCE;
+		}
+
+		*intvl_cyc = (u64)intvl;
+	} else {
+		if (tim->rings_per_intvl[TIM_INTERVAL_1US] < 8)
+			intvl = (u64)1E3;
+		else if (tim->rings_per_intvl[TIM_INTERVAL_10US] < 8)
+			intvl = (u64)1E4;
+		else
+			intvl = (u64)1E6;
+
+		*intvl_cyc = (u64)DIV_ROUND_UP(clockfreq * (intvl), (u64)1E9);
+	}
+
+	*intvl_ns = (u64)DIV_ROUND_UP((*intvl_cyc) * (u64)1E9, clockfreq);
+
+	return 0;
+}
+
 static int rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 {
 	u64 regval;
@@ -57,7 +144,21 @@ static int rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 	 */
 	rvu_poll_reg(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf),
 			TIM_AF_RINGX_CTL1_RCF_BUSY, true);
+	if (!is_rvu_otx2(rvu))
+		tim_cn10k_clear_intvl(rvu, lf);
+
 	return 0;
+}
+
+int rvu_mbox_handler_tim_get_min_intvl(struct rvu *rvu,
+				       struct tim_intvl_req *req,
+				       struct tim_intvl_rsp *rsp)
+{
+	if (!req->clockfreq)
+		return TIM_AF_INVALID_CLOCK_SOURCE;
+
+	return tim_get_min_intvl(rvu, req->clocksource, req->clockfreq,
+				 &rsp->intvl_ns, &rsp->intvl_cyc);
 }
 
 int rvu_mbox_handler_tim_lf_alloc(struct rvu *rvu,
@@ -128,9 +229,10 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 				     struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
+	u64 intvl_cyc, intvl_ns;
 	int lf, blkaddr;
-	u32 intervalmin;
 	u64 regval;
+	int rc;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, pcifunc);
 	if (blkaddr < 0)
@@ -174,22 +276,12 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 	if (req->chunksize > TIM_CHUNKSIZE_MAX)
 		return TIM_AF_CSIZE_TOO_BIG;
 
-	switch (req->clocksource) {
-	case TIM_CLK_SRCS_TENNS:
-		intervalmin = 256;
-		break;
-	case TIM_CLK_SRCS_GPIO:
-		intervalmin = 256;
-		break;
-	case TIM_CLK_SRCS_GTI:
-	case TIM_CLK_SRCS_PTP:
-		intervalmin = 300;
-		break;
-	default:
-		return TIM_AF_INVALID_CLOCK_SOURCE;
-	}
+	rc = tim_get_min_intvl(rvu, req->clocksource, req->clockfreq,
+			       &intvl_ns, &intvl_cyc);
+	if (rc)
+		return rc;
 
-	if (req->interval < intervalmin)
+	if (req->interval < intvl_cyc || req->intervalns < intvl_ns)
 		return TIM_AF_INTERVAL_TOO_SMALL;
 
 	/* Configure edge of GPIO clock source */
@@ -212,6 +304,9 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 			rvu_write64(rvu, blkaddr, TIM_AF_FLAGS_REG, regval);
 		}
 	}
+
+	if (!is_rvu_otx2(rvu))
+		tim_cn10k_record_intvl(rvu, lf, req->intervalns);
 
 	/* CTL0 */
 	/* EXPIRE_OFFSET = 0 and is set correctly when enabling. */
@@ -307,13 +402,16 @@ for (lf = 0; lf < hw->block[BLKTYPE_TIM].lf.max; lf++)
 int rvu_tim_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	int lf, blkaddr;
+	int lf, blkaddr, rc = 0;
 	u8 gpio_edge;
 	u64 regval;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
 	if (blkaddr < 0)
 		return 0;
+
+	if (!is_rvu_otx2(rvu))
+		rc = tim_block_cn10k_init(rvu);
 
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_FLAGS_REG);
 
@@ -355,5 +453,5 @@ int rvu_tim_init(struct rvu *rvu)
 	if(is_rvu_otx2(rvu))
 		rvu_tim_hw_fixes(rvu, blkaddr);
 
-	return 0;
+	return rc;
 }

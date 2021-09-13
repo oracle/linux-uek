@@ -216,6 +216,8 @@ M(TIM_LF_FREE,		0x801, tim_lf_free, tim_ring_req, msg_rsp)	\
 M(TIM_CONFIG_RING,	0x802, tim_config_ring, tim_config_req, msg_rsp)\
 M(TIM_ENABLE_RING,	0x803, tim_enable_ring, tim_ring_req, tim_enable_rsp)\
 M(TIM_DISABLE_RING,	0x804, tim_disable_ring, tim_ring_req, msg_rsp)	\
+M(TIM_GET_MIN_INTVL,	0x805, tim_get_min_intvl, tim_intvl_req,	\
+			       tim_intvl_rsp)				\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 M(CPT_LF_ALLOC,		0xA00, cpt_lf_alloc, cpt_lf_alloc_req_msg,	\
 			       msg_rsp)			\
@@ -1666,6 +1668,8 @@ enum tim_clk_srcs {
 	TIM_CLK_SRCS_GPIO	= 1,
 	TIM_CLK_SRCS_GTI	= 2,
 	TIM_CLK_SRCS_PTP	= 3,
+	TIM_CLK_SRCS_SYNCE	= 4,
+	TIM_CLK_SRCS_BTS	= 5,
 	TIM_CLK_SRSC_INVALID,
 };
 
@@ -1698,8 +1702,11 @@ struct tim_config_req {
 	u8	enabledontfreebuffer;
 	u32	bucketsize;
 	u32	chunksize;
-	u32	interval;
+	u32	interval;   /* Cycles between traversal */
 	u8	gpioedge;
+	u8	rsvd[7];
+	u64	intervalns; /* Nanoseconds between traversal */
+	u64	clockfreq;
 };
 
 struct tim_lf_alloc_rsp {
@@ -1711,6 +1718,18 @@ struct tim_enable_rsp {
 	struct mbox_msghdr hdr;
 	u64	timestarted;
 	u32	currentbucket;
+};
+
+struct tim_intvl_req {
+	struct mbox_msghdr hdr;
+	u8	clocksource;
+	u64	clockfreq;
+};
+
+struct tim_intvl_rsp {
+	struct mbox_msghdr hdr;
+	u64	intvl_cyc;
+	u64	intvl_ns;
 };
 
 struct get_hw_cap_rsp {
