@@ -130,9 +130,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define fancy_debuginfo 0
 %endif
 
+# .BTF section must stay in modules
+%define _find_debuginfo_opt_btf --keep-section .BTF
+
 %if %{fancy_debuginfo}
 BuildRequires: rpm-build >= 4.4.2.1-4
-%define _find_debuginfo_opts --strict-build-id
+%define _find_debuginfo_opts --strict-build-id %{_find_debuginfo_opt_btf}
+%else
+%define _find_debuginfo_opts %{_find_debuginfo_opt_btf}
 %endif
 
 # Additional options for user-friendly one-off kernel building:
