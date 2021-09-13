@@ -43,6 +43,7 @@ kernel/crypto/ccm.ko
 kernel/crypto/cmac.ko
 kernel/crypto/cryptd.ko
 kernel/crypto/crypto_simd.ko
+kernel/crypto/crypto_user.ko
 kernel/crypto/des_generic.ko
 kernel/crypto/dh_generic.ko
 kernel/crypto/echainiv.ko
@@ -53,6 +54,7 @@ kernel/crypto/lz4hc.ko
 kernel/crypto/lz4.ko
 kernel/crypto/md4.ko
 kernel/crypto/michael_mic.ko
+kernel/crypto/ofb.ko
 kernel/crypto/pcbc.ko
 kernel/crypto/rmd128.ko
 kernel/crypto/rmd160.ko
