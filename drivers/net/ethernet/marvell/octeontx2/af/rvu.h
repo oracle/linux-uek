@@ -229,6 +229,18 @@ struct sso_rsrc {
 	struct rsrc_bmap pfvf_ident;
 };
 
+enum tim_ring_interval {
+	TIM_INTERVAL_1US = 0,
+	TIM_INTERVAL_10US,
+	TIM_INTERVAL_1MS,
+	TIM_INTERVAL_INVAL,
+};
+
+struct tim_rsrc {
+	u16 rings_per_intvl[TIM_INTERVAL_INVAL];
+	enum tim_ring_interval *ring_intvls;
+};
+
 /* Structure for per RVU func info ie PF/VF */
 struct rvu_pfvf {
 	bool		npalf; /* Only one NPALF per RVU_FUNC */
@@ -442,6 +454,7 @@ struct rvu_hwinfo {
 	struct npc_mcam  mcam;
 	struct npc_exact_table *table;
 	struct sso_rsrc  sso;
+	struct tim_rsrc  tim;
 };
 
 struct mbox_wq_info {
