@@ -1483,6 +1483,9 @@ static int otx2_get_rbuf_size(struct otx2_nic *pf, int mtu)
 	if (pf->hw.rbuf_len)
 		return ALIGN(pf->hw.rbuf_len, OTX2_ALIGN) + OTX2_HEAD_ROOM;
 
+	if (pf->hw.rbuf_len)
+		return ALIGN(pf->hw.rbuf_len, OTX2_ALIGN) + OTX2_HEAD_ROOM;
+
 	/* The data transferred by NIX to memory consists of actual packet
 	 * plus additional data which has timestamp and/or EDSA/HIGIG2
 	 * headers if interface is configured in corresponding modes.

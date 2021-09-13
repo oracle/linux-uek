@@ -416,6 +416,15 @@ static int otx2_set_ringparam(struct net_device *netdev,
 		return -EINVAL;
 	}
 
+	/* Hardware supports max size of 32k for a receive buffer
+	 * and 1536 is typical ethernet frame size.
+	 */
+	if (rx_buf_len && (rx_buf_len < 1536 || rx_buf_len > 32768)) {
+		netdev_err(netdev,
+			   "Receive buffer range is 1536 - 32768");
+		return -EINVAL;
+	}
+
 	/* Permitted lengths are 16 64 256 1K 4K 16K 64K 256K 1M  */
 	rx_count = ring->rx_pending;
 	/* On some silicon variants a skid or reserved CQEs are
@@ -446,6 +455,8 @@ static int otx2_set_ringparam(struct net_device *netdev,
 
 	pfvf->hw.rbuf_len = rx_buf_len;
 	pfvf->hw.xqe_size = xqe_size;
+
+	pfvf->hw.rbuf_len = rx_buf_len;
 
 	if (if_up)
 		return netdev->netdev_ops->ndo_open(netdev);
