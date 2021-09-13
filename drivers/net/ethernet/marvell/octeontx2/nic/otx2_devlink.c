@@ -196,6 +196,60 @@ static int otx2_dl_tl1_rr_prio_set(struct devlink *devlink, u32 id,
 	return err;
 }
 
+static int otx2_dl_rbuf_size_validate(struct devlink *devlink, u32 id,
+				      union devlink_param_value val,
+				      struct netlink_ext_ack *extack)
+{
+	/* Hardware supports max size of 32k for a receive buffer
+	 * and 1536 is typical ethernet frame size.
+	 */
+	if (val.vu16 < 1536 || val.vu16 > 32768) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Receive buffer range is 1536 - 32768");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int otx2_dl_rbuf_size_set(struct devlink *devlink, u32 id,
+				 struct devlink_param_gset_ctx *ctx,
+				 struct netlink_ext_ack *extack)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+	struct net_device *netdev;
+	int err = 0;
+	bool if_up;
+
+	rtnl_lock();
+
+	netdev = pfvf->netdev;
+	if_up = netif_running(netdev);
+	if (if_up)
+		netdev->netdev_ops->ndo_stop(netdev);
+
+	pfvf->hw.rbuf_len = ALIGN(ctx->val.vu16, OTX2_ALIGN) + OTX2_HEAD_ROOM;
+
+	if (if_up)
+		err = netdev->netdev_ops->ndo_open(netdev);
+
+	rtnl_unlock();
+
+	return err;
+}
+
+static int otx2_dl_rbuf_size_get(struct devlink *devlink, u32 id,
+				 struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	ctx->val.vu16 = pfvf->hw.rbuf_len;
+
+	return 0;
+}
+
 static int otx2_dl_cqe_size_validate(struct devlink *devlink, u32 id,
 				     union devlink_param_value val,
 				     struct netlink_ext_ack *extack)
@@ -253,6 +307,7 @@ enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_UCAST_FLT_CNT,
 	OTX2_DEVLINK_PARAM_ID_TL1_RR_PRIO,
 	OTX2_DEVLINK_PARAM_ID_CQE_SIZE,
+	OTX2_DEVLINK_PARAM_ID_RBUF_SIZE,
 };
 
 static const struct devlink_param otx2_dl_params[] = {
@@ -276,6 +331,11 @@ static const struct devlink_param otx2_dl_params[] = {
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     otx2_dl_cqe_size_get, otx2_dl_cqe_size_set,
 			     otx2_dl_cqe_size_validate),
+	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_RBUF_SIZE,
+			     "receive_buffer_size", DEVLINK_PARAM_TYPE_U16,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     otx2_dl_rbuf_size_get, otx2_dl_rbuf_size_set,
+			     otx2_dl_rbuf_size_validate),
 };
 
 static const struct devlink_ops otx2_devlink_ops = {
