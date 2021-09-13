@@ -286,8 +286,8 @@ struct rds_ib_connection {
 	atomic_t		i_fastreg_wrs;
 
 	/* interrupt handling */
-	struct tasklet_struct	i_stasklet;
-	struct tasklet_struct	i_rtasklet;
+	struct work_struct	i_recv_w;
+	struct work_struct	i_send_w;
 
 	/* tx */
 	struct rds_ib_work_ring	i_send_ring;
@@ -302,7 +302,6 @@ struct rds_ib_connection {
 	spinlock_t              i_tx_lock;
 
 	/* rx */
-	struct tasklet_struct	i_recv_tasklet;
 	struct mutex		i_recv_mutex;
 	struct rds_ib_work_ring	i_recv_ring;
 	struct rds_ib_incoming	*i_ibinc;
@@ -471,9 +470,9 @@ struct rds_ib_device {
 	struct ib_cq		*fastreg_cq;
 	struct ib_wc            fastreg_wc[RDS_WC_MAX];
 	struct ib_qp		*fastreg_qp;
-	struct tasklet_struct	fastreg_tasklet;
 	atomic_t		fastreg_wrs;
 	struct rw_semaphore	fastreg_lock;
+	struct work_struct	fastreg_w;
 	struct work_struct	fastreg_reset_w;
 
 	struct ib_mr		*mr;
@@ -663,6 +662,7 @@ static inline __s32 rds_qp_num(struct rds_connection *conn, int dst)
 
 /* ib.c */
 extern struct workqueue_struct *rds_aux_wq;
+extern struct workqueue_struct *rds_evt_wq;
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
@@ -768,7 +768,6 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
 void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			    struct ib_wc *wc,
 			    struct rds_ib_ack_state *state);
-void rds_ib_recv_tasklet_fn(unsigned long data);
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_clear_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_init_ack(struct rds_ib_connection *ic);
