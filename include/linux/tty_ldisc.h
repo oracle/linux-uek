@@ -2,6 +2,8 @@
 #ifndef _LINUX_TTY_LDISC_H
 #define _LINUX_TTY_LDISC_H
 
+#include <linux/uek_kabi.h>
+
 struct tty_struct;
 
 /*
@@ -200,7 +202,8 @@ struct tty_ldisc_ops {
 	void	(*set_termios)(struct tty_struct *tty, struct ktermios *old);
 	__poll_t (*poll)(struct tty_struct *, struct file *,
 			     struct poll_table_struct *);
-	int	(*hangup)(struct tty_struct *tty);
+	UEK_KABI_REPLACE(int (*hangup)(struct tty_struct *tty),
+			 void (*hangup)(struct tty_struct *tty))
 
 	/*
 	 * The following routines are called from below.
