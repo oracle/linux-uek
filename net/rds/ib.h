@@ -360,8 +360,7 @@ struct rds_ib_connection {
 	/* Active Bonding */
 	unsigned int		i_active_side;
 
-	int			i_scq_vector;
-	int			i_rcq_vector;
+	int			i_cq_vector;
 
 	unsigned int            i_rx_poll_cq;
 	struct rds_ib_rx_work   i_rx_w;
