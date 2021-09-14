@@ -298,6 +298,7 @@ int rvu_mbox_handler_npa_aq_enq(struct rvu *rvu,
 	return rvu_npa_aq_enq_inst(rvu, req, rsp);
 }
 #endif
+EXPORT_SYMBOL(rvu_mbox_handler_npa_aq_enq);
 
 int rvu_mbox_handler_npa_hwctx_disable(struct rvu *rvu,
 				       struct hwctx_disable_req *req,
