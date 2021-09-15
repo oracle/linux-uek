@@ -26,9 +26,6 @@
 
 #define RPMX_CMRX_LINK_RANGE_MASK	GENMASK_ULL(19, 16)
 #define RPMX_CMRX_LINK_BASE_MASK	GENMASK_ULL(11, 0)
-#define RPMX_MTI_STAT_RX_STAT_PAGES_COUNTERX 0x12000
-#define RPMX_MTI_STAT_TX_STAT_PAGES_COUNTERX 0x13000
-#define RPMX_MTI_STAT_DATA_HI_CDC            0x10038
 
 #define RPMX_MTI_MAC100X_COMMAND_CONFIG	0x8010
 #define RPMX_MTI_MAC100X_COMMAND_CONFIG_RX_P_DISABLE	BIT_ULL(29)
@@ -41,19 +38,22 @@
 #define RPMX_CMR_RX_OVR_BP		0x4120
 #define RPMX_CMR_RX_OVR_BP_EN(x)	BIT_ULL((x) + 8)
 #define RPMX_CMR_RX_OVR_BP_BP(x)	BIT_ULL((x) + 4)
+#define RPMX_MTI_STAT_RX_STAT_PAGES_COUNTERX 0x12000
+#define RPMX_MTI_STAT_TX_STAT_PAGES_COUNTERX 0x13000
+#define RPMX_MTI_STAT_DATA_HI_CDC            0x10038
 #define RPM_LMAC_FWI			0xa
 
 /* Function Declarations */
 int rpm_get_nr_lmacs(void *rpmd);
 u8 rpm_get_lmac_type(void *rpmd, int lmac_id);
 int rpm_lmac_internal_loopback(void *rpmd, int lmac_id, bool enable);
-int rpm_get_tx_stats(void *rpmd, int lmac_id, int idx, u64 *tx_stat);
-int rpm_get_rx_stats(void *rpmd, int lmac_id, int idx, u64 *rx_stat);
 void rpm_lmac_enadis_rx_pause_fwding(void *rpmd, int lmac_id, bool enable);
 int rpm_lmac_get_pause_frm_status(void *cgxd, int lmac_id, u8 *tx_pause,
 				  u8 *rx_pause);
 void rpm_lmac_pause_frm_config(void *rpmd, int lmac_id, bool enable);
 int rpm_lmac_enadis_pause_frm(void *rpmd, int lmac_id, u8 tx_pause,
 			      u8 rx_pause);
+int rpm_get_tx_stats(void *rpmd, int lmac_id, int idx, u64 *tx_stat);
+int rpm_get_rx_stats(void *rpmd, int lmac_id, int idx, u64 *rx_stat);
 void rpm_lmac_ptp_config(void *rpmd, int lmac_id, bool enable);
 #endif /* RPM_H */
