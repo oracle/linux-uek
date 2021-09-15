@@ -364,7 +364,7 @@ struct rds_ib_connection {
 	spinlock_t              i_rx_lock;
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
-	uint			i_irq_local_cpu;
+	int			i_preferred_cpu;
 
 	/* For handling delayed release of device related resource. */
 	struct mutex		i_delayed_free_lock;
