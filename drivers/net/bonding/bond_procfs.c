@@ -123,6 +123,10 @@ static void bond_info_show_master(struct seq_file *seq)
 			printed = 1;
 		}
 		seq_printf(seq, "\n");
+		if (bond->params.arp_allslaves) {
+			seq_printf(seq, "ARP all slaves: %d\n",
+				bond->params.arp_allslaves);
+		}
 	}
 
 	if (BOND_MODE(bond) == BOND_MODE_8023AD) {

@@ -112,6 +112,7 @@ static const struct nla_policy bond_policy[IFLA_BOND_MAX + 1] = {
 	[IFLA_BOND_AD_ACTOR_SYSTEM]	= { .type = NLA_BINARY,
 					    .len  = ETH_ALEN },
 	[IFLA_BOND_TLB_DYNAMIC_LB]	= { .type = NLA_U8 },
+	[IFLA_BOND_ARP_ALLSLAVES]	= { .type = NLA_U8 },
 };
 
 static const struct nla_policy bond_slave_policy[IFLA_BOND_SLAVE_MAX + 1] = {
@@ -436,6 +437,19 @@ static int bond_changelink(struct net_device *bond_dev, struct nlattr *tb[],
 		if (err)
 			return err;
 	}
+	if (data[IFLA_BOND_ARP_ALLSLAVES]) {
+		int arp_allslaves = nla_get_u8(data[IFLA_BOND_ARP_ALLSLAVES]);
+
+		if (arp_allslaves && miimon) {
+			netdev_err(bond->dev, "ARP monitoring cannot be used with MII monitoring\n");
+			return -EINVAL;
+		}
+
+		bond_opt_initval(&newval, arp_allslaves);
+		err = __bond_opt_set(bond, BOND_OPT_ARP_ALLSLAVES, &newval);
+		if (err)
+			return err;
+	}
 
 	return 0;
 }
@@ -497,6 +511,7 @@ static size_t bond_get_size(const struct net_device *bond_dev)
 		nla_total_size(sizeof(u16)) + /* IFLA_BOND_AD_USER_PORT_KEY */
 		nla_total_size(ETH_ALEN) + /* IFLA_BOND_AD_ACTOR_SYSTEM */
 		nla_total_size(sizeof(u8)) + /* IFLA_BOND_TLB_DYNAMIC_LB */
+		nla_total_size(sizeof(u8)) + /* IFLA_BOND_ARP_ALLSLAVES */
 		0;
 }
 
@@ -667,6 +682,11 @@ static int bond_fill_info(struct sk_buff *skb,
 			nla_nest_end(skb, nest);
 		}
 	}
+
+	if (nla_put_u8(skb, IFLA_BOND_ARP_ALLSLAVES,
+		       bond->params.arp_allslaves))
+		goto nla_put_failure;
+
 
 	return 0;
 
