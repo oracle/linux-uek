@@ -529,6 +529,7 @@ retry:
 
 	spin_lock_irqsave(&lruvec->lru_lock, *flags);
 out:
+	/* See the comments in lock_page_lruvec(). */
 	if (unlikely(lruvec_memcg(lruvec) != page_memcg(page))) {
 		spin_unlock_irqrestore(&lruvec->lru_lock, *flags);
 		goto retry;
