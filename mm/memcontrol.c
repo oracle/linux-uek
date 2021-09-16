@@ -1320,7 +1320,7 @@ int mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
  * These functions are safe to use under any of the following conditions:
  * - page locked
  * - PageLRU cleared
- * - lock_page_memcg()
+ * - lock_page_objcg()
  * - page->_refcount is zero
  */
 struct lruvec *lock_page_lruvec(struct page *page)
@@ -2153,16 +2153,16 @@ void mem_cgroup_print_oom_group(struct mem_cgroup *memcg)
 }
 
 /**
- * lock_page_memcg - lock a page and memcg binding
+ * lock_page_objcg - lock a page and objcg binding
  * @page: the page
  *
  * This function protects unlocked LRU pages from being moved to
  * another cgroup.
  *
- * It ensures lifetime of the locked memcg. Caller is responsible
+ * It ensures lifetime of the locked objcg. Caller is responsible
  * for the lifetime of the page.
  */
-void lock_page_memcg(struct page *page)
+void lock_page_objcg(struct page *page)
 {
 	struct page *head = compound_head(page); /* rmap on tail pages */
 	struct mem_cgroup *memcg;
@@ -2200,18 +2200,27 @@ again:
 	}
 
 	/*
+	 * The cgroup migration and memory cgroup offlining are serialized by
+	 * cgroup_mutex. If we reach here, it means that we are race with cgroup
+	 * migration (or we are cgroup migration) and the @page cannot be
+	 * reparented to its parent memory cgroup. So during the whole process
+	 * from lock_page_objcg(page) to unlock_page_objcg(page), page_memcg(page)
+	 * and obj_cgroup_memcg(objcg) are stable.
+	 *
 	 * When charge migration first begins, we can have multiple
 	 * critical sections holding the fast-path RCU lock and one
 	 * holding the slowpath move_lock. Track the task who has the
-	 * move_lock for unlock_page_memcg().
+	 * move_lock for unlock_page_objcg().
 	 */
 	memcg->move_lock_task = current;
 	memcg->move_lock_flags = flags;
 }
-EXPORT_SYMBOL(lock_page_memcg);
+EXPORT_SYMBOL(lock_page_objcg);
 
-static void __unlock_page_memcg(struct mem_cgroup *memcg)
+static void __unlock_page_objcg(struct obj_cgroup *objcg)
 {
+	struct mem_cgroup *memcg = objcg ? obj_cgroup_memcg(objcg) : NULL;
+
 	if (memcg && memcg->move_lock_task == current) {
 		unsigned long flags = memcg->move_lock_flags;
 
@@ -2225,16 +2234,16 @@ static void __unlock_page_memcg(struct mem_cgroup *memcg)
 }
 
 /**
- * unlock_page_memcg - unlock a page and memcg binding
+ * unlock_page_objcg - unlock a page and memcg binding
  * @page: the page
  */
-void unlock_page_memcg(struct page *page)
+void unlock_page_objcg(struct page *page)
 {
 	struct page *head = compound_head(page);
 
-	__unlock_page_memcg(page_memcg(head));
+	__unlock_page_objcg(page_objcg(head));
 }
-EXPORT_SYMBOL(unlock_page_memcg);
+EXPORT_SYMBOL(unlock_page_objcg);
 
 struct obj_stock {
 #ifdef CONFIG_MEMCG_KMEM
@@ -2928,7 +2937,7 @@ static void commit_charge(struct page *page, struct obj_cgroup *objcg)
 	 *
 	 * - the page lock
 	 * - LRU isolation
-	 * - lock_page_memcg()
+	 * - lock_page_objcg()
 	 * - exclusive reference
 	 */
 	page->memcg_data = (unsigned long)objcg;
@@ -5705,7 +5714,7 @@ static int mem_cgroup_move_account(struct page *page,
 	from_vec = mem_cgroup_lruvec(from, pgdat);
 	to_vec = mem_cgroup_lruvec(to, pgdat);
 
-	lock_page_memcg(page);
+	lock_page_objcg(page);
 
 	if (PageAnon(page)) {
 		if (page_mapped(page)) {
@@ -5757,7 +5766,7 @@ static int mem_cgroup_move_account(struct page *page,
 	 * with (un)charging, migration, LRU putback, or anything else
 	 * that would rely on a stable page's memory cgroup.
 	 *
-	 * Note that lock_page_memcg is a memcg lock, not a page lock,
+	 * Note that lock_page_objcg is a memcg lock, not a page lock,
 	 * to save space. As soon as we switch page's memory cgroup to a
 	 * new memcg that isn't locked, the above state can change
 	 * concurrently again. Make sure we're truly done with it.
@@ -5769,7 +5778,7 @@ static int mem_cgroup_move_account(struct page *page,
 
 	page->memcg_data = (unsigned long)to->objcg;
 
-	__unlock_page_memcg(from);
+	__unlock_page_objcg(from->objcg);
 
 	ret = 0;
 
@@ -6211,7 +6220,7 @@ static void mem_cgroup_move_charge(void)
 {
 	lru_add_drain_all();
 	/*
-	 * Signal lock_page_memcg() to take the memcg's move_lock
+	 * Signal lock_page_objcg() to take the memcg's move_lock
 	 * while we're moving its pages to another memcg. Then wait
 	 * for already started RCU-only updates to finish.
 	 */
@@ -6243,14 +6252,14 @@ retry:
 	/*
 	 * Moving its pages to another memcg is finished. Wait for already
 	 * started RCU-only updates to finish to make sure that the caller
-	 * of lock_page_memcg() can unlock the correct move_lock. The
+	 * of lock_page_objcg() can unlock the correct move_lock. The
 	 * possible bad scenario would like:
 	 *
 	 * CPU0:				CPU1:
 	 * mem_cgroup_move_charge()
 	 *     walk_page_range()
 	 *
-	 *					lock_page_memcg(page)
+	 *					lock_page_objcg(page)
 	 *					    memcg = page_memcg(page)
 	 *					    spin_lock_irqsave(&memcg->move_lock)
 	 *					    memcg->move_lock_task = current
@@ -6261,14 +6270,14 @@ retry:
 	 *     memcg_offline_kmem()
 	 *         memcg_reparent_objcgs() <== reparented
 	 *
-	 *					unlock_page_memcg(page)
+	 *					unlock_page_objcg(page)
 	 *					    memcg = page_memcg(page) <== memcg has been changed
 	 *					    if (memcg->move_lock_task == current) <== false
 	 *					        spin_unlock_irqrestore(&memcg->move_lock)
 	 *
 	 * Once mem_cgroup_move_charge() returns (it means that the cgroup_mutex
 	 * would be released soon), the page can be reparented to its parent
-	 * memcg. When the unlock_page_memcg() is called for the page, we will
+	 * memcg. When the unlock_page_objcg() is called for the page, we will
 	 * miss unlock the move_lock. So using synchronize_rcu to wait for
 	 * already started RCU-only updates to finish before this function
 	 * returns (mem_cgroup_move_charge() and mem_cgroup_css_offline() are
