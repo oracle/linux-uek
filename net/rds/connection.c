@@ -358,8 +358,9 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		__rds_conn_path_init(conn, cp, is_outgoing);
 		cp->cp_index = i;
 
-		cp->cp_wq = alloc_ordered_workqueue("krds_cp_wq#%d/%d", 0,
-						    atomic_read(&conn->c_trans->t_conn_count), i);
+		cp->cp_wq = alloc_workqueue("krds_cp_wq#%d/%d",
+					    __WQ_ORDERED | __WQ_ORDERED_EXPLICIT,
+					    1, atomic_read(&conn->c_trans->t_conn_count), i);
 		if (!cp->cp_wq) {
 			while (--i >= 0) {
 				cp = conn->c_path + i;
@@ -368,7 +369,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			kfree(conn->c_path);
 			kmem_cache_free(rds_conn_slab, conn);
 			conn = ERR_PTR(-ENOMEM);
-			reason = "alloc_ordered_workqueue failed";
+			reason = "alloc_workqueue failed";
 			goto out;
 		}
 	}
@@ -1392,7 +1393,7 @@ void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 			memcpy(&conn->c_ha_changed.ha, ha, ha_len);
 			conn->c_ha_changed.ha_len = ha_len;
 
-			queue_work(system_unbound_wq, &conn->c_ha_changed.work);
+			queue_work(system_wq, &conn->c_ha_changed.work);
 		}
 	}
 
