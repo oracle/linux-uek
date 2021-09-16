@@ -921,6 +921,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 		   (pfvf->hw.rqpool_cnt != pfvf->hw.rx_queues)) ? 0 : qidx;
 	cq->rbpool = &qset->pool[pool_id];
 	cq->refill_task_sched = false;
+	cq->pend_cqe = 0;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
@@ -1025,6 +1026,8 @@ int otx2_config_nix_queues(struct otx2_nic *pfvf)
 		if (err)
 			return err;
 	}
+
+	pfvf->cq_op_addr = (u64 *)otx2_get_regaddr(pfvf, NIX_LF_CQ_OP_STATUS);
 
 	/* Initialize work queue for receive buffer refill */
 	pfvf->refill_wrk = devm_kcalloc(pfvf->dev, pfvf->qset.cq_cnt,
