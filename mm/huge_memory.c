@@ -535,8 +535,21 @@ static struct deferred_split *split_queue_lock(struct page *head)
 {
 	struct deferred_split *queue;
 
+	rcu_read_lock();
+retry:
 	queue = page_split_queue(head);
 	spin_lock(&queue->split_queue_lock);
+
+	if (unlikely(split_queue_memcg(queue) != page_memcg(head))) {
+		spin_unlock(&queue->split_queue_lock);
+		goto retry;
+	}
+
+	/*
+	 * Preemption is disabled in the internal of spin_lock, which can serve
+	 * as RCU read-side critical sections.
+	 */
+	rcu_read_unlock();
 
 	return queue;
 }
@@ -546,8 +559,18 @@ split_queue_lock_irqsave(struct page *head, unsigned long *flags)
 {
 	struct deferred_split *queue;
 
+	rcu_read_lock();
+retry:
 	queue = page_split_queue(head);
 	spin_lock_irqsave(&queue->split_queue_lock, *flags);
+
+	if (unlikely(split_queue_memcg(queue) != page_memcg(head))) {
+		spin_unlock_irqrestore(&queue->split_queue_lock, *flags);
+		goto retry;
+	}
+
+	/* See the comments in split_queue_lock(). */
+	rcu_read_unlock();
 
 	return queue;
 }
