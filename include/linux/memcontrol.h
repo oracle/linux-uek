@@ -788,7 +788,9 @@ out:
  * mem_cgroup_page_lruvec - return lruvec for isolating/putting an LRU page
  * @page: the page
  *
- * This function relies on page->mem_cgroup being stable.
+ * The lruvec can be changed to its parent lruvec when the page reparented.
+ * The caller need to recheck if it cares about this change (just like
+ * lock_page_lruvec() does).
  */
 static inline struct lruvec *mem_cgroup_page_lruvec(struct page *page)
 {
@@ -807,14 +809,6 @@ struct lruvec *lock_page_lruvec(struct page *page);
 struct lruvec *lock_page_lruvec_irq(struct page *page);
 struct lruvec *lock_page_lruvec_irqsave(struct page *page,
 						unsigned long *flags);
-
-#ifdef CONFIG_DEBUG_VM
-void lruvec_memcg_debug(struct lruvec *lruvec, struct page *page);
-#else
-static inline void lruvec_memcg_debug(struct lruvec *lruvec, struct page *page)
-{
-}
-#endif
 
 static inline
 struct mem_cgroup *mem_cgroup_from_css(struct cgroup_subsys_state *css){
@@ -1262,10 +1256,6 @@ static inline struct lruvec *mem_cgroup_page_lruvec(struct page *page)
 	pg_data_t *pgdat = page_pgdat(page);
 
 	return &pgdat->__lruvec;
-}
-
-static inline void lruvec_memcg_debug(struct lruvec *lruvec, struct page *page)
-{
 }
 
 static inline struct mem_cgroup *parent_mem_cgroup(struct mem_cgroup *memcg)
