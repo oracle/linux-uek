@@ -38,6 +38,8 @@ static int bond_option_arp_validate_set(struct bonding *bond,
 					const struct bond_opt_value *newval);
 static int bond_option_arp_all_targets_set(struct bonding *bond,
 					   const struct bond_opt_value *newval);
+static int bond_option_arp_allslaves_set(struct bonding *bond,
+					   const struct bond_opt_value *newval);
 static int bond_option_primary_set(struct bonding *bond,
 				   const struct bond_opt_value *newval);
 static int bond_option_primary_reselect_set(struct bonding *bond,
@@ -183,6 +185,12 @@ static const struct bond_opt_value bond_lp_interval_tbl[] = {
 static const struct bond_opt_value bond_tlb_dynamic_lb_tbl[] = {
 	{ "off", 0,  0},
 	{ "on",  1,  BOND_VALFLAG_DEFAULT},
+	{ NULL,  -1, 0}
+};
+
+static const struct bond_opt_value bond_arp_allslaves_tbl[] = {
+	{ "off", 0,  BOND_VALFLAG_DEFAULT},
+	{ "on",  1,  0},
 	{ NULL,  -1, 0}
 };
 
@@ -379,6 +387,15 @@ static const struct bond_option bond_opts[BOND_OPT_LAST] = {
 		.values = bond_tlb_dynamic_lb_tbl,
 		.flags = BOND_OPTFLAG_IFDOWN,
 		.set = bond_option_tlb_dynamic_lb_set,
+	},
+	[BOND_OPT_ARP_ALLSLAVES] = {
+		.id = BOND_OPT_ARP_ALLSLAVES,
+		.name = "arp_allslaves",
+		.desc = "arp monitor all slaves",
+		.unsuppmodes = BIT(BOND_MODE_8023AD) | BIT(BOND_MODE_TLB) |
+			       BIT(BOND_MODE_ALB),
+		.values = bond_arp_allslaves_tbl,
+		.set = bond_option_arp_allslaves_set
 	}
 };
 
@@ -1346,6 +1363,16 @@ static int bond_option_tlb_dynamic_lb_set(struct bonding *bond,
 	netdev_info(bond->dev, "Setting dynamic-lb to %s (%llu)\n",
 		    newval->string, newval->value);
 	bond->params.tlb_dynamic_lb = newval->value;
+
+	return 0;
+}
+
+static int bond_option_arp_allslaves_set(struct bonding *bond,
+					  const struct bond_opt_value *newval)
+{
+	netdev_info(bond->dev, "Setting arp_allslaves to %s (%llu)\n",
+		    newval->string, newval->value);
+	bond->params.arp_allslaves = newval->value;
 
 	return 0;
 }
