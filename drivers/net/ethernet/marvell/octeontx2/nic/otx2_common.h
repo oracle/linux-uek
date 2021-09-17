@@ -232,8 +232,6 @@ struct otx2_hw {
 #define LMT_BURST_SIZE		32 /* 32 LMTST lines for burst SQE flush */
 	u64			*lmt_base;
 	struct otx2_lmt_info	__percpu *lmt_info;
-	/* Supported MAC features */
-	u64			mac_features;
 };
 
 
@@ -916,7 +914,6 @@ int otx2smqvf_probe(struct otx2_nic *vf);
 int otx2smqvf_remove(struct otx2_nic *vf);
 
 bool otx2_xdp_sq_append_pkt(struct otx2_nic *pfvf, u64 iova, int len, u16 qidx);
-int otx2_cgx_features_get(struct otx2_nic *pfvf);
 u16 otx2_get_max_mtu(struct otx2_nic *pfvf);
 /* tc support */
 int otx2_init_tc(struct otx2_nic *nic);
