@@ -1128,33 +1128,6 @@ static int otx2_cgx_config_linkevents(struct otx2_nic *pf, bool enable)
 	return err;
 }
 
-int otx2_cgx_features_get(struct otx2_nic *pfvf)
-{
-	struct cgx_features_info_msg *rsp;
-	struct msg_req *msg;
-	int err;
-
-	mutex_lock(&pfvf->mbox.lock);
-	msg = otx2_mbox_alloc_msg_cgx_features_get(&pfvf->mbox);
-
-	if (!msg) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return -ENOMEM;
-	}
-
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
-		goto out;
-
-	rsp = (struct cgx_features_info_msg *)
-		     otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &msg->hdr);
-	pfvf->hw.mac_features = rsp->lmac_features;
-out:
-	mutex_unlock(&pfvf->mbox.lock);
-	return err;
-}
-EXPORT_SYMBOL(otx2_cgx_features_get);
-
 static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
 {
 	struct msg_req *msg;
@@ -2826,8 +2799,6 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_unreg_netdev;
 
 	otx2_set_ethtool_ops(netdev);
-
-	otx2_cgx_features_get(pf);
 
 	err = otx2_init_tc(pf);
 	if (err)
