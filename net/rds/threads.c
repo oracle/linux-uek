@@ -100,8 +100,15 @@ void rds_queue_work(struct rds_conn_path *cp,
 		    struct work_struct *work,
 		    char *reason)
 {
+	int cpu;
+
 	trace_rds_queue_work(cp ? cp->cp_conn : NULL, cp, wq, work, 0, reason);
-	queue_work(wq, work);
+
+	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
+		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn);
+		queue_work_on(cpu, wq, work);
+	} else
+		queue_work(wq, work);
 }
 EXPORT_SYMBOL_GPL(rds_queue_work);
 
@@ -111,9 +118,16 @@ void rds_queue_delayed_work(struct rds_conn_path *cp,
 			    unsigned long delay,
 			    char *reason)
 {
+	int cpu;
+
 	trace_rds_queue_work(cp ? cp->cp_conn : NULL, cp, wq, &dwork->work,
 			     delay, reason);
-	queue_delayed_work(wq, dwork, delay);
+
+	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
+		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn);
+		queue_delayed_work_on(cpu, wq, dwork, delay);
+	} else
+		queue_delayed_work(wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(rds_queue_delayed_work);
 
