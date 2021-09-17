@@ -1363,6 +1363,7 @@ struct rds_transport rds_ib_transport = {
 	.recv_path		= rds_ib_recv_path,
 	.conn_alloc		= rds_ib_conn_alloc,
 	.conn_free		= rds_ib_conn_free,
+	.conn_preferred_cpu	= rds_ib_conn_preferred_cpu,
 	.conn_has_alt_conn	= rds_ib_conn_has_alt_conn,
 	.conn_path_reset	= rds_ib_conn_path_reset,
 	.conn_path_connect	= rds_ib_conn_path_connect,
