@@ -2025,6 +2025,13 @@ void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags)
 	}
 }
 
+int rds_ib_conn_preferred_cpu(struct rds_connection *conn)
+{
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	return ic ? ic->i_preferred_cpu : WORK_CPU_UNBOUND;
+}
+
 bool rds_ib_conn_has_alt_conn(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
