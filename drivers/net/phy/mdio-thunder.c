@@ -59,6 +59,7 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 		struct mii_bus *mii_bus;
 		struct cavium_mdiobus *bus;
 		union cvmx_smix_en smi_en;
+		union cvmx_smix_clk smi_clk;
 
 		/* If it is not an OF node we cannot handle it yet, so
 		 * exit the loop.
@@ -86,6 +87,10 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 
 		bus->register_base = (u64)nexus->bar0 +
 			r.start - pci_resource_start(pdev, 0);
+
+		smi_clk.u64 = oct_mdio_readq(bus->register_base + SMI_CLK);
+		smi_clk.s.clk_idle = 1;
+		oct_mdio_writeq(smi_clk.u64, bus->register_base + SMI_CLK);
 
 		smi_en.u64 = 0;
 		smi_en.s.en = 1;
