@@ -1894,13 +1894,13 @@ static struct ctl_table fs_table[] = {
 		.extra1		= &one,
 	},
 	{
-		.procname	= "neg-dentry-pc",
+		.procname	= "negative-dentry-limit",
 		.data		= &neg_dentry_pc,
 		.maxlen		= sizeof(neg_dentry_pc),
 		.mode		= 0644,
 		.proc_handler	= proc_neg_dentry_pc,
 		.extra1		= &zero,
-		.extra2		= &ten,
+		.extra2		= &one_hundred,
 	},
 	{ }
 };

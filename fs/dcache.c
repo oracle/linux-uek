@@ -133,7 +133,7 @@ struct dentry_stat_t dentry_stat = {
 };
 
 /*
- * The sysctl parameter "neg-dentry-pc" specifies the limit for the number
+ * The sysctl parameter "negative-dentry-limit" specifies the limit for the number
  * of negative dentries allowable in a system as a percentage of the total
  * system memory. The default is 0% which means there is no limit and the
  * valid range is 0-10.
@@ -399,8 +399,13 @@ int proc_neg_dentry_pc(struct ctl_table *ctl, int write,
 
 	raw_spin_lock(&ndblk.nfree_lock);
 
-	/* 20% in global pool & 80% in percpu free */
-	new_init = totalram_pages * nr_dentry_page * neg_dentry_pc / 500;
+	/*
+	 * 20% in global pool & 80% in percpu free.
+	 * Each unit of neg_dentry_pc is 0.1% of memory
+	 * for negative dentries. Hence 'new_init' below
+	 * is 20% of the total value.
+	 */
+	new_init = totalram_pages * nr_dentry_page * neg_dentry_pc / 5000;
 	cnt = new_init * 4 / num_possible_cpus();
 	if (unlikely((cnt < 2 * NEG_DENTRY_BATCH) && neg_dentry_pc))
 		cnt = 2 * NEG_DENTRY_BATCH;
