@@ -711,9 +711,9 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 	/* cpri registers ioremap */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 5);
 	if (!res) {
-		dev_err(&pdev->dev, "failed to get cpri resource\n");
 		cpri_reg_base = NULL;
 	} else {
+		dev_info(&pdev->dev, "cpri mem resource found\n");
 		cpri_reg_base = ioremap_nocache(res->start, resource_size(res));
 		if (IS_ERR(cpri_reg_base)) {
 			dev_err(&pdev->dev, "failed to ioremap cpri registers\n");
