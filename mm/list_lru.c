@@ -266,6 +266,17 @@ list_lru_walk_one(struct list_lru *lru, int nid, struct mem_cgroup *memcg,
 }
 EXPORT_SYMBOL_GPL(list_lru_walk_one);
 
+/**
+ * list_lru_elems_node() - returns the number of
+ * elements in an list_lru for a given node.
+ */
+long list_lru_elems_node(struct list_lru *lru, int nid)
+{
+	struct list_lru_node *nlru = &lru->node[nid];
+	return nlru->nr_items;
+}
+EXPORT_SYMBOL_GPL(list_lru_elems_node);
+
 unsigned long list_lru_walk_node(struct list_lru *lru, int nid,
 				 list_lru_walk_cb isolate, void *cb_arg,
 				 unsigned long *nr_to_walk)
@@ -286,6 +297,41 @@ unsigned long list_lru_walk_node(struct list_lru *lru, int nid,
 	return isolated;
 }
 EXPORT_SYMBOL_GPL(list_lru_walk_node);
+
+/**
+ * list_lru_walk_one_node() - walks a specified list_lru_node
+ * from the given list_lru list. It determines the effective
+ * number of nodes to walk s a percentage of the 'nr_total'
+ * and walks that many list nodes.
+ */
+unsigned long list_lru_walk_one_node(struct list_lru *lru, int nid,
+				list_lru_walk_cb isolate, void *cb_arg,
+				unsigned long nr_total,
+				unsigned long nr_to_walk)
+{
+	unsigned long isolated = 0;
+	int memcg_idx;
+	unsigned long nr_to_walk_node, walk_a_node;
+	struct list_lru_node *nlru = &lru->node[nid];
+
+	nr_to_walk_node = (nr_to_walk * (nlru->nr_items)) / nr_total;
+	if (!nr_to_walk_node)
+		return isolated;
+
+	walk_a_node = nr_to_walk_node;
+	isolated += __list_lru_walk_one(lru, nid, -1, isolate, cb_arg,
+						&walk_a_node);
+	if (walk_a_node > 0 && list_lru_memcg_aware(lru)) {
+		for_each_memcg_cache_index(memcg_idx) {
+			isolated += __list_lru_walk_one(lru, nid, memcg_idx,
+						isolate, cb_arg, &walk_a_node);
+			if (walk_a_node <= 0)
+				break;
+		}
+	}
+	return isolated;
+}
+EXPORT_SYMBOL_GPL(list_lru_walk_one_node);
 
 static void init_one_lru(struct list_lru_one *l)
 {
