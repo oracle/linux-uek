@@ -5,7 +5,7 @@
 
 static int init_trace_safe = 1;
 
-const struct ctl_table ksplice_sysctls[] = {
+struct ctl_table ksplice_sysctls[] = {
 	{
 		.procname	= "init_trace_safe",
 		.data		= &init_trace_safe,
