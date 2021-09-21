@@ -1266,8 +1266,6 @@ int mlx5_eswitch_enable_locked(struct mlx5_eswitch *esw, int mode, int num_vfs)
 
 	mlx5_eswitch_update_num_of_vfs(esw, num_vfs);
 
-	mlx5_esw_qos_create(esw);
-
 	esw->mode = mode;
 
 	if (mode == MLX5_ESWITCH_LEGACY) {
@@ -1296,7 +1294,6 @@ abort:
 	if (mode == MLX5_ESWITCH_OFFLOADS)
 		mlx5_rescan_drivers(esw->dev);
 
-	mlx5_esw_qos_destroy(esw);
 	mlx5_esw_acls_ns_cleanup(esw);
 	return err;
 }
@@ -1344,6 +1341,7 @@ int mlx5_eswitch_enable(struct mlx5_eswitch *esw, int num_vfs)
 
 void mlx5_eswitch_disable_locked(struct mlx5_eswitch *esw, bool clear_vf)
 {
+	struct devlink *devlink = priv_to_devlink(esw->dev);
 	int old_mode;
 
 	lockdep_assert_held_write(&esw->mode_lock);
@@ -1373,7 +1371,8 @@ void mlx5_eswitch_disable_locked(struct mlx5_eswitch *esw, bool clear_vf)
 	if (old_mode == MLX5_ESWITCH_OFFLOADS)
 		mlx5_rescan_drivers(esw->dev);
 
-	mlx5_esw_qos_destroy(esw);
+	devlink_rate_nodes_destroy(devlink);
+
 	mlx5_esw_acls_ns_cleanup(esw);
 
 	if (clear_vf)
@@ -1582,6 +1581,7 @@ int mlx5_eswitch_init(struct mlx5_core_dev *dev)
 	lockdep_register_key(&esw->mode_lock_key);
 	init_rwsem(&esw->mode_lock);
 	lockdep_set_class(&esw->mode_lock, &esw->mode_lock_key);
+	refcount_set(&esw->qos.refcnt, 0);
 
 	esw->enabled_vports = 0;
 	esw->mode = MLX5_ESWITCH_NONE;
@@ -1620,6 +1620,7 @@ void mlx5_eswitch_cleanup(struct mlx5_eswitch *esw)
 
 	esw->dev->priv.eswitch = NULL;
 	destroy_workqueue(esw->work_queue);
+	WARN_ON(refcount_read(&esw->qos.refcnt));
 	lockdep_unregister_key(&esw->mode_lock_key);
 	mutex_destroy(&esw->state_lock);
 	WARN_ON(!xa_empty(&esw->offloads.vhca_map));
