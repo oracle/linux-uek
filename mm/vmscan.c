@@ -3535,7 +3535,6 @@ static int cpu_callback(struct notifier_block *nfb, unsigned long action,
 	for_each_node_state(nid, N_MEMORY) {
 		pg_data_t *pgdat = NODE_DATA(nid);
 		const struct cpumask *mask = cpumask_of_node(pgdat->node_id);
-		struct task_struct *task;
 
 		if (cpumask_any_and(cpu_online_mask, mask) < nr_cpu_ids) {
 			for (hid = 0; hid < nr_threads; hid++) {
