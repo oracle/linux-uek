@@ -1644,7 +1644,8 @@ static int allocate_uars(struct mlx5_ib_dev *dev, struct mlx5_ib_ucontext *conte
 
 	bfregi = &context->bfregi;
 	for (i = 0; i < bfregi->num_static_sys_pages; i++) {
-		err = mlx5_cmd_alloc_uar(dev->mdev, &bfregi->sys_pages[i]);
+		err = mlx5_cmd_uar_alloc(dev->mdev, &bfregi->sys_pages[i],
+					 context->devx_uid);
 		if (err)
 			goto error;
 
@@ -1658,7 +1659,8 @@ static int allocate_uars(struct mlx5_ib_dev *dev, struct mlx5_ib_ucontext *conte
 
 error:
 	for (--i; i >= 0; i--)
-		if (mlx5_cmd_free_uar(dev->mdev, bfregi->sys_pages[i]))
+		if (mlx5_cmd_uar_dealloc(dev->mdev, bfregi->sys_pages[i],
+					 context->devx_uid))
 			mlx5_ib_warn(dev, "failed to free uar %d\n", i);
 
 	return err;
@@ -1674,7 +1676,8 @@ static void deallocate_uars(struct mlx5_ib_dev *dev,
 	for (i = 0; i < bfregi->num_sys_pages; i++)
 		if (i < bfregi->num_static_sys_pages ||
 		    bfregi->sys_pages[i] != MLX5_IB_INVALID_UAR_INDEX)
-			mlx5_cmd_free_uar(dev->mdev, bfregi->sys_pages[i]);
+			mlx5_cmd_uar_dealloc(dev->mdev, bfregi->sys_pages[i],
+					     context->devx_uid);
 }
 
 int mlx5_ib_enable_lb(struct mlx5_ib_dev *dev, bool td, bool qp)
@@ -1895,6 +1898,13 @@ static int mlx5_ib_alloc_ucontext(struct ib_ucontext *uctx,
 	if (req.num_low_latency_bfregs > req.total_num_bfregs - 1)
 		return -EINVAL;
 
+	if (req.flags & MLX5_IB_ALLOC_UCTX_DEVX) {
+		err = mlx5_ib_devx_create(dev, true);
+		if (err < 0)
+			goto out_ctx;
+		context->devx_uid = err;
+	}
+
 	lib_uar_4k = req.lib_caps & MLX5_LIB_CAP_4K_UAR;
 	lib_uar_dyn = req.lib_caps & MLX5_LIB_CAP_DYN_UAR;
 	bfregi = &context->bfregi;
@@ -1907,7 +1917,7 @@ static int mlx5_ib_alloc_ucontext(struct ib_ucontext *uctx,
 	/* updates req->total_num_bfregs */
 	err = calc_total_bfregs(dev, lib_uar_4k, &req, bfregi);
 	if (err)
-		goto out_ctx;
+		goto out_devx;
 
 	mutex_init(&bfregi->lock);
 	bfregi->lib_uar_4k = lib_uar_4k;
@@ -1915,7 +1925,7 @@ static int mlx5_ib_alloc_ucontext(struct ib_ucontext *uctx,
 				GFP_KERNEL);
 	if (!bfregi->count) {
 		err = -ENOMEM;
-		goto out_ctx;
+		goto out_devx;
 	}
 
 	bfregi->sys_pages = kcalloc(bfregi->num_sys_pages,
@@ -1931,17 +1941,10 @@ static int mlx5_ib_alloc_ucontext(struct ib_ucontext *uctx,
 		goto out_sys_pages;
 
 uar_done:
-	if (req.flags & MLX5_IB_ALLOC_UCTX_DEVX) {
-		err = mlx5_ib_devx_create(dev, true);
-		if (err < 0)
-			goto out_uars;
-		context->devx_uid = err;
-	}
-
 	err = mlx5_ib_alloc_transport_domain(dev, &context->tdn,
 					     context->devx_uid);
 	if (err)
-		goto out_devx;
+		goto out_uars;
 
 	INIT_LIST_HEAD(&context->db_page_list);
 	mutex_init(&context->db_page_mutex);
@@ -1976,9 +1979,6 @@ uar_done:
 
 out_mdev:
 	mlx5_ib_dealloc_transport_domain(dev, context->tdn, context->devx_uid);
-out_devx:
-	if (req.flags & MLX5_IB_ALLOC_UCTX_DEVX)
-		mlx5_ib_devx_destroy(dev, context->devx_uid);
 
 out_uars:
 	deallocate_uars(dev, context);
@@ -1988,6 +1988,10 @@ out_sys_pages:
 
 out_count:
 	kfree(bfregi->count);
+
+out_devx:
+	if (req.flags & MLX5_IB_ALLOC_UCTX_DEVX)
+		mlx5_ib_devx_destroy(dev, context->devx_uid);
 
 out_ctx:
 	return err;
@@ -2025,12 +2029,12 @@ static void mlx5_ib_dealloc_ucontext(struct ib_ucontext *ibcontext)
 	bfregi = &context->bfregi;
 	mlx5_ib_dealloc_transport_domain(dev, context->tdn, context->devx_uid);
 
-	if (context->devx_uid)
-		mlx5_ib_devx_destroy(dev, context->devx_uid);
-
 	deallocate_uars(dev, context);
 	kfree(bfregi->sys_pages);
 	kfree(bfregi->count);
+
+	if (context->devx_uid)
+		mlx5_ib_devx_destroy(dev, context->devx_uid);
 }
 
 static phys_addr_t uar_index2pfn(struct mlx5_ib_dev *dev,
@@ -2123,6 +2127,7 @@ static void mlx5_ib_mmap_free(struct rdma_user_mmap_entry *entry)
 	struct mlx5_user_mmap_entry *mentry = to_mmmap(entry);
 	struct mlx5_ib_dev *dev = to_mdev(entry->ucontext->device);
 	struct mlx5_var_table *var_table = &dev->var_table;
+	struct mlx5_ib_ucontext *context = to_mucontext(entry->ucontext);
 
 	switch (mentry->mmap_flag) {
 	case MLX5_IB_MMAP_TYPE_MEMIC:
@@ -2137,7 +2142,8 @@ static void mlx5_ib_mmap_free(struct rdma_user_mmap_entry *entry)
 		break;
 	case MLX5_IB_MMAP_TYPE_UAR_WC:
 	case MLX5_IB_MMAP_TYPE_UAR_NC:
-		mlx5_cmd_free_uar(dev->mdev, mentry->page_idx);
+		mlx5_cmd_uar_dealloc(dev->mdev, mentry->page_idx,
+				     context->devx_uid);
 		kfree(mentry);
 		break;
 	default:
@@ -2215,7 +2221,8 @@ static int uar_mmap(struct mlx5_ib_dev *dev, enum mlx5_ib_mmap_cmd cmd,
 		bfregi->count[bfreg_dyn_idx]++;
 		mutex_unlock(&bfregi->lock);
 
-		err = mlx5_cmd_alloc_uar(dev->mdev, &uar_index);
+		err = mlx5_cmd_uar_alloc(dev->mdev, &uar_index,
+					 context->devx_uid);
 		if (err) {
 			mlx5_ib_warn(dev, "UAR alloc failed\n");
 			goto free_bfreg;
@@ -2244,7 +2251,7 @@ err:
 	if (!dyn_uar)
 		return err;
 
-	mlx5_cmd_free_uar(dev->mdev, idx);
+	mlx5_cmd_uar_dealloc(dev->mdev, idx, context->devx_uid);
 
 free_bfreg:
 	mlx5_ib_free_bfreg(dev, bfregi, bfreg_dyn_idx);
@@ -3595,7 +3602,7 @@ alloc_uar_entry(struct mlx5_ib_ucontext *c,
 		return ERR_PTR(-ENOMEM);
 
 	dev = to_mdev(c->ibucontext.device);
-	err = mlx5_cmd_alloc_uar(dev->mdev, &uar_index);
+	err = mlx5_cmd_uar_alloc(dev->mdev, &uar_index, c->devx_uid);
 	if (err)
 		goto end;
 
@@ -3613,7 +3620,7 @@ alloc_uar_entry(struct mlx5_ib_ucontext *c,
 	return entry;
 
 err_insert:
-	mlx5_cmd_free_uar(dev->mdev, uar_index);
+	mlx5_cmd_uar_dealloc(dev->mdev, uar_index, c->devx_uid);
 end:
 	kfree(entry);
 	return ERR_PTR(err);
