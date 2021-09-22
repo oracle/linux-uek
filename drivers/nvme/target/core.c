@@ -1211,7 +1211,10 @@ static void nvmet_init_cap(struct nvmet_ctrl *ctrl)
 	/* CC.EN timeout in 500msec units: */
 	ctrl->cap |= (15ULL << 24);
 	/* maximum queue entries supported: */
-	ctrl->cap |= NVMET_QUEUE_SIZE - 1;
+	if (ctrl->ops->get_max_queue_size)
+		ctrl->cap |= ctrl->ops->get_max_queue_size(ctrl) - 1;
+	else
+		ctrl->cap |= NVMET_QUEUE_SIZE - 1;
 
 	if (nvmet_is_passthru_subsys(ctrl->subsys))
 		nvmet_passthrough_override_cap(ctrl);
@@ -1373,6 +1376,7 @@ u16 nvmet_alloc_ctrl(const char *subsysnqn, const char *hostnqn,
 	mutex_init(&ctrl->lock);
 
 	ctrl->port = req->port;
+	ctrl->ops = req->ops;
 
 	INIT_WORK(&ctrl->async_event_work, nvmet_async_event_work);
 	INIT_LIST_HEAD(&ctrl->async_events);
@@ -1410,8 +1414,6 @@ u16 nvmet_alloc_ctrl(const char *subsysnqn, const char *hostnqn,
 		goto out_free_sqs;
 	}
 	ctrl->cntlid = ret;
-
-	ctrl->ops = req->ops;
 
 	/*
 	 * Discovery controllers may use some arbitrary high value
