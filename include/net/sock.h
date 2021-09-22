@@ -262,7 +262,6 @@ struct bpf_local_storage;
   *	@sk_dst_cache: destination cache
   *	@sk_dst_pending_confirm: need to confirm neighbour
   *	@sk_policy: flow policy
-  *	@sk_rx_skb_cache: cache copy of recently accessed RX skb
   *	@sk_receive_queue: incoming packets
   *	@sk_wmem_alloc: transmit queue bytes committed
   *	@sk_tsq_flags: TCP Small Queues flags
@@ -329,7 +328,6 @@ struct bpf_local_storage;
   *	@sk_peek_off: current peek_offset value
   *	@sk_send_head: front of stuff to transmit
   *	@tcp_rtx_queue: TCP re-transmit queue [union with @sk_send_head]
-  *	@sk_tx_skb_cache: cache copy of recently accessed TX skb
   *	@sk_security: used by security modules
   *	@sk_mark: generic packet mark
   *	@sk_cgrp_data: cgroup data for this cgroup
@@ -1631,18 +1629,10 @@ static inline void sk_mem_uncharge(struct sock *sk, int size)
 		__sk_mem_reclaim(sk, 1 << 20);
 }
 
-DECLARE_STATIC_KEY_FALSE(tcp_tx_skb_cache_key);
 static inline void sk_wmem_free_skb(struct sock *sk, struct sk_buff *skb)
 {
 	sk_wmem_queued_add(sk, -skb->truesize);
 	sk_mem_uncharge(sk, skb->truesize);
-	if (static_branch_unlikely(&tcp_tx_skb_cache_key) &&
-	    !sk->sk_tx_skb_cache && !skb_cloned(skb)) {
-		skb_ext_reset(skb);
-		skb_zcopy_clear(skb, true);
-		sk->sk_tx_skb_cache = skb;
-		return;
-	}
 	__kfree_skb(skb);
 }
 
@@ -2708,7 +2698,6 @@ static inline bool sk_is_tcp(const struct sock *sk)
 	return sk->sk_type == SOCK_STREAM && sk->sk_protocol == IPPROTO_TCP;
 }
 
-DECLARE_STATIC_KEY_FALSE(tcp_rx_skb_cache_key);
 /**
  * sk_eat_skb - Release a skb if it is no longer needed
  * @sk: socket to eat this skb from
@@ -2720,12 +2709,6 @@ DECLARE_STATIC_KEY_FALSE(tcp_rx_skb_cache_key);
 static inline void sk_eat_skb(struct sock *sk, struct sk_buff *skb)
 {
 	__skb_unlink(skb, &sk->sk_receive_queue);
-	if (static_branch_unlikely(&tcp_rx_skb_cache_key) &&
-	    !sk->sk_rx_skb_cache) {
-		sk->sk_rx_skb_cache = skb;
-		skb_orphan(skb);
-		return;
-	}
 	__kfree_skb(skb);
 }
 
