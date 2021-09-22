@@ -140,7 +140,10 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 
 	initdbgmsg("%s err_sev=%x,\n", __func__, ring_rec->severity);
 
-	memcpy(esb_err, &ring_rec->u.mcc, gdata->error_data_length);
+	if (pfn_valid(PHYS_PFN(gsrc->ring_pa)))
+		memcpy(esb_err, &ring_rec->u.mcc, gdata->error_data_length);
+	else
+		memcpy_fromio(esb_err, &ring_rec->u.mcc, gdata->error_data_length);
 
 	/*Ensure that error status is committed to memory prior to set block_status*/
 	wmb();
