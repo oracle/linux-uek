@@ -15,6 +15,15 @@ bool kvm_arch_has_vcpu_debugfs(void)
 	return true;
 }
 
+static int vcpu_get_exits(void *data, u64 *val)
+{
+	struct kvm_vcpu *vcpu = (struct kvm_vcpu *) data;
+	*val = vcpu->stat.exits;
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(vcpu_exits_fops, vcpu_get_exits, NULL, "%llu\n");
+
 static int vcpu_get_tsc_offset(void *data, u64 *val)
 {
 	struct kvm_vcpu *vcpu = (struct kvm_vcpu *) data;
@@ -44,6 +53,12 @@ DEFINE_SIMPLE_ATTRIBUTE(vcpu_tsc_scaling_frac_fops, vcpu_get_tsc_scaling_frac_bi
 int kvm_arch_create_vcpu_debugfs(struct kvm_vcpu *vcpu)
 {
 	struct dentry *ret;
+
+	ret = debugfs_create_file("exits", 0444,
+				  vcpu->debugfs_dentry,
+				  vcpu, &vcpu_exits_fops);
+	if (!ret)
+		return -ENOMEM;
 
 	ret = debugfs_create_file("tsc-offset", 0444,
 							vcpu->debugfs_dentry,
