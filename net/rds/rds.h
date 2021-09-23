@@ -1526,6 +1526,10 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rds_statistics, rds_stats);
 	rds_stats_add_which(stats, member, count)
 int rds_stats_net_init(struct net *net);
 void rds_stats_net_exit(struct net *net);
+int rds_mod_stats_register(struct net *net, int module,
+			   struct rds_stats_struct *stats);
+struct rds_stats_struct *rds_mod_stats_unregister(struct net *net,
+						  int module);
 void rds_stats_info_copy(struct rds_info_iterator *iter,
 			 uint64_t *values, char **names, size_t nr);
 void rds_stats_print(const char *where);
