@@ -399,7 +399,8 @@ bool __bio_integrity_endio(struct bio *bio)
 		return false;
 	}
 
-	if (bip->bip_flags & BIP_BLOCK_INTEGRITY)
+	if (bio_integrity_flagged(bio, BIP_BLOCK_INTEGRITY) ||
+	    bio_flagged(bio, BIO_CLONED))
 		bio_integrity_free(bio);
 
 	return true;
@@ -465,6 +466,7 @@ int bio_integrity_clone(struct bio *bio, struct bio *bio_src,
 
 	bip->bip_vcnt = bip_src->bip_vcnt;
 	bip->bip_iter = bip_src->bip_iter;
+	bip->bip_flags = bip_src->bip_flags & ~BIP_BLOCK_INTEGRITY;
 
 	return 0;
 }
