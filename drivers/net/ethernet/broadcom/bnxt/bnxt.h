@@ -12,7 +12,7 @@
 #define BNXT_H
 
 #define DRV_MODULE_NAME		"bnxt_en"
-#define DRV_MODULE_VERSION	"1.10.1"
+#define DRV_MODULE_VERSION	"1.10.2"
 
 #define DRV_VER_MAJ	1
 #define DRV_VER_MIN	10
