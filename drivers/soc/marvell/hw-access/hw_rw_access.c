@@ -29,16 +29,30 @@
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF	0xA065
 
-/* Smallest start physical address of all HW devices */
-#define REG_PHYS_BASEADDR		0x802000000000
-/* Last physical address - First phsycial address + 1 will be the
- * length of IO remapped block
- * 0x87E0E48FFFFF - 0x802000000000 + 1 = 0x7C0E4800000
- * Last phsyical address is the highest end physical address of all HW devices.
- * First physical address is the smallest start physical address of all HW
+/* First physical address is the smallest start physical address of all HW
  * devices.
+ * Smallest expected start physical address of all HW devices is based on
+ * datasheet 'Figure 4-1 Physical Address Regions' with lowest I/O start address
+ * being 0x800000000000 as:
+ *  - bits <51:47> = 0x1 define I/O range,
+ *  - bits <43:36> = 0x0 constitute NCB DID,
+ *  - bits <36:0>  = 0x0 assume zero-offset.
+ * In practice the lowest observed register address is for GIC = 0x801000000000
+ * which will be used for access.
  */
-#define REG_SPACE_MAPSIZE		0x7C0E4800000
+#define REG_PHYS_BASEADDR              0x801000000000
+
+/* The calculation does not take into consideration Armv8.2's 52bit extended
+ * addressing used for PEM which has bits<51:49> set to {0x1, 0x2, 0x3}.
+ *
+ * Maximum I/O address bits<43:36> are assumed ti be 0xFF with no limits on NCB
+ * offset addesses forwarded to NCB device. Such assumtion leads to maximum
+ * addressable HW address being 0x8FFFFFFFFFFF.
+ * In practice the highest observed address is for PEM(5)_MSIX_MBA(0) as below:
+ */
+#define REG_PHYS_ENDADDR               0x8E5F000F0000
+
+#define REG_SPACE_MAPSIZE              (REG_PHYS_ENDADDR - REG_PHYS_BASEADDR + 1)
 
 struct hw_reg_cfg {
 	u64	regaddr; /* Register physical address within a hw device */
