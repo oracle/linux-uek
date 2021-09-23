@@ -88,7 +88,7 @@ void rds_tcp_state_change(struct sock *sk)
 			wake_up(&tc->t_recv_done_waitq);
 		if (sk->sk_err == ETIMEDOUT &&
 		    icsk->icsk_probes_out >= keepalive_probes(tsock)) {
-			rds_tcp_stats_inc(s_tcp_ka_timeout);
+			rds_tcp_stats_inc(tc->t_stats, s_tcp_ka_timeout);
 			rds_conn_path_drop(cp,
 					   DR_TCP_STATE_CLOSE_KA_TIMEOUT, 0);
 		} else {
@@ -179,7 +179,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 			tc->t_client_port_group = 0;
 		port =  port_low +
 			tc->t_client_port_group * RDS_MPATH_WORKERS +
-			cp->cp_index; 
+			cp->cp_index;
 
 		if (isv6)
 			sin6.sin6_port = htons(port);

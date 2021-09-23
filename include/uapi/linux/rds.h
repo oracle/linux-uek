@@ -501,6 +501,7 @@ struct rds_rdma_send_notify {
 enum {
 	RDS_MOD_UNSPEC,
 	RDS_MOD_RDS,	/* rds module */
+	RDS_MOD_TCP,	/* rds_tcp module */
 
 	/* Add new module before this. */
 	RDS_MOD_MAX,
