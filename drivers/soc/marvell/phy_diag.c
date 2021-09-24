@@ -21,7 +21,8 @@
 #define PLAT_OCTEONTX_PHY_GET_TEMP	0xc2000e02
 #define PLAT_OCTEONTX_PHY_SERDES_CFG	0xc2000e03
 #define PLAT_OCTEONTX_PHY_MDIO		0xc2000e04
-
+#define PLAT_OCTEONTX_PHY_EYE_CAPTURE	0xc2000e05
+#define PLAT_OCTEONTX_PHY_PKT_GEN		0xc2000e06
 #define MAX_ETH				10
 #define MAX_LMAC_PER_ETH		4
 
@@ -126,6 +127,20 @@ static struct {
 };
 DEFINE_STR_2_ENUM_FUNC(prbs_sides)
 
+enum phy_prbs_direction {
+	PRBS_DIRECTION_RX = 0,
+	PRBS_DIRECTION_TX,
+};
+
+static struct {
+	enum phy_prbs_direction e;
+	const char *s;
+} prbs_directions[] = {
+	{PRBS_DIRECTION_RX, "rx"},
+	{PRBS_DIRECTION_TX, "tx"},
+};
+DEFINE_STR_2_ENUM_FUNC(prbs_directions)
+
 
 enum phy_prbs_type {
 	PRBS_7 = 0,
@@ -145,6 +160,159 @@ static struct {
 };
 DEFINE_STR_2_ENUM_FUNC(prbs_types)
 
+/* loopback definitions */
+enum phy_loopback_cmd {
+	PHY_LOOPBACK_START_CMD = 1,
+	PHY_LOOPBACK_STOP_CMD,
+};
+
+static struct {
+	enum phy_loopback_cmd e;
+	const char *s;
+} loopback_cmds[] = {
+	{PHY_LOOPBACK_START_CMD, "start"},
+	{PHY_LOOPBACK_STOP_CMD, "stop"},
+};
+DEFINE_STR_2_ENUM_FUNC(loopback_cmds)
+
+
+enum phy_loopback_side {
+	LOOPBACK_SIDE_LINE = 0,
+	LOOPBACK_SIDE_HOST,
+};
+
+static struct {
+	enum phy_loopback_side e;
+	const char *s;
+} loopback_sides[] = {
+	{LOOPBACK_SIDE_LINE, "line"},
+	{LOOPBACK_SIDE_HOST, "host"},
+};
+DEFINE_STR_2_ENUM_FUNC(loopback_sides)
+
+enum phy_loopback_type {
+	PCS_SHALLOW = 0,
+	PCS_DEEP,
+	PMA_DEEP,
+};
+
+static struct {
+	enum phy_loopback_type e;
+	const char *s;
+} loopback_types[] = {
+	{PCS_SHALLOW, "pcs_shallow"},
+	{PCS_DEEP, "pcs_deep"},
+	{PMA_DEEP, "pma_deep"},
+};
+DEFINE_STR_2_ENUM_FUNC(loopback_types)
+
+/* eye capture definitions */
+enum phy_eye_side {
+	EYE_SIDE_LINE = 0,
+	EYE_SIDE_HOST,
+	EYE_SIDE_TEST_3,
+	EYE_SIDE_TEST_4,
+};
+
+static struct {
+	enum phy_eye_side e;
+	const char *s;
+} eye_sides[] = {
+	{EYE_SIDE_LINE, "line"},
+	{EYE_SIDE_HOST, "host"},
+	{EYE_SIDE_TEST_3, "test_3"},
+	{EYE_SIDE_TEST_4, "test_4"},
+};
+DEFINE_STR_2_ENUM_FUNC(eye_sides)
+
+enum phy_eye_type {
+	EYE_MEASURE = 0,
+	EYE_PLOT,
+};
+
+static struct {
+	enum phy_eye_type e;
+	const char *s;
+} eye_types[] = {
+	{EYE_MEASURE, "measure"},
+	{EYE_PLOT, "plot"},
+};
+DEFINE_STR_2_ENUM_FUNC(eye_types)
+
+/* pktgen definitions */
+enum phy_pktgen_cmd {
+	PHY_PKTGEN_START_CMD = 1,
+	PHY_PKTGEN_STOP_CMD,
+	PHY_PKTGEN_SET_CMD,
+	PHY_PKTGEN_GET_CMD
+};
+
+static struct {
+	enum phy_pktgen_cmd e;
+	const char *s;
+} pktgen_cmds[] = {
+	{PHY_PKTGEN_START_CMD, "start"},
+	{PHY_PKTGEN_STOP_CMD, "stop"},
+	{PHY_PKTGEN_SET_CMD, "set"},
+};
+DEFINE_STR_2_ENUM_FUNC(pktgen_cmds)
+
+enum phy_pktgen_mode {
+	PHY_PKTGEN_GENERATOR = 0,
+	PHY_PKTGEN_CHECKER,
+	PHY_PKTGEN_GEN_CHECK,
+};
+
+static struct {
+	enum phy_pktgen_mode e;
+	const char *s;
+} pktgen_modes[] = {
+	{PHY_PKTGEN_GENERATOR, "tx"},
+	{PHY_PKTGEN_CHECKER, "rx"},
+	{PHY_PKTGEN_GEN_CHECK, "tx-rx"},
+};
+DEFINE_STR_2_ENUM_FUNC(pktgen_modes)
+
+
+enum phy_pktgen_side {
+	PKTGEN_SIDE_LINE = 0,
+	PKTGEN_SIDE_HOST,
+};
+
+static struct {
+	enum phy_pktgen_side e;
+	const char *s;
+} pktgen_sides[] = {
+	{PKTGEN_SIDE_LINE, "line"},
+	{PKTGEN_SIDE_HOST, "host"},
+};
+DEFINE_STR_2_ENUM_FUNC(pktgen_sides)
+
+enum phy_pktgen_type {
+	PKTGEN_TYPE_SFD = 0,
+	PKTGEN_TYPE_PATTERN_CTL,
+	PKTGEN_TYPE_GEN_CRC,
+	PKTGEN_TYPE_IN_PAYLOAD,
+	PKTGEN_TYPE_FRAME_LEN_CTL,
+	PKTGEN_TYPE_NUM_PACKETS,
+	PKTGEN_TYPE_RANDOM_IPG,
+	PKTGEN_TYPE_IPG_DURATION,
+};
+
+static struct {
+	enum phy_pktgen_type e;
+	const char *s;
+} pktgen_types[] = {
+	{PKTGEN_TYPE_SFD, "sfd"},
+	{PKTGEN_TYPE_PATTERN_CTL, "pattern"},
+	{PKTGEN_TYPE_GEN_CRC, "gen_crc"},
+	{PKTGEN_TYPE_IN_PAYLOAD, "in_payload"},
+	{PKTGEN_TYPE_FRAME_LEN_CTL, "frame_len"},
+	{PKTGEN_TYPE_NUM_PACKETS, "num_packets"},
+	{PKTGEN_TYPE_RANDOM_IPG, "random_ipg"},
+	{PKTGEN_TYPE_IPG_DURATION, "ipg_duration"},
+};
+DEFINE_STR_2_ENUM_FUNC(pktgen_types)
 
 enum phy_mdio_optype {
 	CLAUSE_22 = 0,
@@ -334,6 +502,7 @@ static ssize_t phy_debug_prbs_write(struct file *filp,
 	char *token;
 	int cmd;
 	int host;
+	int direction;
 	int type = 0;
 	int cfg = 0;
 
@@ -358,6 +527,17 @@ static ssize_t phy_debug_prbs_write(struct file *filp,
 	if (host == -1)
 		return -EINVAL;
 
+	end = skip_spaces(end);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	direction = prbs_directions_str2enum(token);
+
+	/* If no direction is passed, assume tx by default */
+	if (direction == -1)
+		direction = PRBS_DIRECTION_TX;
+
 	if (cmd == PHY_PRBS_START_CMD) {
 		end = skip_spaces(end);
 		token = strsep(&end, " \t\n");
@@ -369,7 +549,7 @@ static ssize_t phy_debug_prbs_write(struct file *filp,
 			return -EINVAL;
 	}
 
-	cfg |= (type << 2) | (1 << 1) | host;
+	cfg |= (type << 2) | (direction << 1) | host;
 
 	arm_smccc_smc(PLAT_OCTEONTX_PHY_DBG_PRBS, cmd, cfg,
 		phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
@@ -380,8 +560,8 @@ static ssize_t phy_debug_prbs_write(struct file *filp,
 	}
 
 	if (cmd == PHY_PRBS_START_CMD) {
-		pr_info("PRBS started: side=%s, type=%s\n",
-			prbs_sides[host].s, prbs_types[type].s);
+		pr_info("PRBS %s started: side=%s, type=%s\n",
+			prbs_directions[direction].s, prbs_sides[host].s, prbs_types[type].s);
 	} else {
 		pr_info("PRBS stopped: side=%s\n",
 			prbs_sides[host].s);
@@ -420,32 +600,70 @@ static ssize_t phy_debug_loopback_write(struct file *filp,
 					size_t count, loff_t *ppos)
 {
 	struct arm_smccc_res res;
+	char *end;
 	char *token;
-	unsigned int lpb_en;
+	int cmd;
+	int side;
+	int type = 0;
+	int cfg = 0;
 
 	if (copy_user_input(buffer, count, cmd_buf, CMD_SZ))
 		return -EFAULT;
 
-	token = strim(skip_spaces(cmd_buf));
+	end = skip_spaces(cmd_buf);
+	token = strsep(&end, " \t\n");
 	if (!token)
 		return -EINVAL;
 
-	if (kstrtouint(token, 10, &lpb_en) || (lpb_en != 1 && lpb_en != 0))
+	cmd = loopback_cmds_str2enum(token);
+	if (cmd == -1)
 		return -EINVAL;
 
-	arm_smccc_smc(PLAT_OCTEONTX_PHY_LOOPBACK, lpb_en,
-		phy_data.eth, phy_data.lmac, 0, 0, 0, 0, &res);
+	end = skip_spaces(end);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	side = loopback_sides_str2enum(token);
+	/* If no side is passed, assume line side as default */
+	if (side == -1)
+		side = LOOPBACK_SIDE_LINE;
+
+	end = skip_spaces(end);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	if (cmd == PHY_LOOPBACK_START_CMD) {
+
+		type = loopback_types_str2enum(token);
+		/* If not loopback type is passed, assume shallow loopback */
+		if (type == -1)
+			type = PCS_SHALLOW;
+	}
+
+	cfg |= (type << 2) | side;
+
+	arm_smccc_smc(PLAT_OCTEONTX_PHY_LOOPBACK, cmd, cfg,
+		phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
 
 	if (res.a0) {
-		if (lpb_en)
-			pr_warn("Enabling Line Loopback failed!\n");
+		if (cmd == PHY_LOOPBACK_START_CMD)
+			pr_warn("Enabling %s side %s Loopback failed!\n",
+					loopback_sides[side].s, loopback_types[type].s);
 		else
-			pr_warn("Disabling Line Loopback failed!\n");
+			pr_warn("Disabling %s side %s Loopback failed!\n",
+					loopback_sides[side].s, loopback_types[type].s);
 
 		return count;
 	}
-
-	pr_info("Line Loopback: enable=%d\n", lpb_en);
+	if (cmd == PHY_LOOPBACK_START_CMD) {
+		pr_info("Loopback %s side %s type started\n",
+			loopback_sides[side].s, loopback_types[type].s);
+	} else {
+		pr_info("Loopback %s side %s type stopped\n",
+			loopback_sides[side].s, loopback_types[type].s);
+	}
 
 	return count;
 }
@@ -455,6 +673,151 @@ static int phy_debug_loopback_read(struct seq_file *s, void *unused)
 	return 0;
 }
 DEFINE_ATTRIBUTE(phy_debug_loopback);
+
+/* Eye measurement */
+static ssize_t phy_debug_eye_write(struct file *filp,
+					const char __user *buffer,
+					size_t count, loff_t *ppos)
+{
+	struct arm_smccc_res res;
+	char *end;
+	char *token;
+	int type = 0, side = 0;
+
+	if (copy_user_input(buffer, count, cmd_buf, CMD_SZ))
+		return -EFAULT;
+
+	end = skip_spaces(cmd_buf);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	side = eye_sides_str2enum(token);
+	if (side == -1)
+		return -EINVAL;
+
+	end = skip_spaces(end);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	type = eye_types_str2enum(token);
+
+	arm_smccc_smc(PLAT_OCTEONTX_PHY_EYE_CAPTURE, side, type,
+		phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
+
+	if (res.a0)
+		pr_warn("Eye %s side %s failed!\n", eye_sides[side].s, eye_types[type].s);
+	else
+		pr_info("Eye %s side %s success\n", eye_sides[side].s, eye_types[type].s);
+	return count;
+}
+
+static int phy_debug_eye_read(struct seq_file *s, void *unused)
+{
+	return 0;
+}
+
+DEFINE_ATTRIBUTE(phy_debug_eye);
+
+/* pktgen */
+static ssize_t phy_debug_pktgen_write(struct file *filp,
+					const char __user *buffer,
+					size_t count, loff_t *ppos)
+{
+	struct arm_smccc_res res;
+	char *end;
+	char *token;
+	int cmd;
+	int mode;
+	int type = 0;
+	int value = 0;
+	int side;
+	int cfg = 0;
+
+	if (copy_user_input(buffer, count, cmd_buf, CMD_SZ))
+		return -EFAULT;
+
+	end = skip_spaces(cmd_buf);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	cmd = pktgen_cmds_str2enum(token);
+	if (cmd == -1)
+		return -EINVAL;
+	switch (cmd) {
+	case PHY_PKTGEN_START_CMD:
+	case PHY_PKTGEN_STOP_CMD:
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+		mode = pktgen_modes_str2enum(token);
+		if (mode == -1)
+			return -EINVAL;
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+		side = pktgen_sides_str2enum(token);
+		if (side == -1)
+			return -EINVAL;
+		cfg = ((cmd & 0xff) << 8) | (mode & 0xff);
+		pr_info("cmd=%d mode=%d side=%d cfg=0x%x\n", cmd, mode, side, cfg);
+
+		arm_smccc_smc(PLAT_OCTEONTX_PHY_PKT_GEN, cfg, side,
+				phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
+		break;
+	case PHY_PKTGEN_SET_CMD:
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+		type = pktgen_types_str2enum(token);
+		if (type == -1)
+			return -EINVAL;
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+		if (kstrtouint(token, 0, &value))
+			return -EINVAL;
+		cfg = ((cmd & 0xff) << 8) | (type & 0xff);
+
+		arm_smccc_smc(PLAT_OCTEONTX_PHY_PKT_GEN, cfg, value,
+				phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
+		break;
+	default:
+		pr_warn("PKTGEN failed for invalid command %d!\n", cmd);
+		return -EINVAL;
+	}
+
+	if (res.a0) {
+		pr_warn("PKTGEN command failed!\n");
+		return count;
+	}
+
+	pr_info("PKTGEN command success!\n");
+	return count;
+}
+
+static int phy_debug_pktgen_read(struct seq_file *s, void *unused)
+{
+	struct arm_smccc_res res;
+	int cmd;
+	int cfg = 0;
+
+	cmd = PHY_PKTGEN_GET_CMD;
+	cfg = (cmd & 0xff) << 8;
+	arm_smccc_smc(PLAT_OCTEONTX_PHY_PKT_GEN, cfg, 0,
+				phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
+
+	seq_printf(s, "PKTGEN status: %ld\n", res.a0);
+
+	return 0;
+}
+DEFINE_ATTRIBUTE(phy_debug_pktgen);
 
 static int phy_debug_serdes_read(struct seq_file *s, void *unused)
 {
@@ -603,13 +966,23 @@ static int phy_dbg_setup_debugfs(void)
 	if (!dbg_file)
 		goto create_failed;
 
-	dbg_file = debugfs_create_file("line_loopback", 0644, phy_dbgfs_root, NULL,
+	dbg_file = debugfs_create_file("loopback", 0644, phy_dbgfs_root, NULL,
 				    &phy_debug_loopback_fops);
 	if (!dbg_file)
 		goto create_failed;
 
 	dbg_file = debugfs_create_file("prbs", 0644, phy_dbgfs_root, NULL,
 				    &phy_debug_prbs_fops);
+	if (!dbg_file)
+		goto create_failed;
+
+	dbg_file = debugfs_create_file("eye", 0644, phy_dbgfs_root, NULL,
+				    &phy_debug_eye_fops);
+	if (!dbg_file)
+		goto create_failed;
+
+	dbg_file = debugfs_create_file("pktgen", 0644, phy_dbgfs_root, NULL,
+				    &phy_debug_pktgen_fops);
 	if (!dbg_file)
 		goto create_failed;
 
@@ -622,7 +995,6 @@ static int phy_dbg_setup_debugfs(void)
 				    &phy_debug_read_reg_fops);
 	if (!dbg_file)
 		goto create_failed;
-
 
 	return 0;
 
