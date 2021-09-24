@@ -168,11 +168,35 @@ static int otx2_dl_cqe_size_get(struct devlink *devlink, u32 id,
 	return 0;
 }
 
+static int otx2_dl_serdes_link_set(struct devlink *devlink, u32 id,
+				   struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	if (!is_otx2_vf(pfvf->pcifunc))
+		return otx2_config_serdes_link_state(pfvf, ctx->val.vbool);
+
+	return -EOPNOTSUPP;
+}
+
+static int otx2_dl_serdes_link_get(struct devlink *devlink, u32 id,
+				   struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	ctx->val.vbool = (pfvf->linfo.link_up) ? true : false;
+
+	return 0;
+}
+
 enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
 	OTX2_DEVLINK_PARAM_ID_MCAM_COUNT,
 	OTX2_DEVLINK_PARAM_ID_CQE_SIZE,
 	OTX2_DEVLINK_PARAM_ID_RBUF_SIZE,
+	OTX2_DEVLINK_PARAM_ID_SERDES_LINK,
 };
 
 static const struct devlink_param otx2_dl_params[] = {
@@ -191,6 +215,11 @@ static const struct devlink_param otx2_dl_params[] = {
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     otx2_dl_rbuf_size_get, otx2_dl_rbuf_size_set,
 			     otx2_dl_rbuf_size_validate),
+	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_SERDES_LINK,
+			     "serdes_link", DEVLINK_PARAM_TYPE_BOOL,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     otx2_dl_serdes_link_get, otx2_dl_serdes_link_set,
+			     NULL),
 };
 
 /* Devlink OPs */
