@@ -101,6 +101,8 @@
 
 #define MADV_POPULATE_READ	22	/* populate (prefault) page tables readable */
 #define MADV_POPULATE_WRITE	23	/* populate (prefault) page tables writable */
+#define MADV_DOEXEC	24		/* do inherit across exec */
+#define MADV_DONTEXEC	25		/* don't inherit across exec */
 
 /* compatibility flags */
 #define MAP_FILE	0
