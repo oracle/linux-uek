@@ -99,6 +99,9 @@
 #define MADV_COLD	20		/* deactivate these pages */
 #define MADV_PAGEOUT	21		/* reclaim these pages */
 
+#define MADV_DOEXEC	22		/* do inherit across exec */
+#define MADV_DONTEXEC	23		/* don't inherit across exec */
+
 /* compatibility flags */
 #define MAP_FILE	0
 
