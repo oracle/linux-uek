@@ -68,6 +68,7 @@
 static enum cpuhp_state lpfc_cpuhp_state;
 /* Used when mapping IRQ vectors in a driver centric manner */
 static uint32_t lpfc_present_cpu;
+static bool lpfc_pldv_detect;
 
 static void __lpfc_cpuhp_remove(struct lpfc_hba *phba);
 static void lpfc_cpuhp_remove(struct lpfc_hba *phba);
@@ -9349,7 +9350,15 @@ lpfc_sli4_post_status_check(struct lpfc_hba *phba)
 					phba->work_status[0],
 					phba->work_status[1]);
 				port_error = -ENODEV;
+				break;
 			}
+
+			if (lpfc_pldv_detect &&
+			    bf_get(lpfc_sli_intf_sli_family,
+				   &phba->sli4_hba.sli_intf) ==
+					LPFC_SLI_INTF_FAMILY_G6)
+				pci_write_config_byte(phba->pcidev,
+						      LPFC_SLI_INTF, CFG_PLD);
 			break;
 		case LPFC_SLI_INTF_IF_TYPE_1:
 		default:
@@ -11556,6 +11565,9 @@ wait:
 			rc = -ENODEV;
 			goto out;
 		}
+
+		if (bf_get(lpfc_sliport_status_pldv, &reg_data))
+			lpfc_pldv_detect = true;
 
 		if (!port_reset) {
 			/*
@@ -15551,6 +15563,8 @@ lpfc_init(void)
 
 	/* Initialize in case vector mapping is needed */
 	lpfc_present_cpu = num_present_cpus();
+
+	lpfc_pldv_detect = false;
 
 	error = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN,
 					"lpfc/sli4:online",
