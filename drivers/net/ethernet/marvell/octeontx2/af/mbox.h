@@ -84,7 +84,7 @@ struct mbox_msghdr {
 #define OTX2_MBOX_REQ_SIG (0xdead)
 #define OTX2_MBOX_RSP_SIG (0xbeef)
 	u16 sig;         /* Signature, for validating corrupted msgs */
-#define OTX2_MBOX_VERSION (0x000a)
+#define OTX2_MBOX_VERSION (0x000b)
 	u16 ver;         /* Version of msg's structure for this ID */
 	u16 next_msgoff; /* Offset of next msg within mailbox region */
 	int rc;          /* Msg process'ed response code */
@@ -682,6 +682,11 @@ struct npc_set_pkind {
 #define PKIND_RX		BIT_ULL(1)
 	u8 dir;
 	u8 pkind; /* valid only in case custom flag */
+	u8 var_len_off; /* Offset of custom header length field.
+			 * Valid only for pkind NPC_RX_CUSTOM_PRE_L2_PKIND
+			 */
+	u8 var_len_off_mask; /* Mask for length with in offset */
+	u8 shift_dir; /* shift direction to get length of the header at var_len_off */
 };
 
 /* NPA mbox message formats */

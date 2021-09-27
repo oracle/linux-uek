@@ -948,8 +948,10 @@ int rvu_tim_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
 int rvu_npc_get_tx_nibble_cfg(struct rvu *rvu, u64 nibble_ena);
 bool is_parse_nibble_config_valid(struct rvu *rvu,
 				  struct npc_mcam_kex *mcam_kex);
-int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
-			   u64 pkind);
+int
+rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
+		       u64 pkind, u8 var_len_off, u8 var_len_off_mask,
+		       u8 shift_dir);
 void rvu_tim_hw_fixes(struct rvu *rvu, int blkaddr);
 
 /* CN10K NIX */

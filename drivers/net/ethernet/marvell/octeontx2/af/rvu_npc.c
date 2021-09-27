@@ -3174,8 +3174,43 @@ int rvu_mbox_handler_npc_get_kex_cfg(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
-			   u64 pkind)
+int
+npc_set_var_len_offset_pkind(struct rvu *rvu, u16 pcifunc, u64 pkind,
+			     u8 var_len_off, u8 var_len_off_mask, u8 shift_dir)
+{
+	struct npc_kpu_action0 *act0;
+	u8 shift_count = 0;
+	int blkaddr;
+	u64 val;
+
+	if (!var_len_off_mask)
+		return -EINVAL;
+
+	if (var_len_off_mask != 0xff) {
+		if (shift_dir)
+			shift_count = __ffs(var_len_off_mask);
+		else
+			shift_count = (8 - __fls(var_len_off_mask));
+	}
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, pcifunc);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
+		return -EINVAL;
+	}
+	val = rvu_read64(rvu, blkaddr, NPC_AF_PKINDX_ACTION0(pkind));
+	act0 = (struct npc_kpu_action0 *)&val;
+	act0->var_len_shift = shift_count;
+	act0->var_len_right = shift_dir;
+	act0->var_len_mask = var_len_off_mask;
+	act0->var_len_offset = var_len_off;
+	rvu_write64(rvu, blkaddr, NPC_AF_PKINDX_ACTION0(pkind), val);
+	return 0;
+}
+
+int
+rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
+		       u64 pkind, u8 var_len_off, u8 var_len_off_mask,
+		       u8 shift_dir)
 
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
@@ -3210,6 +3245,14 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 		intf_mode = NPC_INTF_MODE_HIGIG;
 		enable_higig2 = true;
 	} else if (mode & OTX2_PRIV_FLAGS_CUSTOM) {
+		if (pkind == NPC_RX_CUSTOM_PRE_L2_PKIND) {
+			rc = npc_set_var_len_offset_pkind(rvu, pcifunc, pkind,
+							  var_len_off,
+							  var_len_off_mask,
+							  shift_dir);
+			if (rc)
+				return rc;
+		}
 		rxpkind = pkind;
 		txpkind = pkind;
 	}
@@ -3248,7 +3291,8 @@ int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
 				   struct msg_rsp *rsp)
 {
 	return rvu_npc_set_parse_mode(rvu, req->hdr.pcifunc, req->mode,
-				      req->dir, req->pkind);
+				      req->dir, req->pkind, req->var_len_off,
+				      req->var_len_off_mask, req->shift_dir);
 }
 
 int rvu_mbox_handler_npc_read_base_steer_rule(struct rvu *rvu,
