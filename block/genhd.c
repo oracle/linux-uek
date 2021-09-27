@@ -765,12 +765,22 @@ void del_gendisk(struct gendisk *disk)
 	struct disk_part_iter piter;
 	struct hd_struct *part;
 	struct block_device *bdev;
+	int recursive_locking;
+	unsigned long owner;
 
 	blk_integrity_del(disk);
 	disk_del_events(disk);
 
 	bdev = bdget_disk(disk, 0);
-	mutex_lock(&bdev->bd_mutex);
+	/*
+	 * hack to workaround out of tree modules hung bug 33327444.
+	 * This workaround will be used for UEK5/UEK6, but can be removed in UEK7.
+	 * task owner of mutex is in 3-63 bit.
+	 */
+	owner = atomic_long_read(&bdev->bd_mutex.owner) & (~0x7);
+	recursive_locking = (owner == (unsigned long)current) ? 1 : 0;
+	if (!recursive_locking)
+		mutex_lock(&bdev->bd_mutex);
 	disk->flags &= ~GENHD_FL_UP;
 
 	/* invalidate stuff */
@@ -783,7 +793,8 @@ void del_gendisk(struct gendisk *disk)
 	}
 	disk_part_iter_exit(&piter);
 
-	mutex_unlock(&bdev->bd_mutex);
+	if (!recursive_locking)
+		mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);
 
 	invalidate_partition(disk, 0);
