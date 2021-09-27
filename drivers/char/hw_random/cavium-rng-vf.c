@@ -44,6 +44,9 @@ static inline bool is_octeontx(struct pci_dev *pdev)
 {
 	if (midr_is_cpu_model_range(read_cpuid_id(), MIDR_THUNDERX_83XX,
 				    MIDR_CPU_VAR_REV(0, 0),
+				    MIDR_CPU_VAR_REV(3, 0)) ||
+	    midr_is_cpu_model_range(read_cpuid_id(), MIDR_THUNDERX_81XX,
+				    MIDR_CPU_VAR_REV(0, 0),
 				    MIDR_CPU_VAR_REV(3, 0)))
 		return true;
 
