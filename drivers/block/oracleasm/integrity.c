@@ -146,6 +146,7 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 	bip->bip_iter.bi_size = len;
 	bip->bip_iter.bi_sector = bio->bi_iter.bi_sector;
+	bip->bip_flags |= BIP_USER_MAPPED;
 
 	/* This is a retry. Prevent reference tag from being remapped again */
 	if (it->it_flags & ASM_IFLAG_REMAPPED)
@@ -211,30 +212,3 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 	return ret;
 } /* asm_integrity_map */
-
-
-void asm_integrity_unmap(struct bio *bio)
-{
-	struct bio_integrity_payload *bip = bio_integrity(bio);
-	struct bio_vec *iv;
-	unsigned int i;
-
-	if (!bip)
-		return;
-
-	/*
-	 * We may end up here if the user is running an old ASMLIB
-	 * without integrity support.
-	 */
-	if (bip->bip_flags & BIP_BLOCK_INTEGRITY)
-		return;
-
-	iv = bip->bip_vec;
-
-	for (i = 0 ; i < bip->bip_vcnt; i++, iv++) {
-		if (bio_data_dir(bio) == READ)
-			set_page_dirty_lock(iv->bv_page);
-
-		put_page(iv->bv_page);
-	}
-} /* asm_integrity_unmap */

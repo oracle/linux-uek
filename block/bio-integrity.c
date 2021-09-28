@@ -104,9 +104,17 @@ void bio_integrity_free(struct bio *bio)
 	struct bio_integrity_payload *bip = bio_integrity(bio);
 	struct bio_set *bs = bio->bi_pool;
 
-	if (bip->bip_flags & BIP_BLOCK_INTEGRITY)
+	if (bip->bip_flags & BIP_BLOCK_INTEGRITY) {
 		kfree(page_address(bip->bip_vec->bv_page) +
 		      bip->bip_vec->bv_offset);
+	} else if (bip->bip_flags & BIP_USER_MAPPED) {
+		unsigned int i;
+		struct bio_vec *iv = bip->bip_vec;
+
+		for (i = 0 ; i < bip->bip_vcnt ; i++, iv++) {
+			put_page(iv->bv_page);
+		}
+	}
 
 	__bio_integrity_free(bs, bip);
 	bio->bi_integrity = NULL;
@@ -424,6 +432,8 @@ int bio_integrity_clone(struct bio *bio, struct bio *bio_src,
 
 	bip->bip_vcnt = bip_src->bip_vcnt;
 	bip->bip_iter = bip_src->bip_iter;
+	bip->bip_flags = bip_src->bip_flags &
+		~(BIP_USER_MAPPED | BIP_BLOCK_INTEGRITY);
 
 	return 0;
 }

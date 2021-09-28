@@ -1865,7 +1865,6 @@ static void asm_cleanup_bios(struct file *file)
 
 		spin_unlock_irq(&afi->f_lock);
 		trace_bio(bio, "unmap");
-		asm_integrity_unmap(bio);
 		asm_bio_unmap(bio);
 		spin_lock_irq(&afi->f_lock);
 	}
