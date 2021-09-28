@@ -35,8 +35,6 @@
 #define BERT_TBL_OEM_ID	"OTX2    "
 #define BERT_OEM_ID     "MRVL  "
 
-static u32 bert_is_iomap __initdata;
-
 #ifdef CONFIG_OF
 static const struct of_device_id bed_bert_of_match[] = {
 	{ .compatible = "marvell,bed-bert", },
@@ -117,27 +115,22 @@ err:
 	return -ENODEV;
 }
 
-static int __init ghes_bed_map_resource(struct mrvl_bed_source *bsrc)
+static int __init ghes_bed_map_resource(struct device *dev, struct mrvl_bed_source *bsrc)
 {
 	if (pfn_valid(PHYS_PFN(bsrc->block_pa))) {
 		bsrc->block_va = phys_to_virt(bsrc->block_pa);
-		bert_is_iomap = 0;
-		initdbgmsg("%s BERT translate block\n", __func__);
 	} else {
-		if (!request_mem_region(bsrc->block_pa, bsrc->block_sz, "BERT")) {
+		if (!devm_request_mem_region(dev, bsrc->block_pa, bsrc->block_sz, "BERT")) {
 			initerrmsg("Failure BERT request 0x%llx\n", bsrc->block_pa);
 			return -ENODEV;
 		}
-		bsrc->block_va = ioremap(bsrc->block_pa, bsrc->block_sz);
+		bsrc->block_va = devm_ioremap(dev, bsrc->block_pa, bsrc->block_sz);
 		if (!bsrc->block_va) {
 			initerrmsg("%s Unable to map Boot Error Data\n", __func__);
-			release_mem_region(bsrc->block_pa, bsrc->block_sz);
 			return -ENODEV;
 		}
-		bert_is_iomap = 1;
-		initdbgmsg("%s BERT iomap block\n", __func__);
 	}
-	initdbgmsg("%s BERT Ring block VA=%p\n", __func__, bsrc->block_va);
+	initdbgmsg("%s BERT Ring block VA=0x%llx\n", __func__, (long long)bsrc->block_va);
 
 	return 0;
 }
@@ -268,7 +261,7 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 	bert_tbl->region_length = (bsrc->error_cnt * sizeof(*bert_entries));
 	bert_tbl->address = bsrc->bert_pa + ((void *)bert_esb - (void *)bert_tbl);
 
-	initdbgmsg("BERT: 0x%llx(0x%p)\n", bsrc->bert_pa, bsrc->bert_va);
+	initdbgmsg("BERT: 0x%llx -> 0x%llx\n", bsrc->bert_pa, (long long)bsrc->bert_va);
 
 	for (idx = 0; idx < bsrc->error_cnt; idx++) {
 		err_rec = &ring->records[ring->tail];
@@ -300,7 +293,10 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 
 		mem_err = &bert_mem_entry->mem_err;
 
-		memcpy(mem_err, &err_rec->u.mcc, sizeof(*mem_err));
+		if (pfn_valid(PHYS_PFN(bsrc->block_pa)))
+			memcpy(mem_err, &err_rec->u.mcc, sizeof(*mem_err));
+		else
+			memcpy_fromio(mem_err, &err_rec->u.mcc, sizeof(*mem_err));
 
 		/*
 		 * This simply needs the entry count to be non-zero.
@@ -347,7 +343,7 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 	if (ret)
 		goto exit0;
 
-	ret = ghes_bed_map_resource(&bed_src);
+	ret = ghes_bed_map_resource(dev, &bed_src);
 	if (ret) {
 		initerrmsg("%s Unable map BERT resource\n", __func__);
 		goto exit0;
@@ -371,22 +367,17 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 		goto exit1;
 	}
 
-	if (!has_acpi_companion(dev))
+	if (!has_acpi_companion(dev)) {
+		initdbgmsg("%s Setup bert table\n", __func__);
 		bert_table_set(bed_src.bert_va);
+	}
 
 exit1:
-	if (bert_is_iomap && has_acpi_companion(dev)) {
-		initdbgmsg("%s BERT iounmap\n", __func__);
-		iounmap(bed_src.block_va);
-		release_mem_region(bed_src.block_pa, bed_src.block_sz);
-	}
 	initdbgmsg("%s BERT setup done.\n", __func__);
-
 	return ret;
 
 exit0:
 	initerrmsg("%s BERT setup failure %d\n", __func__, ret);
-
 	return ret;
 }
 
