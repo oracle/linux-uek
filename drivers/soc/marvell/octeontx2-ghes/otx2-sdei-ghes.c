@@ -76,7 +76,7 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	struct mrvl_ghes_source *gsrc;
 	u32 head, tail;
 
-	initdbgmsg("%s event id 0x%x\n", __func__, event_id);
+	pr_notice("%s event id 0x%x\n", __func__, event_id);
 
 	if (!arg) {
 		initerrmsg("%s Failed callback\n", __func__);
@@ -178,6 +178,7 @@ int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void *arg)
 
 	head = core->ring->head;
 	tail = core->ring->tail;
+	pr_notice("%s event id 0x%x\n", __func__, event_id);
 
 	/*Ensure that head updated*/
 	rmb();
@@ -563,8 +564,9 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 			dev_err(dev, "%s ACPI warn get gsrc=%ld idx=%ld\n", __func__, i, idx);
 			return -ENOENT;
 		}
-		initdbgmsg("%s Status Block %s [%llx - %llx, %lx, %lx]\n", __func__,
-				res->name, res->start, res->end, res->flags, res->desc);
+		initdbgmsg("%s Status Block %s [%llx - %llx / %llx, %lx, %lx]\n", __func__,
+				res->name, res->start, res->end, resource_size(res),
+				res->flags, res->desc);
 		gsrc->esb_pa = res->start;
 		gsrc->esb_sz = resource_size(res);
 		idx++;
@@ -613,6 +615,9 @@ static int  sdei_ghes_setup_resource(struct mrvl_sdei_ghes_drv *ghes_drv)
 		if (pfn_valid(PHYS_PFN(gsrc->esa_pa)))
 			gsrc->esa_va = phys_to_virt(gsrc->esa_pa);
 		else {
+			if (!devm_request_mem_region(dev, gsrc->esa_pa,
+						     sizeof(gsrc->esa_va), gsrc->name))
+				return -EFAULT;
 			gsrc->esa_va = devm_ioremap(dev, gsrc->esa_pa, sizeof(gsrc->esa_va));
 			if (!gsrc->esa_va) {
 				dev_err(dev, "estatus unable map phys addr");
@@ -623,6 +628,8 @@ static int  sdei_ghes_setup_resource(struct mrvl_sdei_ghes_drv *ghes_drv)
 		if (pfn_valid(PHYS_PFN(gsrc->esb_pa)))
 			gsrc->esb_va = phys_to_virt(gsrc->esb_pa);
 		else {
+			if (!devm_request_mem_region(dev, gsrc->esb_pa, gsrc->esb_sz, gsrc->name))
+				return -EFAULT;
 			gsrc->esb_va = devm_ioremap(dev, gsrc->esb_pa, gsrc->esb_sz);
 			if (!gsrc->esb_va) {
 				dev_err(dev, "gdata unable map phys addr");
@@ -630,9 +637,13 @@ static int  sdei_ghes_setup_resource(struct mrvl_sdei_ghes_drv *ghes_drv)
 			}
 		}
 
-		if (pfn_valid(PHYS_PFN(gsrc->ring_pa)))
+		if (pfn_valid(PHYS_PFN(gsrc->ring_pa))) {
 			gsrc->ring = phys_to_virt(gsrc->ring_pa);
+			initdbgmsg("%s ring buffer direct map\n", __func__);
+		}
 		else {
+			if (!devm_request_mem_region(dev, gsrc->ring_pa, gsrc->ring_sz, gsrc->name))
+				return -EFAULT;
 			gsrc->ring = devm_ioremap(dev, gsrc->ring_pa, gsrc->ring_sz);
 			if (!gsrc->ring) {
 				dev_err(dev, "ring unable map phys addr");
@@ -697,6 +708,49 @@ static size_t sdei_ghes_count_source(struct mrvl_sdei_ghes_drv *ghes_drv)
 	initdbgmsg("%s %zu\n", __func__, count);
 
 	return count;
+}
+
+static int sdei_ghes_fetch_status_addr(struct acpi_hest_header *hest_hdr, void *data)
+{
+	struct acpi_hest_generic *generic = (struct acpi_hest_generic *)hest_hdr;
+	u64 **esrc = data;
+	static int i;
+
+	initdbgmsg("%s 0x%llx: 0x%llx\n", __func__,
+		   (long long)&generic->error_status_address.address,
+			(long long)generic->error_status_address.address);
+	initdbgmsg("%llx", (long long)&esrc[i]);
+	esrc[i] = &generic->error_status_address.address;
+	i++;
+
+	return 0;
+}
+
+static size_t sdei_ghes_patch_status_addr(struct mrvl_sdei_ghes_drv *ghes_drv)
+{
+	struct mrvl_ghes_source *gsrc;
+	int i = 0;
+	u64 **esrc = NULL;
+
+	initdbgmsg("%s entry\n", __func__);
+
+	esrc = kcalloc(ghes_drv->source_count, sizeof(u64 *), GFP_KERNEL);
+	if (!esrc) {
+		initdbgmsg("%s Failed to allocate esrc\n", __func__);
+		return -ENOMEM;
+	}
+
+	apei_hest_parse(sdei_ghes_fetch_status_addr, esrc);
+
+	for (i = 0; i < ghes_drv->source_count; i++) {
+		gsrc = &ghes_drv->source_list[i];
+		initdbgmsg("%s %s 0x%llx 0x%llx\n", __func__, gsrc->name,
+				(long long)esrc[i], (long long)gsrc->esa_pa);
+		*esrc[i] = gsrc->esa_pa;
+	}
+
+	kfree(esrc);
+	return 0;
 }
 
 static int sdei_ghes_alloc_source(struct device *dev,
@@ -842,8 +896,10 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 		initdbgmsg("%s DeviceTree\n", __func__);
 		ret = sdei_ghes_of_match_resource(pdev);
 	}
-	if (ret)
+	if (ret < 0) {
+		dev_err(dev, "Failed parse match resources\n");
 		return ret;
+	}
 
 	if (!cn10kx_model) {
 		ret = sdei_ghes_adjust_error_status_block(ghes_drv);
@@ -866,6 +922,8 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 			dev_err(dev, "Unable allocate HEST.\n");
 			goto exit0;
 		}
+	} else {
+		sdei_ghes_patch_status_addr(ghes_drv);
 	}
 
 	if (!cn10kx_model)
