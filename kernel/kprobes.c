@@ -1258,10 +1258,10 @@ void kprobe_busy_end(void)
 }
 
 /*
- * This function is called from finish_task_switch() when task 'tk' becomes
- * dead, so that we can recycle any kretprobe instances associated
- * with this task. These left over instances represent probed functions
- * that have been called but will never return.
+ * This function is called from delayed_put_task_struct() when a task is
+ * dead and cleaned up to recycle any kretprobe instances associated with
+ * this task. These left over instances represent probed functions that
+ * have been called but will never return.
  */
 void kprobe_flush_task(struct task_struct *tk)
 {
