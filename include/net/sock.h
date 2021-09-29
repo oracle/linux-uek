@@ -395,6 +395,7 @@ struct sock {
 	gfp_t			sk_allocation;
 	u32			sk_pacing_rate; /* bytes per second */
 	u32			sk_max_pacing_rate;
+	UEK_KABI_FILL_HOLE(spinlock_t sk_peer_lock)
 	netdev_features_t	sk_route_caps;
 	netdev_features_t	sk_route_nocaps;
 	int			sk_gso_type;
@@ -415,6 +416,7 @@ struct sock {
 #endif
 	struct pid		*sk_peer_pid;
 	const struct cred	*sk_peer_cred;
+
 	long			sk_rcvtimeo;
 	long			sk_sndtimeo;
 	void			*sk_protinfo;
