@@ -961,8 +961,8 @@ struct kvm_cpuid_entry2 *kvm_find_cpuid_entry(struct kvm_vcpu *vcpu,
 	for (i = 0; i < vcpu->arch.cpuid_nent; ++i) {
 		e = &vcpu->arch.cpuid_entries[i];
 
-		if (e->function == function && (e->index == index ||
-		    !(e->flags & KVM_CPUID_FLAG_SIGNIFCANT_INDEX)))
+		if (e->function == function &&
+		    (!(e->flags & KVM_CPUID_FLAG_SIGNIFCANT_INDEX) || e->index == index))
 			return e;
 	}
 	return NULL;
