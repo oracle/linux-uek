@@ -144,4 +144,7 @@ void otx2_cpri_enable_intf(int cpri_num);
 /* ethtool */
 void otx2_cpri_set_ethtool_ops(struct net_device *netdev);
 
+/* update carrier state */
+void otx2_cpri_set_link_state(struct net_device *netdev, u8 state);
+
 #endif
