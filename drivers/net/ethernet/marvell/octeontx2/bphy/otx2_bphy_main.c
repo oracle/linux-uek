@@ -381,7 +381,6 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 	case OTX2_RFOE_IOCTL_LINK_EVENT:
 	{
 		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
-		struct otx2_rfoe_ndev_priv *priv;
 		struct otx2_rfoe_link_event cfg;
 		struct net_device *netdev;
 		int idx;
@@ -410,31 +409,13 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			goto out;
 		}
 		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		if (priv->link_state != cfg.link_state) {
-			if (cfg.link_state == LINK_STATE_DOWN) {
-				netdev_info(netdev, "Link DOWN\n");
-				priv->link_state = 0;
-				if (netif_running(netdev)) {
-					netif_carrier_off(netdev);
-					netif_stop_queue(netdev);
-				}
-			} else {
-				netdev_info(netdev, "Link UP\n");
-				priv->link_state = 1;
-				if (netif_running(netdev)) {
-					netif_carrier_on(netdev);
-					netif_start_queue(netdev);
-				}
-			}
-		}
+		otx2_rfoe_set_link_state(netdev, cfg.link_state);
 		ret = 0;
 		goto out;
 	}
 	case OTX2_CPRI_IOCTL_LINK_EVENT:
 	{
 		struct otx2_cpri_drv_ctx *drv_ctx = NULL;
-		struct otx2_cpri_ndev_priv *priv;
 		struct otx2_cpri_link_event cfg;
 		struct net_device *netdev;
 		int idx;
@@ -463,24 +444,7 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			goto out;
 		}
 		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		if (priv->link_state != cfg.link_state) {
-			if (cfg.link_state == LINK_STATE_DOWN) {
-				netdev_info(netdev, "Link DOWN\n");
-				priv->link_state = 0;
-				if (netif_running(netdev)) {
-					netif_carrier_off(netdev);
-					netif_stop_queue(netdev);
-				}
-			} else {
-				netdev_info(netdev, "Link UP\n");
-				priv->link_state = 1;
-				if (netif_running(netdev)) {
-					netif_carrier_on(netdev);
-					netif_start_queue(netdev);
-				}
-			}
-		}
+		otx2_cpri_set_link_state(netdev, cfg.link_state);
 		ret = 0;
 		goto out;
 	}
