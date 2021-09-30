@@ -2253,6 +2253,10 @@ static bool target_handle_task_attr(struct se_cmd *cmd)
 		atomic_dec_mb(&dev->non_ordered);
 	}
 
+	spin_lock_irq(&cmd->t_state_lock);
+	cmd->transport_state &= ~CMD_T_SENT;
+	spin_unlock_irq(&cmd->t_state_lock);
+
 	spin_lock(&dev->delayed_cmd_lock);
 	list_add_tail(&cmd->se_delayed_node, &dev->delayed_cmd_list);
 	spin_unlock(&dev->delayed_cmd_lock);
@@ -2287,12 +2291,8 @@ void target_execute_cmd(struct se_cmd *cmd)
 	if (target_write_prot_action(cmd))
 		return;
 
-	if (target_handle_task_attr(cmd)) {
-		spin_lock_irq(&cmd->t_state_lock);
-		cmd->transport_state &= ~CMD_T_SENT;
-		spin_unlock_irq(&cmd->t_state_lock);
+	if (target_handle_task_attr(cmd))
 		return;
-	}
 
 	__target_execute_cmd(cmd, true);
 }
