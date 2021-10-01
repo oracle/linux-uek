@@ -2039,7 +2039,7 @@ static int netsec_probe(struct platform_device *pdev)
 
 	mac = device_get_mac_address(&pdev->dev, macbuf, sizeof(macbuf));
 	if (mac)
-		ether_addr_copy(ndev->dev_addr, mac);
+		eth_hw_addr_set(ndev, mac);
 
 	if (priv->eeprom_base &&
 	    (!mac || !is_valid_ether_addr(ndev->dev_addr))) {
