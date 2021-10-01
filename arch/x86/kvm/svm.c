@@ -2268,7 +2268,7 @@ static void svm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	for (i = 0; i < NR_HOST_SAVE_USER_MSRS; i++)
 		rdmsrl(host_save_user_msrs[i], svm->host_user_msrs[i]);
 
-	vmsave(__sme_page_pa(sd->save_area));
+	vmsave(page_to_phys(sd->save_area));
 
 	if (static_cpu_has(X86_FEATURE_TSCRATEMSR)) {
 		u64 tsc_ratio = vcpu->arch.tsc_scaling_ratio;
@@ -5773,7 +5773,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	vmexit_fill_RSB();
 
 	sd = per_cpu(svm_data, vcpu->cpu);
-	vmload(__sme_page_pa(sd->save_area));
+	vmload(page_to_phys(sd->save_area));
 	/*
 	 * If this vCPU has used the SPEC_CTRL MSR it may have
 	 * left it on; save the value and restore the host value.
