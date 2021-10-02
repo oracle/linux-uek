@@ -372,6 +372,11 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 		bert_table_set(bed_src.bert_va);
 	}
 
+	if (has_acpi_companion(dev) && !pfn_valid(PHYS_PFN(bed_src.block_pa))) {
+		devm_iounmap(dev, bed_src.block_va);
+		devm_release_mem_region(dev, bed_src.block_pa, bed_src.block_sz);
+	}
+
 exit1:
 	initdbgmsg("%s BERT setup done.\n", __func__);
 	return ret;
