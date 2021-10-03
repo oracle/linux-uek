@@ -624,7 +624,10 @@ int mlx5_mr_cache_init(struct mlx5_ib_dev *dev)
 		else
 			ent->limit = 0;
 #else
-		ent->limit = dev->mdev->profile->mr_cache[i].limit;
+		if (dev->mdev->coredev_type != MLX5_COREDEV_SF)
+			ent->limit = dev->mdev->profile->mr_cache[i].limit;
+		else
+			ent->limit = 0;
 #endif /* WITHOUT_ORACLE_EXTENSIONS */
 		queue_work(cache->wq, &ent->work);
 	}
