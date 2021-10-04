@@ -92,16 +92,6 @@ void *mlx4_get_protocol_dev(struct mlx4_dev *dev, enum mlx4_protocol proto, int 
 
 struct devlink_port *mlx4_get_devlink_port(struct mlx4_dev *dev, int port);
 
-static inline void mlx4_u64_to_mac(u8 *addr, u64 mac)
-{
-	int i;
-
-	for (i = ETH_ALEN; i > 0; i--) {
-		addr[i - 1] = mac & 0xFF;
-		mac >>= 8;
-	}
-}
-
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 int mlx4_choose_vector(struct mlx4_dev *dev, u32 vector, int num_comp);
 void mlx4_release_vector(struct mlx4_dev *dev, u32 vector);
