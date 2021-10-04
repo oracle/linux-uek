@@ -478,6 +478,9 @@ static int cirrusfb_check_pixclock(struct fb_var_screeninfo *var,
 	struct cirrusfb_info *cinfo = info->par;
 	unsigned maxclockidx = var->bits_per_pixel >> 3;
 
+	if (!var->pixclock)
+		return -EINVAL;
+
 	/* convert from ps to kHz */
 	freq = PICOS2KHZ(var->pixclock ? : 1);
 
