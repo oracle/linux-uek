@@ -63,6 +63,11 @@ enum dev_type {
 	PCIMEM
 };
 
+struct dma_page {
+    struct page** page_list;
+    dma_addr_t dma_addr[PCICONF_MAX_PAGES_SIZE];
+};
+
 struct mst_dev_data {
 	int					addr_reg;				/* PCICONF address register */
 	int					data_reg;				/* PCICONF data register */
@@ -87,6 +92,9 @@ struct mst_dev_data {
 	int vendor_specific_cap;
     /* status on VSEC supported spaces*/
 	int spaces_support_status;
+
+    // Allocated pages for the user space.
+    struct dma_page dma_page;
 };
 
 
