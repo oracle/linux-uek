@@ -40,6 +40,7 @@ static struct pci_device_id mst_livefish_pci_table[] = { { PCI_DEVICE(
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020d) }, /* MT27520 [ConnectX-5 Flash Recovery] */
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020f) }, /* MT27520 [ConnectX-6 Flash Recovery] */
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0212) }, /* MT27520 [ConnectX-6DX Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0216) }, /* MT27520 [ConnectX-6LX Flash Recovery] */
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0211) }, /* MT27520 [BlueField Flash Recovery] */
 		{ 0, } };
 
@@ -58,7 +59,9 @@ static struct pci_device_id supported_pci_devices[] = { { PCI_DEVICE(
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4121) }, /* MT27600 [ConnectX-5EX] */
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4123) }, /* MT27600 [ConnectX-6] */
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4125) }, /* MT27600 [ConnectX-6DX] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4127) }, /* MT27600 [ConnectX-6LX] */
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41682) }, /* MT27600 [BlueField] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41686) }, /* MT27600 [BlueField 2] */
 		{ 0, } };
 
 /****************** VSEC SUPPORT ********************/
@@ -538,6 +541,164 @@ static int mst_release(struct inode *inode, struct file *file)
 out:
 	return res;
 }
+
+
+static int page_pin(struct mst_dev_data* dev, struct page_info_st* page_info)
+{
+    unsigned long page_pointer_start = page_info->page_pointer_start;
+    unsigned int page_amount = page_info->page_amount;
+    unsigned int pages_size = page_amount * PAGE_SIZE;
+    unsigned long end_of_buffer = page_pointer_start + pages_size;
+    unsigned int gup_flags = FOLL_WRITE;
+    int page_mapped_counter= 0;
+    int page_counter = 0;
+    int total_pinned = 0;
+
+    // If the combination of the addr and size requested for this memory
+    // region causes an integer overflow, return error.
+    if (((end_of_buffer) < page_pointer_start) ||
+            PAGE_ALIGN(end_of_buffer) < (end_of_buffer) ||
+            page_amount < 1) {
+        return -EINVAL;
+    }
+
+    // Check if we allow locking memory.
+    if (!can_do_mlock()) {
+        return -EPERM;
+    }
+
+    // Allocate the page list.
+    dev->dma_page.page_list = kcalloc(page_amount, sizeof(struct page *), GFP_KERNEL);
+    if (!dev->dma_page.page_list) {
+        return -ENOMEM;
+    }
+
+    // Go over the user memory buffer and pin user pages in memory.
+    while (total_pinned < page_amount) {
+        // Save the current number of pages to pin
+        int num_pages = page_amount - total_pinned;
+
+        // Save the current pointer to the right offset.
+        uint64_t current_ptr = page_pointer_start + (total_pinned * PAGE_SIZE);
+
+        // Save the current page.
+        struct page** current_pages = dev->dma_page.page_list + total_pinned;
+
+        // Attempt to pin user pages in memory.
+        // Returns number of pages pinned - this may be fewer than the number requested
+        //   or -errno in case of error.
+        int pinned_pages = get_user_pages_fast(current_ptr, num_pages,
+                                               gup_flags, current_pages);
+        if (pinned_pages < 1)
+        {
+            kfree(dev->dma_page.page_list);
+            return -EFAULT;
+        }
+
+        // When the parameter 'inter_iommu' is on, we need to set up
+        // a mapping on a pages in order to access the physical address
+        while(page_mapped_counter < pinned_pages)
+        {
+            int current_page = total_pinned + page_mapped_counter;
+
+            // Get the dma address.
+            dev->dma_page.dma_addr[current_page] =
+                dma_map_page(&dev->pci_dev->dev, current_pages[current_page],
+                             0, PAGE_SIZE,
+                             DMA_BIDIRECTIONAL);
+            // Do we get a valid dma address ?
+            if (dma_mapping_error(&dev->pci_dev->dev, dev->dma_page.dma_addr[current_page])) {
+                printk(KERN_ERR "Failed to get DMA addresses\n");
+                return -EINVAL;
+            }
+
+            page_info->page_address_array[current_page].dma_address =
+                dev->dma_page.dma_addr[current_page];
+
+            page_mapped_counter++;
+        }
+
+        // Advance the memory that already pinned.
+        total_pinned += pinned_pages;
+    }
+
+    // There is a page that not pinned in the kernel space ?
+    if (total_pinned != page_amount) {
+        return -EFAULT;
+    }
+
+    // Print the pages to the dmesg.
+    for (page_counter = 0;
+            page_counter < page_amount;
+            page_counter++) {
+        printk(KERN_INFO "Page address structure number: %d, device: %04x:%02x:%02x.%0x\n",
+               page_counter, pci_domain_nr(dev->pci_dev->bus),
+               dev->pci_dev->bus->number, PCI_SLOT(dev->pci_dev->devfn),
+               PCI_FUNC(dev->pci_dev->devfn));
+    }
+
+    return 0;
+}
+
+
+static int page_unpin(struct mst_dev_data* dev, struct page_info_st* page_info)
+{
+    int page_counter;
+
+    // Check if the page list is allocated.
+    if (!dev || !dev->dma_page.page_list) {
+        return -EINVAL;
+    }
+
+    // Deallocate the pages.
+    for (page_counter = 0;
+            page_counter < page_info->page_amount;
+            page_counter++) {
+        // DMA activity is finished.
+        dma_unmap_page(&dev->pci_dev->dev, dev->dma_page.dma_addr[page_counter],
+                       PAGE_SIZE, DMA_BIDIRECTIONAL);
+
+        // Release the page list.
+        set_page_dirty(dev->dma_page.page_list[page_counter]);
+        put_page(dev->dma_page.page_list[page_counter]);
+        dev->dma_page.page_list[page_counter] = NULL;
+        dev->dma_page.dma_addr[page_counter] = 0;
+
+        printk(KERN_INFO "Page structure number: %d was released. device:%04x:%02x:%02x.%0x\n",
+               page_counter, pci_domain_nr(dev->pci_dev->bus),
+               dev->pci_dev->bus->number, PCI_SLOT(dev->pci_dev->devfn),
+               PCI_FUNC(dev->pci_dev->devfn));
+    }
+
+    // All the pages are clean.
+    dev->dma_page.page_list = NULL;
+
+    return 0;
+}
+
+
+static int read_dword_from_config_space(struct mst_dev_data* dev, struct read_dword_from_config_space* read_from_cspace)
+{
+    int ret = 0;
+
+    // take semaphore
+    ret = _vendor_specific_sem(dev, 1);
+    if (ret) {
+        return ret;
+    }
+
+    // Read dword from config space
+    ret = pci_read_config_dword(dev->pci_dev, read_from_cspace->offset, &read_from_cspace->data);
+    if (ret) {
+        goto cleanup;
+    }
+
+cleanup:
+    // clear semaphore
+    _vendor_specific_sem(dev, 0);
+    return ret;
+}
+
 
 /****************************************************/
 static ssize_t mst_read(struct file *file, char *buf, size_t count,
@@ -1184,6 +1345,68 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 			goto fin;
 		break;
 	}
+    case PCICONF_GET_DMA_PAGES:
+    case PCICONF_RELEASE_DMA_PAGES:
+    {
+        struct page_info_st page_info;
+
+        // Device validation.
+        if (!dev->initialized || !dev->pci_dev) {
+            res = -ENOTTY;
+            goto fin;
+        }
+
+        // Copy the page info structure from the user space.
+        if (copy_from_user(&page_info, user_buf, sizeof(struct page_info_st))) {
+            res = -EFAULT;
+            goto fin;
+        }
+
+        if (opcode == PCICONF_GET_DMA_PAGES) {
+            res = page_pin(dev, &page_info);
+            if (res) {
+                goto fin;
+            }
+
+            // Return the physical address to the user.
+            if (copy_to_user(user_buf, &page_info, sizeof(struct page_info_st)) != 0) {
+                res = -EFAULT;
+                goto fin;
+            }
+        } else {
+            res = page_unpin(dev, &page_info);
+        }
+
+        break;
+    }
+    case PCICONF_READ_DWORD_FROM_CONFIG_SPACE:
+    {
+        struct read_dword_from_config_space read_from_cspace;
+
+        // Device validation.
+        if (!dev->initialized || !dev->pci_dev) {
+            res =- ENOTTY;
+            goto fin;
+        }
+
+        // Copy the page info structure from the user space.
+        if (copy_from_user(&read_from_cspace, user_buf, sizeof(struct read_dword_from_config_space))) {
+            res = -EFAULT;
+            goto fin;
+        }
+
+        res = read_dword_from_config_space(dev, &read_from_cspace);
+        if (res) {
+            goto fin;
+        }
+        // Return the physical address to the user.
+        if (copy_to_user(user_buf, &read_from_cspace, sizeof(struct read_dword_from_config_space)) != 0) {
+            res = -EFAULT;
+            goto fin;
+        }
+
+        break;
+    }
 
 	default: {
 		mst_err("incorrect opcode = %x available opcodes:\n", opcode);
@@ -1200,19 +1423,7 @@ fin_err:
 	return res;
 }
 
-#if HAVE_COMPAT_IOCTL
-static long compat_ioctl(struct file *f, unsigned int o, unsigned long d)
-{
-#if KERNEL_VERSION(3, 18, 0) > LINUX_VERSION_CODE
-	struct inode *n = f->f_dentry->d_inode;
-#else
-	struct inode *n = f->f_path.dentry->d_inode;
-#endif
-	return mst_ioctl(n, f, o, d);
-}
-#endif
 
-#ifdef HAVE_UNLOCKED_IOCTL
 static long unlocked_ioctl(struct file *f, unsigned int o, unsigned long d)
 {
 #if KERNEL_VERSION(3, 18, 0) > LINUX_VERSION_CODE
@@ -1223,7 +1434,6 @@ static long unlocked_ioctl(struct file *f, unsigned int o, unsigned long d)
 
 	return mst_ioctl(n, f, o, d);
 }
-#endif
 
 /****************************************************/
 static inline const char *dev_type_to_str(enum dev_type type)
@@ -1239,22 +1449,13 @@ static inline const char *dev_type_to_str(enum dev_type type)
 }
 
 /****************************************************/
-static const struct file_operations mst_fops = { .read = mst_read, .write =
-		mst_write,
-
-#ifdef HAVE_UNLOCKED_IOCTL
+static const struct file_operations mst_fops = {
+        .read = mst_read,
+        .write = mst_write,
 		.unlocked_ioctl = unlocked_ioctl,
-#endif
-
-#if KERNEL_VERSION(2, 6, 35) > LINUX_VERSION_CODE
-		.ioctl = mst_ioctl,
-#endif
-
-#if HAVE_COMPAT_IOCTL
-		.compat_ioctl = compat_ioctl,
-#endif
-
-		.open = mst_open, .release = mst_release, .owner = THIS_MODULE, };
+		.open = mst_open,
+        .release = mst_release,
+        .owner = THIS_MODULE, };
 
 static struct mst_dev_data *mst_device_create(enum dev_type type,
 		struct pci_dev *pdev)

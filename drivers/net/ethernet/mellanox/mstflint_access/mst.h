@@ -23,6 +23,7 @@
 
 
 #define PCICONF_MAX_BUFFER_SIZE     256
+#define PCICONF_MAX_PAGES_SIZE      32
 /****************************************************/
 /* GET PARAMS */
 #define MST_PARAMS _IOR(MST_PARAMS_MAGIC, 1, struct mst_params)
@@ -90,6 +91,9 @@ struct mst_write_block_st {
 
 #define PCICONF_READ4_BUFFER  _IOR(MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_buffer_st)
 #define PCICONF_READ4_BUFFER_EX  _IOR(MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_buffer_st)
+// We support backward compatibility.
+// There is a known bug with PCICONF_READ4_BUFFER ioctl and data may be corrupted.
+#define PCICONF_READ4_BUFFER_BC  _IOR(MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_st)
 struct mst_read4_buffer_st {
 	unsigned int address_space;
 	unsigned int offset;
@@ -172,5 +176,24 @@ struct mst_vpd_write4_st {
 	u32 data;				/* IN */
 };
 
+#define PCICONF_GET_DMA_PAGES       _IOR (MST_PCICONF_MAGIC, 13, struct page_info_st)
+#define PCICONF_RELEASE_DMA_PAGES   _IOR (MST_PCICONF_MAGIC, 14, struct page_info_st)
+
+struct page_address_st {
+    u_int64_t dma_address;
+    u_int64_t virtual_address;
+};
+
+struct page_info_st {
+    unsigned int page_amount;
+    unsigned long page_pointer_start;
+    struct page_address_st page_address_array[PCICONF_MAX_PAGES_SIZE];
+};
+
+#define PCICONF_READ_DWORD_FROM_CONFIG_SPACE    _IOR (MST_PCICONF_MAGIC, 15, struct read_dword_from_config_space)
+struct read_dword_from_config_space {
+    unsigned int offset;
+    unsigned int data;
+};
 
 #endif /* _MST_H_ */
