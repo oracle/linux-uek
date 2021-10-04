@@ -17,7 +17,5 @@ To work with this driver perform the following operations:
     > mstflint -d 05:00.0 q
     > mstmcra 05:00.0 0xf0014
 
-*Limitation - mstflint driver supports only ConnectX-3/ConnectX-3Pro devices.
 
-
-**Note - a spec file for generating source RPM from the sources will be added at a later stage
+*Note - a spec file for generating source RPM from the sources will be added at a later stage
