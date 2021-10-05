@@ -95,27 +95,6 @@ void __cpuidle default_idle_call(void)
 	}
 }
 
-static int call_cpuidle(struct cpuidle_driver *drv, struct cpuidle_device *dev,
-		      int next_state)
-{
-	/*
-	 * The idle task must be scheduled, it is pointless to go to idle, just
-	 * update no idle residency and return.
-	 */
-	if (current_clr_polling_and_test()) {
-		dev->last_residency = 0;
-		local_irq_enable();
-		return -EBUSY;
-	}
-
-	/*
-	 * Enter the idle state previously returned by the governor decision.
-	 * This function will block until an interrupt occurs and will take
-	 * care of re-enabling the local interrupts
-	 */
-	return cpuidle_enter(drv, dev, next_state);
-}
-
 /**
  * cpuidle_idle_call - the main idle function
  *
