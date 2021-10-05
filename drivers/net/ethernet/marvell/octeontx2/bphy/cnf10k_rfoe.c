@@ -1153,8 +1153,8 @@ static void cnf10k_rfoe_fill_rx_ft_cfg(struct cnf10k_rfoe_ndev_priv *priv,
 		jdt_cfg0 = readq(priv->rfoe_reg_base +
 				 RFOEX_RX_IND_JDT_CFG0(priv->rfoe_num));
 		spin_unlock(&cdev_priv->mbt_lock);
-		ft_cfg->jd_rd_offset = ((jdt_cfg0 >> 28) & 0xf) * 8;
-		ft_cfg->pkt_offset = (u8)((jdt_cfg0 >> 52) & 0x7);
+		ft_cfg->jd_rd_offset = ((jdt_cfg0 >> 27) & 0x3f) * 8;
+		ft_cfg->pkt_offset = (u8)((jdt_cfg0 >> 52) & 0x1f);
 		ft_cfg->priv = priv;
 		netif_napi_add(priv->netdev, &ft_cfg->napi,
 			       cnf10k_rfoe_napi_poll,

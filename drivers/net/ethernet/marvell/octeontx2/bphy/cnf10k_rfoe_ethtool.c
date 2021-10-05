@@ -56,10 +56,10 @@ static void cnf10k_rfoe_update_lmac_stats(struct cnf10k_rfoe_ndev_priv *priv)
 	struct otx2_rfoe_stats *stats = &priv->stats;
 
 	stats->EthIfInFrames = readq(priv->rfoe_reg_base +
-				     RFOEX_RX_CGX_PKT_STAT(priv->rfoe_num,
+				     RFOEX_RX_RPM_PKT_STAT(priv->rfoe_num,
 							   priv->lmac_id));
 	stats->EthIfInOctets = readq(priv->rfoe_reg_base +
-				     RFOEX_RX_CGX_OCTS_STAT(priv->rfoe_num,
+				     RFOEX_RX_RPM_OCTS_STAT(priv->rfoe_num,
 							    priv->lmac_id));
 	stats->EthIfOutFrames = readq(priv->rfoe_reg_base +
 				      RFOEX_TX_PKT_STAT(priv->rfoe_num,
