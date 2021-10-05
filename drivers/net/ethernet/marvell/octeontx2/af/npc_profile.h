@@ -1010,7 +1010,7 @@ static struct npc_kpu_profile_action ikpu_action_entries[] = {
 		NPC_S_KPU1_CPT_HDR, 40, 0,
 		NPC_LID_LA, NPC_LT_NA,
 		0,
-		7, 7, 0, 0,
+		0, 7, 0, 0,
 
 	},
 	{
