@@ -374,7 +374,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 			return;
 		}
 		jdt_iova_addr = (u64)psw->jd_ptr;
-		rfoe_psw_w2 = (struct rfoe_psw_w2_roe_s *)psw->proto_sts_word;
+		rfoe_psw_w2 = (struct rfoe_psw_w2_roe_s *)&psw->proto_sts_word;
 		lmac_id = rfoe_psw_w2->lmac_id;
 		if (priv->rx_hw_tstamp_en)
 			tstamp = psw->ptp_timestamp;
@@ -387,7 +387,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		}
 		jdt_iova_addr = (u64)psw->jd_ptr;
 		ecpri_psw_w2 = (struct rfoe_psw_w2_ecpri_s *)
-					psw->proto_sts_word;
+					&psw->proto_sts_word;
 		lmac_id = ecpri_psw_w2->lmac_id;
 		if (priv->rx_hw_tstamp_en)
 			tstamp = psw->ptp_timestamp;
@@ -1243,6 +1243,12 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 					i, lmac);
 				continue;
 			}
+			if (lmac >= cdev->num_rfoe_lmac) {
+				dev_dbg(cdev->dev,
+					"rfoe%d, lmac%d not supported, skipping\n",
+					i, lmac);
+				continue;
+			}
 			netdev = alloc_etherdev(sizeof(*priv));
 			if (!netdev) {
 				dev_err(cdev->dev,
@@ -1347,7 +1353,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			if (!priv2)
 				priv2 = priv;
 
-			intf_idx = (i * 4) + lmac;
+			intf_idx = (i * cdev->num_rfoe_lmac) + lmac;
 			snprintf(netdev->name, sizeof(netdev->name),
 				 "rfoe%d", intf_idx);
 			netdev->netdev_ops = &cnf10k_rfoe_netdev_ops;
