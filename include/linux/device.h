@@ -28,6 +28,7 @@
 #include <linux/uidgid.h>
 #include <linux/gfp.h>
 #include <asm/device.h>
+#include <linux/uek_kabi.h>
 
 struct device;
 struct device_private;
@@ -928,6 +929,10 @@ struct device {
 #ifdef CONFIG_NUMA
 	int		numa_node;	/* NUMA node this device is close to */
 #endif
+#ifdef CONFIG_GENERIC_MSI_IRQ
+	UEK_KABI_FILL_HOLE(raw_spinlock_t msi_lock)
+#endif
+
 	const struct dma_map_ops *dma_ops;
 	u64		*dma_mask;	/* dma mask (if dma'able device) */
 	u64		coherent_dma_mask;/* Like dma_mask, but for
