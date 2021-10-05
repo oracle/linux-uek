@@ -768,7 +768,6 @@ ssetup_exit:
 		spin_unlock(&GlobalMid_Lock);
 	}
 
-keygen_exit:
 	if (spnego_key) {
 		key_invalidate(spnego_key);
 		key_put(spnego_key);
