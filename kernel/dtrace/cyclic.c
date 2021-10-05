@@ -320,7 +320,6 @@ cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *omni)
 {
 	int		cpu;
 	cyclic_t	*cyc;
-	unsigned long	flags;
 
 	cyc = cyclic_new(1);
 	if (cyc == NULL)
