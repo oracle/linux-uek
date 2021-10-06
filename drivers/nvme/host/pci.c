@@ -65,8 +65,6 @@ module_param(nvme_io_queues, uint, 0);
 MODULE_PARM_DESC(nvme_io_queues, "set the number of nvme io queues");
 
 static LIST_HEAD(dev_list);
-static DEFINE_SPINLOCK(dev_list_lock);
-static struct task_struct *nvme_thread;
 static struct workqueue_struct *nvme_workq;
 
 struct nvme_dev;
@@ -429,26 +427,6 @@ struct blk_integrity nvme_meta_noop = {
 	.verify_fn		= nvme_noop_verify,
 };
 
-static void nvme_init_integrity(struct nvme_ns *ns)
-{
-	struct blk_integrity integrity;
-
-	switch (ns->pi_type) {
-	case NVME_NS_DPS_PI_TYPE3:
-		integrity = t10_pi_type3_crc;
-		break;
-	case NVME_NS_DPS_PI_TYPE1:
-	case NVME_NS_DPS_PI_TYPE2:
-		integrity = t10_pi_type1_crc;
-		break;
-	default:
-		integrity = nvme_meta_noop;
-		break;
-	}
-	integrity.tuple_size = ns->ms;
-	blk_integrity_register(ns->disk, &integrity);
-	blk_queue_max_integrity_segments(ns->queue, 1);
-}
 #else /* CONFIG_BLK_DEV_INTEGRITY */
 static void nvme_dif_remap(struct request *req,
 			void (*dif_swap)(u32 p, u32 v, struct t10_pi_tuple *pi))
