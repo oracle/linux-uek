@@ -2540,6 +2540,9 @@ struct ib_device_ops {
 	int (*modify_device)(struct ib_device *device, int device_modify_mask,
 			     struct ib_device_modify *device_modify);
 	void (*get_dev_fw_str)(struct ib_device *device, char *str);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	int (*get_vector_irqn)(struct ib_device *ibdev, int comp_vector);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	int (*query_port)(struct ib_device *device, u32 port_num,
 			  struct ib_port_attr *port_attr);
 	int (*query_port_speed)(struct ib_device *device, u32 port_num,
@@ -4952,6 +4955,18 @@ static inline __be16 ib_lid_be16(u32 lid)
 	WARN_ON_ONCE(lid & 0xFFFF0000);
 	return cpu_to_be16((u16)lid);
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static inline int
+ib_get_vector_irqn(struct ib_device *device, int comp_vector)
+{
+	if (comp_vector < 0 || comp_vector >= device->num_comp_vectors ||
+	    !device->ops.get_vector_irqn)
+		return -1;
+
+	return device->ops.get_vector_irqn(device, comp_vector);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 /**
  * rdma_roce_rescan_device - Rescan all of the network devices in the system
