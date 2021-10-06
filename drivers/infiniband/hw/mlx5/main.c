@@ -6105,6 +6105,20 @@ static void init_delay_drop(struct mlx5_ib_dev *dev)
 		mlx5_ib_warn(dev, "Failed to init delay drop debugfs\n");
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static int
+mlx5_ib_get_vector_irqn(struct ib_device *ibdev, int comp_vector)
+{
+	struct mlx5_ib_dev *dev = to_mdev(ibdev);
+	struct mlx5_core_dev *mdev = dev->mdev;
+
+	if (comp_vector < 0 || comp_vector >= dev->ib_dev.num_comp_vectors)
+		return -1;
+
+	return pci_irq_vector(mdev->pdev, comp_vector + MLX5_IRQ_VEC_COMP_BASE);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void mlx5_ib_unbind_slave_port(struct mlx5_ib_dev *ibdev,
 				      struct mlx5_ib_multiport_info *mpi)
 {
@@ -6826,6 +6840,9 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.fill_res_entry = mlx5_ib_fill_res_entry,
 	.fill_stat_entry = mlx5_ib_fill_stat_entry,
 	.get_dev_fw_str = get_dev_fw_str,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.get_vector_irqn = mlx5_ib_get_vector_irqn,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.get_dma_mr = mlx5_ib_get_dma_mr,
 	.get_link_layer = mlx5_ib_port_link_layer,
 	.map_mr_sg = mlx5_ib_map_mr_sg,
