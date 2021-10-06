@@ -3534,6 +3534,20 @@ static const struct file_operations fops_delay_drop_timeout = {
 	.read	= delay_drop_timeout_read,
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static int
+mlx5_ib_get_vector_irqn(struct ib_device *ibdev, int comp_vector)
+{
+	struct mlx5_ib_dev *dev = to_mdev(ibdev);
+	struct mlx5_core_dev *mdev = dev->mdev;
+
+	if (comp_vector < 0 || comp_vector >= dev->ib_dev.num_comp_vectors)
+		return -1;
+
+	return pci_irq_vector(mdev->pdev, comp_vector);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void mlx5_ib_unbind_slave_port(struct mlx5_ib_dev *ibdev,
 				      struct mlx5_ib_multiport_info *mpi)
 {
@@ -4201,6 +4215,9 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.drain_sq = mlx5_ib_drain_sq,
 	.device_group = &mlx5_attr_group,
 	.get_dev_fw_str = get_dev_fw_str,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.get_vector_irqn = mlx5_ib_get_vector_irqn,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.get_dma_mr = mlx5_ib_get_dma_mr,
 	.get_link_layer = mlx5_ib_port_link_layer,
 	.map_mr_sg = mlx5_ib_map_mr_sg,
