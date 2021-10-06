@@ -500,7 +500,6 @@ static void vnic_ib_handle_rx_wc(struct vnic_login *login,
 #elif defined(NETIF_F_LRO)
 	if (login->dev->features & NETIF_F_LRO && checksum_ok &&
 	    eth_type == ETH_P_IP && ip_type == IPPROTO_TCP) {
-		struct vnic_rx_res *rx_res = &login->rx_res[rx_ring_index];
 		int nr_frags;
 
 		/* unmap the needed fragment and reallocate them.

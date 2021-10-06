@@ -2015,16 +2015,6 @@ static int mlx5e_get_vf_config(struct net_device *dev,
 	return 0;
 }
 
-static int mlx5e_get_vf_stats(struct net_device *dev,
-			      int vf, struct ifla_vf_stats *vf_stats)
-{
-	struct mlx5e_priv *priv = netdev_priv(dev);
-	struct mlx5_core_dev *mdev = priv->mdev;
-
-	return mlx5_eswitch_get_vport_stats(mdev->priv.eswitch, vf + 1,
-					    vf_stats);
-}
-
 static struct net_device_ops mlx5e_netdev_ops = {
 	.ndo_open                = mlx5e_open,
 	.ndo_stop                = mlx5e_close,
