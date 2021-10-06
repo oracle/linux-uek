@@ -95,6 +95,9 @@ struct ethtool_link_ext_state_info {
 		enum ethtool_link_ext_substate_link_logical_mismatch link_logical_mismatch;
 		enum ethtool_link_ext_substate_bad_signal_integrity bad_signal_integrity;
 		enum ethtool_link_ext_substate_cable_issue cable_issue;
+#ifndef __GENKSYMS__
+		enum ethtool_link_ext_substate_module module;
+#endif
 		u32 __link_ext_substate;
 	};
 };
