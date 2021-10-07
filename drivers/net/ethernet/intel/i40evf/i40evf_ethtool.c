@@ -487,21 +487,6 @@ static int i40evf_get_coalesce(struct net_device *netdev,
 }
 
 /**
- * i40evf_get_per_queue_coalesce - get coalesce values for specific queue
- * @netdev: netdev to read
- * @ec: coalesce settings from ethtool
- * @queue: the queue to read
- *
- * Read specific queue's coalesce settings.
- **/
-static int i40evf_get_per_queue_coalesce(struct net_device *netdev,
-					 u32 queue,
-					 struct ethtool_coalesce *ec)
-{
-	return __i40evf_get_coalesce(netdev, ec, queue);
-}
-
-/**
  * i40evf_set_itr_per_queue - set ITR values for specific queue
  * @vsi: the VSI to set values for
  * @ec: coalesce settings from ethtool
@@ -610,21 +595,6 @@ static int i40evf_set_coalesce(struct net_device *netdev,
 			       struct ethtool_coalesce *ec)
 {
 	return __i40evf_set_coalesce(netdev, ec, -1);
-}
-
-/**
- * i40evf_set_per_queue_coalesce - set specific queue's coalesce settings
- * @netdev: the netdev to change
- * @ec: ethtool's coalesce settings
- * @queue: the queue to modify
- *
- * Modifies a specific queue's coalesce settings.
- */
-static int i40evf_set_per_queue_coalesce(struct net_device *netdev,
-					 u32 queue,
-					 struct ethtool_coalesce *ec)
-{
-	return __i40evf_set_coalesce(netdev, ec, queue);
 }
 
 /**

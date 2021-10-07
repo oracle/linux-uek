@@ -762,7 +762,7 @@ static inline void i40e_rx_checksum(struct i40e_vsi *vsi,
 				    union i40e_rx_desc *rx_desc)
 {
 	struct i40e_rx_ptype_decoded decoded;
-	bool ipv4, ipv6, tunnel = false;
+	bool ipv4, ipv6;
 	u32 rx_error, rx_status;
 	u8 ptype;
 	u64 qword;

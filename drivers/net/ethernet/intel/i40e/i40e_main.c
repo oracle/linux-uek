@@ -7130,7 +7130,6 @@ static void i40e_rebuild(struct i40e_pf *pf, bool reinit, bool lock_acquired)
 	struct i40e_hw *hw = &pf->hw;
 	u8 set_fc_aq_fail = 0;
 	i40e_status ret;
-	u32 val;
 	int v;
 
 	if (test_bit(__I40E_DOWN, &pf->state))
@@ -9204,122 +9203,6 @@ static int i40e_set_features(struct net_device *netdev,
 		i40e_do_reset(pf, BIT_ULL(__I40E_PF_RESET_REQUESTED), true);
 
 	return 0;
-}
-
-/**
- * i40e_get_udp_port_idx - Lookup a possibly offloaded for Rx UDP port
- * @pf: board private structure
- * @port: The UDP port to look up
- *
- * Returns the index number or I40E_MAX_PF_UDP_OFFLOAD_PORTS if port not found
- **/
-static u8 i40e_get_udp_port_idx(struct i40e_pf *pf, u16 port)
-{
-	u8 i;
-
-	for (i = 0; i < I40E_MAX_PF_UDP_OFFLOAD_PORTS; i++) {
-		if (pf->udp_ports[i].port == port)
-			return i;
-	}
-
-	return i;
-}
-
-/**
- * i40e_udp_tunnel_add - Get notifications about UDP tunnel ports that come up
- * @netdev: This physical port's netdev
- * @ti: Tunnel endpoint information
- **/
-static void i40e_udp_tunnel_add(struct net_device *netdev,
-				struct udp_tunnel_info *ti)
-{
-	struct i40e_netdev_priv *np = netdev_priv(netdev);
-	struct i40e_vsi *vsi = np->vsi;
-	struct i40e_pf *pf = vsi->back;
-	u16 port = ntohs(ti->port);
-	u8 next_idx;
-	u8 idx;
-
-	idx = i40e_get_udp_port_idx(pf, port);
-
-	/* Check if port already exists */
-	if (idx < I40E_MAX_PF_UDP_OFFLOAD_PORTS) {
-		netdev_info(netdev, "port %d already offloaded\n", port);
-		return;
-	}
-
-	/* Now check if there is space to add the new port */
-	next_idx = i40e_get_udp_port_idx(pf, 0);
-
-	if (next_idx == I40E_MAX_PF_UDP_OFFLOAD_PORTS) {
-		netdev_info(netdev, "maximum number of offloaded UDP ports reached, not adding port %d\n",
-			    port);
-		return;
-	}
-
-	switch (ti->type) {
-	case UDP_TUNNEL_TYPE_VXLAN:
-		pf->udp_ports[next_idx].type = I40E_AQC_TUNNEL_TYPE_VXLAN;
-		break;
-	case UDP_TUNNEL_TYPE_GENEVE:
-		if (!(pf->flags & I40E_FLAG_GENEVE_OFFLOAD_CAPABLE))
-			return;
-		pf->udp_ports[next_idx].type = I40E_AQC_TUNNEL_TYPE_NGE;
-		break;
-	default:
-		return;
-	}
-
-	/* New port: add it and mark its index in the bitmap */
-	pf->udp_ports[next_idx].port = port;
-	pf->pending_udp_bitmap |= BIT_ULL(next_idx);
-	pf->flags |= I40E_FLAG_UDP_FILTER_SYNC;
-}
-
-/**
- * i40e_udp_tunnel_del - Get notifications about UDP tunnel ports that go away
- * @netdev: This physical port's netdev
- * @ti: Tunnel endpoint information
- **/
-static void i40e_udp_tunnel_del(struct net_device *netdev,
-				struct udp_tunnel_info *ti)
-{
-	struct i40e_netdev_priv *np = netdev_priv(netdev);
-	struct i40e_vsi *vsi = np->vsi;
-	struct i40e_pf *pf = vsi->back;
-	u16 port = ntohs(ti->port);
-	u8 idx;
-
-	idx = i40e_get_udp_port_idx(pf, port);
-
-	/* Check if port already exists */
-	if (idx >= I40E_MAX_PF_UDP_OFFLOAD_PORTS)
-		goto not_found;
-
-	switch (ti->type) {
-	case UDP_TUNNEL_TYPE_VXLAN:
-		if (pf->udp_ports[idx].type != I40E_AQC_TUNNEL_TYPE_VXLAN)
-			goto not_found;
-		break;
-	case UDP_TUNNEL_TYPE_GENEVE:
-		if (pf->udp_ports[idx].type != I40E_AQC_TUNNEL_TYPE_NGE)
-			goto not_found;
-		break;
-	default:
-		goto not_found;
-	}
-
-	/* if port exists, set it to 0 (mark for deletion)
-	 * and make it pending
-	 */
-	pf->udp_ports[idx].port = 0;
-	pf->pending_udp_bitmap |= BIT_ULL(idx);
-	pf->flags |= I40E_FLAG_UDP_FILTER_SYNC;
-
-	return;
-not_found:
-	netdev_warn(netdev, "UDP port %d was not found, not deleting\n",
-		    port);
 }
 
 static int i40e_get_phys_port_id(struct net_device *netdev,
