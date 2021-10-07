@@ -6251,7 +6251,6 @@ static int ixgbe_change_mtu(struct net_device *netdev, int new_mtu)
 int ixgbe_open(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_hw *hw = &adapter->hw;
 	int err, queues;
 
 	/* disallow open during test */
@@ -8507,24 +8506,6 @@ struct upper_walk_data {
 	u8 queue;
 };
 
-static int get_macvlan_queue(struct net_device *upper, void *_data)
-{
-	if (netif_is_macvlan(upper)) {
-		struct macvlan_dev *dfwd = netdev_priv(upper);
-		struct ixgbe_fwd_adapter *vadapter = dfwd->fwd_priv;
-		struct upper_walk_data *data = _data;
-		struct ixgbe_adapter *adapter = data->adapter;
-		int ifindex = data->ifindex;
-
-		if (vadapter && vadapter->netdev->ifindex == ifindex) {
-			data->queue = adapter->rx_ring[vadapter->rx_base_queue]->reg_idx;
-			data->action = data->queue;
-			return 1;
-		}
-	}
-
-	return 0;
-}
 #endif
 
 #ifdef CONFIG_PCI_IOV
