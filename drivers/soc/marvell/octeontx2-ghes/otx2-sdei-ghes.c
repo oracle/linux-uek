@@ -85,15 +85,6 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 
 	gsrc = arg;
 
-	if (gsrc->esa_va && *gsrc->esa_va != gsrc->esb_pa) {
-		initerrmsg("%s ACPI ESB address 0x%llx 0x%llx\n",
-				__func__, *gsrc->esa_va, gsrc->esb_pa);
-		*gsrc->esa_va = gsrc->esb_pa;
-	} else
-		initdbgmsg("%s no need patch address\n", __func__);
-
-	initdbgmsg("%s matching event id 0x%x\n", __func__, gsrc->id);
-
 	head = gsrc->ring->head;
 	tail = gsrc->ring->tail;
 
@@ -528,6 +519,93 @@ static void __init sdei_ghes_set_name(struct mrvl_sdei_ghes_drv *ghes_drv)
 	}
 }
 
+static int __init sdei_ghes_get_esa(struct acpi_hest_header *hest_hdr, void *data)
+{
+	struct acpi_hest_generic *generic = (struct acpi_hest_generic *)hest_hdr;
+	u64 *esrc = data;
+	static int i;
+
+	initdbgmsg("%s 0x%llx: 0x%llx\n", __func__,
+			(long long)&generic->error_status_address.address,
+			(long long)generic->error_status_address.address);
+	esrc[i] = generic->error_status_address.address;
+	i++;
+
+	return 0;
+}
+
+static phys_addr_t __init sdei_ghes_get_error_source_address(struct mrvl_sdei_ghes_drv *ghes_drv)
+{
+	struct mrvl_ghes_source *gsrc;
+	int i = 0;
+	u64 *esrc = NULL;
+	phys_addr_t ret = 0;
+
+	initdbgmsg("%s entry\n", __func__);
+
+	esrc = kcalloc(ghes_drv->source_count, sizeof(u64 *), GFP_KERNEL);
+	if (!esrc) {
+		initdbgmsg("%s Failed to allocate esrc\n", __func__);
+		return 0;
+	}
+
+	apei_hest_parse(sdei_ghes_get_esa, esrc);
+
+	for (i = 0; i < ghes_drv->source_count; i++) {
+		gsrc = &ghes_drv->source_list[i];
+		initdbgmsg("%s %s 0x%llx 0x%llx\n", __func__, gsrc->name,
+				(long long)esrc[i], (long long)gsrc->esa_pa);
+		gsrc->esa_pa = esrc[i];
+	}
+
+	ret = esrc[0];
+	kfree(esrc);
+	return ret;
+}
+
+
+static int __init sdei_ghes_set_esa(struct acpi_hest_header *hest_hdr, void *data)
+{
+	struct acpi_hest_generic *generic = (struct acpi_hest_generic *)hest_hdr;
+	u64 **esrc = data;
+	static int i;
+
+	initdbgmsg("%s 0x%llx: 0x%llx\n", __func__,
+			(long long)&generic->error_status_address.address,
+			(long long)generic->error_status_address.address);
+	esrc[i] = &generic->error_status_address.address;
+	i++;
+
+	return 0;
+}
+
+static size_t __init sdei_ghes_set_error_source_address(struct mrvl_sdei_ghes_drv *ghes_drv)
+{
+	struct mrvl_ghes_source *gsrc;
+	int i = 0;
+	u64 **esrc = NULL;
+
+	initdbgmsg("%s entry\n", __func__);
+
+	esrc = kcalloc(ghes_drv->source_count, sizeof(u64 *), GFP_KERNEL);
+	if (!esrc) {
+		initdbgmsg("%s Failed to allocate esrc\n", __func__);
+		return -ENOMEM;
+	}
+
+	apei_hest_parse(sdei_ghes_set_esa, esrc);
+
+	for (i = 0; i < ghes_drv->source_count; i++) {
+		gsrc = &ghes_drv->source_list[i];
+		initdbgmsg("%s %s 0x%llx 0x%llx\n", __func__, gsrc->name,
+				(long long)esrc[i], (long long)gsrc->esa_pa);
+		*esrc[i] = gsrc->esa_pa;
+	}
+
+	kfree(esrc);
+	return 0;
+}
+
 static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 {
 	struct mrvl_sdei_ghes_drv *ghes_drv;
@@ -536,6 +614,7 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 	struct device *dev;
 	size_t i = 0;
 	size_t idx = 0;
+	phys_addr_t base = 0;
 
 	dev = &pdev->dev;
 	ghes_drv = platform_get_drvdata(pdev);
@@ -543,6 +622,8 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 	initdbgmsg("%s: entry\n", __func__);
 
 	sdei_ghes_set_name(ghes_drv);
+
+	base = sdei_ghes_get_error_source_address(ghes_drv);
 
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
@@ -555,7 +636,6 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 		}
 		initdbgmsg("%s Status Address %s [%llx - %llx, %lx, %lx]\n", __func__,
 				res->name, res->start, res->end, res->flags, res->desc);
-		gsrc->esa_pa = res->start;
 		idx++;
 
 		// Error Status Block Buffer
@@ -569,6 +649,7 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 				res->flags, res->desc);
 		gsrc->esb_pa = res->start;
 		gsrc->esb_sz = resource_size(res);
+		gsrc->esb_pa += base;
 		idx++;
 
 		// Error Blocks Ring
@@ -581,6 +662,7 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 				res->name, res->start, res->end, res->flags, res->desc);
 		gsrc->ring_pa = res->start;
 		gsrc->ring_sz = resource_size(res);
+		gsrc->ring_pa += base;
 		idx++;
 
 		// Event ID
@@ -616,7 +698,7 @@ static int  sdei_ghes_setup_resource(struct mrvl_sdei_ghes_drv *ghes_drv)
 			gsrc->esa_va = phys_to_virt(gsrc->esa_pa);
 		else {
 			if (!devm_request_mem_region(dev, gsrc->esa_pa,
-						     sizeof(gsrc->esa_va), gsrc->name))
+					sizeof(gsrc->esa_va), gsrc->name))
 				return -EFAULT;
 			gsrc->esa_va = devm_ioremap(dev, gsrc->esa_pa, sizeof(gsrc->esa_va));
 			if (!gsrc->esa_va) {
@@ -665,14 +747,15 @@ static void sdei_ghes_init_source(struct mrvl_sdei_ghes_drv *ghes_drv)
 	struct mrvl_ghes_source *gsrc;
 	size_t i;
 
-	initdbgmsg("%s: entry\n", __func__);
-
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
 
 		gsrc->esb_va->block_status = 0;
 
 		*gsrc->esa_va = gsrc->esb_pa;
+
+		initdbgmsg("%s poll address 0x%llx: 0x%llx\n", __func__,
+				gsrc->esa_pa, *gsrc->esa_va);
 	}
 }
 
@@ -708,49 +791,6 @@ static size_t sdei_ghes_count_source(struct mrvl_sdei_ghes_drv *ghes_drv)
 	initdbgmsg("%s %zu\n", __func__, count);
 
 	return count;
-}
-
-static int sdei_ghes_fetch_status_addr(struct acpi_hest_header *hest_hdr, void *data)
-{
-	struct acpi_hest_generic *generic = (struct acpi_hest_generic *)hest_hdr;
-	u64 **esrc = data;
-	static int i;
-
-	initdbgmsg("%s 0x%llx: 0x%llx\n", __func__,
-		   (long long)&generic->error_status_address.address,
-			(long long)generic->error_status_address.address);
-	initdbgmsg("%llx", (long long)&esrc[i]);
-	esrc[i] = &generic->error_status_address.address;
-	i++;
-
-	return 0;
-}
-
-static size_t sdei_ghes_patch_status_addr(struct mrvl_sdei_ghes_drv *ghes_drv)
-{
-	struct mrvl_ghes_source *gsrc;
-	int i = 0;
-	u64 **esrc = NULL;
-
-	initdbgmsg("%s entry\n", __func__);
-
-	esrc = kcalloc(ghes_drv->source_count, sizeof(u64 *), GFP_KERNEL);
-	if (!esrc) {
-		initdbgmsg("%s Failed to allocate esrc\n", __func__);
-		return -ENOMEM;
-	}
-
-	apei_hest_parse(sdei_ghes_fetch_status_addr, esrc);
-
-	for (i = 0; i < ghes_drv->source_count; i++) {
-		gsrc = &ghes_drv->source_list[i];
-		initdbgmsg("%s %s 0x%llx 0x%llx\n", __func__, gsrc->name,
-				(long long)esrc[i], (long long)gsrc->esa_pa);
-		*esrc[i] = gsrc->esa_pa;
-	}
-
-	kfree(esrc);
-	return 0;
 }
 
 static int sdei_ghes_alloc_source(struct device *dev,
@@ -922,9 +962,9 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 			dev_err(dev, "Unable allocate HEST.\n");
 			goto exit0;
 		}
-	} else {
-		sdei_ghes_patch_status_addr(ghes_drv);
 	}
+
+	sdei_ghes_set_error_source_address(ghes_drv);
 
 	if (!cn10kx_model)
 		sdei_ghes_msix_init_t9x();
