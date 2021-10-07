@@ -1674,9 +1674,11 @@ EXPORT_SYMBOL(vm_insert_pfn);
 int vm_insert_mixed(struct vm_area_struct *vma, unsigned long addr,
 			unsigned long pfn)
 {
+	pgprot_t pgprot;
+
 	BUG_ON(!(vma->vm_flags & VM_MIXEDMAP));
 
-	pgprot_t pgprot = vma->vm_page_prot;
+	pgprot = vma->vm_page_prot;
 
 	if (addr < vma->vm_start || addr >= vma->vm_end)
 		return -EFAULT;
