@@ -310,6 +310,73 @@ static ssize_t rvu_dbg_lmtst_map_table_display(struct file *filp,
 
 RVU_DEBUG_FOPS(lmtst_map_table, lmtst_map_table_display, NULL);
 
+static void get_lf_str_list(struct rvu_block block, int pcifunc,
+			    char *lfs)
+{
+	int lf = 0, seq = 0, len = 0, prev_lf = block.lf.max;
+
+	for_each_set_bit(lf, block.lf.bmap, block.lf.max) {
+		if (lf >= block.lf.max)
+			break;
+
+		if (block.fn_map[lf] != pcifunc)
+			continue;
+
+		if (lf == prev_lf + 1) {
+			prev_lf = lf;
+			seq = 1;
+			continue;
+		}
+
+		if (seq)
+			len += sprintf(lfs + len, "-%d,%d", prev_lf, lf);
+		else
+			len += (len ? sprintf(lfs + len, ",%d", lf) :
+				      sprintf(lfs + len, "%d", lf));
+
+		prev_lf = lf;
+		seq = 0;
+	}
+
+	if (seq)
+		len += sprintf(lfs + len, "-%d", prev_lf);
+
+	lfs[len] = '\0';
+}
+
+static int get_max_column_width(struct rvu *rvu)
+{
+	int index, pf, vf, lf_str_size = 12, buf_size = 256;
+	struct rvu_block block;
+	u16 pcifunc;
+	char *buf;
+
+	buf = kzalloc(buf_size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	for (pf = 0; pf < rvu->hw->total_pfs; pf++) {
+		for (vf = 0; vf <= rvu->hw->total_vfs; vf++) {
+			pcifunc = pf << 10 | vf;
+			if (!pcifunc)
+				continue;
+
+			for (index = 0; index < BLK_COUNT; index++) {
+				block = rvu->hw->block[index];
+				if (!strlen(block.name))
+					continue;
+
+				get_lf_str_list(block, pcifunc, buf);
+				if (lf_str_size <= strlen(buf))
+					lf_str_size = strlen(buf) + 1;
+			}
+		}
+	}
+
+	kfree(buf);
+	return lf_str_size;
+}
+
 /* Dumps current provisioning status of all RVU block LFs */
 static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 					  char __user *buffer,
@@ -318,10 +385,10 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 	int index, off = 0, flag = 0, len = 0, i = 0;
 	struct rvu *rvu = filp->private_data;
 	int bytes_not_copied = 0;
-	int lf, pf, vf, pcifunc;
 	struct rvu_block block;
-	int lf_str_size = 12;
+	int pf, vf, pcifunc;
 	int buf_size = 2048;
+	int lf_str_size;
 	char *lfs;
 	char *buf;
 
@@ -332,6 +399,9 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 	buf = kzalloc(buf_size, GFP_KERNEL);
 	if (!buf)
 		return -ENOSPC;
+
+	/* Get the maximum width of a column */
+	lf_str_size = get_max_column_width(rvu);
 
 	lfs = kzalloc(lf_str_size, GFP_KERNEL);
 	if (!lfs)
@@ -374,32 +444,15 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 			}
 
 			for (index = 0; index < BLK_COUNT; index++) {
-				int lfs_off;
-
 				block = rvu->hw->block[index];
 				if (!strlen(block.name))
 					continue;
 				len = 0;
 				lfs[len] = '\0';
-				for (lf = 0; lf < block.lf.max; lf++) {
-					if (block.fn_map[lf] != pcifunc)
-						continue;
+				get_lf_str_list(block, pcifunc, lfs);
+				if (strlen(lfs))
 					flag = 1;
-					lfs_off = scnprintf(&lfs[len],
-							    lf_str_size - len,
-							    "%d,", lf);
-					if (lfs_off <= 0) {
-						len = len > 1 ? len : 1;
-						lfs[len - 1] = '!';
-						len++;
-						break;
-					}
-					len += lfs_off;
-				}
 
-				if (flag && len)
-					len--;
-				lfs[len] = '\0';
 				off += scnprintf(&buf[off], buf_size - 1 - off,
 						 "%-*s", lf_str_size, lfs);
 			}
