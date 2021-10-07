@@ -157,18 +157,13 @@ static int ice_init_mac_fltr(struct ice_pf *pf)
 {
 	struct ice_vsi *vsi;
 	u8 *perm_addr;
-	int status;
 
 	vsi = ice_get_main_vsi(pf);
 	if (!vsi)
 		return -EINVAL;
 
 	perm_addr = vsi->port_info->mac.perm_addr;
-	status = ice_fltr_add_mac_and_broadcast(vsi, perm_addr, ICE_FWD_TO_VSI);
-	if (status)
-		return -EIO;
-
-	return 0;
+	return ice_fltr_add_mac_and_broadcast(vsi, perm_addr, ICE_FWD_TO_VSI);
 }
 
 /**
@@ -253,10 +248,7 @@ static int ice_set_promisc(struct ice_vsi *vsi, u8 promisc_m)
 		status = ice_fltr_set_vlan_vsi_promisc(&vsi->back->hw, vsi, promisc_m);
 	else
 		status = ice_fltr_set_vsi_promisc(&vsi->back->hw, vsi->idx, promisc_m, 0);
-	if (status)
-		return -EIO;
-
-	return 0;
+	return status;
 }
 
 /**
@@ -276,10 +268,7 @@ static int ice_clear_promisc(struct ice_vsi *vsi, u8 promisc_m)
 		status = ice_fltr_clear_vlan_vsi_promisc(&vsi->back->hw, vsi, promisc_m);
 	else
 		status = ice_fltr_clear_vsi_promisc(&vsi->back->hw, vsi->idx, promisc_m, 0);
-	if (status)
-		return -EIO;
-
-	return 0;
+	return status;
 }
 
 /**
@@ -356,7 +345,6 @@ static int ice_vsi_sync_fltr(struct ice_vsi *vsi)
 			netdev_warn(netdev, "Reached MAC filter limit, forcing promisc mode on VSI %d\n",
 				    vsi->vsi_num);
 		} else {
-			err = -EIO;
 			goto out;
 		}
 	}
@@ -1891,7 +1879,6 @@ static int ice_init_nvm_phy_type(struct ice_port_info *pi)
 
 	if (err) {
 		dev_err(ice_pf_to_dev(pf), "Get PHY capability failed.\n");
-		err = -EIO;
 		goto out;
 	}
 
@@ -2007,7 +1994,6 @@ static int ice_init_phy_user_cfg(struct ice_port_info *pi)
 					  pcaps, NULL);
 	if (err) {
 		dev_err(ice_pf_to_dev(pf), "Get PHY capability failed.\n");
-		err = -EIO;
 		goto err_out;
 	}
 
@@ -2086,7 +2072,6 @@ static int ice_configure_phy(struct ice_vsi *vsi)
 	if (err) {
 		dev_err(dev, "Failed to get PHY configuration, VSI %d error %d\n",
 			vsi->vsi_num, err);
-		err = -EIO;
 		goto done;
 	}
 
@@ -2108,7 +2093,6 @@ static int ice_configure_phy(struct ice_vsi *vsi)
 	if (err) {
 		dev_err(dev, "Failed to get PHY caps, VSI %d error %d\n",
 			vsi->vsi_num, err);
-		err = -EIO;
 		goto done;
 	}
 
@@ -2162,11 +2146,9 @@ static int ice_configure_phy(struct ice_vsi *vsi)
 	cfg->caps |= ICE_AQ_PHY_ENA_AUTO_LINK_UPDT | ICE_AQ_PHY_ENA_LINK;
 
 	err = ice_aq_set_phy_cfg(&pf->hw, pi, cfg, NULL);
-	if (err) {
+	if (err)
 		dev_err(dev, "Failed to set phy config, VSI %d error %d\n",
 			vsi->vsi_num, err);
-		err = -EIO;
-	}
 
 	kfree(cfg);
 done:
@@ -3570,10 +3552,8 @@ static int ice_setup_pf_sw(struct ice_pf *pf)
 	INIT_LIST_HEAD(&vsi->ch_list);
 
 	status = ice_cfg_netdev(vsi);
-	if (status) {
-		status = -ENODEV;
+	if (status)
 		goto unroll_vsi_setup;
-	}
 	/* netdev has to be configured before setting frame size */
 	ice_vsi_cfg_frame_size(vsi);
 
@@ -3597,7 +3577,6 @@ static int ice_setup_pf_sw(struct ice_pf *pf)
 	if (status) {
 		dev_err(dev, "Failed to set CPU Rx map VSI %d error %d\n",
 			vsi->vsi_num, status);
-		status = -EINVAL;
 		goto unroll_napi_add;
 	}
 	status = ice_init_mac_fltr(pf);
@@ -5510,13 +5489,11 @@ ice_set_tx_maxrate(struct net_device *netdev, int queue_index, u32 maxrate)
 	else
 		status = ice_cfg_q_bw_lmt(vsi->port_info, vsi->idx, tc,
 					  q_handle, ICE_MAX_BW, maxrate * 1000);
-	if (status) {
+	if (status)
 		netdev_err(netdev, "Unable to set Tx max rate, error %d\n",
 			   status);
-		return -EIO;
-	}
 
-	return 0;
+	return status;
 }
 
 /**
@@ -6573,7 +6550,7 @@ static int ice_vsi_rebuild_by_type(struct ice_pf *pf, enum ice_vsi_type type)
 		if (err) {
 			dev_err(dev, "replay VSI failed, error %d, VSI index %d, type %s\n",
 				err, vsi->idx, ice_vsi_type_str(type));
-			return -EIO;
+			return err;
 		}
 
 		/* Re-map HW VSI number, using VSI handle that has been
@@ -6964,13 +6941,11 @@ int ice_set_rss_lut(struct ice_vsi *vsi, u8 *lut, u16 lut_size)
 	params.lut = lut;
 
 	status = ice_aq_set_rss_lut(hw, &params);
-	if (status) {
+	if (status)
 		dev_err(ice_pf_to_dev(vsi->back), "Cannot set RSS lut, err %d aq_err %s\n",
 			status, ice_aq_str(hw->adminq.sq_last_status));
-		return -EIO;
-	}
 
-	return 0;
+	return status;
 }
 
 /**
@@ -6989,13 +6964,11 @@ int ice_set_rss_key(struct ice_vsi *vsi, u8 *seed)
 		return -EINVAL;
 
 	status = ice_aq_set_rss_key(hw, vsi->idx, (struct ice_aqc_get_set_rss_keys *)seed);
-	if (status) {
+	if (status)
 		dev_err(ice_pf_to_dev(vsi->back), "Cannot set RSS key, err %d aq_err %s\n",
 			status, ice_aq_str(hw->adminq.sq_last_status));
-		return -EIO;
-	}
 
-	return 0;
+	return status;
 }
 
 /**
@@ -7021,13 +6994,11 @@ int ice_get_rss_lut(struct ice_vsi *vsi, u8 *lut, u16 lut_size)
 	params.lut = lut;
 
 	status = ice_aq_get_rss_lut(hw, &params);
-	if (status) {
+	if (status)
 		dev_err(ice_pf_to_dev(vsi->back), "Cannot get RSS lut, err %d aq_err %s\n",
 			status, ice_aq_str(hw->adminq.sq_last_status));
-		return -EIO;
-	}
 
-	return 0;
+	return status;
 }
 
 /**
@@ -7046,13 +7017,11 @@ int ice_get_rss_key(struct ice_vsi *vsi, u8 *seed)
 		return -EINVAL;
 
 	status = ice_aq_get_rss_key(hw, vsi->idx, (struct ice_aqc_get_set_rss_keys *)seed);
-	if (status) {
+	if (status)
 		dev_err(ice_pf_to_dev(vsi->back), "Cannot get RSS key, err %d aq_err %s\n",
 			status, ice_aq_str(hw->adminq.sq_last_status));
-		return -EIO;
-	}
 
-	return 0;
+	return status;
 }
 
 /**
@@ -7115,7 +7084,6 @@ static int ice_vsi_update_bridge_mode(struct ice_vsi *vsi, u16 bmode)
 	if (ret) {
 		dev_err(ice_pf_to_dev(vsi->back), "update VSI for bridge mode failed, bmode = %d err %d aq_err %s\n",
 			bmode, ret, ice_aq_str(hw->adminq.sq_last_status));
-		ret = -EIO;
 		goto out;
 	}
 	/* Update sw flags for book keeping */
@@ -7187,7 +7155,7 @@ ice_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh,
 				   ice_aq_str(hw->adminq.sq_last_status));
 			/* revert hw->evb_veb */
 			hw->evb_veb = (pf_sw->bridge_mode == BRIDGE_MODE_VEB);
-			return -EIO;
+			return err;
 		}
 
 		pf_sw->bridge_mode = mode;
@@ -8375,7 +8343,7 @@ int ice_open_internal(struct net_device *netdev)
 	err = ice_update_link_info(pi);
 	if (err) {
 		netdev_err(netdev, "Failed to get link info, error %d\n", err);
-		return -EIO;
+		return err;
 	}
 
 	ice_check_link_cfg_err(pf, pi->phy.link_info.link_cfg_err);
