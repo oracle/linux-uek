@@ -549,12 +549,18 @@ enum ib_port_speed {
 	IB_SPEED_NDR	= 128,
 };
 
+enum ib_stat_flag {
+	IB_STAT_FLAG_OPTIONAL = 1 << 0,
+};
+
 /**
  * struct rdma_stat_desc
  * @name - The name of the counter
+ * @flags - Flags of the counter; For example, IB_STAT_FLAG_OPTIONAL
  */
 struct rdma_stat_desc {
 	const char *name;
+	unsigned int flags;
 };
 
 /**
@@ -2616,6 +2622,13 @@ struct ib_device_ops {
 	 */
 	int (*clear_hw_stats)(struct ib_device *device, u32 port);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
+	/**
+	 * modify_hw_stat - Modify the counter configuration
+	 * @enable: true/false when enable/disable a counter
+	 * Return codes - 0 on success or error code otherwise.
+	 */
+	int (*modify_hw_stat)(struct ib_device *device, u32 port,
+			      unsigned int counter_index, bool enable);
 	/**
 	 * Allows rdma drivers to add their own restrack attributes.
 	 */
