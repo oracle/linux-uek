@@ -2674,20 +2674,20 @@ static void blkfront_connect(struct blkfront_info *info)
 
 	err = device_create_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);
 	if (err)
-		goto fail;
+		pr_warn("Failed to add sysfs max_ring_page_order for %s (%d)\n",
+			dev_name(&info->xbdev->dev), err);
 
 	err = device_create_file(&info->xbdev->dev, &dev_attr_max_indirect_segs);
-	if (err) {
-		device_remove_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);
-		goto fail;
-	}
+	if (err)
+		pr_warn("Failed to add sysfs max_indirect_segs for %s (%d)\n",
+			dev_name(&info->xbdev->dev), err);
 
 	err = device_create_file(&info->xbdev->dev, &dev_attr_max_queues);
-	if (err) {
-		device_remove_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);
-		device_remove_file(&info->xbdev->dev, &dev_attr_max_indirect_segs);
-		goto fail;
-	}
+	if (err)
+		pr_warn("Failed to add sysfs max_queues for %s (%d)\n",
+			dev_name(&info->xbdev->dev), err);
+
+
 	xenbus_switch_state(info->xbdev, XenbusStateConnected);
 
 	/* Kick pending requests. */
@@ -2703,7 +2703,6 @@ static void blkfront_connect(struct blkfront_info *info)
 
 fail:
 	blkif_free(info, 0);
-	xlvbd_release_gendisk(info);
 	return;
 }
 
