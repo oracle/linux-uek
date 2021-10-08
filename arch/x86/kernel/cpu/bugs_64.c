@@ -1662,9 +1662,10 @@ static void taa_select_mitigation(void)
 
 	ia32_cap = x86_read_arch_cap_msr(&cpu_data(smp_processor_id()));
 
-	if (boot_cpu_has(X86_FEATURE_MD_CLEAR))
+	if (boot_cpu_has(X86_FEATURE_MD_CLEAR)) {
 		if ( !(ia32_cap & ARCH_CAP_MDS_NO)) {
 			switch (mds_mitigation) {
+			case MDS_MITIGATION_VMWERV:
 			case MDS_MITIGATION_FULL:
 				taa_mitigation = TAA_MITIGATION_VERW;
 				break;
@@ -1676,7 +1677,7 @@ static void taa_select_mitigation(void)
 				goto out;
 			}; 
 		}
-	else
+	} else
 		taa_mitigation = TAA_MITIGATION_UCODE_NEEDED;
 
 	/*
