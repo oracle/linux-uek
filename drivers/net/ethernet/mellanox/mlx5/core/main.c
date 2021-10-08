@@ -328,7 +328,7 @@ static int mlx5_alloc_irq_vectors(struct mlx5_core_dev *dev)
 			return -ENOMEM;
 	}
 
-	nvec = MLX5_CAP_GEN(dev, num_ports) * num_online_cpus() +
+	nvec = MLX5_CAP_GEN(dev, num_ports) * num_possible_cpus() +
 	       comp_base_vec;
 	nvec = min_t(int, nvec, num_eqs);
 	if (nvec <= comp_base_vec)
