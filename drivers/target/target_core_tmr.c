@@ -128,7 +128,7 @@ static bool __target_check_io_state(struct se_cmd *se_cmd)
 	 */
 	spin_lock(&se_cmd->t_state_lock);
 	if (se_cmd->transport_state & CMD_T_COMPLETE) {
-		pr_debug("Attempted to abort io tag: %llu already complete,"
+		pr_debug("Attempted to abort io tag: 0x%x already complete,"
 			" skipping\n", tag);
 		spin_unlock(&se_cmd->t_state_lock);
 		return false;
