@@ -342,12 +342,12 @@ static void npa_afpf_mbox_handler(struct work_struct *work)
 	if (rsp_hdr->num_msgs == 0)
 		return;
 
-	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
+	offset = ALIGN(sizeof(struct mbox_hdr), MBOX_MSG_ALIGN);
 	for (id = 0; id < rsp_hdr->num_msgs; id++) {
-		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
+		msg = (struct mbox_msghdr *)(mdev->mbase + mbox->rx_start + offset);
 		size = msg->next_msgoff - offset;
 		otx2_process_afpf_mbox_msg(npa_pf_dev, msg, size);
-		offset = mbox->rx_start + msg->next_msgoff;
+		offset = msg->next_msgoff;
 		mdev->msgs_acked++;
 	}
 
