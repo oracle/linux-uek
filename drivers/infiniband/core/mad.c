@@ -252,7 +252,7 @@ struct ib_mad_agent *ib_register_mad_agent(struct ib_device *device,
 	struct ib_mad_mgmt_vendor_class *vendor_class;
 	struct ib_mad_mgmt_method_table *method;
 	int ret2, qpn;
-	unsigned long flags;
+	unsigned long flags = 0;
 	u8 mgmt_class, vclass;
 	int ib_mad_client_id;
 	/* Validate parameters */
