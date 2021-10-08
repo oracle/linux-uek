@@ -287,7 +287,7 @@ static void rds_ib_sub_signaled(struct rds_ib_connection *ic, int nr)
 void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 {
 	struct rds_connection *conn = ic->conn;
-	struct rds_ib_send_work *send;
+	struct rds_ib_send_work *send = NULL;
 	u32 completed;
 	u32 oldest;
 	u32 i = 0;
