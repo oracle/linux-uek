@@ -1449,7 +1449,7 @@ int mlx4_get_module_info(struct mlx4_dev *dev, u8 port,
 	struct mlx4_cmd_mailbox *inbox, *outbox;
 	struct mlx4_mad_ifc *inmad, *outmad;
 	struct mlx4_cable_info *cable_info;
-	u8 module_id, i2c_addr, page_num;
+	u8 module_id = 0, i2c_addr, page_num;
 	int ret;
 
 	if (size > MODULE_INFO_MAX_READ)
