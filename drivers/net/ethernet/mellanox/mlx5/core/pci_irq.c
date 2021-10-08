@@ -362,7 +362,7 @@ int mlx5_irq_table_create(struct mlx5_core_dev *dev)
 	if (mlx5_core_is_sf(dev))
 		return 0;
 
-	nvec = MLX5_CAP_GEN(dev, num_ports) * num_online_cpus() +
+	nvec = MLX5_CAP_GEN(dev, num_ports) * num_possible_cpus() +
 	       MLX5_IRQ_VEC_COMP_BASE;
 	nvec = min_t(int, nvec, num_eqs);
 	if (nvec <= MLX5_IRQ_VEC_COMP_BASE)
