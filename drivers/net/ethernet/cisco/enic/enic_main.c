@@ -83,7 +83,7 @@ MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, enic_id_table);
 
 static int disable_vlan0 = 1;
-module_param(disable_vlan0, bool, 0644);
+module_param(disable_vlan0, int, 0644);
 MODULE_PARM_DESC(disable_vlan0, "Disable VLAN 0");
 
 
