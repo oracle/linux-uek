@@ -1387,6 +1387,7 @@ static void rds_qos_threshold_init(void)
 
 static void __exit rds_exit(void)
 {
+	rds_cong_monitor_free();
 	sock_unregister(rds_family_ops.family);
 	proto_unregister(&rds_proto);
 	rds_conn_exit();
@@ -1445,6 +1446,10 @@ static int __init rds_init(void)
 	if (ret)
 		goto out_proto;
 
+	ret = rds_cong_monitor_init();
+	if (ret)
+		goto out_sock;
+
 	rds_info_register_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_register_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1456,6 +1461,8 @@ static int __init rds_init(void)
 
 	goto out;
 
+out_sock:
+	sock_unregister(rds_family_ops.family);
 out_proto:
 	proto_unregister(&rds_proto);
 out_stats:
