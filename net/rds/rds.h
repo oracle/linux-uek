@@ -1027,6 +1027,8 @@ struct rds_sock *rds_find_bound(struct in6_addr *addr, __be16 port,
 void rds_bind_lock_init(void);
 
 /* cong.c */
+int rds_cong_monitor_init(void);
+void rds_cong_monitor_free(void);
 int rds_cong_get_maps(struct rds_connection *conn);
 void rds_cong_add_conn(struct rds_connection *conn);
 void rds_cong_remove_conn(struct rds_connection *conn);
