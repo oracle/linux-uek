@@ -15,6 +15,10 @@
 
 #include "sdhci-pltfm.h"
 
+#define SDHCI_CDNS_HRS00			0x00
+#define SDHCI_CDNS_HRS00_SWR			BIT(0)
+
+#define SDHCI_CDNS_HRS02			0x08		/* PHY access port */
 #define SDHCI_CDNS_HRS04			0x10		/* PHY access port */
 /* SD 4.0 Controller HRS - Host Register Set (specific to Cadence) */
 #define SDHCI_CDNS_SD4_HRS04_ACK		BIT(26)
@@ -213,34 +217,56 @@ struct sdhci_cdns_sd6_phy_delays {
 };
 
 struct sdhci_cdns_sd6_phy_settings {
+	/* SDHCI_CDNS_SD6_PHY_DLL_SLAVE */
+	u32 cp_read_dqs_cmd_delay;
+	u32 cp_read_dqs_delay;
 	u32 cp_clk_wr_delay;
 	u32 cp_clk_wrdqs_delay;
-	u32 cp_data_select_oe_end;
+
+	/* SDHCI_CDNS_SD6_PHY_DLL_MASTER */
 	u32 cp_dll_bypass_mode;
-	u32 cp_dll_locked_mode;
 	u32 cp_dll_start_point;
+
+	/* SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0 */
+	u32 cp_dll_locked_mode;
+
+	/* SDHCI_CDNS_SD6_PHY_GATE_LPBK */
 	u32 cp_gate_cfg_always_on;
+	u32 cp_sync_method;
+	u32 cp_rd_del_sel;
+	u32 cp_sw_half_cycle_shift;
+	u32 cp_underrun_suppress;
+
+	/* SDHCI_CDNS_SD6_PHY_DQ_TIMING */
 	u32 cp_io_mask_always_on;
 	u32 cp_io_mask_end;
 	u32 cp_io_mask_start;
-	u32 cp_rd_del_sel;
-	u32 cp_read_dqs_cmd_delay;
-	u32 cp_read_dqs_delay;
-	u32 cp_sw_half_cycle_shift;
-	u32 cp_sync_method;
+	u32 cp_data_select_oe_end;
+
+	/* SDHCI_CDNS_SD6_PHY_DQS_TIMING */
 	u32 cp_use_ext_lpbk_dqs;
 	u32 cp_use_lpbk_dqs;
 	u8 cp_use_phony_dqs;
 	u8 cp_use_phony_dqs_cmd;
+
+	/* HRS 09 */
 	u8 sdhc_extended_rd_mode;
 	u8 sdhc_extended_wr_mode;
-	u32 sdhc_hcsdclkadj;
-	u32 sdhc_idelay_val;
 	u32 sdhc_rdcmd_en;
 	u32 sdhc_rddata_en;
+
+	/* HRS10 */
+	u32 sdhc_hcsdclkadj;
+
+	/* HRS 07 */
+	u32 sdhc_idelay_val;
 	u32 sdhc_rw_compensate;
+
+	/* SRS 11 */
 	u32 sdhc_sdcfsh;
 	u32 sdhc_sdcfsl;
+
+	/* HRS 16 */
 	u32 sdhc_wrcmd0_dly;
 	u32 sdhc_wrcmd0_sdclk_dly;
 	u32 sdhc_wrcmd1_dly;
@@ -249,6 +275,7 @@ struct sdhci_cdns_sd6_phy_settings {
 	u32 sdhc_wrdata0_sdclk_dly;
 	u32 sdhc_wrdata1_dly;
 	u32 sdhc_wrdata1_sdclk_dly;
+
 	u32 hs200_tune_val;
 };
 
@@ -396,9 +423,10 @@ static void init_emmc_hs400(struct sdhci_cdns_sd6_phy_timings *t, int t_sdclk)
 }
 
 static void (*(init_timings[]))(struct sdhci_cdns_sd6_phy_timings*, int) = {
-	&init_emmc_legacy, &init_emmc_sdr, &init_hs, &init_uhs_sdr12,
-	&init_uhs_sdr25, &init_uhs_sdr50, &init_uhs_sdr104, &init_uhs_ddr50,
-	&init_emmc_ddr, &init_emmc_hs200, &init_emmc_hs400
+	&init_hs, &init_emmc_legacy, &init_emmc_sdr,
+	&init_emmc_ddr, &init_emmc_hs200, &init_emmc_hs400,
+	&init_uhs_sdr12, &init_uhs_sdr25, &init_uhs_sdr50,
+	&init_uhs_sdr104, &init_uhs_ddr50
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
@@ -861,18 +889,17 @@ static int sdhci_cdns_sd4_phy_init(struct sdhci_cdns_priv *priv)
 
 void sdhci_cdns_sd6_fullsw_reset(struct sdhci_cdns_priv *priv)
 {
-	uint32_t reg_srs11 = 0;
+	u32 regval;
 
-	reg_srs11 = readl(priv->hrs_addr + SDHCI_CDNS_HRS11);
-	reg_srs11 |= (SDHCI_CDNS_SRS11_SW_RESET_ALL);
+	regval = readl(priv->hrs_addr + SDHCI_CDNS_HRS00);
+	regval |= SDHCI_CDNS_HRS00_SWR;
+	writel(regval, priv->hrs_addr + SDHCI_CDNS_HRS00);
 
-	writel(reg_srs11, priv->hrs_addr + SDHCI_CDNS_HRS11);
+	do {
+		regval = readl(priv->hrs_addr + SDHCI_CDNS_HRS00);
+	} while (regval & SDHCI_CDNS_HRS00_SWR);
 
-	reg_srs11 = readl(priv->hrs_addr + SDHCI_CDNS_HRS11);
-	while (reg_srs11 & (1 << 24))
-		reg_srs11 = readl(priv->hrs_addr + SDHCI_CDNS_HRS11);
-
-	writel(1, priv->hrs_addr + 0x718);
+	pr_debug("Success in reset of eMMC controller 0x%x\n", regval);
 }
 
 static u32 sdhci_cdns_sd6_read_phy_reg(struct sdhci_cdns_priv *priv,
@@ -922,13 +949,57 @@ static int sdhci_cdns_sd6_dll_reset(struct sdhci_cdns_priv *priv, bool doReset)
 	return ret;
 }
 
+static void sdhci_cdns_sd6_calc_phy(struct sdhci_cdns_sd6_phy *phy)
+{
+	if (phy->mode == SDHCI_CDNS_HRS06_MODE_MMC_SDR) {
+		phy->settings.cp_clk_wr_delay = 0;
+		phy->settings.cp_clk_wrdqs_delay = 0;
+		phy->settings.cp_data_select_oe_end = 1;
+		phy->settings.cp_dll_bypass_mode = 1;
+		phy->settings.cp_dll_locked_mode = 3;
+		phy->settings.cp_dll_start_point = 4;
+		phy->settings.cp_gate_cfg_always_on = 1;
+		phy->settings.cp_io_mask_always_on = 0;
+		phy->settings.cp_io_mask_end = 0;
+		phy->settings.cp_io_mask_start = 0;
+		phy->settings.cp_rd_del_sel = 52;
+		phy->settings.cp_read_dqs_cmd_delay = 0;
+		phy->settings.cp_read_dqs_delay = 0;
+		phy->settings.cp_sw_half_cycle_shift = 0;
+		phy->settings.cp_sync_method = 1;
+		phy->settings.cp_underrun_suppress = 1;
+		phy->settings.cp_use_ext_lpbk_dqs = 1;
+		phy->settings.cp_use_lpbk_dqs = 1;
+		phy->settings.cp_use_phony_dqs = 1;
+		phy->settings.cp_use_phony_dqs_cmd = 1;
+		phy->settings.sdhc_extended_rd_mode = 1;
+		phy->settings.sdhc_extended_wr_mode = 1;
+		phy->settings.sdhc_hcsdclkadj = 2;
+		phy->settings.sdhc_idelay_val = 0;
+		phy->settings.sdhc_rdcmd_en = 1;
+		phy->settings.sdhc_rddata_en = 1;
+		phy->settings.sdhc_rw_compensate = 9;
+		phy->settings.sdhc_sdcfsh = 0;
+		phy->settings.sdhc_sdcfsl = 4;
+		phy->settings.sdhc_wrcmd0_dly = 1;
+		phy->settings.sdhc_wrcmd0_sdclk_dly = 0;
+		phy->settings.sdhc_wrcmd1_dly = 0;
+		phy->settings.sdhc_wrcmd1_sdclk_dly = 0;
+		phy->settings.sdhc_wrdata0_dly = 1;
+		phy->settings.sdhc_wrdata0_sdclk_dly = 0;
+		phy->settings.sdhc_wrdata1_dly = 0;
+		phy->settings.sdhc_wrdata1_sdclk_dly = 0;
+	}
+}
+
 static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 {
 	int ret;
 	u32 reg;
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
-	sdhci_cdns_sd6_fullsw_reset(priv);
+	/* Override the values for now till the driver is fixed */
+	sdhci_cdns_sd6_calc_phy(phy);
 
 	sdhci_cdns_sd6_dll_reset(priv, true);
 
@@ -937,8 +1008,10 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	reg &= ~SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_LPBK_DQS;
 	reg &= ~SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_PHONY_DQS;
 	reg &= ~SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_PHONY_DQS_CMD;
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_EXT_LPBK_DQS, 1);
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_LPBK_DQS, 1);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_EXT_LPBK_DQS,
+			phy->settings.cp_use_ext_lpbk_dqs);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_LPBK_DQS,
+			phy->settings.cp_use_lpbk_dqs);
 	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_PHONY_DQS,
 			  phy->settings.cp_use_phony_dqs);
 	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQS_TIMING_USE_PHONY_DQS_CMD,
@@ -950,10 +1023,14 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	reg &= ~SDHCI_CDNS_SD6_PHY_GATE_LPBK_SW_HALF_CYCLE_SHIFT;
 	reg &= ~SDHCI_CDNS_SD6_PHY_GATE_LPBK_RD_DEL_SEL;
 	reg &= ~SDHCI_CDNS_SD6_PHY_GATE_LPBK_GATE_CFG_ALWAYS_ON;
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_SYNC_METHOD, 1);
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_SW_HALF_CYCLE_SHIFT, 0);
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_RD_DEL_SEL, 52);
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_GATE_CFG_ALWAYS_ON, 1);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_SYNC_METHOD,
+			phy->settings.cp_sync_method);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_SW_HALF_CYCLE_SHIFT,
+			phy->settings.cp_sw_half_cycle_shift);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_RD_DEL_SEL,
+			phy->settings.cp_rd_del_sel);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GATE_LPBK_GATE_CFG_ALWAYS_ON,
+			phy->settings.cp_gate_cfg_always_on);
 	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GATE_LPBK, reg);
 
 	reg = 0x0;
@@ -961,7 +1038,8 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 			 phy->settings.cp_dll_bypass_mode);
 	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DLL_MASTER_PHASE_DETECT_SEL, 2);
 	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DLL_MASTER_DLL_LOCK_NUM, 0);
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DLL_MASTER_DLL_START_POINT, 4);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DLL_MASTER_DLL_START_POINT,
+			phy->settings.cp_dll_start_point);
 	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DLL_MASTER, reg);
 
 	reg = 0x0;
@@ -988,12 +1066,14 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	reg &= ~SDHCI_CDNS_SD6_PHY_DQ_TIMING_IO_MASK_END;
 	reg &= ~SDHCI_CDNS_SD6_PHY_DQ_TIMING_IO_MASK_START;
 	reg &= ~SDHCI_CDNS_SD6_PHY_DQ_TIMING_DATA_SELECT_OE_END;
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQ_TIMING_IO_MASK_ALWAYS_ON, 0);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQ_TIMING_IO_MASK_ALWAYS_ON,
+			phy->settings.cp_io_mask_always_on);
 	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQ_TIMING_IO_MASK_END,
 			  phy->settings.cp_io_mask_end);
 	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQ_TIMING_IO_MASK_START,
 			  phy->settings.cp_io_mask_start);
-	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQ_TIMING_DATA_SELECT_OE_END, 2);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_DQ_TIMING_DATA_SELECT_OE_END,
+			phy->settings.cp_data_select_oe_end);
 	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DQ_TIMING, reg);
 
 	reg = readl(priv->hrs_addr + SDHCI_CDNS_HRS09);
@@ -1007,13 +1087,22 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	else
 		reg &= ~SDHCI_CDNS_HRS09_EXTENDED_RD_MODE;
 
-	reg |= SDHCI_CDNS_HRS09_RDDATA_EN | SDHCI_CDNS_HRS09_RDCMD_EN;
-	writel(0x1800c, priv->hrs_addr + SDHCI_CDNS_HRS09);
-	// FIXME J writel(reg, priv->hrs_addr + SDHCI_CDNS_HRS09);
+	if (phy->settings.sdhc_rddata_en)
+		reg |= SDHCI_CDNS_HRS09_RDDATA_EN;
+	else
+		reg &= ~SDHCI_CDNS_HRS09_RDDATA_EN;
+
+	if (phy->settings.sdhc_rdcmd_en)
+		reg |= SDHCI_CDNS_HRS09_RDCMD_EN;
+	else
+		reg &= ~SDHCI_CDNS_HRS09_RDCMD_EN;
+
+	writel(reg, priv->hrs_addr + SDHCI_CDNS_HRS09);
+
+	writel(0x30004, priv->hrs_addr + SDHCI_CDNS_HRS02);
 
 	reg = 0x0;
-	reg = FIELD_PREP(SDHCI_CDNS_HRS10_HCSDCLKADJ, 0x6);
-			// FIXME J phy->settings.sdhc_hcsdclkadj);
+	reg = FIELD_PREP(SDHCI_CDNS_HRS10_HCSDCLKADJ, phy->settings.sdhc_hcsdclkadj);
 	writel(reg, priv->hrs_addr + SDHCI_CDNS_HRS10);
 
 	reg = 0x0;
@@ -1073,6 +1162,11 @@ static unsigned int sdhci_cdns_get_timeout_clock(struct sdhci_host *host)
 	return host->max_clk;
 }
 
+static unsigned int sdhci_cdns_get_max_clock(struct sdhci_host *host)
+{
+	return 200000000;
+}
+
 static void sdhci_cdns_set_emmc_mode(struct sdhci_cdns_priv *priv, u32 mode)
 {
 	u32 tmp;
@@ -1123,9 +1217,10 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 		break;
 	}
 
-	phy->mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
+	if (mode != SDHCI_CDNS_HRS06_MODE_MMC_HS200)
+		mode = phy->mode;// SDHCI_CDNS_HRS06_MODE_MMC_HS200;
 
-	dev_dbg(mmc_dev(host->mmc), "%s mode %d timing %d\n", __func__, mode, timing);
+	dev_info(mmc_dev(host->mmc), "%s mode %d timing %d\n", __func__, mode, timing);
 	sdhci_cdns_set_emmc_mode(priv, mode);
 
 	/* For SD, fall back to the default handler */
@@ -1217,7 +1312,7 @@ static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host,
 		mode = SDHCI_CDNS_HRS06_MODE_SD;
 		break;
 	default:
-		mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
+		mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
 		break;
 	}
 
@@ -1227,17 +1322,13 @@ static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host,
 static uint32_t sdhci_cdns_sd6_irq(struct sdhci_host *host, u32 intmask)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
-	uint64_t reg = readq(priv->hrs_addr + 0x718);
-	uint32_t status;
+	uint64_t reg1, reg = readq(priv->hrs_addr + 0x718);
 
 	if (intmask)
 		sdhci_cdns_sd6_writel(host, intmask, SDHCI_INT_STATUS);
 
-	status = sdhci_cdns_sd6_readl(host, SDHCI_INT_STATUS);
-	if (!status) {
-		writeq(reg, priv->hrs_addr + 0x718);
-		reg = readq(priv->hrs_addr + 0x718);
-	}
+	writeq(reg, priv->hrs_addr + 0x718);
+	reg1 = readq(priv->hrs_addr + 0x718);
 
 	return intmask;
 }
@@ -1250,8 +1341,6 @@ static void sdhci_cdns_sd6_set_uhs_signaling(struct sdhci_host *host,
 
 	sdhci_cdns_set_uhs_signaling(host, timing);
 
-	phy->mode = timing;
-
 	if ((phy->mode == -1) || (phy->t_sdclk == -1))
 		return;
 
@@ -1259,7 +1348,7 @@ static void sdhci_cdns_sd6_set_uhs_signaling(struct sdhci_host *host,
 		dev_info(mmc_dev(host->mmc), "%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
-		dev_dbg(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
+		dev_info(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
 }
 
 static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
@@ -1269,18 +1358,18 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
 	phy->mode = sdhci_cdns_sd6_get_mode(host, host->mmc->ios.timing);
+#ifdef DRV_CALC_SETTINGS
 	phy->t_sdclk = DIV_ROUND_DOWN_ULL(1e12, clock);
+#endif
 
-	dev_dbg(mmc_dev(host->mmc), "%s %d %d\n", __func__, phy->mode, clock);
+	dev_info(mmc_dev(host->mmc), "%s %d %d\n", __func__, phy->mode, clock);
 
 	if (sdhci_cdns_sd6_phy_update_timings(priv))
 		dev_info(mmc_dev(host->mmc), "%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
-		dev_dbg(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
+		dev_info(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
 
-	// TODO rozwazyc dll reset przed set clock i wyjscie z resetu za
-	// set clock
 	sdhci_set_clock(host, clock);
 }
 
@@ -1310,14 +1399,18 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 {
 	struct device *dev = &pdev->dev;
 	struct sdhci_cdns_sd6_phy *phy;
+#ifdef DRV_CALC_SETTINGS
 	u32 val;
 	struct clk *clk;
+#endif
 	int ret;
+	const char *mode_name;
 
 	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy)
 		return -ENOMEM;
 
+#ifdef DRV_CALC_SETTINGS
 	// TODO chyba to mozna wziac z rejestru
 	clk = devm_clk_get(dev, "sdmclk");
 	if (IS_ERR(clk)) {
@@ -1327,29 +1420,70 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 
 	val = clk_get_rate(clk);
 	phy->t_sdmclk = DIV_ROUND_DOWN_ULL(1e12, val);
+#else
+	phy->t_sdmclk = 5000; //DIV_ROUND_DOWN_ULL(1e12, val);
+#endif
 
 	ret = of_property_read_u32(dev->of_node, "cdns,iocell_input_delay",
 				   &phy->d.iocell_input_delay);
 	if (ret)
-		return ret;
+		phy->d.iocell_input_delay = 2500;
 
 	ret = of_property_read_u32(dev->of_node, "cdns,iocell_output_delay",
 				   &phy->d.iocell_output_delay);
 	if (ret)
-		return ret;
+		phy->d.iocell_output_delay = 2500;
 
 	ret = of_property_read_u32(dev->of_node, "cdns,delay_element",
 				   &phy->d.delay_element);
 	if (ret)
-		return ret;
+		phy->d.delay_element = 24;
+
+	ret = of_property_read_string_index(dev->of_node, "cdns,mode", 0,
+					&mode_name);
+	if (!ret) {
+		if (!strcmp("emmc_sdr", mode_name))
+			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+		else if (!strcmp("emmc_ddr", mode_name))
+			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_DDR;
+		else if (!strcmp("emmc_hs200", mode_name))
+			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_HS200;
+		else if (!strcmp("emmc_hs400", mode_name))
+			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_HS400;
+		else if (!strcmp("sd_hs", mode_name))
+			phy->mode = SDHCI_CDNS_HRS06_MODE_SD;
+		else
+			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+	} else
+		phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+
+	phy->d.iocell_input_delay = phy->d.iocell_output_delay = 0;
 
 	phy->d.delay_element_org = phy->d.delay_element;
-	phy->mode = SDHCI_CDNS_HRS06_MODE_LEGACY;
-	phy->t_sdclk = phy->t_sdmclk;
+
+	switch (phy->mode) {
+	case SDHCI_CDNS_HRS06_MODE_MMC_SDR:
+		phy->t_sdclk =  10000;
+		break;
+	case SDHCI_CDNS_HRS06_MODE_MMC_DDR:
+		phy->t_sdclk = 10000;
+		break;
+	case SDHCI_CDNS_HRS06_MODE_MMC_HS200:
+		phy->t_sdclk = 5000;
+		break;
+	case SDHCI_CDNS_HRS06_MODE_MMC_HS400:
+		phy->t_sdclk = 5000;
+		break;
+	case SDHCI_CDNS_HRS06_MODE_SD:
+		phy->t_sdclk = 100000;
+		break;
+	default:
+		phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+		break;
+	}
 
 	priv->phy = phy;
 
-	sdhci_cdns_get_emmc_mode(priv);
 	return 0;
 }
 
@@ -1446,6 +1580,7 @@ static const struct sdhci_ops sdhci_cdns_sd6_ops = {
 	.read_b = sdhci_cdns_sd6_readb,
 	.write_b = sdhci_cdns_sd6_writeb,
 #endif
+	.get_max_clock = sdhci_cdns_get_max_clock,
 	.set_clock = sdhci_cdns_sd6_set_clock,
 	.get_timeout_clock = sdhci_cdns_get_timeout_clock,
 	.set_bus_width = sdhci_set_bus_width,
@@ -1519,7 +1654,6 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	struct clk *clk;
 	int ret;
 	struct device *dev = &pdev->dev;
-	static const u16 version = SDHCI_SPEC_400 << SDHCI_SPEC_VER_SHIFT;
 
 	clk = devm_clk_get(dev, NULL);
 	if (IS_ERR(clk))
@@ -1544,6 +1678,10 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	pltfm_host = sdhci_priv(host);
 	pltfm_host->clk = clk;
 
+	host->max_clk = 200000000;
+	host->clock = 25000000;
+	host->quirks |=  SDHCI_QUIRK_NO_MULTIBLOCK;
+	host->quirks2 |= SDHCI_QUIRK2_PRESET_VALUE_BROKEN;
 	priv = sdhci_pltfm_priv(pltfm_host);
 	priv->hrs_addr = host->ioaddr;
 	priv->enhanced_strobe = false;
@@ -1551,9 +1689,6 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	host->ioaddr += SDHCI_CDNS_SRS_BASE;
 	host->mmc_host_ops.hs400_enhanced_strobe =
 				sdhci_cdns_hs400_enhanced_strobe;
-
-	sdhci_enable_v4_mode(host);
-	__sdhci_read_caps(host, &version, NULL, NULL);
 
 	sdhci_get_of_property(pdev);
 
@@ -1569,6 +1704,7 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	if (ret)
 		goto free;
 
+	sdhci_enable_v4_mode(host);
 	ret = sdhci_add_host(host);
 	if (ret)
 		goto free;
