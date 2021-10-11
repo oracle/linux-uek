@@ -56,8 +56,6 @@ static int __init ghes_bed_acpi_match_resource(struct platform_device *pdev,
 {
 	struct resource *res;
 
-	initdbgmsg("%s: entry\n", __func__);
-
 	// Error Block Ring
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
 	if (!res) {
@@ -80,8 +78,6 @@ static int __init ghes_bed_of_match_resource(struct mrvl_bed_source *bsrc)
 	const __be32 *res;
 	u64 size;
 	u64 base;
-
-	initdbgmsg("%s: entry\n", __func__);
 
 	of_node = of_find_matching_node_and_match(NULL, bed_bert_of_match, NULL);
 	if (!of_node) {
@@ -351,7 +347,7 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 
 	ret = ghes_bed_count_error(&bed_src);
 	if (ret <= 0) {
-		initerrmsg("%s No BERT errors\n", __func__);
+		initdbgmsg("%s No BERT errors\n", __func__);
 		goto exit1;
 	}
 
@@ -404,7 +400,7 @@ static const struct platform_device_id ghes_bert_pdev_match[] = {
 };
 MODULE_DEVICE_TABLE(platform, ghes_bert_pdev_match);
 
-static struct platform_driver ghes_bert_drv = {
+static struct platform_driver ghes_bert_drv_ops = {
 	.driver = {
 		.name             = DRV_NAME,
 		.of_match_table   = bed_bert_of_match,
@@ -418,13 +414,13 @@ static struct platform_driver ghes_bert_drv = {
 
 static int __init ghes_bert_init(void)
 {
-	platform_driver_probe(&ghes_bert_drv, ghes_bert_probe);
+	platform_driver_probe(&ghes_bert_drv_ops, ghes_bert_probe);
 	return 0;
 }
 
 static void __exit ghes_bert_exit(void)
 {
-	platform_driver_unregister(&ghes_bert_drv);
+	platform_driver_unregister(&ghes_bert_drv_ops);
 }
 
 module_init(ghes_bert_init);
