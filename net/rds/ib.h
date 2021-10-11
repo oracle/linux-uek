@@ -90,6 +90,17 @@ enum rds_ib_conn_flags {
 
 #define RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(c) ((c)->c_loopback ? 1000 : 4000)
 
+enum rds_ib_preferred_cpu_options {
+	RDS_IB_PREFER_CPU_CQ		= 1 << 0,
+	RDS_IB_PREFER_CPU_NUMA		= 1 << 1,
+	RDS_IB_PREFER_CPU_DEFAULT	= RDS_IB_PREFER_CPU_CQ
+};
+
+extern enum rds_ib_preferred_cpu_options rds_ib_preferred_cpu;
+
+extern int rds_ib_preferred_cpu_load[];
+extern spinlock_t rds_ib_preferred_cpu_load_lock;
+
 extern struct rw_semaphore rds_ib_devices_lock;
 extern struct list_head rds_ib_devices;
 
@@ -360,6 +371,8 @@ struct rds_ib_connection {
 	unsigned int		i_active_side;
 
 	int			i_cq_vector;
+	int			i_irqn;
+	bool			i_cq_isolate_warned;
 
 	unsigned int            i_rx_poll_cq;
 	struct rds_ib_rx_work   i_rx_w;
@@ -726,6 +739,8 @@ u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
 #endif
 
 /* ib_rdma.c */
+void rds_ib_get_preferred_cpu_mask(struct cpumask *preferred_cpu_mask_p,
+				   int irq, int nid);
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
 			 struct in6_addr *ipaddr);

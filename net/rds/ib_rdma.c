@@ -41,31 +41,25 @@
 #include "xlist.h"
 #include "rds_single_path.h"
 
-enum preferred_cpu_options {
-	PREFER_CPU_CQ		= 1 << 0,
-	PREFER_CPU_NUMA		= 1 << 1,
-	PREFER_CPU_DEFAULT	= PREFER_CPU_CQ
-};
-
 static struct {
 	const char *name;
-	enum preferred_cpu_options option;
-} preferred_cpu_options[] = {
-	{ "cq",		PREFER_CPU_CQ	},
-	{ "numa",	PREFER_CPU_NUMA	},
+	enum rds_ib_preferred_cpu_options option;
+} rds_ib_preferred_cpu_options[] = {
+	{ "cq",		RDS_IB_PREFER_CPU_CQ	},
+	{ "numa",	RDS_IB_PREFER_CPU_NUMA	},
 };
 
-static enum preferred_cpu_options preferred_cpu = PREFER_CPU_DEFAULT;
+enum rds_ib_preferred_cpu_options rds_ib_preferred_cpu = RDS_IB_PREFER_CPU_DEFAULT;
 
-static int set_preferred_cpu(const char *val, const struct kernel_param *kp);
-static int get_preferred_cpu(char *buf, const struct kernel_param *kp);
+static int rds_ib_set_preferred_cpu(const char *val, const struct kernel_param *kp);
+static int rds_ib_get_preferred_cpu(char *buf, const struct kernel_param *kp);
 
-module_param_call(preferred_cpu,
-                  set_preferred_cpu, get_preferred_cpu,
+module_param_call(rds_ib_preferred_cpu,
+                  rds_ib_set_preferred_cpu, rds_ib_get_preferred_cpu,
                   NULL, 0644);
 
-static int preferred_cpu_load[NR_CPUS];
-static DEFINE_SPINLOCK(preferred_cpu_load_lock);
+int rds_ib_preferred_cpu_load[NR_CPUS];
+DEFINE_SPINLOCK(rds_ib_preferred_cpu_load_lock);
 
 struct workqueue_struct *rds_ib_fmr_wq;
 
@@ -187,9 +181,9 @@ static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 static void rds_frwr_clean_worker(struct work_struct *work);
 static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool all);
 
-static int set_preferred_cpu(const char *val, const struct kernel_param *kp)
+static int rds_ib_set_preferred_cpu(const char *val, const struct kernel_param *kp)
 {
-	enum preferred_cpu_options options = 0;
+	enum rds_ib_preferred_cpu_options options = 0;
 	const char *cp, *cp_end;
 	int i;
 
@@ -199,10 +193,10 @@ static int set_preferred_cpu(const char *val, const struct kernel_param *kp)
 		while (*cp_end && *cp_end != ',' && *cp_end != '\n')
 			cp_end++;
 
-		for (i = 0; i < ARRAY_SIZE(preferred_cpu_options); i++) {
-			if (strncmp(cp, preferred_cpu_options[i].name, cp_end - cp) == 0 &&
-			    preferred_cpu_options[i].name[cp_end - cp] == '\0')
-				options |= preferred_cpu_options[i].option;
+		for (i = 0; i < ARRAY_SIZE(rds_ib_preferred_cpu_options); i++) {
+			if (strncmp(cp, rds_ib_preferred_cpu_options[i].name, cp_end - cp) == 0 &&
+			    rds_ib_preferred_cpu_options[i].name[cp_end - cp] == '\0')
+				options |= rds_ib_preferred_cpu_options[i].option;
 		}
 
 		if (*cp_end)
@@ -210,21 +204,21 @@ static int set_preferred_cpu(const char *val, const struct kernel_param *kp)
 		cp = cp_end;
 	}
 
-	preferred_cpu = options;
+	rds_ib_preferred_cpu = options;
 
 	return 0;
 }
 
-static int get_preferred_cpu(char *buf, const struct kernel_param *kp)
+static int rds_ib_get_preferred_cpu(char *buf, const struct kernel_param *kp)
 {
 	int ret = 0, i;
 
-	for (i = 0; i < ARRAY_SIZE(preferred_cpu_options); i++) {
-		if (preferred_cpu & preferred_cpu_options[i].option) {
+	for (i = 0; i < ARRAY_SIZE(rds_ib_preferred_cpu_options); i++) {
+		if (rds_ib_preferred_cpu & rds_ib_preferred_cpu_options[i].option) {
 			if (ret > 0)
 				buf[ret++] = ',';
 			ret += sprintf(buf + ret, "%s",
-				       preferred_cpu_options[i].name);
+				       rds_ib_preferred_cpu_options[i].name);
 		}
 	}
 
@@ -234,6 +228,34 @@ static int get_preferred_cpu(char *buf, const struct kernel_param *kp)
 	buf[ret++] = '\n';
 
 	return ret;
+}
+
+void rds_ib_get_preferred_cpu_mask(struct cpumask *preferred_cpu_mask_p,
+				   int irqn, int nid)
+{
+	const struct cpumask *cpu_mask;
+
+	/* turn module parameter "rds_ib_preferred_cpu" into
+	 * a subset of online CPUs "preferred_cpu_mask_p"
+	 */
+
+	cpumask_copy(preferred_cpu_mask_p, cpu_online_mask);
+
+	if ((rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_CQ) &&
+	    irqn >= 0) {
+		cpu_mask = irq_get_affinity_mask(irqn);
+		if (cpu_mask)
+			cpumask_and(preferred_cpu_mask_p,
+				    preferred_cpu_mask_p, cpu_mask);
+	}
+
+	if ((rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_NUMA) &&
+	    nid != NUMA_NO_NODE) {
+		cpu_mask = cpumask_of_node(nid);
+		if (cpu_mask)
+			cpumask_and(preferred_cpu_mask_p,
+				    preferred_cpu_mask_p, cpu_mask);
+	}
 }
 
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr)
@@ -443,48 +465,35 @@ int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct cpumask preferred_cpu_mask;
-	const struct cpumask *cpu_mask;
-	int nid, min_load, min_cpu, cpu, irqn;
+	int min_load, min_cpu, cpu;
 	unsigned long flags;
 
 	/* turn module parameter "preferred_cpu" into
 	 * a subset of online CPUs "preferred_cpu_mask"
 	 */
-
-	cpumask_copy(&preferred_cpu_mask, cpu_online_mask);
-
-	if ((preferred_cpu & PREFER_CPU_CQ) &&
-	    ic->i_cq_vector >= 0) {
-		irqn = ib_get_vector_irqn(rds_ibdev->dev, ic->i_cq_vector);
-		cpu_mask = irqn >= 0 ? irq_get_affinity_mask(irqn) : NULL;
-		if (cpu_mask)
-			cpumask_and(&preferred_cpu_mask,
-				    &preferred_cpu_mask, cpu_mask);
-	}
-
-	if (preferred_cpu & PREFER_CPU_NUMA) {
-		nid = rdsibdev_to_node(rds_ibdev);
-		cpu_mask = nid != NUMA_NO_NODE ? cpumask_of_node(nid) : NULL;
-		if (cpu_mask)
-			cpumask_and(&preferred_cpu_mask,
-				    &preferred_cpu_mask, cpu_mask);
-	}
+	if (ic->i_cq_vector >= 0)
+		ic->i_irqn = ib_get_vector_irqn(rds_ibdev->dev, ic->i_cq_vector);
+	else
+		ic->i_irqn = -1;
+	ic->i_cq_isolate_warned = false;
+	rds_ib_get_preferred_cpu_mask(&preferred_cpu_mask,
+				      ic->i_irqn, rdsibdev_to_node(rds_ibdev));
 
 	/* find a CPU within "preferred_cpu_mask" with the lowest load */
 
-	spin_lock_irqsave(&preferred_cpu_load_lock, flags);
+	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
 	min_cpu = WORK_CPU_UNBOUND;
 	min_load = INT_MAX;
 	for_each_cpu(cpu, &preferred_cpu_mask) {
-		if (preferred_cpu_load[cpu] < min_load) {
+		if (rds_ib_preferred_cpu_load[cpu] < min_load) {
 			min_cpu = cpu;
-			min_load = preferred_cpu_load[cpu];
+			min_load = rds_ib_preferred_cpu_load[cpu];
 		}
 	}
 	if (min_cpu != WORK_CPU_UNBOUND)
-		preferred_cpu_load[min_cpu]++;
+		rds_ib_preferred_cpu_load[min_cpu]++;
 	ic->i_preferred_cpu = min_cpu;
-	spin_unlock_irqrestore(&preferred_cpu_load_lock, flags);
+	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
 
 	/* conn was previously on the nodev_conns_list */
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
@@ -533,11 +542,11 @@ void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *
 
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
-	spin_lock_irqsave(&preferred_cpu_load_lock, flags);
+	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
 	if (ic->i_preferred_cpu != WORK_CPU_UNBOUND)
-		preferred_cpu_load[ic->i_preferred_cpu]--;
+		rds_ib_preferred_cpu_load[ic->i_preferred_cpu]--;
 	ic->i_preferred_cpu = WORK_CPU_UNBOUND;
-	spin_unlock_irqrestore(&preferred_cpu_load_lock, flags);
+	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
 
 	rds_ib_dev_put(rds_ibdev);
 }
