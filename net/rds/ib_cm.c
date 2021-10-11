@@ -552,6 +552,58 @@ static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
 		      rds_evt_wq, &rds_ibdev->fastreg_w);
 }
 
+
+/* Only follow CQ affinity if exactly one bit is set
+ * in the IRQ affinity mask that's consistent
+ * with other restrictions (e.g. NUMA) of
+ * module parameter "rds_ib_preferred_cpu"
+ */
+static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic)
+{
+	int preferred_cpu, irqn;
+	struct cpumask preferred_cpu_mask;
+	unsigned long flags;
+
+	if (!(rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_CQ))
+		return;
+
+	preferred_cpu = ic->i_preferred_cpu;
+	if (preferred_cpu == WORK_CPU_UNBOUND ||
+	    preferred_cpu == smp_processor_id())
+		return;
+
+	irqn = ic->i_irqn;
+	if (irqn < 0)
+		return;
+
+	rds_ib_get_preferred_cpu_mask(&preferred_cpu_mask,
+				      ic->i_irqn,
+				      rdsibdev_to_node(ic->rds_ibdev));
+	if (cpumask_weight(&preferred_cpu_mask) != 1 ||
+	    cpumask_first(&preferred_cpu_mask) != smp_processor_id()) {
+		if (!ic->i_cq_isolate_warned) {
+			ic->i_cq_isolate_warned = true;
+			pr_warn("RDS/IB: CQ affinity mismatch: can't isolate single CPU (irqn=%d, cpus=%*pbl)\n",
+				irqn, cpumask_pr_args(&preferred_cpu_mask));
+		}
+		return;
+	}
+
+	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
+
+	if (ic->i_preferred_cpu != WORK_CPU_UNBOUND)
+		rds_ib_preferred_cpu_load[ic->i_preferred_cpu]--;
+	ic->i_preferred_cpu = smp_processor_id();
+	rds_ib_preferred_cpu_load[ic->i_preferred_cpu]++;
+
+	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
+
+	pr_warn("RDS/IB: CQ affinity mismatch: changed preferred_cpu from=%d to=%d (irqn=%d)\n",
+		preferred_cpu, smp_processor_id(), irqn);
+
+	ic->i_cq_isolate_warned = false;
+}
+
 static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
 {
 	struct rds_connection *conn = context;
@@ -560,6 +612,8 @@ static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
 	rdsdebug("conn %p cq %p\n", conn, cq);
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
+
+	rds_ib_cq_follow_affinity(ic);
 
 	queue_work_on(ic->i_preferred_cpu,
 		      rds_evt_wq, &ic->i_send_w);
@@ -573,6 +627,8 @@ static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
 	rdsdebug("conn %p cq %p\n", conn, cq);
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
+
+	rds_ib_cq_follow_affinity(ic);
 
 	queue_work_on(ic->i_preferred_cpu,
 		      rds_evt_wq, &ic->i_recv_w);
@@ -2456,6 +2512,8 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
 	ic->i_cq_vector = -1;
+	ic->i_irqn = -1;
+	ic->i_cq_isolate_warned = false;
 	ic->i_preferred_cpu = WORK_CPU_UNBOUND;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
