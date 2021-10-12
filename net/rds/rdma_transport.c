@@ -336,12 +336,8 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 					&conn->c_laddr,	&conn->c_faddr,
 					conn->c_tos);
 				reason = "rejection and retry with old version";
-			} else {
-				pr_warn("Rejected: <%pI6c,%pI6c,%d>: no error code\n",
-					&conn->c_laddr,	&conn->c_faddr,
-					conn->c_tos);
+			} else
 				reason = "rejection with no error code";
-			}
 		}
 		rds_conn_drop(conn, DR_IB_CONSUMER_DEFINED_REJ, *rej_data);
 		break;
