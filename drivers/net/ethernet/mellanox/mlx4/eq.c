@@ -39,6 +39,7 @@
 
 #include <linux/mlx4/cmd.h>
 #include <linux/cpu_rmap.h>
+#include <rdma/ib_verbs.h>
 
 #include "mlx4.h"
 #include "fw.h"
@@ -1572,7 +1573,10 @@ int mlx4_choose_vector(struct mlx4_dev *dev, int vector, int num_comp)
 	struct mlx4_eq *chosen;
 	int k;
 
-	if (vector || smp_processor_id() == (vector % num_online_cpus())) {
+	if (vector) {
+		if (vector == IB_CQ_FORCE_ZERO_CV)
+			vector = 0;
+
 		spin_lock(&dev->eq_accounting_lock);
 		mlx4_priv(dev)->eq_table.eq[vector].ncqs++;
 		spin_unlock(&dev->eq_accounting_lock);
