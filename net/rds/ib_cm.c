@@ -872,33 +872,41 @@ static inline void ibdev_put_vector(struct rds_ib_device *rds_ibdev, int index, 
 }
 
 static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
-			    int *vector, struct ib_cq **cqp, ib_comp_handler comp_handler,
+			    int *vector, struct ib_cq **cqp, unsigned int *cq_entriesp,
+			    ib_comp_handler comp_handler,
 			    void (*event_handler)(struct ib_event *, void *),
 			    void *ctx, int n, const char str[5], u8 tos)
 {
-	struct ib_wc wc;
-	int spurious_completions = 0;
+	struct ib_cq_init_attr cq_attr = {};
 
-	if (!*cqp) {
-		struct ib_cq_init_attr cq_attr = {};
+	if (*cqp) {
+		if (n == *cq_entriesp) {
+			int spurious_completions = 0;
+			struct ib_wc wc;
 
-		cq_attr.cqe = n;
-		cq_attr.comp_vector = ibdev_get_unused_vector(rds_ibdev, tos);
-		*vector = cq_attr.comp_vector;
-		*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
-		if (IS_ERR(*cqp)) {
-			ibdev_put_vector(rds_ibdev, *vector, tos);
-			rdsdebug("ib_create_cq %s failed: %ld\n", str, PTR_ERR(*cqp));
+			while (ib_poll_cq(*cqp, 1, &wc) > 0)
+				++spurious_completions;
+
+			if (spurious_completions)
+				pr_err("RDS/IB: %d spurious completions in %s cq for conn %p. Memory leak detected!\n",
+				       spurious_completions, str, ctx);
 			return;
 		}
+
+		rdsdebug("RDS/IB:conn %p  %s cq_entries %d != n %d recreate cq\n", ctx, str, *cq_entriesp, n);
+		ib_destroy_cq(*cqp);
 	}
 
-	while (ib_poll_cq(*cqp, 1, &wc) > 0)
-		++spurious_completions;
 
-	if (spurious_completions)
-		pr_err("RDS/IB: %d spurious completions in %s cq for conn %p. We have memory leak!\n",
-		       spurious_completions, str, ctx);
+	cq_attr.cqe = n;
+	cq_attr.comp_vector = ibdev_get_unused_vector(rds_ibdev, tos);
+	*vector = cq_attr.comp_vector;
+	*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
+	if (IS_ERR(*cqp)) {
+		ibdev_put_vector(rds_ibdev, *vector, tos);
+		rdsdebug("ib_create_cq %s failed: %ld\n", str, PTR_ERR(*cqp));
+	}
+	*cq_entriesp = n;
 }
 
 /* Helper function to deallocate the completion queues of an rds_ib_connection.
@@ -1219,7 +1227,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		WARN_ON(ic->i_scq);
 	}
 
-	rds_ib_check_cq(dev, rds_ibdev, &ic->i_scq_vector, &ic->i_scq,
+	rds_ib_check_cq(dev, rds_ibdev, &ic->i_scq_vector, &ic->i_scq, &ic->i_scq_entries,
 			rds_ib_cq_comp_handler_send,
 			rds_ib_cq_event_handler, conn,
 			ic->i_send_ring.w_nr + 1 + mr_reg,
@@ -1231,7 +1239,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	rds_ib_check_cq(dev, rds_ibdev, &ic->i_rcq_vector, &ic->i_rcq,
+	rds_ib_check_cq(dev, rds_ibdev, &ic->i_rcq_vector, &ic->i_rcq, &ic->i_rcq_entries,
 			rds_ib_cq_comp_handler_recv,
 			rds_ib_cq_event_handler, conn,
 			rds_ib_srq_enabled ? rds_ib_srq_max_wr - 1 : ic->i_recv_ring.w_nr,
