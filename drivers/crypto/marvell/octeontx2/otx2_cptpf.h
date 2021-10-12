@@ -59,6 +59,9 @@ struct otx2_cptpf_dev {
 	u8 kvf_limits;		/* Kernel VF limits */
 	bool has_cpt1;
 	u8 rsrc_req_blkaddr;
+
+	/* Devlink */
+	struct devlink *dl;
 };
 
 irqreturn_t otx2_cptpf_afpf_mbox_intr(int irq, void *arg);
