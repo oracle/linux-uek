@@ -217,7 +217,9 @@ struct rds_ib_connection {
 	struct ib_pd		*i_pd;
 	struct ib_mr		*i_mr;
 	struct ib_cq		*i_scq;
+	unsigned int		i_scq_entries;
 	struct ib_cq		*i_rcq;
+	unsigned int		i_rcq_entries;
 	struct ib_wc		i_send_wc[RDS_WC_MAX];
 	struct ib_wc		i_recv_wc[RDS_WC_MAX];
 
