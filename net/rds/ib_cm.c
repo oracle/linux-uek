@@ -1117,6 +1117,8 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 	else
 		ibdev_get_vector(rds_ibdev, *vector, tos);
 	cq_attr.comp_vector = *vector;
+	if (!cq_attr.comp_vector)
+		cq_attr.comp_vector = IB_CQ_FORCE_ZERO_CV;
 	*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
 	if (IS_ERR(*cqp)) {
 		ibdev_put_vector(rds_ibdev, *vector, tos);
@@ -2817,6 +2819,8 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.cqe = RDS_IB_DEFAULT_FREG_WR + 1;
 	cq_attr.comp_vector = rds_ibdev->fastreg_cq_vector;
+	if (!cq_attr.comp_vector)
+		cq_attr.comp_vector = IB_CQ_FORCE_ZERO_CV;
 	rds_ibdev->fastreg_cq = ib_create_cq(rds_ibdev->dev,
 					     rds_ib_cq_comp_handler_fastreg,
 					     rds_ib_cq_event_handler_fastreg,
