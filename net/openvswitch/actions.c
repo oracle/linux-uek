@@ -796,8 +796,10 @@ static void ovs_fragment(struct net *net, struct vport *vport,
 	}
 
 	if (key->eth.type == htons(ETH_P_IP)) {
-		struct rtable ovs_rt = { 0 };
+		struct rtable ovs_rt;
 		unsigned long orig_dst;
+
+		memset(&ovs_rt, 0, sizeof(struct rtable));
 
 		prepare_frag(vport, skb, orig_network_offset,
 			     ovs_key_mac_proto(key));
