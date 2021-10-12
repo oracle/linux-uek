@@ -142,7 +142,7 @@ static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			      ic->i_frag_cache_inx,
 			      1);
 
-	atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+	atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 	rds_ib_stats_inc(s_ib_recv_nmb_added_to_cache);
 	rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
 }
@@ -187,7 +187,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 		if (p_frag)
 			lfstack_link(&p_frag->f_cache_entry, &frag->f_cache_entry);
 
-		atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 		rds_ib_stats_add(s_ib_recv_nmb_added_to_cache, count);
 		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
 
@@ -267,11 +267,12 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	int i;
 	int j;
 
+	atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+
 	cache_item = rds_ib_recv_cache_get(ic->rds_ibdev->i_cache_frags +
 					   ic->i_frag_cache_inx);
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
-		atomic_sub(ic->i_frag_sz/1024, &ic->i_cache_allocs);
 		rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
 		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
 	} else {
