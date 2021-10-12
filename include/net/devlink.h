@@ -22,51 +22,7 @@
 #include <linux/firmware.h>
 #include <linux/uek_kabi.h>
 
-#define DEVLINK_RELOAD_STATS_ARRAY_SIZE \
-	(__DEVLINK_RELOAD_LIMIT_MAX * __DEVLINK_RELOAD_ACTION_MAX)
-
-struct devlink_dev_stats {
-	u32 reload_stats[DEVLINK_RELOAD_STATS_ARRAY_SIZE];
-	u32 remote_reload_stats[DEVLINK_RELOAD_STATS_ARRAY_SIZE];
-};
-
-struct devlink_ops;
-
-struct devlink {
-	u32 index;
-	struct list_head port_list;
-	struct list_head rate_list;
-	struct list_head sb_list;
-	struct list_head dpipe_table_list;
-	struct list_head resource_list;
-	struct list_head param_list;
-	struct list_head region_list;
-	struct list_head reporter_list;
-	struct mutex reporters_lock; /* protects reporter_list */
-	struct devlink_dpipe_headers *dpipe_headers;
-	struct list_head trap_list;
-	struct list_head trap_group_list;
-	struct list_head trap_policer_list;
-	const struct devlink_ops *ops;
-	struct xarray snapshot_ids;
-	struct devlink_dev_stats stats;
-	struct device *dev;
-	possible_net_t _net;
-	struct mutex lock; /* Serializes access to devlink instance specific objects such as
-			    * port, sb, dpipe, resource, params, region, traps and more.
-			    */
-	u8 reload_failed:1,
-	   reload_enabled:1;
-	refcount_t refcount;
-	struct completion comp;
-
-	UEK_KABI_RESERVE(1)
-	UEK_KABI_RESERVE(2)
-	UEK_KABI_RESERVE(3)
-	UEK_KABI_RESERVE(4)
-
-	char priv[0] __aligned(NETDEV_ALIGN);
-};
+struct devlink;
 
 struct devlink_port_phys_attrs {
 	u32 port_number; /* Same value as "split group".
@@ -1560,17 +1516,9 @@ struct devlink_ops {
 	UEK_KABI_RESERVE(8)
 };
 
-static inline void *devlink_priv(struct devlink *devlink)
-{
-	BUG_ON(!devlink);
-	return &devlink->priv;
-}
-
-static inline struct devlink *priv_to_devlink(void *priv)
-{
-	BUG_ON(!priv);
-	return container_of(priv, struct devlink, priv);
-}
+void *devlink_priv(struct devlink *devlink);
+struct devlink *priv_to_devlink(void *priv);
+struct device *devlink_to_dev(const struct devlink *devlink);
 
 static inline struct devlink_port *
 netdev_to_devlink_port(struct net_device *dev)
