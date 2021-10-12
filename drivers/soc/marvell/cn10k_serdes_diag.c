@@ -14,6 +14,7 @@
 #include <linux/time.h>
 #include <linux/uaccess.h>
 #include <linux/of.h>
+#include <linux/delay.h>
 #include <soc/marvell/octeontx/octeontx_smc.h>
 
 #define DRV_NAME "cn10k_serdes_diag"
@@ -22,6 +23,7 @@
 #define PLAT_OCTEONTX_SERDES_DBG_TX_TUNING	0xc2000d06
 #define PLAT_OCTEONTX_SERDES_DBG_LOOPBACK	0xc2000d07
 #define PLAT_OCTEONTX_SERDES_DBG_PRBS		0xc2000d08
+#define PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING	0xc2000d09
 
 #define PORT_LANES_MAX 4
 #define PRBS_SHOW_HEADER \
@@ -246,6 +248,19 @@ struct rx_eq_params {
 	u32 ctle_params[CTLE_PARAMS_NUM];
 };
 
+#define RX_TR_PRMS_MAX 2
+
+struct rx_tr_cmd_params {
+	int port;
+	int lane_idx;
+};
+
+enum rx_tr_subcmd {
+	RX_TR_START,
+	RX_TR_CHECK,
+	RX_TR_STOP
+};
+
 static int copy_input_str(const char __user *buffer, size_t count,
 			char *cmd_buf, size_t buf_sz)
 {
@@ -402,6 +417,101 @@ static ssize_t serdes_dbg_rx_eq_write(struct file *filp,
 	return count;
 }
 DEFINE_ATTRIBUTE(serdes_dbg_rx_eq);
+
+
+static int serdes_dbg_rx_tr_read(struct seq_file *s, void *unused)
+{
+	return 0;
+}
+
+static int parse_rx_tr_params(const char __user *buffer, size_t count,
+				struct rx_tr_cmd_params *params)
+{
+	const char *argv[RX_TR_PRMS_MAX] = {0};
+	char cmd_buf[BUF_SZ];
+	size_t argc;
+	int port, lane_idx;
+
+	if (copy_input_str(buffer, count, cmd_buf, BUF_SZ))
+		return -EINVAL;
+
+	if (tokenize_input(cmd_buf, &argc, argv, RX_TR_PRMS_MAX))
+		return -EINVAL;
+
+	if (argc < 2)
+		return -EINVAL;
+
+	if (kstrtoint(argv[0], 10, &port))
+		return -EINVAL;
+
+	port &= 0xff;
+
+	if (kstrtoint(argv[1], 10, &lane_idx))
+		return -EINVAL;
+
+	lane_idx &= 0xff;
+
+	params->port = port;
+	params->lane_idx = lane_idx;
+
+	return 0;
+}
+
+static ssize_t serdes_dbg_rx_tr_write(struct file *filp,
+					const char __user *buffer,
+					size_t count, loff_t *ppos)
+{
+	int port, lane_idx;
+	struct rx_tr_cmd_params input;
+	int completed = 0, failed, tries = 30;
+	int lanes_num, gserm_idx, mapping, glane;
+	struct arm_smccc_res res;
+	s32 x1;
+
+	if (parse_rx_tr_params(buffer, count, &input))
+		return -EINVAL;
+
+	port = input.port;
+	lane_idx = input.lane_idx;
+	x1 = (input.lane_idx << 8) | input.port;
+
+	pr_info("SerDes Rx Training:\n");
+	pr_info("port#:\tlane#:\tgserm#:\tg-lane#:\tstatus:\n");
+
+	arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
+		x1, RX_TR_START, 0, 0, 0, 0, 0, &res);
+	if (res.a0) {
+		pr_warn("Triggering Rx Training failed\n");
+		return count;
+	}
+
+	get_gserm_data(res.a1, &gserm_idx, &mapping, &lanes_num);
+
+	while (!completed && tries--) {
+		msleep(100);
+		arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
+			x1, RX_TR_CHECK, 0, 0, 0, 0, 0, &res);
+
+		completed = res.a2 & 1;
+		failed = (res.a2 >> 1) & 1;
+	}
+
+	if (!completed) {
+		failed = 1;
+		arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
+			x1, RX_TR_STOP, 0, 0, 0, 0, 0, &res);
+	}
+
+	glane = (mapping >> 4 * lane_idx) & 0xf;
+
+	pr_info("%d\t%d\t%d\t%d\t\t%s\n",
+	       port, lane_idx,
+	       gserm_idx, glane,
+	       failed ? "FAILED" : "OK");
+
+	return count;
+}
+DEFINE_ATTRIBUTE(serdes_dbg_rx_tr);
 
 static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 {
@@ -899,6 +1009,11 @@ static int serdes_dbg_setup_debugfs(void)
 
 	dbg_file = debugfs_create_file("rx_params", 0644, serdes_dbgfs_root, NULL,
 				    &serdes_dbg_rx_eq_fops);
+	if (!dbg_file)
+		goto create_failed;
+
+	dbg_file = debugfs_create_file("rx_training", 0644, serdes_dbgfs_root, NULL,
+				    &serdes_dbg_rx_tr_fops);
 	if (!dbg_file)
 		goto create_failed;
 
