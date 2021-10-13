@@ -161,8 +161,8 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 		wqe = (struct cpri_pkt_ul_wqe_hdr *)pkt_buf;
 		netdev = otx2_cpri_get_netdev(wqe->mhab_id, wqe->lane_id);
 		if (unlikely(!netdev)) {
-			pr_err("CPRI Rx netdev not found, cpri%d lmac%d\n",
-			       wqe->mhab_id, wqe->lane_id);
+			net_err_ratelimited("CPRI Rx netdev not found, cpri%d lmac%d\n",
+					    wqe->mhab_id, wqe->lane_id);
 			priv->stats.rx_dropped++;
 			priv->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
@@ -170,20 +170,19 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 		}
 		priv2 = netdev_priv(netdev);
 		if (wqe->fcserr || wqe->rsp_ferr || wqe->rsp_nferr) {
-			netif_err(priv2, rx_err, netdev,
-				  "CPRI Rx err,cpri%d lmac%d sw_rd_ptr=%d\n",
-				  wqe->mhab_id, wqe->lane_id,
-				  ul_cfg->sw_rd_ptr);
+			net_err_ratelimited("%s: CPRI Rx err,cpri%d lmac%d sw_rd_ptr=%d\n",
+					    netdev->name,
+					    wqe->mhab_id, wqe->lane_id,
+					    ul_cfg->sw_rd_ptr);
 			priv2->stats.rx_dropped++;
 			priv2->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
 			continue;
 		}
 		if (unlikely(!netif_carrier_ok(netdev))) {
-			netif_err(priv2, rx_err, netdev,
-				  "%s {cpri%d lmac%d} link down, drop pkt\n",
-				  netdev->name, priv2->cpri_num,
-				  priv2->lmac_id);
+			net_err_ratelimited("%s {cpri%d lmac%d} link down, drop pkt\n",
+					    netdev->name, priv2->cpri_num,
+					    priv2->lmac_id);
 			priv2->stats.rx_dropped++;
 			priv2->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
@@ -203,8 +202,8 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 
 		skb = netdev_alloc_skb_ip_align(netdev, len);
 		if (!skb) {
-			netif_err(priv2, rx_err, netdev,
-				  "CPRI Rx: alloc skb failed\n");
+			net_err_ratelimited("%s:CPRI Rx: alloc skb failed\n",
+					    netdev->name);
 			priv->stats.rx_dropped++;
 			priv->last_rx_dropped_jiffies = jiffies;
 			processed_pkts++;
