@@ -752,8 +752,8 @@ struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, u32 vector)
 	spin_lock(&table->lock);
 	eq = list_entry(table->comp_eqs_list.next, struct mlx5_eq, list);
 	list_for_each_entry(tmp_eq, &table->comp_eqs_list, list) {
-		if (vector || smp_processor_id() == (vector % num_online_cpus())) {
-			if (tmp_eq->index == vector) {
+		if (vector) {
+			if (tmp_eq->index == (vector == IB_CQ_FORCE_ZERO_CV ? 0 : vector)) {
 				eq = tmp_eq;
 				break;
 			}
