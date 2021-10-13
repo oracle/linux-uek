@@ -463,10 +463,11 @@ int xfeature_size(int xfeature_nr)
 }
 
 /* Validate an xstate header supplied by userspace (ptrace or sigreturn) */
-static int validate_user_xstate_header(const struct xstate_header *hdr)
+static int validate_user_xstate_header(const struct xstate_header *hdr,
+				       struct fpstate *fpstate)
 {
 	/* No unknown or supervisor features may be set */
-	if (hdr->xfeatures & ~xfeatures_mask_uabi())
+	if (hdr->xfeatures & ~fpstate->user_xfeatures)
 		return -EINVAL;
 
 	/* Userspace must use the uncompacted format */
@@ -1138,9 +1139,10 @@ static int copy_from_buffer(void *dst, unsigned int offset, unsigned int size,
  *	the PKRU register to the hardware init value (0) if the corresponding
  *	xfeatures bit is not set is emulated here.
  */
-static int copy_uabi_to_xstate(struct xregs_state *xsave, const void *kbuf,
+static int copy_uabi_to_xstate(struct fpstate *fpstate, const void *kbuf,
 			       const void __user *ubuf, u32 *pkru)
 {
+	struct xregs_state *xsave = &fpstate->regs.xsave;
 	unsigned int offset, size;
 	struct xstate_header hdr;
 	u64 mask;
@@ -1150,7 +1152,7 @@ static int copy_uabi_to_xstate(struct xregs_state *xsave, const void *kbuf,
 	if (copy_from_buffer(&hdr, offset, sizeof(hdr), kbuf, ubuf))
 		return -EFAULT;
 
-	if (validate_user_xstate_header(&hdr))
+	if (validate_user_xstate_header(&hdr, fpstate))
 		return -EINVAL;
 
 	/* Validate MXCSR when any of the related features is in use */
@@ -1213,9 +1215,9 @@ static int copy_uabi_to_xstate(struct xregs_state *xsave, const void *kbuf,
  * Convert from a ptrace standard-format kernel buffer to kernel XSAVE[S]
  * format and copy to the target thread. Used by ptrace and KVM.
  */
-int copy_uabi_from_kernel_to_xstate(struct xregs_state *xsave, const void *kbuf, u32 *pkru)
+int copy_uabi_from_kernel_to_xstate(struct fpstate *fpstate, const void *kbuf, u32 *pkru)
 {
-	return copy_uabi_to_xstate(xsave, kbuf, NULL, pkru);
+	return copy_uabi_to_xstate(fpstate, kbuf, NULL, pkru);
 }
 
 /*
@@ -1226,7 +1228,7 @@ int copy_uabi_from_kernel_to_xstate(struct xregs_state *xsave, const void *kbuf,
 int copy_sigframe_from_user_to_xstate(struct task_struct *tsk,
 				      const void __user *ubuf)
 {
-	return copy_uabi_to_xstate(&tsk->thread.fpu.state.xsave, NULL, ubuf, &tsk->thread.pkru);
+	return copy_uabi_to_xstate(tsk->thread.fpu.fpstate, NULL, ubuf, &tsk->thread.pkru);
 }
 
 static bool validate_independent_components(u64 mask)
