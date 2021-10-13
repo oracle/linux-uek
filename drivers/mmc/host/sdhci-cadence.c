@@ -15,6 +15,10 @@
 
 #include "sdhci-pltfm.h"
 
+#define DRV_CALC_SETTINGS	(1)
+
+#define SDMCLK_MAX_FREQ		200000000
+
 #define SDHCI_CDNS_HRS00			0x00
 #define SDHCI_CDNS_HRS00_SWR			BIT(0)
 
@@ -494,6 +498,7 @@ static int sdhci_cdns_sd6_phy_clock_validate(struct sdhci_cdns_sd6_phy *phy)
 	else
 		t_sdclk = phy->t_sdclk;
 
+#ifndef DRV_CALC_SETTINGS
 	if (t_sdclk < phy->t_sdmclk)
 		status = -1;
 
@@ -502,6 +507,7 @@ static int sdhci_cdns_sd6_phy_clock_validate(struct sdhci_cdns_sd6_phy *phy)
 
 	if ((t_sdclk < phy->t.t_sdclk_min) || (t_sdclk > phy->t.t_sdclk_max))
 		status = -1;
+#endif
 
 	return status;
 }
@@ -998,9 +1004,10 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	u32 reg;
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
+#ifndef DRV_CALC_SETTINGS
 	/* Override the values for now till the driver is fixed */
 	sdhci_cdns_sd6_calc_phy(phy);
-
+#endif
 	sdhci_cdns_sd6_dll_reset(priv, true);
 
 	reg = sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DQS_TIMING);
@@ -1164,7 +1171,7 @@ static unsigned int sdhci_cdns_get_timeout_clock(struct sdhci_host *host)
 
 static unsigned int sdhci_cdns_get_max_clock(struct sdhci_host *host)
 {
-	return 200000000;
+	return SDMCLK_MAX_FREQ;
 }
 
 static void sdhci_cdns_set_emmc_mode(struct sdhci_cdns_priv *priv, u32 mode)
@@ -1218,9 +1225,9 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 	}
 
 	if (mode != SDHCI_CDNS_HRS06_MODE_MMC_HS200)
-		mode = phy->mode;// SDHCI_CDNS_HRS06_MODE_MMC_HS200;
+		mode = phy->mode;
 
-	dev_info(mmc_dev(host->mmc), "%s mode %d timing %d\n", __func__, mode, timing);
+	pr_debug("%s mode %d timing %d\n", __func__, mode, timing);
 	sdhci_cdns_set_emmc_mode(priv, mode);
 
 	/* For SD, fall back to the default handler */
@@ -1345,10 +1352,10 @@ static void sdhci_cdns_sd6_set_uhs_signaling(struct sdhci_host *host,
 		return;
 
 	if (sdhci_cdns_sd6_phy_update_timings(priv))
-		dev_info(mmc_dev(host->mmc), "%s: update timings failed\n", __func__);
+		pr_debug("%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
-		dev_info(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
+		pr_debug("%s: phy init failed\n", __func__);
 }
 
 static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
@@ -1362,13 +1369,13 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 	phy->t_sdclk = DIV_ROUND_DOWN_ULL(1e12, clock);
 #endif
 
-	dev_info(mmc_dev(host->mmc), "%s %d %d\n", __func__, phy->mode, clock);
+	pr_debug("%s %d %d\n", __func__, phy->mode, clock);
 
 	if (sdhci_cdns_sd6_phy_update_timings(priv))
-		dev_info(mmc_dev(host->mmc), "%s: update timings failed\n", __func__);
+		pr_debug("%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
-		dev_info(mmc_dev(host->mmc), "%s: phy init failed\n", __func__);
+		pr_debug("%s: phy init failed\n", __func__);
 
 	sdhci_set_clock(host, clock);
 }
@@ -1410,19 +1417,14 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 	if (!phy)
 		return -ENOMEM;
 
-#ifdef DRV_CALC_SETTINGS
-	// TODO chyba to mozna wziac z rejestru
 	clk = devm_clk_get(dev, "sdmclk");
 	if (IS_ERR(clk)) {
-		dev_dbg(dev, "sdmclk get error\n");
+		dev_err(dev, "sdmclk get error\n");
 		return PTR_ERR(clk);
 	}
 
 	val = clk_get_rate(clk);
 	phy->t_sdmclk = DIV_ROUND_DOWN_ULL(1e12, val);
-#else
-	phy->t_sdmclk = 5000; //DIV_ROUND_DOWN_ULL(1e12, val);
-#endif
 
 	ret = of_property_read_u32(dev->of_node, "cdns,iocell_input_delay",
 				   &phy->d.iocell_input_delay);
@@ -1457,9 +1459,10 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 	} else
 		phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
 
-	phy->d.iocell_input_delay = phy->d.iocell_output_delay = 0;
-
-	phy->d.delay_element_org = phy->d.delay_element;
+	/* Override dts entry for now */
+	phy->d.delay_element_org = phy->d.delay_element = 24;
+	phy->d.iocell_input_delay = 650;
+	phy->d.iocell_output_delay = 1800;
 
 	switch (phy->mode) {
 	case SDHCI_CDNS_HRS06_MODE_MMC_SDR:
@@ -1484,6 +1487,7 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 
 	priv->phy = phy;
 
+	sdhci_cdns_sd6_calc_phy(phy);
 	return 0;
 }
 
@@ -1678,9 +1682,9 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	pltfm_host = sdhci_priv(host);
 	pltfm_host->clk = clk;
 
-	host->max_clk = 200000000;
-	host->clock = 25000000;
-	host->quirks |=  SDHCI_QUIRK_NO_MULTIBLOCK;
+	host->clk_mul = 0;
+	host->max_clk = SDMCLK_MAX_FREQ;
+	host->quirks |=  SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN;
 	host->quirks2 |= SDHCI_QUIRK2_PRESET_VALUE_BROKEN;
 	priv = sdhci_pltfm_priv(pltfm_host);
 	priv->hrs_addr = host->ioaddr;
