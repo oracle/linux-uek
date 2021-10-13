@@ -1461,6 +1461,30 @@ DEFINE_EVENT(rds_tcp, rds_tcp_shutdown,
 	TP_ARGS(conn, cp, tc, sk, reason, err)
 );
 
+TRACE_EVENT(rds_ib_free_cache_one,
+
+	    TP_PROTO(struct rds_ib_cache_head *chead,
+		     int cpu,
+		     char *type),
+
+	    TP_ARGS(chead, cpu, type),
+
+	    TP_STRUCT__entry(
+		    __field(__u16, cpu)
+		    __field(__u16, count)
+		    __array(char, type, RDS_STRSIZE)
+		    ),
+
+	    TP_fast_assign(
+		    __entry->cpu = cpu;
+		    __entry->count = atomic_read(&chead->count);
+		    RDS_STRLCPY(__entry->type, type);
+		    ),
+
+	    TP_printk("RDS/IB: Free %d %s from percpu-%d",
+		      __entry->count, __entry->type,  __entry->cpu)
+);
+
 #endif /* _TRACE_RDS_H */
 
 #undef TRACE_INCLUDE_PATH
