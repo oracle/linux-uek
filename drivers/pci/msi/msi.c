@@ -482,7 +482,8 @@ unlock:
 	return ret;
 }
 
-static void __iomem *msix_map_region(struct pci_dev *dev, unsigned nr_entries)
+static void __iomem *msix_map_region(struct pci_dev *dev,
+				     unsigned int nr_entries)
 {
 	resource_size_t phys_addr;
 	u32 table_offset;
