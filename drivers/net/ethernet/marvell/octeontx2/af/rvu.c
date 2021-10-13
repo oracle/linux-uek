@@ -857,6 +857,7 @@ static int rvu_setup_nix_hw_resource(struct rvu *rvu, int blkaddr)
 	block->lfcfg_reg = NIX_PRIV_LFX_CFG;
 	block->msixcfg_reg = NIX_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = NIX_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "NIX%d", blkid);
 	rvu->nix_blkaddr[blkid] = blkaddr;
 	return rvu_alloc_bitmap(&block->lf);
@@ -886,6 +887,7 @@ static int rvu_setup_cpt_hw_resource(struct rvu *rvu, int blkaddr)
 	block->lfcfg_reg = CPT_PRIV_LFX_CFG;
 	block->msixcfg_reg = CPT_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = CPT_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "CPT%d", blkid);
 	return rvu_alloc_bitmap(&block->lf);
 }
@@ -943,6 +945,7 @@ static int rvu_setup_hw_resources(struct rvu *rvu)
 	block->lfcfg_reg = NPA_PRIV_LFX_CFG;
 	block->msixcfg_reg = NPA_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = NPA_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "NPA");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -982,6 +985,7 @@ nix:
 	block->lfcfg_reg = SSO_PRIV_LFX_HWGRP_CFG;
 	block->msixcfg_reg = SSO_PRIV_LFX_HWGRP_INT_CFG;
 	block->lfreset_reg = SSO_AF_LF_HWGRP_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "SSO GROUP");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -1006,6 +1010,7 @@ ssow:
 	block->lfcfg_reg = SSOW_PRIV_LFX_HWS_CFG;
 	block->msixcfg_reg = SSOW_PRIV_LFX_HWS_INT_CFG;
 	block->lfreset_reg = SSOW_AF_LF_HWS_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "SSOWS");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -1031,6 +1036,7 @@ tim:
 	block->lfcfg_reg = TIM_PRIV_LFX_CFG;
 	block->msixcfg_reg = TIM_PRIV_LFX_INT_CFG;
 	block->lfreset_reg = TIM_AF_LF_RST;
+	block->rvu = rvu;
 	sprintf(block->name, "TIM");
 	err = rvu_alloc_bitmap(&block->lf);
 	if (err) {
@@ -2775,6 +2781,8 @@ static void rvu_unregister_interrupts(struct rvu *rvu)
 {
 	int irq;
 
+	rvu_cpt_unregister_interrupts(rvu);
+
 	/* Disable the Mbox interrupt */
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFAF_MBOX_INT_ENA_W1C,
 		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
@@ -2984,6 +2992,11 @@ static int rvu_register_interrupts(struct rvu *rvu)
 		goto fail;
 	}
 	rvu->irq_allocated[offset] = true;
+
+	ret = rvu_cpt_register_interrupts(rvu);
+	if (ret)
+		goto fail;
+
 	return 0;
 
 fail:
