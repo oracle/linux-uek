@@ -49,6 +49,7 @@ unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
 bool prefer_frwr;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
+unsigned int rds_ib_cache_gc_interval = RDS_IB_DEFAULT_CACHE_GC_INTERVAL;
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -60,6 +61,8 @@ module_param(prefer_frwr, bool, 0444);
 MODULE_PARM_DESC(prefer_frwr, "Preference of FRWR over FMR for memory registration(Y/N)");
 module_param(rds_ib_rnr_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
+module_param(rds_ib_cache_gc_interval, int, 0444);
+MODULE_PARM_DESC(rds_ib_cache_gc_interval, " Cache cleanup interval in seconds");
 
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
@@ -98,6 +101,8 @@ static struct ib_mr *rds_ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags)
 
 	return mr;
 }
+
+static void rds_ib_cache_gc_worker(struct work_struct *work);
 
 static int ib_rds_cache_hit_show(struct seq_file *m, void *v)
 {
@@ -264,6 +269,7 @@ static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
 		atomic_set(&head->count, 0);
 		atomic64_set(&head->hit_count, 0);
 		atomic64_set(&head->miss_count, 0);
+		atomic64_set(&head->gc_count, 0);
 	}
 	lfstack_init(&cache->ready);
 	atomic64_set(&cache->hit_count, 0);
@@ -289,6 +295,7 @@ static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 	cache->percpu = NULL;
 	atomic64_set(&cache->hit_count, 0);
 	atomic64_set(&cache->miss_count, 0);
+	atomic64_set(&head->gc_count, 0);
 }
 
 static int rds_ib_alloc_caches(struct rds_ib_device *rds_ibdev)
@@ -309,45 +316,82 @@ static int rds_ib_alloc_caches(struct rds_ib_device *rds_ibdev)
 			goto out;
 		}
 	}
+	INIT_DELAYED_WORK(&rds_ibdev->i_cache_gc_work, rds_ib_cache_gc_worker);
+	rds_ibdev->i_cache_gc_cpu = 0;
+	rds_queue_delayed_work(NULL, rds_aux_wq, &rds_ibdev->i_cache_gc_work,
+			       msecs_to_jiffies(rds_ib_cache_gc_interval * 1000),
+			       "Cache_Garbage_Collection");
 out:
 	return ret;
 }
 
-static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz)
+static inline void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz)
 {
-	struct rds_ib_cache_head *head;
-	int cpu;
-	struct lfstack_el *cache_item;
-	struct rds_page_frag *frag;
 	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
 
+	frag->f_cache_entry.next = NULL;
+	WARN_ON(!list_empty(&frag->f_item));
+	rds_ib_recv_free_frag(frag, cache_frag_pages);
+	atomic_sub(cache_frag_pages, &rds_ib_allocation);
+	kmem_cache_free(rds_ib_frag_slab, frag);
+	rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
+	rds_ib_stats_add(s_ib_recv_removed_from_cache, cache_sz);
+}
+
+static void rds_ib_free_frag_cache_one(struct rds_ib_refill_cache *cache, size_t cache_sz, int cpu)
+{
+	struct lfstack_el *cache_item;
+	struct rds_page_frag *frag;
+	struct rds_ib_cache_head *head = per_cpu_ptr(cache->percpu, cpu);
+
+	trace_rds_ib_free_cache_one(head, cpu, "frag(s)");
+	while ((cache_item = lfstack_pop(&head->stack))) {
+		atomic_dec(&head->count);
+		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
+		rds_ib_free_one_frag(frag, cache_sz);
+	}
+}
+
+static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz)
+{
+	int cpu;
+	struct rds_ib_cache_head *head;
+	struct lfstack_el *cache_item;
+	struct rds_page_frag *frag;
+
 	for_each_possible_cpu(cpu) {
+		rds_ib_free_frag_cache_one(cache, cache_sz, cpu);
 		head = per_cpu_ptr(cache->percpu, cpu);
-		while ((cache_item = lfstack_pop(&head->stack))) {
-			frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
-			frag->f_cache_entry.next = NULL;
-			WARN_ON(!list_empty(&frag->f_item));
-			rds_ib_recv_free_frag(frag, cache_frag_pages);
-			atomic_sub(cache_frag_pages, &rds_ib_allocation);
-			kmem_cache_free(rds_ib_frag_slab, frag);
-			rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
-			rds_ib_stats_add(s_ib_recv_removed_from_cache, cache_sz);
-		}
 		lfstack_free(&head->stack);
 		atomic_set(&head->count, 0);
 	}
 	while ((cache_item = lfstack_pop(&cache->ready))) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
-		frag->f_cache_entry.next = NULL;
-		WARN_ON(!list_empty(&frag->f_item));
-		rds_ib_recv_free_frag(frag, cache_frag_pages);
-		atomic_sub(cache_frag_pages, &rds_ib_allocation);
-		kmem_cache_free(rds_ib_frag_slab, frag);
-		rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
-		rds_ib_stats_add(s_ib_recv_removed_from_cache, cache_sz);
+		rds_ib_free_one_frag(frag, cache_sz);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
+}
+
+static inline void rds_ib_free_one_inc(struct rds_ib_incoming *inc)
+{
+	inc->ii_cache_entry.next = 0;
+	WARN_ON(!list_empty(&inc->ii_frags));
+	kmem_cache_free(rds_ib_incoming_slab, inc);
+}
+
+static void rds_ib_free_inc_cache_one(struct rds_ib_refill_cache *cache, int cpu)
+{
+	struct lfstack_el *cache_item;
+	struct rds_ib_incoming *inc;
+	struct rds_ib_cache_head *head = per_cpu_ptr(cache->percpu, cpu);
+
+	trace_rds_ib_free_cache_one(head, cpu, "inc(s)");
+	while ((cache_item = lfstack_pop(&head->stack))) {
+		atomic_dec(&head->count);
+		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
+		rds_ib_free_one_inc(inc);
+	}
 }
 
 static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
@@ -358,21 +402,14 @@ static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
 	struct rds_ib_incoming *inc;
 
 	for_each_possible_cpu(cpu) {
+		rds_ib_free_inc_cache_one(cache, cpu);
 		head = per_cpu_ptr(cache->percpu, cpu);
-		while ((cache_item = lfstack_pop(&head->stack))) {
-			inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
-			inc->ii_cache_entry.next = 0;
-			WARN_ON(!list_empty(&inc->ii_frags));
-			kmem_cache_free(rds_ib_incoming_slab, inc);
-		}
 		lfstack_free(&head->stack);
 		atomic_set(&head->count, 0);
 	}
 	while ((cache_item = lfstack_pop(&cache->ready))) {
 		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
-		inc->ii_cache_entry.next = 0;
-		WARN_ON(!list_empty(&inc->ii_frags));
-		kmem_cache_free(rds_ib_incoming_slab, inc);
+		rds_ib_free_one_inc(inc);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
@@ -382,12 +419,51 @@ static void rds_ib_free_caches(struct rds_ib_device *rds_ibdev)
 {
 	int i;
 
+	cancel_delayed_work(&rds_ibdev->i_cache_gc_work);
 	rds_ib_free_inc_cache(&rds_ibdev->i_cache_incs);
-	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++) {
-		size_t cache_sz = (1 << i) * PAGE_SIZE;
+	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++)
+		rds_ib_free_frag_cache(rds_ibdev->i_cache_frags + i, PAGE_SIZE << i);
+}
 
-		rds_ib_free_frag_cache(rds_ibdev->i_cache_frags + i, cache_sz);
+static bool rds_ib_cache_need_gc(struct rds_ib_refill_cache *cache, int cpu)
+{
+	struct rds_ib_cache_head *head;
+	u64 nmbr;
+	bool ret;
+
+	head = per_cpu_ptr(cache->percpu, cpu);
+	nmbr = atomic64_read(&head->miss_count) + atomic64_read(&head->hit_count);
+
+	ret = (atomic64_read(&head->gc_count) == nmbr && atomic_read(&head->count) > 0);
+	atomic64_set(&head->gc_count, nmbr);
+	return ret;
+}
+
+static void rds_ib_cache_gc_worker(struct work_struct *work)
+{
+	int i, j;
+	int nmbr_to_check = num_possible_cpus() / 2;
+	struct rds_ib_device *rds_ibdev = container_of(work,
+						       struct rds_ib_device,
+						       i_cache_gc_work.work);
+
+	for (j = 0; j < nmbr_to_check; j++) {
+		if (rds_ib_cache_need_gc(&rds_ibdev->i_cache_incs, rds_ibdev->i_cache_gc_cpu))
+			rds_ib_free_inc_cache_one(&rds_ibdev->i_cache_incs, rds_ibdev->i_cache_gc_cpu);
+
+		for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++)
+			if (rds_ib_cache_need_gc(rds_ibdev->i_cache_frags + i, rds_ibdev->i_cache_gc_cpu))
+				rds_ib_free_frag_cache_one(rds_ibdev->i_cache_frags + i,
+							   PAGE_SIZE << i,
+							   rds_ibdev->i_cache_gc_cpu);
+
+		if (++rds_ibdev->i_cache_gc_cpu >= num_possible_cpus())
+			rds_ibdev->i_cache_gc_cpu = 0;
 	}
+
+	rds_queue_delayed_work(NULL, rds_aux_wq, &rds_ibdev->i_cache_gc_work,
+			       msecs_to_jiffies(rds_ib_cache_gc_interval * 1000),
+			       "Cache_Garbage_Collection");
 }
 
 /* Reference counter for struct rds_ib_device on the module */

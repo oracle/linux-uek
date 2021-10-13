@@ -34,6 +34,8 @@
 
 #define RDS_IB_DEFAULT_RNR_RETRY_COUNT  7
 
+#define RDS_IB_DEFAULT_CACHE_GC_INTERVAL  20
+
 #define RDS_IB_DEFAULT_NUM_ARPS		100
 
 #define RDS_IB_RX_LIMIT			10000
@@ -107,6 +109,7 @@ struct rds_ib_cache_head {
 	atomic_t		count;
 	atomic64_t		hit_count;
 	atomic64_t		miss_count;
+	atomic64_t		gc_count;
 };
 
 struct rds_ib_refill_cache {
@@ -484,6 +487,8 @@ struct rds_ib_device {
 	struct mutex		free_dev_lock;
 	struct rds_ib_refill_cache i_cache_incs;
 	struct rds_ib_refill_cache i_cache_frags[RDS_FRAG_CACHE_ENTRIES];
+	struct delayed_work        i_cache_gc_work;
+	int			   i_cache_gc_cpu;
 	struct dentry *debugfs_dir;
 
 	atomic_t		rid_refcount;
