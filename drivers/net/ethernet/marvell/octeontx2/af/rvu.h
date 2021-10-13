@@ -898,7 +898,6 @@ bool is_mcam_entry_enabled(struct rvu *rvu, struct npc_mcam *mcam, int blkaddr,
 			   int index);
 
 /* CPT APIs */
-int rvu_cpt_init(struct rvu *rvu);
 int rvu_cpt_register_interrupts(struct rvu *rvu);
 void rvu_cpt_unregister_interrupts(struct rvu *rvu);
 int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf,
