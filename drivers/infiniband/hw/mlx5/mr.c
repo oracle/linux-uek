@@ -499,7 +499,6 @@ static struct mlx5_ib_mr *alloc_cached_mr(struct mlx5_ib_dev *dev, int order)
 	struct mlx5_cache_ent *ent;
 	int last_umr_cache_entry;
 	int c;
-	int i;
 
 	c = order2idx(dev, order);
 	last_umr_cache_entry = order2idx(dev, mr_cache_max_order(dev));
@@ -508,26 +507,21 @@ static struct mlx5_ib_mr *alloc_cached_mr(struct mlx5_ib_dev *dev, int order)
 		return NULL;
 	}
 
-	for (i = c; i <= last_umr_cache_entry; i++) {
-		ent = &cache->ent[i];
+	ent = &cache->ent[c];
 
-		mlx5_ib_dbg(dev, "order %d, cache index %d\n", ent->order, i);
-
-		spin_lock_irq(&ent->lock);
-		if (!list_empty(&ent->head)) {
-			mr = list_first_entry(&ent->head, struct mlx5_ib_mr,
-					      list);
-			list_del(&mr->list);
-			ent->cur--;
-			spin_unlock_irq(&ent->lock);
-			if (ent->cur < ent->limit)
-				queue_work(cache->wq, &ent->work);
-			break;
-		}
+        spin_lock_irq(&ent->lock);
+        if (!list_empty(&ent->head)) {
+		mr = list_first_entry(&ent->head, struct mlx5_ib_mr, list);
+		list_del(&mr->list);
+		ent->cur--;
 		spin_unlock_irq(&ent->lock);
-
-		queue_work(cache->wq, &ent->work);
+		if (ent->cur < ent->limit)
+			queue_work(cache->wq, &ent->work);
+		return mr;
 	}
+	spin_unlock_irq(&ent->lock);
+
+	queue_work(cache->wq, &ent->work);
 
 	if (!mr)
 		cache->ent[c].miss++;
