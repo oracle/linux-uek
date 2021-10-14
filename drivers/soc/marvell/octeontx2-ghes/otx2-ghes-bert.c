@@ -236,17 +236,13 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 
 	bert_entries = (struct bed_bert_mem_entry *)bert_esb;
 
-	strncpy(bert_tbl->header.signature, ACPI_SIG_BERT,
-			  sizeof(bert_tbl->header.signature));
+	strcpy(bert_tbl->header.signature, ACPI_SIG_BERT);
 	bert_tbl->header.length = sizeof(*bert_tbl);
 	bert_tbl->header.revision = 1;
 	bert_tbl->header.oem_revision = 1;
-	strncpy(bert_tbl->header.oem_id, BERT_OEM_ID,
-		sizeof(bert_tbl->header.oem_id));
-	strncpy(bert_tbl->header.oem_table_id, BERT_TBL_OEM_ID,
-		sizeof(bert_tbl->header.oem_table_id));
-	strncpy(bert_tbl->header.asl_compiler_id, BERT_OEM_ID,
-		sizeof(bert_tbl->header.asl_compiler_id));
+	strcpy(bert_tbl->header.oem_id, BERT_OEM_ID);
+	strcpy(bert_tbl->header.oem_table_id, BERT_TBL_OEM_ID);
+	strcpy(bert_tbl->header.asl_compiler_id, BERT_OEM_ID);
 	bert_tbl->header.asl_compiler_revision = 1;
 
 	p = (u8 *)&bert_tbl->header;

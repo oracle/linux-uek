@@ -150,7 +150,7 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	return 0;
 }
 
-int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void *arg)
+static int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void *arg)
 {
 	struct mrvl_ghes_source *core = NULL;
 	struct mrvl_core_error_raport *raport = NULL;
@@ -365,7 +365,6 @@ static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_d
 {
 	struct mrvl_ghes_source *gsrc;
 	phys_addr_t pg_pa;
-	void *pg_va;
 	int i;
 
 	gsrc = ghes_drv->source_list;
@@ -383,10 +382,9 @@ static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_d
 	}
 
 	pg_pa = PFN_PHYS(page_to_pfn(error_status_block_page));
-	pg_va = page_address(error_status_block_page);
 
-	initdbgmsg("Allocated Error Status Address %llx (%llx) pages=%d\n",
-			(unsigned long long)pg_va, (unsigned long long)pg_pa, 1 << order);
+	initdbgmsg("Allocated Error Status Address %llx pages=%d\n",
+		(unsigned long long)pg_pa, 1 << order);
 
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
@@ -834,13 +832,13 @@ static int __init sdei_ghes_of_alloc_hest(struct mrvl_sdei_ghes_drv *ghes_drv)
 
 	hdr = &hest->header;
 
-	strncpy(hdr->signature, ACPI_SIG_HEST, sizeof(hdr->signature));
+	strcpy(hdr->signature, ACPI_SIG_HEST);
 	hdr->length = size;
 	hdr->revision = 1;
-	strncpy(hdr->oem_id, OTX2_HEST_OEM_ID, sizeof(hdr->oem_id));
-	strncpy(hdr->oem_table_id, HEST_TBL_OEM_ID, sizeof(hdr->oem_table_id));
+	strcpy(hdr->oem_id, OTX2_HEST_OEM_ID);
+	strcpy(hdr->oem_table_id, HEST_TBL_OEM_ID);
 	hdr->oem_revision = 1;
-	strncpy(hdr->asl_compiler_id, OTX2_HEST_OEM_ID, sizeof(hdr->asl_compiler_id));
+	strcpy(hdr->asl_compiler_id, OTX2_HEST_OEM_ID);
 	hdr->asl_compiler_revision = 1;
 	p = (u8 *)hdr;
 	while (p < (u8 *)(hdr + 1))
@@ -895,7 +893,6 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 {
 	struct mrvl_sdei_ghes_drv *ghes_drv = NULL;
 	struct device *dev = &pdev->dev;
-	const struct acpi_device_id *acpi_id = NULL;
 	int ret = -ENODEV;
 	bool cn10kx_model = is_soc_cn10kx();
 
@@ -930,7 +927,7 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 
 	if (has_acpi_companion(dev)) {
 		initdbgmsg("%s ACPI\n", __func__);
-		acpi_id = acpi_match_device(dev->driver->acpi_match_table, dev);
+		acpi_match_device(dev->driver->acpi_match_table, dev);
 		ret = sdei_ghes_acpi_match_resource(pdev);
 	} else {
 		initdbgmsg("%s DeviceTree\n", __func__);
