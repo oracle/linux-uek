@@ -550,8 +550,11 @@ static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
  * with other restrictions (e.g. NUMA) of
  * module parameter "rds_ib_preferred_cpu"
  */
-static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic)
+static void rds_ib_cq_follow_affinity(struct work_struct *work)
 {
+	struct rds_ib_connection *ic = container_of(work,
+						    struct rds_ib_connection,
+						    i_cq_follow_affinity_w.work);
 	int preferred_cpu, irqn;
 	struct cpumask preferred_cpu_mask;
 	unsigned long flags;
@@ -605,7 +608,10 @@ static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
 
-	rds_ib_cq_follow_affinity(ic);
+	queue_delayed_work_on(smp_processor_id(),
+			      rds_evt_wq,
+			      &ic->i_cq_follow_affinity_w,
+			      msecs_to_jiffies(RDS_IB_CQ_FOLLOW_AFFINITY_THROTTLE));
 
 	queue_work_on(ic->i_preferred_cpu,
 		      rds_evt_wq, &ic->i_send_w);
@@ -620,7 +626,10 @@ static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
 
-	rds_ib_cq_follow_affinity(ic);
+	queue_delayed_work_on(smp_processor_id(),
+			      rds_evt_wq,
+			      &ic->i_cq_follow_affinity_w,
+			      msecs_to_jiffies(RDS_IB_CQ_FOLLOW_AFFINITY_THROTTLE));
 
 	queue_work_on(ic->i_preferred_cpu,
 		      rds_evt_wq, &ic->i_recv_w);
@@ -2391,6 +2400,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	ic->i_preferred_cpu = WORK_CPU_UNBOUND;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
+	INIT_DELAYED_WORK(&ic->i_cq_follow_affinity_w, rds_ib_cq_follow_affinity);
 
 	INIT_DELAYED_WORK(&ic->i_delayed_free_work,
 			  rds_rdma_conn_delayed_free_worker);
