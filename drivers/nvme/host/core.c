@@ -104,6 +104,16 @@ static void nvme_update_bdev_size(struct gendisk *disk)
 	}
 }
 
+static void nvme_start_ns_queue(struct nvme_ns *ns)
+{
+	blk_mq_unquiesce_queue(ns->queue);
+}
+
+static void nvme_stop_ns_queue(struct nvme_ns *ns)
+{
+	blk_mq_quiesce_queue(ns->queue);
+}
+
 /*
  * Prepare a queue for teardown.
  *
@@ -118,7 +128,7 @@ static void nvme_set_queue_dying(struct nvme_ns *ns)
 		return;
 
 	blk_set_queue_dying(ns->queue);
-	blk_mq_unquiesce_queue(ns->queue);
+	nvme_start_ns_queue(ns);
 
 	set_capacity(ns->disk, 0);
 	nvme_update_bdev_size(ns->disk);
@@ -4648,7 +4658,7 @@ void nvme_stop_queues(struct nvme_ctrl *ctrl)
 
 	down_read(&ctrl->namespaces_rwsem);
 	list_for_each_entry(ns, &ctrl->namespaces, list)
-		blk_mq_quiesce_queue(ns->queue);
+		nvme_stop_ns_queue(ns);
 	up_read(&ctrl->namespaces_rwsem);
 }
 EXPORT_SYMBOL_GPL(nvme_stop_queues);
@@ -4659,7 +4669,7 @@ void nvme_start_queues(struct nvme_ctrl *ctrl)
 
 	down_read(&ctrl->namespaces_rwsem);
 	list_for_each_entry(ns, &ctrl->namespaces, list)
-		blk_mq_unquiesce_queue(ns->queue);
+		nvme_start_ns_queue(ns);
 	up_read(&ctrl->namespaces_rwsem);
 }
 EXPORT_SYMBOL_GPL(nvme_start_queues);
