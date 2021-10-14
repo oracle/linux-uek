@@ -315,12 +315,16 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 
 	/* CTL1 */
 	regval = (((u64)req->bigendian) << 53) |
-		 (((u64)req->clocksource) << 51) |
 		 (1ull << 48) | /* LOCK_EN */
 		 (((u64)req->enableperiodic) << 45) |
 		 (((u64)(req->enableperiodic ^ 1)) << 44) | /* ENA_LDWB */
 		 (((u64)req->enabledontfreebuffer) << 43) |
 		 (u64)(req->bucketsize - 1);
+	if (is_rvu_otx2(rvu))
+		regval |= (((u64)req->clocksource) << 51);
+	else
+		regval |= (((u64)req->clocksource) << 40);
+
 	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
 
 	/* CTL2 */
