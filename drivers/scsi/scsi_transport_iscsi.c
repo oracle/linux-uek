@@ -2693,7 +2693,7 @@ void iscsi_conn_error_event(struct iscsi_cls_conn *conn, enum iscsi_err error)
 
 	iscsi_multicast_skb(skb, ISCSI_NL_GRP_ISCSID, GFP_ATOMIC);
 
-	iscsi_cls_conn_printk(KERN_INFO, conn, "detected conn error (%d)\n",
+	iscsi_cls_conn_printk(KERN_ERR, conn, "detected conn error (%d)\n",
 			      error);
 }
 EXPORT_SYMBOL_GPL(iscsi_conn_error_event);
