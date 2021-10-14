@@ -134,14 +134,6 @@ static void __init fpu__init_system_generic(void)
 }
 
 /*
- * Size of the FPU context state. All tasks in the system use the
- * same context size, regardless of what portion they use.
- * This is inherent to the XSAVE architecture which puts all state
- * components into a single, continuous memory block:
- */
-unsigned int fpu_kernel_xstate_size __ro_after_init;
-
-/*
  * Enforce that 'MEMBER' is the last field of 'TYPE'.
  *
  * Align the computed size with alignment of the TYPE,
@@ -168,7 +160,7 @@ static void __init fpu__init_task_struct_size(void)
 	 * Add back the dynamically-calculated register state
 	 * size.
 	 */
-	task_size += fpu_kernel_xstate_size;
+	task_size += fpu_kernel_cfg.default_size;
 
 	/*
 	 * We dynamically size 'struct fpu', so we require that
@@ -192,25 +184,30 @@ static void __init fpu__init_task_struct_size(void)
  */
 static void __init fpu__init_system_xstate_size_legacy(void)
 {
+	unsigned int size;
+
 	/*
-	 * Note that xstate sizes might be overwritten later during
-	 * fpu__init_system_xstate().
+	 * Note that the size configuration might be overwritten later
+	 * during fpu__init_system_xstate().
 	 */
 	if (!cpu_feature_enabled(X86_FEATURE_FPU))
-		fpu_kernel_xstate_size = sizeof(struct swregs_state);
+		size = sizeof(struct swregs_state);
 	else if (cpu_feature_enabled(X86_FEATURE_FXSR))
-		fpu_kernel_xstate_size = sizeof(struct fxregs_state);
+		size = sizeof(struct fxregs_state);
 	else
-		fpu_kernel_xstate_size = sizeof(struct fregs_state);
+		size = sizeof(struct fregs_state);
 
-	fpu_user_xstate_size = fpu_kernel_xstate_size;
+	fpu_kernel_cfg.max_size = size;
+	fpu_kernel_cfg.default_size = size;
+	fpu_user_cfg.max_size = size;
+	fpu_user_cfg.default_size = size;
 	fpstate_reset(&current->thread.fpu);
 }
 
 static void __init fpu__init_init_fpstate(void)
 {
 	/* Bring init_fpstate size and features up to date */
-	init_fpstate.size		= fpu_kernel_xstate_size;
+	init_fpstate.size		= fpu_kernel_cfg.max_size;
 	init_fpstate.xfeatures		= xfeatures_mask_all;
 }
 
@@ -231,7 +228,7 @@ void __init fpu__init_system(struct cpuinfo_x86 *c)
 
 	fpu__init_system_generic();
 	fpu__init_system_xstate_size_legacy();
-	fpu__init_system_xstate();
+	fpu__init_system_xstate(fpu_kernel_cfg.max_size);
 	fpu__init_task_struct_size();
 	fpu__init_init_fpstate();
 }
