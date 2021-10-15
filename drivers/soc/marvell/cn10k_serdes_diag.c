@@ -856,7 +856,7 @@ static int parse_prbs_params(const char __user *buffer, size_t count,
 
 	params->port &= 0xff;
 
-	if (params->subcmd != PRBS_START) {
+	if (params->subcmd != PRBS_START && params->subcmd != PRBS_STOP) {
 		if (params->subcmd == PRBS_INJECT) {
 			if (argc == 2 || kstrtoint(argv[2], 10, &params->inject_cnt))
 				return -1;
@@ -871,15 +871,18 @@ static int parse_prbs_params(const char __user *buffer, size_t count,
 
 		switch (optcmd) {
 		case PRBS_GENERATOR:
-			params->gen_pattern = _get_pattern(argc, argv, &arg_idx);
+			params->gen_pattern = params->subcmd == PRBS_START ?
+				_get_pattern(argc, argv, &arg_idx) : 1;
 			break;
 
 		case PRBS_CHECKER:
-			params->check_pattern = _get_pattern(argc, argv, &arg_idx);
+			params->check_pattern = params->subcmd == PRBS_START ?
+				_get_pattern(argc, argv, &arg_idx) : 1;
 			break;
 
 		case PRBS_BOTH:
-			params->gen_pattern = _get_pattern(argc, argv, &arg_idx);
+			params->gen_pattern = params->subcmd == PRBS_START ?
+				_get_pattern(argc, argv, &arg_idx) : 1;
 			params->check_pattern = params->gen_pattern;
 			break;
 
@@ -891,6 +894,18 @@ static int parse_prbs_params(const char __user *buffer, size_t count,
 	if (params->gen_pattern == -1 || params->check_pattern == -1)
 		return -1;
 
+	if (params->subcmd == PRBS_STOP &&
+			!params->gen_pattern &&
+			!params->check_pattern) {
+
+		/*
+		 * In case of STOP cmd, if both gen and check
+		 * are not provided, then do stop both
+		 */
+		params->gen_pattern = 1;
+		params->check_pattern = 1;
+	}
+
 	return 0;
 }
 
@@ -900,7 +915,7 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 {
 	int lane_idx;
 	int lanes_num, gserm_idx, mapping;
-	struct prbs_cmd_params input;
+	struct prbs_cmd_params input = {0};
 	struct arm_smccc_res res;
 	s32 x1, x2, x3, x4;
 	char strbuf[32] = {0};
@@ -967,6 +982,12 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 		break;
 	case PRBS_CLEAR:
 		snprintf(strbuf, 32, "counters");
+		break;
+	case PRBS_STOP:
+		snprintf(strbuf, 32, "%s%s%s",
+			input.gen_pattern ? " generator" : "",
+			input.gen_pattern && input.check_pattern ? "," : "",
+			input.check_pattern ? " checker" : "");
 		break;
 	case PRBS_INJECT:
 		snprintf(strbuf, 32, "%d errors", input.inject_cnt);
