@@ -120,14 +120,18 @@ extern unsigned int sysctl_nr_open_min, sysctl_nr_open_max;
 extern int sysctl_nr_trim_pages;
 #endif
 
+extern proc_handler proc_neg_dentry_pc;
+
 /* Constants used for minimum and  maximum */
 #ifdef CONFIG_LOCKUP_DETECTOR
 static int sixty = 60;
 #endif
 
+static int zero;
 static int __maybe_unused neg_one = -1;
 static int __maybe_unused two = 2;
 static int __maybe_unused four = 4;
+static int __maybe_unused ten = 10;
 static unsigned long zero_ul;
 static unsigned long one_ul = 1;
 static unsigned long long_max = LONG_MAX;
@@ -1973,6 +1977,15 @@ static struct ctl_table fs_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ONE,
+	},
+	{
+		.procname	= "neg-dentry-pc",
+		.data		= &neg_dentry_pc,
+		.maxlen		= sizeof(neg_dentry_pc),
+		.mode		= 0644,
+		.proc_handler	= proc_neg_dentry_pc,
+		.extra1		= &zero,
+		.extra2		= &ten,
 	},
 	{ }
 };
