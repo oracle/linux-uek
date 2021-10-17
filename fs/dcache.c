@@ -152,6 +152,11 @@ struct dentry_stat_t {
  * the extra ones will be returned back to the global pool.
  */
 #define NEG_DENTRY_BATCH	(1 << 8)
+#define NEG_PRUNING_SIZE	(1 << 6)
+#define NEG_PRUNING_SLOW_RATE	(HZ/10)
+#define NEG_PRUNING_FAST_RATE	(HZ/50)
+#define NEG_IS_SB_UMOUNTING(sb)	\
+	unlikely(!(sb)->s_root || !((sb)->s_flags & SB_ACTIVE))
 
 static struct static_key limit_neg_key = STATIC_KEY_INIT_FALSE;
 static int neg_dentry_pc_old;
@@ -161,8 +166,16 @@ static long neg_dentry_percpu_limit __read_mostly;
 static long neg_dentry_nfree_init __read_mostly; /* Free pool initial value */
 static struct {
 	raw_spinlock_t nfree_lock;
+	int niter;				/* Pruning iteration count */
+	int lru_count;				/* Per-LRU pruning count */
+	long n_neg;				/* # of negative dentries pruned */
+	long n_pos;				/* # of positive dentries pruned */
 	long nfree;			/* Negative dentry free pool */
+	struct super_block *prune_sb;	/* Super_block for pruning */
 } ndblk ____cacheline_aligned_in_smp;
+
+static void prune_negative_dentry(struct work_struct *work);
+static DECLARE_DELAYED_WORK(prune_neg_dentry_work, prune_negative_dentry);
 
 static DEFINE_PER_CPU(long, nr_dentry);
 static DEFINE_PER_CPU(long, nr_dentry_unused);
@@ -372,6 +385,25 @@ static inline void __neg_dentry_inc(struct dentry *dentry)
 	 */
 	if (!cnt)
 		pr_warn_once("Too many negative dentries.");
+
+	/*
+	 * Initiate negative dentry pruning if free pool has less than
+	 * 1/4 of its initial value.
+	 */
+	if ((READ_ONCE(ndblk.nfree) < READ_ONCE(neg_dentry_nfree_init)/4) &&
+	    !READ_ONCE(ndblk.prune_sb) &&
+	    !cmpxchg(&ndblk.prune_sb, NULL, dentry->d_sb)) {
+		/*
+		 * Abort if umounting is in progress, otherwise take a
+		 * reference and move on.
+		 */
+		if (NEG_IS_SB_UMOUNTING(ndblk.prune_sb)) {
+			WRITE_ONCE(ndblk.prune_sb, NULL);
+		} else {
+			atomic_inc(&ndblk.prune_sb->s_active);
+			schedule_delayed_work(&prune_neg_dentry_work, 1);
+		}
+	}
 }
 
 static inline void neg_dentry_inc(struct dentry *dentry)
@@ -1403,6 +1435,129 @@ void shrink_dcache_sb(struct super_block *sb)
 	} while (list_lru_count(&sb->s_dentry_lru) > 0);
 }
 EXPORT_SYMBOL(shrink_dcache_sb);
+
+/*
+ * A modified version that attempts to remove a limited number of negative
+ * dentries as well as some other non-negative dentries at the front.
+ */
+static enum lru_status dentry_negative_lru_isolate(struct list_head *item,
+		struct list_lru_one *lru, spinlock_t *lru_lock, void *arg)
+{
+	struct list_head *freeable = arg;
+	struct dentry	*dentry = container_of(item, struct dentry, d_lru);
+	enum lru_status	status = LRU_SKIP;
+
+	/*
+	 * Limit amount of dentry walking in each LRU list.
+	 */
+	if (ndblk.lru_count >= NEG_PRUNING_SIZE) {
+		ndblk.lru_count = 0;
+		return LRU_STOP;
+	}
+	ndblk.lru_count++;
+
+	/*
+	 * we are inverting the lru lock/dentry->d_lock here,
+	 * so use a trylock. If we fail to get the lock, just skip
+	 * it
+	 */
+	if (!spin_trylock(&dentry->d_lock))
+		return LRU_SKIP;
+
+	/*
+	 * Referenced dentries are still in use. If they have active
+	 * counts, just remove them from the LRU. Otherwise give them
+	 * another pass through the LRU.
+	 */
+	if (dentry->d_lockref.count) {
+		d_lru_isolate(lru, dentry);
+		status = LRU_REMOVED;
+		goto out;
+	}
+
+	/*
+	 * Dentries with reference bit on are moved back to the tail.
+	 */
+	if (dentry->d_flags & DCACHE_REFERENCED) {
+		dentry->d_flags &= ~DCACHE_REFERENCED;
+		status = LRU_ROTATE;
+		goto out;
+	}
+
+	status = LRU_REMOVED;
+	d_lru_shrink_move(lru, dentry, freeable);
+	if (d_is_negative(dentry))
+		ndblk.n_neg++;
+out:
+	spin_unlock(&dentry->d_lock);
+	return status;
+}
+
+/*
+ * A workqueue function to prune negative dentry.
+ *
+ * The pruning is done gradually over time so as to have as little
+ * performance impact as possible.
+ */
+static void prune_negative_dentry(struct work_struct *work)
+{
+	int freed, last_n_neg;
+	long nfree;
+	struct super_block *sb = READ_ONCE(ndblk.prune_sb);
+	LIST_HEAD(dispose);
+
+	if (!sb)
+		return;
+	if (NEG_IS_SB_UMOUNTING(sb) || !READ_ONCE(neg_dentry_pc))
+		goto stop_pruning;
+
+	ndblk.niter++;
+	ndblk.lru_count = 0;
+	last_n_neg = ndblk.n_neg;
+	freed = list_lru_walk(&sb->s_dentry_lru, dentry_negative_lru_isolate,
+			      &dispose, NEG_DENTRY_BATCH);
+
+	if (freed)
+		shrink_dentry_list(&dispose);
+	ndblk.n_pos += freed - (ndblk.n_neg - last_n_neg);
+
+	/*
+	 * Continue delayed pruning until negative dentry free pool is at
+	 * least 1/2 of the initial value, the super_block has no more
+	 * negative dentries left at the front, or unmounting is in
+	 * progress.
+	 *
+	 * The pruning rate depends on the size of the free pool. The
+	 * faster rate is used when there is less than 1/8 left.
+	 * Otherwise, the slower rate will be used.
+	 */
+	nfree = READ_ONCE(ndblk.nfree);
+	if ((ndblk.n_neg == last_n_neg) ||
+	    (nfree >= neg_dentry_nfree_init/2) || NEG_IS_SB_UMOUNTING(sb))
+		goto stop_pruning;
+
+	schedule_delayed_work(&prune_neg_dentry_work,
+			     (nfree < neg_dentry_nfree_init/8)
+			     ? NEG_PRUNING_FAST_RATE : NEG_PRUNING_SLOW_RATE);
+	return;
+
+stop_pruning:
+#ifdef CONFIG_DEBUG_KERNEL
+	/*
+	 * Report large negative dentry pruning event.
+	 */
+	if (ndblk.n_neg > NEG_PRUNING_SIZE) {
+		pr_info("Negative dentry pruning (SB=%s):\n\t"
+			"%d iterations, %ld/%ld neg/pos dentries freed.\n",
+			ndblk.prune_sb->s_id, ndblk.niter, ndblk.n_neg,
+			ndblk.n_pos);
+	}
+#endif
+	ndblk.niter = 0;
+	ndblk.n_neg = ndblk.n_pos = 0;
+	deactivate_super(sb);
+	WRITE_ONCE(ndblk.prune_sb, NULL);
+}
 
 /**
  * enum d_walk_ret - action to talke during tree walk
