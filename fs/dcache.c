@@ -169,12 +169,9 @@ static int neg_dentry_pc;
 #define NEGATIVE_DENTRY_CHECK_PERIOD	(5 * HZ)	/* Check every 5s */
 #define NEG_WALKING_CAP			(1 << 17)
 
-static long neg_dentry_percpu_limit __read_mostly;
-static long neg_dentry_nfree_init __read_mostly; /* Free pool initial value */
+static long neg_dentry_global_limit __read_mostly;
 static struct {
-	raw_spinlock_t nfree_lock;
 	long n_neg;			/* # of negative dentries pruned */
-	long nfree;			/* Negative dentry free pool */
 	int nprune_on;			/* Flag to continue pruning */
 } ndblk ____cacheline_aligned_in_smp;
 
@@ -228,7 +225,6 @@ static long get_nr_dentry_negative(void)
 
 	for_each_possible_cpu(i)
 		sum += per_cpu(nr_dentry_negative, i);
-	sum += neg_dentry_nfree_init - ndblk.nfree;
 	return sum < 0 ? 0 : sum;
 }
 
@@ -313,25 +309,11 @@ static inline int dentry_string_cmp(const unsigned char *cs, const unsigned char
 #endif
 
 /*
- * Decrement negative dentry count if applicable.
+ * Decrement negative dentry count.
  */
 static inline void __neg_dentry_dec(struct dentry *dentry)
 {
-	if (!static_branch_unlikely(&limit_neg_key)) {
-		this_cpu_dec(nr_dentry_negative);
-		return;
-	}
-
-	if (unlikely(this_cpu_dec_return(nr_dentry_negative) < 0)) {
-		long *pcnt = get_cpu_ptr(&nr_dentry_negative);
-
-		if ((*pcnt < 0) && raw_spin_trylock(&ndblk.nfree_lock)) {
-			WRITE_ONCE(ndblk.nfree, ndblk.nfree + NEG_DENTRY_BATCH);
-			*pcnt += NEG_DENTRY_BATCH;
-			raw_spin_unlock(&ndblk.nfree_lock);
-		}
-		put_cpu_ptr(&nr_dentry_negative);
-	}
+	this_cpu_dec_return(nr_dentry_negative);
 }
 
 static inline void neg_dentry_dec(struct dentry *dentry)
@@ -341,54 +323,11 @@ static inline void neg_dentry_dec(struct dentry *dentry)
 }
 
 /*
- * Try to decrement the negative dentry free pool by NEG_DENTRY_BATCH.
- * The actual decrement returned by the function may be smaller.
- */
-static long __neg_dentry_nfree_dec(long cnt)
-{
-	cnt = max_t(long, NEG_DENTRY_BATCH, cnt);
-	raw_spin_lock(&ndblk.nfree_lock);
-	if (ndblk.nfree < cnt)
-		cnt = (ndblk.nfree > 0) ? ndblk.nfree : 0;
-	WRITE_ONCE(ndblk.nfree, ndblk.nfree - cnt);
-	raw_spin_unlock(&ndblk.nfree_lock);
-	return cnt;
-}
-
-/*
- * Increment the negative dentry count if applicable.
+ * Increment the negative dentry count.
  */
 static inline void __neg_dentry_inc(struct dentry *dentry)
 {
-	long cnt = 0, *pcnt;
-
-	if (!static_branch_unlikely(&limit_neg_key)) {
-		this_cpu_inc(nr_dentry_negative);
-		return;
-	}
-
-	if (likely(this_cpu_inc_return(nr_dentry_negative) <=
-			neg_dentry_percpu_limit))
-		return;
-
-	/*
-	 * Try to move some negative dentry quota from the global free
-	 * pool to the percpu count to allow more negative dentries to
-	 * be added to the LRU.
-	 */
-	pcnt = get_cpu_ptr(&nr_dentry_negative);
-	if ((READ_ONCE(ndblk.nfree) > 0) &&
-			(*pcnt > neg_dentry_percpu_limit)) {
-		cnt = __neg_dentry_nfree_dec(*pcnt - neg_dentry_percpu_limit);
-		*pcnt -= cnt;
-	}
-	put_cpu_ptr(&nr_dentry_negative);
-
-	/*
-	 * Put out a warning if there are too many negative dentries.
-	 */
-	if (!cnt)
-		pr_warn_once("Too many negative dentries.");
+	this_cpu_inc_return(nr_dentry_negative);
 }
 
 static inline void neg_dentry_inc(struct dentry *dentry)
@@ -406,7 +345,7 @@ static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 {
 	/* Rough estimate of # of dentries allocated per page */
 	const unsigned int nr_dentry_page = PAGE_SIZE/sizeof(struct dentry) - 1;
-	unsigned long cnt, new_init, total_ram_pages;
+	unsigned long new_init, total_ram_pages;
 	int ret;
 
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
@@ -416,8 +355,7 @@ static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 
 	/*
 	 * Disable limit_neg_key first when transitioning from neg_dentry_pc
-	 * to !neg_dentry_pc. In this case, we freeze whatever value is in
-	 * neg_dentry_nfree_init and return.
+	 * to !neg_dentry_pc.
 	 */
 	if (!neg_dentry_pc && neg_dentry_pc_old) {
 		static_key_slow_dec(&limit_neg_key.key);
@@ -425,32 +363,16 @@ static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 		goto out;
 	}
 
-	total_ram_pages = totalram_pages();
-	raw_spin_lock(&ndblk.nfree_lock);
-
 	/*
-	 * 20% in global pool & 80% in percpu free.
 	 * Each unit of neg_dentry_pc is 0.1% of memory
-	 * for negative dentries. Hence 'new_init' below
-	 * is 20% of the total value.
+	 * for negative dentries.
 	 */
-	new_init = total_ram_pages * nr_dentry_page * neg_dentry_pc / 5000;
-	cnt = new_init * 4 / num_possible_cpus();
-	if (unlikely((cnt < 2 * NEG_DENTRY_BATCH) && neg_dentry_pc))
-		cnt = 2 * NEG_DENTRY_BATCH;
-	neg_dentry_percpu_limit = cnt;
-
-	/*
-	 * Any change in neg_dentry_nfree_init must be applied to ndblk.nfree
-	 * as well. The ndblk.nfree value may become negative if there is
-	 * a decrease in percentage.
-	 */
-	ndblk.nfree += new_init - neg_dentry_nfree_init;
-	neg_dentry_nfree_init = new_init;
-	raw_spin_unlock(&ndblk.nfree_lock);
-
-	pr_info("Negative dentry: percpu limit = %ld, free pool = %ld\n",
-		neg_dentry_percpu_limit, neg_dentry_nfree_init);
+	total_ram_pages = totalram_pages();
+	new_init = total_ram_pages * nr_dentry_page * neg_dentry_pc / 1000;
+	if (unlikely((new_init < 2 * NEG_DENTRY_BATCH) && neg_dentry_pc))
+		new_init = 2 * NEG_DENTRY_BATCH;
+	neg_dentry_global_limit = new_init;
+	pr_info("Negative dentry: limit = %ld\n", neg_dentry_global_limit);
 
 	/*
 	 * The periodic dentry pruner only runs when the limit is non-zero.
@@ -490,17 +412,16 @@ fs_initcall(init_fs_dcache_neg_dentry_sysctls);
 
 static int negative_dentry_limit_overshot(void)
 {
-	int limit_pc = 0, ncpus = 0;
+	int limit_pc = 0;
 	long count = 0;
 
 	limit_pc = READ_ONCE(neg_dentry_pc);
-	if (!limit_pc || !neg_dentry_percpu_limit)
+	if (!limit_pc || !neg_dentry_global_limit)
 		return 0;
 
-	ncpus = num_possible_cpus();
 	count = get_nr_dentry_negative();
 
-	if (count < ncpus * neg_dentry_percpu_limit)
+	if (count < neg_dentry_global_limit)
 		return 0;
 
 	/*
@@ -1520,7 +1441,6 @@ struct prune_negative_ctrl
 {
 	unsigned long   prune_count;	/* # of dentries pruned */
 	int             prune_percent;
-	int		prune_ncpus;	/* # of cpus */
 };
 
 /*
@@ -1539,7 +1459,7 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
 	/*
 	 * Start pruning when we hit 70% of the limit
 	 */
-	limit = ((neg_dentry_nfree_init + ctrl->prune_ncpus * neg_dentry_percpu_limit) * 30) / 100;
+	limit = (neg_dentry_global_limit * 30) / 100;
 
 	/*
 	 * If the -ve dentry count is within the limit
@@ -1559,8 +1479,8 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
 	 * Add extra 50% so that once pruning starts,
 	 * it continues until we reach 50% of the limit.
 	 */
-	lower_limit = ctrl->prune_ncpus * (neg_dentry_percpu_limit -
-				((neg_dentry_percpu_limit * 50)/ 100));
+	lower_limit = neg_dentry_global_limit / 2;
+
 	/*
 	 * Set the prune off when the -ve dentry
 	 * count reaches the lower limit.
@@ -1612,27 +1532,24 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
  */
 static void prune_negative_dentry(struct work_struct *work)
 {
-	int cpu, limit_pc, ncpus;
-	long last_n_neg, excess, count;
+	int cpu, limit_pc;
+	long last_n_neg, count;
 	struct prune_negative_ctrl ctrl;
 
 	cpu = smp_processor_id();
 	limit_pc = READ_ONCE(neg_dentry_pc);
-	ncpus = num_possible_cpus();
 	count = get_nr_dentry_negative();
 
 	if (!limit_pc)
 		goto stop_pruning;
 
 	/* Check if negative dentry number is within the limit */
-	if ((count <= ncpus * neg_dentry_percpu_limit) &&
-			!(ndblk.nprune_on))
+	if ((count <= neg_dentry_global_limit) && !(ndblk.nprune_on))
 		goto requeue_work;
 
 	last_n_neg = ndblk.n_neg;
 	ctrl.prune_count = 0;
 	ctrl.prune_percent = limit_pc;
-	ctrl.prune_ncpus = ncpus;
 
 	/*
 	 * iterate_supers() will take a read lock on the supers blocking
@@ -1642,35 +1559,11 @@ static void prune_negative_dentry(struct work_struct *work)
 
 requeue_work:
 	/*
-	 * If the negative dentry count in the current cpu is less than the
-	 * per_cpu limit, schedule the pruning in the next cpu if it has
-	 * more negative dentries. This will make the negative dentry count
-	 * reduction spread more evenly across multiple per-cpu counters.
+	 * Schedule the pruning in round robin fashion on cpus.
 	 */
-	excess = neg_dentry_percpu_limit - __this_cpu_read(nr_dentry_negative);
-	if (excess > 0) {
-		int next_cpu = cpumask_next(cpu, cpu_online_mask);
-
-		if (next_cpu >= nr_cpu_ids)
-			next_cpu = cpumask_first(cpu_online_mask);
-		if (per_cpu(nr_dentry_negative, next_cpu) >
-		    __this_cpu_read(nr_dentry_negative)) {
-			cpu = next_cpu;
-
-			/*
-			 * Transfer some of the excess negative dentry count
-			 * to the free pool if the current percpu pool is less
-			 * than 3/4 of the limit.
-			 */
-			if ((excess > neg_dentry_percpu_limit/4) &&
-			    raw_spin_trylock(&ndblk.nfree_lock)) {
-				WRITE_ONCE(ndblk.nfree,
-					   ndblk.nfree + NEG_DENTRY_BATCH);
-				__this_cpu_add(nr_dentry_negative, NEG_DENTRY_BATCH);
-				raw_spin_unlock(&ndblk.nfree_lock);
-			}
-		}
-	}
+	cpu = cpumask_next(cpu, cpu_online_mask);
+	if (cpu >= nr_cpu_ids)
+		cpu = cpumask_first(cpu_online_mask);
 
 	schedule_delayed_work_on(cpu, &prune_neg_dentry_work,
 					NEGATIVE_DENTRY_CHECK_PERIOD);
@@ -3658,8 +3551,6 @@ static void __init dcache_init(void)
 	dentry_cache = KMEM_CACHE_USERCOPY(dentry,
 		SLAB_RECLAIM_ACCOUNT|SLAB_PANIC|SLAB_ACCOUNT,
 		d_iname);
-
-	raw_spin_lock_init(&ndblk.nfree_lock);
 
 	/* Hash may have been set up in dcache_init_early */
 	if (!hashdist)
