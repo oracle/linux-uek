@@ -401,7 +401,8 @@ static inline void __neg_dentry_inc(struct dentry *dentry)
 			WRITE_ONCE(ndblk.prune_sb, NULL);
 		} else {
 			atomic_inc(&ndblk.prune_sb->s_active);
-			schedule_delayed_work(&prune_neg_dentry_work, 1);
+			schedule_delayed_work_on(smp_processor_id(),
+						&prune_neg_dentry_work, 1);
 		}
 	}
 }
@@ -1501,8 +1502,9 @@ out:
  */
 static void prune_negative_dentry(struct work_struct *work)
 {
+	int cpu = smp_processor_id();
 	int freed, last_n_neg;
-	long nfree;
+	long nfree, excess;
 	struct super_block *sb = READ_ONCE(ndblk.prune_sb);
 	LIST_HEAD(dispose);
 
@@ -1536,9 +1538,40 @@ static void prune_negative_dentry(struct work_struct *work)
 	    (nfree >= neg_dentry_nfree_init/2) || NEG_IS_SB_UMOUNTING(sb))
 		goto stop_pruning;
 
-	schedule_delayed_work(&prune_neg_dentry_work,
-			     (nfree < neg_dentry_nfree_init/8)
-			     ? NEG_PRUNING_FAST_RATE : NEG_PRUNING_SLOW_RATE);
+	/*
+	 * If the negative dentry count in the current cpu is less than the
+	 * per_cpu limit, schedule the pruning in the next cpu if it has
+	 * more negative dentries. This will make the negative dentry count
+	 * reduction spread more evenly across multiple per-cpu counters.
+	 */
+	excess = neg_dentry_percpu_limit - __this_cpu_read(nr_dentry_negative);
+	if (excess > 0) {
+		int next_cpu = cpumask_next(cpu, cpu_online_mask);
+
+		if (next_cpu >= nr_cpu_ids)
+			next_cpu = cpumask_first(cpu_online_mask);
+		if (per_cpu(nr_dentry_negative, next_cpu) >
+		    __this_cpu_read(nr_dentry_negative)) {
+			cpu = next_cpu;
+
+			/*
+			 * Transfer some of the excess negative dentry count
+			 * to the free pool if the current percpu pool is less
+			 * than 3/4 of the limit.
+			 */
+			if ((excess > neg_dentry_percpu_limit/4) &&
+			    raw_spin_trylock(&ndblk.nfree_lock)) {
+				WRITE_ONCE(ndblk.nfree,
+					   ndblk.nfree + NEG_DENTRY_BATCH);
+				__this_cpu_add(nr_dentry_negative, NEG_DENTRY_BATCH);
+				raw_spin_unlock(&ndblk.nfree_lock);
+			}
+		}
+	}
+
+	schedule_delayed_work_on(cpu, &prune_neg_dentry_work,
+			(nfree < neg_dentry_nfree_init/8)
+			? NEG_PRUNING_FAST_RATE : NEG_PRUNING_SLOW_RATE);
 	return;
 
 stop_pruning:
