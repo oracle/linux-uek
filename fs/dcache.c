@@ -356,7 +356,7 @@ static long __neg_dentry_nfree_dec(long cnt)
 }
 
 /*
- * I
+ * Increment the negative dentry count if applicable.
  */
 static inline void __neg_dentry_inc(struct dentry *dentry)
 {
@@ -487,6 +487,28 @@ static int __init init_fs_dcache_neg_dentry_sysctls(void)
 }
 fs_initcall(init_fs_dcache_neg_dentry_sysctls);
 #endif /* CONFIG_SYSCTL */
+
+static int negative_dentry_limit_overshot(void)
+{
+	int limit_pc = 0, ncpus = 0;
+	long count = 0;
+
+	limit_pc = READ_ONCE(neg_dentry_pc);
+	if (!limit_pc || !neg_dentry_percpu_limit)
+		return 0;
+
+	ncpus = num_possible_cpus();
+	count = get_nr_dentry_negative();
+
+	if (count < ncpus * neg_dentry_percpu_limit)
+		return 0;
+
+	/*
+	 * Negative dentry count in the
+	 * system has crossed the limit.
+	 */
+	return 1;
+}
 
 static inline int dentry_cmp(const struct dentry *dentry, const unsigned char *ct, unsigned tcount)
 {
@@ -938,6 +960,16 @@ static inline bool retain_dentry(struct dentry *dentry, bool locked)
 	// Explicitly told not to bother
 	if (unlikely(d_flags & DCACHE_DONTCACHE))
 		return false;
+
+	if (d_is_negative(dentry) &&
+		static_branch_unlikely(&limit_neg_key) &&
+			negative_dentry_limit_overshot()) {
+		/*
+		 * Enforce a hard limit on the negative dentry count.
+		 * Dont retain if the count is above the limit.
+		 */
+		return false;
+	}
 
 	// At this point it looks like we ought to keep it.  We also might
 	// need to do something - put it on LRU if it wasn't there already
@@ -1496,7 +1528,7 @@ struct prune_negative_ctrl
  */
 static void prune_negative_one_sb(struct super_block *sb, void *arg)
 {
-	unsigned long freed = 0, scan_once = 0, this_sb_freed = 0;
+	unsigned long freed = 0, scan_once = 0;
 	long limit, lower_limit, this_sb_dentries, excess, prune_this_sb = 0;
 	int this_sb_pc = 0;
 	long count_neg = get_nr_dentry_negative();
@@ -1504,7 +1536,10 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
 	struct prune_negative_ctrl *ctrl = arg;
 	LIST_HEAD(dispose);
 
-	limit = neg_dentry_nfree_init + ctrl->prune_ncpus * neg_dentry_percpu_limit;
+	/*
+	 * Start pruning when we hit 70% of the limit
+	 */
+	limit = ((neg_dentry_nfree_init + ctrl->prune_ncpus * neg_dentry_percpu_limit) * 30) / 100;
 
 	/*
 	 * If the -ve dentry count is within the limit
@@ -1521,11 +1556,11 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
 		ndblk.nprune_on = 1;
 
 	/*
-	 * Add extra 30% so that once pruning starts,
-	 * it continues until we reach 70% of the limit.
+	 * Add extra 50% so that once pruning starts,
+	 * it continues until we reach 50% of the limit.
 	 */
 	lower_limit = ctrl->prune_ncpus * (neg_dentry_percpu_limit -
-				((neg_dentry_percpu_limit * 30)/ 100));
+				((neg_dentry_percpu_limit * 50)/ 100));
 	/*
 	 * Set the prune off when the -ve dentry
 	 * count reaches the lower limit.
@@ -1564,9 +1599,8 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
 					&dispose, this_sb_dentries, scan_once);
 		if (freed) {
 			shrink_dentry_list(&dispose);
-			this_sb_freed += freed;
 		}
-		ctrl->prune_count += this_sb_freed;
+		ctrl->prune_count += freed;
 	}
 }
 
