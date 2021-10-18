@@ -878,6 +878,7 @@ struct rds_sock {
 	/* Transport private info */
 	struct mutex		rs_trans_lock;
 	void			*rs_trans_private;
+	pid_t                   rs_pid;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
