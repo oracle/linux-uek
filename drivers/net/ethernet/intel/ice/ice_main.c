@@ -4827,6 +4827,10 @@ probe_done:
 	if (err)
 		goto err_netdev_reg;
 
+	err = ice_devlink_register_params(pf);
+	if (err)
+		goto err_netdev_reg;
+
 	/* ready to go, so clear down state bit */
 	clear_bit(ICE_DOWN, pf->state);
 	if (ice_is_rdma_ena(pf)) {
@@ -4834,7 +4838,7 @@ probe_done:
 		if (pf->aux_idx < 0) {
 			dev_err(dev, "Failed to allocate device ID for AUX driver\n");
 			err = -ENOMEM;
-			goto err_netdev_reg;
+			goto err_devlink_reg_param;
 		}
 
 		err = ice_init_rdma(pf);
@@ -4853,6 +4857,8 @@ probe_done:
 err_init_aux_unroll:
 	pf->adev = NULL;
 	ida_free(&ice_aux_ida, pf->aux_idx);
+err_devlink_reg_param:
+	ice_devlink_unregister_params(pf);
 err_netdev_reg:
 err_send_version_unroll:
 	ice_vsi_release_all(pf);
@@ -4966,6 +4972,7 @@ static void ice_remove(struct pci_dev *pdev)
 	ice_unplug_aux_dev(pf);
 	if (pf->aux_idx >= 0)
 		ida_free(&ice_aux_ida, pf->aux_idx);
+	ice_devlink_unregister_params(pf);
 	set_bit(ICE_DOWN, pf->state);
 
 	ice_deinit_lag(pf);
