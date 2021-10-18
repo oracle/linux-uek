@@ -156,7 +156,7 @@ struct dentry_stat_t dentry_stat = {
 #define NEG_IS_SB_UMOUNTING(sb)	\
 	unlikely(!(sb)->s_root || !((sb)->s_flags & MS_ACTIVE))
 
-static struct static_key limit_neg_key = STATIC_KEY_INIT_FALSE;
+DEFINE_STATIC_KEY_FALSE(limit_neg_key);
 static int neg_dentry_pc_old;
 int neg_dentry_pc;
 EXPORT_SYMBOL_GPL(neg_dentry_pc);
@@ -292,7 +292,7 @@ static inline int dentry_string_cmp(const unsigned char *cs, const unsigned char
  */
 static void __neg_dentry_dec(struct dentry *dentry)
 {
-	if (!static_key_enabled(&limit_neg_key)) {
+	if (!static_branch_unlikely(&limit_neg_key)) {
 		this_cpu_dec(nr_dentry_neg);
 		return;
 	}
@@ -337,7 +337,7 @@ static void __neg_dentry_inc(struct dentry *dentry)
 {
 	long cnt = 0, *pcnt;
 
-	if (!static_key_enabled(&limit_neg_key)) {
+	if (!static_branch_unlikely(&limit_neg_key)) {
 		this_cpu_inc(nr_dentry_neg);
 		return;
 	}
@@ -414,7 +414,7 @@ int proc_neg_dentry_pc(struct ctl_table *ctl, int write,
 	 * neg_dentry_nfree_init and return.
 	 */
 	if (!neg_dentry_pc && neg_dentry_pc_old) {
-		static_key_slow_dec(&limit_neg_key);
+		static_key_slow_dec(&limit_neg_key.key);
 		goto out;
 	}
 
@@ -440,7 +440,7 @@ int proc_neg_dentry_pc(struct ctl_table *ctl, int write,
 		neg_dentry_percpu_limit, neg_dentry_nfree_init);
 
 	if (!neg_dentry_pc_old)
-		static_key_slow_inc(&limit_neg_key);
+		static_key_slow_inc(&limit_neg_key.key);
 out:
 	neg_dentry_pc_old = neg_dentry_pc;
 	return 0;
