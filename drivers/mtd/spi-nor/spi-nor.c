@@ -2735,6 +2735,46 @@ write_err:
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_MTD_PSTORE)
+static int spi_nor_panic_write(struct mtd_info *mtd, loff_t to, size_t len,
+	size_t *retlen, const u_char *buf)
+{
+	struct spi_nor *nor = mtd_to_spi_nor(mtd);
+	size_t page_offset, page_remain, i;
+	ssize_t ret;
+
+	nor->pstore = 1;
+	for (i = 0; i < len; ) {
+		ssize_t written;
+		loff_t addr = to + i;
+
+		if (hweight32(nor->page_size) == 1) {
+			page_offset = addr & (nor->page_size - 1);
+		} else {
+			uint64_t aux = addr;
+
+			page_offset = do_div(aux, nor->page_size);
+		}
+		/* the size of data remaining on the first page */
+		page_remain = min_t(size_t,
+				    nor->page_size - page_offset, len - i);
+
+		addr = spi_nor_convert_addr(nor, addr);
+
+		ret = spi_nor_write_data(nor, addr, page_remain, buf + i);
+		if (ret < 0)
+			return ret;
+
+		written = ret;
+
+		*retlen += written;
+		i += written;
+	}
+
+	return 0;
+}
+#endif
+
 static int spi_nor_check(struct spi_nor *nor)
 {
 	if (!nor->dev ||
@@ -4914,6 +4954,9 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	mtd->_erase = spi_nor_erase;
 	mtd->_read = spi_nor_read;
 	mtd->_resume = spi_nor_resume;
+#if IS_ENABLED(CONFIG_MTD_PSTORE)
+	mtd->_panic_write = spi_nor_panic_write;
+#endif
 
 	if (nor->params.locking_ops) {
 		mtd->_lock = spi_nor_lock;
