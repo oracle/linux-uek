@@ -1058,6 +1058,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_conn_path = NULL;
 	rs->rs_netfilter_enabled = 0;
 	rs->rs_rx_traces = 0;
+	rs->rs_pid = current->pid;
 
 	spin_lock_init(&rs->rs_snd_lock);
 	ret = rhashtable_init(&rs->rs_buf_info_tbl, &rs_buf_info_params);
@@ -1240,6 +1241,7 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 		sinfo.bound_port = rs->rs_bound_port;
 		sinfo.connected_port = rs->rs_conn_port;
 		sinfo.inum = sock_i_ino(rds_rs_to_sk(rs));
+		sinfo.pid = rs->rs_pid;
 
 		rds_info_copy(iter, &sinfo, sizeof(sinfo));
 	}
@@ -1274,6 +1276,7 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 		sinfo6.bound_port = rs->rs_bound_port;
 		sinfo6.connected_port = rs->rs_conn_port;
 		sinfo6.inum = sock_i_ino(rds_rs_to_sk(rs));
+		sinfo6.pid = rs->rs_pid;
 
 		rds_info_copy(iter, &sinfo6, sizeof(sinfo6));
 	}
