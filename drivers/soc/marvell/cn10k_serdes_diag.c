@@ -62,6 +62,20 @@ static inline int _conv_arr ## _str2enum(const char *str)		\
 	return -1;							\
 }
 
+#define DEFINE_ENUM_2_STR_FUNC(_conv_arr)				\
+static inline const char *_conv_arr ## _enum2str(int val)		\
+{									\
+	size_t idx;							\
+	size_t len = ARRAY_SIZE(_conv_arr);				\
+									\
+	for (idx = 0; idx < len; idx++) {				\
+		if (_conv_arr[idx].e == val)				\
+			return _conv_arr[idx].s;			\
+	}								\
+									\
+	return NULL;							\
+}
+
 #define BUF_SZ 64
 static struct dentry *serdes_dbgfs_root;
 static char *serdes_tuning_shmem;
@@ -106,6 +120,8 @@ static struct {
 
 DEFINE_STR_2_ENUM_FUNC(prbs_optcmd)
 
+#define PAM4_PATTERN(_p) (_p << 8)
+
 enum prbs_pattern {
 	PRBS_7 = 7,
 	PRBS_9 = 9,
@@ -114,8 +130,44 @@ enum prbs_pattern {
 	PRBS_16 = 16,
 	PRBS_23 = 23,
 	PRBS_31 = 31,
-	PRBS_32 = 32
+	PRBS_32 = 32,
+
+	PRBS_11_0 = PAM4_PATTERN(11),
+	PRBS_11_1,
+	PRBS_11_2,
+	PRBS_11_3,
+
+	PRBS_13_0 = PAM4_PATTERN(13),
+	PRBS_13_1,
+	PRBS_13_2,
+	PRBS_13_3,
 };
+
+#define PRBS(_p) {PRBS_ ## _p, #_p}
+
+static struct {
+	enum prbs_pattern e;
+	const char *s;
+} prbs_pattern[] = {
+	PRBS(7),
+	PRBS(9),
+	PRBS(11),
+	PRBS(15),
+	PRBS(16),
+	PRBS(23),
+	PRBS(31),
+	PRBS(32),
+	PRBS(11_0),
+	PRBS(11_1),
+	PRBS(11_2),
+	PRBS(11_3),
+	PRBS(13_0),
+	PRBS(13_1),
+	PRBS(13_2),
+	PRBS(13_3),
+};
+DEFINE_STR_2_ENUM_FUNC(prbs_pattern)
+DEFINE_ENUM_2_STR_FUNC(prbs_pattern)
 
 struct prbs_error_stats {
 	u64 total_bits;
@@ -808,26 +860,10 @@ static inline int _get_pattern(int argc, const char *argv[], int *arg_idx)
 {
 	int pattern;
 
-	if (argc == *arg_idx || kstrtoint(argv[*arg_idx], 10, &pattern))
-		return -1;
-
+	pattern = prbs_pattern_str2enum(argv[*arg_idx]);
 	 (*arg_idx)++;
 
-	switch (pattern) {
-	/* Validate pattern against the list below */
-	case PRBS_7:
-	case PRBS_9:
-	case PRBS_11:
-	case PRBS_15:
-	case PRBS_16:
-	case PRBS_23:
-	case PRBS_31:
-	case PRBS_32:
-		return pattern;
-
-	default:
-		return -1;
-	}
+	return pattern;
 }
 
 static int parse_prbs_params(const char __user *buffer, size_t count,
@@ -969,13 +1005,21 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 			char cbuf[16] = {0};
 			char gbuf[16] = {0};
 
-			if (input.gen_pattern)
-				snprintf(gbuf, 16, " gen=%d",
-						input.gen_pattern);
+			if (input.gen_pattern) {
+				const char *ptrn =
+					prbs_pattern_enum2str(input.gen_pattern);
 
-			if (input.check_pattern)
-				snprintf(cbuf, 16, " check=%d",
-						input.check_pattern);
+				snprintf(gbuf, 16, " gen=%s",
+					ptrn ? ptrn : "");
+			}
+
+			if (input.check_pattern) {
+				const char *ptrn =
+					prbs_pattern_enum2str(input.check_pattern);
+
+				snprintf(cbuf, 16, " check=%s",
+					ptrn ? ptrn : "");
+			}
 
 			snprintf(strbuf, 32, "(patterns:%s%s)", gbuf, cbuf);
 		}
