@@ -603,6 +603,7 @@ struct spi_nor {
 	struct spi_nor_flash_parameter params;
 
 	void *priv;
+	bool pstore;
 };
 
 static u64 __maybe_unused
