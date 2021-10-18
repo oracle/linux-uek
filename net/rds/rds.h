@@ -870,6 +870,7 @@ struct rds_sock {
 	u8			rs_rx_trace[RDS_MSG_RX_DGRAM_TRACE_MAX];
 
 	u32			rs_hash_initval;
+	pid_t                   rs_pid;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
