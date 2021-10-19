@@ -119,7 +119,7 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	gdata->revision = 0x201; // ACPI 4.x
 	if (ring_rec->fru_text[0]) {
 		gdata->validation_bits = ACPI_HEST_GEN_VALID_FRU_STRING;
-		strncpy(gdata->fru_text, ring_rec->fru_text, sizeof(gdata->fru_text));
+		memcpy(gdata->fru_text, ring_rec->fru_text, sizeof(gdata->fru_text));
 	}
 	gdata->error_severity = estatus->error_severity;
 
@@ -195,7 +195,7 @@ static int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void 
 	gdata->revision = 0x201; // ACPI 4.x
 	if (rec->fru_text[0]) {
 		gdata->validation_bits = ACPI_HEST_GEN_VALID_FRU_STRING;
-		strncpy(gdata->fru_text, rec->fru_text, sizeof(gdata->fru_text));
+		memcpy(gdata->fru_text, rec->fru_text, sizeof(gdata->fru_text));
 	}
 	gdata->error_severity = estatus->error_severity;
 
@@ -364,16 +364,20 @@ static int sdei_ghes_driver_deinit(struct platform_device *pdev)
 static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_drv)
 {
 	struct mrvl_ghes_source *gsrc;
+	unsigned long size;
 	phys_addr_t pg_pa;
 	int i;
 
 	gsrc = ghes_drv->source_list;
 
+	size = gsrc[ghes_drv->source_count - 1].esb_pa - gsrc[0].esa_pa + gsrc[0].esb_sz;
+	order = get_order(size);
+
 	if (pfn_valid(PHYS_PFN(gsrc->esa_pa))) {
 		initdbgmsg("%s not required\n", __func__);
 		return 0;
 	} else
-		initdbgmsg("%s required\n", __func__);
+		initdbgmsg("%s required %d bytes %d order\n", __func__, size, order);
 
 	error_status_block_page = alloc_pages(GFP_KERNEL, order);
 	if (!error_status_block_page) {
@@ -938,12 +942,10 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	if (!cn10kx_model) {
-		ret = sdei_ghes_adjust_error_status_block(ghes_drv);
-		if (ret) {
-			dev_err(dev, "Unable adjust status block.\n");
-			return ret;
-		}
+	ret = sdei_ghes_adjust_error_status_block(ghes_drv);
+	if (ret) {
+		dev_err(dev, "Unable adjust status block.\n");
+		return ret;
 	}
 
 	ret = sdei_ghes_setup_resource(ghes_drv);
