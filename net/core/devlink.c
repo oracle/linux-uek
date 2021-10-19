@@ -9151,7 +9151,6 @@ void devlink_register(struct devlink *devlink)
 {
 	ASSERT_DEVLINK_NOT_REGISTERED(devlink);
 	/* Make sure that we are in .probe() routine */
-	device_lock_assert(devlink->dev);
 
 	mutex_lock(&devlink_mutex);
 	xa_set_mark(&devlinks, devlink->index, DEVLINK_REGISTERED);
@@ -9169,7 +9168,6 @@ void devlink_unregister(struct devlink *devlink)
 {
 	ASSERT_DEVLINK_REGISTERED(devlink);
 	/* Make sure that we are in .remove() routine */
-	device_lock_assert(devlink->dev);
 
 	devlink_put(devlink);
 	wait_for_completion(&devlink->comp);
