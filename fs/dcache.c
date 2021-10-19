@@ -37,6 +37,7 @@
 #include "internal.h"
 #include "mount.h"
 
+
 /*
  * Usage:
  * dcache->d_inode->i_lock protects:
@@ -121,6 +122,10 @@ struct dentry_stat_t dentry_stat = {
 	.age_limit = 45,
 };
 
+#ifndef __GENKSYMS__
+#define CREATE_TRACE_POINTS
+#include <trace/events/dcache_neg_dentry_trace.h>
+#endif // __GENKSYMS__
 /*
  * The sysctl parameter "negative-dentry-limit" specifies the limit for the number
  * of negative dentries allowable in a system as a percentage of the total
@@ -1473,6 +1478,8 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
 	struct prune_negative_ctrl *ctrl = arg;
 	LIST_HEAD(dispose);
 
+	trace_prune_negative_one_sb_begin(sb, sb->s_id);
+
 	/*
 	 * Start pruning when we hit 70% of the limit
 	 */
@@ -1539,6 +1546,7 @@ static void prune_negative_one_sb(struct super_block *sb, void *arg)
 		}
 		ctrl->prune_count += freed;
 	}
+	trace_prune_negative_one_sb_end(sb, scan_once, freed);
 }
 
 /*
@@ -1573,6 +1581,8 @@ static void prune_negative_dentry(struct work_struct *work)
 	 * concurrent umount.
 	 */
 	iterate_supers(prune_negative_one_sb, &ctrl);
+
+	trace_prune_negative_dentry(ctrl.prune_count);
 
 requeue_work:
 	/*
