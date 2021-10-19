@@ -9,6 +9,11 @@
 #ifndef __OTX2_SDEI_GHES_H__
 #define __OTX2_SDEI_GHES_H__
 
+#define OCTEONTX_SDEI_RAS_MDC_EVENT		0x40000000
+#define OCTEONTX_SDEI_RAS_MCC_EVENT		0x40000001
+#define OCTEONTX_SDEI_RAS_LMC_EVENT		0x40000002
+#define OCTEONTX_SDEI_RAS_CORE0_EVENT		0x40000003
+
 #define SDEI_GHES_EVENT_NAME_MAX_CHARS 16
 /*
  * Describes an error source per ACPI 18.3.2.6 (Generic Hardware Error Source).

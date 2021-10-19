@@ -291,10 +291,10 @@ static int sdei_ghes_driver_init(struct platform_device *pdev)
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
 
-		if (!strncmp("core", gsrc->name, 4))
-			ret = sdei_event_register(gsrc->id, sdei_ras_core_callback, gsrc);
-		else
+		if (gsrc->id < OCTEONTX_SDEI_RAS_CORE0_EVENT)
 			ret = sdei_event_register(gsrc->id, sdei_ghes_callback, gsrc);
+		else
+			ret = sdei_event_register(gsrc->id, sdei_ras_core_callback, gsrc);
 
 		if (ret < 0) {
 			dev_err(dev, "Error %d registering ghes 0x%x (%s)\n",
@@ -434,9 +434,6 @@ static int __init sdei_ghes_of_match_resource(struct platform_device *pdev)
 
 		gsrc = &ghes_drv->source_list[i];
 
-		// Name
-		strncpy(gsrc->name, child_node->name, sizeof(gsrc->name) - 1);
-
 		// Error Status Address
 		res = of_get_address(child_node, 0, NULL, NULL);
 		if (!res) {
@@ -498,14 +495,16 @@ static int __init sdei_ghes_of_match_resource(struct platform_device *pdev)
 static void __init sdei_ghes_set_name(struct mrvl_sdei_ghes_drv *ghes_drv)
 {
 	u32 i;
+	u32 core;
 	struct device_node *of_node;
 	struct device_node *child_node;
 	struct mrvl_ghes_source *gsrc;
 
 	of_node = of_find_matching_node(NULL, sdei_ghes_of_match);
 	i = 0;
+	core = 0;
 
-	if (of_node) {
+	if (!of_node) {
 		for_each_available_child_of_node(of_node, child_node) {
 			gsrc = &ghes_drv->source_list[i];
 			strncpy(gsrc->name, child_node->name, sizeof(gsrc->name) - 1);
@@ -515,7 +514,14 @@ static void __init sdei_ghes_set_name(struct mrvl_sdei_ghes_drv *ghes_drv)
 	} else {
 		for (i = 0; i < ghes_drv->source_count; i++) {
 			gsrc = &ghes_drv->source_list[i];
-			sprintf(gsrc->name, "GHES%d", i);
+			if (gsrc->id < OCTEONTX_SDEI_RAS_CORE0_EVENT)
+				sprintf(gsrc->name, "CORE%d", core++);
+			else if (gsrc->id == OCTEONTX_SDEI_RAS_MDC_EVENT)
+				sprintf(gsrc->name, "MDC");
+			else if (gsrc->id == OCTEONTX_SDEI_RAS_MCC_EVENT)
+				sprintf(gsrc->name, "MCC");
+			else if (gsrc->id == OCTEONTX_SDEI_RAS_LMC_EVENT)
+				sprintf(gsrc->name, "LMC");
 			initdbgmsg("%s %s\n", __func__, gsrc->name);
 		}
 	}
