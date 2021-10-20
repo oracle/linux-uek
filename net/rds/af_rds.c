@@ -1434,7 +1434,7 @@ static int __init rds_init(void)
 
 	ret = rds_conn_init();
 	if (ret)
-		goto out;
+		goto out_slab;
 	ret = rds_threads_init();
 	if (ret)
 		goto out_conn;
@@ -1480,6 +1480,8 @@ out_conn:
 	rds_conn_exit();
 	rds_cong_exit();
 	rds_page_exit();
+out_slab:
+	kmem_cache_destroy(rds_rs_buf_info_slab);
 out:
 	return ret;
 }
