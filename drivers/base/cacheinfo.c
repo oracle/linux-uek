@@ -140,7 +140,7 @@ static bool cache_node_is_unified(struct cacheinfo *this_leaf,
 	return of_property_read_bool(np, "cache-unified");
 }
 
-static void cache_of_set_id(struct cacheinfo *this_leaf, struct device_node *np)
+unsigned long cache_of_get_id(struct device_node *np)
 {
 	struct device_node *cpu;
 	unsigned long min_id = ~0UL;
@@ -159,8 +159,15 @@ static void cache_of_set_id(struct cacheinfo *this_leaf, struct device_node *np)
 		}
 	}
 
-	if (min_id != ~0UL) {
-		this_leaf->id = min_id;
+	return min_id;
+}
+
+static void cache_of_set_id(struct cacheinfo *this_leaf, struct device_node *np)
+{
+	unsigned long id = cache_of_get_id(np);
+
+	if (id != ~0UL) {
+		this_leaf->id = id;
 		this_leaf->attributes |= CACHE_ID;
 	}
 }
