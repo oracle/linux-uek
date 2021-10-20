@@ -45,8 +45,9 @@ static struct {
 	const char *name;
 	enum rds_ib_preferred_cpu_options option;
 } rds_ib_preferred_cpu_options[] = {
-	{ "cq",		RDS_IB_PREFER_CPU_CQ	},
-	{ "numa",	RDS_IB_PREFER_CPU_NUMA	},
+	{ "cq",		RDS_IB_PREFER_CPU_CQ		},
+	{ "numa",	RDS_IB_PREFER_CPU_NUMA		},
+	{ "tasklet",	RDS_IB_PREFER_CPU_TASKLET	},
 };
 
 enum rds_ib_preferred_cpu_options rds_ib_preferred_cpu = RDS_IB_PREFER_CPU_DEFAULT;
