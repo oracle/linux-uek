@@ -95,7 +95,7 @@ static char *cgx_tx_stats_fields[] = {
 	[CGX_STAT5]	= "Total frames sent on the interface",
 	[CGX_STAT6]	= "Packets sent with an octet count < 64",
 	[CGX_STAT7]	= "Packets sent with an octet count == 64",
-	[CGX_STAT8]	= "Packets sent with an octet count of 65–127",
+	[CGX_STAT8]	= "Packets sent with an octet count of 65-127",
 	[CGX_STAT9]	= "Packets sent with an octet count of 128-255",
 	[CGX_STAT10]	= "Packets sent with an octet count of 256-511",
 	[CGX_STAT11]	= "Packets sent with an octet count of 512-1023",
@@ -118,14 +118,14 @@ static char *rpm_rx_stats_fields[] = {
 	"Packets received with FrameCheckSequenceErrors",
 	"Packets received with VLAN header",
 	"Error packets",
-	"Packets recievd with unicast DMAC",
+	"Packets received with unicast DMAC",
 	"Packets received with multicast DMAC",
 	"Packets received with broadcast DMAC",
 	"Dropped packets",
 	"Total frames received on interface",
 	"Packets received with an octet count < 64",
 	"Packets received with an octet count == 64",
-	"Packets received with an octet count of 65–127",
+	"Packets received with an octet count of 65-127",
 	"Packets received with an octet count of 128-255",
 	"Packets received with an octet count of 256-511",
 	"Packets received with an octet count of 512-1023",
@@ -160,11 +160,11 @@ static char *rpm_tx_stats_fields[] = {
 	"Total frames transmitted OK",
 	"Total frames sent with VLAN header",
 	"Error Packets",
-	"Packets sent to to unicast DMAC",
+	"Packets sent to unicast DMAC",
 	"Packets sent to the multicast DMAC",
 	"Packets sent to a broadcast DMAC",
 	"Packets sent with an octet count == 64",
-	"Packets sent with an octet count of 65–127",
+	"Packets sent with an octet count of 65-127",
 	"Packets sent with an octet count of 128-255",
 	"Packets sent with an octet count of 256-511",
 	"Packets sent with an octet count of 512-1023",
@@ -243,7 +243,7 @@ static ssize_t rvu_dbg_lmtst_map_table_display(struct file *filp,
 	if (!buf)
 		return -ENOSPC;
 
-	tbl_base = rvu_read64(rvu, BLKADDR_APR, APR_AF_LMT_MAP_BASE),
+	tbl_base = rvu_read64(rvu, BLKADDR_APR, APR_AF_LMT_MAP_BASE);
 
 	lmt_map_base = ioremap_wc(tbl_base, 128 * 1024);
 	if (!lmt_map_base) {
@@ -404,9 +404,10 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 	lf_str_size = get_max_column_width(rvu);
 
 	lfs = kzalloc(lf_str_size, GFP_KERNEL);
-	if (!lfs)
+	if (!lfs) {
+		kfree(buf);
 		return -ENOMEM;
-
+	}
 	off +=	scnprintf(&buf[off], buf_size - 1 - off, "%-*s", lf_str_size,
 			  "pcifunc");
 	for (index = 0; index < BLK_COUNT; index++)
@@ -643,8 +644,8 @@ static ssize_t rvu_dbg_qsize_write(struct file *filp,
 	u16 pcifunc;
 	int ret, lf;
 
-	cmd_buf = memdup_user(buffer, count);
-	if (IS_ERR_OR_NULL(cmd_buf))
+	cmd_buf = memdup_user(buffer, count + 1);
+	if (IS_ERR(cmd_buf))
 		return -ENOMEM;
 
 	cmd_buf[count] = '\0';
@@ -2134,6 +2135,7 @@ static int cgx_print_stats(struct seq_file *s, int lmac_id)
 		err = mac_ops->mac_get_tx_stats(cgxd, lmac_id, stat, &tx_stat);
 		if (err)
 			return err;
+
 		if (is_rvu_otx2(rvu))
 			seq_printf(s, "%s: %llu\n", cgx_tx_stats_fields[stat],
 				   tx_stat);
@@ -2189,9 +2191,9 @@ static int cgx_print_dmac_flt(struct seq_file *s, int lmac_id)
 		return -ENODEV;
 
 	pf = cgxlmac_to_pf(rvu, cgx_get_cgxid(cgxd), lmac_id);
-	domain  = 2;
+	domain = 2;
 
-	pdev =  pci_get_domain_bus_and_slot(domain, pf + 1, 0);
+	pdev = pci_get_domain_bus_and_slot(domain, pf + 1, 0);
 	if (!pdev)
 		return 0;
 
@@ -2264,23 +2266,25 @@ static void rvu_dbg_cgx_init(struct rvu *rvu)
 		sprintf(dname, "%s%d", mac_ops->name, i);
 		rvu->rvu_dbg.cgx = debugfs_create_dir(dname,
 						      rvu->rvu_dbg.cgx_root);
+
 		for_each_set_bit(lmac_id, &lmac_bmap, MAX_LMAC_PER_CGX) {
 			/* lmac debugfs dir */
 			sprintf(dname, "lmac%d", lmac_id);
 			rvu->rvu_dbg.lmac =
 				debugfs_create_dir(dname, rvu->rvu_dbg.cgx);
 
-				debugfs_create_file("stats", 0600, rvu->rvu_dbg.lmac,
-						    cgx, &rvu_dbg_cgx_stat_fops);
-				debugfs_create_file("mac_filter", 0600, rvu->rvu_dbg.lmac,
-						    cgx, &rvu_dbg_cgx_dmac_flt_fops);
+			debugfs_create_file("stats", 0600, rvu->rvu_dbg.lmac,
+					    cgx, &rvu_dbg_cgx_stat_fops);
+			debugfs_create_file("mac_filter", 0600,
+					    rvu->rvu_dbg.lmac, cgx,
+					    &rvu_dbg_cgx_dmac_flt_fops);
 		}
 	}
 }
 
 /* NPC debugfs APIs */
-static inline void rvu_print_npc_mcam_info(struct seq_file *s,
-					   u16 pcifunc, int blkaddr)
+static void rvu_print_npc_mcam_info(struct seq_file *s,
+				    u16 pcifunc, int blkaddr)
 {
 	struct rvu *rvu = s->private;
 	int entry_acnt, entry_ecnt;
