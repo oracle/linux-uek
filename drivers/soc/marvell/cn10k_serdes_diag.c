@@ -123,6 +123,10 @@ DEFINE_STR_2_ENUM_FUNC(prbs_optcmd)
 #define PAM4_PATTERN(_p) (_p << 8)
 
 enum prbs_pattern {
+	PRBS_CLK2 = 1,
+	PRBS_CLK4 = 2,
+	PRBS_CLK8 = 4,
+
 	PRBS_7 = 7,
 	PRBS_9 = 9,
 	PRBS_11 = 11,
@@ -144,11 +148,16 @@ enum prbs_pattern {
 };
 
 #define PRBS(_p) {PRBS_ ## _p, #_p}
+#define PRBS_CLK(_p) {PRBS_CLK ## _p, "clk/"#_p}
 
 static struct {
 	enum prbs_pattern e;
 	const char *s;
 } prbs_pattern[] = {
+	PRBS_CLK(2),
+	PRBS_CLK(4),
+	PRBS_CLK(8),
+
 	PRBS(7),
 	PRBS(9),
 	PRBS(11),
@@ -949,12 +958,13 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 					const char __user *buffer,
 					size_t count, loff_t *ppos)
 {
+#define STRBUF_SZ 64
 	int lane_idx;
 	int lanes_num, gserm_idx, mapping;
 	struct prbs_cmd_params input = {0};
 	struct arm_smccc_res res;
 	s32 x1, x2, x3, x4;
-	char strbuf[32] = {0};
+	char strbuf[STRBUF_SZ] = {0};
 
 	if (parse_prbs_params(buffer, count, &input))
 		return -EINVAL;
@@ -1021,20 +1031,20 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 					ptrn ? ptrn : "");
 			}
 
-			snprintf(strbuf, 32, "(patterns:%s%s)", gbuf, cbuf);
+			snprintf(strbuf, STRBUF_SZ, "(patterns:%s%s)", gbuf, cbuf);
 		}
 		break;
 	case PRBS_CLEAR:
-		snprintf(strbuf, 32, "counters");
+		snprintf(strbuf, STRBUF_SZ, "counters");
 		break;
 	case PRBS_STOP:
-		snprintf(strbuf, 32, "%s%s%s",
+		snprintf(strbuf, STRBUF_SZ, "%s%s%s",
 			input.gen_pattern ? " generator" : "",
 			input.gen_pattern && input.check_pattern ? "," : "",
 			input.check_pattern ? " checker" : "");
 		break;
 	case PRBS_INJECT:
-		snprintf(strbuf, 32, "%d errors", input.inject_cnt);
+		snprintf(strbuf, STRBUF_SZ, "%d errors", input.inject_cnt);
 		break;
 	default:
 		break;
