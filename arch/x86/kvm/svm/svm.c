@@ -5048,6 +5048,7 @@ static struct kvm_x86_ops svm_x86_ops __initdata = {
 	.guest_memory_reclaimed = sev_guest_memory_reclaimed,
 
 	.vm_copy_enc_context_from = svm_vm_copy_asid_from,
+	.vm_move_enc_context_from = svm_vm_migrate_from,
 
 	.can_emulate_instruction = svm_can_emulate_instruction,
 
