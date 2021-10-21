@@ -204,8 +204,13 @@ static int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void 
 	initdbgmsg("%s event 0x%x error severity=%x,\n", DRV_NAME, core->id,
 			rec->severity);
 
-	memcpy(&raport->desc, &rec->u.core.desc, gdata->error_data_length);
-	memcpy(&raport->info, &rec->u.core.info, sizeof(rec->u.core.info));
+	if (pfn_valid(PHYS_PFN(core->ring_pa))) {
+		memcpy(&raport->desc, &rec->u.core.desc, gdata->error_data_length);
+		memcpy(&raport->info, &rec->u.core.info, sizeof(rec->u.core.info));
+	} else {
+		memcpy_fromio(&raport->desc, &rec->u.core.desc, gdata->error_data_length);
+		memcpy_fromio(&raport->info, &rec->u.core.info, sizeof(rec->u.core.info));
+	}
 
 	/*Ensure that error status is committed to memory prior to set status*/
 	wmb();
@@ -290,7 +295,7 @@ static int sdei_ghes_driver_init(struct platform_device *pdev)
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
 
-		if (gsrc->id < OCTEONTX_SDEI_RAS_CORE0_EVENT)
+		if (gsrc->id < OCTEONTX_SDEI_RAS_AP0_EVENT)
 			ret = sdei_event_register(gsrc->id, sdei_ghes_callback, gsrc);
 		else
 			ret = sdei_event_register(gsrc->id, sdei_ras_core_callback, gsrc);
@@ -513,8 +518,8 @@ static void __init sdei_ghes_set_name(struct mrvl_sdei_ghes_drv *ghes_drv)
 	} else {
 		for (i = 0; i < ghes_drv->source_count; i++) {
 			gsrc = &ghes_drv->source_list[i];
-			if (gsrc->id < OCTEONTX_SDEI_RAS_CORE0_EVENT)
-				sprintf(gsrc->name, "CORE%d", core++);
+			if (gsrc->id < OCTEONTX_SDEI_RAS_AP0_EVENT)
+				sprintf(gsrc->name, "core%d", core++);
 			else if (gsrc->id == OCTEONTX_SDEI_RAS_MDC_EVENT)
 				sprintf(gsrc->name, "MDC");
 			else if (gsrc->id == OCTEONTX_SDEI_RAS_MCC_EVENT)
