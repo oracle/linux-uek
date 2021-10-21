@@ -15,6 +15,16 @@
 #define OCTEONTX_SDEI_RAS_CORE0_EVENT		0x40000003
 
 #define SDEI_GHES_EVENT_NAME_MAX_CHARS 16
+
+struct mrvl_core_error_raport {
+	struct acpi_hest_generic_status estatus;
+	struct acpi_hest_generic_data   gdata;
+	struct cper_sec_proc_arm        desc;
+	struct cper_arm_err_info        info;
+//	struct cper_arm_ctx_info        ctx;
+//	uint64_t                        reg[0];
+};
+
 /*
  * Describes an error source per ACPI 18.3.2.6 (Generic Hardware Error Source).
  * This produces GHES-compliant error records from data forwarded by the [ATF]
@@ -41,10 +51,7 @@ struct mrvl_ghes_source {
 		struct acpi_hest_generic_status *esb_va;
 		struct mrvl_core_error_raport   *esb_core_va;
 	};
-	union {
-		struct mrvl_ghes_err_ring   *ring;
-		struct processor_error_ring *ring_core;
-	};
+	struct otx2_ghes_err_ring       *ring;
 	size_t                          ring_sz;
 	size_t                          esb_sz;
 	u32                             id;
@@ -64,29 +71,34 @@ struct mrvl_sdei_ghes_drv {
 	size_t                  source_count;
 };
 
-#define MRVL_GHES_ERR_REC_FRU_TEXT_LEN 32
-/* This is shared with ATF */
-struct mrvl_ghes_err_record {
-	union {
-		struct cper_sec_mem_err_old mcc;
-		struct cper_sec_mem_err_old mdc;
-		struct cper_sec_mem_err_old lmc;
-	} u;
-	uint32_t severity; /* CPER_SEV_xxx */
-	char fru_text[MRVL_GHES_ERR_REC_FRU_TEXT_LEN];
+#define OTX2_GHES_ERR_RING_SIG ((int)'M' << 24 | 'R' << 16 | 'V' << 8 | 'L')
+
+#define OTX2_GHES_ERR_REC_FRU_TEXT_LEN 32
+
+struct processor_error {
+	struct cper_sec_proc_arm desc;
+	struct cper_arm_err_info info;
 };
 
-/* This is shared with ATF */
-struct mrvl_ghes_err_ring {
-	/* The head resides in DRAM & can be updated by ATF (i.e. firmware).
-	 * See Documentation/process/volatile-considered-harmful.rst, line 92.
-	 */
+struct otx2_ghes_err_record {
+	union {
+		struct processor_error       core;
+		struct cper_sec_mem_err_old  mcc;
+		struct cper_sec_mem_err_old  mdc;
+		struct cper_sec_mem_err_old  lmc;
+	} u;
+	uint32_t severity; /* CPER_SEV_xxx */
+	char fru_text[OTX2_GHES_ERR_REC_FRU_TEXT_LEN];
+};
+
+/* This is shared with Linux sdei-ghes driver */
+struct otx2_ghes_err_ring {
 	uint32_t volatile head;
-	uint32_t          tail;
-	uint32_t          size;  /* ring size */
-	uint32_t          sig;   /* set to OTX2_GHES_ERR_RING_SIG if initialized */
+	uint32_t volatile tail;
+	uint32_t size;       /* ring size */
+	uint32_t sig;        /* set to OTX2_GHES_ERR_RING_SIG if initialized */
 	/* ring of records */
-	struct mrvl_ghes_err_record records[1] __aligned(8);
+	struct otx2_ghes_err_record records[1] __aligned(8);
 };
 
 #endif // __OTX2_SDEI_GHES_H__
