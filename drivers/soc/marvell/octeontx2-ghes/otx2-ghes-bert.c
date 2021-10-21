@@ -133,7 +133,7 @@ static int __init ghes_bed_map_resource(struct device *dev, struct mrvl_bed_sour
 
 static int __init ghes_bed_count_error(struct mrvl_bed_source *bsrc)
 {
-	struct mrvl_ghes_err_ring *ring;
+	struct otx2_ghes_err_ring *ring;
 	size_t error_cnt = 0;
 
 	ring = bsrc->block_va;
@@ -159,7 +159,7 @@ static int __init ghes_bed_count_error(struct mrvl_bed_source *bsrc)
 
 static int __init ghes_bed_adjust_bert_layout(struct mrvl_bed_source *bsrc)
 {
-	struct mrvl_ghes_err_ring *ring;
+	struct otx2_ghes_err_ring *ring;
 	size_t ring_len;
 	size_t bert_len;
 
@@ -176,8 +176,8 @@ static int __init ghes_bed_adjust_bert_layout(struct mrvl_bed_source *bsrc)
 	 *		[*] ...
 	 * [3] BERT
 	 */
-	ring_len = sizeof(struct mrvl_ghes_err_ring) +
-			(sizeof(struct mrvl_ghes_err_record) * (ring->size - 1));
+	ring_len = sizeof(struct otx2_ghes_err_ring) +
+			(sizeof(struct otx2_ghes_err_record) * (ring->size - 1));
 
 	ring_len = roundup(ring_len, 8);
 
@@ -211,12 +211,12 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 	struct acpi_table_bert *bert_tbl;
 	struct acpi_bert_region *bert_esb;
 	struct bed_bert_mem_entry *bert_entries;
-	struct mrvl_ghes_err_ring *ring;
+	struct otx2_ghes_err_ring *ring;
 	struct acpi_hest_generic_data *hest_gen_data;
 	struct bed_bert_mem_entry *bert_mem_entry;
 	struct acpi_hest_generic_status *estatus;
 	struct cper_sec_mem_err_old *mem_err;
-	struct mrvl_ghes_err_record *err_rec;
+	struct otx2_ghes_err_record *err_rec;
 	u8 *p;
 	u8 sum = 0;
 	u32 idx = 0;

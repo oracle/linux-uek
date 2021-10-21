@@ -21,7 +21,6 @@
 #include <soc/marvell/octeontx/octeontx_smc.h>
 #include <asm/cputype.h>
 #include "otx2-sdei-ghes.h"
-#include "cn10k-core-cper.h"
 
 #define DRV_NAME       "sdei-ghes"
 
@@ -72,7 +71,7 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	struct acpi_hest_generic_status *estatus;
 	struct acpi_hest_generic_data *gdata;
 	void *esb_err;
-	struct mrvl_ghes_err_record *ring_rec;
+	struct otx2_ghes_err_record *ring_rec;
 	struct mrvl_ghes_source *gsrc;
 	u32 head, tail;
 
@@ -156,7 +155,7 @@ static int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void 
 	struct mrvl_core_error_raport *raport = NULL;
 	struct acpi_hest_generic_status *estatus = NULL;
 	struct acpi_hest_generic_data *gdata = NULL;
-	struct processor_error *rec = NULL;
+	struct otx2_ghes_err_record *rec = NULL;
 	uint32_t head = 0;
 	uint32_t tail = 0;
 
@@ -179,10 +178,9 @@ static int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void 
 				event_id, head, core->ring->size);
 		return -EINVAL;
 	}
-	rec = &core->ring_core->error[tail];
+	rec = &core->ring->records[tail];
 
 	raport = core->esb_core_va;
-
 	estatus = &raport->estatus;
 	gdata = &raport->gdata;
 
@@ -206,7 +204,8 @@ static int sdei_ras_core_callback(uint32_t event_id, struct pt_regs *regs, void 
 	initdbgmsg("%s event 0x%x error severity=%x,\n", DRV_NAME, core->id,
 			rec->severity);
 
-	memcpy(&raport->desc, &rec->desc, gdata->error_data_length);
+	memcpy(&raport->desc, &rec->u.core.desc, gdata->error_data_length);
+	memcpy(&raport->info, &rec->u.core.info, sizeof(rec->u.core.info));
 
 	/*Ensure that error status is committed to memory prior to set status*/
 	wmb();
@@ -377,7 +376,7 @@ static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_d
 		initdbgmsg("%s not required\n", __func__);
 		return 0;
 	} else
-		initdbgmsg("%s required %d bytes %d order\n", __func__, size, order);
+		initdbgmsg("%s required %ld bytes %d order\n", __func__, size, order);
 
 	error_status_block_page = alloc_pages(GFP_KERNEL, order);
 	if (!error_status_block_page) {
