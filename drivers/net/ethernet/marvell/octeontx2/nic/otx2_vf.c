@@ -743,10 +743,6 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_unreg_netdev;
 
-	/* Enable pause frames by default */
-	vf->flags |= OTX2_FLAG_RX_PAUSE_ENABLED;
-	vf->flags |= OTX2_FLAG_TX_PAUSE_ENABLED;
-
 	/* Set interface mode as Default */
 	vf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
 
@@ -783,6 +779,14 @@ static void otx2vf_remove(struct pci_dev *pdev)
 		return;
 
 	vf = netdev_priv(netdev);
+
+	/* Disable 802.3x pause frames */
+	if (vf->flags & OTX2_FLAG_RX_PAUSE_ENABLED ||
+	    (vf->flags & OTX2_FLAG_TX_PAUSE_ENABLED)) {
+		vf->flags &= ~OTX2_FLAG_RX_PAUSE_ENABLED;
+		vf->flags &= ~OTX2_FLAG_TX_PAUSE_ENABLED;
+		otx2_config_pause_frm(vf);
+	}
 
 	if (otx2smqvf_remove(vf)) {
 		otx2_unregister_dl(vf);
