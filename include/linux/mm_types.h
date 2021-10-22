@@ -684,6 +684,27 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 	return (struct cpumask *)&mm->cpu_bitmap;
 }
 
+struct vma_iterator {
+	struct ma_state mas;
+};
+
+#define VMA_ITERATOR(name, mm, addr) 					\
+	struct vma_iterator name = {					\
+		.mas = {						\
+			.tree = &mm->mm_mt,				\
+			.index = addr,					\
+			.node = MAS_START,				\
+		},							\
+	}
+
+static inline void vma_iter_init(struct vma_iterator *vmi,
+		struct mm_struct *mm, unsigned long addr)
+{
+	vmi->mas.tree = &mm->mm_mt;
+	vmi->mas.index = addr;
+	vmi->mas.node = MAS_START;
+}
+
 struct mmu_gather;
 extern void tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm);
 extern void tlb_gather_mmu_fullmm(struct mmu_gather *tlb, struct mm_struct *mm);

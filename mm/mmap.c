@@ -627,7 +627,7 @@ static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 }
 
 /*
- * vma_next() - Get the next VMA.
+ * __vma_next() - Get the next VMA.
  * @mm: The mm_struct.
  * @vma: The current vma.
  *
@@ -635,7 +635,7 @@ static int find_vma_links(struct mm_struct *mm, unsigned long addr,
  *
  * Returns: The next VMA after @vma.
  */
-static inline struct vm_area_struct *vma_next(struct mm_struct *mm,
+static inline struct vm_area_struct *__vma_next(struct mm_struct *mm,
 					 struct vm_area_struct *vma)
 {
 	if (!vma)
@@ -1293,7 +1293,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	if (vm_flags & VM_SPECIAL)
 		return NULL;
 
-	next = vma_next(mm, prev);
+	next = __vma_next(mm, prev);
 	area = next;
 	if (area && area->vm_end == end)		/* cases 6, 7, 8 */
 		next = next->vm_next;
@@ -2812,7 +2812,7 @@ static void unmap_region(struct mm_struct *mm,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
 		unsigned long start, unsigned long end)
 {
-	struct vm_area_struct *next = vma_next(mm, prev);
+	struct vm_area_struct *next = __vma_next(mm, prev);
 	struct mmu_gather tlb;
 
 	lru_add_drain();
@@ -3011,7 +3011,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		if (error)
 			return error;
 	}
-	vma = vma_next(mm, prev);
+	vma = __vma_next(mm, prev);
 
 	if (unlikely(uf)) {
 		/*
