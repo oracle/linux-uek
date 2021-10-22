@@ -2824,6 +2824,12 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Set interface mode as Default */
 	pf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
 
+#ifdef CONFIG_DCB
+	err = otx2_dcbnl_set_ops(netdev);
+	if (err)
+		goto err_pf_sriov_init;
+#endif
+
 	return 0;
 
 err_pf_sriov_init:
@@ -3003,6 +3009,13 @@ static void otx2_remove(struct pci_dev *pdev)
 		otx2_config_pause_frm(pf);
 	}
 
+#ifdef CONFIG_DCB
+	/* Disable PFC config */
+	if (pf->pfc_en) {
+		pf->pfc_en = 0;
+		otx2_config_priority_flow_ctrl(pf);
+	}
+#endif
 	otx2_set_npc_parse_mode(pf, true);
 
 	/* Disable link notifications */
