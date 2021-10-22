@@ -965,7 +965,7 @@ static void enetc_pl_mac_validate(struct phylink_config *config,
 	    state->interface != PHY_INTERFACE_MODE_2500BASEX &&
 	    state->interface != PHY_INTERFACE_MODE_USXGMII &&
 	    !phy_interface_mode_is_rgmii(state->interface)) {
-		bitmap_zero(supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
+		linkmode_zero(supported);
 		return;
 	}
 
@@ -988,10 +988,8 @@ static void enetc_pl_mac_validate(struct phylink_config *config,
 		phylink_set(mask, 2500baseX_Full);
 	}
 
-	bitmap_and(supported, supported, mask,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS);
-	bitmap_and(state->advertising, state->advertising, mask,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+	linkmode_and(supported, supported, mask);
+	linkmode_and(state->advertising, state->advertising, mask);
 }
 
 static void enetc_pl_mac_config(struct phylink_config *config,
