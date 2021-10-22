@@ -789,6 +789,7 @@ bool is_cgx_config_permitted(struct rvu *rvu, u16 pcifunc);
 bool rvu_cgx_is_pkind_config_permitted(struct rvu *rvu, u16 pcifunc);
 void *rvu_first_cgx_pdata(struct rvu *rvu);
 int cgxlmac_to_pf(struct rvu *rvu, int cgx_id, int lmac_id);
+int rvu_cgx_config_tx(void *cgxd, int lmac_id, bool enable);
 
 /* SSO APIs */
 int rvu_sso_init(struct rvu *rvu);
