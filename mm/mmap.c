@@ -751,7 +751,7 @@ static inline void vma_mt_szero(struct mm_struct *mm, unsigned long start,
  * @mm: The struct_mm
  * @vma: The vm_area_struct to store in the maple tree.
  */
-void vma_store(struct mm_struct *mm, struct vm_area_struct *vma)
+static void vma_store(struct mm_struct *mm, struct vm_area_struct *vma)
 {
 	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
