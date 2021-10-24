@@ -15,6 +15,7 @@
 #include <linux/iommu.h>
 #include <net/pkt_cls.h>
 #include <net/devlink.h>
+#include <linux/time64.h>
 
 #include <mbox.h>
 #include <npc.h>
@@ -285,6 +286,8 @@ struct otx2_ptp {
 
 	struct ptp_pin_desc extts_config;
 	bool ptp_en;
+	u64 (*convert_rx_ptp_tstmp)(u64 timestamp);
+	u64 (*convert_tx_ptp_tstmp)(u64 timestamp);
 };
 
 struct otx2_mac_table {
