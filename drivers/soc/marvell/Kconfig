@@ -163,4 +163,11 @@ config EFI_BOOTEFI_BUG
 	 firmware is inconsistent with the device tree. This causes EDAC
 	 to fail to initialize because the memory it uses looks like it
 	 is busy.
+
+config MARVELL_CPSS
+	tristate "Marvell CPSS Drivers"
+	depends on ARM64
+	help
+	  CPSS drivers for the T93 smartnic
+
 endmenu
