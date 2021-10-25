@@ -221,6 +221,12 @@ config MARVELL_CN10K_SWUP
 	    -> TIM Version check
 	    -> TIM Hash verification
 
+config MARVELL_CPSS
+	tristate "Marvell CPSS Drivers"
+	depends on ARM64
+	help
+	  We want these for the T98
+
 config OCTEONTX2_SDEI_GHES
 	bool "OcteonTX2 Generic Hardware Error Source (GHES) support"
 	select ARM_SDE_INTERFACE
