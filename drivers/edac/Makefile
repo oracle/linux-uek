@@ -24,6 +24,7 @@ obj-$(CONFIG_EDAC_DECODE_MCE)		+= edac_mce_amd.o
 
 obj-$(CONFIG_EDAC_AMD76X)		+= amd76x_edac.o
 obj-$(CONFIG_EDAC_CPC925)		+= cpc925_edac.o
+obj-$(CONFIG_EDAC_ELBA)			+= elba_edac.o
 obj-$(CONFIG_EDAC_I5000)		+= i5000_edac.o
 obj-$(CONFIG_EDAC_I5100)		+= i5100_edac.o
 obj-$(CONFIG_EDAC_I5400)		+= i5400_edac.o

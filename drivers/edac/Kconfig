@@ -474,4 +474,11 @@ config EDAC_XGENE
 	  Support for error detection and correction on the
 	  APM X-Gene family of SOCs.
 
+config EDAC_ELBA
+	tristate "Pensando Elba Memory ECC"
+	depends on ARCH_PENSANDO_ELBA_SOC
+	help
+	  Support for error detection and correction on the
+	  Pensando Elba SoC.
+
 endif # EDAC
