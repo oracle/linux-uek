@@ -13,6 +13,8 @@
 #include <asm/set_memory.h>
 #include <asm/nospec-branch.h>
 
+extern u8 *__x86_indirect_thunk_rax;
+
 static u8 *emit_code(u8 *ptr, u32 bytes, unsigned int len)
 {
 	if (len == 1)
@@ -199,6 +201,27 @@ struct jit_context {
 #define BPF_MAX_INSN_SIZE	128
 #define BPF_INSN_SAFETY		64
 
+/* Number of bytes emit_patch() needs to generate instructions */
+#define X86_PATCH_SIZE		5
+
+/* Number of bytes emitted for an indirect jump instruction */
+#define __NO_RETPOLINE_RAX_BPF_JIT_SIZE		2	/* jmp *%rax */
+
+/*
+ * Number of bytes emitted for an indirect jump when retpoline is
+ * enabled.
+ *
+ * When retpoline is enabled, instead of emitting a single jmp instruction,
+ * the eBPF JIT compiler emits either:
+ *
+ * - if X86_FEATURE_RETPOLINE_LFENCE is enabled:  lfence ; jmp *rax
+ *
+ * - if X86_FEATURE_RETPOLINE is enabled:  jmp __x86_indirect_thunk_rax
+ *
+ * In both cases, the number of bytes emitted is the same (5 bytes).
+ */
+#define __RETPOLINE_RAX_BPF_JIT_SIZE 		5
+
 #define PROLOGUE_SIZE		20
 
 /*
@@ -226,6 +249,49 @@ static void emit_prologue(u8 **pprog, u32 stack_depth, bool ebpf_from_cbpf)
 	*pprog = prog;
 }
 
+static int emit_patch(u8 **pprog, void *func, void *ip, u8 opcode)
+{
+	u8 *prog = *pprog;
+	s64 offset;
+	int cnt = 0;
+
+	offset = func - (ip + X86_PATCH_SIZE);
+	if (!is_simm32(offset)) {
+		pr_err("Target call %p is out of range\n", func);
+		return 0;
+	}
+	EMIT1_off32(opcode, offset);
+	*pprog = prog;
+	return cnt;
+}
+
+static int emit_jump(u8 **pprog, void *func, void *ip)
+{
+        return emit_patch(pprog, func, ip, 0xE9);
+}
+
+#define EMIT_LFENCE()	EMIT3(0x0F, 0xAE, 0xE8)
+
+static int emit_indirect_jump_rax(u8 **pprog, u8 *ip)
+{
+	u8 *prog = *pprog;
+	int cnt = 0;
+
+#ifdef CONFIG_RETPOLINE
+	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE)) {
+		EMIT_LFENCE();
+		EMIT2(0xFF, 0xE0);
+	} else if (cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
+		cnt += emit_jump(&prog, &__x86_indirect_thunk_rax, ip);
+	} else
+#endif
+	EMIT2(0xFF, 0xE0);
+
+	*pprog = prog;
+
+	return cnt;
+}
+
 /*
  * Generate the following code:
  *
@@ -240,9 +306,9 @@ static void emit_prologue(u8 **pprog, u32 stack_depth, bool ebpf_from_cbpf)
  *   goto *(prog->bpf_func + prologue_size);
  * out:
  */
-static void emit_bpf_tail_call(u8 **pprog)
+static void emit_bpf_tail_call(u8 **pprog, u8 *ip)
 {
-	u8 *prog = *pprog;
+	u8 *prog = *pprog, *start = *pprog;
 	int label1, label2, label3;
 	int cnt = 0;
 	int RETPOLINE_RAX_BPF_JIT_SIZE;
@@ -308,12 +374,7 @@ static void emit_bpf_tail_call(u8 **pprog)
 	 * rdi == ctx (1st arg)
 	 * rax == prog->bpf_func + prologue_size
 	 */
-	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
-		cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
-		RETPOLINE_RAX_BPF_JIT();
-	} else {
-		NO_RETPOLINE_RAX_BPF_JIT();
-	}
+	cnt += emit_indirect_jump_rax(&prog, ip + (prog - start));
 
 	/* out: */
 	BUG_ON((cnt - label1) != OFFSET1);
@@ -746,8 +807,7 @@ static int do_jit(struct bpf_prog *bpf_prog, int *addrs, u8 *image,
 			/* speculation barrier */
 		case BPF_ST | BPF_NOSPEC:
 			if (boot_cpu_has(X86_FEATURE_XMM2))
-				/* Emit 'lfence' */
-				EMIT3(0x0F, 0xAE, 0xE8);
+				EMIT_LFENCE();
 			break;
 
 			/* ST: *(u8*)(dst_reg + off) = imm */
@@ -871,7 +931,7 @@ xadd:			if (is_imm8(insn->off))
 			break;
 
 		case BPF_JMP | BPF_TAIL_CALL:
-			emit_bpf_tail_call(&prog);
+			emit_bpf_tail_call(&prog, image + addrs[i - 1]);
 			break;
 
 			/* cond jump */
