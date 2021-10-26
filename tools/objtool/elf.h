@@ -55,7 +55,9 @@ struct symbol {
 	unsigned long offset;
 	unsigned int len;
 	struct symbol *pfunc, *cfunc, *alias;
-	bool uaccess_safe;
+	u8 uaccess_safe      : 1;
+	u8 retpoline_thunk   : 1;
+	u8 fentry            : 1;
 };
 
 struct reloc {
