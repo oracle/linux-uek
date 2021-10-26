@@ -19,11 +19,6 @@ extern void cmpxchg8b_emu(void);
 
 #ifdef CONFIG_RETPOLINE
 
-#define GEN(reg) \
-	extern asmlinkage void __x86_indirect_thunk_ ## reg (void);
-#include <asm/GEN-for-each-reg.h>
-#undef GEN
-
 #undef GEN
 #define GEN(reg) \
 	extern asmlinkage void __x86_indirect_alt_call_ ## reg (void);
