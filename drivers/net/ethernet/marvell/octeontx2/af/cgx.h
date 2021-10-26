@@ -78,6 +78,12 @@
 #define CGXX_SMUX_TX_CTL_HIGIG_EN	BIT_ULL(8)
 #define CGXX_SMUX_TX_PAUSE_PKT_TIME	0x20110
 #define CGXX_SMUX_TX_PAUSE_PKT_INTERVAL	0x20120
+#define CGXX_SMUX_SMAC                        0x20108
+#define CGXX_SMUX_CBFC_CTL                    0x20218
+#define CGXX_SMUX_CBFC_CTL_RX_EN             BIT_ULL(0)
+#define CGXX_SMUX_CBFC_CTL_TX_EN             BIT_ULL(1)
+#define CGXX_SMUX_CBFC_CTL_DRP_EN            BIT_ULL(2)
+#define CGXX_SMUX_CBFC_CTL_BCK_EN            BIT_ULL(3)
 #define CGXX_SMUX_TX_PAUSE_PKT_HG2_INTRA_EN	BIT_ULL(32)
 #define HG2_INTRA_INTERVAL		GENMASK_ULL(31, 16)
 #define CGXX_GMP_GMI_TX_PAUSE_PKT_TIME	0x38230
@@ -189,4 +195,6 @@ unsigned long cgx_get_lmac_bmap(void *cgxd);
 u64 cgx_read_dmac_ctrl(void *cgxd, int lmac_id);
 u64 cgx_read_dmac_entry(void *cgxd, int index);
 int cgx_lmac_addr_update(u8 cgx_id, u8 lmac_id, u8 *mac_addr, u8 index);
+int cgx_lmac_pfc_config(void *cgxd, int lmac_id, u8 tx_pause, u8 rx_pause,
+			u16 pfc_en);
 #endif /* CGX_H */
