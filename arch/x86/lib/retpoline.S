@@ -41,6 +41,13 @@ SYM_FUNC_END(__x86_indirect_thunk_\reg)
 .endm
 
 /*
+ * The __x86_indirect_alt_call|jmp symbols are not used by objtool anymore,
+ * now that objtool uses .retpoline_sites instead of alternatives. However,
+ * for KABI compatibility, we have to keep these symbols so that modules
+ * build with older versions of objtool still work.
+ */
+
+/*
  * This generates .altinstr_replacement symbols for use by objtool. They,
  * however, must not actually live in .altinstr_replacement since that will be
  * discarded after init, but module alternatives will also reference these
