@@ -66,6 +66,24 @@ static unsigned long __sgx_sanitize_pages(struct list_head *dirty_page_list)
 
 		page = list_first_entry(dirty_page_list, struct sgx_epc_page, list);
 
+		/*
+		 * Checking page->poison without holding the node->lock
+		 * is racy, but losing the race (i.e. poison is set just
+		 * after the check) just means __eremove() will be uselessly
+		 * called for a page that sgx_free_epc_page() will put onto
+		 * the node->sgx_poison_page_list later.
+		 */
+		if (page->poison) {
+			struct sgx_epc_section *section = &sgx_epc_sections[page->section];
+			struct sgx_numa_node *node = section->node;
+
+			spin_lock(&node->lock);
+			list_move(&page->list, &node->sgx_poison_page_list);
+			spin_unlock(&node->lock);
+
+			continue;
+		}
+
 		ret = __eremove(sgx_get_epc_virt_addr(page));
 		if (!ret) {
 			/*
@@ -639,7 +657,11 @@ void sgx_free_epc_page(struct sgx_epc_page *page)
 
 	spin_lock(&node->lock);
 
-	list_add_tail(&page->list, &node->free_page_list);
+	page->owner = NULL;
+	if (page->poison)
+		list_add(&page->list, &node->sgx_poison_page_list);
+	else
+		list_add_tail(&page->list, &node->free_page_list);
 	sgx_nr_free_pages++;
 	page->flags = SGX_EPC_PAGE_IS_FREE;
 
@@ -671,6 +693,7 @@ static bool __init sgx_setup_epc_section(u64 phys_addr, u64 size,
 		section->pages[i].section = index;
 		section->pages[i].flags = 0;
 		section->pages[i].owner = NULL;
+		section->pages[i].poison = 0;
 		list_add_tail(&section->pages[i].list, &sgx_dirty_page_list);
 	}
 
@@ -737,6 +760,7 @@ static bool __init sgx_page_cache_init(void)
 		if (!node_isset(nid, sgx_numa_mask)) {
 			spin_lock_init(&sgx_numa_nodes[nid].lock);
 			INIT_LIST_HEAD(&sgx_numa_nodes[nid].free_page_list);
+			INIT_LIST_HEAD(&sgx_numa_nodes[nid].sgx_poison_page_list);
 			node_set(nid, sgx_numa_mask);
 		}
 
