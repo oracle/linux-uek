@@ -13,6 +13,8 @@
 #include <asm/unwind_hints.h>
 #include <asm/percpu.h>
 
+#define RETPOLINE_THUNK_SIZE	32
+
 /*
  * Fill the CPU return stack buffer.
  *
@@ -166,10 +168,19 @@ extern void entry_ibpb(void);
 
 #ifdef CONFIG_RETPOLINE
 
+typedef u8 retpoline_thunk_t[RETPOLINE_THUNK_SIZE];
+
+/*
+ * The type of __x86_indirect_thunk_<reg> has changed to retpoline_thunk_t,
+ * but changing the type would break KABI. So keep the original "void"
+ * type as the effective type of these symbols doesn't matter.
+ */
 #define GEN(reg) \
 	extern asmlinkage void __x86_indirect_thunk_ ## reg (void);
 #include <asm/GEN-for-each-reg.h>
 #undef GEN
+
+extern retpoline_thunk_t __x86_indirect_thunk_array[];
 
 #ifdef CONFIG_X86_64
 
