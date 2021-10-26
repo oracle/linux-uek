@@ -134,7 +134,7 @@ static void llist_abort_desc(struct idxd_wq *wq, struct idxd_irq_entry *ie,
 	spin_unlock(&ie->list_lock);
 
 	if (found)
-		complete_desc(found, IDXD_COMPLETE_ABORT);
+		idxd_dma_complete_txd(found, IDXD_COMPLETE_ABORT, false);
 
 	/*
 	 * complete_desc() will return desc to allocator and the desc can be
@@ -144,7 +144,7 @@ static void llist_abort_desc(struct idxd_wq *wq, struct idxd_irq_entry *ie,
 	 */
 	list_for_each_entry_safe(d, t, &flist, list) {
 		list_del_init(&d->list);
-		complete_desc(d, IDXD_COMPLETE_NORMAL);
+		idxd_dma_complete_txd(found, IDXD_COMPLETE_ABORT, true);
 	}
 }
 
@@ -155,15 +155,11 @@ int idxd_submit_desc(struct idxd_wq *wq, struct idxd_desc *desc)
 	void __iomem *portal;
 	int rc;
 
-	if (idxd->state != IDXD_DEV_ENABLED) {
-		idxd_free_desc(wq, desc);
+	if (idxd->state != IDXD_DEV_ENABLED)
 		return -EIO;
-	}
 
-	if (!percpu_ref_tryget_live(&wq->wq_active)) {
-		idxd_free_desc(wq, desc);
+	if (!percpu_ref_tryget_live(&wq->wq_active))
 		return -ENXIO;
-	}
 
 	portal = idxd_wq_portal_addr(wq);
 
@@ -198,8 +194,6 @@ int idxd_submit_desc(struct idxd_wq *wq, struct idxd_desc *desc)
 			/* abort operation frees the descriptor */
 			if (ie)
 				llist_abort_desc(wq, ie, desc);
-			else
-				idxd_free_desc(wq, desc);
 			return rc;
 		}
 	}
