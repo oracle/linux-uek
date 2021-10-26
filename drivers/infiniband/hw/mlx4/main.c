@@ -2601,6 +2601,17 @@ static int mlx4_port_immutable(struct ib_device *ibdev, u32 port_num,
 	return 0;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static int
+mlx4_ib_get_vector_irqn(struct ib_device *ibdev, int comp_vector)
+{
+	if (comp_vector < 0 || comp_vector >= ibdev->num_comp_vectors)
+		return -1;
+
+	return mlx4_eq_get_irq(to_mdev(ibdev)->dev, comp_vector);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void get_fw_ver_str(struct ib_device *device, char *str)
 {
 	struct mlx4_ib_dev *dev =
@@ -2645,6 +2656,9 @@ static const struct ib_device_ops mlx4_ib_dev_ops = {
 	.get_link_layer = mlx4_ib_port_link_layer,
 	.get_netdev = mlx4_ib_get_netdev,
 	.get_port_immutable = mlx4_port_immutable,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.get_vector_irqn = mlx4_ib_get_vector_irqn,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.map_mr_sg = mlx4_ib_map_mr_sg,
 	.mmap = mlx4_ib_mmap,
 	.modify_cq = mlx4_ib_modify_cq,
