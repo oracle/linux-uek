@@ -558,7 +558,7 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 	 */
 	switch (type) {
 	case NIX_INTF_TYPE_CGX:
-		if ((req->chan_base + req->chan_cnt) > 15)
+		if ((req->chan_base + req->chan_cnt) > 16)
 			return -EINVAL;
 		rvu_get_cgx_lmac_id(pfvf->cgx_lmac, &cgx_id, &lmac_id);
 		/* Assign bpid based on cgx, lmac and chan id */
@@ -4771,6 +4771,12 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 	/* reset HW config done for Switch headers */
 	rvu_npc_set_parse_mode(rvu, pcifunc, OTX2_PRIV_FLAGS_DEFAULT,
 			       (PKIND_TX | PKIND_RX), 0, 0, 0, 0);
+
+	/* reset priority flow control config */
+	rvu_cgx_prio_flow_ctrl_cfg(rvu, pcifunc, 0, 0, 0);
+
+	/* reset 802.3x flow control config */
+	rvu_cgx_cfg_pause_frm(rvu, pcifunc, 0, 0);
 
 	nix_ctx_free(rvu, pfvf);
 
