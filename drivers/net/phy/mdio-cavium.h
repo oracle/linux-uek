@@ -92,6 +92,7 @@ struct cavium_mdiobus {
 	struct mii_bus *mii_bus;
 	u64 register_base;
 	enum cavium_mdiobus_mode mode;
+	u32 clk_freq;
 };
 
 #ifdef CONFIG_CAVIUM_OCTEON_SOC

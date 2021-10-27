@@ -19,6 +19,46 @@ struct thunder_mdiobus_nexus {
 	struct cavium_mdiobus *buses[4];
 };
 
+#define _calc_clk_freq(_phase) (100000000U / (2 * (_phase)))
+#define _calc_sample(_phase) (2 * (_phase) - 3)
+
+#define PHASE_MIN 3
+#define PHASE_DFLT 16
+#define DFLT_CLK_FREQ _calc_clk_freq(PHASE_DFLT)
+#define MAX_CLK_FREQ _calc_clk_freq(PHASE_MIN)
+
+static inline u32 _config_clk(u32 req_freq, u32 *phase, u32 *sample)
+{
+	unsigned int p;
+	u32 freq = 0, freq_prev;
+
+	for (p = PHASE_MIN; p < PHASE_DFLT; p++) {
+		freq_prev = freq;
+		freq = _calc_clk_freq(p);
+
+		if (req_freq >= freq)
+			break;
+	}
+
+	if (p == PHASE_DFLT)
+		freq = DFLT_CLK_FREQ;
+
+	if (p == PHASE_MIN || p == PHASE_DFLT)
+		goto out;
+
+	/* Check which clock value from the identified range
+	 * is closer to the requested value
+	 */
+	if ((freq_prev - req_freq) < (req_freq - freq)) {
+		p = p - 1;
+		freq = freq_prev;
+	}
+out:
+	*phase = p;
+	*sample = _calc_sample(p);
+	return freq;
+}
+
 static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 				     const struct pci_device_id *ent)
 {
@@ -60,6 +100,7 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 		struct cavium_mdiobus *bus;
 		union cvmx_smix_en smi_en;
 		union cvmx_smix_clk smi_clk;
+		u32 req_clk_freq;
 
 		/* If it is not an OF node we cannot handle it yet, so
 		 * exit the loop.
@@ -90,11 +131,31 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 
 		smi_clk.u64 = oct_mdio_readq(bus->register_base + SMI_CLK);
 		smi_clk.s.clk_idle = 1;
+
+		if (!of_property_read_u32(node, "clock-freq", &req_clk_freq)) {
+			u32 phase, sample;
+
+			dev_info(&pdev->dev, "requested bus clock frequency=%d\n",
+				 req_clk_freq);
+
+			bus->clk_freq = _config_clk(req_clk_freq,
+						    &phase, &sample);
+
+			smi_clk.s.phase = phase;
+			smi_clk.s.sample_hi = (sample >> 4) & 0x1f;
+			smi_clk.s.sample = sample & 0xf;
+		} else {
+			bus->clk_freq = DFLT_CLK_FREQ;
+		}
+
 		oct_mdio_writeq(smi_clk.u64, bus->register_base + SMI_CLK);
+		dev_info(&pdev->dev, "bus clock frequency set to %d\n",
+			 bus->clk_freq);
 
 		smi_en.u64 = 0;
 		smi_en.s.en = 1;
 		oct_mdio_writeq(smi_en.u64, bus->register_base + SMI_EN);
+
 		bus->mii_bus->name = KBUILD_MODNAME;
 		snprintf(bus->mii_bus->id, MII_BUS_ID_SIZE, "%llx", r.start);
 		bus->mii_bus->parent = &pdev->dev;
