@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Temperature sensor devices definition for CN96XX SoC
+ * Temperature sensor devices definition for CN96XX and CN98XX SoCs
  *
  * Author: Eric Saint Etienne <eric.saint.etienne@oracle.com>
  *
@@ -20,8 +20,8 @@
 #include <asm/cputype.h>
 
 /*
- * CN96XX contains ten on-die calibrated (± 5° Celsius)
- * temperature sensors named TSN.
+ * CN96XX contains ten and CN98XX contains sixteen on-die calibrated
+ * (± 5° Celsius) temperature sensors named TSN.
  */
 
 #define TSN_TS_INSTANCES_BASE_ADDR 0x87e0c0000000ULL
@@ -51,6 +51,12 @@ struct resource resources[] = {
 	TSN_INSTANCE_RESOURCE(7),
 	TSN_INSTANCE_RESOURCE(8),
 	TSN_INSTANCE_RESOURCE(9),
+	TSN_INSTANCE_RESOURCE(10),
+	TSN_INSTANCE_RESOURCE(11),
+	TSN_INSTANCE_RESOURCE(12),
+	TSN_INSTANCE_RESOURCE(13),
+	TSN_INSTANCE_RESOURCE(14),
+	TSN_INSTANCE_RESOURCE(15),
 };
 
 #define DRIVER_NAME "octeontx2_thermal"
@@ -74,6 +80,12 @@ struct platform_device devices[] = {
 	TSN_INSTANCE_DEVICE(7),
 	TSN_INSTANCE_DEVICE(8),
 	TSN_INSTANCE_DEVICE(9),
+	TSN_INSTANCE_DEVICE(10),
+	TSN_INSTANCE_DEVICE(11),
+	TSN_INSTANCE_DEVICE(12),
+	TSN_INSTANCE_DEVICE(13),
+	TSN_INSTANCE_DEVICE(14),
+	TSN_INSTANCE_DEVICE(15),
 };
 
 static __initdata struct platform_device *pdevs[] = {
@@ -87,6 +99,12 @@ static __initdata struct platform_device *pdevs[] = {
 	&devices[7],
 	&devices[8],
 	&devices[9],
+	&devices[10],
+	&devices[11],
+	&devices[12],
+	&devices[13],
+	&devices[14],
+	&devices[15],
 };
 
 static inline int machine_is_octeon_cn96xx(void)
@@ -95,14 +113,26 @@ static inline int machine_is_octeon_cn96xx(void)
 		MIDR_OCTX2_96XX;
 }
 
-static int __init cn96xx_thermal_init(void)
+static inline int machine_is_octeon_cn98xx(void)
 {
-	if (!machine_is_octeon_cn96xx()) {
-		pr_err("machine not a Marvell Octeon CN96XX\n");
+	return (read_cpuid_id() & MIDR_CPU_MODEL_MASK) ==
+		MIDR_OCTX2_98XX;
+}
+
+static int __init cn9xxx_thermal_init(void)
+{
+	int n_pdevs;
+
+	if (machine_is_octeon_cn96xx()) {
+		n_pdevs = 10;
+	} else if (machine_is_octeon_cn98xx()) {
+		n_pdevs = 16;
+	} else {
+		pr_err("machine not a Marvell Octeon CN9XXX\n");
 		return -EINVAL;
 	}
 
-	return platform_add_devices(pdevs, ARRAY_SIZE(pdevs));
+	return platform_add_devices(pdevs, n_pdevs);
 }
 
-device_initcall(cn96xx_thermal_init);
+device_initcall(cn9xxx_thermal_init);
