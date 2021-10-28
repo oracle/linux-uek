@@ -68,6 +68,7 @@ struct otx2_bphy_cdev_priv {
 	u8				num_rfoe_mhab;
 	u8				num_rfoe_lmac;
 	u8				tot_rfoe_intf;
+	int				gpint2_irq;
 };
 
 #endif
