@@ -108,7 +108,7 @@ struct devlink_dpipe_header devlink_dpipe_header_ethernet = {
 	.fields_count = ARRAY_SIZE(devlink_dpipe_fields_ethernet),
 	.global = true,
 };
-EXPORT_SYMBOL(devlink_dpipe_header_ethernet);
+EXPORT_SYMBOL_GPL(devlink_dpipe_header_ethernet);
 
 static struct devlink_dpipe_field devlink_dpipe_fields_ipv4[] = {
 	{
@@ -125,7 +125,7 @@ struct devlink_dpipe_header devlink_dpipe_header_ipv4 = {
 	.fields_count = ARRAY_SIZE(devlink_dpipe_fields_ipv4),
 	.global = true,
 };
-EXPORT_SYMBOL(devlink_dpipe_header_ipv4);
+EXPORT_SYMBOL_GPL(devlink_dpipe_header_ipv4);
 
 static struct devlink_dpipe_field devlink_dpipe_fields_ipv6[] = {
 	{
@@ -142,7 +142,7 @@ struct devlink_dpipe_header devlink_dpipe_header_ipv6 = {
 	.fields_count = ARRAY_SIZE(devlink_dpipe_fields_ipv6),
 	.global = true,
 };
-EXPORT_SYMBOL(devlink_dpipe_header_ipv6);
+EXPORT_SYMBOL_GPL(devlink_dpipe_header_ipv6);
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(devlink_hwmsg);
 EXPORT_TRACEPOINT_SYMBOL_GPL(devlink_hwerr);
@@ -3371,7 +3371,7 @@ void devlink_dpipe_entry_clear(struct devlink_dpipe_entry *entry)
 		kfree(value[value_index].mask);
 	}
 }
-EXPORT_SYMBOL(devlink_dpipe_entry_clear);
+EXPORT_SYMBOL_GPL(devlink_dpipe_entry_clear);
 
 static int devlink_dpipe_entries_fill(struct genl_info *info,
 				      enum devlink_command cmd, int flags,
