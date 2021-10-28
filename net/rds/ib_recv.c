@@ -1368,8 +1368,6 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 				pr_warn("RDS/IB: recv completion <%pI6c,%pI6c,%d> had status %u vendor_err 0x%x, disconnecting and reconnecting\n",
 					&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 					wc->status, wc->vendor_err);
-			if (wc->status == IB_WC_LOC_LEN_ERR)
-				ic->i_flags |= RDS_IB_CLEAN_CACHE;
 			rds_conn_drop(conn, DR_IB_RECV_COMP_ERR, wc->status);
 		}
 	}
