@@ -633,8 +633,6 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 
 	initdbgmsg("%s: entry\n", __func__);
 
-	sdei_ghes_set_name(ghes_drv);
-
 	base = sdei_ghes_get_error_source_address(ghes_drv);
 
 	for (i = 0; i < ghes_drv->source_count; i++) {
@@ -936,7 +934,7 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 	ret = sdei_ghes_alloc_source(dev, ghes_drv);
 	if (ret)
 		return ret;
-
+	sdei_ghes_set_name(ghes_drv);
 	platform_set_drvdata(pdev, ghes_drv);
 
 	if (has_acpi_companion(dev)) {
