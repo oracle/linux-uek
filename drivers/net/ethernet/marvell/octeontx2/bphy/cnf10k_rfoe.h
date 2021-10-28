@@ -23,7 +23,10 @@
 
 #define DEBUG
 
-#define CNF10K_RFOE_RX_INTR_SHIFT(a)		(32 - ((a) + 1) * 3)
+#define CNF10K_RFOE_RX_INTR_SHIFT(a) ({ \
+	typeof(a) _a = (a); \
+	((_a) < 6) ? (32 - ((_a) + 1) * 3) : (((_a) - 6) * 3); \
+})
 #define CNF10K_RFOE_RX_INTR_MASK(a)		(RFOE_RX_INTR_EN << \
 						 CNF10K_RFOE_RX_INTR_SHIFT(a))
 #define CNF10K_RFOE_TX_PTP_INTR_MASK(a, b, n)	(1UL << ((a) * (n) + (b)))
@@ -121,6 +124,8 @@ void cnf10k_rfoe_rx_napi_schedule(int rfoe_num, u32 status);
 
 int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 				    struct cnf10k_rfoe_ndev_comm_intf_cfg *cfg);
+
+void cnf10k_bphy_rfoe_cleanup(void);
 
 void cnf10k_rfoe_disable_intf(int rfoe_num);
 
