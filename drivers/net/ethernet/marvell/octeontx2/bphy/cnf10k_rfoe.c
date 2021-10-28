@@ -563,9 +563,15 @@ static int cnf10k_rfoe_napi_poll(struct napi_struct *napi, int budget)
 		intr_en = PKT_TYPE_TO_INTR(pkt_type) <<
 				CNF10K_RFOE_RX_INTR_SHIFT(priv->rfoe_num);
 		spin_lock(&cdev_priv->lock);
-		regval = readq(bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
-		regval |= intr_en;
-		writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
+		if (priv->rfoe_num < 6) {
+			regval = readq(bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
+			regval |= intr_en;
+			writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
+		} else {
+			regval = readq(bphy_reg_base + PSM_INT_GP_ENA_W1S(2));
+			regval |= intr_en;
+			writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1S(2));
+		}
 		spin_unlock(&cdev_priv->lock);
 	}
 
@@ -604,7 +610,10 @@ void cnf10k_rfoe_rx_napi_schedule(int rfoe_num, u32 status)
 			/* clear intr enable bit, re-enable in napi handler */
 			regval = PKT_TYPE_TO_INTR(pkt_type) <<
 				 CNF10K_RFOE_RX_INTR_SHIFT(rfoe_num);
-			writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+			if (rfoe_num < 6)
+				writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+			else
+				writeq(regval, bphy_reg_base + PSM_INT_GP_ENA_W1C(2));
 			/* schedule napi */
 			ft_cfg = &drv_ctx->ft_cfg[pkt_type];
 			napi_schedule(&ft_cfg->napi);

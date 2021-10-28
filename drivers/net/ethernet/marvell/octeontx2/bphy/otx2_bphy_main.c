@@ -44,6 +44,31 @@ void __iomem *cpri_reg_base;
 /* check if cpri block is available */
 #define cpri_available()		((cpri_reg_base) ? 1 : 0)
 
+/* GPINT(2) interrupt handler routine */
+static irqreturn_t cnf10k_gpint2_intr_handler(int irq, void *dev_id)
+{
+	struct otx2_bphy_cdev_priv *cdev_priv;
+	u32 status, intr_mask;
+	int rfoe_num;
+
+	cdev_priv = (struct otx2_bphy_cdev_priv *)dev_id;
+
+	/* clear interrupt status */
+	status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(2)) & 0xFFFFFFFF;
+	writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(2));
+
+	pr_debug("gpint2 status = 0x%x\n", status);
+
+	/* rx intr processing */
+	for (rfoe_num = 0; rfoe_num < cdev_priv->num_rfoe_mhab; rfoe_num++) {
+		intr_mask = CNF10K_RFOE_RX_INTR_MASK(rfoe_num);
+		if (status & intr_mask)
+			cnf10k_rfoe_rx_napi_schedule(rfoe_num, status);
+	}
+
+	return IRQ_HANDLED;
+}
+
 /* GPINT(1) interrupt handler routine */
 static irqreturn_t otx2_bphy_intr_handler(int irq, void *dev_id)
 {
@@ -499,6 +524,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 
 		/* Enable GPINT Rx and Tx interrupts */
 		writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
+		if (cdev->gpint2_irq)
+			writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1S(2));
 
 		cdev->odp_intf_cfg = 1;
 
@@ -554,10 +581,17 @@ static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
 
 	/* Disable GPINT Rx and Tx interrupts */
 	writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
+	if (cdev->gpint2_irq)
+		writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(2));
 
 	/* clear interrupt status */
 	status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(1)) & 0xFFFFFFFF;
 	writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
+	if (cdev->gpint2_irq) {
+		status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(2)) &
+				0xFFFFFFFF;
+		writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(2));
+	}
 
 	otx2_bphy_rfoe_cleanup();
 	if (cpri_available())
@@ -691,6 +725,11 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "irq resource not found\n");
 		goto out_unmap_cpri_reg;
 	}
+	cdev_priv->gpint2_irq = platform_get_irq(pdev, 1);
+	if (cdev_priv->gpint2_irq < 0)
+		cdev_priv->gpint2_irq = 0;
+	else
+		dev_info(&pdev->dev, "gpint2 irq resource found\n");
 
 	/* create a character device */
 	err = alloc_chrdev_region(&devt, 0, 1, DEVICE_NAME);
@@ -740,9 +779,22 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		goto out_device_destroy;
 	}
 
+	if (cdev_priv->gpint2_irq) {
+		err = request_irq(cdev_priv->gpint2_irq,
+				  cnf10k_gpint2_intr_handler, 0,
+				  "cn10k_bphy_int", cdev_priv);
+		if (err) {
+			dev_err(&pdev->dev, "can't assign irq %d\n",
+				cdev_priv->gpint2_irq);
+			goto free_irq;
+		}
+	}
+
 	err = 0;
 	goto out;
 
+free_irq:
+	free_irq(cdev_priv->irq, cdev_priv);
 out_device_destroy:
 	device_destroy(otx2rfoe_class, cdev_priv->cdev.dev);
 out_cdev_del:
