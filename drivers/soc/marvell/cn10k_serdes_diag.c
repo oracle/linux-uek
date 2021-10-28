@@ -610,7 +610,7 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 	for (; lane_idx < max_idx; lane_idx++) {
 		int glane = (mapping >> 4 * lane_idx) & 0xf;
 
-		seq_printf(s, "%d\t%d\t%d\t%d\t\t0x%x\t0x%x\t0x%x\t0x%x\n",
+		seq_printf(s, "%d\t%d\t%d\t%d\t\t%hd\t%hd\t%hd\t%hd\n",
 		       port, lane_idx,
 		       gserm_idx, glane,
 		       tx_eq_params[lane_idx].pre2,
