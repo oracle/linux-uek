@@ -499,7 +499,7 @@ static int parse_rx_tr_params(const char __user *buffer, size_t count,
 	if (tokenize_input(cmd_buf, &argc, argv, RX_TR_PRMS_MAX))
 		return -EINVAL;
 
-	if (argc < 2)
+	if (argc < 1)
 		return -EINVAL;
 
 	if (kstrtoint(argv[0], 10, &port))
@@ -507,8 +507,12 @@ static int parse_rx_tr_params(const char __user *buffer, size_t count,
 
 	port &= 0xff;
 
-	if (kstrtoint(argv[1], 10, &lane_idx))
-		return -EINVAL;
+	if (argc > 1) {
+		if (kstrtoint(argv[1], 10, &lane_idx))
+			return -EINVAL;
+	} else {
+		lane_idx = 0xff;
+	}
 
 	lane_idx &= 0xff;
 
@@ -522,9 +526,9 @@ static ssize_t serdes_dbg_rx_tr_write(struct file *filp,
 					const char __user *buffer,
 					size_t count, loff_t *ppos)
 {
-	int port, lane_idx;
+	int port, idx, lane_idx, max_idx;
 	struct rx_tr_cmd_params input;
-	int completed = 0, failed, tries = 30;
+	int ongoing, failed = 0, tries = 30;
 	int lanes_num, gserm_idx, mapping, glane;
 	struct arm_smccc_res res;
 	s32 x1;
@@ -534,7 +538,7 @@ static ssize_t serdes_dbg_rx_tr_write(struct file *filp,
 
 	port = input.port;
 	lane_idx = input.lane_idx;
-	x1 = (input.lane_idx << 8) | input.port;
+	x1 = (lane_idx << 8) | port;
 
 	pr_info("SerDes Rx Training:\n");
 	pr_info("port#:\tlane#:\tgserm#:\tg-lane#:\tstatus:\n");
@@ -548,27 +552,64 @@ static ssize_t serdes_dbg_rx_tr_write(struct file *filp,
 
 	get_gserm_data(res.a1, &gserm_idx, &mapping, &lanes_num);
 
-	while (!completed && tries--) {
+	if (lane_idx == 0xff) {
+		lane_idx = 0;
+		max_idx = lanes_num;
+		ongoing = (1 << lanes_num) - 1;
+	} else {
+		max_idx = lane_idx + 1;
+		ongoing = (1 << lane_idx);
+	}
+
+	while (ongoing && tries--) {
 		msleep(100);
-		arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
-			x1, RX_TR_CHECK, 0, 0, 0, 0, 0, &res);
+		for (idx = lane_idx; idx < max_idx; idx++) {
+			int completed, result;
 
-		completed = res.a2 & 1;
-		failed = (res.a2 >> 1) & 1;
+			if (!((ongoing >> idx) & 1))
+				continue;
+
+			x1 = (idx << 8) | port;
+			arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
+				      x1, RX_TR_CHECK, 0, 0, 0, 0, 0, &res);
+
+			completed = res.a2 & 1;
+			result = (res.a2 >> 1) & 1;
+
+			if (completed) {
+				ongoing &= ~(1 << idx);
+				if (result)
+					failed |= (1 << idx);
+			}
+		}
 	}
 
-	if (!completed) {
-		failed = 1;
-		arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
-			x1, RX_TR_STOP, 0, 0, 0, 0, 0, &res);
+	/* All the lanes that did not complete are
+	 * marked as failed.
+	 */
+	failed |= ongoing;
+
+	/* For all the lanes that failed to complete
+	 * need to call the stop_rx_training explicitly.
+	 */
+	for (idx = lane_idx; ongoing; idx++) {
+		if (ongoing & 1) {
+			x1 = (idx << 8) | port;
+			arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
+				      x1, RX_TR_STOP, 0, 0, 0, 0, 0, &res);
+		}
+		ongoing >>= 1;
 	}
 
-	glane = (mapping >> 4 * lane_idx) & 0xf;
+	for (idx = lane_idx; idx < max_idx; idx++) {
+		int res = (failed >> idx) & 1;
 
-	pr_info("%d\t%d\t%d\t%d\t\t%s\n",
-	       port, lane_idx,
-	       gserm_idx, glane,
-	       failed ? "FAILED" : "OK");
+		glane = (mapping >> 4 * idx) & 0xf;
+		pr_info("%d\t%d\t%d\t%d\t\t%s\n",
+			port, idx,
+			gserm_idx, glane,
+			res ? "FAILED" : "OK");
+	}
 
 	return count;
 }
