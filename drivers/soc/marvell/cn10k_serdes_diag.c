@@ -123,18 +123,22 @@ DEFINE_STR_2_ENUM_FUNC(prbs_optcmd)
 #define PAM4_PATTERN(_p) (_p << 8)
 
 enum prbs_pattern {
-	PRBS_CLK2 = 1,
-	PRBS_CLK4 = 2,
-	PRBS_CLK8 = 4,
+	PRBS_1T = 1,
+	PRBS_2T = 2,
+	PRBS_4T = 4,
+	PRBS_5T = 5,
 
 	PRBS_7 = 7,
 	PRBS_9 = 9,
+	PRBS_10T = 10,
 	PRBS_11 = 11,
 	PRBS_15 = 15,
 	PRBS_16 = 16,
 	PRBS_23 = 23,
 	PRBS_31 = 31,
 	PRBS_32 = 32,
+	PRBS_SSPRQ,
+	PRBS_K28_5,
 
 	PRBS_11_0 = PAM4_PATTERN(11),
 	PRBS_11_1,
@@ -148,24 +152,28 @@ enum prbs_pattern {
 };
 
 #define PRBS(_p) {PRBS_ ## _p, #_p}
-#define PRBS_CLK(_p) {PRBS_CLK ## _p, "clk/"#_p}
 
 static struct {
 	enum prbs_pattern e;
 	const char *s;
 } prbs_pattern[] = {
-	PRBS_CLK(2),
-	PRBS_CLK(4),
-	PRBS_CLK(8),
+	PRBS(1T),
+	PRBS(2T),
+	PRBS(4T),
+	PRBS(5T),
 
 	PRBS(7),
 	PRBS(9),
+	PRBS(10T),
 	PRBS(11),
 	PRBS(15),
 	PRBS(16),
 	PRBS(23),
 	PRBS(31),
 	PRBS(32),
+	PRBS(SSPRQ),
+	PRBS(K28_5),
+
 	PRBS(11_0),
 	PRBS(11_1),
 	PRBS(11_2),
