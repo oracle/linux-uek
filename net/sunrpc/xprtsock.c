@@ -1177,14 +1177,13 @@ static void xs_error_report(struct sock *sk)
 	struct sock_xprt *transport;
 	struct rpc_xprt *xprt;
 
-	read_lock_bh(&sk->sk_callback_lock);
 	if (!(xprt = xprt_from_sock(sk)))
-		goto out;
+		return;
 
 	transport = container_of(xprt, struct sock_xprt, xprt);
 	transport->xprt_err = -sk->sk_err;
 	if (transport->xprt_err == 0)
-		goto out;
+		return;
 	dprintk("RPC:       xs_error_report client %p, error=%d...\n",
 			xprt, -transport->xprt_err);
 	trace_rpc_socket_error(xprt, sk->sk_socket, transport->xprt_err);
@@ -1192,8 +1191,6 @@ static void xs_error_report(struct sock *sk)
 	/* barrier ensures xprt_err is set before XPRT_SOCK_WAKE_ERROR */
 	smp_mb__before_atomic();
 	xs_run_error_worker(transport, XPRT_SOCK_WAKE_ERROR);
- out:
-	read_unlock_bh(&sk->sk_callback_lock);
 }
 
 static void xs_reset_transport(struct sock_xprt *transport)
@@ -1222,7 +1219,7 @@ static void xs_reset_transport(struct sock_xprt *transport)
 	kernel_sock_shutdown(sock, SHUT_RDWR);
 
 	mutex_lock(&transport->recv_mutex);
-	write_lock_bh(&sk->sk_callback_lock);
+	lock_sock(sk);
 	transport->inet = NULL;
 	transport->sock = NULL;
 	transport->file = NULL;
@@ -1231,10 +1228,10 @@ static void xs_reset_transport(struct sock_xprt *transport)
 
 	xs_restore_old_callbacks(transport, sk);
 	xprt_clear_connected(xprt);
-	write_unlock_bh(&sk->sk_callback_lock);
 	xs_sock_reset_connection_flags(xprt);
 	/* Reset stream record info */
 	xs_stream_reset_connect(transport);
+	release_sock(sk);
 	mutex_unlock(&transport->recv_mutex);
 
 	trace_rpc_socket_close(xprt, sock);
@@ -1398,7 +1395,6 @@ static void xs_data_ready(struct sock *sk)
 {
 	struct rpc_xprt *xprt;
 
-	read_lock_bh(&sk->sk_callback_lock);
 	dprintk("RPC:       xs_data_ready...\n");
 	xprt = xprt_from_sock(sk);
 	if (xprt != NULL) {
@@ -1413,7 +1409,6 @@ static void xs_data_ready(struct sock *sk)
 		if (!test_and_set_bit(XPRT_SOCK_DATA_READY, &transport->sock_state))
 			queue_work(xprtiod_workqueue, &transport->recv_worker);
 	}
-	read_unlock_bh(&sk->sk_callback_lock);
 }
 
 /*
@@ -1442,9 +1437,8 @@ static void xs_tcp_state_change(struct sock *sk)
 	struct rpc_xprt *xprt;
 	struct sock_xprt *transport;
 
-	read_lock_bh(&sk->sk_callback_lock);
 	if (!(xprt = xprt_from_sock(sk)))
-		goto out;
+		return;
 	dprintk("RPC:       xs_tcp_state_change client %p...\n", xprt);
 	dprintk("RPC:       state %x conn %d dead %d zapped %d sk_shutdown %d\n",
 			sk->sk_state, xprt_connected(xprt),
@@ -1505,8 +1499,6 @@ static void xs_tcp_state_change(struct sock *sk)
 		/* Trigger the socket release */
 		xs_run_error_worker(transport, XPRT_SOCK_WAKE_DISCONNECT);
 	}
- out:
-	read_unlock_bh(&sk->sk_callback_lock);
 }
 
 static void xs_write_space(struct sock *sk)
@@ -1545,13 +1537,9 @@ out:
  */
 static void xs_udp_write_space(struct sock *sk)
 {
-	read_lock_bh(&sk->sk_callback_lock);
-
 	/* from net/core/sock.c:sock_def_write_space */
 	if (sock_writeable(sk))
 		xs_write_space(sk);
-
-	read_unlock_bh(&sk->sk_callback_lock);
 }
 
 /**
@@ -1566,13 +1554,9 @@ static void xs_udp_write_space(struct sock *sk)
  */
 static void xs_tcp_write_space(struct sock *sk)
 {
-	read_lock_bh(&sk->sk_callback_lock);
-
 	/* from net/core/stream.c:sk_stream_write_space */
 	if (sk_stream_is_writeable(sk))
 		xs_write_space(sk);
-
-	read_unlock_bh(&sk->sk_callback_lock);
 }
 
 static void xs_udp_do_set_buffer_size(struct rpc_xprt *xprt)
@@ -1890,7 +1874,7 @@ static int xs_local_finish_connecting(struct rpc_xprt *xprt,
 	if (!transport->inet) {
 		struct sock *sk = sock->sk;
 
-		write_lock_bh(&sk->sk_callback_lock);
+		lock_sock(sk);
 
 		xs_save_old_callbacks(transport, sk);
 
@@ -1906,7 +1890,7 @@ static int xs_local_finish_connecting(struct rpc_xprt *xprt,
 		transport->sock = sock;
 		transport->inet = sk;
 
-		write_unlock_bh(&sk->sk_callback_lock);
+		release_sock(sk);
 	}
 
 	xs_stream_start_connect(transport);
@@ -2088,7 +2072,7 @@ static void xs_udp_finish_connecting(struct rpc_xprt *xprt, struct socket *sock)
 	if (!transport->inet) {
 		struct sock *sk = sock->sk;
 
-		write_lock_bh(&sk->sk_callback_lock);
+		lock_sock(sk);
 
 		xs_save_old_callbacks(transport, sk);
 
@@ -2105,7 +2089,7 @@ static void xs_udp_finish_connecting(struct rpc_xprt *xprt, struct socket *sock)
 
 		xs_set_memalloc(xprt);
 
-		write_unlock_bh(&sk->sk_callback_lock);
+		release_sock(sk);
 	}
 	xs_udp_do_set_buffer_size(xprt);
 
@@ -2252,7 +2236,7 @@ static int xs_tcp_finish_connecting(struct rpc_xprt *xprt, struct socket *sock)
 		xs_tcp_set_socket_timeouts(xprt, sock);
 		tcp_sock_set_nodelay(sk);
 
-		write_lock_bh(&sk->sk_callback_lock);
+		lock_sock(sk);
 
 		xs_save_old_callbacks(transport, sk);
 
@@ -2272,7 +2256,7 @@ static int xs_tcp_finish_connecting(struct rpc_xprt *xprt, struct socket *sock)
 		transport->sock = sock;
 		transport->inet = sk;
 
-		write_unlock_bh(&sk->sk_callback_lock);
+		release_sock(sk);
 	}
 
 	if (!xprt_bound(xprt))
