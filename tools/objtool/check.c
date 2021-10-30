@@ -3001,6 +3001,9 @@ static bool ignore_unreachable_insn(struct objtool_file *file, struct instructio
 	if (!insn->func)
 		return false;
 
+	if (insn->func->static_call_tramp)
+		return true;
+
 	/*
 	 * CONFIG_UBSAN_TRAP inserts a UD2 when it sees
 	 * __builtin_unreachable().  The BUG() macro has an unreachable() after
