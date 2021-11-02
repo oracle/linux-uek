@@ -258,6 +258,43 @@ void rds_ib_get_preferred_cpu_mask(struct cpumask *preferred_cpu_mask_p,
 	}
 }
 
+static void rds_ib_alloc_preferred_cpu(int *preferred_cpu_p,
+				       struct rds_ib_device *rds_ibdev,
+				       int cq_vector)
+{
+	struct cpumask preferred_cpu_mask;
+	int irqn, min_load, min_cpu, cpu;
+	unsigned long flags;
+
+	/* turn module parameter "preferred_cpu" into
+	 * a subset of online CPUs "preferred_cpu_mask"
+	 */
+
+	if (cq_vector >= 0)
+		irqn = ib_get_vector_irqn(rds_ibdev->dev, cq_vector);
+	else
+		irqn = -1;
+
+	rds_ib_get_preferred_cpu_mask(&preferred_cpu_mask,
+				      irqn, rdsibdev_to_node(rds_ibdev));
+
+	/* find a CPU within "preferred_cpu_mask" with the lowest load */
+
+	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
+	min_cpu = WORK_CPU_UNBOUND;
+	min_load = INT_MAX;
+	for_each_cpu(cpu, &preferred_cpu_mask) {
+		if (rds_ib_preferred_cpu_load[cpu] < min_load) {
+			min_cpu = cpu;
+			min_load = rds_ib_preferred_cpu_load[cpu];
+		}
+	}
+	if (min_cpu != WORK_CPU_UNBOUND)
+		rds_ib_preferred_cpu_load[min_cpu]++;
+	*preferred_cpu_p = min_cpu;
+	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
+}
+
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr)
 {
 	struct rds_ib_device *rds_ibdev;
@@ -464,36 +501,16 @@ int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 		    struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	struct cpumask preferred_cpu_mask;
-	int min_load, min_cpu, cpu;
 	unsigned long flags;
 
-	/* turn module parameter "preferred_cpu" into
-	 * a subset of online CPUs "preferred_cpu_mask"
-	 */
-	if (ic->i_cq_vector >= 0)
-		ic->i_irqn = ib_get_vector_irqn(rds_ibdev->dev, ic->i_cq_vector);
-	else
-		ic->i_irqn = -1;
-	ic->i_cq_isolate_warned = false;
-	rds_ib_get_preferred_cpu_mask(&preferred_cpu_mask,
-				      ic->i_irqn, rdsibdev_to_node(rds_ibdev));
+	ic->i_scq_isolate_warned = false;
+	ic->i_rcq_isolate_warned = false;
 
-	/* find a CPU within "preferred_cpu_mask" with the lowest load */
+	rds_ib_alloc_preferred_cpu(&ic->i_preferred_send_cpu,
+				   rds_ibdev, ic->i_scq_vector);
 
-	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
-	min_cpu = WORK_CPU_UNBOUND;
-	min_load = INT_MAX;
-	for_each_cpu(cpu, &preferred_cpu_mask) {
-		if (rds_ib_preferred_cpu_load[cpu] < min_load) {
-			min_cpu = cpu;
-			min_load = rds_ib_preferred_cpu_load[cpu];
-		}
-	}
-	if (min_cpu != WORK_CPU_UNBOUND)
-		rds_ib_preferred_cpu_load[min_cpu]++;
-	ic->i_preferred_cpu = min_cpu;
-	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
+	rds_ib_alloc_preferred_cpu(&ic->i_preferred_recv_cpu,
+				   rds_ibdev, ic->i_rcq_vector);
 
 	/* conn was previously on the nodev_conns_list */
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
@@ -543,9 +560,12 @@ void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
 	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
-	if (ic->i_preferred_cpu != WORK_CPU_UNBOUND)
-		rds_ib_preferred_cpu_load[ic->i_preferred_cpu]--;
-	ic->i_preferred_cpu = WORK_CPU_UNBOUND;
+	if (ic->i_preferred_recv_cpu != WORK_CPU_UNBOUND)
+		rds_ib_preferred_cpu_load[ic->i_preferred_recv_cpu]--;
+	ic->i_preferred_recv_cpu = WORK_CPU_UNBOUND;
+	if (ic->i_preferred_send_cpu != WORK_CPU_UNBOUND)
+		rds_ib_preferred_cpu_load[ic->i_preferred_send_cpu]--;
+	ic->i_preferred_send_cpu = WORK_CPU_UNBOUND;
 	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
 
 	rds_ib_dev_put(rds_ibdev);

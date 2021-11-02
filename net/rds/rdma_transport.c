@@ -447,7 +447,7 @@ static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		info->event.param.conn.private_data_len = 0;
 	}
 
-	queue_work_on(ic ? ic->i_preferred_cpu : WORK_CPU_UNBOUND,
+	queue_work_on(ic ? ic->i_preferred_recv_cpu : WORK_CPU_UNBOUND,
 		      wq, &info->work);
 }
 
