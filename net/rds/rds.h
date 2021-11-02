@@ -766,7 +766,7 @@ struct rds_transport {
 			   __u32 scope_id);
 	int (*conn_alloc)(struct rds_connection *conn, gfp_t gfp);
 	void (*conn_free)(void *data);
-	int (*conn_preferred_cpu)(struct rds_connection *conn);
+	int (*conn_preferred_cpu)(struct rds_connection *conn, bool in_send_path);
 	bool (*conn_has_alt_conn)(struct rds_connection *conn);
 	void (*conn_slots_available)(struct rds_connection *conn, bool fan_out);
 	void (*conn_path_reset)(struct rds_conn_path *cp, unsigned flags);
@@ -1181,7 +1181,16 @@ rds_clear_reconnect_pending_work_bit(struct rds_conn_path *cp)
 
 static inline void rds_cond_queue_send_work(struct rds_conn_path *cp, unsigned long delay)
 {
-	if (!test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
+	int cpu;
+
+	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
+		return;
+
+	if (cp->cp_conn->c_trans->conn_preferred_cpu) {
+		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, true);
+		rds_queue_delayed_work_on(cp, cpu, cp->cp_wq, &cp->cp_send_w, delay,
+					  "send work");
+	} else
 		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_send_w, delay,
 				       "send work");
 }

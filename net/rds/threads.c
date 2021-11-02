@@ -105,7 +105,7 @@ void rds_queue_work(struct rds_conn_path *cp,
 	trace_rds_queue_work(cp ? cp->cp_conn : NULL, cp, wq, work, 0, reason);
 
 	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
-		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn);
+		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, false);
 		queue_work_on(cpu, wq, work);
 	} else
 		queue_work(wq, work);
@@ -124,7 +124,7 @@ void rds_queue_delayed_work(struct rds_conn_path *cp,
 			     delay, reason);
 
 	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
-		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn);
+		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, false);
 		queue_delayed_work_on(cpu, wq, dwork, delay);
 	} else
 		queue_delayed_work(wq, dwork, delay);
