@@ -35,6 +35,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/gfp.h>
+#include <linux/cacheinfo.h>
 #include <linux/vmalloc.h>
 #include <linux/version.h>
 #include <linux/kconfig.h>
@@ -294,7 +295,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	const union rds_ib_conn_priv *dp = NULL;
-	char cq_cpu_msg_buf[64];
 	__be16 frag_sz = 0;
 	__be64 ack_seq = 0;
 	__be32 credit = 0;
@@ -344,24 +344,19 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	if (ic->i_preferred_cpu != WORK_CPU_UNBOUND)
-		snprintf(cq_cpu_msg_buf, sizeof(cq_cpu_msg_buf),
-			 ", cq_vector=%d, preferred_cpu=%d",
-			 ic->i_cq_vector, ic->i_preferred_cpu);
-	else
-		snprintf(cq_cpu_msg_buf, sizeof(cq_cpu_msg_buf),
-			 ", cq_vector=%d, preferred_cpu=unbound",
-			 ic->i_cq_vector);
-
-	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u%s%s%s\n",
-	       ic->i_active_side ? "Active " : "Passive",
-	       conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
-	       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-	       RDS_PROTOCOL_MAJOR(conn->c_version),
-	       RDS_PROTOCOL_MINOR(conn->c_version),
-	       ic->i_flowctl ? ", flow control" : "",
-	       conn->c_acl_en ? ", ACL Enabled" : "",
-	       cq_cpu_msg_buf);
+	pr_notice("RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u%s%s"
+		 ", scq_vector=%d, preferred_send_cpu=%d, rcq_vector=%d, preferred_recv_cpu=%d\n",
+		  ic->i_active_side ? "Active " : "Passive",
+		  conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
+		  &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		  RDS_PROTOCOL_MAJOR(conn->c_version),
+		  RDS_PROTOCOL_MINOR(conn->c_version),
+		  ic->i_flowctl ? ", flow control" : "",
+		  conn->c_acl_en ? ", ACL Enabled" : "",
+		  ic->i_scq_vector,
+		  ic->i_preferred_send_cpu != WORK_CPU_UNBOUND ? ic->i_preferred_send_cpu : -1,
+		  ic->i_rcq_vector,
+		  ic->i_preferred_recv_cpu != WORK_CPU_UNBOUND ? ic->i_preferred_recv_cpu : -1);
 
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
@@ -561,34 +556,45 @@ static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
  * with other restrictions (e.g. NUMA) of
  * module parameter "rds_ib_preferred_cpu"
  */
-static void rds_ib_cq_follow_affinity(struct work_struct *work)
+static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic,
+				      bool in_send_path)
 {
-	struct rds_ib_connection *ic = container_of(work,
-						    struct rds_ib_connection,
-						    i_cq_follow_affinity_w.work);
-	int preferred_cpu, irqn;
+	int *preferred_cpu_p, preferred_cpu, cq_vector, irqn;
+	bool *cq_isolate_warned_p;
+	const char *preferred_cpu_name;
 	struct cpumask preferred_cpu_mask;
 	unsigned long flags;
 
 	if (!(rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_CQ))
 		return;
 
-	preferred_cpu = ic->i_preferred_cpu;
+	if (in_send_path) {
+		preferred_cpu_p = &ic->i_preferred_send_cpu;
+		cq_vector = ic->i_scq_vector;
+		cq_isolate_warned_p = &ic->i_scq_isolate_warned;
+		preferred_cpu_name = "i_preferred_send_cpu";
+	} else {
+		preferred_cpu_p = &ic->i_preferred_recv_cpu;
+		cq_vector = ic->i_rcq_vector;
+		cq_isolate_warned_p = &ic->i_rcq_isolate_warned;
+		preferred_cpu_name = "i_preferred_recv_cpu";
+	}
+
+	preferred_cpu = *preferred_cpu_p;
 	if (preferred_cpu == WORK_CPU_UNBOUND ||
 	    preferred_cpu == smp_processor_id())
 		return;
 
-	irqn = ic->i_irqn;
+	irqn = ib_get_vector_irqn(ic->rds_ibdev->dev, cq_vector);
 	if (irqn < 0)
 		return;
 
 	rds_ib_get_preferred_cpu_mask(&preferred_cpu_mask,
-				      ic->i_irqn,
-				      rdsibdev_to_node(ic->rds_ibdev));
+				      irqn, rdsibdev_to_node(ic->rds_ibdev));
 	if (cpumask_weight(&preferred_cpu_mask) != 1 ||
 	    cpumask_first(&preferred_cpu_mask) != smp_processor_id()) {
-		if (!ic->i_cq_isolate_warned) {
-			ic->i_cq_isolate_warned = true;
+		if (!*cq_isolate_warned_p) {
+			*cq_isolate_warned_p = true;
 			pr_warn("RDS/IB: CQ affinity mismatch: can't isolate single CPU (irqn=%d, cpus=%*pbl)\n",
 				irqn, cpumask_pr_args(&preferred_cpu_mask));
 		}
@@ -597,17 +603,26 @@ static void rds_ib_cq_follow_affinity(struct work_struct *work)
 
 	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
 
-	if (ic->i_preferred_cpu != WORK_CPU_UNBOUND)
-		rds_ib_preferred_cpu_load[ic->i_preferred_cpu]--;
-	ic->i_preferred_cpu = smp_processor_id();
-	rds_ib_preferred_cpu_load[ic->i_preferred_cpu]++;
+	if (*preferred_cpu_p != WORK_CPU_UNBOUND)
+		rds_ib_preferred_cpu_load[*preferred_cpu_p]--;
+	*preferred_cpu_p = smp_processor_id();
+	rds_ib_preferred_cpu_load[*preferred_cpu_p]++;
 
 	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
 
-	pr_warn("RDS/IB: CQ affinity mismatch: changed preferred_cpu from=%d to=%d (irqn=%d)\n",
-		preferred_cpu, smp_processor_id(), irqn);
+	pr_warn("RDS/IB: CQ affinity mismatch: changed %s from=%d to=%d (irqn=%d)\n",
+		preferred_cpu_name, preferred_cpu, smp_processor_id(), irqn);
 
-	ic->i_cq_isolate_warned = false;
+	*cq_isolate_warned_p = false;
+}
+
+static void rds_ib_cq_follow_send_affinity(struct work_struct *work)
+{
+	struct rds_ib_connection *ic = container_of(work,
+						    struct rds_ib_connection,
+						    i_cq_follow_send_affinity_w.work);
+
+	rds_ib_cq_follow_affinity(ic, true);
 }
 
 static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
@@ -621,14 +636,23 @@ static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
 
 	queue_delayed_work_on(smp_processor_id(),
 			      rds_evt_wq,
-			      &ic->i_cq_follow_affinity_w,
+			      &ic->i_cq_follow_send_affinity_w,
 			      msecs_to_jiffies(RDS_IB_CQ_FOLLOW_AFFINITY_THROTTLE));
 
 	if (rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_TASKLET)
 		tasklet_schedule(&ic->i_stasklet);
 	else
-		queue_work_on(ic->i_preferred_cpu,
+		queue_work_on(ic->i_preferred_send_cpu,
 			      rds_evt_wq, &ic->i_send_w);
+}
+
+static void rds_ib_cq_follow_recv_affinity(struct work_struct *work)
+{
+	struct rds_ib_connection *ic = container_of(work,
+						    struct rds_ib_connection,
+						    i_cq_follow_recv_affinity_w.work);
+
+	rds_ib_cq_follow_affinity(ic, false);
 }
 
 static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
@@ -642,13 +666,13 @@ static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
 
 	queue_delayed_work_on(smp_processor_id(),
 			      rds_evt_wq,
-			      &ic->i_cq_follow_affinity_w,
+			      &ic->i_cq_follow_recv_affinity_w,
 			      msecs_to_jiffies(RDS_IB_CQ_FOLLOW_AFFINITY_THROTTLE));
 
 	if (rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_TASKLET)
 		tasklet_schedule(&ic->i_rtasklet);
 	else
-		queue_work_on(ic->i_preferred_cpu,
+		queue_work_on(ic->i_preferred_recv_cpu,
 			      rds_evt_wq, &ic->i_recv_w);
 }
 
@@ -821,7 +845,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		    (atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
 		    !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
 			rds_queue_delayed_work_on(&conn->c_path[0],
-						  ic->i_preferred_cpu,
+						  ic->i_preferred_recv_cpu,
 						  conn->c_path[0].cp_wq,
 						  &rds_ibdev->srq->s_refill_w,
 						  0,
@@ -832,7 +856,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		ic->i_rx_w.ic = ic;
 		/* Delay 10 msecs until the RX worker starts reaping again */
 		rds_queue_delayed_work_on(&conn->c_path[0],
-					  ic->i_preferred_cpu,
+					  ic->i_preferred_recv_cpu,
 					  rds_aux_wq,
 					  &ic->i_rx_w.work,
 					  msecs_to_jiffies(10),
@@ -955,23 +979,70 @@ static int rds_ib_get_load(int *tos_row, u8 tos)
 	return load;
 }
 
-static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 tos)
+static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 tos,
+					  int sibling_vector)
 {
-	int *tos_row;
-	int index;
-	int load;
-	int min;
-	int i;
+	struct cpumask *l3_cpu_mask_p = NULL;
+	struct cpumask cpu_mask;
+	struct cpu_cacheinfo *cache_p;
+	int *tos_row, load;
+	int irqn, cpu;
+	int index, min, i;
 
-	mutex_lock(&rds_ibdev->vector_load_lock);
-	index = rds_ibdev->dev->num_comp_vectors - 1;
-	min = rds_ib_get_load(rds_ibdev->vector_load + index * RDS_IB_NMBR_TOS_ROWS, tos);
+	/* try to allocate a vector pointing to a CPU that belongs
+	 * to the same L3 cache, if sibling_vector >= 0 with CQ-preference
+	 */
+	if (sibling_vector >= 0 &&
+	    (rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_CQ))
+		irqn = ib_get_vector_irqn(rds_ibdev->dev, sibling_vector);
+	else
+		irqn = -1;
 
-	for (i = index; i >= 0; i--) {
-		tos_row = rds_ibdev->vector_load + i * RDS_IB_NMBR_TOS_ROWS;
-		load = rds_ib_get_load(tos_row, tos);
+	if (irqn >= 0) {
+		rds_ib_get_preferred_cpu_mask(&cpu_mask,
+					      irqn, rdsibdev_to_node(rds_ibdev));
+		if (cpumask_weight(&cpu_mask) == 1) {
+			cpu = cpumask_first(&cpu_mask);
 
-		if (load < min) {
+			cache_p = get_cpu_cacheinfo(cpu);
+			if (cache_p && cache_p->num_leaves > 3)
+				l3_cpu_mask_p = &cache_p->info_list[3].shared_cpu_map;
+		}
+	}
+ 
+        mutex_lock(&rds_ibdev->vector_load_lock);
+
+	index = 0;
+	min = -1;
+
+	/* try to find a sibling with lowest load first */
+	if (l3_cpu_mask_p) {
+		for (i = rds_ibdev->dev->num_comp_vectors - 1; i >= 0; i--) {
+			irqn = ib_get_vector_irqn(rds_ibdev->dev, i);
+			rds_ib_get_preferred_cpu_mask(&cpu_mask,
+						      irqn, rdsibdev_to_node(rds_ibdev));
+
+			if (!cpumask_intersects(&cpu_mask, l3_cpu_mask_p))
+				continue;
+
+			tos_row = rds_ibdev->vector_load + i * RDS_IB_NMBR_TOS_ROWS;
+			load = rds_ib_get_load(tos_row, tos);
+			if (min >= 0 && load >= min)
+				continue;
+
+			index = i;
+			min = load;
+		}
+	}
+
+	if (min < 0) {
+		/* no sibling found; pick up any vector with lowest load */
+		for (i = rds_ibdev->dev->num_comp_vectors - 1; i >= 0; i--) {
+			tos_row = rds_ibdev->vector_load + i * RDS_IB_NMBR_TOS_ROWS;
+			load = rds_ib_get_load(tos_row, tos);
+			if (min >= 0 && load >= min)
+				continue;
+
 			index = i;
 			min = load;
 		}
@@ -979,6 +1050,7 @@ static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 to
 
 	tos_row = rds_ibdev->vector_load + index * RDS_IB_NMBR_TOS_ROWS;
 	tos_row[tos % RDS_IB_NMBR_TOS_ROWS]++;
+
 	mutex_unlock(&rds_ibdev->vector_load_lock);
 
 	return index;
@@ -1003,7 +1075,8 @@ static inline void ibdev_put_vector(struct rds_ib_device *rds_ibdev, int index, 
 }
 
 static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
-			    int *vector, struct ib_cq **cqp, unsigned int *cq_entriesp,
+			    int *vector, int sibling_vector,
+			    struct ib_cq **cqp, unsigned int *cq_entriesp,
 			    ib_comp_handler comp_handler,
 			    void (*event_handler)(struct ib_event *, void *),
 			    void *ctx, int n, const char str[5], u8 tos)
@@ -1031,7 +1104,7 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 
 	cq_attr.cqe = n;
 	if (*vector < 0)
-		*vector = ibdev_get_unused_vector(rds_ibdev, tos);
+		*vector = ibdev_get_unused_vector(rds_ibdev, tos, sibling_vector);
 	else
 		ibdev_get_vector(rds_ibdev, *vector, tos);
 	cq_attr.comp_vector = *vector;
@@ -1056,14 +1129,14 @@ static void __rds_rdma_free_cq(struct rds_ib_connection *ic,
 	rcq = ic->i_rcq;
 	ic->i_rcq = NULL;
 	if (rcq) {
-		ibdev_put_vector(rds_ibdev, ic->i_cq_vector, ic->conn->c_tos);
+		ibdev_put_vector(rds_ibdev, ic->i_rcq_vector, ic->conn->c_tos);
 		ib_destroy_cq(rcq);
 	}
 
 	scq = ic->i_scq;
 	ic->i_scq = NULL;
 	if (scq) {
-		ibdev_put_vector(rds_ibdev, ic->i_cq_vector, ic->conn->c_tos);
+		ibdev_put_vector(rds_ibdev, ic->i_scq_vector, ic->conn->c_tos);
 		ib_destroy_cq(scq);
 	}
 }
@@ -1364,7 +1437,9 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		WARN_ON(ic->i_scq);
 	}
 
-	rds_ib_check_cq(dev, rds_ibdev, &ic->i_cq_vector, &ic->i_scq, &ic->i_scq_entries,
+	rds_ib_check_cq(dev, rds_ibdev,
+			&ic->i_scq_vector, -1,
+			&ic->i_scq, &ic->i_scq_entries,
 			rds_ib_cq_comp_handler_send,
 			rds_ib_cq_event_handler, conn,
 			ic->i_send_ring.w_nr + 1 + mr_reg,
@@ -1376,7 +1451,9 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	rds_ib_check_cq(dev, rds_ibdev, &ic->i_cq_vector, &ic->i_rcq, &ic->i_rcq_entries,
+	rds_ib_check_cq(dev, rds_ibdev,
+			&ic->i_rcq_vector, ic->i_scq_vector,
+			&ic->i_rcq, &ic->i_rcq_entries,
 			rds_ib_cq_comp_handler_recv,
 			rds_ib_cq_event_handler, conn,
 			rds_ib_srq_enabled ? rds_ib_srq_max_wr - 1 : ic->i_recv_ring.w_nr,
@@ -2144,11 +2221,14 @@ void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags)
 	}
 }
 
-int rds_ib_conn_preferred_cpu(struct rds_connection *conn)
+int rds_ib_conn_preferred_cpu(struct rds_connection *conn, bool in_send_path)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
-	return ic ? ic->i_preferred_cpu : WORK_CPU_UNBOUND;
+	if (!ic)
+		return WORK_CPU_UNBOUND;
+
+	return in_send_path ? ic->i_preferred_send_cpu : ic->i_preferred_recv_cpu;
 }
 
 bool rds_ib_conn_has_alt_conn(struct rds_connection *conn)
@@ -2397,7 +2477,8 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		set_ib_conn_flag(RDS_IB_CQ_DESTROY, ic);
 
 	if (ic->i_cm_id) {
-		cancel_delayed_work_sync(&ic->i_cq_follow_affinity_w);
+		cancel_delayed_work_sync(&ic->i_cq_follow_send_affinity_w);
+		cancel_delayed_work_sync(&ic->i_cq_follow_recv_affinity_w);
 
 		cancel_delayed_work_sync(&ic->i_rx_w.work);
 
@@ -2571,13 +2652,16 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
-	ic->i_cq_vector = -1;
-	ic->i_irqn = -1;
-	ic->i_cq_isolate_warned = false;
-	ic->i_preferred_cpu = WORK_CPU_UNBOUND;
+	ic->i_scq_vector = -1;
+	ic->i_rcq_vector = -1;
+	ic->i_scq_isolate_warned = false;
+	ic->i_rcq_isolate_warned = false;
+	ic->i_preferred_send_cpu = WORK_CPU_UNBOUND;
+	ic->i_preferred_recv_cpu = WORK_CPU_UNBOUND;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
-	INIT_DELAYED_WORK(&ic->i_cq_follow_affinity_w, rds_ib_cq_follow_affinity);
+	INIT_DELAYED_WORK(&ic->i_cq_follow_send_affinity_w, rds_ib_cq_follow_send_affinity);
+	INIT_DELAYED_WORK(&ic->i_cq_follow_recv_affinity_w, rds_ib_cq_follow_recv_affinity);
 
 	INIT_DELAYED_WORK(&ic->i_delayed_free_work,
 			  rds_rdma_conn_delayed_free_worker);
@@ -2656,7 +2740,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	int gid_index = 0;
 	union ib_gid dgid;
 
-	rds_ibdev->fastreg_cq_vector = ibdev_get_unused_vector(rds_ibdev, RDS_IB_FASTREG_TOS);
+	rds_ibdev->fastreg_cq_vector = ibdev_get_unused_vector(rds_ibdev, RDS_IB_FASTREG_TOS, -1);
 	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.cqe = RDS_IB_DEFAULT_FREG_WR + 1;
 	cq_attr.comp_vector = rds_ibdev->fastreg_cq_vector;
