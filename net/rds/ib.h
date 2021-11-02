@@ -376,16 +376,18 @@ struct rds_ib_connection {
 	/* Active Bonding */
 	unsigned int		i_active_side;
 
-	int			i_cq_vector;
-	int			i_irqn;
-	bool			i_cq_isolate_warned;
+	int			i_scq_vector;
+	int			i_rcq_vector;
+	bool			i_scq_isolate_warned;
+	bool			i_rcq_isolate_warned;
 
 	unsigned int            i_rx_poll_cq;
 	struct rds_ib_rx_work   i_rx_w;
 	spinlock_t              i_rx_lock;
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
-	int			i_preferred_cpu;
+	int			i_preferred_send_cpu;
+	int			i_preferred_recv_cpu;
 
 	/* For handling delayed release of device related resource. */
 	struct mutex		i_delayed_free_lock;
@@ -407,7 +409,8 @@ struct rds_ib_connection {
 	atomic64_t		i_tx_poll_cnt;
 	atomic64_t		i_rx_poll_cnt;
 
-	struct delayed_work	i_cq_follow_affinity_w;
+	struct delayed_work	i_cq_follow_send_affinity_w;
+	struct delayed_work	i_cq_follow_recv_affinity_w;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -712,7 +715,7 @@ extern struct socket *rds_ib_inet_socket;
 /* ib_cm.c */
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
 void rds_ib_conn_free(void *arg);
-int rds_ib_conn_preferred_cpu(struct rds_connection *conn);
+int rds_ib_conn_preferred_cpu(struct rds_connection *conn, bool in_send_path);
 bool rds_ib_conn_has_alt_conn(struct rds_connection *conn);
 void rds_ib_conn_path_reset(struct rds_conn_path *cp, unsigned flags);
 int rds_ib_conn_path_connect(struct rds_conn_path *cp);
