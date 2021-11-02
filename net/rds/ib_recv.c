@@ -135,7 +135,7 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			     struct rds_page_frag *frag)
 {
-	if (rds_ib_recv_cache_put(ic->i_preferred_cpu,
+	if (rds_ib_recv_cache_put(ic->i_preferred_recv_cpu,
 				  &frag->f_cache_entry,
 				  &frag->f_cache_entry,
 				  frag->rds_ibdev->i_cache_frags +
@@ -198,7 +198,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	}
 	rdsdebug("first_frag %p frag %p p_frag %p count %d inc %p\n", first_frag, p_frag, frag, count, inc);
 	if (first_frag)
-		if (!rds_ib_recv_cache_put(ic->i_preferred_cpu,
+		if (!rds_ib_recv_cache_put(ic->i_preferred_recv_cpu,
 					   &first_frag->f_cache_entry,
 					   &p_frag->f_cache_entry,
 					   first_frag->rds_ibdev->i_cache_frags +
@@ -216,7 +216,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	WARN_ON(!list_empty(&ibinc->ii_frags));
 
 	rdsdebug("freeing ibinc %p inc %p\n", ibinc, inc);
-	if (!rds_ib_recv_cache_put(ic->i_preferred_cpu,
+	if (!rds_ib_recv_cache_put(ic->i_preferred_recv_cpu,
 				   &ibinc->ii_cache_entry,
 				   &ibinc->ii_cache_entry,
 				   &ibinc->rds_ibdev->i_cache_incs,
