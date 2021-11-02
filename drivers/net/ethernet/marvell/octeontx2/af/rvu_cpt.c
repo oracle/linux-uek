@@ -602,6 +602,8 @@ static bool is_valid_offset(struct rvu *rvu, struct cpt_rd_wr_reg_msg *req)
 		if (lf < 0)
 			return false;
 
+		req->reg_offset &= 0xFF000;
+		req->reg_offset += lf << 3;
 		return true;
 	} else if (!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK)) {
 		/* Registers that can be accessed from PF */
@@ -646,12 +648,13 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	    !is_cpt_vf(rvu, req->hdr.pcifunc))
 		return CPT_AF_ERR_ACCESS_DENIED;
 
+	if (!is_valid_offset(rvu, req))
+		return CPT_AF_ERR_ACCESS_DENIED;
+
 	rsp->reg_offset = req->reg_offset;
 	rsp->ret_val = req->ret_val;
 	rsp->is_write = req->is_write;
 
-	if (!is_valid_offset(rvu, req))
-		return CPT_AF_ERR_ACCESS_DENIED;
 
 	if (req->is_write)
 		rvu_write64(rvu, blkaddr, req->reg_offset, req->val);
