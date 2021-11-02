@@ -940,8 +940,8 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 			(uint64_t)atomic64_read(&ic->i_tx_poll_cnt);
 		iinfo->rx_poll_cnt =
 			(uint64_t)atomic64_read(&ic->i_rx_poll_cnt);
-		iinfo->scq_vector = ic->i_cq_vector;
-		iinfo->rcq_vector = ic->i_cq_vector;
+		iinfo->scq_vector = ic->i_scq_vector;
+		iinfo->rcq_vector = ic->i_rcq_vector;
 	}
 	return 1;
 }
@@ -1013,8 +1013,8 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 			(uint64_t)atomic64_read(&ic->i_tx_poll_cnt);
 		iinfo6->rx_poll_cnt =
 			(uint64_t)atomic64_read(&ic->i_rx_poll_cnt);
-		iinfo6->scq_vector = ic->i_cq_vector;
-		iinfo6->rcq_vector = ic->i_cq_vector;
+		iinfo6->scq_vector = ic->i_scq_vector;
+		iinfo6->rcq_vector = ic->i_rcq_vector;
 	}
 	return 1;
 }
