@@ -30,6 +30,10 @@ struct cpu_cacheinfo *get_cpu_cacheinfo(unsigned int cpu)
 {
 	return ci_cacheinfo(cpu);
 }
+/* The state from ci_cpu_cacheinfo is initialized via cacheinfo_sysfs_init()
+ * and thus this can only be called after device_initcall()
+ */
+EXPORT_SYMBOL(get_cpu_cacheinfo);
 
 #ifdef CONFIG_OF
 static inline bool cache_leaves_are_shared(struct cacheinfo *this_leaf,
