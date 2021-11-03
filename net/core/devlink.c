@@ -72,7 +72,7 @@ struct devlink {
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 
-	char priv[0] __aligned(NETDEV_ALIGN);
+	char priv[] __aligned(NETDEV_ALIGN);
 };
 
 void *devlink_priv(struct devlink *devlink)
