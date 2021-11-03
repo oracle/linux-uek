@@ -229,7 +229,8 @@ struct smc_update_descriptor {
 	uint64_t	image_size;	/** Size of image (CPIO file) */
 	uint32_t	bus;		/** SPI BUS number */
 	uint32_t	cs;		/** SPI chip select number */
-	uint64_t	reserved;	/** Space to add stuff */
+	uint32_t	async_spi;	/** Async SPI operations */
+	uint32_t	reserved;	/** Space to add stuff */
 	uint64_t	user_addr;	/** Passed to customer function */
 	uint64_t	user_size;	/** Passed to customer function */
 	uint64_t	user_flags;	/** Passed to customer function */

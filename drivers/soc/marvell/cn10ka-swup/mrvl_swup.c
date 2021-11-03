@@ -18,6 +18,7 @@
 #include <linux/bitops.h>
 #include <linux/debugfs.h>
 #include <linux/smp.h>
+#include <linux/delay.h>
 
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
@@ -294,6 +295,7 @@ static int mrvl_run_fw_update(unsigned long arg)
 	struct mrvl_update ioctl_desc = {0};
 	struct smc_update_descriptor *smc_desc;
 	struct arm_smccc_res res;
+	int spi_in_progress = 0;
 
 	smc_desc = (struct smc_update_descriptor *)memdesc[BUF_DATA].virt;
 	memset(smc_desc, 0x00, sizeof(*smc_desc));
@@ -335,6 +337,9 @@ static int mrvl_run_fw_update(unsigned long arg)
 	smc_desc->user_flags = ioctl_desc.user_flags;
 	smc_desc->update_flags = ioctl_desc.flags;
 
+	/* In linux use asynchronus SPI operation */
+	smc_desc->async_spi = 1;
+
 	/* SPI config */
 	smc_desc->bus        = ioctl_desc.bus;
 	smc_desc->cs	     = ioctl_desc.cs;
@@ -350,6 +355,13 @@ static int mrvl_run_fw_update(unsigned long arg)
 		pr_err("Data Write Error\n");
 		return -EFAULT;
 	}
+
+	do {
+		msleep(500);
+		res = mrvl_exec_smc(0xc2000b0e, 0, 0);
+		spi_in_progress = res.a0;
+	} while (spi_in_progress);
+
 	return 0;
 }
 
