@@ -712,7 +712,7 @@ static inline bool nvme_check_ready(struct nvme_ctrl *ctrl, struct request *rq,
 		return true;
 	if (ctrl->ops->flags & NVME_F_FABRICS &&
 	    ctrl->state == NVME_CTRL_DELETING)
-		return true;
+		return queue_live;
 	return __nvme_check_ready(ctrl, rq, queue_live);
 }
 
