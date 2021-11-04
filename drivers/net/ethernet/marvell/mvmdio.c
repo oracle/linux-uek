@@ -80,6 +80,18 @@ enum orion_mdio_bus_type {
 	BUS_TYPE_XSMI
 };
 
+struct orion_mdio_data {
+	enum orion_mdio_bus_type bus_type;
+};
+
+const struct orion_mdio_data smi_bus = {
+	.bus_type = BUS_TYPE_SMI,
+};
+
+const struct orion_mdio_data xsmi_bus = {
+	.bus_type = BUS_TYPE_XSMI,
+};
+
 struct orion_mdio_ops {
 	int (*is_done)(struct orion_mdio_dev *);
 	unsigned int poll_interval_min;
@@ -275,13 +287,13 @@ static irqreturn_t orion_mdio_err_irq(int irq, void *dev_id)
 
 static int orion_mdio_probe(struct platform_device *pdev)
 {
-	enum orion_mdio_bus_type type;
+	struct orion_mdio_data *data;
 	struct resource *r;
 	struct mii_bus *bus;
 	struct orion_mdio_dev *dev;
 	int i, ret;
 
-	type = (enum orion_mdio_bus_type)of_device_get_match_data(&pdev->dev);
+	data = (struct orion_mdio_data *)of_device_get_match_data(&pdev->dev);
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r) {
@@ -294,7 +306,7 @@ static int orion_mdio_probe(struct platform_device *pdev)
 	if (!bus)
 		return -ENOMEM;
 
-	switch (type) {
+	switch (data->bus_type) {
 	case BUS_TYPE_SMI:
 		bus->read = orion_mdio_smi_read;
 		bus->write = orion_mdio_smi_write;
@@ -415,8 +427,8 @@ static int orion_mdio_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id orion_mdio_match[] = {
-	{ .compatible = "marvell,orion-mdio", .data = (void *)BUS_TYPE_SMI },
-	{ .compatible = "marvell,xmdio", .data = (void *)BUS_TYPE_XSMI },
+	{ .compatible = "marvell,orion-mdio", .data = &smi_bus },
+	{ .compatible = "marvell,xmdio", .data = &xsmi_bus },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, orion_mdio_match);
