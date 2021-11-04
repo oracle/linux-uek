@@ -128,16 +128,18 @@ static struct {
 DEFINE_STR_2_ENUM_FUNC(prbs_sides)
 
 enum phy_prbs_direction {
-	PRBS_DIRECTION_RX = 0,
-	PRBS_DIRECTION_TX,
+	PRBS_DIRECTION_TX = 1,
+	PRBS_DIRECTION_RX,
+	PRBS_DIRECTION_TX_RX,
 };
 
 static struct {
 	enum phy_prbs_direction e;
 	const char *s;
 } prbs_directions[] = {
-	{PRBS_DIRECTION_RX, "rx"},
 	{PRBS_DIRECTION_TX, "tx"},
+	{PRBS_DIRECTION_RX, "rx"},
+	{PRBS_DIRECTION_TX_RX, "tx-rx"},
 };
 DEFINE_STR_2_ENUM_FUNC(prbs_directions)
 
@@ -291,7 +293,7 @@ DEFINE_STR_2_ENUM_FUNC(pktgen_sides)
 enum phy_pktgen_type {
 	PKTGEN_TYPE_SFD = 0,
 	PKTGEN_TYPE_PATTERN_CTL,
-	PKTGEN_TYPE_GEN_CRC,
+	PKTGEN_TYPE_DIS_CRC,
 	PKTGEN_TYPE_IN_PAYLOAD,
 	PKTGEN_TYPE_FRAME_LEN_CTL,
 	PKTGEN_TYPE_NUM_PACKETS,
@@ -305,7 +307,7 @@ static struct {
 } pktgen_types[] = {
 	{PKTGEN_TYPE_SFD, "sfd"},
 	{PKTGEN_TYPE_PATTERN_CTL, "pattern"},
-	{PKTGEN_TYPE_GEN_CRC, "gen_crc"},
+	{PKTGEN_TYPE_DIS_CRC, "dis_crc"},
 	{PKTGEN_TYPE_IN_PAYLOAD, "in_payload"},
 	{PKTGEN_TYPE_FRAME_LEN_CTL, "frame_len"},
 	{PKTGEN_TYPE_NUM_PACKETS, "num_packets"},
@@ -533,10 +535,8 @@ static ssize_t phy_debug_prbs_write(struct file *filp,
 		return -EINVAL;
 
 	direction = prbs_directions_str2enum(token);
-
-	/* If no direction is passed, assume tx by default */
 	if (direction == -1)
-		direction = PRBS_DIRECTION_TX;
+		return -EINVAL;
 
 	if (cmd == PHY_PRBS_START_CMD) {
 		end = skip_spaces(end);
@@ -549,7 +549,7 @@ static ssize_t phy_debug_prbs_write(struct file *filp,
 			return -EINVAL;
 	}
 
-	cfg |= (type << 2) | (direction << 1) | host;
+	cfg |= (type << 3) | (direction << 1) | host;
 
 	arm_smccc_smc(PLAT_OCTEONTX_PHY_DBG_PRBS, cmd, cfg,
 		phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
@@ -561,12 +561,9 @@ static ssize_t phy_debug_prbs_write(struct file *filp,
 
 	if (cmd == PHY_PRBS_START_CMD) {
 		pr_info("PRBS %s started: side=%s, type=%s\n",
-			prbs_directions[direction].s, prbs_sides[host].s, prbs_types[type].s);
-	} else {
-		pr_info("PRBS stopped: side=%s\n",
-			prbs_sides[host].s);
-	}
-
+			prbs_directions[direction-1].s, prbs_sides[host].s, prbs_types[type].s);
+	} else
+		pr_info("PRBS stopped\n");
 	return count;
 }
 
@@ -652,8 +649,8 @@ static ssize_t phy_debug_loopback_write(struct file *filp,
 			pr_warn("Enabling %s side %s Loopback failed!\n",
 					loopback_sides[side].s, loopback_types[type].s);
 		else
-			pr_warn("Disabling %s side %s Loopback failed!\n",
-					loopback_sides[side].s, loopback_types[type].s);
+			pr_warn("Disabling %s side Loopback failed!\n",
+					loopback_sides[side].s);
 
 		return count;
 	}
@@ -661,8 +658,8 @@ static ssize_t phy_debug_loopback_write(struct file *filp,
 		pr_info("Loopback %s side %s type started\n",
 			loopback_sides[side].s, loopback_types[type].s);
 	} else {
-		pr_info("Loopback %s side %s type stopped\n",
-			loopback_sides[side].s, loopback_types[type].s);
+		pr_info("Loopback %s side type stopped\n",
+			loopback_sides[side].s);
 	}
 
 	return count;
