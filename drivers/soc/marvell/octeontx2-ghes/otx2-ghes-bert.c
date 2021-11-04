@@ -221,8 +221,6 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 	u8 sum = 0;
 	u32 idx = 0;
 
-	initdbgmsg("%s: entry\n", __func__);
-
 	ring = bsrc->block_va;
 
 	bert_tbl = kzalloc(bsrc->bert_sz, GFP_KERNEL);
@@ -315,8 +313,6 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	int ret = -ENODEV;
 
-	initdbgmsg("%s: entry\n", __func__);
-
 #ifdef CONFIG_CRASH_DUMP
 	if (is_kdump_kernel())
 #else
@@ -360,7 +356,6 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 	}
 
 	if (!has_acpi_companion(dev)) {
-		initdbgmsg("%s Setup bert table\n", __func__);
 		bert_table_set(bed_src.bert_va);
 	}
 
@@ -380,12 +375,10 @@ exit0:
 
 static void ghes_bert_shutdown(struct platform_device *pdev)
 {
-	initerrmsg("%s: entry\n", __func__);
 }
 
 static int ghes_bert_remove(struct platform_device *pdev)
 {
-	initerrmsg("%s: entry\n", __func__);
 	return 0;
 }
 
