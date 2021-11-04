@@ -600,13 +600,12 @@ static ssize_t serdes_dbg_rx_tr_write(struct file *filp,
 	/* For all the lanes that failed to complete
 	 * need to call the stop_rx_training explicitly.
 	 */
-	for (idx = lane_idx; ongoing; idx++) {
-		if (ongoing & 1) {
+	for (idx = lane_idx; idx < max_idx; idx++) {
+		if ((ongoing >> idx) & 1) {
 			x1 = (idx << 8) | port;
 			arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING,
 				      x1, RX_TR_STOP, 0, 0, 0, 0, 0, &res);
 		}
-		ongoing >>= 1;
 	}
 
 	for (idx = lane_idx; idx < max_idx; idx++) {
