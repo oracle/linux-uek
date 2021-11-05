@@ -1039,7 +1039,7 @@ static int rvu_ree_af_request_irq(struct rvu_block *block,
 
 	WARN_ON(rvu->irq_allocated[offset]);
 	rvu->irq_allocated[offset] = false;
-	sprintf(&rvu->irq_name[offset * NAME_SIZE], name);
+	sprintf(&rvu->irq_name[offset * NAME_SIZE], "%s", name);
 	ret = request_irq(pci_irq_vector(rvu->pdev, offset), handler, 0,
 			  &rvu->irq_name[offset * NAME_SIZE], block);
 	if (ret)
