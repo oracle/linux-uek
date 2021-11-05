@@ -374,7 +374,9 @@ static int sdei_ghes_adjust_error_status_block(struct mrvl_sdei_ghes_drv *ghes_d
 
 	gsrc = ghes_drv->source_list;
 
-	size = gsrc[ghes_drv->source_count - 1].esb_pa - gsrc[0].esa_pa + gsrc[0].esb_sz;
+	i = ghes_drv->source_count - 1;
+	// estimate size of ('error status address' + 'error status block')* 'number of src'
+	size = (gsrc[i].esb_pa + gsrc[i].esb_sz) - gsrc[0].esa_pa;
 	order = get_order(size);
 
 	if (pfn_valid(PHYS_PFN(gsrc->esa_pa))) {
@@ -438,6 +440,8 @@ static int __init sdei_ghes_of_match_resource(struct platform_device *pdev)
 
 		gsrc = &ghes_drv->source_list[i];
 
+		strncpy(gsrc->name, child_node->name, sizeof(gsrc->name) - 1);
+
 		// Error Status Address
 		res = of_get_address(child_node, 0, NULL, NULL);
 		if (!res) {
@@ -496,41 +500,6 @@ static int __init sdei_ghes_of_match_resource(struct platform_device *pdev)
 	return 0;
 }
 
-static void __init sdei_ghes_set_name(struct mrvl_sdei_ghes_drv *ghes_drv)
-{
-	u32 i;
-	u32 core;
-	struct device_node *of_node;
-	struct device_node *child_node;
-	struct mrvl_ghes_source *gsrc;
-
-	of_node = of_find_matching_node(NULL, sdei_ghes_of_match);
-	i = 0;
-	core = 0;
-
-	if (!of_node) {
-		for_each_available_child_of_node(of_node, child_node) {
-			gsrc = &ghes_drv->source_list[i];
-			strncpy(gsrc->name, child_node->name, sizeof(gsrc->name) - 1);
-			initdbgmsg("%s %s\n", __func__, gsrc->name);
-			i++;
-		}
-	} else {
-		for (i = 0; i < ghes_drv->source_count; i++) {
-			gsrc = &ghes_drv->source_list[i];
-			if (gsrc->id < OCTEONTX_SDEI_RAS_AP0_EVENT)
-				sprintf(gsrc->name, "core%d", core++);
-			else if (gsrc->id == OCTEONTX_SDEI_RAS_MDC_EVENT)
-				sprintf(gsrc->name, "MDC");
-			else if (gsrc->id == OCTEONTX_SDEI_RAS_MCC_EVENT)
-				sprintf(gsrc->name, "MCC");
-			else if (gsrc->id == OCTEONTX_SDEI_RAS_LMC_EVENT)
-				sprintf(gsrc->name, "LMC");
-			initdbgmsg("%s %s\n", __func__, gsrc->name);
-		}
-	}
-}
-
 static int __init sdei_ghes_get_esa(struct acpi_hest_header *hest_hdr, void *data)
 {
 	struct acpi_hest_generic *generic = (struct acpi_hest_generic *)hest_hdr;
@@ -548,12 +517,9 @@ static int __init sdei_ghes_get_esa(struct acpi_hest_header *hest_hdr, void *dat
 
 static phys_addr_t __init sdei_ghes_get_error_source_address(struct mrvl_sdei_ghes_drv *ghes_drv)
 {
-	struct mrvl_ghes_source *gsrc;
 	int i = 0;
 	u64 *esrc = NULL;
-	phys_addr_t ret = 0;
-
-	initdbgmsg("%s entry\n", __func__);
+	phys_addr_t ret = ~0ULL;
 
 	esrc = kcalloc(ghes_drv->source_count, sizeof(u64 *), GFP_KERNEL);
 	if (!esrc) {
@@ -564,13 +530,9 @@ static phys_addr_t __init sdei_ghes_get_error_source_address(struct mrvl_sdei_gh
 	apei_hest_parse(sdei_ghes_get_esa, esrc);
 
 	for (i = 0; i < ghes_drv->source_count; i++) {
-		gsrc = &ghes_drv->source_list[i];
-		initdbgmsg("%s %s 0x%llx 0x%llx\n", __func__, gsrc->name,
-				(long long)esrc[i], (long long)gsrc->esa_pa);
-		gsrc->esa_pa = esrc[i];
+		ret = ret > esrc[i] ? esrc[i] : ret;
 	}
 
-	ret = esrc[0];
 	kfree(esrc);
 	return ret;
 }
@@ -627,11 +589,10 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 	size_t i = 0;
 	size_t idx = 0;
 	phys_addr_t base = 0;
+	u32 core = 0;
 
 	dev = &pdev->dev;
 	ghes_drv = platform_get_drvdata(pdev);
-
-	initdbgmsg("%s: entry\n", __func__);
 
 	base = sdei_ghes_get_error_source_address(ghes_drv);
 
@@ -646,6 +607,13 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 		}
 		initdbgmsg("%s Status Address %s [%llx - %llx, %lx, %lx]\n", __func__,
 				res->name, res->start, res->end, res->flags, res->desc);
+		/*
+		 * HEST define BASE address 'error status address' block
+		 * DSDT define offset from BASE for error address status/block/ring
+		 * driver make valid addresses base + offset
+		 * and next patch HEST with validated addresses
+		 */
+		gsrc->esa_pa = res->start + base;
 		idx++;
 
 		// Error Status Block Buffer
@@ -657,9 +625,8 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 		initdbgmsg("%s Status Block %s [%llx - %llx / %llx, %lx, %lx]\n", __func__,
 				res->name, res->start, res->end, resource_size(res),
 				res->flags, res->desc);
-		gsrc->esb_pa = res->start;
+		gsrc->esb_pa = res->start + base;
 		gsrc->esb_sz = resource_size(res);
-		gsrc->esb_pa += base;
 		idx++;
 
 		// Error Blocks Ring
@@ -670,9 +637,8 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 		}
 		initdbgmsg("%s Status Ring %s [%llx - %llx, %lx, %lx]\n", __func__,
 				res->name, res->start, res->end, res->flags, res->desc);
-		gsrc->ring_pa = res->start;
+		gsrc->ring_pa = res->start + base;
 		gsrc->ring_sz = resource_size(res);
-		gsrc->ring_pa += base;
 		idx++;
 
 		// Event ID
@@ -686,8 +652,21 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 		gsrc->id = res->start;
 		idx++;
 
-		initdbgmsg("GHES: %s 0x%llx/0x%llx/0x%llx, ID:0x%x)\n", gsrc->name,
+		initdbgmsg("GHES: 0x%llx / 0x%llx / 0x%llx, ID:0x%x)\n",
 				gsrc->esa_pa, gsrc->esb_pa, gsrc->ring_pa, gsrc->id);
+	}
+
+	for (i = 0; i < ghes_drv->source_count; i++) {
+		gsrc = &ghes_drv->source_list[i];
+		if (gsrc->id >= OCTEONTX_SDEI_RAS_AP0_EVENT)
+			sprintf(gsrc->name, "core%d", core++);
+		else if (gsrc->id == OCTEONTX_SDEI_RAS_MDC_EVENT)
+			sprintf(gsrc->name, "MDC");
+		else if (gsrc->id == OCTEONTX_SDEI_RAS_MCC_EVENT)
+			sprintf(gsrc->name, "MCC");
+		else if (gsrc->id == OCTEONTX_SDEI_RAS_LMC_EVENT)
+			sprintf(gsrc->name, "LMC");
+		initdbgmsg("%s %s\n", __func__, gsrc->name);
 	}
 
 	return 0;
@@ -765,7 +744,7 @@ static void sdei_ghes_init_source(struct mrvl_sdei_ghes_drv *ghes_drv)
 		*gsrc->esa_va = gsrc->esb_pa;
 
 		initdbgmsg("%s poll address 0x%llx: 0x%llx\n", __func__,
-				gsrc->esa_pa, *gsrc->esa_va);
+				gsrc->esa_pa, gsrc->esb_pa);
 	}
 }
 
@@ -934,7 +913,7 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 	ret = sdei_ghes_alloc_source(dev, ghes_drv);
 	if (ret)
 		return ret;
-	sdei_ghes_set_name(ghes_drv);
+
 	platform_set_drvdata(pdev, ghes_drv);
 
 	if (has_acpi_companion(dev)) {
@@ -986,6 +965,7 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 	return 0;
 
 exit0:
+	dev_err(dev, "Error probe GHES.\n");
 	if (error_status_block_page)
 		__free_pages(error_status_block_page, order);
 	return ret;
