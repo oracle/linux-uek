@@ -1,4 +1,5 @@
 hugepage-mmap
+hugepage-mremap
 hugepage-shm
 map_hugetlb
 map_populate
