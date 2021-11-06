@@ -65,6 +65,7 @@ static const struct pci_device_id sdei_ghes_mrvl_pci_tbl[] = {
 
 static struct page *error_status_block_page;
 static u32 order;
+static bool cn10kx_model;
 
 static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 {
@@ -663,9 +664,9 @@ static int __init sdei_ghes_acpi_match_resource(struct platform_device *pdev)
 		else if (gsrc->id == OCTEONTX_SDEI_RAS_MDC_EVENT)
 			sprintf(gsrc->name, "MDC");
 		else if (gsrc->id == OCTEONTX_SDEI_RAS_MCC_EVENT)
-			sprintf(gsrc->name, "MCC");
+			sprintf(gsrc->name, cn10kx_model ? "DSS" : "MCC");
 		else if (gsrc->id == OCTEONTX_SDEI_RAS_LMC_EVENT)
-			sprintf(gsrc->name, "LMC");
+			sprintf(gsrc->name, cn10kx_model ? "TAD" : "LMC");
 		initdbgmsg("%s %s\n", __func__, gsrc->name);
 	}
 
@@ -885,7 +886,7 @@ static int __init sdei_ghes_probe(struct platform_device *pdev)
 	struct mrvl_sdei_ghes_drv *ghes_drv = NULL;
 	struct device *dev = &pdev->dev;
 	int ret = -ENODEV;
-	bool cn10kx_model = is_soc_cn10kx();
+	cn10kx_model = is_soc_cn10kx();
 
 #ifdef CONFIG_CRASH_DUMP
 	if (is_kdump_kernel())
