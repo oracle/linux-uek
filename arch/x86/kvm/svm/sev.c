@@ -257,7 +257,6 @@ static int sev_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	if (ret)
 		goto e_free;
 
-	sev->asid = asid;
 	INIT_LIST_HEAD(&sev->regions_list);
 
 	kvm_set_apicv_inhibit(kvm, APICV_INHIBIT_REASON_SEV);
