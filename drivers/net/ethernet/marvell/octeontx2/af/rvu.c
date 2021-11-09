@@ -1241,6 +1241,12 @@ cpt:
 		goto sso_err;
 	}
 
+	err = rvu_cpt_init(rvu);
+	if (err) {
+		dev_err(rvu->dev, "%s: Failed to initialize cpt\n", __func__);
+		goto sso_err;
+	}
+
 	rvu_program_channels(rvu);
 
 	return 0;
