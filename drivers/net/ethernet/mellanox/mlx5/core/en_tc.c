@@ -2871,14 +2871,15 @@ static unsigned long mask_to_le(unsigned long mask, int size)
 
 	return mask;
 }
+
 static int offload_pedit_fields(struct mlx5e_priv *priv,
 				int namespace,
-				struct pedit_headers_action *hdrs,
 				struct mlx5e_tc_flow_parse_attr *parse_attr,
 				u32 *action_flags,
 				struct netlink_ext_ack *extack)
 {
 	struct pedit_headers *set_masks, *add_masks, *set_vals, *add_vals;
+	struct pedit_headers_action *hdrs = parse_attr->hdrs;
 	void *headers_c, *headers_v, *action, *vals_p;
 	u32 *s_masks_p, *a_masks_p, s_mask, a_mask;
 	struct mlx5e_tc_mod_hdr_acts *mod_acts;
@@ -3006,7 +3007,6 @@ static const struct pedit_headers zero_masks = {};
 
 static int alloc_tc_pedit_action(struct mlx5e_priv *priv, int namespace,
 				 struct mlx5e_tc_flow_parse_attr *parse_attr,
-				 struct pedit_headers_action *hdrs,
 				 u32 *action_flags,
 				 struct netlink_ext_ack *extack)
 {
@@ -3014,16 +3014,14 @@ static int alloc_tc_pedit_action(struct mlx5e_priv *priv, int namespace,
 	int err;
 	u8 cmd;
 
-	err = offload_pedit_fields(priv, namespace, hdrs, parse_attr,
-				   action_flags, extack);
+	err = offload_pedit_fields(priv, namespace, parse_attr, action_flags, extack);
 	if (err < 0)
 		goto out_dealloc_parsed_actions;
 
 	for (cmd = 0; cmd < __PEDIT_CMD_MAX; cmd++) {
-		cmd_masks = &hdrs[cmd].masks;
+		cmd_masks = &parse_attr->hdrs[cmd].masks;
 		if (memcmp(cmd_masks, &zero_masks, sizeof(zero_masks))) {
-			NL_SET_ERR_MSG_MOD(extack,
-					   "attempt to offload an unsupported field");
+			NL_SET_ERR_MSG_MOD(extack, "attempt to offload an unsupported field");
 			netdev_warn(priv->netdev, "attempt to offload an unsupported field (cmd %d)\n", cmd);
 			print_hex_dump(KERN_WARNING, "mask: ", DUMP_PREFIX_ADDRESS,
 				       16, 1, cmd_masks, sizeof(zero_masks), true);
@@ -3355,10 +3353,10 @@ static int
 actions_prepare_mod_hdr_actions(struct mlx5e_priv *priv,
 				struct mlx5e_tc_flow *flow,
 				struct mlx5_flow_attr *attr,
-				struct pedit_headers_action *hdrs,
 				struct netlink_ext_ack *extack)
 {
 	struct mlx5e_tc_flow_parse_attr *parse_attr = attr->parse_attr;
+	struct pedit_headers_action *hdrs = parse_attr->hdrs;
 	enum mlx5_flow_namespace_type ns_type;
 	int err;
 
@@ -3368,8 +3366,7 @@ actions_prepare_mod_hdr_actions(struct mlx5e_priv *priv,
 
 	ns_type = mlx5e_get_flow_namespace(flow);
 
-	err = alloc_tc_pedit_action(priv, ns_type, parse_attr, hdrs,
-				    &attr->action, extack);
+	err = alloc_tc_pedit_action(priv, ns_type, parse_attr, &attr->action, extack);
 	if (err)
 		return err;
 
@@ -3417,7 +3414,6 @@ parse_tc_nic_actions(struct mlx5e_priv *priv,
 	struct mlx5e_tc_act_parse_state *parse_state;
 	struct mlx5e_tc_flow_parse_attr *parse_attr;
 	struct mlx5_flow_attr *attr = flow->attr;
-	struct pedit_headers_action *hdrs;
 	int err;
 
 	err = flow_action_supported(flow_action, extack);
@@ -3429,13 +3425,12 @@ parse_tc_nic_actions(struct mlx5e_priv *priv,
 	parse_state = &parse_attr->parse_state;
 	mlx5e_tc_act_init_parse_state(parse_state, flow, flow_action, extack);
 	parse_state->ct_priv = get_ct_priv(priv);
-	hdrs = parse_state->hdrs;
 
 	err = parse_tc_actions(parse_state, flow_action);
 	if (err)
 		return err;
 
-	err = actions_prepare_mod_hdr_actions(priv, flow, attr, hdrs, extack);
+	err = actions_prepare_mod_hdr_actions(priv, flow, attr, extack);
 	if (err)
 		return err;
 
@@ -3540,7 +3535,6 @@ parse_tc_fdb_actions(struct mlx5e_priv *priv,
 	struct mlx5e_tc_flow_parse_attr *parse_attr;
 	struct mlx5_flow_attr *attr = flow->attr;
 	struct mlx5_esw_flow_attr *esw_attr;
-	struct pedit_headers_action *hdrs;
 	int err;
 
 	err = flow_action_supported(flow_action, extack);
@@ -3552,7 +3546,6 @@ parse_tc_fdb_actions(struct mlx5e_priv *priv,
 	parse_state = &parse_attr->parse_state;
 	mlx5e_tc_act_init_parse_state(parse_state, flow, flow_action, extack);
 	parse_state->ct_priv = get_ct_priv(priv);
-	hdrs = parse_state->hdrs;
 
 	err = parse_tc_actions(parse_state, flow_action);
 	if (err)
@@ -3566,7 +3559,7 @@ parse_tc_fdb_actions(struct mlx5e_priv *priv,
 		return -EOPNOTSUPP;
 	}
 
-	err = actions_prepare_mod_hdr_actions(priv, flow, attr, hdrs, extack);
+	err = actions_prepare_mod_hdr_actions(priv, flow, attr, extack);
 	if (err)
 		return err;
 
