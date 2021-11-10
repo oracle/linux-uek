@@ -10579,6 +10579,7 @@ static bool sk_lookup_is_valid_access(int off, int size,
 	case offsetof(struct bpf_sk_lookup, remote_port) ...
 	     offsetof(struct bpf_sk_lookup, local_ip4) - 1:
 	case bpf_ctx_range(struct bpf_sk_lookup, local_port):
+	case bpf_ctx_range(struct bpf_sk_lookup, ingress_ifindex):
 		bpf_ctx_record_field_size(info, sizeof(__u32));
 		return bpf_ctx_narrow_access_ok(off, size, sizeof(__u32));
 
@@ -10667,6 +10668,12 @@ static u32 sk_lookup_convert_ctx_access(enum bpf_access_type type,
 		*insn++ = BPF_LDX_MEM(BPF_H, si->dst_reg, si->src_reg,
 				      bpf_target_off(struct bpf_sk_lookup_kern,
 						     dport, 2, target_size));
+		break;
+
+	case offsetof(struct bpf_sk_lookup, ingress_ifindex):
+		*insn++ = BPF_LDX_MEM(BPF_W, si->dst_reg, si->src_reg,
+				      bpf_target_off(struct bpf_sk_lookup_kern,
+						     ingress_ifindex, 4, target_size));
 		break;
 	}
 
