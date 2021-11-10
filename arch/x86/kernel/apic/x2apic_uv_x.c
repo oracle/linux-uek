@@ -1811,3 +1811,9 @@ void __init uv_system_init(void)
 }
 
 apic_driver(apic_x2apic_uv_x);
+/*
+ * Expose a function for UEK KABI.
+ */
+void __uv_uek_dummy(struct uv_hub_info_s *hub_info);
+void __uv_uek_dummy(struct uv_hub_info_s *hub_info){};
+EXPORT_SYMBOL(__uv_uek_dummy);

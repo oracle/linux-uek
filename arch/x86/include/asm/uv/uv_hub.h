@@ -25,6 +25,8 @@
 #include <asm/uv/bios.h>
 #include <asm/irq_vectors.h>
 #include <asm/io_apic.h>
+#include <linux/uek_kabi.h>
+
 
 
 /*
@@ -194,6 +196,8 @@ struct uv_hub_info_s {
 	short			memory_nid;
 	unsigned int		hub_type;
 	unsigned char		nasid_shift;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /* CPU specific info with a pointer to the hub common info struct */

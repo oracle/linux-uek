@@ -85,6 +85,7 @@
 0x6bc3fbc0	__unregister_chrdev	vmlinux	EXPORT_SYMBOL	
 0xb21b3652	__uv_cpu_info	vmlinux	EXPORT_SYMBOL_GPL	
 0x8ad5ceb1	__uv_hub_info_list	vmlinux	EXPORT_SYMBOL_GPL	
+0x3327977a      __uv_uek_dummy      vmlinux EXPORT_SYMBOL
 0x2e0905db	__vfs_getxattr	vmlinux	EXPORT_SYMBOL	
 0xb11cb2fe	__vfs_removexattr	vmlinux	EXPORT_SYMBOL	
 0x531b604e	__virt_addr_valid	vmlinux	EXPORT_SYMBOL	
