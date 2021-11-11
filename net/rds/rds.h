@@ -733,7 +733,6 @@ struct rds_transport {
 			   __u32 scope_id);
 	int (*conn_alloc)(struct rds_connection *conn, gfp_t gfp);
 	void (*conn_free)(void *data);
-	int (*conn_preferred_cpu)(struct rds_connection *conn);
 	bool (*conn_has_alt_conn)(struct rds_connection *conn);
 	void (*conn_path_reset)(struct rds_conn_path *cp, unsigned flags);
 	int (*conn_path_connect)(struct rds_conn_path *cp);
