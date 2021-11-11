@@ -71,9 +71,7 @@
 enum rds_ib_preferred_cpu_options {
 	RDS_IB_PREFER_CPU_CQ		= 1 << 0,
 	RDS_IB_PREFER_CPU_NUMA		= 1 << 1,
-	RDS_IB_PREFER_CPU_TASKLET	= 1 << 2,
-	RDS_IB_PREFER_CPU_DEFAULT	= RDS_IB_PREFER_CPU_CQ |
-					  RDS_IB_PREFER_CPU_TASKLET
+	RDS_IB_PREFER_CPU_DEFAULT	= RDS_IB_PREFER_CPU_CQ
 };
 
 extern enum rds_ib_preferred_cpu_options rds_ib_preferred_cpu;
@@ -271,8 +269,6 @@ struct rds_ib_connection {
 	atomic_t		i_fastreg_wrs;
 
 	/* interrupt handling */
-	struct tasklet_struct   i_stasklet;
-	struct tasklet_struct   i_rtasklet;
 	struct work_struct	i_recv_w;
 	struct work_struct	i_send_w;
 
@@ -454,7 +450,6 @@ struct rds_ib_device {
 	struct ib_qp		*fastreg_qp;
 	atomic_t		fastreg_wrs;
 	struct rw_semaphore	fastreg_lock;
-	struct tasklet_struct   fastreg_tasklet;
 	struct work_struct	fastreg_w;
 	struct work_struct	fastreg_reset_w;
 
