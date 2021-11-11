@@ -400,7 +400,6 @@ static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					    bool isv6)
 {
 	struct rds_connection *conn = cm_id->context;
-	struct rds_ib_connection *ic = conn ? conn->c_transport_data : NULL;
 	struct workqueue_struct *wq;
 	struct rds_rdma_cm_event_handler_info *info;
 
@@ -438,8 +437,7 @@ static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		info->event.param.conn.private_data_len = 0;
 	}
 
-	queue_work_on(ic ? ic->i_preferred_cpu : WORK_CPU_UNBOUND,
-		      wq, &info->work);
+	queue_work(wq, &info->work);
 }
 
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
