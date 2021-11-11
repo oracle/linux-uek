@@ -63,10 +63,9 @@ struct kmem_cache *rds_ib_incoming_slab;
 struct kmem_cache *rds_ib_frag_slab;
 atomic_t rds_ib_allocation = ATOMIC_INIT(0);
 
-static inline void *rds_ib_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags,
-					    struct rds_ib_device *rds_ibdev)
+static inline void *rds_ib_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 {
-	void *ent = kmem_cache_alloc_node(cachep, flags, rdsibdev_to_node(rds_ibdev));
+	void *ent = kmem_cache_alloc(cachep, flags);
 
 	if (ent)
 		rds_ib_stats_inc(s_ib_rx_cache_alloc);
@@ -245,7 +244,7 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 	} else {
-		ibinc = rds_ib_kmem_cache_alloc(rds_ib_incoming_slab, slab_mask, ic->rds_ibdev);
+		ibinc = rds_ib_kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
 		if (!ibinc)
 			return NULL;
 		rds_ib_stats_inc(s_ib_rx_total_incs);
@@ -287,7 +286,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 			return NULL;
 		}
 
-		frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask, ic->rds_ibdev);
+		frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
 		if (!frag) {
 			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 			rds_ib_stats_inc(s_ib_rx_cache_put_alloc);
@@ -459,7 +458,7 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 	}
 
 	if (!recv->r_ibinc) {
-		recv->r_ibinc = rds_ib_kmem_cache_alloc(rds_ib_incoming_slab, slab_mask, rds_ibdev);
+		recv->r_ibinc = rds_ib_kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
 		if (!recv->r_ibinc)
 			goto out;
 		rds_ib_stats_inc(s_ib_rx_total_incs);
@@ -467,7 +466,7 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 	}
 
 	WARN_ON_ONCE(recv->r_frag); /* leak! */
-	recv->r_frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask, rds_ibdev);
+	recv->r_frag = rds_ib_kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
 	if (!recv->r_frag)
 		goto out;
 	sg_init_table(recv->r_frag->f_sg, num_sge);
