@@ -66,8 +66,6 @@
 
 #define RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(c) ((c)->c_loopback ? 1000 : 4000)
 
-#define RDS_IB_CQ_FOLLOW_AFFINITY_THROTTLE	100 /* msec */
-
 enum rds_ib_preferred_cpu_options {
 	RDS_IB_PREFER_CPU_CQ		= 1 << 0,
 	RDS_IB_PREFER_CPU_NUMA		= 1 << 1,
@@ -351,7 +349,6 @@ struct rds_ib_connection {
 	s32			i_dst_qp_num;
 
 	struct delayed_work	i_cm_watchdog_w;
-	struct delayed_work	i_cq_follow_affinity_w;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
