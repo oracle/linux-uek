@@ -542,7 +542,7 @@ static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
 
-	queue_work_on(ic->i_preferred_cpu,
+	queue_work_on(smp_processor_id(),
 		      rds_evt_wq, &ic->i_send_w);
 }
 
@@ -555,7 +555,7 @@ static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
 
-	queue_work_on(ic->i_preferred_cpu,
+	queue_work_on(smp_processor_id(),
 		      rds_evt_wq, &ic->i_recv_w);
 }
 
@@ -692,7 +692,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		    (atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
 		    !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
 			rds_queue_delayed_work_on(&conn->c_path[0],
-						  ic->i_preferred_cpu,
+						  ic->i_irq_local_cpu,
 						  conn->c_path[0].cp_wq,
 						  &rds_ibdev->srq->s_refill_w,
 						  0,
@@ -703,7 +703,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		ic->i_rx_w.ic = ic;
 		/* Delay 10 msecs until the RX worker starts reaping again */
 		rds_queue_delayed_work_on(&conn->c_path[0],
-					  ic->i_preferred_cpu,
+					  ic->i_irq_local_cpu,
 					  rds_aux_wq,
 					  &ic->i_rx_w.work,
 					  msecs_to_jiffies(10),
@@ -2312,7 +2312,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
 	ic->i_cq_vector = -1;
-	ic->i_preferred_cpu = WORK_CPU_UNBOUND;
+	ic->i_irq_local_cpu = NR_CPUS;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
 
