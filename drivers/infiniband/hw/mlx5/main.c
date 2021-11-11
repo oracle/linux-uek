@@ -4260,29 +4260,6 @@ mlx5_ib_get_vector_affinity(struct ib_device *ibdev, int comp_vector)
 	return mlx5_get_vector_affinity_hint(dev->mdev, comp_vector);
 }
 
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-static int
-mlx5_ib_get_vector_irqn(struct ib_device *ibdev, int comp_vector)
-{
-	struct mlx5_ib_dev *dev = to_mdev(ibdev);
-	struct mlx5_core_dev *mdev = dev->mdev;
-	struct mlx5_eq_table *table = &mdev->priv.eq_table;
-	struct mlx5_eq *eq, *n;
-	int irqn = -1;
-
-	spin_lock(&table->lock);
-	list_for_each_entry_safe(eq, n, &table->comp_eqs_list, list) {
-		if (eq->index == comp_vector) {
-			irqn = eq->irqn;
-			break;
-		}
-	}
-	spin_unlock(&table->lock);
-
-	return irqn;
-}
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
-
 struct mlx5_core_dev *mlx5_ib_get_native_port_mdev(struct mlx5_ib_dev *ibdev,
 						   u8 ib_port_num,
 						   u8 *native_port_num)
@@ -4747,9 +4724,6 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.get_port_immutable  = mlx5_port_immutable;
 	dev->ib_dev.get_dev_fw_str      = get_dev_fw_str;
 	dev->ib_dev.get_vector_affinity	= mlx5_ib_get_vector_affinity;
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	dev->ib_dev.get_vector_irqn	= mlx5_ib_get_vector_irqn;
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	if (MLX5_CAP_GEN(mdev, ipoib_enhanced_offloads))
 		dev->ib_dev.alloc_rdma_netdev	= mlx5_ib_alloc_rdma_netdev;
 
