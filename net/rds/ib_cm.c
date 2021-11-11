@@ -814,13 +814,6 @@ static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev)
 	return index;
 }
 
-static inline void ibdev_get_vector(struct rds_ib_device *rds_ibdev, int index)
-{
-	mutex_lock(&rds_ibdev->vector_load_lock);
-	rds_ibdev->vector_load[index]++;
-	mutex_unlock(&rds_ibdev->vector_load_lock);
-}
-
 static inline void ibdev_put_vector(struct rds_ib_device *rds_ibdev, int index)
 {
 	mutex_lock(&rds_ibdev->vector_load_lock);
@@ -840,11 +833,8 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 		struct ib_cq_init_attr cq_attr = {};
 
 		cq_attr.cqe = n;
-		if (*vector < 0)
-			*vector = ibdev_get_unused_vector(rds_ibdev);
-		else
-			ibdev_get_vector(rds_ibdev, *vector);
-		cq_attr.comp_vector = *vector;
+		cq_attr.comp_vector = ibdev_get_unused_vector(rds_ibdev);
+		*vector = cq_attr.comp_vector;
 		*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
 		if (IS_ERR(*cqp)) {
 			ibdev_put_vector(rds_ibdev, *vector);
@@ -874,14 +864,14 @@ static void __rds_rdma_free_cq(struct rds_ib_connection *ic,
 	rcq = ic->i_rcq;
 	ic->i_rcq = NULL;
 	if (rcq) {
-		ibdev_put_vector(rds_ibdev, ic->i_cq_vector);
+		ibdev_put_vector(rds_ibdev, ic->i_rcq_vector);
 		ib_destroy_cq(rcq);
 	}
 
 	scq = ic->i_scq;
 	ic->i_scq = NULL;
 	if (scq) {
-		ibdev_put_vector(rds_ibdev, ic->i_cq_vector);
+		ibdev_put_vector(rds_ibdev, ic->i_scq_vector);
 		ib_destroy_cq(scq);
 	}
 }
@@ -1180,7 +1170,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		WARN_ON(ic->i_scq);
 	}
 
-	rds_ib_check_cq(dev, rds_ibdev, &ic->i_cq_vector, &ic->i_scq,
+	rds_ib_check_cq(dev, rds_ibdev, &ic->i_scq_vector, &ic->i_scq,
 			rds_ib_cq_comp_handler_send,
 			rds_ib_cq_event_handler, conn,
 			ic->i_send_ring.w_nr + 1 + mr_reg,
@@ -1192,7 +1182,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	rds_ib_check_cq(dev, rds_ibdev, &ic->i_cq_vector, &ic->i_rcq,
+	rds_ib_check_cq(dev, rds_ibdev, &ic->i_rcq_vector, &ic->i_rcq,
 			rds_ib_cq_comp_handler_recv,
 			rds_ib_cq_event_handler, conn,
 			rds_ib_srq_enabled ? rds_ib_srq_max_wr - 1 : ic->i_recv_ring.w_nr,
@@ -2302,7 +2292,6 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
-	ic->i_cq_vector = -1;
 	ic->i_irq_local_cpu = NR_CPUS;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
