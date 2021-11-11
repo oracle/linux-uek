@@ -290,7 +290,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	const union rds_ib_conn_priv *dp = NULL;
-	char cq_cpu_msg_buf[64];
 	__be16 frag_sz = 0;
 	__be64 ack_seq = 0;
 	__be32 credit = 0;
@@ -340,24 +339,14 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	if (ic->i_preferred_cpu != WORK_CPU_UNBOUND)
-		snprintf(cq_cpu_msg_buf, sizeof(cq_cpu_msg_buf),
-			 ", cq_vector=%d, preferred_cpu=%d",
-			 ic->i_cq_vector, ic->i_preferred_cpu);
-	else
-		snprintf(cq_cpu_msg_buf, sizeof(cq_cpu_msg_buf),
-			 ", cq_vector=%d, preferred_cpu=unbound",
-			 ic->i_cq_vector);
-
-	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u%s%s%s\n",
+	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u%s%s\n",
 	       ic->i_active_side ? "Active " : "Passive",
 	       conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
 	       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 	       RDS_PROTOCOL_MAJOR(conn->c_version),
 	       RDS_PROTOCOL_MINOR(conn->c_version),
 	       ic->i_flowctl ? ", flow control" : "",
-	       conn->c_acl_en ? ", ACL Enabled" : "",
-	       cq_cpu_msg_buf);
+	       conn->c_acl_en ? ", ACL Enabled" : "");
 
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
@@ -1035,12 +1024,6 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	else
 		mr_reg = 0;
 
-	/* obtain an unused vector early for "prefer_cq_cpu" */
-	if (ic->i_cq_vector < 0)
-		ic->i_cq_vector = ibdev_get_unused_vector(rds_ibdev);
-	else
-		ibdev_get_vector(rds_ibdev, ic->i_cq_vector);
-
 	/* add the conn now so that connection establishment has the dev */
 	rds_ib_add_conn(rds_ibdev, conn);
 
@@ -1063,10 +1046,6 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 			rds_ib_cq_event_handler, conn,
 			ic->i_send_ring.w_nr + 1 + mr_reg,
 			"send");
-
-	/* drop the early "i_cq_vector" reference again */
-	ibdev_put_vector(ic->rds_ibdev, ic->i_cq_vector);
-
 	if (IS_ERR(ic->i_scq)) {
 		reason = "rds_ib_check_cq for send failed";
 		ret = PTR_ERR(ic->i_scq);
