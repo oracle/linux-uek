@@ -529,8 +529,7 @@ static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
 {
 	struct rds_ib_device *rds_ibdev = context;
 
-	queue_work_on(smp_processor_id(),
-		      rds_evt_wq, &rds_ibdev->fastreg_w);
+	tasklet_schedule(&rds_ibdev->fastreg_tasklet);
 }
 
 static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
@@ -542,8 +541,7 @@ static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
 
-	queue_work_on(smp_processor_id(),
-		      rds_evt_wq, &ic->i_send_w);
+	tasklet_schedule(&ic->i_stasklet);
 }
 
 static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
@@ -555,8 +553,7 @@ static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
 
 	rds_ib_stats_inc(s_ib_evt_handler_call);
 
-	queue_work_on(smp_processor_id(),
-		      rds_evt_wq, &ic->i_recv_w);
+	tasklet_schedule(&ic->i_rtasklet);
 }
 
 static void poll_fcq(struct rds_ib_device *rds_ibdev, struct ib_cq *cq,
@@ -623,22 +620,18 @@ static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 	}
 }
 
-static void rds_ib_cq_comp_handler_fastreg_w(struct work_struct *work)
+static void rds_ib_tasklet_fn_fastreg(unsigned long data)
 {
-	struct rds_ib_device *rds_ibdev = container_of(work,
-						       struct rds_ib_device,
-						       fastreg_w);
+	struct rds_ib_device *rds_ibdev = (struct rds_ib_device *)data;
 
 	poll_fcq(rds_ibdev, rds_ibdev->fastreg_cq, rds_ibdev->fastreg_wc);
 	ib_req_notify_cq(rds_ibdev->fastreg_cq, IB_CQ_NEXT_COMP);
 	poll_fcq(rds_ibdev, rds_ibdev->fastreg_cq, rds_ibdev->fastreg_wc);
 }
 
-void rds_ib_send_w(struct work_struct *work)
+void rds_ib_tasklet_fn_send(unsigned long data)
 {
-	struct rds_ib_connection *ic = container_of(work,
-						    struct rds_ib_connection,
-						    i_send_w);
+	struct rds_ib_connection *ic = (struct rds_ib_connection *) data;
 	struct rds_connection *conn = ic->conn;
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
@@ -712,11 +705,9 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	}
 }
 
-void rds_ib_recv_w(struct work_struct *work)
+void rds_ib_tasklet_fn_recv(unsigned long data)
 {
-	struct rds_ib_connection *ic = container_of(work,
-						    struct rds_ib_connection,
-						    i_recv_w);
+	struct rds_ib_connection *ic = (struct rds_ib_connection *) data;
 
 	spin_lock_bh(&ic->i_rx_lock);
 	if (ic->i_rx_wait_for_handler)
@@ -2120,11 +2111,10 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 		} else if (rds_ib_srq_enabled && ic->rds_ibdev) {
 			/*
 			   wait for the last wqe to complete, then schedule
-			   the recv work to drain the RX CQ.
+			   the recv tasklet to drain the RX CQ.
 			*/
 			wait_for_completion(&ic->i_last_wqe_complete);
-			queue_work_on(smp_processor_id(),
-				      rds_evt_wq, &ic->i_recv_w);
+			tasklet_schedule(&ic->i_rtasklet);
 		}
 	}
 }
@@ -2164,7 +2154,8 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 	if (ic->i_cm_id) {
 		cancel_delayed_work_sync(&ic->i_rx_w.work);
 
-		flush_workqueue(rds_evt_wq);
+		tasklet_kill(&ic->i_stasklet);
+		tasklet_kill(&ic->i_rtasklet);
 
 		ic->i_flags &= ~RDS_IB_CQ_ERR;
 
@@ -2277,8 +2268,8 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	INIT_LIST_HEAD(&ic->ib_node);
 	init_rwsem(&ic->i_cm_id_free_lock);
 
-	INIT_WORK(&ic->i_send_w, rds_ib_send_w);
-	INIT_WORK(&ic->i_recv_w, rds_ib_recv_w);
+	tasklet_init(&ic->i_stasklet, rds_ib_tasklet_fn_send, (unsigned long) ic);
+	tasklet_init(&ic->i_rtasklet, rds_ib_tasklet_fn_recv, (unsigned long) ic);
 	mutex_init(&ic->i_recv_mutex);
 #ifndef KERNEL_HAS_ATOMIC64
 	spin_lock_init(&ic->i_ack_lock);
@@ -2363,7 +2354,7 @@ void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev)
 	 */
 	WARN_ON(atomic_read(&rds_ibdev->fastreg_wrs) != RDS_IB_DEFAULT_FREG_WR);
 
-	flush_workqueue(rds_evt_wq);
+	tasklet_kill(&rds_ibdev->fastreg_tasklet);
 	if (rds_ibdev->fastreg_qp) {
 		/* Destroy qp */
 		if (ib_destroy_qp(rds_ibdev->fastreg_qp))
@@ -2522,7 +2513,8 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 					   "moved qp to RTS state for device",
 					   0);
 
-	INIT_WORK(&rds_ibdev->fastreg_w, rds_ib_cq_comp_handler_fastreg_w);
+	tasklet_init(&rds_ibdev->fastreg_tasklet, rds_ib_tasklet_fn_fastreg,
+		     (unsigned long)rds_ibdev);
 	atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
 
 clean_up:
