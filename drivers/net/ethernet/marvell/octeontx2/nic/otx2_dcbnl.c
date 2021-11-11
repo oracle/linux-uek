@@ -160,14 +160,11 @@ int otx2_dcbnl_set_ops(struct net_device *dev)
 {
 	struct otx2_nic *pfvf = netdev_priv(dev);
 
-	if (!is_otx2_lbkvf(pfvf->pdev) && !is_otx2_sdpvf(pfvf->pdev)) {
-		pfvf->queue_to_pfc_map = devm_kzalloc(pfvf->dev,
-						      pfvf->hw.rx_queues,
-						      GFP_KERNEL);
-		if (!pfvf->queue_to_pfc_map)
-			return -ENOMEM;
-		dev->dcbnl_ops = &otx2_dcbnl_ops;
-	}
+	pfvf->queue_to_pfc_map = devm_kzalloc(pfvf->dev, pfvf->hw.rx_queues,
+					      GFP_KERNEL);
+	if (!pfvf->queue_to_pfc_map)
+		return -ENOMEM;
+	dev->dcbnl_ops = &otx2_dcbnl_ops;
 
 	return 0;
 }
