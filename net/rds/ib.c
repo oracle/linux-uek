@@ -1343,13 +1343,13 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_sysctl;
 
-	rds_aux_wq = alloc_workqueue("%s", 0, 0, "krdsd_aux");
+	rds_aux_wq = alloc_workqueue("%s", WQ_UNBOUND, 0, "krdsd_aux");
 	if (!rds_aux_wq) {
 		pr_err("%s: failed to create aux workqueue\n", __func__);
 		goto out_recv;
 	}
 
-	rds_evt_wq = alloc_workqueue("krdsd_evt", 0, 0);
+	rds_evt_wq = alloc_workqueue("krdsd_evt", WQ_UNBOUND, 0);
 	if (!rds_evt_wq) {
 		pr_err("RDS/IB: failed to create evt workqueue\n");
 		goto out_aux_wq;
@@ -1370,13 +1370,11 @@ int rds_ib_init(void)
 	ret = ib_register_client(&rds_ib_client);
 	if (ret) {
 		pr_err("%s: ib_register_client() failed\n", __func__);
-		goto out_trans;
+		goto out_aux_wq;
 	}
 
 	goto out;
 
-out_trans:
-        rds_trans_unregister(&rds_ib_transport);
 out_evt_wq:
 	destroy_workqueue(rds_evt_wq);
 out_aux_wq:
