@@ -40,9 +40,6 @@
 #include "xlist.h"
 #include "rds_single_path.h"
 
-static int preferred_cpu_load[NR_CPUS];
-static DEFINE_SPINLOCK(preferred_cpu_load_lock);
-
 struct workqueue_struct *rds_ib_fmr_wq;
 
 enum rds_ib_fr_state {
@@ -368,28 +365,7 @@ int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 		    struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	const struct cpumask *node_cpus_mask;
-	int nid, min_load, min_cpu, cpu;
 	unsigned long flags;
-
-	nid = rdsibdev_to_node(rds_ibdev);
-	node_cpus_mask = nid != NUMA_NO_NODE ? cpumask_of_node(nid) : NULL;
-	if (node_cpus_mask) {
-		spin_lock_irqsave(&preferred_cpu_load_lock, flags);
-		min_cpu = WORK_CPU_UNBOUND;
-		min_load = INT_MAX;
-		for_each_cpu_and(cpu, cpu_online_mask, node_cpus_mask) {
-			if (preferred_cpu_load[cpu] < min_load) {
-				min_cpu = cpu;
-				min_load = preferred_cpu_load[cpu];
-			}
-		}
-		if (min_cpu != WORK_CPU_UNBOUND)
-			preferred_cpu_load[min_cpu]++;
-		ic->i_preferred_cpu = min_cpu;
-		spin_unlock_irqrestore(&preferred_cpu_load_lock, flags);
-	} else
-		ic->i_preferred_cpu = WORK_CPU_UNBOUND;
 
 	/* conn was previously on the nodev_conns_list */
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
@@ -437,12 +413,6 @@ void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
 
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
-
-	spin_lock_irqsave(&preferred_cpu_load_lock, flags);
-	if (ic->i_preferred_cpu != WORK_CPU_UNBOUND)
-		preferred_cpu_load[ic->i_preferred_cpu]--;
-	ic->i_preferred_cpu = WORK_CPU_UNBOUND;
-	spin_unlock_irqrestore(&preferred_cpu_load_lock, flags);
 
 	rds_ib_dev_put(rds_ibdev);
 }
