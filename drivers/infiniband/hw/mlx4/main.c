@@ -2655,17 +2655,6 @@ static void get_fw_ver_str(struct ib_device *device, char *str)
 		 (int) dev->dev->caps.fw_ver & 0xffff);
 }
 
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-static int
-mlx4_ib_get_vector_irqn(struct ib_device *ibdev, int comp_vector)
-{
-	if (comp_vector < 0 || comp_vector >= ibdev->num_comp_vectors)
-		return -1;
-
-	return mlx4_eq_get_irq(to_mdev(ibdev)->dev, comp_vector);
-}
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
-
 /*
  * create show function and a device_attribute struct pointing to
  * the function for _name
@@ -2943,9 +2932,6 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.process_mad	= mlx4_ib_process_mad;
 	ibdev->ib_dev.get_port_immutable = mlx4_port_immutable;
 	ibdev->ib_dev.get_dev_fw_str    = get_fw_ver_str;
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	ibdev->ib_dev.get_vector_irqn   = mlx4_ib_get_vector_irqn;
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	ibdev->ib_dev.disassociate_ucontext = mlx4_ib_disassociate_ucontext;
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	ibdev->ib_dev.alloc_shpd	= mlx4_ib_alloc_shpd;
