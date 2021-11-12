@@ -78,7 +78,6 @@ DEFINE_SPINLOCK(ib_nodev_conns_lock);
 LIST_HEAD(ib_nodev_conns);
 
 struct workqueue_struct *rds_aux_wq;
-struct workqueue_struct *rds_evt_wq;
 
 static struct socket *rds_rdma_rtnl_sk;
 
@@ -1118,15 +1117,9 @@ int rds_ib_init(void)
 		goto out_ibreg;
 	}
 
-	rds_evt_wq = alloc_workqueue("krdsd_evt", WQ_UNBOUND, 0);
-	if (!rds_evt_wq) {
-		pr_err("RDS/IB: failed to create evt workqueue\n");
-		goto out_aux_wq;
-	}
-
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
-		goto out_evt_wq;
+		goto out_aux_wq;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1135,8 +1128,6 @@ int rds_ib_init(void)
 
 	goto out;
 
-out_evt_wq:
-	destroy_workqueue(rds_evt_wq);
 out_aux_wq:
 	destroy_workqueue(rds_aux_wq);
 out_ibreg:
@@ -1165,7 +1156,6 @@ void rds_ib_exit(void)
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();
-	destroy_workqueue(rds_evt_wq);
 	destroy_workqueue(rds_aux_wq);
 	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
