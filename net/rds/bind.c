@@ -44,11 +44,11 @@ struct bind_bucket {
 };
 
 #define BIND_HASH_SIZE 8192
-static struct bind_bucket bind_hash_table[BIND_HASH_SIZE];
 
-static struct bind_bucket *hash_to_bucket(struct in6_addr *addr, __be16 port)
+static struct bind_bucket *hash_to_bucket(struct rds_net *rds_ns,
+					  struct in6_addr *addr, __be16 port)
 {
-	return bind_hash_table +
+	return rds_ns->rns_bind_hash_table +
 		(jhash_3words((__force u32)(addr->s6_addr32[0] ^
 					    addr->s6_addr32[1]),
 			      (__force u32)(addr->s6_addr32[2] ^
@@ -99,12 +99,13 @@ static struct rds_sock *rds_bind_lookup(struct bind_bucket *bucket,
  * The rx path can race with rds_release.  We notice if rds_release() has
  * marked this socket and don't return a rs ref to the rx path.
  */
-struct rds_sock *rds_find_bound(struct in6_addr *addr, __be16 port,
+struct rds_sock *rds_find_bound(struct rds_net *rds_ns,
+				struct in6_addr *addr, __be16 port,
 				__u32 scope_id)
 {
 	struct rds_sock *rs;
 	unsigned long flags;
-	struct bind_bucket *bucket = hash_to_bucket(addr, port);
+	struct bind_bucket *bucket = hash_to_bucket(rds_ns, addr, port);
 
 	read_lock_irqsave(&bucket->lock, flags);
 	rs = rds_bind_lookup(bucket, addr, port, NULL, scope_id);
@@ -122,8 +123,8 @@ struct rds_sock *rds_find_bound(struct in6_addr *addr, __be16 port,
 }
 
 /* returns -ve errno or +ve port */
-static int rds_add_bound(struct rds_sock *rs, struct in6_addr *addr,
-			 __be16 *port, __u32 scope_id)
+static int rds_add_bound(struct rds_net *rds_ns, struct rds_sock *rs,
+			 struct in6_addr *addr, __be16 *port, __u32 scope_id)
 {
 	unsigned long flags;
 	int ret = -EADDRINUSE;
@@ -143,7 +144,7 @@ static int rds_add_bound(struct rds_sock *rs, struct in6_addr *addr,
 		if (rover == 0)
 			rover++;
 
-		bucket = hash_to_bucket(addr, cpu_to_be16(rover));
+		bucket = hash_to_bucket(rds_ns, addr, cpu_to_be16(rover));
 
 		write_lock_irqsave(&bucket->lock, flags);
 		rrs = rds_bind_lookup(bucket, addr, cpu_to_be16(rover), rs,
@@ -163,11 +164,11 @@ static int rds_add_bound(struct rds_sock *rs, struct in6_addr *addr,
 	return ret;
 }
 
-void rds_remove_bound(struct rds_sock *rs)
+void rds_remove_bound(struct rds_net *rds_ns, struct rds_sock *rs)
 {
 	unsigned long flags;
 	struct bind_bucket *bucket =
-		hash_to_bucket(&rs->rs_bound_addr, rs->rs_bound_port);
+		hash_to_bucket(rds_ns, &rs->rs_bound_addr, rs->rs_bound_port);
 
 	write_lock_irqsave(&bucket->lock, flags);
 
@@ -190,7 +191,9 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	struct rds_sock *rs = rds_sk_to_rs(sk);
 	struct in6_addr v6addr, *binding_addr;
 	struct rds_transport *trans;
+	struct rds_net *rds_ns;
 	__u32 scope_id = 0;
+	struct net *net;
 	int ret = 0;
 	__be16 port;
 	bool release_trans_on_error;
@@ -265,21 +268,20 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		goto out;
 	}
 
+	net = sock_net(sock->sk);
 	/* The transport can be set using SO_RDS_TRANSPORT option before the
 	 * socket is bound.
 	 */
 	if (rs->rs_transport) {
 		trans = rs->rs_transport;
 		if (!trans->laddr_check ||
-		    trans->laddr_check(sock_net(sock->sk),
-				       binding_addr, scope_id) != 0) {
+		    trans->laddr_check(net, binding_addr, scope_id) != 0) {
 			ret = -ENOPROTOOPT;
 			goto out;
 		}
 		release_trans_on_error = false;
 	} else {
-		trans = rds_trans_get_preferred(sock_net(sock->sk),
-						binding_addr, scope_id);
+		trans = rds_trans_get_preferred(net, binding_addr, scope_id);
 		if (!trans) {
 			ret = -EADDRNOTAVAIL;
 			pr_info_ratelimited("RDS: %s could not find a transport for %pI6c, load rds_tcp or rds_rdma?\n",
@@ -290,7 +292,8 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		release_trans_on_error = true;
 	}
 
-	ret = rds_add_bound(rs, binding_addr, &port, scope_id);
+	rds_ns = rs->rs_rns;
+	ret = rds_add_bound(rds_ns, rs, binding_addr, &port, scope_id);
 	if (ret && release_trans_on_error) {
 		rds_trans_put(rs->rs_transport);
 		rs->rs_transport = NULL;
@@ -301,9 +304,33 @@ out:
 	return ret;
 }
 
-void rds_bind_lock_init(void)
+int rds_bind_tbl_net_init(struct rds_net *rds_ns)
 {
+	struct bind_bucket *bind_hash_table;
 	int i;
-	for (i = 0; i < BIND_HASH_SIZE; i++)
+
+	bind_hash_table = kzalloc(sizeof(*bind_hash_table) *
+				  BIND_HASH_SIZE, GFP_KERNEL);
+	if (!bind_hash_table)
+		return -ENOMEM;
+
+	for (i = 0; i < BIND_HASH_SIZE; i++) {
 		rwlock_init(&bind_hash_table[i].lock);
+		INIT_HLIST_HEAD(&bind_hash_table[i].head);
+	}
+	rds_ns->rns_bind_hash_table = bind_hash_table;
+
+	return 0;
+}
+
+void rds_bind_tbl_net_exit(struct rds_net *rds_ns)
+{
+	struct bind_bucket *bind_hash_table;
+	int i;
+
+	bind_hash_table = rds_ns->rns_bind_hash_table;
+	for (i = 0; i < BIND_HASH_SIZE; i++)
+		WARN_ON(!hlist_empty(&bind_hash_table[i].head));
+	kfree(bind_hash_table);
+	rds_ns->rns_bind_hash_table = NULL;
 }
