@@ -1112,13 +1112,13 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_recv;
 
-	rds_aux_wq = alloc_workqueue("krdsd_aux", 0, 0);
+	rds_aux_wq = alloc_workqueue("krdsd_aux", WQ_UNBOUND, 0);
 	if (!rds_aux_wq) {
 		pr_err("RDS/IB: failed to create aux workqueue\n");
 		goto out_ibreg;
 	}
 
-	rds_evt_wq = alloc_workqueue("krdsd_evt", 0, 0);
+	rds_evt_wq = alloc_workqueue("krdsd_evt", WQ_UNBOUND, 0);
 	if (!rds_evt_wq) {
 		pr_err("RDS/IB: failed to create evt workqueue\n");
 		goto out_aux_wq;
