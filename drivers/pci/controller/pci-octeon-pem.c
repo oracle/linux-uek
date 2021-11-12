@@ -94,7 +94,15 @@ static int pem_register_interrupts(struct pci_dev *pdev)
 	int nvec, err;
 
 	nvec = pci_msix_vec_count(pdev);
-
+	/* Some earlier silicon versions do not support RST vector
+	 * so check on table size before registering otherwise
+	 * return with info message.
+	 */
+	if (nvec != 10) {
+		dev_info(&pdev->dev,
+			 "No RST MSI-X vector support on silicon\n");
+		return 0;
+	}
 	err = pci_alloc_irq_vectors(pdev, nvec, nvec, PCI_IRQ_MSIX);
 	if (err < 0) {
 		dev_err(&pdev->dev, "pci_alloc_irq_vectors() failed %d\n",
