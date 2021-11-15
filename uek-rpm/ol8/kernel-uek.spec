@@ -785,8 +785,7 @@ AutoReqProv: no
 %description -n bpftool-debuginfo
 This package provides debug information for the bpftool package.
 
-#%{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '.*%%{_sbindir}/bpftool(\.debug)?|XXX' -o bpftool-debuginfo.list}
-%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_sbindir}/bpftool(\.debug)?|XXX' -o bpftool-debuginfo.list}
+%{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '.*%%{_sbindir}/bpftool(\.debug)?|XXX' -o bpftool-debuginfo.list}
 
 #with_bpftool
 %endif
