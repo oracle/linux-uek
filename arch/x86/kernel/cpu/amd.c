@@ -894,8 +894,7 @@ static void init_amd_zn(struct cpuinfo_x86 *c)
 {
 	set_cpu_cap(c, X86_FEATURE_ZEN);
 
-	if (c->x86 == 0x17)
-		set_cpu_cap(c, X86_FEATURE_NT_GOOD);
+	set_cpu_cap(c, X86_FEATURE_NT_GOOD);
 
 	/*
 	 * Fix erratum 1076: CPB feature bit not being set in CPUID.
