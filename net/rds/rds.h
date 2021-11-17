@@ -811,6 +811,12 @@ enum {
 	RDS_CONN_PATH_RESET_WATCHDOG	= 1 << 1,
 };
 
+enum rds_send_xmit_mode {
+	RDS_SEND_XMIT_MODE_WORKER,
+	RDS_SEND_XMIT_MODE_SENDMSG,
+	RDS_SEND_XMIT_MODE_COMP_HANDLER,
+};
+
 /**
  * struct rds_transport -  transport specific behavioural hooks
  *
@@ -1561,7 +1567,7 @@ void rds6_inc_info_copy(struct rds_incoming *inc,
 /* send.c */
 int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len);
 void rds_send_path_reset(struct rds_conn_path *cp);
-int rds_send_xmit(struct rds_conn_path *cp);
+int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode);
 void rds_conn_drop_sock_cancel_worker(struct work_struct *work);
 void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest);
 typedef int (*is_acked_func)(struct rds_message *rm, uint64_t ack);

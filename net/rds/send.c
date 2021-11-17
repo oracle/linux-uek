@@ -45,13 +45,14 @@
  * Also, it seems fairer to not let one busy connection stall all the
  * others.
  *
- * send_batch_count is the number of times we'll loop in send_xmit. Setting
- * it to 0 will restore the old behavior (where we looped until we had
- * drained the queue).
+ * send_batch_limits is the number of times we'll loop in send_xmit:
+ *   send_batch_limits[0] - RDS_SEND_XMIT_MODE_WORKER
+ *   send_batch_limits[1] - RDS_SEND_XMIT_MODE_SENDMSG
+ *   send_batch_limits[2] - RDS_SEND_XMIT_MODE_COMP_HANDLER
  */
-static int send_batch_count = 1024;
-module_param(send_batch_count, int, 0444);
-MODULE_PARM_DESC(send_batch_count, " batch factor when working the send queue");
+static int send_batch_limits[] = { 8, 4, 4 };
+module_param_array(send_batch_limits, int, NULL, 0644);
+MODULE_PARM_DESC(send_batch_limits, "Multiplexing batch limits: worker, sendmsg, comp_handler");
 
 unsigned int rds_async_send_enabled = 0;
 module_param(rds_async_send_enabled, int, 0444);
@@ -186,7 +187,7 @@ static void release_in_xmit(struct rds_conn_path *cp)
  *      - small message latency is higher behind queued large messages
  *      - large message latency isn't starved by intervening small sends
  */
-int rds_send_xmit(struct rds_conn_path *cp)
+int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_message *rm = cp->cp_xmit_rm;
@@ -198,11 +199,12 @@ int rds_send_xmit(struct rds_conn_path *cp)
 	int ret = 0;
 	struct list_head to_be_dropped;
 	int same_rm = 0;
-	int batch_count;
+	int batch_limit, batch_count;
 	unsigned long send_gen = 0;
 
-restart:
 	INIT_LIST_HEAD(&to_be_dropped);
+
+	batch_limit = send_batch_limits[xmit_mode];
 	batch_count = 0;
 
 	/*
@@ -229,7 +231,7 @@ restart:
 	/*
 	 * we record the send generation after doing the xmit acquire.
 	 * if someone else manages to jump in and do some work, we'll use
-	 * this to avoid a goto restart farther down.
+	 * this to avoid a "ret = -EAGAIN" farther down.
 	 *
 	 * we don't need a lock because the counter is only incremented
 	 * while we have the in_xmit bit held.
@@ -342,7 +344,7 @@ restart:
 			 * through a lot of messages, lets back off and see
 			 * if anyone else jumps in
 			 */
-			if (batch_count >= send_batch_count)
+			if (batch_count >= batch_limit)
 				goto over_batch;
 
 			if (cp->cp_index > 0) {
@@ -639,7 +641,7 @@ over_batch:
 	 * (Note: We check not just for more messages on send queue but also
 	 *  for congestion update that might still be pending if GFP_NOWAIT
 	 *  allocation failed earlier. Retrying for it in this call will also
-	 *  be capped at "send_batch_count" attempts as it is for data messages
+	 *  be capped at "send_batch_limits" attempts as it is for data messages
 	 *  before getting rescheduled.)
 	 */
 	if (ret == 0) {
@@ -651,9 +653,7 @@ over_batch:
 		if (((test_bit(RCMQ_BITOFF_CONGU_PENDING,
 			       &conn->c_map_queued) && !cp->cp_index) ||
 		     !list_empty(&cp->cp_send_queue)) && !raced) {
-			if (batch_count < send_batch_count)
-				goto restart;
-			rds_cond_queue_send_work(cp, 1);
+			ret = -EAGAIN;
 		} else if (raced) {
 			rds_stats_inc(conn->c_stats, s_send_lock_queue_raced);
 		}
@@ -1838,9 +1838,9 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	if (!dport)
 		rds_stats_inc(rs->rs_stats, s_send_ping);
 
-	ret = rds_send_xmit(cpath);
+	ret = rds_send_xmit(cpath, RDS_SEND_XMIT_MODE_SENDMSG);
 	if (ret == -ENOMEM || ret == -EAGAIN)
-		rds_cond_queue_send_work(cpath, 1);
+		rds_cond_queue_send_work(cpath, 0);
 
 	rds_message_put(rm);
 	ret =  payload_len;
