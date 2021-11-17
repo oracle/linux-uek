@@ -165,3 +165,22 @@ SYM_FUNC_START(clear_page_nt)
 	ja	.Lstart
 	RET
 SYM_FUNC_END(clear_page_nt)
+
+/*
+ * Zero a page using clzero (on AMD.)
+ * %rdi - page
+ *
+ * Caller needs to issue a sfence at the end.
+ */
+SYM_FUNC_START(clear_page_clzero)
+	movl	$4096,%ecx
+	movq	%rdi,%rax
+
+	.p2align 4
+.Liter:
+	clzero
+	addq	$0x40, %rax
+	sub	$0x40, %ecx
+	ja	.Liter
+	RET
+SYM_FUNC_END(clear_page_clzero)
