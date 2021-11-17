@@ -47,6 +47,7 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/msi.h>
+#include <linux/of.h>
 #include <linux/perf_event.h>
 #include <linux/platform_device.h>
 #include <linux/smp.h>
@@ -865,7 +866,8 @@ static int smmu_pmu_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	smmu_pmu_get_acpi_options(smmu_pmu);
+	if (!dev->of_node)
+		smmu_pmu_get_acpi_options(smmu_pmu);
 
 	/*
 	 * For platforms suffer this quirk, the PMU disable sometimes fails to
@@ -925,9 +927,16 @@ static void smmu_pmu_shutdown(struct platform_device *pdev)
 	smmu_pmu_disable(&smmu_pmu->pmu);
 }
 
+static const struct of_device_id smmu_pmu_of_match[] = {
+	{ .compatible = "arm,smmu-v3-pmcg" },
+	{}
+};
+MODULE_DEVICE_TABLE(of, smmu_pmu_of_match);
+
 static struct platform_driver smmu_pmu_driver = {
 	.driver = {
 		.name = "arm-smmu-v3-pmcg",
+		.of_match_table = of_match_ptr(smmu_pmu_of_match),
 		.suppress_bind_attrs = true,
 	},
 	.probe = smmu_pmu_probe,
