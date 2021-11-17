@@ -361,7 +361,7 @@ void rds_send_worker(struct work_struct *work)
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
 		rds_clear_queued_send_work_bit(cp);
 		clear_bit(RDS_LL_SEND_FULL, &cp->cp_flags);
-		ret = rds_send_xmit(cp);
+		ret = rds_send_xmit(cp, RDS_SEND_XMIT_MODE_WORKER);
 		cond_resched();
 		if (ret)
 			trace_rds_send_worker_err(NULL, cp->cp_conn, cp,
@@ -376,7 +376,7 @@ void rds_send_worker(struct work_struct *work)
 		case -ENOMEM:
 			rds_stats_inc(cp->cp_conn->c_stats,
 				      s_send_delayed_retry);
-			delay = 2;
+			delay = 1;
 			break;
 		default:
 			rds_conn_put(cp->cp_conn);
