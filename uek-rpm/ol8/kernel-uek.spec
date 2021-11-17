@@ -570,14 +570,19 @@ Obsoletes: kernel-smp
 #
 BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, sh-utils, tar, git
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
-BuildRequires: gcc >= 3.4.2, binutils >= 2.12, redhat-rpm-config, hmaccalc, python3-devel
-BuildRequires: net-tools, hostname, elfutils-devel
-BuildRequires: elfutils-libelf-devel
+BuildRequires: gcc-toolset-11
+BuildRequires: gcc-toolset-11-annobin
+BuildRequires: gcc-toolset-11-annobin-plugin-gcc
+BuildRequires: gcc-toolset-11-binutils
+BuildRequires: libdtrace-ctf-devel
+BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
+BuildRequires: net-tools, hostname
+BuildRequires: gcc-toolset-11-elfutils-libelf-devel
 BuildRequires: python3, python3-devel
 BuildRequires: flex >= 2.5.19, bison >= 2.3
 BuildRequires: pkgconfig
 BuildRequires: glib2-devel
-BuildRequires: elfutils-devel
+BuildRequires: gcc-toolset-11-elfutils-devel
 BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
@@ -605,19 +610,21 @@ BuildRequires: fontconfig >= 2.13.0
 %endif
 
 %if %{with_dtrace}
-BuildRequires: binutils >= 2.30-58.0.11
-BuildRequires: binutils-devel >= 2.30-58.0.11
-BuildRequires: gcc >= 8.3.1-4.5.0.7
+BuildRequires: gcc-toolset-11
+BuildRequires: gcc-toolset-11-binutils
+BuildRequires: gcc-toolset-11-binutils-devel
 %endif
 
 %if %{with_bpftool}
 BuildRequires: python3-docutils
-BuildRequires: zlib-devel binutils-devel
+BuildRequires: zlib-devel
+BuildRequires: gcc-toolset-11-binutils-devel
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 %if %{with_debuginfo}
-BuildRequires: rpm-build, elfutils
+BuildRequires: rpm-build
+BuildRequires: gcc-toolset-11-elfutils
 BuildConflicts: rpm < 4.13.0.1-19
 
 ## See /usr/lib/rpm/macros on OL8 for macro descriptions.
@@ -833,12 +840,12 @@ Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(kernel-uek)\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
-Requires: elfutils-libelf >= 0.160\
-Requires: elfutils-libs >= 0.160\
+Requires: gcc-toolset-11-elfutils-libelf-devel\
+Requires: gcc-toolset-11-elfutils-libs\
 %if %{with_dtrace}\
-Requires: binutils >= 2.30-58.0.11\
-Requires: binutils-devel >= 2.30-58.0.11\
-Requires: gcc >= 8.3.1-4.5.0.7\
+Requires: gcc-toolset-11\
+Requires: gcc-toolset-11-binutils\
+Requires: gcc-toolset-11-binutils-devel\
 %endif\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
@@ -933,6 +940,10 @@ This package includes 4k page size for aarch64 kernel.
 This package include debug kernel for 4k page size.
 
 %prep
+# Enable gcc-toolset-11
+source /opt/rh/gcc-toolset-11/enable
+gcc --version
+
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
 %if !%{with_up}%{with_pae}
@@ -1129,6 +1140,9 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 ### build
 ###
 %build
+# Enable gcc-toolset-11
+source /opt/rh/gcc-toolset-11/enable
+gcc --version
 
 %if %{with_sparse}
 %define sparse_mflags	C=1
@@ -1625,6 +1639,10 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
 ###
 
 %install
+# Enable gcc-toolset-11
+source /opt/rh/gcc-toolset-11/enable
+gcc --version
+
 cd linux-%{version}-%{release}
 
 %if %{with_doc}
