@@ -994,6 +994,12 @@ static void init_amd(struct cpuinfo_x86 *c)
 		init_amd_zen5(c);
 
 	/*
+	 * Enable X86_FEATURE_NT_GOOD on all ZEN models.
+	 */
+	if (c->x86 >= 0x17)
+		set_cpu_cap(c, X86_FEATURE_NT_GOOD);
+
+	/*
 	 * Enable workaround for FXSAVE leak on CPUs
 	 * without a XSaveErPtr feature
 	 */
