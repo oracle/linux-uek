@@ -44,10 +44,12 @@ void clear_page_orig(void *page);
 void clear_page_rep(void *page);
 void clear_page_erms(void *page);
 void clear_page_nt(void *page);
+void clear_page_clzero(void *page);
 KCFI_REFERENCE(clear_page_orig);
 KCFI_REFERENCE(clear_page_rep);
 KCFI_REFERENCE(clear_page_erms);
 KCFI_REFERENCE(clear_page_nt);
+KCFI_REFERENCE(clear_page_clzero);
 
 static inline void clear_page(void *page)
 {
