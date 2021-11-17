@@ -44,6 +44,7 @@ void clear_page_orig(void *page);
 void clear_page_rep(void *page);
 void clear_page_erms(void *page);
 void clear_page_nt(void *page);
+void clear_page_clzero(void *page);
 
 static inline void clear_page(void *page)
 {
