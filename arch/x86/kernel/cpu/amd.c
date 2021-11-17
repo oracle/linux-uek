@@ -900,8 +900,7 @@ static void init_amd_zn(struct cpuinfo_x86 *c)
 {
 	set_cpu_cap(c, X86_FEATURE_ZEN);
 
-	if (c->x86 == 0x17)
-		set_cpu_cap(c, X86_FEATURE_NT_GOOD);
+	set_cpu_cap(c, X86_FEATURE_NT_GOOD);
 
 #ifdef CONFIG_NUMA
 	node_reclaim_distance = 32;
