@@ -68,16 +68,24 @@ static inline void clear_page_uncached(void *page)
 	 * below clobbers @page, so we perform unpoisoning before it.
 	 */
 	kmsan_unpoison_memory(page, PAGE_SIZE);
-	alternative_call(clear_page,
-			 clear_page_nt, X86_FEATURE_NT_GOOD,
-			 "=D" (page),
-			 "D" (page)
-			 : "cc", "memory", "rax", "rcx");
+	alternative_call_2(clear_page,
+			   clear_page_nt, X86_FEATURE_NT_GOOD,
+			   clear_page_clzero, X86_FEATURE_CLZERO,
+			   "=D" (page),
+			   "D" (page)
+			   : "cc", "memory", "rax", "rcx");
 }
 
 static inline void clear_page_uncached_flush(void)
 {
-	alternative("", "sfence", X86_FEATURE_NT_GOOD);
+	/*
+	 * Keep the sfence for NT and clzero separate to guard against
+	 * the possibility that a cpu-model both has X86_FEATURE_NT_GOOD
+	 * and X86_FEATURE_CLZERO.
+	 */
+	alternative_2("",
+		      "sfence", X86_FEATURE_NT_GOOD,
+		      "sfence", X86_FEATURE_CLZERO);
 }
 
 void copy_page(void *to, void *from);
