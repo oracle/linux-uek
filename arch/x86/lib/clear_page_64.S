@@ -78,3 +78,23 @@ ENTRY(clear_page_nt)
 	ret
 ENDPROC(clear_page_nt)
 EXPORT_SYMBOL_GPL(clear_page_nt)
+
+/*
+ * Zero a page using clzero (on AMD.)
+ * %rdi - page
+ *
+ * Caller needs to issue a sfence at the end.
+ */
+ENTRY(clear_page_clzero)
+	movl	$4096,%ecx
+	movq	%rdi,%rax
+
+	.p2align 4
+.Liter:
+	clzero
+	addq    $0x40, %rax
+	sub     $0x40, %ecx
+	ja      .Liter
+	ret
+ENDPROC(clear_page_clzero)
+EXPORT_SYMBOL_GPL(clear_page_clzero)
