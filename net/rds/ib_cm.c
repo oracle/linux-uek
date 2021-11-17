@@ -829,7 +829,7 @@ static void rds_ib_send_cb(struct rds_ib_connection *ic)
 	if (rds_conn_up(conn) &&
 	   (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
 	    test_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued))) {
-		ret = rds_send_xmit(ic->conn->c_path);
+		ret = rds_send_xmit(ic->conn->c_path, RDS_SEND_XMIT_MODE_COMP_HANDLER);
 		if (ret == -ENOMEM || ret == -EAGAIN)
 			rds_cond_queue_send_work(ic->conn->c_path, 1);
 	}
