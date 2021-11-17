@@ -2414,7 +2414,7 @@ static bool stmmac_xdp_xmit_zc(struct stmmac_priv *priv, u32 queue, u32 budget)
 	bool work_done = true;
 
 	/* Avoids TX time-out as we are sharing with slow path */
-	nq->trans_start = jiffies;
+	txq_trans_cond_update(nq->trans_start);
 
 	budget = min(budget, stmmac_tx_avail(priv, queue));
 
@@ -4729,7 +4729,7 @@ static int stmmac_xdp_xmit_back(struct stmmac_priv *priv,
 
 	__netif_tx_lock(nq, cpu);
 	/* Avoids TX time-out as we are sharing with slow path */
-	nq->trans_start = jiffies;
+	txq_trans_cond_update(nq->trans_start);
 
 	res = stmmac_xdp_xmit_xdpf(priv, queue, xdpf, false);
 	if (res == STMMAC_XDP_TX)
@@ -6366,7 +6366,7 @@ static int stmmac_xdp_xmit(struct net_device *dev, int num_frames,
 
 	__netif_tx_lock(nq, cpu);
 	/* Avoids TX time-out as we are sharing with slow path */
-	nq->trans_start = jiffies;
+	txq_trans_cond_update(nq);
 
 	for (i = 0; i < num_frames; i++) {
 		int res;
