@@ -856,21 +856,6 @@ struct uclamp_rq {
 DECLARE_STATIC_KEY_FALSE(sched_uclamp_used);
 #endif /* CONFIG_UCLAMP_TASK */
 
-struct rq_kabi_extra {
-	/* per rq */
-	struct rq		*core;
-	struct task_struct	*core_pick;
-	unsigned int		core_enabled;
-	unsigned int		core_sched_seq;
-	struct rb_root		core_tree;
-	bool			core_forceidle;
-
-	/* shared state */
-	unsigned int		core_task_seq;
-	unsigned int		core_pick_seq;
-	unsigned long		core_cookie;
-};
-
 /*
  * This is the main, per-CPU runqueue data structure.
  *
@@ -1037,17 +1022,30 @@ struct rq {
 	/* Must be inspected within a rcu lock section */
 	struct cpuidle_state	*idle_state;
 #endif
- 
+
+#ifndef __GENKSYMS__
 #ifdef CONFIG_SCHED_CORE
-	UEK_KABI_USE(1, struct rq_kabi_extra *rke)
+	/* per rq */
+	struct rq		*core;
+	struct task_struct	*core_pick;
+	unsigned int		core_enabled;
+	unsigned int		core_sched_seq;
+	struct rb_root		core_tree;
+	bool			core_forceidle;
+
+	/* shared state */
+	unsigned int		core_task_seq;
+	unsigned int		core_pick_seq;
+	unsigned long		core_cookie;
+#endif
+#endif
+
+#ifdef CONFIG_SCHED_HRTICK
+	UEK_KABI_USE(1, ktime_t	hrtick_time)
 #else
 	UEK_KABI_RESERVE(1)
 #endif
-#ifdef CONFIG_SCHED_HRTICK
-	UEK_KABI_USE(2, ktime_t	hrtick_time)	
-#else
 	UEK_KABI_RESERVE(2)
-#endif
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -1080,14 +1078,13 @@ DECLARE_STATIC_KEY_FALSE(__sched_core_enabled);
 
 static inline bool sched_core_enabled(struct rq *rq)
 {
-	return static_branch_unlikely(&__sched_core_enabled) &&
-				      rq->rke->core_enabled;
+	return static_branch_unlikely(&__sched_core_enabled) && rq->core_enabled;
 }
 
 static inline raw_spinlock_t *rq_lockp(struct rq *rq)
 {
 	if (sched_core_enabled(rq))
-		return &rq->rke->core->__lock;
+		return &rq->core->__lock;
 
 	return &rq->__lock;
 }
@@ -1118,7 +1115,7 @@ static inline bool sched_core_cookie_match(struct rq *rq, struct task_struct *p)
 	 * A CPU in an idle core is always the best choice for tasks with
 	 * cookies.
 	 */
-	return idle_core || rq->rke->core->rke->core_cookie == p->core_cookie;
+	return idle_core || rq->core->core_cookie == p->core_cookie;
 }
 
 extern void queue_core_balance(struct rq *rq);
@@ -1159,10 +1156,8 @@ static inline void update_idle_core(struct rq *rq) { }
 
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DECLARE_PER_CPU_SHARED_ALIGNED(int, next_cpu);
-DECLARE_PER_CPU_SHARED_ALIGNED(struct rq_kabi_extra, rq_rke);
 
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
-#define cpu_rq_rke(cpu)		(&per_cpu(rq_rke, (cpu)))
 #define this_rq()		this_cpu_ptr(&runqueues)
 #define task_rq(p)		cpu_rq(task_cpu(p))
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
