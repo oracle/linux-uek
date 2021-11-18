@@ -749,8 +749,14 @@ struct ethtool_ops {
 					 const struct ethtool_module_power_mode_params *params,
 					 struct netlink_ext_ack *extack))
 	UEK_KABI_USE(3, u32 supported_ring_params)
-	UEK_KABI_RESERVE(4)
-	UEK_KABI_RESERVE(5)
+	UEK_KABI_USE(4, void (*get_ringparam_new)(struct net_device *,
+				 struct ethtool_ringparam *,
+				 struct kernel_ethtool_ringparam *,
+				 struct netlink_ext_ack *))
+	UEK_KABI_USE(5, int (*set_ringparam_new)(struct net_device *,
+				 struct ethtool_ringparam *,
+				 struct kernel_ethtool_ringparam *,
+				 struct netlink_ext_ack *))
 	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
