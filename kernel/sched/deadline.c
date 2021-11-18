@@ -2489,9 +2489,7 @@ const struct sched_class dl_sched_class = {
 
 #ifdef CONFIG_SMP
 	.balance		= balance_dl,
-#ifdef CONFIG_SCHED_CORE
 	.pick_task		= pick_task_dl,
-#endif
 	.select_task_rq		= select_task_rq_dl,
 	.migrate_task_rq	= migrate_task_rq_dl,
 	.set_cpus_allowed       = set_cpus_allowed_dl,
