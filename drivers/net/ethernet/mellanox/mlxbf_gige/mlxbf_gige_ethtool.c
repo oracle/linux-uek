@@ -31,8 +31,11 @@ static void mlxbf_gige_get_regs(struct net_device *netdev,
 	memcpy_fromio(p, priv->base, MLXBF_GIGE_MMIO_REG_SZ);
 }
 
-static void mlxbf_gige_get_ringparam(struct net_device *netdev,
-				     struct ethtool_ringparam *ering)
+static void
+mlxbf_gige_get_ringparam(struct net_device *netdev,
+			 struct ethtool_ringparam *ering,
+			 struct kernel_ethtool_ringparam *kernel_ering,
+			 struct netlink_ext_ack *extack)
 {
 	struct mlxbf_gige *priv = netdev_priv(netdev);
 
@@ -123,7 +126,7 @@ static void mlxbf_gige_get_pauseparam(struct net_device *netdev,
 
 const struct ethtool_ops mlxbf_gige_ethtool_ops = {
 	.get_link		= ethtool_op_get_link,
-	.get_ringparam		= mlxbf_gige_get_ringparam,
+	.get_ringparam_new	= mlxbf_gige_get_ringparam,
 	.get_regs_len           = mlxbf_gige_get_regs_len,
 	.get_regs               = mlxbf_gige_get_regs,
 	.get_strings            = mlxbf_gige_get_strings,
