@@ -2551,6 +2551,9 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, alloc_xrcd);
 	SET_DEVICE_OP(dev_ops, attach_mcast);
 	SET_DEVICE_OP(dev_ops, check_mr_status);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	SET_DEVICE_OP(dev_ops, clear_hw_stats);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	SET_DEVICE_OP(dev_ops, counter_alloc_stats);
 	SET_DEVICE_OP(dev_ops, counter_bind_qp);
 	SET_DEVICE_OP(dev_ops, counter_dealloc);
