@@ -67,7 +67,9 @@ static void mlx5i_get_ethtool_stats(struct net_device *dev,
 }
 
 static int mlx5i_set_ringparam(struct net_device *dev,
-			       struct ethtool_ringparam *param)
+			       struct ethtool_ringparam *param,
+			       struct kernel_ethtool_ringparam *kernel_param,
+			       struct netlink_ext_ack *extack)
 {
 	struct mlx5e_priv *priv = mlx5i_epriv(dev);
 
@@ -75,7 +77,9 @@ static int mlx5i_set_ringparam(struct net_device *dev,
 }
 
 static void mlx5i_get_ringparam(struct net_device *dev,
-				struct ethtool_ringparam *param)
+				struct ethtool_ringparam *param,
+				struct kernel_ethtool_ringparam *kernel_param,
+				struct netlink_ext_ack *extack)
 {
 	struct mlx5e_priv *priv = mlx5i_epriv(dev);
 
@@ -256,8 +260,8 @@ const struct ethtool_ops mlx5i_ethtool_ops = {
 	.get_strings        = mlx5i_get_strings,
 	.get_sset_count     = mlx5i_get_sset_count,
 	.get_ethtool_stats  = mlx5i_get_ethtool_stats,
-	.get_ringparam      = mlx5i_get_ringparam,
-	.set_ringparam      = mlx5i_set_ringparam,
+	.get_ringparam_new  = mlx5i_get_ringparam,
+	.set_ringparam_new  = mlx5i_set_ringparam,
 	.flash_device       = mlx5i_flash_device,
 	.get_channels       = mlx5i_get_channels,
 	.set_channels       = mlx5i_set_channels,
