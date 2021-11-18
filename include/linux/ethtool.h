@@ -68,6 +68,22 @@ enum {
 	ETH_RSS_HASH_FUNCS_COUNT
 };
 
+/**
+ * struct kernel_ethtool_ringparam - RX/TX ring configuration
+ * @rx_buf_len: Current length of buffers on the rx ring.
+ */
+struct kernel_ethtool_ringparam {
+	u32	rx_buf_len;
+};
+
+/**
+ * enum ethtool_supported_ring_param - indicator caps for setting ring params
+ * @ETHTOOL_RING_USE_RX_BUF_LEN: capture for setting rx_buf_len
+ */
+enum ethtool_supported_ring_param {
+	ETHTOOL_RING_USE_RX_BUF_LEN = BIT(0),
+};
+
 #define __ETH_RSS_HASH_BIT(bit)	((u32)1 << (bit))
 #define __ETH_RSS_HASH(name)	__ETH_RSS_HASH_BIT(ETH_RSS_HASH_##name##_BIT)
 
@@ -435,6 +451,7 @@ struct ethtool_module_power_mode_params {
  * @cap_link_lanes_supported: indicates if the driver supports lanes
  *	parameter.
  * @supported_coalesce_params: supported types of interrupt coalescing.
+ * @supported_ring_params: supported ring params.
  * @get_drvinfo: Report driver/device information.  Should only set the
  *	@driver, @version, @fw_version and @bus_info fields.  If not
  *	implemented, the @driver and @bus_info fields will be filled in
@@ -731,7 +748,7 @@ struct ethtool_ops {
 	UEK_KABI_USE(2, int (*set_module_power_mode)(struct net_device *dev,
 					 const struct ethtool_module_power_mode_params *params,
 					 struct netlink_ext_ack *extack))
-	UEK_KABI_RESERVE(3)
+	UEK_KABI_USE(3, u32 supported_ring_params)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
