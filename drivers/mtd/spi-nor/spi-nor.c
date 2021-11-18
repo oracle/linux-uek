@@ -2743,6 +2743,13 @@ static int spi_nor_panic_write(struct mtd_info *mtd, loff_t to, size_t len,
 	size_t page_offset, page_remain, i;
 	ssize_t ret;
 
+	if (nor->prepare) {
+		ret = nor->prepare(nor, SPI_NOR_OPS_WRITE);
+		if (ret) {
+			dev_err(nor->dev, "failed in the preparation.\n");
+			return ret;
+		}
+	}
 	nor->pstore = 1;
 	for (i = 0; i < len; ) {
 		ssize_t written;
@@ -2761,16 +2768,20 @@ static int spi_nor_panic_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 		addr = spi_nor_convert_addr(nor, addr);
 
+		write_enable(nor);
 		ret = spi_nor_write_data(nor, addr, page_remain, buf + i);
 		if (ret < 0)
 			return ret;
-
 		written = ret;
+		while (!spi_nor_ready(nor))
+			;
 
 		*retlen += written;
 		i += written;
 	}
 
+	if (nor->unprepare)
+		nor->unprepare(nor, SPI_NOR_OPS_WRITE);
 	return 0;
 }
 #endif
