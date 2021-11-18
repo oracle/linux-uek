@@ -1141,7 +1141,9 @@ static void mlx4_en_get_pauseparam(struct net_device *dev,
 }
 
 static int mlx4_en_set_ringparam(struct net_device *dev,
-				 struct ethtool_ringparam *param)
+				 struct ethtool_ringparam *param,
+				 struct kernel_ethtool_ringparam *kernel_param,
+				 struct netlink_ext_ack *extack)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
@@ -1208,7 +1210,9 @@ out:
 }
 
 static void mlx4_en_get_ringparam(struct net_device *dev,
-				  struct ethtool_ringparam *param)
+				  struct ethtool_ringparam *param,
+				  struct kernel_ethtool_ringparam *kernel_param,
+				  struct netlink_ext_ack *extack)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 
@@ -2164,8 +2168,8 @@ const struct ethtool_ops mlx4_en_ethtool_ops = {
 	.get_pause_stats = mlx4_en_get_pause_stats,
 	.get_pauseparam = mlx4_en_get_pauseparam,
 	.set_pauseparam = mlx4_en_set_pauseparam,
-	.get_ringparam = mlx4_en_get_ringparam,
-	.set_ringparam = mlx4_en_set_ringparam,
+	.get_ringparam_new = mlx4_en_get_ringparam,
+	.set_ringparam_new = mlx4_en_set_ringparam,
 	.get_rxnfc = mlx4_en_get_rxnfc,
 	.set_rxnfc = mlx4_en_set_rxnfc,
 	.get_rxfh_indir_size = mlx4_en_get_rxfh_indir_size,
