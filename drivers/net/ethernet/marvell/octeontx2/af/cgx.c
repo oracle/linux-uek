@@ -942,27 +942,27 @@ int verify_lmac_fc_cfg(void *cgxd, int lmac_id, u8 tx_pause, u8 rx_pause,
 	if (!lmac)
 		return -ENODEV;
 
-	if (!rx_pause) {
+	if (!rx_pause)
 		clear_bit(pfvf_idx, lmac->rx_fc_pfvf_bmap.bmap);
-		/* check if other pfvfs are using flow control */
-		if (bitmap_weight(lmac->rx_fc_pfvf_bmap.bmap, lmac->rx_fc_pfvf_bmap.max)) {
-			dev_warn(&cgx->pdev->dev,
-				 "Receive Flow control disable not permitted as its used by other PFVFs\n");
-			return -EPERM;
-		}
-	} else {
+	else
 		set_bit(pfvf_idx, lmac->rx_fc_pfvf_bmap.bmap);
+
+	if (!tx_pause)
+		clear_bit(pfvf_idx, lmac->tx_fc_pfvf_bmap.bmap);
+	else
+		set_bit(pfvf_idx, lmac->tx_fc_pfvf_bmap.bmap);
+
+	/* check if other pfvfs are using flow control */
+	if (!rx_pause && bitmap_weight(lmac->rx_fc_pfvf_bmap.bmap, lmac->rx_fc_pfvf_bmap.max)) {
+		dev_warn(&cgx->pdev->dev,
+			 "Receive Flow control disable not permitted as its used by other PFVFs\n");
+		return -EPERM;
 	}
 
-	if (!tx_pause) {
-		clear_bit(pfvf_idx, lmac->tx_fc_pfvf_bmap.bmap);
-		if (bitmap_weight(lmac->tx_fc_pfvf_bmap.bmap, lmac->tx_fc_pfvf_bmap.max)) {
-			dev_warn(&cgx->pdev->dev,
-				 "Transmit Flow control disable not permitted as its used by other PFVFs\n");
-			return -EPERM;
-		}
-	} else {
-		set_bit(pfvf_idx, lmac->tx_fc_pfvf_bmap.bmap);
+	if (!tx_pause && bitmap_weight(lmac->tx_fc_pfvf_bmap.bmap, lmac->tx_fc_pfvf_bmap.max)) {
+		dev_warn(&cgx->pdev->dev,
+			 "Transmit Flow control disable not permitted as its used by other PFVFs\n");
+		return -EPERM;
 	}
 
 	return 0;
@@ -1109,6 +1109,11 @@ void cgx_lmac_pause_frm_config(void *cgxd, int lmac_id, bool enable)
 	cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL);
 	cfg &= ~CGXX_SMUX_HG2_CONTROL_TX_ENABLE;
 	cgx_write(cgx, lmac_id, CGXX_SMUX_HG2_CONTROL, cfg);
+
+	cfg = cgx_read(cgx, 0, CGXX_CMR_RX_OVR_BP);
+	cfg |= CGX_CMR_RX_OVR_BP_EN(lmac_id);
+	cfg &= ~CGX_CMR_RX_OVR_BP_BP(lmac_id);
+	cgx_write(cgx, 0, CGXX_CMR_RX_OVR_BP, cfg);
 }
 
 /* CGX Firmware interface low level support */
