@@ -1079,8 +1079,6 @@ static inline raw_spinlock_t *rq_lockp(struct rq *rq)
 	return &rq->__lock;
 }
 
-extern void queue_core_balance(struct rq *rq);
-
 void sched_core_add(struct rq *rq, struct task_struct *p);
 void sched_core_remove(struct rq *rq, struct task_struct *p);
 
@@ -1094,10 +1092,6 @@ static inline bool sched_core_enabled(struct rq *rq)
 static inline raw_spinlock_t *rq_lockp(struct rq *rq)
 {
 	return &rq->__lock;
-}
-
-static inline void queue_core_balance(struct rq *rq)
-{
 }
 
 #endif /* CONFIG_SCHED_CORE */
