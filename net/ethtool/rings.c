@@ -26,15 +26,20 @@ static int rings_prepare_data(const struct ethnl_req_info *req_base,
 			      struct genl_info *info)
 {
 	struct rings_reply_data *data = RINGS_REPDATA(reply_base);
+	struct netlink_ext_ack *extack = info ? info->extack : NULL;
 	struct net_device *dev = reply_base->dev;
 	int ret;
 
-	if (!dev->ethtool_ops->get_ringparam)
+	if (!dev->ethtool_ops->get_ringparam && !dev->ethtool_ops->get_ringparam_new)
 		return -EOPNOTSUPP;
 	ret = ethnl_ops_begin(dev);
 	if (ret < 0)
 		return ret;
-	dev->ethtool_ops->get_ringparam(dev, &data->ringparam);
+	if (dev->ethtool_ops->get_ringparam)
+		dev->ethtool_ops->get_ringparam(dev, &data->ringparam);
+	else
+		dev->ethtool_ops->get_ringparam_new(dev, &data->ringparam,
+						    &data->kernel_ringparam, extack);
 	ethnl_ops_complete(dev);
 
 	return 0;
@@ -135,14 +140,18 @@ int ethnl_set_rings(struct sk_buff *skb, struct genl_info *info)
 	dev = req_info.dev;
 	ops = dev->ethtool_ops;
 	ret = -EOPNOTSUPP;
-	if (!ops->get_ringparam || !ops->set_ringparam)
+	if ((!ops->get_ringparam || !ops->set_ringparam) &&
+	    (!ops->get_ringparam_new || !ops->set_ringparam_new))
 		goto out_dev;
 
 	rtnl_lock();
 	ret = ethnl_ops_begin(dev);
 	if (ret < 0)
 		goto out_rtnl;
-	ops->get_ringparam(dev, &ringparam);
+	if (ops->get_ringparam)
+		ops->get_ringparam(dev, &ringparam);
+	else
+		ops->get_ringparam_new(dev, &ringparam, &kernel_ringparam, info->extack);
 
 	ethnl_update_u32(&ringparam.rx_pending, tb[ETHTOOL_A_RINGS_RX], &mod);
 	ethnl_update_u32(&ringparam.rx_mini_pending,
@@ -183,7 +192,11 @@ int ethnl_set_rings(struct sk_buff *skb, struct genl_info *info)
 		goto out_ops;
 	}
 
-	ret = dev->ethtool_ops->set_ringparam(dev, &ringparam);
+	if (ops->set_ringparam)
+		ret = ops->set_ringparam(dev, &ringparam);
+	else
+		ret = ops->set_ringparam_new(dev, &ringparam,
+					     &kernel_ringparam, info->extack);
 	if (ret < 0)
 		goto out_ops;
 	ethtool_notify(dev, ETHTOOL_MSG_RINGS_NTF, NULL);
