@@ -8332,7 +8332,13 @@ CONFIG_NVMEM_RMEM=y
 #
 # HW tracing support
 #
-# CONFIG_STM is not set
+CONFIG_STM=m
+CONFIG_STM_PROTO_BASIC=m
+CONFIG_STM_PROTO_SYS_T=m
+# CONFIG_STM_DUMMY is not set
+# CONFIG_STM_SOURCE_CONSOLE is not set
+# CONFIG_STM_SOURCE_HEARTBEAT is not set
+# CONFIG_STM_SOURCE_FTRACE is not set
 # CONFIG_INTEL_TH is not set
 # end of HW tracing support
 
