@@ -179,6 +179,7 @@ static void copy_vmcb_control_area(struct vmcb_control_area *dst,
 	dst->event_inj_err        = from->event_inj_err;
 	dst->nested_cr3           = from->nested_cr3;
 	dst->virt_ext              = from->virt_ext;
+	dst->next_rip             = from->next_rip;
 	dst->pause_filter_count   = from->pause_filter_count;
 	dst->pause_filter_thresh  = from->pause_filter_thresh;
 }
@@ -452,6 +453,9 @@ static void nested_prepare_vmcb_control(struct vcpu_svm *svm)
 
 	svm->vmcb->control.pause_filter_count  = svm->nested.ctl.pause_filter_count;
 	svm->vmcb->control.pause_filter_thresh = svm->nested.ctl.pause_filter_thresh;
+
+	if (svm->nrips_enabled)
+		svm->vmcb->control.next_rip  = svm->nested.ctl.next_rip;
 
 	/* Enter Guest-Mode */
 	enter_guest_mode(&svm->vcpu);
