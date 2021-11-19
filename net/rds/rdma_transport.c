@@ -263,11 +263,20 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
-		if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
-			conn->c_to_index++;
+		if (event->status == -ETIMEDOUT) {
+			if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
+				conn->c_to_index++;
 
-		ret = rdma_resolve_route(cm_id,
-				rds_rdma_resolve_to_ms[conn->c_to_index]);
+			ret = rdma_resolve_route(cm_id,
+					rds_rdma_resolve_to_ms[conn->c_to_index]);
+		} else {
+			/* non-timeout error; start over after a brief nap */
+			unsigned long min_jiffies = msecs_to_jiffies(100);
+			if (conn->c_reconnect_jiffies < min_jiffies)
+				conn->c_reconnect_jiffies = min_jiffies;
+			conn->c_to_index = 0;
+			ret = event->status ? : -EIO;
+		}
 		if (ret) {
 			reason = "resolve route failed";
 			rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL, ret);
