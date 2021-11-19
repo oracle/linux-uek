@@ -61,7 +61,11 @@ static void pcie_writel(const u32 val, const u64 pciepa)
 	writel(val, pcie_ptov(pciepa));
 }
 
-static int pciep_bad_mode(struct pt_regs *regs)
+/*
+ * This is called by do_serror() to determine if the SError
+ * interrupt was likely caused by the pcie register read.
+ */
+int cap_pciep_access_in_progress(struct pt_regs *regs)
 {
 	struct pciedev_info *pi = &pciedev_info;
 
@@ -70,11 +74,6 @@ static int pciep_bad_mode(struct pt_regs *regs)
 		return 1;
 	}
 	return 0;
-}
-
-int platform_bad_mode(struct pt_regs *regs)
-{
-	return pciep_bad_mode(regs);
 }
 
 static void pciep_access_begin(const u64 pciepa)
