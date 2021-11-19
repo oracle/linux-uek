@@ -470,8 +470,8 @@ int enter_svm_guest_mode(struct vcpu_svm *svm, u64 vmcb12_gpa,
 {
 	int ret;
 
-	trace_kvm_nested_vmrun(svm->vmcb->save.rip, vmcb12_gpa,
-			       vmcb12->save.rip,
+	trace_kvm_nested_vmrun(svm->vmcb->save.rip, svm->vmcb->control.next_rip, vmcb12_gpa,
+			       vmcb12->save.rip, vmcb12->control.next_rip,
 			       vmcb12->control.int_ctl,
 			       vmcb12->control.event_inj,
 			       vmcb12->control.nested_ctl);
