@@ -702,8 +702,23 @@ bool arm64_is_fatal_ras_serror(struct pt_regs *regs, unsigned int esr)
 	}
 }
 
+#if defined(CONFIG_PENSANDO_SOC_PCIE)
+int cap_pciep_access_in_progress(struct pt_regs *regs);
+#endif
+
 asmlinkage void do_serror(struct pt_regs *regs, unsigned int esr)
 {
+#if defined(CONFIG_PENSANDO_SOC_PCIE)
+	/*
+	 * The Pansando pcie driver can generate SError exceptions when reading
+	 * a pcie register. The ISS is 0x1000000 which is normally fatal. In
+	 * the case of the cap_pcie driver we can ignore this and continue
+	 * operation.
+	 */
+	if (cap_pciep_access_in_progress(regs))
+		return;
+#endif
+
 	nmi_enter();
 
 	/* non-RAS errors are not containable */
