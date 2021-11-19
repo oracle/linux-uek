@@ -122,8 +122,6 @@
 
 #define INTEL_FAM6_ARROWLAKE		0xC6
 
-#define INTEL_FAM6_RAPTOR_LAKE		0xB7
-
 #define INTEL_FAM6_ATOM_BONNELL		0x1C /* Diamondville, Pineview */
 #define INTEL_FAM6_ATOM_BONNELL_MID	0x26 /* Silverthorne, Lincroft */
 
