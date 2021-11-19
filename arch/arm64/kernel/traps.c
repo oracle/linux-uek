@@ -579,21 +579,13 @@ const char *esr_get_class_string(u32 esr)
 	return esr_class_str[ESR_ELx_EC(esr)];
 }
 
-int __weak platform_bad_mode(struct pt_regs *regs)
-{
-	return 0;
-}
 
 /*
- * bad_mode handles the impossible case in the exception vector.
- * This is usually fatal, but give the platform a chance to handle
- * platform-specific errors.
+ * bad_mode handles the impossible case in the exception vector. This is always
+ * fatal.
  */
 asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 {
-	if (platform_bad_mode(regs))
-		return;
-
 	console_verbose();
 
 	pr_crit("Bad mode in %s handler detected on CPU%d, code 0x%08x -- %s\n",
