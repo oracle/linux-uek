@@ -222,13 +222,16 @@ struct lpbk_cmd_params {
 	int type;
 };
 
-#define TX_EQ_PRMS_MAX 10
+#define TX_EQ_PRMS_MAX 16
 
 enum tx_param {
 	TX_PARAM_PRE2,
 	TX_PARAM_PRE1,
 	TX_PARAM_POST,
 	TX_PARAM_MAIN,
+	TX_POLARITY,
+	TX_GRAY_CODE,
+	TX_PRE_CODE,
 };
 
 struct tx_eq_params {
@@ -236,6 +239,9 @@ struct tx_eq_params {
 	u16 pre1;
 	u16 post;
 	u16 main;
+	int polarity;
+	int gray_code;
+	int pre_code;
 };
 
 static struct {
@@ -246,6 +252,9 @@ static struct {
 	{TX_PARAM_PRE1, "pre1"},
 	{TX_PARAM_POST, "post"},
 	{TX_PARAM_MAIN, "main"},
+	{TX_POLARITY,   "polarity"},
+	{TX_GRAY_CODE,  "graycode"},
+	{TX_PRE_CODE,   "precode"},
 };
 
 DEFINE_STR_2_ENUM_FUNC(tx_param)
@@ -259,12 +268,31 @@ static struct tx_eq_cmd_params {
 	u32 flags;
 } tx_eq_cmd;
 
-#define RX_EQ_PRMS_MAX 2
+#define RX_EQ_PRMS_MAX 8
 
 static struct rx_eq_cmd_params {
 	int port;
 	int lane_idx;
+	int update;
+	u32 flags;
 } rx_eq_cmd;
+
+enum rx_param {
+	RX_POLARITY,
+	RX_GRAY_CODE,
+	RX_PRE_CODE,
+};
+
+static struct {
+	enum rx_param e;
+	const char *s;
+} rx_param[] = {
+	{RX_POLARITY,   "polarity"},
+	{RX_GRAY_CODE,  "graycode"},
+	{RX_PRE_CODE,   "precode"},
+};
+
+DEFINE_STR_2_ENUM_FUNC(rx_param)
 
 #define DFE_TAPS_NUM 24
 #define CTLE_PARAMS_NUM 13
@@ -315,6 +343,10 @@ const char *ctle_params_names[] = {
 struct rx_eq_params {
 	s32 dfe_taps[DFE_TAPS_NUM];
 	u32 ctle_params[CTLE_PARAMS_NUM];
+	int polarity;
+	int gray_code;
+	int pre_code;
+	int squelch_detected;
 };
 
 #define RX_TR_PRMS_MAX 2
@@ -425,6 +457,19 @@ static int serdes_dbg_rx_eq_read(struct seq_file *s, void *unused)
 		for (idx = 0; idx < CTLE_PARAMS_NUM; idx++)
 			seq_printf(s, "\t\t%s%d\n", ctle_params_names[idx],
 				rx_eq_params[lane_idx].ctle_params[idx]);
+
+		seq_printf(s, "\n\n\t\trx polarity:\t%d\n",
+		       rx_eq_params[lane_idx].polarity);
+
+		seq_printf(s, "\t\trx gray code:\t%d\n",
+		       rx_eq_params[lane_idx].gray_code);
+
+		seq_printf(s, "\t\trx pre code:\t%d\n",
+		       rx_eq_params[lane_idx].pre_code);
+
+		seq_printf(s, "\n\t\t%s detected\n",
+		       rx_eq_params[lane_idx].squelch_detected ?
+		       "Squelch" : "Signal");
 	}
 
 	return 0;
@@ -436,7 +481,7 @@ static int parse_rx_eq_params(const char __user *buffer, size_t count,
 	const char *argv[RX_EQ_PRMS_MAX] = {0};
 	char cmd_buf[BUF_SZ];
 	size_t argc;
-	int port, lane_idx;
+	int port, lane_idx, arg_idx;
 
 	if (copy_input_str(buffer, count, cmd_buf, BUF_SZ))
 		return -EINVAL;
@@ -452,15 +497,58 @@ static int parse_rx_eq_params(const char __user *buffer, size_t count,
 
 	port &= 0xff;
 
-	if (argc == 2) {
-		if (kstrtoint(argv[1], 10, &lane_idx))
-			return -EINVAL;
+	if (argc > 1 && !kstrtoint(argv[1], 10, &lane_idx)) {
+		arg_idx = 2;
 	} else {
 		lane_idx = 0xff;
+		arg_idx = 1;
 	}
 
 	params->port = port;
 	params->lane_idx = lane_idx;
+
+	if (arg_idx == argc)
+		return 0;
+
+	params->update = 1;
+	params->flags = 0;
+
+	/* Next parameters are optional and they should come in pairs
+	 * [name <value>], like: [precode <prec>].
+	 * The loop below is to parse each such pair.
+	 */
+	while (arg_idx < argc) {
+		int param;
+		int value;
+
+		param = rx_param_str2enum(argv[arg_idx]);
+		if (param == -1)
+			return -EINVAL;
+
+		arg_idx++;
+		if (arg_idx == argc || kstrtoint(argv[arg_idx], 0, &value))
+			return -EINVAL;
+
+		value &= 0xffff;
+		arg_idx++;
+
+		switch (param) {
+		case RX_PRE_CODE:
+			params->flags |= BIT(1) | (value & 1);
+			break;
+
+		case RX_GRAY_CODE:
+			params->flags |= BIT(3) | (value & 1) << 2;
+			break;
+
+		case RX_POLARITY:
+			params->flags |= BIT(5) | (value & 1) << 4;
+			break;
+
+		default:
+			return -EINVAL;
+		}
+	}
 
 	return 0;
 }
@@ -469,7 +557,10 @@ static ssize_t serdes_dbg_rx_eq_write(struct file *filp,
 					const char __user *buffer,
 					size_t count, loff_t *ppos)
 {
-	int port, lane_idx;
+	struct arm_smccc_res res;
+	int port, lane_idx, max_idx;
+	int lanes_num, gserm_idx, mapping;
+	int x1, x2;
 
 	if (parse_rx_eq_params(buffer, count, &rx_eq_cmd))
 		return -EINVAL;
@@ -477,11 +568,46 @@ static ssize_t serdes_dbg_rx_eq_write(struct file *filp,
 	port = rx_eq_cmd.port;
 	lane_idx = rx_eq_cmd.lane_idx;
 
-	if (lane_idx == 0xff)
-		pr_info("Rx Tuning: requested port=%d\n", port);
-	else
-		pr_info("Rx Tuning: requested port=%d, lane_idx=%d\n",
-			port, lane_idx);
+	if (!rx_eq_cmd.update) {
+		if (lane_idx == 0xff)
+			pr_info("Rx Tuning: requested port=%d\n", port);
+		else
+			pr_info("Rx Tuning: requested port=%d, lane_idx=%d\n",
+				port, lane_idx);
+
+		return count;
+	}
+
+	pr_info("SerDes Rx Tuning Parameters:\n");
+	pr_info("port#:\tlane#:\tgserm#:\tg-lane#:\tstatus:\n");
+
+	x1 = (lane_idx << 8) | port;
+	x2 = rx_eq_cmd.flags;
+
+	arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_RX_TUNING, x1, x2,
+		0, 0, 0, 0, 0, &res);
+	if (res.a0) {
+		pr_warn("Writing Rx Tuning parameters failed\n");
+		return count;
+	}
+
+	get_gserm_data(res.a2, &gserm_idx, &mapping, &lanes_num);
+	rx_eq_cmd.update = 0;
+
+	if (lane_idx == 0xff) {
+		lane_idx = 0;
+		max_idx = lanes_num;
+	} else {
+		max_idx = lane_idx + 1;
+	}
+
+	for (; lane_idx < max_idx; lane_idx++) {
+		int glane = (mapping >> 4 * lane_idx) & 0xf;
+
+		pr_info("%d\t%d\t%d\t%d\t\tUpdated\n",
+			port, lane_idx,
+			gserm_idx, glane);
+	}
 
 	return count;
 }
@@ -635,8 +761,7 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 	x1 = (lane_idx << 8) | port;
 
 	seq_puts(s, "SerDes Tx Tuning Parameters:\n");
-	seq_puts(s, "port#:\tlane#:\tgserm#:\tg-lane#:"
-			"\tpre2:\tpre1:\tmain:\tpost:\n");
+	seq_puts(s, "port#:\tlane#:\tgserm#:\tg-lane#:\tpre2:\tpre1:\tmain:\tpost:\tpolarity:\tgray code:\tpre code:\n");
 
 	arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_TX_TUNING, x1, 0,
 		0, 0, 0, 0, 0, &res);
@@ -658,13 +783,16 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 	for (; lane_idx < max_idx; lane_idx++) {
 		int glane = (mapping >> 4 * lane_idx) & 0xf;
 
-		seq_printf(s, "%d\t%d\t%d\t%d\t\t%hd\t%hd\t%hd\t%hd\n",
-		       port, lane_idx,
-		       gserm_idx, glane,
-		       tx_eq_params[lane_idx].pre2,
-		       tx_eq_params[lane_idx].pre1,
-		       tx_eq_params[lane_idx].main,
-		       tx_eq_params[lane_idx].post);
+		seq_printf(s, "%d\t%d\t%d\t%d\t\t%hd\t%hd\t%hd\t%hd\t%d\t\t%d\t\t%d\n",
+			   port, lane_idx,
+			   gserm_idx, glane,
+			   tx_eq_params[lane_idx].pre2,
+			   tx_eq_params[lane_idx].pre1,
+			   tx_eq_params[lane_idx].main,
+			   tx_eq_params[lane_idx].post,
+			   tx_eq_params[lane_idx].polarity,
+			   tx_eq_params[lane_idx].gray_code,
+			   tx_eq_params[lane_idx].pre_code);
 	}
 
 	return 0;
@@ -707,6 +835,8 @@ static int parse_tx_eq_params(const char __user *buffer, size_t count,
 
 	params->update = 1;
 	params->flags = 0;
+	params->pre2_pre1 = 0;
+	params->post_main = 0;
 
 	/* Next parameters are optional and they should come in pairs
 	 * [name <value>], like: [pre1 <pre1>].
@@ -746,6 +876,18 @@ static int parse_tx_eq_params(const char __user *buffer, size_t count,
 		case TX_PARAM_MAIN:
 			params->post_main |= value;
 			params->flags |= BIT(3);
+			break;
+
+		case TX_PRE_CODE:
+			params->flags |= BIT(5) | (value & 1) << 4;
+			break;
+
+		case TX_GRAY_CODE:
+			params->flags |= BIT(7) | (value & 1) << 6;
+			break;
+
+		case TX_POLARITY:
+			params->flags |= BIT(9) | (value & 1) << 8;
 			break;
 
 		default:
