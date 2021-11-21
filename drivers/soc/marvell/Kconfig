@@ -157,7 +157,8 @@ config HW_CSR_ACCESS
 
 config OCTEONTX_SERDES
 	tristate "OcteonTX2 serdes debug commands"
-	depends on ARM64
+	default m
+	depends on ARM64 && HAVE_ARM_SMCCC && DEBUG_FS
 	help
 	  Provides debugfs commands which allows to collect serdes information,
 	  capture eye, use PRBS, configure serdes in loopback mode, and
