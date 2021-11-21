@@ -7,23 +7,21 @@
  * published by the Free Software Foundation.
  */
 
-#ifdef CONFIG_DEBUG_FS
+#define pr_fmt(fmt)  "octeontx2-serdes: " fmt
 
-#include <linux/arm-smccc.h>
-#include <linux/debugfs.h>
-#include <linux/fs.h>
-#include <linux/list.h>
 #include <linux/module.h>
-#include <linux/pci.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/errno.h>
+#include <linux/list.h>
 #include <linux/string.h>
 #include <linux/time.h>
+#include <linux/pci.h>
 #include <linux/uaccess.h>
-
-MODULE_AUTHOR("Marvell International Ltd.");
-MODULE_DESCRIPTION("Serdes diagnostic commands for OcteonTX2");
-MODULE_LICENSE("GPL v2");
-
-#define ARM_SMC_SVC_UID			0xc200ff01
+#include <linux/fs.h>
+#include <linux/debugfs.h>
+#include <linux/arm-smccc.h>
+#include <soc/marvell/octeontx/octeontx_smc.h>
 
 #define OCTEONTX_SERDES_DBG_GET_MEM	0xc2000d04
 #define OCTEONTX_SERDES_DBG_GET_EYE	0xc2000d05
@@ -37,13 +35,14 @@ MODULE_LICENSE("GPL v2");
 #define OCTEONTX_SMC_PENDING		0x1
 
 #define SERDES_SETTINGS_SIZE		0x1000
+
+
 enum qlm_type {
 	QLM_GSERC_TYPE,
 	QLM_GSERR_TYPE,
 	QLM_GSERN_TYPE,
 };
 
-struct dentry *pserdes_root;
 
 enum cgx_prbs_cmd {
 	CGX_PRBS_START_CMD = 1,
@@ -112,6 +111,11 @@ static struct {
 	struct prbs_status status_list;
 	struct cgx_prbs_data *res;
 } prbs_cmd_data;
+
+
+/* Debugfs root directory for serdes */
+static struct dentry *pserdes_root;
+
 
 static int serdes_dbg_lane_parse(const char __user *buffer,
 				 size_t count, int *qlm, int *lane)
@@ -677,10 +681,13 @@ static int serdes_dbg_prbs_lane_parse(const char __user *buffer,
 			if (ec == -EINVAL)
 				goto out;
 			subtoken = strsep(&cmd_buf, " ");
-			if (subtoken)
-				kstrtoint(subtoken, 10, inject);
-			else
+			if (subtoken) {
+				ec = kstrtoint(subtoken, 10, inject);
+				if (ec)
+					goto out;
+			} else {
 				*inject = 0;
+			}
 		} else if (!strcmp(subtoken, "stop")) {
 			*cmd = CGX_PRBS_STOP_CMD;
 		} else if (!strcmp(subtoken, "clear")) {
@@ -886,63 +893,76 @@ static const struct file_operations serdes_dbg_prbs_fops = {
 	.release	= single_release,
 };
 
-static int serdes_dbg_setup_debugfs(void)
+static int serdes_dbg_setup_debugfs(struct dentry *root)
 {
 	struct dentry *pfile;
 
-	pserdes_root = debugfs_create_dir("octeontx2_serdes", NULL);
-
-	pfile = debugfs_create_file("eye", 0644, pserdes_root, NULL,
+	pfile = debugfs_create_file("eye", 0644, root, NULL,
 				    &serdes_dbg_eye_fops);
-	if (!pfile)
+	if (IS_ERR_OR_NULL(pfile))
 		goto create_failed;
 
-	pfile = debugfs_create_file("settings", 0644, pserdes_root, NULL,
+	pfile = debugfs_create_file("settings", 0644, root, NULL,
 				    &serdes_dbg_settings_fops);
-	if (!pfile)
+	if (IS_ERR_OR_NULL(pfile))
 		goto create_failed;
 
-	pfile = debugfs_create_file("prbs", 0644, pserdes_root, NULL,
+	pfile = debugfs_create_file("prbs", 0644, root, NULL,
 				    &serdes_dbg_prbs_fops);
-	if (!pfile)
+	if (IS_ERR_OR_NULL(pfile))
 		goto create_failed;
 
-	pfile = debugfs_create_file("tunetx", 0644, pserdes_root, NULL,
+	pfile = debugfs_create_file("tunetx", 0644, root, NULL,
 				    &tune_serdes_dbg_settings_fops);
-	if (!pfile)
+	if (IS_ERR_OR_NULL(pfile))
 		goto create_failed;
 
-	pfile = debugfs_create_file("loop", 0644, pserdes_root, NULL,
+	pfile = debugfs_create_file("loop", 0644, root, NULL,
 				    &loop_serdes_dbg_settings_fops);
-	if (!pfile)
+	if (IS_ERR_OR_NULL(pfile))
 		goto create_failed;
 
 	return 0;
 
 create_failed:
 	pr_err("Failed to create debugfs dir/file for serdes\n");
-	debugfs_remove_recursive(pserdes_root);
-	return 1;
+	return IS_ERR(pfile) ? PTR_ERR(pfile) : -ENODEV;
 }
 
-static int serdes_dbg_init(void)
+static int __init serdes_dbg_init(void)
 {
 	struct arm_smccc_res res;
-	int ec;
+	int ret;
+
+	/* Check the debugfs presence */
+	pserdes_root = debugfs_create_dir("octeontx2_serdes", NULL);
+	if (IS_ERR_OR_NULL(pserdes_root)) {
+		if (IS_ERR(pserdes_root)) {
+			int ret = PTR_ERR(pserdes_root);
+
+			pr_err("Can't access debugfs, error (%d)\n", ret);
+			return ret;
+		}
+		/* It should not happen that ERR != 0 && pserdes_root == NULL */
+		pr_info("Can't create debugfs entry\n");
+		return -ENODEV;
+	}
 
 	/*
 	 * Compare response for standard SVC_UID commandi with OcteonTX UUID.
 	 * Continue only if it is OcteonTX.
 	 */
-	if (octeontx_soc_check_smc() != 0)
+	if (octeontx_soc_check_smc() != 0) {
 		pr_info("OcteonTX2 serdes diagnostics not support\n");
-		return -EPERM;
+		ret = -EPERM;
+		goto smc_access_failed;
 	}
 
 	arm_smccc_smc(OCTEONTX_SERDES_DBG_GET_MEM, 0, 0, 0, 0, 0, 0, 0, &res);
 	if (res.a0 == SMCCC_RET_NOT_SUPPORTED) {
 		pr_info("Firmware doesn't support serdes diagnostic cmds.\n");
-		return 0;
+		ret = -EPERM;
+		goto smc_access_failed;
 	}
 
 	if (res.a0 != SMCCC_RET_SUCCESS)
@@ -968,8 +988,8 @@ static int serdes_dbg_init(void)
 	if (!loop_serdes_cmd.res)
 		goto serdes_mem_init_failed;
 
-	ec = serdes_dbg_setup_debugfs();
-	if (ec)
+	ret = serdes_dbg_setup_debugfs(pserdes_root);
+	if (ret)
 		goto serdes_debugfs_failed;
 
 	INIT_LIST_HEAD(&prbs_cmd_data.status_list.list);
@@ -978,6 +998,7 @@ static int serdes_dbg_init(void)
 
 serdes_mem_init_failed:
 	pr_err("Failed to obtain shared memory for serdes debug commands\n");
+	ret = -EACCES;
 
 serdes_debugfs_failed:
 	if (eye_cmd_data.res)
@@ -995,10 +1016,13 @@ serdes_debugfs_failed:
 	if (loop_serdes_cmd.res)
 		iounmap(loop_serdes_cmd.res);
 
-	return 0;
+smc_access_failed:
+	debugfs_remove_recursive(pserdes_root);
+
+	return ret;
 }
 
-static void serdes_dbg_exit(void)
+static void __exit serdes_dbg_exit(void)
 {
 	struct prbs_status *status, *n;
 
@@ -1025,5 +1049,8 @@ static void serdes_dbg_exit(void)
 
 module_init(serdes_dbg_init);
 module_exit(serdes_dbg_exit);
-#endif /* CONFIG_DEBUG_FS */
+
+MODULE_AUTHOR("Marvell International Ltd.");
+MODULE_DESCRIPTION("Serdes diagnostic commands for OcteonTX2");
+MODULE_LICENSE("GPL v2");
 
