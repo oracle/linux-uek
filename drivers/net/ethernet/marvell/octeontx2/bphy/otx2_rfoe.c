@@ -625,6 +625,8 @@ static int otx2_rfoe_process_rx_flow(struct otx2_rfoe_ndev_priv *priv,
 	struct rx_ft_cfg *ft_cfg;
 	u64 mbt_cfg;
 	u16 nxt_buf;
+	int *mbt_last_idx = &priv->rfoe_common->rx_mbt_last_idx[pkt_type];
+	u16 *prv_nxt_buf = &priv->rfoe_common->nxt_buf[pkt_type];
 
 	ft_cfg = &priv->rx_ft_cfg[pkt_type];
 
@@ -640,33 +642,35 @@ static int otx2_rfoe_process_rx_flow(struct otx2_rfoe_ndev_priv *priv,
 	nxt_buf = (mbt_cfg >> 32) & 0xffff;
 
 	/* no mbt entries to process */
-	if ((ft_cfg->mbt_last_idx % ft_cfg->num_bufs) == nxt_buf) {
+	if (nxt_buf == *prv_nxt_buf) {
 		netif_dbg(priv, rx_status, priv->netdev,
 			  "no rx packets to process, rfoe=%d pkt_type=%d mbt_idx=%d nxt_buf=%d mbt_buf_sw_head=%d\n",
 			  priv->rfoe_num, pkt_type, ft_cfg->mbt_idx, nxt_buf,
-			  ft_cfg->mbt_last_idx);
+			  *mbt_last_idx);
 		return 0;
 	}
 
+	*prv_nxt_buf = nxt_buf;
+
 	/* get count of pkts to process, check ring wrap condition */
-	if (ft_cfg->mbt_last_idx > nxt_buf) {
-		count = ft_cfg->num_bufs - ft_cfg->mbt_last_idx;
+	if (*mbt_last_idx > nxt_buf) {
+		count = ft_cfg->num_bufs - *mbt_last_idx;
 		count += nxt_buf;
 	} else {
-		count = nxt_buf - ft_cfg->mbt_last_idx;
+		count = nxt_buf - *mbt_last_idx;
 	}
 
 	netif_dbg(priv, rx_status, priv->netdev,
 		  "rfoe=%d pkt_type=%d mbt_idx=%d nxt_buf=%d mbt_buf_sw_head=%d count=%d\n",
 		  priv->rfoe_num, pkt_type, ft_cfg->mbt_idx, nxt_buf,
-		  ft_cfg->mbt_last_idx, count);
+		  *mbt_last_idx, count);
 
 	while (likely((processed_pkts < budget) && (processed_pkts < count))) {
-		otx2_rfoe_process_rx_pkt(priv, ft_cfg, ft_cfg->mbt_last_idx);
+		otx2_rfoe_process_rx_pkt(priv, ft_cfg, *mbt_last_idx);
 
-		ft_cfg->mbt_last_idx++;
-		if (ft_cfg->mbt_last_idx == ft_cfg->num_bufs)
-			ft_cfg->mbt_last_idx = 0;
+		(*mbt_last_idx)++;
+		if (*mbt_last_idx == ft_cfg->num_bufs)
+			*mbt_last_idx = 0;
 
 		processed_pkts++;
 	}

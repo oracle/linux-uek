@@ -71,6 +71,8 @@ struct tx_job_queue_cfg {
 /* rfoe common (for all lmac's) */
 struct rfoe_common_cfg {
 	struct tx_job_queue_cfg		tx_oth_job_cfg;
+	int				rx_mbt_last_idx[PACKET_TYPE_MAX];
+	u16				nxt_buf[PACKET_TYPE_MAX];
 	u8				refcnt;
 	u8				rx_vlan_fwd_refcnt[VLAN_N_VID];
 };

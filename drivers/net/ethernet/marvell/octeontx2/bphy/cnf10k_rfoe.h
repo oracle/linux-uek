@@ -59,7 +59,6 @@ struct cnf10k_rx_ft_cfg {
 	void __iomem			*jdt_virt_addr;
 	u8				jd_rd_offset;	/* jd rd offset */
 	u8				pkt_offset;
-	int				mbt_last_idx;	/* sw head */
 	struct napi_struct		napi;
 	struct cnf10k_rfoe_ndev_priv	*priv;
 };
