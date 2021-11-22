@@ -118,14 +118,12 @@ void mlx5_enter_error_state(struct mlx5_core_dev *dev, bool force)
 	if (dev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR)
 		goto unlock;
 
-	mlx5_core_err(dev, "start\n");
 	if (pci_channel_offline(dev->pdev) || in_fatal(dev) || force) {
 		dev->state = MLX5_DEVICE_STATE_INTERNAL_ERROR;
 		trigger_cmd_completions(dev);
 	}
 
 	mlx5_core_event(dev, MLX5_DEV_EVENT_SYS_ERROR, 1);
-	mlx5_core_err(dev, "end\n");
 
 unlock:
 	mutex_unlock(&dev->intf_state_mutex);
