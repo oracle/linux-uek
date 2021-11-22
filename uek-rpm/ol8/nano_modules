@@ -471,6 +471,7 @@ kernel/drivers/scsi/scsi_transport_srp.ko
 kernel/drivers/scsi/sd_mod.ko
 kernel/drivers/scsi/ses.ko
 kernel/drivers/scsi/sg.ko
+kernel/drivers/scsi/smartpqi/smartpqi.ko
 kernel/drivers/scsi/sr_mod.ko
 kernel/drivers/scsi/st.ko
 kernel/drivers/scsi/virtio_scsi.ko
