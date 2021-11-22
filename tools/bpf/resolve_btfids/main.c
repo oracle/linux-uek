@@ -83,6 +83,7 @@ struct btf_id {
 		int	 cnt;
 	};
 	int		 addr_cnt;
+	bool		 is_set;
 	Elf64_Addr	 addr[ADDR_CNT];
 };
 
@@ -450,8 +451,10 @@ static int symbols_collect(struct object *obj)
 			 * in symbol's size, together with 'cnt' field hence
 			 * that - 1.
 			 */
-			if (id)
+			if (id) {
 				id->cnt = sym.st_size / sizeof(int) - 1;
+				id->is_set = true;
+			}
 		} else {
 			pr_err("FAILED unsupported prefix %s\n", prefix);
 			return -1;
@@ -555,9 +558,8 @@ static int id_patch(struct object *obj, struct btf_id *id)
 	int *ptr = data->d_buf;
 	int i;
 
-	if (!id->id) {
+	if (!id->id && !id->is_set)
 		pr_err("WARN: resolve_btfids: unresolved symbol %s\n", id->name);
-	}
 
 	for (i = 0; i < id->addr_cnt; i++) {
 		unsigned long addr = id->addr[i];
