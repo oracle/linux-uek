@@ -1125,8 +1125,14 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		return;
 	}
 
-	/* Process the ACK sequence which comes with every packet */
-	state->ack_recv = be64_to_cpu(ihdr->h_ack);
+	/* Process the ACK sequence which comes with every packet. Due
+	 * to the fact that implicit ACKs and explicit ACKs have way
+	 * different paths down to ib_post_send(), the ack'ed sequence
+	 * numbers may not always be received in a monotonic
+	 * increasing order. Fixed by always using the largest
+	 * sequence number.
+	 */
+	state->ack_recv = max_t(typeof(state->ack_recv), state->ack_recv, be64_to_cpu(ihdr->h_ack));
 	state->ack_recv_valid = 1;
 
 	/* Process the credits update if there was one */
