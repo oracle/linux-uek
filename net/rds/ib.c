@@ -1107,19 +1107,20 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_sysctl;
 
-	ret = ib_register_client(&rds_ib_client);
-	if (ret)
-		goto out_recv;
-
 	rds_aux_wq = alloc_workqueue("krdsd_aux", WQ_UNBOUND, 0);
 	if (!rds_aux_wq) {
 		pr_err("RDS/IB: failed to create aux workqueue\n");
-		goto out_ibreg;
+		ret = -1;
+		goto out_recv;
 	}
+
+	ret = ib_register_client(&rds_ib_client);
+	if (ret)
+		goto out_aux_wq;
 
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
-		goto out_aux_wq;
+		goto out_ibreg;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1128,10 +1129,10 @@ int rds_ib_init(void)
 
 	goto out;
 
-out_aux_wq:
-	destroy_workqueue(rds_aux_wq);
 out_ibreg:
 	rds_ib_unregister_client();
+out_aux_wq:
+	destroy_workqueue(rds_aux_wq);
 out_recv:
 	rds_ib_recv_exit();
 out_sysctl:
