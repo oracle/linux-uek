@@ -1149,9 +1149,9 @@ int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac)
 	if (!wait_event_timeout(lmac->wq_cmd_cmplt, !lmac->cmd_pend,
 				msecs_to_jiffies(CGX_CMD_TIMEOUT))) {
 		dev = &cgx->pdev->dev;
-		dev_err(dev, "cgx port %d:%d cmd timeout\n",
-			cgx->cgx_id, lmac->lmac_id);
-		err = -EIO;
+		dev_err(dev, "cgx port %d:%d cmd %lld timeout\n",
+			cgx->cgx_id, lmac->lmac_id, FIELD_GET(CMDREG_ID, req));
+		err = LMAC_AF_ERR_CMD_TIMEOUT;
 		goto unlock;
 	}
 
@@ -1853,8 +1853,6 @@ static int cgx_lmac_init(struct cgx *cgx)
 
 	cgx_lmac_get_fifolen(cgx);
 
-	cgx->lmac_count = cgx->mac_ops->get_nr_lmacs(cgx);
-
 	/* lmac_list specifies which lmacs are enabled
 	 * when bit n is set to 1, LMAC[n] is enabled
 	 */
@@ -2040,8 +2038,15 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	 /* Skip probe if CGX is not mapped to NIX */
 	if (!is_cgx_mapped_to_nix(pdev->subsystem_device, cgx->cgx_id)) {
-		dev_notice(dev, "skip cgx%d probe\n", cgx->cgx_id);
+		dev_notice(dev, "CGX %d not mapped to NIX, skipping probe\n", cgx->cgx_id);
 		err = -ENOMEM;
+		goto err_release_regions;
+	}
+
+	cgx->lmac_count = cgx->mac_ops->get_nr_lmacs(cgx);
+	if (!cgx->lmac_count) {
+		dev_notice(dev, "CGX %d LMAC count is zero, skipping probe\n", cgx->cgx_id);
+		err = -EOPNOTSUPP;
 		goto err_release_regions;
 	}
 
