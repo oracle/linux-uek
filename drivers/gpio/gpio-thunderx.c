@@ -96,6 +96,9 @@ struct otx_gpio_usr_data {
 
 #define OTX_IOC_CLR_GPIO_HANDLER \
 	_IO(OTX_IOC_MAGIC, 2)
+
+#define OTX_IOC_TRIGGER_GPIO_HANDLER \
+	_IO(OTX_IOC_MAGIC, 3)
 #endif
 
 struct thunderx_gpio;
@@ -117,6 +120,11 @@ struct thunderx_gpio {
 	unsigned long		od_mask[2];
 	int			base_msi;
 };
+
+static unsigned int intr_reg(unsigned int line)
+{
+	return 8 * line + GPIO_INTR;
+}
 
 #ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
 static inline int __install_el3_inthandler(unsigned long gpio_num,
@@ -170,6 +178,23 @@ static inline int __remove_el3_inthandler(unsigned long gpio_num)
 	return retval;
 }
 
+static inline int __trigger_el3_inthandler(unsigned long gpio_num)
+{
+	struct thunderx_gpio *txgpio = dev_get_drvdata(otx_device);
+	unsigned int retval = -1;
+	unsigned long flags;
+
+	spin_lock_irqsave(&el3_inthandler_lock, flags);
+	if (gpio_installed[gpio_num]) {
+		writeq(GPIO_INTR_INTR_W1S,
+		       txgpio->register_base + intr_reg(gpio_num));
+		retval = 0;
+	}
+	spin_unlock_irqrestore(&el3_inthandler_lock, flags);
+
+	return retval;
+}
+
 static long otx_dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
 	int err = 0;
@@ -218,6 +243,14 @@ static long otx_dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		ret = __remove_el3_inthandler(gpio_usr.gpio_num);
 		if (ret != 0)
 			return -ENOENT;
+		break;
+	case OTX_IOC_TRIGGER_GPIO_HANDLER: /* Trigger GPIO ISR handler */
+		gpio_usr.gpio_num = arg;
+		if (gpio_usr.gpio_num >= MAX_GPIO)
+			return -EINVAL;
+		ret = __trigger_el3_inthandler(gpio_usr.gpio_num);
+		if (ret != 0)
+			return -ENODEV;
 		break;
 	default:
 		return -ENOTTY;
@@ -274,11 +307,6 @@ static const struct file_operations fops = {
 static unsigned int bit_cfg_reg(unsigned int line)
 {
 	return 8 * line + GPIO_BIT_CFG;
-}
-
-static unsigned int intr_reg(unsigned int line)
-{
-	return 8 * line + GPIO_INTR;
 }
 
 static bool thunderx_gpio_is_gpio_nowarn(struct thunderx_gpio *txgpio,
@@ -1033,7 +1061,7 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 		goto class_create_err;
 	}
 
-	otx_device = device_create(otx_class, NULL, otx_dev, NULL,
+	otx_device = device_create(otx_class, NULL, otx_dev, txgpio,
 				     DEVICE_NAME);
 	if (IS_ERR(otx_device)) {
 		err = -ENODEV;
