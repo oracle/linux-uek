@@ -174,8 +174,6 @@ struct optoe_platform_data {
 #define CMIS_NOT_PAGEABLE (1<<7)
 #define TWO_ADDR_PAGEABLE_REG 0x40
 #define TWO_ADDR_PAGEABLE (1<<4)
-#define TWO_ADDR_0X51_REG 92
-#define TWO_ADDR_0X51_SUPP (1<<6)
 #define OPTOE_ID_REG 0
 #define OPTOE_READ_OP 0
 #define OPTOE_WRITE_OP 1
@@ -593,8 +591,8 @@ static ssize_t optoe_page_legal(struct optoe_data *optoe,
 		return -EINVAL;
 	if (optoe->dev_class == TWO_ADDR) {
 		/* SFP case */
-		/* if only using addr 0x50 (first 256 bytes) we're good */
-		if ((off + len) <= TWO_ADDR_NO_0X51_SIZE)
+		/* if access is within addr 0x50 or first page of 0x51 (first 512 bytes) we're good */
+		if ((off + len) <= TWO_ADDR_EEPROM_UNPAGED_SIZE)
 			return len;
 		/* if offset exceeds possible pages, we're not good */
 		if (off >= TWO_ADDR_EEPROM_SIZE)
@@ -611,22 +609,7 @@ static ssize_t optoe_page_legal(struct optoe_data *optoe,
 			/* pages not supported, trim len to unpaged size */
 			if (off >= TWO_ADDR_EEPROM_UNPAGED_SIZE)
 				return OPTOE_EOF;
-
-			/* will be accessing addr 0x51, is that supported? */
-			/* byte 92, bit 6 implies DDM support, 0x51 support */
-			status = optoe_eeprom_read(optoe, client, &regval,
-						TWO_ADDR_0X51_REG, 1);
-			if (status < 0)
-				return status;
-			if (regval & TWO_ADDR_0X51_SUPP) {
-				/* addr 0x51 is OK */
-				maxlen = TWO_ADDR_EEPROM_UNPAGED_SIZE - off;
-			} else {
-				/* addr 0x51 NOT supported, trim to 256 max */
-				if (off >= TWO_ADDR_NO_0X51_SIZE)
-					return OPTOE_EOF;
-				maxlen = TWO_ADDR_NO_0X51_SIZE - off;
-			}
+			maxlen = TWO_ADDR_EEPROM_UNPAGED_SIZE - off;
 		}
 		len = (len > maxlen) ? maxlen : len;
 		dev_dbg(&client->dev,
