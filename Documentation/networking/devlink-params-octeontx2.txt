@@ -1,0 +1,66 @@
+tim_capture_timers	[DEVICE, DRIVER-SPECIFIC]
+			Trigger capture of cycles count of TIM clock sources.
+			Valid values:
+			* 0 - capture free running cycle count.
+			* 1 - capture at the software trigger.
+			* 2 - capture at the next rising edge of GPIO.
+			Type: u8
+			Configuration mode: runtime
+
+tim_capture_tenns	[DEVICE, DRIVER-SPECIFIC]
+			Capture cycle count of tenns clock.
+			Type: String
+
+tim_capture_gpios	[DEVICE, DRIVER-SPECIFIC]
+			Capture cycle count of gpios clock.
+			Type: String
+
+tim_capture_gti		[DEVICE, DRIVER-SPECIFIC]
+			Capture cycle count of gti clock.
+			Type: String
+
+tim_capture_ptp		[DEVICE, DRIVER-SPECIFIC]
+			Capture cycle count of ptp clock.
+			Type: String
+
+tim_capture_sync	[DEVICE, DRIVER-SPECIFIC]
+			Capture cycle count of sync clock.
+			Type: String
+
+tim_capture_bts		[DEVICE, DRIVER-SPECIFIC]
+			Capture cycle count of bts clock.
+			Type: String
+
+tim_capture_ext_gti	[DEVICE, DRIVER-SPECIFIC]
+			Capture cycle count of external gti clock.
+			Type: String
+
+tim_adjust_timers	[DEVICE, DRIVER-SPECIFIC]
+			Trigger adjustment of all TIM clock sources.
+			Type: Boolean
+			Configuration mode: runtime
+
+tim_adjust_tens		[DEVICE, DRIVER-SPECIFIC]
+			Adjustment required in number of cycles for tenns clock.
+			Type: String
+			Configuration mode: runtime
+
+tim_adjust_gpios	[DEVICE, DRIVER-SPECIFIC]
+			Adjustment required in number of cycles for gpios clock.
+			Type: String
+			Configuration mode: runtime
+
+tim_adjust_gti		[DEVICE, DRIVER-SPECIFIC]
+			Adjustment required in number of cycles for gti clock.
+			Type: String
+			Configuration mode: runtime
+
+tim_adjust_ptp		[DEVICE, DRIVER-SPECIFIC]
+			Adjustment required in number of cycles for ptp clock.
+			Type: String
+			Configuration mode: runtime
+
+tim_adjust_bts		[DEVICE, DRIVER-SPECIFIC]
+			Adjustment required in number of cycles for bts clock.
+			Type: String
+			Configuration mode: runtime
