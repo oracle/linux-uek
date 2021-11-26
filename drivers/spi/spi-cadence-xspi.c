@@ -206,6 +206,11 @@ enum cdns_xspi_stig_cmd_dir {
 	CDNS_XSPI_STIG_CMD_DIR_WRITE,
 };
 
+enum cdns_xspi_sdma_size {
+	CDNS_XSPI_SDMA_SIZE_8B=0,
+	CDNS_XSPI_SDMA_SIZE_64B=1,
+};
+
 struct cdns_xspi_dev {
 	struct platform_device *pdev;
 	struct device *dev;
@@ -227,6 +232,7 @@ struct cdns_xspi_dev {
 	const void *out_buffer;
 
 	u8 hw_num_banks;
+	enum cdns_xspi_sdma_size read_size;
 };
 
 static int cdns_xspi_wait_for_controller_idle(struct cdns_xspi_dev *cdns_xspi)
@@ -326,6 +332,78 @@ static int cdns_xspi_controller_init(struct cdns_xspi_dev *cdns_xspi)
 	return 0;
 }
 
+static void cdns_ioreadq(void __iomem  *addr, void *buf, int len)
+{
+	int i = 0;
+	int rcount = len / 8;
+	int rcount_nf = len % 8;
+	uint64_t tmp;
+	uint64_t *buf64 = (uint64_t *)buf;
+
+	if (((uint64_t)buf % 8) == 0) {
+		for (i = 0; i < rcount; i++)
+			*buf64++ = readq(addr);
+	} else {
+		for (i = 0; i < rcount; i++) {
+			tmp = readq(addr);
+			memcpy(buf+(i*8), &tmp, 8);
+		}
+	}
+
+	if (rcount_nf != 0) {
+		tmp = readq(addr);
+		memcpy(buf+(i*8), &tmp, rcount_nf);
+	}
+}
+
+static void cdns_iowriteq(void __iomem *addr, const void *buf, int len)
+{
+	int i = 0;
+	int rcount = len / 8;
+	int rcount_nf = len % 8;
+	uint64_t tmp;
+	uint64_t *buf64 = (uint64_t *)buf;
+
+	if (((uint64_t)buf % 8) == 0) {
+		for (i = 0; i < rcount; i++)
+			writeq(*buf64++, addr);
+	} else {
+		for (i = 0; i < rcount; i++) {
+			memcpy(&tmp, buf+(i*8), 8);
+			writeq(tmp, addr);
+		}
+	}
+
+	if (rcount_nf != 0) {
+		memcpy(&tmp, buf+(i*8), rcount_nf);
+		writeq(tmp, addr);
+	}
+}
+
+static void cdns_xspi_sdma_memread(struct cdns_xspi_dev *cdns_xspi, enum cdns_xspi_sdma_size size, int len) {
+	switch (size) {
+	case CDNS_XSPI_SDMA_SIZE_8B:
+		ioread8_rep(cdns_xspi->sdmabase,
+			    cdns_xspi->in_buffer, len);
+		break;
+	case CDNS_XSPI_SDMA_SIZE_64B:
+		cdns_ioreadq(cdns_xspi->sdmabase, cdns_xspi->in_buffer, len);
+		break;
+	}
+}
+
+static void cdns_xspi_sdma_memwrite(struct cdns_xspi_dev *cdns_xspi, enum cdns_xspi_sdma_size size, int len) {
+	switch (size) {
+	case CDNS_XSPI_SDMA_SIZE_8B:
+		iowrite8_rep(cdns_xspi->sdmabase,
+			     cdns_xspi->out_buffer, len);
+		break;
+	case CDNS_XSPI_SDMA_SIZE_64B:
+		cdns_iowriteq(cdns_xspi->sdmabase, cdns_xspi->in_buffer, len);
+		break;
+	}
+}
+
 static void cdns_xspi_sdma_handle(struct cdns_xspi_dev *cdns_xspi)
 {
 	u32 sdma_size, sdma_trd_info;
@@ -337,13 +415,15 @@ static void cdns_xspi_sdma_handle(struct cdns_xspi_dev *cdns_xspi)
 
 	switch (sdma_dir) {
 	case CDNS_XSPI_SDMA_DIR_READ:
-		ioread8_rep(cdns_xspi->sdmabase,
-			    cdns_xspi->in_buffer, sdma_size);
+		cdns_xspi_sdma_memread(cdns_xspi,
+				       cdns_xspi->read_size,
+				       sdma_size);
 		break;
 
 	case CDNS_XSPI_SDMA_DIR_WRITE:
-		iowrite8_rep(cdns_xspi->sdmabase,
-			     cdns_xspi->out_buffer, sdma_size);
+		cdns_xspi_sdma_memwrite(cdns_xspi,
+					cdns_xspi->read_size,
+					sdma_size);
 		break;
 	}
 }
@@ -523,7 +603,14 @@ static int cdns_xspi_of_get_plat_data(struct platform_device *pdev)
 {
 	struct device_node *node_prop = pdev->dev.of_node;
 	struct device_node *node_child;
+	struct spi_master *master = platform_get_drvdata(pdev);
+	struct cdns_xspi_dev *cdns_xspi = spi_master_get_devdata(master);
 	unsigned int cs;
+	unsigned int read_size = 0;
+
+	if (of_property_read_u32(node_prop, "cdns,read-size", &read_size))
+		dev_info(&pdev->dev, "Missing read size property, usining byte acess\n");
+	cdns_xspi->read_size = read_size;
 
 	for_each_child_of_node(node_prop, node_child) {
 		if (!of_device_is_available(node_child))
