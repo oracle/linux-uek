@@ -137,6 +137,7 @@ static int __init ghes_bed_count_error(struct mrvl_bed_source *bsrc)
 	size_t error_cnt = 0;
 
 	ring = bsrc->block_va;
+	ring->reg = OTX2_GHES_ERR_RING_SIG;
 
 	if (!ring->size) {
 		initerrmsg("%s BERT support disabled by firmware\n", __func__);

@@ -304,9 +304,10 @@ static int sdei_ghes_driver_init(struct platform_device *pdev)
 				ret, gsrc->id, gsrc->name);
 			continue;
 		}
+		gsrc->ring->reg = OTX2_GHES_ERR_RING_SIG;
 
-		initdbgmsg("Register GHES 0x%x (%s) [%llx, %llx, %llx, %llx]\n",
-				gsrc->id, gsrc->name, (long long)gsrc->esa_pa,
+		initdbgmsg("Register GHES 0x%x (%s) %s [%llx, %llx, %llx]\n",
+				gsrc->id, gsrc->name, "reg",
 				(long long)gsrc->esa_va,
 				(long long)gsrc->esb_va, (long long)gsrc->ring);
 	}
@@ -333,6 +334,8 @@ static int sdei_ghes_driver_deinit(struct platform_device *pdev)
 
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
+
+		gsrc->ring->reg = 0;
 
 		ret = sdei_event_disable(gsrc->id);
 		if (ret < 0)
