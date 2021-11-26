@@ -13,6 +13,7 @@
 #include <linux/string.h>
 #include <linux/time.h>
 #include <linux/uaccess.h>
+#include <linux/ioctl.h>
 #include <linux/of.h>
 #include <linux/delay.h>
 #include <soc/marvell/octeontx/octeontx_smc.h>
@@ -24,6 +25,7 @@
 #define PLAT_OCTEONTX_SERDES_DBG_LOOPBACK	0xc2000d07
 #define PLAT_OCTEONTX_SERDES_DBG_PRBS		0xc2000d08
 #define PLAT_OCTEONTX_SERDES_DBG_RX_TRAINING	0xc2000d09
+#define PLAT_OCTEONTX_SERDES_DBG_NOTIFY_ECP	0xc2000d0a
 
 #define PORT_LANES_MAX 4
 #define PRBS_SHOW_HEADER \
@@ -361,6 +363,21 @@ enum rx_tr_subcmd {
 	RX_TR_CHECK,
 	RX_TR_STOP
 };
+
+enum ecp_notify_prbs_loopback_mode {
+	ECP_NOTIFY_LOOPBACK_NO_LOOPBACK,
+	ECP_NOTIFY_LOOPBACK_NEA,
+	ECP_NOTIFY_LOOPBACK_NED,
+	ECP_NOTIFY_LOOPBACK_FED,
+	ECP_NOTIFY_PRBS_MODE_GEN_ENA,
+	ECP_NOTIFY_PRBS_MODE_CHECK_ENA,
+	ECP_NOTIFY_PRBS_MODE_GEN_CHECK_ENA,
+	ECP_NOTIFY_PRBS_MODE_GEN_DIS,
+	ECP_NOTIFY_PRBS_MODE_CHECK_DIS,
+	ECP_NOTIFY_PRBS_MODE_GEN_CHECK_DIS
+};
+
+#define IOCTL_SEND_ECP_NOTIFICATION _IOWR('a', 'a', int)
 
 static int copy_input_str(const char __user *buffer, size_t count,
 			char *cmd_buf, size_t buf_sz)
@@ -1256,6 +1273,41 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 }
 DEFINE_ATTRIBUTE(serdes_dbg_prbs);
 
+static long notify_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct arm_smccc_res res;
+	s32 portm, evt;
+
+	switch (cmd) {
+	case IOCTL_SEND_ECP_NOTIFICATION:
+		portm = (arg >> 8) & 0xff;
+		evt = arg & 0xff;
+
+		/* Validate event */
+		if (evt > ECP_NOTIFY_PRBS_MODE_GEN_CHECK_DIS)
+			return -EINVAL;
+
+		arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_NOTIFY_ECP, portm, evt,
+			0, 0, 0, 0, 0, &res);
+		if (res.a0) {
+			pr_warn("Sending ECP notification failed\n");
+			return -EINVAL;
+		}
+		break;
+	default:
+		pr_err("Unsupported IOCTL\n");
+		return -ENXIO;
+	}
+
+	return 0;
+}
+
+static const struct file_operations notify_fops = {
+	.owner			= THIS_MODULE,
+	.unlocked_ioctl		= notify_ioctl,
+	.llseek			= no_llseek,
+};
+
 static int serdes_dbg_setup_debugfs(void)
 {
 	struct dentry *dbg_file;
@@ -1263,27 +1315,32 @@ static int serdes_dbg_setup_debugfs(void)
 	serdes_dbgfs_root = debugfs_create_dir("serdes_diagnostics", NULL);
 
 	dbg_file = debugfs_create_file("prbs", 0644, serdes_dbgfs_root, NULL,
-				    &serdes_dbg_prbs_fops);
+				       &serdes_dbg_prbs_fops);
 	if (!dbg_file)
 		goto create_failed;
 
 	dbg_file = debugfs_create_file("loopback", 0644, serdes_dbgfs_root, NULL,
-				    &serdes_dbg_lpbk_fops);
+				       &serdes_dbg_lpbk_fops);
 	if (!dbg_file)
 		goto create_failed;
 
 	dbg_file = debugfs_create_file("rx_params", 0644, serdes_dbgfs_root, NULL,
-				    &serdes_dbg_rx_eq_fops);
+				       &serdes_dbg_rx_eq_fops);
 	if (!dbg_file)
 		goto create_failed;
 
 	dbg_file = debugfs_create_file("rx_training", 0644, serdes_dbgfs_root, NULL,
-				    &serdes_dbg_rx_tr_fops);
+				       &serdes_dbg_rx_tr_fops);
 	if (!dbg_file)
 		goto create_failed;
 
 	dbg_file = debugfs_create_file("tx_params", 0644, serdes_dbgfs_root, NULL,
-				    &serdes_dbg_tx_eq_fops);
+				       &serdes_dbg_tx_eq_fops);
+	if (!dbg_file)
+		goto create_failed;
+
+	dbg_file = debugfs_create_file("notify", 0644, serdes_dbgfs_root, NULL,
+				       &notify_fops);
 	if (!dbg_file)
 		goto create_failed;
 
