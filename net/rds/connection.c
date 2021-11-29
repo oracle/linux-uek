@@ -50,18 +50,16 @@ static bool rds_wq_strictly_ordered;
 module_param(rds_wq_strictly_ordered, bool, 0644);
 
 /* converting this to RCU is a chore for another day.. */
-static DEFINE_SPINLOCK(rds_conn_lock);
-static struct hlist_head rds_conn_hash[RDS_CONNECTION_HASH_ENTRIES];
 static struct hlist_head rds_conn_faddr_hash[RDS_CONN_FADDR_HASH_ENTRIES];
 static struct kmem_cache *rds_conn_slab;
 
-/* Loop through the rds_conn_hash table and set head to the hlist_head
+/* Loop through the rns_conn_hash table and set head to the hlist_head
  * of each element.
  */
-#define	for_each_conn_hash_bucket(head)				\
-    for ((head) = rds_conn_hash;				\
-	 (head) < rds_conn_hash + ARRAY_SIZE(rds_conn_hash);	\
-	 (head)++)
+#define	for_each_conn_hash_bucket(rns, head)				\
+	for ((head) = (rns)->rns_conn_hash;				\
+	     (head) < (rns)->rns_conn_hash + RDS_CONNECTION_HASH_ENTRIES; \
+	     (head)++)
 
 static void rds_conn_ha_changed_task(struct work_struct *work);
 static void rds_conn_shutdown_check_wait(struct work_struct *work);
@@ -98,12 +96,13 @@ static u32 rds_conn_bucket_hash(const struct in6_addr *laddr,
 	return hash;
 }
 
-static struct hlist_head *rds_conn_bucket(const struct in6_addr *laddr,
+static struct hlist_head *rds_conn_bucket(struct rds_net *rns,
+					  const struct in6_addr *laddr,
 					  const struct in6_addr *faddr,
 					  u8 tos)
 {
 	u32 hash = rds_conn_bucket_hash(laddr, faddr, tos);
-	return &rds_conn_hash[hash & RDS_CONNECTION_HASH_MASK];
+	return &rns->rns_conn_hash[hash & RDS_CONNECTION_HASH_MASK];
 }
 
 static struct hlist_head *rds_conn_faddr_bucket(const struct in6_addr *faddr)
@@ -118,8 +117,7 @@ static struct hlist_head *rds_conn_faddr_bucket(const struct in6_addr *faddr)
 } while (0)
 
 /* rcu read lock must be held or the connection spinlock */
-static struct rds_connection *rds_conn_lookup(struct net *net,
-					      struct hlist_head *head,
+static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 					      const struct in6_addr *laddr,
 					      const struct in6_addr *faddr,
 					      struct rds_transport *trans,
@@ -132,7 +130,6 @@ static struct rds_connection *rds_conn_lookup(struct net *net,
 		if (ipv6_addr_equal(&conn->c_faddr, faddr) &&
 		    ipv6_addr_equal(&conn->c_laddr, laddr) &&
 		    conn->c_tos == tos && conn->c_trans == trans &&
-		    net == rds_conn_net(conn) &&
 		    conn->c_dev_if == dev_if) {
 			ret = conn;
 			break;
@@ -142,7 +139,7 @@ static struct rds_connection *rds_conn_lookup(struct net *net,
 	return ret;
 }
 
-void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
+void rds_conn_laddr_list(struct rds_net *rns, struct in6_addr *laddr,
 			 struct list_head *laddr_conns)
 {
 	struct rds_connection *conn;
@@ -150,10 +147,9 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 
 	rcu_read_lock();
 
-	for_each_conn_hash_bucket(head) {
+	for_each_conn_hash_bucket(rns, head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node)
-			if (ipv6_addr_equal(&conn->c_laddr, laddr) &&
-			    net == rds_conn_net(conn))
+			if (ipv6_addr_equal(&conn->c_laddr, laddr))
 				list_add(&conn->c_laddr_node, laddr_conns);
 	}
 
@@ -243,16 +239,20 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 						int dev_if)
 {
 	struct rds_connection *conn, *parent = NULL;
-	struct hlist_head *head = rds_conn_bucket(laddr, faddr, tos);
+	struct hlist_head *head;
 	struct hlist_head *faddr_head = rds_conn_faddr_bucket(faddr);
 	struct rds_transport *loop_trans;
+	struct rds_net *rns;
 	char *reason = NULL;
 	unsigned long flags;
 	int ret, i;
 	int npaths;
 
+	rns = rds_ns(net);
+	head = rds_conn_bucket(rns, laddr, faddr, tos);
+
 	rcu_read_lock();
-	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos, dev_if);
+	conn = rds_conn_lookup(head, laddr, faddr, trans, tos, dev_if);
 	if (conn &&
 	    conn->c_loopback &&
 	    conn->c_trans != &rds_loop_transport &&
@@ -397,7 +397,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	 * init and return our conn. If we lost, we rollback and return the
 	 * other one.
 	 */
-	spin_lock_irqsave(&rds_conn_lock, flags);
+	spin_lock_irqsave(&rns->rns_conn_lock, flags);
 	if (parent) {
 		/* Creating passive conn */
 		if (parent->c_passive) {
@@ -417,7 +417,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		/* Creating normal conn */
 		struct rds_connection *found;
 
-		found = rds_conn_lookup(net, head, laddr, faddr, trans, tos,
+		found = rds_conn_lookup(head, laddr, faddr, trans, tos,
 					dev_if);
 		if (found) {
 			struct rds_conn_path *cp;
@@ -442,7 +442,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			atomic_inc(&conn->c_trans->t_conn_count);
 		}
 	}
-	spin_unlock_irqrestore(&rds_conn_lock, flags);
+	spin_unlock_irqrestore(&rns->rns_conn_lock, flags);
 
 out:
 	if (reason)
@@ -472,16 +472,17 @@ struct rds_connection *rds_conn_create_outgoing(struct net *net,
 }
 EXPORT_SYMBOL_GPL(rds_conn_create_outgoing);
 
-struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
+struct rds_connection *rds_conn_find(struct rds_net *rns,
+				     struct in6_addr *laddr,
 				     struct in6_addr *faddr,
 				     struct rds_transport *trans, u8 tos,
 				     int dev_if)
 {
 	struct rds_connection *conn;
-	struct hlist_head *head = rds_conn_bucket(laddr, faddr, tos);
+	struct hlist_head *head = rds_conn_bucket(rns, laddr, faddr, tos);
 
 	rcu_read_lock();
-	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos, dev_if);
+	conn = rds_conn_lookup(head, laddr, faddr, trans, tos, dev_if);
 	rcu_read_unlock();
 
 	return conn;
@@ -724,9 +725,14 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 {
 	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
+	struct rds_net *rns;
+	spinlock_t *lock;	/* protect connection */
 	int i;
 
 	trace_rds_conn_destroy(NULL, conn, NULL, NULL, 0);
+
+	rns = conn->c_rns;
+	lock = &rns->rns_conn_lock;
 
 	conn->c_destroy_in_prog = 1;
 	smp_mb();
@@ -734,10 +740,10 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	cancel_delayed_work_sync(&conn->c_dr_sock_cancel_w);
 
 	/* Ensure conn will not be scheduled for reconnect */
-	spin_lock_irq(&rds_conn_lock);
+	spin_lock_irq(lock);
 	hlist_del_init_rcu(&conn->c_hash_node);
 	hlist_del_init_rcu(&conn->c_faddr_node);
-	spin_unlock_irq(&rds_conn_lock);
+	spin_unlock_irq(lock);
 	synchronize_rcu();
 
 	/* shut the connection down */
@@ -758,6 +764,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 
 	atomic_dec(&conn->c_trans->t_conn_count);
 
+	rds_conn_net_set(conn, NULL);
 	kfree(conn->c_path);
 	kmem_cache_free(rds_conn_slab, conn);
 }
@@ -782,9 +789,10 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 				      struct rds_info_lengths *lens,
 				      int want_send, bool isv6)
 {
+	struct rds_connection *conn;
+	struct rds_net *rns;
 	struct hlist_head *head;
 	struct list_head *list;
-	struct rds_connection *conn;
 	struct rds_message *rm;
 	unsigned int total = 0;
 	unsigned long flags;
@@ -795,9 +803,11 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 	else
 		len /= sizeof(struct rds_info_message);
 
+	rns = rds_ns(sock_net(sock->sk));
+
 	rcu_read_lock();
 
-	for_each_conn_hash_bucket(head) {
+	for_each_conn_hash_bucket(rns, head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			struct rds_conn_path *cp;
 			int npaths;
@@ -898,15 +908,18 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			    u64 *buffer,
 			    size_t item_len)
 {
-	struct hlist_head *head;
 	struct rds_connection *conn;
+	struct rds_net *rns;
+	struct hlist_head *head;
+
+	rns = rds_ns(sock_net(sock->sk));
 
 	rcu_read_lock();
 
 	lens->nr = 0;
 	lens->each = item_len;
 
-	for_each_conn_hash_bucket(head) {
+	for_each_conn_hash_bucket(rns, head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 
 			/* XXX no c_lock usage.. */
@@ -935,15 +948,18 @@ static void rds_walk_conn_path_info(struct socket *sock, unsigned int len,
 				    u64 *buffer,
 				    size_t item_len)
 {
-	struct hlist_head *head;
 	struct rds_connection *conn;
+	struct rds_net *rns;
+	struct hlist_head *head;
+
+	rns = rds_sk_to_rs(sock->sk)->rs_rns;
 
 	rcu_read_lock();
 
 	lens->nr = 0;
 	lens->each = item_len;
 
-	for_each_conn_hash_bucket(head) {
+	for_each_conn_hash_bucket(rns, head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			struct rds_conn_path *cp;
 
@@ -1177,12 +1193,7 @@ int rds_conn_init(void)
 
 void rds_conn_exit(void)
 {
-	struct hlist_head *head;
-
 	rds_loop_exit();
-
-	for_each_conn_hash_bucket(head)
-		WARN_ON(!hlist_empty(head));
 
 	kmem_cache_destroy(rds_conn_slab);
 
@@ -1198,6 +1209,29 @@ void rds_conn_exit(void)
 	rds_info_deregister_func(RDS6_INFO_RETRANS_MESSAGES,
 				 rds6_conn_message_info_retrans);
 #endif
+}
+
+int rds_conn_tbl_net_init(struct rds_net *rns)
+{
+	rns->rns_conn_hash = kzalloc(sizeof(*rns->rns_conn_hash) *
+					RDS_CONNECTION_HASH_ENTRIES,
+					GFP_KERNEL | GFP_NOWAIT);
+	if (!rns->rns_conn_hash)
+		return -ENOMEM;
+	spin_lock_init(&rns->rns_conn_lock);
+
+	return 0;
+}
+
+void rds_conn_tbl_net_exit(struct rds_net *rns)
+{
+	struct hlist_head *head;
+
+	for_each_conn_hash_bucket(rns, head) {
+		WARN_ON(!hlist_empty(head));
+	}
+	kfree(rns->rns_conn_hash);
+	rns->rns_conn_hash = NULL;
 }
 
 static char *conn_drop_reasons[] = {
