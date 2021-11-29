@@ -565,6 +565,7 @@
 0x953e1b9e	ktime_get_real_seconds	vmlinux	EXPORT_SYMBOL_GPL	
 0x9ec6ca96	ktime_get_real_ts64	vmlinux	EXPORT_SYMBOL	
 0x5e515be6	ktime_get_ts64	vmlinux	EXPORT_SYMBOL_GPL	
+0xf5e7ea40	ktime_get_coarse_ts64	vmlinux	EXPORT_SYMBOL
 0x5d9ff8ec	load_nls	vmlinux	EXPORT_SYMBOL	
 0xbc98b8ad	lock_rename	vmlinux	EXPORT_SYMBOL	
 0x7eb88c79	lock_sock_nested	vmlinux	EXPORT_SYMBOL	
