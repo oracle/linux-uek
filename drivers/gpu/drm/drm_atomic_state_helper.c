@@ -31,7 +31,6 @@
 #include <drm/drm_device.h>
 #include <drm/drm_plane.h>
 #include <drm/drm_print.h>
-#include <drm/drm_vblank.h>
 #include <drm/drm_writeback.h>
 
 #include <linux/slab.h>
@@ -76,9 +75,6 @@ __drm_atomic_helper_crtc_reset(struct drm_crtc *crtc,
 {
 	if (crtc_state)
 		crtc_state->crtc = crtc;
-
-	if (drm_dev_has_vblank(crtc->dev))
-		drm_crtc_vblank_reset(crtc);
 
 	crtc->state = crtc_state;
 }
