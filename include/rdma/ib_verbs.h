@@ -361,6 +361,12 @@ enum ib_cq_attr_mask {
 	IB_CQ_MODERATE = 1 << 0,
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+enum ib_cq_comp_vector_zero {
+	IB_CQ_FORCE_ZERO_CV = U32_MAX,
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 struct ib_cq_caps {
 	u16     max_cq_moderation_count;
 	u16     max_cq_moderation_period;
