@@ -861,7 +861,7 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 			cq_attr.comp_vector = IB_CQ_FORCE_ZERO_CV;
 		*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
 		if (IS_ERR(*cqp)) {
-			ibdev_put_vector(rds_ibdev, *vector);
+			ibdev_put_vector(rds_ibdev, cq_attr.comp_vector);
 			rdsdebug("ib_create_cq %s failed: %ld\n", str, PTR_ERR(*cqp));
 			return;
 		}
