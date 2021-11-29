@@ -867,7 +867,7 @@ clean:
 }
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, u32 vector)
+struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, int vector)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 	struct mlx5_eq_comp *tmp_eq_comp;
