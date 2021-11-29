@@ -440,8 +440,10 @@ static void komeda_crtc_reset(struct drm_crtc *crtc)
 	crtc->state = NULL;
 
 	state = kzalloc(sizeof(*state), GFP_KERNEL);
-	if (state)
-		__drm_atomic_helper_crtc_reset(crtc, &state->base);
+	if (state) {
+		crtc->state = &state->base;
+		crtc->state->crtc = crtc;
+	}
 }
 
 static struct drm_crtc_state *
@@ -562,6 +564,7 @@ static int komeda_crtc_add(struct komeda_kms_dev *kms,
 		return err;
 
 	drm_crtc_helper_add(crtc, &komeda_crtc_helper_funcs);
+	drm_crtc_vblank_reset(crtc);
 
 	crtc->port = kcrtc->master->of_output_port;
 
