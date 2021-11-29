@@ -88,7 +88,6 @@ struct qat_alg_skcipher_ctx {
 	struct icp_qat_fw_la_bulk_req enc_fw_req;
 	struct icp_qat_fw_la_bulk_req dec_fw_req;
 	struct qat_crypto_instance *inst;
-	struct crypto_skcipher *tfm;
 };
 
 static int qat_get_inter_state_size(enum icp_qat_hw_auth_algo qat_hash_alg)
@@ -543,14 +542,11 @@ static int qat_alg_skcipher_init_sessions(struct qat_alg_skcipher_ctx *ctx,
 	int alg;
 
 	if (qat_alg_validate_key(keylen, &alg, mode))
-		goto bad_key;
+		return -EINVAL;
 
 	qat_alg_skcipher_init_enc(ctx, alg, key, keylen, mode);
 	qat_alg_skcipher_init_dec(ctx, alg, key, keylen, mode);
 	return 0;
-bad_key:
-	crypto_skcipher_set_flags(ctx->tfm, CRYPTO_TFM_RES_BAD_KEY_LEN);
-	return -EINVAL;
 }
 
 static int qat_alg_aead_rekey(struct crypto_aead *tfm, const u8 *key,
@@ -1216,10 +1212,7 @@ static void qat_alg_aead_exit(struct crypto_aead *tfm)
 
 static int qat_alg_skcipher_init_tfm(struct crypto_skcipher *tfm)
 {
-	struct qat_alg_skcipher_ctx *ctx = crypto_skcipher_ctx(tfm);
-
 	crypto_skcipher_set_reqsize(tfm, sizeof(struct qat_crypto_request));
-	ctx->tfm = tfm;
 	return 0;
 }
 
