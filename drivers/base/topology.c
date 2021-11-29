@@ -48,8 +48,10 @@ static DEVICE_ATTR_RO(physical_package_id);
 define_id_show_func(die_id, "%d");
 static DEVICE_ATTR_RO(die_id);
 
+#ifdef TOPOLOGY_CLUSTER_SYSFS
 define_id_show_func(cluster_id, "%d");
 static DEVICE_ATTR_RO(cluster_id);
+#endif
 
 define_id_show_func(core_id, "%d");
 static DEVICE_ATTR_RO(core_id);
@@ -69,9 +71,11 @@ define_siblings_read_func(core_siblings, core_cpumask);
 static BIN_ATTR_RO(core_siblings, CPUMAP_FILE_MAX_BYTES);
 static BIN_ATTR_RO(core_siblings_list, CPULIST_FILE_MAX_BYTES);
 
+#ifdef TOPOLOGY_CLUSTER_SYSFS
 define_siblings_read_func(cluster_cpus, cluster_cpumask);
 static BIN_ATTR_RO(cluster_cpus, CPUMAP_FILE_MAX_BYTES);
 static BIN_ATTR_RO(cluster_cpus_list, CPULIST_FILE_MAX_BYTES);
+#endif
 
 define_siblings_read_func(die_cpus, die_cpumask);
 static BIN_ATTR_RO(die_cpus, CPUMAP_FILE_MAX_BYTES);
@@ -104,8 +108,10 @@ static struct bin_attribute *bin_attrs[] = {
 	&bin_attr_thread_siblings_list,
 	&bin_attr_core_siblings,
 	&bin_attr_core_siblings_list,
+#ifdef TOPOLOGY_CLUSTER_SYSFS
 	&bin_attr_cluster_cpus,
 	&bin_attr_cluster_cpus_list,
+#endif
 	&bin_attr_die_cpus,
 	&bin_attr_die_cpus_list,
 	&bin_attr_package_cpus,
@@ -124,7 +130,9 @@ static struct bin_attribute *bin_attrs[] = {
 static struct attribute *default_attrs[] = {
 	&dev_attr_physical_package_id.attr,
 	&dev_attr_die_id.attr,
+#ifdef TOPOLOGY_CLUSTER_SYSFS
 	&dev_attr_cluster_id.attr,
+#endif
 	&dev_attr_core_id.attr,
 #ifdef TOPOLOGY_BOOK_SYSFS
 	&dev_attr_book_id.attr,
