@@ -546,7 +546,7 @@ ice_run_xdp(struct ice_ring *rx_ring, struct xdp_buff *xdp,
 			goto out_failure;
 		return ICE_XDP_REDIR;
 	default:
-		bpf_warn_invalid_xdp_action(act);
+		bpf_warn_invalid_xdp_action(rx_ring->netdev, xdp_prog, act);
 		fallthrough;
 	case XDP_ABORTED:
 out_failure:
