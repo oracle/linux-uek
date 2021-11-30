@@ -122,7 +122,7 @@ void rds_ib_ring_free(struct rds_ib_work_ring *ring, u32 val)
 
 void rds_ib_ring_unalloc(struct rds_ib_work_ring *ring, u32 val)
 {
-	ring->w_alloc_ptr = (ring->w_alloc_ptr - val) % ring->w_nr;
+	ring->w_alloc_ptr = (ring->w_alloc_ptr + ring->w_nr - val) % ring->w_nr;
 	ring->w_alloc_ctr -= val;
 }
 
