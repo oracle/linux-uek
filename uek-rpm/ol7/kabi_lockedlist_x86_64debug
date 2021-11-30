@@ -96,11 +96,13 @@
 	_raw_spin_lock_bh
 	_raw_spin_lock_irq
 	_raw_spin_lock_irqsave
+	_raw_spin_trylock
 	_raw_spin_unlock_bh
 	_raw_spin_unlock_irqrestore
 	_raw_write_lock
 	_raw_write_lock_irqsave
 	_raw_write_unlock_irqrestore
+	_raw_spin_trylock
 	add_timer
 	add_to_page_cache_locked
 	address_space_init_once
