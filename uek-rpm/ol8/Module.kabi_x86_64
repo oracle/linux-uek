@@ -226,6 +226,7 @@
 0x71830298	__elv_add_request	vmlinux	EXPORT_SYMBOL
 0xe914e41e	strcpy	vmlinux	EXPORT_SYMBOL
 0xe259ae9e	_raw_spin_lock	vmlinux	EXPORT_SYMBOL
+0x1250c7e1	_raw_spin_trylock	vmlinux	EXPORT_SYMBOL
 0x037a0cba	kfree	vmlinux	EXPORT_SYMBOL
 0xae98d822	kmem_cache_destroy	vmlinux	EXPORT_SYMBOL
 0x96b29254	strncasecmp	vmlinux	EXPORT_SYMBOL

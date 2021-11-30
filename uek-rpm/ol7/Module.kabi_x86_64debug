@@ -100,6 +100,7 @@
 0x4463e527	_raw_write_lock	vmlinux	EXPORT_SYMBOL
 0xa9aff9de	_raw_write_lock_irqsave	vmlinux	EXPORT_SYMBOL
 0x14192bac	_raw_write_unlock_irqrestore	vmlinux	EXPORT_SYMBOL
+0xa82afe17	_raw_spin_trylock	vmlinux	EXPORT_SYMBOL
 0x995ecaaa	add_timer	vmlinux	EXPORT_SYMBOL
 0x40c65370	add_to_page_cache_locked	vmlinux	EXPORT_SYMBOL
 0x21c3a23c	address_space_init_once	vmlinux	EXPORT_SYMBOL
