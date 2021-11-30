@@ -76,6 +76,7 @@
 	__skb_gso_segment
 	__stack_chk_fail
 	__sw_hweight32
+	__sw_hweight64
 	__symbol_get
 	__symbol_put
 	__task_pid_nr_ns

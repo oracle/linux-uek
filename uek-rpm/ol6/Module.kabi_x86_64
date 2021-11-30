@@ -75,6 +75,7 @@
 0x74c134b9	__sw_hweight32	vmlinux	EXPORT_SYMBOL
 0x868784cb	__symbol_get	vmlinux	EXPORT_SYMBOL_GPL
 0x6e9dd606	__symbol_put	vmlinux	EXPORT_SYMBOL
+0x9f46ced8	__sw_hweight64	vmlinux	EXPORT_SYMBOL
 0xc263af2a	__task_pid_nr_ns	vmlinux	EXPORT_SYMBOL
 0x6b1ef4ca	__test_set_page_writeback	vmlinux	EXPORT_SYMBOL
 0x319e0726	__tracepoint_kmalloc	vmlinux	EXPORT_SYMBOL
