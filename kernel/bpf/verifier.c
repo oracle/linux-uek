@@ -2997,7 +2997,7 @@ static void find_good_pkt_pointers(struct bpf_verifier_state *state,
 
 	new_range = dst_reg->off;
 	if (range_right_open)
-		new_range--;
+		new_range++;
 
 	/* Examples for register markings:
 	 *
