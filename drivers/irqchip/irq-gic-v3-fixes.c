@@ -98,7 +98,7 @@ out:
 	spin_unlock_irqrestore(&gic_ipitrack[dest_cpu][irq].lock, flags);
 }
 
-static bool __maybe_unused gicv3_enable_quirk_otx2(void *data)
+static bool __maybe_unused gicv3_enable_quirk_otx(void *data)
 {
 	int cpu, ipi;
 
@@ -117,32 +117,51 @@ static const struct gic_quirk gicv3_quirks[] = {
 		.desc	= "GIC V3: IPI Miss",
 		.iidr	= 0xb100034c,
 		.mask	= 0xff000fff,
-		.init	= gicv3_enable_quirk_otx2,
+		.init	= gicv3_enable_quirk_otx,
 	},
 	{
 		.desc	= "GIC V3: IPI Miss",
 		.iidr	= 0xb200034c,
 		.mask	= 0xff000fff,
-		.init	= gicv3_enable_quirk_otx2,
+		.init	= gicv3_enable_quirk_otx,
 	},
 	{
 		.desc	= "GIC V3: IPI Miss",
 		.iidr	= 0xb300034c,
 		.mask	= 0xff000fff,
-		.init	= gicv3_enable_quirk_otx2,
+		.init	= gicv3_enable_quirk_otx,
 	},
 	{
 		.desc	= "GIC V3: IPI Miss",
 		.iidr	= 0xb400034c,
 		.mask	= 0xff000fff,
-		.init	= gicv3_enable_quirk_otx2,
+		.init	= gicv3_enable_quirk_otx,
 	},
 	{
 		.desc	= "GIC V3: IPI Miss",
 		.iidr	= 0xb500034c,
 		.mask	= 0xff000fff,
-		.init	= gicv3_enable_quirk_otx2,
+		.init	= gicv3_enable_quirk_otx,
 	},
+	{
+		.desc	= "GIC V3: IPI Miss",
+		.iidr	= 0xa100034c, /* 88xx */
+		.mask	= 0xff000fff,
+		.init	= gicv3_enable_quirk_otx,
+	},
+	{
+		.desc	= "GIC V3: IPI Miss",
+		.iidr	= 0xa200034c, /* 81xx */
+		.mask	= 0xff000fff,
+		.init	= gicv3_enable_quirk_otx,
+	},
+	{
+		.desc	= "GIC V3: IPI Miss",
+		.iidr	= 0xa300034c, /* 83xx */
+		.mask	= 0xff000fff,
+		.init	= gicv3_enable_quirk_otx,
+	},
+
 	{ /* NULL entry */
 		0,
 		0,
