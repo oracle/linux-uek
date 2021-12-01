@@ -141,6 +141,7 @@ enum prbs_pattern {
 	PRBS_32 = 32,
 	PRBS_SSPRQ,
 	PRBS_K28_5,
+	PRBS_31Q,
 
 	PRBS_11_0 = PAM4_PATTERN(11),
 	PRBS_11_1,
@@ -175,6 +176,7 @@ static struct {
 	PRBS(32),
 	PRBS(SSPRQ),
 	PRBS(K28_5),
+	PRBS(31Q),
 
 	PRBS(11_0),
 	PRBS(11_1),
