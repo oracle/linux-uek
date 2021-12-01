@@ -33,16 +33,14 @@
 #include <linux/percpu.h>
 #include <linux/seq_file.h>
 #include <linux/proc_fs.h>
-#include <linux/export.h>
 
 #include "rds.h"
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rds_statistics, rds_stats);
-EXPORT_PER_CPU_SYMBOL_GPL(rds_stats);
 
 /* :.,$s/unsigned long\>.*\<s_\(.*\);/"\1",/g */
 
-static const char *const rds_stat_names[] = {
+static char *rds_stat_names[] = {
 	"conn_reset",
 	"recv_drop_bad_checksum",
 	"recv_drop_old_seq",
@@ -58,8 +56,8 @@ static const char *const rds_stat_names[] = {
 	"recv_ping",
 	"send_queue_empty",
 	"send_queue_full",
-	"send_lock_contention",
-	"send_lock_queue_raced",
+	"send_sem_contention",
+	"send_sem_queue_raced",
 	"send_immediate_retry",
 	"send_delayed_retry",
 	"send_drop_acked",
@@ -76,13 +74,10 @@ static const char *const rds_stat_names[] = {
 	"cong_update_received",
 	"cong_send_error",
 	"cong_send_blocked",
-	"recv_bytes_added_to_sock",
-	"recv_bytes_freed_fromsock",
-	"send_stuck_rm",
 };
 
 void rds_stats_info_copy(struct rds_info_iterator *iter,
-			 uint64_t *values, const char *const *names, size_t nr)
+			 uint64_t *values, char **names, size_t nr)
 {
 	struct rds_info_counter ctr;
 	size_t i;
@@ -90,13 +85,11 @@ void rds_stats_info_copy(struct rds_info_iterator *iter,
 	for (i = 0; i < nr; i++) {
 		BUG_ON(strlen(names[i]) >= sizeof(ctr.name));
 		strncpy(ctr.name, names[i], sizeof(ctr.name) - 1);
-		ctr.name[sizeof(ctr.name) - 1] = '\0';
 		ctr.value = values[i];
 
 		rds_info_copy(iter, &ctr, sizeof(ctr));
 	}
 }
-EXPORT_SYMBOL_GPL(rds_stats_info_copy);
 
 /*
  * This gives global counters across all the transports.  The strings
@@ -148,7 +141,7 @@ void rds_stats_exit(void)
 	rds_info_deregister_func(RDS_INFO_COUNTERS, rds_stats_info);
 }
 
-int rds_stats_init(void)
+int __init rds_stats_init(void)
 {
 	rds_info_register_func(RDS_INFO_COUNTERS, rds_stats_info);
 	return 0;
