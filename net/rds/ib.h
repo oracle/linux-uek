@@ -484,13 +484,6 @@ struct rds_ib_device {
 	struct completion	*rid_dev_rem_complete;
 };
 
-static inline int ibdev_to_node(struct ib_device *ibdev)
-{
-	struct device *parent;
-
-	parent = ibdev->dev.parent;
-	return parent ? dev_to_node(parent) : NUMA_NO_NODE;
-}
 #define rdsibdev_to_node(rdsibdev) ibdev_to_node(rdsibdev->dev)
 
 /* bits for i_ack_flags */
@@ -617,7 +610,7 @@ static inline __s32 rds_qp_num(struct rds_connection *conn, int dst)
 /* ib.c */
 extern struct workqueue_struct *rds_aux_wq;
 extern struct rds_transport rds_ib_transport;
-extern void rds_ib_add_one(struct ib_device *device);
+extern int rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
 int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);

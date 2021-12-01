@@ -161,15 +161,14 @@ static int rds_pin_pages(unsigned long user_addr, unsigned int nr_pages,
 	int gup_flags = FOLL_LONGTERM | (write ? FOLL_WRITE : 0);
 
 	mmgrab(mm);
-	down_read(&mm->mmap_sem);
-	ret = get_user_pages(user_addr, nr_pages, gup_flags, pages, NULL);
+	down_read(&mm->mmap_lock);
+	ret = pin_user_pages(user_addr, nr_pages, gup_flags, pages, NULL);
 
 	if (ret >= 0 && (unsigned) ret < nr_pages) {
-		while (ret--)
-			put_page(pages[ret]);
+		unpin_user_pages(pages, ret);
 		ret = -EFAULT;
 	}
-	up_read(&mm->mmap_sem);
+	up_read(&mm->mmap_lock);
 	mmdrop(mm);
 
 	return ret;
@@ -298,8 +297,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 						 cp ? cp->cp_conn : NULL);
 
 	if (IS_ERR(trans_private)) {
-		for (i = 0 ; i < nents; i++)
-			put_page(sg_page(&sg[i]));
+		unpin_user_pages(pages, nents);
 		kfree(sg);
 		ret = PTR_ERR(trans_private);
 		reason = "get_mr failed for transport";
@@ -355,21 +353,20 @@ out:
 	return ret;
 }
 
-int rds_get_mr(struct rds_sock *rs, char __user *optval, int optlen)
+int rds_get_mr(struct rds_sock *rs, sockptr_t optval, int optlen)
 {
 	struct rds_get_mr_args args;
 
 	if (optlen != sizeof(struct rds_get_mr_args))
 		return -EINVAL;
 
-	if (copy_from_user(&args, (struct rds_get_mr_args __user *)optval,
-			   sizeof(struct rds_get_mr_args)))
+        if (copy_from_sockptr(&args, optval, sizeof(struct rds_get_mr_args)))
 		return -EFAULT;
 
 	return __rds_rdma_map(rs, &args, NULL, NULL, NULL);
 }
 
-int rds_get_mr_for_dest(struct rds_sock *rs, char __user *optval, int optlen)
+int rds_get_mr_for_dest(struct rds_sock *rs, sockptr_t optval, int optlen)
 {
 	struct rds_get_mr_for_dest_args args;
 	struct rds_get_mr_args new_args;
@@ -377,8 +374,7 @@ int rds_get_mr_for_dest(struct rds_sock *rs, char __user *optval, int optlen)
 	if (optlen != sizeof(struct rds_get_mr_for_dest_args))
 		return -EINVAL;
 
-	if (copy_from_user(&args, (struct rds_get_mr_for_dest_args __user *)optval,
-			   sizeof(struct rds_get_mr_for_dest_args)))
+        if (copy_from_sockptr(&args, optval, sizeof(struct rds_get_mr_for_dest_args)))
 		return -EFAULT;
 
 	/*
@@ -396,7 +392,7 @@ int rds_get_mr_for_dest(struct rds_sock *rs, char __user *optval, int optlen)
 /*
  * Free the MR indicated by the given R_Key
  */
-int rds_free_mr(struct rds_sock *rs, char __user *optval, int optlen)
+int rds_free_mr(struct rds_sock *rs, sockptr_t optval, int optlen)
 {
 	struct rds_free_mr_args args;
 	struct rds_mr *mr;
@@ -405,8 +401,7 @@ int rds_free_mr(struct rds_sock *rs, char __user *optval, int optlen)
 	if (optlen != sizeof(struct rds_free_mr_args))
 		return -EINVAL;
 
-	if (copy_from_user(&args, (struct rds_free_mr_args __user *)optval,
-			   sizeof(struct rds_free_mr_args)))
+        if (copy_from_sockptr(&args, optval, sizeof(struct rds_free_mr_args)))
 		return -EFAULT;
 
 	/*
@@ -506,11 +501,7 @@ void rds_rdma_free_op(struct rm_rdma_op *ro)
 		/* Mark page dirty if it was possibly modified, which
 		 * is the case for a RDMA_READ which copies from remote
 		 * to local memory */
-		if (!ro->op_write) {
-			WARN_ON_ONCE(!page->mapping && irqs_disabled());
-			set_page_dirty(page);
-		}
-		put_page(page);
+		unpin_user_pages_dirty_lock(&page, 1, !ro->op_write);
 	}
 
 	kfree(ro->op_notifier);
@@ -525,8 +516,7 @@ void rds_atomic_free_op(struct rm_atomic_op *ao)
 	/* Mark page dirty if it was possibly modified, which
 	 * is the case for a RDMA_READ which copies from remote
 	 * to local memory */
-	set_page_dirty(page);
-	put_page(page);
+	unpin_user_pages_dirty_lock(&page, 1, true);
 
 	kfree(ao->op_notifier);
 	ao->op_notifier = NULL;
@@ -886,7 +876,7 @@ static int rds_cmsg_atomic(struct rds_sock *rs, struct rds_message *rm,
 	return ret;
 err:
 	if (page)
-		put_page(page);
+		unpin_user_page(page);
 	rm->atomic.op_active = 0;
 	kfree(rm->atomic.op_notifier);
 
