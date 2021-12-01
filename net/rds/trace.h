@@ -95,7 +95,7 @@
 	__field(void *, conn)			\
 	__field(void *, cp)
 
-#define rds_cgroup_id(cgrp)	(cgrp ? (__u64)cgroup_get_kernfs_id(cgrp) : 0)
+#define rds_cgroup_id(cgrp)	((cgrp) ? cgroup_id(cgrp) : 0)
 
 #define rds_netns_inum(rs)	(rs ? rds_rs_to_ns_inum(rs) : 0)
 
