@@ -339,7 +339,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		__rds_conn_path_init(conn, cp, is_outgoing);
 		cp->cp_index = i;
 
-		cp->cp_wq = alloc_ordered_workqueue("krds_cp_wq#%lu/%d", 0,
+		cp->cp_wq = alloc_ordered_workqueue("krds_cp_wq#%d/%d", 0,
 						    atomic_read(&conn->c_trans->t_conn_count), i);
 		if (!cp->cp_wq) {
 			while (--i >= 0) {
