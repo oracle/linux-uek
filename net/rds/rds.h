@@ -500,7 +500,7 @@ struct rds_ext_header_rdma_bytes {
 /* The following values are whitelisted for usercopy */
 struct rds_inc_usercopy {
 	rds_rdma_cookie_t	rdma_cookie;
-	struct timeval		rx_tstamp;
+	struct __kernel_old_timeval rx_tstamp;
 };
 
 struct rds_incoming {
@@ -1352,9 +1352,11 @@ extern unsigned int rds_async_send_enabled;
 
 /* rdma.c */
 void rds_rdma_unuse(struct rds_sock *rs, u32 r_key, int force);
-int rds_get_mr(struct rds_sock *rs, char __user *optval, int optlen);
-int rds_get_mr_for_dest(struct rds_sock *rs, char __user *optval, int optlen);
-int rds_free_mr(struct rds_sock *rs, char __user *optval, int optlen);
+
+int rds_get_mr(struct rds_sock *rs, sockptr_t optval, int optlen);
+int rds_get_mr_for_dest(struct rds_sock *rs, sockptr_t optval, int optlen);
+int rds_free_mr(struct rds_sock *rs, sockptr_t optval, int optlen);
+
 void rds_rdma_drop_keys(struct rds_sock *rs);
 int rds_rdma_extra_size(struct rds_rdma_args *args);
 
