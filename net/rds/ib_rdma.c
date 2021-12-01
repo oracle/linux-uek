@@ -111,6 +111,7 @@ struct rds_ib_mr_pool {
 	unsigned                unmap_fmr_cpu;
 	struct ib_fmr_attr	fmr_attr;
 	bool			use_fastreg;
+	bool                    flush_ongoing;
 
 	spinlock_t		busy_lock; /* protect ops on 'busy_list' */
 	/* All in use MRs allocated from this pool are listed here. This list
@@ -511,6 +512,7 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	pool->fmr_attr.max_maps = rds_ibdev->fmr_max_remaps;
 	pool->fmr_attr.page_shift = PAGE_SHIFT;
 	atomic_set(&pool->max_items_soft, pool->max_items);
+	pool->flush_ongoing = false;
 
 	if (rds_ibdev->use_fastreg) {
 		INIT_DELAYED_WORK(&pool->frwr_clean_worker,
@@ -1057,6 +1059,9 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 		}
 	}
 
+	WRITE_ONCE(pool->flush_ongoing, true);
+	smp_wmb();
+
 	/* Get the list of all MRs to be dropped. Ordering matters -
 	 * we want to put drop_list ahead of free_list.
 	 */
@@ -1142,6 +1147,8 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	atomic_sub(nfreed, &pool->item_count);
 
 out:
+	WRITE_ONCE(pool->flush_ongoing, false);
+	smp_wmb();
 	mutex_unlock(&pool->flush_lock);
 	if (waitqueue_active(&pool->flush_wait))
 		wake_up(&pool->flush_wait);
@@ -1432,11 +1439,17 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 	 */
 	if (atomic_read(&pool->free_pinned) >= pool->max_free_pinned ||
 	    atomic_read(&pool->dirty_count) >=
-	    atomic_read(&pool->max_items_soft) / 5)
-		rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
-					     rds_ib_fmr_wq,
-					     &pool->flush_worker, 10,
-					     "flush frwr");
+	    atomic_read(&pool->max_items_soft) / 5) {
+		smp_rmb();
+		if (!READ_ONCE(pool->flush_ongoing)) {
+			rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
+						     rds_ib_fmr_wq,
+						     &pool->flush_worker, 10,
+						     "flush frwr");
+		} else {
+			rds_ib_stats_inc(s_ib_rdma_flush_mr_pool_avoided);
+		}
+	}
 
 	if (invalidate) {
 		if (likely(!in_interrupt())) {
