@@ -1050,8 +1050,9 @@ static void __rds_rdma_conn_dev_rele(struct rds_ib_connection *ic)
 			       DMA_FROM_DEVICE);
 
 	if (ic->i_ack) {
-		ib_dma_free_coherent(dev, sizeof(struct rds_header),
-				     ic->i_ack, ic->i_ack_dma);
+		ib_dma_unmap_single(dev, ic->i_ack_dma, sizeof(struct rds_header),
+				    DMA_BIDIRECTIONAL);
+		kfree(ic->i_ack);
 		ic->i_ack = NULL;
 	}
 
@@ -1237,11 +1238,20 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	ic->i_ack = ib_dma_alloc_coherent(dev, sizeof(struct rds_header),
-				       &ic->i_ack_dma, GFP_KERNEL);
+	ic->i_ack = kzalloc_node(sizeof(struct rds_header), GFP_KERNEL, ibdev_to_node(dev));
 	if (!ic->i_ack) {
 		ret = -ENOMEM;
-		reason = "ib_dma_alloc_coherent ack failed";
+		reason = "kzalloc_node ack failed";
+		goto qp_out;
+	}
+
+	ic->i_ack_dma = ib_dma_map_single(dev, ic->i_ack, sizeof(struct rds_header),
+					  DMA_BIDIRECTIONAL);
+	ret = ib_dma_mapping_error(dev, ic->i_ack_dma);
+	if (ret) {
+		kfree(ic->i_ack);
+		ic->i_ack = NULL;
+		reason = "ib_dma_map_single ack failed";
 		goto qp_out;
 	}
 
@@ -1311,8 +1321,9 @@ sends_out:
 	vfree(ic->i_sends);
 	ic->i_sends = NULL;
 ack_out:
-	ib_dma_free_coherent(dev, sizeof(struct rds_header),
-			     ic->i_ack, ic->i_ack_dma);
+	ib_dma_unmap_single(dev, ic->i_ack_dma, sizeof(struct rds_header),
+			    DMA_BIDIRECTIONAL);
+	kfree(ic->i_ack);
 qp_out:
 	rdma_destroy_qp(ic->i_cm_id);
 out:
@@ -1785,7 +1796,8 @@ out:
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
-		rdma_reject(cm_id, &err, sizeof(int));
+		rdma_reject(cm_id, &err, sizeof(int),
+			    IB_CM_REJ_CONSUMER_DEFINED);
 	if (ic)
 		up_read(&ic->i_cm_id_free_lock);
 
