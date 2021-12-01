@@ -1547,8 +1547,8 @@ static int rds_ib_map_scatterlist(struct rds_ib_device *rds_ibdev,
 		return -EBUSY;
 	}
 
-	ret = ib_map_mr_sg_zbva(ibmr->mr, sg, sg_len, &off, PAGE_SIZE);
-	if (unlikely(ret != sg_len)) {
+	ret = ib_map_mr_sg_zbva(ibmr->mr, sg, sg_dma_len, &off, PAGE_SIZE);
+	if (unlikely(ret != sg_dma_len)) {
 		ibmr->fr_state = MR_IS_STALE;
 		ret = ret < 0 ? ret : -EINVAL;
 		goto out_unmap;
