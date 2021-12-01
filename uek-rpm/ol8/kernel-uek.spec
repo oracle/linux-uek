@@ -1213,8 +1213,7 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make -s ARCH=$Arch %{oldconfig_target} > /dev/null
-    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
-    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
+    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
 
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
