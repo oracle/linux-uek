@@ -191,7 +191,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 
 	cp->cp_conn = conn;
 	rds_conn_path_state_change(cp, RDS_CONN_DOWN, DR_DEFAULT, 0);
-	cp->cp_reconnect_start = get_seconds();
+	cp->cp_reconnect_start = ktime_get_real_seconds();
 	cp->cp_reconnect_warn = 1;
 	cp->cp_conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 
@@ -1237,7 +1237,7 @@ EXPORT_SYMBOL_GPL(rds_conn_path_trace_state_change);
 void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 {
 	struct rds_connection *conn = cp->cp_conn;
-	unsigned long now = get_seconds();
+	unsigned long now = ktime_get_real_seconds();
 
 	if (conn->c_trans->conn_path_reset) {
 		unsigned flags = RDS_CONN_PATH_RESET_WATCHDOG;
