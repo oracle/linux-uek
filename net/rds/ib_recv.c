@@ -1655,12 +1655,24 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 		return 1;
 	}
 
-	rds_ibdev->srq->s_recv_hdrs = ib_dma_alloc_coherent(rds_ibdev->dev,
+	rds_ibdev->srq->s_recv_hdrs = kzalloc_node(
 				rds_ibdev->srq->s_n_wr *
 				sizeof(struct rds_header),
-				&rds_ibdev->srq->s_recv_hdrs_dma, GFP_KERNEL);
+				GFP_KERNEL, ibdev_to_node(rds_ibdev->dev));
 	if (!rds_ibdev->srq->s_recv_hdrs) {
-		printk(KERN_WARNING "ib_dma_alloc_coherent failed\n");
+		printk(KERN_WARNING "RDS: kzalloc_node failed\n");
+		return 1;
+	}
+
+	rds_ibdev->srq->s_recv_hdrs_dma = ib_dma_map_single(rds_ibdev->dev,
+				rds_ibdev->srq->s_recv_hdrs,
+				rds_ibdev->srq->s_n_wr *
+				sizeof(struct rds_header),
+				DMA_BIDIRECTIONAL);
+	if (ib_dma_mapping_error(rds_ibdev->dev, rds_ibdev->srq->s_recv_hdrs_dma)) {
+		kfree(rds_ibdev->srq->s_recv_hdrs);
+		rds_ibdev->srq->s_recv_hdrs = NULL;
+		printk(KERN_WARNING "RDS: ib_dma_map_single failed\n");
 		return 1;
 	}
 
@@ -1694,22 +1706,20 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 {
-	int ret;
-
 	cancel_delayed_work_sync(&rds_ibdev->srq->s_rearm_w);
 	cancel_delayed_work_sync(&rds_ibdev->srq->s_refill_w);
 
-	ret = ib_destroy_srq(rds_ibdev->srq->s_srq);
-	if (ret)
-		printk(KERN_WARNING "RDS: ib_destroy_srq failed %d\n", ret);
+	ib_destroy_srq(rds_ibdev->srq->s_srq);
 	rds_ibdev->srq->s_srq = NULL;
 
-	if (rds_ibdev->srq->s_recv_hdrs)
-		ib_dma_free_coherent(rds_ibdev->dev,
-				rds_ibdev->srq->s_n_wr *
-				sizeof(struct rds_header),
-				rds_ibdev->srq->s_recv_hdrs,
-				rds_ibdev->srq->s_recv_hdrs_dma);
+	if (rds_ibdev->srq->s_recv_hdrs) {
+		ib_dma_unmap_single(rds_ibdev->dev,
+				    rds_ibdev->srq->s_recv_hdrs_dma,
+				    rds_ibdev->srq->s_n_wr *
+				    sizeof(struct rds_header),
+				    DMA_BIDIRECTIONAL);
+		kfree(rds_ibdev->srq->s_recv_hdrs);
+	}
 
 	rds_ib_srq_clear_ring(rds_ibdev);
 	vfree(rds_ibdev->srq->s_recvs);

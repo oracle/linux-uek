@@ -948,7 +948,7 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 	    sock_flag(rds_rs_to_sk(rs), SOCK_RCVTSTAMP)) {
 		ret = put_cmsg(msg, SOL_SOCKET,
 			       SO_TIMESTAMP_OLD,
-			       sizeof(struct timeval),
+			       sizeof(inc->i_usercopy.rx_tstamp),
 			       &inc->i_usercopy.rx_tstamp);
 		if (ret)
 			goto out;
