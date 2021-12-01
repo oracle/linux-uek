@@ -324,9 +324,9 @@ struct rds6_info_rdma_connection {
 };
 
 struct rds_path_info {
-	__kernel_time_t	attempt_time;
-	__kernel_time_t	connect_time;
-	__kernel_time_t	reset_time;
+	__s64		attempt_time;
+	__s64		connect_time;
+	__s64		reset_time;
 	__u32		disconnect_reason;
 	__u32		connect_attempts;
 	unsigned int	index;
