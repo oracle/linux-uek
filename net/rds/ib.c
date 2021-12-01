@@ -84,7 +84,7 @@ static struct ib_mr *rds_ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags)
 	struct ib_mr *mr;
 	int err;
 
-	err = ib_check_mr_access(mr_access_flags);
+	err = ib_check_mr_access(pd->device, mr_access_flags);
 	if (err)
 		return ERR_PTR(err);
 
@@ -948,6 +948,7 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 
 		rdma_read_gids(ic->i_cm_id, (union ib_gid *)&iinfo6->src_gid,
 			       (union ib_gid *)&iinfo6->dst_gid);
+
 		rds_ibdev = ic->rds_ibdev;
 		iinfo6->max_send_wr = ic->i_send_ring.w_nr;
 		iinfo6->max_recv_wr = ic->i_recv_ring.w_nr;
@@ -1131,8 +1132,9 @@ static void rds_dev_removal_worker(struct work_struct *work)
 	rds_ib_remove_one(rds_ibdev->dev, rds_ibdev);
 }
 
-void rds_ib_add_one(struct ib_device *device)
+int rds_ib_add_one(struct ib_device *device)
 {
+	int error = 0;
 	struct rds_ib_device *rds_ibdev;
 	struct ib_device_attr *dev_attr;
 	bool has_frwr, has_fmr;
@@ -1141,19 +1143,21 @@ void rds_ib_add_one(struct ib_device *device)
 
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
-		return;
+		return -EOPNOTSUPP;
 
 	trace_rds_ib_add_device(device, NULL, NULL, NULL,
 				"adding IB device", 0);
 
 	dev_attr = kmalloc(sizeof(*dev_attr), GFP_KERNEL);
 	if (!dev_attr) {
+		error = -ENOMEM;
 		reason = "could not allocate dev_attr";
 		goto trace_err;
 	}
 
 	memset(&uhw, 0, sizeof(uhw));
 	if ((*device->ops.query_device)(device, dev_attr, &uhw)) {
+		error = -ENOSYS;
 		reason = "query device failed";
 		goto free_attr;
 	}
@@ -1161,6 +1165,7 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev = kzalloc_node(sizeof(*rds_ibdev), GFP_KERNEL,
 				 ibdev_to_node(device));
 	if (!rds_ibdev) {
+		error = -ENOMEM;
 		reason = "could not allocate rds_ibdev";
 		goto free_attr;
 	}
@@ -1186,7 +1191,7 @@ void rds_ib_add_one(struct ib_device *device)
 		rds_ibdev->max_sge = RDS_IB_MAX_SGE;
 
 	WARN_ON(rds_ibdev->max_sge < 2);
-	rds_ibdev->fmr_max_remaps = dev_attr->max_map_per_fmr ?: 32;
+	rds_ibdev->fmr_max_remaps = 32;
 
 	rds_ibdev->max_1m_fmrs = dev_attr->max_mr ?
 		min_t(unsigned int, dev_attr->max_mr,
@@ -1206,6 +1211,7 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev->dev = device;
 	rds_ibdev->pd = ib_alloc_pd(device, 0);
 	if (IS_ERR(rds_ibdev->pd)) {
+		error = PTR_ERR(rds_ibdev->pd);
 		rds_ibdev->pd = NULL;
 		reason = "ib_alloc_pd failed";
 		goto put_dev;
@@ -1214,6 +1220,7 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev->rid_dev_wq = alloc_workqueue("rds_%s_wq", WQ_UNBOUND, 0,
 						device->name);
 	if (!rds_ibdev->rid_dev_wq) {
+		error = -ENOMEM;
 		reason = "no wq";
 		goto put_dev;
 	}
@@ -1222,6 +1229,7 @@ void rds_ib_add_one(struct ib_device *device)
 					device->num_comp_vectors, GFP_KERNEL);
 	if (!rds_ibdev->vector_load) {
 		pr_err("RDS/IB: failed to allocate vector memory\n");
+		error = -ENOMEM;
 		reason = "failed to allocate vector memory";
 		goto put_dev;
 	}
@@ -1229,22 +1237,21 @@ void rds_ib_add_one(struct ib_device *device)
 
 	rds_ibdev->mr = rds_ib_get_dma_mr(rds_ibdev->pd, IB_ACCESS_LOCAL_WRITE);
 	if (IS_ERR(rds_ibdev->mr)) {
+		error = PTR_ERR(rds_ibdev->mr);
 		rds_ibdev->mr = NULL;
 		reason = "rds_ib_get_dma_mr failed";
 		goto put_dev;
 	}
 
 	has_frwr = (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS);
-	has_fmr = device->ops.alloc_fmr &&
-		  device->ops.dealloc_fmr &&
-		  device->ops.map_phys_fmr &&
-		  device->ops.unmap_fmr;
+	has_fmr = false;
 
 	if (has_frwr && (!has_fmr || prefer_frwr)) {
 		INIT_WORK(&rds_ibdev->fastreg_reset_w, rds_ib_reset_fastreg);
 		init_rwsem(&rds_ibdev->fastreg_lock);
 		atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
-		if (rds_ib_setup_fastreg(rds_ibdev)) {
+		error = rds_ib_setup_fastreg(rds_ibdev);
+		if (error) {
 			pr_err("RDS/IB: Failed to setup fastreg resources\n");
 			reason = "rds_ib_setup_fastreg failed";
 			goto put_dev;
@@ -1261,6 +1268,7 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev->mr_1m_pool =
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_1M_POOL);
 	if (IS_ERR(rds_ibdev->mr_1m_pool)) {
+		error = PTR_ERR(rds_ibdev->mr_1m_pool);
 		rds_ibdev->mr_1m_pool = NULL;
 		reason = "rds_ib_create_mr_pool (1k) failed";
 		goto put_dev;
@@ -1269,17 +1277,20 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev->mr_8k_pool =
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_8K_POOL);
 	if (IS_ERR(rds_ibdev->mr_8k_pool)) {
+		error = PTR_ERR(rds_ibdev->mr_8k_pool);
 		rds_ibdev->mr_8k_pool = NULL;
 		reason = "reds_ib_create_mr_pool (8k) failed";
 		goto put_dev;
 	}
 
 	if (rds_ib_srq_init(rds_ibdev)) {
+		error = -EIO;
 		reason = "rds_ib_srq_init failed";
 		goto put_dev;
 	}
 
-	if (rds_ib_alloc_caches(rds_ibdev)) {
+	error = rds_ib_alloc_caches(rds_ibdev);
+	if (error) {
 		reason = "rds_ib_alloc_caches failed";
 		goto put_dev;
 	}
@@ -1308,7 +1319,9 @@ free_attr:
 trace_err:
 	if (reason)
 		trace_rds_ib_add_device_err(device, NULL, NULL, NULL,
-					    reason, 0);
+					    reason, error);
+
+	return error;
 }
 
 static void rds_ib_unregister_client(void)
