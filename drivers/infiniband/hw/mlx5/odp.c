@@ -1676,7 +1676,16 @@ get_prefetchable_mr(struct ib_pd *pd, enum ib_uverbs_advise_mr_advice advice,
 
 	mr = container_of(mmkey, struct mlx5_ib_mr, mmkey);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (mr->ibmr.pd != pd) {
+#else
+	/* In the case of Oracle Shared PD, we cannot compare the PD
+	 * values as they are likely to be different. However, since
+	 * in this case, mr->ibmr.pd and pd reference the same device,
+	 * we can compare their pdn values to see if they match.
+	 */
+	if (to_mpd(mr->ibmr.pd)->pdn != to_mpd(pd)->pdn) {
+#endif
 		mr = NULL;
 		goto end;
 	}
