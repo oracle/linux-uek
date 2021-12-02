@@ -349,8 +349,8 @@ static int rds_ib_recv_refill_one(struct rds_connection *conn,
 	if (!recv->r_frag)
 		goto out;
 
-	ret = ib_dma_map_sg(ic->i_cm_id->device, recv->r_frag->f_sg,
-			    ic->i_frag_pages, DMA_FROM_DEVICE);
+	ib_dma_map_sg(ic->i_cm_id->device, recv->r_frag->f_sg,
+		      ic->i_frag_pages, DMA_FROM_DEVICE);
 
 	sge = recv->r_sge;
 	sge->addr = ic->i_recv_hdrs_dma[recv - ic->i_recvs];
