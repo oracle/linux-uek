@@ -366,9 +366,14 @@ void btrfs_update_global_block_rsv(struct btrfs_fs_info *fs_info)
 
 	/*
 	 * We at a minimum are going to modify the csum root, the tree root, and
-	 * the extent root.
+	 * the extent root. If the free space tree exists we may need to update
+	 * it as well.
 	 */
 	min_items = 3;
+	if (fs_info->free_space_root) {
+		num_bytes += btrfs_root_used(&fs_info->free_space_root->root_item);
+		min_items++;
+	}
 
 	/*
 	 * But we also want to reserve enough space so we can do the fallback
