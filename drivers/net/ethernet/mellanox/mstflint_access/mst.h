@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR Linux-OpenIB */
 /*
- * Copyright (c) 2018 Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2018-2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
 
 #ifndef _MST_H_
