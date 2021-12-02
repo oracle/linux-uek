@@ -91,7 +91,7 @@ struct otx2_mmio {
   /** Length that has been mapped to phys. address space. */
 	unsigned long mapped_len;
   /** The physical address to which the PCI address space is mapped. */
-	void *hw_addr;
+	void __iomem *hw_addr;
   /** Flag indicating the mapping was successful. */
 	int done;
 };

@@ -17,6 +17,8 @@
 #include <linux/mutex.h>
 #include <net/ip.h>
 #include <linux/iommu.h>
+
+#include "rvu.h"
 #include "rvu_reg.h"
 #include "mbox.h"
 #include "npa.h"
@@ -1303,21 +1305,11 @@ static int otx2_npa_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pci_set_drvdata(pdev, npa);
 	npa->pdev = pdev;
 
-	npa->mmio[NPA_REG_BASE].start = pci_resource_start(pdev, REG_BAR_NUM);
-	npa->mmio[NPA_REG_BASE].len = pci_resource_len(pdev, REG_BAR_NUM);
-	npa->mmio[NPA_REG_BASE].hw_addr =
-	    ioremap_wc(npa->mmio[NPA_REG_BASE].start,
-		       npa->mmio[NPA_REG_BASE].len);
-	npa->mmio[NPA_REG_BASE].mapped_len = npa->mmio[NPA_REG_BASE].len;
+	npa->mmio[NPA_REG_BASE].hw_addr = pcim_iomap(pdev, REG_BAR_NUM, 0);
 	dev_info(&pdev->dev, "REG BAR %p\n", npa->mmio[NPA_REG_BASE].hw_addr);
 
-	npa->mmio[AFPF_MBOX_BASE].start =
-	    pci_resource_start(pdev, MBOX_BAR_NUM);
-	npa->mmio[AFPF_MBOX_BASE].len = pci_resource_len(pdev, MBOX_BAR_NUM);
-	npa->mmio[AFPF_MBOX_BASE].hw_addr =
-	    ioremap_wc(npa->mmio[AFPF_MBOX_BASE].start,
-		       npa->mmio[AFPF_MBOX_BASE].len);
-	npa->mmio[AFPF_MBOX_BASE].mapped_len = npa->mmio[AFPF_MBOX_BASE].len;
+	npa->mmio[AFPF_MBOX_BASE].hw_addr =  ioremap_wc(pci_resource_start(pdev, MBOX_BAR_NUM),
+							pci_resource_len(pdev, MBOX_BAR_NUM));
 	dev_info(&pdev->dev, "MBOX BAR %p\n",
 		 npa->mmio[AFPF_MBOX_BASE].hw_addr);
 
@@ -1370,7 +1362,6 @@ err_free_irq_names:
 err_free_irq_vectors:
 	pci_free_irq_vectors(npa->pdev);
 err_free_privdev:
-	iounmap(npa->mmio[NPA_REG_BASE].hw_addr);
 	iounmap(npa->mmio[AFPF_MBOX_BASE].hw_addr);
 	pci_set_drvdata(pdev, NULL);
 	vfree(npa);
@@ -1574,10 +1565,16 @@ static int otx2_npa_sriov_enable(struct pci_dev *pdev, int num_vfs)
 
 	npa->num_vfs = num_vfs;
 
-	/* Map PF-VF mailbox memory */
-	pf_vf_mbox_base =
-	    (u64) npa->mmio[NPA_REG_BASE].hw_addr + RVU_PF_VF_BAR4_ADDR;
-	pf_vf_mbox_base = readq((void __iomem *)(unsigned long)pf_vf_mbox_base);
+	/* Map PF-VF mailbox memory.
+	 * On CN10K platform, PF <-> VF mailbox region follows after
+	 * PF <-> AF mailbox region.
+	 */
+	if (pdev->subsystem_device == 0xB900)
+		pf_vf_mbox_base = pci_resource_start(pdev, PCI_MBOX_BAR_NUM) + MBOX_SIZE;
+	else
+		pf_vf_mbox_base = readq((void __iomem *)((u64)npa->mmio[NPA_REG_BASE].hw_addr +
+							 RVU_PF_VF_BAR4_ADDR));
+
 	if (!pf_vf_mbox_base) {
 		dev_err(&pdev->dev, "PF-VF Mailbox address not configured\n");
 		err = -ENOMEM;
@@ -1744,7 +1741,6 @@ static void otx2_npa_remove(struct pci_dev *pdev)
 
 	pci_free_irq_vectors(pdev);
 	/* Unmap regions */
-	iounmap(npa->mmio[NPA_REG_BASE].hw_addr);
 	iounmap(npa->mmio[AFPF_MBOX_BASE].hw_addr);
 	pci_set_drvdata(pdev, NULL);
 	pci_release_regions(pdev);
