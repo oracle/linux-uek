@@ -65,11 +65,10 @@ static struct acpi_scan_handler pci_root_handler = {
  */
 int acpi_is_root_bridge(acpi_handle handle)
 {
+	struct acpi_device *device = acpi_fetch_acpi_dev(handle);
 	int ret;
-	struct acpi_device *device;
 
-	ret = acpi_bus_get_device(handle, &device);
-	if (ret)
+	if (!device)
 		return 0;
 
 	ret = acpi_match_device_ids(device, root_device_ids);
@@ -226,11 +225,10 @@ static acpi_status acpi_pci_osc_support(struct acpi_pci_root *root, u32 flags)
 
 struct acpi_pci_root *acpi_pci_find_root(acpi_handle handle)
 {
+	struct acpi_device *device = acpi_fetch_acpi_dev(handle);
 	struct acpi_pci_root *root;
-	struct acpi_device *device;
 
-	if (acpi_bus_get_device(handle, &device) ||
-	    acpi_match_device_ids(device, root_device_ids))
+	if (!device || acpi_match_device_ids(device, root_device_ids))
 		return NULL;
 
 	root = acpi_driver_data(device);
