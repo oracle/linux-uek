@@ -454,6 +454,11 @@ int arch_decode_instruction(struct elf *elf, struct section *sec,
 
 		break;
 
+	case 0xcc:
+		/* int3 */
+		*type = INSN_TRAP;
+		break;
+
 	case 0xe3:
 		/* jecxz/jrcxz */
 		*type = INSN_JUMP_CONDITIONAL;
