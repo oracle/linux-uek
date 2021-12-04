@@ -237,5 +237,5 @@ fold_64:
 	pxor    %xmm2, %xmm1
 	PEXTRD  0x01, %xmm1, %eax
 
-	ret
+	RET
 ENDPROC(crc32_pclmul_le_16)

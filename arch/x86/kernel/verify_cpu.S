@@ -132,9 +132,9 @@ ENTRY(verify_cpu)
 .Lverify_cpu_no_longmode:
 	popf				# Restore caller passed flags
 	movl $1,%eax
-	ret
+	RET
 .Lverify_cpu_sse_ok:
 	popf				# Restore caller passed flags
 	xorl %eax, %eax
-	ret
+	RET
 ENDPROC(verify_cpu)

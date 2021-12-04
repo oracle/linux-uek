@@ -96,14 +96,14 @@ ENTRY(efi64_thunk)
 	addq	$8, %rsp
 	pop	%rbx
 	pop	%rbp
-	ret
+	RET
 ENDPROC(efi64_thunk)
 
 ENTRY(efi_exit32)
 	movq	func_rt_ptr(%rip), %rax
 	push	%rax
 	mov	%rdi, %rax
-	ret
+	RET
 ENDPROC(efi_exit32)
 
 	.code32

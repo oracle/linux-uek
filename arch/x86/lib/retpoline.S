@@ -29,7 +29,7 @@ ENTRY(__x86_retpoline_\reg)
 .Ldo_rop_\@:
 	mov	%\reg, (%_ASM_SP)
 	UNWIND_HINT_RET_OFFSET
-	ret
+	RET
 ENDPROC(__x86_retpoline_\reg)
 
 .endm

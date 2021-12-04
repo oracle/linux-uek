@@ -712,7 +712,7 @@ done_hash:
 	popq	%r13
 	popq	%r12
 	popq	%rbx
-	ret
+	RET
 ENDPROC(sha256_transform_rorx)
 
 .section	.rodata.cst512.K256, "aM", @progbits, 512

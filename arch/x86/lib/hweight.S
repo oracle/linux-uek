@@ -32,7 +32,7 @@ ENTRY(__sw_hweight32)
 	imull $0x01010101, %eax, %eax		# w_tmp *= 0x01010101
 	shrl $24, %eax				# w = w_tmp >> 24
 	__ASM_SIZE(pop,) %__ASM_REG(dx)
-	ret
+	RET
 ENDPROC(__sw_hweight32)
 EXPORT_SYMBOL(__sw_hweight32)
 
@@ -65,7 +65,7 @@ ENTRY(__sw_hweight64)
 
 	popq    %rdx
 	popq    %rdi
-	ret
+	RET
 #else /* CONFIG_X86_32 */
 	/* We're getting an u64 arg in (%eax,%edx): unsigned long hweight64(__u64 w) */
 	pushl   %ecx
@@ -77,7 +77,7 @@ ENTRY(__sw_hweight64)
 	addl    %ecx, %eax                      # result
 
 	popl    %ecx
-	ret
+	RET
 #endif
 ENDPROC(__sw_hweight64)
 EXPORT_SYMBOL(__sw_hweight64)

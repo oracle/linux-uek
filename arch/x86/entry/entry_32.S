@@ -786,7 +786,7 @@ ENTRY(schedule_tail_wrapper)
 	popl	%eax
 
 	FRAME_END
-	ret
+	RET
 ENDPROC(schedule_tail_wrapper)
 /*
  * A newly forked process directly context switches into this address.

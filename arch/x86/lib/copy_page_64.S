@@ -17,7 +17,7 @@ ENTRY(copy_page)
 	ALTERNATIVE "jmp copy_page_regs", "", X86_FEATURE_REP_GOOD
 	movl	$4096/8, %ecx
 	rep	movsq
-	ret
+	RET
 ENDPROC(copy_page)
 EXPORT_SYMBOL(copy_page)
 
@@ -85,5 +85,5 @@ ENTRY(copy_page_regs)
 	movq	(%rsp), %rbx
 	movq	1*8(%rsp), %r12
 	addq	$2*8, %rsp
-	ret
+	RET
 ENDPROC(copy_page_regs)

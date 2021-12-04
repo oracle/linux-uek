@@ -260,7 +260,7 @@ ENTRY(twofish_enc_blk)
 	pop	%ebx
 	pop	%ebp
 	mov	$1,	%eax
-	ret
+	RET
 ENDPROC(twofish_enc_blk)
 
 ENTRY(twofish_dec_blk)
@@ -317,5 +317,5 @@ ENTRY(twofish_dec_blk)
 	pop	%ebx
 	pop	%ebp
 	mov	$1,	%eax
-	ret
+	RET
 ENDPROC(twofish_dec_blk)

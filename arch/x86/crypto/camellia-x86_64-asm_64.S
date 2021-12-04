@@ -213,13 +213,13 @@ ENTRY(__camellia_enc_blk)
 	enc_outunpack(mov, RT1);
 
 	movq RR12, %r12;
-	ret;
+	RET;
 
 .L__enc_xor:
 	enc_outunpack(xor, RT1);
 
 	movq RR12, %r12;
-	ret;
+	RET;
 ENDPROC(__camellia_enc_blk)
 
 ENTRY(camellia_dec_blk)
@@ -257,7 +257,7 @@ ENTRY(camellia_dec_blk)
 	dec_outunpack();
 
 	movq RR12, %r12;
-	ret;
+	RET;
 ENDPROC(camellia_dec_blk)
 
 /**********************************************************************
@@ -448,14 +448,14 @@ ENTRY(__camellia_enc_blk_2way)
 
 	movq RR12, %r12;
 	popq %rbx;
-	ret;
+	RET;
 
 .L__enc2_xor:
 	enc_outunpack2(xor, RT2);
 
 	movq RR12, %r12;
 	popq %rbx;
-	ret;
+	RET;
 ENDPROC(__camellia_enc_blk_2way)
 
 ENTRY(camellia_dec_blk_2way)
@@ -495,5 +495,5 @@ ENTRY(camellia_dec_blk_2way)
 
 	movq RR12, %r12;
 	movq RXOR, %rbx;
-	ret;
+	RET;
 ENDPROC(camellia_dec_blk_2way)

@@ -40,7 +40,7 @@ ENTRY(__memset)
 	movl %edx,%ecx
 	rep stosb
 	movq %r9,%rax
-	ret
+	RET
 ENDPROC(memset)
 ENDPROC(__memset)
 EXPORT_SYMBOL(memset)
@@ -63,7 +63,7 @@ ENTRY(memset_erms)
 	movq %rdx,%rcx
 	rep stosb
 	movq %r9,%rax
-	ret
+	RET
 ENDPROC(memset_erms)
 
 .macro MEMSET_MOV OP fence
@@ -129,7 +129,7 @@ ENTRY(memset_\OP)
 	sfence
 	.endif
 	movq	%r10,%rax
-	ret
+	RET
 
 .Lbad_alignment_\@:
 	cmpq $7,%rdx

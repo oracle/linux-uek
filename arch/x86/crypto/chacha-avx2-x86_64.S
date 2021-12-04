@@ -193,7 +193,7 @@ ENTRY(chacha_2block_xor_avx2)
 
 .Ldone2:
 	vzeroupper
-	ret
+	RET
 
 .Lxorpart2:
 	# xor remaining bytes from partial register into output
@@ -498,7 +498,7 @@ ENTRY(chacha_4block_xor_avx2)
 
 .Ldone4:
 	vzeroupper
-	ret
+	RET
 
 .Lxorpart4:
 	# xor remaining bytes from partial register into output
@@ -992,7 +992,7 @@ ENTRY(chacha_8block_xor_avx2)
 .Ldone8:
 	vzeroupper
 	lea		-8(%r10),%rsp
-	ret
+	RET
 
 .Lxorpart8:
 	# xor remaining bytes from partial register into output

@@ -45,7 +45,7 @@ ENTRY(shr_Xsig)
 	popl	%ebx
 	popl	%esi
 	leave
-	ret
+	RET
 
 L_more_than_31:
 	cmpl	$64,%ecx
@@ -61,7 +61,7 @@ L_more_than_31:
 	movl	$0,8(%esi)
 	popl	%esi
 	leave
-	ret
+	RET
 
 L_more_than_63:
 	cmpl	$96,%ecx
@@ -76,7 +76,7 @@ L_more_than_63:
 	movl	%edx,8(%esi)
 	popl	%esi
 	leave
-	ret
+	RET
 
 L_more_than_95:
 	xorl	%eax,%eax
@@ -85,5 +85,5 @@ L_more_than_95:
 	movl	%eax,8(%esi)
 	popl	%esi
 	leave
-	ret
+	RET
 ENDPROC(shr_Xsig)

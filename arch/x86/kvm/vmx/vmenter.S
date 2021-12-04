@@ -48,14 +48,14 @@ ENTRY(vmx_vmenter)
 	je 2f
 
 1:	vmresume
-	ret
+	RET
 
 2:	vmlaunch
-	ret
+	RET
 
 3:	cmpb $0, kvm_rebooting
 	je 4f
-	ret
+	RET
 4:	ud2
 
 	.pushsection .fixup, "ax"
@@ -92,7 +92,7 @@ ENTRY(vmx_vmexit)
 	pop %_ASM_AX
 .Lvmexit_skip_rsb:
 #endif
-	ret
+	RET
 ENDPROC(vmx_vmexit)
 
 /**
@@ -231,7 +231,7 @@ ENTRY(__vmx_vcpu_run)
 	pop %edi
 #endif
 	pop %_ASM_BP
-	ret
+	RET
 
 	/* VM-Fail.  Out-of-line to avoid a taken Jcc after VM-Exit. */
 2:	mov $1, %eax
@@ -293,5 +293,5 @@ ENTRY(vmread_error_trampoline)
 	pop %_ASM_AX
 	pop %_ASM_BP
 
-	ret
+	RET
 ENDPROC(vmread_error_trampoline)

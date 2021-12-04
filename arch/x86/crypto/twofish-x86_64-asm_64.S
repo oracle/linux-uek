@@ -252,7 +252,7 @@ ENTRY(twofish_enc_blk)
 
 	popq	R1
 	movl	$1,%eax
-	ret
+	RET
 ENDPROC(twofish_enc_blk)
 
 ENTRY(twofish_dec_blk)
@@ -304,5 +304,5 @@ ENTRY(twofish_dec_blk)
 
 	popq	R1
 	movl	$1,%eax
-	ret
+	RET
 ENDPROC(twofish_dec_blk)

@@ -172,7 +172,7 @@ ENTRY(blake2s_compress_ssse3)
 	movdqu		%xmm1,0x10(%rdi)
 	movdqu		%xmm14,0x20(%rdi)
 .Lendofloop:
-	ret
+	RET
 ENDPROC(blake2s_compress_ssse3)
 #endif /* CONFIG_AS_SSSE3 */
 
@@ -253,6 +253,6 @@ ENTRY(blake2s_compress_avx512)
 	vmovdqu		%xmm1,0x10(%rdi)
 	vmovdqu		%xmm4,0x20(%rdi)
 	vzeroupper
-	retq
+	RET
 ENDPROC(blake2s_compress_avx512)
 #endif /* CONFIG_AS_AVX512 */

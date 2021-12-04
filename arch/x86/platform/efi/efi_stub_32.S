@@ -113,7 +113,7 @@ ENTRY(efi_call_phys)
 	leal	saved_return_addr, %edx
 	movl	(%edx), %ecx
 	pushl	%ecx
-	ret
+	RET
 ENDPROC(efi_call_phys)
 .previous
 

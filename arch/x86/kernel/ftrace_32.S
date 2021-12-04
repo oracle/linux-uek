@@ -22,7 +22,7 @@ EXPORT_SYMBOL(__fentry__)
 #endif
 
 ENTRY(function_hook)
-	ret
+	RET
 END(function_hook)
 
 ENTRY(ftrace_caller)
@@ -86,7 +86,7 @@ ftrace_graph_call:
 
 /* This is weak to keep gas from relaxing the jumps */
 WEAK(ftrace_stub)
-	ret
+	RET
 END(ftrace_caller)
 
 SYM_CODE_START(ftrace_regs_caller)
@@ -179,7 +179,7 @@ ENTRY(ftrace_graph_caller)
 	popl	%edx
 	popl	%ecx
 	popl	%eax
-	ret
+	RET
 END(ftrace_graph_caller)
 
 .globl return_to_handler

@@ -566,7 +566,7 @@ ENDPROC(efi64_stub_entry)
 	addq	$8, %rdx
 	jmp	1b
 2:
-	ret
+	RET
 
 	.code32
 /*

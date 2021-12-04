@@ -108,7 +108,7 @@ chacha_permute:
 	sub		$2,%r8d
 	jnz		.Ldoubleround
 
-	ret
+	RET
 ENDPROC(chacha_permute)
 
 ENTRY(chacha_block_xor_ssse3)
@@ -166,7 +166,7 @@ ENTRY(chacha_block_xor_ssse3)
 
 .Ldone:
 	FRAME_END
-	ret
+	RET
 
 .Lxorpart:
 	# xor remaining bytes from partial register into output
@@ -217,7 +217,7 @@ ENTRY(hchacha_block_ssse3)
 	movdqu		%xmm3,0x10(%rsi)
 
 	FRAME_END
-	ret
+	RET
 ENDPROC(hchacha_block_ssse3)
 
 ENTRY(chacha_4block_xor_ssse3)
@@ -762,7 +762,7 @@ ENTRY(chacha_4block_xor_ssse3)
 
 .Ldone4:
 	lea		-8(%r10),%rsp
-	ret
+	RET
 
 .Lxorpart4:
 	# xor remaining bytes from partial register into output

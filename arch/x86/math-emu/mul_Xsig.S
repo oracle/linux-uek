@@ -62,7 +62,7 @@ ENTRY(mul32_Xsig)
 
 	popl %esi
 	leave
-	ret
+	RET
 ENDPROC(mul32_Xsig)
 
 
@@ -115,7 +115,7 @@ ENTRY(mul64_Xsig)
 
 	popl %esi
 	leave
-	ret
+	RET
 ENDPROC(mul64_Xsig)
 
 
@@ -175,5 +175,5 @@ ENTRY(mul_Xsig_Xsig)
 
 	popl %esi
 	leave
-	ret
+	RET
 ENDPROC(mul_Xsig_Xsig)

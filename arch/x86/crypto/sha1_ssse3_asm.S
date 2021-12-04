@@ -99,7 +99,7 @@
 	pop	%rbp
 	pop	%r12
 	pop	%rbx
-	ret
+	RET
 
 	ENDPROC(\name)
 .endm

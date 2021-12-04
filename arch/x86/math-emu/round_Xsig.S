@@ -78,7 +78,7 @@ L_exit:
 	popl	%esi
 	popl	%ebx
 	leave
-	ret
+	RET
 ENDPROC(round_Xsig)
 
 
@@ -138,5 +138,5 @@ L_n_exit:
 	popl	%esi
 	popl	%ebx
 	leave
-	ret
+	RET
 ENDPROC(norm_Xsig)

@@ -17,7 +17,7 @@ ENTRY(clear_page_rep)
 	movl $4096/8,%ecx
 	xorl %eax,%eax
 	rep stosq
-	ret
+	RET
 ENDPROC(clear_page_rep)
 EXPORT_SYMBOL_GPL(clear_page_rep)
 
@@ -39,7 +39,7 @@ ENTRY(clear_page_orig)
 	leaq	64(%rdi),%rdi
 	jnz	.Lloop
 	nop
-	ret
+	RET
 ENDPROC(clear_page_orig)
 EXPORT_SYMBOL_GPL(clear_page_orig)
 
@@ -47,7 +47,7 @@ ENTRY(clear_page_erms)
 	movl $4096,%ecx
 	xorl %eax,%eax
 	rep stosb
-	ret
+	RET
 ENDPROC(clear_page_erms)
 EXPORT_SYMBOL_GPL(clear_page_erms)
 
@@ -74,7 +74,7 @@ ENTRY(clear_page_nt)
         addq    $0x40, %rdi
         subl    $0x40, %ecx
         ja      .Lstart
-	ret
+	RET
 ENDPROC(clear_page_nt)
 EXPORT_SYMBOL_GPL(clear_page_nt)
 
@@ -94,6 +94,6 @@ ENTRY(clear_page_clzero)
 	addq    $0x40, %rax
 	sub     $0x40, %ecx
 	ja      .Liter
-	ret
+	RET
 ENDPROC(clear_page_clzero)
 EXPORT_SYMBOL_GPL(clear_page_clzero)

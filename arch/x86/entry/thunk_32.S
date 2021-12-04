@@ -25,7 +25,7 @@
 	popl %edx
 	popl %ecx
 	popl %eax
-	ret
+	RET
 	_ASM_NOKPROBE(\name)
 	.endm
 

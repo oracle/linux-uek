@@ -46,7 +46,7 @@ ENTRY(__get_user_1)
 1:	movzbl (%_ASM_AX),%edx
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 ENDPROC(__get_user_1)
 EXPORT_SYMBOL(__get_user_1)
 
@@ -62,7 +62,7 @@ ENTRY(__get_user_2)
 2:	movzwl -1(%_ASM_AX),%edx
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 ENDPROC(__get_user_2)
 EXPORT_SYMBOL(__get_user_2)
 
@@ -78,7 +78,7 @@ ENTRY(__get_user_4)
 3:	movl -3(%_ASM_AX),%edx
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 ENDPROC(__get_user_4)
 EXPORT_SYMBOL(__get_user_4)
 
@@ -95,7 +95,7 @@ ENTRY(__get_user_8)
 4:	movq -7(%_ASM_AX),%rdx
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 #else
 	add $7,%_ASM_AX
 	jc bad_get_user_8
@@ -109,7 +109,7 @@ ENTRY(__get_user_8)
 5:	movl -3(%_ASM_AX),%ecx
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 #endif
 ENDPROC(__get_user_8)
 EXPORT_SYMBOL(__get_user_8)
@@ -120,7 +120,7 @@ EXPORT_SYMBOL(__get_user_8)
 bad_get_user:
 	xor %edx,%edx
 	mov $(-EFAULT),%_ASM_AX
-	ret
+	RET
 
 #ifdef CONFIG_X86_32
 .Lbad_get_user_8_clac:
@@ -129,7 +129,7 @@ bad_get_user_8:
 	xor %edx,%edx
 	xor %ecx,%ecx
 	mov $(-EFAULT),%_ASM_AX
-	ret
+	RET
 #endif
 
 	_ASM_EXTABLE_UA(1b, .Lbad_get_user_clac)

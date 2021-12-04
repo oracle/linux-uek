@@ -67,6 +67,6 @@
 	popq %rsi
 	popq %rdi
 	popq %rbp
-	ret
+	RET
 	_ASM_NOKPROBE(.L_restore)
 #endif

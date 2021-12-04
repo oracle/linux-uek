@@ -364,7 +364,7 @@ updateblock:
 	mov	frame_RSPSAVE(%rsp), %rsp
 
 nowork:
-	ret
+	RET
 ENDPROC(sha512_transform_avx)
 
 ########################################################################

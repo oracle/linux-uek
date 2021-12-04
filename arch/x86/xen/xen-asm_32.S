@@ -172,12 +172,12 @@ SYM_CODE_START(xen_iret_crit_fixup)
 	jae 1f
 
 	movl 4*4(%esp), %eax		/* load outer EAX */
-	ret $4*4			/* discard nested EIP, CS, and EFLAGS as
+	RET $4*4			/* discard nested EIP, CS, and EFLAGS as
 					 * well as the just restored EAX */
 
 1:
-	ret $3*4			/* discard nested EIP, CS, and EFLAGS */
+	RET $3*4			/* discard nested EIP, CS, and EFLAGS */
 
 2:
-	ret
+	RET
 SYM_CODE_END(xen_iret_crit_fixup)

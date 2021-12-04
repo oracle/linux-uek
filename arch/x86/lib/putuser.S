@@ -42,7 +42,7 @@ ENTRY(__put_user_1)
 1:	movb %al,(%_ASM_CX)
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 ENDPROC(__put_user_1)
 EXPORT_SYMBOL(__put_user_1)
 
@@ -56,7 +56,7 @@ ENTRY(__put_user_2)
 2:	movw %ax,(%_ASM_CX)
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 ENDPROC(__put_user_2)
 EXPORT_SYMBOL(__put_user_2)
 
@@ -70,7 +70,7 @@ ENTRY(__put_user_4)
 3:	movl %eax,(%_ASM_CX)
 	xor %eax,%eax
 	ASM_CLAC
-	ret
+	RET
 ENDPROC(__put_user_4)
 EXPORT_SYMBOL(__put_user_4)
 

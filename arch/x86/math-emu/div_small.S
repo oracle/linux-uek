@@ -44,5 +44,5 @@ ENTRY(FPU_div_small)
 	popl	%esi
 
 	leave
-	ret
+	RET
 ENDPROC(FPU_div_small)

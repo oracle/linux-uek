@@ -675,13 +675,13 @@ ENTRY(__serpent_enc_blk_8way)
 	write_blocks(%rsi, RA1, RB1, RC1, RD1, RK0, RK1, RK2);
 	write_blocks(%rax, RA2, RB2, RC2, RD2, RK0, RK1, RK2);
 
-	ret;
+	RET;
 
 .L__enc_xor8:
 	xor_blocks(%rsi, RA1, RB1, RC1, RD1, RK0, RK1, RK2);
 	xor_blocks(%rax, RA2, RB2, RC2, RD2, RK0, RK1, RK2);
 
-	ret;
+	RET;
 ENDPROC(__serpent_enc_blk_8way)
 
 ENTRY(serpent_dec_blk_8way)
@@ -735,5 +735,5 @@ ENTRY(serpent_dec_blk_8way)
 	write_blocks(%rsi, RC1, RD1, RB1, RE1, RK0, RK1, RK2);
 	write_blocks(%rax, RC2, RD2, RB2, RE2, RK0, RK1, RK2);
 
-	ret;
+	RET;
 ENDPROC(serpent_dec_blk_8way)

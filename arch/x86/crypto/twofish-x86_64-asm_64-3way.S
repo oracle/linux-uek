@@ -258,7 +258,7 @@ ENTRY(__twofish_enc_blk_3way)
 	popq %rbx;
 	popq %r12;
 	popq %r13;
-	ret;
+	RET;
 
 .L__enc_xor3:
 	outunpack_enc3(xor);
@@ -266,7 +266,7 @@ ENTRY(__twofish_enc_blk_3way)
 	popq %rbx;
 	popq %r12;
 	popq %r13;
-	ret;
+	RET;
 ENDPROC(__twofish_enc_blk_3way)
 
 ENTRY(twofish_dec_blk_3way)
@@ -301,5 +301,5 @@ ENTRY(twofish_dec_blk_3way)
 	popq %rbx;
 	popq %r12;
 	popq %r13;
-	ret;
+	RET;
 ENDPROC(twofish_dec_blk_3way)

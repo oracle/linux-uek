@@ -119,5 +119,5 @@ ENTRY(nh_sse2)
 	paddq		PASS2_SUMS, T1
 	movdqu		T0, 0x00(HASH)
 	movdqu		T1, 0x10(HASH)
-	ret
+	RET
 ENDPROC(nh_sse2)

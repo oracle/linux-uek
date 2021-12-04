@@ -591,7 +591,7 @@ ENTRY(interrupt_entry)
 	/* We entered an interrupt context - irqs are off: */
 	TRACE_IRQS_OFF
 
-	ret
+	RET
 END(interrupt_entry)
 _ASM_NOKPROBE(interrupt_entry)
 
@@ -1070,7 +1070,7 @@ ENTRY(native_load_gs_index)
 	TRACE_IRQS_FLAGS (%rsp)
 	popfq
 	FRAME_END
-	ret
+	RET
 ENDPROC(native_load_gs_index)
 EXPORT_SYMBOL(native_load_gs_index)
 
@@ -1098,7 +1098,7 @@ ENTRY(do_softirq_own_stack)
 	call	__do_softirq
 	LEAVE_IRQ_STACK regs=0
 	leaveq
-	ret
+	RET
 ENDPROC(do_softirq_own_stack)
 
 #ifdef CONFIG_XEN_PV
@@ -1264,7 +1264,7 @@ ENTRY(paranoid_entry)
 	 */
 	FENCE_SWAPGS_KERNEL_ENTRY
 
-	ret
+	RET
 END(paranoid_entry)
 
 /*
@@ -1328,12 +1328,12 @@ ENTRY(error_entry)
 	movq	%rax, %rsp			/* switch stack */
 	ENCODE_FRAME_POINTER
 	pushq	%r12
-	ret
+	RET
 
 .Lerror_entry_done_lfence:
 	FENCE_SWAPGS_KERNEL_ENTRY
 .Lerror_entry_done:
-	ret
+	RET
 
 	/*
 	 * There are two places in the kernel that can potentially fault with

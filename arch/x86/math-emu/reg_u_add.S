@@ -164,6 +164,6 @@ L_exit:
 	popl	%edi
 	popl	%esi
 	leave
-	ret
+	RET
 #endif /* PARANOID */
 ENDPROC(FPU_u_add)

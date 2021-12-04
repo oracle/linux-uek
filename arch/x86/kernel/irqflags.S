@@ -10,7 +10,7 @@
 ENTRY(native_save_fl)
 	pushf
 	pop %_ASM_AX
-	ret
+	RET
 ENDPROC(native_save_fl)
 EXPORT_SYMBOL(native_save_fl)
 
@@ -21,6 +21,6 @@ EXPORT_SYMBOL(native_save_fl)
 ENTRY(native_restore_fl)
 	push %_ASM_ARG1
 	popf
-	ret
+	RET
 ENDPROC(native_restore_fl)
 EXPORT_SYMBOL(native_restore_fl)

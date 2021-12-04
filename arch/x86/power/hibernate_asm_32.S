@@ -32,7 +32,7 @@ ENTRY(swsusp_arch_suspend)
 	FRAME_BEGIN
 	call swsusp_save
 	FRAME_END
-	ret
+	RET
 ENDPROC(swsusp_arch_suspend)
 
 SYM_CODE_START(restore_image)
@@ -108,5 +108,5 @@ ENTRY(restore_registers)
 	/* tell the hibernation core that we've just restored the memory */
 	movl	%eax, in_suspend
 
-	ret
+	RET
 ENDPROC(restore_registers)
