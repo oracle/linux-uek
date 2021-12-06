@@ -346,6 +346,9 @@ struct pci_dev {
 	u8		rom_base_reg;	/* Config register controlling ROM */
 	u8		pin;		/* Interrupt pin this device uses */
 	u16		pcie_flags_reg;	/* Cached PCIe Capabilities Register */
+#ifdef CONFIG_PCI_MSI
+	UEK_KABI_FILL_HOLE(raw_spinlock_t msi_lock)
+#endif
 	unsigned long	*dma_alias_mask;/* Mask of enabled devfn aliases */
 
 	struct pci_driver *driver;	/* Driver bound to this device */
