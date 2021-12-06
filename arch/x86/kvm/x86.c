@@ -11945,7 +11945,7 @@ int alloc_all_memslots_rmaps(struct kvm *kvm)
 {
 	struct kvm_memslots *slots;
 	struct kvm_memory_slot *slot;
-	int r, i;
+	int r, i, bkt;
 
 	/*
 	 * Check if memslots alreday have rmaps early before acquiring
@@ -11967,7 +11967,7 @@ int alloc_all_memslots_rmaps(struct kvm *kvm)
 
 	for (i = 0; i < KVM_ADDRESS_SPACE_NUM; i++) {
 		slots = __kvm_memslots(kvm, i);
-		kvm_for_each_memslot(slot, slots) {
+		kvm_for_each_memslot(slot, bkt, slots) {
 			r = memslot_rmap_alloc(slot, slot->npages);
 			if (r) {
 				mutex_unlock(&kvm->slots_arch_lock);
