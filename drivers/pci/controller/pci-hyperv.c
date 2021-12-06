@@ -1728,7 +1728,7 @@ static void hv_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 	if (!int_desc)
 		goto drop_reference;
 
-	if (!msi_desc->msi_attrib.is_msix && msi_desc->nvec_used > 1) {
+	if (!msi_desc->pci.msi_attrib.is_msix && msi_desc->nvec_used > 1) {
 		/*
 		 * If this is not the first MSI of Multi MSI, we already have
 		 * a mapping.  Can exit early.
