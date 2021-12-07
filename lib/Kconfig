@@ -634,6 +634,17 @@ config DIMLIB
 #
 config LIBFDT
 	bool
+#
+# CTF support is select'ed if needed
+#
+config CTF
+        bool "Compact Type Format generation"
+        default y
+        depends on HAVE_CTF_TOOLCHAIN
+        help
+          Emit a compact, compressed description of the kernel's datatypes and
+          global variables into the vmlinux.ctfa archive (for in-tree modules)
+          or into .ctf sections in kernel modules (for out-of-tree modules).
 
 config OID_REGISTRY
 	tristate
