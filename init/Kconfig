@@ -124,6 +124,12 @@ config PAHOLE_VERSION
 	int
 	default $(shell,$(srctree)/scripts/pahole-version.sh $(PAHOLE))
 
+config HAVE_CTF_TOOLCHAIN
+	def_bool $(cc-option,-gctf) && $(success,$(LD) $(KBUILD_LDFLAGS) -lbfd -liberty -lctf -lbfd -liberty -lz -ldl -lc -o /dev/null)
+	depends on CC_IS_GCC
+	help
+	  GCC and binutils support CTF generation.
+
 config CONSTRUCTORS
 	bool
 
