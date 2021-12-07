@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# ===========================================================================
+# Module CTF/CTFA generation
+# ===========================================================================
+
+include include/config/auto.conf
+include $(srctree)/scripts/Kbuild.include
+
+# CTF is already present in every object file if CONFIG_CTF is enabled.
+# vmlinux.lds.h strips it out of the finished kernel, but if nothing is done
+# it will be deduplicated into module .ko's.  For out-of-tree module builds,
+# this is what we want, but for in-tree modules we can save substantial
+# space by deduplicating it against all the core kernel types as well.  So
+# split the CTF out of in-tree module .ko's into separate .ctf files so that
+# it doesn't take up space in the modules on disk, and let the specialized
+# ctfarchive tool consume it and all the CTF in the vmlinux.o files when
+# 'make ctf' is invoked, and use the same machinery that the linker uses to
+# do CTF deduplication to emit vmlinux.ctfa containing the deduplicated CTF.
+
+# Nothing special needs to be done if CTF is turned off or if a standalone
+# module is being built.
+module-ctf-postlink = mv $(1).tmp $(1)
+
+ifdef CONFIG_CTF
+
+# This is quite tricky.  The CTF machinery needs to be told about all the
+# built-in objects as well as all the external modules -- but Makefile.modfinal
+# only knows about the latter.  So the toplevel makefile emits the names of the
+# built-in objects into a temporary file, which is then catted and its contents
+# used as prerequisites by this rule.
+#
+# We write the names of the object files to be scanned for CTF content into a
+# file, then use that, to avoid hitting command-line length limits.
+
+ifeq ($(KBUILD_EXTMOD),)
+ctf-modules := $(shell find . -name '*.ko.ctf' -print)
+quiet_cmd_ctfa_raw = CTFARAW
+      cmd_ctfa_raw = scripts/ctf/ctfarchive $@ .tmp_objects.builtin modules.builtin.objs $(ctf-filelist)
+ctf-builtins := .tmp_objects.builtin
+ctf-filelist := .tmp_ctf.filelist
+ctf-filelist-raw := .tmp_ctf.filelist.raw
+
+define module-ctf-postlink =
+	$(OBJCOPY) --only-section=.ctf $(1).tmp $(1).ctf && \
+	$(OBJCOPY) --remove-section=.ctf $(1).tmp $(1) && rm -f $(1).tmp
+endef
+
+# Split a list up like shell xargs does.
+define xargs =
+$(1) $(wordlist 1,1024,$(2))
+$(if $(word 1025,$(2)),$(call xargs,$(1),$(wordlist 1025,$(words $(2)),$(2))))
+endef
+
+$(ctf-filelist-raw): $(ctf-builtins) $(ctf-modules)
+	@rm -f $(ctf-filelist-raw);
+	$(call xargs,@printf "%s\n" >> $(ctf-filelist-raw),$^)
+	@touch $(ctf-filelist-raw)
+
+$(ctf-filelist): $(ctf-filelist-raw)
+	@rm -f $(ctf-filelist);
+	@cat $(ctf-filelist-raw) | while read -r obj; do \
+		case $$obj in \
+		$(ctf-builtins)) cat $$obj >> $(ctf-filelist);; \
+		*.a) ar t $$obj > $(ctf-filelist);; \
+		*.builtin) cat $$obj >> $(ctf-filelist);; \
+		*) echo "$$obj" >> $(ctf-filelist);; \
+		esac; \
+	done
+	@touch $(ctf-filelist)
+
+# The raw CTF depends on the output CTF file list, and that depends
+# on the .ko files for the modules.
+.tmp_vmlinux.ctfa.raw: $(ctf-filelist) FORCE
+	$(call if_changed,ctfa_raw)
+
+quiet_cmd_ctfa = CTFA
+      cmd_ctfa = { echo 'int main () { return 0; } ' | \
+		gcc -x c -c -o $<.stub -; \
+	$(OBJCOPY) '--remove-section=.*' --add-section=.ctf=$< \
+		 $<.stub $@; }
+
+# The CTF itself is an ELF executable with one section: the CTF.  This lets
+# objdump work on it, at minimal size cost.
+vmlinux.ctfa: .tmp_vmlinux.ctfa.raw FORCE
+	$(call if_changed,ctfa)
+
+targets += vmlinux.ctfa
+
+endif		# KBUILD_EXTMOD
+
+endif		# !CONFIG_CTF
+

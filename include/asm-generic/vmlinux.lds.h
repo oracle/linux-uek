@@ -1033,6 +1033,7 @@
 	*(.discard.*)							\
 	*(.export_symbol)						\
 	*(.modinfo)							\
+	*(.ctf)								\
 	/* ld.bfd warns about .gnu.version* even when not emitted */	\
 	*(.gnu.version*)						\
 

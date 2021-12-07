@@ -33,6 +33,10 @@ ldflags-y += -T
 ccflags-y := -fno-common -fno-builtin -fno-stack-protector -ffixed-x18
 ccflags-y += -DDISABLE_BRANCH_PROFILING -DBUILD_VDSO
 
+# CTF in the vDSO would introduce a new section, which would
+# expand the vDSO to more than a page.
+ccflags-y += $(call cc-option,-gctf0)
+
 # -Wmissing-prototypes and -Wmissing-declarations are removed from
 # the CFLAGS of vgettimeofday.c to make possible to build the
 # kernel with CONFIG_WERROR enabled.
