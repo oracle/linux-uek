@@ -27,7 +27,8 @@ cflags-vdso := $(ccflags-vdso) \
 	-std=gnu11 -fms-extensions -O2 -g -fno-strict-aliasing -fno-common -fno-builtin \
 	-fno-stack-protector -fno-jump-tables -DDISABLE_BRANCH_PROFILING \
 	$(call cc-option, -fno-asynchronous-unwind-tables) \
-	$(call cc-option, -fno-stack-protector)
+	$(call cc-option, -fno-stack-protector) \
+	$(call cc-option, -gctf0)
 aflags-vdso := $(ccflags-vdso) \
 	-D__ASSEMBLY__ -Wa,-gdwarf-2
 
