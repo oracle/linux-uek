@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# ===========================================================================
+# CTF rules for the top-level makefile only
+# ===========================================================================
+
+KBUILD_CFLAGS	+= $(call cc-option,-gctf)
+KBUILD_LDFLAGS	+= $(call ld-option, --ctf-variables)
+
+ifeq ($(KBUILD_EXTMOD),)
+
+# CTF generation for in-tree code (modules, built-in and not, and core kernel)
+
+# This contains all the object files that are built directly into the
+# kernel (including built-in modules), for consumption by ctfarchive in
+# Makefile.modfinal.  Make sure that all lines that are not absolute paths
+# start with a ./ (for consistency with .tmp_ctf.filelist).
+# We sort it after the fact to eliminate duplicates (there are quite a lot).
+.tmp_objects.builtin: vmlinux.a $(KBUILD_VMLINUX_LIBS)
+	$(Q)for archive in $^; do \
+		$(AR) t "$$archive" >> $@.unsorted; \
+	done; \
+	sed -i '/^[^/]/s,^\([^\.]\),./\1,' $@.unsorted; \
+	sort -u < $@.unsorted > $@; \
+	rm -f $@.unsorted
+
+# This contains a mapping from module name to object file name for all
+# objects named in .tmp_objects.builtin.
+# Extract possible module names from the command-lines used to
+# compile the modules, filter them by the set of actual built-in modules
+# in modules.builtin
+.tmp_module.objnames: .tmp_objects.builtin modules.builtin
+	$(Q)$(srctree)/scripts/ctf-module-objnames.sh $@
+
+ctf: vmlinux.ctfa
+PHONY += ctf ctf_install
+
+# Making CTF needs the builtin files.  We need to force everything to be
+# built if not already done, since we need the .o files for the machinery
+# above to work.
+vmlinux.ctfa: KBUILD_BUILTIN := 1
+vmlinux.ctfa: .tmp_objects.builtin .tmp_module.objnames
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal vmlinux.ctfa
+
+ctf_install:
+	$(Q)mkdir -p $(MODLIB)/kernel
+	@ln -sf $(abspath $(srctree)) $(MODLIB)/source
+	$(Q)cp -f $(objtree)/vmlinux.ctfa $(MODLIB)/kernel
+
+CLEAN_FILES += vmlinux.ctfa
+
+endif
