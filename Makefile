@@ -1209,6 +1209,7 @@ include-$(CONFIG_AUTOFDO_CLANG)	+= scripts/Makefile.autofdo
 include-$(CONFIG_PROPELLER_CLANG)	+= scripts/Makefile.propeller
 include-$(CONFIG_WARN_CONTEXT_ANALYSIS) += scripts/Makefile.context-analysis
 include-$(CONFIG_GCC_PLUGINS)	+= scripts/Makefile.gcc-plugins
+include-$(CONFIG_CTF)		+= scripts/Makefile.ctfa-toplevel
 
 include $(addprefix $(srctree)/, $(include-y))
 
@@ -1730,7 +1731,8 @@ CLEAN_FILES += vmlinux.symvers modules-only.symvers \
 	       vmlinux.thinlto-index builtin.order \
 	       compile_commands.json rust/test \
 	       rust-project.json .vmlinux.objs .vmlinux.export.c \
-	       .builtin-dtbs-list .builtin-dtbs.S sbom-*.spdx.json
+	       .builtin-dtbs-list .builtin-dtbs.S sbom-*.spdx.json \
+               vmlinux.ctfa
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_FILES += include/config include/generated          \
@@ -1828,6 +1830,8 @@ help:
 	@echo  '                    (requires a recent binutils and recent build (System.map))'
 	@echo  '  dir/file.ko     - Build module including final link'
 	@echo  '  modules_prepare - Set up for building external modules'
+	@echo  '  ctf             - Generate CTF type information, installed by make ctf_install'
+	@echo  '  ctf_install     - Install CTF to INSTALL_MOD_PATH (default: /)'
 	@echo  '  tags/TAGS	  - Generate tags file for editors'
 	@echo  '  cscope	  - Generate cscope index'
 	@echo  '  gtags           - Generate GNU GLOBAL index'
@@ -2195,7 +2199,7 @@ clean: $(clean-dirs)
 	$(call cmd,rmfiles)
 	@find . $(RCS_FIND_IGNORE) \
 		\( -name '*.[aios]' -o -name '*.rsi' -o -name '*.ko' -o -name '.*.cmd' \
-		-o -name '*.ko.*' -o -name '*.o.thinlto.bc' \
+		-o -name '*.ko.*' -o -name '*.o.thinlto.bc' -o -name '*.ctf' \
 		-o -name '*.dtb' -o -name '*.dtbo' \
 		-o -name '*.dtb.S' -o -name '*.dtbo.S' \
 		-o -name '*.dt.yaml' -o -name 'dtbs-list' \
