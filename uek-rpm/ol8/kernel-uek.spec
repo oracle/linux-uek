@@ -95,8 +95,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_doc       1
 # kernel-headers
 %define with_headers   1
-# dtrace
-%define with_dtrace 0
 # perf
 %define with_perf      1
 # bpftools
@@ -319,11 +317,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # sparse blows up on ppc64 alpha and sparc64
 %ifarch ppc64 ppc alpha sparc64
 %define with_sparse 0
-%endif
-
-# Enable dtrace
-%ifarch x86_64 aarch64
-%define with_dtrace 0
 %endif
 
 # Enable perf
@@ -574,7 +567,6 @@ BuildRequires: gcc-toolset-11
 BuildRequires: gcc-toolset-11-annobin
 BuildRequires: gcc-toolset-11-annobin-plugin-gcc
 BuildRequires: gcc-toolset-11-binutils
-BuildRequires: libdtrace-ctf-devel
 BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
 BuildRequires: gcc-toolset-11-elfutils-libelf-devel
@@ -609,11 +601,9 @@ BuildRequires: python3-sphinx >= 1.7.9
 BuildRequires: fontconfig >= 2.13.0
 %endif
 
-%if %{with_dtrace}
 BuildRequires: gcc-toolset-11
 BuildRequires: gcc-toolset-11-binutils
 BuildRequires: gcc-toolset-11-binutils-devel
-%endif
 
 %if %{with_bpftool}
 BuildRequires: python3-docutils
@@ -832,7 +822,6 @@ Provides: kernel%{?variant}-xen-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
-Provides: dtrace-kernel-headers = 1.2.0\
 %ifarch sparc64 aarch64\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
@@ -842,11 +831,9 @@ AutoReqProv: no\
 Requires(pre): /usr/bin/find\
 Requires: gcc-toolset-11-elfutils-libelf-devel\
 Requires: gcc-toolset-11-elfutils-libs\
-%if %{with_dtrace}\
 Requires: gcc-toolset-11\
 Requires: gcc-toolset-11-binutils\
 Requires: gcc-toolset-11-binutils-devel\
-%endif\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2} }kernel package.\
@@ -1222,11 +1209,9 @@ BuildKernel() {
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
-%if %{with_dtrace}
     cp Module.symvers Module.symvers.save
-    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+    make -k -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
     mv -f Module.symvers.save Module.symvers
-%endif
 
     # Start installing the results
 %if %{with_debuginfo}
@@ -1898,9 +1883,6 @@ fi
 %files headers
 %defattr(-,root,root)
 /usr/include/*
-%if %{with_dtrace}
-%exclude /usr/include/linux/dtrace
-%endif
 %endif
 
 %if %{with_bootwrapper}
@@ -1963,9 +1945,7 @@ fi
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-%if %{with_dtrace}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
-%endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
