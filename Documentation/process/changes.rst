@@ -62,9 +62,12 @@ Sphinx\ [#f1]_         2.4.4            sphinx-build --version
 cpio                   any              cpio --version
 GNU tar                1.28             tar --version
 gtags (optional)       6.6.5            gtags --version
+GNU C\ [#f2]_          12.0             gcc --version
+binutils\ [#f2]_       2.36             ld -v
 ====================== ===============  ========================================
 
 .. [#f1] Sphinx is needed only to build the Kernel documentation
+.. [#f2] These are needed at build-time when CONFIG_CTF is enabled
 
 Kernel compilation
 ******************
