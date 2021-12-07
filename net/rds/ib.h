@@ -305,7 +305,7 @@ struct rds_ib_connection {
 	u16			i_frag_sz;	/* IB fragment size */
 	u16			i_frag_cache_sz;
 	u8			i_frag_pages;
-	u8			i_flags;
+	unsigned long		i_flags;
 	u16			i_frag_cache_inx;
 	u16			i_hca_sge;
 
