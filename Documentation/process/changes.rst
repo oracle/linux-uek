@@ -33,7 +33,7 @@ you probably do not need to concern yourself with pcmciautils.
 bash                   4.2              bash --version
 bc                     1.06.95          bc --version
 bindgen (optional)     0.71.1           bindgen --version
-binutils               2.30             ld -v
+binutils\ [#f1]_       2.30             ld -v
 bison                  2.0              bison --version
 btrfs-progs            0.18             btrfs --version
 Clang/LLVM (optional)  15.0.0           clang --version
@@ -41,7 +41,7 @@ e2fsprogs              1.41.4           e2fsck -V
 flex                   2.5.35           flex --version
 gdb                    7.2              gdb --version
 GNU awk (optional)     5.1.0            gawk --version
-GNU C                  8.1              gcc --version
+GNU C\ [#f1]_          8.1              gcc --version
 GNU make               4.0              make --version
 GNU tar                1.28             tar --version
 GRUB                   0.93             grub --version || grub-install --version
@@ -60,14 +60,15 @@ procps                 3.2.0            ps --version
 Python                 3.9.x            python3 --version
 quota-tools            3.09             quota -V
 Rust (optional)        1.85.0           rustc --version
-Sphinx\ [#f1]_         3.4.3            sphinx-build --version
+Sphinx\ [#f2]_         3.4.3            sphinx-build --version
 squashfs-tools         4.0              mksquashfs -version
 udev                   081              udevadm --version
 util-linux             2.10o            mount --version
 xfsprogs               2.6.0            xfs_db -V
 ====================== ===============  ========================================
 
-.. [#f1] Sphinx is needed only to build the Kernel documentation
+.. [#f1] When CONFIG_CTF is enabled, GNU C 12.0 and binutils 2.36 are needed
+.. [#f2] Sphinx is needed only to build the Kernel documentation
 
 Kernel compilation
 ******************

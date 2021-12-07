@@ -42,6 +42,7 @@ flags-y += -fno-stack-protector
 flags-y += -fno-omit-frame-pointer
 flags-y += -foptimize-sibling-calls
 flags-y += -fasynchronous-unwind-tables
+flags-y += $(call cc-option, -gctf0)
 
 # Reset cf protections enabled by compiler default
 flags-y += $(call cc-option, -fcf-protection=none)

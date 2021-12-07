@@ -13,3 +13,4 @@
 /target.json
 /tracepoint-update
 /unifdef
+!/Makefile.ctf
