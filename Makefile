@@ -761,6 +761,10 @@ else ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS += -Os
 endif
 
+ifdef CONFIG_CTF
+KBUILD_CFLAGS	+= $(call cc-option,-gctf) $(call cc-option,-gt)
+endif
+
 # Tell gcc to never replace conditional load with a non-conditional one
 ifdef CONFIG_CC_IS_GCC
 # gcc-10 renamed --param=allow-store-data-races=0 to
@@ -1061,6 +1065,8 @@ include $(addprefix $(srctree)/, $(include-y))
 KBUILD_CPPFLAGS += $(KCPPFLAGS)
 KBUILD_AFLAGS   += $(KAFLAGS)
 KBUILD_CFLAGS   += $(KCFLAGS)
+
+KBUILD_LDFLAGS += $(call ld-option, --ctf-variables)
 
 KBUILD_LDFLAGS_MODULE += --build-id=sha1
 LDFLAGS_vmlinux += --build-id=sha1
@@ -1478,6 +1484,45 @@ modules.order: $(subdir-modorder) FORCE
 
 targets += modules.order
 
+ifneq (CONFIG_CTF@,'@')
+ifeq ($(KBUILD_EXTMOD),)
+
+# We need to force everything to be built, since we need the .o files below.
+KBUILD_BUILTIN := 1
+
+# This contains all the object files that are built directly into the
+# kernel (including built-in modules), for consumption by ctfarchive in
+# Makefile.modfinal.
+# This is made doubly annoying by the presence of '.o' files which are actually
+# thin ar archives, and the need to support file(1) versions too old to
+# recognize them as archives at all.  (So we assume that everything that is not
+# an ELF object is an archive.)
+ifeq ($(SRCARCH),x86)
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),bzImage) FORCE
+else
+ifeq ($(SRCARCH),arm64)
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),Image) FORCE
+else
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+endif
+endif
+	@echo $(KBUILD_VMLINUX_OBJS) | \
+		tr " " "\n" | grep "\.o$$" | xargs -r file | \
+		grep ELF | cut -d: -f1 > objects.builtin
+	@for archive in $$(echo $(KBUILD_VMLINUX_OBJS) |\
+		tr " " "\n" | xargs -r file | grep -v ELF | cut -d: -f1); do \
+		$(AR) t "$$archive" >> objects.builtin; \
+	done
+
+ctf: vmlinux.ctfa
+PHONY += ctf
+
+# Making CTF needs the builtin files.
+vmlinux.ctfa: modules_thick.builtin objects.builtin
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal vmlinux.ctfa
+endif
+endif
+
 # Target to prepare building external modules
 PHONY += modules_prepare
 modules_prepare: prepare
@@ -1516,6 +1561,9 @@ __modinst_pre:
 	@sed 's:^:kernel/:' modules.order > $(MODLIB)/modules.order
 	@cp -f modules.builtin $(MODLIB)/
 	@cp -f $(objtree)/modules.builtin.modinfo $(MODLIB)/
+	@if [ -f $(objtree)/vmlinux.ctfa ] ; then \
+		cp -f $(objtree)/vmlinux.ctfa $(MODLIB)/kernel ; \
+	fi
 
 endif # CONFIG_MODULES
 
@@ -1545,8 +1593,9 @@ $(modthickbuiltin-files): include/config/tristate.conf
 
 # Directories & files removed with 'make clean'
 CLEAN_FILES += include/ksym vmlinux.symvers modules-only.symvers \
-	       modules.builtin modules.builtin.modinfo modules.nsdeps \
-	       compile_commands.json .thinlto-cache
+	       modules.builtin modules.builtin.modinfo objects.builtin \
+	       modules.nsdeps compile_commands.json .thinlto-cache \
+	       .ctf.filelist .ctf.filelist.raw
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_FILES += include/config include/generated          \
@@ -1636,6 +1685,8 @@ help:
 	@echo  '                    (requires a recent binutils and recent build (System.map))'
 	@echo  '  dir/file.ko     - Build module including final link'
 	@echo  '  modules_prepare - Set up for building external modules'
+	@echo  '  ctf             - Generate CTF type information for DTrace, installed by '
+	@echo  '                    make modules_install'
 	@echo  '  tags/TAGS	  - Generate tags file for editors'
 	@echo  '  cscope	  - Generate cscope index'
 	@echo  '  gtags           - Generate GNU GLOBAL index'
@@ -1917,7 +1968,7 @@ clean: $(clean-dirs)
 		-o -name '*.symtypes' -o -name 'modules.order' \
 		-o -name '.tmp_*.o.*' -o -name modules_thick.builtin \
 		-o -name '*.c.[012]*.*' \
-		-o -name '*.ll' \
+		-o -name '*.ll' -o -name '*.ctfa' \
 		-o -name '*.gcno' \
 		-o -name '*.*.symversions' \) -type f -print | xargs rm -f
 
