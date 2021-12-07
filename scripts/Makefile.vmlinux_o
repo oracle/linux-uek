@@ -27,6 +27,18 @@ ifdef CONFIG_LTO_CLANG
 initcalls-lds := .tmp_initcalls.lds
 endif
 
+# Generate a linker script to delete CTF sections
+# -----------------------------------------------
+
+quiet_cmd_gen_remove_ctf.lds = GEN     $@
+      cmd_gen_remove_ctf.lds = \
+	$(LD) -r --verbose | awk -f $(real-prereqs) > $@
+
+.tmp_remove-ctf.lds: $(srctree)/scripts/remove-ctf-lds.awk FORCE
+	$(call if_changed,gen_remove_ctf.lds)
+
+targets := .tmp_remove-ctf.lds
+
 # objtool for vmlinux.o
 # ---------------------------------------------------------------------------
 #
@@ -42,7 +54,9 @@ vmlinux-objtool-args-$(CONFIG_NOINSTR_VALIDATION)	+= --noinstr \
 
 objtool-args = $(vmlinux-objtool-args-y) --link
 
-# Link of vmlinux.o used for section mismatch analysis
+# Link of vmlinux.o used for section mismatch analysis: we also strip the CTF
+# section out at this stage, since ctfarchive gets it from the underlying object
+# files and linking it further is a waste of time.
 # ---------------------------------------------------------------------------
 
 vmlinux-o-ld-args-$(CONFIG_BUILTIN_MODULE_RANGES)	+= -Map=$@.map
@@ -51,7 +65,7 @@ quiet_cmd_ld_vmlinux.o = LD      $@
       cmd_ld_vmlinux.o = \
 	$(LD) ${KBUILD_LDFLAGS} -r -o $@ \
 	$(vmlinux-o-ld-args-y) \
-	$(addprefix -T , $(initcalls-lds)) \
+	$(addprefix -T , $(initcalls-lds)) -T .tmp_remove-ctf.lds \
 	--whole-archive vmlinux.a --no-whole-archive \
 	--start-group $(KBUILD_VMLINUX_LIBS) --end-group \
 	$(cmd_objtool)
@@ -61,7 +75,7 @@ define rule_ld_vmlinux.o
 	$(call cmd,gen_objtooldep)
 endef
 
-vmlinux.o: $(initcalls-lds) vmlinux.a $(KBUILD_VMLINUX_LIBS) FORCE
+vmlinux.o: $(initcalls-lds) vmlinux.a $(KBUILD_VMLINUX_LIBS) .tmp_remove-ctf.lds FORCE
 	$(call if_changed_rule,ld_vmlinux.o)
 
 targets += vmlinux.o
