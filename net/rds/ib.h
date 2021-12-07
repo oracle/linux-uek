@@ -60,7 +60,7 @@
 #define NUM_RDS_RECV_SG	(PAGE_ALIGN(RDS_MAX_FRAG_SIZE) / PAGE_SIZE)
 
 #define	RDS_IB_CQ_ERR		2
-#define	RDS_IB_NEED_SHUTDOWN	4
+#define	RDS_IB_NEED_SHUTDOWN	3
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
 
@@ -310,7 +310,7 @@ struct rds_ib_connection {
 	u16			i_frag_sz;	/* IB fragment size */
 	u16			i_frag_cache_sz;
 	u8			i_frag_pages;
-	u8			i_flags;
+	unsigned long		i_flags;
 	u16			i_frag_cache_inx;
 	u16			i_hca_sge;
 
