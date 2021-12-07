@@ -23,6 +23,11 @@ else
 echo '%define with_devel 0'
 fi
 
+if grep -q CONFIG_CTF=y include/config/auto.conf; then
+echo '%define with_ctf %{?_without_ctf: 0} %{?!_without_ctf: 1}'
+else
+echo '%define with_ctf 0'
+fi
 cat<<EOF
 %define ARCH ${ARCH}
 %define KERNELRELEASE ${KERNELRELEASE}
