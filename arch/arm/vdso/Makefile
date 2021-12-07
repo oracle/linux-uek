@@ -14,6 +14,10 @@ obj-vdso := $(addprefix $(obj)/, $(obj-vdso))
 ccflags-y := -fPIC -fno-common -fno-builtin -fno-stack-protector
 ccflags-y += -DDISABLE_BRANCH_PROFILING -DBUILD_VDSO32
 
+# CTF in the vDSO would introduce a new section, which would
+# expand the vDSO to more than a page.
+ccflags-y += $(call cc-option, -gctf0)
+
 ldflags-$(CONFIG_CPU_ENDIAN_BE8) := --be8
 ldflags-y := -Bsymbolic --no-undefined -soname=linux-vdso.so.1 \
 	    -z max-page-size=4096 -shared $(ldflags-y) \

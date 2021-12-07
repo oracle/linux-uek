@@ -12,3 +12,4 @@
 /sorttable
 /target.json
 /unifdef
+!/Makefile.ctf
