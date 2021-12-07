@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# ===========================================================================
+# CTF rules for the top-level makefile only
+# ===========================================================================
+
+KBUILD_CFLAGS	+= $(call cc-option,-gctf)
+KBUILD_LDFLAGS	+= $(call ld-option, --ctf-variables)
+
+ifeq ($(KBUILD_EXTMOD),)
+
+# CTF generation for in-tree code (modules, built-in and not, and core kernel)
+
+# This contains all the object files that are built directly into the
+# kernel (including built-in modules), for consumption by ctfarchive in
+# Makefile.modfinal.
+# This is made doubly annoying by the presence of '.o' files which are actually
+# thin ar archives, and the need to support file(1) versions too old to
+# recognize them as archives at all.  (So we assume that everything that is notr
+# an ELF object is an archive.)
+ifeq ($(SRCARCH),x86)
+.tmp_objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),bzImage) FORCE
+else
+ifeq ($(SRCARCH),arm64)
+.tmp_objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),Image) FORCE
+else
+.tmp_objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+endif
+endif
+	@echo $(KBUILD_VMLINUX_OBJS) | \
+		tr " " "\n" | grep "\.o$$" | xargs -r file | \
+		grep ELF | cut -d: -f1 > .tmp_objects.builtin
+	@for archive in $$(echo $(KBUILD_VMLINUX_OBJS) |\
+		tr " " "\n" | xargs -r file | grep -v ELF | cut -d: -f1); do \
+		$(AR) t "$$archive" >> .tmp_objects.builtin; \
+	done
+
+ctf: vmlinux.ctfa
+PHONY += ctf ctf_install
+
+# Making CTF needs the builtin files.  We need to force everything to be
+# built if not already done, since we need the .o files for the machinery
+# above to work.
+vmlinux.ctfa: KBUILD_BUILTIN := 1
+vmlinux.ctfa: modules.builtin.objs .tmp_objects.builtin
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal vmlinux.ctfa
+
+ctf_install:
+	$(Q)mkdir -p $(MODLIB)/kernel
+	@ln -sf $(abspath $(srctree)) $(MODLIB)/source
+	$(Q)cp -f $(objtree)/vmlinux.ctfa $(MODLIB)/kernel
+
+CLEAN_FILES += vmlinux.ctfa
+
+endif

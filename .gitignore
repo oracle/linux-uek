@@ -16,6 +16,7 @@
 *.bin
 *.bz2
 *.c.[012]*.*
+*.ctf
 *.dt.yaml
 *.dtb
 *.dtbo
@@ -54,6 +55,7 @@
 Module.symvers
 dtbs-list
 modules.order
+objects.builtin
 
 #
 # Top-level generic files
@@ -64,6 +66,7 @@ modules.order
 /vmlinux.32
 /vmlinux.map
 /vmlinux.symvers
+/vmlinux.ctfa
 /vmlinux-gdb.py
 /vmlinuz
 /System.map
