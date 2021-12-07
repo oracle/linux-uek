@@ -87,6 +87,16 @@ static char *rds_ib_event_str(enum ib_event_type type)
 			     ARRAY_SIZE(rds_ib_event_type_strings), type);
 };
 
+static inline void
+set_ib_conn_flag(unsigned long nr, struct rds_ib_connection *ic)
+{
+	/* set_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	set_bit(nr, &ic->i_flags);
+	/* set_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
+
 #define ROUNDED_HDR_SIZE roundup_pow_of_two(sizeof(struct rds_header))
 #define HDRS_PER_PAGE 	(PAGE_SIZE / ROUNDED_HDR_SIZE)
 #define NMBR_SEND_HDR_PAGES \
@@ -355,7 +365,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
-	ic->i_flags &= ~RDS_IB_CQ_ERR;
+	clear_bit(RDS_IB_CQ_ERR, &ic->i_flags);
 
 	/*
 	 * Init rings and fill recv. this needs to wait until protocol negotiation
@@ -515,14 +525,26 @@ static void rds_ib_cq_event_handler(struct ib_event *event, void *data)
 	struct rds_connection *conn = data;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
-	pr_info("RDS/IB: event %u (%s) data %p\n",
-		 event->event, rds_ib_event_str(event->event), data);
+	pr_info("RDS/IB: event %u (%s) conn %p <%pI6c,%pI6c,%d> ic %p cm_id %p\n",
+		event->event, rds_ib_event_str(event->event), conn,
+		&conn->c_laddr, &conn->c_faddr, conn->c_tos, ic, ic->i_cm_id);
 
-	ic->i_flags |= RDS_IB_CQ_ERR;
+	set_ib_conn_flag(RDS_IB_CQ_ERR, ic);
 	if (waitqueue_active(&rds_ib_ring_empty_wait))
 		wake_up(&rds_ib_ring_empty_wait);
 	if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_flags))
 		mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
+}
+
+static void rds_ib_cq_event_handler_fastreg(struct ib_event *event, void *data)
+{
+	struct rds_ib_device *rds_ibdev = data;
+
+	pr_info("RDS/IB: event %u (%s) rds_ibdev %p\n", event->event,
+		rds_ib_event_str(event->event), data);
+
+	if (rds_ibdev->use_fastreg)
+		queue_work(rds_wq, &rds_ibdev->fastreg_reset_w);
 }
 
 static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
@@ -1110,8 +1132,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		return ret;
 	}
 
-	ic->i_flags |= RDS_IB_NEED_SHUTDOWN;
-	smp_mb();
+	set_ib_conn_flag(RDS_IB_NEED_SHUTDOWN, ic);
 
 	/* In the case of FRWR, mr registration wrs use the
 	 * same work queue as the send wrs. To make sure that we are not
@@ -1996,7 +2017,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		}
 
 		smp_mb();
-		if (ic->i_flags & RDS_IB_NEED_SHUTDOWN) {
+		if (test_bit(RDS_IB_NEED_SHUTDOWN, &ic->i_flags)) {
 			/* The shutdown-path hasn't completed yet,
 			 * so we can't make any progress quite yet.
 			 * Try again in a jiff.
@@ -2126,7 +2147,7 @@ unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
 	return (!ic->i_cm_id ||
-		(ic->i_flags & RDS_IB_CQ_ERR) ||
+		test_bit(RDS_IB_CQ_ERR, &ic->i_flags) ||
 		(rds_ib_ring_empty(&ic->i_recv_ring) &&
 		 (atomic_read(&ic->i_signaled_sends) == 0) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
@@ -2158,11 +2179,21 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		tasklet_kill(&ic->i_stasklet);
 		tasklet_kill(&ic->i_rtasklet);
 
-		ic->i_flags &= ~RDS_IB_CQ_ERR;
-
 		/* first destroy the ib state that generates callbacks */
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
+
+		if (test_bit(RDS_IB_CQ_ERR, &ic->i_flags)) {
+			pr_info("RDS/IB: Destroy CQ: conn %p <%pI6c,%pI6c,%d> ic %p cm_id %p\n",
+				conn, &conn->c_laddr, &conn->c_faddr,
+				conn->c_tos, ic, ic->i_cm_id);
+			if (ic->rds_ibdev) {
+				mutex_lock(&ic->i_delayed_free_lock);
+				__rds_rdma_free_cq(ic, ic->rds_ibdev);
+				mutex_unlock(&ic->i_delayed_free_lock);
+			}
+			clear_bit(RDS_IB_CQ_ERR, &ic->i_flags);
+		}
 
 		if (ic->rds_ibdev)
 			__rds_rdma_conn_dev_rele(ic);
@@ -2181,7 +2212,7 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 
 		rds_spawn_destroy_cm_id(cm_id);
 
-		ic->i_flags &= ~RDS_IB_NEED_SHUTDOWN;
+		clear_bit(RDS_IB_NEED_SHUTDOWN, &ic->i_flags);
 		smp_mb();
 	}
 
@@ -2388,7 +2419,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	cq_attr.comp_vector = rds_ibdev->fastreg_cq_vector;
 	rds_ibdev->fastreg_cq = ib_create_cq(rds_ibdev->dev,
 					     rds_ib_cq_comp_handler_fastreg,
-					     rds_ib_cq_event_handler,
+					     rds_ib_cq_event_handler_fastreg,
 					     rds_ibdev,
 					     &cq_attr);
 	if (IS_ERR(rds_ibdev->fastreg_cq)) {
