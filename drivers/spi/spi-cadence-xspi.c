@@ -190,6 +190,39 @@
 		((op)->data.dir == SPI_MEM_DATA_IN) ? \
 		CDNS_XSPI_STIG_CMD_DIR_READ : CDNS_XSPI_STIG_CMD_DIR_WRITE))
 
+/* clock config register */
+#define CDNS_XSPI_CLK_CTRL_REG		      0x4020
+#define CDNS_XSPI_CLK_ENABLE                  BIT(0)
+#define CDNS_XSPI_CLK_DIV                     GENMASK(4, 1)
+
+/* Clock macros */
+#define CDNS_XSPI_CLOCK_IO_HZ 800000000
+#define CDNS_XSPI_CLOCK_DIVIDED(div) ((CDNS_XSPI_CLOCK_IO_HZ) / (div))
+
+/*PHY default values*/
+#define REGS_DLL_PHY_CTRL	  0x00000707
+#define CTB_RFILE_PHY_CTRL	  0x00004000
+#define RFILE_PHY_TSEL		  0x00000000
+#define RFILE_PHY_DQ_TIMING	  0x00000101
+#define RFILE_PHY_DQS_TIMING	  0x00700404
+#define RFILE_PHY_GATE_LPBK_CTRL  0x00200030
+#define RFILE_PHY_DLL_MASTER_CTRL 0x00800000
+#define RFILE_PHY_DLL_SLAVE_CTRL  0x0000ff01
+
+/*PHY config rtegisters*/
+#define CDNS_XSPI_RF_MINICTRL_REGS_DLL_PHY_CTRL			0x1034
+#define CDNS_XSPI_PHY_CTB_RFILE_PHY_CTRL			0x2080
+#define CDNS_XSPI_PHY_CTB_RFILE_PHY_TSEL			0x2084
+#define CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DQ_TIMING		0x2000
+#define CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DQS_TIMING		0x2004
+#define CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_GATE_LPBK_CTRL	0x2008
+#define CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DLL_MASTER_CTRL	0x200c
+#define CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DLL_SLAVE_CTRL	0x2010
+#define CDNS_XSPI_DATASLICE_RFILE_PHY_DLL_OBS_REG_0		0x201c
+
+#define CDNS_XSPI_DLL_RST_N BIT(24)
+#define CDNS_XSPI_DLL_LOCK  BIT(0)
+
 enum cdns_xspi_stig_instr_type {
 	CDNS_XSPI_STIG_INSTR_TYPE_0,
 	CDNS_XSPI_STIG_INSTR_TYPE_1,
@@ -235,6 +268,92 @@ struct cdns_xspi_dev {
 	enum cdns_xspi_sdma_size read_size;
 };
 
+const int cdns_xspi_clk_div_list[] = {
+	4,	//0x0 = Divide by 4.   SPI clock is 200 MHz.
+	6,	//0x1 = Divide by 6.   SPI clock is 133.33 MHz.
+	8,	//0x2 = Divide by 8.   SPI clock is 100 MHz.
+	10,	//0x3 = Divide by 10.  SPI clock is 80 MHz.
+	12,	//0x4 = Divide by 12.  SPI clock is 66.666 MHz.
+	16,	//0x5 = Divide by 16.  SPI clock is 50 MHz.
+	18,	//0x6 = Divide by 18.  SPI clock is 44.44 MHz.
+	20,	//0x7 = Divide by 20.  SPI clock is 40 MHz.
+	24,	//0x8 = Divide by 24.  SPI clock is 33.33 MHz.
+	32,	//0x9 = Divide by 32.  SPI clock is 25 MHz.
+	40,	//0xA = Divide by 40.  SPI clock is 20 MHz.
+	50,	//0xB = Divide by 50.  SPI clock is 16 MHz.
+	64,	//0xC = Divide by 64.  SPI clock is 12.5 MHz.
+	128,	//0xD = Divide by 128. SPI clock is 6.25 MHz.
+	-1	//End of list
+};
+
+static bool cdns_xspi_reset_dll(struct cdns_xspi_dev *cdns_xspi)
+{
+	u32 dll_cntrl = readl(cdns_xspi->iobase + CDNS_XSPI_RF_MINICTRL_REGS_DLL_PHY_CTRL);
+	u32 dll_lock;
+
+	/*Reset DLL*/
+	dll_cntrl |= CDNS_XSPI_DLL_RST_N;
+	writel(dll_cntrl, cdns_xspi->iobase + CDNS_XSPI_RF_MINICTRL_REGS_DLL_PHY_CTRL);
+
+	/*Wait for DLL lock*/
+	return readl_relaxed_poll_timeout(cdns_xspi->iobase +
+		CDNS_XSPI_INTR_STATUS_REG,
+		dll_lock, ((dll_lock & CDNS_XSPI_DLL_LOCK) == 1), 10, 10000);
+}
+
+//Static confiuration of PHY
+static bool cdns_xspi_configure_phy(struct cdns_xspi_dev *cdns_xspi)
+{
+	writel(REGS_DLL_PHY_CTRL, cdns_xspi->iobase + CDNS_XSPI_RF_MINICTRL_REGS_DLL_PHY_CTRL);
+	writel(CTB_RFILE_PHY_CTRL, cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_CTRL);
+	writel(RFILE_PHY_TSEL, cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_TSEL);
+	writel(RFILE_PHY_DQ_TIMING, cdns_xspi->iobase + CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DQ_TIMING);
+	writel(RFILE_PHY_DQS_TIMING, cdns_xspi->iobase + CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DQS_TIMING);
+	writel(RFILE_PHY_GATE_LPBK_CTRL, cdns_xspi->iobase + CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_GATE_LPBK_CTRL);
+	writel(RFILE_PHY_DLL_MASTER_CTRL, cdns_xspi->iobase + CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DLL_MASTER_CTRL);
+	writel(RFILE_PHY_DLL_SLAVE_CTRL, cdns_xspi->iobase + CDNS_XSPI_PHY_DATASLICE_RFILE_PHY_DLL_SLAVE_CTRL);
+
+	return cdns_xspi_reset_dll(cdns_xspi);
+}
+
+// Find max avalible clocl
+static bool cdns_xspi_setup_clock(struct cdns_xspi_dev *cdns_xspi, int requested_clk)
+{
+	int i = 0;
+	int clk_val;
+	u32 clk_reg;
+	bool update_clk;
+
+	while (cdns_xspi_clk_div_list[i] > 0) {
+		clk_val = CDNS_XSPI_CLOCK_DIVIDED(cdns_xspi_clk_div_list[i]);
+		if (clk_val <= requested_clk)
+			break;
+		i++;
+	}
+
+	if (cdns_xspi_clk_div_list[i] == -1) {
+		pr_info("Unable to find clock divider for CLK: %d - setting 6.25MHz\n",
+		       requested_clk);
+		i = 0x0D;
+	} else {
+		pr_debug("Found clk div: %d, clk val: %d\n", cdns_xspi_clk_div_list[i],
+			  CDNS_XSPI_CLOCK_DIVIDED(cdns_xspi_clk_div_list[i]));
+	}
+
+	clk_reg = readl(cdns_xspi->iobase + CDNS_XSPI_CLK_CTRL_REG);
+
+	if (FIELD_GET(CDNS_XSPI_CLK_DIV, clk_reg) != i) {
+		clk_reg = FIELD_PREP(CDNS_XSPI_CLK_DIV, i);
+		clk_reg |= CDNS_XSPI_CLK_ENABLE;
+		update_clk = true;
+	}
+
+	if (update_clk)
+		writel(clk_reg, cdns_xspi->iobase + CDNS_XSPI_CLK_CTRL_REG);
+
+	return update_clk;
+}
+
 static int cdns_xspi_wait_for_controller_idle(struct cdns_xspi_dev *cdns_xspi)
 {
 	u32 ctrl_stat;
@@ -244,7 +363,7 @@ static int cdns_xspi_wait_for_controller_idle(struct cdns_xspi_dev *cdns_xspi)
 					  ctrl_stat,
 					  ((ctrl_stat &
 					    CDNS_XSPI_CTRL_BUSY) == 0),
-					  100, 1000);
+					  100, 50000);
 }
 
 static void cdns_xspi_trigger_command(struct cdns_xspi_dev *cdns_xspi,
@@ -324,6 +443,9 @@ static int cdns_xspi_controller_init(struct cdns_xspi_dev *cdns_xspi)
 			hw_magic_num, CDNS_XSPI_MAGIC_NUM_VALUE);
 		return -EIO;
 	}
+
+	writel(FIELD_PREP(CDNS_XSPI_CTRL_WORK_MODE, CDNS_XSPI_WORK_MODE_STIG),
+	       cdns_xspi->iobase + CDNS_XSPI_CTRL_CONFIG_REG);
 
 	ctrl_features = readl(cdns_xspi->iobase + CDNS_XSPI_CTRL_FEATURES_REG);
 	cdns_xspi->hw_num_banks = FIELD_GET(CDNS_XSPI_NUM_BANKS, ctrl_features);
@@ -647,6 +769,16 @@ static void cdns_xspi_print_phy_config(struct cdns_xspi_dev *cdns_xspi)
 		 readl(cdns_xspi->auxbase + CDNS_XSPI_CCP_PHY_DLL_SLAVE_CTRL));
 }
 
+static int cdns_xspi_setup(struct spi_device *spi_dev)
+{
+	struct cdns_xspi_dev *cdns_xspi = spi_master_get_devdata(spi_dev->master);
+
+	cdns_xspi_setup_clock(cdns_xspi, spi_dev->max_speed_hz);
+
+	return 0;
+}
+
+
 static int cdns_xspi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -664,6 +796,7 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 		SPI_MODE_0  | SPI_MODE_3;
 
 	master->mem_ops = &cadence_xspi_mem_ops;
+	master->setup = cdns_xspi_setup;
 	master->dev.of_node = pdev->dev.of_node;
 	master->bus_num = -1;
 
@@ -719,8 +852,10 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 		}
 	}
 
-	cdns_xspi_print_phy_config(cdns_xspi);
+	cdns_xspi_setup_clock(cdns_xspi, 25000000);
+	cdns_xspi_configure_phy(cdns_xspi);
 
+	cdns_xspi_print_phy_config(cdns_xspi);
 	ret = cdns_xspi_controller_init(cdns_xspi);
 	if (ret) {
 		dev_err(dev, "Failed to initialize controller\n");
