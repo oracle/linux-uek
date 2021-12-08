@@ -68,28 +68,15 @@ static int check_rng_health(struct cn10k_rng *rng)
 	return 0;
 }
 
-static int cn10k_check_entropy(struct cn10k_rng *rng)
-{
-	int retries = 5;
-	u64 ent_status;
-
-	while (retries) {
-		ent_status = readq(rng->reg_base + RNM_ENTROPY_STATUS);
-		if (ent_status & 0x7FULL)
-			break;
-		udelay(20);
-		retries--;
-	}
-	return ent_status & 0x7FULL;
-}
-
 static void cn10k_read_trng(struct cn10k_rng *rng, u64 *value)
 {
 	u64 upper, lower;
 
 	*value = readq(rng->reg_base + RNM_PF_RANDOM);
 
-	/* Confirm if '0' random data is real data or not */
+	/* HW can run out of entropy if large amount random data is read in
+	 * quick succession. Zeros may not be real random data from HW.
+	 */
 	if (!*value) {
 		upper = readq(rng->reg_base + RNM_PF_RANDOM);
 		lower = readq(rng->reg_base + RNM_PF_RANDOM);
@@ -114,14 +101,7 @@ static int cn10k_rng_read(struct hwrng *hwrng, void *data,
 	if (err)
 		return err;
 
-	/* HW can run out of entropy if large amount random data is read in
-	 * quick succession. So check if it's available to be read.
-	 */
-	size = cn10k_check_entropy(rng);
-	if (size > max)
-		size = max;
-	else
-		max = size;
+	size = max;
 
 	while (size >= 8) {
 		cn10k_read_trng(rng, &value);
