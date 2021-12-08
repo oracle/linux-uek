@@ -833,47 +833,6 @@ static void shrink_ple_window(struct kvm_vcpu *vcpu)
 	}
 }
 
-/*
- * The default MMIO mask is a single bit (excluding the present bit),
- * which could conflict with the memory encryption bit. Check for
- * memory encryption support and override the default MMIO mask if
- * memory encryption is enabled.
- */
-static __init void svm_adjust_mmio_mask(void)
-{
-	unsigned int enc_bit, mask_bit;
-	u64 msr, mask;
-
-	/* If there is no memory encryption support, use existing mask */
-	if (cpuid_eax(0x80000000) < 0x8000001f)
-		return;
-
-	/* If memory encryption is not enabled, use existing mask */
-	rdmsrl(MSR_K8_SYSCFG, msr);
-	if (!(msr & MSR_K8_SYSCFG_MEM_ENCRYPT))
-		return;
-
-	enc_bit = cpuid_ebx(0x8000001f) & 0x3f;
-	mask_bit = boot_cpu_data.x86_phys_bits;
-
-	/* Increment the mask bit if it is the same as the encryption bit */
-	if (enc_bit == mask_bit)
-		mask_bit++;
-
-	/*
-	 * If the mask bit location is below 52, then some bits above the
-	 * physical addressing limit will always be reserved, so use the
-	 * rsvd_bits() function to generate the mask. This mask, along with
-	 * the present bit, will be used to generate a page fault with
-	 * PFER.RSV = 1.
-	 *
-	 * If the mask bit location is 52 (or above), then clear the mask.
-	 */
-	mask = (mask_bit < 52) ? rsvd_bits(mask_bit, 51) | PT_PRESENT_MASK : 0;
-
-	kvm_mmu_set_mmio_spte_mask(mask, mask, PT_WRITABLE_MASK | PT_USER_MASK);
-}
-
 static void svm_hardware_teardown(void)
 {
 	int cpu;
@@ -886,147 +845,6 @@ static void svm_hardware_teardown(void)
 
 	__free_pages(pfn_to_page(iopm_base >> PAGE_SHIFT), IOPM_ALLOC_ORDER);
 	iopm_base = 0;
-}
-
-static __init void svm_set_cpu_caps(void)
-{
-	kvm_set_cpu_caps();
-
-	supported_xss = 0;
-
-	/* CPUID 0x80000001 and 0x8000000A (SVM features) */
-	if (nested) {
-		kvm_cpu_cap_set(X86_FEATURE_SVM);
-
-		if (nrips)
-			kvm_cpu_cap_set(X86_FEATURE_NRIPS);
-
-		if (npt_enabled)
-			kvm_cpu_cap_set(X86_FEATURE_NPT);
-
-		/* Nested VM can receive #VMEXIT instead of triggering #GP */
-		kvm_cpu_cap_set(X86_FEATURE_SVME_ADDR_CHK);
-	}
-
-	/* CPUID 0x80000008 */
-	if (boot_cpu_has(X86_FEATURE_LS_CFG_SSBD) ||
-	    boot_cpu_has(X86_FEATURE_AMD_SSBD))
-		kvm_cpu_cap_set(X86_FEATURE_VIRT_SSBD);
-}
-
-static __init int svm_hardware_setup(void)
-{
-	int cpu;
-	struct page *iopm_pages;
-	void *iopm_va;
-	int r;
-
-	iopm_pages = alloc_pages(GFP_KERNEL, IOPM_ALLOC_ORDER);
-
-	if (!iopm_pages)
-		return -ENOMEM;
-
-	iopm_va = page_address(iopm_pages);
-	memset(iopm_va, 0xff, PAGE_SIZE * (1 << IOPM_ALLOC_ORDER));
-	iopm_base = page_to_pfn(iopm_pages) << PAGE_SHIFT;
-
-	init_msrpm_offsets();
-
-	supported_xcr0 &= ~(XFEATURE_MASK_BNDREGS | XFEATURE_MASK_BNDCSR);
-
-	if (boot_cpu_has(X86_FEATURE_NX))
-		kvm_enable_efer_bits(EFER_NX);
-
-	if (boot_cpu_has(X86_FEATURE_FXSR_OPT))
-		kvm_enable_efer_bits(EFER_FFXSR);
-
-	if (boot_cpu_has(X86_FEATURE_TSCRATEMSR)) {
-		kvm_has_tsc_control = true;
-		kvm_max_tsc_scaling_ratio = TSC_RATIO_MAX;
-		kvm_tsc_scaling_ratio_frac_bits = 32;
-	}
-
-	/* Check for pause filtering support */
-	if (!boot_cpu_has(X86_FEATURE_PAUSEFILTER)) {
-		pause_filter_count = 0;
-		pause_filter_thresh = 0;
-	} else if (!boot_cpu_has(X86_FEATURE_PFTHRESHOLD)) {
-		pause_filter_thresh = 0;
-	}
-
-	if (nested) {
-		printk(KERN_INFO "kvm: Nested Virtualization enabled\n");
-		kvm_enable_efer_bits(EFER_SVME | EFER_LMSLE);
-	}
-
-	if (sev) {
-		if (boot_cpu_has(X86_FEATURE_SEV) &&
-		    IS_ENABLED(CONFIG_KVM_AMD_SEV)) {
-			r = sev_hardware_setup();
-			if (r)
-				sev = false;
-		} else {
-			sev = false;
-		}
-	}
-
-	svm_adjust_mmio_mask();
-
-	for_each_possible_cpu(cpu) {
-		r = svm_cpu_init(cpu);
-		if (r)
-			goto err;
-	}
-
-	if (!boot_cpu_has(X86_FEATURE_NPT))
-		npt_enabled = false;
-
-	if (npt_enabled && !npt) {
-		printk(KERN_INFO "kvm: Nested Paging disabled\n");
-		npt_enabled = false;
-	}
-
-	if (npt_enabled) {
-		printk(KERN_INFO "kvm: Nested Paging enabled\n");
-		kvm_enable_tdp();
-	} else
-		kvm_disable_tdp();
-
-	if (nrips) {
-		if (!boot_cpu_has(X86_FEATURE_NRIPS))
-			nrips = false;
-	}
-
-	enable_apicv = avic = avic && npt_enabled && boot_cpu_has(X86_FEATURE_AVIC);
-
-	if (enable_apicv) {
-		pr_info("AVIC enabled\n");
-
-		amd_iommu_register_ga_log_notifier(&avic_ga_log_notifier);
-	}
-
-	if (vls) {
-		if (!npt_enabled ||
-		    !boot_cpu_has(X86_FEATURE_V_VMSAVE_VMLOAD) ||
-		    !IS_ENABLED(CONFIG_X86_64)) {
-			vls = false;
-		} else {
-			pr_info("Virtual VMLOAD VMSAVE supported\n");
-		}
-	}
-
-	if (boot_cpu_has(X86_FEATURE_SVME_ADDR_CHK))
-		svm_gp_erratum_intercept = false;
-
-	vgif = false; /* Disabled for CVE-2021-3653 */
-
-	svm_set_cpu_caps();
-
-	return 0;
-
-err:
-	svm_hardware_teardown();
-	return r;
 }
 
 static void init_seg(struct vmcb_seg *seg)
@@ -4347,6 +4165,189 @@ static struct kvm_x86_ops svm_x86_ops __initdata = {
 
 	.apic_init_signal_blocked = svm_apic_init_signal_blocked,
 };
+
+/*
+ * The default MMIO mask is a single bit (excluding the present bit),
+ * which could conflict with the memory encryption bit. Check for
+ * memory encryption support and override the default MMIO mask if
+ * memory encryption is enabled.
+ */
+static __init void svm_adjust_mmio_mask(void)
+{
+	unsigned int enc_bit, mask_bit;
+	u64 msr, mask;
+
+	/* If there is no memory encryption support, use existing mask */
+	if (cpuid_eax(0x80000000) < 0x8000001f)
+		return;
+
+	/* If memory encryption is not enabled, use existing mask */
+	rdmsrl(MSR_K8_SYSCFG, msr);
+	if (!(msr & MSR_K8_SYSCFG_MEM_ENCRYPT))
+		return;
+
+	enc_bit = cpuid_ebx(0x8000001f) & 0x3f;
+	mask_bit = boot_cpu_data.x86_phys_bits;
+
+	/* Increment the mask bit if it is the same as the encryption bit */
+	if (enc_bit == mask_bit)
+		mask_bit++;
+
+	/*
+	 * If the mask bit location is below 52, then some bits above the
+	 * physical addressing limit will always be reserved, so use the
+	 * rsvd_bits() function to generate the mask. This mask, along with
+	 * the present bit, will be used to generate a page fault with
+	 * PFER.RSV = 1.
+	 *
+	 * If the mask bit location is 52 (or above), then clear the mask.
+	 */
+	mask = (mask_bit < 52) ? rsvd_bits(mask_bit, 51) | PT_PRESENT_MASK : 0;
+
+	kvm_mmu_set_mmio_spte_mask(mask, mask, PT_WRITABLE_MASK | PT_USER_MASK);
+}
+
+static __init void svm_set_cpu_caps(void)
+{
+	kvm_set_cpu_caps();
+
+	supported_xss = 0;
+
+	/* CPUID 0x80000001 and 0x8000000A (SVM features) */
+	if (nested) {
+		kvm_cpu_cap_set(X86_FEATURE_SVM);
+
+		if (nrips)
+			kvm_cpu_cap_set(X86_FEATURE_NRIPS);
+
+		if (npt_enabled)
+			kvm_cpu_cap_set(X86_FEATURE_NPT);
+
+		/* Nested VM can receive #VMEXIT instead of triggering #GP */
+		kvm_cpu_cap_set(X86_FEATURE_SVME_ADDR_CHK);
+	}
+
+	/* CPUID 0x80000008 */
+	if (boot_cpu_has(X86_FEATURE_LS_CFG_SSBD) ||
+	    boot_cpu_has(X86_FEATURE_AMD_SSBD))
+		kvm_cpu_cap_set(X86_FEATURE_VIRT_SSBD);
+}
+
+static __init int svm_hardware_setup(void)
+{
+	int cpu;
+	struct page *iopm_pages;
+	void *iopm_va;
+	int r;
+
+	iopm_pages = alloc_pages(GFP_KERNEL, IOPM_ALLOC_ORDER);
+
+	if (!iopm_pages)
+		return -ENOMEM;
+
+	iopm_va = page_address(iopm_pages);
+	memset(iopm_va, 0xff, PAGE_SIZE * (1 << IOPM_ALLOC_ORDER));
+	iopm_base = page_to_pfn(iopm_pages) << PAGE_SHIFT;
+
+	init_msrpm_offsets();
+
+	supported_xcr0 &= ~(XFEATURE_MASK_BNDREGS | XFEATURE_MASK_BNDCSR);
+
+	if (boot_cpu_has(X86_FEATURE_NX))
+		kvm_enable_efer_bits(EFER_NX);
+
+	if (boot_cpu_has(X86_FEATURE_FXSR_OPT))
+		kvm_enable_efer_bits(EFER_FFXSR);
+
+	if (boot_cpu_has(X86_FEATURE_TSCRATEMSR)) {
+		kvm_has_tsc_control = true;
+		kvm_max_tsc_scaling_ratio = TSC_RATIO_MAX;
+		kvm_tsc_scaling_ratio_frac_bits = 32;
+	}
+
+	/* Check for pause filtering support */
+	if (!boot_cpu_has(X86_FEATURE_PAUSEFILTER)) {
+		pause_filter_count = 0;
+		pause_filter_thresh = 0;
+	} else if (!boot_cpu_has(X86_FEATURE_PFTHRESHOLD)) {
+		pause_filter_thresh = 0;
+	}
+
+	if (nested) {
+		printk(KERN_INFO "kvm: Nested Virtualization enabled\n");
+		kvm_enable_efer_bits(EFER_SVME | EFER_LMSLE);
+	}
+
+	if (sev) {
+		if (boot_cpu_has(X86_FEATURE_SEV) &&
+		    IS_ENABLED(CONFIG_KVM_AMD_SEV)) {
+			r = sev_hardware_setup();
+			if (r)
+				sev = false;
+		} else {
+			sev = false;
+		}
+	}
+
+	svm_adjust_mmio_mask();
+
+	for_each_possible_cpu(cpu) {
+		r = svm_cpu_init(cpu);
+		if (r)
+			goto err;
+	}
+
+	if (!boot_cpu_has(X86_FEATURE_NPT))
+		npt_enabled = false;
+
+	if (npt_enabled && !npt) {
+		printk(KERN_INFO "kvm: Nested Paging disabled\n");
+		npt_enabled = false;
+	}
+
+	if (npt_enabled) {
+		printk(KERN_INFO "kvm: Nested Paging enabled\n");
+		kvm_enable_tdp();
+	} else
+		kvm_disable_tdp();
+
+	if (nrips) {
+		if (!boot_cpu_has(X86_FEATURE_NRIPS))
+			nrips = false;
+	}
+
+	enable_apicv = avic = avic && npt_enabled && boot_cpu_has(X86_FEATURE_AVIC);
+
+	if (enable_apicv) {
+		pr_info("AVIC enabled\n");
+
+		amd_iommu_register_ga_log_notifier(&avic_ga_log_notifier);
+	}
+
+	if (vls) {
+		if (!npt_enabled ||
+		    !boot_cpu_has(X86_FEATURE_V_VMSAVE_VMLOAD) ||
+		    !IS_ENABLED(CONFIG_X86_64)) {
+			vls = false;
+		} else {
+			pr_info("Virtual VMLOAD VMSAVE supported\n");
+		}
+	}
+
+	if (boot_cpu_has(X86_FEATURE_SVME_ADDR_CHK))
+		svm_gp_erratum_intercept = false;
+
+	vgif = false; /* Disabled for CVE-2021-3653 */
+
+	svm_set_cpu_caps();
+
+	return 0;
+
+err:
+	svm_hardware_teardown();
+	return r;
+}
+
 
 static struct kvm_x86_init_ops svm_init_ops __initdata = {
 	.cpu_has_kvm_support = has_svm,
