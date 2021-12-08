@@ -223,6 +223,8 @@
 #define CDNS_XSPI_DLL_RST_N BIT(24)
 #define CDNS_XSPI_DLL_LOCK  BIT(0)
 
+#define ASIM_PLATFORM_NAME "ASIM_PLATFORM"
+
 enum cdns_xspi_stig_instr_type {
 	CDNS_XSPI_STIG_INSTR_TYPE_0,
 	CDNS_XSPI_STIG_INSTR_TYPE_1,
@@ -266,6 +268,7 @@ struct cdns_xspi_dev {
 
 	u8 hw_num_banks;
 	enum cdns_xspi_sdma_size read_size;
+	bool asim_plat;
 };
 
 const int cdns_xspi_clk_div_list[] = {
@@ -285,6 +288,25 @@ const int cdns_xspi_clk_div_list[] = {
 	128,	//0xD = Divide by 128. SPI clock is 6.25 MHz.
 	-1	//End of list
 };
+
+static bool mrvl_platform_is_asim(void)
+{
+	/* Check runmode dtb entry */
+	struct device_node *np = of_find_node_by_name(NULL, "soc");
+	const char *runplatform;
+	int ret;
+
+	ret = of_property_read_string(np, "runplatform", &runplatform);
+
+	if (!ret) {
+		if (!strncmp(runplatform, ASIM_PLATFORM_NAME, strlen(ASIM_PLATFORM_NAME))) {
+			pr_debug("asim platform detected\n");
+			return true;
+		}
+	}
+
+	return false;
+}
 
 static bool cdns_xspi_reset_dll(struct cdns_xspi_dev *cdns_xspi)
 {
@@ -381,6 +403,9 @@ static int cdns_xspi_check_command_status(struct cdns_xspi_dev *cdns_xspi)
 {
 	int ret = 0;
 	u32 cmd_status = readl(cdns_xspi->iobase + CDNS_XSPI_CMD_STATUS_REG);
+
+	if (cdns_xspi->asim_plat)
+		return 0;
 
 	if (cmd_status & CDNS_XSPI_CMD_STATUS_COMPLETED) {
 		if ((cmd_status & CDNS_XSPI_CMD_STATUS_FAILED) != 0) {
@@ -554,6 +579,9 @@ bool cdns_xspi_stig_ready(struct cdns_xspi_dev *cdns_xspi)
 {
 	u32 ctrl_stat;
 
+	if (cdns_xspi->asim_plat)
+		return 0;
+
 	return readl_relaxed_poll_timeout
 		(cdns_xspi->iobase + CDNS_XSPI_CTRL_STATUS_REG,
 		ctrl_stat,
@@ -564,6 +592,9 @@ bool cdns_xspi_stig_ready(struct cdns_xspi_dev *cdns_xspi)
 bool cdns_xspi_sdma_ready(struct cdns_xspi_dev *cdns_xspi)
 {
 	u32 ctrl_stat;
+
+	if (cdns_xspi->asim_plat)
+		return 0;
 
 	return readl_relaxed_poll_timeout
 		(cdns_xspi->iobase + CDNS_XSPI_INTR_STATUS_REG,
@@ -851,6 +882,8 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 			return ret;
 		}
 	}
+
+	cdns_xspi->asim_plat = mrvl_platform_is_asim();
 
 	cdns_xspi_setup_clock(cdns_xspi, 25000000);
 	cdns_xspi_configure_phy(cdns_xspi);
