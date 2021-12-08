@@ -449,21 +449,15 @@ static unsigned long count_vma_pages_range(struct mm_struct *mm,
 	return nr_pages;
 }
 
-static void __vma_link_file(struct vm_area_struct *vma)
+static void __vma_link_file(struct vm_area_struct *vma,
+			    struct address_space *mapping)
 {
-	struct file *file;
+	if (vma->vm_flags & VM_SHARED)
+		mapping_allow_writable(mapping);
 
-	file = vma->vm_file;
-	if (file) {
-		struct address_space *mapping = file->f_mapping;
-
-		if (vma->vm_flags & VM_SHARED)
-			mapping_allow_writable(mapping);
-
-		flush_dcache_mmap_lock(mapping);
-		vma_interval_tree_insert(vma, &mapping->i_mmap);
-		flush_dcache_mmap_unlock(mapping);
-	}
+	flush_dcache_mmap_lock(mapping);
+	vma_interval_tree_insert(vma, &mapping->i_mmap);
+	flush_dcache_mmap_unlock(mapping);
 }
 
 /*
@@ -506,10 +500,11 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
 	}
 
 	vma_store(mm, vma);
-	__vma_link_file(vma);
 
-	if (mapping)
+	if (mapping) {
+		__vma_link_file(vma, mapping);
 		i_mmap_unlock_write(mapping);
+	}
 
 	mm->map_count++;
 	validate_mm(mm);
@@ -742,14 +737,14 @@ again:
 			uprobe_munmap(next, next->vm_start, next->vm_end);
 
 		i_mmap_lock_write(mapping);
-		if (insert) {
+		if (insert && insert->vm_file) {
 			/*
 			 * Put into interval tree now, so instantiated pages
 			 * are visible to arm/parisc __flush_dcache_page
 			 * throughout; but we cannot insert into address
 			 * space until vma start or end is updated.
 			 */
-			__vma_link_file(insert);
+			__vma_link_file(insert, insert->vm_file->f_mapping);
 		}
 	}
 
@@ -2958,6 +2953,7 @@ mas_store_fail:
 static int do_brk_flags(struct ma_state *mas, struct vm_area_struct *vma,
 		unsigned long addr, unsigned long len, unsigned long flags)
 {
+	struct address_space *mapping = NULL;
 	struct mm_struct *mm = current->mm;
 	validate_mm_mt(mm);
 
@@ -3013,13 +3009,15 @@ static int do_brk_flags(struct ma_state *mas, struct vm_area_struct *vma,
 	vma->vm_pgoff = addr >> PAGE_SHIFT;
 	vma->vm_flags = flags;
 	vma->vm_page_prot = vm_get_page_prot(flags);
-	if (vma->vm_file)
-		i_mmap_lock_write(vma->vm_file->f_mapping);
+	if (vma->vm_file) {
+		mapping = vma->vm_file->f_mapping;
+		i_mmap_lock_write(mapping);
+	}
 	vma_mas_store(vma, mas);
 	mm->map_count++;
-	if (vma->vm_file) {
-		__vma_link_file(vma);
-		i_mmap_unlock_write(vma->vm_file->f_mapping);
+	if (mapping) {
+		__vma_link_file(vma, mapping);
+		i_mmap_unlock_write(mapping);
 	}
 
 out:
