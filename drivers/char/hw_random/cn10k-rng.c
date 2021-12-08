@@ -83,20 +83,23 @@ static int cn10k_check_entropy(struct cn10k_rng *rng)
 	return ent_status & 0x7FULL;
 }
 
-static int cn10k_read_trng(struct cn10k_rng *rng, u64 *value)
+static void cn10k_read_trng(struct cn10k_rng *rng, u64 *value)
 {
-	u64 addr, result = 0;
-	int retry_count = 5;
+	u64 upper, lower;
 
-	addr = (u64)rng->reg_base + RNM_PF_RANDOM;
-	while (!result && retry_count) {
-		__asm__ volatile("ldp  %0,%1,[%2]" :\
-				 "=r" (*value), "=r" (result) : "r" (addr) : );
+	*value = readq(rng->reg_base + RNM_PF_RANDOM);
 
-		retry_count--;
+	/* Confirm if '0' random data is real data or not */
+	if (!*value) {
+		upper = readq(rng->reg_base + RNM_PF_RANDOM);
+		lower = readq(rng->reg_base + RNM_PF_RANDOM);
+		while (!(upper & 0x00000000FFFFFFFFULL))
+			upper = readq(rng->reg_base + RNM_PF_RANDOM);
+		while (!(lower & 0xFFFFFFFF00000000ULL))
+			lower = readq(rng->reg_base + RNM_PF_RANDOM);
+
+		*value = (upper & 0xFFFFFFFF00000000) | (lower & 0xFFFFFFFF);
 	}
-
-	return retry_count ? 0 : -EIO;
 }
 
 static int cn10k_rng_read(struct hwrng *hwrng, void *data,
@@ -121,9 +124,7 @@ static int cn10k_rng_read(struct hwrng *hwrng, void *data,
 		max = size;
 
 	while (size >= 8) {
-		err = cn10k_read_trng(rng, &value);
-		if (err)
-			goto exit;
+		cn10k_read_trng(rng, &value);
 
 		*((u64 *)data) = (u64)value;
 		size -= 8;
@@ -131,16 +132,13 @@ static int cn10k_rng_read(struct hwrng *hwrng, void *data,
 	}
 
 	while (size > 0) {
-		err = cn10k_read_trng(rng, &value);
-		if (err)
-			goto exit;
+		cn10k_read_trng(rng, &value);
 
 		*((u8 *)data) = (u8)value;
 		size--;
 		data++;
 	}
 
-exit:
 	return max - size;
 }
 
@@ -171,13 +169,13 @@ static int cn10k_rng_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	rng->ops.quality = 1000;
 	rng->ops.priv = (unsigned long) rng;
 
+	reset_rng_health_state(rng);
+
 	err = devm_hwrng_register(&pdev->dev, &rng->ops);
 	if (err) {
 		dev_err(&pdev->dev, "Could not register hwrng device.\n");
 		return err;
 	}
-
-	reset_rng_health_state(rng);
 
 	return 0;
 }
