@@ -82,7 +82,7 @@ config PREEMPTION
        select PREEMPT_COUNT
 
 config SCHED_CORE
-	bool "Enable Core Scheduling"
+	bool
 	default y
 	depends on SCHED_SMT
 
