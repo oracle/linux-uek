@@ -317,6 +317,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	if (cookie_ret)
 		*cookie_ret = cookie;
 
+	mr->r_iova = iova | (args->vec.addr & ~PAGE_MASK);
 	if (args->cookie_addr && put_user(cookie, (u64 __user *)(unsigned long) args->cookie_addr)) {
 		ret = -EFAULT;
 		reason = "invalid address for cookie";
@@ -429,10 +430,14 @@ int rds_free_mr(struct rds_sock *rs, sockptr_t optval, int optlen)
 	spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	mr = rds_mr_tree_walk(&rs->rs_rdma_keys, rds_rdma_cookie_key(args.cookie), NULL);
 	if (mr) {
-		rb_erase(&mr->r_rb_node, &rs->rs_rdma_keys);
-		RB_CLEAR_NODE(&mr->r_rb_node);
-		if (args.flags & RDS_RDMA_INVALIDATE)
-			mr->r_invalidate = 1;
+		if (rds_rdma_make_cookie(mr->r_key, mr->r_iova) == args.cookie) {
+			rb_erase(&mr->r_rb_node, &rs->rs_rdma_keys);
+			RB_CLEAR_NODE(&mr->r_rb_node);
+			if (args.flags & RDS_RDMA_INVALIDATE)
+				mr->r_invalidate = 1;
+		} else {
+			mr = NULL;
+		}
 	}
 	spin_unlock_irqrestore(&rs->rs_rdma_lock, flags);
 
