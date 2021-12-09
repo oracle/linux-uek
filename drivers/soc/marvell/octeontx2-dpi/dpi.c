@@ -73,8 +73,10 @@ static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	u16 sso_pf_func = dpivf->vf_config.sso_pf_func;
 	u16 npa_pf_func = dpivf->vf_config.npa_pf_func;
 
-	dpi_reg_write(dpi, DPI_DMAX_IBUFF_CSIZE(queue),
-		      DPI_DMA_IBUFF_CSIZE_CSIZE((u64)(buf_size / 8)));
+	reg = DPI_DMA_IBUFF_CSIZE_CSIZE((u64)(buf_size / 8));
+	if (is_otx3_dpi(dpi))
+		reg |= DPI_DMA_IBUFF_CSIZE_NPA_FREE;
+	dpi_reg_write(dpi, DPI_DMAX_IBUFF_CSIZE(queue), reg);
 
 	if (!is_otx3_dpi(dpi)) {
 		/* IDs are already configured while creating the domains.
@@ -204,6 +206,11 @@ static int dpi_init(struct dpipf *dpi)
 			DPI_EBUS_PORTX_CFG_MRRS(mrrs_val));
 		dpi_reg_write(dpi, DPI_EBUS_PORTX_CFG(port), reg);
 	}
+
+	/* Set the write control FIFO threshold as per HW recommendation */
+	if (is_otx3_dpi(dpi))
+		dpi_reg_write(dpi, DPI_WCTL_FIF_THR, 0x30);
+
 	return 0;
 }
 
