@@ -7190,7 +7190,7 @@ mpt3sas_port_enable_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	if (ioc_status != MPI2_IOCSTATUS_SUCCESS)
 		ioc->port_enable_failed = 1;
 
-	if (ioc->is_driver_loading) {
+	if (ioc->port_enable_cmds.status & MPT3_CMD_COMPLETE_ASYNC) {
 		if (ioc_status == MPI2_IOCSTATUS_SUCCESS) {
 			mpt3sas_port_enable_complete(ioc);
 			return 1;
@@ -7199,6 +7199,7 @@ mpt3sas_port_enable_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 			ioc->start_scan = 0;
 			return 1;
 		}
+		ioc->port_enable_cmds.status &= ~MPT3_CMD_COMPLETE_ASYNC;
 	}
 	complete(&ioc->port_enable_cmds.done);
 	return 1;
@@ -7293,6 +7294,7 @@ mpt3sas_port_enable(struct MPT3SAS_ADAPTER *ioc)
 	}
 	ioc->drv_internal_flags |= MPT_DRV_INTERNAL_FIRST_PE_ISSUED;
 	ioc->port_enable_cmds.status = MPT3_CMD_PENDING;
+	ioc->port_enable_cmds.status |= MPT3_CMD_COMPLETE_ASYNC;
 	mpi_request = mpt3sas_base_get_msg_frame(ioc, smid);
 	ioc->port_enable_cmds.smid = smid;
 	memset(mpi_request, 0, sizeof(Mpi2PortEnableRequest_t));
@@ -7841,7 +7843,7 @@ _base_make_ioc_operational(struct MPT3SAS_ADAPTER *ioc)
 	if (r)
 		return r;
 
-	if (ioc->is_driver_loading) {
+	if (!ioc->shost_recovery) {
 
 		if (ioc->is_warpdrive && ioc->manu_pg10.OEMIdentifier
 		    == 0x80) {
@@ -8261,8 +8263,6 @@ _base_clear_outstanding_mpt_commands(struct MPT3SAS_ADAPTER *ioc)
 			ioc->start_scan_failed =
 				MPI2_IOCSTATUS_INTERNAL_ERROR;
 			ioc->start_scan = 0;
-			ioc->port_enable_cmds.status =
-				MPT3_CMD_NOT_USED;
 		} else {
 			complete(&ioc->port_enable_cmds.done);
 		}
