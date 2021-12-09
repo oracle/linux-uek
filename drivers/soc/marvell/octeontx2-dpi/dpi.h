@@ -53,6 +53,8 @@
 #define DPI_DMA_IBUFF_CSIZE_CSIZE(x)		((x) & 0x1fff)
 #define DPI_DMA_IBUFF_CSIZE_GET_CSIZE(x)	((x) & 0x1fff)
 
+#define DPI_DMA_IBUFF_CSIZE_NPA_FREE		(1 << 16)
+
 #define DPI_DMA_IDS_INST_STRM(x)		((uint64_t)((x) & 0xff) << 40)
 #define DPI_DMA_IDS_GET_INST_STRM(x)		(((x) >> 40) & 0xff)
 
@@ -253,6 +255,8 @@
 		offset = (0x13C00ULL | ((x) << 5));	\
 	offset; })					\
 
+#define DPI_WCTL_FIF_THR			(0x17008ULL)
+
 #define DPI_EBUS_MRRS_MIN			128
 #define DPI_EBUS_MRRS_MAX			1024
 #define DPI_EBUS_MPS_MIN			128
@@ -307,7 +311,7 @@ union dpi_mbox_message_t {
 	uint64_t u[2];
 	struct dpi_mbox_message_s {
 		/* VF ID to configure */
-		uint64_t vfid           :4;
+		uint64_t vfid           :8;
 		/* Command code */
 		uint64_t cmd            :4;
 		/* Command buffer size in 8-byte words */
