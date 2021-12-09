@@ -136,7 +136,7 @@ struct xfrm_state_offload {
 	unsigned int		num_exthdrs;
 	u8			flags;
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, netdevice_tracker	dev_tracker)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
@@ -1928,7 +1928,7 @@ static inline void xfrm_dev_state_free(struct xfrm_state *x)
 		if (dev->xfrmdev_ops->xdo_dev_state_free)
 			dev->xfrmdev_ops->xdo_dev_state_free(x);
 		xso->dev = NULL;
-		dev_put(dev);
+		dev_put_track(dev, &xso->dev_tracker);
 	}
 }
 #else
