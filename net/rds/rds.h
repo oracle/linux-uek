@@ -524,11 +524,12 @@ struct rds_mr {
 	struct rb_node		r_rb_node;
 	struct kref		r_kref;
 	u32			r_key;
+	u32                     r_iova;
 
 	/* A copy of the creation flags */
-	unsigned int		r_use_once:1;
-	unsigned int		r_invalidate:1;
-	unsigned int		r_write:1;
+	u32			r_use_once:1;
+	u32			r_invalidate:1;
+	u32			r_write:1;
 
 	struct rds_sock		*r_sock; /* back pointer to the socket that owns us */
 	struct rds_transport	*r_trans;
