@@ -18,7 +18,7 @@ struct mrvl_bed_source {
 	void __iomem         *block_va;
 	phys_addr_t          bert_pa;
 	u64                  bert_sz;
-	void                 *bert_va;
+	void __iomem         *bert_va;
 	u32                  error_cnt;
 };
 
