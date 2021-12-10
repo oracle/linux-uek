@@ -56,6 +56,18 @@ static int __init ghes_bed_acpi_match_resource(struct platform_device *pdev,
 {
 	struct resource *res;
 
+	// BERT
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		initerrmsg("%s ACPI unable get bert block\n", __func__);
+		return -ENOENT;
+	}
+	initdbgmsg("%s Status BERT %s [%llx - %llx, %lx, %lx]\n", __func__,
+			res->name, res->start, res->end, res->flags, res->desc);
+	bsrc->bert_pa = res->start;
+	bsrc->bert_sz = resource_size(res);
+	initdbgmsg("BERT RING: 0x%llx/0x%llx\n", bsrc->bert_pa, bsrc->bert_sz);
+
 	// Error Block Ring
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
 	if (!res) {
@@ -91,6 +103,17 @@ static int __init ghes_bed_of_match_resource(struct mrvl_bed_source *bsrc)
 		return -ENODEV;
 	}
 
+	res = of_get_address(child_node, 0, &size, NULL);
+	if (!res)
+		goto err;
+
+	base = of_translate_address(child_node, res);
+	if (base == OF_BAD_ADDR)
+		goto err;
+
+	bsrc->bert_pa = (phys_addr_t)base;
+	bsrc->bert_sz = (phys_addr_t)size;
+
 	res = of_get_address(child_node, 2, &size, NULL);
 	if (!res)
 		goto err;
@@ -102,7 +125,8 @@ static int __init ghes_bed_of_match_resource(struct mrvl_bed_source *bsrc)
 	bsrc->block_pa = (phys_addr_t)base;
 	bsrc->block_sz = (phys_addr_t)size;
 
-	initdbgmsg("BERT: 0x%llx/0x%llx\n", bsrc->block_pa, bsrc->block_sz);
+	initdbgmsg("BERT: 0x%llx/0x%llx  0x%llx/0x%llx\n",
+			bsrc->bert_pa, bsrc->bert_sz, bsrc->block_pa, bsrc->block_sz);
 
 	return 0;
 
@@ -127,6 +151,22 @@ static int __init ghes_bed_map_resource(struct device *dev, struct mrvl_bed_sour
 		}
 	}
 	initdbgmsg("%s BERT Ring block VA=0x%llx\n", __func__, (long long)bsrc->block_va);
+
+	if (pfn_valid(PHYS_PFN(bsrc->bert_pa))) {
+		bsrc->bert_va = phys_to_virt(bsrc->bert_pa);
+	} else {
+		if (!devm_request_mem_region(dev, bsrc->bert_pa, bsrc->bert_sz, "BERT")) {
+			initerrmsg("Failure BERT request 0x%llx\n", bsrc->bert_pa);
+			return -ENODEV;
+		}
+		bsrc->bert_va = devm_ioremap(dev, bsrc->bert_pa, bsrc->bert_sz);
+		if (!bsrc->bert_va) {
+			initerrmsg("%s Unable to map Boot Error Data\n", __func__);
+			return -ENODEV;
+		}
+	}
+	initdbgmsg("%s BERT Ring block VA=0x%llx\n", __func__, (long long)bsrc->bert_va);
+
 
 	return 0;
 }
@@ -156,55 +196,6 @@ static int __init ghes_bed_count_error(struct mrvl_bed_source *bsrc)
 		   (long long)bsrc->block_sz, error_cnt);
 
 	return error_cnt;
-}
-
-static int __init ghes_bed_adjust_bert_layout(struct mrvl_bed_source *bsrc)
-{
-	struct otx2_ghes_err_ring *ring;
-	size_t ring_len;
-	size_t bert_len;
-
-	ring = bsrc->block_va;
-
-	/*
-	 * The memory block contains the boot error data ring; beyond the ring
-	 * is room for the BERT.  Calculate size of BERT area.
-	 * Note: the ring structure definition already contains one entry,
-	 * so subtract one from the 'size' member.
-	 * [1] error ring descriptor
-	 * [2] error records
-	 *		[*] cper_sec_mem_err_old
-	 *		[*] ...
-	 * [3] BERT
-	 */
-	ring_len = sizeof(struct otx2_ghes_err_ring) +
-			(sizeof(struct otx2_ghes_err_record) * (ring->size - 1));
-
-	ring_len = roundup(ring_len, 8);
-
-	if (ring_len > bsrc->block_sz) {
-		initerrmsg("Insufficient memory for ring (0x%lx / 0x%lx)\n",
-		       (long)ring_len, (long)bsrc->block_sz);
-		return -EFAULT;
-	}
-
-	bsrc->bert_pa = bsrc->block_pa + ring_len;
-	bsrc->bert_va = bsrc->block_va + ring_len;
-	bsrc->bert_sz = bsrc->block_sz - ring_len;
-
-	initdbgmsg("Ring @ 0x%llx/0x%lx Bert @ 0x%llx/0x%llx\n",
-			bsrc->block_pa, ring_len, bsrc->bert_pa, bsrc->bert_sz);
-
-	bert_len = sizeof(struct acpi_table_bert) +
-			sizeof(struct bed_bert_mem_entry) * bsrc->error_cnt;
-
-	if (bert_len > bsrc->bert_sz) {
-		initerrmsg("Insufficient memory for BERT data (0x%lx / 0x%lx)\n",
-		       (long)bert_len, (long)bsrc->bert_sz);
-		return -EFAULT;
-	}
-
-	return 0;
 }
 
 static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
@@ -341,12 +332,6 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 	ret = ghes_bed_count_error(&bed_src);
 	if (ret <= 0) {
 		initdbgmsg("%s No BERT errors\n", __func__);
-		goto exit1;
-	}
-
-	ret = ghes_bed_adjust_bert_layout(&bed_src);
-	if (ret) {
-		initerrmsg("%s Unable remap BERT layout\n", __func__);
 		goto exit1;
 	}
 
