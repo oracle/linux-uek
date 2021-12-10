@@ -46,6 +46,7 @@ struct iommu_ops;
 struct iommu_group;
 struct dev_pin_info;
 struct dev_iommu;
+struct msi_device_data;
 
 /**
  * struct subsys_interface - interfaces to device functions
@@ -375,10 +376,14 @@ struct dev_links_info {
 /**
  * struct dev_msi_info - Device data related to MSI
  * @domain:	The MSI interrupt domain associated to the device
+ * @data:	Pointer to MSI device data
  */
 struct dev_msi_info {
 #ifdef CONFIG_GENERIC_MSI_IRQ_DOMAIN
 	struct irq_domain	*domain;
+#endif
+#ifdef CONFIG_GENERIC_MSI_IRQ
+	struct msi_device_data	*data;
 #endif
 };
 
@@ -587,8 +592,13 @@ struct device {
 	bool			dma_ops_bypass : 1;
 #endif
 
-	UEK_KABI_USE(1, struct dev_msi_info msi)
+	/* Use two slots because dev_msi_info has expanded its size to 16 bytes. */
+#ifndef __GENKSYMS__
+	struct dev_msi_info msi;
+#else
+	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
+#endif
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
