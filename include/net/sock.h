@@ -350,6 +350,7 @@ struct bpf_local_storage;
   *	@sk_txtime_deadline_mode: set deadline mode for SO_TXTIME
   *	@sk_txtime_report_errors: set report errors mode for SO_TXTIME
   *	@sk_txtime_unused: unused txtime flags
+  *	@ns_tracker: tracker for netns reference
   */
 struct sock {
 	/*
@@ -539,7 +540,7 @@ struct sock {
 	struct rcu_head		sk_rcu;
 
 	UEK_KABI_USE(1, int sk_wait_pending)
-	UEK_KABI_RESERVE(2)
+	UEK_KABI_USE(2, netns_tracker		ns_tracker)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
