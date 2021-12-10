@@ -165,8 +165,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 					    wqe->mhab_id, wqe->lane_id);
 			priv->stats.rx_dropped++;
 			priv->last_rx_dropped_jiffies = jiffies;
-			processed_pkts++;
-			continue;
+			goto update_processed_pkts;
 		}
 		priv2 = netdev_priv(netdev);
 		if (wqe->fcserr || wqe->rsp_ferr || wqe->rsp_nferr) {
@@ -176,8 +175,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 					    ul_cfg->sw_rd_ptr);
 			priv2->stats.rx_dropped++;
 			priv2->last_rx_dropped_jiffies = jiffies;
-			processed_pkts++;
-			continue;
+			goto update_processed_pkts;
 		}
 		if (unlikely(!netif_carrier_ok(netdev))) {
 			net_err_ratelimited("%s {cpri%d lmac%d} link down, drop pkt\n",
@@ -185,8 +183,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 					    priv2->lmac_id);
 			priv2->stats.rx_dropped++;
 			priv2->last_rx_dropped_jiffies = jiffies;
-			processed_pkts++;
-			continue;
+			goto update_processed_pkts;
 		}
 
 		len = wqe->pkt_length;
@@ -206,8 +203,7 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 					    netdev->name);
 			priv->stats.rx_dropped++;
 			priv->last_rx_dropped_jiffies = jiffies;
-			processed_pkts++;
-			continue;
+			goto update_processed_pkts;
 		}
 
 		memcpy(skb->data, pkt_buf, len);
@@ -216,12 +212,14 @@ static int otx2_cpri_process_rx_pkts(struct otx2_cpri_ndev_priv *priv,
 
 		netif_receive_skb(skb);
 
+		priv2->last_rx_jiffies = jiffies;
+
+update_processed_pkts:
 		processed_pkts++;
 		ul_cfg->sw_rd_ptr++;
 		if (ul_cfg->sw_rd_ptr == ul_cfg->num_entries)
 			ul_cfg->sw_rd_ptr = 0;
 
-		priv2->last_rx_jiffies = jiffies;
 	}
 
 	if (processed_pkts)
