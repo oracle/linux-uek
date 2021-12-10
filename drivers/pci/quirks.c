@@ -5783,3 +5783,42 @@ static void nvidia_ion_ahci_fixup(struct pci_dev *pdev)
 	pdev->dev_flags |= PCI_DEV_FLAGS_HAS_MSI_MASKING;
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_NVIDIA, 0x0ab8, nvidia_ion_ahci_fixup);
+
+/* Marvell cnf10ka (0xba00) requires fix for device at slot (0xe), func. 0x0
+ * Wrong values for BAR0 and BAR4 are fetched from config space.
+ * There are some devices that doesn't require fixing, so the fix is not always
+ * applied. Deciding factor is curent value of BAR0/BAR4.
+ * Config. space for cnf10ka is read-only, Changing the registers isn't possible
+ */
+#define CAVIUM_XCP0_ADDR_OK	0x000082c000000000ULL /* Correct PCI BAR base */
+#define CAVIUM_XCP0_FIX_MASK	0xffffffff00000000ULL
+#define CAVIUM_XCP0_SHOULD_FIX(addr) \
+	(((addr) & CAVIUM_XCP0_FIX_MASK) != CAVIUM_XCP0_ADDR_OK)
+#define CAVIUM_XCP0_FIX_ADDR(addr) \
+	(((addr) & (~CAVIUM_XCP0_FIX_MASK)) | CAVIUM_XCP0_ADDR_OK)
+
+static void quirk_cavium_xcp0_bar_fixup(struct pci_dev *dev)
+{
+	int i;
+
+	if (dev->subsystem_device == 0xba00 && dev->devfn == 0xe0) {
+		for (i = 0; i < PCI_STD_RESOURCE_END; i++) {
+
+			struct resource *r = &dev->resource[i];
+			int ret;
+
+			if (!(r->flags & IORESOURCE_MEM))
+				continue;
+
+			/* There are revision of HW that not need fixup */
+			if (CAVIUM_XCP0_SHOULD_FIX(r->start)) {
+				r->start = CAVIUM_XCP0_FIX_ADDR(r->start);
+				r->end = CAVIUM_XCP0_FIX_ADDR(r->end);
+				ret = pci_claim_resource(dev, i);
+				pci_info(dev, "Fixup (%d) %llx - %llx/%lx. (%d)\n",
+					 i, r->start, r->end, r->flags, ret);
+			}
+		}
+	}
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_CAVIUM, 0xa067, quirk_cavium_xcp0_bar_fixup);
