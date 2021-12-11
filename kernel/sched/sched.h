@@ -501,6 +501,7 @@ struct cfs_rq {
 
 	u64			exec_clock;
 	u64			min_vruntime;
+
 #ifndef CONFIG_64BIT
 	u64			min_vruntime_copy;
 #endif
@@ -580,9 +581,14 @@ struct cfs_rq {
 	struct list_head	throttled_list;
 #endif /* CONFIG_CFS_BANDWIDTH */
 #endif /* CONFIG_FAIR_GROUP_SCHED */
- 
+
+#ifdef CONFIG_SCHED_CORE
+	UEK_KABI_USE(1, unsigned int forceidle_seq)
+	UEK_KABI_USE(2, u64 min_vruntime_fi)
+#else
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
+#endif
 };
 
 static inline int rt_bandwidth_enabled(void)
@@ -865,6 +871,7 @@ struct rq_kabi_extra {
 	unsigned int		core_pick_seq;
 	unsigned long		core_cookie;
 	unsigned char		core_forceidle;
+	unsigned int		core_forceidle_seq;
 };
 
 /*
@@ -1107,6 +1114,8 @@ static inline raw_spinlock_t *__rq_lockp(struct rq *rq)
 
 	return &rq->__lock;
 }
+
+bool cfs_prio_less(struct task_struct *a, struct task_struct *b, bool fi);
 
 #else /* !CONFIG_SCHED_CORE */
 
