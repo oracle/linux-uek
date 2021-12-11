@@ -1290,14 +1290,15 @@ struct task_struct {
 	UEK_KABI_RESERVE(4)
 #endif
 	UEK_KABI_USE(5, unsigned long core_cookie)
+	UEK_KABI_USE(6, unsigned long core_occupation)
 #else
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
 #endif
 
-	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
 
