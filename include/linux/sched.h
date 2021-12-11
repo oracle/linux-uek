@@ -1280,10 +1280,23 @@ struct task_struct {
 #else
 	UEK_KABI_RESERVE(1)
 #endif
+
+#ifdef CONFIG_SCHED_CORE
+#ifndef __GENKSYMS__
+	struct rb_node			core_node;
+#else
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+#endif
+	UEK_KABI_USE(5, unsigned long core_cookie)
+#else
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
+#endif
+
 	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
