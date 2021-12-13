@@ -1887,6 +1887,7 @@ struct sched_class {
 #ifdef CONFIG_SMP
 	int (*balance)(struct rq *rq, struct task_struct *prev, struct rq_flags *rf);
 	int  (*select_task_rq)(struct task_struct *p, int task_cpu, int sd_flag, int flags);
+
 	void (*migrate_task_rq)(struct task_struct *p, int new_cpu);
 
 	void (*task_woken)(struct rq *this_rq, struct task_struct *task);
@@ -1924,7 +1925,11 @@ struct sched_class {
 	void (*task_change_group)(struct task_struct *p, int type);
 #endif
 
+#ifdef CONFIG_SCHED_CORE
+	UEK_KABI_USE(1,	struct task_struct * (*pick_task)(struct rq *rq))
+#else
 	UEK_KABI_RESERVE(1)
+#endif
 	UEK_KABI_RESERVE(2)
 };
 
