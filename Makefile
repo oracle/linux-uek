@@ -5,6 +5,8 @@ SUBLEVEL =
 EXTRAVERSION =
 NAME = Trick or Treat
 
+#LTS version v5.15.7
+
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
 # More info can be located in ./README
