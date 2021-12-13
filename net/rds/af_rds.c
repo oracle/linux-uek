@@ -361,7 +361,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 		/* When a congestion map was updated, we signal POLLIN for
 		 * "historical" reasons. Applications can also poll for
 		 * WRBAND instead. */
-		if (rds_cong_updated_since(&rs->rs_cong_track))
+		if (rds_cong_updated_since(rs))
 			mask |= (POLLIN | POLLRDNORM | POLLWRBAND);
 	} else {
 		if (atomic64_read(&rs->rs_cong_notify))
@@ -1441,12 +1441,10 @@ static void rds_qos_threshold_init(void)
 
 static void __exit rds_exit(void)
 {
-	rds_cong_monitor_free();
 	sock_unregister(rds_family_ops.family);
 	proto_unregister(&rds_proto);
 	rds_unreg_pernet();
 	rds_conn_exit();
-	rds_cong_exit();
 	rds_sysctl_exit();
 	rds_threads_exit();
 	rds_stats_exit();
@@ -1494,12 +1492,9 @@ static int __init rds_init(void)
 	ret = rds_stats_init();
 	if (ret)
 		goto out_sysctl;
-	ret = rds_cong_monitor_init();
-	if (ret)
-		goto out_stats;
 	ret = proto_register(&rds_proto, 1);
 	if (ret)
-		goto out_cong;
+		goto out_stats;
 	ret = sock_register(&rds_family_ops);
 	if (ret)
 		goto out_proto;
@@ -1517,8 +1512,6 @@ static int __init rds_init(void)
 
 out_proto:
 	proto_unregister(&rds_proto);
-out_cong:
-	rds_cong_exit();
 out_stats:
 	rds_stats_exit();
 out_sysctl:
