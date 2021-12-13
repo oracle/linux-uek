@@ -37,6 +37,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_overutilized_tp);
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU_SHARED_ALIGNED(int, next_cpu);
+DEFINE_PER_CPU_SHARED_ALIGNED(struct rq_kabi_extra, rq_rke);
 
 #ifdef CONFIG_SCHED_DEBUG
 /*
@@ -68,6 +69,108 @@ unsigned int sysctl_sched_rt_period = 1000000;
 
 __read_mostly int scheduler_running;
 
+#ifdef CONFIG_SCHED_CORE
+
+DEFINE_STATIC_KEY_FALSE(__sched_core_enabled);
+
+/*
+ * Magic required such that:
+ *
+ *	raw_spin_rq_lock(rq);
+ *	...
+ *	raw_spin_rq_unlock(rq);
+ *
+ * ends up locking and unlocking the _same_ lock, and all CPUs
+ * always agree on what rq has what lock.
+ *
+ * XXX entirely possible to selectively enable cores, don't bother for now.
+ */
+
+static DEFINE_MUTEX(sched_core_mutex);
+static int sched_core_count;
+static struct cpumask sched_core_mask;
+
+static void __sched_core_flip(bool enabled)
+{
+	int cpu, t, i;
+
+	cpus_read_lock();
+
+	/*
+	 * Toggle the online cores, one by one.
+	 */
+	cpumask_copy(&sched_core_mask, cpu_online_mask);
+	for_each_cpu(cpu, &sched_core_mask) {
+		const struct cpumask *smt_mask = cpu_smt_mask(cpu);
+
+		i = 0;
+		local_irq_disable();
+		for_each_cpu(t, smt_mask) {
+			/* supports up to SMT8 */
+			raw_spin_lock_nested(&cpu_rq(t)->__lock, i++);
+		}
+
+		for_each_cpu(t, smt_mask)
+			cpu_rq(t)->rke->core_enabled = enabled;
+
+		for_each_cpu(t, smt_mask)
+			raw_spin_unlock(&cpu_rq(t)->__lock);
+		local_irq_enable();
+
+		cpumask_andnot(&sched_core_mask, &sched_core_mask, smt_mask);
+	}
+
+	/*
+	 * Toggle the offline CPUs.
+	 */
+	cpumask_copy(&sched_core_mask, cpu_possible_mask);
+	cpumask_andnot(&sched_core_mask, &sched_core_mask, cpu_online_mask);
+
+	for_each_cpu(cpu, &sched_core_mask)
+		cpu_rq(cpu)->rke->core_enabled = enabled;
+
+	cpus_read_unlock();
+}
+
+static void __sched_core_enable(void)
+{
+	// XXX verify there are no cookie tasks (yet)
+
+	static_branch_enable(&__sched_core_enabled);
+	/*
+	 * Ensure all previous instances of raw_spin_rq_*lock() have finished
+	 * and future ones will observe !sched_core_disabled().
+	 */
+	synchronize_rcu();
+	__sched_core_flip(true);
+}
+
+static void __sched_core_disable(void)
+{
+	// XXX verify there are no cookie tasks (left)
+
+	__sched_core_flip(false);
+	static_branch_disable(&__sched_core_enabled);
+}
+
+void sched_core_get(void)
+{
+	mutex_lock(&sched_core_mutex);
+	if (!sched_core_count++)
+		__sched_core_enable();
+	mutex_unlock(&sched_core_mutex);
+}
+
+void sched_core_put(void)
+{
+	mutex_lock(&sched_core_mutex);
+	if (!--sched_core_count)
+		__sched_core_disable();
+	mutex_unlock(&sched_core_mutex);
+}
+
+#endif /* CONFIG_SCHED_CORE */
+
 /*
  * part of the period that we allow rt tasks to run in us.
  * default: 0.95s
@@ -78,20 +181,27 @@ void raw_spin_rq_lock_nested(struct rq *rq, int subclass)
 {
 	raw_spinlock_t *lock;
 
+	/* Matches synchronize_rcu() in __sched_core_enable() */
+	preempt_disable();
 	if (sched_core_disabled()) {
 #ifdef CONFIG_SCHED_CORE
 		raw_spin_lock_nested(&rq->__lock, subclass);
 #else
 		raw_spin_lock_nested(&rq->lock, subclass);
 #endif
+		/* preempt_count *MUST* be > 1 */
+		preempt_enable_no_resched();
 		return;
 	}
 
 	for (;;) {
 		lock = rq_lockp(rq);
 		raw_spin_lock_nested(lock, subclass);
-		if (likely(lock == rq_lockp(rq)))
+		if (likely(lock == rq_lockp(rq))) {
+			/* preempt_count *MUST* be > 1 */
+			preempt_enable_no_resched();
 			return;
+		}
 		raw_spin_unlock(lock);
 	}
 }
@@ -101,18 +211,26 @@ bool raw_spin_rq_trylock(struct rq *rq)
 	raw_spinlock_t *lock;
 	bool ret;
 
-	if (sched_core_disabled())
+
+	/* Matches synchronize_rcu() in __sched_core_enable() */
+	preempt_disable();
+	if (sched_core_disabled()) {
 #ifdef CONFIG_SCHED_CORE
-		return raw_spin_trylock(&rq->__lock);
+		ret = raw_spin_trylock(&rq->__lock);
 #else
-		return raw_spin_trylock(&rq->lock);
+		ret = raw_spin_trylock(&rq->lock);
 #endif
+		preempt_enable();
+		return ret;
+	}
 
 	for (;;) {
 		lock = rq_lockp(rq);
 		ret = raw_spin_trylock(lock);
-		if (!ret || (likely(lock == rq_lockp(rq))))
+		if (!ret || (likely(lock == rq_lockp(rq)))) {
+			preempt_enable();
 			return ret;
+		}
 		raw_spin_unlock(lock);
 	}
 }
@@ -4132,6 +4250,40 @@ restart:
 	BUG();
 }
 
+#ifdef CONFIG_SCHED_CORE
+
+static inline void sched_core_cpu_starting(unsigned int cpu)
+{
+	const struct cpumask *smt_mask = cpu_smt_mask(cpu);
+	struct rq *rq, *core_rq = NULL;
+	int i;
+
+	core_rq = cpu_rq(cpu)->rke->core;
+
+	if (!core_rq) {
+		for_each_cpu(i, smt_mask) {
+			rq = cpu_rq(i);
+			if (rq->rke->core && rq->rke->core == rq)
+				core_rq = rq;
+		}
+
+		if (!core_rq)
+			core_rq = cpu_rq(cpu);
+
+		for_each_cpu(i, smt_mask) {
+			rq = cpu_rq(i);
+
+			WARN_ON_ONCE(rq->rke->core && rq->rke->core != core_rq);
+			rq->rke->core = core_rq;
+		}
+	}
+}
+#else /* !CONFIG_SCHED_CORE */
+
+static inline void sched_core_cpu_starting(unsigned int cpu) {}
+
+#endif /* CONFIG_SCHED_CORE */
+
 /*
  * __schedule() is the main scheduler function.
  *
@@ -6645,6 +6797,7 @@ static void sched_rq_cpu_starting(unsigned int cpu)
 
 int sched_cpu_starting(unsigned int cpu)
 {
+	sched_core_cpu_starting(cpu);
 	sched_rq_cpu_starting(cpu);
 	sched_tick_start(cpu);
 	return 0;
@@ -6806,6 +6959,7 @@ void __init sched_init(void)
 		per_cpu(next_cpu, i) = -1;
 		rq = cpu_rq(i);
 #ifdef CONFIG_SCHED_CORE
+		rq->rke = cpu_rq_rke(i);
 		raw_spin_lock_init(&rq->__lock);
 #else
 		raw_spin_lock_init(&rq->lock);
@@ -6872,6 +7026,11 @@ void __init sched_init(void)
 #endif /* CONFIG_SMP */
 		hrtick_rq_init(rq);
 		atomic_set(&rq->nr_iowait, 0);
+
+#ifdef CONFIG_SCHED_CORE
+		rq->rke->core = NULL;
+		rq->rke->core_enabled = 0;
+#endif
 	}
 
 	set_load_weight(&init_task, false);

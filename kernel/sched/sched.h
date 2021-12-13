@@ -852,6 +852,12 @@ struct uclamp_rq {
 DECLARE_STATIC_KEY_FALSE(sched_uclamp_used);
 #endif /* CONFIG_UCLAMP_TASK */
 
+struct rq_kabi_extra {
+	/* per rq */
+	struct rq		*core;
+	unsigned int		core_enabled;
+};
+
 /*
  * This is the main, per-CPU runqueue data structure.
  *
@@ -1024,7 +1030,12 @@ struct rq {
 #else
 	UEK_KABI_RESERVE(1)
 #endif
+
+#ifdef CONFIG_SCHED_CORE
+	UEK_KABI_USE(2, struct rq_kabi_extra *rke)
+#else
 	UEK_KABI_RESERVE(2)
+#endif
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -1053,6 +1064,36 @@ static inline int cpu_of(struct rq *rq)
 }
 
 
+#ifdef CONFIG_SCHED_CORE
+
+DECLARE_STATIC_KEY_FALSE(__sched_core_enabled);
+
+static inline bool sched_core_enabled(struct rq *rq)
+{
+	return static_branch_unlikely(&__sched_core_enabled) &&
+				      rq->rke->core_enabled;
+}
+
+static inline bool sched_core_disabled(void)
+{
+	return !static_branch_unlikely(&__sched_core_enabled);
+}
+
+static inline raw_spinlock_t *rq_lockp(struct rq *rq)
+{
+	if (sched_core_enabled(rq))
+		return &rq->rke->core->__lock;
+
+	return &rq->__lock;
+}
+
+#else /* !CONFIG_SCHED_CORE */
+
+static inline bool sched_core_enabled(struct rq *rq)
+{
+	return false;
+}
+
 static inline bool sched_core_disabled(void)
 {
 	return true;
@@ -1060,12 +1101,10 @@ static inline bool sched_core_disabled(void)
 
 static inline raw_spinlock_t *rq_lockp(struct rq *rq)
 {
-#ifdef CONFIG_SCHED_CORE
-	return &rq->__lock;
-#else
 	return &rq->lock;
-#endif
 }
+
+#endif /* CONFIG_SCHED_CORE */
 
 static inline void lockdep_assert_rq_held(struct rq *rq)
 {
@@ -1127,8 +1166,10 @@ static inline void update_idle_core(struct rq *rq) { }
 
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DECLARE_PER_CPU_SHARED_ALIGNED(int, next_cpu);
+DECLARE_PER_CPU_SHARED_ALIGNED(struct rq_kabi_extra, rq_rke);
 
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
+#define cpu_rq_rke(cpu)		(&per_cpu(rq_rke, (cpu)))
 #define this_rq()		this_cpu_ptr(&runqueues)
 #define task_rq(p)		cpu_rq(task_cpu(p))
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
@@ -2091,6 +2132,27 @@ unsigned long arch_scale_freq_capacity(int cpu)
 
 static inline bool rq_order_less(struct rq *rq1, struct rq *rq2)
 {
+#ifdef CONFIG_SCHED_CORE
+	/*
+	 * In order to not have {0,2},{1,3} turn into into an AB-BA,
+	 * order by core-id first and cpu-id second.
+	 *
+	 * Notably:
+	 *
+	 *	double_rq_lock(0,3); will take core-0, core-1 lock
+	 *	double_rq_lock(1,2); will take core-1, core-0 lock
+	 *
+	 * when only cpu-id is considered.
+	 */
+	if (rq1->rke->core->cpu < rq2->rke->core->cpu)
+		return true;
+	if (rq1->rke->core->cpu > rq2->rke->core->cpu)
+		return false;
+
+	/*
+	 * __sched_core_flip() relies on SMT having cpu-id lock order.
+	 */
+#endif
 	return rq1->cpu < rq2->cpu;
 }
 
