@@ -37,23 +37,19 @@ struct cn10k_rng {
 static int reset_rng_health_state(struct cn10k_rng *rng)
 {
 	struct arm_smccc_res res;
-	int ret = 0;
 
 	/* Send SMC service call to to reset EBG health state */
 	arm_smccc_smc(PLAT_OCTEONTX_RESET_RNG_EBG_HEALTH_STATE, 0, 0, 0, 0, 0, 0, 0, &res);
-	if (res.a0 == 0UL) {
-		dev_info(&rng->pdev->dev, "HWRNG: reset completed\n");
-	} else {
-		dev_err(&rng->pdev->dev, "HWRNG: error during reset\n");
-		ret = -EIO;
-	}
+	if (res.a0 != 0UL)
+		return -EIO;
 
-	return ret;
+	return 0;
 }
 
 static int check_rng_health(struct cn10k_rng *rng)
 {
 	u64 status;
+	int err;
 
 	/* Skip checking health */
 	if (!rng->reg_base)
@@ -61,9 +57,12 @@ static int check_rng_health(struct cn10k_rng *rng)
 
 	status = readq(rng->reg_base + RNM_PF_EBG_HEALTH);
 	if (status & BIT_ULL(20)) {
-		dev_err(&rng->pdev->dev, "HWRNG: Health test failed (status=%llx)\n",
-				status);
-		return reset_rng_health_state(rng);
+		err = reset_rng_health_state(rng);
+		if (err) {
+			dev_err(&rng->pdev->dev, "HWRNG: Health test failed (status=%llx)\n",
+					status);
+			dev_err(&rng->pdev->dev, "HWRNG: error during reset\n");
+		}
 	}
 	return 0;
 }
