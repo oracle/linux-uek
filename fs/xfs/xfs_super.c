@@ -1460,14 +1460,6 @@ xfs_fs_remount(
 		xfs_restore_resvblks(mp);
 		xfs_log_work_queue(mp);
 
-		/* Recover any CoW blocks that never got remapped. */
-		error = xfs_reflink_recover_cow(mp);
-		if (error) {
-			xfs_err(mp,
-	"Error %d recovering leftover CoW allocations.", error);
-			xfs_force_shutdown(mp, SHUTDOWN_CORRUPT_INCORE);
-			return error;
-		}
 		xfs_start_block_reaping(mp);
 
 		/* Create the per-AG metadata reservation pool .*/
