@@ -1478,6 +1478,10 @@ xfs_fs_remount(
 
 	/* rw -> ro */
 	if (!(mp->m_flags & XFS_MOUNT_RDONLY) && (*flags & SB_RDONLY)) {
+		struct xfs_eofblocks	eofb = {
+			.eof_flags	= XFS_EOF_FLAGS_SYNC,
+		};
+
 		/*
 		 * Cancel background eofb scanning so it cannot race with the
 		 * final log force+buftarg wait and deadlock the remount.
@@ -1485,8 +1489,14 @@ xfs_fs_remount(
 		xfs_stop_block_reaping(mp);
 		flush_workqueue(mp->m_inact_workqueue);
 
-		/* Get rid of any leftover CoW reservations... */
-		error = xfs_icache_free_cowblocks(mp, NULL);
+		/*
+		 * Clear out all remaining COW staging extents and speculative
+		 * post-EOF preallocations so that we don't leave inodes
+		 * requiring inactivation cleanups during reclaim on a
+		 * read-only mount.  We must process every cached inode, so
+		 * this requires a synchronous cache scan.
+		 */
+		error = xfs_icache_free_cowblocks(mp, &eofb);
 		if (error) {
 			xfs_force_shutdown(mp, SHUTDOWN_CORRUPT_INCORE);
 			return error;
