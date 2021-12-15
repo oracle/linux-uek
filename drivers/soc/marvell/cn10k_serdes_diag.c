@@ -196,6 +196,12 @@ struct prbs_error_stats {
 	int locked;
 };
 
+struct prbs_stats {
+	struct prbs_error_stats error_stats[PORT_LANES_MAX];
+	int gen_pattern;
+	int check_pattern;
+};
+
 struct prbs_cmd_params {
 	int port;
 	int lane_idx;
@@ -246,6 +252,7 @@ struct tx_eq_params {
 	int polarity;
 	int gray_code;
 	int pre_code;
+	int tx_idle;
 };
 
 static struct {
@@ -285,6 +292,7 @@ enum rx_param {
 	RX_POLARITY,
 	RX_GRAY_CODE,
 	RX_PRE_CODE,
+	RX_INIT,
 };
 
 static struct {
@@ -294,6 +302,7 @@ static struct {
 	{RX_POLARITY,   "polarity"},
 	{RX_GRAY_CODE,  "graycode"},
 	{RX_PRE_CODE,   "precode"},
+	{RX_INIT,	"init"},
 };
 
 DEFINE_STR_2_ENUM_FUNC(rx_param)
@@ -525,12 +534,12 @@ static int parse_rx_eq_params(const char __user *buffer, size_t count,
 
 	params->port = port;
 	params->lane_idx = lane_idx;
+	params->flags = 0;
 
 	if (arg_idx == argc)
 		return 0;
 
 	params->update = 1;
-	params->flags = 0;
 
 	/* Next parameters are optional and they should come in pairs
 	 * [name <value>], like: [precode <prec>].
@@ -562,6 +571,10 @@ static int parse_rx_eq_params(const char __user *buffer, size_t count,
 
 		case RX_POLARITY:
 			params->flags |= BIT(5) | (value & 1) << 4;
+			break;
+
+		case RX_INIT:
+			params->flags |= BIT(6);
 			break;
 
 		default:
@@ -780,7 +793,7 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 	x1 = (lane_idx << 8) | port;
 
 	seq_puts(s, "SerDes Tx Tuning Parameters:\n");
-	seq_puts(s, "port#:\tlane#:\tgserm#:\tg-lane#:\tpre2:\tpre1:\tmain:\tpost:\tpolarity:\tgray code:\tpre code:\n");
+	seq_puts(s, "port#:\tlane#:\tgserm#:\tg-lane#:\tpre2:\tpre1:\tmain:\tpost:\tpolarity:\tgray code:\tpre code:\ttx_idle:\n");
 
 	arm_smccc_smc(PLAT_OCTEONTX_SERDES_DBG_TX_TUNING, x1, 0,
 		0, 0, 0, 0, 0, &res);
@@ -802,7 +815,7 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 	for (; lane_idx < max_idx; lane_idx++) {
 		int glane = (mapping >> 4 * lane_idx) & 0xf;
 
-		seq_printf(s, "%d\t%d\t%d\t%d\t\t%hd\t%hd\t%hd\t%hd\t%d\t\t%d\t\t%d\n",
+		seq_printf(s, "%d\t%d\t%d\t%d\t\t%hd\t%hd\t%hd\t%hd\t%d\t\t%d\t\t%d\t\t%d\n",
 			   port, lane_idx,
 			   gserm_idx, glane,
 			   tx_eq_params[lane_idx].pre2,
@@ -811,7 +824,8 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 			   tx_eq_params[lane_idx].post,
 			   tx_eq_params[lane_idx].polarity,
 			   tx_eq_params[lane_idx].gray_code,
-			   tx_eq_params[lane_idx].pre_code);
+			   tx_eq_params[lane_idx].pre_code,
+			   tx_eq_params[lane_idx].tx_idle);
 	}
 
 	return 0;
@@ -848,12 +862,12 @@ static int parse_tx_eq_params(const char __user *buffer, size_t count,
 
 	params->port = port;
 	params->lane_idx = lane_idx;
+	params->flags = 0;
 
 	if (arg_idx == argc)
 		return 0;
 
 	params->update = 1;
-	params->flags = 0;
 	params->pre2_pre1 = 0;
 	params->post_main = 0;
 
@@ -1195,11 +1209,34 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 
 	pr_info("SerDes PRBS:\n");
 	if (input.subcmd == PRBS_SHOW) {
-		struct prbs_error_stats *error_stats;
+		struct prbs_stats *stats = (struct prbs_stats *)prbs_shmem;
+
+		if (stats->gen_pattern || stats->check_pattern) {
+			char cbuf[16] = {0};
+			char gbuf[16] = {0};
+
+			if (stats->gen_pattern) {
+				const char *ptrn =
+					prbs_pattern_enum2str(stats->gen_pattern);
+
+				snprintf(gbuf, 16, " gen=%s",
+					ptrn ? ptrn : "");
+			}
+
+			if (stats->check_pattern) {
+				const char *ptrn =
+					prbs_pattern_enum2str(stats->check_pattern);
+
+				snprintf(cbuf, 16, " check=%s",
+					ptrn ? ptrn : "");
+			}
+
+			pr_info("PRBS enabled (patterns:%s%s)\n", gbuf, cbuf);
+		} else {
+			pr_info("PRBS disabled\n");
+		}
 
 		pr_info(PRBS_SHOW_HEADER);
-
-		error_stats = (struct prbs_error_stats *)prbs_shmem;
 
 		for (lane_idx = 0; lane_idx < lanes_num; lane_idx++) {
 			int glane = (mapping >> 4 * lane_idx) & 0xf;
@@ -1209,9 +1246,9 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 			       lane_idx,
 			       gserm_idx,
 			       glane,
-			       error_stats[lane_idx].locked,
-			       error_stats[lane_idx].total_bits,
-			       error_stats[lane_idx].error_bits);
+			       stats->error_stats[lane_idx].locked,
+			       stats->error_stats[lane_idx].total_bits,
+			       stats->error_stats[lane_idx].error_bits);
 		}
 		return count;
 	}
@@ -1380,7 +1417,7 @@ static int __init serdes_dbg_init(void)
 		goto tuning_shmem_failed;
 
 	prbs_shmem = ioremap_wc(res.a3,
-		PORT_LANES_MAX * sizeof(struct prbs_error_stats));
+		sizeof(struct prbs_stats));
 
 	if (!prbs_shmem)
 		goto prbs_shmem_failed;
