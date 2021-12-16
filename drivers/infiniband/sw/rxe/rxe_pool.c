@@ -20,7 +20,13 @@ struct rxe_type_info rxe_type_info[RXE_NUM_TYPES] = {
 		.name		= "rxe-pd",
 		.size		= sizeof(struct rxe_pd),
 		.elem_offset	= offsetof(struct rxe_pd, pelem),
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		.flags		= RXE_POOL_INDEX | RXE_POOL_NO_ALLOC,
+		.min_index      = RXE_MIN_PDN,
+		.max_index      = RXE_MAX_PDN,
+#else
 		.flags		= RXE_POOL_NO_ALLOC,
+#endif
 	},
 	[RXE_TYPE_AH] = {
 		.name		= "rxe-ah",
@@ -496,3 +502,29 @@ void *rxe_pool_get_key(struct rxe_pool *pool, void *key)
 
 	return obj;
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+void rxe_pdn_free(struct rxe_dev *rxe_dev, u32 pdn)
+{
+	struct rxe_pool *pool = &rxe_dev->pd_pool;
+	unsigned long flags;
+
+	write_lock_irqsave(&pool->pool_lock, flags);
+	clear_bit(pdn - pool->index.min_index, pool->index.table);
+	write_unlock_irqrestore(&pool->pool_lock, flags);
+}
+
+u32 rxe_pdn_allocate(struct rxe_dev *rxe_dev)
+{
+	struct rxe_pool *pool = &rxe_dev->pd_pool;
+	unsigned long flags;
+	u32 pdn;
+
+	write_lock_irqsave(&pool->pool_lock, flags);
+	pdn = alloc_index(pool);
+	write_unlock_irqrestore(&pool->pool_lock, flags);
+	return pdn;
+}
+
+#endif

@@ -513,12 +513,16 @@ struct rxe_mr *lookup_mr(struct rxe_pd *pd, int access, u32 key,
 
 	if (unlikely((type == RXE_LOOKUP_LOCAL && mr->lkey != key) ||
 		     (type == RXE_LOOKUP_REMOTE && mr->rkey != key) ||
-		     mr_pd(mr) != pd || (access && !(access & mr->access)) ||
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		     (mr_pd(mr)->real_rxepd != mr_pd(mr)->real_rxepd) ||
+#else
+		     (mr_pd(mr) != pd) ||
+#endif
+		    (access && !(access & mr->access)) ||
 		     mr->state != RXE_MR_STATE_VALID)) {
 		rxe_drop_ref(mr);
 		mr = NULL;
 	}
-
 	return mr;
 }
 

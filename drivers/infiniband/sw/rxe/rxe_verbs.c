@@ -144,13 +144,29 @@ static int rxe_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 {
 	struct rxe_dev *rxe = to_rdev(ibpd->device);
 	struct rxe_pd *pd = to_rpd(ibpd);
+	int ret;
 
-	return rxe_add_to_pool(&rxe->pd_pool, pd);
+	ret = rxe_add_to_pool(&rxe->pd_pool, pd);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (!ret) {
+		pd->pdn = rxe_pdn_allocate(rxe);
+		pd->real_rxepd = pd;
+	}
+#endif
+	return ret;
 }
 
 static int rxe_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 {
 	struct rxe_pd *pd = to_rpd(ibpd);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct rxe_dev *rxe = to_rdev(ibpd->device);
+	u32 pdn = pd->pdn;
+
+	if (!ibpd->shpd)
+		rxe_pdn_free(rxe, pdn);
+#endif
 
 	rxe_drop_ref(pd);
 	return 0;
@@ -1072,6 +1088,61 @@ static const struct attribute_group rxe_attr_group = {
 	.attrs = rxe_dev_attributes,
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static struct ib_shpd *rxe_alloc_shpd(struct ib_device *dev,
+				      struct ib_pd *pd)
+{
+	struct rxe_shpd *shpd;
+
+	shpd = kzalloc(sizeof(*shpd), GFP_KERNEL);
+	if (!shpd)
+		return ERR_PTR(-ENOMEM);
+	shpd->shared_rxepd = to_rpd(pd);
+	shpd->shared_pdn = to_rpd(pd)->pdn;
+	return &shpd->ibshpd;
+}
+
+static struct ib_pd *rxe_share_pd(struct ib_device *dev,
+				  struct ib_ucontext *context,
+				  struct ib_udata *udata,
+				  struct ib_shpd *shpd)
+{
+	struct rxe_dev *rxe = to_rdev(dev);
+	struct ib_pd  *ibpd;
+	struct rxe_pd *pd;
+
+	ibpd = rdma_zalloc_drv_obj(dev, ib_pd);
+	if (!ibpd)
+		return ERR_PTR(-ENOMEM);
+	pd = to_rpd(ibpd);
+	if (!pd)
+		return ERR_PTR(-ENOMEM);
+
+	rxe_add_to_pool(&rxe->pd_pool, pd);
+	pd->real_rxepd = to_rshpd(shpd)->shared_rxepd;
+	pd->pdn = to_rshpd(shpd)->shared_pdn;
+	if (context)
+		if (ib_copy_to_udata(udata, &pd->pdn, sizeof(__u32))) {
+			kfree(pd);
+			return ERR_PTR(-EFAULT);
+		}
+
+	return &pd->ibpd;
+}
+
+static int rxe_remove_shpd(struct ib_device *ibdev,
+			   struct ib_shpd *shpd, int atinit)
+{
+	struct rxe_dev *rxe = to_rdev(ibdev);
+
+	if (!atinit)
+		rxe_pdn_free(rxe, to_rshpd(shpd)->shared_pdn);
+	kfree(shpd);
+	return 0;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static int rxe_enable_driver(struct ib_device *ib_dev)
 {
 	struct rxe_dev *rxe = container_of(ib_dev, struct rxe_dev, ib_dev);
@@ -1134,6 +1205,11 @@ static const struct ib_device_ops rxe_dev_ops = {
 	.reg_user_mr = rxe_reg_user_mr,
 	.req_notify_cq = rxe_req_notify_cq,
 	.resize_cq = rxe_resize_cq,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.alloc_shpd = rxe_alloc_shpd,
+	.share_pd = rxe_share_pd,
+	.remove_shpd = rxe_remove_shpd,
+#endif  /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, rxe_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, rxe_cq, ibcq),
@@ -1160,7 +1236,6 @@ int rxe_register_device(struct rxe_dev *rxe, const char *ibdev_name)
 
 	dev->uverbs_cmd_mask |= BIT_ULL(IB_USER_VERBS_CMD_POST_SEND) |
 				BIT_ULL(IB_USER_VERBS_CMD_REQ_NOTIFY_CQ);
-
 	ib_set_device_ops(dev, &rxe_dev_ops);
 	err = ib_device_set_netdev(&rxe->ib_dev, rxe->ndev, 1);
 	if (err)
