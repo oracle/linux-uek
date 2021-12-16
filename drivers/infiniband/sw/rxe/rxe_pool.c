@@ -30,9 +30,15 @@ static const struct rxe_type_info {
 		.name		= "pd",
 		.size		= sizeof(struct rxe_pd),
 		.elem_offset	= offsetof(struct rxe_pd, elem),
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		.min_index      = RXE_MIN_PDN,
+		.max_index      = RXE_MAX_PDN,
+		.max_elem	= RXE_MAX_PDN,
+#else
 		.min_index	= 1,
 		.max_index	= RXE_MAX_PD,
 		.max_elem	= RXE_MAX_PD,
+#endif
 	},
 	[RXE_TYPE_AH] = {
 		.name		= "ah",
@@ -116,8 +122,13 @@ void rxe_pool_cleanup(struct rxe_pool *pool)
 	WARN_ON(!xa_empty(&pool->xa));
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int __rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_elem *elem,
+				bool sleepable, bool link_only)
+#else
 int __rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_elem *elem,
 				bool sleepable)
+#endif
 {
 	int err = -EINVAL;
 	gfp_t gfp_flags;
@@ -129,6 +140,11 @@ int __rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_elem *elem,
 	elem->obj = (u8 *)elem - pool->elem_offset;
 	kref_init(&elem->ref_cnt);
 	init_completion(&elem->complete);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (link_only)
+		return 0;
+#endif
 
 	/* AH objects are unique in that the create_ah verb
 	 * can be called in atomic context. If the create_ah
