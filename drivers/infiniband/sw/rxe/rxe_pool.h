@@ -55,11 +55,22 @@ void rxe_pool_init(struct rxe_dev *rxe, struct rxe_pool *pool,
 void rxe_pool_cleanup(struct rxe_pool *pool);
 
 /* connect already allocated object to pool */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int __rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_elem *elem,
+		      bool sleepable, bool link_only);
+
+#define rxe_add_to_pool(pool, obj) __rxe_add_to_pool(pool, &(obj)->elem, true, false)
+#define rxe_add_to_pool_ah(pool, obj, sleepable) __rxe_add_to_pool(pool, \
+				&(obj)->elem, sleepable, false)
+
+#define rxe_link_to_pool(pool, obj) __rxe_add_to_pool(pool, &(obj)->elem, false, true)
+#else
 int __rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_elem *elem,
 				bool sleepable);
 #define rxe_add_to_pool(pool, obj) __rxe_add_to_pool(pool, &(obj)->elem, true)
 #define rxe_add_to_pool_ah(pool, obj, sleepable) __rxe_add_to_pool(pool, \
 				&(obj)->elem, sleepable)
+#endif
 
 /* lookup an indexed object from index. takes a reference on object */
 void *rxe_pool_get_index(struct rxe_pool *pool, u32 index);
