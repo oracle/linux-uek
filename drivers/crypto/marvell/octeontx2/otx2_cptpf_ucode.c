@@ -1515,16 +1515,6 @@ delete_grps:
 	return ret;
 }
 
-static void swap_engines(struct otx2_cpt_engines *engsl,
-			 struct otx2_cpt_engines *engsr)
-{
-	struct otx2_cpt_engines engs;
-
-	engs = *engsl;
-	*engsl = *engsr;
-	*engsr = engs;
-}
-
 int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 				   struct devlink_param_gset_ctx *ctx)
 {
@@ -1625,7 +1615,7 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 		}
 		/* Keep SE engines at zero index */
 		if (engs[1].type == OTX2_CPT_SE_TYPES)
-			swap_engines(&engs[0], &engs[1]);
+			swap(engs[0], engs[1]);
 	}
 	mutex_lock(&eng_grps->lock);
 
