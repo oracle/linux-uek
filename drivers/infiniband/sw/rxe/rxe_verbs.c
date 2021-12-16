@@ -236,7 +236,14 @@ static int rxe_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 	if (err) {
 		rxe_dbg_dev(rxe, "unable to alloc pd\n");
 		goto err_out;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	} else {
+		pd->pdn = pd->elem.index;
+		pd->real_rxepd = pd;
 	}
+#else
+	}
+#endif
 
 	return 0;
 
@@ -1422,6 +1429,62 @@ static const struct attribute_group rxe_attr_group = {
 	.attrs = rxe_dev_attributes,
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static struct ib_shpd *rxe_alloc_shpd(struct ib_device *dev,
+				      struct ib_pd *pd)
+{
+	struct rxe_shpd *shpd;
+
+	shpd = kzalloc(sizeof(*shpd), GFP_KERNEL);
+	if (!shpd)
+		return ERR_PTR(-ENOMEM);
+	shpd->shared_rxepd = to_rpd(pd);
+	shpd->shared_pdn = to_rpd(pd)->pdn;
+	return &shpd->ibshpd;
+}
+
+static struct ib_pd *rxe_share_pd(struct ib_device *dev,
+				  struct ib_ucontext *context,
+				  struct ib_udata *udata,
+				  struct ib_shpd *shpd)
+{
+	struct rxe_dev *rxe = to_rdev(dev);
+	struct ib_pd  *ibpd;
+	struct rxe_pd *pd;
+
+	ibpd = rdma_zalloc_drv_obj(dev, ib_pd);
+	if (!ibpd)
+		return ERR_PTR(-ENOMEM);
+	pd = to_rpd(ibpd);
+	if (!pd)
+		return ERR_PTR(-ENOMEM);
+
+	pd->real_rxepd = to_rshpd(shpd)->shared_rxepd;
+	pd->pdn = to_rshpd(shpd)->shared_pdn;
+	rxe_link_to_pool(&rxe->pd_pool, pd);
+
+	if (context)
+		if (ib_copy_to_udata(udata, &pd->pdn, sizeof(__u32))) {
+			kfree(pd);
+			return ERR_PTR(-EFAULT);
+		}
+
+	return &pd->ibpd;
+}
+
+static int rxe_remove_shpd(struct ib_device *ibdev,
+			   struct ib_shpd *shpd, int atinit)
+{
+	struct rxe_dev *rxe = to_rdev(ibdev);
+
+	if (!atinit)
+		xa_erase(&rxe->pd_pool.xa, to_rshpd(shpd)->shared_pdn);
+	kfree(shpd);
+	return 0;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static int rxe_enable_driver(struct ib_device *ib_dev)
 {
 	struct rxe_dev *rxe = container_of(ib_dev, struct rxe_dev, ib_dev);
@@ -1485,6 +1548,11 @@ static const struct ib_device_ops rxe_dev_ops = {
 	.req_notify_cq = rxe_req_notify_cq,
 	.rereg_user_mr = rxe_rereg_user_mr,
 	.resize_cq = rxe_resize_cq,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.alloc_shpd = rxe_alloc_shpd,
+	.share_pd = rxe_share_pd,
+	.remove_shpd = rxe_remove_shpd,
+#endif  /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, rxe_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, rxe_cq, ibcq),
