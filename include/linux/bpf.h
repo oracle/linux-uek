@@ -308,7 +308,10 @@ enum bpf_type_flag {
 	/* PTR may be NULL. */
 	PTR_MAYBE_NULL		= BIT(0 + BPF_BASE_TYPE_BITS),
 
-	__BPF_TYPE_LAST_FLAG	= PTR_MAYBE_NULL,
+	/* MEM is read-only. */
+	MEM_RDONLY		= BIT(1 + BPF_BASE_TYPE_BITS),
+
+	__BPF_TYPE_LAST_FLAG	= MEM_RDONLY,
 };
 
 /* Max number of base types. */
@@ -503,18 +506,15 @@ enum bpf_reg_type {
 	 */
 #ifdef __GENKSYMS__
 	PTR_TO_BTF_ID_OR_NULL,	 /* obsolete, here to avoid kABI complaints */
-#endif
 	PTR_TO_MEM,		 /* reg points to valid memory region */
-#ifdef __GENKSYMS__
 	PTR_TO_MEM_OR_NULL,	 /* obsolete, here to avoid kABI complaints */
-#endif
 	PTR_TO_RDONLY_BUF,	 /* reg points to a readonly buffer */
-#ifdef __GENKSYMS__
 	PTR_TO_RDONLY_BUF_OR_NULL, /* obsolete, here to avoid kABI complaints */
-#endif
 	PTR_TO_RDWR_BUF,	 /* reg points to a read/write buffer */
-#ifdef __GENKSYMS__
 	PTR_TO_RDWR_BUF_OR_NULL, /* obsolete, here to avoid kABI complaints */
+#else
+	PTR_TO_MEM,		 /* reg points to valid memory region */
+	PTR_TO_BUF,		 /* reg points to a read/write buffer */
 #endif
 	PTR_TO_PERCPU_BTF_ID,	 /* reg points to a percpu kernel variable */
 	PTR_TO_FUNC,		 /* reg points to a bpf program function */
