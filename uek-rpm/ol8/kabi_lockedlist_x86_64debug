@@ -182,6 +182,7 @@
 	blk_mq_start_request
 	blk_mq_start_stopped_hw_queues
 	blk_mq_stop_hw_queues
+	blk_mq_tag_to_rq   
 	blk_mq_unique_tag
 	blk_put_request
 	blk_queue_bounce_limit
@@ -275,6 +276,7 @@
 	dev_driver_string
 	dev_get_flags
 	dev_open
+	dev_printk   
 	dev_queue_xmit
 	dev_remove_pack
 	dev_set_name
@@ -401,6 +403,15 @@
 	fasync_helper
 	fb_deferred_io_cleanup
 	fb_deferred_io_init
+	fc_attach_transport   
+	fc_block_scsi_eh   
+	fc_eh_timed_out   
+	fc_get_event_number   
+	fc_host_post_event   
+	fc_release_transport   
+	fc_remote_port_add   
+	fc_remote_port_delete   
+	fc_remove_host   
 	fget
 	fiemap_check_flags
 	fiemap_fill_next_extent
@@ -423,6 +434,7 @@
 	finish_no_open
 	finish_open
 	finish_wait
+	fixed_size_llseek   
 	flow_get_u32_dst
 	flow_get_u32_src
 	flow_keys_dissector
@@ -463,6 +475,7 @@
 	generic_read_dir
 	generic_write_checks
 	get_current_tty
+	get_device   
 	get_gendisk
 	get_random_bytes
 	get_super
@@ -501,6 +514,7 @@
 	input_register_device
 	input_set_abs_params
 	input_unregister_device
+	int_to_scsilun   
 	invalidate_bdev
 	invalidate_inode_buffers
 	invalidate_mapping_pages
@@ -508,6 +522,8 @@
 	io_schedule
 	ioctl_by_bdev
 	iomem_resource
+	ioread32   
+	ioread8   
 	ioremap_nocache
 	iounmap
 	iov_iter_advance
@@ -517,9 +533,11 @@
 	iov_iter_npages
 	iov_iter_revert
 	iov_iter_single_seg_count
+	iowrite32   
 	iput
 	irq_cpu_rmap_add
 	irq_set_affinity_hint
+	irq_to_desc   
 	is_bad_inode
 	is_uv_system
 	iter_file_splice_write
@@ -527,6 +545,7 @@
 	iunique
 	jiffies
 	jiffies_to_msecs
+	jiffies_to_timespec64   
 	jiffies_to_timeval
 	kallsyms_lookup_name
 	kallsyms_on_each_symbol
@@ -561,11 +580,11 @@
 	kthread_should_stop
 	kthread_stop
 	ktime_get_coarse_real_ts64
+	ktime_get_coarse_ts64
 	ktime_get_raw_ts64
 	ktime_get_real_seconds
 	ktime_get_real_ts64
 	ktime_get_ts64
-	ktime_get_coarse_ts64
 	load_nls
 	lock_rename
 	lock_sock_nested
@@ -656,6 +675,11 @@
 	notify_change
 	nr_cpu_ids
 	numa_node
+	nvme_fc_register_localport   
+	nvme_fc_register_remoteport   
+	nvme_fc_set_remoteport_devloss   
+	nvme_fc_unregister_localport   
+	nvme_fc_unregister_remoteport   
 	override_creds
 	page_offset_base
 	pagecache_get_page
@@ -670,6 +694,7 @@
 	param_ops_ulong
 	path_get
 	path_put
+	pci_alloc_irq_vectors_affinity   
 	pci_choose_state
 	pci_disable_device
 	pci_disable_msix
@@ -679,8 +704,10 @@
 	pci_enable_msix_range
 	pci_enable_sriov
 	pci_find_ext_capability
+	pci_free_irq_vectors   
 	pci_iomap_range
 	pci_iounmap
+	pci_irq_vector   
 	pci_read_config_word
 	pci_release_regions
 	pci_request_regions
@@ -750,6 +777,7 @@
 	revalidate_disk
 	revert_creds
 	root_device_unregister
+	round_jiffies   
 	rps_may_expire_flow
 	rtnl_is_locked
 	rtnl_lock
@@ -813,6 +841,7 @@
 	set_cpus_allowed_ptr
 	set_disk_ro
 	set_nlink
+	set_normalized_timespec64   
 	set_page_dirty
 	set_user_nice
 	setattr_prepare
@@ -852,6 +881,7 @@
 	sock_setsockopt
 	sockfd_lookup
 	sort
+	sprint_symbol   
 	sprintf
 	sscanf
 	strcasecmp
@@ -985,6 +1015,7 @@
 	wait_for_completion
 	wait_for_completion_interruptible
 	wait_for_completion_io_timeout
+	wait_for_completion_timeout   
 	wait_on_page_bit
 	wake_up_process
 	write_inode_now
