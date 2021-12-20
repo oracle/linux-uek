@@ -600,6 +600,8 @@ kernel/drivers/video/vgastate.ko
 kernel/drivers/virtio/virtio_balloon.ko
 kernel/drivers/virtio/virtio_input.ko
 kernel/drivers/virtio/virtio_pci.ko
+kernel/drivers/virtio/virtio_pci_legacy_dev.ko
+kernel/drivers/virtio/virtio_pci_modern_dev.ko
 kernel/drivers/watchdog/alim1535_wdt.ko
 kernel/drivers/watchdog/alim7101_wdt.ko
 kernel/drivers/watchdog/hpwdt.ko
