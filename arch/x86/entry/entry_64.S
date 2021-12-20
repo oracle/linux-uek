@@ -324,18 +324,10 @@ SYM_CODE_END(ret_from_fork)
  * idtentry_body - Macro to emit code calling the C function
  * @cfunc:		C function to be called
  * @has_error_code:	Hardware pushed error code on stack
- *
- * UEK needs to support runtime patching which requires paranoid checks for
- * int3 (i.e. X86_TRAP_BP). Set default value of vector here to something
- * that's not X86_TRAP_BP. E.g. X86_TRAP_DE.
  */
-.macro idtentry_body cfunc has_error_code:req vector=X86_TRAP_DE
+.macro idtentry_body cfunc has_error_code:req
 
-	.if \vector == X86_TRAP_BP
-		call    paranoid_entry
-	.else
-		call	error_entry
-	.endif
+	call	error_entry
 	UNWIND_HINT_REGS
 
 	movq	%rsp, %rdi			/* pt_regs pointer into 1st argument*/
@@ -347,11 +339,7 @@ SYM_CODE_END(ret_from_fork)
 
 	call	\cfunc
 
-	.if \vector == X86_TRAP_BP
-		jmp	paranoid_exit
-	.else
-		jmp	error_return
-	.endif
+	jmp	error_return
 .endm
 
 /**
@@ -388,7 +376,7 @@ SYM_CODE_START(\asmsym)
 .Lfrom_usermode_no_gap_\@:
 	.endif
 
-	idtentry_body \cfunc \has_error_code \vector
+	idtentry_body \cfunc \has_error_code
 
 _ASM_NOKPROBE(\asmsym)
 SYM_CODE_END(\asmsym)
