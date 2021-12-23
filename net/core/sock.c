@@ -321,6 +321,9 @@ EXPORT_SYMBOL(sysctl_optmem_max);
 
 int sysctl_tstamp_allow_data __read_mostly = 1;
 
+int sysctl_macsec_async __read_mostly = 1;
+EXPORT_SYMBOL(sysctl_macsec_async);
+
 struct static_key memalloc_socks = STATIC_KEY_INIT_FALSE;
 EXPORT_SYMBOL_GPL(memalloc_socks);
 
