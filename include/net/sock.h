@@ -2448,4 +2448,6 @@ extern __u32 sysctl_rmem_default;
 
 extern unsigned int net_high_order_alloc_disable;
 
+extern int sysctl_macsec_async;
+
 #endif	/* _SOCK_H */
