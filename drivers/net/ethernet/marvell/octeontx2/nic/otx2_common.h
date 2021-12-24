@@ -277,9 +277,6 @@ struct otx2_ptp {
 	struct ptp_clock *ptp_clock;
 	struct otx2_nic *nic;
 
-	struct cyclecounter cycle_counter;
-	struct timecounter time_counter;
-
 	struct delayed_work extts_work;
 	u64 last_extts;
 	u64 thresh;
