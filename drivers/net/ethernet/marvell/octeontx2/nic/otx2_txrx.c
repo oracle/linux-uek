@@ -131,9 +131,8 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 	struct nix_send_comp_s *snd_comp = &cqe->comp;
 	struct skb_shared_hwtstamps ts;
 	struct sk_buff *skb = NULL;
-	u64 timestamp, tsns;
 	struct sg_list *sg;
-	int err;
+	u64 timestamp;
 
 	if (unlikely(snd_comp->status) && netif_msg_tx_err(pfvf))
 		net_err_ratelimited("%s: TX%d: Error in send CQ status:%x\n",
@@ -151,12 +150,9 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 		timestamp = ((u64 *)sq->timestamps->base)[snd_comp->sqe_id];
 		if (timestamp != 1) {
 			timestamp = pfvf->ptp->convert_tx_ptp_tstmp(timestamp);
-			err = otx2_ptp_tstamp2time(pfvf, timestamp, &tsns);
-			if (!err) {
-				memset(&ts, 0, sizeof(ts));
-				ts.hwtstamp = ns_to_ktime(tsns);
-				skb_tstamp_tx(skb, &ts);
-			}
+			memset(&ts, 0, sizeof(ts));
+			ts.hwtstamp = ns_to_ktime(timestamp);
+			skb_tstamp_tx(skb, &ts);
 		}
 	}
 
@@ -189,19 +185,14 @@ static inline void otx2_set_taginfo(struct nix_rx_parse_s *parse,
 static inline void otx2_set_rxtstamp(struct otx2_nic *pfvf,
 				     struct sk_buff *skb, void *data)
 {
-	u64 timestamp, tsns;
-	int err;
+	u64 timestamp;
 
 	if (!(pfvf->flags & OTX2_FLAG_RX_TSTAMP_ENABLED))
 		return;
 
-	timestamp = pfvf->ptp->convert_rx_ptp_tstmp(*(u64 *)data);
 	/* The first 8 bytes is the timestamp */
-	err = otx2_ptp_tstamp2time(pfvf, timestamp, &tsns);
-	if (err)
-		return;
-
-	skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tsns);
+	timestamp = pfvf->ptp->convert_rx_ptp_tstmp(*(u64 *)data);
+	skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(timestamp);
 }
 
 static bool otx2_skb_add_frag(struct otx2_nic *pfvf, struct sk_buff *skb,

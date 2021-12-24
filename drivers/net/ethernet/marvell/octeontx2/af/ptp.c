@@ -244,6 +244,41 @@ static int ptp_get_clock(struct ptp *ptp, bool is_pmu, u64 *clk, u64 *tsc)
 	return 0;
 }
 
+/* On CN10K the ptp time is represented by set of registers one for seconds and other
+ * for nano seconds where as on 96xx ptp time is represented by single register.
+ * nano second register on CN10K rolls over after each second.
+ */
+static int ptp_set_clock(struct ptp *ptp, u64 nsec)
+{
+	if (is_ptp_tsfmt_sec_nsec(ptp)) {
+		writeq(nsec / NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_SEC);
+		writeq(nsec % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
+	} else {
+		writeq(nsec, ptp->reg_base + PTP_CLOCK_HI);
+	}
+
+	return 0;
+}
+
+static int ptp_adj_clock(struct ptp *ptp, s64 delta)
+{
+	u64 regval, sec;
+
+	regval = readq(ptp->reg_base + PTP_CLOCK_HI);
+	regval += delta;
+
+	if (is_ptp_tsfmt_sec_nsec(ptp)) {
+		sec = readq(ptp->reg_base + PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
+		sec += regval / NSEC_PER_SEC;
+		writeq(sec, ptp->reg_base + PTP_CLOCK_SEC);
+		writeq(regval % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
+	} else {
+		writeq(regval, ptp->reg_base + PTP_CLOCK_HI);
+	}
+
+	return 0;
+}
+
 void ptp_start(struct ptp *ptp, u64 sclk, u32 ext_clk_freq, u32 extts)
 {
 	struct pci_dev *pdev;
@@ -430,6 +465,12 @@ int rvu_mbox_handler_ptp_op(struct rvu *rvu, struct ptp_req *req,
 		break;
 	case PTP_OP_SET_THRESH:
 		err = ptp_set_thresh(rvu->ptp, req->thresh);
+		break;
+	case PTP_OP_SET_CLOCK:
+		err = ptp_set_clock(rvu->ptp, req->nsec);
+		break;
+	case PTP_OP_ADJ_CLOCK:
+		err = ptp_adj_clock(rvu->ptp, req->delta);
 		break;
 	default:
 		err = -EINVAL;
