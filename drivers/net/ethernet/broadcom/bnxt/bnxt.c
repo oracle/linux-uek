@@ -775,13 +775,16 @@ static struct page *__bnxt_alloc_rx_page(struct bnxt *bp, dma_addr_t *mapping,
 	return page;
 }
 
-static inline u8 *__bnxt_alloc_rx_data(struct bnxt *bp, dma_addr_t *mapping,
+static inline u8 *__bnxt_alloc_rx_frag(struct bnxt *bp, dma_addr_t *mapping,
 				       gfp_t gfp)
 {
 	u8 *data;
 	struct pci_dev *pdev = bp->pdev;
 
-	data = kmalloc(bp->rx_buf_size, gfp);
+	if (gfp == GFP_ATOMIC)
+		data = napi_alloc_frag(bp->rx_buf_size);
+	else
+		data = netdev_alloc_frag(bp->rx_buf_size);
 	if (!data)
 		return NULL;
 
@@ -790,7 +793,7 @@ static inline u8 *__bnxt_alloc_rx_data(struct bnxt *bp, dma_addr_t *mapping,
 					DMA_ATTR_WEAK_ORDERING);
 
 	if (dma_mapping_error(&pdev->dev, *mapping)) {
-		kfree(data);
+		skb_free_frag(data);
 		data = NULL;
 	}
 	return data;
@@ -813,7 +816,7 @@ int bnxt_alloc_rx_data(struct bnxt *bp, struct bnxt_rx_ring_info *rxr,
 		rx_buf->data = page;
 		rx_buf->data_ptr = page_address(page) + bp->rx_offset;
 	} else {
-		u8 *data = __bnxt_alloc_rx_data(bp, &mapping, gfp);
+		u8 *data = __bnxt_alloc_rx_frag(bp, &mapping, gfp);
 
 		if (!data)
 			return -ENOMEM;
@@ -1055,11 +1058,11 @@ static struct sk_buff *bnxt_rx_skb(struct bnxt *bp,
 		return NULL;
 	}
 
-	skb = build_skb(data, 0);
+	skb = build_skb(data, bp->rx_buf_size);
 	dma_unmap_single_attrs(&bp->pdev->dev, dma_addr, bp->rx_buf_use_size,
 			       bp->rx_dir, DMA_ATTR_WEAK_ORDERING);
 	if (!skb) {
-		kfree(data);
+		skb_free_frag(data);
 		return NULL;
 	}
 
@@ -1647,7 +1650,7 @@ static inline struct sk_buff *bnxt_tpa_end(struct bnxt *bp,
 		u8 *new_data;
 		dma_addr_t new_mapping;
 
-		new_data = __bnxt_alloc_rx_data(bp, &new_mapping, GFP_ATOMIC);
+		new_data = __bnxt_alloc_rx_frag(bp, &new_mapping, GFP_ATOMIC);
 		if (!new_data) {
 			bnxt_abort_tpa(cpr, idx, agg_bufs);
 			cpr->sw_stats.rx.rx_oom_discards += 1;
@@ -1658,13 +1661,13 @@ static inline struct sk_buff *bnxt_tpa_end(struct bnxt *bp,
 		tpa_info->data_ptr = new_data + bp->rx_offset;
 		tpa_info->mapping = new_mapping;
 
-		skb = build_skb(data, 0);
+		skb = build_skb(data, bp->rx_buf_size);
 		dma_unmap_single_attrs(&bp->pdev->dev, mapping,
 				       bp->rx_buf_use_size, bp->rx_dir,
 				       DMA_ATTR_WEAK_ORDERING);
 
 		if (!skb) {
-			kfree(data);
+			skb_free_frag(data);
 			bnxt_abort_tpa(cpr, idx, agg_bufs);
 			cpr->sw_stats.rx.rx_oom_discards += 1;
 			return NULL;
@@ -2808,7 +2811,7 @@ static void bnxt_free_one_rx_ring_skbs(struct bnxt *bp, int ring_nr)
 
 		tpa_info->data = NULL;
 
-		kfree(data);
+		skb_free_frag(data);
 	}
 
 skip_rx_tpa_free:
@@ -2834,7 +2837,7 @@ skip_rx_tpa_free:
 			dma_unmap_single_attrs(&pdev->dev, mapping,
 					       bp->rx_buf_use_size, bp->rx_dir,
 					       DMA_ATTR_WEAK_ORDERING);
-			kfree(data);
+			skb_free_frag(data);
 		}
 	}
 
@@ -3470,7 +3473,7 @@ static int bnxt_alloc_one_rx_ring(struct bnxt *bp, int ring_nr)
 		u8 *data;
 
 		for (i = 0; i < bp->max_tpa; i++) {
-			data = __bnxt_alloc_rx_data(bp, &mapping, GFP_KERNEL);
+			data = __bnxt_alloc_rx_frag(bp, &mapping, GFP_KERNEL);
 			if (!data)
 				return -ENOMEM;
 
