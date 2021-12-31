@@ -33,22 +33,7 @@
 #define PCI_CFG_REG_BAR_NUM	2
 #define MBOX_BAR_NUM		4
 
-#define FW_TO_HOST 0x2
-#define HOST_TO_FW 0x1
 #define SDP_PPAIR_THOLD 0x400
-
-union ring {
-	u64 u;
-	struct {
-		u64 dir:2;
-		u64 rpvf:8;
-		u64 rppf:8;
-		u64 numvf:8;
-		u64 pf_srn:8;
-		u64 rsvd:2;
-		u64 raz:28;
-	} s;
-};
 
 /* Supported devices */
 static const struct pci_device_id rvu_sdp_id_table[] = {
@@ -65,15 +50,7 @@ MODULE_DEVICE_TABLE(pci, rvu_sdp_id_table);
 /* All PF devices found are stored here */
 static spinlock_t sdp_lst_lock;
 LIST_HEAD(sdp_dev_lst_head);
-struct host_hs_work {
-	struct delayed_work sdp_work;
-	struct workqueue_struct *sdp_host_handshake;
-	struct sdp_dev *sdp;
-};
-struct host_hs_work hs_work;
 static int sdp_sriov_configure(struct pci_dev *pdev, int num_vfs);
-struct sdp_node_info info;
-static u32 neg_vf0_rings, neg_vfx_rings, neg_vf;
 
 static inline bool is_otx3_sdp(struct sdp_dev *sdp)
 {
@@ -251,13 +228,10 @@ static void sdp_afpf_mbox_handler(struct work_struct *work)
 
 		if (msg->id == MBOX_MSG_NIX_LF_ALLOC) {
 			alloc_rsp = (struct nix_lf_alloc_rsp *)msg;
-			/* Adjust the rings for vf according to the values
-			 * agreed through handshake
-			 */
 			if (vf_id == 1)
-				alloc_rsp->rx_chan_cnt = neg_vf0_rings;
+				alloc_rsp->rx_chan_cnt = sdp->info.vf_rings[0];
 			else
-				alloc_rsp->rx_chan_cnt = neg_vfx_rings;
+				alloc_rsp->rx_chan_cnt = sdp->info.vf_rings[1];
 			alloc_rsp->tx_chan_cnt = alloc_rsp->rx_chan_cnt;
 		}
 
@@ -388,10 +362,10 @@ handle_vf_req(struct sdp_dev *sdp, struct rvu_vf *vf, struct mbox_msghdr *req,
 		err = forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
 		break;
 	case MBOX_MSG_NIX_LF_ALLOC:
-		chan_base = sdp->chan_base + info.num_pf_rings;
+		chan_base = sdp->chan_base + sdp->info.num_pf_rings;
 		for (vf_id = 0; vf_id < vf->vf_id; vf_id++)
-			chan_base += info.vf_rings[vf_id];
-		chan_cnt = info.vf_rings[vf->vf_id];
+			chan_base += sdp->info.vf_rings[vf_id];
+		chan_cnt = sdp->info.vf_rings[vf->vf_id];
 		for (chan_idx = 0; chan_idx < chan_cnt; chan_idx++) {
 			chan_diff = chan_base + chan_idx - sdp->chan_base;
 			reg_off = 0;
@@ -962,7 +936,22 @@ static int sdp_parse_rinfo(struct pci_dev *pdev,
 		return -EINVAL;
 	}
 
-	info->max_vfs = pci_sriov_get_totalvfs(pdev);
+	ptr = of_get_property(dev, "num-rvu-vfs", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-rvu-vfs\n");
+		return -EINVAL;
+	}
+
+	if (len != sizeof(u32)) {
+		dev_err(sdev, "SDP DTS: Wrong field length: num-rvu-vfs\n");
+		return -EINVAL;
+	}
+	info->max_vfs =  be32_to_cpup((u32 *)ptr);
+
+	if (info->max_vfs > pci_sriov_get_totalvfs(pdev)) {
+		dev_err(sdev, "SDP DTS: Invalid field value: num-rvu-vfs\n");
+		return -EINVAL;
+	}
 
 	ptr = of_get_property(dev, "num-pf-rings", &len);
 	if (ptr == NULL) {
@@ -1024,7 +1013,12 @@ static ssize_t sdp_vf0_rings_show(struct device *dev,
 				 struct device_attribute *attr,
 				 char *buf)
 {
-	return sprintf(buf, "%d", neg_vf0_rings);
+	struct pci_dev *pdev;
+	struct sdp_dev *sdp;
+
+	pdev = to_pci_dev(dev);
+	sdp = pci_get_drvdata(pdev);
+	return sprintf(buf, "%d", sdp->info.vf_rings[0]);
 }
 static DEVICE_ATTR_RO(sdp_vf0_rings);
 
@@ -1032,7 +1026,12 @@ static ssize_t sdp_vfx_rings_show(struct device *dev,
 				 struct device_attribute *attr,
 				 char *buf)
 {
-	return sprintf(buf, "%d", neg_vfx_rings);
+	struct pci_dev *pdev;
+	struct sdp_dev *sdp;
+
+	pdev = to_pci_dev(dev);
+	sdp = pci_get_drvdata(pdev);
+	return sprintf(buf, "%d", sdp->info.vf_rings[1]);
 }
 static DEVICE_ATTR_RO(sdp_vfx_rings);
 
@@ -1063,37 +1062,6 @@ static int sdp_sysfs_init(struct device *dev)
 static void sdp_sysfs_remove(struct device *dev)
 {
 	sysfs_remove_group(&dev->kobj, &sdp_ring_attr_group);
-}
-
-static void sdp_host_handshake_fn(struct work_struct *wrk)
-{
-	union ring host_rinfo;
-	struct sdp_dev *sdp;
-	int err;
-
-	sdp = container_of(wrk, struct sdp_dev, sdp_work.work);
-	host_rinfo.u = readq(sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
-	if (host_rinfo.s.dir == HOST_TO_FW) {
-		neg_vf0_rings = host_rinfo.s.rppf;
-		neg_vfx_rings = host_rinfo.s.rpvf;
-		neg_vf = host_rinfo.s.numvf;
-		dev_info(&sdp->pdev->dev, "Negotiated VF0 rings:%d VFx rings:%d VFs:%d\n",
-			 neg_vf0_rings, neg_vfx_rings, neg_vf);
-		host_rinfo.s.dir = FW_TO_HOST;
-		writeq(host_rinfo.u,
-			       sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
-
-		err = sdp_sysfs_init(&sdp->pdev->dev);
-		if (err != 0) {
-			err = -ENODEV;
-			dev_info(&sdp->pdev->dev, "Sysfs init failed\n");
-		}
-		sdp_sriov_configure(sdp->pdev, neg_vf + 1);
-
-		return;
-	}
-
-	queue_delayed_work(sdp->sdp_host_handshake, &sdp->sdp_work,  HZ * 1);
 }
 
 static int get_chan_info(struct sdp_dev *sdp)
@@ -1154,12 +1122,99 @@ static int send_chan_info(struct sdp_dev *sdp, struct sdp_node_info *info)
 	return res;
 }
 
+static void program_sdp_rinfo(struct sdp_dev *sdp)
+{
+	u32 rppf, rpvf, numvf, pf_srn, npfs, npfs_per_pem;
+	void __iomem *addr;
+	u32 mac, mac_mask;
+	u64 cfg, val, pkg_ver;
+	u64 ep_pem, valid_ep_pem_mask, npem, epf_base;
+
+	/* PF doesn't have any rings */
+	rppf = sdp->info.vf_rings[0];
+	rpvf = sdp->info.vf_rings[1];
+	numvf = sdp->info.max_vfs - 1;
+	pf_srn = sdp->info.pf_srn;
+
+	dev_info(&sdp->pdev->dev, "rppf:%u rpvf:%u numvf:%u pf_srn:%u\n", rppf,
+		 rpvf, numvf, pf_srn);
+
+	/* TODO: add support for 10K  */
+	mac_mask = MAC_MASK_96XX;
+	switch (sdp->pdev->subsystem_device) {
+	case PCI_SUBSYS_DEVID_96XX:
+		valid_ep_pem_mask = VALID_EP_PEMS_MASK_96XX;
+		addr = ioremap(GPIO_PKG_VER, 8);
+		pkg_ver = readq(addr);
+		iounmap(addr);
+		if (pkg_ver == CN93XXN_PKG)
+			valid_ep_pem_mask = VALID_EP_PEMS_MASK_93XX;
+		break;
+	case PCI_SUBSYS_DEVID_95XXO:
+	case PCI_SUBSYS_DEVID_95XXN:
+		valid_ep_pem_mask = VALID_EP_PEMS_MASK_95XX;
+		break;
+	case PCI_SUBSYS_DEVID_98XX:
+		if (sdp->info.node_id == 0)
+			valid_ep_pem_mask = VALID_EP_PEMS_MASK_98XX_SDP0;
+		else
+			valid_ep_pem_mask = VALID_EP_PEMS_MASK_98XX_SDP1;
+		mac_mask = MAC_MASK_98XX;
+		break;
+	default:
+		dev_err(&sdp->pdev->dev,
+			"Failed to set SDP ring info: unsupported platform\n");
+		break;
+	}
+	/* TODO npfs should be obtained from dts */
+	npfs_per_pem = NUM_PFS_PER_PEM;
+	npem = 0;
+	for (ep_pem = 0; ep_pem < MAX_PEMS; ep_pem++) {
+		if (!(valid_ep_pem_mask & (1ul << ep_pem)))
+			continue;
+		addr  = ioremap(PEMX_CFG(ep_pem), 8);
+		cfg = readq(addr);
+		iounmap(addr);
+		if ((!((cfg >> PEMX_CFG_LANES_BIT_POS) &
+		       PEMX_CFG_LANES_BIT_MASK)) ||
+		    ((cfg >> PEMX_CFG_HOSTMD_BIT_POS) &
+		     PEMX_CFG_HOSTMD_BIT_MASK))
+			continue;
+		/* found the PEM in endpoint mode */
+		epf_base = 0;
+		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
+			val = (((u64)numvf << RINFO_NUMVF_BIT) |
+			       ((u64)rpvf << RINFO_RPVF_BIT) |
+			       ((u64)(pf_srn + rppf) << RINFO_SRN_BIT));
+			writeq(val,
+			       sdp->sdp_base +
+			       SDPX_EPFX_RINFO((epf_base +
+						(npem * MAX_PFS_PER_PEM))));
+
+			if (sdp->pdev->subsystem_device !=
+			    PCI_SUBSYS_DEVID_98XX)
+				val = (((u64)rppf << RPPF_BIT_96XX) |
+				       ((u64)pf_srn << PF_SRN_BIT_96XX) |
+				       ((u64)npfs_per_pem << NPFS_BIT_96XX));
+			else
+				val = (((u64)rppf << RPPF_BIT_98XX) |
+					((u64)pf_srn << PF_SRN_BIT_98XX) |
+					((u64)npfs_per_pem << NPFS_BIT_98XX));
+			mac = ep_pem & mac_mask;
+			writeq(val, sdp->sdp_base + SDPX_MACX_PF_RING_CTL(mac));
+			pf_srn += rppf + (rpvf * numvf);
+			epf_base++;
+		}
+		npem++;
+	}
+}
+
+
 static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
 	uint64_t inst, sdp_gbl_ctl;
 	struct sdp_dev *sdp;
-	union ring fw_rinfo;
 	uint64_t regval;
 	int err;
 
@@ -1225,7 +1280,6 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		err = -ENODEV;
 		goto pf_unusable;
 	}
-
 	/* Map PF-AF mailbox memory */
 	sdp->af_mbx_base = ioremap_wc(pci_resource_start(pdev, MBOX_BAR_NUM),
 				     pci_resource_len(pdev, MBOX_BAR_NUM));
@@ -1284,7 +1338,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		writeq(regval, sdp->sdp_base + SDPX_LINK_CFG);
 	}
 
-	err = sdp_parse_rinfo(pdev, &info);
+	err = sdp_parse_rinfo(pdev, &sdp->info);
 	if (err) {
 		err = -EINVAL;
 		goto get_rinfo_failed;
@@ -1297,33 +1351,24 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	 * 1 means SDP1
 	 */
 	if (pdev->revision & 0x0F)
-		info.node_id = 1;
+		sdp->info.node_id = 1;
 	else
-		info.node_id = 0;
+		sdp->info.node_id = 0;
 
 
 	/*
 	 * For 98xx there are 2xSDPs so start the PF ring from 128 for SDP1
 	 * SDP0 has PCI revid 0 and SDP1 has PCI revid 1
 	 */
-	info.pf_srn = (pdev->revision & 0x0F) ? 128 : info.pf_srn;
+	sdp->info.pf_srn = (pdev->revision & 0x0F) ? 128 : sdp->info.pf_srn;
 
-	err = send_chan_info(sdp, &info);
+	err = send_chan_info(sdp, &sdp->info);
 	if (err) {
 		err = -EINVAL;
 		goto get_rinfo_failed;
 	}
 
-	fw_rinfo.u = 0;
-	fw_rinfo.s.dir = FW_TO_HOST;
-	/* PF doesn't have any rings */
-	fw_rinfo.s.rppf = info.vf_rings[0];
-	fw_rinfo.s.rpvf = info.vf_rings[1];
-	fw_rinfo.s.numvf = info.max_vfs - 1;
-	fw_rinfo.s.pf_srn = info.pf_srn;
-
-	dev_info(&pdev->dev, "Ring info 0x%llx\n", fw_rinfo.u);
-	writeq(fw_rinfo.u, sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
+	program_sdp_rinfo(sdp);
 
 	/* Water mark for backpressuring NIX Tx when enabled */
 	if (pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A)
@@ -1332,11 +1377,16 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	sdp_gbl_ctl |= (1 << 2); /* BPFLR_D disable clearing BP in FLR */
 	writeq(sdp_gbl_ctl, sdp->sdp_base + SDPX_GBL_CONTROL);
 
-	sdp->sdp_host_handshake = alloc_workqueue("sdp_epmode_fw_hs", 0, 0);
-	INIT_DELAYED_WORK(&sdp->sdp_work, sdp_host_handshake_fn);
-	queue_delayed_work(sdp->sdp_host_handshake, &sdp->sdp_work, 0);
-
 	/* Add to global list of PFs found */
+	err = sdp_sysfs_init(&sdp->pdev->dev);
+	if (err != 0) {
+		err = -ENODEV;
+		dev_info(&sdp->pdev->dev, "Sysfs init failed\n");
+	}
+	sdp_sriov_configure(sdp->pdev, sdp->info.max_vfs);
+	/* TODO */
+	/* set vsect ctl.status firmware ready */
+
 	spin_lock(&sdp_lst_lock);
 	list_add(&sdp->list, &sdp_dev_lst_head);
 	spin_unlock(&sdp_lst_lock);
@@ -1656,7 +1706,6 @@ static void sdp_remove(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp = pci_get_drvdata(pdev);
 
-	destroy_workqueue(sdp->sdp_host_handshake);
 
 	spin_lock(&sdp_lst_lock);
 	list_del(&sdp->list);
