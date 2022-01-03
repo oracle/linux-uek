@@ -40,6 +40,18 @@ __setup("fast_kexec", fastkexec_setup);
 
 #endif
 
+#ifdef CONFIG_EMBEDDED
+static int allow_kexec;
+
+static int __init allow_kexec_setup(char *__unused)
+{
+	allow_kexec = 1;
+	return 1;
+}
+__setup("allow_kexec", allow_kexec_setup);
+
+#endif
+
 /* Global variables for the arm64_relocate_new_kernel routine. */
 extern const unsigned char arm64_relocate_new_kernel[];
 extern const unsigned long arm64_relocate_new_kernel_size;
@@ -91,6 +103,16 @@ int machine_kexec_prepare(struct kimage *kimage)
 		return -EBUSY;
 	}
 
+#ifdef CONFIG_EMBEDDED
+
+	if (kimage->type == KEXEC_TYPE_CRASH)
+		return 0;
+
+	if (!allow_kexec) {
+		pr_err("Can't kexec: GICR_CTLR_ENABLE_LPIS can't be reset.\n");
+		return -EPERM;
+	}
+#endif
 	return 0;
 }
 
