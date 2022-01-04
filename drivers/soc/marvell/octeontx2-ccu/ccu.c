@@ -17,20 +17,7 @@
 #define CCU_BASE	0x87E050000000
 #define CCS_BASE	0x87E087100000
 
-/* m - bit mask
- * y - value to be written in the bitrange
- * x - input value whose bitrange to be modified
- */
-#define FIELD_SET(m, y, x)		\
-	(((x) & ~(m)) |			\
-	FIELD_PREP((m), (y)))
-
-#define CCS_MPARX_MASK(pid)	\
-	(0x1000		|	\
-	((pid) & 0xff) << 3)
-
-#define MPARX_MASK_LTG		GENMASK_ULL(13, 0)
-#define MPARX_MASK_DTG		GENMASK_ULL(33, 14)
+#define CCS_MPARX_MASK(pid)	(0x1000 | ((pid) & 0xff) << 3)
 
 #define CCUX_TADX_MPARX_ACNT(ccu, tad, pid)	\
 	(0x401000		|		\
@@ -99,14 +86,10 @@ static inline void ccureg_write(u64 offset, u64 val)
 }
 
 /* Mask LLC ways for a partition id */
-static inline void ccsreg_mparmask_set(int mparid, u32 waymask)
+static inline void ccsreg_mparmask_set(int mparid, u64 waymask)
 {
-	u64 val;
-
-	val = ccsreg_read(CCS_MPARX_MASK(mparid));
-	val = FIELD_SET(MPARX_MASK_LTG, waymask, val);
-	val = FIELD_SET(MPARX_MASK_DTG, waymask, val);
-	ccsreg_write(CCS_MPARX_MASK(mparid), val);
+	/* Bits [13:0] mask LTG ways, bits [33:14] mask DTG ways */
+	ccsreg_write(CCS_MPARX_MASK(mparid), waymask);
 }
 
 static ssize_t otx2_ccu_config_write(struct file *file, const char *buf,
