@@ -970,10 +970,10 @@ static struct npc_kpu_profile_action ikpu_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		12, 16, 20, 0, 0,
-		NPC_S_KPU1_ETHER, 0, 0,
+		NPC_S_KPU1_CPT_HDR, 48, 0,
 		NPC_LID_LA, NPC_LT_NA,
 		0,
-		0, 0, 0, 0,
+		0, 7, 0, 0,
 
 	},
 	{
