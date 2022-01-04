@@ -1631,6 +1631,23 @@ static int console_lock_spinning_disable_and_check(void)
 }
 
 /**
+ * console_lock_spinning_disable_on_panic - disable spinning so that
+ *	a panic CPU does not enter an infinite loop
+ *
+ * This is called once all CPUs are halted. A CPU halted during a section which
+ * allowed spinning, could trigger an infinite loop in console_trylock. To avoid
+ * this, mark console_owner as NULL.
+ */
+void console_lock_spinning_disable_on_panic(void)
+{
+	WRITE_ONCE(console_owner, NULL);
+	if (raw_spin_is_locked(&console_owner_lock)) {
+		debug_locks_off();
+		raw_spin_lock_init(&console_owner_lock);
+	}
+}
+
+/**
  * console_trylock_spinning - try to get console_lock by busy waiting
  *
  * This allows to busy wait for the console_lock when the current
