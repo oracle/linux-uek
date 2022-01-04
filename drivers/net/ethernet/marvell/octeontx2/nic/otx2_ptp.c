@@ -72,6 +72,30 @@ static u64 ptp_tstmp_read(struct otx2_ptp *ptp)
 	return rsp->clk;
 }
 
+static void otx2_get_ptpclock(struct otx2_nic *pfvf, u64 *tstamp)
+{
+	struct ptp_req *req;
+	struct ptp_rsp *rsp;
+
+	mutex_lock(&pfvf->mbox.lock);
+
+	req = otx2_mbox_alloc_msg_ptp_op(&pfvf->mbox);
+	if (!req) {
+		mutex_unlock(&pfvf->mbox.lock);
+		return;
+	}
+
+	req->op = PTP_OP_GET_CLOCK;
+
+	if (!otx2_sync_mbox_msg(&pfvf->mbox)) {
+		rsp = (struct ptp_rsp *)otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0,
+							  &req->hdr);
+		*tstamp = rsp->clk;
+	}
+
+	mutex_unlock(&pfvf->mbox.lock);
+}
+
 static int otx2_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
@@ -100,32 +124,11 @@ static int otx2_ptp_gettime(struct ptp_clock_info *ptp_info,
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
 	struct otx2_nic *pfvf = ptp->nic;
-	struct ptp_req *req;
-	struct ptp_rsp *rsp;
-	int err;
+	u64 tstamp;
 
+	otx2_get_ptpclock(pfvf, &tstamp);
+	*ts = ns_to_timespec64(tstamp);
 
-	mutex_lock(&pfvf->mbox.lock);
-	/* check if PTP block is available */
-	req = otx2_mbox_alloc_msg_ptp_op(&pfvf->mbox);
-	if (!req) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return -ENOMEM;
-	}
-
-	req->op = PTP_OP_GET_CLOCK;
-
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err) {
-		mutex_unlock(&pfvf->mbox.lock);
-		return err;
-	}
-
-	rsp = (struct ptp_rsp *)otx2_mbox_get_rsp(&ptp->nic->mbox.mbox, 0,
-			&req->hdr);
-	*ts = ns_to_timespec64(rsp->clk);
-
-	mutex_unlock(&pfvf->mbox.lock);
 	return 0;
 }
 
@@ -193,6 +196,15 @@ static void otx2_ptp_extts_check(struct work_struct *work)
 		}
 	}
 	schedule_delayed_work(&ptp->extts_work, msecs_to_jiffies(200));
+}
+
+static void otx2_sync_tstamp(struct work_struct *work)
+{
+	struct otx2_ptp *ptp = container_of(work, struct otx2_ptp,
+					    synctstamp_work.work);
+
+	otx2_get_ptpclock(ptp->nic, &ptp->tstamp);
+	schedule_delayed_work(&ptp->synctstamp_work, msecs_to_jiffies(500));
 }
 
 static int otx2_ptp_enable(struct ptp_clock_info *ptp_info,
@@ -296,6 +308,8 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 		ptp_ptr->convert_tx_ptp_tstmp = &cn10k_ptp_convert_timestamp;
 	}
 
+	INIT_DELAYED_WORK(&ptp_ptr->synctstamp_work, otx2_sync_tstamp);
+
 	pfvf->ptp = ptp_ptr;
 
 error:
@@ -309,6 +323,8 @@ void otx2_ptp_destroy(struct otx2_nic *pfvf)
 
 	if (!ptp)
 		return;
+
+	cancel_delayed_work(&pfvf->ptp->synctstamp_work);
 
 	ptp_clock_unregister(ptp->ptp_clock);
 	kfree(ptp);
