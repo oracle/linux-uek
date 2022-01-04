@@ -202,6 +202,7 @@ struct netns_ipv4 {
 	unsigned long *sysctl_local_reserved_ports;
 	int sysctl_ip_prot_sock;
 #endif
+	UEK_KABI_FILL_HOLE(u32 ip_rt_min_pmtu)
 
 #ifdef CONFIG_IP_MROUTE
 #ifndef CONFIG_IP_MROUTE_MULTIPLE_TABLES
