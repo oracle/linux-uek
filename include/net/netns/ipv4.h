@@ -198,6 +198,8 @@ struct netns_ipv4 {
 
 	atomic_t dev_addr_genid;
 
+	UEK_KABI_FILL_HOLE(int ip_rt_mtu_expires)
+
 #ifdef CONFIG_SYSCTL
 	unsigned long *sysctl_local_reserved_ports;
 	int sysctl_ip_prot_sock;
