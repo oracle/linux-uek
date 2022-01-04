@@ -222,6 +222,13 @@ void panic(const char *fmt, ...)
 	}
 
 	/*
+	 * Now that we've halted other CPUs, disable optimistic spinning in
+	 * printk(). This avoids deadlocking in console_trylock(), until we call
+	 * console_flush_on_panic().
+	 */
+	console_lock_spinning_disable_on_panic();
+
+	/*
 	 * Run any panic handlers, including those that might need to
 	 * add information to the kmsg dump output.
 	 */
