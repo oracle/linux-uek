@@ -230,6 +230,7 @@ struct otx2_hw {
 #define CN10K_MBOX		1
 #define CN10K_LMTST		2
 #define CN10K_RPM		3
+#define CN10K_PTP_ONESTEP	4
 	unsigned long		cap_flag;
 
 #define LMT_LINE_SIZE		128
@@ -285,6 +286,8 @@ struct otx2_ptp {
 	bool ptp_en;
 	u64 (*convert_rx_ptp_tstmp)(u64 timestamp);
 	u64 (*convert_tx_ptp_tstmp)(u64 timestamp);
+	struct delayed_work synctstamp_work;
+	u64  tstamp;
 };
 
 struct otx2_mac_table {
@@ -356,6 +359,7 @@ struct otx2_nic {
 #define OTX2_FLAG_TC_MATCHALL_EGRESS_ENABLED	BIT_ULL(12)
 #define OTX2_FLAG_TC_MATCHALL_INGRESS_ENABLED	BIT_ULL(13)
 #define OTX2_FLAG_DMACFLTR_SUPPORT		BIT_ULL(14)
+#define OTX2_FLAG_PTP_ONESTEP_SYNC		BIT_ULL(15)
 	u64			flags;
 	u64			*cq_op_addr;
 
@@ -515,6 +519,7 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 		__set_bit(CN10K_MBOX, &hw->cap_flag);
 		__set_bit(CN10K_LMTST, &hw->cap_flag);
 		__set_bit(CN10K_RPM, &hw->cap_flag);
+		__set_bit(CN10K_PTP_ONESTEP, &hw->cap_flag);
 	}
 }
 
