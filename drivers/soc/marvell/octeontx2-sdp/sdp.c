@@ -75,6 +75,14 @@ static int sdp_sriov_configure(struct pci_dev *pdev, int num_vfs);
 struct sdp_node_info info;
 static u32 neg_vf0_rings, neg_vfx_rings, neg_vf;
 
+static inline bool is_otx3_sdp(struct sdp_dev *sdp)
+{
+	if (sdp->pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A)
+		return 1;
+
+	return 0;
+}
+
 static void
 sdp_write64(struct sdp_dev *rvu, u64 b, u64 s, u64 o, u64 v)
 {
@@ -380,12 +388,12 @@ handle_vf_req(struct sdp_dev *sdp, struct rvu_vf *vf, struct mbox_msghdr *req,
 		err = forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
 		break;
 	case MBOX_MSG_NIX_LF_ALLOC:
-		chan_base = NIX_CHAN_SDP_CHX(0) + info.num_pf_rings;
+		chan_base = sdp->chan_base + info.num_pf_rings;
 		for (vf_id = 0; vf_id < vf->vf_id; vf_id++)
 			chan_base += info.vf_rings[vf_id];
 		chan_cnt = info.vf_rings[vf->vf_id];
 		for (chan_idx = 0; chan_idx < chan_cnt; chan_idx++) {
-			chan_diff = chan_base + chan_idx - NIX_CHAN_SDP_CHX(0);
+			chan_diff = chan_base + chan_idx - sdp->chan_base;
 			reg_off = 0;
 			while (chan_diff > 63) {
 				reg_off += 1;
@@ -1272,7 +1280,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* From cn10k onwards the SDP channel configuration is programmable */
 	if (pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A) {
 		regval = sdp->chan_base;
-		regval |= sdp->num_chan << 16;
+		regval |= ilog2(sdp->num_chan) << 16;
 		writeq(regval, sdp->sdp_base + SDPX_LINK_CFG);
 	}
 
@@ -1284,11 +1292,11 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	/* To differentiate a PF between SDP0 or SDP1 we make use of the
 	 * revision ID field in the config space. The revision is filled
-	 * by the firmware.
+	 * by the firmware. The lower 4 bits field is used here.
 	 * 0 means SDP0
 	 * 1 means SDP1
 	 */
-	if (pdev->revision)
+	if (pdev->revision & 0x0F)
 		info.node_id = 1;
 	else
 		info.node_id = 0;
@@ -1298,7 +1306,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	 * For 98xx there are 2xSDPs so start the PF ring from 128 for SDP1
 	 * SDP0 has PCI revid 0 and SDP1 has PCI revid 1
 	 */
-	info.pf_srn = pdev->revision ? 128 : info.pf_srn;
+	info.pf_srn = (pdev->revision & 0x0F) ? 128 : info.pf_srn;
 
 	err = send_chan_info(sdp, &info);
 	if (err) {
@@ -1318,7 +1326,8 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	writeq(fw_rinfo.u, sdp->sdp_base + SDPX_RINGX_IN_PKT_CNT(0));
 
 	/* Water mark for backpressuring NIX Tx when enabled */
-	writeq(SDP_PPAIR_THOLD, sdp->sdp_base + SDPX_OUT_WMARK);
+	if (pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A)
+		writeq(SDP_PPAIR_THOLD, sdp->sdp_base + SDPX_OUT_WMARK);
 	sdp_gbl_ctl = readq(sdp->sdp_base + SDPX_GBL_CONTROL);
 	sdp_gbl_ctl |= (1 << 2); /* BPFLR_D disable clearing BP in FLR */
 	writeq(sdp_gbl_ctl, sdp->sdp_base + SDPX_GBL_CONTROL);
@@ -1543,9 +1552,16 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 
 	sdp->num_vfs = num_vfs;
 
-	/* Map PF-VF mailbox memory */
-	pf_vf_mbox_base = (u64)sdp->bar2 + RVU_PF_VF_BAR4_ADDR;
-	pf_vf_mbox_base = readq((void __iomem *)(unsigned long)pf_vf_mbox_base);
+	/* Map PF-VF mailbox memory.
+	 * On CN10K platform, PF <-> VF mailbox region follows after
+	 * PF <-> AF mailbox region.
+	 */
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A)
+		pf_vf_mbox_base = pci_resource_start(pdev, PCI_MBOX_BAR_NUM) + MBOX_SIZE;
+	else
+		pf_vf_mbox_base = readq((void __iomem *)((u64)sdp->bar2 +
+							 RVU_PF_VF_BAR4_ADDR));
+
 	if (!pf_vf_mbox_base) {
 		dev_err(&pdev->dev, "PF-VF Mailbox address not configured\n");
 		err = -ENOMEM;
