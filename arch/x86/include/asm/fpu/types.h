@@ -389,6 +389,8 @@ struct fpstate {
 	/* @regs is dynamically sized! Don't add anything after @regs! */
 } __aligned(64);
 
+#define FPU_GUEST_PERM_LOCKED		BIT_ULL(63)
+
 struct fpu_state_perm {
 	/*
 	 * @__state_perm:
@@ -490,8 +492,18 @@ struct fpu {
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 #endif
+
+	/*
+	 * @guest_perm:
+	 *
+	 * Permission related information for guest pseudo FPUs
+	 */
+#ifndef __GENKSYMS__
+	struct fpu_state_perm		guest_perm;
+#else
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
+#endif
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
 	UEK_KABI_RESERVE(9)
