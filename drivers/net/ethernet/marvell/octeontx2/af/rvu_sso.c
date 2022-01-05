@@ -1502,6 +1502,9 @@ int rvu_sso_init(struct rvu *rvu)
 	/* Reserve one bit so that identifier starts from 1 */
 	rvu_alloc_rsrc(&sso->pfvf_ident);
 
+	/* Enable SSO time counter by default to a period of 10us */
+	rvu_write64(rvu, blkaddr, SSO_AF_WQ_INT_PC, 0x28UL << 8);
+
 	return 0;
 }
 
