@@ -1112,14 +1112,6 @@ mkdir -p configs
 	cp %{SOURCE1007} configs/config
 %endif #ifarch aarch64
 
-%if %{with_dtrace}
-	echo 'CONFIG_DTRACE=y' >> configs/config
-	echo 'CONFIG_DTRACE=y' >> configs/config-debug
-%else
-	echo 'CONFIG_DTRACE=n' >> configs/config
-	echo 'CONFIG_DTRACE=n' >> configs/config-debug
-%endif # with_dtrace
-
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 
