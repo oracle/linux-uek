@@ -1166,6 +1166,8 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 			"Failed to set SDP ring info: unsupported platform\n");
 		break;
 	}
+	sdp->valid_ep_pem_mask = valid_ep_pem_mask;
+	sdp->mac_mask = mac_mask;
 	/* TODO npfs should be obtained from dts */
 	npfs_per_pem = NUM_PFS_PER_PEM;
 	npem = 0;
@@ -1209,6 +1211,38 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 	}
 }
 
+static void set_firmware_ready(struct sdp_dev *sdp)
+{
+	u32 npfs, npfs_per_pem;
+	void __iomem *addr;
+	u64 ep_pem, val;
+	u64 cfg;
+
+	/* TODO: add support for 10K model */
+	/* TODO npfs should be obtained from dts */
+	npfs_per_pem = NUM_PFS_PER_PEM;
+	for (ep_pem = 0; ep_pem < MAX_PEMS; ep_pem++) {
+		if (!(sdp->valid_ep_pem_mask & (1ul << ep_pem)))
+			continue;
+		addr  = ioremap(PEMX_CFG(ep_pem), 8);
+		cfg = readq(addr);
+		iounmap(addr);
+		if ((!((cfg >> PEMX_CFG_LANES_BIT_POS) &
+		       PEMX_CFG_LANES_BIT_MASK)) ||
+		    ((cfg >> PEMX_CFG_HOSTMD_BIT_POS) &
+		     PEMX_CFG_HOSTMD_BIT_MASK))
+			continue;
+		/* found the PEM in endpoint mode */
+		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
+			addr  = ioremap(PEMX_CFG_WR(ep_pem), 8);
+			val = ((FW_STATUS_READY << PEMX_CFG_WR_DATA) |
+			       (npfs << PEMX_CFG_WR_PF) |
+			       (1 << 15) |
+			       (PCIEEP_VSECST_CTL << PEMX_CFG_WR_REG));
+			writeq(val, addr);
+		}
+	}
+}
 
 static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -1384,8 +1418,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		dev_info(&sdp->pdev->dev, "Sysfs init failed\n");
 	}
 	sdp_sriov_configure(sdp->pdev, sdp->info.max_vfs);
-	/* TODO */
-	/* set vsect ctl.status firmware ready */
+	set_firmware_ready(sdp);
 
 	spin_lock(&sdp_lst_lock);
 	list_add(&sdp->list, &sdp_dev_lst_head);
