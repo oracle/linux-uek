@@ -223,10 +223,11 @@ void panic(const char *fmt, ...)
 
 	/*
 	 * Now that we've halted other CPUs, disable optimistic spinning in
-	 * printk(). This avoids deadlocking in console_trylock(), until we call
-	 * console_flush_on_panic().
+	 * printk(), and reinitialize the logbuf locks. This avoids possible
+	 * deadlocks, in case we halted a CPU during printing.
 	 */
 	console_lock_spinning_disable_on_panic();
+	printk_safe_reinit_last_cpu();
 
 	/*
 	 * Run any panic handlers, including those that might need to
