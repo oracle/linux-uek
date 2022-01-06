@@ -111,7 +111,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 #build kernel with 4k & 64k page size for aarch64
 %define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
 %define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
-%define with_tmpremove 0
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -522,9 +521,7 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-%if %{with_tmpremove}\
-Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
-%endif\
+Requires(pre): linux-firmware\
 Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
@@ -564,6 +561,7 @@ ExclusiveOS: Linux
 BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, tar, git
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
 BuildRequires: gcc
+BuildRequires: binutils-devel
 BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
 BuildRequires: python3, python3-devel
@@ -1180,11 +1178,9 @@ BuildKernel() {
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
-%if %{with_tmpremove}
     cp Module.symvers Module.symvers.save
     make -k -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
     mv -f Module.symvers.save Module.symvers
-%endif
 
     # Start installing the results
 %if %{with_debuginfo}
@@ -1914,9 +1910,7 @@ fi
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-%if %{with_tmpremove}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
-%endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
