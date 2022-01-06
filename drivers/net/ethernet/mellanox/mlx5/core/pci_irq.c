@@ -724,7 +724,7 @@ int mlx5_irq_table_create(struct mlx5_core_dev *dev)
 	if (mlx5_core_is_sf(dev))
 		return 0;
 
-	pcif_vec = MLX5_CAP_GEN(dev, num_ports) * num_online_cpus() + 1;
+	pcif_vec = MLX5_CAP_GEN(dev, num_ports) * num_possible_cpus() + 1;
 	pcif_vec = min_t(int, pcif_vec, num_eqs);
 
 	total_vec = pcif_vec;
