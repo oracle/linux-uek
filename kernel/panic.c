@@ -264,6 +264,9 @@ void panic(const char *fmt, ...)
 		crash_smp_send_stop();
 	}
 
+	/* Reinitialize logbuf lock in case we halted the CPU holding it */
+	printk_safe_reinit_last_cpu();
+
 	/*
 	 * Run any panic handlers, including those that might need to
 	 * add information to the kmsg dump output.
