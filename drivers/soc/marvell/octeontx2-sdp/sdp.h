@@ -83,6 +83,14 @@
 #define PEMX_CFG_LANES_BIT_MASK		0x3
 #define PEMX_CFG_LANES_BIT_POS		1
 
+#define PEMX_CFG_WR(a)			(0x8E0000000018ull | a << 36)
+#define PEMX_CFG_WR_DATA		32
+#define PEMX_CFG_WR_PF			18
+#define PEMX_CFG_WR_REG			0
+
+#define PCIEEP_VSECST_CTL		0x4d0
+#define FW_STATUS_READY			0x1ul
+
 #define GPIO_PKG_VER			(0x803000001610ull)
 #define CN93XXN_PKG			5
 
@@ -123,6 +131,8 @@ struct sdp_dev {
 	char			*irq_names;
 	int			msix_count;
 	int			pf;
+	u8			valid_ep_pem_mask;
+	u8			mac_mask;
 
 	struct sdp_node_info info;
 	struct otx2_mbox	pfvf_mbox; /* MBOXes for VF => PF channel */
