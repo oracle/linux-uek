@@ -287,6 +287,28 @@ void printk_safe_flush_on_panic(void)
 	printk_safe_flush();
 }
 
+#ifdef CONFIG_HAVE_NMI
+/**
+ * printk_safe_reinit_last_cpu - re-initialize locks during panic
+ *
+ * The caller guarantees all other CPUs have been halted. Reinitialize locks to
+ * prevent future printk from deadlocking. Architecture NMI support is required,
+ * otherwise it is possible that another CPU is still executing, and unlocking
+ * logbuf_lock would make matters worse.
+ */
+void printk_safe_reinit_last_cpu(void)
+{
+	if (raw_spin_is_locked(&logbuf_lock)) {
+		debug_locks_off();
+		raw_spin_lock_init(&logbuf_lock);
+	}
+	if (raw_spin_is_locked(&safe_read_lock)) {
+		debug_locks_off();
+		raw_spin_lock_init(&safe_read_lock);
+	}
+}
+#endif
+
 #ifdef CONFIG_PRINTK_NMI
 /*
  * Safe printk() for NMI context. It uses a per-CPU buffer to
