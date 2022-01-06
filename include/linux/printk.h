@@ -211,6 +211,7 @@ void show_regs_print_info(const char *log_lvl);
 extern void printk_safe_init(void);
 extern void printk_safe_flush(void);
 extern void printk_safe_flush_on_panic(void);
+extern void printk_safe_reinit_last_cpu(void);
 #else
 static inline __printf(1, 0)
 int vprintk(const char *s, va_list args)
@@ -280,6 +281,10 @@ static inline void printk_safe_flush(void)
 }
 
 static inline void printk_safe_flush_on_panic(void)
+{
+}
+
+static inline void printk_safe_reinit_last_cpu(void)
 {
 }
 #endif
