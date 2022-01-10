@@ -152,6 +152,7 @@
 	blk_mq_start_request
 	blk_mq_start_stopped_hw_queues
 	blk_mq_stop_hw_queues
+	blk_mq_tag_to_rq
 	blk_mq_unique_tag
 	blk_put_request
 	blk_queue_bounce_limit
@@ -182,6 +183,7 @@
 	bus_register
 	bus_unregister
 	call_netdevice_notifiers
+	call_usermodehelper
 	cancel_delayed_work
 	cancel_delayed_work_sync
 	cancel_work_sync
@@ -222,6 +224,9 @@
 	d_set_d_op
 	d_splice_alias
 	deactivate_locked_super
+	debugfs_create_dir
+	debugfs_create_file
+	debugfs_remove
 	default_llseek
 	del_gendisk
 	del_timer
@@ -233,6 +238,7 @@
 	dev_driver_string
 	dev_err
 	dev_open
+	dev_printk
 	dev_set_name
 	dev_warn
 	device_add_disk
@@ -242,6 +248,7 @@
 	devmap_managed_key
 	dget_parent
 	dma_ops
+	do_exit
 	do_gettimeofday
 	done_path_create
 	down
@@ -347,6 +354,15 @@
 	ex_handler_default
 	fasync_helper
 	fb_deferred_io_init
+	fc_attach_transport
+	fc_block_scsi_eh
+	fc_eh_timed_out
+	fc_get_event_number
+	fc_host_post_event
+	fc_release_transport
+	fc_remote_port_add
+	fc_remote_port_delete
+	fc_remove_host
 	fget
 	fiemap_check_flags
 	fiemap_fill_next_extent
@@ -365,6 +381,7 @@
 	find_vma
 	find_vpid
 	finish_wait
+	fixed_size_llseek
 	flow_get_u32_dst
 	flow_get_u32_src
 	flow_keys_dissector
@@ -405,6 +422,7 @@
 	generic_read_dir
 	generic_write_checks
 	get_current_tty
+	get_device
 	get_random_bytes
 	get_super
 	get_user_pages
@@ -438,6 +456,7 @@
 	input_register_device
 	input_set_abs_params
 	input_unregister_device
+	int_to_scsilun
 	invalidate_bdev
 	invalidate_inode_buffers
 	invalidate_mapping_pages
@@ -445,19 +464,24 @@
 	io_schedule
 	ioctl_by_bdev
 	iomem_resource
+	ioread32
+	ioread8
 	ioremap_nocache
 	iounmap
 	iov_iter_advance
 	iov_iter_bvec
 	iov_iter_get_pages
 	iov_iter_init
+	iowrite32
 	iput
 	irq_cpu_rmap_add
 	irq_set_affinity_hint
+	irq_to_desc
 	iterate_dir
 	iunique
 	jiffies
 	jiffies_to_msecs
+	jiffies_to_timespec64
 	jiffies_to_timeval
 	kern_path
 	kern_path_create
@@ -484,6 +508,7 @@
 	kmem_cache_destroy
 	kmem_cache_free
 	kobject_put
+	kstrtoull
 	kthread_create_on_node
 	kthread_should_stop
 	kthread_stop
@@ -566,6 +591,11 @@
 	notify_change
 	nr_cpu_ids
 	numa_node
+	nvme_fc_register_localport
+	nvme_fc_register_remoteport
+	nvme_fc_set_remoteport_devloss
+	nvme_fc_unregister_localport
+	nvme_fc_unregister_remoteport
 	override_creds
 	page_offset_base
 	pagecache_get_page
@@ -580,6 +610,7 @@
 	param_ops_ulong
 	path_get
 	path_put
+	pci_alloc_irq_vectors_affinity
 	pci_choose_state
 	pci_disable_device
 	pci_disable_msix
@@ -589,8 +620,10 @@
 	pci_enable_msix_range
 	pci_enable_sriov
 	pci_find_ext_capability
+	pci_free_irq_vectors
 	pci_iomap_range
 	pci_iounmap
+	pci_irq_vector
 	pci_read_config_word
 	pci_release_regions
 	pci_request_regions
@@ -643,6 +676,7 @@
 	reset_devices
 	revalidate_disk
 	revert_creds
+	round_jiffies
 	rps_may_expire_flow
 	rtc_time64_to_tm
 	rtnl_is_locked
@@ -674,6 +708,7 @@
 	scsi_block_requests
 	scsi_build_sense_buffer
 	scsi_change_queue_depth
+	scsi_cmd_get_serial
 	scsi_device_type
 	scsi_dma_map
 	scsi_dma_unmap
@@ -699,6 +734,7 @@
 	set_device_ro
 	set_disk_ro
 	set_nlink
+	set_normalized_timespec
 	set_page_dirty
 	set_pages_nx
 	set_pages_x
@@ -711,6 +747,7 @@
 	shrink_dcache_parent
 	si_meminfo
 	sigprocmask
+	simple_read_from_buffer
 	simple_strtol
 	simple_strtoul
 	simple_strtoull
@@ -731,6 +768,7 @@
 	sock_release
 	sock_setsockopt
 	sockfd_lookup
+	sprint_symbol
 	sprintf
 	sscanf
 	strcat
