@@ -422,6 +422,12 @@ asmlinkage __visible void sl_main(void *bootparams)
 	u32 cmdline_len, data_count;
 
 	/*
+	 * Ensure loadflags do not indicate a secure launch was done
+	 * unless it really was.
+	 */
+	bp->hdr.loadflags &= ~SLAUNCH_FLAG;
+
+	/*
 	 * Currently only Intel TXT is supported for Secure Launch. Testing
 	 * this value also indicates that the kernel was booted successfully
 	 * through the Secure Launch entry point and is in SMX mode.
@@ -451,9 +457,13 @@ asmlinkage __visible void sl_main(void *bootparams)
 	if (tpm_request_locality(tpm, 2) == TPM_NO_LOCALITY)
 		sl_txt_reset(SL_ERROR_TPM_GET_LOC);
 
-	/* Sanitize them before measuring */
+	/*
+ 	 * Sanitize them before measuring. Set the SLAUNCH_FLAG early since if
+ 	 * anything fails, the system will reset anyway.
+ 	 */
 	boot_params = (struct boot_params*)bootparams;
 	sanitize_boot_params(boot_params);
+	bp->hdr.loadflags |= SLAUNCH_FLAG;
 
 	/* Custom step to skip the measurement of the EFI memory map, part 1 */
 	efi_temp = bp->efi_info;
