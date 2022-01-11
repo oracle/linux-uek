@@ -32,11 +32,12 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # architectures are added.
 %ifarch x86_64
 %global signkernel 1
-%global signmodules 1
 %else
 %global signkernel 0
-%global signmodules 1
 %endif
+
+# Sign modules on all arches
+%global signmodules 1
 
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
@@ -85,10 +86,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 #
 # standard kernel
 %define with_up        1
-# kernel-smp (only valid for ppc 32-bit, sparc64)
-%define with_smp       1
-# kernel-kdump
-%define with_kdump     0
 # kernel-debug
 %define with_debug     1
 # kernel-doc
@@ -101,8 +98,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_bpftool   1
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
-# kernel-bootwrapper (for creating zImages from kernel + initrd)
-%define with_bootwrapper %{?_without_bootwrapper: 0} %{?!_without_bootwrapper: 1}
 # Want to build a the vsdo directories installed
 %define with_vdso_install %{?_without_vdso_install: 0} %{?!_without_vdso_install: 1}
 # module compression
@@ -120,13 +115,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %endif
 
 # Control whether we perform a compat. check against published ABI.
-%ifarch sparc64
 %define with_kabichk 0
-%define fancy_debuginfo 0
-%else
-%define with_kabichk 0
-%define fancy_debuginfo 0
-%endif
 
 # Collect Symtypes files with with_kabicollect. with_kabicollect is
 # required for with_kabichk to give detailed ABI breakage diagnostics.
@@ -138,20 +127,13 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 
 # .BTF section must stay in modules
 %define _find_debuginfo_opt_btf --keep-section .BTF
-
-%if %{fancy_debuginfo}
-BuildRequires: rpm-build >= 4.4.2.1-4
-%define _find_debuginfo_opts --strict-build-id %{_find_debuginfo_opt_btf}
-%else
 %define _find_debuginfo_opts %{_find_debuginfo_opt_btf}
-%endif
 
 # Additional options for user-friendly one-off kernel building:
 #
 # Only build the base kernel (--with baseonly):
 %define with_baseonly  %{?_with_baseonly:     1} %{?!_with_baseonly:     0}
-# Only build the smp kernel (--with smponly):
-%define with_smponly   %{?_with_smponly:      1} %{?!_with_smponly:      0}
+
 # Only build the 64k page size kernel (--with 64konly):
 %define with_64konly    %{?_with_64konly:       1} %{?!_with_64konly:       0}
 
@@ -208,8 +190,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define nopatches 1
 %endif
 
-%define with_bootwrapper 0
-
 %define pkg_release 1%{?dist}uek%{?buildid}
 
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
@@ -235,21 +215,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 #     find-debuginfo.sh script.
 %global _build_id_links alldebug
 
-%define with_pae 0
-
 # if requested, only build base kernel
 %if %{with_baseonly}
-%define with_smp 0
-%define with_kdump 0
-%define with_debug 0
-%define with_64k_ps 0
-%define with_64k_ps_debug 0
-%endif
-
-# if requested, only build smp kernel
-%if %{with_smponly}
-%define with_up 0
-%define with_kdump 0
 %define with_debug 0
 %define with_64k_ps 0
 %define with_64k_ps_debug 0
@@ -259,31 +226,18 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %if %{with_64konly}
 %define with_64k_ps 1
 %define with_up 0
-%define with_smp 0
-%define with_kdump 0
 %define with_debug 0
+%define with_headers 0
 %endif
 
 %define all_x86 i386 i686
 
 %if %{with_vdso_install}
 # These arches install vdso/ directories.
-%define vdso_arches %{all_x86} x86_64 ppc ppc64
+%define vdso_arches %{all_x86} x86_64
 %endif
 
 # Overrides for generic default options
-
-# only ppc need separate smp kernels
-%ifnarch ppc alphaev56
-%define with_smp 0
-%endif
-
-# only build kernel-kdump on ppc64
-# (no relocatable kernel support upstream yet)
-#FIXME: Temporarily disabled to speed up builds.
-#ifnarch ppc64
-%define with_kdump 0
-#endif
 
 # don't do debug builds on anything but i686, x86_64, and aarch64
 %ifnarch i686 x86_64 aarch64
@@ -292,7 +246,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 # don't do 4k/64k page size kernels for arch except aarch64
 %ifnarch aarch64
-%define with_64k_ps      0
+%define with_64k_ps       0
 %define with_64k_ps_debug 0
 %endif
 
@@ -301,30 +255,12 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_doc 0
 %endif
 
-# no need to build headers again for these arches,
-# they can just use i586 and ppc64 headers
-%ifarch ppc64iseries
-%define with_headers 0
-%endif
-
 # don't build noarch kernels or headers (duh)
 %ifarch noarch
 %define with_up 0
 %define with_compression 0
 %define with_headers 0
-%define with_paravirt 0
-%define with_paravirt_debug 0
 %define with_bpftool 0
-%endif
-
-# bootwrapper is only on ppc
-%ifnarch ppc ppc64
-%define with_bootwrapper 0
-%endif
-
-# sparse blows up on ppc64 alpha and sparc64
-%ifarch ppc64 ppc alpha sparc64
-%define with_sparse 0
 %endif
 
 # Enable perf
@@ -350,57 +286,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define asmarch x86
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
-%define with_perf 1
-%define with_bpftool 1
-%endif
-
-%ifarch ppc64
-%define asmarch powerpc
-%define hdrarch powerpc
-%define image_install_path boot
-%define make_target vmlinux
-%define kernel_image vmlinux
-%define kernel_image_elf 1
-%endif
-
-%ifarch s390x
-%define asmarch s390
-%define hdrarch s390
-%define image_install_path boot
-%define make_target image
-%define kernel_image arch/s390/boot/image
-%endif
-
-%ifarch sparc
-# We only build sparc headers since we dont support sparc32 hardware
-%endif
-
-%ifarch sparc64
-%define asmarch sparc
-%define make_target image
-%define kernel_image arch/sparc/boot/image
-%define image_install_path boot
-%endif
-
-%ifarch ppc
-%define asmarch powerpc
-%define hdrarch powerpc
-%define image_install_path boot
-%define make_target vmlinux
-%define kernel_image vmlinux
-%define kernel_image_elf 1
-%endif
-
-%ifarch ia64
-%define image_install_path boot/efi/EFI/redhat
-%define make_target compressed
-%define kernel_image vmlinux.gz
-%endif
-
-%ifarch alpha alphaev56
-%define image_install_path boot
-%define make_target vmlinux
-%define kernel_image vmlinux
 %endif
 
 %ifarch %{arm}
@@ -416,23 +301,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
-%if %{with_64konly}
-%define with_headers 0
-%define with_perf 0
-%define with_bpftool 0
-%else
-%define with_headers   1
-%define with_perf 1
-%define with_bpftool   1
 %endif
-%endif
-
-%if %{nopatches}
-# XXX temporary until last vdso patches are upstream
-%define vdso_arches ppc ppc64
-%endif
-
-%define oldconfig_target olddefconfig
 
 # To temporarily exclude an architecture from being built, add it to
 # %nobuildarches. Do _NOT_ use the ExclusiveArch: line, because if we
@@ -446,19 +315,9 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %ifarch %nobuildarches
 %define with_up 0
-%define with_smp 0
-%define with_pae 0
-%define with_kdump 0
 %define with_debuginfo 0
 %define _enable_debug_packages 0
-%define with_paravirt 0
-%define with_paravirt_debug 0
 %define with_bpftool 0
-%endif
-
-%define with_pae_debug 0
-%if %{with_pae}
-%define with_pae_debug %{with_debug}
 %endif
 
 #
@@ -479,21 +338,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # integration in the distro harder than needed.
 #
 %define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14, device-mapper-multipath < 0.4.9-64, dracut < 004-303.0.3
-
-# upto and including kernel 2.4.9 rpms, the 4Gb+ kernel was called kernel-enterprise
-# now that the smp kernel offers this capability, obsolete the old kernel
-%define kernel_smp_obsoletes kernel-enterprise < 2.4.10
-%define kernel_PAE_obsoletes kernel-smp < 2.6.17, kernel-xen <= 2.6.27-0.2.rc0.git6.fc10
-%define kernel_PAE_provides kernel-xen = %{rpmversion}-%{pkg_release}
-
-%ifarch x86_64
-%define kernel_obsoletes kernel-xen <= 2.6.27-0.2.rc0.git6.fc10
-%define kernel_provides kernel%{?variant}-xen = %{rpmversion}-%{pkg_release}
-%endif
-
-# We moved the drm include files into kernel-headers, make sure there's
-# a recent enough libdrm-devel on the system that doesn't have those.
-%define kernel_headers_conflicts libdrm-devel < 2.4.0-0.15
 
 #
 # Packages that need to be installed before the kernel is, because the %post
@@ -516,13 +360,13 @@ Provides: kernel%{?variant}-drm-nouveau = 12\
 Provides: kernel%{?variant}-modeset = 1\
 Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
-%ifnarch sparc64 aarch64\
+%ifnarch aarch64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
-%ifarch sparc64 aarch64\
+%ifarch aarch64\
 Provides: kernel = %{rpmversion}-%{pkg_release}\
 Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
@@ -557,14 +401,10 @@ Version: %{rpmversion}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm} aarch64
+ExclusiveArch: noarch %{all_x86} x86_64 %{arm} aarch64
 ExclusiveOS: Linux
 
 %kernel_reqprovconf
-%ifarch x86_64
-Obsoletes: kernel-smp
-%endif
-
 
 #
 # List the packages used during the kernel build
@@ -575,6 +415,7 @@ BuildRequires: gcc-toolset-11
 BuildRequires: gcc-toolset-11-annobin
 BuildRequires: gcc-toolset-11-annobin-plugin-gcc
 BuildRequires: gcc-toolset-11-binutils
+BuildRequires: gcc-toolset-11-binutils-devel
 BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
 BuildRequires: gcc-toolset-11-elfutils-libelf-devel
@@ -609,14 +450,9 @@ BuildRequires: python3-sphinx >= 1.7.9
 BuildRequires: fontconfig >= 2.13.0
 %endif
 
-BuildRequires: gcc-toolset-11
-BuildRequires: gcc-toolset-11-binutils
-BuildRequires: gcc-toolset-11-binutils-devel
-
 %if %{with_bpftool}
 BuildRequires: python3-docutils
 BuildRequires: zlib-devel
-BuildRequires: gcc-toolset-11-binutils-devel
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
@@ -675,41 +511,6 @@ Source29: kabi
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
 
-# Here should be only the patches up to the upstream canonical Linus tree.
-
-# For a stable release kernel
-%if 0%{?stable_update}
-%if 0%{?stable_base}
-%define    stable_patch_00  patch-2.6.%{base_sublevel}.%{stable_base}.bz2
-Patch00: %{stable_patch_00}
-%endif
-%if 0%{?stable_rc}
-%define    stable_patch_01  patch-2.6.%{base_sublevel}.%{stable_update}-rc%{stable_rc}.bz2
-Patch01: %{stable_patch_01}
-%endif
-
-# non-released_kernel case
-# These are automagically defined by the rcrev and gitrev values set up
-# near the top of this spec file.
-%else
-%if 0%{?rcrev}
-Patch00: patch-2.6.%{upstream_sublevel}-rc%{rcrev}.bz2
-%if 0%{?gitrev}
-Patch01: patch-2.6.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}.bz2
-%endif
-%else
-# pre-{base_sublevel+1}-rc1 case
-%if 0%{?gitrev}
-Patch00: patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
-%endif
-%endif
-%endif
-
-%if !%{nopatches}
-# revert patches place holder
-%endif
-
-
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
 %ifnarch aarch64 x86_64
@@ -757,14 +558,6 @@ header files define structures and constants that are needed for
 building most standard programs and are also needed for rebuilding the
 glibc package.
 %endif
-
-%package bootwrapper
-Summary: Boot wrapper files for generating combined kernel + initrd images
-Group: Development/System
-Requires: gzip
-%description bootwrapper
-Kernel-bootwrapper contains the wrapper code which makes bootable "zImage"
-files combining both kernel and initial ramdisk.
 
 %package debuginfo-common
 Summary: Kernel source files used by %{name}-debuginfo packages
@@ -833,7 +626,7 @@ Provides: kernel%{?variant}-xen-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
-%ifarch sparc64 aarch64\
+%ifarch aarch64\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
@@ -874,39 +667,6 @@ Provides: installonlypkg(kernel-uek)\
 
 # Now, each variant package.
 
-%define variant_summary The Linux kernel compiled for SMP machines
-%kernel_variant_package -n SMP smp
-%description smp
-This package includes a SMP version of the Linux kernel. It is
-required only on machines with two or more CPUs as well as machines with
-hyperthreading technology.
-
-Install the kernel-smp package if your machine uses two or more CPUs.
-
-
-%define variant_summary The Linux kernel compiled for PAE capable machines
-%kernel_variant_package PAE
-%description PAE
-This package includes a version of the Linux kernel with support for up to
-64GB of high memory. It requires a CPU with Physical Address Extensions (PAE).
-The non-PAE kernel can only address up to 4GB of memory.
-Install the kernel-PAE package if your machine has more than 4GB of memory.
-
-
-%define variant_summary The Linux kernel compiled with extra debugging enabled for PAE capable machines
-%kernel_variant_package PAEdebug
-Obsoletes: kernel-PAE-debug
-%description PAEdebug
-This package includes a version of the Linux kernel with support for up to
-64GB of high memory. It requires a CPU with Physical Address Extensions (PAE).
-The non-PAE kernel can only address up to 4GB of memory.
-Install the kernel-PAE package if your machine has more than 4GB of memory.
-
-This variant of the kernel has numerous debugging options enabled.
-It should only be installed when trying to gather additional information
-on kernel bugs, as some of these options impact performance noticably.
-
-
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
 %description debug
@@ -918,14 +678,6 @@ input and output, etc.
 This variant of the kernel has numerous debugging options enabled.
 It should only be installed when trying to gather additional information
 on kernel bugs, as some of these options impact performance noticably.
-
-
-%define variant_summary A minimal Linux kernel compiled for crash dumps
-%kernel_variant_package kdump
-%description kdump
-This package includes a kdump version of the Linux kernel. It is
-required only on machines which will use the kexec-based kernel crash dump
-mechanism.
 
 %define variant_summary A aarch64 kernel with 64k page size.
 %kernel_variant_package -o 64k
@@ -944,15 +696,8 @@ gcc --version
 
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
-%if !%{with_up}%{with_pae}
+%if !%{with_up}
 echo "Cannot build --with baseonly, up build is disabled"
-exit 1
-%endif
-%endif
-
-%if %{with_smponly}
-%if !%{with_smp}
-echo "Cannot build --with smponly, smp build is disabled"
 exit 1
 %endif
 %endif
@@ -973,18 +718,6 @@ ApplyPatch()
   *.gz) gunzip < "$RPM_SOURCE_DIR/$patch" | $patch_command ${1+"$@"} ;;
   *) $patch_command ${1+"$@"} < "$RPM_SOURCE_DIR/$patch" ;;
   esac
-}
-
-test_config_file()
-{
-  TestConfig=$1
-  Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
-  if [ `make ARCH=$Arch listnewconfig 2>/dev/null | grep -c CONFIG`  -ne 0 ]; then
-	echo "Following config options are unconfigured"
-	make ARCH=$Arch listnewconfig 2> /dev/null
-	echo "WARNING: Kernel version and config file missmatch"
-	echo "WARNING: This options will be unset by default in config file"
-  fi
 }
 
 # First we unpack the kernel tarball.
@@ -1111,17 +844,12 @@ mkdir -p configs
 %ifarch x86_64
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
-%endif #ifarch x86_64
-
-%ifarch i686
-	cp %{SOURCE1003} configs/config-debug
-	cp %{SOURCE1002} configs/config
-%endif #ifarch i686
+%endif
 
 %ifarch aarch64
 	cp %{SOURCE1008} configs/config-debug
 	cp %{SOURCE1007} configs/config
-%endif #ifarch aarch64
+%endif
 
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
@@ -1136,18 +864,6 @@ gcc --version
 
 %if %{with_sparse}
 %define sparse_mflags	C=1
-%endif
-
-%if %{fancy_debuginfo}
-# This override tweaks the kernel makefiles so that we run debugedit on an
-# object before embedding it.  When we later run find-debuginfo.sh, it will
-# run debugedit again.  The edits it does change the build ID bits embedded
-# in the stripped object, but repeating debugedit is a no-op.  We do it
-# beforehand to get the proper final build ID bits into the embedded image.
-# This affects the vDSO images in vmlinux, and the vmlinux image in bzImage.
-export AFTER_LINK=\
-'sh -xc "/usr/lib/rpm/debugedit -b $$RPM_BUILD_DIR -d /usr/src/debug \
-				-i $@ > $@.id"'
 %endif
 
 cp_vmlinux()
@@ -1202,7 +918,7 @@ BuildKernel() {
 
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
-    make -s ARCH=$Arch %{oldconfig_target} > /dev/null
+    make -s ARCH=$Arch olddefconfig > /dev/null
 %if %{with_kabicollect}
     make -s ARCH=$Arch V=1 KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
 %else
@@ -1236,11 +952,11 @@ BuildKernel() {
     if [ -f arch/$Arch/boot/zImage.stub ]; then
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
-    %if %{signkernel}
+%if %{signkernel}
 	# Sign the image if we're using EFI
         %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot
         mv $KernelImage.signed $KernelImage
-    %endif
+%endif
     $CopyKernel $KernelImage \
 		$RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
     chmod 755 $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
@@ -1259,7 +975,7 @@ BuildKernel() {
 %ifarch %{vdso_arches}
     make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
 %endif
-%ifarch %{vdso_arches} sparc64 aarch64
+%ifarch %{vdso_arches} aarch64
 %ifnarch noarch
 # build tools/perf:
     if [ -d tools/perf ]; then
@@ -1312,9 +1028,9 @@ BuildKernel() {
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/weak-updates
     # first copy everything
     cp --parents `find  -type f -name "Makefile*" -o -name "Kconfig*"` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
-if grep -q '^CONFIG_STACK_VALIDATION=y' .config ; then
-    cp --parents `find tools/objtool -type f -executable` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
-fi
+    if grep -q '^CONFIG_STACK_VALIDATION=y' .config ; then
+      cp --parents `find tools/objtool -type f -executable` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
+    fi
     cp Module.symvers $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     cp System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     if [ -s Module.markers ]; then
@@ -1380,9 +1096,6 @@ fi
     fi
     rm -f $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/scripts/*.o
     rm -f $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/scripts/*/*.o
-%ifarch ppc
-    cp -a --parents arch/powerpc/lib/crtsavres.[So] $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
-%endif
     if [ -d arch/%{asmarch}/include ]; then
       cp -a --parents arch/%{asmarch}/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     fi
@@ -1401,7 +1114,7 @@ fi
     cp -a --parents Kbuild $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents kernel/bounds.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
-%ifnarch %{sparc} aarch64
+%ifnarch aarch64
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets_64.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
     cp -a --parents security/selinux/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -1420,15 +1133,6 @@ fi
     # Copy .config to include/config/auto.conf so "make prepare" is unnecessary.
     cp $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/.config $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/config/auto.conf
     cd ..
-
-%if %{fancy_debuginfo}
-    if test -s vmlinux.id; then
-      cp vmlinux.id $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/vmlinux.id
-    else
-      echo >&2 "*** ERROR *** no vmlinux build ID! ***"
-      exit 1
-    fi
-%endif
 
     #
     # save the vmlinux file for kernel debugging into the kernel-debuginfo rpm
@@ -1523,25 +1227,10 @@ cd linux-%{version}-%{release}
 %if %{with_up}
 BuildKernel %make_target %kernel_image debug
 %endif
-%if %{with_pae}
-BuildKernel %make_target %kernel_image PAEdebug
-%endif
-%endif
-
-%if %{with_pae}
-BuildKernel %make_target %kernel_image PAE
 %endif
 
 %if %{with_up}
 BuildKernel %make_target %kernel_image
-%endif
-
-%if %{with_smp}
-BuildKernel %make_target %kernel_image smp
-%endif
-
-%if %{with_kdump}
-BuildKernel vmlinux vmlinux kdump vmlinux
 %endif
 
 %if %{with_64k_ps}
@@ -1569,20 +1258,10 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
 
 %define __modsign_install_post \
   if [ "%{signmodules}" == "1" ]; then \
-    if [ "%{with_pae}" != "0" ]; then \
-      mv certs/signing_key.pem.sign.PAE certs/signing_key.pem \
-      mv certs/signing_key.x509.sign.PAE certs/signing_key.x509 \
-      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAE/ %{dgst} \
-    fi \
     if [ "%{with_debug}" != "0" ]; then \
       mv certs/signing_key.pem.sign.debug certs/signing_key.pem \
       mv certs/signing_key.x509.sign.debug certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.debug/ %{dgst} \
-    fi \
-    if [ "%{with_pae_debug}" != "0" ]; then \
-      mv certs/signing_key.pem.sign.PAEdebug certs/signing_key.pem \
-      mv certs/signing_key.x509.sign.PAEdebug certs/signing_key.x509 \
-      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAEdebug/ %{dgst} \
     fi \
     if [ "%{with_up}" != "0" ]; then \
       mv certs/signing_key.pem.sign certs/signing_key.pem \
@@ -1622,7 +1301,6 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
 %define debug_package %{nil}
 
 %if %{with_debuginfo}
-
 %ifnarch noarch
 %global __debug_package 1
 %files debuginfo-common
@@ -1685,7 +1363,6 @@ cp $RPM_SOURCE_DIR/turbostat $RPM_BUILD_ROOT/usr/sbin/turbostat
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/turbostat
 %endif
 
-
 %if %{with_headers}
 # Install kernel headers
 make ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_install
@@ -1717,10 +1394,6 @@ rm -rf $RPM_BUILD_ROOT/usr/include/drm
 pushd tools/bpf/bpftool
 %{bpftool_make} prefix=%{_prefix} bash_compdir=%{_sysconfdir}/bash_completion.d/ mandir=%{_mandir} install doc-install
 popd
-%endif
-
-%if %{with_bootwrapper}
-make DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kernel-wrapper WRAPPER_DTSDIR=%{_libdir}/kernel-wrapper/dts
 %endif
 
 ###
@@ -1871,25 +1544,10 @@ fi\
 %kernel_variant_postun
 %kernel_variant_post -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 
-%kernel_variant_pre smp
-%kernel_variant_preun smp
-%kernel_variant_postun smp
-%kernel_variant_post -v smp
-
-%kernel_variant_pre PAE
-%kernel_variant_preun PAE
-%kernel_variant_postun PAE
-%kernel_variant_post -v PAE -r (kernel|kernel-smp|kernel-xen)
-
 %kernel_variant_pre debug
 %kernel_variant_preun debug
 %kernel_variant_postun debug
 %kernel_variant_post -v debug
-
-%kernel_variant_post -v PAEdebug -r (kernel|kernel-smp|kernel-xen)
-%kernel_variant_preun PAEdebug
-%kernel_variant_postun PAEdebug
-%kernel_variant_pre PAEdebug
 
 %kernel_variant_pre -o 64k
 %kernel_variant_preun -o 64k
@@ -1914,13 +1572,6 @@ fi
 %files headers
 %defattr(-,root,root)
 /usr/include/*
-%endif
-
-%if %{with_bootwrapper}
-%files bootwrapper
-%defattr(-,root,root)
-/usr/sbin/*
-%{_libdir}/kernel-wrapper
 %endif
 
 %if %{with_bpftool}
@@ -1993,7 +1644,7 @@ fi
 %ifarch %{arm} aarch64\
 /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
 %endif\
-%ifnarch sparc64 aarch64\
+%ifnarch aarch64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
 /usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
@@ -2007,33 +1658,22 @@ fi
 /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 %if %{with_debuginfo}\
 %ifnarch noarch\
-%if %{fancy_debuginfo}\
-%{expand:%%files -f debuginfo%{?2}.list -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
-%else\
 %{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
-%endif\
 %defattr(-,root,root)\
-%if !%{fancy_debuginfo}\
 %if "%{elf_image_install_path}" != ""\
 %{debuginfodir}/%{elf_image_install_path}/*-%{KVERREL}%{?2:.%{2}}.debug\
 %endif\
 %{debuginfodir}/lib/modules/%{KVERREL}%{?2:.%{2}}\
 %{debuginfodir}/usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
-# % {debuginfodir}/usr/bin/%{KVERREL}%{?2:.%{2}}\
-%endif\
 %endif\
 %endif\
 %endif\
 %{nil}
 
 %kernel_variant_files %{with_up}
-%kernel_variant_files %{with_smp} smp
 %if %{with_up}
 %kernel_variant_files %{with_debug} debug
 %endif
-%kernel_variant_files %{with_pae} PAE
-%kernel_variant_files %{with_pae_debug} PAEdebug
-%kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %kernel_variant_files -o %{with_64k_ps} 64k
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
