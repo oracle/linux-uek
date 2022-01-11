@@ -735,6 +735,7 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
 	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
+	struct rds_connection *conn = inc->i_conn;
 	struct rds_ib_incoming *ibinc;
 	struct rds_page_frag *frag;
 	struct scatterlist *sg;
@@ -763,6 +764,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		if (ret != to_copy)
 			return -EFAULT;
 
+		atomic64_add(to_copy, &conn->c_recv_bytes);
 		frag_off += to_copy;
 		copied += to_copy;
 
