@@ -504,8 +504,7 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		lmac_id = psw0->lmac_id;
 		jdt_iova_addr = (u64)psw0->jd_ptr;
 		psw1 = (struct rfoe_psw1_s *)(buf_ptr + 16);
-		if (priv->rx_hw_tstamp_en)
-			tstamp = psw1->ptp_timestamp;
+		tstamp = psw1->ptp_timestamp;
 	} else {
 		ecpri_psw0 = (struct rfoe_ecpri_psw0_s *)buf_ptr;
 		if (ecpri_psw0->err_sts & 0x1F) {
@@ -523,8 +522,7 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		lmac_id = ecpri_psw0->src_id & 0x3;
 		jdt_iova_addr = (u64)ecpri_psw0->jd_ptr;
 		ecpri_psw1 = (struct rfoe_ecpri_psw1_s *)(buf_ptr + 16);
-		if (priv->rx_hw_tstamp_en)
-			tstamp = ecpri_psw1->ptp_timestamp;
+		tstamp = ecpri_psw1->ptp_timestamp;
 	}
 
 	netif_dbg(priv, rx_status, priv->netdev,
