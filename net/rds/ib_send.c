@@ -161,10 +161,13 @@ static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
 	rds_ib_send_complete(container_of(op, struct rds_message, rdma),
 			     wc_status, rds_rdma_send_complete);
 
-	if (op->op_write)
+	if (op->op_write) {
 		rds_stats_add(s_send_rdma_bytes, op->op_bytes);
-	else
+		atomic64_add(op->op_bytes, &ic->i_r_write_bytes);
+	} else {
 		rds_stats_add(s_recv_rdma_bytes, op->op_bytes);
+		atomic64_add(op->op_bytes, &ic->i_r_read_bytes);
+	}
 }
 
 static void rds_ib_send_unmap_atomic(struct rds_ib_connection *ic,
