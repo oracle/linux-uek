@@ -295,9 +295,20 @@ struct rds_info_rdma_connection {
 	__u16		flow_ctl_post_credit;
 	__u16		flow_ctl_send_credit;
 	__s32		qp_num;
-	__u32		w_alloc_ctr;
-	__u32		w_free_ctr;
+	__u32		recv_alloc_ctr;
+	__u32		recv_free_ctr;
 	__s32		dst_qp_num;
+	__u32		send_alloc_ctr;
+	__u32		send_free_ctr;
+	__u64		send_bytes;
+	__u64		recv_bytes;
+	__u64		r_read_bytes;
+	__u64		r_write_bytes;
+	__u64		tx_poll_ts;
+	__u64		rx_poll_ts;
+	__u64		tx_poll_cnt;
+	__u64		rx_poll_cnt;
+
 };
 
 struct rds6_info_rdma_connection {
@@ -318,9 +329,19 @@ struct rds6_info_rdma_connection {
 	__u16		flow_ctl_post_credit;
 	__u16		flow_ctl_send_credit;
 	__s32		qp_num;
-	__u32		w_alloc_ctr;
-	__u32		w_free_ctr;
+	__u32		recv_alloc_ctr;
+	__u32		recv_free_ctr;
 	__s32		dst_qp_num;
+	__u32		send_alloc_ctr;
+	__u32		send_free_ctr;
+	__u64		send_bytes;
+	__u64		recv_bytes;
+	__u64		r_read_bytes;
+	__u64		r_write_bytes;
+	__u64		tx_poll_ts;
+	__u64		rx_poll_ts;
+	__u64		tx_poll_cnt;
+	__u64		rx_poll_cnt;
 };
 
 struct rds_path_info {

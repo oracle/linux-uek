@@ -869,6 +869,9 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 {
 	struct rds_info_rdma_connection *iinfo = buffer;
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	u64 now = jiffies;
+
+	memset(iinfo, 0, sizeof(*iinfo));
 
 	/* We will only ever look at IB transports */
 	if (conn->c_trans != &rds_ib_transport)
@@ -903,15 +906,32 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->max_send_sge = rds_ibdev->max_sge;
 		iinfo->qp_num = ic->i_qp_num;
 		iinfo->dst_qp_num = ic->i_dst_qp_num;
-		iinfo->w_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
-		iinfo->w_free_ctr =
-			(u32)atomic_read(&ic->i_recv_ring.w_free_ctr);
+		iinfo->recv_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
+		iinfo->recv_free_ctr =
+			(uint32_t)atomic_read(&ic->i_recv_ring.w_free_ctr);
 		iinfo->flow_ctl_post_credit =
 			IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
 		iinfo->flow_ctl_send_credit =
 			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
 		rds_ib_get_mr_info(rds_ibdev, iinfo);
 		iinfo->cache_allocs = atomic_read(&ic->i_cache_allocs);
+		iinfo->send_alloc_ctr = ic->i_send_ring.w_alloc_ctr;
+		iinfo->send_free_ctr =
+			(uint32_t)atomic_read(&ic->i_send_ring.w_free_ctr);
+		iinfo->send_bytes =
+			(uint64_t)atomic64_read(&conn->c_send_bytes);
+		iinfo->recv_bytes =
+			(uint64_t)atomic64_read(&conn->c_recv_bytes);
+		iinfo->r_read_bytes =
+			(uint64_t)atomic64_read(&ic->i_r_read_bytes);
+		iinfo->r_write_bytes =
+			(uint64_t)atomic64_read(&ic->i_r_write_bytes);
+		iinfo->tx_poll_ts = jiffies_to_msecs(now - ic->i_tx_poll_ts);
+		iinfo->rx_poll_ts = jiffies_to_msecs(now - ic->i_rx_poll_ts);
+		iinfo->tx_poll_cnt =
+			(uint64_t)atomic64_read(&ic->i_tx_poll_cnt);
+		iinfo->rx_poll_cnt =
+			(uint64_t)atomic64_read(&ic->i_rx_poll_cnt);
 	}
 	return 1;
 }
@@ -923,6 +943,9 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 {
 	struct rds6_info_rdma_connection *iinfo6 = buffer;
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	u64 now = jiffies;
+
+	memset(iinfo6, 0, sizeof(*iinfo6));
 
 	/* We will only ever look at IB transports */
 	if (conn->c_trans != &rds_ib_transport)
@@ -955,15 +978,32 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo6->max_send_sge = rds_ibdev->max_sge;
 		iinfo6->qp_num = ic->i_qp_num;
 		iinfo6->dst_qp_num = ic->i_dst_qp_num;
-		iinfo6->w_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
-		iinfo6->w_free_ctr =
-			(u32)atomic_read(&ic->i_recv_ring.w_free_ctr);
+		iinfo6->recv_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
+		iinfo6->recv_free_ctr =
+			(uint32_t)atomic_read(&ic->i_recv_ring.w_free_ctr);
 		iinfo6->flow_ctl_post_credit =
 			IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
 		iinfo6->flow_ctl_send_credit =
 			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
 		rds6_ib_get_mr_info(rds_ibdev, iinfo6);
 		iinfo6->cache_allocs = atomic_read(&ic->i_cache_allocs);
+		iinfo6->send_alloc_ctr = ic->i_send_ring.w_alloc_ctr;
+		iinfo6->send_free_ctr =
+			(uint32_t)atomic_read(&ic->i_send_ring.w_free_ctr);
+		iinfo6->send_bytes =
+			(uint64_t)atomic64_read(&conn->c_send_bytes);
+		iinfo6->recv_bytes =
+			(uint64_t)atomic64_read(&conn->c_recv_bytes);
+		iinfo6->r_read_bytes =
+			(uint64_t)atomic64_read(&ic->i_r_read_bytes);
+		iinfo6->r_write_bytes =
+			(uint64_t)atomic64_read(&ic->i_r_write_bytes);
+		iinfo6->tx_poll_ts = jiffies_to_msecs(now - ic->i_tx_poll_ts);
+		iinfo6->rx_poll_ts = jiffies_to_msecs(now - ic->i_rx_poll_ts);
+		iinfo6->tx_poll_cnt =
+			(uint64_t)atomic64_read(&ic->i_tx_poll_cnt);
+		iinfo6->rx_poll_cnt =
+			(uint64_t)atomic64_read(&ic->i_rx_poll_cnt);
 	}
 	return 1;
 }
