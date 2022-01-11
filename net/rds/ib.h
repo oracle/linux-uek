@@ -354,6 +354,12 @@ struct rds_ib_connection {
 	/* track irq miss */
 	unsigned long		i_irq_miss_ts;
 	struct delayed_work	i_cm_watchdog_w;
+	atomic64_t		i_r_read_bytes;
+	atomic64_t		i_r_write_bytes;
+	u64			i_tx_poll_ts;
+	u64			i_rx_poll_ts;
+	atomic64_t		i_tx_poll_cnt;
+	atomic64_t		i_rx_poll_cnt;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
