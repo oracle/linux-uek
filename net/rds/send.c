@@ -1566,6 +1566,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	}
 
 	rm->m_conn_path = cpath;
+	atomic64_add(payload_len, &conn->c_send_bytes);
 
 	/* Parse any control messages the user may have included. */
 	ret = rds_cmsg_send(conn, rs, rm, msg);
