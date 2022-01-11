@@ -152,9 +152,10 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 
 	priv->last_tx_ptp_jiffies = jiffies;
 
+	/* ptp timestamp entry is 128-bit in size */
 	tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
 			((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
-			(128 * priv->ptp_ring_cfg.ptp_ring_idx));
+			(16 * priv->ptp_ring_cfg.ptp_ring_idx));
 	tx_tstmp->valid = 0;
 
 	/* get the tx job entry */
@@ -223,9 +224,10 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 		goto submit_next_req;
 	}
 
+	/* ptp timestamp entry is 128-bit in size */
 	tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
 			((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
-			(128 * priv->ptp_ring_cfg.ptp_ring_idx));
+			(16 * priv->ptp_ring_cfg.ptp_ring_idx));
 
 	/* poll for timestamp valid bit to go high */
 	for (cnt = 0; cnt < OTX2_RFOE_PTP_TSTMP_POLL_CNT; cnt++) {
@@ -859,9 +861,10 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 						&job_entry->job_cmd_lo;
 			priv->ptp_job_tag = psm_cmd_lo->jobtag;
 
+			/* ptp timestamp entry is 128-bit in size */
 			tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
 				   ((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
-				    (128 * priv->ptp_ring_cfg.ptp_ring_idx));
+				    (16 * priv->ptp_ring_cfg.ptp_ring_idx));
 			tx_tstmp->valid = 0;
 		} else {
 			/* check ptp queue count */
