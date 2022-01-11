@@ -342,6 +342,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
 
 int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
+	struct rds_connection *conn;
 	struct rds_message *rm;
 	struct scatterlist *sg;
 	unsigned long to_copy;
@@ -352,6 +353,7 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 
 	rm = container_of(inc, struct rds_message, m_inc);
 	len = be32_to_cpu(rm->m_inc.i_hdr.h_len);
+	conn = inc->i_conn;
 
 	sg = rm->data.op_sg;
 	vec_off = 0;
@@ -368,6 +370,7 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		if (ret != to_copy)
 			return -EFAULT;
 
+		atomic64_add(to_copy, &conn->c_recv_bytes);
 		vec_off += to_copy;
 		copied += to_copy;
 

@@ -380,6 +380,9 @@ struct rds_connection {
 
 	/* for rds_conn_ha_changed_task */
 	struct rds_conn_ha_changed_work c_ha_changed;
+
+	atomic64_t		c_send_bytes;
+	atomic64_t		c_recv_bytes;
 };
 
 static inline
