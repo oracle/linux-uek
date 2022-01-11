@@ -576,6 +576,9 @@ static void poll_scq(struct rds_ib_connection *ic, struct ib_cq *cq,
 	int nr, i;
 	struct ib_wc *wc;
 
+	ic->tx_poll_ts = jiffies;
+	atomic64_inc(&ic->tx_poll_cnt);
+
 	while ((nr = ib_poll_cq(cq, RDS_WC_MAX, wcs)) > 0) {
 		for (i = 0; i < nr; i++) {
 			wc = wcs + i;
@@ -598,6 +601,9 @@ static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 {
 	int nr, i;
 	struct ib_wc *wc;
+
+	ic->rx_poll_ts = jiffies;
+	atomic64_inc(&ic->rx_poll_cnt);
 
 	while ((nr = ib_poll_cq(cq, RDS_WC_MAX, wcs)) > 0) {
 		for (i = 0; i < nr; i++) {

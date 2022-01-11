@@ -44,9 +44,16 @@
  */
 #ifdef __KERNEL__
 #include <net/sock.h>
-#else
-#include <time.h>
-#include <limits.h>
+#endif
+
+/* These sparse annotated types shouldn't be in any user
+ * visible header file. We should clean this up rather
+ * than kludging around them.
+ */
+#ifndef __KERNEL__
+#define __be16	u_int16_t
+#define __be32	u_int32_t
+#define __be64	u_int64_t
 #endif
 
 #define RDS_IB_ABI_VERSION		0x301
@@ -280,47 +287,68 @@ struct rds6_info_tcp_socket {
 struct rds_info_rdma_connection {
 	__be32		src_addr;
 	__be32		dst_addr;
-	__u8		src_gid[RDS_IB_GID_LEN];
-	__u8		dst_gid[RDS_IB_GID_LEN];
+	uint8_t		src_gid[RDS_IB_GID_LEN];
+	uint8_t		dst_gid[RDS_IB_GID_LEN];
 
-	__u32		max_send_wr;
-	__u32		max_recv_wr;
-	__u32		max_send_sge;
-	__u32		rdma_mr_max;
-	__u32		rdma_mr_size;
-	__u8		tos;
-	__u8		sl;
-	__u32		cache_allocs;
-	__u32		frag;
-	__u16		flow_ctl_post_credit;
-	__u16		flow_ctl_send_credit;
-	__s32		qp_num;
-	__u32		w_alloc_ctr;
-	__u32		w_free_ctr;
-	__s32		dst_qp_num;
+	uint32_t	max_send_wr;
+	uint32_t	max_recv_wr;
+	uint32_t	max_send_sge;
+	uint32_t	rdma_mr_max;
+	uint32_t	rdma_mr_size;
+	uint8_t         tos;
+	uint8_t         sl;
+	uint32_t        cache_allocs;
+	uint32_t	frag;
+	uint16_t        flow_ctl_post_credit;
+	uint16_t        flow_ctl_send_credit;
+	int32_t		qp_num;
+	uint32_t	recv_alloc_ctr;
+	uint32_t	recv_free_ctr;
+	int32_t		dst_qp_num;
+	uint32_t	send_alloc_ctr;
+	uint32_t	send_free_ctr;
+	uint64_t	send_bytes;
+	uint64_t	recv_bytes;
+	uint64_t	r_read_bytes;
+	uint64_t	r_write_bytes;
+	uint64_t	tx_poll_ts;
+	uint64_t	rx_poll_ts;
+	uint64_t	tx_poll_cnt;
+	uint64_t	rx_poll_cnt;
+
 };
 
 struct rds6_info_rdma_connection {
 	struct in6_addr	src_addr;
 	struct in6_addr	dst_addr;
-	__u8		src_gid[RDS_IB_GID_LEN];
-	__u8		dst_gid[RDS_IB_GID_LEN];
+	uint8_t		src_gid[RDS_IB_GID_LEN];
+	uint8_t		dst_gid[RDS_IB_GID_LEN];
 
-	__u32		max_send_wr;
-	__u32		max_recv_wr;
-	__u32		max_send_sge;
-	__u32		rdma_mr_max;
-	__u32		rdma_mr_size;
-	__u8		tos;
-	__u8		sl;
-	__u32		cache_allocs;
-	__u32		frag;
-	__u16		flow_ctl_post_credit;
-	__u16		flow_ctl_send_credit;
-	__s32		qp_num;
-	__u32		w_alloc_ctr;
-	__u32		w_free_ctr;
-	__s32		dst_qp_num;
+	uint32_t	max_send_wr;
+	uint32_t	max_recv_wr;
+	uint32_t	max_send_sge;
+	uint32_t	rdma_mr_max;
+	uint32_t	rdma_mr_size;
+	uint8_t         tos;
+	uint8_t         sl;
+	uint32_t        cache_allocs;
+	uint32_t	frag;
+	uint16_t        flow_ctl_post_credit;
+	uint16_t        flow_ctl_send_credit;
+	int32_t		qp_num;
+	uint32_t	recv_alloc_ctr;
+	uint32_t	recv_free_ctr;
+	int32_t		dst_qp_num;
+	uint32_t	send_alloc_ctr;
+	uint32_t	send_free_ctr;
+	uint64_t	send_bytes;
+	uint64_t	recv_bytes;
+	uint64_t	r_read_bytes;
+	uint64_t	r_write_bytes;
+	uint64_t	tx_poll_ts;
+	uint64_t	rx_poll_ts;
+	uint64_t	tx_poll_cnt;
+	uint64_t	rx_poll_cnt;
 };
 
 struct rds_path_info {
