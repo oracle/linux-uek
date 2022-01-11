@@ -338,6 +338,12 @@ struct rds_ib_connection {
 	s32			i_dst_qp_num;
 
 	struct delayed_work	i_cm_watchdog_w;
+	atomic64_t		i_r_read_bytes;
+	atomic64_t		i_r_write_bytes;
+	u64			i_tx_poll_ts;
+	u64			i_rx_poll_ts;
+	atomic64_t		i_tx_poll_cnt;
+	atomic64_t		i_rx_poll_cnt;
 };
 
 /* This assumes that atomic_t is at least 32 bits */

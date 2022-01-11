@@ -298,9 +298,19 @@ struct rds_info_rdma_connection {
 	uint16_t        flow_ctl_post_credit;
 	uint16_t        flow_ctl_send_credit;
 	int32_t		qp_num;
-	uint32_t        w_alloc_ctr;
-	uint32_t        w_free_ctr;
+	uint32_t	recv_alloc_ctr;
+	uint32_t	recv_free_ctr;
 	int32_t		dst_qp_num;
+	uint32_t	send_alloc_ctr;
+	uint32_t	send_free_ctr;
+	uint64_t	send_bytes;
+	uint64_t	recv_bytes;
+	uint64_t	r_read_bytes;
+	uint64_t	r_write_bytes;
+	uint64_t	tx_poll_ts;
+	uint64_t	rx_poll_ts;
+	uint64_t	tx_poll_cnt;
+	uint64_t	rx_poll_cnt;
 
 };
 
@@ -322,9 +332,19 @@ struct rds6_info_rdma_connection {
 	uint16_t        flow_ctl_post_credit;
 	uint16_t        flow_ctl_send_credit;
 	int32_t		qp_num;
-	uint32_t	w_alloc_ctr;
-	uint32_t	w_free_ctr;
+	uint32_t	recv_alloc_ctr;
+	uint32_t	recv_free_ctr;
 	int32_t		dst_qp_num;
+	uint32_t	send_alloc_ctr;
+	uint32_t	send_free_ctr;
+	uint64_t	send_bytes;
+	uint64_t	recv_bytes;
+	uint64_t	r_read_bytes;
+	uint64_t	r_write_bytes;
+	uint64_t	tx_poll_ts;
+	uint64_t	rx_poll_ts;
+	uint64_t	tx_poll_cnt;
+	uint64_t	rx_poll_cnt;
 };
 
 struct rds_path_info {
