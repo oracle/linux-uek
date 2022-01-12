@@ -7,7 +7,7 @@
 %define _missing_doc_files_terminate_build      0
 %define _wrong_version_format_terminate_build   0
 
-Summary: Oracle Unbreakable Enterprise Kernel Release 6
+Summary: Oracle Unbreakable Enterprise Kernel Release 7
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
@@ -42,7 +42,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
 # which yields a base_sublevel of 21.
-%define base_sublevel 35
+%define base_sublevel 0
 
 ## If this is a released kernel ##
 %if 0%{?released_kernel}
@@ -60,7 +60,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 5.2.%{base_sublevel}%{?stablerev}
+%define rpmversion 5.15.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -71,7 +71,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # The git snapshot level
 %define gitrev 0
 # Set rpm version accordingly
-%define rpmversion 5.4.%{upstream_sublevel}
+%define rpmversion 5.15.%{upstream_sublevel}
 %endif
 # Nb: The above rcrev and gitrev values automagically define Patch00 and Patch01 below.
 
@@ -183,7 +183,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %endif
 
 # The kernel tarball/base version
-%define kversion 5.2.%{base_sublevel}
+%define kversion 5.15.%{base_sublevel}
 
 %define make_target bzImage
 
@@ -865,18 +865,18 @@ ApplyPatch()
 
 # Update to latest upstream.
 %if 0%{?released_kernel}
-%define vanillaversion 5.4.%{base_sublevel}
+%define vanillaversion 5.15.%{base_sublevel}
 # non-released_kernel case
 %else
 %if 0%{?rcrev}
-%define vanillaversion 5.4.%{upstream_sublevel}-rc%{rcrev}
+%define vanillaversion 5.15.%{upstream_sublevel}-rc%{rcrev}
 %if 0%{?gitrev}
-%define vanillaversion 5.4.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
+%define vanillaversion 5.15.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
 %endif
 %else
 # pre-{base_sublevel+1}-rc1 case
 %if 0%{?gitrev}
-%define vanillaversion 5.4.%{base_sublevel}-git%{gitrev}
+%define vanillaversion 5.15.%{base_sublevel}-git%{gitrev}
 %endif
 %endif
 %endif
