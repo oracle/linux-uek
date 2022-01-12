@@ -1375,15 +1375,6 @@ chmod 0755 $RPM_BUILD_ROOT/usr/sbin/turbostat
 # Install kernel headers
 make %{?make_opts} ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_install
 
-# Do headers_check but don't die if it fails.
-make ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_check \
-     > hdrwarnings.txt || :
-if grep -q exist hdrwarnings.txt; then
-   sed s:^$RPM_BUILD_ROOT/usr/include/:: hdrwarnings.txt
-   # Temporarily cause a build failure if header inconsistencies.
-   # exit 1
-fi
-
 find $RPM_BUILD_ROOT/usr/include \
      \( -name .install -o -name .check -o \
 	-name ..install.cmd -o -name ..check.cmd \) | xargs rm -f
