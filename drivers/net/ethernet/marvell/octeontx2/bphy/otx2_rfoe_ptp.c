@@ -6,27 +6,98 @@
 
 #include "otx2_rfoe.h"
 
+#define EXT_PTP_CLK_RATE		(125 * 1000000) /* Ext PTP clk rate */
+
 static int otx2_rfoe_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 {
-	return -EOPNOTSUPP;
+	struct otx2_rfoe_ndev_priv *priv = container_of(ptp_info,
+							struct
+							otx2_rfoe_ndev_priv,
+							ptp_clock_info);
+
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		return -EOPNOTSUPP;
+
+	mutex_lock(&priv->ptp_lock);
+	timecounter_adjtime(&priv->time_counter, delta);
+	mutex_unlock(&priv->ptp_lock);
+
+	return 0;
 }
 
 static int otx2_rfoe_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 {
-	return -EOPNOTSUPP;
+	struct otx2_rfoe_ndev_priv *priv = container_of(ptp,
+							struct
+							otx2_rfoe_ndev_priv,
+							ptp_clock_info);
+	bool neg_adj = false;
+	u64 comp, adj;
+	s64 ppb;
+
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		return -EOPNOTSUPP;
+
+	if (scaled_ppm < 0) {
+		neg_adj = true;
+		scaled_ppm = -scaled_ppm;
+	}
+
+	/* The hardware adds the clock compensation value to the PTP clock
+	 * on every coprocessor clock cycle. Typical convention is that it
+	 * represent number of nanosecond betwen each cycle. In this
+	 * convention compensation value is in 64 bit fixed-point
+	 * representation where upper 32 bits are number of nanoseconds
+	 * and lower is fractions of nanosecond.
+	 * The scaled_ppm represent the ratio in "parts per million" by which
+	 * the compensation value should be corrected.
+	 * To calculate new compenstation value we use 64bit fixed point
+	 * arithmetic on following formula
+	 * comp = tbase + tbase * scaled_ppm / (1M * 2^16)
+	 * where tbase is the basic compensation value calculated
+	 * initialy in the probe function.
+	 */
+	/* convert scaled_ppm to ppb */
+	ppb = 1 + scaled_ppm;
+	ppb *= 125;
+	ppb >>= 13;
+
+	comp = ((u64)1000000000ull << 32) / priv->ptp_ext_clk_rate;
+	adj = comp * ppb;
+	adj = div_u64(adj, 1000000000ull);
+	comp = neg_adj ? comp - adj : comp + adj;
+
+	writeq(comp, priv->ptp_reg_base + MIO_PTP_CLOCK_COMP);
+
+	return 0;
+}
+
+static u64 otx2_rfoe_ptp_cc_read(const struct cyclecounter *cc)
+{
+	struct otx2_rfoe_ndev_priv *priv = container_of(cc, struct
+							otx2_rfoe_ndev_priv,
+							cycle_counter);
+
+	return readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
 }
 
 static int otx2_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
 				 struct timespec64 *ts)
 {
 	struct otx2_rfoe_ndev_priv *priv = container_of(ptp_info,
-						struct otx2_rfoe_ndev_priv,
-						ptp_clock_info);
+							struct
+							otx2_rfoe_ndev_priv,
+							ptp_clock_info);
 	u64 nsec;
 
 	mutex_lock(&priv->ptp_lock);
-	nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
-	otx2_rfoe_calc_ptp_ts(priv, &nsec);
+
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN) {
+		nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+		otx2_rfoe_calc_ptp_ts(priv, &nsec);
+	} else {
+		nsec = timecounter_read(&priv->time_counter);
+	}
 	mutex_unlock(&priv->ptp_lock);
 
 	*ts = ns_to_timespec64(nsec);
@@ -37,34 +108,146 @@ static int otx2_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
 static int otx2_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
 				 const struct timespec64 *ts)
 {
-	return -EOPNOTSUPP;
+	struct otx2_rfoe_ndev_priv *priv = container_of(ptp_info,
+							struct
+							otx2_rfoe_ndev_priv,
+							ptp_clock_info);
+	u64 nsec;
+
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		return -EOPNOTSUPP;
+
+	nsec = timespec64_to_ns(ts);
+
+	mutex_lock(&priv->ptp_lock);
+	timecounter_init(&priv->time_counter, &priv->cycle_counter, nsec);
+	mutex_unlock(&priv->ptp_lock);
+
+	return 0;
+}
+
+static int otx2_rfoe_ptp_verify_pin(struct ptp_clock_info *ptp,
+				    unsigned int pin,
+				    enum ptp_pin_function func,
+				    unsigned int chan)
+{
+	struct otx2_rfoe_ndev_priv *priv = container_of(ptp,
+							struct
+							otx2_rfoe_ndev_priv,
+							ptp_clock_info);
+
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		return -EOPNOTSUPP;
+
+	switch (func) {
+	case PTP_PF_NONE:
+	case PTP_PF_EXTTS:
+		break;
+	case PTP_PF_PEROUT:
+	case PTP_PF_PHYSYNC:
+		return -1;
+	}
+	return 0;
+}
+
+static void otx2_rfoe_ptp_extts_check(struct work_struct *work)
+{
+	struct otx2_rfoe_ndev_priv *priv = container_of(work, struct
+							otx2_rfoe_ndev_priv,
+							extts_work.work);
+	struct ptp_clock_event event;
+	u64 tstmp, new_thresh;
+
+	mutex_lock(&priv->ptp_lock);
+	tstmp = readq(priv->ptp_reg_base + MIO_PTP_TIMESTAMP);
+	mutex_unlock(&priv->ptp_lock);
+
+	if (tstmp != priv->last_extts) {
+		event.type = PTP_CLOCK_EXTTS;
+		event.index = 0;
+		event.timestamp = timecounter_cyc2time(&priv->time_counter, tstmp);
+		ptp_clock_event(priv->ptp_clock, &event);
+		priv->last_extts = tstmp;
+
+		new_thresh = tstmp % 500000000;
+		if (priv->thresh != new_thresh) {
+			mutex_lock(&priv->ptp_lock);
+			writeq(new_thresh,
+			       priv->ptp_reg_base + MIO_PTP_PPS_THRESH_HI);
+			mutex_unlock(&priv->ptp_lock);
+			priv->thresh = new_thresh;
+		}
+	}
+	schedule_delayed_work(&priv->extts_work, msecs_to_jiffies(200));
 }
 
 static int otx2_rfoe_ptp_enable(struct ptp_clock_info *ptp_info,
 				struct ptp_clock_request *rq, int on)
 {
+	struct otx2_rfoe_ndev_priv *priv = container_of(ptp_info,
+							struct
+							otx2_rfoe_ndev_priv,
+							ptp_clock_info);
+	int pin = -1;
+
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		return -EOPNOTSUPP;
+
+	switch (rq->type) {
+	case PTP_CLK_REQ_EXTTS:
+		pin = ptp_find_pin(priv->ptp_clock, PTP_PF_EXTTS,
+				   rq->extts.index);
+		if (pin < 0)
+			return -EBUSY;
+		if (on)
+			schedule_delayed_work(&priv->extts_work,
+					      msecs_to_jiffies(200));
+		else
+			cancel_delayed_work_sync(&priv->extts_work);
+		return 0;
+	default:
+		break;
+	}
 	return -EOPNOTSUPP;
 }
 
 static const struct ptp_clock_info otx2_rfoe_ptp_clock_info = {
 	.owner          = THIS_MODULE,
+	.name		= "RFOE PTP",
 	.max_adj        = 1000000000ull,
-	.n_ext_ts       = 0,
-	.n_pins         = 0,
+	.n_ext_ts       = 1,
+	.n_pins         = 1,
 	.pps            = 0,
 	.adjfine	= otx2_rfoe_ptp_adjfine,
 	.adjtime        = otx2_rfoe_ptp_adjtime,
 	.gettime64      = otx2_rfoe_ptp_gettime,
 	.settime64      = otx2_rfoe_ptp_settime,
 	.enable         = otx2_rfoe_ptp_enable,
+	.verify		= otx2_rfoe_ptp_verify_pin,
 };
 
 int otx2_rfoe_ptp_init(struct otx2_rfoe_ndev_priv *priv)
 {
+	struct cyclecounter *cc;
 	int err;
 
+	cc = &priv->cycle_counter;
+	cc->read = otx2_rfoe_ptp_cc_read;
+	cc->mask = CYCLECOUNTER_MASK(64);
+	cc->mult = 1;
+	cc->shift = 0;
+
+	timecounter_init(&priv->time_counter, &priv->cycle_counter,
+			 ktime_to_ns(ktime_get_real()));
+	snprintf(priv->extts_config.name, sizeof(priv->extts_config.name),
+		 "RFOE TSTAMP");
+	priv->extts_config.index = 0;
+	priv->extts_config.func = PTP_PF_NONE;
 	priv->ptp_clock_info = otx2_rfoe_ptp_clock_info;
+	priv->ptp_ext_clk_rate = EXT_PTP_CLK_RATE;
 	snprintf(priv->ptp_clock_info.name, 16, "%s", priv->netdev->name);
+	priv->ptp_clock_info.pin_config = &priv->extts_config;
+	INIT_DELAYED_WORK(&priv->extts_work, otx2_rfoe_ptp_extts_check);
 	priv->ptp_clock = ptp_clock_register(&priv->ptp_clock_info,
 					     &priv->pdev->dev);
 	if (IS_ERR_OR_NULL(priv->ptp_clock)) {
