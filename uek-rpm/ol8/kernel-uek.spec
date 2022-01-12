@@ -105,6 +105,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 #build kernel with 4k & 64k page size for aarch64
 %define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
+# verbose build, i.e. no silent rules and V=1
+%define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
+
+%if %{with_verbose}
+%define make_opts V=1
+%else
+%define make_opts -s
+%endif
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -896,7 +904,7 @@ BuildKernel() {
     perl -p -i -e "s/^EXTRAVERSION.*/EXTRAVERSION = %{?stablerev}-%{release}.%{_target_cpu}${Flavour:+.${Flavour}}/" Makefile
     #perl -p -i -e "s/^SUBLEVEL.*/SUBLEVEL = %{base_sublevel}/" Makefile
 
-    make -s mrproper
+    make %{?make_opts} mrproper
 
     %if %{signkernel}%{signmodules}
 	cp %{SOURCE10} certs/.
@@ -927,7 +935,7 @@ BuildKernel() {
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
 %ifarch %{arm} aarch64
-    make -s ARCH=$Arch V=1 dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
+    make %{?make_opts} ARCH=$Arch dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
@@ -969,18 +977,18 @@ BuildKernel() {
     cp $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz.hmac
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
-    make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
+    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
-    make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
+    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
 %endif
 %ifarch %{vdso_arches} aarch64
 %ifnarch noarch
 # build tools/perf:
     if [ -d tools/perf ]; then
 	cd tools/perf
-	make %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
+	make %{?make_opts} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
 # and install it:
 #	mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
 	mkdir -p $RPM_BUILD_ROOT/usr/libexec/
@@ -993,7 +1001,7 @@ BuildKernel() {
 # build tools/power/x86/x86_energy_perf_policy:
     if [ -d tools/power/x86/x86_energy_perf_policy ]; then
        cd tools/power/x86/x86_energy_perf_policy
-       make %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
@@ -1002,7 +1010,7 @@ BuildKernel() {
 # build tools/power/x86/turbostat:
     if [ -d tools/power/x86/turbostat ]; then
        cd tools/power/x86/turbostat
-       make %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 turbostat $RPM_BUILD_ROOT/usr/libexec/turbostat.$KernelVer
@@ -1242,7 +1250,7 @@ BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
 %global bpftool_make \
-  make EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT V=1
+  make %{?make_opts} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
 %if %{with_bpftool}
 pushd tools/bpf/bpftool
 %{bpftool_make}
@@ -1251,7 +1259,7 @@ popd
 
 %if %{with_doc}
 # Make the HTML pages.
-make %{?_smp_mflags} htmldocs || %{doc_build_fail}
+make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
 %endif
 
 %define dgst $((grep '^CONFIG_MODULE_SIG_SHA512=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha512\"$' .config >/dev/null && echo sha512) || (grep '^CONFIG_MODULE_SIG_SHA256=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha256\"$' .config >/dev/null && echo sha256))
@@ -1365,7 +1373,7 @@ chmod 0755 $RPM_BUILD_ROOT/usr/sbin/turbostat
 
 %if %{with_headers}
 # Install kernel headers
-make ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_install
+make %{?make_opts} ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_install
 
 # Do headers_check but don't die if it fails.
 make ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_check \
