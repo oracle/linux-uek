@@ -5654,14 +5654,15 @@ int idle_cpu(int cpu)
  *
  * Return: 1 if the CPU is currently idle. 0 otherwise.
  */
-#define MAX_WAKEUP_GRAN_PREEMPT_LIMIT 12000000
 int available_idle_cpu(int cpu)
 {
 	if (!idle_cpu(cpu))
 		return 0;
 
-	if (sysctl_sched_wakeup_granularity < MAX_WAKEUP_GRAN_PREEMPT_LIMIT && vcpu_is_preempted(cpu))
-		return 0;
+	if (sched_feat(VCPU_IDLE_PREEMPTION_CHK)) {
+		if (vcpu_is_preempted(cpu))
+			return 0;
+	}
 
 	return 1;
 }
