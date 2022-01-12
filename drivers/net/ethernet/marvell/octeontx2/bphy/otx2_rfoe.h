@@ -32,6 +32,7 @@
 
 #define MAX_RFOE_INTF			3	/* Max RFOE instances */
 #define RFOE_MAX_INTF			10	/* 2 rfoe x 4 lmac + 1 rfoe x 2 lmac */
+#define PCI_SUBSYS_DEVID_OCTX2_95XXN	0xB400
 
 /* ethtool msg */
 #define OTX2_RFOE_MSG_DEFAULT		(NETIF_MSG_DRV)
@@ -153,6 +154,7 @@ struct otx2_rfoe_ndev_priv {
 	struct pci_dev			*pdev;
 	struct otx2_bphy_cdev_priv	*cdev_priv;
 	u32				msg_enable;
+	u32				ptp_ext_clk_rate;
 	void __iomem			*bphy_reg_base;
 	void __iomem			*psm_reg_base;
 	void __iomem			*rfoe_reg_base;
@@ -176,6 +178,14 @@ struct otx2_rfoe_ndev_priv {
 	struct ptp_tx_skb_list		ptp_skb_list;
 	struct ptp_clock		*ptp_clock;
 	struct ptp_clock_info		ptp_clock_info;
+	struct cyclecounter		cycle_counter;
+	struct timecounter		time_counter;
+
+	struct delayed_work		extts_work;
+	u64				last_extts;
+	u64				thresh;
+
+	struct ptp_pin_desc		extts_config;
 	/* ptp lock */
 	struct mutex			ptp_lock;
 	struct otx2_rfoe_stats		stats;
