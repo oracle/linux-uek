@@ -156,7 +156,7 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
 			((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
 			(16 * priv->ptp_ring_cfg.ptp_ring_idx));
-	tx_tstmp->valid = 0;
+	memset(tx_tstmp, 0, sizeof(struct rfoe_tx_ptp_tstmp_s));
 
 	/* get the tx job entry */
 	job_entry = (struct tx_job_entry *)
@@ -216,7 +216,6 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	struct skb_shared_hwtstamps ts;
 	u64 timestamp;
 	u16 jobid;
-	int cnt;
 
 	if (!priv->ptp_tx_skb) {
 		netif_err(priv, tx_done, priv->netdev,
@@ -224,32 +223,13 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 		goto submit_next_req;
 	}
 
+	/* make sure that all memory writes by rfoe are completed */
+	dma_rmb();
+
 	/* ptp timestamp entry is 128-bit in size */
 	tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
 			((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
 			(16 * priv->ptp_ring_cfg.ptp_ring_idx));
-
-	/* poll for timestamp valid bit to go high */
-	for (cnt = 0; cnt < OTX2_RFOE_PTP_TSTMP_POLL_CNT; cnt++) {
-		/* check valid bit */
-		if (tx_tstmp->valid)
-			break;
-		usleep_range(5, 10);
-	}
-
-	if (cnt >= OTX2_RFOE_PTP_TSTMP_POLL_CNT) {
-		netif_err(priv, tx_err, priv->netdev,
-			  "ptp tx timestamp polling timeout, skb=%pS\n",
-			  priv->ptp_tx_skb);
-		priv->stats.tx_hwtstamp_failures++;
-		goto submit_next_req;
-	}
-
-	if (tx_tstmp->drop || tx_tstmp->tx_err) {
-		netif_err(priv, tx_done, priv->netdev,
-			  "ptp tx timstamp error\n");
-		goto submit_next_req;
-	}
 
 	/* match job id */
 	jobid = tx_tstmp->jobid;
@@ -257,6 +237,14 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 		netif_err(priv, tx_done, priv->netdev,
 			  "ptp job id doesn't match, job_id=0x%x skb->job_tag=0x%x\n",
 			  jobid, priv->ptp_job_tag);
+		priv->stats.tx_hwtstamp_failures++;
+		goto submit_next_req;
+	}
+
+	if (tx_tstmp->drop || tx_tstmp->tx_err) {
+		netif_err(priv, tx_done, priv->netdev,
+			  "ptp tx timstamp error\n");
+		priv->stats.tx_hwtstamp_failures++;
 		goto submit_next_req;
 	}
 
@@ -863,7 +851,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 			tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
 				   ((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
 				    (16 * priv->ptp_ring_cfg.ptp_ring_idx));
-			tx_tstmp->valid = 0;
+			memset(tx_tstmp, 0, sizeof(struct rfoe_tx_ptp_tstmp_s));
 		} else {
 			/* check ptp queue count */
 			if (priv->ptp_skb_list.count >= max_ptp_req) {
