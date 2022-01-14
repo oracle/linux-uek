@@ -102,6 +102,11 @@ struct dev_pagemap_ops {
  * @data: private data pointer for page_free()
  * @type: memory type: see MEMORY_* in memory_hotplug.h
  * @flags: PGMAP_* flags to specify defailed behavior
+ * @vmemmap_shift: structural definition of how the vmemmap page metadata
+ *      is populated, specifically the metadata page order.
+ *	A zero value (default) uses base pages as the vmemmap metadata
+ *	representation. A bigger value will set up compound struct pages
+ *	of the requested order value.
  * @ops: method table
  * @range(s): physical address range(s) covered by @ref
  */
@@ -119,7 +124,9 @@ struct dev_pagemap {
 	union {
 		struct range range;
 		struct range ranges[1];
-	})
+	};
+	unsigned long vmemmap_shift;
+	)
 };
 
 static inline struct vmem_altmap *pgmap_altmap(struct dev_pagemap *pgmap)
@@ -127,6 +134,11 @@ static inline struct vmem_altmap *pgmap_altmap(struct dev_pagemap *pgmap)
 	if (pgmap->flags & PGMAP_ALTMAP_VALID)
 		return &pgmap->altmap;
 	return NULL;
+}
+
+static inline unsigned long pgmap_vmemmap_nr(struct dev_pagemap *pgmap)
+{
+	return 1 << pgmap->vmemmap_shift;
 }
 
 #ifdef CONFIG_ZONE_DEVICE
