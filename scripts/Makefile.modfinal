@@ -113,7 +113,7 @@ endef
 
 $(ctf-filelist-raw): $(ctf-builtins-prereq) $(ctf-modules)
 	@rm -f $(ctf-filelist-raw);
-	@if [ -n "$(ctf-dir-mk)" ]; then \
+	@if [[ -n "$(ctf-dir-mk)" ]]; then \
 		mkdir -p "$(ctf-dir-mk)"; \
 	fi
 	$(call xargs,@printf "%s\n" >> $(ctf-filelist-raw),$^)
