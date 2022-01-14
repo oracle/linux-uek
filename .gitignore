@@ -16,7 +16,6 @@
 *.bin
 *.bz2
 *.c.[012]*.*
-*.ctf
 *.dt.yaml
 *.dtb
 *.dtbo
