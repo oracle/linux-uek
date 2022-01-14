@@ -196,6 +196,9 @@
 #define CDNS_XSPI_CLK_ENABLE                  BIT(0)
 #define CDNS_XSPI_CLK_DIV                     GENMASK(4, 1)
 
+/* MSI-X clear interrupt register */
+#define CDNS_XSPI_SPIX_INTR                   0x4000
+
 /* Clock macros */
 #define CDNS_XSPI_CLOCK_IO_HZ 800000000
 #define CDNS_XSPI_CLOCK_DIVIDED(div) ((CDNS_XSPI_CLOCK_IO_HZ) / (div))
@@ -738,6 +741,7 @@ static irqreturn_t cdns_xspi_irq_handler(int this_irq, void *dev)
 
 	irq_status = readl(cdns_xspi->iobase + CDNS_XSPI_INTR_STATUS_REG);
 	writel(irq_status, cdns_xspi->iobase + CDNS_XSPI_INTR_STATUS_REG);
+	writel(0x01, cdns_xspi->iobase + CDNS_XSPI_SPIX_INTR);
 
 	if (irq_status &
 	    (CDNS_XSPI_SDMA_ERROR | CDNS_XSPI_SDMA_TRIGGER |
