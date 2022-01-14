@@ -337,6 +337,7 @@ static int otx2_cptvf_probe(struct pci_dev *pdev,
 {
 	struct device *dev = &pdev->dev;
 	struct otx2_cptvf_dev *cptvf;
+	void __iomem * const *iomap;
 	int ret;
 
 	cptvf = devm_kzalloc(dev, sizeof(*cptvf), GFP_KERNEL);
@@ -365,7 +366,13 @@ static int otx2_cptvf_probe(struct pci_dev *pdev,
 	pci_set_drvdata(pdev, cptvf);
 	cptvf->pdev = pdev;
 
-	cptvf->reg_base = pcim_iomap_table(pdev)[PCI_PF_REG_BAR_NUM];
+	iomap = pcim_iomap_table(pdev);
+	if (!iomap) {
+		dev_err(dev, "Failed to get iomap table\n");
+		ret = -ENODEV;
+		goto clear_drvdata;
+	}
+	cptvf->reg_base = iomap[PCI_PF_REG_BAR_NUM];
 
 	otx2_cpt_set_hw_caps(pdev, &cptvf->cap_flag);
 
