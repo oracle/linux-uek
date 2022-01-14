@@ -86,12 +86,6 @@ config CC_HAS_ASM_INLINE
 config CC_HAS_NO_PROFILE_FN_ATTR
 	def_bool $(success,echo '__attribute__((no_profile_instrument_function)) int x();' | $(CC) -x c - -c -o /dev/null -Werror)
 
-config HAVE_CTF_TOOLCHAIN
-	def_bool ($(cc-option,-gt) || $(cc-option,-gctf)) && $(ld-option,-lctf -lbfd -liberty -lz -ldl)
-	depends on CC_IS_GCC
-	help
-	  GCC and binutils support CTF generation.
-
 config CONSTRUCTORS
 	bool
 
