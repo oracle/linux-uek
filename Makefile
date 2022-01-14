@@ -1478,45 +1478,6 @@ modules.order: $(subdir-modorder) FORCE
 
 targets += modules.order
 
-ifneq (CONFIG_CTF@,'@')
-
-# We need to force everything to be built, since we need the .o files below.
-KBUILD_BUILTIN := 1
-
-# This contains all the object files that are built directly into the
-# kernel (including built-in modules), for consumption by dwarf2ctf in
-# Makefile.modpost.
-# This is made doubly annoying by the presence of '.o' files which are actually
-# thin ar archives, and the need to support file(1) versions too old to
-# recognize them as archives at all.  (So we assume that everything that is not
-# an ELF object is an archive.)
-ifeq ($(SRCARCH),x86)
-objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),bzImage) FORCE
-else
-objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
-endif
-	@echo $(KBUILD_VMLINUX_OBJS) | \
-		tr " " "\n" | grep "\.o$$" | xargs -r file | \
-		grep ELF | cut -d: -f1 > objects.builtin
-	@for archive in $$(echo $(KBUILD_VMLINUX_OBJS) |\
-		tr " " "\n" | xargs -r file | grep -v ELF | cut -d: -f1); do \
-		$(AR) t "$$archive" >> objects.builtin; \
-	done
-
-ctf: vmlinux.ctfa
-PHONY += ctf
-
-# Making CTF needs the builtin files unless out-of-tree.
-ifeq ($(KBUILD_EXTMOD),)
-vmlinux.ctfa: modules_thick.builtin objects.builtin
-endif
-vmlinux.ctfa:
-	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal vmlinux.ctfa
-else
-PHONY += objects.builtin
-objects.builtin:
-endif
-
 # Target to prepare building external modules
 PHONY += modules_prepare
 modules_prepare: prepare
@@ -1555,9 +1516,7 @@ __modinst_pre:
 	@sed 's:^:kernel/:' modules.order > $(MODLIB)/modules.order
 	@cp -f modules.builtin $(MODLIB)/
 	@cp -f $(objtree)/modules.builtin.modinfo $(MODLIB)/
-	@if [ -f $(objtree)/vmlinux.ctfa ] ; then \
-		cp -f $(objtree)/vmlinux.ctfa $(MODLIB)/kernel ; \
-	fi
+
 endif # CONFIG_MODULES
 
 # modules_thick.builtin maps from kernel modules (or rather the object file
@@ -1586,7 +1545,7 @@ $(modthickbuiltin-dirs): include/config/tristate.conf
 # make distclean Remove editor backup files, patch leftover files and the like
 
 # Directories & files removed with 'make clean'
-CLEAN_FILES += include/ksym vmlinux.symvers .ctf .ctf.filelist .ctf.filelist.new modules-only.symvers \
+CLEAN_FILES += include/ksym vmlinux.symvers modules-only.symvers \
 	       modules.builtin modules.builtin.modinfo modules.nsdeps \
 	       compile_commands.json .thinlto-cache
 
@@ -1678,8 +1637,6 @@ help:
 	@echo  '                    (requires a recent binutils and recent build (System.map))'
 	@echo  '  dir/file.ko     - Build module including final link'
 	@echo  '  modules_prepare - Set up for building external modules'
-	@echo  '  ctf             - Generate CTF type information for DTrace, installed by '
-	@echo  '                    make modules_install'
 	@echo  '  tags/TAGS	  - Generate tags file for editors'
 	@echo  '  cscope	  - Generate cscope index'
 	@echo  '  gtags           - Generate GNU GLOBAL index'
@@ -1960,9 +1917,7 @@ clean: $(clean-dirs)
 		-o -name '*.asn1.[ch]' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
 		-o -name '.tmp_*.o.*' -o -name modules_thick.builtin \
-		-o -name objects.builtin \
 		-o -name '*.c.[012]*.*' \
-		-o -name '*.ctfa' \
 		-o -name '*.ll' \
 		-o -name '*.gcno' \
 		-o -name '*.*.symversions' \) -type f -print | xargs rm -f
