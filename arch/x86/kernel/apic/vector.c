@@ -120,7 +120,9 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 	 */
 	static int current_vector = FIRST_EXTERNAL_VECTOR + VECTOR_OFFSET_START;
 	static int current_offset = VECTOR_OFFSET_START % 16;
-	int cpu, vector;
+	static int cpu = 0;
+	int vector;
+	int start, wrapped = 0;
 
 	/*
 	 * If there is still a move in progress or the previous move has not
@@ -133,7 +135,12 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 	/* Only try and allocate irqs on cpus that are present */
 	cpumask_clear(d->old_domain);
 	cpumask_clear(searched_cpumask);
-	cpu = cpumask_first_and(mask, cpu_online_mask);
+
+	cpu = cpumask_next_and(cpu, mask, cpu_online_mask);
+	if (cpu >= nr_cpu_ids)
+		cpu = cpumask_first_and(mask, cpu_online_mask);
+
+	start = cpu;
 	while (cpu < nr_cpu_ids) {
 		int new_cpu, offset;
 
@@ -202,7 +209,18 @@ next_cpu:
 		 */
 		cpumask_or(searched_cpumask, searched_cpumask, vector_cpumask);
 		cpumask_andnot(vector_cpumask, mask, searched_cpumask);
-		cpu = cpumask_first_and(vector_cpumask, cpu_online_mask);
+		cpu = cpumask_next_and(cpu, vector_cpumask, cpu_online_mask);
+		if (!wrapped && cpu >= nr_cpu_ids) {
+			wrapped = 1;
+			/*
+			 * Skip cpu0 to avoid having too many IRQs bound to
+			 * it which may lead to performance issues.
+			 */
+			cpu = cpumask_next_and(0, vector_cpumask, cpu_online_mask);
+			continue;
+		}
+		if (wrapped && cpu >= start)
+			break;
 		continue;
 	}
 	return -ENOSPC;
