@@ -6,3 +6,4 @@
 obj-$(CONFIG_OCTEONTX2_SDEI_GHES) += otx2_sdei_ghes.o
 otx2_sdei_ghes-$(CONFIG_OCTEONTX2_GHES_BERT) += otx2-ghes-bert.o
 otx2_sdei_ghes-y += otx2-sdei-ghes.o
+obj-$(CONFIG_OCTEONTX2_EINJ) += otx2-einj.o
