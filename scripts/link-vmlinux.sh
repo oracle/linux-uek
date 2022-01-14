@@ -66,9 +66,7 @@ gen_symversions()
 	done
 }
 
-# Link of vmlinux.o used for section mismatch analysis: we also strip the CTF
-# section out at this stage, since ctfarchive gets it from the underlying object
-# files  and linking it further is a waste of time.
+# Link of vmlinux.o used for section mismatch analysis
 # ${1} output file
 modpost_link()
 {
@@ -98,15 +96,7 @@ modpost_link()
 		info LD ${1}
 	fi
 
-        ${LD} -r --verbose | awk '
-		BEGIN { discards = 0; p = 0; }
-		/^====/ { p = 1; next; }
-		p && /\.ctf/ { next; }
-		p && !discards && /DISCARD/ { sub(/\} *$/, " *(.ctf) }"); discards = 1 }
-                p && /^\}/ && !discards { print "  /DISCARD/ : { *(.ctf) }"; }
-		p { print $0; }' > .tmp.remove-ctf.lds
-	${LD} ${KBUILD_LDFLAGS} ${lds} -T .tmp.remove-ctf.lds -r -o ${1} ${objects}
-        rm -f .tmp.remove-ctf.lds
+	${LD} ${KBUILD_LDFLAGS} -r -o ${1} ${lds} ${objects}
 }
 
 objtool_link()

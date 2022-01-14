@@ -38,17 +38,9 @@ hostprogs += unifdef
 # The module linker script is preprocessed on demand
 targets += module.lds
 
-kallsyms-objs	:= kallsyms.o
-ifeq ($(CONFIG_KALLMODSYMS),y)
-kallsyms-objs   += modules_thick.o
-
-HOSTCFLAGS_modules_thick.o := -I$(srctree)/scripts
-HOSTCFLAGS_kallsyms.o := -I$(srctree)/scripts
-endif
-
 subdir-$(CONFIG_GCC_PLUGINS) += gcc-plugins
 subdir-$(CONFIG_MODVERSIONS) += genksyms
-subdir-$(CONFIG_CTF)         += ctf
+subdir-$(CONFIG_CTF)         += dwarf2ctf
 subdir-$(CONFIG_SECURITY_SELINUX) += selinux
 
 # Let clean descend into subdirs
