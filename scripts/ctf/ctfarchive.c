@@ -28,7 +28,21 @@ static ctf_file_t *output;
  */
 static void add_to_link(const char *fn)
 {
-	if (ctf_link_add_ctf (output, NULL, fn, NULL, 0) < 0)
+	ctf_archive_t *fp;
+	int err;
+
+	fp = ctf_open(fn, NULL, &err);
+	if (fp == NULL) {
+		/*
+		 * Having no CTF is normal for things like assembly output.
+		 */
+		if (err == ECTF_NOCTFDATA)
+			return;
+		fprintf(stderr, "Cannot open %s: %s\n", fn, ctf_errmsg(err));
+		exit(1);
+	}
+
+	if (ctf_link_add_ctf (output, fp, fn) < 0)
 	{
 		fprintf(stderr, "Cannot add CTF file %s: %s\n", fn,
 			ctf_errmsg(ctf_errno(output)));
@@ -242,10 +256,9 @@ int main (int argc, char *argv[])
 	ctf_link_set_memb_name_changer(output, transform_module_names, NULL);
 
 	/*
-	 * Do the link.
+	 * Do the link.  This link mode will change in future.
 	 */
-	if (ctf_link(output, CTF_LINK_SHARE_DUPLICATED |
-                     CTF_LINK_EMPTY_CU_MAPPINGS) < 0)
+	if (ctf_link(output, CTF_LINK_SHARE_UNCONFLICTED) < 0)
 		goto ctf_err;
 
 	/*
