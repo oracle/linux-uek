@@ -735,6 +735,7 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 {
 	struct device *dev = &pdev->dev;
 	struct otx2_cptpf_dev *cptpf;
+	void __iomem * const *iomap;
 	int err;
 
 	cptpf = devm_kzalloc(dev, sizeof(*cptpf), GFP_KERNEL);
@@ -763,7 +764,13 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 	pci_set_drvdata(pdev, cptpf);
 	cptpf->pdev = pdev;
 
-	cptpf->reg_base = pcim_iomap_table(pdev)[PCI_PF_REG_BAR_NUM];
+	iomap = pcim_iomap_table(pdev);
+	if (!iomap) {
+		dev_err(dev, "Failed to get iomap table\n");
+		err = -ENODEV;
+		goto clear_drvdata;
+	}
+	cptpf->reg_base = iomap[PCI_PF_REG_BAR_NUM];
 
 	/* Check if AF driver is up, otherwise defer probe */
 	err = cpt_is_pf_usable(cptpf);
