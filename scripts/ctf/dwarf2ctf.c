@@ -1180,11 +1180,10 @@ static void init_assembly_tab(void)
 		if (assembly_len < walk->tag)
 			assembly_len = walk->tag;
 	}
-	assembly_len++;
 
-	assembly_tab = calloc(sizeof(ctf_assembly_fun *), assembly_len);
+	assembly_tab = calloc(sizeof(ctf_assembly_fun *), assembly_len + 1);
 	assembly_filter_tab = calloc(sizeof(ctf_assembly_filter_fun *),
-				     assembly_len);
+				     assembly_len + 1);
 	if ((assembly_tab == NULL) || (assembly_filter_tab == NULL)) {
 		pr_err("Out of memory allocating assembly table\n");
 		exit(1);
@@ -1490,7 +1489,7 @@ out:
 	 */
 	return (found_subprogram &&
 		(add_parent ||
-		 (dwarf_tag(parent) < assembly_len &&
+		 (dwarf_tag(parent) <= assembly_len &&
 		  assembly_tab[dwarf_tag(parent)] != NULL)));
 err:
 	pr_err("Cannot fetch %s of DIE at offset %lu in %s: %s\n",
@@ -2030,7 +2029,7 @@ static void process_tu_func(const char *module_name,
 	 * emit CTF: call the processing function for all such.
 	 */
 	do {
-		if ((dwarf_tag(die) < assembly_len) &&
+		if ((dwarf_tag(die) <= assembly_len) &&
 		    (assembly_filter_tab[dwarf_tag(die)] == NULL ||
 		     assembly_filter_tab[dwarf_tag(die)](file_name, dwarf, die,
 							 parent_die)) &&
@@ -2481,7 +2480,7 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name,
 			mark_seen_contained(&child, module_name, overrides, data);
 			/* fall through */
 		default:
-			if (dwarf_tag(&child) < assembly_len &&
+			if (dwarf_tag(&child) <= assembly_len &&
 			    assembly_tab[dwarf_tag(&child)] != NULL) {
 
 				char *id = type_id(&child, overrides, NULL, NULL);
