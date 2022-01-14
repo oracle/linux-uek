@@ -346,53 +346,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
 %define initrd_prereq  dracut >= 027
 
-#
-# This macro does requires, provides, conflicts, obsoletes for a kernel package.
-#	%%kernel_reqprovconf <subpackage>
-# It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
-# macros defined above.
-#
-%define kernel_reqprovconf \
-Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
-Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
-Provides: kernel%{?variant}-drm = 4.3.0\
-Provides: kernel%{?variant}-drm-nouveau = 12\
-Provides: kernel%{?variant}-modeset = 1\
-Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
-Provides: oracleasm = 2.0.5\
-%ifnarch aarch64\
-Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
-Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
-%endif\
-Provides: perf = %{KVERREL}%{?1:.%{1}}\
-#Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
-%ifarch aarch64\
-Provides: kernel = %{rpmversion}-%{pkg_release}\
-Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
-%endif\
-Requires(pre): %{kernel_prereq}\
-Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware\
-Requires(pre): system-release\
-Requires(post): /usr/bin/kernel-install\
-Requires(preun): /usr/bin/kernel-install\
-Requires: numactl-libs\
-Conflicts: %{kernel_dot_org_conflicts}\
-Conflicts: %{package_conflicts}\
-Conflicts: shim-x64 <= 15-11.0.5.el8\
-Conflicts: shim-ia32 <= 15-11.0.5.el8\
-Provides: oracle(kernel-sig-key) == 202102\
-%{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
-%{expand:%%{?kernel%{?1:_%{1}}_obsoletes:Obsoletes: %%{kernel%{?1:_%{1}}_obsoletes}}}\
-%{expand:%%{?kernel%{?1:_%{1}}_provides:Provides: %%{kernel%{?1:_%{1}}_provides}}}\
-# We can't let RPM do the dependencies automatic because it'll then pick up\
-# a correct but undesirable perl dependency from the module headers which\
-# isn't required for the kernel proper to function\
-AutoReq: no\
-AutoProv: yes\
-%{nil}
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
 
-%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
@@ -404,7 +359,10 @@ Release: %{pkg_release}
 ExclusiveArch: noarch %{all_x86} x86_64 %{arm} aarch64
 ExclusiveOS: Linux
 
-%kernel_reqprovconf
+%ifnarch %{nobuildarches}
+Requires: %{name}-core-uname-r = %{KVERREL}
+Requires: %{name}-modules-uname-r = %{KVERREL}
+%endif
 
 #
 # List the packages used during the kernel build
@@ -479,6 +437,8 @@ Source0: linux-%{kversion}.tar.bz2
 Source10: x509.genkey
 %endif
 
+Source11: mod-denylist.sh
+Source12: mod-extra.list
 Source13: mod-sign.sh
 %define modsign_cmd %{SOURCE13}
 
@@ -491,6 +451,9 @@ Source21: securebootca.cer
 Source22: secureboot.cer
 Source23: turbostat
 Source43: generate_bls_conf.sh
+Source44: filter-x86_64.sh
+Source45: filter-aarch64.sh
+Source46: filter-modules.sh
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -513,11 +476,10 @@ BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 %define __find_requires /usr/lib/rpm/redhat/find-requires kernel
 %endif
 
+# END OF PATCH DEFINITIONS
+
 %description
-The kernel package contains the Linux kernel (vmlinuz), the core of any
-Linux operating system.  The kernel handles the basic functions
-of the operating system: memory allocation, process allocation, device
-input and output, etc.
+It is a kernel-uek meta package.
 
 %package doc
 Summary: Various documentation bits found in the kernel source
@@ -583,7 +545,53 @@ This package provides debug information for the bpftool package.
 %endif
 
 #
-# This macro creates a kernel-<subpackage>-debuginfo package.
+# This macro does requires, provides, conflicts, obsoletes for a kernel package.
+#	%%kernel_reqprovconf <subpackage>
+# It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
+# macros defined above.
+#
+%define kernel_reqprovconf \
+Provides: %{name} = %{rpmversion}-%{pkg_release}\
+Provides: %{variant_name} = %{rpmversion}-%{pkg_release}\
+Provides: %{variant_name}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
+Provides: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
+Provides: %{name}-drm = 4.3.0\
+Provides: %{name}-drm-nouveau = 12\
+Provides: %{name}-modeset = 1\
+Provides: oracleasm = 2.0.5\
+%ifnarch aarch64\
+Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
+Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
+%endif\
+Provides: perf = %{KVERREL}%{?1:.%{1}}\
+%ifarch aarch64\
+Provides: kernel = %{rpmversion}-%{pkg_release}\
+Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
+%endif\
+Requires(pre): %{kernel_prereq}\
+Requires(pre): %{initrd_prereq}\
+Requires(pre): linux-firmware-core > 999:20211203-999.10.gitb0e898fb.el9\
+Requires(pre): system-release\
+Requires(post): /usr/bin/kernel-install\
+Requires(preun): /usr/bin/kernel-install\
+Requires: numactl-libs\
+Conflicts: %{kernel_dot_org_conflicts}\
+Conflicts: %{package_conflicts}\
+Conflicts: shim-x64 <= 15-11.0.5.el9\
+Conflicts: shim-ia32 <= 15-11.0.5.el9\
+Provides: oracle(kernel-sig-key) == 202102\
+%{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
+%{expand:%%{?kernel%{?1:_%{1}}_obsoletes:Obsoletes: %%{kernel%{?1:_%{1}}_obsoletes}}}\
+%{expand:%%{?kernel%{?1:_%{1}}_provides:Provides: %%{kernel%{?1:_%{1}}_provides}}}\
+# We can't let RPM do the dependencies automatic because it'll then pick up\
+# a correct but undesirable perl dependency from the module headers which\
+# isn't required for the kernel proper to function\
+AutoReq: no\
+AutoProv: yes\
+%{nil}
+
+#
+# This macro creates a kernel%%{?variant}-<subpackage>-debuginfo package.
 #	%%kernel_debuginfo_package [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
@@ -603,16 +611,16 @@ This is required to use SystemTap with %{variant_name}-%{KVERREL}.\
 %{nil}
 
 #
-# This macro creates a kernel-<subpackage>-devel package.
+# This macro creates a kernel%%{?variant}-<subpackage>-devel package.
 #	%%kernel_devel_package [-o] <subpackage> <pretty-name>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_devel_package(o) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-devel\
-Summary: Development package for building kernel modules to match the %{?2:%{2} }kernel\
+Summary: Development package for building kernel modules to match the %{?2:%{2}} kernel\
 Group: System Environment/Kernel\
-Provides: kernel%{?variant}%{?1:-%{1}}-devel-%{_target_cpu} = %{version}-%{release}\
+Provides: %{variant_name}-devel-%{_target_cpu} = %{version}-%{release}\
 Provides: kernel%{?variant}-xen-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
@@ -626,36 +634,111 @@ AutoReqProv: no\
 Requires(pre): /usr/bin/find\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
-against the %{?2:%{2} }kernel package.\
+against the %{?2:%{2}} kernel package.\
 %{nil}
 
 #
-# This macro creates a kernel-<subpackage> and its -devel and -debuginfo too.
+# This macro creates a kernel%%{?variant}-<subpackage>-modules-extra package.
+#       %%kernel_modules_extra_package [-o] <subpackage> <pretty-name>
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#
+%define kernel_modules_extra_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-modules-extra\
+Summary: Extra kernel modules to match the %{?2:%{2}-}core kernel\
+Group: System Environment/Kernel\
+Provides: %{variant_name}-modules-extra-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
+Provides: %{variant_name}-modules-extra = %{version}-%{release}%{?1:.%{1}}\
+Provides: installonlypkg(kernel-uek-modules)\
+Provides: %{variant_name}-modules-extra-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
+AutoReq: no\
+AutoProv: yes\
+%description -n %{variant_name}-modules-extra\
+This package provides less commonly used kernel modules for the %{?2:%{2}-}core kernel package.\
+%{nil}
+
+#
+# This macro creates a kernel%%{?variant}-<subpackage>-modules package.
+#       %%kernel_modules_package [-o] <subpackage> <pretty-name>
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#
+%define kernel_modules_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-modules\
+Summary: kernel modules to match the %{?2:%{2}-}core kernel\
+Group: System Environment/Kernel\
+Provides: %{variant_name}-modules-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
+Provides: %{variant_name}-modules = %{version}-%{release}%{?1:.%{1}}\
+Provides: installonlypkg(kernel-uek-modules)\
+Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: linux-firmware > 999:20211203-999.10.gitb0e898fb.el9\
+AutoReq: no\
+AutoProv: yes\
+%description -n %{variant_name}-modules\
+This package provides commonly used kernel modules for the %{?2:%{2}-}core kernel package.\
+%{nil}
+
+#
+# This macro creates a kernel%%{?variant}-<subpackage> meta package.
+#       %%kernel_meta_package [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#
+%define kernel_meta_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}\
+Summary: Kernel meta-package for the %{1} kernel\
+Group: System Environment/Kernel\
+Requires: %{variant_name}-core-uname-r = %{KVERREL}.%{1}\
+Requires: %{variant_name}-modules-uname-r = %{KVERREL}.%{1}\
+Provides: installonlypkg(kernel-uek)\
+%description -n %{variant_name}\
+The meta-package for the %{1} kernel\
+%{nil}
+
+#
+# This macro creates a kernel%%{?variant}-<subpackage> and its -devel and -debuginfo too.
 #	%%define variant_summary The Linux kernel compiled for <configuration>
 #	%%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_package(n:o) \
-%package -n kernel%{?variant}%{!-o:-}%1\
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-core\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
+Provides: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(kernel-uek)\
-%kernel_reqprovconf\
-%{expand:%%kernel_devel_package %{-o:-o} %1 %{!?-n:%1}%{?-n:%{-n*}}}\
-%{expand:%%kernel_debuginfo_package %{-o:-o} %1}\
+%ifarch x86_64\
+%if %{?1:0}%{!?1:1}\
+Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
+%endif\
+%endif\
+%{expand:%%kernel_reqprovconf}\
+%if %{?1:1} %{!?1:0} \
+%{expand:%%kernel_meta_package %{-o:%{-o}} %{?1:%{1}}}\
+%endif\
+%{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
+%{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
+%{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
 
-
-# First the auxiliary packages of the main kernel package.
-%kernel_devel_package
-%kernel_debuginfo_package
-
-
 # Now, each variant package.
+%define variant_summary A aarch64 kernel with 64k page size.
+%kernel_variant_package -o 64k
+%description -n kernel%{?variant}64k-core
+This package includes 64k page size for aarch64 kernel.
+
+%define variant_summary The Aarch64 Linux kernel compiled with extra debugging enabled
+%kernel_variant_package -o 64kdebug
+%description -n kernel%{?variant}64kdebug-core
+This package include debug kernel for 64k page size.
 
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
-%description debug
+%description debug-core
 The kernel package contains the Linux kernel (vmlinuz), the core of any
 Linux operating system.  The kernel handles the basic functions
 of the operating system:  memory allocation, process allocation, device
@@ -665,15 +748,14 @@ This variant of the kernel has numerous debugging options enabled.
 It should only be installed when trying to gather additional information
 on kernel bugs, as some of these options impact performance noticably.
 
-%define variant_summary A aarch64 kernel with 64k page size.
-%kernel_variant_package -o 64k
-%description -n kernel%{?variant}64k
-This package includes 64k page size for aarch64 kernel.
-
-%define variant_summary The Aarch64 Linux kernel compiled with extra debugging enabled
-%kernel_variant_package -o 64kdebug
-%description -n kernel%{?variant}64kdebug
-This package include debug kernel for 64k page size.
+# And finally the main -core package
+%define variant_summary The Linux kernel
+%kernel_variant_package
+%description core
+The kernel package contains the Linux kernel (vmlinuz), the core of any
+Linux operating system.  The kernel handles the basic functions
+of the operating system: memory allocation, process allocation, device
+input and output, etc.
 
 %prep
 # do a few sanity-checks for --with *only builds
@@ -847,6 +929,10 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 %define sparse_mflags	C=1
 %endif
 
+%if %{with_compression}
+%define zipsed -e 's/\.ko$/\.ko.xz/'
+%endif
+
 cp_vmlinux()
 {
   eu-strip --remove-comment -o "$2" "$1"
@@ -879,22 +965,26 @@ BuildKernel() {
 
     make %{?make_opts} mrproper
 
-    %if %{signkernel}%{signmodules}
-	cp %{SOURCE10} certs/.
-    %endif
+%if %{signkernel}%{signmodules}
+    cp %{SOURCE10} certs/.
+%endif
 
     if [ "$Flavour" == "debug" ]; then
 	cp configs/config-debug .config
+	modlistVariant=../kernel%{?variant}-debug
     elif [ "$Flavour" == "64k" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
 	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
 	cp configs/config .config
+	modlistVariant=../kernel%{?variant}64k
     elif [ "$Flavour" == "64kdebug" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
+	modlistVariant=../kernel%{?variant}64kdebug
     else
 	cp configs/config .config
+	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
     fi
 
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
@@ -925,15 +1015,17 @@ BuildKernel() {
     install -m 644 System.map $RPM_BUILD_ROOT/boot/System.map-$KernelVer
     install -m 644 System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/System.map
 
-    touch $RPM_BUILD_ROOT/boot/initramfs-$KernelVer.img
+    # We estimate the size of the initramfs because rpm needs to take this size
+    # into consideration when performing disk space calculations. (See bz #530778)
+    dd if=/dev/zero of=$RPM_BUILD_ROOT/boot/initramfs-$KernelVer.img bs=1M count=20
 
     if [ -f arch/$Arch/boot/zImage.stub ]; then
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
 %if %{signkernel}
-	# Sign the image if we're using EFI
-        %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot
-        mv $KernelImage.signed $KernelImage
+    # Sign the image if we're using EFI
+    %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot
+    mv $KernelImage.signed $KernelImage
 %endif
     $CopyKernel $KernelImage \
 		$RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
@@ -1008,6 +1100,9 @@ BuildKernel() {
     cp --parents `find  -type f -name "Makefile*" -o -name "Kconfig*"` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     if grep -q '^CONFIG_STACK_VALIDATION=y' .config ; then
       cp --parents `find tools/objtool -type f -executable` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
+    fi
+    if [ ! -e Module.symvers ]; then
+      touch Module.symvers
     fi
     cp Module.symvers $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     cp System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
@@ -1136,16 +1231,93 @@ BuildKernel() {
 
     rm -f modinfo modnames
 
+    remove_depmod_files()
+    {
+        # remove files that will be auto generated by depmod at rpm -i time
+        pushd $RPM_BUILD_ROOT/lib/modules/$KernelVer/
+            rm -f modules.{alias,alias.bin,builtin.alias.bin,builtin.bin} \
+                  modules.{dep,dep.bin,devname,softdep,symbols,symbols.bin}
+        popd
+    }
+
+    remove_depmod_files
+
+    # Identify modules in the kernel%{?variant}-modules-extras package
+    %{SOURCE11} $RPM_BUILD_ROOT lib/modules/$KernelVer $RPM_SOURCE_DIR/mod-extra.list
+
+    #
+    # Generate the kernel%{?variant}-core and kernel%{?variant}-modules files lists
+    #
+
+    # Copy the System.map file for depmod to use, and create a backup of the
+    # full module tree so we can restore it after we're done filtering
+    cp System.map $RPM_BUILD_ROOT/.
+    pushd $RPM_BUILD_ROOT
+    mkdir restore
+    cp -r lib/modules/$KernelVer/* restore/.
+
+    # don't include anything going into kernel%{?variant}-modules-extra in the file lists
+    xargs rm -rf < mod-extra.list
+
+    # Run depmod on the resulting module tree and make sure it isn't broken
+    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+    if [ -s depmod.out ]; then
+        echo "Depmod failure. Modules from modules-extra list may be needed"
+        cat depmod.out
+        exit 1
+    else
+        rm depmod.out
+    fi
+
+    remove_depmod_files
+
+    # Find all the module files and filter them out into the core and
+    # modules lists.  This actually removes anything going into -modules
+    # from the dir.
+    find lib/modules/$KernelVer/kernel -name *.ko | sort -n > modules.list
+    cp $RPM_SOURCE_DIR/filter-*.sh .
+    ./filter-modules.sh modules.list %{_target_cpu}
+    rm filter-*.sh
+
+    # Run depmod on the resulting module tree and make sure it isn't broken
+    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+    if [ -s depmod.out ]; then
+        echo "Depmod failure. You may have to add missing modules to core list"
+        cat depmod.out
+        exit 1
+    else
+        rm depmod.out
+    fi
+
+    remove_depmod_files
+
+    # Go back and find all of the various directories in the tree.  We use this
+    # for the dir lists in kernel-core
+    find lib/modules/$KernelVer/kernel -mindepth 1 -type d | sort -n > module-dirs.list
+
+    # Cleanup
+    rm System.map
+    cp -r restore/* lib/modules/$KernelVer/.
+    rm -rf restore
+    popd
+
+    # Make sure the files lists start with absolute paths or rpmbuild fails.
+    # Also add in the dir entries
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/k-d.list > ${modlistVariant}-modules.list
+    sed -e 's/^lib*/%dir \/lib/' %{?zipsed} $RPM_BUILD_ROOT/module-dirs.list > ${modlistVariant}-core.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list >> ${modlistVariant}-core.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/mod-extra.list >> ${modlistVariant}-modules-extra.list
+
+    # Cleanup
+    rm -f $RPM_BUILD_ROOT/k-d.list
+    rm -f $RPM_BUILD_ROOT/modules.list
+    rm -f $RPM_BUILD_ROOT/module-dirs.list
+    rm -f $RPM_BUILD_ROOT/mod-extra.list
+
 %if %{signmodules}
     cp certs/signing_key.pem certs/signing_key.pem.sign${Flavour:+.${Flavour}}
     cp certs/signing_key.x509 certs/signing_key.x509.sign${Flavour:+.${Flavour}}
 %endif
-
-    # remove files that will be auto generated by depmod at rpm -i time
-    for i in alias alias.bin builtin.bin ccwmap dep dep.bin ieee1394map inputmap isapnpmap ofmap pcimap seriomap symbols symbols.bin usbmap softdep devname
-    do
-      rm -f $RPM_BUILD_ROOT/lib/modules/$KernelVer/modules.$i
-    done
 
     # Move the devel headers out of the root file system
     mkdir -p $RPM_BUILD_ROOT/usr/src/kernels
@@ -1367,13 +1539,41 @@ then\
 fi\
 %{nil}
 
+#
+# This macro defines a %%post script for a kernel*-modules-extra package.
+# It also defines a %%postun script that does the same thing.
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#       %%kernel_modules_extra_post [-o] [<subpackage>]
+#
+%define kernel_modules_extra_post(o) \
+%{expand:%%post -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-extra}\
+/sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
+%{nil}\
+%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-extra}\
+/sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
+%{nil}
+
+#
+# This macro defines a %%post script for a kernel*-modules package.
+# It also defines a %%postun script that does the same thing.
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#       %%kernel_modules_post [-o] [<subpackage>]
+#
+%define kernel_modules_post(o) \
+%{expand:%%post -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules}\
+/sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
+%{nil}\
+%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules}\
+/sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
+%{nil}
+
 # This macro defines a %%posttrans script for a kernel package.
 #	%%kernel_variant_posttrans [-o] [<subpackage>]
 # -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
 %define kernel_variant_posttrans(o) \
-%{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
+%{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
@@ -1389,22 +1589,25 @@ fi\
 #
 %define kernel_variant_post(ov:r:) \
 %{expand:%%kernel_devel_post %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_post %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_extra_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
-%{expand:%%post -n kernel%{?variant}%{?-v:%{!-o:-}%{?-v*}}}\
+%{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
 if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ] &&\
    [ $1 -eq 1 ]; then\
-  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}/' /etc/sysconfig/kernel || exit $?\
+  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
 fi}\
 %{nil}
 
 #
 # This macro defines a %%postun script for a kernel package.
 #      %%kernel_variant_postun [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_postun(o) \
-%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
+%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
 if [ $1 -eq 0 ]\
 then\
     /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-core/' /etc/sysconfig/kernel || exit $?\
@@ -1417,7 +1620,7 @@ fi\
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_preun(o) \
-%{expand:%%preun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
+%{expand:%%preun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
 /bin/kernel-install remove %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
@@ -1431,7 +1634,7 @@ fi\
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_pre(o) \
-%{expand:%%pre -n kernel%{?variant}%{?1:%{!-o:-}%{1}}}\
+%{expand:%%pre -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
@@ -1519,6 +1722,9 @@ fi
 %{_sbindir}/bpftool
 %{_sysconfdir}/bash_completion.d/bpftool
 %{_mandir}/man8/bpftool-cgroup.8.gz
+%{_mandir}/man8/bpftool-gen.8.gz
+%{_mandir}/man8/bpftool-iter.8.gz
+%{_mandir}/man8/bpftool-link.8.gz
 %{_mandir}/man8/bpftool-map.8.gz
 %{_mandir}/man8/bpftool-prog.8.gz
 %{_mandir}/man8/bpftool-perf.8.gz
@@ -1526,6 +1732,7 @@ fi
 %{_mandir}/man8/bpftool-net.8.gz
 %{_mandir}/man8/bpftool-feature.8.gz
 %{_mandir}/man8/bpftool-btf.8.gz
+%{_mandir}/man8/bpftool-struct_ops.8.gz
 
 %if %{with_debuginfo}
 %files -f bpftool-debuginfo.list -n bpftool-debuginfo
@@ -1553,7 +1760,9 @@ fi
 #
 %define kernel_variant_files(k:o) \
 %if %{1}\
-%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}}\
+%define variant_name kernel%{?variant}%{?2:%{!-o:-}%{2}}\
+%{expand:%%files -n %{variant_name}}\
+%{expand:%%files -f %{variant_name}-core.list -n %{variant_name}-core}\
 %defattr(-,root,root)\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
@@ -1566,11 +1775,10 @@ fi
 %ghost /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+%dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/weak-updates\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/bls.conf\
@@ -1591,14 +1799,17 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
-%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-devel}\
+%{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
+%{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
+%config(noreplace) /etc/modprobe.d/*-blacklist.conf\
+%{expand:%%files -n %{variant_name}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
 %verify(not mtime) /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 %if %{with_debuginfo}\
 %ifnarch noarch\
-%{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
+%{expand:%%files -n %{variant_name}-debuginfo}\
 %defattr(-,root,root)\
 %if "%{elf_image_install_path}" != ""\
 %{debuginfodir}/%{elf_image_install_path}/*-%{KVERREL}%{?2:.%{2}}.debug\
