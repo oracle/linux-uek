@@ -403,37 +403,49 @@ static void cdns_xspi_trigger_command(struct cdns_xspi_dev *cdns_xspi,
 static int cdns_xspi_check_command_status(struct cdns_xspi_dev *cdns_xspi)
 {
 	int ret = 0;
+	int retry_count = 2;
 	u32 cmd_status = readl(cdns_xspi->iobase + CDNS_XSPI_CMD_STATUS_REG);
 
 	if (cdns_xspi->asim_plat)
 		return 0;
 
-	if (cmd_status & CDNS_XSPI_CMD_STATUS_COMPLETED) {
-		if ((cmd_status & CDNS_XSPI_CMD_STATUS_FAILED) != 0) {
-			if (cmd_status & CDNS_XSPI_CMD_STATUS_DQS_ERROR) {
-				dev_err(cdns_xspi->dev,
-					"Incorrect DQS pulses detected\n");
+	while (retry_count) {
+		if (cmd_status & CDNS_XSPI_CMD_STATUS_COMPLETED) {
+			if ((cmd_status & CDNS_XSPI_CMD_STATUS_FAILED) != 0) {
+				if (cmd_status & CDNS_XSPI_CMD_STATUS_DQS_ERROR) {
+					dev_err(cdns_xspi->dev,
+						"Incorrect DQS pulses detected\n");
+					ret = -EPROTO;
+					break;
+				}
+				if (cmd_status & CDNS_XSPI_CMD_STATUS_CRC_ERROR) {
+					dev_err(cdns_xspi->dev,
+						"CRC error received\n");
+					ret = -EPROTO;
+					break;
+				}
+				if (cmd_status & CDNS_XSPI_CMD_STATUS_BUS_ERROR) {
+					dev_err(cdns_xspi->dev,
+						"Error resp on system DMA interface\n");
+					ret = -EPROTO;
+					break;
+				}
+				if (cmd_status & CDNS_XSPI_CMD_STATUS_INV_SEQ_ERROR) {
+					dev_err(cdns_xspi->dev,
+						"Invalid command sequence detected\n");
+					ret = -EPROTO;
+					break;
+				}
+			}
+			break;
+		} else {
+			if (retry_count == 0) {
+				dev_err(cdns_xspi->dev, "Fatal err - command not completed\n");
 				ret = -EPROTO;
 			}
-			if (cmd_status & CDNS_XSPI_CMD_STATUS_CRC_ERROR) {
-				dev_err(cdns_xspi->dev,
-					"CRC error received\n");
-				ret = -EPROTO;
-			}
-			if (cmd_status & CDNS_XSPI_CMD_STATUS_BUS_ERROR) {
-				dev_err(cdns_xspi->dev,
-					"Error resp on system DMA interface\n");
-				ret = -EPROTO;
-			}
-			if (cmd_status & CDNS_XSPI_CMD_STATUS_INV_SEQ_ERROR) {
-				dev_err(cdns_xspi->dev,
-					"Invalid command sequence detected\n");
-				ret = -EPROTO;
-			}
+			cmd_status = readl(cdns_xspi->iobase + CDNS_XSPI_CMD_STATUS_REG);
+			retry_count--;
 		}
-	} else {
-		dev_err(cdns_xspi->dev, "Fatal err - command not completed\n");
-		ret = -EPROTO;
 	}
 
 	return ret;
