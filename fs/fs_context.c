@@ -573,19 +573,16 @@ static int legacy_parse_param(struct fs_context *fc, struct fs_parameter *param)
 	if (ctx->param_type == LEGACY_FS_MONOLITHIC_PARAMS)
 		return invalf(fc, "VFS: Legacy: Can't mix monolithic and individual options");
 
-	switch (param->type) {
-	case fs_value_is_string:
-		len = 1 + param->size;
-		/* Fall through */
-	case fs_value_is_flag:
-		len += strlen(param->key);
-		break;
-	default:
+	if (param->type != fs_value_is_flag &&
+	    param->type != fs_value_is_string)
 		return invalf(fc, "VFS: Legacy: Parameter type for '%s' not supported",
 			      param->key);
-	}
 
-	if (len > PAGE_SIZE - 2 - size)
+	len = 1 + strlen(param->key);
+	if (param->type == fs_value_is_string)
+		len += 1 + param->size;
+
+	if (size + len >= PAGE_SIZE)
 		return invalf(fc, "VFS: Legacy: Cumulative options too large");
 	if (strchr(param->key, ',') ||
 	    (param->type == fs_value_is_string &&
