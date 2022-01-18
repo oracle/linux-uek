@@ -1663,6 +1663,7 @@ int blk_rq_prep_clone(struct request *rq, struct request *rq_src,
 		bio = bio_clone_fast(bio_src, gfp_mask, bs);
 		if (!bio)
 			goto free_and_out;
+		bio->bi_bdev = rq->q->disk->part0;
 
 		if (bio_ctr && bio_ctr(bio, bio_src, data))
 			goto free_and_out;
