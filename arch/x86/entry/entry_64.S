@@ -897,7 +897,6 @@ SYM_CODE_START_LOCAL(paranoid_entry)
 .Lparanoid_entry_checkgs:
 	/* EBX = 1 -> kernel GSBASE active, no restore required */
 	movl	$1, %ebx
-
 	/*
 	 * The kernel-enforced convention is a negative GSBASE indicates
 	 * a kernel value. No SWAPGS needed on entry and exit.
@@ -905,14 +904,21 @@ SYM_CODE_START_LOCAL(paranoid_entry)
 	movl	$MSR_GS_BASE, %ecx
 	rdmsr
 	testl	%edx, %edx
-	js	.Lparanoid_kernel_gsbase
+	jns	.Lparanoid_entry_swapgs
+	jmp .Librs_return
+
+.Lparanoid_entry_swapgs:
+	swapgs
+
+	/*
+	 * The above SAVE_AND_SWITCH_TO_KERNEL_CR3 macro doesn't do an
+	 * unconditional CR3 write, even in the PTI case.  So do an lfence
+	 * to prevent GS speculation, regardless of whether PTI is enabled.
+	 */
+	FENCE_SWAPGS_KERNEL_ENTRY
 
 	/* EBX = 0 -> SWAPGS required on exit */
 	xorl	%ebx, %ebx
-	swapgs
-.Lparanoid_kernel_gsbase:
-
-	FENCE_SWAPGS_KERNEL_ENTRY
 
 .Librs_return:
 	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d /* Clobbers: %[rax,rcx,rdx] */
