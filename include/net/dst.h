@@ -9,6 +9,7 @@
 #ifndef _NET_DST_H
 #define _NET_DST_H
 
+#include <linux/uek_kabi.h>
 #include <net/dst_ops.h>
 #include <linux/netdevice.h>
 #include <linux/rtnetlink.h>
@@ -77,6 +78,17 @@ struct dst_entry {
 #ifndef CONFIG_64BIT
 	atomic_t		__refcnt;	/* 32-bit offset 64 */
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
+	UEK_KABI_RESERVE(9)
+	UEK_KABI_RESERVE(10)
 };
 
 struct dst_metrics {
