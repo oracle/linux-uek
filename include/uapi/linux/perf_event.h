@@ -18,6 +18,7 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 #include <asm/byteorder.h>
+#include <linux/uek_kabi.h>
 
 /*
  * User-space ABI bits:
@@ -467,6 +468,11 @@ struct perf_event_attr {
 	 * siginfo_t::si_perf_data, e.g. to permit user to identify the event.
 	 */
 	__u64	sig_data;
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
+        UEK_KABI_RESERVE(3)
+        UEK_KABI_RESERVE(4)
 };
 
 /*
