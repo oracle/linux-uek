@@ -2,6 +2,7 @@
 #ifndef _LINUX_MMU_NOTIFIER_H
 #define _LINUX_MMU_NOTIFIER_H
 
+#include <linux/uek_kabi.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/mm_types.h>
@@ -221,6 +222,11 @@ struct mmu_notifier_ops {
 	 */
 	struct mmu_notifier *(*alloc_notifier)(struct mm_struct *mm);
 	void (*free_notifier)(struct mmu_notifier *subscription);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /*
@@ -240,6 +246,9 @@ struct mmu_notifier {
 	struct mm_struct *mm;
 	struct rcu_head rcu;
 	unsigned int users;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
