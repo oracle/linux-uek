@@ -184,6 +184,9 @@ struct uv_cpu_info_s {
 	void			*p_uv_hub_info;
 	unsigned char		blade_cpu_id;
 	void			*reserved;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 DECLARE_PER_CPU(struct uv_cpu_info_s, __uv_cpu_info);
 
