@@ -14,6 +14,7 @@
 #ifndef _LINUX_NET_H
 #define _LINUX_NET_H
 
+#include <linux/uek_kabi.h>
 #include <linux/stringify.h>
 #include <linux/random.h>
 #include <linux/wait.h>
@@ -200,6 +201,14 @@ struct proto_ops {
 	int		(*sendmsg_locked)(struct sock *sk, struct msghdr *msg,
 					  size_t size);
 	int		(*set_rcvlowat)(struct sock *sk, int val);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
 };
 
 #define DECLARE_SOCKADDR(type, dst, src)	\
