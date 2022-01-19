@@ -6,6 +6,7 @@
 #ifndef __LINUX_BLK_TYPES_H
 #define __LINUX_BLK_TYPES_H
 
+#include <linux/uek_kabi.h>
 #include <linux/types.h>
 #include <linux/bvec.h>
 #include <linux/device.h>
@@ -49,6 +50,11 @@ struct block_device {
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 	bool			bd_make_it_fail;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 } __randomize_layout;
 
 #define bdev_whole(_bdev) \
@@ -267,6 +273,10 @@ struct bio {
 	struct bio_vec		*bi_io_vec;	/* the actual vec list */
 
 	struct bio_set		*bi_pool;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
 
 	/*
 	 * We can inline a number of vecs at the end of the bio, to avoid
