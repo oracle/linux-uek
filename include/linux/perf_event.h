@@ -16,6 +16,7 @@
 
 #include <uapi/linux/perf_event.h>
 #include <uapi/linux/bpf_perf_event.h>
+#include <linux/uek_kabi.h>
 
 /*
  * Kernel-internal data types and definitions:
@@ -271,6 +272,11 @@ struct hw_perf_event {
 	u64				freq_time_stamp;
 	u64				freq_count_stamp;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 struct perf_event;
@@ -561,6 +567,11 @@ struct pmu {
 	 * Check period value for PERF_EVENT_IOC_PERIOD ioctl.
 	 */
 	int (*check_period)		(struct perf_event *event, u64 value); /* optional */
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
+        UEK_KABI_RESERVE(3)
+        UEK_KABI_RESERVE(4)
 };
 
 enum perf_addr_filter_action_t {
