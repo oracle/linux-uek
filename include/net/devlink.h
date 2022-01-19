@@ -20,6 +20,7 @@
 #include <uapi/linux/devlink.h>
 #include <linux/xarray.h>
 #include <linux/firmware.h>
+#include <linux/uek_kabi.h>
 
 #define DEVLINK_RELOAD_STATS_ARRAY_SIZE \
 	(__DEVLINK_RELOAD_LIMIT_MAX * __DEVLINK_RELOAD_ACTION_MAX)
@@ -79,6 +80,9 @@ struct devlink_port_pci_pf_attrs {
 	u32 controller;
 	u16 pf;
 	u8 external:1;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
@@ -93,6 +97,9 @@ struct devlink_port_pci_vf_attrs {
 	u16 pf;
 	u16 vf;
 	u8 external:1;
+	
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
@@ -133,6 +140,9 @@ struct devlink_port_attrs {
 		struct devlink_port_pci_vf_attrs pci_vf;
 		struct devlink_port_pci_sf_attrs pci_sf;
 	};
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
 };
 
 struct devlink_rate {
@@ -173,6 +183,9 @@ struct devlink_port {
 	struct mutex reporters_lock; /* Protects reporter_list */
 
 	struct devlink_rate *devlink_rate;
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
 };
 
 struct devlink_port_new_attrs {
@@ -1518,6 +1531,11 @@ struct devlink_ops {
 				    struct devlink_rate *parent,
 				    void *priv_child, void *priv_parent,
 				    struct netlink_ext_ack *extack);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 static inline void *devlink_priv(struct devlink *devlink)
