@@ -2,6 +2,7 @@
 #ifndef _LINUX_MM_TYPES_H
 #define _LINUX_MM_TYPES_H
 
+#include <linux/uek_kabi.h>
 #include <linux/mm_types_task.h>
 
 #include <linux/auxvec.h>
@@ -385,6 +386,11 @@ struct vm_area_struct {
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 } __randomize_layout;
 
 struct core_thread {
@@ -581,6 +587,15 @@ struct mm_struct {
 		u32 pasid;
 #endif
 	} __randomize_layout;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 
 	/*
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
