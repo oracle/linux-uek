@@ -72,6 +72,9 @@ struct xenbus_watch
 	/* Callback (executed in a process context with no locks held). */
 	void (*callback)(struct xenbus_watch *,
 			 const char *path, const char *token);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 
