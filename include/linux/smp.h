@@ -13,6 +13,7 @@
 #include <linux/cpumask.h>
 #include <linux/init.h>
 #include <linux/smp_types.h>
+#include <linux/uek_kabi.h>
 
 typedef void (*smp_call_func_t)(void *info);
 typedef bool (*smp_cond_func_t)(int cpu, void *info);
@@ -24,6 +25,11 @@ struct __call_single_data {
 	struct __call_single_node node;
 	smp_call_func_t func;
 	void *info;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 #define CSD_INIT(_func, _info) \
