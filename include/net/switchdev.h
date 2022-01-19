@@ -7,6 +7,7 @@
 #ifndef _LINUX_SWITCHDEV_H_
 #define _LINUX_SWITCHDEV_H_
 
+#include <linux/uek_kabi.h>
 #include <linux/netdevice.h>
 #include <linux/notifier.h>
 #include <linux/list.h>
@@ -74,6 +75,11 @@ struct switchdev_obj {
 	u32 flags;
 	void *complete_priv;
 	void (*complete)(struct net_device *dev, int err, void *priv);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /* SWITCHDEV_OBJ_ID_PORT_VLAN */
