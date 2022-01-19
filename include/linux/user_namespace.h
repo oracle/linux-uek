@@ -2,6 +2,7 @@
 #ifndef _LINUX_USER_NAMESPACE_H
 #define _LINUX_USER_NAMESPACE_H
 
+#include <linux/uek_kabi.h>
 #include <linux/kref.h>
 #include <linux/nsproxy.h>
 #include <linux/ns_common.h>
@@ -99,6 +100,11 @@ struct user_namespace {
 #endif
 	struct ucounts		*ucounts;
 	long ucount_max[UCOUNT_COUNTS];
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 } __randomize_layout;
 
 struct ucounts {
