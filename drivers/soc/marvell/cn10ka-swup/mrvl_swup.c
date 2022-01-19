@@ -379,6 +379,7 @@ static long mrvl_swup_ioctl(struct file *file, unsigned int cmd, unsigned long a
 		ret = alloc_buffers(memdesc, 1<<BUF_DATA | 1<<BUF_SIGNATURE | 1<<BUF_CPIO);
 		break;
 	default:
+		ret = -ENXIO; /* Illegal cmd */
 		break;
 	}
 
