@@ -5,6 +5,7 @@
 #include <asm/page_types.h>
 #include <linux/linkage.h>
 #include <linux/init.h>
+#include <linux/uek_kabi.h>
 
 #ifndef __ASSEMBLER__
 
@@ -31,6 +32,11 @@ struct vdso_image {
 	long sym_int80_landing_pad;
 	long sym_vdso32_sigreturn_landing_pad;
 	long sym_vdso32_rt_sigreturn_landing_pad;
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
+        UEK_KABI_RESERVE(3)
+        UEK_KABI_RESERVE(4)
 };
 
 #ifdef CONFIG_X86_64
