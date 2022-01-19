@@ -347,6 +347,11 @@ struct mem_cgroup {
 	struct deferred_split deferred_split_queue;
 #endif
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+
 	struct mem_cgroup_per_node *nodeinfo[];
 };
 
