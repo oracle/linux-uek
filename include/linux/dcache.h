@@ -2,6 +2,7 @@
 #ifndef __LINUX_DCACHE_H
 #define __LINUX_DCACHE_H
 
+#include <linux/uek_kabi.h>
 #include <linux/atomic.h>
 #include <linux/list.h>
 #include <linux/math.h>
@@ -120,6 +121,8 @@ struct dentry {
 		struct hlist_bl_node d_in_lookup_hash;	/* only for in-lookup ones */
 	 	struct rcu_head d_rcu;
 	} d_u;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } __randomize_layout;
 
 /*
@@ -149,6 +152,11 @@ struct dentry_operations {
 	struct vfsmount *(*d_automount)(struct path *);
 	int (*d_manage)(const struct path *, bool);
 	struct dentry *(*d_real)(struct dentry *, const struct inode *);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 } ____cacheline_aligned;
 
 /*
