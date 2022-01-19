@@ -48,6 +48,9 @@ struct in_device {
 	struct neigh_parms	*arp_parms;
 	struct ipv4_devconf	cnf;
 	struct rcu_head		rcu_head;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 #define IPV4_DEVCONF(cnf, attr) ((cnf).data[IPV4_DEVCONF_ ## attr - 1])
