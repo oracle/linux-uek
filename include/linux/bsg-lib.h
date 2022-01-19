@@ -9,6 +9,7 @@
 #ifndef _BLK_BSG_
 #define _BLK_BSG_
 
+#include <linux/uek_kabi.h>
 #include <linux/blkdev.h>
 #include <scsi/scsi_request.h>
 
@@ -61,6 +62,9 @@ struct bsg_job {
 	struct bio *bidi_bio;
 
 	void *dd_data;		/* Used for driver-specific storage */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 void bsg_job_done(struct bsg_job *job, int result,
