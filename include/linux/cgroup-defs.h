@@ -8,6 +8,7 @@
 #ifndef _LINUX_CGROUP_DEFS_H
 #define _LINUX_CGROUP_DEFS_H
 
+#include <linux/uek_kabi.h>
 #include <linux/limits.h>
 #include <linux/list.h>
 #include <linux/idr.h>
@@ -486,6 +487,15 @@ struct cgroup {
 	/* Used to store internal freezer state */
 	struct cgroup_freezer_state freezer;
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
+
 	/* ids of the ancestors at each level including self */
 	u64 ancestor_ids[];
 };
@@ -706,6 +716,9 @@ struct cgroup_subsys {
 	 * specifies the mask of subsystems that this one depends on.
 	 */
 	unsigned int depends_on;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 extern struct percpu_rw_semaphore cgroup_threadgroup_rwsem;
