@@ -10,6 +10,7 @@
  *		<drew@colorado.edu>
  */
 
+#include <linux/uek_kabi.h>
 #include <linux/types.h>
 #include <linux/kdev_t.h>
 #include <linux/rcupdate.h>
@@ -122,6 +123,9 @@ struct blk_integrity {
 	unsigned char				tuple_size;
 	unsigned char				interval_exp;
 	unsigned char				tag_size;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct gendisk {
@@ -172,6 +176,11 @@ struct gendisk {
 	struct badblocks *bb;
 	struct lockdep_map lockdep_map;
 	u64 diskseq;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 static inline bool disk_live(struct gendisk *disk)
