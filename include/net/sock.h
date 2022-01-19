@@ -35,6 +35,7 @@
 #ifndef _SOCK_H
 #define _SOCK_H
 
+#include <linux/uek_kabi.h>
 #include <linux/hardirq.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -538,6 +539,15 @@ struct sock {
 	struct bpf_local_storage __rcu	*sk_bpf_storage;
 #endif
 	struct rcu_head		sk_rcu;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 enum sk_pacing {
@@ -1263,6 +1273,23 @@ struct proto {
 	atomic_t		socks;
 #endif
 	int			(*diag_destroy)(struct sock *sk, int err);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
+	UEK_KABI_RESERVE(9)
+	UEK_KABI_RESERVE(10)
+	UEK_KABI_RESERVE(11)
+	UEK_KABI_RESERVE(12)
+	UEK_KABI_RESERVE(13)
+	UEK_KABI_RESERVE(14)
+	UEK_KABI_RESERVE(15)
+	UEK_KABI_RESERVE(16)
 } __randomize_layout;
 
 int proto_register(struct proto *prot, int alloc_slab);
