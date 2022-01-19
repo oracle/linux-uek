@@ -4,6 +4,7 @@
 #include <linux/range.h>
 #include <linux/ioport.h>
 #include <linux/percpu-refcount.h>
+#include <linux/uek_kabi.h>
 
 struct resource;
 struct device;
@@ -121,6 +122,9 @@ struct dev_pagemap {
 		struct range range;
 		struct range ranges[0];
 	};
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static inline struct vmem_altmap *pgmap_altmap(struct dev_pagemap *pgmap)
