@@ -422,7 +422,7 @@ static int tokenize_input(char *cmd_str, size_t *argc,
 		endp = skip_spaces(endp);
 		token = strsep(&endp, " \t");
 
-		if (*token)
+		if (token && *token)
 			argv[idx++] = token;
 	}
 
@@ -461,6 +461,11 @@ static int serdes_dbg_rx_eq_read(struct seq_file *s, void *unused)
 	}
 
 	get_gserm_data(res.a2, &gserm_idx, &mapping, &lanes_num);
+	if (lanes_num > PORT_LANES_MAX) {
+		pr_warn("lanes num exceeds PORT_LANES_MAX (4)\n");
+		return 0;
+	}
+
 	rx_eq_params = (struct rx_eq_params *)serdes_tuning_shmem;
 
 	if (lane_idx == 0xff) {
@@ -526,6 +531,9 @@ static int parse_rx_eq_params(const char __user *buffer, size_t count,
 	port &= 0xff;
 
 	if (argc > 1 && !kstrtoint(argv[1], 10, &lane_idx)) {
+		if (lane_idx >= PORT_LANES_MAX)
+			return -EINVAL;
+
 		arg_idx = 2;
 	} else {
 		lane_idx = 0xff;
@@ -624,6 +632,11 @@ static ssize_t serdes_dbg_rx_eq_write(struct file *filp,
 	}
 
 	get_gserm_data(res.a2, &gserm_idx, &mapping, &lanes_num);
+	if (lanes_num > PORT_LANES_MAX) {
+		pr_warn("lanes num exceeds PORT_LANES_MAX (4)\n");
+		return count;
+	}
+
 	rx_eq_cmd.update = 0;
 
 	if (lane_idx == 0xff) {
@@ -676,6 +689,9 @@ static int parse_rx_tr_params(const char __user *buffer, size_t count,
 	if (argc > 1) {
 		if (kstrtoint(argv[1], 10, &lane_idx))
 			return -EINVAL;
+
+		if (lane_idx >= PORT_LANES_MAX)
+			return -EINVAL;
 	} else {
 		lane_idx = 0xff;
 	}
@@ -717,6 +733,10 @@ static ssize_t serdes_dbg_rx_tr_write(struct file *filp,
 	}
 
 	get_gserm_data(res.a1, &gserm_idx, &mapping, &lanes_num);
+	if (lanes_num > PORT_LANES_MAX) {
+		pr_warn("lanes num exceeds PORT_LANES_MAX (4)\n");
+		return count;
+	}
 
 	if (lane_idx == 0xff) {
 		lane_idx = 0;
@@ -803,6 +823,11 @@ static int serdes_dbg_tx_eq_read(struct seq_file *s, void *unused)
 	}
 
 	get_gserm_data(res.a2, &gserm_idx, &mapping, &lanes_num);
+	if (lanes_num > PORT_LANES_MAX) {
+		pr_warn("lanes num exceeds PORT_LANES_MAX (4)\n");
+		return 0;
+	}
+
 	tx_eq_params = (struct tx_eq_params *)serdes_tuning_shmem;
 
 	if (lane_idx == 0xff) {
@@ -854,6 +879,9 @@ static int parse_tx_eq_params(const char __user *buffer, size_t count,
 	port &= 0xff;
 
 	if (argc > 1 && !kstrtoint(argv[1], 10, &lane_idx)) {
+		if (lane_idx >= PORT_LANES_MAX)
+			return -EINVAL;
+
 		arg_idx = 2;
 	} else {
 		lane_idx = 0xff;
@@ -972,6 +1000,11 @@ static ssize_t serdes_dbg_tx_eq_write(struct file *filp,
 	}
 
 	get_gserm_data(res.a2, &gserm_idx, &mapping, &lanes_num);
+	if (lanes_num > PORT_LANES_MAX) {
+		pr_warn("lanes num exceeds PORT_LANES_MAX (4)\n");
+		return count;
+	}
+
 	tx_eq_cmd.update = 0;
 
 	if (lane_idx == 0xff) {
@@ -1067,6 +1100,10 @@ static ssize_t serdes_dbg_lpbk_write(struct file *filp,
 	}
 
 	get_gserm_data(res.a1, &gserm_idx, &mapping, &lanes_num);
+	if (lanes_num > PORT_LANES_MAX) {
+		pr_warn("lanes num exceeds PORT_LANES_MAX (4)\n");
+		return count;
+	}
 
 	for (lane_idx = 0; lane_idx < lanes_num; lane_idx++) {
 		int glane = (mapping >> 4 * lane_idx) & 0xf;
@@ -1206,6 +1243,10 @@ static ssize_t serdes_dbg_prbs_write(struct file *filp,
 	}
 
 	get_gserm_data(res.a2, &gserm_idx, &mapping, &lanes_num);
+	if (lanes_num > PORT_LANES_MAX) {
+		pr_warn("lanes num exceeds PORT_LANES_MAX (4)\n");
+		return count;
+	}
 
 	pr_info("SerDes PRBS:\n");
 	if (input.subcmd == PRBS_SHOW) {
