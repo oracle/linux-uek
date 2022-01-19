@@ -2,6 +2,7 @@
 #ifndef __LINUX_BACKING_DEV_DEFS_H
 #define __LINUX_BACKING_DEV_DEFS_H
 
+#include <linux/uek_kabi.h>
 #include <linux/list.h>
 #include <linux/radix-tree.h>
 #include <linux/rbtree.h>
@@ -164,6 +165,10 @@ struct bdi_writeback {
 		struct rcu_head rcu;
 	};
 #endif
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 struct backing_dev_info {
@@ -202,6 +207,11 @@ struct backing_dev_info {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debug_dir;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 enum {
