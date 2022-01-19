@@ -5,6 +5,7 @@
 #ifndef WRITEBACK_H
 #define WRITEBACK_H
 
+#include <linux/uek_kabi.h>
 #include <linux/sched.h>
 #include <linux/workqueue.h>
 #include <linux/fs.h>
@@ -92,6 +93,9 @@ struct writeback_control {
 	size_t wb_lcand_bytes;		/* bytes written by last candidate */
 	size_t wb_tcand_bytes;		/* bytes written by this candidate */
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static inline int wbc_to_write_flags(struct writeback_control *wbc)
