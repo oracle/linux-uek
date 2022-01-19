@@ -1810,6 +1810,8 @@ static irqreturn_t arm_smmu_evtq_thread(int irq, void *dev)
 			for (i = 0; i < ARRAY_SIZE(evt); ++i)
 				dev_info(smmu->dev, "\t0x%016llx\n",
 					 (unsigned long long)evt[i]);
+
+			cond_resched();
 		}
 		/*
 		 * Not much we can do on overflow, so scream and pretend we're
