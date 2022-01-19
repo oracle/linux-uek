@@ -348,7 +348,7 @@ static bool cdns_xspi_setup_clock(struct cdns_xspi_dev *cdns_xspi, int requested
 	int i = 0;
 	int clk_val;
 	u32 clk_reg;
-	bool update_clk;
+	bool update_clk = false;
 
 	while (cdns_xspi_clk_div_list[i] > 0) {
 		clk_val = CDNS_XSPI_CLOCK_DIVIDED(cdns_xspi_clk_div_list[i]);
