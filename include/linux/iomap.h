@@ -2,6 +2,7 @@
 #ifndef LINUX_IOMAP_H
 #define LINUX_IOMAP_H 1
 
+#include <linux/uek_kabi.h>
 #include <linux/atomic.h>
 #include <linux/bitmap.h>
 #include <linux/blk_types.h>
@@ -89,6 +90,9 @@ struct iomap {
 	void			*inline_data;
 	void			*private; /* filesystem private */
 	const struct iomap_page_ops *page_ops;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static inline sector_t iomap_sector(const struct iomap *iomap, loff_t pos)
@@ -128,6 +132,9 @@ struct iomap_page_ops {
 	int (*page_prepare)(struct inode *inode, loff_t pos, unsigned len);
 	void (*page_done)(struct inode *inode, loff_t pos, unsigned copied,
 			struct page *page);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /*
@@ -160,6 +167,11 @@ struct iomap_ops {
 	 */
 	int (*iomap_end)(struct inode *inode, loff_t pos, loff_t length,
 			ssize_t written, unsigned flags, struct iomap *iomap);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /**
@@ -183,6 +195,9 @@ struct iomap_iter {
 	unsigned flags;
 	struct iomap iomap;
 	struct iomap srcmap;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 int iomap_iter(struct iomap_iter *iter, const struct iomap_ops *ops);
@@ -262,6 +277,9 @@ struct iomap_ioend {
 	loff_t			io_offset;	/* offset in the file */
 	struct bio		*io_bio;	/* bio being built */
 	struct bio		io_inline_bio;	/* MUST BE LAST! */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct iomap_writeback_ops {
@@ -285,12 +303,18 @@ struct iomap_writeback_ops {
 	 * we failed to submit any I/O.
 	 */
 	void (*discard_page)(struct page *page, loff_t fileoff);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct iomap_writepage_ctx {
 	struct iomap		iomap;
 	struct iomap_ioend	*ioend;
 	const struct iomap_writeback_ops *ops;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 void iomap_finish_ioends(struct iomap_ioend *ioend, int error);
@@ -315,6 +339,9 @@ struct iomap_dio_ops {
 		      unsigned flags);
 	blk_qc_t (*submit_io)(const struct iomap_iter *iter, struct bio *bio,
 			      loff_t file_offset);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /*
