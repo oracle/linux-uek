@@ -12,6 +12,7 @@
 #ifndef _DEVICE_H_
 #define _DEVICE_H_
 
+#include <linux/uek_kabi.h>
 #include <linux/dev_printk.h>
 #include <linux/energy_model.h>
 #include <linux/ioport.h>
@@ -575,6 +576,15 @@ struct device {
 #ifdef CONFIG_DMA_OPS_BYPASS
 	bool			dma_ops_bypass : 1;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 /**
