@@ -912,6 +912,11 @@ struct x86_pmu {
 	int				num_hybrid_pmus;
 	struct x86_hybrid_pmu		*hybrid_pmu;
 	u8 (*get_hybrid_cpu_type)	(void);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 struct x86_perf_task_context_opt {
