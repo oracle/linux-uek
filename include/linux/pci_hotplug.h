@@ -45,6 +45,15 @@ struct hotplug_slot_ops {
 	int (*get_latch_status)		(struct hotplug_slot *slot, u8 *value);
 	int (*get_adapter_status)	(struct hotplug_slot *slot, u8 *value);
 	int (*reset_slot)		(struct hotplug_slot *slot, bool probe);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 /**
@@ -63,6 +72,15 @@ struct hotplug_slot {
 	struct pci_slot			*pci_slot;
 	struct module			*owner;
 	const char			*mod_name;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 static inline const char *hotplug_slot_name(const struct hotplug_slot *slot)
@@ -89,6 +107,7 @@ void pci_hp_deregister(struct hotplug_slot *slot);
 	__pci_hp_initialize(slot, bus, nr, name, THIS_MODULE, KBUILD_MODNAME)
 
 #ifdef CONFIG_ACPI
+#include <linux/uek_kabi.h>
 #include <linux/acpi.h>
 bool pciehp_is_native(struct pci_dev *bridge);
 int acpi_get_hp_hw_control_from_firmware(struct pci_dev *bridge);
