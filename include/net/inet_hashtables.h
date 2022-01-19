@@ -116,6 +116,9 @@ struct inet_listen_hashbucket {
 		struct hlist_head	head;
 		struct hlist_nulls_head	nulls_head;
 	};
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /* This is for listening sockets, thus all sockets which possess wildcards. */
