@@ -2,6 +2,7 @@
 #ifndef __LINUX_STACKTRACE_H
 #define __LINUX_STACKTRACE_H
 
+#include <linux/uek_kabi.h>
 #include <linux/types.h>
 #include <asm/errno.h>
 
@@ -81,6 +82,9 @@ struct stack_trace {
 	unsigned int nr_entries, max_entries;
 	unsigned long *entries;
 	unsigned int skip;	/* input argument: How many entries to skip */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 extern void save_stack_trace(struct stack_trace *trace);
