@@ -782,9 +782,14 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 
 	rsp_sts = readq(host->base + MIO_EMM_RSP_STS(host));
 	bus_id = get_bus_id(rsp_sts);
-	slot = host->slot[bus_id];
-	if (slot)
+	if (host->slot[bus_id]) {
+		slot = host->slot[bus_id];
 		req = slot->current_req;
+	} else {
+		/* Request can't be handled without the slot mapping */
+		req = NULL;
+		slot = NULL;
+	}
 
 	/* Clear interrupt bits (write 1 clears ). */
 	emm_int = readq(host->base + MIO_EMM_INT(host));
@@ -793,7 +798,7 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	if (emm_int & MIO_EMM_INT_SWITCH_ERR)
 		check_switch_errors(host);
 
-	if (!req)
+	if (!req || !slot)
 		goto out;
 
 	/*
@@ -1365,7 +1370,7 @@ struct adj {
 
 static int adjust_tuning(struct mmc_host *mmc, struct adj *adj, u32 opcode)
 {
-	int err, start_run = -1, best_run = 0, best_start = -1;
+	int err = -1, start_run = -1, best_run = 0, best_start = -1;
 	int last_good = -1;
 	bool prev_ok = false;
 	u64 timing, tap;
@@ -1658,7 +1663,7 @@ static int tune_hs400(struct cvm_mmc_slot *slot)
 	 * tap of the longest run of good reads is chosen.  This code is
 	 * largely similar to adjust_tuning() above.
 	 */
-	data_buf = kmalloc(size, GFP_KERNEL);
+	data_buf = kzalloc(size, GFP_KERNEL);
 	if (!data_buf)
 		return -ENOMEM;
 
