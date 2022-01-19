@@ -2,6 +2,7 @@
 #ifndef _LINUX_BLKDEV_H
 #define _LINUX_BLKDEV_H
 
+#include <linux/uek_kabi.h>
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/major.h>
@@ -331,6 +332,15 @@ struct queue_limits {
 	unsigned char		discard_misaligned;
 	unsigned char		raid_partial_stripes_expensive;
 	enum blk_zoned_model	zoned;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 typedef int (*report_zones_cb)(struct blk_zone *zone, unsigned int idx,
@@ -1205,6 +1215,9 @@ struct blk_plug {
 	unsigned short rq_count;
 	bool multiple_queues;
 	bool nowait;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct blk_plug_cb;
@@ -1662,6 +1675,9 @@ struct blk_integrity_profile {
 	integrity_prepare_fn		*prepare_fn;
 	integrity_complete_fn		*complete_fn;
 	const char			*name;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 extern void blk_integrity_register(struct gendisk *, struct blk_integrity *);
@@ -1855,6 +1871,11 @@ struct block_device_operations {
 	char *(*devnode)(struct gendisk *disk, umode_t *mode);
 	struct module *owner;
 	const struct pr_ops *pr_ops;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 
 	/*
 	 * Special callback for probing GPT entry at a given sector.
