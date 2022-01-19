@@ -29,7 +29,7 @@
 #include <linux/numa.h>
 #include <linux/sched/isolation.h>
 #include <trace/events/sched.h>
-
+#include <linux/uek_kabi.h>
 
 static DEFINE_SPINLOCK(kthread_create_lock);
 static LIST_HEAD(kthread_create_list);
@@ -60,6 +60,8 @@ struct kthread {
 #ifdef CONFIG_BLK_CGROUP
 	struct cgroup_subsys_state *blkcg_css;
 #endif
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 enum KTHREAD_BITS {
