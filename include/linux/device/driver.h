@@ -14,6 +14,7 @@
 #ifndef _DEVICE_DRIVER_H_
 #define _DEVICE_DRIVER_H_
 
+#include <linux/uek_kabi.h>
 #include <linux/kobject.h>
 #include <linux/klist.h>
 #include <linux/pm.h>
@@ -118,6 +119,11 @@ struct device_driver {
 	void (*coredump) (struct device *dev);
 
 	struct driver_private *p;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 
