@@ -545,7 +545,6 @@ enum taa_mitigations {
 	TAA_MITIGATION_OFF,
 	TAA_MITIGATION_UCODE_NEEDED,
 	TAA_MITIGATION_VERW,
-	TAA_MITIGATION_IDLE,
 	TAA_MITIGATION_TSX_DISABLED,
 };
 
@@ -557,7 +556,6 @@ static const char * const taa_strings[] = {
 	[TAA_MITIGATION_OFF]		= "Vulnerable",
 	[TAA_MITIGATION_UCODE_NEEDED]	= "Vulnerable: Clear CPU buffers attempted, no microcode",
 	[TAA_MITIGATION_VERW]		= "Mitigation: Clear CPU buffers",
-	[TAA_MITIGATION_IDLE]		= "Mitigation: Clear CPU buffers during idle only",
 	[TAA_MITIGATION_TSX_DISABLED]	= "Mitigation: TSX disabled",
 };
 
@@ -589,24 +587,9 @@ static void taa_select_mitigation(void)
 	    mds_mitigation == MDS_MITIGATION_OFF)
 		goto out;
 
-	ia32_cap = x86_read_arch_cap_msr();
-
-	if (boot_cpu_has(X86_FEATURE_MD_CLEAR)) {
-		if ( !(ia32_cap & ARCH_CAP_MDS_NO)) {
-			switch (mds_mitigation) {
-			case MDS_MITIGATION_FULL:
-			case MDS_MITIGATION_VMWERV:
-				taa_mitigation = TAA_MITIGATION_VERW;
-				break;
-			case MDS_MITIGATION_IDLE:
-				taa_mitigation = TAA_MITIGATION_IDLE;
-				break;
-			case MDS_MITIGATION_OFF:
-				taa_mitigation = TAA_MITIGATION_OFF;
-				goto out;
-			};
-		}
-	} else
+	if (boot_cpu_has(X86_FEATURE_MD_CLEAR))
+		taa_mitigation = TAA_MITIGATION_VERW;
+	else
 		taa_mitigation = TAA_MITIGATION_UCODE_NEEDED;
 
 	/*
@@ -618,6 +601,7 @@ static void taa_select_mitigation(void)
 	 * On MDS_NO=1 CPUs if ARCH_CAP_TSX_CTRL_MSR is not set, microcode
 	 * update is required.
 	 */
+	ia32_cap = x86_read_arch_cap_msr();
 	if ( (ia32_cap & ARCH_CAP_MDS_NO) &&
 	    !(ia32_cap & ARCH_CAP_TSX_CTRL_MSR))
 		taa_mitigation = TAA_MITIGATION_UCODE_NEEDED;
@@ -629,10 +613,7 @@ static void taa_select_mitigation(void)
 	 * For guests that can't determine whether the correct microcode is
 	 * present on host, enable the mitigation for UCODE_NEEDED as well.
 	 */
-	if (taa_mitigation == TAA_MITIGATION_IDLE)
-		static_branch_enable(&mds_idle_clear);
-	else
-		static_branch_enable(&mds_user_clear);
+	static_branch_enable(&mds_user_clear);
 
 	if (taa_nosmt || cpu_mitigations_auto_nosmt())
 		cpu_smt_disable(false);
@@ -662,8 +643,6 @@ static int __init tsx_async_abort_parse_cmdline(char *str)
 		taa_mitigation = TAA_MITIGATION_OFF;
 	} else if (!strcmp(str, "full")) {
 		taa_mitigation = TAA_MITIGATION_VERW;
-	} else if (!strcmp(str, "idle")) {
-		taa_mitigation = TAA_MITIGATION_IDLE;
 	} else if (!strcmp(str, "full,nosmt")) {
 		taa_mitigation = TAA_MITIGATION_VERW;
 		taa_nosmt = true;
@@ -1638,7 +1617,6 @@ void cpu_bugs_smt_update(void)
 	}
 
 	switch (taa_mitigation) {
-	case TAA_MITIGATION_IDLE:
 	case TAA_MITIGATION_VERW:
 	case TAA_MITIGATION_UCODE_NEEDED:
 		if (sched_smt_active())
