@@ -7917,17 +7917,8 @@ static void vmx_cleanup_l1d_flush(void)
 	l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_AUTO;
 }
 
-/*
- * The only use of this pointer is microcode late update code which
- * runs from stop_machine(). Therefore, it should be safe to clear the
- * pointer without additional synchronization.
- */
-extern void (*kvm_set_cpu_caps_func_ptr)(void);
-
 static void vmx_exit(void)
 {
-	kvm_set_cpu_caps_func_ptr = NULL;
-
 #ifdef CONFIG_KEXEC_CORE
 	RCU_INIT_POINTER(crash_vmclear_loaded_vmcss, NULL);
 	synchronize_rcu();
@@ -8039,8 +8030,6 @@ static int __init vmx_init(void)
 	 */
 	if (!enable_ept)
 		allow_smaller_maxphyaddr = true;
-
-	kvm_set_cpu_caps_func_ptr = kvm_set_cpu_caps;
 
 	return 0;
 }

@@ -50,9 +50,6 @@ static bool dis_ucode_ldr = true;
 
 bool initrd_gone;
 
-void (*kvm_set_cpu_caps_func_ptr)(void) = NULL;
-EXPORT_SYMBOL_GPL(kvm_set_cpu_caps_func_ptr);
-
 LIST_HEAD(microcode_cache);
 
 /*
@@ -602,9 +599,6 @@ static int __reload_late(void *info)
 		update_cpu_caps(c);
 		memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
 		cpu_set_bug_bits(c);
-
-		if (kvm_set_cpu_caps_func_ptr)
-			kvm_set_cpu_caps_func_ptr();
 	}
 
 wait_for_siblings:
