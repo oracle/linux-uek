@@ -1125,32 +1125,6 @@ static bool cpu_matches(const struct x86_cpu_id *table, unsigned long which)
 	return m && !!(m->driver_data & which);
 }
 
-void cpu_clear_bug_bits(struct cpuinfo_x86 *c)
-{
-	int i;
-	unsigned int bugs[] = {
-		X86_BUG_SPECTRE_V1,
-		X86_BUG_SPECTRE_V2,
-		X86_BUG_SPEC_STORE_BYPASS,
-		X86_FEATURE_IBRS_ENHANCED,
-		X86_BUG_MDS,
-		X86_BUG_MSBDS_ONLY,
-		X86_BUG_SWAPGS,
-		X86_BUG_TAA,
-		X86_BUG_SRBDS,
-		X86_BUG_CPU_MELTDOWN,
-		X86_BUG_L1TF
-	};
-
-	for (i = 0; i < ARRAY_SIZE(bugs); i++)
-		clear_cpu_cap(c, bugs[i]);
-
-	if (c->cpu_index == boot_cpu_data.cpu_index) {
-		for (i = 0; i < ARRAY_SIZE(bugs); i++)
-			setup_clear_cpu_cap(bugs[i]);
-	}
-}
-
 u64 x86_read_arch_cap_msr(void)
 {
 	u64 ia32_cap = 0;
@@ -1161,7 +1135,7 @@ u64 x86_read_arch_cap_msr(void)
 	return ia32_cap;
 }
 
-void cpu_set_bug_bits(struct cpuinfo_x86 *c)
+static void __init cpu_set_bug_bits(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = x86_read_arch_cap_msr();
 

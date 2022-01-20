@@ -40,8 +40,6 @@
 #include <asm/cmdline.h>
 #include <asm/setup.h>
 
-#include "../cpu.h"
-
 #define DRIVER_VERSION	"2.2"
 
 static struct microcode_ops	*microcode_ops;
@@ -542,20 +540,6 @@ static int __wait_for_cpus(atomic_t *t, long long timeout)
 	return 0;
 }
 
-static void update_cpu_caps(struct cpuinfo_x86 *c)
-{
-	cpu_clear_bug_bits(c);
-
-	/*
-	 * If we are at late loading, we need to re-initialize tsx because
-	 * MSR_IA32_TSX_CTRL might be available as result of the microcode
-	 * update.
-	 */
-	tsx_init();
-
-	get_cpu_cap(c);
-}
-
 /*
  * Returns:
  * < 0 - on error
@@ -564,7 +548,6 @@ static void update_cpu_caps(struct cpuinfo_x86 *c)
 static int __reload_late(void *info)
 {
 	int cpu = smp_processor_id();
-	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	enum ucode_state err;
 	int ret = 0;
 
@@ -594,12 +577,6 @@ static int __reload_late(void *info)
 		ret = -1;
 	}
 
-	if (ret == 0 && c->cpu_index == boot_cpu_data.cpu_index) {
-		update_cpu_caps(c);
-		memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
-		cpu_set_bug_bits(c);
-	}
-
 wait_for_siblings:
 	if (__wait_for_cpus(&late_cpus_out, NSEC_PER_SEC))
 		panic("Timeout during microcode update!\n");
@@ -612,9 +589,6 @@ wait_for_siblings:
 	 */
 	if (cpumask_first(topology_sibling_cpumask(cpu)) != cpu)
 		apply_microcode_local(&err);
-
-	if (ret == 0 && c->cpu_index != boot_cpu_data.cpu_index)
-		update_cpu_caps(c);
 
 	return ret;
 }
