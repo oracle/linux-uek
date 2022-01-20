@@ -24,8 +24,6 @@
 
 #ifdef __ASSEMBLY__
 
-#include <linux/objtool.h>
-
 .extern use_ibrs
 .extern x86_spec_ctrl_priv
 
@@ -130,72 +128,40 @@
 	STATIC_JUMP_IF_TRUE .Lstuff_rsb_\@, rsb_stuff_key, def=0
 	jmp	.Ldone_call_\@
 .Lstuff_rsb_\@:
-	ANNOTATE_INTRA_FUNCTION_CALL
 	call	1f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 1:	call	2f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 2:	call	3f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 3:	call	4f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 4:	call	5f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 5:	call	6f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 6:	call	7f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 7:	call	8f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 8:	call	9f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 9:	call	10f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 10:	call	11f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 11:	call	12f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 12:	call	13f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 13:	call	14f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 14:	call	15f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 15:	call	16f;	pause
 16:	STATIC_JUMP_IF_TRUE .Loverwrite_rsb_\@, rsb_overwrite_key, def=0
 	jmp	.Lset_stack_half_\@
 .Loverwrite_rsb_\@:
-	ANNOTATE_INTRA_FUNCTION_CALL
 	call	17f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 17:	call	18f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 18:	call	19f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 19:	call	20f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 20:	call	21f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 21:	call	22f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 22:	call	23f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 23:	call	24f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 24:	call	25f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 25:	call	26f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 26:	call	27f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 27:	call	28f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 28:	call	29f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 29:	call	30f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 30:	call	31f;	pause
-	ANNOTATE_INTRA_FUNCTION_CALL
 31:	call	32f;	pause
 32:	add $(16*8), %rsp
 .Lset_stack_half_\@:
