@@ -263,8 +263,6 @@ time with the option "mds=". The valid arguments for this option are:
 
   off		Disables MDS mitigations completely.
 
-  idle          Only protect idle transitions if SMT is enabled.
-
   ============  =============================================================
 
 Not specifying this option is equivalent to "mds=full". For processors

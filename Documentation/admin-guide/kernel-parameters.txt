@@ -2806,8 +2806,6 @@
 			full,nosmt - Enable MDS mitigation and disable
 				     SMT on vulnerable CPUs
 			off        - Unconditionally disable MDS mitigation
-			idle	- Enable MDS mitigation on vulnerable CPUs
-				  only when entering idle loop
 
 			On TAA-affected machines, mds=off can be prevented by
 			an active TAA mitigation as both vulnerabilities are
