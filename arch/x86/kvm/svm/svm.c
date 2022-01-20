@@ -34,7 +34,6 @@
 #include <asm/kvm_para.h>
 #include <asm/irq_remapping.h>
 #include <asm/spec-ctrl.h>
-#include <asm/spec_ctrl.h>
 #include <asm/cpu_device_id.h>
 #include <asm/traps.h>
 
@@ -3821,9 +3820,9 @@ static __no_kcsan fastpath_t svm_vcpu_run(struct kvm_vcpu *vcpu)
 	svm_vcpu_enter_exit(vcpu);
 
 	/*
-	 * If this vCPU has used the SPEC_CTRL MSR it may have
-	 * left it on; save the value and restore the host value.
-	 * This is much more efficient than blindly adding
+	 * We do not use IBRS in the kernel. If this vCPU has used the
+	 * SPEC_CTRL MSR it may have left it on; save the value and
+	 * turn it off. This is much more efficient than blindly adding
 	 * it to the atomic save/restore list. Especially as the former
 	 * (Saving guest MSRs on vmexit) doesn't even exist in KVM.
 	 *
@@ -3835,11 +3834,9 @@ static __no_kcsan fastpath_t svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * If the L02 MSR bitmap does not intercept the MSR, then we need to
 	 * save it.
 	 */
-	if (ibrs_supported) {
-		if (!static_cpu_has(X86_FEATURE_V_SPEC_CTRL) &&
-		    unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
-			svm->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
-	}
+	if (!static_cpu_has(X86_FEATURE_V_SPEC_CTRL) &&
+	    unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
+		svm->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
 
 	if (!sev_es_guest(vcpu->kvm))
 		reload_tss(vcpu);
