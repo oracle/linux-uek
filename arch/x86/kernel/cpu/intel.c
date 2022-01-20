@@ -181,34 +181,6 @@ static bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 	return false;
 }
 
-/*
- * check_intel_bad_spectre_microcode verifies if a valid microcode was
- * loaded and whitelist/blacklist the features related to speculation control.
- */
-void check_intel_bad_spectre_microcode(struct cpuinfo_x86 *c)
-{
-	int i;
-	unsigned int features[] = {
-		X86_FEATURE_IBRS,
-		X86_FEATURE_IBPB,
-		X86_FEATURE_STIBP,
-		X86_FEATURE_SPEC_CTRL,
-		X86_FEATURE_MSR_SPEC_CTRL,
-		X86_FEATURE_INTEL_STIBP,
-		X86_FEATURE_SSBD,
-		X86_FEATURE_SPEC_CTRL_SSBD
-	};
-
-	if (bad_spectre_microcode(c)) {
-		for (i = 0; i < ARRAY_SIZE(features); i++)
-			set_bit(features[i], (unsigned long *)cpu_caps_cleared);
-	} else {
-		for (i = 0; i < ARRAY_SIZE(features); i++)
-			clear_bit(features[i],
-				  (unsigned long *)cpu_caps_cleared);
-	}
-}
-
 static void early_init_intel(struct cpuinfo_x86 *c)
 {
 	u64 misc_enable;
