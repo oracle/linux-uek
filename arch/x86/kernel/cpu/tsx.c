@@ -17,7 +17,7 @@
 #undef pr_fmt
 #define pr_fmt(fmt) "tsx: " fmt
 
-enum tsx_ctrl_states tsx_ctrl_state = TSX_CTRL_NOT_SUPPORTED;
+enum tsx_ctrl_states tsx_ctrl_state __ro_after_init = TSX_CTRL_NOT_SUPPORTED;
 
 void tsx_disable(void)
 {
@@ -58,7 +58,7 @@ void tsx_enable(void)
 	wrmsrl(MSR_IA32_TSX_CTRL, tsx);
 }
 
-static bool tsx_ctrl_is_supported(void)
+static bool __init tsx_ctrl_is_supported(void)
 {
 	u64 ia32_cap = x86_read_arch_cap_msr();
 
@@ -100,7 +100,7 @@ void tsx_clear_cpuid(void)
 	}
 }
 
-void tsx_init(void)
+void __init tsx_init(void)
 {
 	char arg[5] = {};
 	int ret;
