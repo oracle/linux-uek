@@ -5,6 +5,8 @@
 
 #include <asm/asm.h>
 
+#ifdef __ASSEMBLY__
+
 /*
  * This should be used immediately before a retpoline alternative.  It tells
  * objtool where the retpolines are so that it can make sense of the control
@@ -13,8 +15,6 @@
  */
 #define ANNOTATE_NOSPEC_ALTERNATIVE \
 	ANNOTATE_IGNORE_ALTERNATIVE
-
-#ifdef __ASSEMBLY__
 
 /*
  * This should be used immediately before an indirect jump/call. It tells
@@ -29,6 +29,12 @@
 .endm
 
 #else /* __ASSEMBLY__ */
+
+#define ANNOTATE_NOSPEC_ALTERNATIVE				\
+	"999:\n\t"						\
+	".pushsection .discard.nospec\n\t"			\
+	".long 999b - .\n\t"					\
+	".popsection\n\t"
 
 #define ANNOTATE_RETPOLINE_SAFE					\
 	"999:\n\t"						\
