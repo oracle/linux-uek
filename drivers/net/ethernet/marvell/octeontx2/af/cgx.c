@@ -998,6 +998,8 @@ int cgx_lmac_pfc_config(void *cgxd, int lmac_id, u8 tx_pause,
 	else
 		cfg &= ~CGXX_SMUX_CBFC_CTL_TX_EN;
 
+	cfg = FIELD_SET(CGX_PFC_CLASS_MASK, pfc_en, cfg);
+
 	cgx_write(cgx, lmac_id, CGXX_SMUX_CBFC_CTL, cfg);
 
 	/* Write source MAC address which will be filled into PFC packet */
