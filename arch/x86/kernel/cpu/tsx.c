@@ -125,7 +125,7 @@ void tsx_init(void)
 		return;
 	}
 
-	ret = cmdline_find_option(saved_command_line, "tsx", arg, sizeof(arg));
+	ret = cmdline_find_option(boot_command_line, "tsx", arg, sizeof(arg));
 	if (ret >= 0) {
 		if (!strcmp(arg, "on")) {
 			tsx_ctrl_state = TSX_CTRL_ENABLE;

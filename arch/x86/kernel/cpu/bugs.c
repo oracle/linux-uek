@@ -1068,7 +1068,7 @@ spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
 		break;
 	}
 
-	ret = cmdline_find_option(saved_command_line, "spectre_v2_user",
+	ret = cmdline_find_option(boot_command_line, "spectre_v2_user",
 				  arg, sizeof(arg));
 	if (ret < 0)
 		return SPECTRE_V2_USER_CMD_AUTO;
@@ -1202,17 +1202,17 @@ static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 	char arg[20];
 	int ret, i;
 
-	if (cmdline_find_option_bool(saved_command_line, "noibrs"))
+	if (cmdline_find_option_bool(boot_command_line, "noibrs"))
 		set_ibrs_disabled();
 
-	if (cmdline_find_option_bool(saved_command_line, "noibpb"))
+	if (cmdline_find_option_bool(boot_command_line, "noibpb"))
 		use_ibpb = false;
 
-	if (cmdline_find_option_bool(saved_command_line, "nospectre_v2") ||
+	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2") ||
 	    cpu_mitigations_off())
 		return SPECTRE_V2_CMD_NONE;
 
-	ret = cmdline_find_option(saved_command_line, "spectre_v2", arg, sizeof(arg));
+	ret = cmdline_find_option(boot_command_line, "spectre_v2", arg, sizeof(arg));
 	if (ret < 0)
 		return SPECTRE_V2_CMD_AUTO;
 
@@ -1647,11 +1647,11 @@ static enum ssb_mitigation_cmd ssb_parse_cmdline(void)
 	char arg[20];
 	int ret, i;
 
-	if (cmdline_find_option_bool(saved_command_line, "nospec_store_bypass_disable") ||
+	if (cmdline_find_option_bool(boot_command_line, "nospec_store_bypass_disable") ||
 	    cpu_mitigations_off()) {
 		return SPEC_STORE_BYPASS_CMD_NONE;
 	} else {
-		ret = cmdline_find_option(saved_command_line, "spec_store_bypass_disable",
+		ret = cmdline_find_option(boot_command_line, "spec_store_bypass_disable",
 					  arg, sizeof(arg));
 		if (ret < 0)
 			return SPEC_STORE_BYPASS_CMD_AUTO;
