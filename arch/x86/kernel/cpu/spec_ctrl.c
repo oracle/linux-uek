@@ -80,8 +80,7 @@ static void change_mitigation(enum mitigation_action action)
 			clear_ibrs_disabled();
 			/* If enhanced IBRS is available, turn it on now */
 			if (eibrs_supported) {
-				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-							 x86_spec_ctrl_priv);
+				wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv);
 			}
 			if (!boot_cpu_has(X86_FEATURE_SMEP)) {
 				/* IBRS without SMEP needs RSB overwrite */
@@ -91,8 +90,7 @@ static void change_mitigation(enum mitigation_action action)
 			set_ibrs_disabled();
 			if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
 				rsb_overwrite_disable();
-				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-							 x86_spec_ctrl_base);
+				wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
 			}
 		}
 		changes++;
