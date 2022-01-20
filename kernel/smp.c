@@ -585,7 +585,7 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 		cfd_seq_store(this_cpu_ptr(&cfd_seq_local)->hdlend,
 			      0, smp_processor_id(),
 			      CFD_SEQ_HDLEND);
-		return;
+		goto exit_irq_work;
 	}
 
 	llist_for_each_entry_safe(csd, csd_next, entry, llist) {
@@ -609,6 +609,7 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 	cfd_seq_store(this_cpu_ptr(&cfd_seq_local)->hdlend, CFD_SEQ_NOCPU,
 		      smp_processor_id(), CFD_SEQ_HDLEND);
 
+exit_irq_work:
 	/*
 	 * Handle irq works queued remotely by irq_work_queue_on().
 	 * Smp functions above are typically synchronous so they
