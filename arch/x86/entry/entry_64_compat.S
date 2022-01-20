@@ -58,7 +58,6 @@ SYM_CODE_START(entry_SYSENTER_compat)
 
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
-	STUFF_RSB
 	ENABLE_IBRS
 
 	/* Construct struct pt_regs on stack */
@@ -256,7 +255,6 @@ SYM_INNER_LABEL(entry_SYSCALL_compat_after_hwframe, SYM_L_GLOBAL)
 	xorl	%r15d, %r15d		/* nospec   r15 */
 
 	UNWIND_HINT_REGS
-	STUFF_RSB
 	ENABLE_IBRS
 
 	movq	%rsp, %rdi
@@ -354,8 +352,6 @@ SYM_CODE_START(entry_INT80_compat)
 	 */
 	ASM_CLAC			/* Do this early to minimize exposure */
 	SWAPGS
-
-	STUFF_RSB
 
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
