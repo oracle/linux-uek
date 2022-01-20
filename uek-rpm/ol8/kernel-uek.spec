@@ -108,8 +108,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # module compression
 %define with_compression 1
 #build kernel with 4k & 64k page size for aarch64
-%define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
-%define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
+%define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
+%define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -144,8 +144,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_baseonly  %{?_with_baseonly:     1} %{?!_with_baseonly:     0}
 # Only build the smp kernel (--with smponly):
 %define with_smponly   %{?_with_smponly:      1} %{?!_with_smponly:      0}
-# Only build the 4k page size kernel (--with 4konly):
-%define with_4konly    %{?_with_4konly:       1} %{?!_with_4konly:       0}
+# Only build the 64k page size kernel (--with 64konly):
+%define with_64konly    %{?_with_64konly:       1} %{?!_with_64konly:       0}
 
 # should we do C=1 builds with sparse
 %define with_sparse	%{?_with_sparse:      1} %{?!_with_sparse:      0}
@@ -234,8 +234,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_smp 0
 %define with_kdump 0
 %define with_debug 0
-%define with_4k_ps 0
-%define with_4k_ps_debug 0
+%define with_64k_ps 0
+%define with_64k_ps_debug 0
 %endif
 
 # if requested, only build smp kernel
@@ -243,13 +243,13 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_up 0
 %define with_kdump 0
 %define with_debug 0
-%define with_4k_ps 0
-%define with_4k_ps_debug 0
+%define with_64k_ps 0
+%define with_64k_ps_debug 0
 %endif
 
-# if requested, only build 4k page size kernel
-%if %{with_4konly}
-%define with_4k_ps 1
+# if requested, only build 64k page size kernel
+%if %{with_64konly}
+%define with_64k_ps 1
 %define with_up 0
 %define with_smp 0
 %define with_kdump 0
@@ -284,8 +284,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 # don't do 4k/64k page size kernels for arch except aarch64
 %ifnarch aarch64
-%define with_4k_ps      0
-%define with_4k_ps_debug 0
+%define with_64k_ps      0
+%define with_64k_ps_debug 0
 %endif
 
 # only package docs noarch
@@ -408,7 +408,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
-%if %{with_4konly}
+%if %{with_64konly}
 %define with_headers 0
 %define with_perf 0
 %define with_bpftool 0
@@ -916,15 +916,15 @@ This package includes a kdump version of the Linux kernel. It is
 required only on machines which will use the kexec-based kernel crash dump
 mechanism.
 
-%define variant_summary A aarch64 kernel with 4k page size.
-%kernel_variant_package -o 4k
-%description -n kernel%{?variant}4k
-This package includes 4k page size for aarch64 kernel.
+%define variant_summary A aarch64 kernel with 64k page size.
+%kernel_variant_package -o 64k
+%description -n kernel%{?variant}64k
+This package includes 64k page size for aarch64 kernel.
 
 %define variant_summary The Aarch64 Linux kernel compiled with extra debugging enabled
-%kernel_variant_package -o 4kdebug
-%description -n kernel%{?variant}4kdebug
-This package include debug kernel for 4k page size.
+%kernel_variant_package -o 64kdebug
+%description -n kernel%{?variant}64kdebug
+This package include debug kernel for 64k page size.
 
 %prep
 # Enable gcc-toolset-11
@@ -1177,13 +1177,13 @@ BuildKernel() {
 
     if [ "$Flavour" == "debug" ]; then
 	cp configs/config-debug .config
-    elif [ "$Flavour" == "4k" ]; then
+    elif [ "$Flavour" == "64k" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
-	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config
+	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
 	cp configs/config .config
-    elif [ "$Flavour" == "4kdebug" ]; then
+    elif [ "$Flavour" == "64kdebug" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
-	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
+	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
     else
 	cp configs/config .config
@@ -1505,12 +1505,12 @@ BuildKernel %make_target %kernel_image smp
 BuildKernel vmlinux vmlinux kdump vmlinux
 %endif
 
-%if %{with_4k_ps}
-BuildKernel %make_target %kernel_image 4k
+%if %{with_64k_ps}
+BuildKernel %make_target %kernel_image 64k
 %endif
 
-%if %{with_4k_ps_debug}
-BuildKernel %make_target %kernel_image 4kdebug
+%if %{with_64k_ps_debug}
+BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
 %global bpftool_make \
@@ -1550,15 +1550,15 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
       mv certs/signing_key.x509.sign certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
     fi \
-    if [ "%{with_4k_ps}" -ne "0" ]; then \
-       mv certs/signing_key.pem.sign.4k certs/signing_key.pem \
-       mv certs/signing_key.x509.sign.4k certs/signing_key.x509 \
-       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.4k/ %{dgst} \
-     fi \
-     if [ "%{with_4k_ps_debug}" -ne "0" ]; then \
-       mv certs/signing_key.pem.sign.4kdebug certs/signing_key.pem \
-       mv certs/signing_key.x509.sign.4kdebug certs/signing_key.x509 \
-       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.4kdebug/ %{dgst} \
+    if [ "%{with_64k_ps}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.64k certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.64k certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.64k/ %{dgst} \
+    fi \
+    if [ "%{with_64k_ps_debug}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.64kdebug certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.64kdebug certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.64kdebug/ %{dgst} \
      fi \
   fi \
 %{nil}
@@ -1852,15 +1852,15 @@ fi\
 %kernel_variant_postun PAEdebug
 %kernel_variant_pre PAEdebug
 
-%kernel_variant_pre -o 4k
-%kernel_variant_preun -o 4k
-%kernel_variant_postun -o 4k
-%kernel_variant_post -o -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
+%kernel_variant_pre -o 64k
+%kernel_variant_preun -o 64k
+%kernel_variant_postun -o 64k
+%kernel_variant_post -o -v 64k -r (kernel%{variant}|kernel%{variant}-debug)
 
-%kernel_variant_pre -o 4kdebug
-%kernel_variant_preun -o 4kdebug
-%kernel_variant_postun -o 4kdebug
-%kernel_variant_post -o -v 4kdebug
+%kernel_variant_pre -o 64kdebug
+%kernel_variant_preun -o 64kdebug
+%kernel_variant_postun -o 64kdebug
+%kernel_variant_post -o -v 64kdebug
 
 if [ -x /sbin/ldconfig ]
 then
@@ -1996,7 +1996,7 @@ fi
 %kernel_variant_files %{with_pae_debug} PAEdebug
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
-%kernel_variant_files -o %{with_4k_ps} 4k
-%kernel_variant_files -o %{with_4k_ps_debug} 4kdebug
+%kernel_variant_files -o %{with_64k_ps} 64k
+%kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
 
 %changelog
