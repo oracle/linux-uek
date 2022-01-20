@@ -38,7 +38,7 @@
 #include <linux/uek_kabi.h>
 #include <asm/desc_defs.h>
 #include <asm/pgtable_types.h>
-#include <asm/nospec-annotate.h>
+#include <asm/nospec-branch.h>
 
 struct page;
 struct thread_struct;

@@ -9,8 +9,6 @@
 #include <asm/alternative.h>
 #include <asm/cpufeatures.h>
 #include <asm/msr-index.h>
-#include <asm/msr.h>
-#include <asm/nospec-annotate.h>
 #include <asm/unwind_hints.h>
 
 /*
@@ -62,6 +60,17 @@
 
 #ifdef __ASSEMBLY__
 
+/*
+ * This should be used immediately before an indirect jump/call. It tells
+ * objtool the subsequent indirect jump/call is vouched safe for retpoline
+ * builds.
+ */
+.macro ANNOTATE_RETPOLINE_SAFE
+	.Lannotate_\@:
+	.pushsection .discard.retpoline_safe
+	_ASM_PTR .Lannotate_\@
+	.popsection
+.endm
 
 /*
  * JMP_NOSPEC and CALL_NOSPEC macros can be used instead of a simple
@@ -101,6 +110,12 @@
 .endm
 
 #else /* __ASSEMBLY__ */
+
+#define ANNOTATE_RETPOLINE_SAFE					\
+	"999:\n\t"						\
+	".pushsection .discard.retpoline_safe\n\t"		\
+	_ASM_PTR " 999b\n\t"					\
+	".popsection\n\t"
 
 #ifdef CONFIG_RETPOLINE
 #ifdef CONFIG_X86_64
