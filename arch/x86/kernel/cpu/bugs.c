@@ -16,7 +16,6 @@
 #include <linux/prctl.h>
 #include <linux/sched/smt.h>
 #include <linux/pgtable.h>
-#include <xen/xen.h>
 
 #include <asm/spec-ctrl.h>
 #include <asm/cmdline.h>
@@ -28,7 +27,6 @@
 #include <asm/vmx.h>
 #include <asm/paravirt.h>
 #include <asm/alternative.h>
-#include <asm/spec_ctrl.h>
 #include <asm/set_memory.h>
 #include <asm/intel-family.h>
 #include <asm/e820/api.h>
@@ -40,28 +38,11 @@
 static void __init spectre_v1_select_mitigation(void);
 
 /*
- * use_ibrs flags:
- * SPEC_CTRL_BASIC_IBRS_INUSE		basic ibrs is currently in use
- * SPEC_CTRL_IBRS_SUPPORTED		system supports basic ibrs
- * SPEC_CTRL_IBRS_ADMIN_DISABLED	admin disables ibrs (basic and enhanced)
- * SPEC_CTRL_ENHCD_IBRS_SUPPORTED	system supports enhanced ibrs
- * SPEC_CTRL_ENHCD_IBRS_INUSE		enhanced ibrs is currently in use
- */
-unsigned int use_ibrs;
-EXPORT_SYMBOL(use_ibrs);
-
-/* mutex to serialize IBRS & IBPB control changes */
-DEFINE_MUTEX(spec_ctrl_mutex);
-EXPORT_SYMBOL(spec_ctrl_mutex);
-
-/*
  * Retpoline variables.
  */
 static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
-
-static void __init disable_ibrs_and_friends(void);
 
 static void __init spectre_v2_select_mitigation(void);
 static void __init ssb_select_mitigation(void);
@@ -75,13 +56,7 @@ static void __init l1d_flush_select_mitigation(void);
 /* The base value of the SPEC_CTRL MSR that always has to be preserved. */
 u64 x86_spec_ctrl_base;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
-
-/*
- * Our knob on entering the kernel to enable and disable IBRS.
- * Inherits value from x86_spec_ctrl_base.
- */
-u64 x86_spec_ctrl_priv;
-EXPORT_SYMBOL_GPL(x86_spec_ctrl_priv);
+static DEFINE_MUTEX(spec_ctrl_mutex);
 
 /*
  * The vendor and possibly platform specific bits which can be modified in
@@ -133,33 +108,12 @@ void __init check_bugs(void)
 	}
 
 	/*
-	 * Print the status of SPEC_CTRL feature on this machine.
 	 * Read the SPEC_CTRL MSR to account for reserved bits which may
 	 * have unknown values. AMD64_LS_CFG MSR is cached in the early AMD
 	 * init code as it is not enumerated and depends on the family.
 	 */
-	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
-		pr_info_once("FEATURE SPEC_CTRL Present%s\n",
-			     xen_pv_domain() ? " but ignored (Xen)" : "");
-		if (!xen_pv_domain()) {
-			mutex_lock(&spec_ctrl_mutex);
-			set_ibrs_supported();
-			/* Enable enhanced IBRS usage if available */
-			if (boot_cpu_has(X86_FEATURE_IBRS_ENHANCED))
-				set_ibrs_enhanced();
-			mutex_unlock(&spec_ctrl_mutex);
-		}
-
+	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL))
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
-		if (x86_spec_ctrl_base & SPEC_CTRL_IBRS) {
-			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS set "
-				"during boot, clearing it.", x86_spec_ctrl_base);
-			x86_spec_ctrl_base &= ~SPEC_CTRL_IBRS;
-		}
-		x86_spec_ctrl_priv = x86_spec_ctrl_base;
-	} else {
-		pr_info("FEATURE SPEC_CTRL Not Present\n");
-	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
 	if (boot_cpu_has(X86_FEATURE_STIBP))
@@ -722,7 +676,6 @@ enum spectre_v2_mitigation_cmd {
 	SPECTRE_V2_CMD_RETPOLINE,
 	SPECTRE_V2_CMD_RETPOLINE_GENERIC,
 	SPECTRE_V2_CMD_RETPOLINE_AMD,
-	SPECTRE_V2_CMD_IBRS,
 };
 
 enum spectre_v2_user_cmd {
@@ -814,8 +767,6 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 static void __init retpoline_activate(enum spectre_v2_mitigation mode)
 {
 	retpoline_enable();
-	/* IBRS is unnecessary with retpoline mitigation. */
-	disable_ibrs_and_friends();
 }
 
 static enum spectre_v2_user_cmd __init
@@ -939,7 +890,6 @@ static const char * const spectre_v2_strings[] = {
 	[SPECTRE_V2_NONE]			= "Vulnerable",
 	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
 	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
-	[SPECTRE_V2_IBRS]			= "Mitigation: Basic IBRS",
 	[SPECTRE_V2_IBRS_ENHANCED]		= "Mitigation: Enhanced IBRS",
 };
 
@@ -954,7 +904,6 @@ static const struct {
 	{ "retpoline,amd",	SPECTRE_V2_CMD_RETPOLINE_AMD,	  false },
 	{ "retpoline,generic",	SPECTRE_V2_CMD_RETPOLINE_GENERIC, false },
 	{ "auto",		SPECTRE_V2_CMD_AUTO,		  false },
-	{ "ibrs",		SPECTRE_V2_CMD_IBRS,		  false },
 };
 
 static void __init spec_v2_print_cond(const char *reason, bool secure)
@@ -968,9 +917,6 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 	enum spectre_v2_mitigation_cmd cmd = SPECTRE_V2_CMD_AUTO;
 	char arg[20];
 	int ret, i;
-
-	if (cmdline_find_option_bool(boot_command_line, "noibrs"))
-		set_ibrs_disabled();
 
 	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2") ||
 	    cpu_mitigations_off())
@@ -1012,49 +958,6 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 	return cmd;
 }
 
-static void __init ibrs_select(enum spectre_v2_mitigation *mode)
-{
-	/* Turn it on (if possible) */
-	set_ibrs_inuse();
-	if (!check_ibrs_inuse()) {
-		pr_info("IBRS could not be enabled.\n");
-		return;
-	}
-	/* Determine the specific IBRS variant in use */
-	*mode = (check_basic_ibrs_inuse() ?
-		SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
-
-	if (boot_cpu_has(X86_FEATURE_SMEP))
-		return;
-
-	if (*mode == SPECTRE_V2_IBRS_ENHANCED)
-		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
-}
-
-static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
-{
-	/* Attempt to start IBRS */
-	ibrs_select(mode);
-
-	if (*mode != SPECTRE_V2_NONE)
-		/* Mode has been set to one of the IBRS variants */
-		return;
-
-	/* Could not enable IBRS, use retpoline mitigation if possible */
-	if (IS_ENABLED(CONFIG_RETPOLINE)) {
-		*mode = retpoline_mode;
-		return;
-	}
-
-	pr_err("Spectre mitigation: IBRS could not be enabled; "
-	       "no mitigation available!");
-}
-
-static void __init disable_ibrs_and_friends(void)
-{
-	set_ibrs_disabled();
-}
-
 static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
 {
 	switch (mode) {
@@ -1077,15 +980,15 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 {
 	enum spectre_v2_mitigation auto_mode = SPECTRE_V2_NONE;
 
+	/*
+	 * If the CPU is not affected and the command line mode is NONE or AUTO
+	 * then nothing to do.
+	 */
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
-	    cmd == SPECTRE_V2_CMD_AUTO) {
-		/* CPU is not affected, nothing to do */
-		disable_ibrs_and_friends();
+	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO))
 		return auto_mode;
-	}
 
-	pr_info("Options: %s%s%s\n",
-		ibrs_supported ? (eibrs_supported ? "IBRS(enhanced) " : "IBRS(basic) ") : "",
+	pr_info("Options: %s%s\n",
 		boot_cpu_has(X86_FEATURE_IBPB) ? "IBPB " : "",
 		IS_ENABLED(CONFIG_RETPOLINE) ? "retpoline" : "");
 
@@ -1097,33 +1000,30 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	 * should be adjusted accordingly.
 	 */
 	if ((IS_ENABLED(CONFIG_RETPOLINE)) &&
-		(retpoline_mode == SPECTRE_V2_RETPOLINE_AMD)) {
+	    (retpoline_mode == SPECTRE_V2_RETPOLINE_AMD)) {
 		return retpoline_mode;
 	}
 
 	/*
 	 * The default mitigation preference is:
-	 * IBRS(enhanced) --> retpoline --> IBRS(basic)
+	 * IBRS(enhanced) --> retpoline
 	 */
-	if (eibrs_supported && !ibrs_disabled) {
+	if (boot_cpu_has(X86_FEATURE_IBRS_ENHANCED)) {
 		/*
 		 * Enhanced IBRS supports an 'always on' model in which IBRS is
 		 * enabled once and never disabled. Calling ibrs_select() now to
 		 * set the correct mode and update the ibrs state variables.
 		 */
-		ibrs_select(&auto_mode);
-		BUG_ON(auto_mode != SPECTRE_V2_IBRS_ENHANCED);
+		auto_mode = SPECTRE_V2_IBRS_ENHANCED;
+		/* Force it so VMEXIT will restore correctly */
+		x86_spec_ctrl_base |= SPEC_CTRL_IBRS;
+		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
 		return auto_mode;
 	} else if (IS_ENABLED(CONFIG_RETPOLINE)) {
 		/* retpoline mode has been initialized by retpoline_init() */
 		return retpoline_mode;
 	} else {
-		/* If retpoline is not available, basic IBRS will do */
-		ibrs_select(&auto_mode);
-		if (auto_mode == SPECTRE_V2_IBRS)
-			return auto_mode;
-
-		pr_err("Spectre mitigation: IBRS could not be enabled; no mitigation available!");
+		pr_err("Spectre mitigation: no mitigation available!");
 		return SPECTRE_V2_NONE;
 	}
 }
@@ -1166,7 +1066,7 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	 * the CPU supports Enhanced IBRS, kernel might un-intentionally not
 	 * enable IBRS around firmware calls.
 	 */
-	if (ibrs_supported && mode != SPECTRE_V2_IBRS_ENHANCED) {
+	if (boot_cpu_has(X86_FEATURE_IBRS) && mode != SPECTRE_V2_IBRS_ENHANCED) {
 		setup_force_cpu_cap(X86_FEATURE_USE_IBRS_FW);
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
@@ -1185,7 +1085,6 @@ static void __init spectre_v2_select_mitigation(void)
 
 	switch (cmd) {
 	case SPECTRE_V2_CMD_NONE:
-		disable_ibrs_and_friends();
 		return;
 
 	case SPECTRE_V2_CMD_FORCE:
@@ -1202,15 +1101,6 @@ static void __init spectre_v2_select_mitigation(void)
 		 * enabled, so there is no need to check again.
 		 */
 		mode = retpoline_mode;
-		break;
-
-	case SPECTRE_V2_CMD_IBRS:
-		/*
-		 * Determine which IBRS variant can be enabled. If IBRS is not
-		 * available, select_ibrs_variant() will select retpoline as
-		 * fallback.
-		 */
-		select_ibrs_variant(&mode);
 		break;
 	}
 

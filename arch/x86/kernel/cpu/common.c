@@ -22,7 +22,6 @@
 #include <linux/io.h>
 #include <linux/syscore_ops.h>
 #include <linux/pgtable.h>
-#include <xen/xen.h>
 
 #include <asm/cmdline.h>
 #include <asm/stackprotector.h>
@@ -58,7 +57,6 @@
 #include <asm/microcode_intel.h>
 #include <asm/intel-family.h>
 #include <asm/cpu_device_id.h>
-#include <asm/spec_ctrl.h>
 #include <asm/uv/uv.h>
 #include <asm/sigframe.h>
 
