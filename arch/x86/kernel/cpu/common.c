@@ -896,19 +896,6 @@ static void init_speculation_control(struct cpuinfo_x86 *c)
 		set_cpu_cap(c, X86_FEATURE_MSR_SPEC_CTRL);
 		clear_cpu_cap(c, X86_FEATURE_VIRT_SSBD);
 	}
-
-	if (!xen_pv_domain()) {
-		/*
-		 * Only update percpu mitigation data during CPU bringup. No
-		 * need to grab spec_ctrl_mutex since we are not online yet.
-		 */
-		if (!cpu_online(smp_processor_id())) {
-			update_cpu_ibrs(c);
-			update_cpu_spec_ctrl(smp_processor_id());
-		}
-	} else {
-		clear_cpu_cap(c, X86_FEATURE_IBPB);
-	}
 }
 
 void get_cpu_cap(struct cpuinfo_x86 *c)

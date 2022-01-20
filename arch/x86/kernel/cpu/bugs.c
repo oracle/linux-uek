@@ -217,6 +217,7 @@ void update_percpu_mitigations(void)
 
 void __ref check_bugs(void)
 {
+	int cpu;
 	/*
 	 * If we are late loading the microcode, all the stuff bellow cannot
 	 * be executed because they are related to early init of the machine.
@@ -271,6 +272,17 @@ void __ref check_bugs(void)
 			     xen_pv_domain() ? " but ignored (Xen)" : "");
 	} else {
 		pr_info("FEATURE IBPB Not Present\n");
+	}
+
+	for_each_online_cpu(cpu) {
+		if (!xen_pv_domain()) {
+			mutex_lock(&spec_ctrl_mutex);
+			update_cpu_ibrs(&cpu_data(cpu));
+			update_cpu_spec_ctrl(cpu);
+			mutex_unlock(&spec_ctrl_mutex);
+		} else {
+			clear_cpu_cap(&cpu_data(cpu), X86_FEATURE_IBPB);
+		}
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
