@@ -1,0 +1,49 @@
+--- find-debuginfo.sh.orig	2022-01-27 16:21:37.093266766 +0000
++++ find-debuginfo.sh	2022-01-27 16:23:25.095607063 +0000
+@@ -3,7 +3,7 @@
+ #for inclusion in an rpm spec file.
+ #
+ # Usage: find-debuginfo.sh [--strict-build-id] [-g] [-r] [-m]
+-#	 		   [-o debugfiles.list]
++#	 		   [-o debugfiles.list] [--keep-section section]
+ #			   [--run-dwz] [--dwz-low-mem-die-limit N]
+ #			   [--dwz-max-die-limit N]
+ #			   [[-l filelist]... [-p 'pattern'] -o debuginfo.list]
+@@ -49,6 +49,10 @@
+ # Number of parallel jobs to spawn
+ n_jobs=1
+ 
++# No debug sections retained by default
++keep=false
++keep_section=
++
+ BUILDDIR=.
+ out=debugfiles.list
+ nout=0
+@@ -57,6 +61,11 @@
+   --strict-build-id)
+     strict=true
+     ;;
++  --keep-section)
++    keep_section=$2
++    keep=true
++    shift
++    ;;
+   --run-dwz)
+     run_dwz=true
+     ;;
+@@ -137,11 +146,13 @@
+ {
+   local g=
+   local r=
++  local s=
+   $strip_r && r=--reloc-debug-sections
+   $strip_g && case "$(file -bi "$2")" in
+   application/x-sharedlib*) g=-g ;;
+   esac
+-  eu-strip --remove-comment $r $g -f "$1" "$2" || exit
++  $keep && s=--keep-section=$keep_section
++  eu-strip --remove-comment $r $g $s -f "$1" "$2" || exit
+   chmod 444 "$1" || exit
+ }
+ 

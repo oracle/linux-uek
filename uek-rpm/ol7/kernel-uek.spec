@@ -127,9 +127,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # Control whether we build the hmac for fips mode.
 %define with_fips      %{?_without_fips:      0} %{?!_without_fips:      1}
 
+# .BTF section must stay in modules
+%define _find_debuginfo_opt_btf --keep-section .BTF
+
 %if %{fancy_debuginfo}
 BuildRequires: rpm-build >= 4.4.2.1-4
-%define debuginfo_args --strict-build-id
+%define debuginfo_args --strict-build-id --keep-section .BTF
+%else
+%define debuginfo_args --keep-section .BTF
 %endif
 
 # Additional options for user-friendly one-off kernel building:
@@ -654,6 +659,7 @@ Source201: kabi_lockedlist_x86_64
 
 Source300: find-debuginfo.sh.ol7.diff
 Source301: find-debuginfo.sh.parallel.diff
+Source302: find-debuginfo.sh.keep.diff
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -1205,7 +1211,8 @@ ApplyPatch %{stable_patch_01}
 # by nopatches.)
 cp %_sourcedir/find-debuginfo.sh %{_builddir} && \
     patch %{_builddir}/find-debuginfo.sh %{SOURCE300} && \
-    patch %{_builddir}/find-debuginfo.sh %{SOURCE301}
+    patch %{_builddir}/find-debuginfo.sh %{SOURCE301} && \
+    patch %{_builddir}/find-debuginfo.sh %{SOURCE302}
 chmod +x %{_builddir}/find-debuginfo.sh
 
 # only deal with configs if we are going to build for the arch
