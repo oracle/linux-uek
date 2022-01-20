@@ -14,7 +14,6 @@
 #include <asm/irqflags.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
-#include <asm/spec_ctrl.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -57,8 +56,6 @@ SYM_CODE_START(entry_SYSENTER_compat)
 	popq	%rax
 
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
-
-	ENABLE_IBRS
 
 	/* Construct struct pt_regs on stack */
 	pushq	$__USER32_DS		/* pt_regs->ss */
@@ -143,7 +140,6 @@ SYM_INNER_LABEL(entry_SYSENTER_compat_after_hwframe, SYM_L_GLOBAL)
 	/* XEN PV guests always use IRET path */
 	ALTERNATIVE "testl %eax, %eax; jz swapgs_restore_regs_and_return_to_usermode", \
 		    "jmp swapgs_restore_regs_and_return_to_usermode", X86_FEATURE_XENPV
-	DISABLE_IBRS
 	jmp	sysret32_from_system_call
 
 .Lsysenter_fix_flags:
@@ -255,7 +251,6 @@ SYM_INNER_LABEL(entry_SYSCALL_compat_after_hwframe, SYM_L_GLOBAL)
 	xorl	%r15d, %r15d		/* nospec   r15 */
 
 	UNWIND_HINT_REGS
-	ENABLE_IBRS
 
 	movq	%rsp, %rdi
 	call	do_fast_syscall_32
@@ -270,8 +265,6 @@ sysret32_from_system_call:
 	 * stack. So let's erase the thread stack right now.
 	 */
 	STACKLEAK_ERASE
-
-	DISABLE_IBRS
 
 	movq	RBX(%rsp), %rbx		/* pt_regs->rbx */
 	movq	RBP(%rsp), %rbp		/* pt_regs->rbp */
@@ -383,8 +376,6 @@ SYM_CODE_START(entry_INT80_compat)
 	pushq	1*8(%rdi)		/* regs->orig_ax */
 	pushq	(%rdi)			/* pt_regs->di */
 .Lint80_keep_stack:
-
-	ENABLE_IBRS
 
 	pushq	%rsi			/* pt_regs->si */
 	xorl	%esi, %esi		/* nospec   si */
