@@ -1018,22 +1018,30 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 
 	/*
 	 * Set the retpoline capability to advertise that that retpoline
-	 * is available, however the retpoline feature is enabled via
-	 * the retpoline_enabled_key static key.
+	 * is available.
 	 */
 	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD ||
-	    boot_cpu_data.x86_vendor == X86_VENDOR_HYGON) {
+	switch (cmd) {
+	case SPECTRE_V2_CMD_AUTO:
+	case SPECTRE_V2_CMD_RETPOLINE:
+		if (boot_cpu_data.x86_vendor != X86_VENDOR_AMD &&
+		    boot_cpu_data.x86_vendor != X86_VENDOR_HYGON)
+			break;
+		fallthrough;
+	case SPECTRE_V2_CMD_RETPOLINE_AMD:
 		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
 			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
 			retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
 			return;
 		}
 		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
+		fallthrough;
+	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
+		retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
+	default:
+		break;
 	}
-
-	retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
 }
 
 static void __init retpoline_activate(enum spectre_v2_mitigation mode)
