@@ -202,39 +202,21 @@ EXPORT_SYMBOL_GPL(mds_idle_clear);
  */
 DEFINE_STATIC_KEY_FALSE(switch_mm_cond_l1d_flush);
 
-void update_percpu_mitigations(void)
-{
-	/*
-	 * No need to check for availability of IBRS since the values updated
-	 * by update_cpu_ibrs_all() are based on @use_ibrs which incorporates
-	 * knowledge about IBRS status.
-	 */
-	mutex_lock(&spec_ctrl_mutex);
-	update_cpu_ibrs_all();
-	update_cpu_spec_ctrl_all();
-	mutex_unlock(&spec_ctrl_mutex);
-}
-
 void __ref check_bugs(void)
 {
 	int cpu;
+
+	identify_boot_cpu();
+
 	/*
-	 * If we are late loading the microcode, all the stuff bellow cannot
-	 * be executed because they are related to early init of the machine.
-	*/
-	if (system_state != SYSTEM_RUNNING) {
-		identify_boot_cpu();
+	 * identify_boot_cpu() initialized SMT support information, let the
+	 * core code know.
+	 */
+	cpu_smt_check_topology();
 
-		/*
-		 * identify_boot_cpu() initialized SMT support information, let the
-		 * core code know.
-		 */
-		cpu_smt_check_topology();
-
-		if (!IS_ENABLED(CONFIG_SMP)) {
-			pr_info("CPU: ");
-			print_cpu_info(&boot_cpu_data);
-		}
+	if (!IS_ENABLED(CONFIG_SMP)) {
+		pr_info("CPU: ");
+		print_cpu_info(&boot_cpu_data);
 	}
 
 	/*
@@ -307,13 +289,6 @@ void __ref check_bugs(void)
 	taa_select_mitigation();
 	srbds_select_mitigation();
 	l1d_flush_select_mitigation();
-
-	/*
-	 * If we are late loading the microcode, all the stuff bellow cannot
-	 * be executed because they are related to early init of the machine.
-	*/
-	if (system_state == SYSTEM_RUNNING)
-		return;
 
 	/*
 	 * As MDS and TAA mitigations are inter-related, print MDS
@@ -717,16 +692,9 @@ void update_srbds_msr(void)
 	wrmsrl(MSR_IA32_MCU_OPT_CTRL, mcu_ctrl);
 }
 
-static void _update_srbds_msr(void *p)
-{
-	update_srbds_msr();
-}
-
 static void srbds_select_mitigation(void)
 {
 	u64 ia32_cap;
-
-	srbds_mitigation = SRBDS_MITIGATION_FULL;
 
 	if (!boot_cpu_has_bug(X86_BUG_SRBDS))
 		return;
@@ -745,8 +713,7 @@ static void srbds_select_mitigation(void)
 	else if (cpu_mitigations_off() || srbds_off)
 		srbds_mitigation = SRBDS_MITIGATION_OFF;
 
-	on_each_cpu(_update_srbds_msr, NULL, 1);
-
+	update_srbds_msr();
 	pr_info("%s\n", srbds_strings[srbds_mitigation]);
 }
 
