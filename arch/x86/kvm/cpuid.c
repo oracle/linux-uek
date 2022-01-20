@@ -509,18 +509,16 @@ void kvm_set_cpu_caps(void)
 	 * arch/x86/kernel/cpu/bugs.c is kind enough to
 	 * record that in cpufeatures so use them.
 	 */
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
-		if (boot_cpu_has(X86_FEATURE_IBPB))
-			kvm_cpu_cap_set(X86_FEATURE_AMD_IBPB);
-		if (boot_cpu_has(X86_FEATURE_IBRS))
-			kvm_cpu_cap_set(X86_FEATURE_AMD_IBRS);
-		if (boot_cpu_has(X86_FEATURE_STIBP))
-			kvm_cpu_cap_set(X86_FEATURE_AMD_STIBP);
-		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD))
-			kvm_cpu_cap_set(X86_FEATURE_AMD_SSBD);
-		if (!boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS))
-			kvm_cpu_cap_set(X86_FEATURE_AMD_SSB_NO);
-	}
+	if (boot_cpu_has(X86_FEATURE_IBPB))
+		kvm_cpu_cap_set(X86_FEATURE_AMD_IBPB);
+	if (boot_cpu_has(X86_FEATURE_IBRS))
+		kvm_cpu_cap_set(X86_FEATURE_AMD_IBRS);
+	if (boot_cpu_has(X86_FEATURE_STIBP))
+		kvm_cpu_cap_set(X86_FEATURE_AMD_STIBP);
+	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD))
+		kvm_cpu_cap_set(X86_FEATURE_AMD_SSBD);
+	if (!boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS))
+		kvm_cpu_cap_set(X86_FEATURE_AMD_SSB_NO);
 	/*
 	 * The preference is to use SPEC CTRL MSR instead of the
 	 * VIRT_SPEC MSR.
