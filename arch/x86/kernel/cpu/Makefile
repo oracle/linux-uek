@@ -24,7 +24,6 @@ obj-y			+= common.o
 obj-y			+= rdrand.o
 obj-y			+= match.o
 obj-y			+= bugs.o
-obj-y			+= mds_ctrl.o
 obj-y			+= aperfmperf.o
 obj-y			+= cpuid-deps.o
 obj-y			+= umwait.o
