@@ -5410,8 +5410,7 @@ CONFIG_SMS_SDIO_DRV=m
 #
 # FireWire (IEEE 1394) Adapters
 #
-CONFIG_DVB_FIREDTV=m
-CONFIG_DVB_FIREDTV_INPUT=y
+# CONFIG_DVB_FIREDTV is not set
 # end of Media drivers
 
 #
