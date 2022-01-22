@@ -3415,6 +3415,8 @@ static int em28xx_usb_probe(struct usb_interface *interface,
 		goto err_free;
 	}
 
+	kref_init(&dev->ref);
+
 	dev->devno = nr;
 	dev->model = id->driver_info;
 	dev->alt   = -1;
@@ -3490,8 +3492,6 @@ static int em28xx_usb_probe(struct usb_interface *interface,
 		em28xx_info("dvb set to %s mode.\n",
 			    dev->dvb_xfer_bulk ? "bulk" : "isoc");
 	}
-
-	kref_init(&dev->ref);
 
 	request_modules(dev);
 
