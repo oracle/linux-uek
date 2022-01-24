@@ -69,8 +69,28 @@ static DEFINE_MUTEX(nb_smu_ind_mutex);
 #define F15H_M60H_HARDWARE_TEMP_CTRL_OFFSET	0xd8200c64
 #define F15H_M60H_REPORTED_TEMP_CTRL_OFFSET	0xd8200ca4
 
+/* Common for Zen CPU families (Family 17h and 18h and 19h) */
+#define ZEN_REPORTED_TEMP_CTRL_BASE             0x00059800
+
+#define ZEN_CCD_TEMP(offset, x)                 (ZEN_REPORTED_TEMP_CTRL_BASE + \
+                                                 (offset) + ((x) * 4))
+#define ZEN_CCD_TEMP_VALID                      BIT(11)
+#define ZEN_CCD_TEMP_MASK                       GENMASK(10, 0)
+
+#define ZEN_CUR_TEMP_SHIFT                      21
+#define ZEN_CUR_TEMP_RANGE_SEL_MASK             BIT(19)
+
+#define ZEN_SVI_BASE                            0x0005A000
+
 /* F17h M01h Access througn SMN */
 #define F17H_M01H_REPORTED_TEMP_CTRL_OFFSET	0x00059800
+
+/* F19h thermal registers through SMN */
+#define F19H_M01_SVI_TEL_PLANE0			(ZEN_SVI_BASE + 0x14)
+#define F19H_M01_SVI_TEL_PLANE1			(ZEN_SVI_BASE + 0x10)
+
+#define F19H_M01H_CFACTOR_ICORE			1000000	/* 1A / LSB	*/
+#define F19H_M01H_CFACTOR_ISOC			310000	/* 0.31A / LSB	*/
 
 struct k10temp_data {
 	struct pci_dev *pdev;
@@ -79,7 +99,22 @@ struct k10temp_data {
 	int temp_offset;
 	u32 temp_adjust_mask;
 	bool show_tdie;
+	u32 show_temp;
+	u32 show_tccd;
+	u32 svi_addr[2];
+	bool is_zen;
+	bool show_current;
+	int cfactor[2];
+	u32 ccd_offset;
 };
+
+#define TCTL_BIT       0
+#define TDIE_BIT       1
+#define TCCD_BIT(x)    ((x) + 2)
+
+#define HAVE_TEMP(d, channel)  ((d)->show_temp & BIT(channel))
+#define HAVE_TDIE(d)           HAVE_TEMP(d, TDIE_BIT)
+
 
 struct tctl_offset {
 	u8 model;
@@ -136,6 +171,12 @@ static void read_tempreg_nb_f17(struct pci_dev *pdev, u32 *regval)
 {
 	amd_smn_read(amd_pci_dev_to_node_id(pdev),
 		     F17H_M01H_REPORTED_TEMP_CTRL_OFFSET, regval);
+}
+
+static void read_tempreg_nb_zen(struct pci_dev *pdev, u32 *regval)
+{
+        amd_smn_read(amd_pci_dev_to_node_id(pdev),
+             ZEN_REPORTED_TEMP_CTRL_BASE, regval);
 }
 
 unsigned int get_raw_temp(struct k10temp_data *data)
@@ -296,6 +337,19 @@ static bool has_erratum_319(struct pci_dev *pdev)
 	       (boot_cpu_data.x86_model == 4 && boot_cpu_data.x86_stepping <= 2);
 }
 
+static void k10temp_get_ccd_support(struct pci_dev *pdev,
+                                    struct k10temp_data *data, int limit)
+{
+	u32 regval;
+   	int i;
+	for (i = 0; i < limit; i++) {
+			amd_smn_read(amd_pci_dev_to_node_id(pdev),
+							ZEN_CCD_TEMP(data->ccd_offset, i), &regval);
+			if (regval & ZEN_CCD_TEMP_VALID)
+					data->show_temp |= BIT(TCCD_BIT(i));
+	}
+}
+
 static int k10temp_probe(struct pci_dev *pdev,
 				   const struct pci_device_id *id)
 {
@@ -320,6 +374,7 @@ static int k10temp_probe(struct pci_dev *pdev,
 		return -ENOMEM;
 
 	data->pdev = pdev;
+	data->show_temp |= BIT(TCTL_BIT);       /* Always show Tctl */
 
 	if (boot_cpu_data.x86 == 0x15 && (boot_cpu_data.x86_model == 0x60 ||
 					  boot_cpu_data.x86_model == 0x70)) {
@@ -329,6 +384,23 @@ static int k10temp_probe(struct pci_dev *pdev,
 		data->temp_adjust_mask = 0x80000;
 		data->read_tempreg = read_tempreg_nb_f17;
 		data->show_tdie = true;
+	} else if (boot_cpu_data.x86 == 0x19) {
+		data->temp_adjust_mask = ZEN_CUR_TEMP_RANGE_SEL_MASK;
+		data->read_tempreg = read_tempreg_nb_zen;
+		data->show_temp |= BIT(TDIE_BIT);
+		data->is_zen = true;
+
+		switch (boot_cpu_data.x86_model) {
+		case 0x0 ... 0x1:	/* Zen3 */
+			data->show_current = true;
+			data->svi_addr[0] = F19H_M01_SVI_TEL_PLANE0;
+			data->svi_addr[1] = F19H_M01_SVI_TEL_PLANE1;
+			data->cfactor[0] = F19H_M01H_CFACTOR_ICORE;
+			data->cfactor[1] = F19H_M01H_CFACTOR_ISOC;
+			data->ccd_offset = 0x154;
+			k10temp_get_ccd_support(pdev, data, 8);
+			break;
+		}
 	} else {
 		data->read_htcreg = read_htcreg_pci;
 		data->read_tempreg = read_tempreg_pci;
@@ -339,6 +411,7 @@ static int k10temp_probe(struct pci_dev *pdev,
 
 		if (boot_cpu_data.x86 == entry->model &&
 		    strstr(boot_cpu_data.x86_model_id, entry->id)) {
+			data->show_temp |= BIT(TDIE_BIT);       /* show Tdie */
 			data->temp_offset = entry->offset;
 			break;
 		}
@@ -360,6 +433,7 @@ static const struct pci_device_id k10temp_id_table[] = {
 	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_15H_M70H_NB_F3) },
 	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_16H_NB_F3) },
 	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_16H_M30H_NB_F3) },
+	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_19H_DF_F3) },
 	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_17H_DF_F3) },
 	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_17H_M10H_DF_F3) },
 	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_17H_M30H_DF_F3) },
