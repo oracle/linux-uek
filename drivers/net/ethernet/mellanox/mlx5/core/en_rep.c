@@ -644,11 +644,6 @@ static void mlx5e_build_rep_params(struct net_device *netdev)
 	if (rep->vport != MLX5_VPORT_UPLINK)
 		params->vlan_strip_disable = true;
 
-	/* Set an initial non-zero value, so that mlx5e_select_queue won't
-	 * divide by zero if called before first activating channels.
-	 */
-	priv->num_tc_x_num_ch = params->num_channels * params->mqprio.num_tc;
-
 	mlx5_query_min_inline(mdev, &params->tx_min_inline_mode);
 }
 
