@@ -454,7 +454,7 @@ int ree_reex_graph_write(struct ree_rsrc *ree,
 
 	while ((*rule_db)->type == REE_ROF_TYPE_7) {
 		offset = ((*rule_db)->addr & 0xFFFFFF) << 3;
-		if (offset > REE_GRAPH_CNT)
+		if (offset > REE_GRAPH_CNT * 8)
 			return REE_AF_ERR_GRAPH_ADDRESS_TOO_BIG;
 		memcpy(ree->graph_ctx->base + offset,
 		       &(*rule_db)->value, sizeof((*rule_db)->value));
