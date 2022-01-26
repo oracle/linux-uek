@@ -457,6 +457,7 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	int found = 0, idx, len, pkt_type;
 	struct otx2_rfoe_ndev_priv *priv2;
 	struct otx2_rfoe_drv_ctx *drv_ctx;
+	unsigned int ptp_message_len = 0;
 	struct rfoe_psw0_s *psw0 = NULL;
 	struct rfoe_psw1_s *psw1 = NULL;
 	struct net_device *netdev;
@@ -597,6 +598,12 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	memcpy(skb->data, buf_ptr, len);
 	skb_put(skb, len);
 	skb->protocol = eth_type_trans(skb, netdev);
+
+	/* remove trailing padding for ptp packets */
+	if (skb->protocol == htons(ETH_P_1588)) {
+		ptp_message_len = skb->data[2] << 8 | skb->data[3];
+		skb_trim(skb, ptp_message_len);
+	}
 
 	if (priv2->rx_hw_tstamp_en) {
 		if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)

@@ -318,6 +318,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	struct cnf10k_rfoe_ndev_priv *priv2;
 	struct cnf10k_rfoe_drv_ctx *drv_ctx;
 	int found = 0, idx, len, pkt_type;
+	unsigned int ptp_message_len = 0;
 	struct rfoe_psw_s *psw = NULL;
 	struct net_device *netdev;
 	u8 *buf_ptr, *jdt_ptr;
@@ -446,6 +447,12 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	memcpy(skb->data, buf_ptr, len);
 	skb_put(skb, len);
 	skb->protocol = eth_type_trans(skb, netdev);
+
+	/* remove trailing padding for ptp packets */
+	if (skb->protocol == htons(ETH_P_1588)) {
+		ptp_message_len = skb->data[2] << 8 | skb->data[3];
+		skb_trim(skb, ptp_message_len);
+	}
 
 	if (priv2->rx_hw_tstamp_en)
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tstamp);
