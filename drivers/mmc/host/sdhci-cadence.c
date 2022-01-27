@@ -440,6 +440,8 @@ static void (*(init_timings[]))(struct sdhci_cdns_sd6_phy_timings*, int) = {
 	&init_uhs_sdr104, &init_uhs_ddr50
 };
 
+static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host, unsigned int timing);
+
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
 static u32 sdhci_cdns_sd6_readl(struct sdhci_host *host, int reg)
 {
@@ -964,7 +966,7 @@ static int sdhci_cdns_sd6_dll_reset(struct sdhci_cdns_priv *priv, bool doReset)
 
 static void sdhci_cdns_sd6_calc_phy(struct sdhci_cdns_sd6_phy *phy)
 {
-	if (phy->mode == SDHCI_CDNS_HRS06_MODE_MMC_SDR) {
+	if (phy->mode == MMC_TIMING_MMC_HS) {
 		phy->settings.cp_clk_wr_delay = 0;
 		phy->settings.cp_clk_wrdqs_delay = 0;
 		phy->settings.cp_data_select_oe_end = 1;
@@ -1217,7 +1219,6 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 					 unsigned int timing)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
-	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 	u32 mode;
 
 	switch (timing) {
@@ -1244,9 +1245,6 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 		break;
 	}
 
-	if (mode != SDHCI_CDNS_HRS06_MODE_MMC_HS200)
-		mode = phy->mode;
-
 	pr_debug("%s mode %d timing %d\n", __func__, mode, timing);
 	sdhci_cdns_set_emmc_mode(priv, mode);
 
@@ -1255,13 +1253,19 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 		sdhci_set_uhs_signaling(host, timing);
 }
 
-static int sdhci_cdns_sd6_phy_update_timings(struct sdhci_cdns_priv *priv)
+static int sdhci_cdns_sd6_phy_update_timings(struct sdhci_host *host)
 {
+	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 	int t_sdmclk = phy->t_sdmclk;
+	int mode;
 
+	mode = sdhci_cdns_sd6_get_mode(host, host->mmc->ios.timing);
 	/* initialize input */
-	init_timings[phy->mode](&phy->t, phy->t_sdclk);
+	init_timings[mode](&phy->t, phy->t_sdclk);
+
+	phy->mode = host->mmc->ios.timing;
+	phy->strobe_dat = false;
 
 	switch (phy->mode) {
 	case MMC_TIMING_UHS_SDR104:
@@ -1303,6 +1307,7 @@ static int sdhci_cdns_sd6_phy_update_timings(struct sdhci_cdns_priv *priv)
 		phy->settings.sdhc_extended_rd_mode = 1;
 	}
 
+	phy->settings.cp_gate_cfg_always_on = 1;
 	//phy->settings.sdhc_rdcmd_en = 1;
 	//phy->settings.sdhc_rddata_en = 1;
 
@@ -1371,7 +1376,7 @@ static void sdhci_cdns_sd6_set_uhs_signaling(struct sdhci_host *host,
 	if ((phy->mode == -1) || (phy->t_sdclk == -1))
 		return;
 
-	if (sdhci_cdns_sd6_phy_update_timings(priv))
+	if (sdhci_cdns_sd6_phy_update_timings(host))
 		pr_debug("%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
@@ -1384,14 +1389,13 @@ static void sdhci_cdns_sd6_set_clock(struct sdhci_host *host,
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
-	phy->mode = sdhci_cdns_sd6_get_mode(host, host->mmc->ios.timing);
 #ifdef DRV_CALC_SETTINGS
 	phy->t_sdclk = DIV_ROUND_DOWN_ULL(1e12, clock);
 #endif
 
 	pr_debug("%s %d %d\n", __func__, phy->mode, clock);
 
-	if (sdhci_cdns_sd6_phy_update_timings(priv))
+	if (sdhci_cdns_sd6_phy_update_timings(host))
 		pr_debug("%s: update timings failed\n", __func__);
 
 	if (sdhci_cdns_sd6_phy_init(priv))
@@ -1475,19 +1479,19 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 					&mode_name);
 	if (!ret) {
 		if (!strcmp("emmc_sdr", mode_name))
-			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+			phy->mode = MMC_TIMING_MMC_HS;
 		else if (!strcmp("emmc_ddr", mode_name))
-			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_DDR;
+			phy->mode = MMC_TIMING_MMC_DDR52;
 		else if (!strcmp("emmc_hs200", mode_name))
-			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_HS200;
+			phy->mode = MMC_TIMING_MMC_HS200;
 		else if (!strcmp("emmc_hs400", mode_name))
-			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_HS400;
+			phy->mode = MMC_TIMING_MMC_HS400;
 		else if (!strcmp("sd_hs", mode_name))
-			phy->mode = SDHCI_CDNS_HRS06_MODE_SD;
+			phy->mode = MMC_TIMING_SD_HS;
 		else
-			phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+			phy->mode = MMC_TIMING_MMC_HS;
 	} else
-		phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+		phy->mode = MMC_TIMING_MMC_HS;
 
 	/* Override dts entry for now */
 	phy->d.delay_element_org = phy->d.delay_element = 24;
@@ -1495,23 +1499,23 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 	phy->d.iocell_output_delay = 1800;
 
 	switch (phy->mode) {
-	case SDHCI_CDNS_HRS06_MODE_MMC_SDR:
+	case MMC_TIMING_MMC_HS:
 		phy->t_sdclk =  10000;
 		break;
-	case SDHCI_CDNS_HRS06_MODE_MMC_DDR:
+	case MMC_TIMING_MMC_DDR52:
 		phy->t_sdclk = 10000;
 		break;
-	case SDHCI_CDNS_HRS06_MODE_MMC_HS200:
+	case MMC_TIMING_MMC_HS200:
 		phy->t_sdclk = 5000;
 		break;
-	case SDHCI_CDNS_HRS06_MODE_MMC_HS400:
+	case MMC_TIMING_MMC_HS400:
 		phy->t_sdclk = 5000;
 		break;
-	case SDHCI_CDNS_HRS06_MODE_SD:
+	case MMC_TIMING_SD_HS:
 		phy->t_sdclk = 100000;
 		break;
 	default:
-		phy->mode = SDHCI_CDNS_HRS06_MODE_MMC_SDR;
+		phy->t_sdclk = 10000;
 		break;
 	}
 
