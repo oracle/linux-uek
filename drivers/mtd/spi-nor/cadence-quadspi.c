@@ -47,6 +47,7 @@ struct cqspi_st;
 struct cqspi_flash_pdata {
 	struct spi_nor	nor;
 	struct cqspi_st	*cqspi;
+	struct spi_nor_hwcaps hwcaps;
 	u32		clk_rate;
 	u32		read_delay;
 	u32		tshsl_ns;
@@ -1107,6 +1108,8 @@ static int cqspi_of_get_flash_pdata(struct platform_device *pdev,
 				    struct cqspi_flash_pdata *f_pdata,
 				    struct device_node *np)
 {
+	u32 width;
+
 	if (of_property_read_u32(np, "cdns,read-delay", &f_pdata->read_delay)) {
 		dev_err(&pdev->dev, "couldn't determine read-delay\n");
 		return -ENXIO;
@@ -1135,6 +1138,15 @@ static int cqspi_of_get_flash_pdata(struct platform_device *pdev,
 	if (of_property_read_u32(np, "spi-max-frequency", &f_pdata->clk_rate)) {
 		dev_err(&pdev->dev, "couldn't determine spi-max-frequency\n");
 		return -ENXIO;
+	}
+
+	if (of_property_read_u32(np, "spi-rx-bus-width", &width) == 0) {
+		if (width < 8)
+			f_pdata->hwcaps.mask &= ~SNOR_HWCAPS_READ_1_1_8;
+		if (width < 4)
+			f_pdata->hwcaps.mask &= ~SNOR_HWCAPS_READ_1_1_4;
+		if (width < 2)
+			f_pdata->hwcaps.mask &= ~SNOR_HWCAPS_READ_1_1_2;
 	}
 
 	return 0;
@@ -1222,7 +1234,6 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 	struct platform_device *pdev = cqspi->pdev;
 	struct device *dev = &pdev->dev;
 	const struct cqspi_driver_platdata *ddata;
-	struct spi_nor_hwcaps hwcaps;
 	struct cqspi_flash_pdata *f_pdata;
 	struct spi_nor *nor;
 	struct mtd_info *mtd;
@@ -1234,7 +1245,6 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 		dev_err(dev, "Couldn't find driver data\n");
 		return -EINVAL;
 	}
-	hwcaps.mask = ddata->hwcaps_mask;
 
 	/* Get flash device data */
 	for_each_available_child_of_node(dev->of_node, np) {
@@ -1253,6 +1263,7 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 		f_pdata = &cqspi->f_pdata[cs];
 		f_pdata->cqspi = cqspi;
 		f_pdata->cs = cs;
+		f_pdata->hwcaps.mask = ddata->hwcaps_mask;
 
 		ret = cqspi_of_get_flash_pdata(pdev, f_pdata, np);
 		if (ret)
@@ -1282,7 +1293,7 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 			goto err;
 		}
 
-		ret = spi_nor_scan(nor, NULL, &hwcaps);
+		ret = spi_nor_scan(nor, NULL, &f_pdata->hwcaps);
 		if (ret)
 			goto err;
 
