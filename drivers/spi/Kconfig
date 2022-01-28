@@ -215,6 +215,52 @@ config SPI_CADENCE_XSPI
 	  device with a Cadence XSPI controller and want to access the
 	  Flash as an MTD device.
 
+config SPI_CADENCE_XFER_WORKAROUND
+	bool "Enable XSPI controller xfer workaround"
+	depends on SPI_CADENCE_XSPI
+	depends on DEBUG_FS
+	help
+	  Enable xfer workaround
+
+	  xfer can be emulated via SW based GPIO - that option can
+	  operate in full-duplex mode, but it will be slow
+	  It can also work in HW mode, without full-duplex mode.
+	  HW workaround can do only write or write then read operation
+
+choice
+	prompt "Select xSPI xfer workaround type"
+	depends on SPI_CADENCE_XFER_WORKAROUND
+	help
+	  Specify the type of workaround to be used by the driver.
+
+	  Only one option can be selected
+	  GPIO based workaround
+	  HW based workaround
+	  HW based workaround will have limited functionality
+
+	config SPI_CADENCE_GPIO_WO
+		bool "Cadence XSPI controller GPIO xfer workaround"
+		depends on SPI_CADENCE_XFER_WORKAROUND
+		help
+		Enable GPIO based workaround for Cadence xSPI controller
+
+		Enable GPIO workaround - switch GPIO to SW control, and
+		bitbang all requested data.
+		Use Software based SPI.
+		Use dedicated SPI_0 or SPI_1 pins.
+
+	config SPI_CADENCE_HW_WO
+		bool "Cadence XSPI controller HW xfer workaround"
+		depends on SPI_CADENCE_XFER_WORKAROUND
+		help
+		Enable HW based workaround for Cadence xSPI controller
+
+		Enable HW workaround - use specific xspi commands to create requested
+		waveform. Workaround is not supporting full duplex mode.
+		Workaround will use combination of generic instruction and
+		data transfer STIG commands.
+endchoice
+
 config SPI_CLPS711X
 	tristate "CLPS711X host SPI controller"
 	depends on ARCH_CLPS711X || COMPILE_TEST
