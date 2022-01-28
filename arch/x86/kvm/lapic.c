@@ -1099,14 +1099,8 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 						       apic->regs + APIC_TMR);
 		}
 
-		if (kvm_x86_ops.deliver_posted_interrupt(vcpu, vector)) {
-			kvm_lapic_set_irr(vector, apic);
-			kvm_make_request(KVM_REQ_EVENT, vcpu);
-			kvm_vcpu_kick(vcpu);
-		} else {
-			trace_kvm_apicv_accept_irq(vcpu->vcpu_id, delivery_mode,
-						   trig_mode, vector);
-		}
+		kvm_x86_ops.deliver_interrupt(apic, delivery_mode,
+						       trig_mode, vector);
 		break;
 
 	case APIC_DM_REMRD:
