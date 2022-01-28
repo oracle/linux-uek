@@ -127,7 +127,7 @@ static inline bool mmu_is_nested(struct kvm_vcpu *vcpu)
 static inline void kvm_vcpu_flush_tlb_current(struct kvm_vcpu *vcpu)
 {
 	++vcpu->stat.tlb_flush;
-	kvm_x86_ops.tlb_flush_current(vcpu);
+	kvm_x86_ops.flush_tlb_current(vcpu);
 }
 
 static inline int is_pae(struct kvm_vcpu *vcpu)
