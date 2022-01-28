@@ -93,8 +93,8 @@ void pi_post_block(struct kvm_vcpu *vcpu);
 void pi_wakeup_handler(void);
 void __init pi_init_cpu(int cpu);
 bool pi_has_pending_interrupt(struct kvm_vcpu *vcpu);
-int pi_update_irte(struct kvm *kvm, unsigned int host_irq, uint32_t guest_irq,
-		   bool set);
+int vmx_pi_update_irte(struct kvm *kvm, unsigned int host_irq,
+		       uint32_t guest_irq, bool set);
 void vmx_pi_start_assignment(struct kvm *kvm);
 
 #endif /* __KVM_X86_VMX_POSTED_INTR_H */
