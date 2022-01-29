@@ -158,6 +158,9 @@ static int dw_i2c_of_configure(struct platform_device *pdev)
 	struct dw_i2c_dev *dev = platform_get_drvdata(pdev);
 	struct resource *mem;
 
+	device_property_read_u32(&pdev->dev, "snps,sda-timeout-ms",
+			&dev->sda_timeout_ms);
+
 	switch (dev->flags & MODEL_MASK) {
 	case MODEL_MSCC_OCELOT:
 		mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
