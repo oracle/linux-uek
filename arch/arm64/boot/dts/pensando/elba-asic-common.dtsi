@@ -41,6 +41,10 @@
 	status = "ok";
 };
 
+&edac {
+	status = "okay";
+};
+
 &wdt0 {
 	status = "okay";
 };

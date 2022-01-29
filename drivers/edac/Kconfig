@@ -534,4 +534,11 @@ config EDAC_OCTEONTX
 	  the firmware first model and reported via SDEI callbacks.
 	  EDAC Driver report Single Bit Errors and Double Bit Errors.
 
+config EDAC_ELBA
+	tristate "Pensando Elba Memory ECC"
+	depends on ARCH_PENSANDO_ELBA_SOC
+	help
+	  Support for error detection and correction on the
+	  Pensando Elba SoC.
+
 endif # EDAC
