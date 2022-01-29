@@ -83,8 +83,7 @@ static inline int next_index(struct rxe_queue *q, int index)
 
 static inline int queue_empty(struct rxe_queue *q, enum queue_type type)
 {
-	u32 prod;
-	u32 cons;
+	u32 prod, cons;
 
 	switch (type) {
 	case QUEUE_TYPE_FROM_USER:
@@ -101,6 +100,8 @@ static inline int queue_empty(struct rxe_queue *q, enum queue_type type)
 		prod = q->buf->producer_index;
 		cons = q->buf->consumer_index;
 		break;
+	default:
+		prod = cons = 0;
 	}
 
 	return ((prod - cons) & q->index_mask) == 0;
