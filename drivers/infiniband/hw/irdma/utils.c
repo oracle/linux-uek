@@ -1223,12 +1223,12 @@ enum irdma_status_code irdma_hw_modify_qp(struct irdma_device *iwdev,
 			return status;
 
 		switch (m_info->next_iwarp_state) {
-			struct irdma_gen_ae_info ae_info;
 
 		case IRDMA_QP_STATE_RTS:
 		case IRDMA_QP_STATE_IDLE:
 		case IRDMA_QP_STATE_TERMINATE:
 		case IRDMA_QP_STATE_CLOSING:
+			struct irdma_gen_ae_info ae_info;
 			if (info->curr_iwarp_state == IRDMA_QP_STATE_IDLE)
 				irdma_send_reset(iwqp->cm_node);
 			else
