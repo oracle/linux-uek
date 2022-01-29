@@ -267,8 +267,8 @@ static void irdma_process_aeq(struct irdma_pci_f *rf)
 		}
 
 		switch (info->ae_id) {
-			struct irdma_cm_node *cm_node;
 		case IRDMA_AE_LLP_CONNECTION_ESTABLISHED:
+			struct irdma_cm_node *cm_node;
 			cm_node = iwqp->cm_node;
 			if (cm_node->accept_pend) {
 				atomic_dec(&cm_node->listener->pend_accepts_cnt);
