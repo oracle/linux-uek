@@ -30,13 +30,18 @@
  */
 static int __sync_filesystem(struct super_block *sb, int wait)
 {
+	int ret;
+
 	if (wait)
 		sync_inodes_sb(sb);
 	else
 		writeback_inodes_sb(sb, WB_REASON_SYNC);
 
-	if (sb->s_op->sync_fs)
-		sb->s_op->sync_fs(sb, wait);
+	if (sb->s_op->sync_fs) {
+		ret = sb->s_op->sync_fs(sb, wait);
+		if (ret)
+			return ret;
+	}
 	return __sync_blockdev(sb->s_bdev, wait);
 }
 
@@ -62,7 +67,7 @@ int sync_filesystem(struct super_block *sb)
 		return 0;
 
 	ret = __sync_filesystem(sb, 0);
-	if (ret < 0)
+	if (ret)
 		return ret;
 	return __sync_filesystem(sb, 1);
 }
