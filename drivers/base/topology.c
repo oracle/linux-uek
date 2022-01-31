@@ -14,11 +14,11 @@
 #include <linux/hardirq.h>
 #include <linux/topology.h>
 
-#define define_id_show_func(name)				\
-static ssize_t name##_show(struct device *dev,			\
-		struct device_attribute *attr, char *buf)	\
-{								\
-	return sprintf(buf, "%d\n", topology_##name(dev->id));	\
+#define define_id_show_func(name, fmt)					\
+static ssize_t name##_show(struct device *dev,				\
+			   struct device_attribute *attr, char *buf)	\
+{									\
+	return sysfs_emit(buf, fmt "\n", topology_##name(dev->id));	\
 }
 
 #define define_siblings_show_map(name, mask)				\
@@ -40,13 +40,18 @@ static ssize_t name##_list_show(struct device *dev,			\
 	define_siblings_show_map(name, mask);	\
 	define_siblings_show_list(name, mask)
 
-define_id_show_func(physical_package_id);
+define_id_show_func(physical_package_id, "%d");
 static DEVICE_ATTR_RO(physical_package_id);
 
-define_id_show_func(die_id);
+define_id_show_func(die_id, "%d");
 static DEVICE_ATTR_RO(die_id);
 
-define_id_show_func(core_id);
+#ifdef TOPOLOGY_CLUSTER_SYSFS
+define_id_show_func(cluster_id, "%d");
+static DEVICE_ATTR_RO(cluster_id);
+#endif
+
+define_id_show_func(core_id, "%d");
 static DEVICE_ATTR_RO(core_id);
 
 define_siblings_show_func(thread_siblings, sibling_cpumask);
@@ -70,7 +75,7 @@ static DEVICE_ATTR_RO(package_cpus);
 static DEVICE_ATTR_RO(package_cpus_list);
 
 #ifdef TOPOLOGY_BOOK_SYSFS
-define_id_show_func(book_id);
+define_id_show_func(book_id, "%d");
 static DEVICE_ATTR_RO(book_id);
 define_siblings_show_func(book_siblings, book_cpumask);
 static DEVICE_ATTR_RO(book_siblings);
@@ -78,7 +83,7 @@ static DEVICE_ATTR_RO(book_siblings_list);
 #endif
 
 #ifdef TOPOLOGY_DRAWER_SYSFS
-define_id_show_func(drawer_id);
+define_id_show_func(drawer_id, "%d");
 static DEVICE_ATTR_RO(drawer_id);
 define_siblings_show_func(drawer_siblings, drawer_cpumask);
 static DEVICE_ATTR_RO(drawer_siblings);
