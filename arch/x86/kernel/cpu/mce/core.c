@@ -142,11 +142,7 @@ void mce_setup(struct mce *m)
 	m->apicid = cpu_data(m->extcpu).initial_apicid;
 	rdmsrl(MSR_IA32_MCG_CAP, m->mcgcap);
 
-	if (this_cpu_has(X86_FEATURE_INTEL_PPIN))
-		rdmsrl(MSR_PPIN, m->ppin);
-	else if (this_cpu_has(X86_FEATURE_AMD_PPIN))
-		rdmsrl(MSR_AMD_PPIN, m->ppin);
-
+	m->ppin = cpu_data(m->extcpu).ppin;
 	m->microcode = boot_cpu_data.microcode;
 }
 
