@@ -1651,6 +1651,7 @@ static int fill_files_note(struct memelfnote *note)
 	name_base = name_curpos = ((char *)data) + names_ofs;
 	remaining = size - names_ofs;
 	count = 0;
+	mmap_read_lock(mm);
 	for (vma = mm->mmap; vma != NULL; vma = vma->vm_next) {
 		struct file *file;
 		const char *filename;
@@ -1661,6 +1662,7 @@ static int fill_files_note(struct memelfnote *note)
 		filename = file_path(file, name_curpos, remaining);
 		if (IS_ERR(filename)) {
 			if (PTR_ERR(filename) == -ENAMETOOLONG) {
+				mmap_read_unlock(mm);
 				kvfree(data);
 				size = size * 5 / 4;
 				goto alloc;
@@ -1680,6 +1682,7 @@ static int fill_files_note(struct memelfnote *note)
 		*start_end_ofs++ = vma->vm_pgoff;
 		count++;
 	}
+	mmap_read_unlock(mm);
 
 	/* Now we know exact count of files, can store it */
 	data[0] = count;
