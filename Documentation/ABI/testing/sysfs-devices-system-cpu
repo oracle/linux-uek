@@ -67,12 +67,13 @@ Description:	Discover NUMA node a CPU belongs to
 		/sys/devices/system/cpu/cpu42/node2 -> ../../node/node2
 
 
-What:		/sys/devices/system/cpu/cpu#/topology/core_id
-		/sys/devices/system/cpu/cpu#/topology/core_siblings
-		/sys/devices/system/cpu/cpu#/topology/core_siblings_list
-		/sys/devices/system/cpu/cpu#/topology/physical_package_id
-		/sys/devices/system/cpu/cpu#/topology/thread_siblings
-		/sys/devices/system/cpu/cpu#/topology/thread_siblings_list
+What:		/sys/devices/system/cpu/cpuX/topology/core_id
+		/sys/devices/system/cpu/cpuX/topology/core_siblings
+		/sys/devices/system/cpu/cpuX/topology/core_siblings_list
+		/sys/devices/system/cpu/cpuX/topology/physical_package_id
+		/sys/devices/system/cpu/cpuX/topology/thread_siblings
+		/sys/devices/system/cpu/cpuX/topology/thread_siblings_list
+		/sys/devices/system/cpu/cpuX/topology/ppin
 Date:		December 2008
 Contact:	Linux kernel mailing list <linux-kernel@vger.kernel.org>
 Description:	CPU topology files that describe a logical CPU's relationship
@@ -102,6 +103,11 @@ Description:	CPU topology files that describe a logical CPU's relationship
 
 		thread_siblings_list: human-readable list of cpu#'s hardware
 		threads within the same core as cpu#
+
+		ppin: human-readable Protected Processor Identification
+		Number of the socket the cpu# belongs to. There should be
+		one per physical_package_id. File is readable only to
+		admin.
 
 		See Documentation/admin-guide/cputopology.rst for more information.
 

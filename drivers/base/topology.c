@@ -58,6 +58,9 @@ define_siblings_show_func(thread_siblings, sibling_cpumask);
 static DEVICE_ATTR_RO(thread_siblings);
 static DEVICE_ATTR_RO(thread_siblings_list);
 
+define_id_show_func(ppin, "0x%llx");
+static DEVICE_ATTR_ADMIN_RO(ppin);
+
 define_siblings_show_func(core_cpus, sibling_cpumask);
 static DEVICE_ATTR_RO(core_cpus);
 static DEVICE_ATTR_RO(core_cpus_list);
@@ -114,6 +117,7 @@ static struct attribute *default_attrs[] = {
 	&dev_attr_drawer_siblings.attr,
 	&dev_attr_drawer_siblings_list.attr,
 #endif
+	&dev_attr_ppin.attr,
 	NULL
 };
 
