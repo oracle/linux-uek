@@ -4,7 +4,7 @@ CFLAGS += -I. -I../../include -g -Og -Wall -D_LGPL_SOURCE -fsanitize=address \
 	  -fsanitize=undefined
 LDFLAGS += -fsanitize=address -fsanitize=undefined
 LDLIBS+= -lpthread -lurcu
-TARGETS = main idr-test multiorder xarray maple ma_xa_benchmark
+TARGETS = main idr-test multiorder xarray maple
 CORE_OFILES := xarray.o radix-tree.o idr.o linux.o test.o find_bit.o bitmap.o maple.o
 OFILES = main.o $(CORE_OFILES) regression1.o regression2.o regression3.o \
 	 regression4.o tag_check.o multiorder.o idr-test.o iteration_check.o \
@@ -30,8 +30,6 @@ xarray: $(CORE_OFILES)
 
 maple: $(CORE_OFILES)
 
-ma_xa_benchmark: ma_xa_benchmark.o $(CORE_OFILES)
-
 multiorder: multiorder.o $(CORE_OFILES)
 
 clean:
@@ -56,8 +54,6 @@ idr.c: ../../../lib/idr.c
 xarray.o: ../../../lib/xarray.c ../../../lib/test_xarray.c
 
 maple.o: ../../../lib/maple_tree.c ../../../lib/test_maple_tree.c
-
-ma_xa_benchmark.o:
 
 generated/map-shift.h:
 	@if ! grep -qws $(SHIFT) generated/map-shift.h; then		\
