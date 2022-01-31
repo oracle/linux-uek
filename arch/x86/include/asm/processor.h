@@ -144,7 +144,8 @@ struct cpuinfo_x86 {
 	u8			x86_cache_bits;
 	unsigned		initialized : 1;
 
-	UEK_KABI_RESERVE(1)
+	/* protected processor identification number */
+	UEK_KABI_USE(1, u64 ppin)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
