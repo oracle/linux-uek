@@ -97,6 +97,10 @@ config HAVE_CTF_TOOLCHAIN
 	help
 	  GCC and binutils support CTF generation.
 
+config PAHOLE_VERSION
+	int
+	default $(shell,$(srctree)/scripts/pahole-version.sh $(PAHOLE))
+
 config CONSTRUCTORS
 	bool
 
