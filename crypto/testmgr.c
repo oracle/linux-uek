@@ -1854,6 +1854,9 @@ static int __alg_test_hash(const struct hash_testvec *vecs,
 	}
 
 	for (i = 0; i < num_vecs; i++) {
+		if (fips_enabled && vecs[i].fips_skip)
+			continue;
+
 		err = test_hash_vec(&vecs[i], i, req, desc, tsgl, hashstate);
 		if (err)
 			goto out;
