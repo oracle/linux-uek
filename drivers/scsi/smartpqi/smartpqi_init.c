@@ -8905,6 +8905,7 @@ static void pqi_shutdown(struct pci_dev *pci_dev)
 {
 	int rc;
 	struct pqi_ctrl_info *ctrl_info;
+	enum bmic_flush_cache_shutdown_event shutdown_event;
 
 	ctrl_info = pci_get_drvdata(pci_dev);
 	if (!ctrl_info) {
@@ -8920,11 +8921,16 @@ static void pqi_shutdown(struct pci_dev *pci_dev)
 	pqi_ctrl_block_requests(ctrl_info);
 	pqi_ctrl_wait_until_quiesced(ctrl_info);
 
+	if (system_state == SYSTEM_RESTART)
+		shutdown_event = RESTART;
+	else
+		shutdown_event = SHUTDOWN;
+
 	/*
 	 * Write all data in the controller's battery-backed cache to
 	 * storage.
 	 */
-	rc = pqi_flush_cache(ctrl_info, SHUTDOWN);
+	rc = pqi_flush_cache(ctrl_info, shutdown_event);
 	if (rc)
 		dev_err(&pci_dev->dev,
 			"unable to flush controller cache\n");
