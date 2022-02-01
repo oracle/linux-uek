@@ -8,6 +8,8 @@
  * published by the Free Software Foundation.
  */
 
+#define pr_fmt(fmt) "octtx_info: " fmt
+
 #include <linux/module.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -18,6 +20,7 @@
 
 #define OCTTX_NODE	"octeontx_brd"
 #define FW_LAYOUT_NODE	"firmware-layout"
+#define SOC_NODE	"soc"
 #define MAX_MACS	32  // Please keep this in sync with EBF
 
 struct octeontx_info_mac_addr {
@@ -65,6 +68,7 @@ struct octtx_brd_info {
 	int  use_mac_id;
 	struct octeontx_info_mac_addr mac_addrs[MAX_MACS];
 	struct octtx_fw_info *fw_info;
+	const char *sdk_version;
 };
 
 static struct proc_dir_entry *ent;
@@ -84,6 +88,7 @@ static int oct_brd_proc_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "board_model: %s\n", brd.board_model);
 	seq_printf(seq, "board_revision: %s\n", brd.board_revision);
 	seq_printf(seq, "board_serial_number: %s\n", brd.board_serial);
+	seq_printf(seq, "SDK Version: %s\n", brd.sdk_version);
 	if (!brd.use_mac_id) {
 		mac_addr = &brd.mac_addrs[0];
 
@@ -467,6 +472,20 @@ static int __init octtx_info_init(void)
 				if (ret)
 					pr_err("Error parsing firmware-layout\n");
 			}
+		}
+
+		/* Read SOC@0 node to get SDK Version */
+		np = of_find_node_by_name(NULL, SOC_NODE);
+		if (!np) {
+			pr_err("soc node not available!\n");
+			return -ENODEV;
+		}
+		ret = of_property_read_string(np, "sdk-version",
+						&brd.sdk_version);
+		if (ret) {
+			pr_warn("SDK Version not available\n");
+			/* Default name is "NULL" */
+			brd.sdk_version = null_string;
 		}
 
 		brd.dev_tree_parsed = 1;
