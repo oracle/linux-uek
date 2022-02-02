@@ -1645,7 +1645,7 @@ void __init acpi_iort_init(void)
  */
 phys_addr_t __init acpi_iort_dma_get_max_cpu_address(void)
 {
-	phys_addr_t limit = PHYS_ADDR_MAX;
+	phys_addr_t local_limit, limit = PHYS_ADDR_MAX;
 	struct acpi_iort_node *node, *end;
 	struct acpi_table_iort *iort;
 	acpi_status status;
@@ -1667,17 +1667,15 @@ phys_addr_t __init acpi_iort_dma_get_max_cpu_address(void)
 			break;
 
 		switch (node->type) {
-			struct acpi_iort_named_component *ncomp;
-			struct acpi_iort_root_complex *rc;
-			phys_addr_t local_limit;
-
 		case ACPI_IORT_NODE_NAMED_COMPONENT:
+			struct acpi_iort_named_component *ncomp;
 			ncomp = (struct acpi_iort_named_component *)node->node_data;
 			local_limit = DMA_BIT_MASK(ncomp->memory_address_limit);
 			limit = min_not_zero(limit, local_limit);
 			break;
 
 		case ACPI_IORT_NODE_PCI_ROOT_COMPLEX:
+			struct acpi_iort_root_complex *rc;
 			if (node->revision < 1)
 				break;
 
