@@ -813,40 +813,62 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 	}
 }
 
-static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev)
+static int rds_ib_get_load(int *tos_row, u8 tos)
 {
+	int load = 0;
+	int i;
+
+	for (i = 0; i < RDS_IB_NMBR_TOS_ROWS; ++i) {
+		int scale = i == (tos % RDS_IB_NMBR_TOS_ROWS) ? RDS_IB_NMBR_TOS_ROWS : 1;
+
+		load += tos_row[i] * scale;
+	}
+
+	return load;
+}
+
+static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 tos)
+{
+	int *tos_row;
 	int index;
+	int load;
 	int min;
 	int i;
 
 	mutex_lock(&rds_ibdev->vector_load_lock);
-	min = rds_ibdev->vector_load[rds_ibdev->dev->num_comp_vectors - 1];
 	index = rds_ibdev->dev->num_comp_vectors - 1;
+	min = rds_ib_get_load(rds_ibdev->vector_load + index * RDS_IB_NMBR_TOS_ROWS, tos);
 
-	for (i = rds_ibdev->dev->num_comp_vectors - 1; i >= 0; i--) {
-		if (rds_ibdev->vector_load[i] < min) {
+	for (i = index; i >= 0; i--) {
+		tos_row = rds_ibdev->vector_load + i * RDS_IB_NMBR_TOS_ROWS;
+		load = rds_ib_get_load(tos_row, tos);
+
+		if (load < min) {
 			index = i;
-			min = rds_ibdev->vector_load[i];
+			min = load;
 		}
 	}
 
-	rds_ibdev->vector_load[index]++;
+	tos_row = rds_ibdev->vector_load + index * RDS_IB_NMBR_TOS_ROWS;
+	tos_row[tos % RDS_IB_NMBR_TOS_ROWS]++;
 	mutex_unlock(&rds_ibdev->vector_load_lock);
 
 	return index;
 }
 
-static inline void ibdev_put_vector(struct rds_ib_device *rds_ibdev, int index)
+static inline void ibdev_put_vector(struct rds_ib_device *rds_ibdev, int index, u8 tos)
 {
+	int *tos_row = rds_ibdev->vector_load + index * RDS_IB_NMBR_TOS_ROWS;
+
 	mutex_lock(&rds_ibdev->vector_load_lock);
-	rds_ibdev->vector_load[index]--;
+	tos_row[tos % RDS_IB_NMBR_TOS_ROWS]--;
 	mutex_unlock(&rds_ibdev->vector_load_lock);
 }
 
 static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
 			    int *vector, struct ib_cq **cqp, ib_comp_handler comp_handler,
 			    void (*event_handler)(struct ib_event *, void *),
-			    void *ctx, int n, const char str[5])
+			    void *ctx, int n, const char str[5], u8 tos)
 {
 	struct ib_wc wc;
 	int spurious_completions = 0;
@@ -855,11 +877,11 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 		struct ib_cq_init_attr cq_attr = {};
 
 		cq_attr.cqe = n;
-		cq_attr.comp_vector = ibdev_get_unused_vector(rds_ibdev);
+		cq_attr.comp_vector = ibdev_get_unused_vector(rds_ibdev, tos);
 		*vector = cq_attr.comp_vector;
 		*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
 		if (IS_ERR(*cqp)) {
-			ibdev_put_vector(rds_ibdev, *vector);
+			ibdev_put_vector(rds_ibdev, *vector, tos);
 			rdsdebug("ib_create_cq %s failed: %ld\n", str, PTR_ERR(*cqp));
 			return;
 		}
@@ -886,14 +908,14 @@ static void __rds_rdma_free_cq(struct rds_ib_connection *ic,
 	rcq = ic->i_rcq;
 	ic->i_rcq = NULL;
 	if (rcq) {
-		ibdev_put_vector(rds_ibdev, ic->i_rcq_vector);
+		ibdev_put_vector(rds_ibdev, ic->i_rcq_vector, ic->conn->c_tos);
 		ib_destroy_cq(rcq);
 	}
 
 	scq = ic->i_scq;
 	ic->i_scq = NULL;
 	if (scq) {
-		ibdev_put_vector(rds_ibdev, ic->i_scq_vector);
+		ibdev_put_vector(rds_ibdev, ic->i_scq_vector, ic->conn->c_tos);
 		ib_destroy_cq(scq);
 	}
 }
@@ -1195,7 +1217,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 			rds_ib_cq_comp_handler_send,
 			rds_ib_cq_event_handler, conn,
 			ic->i_send_ring.w_nr + 1 + mr_reg,
-			"send");
+			"send", conn->c_tos);
 	if (IS_ERR(ic->i_scq)) {
 		reason = "rds_ib_check_cq for send failed";
 		ret = PTR_ERR(ic->i_scq);
@@ -1207,7 +1229,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 			rds_ib_cq_comp_handler_recv,
 			rds_ib_cq_event_handler, conn,
 			rds_ib_srq_enabled ? rds_ib_srq_max_wr - 1 : ic->i_recv_ring.w_nr,
-			"recv");
+			"recv", conn->c_tos);
 	if (IS_ERR(ic->i_rcq)) {
 		reason = "rds_ib_check_cq for recv failed";
 		ret = PTR_ERR(ic->i_rcq);
@@ -2398,7 +2420,7 @@ void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev)
 		/* Destroy cq and cq_vector */
 		ib_destroy_cq(rds_ibdev->fastreg_cq);
 		rds_ibdev->fastreg_cq = NULL;
-		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector);
+		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector, RDS_IB_FASTREG_TOS);
 	}
 }
 
@@ -2413,7 +2435,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	int gid_index = 0;
 	union ib_gid dgid;
 
-	rds_ibdev->fastreg_cq_vector = ibdev_get_unused_vector(rds_ibdev);
+	rds_ibdev->fastreg_cq_vector = ibdev_get_unused_vector(rds_ibdev, RDS_IB_FASTREG_TOS);
 	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.cqe = RDS_IB_DEFAULT_FREG_WR + 1;
 	cq_attr.comp_vector = rds_ibdev->fastreg_cq_vector;
@@ -2425,7 +2447,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	if (IS_ERR(rds_ibdev->fastreg_cq)) {
 		ret = PTR_ERR(rds_ibdev->fastreg_cq);
 		rds_ibdev->fastreg_cq = NULL;
-		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector);
+		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector, RDS_IB_FASTREG_TOS);
 		reason = "ib_create_cq failed";
 		goto clean_up;
 	}
