@@ -1370,7 +1370,6 @@ xfs_fs_remount(
 	if (error)
 		return error;
 
-	sync_filesystem(sb);
 	while ((p = strsep(&options, ",")) != NULL) {
 		int token;
 
@@ -1473,6 +1472,10 @@ xfs_fs_remount(
 		struct xfs_eofblocks	eofb = {
 			.eof_flags	= XFS_EOF_FLAGS_SYNC,
 		};
+
+		error = sync_filesystem(sb);
+		if (error)
+			return error;
 
 		/*
 		 * Cancel background eofb scanning so it cannot race with the
