@@ -64,6 +64,9 @@
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
 
+#define RDS_IB_NMBR_TOS_ROWS 8
+#define RDS_IB_FASTREG_TOS 1
+
 #define RDS_RDMA_RESOLVE_ADDR_TIMEOUT_MS(c) ((c)->c_loopback ? 1000 : 4000)
 
 extern struct rw_semaphore rds_ib_devices_lock;
