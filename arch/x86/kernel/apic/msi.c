@@ -66,7 +66,7 @@ msi_set_affinity(struct irq_data *irqd, const struct cpumask *mask, bool force)
 {
 	struct irq_cfg old_cfg, *cfg = irqd_cfg(irqd);
 	struct irq_data *parent = irqd->parent_data;
-	unsigned int cpu;
+	unsigned int cpu, old_vector = -1;
 	int ret;
 	struct msi_desc *desc = irqd->common->msi_desc;
 
@@ -102,20 +102,20 @@ msi_set_affinity(struct irq_data *irqd, const struct cpumask *mask, bool force)
 		return ret;
 	}
 
-	/*
-	 * Paranoia: Validate that the interrupt target is the local
-	 * CPU.
-	 */
-	if (WARN_ON_ONCE(cpu != smp_processor_id())) {
-		irq_msi_update_msg(irqd, cfg);
-		return ret;
-	}
 
 	/*
-	 * Redirect the interrupt to the new vector on the current CPU
-	 * first. This might cause a spurious interrupt on this vector if
-	 * the device raises an interrupt right between this update and the
-	 * update to the final destination CPU.
+	 * There has a subtle race when 2 or more MSI configs need to be
+	 * updated, to avoid interrupt lost, we'll update only one MSI
+	 * config on each step.
+	 *
+	 * 1. Redirect the interrupt to the old vector on the current CPU
+	 *    when both CPU and vector need to be updated.
+	 * 2. Redirect the interrupt to the new vector on the current CPU.
+	 * 3. Redirect the interrupt to the new vector on the target CPU.
+	 *
+	 * During above it might cause spurious interrupt on this both old
+	 * vector and new vector if the device raises an interrupt right
+	 * between this update and the update to the final destination CPU.
 	 *
 	 * If the vector is in use then the installed device handler will
 	 * denote it as spurious which is no harm as this is a rare event
@@ -127,6 +127,17 @@ msi_set_affinity(struct irq_data *irqd, const struct cpumask *mask, bool force)
 	 * the affected vector.
 	 */
 	lock_vector_lock();
+
+	/* Redirect the interrupt to the old vector on current CPU */
+	if (cpu != smp_processor_id()) {
+		old_vector = old_cfg.vector;
+
+		if (IS_ERR_OR_NULL(this_cpu_read(vector_irq[old_vector])))
+			this_cpu_write(vector_irq[old_vector], VECTOR_RETRIGGERED);
+
+		old_cfg.dest_apicid = smp_processor_id();
+		irq_msi_update_msg(irqd, &old_cfg);
+	}
 
 	/*
 	 * Mark the new target vector on the local CPU if it is currently
@@ -167,6 +178,9 @@ msi_set_affinity(struct irq_data *irqd, const struct cpumask *mask, bool force)
 	 * IRR.
 	 */
 	if (lapic_vector_set_in_irr(cfg->vector))
+		irq_data_get_irq_chip(irqd)->irq_retrigger(irqd);
+
+	if (old_vector != -1 && lapic_vector_set_in_irr(old_vector))
 		irq_data_get_irq_chip(irqd)->irq_retrigger(irqd);
 
 	return ret;
