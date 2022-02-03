@@ -1225,8 +1225,8 @@ int rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	rds_ibdev->vector_load = kzalloc(sizeof(int) *
-					device->num_comp_vectors, GFP_KERNEL);
+	rds_ibdev->vector_load = kzalloc(sizeof(int) * RDS_IB_NMBR_TOS_ROWS *
+					 device->num_comp_vectors, GFP_KERNEL);
 	if (!rds_ibdev->vector_load) {
 		pr_err("RDS/IB: failed to allocate vector memory\n");
 		error = -ENOMEM;
