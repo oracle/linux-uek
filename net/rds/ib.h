@@ -360,6 +360,9 @@ struct rds_ib_connection {
 	u64			i_rx_poll_ts;
 	atomic64_t		i_tx_poll_cnt;
 	atomic64_t		i_rx_poll_cnt;
+
+	/* tx stall detection */
+	spinlock_t		i_tx_lock;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -683,6 +686,7 @@ u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
 #if IS_ENABLED(CONFIG_IPV6)
 u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
 #endif
+void rds_ib_tx_poll(struct rds_ib_connection *ic);
 
 /* ib_rdma.c */
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
@@ -822,5 +826,6 @@ extern u32 rds_frwr_ibmr_gc_time;
 extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
+extern unsigned int rds_ib_tx_stall_threshold;
 
 #endif
