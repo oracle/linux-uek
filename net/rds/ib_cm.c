@@ -2193,7 +2193,7 @@ unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 	return (!ic->i_cm_id ||
 		test_bit(RDS_IB_CQ_ERR, &ic->i_flags) ||
 		(rds_ib_ring_empty(&ic->i_recv_ring) &&
-		 (atomic_read(&ic->i_signaled_sends) == 0) &&
+		 rds_ib_ring_empty(&ic->i_send_ring) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
 		  RDS_IB_DEFAULT_FREG_WR))) ? 0
 		: msecs_to_jiffies(1000);
@@ -2204,6 +2204,11 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
+	/* Try to reap pending TX completions every second */
+	if (!rds_ib_ring_empty(&ic->i_send_ring))
+		rds_ib_tx_poll(ic);
+
+	/* Try to reap pending RX completions every second */
 	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
 		spin_lock_bh(&ic->i_rx_lock);
 		rds_ib_rx(ic);
@@ -2323,7 +2328,6 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		while (!wait_event_timeout(rds_ib_ring_empty_wait,
 					   rds_ib_conn_path_shutdown_check_wait(cp) == 0,
 					   msecs_to_jiffies(1000))) {
-			/* Try to reap pending RX completions every second */
 			rds_ib_conn_path_shutdown_tidy_up(cp);
 		}
 	}
