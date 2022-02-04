@@ -96,6 +96,8 @@ unsigned rds_ib_sysctl_yield_after_ms = 2000;
 
 unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
 
+unsigned int rds_ib_tx_stall_threshold = 5000;	/* msecs */
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -197,6 +199,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(rds_ib_sysctl_cm_watchdog_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "tx_stall_threshold",
+		.data           = &rds_ib_tx_stall_threshold,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = &proc_douintvec,
 	},
 	{ }
 };

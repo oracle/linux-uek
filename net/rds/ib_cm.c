@@ -657,12 +657,17 @@ static void rds_ib_tasklet_fn_fastreg(unsigned long data)
 	poll_fcq(rds_ibdev, rds_ibdev->fastreg_cq, rds_ibdev->fastreg_wc);
 }
 
-void rds_ib_tasklet_fn_send(unsigned long data)
+void rds_ib_tx_poll(struct rds_ib_connection *ic)
 {
-	struct rds_ib_connection *ic = (struct rds_ib_connection *) data;
 	struct rds_connection *conn = ic->conn;
 
-	rds_ib_stats_inc(s_ib_tasklet_call);
+	/* If we cann't get the lock, just re-arm and return
+	 * If we cann't process, we could miss re-arming cq for irqs
+	 */
+	if (!spin_trylock_bh(&ic->i_tx_lock)) {
+		ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
+		return;
+	}
 
 	/* if send cq has been destroyed, ignore incoming cq event */
 	if (!ic->i_scq)
@@ -676,6 +681,15 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	   (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
 	    test_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued)))
 		rds_send_xmit(&ic->conn->c_path[0]);
+	spin_unlock_bh(&ic->i_tx_lock);
+}
+
+void rds_ib_tasklet_fn_send(unsigned long data)
+{
+	struct rds_ib_connection *ic = (struct rds_ib_connection *)data;
+
+	rds_ib_stats_inc(s_ib_tasklet_call);
+	rds_ib_tx_poll(ic);
 }
 
 /*
@@ -2160,6 +2174,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 #endif
 	atomic_set(&ic->i_signaled_sends, 0);
 	spin_lock_init(&ic->i_rx_lock);
+	spin_lock_init(&ic->i_tx_lock);
 
 	/*
 	 * rds_ib_conn_path_shutdown() waits for these to be emptied so they
