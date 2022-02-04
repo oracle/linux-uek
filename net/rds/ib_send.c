@@ -570,6 +570,21 @@ no_solicited:
 	return !!(send->s_wr.send_flags & IB_SEND_SIGNALED);
 }
 
+void rds_ib_tx_stall_check(struct rds_connection *conn)
+{
+	struct rds_ib_connection *ic = conn->c_transport_data;
+	unsigned long deadline;
+
+	deadline = jiffies - msecs_to_jiffies(rds_ib_tx_stall_threshold);
+	/* Last poll was before deadline */
+	if (time_before((unsigned long)ic->i_tx_poll_ts, deadline)) {
+		pr_info_ratelimited("RDS/IB: Detected tx stall on conn <%pI6c,%pI6c,%d> last_poll: %llu msecs ago. Polling for completions\n",
+				    &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				    jiffies - ic->i_tx_poll_ts);
+		rds_ib_tx_poll(ic);
+	}
+}
+
 /*
  * This can be called multiple times for a given message.  The first time
  * we see a message we map its scatterlist into the IB device so that
@@ -633,6 +648,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 		if (work_alloc == 0) {
 			rds_ib_stats_inc(s_ib_tx_ring_full);
+			rds_ib_tx_stall_check(conn);
 			reason = "rds_ib_ring_alloc failed";
 			ret = -ENOMEM;
 			goto out;
@@ -915,6 +931,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 	if (work_alloc != 1) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_ring_full);
+		rds_ib_tx_stall_check(conn);
 		reason = "rds_ib_ring_alloc failed";
 		ret = -ENOMEM;
 		goto out;
@@ -1036,6 +1053,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 	if (work_alloc != i) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_stats_inc(s_ib_tx_ring_full);
+		rds_ib_tx_stall_check(conn);
 		reason = "rds_ib_ring_alloc failed";
 		ret = -ENOMEM;
 		goto out;
@@ -1109,6 +1127,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 				op->op_mapped = 0;
 				rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 				rds_ib_stats_inc(s_ib_tx_ring_full);
+				rds_ib_tx_stall_check(conn);
 				reason = "ib tx ring full";
 				ret = -ENOMEM;
 				goto out;
