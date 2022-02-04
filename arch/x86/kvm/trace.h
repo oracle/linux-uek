@@ -251,13 +251,13 @@ TRACE_EVENT(kvm_cpuid,
  * Tracepoint for apic access.
  */
 TRACE_EVENT(kvm_apic,
-	TP_PROTO(unsigned int rw, unsigned int reg, unsigned int val),
+	TP_PROTO(unsigned int rw, unsigned int reg, u64 val),
 	TP_ARGS(rw, reg, val),
 
 	TP_STRUCT__entry(
 		__field(	unsigned int,	rw		)
 		__field(	unsigned int,	reg		)
-		__field(	unsigned int,	val		)
+		__field(	u64,		val		)
 	),
 
 	TP_fast_assign(
@@ -266,7 +266,7 @@ TRACE_EVENT(kvm_apic,
 		__entry->val		= val;
 	),
 
-	TP_printk("apic_%s %s = 0x%x",
+	TP_printk("apic_%s %s = 0x%llx",
 		  __entry->rw ? "write" : "read",
 		  __print_symbolic(__entry->reg, kvm_trace_symbol_apic),
 		  __entry->val)
