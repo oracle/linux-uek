@@ -206,9 +206,9 @@ static void timestamp_interrupt(struct stmmac_priv *priv)
 	channel = ilog2(FIELD_GET(PTP_ACR_MASK, acr_value));
 
 	for (i = 0; i < num_snapshot; i++) {
-		spin_lock_irqsave(&priv->ptp_lock, flags);
+		read_lock_irqsave(&priv->ptp_lock, flags);
 		get_ptptime(priv->ptpaddr, &ptp_time);
-		spin_unlock_irqrestore(&priv->ptp_lock, flags);
+		read_unlock_irqrestore(&priv->ptp_lock, flags);
 		event.type = PTP_CLOCK_EXTTS;
 		event.index = channel;
 		event.timestamp = ptp_time;
