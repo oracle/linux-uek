@@ -6656,14 +6656,6 @@ _kc_devlink_port_attrs_set(struct devlink_port *devlink_port,
  /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
 
-static inline s32 scaled_ppm_to_ppb(long ppm)
-{
-	s64 ppb = 1 + ppm;
-	ppb *= 125;
-	ppb >>= 13;
-	return (s32) ppb;
-}
-
 #if (!RHEL_RELEASE_CODE || \
      (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,2))))
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
