@@ -346,6 +346,8 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 				cp = conn->c_path + i;
 				destroy_workqueue(cp->cp_wq);
 			}
+			kfree(conn->c_path);
+			kmem_cache_free(rds_conn_slab, conn);
 			conn = ERR_PTR(-ENOMEM);
 			reason = "alloc_ordered_workqueue failed";
 			goto out;
