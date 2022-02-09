@@ -65,6 +65,7 @@
 #include <asm/cpu_device_id.h>
 #include <asm/uv/uv.h>
 #include <asm/set_memory.h>
+#include <asm/sev.h>
 
 #include "cpu.h"
 
@@ -2237,6 +2238,9 @@ void cpu_init_exception_handling(void)
 	set_tss_desc(cpu, &get_cpu_entry_area(cpu)->tss.x86_tss);
 
 	load_TR_desc();
+
+	/* GHCB needs to be setup to handle #VC. */
+	setup_ghcb();
 
 	/* Finally load the IDT */
 	load_current_idt();
