@@ -191,6 +191,17 @@ config CLPS711X_IRQCHIP
 	select SPARSE_IRQ
 	default y
 
+config IRQ_PENSANDO
+	bool "Support for Pensando SOC IRQ chip structure"
+	depends on ARCH_PENSANDO_ELBA_SOC
+	default "y"
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+	help
+	  This controls whether the Pensando IRQ chip code is used. This code
+	  works in sync with the SOC device tree to define the topology
+	  of devices controlling interrupts.
+
 config OMPIC
 	bool
 
