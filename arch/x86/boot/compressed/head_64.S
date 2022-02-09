@@ -602,15 +602,6 @@ SYM_FUNC_START_LOCAL_NOALIGN(.Lrelocated)
 	popq	%rsi
 #endif
 
-/*
- * If running as an SEV guest, the encryption mask is required in the
- * page-table setup code below. When the guest also has SEV-ES enabled
- * set_sev_encryption_mask() will cause #VC exceptions, but the stage2
- * handler can't map its GHCB because the page-table is not set up yet.
- * So set up the encryption mask here while still on the stage1 #VC
- * handler. Then load stage2 IDT and switch to the kernel's own
- * page-table.
- */
 	pushq	%rsi
 	call	load_stage2_idt
 
