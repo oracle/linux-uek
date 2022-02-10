@@ -151,7 +151,7 @@ struct dentry_stat_t {
  * ones from the global free pool. If it has more than its percpu limit,
  * the extra ones will be returned back to the global pool.
  */
-#define NEG_DENTRY_BATCH	(1 << 8)
+#define NEG_DENTRY_BATCH	(1 << 12)
 #define NEG_PRUNING_SIZE	(1 << 6)
 #define NEG_PRUNING_SLOW_RATE	(HZ/10)
 #define NEG_PRUNING_FAST_RATE	(HZ/50)
@@ -162,16 +162,19 @@ DEFINE_STATIC_KEY_FALSE(limit_neg_key);
 static int neg_dentry_pc_old;
 static int neg_dentry_pc;
 
+/*
+ * There will be a periodic check to see if the negative dentry limit
+ * is exceeded. If so, the excess negative dentries will be removed.
+ */
+#define NEGATIVE_DENTRY_CHECK_PERIOD	(5 * HZ)	/* Check every 5s */
+#define NEG_WALKING_CAP			(1 << 17)
+
 static long neg_dentry_percpu_limit __read_mostly;
 static long neg_dentry_nfree_init __read_mostly; /* Free pool initial value */
 static struct {
 	raw_spinlock_t nfree_lock;
-	int niter;				/* Pruning iteration count */
-	int lru_count;				/* Per-LRU pruning count */
-	long n_neg;				/* # of negative dentries pruned */
-	long n_pos;				/* # of positive dentries pruned */
+	long n_neg;			/* # of negative dentries pruned */
 	long nfree;			/* Negative dentry free pool */
-	struct super_block *prune_sb;	/* Super_block for pruning */
 } ndblk ____cacheline_aligned_in_smp;
 
 static void prune_negative_dentry(struct work_struct *work);
@@ -385,26 +388,6 @@ static inline void __neg_dentry_inc(struct dentry *dentry)
 	 */
 	if (!cnt)
 		pr_warn_once("Too many negative dentries.");
-
-	/*
-	 * Initiate negative dentry pruning if free pool has less than
-	 * 1/4 of its initial value.
-	 */
-	if ((READ_ONCE(ndblk.nfree) < READ_ONCE(neg_dentry_nfree_init)/4) &&
-	    !READ_ONCE(ndblk.prune_sb) &&
-	    !cmpxchg(&ndblk.prune_sb, NULL, dentry->d_sb)) {
-		/*
-		 * Abort if umounting is in progress, otherwise take a
-		 * reference and move on.
-		 */
-		if (NEG_IS_SB_UMOUNTING(ndblk.prune_sb)) {
-			WRITE_ONCE(ndblk.prune_sb, NULL);
-		} else {
-			atomic_inc(&ndblk.prune_sb->s_active);
-			schedule_delayed_work_on(smp_processor_id(),
-						&prune_neg_dentry_work, 1);
-		}
-	}
 }
 
 static inline void neg_dentry_inc(struct dentry *dentry)
@@ -437,6 +420,7 @@ static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 	 */
 	if (!neg_dentry_pc && neg_dentry_pc_old) {
 		static_key_slow_dec(&limit_neg_key.key);
+		cancel_delayed_work_sync(&prune_neg_dentry_work);
 		goto out;
 	}
 
@@ -462,8 +446,16 @@ static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 	pr_info("Negative dentry: percpu limit = %ld, free pool = %ld\n",
 		neg_dentry_percpu_limit, neg_dentry_nfree_init);
 
-	if (!neg_dentry_pc_old)
+	/*
+	 * The periodic dentry pruner only runs when the limit is non-zero.
+	 * The sysctl handler is the only trigger mechanism that can be
+	 * used to start the prune work reliably, so we do that here
+	 * after calculating the new limit.
+	 */
+	if (!neg_dentry_pc_old) {
 		static_key_slow_inc(&limit_neg_key.key);
+		schedule_delayed_work(&prune_neg_dentry_work, 0);
+	}
 out:
 	neg_dentry_pc_old = neg_dentry_pc;
 	return 0;
@@ -1439,7 +1431,8 @@ EXPORT_SYMBOL(shrink_dcache_sb);
 
 /*
  * A modified version that attempts to remove a limited number of negative
- * dentries as well as some other non-negative dentries at the front.
+ * dentries as well as some other non-negative dentries at the front whose
+ * refcount is zero.
  */
 static enum lru_status dentry_negative_lru_isolate(struct list_head *item,
 		struct list_lru_one *lru, spinlock_t *lru_lock, void *arg)
@@ -1447,15 +1440,6 @@ static enum lru_status dentry_negative_lru_isolate(struct list_head *item,
 	struct list_head *freeable = arg;
 	struct dentry	*dentry = container_of(item, struct dentry, d_lru);
 	enum lru_status	status = LRU_SKIP;
-
-	/*
-	 * Limit amount of dentry walking in each LRU list.
-	 */
-	if (ndblk.lru_count >= NEG_PRUNING_SIZE) {
-		ndblk.lru_count = 0;
-		return LRU_STOP;
-	}
-	ndblk.lru_count++;
 
 	/*
 	 * we are inverting the lru lock/dentry->d_lock here,
@@ -1494,6 +1478,65 @@ out:
 	return status;
 }
 
+struct prune_negative_ctrl
+{
+	unsigned long   prune_count;
+	int             prune_percent;	/* Each unit = -1.01% */
+	int		prune_nsupers;	/* # of superblocks to prune */
+	int		prune_ncpus;	/* # of cpus */
+};
+
+/*
+ * Prune dentries from a super block.
+ */
+static void prune_negative_one_sb(struct super_block *sb, void *arg)
+{
+	unsigned long freed, scan;
+	long limit;
+	long count = get_nr_dentry_negative();
+	struct prune_negative_ctrl *ctrl = arg;
+	LIST_HEAD(dispose);
+
+	/*
+	 * Try to spread the scan over 5 iterations if the number is
+	 * reasonable. If the overshoot is less than 25%, spread the
+	 * spread the pruning across 5 iterations, not to impact
+	 * the performance. Otherwise, prune aggrressively.
+	 * Add an extra 1% as a minimum and to increase the chance
+	 * that the after operation dentry count stays below the limit.
+	 */
+	limit = neg_dentry_nfree_init + ctrl->prune_ncpus * (neg_dentry_percpu_limit -
+				(neg_dentry_percpu_limit / 100));
+
+	if (limit >= count || limit < 4) /* Haven't crossed the limit yet */
+		return;
+
+	if ((count-limit) < (limit / 4))
+		scan = (count - limit) / (ctrl->prune_nsupers * 5);
+	else
+		scan = (count - limit) / ctrl->prune_nsupers;
+
+	if (ctrl->prune_percent) {
+		freed = list_lru_walk(&sb->s_dentry_lru, dentry_negative_lru_isolate,
+			&dispose, scan);
+
+		if (freed) {
+			shrink_dentry_list(&dispose);
+			ctrl->prune_count += freed;
+		}
+	}
+}
+
+/*
+ * Increment the count of superblocks to pune
+ */
+static void inc_nsupers_cnt(struct super_block *sb, void *arg)
+{
+	struct prune_negative_ctrl *ctrl = arg;
+	ctrl->prune_nsupers++;
+}
+
+
 /*
  * A workqueue function to prune negative dentry.
  *
@@ -1502,42 +1545,43 @@ out:
  */
 static void prune_negative_dentry(struct work_struct *work)
 {
-	int cpu = smp_processor_id();
-	int freed, last_n_neg;
-	long nfree, excess;
-	struct super_block *sb = READ_ONCE(ndblk.prune_sb);
-	LIST_HEAD(dispose);
+	int cpu, limit_pc, ncpus;
+	long last_n_neg, excess, count;
+	unsigned long start;
+	struct prune_negative_ctrl ctrl;
 
-	if (!sb)
-		return;
-	if (NEG_IS_SB_UMOUNTING(sb) || !READ_ONCE(neg_dentry_pc))
+	cpu = smp_processor_id();
+	limit_pc = READ_ONCE(neg_dentry_pc);
+	ncpus = num_possible_cpus();
+	count = get_nr_dentry_negative();
+
+	if (!limit_pc)
 		goto stop_pruning;
 
-	ndblk.niter++;
-	ndblk.lru_count = 0;
-	last_n_neg = ndblk.n_neg;
-	freed = list_lru_walk(&sb->s_dentry_lru, dentry_negative_lru_isolate,
-			      &dispose, NEG_DENTRY_BATCH);
+	/* Check if negative dentry number is within the limit */
+	if (count <= ncpus * neg_dentry_percpu_limit)
+		goto requeue_work;
 
-	if (freed)
-		shrink_dentry_list(&dispose);
-	ndblk.n_pos += freed - (ndblk.n_neg - last_n_neg);
+	last_n_neg = ndblk.n_neg;
+	ctrl.prune_count = 0;
+	ctrl.prune_percent = limit_pc;
+	ctrl.prune_ncpus = ncpus;
+	start = jiffies;
 
 	/*
-	 * Continue delayed pruning until negative dentry free pool is at
-	 * least 1/2 of the initial value, the super_block has no more
-	 * negative dentries left at the front, or unmounting is in
-	 * progress.
-	 *
-	 * The pruning rate depends on the size of the free pool. The
-	 * faster rate is used when there is less than 1/8 left.
-	 * Otherwise, the slower rate will be used.
+	 * Get the total count of super blocks to prune.
+	 * We need this to estimate the number of detries
+	 * to prune. This may need further improvement...
 	 */
-	nfree = READ_ONCE(ndblk.nfree);
-	if ((ndblk.n_neg == last_n_neg) ||
-	    (nfree >= neg_dentry_nfree_init/2) || NEG_IS_SB_UMOUNTING(sb))
-		goto stop_pruning;
+	iterate_supers(inc_nsupers_cnt, &ctrl);
 
+	/*
+	 * iterate_supers() will take a read lock on the supers blocking
+	 * concurrent umount.
+	 */
+	iterate_supers(prune_negative_one_sb, &ctrl);
+
+requeue_work:
 	/*
 	 * If the negative dentry count in the current cpu is less than the
 	 * per_cpu limit, schedule the pruning in the next cpu if it has
@@ -1570,26 +1614,12 @@ static void prune_negative_dentry(struct work_struct *work)
 	}
 
 	schedule_delayed_work_on(cpu, &prune_neg_dentry_work,
-			(nfree < neg_dentry_nfree_init/8)
-			? NEG_PRUNING_FAST_RATE : NEG_PRUNING_SLOW_RATE);
+					NEGATIVE_DENTRY_CHECK_PERIOD);
+	return;
+stop_pruning:
+	ndblk.n_neg = 0;
 	return;
 
-stop_pruning:
-#ifdef CONFIG_DEBUG_KERNEL
-	/*
-	 * Report large negative dentry pruning event.
-	 */
-	if (ndblk.n_neg > NEG_PRUNING_SIZE) {
-		pr_info("Negative dentry pruning (SB=%s):\n\t"
-			"%d iterations, %ld/%ld neg/pos dentries freed.\n",
-			ndblk.prune_sb->s_id, ndblk.niter, ndblk.n_neg,
-			ndblk.n_pos);
-	}
-#endif
-	ndblk.niter = 0;
-	ndblk.n_neg = ndblk.n_pos = 0;
-	deactivate_super(sb);
-	WRITE_ONCE(ndblk.prune_sb, NULL);
 }
 
 /**
