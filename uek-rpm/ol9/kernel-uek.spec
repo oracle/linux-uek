@@ -1594,7 +1594,7 @@ fi\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
-if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
+if [ `uname -i` == "x86_64" -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ] &&\
    [ $1 -eq 1 ]; then\
   /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
