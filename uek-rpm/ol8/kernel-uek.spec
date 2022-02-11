@@ -1698,10 +1698,18 @@ fi\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
-if [ `uname -i` == "x86_64" -o `uname -i` == "i386"  -o `uname -i` == "aarch64" ] &&\
-   [ -f /etc/sysconfig/kernel ] &&\
-   [ $1 -eq 1 ]; then\
-  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
+if [ `uname -i` == "x86_64" -o `uname -i` == "aarch64" ] &&\
+   [ -f /etc/sysconfig/kernel ] && [ $1 -eq 1 ];\
+then\
+    /usr/bin/rpm -qa | grep -q -e kernel-uek-5.4 -e kernel-ueknano-5.4\
+    if [ $? -eq 0 ]\
+    then\
+        # Change to uek-core only if current default is UEK6\
+        /bin/sed -r -i 's/^DEFAULTKERNEL=(kernel%{?variant}|kernel-ueknano)$/DEFAULTKERNEL=kernel%{?variant}-core/' /etc/sysconfig/kernel || exit $?\
+    else\
+        # No UEK is present. Change the default to installing kernel\
+        /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}-core/' /etc/sysconfig/kernel || exit $?\
+    fi\
 fi}\
 %{nil}
 
@@ -1714,7 +1722,23 @@ fi}\
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
 if [ $1 -eq 0 ]\
 then\
-    /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-core/' /etc/sysconfig/kernel || exit $?\
+    /usr/bin/rpm -qa | grep -q -e kernel-uek-5.4 -e kernel-ueknano-5.4\
+    if [ $? -eq 0 ]\
+    then\
+        # UEK6 or UEK6 nano is present in the system.\
+        /usr/bin/rpm -qa | grep -q -e kernel-uek-5.4\
+        if [ $? -eq 0 ]\
+        then\
+            # Change to UEK6 if it is currently set to UEK7.\
+            /bin/sed -i 's/^DEFAULTKERNEL=kernel-uek-core$/DEFAULTKERNEL=kernel-uek/' /etc/sysconfig/kernel || exit $?\
+        else\
+            # Change to UEK6 nano if it is currently set to UEK7.\
+            /bin/sed -i 's/^DEFAULTKERNEL=kernel-uek-core$/DEFAULTKERNEL=kernel-ueknano/' /etc/sysconfig/kernel || exit $?\
+        fi\
+    else\
+        # No other UEK is present. Set the default to RHCK.\
+        /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-core/' /etc/sysconfig/kernel || exit $?\
+    fi\
 fi\
 %{nil}
 
