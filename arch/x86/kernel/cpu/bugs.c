@@ -1018,8 +1018,10 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 	 */
 	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD ||
-	    boot_cpu_data.x86_vendor == X86_VENDOR_HYGON) {
+	if (cmd == SPECTRE_V2_CMD_RETPOLINE_AMD ||
+	    ((boot_cpu_data.x86_vendor == X86_VENDOR_AMD ||
+	    boot_cpu_data.x86_vendor == X86_VENDOR_HYGON) &&
+	    cmd != SPECTRE_V2_CMD_RETPOLINE_GENERIC)) {
 		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
 			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
 			if (cmd != SPECTRE_V2_CMD_NONE)
@@ -1233,13 +1235,6 @@ static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 	     cmd == SPECTRE_V2_CMD_RETPOLINE_GENERIC) &&
 	    !IS_ENABLED(CONFIG_RETPOLINE)) {
 		pr_err("%s selected but not compiled in. Switching to AUTO select\n", mitigation_options[i].option);
-		return SPECTRE_V2_CMD_AUTO;
-	}
-
-	if (cmd == SPECTRE_V2_CMD_RETPOLINE_AMD &&
-	    boot_cpu_data.x86_vendor != X86_VENDOR_HYGON &&
-	    boot_cpu_data.x86_vendor != X86_VENDOR_AMD) {
-		pr_err("retpoline,amd selected but CPU is not AMD. Switching to AUTO select\n");
 		return SPECTRE_V2_CMD_AUTO;
 	}
 
