@@ -49,6 +49,10 @@
 				IRQ_TYPE_LEVEL_LOW)>;
 	};
 
+	capmem {
+		compatible = "pensando,capmem";
+	};
+
 	soc: soc {
 		compatible = "simple-bus";
 		#address-cells = <2>;
