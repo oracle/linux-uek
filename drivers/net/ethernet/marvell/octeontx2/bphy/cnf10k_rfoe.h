@@ -33,6 +33,9 @@
 
 #define CNF10K_RFOE_MAX_INTF			14
 
+#define CNF10K_RFOE_MAX_FSIZE		9212 /* max frame size excluding FCS */
+#define CNF10K_RFOE_MAX_MTU		(CNF10K_RFOE_MAX_FSIZE - VLAN_ETH_HLEN)
+
 /* global driver context */
 struct cnf10k_rfoe_drv_ctx {
 	u8				rfoe_num;
