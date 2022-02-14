@@ -347,7 +347,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 # Packages that need to be installed before the kernel is, because the %post
 # scripts use them.
 #
-%define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
+%define kernel_prereq  util-linux, coreutils, systemd >= 203-2, /usr/bin/kernel-install
 %define initrd_prereq  dracut >= 027
 
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
@@ -1685,6 +1685,17 @@ fi\
 #
 %define kernel_variant_pre(o) \
 %{expand:%%pre -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
+fstype="$(findmnt -n -o FSTYPE /)"\
+if [ x"$fstype" == x"btrfs" ]\
+then\
+sectorsize=$(stat -c %%S -f /)\
+var="%{?1:%{!-o:-}%{1}}-core" \
+if [ "${var:0:3}" != "64k" ] && [ $sectorsize -ne 4096 ]\
+then\
+echo -e "ERROR: Btrfs sector size must match kernel page size."\
+exit 1\
+fi\
+fi\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
