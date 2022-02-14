@@ -778,7 +778,6 @@ static int __init check_dev_quirk(int num, int slot, int func)
 	u16 vendor;
 	u16 device;
 	u8 type;
-	u8 sec;
 	int i;
 
 	class = read_pci_config_16(num, slot, func, PCI_CLASS_DEVICE);
@@ -807,11 +806,8 @@ static int __init check_dev_quirk(int num, int slot, int func)
 	type = read_pci_config_byte(num, slot, func,
 				    PCI_HEADER_TYPE);
 
-	if ((type & 0x7f) == PCI_HEADER_TYPE_BRIDGE) {
-		sec = read_pci_config_byte(num, slot, func, PCI_SECONDARY_BUS);
-		if (sec > num)
-			early_pci_scan_bus(sec);
-	}
+	if ((type & 0x7f) == PCI_HEADER_TYPE_BRIDGE)
+		return -1;
 
 	if (!(type & 0x80))
 		return -1;
@@ -834,8 +830,10 @@ static void __init early_pci_scan_bus(int bus)
 
 void __init early_quirks(void)
 {
+	int bus;
 	if (!early_pci_allowed())
 		return;
 
-	early_pci_scan_bus(0);
+	for (bus = 0; bus < 256; bus++)
+		early_pci_scan_bus(bus);
 }
