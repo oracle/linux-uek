@@ -956,6 +956,13 @@ exit:
 	return NETDEV_TX_OK;
 }
 
+static int cnf10k_change_mtu(struct net_device *netdev, int new_mtu)
+{
+	netdev->mtu = new_mtu;
+
+	return 0;
+}
+
 /* netdev open */
 static int cnf10k_rfoe_eth_open(struct net_device *netdev)
 {
@@ -1097,6 +1104,7 @@ static const struct net_device_ops cnf10k_rfoe_netdev_ops = {
 	.ndo_open		= cnf10k_rfoe_eth_open,
 	.ndo_stop		= cnf10k_rfoe_eth_stop,
 	.ndo_start_xmit		= cnf10k_rfoe_eth_start_xmit,
+	.ndo_change_mtu		= cnf10k_change_mtu,
 	.ndo_do_ioctl		= cnf10k_rfoe_ioctl,
 	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
@@ -1371,7 +1379,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			netdev->watchdog_timeo = (15 * HZ);
 			netdev->mtu = 1500U;
 			netdev->min_mtu = ETH_MIN_MTU;
-			netdev->max_mtu = 1500U;
+			netdev->max_mtu = CNF10K_RFOE_MAX_MTU;
 			ret = register_netdev(netdev);
 			if (ret < 0) {
 				dev_err(cdev->dev,
