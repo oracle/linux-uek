@@ -257,5 +257,10 @@
 			compatible = "pensando,mssoc", "syscon";
 			reg = <0x0 0x307c0000 0x0 0x3000>;
 		};
+
+		bsm@307c2080 {
+			compatible = "pensando,bsm";
+			reg = <0x0 0x307c2080 0x0 0x4>;
+		};
 	};
 };
