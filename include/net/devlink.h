@@ -59,6 +59,12 @@ struct devlink {
 	   reload_enabled:1;
 	refcount_t refcount;
 	struct completion comp;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+
 	char priv[0] __aligned(NETDEV_ALIGN);
 };
 
@@ -68,6 +74,9 @@ struct devlink_port_phys_attrs {
 			  * for a given port flavour.
 			  */
 	u32 split_subport_number; /* If the port is split, this is the number of subport. */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
@@ -97,7 +106,7 @@ struct devlink_port_pci_vf_attrs {
 	u16 pf;
 	u16 vf;
 	u8 external:1;
-	
+
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
 };
@@ -114,6 +123,9 @@ struct devlink_port_pci_sf_attrs {
 	u32 sf;
 	u16 pf;
 	u8 external:1;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
@@ -161,6 +173,9 @@ struct devlink_rate {
 			refcount_t refcnt;
 		};
 	};
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
 };
 
 struct devlink_port {
@@ -197,6 +212,9 @@ struct devlink_port_new_attrs {
 	u8 port_index_valid:1,
 	   controller_valid:1,
 	   sfnum_valid:1;
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
 };
 
 struct devlink_sb_pool_info {
@@ -1536,6 +1554,10 @@ struct devlink_ops {
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 static inline void *devlink_priv(struct devlink *devlink)
