@@ -8,6 +8,7 @@
 
 #include <linux/types.h>
 #include <linux/bvec.h>
+#include <linux/uek_kabi.h>
 
 struct bio_set;
 struct bio;
@@ -389,11 +390,11 @@ static inline bool blk_qc_t_is_internal(blk_qc_t cookie)
 }
 
 struct blk_rq_stat {
-	s64 mean;
+	UEK_KABI_REPLACE(s64 mean, u64 mean)
 	u64 min;
 	u64 max;
-	s32 nr_samples;
-	s32 nr_batch;
+	UEK_KABI_REPLACE(s32 nr_samples, u32 nr_samples)
+	UEK_KABI_DEPRECATE(s32, nr_batch)
 	u64 batch;
 };
 
