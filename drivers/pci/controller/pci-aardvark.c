@@ -1478,7 +1478,7 @@ static int advk_pcie_probe(struct platform_device *pdev)
 	}
 	pcie->root_bus_nr = bus->start;
 
-	resource_list_for_each_entry(entry, &pcie->resources) {
+	resource_list_for_each_entry(entry, &bridge->windows) {
 		resource_size_t start = entry->res->start;
 		resource_size_t size = resource_size(entry->res);
 		unsigned long type = resource_type(entry->res);
