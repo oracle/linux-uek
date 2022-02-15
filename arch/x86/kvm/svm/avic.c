@@ -778,11 +778,6 @@ void avic_load_eoi_exitmap(struct kvm_vcpu *vcpu, u64 *eoi_exit_bitmap)
 	return;
 }
 
-bool avic_dy_apicv_has_pending_interrupt(struct kvm_vcpu *vcpu)
-{
-	return false;
-}
-
 static void svm_ir_list_del(struct vcpu_svm *svm, struct amd_iommu_pi_data *pi)
 {
 	unsigned long flags;
