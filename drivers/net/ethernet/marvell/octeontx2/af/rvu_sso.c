@@ -1088,6 +1088,56 @@ int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
+int rvu_mbox_handler_ssow_chng_mship(struct rvu *rvu,
+				     struct ssow_chng_mship *req,
+				     struct msg_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	int ssolf, ssowlf, hwgrp;
+	u8 pos, bit;
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, pcifunc);
+	if (blkaddr < 0)
+		return SSOW_AF_ERR_LF_INVALID;
+
+	ssowlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->hws);
+	if (ssowlf < 0)
+		return SSO_AF_ERR_PARAM;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	for (hwgrp = 0; hwgrp < req->nb_hwgrps; hwgrp++) {
+		ssolf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc,
+				   req->hwgrps[hwgrp]);
+		if (ssolf < 0)
+			return SSO_AF_ERR_PARAM;
+
+		if (req->set > 1)
+			return SSO_AF_ERR_PARAM;
+		pos = ssolf / 64;
+		bit = ssolf % 64;
+
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWSX_SX_GRPMSKX(ssowlf,
+								      req->set,
+								      pos));
+		if (req->enable)
+			reg |= BIT_ULL(bit);
+		else
+			reg &= ~BIT_ULL(bit);
+
+		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_SX_GRPMSKX(ssowlf,
+								 req->set,
+								 pos), reg);
+	}
+
+	return 0;
+}
+
 int rvu_mbox_handler_ssow_lf_alloc(struct rvu *rvu,
 				   struct ssow_lf_alloc_req *req,
 				   struct msg_rsp *rsp)
