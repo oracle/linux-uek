@@ -660,6 +660,8 @@ Source1008: config-aarch64-debug
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
+Source27: Symtypes.kabi_x86_64debug
+Source28: Symtypes.kabi_x86_64
 
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
@@ -1326,8 +1328,22 @@ fi
     chmod 0755 $RPM_SOURCE_DIR/check-kabi
     if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour ]; then
        cp $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Module.kabi
-       $RPM_SOURCE_DIR/check-kabi -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers || exit 1
-       rm $RPM_BUILD_ROOT/Module.kabi # for now, don't keep it around.
+       cp $RPM_SOURCE_DIR/Symtypes.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Symtypes.kabi
+       cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/kabi_lockedlist
+       if ! $RPM_SOURCE_DIR/check-kabi -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers ; then
+           python3 uek-rpm/tools/kabi compare --no-print-symbols \
+               $RPM_BUILD_ROOT/Symtypes.kabi Symtypes.build
+           exit 1
+       fi
+       # Smoke tests verify that the kABI definitions are internally consistent:
+       # they contain the exact same set of symbols and symbol versions.
+       python3 uek-rpm/tools/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi \
+                                        -t $RPM_BUILD_ROOT/Symtypes.kabi \
+                                        -l $RPM_BUILD_ROOT/kabi_lockedlist || exit 1
+       # For now, don't keep these around
+       rm $RPM_BUILD_ROOT/Module.kabi
+       rm $RPM_BUILD_ROOT/Symtypes.kabi
+       rm $RPM_BUILD_ROOT/kabi_lockedlist
     else
        echo "**** NOTE: Cannot find reference Module.kabi file. ****"
     fi
