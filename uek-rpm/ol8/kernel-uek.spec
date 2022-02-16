@@ -135,13 +135,18 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %endif
 
 # Control whether we perform a compat. check against published ABI.
-%ifarch sparc64
-%define with_kabichk 0
-%define fancy_debuginfo 0
-%else
+# kABI checking is currently configured only for x86_64 platforms.
+# Collect Symtypes files with with_kabicollect. with_kabicollect is
+# required for with_kabichk to give detailed ABI breakage diagnostics.
+%ifarch x86_64
 %define with_kabichk 1
-%define fancy_debuginfo 0
+%define with_kabicollect 1
+%else
+%define with_kabichk 0
+%define with_kabicollect 0
 %endif
+
+%define fancy_debuginfo 0
 
 # .BTF section must stay in modules
 %define _find_debuginfo_opt_btf --keep-section .BTF
@@ -718,6 +723,7 @@ Source1012: config-aarch64-embedded2
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
+Source29: kabi
 
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
@@ -1294,8 +1300,13 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make -s ARCH=$Arch %{oldconfig_target} > /dev/null
+%if %{with_kabicollect}
+    make -s ARCH=$Arch V=1 KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
+    make -s ARCH=$Arch V=1 KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
+%else
     make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
     make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
+%endif
 
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
@@ -1425,8 +1436,13 @@ fi
     rm -f %{_tmppath}/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
+    # Create symbol type data which can be used to introspect kABI breakages
+%if %{with_kabicollect}
+    python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
+%endif
+
 %if %{with_kabichk}
-    echo "**** kABI checking is enabled in kernel SPEC file. ****"
+    echo "**** kABI checking is enabled in kernel SPEC file for %{_target_cpu}. ****"
     chmod 0755 $RPM_SOURCE_DIR/check-kabi
     if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour ]; then
        cp $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Module.kabi
@@ -1434,7 +1450,10 @@ fi
        rm $RPM_BUILD_ROOT/Module.kabi # for now, don't keep it around.
     else
        echo "**** NOTE: Cannot find reference Module.kabi file. ****"
+       exit 1
     fi
+%else
+    echo "**** kABI checking is NOT enabled in kernel SPEC file for %{_target_cpu}. ****"
 %endif
 
     # then drop all but the needed Makefiles/Kconfig files
@@ -1507,7 +1526,10 @@ fi
 %if %{with_debuginfo}
     mkdir -p $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer
     cp vmlinux $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer
+    # also include Symtypes.build for kABI maintenance
+    [ -f Symtypes.build ] && gzip -c9 < Symtypes.build > $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer/Symtypes.build.gz
 %endif
+    rm -f Symtypes.build
 
     find $RPM_BUILD_ROOT/lib/modules/$KernelVer -name "*.ko" -type f > modnames
 
