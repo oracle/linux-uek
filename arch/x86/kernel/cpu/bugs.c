@@ -943,7 +943,7 @@ enum spectre_v2_mitigation_cmd {
 	SPECTRE_V2_CMD_FORCE,
 	SPECTRE_V2_CMD_RETPOLINE,
 	SPECTRE_V2_CMD_RETPOLINE_GENERIC,
-	SPECTRE_V2_CMD_RETPOLINE_AMD,
+	SPECTRE_V2_CMD_RETPOLINE_LFENCE,
 	SPECTRE_V2_CMD_IBRS,
 };
 
@@ -1018,21 +1018,21 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 	 */
 	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 
-	if (cmd == SPECTRE_V2_CMD_RETPOLINE_AMD ||
+	if (cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE ||
 	    ((boot_cpu_data.x86_vendor == X86_VENDOR_AMD ||
 	    boot_cpu_data.x86_vendor == X86_VENDOR_HYGON) &&
 	    cmd != SPECTRE_V2_CMD_RETPOLINE_GENERIC)) {
 		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_LFENCE);
 			if (cmd != SPECTRE_V2_CMD_NONE)
-				retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
+				retpoline_mode = SPECTRE_V2_LFENCE;
 			return;
 		}
 		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
 	}
 
 	if (cmd != SPECTRE_V2_CMD_NONE)
-		retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
+		retpoline_mode = SPECTRE_V2_RETPOLINE;
 }
 
 static void retpoline_activate(enum spectre_v2_mitigation mode)
@@ -1172,8 +1172,8 @@ set_mode:
 
 static const char * const spectre_v2_strings[] = {
 	[SPECTRE_V2_NONE]			= "Vulnerable",
-	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
-	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
+	[SPECTRE_V2_RETPOLINE]			= "Mitigation: Retpolines",
+	[SPECTRE_V2_LFENCE]			= "Mitigation: LFENCE",
 	[SPECTRE_V2_IBRS]			= "Mitigation: Basic IBRS",
 	[SPECTRE_V2_IBRS_ENHANCED]		= "Mitigation: Enhanced IBRS",
 };
@@ -1186,7 +1186,8 @@ static const struct {
 	{ "off",		SPECTRE_V2_CMD_NONE,		  false },
 	{ "on",			SPECTRE_V2_CMD_FORCE,		  true  },
 	{ "retpoline",		SPECTRE_V2_CMD_RETPOLINE,	  false },
-	{ "retpoline,amd",	SPECTRE_V2_CMD_RETPOLINE_AMD,	  false },
+	{ "retpoline,amd",	SPECTRE_V2_CMD_RETPOLINE_LFENCE,  false },
+	{ "retpoline,lfence",	SPECTRE_V2_CMD_RETPOLINE_LFENCE,  false },
 	{ "retpoline,generic",	SPECTRE_V2_CMD_RETPOLINE_GENERIC, false },
 	{ "auto",		SPECTRE_V2_CMD_AUTO,		  false },
 	{ "ibrs",		SPECTRE_V2_CMD_IBRS,		  false },
@@ -1231,10 +1232,16 @@ static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 	}
 
 	if ((cmd == SPECTRE_V2_CMD_RETPOLINE ||
-	     cmd == SPECTRE_V2_CMD_RETPOLINE_AMD ||
+	     cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE ||
 	     cmd == SPECTRE_V2_CMD_RETPOLINE_GENERIC) &&
 	    !IS_ENABLED(CONFIG_RETPOLINE)) {
 		pr_err("%s selected but not compiled in. Switching to AUTO select\n", mitigation_options[i].option);
+		return SPECTRE_V2_CMD_AUTO;
+	}
+
+	if ((cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE) &&
+	    !boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
+		pr_err("%s selected, but CPU doesn't have a serializing LFENCE. Switching to AUTO select\n", mitigation_options[i].option);
 		return SPECTRE_V2_CMD_AUTO;
 	}
 
@@ -1298,8 +1305,8 @@ static void disable_ibrs_and_friends(void)
 static bool retpoline_mode_selected(enum spectre_v2_mitigation mode)
 {
 	switch (mode) {
-	case SPECTRE_V2_RETPOLINE_GENERIC:
-	case SPECTRE_V2_RETPOLINE_AMD:
+	case SPECTRE_V2_RETPOLINE:
+	case SPECTRE_V2_LFENCE:
 		return true;
 	default:
 		return false;
@@ -1354,7 +1361,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	 * should be adjusted accordingly.
 	 */
 	if ((IS_ENABLED(CONFIG_RETPOLINE)) &&
-		(retpoline_mode == SPECTRE_V2_RETPOLINE_AMD)) {
+		(retpoline_mode == SPECTRE_V2_LFENCE)) {
 		return retpoline_mode;
 	}
 
@@ -1480,7 +1487,7 @@ static void spectre_v2_select_mitigation(void)
 		break;
 
 	case SPECTRE_V2_CMD_RETPOLINE:
-	case SPECTRE_V2_CMD_RETPOLINE_AMD:
+	case SPECTRE_V2_CMD_RETPOLINE_LFENCE:
 	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
 		/*
 		 * These options are sanitized by spectre_v2_parse_cmdline().
