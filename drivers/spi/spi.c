@@ -794,22 +794,22 @@ int spi_register_board_info(struct spi_board_info const *info, unsigned n)
 
 static void spi_set_cs(struct spi_device *spi, bool enable)
 {
+	bool enable1 = enable;
+
 	if (spi->mode & SPI_CS_HIGH)
 		enable = !enable;
 
 	if (spi->cs_gpiod || gpio_is_valid(spi->cs_gpio)) {
-		/*
-		 * Honour the SPI_NO_CS flag and invert the enable line, as
-		 * active low is default for SPI. Execution paths that handle
-		 * polarity inversion in gpiolib (such as device tree) will
-		 * enforce active high using the SPI_CS_HIGH resulting in a
-		 * double inversion through the code above.
-		 */
 		if (!(spi->mode & SPI_NO_CS)) {
 			if (spi->cs_gpiod)
+				/* polarity handled by gpiolib */
 				gpiod_set_value_cansleep(spi->cs_gpiod,
-							 !enable);
+							 enable1);
 			else
+				/*
+				 * invert the enable line, as active low is
+				 * default for SPI.
+				 */
 				gpio_set_value_cansleep(spi->cs_gpio, !enable);
 		}
 		/* Some SPI masters need both GPIO CS & slave_select */
@@ -1798,15 +1798,6 @@ static int of_spi_parse_dt(struct spi_controller *ctlr, struct spi_device *spi,
 		return rc;
 	}
 	spi->chip_select = value;
-
-	/*
-	 * For descriptors associated with the device, polarity inversion is
-	 * handled in the gpiolib, so all gpio chip selects are "active high"
-	 * in the logical sense, the gpiolib will invert the line if need be.
-	 */
-	if ((ctlr->use_gpio_descriptors) && ctlr->cs_gpiods &&
-	    ctlr->cs_gpiods[spi->chip_select])
-		spi->mode |= SPI_CS_HIGH;
 
 	/* Device speed */
 	rc = of_property_read_u32(nc, "spi-max-frequency", &value);
