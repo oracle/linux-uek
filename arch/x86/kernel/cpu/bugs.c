@@ -96,6 +96,8 @@ EXPORT_SYMBOL(rsb_overwrite_key);
 
 static bool is_skylake_era(void);
 static void disable_ibrs_and_friends(void);
+static enum spectre_v2_mitigation spectre_v2_select_retpoline(void);
+static inline bool spectre_v2_in_eibrs_mode(enum spectre_v2_mitigation mode);
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -188,11 +190,6 @@ DEFINE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 EXPORT_SYMBOL(switch_mm_always_ibpb);
 
 static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
-
-static inline bool spectre_v2_eibrs_enabled(void)
-{
-	return spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED;
-}
 
 /* Control MDS CPU buffer clear before returning to user space */
 DEFINE_STATIC_KEY_FALSE(mds_user_clear);
@@ -352,7 +349,8 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		 * avoid basic IBRS needlessly being enabled before userspace
 		 * is running.
 		 */
-		host = x86_spec_ctrl_base | (spectre_v2_eibrs_enabled() ?
+		host = x86_spec_ctrl_base |
+		       (spectre_v2_in_eibrs_mode(spectre_v2_enabled) ?
 			SPEC_CTRL_FEATURE_ENABLE_IBRS : 0);
 		break;
 	case SPEC_CTRL_IDLE_ENTER:
@@ -935,6 +933,9 @@ enum spectre_v2_mitigation_cmd {
 	SPECTRE_V2_CMD_RETPOLINE_GENERIC,
 	SPECTRE_V2_CMD_RETPOLINE_LFENCE,
 	SPECTRE_V2_CMD_IBRS,
+	SPECTRE_V2_CMD_EIBRS,
+	SPECTRE_V2_CMD_EIBRS_RETPOLINE,
+	SPECTRE_V2_CMD_EIBRS_LFENCE,
 };
 
 enum spectre_v2_user_cmd {
@@ -1001,6 +1002,16 @@ void retpoline_disable(void)
 
 static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 {
+	retpoline_mode = spectre_v2_select_retpoline();
+
+	/* If the user forced a retpoline mode, switch to that. */
+	if (cmd == SPECTRE_V2_CMD_RETPOLINE_GENERIC ||
+	    cmd == SPECTRE_V2_CMD_EIBRS_RETPOLINE)
+		retpoline_mode = SPECTRE_V2_RETPOLINE;
+	else if (cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE ||
+		 cmd == SPECTRE_V2_CMD_EIBRS_LFENCE)
+		retpoline_mode = SPECTRE_V2_LFENCE;
+
 	/*
 	 * Set the retpoline capability to advertise that that retpoline
 	 * is available, however the retpoline feature is enabled via
@@ -1008,20 +1019,8 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 	 */
 	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 
-	if (cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE ||
-	    (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
-	    cmd != SPECTRE_V2_CMD_RETPOLINE_GENERIC)) {
-		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_LFENCE);
-			if (cmd != SPECTRE_V2_CMD_NONE)
-				retpoline_mode = SPECTRE_V2_LFENCE;
-			return;
-		}
-		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
-	}
-
-	if (cmd != SPECTRE_V2_CMD_NONE)
-		retpoline_mode = SPECTRE_V2_RETPOLINE;
+	if (retpoline_mode == SPECTRE_V2_LFENCE)
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE_LFENCE);
 }
 
 static void retpoline_activate(enum spectre_v2_mitigation mode)
@@ -1037,7 +1036,7 @@ void refresh_set_spectre_v2_enabled(void)
 		spectre_v2_enabled = retpoline_mode;
 	else if (check_ibrs_inuse())
 		spectre_v2_enabled = (check_basic_ibrs_inuse() ?
-			SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
+			SPECTRE_V2_IBRS : SPECTRE_V2_EIBRS);
 	else
 		spectre_v2_enabled = SPECTRE_V2_NONE;
 }
@@ -1073,6 +1072,13 @@ spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
 
 	pr_err("Unknown user space protection option (%s). Switching to AUTO select\n", arg);
 	return SPECTRE_V2_USER_CMD_AUTO;
+}
+
+static inline bool spectre_v2_in_eibrs_mode(enum spectre_v2_mitigation mode)
+{
+	return (mode == SPECTRE_V2_EIBRS ||
+		mode == SPECTRE_V2_EIBRS_RETPOLINE ||
+		mode == SPECTRE_V2_EIBRS_LFENCE);
 }
 
 static void
@@ -1140,7 +1146,7 @@ spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 	 */
 	if (!boot_cpu_has(X86_FEATURE_STIBP) ||
 	    !smt_possible ||
-	    spectre_v2_eibrs_enabled())
+	    spectre_v2_in_eibrs_mode(spectre_v2_enabled))
 		return;
 
 	/*
@@ -1163,7 +1169,9 @@ static const char * const spectre_v2_strings[] = {
 	[SPECTRE_V2_RETPOLINE]			= "Mitigation: Retpolines",
 	[SPECTRE_V2_LFENCE]			= "Mitigation: LFENCE",
 	[SPECTRE_V2_IBRS]			= "Mitigation: Basic IBRS",
-	[SPECTRE_V2_IBRS_ENHANCED]		= "Mitigation: Enhanced IBRS",
+	[SPECTRE_V2_EIBRS]			= "Mitigation: Enhanced IBRS",
+	[SPECTRE_V2_EIBRS_LFENCE]		= "Mitigation: Enhanced IBRS + LFENCE",
+	[SPECTRE_V2_EIBRS_RETPOLINE]		= "Mitigation: Enhanced IBRS + Retpolines",
 };
 
 static const struct {
@@ -1177,6 +1185,9 @@ static const struct {
 	{ "retpoline,amd",     SPECTRE_V2_CMD_RETPOLINE_LFENCE,  false },
 	{ "retpoline,lfence",  SPECTRE_V2_CMD_RETPOLINE_LFENCE,  false },
 	{ "retpoline,generic", SPECTRE_V2_CMD_RETPOLINE_GENERIC, false },
+	{ "eibrs",             SPECTRE_V2_CMD_EIBRS,             false },
+	{ "eibrs,lfence",      SPECTRE_V2_CMD_EIBRS_LFENCE,      false },
+	{ "eibrs,retpoline",   SPECTRE_V2_CMD_EIBRS_RETPOLINE,   false },
 	{ "auto",              SPECTRE_V2_CMD_AUTO,              false },
 	{ "ibrs",              SPECTRE_V2_CMD_IBRS,              false },
 };
@@ -1221,15 +1232,29 @@ static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 
 	if ((cmd == SPECTRE_V2_CMD_RETPOLINE ||
 	     cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE ||
-	     cmd == SPECTRE_V2_CMD_RETPOLINE_GENERIC) &&
+	     cmd == SPECTRE_V2_CMD_RETPOLINE_GENERIC ||
+	     cmd == SPECTRE_V2_CMD_EIBRS_LFENCE ||
+	     cmd == SPECTRE_V2_CMD_EIBRS_RETPOLINE) &&
 	    !IS_ENABLED(CONFIG_RETPOLINE)) {
-		pr_err("%s selected but not compiled in. Switching to AUTO select\n", mitigation_options[i].option);
+		pr_err("%s selected but not compiled in. Switching to AUTO select\n",
+		       mitigation_options[i].option);
 		return SPECTRE_V2_CMD_AUTO;
 	}
 
-	if ((cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE) &&
+	if ((cmd == SPECTRE_V2_CMD_EIBRS ||
+	     cmd == SPECTRE_V2_CMD_EIBRS_LFENCE ||
+	     cmd == SPECTRE_V2_CMD_EIBRS_RETPOLINE) &&
+	    !boot_cpu_has(X86_FEATURE_IBRS_ENHANCED)) {
+		pr_err("%s selected but CPU doesn't have eIBRS. Switching to AUTO select\n",
+		       mitigation_options[i].option);
+		return SPECTRE_V2_CMD_AUTO;
+	}
+
+	if ((cmd == SPECTRE_V2_CMD_RETPOLINE_LFENCE ||
+	     cmd == SPECTRE_V2_CMD_EIBRS_LFENCE) &&
 	    !boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-		pr_err("%s selected, but CPU doesn't have a serializing LFENCE. Switching to AUTO select\n", mitigation_options[i].option);
+		pr_err("%s selected, but CPU doesn't have a serializing LFENCE. Switching to AUTO select\n",
+		       mitigation_options[i].option);
 		return SPECTRE_V2_CMD_AUTO;
 	}
 
@@ -1262,6 +1287,25 @@ static bool is_skylake_era(void)
 	return false;
 }
 
+static enum spectre_v2_mitigation spectre_v2_select_retpoline(void)
+{
+	if (!IS_ENABLED(CONFIG_RETPOLINE)) {
+		pr_err("Kernel not compiled with retpoline; no mitigation available!");
+		return SPECTRE_V2_NONE;
+	}
+
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
+		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
+			pr_err("LFENCE not serializing, switching to generic retpoline\n");
+			return SPECTRE_V2_RETPOLINE;
+		}
+		return SPECTRE_V2_LFENCE;
+	}
+
+	return SPECTRE_V2_RETPOLINE;
+}
+
+
 static void ibrs_select(enum spectre_v2_mitigation *mode)
 {
 	/* Turn it on (if possible) */
@@ -1272,7 +1316,7 @@ static void ibrs_select(enum spectre_v2_mitigation *mode)
 	}
 	/* Determine the specific IBRS variant in use */
 	*mode = (check_basic_ibrs_inuse() ?
-		SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
+		SPECTRE_V2_IBRS : SPECTRE_V2_EIBRS);
 
 	if (boot_cpu_has(X86_FEATURE_SMEP))
 		return;
@@ -1280,7 +1324,7 @@ static void ibrs_select(enum spectre_v2_mitigation *mode)
 	/* IBRS without SMEP needs RSB overwrite */
 	rsb_overwrite_enable();
 
-	if (*mode == SPECTRE_V2_IBRS_ENHANCED)
+	if (*mode == SPECTRE_V2_EIBRS)
 		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
 }
 
@@ -1372,7 +1416,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 		 * set the correct mode and update the ibrs state variables.
 		 */
 		ibrs_select(&auto_mode);
-		BUG_ON(auto_mode != SPECTRE_V2_IBRS_ENHANCED);
+		BUG_ON(auto_mode != SPECTRE_V2_EIBRS);
 		return auto_mode;
 
 	} else if (IS_ENABLED(CONFIG_RETPOLINE)) {
@@ -1419,7 +1463,7 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 			 */
 			pr_info("Spectre v2 mitigation: Filling RSB on underflow conditions\n");
 		}
-	} else if (spectre_v2_eibrs_enabled()) {
+	} else if (spectre_v2_in_eibrs_mode(spectre_v2_enabled)) {
 		/* If enhanced IBRS mode is selected, enable it in all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS);
@@ -1429,7 +1473,8 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 	 * Overwrite the RSB after a VM exit to ensure that guest behavior
 	 * cannot control it. Only enhanced IBRS with SMEP can avoid this.
 	 */
-	if (!spectre_v2_eibrs_enabled() || !boot_cpu_has(X86_FEATURE_SMEP))
+	if (!spectre_v2_in_eibrs_mode(spectre_v2_enabled) ||
+	    !boot_cpu_has(X86_FEATURE_SMEP))
 		setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
 
 	/*
@@ -1449,7 +1494,7 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 	 * speculation around firmware calls only when Enhanced IBRS isn't
 	 * supported.
 	 */
-	if (ibrs_supported && !spectre_v2_eibrs_enabled()) {
+	if (ibrs_supported && !spectre_v2_in_eibrs_mode(mode)) {
 		ibrs_firmware_enable();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
@@ -1476,14 +1521,15 @@ static void spectre_v2_select_mitigation(void)
 		mode = select_auto_mitigation_mode(cmd);
 		break;
 
-	case SPECTRE_V2_CMD_RETPOLINE:
 	case SPECTRE_V2_CMD_RETPOLINE_LFENCE:
+		mode = SPECTRE_V2_LFENCE;
+		break;
+
 	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
-		/*
-		 * These options are sanitized by spectre_v2_parse_cmdline().
-		 * If they were received here, it means CONFIG_RETPOLINE is
-		 * enabled, so there is no need to check again.
-		 */
+		mode = SPECTRE_V2_RETPOLINE;
+		break;
+
+	case SPECTRE_V2_CMD_RETPOLINE:
 		mode = retpoline_mode;
 		break;
 
@@ -1494,6 +1540,18 @@ static void spectre_v2_select_mitigation(void)
 		 * fallback.
 		 */
 		select_ibrs_variant(&mode);
+		break;
+
+	case SPECTRE_V2_CMD_EIBRS:
+		mode = SPECTRE_V2_EIBRS;
+		break;
+
+	case SPECTRE_V2_CMD_EIBRS_LFENCE:
+		mode = SPECTRE_V2_EIBRS_LFENCE;
+		break;
+
+	case SPECTRE_V2_CMD_EIBRS_RETPOLINE:
+		mode = SPECTRE_V2_EIBRS_RETPOLINE;
 		break;
 	}
 
@@ -2178,7 +2236,7 @@ static ssize_t tsx_async_abort_show_state(char *buf)
 
 static char *stibp_state(void)
 {
-	if (spectre_v2_eibrs_enabled())
+	if (spectre_v2_in_eibrs_mode(spectre_v2_enabled))
 		return "";
 
 	switch (spectre_v2_user_stibp) {
