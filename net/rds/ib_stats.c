@@ -87,6 +87,7 @@ static char *rds_ib_stat_names[] = {
 	"ib_rdma_mr_1m_pool_flush",
 	"ib_rdma_mr_1m_pool_wait",
 	"ib_rdma_mr_1m_pool_depleted",
+	"ib_rdma_flush_mr_pool_avoided",
 	"ib_atomic_cswp",
 	"ib_atomic_fadd",
 	"ib_srq_lows",
