@@ -99,6 +99,8 @@ static inline int tim_get_min_intvl(struct rvu *rvu, u8 clocksource,
 	if (is_rvu_otx2(rvu)) {
 		switch (clocksource) {
 		case TIM_CLK_SRCS_TENNS:
+			intvl = 200;
+			break;
 		case TIM_CLK_SRCS_GPIO:
 			intvl = 256;
 			break;
