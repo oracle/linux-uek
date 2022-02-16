@@ -211,6 +211,7 @@ M(SSO_HW_RELEASE_XAQ,	0x611, sso_hw_release_xaq_aura,			\
 				sso_release_xaq, msg_rsp)	\
 M(SSO_CONFIG_LSW,	0x612, ssow_config_lsw,			\
 				ssow_config_lsw, msg_rsp)	\
+M(SSO_HWS_CHNG_MSHIP,   0x613, ssow_chng_mship, ssow_chng_mship, msg_rsp)\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
 M(TIM_LF_ALLOC,		0x800, tim_lf_alloc,				\
 				tim_lf_alloc_req, tim_lf_alloc_rsp)	\
@@ -1374,6 +1375,15 @@ struct ssow_config_lsw {
 #define SSOW_WQE_REL_LSW_WAIT	0
 #define SSOW_WQE_REL_IMM	1
 	u8 wqe_release;
+};
+
+struct ssow_chng_mship {
+	struct mbox_msghdr hdr;
+	u8 set;
+	u8 enable;
+	u8 hws;
+	u16 nb_hwgrps;
+	u16 hwgrps[MAX_RVU_BLKLF_CNT];
 };
 
 struct sso_grp_qos_cfg {
