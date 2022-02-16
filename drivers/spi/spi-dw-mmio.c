@@ -48,10 +48,28 @@ struct dw_spi_mscc {
 	void __iomem        *spi_mst;
 };
 
+struct dw_spi_elba {
+	struct regmap *regmap;
+	unsigned int reg;
+	unsigned int ctl;
+};
+
+/*
+ * ctl:              1               |               0
+ * cs:       1               0       |       1               0
+ * bit:  7-------6-------5-------4---|---3-------2-------1-------0
+ *      cs1   cs1_ovr   cs0   cs0_ovr|  cs1   cs1_ovr   cs0   cs0_ovr
+ *                  ssi1             |            ssi0
+ */
+#define ELBA_SPICS_SHIFT(ctl, cs)	(4 * (ctl) + 2 * (cs))
+#define ELBA_SPICS_MASK(ctl, cs)	(0x3 << ELBA_SPICS_SHIFT(ctl, cs))
+#define ELBA_SPICS_SET(ctl, cs, val)	\
+			((((val) << 1) | 0x1) << ELBA_SPICS_SHIFT(ctl, cs))
+
 /*
  * The Designware SPI controller (referred to as master in the documentation)
  * automatically deasserts chip select when the tx fifo is empty. The chip
- * selects then needs to be either driven as GPIOs or, for the first 4 using the
+ * selects then needs to be either driven as GPIOs or, for the first 4 using
  * the SPI boot controller registers. the final chip select is an OR gate
  * between the Designware SPI controller and the SPI boot controller.
  */
@@ -125,6 +143,75 @@ static int dw_spi_mscc_jaguar2_init(struct platform_device *pdev,
 static int dw_spi_alpine_init(struct platform_device *pdev,
 			      struct dw_spi_mmio *dwsmmio)
 {
+	dwsmmio->dws.cs_override = 1;
+
+	return 0;
+}
+
+static void elba_spics_set_cs(struct dw_spi_elba *dwselba, int cs, int enable)
+{
+	regmap_update_bits(dwselba->regmap, dwselba->reg,
+		ELBA_SPICS_MASK(dwselba->ctl, cs),
+		ELBA_SPICS_SET(dwselba->ctl, cs, enable));
+}
+
+static void dw_spi_elba_set_cs(struct spi_device *spi, bool enable)
+{
+	struct dw_spi *dws = spi_master_get_devdata(spi->master);
+	struct dw_spi_mmio *dwsmmio = container_of(dws, struct dw_spi_mmio, dws);
+	struct dw_spi_elba *dwselba = dwsmmio->priv;
+	u8 cs = spi->chip_select;
+
+	if (cs < 2) {
+		/* overridden native chip-select */
+		elba_spics_set_cs(dwselba, spi->chip_select, enable);
+	}
+
+	/*
+	 * The DW SPI controller needs a native CS bit selected to start
+	 * the serial engine, and we have fewer native CSs than we need, so
+	 * use CS0 always.
+	 */
+	spi->chip_select = 0;
+	dw_spi_set_cs(spi, enable);
+	spi->chip_select = cs;
+}
+
+static int dw_spi_elba_init(struct platform_device *pdev,
+			    struct dw_spi_mmio *dwsmmio)
+{
+	struct of_phandle_args args;
+	struct dw_spi_elba *dwselba;
+	struct regmap *regmap;
+	int rc;
+
+	rc = of_parse_phandle_with_fixed_args(pdev->dev.of_node,
+					      "pensando,spics", 2, 0, &args);
+	if (rc) {
+		dev_err(&pdev->dev, "could not find pensando,spics\n");
+		return rc;
+	}
+
+	regmap = syscon_node_to_regmap(args.np);
+	if (IS_ERR(regmap)) {
+		dev_err(&pdev->dev, "could not map pensando,spics\n");
+		return PTR_ERR(regmap);
+	}
+
+	dwselba = devm_kzalloc(&pdev->dev, sizeof(*dwselba), GFP_KERNEL);
+	if (!dwselba)
+		return -ENOMEM;
+
+	dwselba->regmap = regmap;
+	dwselba->reg = args.args[0];
+	dwselba->ctl = args.args[1];
+
+	/* deassert cs */
+	elba_spics_set_cs(dwselba, 0, 1);
+	elba_spics_set_cs(dwselba, 1, 1);
+
+	dwsmmio->priv = dwselba;
+	dwsmmio->dws.set_cs = dw_spi_elba_set_cs;
 	dwsmmio->dws.cs_override = 1;
 
 	return 0;
@@ -223,6 +310,7 @@ static const struct of_device_id dw_spi_mmio_of_match[] = {
 	{ .compatible = "mscc,ocelot-spi", .data = dw_spi_mscc_ocelot_init},
 	{ .compatible = "mscc,jaguar2-spi", .data = dw_spi_mscc_jaguar2_init},
 	{ .compatible = "amazon,alpine-dw-apb-ssi", .data = dw_spi_alpine_init},
+	{ .compatible = "pensando,elba-spi", .data = dw_spi_elba_init },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, dw_spi_mmio_of_match);
