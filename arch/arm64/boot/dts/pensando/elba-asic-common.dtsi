@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: GPL-2.0
+
+&ahb_clk {
+	clock-frequency = <400000000>;
+};
+
+&emmc_clk {
+	clock-frequency = <200000000>;
+};
+
+&flash_clk {
+	clock-frequency = <400000000>;
+};
+
+&ref_clk {
+	clock-frequency = <156250000>;
+};
+
+&qspi {
+	status = "okay";
+	flash0: flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <40000000>;
+		spi-rx-bus-width = <2>;
+		m25p,fast-read;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <0>;
+		cdns,tslch-ns = <0>;
+	};
+};
+
+&gpio0 {
+	status = "ok";
+};
+
+&emmc {
+	bus-width = <8>;
+	status = "ok";
+};
+
+&wdt0 {
+	status = "okay";
+};
+
+&i2c0 {
+	clock-frequency = <100000>;
+	status = "okay";
+	temp-sensor@4c {
+		compatible = "ti,tmp451";
+		reg = <0x4c>;
+	};
+
+	rtc@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+	};
+
+	regulator@62 {
+		compatible = "ti,tps53659";
+		reg = <0x62>;
+	};
+};
+
+&spi0 {
+	num-cs = <4>;
+	cs-gpios = <0>, <0>,
+		<&porta 1 GPIO_ACTIVE_LOW>, <&porta 7 GPIO_ACTIVE_LOW>;
+	status = "okay";
+	spi0_cs0@0 {
+		compatible = "pensando,cpld";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <12000000>;
+		reg = <0>;
+	};
+
+	spi0_cs1@1 {
+		compatible = "pensando,cpld";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <12000000>;
+		reg = <1>;
+	};
+
+	spi0_cs2@2 {
+		compatible = "pensando,cpld-rd1173";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <12000000>;
+		reg = <2>;
+		interrupt-parent = <&porta>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
+	};
+
+	spi0_cs3@3 {
+		compatible = "pensando,cpld";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <12000000>;
+		reg = <3>;
+	};
+};
