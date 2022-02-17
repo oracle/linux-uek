@@ -86,6 +86,7 @@
 	__unregister_chrdev
 	__uv_cpu_info
 	__uv_hub_info_list
+	__uv_uek_dummy
 	__vfs_getxattr
 	__vfs_removexattr
 	__virt_addr_valid
