@@ -79,7 +79,7 @@ config SYSTEM_EXTRA_CERTIFICATE
 config SYSTEM_EXTRA_CERTIFICATE_SIZE
 	int "Number of bytes to reserve for the extra certificate"
 	depends on SYSTEM_EXTRA_CERTIFICATE
-	default 4096
+	default 8192
 	help
 	  This is the number of bytes reserved in the kernel image for a
 	  certificate to be inserted.
