@@ -40,15 +40,18 @@ static inline u64 get_tenns_clk(void)
 static inline int tim_block_cn10k_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	int lf;
+	int lf, blkaddr;
 
-	hw->tim.ring_intvls = kmalloc_array(hw->block[BLKTYPE_TIM].lf.max,
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
+	if (blkaddr < 0)
+		return blkaddr;
+	hw->tim.ring_intvls = kmalloc_array(hw->block[blkaddr].lf.max,
 					    sizeof(enum tim_ring_interval),
 					    GFP_KERNEL);
 	if (!hw->tim.ring_intvls)
 		return -ENOMEM;
 
-	for (lf = 0; lf < hw->block[BLKTYPE_TIM].lf.max; lf++)
+	for (lf = 0; lf < hw->block[blkaddr].lf.max; lf++)
 		hw->tim.ring_intvls[lf] = TIM_INTERVAL_INVAL;
 	hw->tim.rings_per_intvl[TIM_INTERVAL_1US] = 0;
 	hw->tim.rings_per_intvl[TIM_INTERVAL_10US] = 0;
