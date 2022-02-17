@@ -165,6 +165,7 @@
 	_raw_spin_lock
 	_raw_spin_lock_irq
 	_raw_spin_lock_irqsave
+	_raw_spin_trylock
 	_raw_spin_unlock
 	_raw_spin_unlock_irqrestore
 	_raw_write_lock
