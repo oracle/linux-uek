@@ -919,69 +919,6 @@ static inline const char *spectre_v2_module_string(void)
 static inline const char *spectre_v2_module_string(void) { return ""; }
 #endif
 
-bool retpoline_enabled(void)
-{
-	return static_key_enabled(&retpoline_enabled_key);
-}
-
-void retpoline_enable(void)
-{
-	static_branch_enable(&retpoline_enabled_key);
-	if (is_skylake_era()) {
-		/*
-		 * With retpoline, Skylake era CPUs should also fill RSB on any
-		 * condition that might empty the RSB.
-		 */
-		rsb_stuff_enable();
-	}
-}
-
-void retpoline_disable(void)
-{
-	if (is_skylake_era() && !static_key_enabled(&rsb_overwrite_key))
-		rsb_stuff_disable();
-	static_branch_disable(&retpoline_enabled_key);
-}
-
-static void retpoline_init(void)
-{
-	/*
-	 * Set the retpoline capability to advertise that that retpoline
-	 * is available, however the retpoline feature is enabled via
-	 * the retpoline_enabled_key static key.
-	 */
-	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
-
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
-		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
-			retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
-			return;
-		}
-		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
-	}
-
-	retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
-}
-
-static void retpoline_activate(enum spectre_v2_mitigation mode)
-{
-	retpoline_enable();
-	/* IBRS is unnecessary with retpoline mitigation. */
-	disable_ibrs_and_friends();
-}
-
-void refresh_set_spectre_v2_enabled(void)
-{
-	if (retpoline_enabled())
-		spectre_v2_enabled = retpoline_mode;
-	else if (check_ibrs_inuse())
-		spectre_v2_enabled = (check_basic_ibrs_inuse() ?
-			SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
-	else
-		spectre_v2_enabled = SPECTRE_V2_NONE;
-}
-
 static inline bool match_option(const char *arg, int arglen, const char *opt)
 {
 	int len = strlen(opt);
@@ -1037,6 +974,72 @@ static void spec_v2_user_print_cond(const char *reason, bool secure)
 	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2) != secure)
 		pr_info("spectre_v2_user=%s forced on command line.\n", reason);
 }
+
+bool retpoline_enabled(void)
+{
+	return static_key_enabled(&retpoline_enabled_key);
+}
+
+void retpoline_enable(void)
+{
+	static_branch_enable(&retpoline_enabled_key);
+	if (is_skylake_era()) {
+		/*
+		 * With retpoline, Skylake era CPUs should also fill RSB on any
+		 * condition that might empty the RSB.
+		 */
+		rsb_stuff_enable();
+	}
+}
+
+void retpoline_disable(void)
+{
+	if (is_skylake_era() && !static_key_enabled(&rsb_overwrite_key))
+		rsb_stuff_disable();
+	static_branch_disable(&retpoline_enabled_key);
+}
+
+static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
+{
+	/*
+	 * Set the retpoline capability to advertise that that retpoline
+	 * is available, however the retpoline feature is enabled via
+	 * the retpoline_enabled_key static key.
+	 */
+	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+
+	if (cmd == SPECTRE_V2_CMD_RETPOLINE_AMD ||
+	    (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
+	    cmd != SPECTRE_V2_CMD_RETPOLINE_GENERIC)) {
+		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
+			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+			retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
+			return;
+		}
+		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
+	}
+
+	retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
+}
+
+static void retpoline_activate(enum spectre_v2_mitigation mode)
+{
+	retpoline_enable();
+	/* IBRS is unnecessary with retpoline mitigation. */
+	disable_ibrs_and_friends();
+}
+
+void refresh_set_spectre_v2_enabled(void)
+{
+	if (retpoline_enabled())
+		spectre_v2_enabled = retpoline_mode;
+	else if (check_ibrs_inuse())
+		spectre_v2_enabled = (check_basic_ibrs_inuse() ?
+			SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
+	else
+		spectre_v2_enabled = SPECTRE_V2_NONE;
+}
+
 
 static enum spectre_v2_user_cmd
 spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
@@ -1222,12 +1225,6 @@ static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 	     cmd == SPECTRE_V2_CMD_RETPOLINE_GENERIC) &&
 	    !IS_ENABLED(CONFIG_RETPOLINE)) {
 		pr_err("%s selected but not compiled in. Switching to AUTO select\n", mitigation_options[i].option);
-		return SPECTRE_V2_CMD_AUTO;
-	}
-
-	if (cmd == SPECTRE_V2_CMD_RETPOLINE_AMD &&
-	    boot_cpu_data.x86_vendor != X86_VENDOR_AMD) {
-		pr_err("retpoline,amd selected but CPU is not AMD. Switching to AUTO select\n");
 		return SPECTRE_V2_CMD_AUTO;
 	}
 
@@ -1462,7 +1459,7 @@ static void spectre_v2_select_mitigation(void)
 	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
 
 	if (IS_ENABLED(CONFIG_RETPOLINE))
-		retpoline_init();
+		retpoline_init(cmd);
 
 	switch (cmd) {
 	case SPECTRE_V2_CMD_NONE:
