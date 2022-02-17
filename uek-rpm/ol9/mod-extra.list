@@ -100,13 +100,6 @@ netjet.ko
 netrom.ko
 nfc.ko
 nilfs2.ko
-ocfs2_dlmfs.ko
-ocfs2_dlm.ko
-ocfs2.ko
-ocfs2_nodemanager.ko
-ocfs2_stackglue.ko
-ocfs2_stack_o2cb.ko
-ocfs2_stack_user.ko
 old_belkin-sir.ko
 orinoco_cs.ko
 orinoco.ko
@@ -118,9 +111,6 @@ pcf50633.ko
 plx_pci.ko
 pn_pep.ko
 pppoatm.ko
-rds.ko
-rds_rdma.ko
-rds_tcp.ko
 rose.ko
 rtc-pcf50633.ko
 sch_atm.ko
