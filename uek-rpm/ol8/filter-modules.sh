@@ -14,30 +14,30 @@
 # listed here.
 
 # Overrides is individual modules which need to remain in kernel-core due to deps.
-overrides="cec ib_core ib_cm iw_cm rdma_cm sm501 ftdi-elan"
+overrides="cec ib_core ib_cm ib_umad ib_uverbs iw_cm rdma_cm rdma_ucm rdmaip_notify mlx4_ib mlx5_ib ib_ipoib sm501 ftdi-elan"
 
 # Set the default dirs/modules to filter out
-driverdirs="atm auxdisplay bcma bluetooth firewire fmc iio infiniband isdn leds media memstick mfd mmc mtd nfc ntb pcmcia platform power ssb staging tty uio uwb w1"
+driverdirs="atm auxdisplay bcma bluetooth firewire fmc gpio gpu hid hwtracing iio infiniband isdn leds media memstick mfd mmc mtd nfc ntb pcmcia pinctrl platform power pps ssb staging tty uwb w1"
 
 chardrvs="mwave pcmcia"
 
 netdrvs="appletalk can dsa hamradio ieee802154 irda ppp slip usb wireless"
 
-ethdrvs="3com adaptec alteon amd aquantia atheros broadcom cadence calxeda chelsio cisco dec dlink emulex icplus marvell neterion nvidia oki-semi packetengines qlogic rdc renesas sfc silan sis smsc stmicro sun tehuti ti wiznet xircom"
+ethdrvs="3com adaptec alteon amd aquantia atheros cadence calxeda chelsio cisco dec dlink emulex icplus marvell neterion nvidia oki-semi packetengines qlogic rdc renesas sfc silan sis smsc stmicro sun tehuti ti wiznet xircom"
 
 inputdrvs="gameport tablet touchscreen"
 
-scsidrvs="aacraid aic7xxx aic94xx be2iscsi bfa bnx2i bnx2fc csiostor cxgbi esas2r fcoe fnic hisi_sas isci libsas lpfc megaraid mpt2sas mpt3sas mvsas pm8001 qla2xxx qla4xxx sym53c8xx_2 ufs qedf"
+scsidrvs="aacraid aic94xx be2iscsi csiostor cxgbi esas2r fnic hisi_sas isci mpt2sas mvsas sym53c8xx_2 ufs qedf"
 
 usbdrvs="atm image misc serial wusbcore"
 
-fsdrvs="affs befs coda cramfs ecryptfs hfs hfsplus jfs jffs2 minix ncpfs nilfs2 ocfs2 reiserfs romfs squashfs sysv ubifs ufs"
+fsdrvs="affs befs coda cramfs ecryptfs hfs hfsplus jfs jffs2 minix ncpfs nilfs2 reiserfs romfs squashfs sysv ubifs ufs"
 
-netprots="6lowpan appletalk atm ax25 batman-adv bluetooth can dccp dsa ieee802154 irda l2tp mac80211 mac802154 mpls netrom nfc rds rfkill rose sctp smc wireless"
+netprots="6lowpan appletalk atm ax25 batman-adv bluetooth can dccp dsa ieee802154 irda l2tp mac80211 mac802154 mpls netrom nfc rfkill rose sctp smc wireless"
 
 drmdrvs="amd ast gma500 i2c i915 mgag200 nouveau radeon via "
 
-singlemods="ntb_netdev iscsi_ibft iscsi_boot_sysfs megaraid pmcraid qedi qla1280 9pnet_rdma rpcrdma nvmet-rdma nvme-rdma hid-picolcd hid-prodikeys hwa-hc hwpoison-inject hid-sensor-hub target_core_user sbp_target cxgbit iw_cxgb3 iw_cxgb4 cxgb3i cxgb3i cxgb3i_ddp cxgb4i chcr chtls parport_serial ism regmap-sdw regmap-sdw-mbq arizona-micsupp hid-asus"
+singlemods="ntb_netdev iscsi_ibft pmcraid qedi qla1280 9pnet_rdma rpcrdma nvmet-rdma nvme-rdma hid-picolcd hid-prodikeys hwa-hc hwpoison-inject hid-sensor-hub target_core_user sbp_target cxgbit iw_cxgb3 iw_cxgb4 cxgb3i cxgb3i cxgb3i_ddp cxgb4i chcr chtls parport_serial ism regmap-sdw regmap-sdw-mbq arizona-micsupp hid-asus b44 tg3"
 
 # Grab the arch-specific filter list overrides
 source ./filter-$2.sh
