@@ -235,6 +235,10 @@ static int proc_dopipe_max_size(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos);
 
 #if defined(CONFIG_BPF_SYSCALL) && defined(CONFIG_SYSCTL)
+void __weak unpriv_ebpf_notify(int new_state)
+{
+}
+
 static int bpf_unpriv_handler(struct ctl_table *table, int write,
 			      void *buffer, size_t *lenp, loff_t *ppos)
 {
@@ -252,6 +256,9 @@ static int bpf_unpriv_handler(struct ctl_table *table, int write,
 			return -EPERM;
 		*(int *)table->data = unpriv_enable;
 	}
+
+	unpriv_ebpf_notify(unpriv_enable);
+
 	return ret;
 }
 #endif /* CONFIG_BPF_SYSCALL && CONFIG_SYSCTL */
