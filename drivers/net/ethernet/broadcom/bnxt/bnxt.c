@@ -8032,6 +8032,19 @@ static int bnxt_map_fw_health_regs(struct bnxt *bp)
 	return 0;
 }
 
+static void bnxt_remap_fw_health_regs(struct bnxt *bp)
+{
+	if (!bp->fw_health)
+		return;
+
+	if (bp->fw_cap & BNXT_FW_CAP_ERROR_RECOVERY) {
+		bp->fw_health->status_reliable = true;
+		bp->fw_health->resets_reliable = true;
+	} else {
+		bnxt_try_map_fw_health_reg(bp);
+	}
+}
+
 static int bnxt_hwrm_error_recovery_qcfg(struct bnxt *bp)
 {
 	struct bnxt_fw_health *fw_health = bp->fw_health;
@@ -10111,8 +10124,8 @@ static int bnxt_hwrm_if_change(struct bnxt *bp, bool up)
 	if (flags & FUNC_DRV_IF_CHANGE_RESP_FLAGS_HOT_FW_RESET_DONE ||
 	    test_bit(BNXT_STATE_FW_RESET_DET, &bp->state))
 		fw_reset = true;
-	else if (bp->fw_health && !bp->fw_health->status_reliable)
-		bnxt_try_map_fw_health_reg(bp);
+	else
+		bnxt_remap_fw_health_regs(bp);
 
 	if (test_bit(BNXT_STATE_IN_FW_RESET, &bp->state) && !fw_reset) {
 		netdev_err(bp->dev, "RESET_DONE not set during FW reset.\n");
