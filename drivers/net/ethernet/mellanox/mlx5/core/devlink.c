@@ -94,15 +94,6 @@ static int mlx5_devlink_reload_down(struct devlink *devlink,
 				    struct netlink_ext_ack *extack)
 {
 	struct mlx5_core_dev *dev = devlink_priv(devlink);
-
-	mlx5_unload_one(dev, false);
-	return 0;
-}
-
-static int mlx5_devlink_reload_up(struct devlink *devlink,
-				  struct netlink_ext_ack *extack)
-{
-	struct mlx5_core_dev *dev = devlink_priv(devlink);
 	bool sf_dev_allocated;
 
 	sf_dev_allocated = mlx5_sf_dev_allocated(dev);
@@ -114,6 +105,15 @@ static int mlx5_devlink_reload_up(struct devlink *devlink,
 		NL_SET_ERR_MSG_MOD(extack, "reload is unsupported when SFs are allocated\n");
 		return -EOPNOTSUPP;
 	}
+
+	mlx5_unload_one(dev, false);
+	return 0;
+}
+
+static int mlx5_devlink_reload_up(struct devlink *devlink,
+				  struct netlink_ext_ack *extack)
+{
+	struct mlx5_core_dev *dev = devlink_priv(devlink);
 
 	return mlx5_load_one(dev, false);
 }
