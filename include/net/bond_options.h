@@ -67,6 +67,7 @@ enum {
 	BOND_OPT_LACP_ACTIVE,
 	BOND_OPT_ARP_ALLSLAVES,
 	BOND_OPT_MISSED_MAX,
+	BOND_OPT_NS_TARGETS,
 	BOND_OPT_LAST
 };
 
@@ -141,5 +142,8 @@ static inline void __bond_opt_init(struct bond_opt_value *optval,
 	__bond_opt_init(optval, NULL, ULLONG_MAX, extra, extra_len)
 
 void bond_option_arp_ip_targets_clear(struct bonding *bond);
+#if IS_ENABLED(CONFIG_IPV6)
+void bond_option_ns_ip6_targets_clear(struct bonding *bond);
+#endif
 
 #endif /* _NET_BOND_OPTIONS_H */
