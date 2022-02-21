@@ -50,6 +50,8 @@ bool is_mac_feature_supported(struct rvu *rvu, int pf, int feature)
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
+	if (!cgxd)
+		return 0;
 
 	return  (cgx_features_get(cgxd) & feature);
 }
@@ -1257,6 +1259,9 @@ int rvu_mbox_handler_cgx_features_get(struct rvu *rvu,
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_idx, &lmac);
 	cgxd = rvu_cgx_pdata(cgx_idx, rvu);
+	if (!cgxd)
+		return 0;
+
 	rsp->lmac_features = cgx_features_get(cgxd);
 
 	return 0;

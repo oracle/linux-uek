@@ -2731,6 +2731,7 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 		if ((regval & 0xFFFF) != pcifunc)
 			continue;
 
+		sso_pcifunc = sso_block->fn_map[lf];
 		regval = rvu_read64(rvu, blkaddr, sso_block->lfcfg_reg |
 				    (lf << sso_block->lfshift));
 		rvu_sso_lf_drain_queues(rvu, sso_pcifunc, lf, regval & 0xF);

@@ -370,6 +370,10 @@ static int ptp_probe(struct pci_dev *pdev,
 		goto error_free;
 
 	ptp->reg_base = pcim_iomap_table(pdev)[PCI_PTP_BAR_NO];
+	if (!ptp->reg_base) {
+		err = -ENODEV;
+		goto error_free;
+	}
 
 	pci_set_drvdata(pdev, ptp);
 	if (!first_ptp_block)
