@@ -1307,6 +1307,11 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 						    NULL);
 			priv->iommu_domain =
 				iommu_get_domain_for_dev(&priv->pdev->dev);
+			if (!priv->iommu_domain) {
+				ret = -ENODEV;
+				goto err_exit;
+			}
+
 			priv->bphy_reg_base = bphy_reg_base;
 			priv->psm_reg_base = psm_reg_base;
 			priv->rfoe_reg_base = rfoe_reg_base;
