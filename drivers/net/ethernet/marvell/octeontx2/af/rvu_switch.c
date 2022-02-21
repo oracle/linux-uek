@@ -218,6 +218,7 @@ void rvu_switch_disable(struct rvu *rvu)
 				"Reverting RX rule for PF%d failed(%d)\n",
 				pf, err);
 
+		rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvf);
 		for (vf = 0; vf < numvfs; vf++, hwvf++) {
 			pcifunc = pf << 10 | ((vf + 1) & 0x3FF);
 			err = rvu_switch_install_rx_rule(rvu, pcifunc, 0xFFF);

@@ -140,6 +140,11 @@ static int otx2smqvf_install_flow(struct otx2_nic *vf)
 	memcpy(data, &pkt_data, 64);
 
 	the_skb = build_skb(data, 0);
+	if (!the_skb) {
+		err = -ENODEV;
+		return err;
+	}
+
 	the_skb->len = 64;
 
 	for (qid = 0; qid < vf->hw.tx_queues; qid++) {
