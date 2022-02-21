@@ -1457,7 +1457,7 @@ err:
 }
 
 static int
-ib_cache_update(struct ib_device *device, u8 port, bool update_gids,
+ib_cache_update(struct ib_device *device, u32 port, bool update_gids,
 		bool update_pkeys, bool enforce_security)
 {
 	struct ib_port_attr       *tprops = NULL;
