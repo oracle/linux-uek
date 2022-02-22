@@ -3635,8 +3635,6 @@ static struct mlxsw_driver mlxsw_sp1_driver = {
 	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp1_config_profile,
 	.res_query_enabled		= true,
-	.fw_fatal_enabled		= true,
-	.temp_warn_enabled		= true,
 };
 
 static struct mlxsw_driver mlxsw_sp2_driver = {
@@ -3675,8 +3673,6 @@ static struct mlxsw_driver mlxsw_sp2_driver = {
 	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp2_config_profile,
 	.res_query_enabled		= true,
-	.fw_fatal_enabled		= true,
-	.temp_warn_enabled		= true,
 };
 
 static struct mlxsw_driver mlxsw_sp3_driver = {
@@ -3715,8 +3711,6 @@ static struct mlxsw_driver mlxsw_sp3_driver = {
 	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp2_config_profile,
 	.res_query_enabled		= true,
-	.fw_fatal_enabled		= true,
-	.temp_warn_enabled		= true,
 };
 
 static struct mlxsw_driver mlxsw_sp4_driver = {
@@ -3753,8 +3747,6 @@ static struct mlxsw_driver mlxsw_sp4_driver = {
 	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp2_config_profile,
 	.res_query_enabled		= true,
-	.fw_fatal_enabled		= true,
-	.temp_warn_enabled		= true,
 };
 
 bool mlxsw_sp_port_dev_check(const struct net_device *dev)
