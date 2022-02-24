@@ -56,6 +56,16 @@ struct vfio_device {
  *         match, -errno for abort (ex. match with insufficient or incorrect
  *         additional args)
  * @device_feature: Optional, fill in the VFIO_DEVICE_FEATURE ioctl
+ * @migration_set_state: Optional callback to change the migration state for
+ *         devices that support migration. It's mandatory for
+ *         VFIO_DEVICE_FEATURE_MIGRATION migration support.
+ *         The returned FD is used for data transfer according to the FSM
+ *         definition. The driver is responsible to ensure that FD reaches end
+ *         of stream or error whenever the migration FSM leaves a data transfer
+ *         state or before close_device() returns.
+ * @migration_get_state: Optional callback to get the migration state for
+ *         devices that support migration. It's mandatory for
+ *         VFIO_DEVICE_FEATURE_MIGRATION migration support.
  */
 struct vfio_device_ops {
 	char	*name;
@@ -72,6 +82,11 @@ struct vfio_device_ops {
 	int	(*match)(struct vfio_device *vdev, char *buf);
 	int	(*device_feature)(struct vfio_device *device, u32 flags,
 				  void __user *arg, size_t argsz);
+	struct file *(*migration_set_state)(
+		struct vfio_device *device,
+		enum vfio_device_mig_state new_state);
+	int (*migration_get_state)(struct vfio_device *device,
+				   enum vfio_device_mig_state *curr_state);
 };
 
 extern struct iommu_group *vfio_iommu_group_get(struct device *dev);
@@ -164,6 +179,11 @@ extern int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops);
 
 extern void vfio_unregister_iommu_driver(
 				const struct vfio_iommu_driver_ops *ops);
+
+int vfio_mig_get_next_state(struct vfio_device *device,
+			    enum vfio_device_mig_state cur_fsm,
+			    enum vfio_device_mig_state new_fsm,
+			    enum vfio_device_mig_state *next_fsm);
 
 /*
  * External user API
