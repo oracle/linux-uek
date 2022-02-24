@@ -943,6 +943,11 @@ static void test_seal_write(void)
  * Test SEAL_FUTURE_WRITE
  * Test whether SEAL_FUTURE_WRITE actually prevents modifications.
  */
+
+#ifndef F_SEAL_FUTURE_WRITE
+#define F_SEAL_FUTURE_WRITE     0x0010  /* prevent future writes while mapped */
+#endif
+
 static void test_seal_future_write(void)
 {
 	int fd, fd2;
