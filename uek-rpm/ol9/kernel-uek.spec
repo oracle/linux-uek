@@ -472,6 +472,7 @@ Source29: kabi
 
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
+Source202: crashkernel.default
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
@@ -925,6 +926,10 @@ mkdir -p configs
 	echo 'CONFIG_DTRACE=y' >> configs/config
 	echo 'CONFIG_DTRACE=y' >> configs/config-debug
 
+# Add crashkernel.default for kexec_tools kdump setup
+
+	cp %{SOURCE202} crashkernel.default
+
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 
@@ -1021,6 +1026,7 @@ BuildKernel() {
     install -m 644 .config $RPM_BUILD_ROOT/lib/modules/$KernelVer/config
     install -m 644 System.map $RPM_BUILD_ROOT/boot/System.map-$KernelVer
     install -m 644 System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/System.map
+    install -m 644 crashkernel.default $RPM_BUILD_ROOT/lib/modules/$KernelVer/
 
     # We estimate the size of the initramfs because rpm needs to take this size
     # into consideration when performing disk space calculations. (See bz #530778)
@@ -1799,6 +1805,7 @@ fi
 %ghost /boot/System.map-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/symvers.gz\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/config\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/crashkernel.default\
 %ghost /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
