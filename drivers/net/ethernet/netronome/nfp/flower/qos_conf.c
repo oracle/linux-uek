@@ -67,6 +67,40 @@ struct nfp_police_stats_reply {
 	__be64 drop_pkts;
 };
 
+static int nfp_policer_validate(const struct flow_action *action,
+				const struct flow_action_entry *act,
+				struct netlink_ext_ack *extack)
+{
+	if (act->police.exceed.act_id != FLOW_ACTION_DROP) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Offload not supported when exceed action is not drop");
+		return -EOPNOTSUPP;
+	}
+
+	if (act->police.notexceed.act_id != FLOW_ACTION_PIPE &&
+	    act->police.notexceed.act_id != FLOW_ACTION_ACCEPT) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Offload not supported when conform action is not pipe or ok");
+		return -EOPNOTSUPP;
+	}
+
+	if (act->police.notexceed.act_id == FLOW_ACTION_ACCEPT &&
+	    !flow_action_is_last_entry(action, act)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Offload not supported when conform action is ok, but action is not last");
+		return -EOPNOTSUPP;
+	}
+
+	if (act->police.peakrate_bytes_ps ||
+	    act->police.avrate || act->police.overhead) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Offload not supported when peakrate/avrate/overhead is configured");
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 static int
 nfp_flower_install_rate_limiter(struct nfp_app *app, struct net_device *netdev,
 				struct tc_cls_matchall_offload *flow,
@@ -86,6 +120,7 @@ nfp_flower_install_rate_limiter(struct nfp_app *app, struct net_device *netdev,
 	u32 pps_num = 0;
 	u32 burst;
 	u64 rate;
+	int err;
 
 	if (!nfp_netdev_is_nfp_repr(netdev)) {
 		NL_SET_ERR_MSG_MOD(extack, "unsupported offload: qos rate limit offload not supported on higher level port");
@@ -132,6 +167,11 @@ nfp_flower_install_rate_limiter(struct nfp_app *app, struct net_device *netdev,
 					   "unsupported offload: qos rate limit offload requires police action");
 			return -EOPNOTSUPP;
 		}
+
+		err = nfp_policer_validate(&flow->rule->action, action, extack);
+		if (err)
+			return err;
+
 		if (action->police.rate_bytes_ps > 0) {
 			if (bps_num++) {
 				NL_SET_ERR_MSG_MOD(extack,
