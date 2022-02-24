@@ -6,6 +6,7 @@
 #include <net/pkt_cls.h>
 #include <net/tc_act/tc_gact.h>
 #include <soc/mscc/ocelot_vcap.h>
+#include "ocelot_police.h"
 #include "ocelot_vcap.h"
 
 /* Arbitrarily chosen constants for encoding the VCAP block and lookup number
@@ -160,6 +161,7 @@ static int ocelot_flower_parse_action(struct ocelot *ocelot, int port,
 				      bool ingress, struct flow_cls_offload *f,
 				      struct ocelot_vcap_filter *filter)
 {
+	const struct flow_action *action = &f->rule->action;
 	struct ocelot_port *ocelot_port = ocelot->ports[port];
 	struct netlink_ext_ack *extack = f->common.extack;
 	bool allow_missing_goto_target = false;
@@ -186,7 +188,7 @@ static int ocelot_flower_parse_action(struct ocelot *ocelot, int port,
 	filter->goto_target = -1;
 	filter->type = OCELOT_VCAP_FILTER_DUMMY;
 
-	flow_action_for_each(i, a, &f->rule->action) {
+	flow_action_for_each(i, a, action) {
 		switch (a->id) {
 		case FLOW_ACTION_DROP:
 			if (filter->block_id != VCAP_IS2) {
@@ -235,11 +237,11 @@ static int ocelot_flower_parse_action(struct ocelot *ocelot, int port,
 						   "Last action must be GOTO");
 				return -EOPNOTSUPP;
 			}
-			if (a->police.rate_pkt_ps) {
-				NL_SET_ERR_MSG_MOD(extack,
-						   "QoS offload not support packets per second");
-				return -EOPNOTSUPP;
-			}
+
+			err = ocelot_policer_validate(action, a, extack);
+			if (err)
+				return err;
+
 			filter->action.police_ena = true;
 			rate = a->police.rate_bytes_ps;
 			filter->action.pol.rate = div_u64(rate, 1000) * 8;
