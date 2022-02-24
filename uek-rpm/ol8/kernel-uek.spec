@@ -230,14 +230,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_64k_ps_debug 0
 %endif
 
-# if requested, only build 64k page size kernel
-%if %{with_64konly}
-%define with_64k_ps 1
-%define with_up 0
-%define with_debug 0
-%define with_headers 0
-%endif
-
 %define all_x86 i386 i686
 
 %if %{with_vdso_install}
@@ -309,6 +301,18 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
+%if %{with_64konly}
+%define with_64k_ps 1
+%define with_up 0
+%define with_debug 0
+%define with_headers 0
+%define with_perf 0
+%define with_bpftool 0
+%else
+%define with_headers   1
+%define with_perf 1
+%define with_bpftool   1
+%endif
 %endif
 
 # To temporarily exclude an architecture from being built, add it to
