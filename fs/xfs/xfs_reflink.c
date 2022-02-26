@@ -518,7 +518,10 @@ convert:
 	if (!(iomap_flags & IOMAP_DIRECT) || imap->br_state == XFS_EXT_NORM)
 		return 0;
 	trace_xfs_reflink_convert_cow(ip, imap);
-	return xfs_reflink_convert_cow_locked(ip, offset_fsb, count_fsb);
+	error = xfs_reflink_convert_cow_locked(ip, offset_fsb, count_fsb);
+	if (!error)
+		imap->br_state = XFS_EXT_NORM;
+	return error;
 
 out_unreserve:
 	xfs_defer_cancel(&dfops);
