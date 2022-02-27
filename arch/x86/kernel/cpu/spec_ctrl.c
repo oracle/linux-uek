@@ -15,7 +15,9 @@ enum mitigation_action {
 	MITIGATION_DISABLE_IBRS,
 	MITIGATION_ENABLE_IBRS,
 	MITIGATION_DISABLE_RETPOLINE,
-	MITIGATION_ENABLE_RETPOLINE
+	MITIGATION_ENABLE_RETPOLINE,
+	MITIGATION_DISABLE_EIBRS_RETPOLINE,
+	MITIGATION_ENABLE_EIBRS_RETPOLINE,
 };
 
 static void change_mitigation(enum mitigation_action action)
@@ -36,7 +38,7 @@ static void change_mitigation(enum mitigation_action action)
 
 	ibrs_used = !ibrs_disabled;
 	retpoline_used = !!retpoline_enabled();
-	ibrs_fw_used = ((ibrs_used && !eibrs_supported) || retpoline_used);
+	ibrs_fw_used = ((ibrs_used && !eibrs_supported) || (retpoline_used && !ibrs_used));
 
 	/*
 	 * Define the requested state.
@@ -55,8 +57,15 @@ static void change_mitigation(enum mitigation_action action)
 		break;
 
 	case MITIGATION_DISABLE_IBRS:
-		ibrs_requested = false;
-		ibrs_fw_requested = retpoline_used;
+		/*
+		 * With the eibrs+retpoline modes, both ibrs and retpoline can
+		 * be set at the same time, but is controlled with a separate
+		 * knob. If we're in such a mode (`eibrs_retpoline_enabled` is
+		 * 1) and a user writes a 0 to the `ibrs_enabled` knob, then
+		 * should have no effect on the current ibrs state.
+		 */
+		ibrs_requested = ibrs_used && retpoline_used;
+		ibrs_fw_requested = retpoline_used ? !ibrs_used : false;
 		retpoline_requested = retpoline_used;
 		break;
 
@@ -67,9 +76,27 @@ static void change_mitigation(enum mitigation_action action)
 		break;
 
 	case MITIGATION_DISABLE_RETPOLINE:
+		/*
+		 * Similar to the `MITIGATION_DISABLE_IBRS` case above, if we're
+		 * in eibrs+retpoline mode, then writing a 0 to the
+		 * `retpoline_enabled` knob should have no effect on the current
+		 * retpoline state.
+		 */
 		ibrs_requested = ibrs_used;
 		ibrs_fw_requested = ibrs_used && !eibrs_supported;
-		retpoline_requested = false;
+		retpoline_requested = ibrs_used && retpoline_used;
+		break;
+
+	case MITIGATION_ENABLE_EIBRS_RETPOLINE:
+		ibrs_requested = true;
+		ibrs_fw_requested = false;
+		retpoline_requested = true;
+		break;
+
+	case MITIGATION_DISABLE_EIBRS_RETPOLINE:
+		ibrs_requested = !retpoline_used && ibrs_used;
+		ibrs_fw_requested = retpoline_used && !ibrs_used;
+		retpoline_requested = retpoline_used && !ibrs_used;
 		break;
 	}
 
@@ -133,8 +160,8 @@ static ssize_t __enabled_read(struct file *file, char __user *user_buf,
 static ssize_t ibrs_enabled_read(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
-	return __enabled_read(file, user_buf, count, ppos,
-			      &sysctl_ibrs_enabled);
+	u32 ibrs_enabled = (sysctl_ibrs_enabled && !retpoline_enabled()) ? 1 : 0;
+	return __enabled_read(file, user_buf, count, ppos, &ibrs_enabled);
 }
 
 static ssize_t ibrs_enabled_write(struct file *file,
@@ -235,7 +262,8 @@ static const struct file_operations fops_ibpb_enabled = {
 static ssize_t retpoline_enabled_read(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
-	u32 sysctl_retpoline_enabled = retpoline_enabled() ? 1 : 0;
+	u32 sysctl_retpoline_enabled = (retpoline_enabled() &&
+				       !sysctl_ibrs_enabled) ? 1 : 0;
 
 	return __enabled_read(file, user_buf, count, ppos,
 			      &sysctl_retpoline_enabled);
@@ -275,6 +303,53 @@ static const struct file_operations fops_retpoline_enabled = {
 	.llseek = default_llseek,
 };
 
+static ssize_t eibrs_retpoline_enabled_read(struct file *file,
+					    char __user *user_buf, size_t count,
+					    loff_t *ppos)
+{
+	u32 sysctl_eibrs_retpoline_enabled = (sysctl_ibrs_enabled &&
+					     retpoline_enabled()) ? 1 : 0;
+	return __enabled_read(file, user_buf, count, ppos,
+			      &sysctl_eibrs_retpoline_enabled);
+}
+
+static ssize_t eibrs_retpoline_enabled_write(struct file *file,
+					     const char __user *user_buf,
+					     size_t count, loff_t *ppos)
+{
+	char buf[32];
+	ssize_t len;
+	unsigned int enable;
+
+	if (!eibrs_supported)
+		return -ENODEV;
+
+	len = min(count, sizeof(buf) - 1);
+	if (copy_from_user(buf, user_buf, len))
+		return -EFAULT;
+
+	buf[len] = '\0';
+	if (kstrtouint(buf, 0, &enable))
+		return -EINVAL;
+
+	/* Only 0 and 1 are allowed */
+	if (enable > 1)
+		return -EINVAL;
+
+	if (enable)
+		change_mitigation(MITIGATION_ENABLE_EIBRS_RETPOLINE);
+	else
+		change_mitigation(MITIGATION_DISABLE_EIBRS_RETPOLINE);
+
+	return count;
+}
+
+static const struct file_operations fops_eibrs_retpoline_enabled = {
+	.read = eibrs_retpoline_enabled_read,
+	.write = eibrs_retpoline_enabled_write,
+	.llseek = default_llseek,
+};
+
 #endif /* CONFIG_RETPOLINE */
 
 static int __init debugfs_spec_ctrl(void)
@@ -285,8 +360,11 @@ static int __init debugfs_spec_ctrl(void)
 			    &fops_ibpb_enabled);
 	if (IS_ENABLED(CONFIG_RETPOLINE)) {
 		debugfs_create_file("retpoline_enabled",
-				    0600, arch_debugfs_dir, NULL,
+				    S_IRUSR | S_IWUSR, arch_debugfs_dir, NULL,
 				    &fops_retpoline_enabled);
+		debugfs_create_file("eibrs_retpoline_enabled",
+				    S_IRUSR | S_IWUSR, arch_debugfs_dir, NULL,
+				    &fops_eibrs_retpoline_enabled);
 	}
 	return 0;
 }

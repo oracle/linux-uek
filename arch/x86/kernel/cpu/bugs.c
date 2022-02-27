@@ -83,6 +83,7 @@ bool use_ibrs_with_ssbd = true;
  * Retpoline variables.
  */
 static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
+static enum spectre_v2_mitigation eibrs_retpoline_mode = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
 
@@ -1024,6 +1025,17 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 		retpoline_mode = SPECTRE_V2_LFENCE;
 
 	/*
+	 * Choose the eIBRS retpoline mode based on the chosen retpoline mode.
+	 * Default to eIBRS with generic retpolines. This can be overridden
+	 * later in spectre_v2_select_mitigation().
+	 */
+	if (retpoline_mode == SPECTRE_V2_RETPOLINE)
+		eibrs_retpoline_mode = SPECTRE_V2_EIBRS_RETPOLINE;
+	else if (retpoline_mode == SPECTRE_V2_LFENCE)
+		eibrs_retpoline_mode = SPECTRE_V2_EIBRS_LFENCE;
+	else
+		pr_warn("Invalid retpoline mode: %d", retpoline_mode);
+	/*
 	 * Set the retpoline capability to advertise that that retpoline
 	 * is available, however the retpoline feature is enabled via
 	 * the retpoline_enabled_key static key.
@@ -1045,7 +1057,9 @@ static void retpoline_activate(enum spectre_v2_mitigation mode)
 
 void refresh_set_spectre_v2_enabled(void)
 {
-	if (retpoline_enabled())
+	if (retpoline_enabled() && check_ibrs_inuse())
+		spectre_v2_enabled = eibrs_retpoline_mode;
+	else if (retpoline_enabled())
 		spectre_v2_enabled = retpoline_mode;
 	else if (check_ibrs_inuse())
 		spectre_v2_enabled = (check_basic_ibrs_inuse() ?
@@ -1563,11 +1577,13 @@ static void spectre_v2_select_mitigation(void)
 	case SPECTRE_V2_CMD_EIBRS_LFENCE:
 		mode = SPECTRE_V2_EIBRS_LFENCE;
 		select_ibrs_variant(&mode);
+		eibrs_retpoline_mode = SPECTRE_V2_EIBRS_LFENCE;
 		break;
 
 	case SPECTRE_V2_CMD_EIBRS_RETPOLINE:
 		mode = SPECTRE_V2_EIBRS_RETPOLINE;
 		select_ibrs_variant(&mode);
+		eibrs_retpoline_mode = SPECTRE_V2_EIBRS_RETPOLINE;
 		break;
 	}
 
