@@ -1038,7 +1038,9 @@ static void retpoline_activate(enum spectre_v2_mitigation mode)
 {
 	retpoline_enable();
 	/* IBRS is unnecessary with retpoline mitigation. */
-	disable_ibrs_and_friends();
+	if (mode != SPECTRE_V2_EIBRS_RETPOLINE &&
+	    mode != SPECTRE_V2_EIBRS_LFENCE)
+		disable_ibrs_and_friends();
 }
 
 void refresh_set_spectre_v2_enabled(void)
@@ -1317,9 +1319,11 @@ static void ibrs_select(enum spectre_v2_mitigation *mode)
 		pr_info("IBRS could not be enabled.\n");
 		return;
 	}
+
 	/* Determine the specific IBRS variant in use */
-	*mode = (check_basic_ibrs_inuse() ?
-		SPECTRE_V2_IBRS : SPECTRE_V2_EIBRS);
+	if (*mode == SPECTRE_V2_NONE || *mode == SPECTRE_V2_IBRS)
+		*mode = (check_basic_ibrs_inuse() ?
+			SPECTRE_V2_IBRS : SPECTRE_V2_EIBRS);
 
 	if (boot_cpu_has(X86_FEATURE_SMEP))
 		return;
@@ -1327,7 +1331,7 @@ static void ibrs_select(enum spectre_v2_mitigation *mode)
 	/* IBRS without SMEP needs RSB overwrite */
 	rsb_overwrite_enable();
 
-	if (*mode == SPECTRE_V2_EIBRS)
+	if (spectre_v2_in_eibrs_mode(*mode))
 		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
 }
 
@@ -1366,11 +1370,12 @@ static bool retpoline_mode_selected(enum spectre_v2_mitigation mode)
 	switch (mode) {
 	case SPECTRE_V2_RETPOLINE:
 	case SPECTRE_V2_LFENCE:
+	case SPECTRE_V2_EIBRS_RETPOLINE:
+	case SPECTRE_V2_EIBRS_LFENCE:
 		return true;
 	default:
 		return false;
 	}
-	return false;
 }
 
 /*
@@ -1469,7 +1474,9 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 			 */
 			pr_info("Spectre v2 mitigation: Filling RSB on underflow conditions\n");
 		}
-	} else if (spectre_v2_in_eibrs_mode(spectre_v2_enabled)) {
+	}
+
+	if (spectre_v2_in_eibrs_mode(spectre_v2_enabled)) {
 		/* If enhanced IBRS mode is selected, enable it in all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS);
@@ -1550,14 +1557,17 @@ static void spectre_v2_select_mitigation(void)
 
 	case SPECTRE_V2_CMD_EIBRS:
 		mode = SPECTRE_V2_EIBRS;
+		select_ibrs_variant(&mode);
 		break;
 
 	case SPECTRE_V2_CMD_EIBRS_LFENCE:
 		mode = SPECTRE_V2_EIBRS_LFENCE;
+		select_ibrs_variant(&mode);
 		break;
 
 	case SPECTRE_V2_CMD_EIBRS_RETPOLINE:
 		mode = SPECTRE_V2_EIBRS_RETPOLINE;
+		select_ibrs_variant(&mode);
 		break;
 	}
 
