@@ -330,6 +330,7 @@ kernel/drivers/md/dm-snapshot.ko
 kernel/drivers/md/dm-switch.ko
 kernel/drivers/md/dm-thin-pool.ko
 kernel/drivers/md/dm-zero.ko
+kernel/drivers/md/dm-dust.ko
 kernel/drivers/md/faulty.ko
 kernel/drivers/md/linear.ko
 kernel/drivers/md/md-cluster.ko
