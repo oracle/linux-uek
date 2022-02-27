@@ -1123,20 +1123,11 @@ static bool __init sdei_present_acpi(void)
 	return true;
 }
 
-static int __init sdei_init(void)
+void __init sdei_init(void)
 {
 	if (sdei_present_dt() || sdei_present_acpi())
 		platform_driver_register(&sdei_driver);
-
-	return 0;
 }
-
-/*
- * On an ACPI system SDEI needs to be ready before HEST:GHES tries to register
- * its events. ACPI is initialised from a subsys_initcall(), GHES is initialised
- * by device_initcall(). We want to be called in the middle.
- */
-subsys_initcall_sync(sdei_init);
 
 int sdei_event_handler(struct pt_regs *regs,
 		       struct sdei_registered_event *arg)
