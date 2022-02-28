@@ -210,6 +210,9 @@ struct scsi_device {
 
 	bool offline_already;		/* Device offline message logged */
 
+	/* The location is essential to keep memory offsets correct */
+	UEK_KABI_FILL_HOLE(unsigned silence_suspend:1)	/* Do not print runtime PM related messages */
+
 	atomic_t disk_events_disable_depth; /* disable depth for disk events */
 
 	DECLARE_BITMAP(supported_events, SDEV_EVT_MAXBITS); /* supported events */
