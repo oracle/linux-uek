@@ -638,7 +638,7 @@ static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 
 		cdns_xspi_trigger_command(cdns_xspi, cmd_regs);
 
-		if (cdns_xspi->irq) {
+		if (cdns_xspi->irq && pstore_sleep) {
 			wait_for_completion(&cdns_xspi->sdma_complete);
 			if (cdns_xspi->sdma_error) {
 				cdns_xspi_set_interrupts(cdns_xspi, false);
@@ -651,7 +651,7 @@ static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 		cdns_xspi_sdma_handle(cdns_xspi);
 	}
 
-	if (cdns_xspi->irq) {
+	if (cdns_xspi->irq && pstore_sleep) {
 		wait_for_completion(&cdns_xspi->cmd_complete);
 		cdns_xspi_set_interrupts(cdns_xspi, false);
 	} else {
