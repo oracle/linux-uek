@@ -1672,25 +1672,11 @@ static int proc_do_uuid(struct ctl_table *table, int write, void *buffer,
 	return proc_dostring(&fake_table, 0, buffer, lenp, ppos);
 }
 
-/*
- * Return and/or set fips_random
- */
-static int proc_do_fips_random(struct ctl_table *table, int write,
-			   void __user *buffer, size_t *lenp, loff_t *ppos)
+/* The same as proc_dointvec, but writes don't change anything. */
+static int proc_do_rointvec(struct ctl_table *table, int write, void *buffer,
+			    size_t *lenp, loff_t *ppos)
 {
-	struct ctl_table fake_table;
-	int ret, do_fips_random;
-
-	if (write && (fips_enabled || !capable(CAP_SYS_ADMIN)))
-		return -EPERM;
-
-	do_fips_random = fips_enabled || fips_random;
-	fake_table.data = &do_fips_random;
-	fake_table.maxlen = sizeof(do_fips_random);
-	ret = proc_dointvec(&fake_table, write, buffer, lenp, ppos);
-	if (ret == 0 && write)
-		fips_random = !!do_fips_random;
-	return ret;
+	return write ? 0 : proc_dointvec(table, 0, buffer, lenp, ppos);
 }
 
 extern struct ctl_table random_table[];
@@ -1714,14 +1700,14 @@ struct ctl_table random_table[] = {
 		.data		= &sysctl_random_write_wakeup_bits,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= proc_do_rointvec,
 	},
 	{
 		.procname	= "urandom_min_reseed_secs",
 		.data		= &sysctl_random_min_urandom_seed,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= proc_do_rointvec,
 	},
 	{
 		.procname	= "boot_id",
