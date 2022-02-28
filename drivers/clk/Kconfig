@@ -299,6 +299,27 @@ config COMMON_CLK_BD718XX
 	  This driver supports ROHM BD71837, ROHM BD71847 and
 	  ROHM BD70528 PMICs clock gates.
 
+config COMMON_CLK_MARVELL_OTX2
+	tristate "System clock driver for OcteonTX2 platforms with ACPI"
+	depends on ACPI && MAILBOX && PCC && ARM64
+	default PCC
+	help
+	  Following driver supports coprocessor clock (SCLK)
+	  for OcteonTX2 platforms. Driver is required mostly for the ACPI based
+	  configurations. The provided clock is required by several
+	  platform device drivers. In case of platforms based on configuration
+	  from device tree, the SCMI clocks protocol should be used as
+	  extra clocks provider. If unsure say N here.
+
+config COMMON_CLK_MARVELL_OTX2_SUBSPACE
+	int "Default subspace in PCCT table to be used for PCC channel"
+	depends on COMMON_CLK_MARVELL_OTX2
+	default 0
+	help
+	  Allow to configure subspace index in ACPI PCCT table
+	  used for PCC communication with SCP.
+	  The index is specific for the clocks protocol.
+
 config COMMON_CLK_FIXED_MMIO
 	bool "Clock driver for Memory Mapped Fixed values"
 	depends on COMMON_CLK && OF
