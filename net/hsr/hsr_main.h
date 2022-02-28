@@ -43,22 +43,6 @@
 /* PRP V1 life check for Duplicate Accept */
 #define PRP_TLV_LIFE_CHECK_DA		   21
 
-/* HSR Tag.
- * As defined in IEC-62439-3:2010, the HSR tag is really { ethertype = 0x88FB,
- * path, LSDU_size, sequence Nr }. But we let eth_header() create { h_dest,
- * h_source, h_proto = 0x88FB }, and add { path, LSDU_size, sequence Nr,
- * encapsulated protocol } instead.
- *
- * Field names as defined in the IEC:2010 standard for HSR.
- */
-struct hsr_tag {
-	__be16		path_and_LSDU_size;
-	__be16		sequence_nr;
-	__be16		encap_proto;
-} __packed;
-
-#define HSR_HLEN	6
-
 #define HSR_V1_SUP_LSDUSIZE		52
 
 /* The helper functions below assumes that 'path' occupies the 4 most
