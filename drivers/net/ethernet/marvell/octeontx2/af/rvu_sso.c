@@ -1052,7 +1052,9 @@ int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu, struct msg_req *req,
+#define SSO_INVAL_SELECTIVE_VER		0x1000
+int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu,
+				      struct ssow_lf_inv_req *req,
 				      struct msg_rsp *rsp)
 {
 	int num_lfs, ssowlf, hws, blkaddr;
@@ -1071,18 +1073,27 @@ int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu, struct msg_req *req,
 	if (!num_lfs)
 		return SSOW_AF_ERR_LF_INVALID;
 
+	if (req->hdr.ver == SSO_INVAL_SELECTIVE_VER) {
+		if (req->nb_hws > num_lfs)
+			return SSOW_AF_ERR_LF_INVALID;
+		num_lfs = req->nb_hws;
+	}
+
 	/* SSO HWS invalidate registers are part of SSO AF */
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
 	if (blkaddr < 0)
 		return SSO_AF_ERR_LF_INVALID;
 
 	for (hws = 0; hws < num_lfs; hws++) {
-		ssowlf = rvu_get_lf(rvu, block, pcifunc, hws);
+		ssowlf = rvu_get_lf(rvu, block, pcifunc, req->hdr.ver ==
+				    SSO_INVAL_SELECTIVE_VER ?
+				    req->hws[hws] : hws);
 		if (ssowlf < 0)
 			return SSOW_AF_ERR_LF_INVALID;
 
 		/* Reset this SSO LF GWS cache */
 		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(ssowlf), 1);
+		rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(ssowlf), 0x2, true);
 	}
 
 	return 0;

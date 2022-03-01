@@ -205,7 +205,7 @@ M(SSO_GRP_SET_PRIORITY,	0x605, sso_grp_set_priority,			\
 				sso_grp_priority, msg_rsp)		\
 M(SSO_GRP_GET_PRIORITY,	0x606, sso_grp_get_priority,			\
 				sso_info_req, sso_grp_priority)	\
-M(SSO_WS_CACHE_INV,	0x607, sso_ws_cache_inv, msg_req, msg_rsp)	\
+M(SSO_WS_CACHE_INV,	0x607, sso_ws_cache_inv, ssow_lf_inv_req, msg_rsp)\
 M(SSO_GRP_QOS_CONFIG,	0x608, sso_grp_qos_config, sso_grp_qos_cfg, msg_rsp)\
 M(SSO_GRP_GET_STATS,	0x609, sso_grp_get_stats, sso_info_req, sso_grp_stats)\
 M(SSO_HWS_GET_STATS,	0x610, sso_hws_get_stats, sso_info_req, sso_hws_stats)\
@@ -1465,6 +1465,12 @@ struct ssow_lf_free_req {
 	struct mbox_msghdr hdr;
 	int node;
 	u16 hws;
+};
+
+struct ssow_lf_inv_req {
+	struct mbox_msghdr hdr;
+	u16 nb_hws;
+	u16 hws[MAX_RVU_BLKLF_CNT];
 };
 
 struct ssow_config_lsw {
