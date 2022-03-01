@@ -9,6 +9,8 @@
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/hrtimer.h>
+#include <linux/ktime.h>
 
 #include "ptp.h"
 #include "mbox.h"
@@ -70,6 +72,28 @@ static bool is_ptp_tsfmt_sec_nsec(struct ptp *ptp)
 	    ptp->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A_PTP)
 		return true;
 	return false;
+}
+
+static enum hrtimer_restart ptp_reset_thresh(struct hrtimer *hrtimer)
+{
+	struct ptp *ptp = container_of(hrtimer, struct ptp, hrtimer);
+
+	writeq(((PPS_HALF_CYCLE_NS + ptp->thresh_delta) % PPS_HALF_CYCLE_NS),
+	       ptp->reg_base + PTP_PPS_THRESH_HI);
+
+	hrtimer_forward_now(hrtimer, ktime_set(0, NSEC_PER_SEC));
+
+	return HRTIMER_RESTART;
+}
+
+static void ptp_init_hrtimer(struct ptp *ptp)
+{
+	u64 clock_hi = readq(ptp->reg_base + PTP_CLOCK_HI);
+
+	hrtimer_init(&ptp->hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	ptp->hrtimer.function = ptp_reset_thresh;
+	hrtimer_start(&ptp->hrtimer, ktime_set(0, (NSEC_PER_SEC - clock_hi)),
+		      HRTIMER_MODE_REL);
 }
 
 static u64 read_ptp_tstmp_sec_nsec(struct ptp *ptp)
@@ -253,6 +277,10 @@ static int ptp_set_clock(struct ptp *ptp, u64 nsec)
 	if (is_ptp_tsfmt_sec_nsec(ptp)) {
 		writeq(nsec / NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_SEC);
 		writeq(nsec % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
+		if (hrtimer_active(&ptp->hrtimer)) {
+			hrtimer_cancel(&ptp->hrtimer);
+			ptp_init_hrtimer(ptp);
+		}
 	} else {
 		writeq(nsec, ptp->reg_base + PTP_CLOCK_HI);
 	}
@@ -272,6 +300,10 @@ static int ptp_adj_clock(struct ptp *ptp, s64 delta)
 		sec += regval / NSEC_PER_SEC;
 		writeq(sec, ptp->reg_base + PTP_CLOCK_SEC);
 		writeq(regval % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
+		if (hrtimer_active(&ptp->hrtimer)) {
+			hrtimer_cancel(&ptp->hrtimer);
+			ptp_init_hrtimer(ptp);
+		}
 	} else {
 		writeq(regval, ptp->reg_base + PTP_CLOCK_HI);
 	}
@@ -330,6 +362,8 @@ void ptp_start(struct ptp *ptp, u64 sclk, u32 ext_clk_freq, u32 extts)
 
 	/* Initial compensation value to start the nanosecs counter */
 	writeq(clock_comp, ptp->reg_base + PTP_CLOCK_COMP);
+
+	ptp->thresh_delta = 0;
 }
 
 static int ptp_get_tstmp(struct ptp *ptp, u64 *clk)
@@ -341,7 +375,14 @@ static int ptp_get_tstmp(struct ptp *ptp, u64 *clk)
 
 static int ptp_set_thresh(struct ptp *ptp, u64 thresh)
 {
-	writeq(thresh, ptp->reg_base + PTP_PPS_THRESH_HI);
+	if (cn10k_ptp_errata(ptp)) {
+		writeq(thresh % PPS_FULL_CYCLE_NS, ptp->reg_base + PTP_PPS_THRESH_HI);
+		ptp->thresh_delta = thresh % PPS_FULL_CYCLE_NS;
+		if (!hrtimer_active(&ptp->hrtimer))
+			ptp_init_hrtimer(ptp);
+	} else {
+		writeq(thresh, ptp->reg_base + PTP_PPS_THRESH_HI);
+	}
 
 	return 0;
 }
@@ -408,6 +449,9 @@ static void ptp_remove(struct pci_dev *pdev)
 {
 	struct ptp *ptp = pci_get_drvdata(pdev);
 	u64 clock_cfg;
+
+	if (hrtimer_active(&ptp->hrtimer))
+		hrtimer_cancel(&ptp->hrtimer);
 
 	if (IS_ERR_OR_NULL(ptp))
 		return;

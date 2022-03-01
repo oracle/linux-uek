@@ -9,6 +9,19 @@
 #include "otx2_common.h"
 #include "otx2_ptp.h"
 
+#define PCI_SUBSYS_DEVID_CN10K_A_PTP		0xB900
+#define PCI_SUBSYS_DEVID_CNF10K_A_PTP		0xBA00
+
+static bool has_cn10k_ptp_pps_errata(struct otx2_ptp *ptp)
+{
+	struct pci_dev *pdev = ptp->nic->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A_PTP ||
+	    pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A_PTP)
+		return true;
+	return false;
+}
+
 static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
@@ -187,7 +200,11 @@ static void otx2_ptp_extts_check(struct work_struct *work)
 		ptp_clock_event(ptp->ptp_clock, &event);
 		ptp->last_extts = tstmp;
 
-		new_thresh = tstmp % 500000000;
+		if (has_cn10k_ptp_pps_errata(ptp))
+			new_thresh = tstmp;
+		else
+			new_thresh = tstmp % PPS_HALF_CYCLE_NS;
+
 		if (ptp->thresh != new_thresh) {
 			mutex_lock(&ptp->nic->mbox.lock);
 			ptp_set_thresh(ptp, new_thresh);

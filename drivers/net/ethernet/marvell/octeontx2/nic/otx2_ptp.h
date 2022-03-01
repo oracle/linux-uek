@@ -7,6 +7,7 @@
 
 #ifndef OTX2_PTP_H
 #define OTX2_PTP_H
+#define PPS_HALF_CYCLE_NS		500000000
 
 static inline u64 otx2_ptp_convert_rx_timestamp(u64 timestamp)
 {
