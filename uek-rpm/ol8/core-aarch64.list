@@ -201,7 +201,7 @@ kernel/drivers/net/usb/cdc_ether.ko
 kernel/drivers/net/usb/usbnet.ko
 kernel/drivers/net/veth.ko
 kernel/drivers/net/virtio_net.ko
-kernel/drivers/net/vxlan.ko
+kernel/drivers/net/vxlan/vxlan.ko
 kernel/drivers/nvdimm/libnvdimm.ko
 kernel/drivers/nvdimm/nd_blk.ko
 kernel/drivers/nvdimm/nd_btt.ko
