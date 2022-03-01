@@ -61,6 +61,7 @@ struct hw_priv_data {
 	struct hw_csr_mapping *map;
 	u32 total_mappings;
 	struct rvu *rvu;
+	struct pci_dev *pdev;
 };
 
 struct hw_csr_lookup_tbl {
@@ -219,7 +220,6 @@ release_csr_mapping(struct hw_priv_data *priv_data)
 static int hw_access_open(struct inode *inode, struct file *filp)
 {
 	struct hw_priv_data *priv_data = NULL;
-	struct pci_dev *pdev;
 
 	priv_data = kzalloc(sizeof(*priv_data), GFP_KERNEL);
 	if (!priv_data)
@@ -230,9 +230,9 @@ static int hw_access_open(struct inode *inode, struct file *filp)
 	if (!priv_data->map)
 		return -ENOMEM;
 
-	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_AF,
-			      NULL);
-	priv_data->rvu = pci_get_drvdata(pdev);
+	priv_data->pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
+					 PCI_DEVID_OCTEONTX2_RVU_AF, NULL);
+	priv_data->rvu = pci_get_drvdata(priv_data->pdev);
 
 	filp->private_data = priv_data;
 
@@ -440,6 +440,7 @@ static int hw_access_release(struct inode *inode, struct file *filp)
 	struct hw_priv_data *priv_data = filp->private_data;
 
 	release_csr_mapping(priv_data);
+	pci_dev_put(priv_data->pdev);
 	filp->private_data = NULL;
 	kfree(priv_data->map);
 	priv_data->map = NULL;
