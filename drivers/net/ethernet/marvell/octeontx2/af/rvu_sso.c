@@ -292,17 +292,22 @@ static void rvu_sso_clean_nscheduled(struct rvu *rvu, int lf)
 	}
 }
 
-static void rvu_ssow_clean_prefetch(struct rvu *rvu, int slot)
+static void rvu_ssow_clean_prefetch(struct rvu *rvu, u16 pcifunc, int slot)
 {
-	int ssow_blkaddr, err;
+	struct rvu_hwinfo *hw = rvu->hw;
+	int ssow_blkaddr, blkaddr, err;
 	u64 val, reg;
+	u16 ssow_lf;
 
 	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+
+	ssow_lf = rvu_get_lf(rvu, &hw->block[ssow_blkaddr], pcifunc, slot);
 
 	/* Make sure that all the in-flights are complete before invalidate. */
 	mb();
-	rvu_write64(rvu, ssow_blkaddr,
-		    SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
+	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x1);
+	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x2, true);
 
 	err = rvu_poll_reg(rvu, ssow_blkaddr,
 			   SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_PRF_TAG),
@@ -378,8 +383,9 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Make sure that all the in-flights are complete before invalidate. */
 	mb();
-	rvu_write64(rvu, ssow_blkaddr,
-		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
+	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x1);
+	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x2, true);
+
 	/* Prepare WS for GW operations. */
 	rvu_poll_reg(rvu, ssow_blkaddr, SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_TAG),
 		     SSOW_LF_GWS_TAG_PEND_GET_WORK, true);
@@ -394,14 +400,14 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 			    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_SWTAG_FLUSH),
 			    0);
 
-	rvu_write64(rvu, ssow_blkaddr,
-		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0);
+	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x1);
+	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x2, true);
 	rvu_write64(rvu, ssow_blkaddr,
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM),
 		    SSOW_LF_GWS_MAX_NW_TIM);
 
 	if (has_prefetch)
-		rvu_ssow_clean_prefetch(rvu, 0);
+		rvu_ssow_clean_prefetch(rvu, pcifunc, 0);
 
 	/* Disable add work. */
 	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_QCTL),
@@ -487,6 +493,7 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 			 "SSO_AF_HWGRP[%d]_IAQ_THR is %lld expected 0", lf,
 			 reg);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x1);
+	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x2, true);
 
 	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0);
 	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0);
@@ -636,8 +643,8 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Make sure that all the in-flights are complete before invalidate. */
 	mb();
-	rvu_write64(rvu, ssow_blkaddr,
-		    SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
+	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x1);
+	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x2, true);
 	/* HRM 14.13.4 (3) */
 	/* Wait till waitw/desched completes. */
 	rvu_poll_reg(rvu, ssow_blkaddr,
@@ -665,15 +672,14 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		     SSOW_LF_GWS_TAG_PEND_DESCHED, true);
 
 	if (has_prefetch)
-		rvu_ssow_clean_prefetch(rvu, slot);
+		rvu_ssow_clean_prefetch(rvu, pcifunc, slot);
 
 	rvu_write64(rvu, ssow_blkaddr,
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM), 0x0);
-	rvu_write64(rvu, ssow_blkaddr,
-		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
 
 	/* set SAI_INVAL bit */
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x1);
+	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x2, true);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_ARB(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_GMCTL(lf), 0x0);
 
