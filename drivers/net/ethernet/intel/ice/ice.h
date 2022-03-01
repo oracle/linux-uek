@@ -73,6 +73,7 @@
 #include "ice_eswitch.h"
 #include "ice_lag.h"
 #include "ice_vsi_vlan_ops.h"
+#include "ice_gnss.h"
 
 #define ICE_BAR0		0
 #define ICE_REQ_DESC_MULTIPLE	32
@@ -185,6 +186,7 @@
 enum ice_feature {
 	ICE_F_DSCP,
 	ICE_F_SMA_CTRL,
+	ICE_F_GNSS,
 	ICE_F_MAX
 };
 
@@ -490,6 +492,7 @@ enum ice_pf_flags {
 	ICE_FLAG_PLUG_AUX_DEV,
 	ICE_FLAG_UNPLUG_AUX_DEV,
 	ICE_FLAG_MTU_CHANGED,
+	ICE_FLAG_GNSS,			/* GNSS successfully initialized */
 	ICE_PF_FLAGS_NBITS		/* must be last */
 };
 
@@ -554,6 +557,9 @@ struct ice_pf {
 	struct mutex adev_mutex;	/* lock to protect aux device access */
 	u32 msg_enable;
 	struct ice_ptp ptp;
+	struct tty_driver *ice_gnss_tty_driver;
+	struct tty_port gnss_tty_port;
+	struct gnss_serial *gnss_serial;
 	u16 num_rdma_msix;		/* Total MSIX vectors for RDMA driver */
 	u16 rdma_base_vector;
 
