@@ -29,31 +29,6 @@
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF	0xA065
 
-/* First physical address is the smallest start physical address of all HW
- * devices.
- * Smallest expected start physical address of all HW devices is based on
- * datasheet 'Figure 4-1 Physical Address Regions' with lowest I/O start address
- * being 0x800000000000 as:
- *  - bits <51:47> = 0x1 define I/O range,
- *  - bits <43:36> = 0x0 constitute NCB DID,
- *  - bits <36:0>  = 0x0 assume zero-offset.
- * In practice the lowest observed register address is for GIC = 0x801000000000
- * which will be used for access.
- */
-#define REG_PHYS_BASEADDR              0x801000000000
-
-/* The calculation does not take into consideration Armv8.2's 52bit extended
- * addressing used for PEM which has bits<51:49> set to {0x1, 0x2, 0x3}.
- *
- * Maximum I/O address bits<43:36> are assumed ti be 0xFF with no limits on NCB
- * offset addesses forwarded to NCB device. Such assumtion leads to maximum
- * addressable HW address being 0x8FFFFFFFFFFF.
- * In practice the highest observed address is for PEM(5)_MSIX_MBA(0) as below:
- */
-#define REG_PHYS_ENDADDR               0x8E5F000F0000
-
-#define REG_SPACE_MAPSIZE              (REG_PHYS_ENDADDR - REG_PHYS_BASEADDR + 1)
-
 struct hw_reg_cfg {
 	u64	regaddr; /* Register physical address within a hw device */
 	u64	regval; /* Register value to be read or to write */
@@ -77,6 +52,43 @@ struct hw_cgx_info {
 	u8	nix_idx;
 };
 
+struct hw_csr_mapping {
+	void __iomem *reg_base;
+	bool mapped;
+};
+
+struct hw_priv_data {
+	struct hw_csr_mapping *map;
+	u32 total_mappings;
+	struct rvu *rvu;
+};
+
+struct hw_csr_lookup_tbl {
+	u64 base;       /* Base BAR address for each HW */
+	u64 size;	/* Size of mapping */
+	u8 alpha;       /* Alpha component in CSRs */
+	u8 alpha_shift; /* Alpha shift */
+	u8 beta;	/* Beta component in CSRs */
+	u8 beta_shift;  /* Beta shift */
+	u64 mask;	/* Mask for extracting the CSR offsets */
+};
+
+const struct hw_csr_lookup_tbl lkp_tbl[] = {
+	/* [BASE] [SIZE] [ALPHA] [ALPHA SHIFT] [BETA] [BETA SHIFT] [MASK] */
+	/* RVU BAR0 */
+	{ 0x840000000000, 0xa000000, 32, 28, 1,   0,  0xFFFFFFF },
+	/* RVU BAR2 */
+	{ 0x840200000000, 0x2000000, 32, 36, 129, 25, 0xFFFFFF },
+	/* RST */
+	{ 0x87E006000000, 0x10000,   1,  0,  1,   0,  0xFFFF },
+	/* RPM */
+	{ 0x87E0E0000000, 0x900000,  5,  24, 1,   0,  0xFFFFFF },
+	/* NCB */
+	{ 0x87E0F0000000, 0x100000,  3,  24, 1,   0,  0xFFFFF },
+	/* LMC */
+	{ 0x87E088000000, 0x10000,   6,  24, 1,   0,  0xFFFF },
+};
+
 #define HW_ACCESS_TYPE			120
 
 #define HW_ACCESS_CSR_READ_IOCTL	_IO(HW_ACCESS_TYPE, 1)
@@ -84,30 +96,139 @@ struct hw_cgx_info {
 #define HW_ACCESS_CTX_READ_IOCTL	_IO(HW_ACCESS_TYPE, 3)
 #define HW_ACCESS_CGX_INFO_IOCTL	_IO(HW_ACCESS_TYPE, 4)
 
-struct hw_priv_data {
-	void __iomem *reg_base;
-	struct rvu *rvu;
-};
+#define MAX_ALPHA	32
+#define MAX_BETA	129
 
 static struct class *hw_reg_class;
 static int major_no;
+
+/* Check if mapping already exists else create a new one */
+static int
+create_mapping(struct hw_priv_data *priv_data, void __iomem **reg_base,
+	       int idx, u64 base, u64 size)
+{
+	struct hw_csr_mapping *map;
+
+	map = (struct hw_csr_mapping *)(priv_data->map + idx);
+	if (map->mapped != true) {
+		map->reg_base = ioremap(base, size);
+		if (!map->reg_base) {
+			pr_err("Unable to map Physical Base Address\n");
+			return -ENOMEM;
+		}
+		pr_debug("Mapping io addr %p at index %d\n", map->reg_base,
+			 idx);
+
+		priv_data->total_mappings++;
+		map->mapped = true;
+	}
+	*reg_base = map->reg_base;
+
+	return 0;
+}
+
+/* To access CSR space, mappings are setup in small chunks. Unique mapping is
+ * identified based on HW (eg. RVU, RPM), alpha (PF in case of RVU, CGX in RPM),
+ * beta (FUNC/VF in RVU) attributes. Since each HW may have different alpha/beta
+ * components, sizes to map, masking the register offsets, a lookup table is
+ * defined where each index represents different values for differetn HWs.
+ */
+static int
+setup_csr_mapping(struct hw_priv_data *priv_data, u64 addr,
+			void __iomem **reg_base, u64 *offset)
+{
+	int i, j, k, idx;
+	u64 base = 0;
+
+	for (i = 0; i < ARRAY_SIZE(lkp_tbl); i++) {
+		for (j = 0; j < lkp_tbl[i].alpha; j++) {
+			for (k = 0; k < lkp_tbl[i].beta; k++) {
+				/* Base address is prepared based on different
+				 * attr and then compared with user address if
+				 * it falls in the range.
+				 */
+				base = lkp_tbl[i].base |
+					((u64)j << lkp_tbl[i].alpha_shift) |
+					((u64)k << lkp_tbl[i].beta_shift);
+
+				if ((addr < base) || (addr > (u64)(u8 *)base +
+						      lkp_tbl[i].size))
+					continue;
+
+				/* Found the base address range for user addr,
+				 * create a new mapping at the specific index.
+				 */
+				idx = ((i * MAX_ALPHA * MAX_BETA) +
+				       (j * MAX_BETA) + k);
+
+				if (create_mapping(priv_data, reg_base, idx,
+						   base, lkp_tbl[i].size))
+					goto err;
+
+				/* Extract the register offset from user addr. */
+				*offset = addr & lkp_tbl[i].mask;
+				return 0;
+			}
+
+		}
+	}
+
+err:
+	/* User address not in any range of HW defined in lookup table */
+	pr_err("Address [0x%llx] out of range\n", addr);
+	return -1;
+}
+
+
+static void
+destroy_mapping(struct hw_priv_data *priv_data, int idx)
+{
+	struct hw_csr_mapping *map;
+
+	map = (struct hw_csr_mapping *)(priv_data->map + idx);
+	if (map->mapped == true) {
+		pr_debug("Unmapping io addr %p at index %d\n", map->reg_base,
+			 idx);
+		iounmap(map->reg_base);
+		priv_data->total_mappings--;
+		map->mapped = false;
+	}
+}
+
+/* Releasing the mappings */
+static void
+release_csr_mapping(struct hw_priv_data *priv_data)
+{
+	int i, j, k, idx;
+
+	for (i = 0 ; i < ARRAY_SIZE(lkp_tbl); i++) {
+		for (j = 0; j < lkp_tbl[i].alpha; j++) {
+			for (k = 0; k < lkp_tbl[i].beta; k++) {
+				idx = ((i * MAX_ALPHA * MAX_BETA) +
+				       (j * MAX_BETA) + k);
+				destroy_mapping(priv_data, idx);
+			}
+		}
+	}
+
+	if (priv_data->total_mappings != 0)
+		pr_err("All mappings not released, %d are remaining\n",
+		       priv_data->total_mappings);
+}
 
 static int hw_access_open(struct inode *inode, struct file *filp)
 {
 	struct hw_priv_data *priv_data = NULL;
 	struct pci_dev *pdev;
-	int err;
 
 	priv_data = kzalloc(sizeof(*priv_data), GFP_KERNEL);
 	if (!priv_data)
 		return -ENOMEM;
 
-	priv_data->reg_base = ioremap(REG_PHYS_BASEADDR, REG_SPACE_MAPSIZE);
-	if (!priv_data->reg_base) {
-		pr_err("Unable to map Physical Base Address\n");
-		err = -ENOMEM;
-		return err;
-	}
+	priv_data->map = kzalloc(ARRAY_SIZE(lkp_tbl) * MAX_ALPHA * MAX_BETA *
+				 sizeof(struct hw_csr_mapping), GFP_KERNEL);
+	if (!priv_data->map)
+		return -ENOMEM;
 
 	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_AF,
 			      NULL);
@@ -119,8 +240,9 @@ static int hw_access_open(struct inode *inode, struct file *filp)
 }
 
 static int
-hw_access_csr_read(void __iomem *regbase, unsigned long arg)
+hw_access_csr_read(struct hw_priv_data *priv_data, unsigned long arg)
 {
+	void __iomem *reg_base;
 	struct hw_reg_cfg reg_cfg;
 	u64 regoff;
 
@@ -131,19 +253,10 @@ hw_access_csr_read(void __iomem *regbase, unsigned long arg)
 		return -EFAULT;
 	}
 
-	if (reg_cfg.regaddr < REG_PHYS_BASEADDR ||
-	    reg_cfg.regaddr >= REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE) {
-		pr_err("Address [0x%llx] out of range [0x%lx - 0x%lx]\n",
-		       reg_cfg.regaddr, REG_PHYS_BASEADDR,
-		       REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE);
+	if (setup_csr_mapping(priv_data, reg_cfg.regaddr, &reg_base, &regoff))
+		return -1;
 
-		return -EFAULT;
-	}
-
-	/* Only 64 bit reads/writes are allowed */
-	reg_cfg.regaddr &= ~0x07ULL;
-	regoff = reg_cfg.regaddr - REG_PHYS_BASEADDR;
-	reg_cfg.regval = readq(regbase + regoff);
+	reg_cfg.regval = readq(reg_base + regoff);
 
 	if (copy_to_user((void __user *)(unsigned long)arg,
 			 &reg_cfg,
@@ -156,9 +269,10 @@ hw_access_csr_read(void __iomem *regbase, unsigned long arg)
 }
 
 static int
-hw_access_csr_write(void __iomem *regbase, unsigned long arg)
+hw_access_csr_write(struct hw_priv_data *priv_data, unsigned long arg)
 {
 	struct hw_reg_cfg reg_cfg;
+	void __iomem *reg_base;
 	u64 regoff;
 
 	if (copy_from_user(&reg_cfg, (void __user *)arg,
@@ -168,19 +282,11 @@ hw_access_csr_write(void __iomem *regbase, unsigned long arg)
 		return -EFAULT;
 	}
 
-	if (reg_cfg.regaddr < REG_PHYS_BASEADDR ||
-	    reg_cfg.regaddr >= REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE) {
-		pr_err("Address [0x%llx] out of range [0x%lx - 0x%lx]\n",
-		       reg_cfg.regaddr, REG_PHYS_BASEADDR,
-		       REG_PHYS_BASEADDR + REG_SPACE_MAPSIZE);
-
-		return -EFAULT;
-	}
-
 	/* Only 64 bit reads/writes are allowed */
-	reg_cfg.regaddr &= ~0x07ULL;
-	regoff = reg_cfg.regaddr - REG_PHYS_BASEADDR;
-	writeq(reg_cfg.regval, regbase + regoff);
+	if (setup_csr_mapping(priv_data, reg_cfg.regaddr, &reg_base, &regoff))
+		return -1;
+
+	writeq(reg_cfg.regval, reg_base + regoff);
 
 	return 0;
 }
@@ -307,15 +413,14 @@ static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 			   unsigned long arg)
 {
 	struct hw_priv_data *priv_data = filp->private_data;
-	void __iomem *regbase = priv_data->reg_base;
 	struct rvu *rvu = priv_data->rvu;
 
 	switch (cmd) {
 	case HW_ACCESS_CSR_READ_IOCTL:
-		return hw_access_csr_read(regbase, arg);
+		return hw_access_csr_read(priv_data, arg);
 
 	case HW_ACCESS_CSR_WRITE_IOCTL:
-		return hw_access_csr_write(regbase, arg);
+		return hw_access_csr_write(priv_data, arg);
 
 	case HW_ACCESS_CTX_READ_IOCTL:
 		return hw_access_ctx_read(rvu, arg);
@@ -333,10 +438,11 @@ static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 static int hw_access_release(struct inode *inode, struct file *filp)
 {
 	struct hw_priv_data *priv_data = filp->private_data;
-	void __iomem *regbase = priv_data->reg_base;
 
-	iounmap(regbase);
+	release_csr_mapping(priv_data);
 	filp->private_data = NULL;
+	kfree(priv_data->map);
+	priv_data->map = NULL;
 	kfree(priv_data);
 	priv_data = NULL;
 
