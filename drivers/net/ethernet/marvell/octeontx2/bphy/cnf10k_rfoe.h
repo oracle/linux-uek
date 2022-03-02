@@ -36,6 +36,15 @@
 #define CNF10K_RFOE_MAX_FSIZE		9212 /* max frame size excluding FCS */
 #define CNF10K_RFOE_MAX_MTU		(CNF10K_RFOE_MAX_FSIZE - VLAN_ETH_HLEN)
 
+/* BCN register offsets and definitions */
+#define CNF10K_BCN_CAPTURE_CFG				0x1400U
+#define CNF10K_BCN_CAPTURE_N1_N2			0x1410U
+#define CNF10K_BCN_CAPTURE_PTP				0x1440U
+
+/* BCN_CAPTURE_CFG register definitions */
+#define CAPT_EN					BIT(0)
+#define CAPT_TRIG_SW				(3UL << 8)
+
 /* global driver context */
 struct cnf10k_rfoe_drv_ctx {
 	u8				rfoe_num;
@@ -110,6 +119,7 @@ struct cnf10k_rfoe_ndev_priv {
 	struct ptp_clock_info		ptp_clock_info;
 	struct otx2_rfoe_stats		stats;
 	u8				mac_addr[ETH_ALEN];
+	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
 	int				if_type;
 	u8				link_state;

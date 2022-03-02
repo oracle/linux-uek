@@ -84,15 +84,6 @@
 					 (((unsigned long)(a) << 24)) | \
 					 ((b) << 3))
 
-/* BCN register offsets and definitions */
-#define BCN_CAPTURE_CFG				0x400
-#define BCN_CAPTURE_N1_N2			0x410
-#define BCN_CAPTURE_PTP				0x430
-
-/* BCN_CAPTURE_CFG register definitions */
-#define CAPT_EN					BIT(0)
-#define CAPT_TRIG_SW				(3UL << 8)
-
 /* CPRI register offsets */
 #define CPRIX_RXD_GMII_UL_CBUF_CFG1(a)		(0x1000ULL | \
 						 ((unsigned long)(a) << 24))

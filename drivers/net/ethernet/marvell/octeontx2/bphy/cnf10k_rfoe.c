@@ -70,6 +70,11 @@ void cnf10k_bphy_rfoe_cleanup(void)
 		if (drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
+			--(priv->ptp_cfg->refcnt);
+			if (!priv->ptp_cfg->refcnt) {
+				del_timer_sync(&priv->ptp_cfg->ptp_timer);
+				kfree(priv->ptp_cfg);
+			}
 			cnf10k_rfoe_ptp_destroy(priv);
 			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
@@ -85,6 +90,67 @@ void cnf10k_bphy_rfoe_cleanup(void)
 			drv_ctx->valid = 0;
 		}
 	}
+}
+
+void cnf10k_rfoe_calc_ptp_ts(struct cnf10k_rfoe_ndev_priv *priv, u64 *ts)
+{
+	u64 ptp_diff_nsec, ptp_diff_psec;
+	struct ptp_bcn_off_cfg *ptp_cfg;
+	struct ptp_clk_cfg *clk_cfg;
+	struct ptp_bcn_ref *ref;
+	unsigned long flags;
+	u64 timestamp = *ts;
+
+	ptp_cfg = priv->ptp_cfg;
+	if (!ptp_cfg->use_ptp_alg)
+		return;
+	clk_cfg = &ptp_cfg->clk_cfg;
+
+	spin_lock_irqsave(&ptp_cfg->lock, flags);
+
+	if (likely(timestamp > ptp_cfg->new_ref.ptp0_ns))
+		ref = &ptp_cfg->new_ref;
+	else
+		ref = &ptp_cfg->old_ref;
+
+	/* calculate ptp timestamp diff in pico sec */
+	ptp_diff_psec = ((timestamp - ref->ptp0_ns) * PICO_SEC_PER_NSEC *
+			 clk_cfg->clk_freq_div) / clk_cfg->clk_freq_ghz;
+	ptp_diff_nsec = (ptp_diff_psec + ref->bcn0_n2_ps + 500) /
+			PICO_SEC_PER_NSEC;
+	timestamp = ref->bcn0_n1_ns - priv->sec_bcn_offset + ptp_diff_nsec;
+
+	spin_unlock_irqrestore(&ptp_cfg->lock, flags);
+
+	*ts = timestamp;
+}
+
+static void cnf10k_rfoe_ptp_offset_timer(struct timer_list *t)
+{
+	struct ptp_bcn_off_cfg *ptp_cfg = from_timer(ptp_cfg, t, ptp_timer);
+	u64 mio_ptp_ts, ptp_ts_diff, ptp_diff_nsec, ptp_diff_psec;
+	struct ptp_clk_cfg *clk_cfg = &ptp_cfg->clk_cfg;
+	unsigned long expires, flags;
+
+	spin_lock_irqsave(&ptp_cfg->lock, flags);
+
+	memcpy(&ptp_cfg->old_ref, &ptp_cfg->new_ref,
+	       sizeof(struct ptp_bcn_ref));
+
+	mio_ptp_ts = readq(ptp_reg_base + MIO_PTP_CLOCK_HI);
+	ptp_ts_diff = mio_ptp_ts - ptp_cfg->new_ref.ptp0_ns;
+	ptp_diff_psec = (ptp_ts_diff * PICO_SEC_PER_NSEC *
+			 clk_cfg->clk_freq_div) / clk_cfg->clk_freq_ghz;
+	ptp_diff_nsec = ptp_diff_psec / PICO_SEC_PER_NSEC;
+	ptp_cfg->new_ref.ptp0_ns += ptp_ts_diff;
+	ptp_cfg->new_ref.bcn0_n1_ns += ptp_diff_nsec;
+	ptp_cfg->new_ref.bcn0_n2_ps += ptp_diff_psec -
+				       (ptp_diff_nsec * PICO_SEC_PER_NSEC);
+
+	spin_unlock_irqrestore(&ptp_cfg->lock, flags);
+
+	expires = jiffies + PTP_OFF_RESAMPLE_THRESH * HZ;
+	mod_timer(&ptp_cfg->ptp_timer, expires);
 }
 
 /* submit pending ptp tx requests */
@@ -250,6 +316,7 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 
 	/* update timestamp value in skb */
 	timestamp = tx_tstmp->ptp_timestamp;
+	cnf10k_rfoe_calc_ptp_ts(priv, &timestamp);
 
 	memset(&ts, 0, sizeof(ts));
 	ts.hwtstamp = ns_to_ktime(timestamp);
@@ -454,8 +521,10 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		skb_trim(skb, ptp_message_len);
 	}
 
-	if (priv2->rx_hw_tstamp_en)
+	if (priv2->rx_hw_tstamp_en) {
+		cnf10k_rfoe_calc_ptp_ts(priv, &tstamp);
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tstamp);
+	}
 
 	netif_receive_skb(skb);
 
@@ -1228,6 +1297,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	struct tx_ptp_ring_cfg *ptp_ring_cfg;
 	struct tx_job_queue_cfg *tx_cfg;
 	struct cnf10k_rx_ft_cfg *ft_cfg;
+	struct ptp_bcn_off_cfg *ptp_cfg;
 	struct net_device *netdev;
 	u8 pkt_type_mask;
 
@@ -1246,6 +1316,14 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 		dev_err(cdev->dev, "unsupported chip version\n");
 		return -EINVAL;
 	}
+
+	ptp_cfg = kzalloc(sizeof(*ptp_cfg), GFP_KERNEL);
+	if (!ptp_cfg)
+		return -ENOMEM;
+	timer_setup(&ptp_cfg->ptp_timer, cnf10k_rfoe_ptp_offset_timer, 0);
+	ptp_cfg->clk_cfg.clk_freq_ghz = PTP_CLK_FREQ_GHZ;
+	ptp_cfg->clk_cfg.clk_freq_div = PTP_CLK_FREQ_DIV;
+	spin_lock_init(&ptp_cfg->lock);
 
 	for (i = 0; i < BPHY_MAX_RFOE_MHAB; i++) {
 		priv2 = NULL;
@@ -1317,6 +1395,8 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			priv->rfoe_reg_base = rfoe_reg_base;
 			priv->bcn_reg_base = bcn_reg_base;
 			priv->ptp_reg_base = ptp_reg_base;
+			priv->ptp_cfg = ptp_cfg;
+			++(priv->ptp_cfg->refcnt);
 
 			/* Initialise PTP TX work queue */
 			INIT_WORK(&priv->ptp_tx_work, cnf10k_rfoe_ptp_tx_work);
@@ -1435,6 +1515,8 @@ err_exit:
 			drv_ctx->valid = 0;
 		}
 	}
+	del_timer_sync(&ptp_cfg->ptp_timer);
+	kfree(ptp_cfg);
 
 	return ret;
 }
