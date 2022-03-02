@@ -32,16 +32,15 @@
 #define TO_CLONE_DESC(x) ((struct mrvl_clone_fw *)(x))
 #define TO_UPDATE_DESC(x) ((struct mrvl_update *)(x))
 #define TO_PHYS_BUFFER(x) ((struct mrvl_phys_buffer *)(x))
+#define TO_READ_FLASH_DESC(x) ((struct mrvl_read_flash *)(x))
 
 static int alloc_buffers(struct memory_desc *memdesc, uint32_t required_buf);
 static void free_buffers(void);
+
+static int alloc_readbuf(uint64_t rd_size);
 
 /*Debugfs interface root */;
 struct dentry *mrvl_swup_root;
-
-static int alloc_buffers(struct memory_desc *memdesc, uint32_t required_buf);
-static void free_buffers(void);
-
 
 /* Buffers for SMC call
  * 0 -> 25MB for SW update CPIO blob
@@ -50,11 +49,13 @@ static void free_buffers(void);
 #define BUF_CPIO 0
 #define BUF_DATA 1
 #define BUF_SIGNATURE 2
-#define BUF_COUNT 3
+#define BUF_READ 3
+#define BUF_COUNT 4
 static struct memory_desc memdesc[BUF_COUNT] = {
 	{0, 0, 32*1024*1024, "cpio buffer"},
 	{0, 0, 1*1024*1024,  "data buffer"},
 	{0, 0, 1*1024*1024,  "signature buffer"},
+	{0, 0, 0, "read buffer"},
 };
 
 static struct allocated_pages {
@@ -279,6 +280,8 @@ static int mrvl_get_membuf(unsigned long arg)
 	buf.sign_buf_size = memdesc[BUF_SIGNATURE].size;
 	buf.reserved_buf = 0;
 	buf.reserved_buf_size = 0;
+	buf.read_buf = memdesc[BUF_READ].phys;
+	buf.read_buf_size = memdesc[BUF_READ].size;
 
 
 	if (copy_to_user(TO_PHYS_BUFFER(arg),
@@ -365,6 +368,110 @@ static int mrvl_run_fw_update(unsigned long arg)
 	return 0;
 }
 
+static int alloc_readbuf(uint64_t rd_size)
+{
+	int i, required_mem = 0, page_order;
+	void *page_addr;
+	uint32_t required_buf = 1<<BUF_DATA | 1<<BUF_READ;
+
+	memdesc[BUF_READ].size = rd_size;
+	required_mem += memdesc[BUF_READ].size;
+	required_mem += memdesc[BUF_DATA].size;
+
+	if (!required_mem)
+		return 0;
+
+	page_order = get_order(required_mem);
+	page_handler.p = alloc_pages(GFP_KERNEL, page_order);
+	if (!page_handler.p)
+		return -ENOMEM;
+
+	page_handler.order = page_order;
+	page_addr = page_address(page_handler.p);
+	memset(page_addr, 0x00, 1<<page_order);
+
+	for (i = 0; i < BUF_COUNT; i++) {
+		if (required_buf & 1<<i) {
+			memdesc[i].virt = page_addr;
+			memdesc[i].phys = virt_to_phys(page_addr);
+			page_addr += memdesc[i].size;
+		}
+	}
+	pr_debug("Alloc Read : size: %llx, required_mem: %x pg order %d addr %p\n",
+							rd_size,
+							required_mem,
+							page_order,
+							page_addr);
+	return 0;
+}
+
+static int mrvl_read_flash_data(unsigned long arg)
+{
+	struct mrvl_read_flash ioctl_desc = {0};
+	struct smc_read_flash_descriptor *smc_desc;
+	struct arm_smccc_res res;
+	int ret, spi_in_progress = 0;
+
+	if (copy_from_user(&ioctl_desc,
+			  TO_READ_FLASH_DESC(arg),
+			  sizeof(ioctl_desc))) {
+		pr_err("Data Read Error\n");
+		return -EFAULT;
+	}
+
+	ret = alloc_readbuf(ioctl_desc.len);
+	if (ret) {
+		pr_err("Memory Alloc Error\n");
+		return -ENOMEM;
+	}
+	smc_desc = (struct smc_read_flash_descriptor *)memdesc[BUF_DATA].virt;
+	memset(smc_desc, 0x00, sizeof(*smc_desc));
+
+	pr_info("Read request: SPI: %d, CS: %d, offset: %llx, Length: %llx\n",
+							ioctl_desc.bus,
+							ioctl_desc.cs,
+							ioctl_desc.offset,
+							ioctl_desc.len);
+
+
+	/* Set location and length */
+	smc_desc->offset = ioctl_desc.offset;
+	smc_desc->length = ioctl_desc.len;
+
+	/* In linux use asynchronus SPI operation */
+	smc_desc->async_spi = 1;
+
+	/* SPI config */
+	smc_desc->bus        = ioctl_desc.bus;
+	smc_desc->cs	     = ioctl_desc.cs;
+	smc_desc->addr       = memdesc[BUF_READ].phys;
+
+	res = mrvl_exec_smc(PLAT_CN10K_SPI_READ_FLASH,
+			    memdesc[BUF_DATA].phys,
+			    sizeof(struct smc_read_flash_descriptor));
+
+	ioctl_desc.ret = res.a0;
+	if (copy_to_user(TO_READ_FLASH_DESC(arg),
+			 &ioctl_desc,
+			 sizeof(ioctl_desc))) {
+		pr_err("Data Write Error\n");
+		return -EFAULT;
+	}
+
+	do {
+		msleep(500);
+		res = mrvl_exec_smc(0xc2000b0e, 0, 0);
+		spi_in_progress = res.a0;
+	} while (spi_in_progress);
+
+	return 0;
+}
+
+static void mrvl_free_rd_buf(unsigned long arg)
+{
+	free_buffers();
+}
+
 static long mrvl_swup_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret;
@@ -377,6 +484,11 @@ static long mrvl_swup_ioctl(struct file *file, unsigned int cmd, unsigned long a
 		break;
 	case GET_MEMBUF:
 		ret = alloc_buffers(memdesc, 1<<BUF_DATA | 1<<BUF_SIGNATURE | 1<<BUF_CPIO);
+		break;
+	case RUN_UPDATE:
+	case READ_FLASH:
+	case FREE_RD_BUF:
+		ret = 0;
 		break;
 	default:
 		ret = -ENXIO; /* Illegal cmd */
@@ -396,7 +508,7 @@ static long mrvl_swup_ioctl(struct file *file, unsigned int cmd, unsigned long a
 		free_buffers();
 		break;
 	case GET_MEMBUF:
-		ret =  mrvl_get_membuf(arg);
+		ret = mrvl_get_membuf(arg);
 		break;
 	case RUN_UPDATE:
 		ret = mrvl_run_fw_update(arg);
@@ -405,6 +517,12 @@ static long mrvl_swup_ioctl(struct file *file, unsigned int cmd, unsigned long a
 	case CLONE_FW:
 		ret = mrvl_clone_fw(arg);
 		free_buffers();
+		break;
+	case READ_FLASH:
+		ret = mrvl_read_flash_data(arg);
+		break;
+	case FREE_RD_BUF:
+		mrvl_free_rd_buf(arg);
 		break;
 	default:
 		pr_err("Not supported IOCTL\n");
