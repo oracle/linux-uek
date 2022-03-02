@@ -274,7 +274,10 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 	}
 	case OTX2_RFOE_IOCTL_PTP_OFFSET:
 	{
+		u32 bcn_capture_off = 0, bcn_capture_n1_n2_off = 0, bcn_capture_ptp_off = 0;
 		u64 bcn_n1, bcn_n2, bcn_n1_ns, bcn_n2_ps, ptp0_ns, regval;
+		struct cnf10k_rfoe_drv_ctx *cnf10k_drv_ctx = NULL;
+		struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
 		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 		struct otx2_rfoe_ndev_priv *priv;
 		struct ptp_bcn_off_cfg *ptp_cfg;
@@ -300,29 +303,52 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			ret = -EINVAL;
 			goto out;
 		}
-		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-			drv_ctx = &rfoe_drv_ctx[idx];
-			if (drv_ctx->valid)
-				break;
+		if (CHIP_CNF10K(cdev->hw_version)) {
+			for (idx = 0; idx < cdev->tot_rfoe_intf; idx++) {
+				cnf10k_drv_ctx = &cnf10k_rfoe_drv_ctx[idx];
+				if (cnf10k_drv_ctx->valid) {
+					netdev = cnf10k_drv_ctx->netdev;
+					cnf10k_priv = netdev_priv(netdev);
+					ptp_cfg = cnf10k_priv->ptp_cfg;
+					bcn_capture_off = CNF10K_BCN_CAPTURE_CFG;
+					bcn_capture_n1_n2_off = CNF10K_BCN_CAPTURE_N1_N2;
+					bcn_capture_ptp_off = CNF10K_BCN_CAPTURE_PTP;
+					break;
+				}
+			}
+			if (idx >= cdev->tot_rfoe_intf) {
+				dev_err(cdev->dev, "drv ctx not found\n");
+				ret = -EINVAL;
+				goto out;
+			}
+		} else {
+			for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+				drv_ctx = &rfoe_drv_ctx[idx];
+				if (drv_ctx->valid) {
+					netdev = drv_ctx->netdev;
+					priv = netdev_priv(netdev);
+					ptp_cfg = priv->ptp_cfg;
+					bcn_capture_off = BCN_CAPTURE_CFG;
+					bcn_capture_n1_n2_off = BCN_CAPTURE_N1_N2;
+					bcn_capture_ptp_off = BCN_CAPTURE_PTP;
+					break;
+				}
+			}
+			if (idx >= RFOE_MAX_INTF) {
+				dev_err(cdev->dev, "drv ctx not found\n");
+				ret = -EINVAL;
+				goto out;
+			}
 		}
-		if (idx >= RFOE_MAX_INTF) {
-			dev_err(cdev->dev, "drv ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		ptp_cfg = priv->ptp_cfg;
 		ptp_cfg->clk_cfg.clk_freq_ghz = clk_cfg.clk_freq_ghz;
 		ptp_cfg->clk_cfg.clk_freq_div = clk_cfg.clk_freq_div;
 		/* capture ptp and bcn timestamp using BCN_CAPTURE_CFG */
-		writeq((CAPT_EN | CAPT_TRIG_SW),
-		       priv->bcn_reg_base + BCN_CAPTURE_CFG);
+		writeq(CAPT_EN | CAPT_TRIG_SW, bcn_reg_base + bcn_capture_off);
 		/* poll for capt_en to become 0 */
-		while ((readq(priv->bcn_reg_base + BCN_CAPTURE_CFG) & CAPT_EN))
+		while ((readq(bcn_reg_base + bcn_capture_off) & CAPT_EN))
 			cpu_relax();
-		ptp0_ns = readq(priv->bcn_reg_base + BCN_CAPTURE_PTP);
-		regval = readq(priv->bcn_reg_base + BCN_CAPTURE_N1_N2);
+		ptp0_ns = readq(bcn_reg_base + bcn_capture_ptp_off);
+		regval = readq(bcn_reg_base + bcn_capture_n1_n2_off);
 		bcn_n1 = (regval >> 24) & 0xFFFFFFFFFF;
 		bcn_n2 = regval & 0xFFFFFF;
 		/* BCN N1 10 msec counter to nsec */
@@ -343,6 +369,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 	}
 	case OTX2_RFOE_IOCTL_SEC_BCN_OFFSET:
 	{
+		struct cnf10k_rfoe_drv_ctx *cnf10k_drv_ctx = NULL;
+		struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
 		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 		struct otx2_rfoe_ndev_priv *priv;
 		struct bcn_sec_offset_cfg cfg;
@@ -360,21 +388,41 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			ret = -EFAULT;
 			goto out;
 		}
-		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-			drv_ctx = &rfoe_drv_ctx[idx];
-			if (drv_ctx->valid &&
-			    drv_ctx->rfoe_num == cfg.rfoe_num &&
-			    drv_ctx->lmac_id == cfg.lmac_id)
-				break;
+		if (CHIP_CNF10K(cdev->hw_version)) {
+			for (idx = 0; idx < cdev->tot_rfoe_intf; idx++) {
+				cnf10k_drv_ctx = &cnf10k_rfoe_drv_ctx[idx];
+				if (cnf10k_drv_ctx->valid &&
+				    cnf10k_drv_ctx->rfoe_num == cfg.rfoe_num &&
+				    cnf10k_drv_ctx->lmac_id == cfg.lmac_id) {
+					netdev = cnf10k_drv_ctx->netdev;
+					cnf10k_priv = netdev_priv(netdev);
+					cnf10k_priv->sec_bcn_offset = cfg.sec_bcn_offset;
+					break;
+				}
+			}
+			if (idx >= cdev->tot_rfoe_intf) {
+				dev_err(cdev->dev, "drv ctx not found\n");
+				ret = -EINVAL;
+				goto out;
+			}
+		} else {
+			for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+				drv_ctx = &rfoe_drv_ctx[idx];
+				if (drv_ctx->valid &&
+				    drv_ctx->rfoe_num == cfg.rfoe_num &&
+				    drv_ctx->lmac_id == cfg.lmac_id) {
+					netdev = drv_ctx->netdev;
+					priv = netdev_priv(netdev);
+					priv->sec_bcn_offset = cfg.sec_bcn_offset;
+					break;
+				}
+			}
+			if (idx >= RFOE_MAX_INTF) {
+				dev_err(cdev->dev, "drv ctx not found\n");
+				ret = -EINVAL;
+				goto out;
+			}
 		}
-		if (idx >= RFOE_MAX_INTF) {
-			dev_err(cdev->dev, "drv ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-		netdev = drv_ctx->netdev;
-		priv = netdev_priv(netdev);
-		priv->sec_bcn_offset = cfg.sec_bcn_offset;
 		ret = 0;
 		goto out;
 	}
