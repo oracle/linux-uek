@@ -114,9 +114,10 @@ static irqreturn_t otx2_bphy_intr_handler(int irq, void *dev_id)
 	for (cpri_num = 0; cpri_num < OTX2_BPHY_CPRI_MAX_MHAB; cpri_num++) {
 		intr_mask = CPRI_RX_INTR_MASK(cpri_num);
 		if (status & intr_mask) {
-			/* clear UL ETH interrupt */
-			writeq(0x1, cpri_reg_base + CPRIX_ETH_UL_INT(cpri_num));
-			otx2_cpri_rx_napi_schedule(cpri_num, status);
+			if (!otx2_cpri_rx_napi_schedule(cpri_num, status))
+				/* clear UL ETH interrupt */
+				writeq(0x1, cpri_reg_base +
+				       CPRIX_ETH_UL_INT(cpri_num));
 		}
 	}
 

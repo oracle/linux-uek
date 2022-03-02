@@ -134,7 +134,7 @@ struct otx2_cpri_ndev_priv {
 int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 				  struct bphy_netdev_comm_intf_cfg *cfg);
 
-void otx2_cpri_rx_napi_schedule(int cpri_num, u32 status);
+bool otx2_cpri_rx_napi_schedule(int cpri_num, u32 status);
 
 void otx2_cpri_update_stats(struct otx2_cpri_ndev_priv *priv);
 
