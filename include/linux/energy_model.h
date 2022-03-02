@@ -93,6 +93,7 @@ struct em_data_callback {
 			    struct device *dev);
 };
 #define EM_DATA_CB(_active_power_cb) { .active_power = &_active_power_cb }
+#define EM_SET_ACTIVE_POWER_CB(em_cb, cb) ((em_cb).active_power = cb)
 
 struct em_perf_domain *em_cpu_get(int cpu);
 struct em_perf_domain *em_pd_get(struct device *dev);
@@ -214,6 +215,7 @@ static inline int em_pd_nr_perf_states(struct em_perf_domain *pd)
 #else
 struct em_data_callback {};
 #define EM_DATA_CB(_active_power_cb) { }
+#define EM_SET_ACTIVE_POWER_CB(em_cb, cb) do { } while (0)
 
 static inline
 int em_dev_register_perf_domain(struct device *dev, unsigned int nr_states,
