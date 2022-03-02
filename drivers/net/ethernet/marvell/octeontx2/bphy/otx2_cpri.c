@@ -253,12 +253,14 @@ static int otx2_cpri_napi_poll(struct napi_struct *napi, int budget)
 		regval |= intr_en;
 		writeq(regval, priv->bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
 		spin_unlock(&cdev_priv->lock);
+		writeq(0x1, priv->cpri_reg_base +
+			    CPRIX_ETH_UL_INT(priv->cpri_num));
 	}
 
 	return workdone;
 }
 
-void otx2_cpri_rx_napi_schedule(int cpri_num, u32 status)
+bool otx2_cpri_rx_napi_schedule(int cpri_num, u32 status)
 {
 	struct otx2_cpri_drv_ctx *drv_ctx;
 	struct otx2_cpri_ndev_priv *priv;
@@ -280,8 +282,10 @@ void otx2_cpri_rx_napi_schedule(int cpri_num, u32 status)
 		/* schedule napi */
 		napi_schedule(&priv->napi);
 		/* napi scheduled per MHAB, return */
-		return;
+		return true;
 	}
+
+	return false;
 }
 
 void otx2_cpri_update_stats(struct otx2_cpri_ndev_priv *priv)
