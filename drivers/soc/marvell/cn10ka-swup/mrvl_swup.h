@@ -12,6 +12,7 @@
 
 #define PLAT_OCTEONTX_SPI_SECURE_UPDATE         0xc2000b05
 #define PLAT_CN10K_VERIFY_FIRMWARE		0xc2000b0c
+#define PLAT_CN10K_SPI_READ_FLASH		0xc2000b11
 
 #define VER_MAX_NAME_LENGTH	32
 #define SMC_MAX_OBJECTS		32
@@ -239,6 +240,34 @@ struct smc_update_descriptor {
 	struct smc_update_obj_info object_retinfo[SMC_MAX_OBJECTS];
 };
 
+/* READ FLASH */
+
+enum read_flash_ret {
+	/** No errors */
+	READ_FL_OK = 0,
+	/** I/O error reading or writing to the flash */
+	READ_FL_IO_ERROR = -1,
+	/** Out of resources, too many files, etc. */
+	READ_FL_NO_MEM = -2,
+	/** Error mapping update to secure memory */
+	READ_FL_MMAP_ERROR = -3,
+
+	/** Unknown error */
+	READ_FL_UNKNOWN_ERROR = -1000,
+};
+
+/**
+ * This descriptor is used to read data from flash
+ */
+struct smc_read_flash_descriptor {
+	uint64_t	addr;		/** Physical buffer address */
+	uint64_t	offset;		/** Offset in flash */
+	uint64_t	length;		/** Length to read */
+	uint32_t	bus;		/** SPI BUS number */
+	uint32_t	cs;		/** SPI chip select number */
+	uint32_t	async_spi;	/** Async SPI operations */
+	uint32_t	reserved;	/** Space to add stuff */
+};
 
 enum marlin_bootflash_clone_op {
 	CLONE_SPI = 0,
@@ -284,6 +313,8 @@ struct mrvl_phys_buffer {
 	uint64_t sign_buf_size;
 	uint64_t reserved_buf;
 	uint64_t reserved_buf_size;
+	uint64_t read_buf;
+	uint64_t read_buf_size;
 } __packed;
 
 struct mrvl_update {
@@ -297,11 +328,20 @@ struct mrvl_update {
 	enum update_ret ret;
 } __packed;
 
+struct mrvl_read_flash {
+	uint32_t bus;
+	uint32_t cs;
+	uint64_t offset;
+	uint64_t len;
+	enum read_flash_ret ret;
+} __packed;
 
 #define GET_VERSION _IOWR('a', 'a', struct mrvl_get_versions*)
 #define VERIFY_HASH _IOWR('a', 'b', struct mrvl_get_versions*)
 #define GET_MEMBUF  _IOWR('a', 'c', struct mrvl_phys_buffer*)
 #define RUN_UPDATE  _IOWR('a', 'd', struct mrvl_update*)
 #define CLONE_FW    _IOWR('a', 'e', struct mrvl_clone_fw*)
+#define READ_FLASH  _IOWR('a', 'f', struct mrvl_read_flash*)
+#define FREE_RD_BUF _IOWR('a', 'g', struct mrvl_phys_buffer*)
 
-#endif	/* __TIM_UPDATE_H__ */
+#endif	/* __MRVL_SWUP_H__ */
