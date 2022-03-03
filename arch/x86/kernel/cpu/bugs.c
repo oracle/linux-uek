@@ -1013,13 +1013,15 @@ static void retpoline_init(enum spectre_v2_mitigation_cmd cmd)
 	    cmd != SPECTRE_V2_CMD_RETPOLINE_GENERIC)) {
 		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
 			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
-			retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
+			if (cmd != SPECTRE_V2_CMD_NONE)
+				retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
 			return;
 		}
 		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
 	}
 
-	retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
+	if (cmd != SPECTRE_V2_CMD_NONE)
+		retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
 }
 
 static void retpoline_activate(enum spectre_v2_mitigation mode)
