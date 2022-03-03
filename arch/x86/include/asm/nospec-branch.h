@@ -77,7 +77,8 @@
 	ANNOTATE_RETPOLINE_SAFE
 	jmp	*%\reg
 .Lretpoline_jmp_\@:
-	ALTERNATIVE __stringify(jmp __x86_retpoline_\reg), \
+	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *%\reg),	\
+		__stringify(jmp __x86_retpoline_\reg), X86_FEATURE_RETPOLINE,	\
 		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg), X86_FEATURE_RETPOLINE_AMD
 #else
 	jmp	*%\reg
@@ -91,7 +92,8 @@
 	call	*%\reg
 	jmp	.Ldone_call_\@
 .Lretpoline_call_\@:
-	ALTERNATIVE __stringify(call __x86_retpoline_\reg), \
+	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; call *%\reg),	\
+		__stringify(call __x86_retpoline_\reg), X86_FEATURE_RETPOLINE,	\
 		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; call *%\reg), X86_FEATURE_RETPOLINE_AMD
 .Ldone_call_\@:
 #else
@@ -132,8 +134,11 @@
 	"	jmp  903f\n"					\
 	"	.align 16\n"					\
 	"902:"							\
-	ALTERNATIVE(						\
+	ALTERNATIVE_2(						\
+	ANNOTATE_RETPOLINE_SAFE					\
+	"call *%[thunk_target]\n",				\
 	"call __x86_retpoline_%V[thunk_target];\n",		\
+	X86_FEATURE_RETPOLINE_GENERIC,				\
 	"lfence;\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
 	"call *%[thunk_target]\n",				\
