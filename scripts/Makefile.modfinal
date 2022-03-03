@@ -218,7 +218,7 @@ if_changed_except = $(if $(call newer_prereqs_except,$(2))$(cmd-check),      \
 	printf '%s\n' 'cmd_$@ := $(make-cmd)' > $(dot-target).cmd, @:)
 
 # Re-generate module BTFs if either module's .ko or vmlinux changed
-$(modules): %.ko: %.o %.mod.o $(KBUILD_LDS_MODULE) $(module-ctfs-modular-prereq) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+$(modules): %.ko: %.o %.mod.o $(KBUILD_LDS_MODULE) $(module-ctfs-modular-prereq) $(ifneq ($(KBUILD_EXTMOD),),vmlinux) FORCE
 	$(call cmd_touch_ctf)
 	+$(call if_changed_except,ld_ko_o,vmlinux)
 ifdef CONFIG_DEBUG_INFO_BTF_MODULES
