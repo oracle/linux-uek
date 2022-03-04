@@ -1175,9 +1175,15 @@ void kfree_skb(struct sk_buff *skb);
 
 void kfree_skb_reason(struct sk_buff *skb, enum skb_drop_reason reason);
 void skb_release_head_state(struct sk_buff *skb);
-void kfree_skb_list(struct sk_buff *segs);
+void kfree_skb_list_reason(struct sk_buff *segs,
+			   enum skb_drop_reason reason);
 void skb_dump(const char *level, const struct sk_buff *skb, bool full_pkt);
 void skb_tx_error(struct sk_buff *skb);
+
+static inline void kfree_skb_list(struct sk_buff *segs)
+{
+	kfree_skb_list_reason(segs, SKB_DROP_REASON_NOT_SPECIFIED);
+}
 
 #ifdef CONFIG_TRACEPOINTS
 void consume_skb(struct sk_buff *skb);
