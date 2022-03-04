@@ -68,3 +68,6 @@
 
 #define __nocfi		__attribute__((__no_sanitize__("cfi")))
 #define __cficanonical	__attribute__((__cfi_canonical_jump_table__))
+
+#define __diag_ignore_all(option, comment) \
+	__diag_clang(11, ignore, option)
