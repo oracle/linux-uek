@@ -52,7 +52,7 @@
 	mov	x0, x1
 	mov	x1, x2
 	mov	x2, x3
-	blr_nospec_lr
+	blr	lr
 	ldr	lr, [sp], #16
 .endm
 
