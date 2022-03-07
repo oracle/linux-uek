@@ -2196,9 +2196,6 @@ static void sk_leave_memory_pressure(struct sock *sk)
 	}
 }
 
-/* On 32bit arches, an skb frag is limited to 2^15 */
-#define SKB_FRAG_PAGE_ORDER	get_order(32768)
-
 unsigned int __read_mostly net_high_order_alloc_disable = 0;
 
 /**

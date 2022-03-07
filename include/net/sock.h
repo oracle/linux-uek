@@ -2450,4 +2450,7 @@ extern unsigned int net_high_order_alloc_disable;
 
 extern int sysctl_macsec_async;
 
+/* On 32bit arches, an skb frag is limited to 2^15 */
+#define SKB_FRAG_PAGE_ORDER	get_order(32768)
+
 #endif	/* _SOCK_H */
