@@ -1061,6 +1061,7 @@ static int fuse_get_user_pages(struct fuse_req *req, const char __user *buf,
 	req->num_pages = npages;
 	req->page_offset = offset;
 
+	req->user_pages = true;
 	if (write)
 		req->in.argpages = 1;
 	else
