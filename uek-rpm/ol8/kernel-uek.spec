@@ -662,6 +662,7 @@ Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
 Source27: Symtypes.kabi_x86_64debug
 Source28: Symtypes.kabi_x86_64
+Source29: kabi
 
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
@@ -1321,7 +1322,7 @@ fi
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
     # Create symbol type data which can be used to introspect kABI breakages
-    python3 uek-rpm/tools/kabi collect . -o Symtypes.build
+    python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
 %if %{with_kabichk}
     echo "**** kABI checking is enabled in kernel SPEC file. ****"
@@ -1331,15 +1332,15 @@ fi
        cp $RPM_SOURCE_DIR/Symtypes.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Symtypes.kabi
        cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/kabi_lockedlist
        if ! $RPM_SOURCE_DIR/check-kabi -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers ; then
-           python3 uek-rpm/tools/kabi compare --no-print-symbols \
+           python3 $RPM_SOURCE_DIR/kabi compare --no-print-symbols \
                $RPM_BUILD_ROOT/Symtypes.kabi Symtypes.build
            exit 1
        fi
        # Smoke tests verify that the kABI definitions are internally consistent:
        # they contain the exact same set of symbols and symbol versions.
-       python3 uek-rpm/tools/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi \
-                                        -t $RPM_BUILD_ROOT/Symtypes.kabi \
-                                        -l $RPM_BUILD_ROOT/kabi_lockedlist || exit 1
+       python3 $RPM_SOURCE_DIR/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi \
+                                          -t $RPM_BUILD_ROOT/Symtypes.kabi \
+                                          -l $RPM_BUILD_ROOT/kabi_lockedlist || exit 1
        # For now, don't keep these around
        rm $RPM_BUILD_ROOT/Module.kabi
        rm $RPM_BUILD_ROOT/Symtypes.kabi
