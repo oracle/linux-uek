@@ -852,6 +852,15 @@ mispred_str(struct branch_entry *br)
 	return br->flags.predicted ? 'P' : 'M';
 }
 
+static int print_bstack_flags(FILE *fp, struct branch_entry *br)
+{
+	return fprintf(fp, "/%c/%c/%c/%d ",
+		       mispred_str(br),
+		       br->flags.in_tx ? 'X' : '-',
+		       br->flags.abort ? 'A' : '-',
+		       br->flags.cycles);
+}
+
 static int perf_sample__fprintf_brstack(struct perf_sample *sample,
 					struct thread *thread,
 					struct perf_event_attr *attr, FILE *fp)
@@ -890,11 +899,7 @@ static int perf_sample__fprintf_brstack(struct perf_sample *sample,
 			printed += fprintf(fp, ")");
 		}
 
-		printed += fprintf(fp, "/%c/%c/%c/%d ",
-			mispred_str(entries + i),
-			entries[i].flags.in_tx ? 'X' : '-',
-			entries[i].flags.abort ? 'A' : '-',
-			entries[i].flags.cycles);
+		printed += print_bstack_flags(fp, entries + i);
 	}
 
 	return printed;
@@ -936,11 +941,7 @@ static int perf_sample__fprintf_brstacksym(struct perf_sample *sample,
 			printed += map__fprintf_dsoname(alt.map, fp);
 			printed += fprintf(fp, ")");
 		}
-		printed += fprintf(fp, "/%c/%c/%c/%d ",
-			mispred_str(entries + i),
-			entries[i].flags.in_tx ? 'X' : '-',
-			entries[i].flags.abort ? 'A' : '-',
-			entries[i].flags.cycles);
+		printed += print_bstack_flags(fp, entries + i);
 	}
 
 	return printed;
@@ -986,11 +987,7 @@ static int perf_sample__fprintf_brstackoff(struct perf_sample *sample,
 			printed += map__fprintf_dsoname(alt.map, fp);
 			printed += fprintf(fp, ")");
 		}
-		printed += fprintf(fp, "/%c/%c/%c/%d ",
-			mispred_str(entries + i),
-			entries[i].flags.in_tx ? 'X' : '-',
-			entries[i].flags.abort ? 'A' : '-',
-			entries[i].flags.cycles);
+		printed += print_bstack_flags(fp, entries + i);
 	}
 
 	return printed;
