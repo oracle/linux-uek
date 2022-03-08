@@ -100,15 +100,18 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 {
 	union text_poke_insn *insn = buf;
 
+	BUG_ON(size < text_opcode_size(opcode));
+
 	/*
 	 * Hide the addresses to avoid the compiler folding in constants when
 	 * referencing code, these can mess up annotations like
 	 * ANNOTATE_NOENDBR.
 	 */
+	OPTIMIZER_HIDE_VAR(insn);
 	OPTIMIZER_HIDE_VAR(addr);
 	OPTIMIZER_HIDE_VAR(dest);
 
-	insn.opcode = opcode;
+	insn->opcode = opcode;
 
 	if (size > 1) {
 		insn->disp = (long)dest - (long)(addr + size);
