@@ -4,6 +4,7 @@
 
 #include <linux/sched.h>
 #include <linux/unistd.h>
+#include <linux/uek_kabi.h>
 #include <asm/exec.h>
 #include <uapi/linux/binfmts.h>
 
@@ -97,6 +98,10 @@ struct coredump_params {
 	loff_t written;
 	loff_t pos;
 	loff_t to_skip;
+	UEK_KABI_EXTEND(
+	int vma_count;
+	size_t vma_data_size;
+	struct core_vma_metadata *vma_meta)
 };
 
 /*
