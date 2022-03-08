@@ -116,11 +116,11 @@
 #define SDHCI_CDNS_SD6_PHY_CTRL					0x2080
 #define	SDHCI_CDNS_SD6_PHY_CTRL_PHONY_DQS_TIMING		GENMASK(9, 4)
 
-#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL1				0x208c
-#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_DRV			GENMASK(6, 5)
-#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_DRV_OVR_EN		BIT(4)
-#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_SLEW			GENMASK(2, 1)
-#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_SLEW_OVR_EN		BIT(0)
+#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL0				0x2088
+#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV			GENMASK(6, 5)
+#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV_OVR_EN		BIT(4)
+#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW			GENMASK(2, 1)
+#define SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW_OVR_EN		BIT(0)
 
 /* SRS - Slot Register Set (SDHCI-compatible) */
 #define SDHCI_CDNS_SRS_BASE		0x200
@@ -1073,18 +1073,18 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	reg &= ~SDHCI_CDNS_SD6_PHY_CTRL_PHONY_DQS_TIMING;
 	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_CTRL, reg);
 
-	reg = sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GPIO_CTRL1);
+	reg = sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GPIO_CTRL0);
 	if (phy->settings.drive != 0xFF) {
-		reg |= SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_DRV_OVR_EN;
-		reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_DRV,
+		reg |= SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV_OVR_EN;
+		reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV,
 			phy->settings.drive);
 	}
 	if (phy->settings.slew != 0xFF) {
-		reg |= SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_SLEW_OVR_EN;
-		reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL1_SLEW,
+		reg |= SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW_OVR_EN;
+		reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW,
 			phy->settings.slew);
 	}
-	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GPIO_CTRL1, reg);
+	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GPIO_CTRL0, reg);
 
 	ret = sdhci_cdns_sd6_dll_reset(priv, false);
 	if (ret)
