@@ -121,6 +121,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 
 # build embedded kernel
 %define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
+%define with_embedded2 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
 # Only build the embedded kernel (--with embeddedonly)
 %define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
@@ -252,6 +253,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_4k_ps_debug 0
 %define with_rpi 0
 %define with_embedded 0
+%define with_embedded2 0
 %endif
 
 # if requested, only build smp kernel
@@ -263,6 +265,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_4k_ps_debug 0
 %define with_rpi 0
 %define with_embedded 0
+%define with_embedded2 0
 %endif
 
 # if requested, only build 4k page size kernel
@@ -274,6 +277,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_debug 0
 %define with_rpi 0
 %define with_embedded 0
+%define with_embedded2 0
 %endif
 
 # if requested, only build rpi kernel
@@ -284,6 +288,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_4k_ps  0
 %define with_4k_ps_debug 0
 %define with_embedded 0
+%define with_embedded2 0
 %endif
 
 # if requested, only build emb kernel
@@ -294,6 +299,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_4k_ps     0
 %define with_4k_ps_debug 0
 %define with_rpi 0
+%define with_debug 0
 %endif
 
 
@@ -329,6 +335,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_4k_ps_debug 0
 %define with_rpi 0
 %define with_embedded 0
+%define with_embedded2 0
 %endif
 
 # only package docs noarch
@@ -707,6 +714,7 @@ Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-aarch64-rpi
 Source1011: config-aarch64-embedded
+Source1012: config-aarch64-embedded2
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -991,6 +999,11 @@ This package includes rpi kernel.
 %description -n kernel%{?variant}emb
 This package includes embedded kernel.
 
+%define variant_summary A kernel for another embedded platform.
+%kernel_variant_package -eo emb2
+%description -n kernel%{?variant}emb2
+This package includes embedded kernel.
+
 %prep
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
@@ -1187,6 +1200,7 @@ mkdir -p configs
 	cp %{SOURCE1007} configs/config
 	cp %{SOURCE1009} configs/config-rpi
 	cp %{SOURCE1011} configs/config-emb
+	cp %{SOURCE1012} configs/config-emb2
 %endif #ifarch aarch64
 
 %if %{with_dtrace}
@@ -1271,6 +1285,8 @@ BuildKernel() {
         cp configs/config-rpi .config
     elif [ "$Flavour" == "emb" ]; then
 	cp configs/config-emb .config
+    elif [ "$Flavour" == "emb2" ]; then
+	cp configs/config-emb2 .config
     else
 	cp configs/config .config
     fi
@@ -1289,7 +1305,7 @@ BuildKernel() {
 %endif
 
 %if %{with_dtrace}
-    if [ "$Flavour" != "emb" ] ; then
+    if [ "$Flavour" != "emb" -a "$Flavour" != "emb2" ] ; then
 	cp Module.symvers Module.symvers.save
 	make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
 	mv -f Module.symvers.save Module.symvers
@@ -1612,6 +1628,10 @@ BuildKernel %make_target %kernel_image rpi
 BuildKernel %make_target %kernel_image emb
 %endif
 
+%if %{with_embedded2}
+BuildKernel %make_target %kernel_image emb2
+%endif
+
 %global bpftool_make \
   make EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT V=1
 %if %{with_bpftool}
@@ -1669,6 +1689,11 @@ make %{?_smp_mflags} htmldocs || %{doc_build_fail}
        mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
      fi \
+    if [ "%{with_embedded2}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.emb2 certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.emb2 certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
+    fi \
   fi \
 %{nil}
 
@@ -1978,6 +2003,11 @@ fi\
 %kernel_variant_post -o -v emb -r (kernel%{variant}|kernel%{variant}-debug)
 
 
+%kernel_variant_pre -o emb2
+%kernel_variant_preun -o emb2
+%kernel_variant_postun -o emb2
+%kernel_variant_post -o -v emb2 -r (kernel%{variant}|kernel%{variant}-debug)
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2057,7 +2087,7 @@ fi
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-%if %{with_dtrace} && "%{2}" != "emb"\
+%if %{with_dtrace} && "%{2}" != "emb" && "%{2}" != "emb2"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
@@ -2124,5 +2154,6 @@ fi
 %kernel_variant_files -o %{with_rpi} rpi
 
 %kernel_variant_files -o %{with_embedded} emb
+%kernel_variant_files -o %{with_embedded2} emb2
 
 %changelog
