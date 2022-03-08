@@ -294,6 +294,7 @@ CONFIG_ARCH_BCM2835=y
 # CONFIG_ARCH_MESON is not set
 # CONFIG_ARCH_MVEBU is not set
 # CONFIG_ARCH_MXC is not set
+# CONFIG_ARCH_PENSANDO is not set
 # CONFIG_ARCH_QCOM is not set
 # CONFIG_ARCH_REALTEK is not set
 # CONFIG_ARCH_RENESAS is not set
