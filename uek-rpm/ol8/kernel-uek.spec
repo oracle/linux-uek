@@ -459,8 +459,8 @@ Source21: securebootca.cer
 Source22: secureboot.cer
 Source23: turbostat
 Source43: generate_bls_conf.sh
-Source44: filter-x86_64.sh
-Source45: filter-aarch64.sh
+Source44: core-x86_64.list
+Source45: core-aarch64.list
 Source46: filter-modules.sh
 
 Source1000: config-x86_64
@@ -1320,9 +1320,11 @@ BuildKernel() {
     # modules lists.  This actually removes anything going into -modules
     # from the dir.
     find lib/modules/$KernelVer/kernel -name *.ko | sort -n > modules.list
-    cp $RPM_SOURCE_DIR/filter-*.sh .
-    ./filter-modules.sh modules.list %{_target_cpu}
-    rm filter-*.sh
+
+    cp $RPM_SOURCE_DIR/filter-modules.sh .
+    cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
+    ./filter-modules.sh core.list modules.list
+    rm filter-modules.sh
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
@@ -1337,8 +1339,11 @@ BuildKernel() {
     remove_depmod_files
 
     # Go back and find all of the various directories in the tree.  We use this
-    # for the dir lists in kernel-core
+    # for the dir lists in kernel-uek-core
     find lib/modules/$KernelVer/kernel -mindepth 1 -type d | sort -n > module-dirs.list
+
+    # Append full path to the beginning of each line.
+    sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
 
     # Cleanup
     rm System.map
@@ -1348,13 +1353,13 @@ BuildKernel() {
 
     # Make sure the files lists start with absolute paths or rpmbuild fails.
     # Also add in the dir entries
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/k-d.list > ${modlistVariant}-modules.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list > ${modlistVariant}-modules.list
     sed -e 's/^lib*/%dir \/lib/' %{?zipsed} $RPM_BUILD_ROOT/module-dirs.list > ${modlistVariant}-core.list
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list >> ${modlistVariant}-core.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/core.list >> ${modlistVariant}-core.list
     sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/mod-extra.list >> ${modlistVariant}-modules-extra.list
 
     # Cleanup
-    rm -f $RPM_BUILD_ROOT/k-d.list
+    rm -f $RPM_BUILD_ROOT/core.list
     rm -f $RPM_BUILD_ROOT/modules.list
     rm -f $RPM_BUILD_ROOT/module-dirs.list
     rm -f $RPM_BUILD_ROOT/mod-extra.list
