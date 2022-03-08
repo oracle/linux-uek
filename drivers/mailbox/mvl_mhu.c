@@ -10,21 +10,25 @@
  *
  */
 
-#include <linux/pci.h>
-#include <linux/device.h>
-#include <linux/err.h>
+#define pr_fmt(fmt)	"mvl-mhu: " fmt
+
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/kernel.h>
-#include <linux/mailbox_controller.h>
-#include <linux/module.h>
+#include <linux/interrupt.h>
+#include <linux/device.h>
+#include <linux/platform_device.h>
+#include <linux/pci.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/of_address.h>
+#include <linux/of_irq.h>
+#include <linux/acpi.h>
+#include <linux/mailbox_controller.h>
 #include <linux/spinlock.h>
-#include <linux/mutex.h>
 
-#define MHU_NUM_PCHANS 2
+#define MHU_PCHANS_NUM 1
 
 #define BAR0 0
 #define SCP_INDEX    0x0
@@ -60,7 +64,10 @@
 #define AP0_TO_SCP_MBOX         XCP_TO_DEV_XCP_MBOX(SCP_INDEX, DEV_AP0)
 
 /*  Register offset: Enable interrupt from SCP to AP */
+#define XCP0_XCP_DEV0_MBOX_RINT_ENA_W1S 0x000D1C40
+#define XCP0_XCP_DEV1_MBOX_RINT_ENA_W1S 0x000D1C50
 #define XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S 0x000D1C60
+#define XCP0_XCP_DEV3_MBOX_RINT_ENA_W1S 0x000D1C70
 
 /* Rx interrupt from SCP to Non-secure AP (linux kernel) */
 #define XCPX_XCP_DEVY_MBOX_RINT_OFFSET 0x000D1C00
@@ -77,50 +84,23 @@
 	(XCPX_XCP_DEVY_MBOX_RINT_OFFSET | \
 	((uint64_t)(xcp_core) << 36) | \
 	((uint64_t)(device_id) << 4))
+
 #define SCP_TO_AP0_MBOX_RINT  XCPX_XCP_DEVY_MBOX_RINT(SCP_INDEX, DEV_AP0)
+#define SCP_TO_DEV0 XCPX_XCP_DEVY_MBOX_RINT(0, 0)
+#define SCP_TO_DEV1 XCPX_XCP_DEVY_MBOX_RINT(0, 1)
+#define SCP_TO_DEV2 XCPX_XCP_DEVY_MBOX_RINT(0, 2)
+#define SCP_TO_DEV3 XCPX_XCP_DEVY_MBOX_RINT(0, 3)
 
-
-struct mvl_mhu {
-	struct pci_dev *pdev;
+struct mhu {
 	struct device *dev;
 
 	/* SCP link information */
 	void __iomem *base; /* tx_reg, rx_reg */
 	void __iomem *payload; /* Shared mem */
-	unsigned int irq;
-	const char *name;
-
-	/* Mailbox controller */
-	struct mbox_controller mbox;
-	struct mbox_chan chan[MHU_NUM_PCHANS];
+	struct mbox_chan *chan;
 };
 
 #define MHU_CHANNEL_INDEX(mhu, chan) (chan - &mhu->chan[0])
-
-/**
- * MVL MHU Mailbox platform specific configuration
- *
- * @num_pchans: Maximum number of physical channels
- * @num_doorbells: Maximum number of doorbells per physical channel
- */
-struct mvl_mhu_mbox_pdata {
-	unsigned int num_pchans;
-	unsigned int num_doorbells;
-	bool support_doorbells;
-};
-
-/**
- * MVL MHU Mailbox allocated channel information
- *
- * @mhu: Pointer to parent mailbox device
- * @pchan: Physical channel within which this doorbell resides in
- * @doorbell: doorbell number pertaining to this channel
- */
-struct mvl_mhu_channel {
-	struct mvl_mhu *mhu;
-	unsigned int pchan;
-	unsigned int doorbell;
-};
 
 /* Sources of interrupt */
 enum {
@@ -139,9 +119,9 @@ struct int_src_data_s {
 DEFINE_SPINLOCK(mhu_irq_spinlock);
 
 /* bottom half of rx interrupt */
-static irqreturn_t mvl_mhu_rx_interrupt_thread(int irq, void *p)
+static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
 {
-	struct mvl_mhu *mhu = (struct mvl_mhu *)p;
+	struct mhu *mhu = (struct mhu *)p;
 	struct int_src_data_s *data = (struct int_src_data_s *)mhu->payload;
 	u64 val, scmi_tx_cnt, avs_failure_cnt;
 
@@ -152,13 +132,11 @@ static irqreturn_t mvl_mhu_rx_interrupt_thread(int irq, void *p)
 	 */
 	static u64 event_counter[INDEX_INT_SRC_NONE] = {0};
 
-	dev_dbg(mhu->dev, "%s\n", __func__);
-
 	spin_lock_irq(&mhu_irq_spinlock);
 	/* scmi interrupt */
 	scmi_tx_cnt = readq(&data[INDEX_INT_SRC_SCMI_TX].int_src_cnt);
 	if (event_counter[INDEX_INT_SRC_SCMI_TX] != scmi_tx_cnt) {
-		mbox_chan_received_data(&mhu->chan[0], (void *)&val);
+		mbox_chan_received_data(mhu->chan, (void *)&val);
 		/* Update the memory to prepare for next */
 		event_counter[INDEX_INT_SRC_SCMI_TX] = scmi_tx_cnt;
 	}
@@ -175,9 +153,9 @@ static irqreturn_t mvl_mhu_rx_interrupt_thread(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t mvl_mhu_rx_interrupt(int irq, void *p)
+static irqreturn_t mhu_rx_interrupt(int irq, void *p)
 {
-	struct mvl_mhu *mhu = (struct mvl_mhu *)p;
+	struct mhu *mhu = (struct mhu *)p;
 	u64 val;
 
 	/* Read interrupt status register */
@@ -192,199 +170,295 @@ static irqreturn_t mvl_mhu_rx_interrupt(int irq, void *p)
 	return IRQ_WAKE_THREAD;
 }
 
-static bool mvl_mhu_last_tx_done(struct mbox_chan *chan)
+static int mhu_send_data(struct mbox_chan *chan, void *data)
 {
-	struct mvl_mhu *mhu = chan->con_priv;
-	u64 val;
+	struct mhu *mhu = chan->con_priv;
 
-	val = readq_relaxed(mhu->base + SCP_TO_AP0_MBOX_RINT);
-	dev_dbg(mhu->dev, "%s\n", __func__);
-
-	return (val == 0);
-}
-
-static int mvl_mhu_send_data(struct mbox_chan *chan, void *data)
-{
-	struct mvl_mhu *mhu = chan->con_priv;
-
-	writeq_relaxed(DONT_CARE_DATA, mhu->base + AP0_TO_SCP_MBOX);
+	iowrite64(DONT_CARE_DATA, mhu->base + AP0_TO_SCP_MBOX);
 
 	return 0;
 }
 
-static const struct mbox_chan_ops mvl_mhu_ops = {
-	.send_data = mvl_mhu_send_data,
-	.last_tx_done = mvl_mhu_last_tx_done,
-};
-
-static const struct mvl_mhu_mbox_pdata mvl_mhu_pdata = {
-	.num_pchans = MHU_NUM_PCHANS,
-	.num_doorbells = 1,
-	.support_doorbells = false,
-};
-
-static int mvl_mhu_init_link(struct mvl_mhu *mhu)
+static bool mhu_last_tx_done(struct mbox_chan *chan)
 {
-	int ret, irq;
-	struct resource res;
-	resource_size_t size;
+	struct mhu *mhu = chan->con_priv;
+	u64 status;
+
+	status = ioread64(mhu->base + XCPX_XCP_DEVY_MBOX_RINT(0, 2));
+	pr_debug("last_tx_done status: %#llx\n", status);
+
+	return status != 0;
+}
+
+static const struct mbox_chan_ops mhu_chan_ops = {
+	.send_data = mhu_send_data,
+	.last_tx_done = mhu_last_tx_done,
+};
+
+static struct mbox_chan mhu_chan = {};
+
+static struct mbox_controller mhu_mbox_ctrl = {
+	.chans = &mhu_chan,
+	.num_chans = MHU_PCHANS_NUM,
+	.txdone_irq = false,
+	.txdone_poll = true,
+	.txpoll_period = 100,
+	.ops = &mhu_chan_ops,
+};
+
+static int mhu_plat_setup_mbox(struct device *dev)
+{
+	struct mhu *mhu;
 	struct device_node *shmem, *np;
+	struct resource res;
+	struct mbox_chan *chan;
+	int ret;
 
-	np = mhu->pdev->dev.of_node;
-	dev_dbg(mhu->dev, "Node: %s\n", np && np->name ? np->name : "unknown");
+	mhu = dev_get_drvdata(dev);
+	np = dev->of_node;
 
-	ret = of_property_read_string(np, "mbox-name", &mhu->name);
-	if (ret)
-		mhu->name = np->full_name;
-
-	/* Get shared memory details between NS AP & SCP */
 	shmem = of_parse_phandle(np, "shmem", 0);
+	if (!shmem)
+		return -EINVAL;
+
 	ret = of_address_to_resource(shmem, 0, &res);
 	of_node_put(shmem);
-	if (ret) {
-		dev_err(mhu->dev, "failed to get CPC COMMON payload mem resource\n");
+	if (ret)
 		return ret;
-	}
-	size = resource_size(&res);
 
-	mhu->payload = devm_ioremap(mhu->dev, res.start, size);
-	if (!mhu->payload) {
-		dev_err(mhu->dev, "failed to ioremap CPC COMMON payload\n");
-		return -EADDRNOTAVAIL;
-	}
+	mhu->payload = devm_ioremap_resource(dev, &res);
+	if (!mhu->payload)
+		return -ENOMEM;
 
+	chan = &mhu_mbox_ctrl.chans[0];
+	chan->con_priv = mhu;
+	mhu->chan = chan;
+	mhu_mbox_ctrl.dev = dev;
 
-	irq = pci_irq_vector(mhu->pdev, SCP_TO_AP_INTERRUPT);
+	return mbox_controller_register(&mhu_mbox_ctrl);
+}
+
+/* Platform device interface for SPI based configurations */
+static int mhu_plat_setup_irq(struct platform_device *pdev)
+{
+	struct device *dev;
+	struct mhu *mhu;
+	struct device_node *np;
+	int irq, ret;
+
+	mhu = platform_get_drvdata(pdev);
+	dev = &pdev->dev;
+	np = dev->of_node;
+
+	irq = of_irq_get(np, 0);
 	if (irq < 0)
 		return irq;
 
-	ret = request_threaded_irq(irq, mvl_mhu_rx_interrupt,
-				   mvl_mhu_rx_interrupt_thread, 0,
-				   module_name(THIS_MODULE), mhu);
+	ret = devm_request_threaded_irq(dev, irq, mhu_rx_interrupt,
+					mhu_rx_interrupt_thread, 0,
+					"mvl-mhu", mhu);
 	if (ret)
 		return ret;
 
-	/* Enable IRQ from SCP to AP */
 	writeq_relaxed(1ul, mhu->base + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
-
-	mhu->irq = irq;
-	dev_dbg(mhu->dev, "MHU @ 0x%llx [%llx], irq=%d\n", res.start, size, irq);
 
 	return 0;
 }
 
-static int mvl_mhu_init_mbox(struct mvl_mhu *mhu)
+static int mhu_plat_probe(struct platform_device *pdev)
 {
-	int i, ret;
+	struct mhu *mhu;
+	struct resource *res;
+	struct device *dev;
+	int ret;
 
-	mhu->mbox.dev = mhu->dev;
-	mhu->mbox.chans = &mhu->chan[0];
-	mhu->mbox.num_chans = MHU_NUM_PCHANS;
-	mhu->mbox.txdone_irq = false;
-	mhu->mbox.txdone_poll = true;
-	mhu->mbox.txpoll_period = 1;
-	mhu->mbox.ops = &mvl_mhu_ops;
+	dev = &pdev->dev;
+	mhu = devm_kzalloc(dev, sizeof(*mhu), GFP_KERNEL);
+	if (!mhu)
+		return -ENOMEM;
+	platform_set_drvdata(pdev, mhu);
 
-	for (i = 0; i < mvl_mhu_pdata.num_pchans; i++)
-		mhu->chan[i].con_priv = mhu;
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	pr_debug("base: %llx, len: %llx\n", res->start, resource_size(res));
 
-	ret = mbox_controller_register(&mhu->mbox);
-	if (ret) {
-		dev_err(mhu->dev, "Failed to register mailbox controller %d\n",
-			ret);
+	mhu->base = devm_ioremap_resource(dev, res);
+	if (IS_ERR(mhu->base))
+		return PTR_ERR(mhu->base);
+
+	ret = mhu_plat_setup_irq(pdev);
+	if (ret)
+		return ret;
+
+	return mhu_plat_setup_mbox(dev);
+}
+
+static int mhu_plat_remove(struct platform_device *pdev)
+{
+	mbox_controller_unregister(&mhu_mbox_ctrl);
+
+	return 0;
+}
+
+static const struct of_device_id mhu_of_match[] = {
+	{
+		.compatible = "marvell,mbox",
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, mhu_of_match);
+
+static struct platform_driver mhu_plat_driver = {
+	.driver = {
+		.name = "mvl-mhu",
+		.of_match_table = mhu_of_match,
+	},
+	.probe = mhu_plat_probe,
+	.remove = mhu_plat_remove,
+
+};
+
+/* PCI interface in case of LPI based configuration */
+static int mhu_pci_setup_irq(struct pci_dev *pdev)
+{
+	struct device *dev;
+	struct mhu *mhu;
+	struct device_node *np;
+	int irq, ret, nvec;
+
+	mhu = pci_get_drvdata(pdev);
+	dev = &pdev->dev;
+	np = dev->of_node;
+
+	nvec = pci_alloc_irq_vectors(pdev, 0, 3, PCI_IRQ_MSIX);
+	if (nvec < 0)
+		return nvec;
+
+	irq = pci_irq_vector(pdev, SCP_TO_AP_INTERRUPT);
+	if (irq < 0) {
+		ret = irq;
+		goto irq_err;
 	}
+
+	ret = devm_request_threaded_irq(dev, irq, mhu_rx_interrupt,
+					mhu_rx_interrupt_thread, 0,
+					"mvl-mhu", mhu);
+	if (ret)
+		goto irq_err;
+
+	writeq_relaxed(1ul, mhu->base + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
+
+	return 0;
+
+irq_err:
+	/* In case of error, release the resources */
+	pci_free_irq_vectors(pdev);
 
 	return ret;
 }
 
-static int mvl_mhu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+static int mhu_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
-	struct mvl_mhu *mhu;
-	int ret, nvec;
+	struct mhu *mhu;
+	struct device *dev;
+	int ret;
 
-	if (!pdev || !pdev->dev.of_node)
-		return -ENODEV;
-
-	mhu = devm_kzalloc(&pdev->dev, sizeof(*mhu), GFP_KERNEL);
+	dev = &pdev->dev;
+	mhu = devm_kzalloc(dev, sizeof(*mhu), GFP_KERNEL);
 	if (!mhu)
 		return -ENOMEM;
-
-	mhu->pdev = pdev;
-	mhu->dev = &pdev->dev;
 	pci_set_drvdata(pdev, mhu);
 
-	if (mvl_mhu_pdata.num_pchans > MHU_NUM_PCHANS) {
-		dev_err(mhu->dev, "Number of physical channel can't exceed %d\n",
-			MHU_NUM_PCHANS);
+	ret = pcim_enable_device(pdev);
+	if (ret)
+		return ret;
+
+	ret = pci_request_region(pdev, BAR0, "mvl-mhu");
+	if (ret)
+		return ret;
+
+	mhu->base = pcim_iomap(pdev, BAR0, pci_resource_len(pdev, BAR0));
+	if (!mhu->base)
 		return -EINVAL;
-	}
-	mhu->dev->platform_data = (void *)&mvl_mhu_pdata;
 
-	ret = pcim_enable_device(mhu->pdev);
-	if (ret) {
-		dev_err(mhu->dev, "Failed to enable PCI device: err %d\n", ret);
-		return ret;
-	}
+	pr_debug("base: %llx, len: %llx\n", pci_resource_start(pdev, BAR0),
+		 pci_resource_len(pdev, BAR0));
 
-	ret = pci_request_region(mhu->pdev, BAR0, DRV_NAME);
-	if (ret) {
-		dev_err(mhu->dev, "Failed requested region PCI dev err:%d\n",
-			ret);
-		return ret;
-	}
+	ret = mhu_pci_setup_irq(pdev);
+	if (ret)
+		goto irq_err;
 
-	mhu->base = pcim_iomap(pdev, BAR0, pci_resource_len(mhu->pdev, BAR0));
-	if (!mhu->base) {
-		dev_err(mhu->dev, "Failed to iomap PCI device: err %d\n", ret);
-		return -EINVAL;
-	}
+	ret = mhu_plat_setup_mbox(dev);
+	if (!ret) /* Success */
+		return 0;
 
-	nvec = pci_alloc_irq_vectors(pdev, 0, 3, PCI_IRQ_MSIX);
-	if (nvec < 0) {
-		dev_err(mhu->dev, "irq vectors allocation failed:%d\n", nvec);
-		return nvec;
-	}
+	/* In case of error, release the resources */
+	pci_free_irq_vectors(pdev);
+irq_err:
+	pci_release_region(pdev, BAR0);
 
-	ret = mvl_mhu_init_link(mhu);
-	if (ret) {
-		dev_err(mhu->dev, "Failed to setup SCP link (%d)\n", ret);
-		return ret;
-	}
-
-	ret = mvl_mhu_init_mbox(mhu);
-	if (ret) {
-		dev_err(mhu->dev, "Failed to initialize mailbox controller (%d)\n",
-			ret);
-		return ret;
-	}
-
-	pr_info("Marvell Message Handling Unit\n");
-
-	return 0;
+	return ret;
 }
 
-static void mvl_mhu_remove(struct pci_dev *pdev)
+static void mhu_pci_remove(struct pci_dev *pdev)
 {
-	struct mvl_mhu *mhu = pci_get_drvdata(pdev);
+	struct mhu *mhu;
+
+	mhu = pci_get_drvdata(pdev);
+	mbox_controller_unregister(&mhu_mbox_ctrl);
 
 	pci_free_irq_vectors(pdev);
-	mbox_controller_unregister(&mhu->mbox);
 	pcim_iounmap(pdev, mhu->base);
 	pci_release_region(pdev, BAR0);
 }
 
-static const struct pci_device_id mvl_mhu_ids[] = {
+static const struct pci_device_id mhu_pci_ids[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, 0xA067) },
-	{ 0, }	/* end of table */
+	{},
+};
+MODULE_DEVICE_TABLE(pci, mhu_pci_ids);
+
+static struct pci_driver mhu_pci_driver = {
+	.name = "mvl-mhu",
+	.id_table = mhu_pci_ids,
+	.probe = mhu_pci_probe,
+	.remove = mhu_pci_remove,
 };
 
-static struct pci_driver mvl_mhu_driver = {
-	.name		= "mvl_mhu",
-	.id_table	= mvl_mhu_ids,
-	.probe		= mvl_mhu_probe,
-	.remove		= mvl_mhu_remove,
-};
-module_pci_driver(mvl_mhu_driver);
+static int __init mvl_mhu_init(void)
+{
+	/* The driver has two ways it can interface the hardware.
+	 * In case of SPI interrupt, the driver uses platform driver model.
+	 * For LPI interrupts the driver uses basic PCI driver model.
+	 */
+	int ret;
+
+	/* This driver should not be used for ACPI based platforms */
+	if (!acpi_disabled)
+		return -ENODEV;
+
+	ret = platform_driver_register(&mhu_plat_driver);
+	if (ret) {
+		pr_err("Platform driver can't be registered. (%d)\n", ret);
+		return ret;
+	}
+
+	ret = pci_register_driver(&mhu_pci_driver);
+	if (!ret) /* Success */
+		return 0;
+
+	pr_err("PCI driver can't be registered. (%d)\n", ret);
+	/* Handle errors */
+	platform_driver_unregister(&mhu_plat_driver);
+	return ret;
+}
+module_init(mvl_mhu_init);
+
+static void __exit mvl_mhu_exit(void)
+{
+	pci_unregister_driver(&mhu_pci_driver);
+	platform_driver_unregister(&mhu_plat_driver);
+}
+module_exit(mvl_mhu_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Marvell MHU Driver");
