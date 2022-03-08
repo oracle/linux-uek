@@ -69,6 +69,7 @@ void cnf10k_bphy_rfoe_cleanup(void)
 		drv_ctx = &cnf10k_rfoe_drv_ctx[i];
 		if (drv_ctx->valid) {
 			netdev = drv_ctx->netdev;
+			netif_stop_queue(netdev);
 			priv = netdev_priv(netdev);
 			--(priv->ptp_cfg->refcnt);
 			if (!priv->ptp_cfg->refcnt) {
@@ -76,13 +77,13 @@ void cnf10k_bphy_rfoe_cleanup(void)
 				kfree(priv->ptp_cfg);
 			}
 			cnf10k_rfoe_ptp_destroy(priv);
-			unregister_netdev(netdev);
 			for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 				if (!(priv->pkt_type_mask & (1U << idx)))
 					continue;
 				ft_cfg = &priv->rx_ft_cfg[idx];
 				netif_napi_del(&ft_cfg->napi);
 			}
+			unregister_netdev(netdev);
 			--(priv->rfoe_common->refcnt);
 			if (priv->rfoe_common->refcnt == 0)
 				kfree(priv->rfoe_common);
