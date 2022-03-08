@@ -234,9 +234,21 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 				0xFFFFFFFF;
 		writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
 
-		otx2_bphy_rfoe_cleanup();
-		if (cpri_available())
-			otx2_bphy_cpri_cleanup();
+		if (CHIP_CNF10K(cdev->hw_version)) {
+			if (cdev->gpint2_irq) {
+				/* Disable GPINT Rx and Tx interrupts */
+				writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(2));
+				/* clear interrupt status */
+				status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(2)) &
+						0xFFFFFFFF;
+				writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(2));
+			}
+			cnf10k_bphy_rfoe_cleanup();
+		} else {
+			otx2_bphy_rfoe_cleanup();
+			if (cpri_available())
+				otx2_bphy_cpri_cleanup();
+		}
 
 		cdev->odp_intf_cfg = 0;
 
@@ -629,21 +641,26 @@ static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
 
 	/* Disable GPINT Rx and Tx interrupts */
 	writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(1));
-	if (cdev->gpint2_irq)
-		writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(2));
 
 	/* clear interrupt status */
 	status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(1)) & 0xFFFFFFFF;
 	writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(1));
-	if (cdev->gpint2_irq) {
-		status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(2)) &
-				0xFFFFFFFF;
-		writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(2));
-	}
 
-	otx2_bphy_rfoe_cleanup();
-	if (cpri_available())
-		otx2_bphy_cpri_cleanup();
+	if (CHIP_CNF10K(cdev->hw_version)) {
+		if (cdev->gpint2_irq) {
+			/* Disable GPINT Rx and Tx interrupts */
+			writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1C(2));
+			/* clear interrupt status */
+			status = readq(bphy_reg_base + PSM_INT_GP_SUM_W1C(2)) &
+					0xFFFFFFFF;
+			writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(2));
+		}
+		cnf10k_bphy_rfoe_cleanup();
+	} else {
+		otx2_bphy_rfoe_cleanup();
+		if (cpri_available())
+			otx2_bphy_cpri_cleanup();
+	}
 
 	cdev->odp_intf_cfg = 0;
 
