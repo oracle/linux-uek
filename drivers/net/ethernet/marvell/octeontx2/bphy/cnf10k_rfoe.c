@@ -434,7 +434,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		jdt_iova_addr = (u64)psw->jd_ptr;
 		rfoe_psw_w2 = (struct rfoe_psw_w2_roe_s *)&psw->proto_sts_word;
 		lmac_id = rfoe_psw_w2->lmac_id;
-		tstamp = psw->ptp_timestamp;
+		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
 	} else {
 		/* check that the psw type is correct: */
 		if (unlikely(psw->pkt_type != ECPRI)) {
@@ -446,7 +446,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		ecpri_psw_w2 = (struct rfoe_psw_w2_ecpri_s *)
 					&psw->proto_sts_word;
 		lmac_id = ecpri_psw_w2->lmac_id;
-		tstamp = psw->ptp_timestamp;
+		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
 	}
 
 	netif_dbg(priv, rx_status, priv->netdev,
