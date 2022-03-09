@@ -46,7 +46,14 @@
 #define SDPX_OUT_WMARK			(0x40060000ull)
 #define SDPX_LINK_CFG			(0x40080180ull)
 #define SDPX_GBL_CONTROL		(0x40080200ull)
-#define SDPX_EPFX_RINFO(a)		(0x205f0ull | a << 25)
+#define SDPX_EPFX_RINFO(a) ({					\
+		u64 offset;					\
+		offset = (0x205f0ull | a << 25);		\
+		if (is_otx3_sdp(sdp))				\
+			offset = (0x209f0ull | a << 25);	\
+		offset; })					\
+
+#define SDPX_EPVF_RINGX(a)		(0x26000ull | a << 4)
 #define RINFO_NUMVF_BIT			48
 #define RINFO_RPVF_BIT			32
 #define RINFO_SRN_BIT			0
@@ -62,6 +69,7 @@
 #define MAX_PEMS			4
 #define MAC_MASK_96XX			0x3
 #define MAC_MASK_98XX			0x1
+#define MAC_MASK_CN10K			0x1
 #define MAX_PFS_PER_PEM			8
 #define NUM_PFS_PER_PEM			1
 
@@ -76,6 +84,8 @@
 #define VALID_EP_PEMS_MASK_98XX_SDP0	0x3
 /* 98xx only PEM2 and PEM3 for SDP1 */
 #define VALID_EP_PEMS_MASK_98XX_SDP1	0xc
+
+#define VALID_EP_PEMS_MASK_106XX	0x1
 
 #define PEMX_CFG(a)			(0x8E00000000D8ull | a << 36)
 #define PEMX_CFG_HOSTMD_BIT_MASK	0x1

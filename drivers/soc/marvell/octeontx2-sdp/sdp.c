@@ -1124,22 +1124,26 @@ static int send_chan_info(struct sdp_dev *sdp, struct sdp_node_info *info)
 
 static void program_sdp_rinfo(struct sdp_dev *sdp)
 {
-	u32 rppf, rpvf, numvf, pf_srn, npfs, npfs_per_pem;
+	u32 rppf, rpvf, numvf, pf_srn, npfs, npfs_per_pem, epf_srn;
 	void __iomem *addr;
 	u32 mac, mac_mask;
 	u64 cfg, val, pkg_ver;
 	u64 ep_pem, valid_ep_pem_mask, npem, epf_base;
+	u32 vf, ring, epf, epvf;
+
+	/* TODO npfs should be obtained from dts */
+	npfs_per_pem = NUM_PFS_PER_PEM;
 
 	/* PF doesn't have any rings */
 	rppf = sdp->info.vf_rings[0];
 	rpvf = sdp->info.vf_rings[1];
 	numvf = sdp->info.max_vfs - 1;
+
 	pf_srn = sdp->info.pf_srn;
 
 	dev_info(&sdp->pdev->dev, "rppf:%u rpvf:%u numvf:%u pf_srn:%u\n", rppf,
 		 rpvf, numvf, pf_srn);
 
-	/* TODO: add support for 10K  */
 	mac_mask = MAC_MASK_96XX;
 	switch (sdp->pdev->subsystem_device) {
 	case PCI_SUBSYS_DEVID_96XX:
@@ -1161,6 +1165,12 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 			valid_ep_pem_mask = VALID_EP_PEMS_MASK_98XX_SDP1;
 		mac_mask = MAC_MASK_98XX;
 		break;
+	case PCI_SUBSYS_DEVID_CN10K_A:
+	case PCI_SUBSYS_DEVID_CNF10K_A:
+	case PCI_SUBSYS_DEVID_CNF10K_B:
+		valid_ep_pem_mask = VALID_EP_PEMS_MASK_106XX;
+		mac_mask = MAC_MASK_CN10K;
+		break;
 	default:
 		dev_err(&sdp->pdev->dev,
 			"Failed to set SDP ring info: unsupported platform\n");
@@ -1168,9 +1178,9 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 	}
 	sdp->valid_ep_pem_mask = valid_ep_pem_mask;
 	sdp->mac_mask = mac_mask;
-	/* TODO npfs should be obtained from dts */
-	npfs_per_pem = NUM_PFS_PER_PEM;
 	npem = 0;
+	epf_srn = 0;
+
 	for (ep_pem = 0; ep_pem < MAX_PEMS; ep_pem++) {
 		if (!(valid_ep_pem_mask & (1ul << ep_pem)))
 			continue;
@@ -1184,27 +1194,28 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 			continue;
 		/* found the PEM in endpoint mode */
 		epf_base = 0;
+		if (sdp->pdev->subsystem_device !=
+		    PCI_SUBSYS_DEVID_98XX)
+			val = (((u64)rppf << RPPF_BIT_96XX) |
+			       ((u64)pf_srn << PF_SRN_BIT_96XX) |
+			       ((u64)npfs_per_pem << NPFS_BIT_96XX));
+		else
+			val = (((u64)rppf << RPPF_BIT_98XX) |
+			       ((u64)pf_srn << PF_SRN_BIT_98XX) |
+			       ((u64)npfs_per_pem << NPFS_BIT_98XX));
+		mac = ep_pem & mac_mask;
+		writeq(val, sdp->sdp_base + SDPX_MACX_PF_RING_CTL(mac));
+
+		epf_srn = npfs_per_pem * rppf;
 		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
 			val = (((u64)numvf << RINFO_NUMVF_BIT) |
 			       ((u64)rpvf << RINFO_RPVF_BIT) |
-			       ((u64)(pf_srn + rppf) << RINFO_SRN_BIT));
+			       ((u64)(epf_srn) << RINFO_SRN_BIT));
 			writeq(val,
 			       sdp->sdp_base +
 			       SDPX_EPFX_RINFO((epf_base +
 						(npem * MAX_PFS_PER_PEM))));
-
-			if (sdp->pdev->subsystem_device !=
-			    PCI_SUBSYS_DEVID_98XX)
-				val = (((u64)rppf << RPPF_BIT_96XX) |
-				       ((u64)pf_srn << PF_SRN_BIT_96XX) |
-				       ((u64)npfs_per_pem << NPFS_BIT_96XX));
-			else
-				val = (((u64)rppf << RPPF_BIT_98XX) |
-					((u64)pf_srn << PF_SRN_BIT_98XX) |
-					((u64)npfs_per_pem << NPFS_BIT_98XX));
-			mac = ep_pem & mac_mask;
-			writeq(val, sdp->sdp_base + SDPX_MACX_PF_RING_CTL(mac));
-			pf_srn += rppf + (rpvf * numvf);
+			epf_srn += numvf * rpvf;
 			epf_base++;
 		}
 		npem++;
