@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2017 - 2019 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
 
-#include <linux/printk.h>
-#include <linux/dynamic_debug.h>
 #include <linux/module.h>
+#include <linux/version.h>
 #include <linux/netdevice.h>
+#include <linux/dynamic_debug.h>
 #include <linux/utsname.h>
 
 #include "ionic.h"
@@ -16,6 +16,27 @@ MODULE_DESCRIPTION(IONIC_DRV_DESCRIPTION);
 MODULE_AUTHOR("Pensando Systems, Inc");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(IONIC_DRV_VERSION);
+MODULE_INFO(supported, "external");
+
+bool port_init_up = 1;
+module_param(port_init_up, bool, 0);
+MODULE_PARM_DESC(max_slaves, "Set port to ADMIN_UP on init (default 1, 0 to disable)");
+
+unsigned int rx_copybreak = IONIC_RX_COPYBREAK_DEFAULT;
+module_param(rx_copybreak, uint, 0600);
+MODULE_PARM_DESC(rx_copybreak, "Maximum size of packet that is copied to a bounce buffer on RX");
+
+unsigned int tx_budget = IONIC_TX_BUDGET_DEFAULT;
+module_param(tx_budget, uint, 0600);
+MODULE_PARM_DESC(tx_budget, "Number of tx completions to process per NAPI poll");
+
+unsigned int devcmd_timeout = DEVCMD_TIMEOUT;
+module_param(devcmd_timeout, uint, 0600);
+MODULE_PARM_DESC(devcmd_timeout, "Devcmd timeout in seconds (default 30 secs)");
+
+unsigned long affinity_mask_override;
+module_param(affinity_mask_override, ulong, 0600);
+MODULE_PARM_DESC(affinity_mask_override, "IRQ affinity mask to override (max 64 bits)");
 
 static const char *ionic_error_to_str(enum ionic_status_code code)
 {
@@ -58,16 +79,20 @@ static const char *ionic_error_to_str(enum ionic_status_code code)
 		return "IONIC_RC_BAD_ADDR";
 	case IONIC_RC_DEV_CMD:
 		return "IONIC_RC_DEV_CMD";
+	case IONIC_RC_ENOSUPP:
+		return "IONIC_RC_ENOSUPP";
 	case IONIC_RC_ERROR:
 		return "IONIC_RC_ERROR";
 	case IONIC_RC_ERDMA:
 		return "IONIC_RC_ERDMA";
+	case IONIC_RC_BAD_FW:
+		return "IONIC_RC_BAD_FW";
 	default:
 		return "IONIC_RC_UNKNOWN";
 	}
 }
 
-static int ionic_error_to_errno(enum ionic_status_code code)
+int ionic_error_to_errno(enum ionic_status_code code)
 {
 	switch (code) {
 	case IONIC_RC_SUCCESS:
@@ -76,6 +101,7 @@ static int ionic_error_to_errno(enum ionic_status_code code)
 	case IONIC_RC_EQTYPE:
 	case IONIC_RC_EQID:
 	case IONIC_RC_EINVAL:
+	case IONIC_RC_ENOSUPP:
 		return -EINVAL;
 	case IONIC_RC_EPERM:
 		return -EPERM;
@@ -97,6 +123,8 @@ static int ionic_error_to_errno(enum ionic_status_code code)
 		return -ERANGE;
 	case IONIC_RC_BAD_ADDR:
 		return -EFAULT;
+	case IONIC_RC_BAD_FW:
+		return -ENOEXEC;
 	case IONIC_RC_EOPCODE:
 	case IONIC_RC_EINTR:
 	case IONIC_RC_DEV_CMD:
@@ -107,6 +135,7 @@ static int ionic_error_to_errno(enum ionic_status_code code)
 		return -EIO;
 	}
 }
+EXPORT_SYMBOL_GPL(ionic_error_to_errno);
 
 static const char *ionic_opcode_to_str(enum ionic_cmd_opcode opcode)
 {
@@ -143,12 +172,16 @@ static const char *ionic_opcode_to_str(enum ionic_cmd_opcode opcode)
 		return "IONIC_CMD_LIF_SETATTR";
 	case IONIC_CMD_LIF_GETATTR:
 		return "IONIC_CMD_LIF_GETATTR";
+	case IONIC_CMD_LIF_SETPHC:
+		return "IONIC_CMD_LIF_SETPHC";
 	case IONIC_CMD_RX_MODE_SET:
 		return "IONIC_CMD_RX_MODE_SET";
 	case IONIC_CMD_RX_FILTER_ADD:
 		return "IONIC_CMD_RX_FILTER_ADD";
 	case IONIC_CMD_RX_FILTER_DEL:
 		return "IONIC_CMD_RX_FILTER_DEL";
+	case IONIC_CMD_Q_IDENTIFY:
+		return "IONIC_CMD_Q_IDENTIFY";
 	case IONIC_CMD_Q_INIT:
 		return "IONIC_CMD_Q_INIT";
 	case IONIC_CMD_Q_CONTROL:
@@ -165,6 +198,14 @@ static const char *ionic_opcode_to_str(enum ionic_cmd_opcode opcode)
 		return "IONIC_CMD_FW_DOWNLOAD";
 	case IONIC_CMD_FW_CONTROL:
 		return "IONIC_CMD_FW_CONTROL";
+	case IONIC_CMD_FW_DOWNLOAD_V1:
+		return "IONIC_CMD_FW_DOWNLOAD_V1";
+	case IONIC_CMD_FW_CONTROL_V1:
+		return "IONIC_CMD_FW_CONTROL_V1";
+	case IONIC_CMD_VF_GETATTR:
+		return "IONIC_CMD_VF_GETATTR";
+	case IONIC_CMD_VF_SETATTR:
+		return "IONIC_CMD_VF_SETATTR";
 	default:
 		return "DEVCMD_UNKNOWN";
 	}
@@ -172,17 +213,26 @@ static const char *ionic_opcode_to_str(enum ionic_cmd_opcode opcode)
 
 static void ionic_adminq_flush(struct ionic_lif *lif)
 {
-	struct ionic_queue *adminq = &lif->adminqcq->q;
+	struct ionic_desc_info *desc_info;
+	unsigned long irqflags;
+	struct ionic_queue *q;
 
-	spin_lock(&lif->adminq_lock);
-
-	while (adminq->tail != adminq->head) {
-		memset(adminq->tail->desc, 0, sizeof(union ionic_adminq_cmd));
-		adminq->tail->cb = NULL;
-		adminq->tail->cb_arg = NULL;
-		adminq->tail = adminq->tail->next;
+	spin_lock_irqsave(&lif->adminq_lock, irqflags);
+	if (!lif->adminqcq) {
+		spin_unlock_irqrestore(&lif->adminq_lock, irqflags);
+		return;
 	}
-	spin_unlock(&lif->adminq_lock);
+
+	q = &lif->adminqcq->q;
+
+	while (q->tail_idx != q->head_idx) {
+		desc_info = &q->info[q->tail_idx];
+		memset(desc_info->desc, 0, sizeof(union ionic_adminq_cmd));
+		desc_info->cb = NULL;
+		desc_info->cb_arg = NULL;
+		q->tail_idx = (q->tail_idx + 1) & (q->num_descs - 1);
+	}
+	spin_unlock_irqrestore(&lif->adminq_lock, irqflags);
 }
 
 static int ionic_adminq_check_err(struct ionic_lif *lif,
@@ -217,94 +267,128 @@ static void ionic_adminq_cb(struct ionic_queue *q,
 {
 	struct ionic_admin_ctx *ctx = cb_arg;
 	struct ionic_admin_comp *comp;
-	struct device *dev;
 
 	if (!ctx)
 		return;
 
 	comp = cq_info->cq_desc;
-	dev = &q->lif->netdev->dev;
 
 	memcpy(&ctx->comp, comp, sizeof(*comp));
 
-	dev_dbg(dev, "comp admin queue command:\n");
+	dev_dbg(q->dev, "comp admin queue command:\n");
 	dynamic_hex_dump("comp ", DUMP_PREFIX_OFFSET, 16, 1,
 			 &ctx->comp, sizeof(ctx->comp), true);
 
 	complete_all(&ctx->work);
 }
 
-static int ionic_adminq_post(struct ionic_lif *lif, struct ionic_admin_ctx *ctx)
+bool ionic_adminq_poke_doorbell(struct ionic_queue *q)
 {
-	struct ionic_queue *adminq = &lif->adminqcq->q;
+	struct ionic_lif *lif = q->lif;
+	unsigned long now, then, dif;
+	unsigned long irqflags;
+
+	spin_lock_irqsave(&lif->adminq_lock, irqflags);
+
+	if (q->tail_idx == q->head_idx) {
+		spin_unlock_irqrestore(&lif->adminq_lock, irqflags);
+		return false;
+	}
+
+	now = READ_ONCE(jiffies);
+	then = q->dbell_jiffies;
+	dif = now - then;
+
+	if (dif > q->dbell_deadline) {
+		ionic_dbell_ring(q->lif->kern_dbpage, q->hw_type,
+				 q->dbval | q->head_idx);
+
+		q->dbell_jiffies = now;
+	}
+
+	spin_unlock_irqrestore(&lif->adminq_lock, irqflags);
+
+	return true;
+}
+
+int ionic_adminq_post(struct ionic_lif *lif, struct ionic_admin_ctx *ctx)
+{
+	struct ionic_desc_info *desc_info;
+	unsigned long irqflags;
+	struct ionic_queue *q;
 	int err = 0;
 
-	WARN_ON(in_interrupt());
+	spin_lock_irqsave(&lif->adminq_lock, irqflags);
+	if (!lif->adminqcq) {
+		spin_unlock_irqrestore(&lif->adminq_lock, irqflags);
+		return -EIO;
+	}
 
-	spin_lock(&lif->adminq_lock);
-	if (!ionic_q_has_space(adminq, 1)) {
+	q = &lif->adminqcq->q;
+
+	if (!ionic_q_has_space(q, 1)) {
 		err = -ENOSPC;
 		goto err_out;
 	}
 
-	memcpy(adminq->head->desc, &ctx->cmd, sizeof(ctx->cmd));
+	err = ionic_heartbeat_check(lif->ionic);
+	if (err)
+		goto err_out;
+
+	desc_info = &q->info[q->head_idx];
+	memcpy(desc_info->desc, &ctx->cmd, sizeof(ctx->cmd));
 
 	dev_dbg(&lif->netdev->dev, "post admin queue command:\n");
 	dynamic_hex_dump("cmd ", DUMP_PREFIX_OFFSET, 16, 1,
 			 &ctx->cmd, sizeof(ctx->cmd), true);
 
-	ionic_q_post(adminq, true, ionic_adminq_cb, ctx);
+	ionic_q_post(q, true, ionic_adminq_cb, ctx);
 
 err_out:
-	spin_unlock(&lif->adminq_lock);
+	spin_unlock_irqrestore(&lif->adminq_lock, irqflags);
 
 	return err;
 }
 
-int ionic_adminq_post_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx)
+int ionic_adminq_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx, int err)
 {
 	struct net_device *netdev = lif->netdev;
 	unsigned long remaining;
 	const char *name;
-	int err;
 
-	err = ionic_adminq_post(lif, ctx);
 	if (err) {
-		name = ionic_opcode_to_str(ctx->cmd.cmd.opcode);
-		netdev_err(netdev, "Posting of %s (%d) failed: %d\n",
-			   name, ctx->cmd.cmd.opcode, err);
+		if (!test_bit(IONIC_LIF_F_FW_RESET, lif->state)) {
+			name = ionic_opcode_to_str(ctx->cmd.cmd.opcode);
+			netdev_err(netdev, "Posting of %s (%d) failed: %d\n",
+				   name, ctx->cmd.cmd.opcode, err);
+		}
 		return err;
 	}
 
 	remaining = wait_for_completion_timeout(&ctx->work,
-						HZ * (ulong)DEVCMD_TIMEOUT);
+						HZ * (ulong)devcmd_timeout);
 	return ionic_adminq_check_err(lif, ctx, (remaining == 0));
 }
 
-int ionic_napi(struct napi_struct *napi, int budget, ionic_cq_cb cb,
-	       ionic_cq_done_cb done_cb, void *done_arg)
+int ionic_adminq_post_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx)
 {
-	struct ionic_qcq *qcq = napi_to_qcq(napi);
-	struct ionic_cq *cq = &qcq->cq;
-	u32 work_done, flags = 0;
+	int err;
 
-	work_done = ionic_cq_service(cq, budget, cb, done_cb, done_arg);
+	/* if platform dev is resetting, don't bother with AdminQ, it's not there */
+	if (lif->ionic->pfdev && test_bit(IONIC_LIF_F_FW_STOPPING, lif->state))
+		return 0;
 
-	if (work_done < budget && napi_complete_done(napi, work_done)) {
-		flags |= IONIC_INTR_CRED_UNMASK;
-		DEBUG_STATS_INTR_REARM(cq->bound_intr);
-	}
+	err = ionic_adminq_post(lif, ctx);
 
-	if (work_done || flags) {
-		flags |= IONIC_INTR_CRED_RESET_COALESCE;
-		ionic_intr_credits(cq->lif->ionic->idev.intr_ctrl,
-				   cq->bound_intr->index,
-				   work_done, flags);
-	}
+	return ionic_adminq_wait(lif, ctx, err);
+}
 
-	DEBUG_STATS_NAPI_POLL(qcq, work_done);
+static void ionic_dev_cmd_clean(struct ionic *ionic)
+{
+	union __iomem ionic_dev_cmd_regs *regs = ionic->idev.dev_cmd_regs;
 
-	return work_done;
+	iowrite32(0, &regs->doorbell);
+	memset_io(&regs->cmd, 0, sizeof(regs->cmd));
 }
 
 int ionic_dev_cmd_wait(struct ionic *ionic, unsigned long max_seconds)
@@ -314,31 +398,47 @@ int ionic_dev_cmd_wait(struct ionic *ionic, unsigned long max_seconds)
 	unsigned long max_wait;
 	unsigned long duration;
 	int opcode;
+	int hb = 0;
 	int done;
 	int err;
-
-	WARN_ON(in_interrupt());
 
 	/* Wait for dev cmd to complete, retrying if we get EAGAIN,
 	 * but don't wait any longer than max_seconds.
 	 */
 	max_wait = jiffies + (max_seconds * HZ);
 try_again:
+	opcode = ioread8(&idev->dev_cmd_regs->cmd.cmd.opcode);
 	start_time = jiffies;
 	do {
 		done = ionic_dev_cmd_done(idev);
 		if (done)
 			break;
-		msleep(20);
-	} while (!done && time_before(jiffies, max_wait));
+		usleep_range(100, 200);
+
+		/* Don't check the heartbeat on FW_CONTROL commands as they are
+		 * notorious for interrupting the firmware's heartbeat update.
+		 */
+		if (opcode != IONIC_CMD_FW_CONTROL)
+			hb = ionic_heartbeat_check(ionic);
+	} while (!done && !hb && time_before(jiffies, max_wait));
 	duration = jiffies - start_time;
 
-	opcode = idev->dev_cmd_regs->cmd.cmd.opcode;
 	dev_dbg(ionic->dev, "DEVCMD %s (%d) done=%d took %ld secs (%ld jiffies)\n",
 		ionic_opcode_to_str(opcode), opcode,
 		done, duration / HZ, duration);
 
+	if (!done && hb) {
+		/* It is possible (but unlikely) that FW was busy and missed a
+		 * heartbeat check but is still alive and will process this
+		 * request, so don't clean the dev_cmd in this case.
+		 */
+		dev_dbg(ionic->dev, "DEVCMD %s (%d) failed - FW halted\n",
+			 ionic_opcode_to_str(opcode), opcode);
+		return -ENXIO;
+	}
+
 	if (!done && !time_before(jiffies, max_wait)) {
+		ionic_dev_cmd_clean(ionic);
 		dev_warn(ionic->dev, "DEVCMD %s (%d) timeout after %ld secs\n",
 			 ionic_opcode_to_str(opcode), opcode, max_seconds);
 		return -ETIMEDOUT;
@@ -347,7 +447,7 @@ try_again:
 	err = ionic_dev_cmd_status(&ionic->idev);
 	if (err) {
 		if (err == IONIC_RC_EAGAIN && !time_after(jiffies, max_wait)) {
-			dev_err(ionic->dev, "DEV_CMD %s (%d) error, %s (%d) retrying...\n",
+			dev_dbg(ionic->dev, "DEV_CMD %s (%d), %s (%d) retrying...\n",
 				ionic_opcode_to_str(opcode), opcode,
 				ionic_error_to_str(err), err);
 
@@ -367,6 +467,23 @@ try_again:
 	return 0;
 }
 
+int ionic_set_dma_mask(struct ionic *ionic)
+{
+	struct device *dev = ionic->dev;
+	int err;
+
+	/* Query system for DMA addressing limitation for the device. */
+#ifdef CONFIG_PPC64
+	ionic->pdev->no_64bit_msi = 1;
+#endif
+	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(IONIC_ADDR_LEN));
+	if (err)
+		dev_err(dev, "Unable to obtain 64-bit DMA for consistent allocations, aborting.  err=%d\n",
+			err);
+
+	return err;
+}
+
 int ionic_setup(struct ionic *ionic)
 {
 	int err;
@@ -374,6 +491,9 @@ int ionic_setup(struct ionic *ionic)
 	err = ionic_dev_setup(ionic);
 	if (err)
 		return err;
+
+	ionic_debugfs_add_dev_cmd(ionic);
+	ionic_reset(ionic);
 
 	return 0;
 }
@@ -388,6 +508,12 @@ int ionic_identify(struct ionic *ionic)
 	memset(ident, 0, sizeof(*ident));
 
 	ident->drv.os_type = cpu_to_le32(IONIC_OS_TYPE_LINUX);
+	ident->drv.os_dist = 0;
+	strncpy(ident->drv.os_dist_str, utsname()->release,
+		sizeof(ident->drv.os_dist_str) - 1);
+	ident->drv.kernel_ver = cpu_to_le32(LINUX_VERSION_CODE);
+	strncpy(ident->drv.kernel_ver_str, utsname()->version,
+		sizeof(ident->drv.kernel_ver_str) - 1);
 	strncpy(ident->drv.driver_ver_str, IONIC_DRV_VERSION,
 		sizeof(ident->drv.driver_ver_str) - 1);
 
@@ -397,22 +523,30 @@ int ionic_identify(struct ionic *ionic)
 	memcpy_toio(&idev->dev_cmd_regs->data, &ident->drv, sz);
 
 	ionic_dev_cmd_identify(idev, IONIC_IDENTITY_VERSION_1);
-	err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
+	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 	if (!err) {
 		sz = min(sizeof(ident->dev), sizeof(idev->dev_cmd_regs->data));
 		memcpy_fromio(&ident->dev, &idev->dev_cmd_regs->data, sz);
 	}
-
 	mutex_unlock(&ionic->dev_cmd_lock);
 
-	if (err)
-		goto err_out_unmap;
+	dev_info(ionic->dev, "FW: %s\n", idev->dev_info.fw_version);
 
-	ionic_debugfs_add_ident(ionic);
+	if (err) {
+		dev_err(ionic->dev, "Cannot identify ionic: %dn", err);
+		goto err_out;
+	}
+
+	err = ionic_lif_identify(ionic, IONIC_LIF_TYPE_CLASSIC,
+				 &ionic->ident.lif);
+	if (err) {
+		dev_err(ionic->dev, "Cannot identify LIFs: %d\n", err);
+		goto err_out;
+	}
 
 	return 0;
 
-err_out_unmap:
+err_out:
 	return err;
 }
 
@@ -423,7 +557,7 @@ int ionic_init(struct ionic *ionic)
 
 	mutex_lock(&ionic->dev_cmd_lock);
 	ionic_dev_cmd_init(idev);
-	err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
+	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 	mutex_unlock(&ionic->dev_cmd_lock);
 
 	return err;
@@ -436,7 +570,7 @@ int ionic_reset(struct ionic *ionic)
 
 	mutex_lock(&ionic->dev_cmd_lock);
 	ionic_dev_cmd_reset(idev);
-	err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
+	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 	mutex_unlock(&ionic->dev_cmd_lock);
 
 	return err;
@@ -446,19 +580,29 @@ int ionic_port_identify(struct ionic *ionic)
 {
 	struct ionic_identity *ident = &ionic->ident;
 	struct ionic_dev *idev = &ionic->idev;
+	struct device *dev = ionic->dev;
 	size_t sz;
 	int err;
 
 	mutex_lock(&ionic->dev_cmd_lock);
 
 	ionic_dev_cmd_port_identify(idev);
-	err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
+	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 	if (!err) {
 		sz = min(sizeof(ident->port), sizeof(idev->dev_cmd_regs->data));
 		memcpy_fromio(&ident->port, &idev->dev_cmd_regs->data, sz);
 	}
 
 	mutex_unlock(&ionic->dev_cmd_lock);
+
+	dev_dbg(dev, "type %d\n", ident->port.type);
+	dev_dbg(dev, "speed %d\n", ident->port.config.speed);
+	dev_dbg(dev, "mtu %d\n", ident->port.config.mtu);
+	dev_dbg(dev, "state %d\n", ident->port.config.state);
+	dev_dbg(dev, "an_enable %d\n", ident->port.config.an_enable);
+	dev_dbg(dev, "fec_type %d\n", ident->port.config.fec_type);
+	dev_dbg(dev, "pause_type %d\n", ident->port.config.pause_type);
+	dev_dbg(dev, "loopback_mode %d\n", ident->port.config.loopback_mode);
 
 	return err;
 }
@@ -470,16 +614,14 @@ int ionic_port_init(struct ionic *ionic)
 	size_t sz;
 	int err;
 
-	if (idev->port_info)
-		return 0;
-
-	idev->port_info_sz = ALIGN(sizeof(*idev->port_info), PAGE_SIZE);
-	idev->port_info = dma_alloc_coherent(ionic->dev, idev->port_info_sz,
-					     &idev->port_info_pa,
-					     GFP_KERNEL);
 	if (!idev->port_info) {
-		dev_err(ionic->dev, "Failed to allocate port info, aborting\n");
-		return -ENOMEM;
+		idev->port_info_sz = ALIGN(sizeof(*idev->port_info), PAGE_SIZE);
+		idev->port_info = dma_alloc_coherent(ionic->dev,
+						     idev->port_info_sz,
+						     &idev->port_info_pa,
+						     GFP_KERNEL);
+		if (!idev->port_info)
+			return -ENOMEM;
 	}
 
 	sz = min(sizeof(ident->port.config), sizeof(idev->dev_cmd_regs->data));
@@ -488,10 +630,12 @@ int ionic_port_init(struct ionic *ionic)
 
 	memcpy_toio(&idev->dev_cmd_regs->data, &ident->port.config, sz);
 	ionic_dev_cmd_port_init(idev);
-	err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
+	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 
-	ionic_dev_cmd_port_state(&ionic->idev, IONIC_PORT_ADMIN_STATE_UP);
-	(void)ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
+	if (port_init_up) {
+		ionic_dev_cmd_port_state(&ionic->idev, IONIC_PORT_ADMIN_STATE_UP);
+		(void)ionic_dev_cmd_wait(ionic, devcmd_timeout);
+	}
 
 	mutex_unlock(&ionic->dev_cmd_lock);
 	if (err) {
@@ -515,7 +659,7 @@ int ionic_port_reset(struct ionic *ionic)
 
 	mutex_lock(&ionic->dev_cmd_lock);
 	ionic_dev_cmd_port_reset(idev);
-	err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
+	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 	mutex_unlock(&ionic->dev_cmd_lock);
 
 	dma_free_coherent(ionic->dev, idev->port_info_sz,
@@ -532,14 +676,36 @@ int ionic_port_reset(struct ionic *ionic)
 
 static int __init ionic_init_module(void)
 {
+	unsigned long max_affinity = GENMASK_ULL((min(num_present_cpus(),
+					(unsigned int)(sizeof(unsigned long)*BITS_PER_BYTE))-1), 0);
+
 	pr_info("%s %s, ver %s\n",
 		IONIC_DRV_NAME, IONIC_DRV_DESCRIPTION, IONIC_DRV_VERSION);
+
 	ionic_debugfs_create();
+
+	if (affinity_mask_override) {
+		/* limit affinity mask override to the available CPUs */
+		if (affinity_mask_override > max_affinity) {
+			affinity_mask_override = (affinity_mask_override & max_affinity);
+			pr_info("limiting affinity mask to: 0x%lx\n",
+					affinity_mask_override);
+		} else {
+			pr_info("affinity_mask_override: %lx\n",
+					affinity_mask_override);
+		}
+	}
+
 	return ionic_bus_register_driver();
 }
 
 static void __exit ionic_cleanup_module(void)
 {
+	/* If there's a long devcmd_timeout set, don't let
+	 * hung FW slow us down when exiting
+	 */
+	devcmd_timeout = min_t(int, devcmd_timeout, SHORT_TIMEOUT);
+
 	ionic_bus_unregister_driver();
 	ionic_debugfs_destroy();
 

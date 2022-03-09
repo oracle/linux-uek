@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 OR Linux-OpenIB OR BSD-2-Clause */
-/* Copyright (c) 2018-2019 Pensando Systems, Inc.  All rights reserved. */
+/* SPDX-License-Identifier: (GPL-2.0 OR Linux-OpenIB) OR BSD-2-Clause */
+/* Copyright (c) 2018 - 2021 Pensando Systems, Inc.  All rights reserved. */
 
 #ifndef IONIC_REGS_H
 #define IONIC_REGS_H
@@ -21,9 +21,6 @@ struct ionic_intr {
 	u32 coal;
 	u32 rsvd[3];
 };
-
-#define IONIC_INTR_CTRL_REGS_MAX	2048
-#define IONIC_INTR_CTRL_COAL_MAX	0x3F
 
 /** enum ionic_intr_mask_vals - valid values for mask and mask_assert.
  * @IONIC_INTR_MASK_CLEAR:	unmask interrupt.
@@ -73,15 +70,22 @@ static inline void ionic_intr_credits(struct ionic_intr __iomem *intr_ctrl,
 	iowrite32(cred | flags, &intr_ctrl[intr_idx].credits);
 }
 
-static inline void ionic_intr_clean(struct ionic_intr __iomem *intr_ctrl,
-				    int intr_idx)
+static inline void ionic_intr_clean_flags(struct ionic_intr __iomem *intr_ctrl,
+					  int intr_idx, u32 flags)
 {
 	u32 cred;
 
 	cred = ioread32(&intr_ctrl[intr_idx].credits);
 	cred &= IONIC_INTR_CRED_COUNT_SIGNED;
-	cred |= IONIC_INTR_CRED_RESET_COALESCE;
+	cred |= flags;
 	iowrite32(cred, &intr_ctrl[intr_idx].credits);
+}
+
+static inline void ionic_intr_clean(struct ionic_intr __iomem *intr_ctrl,
+				    int intr_idx)
+{
+	ionic_intr_clean_flags(intr_ctrl, intr_idx,
+			       IONIC_INTR_CRED_RESET_COALESCE);
 }
 
 static inline void ionic_intr_mask_assert(struct ionic_intr __iomem *intr_ctrl,

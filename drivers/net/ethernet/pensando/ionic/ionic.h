@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2017 - 2019 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
 
 #ifndef _IONIC_H_
 #define _IONIC_H_
 
 struct ionic_lif;
+
+#include "kcompat.h"
 
 #include "ionic_if.h"
 #include "ionic_dev.h"
@@ -12,51 +14,79 @@ struct ionic_lif;
 
 #define IONIC_DRV_NAME		"ionic"
 #define IONIC_DRV_DESCRIPTION	"Pensando Ethernet NIC Driver"
-#define IONIC_DRV_VERSION	"0.15.0-k"
+#define IONIC_DRV_VERSION	"1.15.9.64"
 
 #define PCI_VENDOR_ID_PENSANDO			0x1dd8
 
 #define PCI_DEVICE_ID_PENSANDO_IONIC_ETH_PF	0x1002
 #define PCI_DEVICE_ID_PENSANDO_IONIC_ETH_VF	0x1003
+#define PCI_DEVICE_ID_PENSANDO_IONIC_ETH_MGMT	0x1004
 
-#define IONIC_SUBDEV_ID_NAPLES_25	0x4000
-#define IONIC_SUBDEV_ID_NAPLES_100_4	0x4001
-#define IONIC_SUBDEV_ID_NAPLES_100_8	0x4002
+#define DEVCMD_TIMEOUT  5
+#define SHORT_TIMEOUT   1
+#define MAX_ETH_EQS	64
 
-#define DEVCMD_TIMEOUT  10
+#define IONIC_PHC_UPDATE_NS	10000000000L	    /* 10s in nanoseconds */
+#define NORMAL_PPB		1000000000	    /* one billion parts per billion */
+#define SCALED_PPM		(1000000ull << 16)  /* 2^16 million parts per 2^16 million */
+
+extern unsigned int rx_copybreak;
+extern unsigned int tx_budget;
+extern unsigned int devcmd_timeout;
+extern unsigned long affinity_mask_override;
+
+struct ionic_vf {
+	u16	 index;
+	u8	 macaddr[6];
+	__le32	 maxrate;
+	__le16	 vlanid;
+	u8	 spoofchk;
+	u8	 trusted;
+	u8	 linkstate;
+	dma_addr_t       stats_pa;
+	struct ionic_lif_stats stats;
+};
 
 struct ionic {
 	struct pci_dev *pdev;
+	struct platform_device *pfdev;
 	struct device *dev;
-	struct devlink_port dl_port;
 	struct ionic_dev idev;
 	struct mutex dev_cmd_lock;	/* lock for dev_cmd operations */
 	struct dentry *dentry;
 	struct ionic_dev_bar bars[IONIC_BARS_MAX];
 	unsigned int num_bars;
 	struct ionic_identity ident;
-	struct list_head lifs;
-	struct ionic_lif *master_lif;
+	bool is_mgmt_nic;
+	struct ionic_lif *lif;
+	struct ionic_eq **eqs;
 	unsigned int nnqs_per_lif;
-	unsigned int neqs_per_lif;
+	unsigned int nrdma_eqs_per_lif;
 	unsigned int ntxqs_per_lif;
 	unsigned int nrxqs_per_lif;
+	unsigned int nlifs;
+	unsigned int neth_eqs;
 	DECLARE_BITMAP(lifbits, IONIC_LIFS_MAX);
+	DECLARE_BITMAP(ethbits, IONIC_LIFS_MAX);
 	unsigned int nintrs;
 	DECLARE_BITMAP(intrs, IONIC_INTR_CTRL_REGS_MAX);
+#ifndef HAVE_PCI_IRQ_API
+	struct msix_entry *msix;
+#endif
 	struct work_struct nb_work;
 	struct notifier_block nb;
+#ifdef IONIC_DEVLINK
+	struct devlink_port dl_port;
+#endif
+	struct rw_semaphore vf_op_lock;	/* lock for VF operations */
+	struct ionic_vf *vfs;
+	int num_vfs;
+	struct timer_list watchdog_timer;
+	int watchdog_period;
 };
 
-struct ionic_admin_ctx {
-	struct completion work;
-	union ionic_adminq_cmd cmd;
-	union ionic_adminq_comp comp;
-};
-
-int ionic_napi(struct napi_struct *napi, int budget, ionic_cq_cb cb,
-	       ionic_cq_done_cb done_cb, void *done_arg);
-
+int ionic_adminq_post(struct ionic_lif *lif, struct ionic_admin_ctx *ctx);
+int ionic_adminq_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx, int err);
 int ionic_adminq_post_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx);
 int ionic_dev_cmd_wait(struct ionic *ionic, unsigned long max_wait);
 int ionic_set_dma_mask(struct ionic *ionic);

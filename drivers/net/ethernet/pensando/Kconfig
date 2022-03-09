@@ -30,4 +30,21 @@ config IONIC
 	  To compile this driver as a module, choose M here. The module
 	  will be called ionic.
 
+config IONIC_MNIC
+	tristate "Pensando MNIC Ethernet Support"
+	select MDEV
+	select IONIC
+	help
+	  This enables Pensando IONIC MNIC driver.
+
+config MDEV
+	tristate "Pensando MDEV Ethernet Support"
+	help
+	  This enables Pensando  MDEV driver.
+
+config MNET_UIO_PDRV_GENIRQ
+	tristate "Pensando MNET UIO driver Support"
+	help
+	  This enables Pensando MNET UIO driver.
+
 endif # NET_VENDOR_PENSANDO
