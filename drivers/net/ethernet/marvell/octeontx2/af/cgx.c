@@ -1685,10 +1685,13 @@ static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool enable)
 	u64 req = 0;
 	u64 resp;
 
-	if (enable)
+	if (enable) {
 		req = FIELD_SET(CMDREG_ID, CGX_CMD_LINK_BRING_UP, req);
-	else
+		/* set maximum time firmware poll for Link as 1000 ms */
+		req = FIELD_SET(LINKCFG_TIMEOUT, 1000, req);
+	} else {
 		req = FIELD_SET(CMDREG_ID, CGX_CMD_LINK_BRING_DOWN, req);
+	}
 
 	return cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
 }

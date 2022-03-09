@@ -288,4 +288,6 @@ struct cgx_lnk_sts {
 /* response to cmd ID - RESP_GETPHYMODTYPE */
 #define RESP_GETPHYMODTYPE	GENMASK_ULL(9, 9)
 
+/* LINK_BRING_UP command timeout */
+#define LINKCFG_TIMEOUT		GENMASK_ULL(21, 8)
 #endif /* __CGX_FW_INTF_H__ */
