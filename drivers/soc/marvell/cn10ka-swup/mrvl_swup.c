@@ -24,6 +24,7 @@
 #include <linux/dmapool.h>
 #include <linux/device.h>
 #include <linux/gfp.h>
+#include <linux/dma-contiguous.h>
 
 #include <soc/marvell/octeontx/octeontx_smc.h>
 #include "mrvl_swup.h"
@@ -41,6 +42,9 @@ static int alloc_readbuf(uint64_t rd_size);
 
 /*Debugfs interface root */;
 struct dentry *mrvl_swup_root;
+
+/*Device*/
+static struct device dev;
 
 /* Buffers for SMC call
  * 0 -> 25MB for SW update CPIO blob
@@ -538,50 +542,42 @@ static const struct file_operations mrvl_fops = {
 
 static int alloc_buffers(struct memory_desc *memdesc, uint32_t required_buf)
 {
-	int i, required_mem = 0, page_order;
-	void *page_addr;
+	int i = 0;
+	int j;
+	struct page *p;
 
 	for (i = 0; i < BUF_COUNT; i++) {
 		if (required_buf & 1<<i)
-			required_mem += memdesc[i].size;
+			break;
 	}
 
-	if (!required_mem)
+	if (memdesc[i].virt != NULL)
 		return 0;
 
-	page_order = get_order(required_mem);
-	page_handler.p = alloc_pages(GFP_KERNEL, page_order);
-	if (!page_handler.p)
-		return -ENOMEM;
+	memdesc[i].virt = dma_alloc_coherent(&dev, memdesc[i].size, &memdesc[i].phys, GFP_KERNEL);
 
-	page_handler.order = page_order;
-	page_addr = page_address(page_handler.p);
-	memset(page_addr, 0x00, 1<<page_order);
+	for (j = 0; j < BUF_COUNT; j++)
+		pr_info("Pool: %s virt: %llx, phys: %llx, size: %d\n",
+			memdesc[j].pool_name,
+			memdesc[j].virt,
+			memdesc[j].phys,
+			memdesc[j].size);
 
-	for (i = 0; i < BUF_COUNT; i++) {
-		if (required_buf & 1<<i) {
-			memdesc[i].virt = page_addr;
-			memdesc[i].phys = virt_to_phys(page_addr);
-			page_addr += memdesc[i].size;
-		}
+	if (!memdesc[i].virt) {
+		pr_err("Failed to alloc\n");
+		return 0;
 	}
+
+	memset(memdesc[i].virt, 0x01, memdesc[i].size);
+
 	return 0;
 }
 
+
+/* As we are going to use CMA buffers do not deallocate here */
 static void free_buffers(void)
 {
-	int i;
 
-	for (i = 0; i < BUF_COUNT; i++) {
-		memdesc[i].phys = 0;
-		memdesc[i].virt = 0;
-	}
-
-	if (page_handler.p) {
-		__free_pages(page_handler.p, page_handler.order);
-		page_handler.p = NULL;
-		page_handler.order = 0;
-	}
 }
 
 static int mrvl_swup_setup_debugfs(void)
@@ -612,6 +608,17 @@ static int __init mrvl_swup_init(void)
 		pr_debug("%s: Not supported\n", __func__);
 		return -EPERM;
 	}
+
+	dev_set_name(&dev, "mrvl_swup_dev");
+	ret = device_register(&dev);
+
+	if (ret) {
+		pr_err("Failed to register device\n");
+		return ret;
+	}
+
+	/* Will not be used bt any HW, so use mask with ones only */
+	dev.coherent_dma_mask = ~0;
 
 	return mrvl_swup_setup_debugfs();
 }
