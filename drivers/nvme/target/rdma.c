@@ -1702,7 +1702,7 @@ static void nvmet_rdma_queue_connect_fail(struct rdma_cm_id *cm_id,
 }
 
 /**
- * nvme_rdma_device_removal() - Handle RDMA device removal
+ * nvmet_rdma_device_removal() - Handle RDMA device removal
  * @cm_id:	rdma_cm id, used for nvmet port
  * @queue:      nvmet rdma queue (cm id qp_context)
  *
