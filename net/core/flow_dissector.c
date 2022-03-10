@@ -1356,6 +1356,7 @@ proto_again:
 		break;
 	}
 
+	case htons(ETH_P_PRP):
 	case htons(ETH_P_HSR): {
 		struct hsr_tag *hdr, _hdr;
 
