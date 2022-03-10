@@ -1098,6 +1098,14 @@ exit:
 	return NETDEV_TX_OK;
 }
 
+static int otx2_rfoe_change_mtu(struct net_device *netdev, int new_mtu)
+{
+	netdev->mtu = new_mtu;
+
+	netdev_info(netdev, "changed MTU to %d\n", new_mtu);
+	return 0;
+}
+
 /* netdev open */
 static int otx2_rfoe_eth_open(struct net_device *netdev)
 {
@@ -1242,6 +1250,7 @@ static const struct net_device_ops otx2_rfoe_netdev_ops = {
 	.ndo_open		= otx2_rfoe_eth_open,
 	.ndo_stop		= otx2_rfoe_eth_stop,
 	.ndo_start_xmit		= otx2_rfoe_eth_start_xmit,
+	.ndo_change_mtu		= otx2_rfoe_change_mtu,
 	.ndo_do_ioctl		= otx2_rfoe_ioctl,
 	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
@@ -1494,7 +1503,7 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			netdev->watchdog_timeo = (15 * HZ);
 			netdev->mtu = 1500U;
 			netdev->min_mtu = ETH_MIN_MTU;
-			netdev->max_mtu = 1500U;
+			netdev->max_mtu = OTX2_RFOE_MAX_MTU;
 			ret = register_netdev(netdev);
 			if (ret < 0) {
 				dev_err(cdev->dev,

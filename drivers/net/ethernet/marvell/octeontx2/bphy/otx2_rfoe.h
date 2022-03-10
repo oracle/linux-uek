@@ -37,6 +37,9 @@
 /* ethtool msg */
 #define OTX2_RFOE_MSG_DEFAULT		(NETIF_MSG_DRV)
 
+#define OTX2_RFOE_MAX_FSIZE		9212 /* max frame size excluding FCS */
+#define OTX2_RFOE_MAX_MTU		(OTX2_RFOE_MAX_FSIZE - VLAN_ETH_HLEN)
+
 /* global driver context */
 struct otx2_rfoe_drv_ctx {
 	u8				rfoe_num;
