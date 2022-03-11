@@ -1242,6 +1242,7 @@ done:
 out:
 	return ret;
 }
+EXPORT_SYMBOL(devinet_ioctl);
 
 int inet_gifconf(struct net_device *dev, char __user *buf, int len, int size)
 {

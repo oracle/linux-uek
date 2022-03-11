@@ -48,6 +48,7 @@
 #include <linux/timekeeping.h>
 #include <rdma/ib_cache.h>
 #include <rdma/ib_verbs.h>
+#include <linux/inetdevice.h>
 #include "rdmaip.h"
 
 #define CREATE_TRACE_POINTS
@@ -518,15 +519,17 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 	struct ifreq		ir = { };
 	struct sockaddr_in	*sin;
 	int			ret = 0;
+	struct sock		*sk = rdmaip_inet_socket->sk;
+	struct net		*net = sock_net(sk);
 
 	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
 	strcpy(ir.ifr_ifrn.ifrn_name, if_name);
 
 	sin->sin_addr.s_addr = addr;
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFADDR, (unsigned long) &ir);
+	ret = devinet_ioctl(net, SIOCSIFADDR, &ir);
 	if (ret && addr) {
-		pr_err("rdmaip: inet_ioctl(SIOCSIFADDR) on %s failed (%d)\n",
+		pr_err("rdmaip: devinet_ioctl(SIOCSIFADDR) on %s failed (%d)\n",
 		       if_name, ret);
 		goto out;
 	}
@@ -535,19 +538,17 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 		goto out;
 
 	sin->sin_addr.s_addr = bcast;
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFBRDADDR,
-			(unsigned long) &ir);
+	ret = devinet_ioctl(net, SIOCSIFBRDADDR, &ir);
 	if (ret) {
-		pr_err("rdmaip: inet_ioctl(SIOCSIFBRDADDR) on %s failed (%d)\n",
+		pr_err("rdmaip: devinet_ioctl(SIOCSIFBRDADDR) on %s failed (%d)\n",
 		       if_name, ret);
 		goto out;
 	}
 
 	sin->sin_addr.s_addr = mask;
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFNETMASK,
-			(unsigned long) &ir);
+	ret = devinet_ioctl(net, SIOCSIFNETMASK, &ir);
 	if (ret) {
-		pr_err("rdmaip: inet_ioctl(SIOCSIFNETMASK) on %s failed (%d)\n",
+		pr_err("rdmaip: devinet_ioctl(SIOCSIFNETMASK) on %s failed (%d)\n",
 		       if_name, ret);
 		goto out;
 	}
@@ -698,6 +699,8 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	int			ret = 0;
 	u8			active_port;
 	struct in_device	*in_dev;
+	struct sock		*sk = rdmaip_inet_socket->sk;
+	struct net		*net = sock_net(sk);
 
 	RDMAIP_DBG2_PTR("from_dev %s : to_dev %s : from_port %d : to_port %d IP addr %pI4 : %s\n",
 			from_dev, to_dev, from_port, to_port,
@@ -709,8 +712,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	/* Set the primary IP if it hasn't been set */
 	if (ip_config[to_port].ip_addr && failover) {
 		strcpy(ir.ifr_ifrn.ifrn_name, ip_config[to_port].netdev->name);
-		ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR,
-					(unsigned long) &ir);
+		ret = devinet_ioctl(net, SIOCGIFADDR, &ir);
 		if (ret == -EADDRNOTAVAIL) {
 			RDMAIP_DBG2_PTR("Setting primary IP on %s %pI4\n",
 				    ip_config[to_port].netdev->name,
@@ -1015,6 +1017,8 @@ static int rdmaip_testset_ip4(u8 port)
 	struct sockaddr_in	*sin;
 	int			ret = 0;
 	int                     ii;
+	struct sock		*sk = rdmaip_inet_socket->sk;
+	struct net		*net = sock_net(sk);
 
 	if (!ip_config[port].ip_addr) {
 		pr_warn("rdmaip: IP address is unavailable on port index %u\n",
@@ -1030,7 +1034,7 @@ static int rdmaip_testset_ip4(u8 port)
 	 * and also the IP addrs on aliases
 	 */
 	strcpy(ir.ifr_ifrn.ifrn_name, ip_config[port].netdev->name);
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR, (unsigned long) &ir);
+	ret = devinet_ioctl(net, SIOCGIFADDR,  &ir);
 	if (ret == -EADDRNOTAVAIL) {
 		/* Set the IP on this port */
 		ret = rdmaip_set_ip4(ip_config[port].netdev,
@@ -1067,7 +1071,7 @@ static int rdmaip_testset_ip4(u8 port)
 				  ip_config[port].netdev->name);
 		}
 	} else if (ret)
-		pr_err("rdmaip: inet_ioctl(SIOCGIFADDR) failed (%d)\n", ret);
+		pr_err("rdmaip: devinet_ioctl(SIOCGIFADDR) failed (%d)\n", ret);
 	else
 		RDMAIP_DBG2("Primary addr already set on port index %u devname %s\n",
 			    port, ip_config[port].netdev->name);
