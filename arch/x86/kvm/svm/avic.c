@@ -853,7 +853,7 @@ out:
 	return ret;
 }
 
-bool avic_check_apicv_inhibit_reasons(ulong bit)
+bool avic_check_apicv_inhibit_reasons(enum kvm_apicv_inhibit reason)
 {
 	ulong supported = BIT(APICV_INHIBIT_REASON_DISABLE) |
 			  BIT(APICV_INHIBIT_REASON_ABSENT) |
@@ -864,7 +864,7 @@ bool avic_check_apicv_inhibit_reasons(ulong bit)
 			  BIT(APICV_INHIBIT_REASON_X2APIC) |
 			  BIT(APICV_INHIBIT_REASON_BLOCKIRQ);
 
-	return supported & BIT(bit);
+	return supported & BIT(reason);
 }
 
 
