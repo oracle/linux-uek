@@ -1183,12 +1183,13 @@ out:
  * rds_message is getting to be quite complicated, and we'd like to allocate
  * it all in one go. This figures out how big it needs to be up front.
  */
-static int rds_rm_size(struct msghdr *msg, int data_len)
+static int rds_rm_size(struct msghdr *msg, int data_len, struct rds_iov_vector_arr *iov_arr)
 {
 	struct cmsghdr *cmsg;
 	int size = 0;
 	int cmsg_groups = 0;
 	int retval;
+	struct rds_iov_vector *iov, *tmp_iov;
 
 	for_each_cmsghdr(cmsg, msg) {
 		if (!CMSG_OK(msg, cmsg))
@@ -1199,8 +1200,24 @@ static int rds_rm_size(struct msghdr *msg, int data_len)
 
 		switch (cmsg->cmsg_type) {
 		case RDS_CMSG_RDMA_ARGS:
+			if (iov_arr->iva_entries_used >= iov_arr->iva_entries_allocated) {
+				iov_arr->iva_entries_allocated += iov_arr->iva_incr;
+				tmp_iov = krealloc(iov_arr->iva_iov,
+						   iov_arr->iva_entries_allocated *
+						   sizeof(struct rds_iov_vector),
+						   GFP_KERNEL);
+				if (!tmp_iov) {
+					iov_arr->iva_entries_allocated -= iov_arr->iva_incr;
+					return -ENOMEM;
+				}
+				iov_arr->iva_iov = tmp_iov;
+			}
+			iov = iov_arr->iva_iov + iov_arr->iva_entries_used;
+			memset(iov, 0, sizeof(struct rds_iov_vector));
+			iov_arr->iva_entries_used++;
+
 			cmsg_groups |= 1;
-			retval = rds_rdma_extra_size(CMSG_DATA(cmsg));
+			retval = rds_rdma_extra_size(CMSG_DATA(cmsg), iov);
 			if (retval < 0)
 				return retval;
 			size += retval;
@@ -1260,10 +1277,11 @@ static int rds_cmsg_asend(struct rds_sock *rs, struct rds_message *rm,
 }
 
 static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
-			 struct msghdr *msg, int *allocated_mr)
+			 struct msghdr *msg, int *allocated_mr,
+			 struct rds_iov_vector_arr *iov_arr)
 {
 	struct cmsghdr *cmsg;
-	int ret = 0;
+	int ret = 0, ind = 0;
 
 	for_each_cmsghdr(cmsg, msg) {
 		if (!CMSG_OK(msg, cmsg))
@@ -1277,7 +1295,10 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 		 */
 		switch (cmsg->cmsg_type) {
 		case RDS_CMSG_RDMA_ARGS:
-			ret = rds_cmsg_rdma_args(rs, rm, cmsg);
+			if (ind >= iov_arr->iva_entries_used)
+				return -ENOMEM;
+			ret = rds_cmsg_rdma_args(rs, rm, cmsg, iov_arr->iva_iov + ind);
+			ind++;
 			break;
 
 		case RDS_CMSG_RDMA_DEST:
@@ -1397,6 +1418,12 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	int namelen;
 	bool no_space;
 	unsigned long flags;
+	struct rds_iov_vector_arr iov_arr = {};
+	struct rds_iov_vector *iov;
+	int i;
+
+	/* expect 1 RDMA CMSG per rds_sendmsg. can still grow if more needed. */
+	iov_arr.iva_incr = 1;
 
 	/* Mirror Linux UDP mirror of BSD error message compatibility */
 	/* XXX: Perhaps MSG_MORE someday */
@@ -1574,9 +1601,9 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	}
 
 	/* size of rm including all sgs */
-	ret = rds_rm_size(msg, payload_len);
+	ret = rds_rm_size(msg, payload_len, &iov_arr);
 	if (ret < 0) {
-		reason = "invalid rm";
+		reason = "rds_rm_size failed";
 		goto out;
 	}
 
@@ -1656,7 +1683,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	atomic64_add(payload_len, &conn->c_send_bytes);
 
 	/* Parse any control messages the user may have included. */
-	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
+	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr, &iov_arr);
 	if (ret) {
 		reason = "cmsg_send failed";
 		/* Trigger connection so that its ready for the next retry */
@@ -1763,7 +1790,9 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		rds_cond_queue_send_work(cpath, 1);
 
 	rds_message_put(rm);
-	return payload_len;
+
+	ret =  payload_len;
+	goto out_ret;
 
 out:
 	if (ret < 0)
@@ -1780,6 +1809,14 @@ out:
 
 	if (rm)
 		rds_message_put(rm);
+out_ret:
+	iov = iov_arr.iva_iov;
+	if (iov)
+		for (i = 0; i < iov_arr.iva_entries_used; i++, iov++) {
+			kfree(iov->iv_vec);
+			kfree(iov->iv_nr_pages);
+		}
+	kfree(iov_arr.iva_iov);
 	return ret;
 }
 
