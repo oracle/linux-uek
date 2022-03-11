@@ -594,8 +594,14 @@ void svm_toggle_avic_for_irq_window(struct kvm_vcpu *vcpu, bool activate)
 		return;
 
 	srcu_read_unlock(&vcpu->kvm->srcu, vcpu->srcu_idx);
-	kvm_request_apicv_update(vcpu->kvm, activate,
-				 APICV_INHIBIT_REASON_IRQWIN);
+	/*
+	 * The activate parameter is intended to signal whether or not
+	 * AVIC should be enabled, which means that its value must be inverted
+	 * in order to properly set or clear the inhibit reason.
+	 */
+	kvm_set_or_clear_apicv_inhibit(vcpu->kvm,
+					APICV_INHIBIT_REASON_IRQWIN,
+					!activate);
 	vcpu->srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
 }
 

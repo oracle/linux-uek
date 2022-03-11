@@ -5057,7 +5057,7 @@ int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
 		smp_wmb();
 		kvm->arch.irqchip_mode = KVM_IRQCHIP_SPLIT;
 		kvm->arch.nr_reserved_ioapic_pins = cap->args[0];
-		kvm_request_apicv_update(kvm, true, APICV_INHIBIT_REASON_ABSENT);
+		kvm_clear_apicv_inhibit(kvm, APICV_INHIBIT_REASON_ABSENT);
 		r = 0;
 split_irqchip_unlock:
 		mutex_unlock(&kvm->lock);
@@ -5178,7 +5178,7 @@ set_identity_unlock:
 		/* Write kvm->irq_routing before enabling irqchip_in_kernel. */
 		smp_wmb();
 		kvm->arch.irqchip_mode = KVM_IRQCHIP_KERNEL;
-		kvm_request_apicv_update(kvm, true, APICV_INHIBIT_REASON_ABSENT);
+		kvm_clear_apicv_inhibit(kvm, APICV_INHIBIT_REASON_ABSENT);
 	create_irqchip_unlock:
 		mutex_unlock(&kvm->lock);
 		break;
@@ -8320,12 +8320,12 @@ EXPORT_SYMBOL_GPL(kvm_vcpu_update_apicv);
 /*
  * NOTE: Do not hold kvm->srcu lock prior to calling this.
  *
- * In particular, kvm_request_apicv_update() expects kvm->srcu not to be
- * locked, because it calls __x86_set_memory_region() which does
+ * In particular, __kvm_set_or_clear_apicv_inhibit() expects kvm->srcu not to
+ * be locked, because it calls __x86_set_memory_region() which does
  * synchronize_srcu(&kvm->srcu).
  */
-void __kvm_request_apicv_update(struct kvm *kvm, bool activate,
-				enum kvm_apicv_inhibit reason)
+void __kvm_set_or_clear_apicv_inhibit(struct kvm *kvm,
+				      enum kvm_apicv_inhibit reason, bool set)
 {
 	unsigned long old, new;
 
@@ -8337,13 +8337,13 @@ void __kvm_request_apicv_update(struct kvm *kvm, bool activate,
 
 	old = new = kvm->arch.apicv_inhibit_reasons;
 
-	if (activate)
-		__clear_bit(reason, &new);
-	else
+	if (set)
 		__set_bit(reason, &new);
+	else
+		__clear_bit(reason, &new);
 
 	if (!!old != !!new) {
-		trace_kvm_apicv_update_request(activate, reason);
+		trace_kvm_apicv_update_request(reason, !set);
 		/*
 		 * Kick all vCPUs before setting apicv_inhibit_reasons to avoid
 		 * false positives in the sanity check WARN in svm_vcpu_run().
@@ -8359,23 +8359,23 @@ void __kvm_request_apicv_update(struct kvm *kvm, bool activate,
 		kvm_make_all_cpus_request(kvm, KVM_REQ_APICV_UPDATE);
 		kvm->arch.apicv_inhibit_reasons = new;
 		if (kvm_x86_ops.pre_update_apicv_exec_ctrl)
-			kvm_x86_ops.pre_update_apicv_exec_ctrl(kvm, activate);
+			kvm_x86_ops.pre_update_apicv_exec_ctrl(kvm, !set);
 	} else {
 		kvm->arch.apicv_inhibit_reasons = new;
 	}
 }
 
-void kvm_request_apicv_update(struct kvm *kvm, bool activate,
-			      enum kvm_apicv_inhibit reason)
+void kvm_set_or_clear_apicv_inhibit(struct kvm *kvm,
+				    enum kvm_apicv_inhibit reason, bool set)
 {
 	if (!enable_apicv)
 		return;
 
 	down_write(&kvm->arch.apicv_update_lock);
-	__kvm_request_apicv_update(kvm, activate, reason);
+	__kvm_set_or_clear_apicv_inhibit(kvm, reason, set);
 	up_write(&kvm->arch.apicv_update_lock);
 }
-EXPORT_SYMBOL_GPL(kvm_request_apicv_update);
+EXPORT_SYMBOL_GPL(kvm_set_or_clear_apicv_inhibit);
 
 static void vcpu_scan_ioapic(struct kvm_vcpu *vcpu)
 {

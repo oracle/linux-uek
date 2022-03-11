@@ -3658,6 +3658,7 @@ static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 	struct kvm_cpuid_entry2 *best;
+	struct kvm *kvm = vcpu->kvm;
 
 	vcpu->arch.xsaves_enabled = guest_cpuid_has(vcpu, X86_FEATURE_XSAVE) &&
 				    boot_cpu_has(X86_FEATURE_XSAVES);
@@ -3684,16 +3685,14 @@ static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 	 * is exposed to the guest, disable AVIC.
 	 */
 	if (guest_cpuid_has(vcpu, X86_FEATURE_X2APIC))
-		kvm_request_apicv_update(vcpu->kvm, false,
-					 APICV_INHIBIT_REASON_X2APIC);
+		kvm_set_apicv_inhibit(kvm, APICV_INHIBIT_REASON_X2APIC);
 
 	/*
 	 * Currently, AVIC does not work with nested virtualization.
 	 * So, we disable AVIC when cpuid for SVM is set in the L1 guest.
 	 */
 	if (nested && guest_cpuid_has(vcpu, X86_FEATURE_SVM))
-		kvm_request_apicv_update(vcpu->kvm, false,
-					 APICV_INHIBIT_REASON_NESTED);
+		kvm_set_apicv_inhibit(kvm, APICV_INHIBIT_REASON_NESTED);
 }
 
 static int svm_get_lpage_level(void)
