@@ -901,13 +901,15 @@ enum kvm_irqchip_mode {
 	KVM_IRQCHIP_SPLIT,        /* created with KVM_CAP_SPLIT_IRQCHIP */
 };
 
-#define APICV_INHIBIT_REASON_DISABLE    0
-#define APICV_INHIBIT_REASON_HYPERV     1
-#define APICV_INHIBIT_REASON_NESTED     2
-#define APICV_INHIBIT_REASON_IRQWIN     3
-#define APICV_INHIBIT_REASON_PIT_REINJ  4
-#define APICV_INHIBIT_REASON_X2APIC	5
-#define APICV_INHIBIT_REASON_ABSENT	7
+enum kvm_apicv_inhibit {
+	APICV_INHIBIT_REASON_DISABLE,
+	APICV_INHIBIT_REASON_HYPERV,
+	APICV_INHIBIT_REASON_NESTED,
+	APICV_INHIBIT_REASON_IRQWIN,
+	APICV_INHIBIT_REASON_PIT_REINJ,
+	APICV_INHIBIT_REASON_X2APIC,
+	APICV_INHIBIT_REASON_ABSENT,
+};
 
 struct kvm_arch {
 	unsigned long n_used_mmu_pages;
@@ -1154,7 +1156,7 @@ struct kvm_x86_ops {
 	void (*enable_nmi_window)(struct kvm_vcpu *vcpu);
 	void (*enable_irq_window)(struct kvm_vcpu *vcpu);
 	void (*update_cr8_intercept)(struct kvm_vcpu *vcpu, int tpr, int irr);
-	bool (*check_apicv_inhibit_reasons)(ulong bit);
+	bool (*check_apicv_inhibit_reasons)(enum kvm_apicv_inhibit reason);
 	void (*pre_update_apicv_exec_ctrl)(struct kvm *kvm, bool activate);
 	void (*refresh_apicv_exec_ctrl)(struct kvm_vcpu *vcpu);
 	void (*hwapic_irr_update)(struct kvm_vcpu *vcpu, int max_irr);
@@ -1531,10 +1533,9 @@ gpa_t kvm_mmu_gva_to_gpa_system(struct kvm_vcpu *vcpu, gva_t gva,
 bool kvm_apicv_activated(struct kvm *kvm);
 void kvm_vcpu_update_apicv(struct kvm_vcpu *vcpu);
 void kvm_request_apicv_update(struct kvm *kvm, bool activate,
-			      unsigned long bit);
-
+			      enum kvm_apicv_inhibit reason);
 void __kvm_request_apicv_update(struct kvm *kvm, bool activate,
-				unsigned long bit);
+				enum kvm_apicv_inhibit reason);
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu);
 

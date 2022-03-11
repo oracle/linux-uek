@@ -8324,25 +8324,26 @@ EXPORT_SYMBOL_GPL(kvm_vcpu_update_apicv);
  * locked, because it calls __x86_set_memory_region() which does
  * synchronize_srcu(&kvm->srcu).
  */
-void __kvm_request_apicv_update(struct kvm *kvm, bool activate, ulong bit)
+void __kvm_request_apicv_update(struct kvm *kvm, bool activate,
+				enum kvm_apicv_inhibit reason)
 {
 	unsigned long old, new;
 
 	lockdep_assert_held_write(&kvm->arch.apicv_update_lock);
 
 	if (!kvm_x86_ops.check_apicv_inhibit_reasons ||
-	    !kvm_x86_ops.check_apicv_inhibit_reasons(bit))
+	    !kvm_x86_ops.check_apicv_inhibit_reasons(reason))
 		return;
 
 	old = new = kvm->arch.apicv_inhibit_reasons;
 
 	if (activate)
-		__clear_bit(bit, &new);
+		__clear_bit(reason, &new);
 	else
-		__set_bit(bit, &new);
+		__set_bit(reason, &new);
 
 	if (!!old != !!new) {
-		trace_kvm_apicv_update_request(activate, bit);
+		trace_kvm_apicv_update_request(activate, reason);
 		/*
 		 * Kick all vCPUs before setting apicv_inhibit_reasons to avoid
 		 * false positives in the sanity check WARN in svm_vcpu_run().
@@ -8359,17 +8360,19 @@ void __kvm_request_apicv_update(struct kvm *kvm, bool activate, ulong bit)
 		kvm->arch.apicv_inhibit_reasons = new;
 		if (kvm_x86_ops.pre_update_apicv_exec_ctrl)
 			kvm_x86_ops.pre_update_apicv_exec_ctrl(kvm, activate);
-	} else
+	} else {
 		kvm->arch.apicv_inhibit_reasons = new;
+	}
 }
 
-void kvm_request_apicv_update(struct kvm *kvm, bool activate, ulong bit)
+void kvm_request_apicv_update(struct kvm *kvm, bool activate,
+			      enum kvm_apicv_inhibit reason)
 {
 	if (!enable_apicv)
 		return;
 
 	down_write(&kvm->arch.apicv_update_lock);
-	__kvm_request_apicv_update(kvm, activate, bit);
+	__kvm_request_apicv_update(kvm, activate, reason);
 	up_write(&kvm->arch.apicv_update_lock);
 }
 EXPORT_SYMBOL_GPL(kvm_request_apicv_update);
