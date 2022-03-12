@@ -18,6 +18,7 @@
 #include <linux/bitfield.h>
 #include <linux/processor.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/completion.h>
 #include <linux/clk-provider.h>
 #include <linux/acpi.h>
@@ -39,7 +40,7 @@
 /* Tag used to be passed through mailbox API, could be anything */
 #define PCC_OTX2_CLK_TAG	((void *)0xcafebabe)
 
-#define PCC_CMD_COMPLETE_MASK BIT(0)
+#define PCC_CMD_DONE_MASK BIT(0)
 
 #define PCC_PROT_ID        0x14
 #define PCC_PROT_GET_RATE  0x6
@@ -116,7 +117,7 @@ static void __init clk_otx2_tx_prep(struct mbox_client *cl, void *m)
 	struct clk_otx2_scp_comm *comm = TO_SCP_COMM(cl);
 	struct clk_otx2_shmem __iomem *mem = comm->shmem;
 
-	spin_until_cond(ioread32(&mem->channel_status) & PCC_CMD_COMPLETE_MASK);
+	spin_until_cond(ioread32(&mem->channel_status) & PCC_CMD_DONE_MASK);
 	/* Mark PCC channel busy */
 	iowrite32(0, &mem->channel_status);
 	iowrite32(0, &mem->flags);
@@ -125,16 +126,15 @@ static void __init clk_otx2_tx_prep(struct mbox_client *cl, void *m)
 		  &mem->length);
 	iowrite32(cpu_to_le32(pack_msg_hdr(&get_sclk_rate)), &mem->msg_header);
 	/* Send command */
-	iowrite32(cpu_to_le32(OTX2_CLK_ID), &mem->msg_payload);
+	iowrite32(cpu_to_le32(OTX2_CLK_ID), &mem->msg_payload[0]);
 }
 
 static void __init clk_otx2_rx(struct mbox_client *cl, void *m)
 {
 	struct clk_otx2_scp_comm *comm = TO_SCP_COMM(cl);
-	struct clk_otx2_shmem __iomem *mem = comm->shmem;
 
-	comm->sclk_freq = __le64_to_cpu(ioread64(&mem->msg_payload));
-	complete(&comm->scp_msg_done);
+	/* Notify main thread that channel has data */
+	complete_all(&comm->scp_msg_done);
 }
 
 /* Initialize the PCC channel */
@@ -150,6 +150,7 @@ static int __init clk_otx2_sclk_get_channel(struct clk_otx2_scp_comm *comm)
 	cl->rx_callback = clk_otx2_rx;
 	cl->knows_txdone = true;
 
+	/* Request  PCC channel */
 	comm->pcc_chan = pcc_mbox_request_channel(cl,
 						  OTX2_CLK_DEFAULT_SUBSPACE);
 	if (IS_ERR_OR_NULL(comm->pcc_chan)) {
@@ -157,22 +158,18 @@ static int __init clk_otx2_sclk_get_channel(struct clk_otx2_scp_comm *comm)
 			ret = PTR_ERR(comm->pcc_chan);
 		else
 			ret = -ENODEV;
-		pr_err("Failed to find PCC channel for subspace. %d\n", ret);
 		return ret;
 	}
 
 	scp_ss = comm->pcc_chan->con_priv;
 	if (!scp_ss) {
-		pr_err("No PCC subspace found for %d\n",
-		       OTX2_CLK_DEFAULT_SUBSPACE);
 		ret = -ENODEV;
 		goto err_no_ss;
 	}
 
+	/* Map channel resources (shared memory) */
 	comm->shmem = ioremap_nocache(scp_ss->base_address, scp_ss->length);
 	if (!comm->shmem) {
-		pr_err("Failed to map shared memory region for %d subspace.\n",
-		       OTX2_CLK_DEFAULT_SUBSPACE);
 		ret = -ENOMEM;
 		goto err_no_ss;
 	}
@@ -188,23 +185,54 @@ err_no_ss:  /* No subspace found */
 	return ret;
 }
 
+static void __init clk_otx2_rx_read(struct clk_otx2_scp_comm *comm)
+{
+	struct clk_otx2_shmem __iomem *mem = comm->shmem;
+	u32 status;
+	u32 freq_hi, freq_lo;
+	u64 val;
+
+	status = ioread32(&mem->msg_payload[0]);
+	freq_lo = ioread32(&mem->msg_payload[sizeof(freq_lo)]);
+	freq_hi = ioread32(&mem->msg_payload[2 * sizeof(freq_lo)]);
+
+	/* Convert value to single u64 in the correct endianness */
+	val = (((u64)freq_hi) << 32) + freq_lo;
+	comm->sclk_freq = __le64_to_cpu(val);
+}
+
 static int __init clk_otx2_sclk_get_sclk_freq(struct clk_otx2_scp_comm *comm)
 {
+	struct clk_otx2_shmem __iomem *mem = comm->shmem;
 	int ret;
+	unsigned long timeout;
+	u32 stat;
 
 	ret = mbox_send_message(comm->pcc_chan, PCC_OTX2_CLK_TAG);
 	if (ret < 0) {
-		pr_err("Error while sending SCP request. %d\n", ret);
 		return ret;
 	}
 
-	if (!wait_for_completion_timeout(&comm->scp_msg_done,
-					 msecs_to_jiffies(comm->pcc_timeout))) {
-		pr_err("SCP Time out detected!\n");
-		ret = -ETIMEDOUT;
+	/* Wait for answer from SCP */
+	/* Check if the controller has irq enabled */
+	if (comm->pcc_chan->mbox->txdone_irq) {
+		timeout = msecs_to_jiffies(comm->pcc_timeout);
+		if (!wait_for_completion_timeout(&comm->scp_msg_done, timeout))
+			return -ETIMEDOUT;
+	} else { /* Use polling to complete the request. Poll every 100us */
+		timeout = comm->pcc_timeout * 1000;
+		ret = readl_relaxed_poll_timeout(&mem->channel_status,
+						 stat,
+						 (stat & PCC_CMD_DONE_MASK),
+						 10, timeout);
+		if (ret)
+			return ret;
 	}
 
-	return ret;
+	/* Read sclk_freq from SCP answer */
+	clk_otx2_rx_read(comm);
+
+	return 0;
 }
 
 static void __init clk_otx2_put_channel(struct clk_otx2_scp_comm *comm)
@@ -218,18 +246,28 @@ static int __init clk_otx2_init(void)
 	struct clk_otx2_scp_comm comm;
 	int ret = 0;
 
+	/* This driver supports only ACPI based platforms */
+	if (acpi_disabled) {
+		pr_debug("This is not ACPI based platform\n");
+		return 0;
+	}
+
 	/* Set initial frequency to max of the type */
 	comm.sclk_freq = ULONG_MAX;
 
 	/* Get SCLK value using SCP and PCC */
 	ret = clk_otx2_sclk_get_channel(&comm);
-	if (ret)
+	if (ret) {
+		pr_err("Failed to initialize PCC channel. (%d)\n", ret);
 		return ret;
+	}
 
 	ret = clk_otx2_sclk_get_sclk_freq(&comm);
 	clk_otx2_put_channel(&comm);
-	if (ret)
+	if (ret) {
+		pr_err("Can't retrieve sclk frequency. (%d)\n", ret);
 		return ret;
+	}
 
 	clk_otx2_sclk_clk = clk_register_fixed_rate(NULL, "sclk", NULL, 0,
 						    comm.sclk_freq);
@@ -248,6 +286,9 @@ module_init(clk_otx2_init);
 
 static void __exit clk_otx2_exit(void)
 {
+	if (acpi_disabled)
+		return; /* In case of DT based system there are no resources */
+
 	clk_unregister_fixed_rate(clk_otx2_sclk_clk);
 }
 module_exit(clk_otx2_exit);
