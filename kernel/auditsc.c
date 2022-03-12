@@ -796,13 +796,14 @@ static enum audit_state audit_filter_syscall(struct task_struct *tsk,
 {
 	struct audit_entry *e;
 	enum audit_state state;
+	unsigned long major = ctx->major;
 
 	if (auditd_test_task(tsk))
 		return AUDIT_DISABLED;
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(e, list, list) {
-		if (audit_in_mask(&e->rule, ctx->major) &&
+		if (audit_in_mask(&e->rule, major) &&
 		    audit_filter_rules(tsk, &e->rule, ctx, NULL,
 				       &state, false)) {
 			rcu_read_unlock();
@@ -825,9 +826,10 @@ static int audit_filter_inode_name(struct task_struct *tsk,
 	struct list_head *list = &audit_inode_hash[h];
 	struct audit_entry *e;
 	enum audit_state state;
+	unsigned long major = ctx->major;
 
 	list_for_each_entry_rcu(e, list, list) {
-		if (audit_in_mask(&e->rule, ctx->major) &&
+		if (audit_in_mask(&e->rule, major) &&
 		    audit_filter_rules(tsk, &e->rule, ctx, n, &state, false)) {
 			ctx->current_state = state;
 			return 1;
