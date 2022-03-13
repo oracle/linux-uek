@@ -789,7 +789,7 @@ static enum audit_state audit_filter_task(struct task_struct *tsk, char **key)
 	return AUDIT_STATE_BUILD;
 }
 
-static int audit_in_mask(const struct audit_krule *rule, unsigned long val)
+static bool audit_in_mask(const struct audit_krule *rule, unsigned long val)
 {
 	int word, bit;
 
@@ -822,12 +822,13 @@ static void audit_filter_syscall(struct task_struct *tsk,
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(e, &audit_filter_list[AUDIT_FILTER_EXIT], list) {
-		if (audit_in_mask(&e->rule, major) &&
-		    audit_filter_rules(tsk, &e->rule, ctx, NULL,
-				       &state, false)) {
-			rcu_read_unlock();
-			ctx->current_state = state;
-			return;
+		if (unlikely(audit_in_mask(&e->rule, major))) {
+			if (audit_filter_rules(tsk, &e->rule, ctx, NULL,
+					       &state, false)) {
+				rcu_read_unlock();
+				ctx->current_state = state;
+				return;
+			}
 		}
 	}
 	rcu_read_unlock();
@@ -848,10 +849,12 @@ static int audit_filter_inode_name(struct task_struct *tsk,
 	unsigned long major = ctx->major;
 
 	list_for_each_entry_rcu(e, list, list) {
-		if (audit_in_mask(&e->rule, major) &&
-		    audit_filter_rules(tsk, &e->rule, ctx, n, &state, false)) {
-			ctx->current_state = state;
-			return 1;
+		if (unlikely(audit_in_mask(&e->rule, major))) {
+			if (audit_filter_rules(tsk, &e->rule, ctx,
+						n, &state, false)) {
+				ctx->current_state = state;
+				return 1;
+			}
 		}
 	}
 	return 0;
