@@ -792,7 +792,7 @@ static enum audit_state audit_filter_task(struct task_struct *tsk, char **key)
 	return AUDIT_STATE_BUILD;
 }
 
-static int audit_in_mask(const struct audit_krule *rule, unsigned long val)
+static bool audit_in_mask(const struct audit_krule *rule, unsigned long val)
 {
 	int word, bit;
 
@@ -832,11 +832,12 @@ static int __audit_filter_op(struct task_struct *tsk,
 	enum audit_state state;
 
 	list_for_each_entry_rcu(e, list, list) {
-		if (audit_in_mask(&e->rule, op) &&
-		    audit_filter_rules(tsk, &e->rule, ctx, name,
-				       &state, false)) {
-			ctx->current_state = state;
-			return 1;
+		if (unlikely(audit_in_mask(&e->rule, op))) {
+			if (audit_filter_rules(tsk, &e->rule, ctx, name,
+						&state, false)) {
+				ctx->current_state = state;
+				return 1;
+			}
 		}
 	}
 	return 0;
