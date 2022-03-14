@@ -6,26 +6,150 @@
 
 #include "cnf10k_rfoe.h"
 
+#define EXT_PTP_CLK_RATE		(125 * 1000000) /* Ext PTP clk rate */
+
 static int cnf10k_rfoe_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 {
-	return -EOPNOTSUPP;
+	struct cnf10k_rfoe_ndev_priv *priv = container_of(ptp_info,
+							  struct
+							  cnf10k_rfoe_ndev_priv,
+							  ptp_clock_info);
+	u64 regval, sec;
+
+	mutex_lock(&priv->ptp_lock);
+	regval = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+	regval += delta;
+
+	sec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
+	sec += regval / NSEC_PER_SEC;
+	writeq(sec, priv->ptp_reg_base + MIO_PTP_CLOCK_SEC);
+	writeq(regval % NSEC_PER_SEC, priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+	mutex_unlock(&priv->ptp_lock);
+
+	return 0;
+}
+
+static u64 ptp_calc_adjusted_comp(u64 ptp_clock_freq)
+{
+	u64 comp, adj = 0, cycles_per_sec, ns_drift = 0;
+	u32 ptp_clock_nsec, cycle_time;
+	int cycle;
+
+	/* Errata:
+	 * Issue #1: At the time of 1 sec rollover of the nano-second counter,
+	 * the nano-second counter is set to 0. However, it should be set to
+	 * (existing counter_value - 10^9).
+	 *
+	 * Issue #2: The nano-second counter rolls over at 0x3B9A_C9FF.
+	 * It should roll over at 0x3B9A_CA00.
+	 */
+
+	/* calculate ptp_clock_comp value */
+	comp = ((u64)1000000000ULL << 32) / ptp_clock_freq;
+	/* use CYCLE_MULT to avoid accuracy loss due to integer arithmetic */
+	cycle_time = NSEC_PER_SEC * CYCLE_MULT / ptp_clock_freq;
+	/* cycles per sec */
+	cycles_per_sec = ptp_clock_freq;
+
+	/* check whether ptp nanosecond counter rolls over early */
+	cycle = cycles_per_sec - 1;
+	ptp_clock_nsec = (cycle * comp) >> 32;
+	while (ptp_clock_nsec < NSEC_PER_SEC) {
+		if (ptp_clock_nsec == 0x3B9AC9FF)
+			goto calc_adj_comp;
+		cycle++;
+		ptp_clock_nsec = (cycle * comp) >> 32;
+	}
+	/* compute nanoseconds lost per second when nsec counter rolls over */
+	ns_drift = ptp_clock_nsec - NSEC_PER_SEC;
+	/* calculate ptp_clock_comp adjustment */
+	if (ns_drift > 0) {
+		adj = comp * ns_drift;
+		adj = adj / 1000000000ULL;
+	}
+	/* speed up the ptp clock to account for nanoseconds lost */
+	comp += adj;
+	return comp;
+
+calc_adj_comp:
+	/* slow down the ptp clock to not rollover early */
+	adj = comp * cycle_time;
+	adj = adj / 1000000000ULL;
+	adj = adj / CYCLE_MULT;
+	comp -= adj;
+
+	return comp;
 }
 
 static int cnf10k_rfoe_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 {
-	return -EOPNOTSUPP;
+	struct cnf10k_rfoe_ndev_priv *priv = container_of(ptp,
+							  struct
+							  cnf10k_rfoe_ndev_priv,
+							  ptp_clock_info);
+	bool neg_adj = false;
+	u32 freq, freq_adj;
+	u64 comp;
+	s64 ppb;
+
+	if (scaled_ppm < 0) {
+		neg_adj = true;
+		scaled_ppm = -scaled_ppm;
+	}
+
+	/* The hardware adds the clock compensation value to the PTP clock
+	 * on every coprocessor clock cycle. Typical convention is that it
+	 * represent number of nanosecond betwen each cycle. In this
+	 * convention compensation value is in 64 bit fixed-point
+	 * representation where upper 32 bits are number of nanoseconds
+	 * and lower is fractions of nanosecond.
+	 * The scaled_ppm represent the ratio in "parts per million" by which
+	 * the compensation value should be corrected.
+	 * To calculate new compenstation value we use 64bit fixed point
+	 * arithmetic on following formula
+	 * comp = tbase + tbase * scaled_ppm / (1M * 2^16)
+	 * where tbase is the basic compensation value calculated
+	 * initialy in the probe function.
+	 */
+	/* convert scaled_ppm to ppb */
+	ppb = 1 + scaled_ppm;
+	ppb *= 125;
+	ppb >>= 13;
+
+	/* calculate the new frequency based on ppb */
+	freq_adj = (priv->ptp_ext_clk_rate * ppb) / 1000000000ULL;
+	freq = neg_adj ? priv->ptp_ext_clk_rate + freq_adj :
+			 priv->ptp_ext_clk_rate - freq_adj;
+	comp = ptp_calc_adjusted_comp(freq);
+
+	writeq(comp, priv->ptp_reg_base + MIO_PTP_CLOCK_COMP);
+
+	return 0;
 }
 
 static int cnf10k_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
 				   struct timespec64 *ts)
 {
 	struct cnf10k_rfoe_ndev_priv *priv = container_of(ptp_info,
-						struct cnf10k_rfoe_ndev_priv,
-						ptp_clock_info);
-	u64 nsec;
+							  struct
+							  cnf10k_rfoe_ndev_priv,
+							  ptp_clock_info);
+	u64 tstamp, sec, sec1,  nsec;
 
+	mutex_lock(&priv->ptp_lock);
+
+	sec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
 	nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
-	*ts = ns_to_timespec64(nsec);
+	sec1 = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
+	/* check nsec rollover */
+	if (sec1 > sec) {
+		nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+		sec = sec1;
+	}
+	tstamp = sec * NSEC_PER_SEC + nsec;
+
+	mutex_unlock(&priv->ptp_lock);
+	*ts = ns_to_timespec64(tstamp);
 
 	return 0;
 }
@@ -33,34 +157,128 @@ static int cnf10k_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
 static int cnf10k_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
 				   const struct timespec64 *ts)
 {
-	return -EOPNOTSUPP;
+	struct cnf10k_rfoe_ndev_priv *priv = container_of(ptp_info,
+							  struct
+							  cnf10k_rfoe_ndev_priv,
+							  ptp_clock_info);
+	u64 nsec;
+
+	nsec = timespec64_to_ns(ts);
+
+	mutex_lock(&priv->ptp_lock);
+
+	writeq(nsec / NSEC_PER_SEC, priv->ptp_reg_base + MIO_PTP_CLOCK_SEC);
+	writeq(nsec % NSEC_PER_SEC, priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+
+	mutex_unlock(&priv->ptp_lock);
+
+	return 0;
+}
+
+static int cnf10k_rfoe_ptp_verify_pin(struct ptp_clock_info *ptp,
+				      unsigned int pin,
+				      enum ptp_pin_function func,
+				      unsigned int chan)
+{
+	switch (func) {
+	case PTP_PF_NONE:
+	case PTP_PF_EXTTS:
+		break;
+	case PTP_PF_PEROUT:
+	case PTP_PF_PHYSYNC:
+		return -1;
+	}
+	return 0;
+}
+
+static void cnf10k_rfoe_ptp_extts_check(struct work_struct *work)
+{
+	struct cnf10k_rfoe_ndev_priv *priv = container_of(work, struct
+							  cnf10k_rfoe_ndev_priv,
+							  extts_work.work);
+	struct ptp_clock_event event;
+	u64 tstmp, new_thresh;
+
+	mutex_lock(&priv->ptp_lock);
+	tstmp = readq(priv->ptp_reg_base + MIO_PTP_TIMESTAMP);
+	mutex_unlock(&priv->ptp_lock);
+
+	if (tstmp != priv->last_extts) {
+		event.type = PTP_CLOCK_EXTTS;
+		event.index = 0;
+		event.timestamp = cnf10k_ptp_convert_timestamp(tstmp);
+		ptp_clock_event(priv->ptp_clock, &event);
+		priv->last_extts = tstmp;
+
+		new_thresh = tstmp % 500000000;
+		if (priv->thresh != new_thresh) {
+			mutex_lock(&priv->ptp_lock);
+			writeq(new_thresh,
+			       priv->ptp_reg_base + MIO_PTP_PPS_THRESH_HI);
+			mutex_unlock(&priv->ptp_lock);
+			priv->thresh = new_thresh;
+		}
+	}
+	schedule_delayed_work(&priv->extts_work, msecs_to_jiffies(200));
 }
 
 static int cnf10k_rfoe_ptp_enable(struct ptp_clock_info *ptp_info,
 				  struct ptp_clock_request *rq, int on)
 {
+	struct cnf10k_rfoe_ndev_priv *priv = container_of(ptp_info,
+							  struct
+							  cnf10k_rfoe_ndev_priv,
+							  ptp_clock_info);
+	int pin = -1;
+
+	switch (rq->type) {
+	case PTP_CLK_REQ_EXTTS:
+		pin = ptp_find_pin(priv->ptp_clock, PTP_PF_EXTTS,
+				   rq->extts.index);
+		if (pin < 0)
+			return -EBUSY;
+		if (on)
+			schedule_delayed_work(&priv->extts_work,
+					      msecs_to_jiffies(200));
+		else
+			cancel_delayed_work_sync(&priv->extts_work);
+		return 0;
+	default:
+		break;
+	}
+
 	return -EOPNOTSUPP;
 }
 
 static const struct ptp_clock_info cnf10k_rfoe_ptp_clock_info = {
 	.owner          = THIS_MODULE,
+	.name		= "CNF10K RFOE PTP",
 	.max_adj        = 1000000000ull,
-	.n_ext_ts       = 0,
-	.n_pins         = 0,
+	.n_ext_ts       = 1,
+	.n_pins         = 1,
 	.pps            = 0,
 	.adjfine	= cnf10k_rfoe_ptp_adjfine,
 	.adjtime        = cnf10k_rfoe_ptp_adjtime,
 	.gettime64      = cnf10k_rfoe_ptp_gettime,
 	.settime64      = cnf10k_rfoe_ptp_settime,
 	.enable         = cnf10k_rfoe_ptp_enable,
+	.verify		= cnf10k_rfoe_ptp_verify_pin,
 };
 
 int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv  *priv)
 {
 	int err;
 
+	snprintf(priv->extts_config.name, sizeof(priv->extts_config.name),
+		 "CNF10K RFOE TSTAMP");
+	priv->extts_config.index = 0;
+	priv->extts_config.func = PTP_PF_NONE;
+	priv->ptp_ext_clk_rate = EXT_PTP_CLK_RATE;
+
 	priv->ptp_clock_info = cnf10k_rfoe_ptp_clock_info;
 	snprintf(priv->ptp_clock_info.name, 16, "%s", priv->netdev->name);
+	priv->ptp_clock_info.pin_config = &priv->extts_config;
+	INIT_DELAYED_WORK(&priv->extts_work, cnf10k_rfoe_ptp_extts_check);
 	priv->ptp_clock = ptp_clock_register(&priv->ptp_clock_info,
 					     &priv->pdev->dev);
 	if (IS_ERR_OR_NULL(priv->ptp_clock)) {
@@ -68,6 +286,8 @@ int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv  *priv)
 		err = PTR_ERR(priv->ptp_clock);
 		return err;
 	}
+
+	mutex_init(&priv->ptp_lock);
 
 	return 0;
 }
