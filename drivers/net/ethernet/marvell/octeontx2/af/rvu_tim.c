@@ -18,16 +18,6 @@
 #define TIM_CHUNKSIZE_MIN	(TIM_CHUNKSIZE_MULTIPLE * 0x2)
 #define TIM_CHUNKSIZE_MAX	(TIM_CHUNKSIZE_MULTIPLE * 0x1FFF)
 
-static inline u64 get_tenns_tsc(void)
-{
-	u64 tsc;
-
-#if defined(CONFIG_ARM64)
-	asm volatile("mrs %0, cntvct_el0" : "=r" (tsc));
-#endif
-	return tsc;
-}
-
 static inline u64 get_tenns_clk(void)
 {
 	u64 tsc = 0;
@@ -339,13 +329,44 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 	return 0;
 }
 
+static inline int tim_get_free_running_counter_offset(u64 *clk_src)
+{
+	switch (*clk_src) {
+	case TIM_CLK_SRCS_TENNS:
+		*clk_src = TIM_AF_FR_RN_TENNS;
+		break;
+	case TIM_CLK_SRCS_GPIO:
+		*clk_src = TIM_AF_FR_RN_GPIOS;
+		break;
+	case TIM_CLK_SRCS_GTI:
+		*clk_src = TIM_AF_FR_RN_GTI;
+		break;
+	case TIM_CLK_SRCS_PTP:
+		*clk_src = TIM_AF_FR_RN_PTP;
+		break;
+	case TIM_CLK_SRCS_SYNCE:
+		*clk_src = TIM_AF_FR_RN_SYNCE;
+		break;
+	case TIM_CLK_SRCS_BTS:
+		*clk_src = TIM_AF_FR_RN_BTS;
+		break;
+	default:
+		return TIM_AF_INVALID_CLOCK_SOURCE;
+	}
+
+	return 0;
+}
+
 int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 				     struct tim_ring_req *req,
 				     struct tim_enable_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
+	u64 start_cyc, end_cyc, low;
+	u64 regval, clk_src;
+	u32 expiry, intvl;
+	int retries, ret;
 	int lf, blkaddr;
-	u64 regval;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, pcifunc);
 	if (blkaddr < 0)
@@ -362,11 +383,52 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 
 	/* Enable, the ring. */
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
-	regval |= TIM_AF_RINGX_CTL1_ENA;
-	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
+	/* Get the clock source. */
+	if (is_rvu_otx2(rvu))
+		clk_src = (regval >> 51) & 0x3;
+	else
+		clk_src = (regval >> 40) & 0x7;
 
-	rsp->timestarted = get_tenns_tsc();
-	rsp->currentbucket = (regval >> 20) & 0xfffff;
+	ret = tim_get_free_running_counter_offset(&clk_src);
+	if (ret)
+		return ret;
+
+	retries = 10;
+	do {
+		regval |= TIM_AF_RINGX_CTL1_ENA;
+		regval &= ~GENMASK_ULL(39, 20);
+		/* Make sure that below reads don't get hoisted out. */
+		mb();
+		start_cyc = rvu_read64(rvu, blkaddr, clk_src);
+		rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
+		regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf));
+		end_cyc = rvu_read64(rvu, blkaddr, clk_src);
+		/* Make sure that above reads and writes complete. */
+		mb();
+		low = end_cyc & GENMASK_ULL(31, 0);
+		start_cyc >>= 32;
+		end_cyc >>= 32;
+		if (start_cyc - end_cyc) {
+			regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+			regval &= ~TIM_AF_RINGX_CTL1_ENA;
+			rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
+			regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf));
+			rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf),
+				    regval & GENMASK_ULL(31, 0));
+			regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+		}
+	} while ((start_cyc - end_cyc) && retries--);
+
+	if (!retries && (start_cyc - end_cyc))
+		return TIM_AF_LF_START_SYNC_FAIL;
+
+	expiry = regval >> 32;
+	intvl = regval & GENMASK_ULL(31, 0);
+	rsp->timestarted = (start_cyc << 32) | expiry;
+	if (low > expiry)
+		rsp->timestarted += BIT_ULL(32);
+	rsp->timestarted -= intvl;
+	rsp->currentbucket = 0;
 
 	return 0;
 }
