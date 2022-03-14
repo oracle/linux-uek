@@ -17,6 +17,9 @@
 #define MIO_PTP_TIMESTAMP		0x20
 #define MIO_PTP_PPS_THRESH_HI		0x58ULL
 #define MIO_PTP_CLOCK_COMP		0x18ULL
+#define MIO_PTP_CLOCK_SEC		0xD0ULL
+
+#define CYCLE_MULT			1000
 
 /* max tx job entries */
 #define MAX_TX_JOB_ENTRIES		64

@@ -17,6 +17,7 @@
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/if_vlan.h>
+#include <net/ip.h>
 
 #include "rfoe_common.h"
 #include "otx2_bphy.h"
@@ -85,6 +86,23 @@ struct tx_ptp_ring_cfg {
 	u8				ptp_ring_idx;
 };
 
+struct cnf10k_tx_action_s {
+	u64 start_offset  : 8;
+	u64 rsvd_11_8	  : 4;
+	u64 rsvd_12	  : 1;
+	u64 udp_csum_crt  : 1;
+	u64 update64      : 1;
+	u64 rsvd_15_16    : 1;
+	u64 base_ns       : 32;
+	u64 step_type     : 1;
+	u64 rsvd_51_49    : 3;
+	u64 per_lso_seg   : 1;
+	u64 wmem          : 1;
+	u64 dsz           : 2;
+	u64 alg           : 4;
+	u64 subdc         : 4;
+};
+
 /* netdev priv */
 struct cnf10k_rfoe_ndev_priv {
 	u8				rfoe_num;
@@ -93,6 +111,7 @@ struct cnf10k_rfoe_ndev_priv {
 	struct pci_dev			*pdev;
 	struct otx2_bphy_cdev_priv	*cdev_priv;
 	u32				msg_enable;
+	u32				ptp_ext_clk_rate;
 	void __iomem			*bphy_reg_base;
 	void __iomem			*psm_reg_base;
 	void __iomem			*rfoe_reg_base;
@@ -108,6 +127,7 @@ struct cnf10k_rfoe_ndev_priv {
 	spinlock_t			lock;
 	int				rx_hw_tstamp_en;
 	int				tx_hw_tstamp_en;
+	int				ptp_onestep_sync;
 	struct sk_buff			*ptp_tx_skb;
 	u16				ptp_job_tag;
 	struct timer_list		tx_timer;
@@ -117,7 +137,11 @@ struct cnf10k_rfoe_ndev_priv {
 	struct ptp_tx_skb_list		ptp_skb_list;
 	struct ptp_clock		*ptp_clock;
 	struct ptp_clock_info		ptp_clock_info;
+	struct delayed_work		extts_work;
 	struct otx2_rfoe_stats		stats;
+	struct ptp_pin_desc		extts_config;
+	/* ptp lock */
+	struct mutex			ptp_lock;
 	u8				mac_addr[ETH_ALEN];
 	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
@@ -131,6 +155,8 @@ struct cnf10k_rfoe_ndev_priv {
 	unsigned long			last_tx_ptp_dropped_jiffies;
 	unsigned long			last_rx_dropped_jiffies;
 	unsigned long			last_rx_ptp_dropped_jiffies;
+	u64				last_extts;
+	u64				thresh;
 };
 
 void cnf10k_rfoe_rx_napi_schedule(int rfoe_num, u32 status);
@@ -152,4 +178,8 @@ void cnf10k_rfoe_ptp_destroy(struct cnf10k_rfoe_ndev_priv *priv);
 void cnf10k_bphy_intr_handler(struct otx2_bphy_cdev_priv *cdev_priv,
 			      u32 status);
 
+static inline u64 cnf10k_ptp_convert_timestamp(u64 timestamp)
+{
+	return ((timestamp >> 32) * NSEC_PER_SEC) + (timestamp & 0xFFFFFFFFUL);
+}
 #endif
