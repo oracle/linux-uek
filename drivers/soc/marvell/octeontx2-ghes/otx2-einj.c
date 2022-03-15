@@ -5,7 +5,9 @@
  */
 
 #include <linux/module.h>
-#include <linux/pci.h>
+#include <linux/arm-smccc.h>
+
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 /*
  * All DRAM/cache controller hardware is handled by ATF on these platforms
@@ -40,8 +42,6 @@
 #define OCTEONTX_EDAC_F_ICACHE    0x080 /* Icache, not Dcache */
 #define OCTEONTX_EDAC_F_REREAD    0x100 /* read-back in EL3 */
 #define OCTEONTX_EDAC_F_PHYS    0x200 /* target is EL3-physical, not EL012 */
-
-#include <linux/arm-smccc.h>
 
 /*
  * Module parameters are used here instead of debugfs because debugfs requires
@@ -100,14 +100,14 @@ static int otx2_edac_smc(void)
 	}
 
 	arm_smccc_smc(OCTEONTX_EDAC, a[0], a[1], a[2], a[3], a[4], a[5], a[6], &res);
-	trace_printk("%s: OCTEONTX_EDAC(%llx, %llx, %llx, %llx) -> e?%ld\n",
-		   __func__, a[0], a[1], a[2], a[3], res.a0);
+	pr_info("%s: OCTEONTX_EDAC(%llx, %llx, %llx, %llx) -> e?%ld\n",
+			__func__, a[0], a[1], a[2], a[3], res.a0);
 
 	if (test_read && ecc_test_target_data != test_val)
-		trace_printk("%s test_read mismatch\n", __func__);
+		pr_info("test_read mismatch\n");
 
 	if (test_call && ecc_test_target_fn() != test_val)
-		trace_printk("%s test_call mismatch\n", __func__);
+		pr_info("%s test_call mismatch\n", __func__);
 
 	return res.a0;
 }
@@ -118,7 +118,7 @@ static int smc_params_set(const char *_str, const struct kernel_param *kp)
 	char *str = (char *)_str;
 	int rc;
 
-	trace_printk("%s: (%s)\n", __func__, str);
+	pr_info("%s: (%s)\n", __func__, str);
 
 	if (!str)
 		return -EINVAL;
@@ -133,18 +133,17 @@ static int smc_params_set(const char *_str, const struct kernel_param *kp)
 			str[len] = '\0';
 		rc = kstrtoull(str, 0, &smc_params[smc_argc]);
 
-		trace_printk("%s: (%s/%s) smc_params[%d]=%llx e?%d\n",
+		pr_info("%s: (%s/%s) smc_params[%d]=%llx e?%d\n",
 					 __func__, str, nxt, smc_argc,
 					 smc_params[smc_argc], rc);
 		if (len)
 			str[len] = ',';
 		str = nxt;
-		trace_printk("%s: smc_params[%d]=%llx\n",
-					 __func__, smc_argc, smc_params[smc_argc]);
+		pr_info("%s: smc_params[%d]=%llx\n", __func__, smc_argc, smc_params[smc_argc]);
 	}
 
 	smc_result = otx2_edac_smc();
-	trace_printk("%s: result: %llx\n", __func__, smc_result);
+	pr_info("%s: result: %llx\n", __func__, smc_result);
 	return 0;
 }
 
