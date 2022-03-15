@@ -6179,6 +6179,7 @@ __init int intel_pmu_init(void)
 
 	case INTEL_FAM6_ALDERLAKE:
 	case INTEL_FAM6_ALDERLAKE_L:
+	case INTEL_FAM6_RAPTORLAKE:
 		/*
 		 * Alder Lake has 2 types of CPU, core and atom.
 		 *
