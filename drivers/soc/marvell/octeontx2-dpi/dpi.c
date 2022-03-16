@@ -73,6 +73,7 @@ static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	u16 sso_pf_func = dpivf->vf_config.sso_pf_func;
 	u16 npa_pf_func = dpivf->vf_config.npa_pf_func;
 
+	spin_lock(&dpi->vf_lock);
 	reg = DPI_DMA_IBUFF_CSIZE_CSIZE((u64)(buf_size / 8));
 	if (is_otx3_dpi(dpi))
 		reg |= DPI_DMA_IBUFF_CSIZE_NPA_FREE;
@@ -104,6 +105,7 @@ static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	reg |= DPI_DMA_IDS_DMA_STRM(vf + 1);
 	reg |= DPI_DMA_IDS_INST_STRM(vf + 1);
 	dpi_reg_write(dpi, DPI_DMAX_IDS(queue), reg);
+	spin_unlock(&dpi->vf_lock);
 
 	return 0;
 }
@@ -115,6 +117,7 @@ static int dpi_queue_fini(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	int queue = vf;
 	u16 buf_size = dpivf->vf_config.csize;
 
+	spin_lock(&dpi->vf_lock);
 	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
 		/* Dont configure the queus for PKT engines */
 		if (engine >= 4)
@@ -134,6 +137,7 @@ static int dpi_queue_fini(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	/* Reset IDS and IDS2 registers */
 	dpi_reg_write(dpi, DPI_DMAX_IDS2(queue), 0ULL);
 	dpi_reg_write(dpi, DPI_DMAX_IDS(queue), 0ULL);
+	spin_unlock(&dpi->vf_lock);
 
 	return 0;
 }
@@ -566,6 +570,8 @@ static int dpi_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		dev_err(dev, "DPI: Failed to create sysfs entry for driver\n");
 		goto err_free_irq;
 	}
+
+	spin_lock_init(&dpi->vf_lock);
 
 	return 0;
 

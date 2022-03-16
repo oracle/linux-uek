@@ -300,6 +300,8 @@ struct dpipf {
 	int total_vfs;
 	int vfs_in_use;
 	struct dpipf_vf vf[DPI_MAX_VFS];
+	/* lock to serialize queue access */
+	spinlock_t		vf_lock;
 };
 
 #define DPI_QUEUE_OPEN  0x1
