@@ -2485,7 +2485,7 @@ struct packet_type {
 	void			*af_packet_priv;
 	struct list_head	list;
  
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, struct net *af_packet_net)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
