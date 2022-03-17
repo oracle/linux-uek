@@ -2237,9 +2237,9 @@ struct packet_type {
 					    struct sock *sk);
 	void			*af_packet_priv;
 	struct list_head	list;
+	UEK_KABI_USE(1, struct net *af_packet_net);
 
 	/* Space for future expansion without breaking kABI. */
-	UEK_KABI_RESERVED(1);
 	UEK_KABI_RESERVED(2);
 	UEK_KABI_RESERVED(3);
 	UEK_KABI_RESERVED(4);
