@@ -2830,6 +2830,12 @@ __lpfc_sli_rpi_release(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	ndlp->nlp_flag &= ~NLP_UNREG_INP;
 }
 
+void
+lpfc_sli_rpi_release(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
+{
+	__lpfc_sli_rpi_release(vport, ndlp);
+}
+
 /**
  * lpfc_sli_def_mbox_cmpl - Default mailbox completion handler
  * @phba: Pointer to HBA context object.
@@ -4631,11 +4637,6 @@ lpfc_sli_flush_io_rings(struct lpfc_hba *phba)
 	struct lpfc_iocbq *piocb, *next_iocb;
 
 	spin_lock_irq(&phba->hbalock);
-	if (phba->hba_flag & HBA_IOQ_FLUSH ||
-	    !phba->sli4_hba.hdwq) {
-		spin_unlock_irq(&phba->hbalock);
-		return;
-	}
 	/* Indicate the I/O queues are flushed */
 	phba->hba_flag |= HBA_IOQ_FLUSH;
 	spin_unlock_irq(&phba->hbalock);
@@ -11181,6 +11182,10 @@ lpfc_sli_issue_iocb(struct lpfc_hba *phba, uint32_t ring_number,
 	struct lpfc_queue *eq;
 	unsigned long iflags;
 	int rc;
+
+	/* If the PCI channel is in offline state, do not post iocbs. */
+	if (unlikely(pci_channel_offline(phba->pcidev)))
+		return IOCB_ERROR;
 
 	if (phba->sli_rev == LPFC_SLI_REV4) {
 		lpfc_sli_prep_wqe(phba, piocb);
