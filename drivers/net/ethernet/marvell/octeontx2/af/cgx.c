@@ -500,7 +500,7 @@ int cgx_set_pkind(void *cgxd, u8 lmac_id, int pkind)
 	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
-	cgx_write(cgx, lmac_id, CGXX_CMRX_RX_ID_MAP, (pkind & 0x3F));
+	cgx_write(cgx, lmac_id, cgx->mac_ops->rxid_map_offset, (pkind & 0x3F));
 	return 0;
 }
 
@@ -511,7 +511,7 @@ int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind)
 	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
-	*pkind = cgx_read(cgx, lmac_id, CGXX_CMRX_RX_ID_MAP);
+	*pkind = cgx_read(cgx, lmac_id, cgx->mac_ops->rxid_map_offset);
 	*pkind = *pkind & 0x3F;
 	return 0;
 }
@@ -2019,6 +2019,10 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		cgx->mac_ops = rpm_get_mac_ops();
 	else
 		cgx->mac_ops = &cgx_mac_ops;
+
+	cgx->mac_ops->rxid_map_offset =
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10KB_RPM) ?
+		RPMX_CMRX_RX_ID_MAP : CGXX_CMRX_RX_ID_MAP;
 
 	err = pci_enable_device(pdev);
 	if (err) {

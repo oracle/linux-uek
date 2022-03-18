@@ -12,11 +12,13 @@
 
 /* PCI device IDs */
 #define PCI_DEVID_CN10K_RPM		0xA060
+#define PCI_SUBSYS_DEVID_CNF10KB_RPM	0xBC00
 
 /* Registers */
 #define RPMX_CMRX_CFG			0x00
 #define RPMX_RX_TS_PREPEND              BIT_ULL(22)
 #define RPMX_TX_PTP_1S_SUPPORT          BIT_ULL(17)
+#define RPMX_CMRX_RX_ID_MAP		0x80
 #define RPMX_CMRX_SW_INT                0x180
 #define RPMX_CMRX_SW_INT_W1S            0x188
 #define RPMX_CMRX_SW_INT_ENA_W1S        0x198
