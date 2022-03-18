@@ -827,7 +827,7 @@ static void __rds_ib_teardown_mr(struct rds_ib_mr *ibmr)
 			 * from a r/o MR */
 			WARN_ON_ONCE(!page->mapping && irqs_disabled());
 			set_page_dirty(page);
-			put_page(page);
+			unpin_user_page(page);
 		}
 		kfree(ibmr->sg);
 
