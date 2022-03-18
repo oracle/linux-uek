@@ -123,7 +123,7 @@ static long madvise_behavior(struct vm_area_struct *vma,
 			goto out;
 		}
 		if (new_flags & VM_EXEC_KEEP)
-			new_flags |= (new_flags & ~VM_EXEC_KEEP) | VM_MAYEXEC;
+			new_flags = (new_flags & ~VM_EXEC_KEEP) | VM_MAYEXEC;
 		break;
 	case MADV_DONTDUMP:
 		new_flags |= VM_DONTDUMP;
