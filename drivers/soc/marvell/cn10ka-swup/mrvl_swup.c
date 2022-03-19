@@ -68,7 +68,7 @@ static const struct {
 	uint8_t bit;
 } name_to_sel_obj[] = {
 	{"tim0", 0},
-	{"rom-script0.fw", 1},
+	{"gserp-cn10xx.fw", 1},
 	{"scp_bl1.bin", 2},
 	{"mcp_bl1.bin", 3},
 	{"ecp_bl1.bin", 4},
@@ -81,7 +81,6 @@ static const struct {
 	{"efi_app1.efi", 11},
 	{"switch_fw_ap.fw", 12},
 	{"switch_fw_super.fw", 13},
-	{"gserp-cn10xx.fw", 14},
 };
 
 static const char *obj_bit_to_str(uint32_t bit)
