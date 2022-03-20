@@ -2145,6 +2145,11 @@ static int nix_smq_flush(struct rvu *rvu, int blkaddr,
 	int err, restore_tx_en = 0;
 	u64 cfg;
 
+	/* Skip SMQ flush if pkt count is zero */
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_MDQX_IN_MD_COUNT(smq));
+	if (!cfg)
+		return 0;
+
 	/* enable cgx tx if disabled */
 	if (is_pf_cgxmapped(rvu, pf)) {
 		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);

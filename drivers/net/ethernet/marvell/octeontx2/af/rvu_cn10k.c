@@ -551,11 +551,19 @@ void rvu_sso_block_cn10k_init(struct rvu *rvu, int blkaddr)
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)
 {
 	int blkaddr = nix_hw->blkaddr;
+	u64 cfg;
 
 	/* Set AF vWQE timer interval to a LF configurable range of
 	 * 6.4us to 1.632ms.
 	 */
 	rvu_write64(rvu, blkaddr, NIX_AF_VWQE_TIMER, 0x3FULL);
+
+	/* Enable NIX RX stream conditional clock to
+	 * avoild double free of NPA buffers.
+	 */
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CFG);
+	cfg |= BIT_ULL(2);
+	rvu_write64(rvu, blkaddr, NIX_AF_CFG, cfg);
 }
 
 void rvu_apr_block_cn10k_init(struct rvu *rvu)

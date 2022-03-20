@@ -435,6 +435,7 @@
 #define NIX_AF_RQM_BP_TEST		(0x4880)
 #define NIX_AF_CQM_BP_TEST		(0x48c0)
 #define NIX_AF_LINKX_CFG(a)		(0x4010 | (a) << 17)
+#define NIX_AF_MDQX_IN_MD_COUNT(a)	(0x14e0 | (a) << 16)
 
 #define NIX_PRIV_AF_INT_CFG		(0x8000000)
 #define NIX_PRIV_LFX_CFG		(0x8000010)
