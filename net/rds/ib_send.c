@@ -439,7 +439,7 @@ int rds_ib_send_grab_credits(struct rds_ib_connection *ic,
 			     u32 wanted, u32 *adv_credits, int need_posted)
 {
 	unsigned int avail, posted, got = 0, advertise;
-	long oldval, newval;
+	int oldval, newval;
 
 	*adv_credits = 0;
 	if (!ic->i_flowctl)
@@ -482,7 +482,7 @@ try_again:
 		goto try_again;
 
 	trace_rds_ib_flow_cntrl_grab_credits(ic->rds_ibdev, ic->conn, ic,
-					     oldval);
+					     oldval, newval);
 
 	*adv_credits = advertise;
 	return got;
@@ -491,18 +491,17 @@ try_again:
 void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	long oldval;
+	int oldval;
 
 	if (credits == 0)
 		return;
 
-	oldval = atomic_read(&ic->i_credits);
-
-	atomic_add(IB_SET_SEND_CREDITS(credits), &ic->i_credits);
+	oldval = atomic_add_return(IB_SET_SEND_CREDITS(credits), &ic->i_credits);
 	if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags))
 		rds_cond_queue_send_work(conn->c_path + 0, 0);
 
-	trace_rds_ib_flow_cntrl_add_credits(ic->rds_ibdev, conn, ic, oldval);
+	trace_rds_ib_flow_cntrl_add_credits(ic->rds_ibdev, conn, ic,
+					    oldval, oldval + IB_SET_SEND_CREDITS(credits));
 
 	WARN_ON(IB_GET_SEND_CREDITS(credits) >= 16384);
 
@@ -512,14 +511,12 @@ void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits)
 void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	long oldval;
+	int oldval;
 
 	if (posted == 0)
 		return;
 
-	oldval = atomic_read(&ic->i_credits);
-
-	atomic_add(IB_SET_POST_CREDITS(posted), &ic->i_credits);
+	oldval = atomic_add_return(IB_SET_POST_CREDITS(posted), &ic->i_credits);
 
 	/* Decide whether to send an update to the peer now.
 	 * If we would send a credit update for every single buffer we
@@ -535,7 +532,7 @@ void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 	 */
 	set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
 	trace_rds_ib_flow_cntrl_advertise_credits(ic->rds_ibdev, conn, ic,
-						  oldval);
+						  oldval, oldval + IB_SET_POST_CREDITS(posted));
 }
 
 #define FLAGS_FORCE_SEND_SIGNALED  BIT(0)
