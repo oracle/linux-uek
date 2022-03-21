@@ -117,3 +117,6 @@ obj-$(CONFIG_INTEL_SCU_PLATFORM)	+= intel_scu_pltdrv.o
 obj-$(CONFIG_INTEL_SCU_WDT)		+= intel_scu_wdt.o
 obj-$(CONFIG_INTEL_SCU_IPC_UTIL)	+= intel_scu_ipcutil.o
 obj-$(CONFIG_PMC_ATOM)			+= pmc_atom.o
+
+# Winmate
+obj-$(CONFIG_WINMATE_FM07_KEYS)		+= winmate-fm07-keys.o
