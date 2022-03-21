@@ -371,29 +371,20 @@ static void __init parse_setup_data(void)
 static void __init memblock_x86_reserve_range_setup_data(void)
 {
 	struct setup_data *data;
-	u64 pa_data, pa_next;
-	u32 len;
+	u64 pa_data;
 
 	pa_data = boot_params.hdr.setup_data;
 	while (pa_data) {
 		data = early_memremap(pa_data, sizeof(*data));
-		len = sizeof(*data);
-		pa_next = data->next;
-
 		memblock_reserve(pa_data, sizeof(*data) + data->len);
 
-		if (data->type == SETUP_INDIRECT) {
-			len += data->len;
-			early_memunmap(data, sizeof(*data));
-			data = early_memremap(pa_data, len);
+		if (data->type == SETUP_INDIRECT &&
+		    ((struct setup_indirect *)data->data)->type != SETUP_INDIRECT)
+			memblock_reserve(((struct setup_indirect *)data->data)->addr,
+					 ((struct setup_indirect *)data->data)->len);
 
-			if (((struct setup_indirect *)data->data)->type != SETUP_INDIRECT)
-				memblock_reserve(((struct setup_indirect *)data->data)->addr,
-						 ((struct setup_indirect *)data->data)->len);
-		}
-
-		pa_data = pa_next;
-		early_memunmap(data, len);
+		pa_data = data->next;
+		early_memunmap(data, sizeof(*data));
 	}
 }
 
