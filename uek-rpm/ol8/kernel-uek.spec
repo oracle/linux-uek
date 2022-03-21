@@ -123,7 +123,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %endif
 
 # Control whether we perform a compat. check against published ABI.
-%define with_kabichk 1
+%define with_kabichk 0
 
 # .BTF section must stay in modules
 %define _find_debuginfo_opt_btf --keep-section .BTF
