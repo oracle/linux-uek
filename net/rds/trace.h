@@ -971,9 +971,9 @@ DEFINE_EVENT(rds_ib, rds_rdma_cm_event_handler_err,
 DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 
 	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
-		 struct rds_ib_connection *ic, long oldval),
+		 struct rds_ib_connection *ic, int oldval, int newval),
 
-	TP_ARGS(rds_ibdev, conn, ic, oldval),
+	TP_ARGS(rds_ibdev, conn, ic, oldval, newval),
 
 	/*
 	 * fields here are intended to match as much of other RDS
@@ -996,7 +996,6 @@ DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 		struct in6_addr *in6;
 		struct cgroup *cgrp;
 		struct rds_sock *rs;
-		long newval = atomic_read(&ic->i_credits);
 
 		in6 = (struct in6_addr *)__entry->laddr;
 		*in6 = conn ? conn->c_laddr : in6addr_any;
@@ -1041,27 +1040,27 @@ DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 DEFINE_EVENT(rds_ib_flow_cntrl, rds_ib_flow_cntrl_add_credits,
 
 	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
-		 struct rds_ib_connection *ic, long oldval),
+		 struct rds_ib_connection *ic, int oldval, int newval),
 
-	TP_ARGS(rds_ibdev, conn, ic, oldval)
+	TP_ARGS(rds_ibdev, conn, ic, oldval, newval)
 
 );
 
 DEFINE_EVENT(rds_ib_flow_cntrl, rds_ib_flow_cntrl_advertise_credits,
 
 	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
-		 struct rds_ib_connection *ic, long oldval),
+		 struct rds_ib_connection *ic, int oldval, int newval),
 
-	TP_ARGS(rds_ibdev, conn, ic, oldval)
+	TP_ARGS(rds_ibdev, conn, ic, oldval, newval)
 
 );
 
 DEFINE_EVENT(rds_ib_flow_cntrl, rds_ib_flow_cntrl_grab_credits,
 
 	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,
-		 struct rds_ib_connection *ic, long oldval),
+		 struct rds_ib_connection *ic, int oldval, int newval),
 
-	TP_ARGS(rds_ibdev, conn, ic, oldval)
+	TP_ARGS(rds_ibdev, conn, ic, oldval, newval)
 
 );
 
