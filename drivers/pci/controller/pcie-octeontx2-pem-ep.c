@@ -18,11 +18,20 @@
 #include <linux/slab.h>
 #include <linux/iommu.h>
 #include <linux/dma-mapping.h>
+#include <linux/uio_driver.h>
 
 #define PEM_EP_DRV_NAME		"octeontx2-pem-ep"
 
 #define PEM_DIS_PORT		0x50ull
+#define PEM_CFG                 0x00D8ull
+#define PEM_RST_INT             0x0300ull
+#define PEM_RST_INT_ENA_W1C     0x0310ull
+#define PEM_RST_INT_ENA_W1S     0x0318ull
 #define PEM_BAR4_INDEX(x)	(0x700ull | (x << 3))
+
+#define PEM_RST_INT_B_L2        BIT_ULL(2)
+#define PEM_RST_INT_B_LINKDOWN  BIT_ULL(1)
+#define PEM_RST_INT_B_PERST     BIT_ULL(0)
 
 /* Address valid bit */
 #define PEM_BAR4_INDEX_ADDR_V		BIT_ULL(0)
@@ -35,17 +44,88 @@
 #define PEM_BAR4_INDEX_SIZE	(4 * 1024 * 1024)
 #define PEM_BAR4_INDEX_MEM	(64 * 1024 * 1024)
 
+#define	UIO_PERST_VERSION	"0.1"
 
 struct mv_pem_ep {
 	struct device	*dev;
 	void __iomem	*base;
 	dma_addr_t	dh;
 	void		*va;
+	struct uio_info	uio_rst_int_perst;
 };
+
+static u64 pem_ep_reg_read(struct mv_pem_ep *pem_ep, u64 offset)
+{
+	return readq(pem_ep->base + offset);
+}
 
 static void pem_ep_reg_write(struct mv_pem_ep *pem_ep, u64 offset, u64 val)
 {
 	writeq(val, pem_ep->base + offset);
+}
+
+static irqreturn_t pem_rst_perst_handler(int irq, struct uio_info *uio_info)
+{
+	struct mv_pem_ep *pem_ep;
+	u64 regval;
+
+	pem_ep = container_of(uio_info, struct mv_pem_ep, uio_rst_int_perst);
+
+	regval = pem_ep_reg_read(pem_ep, PEM_RST_INT);
+	if (regval & PEM_RST_INT_B_PERST)
+		pem_ep_reg_write(pem_ep, PEM_RST_INT, PEM_RST_INT_B_PERST);
+	else
+		return IRQ_NONE;
+
+	return IRQ_HANDLED;
+}
+
+static int register_perst_uio_dev(struct platform_device *pdev, struct mv_pem_ep *pem_ep)
+{
+	struct device_node *of_node;
+	struct uio_info *uio_info;
+	struct device *dev;
+	int irq, ret;
+	u64 regval;
+
+	dev = &pdev->dev;
+	of_node = dev->of_node;
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return irq;
+
+	uio_info = &pem_ep->uio_rst_int_perst;
+	uio_info->name = "PEM_RST_INT:PERST";
+	uio_info->version = UIO_PERST_VERSION;
+	uio_info->irq = irq;
+	uio_info->irq_flags = IRQF_SHARED;
+	uio_info->handler = pem_rst_perst_handler;
+
+	ret = uio_register_device(dev, uio_info);
+	if (ret != 0) {
+		dev_err(dev, "Error %d registering PERST UIO device\n", ret);
+		ret = -ENODEV;
+		goto err_exit;
+	}
+
+	/* clear all RST interrupt enables */
+	pem_ep_reg_write(pem_ep, PEM_RST_INT_ENA_W1C,
+			 PEM_RST_INT_B_L2 | PEM_RST_INT_B_LINKDOWN | PEM_RST_INT_B_PERST);
+
+	/* clear RST interrupt status */
+	regval = pem_ep_reg_read(pem_ep, PEM_RST_INT);
+	dev_info(dev, "PEM_RST_INT: 0x%llx\n", regval);
+	pem_ep_reg_write(pem_ep, PEM_RST_INT, regval);
+
+	/* set RST PERST & LINKDOWN interrupt enables */
+	pem_ep_reg_write(pem_ep, PEM_RST_INT_ENA_W1S,
+			 PEM_RST_INT_B_PERST | PEM_RST_INT_B_LINKDOWN);
+
+	return 0;
+
+err_exit:
+	return ret;
 }
 
 static int pem_ep_bar_setup(struct mv_pem_ep *pem_ep)
@@ -103,6 +183,13 @@ static int pem_ep_probe(struct platform_device *pdev)
 		goto err_exit;
 	}
 
+	/* register the PERST interrupt UIO device */
+	ret = register_perst_uio_dev(pdev, pem_ep);
+	if (ret < 0) {
+		dev_err(dev, "Error registering UIO PERST device\n");
+		goto err_exit;
+	}
+
 	return 0;
 
 err_exit:
@@ -119,6 +206,7 @@ static int pem_ep_remove(struct platform_device *pdev)
 	pr_info("Removing %s driver\n", PEM_EP_DRV_NAME);
 
 	dma_free_coherent(pem_ep->dev, PEM_BAR4_INDEX_MEM, pem_ep->va, pem_ep->dh);
+	uio_unregister_device(&pem_ep->uio_rst_int_perst);
 	devm_kfree(dev, pem_ep);
 
 	return 0;
