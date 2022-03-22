@@ -1044,6 +1044,9 @@ static __init void svm_set_cpu_caps(void)
 		if (npt_enabled)
 			kvm_cpu_cap_set(X86_FEATURE_NPT);
 
+		if (vgif)
+			kvm_cpu_cap_set(X86_FEATURE_VGIF);
+
 		/* Nested VM can receive #VMEXIT instead of triggering #GP */
 		kvm_cpu_cap_set(X86_FEATURE_SVME_ADDR_CHK);
 	}
@@ -4192,6 +4195,8 @@ static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 	/* Update nrips enabled cache */
 	svm->nrips_enabled = kvm_cpu_cap_has(X86_FEATURE_NRIPS) &&
 			     guest_cpuid_has(vcpu, X86_FEATURE_NRIPS);
+
+	svm->vgif_enabled = vgif && guest_cpuid_has(vcpu, X86_FEATURE_VGIF);
 
 	svm_recalc_instruction_intercepts(vcpu, svm);
 
