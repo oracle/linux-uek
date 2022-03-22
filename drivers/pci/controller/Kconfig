@@ -220,6 +220,17 @@ config PCI_OCTEON_PEM
 	help
 	  Say Y here if you want PEM controller support for Marvell ARM64 Octeon SoCs.
 
+config PCIE_OCTEONTX2_PEM_EP
+	tristate "Marvell OcteonTx2 PEM EP driver"
+	depends on ARM64
+	default m
+	help
+	  This driver configures the PEM when OcteonTx is in PCIe EndPoint mode.
+	  It sets up IOMMU to allow the host streamid and program the indexed
+	  BAR region.
+
+	  To compile this as a module choose M here.
+
 config PCIE_ROCKCHIP
 	bool
 	depends on PCI

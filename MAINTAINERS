@@ -9889,6 +9889,13 @@ S:	Supported
 F:	drivers/mmc/host/sdhci-xenon*
 F:	Documentation/devicetree/bindings/mmc/marvell,xenon-sdhci.txt
 
+MARVELL OCTEONTX2 PEM ENDPOINT DRIVER
+M:	Radha Mohan Chintakuntla <radhac@marvell.com>
+M:	Veerasenareddy Burry <vburru@marvell.com>
+L:	linux-arm-kernel@lists.infradead.org
+S:	Supported
+F:	drivers/pci/controller/pcie-octeontx2-pem-ep.c
+
 MARVELL OCTEONTX2 RVU ADMIN FUNCTION DRIVER
 M:	Sunil Goutham <sgoutham@marvell.com>
 M:	Linu Cherian <lcherian@marvell.com>
