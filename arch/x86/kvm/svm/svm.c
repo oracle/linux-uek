@@ -1674,7 +1674,7 @@ static void svm_set_vintr(struct vcpu_svm *svm)
 	/*
 	 * The following fields are ignored when AVIC is enabled
 	 */
-	WARN_ON(kvm_apicv_activated(svm->vcpu.kvm));
+	WARN_ON(kvm_vcpu_apicv_activated(&svm->vcpu));
 
 	svm_set_intercept(svm, INTERCEPT_VINTR);
 
@@ -3166,9 +3166,16 @@ static int interrupt_window_interception(struct kvm_vcpu *vcpu)
 	svm_clear_vintr(to_svm(vcpu));
 
 	/*
-	 * For AVIC, the only reason to end up here is ExtINTs.
+	 * If not running nested, for AVIC, the only reason to end up here is ExtINTs.
 	 * In this case AVIC was temporarily disabled for
 	 * requesting the IRQ window and we have to re-enable it.
+	 *
+	 * If running nested, still remove the VM wide AVIC inhibit to
+	 * support case in which the interrupt window was requested when the
+	 * vCPU was not running nested.
+
+	 * All vCPUs which run still run nested, will remain to have their
+	 * AVIC still inhibited due to per-cpu AVIC inhibition.
 	 */
 	kvm_clear_apicv_inhibit(vcpu->kvm, APICV_INHIBIT_REASON_IRQWIN);
 
@@ -3812,10 +3819,16 @@ static void svm_enable_irq_window(struct kvm_vcpu *vcpu)
 		/*
 		 * IRQ window is not needed when AVIC is enabled,
 		 * unless we have pending ExtINT since it cannot be injected
-		 * via AVIC. In such case, we need to temporarily disable AVIC,
+		 * via AVIC. In such case, KVM needs to temporarily disable AVIC,
 		 * and fallback to injecting IRQ via V_IRQ.
+		 *
+		 * If running nested, AVIC is already locally inhibited
+		 * on this vCPU, therefore there is no need to request
+		 * the VM wide AVIC inhibition.
 		 */
-		kvm_set_apicv_inhibit(vcpu->kvm, APICV_INHIBIT_REASON_IRQWIN);
+		if (!is_guest_mode(vcpu))
+			kvm_set_apicv_inhibit(vcpu->kvm, APICV_INHIBIT_REASON_IRQWIN);
+
 		svm_set_vintr(svm);
 	}
 }
@@ -4291,7 +4304,6 @@ static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 	struct kvm_cpuid_entry2 *best;
-	struct kvm *kvm = vcpu->kvm;
 
 	vcpu->arch.xsaves_enabled = guest_cpuid_has(vcpu, X86_FEATURE_XSAVE) &&
 				    boot_cpu_has(X86_FEATURE_XSAVE) &&
@@ -4312,15 +4324,6 @@ static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 		best = kvm_find_cpuid_entry(vcpu, 0x8000001F, 0);
 		if (best)
 			vcpu->arch.reserved_gpa_bits &= ~(1UL << (best->ebx & 0x3f));
-	}
-
-	if (kvm_vcpu_apicv_active(vcpu)) {
-		/*
-		 * Currently, AVIC does not work with nested virtualization.
-		 * So, we disable AVIC when cpuid for SVM is set in the L1 guest.
-		 */
-		if (nested && guest_cpuid_has(vcpu, X86_FEATURE_SVM))
-			kvm_set_apicv_inhibit(kvm, APICV_INHIBIT_REASON_NESTED);
 	}
 
 	if (guest_cpuid_is_intel(vcpu)) {
@@ -5013,6 +5016,7 @@ static struct kvm_x86_ops svm_x86_ops __initdata = {
 	.complete_emulated_msr = svm_complete_emulated_msr,
 
 	.vcpu_deliver_sipi_vector = svm_vcpu_deliver_sipi_vector,
+	.vcpu_get_apicv_inhibit_reasons = avic_vcpu_get_apicv_inhibit_reasons,
 };
 
 static struct kvm_x86_init_ops svm_init_ops __initdata = {
