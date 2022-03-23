@@ -8,13 +8,6 @@
 #include <asm/cpufeature.h>
 #include <asm/mte.h>
 
-#ifndef VMA_ITERATOR
-#define VMA_ITERATOR(name, mm, addr)	\
-	struct mm_struct *name = mm
-#define for_each_vma(vmi, vma)		\
-	for (vma = vmi->mmap; vma; vma = vma->vm_next)
-#endif
-
 #define for_each_mte_vma(vmi, vma)					\
 	if (system_supports_mte())					\
 		for_each_vma(vmi, vma)					\
