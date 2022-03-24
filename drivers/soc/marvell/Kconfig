@@ -163,6 +163,14 @@ config MRVL_PHY_DIAGNOSTICS
 	  extended diagnostics functions for the PHY. This complements
 	  functionality offered by ethtool. Requires PHY driver support in ATF.
 
+config MRVL_PHY_7121P_MAC_ADV_FEATURES
+	tristate "Marvell PHY MAC Adv feature driver"
+	default m
+	depends on DEBUG_FS
+	help
+	  Select this option if you want an additional interface for
+	  mac advance feature functions for the PHY.
+
 config MARVELL_CN10K_SERDES_DIAGNOSTICS
 	tristate "Marvell SerDes diagnostics debugfs driver"
 	default m
