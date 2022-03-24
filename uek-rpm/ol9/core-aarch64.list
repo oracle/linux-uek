@@ -552,8 +552,11 @@ kernel/drivers/iio/trigger/iio-trig-loop.ko
 kernel/drivers/iio/trigger/iio-trig-sysfs.ko
 kernel/drivers/infiniband/core/ib_cm.ko
 kernel/drivers/infiniband/core/ib_core.ko
+kernel/drivers/infiniband/core/ib_umad.ko
+kernel/drivers/infiniband/core/ib_uverbs.ko
 kernel/drivers/infiniband/core/iw_cm.ko
 kernel/drivers/infiniband/core/rdma_cm.ko
+kernel/drivers/infiniband/hw/mlx5/mlx5_ib.ko
 kernel/drivers/input/ff-memless.ko
 kernel/drivers/input/joydev.ko
 kernel/drivers/input/keyboard/adc-keys.ko
@@ -702,6 +705,9 @@ kernel/drivers/net/ethernet/cavium/thunder/nicpf.ko
 kernel/drivers/net/ethernet/cavium/thunder/nicvf.ko
 kernel/drivers/net/ethernet/cavium/thunder/thunder_bgx.ko
 kernel/drivers/net/ethernet/cavium/thunder/thunder_xcv.ko
+kernel/drivers/net/ethernet/chelsio/cxgb3/cxgb3.ko
+kernel/drivers/net/ethernet/chelsio/cxgb4/cxgb4.ko
+kernel/drivers/net/ethernet/chelsio/libcxgb/libcxgb.ko
 kernel/drivers/net/ethernet/dnet.ko
 kernel/drivers/net/ethernet/ethoc.ko
 kernel/drivers/net/ethernet/fealnx.ko
@@ -947,6 +953,7 @@ kernel/drivers/scsi/arcmsr/arcmsr.ko
 kernel/drivers/scsi/bnx2fc/bnx2fc.ko
 kernel/drivers/scsi/bnx2i/bnx2i.ko
 kernel/drivers/scsi/ch.ko
+kernel/drivers/scsi/cxgbi/libcxgbi.ko
 kernel/drivers/scsi/dc395x.ko
 kernel/drivers/scsi/device_handler/scsi_dh_alua.ko
 kernel/drivers/scsi/device_handler/scsi_dh_emc.ko
@@ -1541,6 +1548,7 @@ kernel/net/qrtr/qrtr-mhi.ko
 kernel/net/rds/rds.ko
 kernel/net/rds/rds_rdma.ko
 kernel/net/rds/rds_tcp.ko
+kernel/net/rfkill/rfkill.ko
 kernel/net/sched/act_bpf.ko
 kernel/net/sched/act_connmark.ko
 kernel/net/sched/act_csum.ko

@@ -186,6 +186,11 @@ kernel/drivers/edac/skx_edac.ko
 kernel/drivers/edac/x38_edac.ko
 kernel/drivers/firmware/edd.ko
 kernel/drivers/firmware/qemu_fw_cfg.ko
+kernel/drivers/gpu/drm/drm_kms_helper.ko
+kernel/drivers/gpu/drm/drm.ko
+kernel/drivers/gpu/drm/drm_ttm_helper.ko
+kernel/drivers/gpu/drm/drm_vram_helper.ko
+kernel/drivers/gpu/drm/ttm/ttm.ko
 kernel/drivers/hv/hv_balloon.ko
 kernel/drivers/hv/hv_utils.ko
 kernel/drivers/hv/hv_vmbus.ko
@@ -427,6 +432,9 @@ kernel/drivers/net/ethernet/broadcom/bnx2x/bnx2x.ko
 kernel/drivers/net/ethernet/broadcom/bnxt/bnxt_en.ko
 kernel/drivers/net/ethernet/broadcom/cnic.ko
 kernel/drivers/net/ethernet/brocade/bna/bna.ko
+kernel/drivers/net/ethernet/chelsio/cxgb3/cxgb3.ko
+kernel/drivers/net/ethernet/chelsio/cxgb4/cxgb4.ko
+kernel/drivers/net/ethernet/chelsio/libcxgb/libcxgb.ko
 kernel/drivers/net/ethernet/intel/e1000/e1000.ko
 kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko
 kernel/drivers/net/ethernet/intel/e100.ko
@@ -511,6 +519,8 @@ kernel/drivers/net/team/team_mode_loadbalance.ko
 kernel/drivers/net/team/team_mode_random.ko
 kernel/drivers/net/team/team_mode_roundrobin.ko
 kernel/drivers/net/tun.ko
+kernel/drivers/net/usb/cdc_ether.ko.xz
+kernel/drivers/net/usb/usbnet.ko.xz
 kernel/drivers/net/veth.ko
 kernel/drivers/net/virtio_net.ko
 kernel/drivers/net/vmxnet3/vmxnet3.ko
@@ -546,6 +556,7 @@ kernel/drivers/pci/controller/pci-hyperv-intf.ko
 kernel/drivers/pci/controller/pci-hyperv.ko
 kernel/drivers/pci/controller/vmd.ko
 kernel/drivers/pci/pci-pf-stub.ko
+kernel/drivers/platform/x86/intel/speed_select_if/isst_if_common.ko
 kernel/drivers/powercap/intel_rapl_common.ko
 kernel/drivers/powercap/intel_rapl_msr.ko
 kernel/drivers/ptp/ptp_kvm.ko
@@ -588,6 +599,7 @@ kernel/drivers/scsi/bfa/bfa.ko
 kernel/drivers/scsi/bnx2fc/bnx2fc.ko
 kernel/drivers/scsi/bnx2i/bnx2i.ko
 kernel/drivers/scsi/ch.ko
+kernel/drivers/scsi/cxgbi/libcxgbi.ko
 kernel/drivers/scsi/fcoe/fcoe.ko
 kernel/drivers/scsi/fcoe/libfcoe.ko
 kernel/drivers/scsi/hv_storvsc.ko
@@ -620,6 +632,7 @@ kernel/drivers/scsi/sr_mod.ko
 kernel/drivers/scsi/st.ko
 kernel/drivers/scsi/virtio_scsi.ko
 kernel/drivers/scsi/xen-scsifront.ko
+kernel/drivers/target/iscsi/iscsi_target_mod.ko
 kernel/drivers/target/target_core_mod.ko
 kernel/drivers/tee/amdtee/amdtee.ko
 kernel/drivers/tee/tee.ko
@@ -1101,6 +1114,7 @@ kernel/net/qrtr/qrtr.ko
 kernel/net/rds/rds.ko
 kernel/net/rds/rds_rdma.ko
 kernel/net/rds/rds_tcp.ko
+kernel/net/rfkill/rfkill.ko
 kernel/net/sched/act_bpf.ko
 kernel/net/sched/act_connmark.ko
 kernel/net/sched/act_csum.ko
