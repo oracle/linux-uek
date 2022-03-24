@@ -11,13 +11,28 @@ modlist=$2
 cat $modlist | while read mod
 do
         grep -q -e "$mod" $corelist
-        if [ $? -eq 0 ]
+        if [ $? -ne 0 ]
         then
-		# .ko is present in -core list. Remove it in -modules list.
-                grep -v -e "$mod" $modlist > ${modlist}.tmp
-                mv ${modlist}.tmp $modlist
-        else
-		# Remove the .ko files.  It will be restored later.
+		# Remove the .ko file.  It will be restored later.
                 rm -f "$mod"
+
+		# Add the .ko to -modules rpm list.
+		echo "$mod" >> ${modlist}.tmp
         fi
 done
+
+# Verify all the modules are added either in core or in modules rpm.
+# If the count don't match, fail the build.
+ALL=$(wc -l $modlist | awk '{print $1}')
+CORE=$(wc -l $corelist | awk '{print $1}')
+MOD=$(wc -l ${modlist}.tmp | awk '{print $1}')
+SUM=$((CORE + MOD))
+
+if [[ $ALL -ne $SUM ]]
+then
+	echo "Not all modules are included in core and modules list"
+	exit 1
+fi
+
+mv ${modlist}.tmp ${modlist}
+exit 0

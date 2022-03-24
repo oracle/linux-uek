@@ -1324,6 +1324,10 @@ BuildKernel() {
 
     cp $RPM_SOURCE_DIR/filter-modules.sh .
     cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
+
+    # Append full path to the beginning of each line.
+    sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
+
     ./filter-modules.sh core.list modules.list
     rm filter-modules.sh
 
@@ -1342,9 +1346,6 @@ BuildKernel() {
     # Go back and find all of the various directories in the tree.  We use this
     # for the dir lists in kernel-uek-core
     find lib/modules/$KernelVer/kernel -mindepth 1 -type d | sort -n > module-dirs.list
-
-    # Append full path to the beginning of each line.
-    sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
 
     # Cleanup
     rm System.map
