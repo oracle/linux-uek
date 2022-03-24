@@ -2,3 +2,4 @@
 
 obj-y					+= mub.o
 obj-$(CONFIG_MARVELL_UB_GEN_DRIVER)	+= mub_gen.o
+obj-$(CONFIG_MARVELL_AVS_RESET)		+= avs_reset.o

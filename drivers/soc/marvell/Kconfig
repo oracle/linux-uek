@@ -310,16 +310,4 @@ config MARVELL_CN10K_EINJ
           called cn10k-einj.
           Unless testing, say N here.
 
-config MARVELL_AVS_RESET
-	bool "Marvell AVS bus reset support"
-	depends on ARM64
-	default n
-	help
-	  Enable support for AVS bus reset control. This control allows
-	  to stop AVS bus operation before reset. This ensures proper
-	  bus operation after SoC reset for all devices.
-	  The driver works only with OcteonTX2 platforms. CN10K platforms are
-	  not supported.
-	  If unsure, say N here.
-
 endmenu

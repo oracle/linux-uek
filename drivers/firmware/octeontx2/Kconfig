@@ -26,4 +26,15 @@ config MARVELL_UB_GEN_DRIVER
 	  By default the drvier handles CN9X and CN10X platforms.
 	  If unsure, say Y here.
 
+config MARVELL_AVS_RESET
+	tristate "AVS bus reset support"
+	default n
+	depends on MARVELL_UB && HAVE_ARM_SMCCC
+	help
+	  This module enable control over AVS bus reset from Linux userspace.
+	  Userspace process can signalize upcoming platform warm boot to AVS
+	  devices. Operation allows for clean shutdown for the AVS devices.
+	  The module supports only CN9X platforms.
+	  If unsure, say N here.
+
 endif # MARVELL_UB
