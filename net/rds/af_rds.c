@@ -1442,16 +1442,15 @@ static int __init rds_init(void)
 	ret = rds_stats_init();
 	if (ret)
 		goto out_sysctl;
-	ret = proto_register(&rds_proto, 1);
+	ret = rds_cong_monitor_init();
 	if (ret)
 		goto out_stats;
+	ret = proto_register(&rds_proto, 1);
+	if (ret)
+		goto out_cong;
 	ret = sock_register(&rds_family_ops);
 	if (ret)
 		goto out_proto;
-
-	ret = rds_cong_monitor_init();
-	if (ret)
-		goto out_sock;
 
 	rds_info_register_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_register_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
@@ -1464,10 +1463,10 @@ static int __init rds_init(void)
 
 	goto out;
 
-out_sock:
-	sock_unregister(rds_family_ops.family);
 out_proto:
 	proto_unregister(&rds_proto);
+out_cong:
+	rds_cong_exit();
 out_stats:
 	rds_stats_exit();
 out_sysctl:
@@ -1476,7 +1475,6 @@ out_threads:
 	rds_threads_exit();
 out_conn:
 	rds_conn_exit();
-	rds_cong_exit();
 	rds_page_exit();
 out_slab:
 	kmem_cache_destroy(rds_rs_buf_info_slab);
