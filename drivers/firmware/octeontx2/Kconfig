@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Marvell Utility Bus for firmware
+#
+
+menuconfig MARVELL_UB
+	bool "Marvell Utility Bus"
+	default n
+	depends on ARM64 && SYSFS
+	help
+	  Marvell Utility Bus provides set of drivers allowing communication
+	  with various services provided by firmware for OcteonTX2
+	  based platforms.
+	  These drivers are useful only for Marvell CN9X and CN10X SoCs.
+	  If unsure, say N here.
+
+if MARVELL_UB
+
+config MARVELL_UB_GEN_DRIVER
+	tristate "Generic driver for OcteonTX2 platforms"
+	default y
+	depends on MARVELL_UB && HAVE_ARM_SMCCC
+	help
+	  The generic driver provides a generic implementation of
+	  platform detection and firmware services.
+	  By default the drvier handles CN9X and CN10X platforms.
+	  If unsure, say Y here.
+
+endif # MARVELL_UB
