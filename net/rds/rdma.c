@@ -566,7 +566,9 @@ static int rds_rdma_pages(struct rds_rdma_args *args)
 
 int rds_rdma_extra_size(struct rds_rdma_args *args)
 {
-	return rds_rdma_pages(args) * sizeof(struct scatterlist);
+	int pages = rds_rdma_pages(args);
+	
+	return (pages < 0) ? pages : pages * sizeof(struct scatterlist);
 }
 
 /*
