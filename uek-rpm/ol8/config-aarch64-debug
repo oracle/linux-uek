@@ -2094,7 +2094,7 @@ CONFIG_PCIE_KIRIN=y
 # end of PCI switch controller drivers
 
 CONFIG_CXL_BUS=y
-# CONFIG_CXL_MEM is not set
+CONFIG_CXL_MEM=m
 CONFIG_CXL_ACPI=y
 CONFIG_CXL_PMEM=m
 # CONFIG_PCCARD is not set
