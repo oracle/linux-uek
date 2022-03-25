@@ -1060,9 +1060,8 @@ static void asm_finish_io(struct asm_request *r)
 
 
 static void asm_end_ioc(struct asm_request *r, unsigned int bytes_done,
-			int status)
+			int error)
 {
-	int error = blk_status_to_errno(status);
 	BUG_ON(!r);
 	BUG_ON(!(r->r_status & ASM_SUBMITTED));
 
@@ -1127,7 +1126,7 @@ static void asm_end_bio_io(struct bio *bio)
 	if (atomic_dec_and_test(&r->r_bio_count)) {
 		asm_end_ioc(r, r->r_count - (r->r_bio ?
 					     r->r_bio->bi_iter.bi_size : 0),
-			    bio->bi_status);
+			    blk_status_to_errno(bio->bi_status));
 	}
 }  /* asm_end_bio_io() */
 
