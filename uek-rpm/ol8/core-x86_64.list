@@ -864,7 +864,6 @@ kernel/net/ipv4/esp4.ko
 kernel/net/ipv4/esp4_offload.ko
 kernel/net/ipv4/fou.ko
 kernel/net/ipv4/gre.ko
-kernel/net/ipv4/inet_diag.ko
 kernel/net/ipv4/ipcomp.ko
 kernel/net/ipv4/ip_gre.ko
 kernel/net/ipv4/ipip.ko
@@ -896,12 +895,9 @@ kernel/net/ipv4/netfilter/nft_dup_ipv4.ko
 kernel/net/ipv4/netfilter/nft_fib_ipv4.ko
 kernel/net/ipv4/netfilter/nf_tproxy_ipv4.ko
 kernel/net/ipv4/netfilter/nft_reject_ipv4.ko
-kernel/net/ipv4/raw_diag.ko
 kernel/net/ipv4/tcp_dctcp.ko
-kernel/net/ipv4/tcp_diag.ko
 kernel/net/ipv4/tcp_nv.ko
 kernel/net/ipv4/tunnel4.ko
-kernel/net/ipv4/udp_diag.ko
 kernel/net/ipv4/udp_tunnel.ko
 kernel/net/ipv4/xfrm4_tunnel.ko
 kernel/net/ipv6/ah6.ko
@@ -1094,13 +1090,11 @@ kernel/net/netfilter/xt_time.ko
 kernel/net/netfilter/xt_TPROXY.ko
 kernel/net/netfilter/xt_TRACE.ko
 kernel/net/netfilter/xt_u32.ko
-kernel/net/netlink/netlink_diag.ko
 kernel/net/nsh/nsh.ko
 kernel/net/openvswitch/openvswitch.ko
 kernel/net/openvswitch/vport-geneve.ko
 kernel/net/openvswitch/vport-gre.ko
 kernel/net/openvswitch/vport-vxlan.ko
-kernel/net/packet/af_packet_diag.ko
 kernel/net/psample/psample.ko
 kernel/net/qrtr/ns.ko
 kernel/net/qrtr/qrtr.ko
@@ -1157,12 +1151,10 @@ kernel/net/sunrpc/sunrpc.ko
 kernel/net/tipc/diag.ko
 kernel/net/tipc/tipc.ko
 kernel/net/tls/tls.ko
-kernel/net/unix/unix_diag.ko
 kernel/net/vmw_vsock/hv_sock.ko
 kernel/net/vmw_vsock/vmw_vsock_virtio_transport_common.ko
 kernel/net/vmw_vsock/vmw_vsock_virtio_transport.ko
 kernel/net/vmw_vsock/vmw_vsock_vmci_transport.ko
-kernel/net/vmw_vsock/vsock_diag.ko
 kernel/net/vmw_vsock/vsock.ko
 kernel/net/vmw_vsock/vsock_loopback.ko
 kernel/net/xfrm/xfrm_interface.ko
