@@ -189,18 +189,6 @@ config OCTEONTX_SERDES
 	  capture eye, use PRBS, configure serdes in loopback mode, and
 	  read/write TX tuning parameters.
 
-config MARVELL_CN10K_MAC_MGMT
-	tristate "Marvell CN10K MAC management support"
-	depends on ARM64
-	depends on DEBUG_FS
-	help
-	  Provides debugfs entry which allows to set MAC address value
-	  for ports presented in the system from userspace. The module creates
-	  special file /sys/kernel/debug/marvell_mac_mngt/set_mac.
-	  File has write-only type of interface, read from file provides usage
-	  for the functionality.
-	  Driver is supported only for CN10K platforms.
-
 config MARVELL_CN10K_RPRAM
 	tristate "Octeontx RPRAM debugfs interface"
 	depends on HAVE_ARM_SMCCC

@@ -34,7 +34,16 @@ config MARVELL_AVS_RESET
 	  This module enable control over AVS bus reset from Linux userspace.
 	  Userspace process can signalize upcoming platform warm boot to AVS
 	  devices. Operation allows for clean shutdown for the AVS devices.
-	  The module supports only CN9X platforms.
+	  If unsure, say N here.
+
+config MARVELL_CN10K_MAC_MGMT
+	tristate "CN10K MAC management interface"
+	default n
+	depends on MARVELL_UB && HAVE_ARM_SMCCC
+	help
+	  The module provides an interface to change MAC addresses assigned
+	  to the network devices.
+	  Driver is supported only for CN10K platform.
 	  If unsure, say N here.
 
 config MARVELL_SFP_INFO
