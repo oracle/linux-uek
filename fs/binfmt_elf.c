@@ -874,7 +874,7 @@ static int check_preserved_mem_ok(struct linux_binprm *bprm, const char *data, c
 		remain = datasz - off;
 
 		if (remain < sizeof(*nhdr))
-			return -ENOEXEC;
+			break;
 
 		nhdr = (struct elf_note *)(data + off);
 		off += sizeof(*nhdr);
