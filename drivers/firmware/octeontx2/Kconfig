@@ -37,4 +37,14 @@ config MARVELL_AVS_RESET
 	  The module supports only CN9X platforms.
 	  If unsure, say N here.
 
+config MARVELL_SFP_INFO
+	bool "Marvell SFP info sysfs interface"
+	depends on MARVELL_UB && HAVE_ARM_SMCCC
+	default n
+	help
+	  Enable support for sysfs entries to dump SFP module information
+	  in similar way as the 'ethtool -m <etxX>' command.
+	  Currently, works only with cn10k platforms.
+	  If unsure, say N here.
+
 endif # MARVELL_UB
