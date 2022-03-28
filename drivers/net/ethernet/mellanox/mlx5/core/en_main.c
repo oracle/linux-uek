@@ -96,9 +96,9 @@ static bool mlx5e_hw_gro_supported(struct mlx5_core_dev *mdev)
 	return true;
 }
 
-static bool expose_pf_phys_port_name = false;
+static bool expose_pf_phys_port_name = true;
 module_param(expose_pf_phys_port_name, bool, 0444);
-MODULE_PARM_DESC(expose_pf_phys_port_name, "0 - be backward compatible (default), 1 - bahave like the upstream");
+MODULE_PARM_DESC(expose_pf_phys_port_name, "1 - expose phys_port_name suffix on PF netdev (default), 0 - backward compatible naming with previous UEK release");
 
 bool mlx5e_check_fragmented_striding_rq_cap(struct mlx5_core_dev *mdev, u8 page_shift,
 					    enum mlx5e_mpwrq_umr_mode umr_mode)
