@@ -2,14 +2,13 @@
 /*
  * Marvell Message Handling Unit driver
  *
- * Copyright (C) 2019-2021 Marvell International Ltd.
+ * Copyright (C) 2019-2022 Marvell International Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  */
-
 
 #include <linux/pci.h>
 #include <linux/device.h>
@@ -90,7 +89,6 @@ struct mvl_mhu {
 	void __iomem *payload; /* Shared mem */
 	unsigned int irq;
 	const char *name;
-	struct mutex link_mutex;
 
 	/* Mailbox controller */
 	struct mbox_controller mbox;
@@ -199,10 +197,7 @@ static bool mvl_mhu_last_tx_done(struct mbox_chan *chan)
 	struct mvl_mhu *mhu = chan->con_priv;
 	u64 val;
 
-	mutex_lock(&mhu->link_mutex);
 	val = readq_relaxed(mhu->base + SCP_TO_AP0_MBOX_RINT);
-	mutex_unlock(&mhu->link_mutex);
-
 	dev_dbg(mhu->dev, "%s\n", __func__);
 
 	return (val == 0);
@@ -212,25 +207,13 @@ static int mvl_mhu_send_data(struct mbox_chan *chan, void *data)
 {
 	struct mvl_mhu *mhu = chan->con_priv;
 
-	mutex_lock(&mhu->link_mutex);
 	writeq_relaxed(DONT_CARE_DATA, mhu->base + AP0_TO_SCP_MBOX);
-	mutex_unlock(&mhu->link_mutex);
-
-	return 0;
-}
-
-static int mvl_mhu_startup(struct mbox_chan *chan)
-{
-	struct mvl_mhu *mhu = chan->con_priv;
-
-	dev_dbg(mhu->dev, "Channel %ld started\n", MHU_CHANNEL_INDEX(mhu, chan));
 
 	return 0;
 }
 
 static const struct mbox_chan_ops mvl_mhu_ops = {
 	.send_data = mvl_mhu_send_data,
-	.startup = mvl_mhu_startup,
 	.last_tx_done = mvl_mhu_last_tx_done,
 };
 
@@ -285,7 +268,6 @@ static int mvl_mhu_init_link(struct mvl_mhu *mhu)
 	writeq_relaxed(1ul, mhu->base + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
 
 	mhu->irq = irq;
-	mutex_init(&mhu->link_mutex);
 	dev_dbg(mhu->dev, "MHU @ 0x%llx [%llx], irq=%d\n", res.start, size, irq);
 
 	return 0;
