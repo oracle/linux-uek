@@ -217,6 +217,9 @@
 	bus_register
 	bus_unregister
 	call_netdevice_notifiers
+        call_usermodehelper
+        call_usermodehelper_exec
+        call_usermodehelper_setup
 	cancel_delayed_work
 	cancel_delayed_work_sync
 	cancel_work_sync
