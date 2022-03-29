@@ -18,10 +18,22 @@
 #include <linux/uaccess.h>
 #include <linux/pci.h>
 #include <linux/stddef.h>
+#include <linux/debugfs.h>
+#include <linux/arm-smccc.h>
 
 #include "rvu_struct.h"
 #include "rvu.h"
 #include "mbox.h"
+
+#define OCTEONTX_ACCESS_REG_SMCID 0xc2000fff
+
+#define READ 0
+#define WRITE 1
+
+static bool size_32 = true;
+static u64 reg_addr;
+static int filevalue;
+struct dentry *dirret;
 
 #define DEVICE_NAME			"hw_access"
 #define CLASS_NAME			"hw_access_class"
@@ -450,10 +462,72 @@ static int hw_access_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+static ssize_t reg_data_read(struct file *fp, char __user *user_buffer,
+			     size_t count, loff_t *position)
+{
+	struct arm_smccc_res smc_resp;
+	u8 buf[100];
+	unsigned int len;
+
+	if (!reg_addr) {
+		pr_err("Secure Reg Read failure : Invalid Reg_Addr\n");
+		return -EFAULT;
+	}
+
+	arm_smccc_smc(OCTEONTX_ACCESS_REG_SMCID, 0,
+		      reg_addr, READ, size_32, 0, 0, 0, &smc_resp);
+	if (smc_resp.a0 != SMCCC_RET_SUCCESS)
+		pr_err("Secure Reg Read failure\n");
+
+	if (size_32)
+		len = scnprintf(buf, sizeof(buf), "0x%llx:0x%x\n", reg_addr,
+				(u32)smc_resp.a1);
+	else
+		len = scnprintf(buf, sizeof(buf), "0x%llx:0x%llx\n", reg_addr,
+				(u64)smc_resp.a1);
+
+	return simple_read_from_buffer(user_buffer, count, position, buf, len);
+}
+
+static ssize_t reg_data_write(struct file *fp, const char __user *user_buffer,
+			      size_t count, loff_t *position)
+{
+	int ret;
+	struct arm_smccc_res smc_resp;
+	u64 reg_data;
+
+	if (!reg_addr) {
+		pr_err("Secure Reg Write failure : Invalid Reg_Addr\n");
+		return -EFAULT;
+	}
+
+	if (size_32) {
+		ret = kstrtou32_from_user(user_buffer, count, 0,
+					  (void *)&reg_data);
+		if (ret)
+			return ret;
+	} else {
+		ret = kstrtou64_from_user(user_buffer, count, 0,
+					  &reg_data);
+		if (ret)
+			return ret;
+	}
+	arm_smccc_smc(OCTEONTX_ACCESS_REG_SMCID, reg_data,
+		      reg_addr, WRITE, size_32, 0, 0, 0, &smc_resp);
+	if (smc_resp.a0 != SMCCC_RET_SUCCESS)
+		pr_err("Secure Reg Write failure\n");
+	return count;
+}
+
 static const struct file_operations mmap_fops = {
 	.open = hw_access_open,
 	.unlocked_ioctl = hw_access_ioctl,
 	.release = hw_access_release,
+};
+
+static const struct file_operations fops_reg_data = {
+	.read = reg_data_read,
+	.write = reg_data_write,
 };
 
 static int __init hw_access_module_init(void)
@@ -482,6 +556,15 @@ static int __init hw_access_module_init(void)
 		return PTR_ERR(hw_reg_device);
 	}
 
+	/* create a directory sec_access in debufs */
+	dirret = debugfs_create_dir("sec_access", NULL);
+	/* create file to read/write 32/64 bit data from/to reg_addr */
+	debugfs_create_file("reg_data", 0644, dirret, &filevalue,
+			    &fops_reg_data);
+	/* create file for reg_addr from where 32/64 bit data is read/written */
+	debugfs_create_x64("reg_addr", 0644, dirret, &reg_addr);
+	/* create file for choosing between 32 & 64 bit data */
+	debugfs_create_bool("size_32", 0644, dirret, &size_32);
 	return 0;
 }
 
@@ -490,6 +573,7 @@ static void __exit hw_access_module_exit(void)
 	device_destroy(hw_reg_class, MKDEV(major_no, 0));
 	class_destroy(hw_reg_class);
 	unregister_chrdev(major_no, DEVICE_NAME);
+	debugfs_remove_recursive(dirret);
 }
 
 module_init(hw_access_module_init);
