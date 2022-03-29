@@ -697,6 +697,7 @@
 0x4d9b652b	rb_erase	vmlinux	EXPORT_SYMBOL
 0xece784c2	rb_first	vmlinux	EXPORT_SYMBOL
 0xa5526619	rb_insert_color	vmlinux	EXPORT_SYMBOL
+0xca9360b5	rb_next	vmlinux	EXPORT_SYMBOL
 0x7fe32873	rb_replace_node	vmlinux	EXPORT_SYMBOL
 0xc96adc50	read_cache_page	vmlinux	EXPORT_SYMBOL
 0xfb6af58d	recalc_sigpending	vmlinux	EXPORT_SYMBOL

@@ -263,9 +263,9 @@
 	devm_kmalloc
 	devmap_managed_key
 	dget_parent
-	dma_ops
 	dm_bufio_get_device_size
 	dm_get_device
+	dma_ops
 	do_exit
 	do_gettimeofday
 	done_path_create
@@ -480,10 +480,10 @@
 	input_register_device
 	input_set_abs_params
 	input_unregister_device
+	int_to_scsilun
 	intel_scu_ipc_ioread32
 	intel_scu_ipc_ioread8
 	intel_scu_ipc_iowrite32
-	int_to_scsilun
 	invalidate_bdev
 	invalidate_inode_buffers
 	invalidate_mapping_pages
@@ -492,8 +492,8 @@
 	ioctl_by_bdev
 	iomem_resource
 	ioread32
-	ioread32be
 	ioread32_rep
+	ioread32be
 	ioread8
 	ioread8_rep
 	ioremap_nocache
@@ -503,8 +503,8 @@
 	iov_iter_get_pages
 	iov_iter_init
 	iowrite32
-	iowrite32be
 	iowrite32_rep
+	iowrite32be
 	iput
 	irq_cpu_rmap_add
 	irq_set_affinity_hint
@@ -697,6 +697,7 @@
 	rb_erase
 	rb_first
 	rb_insert_color
+	rb_next
 	rb_replace_node
 	read_cache_page
 	recalc_sigpending
@@ -740,8 +741,8 @@
 	sas_port_free
 	sas_release_transport
 	sas_rphy_add
-	sbc_get_device_type
 	sb_set_blocksize
+	sbc_get_device_type
 	sched_setscheduler
 	schedule
 	schedule_hrtimeout_range
