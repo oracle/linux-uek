@@ -33,11 +33,22 @@ struct sfp_eeprom_s {
 	u64 reserved;
 };
 
+enum port_type {
+	PORTM,
+	ETH_LMAC
+};
+
 static struct sfp_info_data {
 	u32 portm;
+	u16 eth;
+	u16 lmac;
+	enum port_type ptype;
+	spinlock_t lock;
 	void __iomem *fwdata_base;
 	struct mub_device *mdev;
 } sfp_info_data;
+
+#define eth_lmac2port(_eth, _lmac) ((_eth << 16) | _lmac)
 
 static int dump_eeprom_data(const uint8_t *eeprom_data,
 			    const size_t eeprom_size,
@@ -93,57 +104,90 @@ static int dump_eeprom_data(const uint8_t *eeprom_data,
 
 static ssize_t eeprom_show(struct mub_device *mdev, char *buf)
 {
-	int ret;
-	u32 portm;
+	int cnt;
+	u32 port;
+	int ptype;
 	struct sfp_eeprom_s *sfp_eeprom;
 	struct arm_smccc_res res;
-	size_t offset, cnt;
+	size_t offset;
 
 	struct sfp_info_data *data = mub_get_data(mdev);
 
-	portm = data->portm;
-	cnt = scnprintf(buf, PAGE_SIZE, "\nSFP eeprom dump [PORTM%d]:\n\n", portm);
+	spin_lock(&data->lock);
+	ptype = data->ptype;
+	port = ptype == PORTM ?
+		data->portm : eth_lmac2port(data->eth, data->lmac);
+	spin_unlock(&data->lock);
 
-	arm_smccc_smc(PLAT_OCTEONTX_GET_SFP_INFO_OFFSET, portm,
-		0, 0, 0, 0, 0, 0, &res);
+	arm_smccc_smc(PLAT_OCTEONTX_GET_SFP_INFO_OFFSET, port, ptype,
+		0, 0, 0, 0, 0, &res);
+
+	if (res.a0 == -2)
+		return scnprintf(buf, PAGE_SIZE, "non-ethernet port requested\n");
 
 	if (res.a0 != SMCCC_RET_SUCCESS)
-		return cnt;
+		return 0;
 
 	offset = res.a1;
 	sfp_eeprom = data->fwdata_base + offset;
 
-	ret = dump_eeprom_data(&sfp_eeprom->buf[0], SFP_EEPROM_SIZE, buf + cnt);
-	return ret + cnt;
+	cnt = dump_eeprom_data(&sfp_eeprom->buf[0], SFP_EEPROM_SIZE, buf);
+	return cnt;
 }
 MUB_ATTR_RO(eeprom, eeprom_show);
 
-static ssize_t portm_store(struct mub_device *mdev,
+static ssize_t port_store(struct mub_device *mdev,
 			   const char *buf, size_t count)
 {
-	int ret;
-	u32 val;
+	u32 val1, val2;
+	int cnt, ptype;
 	struct sfp_info_data *data = mub_get_data(mdev);
 
-	ret = kstrtou32(buf, 10, &val);
-	if (ret)
-		return ret;
+	cnt = sscanf(buf, "%u %u", &val1, &val2);
 
-	data->portm = val;
+	if (cnt == 2)
+		ptype = ETH_LMAC;
+	else if (cnt == 1)
+		ptype = PORTM;
+	else
+		return -EINVAL;
+
+	spin_lock(&data->lock);
+	if (ptype == PORTM) {
+		data->portm = val1;
+	} else {
+		data->eth = val1;
+		data->lmac = val2;
+	}
+	data->ptype = ptype;
+	spin_unlock(&data->lock);
+
 	return count;
 }
 
-static ssize_t portm_show(struct mub_device *mdev, char *buf)
+static ssize_t port_show(struct mub_device *mdev, char *buf)
 {
 	struct sfp_info_data *data = mub_get_data(mdev);
+	u32 portm;
+	u16 eth, lmac;
+	int ptype;
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n", data->portm);
+	spin_lock(&data->lock);
+	ptype = data->ptype;
+	portm = data->portm;
+	eth = data->eth;
+	lmac = data->lmac;
+	spin_unlock(&data->lock);
+
+	return ptype == PORTM ?
+		scnprintf(buf, PAGE_SIZE, "%u\n", portm) :
+		scnprintf(buf, PAGE_SIZE, "%u:%u\n", eth, lmac);
 }
-MUB_ATTR_RW(portm, portm_show, portm_store);
+MUB_ATTR_RW(port, port_show, port_store);
 
 static struct attribute *sfp_info_attributes[] = {
 	MUB_TO_ATTR(eeprom),
-	MUB_TO_ATTR(portm),
+	MUB_TO_ATTR(port),
 	NULL
 };
 
@@ -160,8 +204,6 @@ static int __init sfp_info_init(void)
 	struct arm_smccc_res res;
 	struct mub_device *mdev;
 
-	sfp_info_data.portm = 0;
-
 	arm_smccc_smc(PLAT_OCTEONTX_GET_FWDATA_BASE, 0, 0,
 		0, 0, 0, 0, 0, &res);
 
@@ -176,8 +218,14 @@ static int __init sfp_info_init(void)
 	if (!sfp_info_data.fwdata_base)
 		return -ENOMEM;
 
+	sfp_info_data.eth = 0;
+	sfp_info_data.lmac = 0;
+	sfp_info_data.ptype = ETH_LMAC;
+	spin_lock_init(&sfp_info_data.lock);
+
 	mdev = mub_device_register("sfp-info",
-				    MUB_SOC_TYPE_10X,
+				    MUB_SOC_TYPE_10X |
+				    MUB_SOC_TYPE_9X,
 				    sfp_info_groups);
 	if (IS_ERR(mdev)) {
 		iounmap(sfp_info_data.fwdata_base);
