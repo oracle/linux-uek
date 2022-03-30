@@ -1052,6 +1052,10 @@ static int exec_mmap(struct linux_binprm *bprm)
 	local_irq_disable();
 	active_mm = tsk->active_mm;
 	tsk->active_mm = mm;
+	if (old_mm) {
+		mm->driver_pinned_vm = old_mm->driver_pinned_vm;
+		mm->locked_vm = old_mm->locked_vm;
+	}
 	tsk->mm = mm;
 	/*
 	 * This prevents preemption while active_mm is being loaded and
@@ -1332,6 +1336,7 @@ int flush_old_exec(struct linux_binprm * bprm)
 	 * undergoing exec(2).
 	 */
 	do_close_on_exec(current->files);
+	current->mm->locked_vm = current->mm->driver_pinned_vm;
 	return 0;
 
 out:

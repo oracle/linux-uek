@@ -527,7 +527,7 @@ struct mm_struct {
 #endif
 
 	/* Space for future expansion without breaking kABI. */
-	UEK_KABI_RESERVED(1);
+	UEK_KABI_USE(1, unsigned long driver_pinned_vm);
 	UEK_KABI_RESERVED(2);
 	UEK_KABI_RESERVED(3);
 	UEK_KABI_RESERVED(4);
