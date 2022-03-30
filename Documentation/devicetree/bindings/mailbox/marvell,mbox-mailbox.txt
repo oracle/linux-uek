@@ -1,0 +1,76 @@
+Marvell MHU Mailbox driver
+==========================
+
+The Marvell's Message-Handing-Unit is a mailbox controller
+with single channel/link to communicate with system coprocessor.
+The link is hardwired on a platform. It uses simple
+interrupt/shared memory scheme to send and receive the data.
+The interrupt for mailbox may be configured in two ways.
+The LPI interrupt, attached to MSIX vector from SCP PCI device.
+Another option is SPI interrupt, tied to the platform.
+
+Mailbox Device Node:
+====================
+
+Required properties:
+--------------------
+- compatible:		Shall be "marvell,mbox"
+- reg:			Contains the mailbox registers address range
+- #mbox-cells		Shall be 1 - the index of the channel needed
+- interrupts:		Contains the interrupt information corresponding to
+			the link od MHU. It's needed only in SPI configuration.
+- shmem:		Shared memory address range.
+
+Example:
+--------
+
+	mailbox@28,0 {
+		compatible = "marvell,mbox";
+		reg = <0xE000 0 0 0 0>;/*  DEVFN = 0xE0 (1C:0) */
+		#mbox-cells = <1>;
+		shmem = <&scp_to_cpu>;
+	};
+
+        ...
+
+	sram@36,0 {
+		compatible = "cpc-shmem";
+		reg = <0x86D0 0xdd400 0 0x200>;
+
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges = <0 0x0 0x86D0 0xdd400 0x200>;
+
+		scp_to_cpu: scp-shmem@0 {
+			compatible = "cpc-shmem";
+			reg = <0x0 0x0 0x200>;
+		};
+	};
+
+or in case of SPI interrupt configuration,
+
+	mailbox@82c000000000 {
+		compatible = "marvell,mbox";
+		reg = <0x82c0 0x00000000 0x0 0x100000>;
+		#mbox-cells = <1>;
+		interrupt-parent = <&gic0>;
+		interrupts = <0 59 1>;
+		shmem = <&scp_to_cpu>;
+	};
+
+	...
+
+	sram@36,0 {
+		compatible = "cpc-shmem";
+		reg = <0x86D0 0xdd400 0 0x200>;
+
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges = <0 0x0 0x86D0 0xdd400 0x200>;
+
+		scp_to_cpu: scp-shmem@0 {
+			compatible = "cpc-shmem";
+			reg = <0x0 0x0 0x200>;
+		};
+	};
+
