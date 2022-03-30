@@ -2060,6 +2060,7 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 		case VFIO_TYPE1_NESTING_IOMMU:
 		case VFIO_UNMAP_ALL:
 		case VFIO_UPDATE_VADDR:
+		case _VFIO_PIN_ACCOUNT:
 			return 1;
 		case VFIO_DMA_CC_IOMMU:
 			if (!iommu)
