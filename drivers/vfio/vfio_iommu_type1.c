@@ -2847,6 +2847,7 @@ static int vfio_iommu_type1_check_extension(struct vfio_iommu *iommu,
 	case VFIO_TYPE1_NESTING_IOMMU:
 	case VFIO_UNMAP_ALL:
 	case VFIO_UPDATE_VADDR:
+	case _VFIO_PIN_ACCOUNT:
 		return 1;
 	case VFIO_DMA_CC_IOMMU:
 		if (!iommu)

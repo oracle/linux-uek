@@ -52,6 +52,9 @@
 /* Supports the vaddr flag for DMA map and unmap */
 #define VFIO_UPDATE_VADDR		10
 
+/* Correctly accounts for pinned memory after exec.  Oracle specific. */
+#define _VFIO_PIN_ACCOUNT	    10001
+
 /*
  * The IOCTL interface is designed for extensibility by embedding the
  * structure length (argsz) and flags into structures passed between
