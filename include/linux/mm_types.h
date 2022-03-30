@@ -539,7 +539,7 @@ struct mm_struct {
 		struct work_struct async_put_work;
 	} __randomize_layout;
  
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, unsigned long driver_pinned_vm)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
