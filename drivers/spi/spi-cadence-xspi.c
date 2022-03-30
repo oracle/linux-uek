@@ -544,7 +544,7 @@ static void cdns_xspi_sdma_memwrite(struct cdns_xspi_dev *cdns_xspi, enum cdns_x
 			     cdns_xspi->out_buffer, len);
 		break;
 	case CDNS_XSPI_SDMA_SIZE_64B:
-		cdns_iowriteq(cdns_xspi->sdmabase, cdns_xspi->in_buffer, len);
+		cdns_iowriteq(cdns_xspi->sdmabase, cdns_xspi->out_buffer, len);
 		break;
 	}
 }
