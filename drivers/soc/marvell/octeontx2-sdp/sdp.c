@@ -1145,6 +1145,7 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 		 rpvf, numvf, pf_srn);
 
 	mac_mask = MAC_MASK_96XX;
+	valid_ep_pem_mask = VALID_EP_PEMS_MASK_93XX;
 	switch (sdp->pdev->subsystem_device) {
 	case PCI_SUBSYS_DEVID_96XX:
 		valid_ep_pem_mask = VALID_EP_PEMS_MASK_96XX;
@@ -1173,7 +1174,7 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 		break;
 	default:
 		dev_err(&sdp->pdev->dev,
-			"Failed to set SDP ring info: unsupported platform\n");
+			"Using default PEM and MAC mask values\n");
 		break;
 	}
 	sdp->valid_ep_pem_mask = valid_ep_pem_mask;
