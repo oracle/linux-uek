@@ -249,7 +249,7 @@ struct dentry *mrvl_spi_debug_root;
 
 #define GPIO_OFFSET 436
 
-#define CHANGE_GPIO_SMC_ID 0xc2000b12
+#define CHANGE_GPIO_SMC_ID 0xc2000b14
 #define SPI_GPIO(x) (x+GPIO_OFFSET)
 #endif
 
