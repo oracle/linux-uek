@@ -24,13 +24,9 @@
 #define DRV_NAME	"bed-bert"
 
 #define initerrmsg(fmt, ...) pr_err(DRV_NAME ":" fmt, __VA_ARGS__)
-#ifdef CONFIG_OCTEONTX2_SDEI_GHES_DEBUG
-#  define initdbgmsg(fmt, ...) pr_info(DRV_NAME ":" fmt, __VA_ARGS__)
-#  define dbgmsg(dev, ...) dev_info((dev), __VA_ARGS__)
-#else
-#  define initdbgmsg(fmt, ...) (void)(fmt)
-#  define dbgmsg(dev, ...) (void)(dev)
-#endif // CONFIG_OCTEONTX2_SDEI_GHES_DEBUG
+#define initdbgmsg(fmt, ...) pr_info(DRV_NAME ":" fmt, __VA_ARGS__)
+#define dbgmsg(dev, ...) dev_info((dev), __VA_ARGS__)
+
 
 #define BERT_TBL_OEM_ID	"OTX2    "
 #define BERT_OEM_ID     "MRVL  "

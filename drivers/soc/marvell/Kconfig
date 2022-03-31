@@ -215,32 +215,9 @@ config MARVELL_CPSS
 	help
 	  We want these for the T98
 
-config OCTEONTX2_SDEI_GHES
-	bool "OcteonTX2 Generic Hardware Error Source (GHES) support"
-	select ARM_SDE_INTERFACE
-	select ACPI_APEI
-	select ACPI_APEI_GHES
-	select CRASH_DUMP
-	help
-	  Select this option to enable support for RAS Generic Hardware Error
-	  Source (GHES) reporting.
-	  This will allow RAS errors that are detected by the Marvell to
-	  be reported using kernel logging.
-
-config OCTEONTX2_SDEI_GHES_DEBUG
-	bool "OcteonTX2 Generic Hardware Error Source (GHES) verbose debug msgs"
-	depends on OCTEONTX2_SDEI_GHES
-	default n
-	help
-	  Say Y here if you want the Marvell GHES support to
-	  write verbose debug messages to the system log.  Select this
-	  if you are having a problem with the Marvell GHES support
-	  and want to see more details.
-	  If you are unsure about this, say N here.
-
 config OCTEONTX2_GHES_BERT
 	bool "OcteonTX2 GHES Boot Error Record Table (BERT) support"
-	depends on OCTEONTX2_SDEI_GHES
+	depends on EDAC_OCTEONTX
 	default y
 	help
 	  Select this option to enable reporting of fatal Marvell GHES
@@ -273,7 +250,7 @@ config MARVELL_CN10K_FWLOG
 
 config OCTEONTX2_EINJ
         tristate "OcteonTX2 EDAC ECC Injection"
-        depends on OCTEONTX2_SDEI_GHES
+        depends on EDAC_OCTEONTX
         help
           Provides support for error injection to OcteonTX2
           memory controllers (LMC) and cache blocks.
@@ -286,7 +263,7 @@ config OCTEONTX2_EINJ
 
 config MARVELL_CN10K_EINJ
         tristate "CN10K ECC Injection"
-        depends on OCTEONTX2_SDEI_GHES
+        depends on EDAC_OCTEONTX
         help
           Provides support for error injection to CN10K
           Pseudo-fault Generation processor error,
