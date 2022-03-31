@@ -106,6 +106,49 @@ rsmu_get_dpll_ffo(struct rsmu_cdev *rsmu, void __user *arg)
 }
 
 static int
+rsmu_reg_read(struct rsmu_cdev *rsmu, void __user *arg)
+{
+	struct rsmu_reg_rw data;
+	int err;
+
+	if (copy_from_user(&data, arg, sizeof(data)))
+		return -EFAULT;
+
+	mutex_lock(rsmu->lock);
+	//err = regmap_bulk_read(rsmu->regmap, data.offset, &data.bytes[0], data.byte_count);
+	err = rsmu_read(rsmu->mfd, data.offset, &data.bytes[0], data.byte_count);
+	mutex_unlock(rsmu->lock);
+    if (err)
+		return err;
+
+	if (copy_to_user(arg, &data, sizeof(data)))
+		return -EFAULT;
+
+	return err;
+}
+
+static int
+rsmu_reg_write(struct rsmu_cdev *rsmu, void __user *arg)
+{
+	struct rsmu_reg_rw data;
+	int err;
+
+	if (copy_from_user(&data, arg, sizeof(data)))
+		return -EFAULT;
+
+    mutex_lock(rsmu->lock);
+    //err = regmap_bulk_write(rsmu->regmap, data.offset, &data.bytes[0], data.byte_count);
+    err = rsmu_write(rsmu->mfd, data.offset, &data.bytes[0], data.byte_count);
+	mutex_unlock(rsmu->lock);
+
+	if (copy_to_user(arg, &data, sizeof(data)))
+		return -EFAULT;
+
+	return err;
+}
+
+
+static int
 rsmu_open(struct inode *iptr, struct file *fptr)
 {
 	struct rsmu_cdev *rsmu;
@@ -130,6 +173,8 @@ rsmu_release(struct inode *iptr, struct file *fptr)
 	return 0;
 }
 
+
+
 static long
 rsmu_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 {
@@ -150,8 +195,15 @@ rsmu_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 	case RSMU_GET_FFO:
 		err = rsmu_get_dpll_ffo(rsmu, arg);
 		break;
+	case RSMU_REG_READ:
+		err = rsmu_reg_read(rsmu, arg);
+		break;
+	case RSMU_REG_WRITE:
+		err = rsmu_reg_write(rsmu, arg);
+		break;
 	default:
 		/* Should not get here */
+        pr_err("%lu %u",  RSMU_REG_READ, cmd);
 		dev_err(rsmu->dev, "Undefined RSMU IOCTL");
 		err = -EINVAL;
 		break;

@@ -30,6 +30,14 @@ struct rsmu_get_ffo {
 	__s64 ffo;
 };
 
+/* Get register */
+struct rsmu_reg_rw {
+	__u16 offset;
+	__u8 byte_count;
+	__u8 bytes[256];
+};
+
+
 /*
  * RSMU IOCTL List
  */
@@ -61,4 +69,9 @@ struct rsmu_get_ffo {
  * pointer to struct rsmu_get_ffo that contains dpll ffo in ppqt
  */
 #define RSMU_GET_FFO  _IOR(RSMU_MAGIC, 3, struct rsmu_get_ffo)
+
+
+#define RSMU_REG_READ  _IOR(RSMU_MAGIC, 100, struct rsmu_reg_rw)
+#define RSMU_REG_WRITE _IOR(RSMU_MAGIC, 101, struct rsmu_reg_rw)
+
 #endif /* __UAPI_LINUX_RSMU_CDEV_H */
