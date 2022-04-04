@@ -69,6 +69,9 @@ struct otx2_bphy_cdev_priv {
 	u8				num_rfoe_lmac;
 	u8				tot_rfoe_intf;
 	int				gpint2_irq;
+#define ODP_INTF_CFG_RFOE		BIT(0)
+#define ODP_INTF_CFG_CPRI		BIT(1)
+	u32				flags;
 };
 
 #endif
