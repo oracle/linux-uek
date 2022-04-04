@@ -9,25 +9,6 @@
 
 #include <linux/types.h>
 
-/* PSM register offsets */
-#define PSM_QUEUE_CMD_LO(a)			(0x0 + (a) * 0x10)
-#define PSM_QUEUE_CMD_HI(a)			(0x8 + (a) * 0x10)
-#define PSM_QUEUE_CFG(a)			(0x1000 + (a) * 0x10)
-#define PSM_QUEUE_PTR(a)			(0x2000 + (a) * 0x10)
-#define PSM_QUEUE_SPACE(a)			(0x3000 + (a) * 0x10)
-#define PSM_QUEUE_TIMEOUT_CFG(a)		(0x4000 + (a) * 0x10)
-#define PSM_QUEUE_INFO(a)			(0x5000 + (a) * 0x10)
-#define PSM_QUEUE_ENA_W1S(a)			(0x10000 + (a) * 0x8)
-#define PSM_QUEUE_ENA_W1C(a)			(0x10100 + (a) * 0x8)
-#define PSM_QUEUE_FULL_STS(a)			(0x10200 + (a) * 0x8)
-#define PSM_QUEUE_BUSY_STS(a)			(0x10300 + (a) * 0x8)
-
-/* BPHY PSM GPINT register offsets */
-#define PSM_INT_GP_SUM_W1C(a)			(0x10E0000 + (a) * 0x100)
-#define PSM_INT_GP_SUM_W1S(a)			(0x10E0040 + (a) * 0x100)
-#define PSM_INT_GP_ENA_W1C(a)			(0x10E0080 + (a) * 0x100)
-#define PSM_INT_GP_ENA_W1S(a)			(0x10E00C0 + (a) * 0x100)
-
 /* RFOE MHAB register offsets */
 #define RFOEX_RX_CTL(a)			(0x0818ULL | \
 					 ((unsigned long)(a) << 24))
@@ -291,35 +272,11 @@ enum rfoe_order_info_type_e {
 	TIMESTAMP	= 0x1,
 };
 
-enum rfoe_rx_dir_ctl_pkt_type_e {
-	ROE		= 0x0,
-	CHI		= 0x1,
-	ALT		= 0x2,
-	ECPRI		= 0x4,
-	GENERIC		= 0x8,
-};
-
-enum rfoe_rx_pswt_e {
+enum cnf10k_rfoe_rx_pswt_e {
 	RSVD5		= 0x0,
 	ROE_BCN_TYPE	= 0x1,
 	RSVD6		= 0x2,
 	ECPRI_BCN_TYPE	= 0x3,
-};
-
-enum rfoe_rx_pkt_err_e {
-	RE_NONE		= 0x0,
-	RE_PARTIAL	= 0x1,
-	RE_JABBER	= 0x2,
-	RE_FCS		= 0x7,
-	RE_FCS_RCV	= 0x8,
-	RE_TERMINATE	= 0x9,
-	RE_RX_CTL	= 0xB,
-	RE_SKIP		= 0xC,
-};
-
-enum rfoe_rx_pkt_logger_idx_e {
-	RX_PKT		= 0x0,
-	TX_PKT		= 0x1,
 };
 
 /* RFOE Structures */
@@ -464,10 +421,6 @@ struct rfoe_tx_ptp_tstmp_s {
 	u64 tx_err		: 1;
 	u64 reserved2		: 39;
 	u64 valid		: 1;
-};
-
-struct rfoe_rx_ind_vlanx_fwd {
-	u64 fwd			: 64;
 };
 
 #endif	/* _CNF10K_BPHY_HW_H_ */
