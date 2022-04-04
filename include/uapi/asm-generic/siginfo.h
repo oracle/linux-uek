@@ -4,6 +4,7 @@
 
 #include <linux/compiler.h>
 #include <linux/types.h>
+#include <linux/uek_kabi.h>
 
 typedef union sigval {
 	int sival_int;
@@ -99,6 +100,7 @@ union __sifields {
 			struct {
 				unsigned long _data;
 				__u32 _type;
+				UEK_KABI_EXTEND(__u32 _flags)
 			} _perf;
 		};
 	} _sigfault;
@@ -164,6 +166,7 @@ typedef struct siginfo {
 #define si_pkey		_sifields._sigfault._addr_pkey._pkey
 #define si_perf_data	_sifields._sigfault._perf._data
 #define si_perf_type	_sifields._sigfault._perf._type
+#define si_perf_flags	_sifields._sigfault._perf._flags
 #define si_band		_sifields._sigpoll._band
 #define si_fd		_sifields._sigpoll._fd
 #define si_call_addr	_sifields._sigsys._call_addr
@@ -269,6 +272,11 @@ typedef struct siginfo {
  * There is an additional set of SIGTRAP si_codes used by ptrace
  * that are of the form: ((PTRACE_EVENT_XXX << 8) | SIGTRAP)
  */
+
+/*
+ * Flags for si_perf_flags if SIGTRAP si_code is TRAP_PERF.
+ */
+#define TRAP_PERF_FLAG_ASYNC (1u << 0)
 
 /*
  * SIGCHLD si_codes
