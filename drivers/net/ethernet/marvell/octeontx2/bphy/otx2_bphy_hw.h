@@ -13,25 +13,6 @@
 
 #include <linux/types.h>
 
-/* PSM register offsets */
-#define PSM_QUEUE_CMD_LO(a)		(0x0 + (a) * 0x10)
-#define PSM_QUEUE_CMD_HI(a)		(0x8 + (a) * 0x10)
-#define PSM_QUEUE_CFG(a)		(0x1000 + (a) * 0x10)
-#define PSM_QUEUE_PTR(a)		(0x2000 + (a) * 0x10)
-#define PSM_QUEUE_SPACE(a)		(0x3000 + (a) * 0x10)
-#define PSM_QUEUE_TIMEOUT_CFG(a)	(0x4000 + (a) * 0x10)
-#define PSM_QUEUE_INFO(a)		(0x5000 + (a) * 0x10)
-#define PSM_QUEUE_ENA_W1S(a)		(0x10000 + (a) * 0x8)
-#define PSM_QUEUE_ENA_W1C(a)		(0x10100 + (a) * 0x8)
-#define PSM_QUEUE_FULL_STS(a)		(0x10200 + (a) * 0x8)
-#define PSM_QUEUE_BUSY_STS(a)		(0x10300 + (a) * 0x8)
-
-/* BPHY PSM GPINT register offsets */
-#define PSM_INT_GP_SUM_W1C(a)		(0x10E0000 + (a) * 0x100)
-#define PSM_INT_GP_SUM_W1S(a)		(0x10E0040 + (a) * 0x100)
-#define PSM_INT_GP_ENA_W1C(a)		(0x10E0080 + (a) * 0x100)
-#define PSM_INT_GP_ENA_W1S(a)		(0x10E00C0 + (a) * 0x100)
-
 /* RFOE MHAB register offsets */
 #define RFOEX_RX_CTL(a)				(0x0818ULL | \
 						 ((unsigned long)(a) << 36))
@@ -175,34 +156,9 @@ struct mhbw_jd_dma_cfg_word_1_s {
 	u64 reserved1		: 11;
 };
 
-/* RFOE definitions */
-enum rfoe_rx_dir_ctl_pkt_type_e {
-	ROE		= 0x0,
-	CHI		= 0x1,
-	ALT		= 0x2,
-	ECPRI		= 0x3,
-	GENERIC		= 0x8,
-};
-
 enum rfoe_rx_pswt_e {
 	ROE_TYPE	= 0x0,
 	ECPRI_TYPE	= 0x2,
-};
-
-enum rfoe_rx_pkt_err_e {
-	RE_NONE		= 0x0,
-	RE_PARTIAL	= 0x1,
-	RE_JABBER	= 0x2,
-	RE_FCS		= 0x7,
-	RE_FCS_RCV	= 0x8,
-	RE_TERMINATE	= 0x9,
-	RE_RX_CTL	= 0xB,
-	RE_SKIP		= 0xC,
-};
-
-enum rfoe_rx_pkt_logger_idx_e {
-	RX_PKT		= 0x0,
-	TX_PKT		= 0x1,
 };
 
 struct psm_cmd_addjob_s {
@@ -341,10 +297,6 @@ struct rfoex_abx_slotx_configuration2 {
 	u64 ecpri_id		: 16;
 	u64 ecpri_seq_id	: 16;
 	u64 reserved1		: 8;
-};
-
-struct rfoe_rx_ind_vlanx_fwd {
-	u64 fwd			: 64;
 };
 
 struct mhab_job_desc_cfg {

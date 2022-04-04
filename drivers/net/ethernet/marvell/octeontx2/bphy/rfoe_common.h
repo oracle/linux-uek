@@ -40,6 +40,30 @@ enum state {
 	RFOE_INTF_DOWN,
 };
 
+enum rfoe_rx_dir_ctl_pkt_type_e {
+	ROE		= 0x0,
+	CHI		= 0x1,
+	ALT		= 0x2,
+	ECPRI		= 0x3,
+	GENERIC		= 0x8,
+};
+
+enum rfoe_rx_pkt_err_e {
+	RE_NONE		= 0x0,
+	RE_PARTIAL	= 0x1,
+	RE_JABBER	= 0x2,
+	RE_FCS		= 0x7,
+	RE_FCS_RCV	= 0x8,
+	RE_TERMINATE	= 0x9,
+	RE_RX_CTL	= 0xB,
+	RE_SKIP		= 0xC,
+};
+
+enum rfoe_rx_pkt_logger_idx_e {
+	RX_PKT		= 0x0,
+	TX_PKT		= 0x1,
+};
+
 /* rfoe rx ind register configuration */
 struct otx2_rfoe_rx_ind_cfg {
 	u8			rfoe_num; /* rfoe idx */
@@ -205,6 +229,10 @@ struct ptp_bcn_off_cfg {
 	u8				refcnt;
 	/* protection lock for updating ref */
 	spinlock_t			lock;
+};
+
+struct rfoe_rx_ind_vlanx_fwd {
+	u64 fwd			: 64;
 };
 
 #endif
