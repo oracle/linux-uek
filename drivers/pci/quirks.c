@@ -1044,6 +1044,88 @@ static void quirk_cavium_sriov_rnm_link(struct pci_dev *dev)
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_CAVIUM, 0xa018, quirk_cavium_sriov_rnm_link);
 #endif
 
+#ifdef CONFIG_PCI_IOV
+/*
+ * Cavium OcteonTx needs Multibyte atomic I/O (LDST) for some devices.
+ * LDST needs LMTLINE and LMTCANCEL to be mapped along with devices,
+ * to be usable by software.
+ * Unfortunately devices like PKO and SSO don't adevertize it in their BAR's
+ * This quirks adds LMT region in to PKO and SSOW at VBAR 2.
+ */
+#define LMTLINE_SIZE	0x10000
+static void quirk_octeontx_lmtline(struct pci_dev *dev)
+{
+	struct resource *res = dev->resource + PCI_IOV_RESOURCES + 2;
+	struct pci_bus_region bus_region;
+	u16 devid;
+
+	pci_read_config_word(dev, PCI_DEVICE_ID, &devid);
+	res->name = pci_name(dev);
+	res->flags = IORESOURCE_MEM | IORESOURCE_PCI_FIXED |
+		IORESOURCE_PCI_EA_BEI;
+
+	/*
+	 * Because 83XX doesn't have a Multi node config not
+	 * included node into address.
+	 * If this changes add NODE id of the device into address.
+	 */
+	if (devid == 0xA048)
+		bus_region.start = 0x87F191000000;
+	else
+		bus_region.start = 0x87F101000000;
+
+	bus_region.end = bus_region.start + LMTLINE_SIZE - 1;
+	pcibios_bus_to_resource(dev->bus, res, &bus_region);
+
+	dev_info(&dev->dev, "quirk(LMTLINE): added at VBAR 2\n");
+}
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0XA048, quirk_octeontx_lmtline);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0XA04C, quirk_octeontx_lmtline);
+
+/*
+ * OcteonTx 83XX has SRIOV for PKO, SSO, FPA etc etc
+ * most of them dont have a Mailbox to communicate.
+ * The proposed Resource manager desgin depends on SSO mailbox
+ * for this.
+ *
+ * Problem with these devices is PF is fully loaded,
+ * VF needs to do lot of communication with PF for things like
+ * setup, getting stats, getting link state etc.
+ * The mailbox provided by SSO is 64 bits in each direction, which  is not
+ * sufficient for this. the latencies to do a trivial task is very high.
+ * Solution is to hava a RAM based mailbox, this quirk adds a VF BAR
+ * to SSOW with 64K RAM so that VF and PF can use this to send messages.
+ * the desgin still uses SSO Mailbox for identity and sending
+ * interrupts/notifications when message is pending.
+ *
+ * Ideally the BAR should go to SSO Vf,
+ * because its already full creaing a BAR in SSOW.
+ *
+ * This patch Assumes the Firmware did appropriate changes to
+ * create a hole in RAM at address 0x1400000 with sufficient space.
+ */
+#define SSO_MBOX_BASE	0x1400000
+#define SSO_MBOX_SIZE	0x10000
+static void quirk_octeontx_ssombox(struct pci_dev *dev)
+{
+	struct resource *res = dev->resource + PCI_IOV_RESOURCES + 4;
+	struct pci_bus_region bus_region;
+	u16 devid;
+
+	pci_read_config_word(dev, PCI_DEVICE_ID, &devid);
+	res->name = pci_name(dev);
+	res->flags = IORESOURCE_MEM | IORESOURCE_PCI_FIXED |
+		IORESOURCE_PCI_EA_BEI;
+
+	bus_region.start = SSO_MBOX_BASE;
+	bus_region.end = bus_region.start + SSO_MBOX_SIZE - 1;
+	pcibios_bus_to_resource(dev->bus, res, &bus_region);
+
+	dev_info(&dev->dev, "quirk(SSO MBOX): added at BAR 4\n");
+}
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0XA04C, quirk_octeontx_ssombox);
+#endif
+
 /*
  * Some settings of MMRBC can lead to data corruption so block changes.
  * See AMD 8131 HyperTransport PCI-X Tunnel Revision Guide
@@ -3592,6 +3674,20 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_ATHEROS, 0x003e, quirk_no_bus_reset);
  * accesses to the child may fail.
  */
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa100, quirk_no_bus_reset);
+/*octeontx-83xx has no FLR support.
+ * and Reset of blocks are highly dependent of each other.
+ * so lets disable bus reset and do device reset though octeontx
+ */
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa047, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa0dd, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa048, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa049, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa04a, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa04b, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa04c, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa04d, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa052, quirk_no_bus_reset);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CAVIUM, 0xa053, quirk_no_bus_reset);
 
 /*
  * Some TI KeyStone C667X devices do not support bus/hot reset.  The PCIESS
@@ -3903,6 +3999,102 @@ static int reset_chelsio_generic_dev(struct pci_dev *dev, int probe)
 #define PCI_DEVICE_ID_INTEL_IVB_M_VGA      0x0156
 #define PCI_DEVICE_ID_INTEL_IVB_M2_VGA     0x0166
 
+#define PCI_DEVICE_ID_OCTEONTX_SSO_VF	0xA04B
+#define PCI_DEVICE_ID_OCTEONTX_SSOW_VF	0xA04D
+#define PCI_DEVICE_ID_OCTEONTX_FPA_VF	0xA053
+#define PCI_DEVICE_ID_OCTEONTX_PKI_VF	0xA0DD
+#define PCI_DEVICE_ID_OCTEONTX_PKO_VF	0xA049
+#define PCI_DEVICE_ID_OCTEONTX_TIM_VF	0xA051
+#define PCI_DEVICE_ID_OCTEONTX_CPT_VF	0xA041
+#define PCI_DEVICE_ID_OCTEONTX_DPI_VF	0xA058
+#define PCI_DEVICE_ID_OCTEONTX_ZIP_VF	0xA037
+#define SSO_VF_VHGRPX_PF_MBOXX(x, y)	(0x200ULL | ((x) << 20) | ((y) << 3))
+#define MBOX_TRIGGER_OOB_RESET	0x01 /* OOB reset request */
+#define MBOX_TRIGGER_OOB_RES	0x80 /* OOB response mask */
+#define MBOX_OPERATION_TIMEOUT	1000 /* set timeout 1 second */
+
+enum octtx_coprocessor {
+	OCTTX_SSO,
+	OCTTX_SSOW,
+	OCTTX_FPA,
+	OCTTX_PKI,
+	OCTTX_PKO,
+	OCTTX_TIM,
+	OCTTX_CPT,
+	OCTTX_DPI,
+	OCTTX_ZIP,
+	OCTTX_COPROCESSOR_CNT
+};
+
+atomic64_t octtx_vf_reset[OCTTX_COPROCESSOR_CNT] = ATOMIC64_INIT(0);
+EXPORT_SYMBOL(octtx_vf_reset);
+
+/*
+ * Device-specific reset method for Cavium OcteonTx VF devices.
+ * It will trigger a reset of the OcteonTX domain.
+ */
+static int reset_cavium_octeon_vf(struct pci_dev *pdev, int probe)
+{
+	u64 val;
+	int vf_id;
+	int count = 2000;
+	enum octtx_coprocessor cop;
+
+	switch (pdev->device) {
+	case PCI_DEVICE_ID_OCTEONTX_SSO_VF:
+		cop = OCTTX_SSO;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_SSOW_VF:
+		cop = OCTTX_SSOW;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_FPA_VF:
+		cop = OCTTX_FPA;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_PKI_VF:
+		cop = OCTTX_PKI;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_PKO_VF:
+		cop = OCTTX_PKO;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_TIM_VF:
+		cop = OCTTX_TIM;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_CPT_VF:
+		cop = OCTTX_CPT;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_DPI_VF:
+		cop = OCTTX_DPI;
+		break;
+	case PCI_DEVICE_ID_OCTEONTX_ZIP_VF:
+		cop = OCTTX_ZIP;
+		break;
+	default:
+		return -ENOTTY;
+	}
+
+	if (probe)
+		return 0;
+
+	vf_id = pdev->devfn - 1;
+	pci_dbg(pdev, "setting 0x%p bit %d\n",
+		&octtx_vf_reset[cop], vf_id);
+	atomic64_fetch_or(1ULL << vf_id, &octtx_vf_reset[cop]);
+	/* make sure other party reads it*/
+	mb();
+
+	while (count) {
+		usleep_range(1000, 2000);
+		val = atomic64_read(&octtx_vf_reset[cop]);
+		if ((val & (1ULL << vf_id)) == 0)
+			goto exit;
+		count--;
+	}
+	pci_err(pdev, " %s() reset timeout, vf_id %d, cop %u\n", __func__,
+		vf_id, cop);
+exit:
+	return 0;
+}
+
 /*
  * The Samsung SM961/PM961 controller can sometimes enter a fatal state after
  * FLR where config space reads from the device return -1.  We seem to be
@@ -4081,6 +4273,24 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 		reset_chelsio_generic_dev },
 	{ PCI_VENDOR_ID_HUAWEI, PCI_DEVICE_ID_HINIC_VF,
 		reset_hinic_vf_dev },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_SSO_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_SSOW_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_FPA_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_PKI_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_PKO_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_TIM_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_CPT_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_DPI_VF,
+		reset_cavium_octeon_vf },
+	{ PCI_VENDOR_ID_CAVIUM,	PCI_DEVICE_ID_OCTEONTX_ZIP_VF,
+		reset_cavium_octeon_vf },
 	{ 0 }
 };
 
