@@ -1666,7 +1666,7 @@ fi}\
 #
 %define kernel_variant_postun(o) \
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
-if [ $1 -eq 0 ]\
+if [ $1 -eq 0 ] && [ `uname -i` == "x86_64" ];\
 then\
     /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-core/' /etc/sysconfig/kernel || exit $?\
 fi\

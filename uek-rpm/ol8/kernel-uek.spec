@@ -1670,14 +1670,14 @@ fi\
 if [ `uname -i` == "x86_64" -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ] && [ $1 -eq 1 ];\
 then\
-    /usr/bin/rpm -qa | grep -q -e kernel-uek-5.4 -e kernel-ueknano-5.4\
+    /usr/bin/rpm -qa | grep -q -e "kernel-uek-5.4" -e "kernel-uek4k-5.4" -e "kernel-ueknano-5.4"\
     if [ $? -eq 0 ]\
     then\
         # Change to uek-core only if current default is UEK6\
-        /bin/sed -r -i 's/^DEFAULTKERNEL=(kernel%{?variant}|kernel-ueknano)$/DEFAULTKERNEL=kernel%{?variant}-core/' /etc/sysconfig/kernel || exit $?\
+        /bin/sed -r -i 's/^DEFAULTKERNEL=(kernel-uek|kernel-uek4k|kernel-ueknano)$/DEFAULTKERNEL=kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
     else\
         # No UEK is present. Change the default to installing kernel\
-        /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}-core/' /etc/sysconfig/kernel || exit $?\
+        /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
     fi\
 fi}\
 %{nil}
@@ -1689,9 +1689,9 @@ fi}\
 #
 %define kernel_variant_postun(o) \
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
-if [ $1 -eq 0 ]\
+if [ $1 -eq 0 ] && [ `uname -i` == "x86_64" ];\
 then\
-    /usr/bin/rpm -qa | grep -q -e kernel-uek-5.4 -e kernel-ueknano-5.4\
+    /usr/bin/rpm -qa | grep -q -e "kernel-uek-5.4" -e "kernel-ueknano-5.4"\
     if [ $? -eq 0 ]\
     then\
         # UEK6 or UEK6 nano is present in the system.\
