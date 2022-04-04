@@ -453,6 +453,9 @@ struct rds_ib_device {
 	struct dentry *debugfs_dir;
 
 	struct completion	*rid_dev_rem_complete;
+#ifdef DEBUG
+	struct rds_ib_device	*org_ptr;
+#endif
 };
 
 static inline int ibdev_to_node(struct ib_device *ibdev)

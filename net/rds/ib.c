@@ -538,7 +538,11 @@ static void rds_ib_dev_free(struct work_struct *work)
 
 	if (rds_ibdev->rid_dev_rem_complete)
 		complete(rds_ibdev->rid_dev_rem_complete);
+#ifdef DEBUG
+	kfree(rds_ibdev->org_ptr);
+#else
 	kfree(rds_ibdev);
+#endif
 }
 
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
@@ -960,9 +964,13 @@ static void detect_link_layers(struct ib_device *ibdev)
 void rds_ib_add_one(struct ib_device *device)
 {
 	struct rds_ib_device *rds_ibdev;
+#ifdef DEBUG
+	struct rds_ib_device *org_ibdev;
+#endif
 	struct ib_device_attr *dev_attr;
 	bool has_frwr, has_fmr;
 	char *reason = NULL;
+	size_t excess_space;
 
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
@@ -982,8 +990,28 @@ void rds_ib_add_one(struct ib_device *device)
 		goto free_attr;
 	}
 
-	rds_ibdev = kzalloc_node(sizeof(*rds_ibdev), GFP_KERNEL,
-				 ibdev_to_node(device));
+	/* This struct is required to be 16-byte aligned. kmalloc()
+	 * returns only an 8-byte aligned pointer using debug kernel
+	 * on certain UEK distros. This even if the size is a
+	 * power-of-two, so the trick of aligning up the size to the
+	 * nearest power-of-two doesn't work. Do it the hard way by
+	 * allocating 8 bytes too much and adjust the address.
+	 */
+#ifdef DEBUG
+	excess_space = 8;
+	org_ibdev =
+#else
+	excess_space = 0;
+	rds_ibdev =
+#endif
+		kzalloc_node(sizeof(*rds_ibdev) + excess_space,
+			     GFP_KERNEL, ibdev_to_node(device));
+
+#ifdef DEBUG
+	rds_ibdev = (typeof(rds_ibdev))(((uint64_t)org_ibdev + 0xFULL) & ~0xFULL);
+	rds_ibdev->org_ptr = org_ibdev;
+#endif
+
 	if (!rds_ibdev) {
 		reason = "could not allocate rds_ibdev";
 		goto free_attr;
