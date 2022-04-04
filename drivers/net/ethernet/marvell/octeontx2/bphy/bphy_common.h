@@ -49,6 +49,31 @@ enum port_link_state {
 	LINK_STATE_UP,
 };
 
+/* CPRI definitions */
+struct cpri_pkt_dl_wqe_hdr {
+	u64 lane_id		: 2;
+	u64 reserved1		: 2;
+	u64 mhab_id		: 2;
+	u64 reserved2		: 2;
+	u64 pkt_length		: 11;
+	u64 reserved3		: 45;
+	u64 w1;
+};
+
+struct cpri_pkt_ul_wqe_hdr {
+	u64 lane_id		: 2;
+	u64 reserved1		: 2;
+	u64 mhab_id		: 2;
+	u64 reserved2		: 2;
+	u64 pkt_length		: 11;
+	u64 reserved3		: 5;
+	u64 fcserr		: 1;
+	u64 rsp_ferr		: 1;
+	u64 rsp_nferr		: 1;
+	u64 reserved4		: 37;
+	u64 w1;
+};
+
 /* iova to kernel virtual addr */
 static inline void *otx2_iova_to_virt(struct iommu_domain *domain, u64 iova)
 {

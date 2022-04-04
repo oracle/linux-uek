@@ -20,6 +20,7 @@
 #include "otx2_cpri.h"
 #include "otx2_bphy_debugfs.h"
 #include "cnf10k_rfoe.h"
+#include "cnf10k_cpri.h"
 
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION(DRV_STRING);
@@ -48,8 +49,8 @@ void __iomem *cpri_reg_base;
 static irqreturn_t cnf10k_gpint2_intr_handler(int irq, void *dev_id)
 {
 	struct otx2_bphy_cdev_priv *cdev_priv;
+	int rfoe_num, cpri_num;
 	u32 status, intr_mask;
-	int rfoe_num;
 
 	cdev_priv = (struct otx2_bphy_cdev_priv *)dev_id;
 
@@ -64,6 +65,16 @@ static irqreturn_t cnf10k_gpint2_intr_handler(int irq, void *dev_id)
 		intr_mask = CNF10K_RFOE_RX_INTR_MASK(rfoe_num);
 		if (status & intr_mask)
 			cnf10k_rfoe_rx_napi_schedule(rfoe_num, status);
+	}
+
+	/* cpri intr processing */
+	for (cpri_num = 0; cpri_num < OTX2_BPHY_CPRI_MAX_MHAB; cpri_num++) {
+		intr_mask = CNF10K_CPRI_RX_INTR_MASK(cpri_num);
+		if (status & intr_mask) {
+			/* clear UL ETH interrupt */
+			writeq(0x1, cpri_reg_base + CPRIX_ETH_UL_INT(cpri_num));
+			cnf10k_cpri_rx_napi_schedule(cpri_num, status);
+		}
 	}
 
 	return IRQ_HANDLED;
@@ -244,6 +255,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 				writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(2));
 			}
 			cnf10k_bphy_rfoe_cleanup();
+			if (cpri_available())
+				cnf10k_bphy_cpri_cleanup();
 		} else {
 			otx2_bphy_rfoe_cleanup();
 			if (cpri_available())
@@ -539,8 +552,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		struct pci_dev *bphy_pdev;
 		int idx;
 
-		if (cdev->odp_intf_cfg) {
-			dev_info(cdev->dev, "odp interface cfg already done\n");
+		if (cdev->odp_intf_cfg && (cdev->flags & ODP_INTF_CFG_RFOE)) {
+			dev_info(cdev->dev, "odp rfoe interface cfg already done\n");
 			ret = -EBUSY;
 			goto out;
 		}
@@ -588,6 +601,68 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 			writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1S(2));
 
 		cdev->odp_intf_cfg = 1;
+		cdev->flags |= ODP_INTF_CFG_RFOE;
+
+		kfree(intf_cfg);
+
+		ret = 0;
+		goto out;
+	}
+	case OTX2_IOCTL_CPRI_INTF_CFG:
+	{
+		struct cnf10k_bphy_cpri_netdev_comm_intf_cfg  *intf_cfg;
+		struct pci_dev *bphy_pdev;
+		int idx;
+
+		if (cdev->odp_intf_cfg && (cdev->flags & ODP_INTF_CFG_CPRI)) {
+			dev_info(cdev->dev, "odp cpri interface cfg already done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+
+		intf_cfg = kzalloc(sizeof(*intf_cfg), GFP_KERNEL);
+		if (!intf_cfg) {
+			ret = -ENOMEM;
+			goto out;
+		}
+
+		if (copy_from_user(intf_cfg, (void __user *)arg,
+				   sizeof(*intf_cfg))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+
+		if (cpri_available()) {
+			ret = cnf10k_cpri_parse_and_init_intf(cdev, intf_cfg);
+			if (ret < 0) {
+				dev_err(cdev->dev, "odp <-> netdev parse error\n");
+				goto out;
+			}
+		}
+
+		/* The MSIXEN bit is getting cleared when ODP BPHY driver
+		 * resets BPHY. So enabling it back in IOCTL.
+		 */
+		bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
+					   OTX2_BPHY_PCI_DEVICE_ID, NULL);
+		if (!bphy_pdev) {
+			dev_err(cdev->dev, "Couldn't find BPHY PCI device %x\n",
+				OTX2_BPHY_PCI_DEVICE_ID);
+			ret = -ENODEV;
+			goto out;
+		}
+		msix_enable_ctrl(bphy_pdev);
+
+		/* Enable CPRI ETH UL INT */
+		for (idx = 0; idx < CNF10K_BPHY_CPRI_MAX_MHAB; idx++)
+			writeq(0x1, cpri_reg_base + CNF10K_CPRIX_ETH_UL_INT_ENA_W1S(idx));
+
+		/* Enable GPINT Rx and Tx interrupts */
+		writeq(0xFFFFFFFF, bphy_reg_base + PSM_INT_GP_ENA_W1S(2));
+
+		cdev->odp_intf_cfg = 1;
+		cdev->flags |= ODP_INTF_CFG_CPRI;
 
 		kfree(intf_cfg);
 
@@ -656,6 +731,8 @@ static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
 			writeq(status, bphy_reg_base + PSM_INT_GP_SUM_W1C(2));
 		}
 		cnf10k_bphy_rfoe_cleanup();
+		if (cpri_available())
+			cnf10k_bphy_cpri_cleanup();
 	} else {
 		otx2_bphy_rfoe_cleanup();
 		if (cpri_available())

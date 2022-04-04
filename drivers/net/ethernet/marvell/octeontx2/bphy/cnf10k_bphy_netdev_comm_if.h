@@ -11,7 +11,7 @@
 #include "bphy_netdev_comm_if.h"
 
 #define BPHY_MAX_RFOE_MHAB		8	/* Max RFOE MHAB instances */
-#define BPHY_MAX_CPRI_MHAB		4	/* Max CPRI MHAB instances */
+#define BPHY_MAX_CPRI_MHAB		3	/* Max CPRI MHAB instances */
 
 #define MAX_PTP_RING			4	/* Max ptp rings per lmac */
 
@@ -234,8 +234,8 @@ struct cnf10k_bphy_ndev_cpri_intf_cfg {
 	u8 ul_int_threshold;   /**< UL INT THRESHOLD */
 	u8 num_ul_buf;         /**< Num UL Buffers */
 	u8 num_dl_buf;         /**< Num DL Buffers */
-	u64 ul_circ_buf_iova_addr; /**< UL circular buffer base address */
-	u64 dl_circ_buf_iova_addr; /**< DL circular buffer base address */
+	u64 ul_buf_iova_addr; /**< UL circular buffer base address */
+	u64 dl_buf_iova_addr; /**< DL circular buffer base address */
 	u8 eth_addr[MAX_LANE_PER_CPRI][ETH_ALEN];
 	u64 reserved[4];
 };
@@ -288,7 +288,7 @@ struct cnf10k_rfoe_ndev_comm_intf_cfg {
 struct cnf10k_bphy_cpri_netdev_comm_intf_cfg {
 	/**< BPHY Hardware parameters */
 	struct bphy_hw_params hw_params;
-	/**< RFOE Interface Configuration */
+	/**< CPRI Interface Configuration */
 	struct cnf10k_bphy_ndev_cpri_intf_cfg cpri_if_cfg[BPHY_MAX_CPRI_MHAB];
 	u64 reserved[4];
 };
