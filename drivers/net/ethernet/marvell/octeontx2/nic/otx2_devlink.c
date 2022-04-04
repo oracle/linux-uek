@@ -96,8 +96,7 @@ static int otx2_dl_rbuf_size_set(struct devlink *devlink, u32 id,
 	if (if_up)
 		netdev->netdev_ops->ndo_stop(netdev);
 
-	pfvf->hw.rbuf_fixed_size = ALIGN(ctx->val.vu16, OTX2_ALIGN) +
-				   OTX2_HEAD_ROOM;
+	pfvf->hw.rbuf_fixed_size = ctx->val.vu16;
 
 	if (if_up)
 		err = netdev->netdev_ops->ndo_open(netdev);
