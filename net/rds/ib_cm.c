@@ -1014,13 +1014,15 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 		goto hdrs_out;
 	}
 
-	sg = *_sg = vzalloc_node(sizeof(struct scatterlist) * nmbr_hdr_pages,
+	sg = *_sg = vmalloc_node(sizeof(*sg) * nmbr_hdr_pages,
 				 ibdev_to_node(dev));
 	if (!sg) {
 		ret = -ENOMEM;
 		*reason = "vzalloc_node for sg failed";
 		goto dma_out;
 	}
+
+	sg_init_table(sg, nmbr_hdr_pages);
 
 	for (i = 0; i < nmbr_hdr_pages; i++) {
 		ret = rds_page_remainder_alloc(sg + i, PAGE_SIZE, GFP_KERNEL);
