@@ -636,7 +636,6 @@ void rds_ib_conn_ha_changed(struct rds_connection *conn,
 			    const unsigned char *ha,
 			    unsigned ha_len);
 void rds_ib_init_frag(unsigned int version);
-void rds_ib_rx_schedule_work(struct rds_ib_connection *ic);
 void rds_ib_conn_destroy_init(struct rds_connection *conn);
 void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev);
 int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev);
@@ -674,7 +673,6 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc);
 extern struct kmem_cache *rds_ib_incoming_slab;
 extern struct kmem_cache *rds_ib_frag_slab;
 extern atomic_t rds_ib_allocation;
-extern struct delayed_work rds_ib_rx_poll_check_w;
 int rds_ib_recv_init(void);
 void rds_ib_recv_exit(void);
 int rds_ib_recv_path(struct rds_conn_path *cp);
@@ -759,7 +757,6 @@ extern unsigned int rds_ib_srq_max_wr;
 extern unsigned int rds_ib_srq_hwm_refill;
 extern unsigned int rds_ib_srq_lwm_refill;
 extern unsigned int rds_ib_srq_enabled;
-extern unsigned int rds_ib_rx_poll_intrvl;
 
 /* ib_sysctl.c */
 int rds_ib_sysctl_init(void);
@@ -780,23 +777,4 @@ extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
 extern unsigned int rds_ib_tx_stall_threshold;
-extern unsigned int rds_ib_rx_stall_threshold;
-extern unsigned int rds_ib_stall_check_enable;
-
-/* Schedule RDS Rx poll check on all connection */
-static inline void rds_ib_schedule_rx_poll_check(void)
-{
-	if (!rds_ib_stall_check_enable)
-		return;
-
-	schedule_delayed_work(&rds_ib_rx_poll_check_w,
-			      msecs_to_jiffies(rds_ib_rx_poll_intrvl));
-}
-
-/* Cancel RDS Rx poll check work */
-static inline void rds_ib_cancel_rx_poll_check(void)
-{
-	cancel_delayed_work_sync(&rds_ib_rx_poll_check_w);
-}
-
 #endif

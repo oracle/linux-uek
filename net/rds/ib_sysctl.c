@@ -98,28 +98,6 @@ unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
 
 unsigned int rds_ib_tx_stall_threshold = 5000;	/* msecs */
 
-unsigned int rds_ib_rx_poll_intrvl = 10000;	/* msecs */
-unsigned int rds_ib_rx_stall_threshold = 5000;	/* msecs */
-unsigned int rds_ib_stall_check_enable = 1;
-
-/* Set unset RDS Rx stall check */
-static int proc_do_rds_rx_stall_check_enable(struct ctl_table *table, int write,
-					     void __user *buffer,
-					     size_t *lenp, loff_t *ppos)
-{
-	int ret;
-
-	ret = proc_douintvec(table, write, buffer, lenp, ppos);
-	if (ret)
-		return ret;
-
-	if (!rds_ib_stall_check_enable)
-		rds_ib_cancel_rx_poll_check();
-	else
-		rds_ib_schedule_rx_poll_check();
-	return ret;
-}
-
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -228,27 +206,6 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(unsigned int),
 		.mode           = 0644,
 		.proc_handler   = &proc_douintvec,
-	},
-	{
-		.procname       = "rx_poll_intrvl",
-		.data           = &rds_ib_rx_poll_intrvl,
-		.maxlen         = sizeof(unsigned int),
-		.mode           = 0644,
-		.proc_handler   = &proc_douintvec,
-	},
-	{
-		.procname       = "rx_stall_threshold",
-		.data           = &rds_ib_rx_stall_threshold,
-		.maxlen         = sizeof(unsigned int),
-		.mode           = 0644,
-		.proc_handler   = &proc_douintvec,
-	},
-	{
-		.procname       = "rx_stall_check_enable",
-		.data           = &rds_ib_stall_check_enable,
-		.maxlen         = sizeof(unsigned int),
-		.mode           = 0644,
-		.proc_handler   = &proc_do_rds_rx_stall_check_enable,
 	},
 	{ }
 };

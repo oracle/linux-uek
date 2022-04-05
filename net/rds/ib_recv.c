@@ -63,32 +63,6 @@ struct kmem_cache *rds_ib_incoming_slab;
 struct kmem_cache *rds_ib_frag_slab;
 atomic_t rds_ib_allocation = ATOMIC_INIT(0);
 
-struct delayed_work rds_ib_rx_poll_check_w;
-
-/* periodic polling of rcq as a defense against interrupt loss
- * or a faulty HCA not raising interrupt
- */
-void rds_ib_rx_poll_check(struct work_struct *work)
-{
-	struct rds_ib_device *rds_ibdev;
-	struct rds_ib_connection *ic;
-	unsigned long flags, deadline;
-
-	deadline = jiffies - msecs_to_jiffies(rds_ib_rx_stall_threshold);
-	down_read(&rds_ib_devices_lock);
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		spin_lock_irqsave(&rds_ibdev->spinlock, flags);
-		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
-			if (time_before((unsigned long)ic->i_rx_poll_ts,
-					deadline))
-				rds_ib_rx_schedule_work(ic);
-		}
-		spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
-	}
-	up_read(&rds_ib_devices_lock);
-	rds_ib_schedule_rx_poll_check();
-}
-
 static inline void *rds_ib_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 {
 	void *ent = kmem_cache_alloc(cachep, flags);
@@ -1599,9 +1573,6 @@ int rds_ib_recv_init(void)
 		rds_ib_incoming_slab = NULL;
 		return -ENOMEM;
 	}
-
-	INIT_DELAYED_WORK(&rds_ib_rx_poll_check_w, rds_ib_rx_poll_check);
-	rds_ib_schedule_rx_poll_check();
 	return 0;
 }
 
@@ -1609,7 +1580,6 @@ void rds_ib_recv_exit(void)
 {
 	kmem_cache_destroy(rds_ib_incoming_slab);
 	kmem_cache_destroy(rds_ib_frag_slab);
-	rds_ib_cancel_rx_poll_check();
 }
 
 void rds_ib_srq_rearm(struct work_struct *work)
