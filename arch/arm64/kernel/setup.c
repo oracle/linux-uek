@@ -329,6 +329,10 @@ void __init setup_arch(char **cmdline_p)
 
 	xen_early_init();
 	efi_init();
+#ifdef CONFIG_ARCH_PENSANDO
+	pensando_efi_mem_reserve();
+#endif
+
 	arm64_memblock_init();
 
 	paging_init();

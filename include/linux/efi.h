@@ -1856,4 +1856,8 @@ static inline struct efi_mokvar_table_entry *efi_mokvar_entry_find(
 }
 #endif
 
+#ifdef CONFIG_ARCH_PENSANDO
+void pensando_efi_mem_reserve(void);
+#endif
+
 #endif /* _LINUX_EFI_H */

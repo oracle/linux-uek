@@ -979,9 +979,15 @@ static int __init efi_memreserve_map_root(void)
 	if (efi.mem_reserve == EFI_INVALID_TABLE_ADDR)
 		return -ENODEV;
 
+	/* The Pensando version of the memory is not mappable with memremap */
+#ifdef CONFIG_ARCH_PENSANDO
+	efi_memreserve_root = ioremap(efi.mem_reserve,
+				sizeof(*efi_memreserve_root));
+#else
 	efi_memreserve_root = memremap(efi.mem_reserve,
-				       sizeof(*efi_memreserve_root),
-				       MEMREMAP_WB);
+				sizeof(*efi_memreserve_root),
+				MEMREMAP_WB);
+#endif
 	if (WARN_ON_ONCE(!efi_memreserve_root))
 		return -ENOMEM;
 	return 0;
@@ -1128,4 +1134,98 @@ static int register_update_efi_random_seed(void)
 	return register_reboot_notifier(&efi_random_seed_nb);
 }
 late_initcall(register_update_efi_random_seed);
+#endif
+
+#ifdef CONFIG_ARCH_PENSANDO
+
+/*
+ *  Pensando u-boot doesn't support bootefi which is needed to provide
+ *  mechanism for reserving memory across kexec reboots. The following three
+ *  functions provide an alternative way to populate efi.mem_reserve so that
+ *  the established mechanism will work,
+ */
+static int __init pensando_fdt_find_uefi_params(unsigned long node,
+					const char *uname,
+					int depth, void *data)
+{
+	struct param_info *info = data;
+	const void *prop;
+	u64 val;
+	int len;
+
+	if (depth != 1 || strcmp(uname, "oracle") != 0)
+		return 0;
+
+	prop = of_get_flat_dt_prop(node, "linux,mem-reserve", &len);
+	if (!prop) {
+		pr_info("%s: Failed to find mem-reserve\n", __func__);
+		return 0;
+	}
+
+	info->found++;
+
+	val = of_read_number(prop, len / sizeof(u32));
+
+	efi.mem_reserve = val;
+	return 1;
+}
+
+/*
+ *  This is called early from setup_arch() to locate the reserved memory.
+ *  It is copied from efi_get_fdt_params() above. It is easier to keep
+ *  this Pensando specific code separate.
+ */
+static __init int pensando_efi_get_fdt_params(void)
+{
+	struct param_info info;
+	int ret;
+
+	pr_info("Getting special mem-reserve from FDT:\n");
+
+	info.found = 0;
+
+	ret = of_scan_flat_dt(pensando_fdt_find_uefi_params, &info);
+
+	if (!info.found)
+		pr_info("mem-reserve not found.\n");
+	else if (!ret)
+		pr_err("Can't find mem-reserve in device tree!\n");
+
+	return ret;
+}
+
+void pensando_efi_mem_reserve(void)
+{
+	unsigned long prsv;
+
+	if (efi.mem_reserve == EFI_INVALID_TABLE_ADDR)
+		pensando_efi_get_fdt_params();
+
+	if (efi.mem_reserve == EFI_INVALID_TABLE_ADDR)
+		return;
+
+	prsv = efi.mem_reserve;
+
+	while (prsv) {
+		struct linux_efi_memreserve *rsv;
+		int i;
+
+		rsv = early_ioremap(prsv, PAGE_SIZE);
+
+		if (rsv == NULL) {
+			pr_err("Could not map UEFI mem-reserve entry!\n");
+			return;
+		}
+
+		/* reserve the entry itself */
+		memblock_reserve(prsv, EFI_MEMRESERVE_SIZE(rsv->size));
+
+		for (i = 0; i < atomic_read(&rsv->count); i++) {
+			memblock_reserve(rsv->entry[i].base,
+					rsv->entry[i].size);
+		}
+		prsv = rsv->next;
+		early_iounmap(rsv, PAGE_SIZE);
+	}
+}
 #endif
