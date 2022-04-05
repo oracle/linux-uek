@@ -363,6 +363,9 @@ static int mhu_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	int ret;
 
 	dev = &pdev->dev;
+	if (!dev->of_node) /* This case rejects not configured CPC instances */
+		return -ENODEV;
+
 	mhu = devm_kzalloc(dev, sizeof(*mhu), GFP_KERNEL);
 	if (!mhu)
 		return -ENOMEM;
@@ -413,7 +416,7 @@ static void mhu_pci_remove(struct pci_dev *pdev)
 
 static const struct pci_device_id mhu_pci_ids[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, 0xA067) },
-	{},
+	{ 0, },
 };
 MODULE_DEVICE_TABLE(pci, mhu_pci_ids);
 
