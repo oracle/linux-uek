@@ -599,13 +599,13 @@ static ssize_t get_random_bytes_user(void __user *buf, size_t nbytes)
 	}
 
 	do {
-		if (large_request && need_resched()) {
+		if (large_request) {
 			if (signal_pending(current)) {
 				if (!ret)
 					ret = -ERESTARTSYS;
 				break;
 			}
-			schedule();
+			cond_resched();
 		}
 
 		len = min_t(size_t, nbytes, CHACHA_BLOCK_SIZE);
