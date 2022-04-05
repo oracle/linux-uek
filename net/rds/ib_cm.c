@@ -692,52 +692,18 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	rds_ib_tx_poll(ic);
 }
 
-/* need to hold ic->i_rx_lock before calling */
-void __rds_ib_rx_schedule_work(struct rds_ib_connection *ic)
-{
-	struct rds_connection *conn = ic->conn;
-
-	ic->i_rx_w.ic = ic;
-	/* Delay 10 msecs until the RX worker starts reaping again */
-	rds_queue_delayed_work_on(&conn->c_path[0],
-				  ic->i_irq_local_cpu,
-				  rds_aux_wq,
-				  &ic->i_rx_w.work,
-				  msecs_to_jiffies(10),
-				  "delay for RX worker");
-	ic->i_rx_wait_for_handler = 1;
-}
-
-/* try to schedule a rx poll work */
-void rds_ib_rx_schedule_work(struct rds_ib_connection *ic)
-{
-	/* If we cann't get the lock, just re-arm and return
-	 * If we cann't process, we could miss re-arming cq for irqs
-	 */
-	if (!spin_trylock_bh(&ic->i_rx_lock)) {
-		ib_req_notify_cq(ic->i_rcq, IB_CQ_NEXT_COMP);
-		return;
-	}
-
-	/* work is already scheduled */
-	if (ic->i_rx_wait_for_handler)
-		goto out;
-
-	__rds_ib_rx_schedule_work(ic);
-out:
-	spin_unlock_bh(&ic->i_rx_lock);
-}
-
 /*
- * Note: rds_ib_rx_poll(): don't call with irqs disabled.
+ * Note: rds_ib_rx(): don't call with irqs disabled.
  * It calls rds_send_drop_acked() which calls other
  * routines that reach into rds_rdma_free_op()
  * where irqs_disabled() warning is asserted!
  */
-static void rds_ib_rx_poll(struct rds_ib_connection *ic)
+static void rds_ib_rx(struct rds_ib_connection *ic)
 {
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_ack_state ack_state;
+
+	rds_ib_stats_inc(s_ib_tasklet_call);
 
 	memset(&ack_state, 0, sizeof(ack_state));
 
@@ -768,29 +734,27 @@ static void rds_ib_rx_poll(struct rds_ib_connection *ic)
 						  "srq refill");
 	}
 
-	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT)
-		__rds_ib_rx_schedule_work(ic);
+	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
+		ic->i_rx_w.ic = ic;
+		/* Delay 10 msecs until the RX worker starts reaping again */
+		rds_queue_delayed_work_on(&conn->c_path[0],
+					  ic->i_irq_local_cpu,
+					  rds_aux_wq,
+					  &ic->i_rx_w.work,
+					  msecs_to_jiffies(10),
+					  "delay for RX worker");
+		ic->i_rx_wait_for_handler = 1;
+	}
 }
 
 void rds_ib_tasklet_fn_recv(unsigned long data)
 {
 	struct rds_ib_connection *ic = (struct rds_ib_connection *) data;
 
-	rds_ib_stats_inc(s_ib_tasklet_call);
-
-	/* If we cann't get the lock, just re-arm and return
-	 * If we cann't process, we could miss re-arming cq for irqs
-	 */
-	if (!spin_trylock_bh(&ic->i_rx_lock)) {
-		ib_req_notify_cq(ic->i_rcq, IB_CQ_NEXT_COMP);
-		return;
-	}
-
-	/* work is already scheduled */
+	spin_lock_bh(&ic->i_rx_lock);
 	if (ic->i_rx_wait_for_handler)
 		goto out;
-
-	rds_ib_rx_poll(ic);
+	rds_ib_rx(ic);
 out:
 	spin_unlock_bh(&ic->i_rx_lock);
 }
@@ -801,10 +765,9 @@ static void rds_ib_rx_handler(struct work_struct *_work)
                 container_of(_work, struct rds_ib_rx_work, work.work);
 	struct rds_ib_connection *ic = work->ic;
 
-	/* wait to get the lock to clear the handler flag */
 	spin_lock_bh(&ic->i_rx_lock);
 	ic->i_rx_wait_for_handler = 0;
-	rds_ib_rx_poll(ic);
+	rds_ib_rx(ic);
 	spin_unlock_bh(&ic->i_rx_lock);
 }
 
@@ -2246,7 +2209,7 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 	/* Try to reap pending RX completions every second */
 	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
 		spin_lock_bh(&ic->i_rx_lock);
-		rds_ib_rx_poll(ic);
+		rds_ib_rx(ic);
 		spin_unlock_bh(&ic->i_rx_lock);
 	}
 }
