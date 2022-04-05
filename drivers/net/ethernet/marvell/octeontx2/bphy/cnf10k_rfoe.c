@@ -163,6 +163,80 @@ static void cnf10k_rfoe_ptp_offset_timer(struct timer_list *t)
 	mod_timer(&ptp_cfg->ptp_timer, expires);
 }
 
+static bool cnf10k_validate_network_transport(struct sk_buff *skb)
+{
+	if ((ip_hdr(skb)->protocol == IPPROTO_UDP) ||
+	    (ipv6_hdr(skb)->nexthdr == IPPROTO_UDP)) {
+		struct udphdr *udph = udp_hdr(skb);
+
+		if (udph->source == htons(PTP_PORT) &&
+		    udph->dest == htons(PTP_PORT))
+			return true;
+	}
+
+	return false;
+}
+
+static bool cnf10k_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
+{
+	struct ethhdr   *eth = (struct ethhdr *)(skb->data);
+	u8 *data = skb->data, *msgtype;
+	u16 proto = eth->h_proto;
+	int network_depth = 0;
+
+	if (eth_type_vlan(eth->h_proto))
+		proto = __vlan_get_protocol(skb, eth->h_proto, &network_depth);
+
+	switch (htons(proto)) {
+	case ETH_P_1588:
+		if (network_depth)
+			*offset = network_depth;
+		else
+			*offset = ETH_HLEN;
+		break;
+	case ETH_P_IP:
+	case ETH_P_IPV6:
+		if (!cnf10k_validate_network_transport(skb))
+			return false;
+
+		*udp_csum = 1;
+		*offset = skb_transport_offset(skb) + sizeof(struct udphdr);
+	}
+
+	msgtype = data + *offset;
+
+	/* Check PTP messageId is SYNC or not */
+	return (*msgtype & 0xf) == 0;
+}
+
+static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv *priv,
+						   struct cnf10k_tx_action_s *tx_mem,
+						   struct sk_buff *skb,
+						   int ptp_offset, int udp_csum)
+{
+	u64 sec, nsec, sec1;
+
+	sec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL);
+	nsec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI));
+	sec1 = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL);
+	/* check nsec rollover */
+	if (sec1 > sec) {
+		nsec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI));
+		sec = sec1;
+	}
+
+	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_SEC_OFFSET,
+	       &sec, 4);
+	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_NSEC_OFFSET,
+	       &nsec, 4);
+	/* Point to correction field in PTP packet */
+	ptp_offset += 8;
+	tx_mem->start_offset = ptp_offset;
+	tx_mem->udp_csum_crt = udp_csum;
+	tx_mem->base_ns  = nsec;
+	tx_mem->step_type = 1;
+}
+
 /* submit pending ptp tx requests */
 static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 {
@@ -174,6 +248,8 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	struct mhab_job_desc_cfg *jd_cfg_ptr;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
 	struct psm_cmd_addjob_s *psm_cmd_lo;
+	struct cnf10k_tx_action_s tx_mem;
+	int ptp_offset = 0, udp_csum = 0;
 	struct tx_job_queue_cfg *job_cfg;
 	struct tx_job_entry *job_entry;
 	struct ptp_tstamp_skb *ts_skb;
@@ -184,6 +260,7 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	unsigned long flags;
 	u64 regval;
 
+	memset(&tx_mem, 0, sizeof(tx_mem));
 	job_cfg = &priv->tx_ptp_job_cfg;
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
@@ -244,6 +321,11 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 		  job_entry->job_cmd_lo, job_entry->job_cmd_hi,
 		  job_entry->jd_iova_addr);
 
+	if (priv->ptp_onestep_sync &&
+	    cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum))
+		cnf10k_rfoe_prepare_onestep_ptp_header(priv, &tx_mem, skb,
+						       ptp_offset, udp_csum);
+
 	priv->ptp_tx_skb = skb;
 	psm_cmd_lo = (struct psm_cmd_addjob_s *)&job_entry->job_cmd_lo;
 	priv->ptp_job_tag = psm_cmd_lo->jobtag;
@@ -261,7 +343,13 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 				((u8 *)job_entry->rd_dma_ptr + 8);
 	memcpy(otx2_iova_to_virt(priv->iommu_domain,
 				 jd_dma_cfg_word_1->start_addr),
-	       skb->data, skb->len);
+				 &tx_mem, sizeof(tx_mem));
+	memcpy(otx2_iova_to_virt(priv->iommu_domain,
+				 jd_dma_cfg_word_1->start_addr)
+				 + sizeof(tx_mem), skb->data,
+				 skb->len);
+	jd_cfg_ptr->cfg3.pkt_len = skb->len + sizeof(tx_mem);
+	jd_dma_cfg_word_0->block_size = (((skb->len + 15 + sizeof(tx_mem)) >> 4) * 4);
 
 	/* make sure that all memory writes are completed */
 	dma_wmb();
@@ -800,51 +888,6 @@ static int cnf10k_rfoe_ioctl(struct net_device *netdev, struct ifreq *req,
 	}
 }
 
-static bool cnf10k_validate_network_transport(struct sk_buff *skb)
-{
-	if ((ip_hdr(skb)->protocol == IPPROTO_UDP) ||
-	    (ipv6_hdr(skb)->nexthdr == IPPROTO_UDP)) {
-		struct udphdr *udph = udp_hdr(skb);
-
-		if (udph->source == htons(PTP_PORT) &&
-		    udph->dest == htons(PTP_PORT))
-			return true;
-	}
-
-	return false;
-}
-
-static bool cnf10k_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
-{
-	struct ethhdr   *eth = (struct ethhdr *)(skb->data);
-	u8 *data = skb->data, *msgtype;
-	u16 proto = eth->h_proto;
-	int network_depth = 0;
-
-	if (eth_type_vlan(eth->h_proto))
-		proto = __vlan_get_protocol(skb, eth->h_proto, &network_depth);
-
-	switch (htons(proto)) {
-	case ETH_P_1588:
-		if (network_depth)
-			*offset = network_depth;
-		else
-			*offset = ETH_HLEN;
-		break;
-	case ETH_P_IP:
-	case ETH_P_IPV6:
-		if (!cnf10k_validate_network_transport(skb))
-			return false;
-
-		*udp_csum = 1;
-		*offset = skb_transport_offset(skb) + sizeof(struct udphdr);
-	}
-
-	msgtype = data + *offset;
-
-	/* Check PTP messageId is SYNC or not */
-	return (*msgtype & 0xf) == 0;
-}
 
 /* netdev xmit */
 static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
@@ -864,7 +907,6 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	int psm_queue_id, queue_space;
 	u64 jd_cfg_ptr_iova, regval;
 	unsigned long flags;
-	u64 sec, nsec, sec1;
 	struct ethhdr *eth;
 	int pkt_type = 0;
 
@@ -985,30 +1027,14 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 	    priv->tx_hw_tstamp_en) {
+		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 		if (priv->ptp_onestep_sync &&
 		    cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
-			sec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL);
-			nsec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI));
-			sec1 = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL);
-			/* check nsec rollover */
-			if (sec1 > sec) {
-				nsec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI));
-				sec = sec1;
-			}
-
-			memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_SEC_OFFSET,
-			       &sec, 4);
-			memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_NSEC_OFFSET,
-			       &nsec, 4);
-			/* Point to correction field in PTP packet */
-			ptp_offset += 8;
-			tx_mem.start_offset = ptp_offset;
-			tx_mem.udp_csum_crt = udp_csum;
-			tx_mem.base_ns  = nsec;
-			tx_mem.step_type = 1;
-		} else {
-			ptp_offset += 0;
-			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+			cnf10k_rfoe_prepare_onestep_ptp_header(priv,
+							       &tx_mem, skb,
+							       ptp_offset,
+							       udp_csum);
+			skb_shinfo(skb)->tx_flags &= ~SKBTX_IN_PROGRESS;
 		}
 
 		if (list_empty(&priv->ptp_skb_list.list) &&
