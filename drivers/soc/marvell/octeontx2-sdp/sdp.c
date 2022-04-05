@@ -1207,7 +1207,7 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 		mac = ep_pem & mac_mask;
 		writeq(val, sdp->sdp_base + SDPX_MACX_PF_RING_CTL(mac));
 
-		epf_srn = npfs_per_pem * rppf;
+		epf_srn = (npfs_per_pem * rppf) + pf_srn;
 		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
 			val = (((u64)numvf << RINFO_NUMVF_BIT) |
 			       ((u64)rpvf << RINFO_RPVF_BIT) |
