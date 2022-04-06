@@ -67,7 +67,6 @@
 #include "en/ptp.h"
 #include "qos.h"
 #include "en/trap.h"
-#include "fpga/ipsec.h"
 
 static bool expose_pf_phys_port_name = true;
 module_param(expose_pf_phys_port_name, bool, 0444);
@@ -4479,12 +4478,6 @@ static int mlx5e_xdp_allowed(struct mlx5e_priv *priv, struct bpf_prog *prog)
 
 	if (priv->channels.params.packet_merge.type != MLX5E_PACKET_MERGE_NONE) {
 		netdev_warn(netdev, "can't set XDP while HW-GRO/LRO is on, disable them first\n");
-		return -EINVAL;
-	}
-
-	if (mlx5_fpga_is_ipsec_device(priv->mdev)) {
-		netdev_warn(netdev,
-			    "XDP is not available on Innova cards with IPsec support\n");
 		return -EINVAL;
 	}
 
