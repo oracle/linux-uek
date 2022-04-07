@@ -86,12 +86,10 @@ static enum hrtimer_restart ptp_reset_thresh(struct hrtimer *hrtimer)
 	return HRTIMER_RESTART;
 }
 
-static void ptp_init_hrtimer(struct ptp *ptp)
+static void ptp_hrtimer_start(struct ptp *ptp)
 {
 	u64 clock_hi = readq(ptp->reg_base + PTP_CLOCK_HI);
 
-	hrtimer_init(&ptp->hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	ptp->hrtimer.function = ptp_reset_thresh;
 	hrtimer_start(&ptp->hrtimer, ktime_set(0, (NSEC_PER_SEC - clock_hi)),
 		      HRTIMER_MODE_REL);
 }
@@ -279,7 +277,7 @@ static int ptp_set_clock(struct ptp *ptp, u64 nsec)
 		writeq(nsec % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
 		if (hrtimer_active(&ptp->hrtimer)) {
 			hrtimer_cancel(&ptp->hrtimer);
-			ptp_init_hrtimer(ptp);
+			ptp_hrtimer_start(ptp);
 		}
 	} else {
 		writeq(nsec, ptp->reg_base + PTP_CLOCK_HI);
@@ -302,7 +300,7 @@ static int ptp_adj_clock(struct ptp *ptp, s64 delta)
 		writeq(regval % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
 		if (hrtimer_active(&ptp->hrtimer)) {
 			hrtimer_cancel(&ptp->hrtimer);
-			ptp_init_hrtimer(ptp);
+			ptp_hrtimer_start(ptp);
 		}
 	} else {
 		writeq(regval, ptp->reg_base + PTP_CLOCK_HI);
@@ -379,7 +377,7 @@ static int ptp_set_thresh(struct ptp *ptp, u64 thresh)
 		writeq(thresh % PPS_FULL_CYCLE_NS, ptp->reg_base + PTP_PPS_THRESH_HI);
 		ptp->thresh_delta = thresh % PPS_FULL_CYCLE_NS;
 		if (!hrtimer_active(&ptp->hrtimer))
-			ptp_init_hrtimer(ptp);
+			ptp_hrtimer_start(ptp);
 	} else {
 		writeq(thresh, ptp->reg_base + PTP_PPS_THRESH_HI);
 	}
@@ -425,6 +423,11 @@ static int ptp_probe(struct pci_dev *pdev,
 		ptp->read_ptp_tstmp = &read_ptp_tstmp_sec_nsec;
 	else
 		ptp->read_ptp_tstmp = &read_ptp_tstmp_nsec;
+
+	if (cn10k_ptp_errata(ptp)) {
+		hrtimer_init(&ptp->hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		ptp->hrtimer.function = ptp_reset_thresh;
+	}
 
 	return 0;
 
