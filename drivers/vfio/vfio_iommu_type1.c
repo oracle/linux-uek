@@ -319,8 +319,10 @@ static int vfio_lock_acct(struct vfio_dma *dma, long npage, bool async)
 			}
 		}
 
-		if (!ret)
+		if (!ret) {
 			mm->locked_vm += npage;
+			mm->driver_pinned_vm += npage;
+		}
 
 		up_write(&mm->mmap_sem);
 	}
