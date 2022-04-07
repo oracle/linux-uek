@@ -273,7 +273,7 @@ static int ptp_get_clock(struct ptp *ptp, bool is_pmu, u64 *clk, u64 *tsc)
 static int ptp_set_clock(struct ptp *ptp, u64 nsec)
 {
 	if (is_ptp_tsfmt_sec_nsec(ptp)) {
-		writeq(nsec / NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_SEC);
+		writeq((nsec / NSEC_PER_SEC) & 0xFFFFFFFF, ptp->reg_base + PTP_CLOCK_SEC);
 		writeq(nsec % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
 		if (hrtimer_active(&ptp->hrtimer)) {
 			hrtimer_cancel(&ptp->hrtimer);
@@ -288,23 +288,12 @@ static int ptp_set_clock(struct ptp *ptp, u64 nsec)
 
 static int ptp_adj_clock(struct ptp *ptp, s64 delta)
 {
-	u64 regval, sec;
+	u64 timestamp;
 
-	regval = readq(ptp->reg_base + PTP_CLOCK_HI);
-	regval += delta;
+	timestamp = ptp->read_ptp_tstmp(ptp);
+	timestamp += delta;
 
-	if (is_ptp_tsfmt_sec_nsec(ptp)) {
-		sec = readq(ptp->reg_base + PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
-		sec += regval / NSEC_PER_SEC;
-		writeq(sec, ptp->reg_base + PTP_CLOCK_SEC);
-		writeq(regval % NSEC_PER_SEC, ptp->reg_base + PTP_CLOCK_HI);
-		if (hrtimer_active(&ptp->hrtimer)) {
-			hrtimer_cancel(&ptp->hrtimer);
-			ptp_hrtimer_start(ptp);
-		}
-	} else {
-		writeq(regval, ptp->reg_base + PTP_CLOCK_HI);
-	}
+	ptp_set_clock(ptp, timestamp);
 
 	return 0;
 }
