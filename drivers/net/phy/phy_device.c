@@ -1869,7 +1869,11 @@ int genphy_read_status(struct phy_device *phydev)
 	if (err < 0)
 		return err;
 
-	if (phydev->autoneg == AUTONEG_ENABLE && phydev->autoneg_complete) {
+	if (phydev->interface == PHY_INTERFACE_MODE_10GKR) {
+		phydev->speed = SPEED_10000;
+		phydev->duplex = DUPLEX_FULL;
+		phydev->link = 1;
+	} else if (phydev->autoneg == AUTONEG_ENABLE && phydev->autoneg_complete) {
 		phy_resolve_aneg_linkmode(phydev);
 	} else if (phydev->autoneg == AUTONEG_DISABLE) {
 		int bmcr = phy_read(phydev, MII_BMCR);
@@ -1943,6 +1947,11 @@ int genphy_read_abilities(struct phy_device *phydev)
 	linkmode_set_bit_array(phy_basic_ports_array,
 			       ARRAY_SIZE(phy_basic_ports_array),
 			       phydev->supported);
+
+	if (phydev->interface == PHY_INTERFACE_MODE_10GKR) {
+		linkmode_mod_bit(ETHTOOL_LINK_MODE_10000baseKR_Full_BIT, phydev->supported, 1);
+		return 0;
+	}
 
 	val = phy_read(phydev, MII_BMSR);
 	if (val < 0)
