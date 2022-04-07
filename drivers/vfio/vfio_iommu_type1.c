@@ -433,6 +433,8 @@ static int vfio_lock_acct(struct vfio_dma *dma, long npage, bool async)
 	if (!ret) {
 		ret = __account_locked_vm(mm, abs(npage), npage > 0, dma->task,
 					  dma->lock_cap);
+		if (!ret)
+			mm->driver_pinned_vm += npage;
 		mmap_write_unlock(mm);
 	}
 
