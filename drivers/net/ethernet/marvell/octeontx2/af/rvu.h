@@ -912,6 +912,12 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf,
 int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc);
 int rvu_cpt_init(struct rvu *rvu);
 
+/* NDC APIs */
+#define NDC_MAX_BANK(rvu, blk_addr) (rvu_read64(rvu, \
+					blk_addr, NDC_AF_CONST) & 0xFF)
+#define NDC_MAX_LINE_PER_BANK(rvu, blk_addr) ((rvu_read64(rvu, \
+					blk_addr, NDC_AF_CONST) & 0xFFFF0000) >> 16)
+
 /* CN10K RVU */
 int rvu_set_channels_base(struct rvu *rvu);
 void rvu_program_channels(struct rvu *rvu);
@@ -961,6 +967,7 @@ rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 		       u64 pkind, u8 var_len_off, u8 var_len_off_mask,
 		       u8 shift_dir);
 void rvu_tim_hw_fixes(struct rvu *rvu, int blkaddr);
+int rvu_ndc_fix_locked_cacheline(struct rvu *rvu, int blkaddr);
 
 /* CN10K NIX */
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw);
