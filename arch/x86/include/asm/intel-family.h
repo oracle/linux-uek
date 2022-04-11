@@ -26,6 +26,7 @@
  *		_G	- parts with extra graphics on
  *		_X	- regular server parts
  *		_D	- micro server parts
+ *		_N,_P	- other mobile parts
  *
  *		Historical OPTDIFFs:
  *
