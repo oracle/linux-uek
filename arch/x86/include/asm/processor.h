@@ -3,6 +3,7 @@
 #define _ASM_X86_PROCESSOR_H
 
 #include <asm/processor-flags.h>
+#include <linux/uek_kabi.h>
 
 /* Forward declaration, a strange C thing */
 struct task_struct;
@@ -142,6 +143,15 @@ struct cpuinfo_x86 {
 	/* Address space bits used by the cache internally */
 	u8			x86_cache_bits;
 	unsigned		initialized : 1;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 } __randomize_layout;
 
 struct cpuid_regs {
