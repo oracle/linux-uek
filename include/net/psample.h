@@ -14,6 +14,8 @@ struct psample_group {
 	struct rcu_head rcu;
 };
 
+#define PSAMPLE_MD_EXTENDED_ATTR 1
+
 struct psample_metadata {
 	u32 trunc_size;
 	int in_ifindex;
