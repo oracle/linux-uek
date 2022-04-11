@@ -362,7 +362,7 @@ static inline void nvme_end_req(struct request *req)
 		req->__sector = nvme_lba_to_sect(req->q->queuedata,
 			le64_to_cpu(nvme_req(req)->result.u64));
 
-	if (unlikely(nvme_req(req)->status != NVME_SC_SUCCESS))
+	if (unlikely(nvme_req(req)->status && !(req->rq_flags & RQF_QUIET)))
 		nvme_log_error(req);
 	nvme_trace_bio_complete(req);
 	blk_mq_end_request(req, status);
@@ -979,6 +979,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 			goto out;
 	}
 
+	req->rq_flags |= RQF_QUIET;
 	ret = nvme_execute_rq(NULL, req, at_head);
 	if (result && ret >= 0)
 		*result = nvme_req(req)->result;
