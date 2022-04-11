@@ -1687,8 +1687,13 @@ static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool enable)
 
 	if (enable) {
 		req = FIELD_SET(CMDREG_ID, CGX_CMD_LINK_BRING_UP, req);
-		/* set maximum time firmware poll for Link as 1000 ms */
-		req = FIELD_SET(LINKCFG_TIMEOUT, 1000, req);
+		/* On CN10K firmware offloads link bring up/down operations to ECP
+		 * On Octeontx2 link operations are handled by firmware itself
+		 * which can cause mbox errors so configure maximum time firmware
+		 * poll for Link as 1000 ms
+		 */
+		if (!is_dev_rpm(cgx))
+			req = FIELD_SET(LINKCFG_TIMEOUT, 1000, req);
 	} else {
 		req = FIELD_SET(CMDREG_ID, CGX_CMD_LINK_BRING_DOWN, req);
 	}
