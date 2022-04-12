@@ -5,6 +5,8 @@
 #ifndef _ASM_X86_FPU_H
 #define _ASM_X86_FPU_H
 
+#include <linux/uek_kabi.h>
+
 /*
  * The legacy x87 FPU state format, as saved by FSAVE and
  * restored by the FRSTOR instructions:
@@ -335,6 +337,17 @@ struct fpu {
 	 * Records the timestamp of AVX512 use during last context switch.
 	 */
 	unsigned long			avx512_timestamp;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
+	UEK_KABI_RESERVE(9)
+	UEK_KABI_RESERVE(10)
 
 	/*
 	 * @state:
