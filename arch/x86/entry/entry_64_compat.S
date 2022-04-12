@@ -258,6 +258,7 @@ sysret32_from_system_call:
 	 * code.  We zero R8-R10 to avoid info leaks.
          */
 	movq	RSP-ORIG_RAX(%rsp), %rsp
+SYM_INNER_LABEL(entry_SYSRETL_compat_unsafe_stack, SYM_L_GLOBAL)
 
 	/*
 	 * The original userspace %rsp (RSP-ORIG_RAX(%rsp)) is stored
@@ -276,6 +277,7 @@ sysret32_from_system_call:
 	swapgs
 	CLEAR_CPU_BUFFERS
 	sysretl
+SYM_INNER_LABEL(entry_SYSRETL_compat_end, SYM_L_GLOBAL)
 SYM_CODE_END(entry_SYSCALL_compat)
 
 /*
