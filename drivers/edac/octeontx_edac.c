@@ -27,14 +27,7 @@
 
 #define DRV_NAME       "sdei-ghes"
 
-#define initerrmsg(fmt, ...) pr_err(DRV_NAME ":" fmt, __VA_ARGS__)
-#ifdef CONFIG_EDAC_DEBUG
-#  define initdbgmsg(fmt, ...) pr_info(DRV_NAME ":" fmt, __VA_ARGS__)
-#  define dbgmsg(dev, ...) dev_info((dev), __VA_ARGS__)
-#else
-#  define initdbgmsg(fmt, ...) (void)(fmt)
-#  define dbgmsg(dev, ...) (void)(dev)
-#endif // CONFIG_EDAC_DEBUG
+#define initdbgmsg(fmt, ...) pr_devel(DRV_NAME ":" fmt, __VA_ARGS__)
 
 #define OTX2_HEST_OEM_ID	"MRVL  "
 #define HEST_TBL_OEM_ID		"OTX2    "
@@ -131,7 +124,7 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	head = gsrc->ring->head;
 	tail = gsrc->ring->tail;
 
-	initerrmsg("%s to %llx, head=%d (%llx), tail=%d (%llx), size=%d, sign=%x\n", __func__,
+	initdbgmsg("%s to %llx, head=%d (%llx), tail=%d (%llx), size=%d, sign=%x\n", __func__,
 			(long long)gsrc->esb_va, head,
 			(long long)&gsrc->ring->head, tail, (long long)&gsrc->ring->tail,
 			gsrc->ring->size, *(int *)((&gsrc->ring->size) + 1));
@@ -140,7 +133,7 @@ static int sdei_ghes_callback(u32 event_id, struct pt_regs *regs, void *arg)
 	rmb();
 
 	if (head == tail) {
-		initerrmsg("event 0x%x ring is empty, head=%d, size=%d\n",
+		initdbgmsg("event 0x%x ring is empty, head=%d, size=%d\n",
 				event_id, head, gsrc->ring->size);
 		return -1;
 	}
@@ -298,7 +291,7 @@ static void dev_enable_msix_t9x(struct pci_dev *pdev)
 	initdbgmsg("%s: entry\n", __func__);
 
 	if ((pdev->msi_enabled) || (pdev->msix_enabled)) {
-		initerrmsg("MSI(%d) or MSIX(%d) already enabled\n",
+		initdbgmsg("MSI(%d) or MSIX(%d) already enabled\n",
 				pdev->msi_enabled, pdev->msix_enabled);
 		return;
 	}
@@ -313,7 +306,7 @@ static void dev_enable_msix_t9x(struct pci_dev *pdev)
 		initdbgmsg("Set MSI-X Enable for PCI dev %04d:%02d.%d\n",
 			   pdev->bus->number, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
 	} else {
-		initerrmsg("PCI dev %04d:%02d.%d missing MSIX capabilities\n",
+		initdbgmsg("PCI dev %04d:%02d.%d missing MSIX capabilities\n",
 			   pdev->bus->number, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
 	}
 }
