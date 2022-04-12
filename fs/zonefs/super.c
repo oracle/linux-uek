@@ -1114,8 +1114,10 @@ static int zonefs_open_zone(struct inode *inode)
 	mutex_lock(&zi->i_truncate_mutex);
 
 	if (!zi->i_wr_refcnt) {
-		if (atomic_inc_return(&sbi->s_open_zones) > sbi->s_max_open_zones) {
-			atomic_dec(&sbi->s_open_zones);
+		unsigned int wro = atomic_inc_return(&sbi->s_wro_seq_files);
+
+		if (wro > sbi->s_max_wro_seq_files) {
+			atomic_dec(&sbi->s_wro_seq_files);
 			ret = -EBUSY;
 			goto unlock;
 		}
@@ -1123,7 +1125,7 @@ static int zonefs_open_zone(struct inode *inode)
 		if (i_size_read(inode) < zi->i_max_size) {
 			ret = zonefs_zone_mgmt(inode, REQ_OP_ZONE_OPEN);
 			if (ret) {
-				atomic_dec(&sbi->s_open_zones);
+				atomic_dec(&sbi->s_wro_seq_files);
 				goto unlock;
 			}
 			zi->i_flags |= ZONEFS_ZONE_OPEN;
@@ -1187,7 +1189,7 @@ static void zonefs_close_zone(struct inode *inode)
 		}
 		zi->i_flags &= ~ZONEFS_ZONE_OPEN;
 dec:
-		atomic_dec(&sbi->s_open_zones);
+		atomic_dec(&sbi->s_wro_seq_files);
 	}
 	mutex_unlock(&zi->i_truncate_mutex);
 }
@@ -1778,8 +1780,7 @@ static int zonefs_fill_super(struct super_block *sb, void *data, int silent)
 	sbi->s_gid = GLOBAL_ROOT_GID;
 	sbi->s_perm = 0640;
 	sbi->s_mount_opts = ZONEFS_MNTOPT_ERRORS_RO;
-	sbi->s_max_open_zones = bdev_max_open_zones(sb->s_bdev);
-	atomic_set(&sbi->s_open_zones, 0);
+	atomic_set(&sbi->s_wro_seq_files, 0);
 
 	ret = zonefs_read_super(sb);
 	if (ret)
@@ -1798,7 +1799,8 @@ static int zonefs_fill_super(struct super_block *sb, void *data, int silent)
 	zonefs_info(sb, "Mounting %u zones",
 		    blkdev_nr_zones(sb->s_bdev->bd_disk));
 
-	if (!sbi->s_max_open_zones &&
+	sbi->s_max_wro_seq_files = bdev_max_open_zones(sb->s_bdev);
+	if (!sbi->s_max_wro_seq_files &&
 	    sbi->s_mount_opts & ZONEFS_MNTOPT_EXPLICIT_OPEN) {
 		zonefs_info(sb, "No open zones limit. Ignoring explicit_open mount option\n");
 		sbi->s_mount_opts &= ~ZONEFS_MNTOPT_EXPLICIT_OPEN;
