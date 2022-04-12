@@ -222,7 +222,7 @@ config PCI_OCTEON_PEM
 
 config PCIE_OCTEONTX2_PEM_EP
 	tristate "Marvell OcteonTx2 PEM EP driver"
-	depends on ARM64
+	depends on ARM64 && UIO
 	default m
 	help
 	  This driver configures the PEM when OcteonTx is in PCIe EndPoint mode.
