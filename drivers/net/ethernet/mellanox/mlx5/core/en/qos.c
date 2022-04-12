@@ -37,7 +37,7 @@ int mlx5e_qos_max_leaf_nodes(struct mlx5_core_dev *mdev)
 	return min(MLX5E_QOS_MAX_LEAF_NODES, mlx5_qos_max_leaf_nodes(mdev));
 }
 
-int mlx5e_qos_cur_leaf_nodes(struct mlx5e_htb *htb)
+int mlx5e_htb_cur_leaf_nodes(struct mlx5e_htb *htb)
 {
 	int last;
 
@@ -74,8 +74,8 @@ struct mlx5e_qos_node {
 #define MLX5E_HTB_CLASSID_ROOT 0xffffffff
 
 static struct mlx5e_qos_node *
-mlx5e_sw_node_create_leaf(struct mlx5e_htb *htb, u16 classid, u16 qid,
-			  struct mlx5e_qos_node *parent)
+mlx5e_htb_node_create_leaf(struct mlx5e_htb *htb, u16 classid, u16 qid,
+			   struct mlx5e_qos_node *parent)
 {
 	struct mlx5e_qos_node *node;
 
@@ -96,7 +96,7 @@ mlx5e_sw_node_create_leaf(struct mlx5e_htb *htb, u16 classid, u16 qid,
 	return node;
 }
 
-static struct mlx5e_qos_node *mlx5e_sw_node_create_root(struct mlx5e_htb *htb)
+static struct mlx5e_qos_node *mlx5e_htb_node_create_root(struct mlx5e_htb *htb)
 {
 	struct mlx5e_qos_node *node;
 
@@ -111,7 +111,7 @@ static struct mlx5e_qos_node *mlx5e_sw_node_create_root(struct mlx5e_htb *htb)
 	return node;
 }
 
-static struct mlx5e_qos_node *mlx5e_sw_node_find(struct mlx5e_htb *htb, u32 classid)
+static struct mlx5e_qos_node *mlx5e_htb_node_find(struct mlx5e_htb *htb, u32 classid)
 {
 	struct mlx5e_qos_node *node = NULL;
 
@@ -123,7 +123,7 @@ static struct mlx5e_qos_node *mlx5e_sw_node_find(struct mlx5e_htb *htb, u32 clas
 	return node;
 }
 
-static struct mlx5e_qos_node *mlx5e_sw_node_find_rcu(struct mlx5e_htb *htb, u32 classid)
+static struct mlx5e_qos_node *mlx5e_htb_node_find_rcu(struct mlx5e_htb *htb, u32 classid)
 {
 	struct mlx5e_qos_node *node = NULL;
 
@@ -135,7 +135,7 @@ static struct mlx5e_qos_node *mlx5e_sw_node_find_rcu(struct mlx5e_htb *htb, u32 
 	return node;
 }
 
-static void mlx5e_sw_node_delete(struct mlx5e_htb *htb, struct mlx5e_qos_node *node)
+static void mlx5e_htb_node_delete(struct mlx5e_htb *htb, struct mlx5e_qos_node *node)
 {
 	hash_del_rcu(&node->hnode);
 	if (node->qid != MLX5E_QOS_QID_INNER) {
@@ -165,7 +165,7 @@ static u16 mlx5e_qid_from_qos(struct mlx5e_channels *chs, u16 qid)
 	return (chs->params.num_channels + is_ptp) * mlx5e_get_dcb_num_tc(&chs->params) + qid;
 }
 
-int mlx5e_get_txq_by_classid(struct mlx5e_htb *htb, u16 classid)
+int mlx5e_htb_get_txq_by_classid(struct mlx5e_htb *htb, u16 classid)
 {
 	struct mlx5e_qos_node *node;
 	u16 qid;
@@ -173,7 +173,7 @@ int mlx5e_get_txq_by_classid(struct mlx5e_htb *htb, u16 classid)
 
 	rcu_read_lock();
 
-	node = mlx5e_sw_node_find_rcu(htb, classid);
+	node = mlx5e_htb_node_find_rcu(htb, classid);
 	if (!node) {
 		res = -ENOENT;
 		goto out;
@@ -512,7 +512,7 @@ mlx5e_htb_root_add(struct mlx5e_htb *htb, u16 htb_maj_id, u16 htb_defcls,
 			goto err_cancel_selq;
 	}
 
-	root = mlx5e_sw_node_create_root(htb);
+	root = mlx5e_htb_node_create_root(htb);
 	if (IS_ERR(root)) {
 		err = PTR_ERR(root);
 		goto err_free_queues;
@@ -529,7 +529,7 @@ mlx5e_htb_root_add(struct mlx5e_htb *htb, u16 htb_maj_id, u16 htb_defcls,
 	return 0;
 
 err_sw_node_delete:
-	mlx5e_sw_node_delete(htb, root);
+	mlx5e_htb_node_delete(htb, root);
 
 err_free_queues:
 	if (opened)
@@ -555,7 +555,7 @@ static int mlx5e_htb_root_del(struct mlx5e_htb *htb)
 	mlx5e_selq_prepare_htb(htb->selq, 0, 0);
 	mlx5e_selq_apply(htb->selq);
 
-	root = mlx5e_sw_node_find(htb, MLX5E_HTB_CLASSID_ROOT);
+	root = mlx5e_htb_node_find(htb, MLX5E_HTB_CLASSID_ROOT);
 	if (!root) {
 		qos_err(htb->mdev, "Failed to find the root node in the QoS tree\n");
 		return -ENOENT;
@@ -564,7 +564,7 @@ static int mlx5e_htb_root_del(struct mlx5e_htb *htb)
 	if (err)
 		qos_err(htb->mdev, "Failed to destroy root node %u, err = %d\n",
 			root->hw_id, err);
-	mlx5e_sw_node_delete(htb, root);
+	mlx5e_htb_node_delete(htb, root);
 
 	mlx5e_qos_deactivate_all_queues(&priv->channels);
 	mlx5e_qos_close_all_queues(&priv->channels);
@@ -622,11 +622,11 @@ mlx5e_htb_leaf_alloc_queue(struct mlx5e_htb *htb, u16 classid,
 		return qid;
 	}
 
-	parent = mlx5e_sw_node_find(htb, parent_classid);
+	parent = mlx5e_htb_node_find(htb, parent_classid);
 	if (!parent)
 		return -EINVAL;
 
-	node = mlx5e_sw_node_create_leaf(htb, classid, qid, parent);
+	node = mlx5e_htb_node_create_leaf(htb, classid, qid, parent);
 	if (IS_ERR(node))
 		return PTR_ERR(node);
 
@@ -641,7 +641,7 @@ mlx5e_htb_leaf_alloc_queue(struct mlx5e_htb *htb, u16 classid,
 		NL_SET_ERR_MSG_MOD(extack, "Firmware error when creating a leaf node.");
 		qos_err(htb->mdev, "Failed to create a leaf node (class %04x), err = %d\n",
 			classid, err);
-		mlx5e_sw_node_delete(htb, node);
+		mlx5e_htb_node_delete(htb, node);
 		return err;
 	}
 
@@ -672,7 +672,7 @@ mlx5e_htb_leaf_to_inner(struct mlx5e_htb *htb, u16 classid, u16 child_classid,
 	qos_dbg(htb->mdev, "TC_HTB_LEAF_TO_INNER classid %04x, upcoming child %04x, rate %llu, ceil %llu\n",
 		classid, child_classid, rate, ceil);
 
-	node = mlx5e_sw_node_find(htb, classid);
+	node = mlx5e_htb_node_find(htb, classid);
 	if (!node)
 		return -ENOENT;
 
@@ -687,7 +687,7 @@ mlx5e_htb_leaf_to_inner(struct mlx5e_htb *htb, u16 classid, u16 child_classid,
 	}
 
 	/* Intentionally reuse the qid for the upcoming first child. */
-	child = mlx5e_sw_node_create_leaf(htb, child_classid, node->qid, node);
+	child = mlx5e_htb_node_create_leaf(htb, child_classid, node->qid, node);
 	if (IS_ERR(child)) {
 		err = PTR_ERR(child);
 		goto err_destroy_hw_node;
@@ -709,7 +709,7 @@ mlx5e_htb_leaf_to_inner(struct mlx5e_htb *htb, u16 classid, u16 child_classid,
 	/* No fail point. */
 
 	qid = node->qid;
-	/* Pairs with mlx5e_get_txq_by_classid. */
+	/* Pairs with mlx5e_htb_get_txq_by_classid. */
 	WRITE_ONCE(node->qid, MLX5E_QOS_QID_INNER);
 
 	if (test_bit(MLX5E_STATE_OPENED, &priv->state)) {
@@ -739,7 +739,7 @@ mlx5e_htb_leaf_to_inner(struct mlx5e_htb *htb, u16 classid, u16 child_classid,
 
 err_delete_sw_node:
 	child->qid = MLX5E_QOS_QID_INNER;
-	mlx5e_sw_node_delete(htb, child);
+	mlx5e_htb_node_delete(htb, child);
 
 err_destroy_hw_node:
 	tmp_err = mlx5_qos_destroy_node(htb->mdev, new_hw_id);
@@ -749,7 +749,7 @@ err_destroy_hw_node:
 	return err;
 }
 
-static struct mlx5e_qos_node *mlx5e_sw_node_find_by_qid(struct mlx5e_htb *htb, u16 qid)
+static struct mlx5e_qos_node *mlx5e_htb_node_find_by_qid(struct mlx5e_htb *htb, u16 qid)
 {
 	struct mlx5e_qos_node *node = NULL;
 	int bkt;
@@ -793,7 +793,7 @@ static int mlx5e_htb_leaf_del(struct mlx5e_htb *htb, u16 *classid,
 
 	qos_dbg(htb->mdev, "TC_HTB_LEAF_DEL classid %04x\n", *classid);
 
-	node = mlx5e_sw_node_find(htb, *classid);
+	node = mlx5e_htb_node_find(htb, *classid);
 	if (!node)
 		return -ENOENT;
 
@@ -813,9 +813,9 @@ static int mlx5e_htb_leaf_del(struct mlx5e_htb *htb, u16 *classid,
 		qos_warn(htb->mdev, "Failed to destroy leaf node %u (class %04x), err = %d\n",
 			 node->hw_id, *classid, err);
 
-	mlx5e_sw_node_delete(htb, node);
+	mlx5e_htb_node_delete(htb, node);
 
-	moved_qid = mlx5e_qos_cur_leaf_nodes(htb);
+	moved_qid = mlx5e_htb_cur_leaf_nodes(htb);
 
 	if (moved_qid == 0) {
 		/* The last QoS SQ was just destroyed. */
@@ -837,7 +837,7 @@ static int mlx5e_htb_leaf_del(struct mlx5e_htb *htb, u16 *classid,
 	WARN(moved_qid == qid, "Can't move node with qid %u to itself", qid);
 	qos_dbg(htb->mdev, "Moving QoS SQ %u to %u\n", moved_qid, qid);
 
-	node = mlx5e_sw_node_find_by_qid(htb, moved_qid);
+	node = mlx5e_htb_node_find_by_qid(htb, moved_qid);
 	WARN(!node, "Could not find a node with qid %u to move to queue %u",
 	     moved_qid, qid);
 
@@ -890,7 +890,7 @@ mlx5e_htb_leaf_del_last(struct mlx5e_htb *htb, u16 classid, bool force,
 	qos_dbg(htb->mdev, "TC_HTB_LEAF_DEL_LAST%s classid %04x\n",
 		force ? "_FORCE" : "", classid);
 
-	node = mlx5e_sw_node_find(htb, classid);
+	node = mlx5e_htb_node_find(htb, classid);
 	if (!node)
 		return -ENOENT;
 
@@ -909,7 +909,7 @@ mlx5e_htb_leaf_del_last(struct mlx5e_htb *htb, u16 classid, bool force,
 
 	/* Store qid for reuse and prevent clearing the bit. */
 	qid = node->qid;
-	/* Pairs with mlx5e_get_txq_by_classid. */
+	/* Pairs with mlx5e_htb_get_txq_by_classid. */
 	WRITE_ONCE(node->qid, MLX5E_QOS_QID_INNER);
 
 	if (test_bit(MLX5E_STATE_OPENED, &priv->state)) {
@@ -926,7 +926,7 @@ mlx5e_htb_leaf_del_last(struct mlx5e_htb *htb, u16 classid, bool force,
 			 node->hw_id, classid, err);
 
 	parent = node->parent;
-	mlx5e_sw_node_delete(htb, node);
+	mlx5e_htb_node_delete(htb, node);
 
 	node = parent;
 	WRITE_ONCE(node->qid, qid);
@@ -960,7 +960,7 @@ mlx5e_htb_leaf_del_last(struct mlx5e_htb *htb, u16 classid, bool force,
 }
 
 static int
-mlx5e_qos_update_children(struct mlx5e_htb *htb, struct mlx5e_qos_node *node,
+mlx5e_htb_update_children(struct mlx5e_htb *htb, struct mlx5e_qos_node *node,
 			  struct netlink_ext_ack *extack)
 {
 	struct mlx5e_qos_node *child;
@@ -1004,7 +1004,7 @@ mlx5e_htb_node_modify(struct mlx5e_htb *htb, u16 classid, u64 rate, u64 ceil,
 	qos_dbg(htb->mdev, "TC_HTB_LEAF_MODIFY classid %04x, rate %llu, ceil %llu\n",
 		classid, rate, ceil);
 
-	node = mlx5e_sw_node_find(htb, classid);
+	node = mlx5e_htb_node_find(htb, classid);
 	if (!node)
 		return -ENOENT;
 
@@ -1028,7 +1028,7 @@ mlx5e_htb_node_modify(struct mlx5e_htb *htb, u16 classid, u64 rate, u64 ceil,
 	node->max_average_bw = max_average_bw;
 
 	if (ceil_changed)
-		err = mlx5e_qos_update_children(htb, node, extack);
+		err = mlx5e_htb_update_children(htb, node, extack);
 
 	return err;
 }
@@ -1116,7 +1116,7 @@ int mlx5e_htb_setup_tc(struct mlx5e_priv *priv, struct tc_htb_qopt_offload *htb_
 		return mlx5e_htb_node_modify(htb, htb_qopt->classid, htb_qopt->rate, htb_qopt->ceil,
 					     htb_qopt->extack);
 	case TC_HTB_LEAF_QUERY_QUEUE:
-		res = mlx5e_get_txq_by_classid(htb, htb_qopt->classid);
+		res = mlx5e_htb_get_txq_by_classid(htb, htb_qopt->classid);
 		if (res < 0)
 			return res;
 		htb_qopt->qid = res;
