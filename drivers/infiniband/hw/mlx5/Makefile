@@ -19,6 +19,7 @@ mlx5_ib-y := ah.o \
 	     restrack.o \
 	     srq.o \
 	     srq_cmd.o \
+	     umr.o \
 	     oracle_ext.o\
 	     wr.o
 
