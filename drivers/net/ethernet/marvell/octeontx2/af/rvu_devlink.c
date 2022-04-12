@@ -1523,6 +1523,37 @@ static int rvu_af_dl_tim_capture_timers_validate(struct devlink *devlink,
 	return 0;
 }
 
+static bool cn10k_tim_ptp_errata(struct pci_dev *pdev)
+{
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A ||
+	    pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A ||
+	    pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B)
+		return true;
+	return false;
+}
+
+static u64 cn10k_tim_ptp_rollover_errata_fix(struct rvu *rvu, u64 time)
+{
+	long offset = rvu_read64(rvu, BLKADDR_TIM, TIM_AF_ADJUST_PTP);
+	u32 sec, nsec, max_nsec = NSEC_PER_SEC;
+
+	sec = (u32)(time >> 32);
+	nsec = (u32)time;
+
+	if (!offset || nsec < max_nsec)
+		return time;
+
+	if (offset < 0) {
+		nsec += max_nsec;
+		sec -= 1;
+	} else {
+		nsec -= max_nsec;
+		sec += 1;
+	}
+
+	return (u64)sec << 32 | nsec;
+}
+
 static int rvu_af_dl_tim_capture_time_get(struct devlink *devlink, u32 id,
 					  struct devlink_param_gset_ctx *ctx)
 {
@@ -1532,6 +1563,8 @@ static int rvu_af_dl_tim_capture_time_get(struct devlink *devlink, u32 id,
 
 	offset = rvu_af_dl_tim_param_id_to_offset(id);
 	time = rvu_read64(rvu, BLKADDR_TIM, offset);
+	if (offset == TIM_AF_CAPTURE_PTP && cn10k_tim_ptp_errata(rvu->pdev))
+		time = cn10k_tim_ptp_rollover_errata_fix(rvu, time);
 	snprintf(ctx->val.vstr, sizeof(ctx->val.vstr), "%llu", time);
 
 	return 0;
