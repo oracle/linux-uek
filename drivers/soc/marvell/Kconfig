@@ -189,16 +189,6 @@ config OCTEONTX_SERDES
 	  capture eye, use PRBS, configure serdes in loopback mode, and
 	  read/write TX tuning parameters.
 
-config MARVELL_CN10K_RPRAM
-	tristate "Octeontx RPRAM debugfs interface"
-	depends on HAVE_ARM_SMCCC
-	default n
-	help
-	  This option enables the user to change the persistent data updated by
-	  secure firmware. Kernel invokes secure monitor call to make the change
-	  requested by user. Enable this option if you are building for octeontx
-	  cn10k platforms and memory preservation feature is used.
-
 config MARVELL_CN10K_SWUP
 	tristate "CN10K firmware secure update"
 	depends on ARM64
