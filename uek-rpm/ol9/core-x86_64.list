@@ -880,7 +880,6 @@ kernel/net/ipv4/gre.ko
 kernel/net/ipv4/ipcomp.ko
 kernel/net/ipv4/ip_gre.ko
 kernel/net/ipv4/ipip.ko
-kernel/net/ipv4/ip_tunnel.ko
 kernel/net/ipv4/ip_vti.ko
 kernel/net/ipv4/netfilter/arptable_filter.ko
 kernel/net/ipv4/netfilter/arp_tables.ko
@@ -911,7 +910,6 @@ kernel/net/ipv4/netfilter/nft_reject_ipv4.ko
 kernel/net/ipv4/tcp_dctcp.ko
 kernel/net/ipv4/tcp_nv.ko
 kernel/net/ipv4/tunnel4.ko
-kernel/net/ipv4/udp_tunnel.ko
 kernel/net/ipv4/xfrm4_tunnel.ko
 kernel/net/ipv6/ah6.ko
 kernel/net/ipv6/esp6.ko
@@ -919,7 +917,6 @@ kernel/net/ipv6/esp6_offload.ko
 kernel/net/ipv6/fou6.ko
 kernel/net/ipv6/ip6_gre.ko
 kernel/net/ipv6/ip6_tunnel.ko
-kernel/net/ipv6/ip6_udp_tunnel.ko
 kernel/net/ipv6/ip6_vti.ko
 kernel/net/ipv6/ipcomp6.ko
 kernel/net/ipv6/mip6.ko
