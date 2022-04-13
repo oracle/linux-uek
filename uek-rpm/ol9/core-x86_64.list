@@ -1159,8 +1159,6 @@ kernel/net/sched/sch_tbf.ko
 kernel/net/sunrpc/auth_gss/auth_rpcgss.ko
 kernel/net/sunrpc/auth_gss/rpcsec_gss_krb5.ko
 kernel/net/sunrpc/sunrpc.ko
-kernel/net/tipc/diag.ko
-kernel/net/tipc/tipc.ko
 kernel/net/tls/tls.ko
 kernel/net/vmw_vsock/hv_sock.ko
 kernel/net/vmw_vsock/vmw_vsock_virtio_transport_common.ko
