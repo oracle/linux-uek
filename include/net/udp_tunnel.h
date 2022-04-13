@@ -116,6 +116,9 @@ struct udp_tunnel_info {
 	sa_family_t sa_family;
 	__be16 port;
 	u8 hw_priv;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /* Notify network devices of offloadable types */
