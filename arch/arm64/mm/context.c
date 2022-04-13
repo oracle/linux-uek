@@ -200,8 +200,11 @@ bool unlock_context_by_mm(struct mm_struct *mm)
 
 static bool check_update_reserved_asid(u64 asid, u64 newasid)
 {
-	int i, cpu;
+	int cpu;
 	bool hit = false;
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+	int i;
+#endif
 
 	/*
 	 * Iterate over the set of reserved ASIDs looking for a match.
