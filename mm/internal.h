@@ -252,7 +252,7 @@ static inline unsigned int buddy_order(struct page *page)
  * For recording page's order, we use page_private(page).
  */
 static inline bool page_is_buddy(struct page *page, struct page *buddy,
-							unsigned int order)
+				 unsigned int order)
 {
 	if (!page_is_guard(buddy) && !PageBuddy(buddy))
 		return false;
@@ -312,8 +312,8 @@ __find_buddy_pfn(unsigned long page_pfn, unsigned int order)
 static inline struct page *find_buddy_page_pfn(struct page *page,
 			unsigned long pfn, unsigned int order, unsigned long *buddy_pfn)
 {
-	struct page *buddy;
 	unsigned long __buddy_pfn = __find_buddy_pfn(pfn, order);
+	struct page *buddy;
 
 	buddy = page + (__buddy_pfn - pfn);
 	if (buddy_pfn)
