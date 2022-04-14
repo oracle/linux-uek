@@ -243,11 +243,11 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	struct cnf10k_rfoe_ndev_priv *priv = container_of(work,
 						struct cnf10k_rfoe_ndev_priv,
 						ptp_queue_work);
-	struct mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
-	struct mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
-	struct mhab_job_desc_cfg *jd_cfg_ptr;
+	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
+	struct cnf10k_mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
+	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
+	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
-	struct psm_cmd_addjob_s *psm_cmd_lo;
 	struct cnf10k_tx_action_s tx_mem;
 	int ptp_offset = 0, udp_csum = 0;
 	struct tx_job_queue_cfg *job_cfg;
@@ -327,19 +327,19 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 						       ptp_offset, udp_csum);
 
 	priv->ptp_tx_skb = skb;
-	psm_cmd_lo = (struct psm_cmd_addjob_s *)&job_entry->job_cmd_lo;
+	psm_cmd_lo = (struct cnf10k_psm_cmd_addjob_s *)&job_entry->job_cmd_lo;
 	priv->ptp_job_tag = psm_cmd_lo->jobtag;
 
 	/* update length and block size in jd dma cfg word */
 	jd_cfg_ptr_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
 	jd_cfg_ptr = otx2_iova_to_virt(priv->iommu_domain, jd_cfg_ptr_iova);
 	jd_cfg_ptr->cfg3.pkt_len = skb->len;
-	jd_dma_cfg_word_0 = (struct mhbw_jd_dma_cfg_word_0_s *)
+	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
 				job_entry->rd_dma_ptr;
 	jd_dma_cfg_word_0->block_size = (((skb->len + 15) >> 4) * 4);
 
 	/* copy packet data to rd_dma_ptr start addr */
-	jd_dma_cfg_word_1 = (struct mhbw_jd_dma_cfg_word_1_s *)
+	jd_dma_cfg_word_1 = (struct cnf10k_mhbw_jd_dma_cfg_word_1_s *)
 				((u8 *)job_entry->rd_dma_ptr + 8);
 	memcpy(otx2_iova_to_virt(priv->iommu_domain,
 				 jd_dma_cfg_word_1->start_addr),
@@ -480,7 +480,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 				       int mbt_buf_idx)
 {
 	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
-	struct mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
+	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
 	u64 tstamp = 0, mbt_state, jdt_iova_addr;
 	struct rfoe_psw_w2_ecpri_s *ecpri_psw_w2;
 	struct rfoe_psw_w2_roe_s *rfoe_psw_w2;
@@ -497,9 +497,9 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	/* read mbt state */
 	spin_lock(&cdev_priv->mbt_lock);
 	writeq(mbt_buf_idx, (priv->rfoe_reg_base +
-			 RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
+			 CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
 	mbt_state = readq(priv->rfoe_reg_base +
-			  RFOEX_RX_IND_MBT_SEG_STATE(priv->rfoe_num));
+			  CNF10K_RFOEX_RX_IND_MBT_SEG_STATE(priv->rfoe_num));
 	spin_unlock(&cdev_priv->mbt_lock);
 
 	if ((mbt_state >> 16 & 0xf) != 0) {
@@ -557,7 +557,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 
 	/* read jd ptr from psw */
 	jdt_ptr = otx2_iova_to_virt(priv->iommu_domain, jdt_iova_addr);
-	jd_dma_cfg_word_0 = (struct mhbw_jd_dma_cfg_word_0_s *)
+	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
 			((u8 *)jdt_ptr + ft_cfg->jd_rd_offset);
 	len = (jd_dma_cfg_word_0->block_size) << 2;
 	netif_dbg(priv, rx_status, priv->netdev, "jd rd_dma len = %d\n", len);
@@ -661,9 +661,9 @@ static int cnf10k_rfoe_process_rx_flow(struct cnf10k_rfoe_ndev_priv *priv,
 	/* read mbt nxt_buf */
 	writeq(ft_cfg->mbt_idx,
 	       priv->rfoe_reg_base +
-	       RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num));
+	       CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num));
 	mbt_cfg = readq(priv->rfoe_reg_base +
-			RFOEX_RX_IND_MBT_CFG(priv->rfoe_num));
+			CNF10K_RFOEX_RX_IND_MBT_CFG(priv->rfoe_num));
 	spin_unlock(&cdev_priv->mbt_lock);
 
 	nxt_buf = (mbt_cfg >> 32) & 0xffff;
@@ -893,12 +893,12 @@ static int cnf10k_rfoe_ioctl(struct net_device *netdev, struct ifreq *req,
 static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 					      struct net_device *netdev)
 {
+	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
+	struct cnf10k_mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
 	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
-	struct mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
-	struct mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
-	struct mhab_job_desc_cfg *jd_cfg_ptr;
+	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
+	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
-	struct psm_cmd_addjob_s *psm_cmd_lo;
 	struct cnf10k_tx_action_s tx_mem;
 	int ptp_offset = 0, udp_csum = 0;
 	struct tx_job_queue_cfg *job_cfg;
@@ -1040,7 +1040,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 		if (list_empty(&priv->ptp_skb_list.list) &&
 		    !test_and_set_bit_lock(PTP_TX_IN_PROGRESS, &priv->state)) {
 			priv->ptp_tx_skb = skb;
-			psm_cmd_lo = (struct psm_cmd_addjob_s *)
+			psm_cmd_lo = (struct cnf10k_psm_cmd_addjob_s *)
 						&job_entry->job_cmd_lo;
 			priv->ptp_job_tag = psm_cmd_lo->jobtag;
 
@@ -1090,7 +1090,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	jd_cfg_ptr_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
 	jd_cfg_ptr = otx2_iova_to_virt(priv->iommu_domain, jd_cfg_ptr_iova);
 	jd_cfg_ptr->cfg3.pkt_len = skb->len;
-	jd_dma_cfg_word_0 = (struct mhbw_jd_dma_cfg_word_0_s *)
+	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
 						job_entry->rd_dma_ptr;
 	jd_dma_cfg_word_0->block_size = (((skb->len + 15) >> 4) * 4);
 
@@ -1104,7 +1104,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	}
 
 	/* copy packet data to rd_dma_ptr start addr */
-	jd_dma_cfg_word_1 = (struct mhbw_jd_dma_cfg_word_1_s *)
+	jd_dma_cfg_word_1 = (struct cnf10k_mhbw_jd_dma_cfg_word_1_s *)
 					((u8 *)job_entry->rd_dma_ptr + 8);
 	if (pkt_type == PACKET_TYPE_PTP) {
 		memcpy(otx2_iova_to_virt(priv->iommu_domain,
@@ -1234,7 +1234,7 @@ static int cnf10k_rfoe_init(struct net_device *netdev)
 
 	/* Enable VLAN TPID match */
 	writeq(0x18100, (priv->rfoe_reg_base +
-			 RFOEX_RX_VLANX_CFG(priv->rfoe_num, 0)));
+			 CNF10K_RFOEX_RX_VLANX_CFG(priv->rfoe_num, 0)));
 	netdev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
 
 	return 0;
@@ -1267,9 +1267,9 @@ static int cnf10k_rfoe_vlan_rx_configure(struct net_device *netdev, u16 vid,
 
 	/* read current fwd mask */
 	writeq(index, (priv->rfoe_reg_base +
-		       RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
+		       CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
 	fwd.fwd = readq(priv->rfoe_reg_base +
-			RFOEX_RX_IND_VLANX_FWD(priv->rfoe_num, 0));
+			CNF10K_RFOEX_RX_IND_VLANX_FWD(priv->rfoe_num, 0));
 
 	if (forward)
 		fwd.fwd |= mask;
@@ -1278,9 +1278,9 @@ static int cnf10k_rfoe_vlan_rx_configure(struct net_device *netdev, u16 vid,
 
 	/* write the new fwd mask */
 	writeq(index, (priv->rfoe_reg_base +
-		       RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
+		       CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
 	writeq(fwd.fwd, (priv->rfoe_reg_base +
-			 RFOEX_RX_IND_VLANX_FWD(priv->rfoe_num, 0)));
+			 CNF10K_RFOEX_RX_IND_VLANX_FWD(priv->rfoe_num, 0)));
 
 out:
 	spin_unlock_irqrestore(&cdev_priv->mbt_lock, flags);
@@ -1367,9 +1367,9 @@ static void cnf10k_rfoe_fill_rx_ft_cfg(struct cnf10k_rfoe_ndev_priv *priv,
 		spin_lock(&cdev_priv->mbt_lock);
 		writeq(ft_cfg->jdt_idx,
 		       (priv->rfoe_reg_base +
-			RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
+			CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
 		jdt_cfg0 = readq(priv->rfoe_reg_base +
-				 RFOEX_RX_IND_JDT_CFG0(priv->rfoe_num));
+				 CNF10K_RFOEX_RX_IND_JDT_CFG0(priv->rfoe_num));
 		spin_unlock(&cdev_priv->mbt_lock);
 		ft_cfg->jd_rd_offset = ((jdt_cfg0 >> 27) & 0x3f) * 8;
 		ft_cfg->pkt_offset = (u8)((jdt_cfg0 >> 52) & 0x1f);

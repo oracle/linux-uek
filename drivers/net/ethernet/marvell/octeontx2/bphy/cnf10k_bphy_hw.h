@@ -10,128 +10,127 @@
 #include <linux/types.h>
 
 /* RFOE MHAB register offsets */
-#define RFOEX_RX_CTL(a)			(0x0818ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_VLANX_CFG(a, b)	(0x0870ULL | \
-					 ((unsigned long)(a) << 24) | \
-					 ((b) << 3))
-#define RFOEX_RX_INDIRECT_INDEX_OFFSET(a)	(0x13F8ULL | \
-						 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_FTX_CFG(a, b)	(0x1400ULL | \
-					 (((unsigned long)(a) << 24)) + \
-					 ((b) << 3))
-#define RFOEX_RX_IND_MBT_CFG(a)		(0x1420ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_MBT_CFG2(a)	(0x1428ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_MBT_ADDR(a)	(0x1430ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_MBT_SEG_STATE(a)	(0x1438ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_VLANX_FWD(a, b)	(0x14D0ULL | \
-					 ((unsigned long)(a) << 24) | \
-					 ((b) << 3))
-#define RFOEX_RX_IND_JDT_CFG0(a)	(0x1440ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_JDT_CFG1(a)	(0x1448ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_JDT_CFG2(a)	(0x1490ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_JDT_PTR(a)		(0x1450ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_JDT_STATE(a)	(0x1478ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_RX_IND_ECPRI_FT_CFG(a)	(0x14C0ULL | \
-					 ((unsigned long)(a) << 24))
-#define RFOEX_TX_PTP_TSTMP_W0(a, b)	(0x7A0ULL | \
-					 (((unsigned long)(a) << 24)) | \
-					 ((b) << 3))
-#define RFOEX_TX_PTP_TSTMP_W1(a, b)	(0x7C0ULL | \
-					 (((unsigned long)(a) << 24)) | \
-					 ((b) << 3))
-#define RFOEX_TX_PKT_STAT(a, b)		(0x720ULL | \
-					 (((unsigned long)(a) << 24)) | \
-					 ((b) << 3))
-#define RFOEX_TX_OCTS_STAT(a, b)	(0x740ULL | \
-					 (((unsigned long)(a) << 24)) | \
-					 ((b) << 3))
-#define RFOEX_RX_VLAN_DROP_STAT(a, b)	(0x8A0ULL | \
-					 (((unsigned long)(a) << 24)) | \
-					 ((b) << 3))
-#define RFOEX_RX_RPM_PKT_STAT(a, b)	(0x15C0ULL | \
-					 (((unsigned long)(a) << 24)) | \
-					 ((b) << 3))
-#define RFOEX_RX_RPM_OCTS_STAT(a, b)	(0x15E0ULL | \
-					 (((unsigned long)(a) << 24)) | \
-					 ((b) << 3))
+#define CNF10K_RFOEX_RX_CTL(a)				(0x0818ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_VLANX_CFG(a, b)			(0x0870ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(a)	(0x13F8ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_FTX_CFG(a, b)		(0x1400ULL | \
+							 (((unsigned long)(a) << 24)) + \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_IND_MBT_CFG(a)			(0x1420ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_MBT_CFG2(a)			(0x1428ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_MBT_ADDR(a)			(0x1430ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_MBT_SEG_STATE(a)		(0x1438ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_VLANX_FWD(a, b)		(0x14D0ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_IND_JDT_CFG0(a)			(0x1440ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_JDT_CFG1(a)			(0x1448ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_JDT_CFG2(a)			(0x1490ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_JDT_PTR(a)			(0x1450ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_JDT_STATE(a)		(0x1478ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_RX_IND_ECPRI_FT_CFG(a)		(0x14C0ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_RFOEX_TX_PTP_TSTMP_W0(a, b)		(0x7A0ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_TX_PTP_TSTMP_W1(a, b)		(0x7C0ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_TX_PKT_STAT(a, b)			(0x720ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_TX_OCTS_STAT(a, b)			(0x740ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_VLAN_DROP_STAT(a, b)		(0x8A0ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_RPM_PKT_STAT(a, b)		(0x15C0ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_RPM_OCTS_STAT(a, b)		(0x15E0ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
 
 /* CPRI register offsets */
-#define CPRIX_RXD_GMII_UL_CBUF_CFG1(a)		(0x1000ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_RXD_GMII_UL_CBUF_CFG2(a)		(0x1008ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_RXD_GMII_UL_RD_DOORBELL(a)	(0x1010ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_RXD_GMII_UL_SW_RD_PTR(a)		(0x1018ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_RXD_GMII_UL_NXT_WR_PTR(a)		(0x1020ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_RXD_GMII_UL_PKT_COUNT(a)		(0x1028ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_TXD_GMII_DL_CBUF_CFG1(a)		(0x1100ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_TXD_GMII_DL_CBUF_CFG2(a)		(0x1108ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_TXD_GMII_DL_WR_DOORBELL(a)	(0x1110ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_TXD_GMII_DL_SW_WR_PTR(a)		(0x1118ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_TXD_GMII_DL_NXT_RD_PTR(a)		(0x1120ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_ETH_UL_INT(a)			(0x280ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_ETH_UL_INT_ENA_W1S(a)		(0x288ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_ETH_UL_INT_ENA_W1C(a)		(0x290ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_ETH_UL_INT_W1S(a)			(0x298ULL | \
-						 ((unsigned long)(a) << 24))
-#define CPRIX_ETH_BAD_CRC_CNT(a, b)		(0x400ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_ERR_CNT(a, b)		(0x408ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_OSIZE_CNT(a, b)		(0x410ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_USIZE_CNT(a, b)		(0x418ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_FIFO_ORUN_CNT(a, b)	(0x420ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_GPKTS_CNT(a, b)		(0x428ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_BOCT_CNT(a, b)		(0x430ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_GOCT_CNT(a, b)		(0x438ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_UL_MALFORMED_CNT(a, b)	(0x440ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_DL_GOCTETS_CNT(a, b)		(0x450ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-#define CPRIX_ETH_DL_GPKTS_CNT(a, b)		(0x458ULL | \
-						 ((unsigned long)(a) << 24) | \
-						 ((unsigned long)(b) << 11))
-
+#define CNF10K_CPRIX_RXD_GMII_UL_CBUF_CFG1(a)		(0x1000ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_RXD_GMII_UL_CBUF_CFG2(a)		(0x1008ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_RXD_GMII_UL_RD_DOORBELL(a)		(0x1010ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_RXD_GMII_UL_SW_RD_PTR(a)		(0x1018ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_RXD_GMII_UL_NXT_WR_PTR(a)		(0x1020ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_RXD_GMII_UL_PKT_COUNT(a)		(0x1028ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_TXD_GMII_DL_CBUF_CFG1(a)		(0x1100ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_TXD_GMII_DL_CBUF_CFG2(a)		(0x1108ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_TXD_GMII_DL_WR_DOORBELL(a)		(0x1110ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_TXD_GMII_DL_SW_WR_PTR(a)		(0x1118ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_TXD_GMII_DL_NXT_RD_PTR(a)		(0x1120ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_ETH_UL_INT(a)			(0x280ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_ETH_UL_INT_ENA_W1S(a)		(0x288ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_ETH_UL_INT_ENA_W1C(a)		(0x290ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_ETH_UL_INT_W1S(a)			(0x298ULL | \
+							 ((unsigned long)(a) << 24))
+#define CNF10K_CPRIX_ETH_BAD_CRC_CNT(a, b)		(0x400ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_ERR_CNT(a, b)		(0x408ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_OSIZE_CNT(a, b)		(0x410ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_USIZE_CNT(a, b)		(0x418ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_FIFO_ORUN_CNT(a, b)		(0x420ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_GPKTS_CNT(a, b)		(0x428ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_BOCT_CNT(a, b)		(0x430ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_GOCT_CNT(a, b)		(0x438ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_UL_MALFORMED_CNT(a, b)		(0x440ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_DL_GOCTETS_CNT(a, b)		(0x450ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
+#define CNF10K_CPRIX_ETH_DL_GPKTS_CNT(a, b)		(0x458ULL | \
+							 ((unsigned long)(a) << 24) | \
+							 ((unsigned long)(b) << 11))
 /* MHAB Structures */
-struct mhbw_jd_dma_cfg_word_0_s {
+struct cnf10k_mhbw_jd_dma_cfg_word_0_s {
 	u64 dma_mode		: 3;
 	u64 reserved1		: 1;
 	u64 dswap		: 3;
@@ -145,12 +144,12 @@ struct mhbw_jd_dma_cfg_word_0_s {
 	u64 reserved4		: 4;
 };
 
-struct mhbw_jd_dma_cfg_word_1_s {
+struct cnf10k_mhbw_jd_dma_cfg_word_1_s {
 	u64 start_addr		: 53;
 	u64 reserved1		: 11;
 };
 
-struct rfoex_abx_slotx_configuration {
+struct cnf10k_rfoex_abx_slotx_configuration {
 	u64 pkt_mode			: 2;
 	u64 da_sel			: 3;
 	u64 sa_sel			: 3;
@@ -173,7 +172,7 @@ struct rfoex_abx_slotx_configuration {
 	u64 rfoe_mode			: 1;
 };
 
-struct rfoex_abx_slotx_configuration1 {
+struct cnf10k_rfoex_abx_slotx_configuration1 {
 	u64 rbmap_bytes			: 8;
 	u64 reserved1			: 16;
 	u64 hdr_len			: 8;
@@ -182,7 +181,7 @@ struct rfoex_abx_slotx_configuration1 {
 	u64 sof_mode			: 2;
 };
 
-struct rfoex_abx_slotx_configuration2 {
+struct cnf10k_rfoex_abx_slotx_configuration2 {
 	u64 vlan_sel		: 3;
 	u64 vlan_num		: 2;
 	u64 ptp_mode		: 1;
@@ -197,18 +196,18 @@ struct rfoex_abx_slotx_configuration2 {
 	u64 reserved1		: 5;
 };
 
-struct rfoex_abx_slotx_configuration3 {
+struct cnf10k_rfoex_abx_slotx_configuration3 {
 	u64 pkt_len		: 16;
 	u64 lmacid		: 2;
 	u64 tx_err		: 1;
 	u64 reserved		: 45;
 };
 
-struct mhab_job_desc_cfg {
-	struct rfoex_abx_slotx_configuration cfg;
-	struct rfoex_abx_slotx_configuration1 cfg1;
-	struct rfoex_abx_slotx_configuration2 cfg2;
-	struct rfoex_abx_slotx_configuration3 cfg3;
+struct cnf10k_mhab_job_desc_cfg {
+	struct cnf10k_rfoex_abx_slotx_configuration cfg;
+	struct cnf10k_rfoex_abx_slotx_configuration1 cfg1;
+	struct cnf10k_rfoex_abx_slotx_configuration2 cfg2;
+	struct cnf10k_rfoex_abx_slotx_configuration3 cfg3;
 } __packed;
 
 /* PSM Enumerations */
@@ -232,7 +231,7 @@ enum psm_opcode_e {
 };
 
 /* PSM Structures */
-struct psm_cmd_addjob_s {
+struct cnf10k_psm_cmd_addjob_s {
 	/* W0 */
 	u64 opcode	: 6;
 	u64 rsrc_set	: 2;
