@@ -99,6 +99,17 @@ static unsigned long quarantine_size;
 static DEFINE_RAW_SPINLOCK(quarantine_lock);
 DEFINE_STATIC_SRCU(remove_cache_srcu);
 
+#ifdef CONFIG_PREEMPT_RT
+struct cpu_shrink_qlist {
+	raw_spinlock_t lock;
+	struct qlist_head qlist;
+};
+
+static DEFINE_PER_CPU(struct cpu_shrink_qlist, shrink_qlist) = {
+	.lock = __RAW_SPIN_LOCK_UNLOCKED(shrink_qlist.lock),
+};
+#endif
+
 /* Maximum size of the global queue. */
 static unsigned long quarantine_max_size;
 
@@ -311,12 +322,23 @@ static void qlist_move_cache(struct qlist_head *from,
 static void per_cpu_remove_cache(void *arg)
 {
 	struct kmem_cache *cache = arg;
-	struct qlist_head to_free = QLIST_INIT;
 	struct qlist_head *q;
-
+#ifndef CONFIG_PREEMPT_RT
+	struct qlist_head to_free = QLIST_INIT;
+#else
+	unsigned long flags;
+	struct cpu_shrink_qlist *sq;
+#endif
 	q = this_cpu_ptr(&cpu_quarantine);
+#ifndef CONFIG_PREEMPT_RT
 	qlist_move_cache(q, &to_free, cache);
 	qlist_free_all(&to_free, cache);
+#else
+	sq = this_cpu_ptr(&shrink_qlist);
+	raw_spin_lock_irqsave(&sq->lock, flags);
+	qlist_move_cache(q, &sq->qlist, cache);
+	raw_spin_unlock_irqrestore(&sq->lock, flags);
+#endif
 }
 
 /* Free all quarantined objects belonging to cache. */
@@ -324,6 +346,10 @@ void kasan_quarantine_remove_cache(struct kmem_cache *cache)
 {
 	unsigned long flags, i;
 	struct qlist_head to_free = QLIST_INIT;
+#ifdef CONFIG_PREEMPT_RT
+	int cpu;
+	struct cpu_shrink_qlist *sq;
+#endif
 
 	/*
 	 * Must be careful to not miss any objects that are being moved from
@@ -333,6 +359,16 @@ void kasan_quarantine_remove_cache(struct kmem_cache *cache)
 	 * second.
 	 */
 	on_each_cpu(per_cpu_remove_cache, cache, 1);
+
+#ifdef CONFIG_PREEMPT_RT
+	for_each_online_cpu(cpu) {
+		sq = per_cpu_ptr(&shrink_qlist, cpu);
+		raw_spin_lock_irqsave(&sq->lock, flags);
+		qlist_move_cache(&sq->qlist, &to_free, cache);
+		raw_spin_unlock_irqrestore(&sq->lock, flags);
+	}
+	qlist_free_all(&to_free, cache);
+#endif
 
 	raw_spin_lock_irqsave(&quarantine_lock, flags);
 	for (i = 0; i < QUARANTINE_BATCHES; i++) {
