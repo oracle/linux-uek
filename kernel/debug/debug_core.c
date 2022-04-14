@@ -56,6 +56,7 @@
 #include <linux/vmacache.h>
 #include <linux/rcupdate.h>
 #include <linux/irq.h>
+#include <linux/security.h>
 
 #include <asm/cacheflush.h>
 #include <asm/byteorder.h>
@@ -678,6 +679,8 @@ return_normal:
 
 	while (1) {
 cpu_master_loop:
+		if (security_locked_down(LOCKDOWN_KGDB))
+			break;
 		if (dbg_kdb_mode) {
 			kgdb_connected = 1;
 			error = kdb_stub(ks);
