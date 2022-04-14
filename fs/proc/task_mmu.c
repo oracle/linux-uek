@@ -883,10 +883,8 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
 		return -ESRCH;
 
 	mm = priv->mm;
-	if (!mm || !mmget_not_zero(mm)) {
-		ret = -ESRCH;
+	if (!mm || !mmget_not_zero(mm))
 		goto out_put_task;
-	}
 
 	memset(&mss, 0, sizeof(mss));
 
