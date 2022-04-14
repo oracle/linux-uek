@@ -170,7 +170,7 @@ static int secretmem_setattr(struct user_namespace *mnt_userns,
 	return simple_setattr(mnt_userns, dentry, iattr);
 }
 
-const struct inode_operations secretmem_iops = {
+static const struct inode_operations secretmem_iops = {
 	.setattr = secretmem_setattr,
 };
 
