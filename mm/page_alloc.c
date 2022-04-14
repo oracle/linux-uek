@@ -6286,13 +6286,12 @@ static void build_thisnode_zonelists(pg_data_t *pgdat)
 static void build_zonelists(pg_data_t *pgdat)
 {
 	static int node_order[MAX_NUMNODES];
-	int node, load, nr_nodes = 0;
+	int node, nr_nodes = 0;
 	nodemask_t used_mask = NODE_MASK_NONE;
 	int local_node, prev_node;
 
 	/* NUMA-aware ordering of nodes */
 	local_node = pgdat->node_id;
-	load = nr_online_nodes;
 	prev_node = local_node;
 
 	memset(node_order, 0, sizeof(node_order));
@@ -6304,11 +6303,10 @@ static void build_zonelists(pg_data_t *pgdat)
 		 */
 		if (node_distance(local_node, node) !=
 		    node_distance(local_node, prev_node))
-			node_load[node] += load;
+			node_load[node] += nr_online_nodes;
 
 		node_order[nr_nodes++] = node;
 		prev_node = node;
-		load--;
 	}
 
 	build_zonelists_in_node_order(pgdat, node_order, nr_nodes);
