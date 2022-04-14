@@ -1028,13 +1028,13 @@ static void __pagevec_lru_add_fn(struct folio *folio, struct lruvec *lruvec)
 		folio_clear_active(folio);
 		folio_set_unevictable(folio);
 		/*
-		 * folio->mlock_count = !!folio_test_mlocked(folio)?
+		 * page->mlock_count = !!PageMlocked(page)?
 		 * But that leaves __mlock_page() in doubt whether another
 		 * actor has already counted the mlock or not.  Err on the
 		 * safe side, underestimate, let page reclaim fix it, rather
 		 * than leaving a page on the unevictable LRU indefinitely.
 		 */
-		folio->mlock_count = 0;
+		folio_page(folio, 0)->mlock_count = 0;
 		if (!was_unevictable)
 			__count_vm_events(UNEVICTABLE_PGCULLED, nr_pages);
 	}
