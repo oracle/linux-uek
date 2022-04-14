@@ -29,7 +29,6 @@
 	{(unsigned long)__GFP_HIGHMEM,		"__GFP_HIGHMEM"},	\
 	{(unsigned long)GFP_DMA32,		"GFP_DMA32"},		\
 	{(unsigned long)__GFP_HIGH,		"__GFP_HIGH"},		\
-	{(unsigned long)__GFP_ATOMIC,		"__GFP_ATOMIC"},	\
 	{(unsigned long)__GFP_IO,		"__GFP_IO"},		\
 	{(unsigned long)__GFP_FS,		"__GFP_FS"},		\
 	{(unsigned long)__GFP_NOWARN,		"__GFP_NOWARN"},	\
