@@ -10,6 +10,22 @@
 
 extern bool cgroup_debug;
 extern void __init enable_debug_cgroup(void);
+struct cgroup_pidlist;
+
+struct cgroup_file_ctx {
+	struct {
+		void			*trigger;
+	} psi;
+
+	struct {
+		bool			started;
+		struct css_task_iter	iter;
+	} procs;
+
+	struct {
+		struct cgroup_pidlist	*pidlist;
+	} procs1;
+};
 
 /*
  * A cgroup can be associated with multiple css_sets as different tasks may
