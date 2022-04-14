@@ -619,6 +619,8 @@ return_normal:
 
 	while (1) {
 cpu_master_loop:
+		if (kernel_is_locked_down("KDB or KGDB access"))
+			break;
 		if (dbg_kdb_mode) {
 			kgdb_connected = 1;
 			error = kdb_stub(ks);
