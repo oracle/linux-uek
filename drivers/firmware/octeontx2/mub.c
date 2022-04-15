@@ -173,7 +173,7 @@ struct mub_device *mub_device_register(const char *name, u64 dev_properties,
 		return ERR_PTR(-ENOMEM);
 
 	ret = ida_simple_get(&mub_ida, 0, 0, GFP_KERNEL);
-	if (ret)
+	if (ret < 0)
 		goto no_ida;
 
 	mdev->id = ret;
