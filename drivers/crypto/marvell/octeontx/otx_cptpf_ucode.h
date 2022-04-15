@@ -25,7 +25,7 @@
 #define OTX_CPT_MAX_ETYPES_PER_GRP	1
 
 /* Default tar archive file names */
-#define OTX_CPT_UCODE_TAR_FILE_NAME	"cpt8x-mc.tar"
+#define OTX_CPT_UCODE_TAR_FILE_NAME	"cpt00-mc.tar"
 
 /* CPT ucode alignment */
 #define OTX_CPT_UCODE_ALIGNMENT		128
