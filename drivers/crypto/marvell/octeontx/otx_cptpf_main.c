@@ -14,6 +14,9 @@
 #define DRV_NAME	"octeontx-cpt"
 #define DRV_VERSION	"1.0"
 
+DEFINE_MUTEX(octeontx_cpt_devices_lock);
+LIST_HEAD(octeontx_cpt_devices);
+
 static void otx_cpt_disable_mbox_interrupts(struct otx_cpt_device *cpt)
 {
 	/* Disable mbox(0) interrupts for all VFs */
@@ -241,6 +244,11 @@ static int otx_cpt_probe(struct pci_dev *pdev,
 	if (err)
 		goto err_unregister_interrupts;
 
+	INIT_LIST_HEAD(&cpt->list);
+	mutex_lock(&octeontx_cpt_devices_lock);
+	list_add(&cpt->list, &octeontx_cpt_devices);
+	mutex_unlock(&octeontx_cpt_devices_lock);
+
 	return 0;
 
 err_unregister_interrupts:
@@ -260,9 +268,19 @@ err_clear_drvdata:
 static void otx_cpt_remove(struct pci_dev *pdev)
 {
 	struct otx_cpt_device *cpt = pci_get_drvdata(pdev);
+	struct otx_cpt_device *curr;
 
 	if (!cpt)
 		return;
+
+	mutex_lock(&octeontx_cpt_devices_lock);
+	list_for_each_entry(curr, &octeontx_cpt_devices, list) {
+		if (curr == cpt) {
+			list_del(&cpt->list);
+			break;
+		}
+	}
+	mutex_unlock(&octeontx_cpt_devices_lock);
 
 	/* Disable VFs */
 	pci_disable_sriov(pdev);

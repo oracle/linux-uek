@@ -15,6 +15,14 @@
 #include <linux/device.h>
 #include "otx_cptpf_ucode.h"
 
+#include "octeontx.h"
+
+#define CPT_MAX_VF_NUM	64
+
+struct cptpf_vf {
+	struct octeontx_pf_vf domain;
+};
+
 /*
  * OcteonTX CPT device structure
  */
@@ -26,6 +34,9 @@ struct otx_cpt_device {
 	u8 pf_type;	/* PF type SE or AE */
 	u8 max_vfs;	/* Maximum number of VFs supported by the CPT */
 	u8 vfs_enabled;	/* Number of enabled VFs */
+	struct cptpf_vf vf[CPT_MAX_VF_NUM]; /* Per VF info */
+	u32 flags;	/* Flags to hold device status bits */
+	u8 vfs_in_use;	/* Number of VFs in use */
 };
 
 void otx_cpt_mbox_intr_handler(struct otx_cpt_device *cpt, int mbx);

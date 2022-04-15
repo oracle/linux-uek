@@ -791,6 +791,38 @@ union otx_cptx_vqx_ctl {
 	} s;
 };
 
+/**
+ * Register (NCB) otx_cpt#_pf_q#_gmctl
+ *
+ * CPT Queue Guest Machine Control Register
+ * This register configures queues. This register should be changed only when
+ * quiescent, (see CPT()_VQ()_INPROG[INFLIGHT]).
+ *
+ * Word0
+ *  [23:16](R/W) Low 8 bits of the SMMU stream identifier to use when issuing
+ *  requests. Stream 0x0 corresponds to the PF, and VFs start at 0x1.
+ *  Reset such that VF0/index 0 is 0x1, VF1/index 1 is 0x2, etc.
+ *  Maximum legal value is 64.
+ *  [15:0](R/W) Guest machine identifier. The GMID to send to FPA for all
+ *  buffer free, or to SSO for all submit work operations initiated by this
+ *  queue. Must be nonzero or FPA/SSO will drop requests; see FPA_PF_MAP()
+ *  and SSO_PF_MAP().
+ */
+union otx_cptx_pf_qx_gmctl {
+	u64 u;
+	struct otx_cptx_pf_qx_gmctl_s {
+#if defined(__BIG_ENDIAN_BITFIELD) /* Word 0 - Big Endian */
+		uint64_t reserved_24_63			: 40;
+		uint64_t strm				: 8;
+		uint64_t gmid				: 16;
+#else /* Word 0 - Little Endian */
+		uint64_t gmid				: 16;
+		uint64_t strm				: 8;
+		uint64_t reserved_24_63			: 40;
+#endif /* Word 0 - End */
+	} s;
+};
+
 /*
  * Error Address/Error Codes
  *
