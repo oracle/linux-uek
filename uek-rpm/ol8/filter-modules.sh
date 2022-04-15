@@ -7,6 +7,7 @@
 
 corelist=$1
 modlist=$2
+> ${modlist}.tmp
 
 cat $modlist | while read mod
 do
@@ -18,6 +19,16 @@ do
 
 		# Add the .ko to -modules rpm list.
 		echo "$mod" >> ${modlist}.tmp
+        fi
+done
+
+# Make sure all modules listed in core.list is currently built.
+cat $corelist | while read mod
+do
+        grep -q -e "$mod" $modlist
+        if [ $? -ne 0 ]
+        then
+                echo "$mod is not built."
         fi
 done
 
