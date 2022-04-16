@@ -6167,6 +6167,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 	struct tcp_fastopen_cookie foc = { .len = -1 };
 	int saved_clamp = tp->rx_opt.mss_clamp;
 	bool fastopen_fail;
+	SKB_DR(reason);
 
 	tcp_parse_options(sock_net(sk), skb, &tp->rx_opt, 0, &foc);
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
@@ -6221,9 +6222,10 @@ consume:
 		 *    See note below!
 		 *                                        --ANK(990513)
 		 */
-		if (!th->syn)
+		if (!th->syn) {
+			SKB_DR_SET(reason, TCP_FLAGS);
 			goto discard_and_undo;
-
+		}
 		/* rfc793:
 		 *   "If the SYN bit is on ...
 		 *    are acceptable then ...
@@ -6314,15 +6316,16 @@ consume:
 		 *
 		 *      Otherwise (no ACK) drop the segment and return."
 		 */
-
+		SKB_DR_SET(reason, TCP_RESET);
 		goto discard_and_undo;
 	}
 
 	/* PAWS check. */
 	if (tp->rx_opt.ts_recent_stamp && tp->rx_opt.saw_tstamp &&
-	    tcp_paws_reject(&tp->rx_opt, 0))
+	    tcp_paws_reject(&tp->rx_opt, 0)) {
+		SKB_DR_SET(reason, TCP_RFC7323_PAWS);
 		goto discard_and_undo;
-
+	}
 	if (th->syn) {
 		/* We see SYN without ACK. It is attempt of
 		 * simultaneous connect with crossed SYNs.
@@ -6381,7 +6384,7 @@ consume:
 discard_and_undo:
 	tcp_clear_options(&tp->rx_opt);
 	tp->rx_opt.mss_clamp = saved_clamp;
-	tcp_drop(sk, skb);
+	tcp_drop_reason(sk, skb, reason);
 	return 0;
 
 reset_and_undo:
