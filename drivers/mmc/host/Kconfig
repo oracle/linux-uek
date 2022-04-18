@@ -224,6 +224,17 @@ config MMC_SDHCI_CADENCE
 
 	  If unsure, say N.
 
+config MMC_SDHCI_CADENCE_DEBUG
+	tristate "Debug support for the Cadence SD/SDIO/eMMC controller"
+	depends on MMC_SDHCI_CADENCE
+	default n
+	help
+	  This enables the debug traces for Cadence SD/SDIO/eMMC controller
+	  PHY timings and host controller register configuration.
+
+	  If you have a controller with this interface, say Y or M here.
+	  If unsure, say N.
+
 config MMC_SDHCI_CNS3XXX
 	tristate "SDHCI support on the Cavium Networks CNS3xxx SoC"
 	depends on ARCH_CNS3XXX
