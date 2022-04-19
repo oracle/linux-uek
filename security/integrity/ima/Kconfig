@@ -230,6 +230,15 @@ config IMA_APPRAISE_BOOTPARAM
 	  This option enables the different "ima_appraise=" modes
 	  (eg. fix, log) from the boot command line.
 
+config IMA_APPRAISE_SB_BOOTPARAM
+	bool "ima_appraise secure boot parameter"
+	depends on IMA_APPRAISE_BOOTPARAM
+	default n
+	help
+	  This option enables the different "ima_appraise=" modes
+	  (eg. fix, log) from the boot command line when booting
+	  with Secure Boot enabled.
+
 config IMA_APPRAISE_MODSIG
 	bool "Support module-style signatures for appraisal"
 	depends on IMA_APPRAISE
