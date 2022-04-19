@@ -235,10 +235,7 @@ void __init acpi_hest_init(void)
 		return;
 	}
 
-	if (hest_tab)
-		status = AE_OK;
-	else
-		status = acpi_get_table(ACPI_SIG_HEST, 0,
+	status = acpi_get_table(ACPI_SIG_HEST, 0,
 				(struct acpi_table_header **)&hest_tab);
 	if (status == AE_NOT_FOUND) {
 		hest_disable = HEST_NOT_FOUND;
@@ -269,13 +266,4 @@ void __init acpi_hest_init(void)
 	return;
 err:
 	hest_disable = HEST_DISABLED;
-}
-
-
-/*
- * This allows the HEST to be initialized externally, in the absence of ACPI.
- */
-void __init hest_table_set(struct acpi_table_hest *table)
-{
-	hest_tab = table;
 }
