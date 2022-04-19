@@ -1230,7 +1230,6 @@ static void set_firmware_ready(struct sdp_dev *sdp)
 	u64 ep_pem, val;
 	u64 cfg;
 
-	/* TODO: add support for 10K model */
 	/* TODO npfs should be obtained from dts */
 	npfs_per_pem = NUM_PFS_PER_PEM;
 	for (ep_pem = 0; ep_pem < MAX_PEMS; ep_pem++) {
@@ -1246,12 +1245,22 @@ static void set_firmware_ready(struct sdp_dev *sdp)
 			continue;
 		/* found the PEM in endpoint mode */
 		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
-			addr  = ioremap(PEMX_CFG_WR(ep_pem), 8);
-			val = ((FW_STATUS_READY << PEMX_CFG_WR_DATA) |
-			       (npfs << PEMX_CFG_WR_PF) |
-			       (1 << 15) |
-			       (PCIEEP_VSECST_CTL << PEMX_CFG_WR_REG));
-			writeq(val, addr);
+			/* Config space access different between otx2 and otx3 */
+			if (is_otx3_sdp(sdp)) {
+				addr  = ioremap(PEMX_PFX_CSX_PFCFGX(ep_pem,
+								    npfs,
+								    PCIEEP_VSECST_CTL),
+						8);
+				/* 8 byte mapping needed, both 32 bit addresses used */
+				writel(FW_STATUS_READY, addr);
+			} else {
+				addr  = ioremap(PEMX_CFG_WR(ep_pem), 8);
+				val = ((FW_STATUS_READY << PEMX_CFG_WR_DATA) |
+				       (npfs << PEMX_CFG_WR_PF) |
+				       (1 << 15) |
+				       (PCIEEP_VSECST_CTL << PEMX_CFG_WR_REG));
+				writeq(val, addr);
+			}
 		}
 	}
 }
