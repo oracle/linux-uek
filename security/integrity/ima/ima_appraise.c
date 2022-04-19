@@ -45,7 +45,7 @@ void __init ima_appraise_parse_cmdline(void)
 
 	/* If appraisal state was changed, but secure boot is enabled,
 	 * keep its default */
-	if (sb_state) {
+	if (sb_state && !IS_ENABLED(CONFIG_IMA_APPRAISE_SB_BOOTPARAM)) {
 		if (!(appraisal_state & IMA_APPRAISE_ENFORCE))
 			pr_info("Secure boot enabled: ignoring ima_appraise=%s option",
 				str);
