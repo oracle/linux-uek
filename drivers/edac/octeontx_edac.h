@@ -10,109 +10,109 @@
 #ifndef __OCTEONTX_EDAC_H__
 #define __OCTEONTX_EDAC_H__
 
-#define OCTEONTX_SDEI_RAS_MDC_EVENT		0x40000000
-#define OCTEONTX_SDEI_RAS_MCC_EVENT		0x40000001
-#define OCTEONTX_SDEI_RAS_LMC_EVENT		0x40000002
-#define OCTEONTX_SDEI_RAS_AP0_EVENT		0x40000003
-#define OCTEONTX_SDEI_RAS_DSS_EVENT		OCTEONTX_SDEI_RAS_MCC_EVENT
-#define OCTEONTX_SDEI_RAS_TAD_EVENT		OCTEONTX_SDEI_RAS_LMC_EVENT
+#define OCTEON10_CPU_MODEL		(0xd49)
+#define PCI_DEVICE_ID_OCTEONTX2_LMC	(0xa022)
+#define PCI_DEVICE_ID_OCTEONTX2_MCC	(0xa070)
+#define PCI_DEVICE_ID_OCTEONTX2_MDC	(0xa073)
 
-#define SDEI_GHES_EVENT_NAME_MAX_CHARS 16
+#define OCTEONTX_RAS_MDC_SDEI_EVENT	(0x40000000)
+#define OCTEONTX_RAS_MCC_SDEI_EVENT	(0x40000001)
+#define OCTEONTX_RAS_LMC_SDEI_EVENT	(0x40000002)
+#define OCTEONTX_RAS_DSS_SDEI_EVENT	(0x40000001)
+#define OCTEONTX_RAS_TAD_SDEI_EVENT	(0x40000002)
 
-#define OTX2_GHES_ERR_REC_FRU_TEXT_LEN 32
+#define OCTEONTX_LMC	"lmc"
+#define OCTEONTX_MCC	"mcc"
+#define OCTEONTX_MDC	"mdc"
+#define OCTEONTX_DSS	"dss"
+#define OCTEONTX_TAD	"tad"
 
-struct mrvl_core_error_raport {
+#define OCTEONTX2_EDAC_INJECT		(0xc2000c0b)
+#define OCTEON10_EDAC_INJECT		(0xc2000b10)
+
+#define OCTEONTX_EDAC_F_BITMASK		0x007 /* single bit to corrupt */
+#define OCTEONTX_EDAC_F_MULTI		0x008 /* corrupt multiple bits */
+#define OCTEONTX_EDAC_F_CLEVEL		0x070 /* cache level to corrupt (L0 == DRAM) */
+#define OCTEONTX_EDAC_F_ICACHE		0x080 /* Icache, not Dcache */
+#define OCTEONTX_EDAC_F_REREAD		0x100 /* read-back in EL3 */
+#define OCTEONTX_EDAC_F_PHYS		0x200 /* target is EL3-physical, not EL012 */
+
+#define OCTEONTX_GHES_NAME_MAX_LEN 16
+#define OCTEONTX_GHES_FRU_TEXT_LEN 32
+
+#define OCTEONTX_GHES_ERR_RING_SIG ((int)'M' << 24 | 'R' << 16 | 'V' << 8 | 'L')
+
+#define IS_NOT_MC_SDEI_EVENT(id) ((id != OCTEONTX_RAS_MDC_SDEI_EVENT) && \
+	(id != OCTEONTX_RAS_MCC_SDEI_EVENT) && \
+	(id != OCTEONTX_RAS_LMC_SDEI_EVENT))
+
+struct octeontx_edac_mc_record {
 	struct acpi_hest_generic_status estatus;
 	struct acpi_hest_generic_data   gdata;
-	struct cper_sec_proc_arm        desc;
-	struct cper_arm_err_info        info;
-//	struct cper_arm_ctx_info        ctx;
-//	uint64_t                        reg[0];
+	struct cper_sec_mem_err         cper_mem;
 };
-
-struct mrvl_mem_error_raport {
-	struct acpi_hest_generic_status estatus;
-	struct acpi_hest_generic_data   gdata;
-	struct cper_sec_mem_err_old     cper;
-	char fru_text[OTX2_GHES_ERR_REC_FRU_TEXT_LEN];
-};
-
 
 /*
- * Describes an error source per ACPI 18.3.2.6 (Generic Hardware Error Source).
+ * Describes an error source per ACPI (Generic Hardware Error Source).
  * This produces GHES-compliant error records from data forwarded by the [ATF]
  * firmware.
  * There exists one of these for each error source.
  *
- * @name:               event source name mdc/mcc/lmc
- * @id:                 event id
+ * @name:               ghes source name
+ * @id:                 sdei event id
  * @esa_pa              physical address of Error Status Address register/iomem
- * @esa_va:             mapped pointer to Error Status Address point on Error Status Block
  * @esb_pa:             phys address of Error Status Block follow Error Status Data
- * @esb_va:             mapped pointer to Error Status Block
  * @ring_pa:            physical address of Ring of Error Status Blocks
- * @ring:               mapped pointer to Ring of Error Status Blocks
- * @ring_sz:            ring buffer size
+ * @esa_va:             mapped to Error Status Address point on Error Status Block
+ * @esb_va:             mapped to Error Status Block
+ * @ring:               mapped to Ring of Error Status Blocks
+ * @ring_sz:            ring size
+ * @esb_sz:             esb size
+ * @dev:                memory controller owner device
+ * @mci                 corresponding memory controller
+ * @mc_work             worker for sdei callback
  */
-struct mrvl_ghes_source {
-	char                            name[SDEI_GHES_EVENT_NAME_MAX_CHARS];
+struct octeontx_edac_ghes {
+	char                            name[OCTEONTX_GHES_NAME_MAX_LEN];
+	u32                             id;
 	phys_addr_t                     esa_pa;
 	phys_addr_t                     esb_pa;
 	phys_addr_t                     ring_pa;
 	phys_addr_t                     *esa_va;
-	union {
-		struct acpi_hest_generic_status *esb_va;
-		struct mrvl_core_error_raport   *esb_core_va;
-	};
-	struct otx2_ghes_err_ring       *ring;
+	struct octeontx_edac_mc_record     *esb_va;
+	struct octeontx_edac_ghes_ring  *ring;
 	size_t                          ring_sz;
 	size_t                          esb_sz;
-	u32                             id;
 	struct device                   dev;
 	struct mem_ctl_info             *mci;
+	struct work_struct              mc_work;
 };
 
-/**
- * struct mrvl_sdei_ghes_drv: driver state
- *
- * @source_list:              list of [SDEI] producers
- *                            (1 for each error source)
- * @source_count:             count of [SDEI] producers
- *                            (size of @source_list)
- */
-struct mrvl_sdei_ghes_drv {
-	struct device           *dev;
-	struct mrvl_ghes_source *source_list;
-	size_t                  source_count;
+struct octeontx_edac_driver {
+	struct device             *dev;
+	struct octeontx_edac_ghes *source_list;
+	size_t                    source_count;
 };
 
-#define OTX2_GHES_ERR_RING_SIG ((int)'M' << 24 | 'R' << 16 | 'V' << 8 | 'L')
-
-struct processor_error {
-	struct cper_sec_proc_arm desc;
-	struct cper_arm_err_info info;
-};
-
-struct otx2_ghes_err_record {
+struct octeontx_edac_ghes_ring_record {
 	union {
-		struct processor_error       core;
-		struct cper_sec_mem_err_old  mcc;
-		struct cper_sec_mem_err_old  mdc;
-		struct cper_sec_mem_err_old  lmc;
+		struct cper_sec_mem_err mcc;
+		struct cper_sec_mem_err mdc;
+		struct cper_sec_mem_err lmc;
+		struct cper_sec_mem_err tad;
+		struct cper_sec_mem_err dss;
 	} u;
-	uint32_t severity; /* CPER_SEV_xxx */
-	char fru_text[OTX2_GHES_ERR_REC_FRU_TEXT_LEN];
+	uint32_t error_severity;
+	char fru_text[OCTEONTX_GHES_FRU_TEXT_LEN];
 };
 
-/* This is shared with Linux sdei-ghes driver */
-struct otx2_ghes_err_ring {
+struct octeontx_edac_ghes_ring {
 	uint32_t head;
 	uint32_t tail;
-	uint32_t size;       /* ring size */
-	uint32_t sig;        /* set to OTX2_GHES_ERR_RING_SIG if initialized */
+	uint32_t size;
+	uint32_t sig;
 	uint32_t reg;
-	/* ring of records */
-	struct otx2_ghes_err_record records[1] __aligned(8);
+	struct octeontx_edac_ghes_ring_record records[0] __aligned(8);
 };
 
 struct octeontx_edac_pvt {

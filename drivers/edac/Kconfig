@@ -525,15 +525,13 @@ config EDAC_BLUEFIELD
 	  Mellanox BlueField SoCs.
 
 config EDAC_OCTEONTX
-	bool "Marvell OcteonTX2 OcteonTX3 SoC memory EDAC"
-	select ARM_SDE_INTERFACE
-	select ACPI_APEI
-	select ACPI_APEI_GHES
-	select CRASH_DUMP
+	bool "Marvell OcteonTX2 Octeon10 SoC EDAC"
+	depends on ARM_SDE_INTERFACE && ACPI_APEI_GHES
 	help
-	  Support for error detection correction and injection on the
-	  OcteonTX2 and OcteonTX3 SoCs.
-	  This will allow RAS errors that are detected to be reported
-	  This driver reports Single Bit Errors and Double Bit Errors.
+	  Support for error detection and correction on the
+	  Marvell OcteonTX2 and Octeon10 (CN10K) SoCs.
+	  This driver will allow SECDED errors detected in
+	  the firmware first model and reported via SDEI callbacks.
+	  EDAC Driver report Single Bit Errors and Double Bit Errors.
 
 endif # EDAC
