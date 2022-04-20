@@ -135,7 +135,7 @@ MODULE_PARM_DESC(rdmaip_ipv4_exclude_ips_list,
  */
 
 unsigned int rdmaip_active_bonding_failback = 1;
-module_param(rdmaip_active_bonding_failback, int, 0444);
+module_param(rdmaip_active_bonding_failback, int, 0644);
 MODULE_PARM_DESC(rdmaip_active_bonding_failback,
 		 " Active Bonding failback Enabled");
 
