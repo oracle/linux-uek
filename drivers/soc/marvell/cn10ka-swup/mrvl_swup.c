@@ -54,12 +54,14 @@ static struct device dev;
 #define BUF_DATA 1
 #define BUF_SIGNATURE 2
 #define BUF_READ 3
-#define BUF_COUNT 4
+#define BUF_LOG 4
+#define BUF_COUNT 5
 static struct memory_desc memdesc[BUF_COUNT] = {
 	{0, 0, 32*1024*1024, "cpio buffer"},
 	{0, 0, 1*1024*1024,  "data buffer"},
 	{0, 0, 1*1024*1024,  "signature buffer"},
 	{0, 0, 0, "read buffer"},
+	{0, 0, 1*1024*1024,  "log buffer"},
 };
 
 static struct allocated_pages {
@@ -281,11 +283,10 @@ static int mrvl_get_membuf(unsigned long arg)
 	buf.cpio_buf_size = memdesc[BUF_CPIO].size;
 	buf.sign_buf = memdesc[BUF_SIGNATURE].phys;
 	buf.sign_buf_size = memdesc[BUF_SIGNATURE].size;
-	buf.reserved_buf = 0;
-	buf.reserved_buf_size = 0;
+	buf.log_buf = memdesc[BUF_LOG].phys;
+	buf.log_buf_size = memdesc[BUF_LOG].size;
 	buf.read_buf = memdesc[BUF_READ].phys;
 	buf.read_buf_size = memdesc[BUF_READ].size;
-
 
 	if (copy_to_user(TO_PHYS_BUFFER(arg),
 			  &buf,
@@ -341,7 +342,11 @@ static int mrvl_run_fw_update(unsigned long arg)
 		smc_desc->user_size = ioctl_desc.user_size;
 	}
 	smc_desc->user_flags = ioctl_desc.user_flags;
-	smc_desc->update_flags = ioctl_desc.flags;
+	smc_desc->update_flags = ioctl_desc.flags | UPDATE_FLAG_LOG_PROGRESS;
+
+	/* Buffer for ATF logs */
+	smc_desc->output_console = memdesc[BUF_LOG].phys;
+	smc_desc->output_console_size = memdesc[BUF_LOG].size;
 
 	/* In linux use asynchronus SPI operation */
 	smc_desc->async_spi = 1;
@@ -483,10 +488,11 @@ static long mrvl_swup_ioctl(struct file *file, unsigned int cmd, unsigned long a
 	case GET_VERSION:
 	case VERIFY_HASH:
 	case CLONE_FW:
-		ret = alloc_buffers(memdesc, 1<<BUF_DATA | 1<<BUF_SIGNATURE);
+		ret = alloc_buffers(memdesc, BIT(BUF_DATA) | BIT(BUF_SIGNATURE));
 		break;
 	case GET_MEMBUF:
-		ret = alloc_buffers(memdesc, 1<<BUF_DATA | 1<<BUF_SIGNATURE | 1<<BUF_CPIO);
+		ret = alloc_buffers(memdesc, BIT(BUF_DATA) | BIT(BUF_SIGNATURE) | BIT(BUF_CPIO) |
+					     BIT(BUF_LOG));
 		break;
 	case RUN_UPDATE:
 	case READ_FLASH:

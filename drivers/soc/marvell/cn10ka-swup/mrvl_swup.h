@@ -210,10 +210,15 @@ struct smc_update_obj_info {
 /** Current smc_update_descriptor version */
 #define UPDATE_VERSION		0x0100
 
-#define UPDATE_FLAG_BACKUP	0x0001	/** Set to update secondary location */
-#define UPDATE_FLAG_EMMC	0x0002	/** Set to update eMMC instead of SPI */
-#define UPDATE_FLAG_ERASE_PART	0x0004	/** Erase eMMC partition data */
+#define UPDATE_FLAG_BACKUP	   0x0001	/** Set to update secondary location */
+#define UPDATE_FLAG_EMMC	   0x0002	/** Set to update eMMC instead of SPI */
+#define UPDATE_FLAG_ERASE_PART	   0x0004	/** Erase eMMC partition data */
 #define UPDATE_FLAG_IGNORE_VERSION 0x0008 /** Don't perform version check */
+#define UPDATE_FLAG_FORCE_WRITE		BIT(4)
+/** Erase configuration data after update */
+#define UPDATE_FLAG_ERASE_CONFIG	BIT(5)
+/** Log update progress */
+#define UPDATE_FLAG_LOG_PROGRESS	BIT(6)
 /** Set when user parameters are passed */
 #define UPDATE_FLAG_USER_PARMS	0x8000
 
@@ -315,8 +320,8 @@ struct mrvl_phys_buffer {
 	uint64_t cpio_buf_size;
 	uint64_t sign_buf;
 	uint64_t sign_buf_size;
-	uint64_t reserved_buf;
-	uint64_t reserved_buf_size;
+	uint64_t log_buf;
+	uint64_t log_buf_size;
 	uint64_t read_buf;
 	uint64_t read_buf_size;
 } __packed;
