@@ -542,35 +542,41 @@ static const struct file_operations mrvl_fops = {
 
 static int alloc_buffers(struct memory_desc *memdesc, uint32_t required_buf)
 {
-	int i = 0;
-	int j;
-	struct page *p;
+	int i = 0, j, ret = 0;
 
-	for (i = 0; i < BUF_COUNT; i++) {
-		if (required_buf & 1<<i)
+	for (j = 0; j < BUF_COUNT; j++) {
+		if (required_buf == 0)
 			break;
+
+		for (i = 0; i < BUF_COUNT; i++) {
+			if (required_buf & BIT(i)) {
+				required_buf &= ~(BIT(i));
+				break;
+			}
+		}
+
+		if (memdesc[i].virt != NULL)
+			continue;
+
+		memdesc[i].virt = dma_alloc_coherent(&dev, memdesc[i].size,
+						     &memdesc[i].phys, GFP_KERNEL);
+
+		if (!memdesc[i].virt) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		memset(memdesc[i].virt, 0x00, memdesc[i].size);
 	}
-
-	if (memdesc[i].virt != NULL)
-		return 0;
-
-	memdesc[i].virt = dma_alloc_coherent(&dev, memdesc[i].size, &memdesc[i].phys, GFP_KERNEL);
 
 	for (j = 0; j < BUF_COUNT; j++)
-		pr_info("Pool: %s virt: %llx, phys: %llx, size: %d\n",
+		pr_info("Pool: %s virt: %llx, phys: %llx, size: 0x%llx\n",
 			memdesc[j].pool_name,
-			memdesc[j].virt,
-			memdesc[j].phys,
+			(uint64_t)memdesc[j].virt,
+			(uint64_t)memdesc[j].phys,
 			memdesc[j].size);
 
-	if (!memdesc[i].virt) {
-		pr_err("Failed to alloc\n");
-		return 0;
-	}
-
-	memset(memdesc[i].virt, 0x01, memdesc[i].size);
-
-	return 0;
+	return ret;
 }
 
 
