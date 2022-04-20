@@ -1,84 +1,130 @@
-* Marvell OcteonTX SOC sdei-ghes, bed-bert nodes
+OcteonTX2 / CN10K SoC EDAC node
+==================================
 
-The sdei-ghes and bed-bert nodes are defined to describe resources to the
-sdei-ghes module.
+This driver uses the EDAC framework to implement the 
+Marvell OcteonTX2/CN10K (CN10K) SoC EDAC driver.
+Counts and corrects single-bit errors and counts
+double-bit errors, which are uncorrectable.
+Driver handle SECDED notification from SDEI call
+after firmware first GHES interrupt handling.
 
-Abstract
---------
-
-The Generic Hardware Error Source (GHES) allows for non-standard errors to be
-reported to the system (please refer to the ACPI specification).
-
-The standard GHES driver requires the presence of ACPI tables, and accompanying
-kernel ACPI support, which is not available to systems utilizing Device Tree.
-
-The OcteonTX2 sdei-ghes module provides the required Hardware Error Source Table
-(HEST) to the kernel, allowing the GHES driver to load.  This module also
-provides the Boot Error Record Table (BERT) to the kernel, which allows for
-reporting of fatal RAS errors to Linux on a subsequent boot.
-
-Additionally, this module presents GHES devices to the system, which allows
-the firmware (ATF) to report RAS errors.
+Marvell OcteonTX2/CN10K SOC sdei-ghes node
+It is defined to describe GHES resources for SECDED.
 
 The following error sources are supported:
 
-  MDC    - OcteonTX Memory Diagnostic Controller
-  MCC    - OcteonTX Memory Common Controller
-  LMC    - OcteonTX Local Memory DDR4 Controller
-  BERT   - A virtual device which records fatal errors from any of the above
-           into system preserved memory.
-           NOTE: this is located in the 'bed-bert' node.
+  MDC     - OcteonTX2/CN10K Memory Diagnostic Controller
+  MCC     - OcteonTX2 Memory Common Controller
+  LMC     - OcteonTX2 Local Memory DDR4 Controller
+  DSS     - CN10K DDR5 Memory Controller
+  TAD     - CN10K Cache Memory Controller
+  CORE[i] - CN10K ARM core processors
 
 Device Tree sdei-ghes binding
 -----------------------------
 
 Required properties:
-- compatible	: Shall be "marvell,sdei-ghes".
+- compatible: Shall be "marvell,sdei-ghes".
 
-Required properties for mdc subnode:
+Required properties for GHES subnode:
 - reg		: Shall contain three entries, one for each of:
 		  - GHES Error Status Address (ACPI 4.0a, sec 17.3.2.6)
 		  - GHES Error Status Block   (ACPI 4.0a, sec 17.3.2.6.1)
-		  - ring buffer for communication with firmware
+		  - Ring buffer for communication with firmware
 
 - event-id	: SDEI event ID for receiving firmware notifications
 
-Example
--------
+Examples T9x
+------------
 
 sdei-ghes {
 	compatible = "marvell,sdei-ghes";
 	#address-cells = <2>;
 	#size-cells = <1>;
 	memory-region = <&ghes_hest_reserved>;
-	ranges = <0x0 0x00000000 0x0 0x7f020000 0x00100>,
-		 <0x0 0x00000100 0x0 0x7f020100 0x00700>,
-		 <0x0 0x00000800 0x0 0x7f020800 0x08000>;
-	mdc@0 {
+	/*
+	 * Range placeholders; the addrs are set dynamically by
+	 * firmware to match 'reg' in 'ghes_hest_reserved'.
+	 */
+	ranges = <0x0 0x00000000 0x0 0x0 0x00100>,
+		 <0x0 0x00000100 0x0 0x0 0x00700>,
+		 <0x0 0x00000800 0x0 0x0 0x08000>;
+	mdc {
 		reg = <0x0 0x00000000 0x008>,
-		      <0x0 0x00000100 0x100>,
+		      <0x0 0x00000100 0x9D>,
 		      <0x0 0x00000800 0x800>;
 		event-id = <0x40000000>;
 	};
-	mcc@8 {
+	mcc {
 		reg = <0x0 0x00000008 0x008>,
-		      <0x0 0x00000200 0x100>,
+		      <0x0 0x00000200 0x9D>,
 		      <0x0 0x00001000 0x800>;
 		event-id = <0x40000001>;
 	};
-	lmc@10 {
+	lmc {
 		reg = <0x0 0x00000010 0x008>,
-		      <0x0 0x00000300 0x100>,
+		      <0x0 0x00000300 0x9D>,
 		      <0x0 0x00001800 0x800>;
 		event-id = <0x40000002>;
 	};
 };
 
+Example CN10K:
+-------------
+
+sdei-ghes {
+	compatible = "marvell,sdei-ghes";
+	#address-cells = <2>;
+	#size-cells = <1>;
+	memory-region = <&ghes_hest_reserved>;
+	ranges = <0x0 0x00000000 0x0 0x0 0x00400>,
+		 <0x0 0x00000400 0x0 0x0 0x06800>,
+		 <0x0 0x00007000 0x0 0x0 0xF9000>;
+	core0 {
+		reg = <0x0 0x00000000 0x008>,
+		      <0x0 0x00000400 0xFA>,
+		      <0x0 0x00007000 0x1600>;
+		event-id = <0x40000003>;
+	};
+	core1..N {
+		reg = <0x0 [core*8] 0x008>,
+		      <0x0 [core*0x100 + 0x500] 0xFA>,
+		      <0x0 [core*0x1600 + 0x8600] 0x1600>;
+		event-id = <0x4000000[core]>;
+	};
+	mdc {
+		reg = <0x0 0x000000C0 0x008>,
+		      <0x0 0x00001C00 0x100>,
+		      <0x0 0x00028000 0x800>;
+		event-id = <0x40000000>;
+	};
+	dss {
+		reg = <0x0 0x000000C8 0x008>,
+		      <0x0 0x00001D00 0x100>,
+		      <0x0 0x00028800 0x800>;
+		event-id = <0x40000001>;
+	};
+	tad {
+		reg = <0x0 0x000000D0 0x008>,
+		      <0x0 0x00001E00 0x100>,
+		      <0x0 0x00029000 0x800>;
+		event-id = <0x40000002>;
+	};
+};
+
+BED-BERT module provides the Boot Error Record Table (BERT)
+to the kernel, which allows for reporting of fatal RAS errors
+to Linux on a subsequent boot. Only OcteonTX2 support.
+
+  BERT   - A virtual device that records fatal errors from any of the above
+           into system preserved memory.
+           NOTE: This is located in the 'bed-bert' node.
+
 Device Tree bed-bert binding
------------------------------
+----------------------------
 
 Required properties:
-- compatible	: Shall be "marvell,bed-bert".
+- compatible: Shall be "marvell,bed-bert".
 
 Required properties for bert subnode:
 - reg		: Shall contain three entries, one for each of:
