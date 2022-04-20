@@ -45,6 +45,7 @@
 #include <linux/memcontrol.h>
 #include <linux/bpf-cgroup.h>
 #include <linux/siphash.h>
+#include <linux/uek_kabi.h>
 
 extern struct inet_hashinfo tcp_hashinfo;
 
@@ -1029,6 +1030,7 @@ struct rate_sample {
 	bool is_app_limited;	/* is sample from packet with bubble in pipe? */
 	bool is_retrans;	/* is sample from retransmission? */
 	bool is_ack_delayed;	/* is this (likely) a delayed ACK? */
+	UEK_KABI_EXTEND(u32 last_end_seq) /* end_seq of most recently ACKed packet */
 };
 
 struct tcp_congestion_ops {
@@ -1147,6 +1149,11 @@ void tcp_rate_skb_delivered(struct sock *sk, struct sk_buff *skb,
 void tcp_rate_gen(struct sock *sk, u32 delivered, u32 lost,
 		  bool is_sack_reneg, struct rate_sample *rs);
 void tcp_rate_check_app_limited(struct sock *sk);
+
+static inline bool tcp_skb_sent_after(u64 t1, u64 t2, u32 seq1, u32 seq2)
+{
+	return t1 > t2 || (t1 == t2 && after(seq1, seq2));
+}
 
 /* These functions determine how the current flow behaves in respect of SACK
  * handling. SACK is negotiated with the peer, and therefore it can vary
