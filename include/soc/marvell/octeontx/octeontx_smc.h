@@ -11,6 +11,7 @@
 #include <linux/errno.h>
 #include <linux/arm-smccc.h>
 #include <asm/cputype.h>
+#include <linux/of.h>
 
 /* Data and defines for SMC call */
 #define OCTEONTX_ARM_SMC_SVC_UID			0xc200ff01
@@ -55,6 +56,71 @@ static inline bool is_soc_cn10kx(void)
 	if (MIDR_PARTNUM(read_cpuid_id()) == CPU_MODEL_CN10KX_PART)
 		return 1;
 	return 0;
+}
+
+static inline bool is_soc_cnf10kb(void)
+{
+	if (of_machine_is_compatible("marvell,cnf10kb"))
+		return 1;
+
+	return 0;
+}
+
+static inline char const *get_soc_chip_rev(void)
+{
+	int ret;
+	struct device_node *np;
+	const char *chip_rev;
+
+	np = of_find_node_by_name(NULL, "soc");
+	if (!np)
+		return NULL;
+
+	ret = of_property_read_string(np, "chiprevision", &chip_rev);
+	if (!ret)
+		return chip_rev;
+
+	return NULL;
+}
+
+static inline bool is_soc_cn10ka_ax(void)
+{
+	const char *rev;
+
+	if (of_machine_is_compatible("marvell,cn10ka")) {
+		rev = get_soc_chip_rev();
+		/*
+		 * If chiprevision property is not in fdt, assume the
+		 * the revision is A0
+		 */
+		if (rev == NULL)
+			return true;
+
+		if ((rev[1] == 'A') || (rev[1] == 'a'))
+			return true;
+	}
+
+	return false;
+}
+
+static inline bool is_soc_cnf10ka_ax(void)
+{
+	const char *rev;
+
+	if (of_machine_is_compatible("marvell,cnf10ka")) {
+		rev = get_soc_chip_rev();
+		/*
+		 * If chiprevision property is not in fdt, assume the
+		 * the revision is A0
+		 */
+		if (rev == NULL)
+			return true;
+
+		if ((rev[1] == 'A') || (rev[1] == 'a'))
+			return true;
+	}
+
+	return false;
 }
 
 #endif /* _SOC_MRVL_OCTEONTX_SMC_H */

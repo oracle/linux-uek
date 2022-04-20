@@ -12,6 +12,7 @@
 #include <linux/mmc/mmc.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <soc/marvell/octeontx/octeontx_smc.h>
 
 #include "sdhci-pltfm.h"
 
@@ -143,12 +144,16 @@
 #define SDHCI_CDNS_PHY_DLY_HSMMC	0x0c
 #define SDHCI_CDNS_PHY_DLY_STROBE	0x0d
 
+#define CN10K_MSIX_INTR			0x718
+
 /*
  * The tuned val register is 6 bit-wide, but not the whole of the range is
  * available.  The range 0-42 seems to be available (then 43 wraps around to 0)
  * but I am not quite sure if it is official.  Use only 0 to 39 for safety.
  */
 #define SDHCI_CDNS_MAX_TUNING_LOOP	40
+
+static int cn10k_irq_workaround;
 
 struct sdhci_cdns_priv;
 
@@ -1439,14 +1444,21 @@ static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host,
 
 static uint32_t sdhci_cdns_sd6_irq(struct sdhci_host *host, u32 intmask)
 {
-	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
-	uint64_t reg1, reg = readq(priv->hrs_addr + 0x718);
+	struct sdhci_cdns_priv *priv;
+	uint64_t reg1, reg;
+
+	/* If errata workaround is not required, return */
+	if (!cn10k_irq_workaround)
+		return intmask;
+
+	priv = sdhci_cdns_priv(host);
+	reg = readq(priv->hrs_addr + CN10K_MSIX_INTR);
 
 	if (intmask)
 		sdhci_cdns_sd6_writel(host, intmask, SDHCI_INT_STATUS);
 
-	writeq(reg, priv->hrs_addr + 0x718);
-	reg1 = readq(priv->hrs_addr + 0x718);
+	writeq(reg, priv->hrs_addr + CN10K_MSIX_INTR);
+	reg1 = readq(priv->hrs_addr + CN10K_MSIX_INTR);
 
 	return intmask;
 }
@@ -1817,6 +1829,9 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	host->ioaddr += SDHCI_CDNS_SRS_BASE;
 	host->mmc_host_ops.hs400_enhanced_strobe =
 				sdhci_cdns_hs400_enhanced_strobe;
+
+	if (is_soc_cn10ka_ax() || is_soc_cnf10ka_ax())
+		cn10k_irq_workaround = 1;
 
 	sdhci_get_of_property(pdev);
 
