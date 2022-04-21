@@ -175,6 +175,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 		if (sg_total_lens(frag->f_sg) != ic->i_frag_sz) {
 			rds_ib_recv_free_frag(frag, sg_total_lens(frag->f_sg) / PAGE_SIZE);
 			kmem_cache_free(rds_ib_frag_slab, frag);
+			rds_ib_stats_dec(s_ib_rx_total_frags);
 			continue;
 		} else {
 			list_del_init(&frag->f_item);
