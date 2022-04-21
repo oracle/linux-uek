@@ -1469,7 +1469,11 @@ struct task_struct {
 	unsigned long			prev_lowest_stack;
 #endif
 
+#ifdef CONFIG_MMU
+	UEK_KABI_USE(1, struct timer_list oom_reaper_timer)
+#else
 	UEK_KABI_RESERVE(1)
+#endif
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
