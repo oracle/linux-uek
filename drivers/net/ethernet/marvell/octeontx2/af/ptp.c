@@ -442,7 +442,7 @@ static void ptp_remove(struct pci_dev *pdev)
 	struct ptp *ptp = pci_get_drvdata(pdev);
 	u64 clock_cfg;
 
-	if (hrtimer_active(&ptp->hrtimer))
+	if (cn10k_ptp_errata(ptp) && hrtimer_active(&ptp->hrtimer))
 		hrtimer_cancel(&ptp->hrtimer);
 
 	if (IS_ERR_OR_NULL(ptp))
