@@ -442,11 +442,18 @@ int cifs_reconnect(struct TCP_Server_Info *server)
 {
 	/* If tcp session is not an dfs connection, then reconnect to last target server */
 	spin_lock(&cifs_tcp_ses_lock);
-	if (!server->is_dfs_conn || !server->origin_fullpath || !server->leaf_fullpath) {
+	if (!server->is_dfs_conn) {
 		spin_unlock(&cifs_tcp_ses_lock);
 		return __cifs_reconnect(server);
 	}
 	spin_unlock(&cifs_tcp_ses_lock);
+
+	mutex_lock(&server->refpath_lock);
+	if (!server->origin_fullpath || !server->leaf_fullpath) {
+		mutex_unlock(&server->refpath_lock);
+		return __cifs_reconnect(server);
+	}
+	mutex_unlock(&server->refpath_lock);
 
 	return reconnect_dfs_server(server);
 }
