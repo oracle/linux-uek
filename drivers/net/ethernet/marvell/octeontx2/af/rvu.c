@@ -2707,8 +2707,8 @@ static void rvu_npa_lf_mapped_nix_lf_teardown(struct rvu *rvu, u16 pcifunc)
 
 static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 {
+	int npa_blkaddr, blkaddr, lf, retry;
 	u16 sso_pcifunc, match_cnt = 0;
-	int npa_blkaddr, blkaddr, lf;
 	struct rvu_block *sso_block;
 	struct rsrc_detach detach;
 	u16 *pcifunc_arr;
@@ -2731,7 +2731,12 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 	rvu_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, regval);
 
 	sso_block = &rvu->hw->block[blkaddr];
-	for (lf = 0; lf < sso_block->lf.max; lf++) {
+	retry = 0;
+	for (lf = 0; lf < sso_block->lf.max || retry; lf++) {
+		if (lf == sso_block->lf.max) {
+			lf = 0;
+			retry = 0;
+		}
 		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
 		if ((regval & 0xFFFF) != pcifunc)
 			continue;
@@ -2739,7 +2744,11 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 		sso_pcifunc = sso_block->fn_map[lf];
 		regval = rvu_read64(rvu, blkaddr, sso_block->lfcfg_reg |
 				    (lf << sso_block->lfshift));
-		rvu_sso_lf_drain_queues(rvu, sso_pcifunc, lf, regval & 0xF);
+		if (rvu_sso_lf_drain_queues(rvu, sso_pcifunc, lf,
+					    regval & 0xF) == -EAGAIN) {
+			retry = 1;
+			continue;
+		}
 
 		regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
 		rvu_sso_deinit_xaq_aura(rvu, sso_pcifunc, pcifunc, regval, lf);
@@ -2789,7 +2798,7 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 {
 	struct rvu_block *block;
 	int slot, lf, num_lfs;
-	int err;
+	int err, retry;
 
 	block = &rvu->hw->block[blkaddr];
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
@@ -2798,11 +2807,18 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 		return;
 
 	if (block->addr == BLKADDR_SSO) {
-		for (slot = 0; slot < num_lfs; slot++) {
+		retry = 0;
+		for (slot = 0; slot < num_lfs || retry; slot++) {
+			if (slot == num_lfs) {
+				slot = 0;
+				retry = 0;
+			}
 			lf = rvu_get_lf(rvu, block, pcifunc, slot);
 			if (lf < 0)
 				continue;
-			rvu_sso_lf_drain_queues(rvu, pcifunc, lf, slot);
+			if (rvu_sso_lf_drain_queues(rvu, pcifunc, lf, slot) ==
+			    -EAGAIN)
+				retry = 1;
 		}
 		rvu_sso_cleanup_xaq_aura(rvu, pcifunc, num_lfs);
 	}

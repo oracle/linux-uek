@@ -16,6 +16,7 @@
 
 #define NPA_LF_AURA_OP_FREE0	0x20
 #define NPA_LF_AURA_OP_CNT	0x30
+#define SSO_FLUSH_RETRY_MAX	0xfff
 
 #if defined(CONFIG_ARM64)
 #define rvu_sso_store_pair(val0, val1, addr) ({				\
@@ -332,17 +333,17 @@ static void rvu_ssow_clean_prefetch(struct rvu *rvu, u16 pcifunc, int slot)
 	}
 }
 
-void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
+int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	bool has_prefetch, has_nsched, has_lsw;
 	int ssow_lf, blkaddr, ssow_blkaddr;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u64 aq_cnt, ds_cnt, cq_ds_cnt;
-	u64 reg, val;
+	u64 reg, val, retry;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
-		return;
+		return -ENODEV;
 
 	/* Read hardware capabilities */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
@@ -352,11 +353,11 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
 	if (ssow_blkaddr < 0)
-		return;
+		return -ENODEV;
 	/* Check if LF is in slot 0, if not no HWS are attached. */
 	ssow_lf = rvu_get_lf(rvu, &hw->block[ssow_blkaddr], pcifunc, 0);
 	if (ssow_lf < 0)
-		return;
+		return -ENODEV;
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -425,6 +426,7 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	val |= SSOW_LF_GWS_OP_GET_WORK_GROUPED;
 	val |= SSOW_LF_GWS_OP_GET_WORK_WAIT;
 
+	retry = SSO_FLUSH_RETRY_MAX;
 	while (aq_cnt || cq_ds_cnt || ds_cnt) {
 		rvu_write64(rvu, ssow_blkaddr,
 			    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GET_WORK),
@@ -439,6 +441,8 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 				    SSOW_AF_BAR2_ALIASX(0,
 						SSOW_LF_GWS_OP_SWTAG_FLUSH),
 				    0x0);
+		else if (retry-- == 0)
+			break;
 		aq_cnt = rvu_read64(rvu, blkaddr,
 				    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_AQ_CNT)
 				    );
@@ -451,6 +455,9 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		/* Extract cq and ds count */
 		cq_ds_cnt &= SSO_LF_GGRP_INT_CNT_MASK;
 	}
+
+	if (aq_cnt || cq_ds_cnt || ds_cnt)
+		return -EAGAIN;
 
 	/* Due to the Errata 35432, SSO doesn't release the partially consumed
 	 * TAQ buffer used by HWGRP when HWGRP is reset. Use SW routine to
@@ -490,6 +497,8 @@ void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0);
 	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0);
+
+	return 0;
 }
 
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
@@ -1109,9 +1118,9 @@ exit:
 int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 				 struct msg_rsp *rsp)
 {
+	int hwgrp, lf, err, blkaddr, retry;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
-	int hwgrp, lf, err, blkaddr;
 	struct rvu_pfvf *pfvf;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
@@ -1119,11 +1128,17 @@ int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 	if (blkaddr < 0)
 		return SSO_AF_ERR_LF_INVALID;
 
-	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
+	retry = 0;
+	for (hwgrp = 0; hwgrp < req->hwgrps || retry; hwgrp++) {
+		if (hwgrp == req->hwgrps) {
+			hwgrp = 0;
+			retry = 0;
+		}
 		lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hwgrp);
 		if (lf < 0)
 			continue;
-		rvu_sso_lf_drain_queues(rvu, pcifunc, lf, hwgrp);
+		if (rvu_sso_lf_drain_queues(rvu, pcifunc, lf, hwgrp) == -EAGAIN)
+			retry = 1;
 	}
 	rvu_sso_cleanup_xaq_aura(rvu, pcifunc, req->hwgrps);
 

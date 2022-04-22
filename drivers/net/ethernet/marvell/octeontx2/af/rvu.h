@@ -806,7 +806,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
 void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf);
 void rvu_sso_block_cn10k_init(struct rvu *rvu, int blkaddr);
-void rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot);
+int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int hwgrp);
 int rvu_sso_poll_aura_cnt(struct rvu *rvu, int npa_blkaddr, int aura);
 void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int npa_blkaddr,
