@@ -221,7 +221,7 @@ int mub_do_smc(struct mub_device *mdev, unsigned long a0, unsigned long a1,
 
 	mdrv = drv_to_mub(mdev->dev.driver);
 
-	if (!mdrv->smc)
+	if (mdrv->smc)
 		return mdrv->smc(mdev, a0, a1, a2, a3, a4, a5, a6, a7, res);
 
 	return -ENODEV;
