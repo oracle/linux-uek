@@ -416,7 +416,7 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	}
 
 	/* update timestamp value in skb */
-	timestamp = tx_tstmp->ptp_timestamp;
+	timestamp = cnf10k_ptp_convert_timestamp(tx_tstmp->ptp_timestamp);
 	cnf10k_rfoe_calc_ptp_ts(priv, &timestamp);
 
 	memset(&ts, 0, sizeof(ts));
