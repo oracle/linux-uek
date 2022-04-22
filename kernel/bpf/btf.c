@@ -2548,8 +2548,8 @@ static s32 btf_func_check_meta(struct btf_verifier_env *env,
 		return -EINVAL;
 	}
 
-	if (btf_type_vlen(t)) {
-		btf_verifier_log_type(env, t, "vlen != 0");
+	if (btf_type_vlen(t) > BTF_FUNC_GLOBAL) {
+		btf_verifier_log_type(env, t, "Invalid func linkage");
 		return -EINVAL;
 	}
 
@@ -2649,11 +2649,6 @@ static s32 btf_datasec_check_meta(struct btf_verifier_env *env,
 		btf_verifier_log_basic(env, t,
 				       "meta_left:%u meta_needed:%u",
 				       meta_left, meta_needed);
-		return -EINVAL;
-	}
-
-	if (!btf_type_vlen(t)) {
-		btf_verifier_log_type(env, t, "vlen == 0");
 		return -EINVAL;
 	}
 
