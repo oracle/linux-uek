@@ -373,7 +373,7 @@ static int mrvl_run_fw_update(unsigned long arg)
 		spi_in_progress = res.a0;
 	} while (spi_in_progress);
 
-	return 0;
+	return ioctl_desc.ret;
 }
 
 static int alloc_readbuf(uint64_t rd_size)
