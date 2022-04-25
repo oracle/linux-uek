@@ -265,6 +265,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	conn->c_dev_if = dev_if;
 
 	INIT_WORK(&conn->c_ha_changed.work, rds_conn_ha_changed_task);
+	INIT_DELAYED_WORK(&conn->c_dr_sock_cancel_w, rds_conn_drop_sock_cancel_worker);
 
 #if IS_ENABLED(CONFIG_IPV6)
 	/* If the local address is link local, set c_bound_if to be the
@@ -585,6 +586,8 @@ static void rds_conn_shutdown_check_wait(struct work_struct *work)
 
 void rds_conn_init_shutdown(struct rds_conn_path *cp)
 {
+	cancel_delayed_work(&cp->cp_conn->c_dr_sock_cancel_w);
+
 	/* shut it down unless it's down already */
 	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN,
 				      DR_DEFAULT)) {
@@ -691,6 +694,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	conn->c_destroy_in_prog = 1;
 	smp_mb();
 	cancel_work_sync(&conn->c_ha_changed.work);
+	cancel_delayed_work_sync(&conn->c_dr_sock_cancel_w);
 
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
@@ -1173,6 +1177,7 @@ static char *conn_drop_reasons[] = {
 	[DR_CONN_CONNECT_FAIL]		= "conn_connect failure",
 	[DR_HB_TIMEOUT]			= "hb timeout",
 	[DR_RECONNECT_TIMEOUT]		= "reconnect timeout",
+	[DR_SOCK_CANCEL]		= "cancel operation on socket",
 	[DR_IB_CONN_DROP_RACE]		= "race between ESTABLISHED event and drop",
 	[DR_IB_NOT_CONNECTING_STATE]	= "conn is not in CONNECTING state",
 	[DR_IB_QP_EVENT]		= "qp event",
