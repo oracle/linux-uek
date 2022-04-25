@@ -174,6 +174,8 @@ struct devlink_port_new_attrs {
         UEK_KABI_RESERVE(2)
 };
 
+struct devlink_info_req;
+
 /**
  * struct devlink_linecard_ops - Linecard operations
  * @provision: callback to provision the linecard slot with certain
@@ -192,6 +194,7 @@ struct devlink_port_new_attrs {
  *                  provisioned.
  * @types_count: callback to get number of supported types
  * @types_get: callback to get next type in list
+ * @info_get: callback to get linecard info
  */
 struct devlink_linecard_ops {
 	int (*provision)(struct devlink_linecard *linecard, void *priv,
@@ -206,6 +209,9 @@ struct devlink_linecard_ops {
 	void (*types_get)(struct devlink_linecard *linecard,
 			  void *priv, unsigned int index, const char **type,
 			  const void **type_priv);
+	int (*info_get)(struct devlink_linecard *linecard, void *priv,
+			struct devlink_info_req *req,
+			struct netlink_ext_ack *extack);
 };
 
 struct devlink_sb_pool_info {
@@ -652,7 +658,6 @@ struct devlink_flash_update_params {
 #define DEVLINK_SUPPORT_FLASH_UPDATE_OVERWRITE_MASK	BIT(1)
 
 struct devlink_region;
-struct devlink_info_req;
 
 /**
  * struct devlink_region_ops - Region operations
