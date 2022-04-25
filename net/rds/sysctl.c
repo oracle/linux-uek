@@ -74,6 +74,11 @@ unsigned int rds_sysctl_min_conn_hb_interval = 10;
 unsigned int rds_sysctl_max_conn_hb_interval = 600;
 unsigned int rds_sysctl_conn_hb_interval = 60;
 
+/* Upper bound to how long "rds_send_drop_to"
+ * (and therefore "RDS_CANCEL_SENT_TO") waits for messages to be unmapped.
+ */
+unsigned long rds_sysctl_dr_sock_cancel_jiffies;
+
 /*
  * We have official values, but must maintain the sysctl interface for existing
  * software that expects to find these values here.
@@ -183,6 +188,13 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.extra1		= &rds_sysctl_min_conn_hb_interval,
 		.extra2		= &rds_sysctl_max_conn_hb_interval,
 	},
+	{
+		.procname       = "dr_sock_cancel_delay_ms",
+		.data           = &rds_sysctl_dr_sock_cancel_jiffies,
+		.maxlen         = sizeof(unsigned long),
+		.mode           = 0644,
+		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
+	},
 };
 
 void rds_sysctl_exit(void)
@@ -195,6 +207,7 @@ int rds_sysctl_init(void)
 	rds_sysctl_reconnect_min = msecs_to_jiffies(1);
 	rds_sysctl_reconnect_min_jiffies = rds_sysctl_reconnect_min;
 	rds_sysctl_reconnect_passive_min_jiffies = msecs_to_jiffies(3000);
+	rds_sysctl_dr_sock_cancel_jiffies = msecs_to_jiffies(6000);
 
 	rds_sysctl_reg_table = register_net_sysctl(&init_net, "net/rds", rds_sysctl_rds_table);
 	if (!rds_sysctl_reg_table)
