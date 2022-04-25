@@ -52,6 +52,10 @@ struct bpf_reg_state {
 		 */
 		struct bpf_map *map_ptr;
 
+#ifndef __GENKSYMS__
+		u32 mem_size; /* for PTR_TO_MEM | PTR_TO_MEM_OR_NULL */
+#endif
+
 		/* Max size from any of the above. */
 		unsigned long raw;
 	};
@@ -61,6 +65,8 @@ struct bpf_reg_state {
 	 * offset, so they can share range knowledge.
 	 * For PTR_TO_MAP_VALUE_OR_NULL this is used to share which map value we
 	 * came from, when one is tested for != NULL.
+	 * For PTR_TO_MEM_OR_NULL this is used to identify memory allocation
+	 * for the purpose of tracking that it's freed.
 	 * For PTR_TO_SOCKET this is used to share which pointers retain the
 	 * same reference to the socket, to determine proper reference freeing.
 	 */

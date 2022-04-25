@@ -23,13 +23,15 @@
 #include <linux/timekeeping.h>
 #include <linux/ctype.h>
 #include <linux/nospec.h>
+#include <linux/poll.h>
 
-#define IS_FD_ARRAY(map) ((map)->map_type == BPF_MAP_TYPE_PROG_ARRAY || \
-			   (map)->map_type == BPF_MAP_TYPE_PERF_EVENT_ARRAY || \
-			   (map)->map_type == BPF_MAP_TYPE_CGROUP_ARRAY || \
-			   (map)->map_type == BPF_MAP_TYPE_ARRAY_OF_MAPS)
+#define IS_FD_ARRAY(map) ((map)->map_type == BPF_MAP_TYPE_PERF_EVENT_ARRAY || \
+			  (map)->map_type == BPF_MAP_TYPE_CGROUP_ARRAY || \
+			  (map)->map_type == BPF_MAP_TYPE_ARRAY_OF_MAPS)
+#define IS_FD_PROG_ARRAY(map) ((map)->map_type == BPF_MAP_TYPE_PROG_ARRAY)
 #define IS_FD_HASH(map) ((map)->map_type == BPF_MAP_TYPE_HASH_OF_MAPS)
-#define IS_FD_MAP(map) (IS_FD_ARRAY(map) || IS_FD_HASH(map))
+#define IS_FD_MAP(map) (IS_FD_ARRAY(map) || IS_FD_PROG_ARRAY(map) || \
+			IS_FD_HASH(map))
 
 #define BPF_OBJ_FLAG_MASK   (BPF_F_RDONLY | BPF_F_WRONLY)
 
@@ -508,6 +510,16 @@ out:
 	return err;
 }
 
+static __poll_t bpf_map_poll(struct file *filp, struct poll_table_struct *pts)
+{
+	struct bpf_map *map = filp->private_data;
+
+	if (map->ops->map_poll)
+		return map->ops->map_poll(map, filp, pts);
+
+	return EPOLLERR;
+}
+
 const struct file_operations bpf_map_fops = {
 #ifdef CONFIG_PROC_FS
 	.show_fdinfo	= bpf_map_show_fdinfo,
@@ -516,6 +528,7 @@ const struct file_operations bpf_map_fops = {
 	.read		= bpf_dummy_read,
 	.write		= bpf_dummy_write,
 	.mmap		= bpf_map_mmap,
+	.poll		= bpf_map_poll,
 };
 
 int bpf_map_new_fd(struct bpf_map *map, int flags)
@@ -878,7 +891,7 @@ static int map_lookup_elem(union bpf_attr *attr)
 		err = bpf_percpu_cgroup_storage_copy(map, key, value);
 	} else if (map->map_type == BPF_MAP_TYPE_STACK_TRACE) {
 		err = bpf_stackmap_copy(map, key, value);
-	} else if (IS_FD_ARRAY(map)) {
+	} else if (IS_FD_ARRAY(map) || IS_FD_PROG_ARRAY(map)) {
 		err = bpf_fd_array_map_lookup_elem(map, key, value);
 	} else if (IS_FD_HASH(map)) {
 		err = bpf_fd_htab_map_lookup_elem(map, key, value);
@@ -1004,6 +1017,10 @@ static int map_update_elem(union bpf_attr *attr)
 		   map->map_type == BPF_MAP_TYPE_SOCKHASH ||
 		   map->map_type == BPF_MAP_TYPE_SOCKMAP) {
 		err = map->ops->map_update_elem(map, key, value, attr->flags);
+		goto out;
+	} else if (IS_FD_PROG_ARRAY(map)) {
+		err = bpf_fd_array_map_update_elem(map, f.file, key, value,
+						   attr->flags);
 		goto out;
 	}
 
