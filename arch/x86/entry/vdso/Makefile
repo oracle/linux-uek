@@ -15,11 +15,6 @@ UBSAN_SANITIZE			:= n
 KCSAN_SANITIZE			:= n
 OBJECT_FILES_NON_STANDARD	:= y
 
-ifdef CONFIG_CTF_USING_BINUTILS
-KBUILD_CFLAGS := $(KBUILD_CFLAGS)
-KBUILD_CFLAGS += $(call cc-option,-gctf0) $(call cc-option,-gt0)
-endif
-
 # Prevents link failures: __sanitizer_cov_trace_pc() is not linked in.
 KCOV_INSTRUMENT		:= n
 
@@ -88,6 +83,7 @@ $(obj)/vdso-image-%.c: $(obj)/vdso%.so.dbg $(obj)/vdso%.so $(obj)/vdso2c FORCE
 CFL := $(PROFILING) -mcmodel=small -fPIC -O2 -fasynchronous-unwind-tables -m64 \
        $(filter -g%,$(KBUILD_CFLAGS)) -fno-stack-protector \
        -fno-omit-frame-pointer -foptimize-sibling-calls \
+       $(call cc-option,-gctf0) $(call cc-option,-gt0) \
        -DDISABLE_BRANCH_PROFILING -DBUILD_VDSO
 
 ifdef CONFIG_RETPOLINE
