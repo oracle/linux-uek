@@ -140,33 +140,6 @@ static inline bool xfs_ioend_is_append(struct xfs_ioend *ioend)
 		XFS_I(ioend->io_inode)->i_d.di_size;
 }
 
-STATIC int
-xfs_setfilesize_trans_alloc(
-	struct xfs_ioend	*ioend)
-{
-	struct xfs_mount	*mp = XFS_I(ioend->io_inode)->i_mount;
-	struct xfs_trans	*tp;
-	int			error;
-
-	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_fsyncts, 0, 0, 0, &tp);
-	if (error)
-		return error;
-
-	ioend->io_append_trans = tp;
-
-	/*
-	 * We may pass freeze protection with a transaction.  So tell lockdep
-	 * we released it.
-	 */
-	__sb_writers_release(ioend->io_inode->i_sb, SB_FREEZE_FS);
-	/*
-	 * We hand off the transaction to the completion thread now, so
-	 * clear the flag here.
-	 */
-	current_restore_flags_nested(&tp->t_pflags, PF_MEMALLOC_NOFS);
-	return 0;
-}
-
 /*
  * Update on-disk file size now that data has been written to disk.
  */
@@ -211,31 +184,6 @@ xfs_setfilesize(
 		return error;
 
 	return __xfs_setfilesize(ip, tp, offset, size);
-}
-
-STATIC int
-xfs_setfilesize_ioend(
-	struct xfs_ioend	*ioend,
-	int			error)
-{
-	struct xfs_inode	*ip = XFS_I(ioend->io_inode);
-	struct xfs_trans	*tp = ioend->io_append_trans;
-
-	/*
-	 * The transaction may have been allocated in the I/O submission thread,
-	 * thus we need to mark ourselves as being in a transaction manually.
-	 * Similarly for freeze protection.
-	 */
-	current_set_flags_nested(&tp->t_pflags, PF_MEMALLOC_NOFS);
-	__sb_writers_acquired(VFS_I(ip)->i_sb, SB_FREEZE_FS);
-
-	/* we abort the update if there was an IO error */
-	if (error) {
-		xfs_trans_cancel(tp);
-		return error;
-	}
-
-	return __xfs_setfilesize(ip, tp, ioend->io_offset, ioend->io_size);
 }
 
 /*
@@ -293,12 +241,10 @@ xfs_end_ioend(
 		error = xfs_reflink_end_cow(ip, offset, size);
 	else if (ioend->io_state == XFS_EXT_UNWRITTEN)
 		error = xfs_iomap_write_unwritten(ip, offset, size, false);
-	else
-		ASSERT(!xfs_ioend_is_append(ioend) || ioend->io_append_trans);
 
+	if (!error && xfs_ioend_is_append(ioend))
+		error = xfs_setfilesize(ip, ioend->io_offset, ioend->io_size);
 done:
-	if (ioend->io_append_trans)
-		error = xfs_setfilesize_ioend(ioend, error);
 	list_replace_init(&ioend->io_list, &ioend_list);
 	xfs_destroy_ioend(ioend, error, false);
 
@@ -332,25 +278,6 @@ xfs_ioend_can_merge(
 	return true;
 }
 
-/*
- * If the to be merged ioend has a preallocated transaction for file
- * size updates we need to ensure the ioend it is merged into also
- * has one.  If it already has one we can simply cancel the transaction
- * as it is guaranteed to be clean.
- */
-static void
-xfs_ioend_merge_append_transactions(
-	struct xfs_ioend	*ioend,
-	struct xfs_ioend	*next)
-{
-	if (!ioend->io_append_trans) {
-		ioend->io_append_trans = next->io_append_trans;
-		next->io_append_trans = NULL;
-	} else {
-		xfs_setfilesize_ioend(next, -ECANCELED);
-	}
-}
-
 /* Try to merge adjacent completions. */
 STATIC void
 xfs_ioend_try_merge(
@@ -366,8 +293,6 @@ xfs_ioend_try_merge(
 			break;
 		list_move_tail(&next_ioend->io_list, &ioend->io_list);
 		ioend->io_size += next_ioend->io_size;
-		if (next_ioend->io_append_trans)
-			xfs_ioend_merge_append_transactions(ioend, next_ioend);
 	}
 }
 
@@ -429,7 +354,7 @@ xfs_end_bio(
 
 	if (ioend->io_fork == XFS_COW_FORK ||
 	    ioend->io_state == XFS_EXT_UNWRITTEN ||
-	    ioend->io_append_trans != NULL) {
+	    xfs_ioend_is_append(ioend)) {
 		spin_lock_irqsave(&ip->i_ioend_lock, flags);
 		if (list_empty(&ip->i_ioend_list))
 			WARN_ON_ONCE(!queue_work(mp->m_unwritten_workqueue,
@@ -693,14 +618,6 @@ xfs_submit_ioend(
 				ioend->io_offset, ioend->io_size);
 	}
 
-	/* Reserve log space if we might write beyond the on-disk inode size. */
-	if (!status &&
-	    (ioend->io_fork == XFS_COW_FORK ||
-	     ioend->io_state != XFS_EXT_UNWRITTEN) &&
-	    xfs_ioend_is_append(ioend) &&
-	    !ioend->io_append_trans)
-		status = xfs_setfilesize_trans_alloc(ioend);
-
 	memalloc_nofs_restore(nofs_flag);
 
 	ioend->io_bio->bi_private = ioend;
@@ -749,7 +666,6 @@ xfs_alloc_ioend(
 	ioend->io_inode = inode;
 	ioend->io_size = 0;
 	ioend->io_offset = offset;
-	ioend->io_append_trans = NULL;
 	ioend->io_bio = bio;
 	INIT_WORK(&ioend->destroy_io_work, xfs_destroy_ioend_work);
 	ioend->io_blocks_num = 0;

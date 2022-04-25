@@ -18,7 +18,6 @@ struct xfs_ioend {
 	struct inode		*io_inode;	/* file being written to */
 	size_t			io_size;	/* size of the extent */
 	xfs_off_t		io_offset;	/* offset in the file */
-	struct xfs_trans	*io_append_trans;/* xact. for size update */
 	struct work_struct	destroy_io_work;
 	unsigned int		io_blocks_num;	/* number of blocks in bio list*/
 	int			io_status;
