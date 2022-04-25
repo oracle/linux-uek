@@ -176,6 +176,7 @@ enum rds_conn_drop_src {
 	DR_CONN_CONNECT_FAIL,
 	DR_HB_TIMEOUT,
 	DR_RECONNECT_TIMEOUT,
+	DR_SOCK_CANCEL,
 
 	/* ib_cm  */
 	DR_IB_CONN_DROP_RACE,
@@ -383,6 +384,9 @@ struct rds_connection {
 
 	atomic64_t		c_send_bytes;
 	atomic64_t		c_recv_bytes;
+
+	refcount_t		c_dr_sock_cancel_refs;
+	struct delayed_work	c_dr_sock_cancel_w;
 };
 
 static inline
@@ -1337,6 +1341,7 @@ int rds_skb_local(struct sk_buff *skb);
 int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len);
 void rds_send_path_reset(struct rds_conn_path *cp);
 int rds_send_xmit(struct rds_conn_path *cp);
+void rds_conn_drop_sock_cancel_worker(struct work_struct *work);
 void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest);
 typedef int (*is_acked_func)(struct rds_message *rm, uint64_t ack);
 void rds_send_drop_acked(struct rds_connection *conn, u64 ack,
@@ -1410,6 +1415,7 @@ extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
 extern unsigned int  rds_sysctl_conn_hb_timeout;
 extern unsigned int  rds_sysctl_conn_hb_interval;
+extern unsigned long rds_sysctl_dr_sock_cancel_jiffies;
 
 /* threads.c */
 int rds_threads_init(void);
