@@ -966,6 +966,15 @@ void rds_send_drop_acked(struct rds_connection *conn, u64 ack,
 }
 EXPORT_SYMBOL_GPL(rds_send_drop_acked);
 
+void rds_conn_drop_sock_cancel_worker(struct work_struct *work)
+{
+        struct rds_connection *conn = container_of(work,
+						   struct rds_connection,
+						   c_dr_sock_cancel_w.work);
+
+	rds_conn_drop(conn, DR_SOCK_CANCEL, 0);
+}
+
 void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 {
 	struct rds_message *rm, *tmp;
@@ -1038,9 +1047,22 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 
 	rds_wake_sk_sleep(rs);
 
-	while (!list_empty(&list)) {
-		rm = list_entry(list.next, struct rds_message, m_sock_item);
-		list_del_init(&rm->m_sock_item);
+	/* Queue up delayed connection drops (DR_SOCK_CANCEL)
+	 * for all connections that still have messages mapped.
+	 */
+	list_for_each_entry_safe(rm, tmp, &list, m_sock_item) {
+		refcount_inc(&rm->m_inc.i_conn->c_dr_sock_cancel_refs);
+
+		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags))
+			queue_delayed_work(system_unbound_wq,
+					   &rm->m_inc.i_conn->c_dr_sock_cancel_w,
+					   rds_sysctl_dr_sock_cancel_jiffies);
+	}
+
+	/* Wait for messages to be unmapped, mark their completion
+	 * and disassociate them from the socket.
+	 */
+	list_for_each_entry_safe(rm, tmp, &list, m_sock_item) {
 		rds_message_wait(rm);
 
 		/*
@@ -1058,6 +1080,20 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 
 		rm->m_rs = NULL;
 		spin_unlock_irqrestore(&rm->m_rs_lock, flags);
+	}
+
+	/* Now that all messages are unmapped,
+	 * we no longer have a need to drop the connections
+	 * that haven't been dropped yet.
+	 * So the last "rds_send_drop_to" on a connection
+	 * cancels the pending work.
+	 */
+	while (!list_empty(&list)) {
+		rm = list_entry(list.next, struct rds_message, m_sock_item);
+		list_del_init(&rm->m_sock_item);
+
+		if (refcount_dec_and_test(&rm->m_inc.i_conn->c_dr_sock_cancel_refs))
+			cancel_delayed_work(&rm->m_inc.i_conn->c_dr_sock_cancel_w);
 
 		rds_message_put(rm);
 	}
