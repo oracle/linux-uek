@@ -806,7 +806,7 @@ static void rds_rdma_dev_rs_drop(struct rds_ib_device *rds_ibdev)
  */
 void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
-	DECLARE_COMPLETION(rem_complete);
+	DECLARE_COMPLETION_ONSTACK(rem_complete);
 	struct rds_ib_device *rds_ibdev;
 
 	rds_ibdev = (struct rds_ib_device *)client_data;
