@@ -625,7 +625,7 @@ void rds_conn_init_shutdown(struct rds_conn_path *cp)
  */
 static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 {
-	DECLARE_COMPLETION(shutdown_final);
+	DECLARE_COMPLETION_ONSTACK(shutdown_final);
 	struct rds_message *rm, *rtmp;
 	LIST_HEAD(to_be_dropped);
 
