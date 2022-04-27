@@ -29,6 +29,9 @@
 #include <openssl/err.h>
 #include <openssl/engine.h>
 
+/* Needed for OpenSSL 3.0 */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 /*
  * OpenSSL 3.0 deprecates the OpenSSL's ENGINE API.
  *
