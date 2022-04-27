@@ -1099,10 +1099,6 @@ BuildKernel() {
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
-    cp Module.symvers Module.symvers.save
-    make -k %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
-    mv -f Module.symvers.save Module.symvers
-
     # Start installing the results
 %if %{with_debuginfo}
     mkdir -p $RPM_BUILD_ROOT%{debuginfodir}/boot
@@ -1953,7 +1949,6 @@ fi
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
