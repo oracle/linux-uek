@@ -528,7 +528,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 
 	if (pkt_type != PACKET_TYPE_ECPRI) {
 		/* check that the psw type is correct: */
-		if (unlikely(psw->pkt_type == ECPRI)) {
+		if (unlikely(psw->pkt_type == CNF10K_ECPRI)) {
 			net_warn_ratelimited("%s: pswt is eCPRI for pkt_type = %d\n",
 					     priv->netdev->name, pkt_type);
 			return;
@@ -539,7 +539,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
 	} else {
 		/* check that the psw type is correct: */
-		if (unlikely(psw->pkt_type != ECPRI)) {
+		if (unlikely(psw->pkt_type != CNF10K_ECPRI)) {
 			net_warn_ratelimited("%s: pswt is not eCPRI for pkt_type = %d\n",
 					     priv->netdev->name, pkt_type);
 			return;

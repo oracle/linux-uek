@@ -156,6 +156,14 @@ struct mhbw_jd_dma_cfg_word_1_s {
 	u64 reserved1		: 11;
 };
 
+enum rfoe_rx_dir_ctl_pkt_type_e {
+	ROE		= 0x0,
+	CHI		= 0x1,
+	ALT		= 0x2,
+	ECPRI		= 0x3,
+	GENERIC		= 0x8,
+};
+
 enum rfoe_rx_pswt_e {
 	ROE_TYPE	= 0x0,
 	ECPRI_TYPE	= 0x2,
