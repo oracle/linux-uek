@@ -71,7 +71,12 @@ static unsigned int preferred_states_mask;
 static unsigned int mwait_substates __initdata;
 
 static unsigned long auto_demotion_disable_flags;
-static bool disable_promotion_to_c1e;
+
+static enum {
+	C1E_PROMOTION_PRESERVE,
+	C1E_PROMOTION_ENABLE,
+	C1E_PROMOTION_DISABLE
+} c1e_promotion = C1E_PROMOTION_PRESERVE;
 
 static bool lapic_timer_always_reliable;
 
@@ -1364,8 +1369,6 @@ static inline void intel_idle_init_cstates_acpi(struct cpuidle_driver *drv) { }
 static inline bool intel_idle_off_by_default(u32 mwait_hint) { return false; }
 #endif /* !CONFIG_ACPI_PROCESSOR_CSTATE */
 
-static void c1e_promotion_enable(void);
-
 /**
  * ivt_idle_state_table_update - Tune the idle states table for Ivy Town.
  *
@@ -1553,8 +1556,7 @@ static void __init spr_idle_state_table_update(void)
 		spr_cstates[1].flags &= ~CPUIDLE_FLAG_UNUSABLE;
 
 		/* Enable C1E using the "C1E promotion" bit. */
-		c1e_promotion_enable();
-		disable_promotion_to_c1e = false;
+		c1e_promotion = C1E_PROMOTION_ENABLE;
 	}
 
 	/*
@@ -1722,7 +1724,9 @@ static int intel_idle_cpu_init(unsigned int cpu)
 	if (auto_demotion_disable_flags)
 		auto_demotion_disable();
 
-	if (disable_promotion_to_c1e)
+	if (c1e_promotion == C1E_PROMOTION_ENABLE)
+		c1e_promotion_enable();
+	else if (c1e_promotion == C1E_PROMOTION_DISABLE)
 		c1e_promotion_disable();
 
 	return 0;
@@ -1801,7 +1805,8 @@ static int __init intel_idle_init(void)
 	if (icpu) {
 		cpuidle_state_table = icpu->state_table;
 		auto_demotion_disable_flags = icpu->auto_demotion_disable_flags;
-		disable_promotion_to_c1e = icpu->disable_promotion_to_c1e;
+		if (icpu->disable_promotion_to_c1e)
+			c1e_promotion = C1E_PROMOTION_DISABLE;
 		if (icpu->use_acpi || force_use_acpi)
 			intel_idle_acpi_cst_extract();
 	} else if (!intel_idle_acpi_cst_extract()) {
