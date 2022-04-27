@@ -115,10 +115,6 @@ struct kimage_arch {
 	phys_addr_t kern_reloc;
 };
 
-#ifdef CONFIG_KEXEC_CORE
-extern void __init reserve_crashkernel(void);
-#endif
-
 #ifdef CONFIG_KEXEC_FILE
 extern const struct kexec_file_ops kexec_image_ops;
 
