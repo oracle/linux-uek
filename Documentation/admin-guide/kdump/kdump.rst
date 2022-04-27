@@ -362,18 +362,9 @@ Boot into System Kernel
 
 2) Boot the system kernel with the boot parameter "crashkernel=Y@X".
 
-   On x86, use "crashkernel=Y[@X]". Most of the time, the
+   On x86 and x86_64, use "crashkernel=Y[@X]". Most of the time, the
    start address 'X' is not necessary, kernel will search a suitable
    area. Unless an explicit start address is expected.
-
-   On x86_64, use "crashkernel=X" to select a region under 4G first, and
-   fall back to reserve region above 4G. And go for high allocation
-   directly if the required size is too large.
-   We can also use "crashkernel=X,high" to select a region above 4G, which
-   also tries to allocate at least 256M below 4G automatically and
-   "crashkernel=Y,low" can be used to allocate specified size low memory.
-   Use "crashkernel=Y@X" if you really have to reserve memory from specified
-   start address X.
 
    On ppc64, use "crashkernel=128M@32M".
 
@@ -390,15 +381,8 @@ Boot into System Kernel
    kernel will automatically locate the crash kernel image within the
    first 512MB of RAM if X is not given.
 
-   On arm64, use "crashkernel=X" to try low allocation in DMA zone and
-   fall back to high allocation if it fails.
-   We can also use "crashkernel=X,high" to select a high region above
-   DMA zone, which also tries to allocate at least 256M low memory in
-   DMA zone automatically.
-   "crashkernel=Y,low" can be used to allocate specified size low memory.
-   Use "crashkernel=Y@X" if you really have to reserve memory from
-   specified start address X. Note that the start address of the kernel,
-   X if explicitly specified, must be aligned to 2MiB (0x200000).
+   On arm64, use "crashkernel=Y[@X]".  Note that the start address of
+   the kernel, X if explicitly specified, must be aligned to 2MiB (0x200000).
 
 Load the Dump-capture Kernel
 ============================
