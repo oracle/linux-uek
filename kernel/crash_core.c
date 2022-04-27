@@ -343,7 +343,9 @@ early_param("crashkernel", parse_crashkernel_dummy);
  * --------- Crashkernel reservation ------------------------------
  */
 
-#ifdef CONFIG_ARCH_WANT_RESERVE_CRASH_KERNEL
+#ifdef CONFIG_KEXEC_CORE
+
+#if defined(CONFIG_X86) || defined(CONFIG_ARM64)
 static int __init reserve_crashkernel_low(void)
 {
 #ifdef CONFIG_64BIT
@@ -471,7 +473,8 @@ void __init reserve_crashkernel(void)
 	crashk_res.start = crash_base;
 	crashk_res.end   = crash_base + crash_size - 1;
 }
-#endif /* CONFIG_ARCH_WANT_RESERVE_CRASH_KERNEL */
+#endif
+#endif /* CONFIG_KEXEC_CORE */
 
 Elf_Word *append_elf_note(Elf_Word *buf, char *name, unsigned int type,
 			  void *data, size_t data_len)
