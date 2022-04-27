@@ -271,6 +271,14 @@ enum rfoe_order_info_type_e {
 	TIMESTAMP	= 0x1,
 };
 
+enum cnf10k_rfoe_rx_dir_ctl_pkt_type_e {
+	CNF10K_ROE	= 0x0,
+	CNF10K_CHI	= 0x1,
+	CNF10K_ALT	= 0x2,
+	CNF10K_ECPRI	= 0x4,
+	CNF10K_GENERIC	= 0x8,
+};
+
 enum cnf10k_rfoe_rx_pswt_e {
 	RSVD5		= 0x0,
 	ROE_BCN_TYPE	= 0x1,

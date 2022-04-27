@@ -40,14 +40,6 @@ enum state {
 	RFOE_INTF_DOWN,
 };
 
-enum rfoe_rx_dir_ctl_pkt_type_e {
-	ROE		= 0x0,
-	CHI		= 0x1,
-	ALT		= 0x2,
-	ECPRI		= 0x3,
-	GENERIC		= 0x8,
-};
-
 enum rfoe_rx_pkt_err_e {
 	RE_NONE		= 0x0,
 	RE_PARTIAL	= 0x1,
