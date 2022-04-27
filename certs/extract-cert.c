@@ -32,6 +32,9 @@
 
 #define PKEY_ID_PKCS7 2
 
+/* Needed for OpenSSL 3.0 */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 static __attribute__((noreturn))
 void format(void)
 {
