@@ -18,7 +18,7 @@
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM		0
 
-#define CGX_ID_MASK			0x7
+#define CGX_ID_MASK			0xF
 #define MAX_LMAC_PER_CGX		4
 #define MAX_DMAC_ENTRIES_PER_CGX	32
 #define CGX_OFFSET(x)			((x) * MAX_LMAC_PER_CGX)
