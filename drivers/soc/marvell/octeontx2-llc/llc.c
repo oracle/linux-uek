@@ -35,7 +35,7 @@ static bool is_octeontx2(void)
 	return (model == MIDR_MRVL_OCTEONTX2_98XX ||
 		model == MIDR_MRVL_OCTEONTX2_96XX ||
 		model == MIDR_MRVL_OCTEONTX2_95XX ||
-		model == MIDR_MRVL_OCTEONTX2_LOKI ||
+		model == MIDR_MRVL_OCTEONTX2_95N ||
 		model == MIDR_MRVL_OCTEONTX2_95MM);
 }
 
