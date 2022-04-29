@@ -52,5 +52,6 @@ descriptions of data structures and algorithms.
    split_page_table_lock
    transhuge
    unevictable-lru
+   vmemmap_dedup
    z3fold
    zsmalloc
