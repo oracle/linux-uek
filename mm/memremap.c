@@ -328,6 +328,7 @@ void *memremap_pages(struct dev_pagemap *pgmap, int nid)
 		 * We do not want any optional features only our own memmap
 		 */
 		.altmap = pgmap_altmap(pgmap),
+		.pgmap = pgmap,
 	};
 	const int nr_range = pgmap->nr_range;
 	bool need_devmap_managed = true;
