@@ -1375,7 +1375,7 @@ static int vfio_dma_do_map(struct vfio_iommu *iommu,
 		return -EINVAL;
 
 	if (!size || (size | iova | vaddr) & mask)
-		ret = -EINVAL;
+		return -EINVAL;
 
 	/* Don't allow IOVA or virtual address wrap */
 	if (iova + size - 1 < iova || vaddr + size - 1 < vaddr)
