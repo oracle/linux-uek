@@ -1619,6 +1619,8 @@ int memory_failure(unsigned long pfn, int flags)
 		res = -EHWPOISON;
 		if (flags & MF_ACTION_REQUIRED)
 			res = kill_accessing_process(current, pfn, flags);
+		if (flags & MF_COUNT_INCREASED)
+			put_hwpoison_page(p);
 		action_result(pfn, MF_MSG_ALREADY_POISONED, MF_FAILED);
 		goto unlock_mutex;
 	}
