@@ -198,7 +198,8 @@ int __ref __add_pages(int nid, unsigned long pfn, unsigned long nr_pages,
 
 		pfns = min(nr_pages, PAGES_PER_SECTION
 				- (pfn & ~PAGE_SECTION_MASK));
-		err = sparse_add_section(nid, pfn, pfns, altmap);
+		err = sparse_add_section(nid, pfn, pfns, altmap,
+					 restrictions->pgmap);
 		if (err)
 			break;
 		pfn += pfns;
