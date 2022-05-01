@@ -3463,12 +3463,22 @@ static void svm_inject_nmi(struct kvm_vcpu *vcpu)
 static void svm_set_irq(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
+	u32 type;
+
+	if (vcpu->arch.interrupt.soft) {
+		if (svm_update_soft_interrupt_rip(vcpu))
+			return;
+
+		type = SVM_EVTINJ_TYPE_SOFT;
+	} else {
+		type = SVM_EVTINJ_TYPE_INTR;
+	}
 
 	trace_kvm_inj_virq(vcpu->arch.interrupt.nr);
 	++vcpu->stat.irq_injections;
 
 	svm->vmcb->control.event_inj = vcpu->arch.interrupt.nr |
-		SVM_EVTINJ_VALID | SVM_EVTINJ_TYPE_INTR;
+				       SVM_EVTINJ_VALID | type;
 }
 
 static void svm_update_cr8_intercept(struct kvm_vcpu *vcpu, int tpr, int irr)
@@ -3703,6 +3713,8 @@ static inline void sync_lapic_to_cr8(struct kvm_vcpu *vcpu)
 static void svm_complete_soft_interrupt(struct kvm_vcpu *vcpu, u8 vector,
 					int type)
 {
+	bool is_exception = (type == SVM_EXITINTINFO_TYPE_EXEPT);
+	bool is_soft = (type == SVM_EXITINTINFO_TYPE_SOFT);
 	struct vcpu_svm *svm = to_svm(vcpu);
 
 	/*
@@ -3714,8 +3726,7 @@ static void svm_complete_soft_interrupt(struct kvm_vcpu *vcpu, u8 vector,
 	 * the same event, i.e. if the event is a soft exception/interrupt,
 	 * otherwise next_rip is unused on VMRUN.
 	 */
-	if (nrips && type == SVM_EXITINTINFO_TYPE_EXEPT &&
-	    kvm_exception_is_soft(vector) &&
+	if (nrips && (is_soft || (is_exception && kvm_exception_is_soft(vector))) &&
 	    kvm_is_linear_rip(vcpu, svm->soft_int_old_rip + svm->soft_int_csbase))
 		svm->vmcb->control.next_rip = svm->soft_int_next_rip;
 	/*
@@ -3726,7 +3737,7 @@ static void svm_complete_soft_interrupt(struct kvm_vcpu *vcpu, u8 vector,
 	 * hit a #NP in the guest, and the #NP encountered a #PF, the #NP will
 	 * be the reported vectored event, but RIP still needs to be unwound.
 	 */
-	else if (!nrips && type == SVM_EXITINTINFO_TYPE_EXEPT &&
+	else if (!nrips && (is_soft || is_exception) &&
 		 kvm_is_linear_rip(vcpu, svm->soft_int_next_rip + svm->soft_int_csbase))
 		kvm_rip_write(vcpu, svm->soft_int_old_rip);
 }
@@ -3788,9 +3799,13 @@ static void svm_complete_interrupts(struct kvm_vcpu *vcpu)
 	case SVM_EXITINTINFO_TYPE_INTR:
 		kvm_queue_interrupt(vcpu, vector, false);
 		break;
+	case SVM_EXITINTINFO_TYPE_SOFT:
+		kvm_queue_interrupt(vcpu, vector, true);
+		break;
 	default:
 		break;
 	}
+
 }
 
 static void svm_cancel_injection(struct kvm_vcpu *vcpu)
