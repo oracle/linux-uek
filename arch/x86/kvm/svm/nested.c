@@ -519,6 +519,16 @@ static inline bool is_evtinj_soft(u32 evtinj)
 	return type == SVM_EVTINJ_TYPE_EXEPT && kvm_exception_is_soft(vector);
 }
 
+static bool is_evtinj_nmi(u32 evtinj)
+{
+	u32 type = evtinj & SVM_EVTINJ_TYPE_MASK;
+
+	if (!(evtinj & SVM_EVTINJ_VALID))
+		return false;
+
+	return type == SVM_EVTINJ_TYPE_NMI;
+}
+
 static void nested_vmcb02_prepare_control(struct vcpu_svm *svm,
 					  unsigned long vmcb12_rip)
 {
@@ -582,6 +592,7 @@ static void nested_vmcb02_prepare_control(struct vcpu_svm *svm,
 	else if (boot_cpu_has(X86_FEATURE_NRIPS))
 		svm->vmcb->control.next_rip    = vmcb12_rip;
 
+	svm->nmi_l1_to_l2 = is_evtinj_nmi(svm->vmcb->control.event_inj);
 	if (is_evtinj_soft(svm->vmcb->control.event_inj)) {
 		svm->soft_int_injected = true;
 		svm->soft_int_csbase = svm->vmcb->save.cs.base;
@@ -732,6 +743,7 @@ int nested_svm_vmrun(struct kvm_vcpu *vcpu)
 
 out_exit_err:
 	svm->nested.nested_run_pending = 0;
+	svm->nmi_l1_to_l2 = false;
 	svm->soft_int_injected = false;
 
 	svm->vmcb->control.exit_code    = SVM_EXIT_ERR;
