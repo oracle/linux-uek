@@ -3207,6 +3207,10 @@ static void svm_inject_nmi(struct kvm_vcpu *vcpu)
 	struct vcpu_svm *svm = to_svm(vcpu);
 
 	svm->vmcb->control.event_inj = SVM_EVTINJ_VALID | SVM_EVTINJ_TYPE_NMI;
+
+	if (svm->nmi_l1_to_l2)
+		return;
+
 	vcpu->arch.hflags |= HF_NMI_MASK;
 	svm_set_intercept(svm, INTERCEPT_IRET);
 	++vcpu->stat.nmi_injections;
@@ -3498,8 +3502,10 @@ static void svm_complete_interrupts(struct vcpu_svm *svm)
 	u8 vector;
 	int type;
 	u32 exitintinfo = svm->vmcb->control.exit_int_info;
+	bool nmi_l1_to_l2 = svm->nmi_l1_to_l2;
 	bool soft_int_injected = svm->soft_int_injected;
 
+	svm->nmi_l1_to_l2 = false;
 	svm->soft_int_injected = false;
 
 	/*
@@ -3530,6 +3536,7 @@ static void svm_complete_interrupts(struct vcpu_svm *svm)
 	switch (type) {
 	case SVM_EXITINTINFO_TYPE_NMI:
 		svm->vcpu.arch.nmi_injected = true;
+		svm->nmi_l1_to_l2 = nmi_l1_to_l2;
 		break;
 	case SVM_EXITINTINFO_TYPE_EXEPT:
 		if (exitintinfo & SVM_EXITINTINFO_VALID_ERR) {
