@@ -72,7 +72,7 @@ static irqreturn_t cnf10k_gpint2_intr_handler(int irq, void *dev_id)
 		intr_mask = CNF10K_CPRI_RX_INTR_MASK(cpri_num);
 		if (status & intr_mask) {
 			/* clear UL ETH interrupt */
-			writeq(0x1, cpri_reg_base + CPRIX_ETH_UL_INT(cpri_num));
+			writeq(0x1, cpri_reg_base + CNF10K_CPRIX_ETH_UL_INT(cpri_num));
 			cnf10k_cpri_rx_napi_schedule(cpri_num, status);
 		}
 	}
