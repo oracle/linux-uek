@@ -341,8 +341,8 @@
 	module_put
 	msleep
 	mutex_is_locked
-	mutex_lock_nested
 	mutex_lock_interruptible_nested
+	mutex_lock_nested
 	mutex_trylock
 	mutex_unlock
 	nf_register_net_hook

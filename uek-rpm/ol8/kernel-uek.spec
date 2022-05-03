@@ -127,7 +127,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 # Collect Symtypes files with with_kabicollect. with_kabicollect is
 # required for with_kabichk to give detailed ABI breakage diagnostics.
 %ifarch x86_64
-%define with_kabichk 0
+%define with_kabichk 1
 %define with_kabicollect 1
 %else
 %define with_kabichk 0
