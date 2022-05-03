@@ -2291,11 +2291,9 @@ static int otx2_xdp_setup(struct otx2_nic *pf, struct bpf_prog *prog)
 	if (old_prog)
 		bpf_prog_put(old_prog);
 
-	if (pf->xdp_prog) {
-		pf->xdp_prog = bpf_prog_add(pf->xdp_prog, pf->hw.rx_queues - 1);
-		if (IS_ERR(pf->xdp_prog))
-			err = PTR_ERR(pf->xdp_prog);
-	}
+	if (pf->xdp_prog)
+		bpf_prog_add(pf->xdp_prog, pf->hw.rx_queues - 1);
+
 	/* Network stack and XDP shared same rx queues.
 	 * Use separate tx queues for XDP and network stack.
 	 */
