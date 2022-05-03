@@ -216,25 +216,28 @@ static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv 
 {
 	u64 sec, nsec, sec1;
 
-	sec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL);
-	nsec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI));
-	sec1 = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL);
-	/* check nsec rollover */
+	sec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
+	nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI) % NSEC_PER_SEC;
+	sec1 = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
+	/* check for nsec rollover */
 	if (sec1 > sec) {
-		nsec = ntohl(readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI));
+		nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI) % NSEC_PER_SEC;
 		sec = sec1;
 	}
 
-	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_SEC_OFFSET,
-	       &sec, 4);
-	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_NSEC_OFFSET,
-	       &nsec, 4);
 	/* Point to correction field in PTP packet */
 	ptp_offset += 8;
 	tx_mem->start_offset = ptp_offset;
 	tx_mem->udp_csum_crt = udp_csum;
 	tx_mem->base_ns  = nsec;
 	tx_mem->step_type = 1;
+
+	sec = ntohl(sec);
+	nsec = ntohl(nsec);
+	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_SEC_OFFSET,
+	       &sec, 4);
+	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_NSEC_OFFSET,
+	       &nsec, 4);
 }
 
 /* submit pending ptp tx requests */
