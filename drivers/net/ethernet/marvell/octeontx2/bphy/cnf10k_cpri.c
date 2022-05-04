@@ -308,6 +308,12 @@ void cnf10k_cpri_update_stats(struct cnf10k_cpri_ndev_priv *priv)
 	dev_stats->fifo_ovr += readq(priv->cpri_reg_base +
 				     CNF10K_CPRIX_ETH_UL_FIFO_ORUN_CNT(priv->cpri_num,
 								       priv->lmac_id));
+	dev_stats->malformed += readq(priv->cpri_reg_base +
+				      CNF10K_CPRIX_ETH_UL_MALFORMED_CNT(priv->cpri_num,
+									priv->lmac_id));
+	dev_stats->rx_bad_octets += readq(priv->cpri_reg_base +
+					  CNF10K_CPRIX_ETH_UL_BOCT_CNT(priv->cpri_num,
+								       priv->lmac_id));
 	dev_stats->tx_frames += readq(priv->cpri_reg_base +
 				      CNF10K_CPRIX_ETH_DL_GPKTS_CNT(priv->cpri_num,
 								    priv->lmac_id));
@@ -331,6 +337,8 @@ static void cnf10k_cpri_get_stats64(struct net_device *netdev,
 	stats->rx_crc_errors = dev_stats->bad_crc;
 	stats->rx_fifo_errors = dev_stats->fifo_ovr;
 	stats->rx_length_errors = dev_stats->oversize + dev_stats->undersize;
+	stats->rx_frame_errors = dev_stats->malformed;
+	stats->rx_errors += dev_stats->malformed;
 
 	stats->tx_bytes = dev_stats->tx_octets;
 	stats->tx_packets = dev_stats->tx_frames;
