@@ -23,6 +23,7 @@ static const char ethtool_stat_strings[][ETH_GSTRING_LEN] = {
 	"undersize",
 	"rx_fifo_overrun",
 	"rx_dropped",
+	"rx_bad_octets",
 	"tx_frames",
 	"tx_octets",
 	"tx_dropped",

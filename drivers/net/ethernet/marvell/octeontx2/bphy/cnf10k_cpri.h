@@ -61,6 +61,8 @@ struct cnf10k_cpri_stats {
 	u64				undersize;
 	u64				fifo_ovr;
 	u64				rx_dropped;
+	u64				malformed;
+	u64				rx_bad_octets;
 	/* Tx */
 	u64				tx_frames;
 	u64				tx_octets;

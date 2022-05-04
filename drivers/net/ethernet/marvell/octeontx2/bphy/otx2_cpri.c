@@ -309,6 +309,9 @@ void otx2_cpri_update_stats(struct otx2_cpri_ndev_priv *priv)
 	dev_stats->fifo_ovr += readq(priv->cpri_reg_base +
 				     CPRIX_ETH_UL_FIFO_ORUN_CNT(priv->cpri_num,
 								priv->lmac_id));
+	dev_stats->rx_bad_octets += readq(priv->cpri_reg_base +
+					  CPRIX_ETH_UL_BOCT_CNT(priv->cpri_num,
+								priv->lmac_id));
 	dev_stats->tx_frames += readq(priv->cpri_reg_base +
 				      CPRIX_ETH_DL_GPKTS_CNT(priv->cpri_num,
 							     priv->lmac_id));
