@@ -6858,9 +6858,8 @@ static void stmmac_napi_add(struct net_device *dev)
 				       NAPI_POLL_WEIGHT);
 		}
 		if (queue < priv->plat->tx_queues_to_use) {
-			netif_tx_napi_add(dev, &ch->tx_napi,
-					  stmmac_napi_poll_tx,
-					  NAPI_POLL_WEIGHT);
+			netif_napi_add_tx(dev, &ch->tx_napi,
+					  stmmac_napi_poll_tx);
 		}
 		if (queue < priv->plat->rx_queues_to_use &&
 		    queue < priv->plat->tx_queues_to_use) {
