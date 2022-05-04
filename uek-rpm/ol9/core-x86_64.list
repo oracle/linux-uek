@@ -22,6 +22,7 @@ kernel/arch/x86/kvm/kvm-amd.ko
 kernel/arch/x86/kvm/kvm-intel.ko
 kernel/arch/x86/kvm/kvm.ko
 kernel/block/t10-pi.ko
+kernel/crypto/algif_rng.ko
 kernel/crypto/ansi_cprng.ko
 kernel/crypto/arc4.ko
 kernel/crypto/async_tx/async_memcpy.ko
@@ -40,6 +41,7 @@ kernel/crypto/chacha20poly1305.ko
 kernel/crypto/cmac.ko
 kernel/crypto/cryptd.ko
 kernel/crypto/crypto_simd.ko
+kernel/crypto/crypto_user.ko
 kernel/crypto/des_generic.ko
 kernel/crypto/ecc.ko
 kernel/crypto/ecdh_generic.ko
@@ -109,6 +111,7 @@ kernel/drivers/gpu/drm/drm.ko
 kernel/drivers/gpu/drm/drm_ttm_helper.ko
 kernel/drivers/gpu/drm/drm_vram_helper.ko
 kernel/drivers/gpu/drm/mgag200/mgag200.ko
+kernel/drivers/gpu/drm/tiny/bochs.ko
 kernel/drivers/gpu/drm/ttm/ttm.ko
 kernel/drivers/gpu/drm/virtio/virtio-gpu.ko
 kernel/drivers/hwmon/coretemp.ko
@@ -126,6 +129,7 @@ kernel/drivers/infiniband/core/ib_umad.ko
 kernel/drivers/infiniband/core/ib_uverbs.ko
 kernel/drivers/infiniband/core/iw_cm.ko
 kernel/drivers/infiniband/core/rdma_cm.ko
+kernel/drivers/infiniband/core/rdmaip_notify.ko
 kernel/drivers/infiniband/core/rdma_ucm.ko
 kernel/drivers/infiniband/hw/bnxt_re/bnxt_re.ko
 kernel/drivers/infiniband/hw/mlx4/mlx4_ib.ko
