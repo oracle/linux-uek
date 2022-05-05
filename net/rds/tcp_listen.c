@@ -242,7 +242,6 @@ int rds_tcp_accept_one(struct rds_tcp_net *rtn)
 			reason = "socket creation failed";
 			goto out;
 		}
-
 		/* Function "rds_tcp_conn_slots_available" depends on O_NONBLOCK */
 		ret = listen_sock->ops->accept(listen_sock, new_sock, &accept_arg);
 		if (ret < 0) {
@@ -266,7 +265,10 @@ int rds_tcp_accept_one(struct rds_tcp_net *rtn)
 			goto out;
 		}
 
-		rds_tcp_tune(new_sock);
+		if (!rds_tcp_tune(new_sock)) {
+			ret = -EINVAL;
+			goto out;
+		}
 	}
 
 
