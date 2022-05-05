@@ -15,7 +15,7 @@
 
 /* Performance Counters Operating Mode Control Registers */
 #define DDRC_PERF_CNT_OP_MODE_CTRL	0x8020
-#define OP_MODE_CTRL_VAL_MANNUAL	0x1
+#define OP_MODE_CTRL_VAL_MANUAL		0x1
 
 /* Performance Counters Start Operation Control Registers */
 #define DDRC_PERF_CNT_START_OP_CTRL	0x8028
@@ -49,8 +49,12 @@
 #define EVENT_DDR_READS			101
 #define EVENT_DDR_WRITES		100
 
+/* One event counter for Memory bandwidth measurement */
+#define EVENT_MBWC_READS		0
+#define DDRC_PERF_READ_MBWC_IDX		0
+
 /*
- * Programable events IDs in programmable event counters.
+ * Programmable events IDs in programmable event counters.
  * DO NOT change these event-id numbers, they are used to
  * program event bitmap in h/w.
  */
@@ -121,10 +125,22 @@
 #define DDRC_PERF_CNT_VALUE_OVERFLOW	BIT_ULL(48)
 #define DDRC_PERF_CNT_MAX_VALUE		GENMASK_ULL(48, 0)
 
+/* Memory bandwidth related register */
+#define PART_SEL			0x100
+#define CUST_MBWC			0xA08
+#define CUST_WINDOW			0xA0C
+
+#define MBW_BASE			0x240000
+#define OCTTX_NODE			"octeontx_brd"
+
+bool is_probed_once;
+long ddr_speed;
+
 struct cn10k_ddr_pmu {
 	struct pmu pmu;
 	int id;
 	void __iomem *base;
+	void __iomem *mbw_base;
 	unsigned int cpu;
 	struct	device *dev;
 	int active_events;
@@ -152,6 +168,9 @@ static ssize_t cn10k_ddr_pmu_event_show(struct device *dev,
 	})[0].attr.attr)
 
 static struct attribute *cn10k_ddr_perf_events_attrs[] = {
+	/* MBWC */
+	CN10K_DDR_PMU_EVENT_ATTR(ddr_mbwc_reads, EVENT_MBWC_READS),
+	/* Programmable */
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_hif_rd_or_wr_access, EVENT_HIF_RD_OR_WR),
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_hif_wr_access, EVENT_HIF_WR),
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_hif_rd_access, EVENT_HIF_RD),
@@ -159,8 +178,8 @@ static struct attribute *cn10k_ddr_perf_events_attrs[] = {
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_hif_pri_rdaccess, EVENT_HIF_HI_PRI_RD),
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_rd_bypass_access, EVENT_READ_BYPASS),
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_act_bypass_access, EVENT_ACT_BYPASS),
-	CN10K_DDR_PMU_EVENT_ATTR(ddr_dif_wr_data_access, EVENT_DFI_WR_DATA_CYCLES),
-	CN10K_DDR_PMU_EVENT_ATTR(ddr_dif_rd_data_access, EVENT_DFI_RD_DATA_CYCLES),
+	CN10K_DDR_PMU_EVENT_ATTR(ddr_dfi_wr_data_access, EVENT_DFI_WR_DATA_CYCLES),
+	CN10K_DDR_PMU_EVENT_ATTR(ddr_dfi_rd_data_access, EVENT_DFI_RD_DATA_CYCLES),
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_hpri_sched_rd_crit_access,
 					EVENT_HPR_XACT_WHEN_CRITICAL),
 	CN10K_DDR_PMU_EVENT_ATTR(ddr_lpri_sched_rd_crit_access,
@@ -218,9 +237,11 @@ static struct attribute_group cn10k_ddr_perf_events_attr_group = {
 };
 
 PMU_FORMAT_ATTR(event, "config:0-8");
+PMU_FORMAT_ATTR(partid, "config1:0-15");
 
 static struct attribute *cn10k_ddr_perf_format_attrs[] = {
 	&format_attr_event.attr,
+	&format_attr_partid.attr,
 	NULL,
 };
 
@@ -257,7 +278,8 @@ static const struct attribute_group *cn10k_attr_groups[] = {
 	NULL,
 };
 
-/* Default poll timeout is 100 sec, which is very sufficient for
+/*
+ * Default poll timeout is 100 sec, which is very sufficient for
  * 48 bit counter per DDR controller incremented max at 5.6 GT/s,
  * which may take many hours to overflow.
  */
@@ -297,6 +319,12 @@ static int cn10k_ddr_perf_alloc_counter(struct cn10k_ddr_pmu *pmu,
 {
 	uint8_t config = event->attr.config;
 	int i;
+
+	/* DDR Memory bandwidth counter index */
+	if (config == EVENT_MBWC_READS) {
+		pmu->events[DDRC_PERF_READ_MBWC_IDX] = event;
+		return DDRC_PERF_READ_MBWC_IDX;
+	}
 
 	/* DDR read free-run counter index */
 	if (config == EVENT_DDR_READS) {
@@ -349,7 +377,8 @@ static int cn10k_ddr_perf_event_init(struct perf_event *event)
 			!is_software_event(event->group_leader))
 		return -EINVAL;
 
-	/* Set ownership of event to one CPU, same event can not be observed
+	/*
+	 * Set ownership of event to one CPU, same event can not be observed
 	 * on multiple cpus at same time.
 	 */
 	event->cpu = pmu->cpu;
@@ -358,7 +387,8 @@ static int cn10k_ddr_perf_event_init(struct perf_event *event)
 }
 
 static void cn10k_ddr_perf_counter_enable(struct cn10k_ddr_pmu *pmu,
-					  int counter, bool enable)
+					  int counter, u16 partid,
+					  bool enable)
 {
 	uint32_t reg;
 	uint64_t val;
@@ -368,7 +398,10 @@ static void cn10k_ddr_perf_counter_enable(struct cn10k_ddr_pmu *pmu,
 		return;
 	}
 
-	if (counter < DDRC_PERF_NUM_GEN_COUNTERS) {
+	if (counter == DDRC_PERF_READ_MBWC_IDX) {
+		if (enable)
+			writel(partid, pmu->mbw_base + PART_SEL);
+	} else if (counter < DDRC_PERF_NUM_GEN_COUNTERS) {
 		reg = DDRC_PERF_CFG(counter);
 		val = readq(pmu->base + reg);
 
@@ -395,10 +428,51 @@ static void cn10k_ddr_perf_counter_enable(struct cn10k_ddr_pmu *pmu,
 	}
 }
 
+static uint64_t cn10_ddr_raw_to_mbs(uint32_t raw_counter, uint32_t window)
+{
+	/*
+	 * DFI clock frequency is 1/8 of data rate, for instance
+	 * 3200 MT/s has 400 MHz core clock.
+	 */
+	uint32_t core_clk_period = ddr_speed / 8;
+	uint64_t val;
+
+	/*
+	 * CUST_MBWC stores the accounted bandwidth of a PartID in
+	 * terms of cycle count, convert it into B/s format using:
+	 * (32B * CUST_MBWC)/(CUST_WINDOW * core_clk_period)
+	 */
+	val = (raw_counter * 32) * ((core_clk_period * 1000000UL) / window);
+	val /= 1000000UL;
+
+	return val;
+}
+
+static uint64_t cn10k_ddr_perf_get_mbw(struct cn10k_ddr_pmu *pmu)
+{
+	uint32_t raw_cnt_val, window_val, raw_cnt_sum = 0;
+
+	raw_cnt_val = readl(pmu->mbw_base + CUST_MBWC);
+	raw_cnt_sum +=  raw_cnt_val;
+	/*
+	 * we don't want cumulative count (from one channel) for
+	 * bandwidth counters. So, once we read this counter,
+	 * we program an invalid partid so that it just reads 0's
+	 * for successive run.
+	 */
+	writel(0x40, pmu->mbw_base + PART_SEL);
+	window_val = readl(pmu->mbw_base + CUST_WINDOW);
+
+	return cn10_ddr_raw_to_mbs(raw_cnt_val, window_val);
+}
+
 static uint64_t cn10k_ddr_perf_read_counter(struct cn10k_ddr_pmu *pmu,
 					    int counter)
 {
 	uint64_t val;
+
+	if (counter == DDRC_PERF_READ_MBWC_IDX)
+		return cn10k_ddr_perf_get_mbw(pmu);
 
 	if (counter == DDRC_PERF_READ_COUNTER_IDX)
 		return readq(pmu->base + DDRC_PERF_CNT_VALUE_RD_OP);
@@ -430,11 +504,12 @@ static void cn10k_ddr_perf_event_start(struct perf_event *event, int flags)
 {
 	struct cn10k_ddr_pmu *pmu = to_cn10k_ddr_pmu(event->pmu);
 	struct hw_perf_event *hwc = &event->hw;
+	u16 partid = event->attr.config1;
 	int counter = hwc->idx;
 
 	local64_set(&hwc->prev_count, 0);
 
-	cn10k_ddr_perf_counter_enable(pmu, counter, true);
+	cn10k_ddr_perf_counter_enable(pmu, counter, partid, true);
 
 	hwc->state = 0;
 }
@@ -461,7 +536,14 @@ static int cn10k_ddr_perf_event_add(struct perf_event *event, int flags)
 		hrtimer_start(&pmu->hrtimer, cn10k_ddr_pmu_timer_period(),
 			      HRTIMER_MODE_REL_PINNED);
 
-	if (counter < DDRC_PERF_NUM_GEN_COUNTERS) {
+	if (counter == DDRC_PERF_READ_MBWC_IDX) {
+		/*
+		 * Memory bandwidth counters are not
+		 * configurable, it just count once proper
+		 * partid is programmed into partition select
+		 * register.
+		 */
+	} else if (counter < DDRC_PERF_NUM_GEN_COUNTERS) {
 		/* Generic counters, configure event id */
 		reg_offset = DDRC_PERF_CFG(counter);
 		val = ddr_perf_get_event_bitmap(config);
@@ -488,9 +570,10 @@ static void cn10k_ddr_perf_event_stop(struct perf_event *event, int flags)
 {
 	struct cn10k_ddr_pmu *pmu = to_cn10k_ddr_pmu(event->pmu);
 	struct hw_perf_event *hwc = &event->hw;
+	u16 partid = event->attr.config1;
 	int counter = hwc->idx;
 
-	cn10k_ddr_perf_counter_enable(pmu, counter, false);
+	cn10k_ddr_perf_counter_enable(pmu, counter, partid, false);
 
 	if (flags & PERF_EF_UPDATE)
 		cn10k_ddr_perf_event_update(event);
@@ -567,7 +650,8 @@ static irqreturn_t cn10k_ddr_pmu_overflow_handler(struct cn10k_ddr_pmu *pmu)
 		prev_count = local64_read(&hwc->prev_count);
 		new_count = cn10k_ddr_perf_read_counter(pmu, hwc->idx);
 
-		/* Overflow condition is when new count less than
+		/*
+		 * Overflow condition is when new count less than
 		 * previous count
 		 */
 		if (new_count < prev_count)
@@ -580,7 +664,8 @@ static irqreturn_t cn10k_ddr_pmu_overflow_handler(struct cn10k_ddr_pmu *pmu)
 		prev_count = local64_read(&hwc->prev_count);
 		new_count = cn10k_ddr_perf_read_counter(pmu, hwc->idx);
 
-		/* Overflow condition is when new count less than
+		/*
+		 * Overflow condition is when new count less than
 		 * previous count
 		 */
 		if (new_count < prev_count)
@@ -635,6 +720,31 @@ static int cn10k_ddr_pmu_offline_cpu(unsigned int cpu, struct hlist_node *node)
 	return 0;
 }
 
+static int cn10k_ddr_get_speed(void)
+{
+	struct device_node *np = NULL;
+	const char *speed;
+	int ret;
+
+	np = of_find_node_by_name(NULL, OCTTX_NODE);
+	if (!np) {
+		pr_err("No board info available!\n");
+		return -ENODEV;
+	}
+
+	ret = of_property_read_string(np, "DDR-SPEED", &speed);
+	if (ret) {
+		pr_err("DDR-SPEED property not found\n");
+		return ret;
+	}
+
+	ret = kstrtol(speed, 0, &ddr_speed);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 static int cn10k_ddr_perf_probe(struct platform_device *pdev)
 {
 	struct cn10k_ddr_pmu *ddr_pmu;
@@ -657,9 +767,18 @@ static int cn10k_ddr_perf_probe(struct platform_device *pdev)
 		return PTR_ERR(base);
 
 	ddr_pmu->base = base;
+	ddr_pmu->mbw_base = ioremap_nocache(res->start + MBW_BASE,
+						resource_size(res));
 
-	/* Setup the PMU counter to work in mannual mode */
-	writeq(OP_MODE_CTRL_VAL_MANNUAL, ddr_pmu->base +
+	if (!is_probed_once) {
+		if (cn10k_ddr_get_speed())
+			pr_err("Couldn't fetch speed for %s\n",
+				pdev->name);
+		is_probed_once = true;
+	}
+
+	/* Setup the PMU counter to work in manual mode */
+	writeq(OP_MODE_CTRL_VAL_MANUAL, ddr_pmu->base +
 	       DDRC_PERF_CNT_OP_MODE_CTRL);
 
 	ddr_pmu->pmu = (struct pmu) {
