@@ -129,6 +129,11 @@ struct xfrm_state_walk {
 	UEK_KABI_RESERVE(1)
 };
 
+enum {
+	XFRM_DEV_OFFLOAD_IN = 1,
+	XFRM_DEV_OFFLOAD_OUT,
+};
+
 struct xfrm_state_offload {
 	struct net_device	*dev;
 	struct net_device	*real_dev;
@@ -137,7 +142,7 @@ struct xfrm_state_offload {
 	u8			flags;
 
 	UEK_KABI_USE(1, netdevice_tracker	dev_tracker)
-	UEK_KABI_RESERVE(2)
+	UEK_KABI_USE(2, u8			dir : 2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 };
