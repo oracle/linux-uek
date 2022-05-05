@@ -172,7 +172,25 @@ static void rds_conn_path_reset(struct rds_conn_path *cp)
 
 	rds_stats_inc(s_conn_reset);
 	rds_send_path_reset(cp);
-	cp->cp_flags = 0;
+
+	/* This function used to just set "cp->cp_flags = 0".
+	 *
+	 * That causes various race-conditions with flags that
+	 * are explicitly cleared in "rds_conn_shutdown_final":
+	 * "RDS_RECONNECT_PENDING" + "RDS_SHUTDOWN_WORK_QUEUED",
+	 * and also clears "RDS_SHUTDOWN_WAITING" which
+	 * must stay on for "rds_conn_shutdown_check_wait" to
+	 * make progress.
+	 * Also, "RDS_DESTROY_PENDING" should never be turned off.
+	 *
+	 * So instead we no longer clear all flags, but only
+	 * those that should be safe to be cleared here.
+	 */
+	clear_bit(RDS_LL_SEND_FULL, &cp->cp_flags);
+	clear_bit(RDS_IN_XMIT, &cp->cp_flags);
+	clear_bit(RDS_RECV_REFILL, &cp->cp_flags);
+	clear_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags);
+	clear_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags);
 
 	/* Do not clear next_rx_seq here, else we cannot distinguish
 	 * retransmitted packets from new packets, and will hand all
