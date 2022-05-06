@@ -2761,7 +2761,7 @@ static int do_setlink(const struct sk_buff *skb,
 	if (tb[IFLA_GSO_MAX_SIZE]) {
 		u32 max_size = nla_get_u32(tb[IFLA_GSO_MAX_SIZE]);
 
-		if (max_size > GSO_MAX_SIZE) {
+		if (max_size > GSO_MAX_SIZE || max_size > dev->tso_max_size) {
 			err = -EINVAL;
 			goto errout;
 		}
@@ -2775,7 +2775,7 @@ static int do_setlink(const struct sk_buff *skb,
 	if (tb[IFLA_GSO_MAX_SEGS]) {
 		u32 max_segs = nla_get_u32(tb[IFLA_GSO_MAX_SEGS]);
 
-		if (max_segs > GSO_MAX_SEGS) {
+		if (max_segs > GSO_MAX_SEGS || max_segs > dev->tso_max_segs) {
 			err = -EINVAL;
 			goto errout;
 		}
