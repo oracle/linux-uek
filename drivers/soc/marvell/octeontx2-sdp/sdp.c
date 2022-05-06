@@ -52,7 +52,7 @@ static spinlock_t sdp_lst_lock;
 LIST_HEAD(sdp_dev_lst_head);
 static int sdp_sriov_configure(struct pci_dev *pdev, int num_vfs);
 
-static inline bool is_otx3_sdp(struct sdp_dev *sdp)
+static inline bool is_cn10k_sdp(struct sdp_dev *sdp)
 {
 	if (sdp->pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A)
 		return 1;
@@ -1245,8 +1245,8 @@ static void set_firmware_ready(struct sdp_dev *sdp)
 			continue;
 		/* found the PEM in endpoint mode */
 		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
-			/* Config space access different between otx2 and otx3 */
-			if (is_otx3_sdp(sdp)) {
+			/* Config space access different between otx2 and cn10k */
+			if (is_cn10k_sdp(sdp)) {
 				addr  = ioremap(PEMX_PFX_CSX_PFCFGX(ep_pem,
 								    npfs,
 								    PCIEEP_VSECST_CTL),
@@ -1387,7 +1387,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		 sdp->chan_base, sdp->num_chan);
 
 	/* From cn10k onwards the SDP channel configuration is programmable */
-	if (pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A) {
+	if (is_cn10k_sdp(sdp)) {
 		regval = sdp->chan_base;
 		regval |= ilog2(sdp->num_chan) << 16;
 		writeq(regval, sdp->sdp_base + SDPX_LINK_CFG);
@@ -1426,7 +1426,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	program_sdp_rinfo(sdp);
 
 	/* Water mark for backpressuring NIX Tx when enabled */
-	if (pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A)
+	if (is_cn10k_sdp(sdp))
 		writeq(SDP_PPAIR_THOLD, sdp->sdp_base + SDPX_OUT_WMARK);
 	sdp_gbl_ctl = readq(sdp->sdp_base + SDPX_GBL_CONTROL);
 	sdp_gbl_ctl |= (1 << 2); /* BPFLR_D disable clearing BP in FLR */
@@ -1660,7 +1660,7 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 	 * On CN10K platform, PF <-> VF mailbox region follows after
 	 * PF <-> AF mailbox region.
 	 */
-	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A)
+	if (is_cn10k_sdp(sdp))
 		pf_vf_mbox_base = pci_resource_start(pdev, PCI_MBOX_BAR_NUM) + MBOX_SIZE;
 	else
 		pf_vf_mbox_base = readq((void __iomem *)((u64)sdp->bar2 +

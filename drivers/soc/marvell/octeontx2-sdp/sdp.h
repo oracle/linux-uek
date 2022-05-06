@@ -39,7 +39,7 @@
 		u64 offset;					\
 								\
 		offset = (0x80280ull | a << 4);			\
-		if (is_otx3_sdp(sdp))				\
+		if (is_cn10k_sdp(sdp))				\
 			offset = (0x40080280ull | a << 4);	\
 		offset; })					\
 
@@ -49,7 +49,7 @@
 #define SDPX_EPFX_RINFO(a) ({					\
 		u64 offset;					\
 		offset = (0x205f0ull | a << 25);		\
-		if (is_otx3_sdp(sdp))				\
+		if (is_cn10k_sdp(sdp))				\
 			offset = (0x209f0ull | a << 25);	\
 		offset; })					\
 
@@ -101,7 +101,7 @@
 #define PCIEEP_VSECST_CTL	({		\
 		u64 offset;			\
 		offset = 0x4d0;			\
-		if (is_otx3_sdp(sdp))		\
+		if (is_cn10k_sdp(sdp))		\
 			offset = 0x418;		\
 		offset; })
 
