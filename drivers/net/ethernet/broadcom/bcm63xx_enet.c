@@ -1854,7 +1854,7 @@ static int bcm_enet_probe(struct platform_device *pdev)
 
 	/* register netdevice */
 	dev->netdev_ops = &bcm_enet_ops;
-	netif_napi_add(dev, &priv->napi, bcm_enet_poll, 16);
+	netif_napi_add_weight(dev, &priv->napi, bcm_enet_poll, 16);
 
 	dev->ethtool_ops = &bcm_enet_ethtool_ops;
 	/* MTU range: 46 - 2028 */
@@ -2703,7 +2703,7 @@ static int bcm_enetsw_probe(struct platform_device *pdev)
 
 	/* register netdevice */
 	dev->netdev_ops = &bcm_enetsw_ops;
-	netif_napi_add(dev, &priv->napi, bcm_enet_poll, 16);
+	netif_napi_add_weight(dev, &priv->napi, bcm_enet_poll, 16);
 	dev->ethtool_ops = &bcm_enetsw_ethtool_ops;
 	SET_NETDEV_DEV(dev, &pdev->dev);
 
