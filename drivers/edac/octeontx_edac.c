@@ -62,14 +62,13 @@ static void octeontx_edac_mc_inject(struct mem_ctl_info *mci)
 
 	pvt->inject = 0;
 
-	otx_printk(KERN_DEBUG, "%s %lx %lx %lx %lx %lx %lx %lx %lx\n", __func__,
-			arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7]);
-
 	if (MIDR_PARTNUM(read_cpuid_id()) == OCTEON10_CPU_MODEL) {
 		arg[0] = OCTEON10_EDAC_INJECT;
 		arg[1] = 0xd;
 		arg[2] = pvt->address;
-		arg[3] = pvt->error_type;
+		arg[4] = pvt->error_type;
+		otx_printk(KERN_DEBUG, "%s %lx %lx %lx %lx %lx %lx %lx %lx\n", __func__,
+				arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7]);
 		arm_smccc_smc(arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], &res);
 	} else {
 		arg[0] = OCTEONTX2_EDAC_INJECT;
@@ -93,6 +92,8 @@ static void octeontx_edac_mc_inject(struct mem_ctl_info *mci)
 			break;
 		}
 
+		otx_printk(KERN_DEBUG, "%s %lx %lx %lx %lx %lx %lx %lx %lx\n", __func__,
+				arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7]);
 		arm_smccc_smc(arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], &res);
 
 		if (test_read && ecc_test_target_data != otx2_einj_test_val)
@@ -102,7 +103,7 @@ static void octeontx_edac_mc_inject(struct mem_ctl_info *mci)
 			otx_printk(KERN_DEBUG, "%s test_call mismatch\n", __func__);
 	}
 
-	otx_printk(KERN_DEBUG, "%s: (%llx, %llx, %llx, %llx) -> e?%ld\n",
+	otx_printk(KERN_DEBUG, "%s: (%lx, %lx, %lx, %lx) -> e?%ld\n",
 			__func__, arg[0], arg[1], arg[2], arg[3], res.a0);
 }
 
@@ -213,8 +214,19 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 	memcpy_fromio(&rec.gdata.fru_text, ring->fru_text, sizeof(rec.gdata.fru_text));
 	memcpy_fromio(&rec.cper_mem, &ring->u, sizeof(rec.cper_mem));
 
-	type = (ring->error_severity == CPER_SEV_CORRECTED) ?
-			HW_EVENT_ERR_CORRECTED : HW_EVENT_ERR_FATAL;
+	switch (ring->error_severity) {
+	case CPER_SEV_CORRECTED:
+		type = HW_EVENT_ERR_CORRECTED;
+		break;
+	case CPER_SEV_RECOVERABLE:
+		type = HW_EVENT_ERR_UNCORRECTED;
+		break;
+	case CPER_SEV_FATAL:
+		type = HW_EVENT_ERR_FATAL;
+		break;
+	default:
+		type = HW_EVENT_ERR_INFO;
+	}
 
 	edac_mc_handle_error(type, mci, 1, PHYS_PFN(rec.cper_mem.physical_addr),
 			offset_in_page(rec.cper_mem.physical_addr),
