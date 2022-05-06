@@ -5799,12 +5799,14 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_NVIDIA, 0x0ab8, nvidia_ion_ahci_fixup);
 	(((addr) & CAVIUM_XCP0_FIX_MASK) != CAVIUM_XCP0_ADDR_OK)
 #define CAVIUM_XCP0_FIX_ADDR(addr) \
 	(((addr) & (~CAVIUM_XCP0_FIX_MASK)) | CAVIUM_XCP0_ADDR_OK)
+#define CAVIUM_XCP0_FIX_SOC(subsys) \
+	(((subsys) == 0xba00) || ((subsys) == 0xbc00))
 
 static void quirk_cavium_xcp0_bar_fixup(struct pci_dev *dev)
 {
 	int i;
 
-	if (dev->subsystem_device == 0xba00 && dev->devfn == 0xe0) {
+	if (CAVIUM_XCP0_FIX_SOC(dev->subsystem_device) && dev->devfn == 0xe0) {
 		for (i = 0; i < PCI_STD_RESOURCE_END; i++) {
 
 			struct resource *r = &dev->resource[i];
