@@ -2973,6 +2973,18 @@ undo_rx:
 EXPORT_SYMBOL(netif_set_real_num_queues);
 
 /**
+ * netif_inherit_tso_max() - copy all TSO limits from a lower device to an upper
+ * @to:		netdev to update
+ * @from:	netdev from which to copy the limits
+ */
+void netif_inherit_tso_max(struct net_device *to, const struct net_device *from)
+{
+	netif_set_gso_max_size(to, from->gso_max_size);
+	netif_set_gso_max_segs(to, from->gso_max_segs);
+}
+EXPORT_SYMBOL(netif_inherit_tso_max);
+
+/**
  * netif_get_num_default_rss_queues - default number of RSS queues
  *
  * This routine should set an upper limit on the number of RSS queues
