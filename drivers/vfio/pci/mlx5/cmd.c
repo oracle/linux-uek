@@ -7,6 +7,49 @@
 
 enum { CQ_OK = 0, CQ_EMPTY = -1, CQ_POLL_ERR = -2 };
 
+static int mlx5vf_set_migratable(struct mlx5_core_dev *mdev, u16 func_id)
+{
+	u16 opmod = (MLX5_CAP_GENERAL_2 << 1) | (HCA_CAP_OPMOD_GET_MAX & 0x01);
+	int query_sz = MLX5_ST_SZ_BYTES(query_hca_cap_out);
+	int set_sz = MLX5_ST_SZ_BYTES(set_hca_cap_in);
+	u32 in[MLX5_ST_SZ_DW(query_hca_cap_in)] = {};
+	void *hca_cap = NULL, *query_cap = NULL, *cap;
+	int ret;
+
+	query_cap = kzalloc(query_sz, GFP_KERNEL);
+	hca_cap = kzalloc(set_sz, GFP_KERNEL);
+	if (!hca_cap || !query_cap) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	MLX5_SET(query_hca_cap_in, in, opcode, MLX5_CMD_OP_QUERY_HCA_CAP);
+	MLX5_SET(query_hca_cap_in, in, op_mod, opmod);
+	MLX5_SET(query_hca_cap_in, in, function_id, func_id);
+	MLX5_SET(query_hca_cap_in, in, other_function, true);
+
+	ret = mlx5_cmd_exec_inout(mdev, query_hca_cap, in, query_cap);
+	if (ret)
+		goto out;
+
+	cap = MLX5_ADDR_OF(set_hca_cap_in, hca_cap, capability);
+	memcpy(cap, MLX5_ADDR_OF(query_hca_cap_out, query_cap, capability),
+	       MLX5_UN_SZ_BYTES(hca_cap_union));
+	MLX5_SET(cmd_hca_cap_2, cap, migratable, 1);
+
+	MLX5_SET(set_hca_cap_in, hca_cap, opcode, MLX5_CMD_OP_SET_HCA_CAP);
+	MLX5_SET(set_hca_cap_in, hca_cap, other_function, 1);
+	MLX5_SET(set_hca_cap_in, hca_cap, function_id, func_id);
+
+	MLX5_SET(set_hca_cap_in, hca_cap, op_mod,
+		 MLX5_SET_HCA_CAP_OP_MOD_GENERAL_DEVICE2 << 1);
+	ret = mlx5_cmd_exec_in(mdev, set_hca_cap, hca_cap);
+out:
+	kfree(hca_cap);
+	kfree(query_cap);
+	return ret;
+}
+
 static int mlx5vf_cmd_get_vhca_id(struct mlx5_core_dev *mdev, u16 function_id,
 				  u16 *vhca_id);
 static void
@@ -87,6 +130,7 @@ static int mlx5fv_vf_event(struct notifier_block *nb,
 	case MLX5_PF_NOTIFY_ENABLE_VF:
 		mutex_lock(&mvdev->state_mutex);
 		mvdev->mdev_detach = false;
+		mlx5vf_set_migratable(mvdev->mdev, mvdev->vf_id + 1);
 		mlx5vf_state_mutex_unlock(mvdev);
 		break;
 	case MLX5_PF_NOTIFY_DISABLE_VF:
@@ -160,6 +204,15 @@ void mlx5vf_cmd_set_migratable(struct mlx5vf_pci_core_device *mvdev,
 	ret = mlx5_sriov_blocking_notifier_register(mvdev->mdev, mvdev->vf_id,
 						    &mvdev->nb);
 	if (ret) {
+		destroy_workqueue(mvdev->cb_wq);
+		goto end;
+	}
+
+	ret = mlx5vf_set_migratable(mvdev->mdev, mvdev->vf_id + 1);
+	if (ret) {
+		mlx5_sriov_blocking_notifier_unregister(mvdev->mdev,
+							mvdev->vf_id,
+							&mvdev->nb);
 		destroy_workqueue(mvdev->cb_wq);
 		goto end;
 	}
