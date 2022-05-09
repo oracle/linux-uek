@@ -2252,6 +2252,15 @@ static inline void sched_core_fork(struct task_struct *p) { }
 static inline int sched_core_idle_cpu(int cpu) { return idle_cpu(cpu); }
 #endif
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#ifdef CONFIG_SCHED_CORE
+extern void sched_cs_copy(struct task_struct *src, struct task_struct *dst);
+#else
+static inline void sched_cs_copy(struct task_struct *src,
+				 struct task_struct *dst) { }
+#endif
+#endif
+
 extern void sched_set_stop_task(int cpu, struct task_struct *stop);
 
 #ifdef CONFIG_MEM_ALLOC_PROFILING
