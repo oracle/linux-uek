@@ -125,6 +125,22 @@ static void __sched_core_set(struct task_struct *p, unsigned long cookie)
 	sched_core_put_cookie(cookie);
 }
 
+void sched_cs_copy(struct task_struct *src, struct task_struct *dst)
+{
+	unsigned long cookie;
+
+	get_task_struct(src);
+	get_task_struct(dst);
+
+	cookie = sched_core_clone_cookie(src);
+	__sched_core_set(dst, cookie);
+	sched_core_put_cookie(cookie);
+
+	put_task_struct(dst);
+	put_task_struct(src);
+}
+EXPORT_SYMBOL(sched_cs_copy);
+
 /* Called from prctl interface: PR_SCHED_CORE */
 int sched_core_share_pid(unsigned int cmd, pid_t pid, enum pid_type type,
 			 unsigned long uaddr)
