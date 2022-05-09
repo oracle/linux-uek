@@ -685,6 +685,9 @@ struct kvm_pit *kvm_create_pit(struct kvm *kvm, u32 flags)
 	if (IS_ERR(pit->worker))
 		goto fail_kthread;
 
+	if (inherit_cs_cookie)
+		sched_cs_copy(current, pit->worker->task);
+
 	kthread_init_work(&pit->expired, pit_do_work);
 
 	pit->kvm = kvm;
