@@ -2186,10 +2186,13 @@ extern void sched_core_fork(struct task_struct *p);
 extern int sched_core_share_pid(unsigned int cmd, pid_t pid, enum pid_type type,
 				unsigned long uaddr);
 extern int sched_core_idle_cpu(int cpu);
+extern void sched_cs_copy(struct task_struct *src, struct task_struct *dst);
 #else
 static inline void sched_core_free(struct task_struct *tsk) { }
 static inline void sched_core_fork(struct task_struct *p) { }
 static inline int sched_core_idle_cpu(int cpu) { return idle_cpu(cpu); }
+static inline void sched_cs_copy(struct task_struct *src,
+				 struct task_struct *dst) { }
 #endif
 
 extern void sched_set_stop_task(int cpu, struct task_struct *stop);
