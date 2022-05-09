@@ -685,6 +685,11 @@ struct kvm_pit *kvm_create_pit(struct kvm *kvm, u32 flags)
 	if (IS_ERR(pit->worker))
 		goto fail_kthread;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (static_key_enabled(&on_oci))
+		sched_cs_copy(current, pit->worker->task);
+#endif
+
 	kthread_init_work(&pit->expired, pit_do_work);
 
 	pit->kvm = kvm;
