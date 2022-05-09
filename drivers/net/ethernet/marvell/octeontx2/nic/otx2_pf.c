@@ -1490,6 +1490,8 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 			otx2_cleanup_tx_cqes(pf, cq);
 	}
 
+	otx2_free_pending_sqe(pf);
+
 	otx2_free_sq_res(pf);
 
 	/* Free RQ buffer pointers*/
