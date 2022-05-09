@@ -1372,6 +1372,7 @@ extern u64  kvm_max_tsc_scaling_ratio;
 extern u64  kvm_default_tsc_scaling_ratio;
 
 extern u64 kvm_mce_cap_supported;
+extern bool inherit_cs_cookie;
 
 /*
  * EMULTYPE_NO_DECODE - Set when re-emulating an instruction (after completing
