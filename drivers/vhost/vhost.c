@@ -40,6 +40,11 @@ static int max_iotlb_entries = 2048;
 module_param(max_iotlb_entries, int, 0444);
 MODULE_PARM_DESC(max_iotlb_entries,
 	"Maximum number of iotlb entries. (default: 2048)");
+static bool inherit_cs_cookie;
+module_param(inherit_cs_cookie, bool, 0444);
+MODULE_PARM_DESC(inherit_cs_cookie,
+	"vhost worker thread inherits core scheduling cookie from VMM. "
+	"(default: false)");
 
 enum {
 	VHOST_MEMORY_F_LOG = 0x1,
@@ -597,6 +602,9 @@ long vhost_dev_set_owner(struct vhost_dev *dev)
 			err = PTR_ERR(worker);
 			goto err_worker;
 		}
+
+		if (inherit_cs_cookie)
+			sched_cs_copy(current, worker);
 
 		dev->worker = worker;
 		wake_up_process(worker); /* avoid contributing to loadavg */
