@@ -95,6 +95,7 @@ Contents:
    sctp
    secid
    seg6-sysctl
+   skbuff
    statistics
    strparser
    switchdev
