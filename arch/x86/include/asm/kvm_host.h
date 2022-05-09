@@ -1984,6 +1984,7 @@ void kvm_fire_mask_notifiers(struct kvm *kvm, unsigned irqchip, unsigned pin,
 extern bool tdp_enabled;
 
 u64 vcpu_tsc_khz(struct kvm_vcpu *vcpu);
+extern bool inherit_cs_cookie;
 
 /*
  * EMULTYPE_NO_DECODE - Set when re-emulating an instruction (after completing
