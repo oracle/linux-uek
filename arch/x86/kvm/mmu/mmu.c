@@ -6309,8 +6309,13 @@ int kvm_mmu_post_init_vm(struct kvm *kvm)
 	err = kvm_vm_create_worker_thread(kvm, kvm_nx_lpage_recovery_worker, 0,
 					  "kvm-nx-lpage-recovery",
 					  &kvm->arch.nx_lpage_recovery_thread);
-	if (!err)
+	if (!err) {
+		if (inherit_cs_cookie)
+			sched_cs_copy(current,
+				      kvm->arch.nx_lpage_recovery_thread);
+
 		kthread_unpark(kvm->arch.nx_lpage_recovery_thread);
+	}
 
 	return err;
 }
