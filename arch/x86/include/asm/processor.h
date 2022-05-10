@@ -1012,8 +1012,12 @@ extern void mds_idle_clear_enable(void);
 extern void mds_idle_clear_disable(void);
 extern void mds_user_clear_enable(void);
 extern void mds_user_clear_disable(void);
+extern void mmio_stale_data_clear_enable(void);
+extern void mmio_stale_data_clear_disable(void);
+
 extern bool mds_user_clear_enabled(void);
 extern bool mds_idle_clear_enabled(void);
+extern bool mmio_stale_data_clear_enabled(void);
 
 enum mds_mitigations {
 	MDS_MITIGATION_OFF,

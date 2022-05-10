@@ -74,6 +74,14 @@ static ssize_t mds_user_clear_read(struct file *file,
 			    mds_user_clear_enabled);
 }
 
+static ssize_t mmio_stale_data_clear_read(struct file *file,
+				   char __user *user_buf,
+				   size_t count, loff_t *ppos)
+{
+	return mds_key_read(file, user_buf, count, ppos,
+			    mmio_stale_data_clear_enabled);
+}
+
 static ssize_t mds_user_clear_write(struct file *file,
 				    const char __user *user_buf,
 				    size_t count, loff_t *ppos)
@@ -92,6 +100,15 @@ static ssize_t mds_idle_clear_write(struct file *file,
 			     mds_idle_clear_disable);
 }
 
+static ssize_t mmio_stale_data_clear_write(struct file *file,
+				    const char __user *user_buf,
+				    size_t count, loff_t *ppos)
+{
+	return mds_key_write(file, user_buf, count, ppos,
+			     mmio_stale_data_clear_enable,
+			     mmio_stale_data_clear_disable);
+}
+
 static const struct file_operations fops_mds_user_clear = {
 	.read = mds_user_clear_read,
 	.write = mds_user_clear_write,
@@ -104,6 +121,12 @@ static const struct file_operations fops_mds_idle_clear = {
 	.llseek = default_llseek,
 };
 
+static const struct file_operations fops_mmio_stale_data_clear = {
+	.read = mmio_stale_data_clear_read,
+	.write =  mmio_stale_data_clear_write,
+	.llseek = default_llseek,
+};
+
 static int __init debugfs_mds_ctrl(void)
 {
 	debugfs_create_file("mds_user_clear",
@@ -112,6 +135,9 @@ static int __init debugfs_mds_ctrl(void)
 	debugfs_create_file("mds_idle_clear",
 			   0600, arch_debugfs_dir, NULL,
 			   &fops_mds_idle_clear);
+	debugfs_create_file("mmio_stale_data_clear",
+			   0600, arch_debugfs_dir, NULL,
+			   &fops_mmio_stale_data_clear);
         return 0;
 }
 

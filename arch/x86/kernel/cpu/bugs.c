@@ -698,7 +698,7 @@ enum mmio_mitigations {
 };
 
 /* Default mitigation for Processor MMIO Stale Data vulnerabilities */
-static enum mmio_mitigations mmio_mitigation __ro_after_init = MMIO_MITIGATION_VERW;
+static enum mmio_mitigations mmio_mitigation = MMIO_MITIGATION_VERW;
 static bool mmio_nosmt __ro_after_init = false;
 
 static const char * const mmio_strings[] = {
@@ -706,6 +706,37 @@ static const char * const mmio_strings[] = {
 	[MMIO_MITIGATION_UCODE_NEEDED]	= "Vulnerable: Clear CPU buffers attempted, no microcode",
 	[MMIO_MITIGATION_VERW]		= "Mitigation: Clear CPU buffers",
 };
+
+bool mmio_stale_data_clear_enabled(void)
+{
+	return static_key_enabled(&mmio_stale_data_clear);
+}
+
+void mmio_stale_data_clear_enable(void)
+{
+	u64 ia32_cap;
+
+	if (!boot_cpu_has_bug(X86_BUG_MMIO_STALE_DATA))
+		return;
+
+	static_branch_enable(&mmio_stale_data_clear);
+
+	ia32_cap = x86_read_arch_cap_msr();
+
+	if ((ia32_cap & ARCH_CAP_FB_CLEAR) ||
+	    (boot_cpu_has(X86_FEATURE_MD_CLEAR) &&
+	     boot_cpu_has(X86_FEATURE_FLUSH_L1D) &&
+	     !(ia32_cap & ARCH_CAP_MDS_NO)))
+		mmio_mitigation = MMIO_MITIGATION_VERW;
+	else
+		mmio_mitigation = MMIO_MITIGATION_UCODE_NEEDED;
+}
+
+void mmio_stale_data_clear_disable(void)
+{
+	static_branch_disable(&mmio_stale_data_clear);
+	mmio_mitigation = MMIO_MITIGATION_OFF;
+}
 
 static void __init mmio_select_mitigation(void)
 {
