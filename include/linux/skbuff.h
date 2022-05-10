@@ -42,6 +42,7 @@
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 #include <linux/netfilter/nf_conntrack_common.h>
 #endif
+#include <net/net_debug.h>
 
 /**
  * DOC: skb checksums
@@ -2871,6 +2872,7 @@ static inline bool skb_transport_header_was_set(const struct sk_buff *skb)
 
 static inline unsigned char *skb_transport_header(const struct sk_buff *skb)
 {
+	DEBUG_NET_WARN_ON_ONCE(!skb_transport_header_was_set(skb));
 	return skb->head + skb->transport_header;
 }
 
