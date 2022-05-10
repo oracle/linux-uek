@@ -150,6 +150,7 @@ kernel/drivers/net/tap.ko
 kernel/drivers/net/tun.ko
 kernel/drivers/net/usb/cdc_ether.ko
 kernel/drivers/net/usb/usbnet.ko
+kernel/drivers/net/veth.ko
 kernel/drivers/net/virtio_net.ko
 kernel/drivers/net/vxlan.ko
 kernel/drivers/nvdimm/libnvdimm.ko
@@ -325,7 +326,10 @@ kernel/net/netfilter/xt_addrtype.ko
 kernel/net/netfilter/xt_CHECKSUM.ko
 kernel/net/netfilter/xt_comment.ko
 kernel/net/netfilter/xt_conntrack.ko
+kernel/net/netfilter/xt_mark.ko
 kernel/net/netfilter/xt_MASQUERADE.ko
+kernel/net/netfilter/xt_multiport.ko
+kernel/net/netfilter/xt_nat.ko
 kernel/net/netfilter/xt_owner.ko
 kernel/net/netfilter/xt_policy.ko
 kernel/net/netfilter/xt_set.ko
