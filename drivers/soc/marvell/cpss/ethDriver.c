@@ -54,10 +54,7 @@ MODULE_LICENSE("GPL");
 - Complete queue initialization (i.e. when CPSS skip init our queues)
 - Queues weights
 - Restructure struct ring
-- Extend IRQ API by passing pci-id table to it so it will filter only devices
-  caller cares about
 - sysfs mg_win read only after rx queue setup
-- Set MAC in ndo_set_mac_address
 - Re-enable all sysfs in stop()
 - Update "implementation" sections in the design document
 */
@@ -68,7 +65,7 @@ MODULE_LICENSE("GPL");
 #define NUM_OF_RX_QUEUES 8
 #define NUM_OF_TX_QUEUES NUM_OF_RX_QUEUES
 #define NUM_OF_ATU_WINDOWS 8
-#define NUM_OF_MG_WINDOWS 8
+#define NUM_OF_MG_WINDOWS 6
 #define ATU_OFFS 0x1200 /* iATU offset in bar0 */
 #define DSA_SIZE 16
 #define ATU_WIN_SIZE 0x000FFFFF
@@ -123,11 +120,6 @@ enum {
 	RX_CMD_BIT_BUS_ERR	= (1 << 30),
 };
 
-/* Some interesting bits in cause register (0x30) */
-enum {
-	CAUSE_RX_BIT		= (1 << 9),
-};
-
 /* Descriptor related macros */
 #undef BIT_MASK
 #define BIT_MASK(numOfBits) ((1ULL << numOfBits) - 1)
@@ -149,37 +141,37 @@ enum {
 /* Configurable constants */
 #define DRV_NAME "mvppnd_netdev"
 #define MAX_FRAGS 8
-#define LOG2_MAX_NETDEV 6 /* TODO: Currently 128, chk if needed dynamic */
+#define LOG2_MAX_NETDEV 7 /* TODO: Currently 256, chk if needed dynamic */
 #define MAX_NETDEV (2 << LOG2_MAX_NETDEV)
 
 /* How long to wait for SDMA to take ownership of a descriptor */
 static const unsigned long TX_WAIT_FOR_CPU_OWENERSHIP_USEC = 100000;
 static const u32 DEFAULT_RX_QUEUES_WEIGHT = 0x88888888; /* 4 bits for each q */
-static const u16 DEFAULT_NAPI_POLL_WEIGHT = NAPI_POLL_WEIGHT;
-static const u8 MAX_EMPTY_NAPI_POLL = 20;
+static const u8 MAX_EMPTY_READS = 3;
+static const u8 DEFAULT_BUDGET = 64;
+static const u32 DEFAULT_BURST_DELAY_USECS = 500;
+static const u32 DEFAULT_IDLE_DELAY_JIFFS = 5000;
+static const u8 DEFAULT_READQ_TIMEOUT = 200;
 static const u16 DEFAULT_ATU_WIN = 5;
 static const u8 DEFAULT_MG_WIN = 0xE; /* 3 windows, first for coherent and max 2
 					 for streaming, indexes below */
 static const u8 MG_WIN_COHERENT_IDX = 0;
 static const u8 MG_WIN_STREAMING1_IDX = 1;
 static const u8 MG_WIN_STREAMING2_IDX = 2;
-static const u8 DEFAULT_TX_DSA[] = {0xC8, 0x00, 0x40, 0x01}; /* Forward */
+static const u8 DEFAULT_TX_DSA[] = {0x50, 0x02, 0x10, 0x00, 0x88, 0x08, 0x40,
+				    0x00, 0xa0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+				    0x0}; /* Forward */
 static const u16 TX_RING_SIZE = roundup_pow_of_two(MAX_FRAGS);
-static const u16 MAX_RX_RING_SIZE = roundup_pow_of_two(2048);
-static const u16 DEFAULT_RX_RING_SIZE = roundup_pow_of_two(2048);
-static const u32 DEFAULT_MTU = 4096;
+static const u16 MAX_RX_RING_SIZE = roundup_pow_of_two(32);
+static const u16 DEFAULT_RX_RING_SIZE = roundup_pow_of_two(32);
+static const u32 DEFAULT_PKT_SZ = 4096; /* Must be at least 4K */
 
 static const u8 DEFAULT_MAC[] = {0x00, 0x50, 0x43, 0x0, 0x0, 0x0};
 
 /* Defines slot for each statistics attribute in stats array */
 enum mvppnd_stats {
-	STATS_INTERRUPTS = 0,
-	STATS_RX_INTERRUPTS,
-	STATS_NAPI_POLL_CALLS,
-	STATS_NAPI_BURN_BUDGET,
-	STATS_RX_PACKETS,
+	STATS_RX_PACKETS = 0,
 	STATS_RX_PACKETS_RATE,
-	STATS_RX_PACKETS_PER_INTERRUPT,
 	STATS_RX_Q0_PACKETS,
 	STATS_RX_Q1_PACKETS,
 	STATS_RX_Q2_PACKETS,
@@ -188,19 +180,16 @@ enum mvppnd_stats {
 	STATS_RX_Q5_PACKETS,
 	STATS_RX_Q6_PACKETS,
 	STATS_RX_Q7_PACKETS,
+	STATS_RX_BURSTS,
+	STATS_RX_IDLES,
 	STATS_TX_PACKETS,
 	STATS_LAST = STATS_TX_PACKETS,
 };
 
 /* Description of each of the above statistics */
 static const char *mvppnd_stats_descs[] = {
-	"INTERRUPTS      ",
-	"RX_INTERRUPTS   ",
-	"NAPI_POLL_CALLS ",
-	"NAPI_BURN_BUDGET",
 	"RX_PACKETS      ",
 	"RX_PACKETS_RATE ",
-	"RX_PKT_PER_INTR ",
 	"RX_Q0_PACKETS   ",
 	"RX_Q1_PACKETS   ",
 	"RX_Q2_PACKETS   ",
@@ -209,6 +198,8 @@ static const char *mvppnd_stats_descs[] = {
 	"RX_Q5_PACKETS   ",
 	"RX_Q6_PACKETS   ",
 	"RX_Q7_PACKETS   ",
+	"RX_BURSTS       ",
+	"RX_IDLES        ",
 	"TX_PACKETS      ",
 };
 
@@ -302,13 +293,13 @@ struct mvppnd_dev {
 	u32 rx_queues_mask; /* Used to set and clear RX interrupt mask */
 	int rx_queues_weight[NUM_OF_RX_QUEUES]; /* Weight of RX queues */
 	int tx_queue; /* TX queue to post to */
-	struct mutex queues_mutex; /* Protect both rx and tx queues */
+	struct mutex rx_lock;
+	struct spinlock tx_lock;
 	struct mvppnd_ring tx_ring;
 	struct mvppnd_ring rx_rings[NUM_OF_RX_QUEUES];
 	int rx_ring_size;
 
 	int atu_win; /* iATU window number to use */
-	int atu_win_addr_base; /* Last used iATU window base address */
 	u32 bar2_win_offs; /* Offset in bar2 of our window */
 
 	u8 mg_win[3]; /* 0 for coherent, 1 and 2 for streaming */
@@ -325,27 +316,30 @@ struct mvppnd_dev {
 	struct task_struct *rx_thread;
 	struct semaphore interrupts_sema;
 	struct napi_struct napi;
-	u8 rx_queue_ptr; /* to resume RX NAPI work */
-	int napi_poll_weight;
+	u8 rx_queue_ptr; /* to resume RX work when budget is overrun */
+
+	/* RX policy */
+	int budget; /* packets per cycle */
+	int burst_delay_usecs; /* delay on burst */
+	int idle_delay_jiffs; /* delay on idle */
 #ifdef MVPPND_DEBUG_REG
 	int print_packets_interval;
 #endif
 
 	/* sysfs attributes */
 	struct kobj_attribute attr_rx_queues_weight;
-	struct kobj_attribute attr_napi_poll_weight;
 	struct kobj_attribute attr_rx_ring_size;
 	struct kobj_attribute attr_max_pkt_sz;
 	struct kobj_attribute attr_rx_queues;
 	struct kobj_attribute attr_if_create;
 	struct kobj_attribute attr_if_delete;
 	struct kobj_attribute attr_tx_queue;
+	struct kobj_attribute attr_rx_policy; /* budget, idle and burst */
 	struct kobj_attribute attr_atu_win;
 	struct kobj_attribute attr_mg_win;
 	struct kobj_attribute attr_mg;
 #ifdef MVPPND_DEBUG_REG
 	struct kobj_attribute attr_reg;
-	u32 sysfs_reg_addr;
 #endif
 	struct kobj_attribute attr_driver_statistics;
 };
@@ -382,12 +376,6 @@ static inline unsigned long mvppnd_get_stat(struct mvppnd_dev *ppdev,
 	static unsigned long last_rx_packets = 0;
 
 	/* Some stats needs special care */
-	if (stat_idx == STATS_RX_PACKETS_PER_INTERRUPT) {
-		ppdev->sdev.stats[STATS_RX_PACKETS_PER_INTERRUPT] =
-			ppdev->sdev.stats[STATS_RX_PACKETS] /
-			ppdev->sdev.stats[STATS_INTERRUPTS];
-	}
-
 	if (stat_idx == STATS_RX_PACKETS_RATE) {
 		ppdev->sdev.stats[STATS_RX_PACKETS_RATE] =
 			(ppdev->sdev.stats[STATS_RX_PACKETS] - last_rx_packets)
@@ -430,9 +418,6 @@ static int mvppnd_adjust_bar2_window(struct mvppnd_dev *ppdev, u32 reg_addr)
 	reg_addr_base = reg_addr & (0xFFFFFFFF - ATU_WIN_SIZE);
 	reg_addr_base = reg_addr_base | (ppdev->mg << REG_ADDR_BASE_MG_SHIFT);
 
-	if (ppdev->atu_win_addr_base == reg_addr_base)
-		return 0; /* Already set, we can skip */
-
 	/* Go to our window (0x0100 because we need only in bound) */
 	winx_offs = ATU_OFFS + ppdev->atu_win * 0x0200 + 0x0100;
 
@@ -449,8 +434,6 @@ static int mvppnd_adjust_bar2_window(struct mvppnd_dev *ppdev, u32 reg_addr)
 	iowrite32(reg_addr_base, ppdev->pdev.bar0 + winx_offs + 0x14);
 
 	ppdev->bar2_win_offs = winx_start - win0_start;
-
-	ppdev->atu_win_addr_base = reg_addr_base;
 
 	return 0;
 }
@@ -559,21 +542,20 @@ static void mvppnd_setup_mg_window(struct mvppnd_dev *ppdev, u8 mg_win,
 {
 	u32 target, control;
 
-	/* dev_dbg is not working at probe stage
-	dev_info(&ppdev->pdev->dev, "MG window %d: 0x%x\n", mg_win, base_addr);
-	*/
+	dev_dbg(&ppdev->pdev.pdev->dev, "MG window %d: 0x%x, %d\n", mg_win,
+		base_addr, size);
 
-	if (ppdev->pdev.pdev->device != PCI_DEVICE_ID_ALDRIN2) {
-		target = 0xe03;
-		control = base_addr | 0x0000000e;
-	} else {
-		target = 0xe04;
-		control = 0x6;
-	}
-
-	if (!base_addr) { /* Caller want to clear setting */
+	if (!size) { /* size zero means the caller wish to clear the window */
 		target = 0;
 		control = 0;
+	} else {
+		if (ppdev->pdev.pdev->device != PCI_DEVICE_ID_ALDRIN2) {
+			target = 0xe03;
+			control = base_addr | 0x8000000e;
+		} else {
+			target = 0xe04;
+			control = 0x6;
+		}
 	}
 
 	mvppnd_write_reg(ppdev, REG_ADDR_MG_BASE_ADDR + mg_win *
@@ -772,13 +754,11 @@ static void mvppnd_write_tx_first_desc(struct mvppnd_dev *ppdev, u32 val)
 			 REG_ADDR_TX_FIRST_DESC_OFFSET_FORMULA, val);
 }
 
-#ifdef MVPPND_DEBUG_REG
 static u32 mvppnd_read_rx_first_desc(struct mvppnd_dev *ppdev, u8 queue)
 {
 	return mvppnd_read_reg(ppdev, REG_ADDR_RX_FIRST_DESC + queue *
 			       REG_ADDR_RX_FIRST_DESC_OFFSET_FORMULA);
 }
-#endif
 
 static void mvppnd_write_rx_first_desc(struct mvppnd_dev *ppdev, u8 queue,
 				       u32 val)
@@ -813,29 +793,37 @@ static int mvppnd_alloc_device_coherent(struct mvppnd_dev *ppdev)
 {
 	dma_addr_t d;
 	void *v;
-	u32 s;
+	size_t size;
 
 	ppdev->coherent.buf.size = 0;
 	ppdev->coherent.mark = 0;
 
 	/* RX queues */
-	ppdev->coherent.buf.size += ppdev->rx_ring_size *
-				    mvppnd_num_of_rx_queues(ppdev) *
-				    sizeof(struct mvppnd_hw_desc);
+	size = ppdev->rx_ring_size * mvppnd_num_of_rx_queues(ppdev) *
+	       sizeof(struct mvppnd_hw_desc);
+	ppdev->coherent.buf.size += max(size, PAGE_SIZE);
 
 	/* One TX queue */
-	ppdev->coherent.buf.size += TX_RING_SIZE *
-				    sizeof(struct mvppnd_hw_desc);
+	size = TX_RING_SIZE * sizeof(struct mvppnd_hw_desc);
+	ppdev->coherent.buf.size += max(size, PAGE_SIZE);
 
 	/* Temporary buffer for TX packets (1 for head) */
-	ppdev->coherent.buf.size += PAGE_SIZE * (MAX_FRAGS + 1);
+	size = PAGE_SIZE * (MAX_FRAGS + 1);
+	ppdev->coherent.buf.size += max(size, PAGE_SIZE);
 
 	/* Space for two MACs (first descriptor) */
-	ppdev->coherent.buf.size += ETH_ALEN * 2;
+	size = ETH_ALEN * 2;
+	ppdev->coherent.buf.size += max(size, PAGE_SIZE);
 
 	/* Space for DSA (second descriptor) */
-	ppdev->coherent.buf.size += DSA_SIZE;
+	size = DSA_SIZE;
+	ppdev->coherent.buf.size += max(size, PAGE_SIZE);
 
+	/* Space for RX buffers */
+	size = NUM_OF_RX_QUEUES * ppdev->rx_ring_size * ppdev->max_pkt_sz;
+	ppdev->coherent.buf.size += max(size, PAGE_SIZE);
+
+	/* Round to power of two */
 	ppdev->coherent.buf.size = roundup_pow_of_two(ppdev->coherent.buf.size);
 
 	ppdev->coherent.buf.virt = dma_alloc_coherent(&ppdev->pdev.pdev->dev,
@@ -851,14 +839,18 @@ static int mvppnd_alloc_device_coherent(struct mvppnd_dev *ppdev)
 	}
 
 	/* Make sure address is aligned with the size */
-	s = ppdev->coherent.buf.dma % ppdev->coherent.buf.size;
-	if (s) {
+	size = ppdev->coherent.buf.dma % ppdev->coherent.buf.size;
+	if (size) {
+		dev_dbg(&ppdev->pdev.pdev->dev,
+			"Not aligned (0x%llx, 0x%lx), reallocating\n",
+			ppdev->coherent.buf.dma, ppdev->coherent.buf.size);
+
 		dma_free_coherent(&ppdev->pdev.pdev->dev,
 				  ppdev->coherent.buf.size,
 				  ppdev->coherent.buf.virt,
 				  ppdev->coherent.buf.dma);
 
-		v = dma_alloc_coherent(&ppdev->pdev.pdev->dev, s, &d,
+		v = dma_alloc_coherent(&ppdev->pdev.pdev->dev, size, &d,
 				       GFP_DMA32 | GFP_NOFS | GFP_KERNEL);
 		ppdev->coherent.buf.virt =
 			dma_alloc_coherent(&ppdev->pdev.pdev->dev,
@@ -872,14 +864,18 @@ static int mvppnd_alloc_device_coherent(struct mvppnd_dev *ppdev)
 			return -ENOMEM;
 		}
 
-		dma_free_coherent(&ppdev->pdev.pdev->dev, s, v, d);
+		dma_free_coherent(&ppdev->pdev.pdev->dev, size, v, d);
 	}
 
 	if (ppdev->coherent.buf.dma & (ppdev->coherent.buf.size - 1)) {
 		dev_err(&ppdev->pdev.pdev->dev,
-			"Fail to allocate aligned coherent buffer\n");
+			"Fail to allocate aligned coherent buffer, size %ld\n",
+			ppdev->coherent.buf.size);
 		return -ENOMEM;
 	}
+	dev_dbg(&ppdev->pdev.pdev->dev,"coherent 0x%llx, %llx (0x%lx)\n",
+		ppdev->coherent.buf.dma, ppdev->coherent.buf.dma +
+		ppdev->coherent.buf.size, ppdev->coherent.buf.size);
 
 	mvppnd_setup_mg_window(ppdev, ppdev->mg_win[MG_WIN_COHERENT_IDX],
 			       ppdev->coherent.buf.dma,
@@ -904,7 +900,7 @@ static void *mvppnd_alloc_coherent(struct mvppnd_dev *ppdev, size_t size,
 {
 	void *free = ppdev->coherent.buf.virt + ppdev->coherent.mark;
 
-	size = max(size, PAGE_SIZE);
+	BUG_ON(ppdev->coherent.mark > ppdev->coherent.buf.size);
 
 	*dma = ppdev->coherent.buf.dma + ppdev->coherent.mark;
 
@@ -941,7 +937,6 @@ static int mvppnd_copy_skb_to_tx_buff(struct mvppnd_dev *ppdev,
 		       page_to_virt(skb_frag_page(frag)),
 		       skb_frag_size(frag));
 #else
-/* TODO: If needed - add support */
 #error "No support for this kernel"
 #endif
 		sgb->mappings[i + 1] = ppdev->tx_buffs.dma + i * PAGE_SIZE;
@@ -950,49 +945,6 @@ static int mvppnd_copy_skb_to_tx_buff(struct mvppnd_dev *ppdev,
 
 	skb_push(skb, ETH_ALEN * 2); /* We are done, return to MAC header */
 	return rc;
-}
-
-static int mvppnd_alloc_buff(struct mvppnd_dev *ppdev,
-			     struct mvppnd_dma_sg_buf *sgb, size_t size)
-{
-	sgb->sizes[0] = size;
-
-	sgb->virt = kmalloc(sgb->sizes[0], GFP_KERNEL);
-	if (unlikely(!sgb->virt)) {
-		dev_err(&ppdev->pdev.pdev->dev, "Fail to allocate buffer\n");
-		return -ENOMEM;
-	}
-
-	sgb->mappings[0] = dma_map_single(&ppdev->pdev.pdev->dev, sgb->virt,
-					  sgb->sizes[0], DMA_FROM_DEVICE);
-	if (unlikely(dma_mapping_error(&ppdev->pdev.pdev->dev,
-				       sgb->mappings[0]))) {
-		dev_err(&ppdev->pdev.pdev->dev,
-			"Fail to map buffer to dma addr (%p, %ld, 0x%llx)\n",
-			sgb->virt, sgb->sizes[0], sgb->mappings[0]);
-		goto free_buff;
-	}
-
-	return 0;
-
-free_buff:
-	kfree(sgb->virt);
-	sgb->virt = NULL;
-
-	return -ENOMEM;
-}
-
-static void mvppnd_free_buf(struct mvppnd_dev *ppdev,
-			    struct mvppnd_dma_sg_buf *sgb)
-{
-	struct device *dev = &ppdev->pdev.pdev->dev;
-
-	dma_unmap_single(dev, sgb->mappings[0], sgb->sizes[0], DMA_FROM_DEVICE);
-
-	kfree(sgb->virt);
-
-	sgb->virt = NULL;
-	sgb->sizes[0] = 0;
 }
 
 /*********** rings related functions *******************/
@@ -1005,9 +957,6 @@ static void mvppnd_free_ring_dma(struct mvppnd_dev *ppdev,
 		return;
 
 	for (i = 0; i < size; i++) {
-		/* We are not allocating buffs for TX ring */
-		if (ring->buffs[i]->virt)
-			mvppnd_free_buf(ppdev, ring->buffs[i]);
 		kfree(ring->buffs[i]);
 		ring->buffs[i] = NULL;
 	}
@@ -1120,12 +1069,8 @@ static void mvppnd_destroy_rx_rings(struct mvppnd_dev *ppdev)
 
 static int mvppnd_setup_rx_rings(struct mvppnd_dev *ppdev)
 {
-	dma_addr_t min1, min_addr = 0xffffffff;
-	dma_addr_t max1, max_addr = 0;
 	struct mvppnd_ring *r;
 	int i, j, rc = 0;
-	u8 mg_win;
-	u32 s, d;
 
 	if (!ppdev->mg_win[MG_WIN_STREAMING1_IDX]) {
 		dev_err(&ppdev->pdev.pdev->dev, "MG window is not set\n");
@@ -1147,23 +1092,17 @@ static int mvppnd_setup_rx_rings(struct mvppnd_dev *ppdev)
 
 		/* Populate ring with skbs */
 		for (j = 0; j < ppdev->rx_ring_size; j++) {
+			struct mvppnd_dma_sg_buf *sgb = r->buffs[j];
+
 			r->descs[j]->cmd_sts = RX_CMD_BIT_OWN_SDMA |
 					       RX_CMD_BIT_EN_INTR;
 
-			rc = mvppnd_alloc_buff(ppdev, r->buffs[j],
-					       ppdev->max_pkt_sz);
-			if (rc)
-				goto destroy_rings;
+			sgb->sizes[0] = ppdev->max_pkt_sz;
+			sgb->virt = mvppnd_alloc_coherent(ppdev, sgb->sizes[0],
+							  &sgb->mappings[0]);
 
-			r->descs[j]->buf_addr = r->buffs[j]->mappings[0];
-			RX_DESC_SET_BYTE_CNT(r->descs[j]->bc,
-					     r->buffs[j]->sizes[0]);
-
-			/* Start and end address - needed to setup MG window */
-			if (r->buffs[j]->mappings[0] < min_addr)
-				min_addr = r->buffs[j]->mappings[0];
-			if (r->buffs[j]->mappings[0] > max_addr)
-				max_addr = r->buffs[j]->mappings[0];
+			r->descs[j]->buf_addr = sgb->mappings[0];
+			RX_DESC_SET_BYTE_CNT(r->descs[j]->bc, sgb->sizes[0]);
 		}
 		r->descs_ptr = 0;
 		r->buffs_ptr = 0;
@@ -1182,31 +1121,6 @@ static int mvppnd_setup_rx_rings(struct mvppnd_dev *ppdev)
 		mvppnd_enable_queue(ppdev, REG_ADDR_RX_QUEUE_CMD,
 				    ppdev->rx_queues[i]);
 	}
-
-	max_addr += ppdev->max_pkt_sz;
-	s = max_addr - min_addr;
-	d = min_addr % s;
-	mg_win = MG_WIN_STREAMING1_IDX;
-	if (d) {
-		/* We need two windows */
-		if (!ppdev->mg_win[MG_WIN_STREAMING1_IDX]) {
-			dev_err(&ppdev->pdev.pdev->dev,
-				"MG window is set with one window while two are needed\n");
-			rc = -EFAULT;
-			goto destroy_rings;
-		}
-		min1 = min_addr - d;
-		max1 = max_addr - d;
-		mvppnd_setup_mg_window(ppdev, ppdev->mg_win[mg_win], min1,
-				       max1 - min1 - 1);
-
-		/* Configure second window */
-		mg_win = MG_WIN_STREAMING2_IDX;
-		min_addr = max1;
-		max_addr = min_addr + (max1 - min1);
-	}
-	mvppnd_setup_mg_window(ppdev, ppdev->mg_win[mg_win],
-			       min_addr, max_addr - min_addr - 1);
 
 	return 0;
 
@@ -1269,7 +1183,7 @@ static struct mvppnd_switch_flow *mvppnd_get_sw_flow(struct mvppnd_dev *ppdev,
 		if (v->high != (d->high & m->high))
 			continue;
 
-		if (v->low != (d->high & m->low))
+		if (v->low != (d->low & m->low))
 			continue;
 
 		flow = ppdev->sdev.flows[i];
@@ -1301,12 +1215,16 @@ static void mvppnd_process_rx_buff(struct mvppnd_dev *ppdev, char *buff, u32 bc)
 	rx_bytes = RX_DESC_GET_BYTE_CNT(bc) - DSA_SIZE - 4;
 
 	skb = netdev_alloc_skb(ndev, rx_bytes);
+	if (!skb) {
+		ndev->stats.rx_dropped++;
+		return;
+	}
 
 	memcpy(skb->data, buff, ETH_ALEN * 2); /* Copy src and dst MACs */
 	memcpy(skb->data + ETH_ALEN * 2, buff + ETH_ALEN * 2 + DSA_SIZE,
 	       rx_bytes - ETH_ALEN * 2); /* Rest of the frame */
 
-	skb->len = rx_bytes;
+	skb_put(skb, rx_bytes);
 
 #ifdef MVPPND_DEBUG_REG
 	/* Print packet for debug */
@@ -1346,6 +1264,8 @@ static int mvppnd_process_rx_queue(struct mvppnd_dev *ppdev, int queue,
 	struct mvppnd_dma_sg_buf *buff;
 	int done = 0;
 
+	mutex_lock(&ppdev->rx_lock);
+
 	while (((r->descs[r->descs_ptr]->cmd_sts & RX_CMD_BIT_OWN_SDMA) !=
 	       RX_CMD_BIT_OWN_SDMA) && (done < local_budget)) {
 
@@ -1358,17 +1278,9 @@ static int mvppnd_process_rx_queue(struct mvppnd_dev *ppdev, int queue,
 
 		buff = r->buffs[r->buffs_ptr];
 
-		dma_sync_single_for_cpu(&ppdev->pdev.pdev->dev,
-					buff->mappings[0], buff->sizes[0],
-					DMA_FROM_DEVICE);
-
 		/* Populate skb details and pass to network stack */
 		mvppnd_process_rx_buff(ppdev, buff->virt,
 				       r->descs[r->descs_ptr]->bc);
-
-		r->descs[r->descs_ptr]->bc = 0; /* clean it first */
-		RX_DESC_SET_BYTE_CNT(r->descs[r->descs_ptr]->bc,
-				     buff->sizes[0]);
 
 		/* Pass ownership back to SDMA */
 		r->descs[r->descs_ptr]->cmd_sts = RX_CMD_BIT_OWN_SDMA |
@@ -1383,85 +1295,75 @@ static int mvppnd_process_rx_queue(struct mvppnd_dev *ppdev, int queue,
 		done++;
 	}
 
+	mutex_unlock(&ppdev->rx_lock);
+
 	/* return the number of processed frames */
 	return done;
 }
 
-int mvppnd_poll(struct napi_struct *napi, int budget)
+static void _mvppnd_process_rx_queues(struct mvppnd_dev *ppdev, int budget,
+				      int *done_total)
 {
-	struct mvppnd_dev *ppdev = container_of(napi, struct mvppnd_dev, napi);
-	int done_queue, done_total = 0;
-	u8 empty_polls = 0;
+	int done_queue, empty_reads;
 
-	/*
-	dev_dbg(&ppdev->pdev->dev, "budget %d\n", budget);
-	*/
-
-	mvppnd_inc_stat(ppdev, STATS_NAPI_POLL_CALLS, 1);
-
+	*done_total = empty_reads = 0;
 	do {
 		done_queue = mvppnd_process_rx_queue(ppdev, ppdev->rx_queue_ptr,
-						     budget - done_total);
-		if (done_queue)
-			empty_polls = 0;
-		else
-			empty_polls++;
+						     budget - *done_total);
+
+		/* Count consecutive empty reads */
+		empty_reads = done_queue ? 0 : empty_reads + 1;
 
 		mvppnd_inc_stat(ppdev, STATS_RX_Q0_PACKETS +
 				ppdev->rx_queues[ppdev->rx_queue_ptr],
 				done_queue);
 
-		done_total += done_queue;
+		*done_total += done_queue;
 
 		do {
 			cyclic_inc((int *)&ppdev->rx_queue_ptr,
 				   NUM_OF_RX_QUEUES);
 		} while (ppdev->rx_queues[ppdev->rx_queue_ptr] == -1);
-	} while ((done_total < budget) && (empty_polls < MAX_EMPTY_NAPI_POLL));
 
-	/*
-	dev_dbg(&ppdev->pdev->dev, "done %d\n", done_total);
-	*/
+	} while ((*done_total < budget) && (empty_reads < MAX_EMPTY_READS));
 
-	if (empty_polls == MAX_EMPTY_NAPI_POLL) { /* No more packets */
-		dev_dbg(&ppdev->pdev.pdev->dev, "re-enable interrupts\n");
-		napi_complete(napi);
-		mvppnd_enable_rx_interrupts(ppdev);
-	} else {
-		mvppnd_inc_stat(ppdev, STATS_NAPI_BURN_BUDGET, 1);
-	}
+	mvppnd_inc_stat(ppdev, STATS_RX_PACKETS, *done_total);
+}
 
-	mvppnd_inc_stat(ppdev, STATS_RX_PACKETS, done_total);
+/* Return true if more packets are in the queues */
+static bool mvppnd_process_rx_queues(struct mvppnd_dev *ppdev)
+{
+	int done_total;
 
-	/*
-	dev_dbg(&ppdev->pdev->dev, "done napi poll\n");
-	*/
+	_mvppnd_process_rx_queues(ppdev, ppdev->budget, &done_total);
 
-	return done_total;
+	return done_total == ppdev->budget;
 }
 
 int mvppnd_rx_thread(void *data)
 {
 	struct mvppnd_dev *ppdev = (struct mvppnd_dev *)data;
+	bool more = false;
 	int rc;
-	u32 cause;
 
 	do {
-		rc = down_interruptible(&ppdev->interrupts_sema);
-		cause = mvppnd_read_reg(ppdev, REG_ADDR_CAUSE_0);
-		mvppnd_inc_stat(ppdev, STATS_INTERRUPTS, 1);
-		/*
-		dev_dbg(&ppdev->pdev->dev, "Got interrupt, cause 0x%x\n",
-			cause);
-		*/
+		if (more) {
+			udelay(ppdev->burst_delay_usecs);
+			mvppnd_inc_stat(ppdev, STATS_RX_BURSTS, 1);
+		} else {
+			mvppnd_enable_rx_interrupts(ppdev);
+			mvintdrv_register_isr_sema(&ppdev->interrupts_sema);
 
-		/* We care only for RX interrupts */
-		if ((cause & CAUSE_RX_BIT) == CAUSE_RX_BIT) {
-			mvppnd_inc_stat(ppdev, STATS_RX_INTERRUPTS, 1);
+			rc = down_timeout(&ppdev->interrupts_sema,
+					  ppdev->idle_delay_jiffs);
+			mvppnd_inc_stat(ppdev, STATS_RX_IDLES, 1);
+
+			mvintdrv_unregister_isr_sema(&ppdev->interrupts_sema);
 			mvppnd_disable_rx_interrupts(ppdev);
-			napi_schedule(&ppdev->napi);
 		}
-	} while (!kthread_should_stop() && !rc);
+
+		more = mvppnd_process_rx_queues(ppdev);
+	} while (!kthread_should_stop());
 
 	dev_dbg(&ppdev->pdev.pdev->dev, "Exit RX thread\n");
 
@@ -1517,25 +1419,36 @@ static void mvppnd_dev_dbg_ring(struct mvppnd_dev *ppdev,
 	}
 }
 
+static u8 mvppnd_our_queue_idx(struct mvppnd_dev *ppdev, int queue)
+{
+	int i;
+
+	for (i = NUM_OF_RX_QUEUES - 1; i >= 0; i--)
+		if (ppdev->rx_queues[i] == queue)
+			return i;
+
+	return NUM_OF_RX_QUEUES;
+}
+
 static ssize_t mvppnd_show_rx_queues(struct kobject *kobj,
 				     struct kobj_attribute *attr, char *buf)
 {
 	struct mvppnd_dev *ppdev = container_of(attr, struct mvppnd_dev,
 						attr_rx_queues);
+	u8 q_idx;
 	int i;
 
 	strcpy(buf, "");
 
 	for (i = NUM_OF_RX_QUEUES - 1; i >= 0; i--) {
-		if (ppdev->rx_queues[i] == -1)
-			continue;
+		q_idx = mvppnd_our_queue_idx(ppdev, i);
 
-		snprintf(buf, PAGE_SIZE,
-			 "%squeue %d: status %d, ring-idx %d\n",
-			 buf, ppdev->rx_queues[i],
-			 mvppnd_queue_enabled(ppdev, REG_ADDR_RX_QUEUE_CMD,
-					      ppdev->rx_queues[i]) ? 1 : 0,
-			 ppdev->rx_rings[i].descs_ptr);
+		snprintf(buf, PAGE_SIZE, "%s[%c%d] %d, 0x%x, %d\n", buf,
+			 (q_idx != NUM_OF_RX_QUEUES) ? '*' : ' ', i,
+			 mvppnd_queue_enabled(ppdev, REG_ADDR_RX_QUEUE_CMD, i) ?
+			 1 : 0, mvppnd_read_rx_first_desc(ppdev, i),
+			 (i != NUM_OF_RX_QUEUES) ?
+			 ppdev->rx_rings[i].descs_ptr : -1);
 
 		if (ppdev->rx_rings[i].descs)
 			mvppnd_dev_dbg_ring(ppdev, &ppdev->rx_rings[i],
@@ -1577,7 +1490,7 @@ static ssize_t mvppnd_store_rx_queues(struct kobject *kobj,
 	ppdev->rx_queues_mask = queues_bitmap;
 
 	/* Update queue numbers */
-	for (i = NUM_OF_RX_QUEUES; i >= 0; i--)
+	for (i = NUM_OF_RX_QUEUES - 1; i >= 0; i--)
 		if (test_bit(i, &queues_bitmap)) {
 			ppdev->rx_queues[j] = i;
 			j++;
@@ -1657,12 +1570,18 @@ static ssize_t mvppnd_show_atu_win(struct kobject *kobj,
 	u32 addr;
 	int i;
 
+	snprintf(buf, PAGE_SIZE, "%s%-8s\t%-8s\t%-8s\t%-8s\t%-8s\t%-8s\t%-8s\n",
+		 "                   ", "ctrl1", "ctrl2", "low-base",
+		 "upper-base", "limit", "low-target", "upper-target");
+
 	if (ppdev->pdev.pdev->device != PCI_DEVICE_ID_ALDRIN2) {
 		for (i = 0; i < NUM_OF_ATU_WINDOWS; i++) {
 			addr = ATU_OFFS + i * 0x0200;
 			snprintf(buf, PAGE_SIZE,
-				"%s[%c%d] (0x%x) out: 0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\n",
+				"%s[%c%d] (0x%x) out: 0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\n",
 				buf, (i == ppdev->atu_win ? '*' : ' '), i, addr,
+				ioread32(ppdev->pdev.bar0 + addr + 0x0000),
+				ioread32(ppdev->pdev.bar0 + addr + 0x0004),
 				ioread32(ppdev->pdev.bar0 + addr + 0x0008),
 				ioread32(ppdev->pdev.bar0 + addr + 0x000c),
 				ioread32(ppdev->pdev.bar0 + addr + 0x0010),
@@ -1670,8 +1589,10 @@ static ssize_t mvppnd_show_atu_win(struct kobject *kobj,
 				ioread32(ppdev->pdev.bar0 + addr + 0x0018));
 			addr += 0x0100; /* Now inbound */
 			snprintf(buf, PAGE_SIZE,
-				"%s[%c%d] (0x%x) in : 0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\n",
+				"%s[%c%d] (0x%x) in : 0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\t0x%-8x\n",
 				buf, (i == ppdev->atu_win ? '*' : ' '), i, addr,
+				ioread32(ppdev->pdev.bar0 + addr + 0x0000),
+				ioread32(ppdev->pdev.bar0 + addr + 0x0004),
 				ioread32(ppdev->pdev.bar0 + addr + 0x0008),
 				ioread32(ppdev->pdev.bar0 + addr + 0x000c),
 				ioread32(ppdev->pdev.bar0 + addr + 0x0010),
@@ -1691,8 +1612,6 @@ static ssize_t mvppnd_store_atu_win(struct kobject *kobj,
 						attr_atu_win);
 	int rc;
 
-	ppdev->atu_win_addr_base = 0; /* Since we are changing the window */
-
 	rc = sscanf(buf, "%d", &ppdev->atu_win);
 	if ((rc != 1) || (ppdev->atu_win < -1) ||
 	    (ppdev->atu_win >= NUM_OF_ATU_WINDOWS)) {
@@ -1705,7 +1624,8 @@ static ssize_t mvppnd_store_atu_win(struct kobject *kobj,
 
 	rc = mvppnd_adjust_bar2_window(ppdev, REG_ADDR_VENDOR);
 	if (rc) {
-		dev_err(&ppdev->pdev.pdev->dev, "Fail to configure ATU window\n");
+		dev_err(&ppdev->pdev.pdev->dev,
+			"Fail to configure ATU window\n");
 		return -EINVAL;
 	}
 
@@ -1960,29 +1880,32 @@ static ssize_t mvppnd_store_rx_ring_size(struct kobject *kobj,
 	return count;
 }
 
-static ssize_t mvppnd_show_napi_poll_weight(struct kobject *kobj,
-					    struct kobj_attribute *attr,
-					    char *buf)
+static ssize_t mvppnd_show_rx_policy(struct kobject *kobj,
+				     struct kobj_attribute *attr, char *buf)
 {
 	struct mvppnd_dev *ppdev = container_of(attr, struct mvppnd_dev,
-						attr_napi_poll_weight);
+						attr_rx_policy);
 
-	sprintf(buf, "%d\n", ppdev->napi_poll_weight);
+	sprintf(buf, "budget %d, burst %d (usecs), idle %d (jiffies)\n",
+		ppdev->budget, ppdev->burst_delay_usecs,
+		ppdev->idle_delay_jiffs);
 
 	return strlen(buf);
 }
 
-static ssize_t mvppnd_store_napi_poll_weight(struct kobject *kobj,
-					     struct kobj_attribute *attr,
-					     const char *buf, size_t count)
+static ssize_t mvppnd_store_rx_policy(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      const char *buf, size_t count)
 {
 	struct mvppnd_dev *ppdev = container_of(attr, struct mvppnd_dev,
-						attr_napi_poll_weight);
+						attr_rx_policy);
 	int rc;
 
-	rc = sscanf(buf, "%d", &ppdev->napi_poll_weight);
-	if (rc != 1) {
-		dev_err(&ppdev->pdev.pdev->dev, "Invalid input\n");
+	rc = sscanf(buf, "%d %d %d", &ppdev->budget, &ppdev->burst_delay_usecs,
+		    &ppdev->idle_delay_jiffs);
+	if (rc != 3) {
+		dev_err(&ppdev->pdev.pdev->dev,
+			"Invalid input, expecting budget, burst_delay_usecs, idle_delay_jiffs\n");
 		return -EINVAL;
 	}
 
@@ -2050,8 +1973,8 @@ static ssize_t mvppnd_store_if_create(struct kobject *kobj,
 
 	if (flow_id < 1 || flow_id >= MAX_NETDEV) {
 		dev_err(&ppdev->pdev.pdev->dev,
-			"Invalid flow ID %d, must be %d to %d\n", 1,
-			MAX_NETDEV, flow_id);
+			"Invalid flow ID %d, must be %d to %d\n", flow_id, 1,
+			MAX_NETDEV - 1);
 		return -EINVAL;
 	}
 
@@ -2197,17 +2120,20 @@ static ssize_t mvppnd_store_mg(struct kobject *kobj,
 {
 	struct mvppnd_dev *ppdev = container_of(attr, struct mvppnd_dev,
 						attr_mg);
-	int rc;
+	int rc, mg;
 
-	rc = sscanf(buf, "%d", (int *)&ppdev->mg);
+	rc = sscanf(buf, "%d", &mg);
 	if (rc != 1) {
 		dev_err(&ppdev->pdev.pdev->dev, "Invalid input\n");
 		return -EINVAL;
 	}
 
+	ppdev->mg = mg;
+
 	rc = mvppnd_adjust_bar2_window(ppdev, REG_ADDR_VENDOR);
 	if (rc) {
-		dev_err(&ppdev->pdev.pdev->dev, "Fail to configure ATU window\n");
+		dev_err(&ppdev->pdev.pdev->dev,
+			"Fail to configure ATU window\n");
 		return -EINVAL;
 	}
 
@@ -2215,71 +2141,41 @@ static ssize_t mvppnd_store_mg(struct kobject *kobj,
 }
 
 #ifdef MVPPND_DEBUG_REG
-static ssize_t mvppnd_show_reg(struct kobject *kobj,
-			       struct kobj_attribute *attr, char *buf)
-{
-	struct mvppnd_dev *ppdev = container_of(attr, struct mvppnd_dev,
-						attr_reg);
-
-	if (!ppdev->sysfs_reg_addr) /* Not yet configured */
-		return 0;
-
-	snprintf(buf, PAGE_SIZE, "0x%x\n",
-		 mvppnd_read_reg(ppdev, ppdev->sysfs_reg_addr));
-
-	return strlen(buf);
-}
-
 static ssize_t mvppnd_store_reg(struct kobject *kobj,
 				struct kobj_attribute *attr,
 				const char *buf, size_t count)
 {
 	struct mvppnd_dev *ppdev = container_of(attr, struct mvppnd_dev,
 						attr_reg);
-	int argc;
-	u32 val;
-	int i;
+	int argc, cmd, arg1, arg2, arg3;
 
-	argc = sscanf(buf, "0x%x 0x%x", &ppdev->sysfs_reg_addr, &val);
-	if (argc != 1 && argc != 2) {
-		dev_err(&ppdev->pdev.pdev->dev,
-			"Invalid input, expecting addr [val]\n");
-		ppdev->sysfs_reg_addr = 0;
-	}
+	argc = sscanf(buf, "0x%x 0x%x 0x%x 0x%x", &cmd, &arg1,&arg2, &arg3);
 
-	if (ppdev->sysfs_reg_addr == 0x1) { /* 0x1: clear netdev stat */
-		i = (argc == 2) ? val : 0; /* Flow ID, default to main */
-		ppdev->sdev.flows[i]->ndev->stats.rx_packets = 0;
-		ppdev->sdev.flows[i]->ndev->stats.rx_bytes = 0;
-		ppdev->sdev.flows[i]->ndev->stats.rx_dropped = 0;
-		ppdev->sdev.flows[i]->ndev->stats.tx_packets = 0;
-		ppdev->sdev.flows[i]->ndev->stats.tx_bytes = 0;
-		ppdev->sdev.flows[i]->ndev->stats.tx_dropped = 0;
-		goto out;
-	}
+	switch (cmd) {
+		case 0x1:
+			if (argc != 4) {
+				printk("Expecting 4 args (win, field, val)\n");
+				return -EINVAL;
+			}
+			printk("win 0x%x, field 0x%x, val 0x%x\n", arg1, arg2,
+			       arg3);
+			iowrite32(arg3, ppdev->pdev.bar0 + ATU_OFFS + arg1 *
+				  0x0200 + arg2);
+			break;
 
-	if (ppdev->sysfs_reg_addr == 0x2) { /* 0x2: enable interrupts (i.e. fake
-                                               NAPI) */
-		mvppnd_enable_rx_interrupts(ppdev);
-		goto out;
-	}
+		case 0x2:
+			if (argc != 2) {
+				printk("Expecting 1 arg (print_packets_interval)\n");
+				return -EINVAL;
+			}
+			ppdev->print_packets_interval = arg1;
+			break;
 
-	if (ppdev->sysfs_reg_addr == 0x3) { /* 0x3: Interval to print packets */
-		ppdev->print_packets_interval = val;
-		goto out;
-	}
+		default:
+			printk("Invalid command 0x%x\n", cmd);
+			return -EINVAL;
+	};
 
-	if (ppdev->sysfs_reg_addr == 0x4) { /* 0x4: print next-desc-ptrs */
-		printk("next-desc-ptrs:\n");
-		for (i = 0; i < NUM_OF_RX_QUEUES; i++)
-			printk("[%d] 0x%x\n", i,
-			       mvppnd_read_rx_first_desc(ppdev, i));
-	}
-
-	if (argc == 2) /* i.e user wish to set value to register */
-		mvppnd_write_reg(ppdev, ppdev->sysfs_reg_addr, val);
-
-out:
 	return count;
 }
 #endif
@@ -2409,13 +2305,12 @@ static int mvppnd_sysfs_create_files(struct mvppnd_dev *ppdev, u16 flow_id)
 		goto remove_rx_queues_weight;
 	}
 
-	rc = mvppnd_sysfs_create_file(flow->ndev, &ppdev->attr_napi_poll_weight,
-				      "napi_poll_weight", 0644,
-				      mvppnd_show_napi_poll_weight,
-				      mvppnd_store_napi_poll_weight);
+	rc = mvppnd_sysfs_create_file(flow->ndev, &ppdev->attr_rx_policy, "rx_policy",
+				      0644, mvppnd_show_rx_policy,
+				      mvppnd_store_rx_policy);
 	if (rc) {
 		dev_err(&ppdev->pdev.pdev->dev,
-			"Fail to create napi_poll_weight sysfs file\n");
+			"Fail to create rx_policy sysfs file\n");
 		goto remove_driver_statistics;
 	}
 
@@ -2426,7 +2321,7 @@ static int mvppnd_sysfs_create_files(struct mvppnd_dev *ppdev, u16 flow_id)
 	if (rc) {
 		dev_err(&ppdev->pdev.pdev->dev,
 			"Fail to create rx_ring_size sysfs file\n");
-		goto remove_napi_poll_weight;
+		goto remove_rx_policy;
 	}
 
 	rc = mvppnd_sysfs_create_file(flow->ndev, &ppdev->attr_if_create,
@@ -2470,7 +2365,7 @@ static int mvppnd_sysfs_create_files(struct mvppnd_dev *ppdev, u16 flow_id)
 
 #ifdef MVPPND_DEBUG_REG
 	rc = mvppnd_sysfs_create_file(flow->ndev, &ppdev->attr_reg,
-				      "reg", 0644, mvppnd_show_reg,
+				      "reg", 0644, NULL,
 				      mvppnd_store_reg);
 	if (rc) {
 		dev_err(&ppdev->pdev.pdev->dev,
@@ -2502,9 +2397,9 @@ remove_rx_ring_size:
 	sysfs_remove_file(&flow->ndev->dev.kobj,
 			  &ppdev->attr_rx_ring_size.attr);
 
-remove_napi_poll_weight:
+remove_rx_policy:
 	sysfs_remove_file(&flow->ndev->dev.kobj,
-			  &ppdev->attr_napi_poll_weight.attr);
+			  &ppdev->attr_rx_policy.attr);
 
 remove_driver_statistics:
 	sysfs_remove_file(&flow->ndev->dev.kobj,
@@ -2568,7 +2463,7 @@ static void mvppnd_sysfs_remove_files(struct mvppnd_dev *ppdev, u16 flow_id)
 	sysfs_remove_file(&flow->ndev->dev.kobj,
 			  &ppdev->attr_rx_ring_size.attr);
 	sysfs_remove_file(&flow->ndev->dev.kobj,
-			  &ppdev->attr_napi_poll_weight.attr);
+			  &ppdev->attr_rx_policy.attr);
 	sysfs_remove_file(&flow->ndev->dev.kobj,
 			  &ppdev->attr_driver_statistics.attr);
 	sysfs_remove_file(&flow->ndev->dev.kobj,
@@ -2593,6 +2488,7 @@ static int mvppnd_xmit_buf(struct mvppnd_dev *ppdev, struct sk_buff *skb,
 	u32 tmp_next_desc_ptr; /* TODO: Working in 'list' mode */
 	unsigned long jiffs; /* Wait for SDMA to take the desc */
 	int data_ptr;
+	int ret;
 
 	if (!sgb->mappings[0])
 		return -EINVAL;
@@ -2646,8 +2542,12 @@ static int mvppnd_xmit_buf(struct mvppnd_dev *ppdev, struct sk_buff *skb,
 #endif
 
 		data_ptr++;
-		if (sgb->mappings[data_ptr]) /* We have more? */
+		/* We have more? */
+		if ((data_ptr < ARRAY_SIZE(sgb->mappings) - 1) &&
+		     sgb->mappings[data_ptr])
 			cyclic_inc(&wr_ptr, TX_RING_SIZE);
+		else
+			break;
 	}
 
 	/* Last descriptor - add last */
@@ -2671,7 +2571,7 @@ static int mvppnd_xmit_buf(struct mvppnd_dev *ppdev, struct sk_buff *skb,
 
 	jiffs = jiffies;
 	do {
-		sdma_took = ((ppdev->tx_ring.descs[wr_ptr_first]->cmd_sts &
+		sdma_took = ((ppdev->tx_ring.descs[wr_ptr]->cmd_sts &
 			     TX_CMD_BIT_OWN_SDMA) != TX_CMD_BIT_OWN_SDMA);
 		wait_too_long = (jiffies_to_usecs(jiffies - jiffs) >
 				 TX_WAIT_FOR_CPU_OWENERSHIP_USEC);
@@ -2693,9 +2593,11 @@ static int mvppnd_xmit_buf(struct mvppnd_dev *ppdev, struct sk_buff *skb,
 	/* ppdev->tx_ring.descs_ptr = wr_ptr; */
 
 	if (wait_too_long)
-		return -EIO;
+		ret = -EIO;
+	else
+		ret = total_bytes - ETH_ALEN * 2 - flow->config_tx_dsa_size;
 
-	return total_bytes - ETH_ALEN * 2 - flow->config_tx_dsa_size;
+	return ret;
 }
 
 static void mvppnd_transmit_skb(struct sk_buff *skb)
@@ -2704,6 +2606,9 @@ static void mvppnd_transmit_skb(struct sk_buff *skb)
 	struct mvppnd_dev *ppdev = flow->ppdev;
 	struct mvppnd_dma_sg_buf sgb = {};
 	int rc;
+
+	/* We need to protect a concurrent access to the ring */
+	spin_lock(&ppdev->tx_lock);
 
 	/*
 	dev_dbg(&ppdev->pdev->dev, "Got packet to transmit, len %d (head %d)\n",
@@ -2728,21 +2633,10 @@ static void mvppnd_transmit_skb(struct sk_buff *skb)
 		flow->ndev->stats.tx_dropped++;
 	}
 
+	spin_unlock(&ppdev->tx_lock);
+
 	kfree_skb(skb);
 }
-
-#ifdef TX_WITH_WORKER_THREAD
-static void mvppnd_tx_work(struct work_struct *work)
-{
-	struct mvppnd_skb_work *skb_work = container_of(work,
-							struct mvppnd_skb_work,
-							work);
-
-	mvppnd_transmit_skb(skb_work->ppdev, skb_work->skb);
-
-	kfree(work);
-}
-#endif
 
 /*********** netdev ops ********************************/
 int mvppnd_open(struct net_device *dev)
@@ -2759,6 +2653,12 @@ int mvppnd_open(struct net_device *dev)
 	if (ppdev->tx_queue == -1) {
 		netdev_err(dev,
 			   "Can't open device while tx_queue is not set\n");
+		return -EPERM;
+	}
+
+	if (!ppdev->max_pkt_sz) {
+		netdev_err(dev,
+			   "Can't open device while max_pkt_sz is not set\n");
 		return -EPERM;
 	}
 
@@ -2806,10 +2706,6 @@ int mvppnd_open(struct net_device *dev)
 	ppdev->dsa.virt = mvppnd_alloc_coherent(ppdev, DSA_SIZE,
 						&ppdev->dsa.dma);
 
-	/* No more changes to some sysfs entries */
-	mvppnd_sysfs_set_read_only(ppdev->sdev.flows[0],
-				   &ppdev->attr_napi_poll_weight);
-
 	ppdev->tx_wq = create_workqueue("mvppnd_tx");
 	if (!ppdev->tx_wq) {
 		netdev_err(dev, "Fail to allocate TX work queue\n");
@@ -2824,26 +2720,12 @@ int mvppnd_open(struct net_device *dev)
 		goto destroy_rx_wq;
 	}
 
-	netif_napi_add(dev, &ppdev->napi, mvppnd_poll, ppdev->napi_poll_weight);
-	napi_enable(&ppdev->napi);
-
-	/* Register with int driver to receive IRQs */
-	rc = mvintdrv_register_isr_sema(&ppdev->interrupts_sema);
-	if (rc < 0) {
-		netdev_err(dev, "Fail to register ISR\n");
-		goto destroy_rx_thread;
-	}
-
 	mvppnd_disable_tx_interrupts(ppdev);
 	mvppnd_enable_rx_interrupts(ppdev);
 
 	debug_print_some_registers(ppdev);
 
 	return 0;
-
-destroy_rx_thread:
-	netif_napi_del(&ppdev->napi);
-	mvppnd_stop_rx_thread(ppdev);
 
 destroy_rx_wq:
 	destroy_workqueue(ppdev->tx_wq);
@@ -2876,10 +2758,6 @@ int mvppnd_stop(struct net_device *dev)
 
 	mvintdrv_unregister_isr_sema(&ppdev->interrupts_sema);
 
-	napi_disable(&ppdev->napi);
-
-	netif_napi_del(&ppdev->napi);
-
 	mvppnd_stop_rx_thread(ppdev);
 
 	if (ppdev->tx_wq)
@@ -2902,28 +2780,9 @@ netdev_tx_t mvppnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct mvppnd_dev *ppdev = flow->ppdev;
 
 	BUG_ON(!flow->up);
+	BUG_ON(ppdev->tx_queue == -1);
 
-#ifdef TX_WITH_WORKER_THREAD
-	struct mvppnd_skb_work *skb_work = kmalloc(sizeof(*skb_work),
-						   GFP_KERNEL);
-#endif
-
-	/* This should not happen because we're trying to synch tx_queue with
-	 * the interface state */
-	if (ppdev->tx_queue == -1) {
-		netdev_err(skb->dev, "TX queue not yet initialized\n");
-		return NETDEV_TX_OK;
-	}
-
-#ifdef TX_WITH_WORKER_THREAD
-	INIT_WORK(&skb_work->work, mvppnd_tx_work);
-	skb_work->ppdev = ppdev;
-	skb_work->skb = skb;
-
-	queue_work(ppdev->tx_wq, &skb_work->work);
-#else
 	mvppnd_transmit_skb(skb);
-#endif
 
 	return NETDEV_TX_OK;
 }
@@ -2940,7 +2799,8 @@ static void mvppnd_init_ppdev(struct mvppnd_dev *ppdev, struct pci_dev *pdev)
 {
 	int i;
 
-	mutex_init(&ppdev->queues_mutex);
+	mutex_init(&ppdev->rx_lock);
+	spin_lock_init(&ppdev->tx_lock);
 	ppdev->tx_queue = -1;
 	for (i = 0; i < NUM_OF_RX_QUEUES; i++)
 		ppdev->rx_queues[i] = -1;
@@ -2949,13 +2809,14 @@ static void mvppnd_init_ppdev(struct mvppnd_dev *ppdev, struct pci_dev *pdev)
 		ppdev->atu_win = DEFAULT_ATU_WIN;
 	else
 		ppdev->atu_win = -1;
-	ppdev->atu_win_addr_base = 0;
 
-	ppdev->max_pkt_sz = DEFAULT_MTU;
+	ppdev->max_pkt_sz = DEFAULT_PKT_SZ;
 
 	mvppnd_save_mg_wins(ppdev, DEFAULT_MG_WIN);
 
-	ppdev->napi_poll_weight = DEFAULT_NAPI_POLL_WEIGHT;
+	ppdev->budget = DEFAULT_BUDGET;
+	ppdev->burst_delay_usecs = DEFAULT_BURST_DELAY_USECS;
+	ppdev->idle_delay_jiffs = DEFAULT_IDLE_DELAY_JIFFS;
 
 	ppdev->rx_ring_size = DEFAULT_RX_RING_SIZE;
 
@@ -2964,7 +2825,7 @@ static void mvppnd_init_ppdev(struct mvppnd_dev *ppdev, struct pci_dev *pdev)
 
 static void mvppnd_clean_ppdev(struct mvppnd_dev *ppdev)
 {
-	mutex_destroy(&ppdev->queues_mutex);
+	mutex_destroy(&ppdev->rx_lock);
 }
 
 int mvppnd_create_netdev(struct mvppnd_dev *ppdev, char *name, u16 flow_id)

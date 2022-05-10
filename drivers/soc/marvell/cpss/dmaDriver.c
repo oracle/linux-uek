@@ -96,7 +96,7 @@ disclaimer.
 #if defined(CONFIG_X86_64)
 #define LINUX_VMA_DMABASE 0x1fc00000UL
 #elif defined(CONFIG_X86) || defined(CONFIG_ARCH_MULTI_V7) || defined(CONFIG_ARM64)
-#define LINUX_VMA_DMABASE 0x1c800000UL
+#define LINUX_VMA_DMABASE 0x60000000UL
 #endif /* CONFIG_X86 || CONFIG_ARCH_MULTI_V7 || CONFIG_ARM64 */
 #ifdef CONFIG_MIPS
 #define LINUX_VMA_DMABASE 0x2c800000UL
@@ -106,7 +106,7 @@ disclaimer.
 #define LINUX_VMA_DMABASE 0x19000000UL
 #endif /* LINUX_VMA_DMABASE */
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)) || defined(CONFIG_ARCH_MVEBU)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0))
 #define MMAP_USE_REMAP_PFN_RANGE
 #endif
 
@@ -148,9 +148,8 @@ static int mvDmaDrv_mmap(struct file *file, struct vm_area_struct *vma)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0)
 	int (*dma_configure)(struct device *dev);
 	int ret;
+#endif
 
-	/* Until LK 4.11, dma_alloc_coherent(NULL, ...) is allowed, and used in
-	   case of AC3 */
 	if (!m->dev && !platdrv_dev) {
 		printk(KERN_ERR "%s: Nither PCI, nor Platform device is registered, cannot mmap\n",
 		       MV_DRV_NAME);
@@ -159,7 +158,6 @@ static int mvDmaDrv_mmap(struct file *file, struct vm_area_struct *vma)
 
 	if (!m->dev && platdrv_dev)
 		m->dev = platdrv_dev;
-#endif
 
 	dev_info(m->dev, "%s(file=%p) data=%p LINUX_VMA_DMABASE=0x%lx\n",
 		 __func__, file, m, LINUX_VMA_DMABASE);
@@ -168,51 +166,56 @@ static int mvDmaDrv_mmap(struct file *file, struct vm_area_struct *vma)
 		return -ENXIO;
 
 	if (vma->vm_start == LINUX_VMA_DMABASE && shared_dmaBlock) {
+		dev_dbg(m->dev, "SHM mode\n");
 		if (m != shared_dmaBlock) {
+			dev_dbg(m->dev,
+				"SHM mode, new client instance, redirecting to pre-allocated block\n");
 			kfree(m);
 			file->private_data = shared_dmaBlock;
 		}
 		m = shared_dmaBlock;
 	} else {
 		if (vma->vm_start == LINUX_VMA_DMABASE) {
+			dev_dbg(m->dev, "SHM mode, first client instance\n");
 			shared_dmaBlock = m;
 		}
-        if (m->dev && !platdrv_dev) { /* don't config dma_ops in case of no-dev, or for platdrv_dev */
+
+		/* don't config dma_ops in case of no-dev, or for platdrv_dev */
+		if (m->dev && !platdrv_dev) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0)
-        /* The new DMA framework, that was added in 4.11 (compared to 4.4), does not initiate each PCI dev as DMA-enabled
-           by default (dev->dma_ops is set to dummy_dma_ops), so need to set the PP to be DMA enabled. This can be done
-           through DTS, but it is not a solution for Intel CPUs, hance need to use HACK to call dma_configure, which is not
-           exported by the kernel
-         */
+		/* The new DMA framework, that was added in 4.11 (compared to
+ 		 * 4.4), does not initiate each PCI dev as DMA-enabled by
+ 		 * default (dev->dma_ops is set to dummy_dma_ops), so need to
+ 		 * set the PP to be DMA enabled. This can be done through DTS,
+ 		 * but it is not a solution for Intel CPUs, hance need to use
+ 		 * HACK to call dma_configure, which is not exported by the
+ 		 * kernel
+		 */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,4,0)
-		dma_configure = m->dev->bus->dma_configure;
+			dma_configure = m->dev->bus->dma_configure;
 #else
-		dma_configure = (void*)(unsigned long)
+			dma_configure = (void*)(unsigned long)
 					kallsyms_lookup_name("dma_configure");
 #endif
 
-		if (!dma_configure) {
-			dev_err(m->dev, "Fail to resolve dma_configure\n");
-			return -ENXIO;
-		}
+			if (!dma_configure) {
+				dev_err(m->dev,
+					"Fail to resolve dma_configure\n");
+				return -ENXIO;
+			}
 
-		ret = dma_configure(m->dev);
-		if (ret) {
-			dev_err(m->dev, "dma_configure failed %d\n", ret);
-			return -EFAULT;
-		}
+			ret = dma_configure(m->dev);
+			if (ret) {
+				dev_err(m->dev,
+					"dma_configure failed %d\n", ret);
+				return -EFAULT;
+			}
 #endif
 
-		dev_info(m->dev, "allocating for device %p %s\n", m->dev,
-			 m->dev->kobj.name);
-	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0)
-		else if (!m->dev) {
-			printk("m->dev is not set\n");
-			return -ENXIO;
-	}
-#endif
+			dev_info(m->dev, "allocating for device %p %s\n",
+				 m->dev, m->dev->kobj.name);
+		}
 
 		m->size = (size_t)(vma->vm_end - vma->vm_start);
 

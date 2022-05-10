@@ -47,6 +47,8 @@ struct mv_resource_info {
 };
 
 int mvGetResourceInfo(int resource, struct mv_resource_info *res);
+int mvGetSip6ResourceInfo(int resource, int device, struct mv_resource_info *res);
+int mvGetDeviceId(void);
 #endif
 
 /* resources. The constants will be never changed, only new can be added */
@@ -61,5 +63,18 @@ int mvGetResourceInfo(int resource, struct mv_resource_info *res);
 #define MV_RESOURCE_MBUS_DRAGONITE_ITCM 5
 #define MV_RESOURCE_MBUS_DRAGONITE_DTCM 6
 #define MV_RESOURCE_MBUS_PSS_PORTS      7
+
+#define IOCTL_MV_MBUS_DRV_MAGIC         'M'
+#define IOCTL_MV_MBUS_DRV_SET_DEV_ID    _IOW(IOCTL_MV_MBUS_DRV_MAGIC, 1, int)
+
+#define MV_MBUS_DRV_DEV_ID_UNKNOWN      0
+#define MV_MBUS_DRV_DEV_ID_AC5          1
+#define MV_MBUS_DRV_DEV_ID_AC5X         2
+
+#define CNM_DEV_ID_REG_ADDR         0x7F90004C
+#define CNM_DEV_ID_REG_SIZE         4
+#define CNM_DEV_ID_VAL_AC5          0x000B4000
+#define CNM_DEV_ID_VAL_AC5X         0x00098000
+#define CNM_DEV_ID_VAL_MASK         0x000FF000
 
 #endif /* __mvResources_h__ */

@@ -66,9 +66,11 @@ disclaimer.
 
 #include "mvResources.h"
 
+int mvMbusDrvDevId = 0;
+
 static int mvMbusDrv_mmap(struct file * file, struct vm_area_struct *vma)
 {
-	struct mv_resource_info res;
+	struct mv_resource_info res = {0};
 	switch ((int)vma->vm_pgoff) {
 	case MV_RESOURCE_MBUS_RUNIT:
 	case MV_RESOURCE_MBUS_SWITCH:
@@ -76,8 +78,14 @@ static int mvMbusDrv_mmap(struct file * file, struct vm_area_struct *vma)
 	case MV_RESOURCE_MBUS_DRAGONITE_ITCM:
 	case MV_RESOURCE_MBUS_DRAGONITE_DTCM:
 	case MV_RESOURCE_MBUS_PSS_PORTS:
-		if (mvGetResourceInfo((int)vma->vm_pgoff, &res) < 0)
-			return -ENXIO;
+        if((mvMbusDrvDevId == MV_MBUS_DRV_DEV_ID_AC5) || 
+            (mvMbusDrvDevId == MV_MBUS_DRV_DEV_ID_AC5X)) {
+		    if (mvGetSip6ResourceInfo((int)vma->vm_pgoff, mvMbusDrvDevId, &res) < 0)
+			    return -ENXIO;
+        } else {
+		    if (mvGetResourceInfo((int)vma->vm_pgoff, &res) < 0)
+			    return -ENXIO;
+        }
 		break;
 	default:
 		return -ENXIO;
@@ -106,8 +114,7 @@ static int mvMbusDrv_mmap(struct file * file, struct vm_area_struct *vma)
 
 static ssize_t mvMbusDrv_read(struct file *f, char *buf, size_t siz, loff_t *off)
 {
-	struct mv_resource_info res;
-	int rc;
+	struct mv_resource_info res = {0};
 	unsigned long long rv;
 
 #if 0
@@ -115,9 +122,15 @@ static ssize_t mvMbusDrv_read(struct file *f, char *buf, size_t siz, loff_t *off
 #endif
 	if (siz < sizeof(rv))
 		return -EINVAL;
-	rc = mvGetResourceInfo(((int)f->f_pos) & MV_RESOURCE_ID_MASK, &res);
-	if (rc < 0)
-		return -ENOENT;
+    if((mvMbusDrvDevId == MV_MBUS_DRV_DEV_ID_AC5) || 
+        (mvMbusDrvDevId == MV_MBUS_DRV_DEV_ID_AC5X)) {
+		if (mvGetSip6ResourceInfo(((int)f->f_pos) & MV_RESOURCE_ID_MASK, mvMbusDrvDevId, &res) < 0)
+			return -ENXIO;
+    } else {
+		if (mvGetResourceInfo(((int)f->f_pos) & MV_RESOURCE_ID_MASK, &res) < 0)
+			return -ENXIO;
+    }
+
 	if (((int)f->f_pos) & MV_RESOURCE_START)
 		rv = (unsigned long long)res.start;
 	else
@@ -147,14 +160,15 @@ static int mvMbusDrv_release(struct inode *inode, struct file *file)
 }
 
 static struct file_operations mvMbusDrv_fops = {
-	.mmap   = mvMbusDrv_mmap,
-	.read   = mvMbusDrv_read,
-	.llseek = mvMbusDrv_llseek,
-	.open   = mvMbusDrv_open,
-	.release= mvMbusDrv_release /* A.K.A close */
+	.mmap           = mvMbusDrv_mmap,
+	.read           = mvMbusDrv_read,
+	.llseek         = mvMbusDrv_llseek,
+	.open           = mvMbusDrv_open,
+	.release        = mvMbusDrv_release, /* A.K.A close */
 };
 
 static void mvMbusDrv_postInitDrv(void)
 {
 	printk(KERN_DEBUG "mvMbusDrv major=%d minor=%d\n", major, minor);
+	mvMbusDrvDevId = mvGetDeviceId();
 }

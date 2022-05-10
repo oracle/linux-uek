@@ -70,7 +70,7 @@ static struct semaphore	*mvIntDrvInterrupsSema; /* Alert other modules on interr
 
 struct interrupt_slot {
 	int			used;
-	int			depth; /* keep track of enable/disable */
+	atomic_t		depth; /* keep track of enable/disable */
 	unsigned int		irq;
 	struct semaphore	sem; /* The semaphore on which the user waits */
 	struct semaphore	close_sem; /* Sync disconnect with read */
@@ -119,7 +119,7 @@ static irqreturn_t prestera_tl_ISR(int irq, void *tl)
 
 	BUG_ON(!sl);
 
-	sl->depth--;
+	atomic_dec(&sl->depth);
 	/* Disable the interrupt vector */
 	disable_irq_nosync(irq);
 	/* Enqueue the PP task BH in the tasklet */
@@ -163,7 +163,7 @@ static unsigned int alloc_interrupt_slot(unsigned int irq)
 					"mvIntDrv", (void *)&sl->tasklet))
 				panic("Can not assign IRQ %u to mvIntDrv\n",
 				      irq);
-			sl->depth--;
+			atomic_set(&sl->depth, -1);
 			disable_irq(irq);
 			return slot;
 		}
@@ -173,12 +173,12 @@ static unsigned int alloc_interrupt_slot(unsigned int irq)
 
 static void synch_irq_state(struct interrupt_slot *sl)
 {
-	while (sl->depth < 0) {
-		sl->depth++;
+	while (atomic_read(&sl->depth) < 0) {
+		atomic_inc(&sl->depth);
 		enable_irq(sl->irq);
 	}
-	while (sl->depth) {
-		sl->depth--;
+	while (atomic_read(&sl->depth)) {
+		atomic_dec(&sl->depth);
 		disable_irq(sl->irq);
 	}
 }
@@ -307,7 +307,7 @@ static ssize_t mvIntDrv_write(struct file *f, const char *buf, size_t siz, loff_
 		if (slot == -ENOENT)
 			return -EINVAL;
 		sl = &(mvIntDrv_slots[slot]);
-		sl->depth--;
+		atomic_dec(&sl->depth);
 		disable_irq(irq);
 		return 0;
 	}
@@ -317,7 +317,7 @@ static ssize_t mvIntDrv_write(struct file *f, const char *buf, size_t siz, loff_
 		if (slot == -ENOENT)
 			return -EINVAL;
 		sl = &(mvIntDrv_slots[slot]);
-		sl->depth++;
+		atomic_inc(&sl->depth);
 		enable_irq(irq);
 		return 0;
 	}
@@ -392,12 +392,12 @@ static ssize_t mvIntDrv_read(struct file *f, char *buf, size_t siz, loff_t *off)
 		return -EINVAL;
 
 	/* Enable the interrupt vector */
-	sl->depth++;
+	atomic_inc(&sl->depth);
 	enable_irq(sl->irq);
 
 	if (down_interruptible(&sl->sem)) {
 		down(&sl->close_sem);
-		sl->depth--;
+		atomic_dec(&sl->depth);
 		disable_irq(sl->irq);
 		up(&sl->close_sem);
 		return -EINTR;
