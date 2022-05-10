@@ -302,7 +302,7 @@ config COMMON_CLK_BD718XX
 config COMMON_CLK_MARVELL_OTX2
 	tristate "System clock driver for OcteonTX2 platforms with ACPI"
 	depends on ACPI && MAILBOX && PCC && ARM64
-	default PCC
+	default n
 	help
 	  Following driver supports coprocessor clock (SCLK)
 	  for OcteonTX2 platforms. Driver is required mostly for the ACPI based
