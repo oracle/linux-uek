@@ -710,8 +710,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_unreg_netdev;
 
-	if (!is_otx2_sdpvf(vf->pdev))
-		otx2vf_set_ethtool_ops(netdev);
+	otx2vf_set_ethtool_ops(netdev);
 
 	err = otx2vf_mcam_flow_init(vf);
 	if (err)
