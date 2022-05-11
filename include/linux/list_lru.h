@@ -221,6 +221,13 @@ unsigned long list_lru_walk_node(struct list_lru *lru, int nid,
 				 list_lru_walk_cb isolate, void *cb_arg,
 				 unsigned long *nr_to_walk);
 
+unsigned long list_lru_walk_one_node(struct list_lru *lru, int nid,
+				list_lru_walk_cb isolate, void *cb_arg,
+				unsigned long nr_total,
+				unsigned long nr_to_walk);
+
+long list_lru_elems_node(struct list_lru *lru, int nid);
+
 static inline unsigned long
 list_lru_shrink_walk(struct list_lru *lru, struct shrink_control *sc,
 		     list_lru_walk_cb isolate, void *cb_arg)
@@ -252,4 +259,44 @@ list_lru_walk(struct list_lru *lru, list_lru_walk_cb isolate,
 	}
 	return isolated;
 }
+
+/*
+ * list_lru_walk_all_nodes: Modified version of list_lru_walk().
+ * This function tries to distribute 'nr_to_walk' elements across
+ * nodes and guarantees that all nodes will be walked, unlike the
+ * list_lru_walk() which walks 'nr_to_walk' elements in all nodes
+ * combined and doesn't guarantee that a given nodes will be walked.
+ */
+static inline unsigned long
+list_lru_walk_all_nodes(struct list_lru *lru, list_lru_walk_cb isolate,
+	void *cb_arg, unsigned long nr_total, unsigned long nr_to_walk)
+{
+	int nid;
+	unsigned long isolated = 0;
+
+	for_each_node_state(nid, N_NORMAL_MEMORY) {
+		isolated += list_lru_walk_one_node(lru, nid, isolate,
+					cb_arg, nr_total, nr_to_walk);
+	}
+	return isolated;
+}
+
+/**
+ * list_lru_elems: walk a list_lru, determine the # of elements
+ * and the total number of nodes.
+ * @lru: the lru pointer.
+ * Return value: The number of elements in the lru
+ */
+static inline long
+list_lru_elems(struct list_lru *lru)
+{
+	int nid;
+	long nelems = 0;
+
+	for_each_node_state(nid, N_NORMAL_MEMORY) {
+		nelems += list_lru_elems_node(lru, nid);
+	}
+	return nelems;
+}
+
 #endif /* _LRU_LIST_H */
