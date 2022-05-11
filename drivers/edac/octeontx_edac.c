@@ -612,7 +612,7 @@ static int octeontx_edac_ghes_register_mc(struct octeontx_edac_driver *ghes_drv)
 		idx = edac_device_alloc_index();
 
 		device_initialize(&gsrc->dev);
-		dev_set_name(&gsrc->dev, gsrc->name);
+		dev_set_name(&gsrc->dev, "edac-%s", gsrc->name);
 		ret = device_add(&gsrc->dev);
 		if (ret < 0) {
 			dev_err(&gsrc->dev, "add device %s\n", dev_name(&gsrc->dev));
