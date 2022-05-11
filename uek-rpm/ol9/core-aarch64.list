@@ -275,7 +275,9 @@ kernel/net/dns_resolver/dns_resolver.ko
 kernel/net/ipv4/ah4.ko
 kernel/net/ipv4/esp4.ko
 kernel/net/ipv4/esp4_offload.ko
+kernel/net/ipv4/gre.ko
 kernel/net/ipv4/ipcomp.ko
+kernel/net/ipv4/ip_gre.ko
 kernel/net/ipv4/ip_vti.ko
 kernel/net/ipv4/netfilter/iptable_filter.ko
 kernel/net/ipv4/netfilter/iptable_mangle.ko
@@ -291,6 +293,8 @@ kernel/net/ipv4/tunnel4.ko
 kernel/net/ipv4/xfrm4_tunnel.ko
 kernel/net/ipv6/ah6.ko
 kernel/net/ipv6/esp6.ko
+kernel/net/ipv6/ip6_gre.ko
+kernel/net/ipv6/ip6_tunnel.ko
 kernel/net/ipv6/ipcomp6.ko
 kernel/net/ipv6/netfilter/ip6table_filter.ko
 kernel/net/ipv6/netfilter/ip6table_mangle.ko
@@ -305,6 +309,7 @@ kernel/net/ipv6/netfilter/nf_reject_ipv6.ko
 kernel/net/ipv6/netfilter/nft_fib_ipv6.ko
 kernel/net/ipv6/tunnel6.ko
 kernel/net/ipv6/xfrm6_tunnel.ko
+kernel/net/key/af_key.ko
 kernel/net/netfilter/ipset/ip_set_hash_ip.ko
 kernel/net/netfilter/ipset/ip_set.ko
 kernel/net/netfilter/ipvs/ip_vs.ko
@@ -325,6 +330,7 @@ kernel/net/netfilter/nft_reject.ko
 kernel/net/netfilter/xt_addrtype.ko
 kernel/net/netfilter/xt_CHECKSUM.ko
 kernel/net/netfilter/xt_comment.ko
+kernel/net/netfilter/xt_CONNSECMARK.ko
 kernel/net/netfilter/xt_conntrack.ko
 kernel/net/netfilter/xt_mark.ko
 kernel/net/netfilter/xt_MASQUERADE.ko
@@ -332,6 +338,7 @@ kernel/net/netfilter/xt_multiport.ko
 kernel/net/netfilter/xt_nat.ko
 kernel/net/netfilter/xt_owner.ko
 kernel/net/netfilter/xt_policy.ko
+kernel/net/netfilter/xt_SECMARK.ko
 kernel/net/netfilter/xt_set.ko
 kernel/net/psample/psample.ko
 kernel/net/rds/rds.ko
