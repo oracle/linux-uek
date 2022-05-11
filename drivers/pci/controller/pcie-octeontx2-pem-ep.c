@@ -16,8 +16,6 @@
 #include <linux/platform_device.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
-#include <linux/iommu.h>
-#include <linux/dma-mapping.h>
 #include <linux/uio_driver.h>
 
 #define PEM_EP_DRV_NAME		"octeontx2-pem-ep"
@@ -49,7 +47,6 @@
 struct mv_pem_ep {
 	struct device	*dev;
 	void __iomem	*base;
-	dma_addr_t	dh;
 	void		*va;
 	struct uio_info	uio_rst_int_perst;
 };
@@ -130,19 +127,22 @@ err_exit:
 
 static int pem_ep_bar_setup(struct mv_pem_ep *pem_ep)
 {
+	phys_addr_t pa;
 	int idx;
 
-	pem_ep->va = dma_alloc_coherent(pem_ep->dev, PEM_BAR4_INDEX_MEM, &pem_ep->dh, GFP_KERNEL);
+	pem_ep->va = devm_kzalloc(pem_ep->dev, PEM_BAR4_INDEX_MEM, GFP_KERNEL);
 	if (!pem_ep->va)
 		return -ENOMEM;
 
+	pa = virt_to_phys(pem_ep->va);
 	for (idx = PEM_BAR4_INDEX_START; idx < PEM_BAR4_INDEX_END; idx++) {
-		uint64_t val, addr;
+		phys_addr_t addr;
+		uint64_t val;
 		int i;
 
 		/* Each index in BAR4 points to a 4MB region */
 		i = idx - PEM_BAR4_INDEX_START;
-		addr = pem_ep->dh + (i * PEM_BAR4_INDEX_SIZE);
+		addr = pa + (i * PEM_BAR4_INDEX_SIZE);
 
 		/* IOVA 52:22 is used by hardware */
 		val = PEM_BAR4_INDEX_ADDR_IDX(addr >> 22);
@@ -193,7 +193,7 @@ static int pem_ep_probe(struct platform_device *pdev)
 	return 0;
 
 err_exit:
-	dma_free_coherent(pem_ep->dev, PEM_BAR4_INDEX_MEM, pem_ep->va, pem_ep->dh);
+	devm_kfree(pem_ep->dev, pem_ep->va);
 	devm_kfree(dev, pem_ep);
 	return ret;
 }
@@ -205,7 +205,7 @@ static int pem_ep_remove(struct platform_device *pdev)
 
 	pr_info("Removing %s driver\n", PEM_EP_DRV_NAME);
 
-	dma_free_coherent(pem_ep->dev, PEM_BAR4_INDEX_MEM, pem_ep->va, pem_ep->dh);
+	devm_kfree(pem_ep->dev, pem_ep->va);
 	uio_unregister_device(&pem_ep->uio_rst_int_perst);
 	devm_kfree(dev, pem_ep);
 
