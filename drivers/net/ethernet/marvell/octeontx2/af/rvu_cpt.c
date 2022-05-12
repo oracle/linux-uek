@@ -43,6 +43,8 @@ static irqreturn_t rvu_cpt_af_flt_intr_handler(int irq, void *ptr)
 	struct rvu *rvu = block->rvu;
 	int blkaddr = block->addr;
 	u64 reg0, reg1, reg2 = 0;
+	u8 grp, eng;
+	u64 val;
 
 	reg0 = rvu_read64(rvu, blkaddr, CPT_AF_FLTX_INT(0));
 	reg1 = rvu_read64(rvu, blkaddr, CPT_AF_FLTX_INT(1));
@@ -56,6 +58,24 @@ static irqreturn_t rvu_cpt_af_flt_intr_handler(int irq, void *ptr)
 				    "Received CPTAF FLT irq : 0x%llx, 0x%llx",
 				     reg0, reg1);
 	}
+	if (reg2) {
+		eng = find_first_bit((unsigned long *)&reg0, 64);
+		eng += 128;
+	} else if (reg1) {
+		eng = find_first_bit((unsigned long *)&reg0, 64);
+		eng += 64;
+	} else {
+		eng = find_first_bit((unsigned long *)&reg0, 64);
+	}
+
+	grp = rvu_read64(rvu, blkaddr, CPT_AF_EXEX_CTL2(eng)) & 0xFF;
+	/* Disable and enable the engine which triggers fault */
+	rvu_write64(rvu, blkaddr, CPT_AF_EXEX_CTL2(eng), 0x0);
+	val = rvu_read64(rvu, blkaddr, CPT_AF_EXEX_CTL(eng));
+	rvu_write64(rvu, blkaddr, CPT_AF_EXEX_CTL(eng), val & ~1ULL);
+
+	rvu_write64(rvu, blkaddr, CPT_AF_EXEX_CTL2(eng), grp);
+	rvu_write64(rvu, blkaddr, CPT_AF_EXEX_CTL(eng), val | 1ULL);
 
 	rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT(0), reg0);
 	rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT(1), reg1);
@@ -119,8 +139,10 @@ static void cpt_10k_unregister_interrupts(struct rvu_block *block, int off)
 	int i;
 
 	/* Disable all CPT AF interrupts */
-	for (i = 0; i < CPT_10K_AF_INT_VEC_RVU; i++)
-		rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1C(i), 0x1);
+	rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1C(0), ~0ULL);
+	rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1C(1), ~0ULL);
+	rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1C(2), 0xFFFF);
+
 	rvu_write64(rvu, blkaddr, CPT_AF_RVU_INT_ENA_W1C, 0x1);
 	rvu_write64(rvu, blkaddr, CPT_AF_RAS_INT_ENA_W1C, 0x1);
 
@@ -151,7 +173,7 @@ static void cpt_unregister_interrupts(struct rvu *rvu, int blkaddr)
 
 	/* Disable all CPT AF interrupts */
 	for (i = 0; i < CPT_AF_INT_VEC_RVU; i++)
-		rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1C(i), 0x1);
+		rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1C(i), ~0ULL);
 	rvu_write64(rvu, blkaddr, CPT_AF_RVU_INT_ENA_W1C, 0x1);
 	rvu_write64(rvu, blkaddr, CPT_AF_RAS_INT_ENA_W1C, 0x1);
 
@@ -181,7 +203,10 @@ static int cpt_10k_register_interrupts(struct rvu_block *block, int off)
 						    &rvu->irq_name[(off + i) * NAME_SIZE]);
 		if (ret)
 			goto err;
-		rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1S(i), 0x1);
+		if (i == CPT_10K_AF_INT_VEC_FLT2)
+			rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1S(i), 0xFFFF);
+		else
+			rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1S(i), ~0ULL);
 	}
 
 	ret = rvu_cpt_do_register_interrupt(block, off + CPT_10K_AF_INT_VEC_RVU,
@@ -231,7 +256,7 @@ static int cpt_register_interrupts(struct rvu *rvu, int blkaddr)
 						    &rvu->irq_name[(offs + i) * NAME_SIZE]);
 		if (ret)
 			goto err;
-		rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1S(i), 0x1);
+		rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1S(i), ~0ULL);
 	}
 
 	ret = rvu_cpt_do_register_interrupt(block, offs + CPT_AF_INT_VEC_RVU,
