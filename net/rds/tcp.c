@@ -161,9 +161,19 @@ void rds_tcp_reset_callbacks(struct socket *sock,
 	 * end up deadlocking with tcp_sendmsg(), and the RDS_IN_XMIT
 	 * would not get set. As a result, we set c_state to
 	 * RDS_CONN_RESETTTING, to ensure that rds_tcp_state_change
-	 * cannot mark rds_conn_path_up() in the window before lock_sock()
+	 * cannot mark rds_conn_path_up() in the window before lock_sock().
+	 *
+	 * But do this transition only if the connection is still
+	 * in state RDS_CONN_CONNECTING, in order to not trigger
+	 * race conditions with a concurrent connection shutdown.
 	 */
-	rds_conn_path_state_change(cp, RDS_CONN_RESETTING, DR_DEFAULT, 0);
+	if (!rds_conn_path_transition(cp,
+				      RDS_CONN_CONNECTING, RDS_CONN_RESETTING,
+				      DR_DEFAULT) &&
+	    !rds_conn_path_transition(cp,
+				      RDS_CONN_RESETTING, RDS_CONN_RESETTING,
+				      DR_DEFAULT))
+		rds_conn_path_drop(cp, DR_INV_CONN_STATE, 0);
 
 	wait_event(cp->cp_waitq, !test_bit(RDS_IN_XMIT, &cp->cp_flags));
 	lock_sock(osock->sk);
