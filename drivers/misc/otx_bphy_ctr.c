@@ -195,6 +195,13 @@ static void cleanup_el3_irqs(struct task_struct *task)
 {
 	int i;
 
+	/* On platforms that do not support bphy irqs firmware returns
+	 * maximum interrupt number as all-ffs. Iterating over this
+	 * range would lead to a hard error.
+	 */
+	if (bphy_max_irq == ~0UL)
+		return;
+
 	for (i = 0; i < bphy_max_irq; i++) {
 		if (irq_installed[i] &&
 		    irq_installed_tasks[i] &&
