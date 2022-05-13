@@ -20,13 +20,10 @@
 
 #define CQE_ADDR(CQ, idx) ((CQ)->cqe_base + ((CQ)->cqe_size * (idx)))
 #define PTP_PORT	        0x13F
-/* Original timestamp offset starts at 34 byte in PTP Sync packet and its
- * divided as 6 byte seconds field and 4 byte nano seconds field.
- * Silicon supports only 4 byte seconds field so adjust seconds field
- * offset with 2
+/* PTPv2 header Original Timestamp starts at byte offset 34 and
+ * contains 6 byte seconds field and 4 byte nano seconds field.
  */
-#define PTP_SYNC_SEC_OFFSET	36
-#define PTP_SYNC_NSEC_OFFSET	40
+#define PTP_SYNC_SEC_OFFSET	34
 
 static inline int otx2_nix_cq_op_status(struct otx2_nic *pfvf,
 					struct otx2_cq_queue *cq)
@@ -1068,34 +1065,31 @@ static bool otx2_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
 static void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
 			      struct otx2_snd_queue *sq, int *offset)
 {
+	struct ptpv2_tstamp *origin_tstamp;
 	int ptp_offset = 0, udp_csum = 0;
 	struct timespec64 ts;
-	u64 iova, sec, nsec;
+	u64 iova;
 
-	if (!skb_shinfo(skb)->gso_size &&
-	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
-		if (pfvf->flags & OTX2_FLAG_PTP_ONESTEP_SYNC &&
-		    otx2_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
-			ts = ns_to_timespec64(pfvf->ptp->tstamp);
-			sec = ntohl(ts.tv_sec);
-			nsec = ntohl(ts.tv_nsec);
-
-			memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_SEC_OFFSET,
-			       &sec, 4);
-			memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_NSEC_OFFSET,
-			       &nsec, 4);
-			/* Point to correction field in PTP packet */
-			ptp_offset += 8;
+	if (unlikely(!skb_shinfo(skb)->gso_size &&
+		     (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP))) {
+		if (unlikely(pfvf->flags & OTX2_FLAG_PTP_ONESTEP_SYNC)) {
+			if (otx2_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
+				origin_tstamp = (struct ptpv2_tstamp *)
+						((u8 *)skb->data + ptp_offset +
+						 PTP_SYNC_SEC_OFFSET);
+				ts = ns_to_timespec64(pfvf->ptp->tstamp);
+				origin_tstamp->seconds_msb = ntohs((ts.tv_sec >> 32) & 0xffff);
+				origin_tstamp->seconds_lsb = ntohl(ts.tv_sec & 0xffffffff);
+				origin_tstamp->nanoseconds = ntohl(ts.tv_nsec);
+				/* Point to correction field in PTP packet */
+				ptp_offset += 8;
+			}
 		} else {
-			ptp_offset = 0;
-		}
-
-		if (!(pfvf->flags & OTX2_FLAG_PTP_ONESTEP_SYNC))
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
-
+		}
 		iova = sq->timestamps->iova + (sq->head * sizeof(u64));
 		otx2_sqe_add_mem(sq, offset, NIX_SENDMEMALG_E_SETTSTMP, iova,
-				 ptp_offset, ts.tv_nsec, udp_csum);
+				 ptp_offset, pfvf->ptp->base_ns, udp_csum);
 	} else {
 		skb_tx_timestamp(skb);
 	}

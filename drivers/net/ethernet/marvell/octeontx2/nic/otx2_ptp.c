@@ -22,6 +22,33 @@ static bool has_cn10k_ptp_pps_errata(struct otx2_ptp *ptp)
 	return false;
 }
 
+static u64 otx2_ptp_get_clock(struct otx2_ptp *ptp)
+{
+	struct ptp_req *req;
+	struct ptp_rsp *rsp;
+	int err;
+
+	if (!ptp->nic)
+		return 0;
+
+	req = otx2_mbox_alloc_msg_ptp_op(&ptp->nic->mbox);
+	if (!req)
+		return 0;
+
+	req->op = PTP_OP_GET_CLOCK;
+
+	err = otx2_sync_mbox_msg(&ptp->nic->mbox);
+	if (err)
+		return 0;
+
+	rsp = (struct ptp_rsp *)otx2_mbox_get_rsp(&ptp->nic->mbox.mbox, 0,
+						  &req->hdr);
+	if (IS_ERR(rsp))
+		return 0;
+
+	return rsp->clk;
+}
+
 static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
@@ -61,29 +88,8 @@ static int ptp_set_thresh(struct otx2_ptp *ptp, u64 thresh)
 static u64 ptp_cc_read(const struct cyclecounter *cc)
 {
 	struct otx2_ptp *ptp = container_of(cc, struct otx2_ptp, cycle_counter);
-	struct ptp_req *req;
-	struct ptp_rsp *rsp;
-	int err;
 
-	if (!ptp->nic)
-		return 0;
-
-	req = otx2_mbox_alloc_msg_ptp_op(&ptp->nic->mbox);
-	if (!req)
-		return 0;
-
-	req->op = PTP_OP_GET_CLOCK;
-
-	err = otx2_sync_mbox_msg(&ptp->nic->mbox);
-	if (err)
-		return 0;
-
-	rsp = (struct ptp_rsp *)otx2_mbox_get_rsp(&ptp->nic->mbox.mbox, 0,
-						  &req->hdr);
-	if (IS_ERR(rsp))
-		return 0;
-
-	return rsp->clk;
+	return otx2_ptp_get_clock(ptp);
 }
 
 static u64 ptp_tstmp_read(struct otx2_ptp *ptp)
@@ -215,9 +221,17 @@ static void otx2_sync_tstamp(struct work_struct *work)
 {
 	struct otx2_ptp *ptp = container_of(work, struct otx2_ptp,
 					    synctstamp_work.work);
+	struct otx2_nic *pfvf = ptp->nic;
+	u64 tstamp;
 
-	otx2_get_ptpclock(ptp, &ptp->tstamp);
-	schedule_delayed_work(&ptp->synctstamp_work, msecs_to_jiffies(500));
+	mutex_lock(&pfvf->mbox.lock);
+	tstamp = otx2_ptp_get_clock(ptp);
+	mutex_unlock(&pfvf->mbox.lock);
+
+	ptp->tstamp = timecounter_cyc2time(&pfvf->ptp->time_counter, tstamp);
+	ptp->base_ns = tstamp % NSEC_PER_SEC;
+
+	schedule_delayed_work(&ptp->synctstamp_work, msecs_to_jiffies(250));
 }
 
 static int otx2_ptp_enable(struct ptp_clock_info *ptp_info,
