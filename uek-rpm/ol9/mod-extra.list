@@ -29,7 +29,6 @@ c_can_platform.ko
 clip.ko
 cobra.ko
 coda.ko
-cuse.ko
 db9.ko
 dccp_diag.ko
 dccp_ipv4.ko
@@ -91,8 +90,6 @@ mcp2120-sir.ko
 mISDN_core.ko
 mISDN_dsp.ko
 mkiss.ko
-mptbase.ko
-mptctl.ko
 mptfc.ko
 nci.ko
 ncpfs.ko

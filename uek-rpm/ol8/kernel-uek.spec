@@ -358,52 +358,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
 %define initrd_prereq  dracut >= 027
 
-#
-# This macro does requires, provides, conflicts, obsoletes for a kernel package.
-#	%%kernel_reqprovconf <subpackage>
-# It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
-# macros defined above.
-#
-%define kernel_reqprovconf \
-Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
-Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
-Provides: kernel%{?variant}-drm = 4.3.0\
-Provides: kernel%{?variant}-drm-nouveau = 12\
-Provides: kernel%{?variant}-modeset = 1\
-Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
-Provides: oracleasm = 2.0.5\
-%ifnarch aarch64\
-Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
-Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
-%endif\
-Provides: perf = %{KVERREL}%{?1:.%{1}}\
-#Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
-%ifarch aarch64\
-Provides: kernel = %{rpmversion}-%{pkg_release}\
-Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
-%endif\
-Requires(pre): %{kernel_prereq}\
-Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
-Requires(pre): system-release\
-Requires(post): /usr/bin/kernel-install\
-Requires(preun): /usr/bin/kernel-install\
-Requires: numactl-libs\
-Conflicts: %{kernel_dot_org_conflicts}\
-Conflicts: %{package_conflicts}\
-Conflicts: shim-x64 <= 15-11.0.5.el8\
-Conflicts: shim-ia32 <= 15-11.0.5.el8\
-Provides: oracle(kernel-sig-key) == 202102\
-%{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
-%{expand:%%{?kernel%{?1:_%{1}}_obsoletes:Obsoletes: %%{kernel%{?1:_%{1}}_obsoletes}}}\
-%{expand:%%{?kernel%{?1:_%{1}}_provides:Provides: %%{kernel%{?1:_%{1}}_provides}}}\
-# We can't let RPM do the dependencies automatic because it'll then pick up\
-# a correct but undesirable perl dependency from the module headers which\
-# isn't required for the kernel proper to function\
-AutoReq: no\
-AutoProv: yes\
-%{nil}
-
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
 
 Name: kernel%{?variant}
@@ -513,8 +467,8 @@ Source21: securebootca.cer
 Source22: secureboot.cer
 Source23: turbostat
 Source43: generate_bls_conf.sh
-Source44: filter-x86_64.sh
-Source45: filter-aarch64.sh
+Source44: core-x86_64.list
+Source45: core-aarch64.list
 Source46: filter-modules.sh
 
 Source1000: config-x86_64
@@ -641,6 +595,7 @@ Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
 Requires: numactl-libs\
+Requires: libdnf >= 0.63.0-3.0.2.el8\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 Conflicts: shim-x64 <= 15-11.0.5.el8\
@@ -1065,11 +1020,11 @@ BuildKernel() {
 
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
-    make -s ARCH=$Arch olddefconfig > /dev/null
+    make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
 %if %{with_kabicollect}
-    make -s ARCH=$Arch V=1 KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+    make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
 %else
-    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
 %endif
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
@@ -1079,7 +1034,7 @@ BuildKernel() {
 %endif
 
     cp Module.symvers Module.symvers.save
-    make -k -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
+    make -k %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
     mv -f Module.symvers.save Module.symvers
 
     # Start installing the results
@@ -1379,9 +1334,15 @@ BuildKernel() {
     # modules lists.  This actually removes anything going into -modules
     # from the dir.
     find lib/modules/$KernelVer/kernel -name *.ko | sort -n > modules.list
-    cp $RPM_SOURCE_DIR/filter-*.sh .
-    ./filter-modules.sh modules.list %{_target_cpu}
-    rm filter-*.sh
+
+    cp $RPM_SOURCE_DIR/filter-modules.sh .
+    cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
+
+    # Append full path to the beginning of each line.
+    sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
+
+    ./filter-modules.sh core.list modules.list
+    rm filter-modules.sh
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
@@ -1396,7 +1357,7 @@ BuildKernel() {
     remove_depmod_files
 
     # Go back and find all of the various directories in the tree.  We use this
-    # for the dir lists in kernel-core
+    # for the dir lists in kernel-uek-core
     find lib/modules/$KernelVer/kernel -mindepth 1 -type d | sort -n > module-dirs.list
 
     # Cleanup
@@ -1407,13 +1368,13 @@ BuildKernel() {
 
     # Make sure the files lists start with absolute paths or rpmbuild fails.
     # Also add in the dir entries
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/k-d.list > ${modlistVariant}-modules.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list > ${modlistVariant}-modules.list
     sed -e 's/^lib*/%dir \/lib/' %{?zipsed} $RPM_BUILD_ROOT/module-dirs.list > ${modlistVariant}-core.list
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list >> ${modlistVariant}-core.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/core.list >> ${modlistVariant}-core.list
     sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/mod-extra.list >> ${modlistVariant}-modules-extra.list
 
     # Cleanup
-    rm -f $RPM_BUILD_ROOT/k-d.list
+    rm -f $RPM_BUILD_ROOT/core.list
     rm -f $RPM_BUILD_ROOT/modules.list
     rm -f $RPM_BUILD_ROOT/module-dirs.list
     rm -f $RPM_BUILD_ROOT/mod-extra.list
@@ -1705,14 +1666,14 @@ fi\
 if [ `uname -i` == "x86_64" -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ] && [ $1 -eq 1 ];\
 then\
-    /usr/bin/rpm -qa | grep -q -e kernel-uek-5.4 -e kernel-ueknano-5.4\
+    /usr/bin/rpm -qa | grep -q -e "kernel-uek-5.4" -e "kernel-uek4k-5.4" -e "kernel-ueknano-5.4"\
     if [ $? -eq 0 ]\
     then\
         # Change to uek-core only if current default is UEK6\
-        /bin/sed -r -i 's/^DEFAULTKERNEL=(kernel%{?variant}|kernel-ueknano)$/DEFAULTKERNEL=kernel%{?variant}-core/' /etc/sysconfig/kernel || exit $?\
+        /bin/sed -r -i 's/^DEFAULTKERNEL=(kernel-uek|kernel-uek4k|kernel-ueknano)$/DEFAULTKERNEL=kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
     else\
         # No UEK is present. Change the default to installing kernel\
-        /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}-core/' /etc/sysconfig/kernel || exit $?\
+        /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
     fi\
 fi}\
 %{nil}
@@ -1724,9 +1685,9 @@ fi}\
 #
 %define kernel_variant_postun(o) \
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
-if [ $1 -eq 0 ]\
+if [ $1 -eq 0 ] && [ `uname -i` == "x86_64" ];\
 then\
-    /usr/bin/rpm -qa | grep -q -e kernel-uek-5.4 -e kernel-ueknano-5.4\
+    /usr/bin/rpm -qa | grep -q -e "kernel-uek-5.4" -e "kernel-ueknano-5.4"\
     if [ $? -eq 0 ]\
     then\
         # UEK6 or UEK6 nano is present in the system.\
@@ -1907,7 +1868,7 @@ fi
 %ghost /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+%dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
