@@ -897,9 +897,17 @@ bool arm64_is_fatal_ras_serror(struct pt_regs *regs, unsigned int esr)
 	}
 }
 
+int __weak platform_serror(struct pt_regs *regs, unsigned int esr)
+{
+        return 0;
+}
+
 asmlinkage void do_serror(struct pt_regs *regs, unsigned int esr)
 {
 	const bool was_in_nmi = in_nmi();
+
+	if (platform_serror(regs, esr))
+		return;
 
 	if (!was_in_nmi)
 		nmi_enter();

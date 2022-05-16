@@ -29,6 +29,7 @@ void arm64_notify_segfault(unsigned long addr);
 void arm64_force_sig_fault(int signo, int code, void __user *addr, const char *str);
 void arm64_force_sig_mceerr(int code, void __user *addr, short lsb, const char *str);
 void arm64_force_sig_ptrace_errno_trap(int errno, void __user *addr, const char *str);
+int platform_serror(struct pt_regs *regs, unsigned int esr);
 
 /*
  * Move regs->pc to next instruction and do necessary setup before it
