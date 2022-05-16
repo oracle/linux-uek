@@ -218,7 +218,10 @@ struct cnf10k_bphy_ndev_comm_if {
 					ptp_pkt_info[MAX_PTP_MSG_PER_LMAC];
 	struct cnf10k_bphy_ndev_tx_ptp_ring_info
 					ptp_ts_ring_info[MAX_PTP_RING];
-	u64 reserved[4];
+	/* 1-step PTP enable 1: 1s-ptp 0: legacy ptp(2s ptp) */
+	u8  ndev_flags;
+	u8  reserved_8[7];
+	u64 reserved[3];
 };
 
 /**

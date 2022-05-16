@@ -47,6 +47,8 @@
 #define CAPT_EN					BIT(0)
 #define CAPT_TRIG_SW				(3UL << 8)
 
+#define BPHY_NDEV_TX_1S_PTP_EN_FLAG			BIT(0)
+
 /* global driver context */
 struct cnf10k_rfoe_drv_ctx {
 	u8				rfoe_num;
@@ -124,6 +126,7 @@ struct cnf10k_rfoe_ndev_priv {
 	struct tx_ptp_ring_cfg		ptp_ring_cfg;
 	struct rfoe_common_cfg		*rfoe_common;
 	u8				pkt_type_mask;
+	u8				ndev_flags;
 	/* priv lock */
 	spinlock_t			lock;
 	int				rx_hw_tstamp_en;
