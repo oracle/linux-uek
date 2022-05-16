@@ -343,13 +343,20 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	/* copy packet data to rd_dma_ptr start addr */
 	jd_dma_cfg_word_1 = (struct cnf10k_mhbw_jd_dma_cfg_word_1_s *)
 				((u8 *)job_entry->rd_dma_ptr + 8);
-	memcpy(otx2_iova_to_virt(priv->iommu_domain,
-				 jd_dma_cfg_word_1->start_addr),
-				 &tx_mem, sizeof(tx_mem));
-	memcpy(otx2_iova_to_virt(priv->iommu_domain,
-				 jd_dma_cfg_word_1->start_addr)
-				 + sizeof(tx_mem), skb->data,
-				 skb->len);
+	if (!priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
+		memcpy(otx2_iova_to_virt(priv->iommu_domain,
+					 jd_dma_cfg_word_1->start_addr),
+					 skb->data, skb->len);
+	} else {
+		memcpy(otx2_iova_to_virt(priv->iommu_domain,
+					 jd_dma_cfg_word_1->start_addr),
+					 &tx_mem, sizeof(tx_mem));
+		memcpy(otx2_iova_to_virt(priv->iommu_domain,
+					 jd_dma_cfg_word_1->start_addr)
+					 + sizeof(tx_mem), skb->data,
+					 skb->len);
+	}
+
 	jd_cfg_ptr->cfg3.pkt_len = skb->len + sizeof(tx_mem);
 	jd_dma_cfg_word_0->block_size = (((skb->len + 15 + sizeof(tx_mem)) >> 4) * 4);
 
@@ -1108,7 +1115,8 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	/* copy packet data to rd_dma_ptr start addr */
 	jd_dma_cfg_word_1 = (struct cnf10k_mhbw_jd_dma_cfg_word_1_s *)
 					((u8 *)job_entry->rd_dma_ptr + 8);
-	if (pkt_type == PACKET_TYPE_PTP) {
+	if (pkt_type == PACKET_TYPE_PTP &&
+	    priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
 		memcpy(otx2_iova_to_virt(priv->iommu_domain,
 					 jd_dma_cfg_word_1->start_addr),
 					 &tx_mem, sizeof(tx_mem));
@@ -1506,6 +1514,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			spin_lock_init(&priv->stats.lock);
 			priv->rfoe_num = if_cfg->lmac_info.rfoe_num;
 			priv->lmac_id = if_cfg->lmac_info.lane_num;
+			priv->ndev_flags = if_cfg->ndev_flags;
 			priv->if_type = IF_TYPE_ETHERNET;
 			memcpy(priv->mac_addr, if_cfg->lmac_info.eth_addr,
 			       ETH_ALEN);
