@@ -710,7 +710,7 @@ out:
 
 static void vhost_vsock_flush(struct vhost_vsock *vsock)
 {
-	vhost_work_dev_flush(&vsock->dev);
+	vhost_dev_flush(&vsock->dev);
 }
 
 static void vhost_vsock_reset_orphans(struct sock *sk)
