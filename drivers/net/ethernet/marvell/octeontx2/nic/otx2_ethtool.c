@@ -962,6 +962,13 @@ static int otx2_get_ts_info(struct net_device *netdev,
 	if (!pfvf->ptp)
 		return ethtool_op_get_ts_info(netdev, info);
 
+	if (is_otx2_sdpvf(pfvf->pdev)) {
+		info->so_timestamping = SOF_TIMESTAMPING_TX_SOFTWARE |
+					SOF_TIMESTAMPING_RX_SOFTWARE |
+					SOF_TIMESTAMPING_SOFTWARE;
+		return 0;
+	}
+
 	info->so_timestamping = SOF_TIMESTAMPING_TX_SOFTWARE |
 				SOF_TIMESTAMPING_RX_SOFTWARE |
 				SOF_TIMESTAMPING_SOFTWARE |
