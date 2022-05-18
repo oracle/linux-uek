@@ -64,8 +64,6 @@ kernel/drivers/char/ipmi/ipmi_msghandler.ko
 kernel/drivers/char/ipmi/ipmi_poweroff.ko
 kernel/drivers/char/ipmi/ipmi_si.ko
 kernel/drivers/char/ipmi/ipmi_ssif.ko
-kernel/drivers/char/tpm/tpm_crb.ko
-kernel/drivers/char/tpm/tpm.ko
 kernel/drivers/char/tpm/tpm_tis_core.ko
 kernel/drivers/char/tpm/tpm_tis.ko
 kernel/drivers/char/virtio_console.ko
