@@ -15,9 +15,9 @@
 #include <linux/err.h>
 #include <linux/seq_file.h>
 #include <linux/uidgid.h>
+#include <keys/asymmetric-type.h>
 #include <keys/system_keyring.h>
 #include "blacklist.h"
-#include "common.h"
 
 static struct key *blacklist_keyring;
 
@@ -236,8 +236,9 @@ static __init int load_revocation_certificate_list(void)
 	if (revocation_certificate_list_size)
 		pr_notice("Loading compiled-in revocation X.509 certificates\n");
 
-	return load_certificate_list(revocation_certificate_list, revocation_certificate_list_size,
-				     blacklist_keyring);
+	return x509_load_certificate_list(revocation_certificate_list,
+					  revocation_certificate_list_size,
+					  blacklist_keyring);
 }
 late_initcall(load_revocation_certificate_list);
 #endif
