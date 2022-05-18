@@ -297,20 +297,20 @@ static int tad_pmu_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = of_property_read_u32(node, "tad-page-size", &tad_page_size);
+	ret = of_property_read_u32(node, "marvell,tad-page-size", &tad_page_size);
 	if (ret) {
 		dev_err(&pdev->dev, "Can't find tad-page-size property\n");
 		return ret;
 	}
 
-	ret = of_property_read_u32(node, "tad-pmu-page-size",
+	ret = of_property_read_u32(node, "marvell,tad-pmu-page-size",
 				   &tad_pmu_page_size);
 	if (ret) {
 		dev_err(&pdev->dev, "Can't find tad-pmu-page-size property\n");
 		return ret;
 	}
 
-	ret = of_property_read_u32(node, "tad-cnt", &tad_cnt);
+	ret = of_property_read_u32(node, "marvell,tad-cnt", &tad_cnt);
 	if (ret) {
 		dev_err(&pdev->dev, "Can't find tad-cnt property\n");
 		return ret;
