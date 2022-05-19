@@ -120,12 +120,10 @@ static char *get_ucode_type_str(int ucode_type)
 
 static int get_ucode_type(struct device *dev,
 			  struct otx2_cpt_ucode_hdr *ucode_hdr,
-			  int *ucode_type)
+			  int *ucode_type, u16 rid)
 {
-	struct otx2_cptpf_dev *cptpf = dev_get_drvdata(dev);
 	char ver_str_prefix[OTX2_CPT_UCODE_VER_STR_SZ];
 	char tmp_ver_str[OTX2_CPT_UCODE_VER_STR_SZ];
-	struct pci_dev *pdev = cptpf->pdev;
 	int i, val = 0;
 	u8 nn;
 
@@ -133,7 +131,7 @@ static int get_ucode_type(struct device *dev,
 	for (i = 0; i < strlen(tmp_ver_str); i++)
 		tmp_ver_str[i] = tolower(tmp_ver_str[i]);
 
-	sprintf(ver_str_prefix, "ocpt-%02d", pdev->revision);
+	sprintf(ver_str_prefix, "ocpt-%02d", rid);
 	if (!strnstr(tmp_ver_str, ver_str_prefix, OTX2_CPT_UCODE_VER_STR_SZ))
 		return -EINVAL;
 
@@ -362,7 +360,7 @@ static int cpt_attach_and_enable_cores(struct otx2_cpt_eng_grp_info *eng_grp,
 }
 
 static int load_fw(struct device *dev, struct fw_info_t *fw_info,
-		   char *filename)
+		   char *filename, u16 rid)
 {
 	struct otx2_cpt_ucode_hdr *ucode_hdr;
 	struct otx2_cpt_uc_info_t *uc_info;
@@ -378,7 +376,7 @@ static int load_fw(struct device *dev, struct fw_info_t *fw_info,
 		goto free_uc_info;
 
 	ucode_hdr = (struct otx2_cpt_ucode_hdr *)uc_info->fw->data;
-	ret = get_ucode_type(dev, ucode_hdr, &ucode_type);
+	ret = get_ucode_type(dev, ucode_hdr, &ucode_type, rid);
 	if (ret)
 		goto release_fw;
 
@@ -451,7 +449,8 @@ static void print_uc_info(struct fw_info_t *fw_info)
 	}
 }
 
-static int cpt_ucode_load_fw(struct pci_dev *pdev, struct fw_info_t *fw_info)
+static int cpt_ucode_load_fw(struct pci_dev *pdev, struct fw_info_t *fw_info,
+			     u16 rid)
 {
 	char filename[OTX2_CPT_NAME_LENGTH];
 	char eng_type[8] = {0};
@@ -465,9 +464,9 @@ static int cpt_ucode_load_fw(struct pci_dev *pdev, struct fw_info_t *fw_info)
 			eng_type[i] = tolower(eng_type[i]);
 
 		snprintf(filename, sizeof(filename), "mrvl/cpt%02d/%s.out",
-			 pdev->revision, eng_type);
+			 rid, eng_type);
 		/* Request firmware for each engine type */
-		ret = load_fw(&pdev->dev, fw_info, filename);
+		ret = load_fw(&pdev->dev, fw_info, filename, rid);
 		if (ret)
 			goto release_fw;
 	}
@@ -1158,7 +1157,7 @@ int otx2_cpt_create_eng_grps(struct otx2_cptpf_dev *cptpf,
 	if (eng_grps->is_grps_created)
 		goto unlock;
 
-	ret = cpt_ucode_load_fw(pdev, &fw_info);
+	ret = cpt_ucode_load_fw(pdev, &fw_info, eng_grps->rid);
 	if (ret)
 		goto unlock;
 
@@ -1415,7 +1414,7 @@ static int create_eng_caps_discovery_grps(struct pci_dev *pdev,
 	int ret;
 
 	mutex_lock(&eng_grps->lock);
-	ret = cpt_ucode_load_fw(pdev, &fw_info);
+	ret = cpt_ucode_load_fw(pdev, &fw_info, eng_grps->rid);
 	if (ret) {
 		mutex_unlock(&eng_grps->lock);
 		return ret;
@@ -1703,14 +1702,15 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 		goto err_unlock;
 	}
 	INIT_LIST_HEAD(&fw_info.ucodes);
-	ret = load_fw(dev, &fw_info, ucode_filename[0]);
+
+	ret = load_fw(dev, &fw_info, ucode_filename[0], eng_grps->rid);
 	if (ret) {
 		dev_err(dev, "Unable to load firmware %s\n",
 			ucode_filename[0]);
 		goto err_unlock;
 	}
 	if (ucode_idx > 1) {
-		ret = load_fw(dev, &fw_info, ucode_filename[1]);
+		ret = load_fw(dev, &fw_info, ucode_filename[1], eng_grps->rid);
 		if (ret) {
 			dev_err(dev, "Unable to load firmware %s\n",
 				ucode_filename[1]);
