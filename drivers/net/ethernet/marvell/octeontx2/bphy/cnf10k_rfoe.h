@@ -144,6 +144,8 @@ struct cnf10k_rfoe_ndev_priv {
 	struct delayed_work		extts_work;
 	struct otx2_rfoe_stats		stats;
 	struct ptp_pin_desc		extts_config;
+	struct cyclecounter		cycle_counter;
+	struct timecounter		time_counter;
 	/* ptp lock */
 	struct mutex			ptp_lock;
 	u8				mac_addr[ETH_ALEN];
@@ -163,6 +165,13 @@ struct cnf10k_rfoe_ndev_priv {
 	u64				thresh;
 };
 
+/* PTPv2 originTimestamp structure */
+struct ptpv2_tstamp {
+	u16 seconds_msb; /* 16 bits + */
+	u32 seconds_lsb; /* 32 bits = 48 bits*/
+	u32 nanoseconds;
+} __packed;
+
 void cnf10k_rfoe_rx_napi_schedule(int rfoe_num, u32 status);
 
 int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
@@ -181,6 +190,9 @@ void cnf10k_rfoe_ptp_destroy(struct cnf10k_rfoe_ndev_priv *priv);
 
 void cnf10k_bphy_intr_handler(struct otx2_bphy_cdev_priv *cdev_priv,
 			      u32 status);
+u64 cnf10k_rfoe_read_ptp_clock(struct cnf10k_rfoe_ndev_priv *priv);
+int cnf10k_rfoe_ptp_tstamp2time(struct cnf10k_rfoe_ndev_priv *priv, u64 tstamp,
+				u64 *tsns);
 
 static inline u64 cnf10k_ptp_convert_timestamp(u64 timestamp)
 {
