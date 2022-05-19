@@ -4215,13 +4215,6 @@ static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 
 	if (kvm_vcpu_apicv_active(vcpu)) {
 		/*
-		 * AVIC does not work with an x2APIC mode guest. If the X2APIC feature
-		 * is exposed to the guest, disable AVIC.
-		 */
-		if (guest_cpuid_has(vcpu, X86_FEATURE_X2APIC))
-			kvm_set_apicv_inhibit(kvm, APICV_INHIBIT_REASON_X2APIC);
-
-		/*
 		 * Currently, AVIC does not work with nested virtualization.
 		 * So, we disable AVIC when cpuid for SVM is set in the L1 guest.
 		 */
