@@ -285,5 +285,17 @@
 			       0x0 0x1400 0x0 0x10		/* WDT0 */
 			       0x0 0x20000000 0x0 0x380000>;	/* PXB Base */
 		};
+
+		kpcimgr@20000000 {
+			compatible = "pensando,kpcimgr";
+			msi-parent = <&its 0x0000000f>;
+			shmem-index = <3>;
+			hwmem-index = <2>;
+			reg =  <0x0 0x20000000 0x0 0x00380000	/* PXB Base */
+				0x0 0x61800000 0x0 0x00101000	/* Interrupts */
+				0x0 0xc4000000 0x0 0x01000000	/* HWMEM */
+				0x0 0xc5000000 0x0 0x00F00000>;	/* SHMEM */
+			/* SHMEM must agree with oracle { linux,mem-reserve } */
+		};
 	};
 };

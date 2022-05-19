@@ -1,0 +1,294 @@
+KPCIMGR Documentation File
+
+The KPCIMGR driver provides infrastructure for loading a service
+library to handle indirect PCIe transactions on the Pensando/Elba
+SmartNIC platform. The service library provides service during the
+normal operation of the system and also during the brief period of
+kernel downtime when the system undergoes a kexec reboot. The service
+library code is contained in a loadable kernel module, and upon
+initiation of a soft reboot, the code is relocated to reserved memory
+(i.e. not used by Linux) and the code executes there until the new
+kernel begins running.
+
+
+There are 7 distinct code flows in this driver:
+
+ - Boot, initialization, and service resumption
+ - Service library module load and registration
+ - SYSFS interface
+ - Execution during normal (virtual) mode
+ - Interrupt handling
+ - Upcalls
+ - Kexec shutdown and transition to NOMMU mode
+
+Boot and initialization
+
+This path is executed 1+N times during the lifetime of the system. The
+first execution is “cold boot”, which only occurs after a power-on or
+reset. The 2nd and following executions occur during “warm boot”,
+which is after a Kexec, and the code inherits state from the previous
+kernel via the reserved RAM (“persistent” memory).
+
+
+kpcimgr_probe()
+
+
+There are several resources that are set up / mapped:
+
+ shmem (pciesvc library state)
+ kstate (driver state)
+ pciesvc library code
+ PXB & INTR (h/w registers)
+ hwmem (h/w state)
+
+The code is designed to work with two use cases:
+ - Oracle, which employs kexec + persistent memory
+ - Pensando, which does not kexec and therefore has no need of
+   persistent memory
+
+The device tree (elba.dtsi) provides us with the physical addresses of
+various resources. The number of these is arbitrary, and each one is
+recorded and mapped. However, two resources are special. One is
+'hwmem', which specifies the physical address of an area of memory
+shared by the P4 engine and software. We need to know which resource
+this is, since the pciesvc library explicitly needs a pointer to this
+area. The device tree identifier "hwmem-index" tells us which address
+represents hwmem.  The other special resource is 'shmem', which
+indicates an area of memory that the service library (and kpcimgr)
+will use for state that persists across a soft reboot. The device tree
+identifier "shmem-index" tells us which resource index represents
+shmem.  The shmem resource provides the start address and size of the
+shmem area, and in the Pensando use case, the start address will be
+zero, which indicates that there is no persistent memory, and hence
+the driver will allocate its own memory to represent shmem. Of course
+in this case no kexec reboot is possible as no state will survive.
+
+If a non-zero address is given for shmem, then it specifies the
+physical address of the RAM reserved outside of linux memory. In this
+case, we create virtual mappings for shmem, kstate, and pciesvc code
+from this area. The presence of KSTATE_MAGIC in kstate determines if
+we are inheriting state from the previous kernel. For the pensando use
+case, we vmalloc memory for shmem and kstate. In all cases, we create
+mappings for all other given memory ranges, and save all these in a
+table.
+
+IRQs are allocated for two interrupts, called indirect, and notify.
+Each IRQ is associated with its appropriate interrupt service
+routine. free_intrs() provides the undo path for alloc_intrs().
+
+misc_register() is called to set up character special file entry
+points: open, mmap, read, poll. These entry points are described
+later.
+
+If ks->valid and ks->running indicate, kpcimgr is reenabled.
+
+kpcimgr_normal_poll() is a front end for the pciesvc poll function. It
+checks h/w for any outstanding transaction and handles it. This is
+done just to take care of any transactions that may have arrived after
+the physical mode code completed but before the point where we enable
+interrupts. kpcimgr_start_running() is mostly a front end for the
+pciesvc init_intr function, which enables interrupt delivery by the
+elba asic.
+
+
+Service library module load and registration
+
+During this phase, a kernel module is loaded which contains the
+pciesvc library. When a kexec operation is initiated, the module code
+and data must be copied out to persistent memory. In order for this to
+work, the code must be examined to make sure it doesn’t contain any
+references outside of the library. The module code is not part of the
+kpcimgr code, but kpcimgr provides an API for the module to call to
+convey information about its own code/data layout as well as addresses
+of its important entry points. These entry points are how the service
+library is connected to normal kernel services since it cannot make
+any such calls on its own.
+
+kpcimgr_module_register()
+
+The module calls this and passes in a pointer to a mod struct and a
+pointer to the entry point structure (defined in kpcimgr_api.h)
+
+Version numbers are checked. The module provides a version number
+which must match the version number of the kpcimgr code.
+
+The code is examined to ensure that it can be safely relocated when
+the time comes. A call is made to contains_external_refs(), which
+iterates over the code in the module. The start of the code is
+provided by mod->core_layout.base. Unfortunately the mod structure
+does not tell us exactly where the code ends. It tells us the total
+size of the module, but this includes data, which we do not want to
+examine, as it might contain words that look like instructions and
+might cause us to declare a failure, which would be incorrect.
+
+Each instruction is examined. The arm64 BL instruction is used to call
+functions via PC-relative addressing. The target address is computed
+by extracting the instruction signed immediate and adding it to the
+instruction’s location. This target must lie within the bounds of the
+module, or else it is an external call, and thus disallowed and causes
+the entire thing to fail. Similarly, the arm64 ADRP instruction is
+used to compute the page address containing a desired piece of
+data. It’s not strictly PC-relative, as the base of the page
+containing the PC is added to the offset given by the instruction’s
+immediate (which is also in terms of pages). Again, the target page
+must be within the bounds of the module, or else failure is
+declared. We are not concerned with the low order bits of the target
+address since the module contains an integral number of pages; If the
+base page address is within the module, then the entire page is within
+the module as well.
+
+The switch from an old code module to the new one is extremely fast.
+If we are currently running, then stop and invalidate state. Then the
+old code module is released and pointers are switched over to the new
+module.  The offsets of all the pciesvc library entry points are
+saved, and the set_init_state() hook is called, where various
+initialization operations can be done. Restore valid with the magic
+number, and finally resume running if we were running before.
+
+There is a module parameter "relocate" which causes an immediate
+relocation to temporary (vmalloc) memory. This is mainly for testing
+as it is useful to prove that the module can be relocated and executed
+successfully without actually doing a kexec reboot.
+
+
+SYSFS Interface
+
+The code supports a simple sysfs interface, whose files can be found
+in /sys/kernel/kpcimgr. The available entries are:
+
+valid - when read, it gives the value of the kstate valid field, which
+ will either contain the kpcimgr magic number to indicate validity, or
+ 0 to indicate that no code is loaded. When written with any value,
+ the kpcimgr state is invalidated and the service stops running.
+
+running - when read, it gives the value of running combined with the
+ current debug value. When written with a zero value, kpcimgr stops
+ running. When written with a non-zero value, kpcimgr starts running
+ (if able) and certain bits of the value are used to set the debug
+ value.
+
+lib_version - read-only string indicating the version of the loaded
+ pciesvc library
+
+mgr_version - version of kpcimgr
+
+event_queue - when read, gives a peek at the tail of the event
+ queue. When written, injects an event onto the head of the queue.
+
+kstate - read-only, gives a copy of the kpcimgr kstate structure
+
+active_port - R/W access to internal active_port value
+
+
+
+Execution during normal (virtual) mode
+
+The pciesvc library must be initialized by the user space pciemgrd,
+which opens /dev/kpcimgr and sets up the initial state in shmem, which
+it accesses via an mmap call, described below. The open_kpcimgr() call
+will fail if there is no code loaded, so pciemgrd will know to fall
+back to an alternate scheme.  Pciemgrd should also check the sysfs
+file valid to determine if there is code loaded. The mmap_kpcimgr()
+function provides access to the shmem area. This is pretty standard
+code, but there is slightly different handling for the persistent
+memory case, which is known to consist of a contiguous region of
+physical memory.
+
+After starting kpcimgr running, pciemgrd calls select() on the
+/dev/kpcimgr file descriptor, which results in a call to
+poll_kpcimgr(), which indicates whether or not anything is available
+on the event queue. If an event is available, it is dequeued via
+read_kpcimgr(). Note that kpci_memcpy() is used since it avoids any
+cache operations that would happen in the normal memcpy(). Since
+persistent memory is non-cacheable, a cache instruction on any
+persistent address would be fatal. The potential performance penalty
+of the simplified memcpy operation is not important in this case.
+
+
+Interrupt Handling
+
+Once kpcimgr is running, and pciemgrd has set up shmem, normal
+operation begins. All activity at this point is initiated via
+interrupts. The service routines are kpcimgr_indirect_intr() and
+kpcimgr_notify_intr(), which are extremely similar in operation:
+
+ - Acquire spinlock
+ - Check kstate valid
+ - Increment relevant counter
+ - Compute address of appropriate ISR in pciesvc library, based on
+   base address of code area and offset of ISR saved at the time of
+   module registration
+ - Call the library ISR
+
+Upcalls
+
+There are a few cases where the service library needs kpcimgr to
+perform some action, and this is enabled via a simple upcall
+mechanism. A field in kstate provides the upcall address, and pciesvc
+may call to this service with a command and parameters. A NULL upcall
+pointer indicates that pciesvc is running in physical mode and no
+upcall service is available.
+
+Event upcall: This is called when pciesvc wants to alert kpcimgr that
+an event has been placed on the event queue. Kpcimgr needs to know
+this so it can wake up any processes that are polling for events.
+
+Protected read upcall: This is called when pciesvc want to read a h/w
+register in a safe way. Sometimes certain h/w addresses are not valid
+due to short windows of time when the PCIe reference clock is turned
+off. Normally such an access would cause an Serror and a subsequent
+kernel panic. The Pensando cap_pcie driver provides a service to
+perform a "protected read", in which an Serror is ignored for the
+brief moment when the dangerous read is executed.  The preg_read
+upcalls provides a gateway to the cap_pcie protected read service.
+
+
+Kexec shutdown
+
+When a kexec is initiated, the reboot notifier list will be
+called. kpcimgr_notify_reboot() will be called, and here we get the
+opportunity to do any last minute housekeeping before the system is
+shut down. We disassociate interrupts from their respective ISRs, and
+stop kpcimgr running. If there is no persistent memory, then this is
+the end of the world as far as kpcimgr is concerned, and we simply
+return. Otherwise, we simply do the memcpy() to move the service
+library code and data to persistent memory.  We then compute the
+address of the library entry point to initialize the library for
+polling mode (instead of interrupt mode), and call it. We make sure
+that the running field is set, which should be seen by the library the
+next time it is called.
+
+Transition to and Execution during NOMMU mode
+
+The very last thing the kernel does in the lifetime of the system is
+to quiesce the secondary CPUs, which it does by placing them in a
+“holding pen”, essentially an idle loop in which they spin waiting to
+be told what to do. This happens in smp_spin_table_cpu_die(), which is
+called for each cpu, and the ultimate call to cpu_soft_restart() puts
+the cpu into its holding pen. This is where we hijack a cpu by first
+calling kpcimgr_get_entry(), which determines if kpcimgr needs to run,
+and if so, returns the physical address of the code to run on the
+hijacked cpu. kpcimgr_get_entry() is a veneer for a call to the
+service library, which returns the (physical) address of the function
+to be run by the hijacked cpu. Generally, one cpu will be used to run
+the service code, but the interface is structured to be more general,
+and the service library may hijack as many processors as it likes.
+This allows room for future enhancements where several cpus might be
+employed for various tasks.
+
+The code that runs during this (kexec reboot) time is not part of the
+kpcimgr code, and is provided as part of the pciesvc library.  In
+short, the initial code is assembly language that does some basic
+setup (ie, provides a stack pointer) to allow the code to run in
+physical mode, and then loops checking periodically for outstanding
+PCIe transactions and alternately checking the smp_spin_table release
+location, which when set, indicates that it’s time to finish and
+rejoin the system. At this point, the new kernel is already executing
+after the kexec, and right after it brings the secondary CPUs back
+online, it will call the platform driver probe functions, and we will
+execute kpcimgr_probe() as described at the start of this document.
+
+During probe, if valid code is found in persistent memory, it is
+copied back to system (vmalloc) memory, where it will continue to
+execute forever, or until replaced by a new service library module
+being loaded.

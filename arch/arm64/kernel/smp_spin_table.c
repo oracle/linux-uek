@@ -158,6 +158,9 @@ static void smp_spin_table_cpu_die(unsigned int cpu)
 	__le64 __iomem *release_addr;
 	unsigned int *spin_table_inst;
 	unsigned long spin_table_start;
+#if defined(CONFIG_PENSANDO_SOC_PCIE)
+	unsigned long entry, kpcimgr_get_entry(unsigned long, unsigned int);
+#endif
 
 	if (!cpu_release_addr[cpu])
 		goto spin;
@@ -194,7 +197,18 @@ static void smp_spin_table_cpu_die(unsigned int cpu)
 	iounmap(release_addr);
 
 	local_daif_mask();
+#if defined(CONFIG_PENSANDO_SOC_PCIE)
+	/*
+	 * Ask kpcimgr if it would like to hijack a cpu.
+	 * It will return its polling function
+	 * address for the cpu it's borrowing, and for
+	 * all the others, it will return spin_table_start.
+	 */
+	entry = kpcimgr_get_entry(spin_table_start, cpu);
+	cpu_soft_restart(entry, spin_table_start, 0, cpu);
+#else
 	cpu_soft_restart(spin_table_start, 0, 0, cpu);
+#endif
 
 	BUG();
 
