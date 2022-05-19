@@ -8686,7 +8686,8 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 	 * per-VM state, and responsing vCPUs must wait for the update
 	 * to complete before servicing KVM_REQ_APICV_UPDATE.
 	 */
-	WARN_ON_ONCE(kvm_apicv_activated(vcpu->kvm) != kvm_vcpu_apicv_active(vcpu));
+	WARN_ON_ONCE((kvm_apicv_activated(vcpu->kvm) != kvm_vcpu_apicv_active(vcpu)) &&
+		     (kvm_get_apic_mode(vcpu) != LAPIC_MODE_DISABLED));
 
 	exit_fastpath = kvm_x86_ops.vcpu_run(vcpu);
 
