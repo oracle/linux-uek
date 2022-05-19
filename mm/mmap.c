@@ -685,7 +685,7 @@ inline int vma_expand(struct ma_state *mas, struct vm_area_struct *vma,
 	}
 
 	/* Not merging but overwriting any part of next is not handled. */
-	VM_BUG_ON(!remove_next && next != vma && end > next->vm_start);
+	VM_BUG_ON(next && !remove_next && next != vma && end > next->vm_start);
 	/* Only handles expanding */
 	VM_BUG_ON(vma->vm_start < start || vma->vm_end > end);
 
