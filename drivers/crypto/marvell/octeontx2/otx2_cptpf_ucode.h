@@ -150,6 +150,7 @@ struct otx2_cpt_eng_grps {
 	int engs_num;			/* total number of engines supported */
 	u8 eng_ref_cnt[OTX2_CPT_MAX_ENGINES];/* engines reference count */
 	bool is_grps_created; /* Is the engine groups are already created */
+	u16 rid;
 };
 struct otx2_cptpf_dev;
 int otx2_cpt_init_eng_grps(struct pci_dev *pdev,

@@ -13,6 +13,9 @@
 #define OTX2_CPT_DRV_NAME    "rvu_cptpf"
 #define OTX2_CPT_DRV_STRING  "Marvell RVU CPT Physical Function Driver"
 
+#define CPT_UC_RID_CN10K_A   4
+#define CPT_UC_RID_CN10K_B   5
+
 static void cptpf_enable_vf_flr_me_intrs(struct otx2_cptpf_dev *cptpf,
 					 int numvfs)
 {
@@ -618,6 +621,28 @@ static int cpt_is_pf_usable(struct otx2_cptpf_dev *cptpf)
 	return 0;
 }
 
+static int cptpf_get_rid(struct pci_dev *pdev, struct otx2_cptpf_dev *cptpf)
+{
+	struct otx2_cpt_eng_grps *eng_grps = &cptpf->eng_grps;
+
+	if (is_dev_otx2(pdev)) {
+		eng_grps->rid = pdev->revision;
+	} else {
+		switch (pdev->subsystem_device) {
+		case CPT_PCI_SUBSYS_DEVID_CN10K_A:
+			eng_grps->rid = CPT_UC_RID_CN10K_A;
+			break;
+		case CPT_PCI_SUBSYS_DEVID_CN10K_B:
+			eng_grps->rid = CPT_UC_RID_CN10K_B;
+			break;
+		default:
+			dev_err(&pdev->dev, "Invalid Subsystem ID\n");
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
 static int cptpf_sriov_disable(struct pci_dev *pdev)
 {
 	struct otx2_cptpf_dev *cptpf = pci_get_drvdata(pdev);
@@ -653,7 +678,9 @@ static int cptpf_sriov_enable(struct pci_dev *pdev, int num_vfs)
 	ret = cptpf_register_vfpf_intr(cptpf, num_vfs);
 	if (ret)
 		goto destroy_flr;
-
+	ret = cptpf_get_rid(pdev, cptpf);
+	if (ret)
+		goto disable_intr;
 	/* Get CPT HW capabilities using LOAD_FVC operation. */
 	ret = otx2_cpt_discover_eng_capabilities(cptpf);
 	if (ret)
