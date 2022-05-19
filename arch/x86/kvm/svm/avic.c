@@ -694,7 +694,14 @@ void svm_toggle_avic_for_irq_window(struct kvm_vcpu *vcpu, bool activate)
 
 void avic_set_virtual_apic_mode(struct kvm_vcpu *vcpu)
 {
-	return;
+	if (!lapic_in_kernel(vcpu) || avic_mode == AVIC_MODE_NONE)
+		return;
+
+	if (kvm_get_apic_mode(vcpu) == LAPIC_MODE_INVALID) {
+		WARN_ONCE(true, "Invalid local APIC state (vcpu_id=%d)", vcpu->vcpu_id);
+		return;
+	}
+	avic_refresh_apicv_exec_ctrl(vcpu);
 }
 
 void avic_hwapic_irr_update(struct kvm_vcpu *vcpu, int max_irr)
