@@ -13,7 +13,7 @@
  * Silicon supports only 4 byte seconds field so adjust seconds field
  * offset with 2
  */
-#define PTP_SYNC_SEC_OFFSET    36
+#define PTP_SYNC_SEC_OFFSET    34
 #define PTP_SYNC_NSEC_OFFSET   40
 
 /* global driver ctx */
@@ -214,29 +214,25 @@ static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv 
 						   struct sk_buff *skb,
 						   int ptp_offset, int udp_csum)
 {
-	u64 sec, nsec, sec1;
+	struct ptpv2_tstamp *origin_tstamp;
+	struct timespec64 ts;
+	u64 tstamp, tsns;
 
-	sec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
-	nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI) % NSEC_PER_SEC;
-	sec1 = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_SEC) & 0xFFFFFFFFUL;
-	/* check for nsec rollover */
-	if (sec1 > sec) {
-		nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI) % NSEC_PER_SEC;
-		sec = sec1;
-	}
+	tstamp = cnf10k_rfoe_read_ptp_clock(priv);
+	cnf10k_rfoe_ptp_tstamp2time(priv, tstamp, &tsns);
+	ts = ns_to_timespec64(tsns);
+
+	origin_tstamp = (struct ptpv2_tstamp *)((u8 *)skb->data + ptp_offset +
+						PTP_SYNC_SEC_OFFSET);
+	origin_tstamp->seconds_msb = ntohs((ts.tv_sec >> 32) & 0xffff);
+	origin_tstamp->seconds_lsb = ntohl(ts.tv_sec & 0xffffffff);
+	origin_tstamp->nanoseconds = ntohl(ts.tv_nsec);
 
 	/* Point to correction field in PTP packet */
 	tx_mem->start_offset = ptp_offset + 8;
 	tx_mem->udp_csum_crt = udp_csum;
-	tx_mem->base_ns  = nsec;
+	tx_mem->base_ns  = tstamp % NSEC_PER_SEC;
 	tx_mem->step_type = 1;
-
-	sec = ntohl(sec);
-	nsec = ntohl(nsec);
-	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_SEC_OFFSET,
-	       &sec, 4);
-	memcpy((u8 *)skb->data + ptp_offset + PTP_SYNC_NSEC_OFFSET,
-	       &nsec, 4);
 }
 
 /* submit pending ptp tx requests */
@@ -387,7 +383,7 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 						 ptp_tx_work);
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
 	struct skb_shared_hwtstamps ts;
-	u64 timestamp;
+	u64 timestamp, tsns;
 	u16 jobid;
 
 	if (!priv->ptp_tx_skb) {
@@ -423,13 +419,13 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 		priv->stats.tx_hwtstamp_failures++;
 		goto submit_next_req;
 	}
-
 	/* update timestamp value in skb */
 	timestamp = cnf10k_ptp_convert_timestamp(tx_tstmp->ptp_timestamp);
 	cnf10k_rfoe_calc_ptp_ts(priv, &timestamp);
+	cnf10k_rfoe_ptp_tstamp2time(priv, timestamp, &tsns);
 
 	memset(&ts, 0, sizeof(ts));
-	ts.hwtstamp = ns_to_ktime(timestamp);
+	ts.hwtstamp = ns_to_ktime(tsns);
 	skb_tstamp_tx(priv->ptp_tx_skb, &ts);
 
 submit_next_req:
@@ -490,7 +486,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 {
 	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
 	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
-	u64 tstamp = 0, mbt_state, jdt_iova_addr;
+	u64 tstamp = 0, mbt_state, jdt_iova_addr, tsns;
 	struct rfoe_psw_w2_ecpri_s *ecpri_psw_w2;
 	struct rfoe_psw_w2_roe_s *rfoe_psw_w2;
 	struct cnf10k_rfoe_ndev_priv *priv2;
@@ -633,8 +629,10 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	}
 
 	if (priv2->rx_hw_tstamp_en) {
+		tstamp = cnf10k_ptp_convert_timestamp(tstamp);
 		cnf10k_rfoe_calc_ptp_ts(priv, &tstamp);
-		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tstamp);
+		cnf10k_rfoe_ptp_tstamp2time(priv, tstamp, &tsns);
+		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tsns);
 	}
 
 	netif_receive_skb(skb);
@@ -1033,10 +1031,9 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 		  job_entry->jd_iova_addr);
 
 	/* hw timestamp */
-
-	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
-	    priv->tx_hw_tstamp_en) {
+	if (unlikely(pkt_type == PACKET_TYPE_PTP)) {
 		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+		/* check if one-step is enabled */
 		if (priv->ptp_onestep_sync &&
 		    cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
 			cnf10k_rfoe_prepare_onestep_ptp_header(priv,
