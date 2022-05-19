@@ -226,8 +226,7 @@ static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv 
 	}
 
 	/* Point to correction field in PTP packet */
-	ptp_offset += 8;
-	tx_mem->start_offset = ptp_offset;
+	tx_mem->start_offset = ptp_offset + 8;
 	tx_mem->udp_csum_crt = udp_csum;
 	tx_mem->base_ns  = nsec;
 	tx_mem->step_type = 1;
