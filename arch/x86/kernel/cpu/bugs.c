@@ -147,6 +147,7 @@ static void ssb_init(void);
 static void l1tf_select_mitigation(void);
 static void mds_select_mitigation(void);
 static void md_clear_update_mitigation(void);
+static void md_clear_select_mitigation(void);
 static void taa_select_mitigation(void);
 static void mmio_select_mitigation(void);
 static void srbds_select_mitigation(void);
@@ -293,9 +294,7 @@ void __ref check_bugs(void)
 	ssb_init();
 
 	l1tf_select_mitigation();
-	mds_select_mitigation();
-	taa_select_mitigation();
-	mmio_select_mitigation();
+	md_clear_select_mitigation();
 	srbds_select_mitigation();
 
 	/*
@@ -304,13 +303,6 @@ void __ref check_bugs(void)
 	*/
 	if (system_state == SYSTEM_RUNNING)
 		return;
-
-	/*
-	 * As MDS, TAA and MMIO Stale Data mitigations are inter-related, update
-	 * and print their mitigation after MDS, TAA and MMIO Stale Data
-	 * mitigation selection is done.
-	 */
-	md_clear_update_mitigation();
 
 	arch_smt_update();
 
@@ -820,6 +812,20 @@ out:
 		pr_info("TAA: %s\n", taa_strings[taa_mitigation]);
 	if (boot_cpu_has_bug(X86_BUG_MMIO_STALE_DATA))
 		pr_info("MMIO Stale Data: %s\n", mmio_strings[mmio_mitigation]);
+}
+
+static void __init md_clear_select_mitigation(void)
+{
+	mds_select_mitigation();
+	taa_select_mitigation();
+	mmio_select_mitigation();
+
+	/*
+	 * As MDS, TAA and MMIO Stale Data mitigations are inter-related, update
+	 * and print their mitigation after MDS, TAA and MMIO Stale Data
+	 * mitigation selection is done.
+	 */
+	md_clear_update_mitigation();
 }
 
 #undef pr_fmt
