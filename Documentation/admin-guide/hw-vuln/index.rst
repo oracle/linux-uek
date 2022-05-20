@@ -16,3 +16,4 @@ are configurable at compile, boot or run time.
    multihit.rst
    special-register-buffer-data-sampling.rst
    core-scheduling.rst
+   processor_mmio_stale_data.rst
