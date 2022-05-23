@@ -22,6 +22,7 @@
 #define VERIFY_LOG_SIZE		1024
 
 #define MARLIN_CHECK_PREDEFINED_OBJ (1<<0)
+#define MARLIN_FORCE_CLONE	    (1<<14)
 #define MARLIN_PRINT_CONSOLE_LOGS   (1<<15)
 
 #define VERSION_FLAG_BACKUP	                BIT(0)
@@ -46,8 +47,13 @@
  */
 #define SMC_VERSION_COPY_TO_BACKUP_OFFSET	BIT(6)
 
+/**
+ * Set this to force copy all objects into backup storage
+ */
+#define SMC_VERSION_FORCE_COPY_OBJECTS		BIT(7)
+
 #define VERSION_MAGIC		0x4e535256	/** VRSN */
-#define VERSION_INFO_VERSION	0x0101	/** 1.0.0.0 */
+#define VERSION_INFO_VERSION	0x0102	/** 1.0.0.0 */
 
 struct memory_desc {
 	void	   *virt;
@@ -125,7 +131,8 @@ struct smc_version_info_entry {
 	uint16_t hash_size;		/** Size of hash in bytes */
 	uint16_t flags;			/** Flags for this object */
 	enum smc_version_entry_retcode retcode;	/** Return code if error */
-	uint64_t reserved[7];		/** Reserved for future growth */
+	uint64_t perform_clone;         /** run clone operation on that image */
+	uint64_t reserved[6];		/** Reserved for future growth */
 	uint8_t log[VERIFY_LOG_SIZE];	/** Log for object */
 };
 

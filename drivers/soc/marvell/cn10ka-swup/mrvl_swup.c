@@ -221,6 +221,9 @@ static int mrvl_clone_fw(unsigned long arg)
 	swup_info->cs = user_desc->cs;
 	swup_info->version_flags |= SMC_VERSION_CHECK_VALIDATE_HASH;
 
+	if (user_desc->version_flags & MARLIN_FORCE_CLONE)
+		swup_info->version_flags |= SMC_VERSION_FORCE_COPY_OBJECTS;
+
 	if (user_desc->version_flags & MARLIN_CHECK_PREDEFINED_OBJ) {
 		swup_info->version_flags |= SMC_VERSION_CHECK_SPECIFIC_OBJECTS;
 		prepare_names(swup_info, user_desc->selected_objects);
