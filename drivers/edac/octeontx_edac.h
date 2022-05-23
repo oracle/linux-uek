@@ -46,10 +46,20 @@
 	(id != OCTEONTX_RAS_MCC_SDEI_EVENT) && \
 	(id != OCTEONTX_RAS_LMC_SDEI_EVENT))
 
+struct processor_error {
+	struct cper_sec_proc_arm desc;
+	struct cper_arm_err_info info;
+};
+
+union octeontx_edac_cper {
+	struct cper_sec_mem_err mem;
+	struct processor_error  core;
+};
+
 struct octeontx_edac_mc_record {
 	struct acpi_hest_generic_status estatus;
 	struct acpi_hest_generic_data   gdata;
-	struct cper_sec_mem_err         cper_mem;
+	union octeontx_edac_cper        cper;
 };
 
 /*

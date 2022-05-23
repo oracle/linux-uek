@@ -210,9 +210,15 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 	gsrc->esb_va->estatus.error_severity = ring->error_severity;
 	gsrc->esb_va->estatus.block_status = 1;
 	gsrc->esb_va->gdata.error_severity = ring->error_severity;
-	memcpy_fromio(&rec, gsrc->esb_va, sizeof(rec) - sizeof(rec.cper_mem));
+	memcpy_fromio(&rec, gsrc->esb_va,
+			(gsrc->id <= OCTEONTX_RAS_TAD_SDEI_EVENT) ?
+					sizeof(rec) - sizeof(rec.cper.mem) :
+					sizeof(rec) - sizeof(rec.cper.core));
 	memcpy_fromio(&rec.gdata.fru_text, ring->fru_text, sizeof(rec.gdata.fru_text));
-	memcpy_fromio(&rec.cper_mem, &ring->u, sizeof(rec.cper_mem));
+	memcpy_fromio(&rec.cper.mem, &ring->u,
+			(gsrc->id <= OCTEONTX_RAS_TAD_SDEI_EVENT) ?
+					sizeof(rec.cper.mem) :
+					sizeof(rec.cper.core));
 
 	switch (ring->error_severity) {
 	case CPER_SEV_CORRECTED:
@@ -228,8 +234,9 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 		type = HW_EVENT_ERR_INFO;
 	}
 
-	edac_mc_handle_error(type, mci, 1, PHYS_PFN(rec.cper_mem.physical_addr),
-			offset_in_page(rec.cper_mem.physical_addr),
+	if (gsrc->id <= OCTEONTX_RAS_TAD_SDEI_EVENT)
+		edac_mc_handle_error(type, mci, 1, PHYS_PFN(rec.cper.mem.physical_addr),
+			offset_in_page(rec.cper.mem.physical_addr),
 			0, -1, -1, -1, ring->fru_text, mci->ctl_name);
 
 	if (acpi_disabled) {
@@ -237,7 +244,10 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 	} else {
 		memcpy_toio(gsrc->esb_va->gdata.fru_text, rec.gdata.fru_text,
 				sizeof(rec.gdata.fru_text));
-		memcpy_toio(&gsrc->esb_va->cper_mem, &rec.cper_mem, sizeof(rec.cper_mem));
+		memcpy_toio(&gsrc->esb_va->cper.mem, &rec.cper.mem,
+				(gsrc->id <= OCTEONTX_RAS_TAD_SDEI_EVENT) ?
+						sizeof(rec.cper.mem) :
+						sizeof(rec.cper.core));
 	}
 
 	if (++tail >= gsrc->ring->size)
@@ -605,6 +615,7 @@ static int octeontx_edac_ghes_register_mc(struct octeontx_edac_driver *ghes_drv)
 
 	for (i = 0; i < ghes_drv->source_count; i++) {
 		gsrc = &ghes_drv->source_list[i];
+		INIT_WORK(&gsrc->mc_work, octeontx_edac_mc_sdei_wq);
 
 		if (IS_NOT_MC_SDEI_EVENT(gsrc->id))
 			continue;
@@ -621,7 +632,7 @@ static int octeontx_edac_ghes_register_mc(struct octeontx_edac_driver *ghes_drv)
 		}
 
 		layers[0].type = EDAC_MC_LAYER_ALL_MEM;
-		layers[0].size = 0;
+		layers[0].size = 1;
 		layers[0].is_virt_csrow = false;
 
 		mci = edac_mc_alloc(idx, ARRAY_SIZE(layers), layers,
@@ -636,7 +647,6 @@ static int octeontx_edac_ghes_register_mc(struct octeontx_edac_driver *ghes_drv)
 		mci->ctl_name = gsrc->name;
 		mci->edac_check = NULL;
 		mci->pvt_info = gsrc;
-		INIT_WORK(&gsrc->mc_work, octeontx_edac_mc_sdei_wq);
 
 		if ((strncmp(mci->ctl_name, OCTEONTX_MDC, 3) == 0) ||
 				(strncmp(mci->ctl_name, OCTEONTX_MCC, 3) == 0) ||
