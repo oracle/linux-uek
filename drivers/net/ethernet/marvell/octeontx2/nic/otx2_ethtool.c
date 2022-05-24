@@ -495,15 +495,20 @@ static int otx2_set_coalesce(struct net_device *netdev,
 	if (!ec->rx_max_coalesced_frames || !ec->tx_max_coalesced_frames)
 		return 0;
 
+	if (ec->use_adaptive_rx_coalesce != ec->use_adaptive_tx_coalesce) {
+		netdev_err(netdev, "adaptive-rx should be same as adaptive-tx");
+		return -EINVAL;
+	}
+
 	/* Check and update coalesce status */
 	if ((pfvf->flags & OTX2_FLAG_ADPTV_INT_COAL_ENABLED) ==
 	    OTX2_FLAG_ADPTV_INT_COAL_ENABLED) {
 		priv_coalesce_status = 1;
-		if (!ec->use_adaptive_rx_coalesce || !ec->use_adaptive_tx_coalesce)
+		if (!ec->use_adaptive_rx_coalesce)
 			pfvf->flags &= ~OTX2_FLAG_ADPTV_INT_COAL_ENABLED;
 	} else {
 		priv_coalesce_status = 0;
-		if (ec->use_adaptive_rx_coalesce || ec->use_adaptive_tx_coalesce)
+		if (ec->use_adaptive_rx_coalesce)
 			pfvf->flags |= OTX2_FLAG_ADPTV_INT_COAL_ENABLED;
 	}
 
