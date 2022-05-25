@@ -426,7 +426,60 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 		uaccess_ttbr0_disable();			\
 	}
 
-static void user_cache_maint_handler(unsigned int esr, struct pt_regs *regs)
+
+void
+user_cache_maint_handler_errtaum_38891(unsigned int esr, struct pt_regs *regs)
+{
+	unsigned long address;
+	int rt = ESR_ELx_SYS64_ISS_RT(esr);
+	int crm = (esr & ESR_ELx_SYS64_ISS_CRM_MASK) >> ESR_ELx_SYS64_ISS_CRM_SHIFT;
+	unsigned long flags;
+	int ret = 0;
+
+	address = untagged_addr(pt_regs_read_reg(regs, rt));
+
+	switch (crm) {
+	case ESR_ELx_SYS64_ISS_CRM_DC_CVAU:	/* DC CVAU */
+		__user_cache_maint("dc cvau", address, ret);
+		break;
+	case ESR_ELx_SYS64_ISS_CRM_DC_CVAC:	/* DC CVAC, gets promoted */
+		__user_cache_maint("dc civac", address, ret);
+		break;
+	case ESR_ELx_SYS64_ISS_CRM_DC_CVADP:	/* DC CVADP, gets promoted */
+		local_irq_save(flags);
+		__user_cache_maint("dc civac", address, ret);
+		dsb(sy);
+		isb();
+		__user_cache_maint("sys 3, c7, c12, 1", address, ret);
+		local_irq_restore(flags);
+		break;
+	case ESR_ELx_SYS64_ISS_CRM_DC_CVAP:	/* DC CVAP, gets promoted */
+		local_irq_save(flags);
+		__user_cache_maint("dc civac", address, ret);
+		dsb(sy);
+		isb();
+		__user_cache_maint("sys 3, c7, c12, 1", address, ret);
+		local_irq_restore(flags);
+		break;
+	case ESR_ELx_SYS64_ISS_CRM_DC_CIVAC:	/* DC CIVAC */
+		__user_cache_maint("dc civac", address, ret);
+		break;
+	case ESR_ELx_SYS64_ISS_CRM_IC_IVAU:	/* IC IVAU */
+		__user_cache_maint("ic ivau", address, ret);
+		break;
+	default:
+		force_signal_inject(SIGILL, ILL_ILLOPC, regs->pc);
+		return;
+	}
+
+	if (ret)
+		arm64_notify_segfault(address);
+	else
+		arm64_skip_faulting_instruction(regs, AARCH64_INSN_SIZE);
+}
+
+
+void user_cache_maint_handler_generic(unsigned int esr, struct pt_regs *regs)
 {
 	unsigned long address;
 	int rt = ESR_ELx_SYS64_ISS_RT(esr);
@@ -463,6 +516,14 @@ static void user_cache_maint_handler(unsigned int esr, struct pt_regs *regs)
 		arm64_notify_segfault(address);
 	else
 		arm64_skip_faulting_instruction(regs, AARCH64_INSN_SIZE);
+}
+
+static void user_cache_maint_handler(unsigned int esr, struct pt_regs *regs)
+{
+	if (cpus_have_cap(ARM64_WORKAROUND_MARVELL_38891))
+		user_cache_maint_handler_errtaum_38891(esr, regs);
+	else
+		user_cache_maint_handler_generic(esr, regs);
 }
 
 static void ctr_read_handler(unsigned int esr, struct pt_regs *regs)

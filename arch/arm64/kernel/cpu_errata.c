@@ -56,6 +56,116 @@ is_kryo_midr(const struct arm64_cpu_capabilities *entry, int scope)
 	return model == entry->midr_range.model;
 }
 
+#ifdef CONFIG_ARM64_WORKAROUND_MARVELL_38891
+static int arm_smcc_get_soc_id(u32 *soc_id_version, u32 *soc_id_rev)
+{
+	struct arm_smccc_res res;
+
+	if (psci_ops.smccc_version == SMCCC_VERSION_1_0)
+		return -EOPNOTSUPP;
+
+	switch (psci_ops.conduit) {
+	case PSCI_CONDUIT_HVC:
+		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
+				  ARM_SMCCC_ARCH_SOC_ID, &res);
+		if ((int)res.a0 < 0)
+			return -EOPNOTSUPP;
+
+		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_SOC_ID, 0, &res);
+		if ((int)res.a0 < 0)
+			return -EOPNOTSUPP;
+
+		*soc_id_version = res.a0;
+
+		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_SOC_ID, 1, &res);
+		if ((int)res.a0 < 0)
+			return -EOPNOTSUPP;
+
+		*soc_id_rev = res.a0;
+		break;
+
+	case PSCI_CONDUIT_SMC:
+		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
+				  ARM_SMCCC_ARCH_SOC_ID, &res);
+		if ((int)res.a0 < 0)
+			return -EOPNOTSUPP;
+
+		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_SOC_ID, 0, &res);
+		if ((int)res.a0 < 0)
+			return -EOPNOTSUPP;
+
+		*soc_id_version = res.a0;
+
+		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_SOC_ID, 1, &res);
+		if ((int)res.a0 < 0)
+			return -EOPNOTSUPP;
+
+		*soc_id_rev = res.a0;
+		break;
+
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+static bool is_soc_affected_by_tad_38891(void)
+{
+/*
+ * Defines used to retrieve Marvell SOC version and revision
+ * This is based on JEDEC standard
+ */
+#define MRVL_SOC_CONT_CODE	(0x3U)
+#define MRVL_SOC_IDEN_CODE	(0x69U)
+#define MRVL_SOC_CONT_SHIFT	(24U)
+#define MRVL_SOC_IDEN_SHIFT	(16U)
+#define MRVL_SOC_MFID	((MRVL_SOC_CONT_CODE << MRVL_SOC_CONT_SHIFT) | \
+			 (MRVL_SOC_IDEN_CODE << MRVL_SOC_IDEN_SHIFT))
+
+	static const struct mrvl_38891_affected_soc_id {
+		uint32_t version;
+		uint32_t rev;
+	} mrvl_38891_affected_soc_id_list[] = {
+		{ (MRVL_SOC_MFID | 0xb9), 0, }, /* CN10KA Rev-0 (A0) */
+		{ (MRVL_SOC_MFID | 0xb9), 1, }, /* CN10KA Rev-1 (A1) */
+		{ (MRVL_SOC_MFID | 0xba), 0, }, /* CNF10K-A Rev-0 (A0) */
+		{ (MRVL_SOC_MFID | 0xbc), 0, }, /* CNF10K-B Rev-0 (A0) */
+	};
+	uint32_t soc_id_version;
+	uint32_t soc_id_rev;
+	int ret, i;
+
+	ret = arm_smcc_get_soc_id(&soc_id_version, &soc_id_rev);
+	if (ret)
+		return false;
+
+	for (i = 0; i < ARRAY_SIZE(mrvl_38891_affected_soc_id_list); i++) {
+		const struct mrvl_38891_affected_soc_id *soc_id =
+					&mrvl_38891_affected_soc_id_list[i];
+		if (soc_id->version == soc_id_version &&
+		    soc_id->rev == soc_id_rev)
+			return true;
+	}
+	return false;
+}
+
+static bool
+is_affected_by_tad_38891(const struct arm64_cpu_capabilities *entry,
+			  int scope)
+{
+	const struct midr_range range = MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N2);
+	u32 midr = read_cpuid_id();
+
+	WARN_ON(scope != SCOPE_LOCAL_CPU || preemptible());
+
+	if (!is_midr_in_range(midr, &range))
+		return false;
+
+	return is_soc_affected_by_tad_38891();
+}
+#endif
+
 static bool
 has_mismatched_cache_type(const struct arm64_cpu_capabilities *entry,
 			  int scope)
@@ -892,6 +1002,15 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.desc = "ARM errata 826319, 827319, 824069, 819472",
 		.capability = ARM64_WORKAROUND_CLEAN_CACHE,
 		ERRATA_MIDR_RANGE_LIST(workaround_clean_cache),
+		.cpu_enable = cpu_enable_cache_maint_trap,
+	},
+#endif
+#ifdef CONFIG_ARM64_WORKAROUND_MARVELL_38891
+	{
+		.desc = "Marvell errata 38891",
+		.capability = ARM64_WORKAROUND_MARVELL_38891,
+		.type = ARM64_CPUCAP_LOCAL_CPU_ERRATUM,
+		.matches = is_affected_by_tad_38891,
 		.cpu_enable = cpu_enable_cache_maint_trap,
 	},
 #endif

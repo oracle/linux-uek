@@ -350,6 +350,23 @@ config ARM64_ERRATUM_826319
 
 	  If unsure, say Y.
 
+config ARM64_WORKAROUND_MARVELL_38891
+       bool "Marvell CN10K TAD Errata 38891"
+       default y
+       help
+	  This option adds an alternative code sequence to work around Marvell
+	  CN10K TAD erratum 38891 and also enables kernel trap for execution of
+	  cache maintenance instruction in user space.
+
+	  An issue exists whereby if one core (core A) is accessing a cache line
+	  and a certain set of race cases occur when a second core (Core B) is
+	  executing a DC CVAC, DC CVAP or DC CVADP to the same cache line, the
+	  second core B may respond to the Last Level Cache (TAD's) request for
+	  data with an unexpected transaction type. This will cause the TAD to
+	  ignore the response, response will never come to Core A, so as soon
+	  as Core A reaches an instruction that requires that response to
+	  complete it will hang. Core B and other cores will remain responsive.
+
 config ARM64_ERRATUM_827319
 	bool "Cortex-A53: 827319: Data cache clean instructions might cause overlapping transactions to the interconnect"
 	default y

@@ -201,7 +201,9 @@ ENDPROC(idmap_cpu_replace_ttbr1)
 	.pushsection ".idmap.text", "awx"
 
 	.macro	__idmap_kpti_get_pgtable_ent, type
-	dc	cvac, cur_\()\type\()p		// Ensure any existing dirty
+	alternative_insn "dc cvac, cur_\()\type\()p", \
+			 "dc civac, cur_\()\type\()p", \
+			 ARM64_WORKAROUND_MARVELL_38891
 	dmb	sy				// lines are written back before
 	ldr	\type, [cur_\()\type\()p]	// loading the entry
 	tbz	\type, #0, skip_\()\type	// Skip invalid and

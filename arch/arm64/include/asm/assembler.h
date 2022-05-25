@@ -371,7 +371,7 @@ alternative_endif
 	.endm
 
 /*
- * Macro to perform a data cache maintenance for the interval
+ * Macro to perform "dc cvac" data cache maintenance for the interval
  * [kaddr, kaddr + size)
  *
  * 	op:		operation passed to dc instruction
@@ -379,6 +379,34 @@ alternative_endif
  * 	kaddr:		starting virtual address of the region
  * 	size:		size of the region
  * 	Corrupts:	kaddr, size, tmp1, tmp2
+ *
+ * Workaround for errata ARM64_WORKAROUND_CLEAN_CACHE and
+ * ARM64_WORKAROUND_MARVELL_38891 requires these instructions
+ * be replaced civac.
+ */
+	.macro __dcache_op_workaround_clean_cache_cvac op, addr
+alternative_if_not ARM64_WORKAROUND_CLEAN_CACHE
+	b	.mrvl_38891
+alternative_else
+	dc	civac, \addr
+alternative_endif
+.mrvl_38891 :
+alternative_if_not ARM64_WORKAROUND_MARVELL_38891
+	dc	\op, \addr
+alternative_else
+	dc	civac, \addr
+alternative_endif
+	.endm
+
+/*
+ * Macro to perform a data cache maintenance for the interval
+ * [kaddr, kaddr + size)
+ *
+ *	op:		operation passed to dc instruction
+ *	domain:		domain used in dsb instruciton
+ *	kaddr:		starting virtual address of the region
+ *	size:		size of the region
+ *	Corrupts:	kaddr, size, tmp1, tmp2
  */
 	.macro __dcache_op_workaround_clean_cache, op, kaddr
 alternative_if_not ARM64_WORKAROUND_CLEAN_CACHE
@@ -398,13 +426,33 @@ alternative_endif
 	__dcache_op_workaround_clean_cache \op, \kaddr
 	.else
 	.ifc	\op, cvac
-	__dcache_op_workaround_clean_cache \op, \kaddr
+	__dcache_op_workaround_clean_cache_cvac \op, \kaddr
 	.else
 	.ifc	\op, cvap
+alternative_if_not ARM64_WORKAROUND_MARVELL_38891
 	sys	3, c7, c12, 1, \kaddr	// dc cvap
+	nops 6
+alternative_else
+	save_and_disable_daif	\tmp2
+	dc	civac, \kaddr
+	dsb	sy
+	isb
+	sys	3, c7, c12, 1, \kaddr	// dc cvap
+	restore_daif	\tmp2
+alternative_endif
 	.else
 	.ifc	\op, cvadp
+alternative_if_not ARM64_WORKAROUND_MARVELL_38891
 	sys	3, c7, c13, 1, \kaddr	// dc cvadp
+	nops 6
+alternative_else
+	save_and_disable_daif	\tmp2
+	dc	civac, \kaddr
+	dsb	sy
+	isb
+	sys	3, c7, c12, 1, \kaddr	// dc cvap
+	restore_daif	\tmp2
+alternative_endif
 	.else
 	dc	\op, \kaddr
 	.endif
