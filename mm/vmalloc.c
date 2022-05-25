@@ -2088,7 +2088,7 @@ static void _vm_unmap_aliases(unsigned long start, unsigned long end, int flush)
 		return;
 
 	might_sleep();
-
+	mutex_lock(&vmap_purge_lock);
 	for_each_possible_cpu(cpu) {
 		struct vmap_block_queue *vbq = &per_cpu(vmap_block_queue, cpu);
 		struct vmap_block *vb;
@@ -2113,7 +2113,6 @@ static void _vm_unmap_aliases(unsigned long start, unsigned long end, int flush)
 		rcu_read_unlock();
 	}
 
-	mutex_lock(&vmap_purge_lock);
 	purge_fragmented_blocks_allcpus();
 	if (!__purge_vmap_area_lazy(start, end) && flush)
 		flush_tlb_kernel_range(start, end);
