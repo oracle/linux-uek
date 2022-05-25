@@ -40,20 +40,25 @@
 		rvu_write64(rvu, blkaddr, reg##X(i), reg0);		\
 	}
 
-void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf)
+void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf,
+				 struct sso_aq_thr *aq_thr)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	u64 add, grp_thr, grp_rsvd;
 	u64 reg;
 
+	/* Use default if NULL */
+	if (!aq_thr)
+		aq_thr = &hw->sso.aq_thr;
+
 	/* Configure IAQ Thresholds */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf));
 	grp_rsvd = reg & SSO_HWGRP_IAQ_RSVD_THR_MASK;
-	add = hw->sso.iaq_rsvd - grp_rsvd;
+	add = aq_thr->iaq_rsvd - grp_rsvd;
 
-	grp_thr = hw->sso.iaq_rsvd & SSO_HWGRP_IAQ_RSVD_THR_MASK;
-	grp_thr |= ((hw->sso.iaq_max & SSO_HWGRP_IAQ_MAX_THR_MASK) <<
-		    SSO_HWGRP_IAQ_MAX_THR_SHIFT);
+	grp_thr = aq_thr->iaq_rsvd & SSO_HWGRP_IAQ_RSVD_THR_MASK;
+	grp_thr |= ((aq_thr->iaq_max & SSO_HWGRP_IAQ_MAX_THR_MASK)
+		    << SSO_HWGRP_IAQ_MAX_THR_SHIFT);
 
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf), grp_thr);
 
@@ -65,11 +70,11 @@ void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf)
 	/* Configure TAQ Thresholds */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf));
 	grp_rsvd = reg & SSO_HWGRP_TAQ_RSVD_THR_MASK;
-	add = hw->sso.taq_rsvd - grp_rsvd;
+	add = aq_thr->taq_rsvd - grp_rsvd;
 
-	grp_thr = hw->sso.taq_rsvd & SSO_HWGRP_TAQ_RSVD_THR_MASK;
-	grp_thr |= ((hw->sso.taq_max & SSO_HWGRP_TAQ_MAX_THR_MASK) <<
-		    SSO_HWGRP_TAQ_MAX_THR_SHIFT);
+	grp_thr = aq_thr->taq_rsvd & SSO_HWGRP_TAQ_RSVD_THR_MASK;
+	grp_thr |= ((aq_thr->taq_max & SSO_HWGRP_TAQ_MAX_THR_MASK)
+		    << SSO_HWGRP_TAQ_MAX_THR_SHIFT);
 
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf), grp_thr);
 
@@ -865,6 +870,7 @@ int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
+	struct sso_aq_thr aq_thr;
 	u64 regval, grp_rsvd;
 	int lf, blkaddr;
 
@@ -884,25 +890,29 @@ int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
 	/* Configure XAQ threhold */
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_LIMIT(lf), req->xaq_limit);
 
-	/* Configure TAQ threhold */
+	/* Set TAQ threhold */
 	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf));
 	grp_rsvd = regval & SSO_HWGRP_TAQ_RSVD_THR_MASK;
-	if (req->taq_thr < grp_rsvd)
-		req->taq_thr = grp_rsvd;
+	if (req->taq_thr < grp_rsvd) {
+		req->taq_thr = max_t(u16, req->taq_thr, SSO_HWGRP_TAQ_RSVD_THR);
+		grp_rsvd = req->taq_thr;
+	}
+	aq_thr.taq_max = req->taq_thr;
+	aq_thr.taq_rsvd = grp_rsvd;
 
-	regval = req->taq_thr & SSO_HWGRP_TAQ_MAX_THR_MASK;
-	regval = (regval << SSO_HWGRP_TAQ_MAX_THR_SHIFT) | grp_rsvd;
-	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf), regval);
-
-	/* Configure IAQ threhold */
+	/* Set IAQ threhold */
 	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf));
 	grp_rsvd = regval & SSO_HWGRP_IAQ_RSVD_THR_MASK;
-	if (req->iaq_thr < grp_rsvd + 4)
-		req->iaq_thr = grp_rsvd + 4;
+	if (req->iaq_thr < grp_rsvd + 4) {
+		req->iaq_thr =
+			max_t(u16, req->iaq_thr, SSO_HWGRP_IAQ_RSVD_THR + 4);
+		grp_rsvd = req->iaq_thr - 4;
+	}
+	aq_thr.iaq_max = req->iaq_thr;
+	aq_thr.iaq_rsvd = grp_rsvd;
 
-	regval = req->iaq_thr & SSO_HWGRP_IAQ_MAX_THR_MASK;
-	regval = (regval << SSO_HWGRP_IAQ_MAX_THR_SHIFT) | grp_rsvd;
-	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf), regval);
+	/* Configure TAQ/IAQ threhold */
+	rvu_sso_hwgrp_config_thresh(rvu, blkaddr, lf, &aq_thr);
 
 	return 0;
 }
@@ -1041,7 +1051,7 @@ int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 		if (err)
 			dev_err(rvu->dev, "SSO%d free: failed to reset\n", lf);
 		/* Reset the IAQ and TAQ thresholds */
-		rvu_sso_hwgrp_config_thresh(rvu, blkaddr, lf);
+		rvu_sso_hwgrp_config_thresh(rvu, blkaddr, lf, NULL);
 	}
 
 	if (pfvf->sso_uniq_ident) {
@@ -1503,13 +1513,13 @@ int rvu_sso_init(struct rvu *rvu)
 		taq_max = SSO_AF_TAQ_FREE_CNT_MAX;
 
 	/* Save thresholds to reprogram HWGRPs on reset */
-	sso->iaq_rsvd = iaq_rsvd;
-	sso->iaq_max = iaq_max;
-	sso->taq_rsvd = taq_rsvd;
-	sso->taq_max = taq_max;
+	sso->aq_thr.iaq_rsvd = iaq_rsvd;
+	sso->aq_thr.iaq_max = iaq_max;
+	sso->aq_thr.taq_rsvd = taq_rsvd;
+	sso->aq_thr.taq_max = taq_max;
 
 	for (hwgrp = 0; hwgrp < sso->sso_hwgrps; hwgrp++) {
-		rvu_sso_hwgrp_config_thresh(rvu, blkaddr, hwgrp);
+		rvu_sso_hwgrp_config_thresh(rvu, blkaddr, hwgrp, NULL);
 		iaq_rsvd_cnt += iaq_rsvd;
 		taq_rsvd_cnt += taq_rsvd;
 	}

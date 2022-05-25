@@ -2639,7 +2639,7 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 		}
 
 		if (block->addr == BLKADDR_SSO)
-			rvu_sso_hwgrp_config_thresh(rvu, block->addr, lf);
+			rvu_sso_hwgrp_config_thresh(rvu, block->addr, lf, NULL);
 	}
 }
 
