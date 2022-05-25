@@ -185,16 +185,20 @@ struct npc_mcam {
 	struct list_head mcam_rules;
 };
 
+struct sso_aq_thr {
+	u64 iaq_rsvd;
+	u64 iaq_max;
+	u64 taq_rsvd;
+	u64 taq_max;
+};
+
 struct sso_rsrc {
 	u8      sso_hws;
 	u16     sso_hwgrps;
 	u16     sso_xaq_num_works;
 	u16     sso_xaq_buf_size;
 	u16     sso_iue;
-	u64	iaq_rsvd;
-	u64	iaq_max;
-	u64	taq_rsvd;
-	u64	taq_max;
+	struct sso_aq_thr aq_thr;
 	struct rsrc_bmap pfvf_ident;
 };
 
@@ -804,7 +808,8 @@ int rvu_sso_register_interrupts(struct rvu *rvu);
 void rvu_sso_unregister_interrupts(struct rvu *rvu);
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
-void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf);
+void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf,
+				 struct sso_aq_thr *aq_thr);
 void rvu_sso_block_cn10k_init(struct rvu *rvu, int blkaddr);
 int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int hwgrp);
