@@ -40,6 +40,7 @@ kernel/crypto/ccm.ko
 kernel/crypto/chacha20poly1305.ko
 kernel/crypto/cmac.ko
 kernel/crypto/cryptd.ko
+kernel/crypto/crypto_engine.ko
 kernel/crypto/crypto_simd.ko
 kernel/crypto/crypto_user.ko
 kernel/crypto/des_generic.ko
@@ -90,6 +91,7 @@ kernel/drivers/char/virtio_console.ko
 kernel/drivers/cpufreq/acpi-cpufreq.ko
 kernel/drivers/cpufreq/pcc-cpufreq.ko
 kernel/drivers/crypto/ccp/ccp.ko
+kernel/drivers/crypto/virtio/virtio_crypto.ko
 kernel/drivers/cxl/cxl_pmem.ko
 kernel/drivers/dax/dax_pmem.ko
 kernel/drivers/dax/device_dax.ko
@@ -167,6 +169,7 @@ kernel/drivers/misc/mei/mei-me.ko
 kernel/drivers/misc/pvpanic/pvpanic.ko
 kernel/drivers/misc/pvpanic/pvpanic-mmio.ko
 kernel/drivers/net/bonding/bonding.ko
+kernel/drivers/net/dummy.ko
 kernel/drivers/net/ethernet/broadcom/bnxt/bnxt_en.ko
 kernel/drivers/net/ethernet/broadcom/cnic.ko
 kernel/drivers/net/ethernet/chelsio/cxgb3/cxgb3.ko
@@ -276,6 +279,7 @@ kernel/drivers/video/fbdev/core/sysfillrect.ko
 kernel/drivers/video/fbdev/core/sysimgblt.ko
 kernel/drivers/virtio/virtio_balloon.ko
 kernel/drivers/virtio/virtio_dma_buf.ko
+kernel/drivers/virtio/virtio_input.ko
 kernel/drivers/virtio/virtio_pci.ko
 kernel/drivers/virtio/virtio_pci_legacy_dev.ko
 kernel/drivers/virtio/virtio_pci_modern_dev.ko
@@ -340,6 +344,7 @@ kernel/net/dns_resolver/dns_resolver.ko
 kernel/net/ipv4/ah4.ko
 kernel/net/ipv4/esp4.ko
 kernel/net/ipv4/esp4_offload.ko
+kernel/net/ipv4/fou.ko
 kernel/net/ipv4/gre.ko
 kernel/net/ipv4/ipcomp.ko
 kernel/net/ipv4/ip_gre.ko
@@ -358,6 +363,7 @@ kernel/net/ipv4/tunnel4.ko
 kernel/net/ipv4/xfrm4_tunnel.ko
 kernel/net/ipv6/ah6.ko
 kernel/net/ipv6/esp6.ko
+kernel/net/ipv6/fou6.ko
 kernel/net/ipv6/ip6_gre.ko
 kernel/net/ipv6/ip6_tunnel.ko
 kernel/net/ipv6/ipcomp6.ko
@@ -413,7 +419,9 @@ kernel/net/sched/act_gact.ko
 kernel/net/sched/act_mirred.ko
 kernel/net/sched/act_vlan.ko
 kernel/net/sched/cls_flower.ko
+kernel/net/sched/cls_u32.ko
 kernel/net/sched/sch_fq_codel.ko
+kernel/net/sched/sch_htb.ko
 kernel/net/sched/sch_ingress.ko
 kernel/net/sunrpc/auth_gss/auth_rpcgss.ko
 kernel/net/sunrpc/auth_gss/rpcsec_gss_krb5.ko
