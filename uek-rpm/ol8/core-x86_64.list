@@ -319,6 +319,7 @@ kernel/fs/ocfs2/ocfs2_stack_o2cb.ko
 kernel/fs/overlayfs/overlay.ko
 kernel/fs/smbfs_common/cifs_arc4.ko
 kernel/fs/smbfs_common/cifs_md4.ko
+kernel/fs/squashfs/squashfs.ko
 kernel/fs/xfs/xfs.ko
 kernel/lib/crc64-rocksoft.ko
 kernel/lib/crypto/libarc4.ko
