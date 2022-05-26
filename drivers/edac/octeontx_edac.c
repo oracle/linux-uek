@@ -194,9 +194,9 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 	u32 head = gsrc->ring->head;
 	u32 tail = gsrc->ring->tail;
 
-	otx_printk(KERN_DEBUG, "%p, head=%d (%p), tail=%d (%p), size=%d, sign=%x\n",
-			gsrc->esb_va, head, &gsrc->ring->head, tail, &gsrc->ring->tail,
-			gsrc->ring->size, *(int *)((&gsrc->ring->size) + 1));
+	otx_printk(KERN_DEBUG, "%s:[%08x] %llx, tail=%d, head=%d, size=%d, sign=%x\n",
+			gsrc->name, gsrc->id, (long long)gsrc->esb_va, tail, head,
+			gsrc->ring->size, gsrc->ring->sig);
 
 	/*Ensure that head updated*/
 	rmb();
@@ -466,6 +466,49 @@ static phys_addr_t __init octeontx_edac_ghes_get_address(struct octeontx_edac_dr
 	return ret;
 }
 
+static int __init hest_get_vector(struct acpi_hest_header *hest_hdr, void *data)
+{
+	struct acpi_hest_generic *generic = (struct acpi_hest_generic *)hest_hdr;
+
+	u32 *vec = data;
+	static int v;
+
+	vec[v++] = generic->notify.vector;
+
+	return 0;
+}
+
+static void __init octeontx_edac_ghes_get_vector(struct octeontx_edac_driver *ghes_drv)
+{
+	struct octeontx_edac_ghes *gsrc;
+	int i = 0;
+	u32 *vec = NULL;
+	bool octeon10 = (MIDR_PARTNUM(read_cpuid_id()) == OCTEON10_CPU_MODEL);
+	unsigned int core = 0;
+
+	vec = kcalloc(ghes_drv->source_count, sizeof(u32 *), GFP_KERNEL);
+	if (!vec)
+		return;
+
+	apei_hest_parse(hest_get_vector, vec);
+
+	for (i = 0; i < ghes_drv->source_count; i++) {
+		gsrc = &ghes_drv->source_list[i];
+		gsrc->id = vec[i];
+
+		if (gsrc->id == OCTEONTX_RAS_MDC_SDEI_EVENT)
+			sprintf(gsrc->name, OCTEONTX_MDC);
+		else if (gsrc->id == OCTEONTX_RAS_MCC_SDEI_EVENT)
+			sprintf(gsrc->name, octeon10 ? OCTEONTX_DSS : OCTEONTX_MCC);
+		else if (gsrc->id == OCTEONTX_RAS_LMC_SDEI_EVENT)
+			sprintf(gsrc->name, octeon10 ? OCTEONTX_TAD : OCTEONTX_LMC);
+		else if (gsrc->id > OCTEONTX_RAS_LMC_SDEI_EVENT)
+			sprintf(gsrc->name, "core%d", core++);
+	}
+
+	kfree(vec);
+}
+
 static int __init octeontx_edac_ghes_acpi_match_resource(struct platform_device *pdev)
 {
 	struct octeontx_edac_driver *ghes_drv;
@@ -475,7 +518,6 @@ static int __init octeontx_edac_ghes_acpi_match_resource(struct platform_device 
 	size_t i = 0;
 	size_t idx = 0;
 	phys_addr_t base = 0;
-	bool octeon10 = (MIDR_PARTNUM(read_cpuid_id()) == OCTEON10_CPU_MODEL);
 
 	dev = &pdev->dev;
 	ghes_drv = platform_get_drvdata(pdev);
@@ -510,22 +552,8 @@ static int __init octeontx_edac_ghes_acpi_match_resource(struct platform_device 
 		gsrc->ring_pa = res->start + base;
 		gsrc->ring_sz = resource_size(res);
 
-		res = platform_get_resource(pdev, IORESOURCE_MEM, idx++);
-		if (!res) {
-			dev_err(dev, "ghes cannot get event\n");
-			return -ENODEV;
-		}
-		gsrc->id = res->start;
-
-		if (gsrc->id == OCTEONTX_RAS_MDC_SDEI_EVENT)
-			sprintf(gsrc->name, OCTEONTX_MDC);
-		else if (gsrc->id == OCTEONTX_RAS_MCC_SDEI_EVENT)
-			sprintf(gsrc->name, octeon10 ? OCTEONTX_DSS : OCTEONTX_MCC);
-		else if (gsrc->id == OCTEONTX_RAS_LMC_SDEI_EVENT)
-			sprintf(gsrc->name, octeon10 ? OCTEONTX_TAD : OCTEONTX_LMC);
-
-		otx_printk(KERN_DEBUG, "ghes 0x%llx / 0x%llx / 0x%llx, sdei:0x%x)\n",
-				gsrc->esa_pa, gsrc->esb_pa, gsrc->ring_pa, gsrc->id);
+		otx_printk(KERN_DEBUG, "%s[0x%x] 0x%llx 0x%llx 0x%llx)\n",
+				gsrc->name, gsrc->id, gsrc->esa_pa, gsrc->esb_pa, gsrc->ring_pa);
 	}
 
 	return 0;
@@ -565,7 +593,7 @@ static int octeontx_edac_ghes_setup_resource(struct octeontx_edac_driver *ghes_d
 		if (!gsrc->ring)
 			return -ENOMEM;
 
-		otx_printk(KERN_DEBUG, "%s %s-%x %llx/%llx/%llx\n", __func__, gsrc->name, gsrc->id,
+		otx_printk(KERN_DEBUG, "%s: %x %llx/%llx/%llx\n", gsrc->name, gsrc->id,
 			(long long)gsrc->esa_va, (long long)gsrc->esb_va, (long long)gsrc->ring);
 	}
 
@@ -696,6 +724,7 @@ static int __init octeontx_edac_ghes_probe(struct platform_device *pdev)
 	if (has_acpi_companion(dev)) {
 		otx_printk(KERN_DEBUG, "%s ACPI\n", __func__);
 		acpi_match_device(dev->driver->acpi_match_table, dev);
+		octeontx_edac_ghes_get_vector(ghes_drv);
 		ret = octeontx_edac_ghes_acpi_match_resource(pdev);
 	} else {
 		otx_printk(KERN_DEBUG, "%s DeviceTree\n", __func__);

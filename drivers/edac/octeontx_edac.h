@@ -83,19 +83,19 @@ struct octeontx_edac_mc_record {
  * @mc_work             worker for sdei callback
  */
 struct octeontx_edac_ghes {
-	char                            name[OCTEONTX_GHES_NAME_MAX_LEN];
-	u32                             id;
 	phys_addr_t                     esa_pa;
 	phys_addr_t                     esb_pa;
 	phys_addr_t                     ring_pa;
 	phys_addr_t                     *esa_va;
-	struct octeontx_edac_mc_record     *esb_va;
+	struct octeontx_edac_mc_record  *esb_va;
 	struct octeontx_edac_ghes_ring  *ring;
 	size_t                          ring_sz;
 	size_t                          esb_sz;
 	struct device                   dev;
 	struct mem_ctl_info             *mci;
 	struct work_struct              mc_work;
+	u32                             id;
+	char                            name[OCTEONTX_GHES_NAME_MAX_LEN];
 };
 
 struct octeontx_edac_driver {
