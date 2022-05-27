@@ -76,6 +76,7 @@ struct tx_job_entry {
 	void __iomem		*jd_ptr;
 	void __iomem		*rd_dma_ptr;
 	void __iomem		*jd_cfg_ptr;
+	void __iomem		*pkt_dma_addr;
 };
 
 /* tx job queue */
