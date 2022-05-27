@@ -148,7 +148,11 @@ static const struct mlx4_profile default_profile = {
 
 static const struct mlx4_profile low_mem_profile = {
 	.num_qp		= 1 << 17,
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	.num_srq	= 1 << 6,
+#else
+	.num_srq	= 1 << 7,
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	.rdmarc_per_qp	= 1 << 4,
 	.num_cq		= 1 << 8,
 	.num_mcg	= 1 << 8,
