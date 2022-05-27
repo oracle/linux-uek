@@ -304,7 +304,6 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 						struct cnf10k_rfoe_ndev_priv,
 						ptp_queue_work);
 	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
-	struct cnf10k_mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
 	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
 	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
@@ -316,7 +315,6 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	u16 psm_queue_id, queue_space;
 	struct sk_buff *skb = NULL;
 	struct list_head *head;
-	u64 jd_cfg_ptr_iova;
 	unsigned long flags;
 	u64 regval;
 
@@ -391,28 +389,18 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	priv->ptp_job_tag = psm_cmd_lo->jobtag;
 
 	/* update length and block size in jd dma cfg word */
-	jd_cfg_ptr_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
-	jd_cfg_ptr = otx2_iova_to_virt(priv->iommu_domain, jd_cfg_ptr_iova);
+	jd_cfg_ptr = job_entry->jd_cfg_ptr;
 	jd_cfg_ptr->cfg3.pkt_len = skb->len;
 	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
 				job_entry->rd_dma_ptr;
 	jd_dma_cfg_word_0->block_size = (((skb->len + 15) >> 4) * 4);
 
-	/* copy packet data to rd_dma_ptr start addr */
-	jd_dma_cfg_word_1 = (struct cnf10k_mhbw_jd_dma_cfg_word_1_s *)
-				((u8 *)job_entry->rd_dma_ptr + 8);
-	if (!priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
-		memcpy(otx2_iova_to_virt(priv->iommu_domain,
-					 jd_dma_cfg_word_1->start_addr),
-					 skb->data, skb->len);
+	/* Copy packet data to dma buffer */
+	if (priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
+		memcpy(job_entry->pkt_dma_addr, &tx_mem, sizeof(tx_mem));
+		memcpy(job_entry->pkt_dma_addr + sizeof(tx_mem), skb->data, skb->len);
 	} else {
-		memcpy(otx2_iova_to_virt(priv->iommu_domain,
-					 jd_dma_cfg_word_1->start_addr),
-					 &tx_mem, sizeof(tx_mem));
-		memcpy(otx2_iova_to_virt(priv->iommu_domain,
-					 jd_dma_cfg_word_1->start_addr)
-					 + sizeof(tx_mem), skb->data,
-					 skb->len);
+		memcpy(job_entry->pkt_dma_addr, skb->data, skb->len);
 	}
 
 	jd_cfg_ptr->cfg3.pkt_len = skb->len + sizeof(tx_mem);
@@ -903,7 +891,6 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 					      struct net_device *netdev)
 {
 	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
-	struct cnf10k_mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
 	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
 	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
 	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
@@ -914,10 +901,10 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	struct tx_job_entry *job_entry;
 	struct ptp_tstamp_skb *ts_skb;
 	int psm_queue_id, queue_space;
-	u64 jd_cfg_ptr_iova, regval;
 	unsigned long flags;
 	struct ethhdr *eth;
 	int pkt_type = 0;
+	u64 regval;
 
 	memset(&tx_mem, 0, sizeof(tx_mem));
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) {
@@ -1062,8 +1049,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	}
 
 	/* update length and block size in jd dma cfg word */
-	jd_cfg_ptr_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
-	jd_cfg_ptr = otx2_iova_to_virt(priv->iommu_domain, jd_cfg_ptr_iova);
+	jd_cfg_ptr = job_entry->jd_cfg_ptr;
 	jd_cfg_ptr->cfg3.pkt_len = skb->len;
 	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
 						job_entry->rd_dma_ptr;
@@ -1078,24 +1064,17 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 			jd_cfg_ptr->cfg.rfoe_mode = 0;
 	}
 
-	/* copy packet data to rd_dma_ptr start addr */
-	jd_dma_cfg_word_1 = (struct cnf10k_mhbw_jd_dma_cfg_word_1_s *)
-					((u8 *)job_entry->rd_dma_ptr + 8);
+	/* Copy packet data to dma buffer */
 	if (pkt_type == PACKET_TYPE_PTP &&
 	    priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
-		memcpy(otx2_iova_to_virt(priv->iommu_domain,
-					 jd_dma_cfg_word_1->start_addr),
-					 &tx_mem, sizeof(tx_mem));
-		memcpy(otx2_iova_to_virt(priv->iommu_domain,
-					 jd_dma_cfg_word_1->start_addr)
-					 + sizeof(tx_mem), skb->data,
-					 skb->len);
+		memcpy(job_entry->pkt_dma_addr, &tx_mem, sizeof(tx_mem));
+		memcpy(job_entry->pkt_dma_addr + sizeof(tx_mem),
+		       skb->data, skb->len);
+
 		jd_cfg_ptr->cfg3.pkt_len = skb->len + sizeof(tx_mem);
 		jd_dma_cfg_word_0->block_size = (((skb->len + 15 + sizeof(tx_mem)) >> 4) * 4);
 	} else {
-		memcpy(otx2_iova_to_virt(priv->iommu_domain,
-					 jd_dma_cfg_word_1->start_addr),
-					 skb->data, skb->len);
+		memcpy(job_entry->pkt_dma_addr, skb->data, skb->len);
 	}
 
 	/* make sure that all memory writes are completed */
@@ -1350,6 +1329,7 @@ static void cnf10k_rfoe_fill_tx_job_entries(struct cnf10k_rfoe_ndev_priv *priv,
 				struct cnf10k_bphy_ndev_tx_psm_cmd_info *tx_job,
 					    int num_entries)
 {
+	struct cnf10k_mhbw_jd_dma_cfg_word_1_s *jd_dma_cfg_word_1;
 	struct tx_job_entry *job_entry;
 	u64 jd_cfg_iova, iova;
 	int i;
@@ -1368,6 +1348,11 @@ static void cnf10k_rfoe_fill_tx_job_entries(struct cnf10k_rfoe_ndev_priv *priv,
 		iova = job_entry->rd_dma_iova_addr;
 		job_entry->rd_dma_ptr = otx2_iova_to_virt(priv->iommu_domain,
 							  iova);
+		jd_dma_cfg_word_1 = (struct cnf10k_mhbw_jd_dma_cfg_word_1_s *)
+						((u8 *)job_entry->rd_dma_ptr + 8);
+		job_entry->pkt_dma_addr = otx2_iova_to_virt(priv->iommu_domain,
+							    jd_dma_cfg_word_1->start_addr);
+
 		pr_debug("job_cmd_lo=0x%llx job_cmd_hi=0x%llx jd_iova_addr=0x%llx rd_dma_iova_addr=%llx\n",
 			 tx_job->low_cmd, tx_job->high_cmd,
 			 tx_job->jd_iova_addr, tx_job->rd_dma_iova_addr);
