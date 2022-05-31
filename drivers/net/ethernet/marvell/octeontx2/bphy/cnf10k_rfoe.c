@@ -534,7 +534,6 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 				       struct cnf10k_rx_ft_cfg *ft_cfg,
 				       int mbt_buf_idx)
 {
-	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
 	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
 	struct rfoe_psw_w2_ecpri_s *ecpri_psw_w2;
 	struct rfoe_psw_w2_roe_s *rfoe_psw_w2;
@@ -904,26 +903,18 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	unsigned long flags;
 	struct ethhdr *eth;
 	int pkt_type = 0;
-	u64 regval;
 
-	memset(&tx_mem, 0, sizeof(tx_mem));
-	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) {
-		if (!priv->tx_hw_tstamp_en) {
-			netif_dbg(priv, tx_queued, priv->netdev,
-				  "skb HW timestamp requested but not enabled, this packet will not be timestamped\n");
-			job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
-			pkt_type = PACKET_TYPE_OTHER;
-		} else {
-			job_cfg = &priv->tx_ptp_job_cfg;
-			pkt_type = PACKET_TYPE_PTP;
-		}
+	if (priv->tx_hw_tstamp_en &&
+	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
+		job_cfg = &priv->tx_ptp_job_cfg;
+		pkt_type = PACKET_TYPE_PTP;
+		memset(&tx_mem, 0, sizeof(tx_mem));
 	} else {
 		job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
+		pkt_type = PACKET_TYPE_OTHER;
 		eth = (struct ethhdr *)skb->data;
 		if (htons(eth->h_proto) == ETH_P_ECPRI)
 			pkt_type = PACKET_TYPE_ECPRI;
-		else
-			pkt_type = PACKET_TYPE_OTHER;
 	}
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
@@ -964,8 +955,8 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 		  readq(priv->psm_reg_base + PSM_QUEUE_SPACE(psm_queue_id)));
 
 	/* check psm queue space available */
-	regval = readq(priv->psm_reg_base + PSM_QUEUE_SPACE(psm_queue_id));
-	queue_space = regval & 0x7FFF;
+	queue_space = readq(priv->psm_reg_base +
+			    PSM_QUEUE_SPACE(psm_queue_id)) & 0x7FFF;
 	if (queue_space < 1 && pkt_type != PACKET_TYPE_PTP) {
 		netif_err(priv, tx_err, netdev,
 			  "no space in psm queue %d, dropping pkt\n",
@@ -1093,7 +1084,8 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	if (job_cfg->q_idx == job_cfg->num_entries)
 		job_cfg->q_idx = 0;
 exit:
-	if (!(skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS))
+	if (!(priv->tx_hw_tstamp_en &&
+	      skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS))
 		dev_kfree_skb_any(skb);
 
 	spin_unlock_irqrestore(&job_cfg->lock, flags);
