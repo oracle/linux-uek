@@ -53,34 +53,34 @@
 struct cnf10k_rfoe_drv_ctx {
 	u8				rfoe_num;
 	u8				lmac_id;
-	int				valid;
+	u8				valid;
 	struct net_device               *netdev;
 	struct cnf10k_rx_ft_cfg		*ft_cfg;
-	int				tx_gpint_bit;
 };
 
 extern struct cnf10k_rfoe_drv_ctx cnf10k_rfoe_drv_ctx[CNF10K_RFOE_MAX_INTF];
 
 /* rx flow table configuration */
 struct cnf10k_rx_ft_cfg {
-	enum bphy_netdev_packet_type	pkt_type;	/* pkt_type for psw */
-	enum bphy_netdev_rx_gpint	gp_int_num;
-	u16				flow_id;	/* flow id */
-	u16				mbt_idx;	/* mbt index */
-	u16				buf_size;	/* mbt buf size */
-	u16				num_bufs;	/* mbt num bufs */
-	u64				mbt_iova_addr;
-	void __iomem			*mbt_virt_addr;
-	u16				jdt_idx;	/* jdt index */
-	u8				jd_size;	/* jd size */
-	u16				num_jd;		/* num jd's */
-	u64				jdt_iova_addr;
-	void __iomem			*jdt_virt_addr;
 	u8				jd_rd_offset;	/* jd rd offset */
 	u8				pkt_offset;
+	u16				mbt_idx;	/* mbt index */
+	u16				num_bufs;	/* mbt num bufs */
+	u16				buf_size;	/* mbt buf size */
+	void __iomem			*mbt_virt_addr;
+	enum bphy_netdev_packet_type	pkt_type;	/* pkt_type for psw */
+
+	enum bphy_netdev_rx_gpint	gp_int_num;
+	u8				jd_size;	/* jd size */
+	u16				flow_id;	/* flow id */
+	u16				jdt_idx;	/* jdt index */
+	u16				num_jd;		/* num jd's */
+	u64				mbt_iova_addr;
+	u64				jdt_iova_addr;
+	void __iomem			*jdt_virt_addr;
 	struct napi_struct		napi;
 	struct cnf10k_rfoe_ndev_priv	*priv;
-};
+} ____cacheline_aligned_in_smp;
 
 struct tx_ptp_ring_cfg {
 	u8				ptp_ring_id;
@@ -110,27 +110,34 @@ struct cnf10k_tx_action_s {
 struct cnf10k_rfoe_ndev_priv {
 	u8				rfoe_num;
 	u8				lmac_id;
+	u8				rx_hw_tstamp_en;
+	u8				tx_hw_tstamp_en;
+	u8				if_type;
+	u8				pkt_type_mask;
+	u8				ndev_flags;
+	u32				msg_enable;
+	struct otx2_bphy_cdev_priv	*cdev_priv;
+	struct rfoe_common_cfg		*rfoe_common;
+	void __iomem			*psm_reg_base;
+	struct iommu_domain		*iommu_domain;
+	unsigned long			last_tx_jiffies;
+	unsigned long			last_rx_jiffies;
+	/* Above variables are accessed in hot path for every packet,
+	 * hence keep them in single cache line (64 bytes).
+	 */
+
 	struct net_device		*netdev;
 	struct pci_dev			*pdev;
-	struct otx2_bphy_cdev_priv	*cdev_priv;
-	u32				msg_enable;
 	u32				ptp_ext_clk_rate;
 	void __iomem			*bphy_reg_base;
-	void __iomem			*psm_reg_base;
 	void __iomem			*rfoe_reg_base;
 	void __iomem			*bcn_reg_base;
 	void __iomem			*ptp_reg_base;
-	struct iommu_domain		*iommu_domain;
 	struct cnf10k_rx_ft_cfg		rx_ft_cfg[PACKET_TYPE_MAX];
 	struct tx_job_queue_cfg		tx_ptp_job_cfg;
 	struct tx_ptp_ring_cfg		ptp_ring_cfg;
-	struct rfoe_common_cfg		*rfoe_common;
-	u8				pkt_type_mask;
-	u8				ndev_flags;
 	/* priv lock */
 	spinlock_t			lock;
-	int				rx_hw_tstamp_en;
-	int				tx_hw_tstamp_en;
 	int				ptp_onestep_sync;
 	struct sk_buff			*ptp_tx_skb;
 	u16				ptp_job_tag;
@@ -142,7 +149,6 @@ struct cnf10k_rfoe_ndev_priv {
 	struct ptp_clock		*ptp_clock;
 	struct ptp_clock_info		ptp_clock_info;
 	struct delayed_work		extts_work;
-	struct otx2_rfoe_stats		stats;
 	struct ptp_pin_desc		extts_config;
 	struct cyclecounter		cycle_counter;
 	struct timecounter		time_counter;
@@ -151,11 +157,8 @@ struct cnf10k_rfoe_ndev_priv {
 	u8				mac_addr[ETH_ALEN];
 	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
-	int				if_type;
 	u8				link_state;
-	unsigned long			last_tx_jiffies;
 	unsigned long			last_tx_ptp_jiffies;
-	unsigned long			last_rx_jiffies;
 	unsigned long			last_rx_ptp_jiffies;
 	unsigned long			last_tx_dropped_jiffies;
 	unsigned long			last_tx_ptp_dropped_jiffies;
@@ -163,7 +166,9 @@ struct cnf10k_rfoe_ndev_priv {
 	unsigned long			last_rx_ptp_dropped_jiffies;
 	u64				last_extts;
 	u64				thresh;
-};
+
+	struct otx2_rfoe_stats		stats;
+} ____cacheline_aligned_in_smp;
 
 /* PTPv2 originTimestamp structure */
 struct ptpv2_tstamp {
