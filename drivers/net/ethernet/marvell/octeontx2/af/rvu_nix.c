@@ -4225,9 +4225,13 @@ linkcfg:
 		return 0;
 
 	/* Update transmit credits for CGX links */
-	lmac_fifo_len =
-		rvu_cgx_get_fifolen(rvu) /
-		cgx_get_lmac_cnt(rvu_cgx_pdata(cgx, rvu));
+	lmac_fifo_len = rvu_cgx_get_lmac_fifolen(rvu, cgx, lmac);
+	if (!lmac_fifo_len) {
+		dev_err(rvu->dev,
+			"%s: Failed to get CGX/RPM%d:LMAC%d FIFO size\n",
+			__func__, cgx, lmac);
+		return 0;
+	}
 	return nix_config_link_credits(rvu, blkaddr, link, pcifunc,
 				       (lmac_fifo_len - req->maxlen) / 16);
 }
@@ -4286,6 +4290,7 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 	u16 lbk_max_frs, lmac_max_frs;
 	unsigned long lmac_bmap;
 	u64 tx_credits, cfg;
+	u64 lmac_fifo_len;
 	int iter;
 
 	rvu_get_lbk_link_max_frs(rvu, &lbk_max_frs);
@@ -4330,14 +4335,23 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 		/* Skip when cgx is not available or lmac cnt is zero */
 		if (lmac_cnt <= 0)
 			continue;
-		tx_credits = ((rvu_cgx_get_fifolen(rvu) / lmac_cnt) -
-			       lmac_max_frs) / 16;
-		/* Enable credits and set credit pkt count to max allowed */
-		cfg =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
+
 		slink = cgx * hw->lmac_per_cgx;
+
 		/* Get LMAC id's from bitmap */
 		lmac_bmap = cgx_get_lmac_bmap(rvu_cgx_pdata(cgx, rvu));
 		for_each_set_bit(iter, &lmac_bmap, MAX_LMAC_PER_CGX) {
+			lmac_fifo_len = rvu_cgx_get_lmac_fifolen(rvu, cgx, iter);
+			if (!lmac_fifo_len) {
+				dev_err(rvu->dev,
+					"%s: Failed to get CGX/RPM%d:LMAC%d FIFO size\n",
+					__func__, cgx, iter);
+				continue;
+			}
+			tx_credits = (lmac_fifo_len - lmac_max_frs) / 16;
+			/* Enable credits and set credit pkt count to max allowed */
+			cfg =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
+
 			link = iter + slink;
 			nix_hw->tx_credits[link] = tx_credits;
 			rvu_write64(rvu, blkaddr,
