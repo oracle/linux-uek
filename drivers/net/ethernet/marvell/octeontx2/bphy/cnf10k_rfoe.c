@@ -512,51 +512,36 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 				     psw->mcs_err_sts);
 		return;
 	}
-
-	if (pkt_type != PACKET_TYPE_ECPRI) {
-		/* check that the psw type is correct: */
-		if (unlikely(psw->pkt_type == CNF10K_ECPRI)) {
-			net_warn_ratelimited("%s: pswt is eCPRI for pkt_type = %d\n",
-					     priv->netdev->name, pkt_type);
-			return;
-		}
-		jdt_iova_addr = (u64)psw->jd_ptr;
-		rfoe_psw_w2 = (struct rfoe_psw_w2_roe_s *)&psw->proto_sts_word;
-		lmac_id = rfoe_psw_w2->lmac_id;
-		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
-	} else {
-		/* check that the psw type is correct: */
-		if (unlikely(psw->pkt_type != CNF10K_ECPRI)) {
-			net_warn_ratelimited("%s: pswt is not eCPRI for pkt_type = %d\n",
-					     priv->netdev->name, pkt_type);
-			return;
-		}
+	if (psw->pkt_type == CNF10K_ECPRI) {
 		jdt_iova_addr = (u64)psw->jd_ptr;
 		ecpri_psw_w2 = (struct rfoe_psw_w2_ecpri_s *)
 					&psw->proto_sts_word;
 		lmac_id = ecpri_psw_w2->lmac_id;
-		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
+
+		/* Only ecpri payload size is captured in psw->pkt_len, so
+		 * get full packet length from JDT.
+		 */
+		jdt_ptr = otx2_iova_to_virt(priv->iommu_domain, jdt_iova_addr);
+		jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
+				((u8 *)jdt_ptr + ft_cfg->jd_rd_offset);
+		len = (jd_dma_cfg_word_0->block_size) << 2;
+		len -= (ft_cfg->pkt_offset * 16);
+	} else {
+		rfoe_psw_w2 = (struct rfoe_psw_w2_roe_s *)&psw->proto_sts_word;
+		lmac_id = rfoe_psw_w2->lmac_id;
+		len = psw->pkt_len;
 	}
 
-	netif_dbg(priv, rx_status, priv->netdev,
-		  "Rx: rfoe=%d lmac=%d mbt_buf_idx=%d\n",
-		  priv->rfoe_num, lmac_id, mbt_buf_idx);
-
-	/* read jd ptr from psw */
-	jdt_ptr = otx2_iova_to_virt(priv->iommu_domain, jdt_iova_addr);
-	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
-			((u8 *)jdt_ptr + ft_cfg->jd_rd_offset);
-	len = (jd_dma_cfg_word_0->block_size) << 2;
-	netif_dbg(priv, rx_status, priv->netdev, "jd rd_dma len = %d\n", len);
+	buf_ptr += (ft_cfg->pkt_offset * 16);
 
 	if (unlikely(netif_msg_pktdata(priv))) {
+		net_info_ratelimited("%s: %s: Rx: rfoe=%d lmac=%d mbt_buf_idx=%d\n",
+				     priv->netdev->name, __func__, priv->rfoe_num,
+				     lmac_id, mbt_buf_idx);
 		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
 		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
 			       buf_ptr, len, true);
 	}
-
-	buf_ptr += (ft_cfg->pkt_offset * 16);
-	len -= (ft_cfg->pkt_offset * 16);
 
 	for (idx = 0; idx < CNF10K_RFOE_MAX_INTF; idx++) {
 		drv_ctx = &cnf10k_rfoe_drv_ctx[idx];
@@ -604,13 +589,8 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	skb_put(skb, len);
 	skb->protocol = eth_type_trans(skb, netdev);
 
-	/* remove trailing padding for ptp packets */
-	if (skb->protocol == htons(ETH_P_1588)) {
-		ptp_message_len = skb->data[2] << 8 | skb->data[3];
-		skb_trim(skb, ptp_message_len);
-	}
-
 	if (priv2->rx_hw_tstamp_en) {
+		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
 		tstamp = cnf10k_ptp_convert_timestamp(tstamp);
 		cnf10k_rfoe_calc_ptp_ts(priv, &tstamp);
 		cnf10k_rfoe_ptp_tstamp2time(priv, tstamp, &tsns);
