@@ -486,11 +486,11 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 {
 	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
 	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
-	u64 tstamp = 0, mbt_state, jdt_iova_addr, tsns;
 	struct rfoe_psw_w2_ecpri_s *ecpri_psw_w2;
 	struct rfoe_psw_w2_roe_s *rfoe_psw_w2;
 	struct cnf10k_rfoe_ndev_priv *priv2;
 	struct cnf10k_rfoe_drv_ctx *drv_ctx;
+	u64 tstamp = 0, jdt_iova_addr, tsns;
 	int found = 0, idx, len, pkt_type;
 	unsigned int ptp_message_len = 0;
 	struct rfoe_psw_s *psw = NULL;
@@ -498,24 +498,6 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	u8 *buf_ptr, *jdt_ptr;
 	struct sk_buff *skb;
 	u8 lmac_id;
-
-	/* read mbt state */
-	spin_lock(&cdev_priv->mbt_lock);
-	writeq(mbt_buf_idx, (priv->rfoe_reg_base +
-			 CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(priv->rfoe_num)));
-	mbt_state = readq(priv->rfoe_reg_base +
-			  CNF10K_RFOEX_RX_IND_MBT_SEG_STATE(priv->rfoe_num));
-	spin_unlock(&cdev_priv->mbt_lock);
-
-	if ((mbt_state >> 16 & 0xf) != 0) {
-		pr_err("rx pkt error: mbt_buf_idx=%d, err=%d\n",
-		       mbt_buf_idx, (u8)(mbt_state >> 16 & 0xf));
-		return;
-	}
-	if (mbt_state >> 20 & 0x1) {
-		pr_err("rx dma error: mbt_buf_idx=%d\n", mbt_buf_idx);
-		return;
-	}
 
 	buf_ptr = (u8 *)ft_cfg->mbt_virt_addr +
 				(ft_cfg->buf_size * mbt_buf_idx);
