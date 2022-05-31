@@ -2325,7 +2325,7 @@ extern void sched_cs_copy(struct task_struct *src, struct task_struct *dst);
 static inline void sched_core_free(struct task_struct *tsk) { }
 static inline void sched_core_fork(struct task_struct *p) { }
 static inline void sched_cs_copy(struct task_struct *src,
-				struct task_struct *dst); { }
+				struct task_struct *dst) { }
 #endif
 
 #endif
