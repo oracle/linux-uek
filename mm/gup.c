@@ -532,7 +532,11 @@ retry:
 	}
 
 	page = vm_normal_page(vma, address, pte);
-	if (!page && pte_devmap(pte) && (flags & (FOLL_GET | FOLL_PIN))) {
+	if ((flags & FOLL_LRU) && ((page && is_zone_device_page(page)) ||
+	    (!page && pte_devmap(pte)))) {
+		page = ERR_PTR(-EEXIST);
+		goto out;
+	} else if (!page && pte_devmap(pte) && (flags & (FOLL_GET | FOLL_PIN))) {
 		/*
 		 * Only return device mapping pages in the FOLL_GET or FOLL_PIN
 		 * case since they are only valid while holding the pgmap
