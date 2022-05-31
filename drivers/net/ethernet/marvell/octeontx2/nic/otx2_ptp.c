@@ -9,19 +9,6 @@
 #include "otx2_common.h"
 #include "otx2_ptp.h"
 
-#define PCI_SUBSYS_DEVID_CN10K_A_PTP		0xB900
-#define PCI_SUBSYS_DEVID_CNF10K_A_PTP		0xBA00
-
-static bool has_cn10k_ptp_pps_errata(struct otx2_ptp *ptp)
-{
-	struct pci_dev *pdev = ptp->nic->pdev;
-
-	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A_PTP ||
-	    pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A_PTP)
-		return true;
-	return false;
-}
-
 static u64 otx2_ptp_get_clock(struct otx2_ptp *ptp)
 {
 	struct ptp_req *req;
@@ -81,6 +68,23 @@ static int ptp_set_thresh(struct otx2_ptp *ptp, u64 thresh)
 
 	req->op = PTP_OP_SET_THRESH;
 	req->thresh = thresh;
+
+	return otx2_sync_mbox_msg(&ptp->nic->mbox);
+}
+
+static int ptp_extts_on(struct otx2_ptp *ptp, int on)
+{
+	struct ptp_req *req;
+
+	if (!ptp->nic)
+		return -ENODEV;
+
+	req = otx2_mbox_alloc_msg_ptp_op(&ptp->nic->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->op = PTP_OP_EXTTS_ON;
+	req->extts_on = on;
 
 	return otx2_sync_mbox_msg(&ptp->nic->mbox);
 }
@@ -201,18 +205,14 @@ static void otx2_ptp_extts_check(struct work_struct *work)
 		event.index = 0;
 		event.timestamp = timecounter_cyc2time(&ptp->time_counter, tstmp);
 		ptp_clock_event(ptp->ptp_clock, &event);
-		ptp->last_extts = tstmp;
-		if (has_cn10k_ptp_pps_errata(ptp))
-			new_thresh = tstmp;
-		else
-			new_thresh = tstmp % PPS_HALF_CYCLE_NS;
-
+		new_thresh = tstmp % 500000000;
 		if (ptp->thresh != new_thresh) {
 			mutex_lock(&ptp->nic->mbox.lock);
 			ptp_set_thresh(ptp, new_thresh);
 			mutex_unlock(&ptp->nic->mbox.lock);
 			ptp->thresh = new_thresh;
 		}
+		ptp->last_extts = tstmp;
 	}
 	schedule_delayed_work(&ptp->extts_work, msecs_to_jiffies(200));
 }
@@ -250,10 +250,13 @@ static int otx2_ptp_enable(struct ptp_clock_info *ptp_info,
 				   rq->extts.index);
 		if (pin < 0)
 			return -EBUSY;
-		if (on)
+		if (on) {
+			ptp_extts_on(ptp, on);
 			schedule_delayed_work(&ptp->extts_work, msecs_to_jiffies(200));
-		else
+		} else {
+			ptp_extts_on(ptp, on);
 			cancel_delayed_work_sync(&ptp->extts_work);
+		}
 		return 0;
 	default:
 		break;
