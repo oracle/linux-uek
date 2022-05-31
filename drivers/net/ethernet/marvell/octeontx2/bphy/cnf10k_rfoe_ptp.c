@@ -6,7 +6,7 @@
 
 #include "cnf10k_rfoe.h"
 
-#define EXT_PTP_CLK_RATE		(125 * 1000000) /* Ext PTP clk rate */
+#define EXT_PTP_CLK_RATE		(1000 * 1000000) /* Ext PTP clk rate */
 
 static int cnf10k_rfoe_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 {
