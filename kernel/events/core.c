@@ -12371,8 +12371,8 @@ SYSCALL_DEFINE5(perf_event_open,
 			err = -EINVAL;
 			goto err_locked;
 		}
-not_move_group:
 	}
+not_move_group:
 
 	if (ctx->task == TASK_TOMBSTONE) {
 		err = -ESRCH;
