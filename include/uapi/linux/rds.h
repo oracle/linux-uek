@@ -242,6 +242,7 @@ struct rds_info_socket {
 	u_int32_t	rcvbuf;
 	u_int64_t	inum;
 	pid_t		pid;
+	int32_t		cong;
 } __attribute__((packed));
 
 struct rds6_info_socket {
@@ -253,6 +254,7 @@ struct rds6_info_socket {
 	uint32_t	rcvbuf;
 	uint64_t	inum;
 	pid_t		pid;
+	int32_t		cong;
 } __attribute__((packed));
 
 struct rds_info_tcp_socket {
