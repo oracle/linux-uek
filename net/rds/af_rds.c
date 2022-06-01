@@ -1218,6 +1218,13 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 }
 #endif
 
+/* Userspace cannot differentiate between 0 indicating a
+ * a non congestion state or on a older kernel where this
+ * value is not set and would contain 0 by default on userspace
+ * struct initialization. Thus we send -1 to indicate that a non
+ * congested state to userspace (Applies to rds6_sock_info as well).
+ */
+
 static void rds_sock_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
 			  struct rds_info_lengths *lens)
@@ -1241,6 +1248,10 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 		sinfo.connected_port = rs->rs_conn_port;
 		sinfo.inum = sock_i_ino(rds_rs_to_sk(rs));
 		sinfo.pid = rs->rs_pid;
+		if (rs->rs_congested)
+			sinfo.cong = rs->rs_congested;
+		else
+			sinfo.cong = -1;
 
 		rds_info_copy(iter, &sinfo, sizeof(sinfo));
 	}
@@ -1276,6 +1287,10 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 		sinfo6.connected_port = rs->rs_conn_port;
 		sinfo6.inum = sock_i_ino(rds_rs_to_sk(rs));
 		sinfo6.pid = rs->rs_pid;
+		if (rs->rs_congested)
+			sinfo6.cong = rs->rs_congested;
+		else
+			sinfo6.cong = -1;
 
 		rds_info_copy(iter, &sinfo6, sizeof(sinfo6));
 	}
