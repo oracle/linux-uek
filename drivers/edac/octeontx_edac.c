@@ -66,7 +66,8 @@ static void octeontx_edac_mc_inject(struct mem_ctl_info *mci)
 		arg[0] = OCTEON10_EDAC_INJECT;
 		arg[1] = 0xd;
 		arg[2] = pvt->address;
-		arg[4] = pvt->error_type;
+		arg[3] = (pvt->error_type >> 8) & 1;
+		arg[4] = pvt->error_type & 0xFF;
 		otx_printk(KERN_DEBUG, "%s %lx %lx %lx %lx %lx %lx %lx %lx\n", __func__,
 				arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7]);
 		arm_smccc_smc(arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], &res);
