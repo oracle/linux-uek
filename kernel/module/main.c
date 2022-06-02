@@ -268,6 +268,9 @@ static void module_assert_mutex_or_preempt(void)
 }
 
 #ifdef CONFIG_MODULE_SIG
+#undef MODULE_PARAM_PREFIX
+#define MODULE_PARAM_PREFIX "module."
+
 static bool sig_enforce = IS_ENABLED(CONFIG_MODULE_SIG_FORCE);
 module_param(sig_enforce, bool_enable_only, 0644);
 
