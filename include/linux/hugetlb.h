@@ -43,6 +43,9 @@ enum {
 	SUBPAGE_INDEX_CGROUP_RSVD,	/* reuse page->private */
 	__MAX_CGROUP_SUBPAGE_INDEX = SUBPAGE_INDEX_CGROUP_RSVD,
 #endif
+#ifdef CONFIG_MEMORY_FAILURE
+	SUBPAGE_INDEX_HWPOISON,
+#endif
 	__NR_USED_SUBPAGE,
 };
 
@@ -797,6 +800,27 @@ static inline int hstate_index(struct hstate *h)
 extern int dissolve_free_huge_page(struct page *page);
 extern int dissolve_free_huge_pages(unsigned long start_pfn,
 				    unsigned long end_pfn);
+
+#ifdef CONFIG_MEMORY_FAILURE
+/*
+ * pointer to raw error page is located in hpage[SUBPAGE_INDEX_HWPOISON].private
+ */
+static inline struct page *hugetlb_page_hwpoison(struct page *hpage)
+{
+	return (void *)page_private(hpage + SUBPAGE_INDEX_HWPOISON);
+}
+
+static inline void hugetlb_set_page_hwpoison(struct page *hpage,
+					struct page *page)
+{
+	set_page_private(hpage + SUBPAGE_INDEX_HWPOISON, (unsigned long)page);
+}
+#else
+static inline struct page *hugetlb_page_hwpoison(struct page *hpage)
+{
+	return NULL;
+}
+#endif
 
 #ifdef CONFIG_ARCH_ENABLE_HUGEPAGE_MIGRATION
 #ifndef arch_hugetlb_migration_supported
