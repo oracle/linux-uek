@@ -1051,7 +1051,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	 * for all connections that still have messages mapped.
 	 */
 	list_for_each_entry_safe(rm, tmp, &list, m_sock_item) {
-		refcount_inc(&rm->m_inc.i_conn->c_dr_sock_cancel_refs);
+		atomic_inc(&rm->m_inc.i_conn->c_dr_sock_cancel_refs);
 
 		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags))
 			queue_delayed_work(system_unbound_wq,
@@ -1092,7 +1092,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		rm = list_entry(list.next, struct rds_message, m_sock_item);
 		list_del_init(&rm->m_sock_item);
 
-		if (refcount_dec_and_test(&rm->m_inc.i_conn->c_dr_sock_cancel_refs))
+		if (atomic_dec_and_test(&rm->m_inc.i_conn->c_dr_sock_cancel_refs))
 			cancel_delayed_work(&rm->m_inc.i_conn->c_dr_sock_cancel_w);
 
 		rds_message_put(rm);
