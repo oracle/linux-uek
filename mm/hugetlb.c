@@ -1553,6 +1553,15 @@ static void __update_and_free_page(struct hstate *h, struct page *page)
 		return;
 	}
 
+	if (unlikely(PageHWPoison(page))) {
+		struct page *raw_error = hugetlb_page_hwpoison(page);
+
+		if (raw_error && raw_error != page) {
+			SetPageHWPoison(raw_error);
+			ClearPageHWPoison(page);
+		}
+	}
+
 	for (i = 0; i < pages_per_huge_page(h);
 	     i++, subpage = mem_map_next(subpage, page, i)) {
 		subpage->flags &= ~(1 << PG_locked | 1 << PG_error |
