@@ -110,21 +110,21 @@ static ssize_t shrinker_debugfs_scan_write(struct file *file,
 					   size_t size, loff_t *pos)
 {
 	struct shrinker *shrinker = file->private_data;
-	unsigned long nr_to_scan = 0, ino;
+	unsigned long nr_to_scan = 0, ino, read_len;
 	struct shrink_control sc = {
 		.gfp_mask = GFP_KERNEL,
 	};
 	struct mem_cgroup *memcg = NULL;
 	int nid;
 	char kbuf[72];
-	int read_len = size < (sizeof(kbuf) - 1) ? size : (sizeof(kbuf) - 1);
 	ssize_t ret;
 
+	read_len = size < (sizeof(kbuf) - 1) ? size : (sizeof(kbuf) - 1);
 	if (copy_from_user(kbuf, buf, read_len))
 		return -EFAULT;
 	kbuf[read_len] = '\0';
 
-	if (sscanf(kbuf, "%lu %d %lu", &ino, &nid, &nr_to_scan) < 2)
+	if (sscanf(kbuf, "%lu %d %lu", &ino, &nid, &nr_to_scan) != 2)
 		return -EINVAL;
 
 	if (nid < 0 || nid >= nr_node_ids)
