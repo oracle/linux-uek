@@ -385,7 +385,7 @@ struct rds_connection {
 	atomic64_t		c_send_bytes;
 	atomic64_t		c_recv_bytes;
 
-	refcount_t		c_dr_sock_cancel_refs;
+	atomic_t		c_dr_sock_cancel_refs;
 	struct delayed_work	c_dr_sock_cancel_w;
 };
 
