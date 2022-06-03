@@ -5063,6 +5063,28 @@ int rvu_mbox_handler_nix_inline_ipsec_cfg(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_nix_read_inline_ipsec_cfg(struct rvu *rvu,
+					       struct msg_req *req,
+					       struct nix_inline_ipsec_cfg *rsp)
+
+{
+	u64 val;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_CPT0))
+		return 0;
+
+	val = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_RX_IPSEC_GEN_CFG);
+	rsp->gen_cfg.egrp = FIELD_GET(IPSEC_GEN_CFG_EGRP, val);
+	rsp->gen_cfg.opcode = FIELD_GET(IPSEC_GEN_CFG_OPCODE, val);
+	rsp->gen_cfg.param1 = FIELD_GET(IPSEC_GEN_CFG_PARAM1, val);
+	rsp->gen_cfg.param2 = FIELD_GET(IPSEC_GEN_CFG_PARAM2, val);
+
+	val = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_RX_CPTX_CREDIT(0));
+	rsp->cpt_credit = val & 0x3FFFFF;
+
+	return 0;
+}
+
 int rvu_mbox_handler_nix_inline_ipsec_lf_cfg(
 struct rvu *rvu, struct nix_inline_ipsec_lf_cfg *req, struct msg_rsp *rsp)
 {

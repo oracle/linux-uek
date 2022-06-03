@@ -348,7 +348,9 @@ M(NIX_CPT_BP_ENABLE,    0x8020, nix_cpt_bp_enable, nix_bp_cfg_req,	    \
 				nix_bp_cfg_rsp)				    \
 M(NIX_CPT_BP_DISABLE,   0x8021, nix_cpt_bp_disable, nix_bp_cfg_req,	    \
 				msg_rsp)				    \
-M(NIX_RX_SW_SYNC,	0x8022, nix_rx_sw_sync, msg_req, msg_rsp)
+M(NIX_RX_SW_SYNC,	0x8022, nix_rx_sw_sync, msg_req, msg_rsp)	\
+M(NIX_READ_INLINE_IPSEC_CFG, 0x8023, nix_read_inline_ipsec_cfg,		\
+				msg_req, nix_inline_ipsec_cfg)		\
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -1217,7 +1219,7 @@ struct nix_inline_ipsec_cfg {
 	u32 cpt_credit;
 	struct {
 		u8 egrp;
-		u8 opcode;
+		u16 opcode;
 		u16 param1;
 		u16 param2;
 	} gen_cfg;
