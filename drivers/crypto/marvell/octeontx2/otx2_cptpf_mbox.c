@@ -169,9 +169,15 @@ static int rx_inline_ipsec_lf_cfg(struct otx2_cptpf_dev *cptpf, u8 egrp,
 	nix_req->hdr.id = MBOX_MSG_NIX_INLINE_IPSEC_CFG;
 	nix_req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	nix_req->enable = 1;
-	nix_req->cpt_credit = OTX2_CPT_INST_QLEN_MSGS - 1;
+	if (!req->credit || req->credit > OTX2_CPT_INST_QLEN_MSGS)
+		nix_req->cpt_credit = OTX2_CPT_INST_QLEN_MSGS - 1;
+	else
+		nix_req->cpt_credit = req->credit - 1;
 	nix_req->gen_cfg.egrp = egrp;
-	nix_req->gen_cfg.opcode = cpt_inline_rx_opcode(pdev);
+	if (req->opcode)
+		nix_req->gen_cfg.opcode = req->opcode;
+	else
+		nix_req->gen_cfg.opcode = cpt_inline_rx_opcode(pdev);
 	nix_req->gen_cfg.param1 = req->param1;
 	nix_req->gen_cfg.param2 = req->param2;
 	nix_req->inst_qsel.cpt_pf_func = OTX2_CPT_RVU_PFFUNC(cptpf->pf_id, 0);
