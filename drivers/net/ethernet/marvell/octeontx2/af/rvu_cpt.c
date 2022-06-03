@@ -59,10 +59,10 @@ static irqreturn_t rvu_cpt_af_flt_intr_handler(int irq, void *ptr)
 				     reg0, reg1);
 	}
 	if (reg2) {
-		eng = find_first_bit((unsigned long *)&reg0, 64);
+		eng = find_first_bit((unsigned long *)&reg2, 64);
 		eng += 128;
 	} else if (reg1) {
-		eng = find_first_bit((unsigned long *)&reg0, 64);
+		eng = find_first_bit((unsigned long *)&reg1, 64);
 		eng += 64;
 	} else {
 		eng = find_first_bit((unsigned long *)&reg0, 64);
