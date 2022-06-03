@@ -1287,12 +1287,14 @@ void otx2_free_pending_sqe(struct otx2_nic *pfvf)
 				dev_kfree_skb_any(skb);
 				sg->skb = (u64)NULL;
 			}
-
-			if (!tx_pkts)
-				continue;
-			txq = netdev_get_tx_queue(pfvf->netdev, sq_idx);
-			netdev_tx_completed_queue(txq, tx_pkts, tx_bytes);
 		}
+
+		if (!tx_pkts)
+			continue;
+		txq = netdev_get_tx_queue(pfvf->netdev, sq_idx);
+		netdev_tx_completed_queue(txq, tx_pkts, tx_bytes);
+		tx_pkts = 0;
+		tx_bytes = 0;
 	}
 }
 
