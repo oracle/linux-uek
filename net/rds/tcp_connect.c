@@ -93,7 +93,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 	char *reason = NULL;
 	int addrlen;
 	bool isv6;
-	int ret;
+	int ret, i;
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_tcp_connection *tc = cp->cp_transport_data;
 
@@ -104,6 +104,18 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 		reason = "cp index > 0 but npaths < 2";
 		ret = -EAGAIN;
 		goto out_nolock;
+	}
+
+	/* Multiple backend connections need to be brought up
+	 * deterministically (i.e. first #0, then #1, ... then #7),
+	 * in order to not shuffle per-path connection state
+	 * that's preserved across reconnects (e.g. "cp_next_rx_seq")
+	 */
+	for (i = 0; i < cp->cp_index; i++) {
+		if (!rds_conn_path_up(conn->c_path + i)) {
+			ret = -EAGAIN;
+			goto out_nolock;
+		}
 	}
 
 	mutex_lock(&tc->t_conn_path_lock);
