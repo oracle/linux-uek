@@ -132,8 +132,9 @@ static void mremap_expand_merge(unsigned long page_size)
 	char *line = NULL;
 	size_t len = 0;
 	bool success = false;
+	char *start = mmap(NULL, 3 * page_size, PROT_READ | PROT_WRITE,
+			   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-	char *start = mmap(NULL, 3 * page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	munmap(start + page_size, page_size);
 	mremap(start, page_size, 2 * page_size, 0);
 
@@ -143,11 +144,12 @@ static void mremap_expand_merge(unsigned long page_size)
 		return;
 	}
 
-	while(getline(&line, &len, fp) != -1) {
-		char *first = strtok(line,"- ");
-		void *first_val = (void *) strtol(first, NULL, 16);
-		char *second = strtok(NULL,"- ");
+	while (getline(&line, &len, fp) != -1) {
+		char *first = strtok(line, "- ");
+		void *first_val = (void *)strtol(first, NULL, 16);
+		char *second = strtok(NULL, "- ");
 		void *second_val = (void *) strtol(second, NULL, 16);
+
 		if (first_val == start && second_val == start + 3 * page_size) {
 			success = true;
 			break;
