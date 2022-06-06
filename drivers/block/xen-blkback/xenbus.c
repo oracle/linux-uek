@@ -24,6 +24,15 @@
 #include <xen/grant_table.h>
 #include "common.h"
 
+
+static bool flush_support;
+module_param(flush_support, bool, 0644);
+MODULE_PARM_DESC(flush_support, "Force flush_support for all VBDs. Not recommended");
+
+static bool discard_secure;
+module_param(discard_secure, bool, 0644);
+MODULE_PARM_DESC(discard_secure, "Force discard_secure for all VBDs. Not recommended");
+
 /* On the XenBus the max length of 'ring-ref%u'. */
 #define RINGREF_NAME_LEN (20)
 
@@ -487,12 +496,12 @@ static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
 		vbd->type |= VDISK_REMOVABLE;
 
 	q = bdev_get_queue(bdev);
-	if (q && q->flush_flags)
+	if ((q && q->flush_flags) || flush_support)
 		vbd->flush_support = true;
 	else
 		vbd->flush_support = false;
 
-	if (q && blk_queue_secdiscard(q))
+	if ((q && blk_queue_secdiscard(q)) || discard_secure)
 		vbd->discard_secure = true;
 	else
 		vbd->discard_secure = false;
