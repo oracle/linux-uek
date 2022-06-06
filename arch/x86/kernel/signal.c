@@ -323,7 +323,7 @@ static const struct {
 };
 
 static int
-__setup_frame(int sig, struct ksignal *ksig, sigset_t *set,
+__setup_frame(struct ksignal *ksig, sigset_t *set,
 	      struct pt_regs *regs)
 {
 	struct sigframe __user *frame;
@@ -335,7 +335,7 @@ __setup_frame(int sig, struct ksignal *ksig, sigset_t *set,
 	if (!user_access_begin(frame, sizeof(*frame)))
 		return -EFAULT;
 
-	unsafe_put_user(sig, &frame->sig, Efault);
+	unsafe_put_user(ksig->sig, &frame->sig, Efault);
 	unsafe_put_sigcontext(&frame->sc, fp, regs, set, Efault);
 	unsafe_put_user(set->sig[1], &frame->extramask[0], Efault);
 	if (current->mm->context.vdso)
@@ -362,7 +362,7 @@ __setup_frame(int sig, struct ksignal *ksig, sigset_t *set,
 	/* Set up registers for signal handler */
 	regs->sp = (unsigned long)frame;
 	regs->ip = (unsigned long)ksig->ka.sa.sa_handler;
-	regs->ax = (unsigned long)sig;
+	regs->ax = (unsigned long)ksig->sig;
 	regs->dx = 0;
 	regs->cx = 0;
 
@@ -378,7 +378,7 @@ Efault:
 	return -EFAULT;
 }
 
-static int __setup_rt_frame(int sig, struct ksignal *ksig,
+static int __setup_rt_frame(struct ksignal *ksig,
 			    sigset_t *set, struct pt_regs *regs)
 {
 	struct rt_sigframe __user *frame;
@@ -390,7 +390,7 @@ static int __setup_rt_frame(int sig, struct ksignal *ksig,
 	if (!user_access_begin(frame, sizeof(*frame)))
 		return -EFAULT;
 
-	unsafe_put_user(sig, &frame->sig, Efault);
+	unsafe_put_user(ksig->sig, &frame->sig, Efault);
 	unsafe_put_user(&frame->info, &frame->pinfo, Efault);
 	unsafe_put_user(&frame->uc, &frame->puc, Efault);
 
@@ -427,7 +427,7 @@ static int __setup_rt_frame(int sig, struct ksignal *ksig,
 	/* Set up registers for signal handler */
 	regs->sp = (unsigned long)frame;
 	regs->ip = (unsigned long)ksig->ka.sa.sa_handler;
-	regs->ax = (unsigned long)sig;
+	regs->ax = (unsigned long)ksig->sig;
 	regs->dx = (unsigned long)&frame->info;
 	regs->cx = (unsigned long)&frame->uc;
 
@@ -457,7 +457,7 @@ static unsigned long frame_uc_flags(struct pt_regs *regs)
 	return flags;
 }
 
-static int __setup_rt_frame(int sig, struct ksignal *ksig,
+static int __setup_rt_frame(struct ksignal *ksig,
 			    sigset_t *set, struct pt_regs *regs)
 {
 	struct rt_sigframe __user *frame;
@@ -492,7 +492,7 @@ static int __setup_rt_frame(int sig, struct ksignal *ksig,
 	}
 
 	/* Set up registers for signal handler */
-	regs->di = sig;
+	regs->di = ksig->sig;
 	/* In case the signal handler was declared without prototypes */
 	regs->ax = 0;
 
@@ -764,7 +764,6 @@ static inline int is_x32_frame(struct ksignal *ksig)
 static int
 setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 {
-	int usig = ksig->sig;
 	sigset_t *set = sigmask_to_save();
 	compat_sigset_t *cset = (compat_sigset_t *) set;
 
@@ -774,13 +773,13 @@ setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 	/* Set up the stack frame */
 	if (is_ia32_frame(ksig)) {
 		if (ksig->ka.sa.sa_flags & SA_SIGINFO)
-			return ia32_setup_rt_frame(usig, ksig, cset, regs);
+			return ia32_setup_rt_frame(ksig, cset, regs);
 		else
-			return ia32_setup_frame(usig, ksig, cset, regs);
+			return ia32_setup_frame(ksig, cset, regs);
 	} else if (is_x32_frame(ksig)) {
 		return x32_setup_rt_frame(ksig, cset, regs);
 	} else {
-		return __setup_rt_frame(ksig->sig, ksig, set, regs);
+		return __setup_rt_frame(ksig, set, regs);
 	}
 }
 
