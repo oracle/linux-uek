@@ -3503,9 +3503,11 @@ void kvm_vcpu_block(struct kvm_vcpu *vcpu)
 				ktime_to_ns(ktime_get()) - ktime_to_ns(start));
 	}
 
+	preempt_disable();
 	kvm_arch_vcpu_blocking(vcpu);
-
 	prepare_to_rcuwait(&vcpu->wait);
+	preempt_enable();
+
 	for (;;) {
 		set_current_state(TASK_INTERRUPTIBLE);
 
@@ -3515,8 +3517,11 @@ void kvm_vcpu_block(struct kvm_vcpu *vcpu)
 		waited = true;
 		schedule();
 	}
+
+	preempt_disable();
 	finish_rcuwait(&vcpu->wait);
 	kvm_arch_vcpu_unblocking(vcpu);
+	preempt_enable();
 
 	cur = ktime_get();
 	if (waited) {
