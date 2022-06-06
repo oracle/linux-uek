@@ -49,6 +49,23 @@
 #include <asm/sigframe.h>
 #include <asm/signal.h>
 
+static inline int is_ia32_compat_frame(struct ksignal *ksig)
+{
+	return IS_ENABLED(CONFIG_IA32_EMULATION) &&
+		ksig->ka.sa.sa_flags & SA_IA32_ABI;
+}
+
+static inline int is_ia32_frame(struct ksignal *ksig)
+{
+	return IS_ENABLED(CONFIG_X86_32) || is_ia32_compat_frame(ksig);
+}
+
+static inline int is_x32_frame(struct ksignal *ksig)
+{
+	return IS_ENABLED(CONFIG_X86_X32_ABI) &&
+		ksig->ka.sa.sa_flags & SA_X32_ABI;
+}
+
 #ifdef CONFIG_X86_64
 /*
  * If regs->ss will cause an IRET fault, change it.  Otherwise leave it
@@ -222,24 +239,12 @@ do {									\
 /*
  * Determine which stack to use..
  */
-static unsigned long align_sigframe(unsigned long sp)
-{
-#ifdef CONFIG_X86_32
-	/*
-	 * Align the stack pointer according to the i386 ABI,
-	 * i.e. so that on function entry ((sp + 4) & 15) == 0.
-	 */
-	sp = ((sp + 4) & -FRAME_ALIGNMENT) - 4;
-#else /* !CONFIG_X86_32 */
-	sp = round_down(sp, FRAME_ALIGNMENT) - 8;
-#endif
-	return sp;
-}
-
-static void __user *
-get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size,
+void __user *
+get_sigframe(struct ksignal *ksig, struct pt_regs *regs, size_t frame_size,
 	     void __user **fpstate)
 {
+	struct k_sigaction *ka = &ksig->ka;
+	int ia32_frame = is_ia32_frame(ksig);
 	/* Default to using normal stack */
 	bool nested_altstack = on_sig_stack(regs->sp);
 	bool entering_altstack = false;
@@ -248,7 +253,7 @@ get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size,
 	unsigned long buf_fx = 0;
 
 	/* redzone */
-	if (IS_ENABLED(CONFIG_X86_64))
+	if (!ia32_frame)
 		sp -= 128;
 
 	/* This is the X/Open sanctioned signal stack switching.  */
@@ -262,7 +267,7 @@ get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size,
 			sp = current->sas_ss_sp + current->sas_ss_size;
 			entering_altstack = true;
 		}
-	} else if (IS_ENABLED(CONFIG_X86_32) &&
+	} else if (ia32_frame &&
 		   !nested_altstack &&
 		   regs->ss != __USER_DS &&
 		   !(ka->sa.sa_flags & SA_RESTORER) &&
@@ -272,11 +277,19 @@ get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size,
 		entering_altstack = true;
 	}
 
-	sp = fpu__alloc_mathframe(sp, IS_ENABLED(CONFIG_X86_32),
-				  &buf_fx, &math_size);
+	sp = fpu__alloc_mathframe(sp, ia32_frame, &buf_fx, &math_size);
 	*fpstate = (void __user *)sp;
 
-	sp = align_sigframe(sp - frame_size);
+	sp -= frame_size;
+
+	if (ia32_frame)
+		/*
+		 * Align the stack pointer according to the i386 ABI,
+		 * i.e. so that on function entry ((sp + 4) & 15) == 0.
+		 */
+		sp = ((sp + 4) & -FRAME_ALIGNMENT) - 4;
+	else
+		sp = round_down(sp, FRAME_ALIGNMENT) - 8;
 
 	/*
 	 * If we are on the alternate signal stack and would overflow it, don't.
@@ -330,7 +343,7 @@ __setup_frame(struct ksignal *ksig, struct pt_regs *regs)
 	void __user *restorer;
 	void __user *fp = NULL;
 
-	frame = get_sigframe(&ksig->ka, regs, sizeof(*frame), &fp);
+	frame = get_sigframe(ksig, regs, sizeof(*frame), &fp);
 
 	if (!user_access_begin(frame, sizeof(*frame)))
 		return -EFAULT;
@@ -385,7 +398,7 @@ static int __setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 	void __user *restorer;
 	void __user *fp = NULL;
 
-	frame = get_sigframe(&ksig->ka, regs, sizeof(*frame), &fp);
+	frame = get_sigframe(ksig, regs, sizeof(*frame), &fp);
 
 	if (!user_access_begin(frame, sizeof(*frame)))
 		return -EFAULT;
@@ -468,7 +481,7 @@ static int __setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 	if (!(ksig->ka.sa.sa_flags & SA_RESTORER))
 		return -EFAULT;
 
-	frame = get_sigframe(&ksig->ka, regs, sizeof(struct rt_sigframe), &fp);
+	frame = get_sigframe(ksig, regs, sizeof(struct rt_sigframe), &fp);
 	uc_flags = frame_uc_flags(regs);
 
 	if (!user_access_begin(frame, sizeof(*frame)))
@@ -571,7 +584,7 @@ static int x32_setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 	if (!(ksig->ka.sa.sa_flags & SA_RESTORER))
 		return -EFAULT;
 
-	frame = get_sigframe(&ksig->ka, regs, sizeof(*frame), &fp);
+	frame = get_sigframe(ksig, regs, sizeof(*frame), &fp);
 
 	uc_flags = frame_uc_flags(regs);
 
@@ -741,23 +754,6 @@ early_initcall(init_sigframe_size);
 unsigned long get_sigframe_size(void)
 {
 	return max_frame_size;
-}
-
-static inline int is_ia32_compat_frame(struct ksignal *ksig)
-{
-	return IS_ENABLED(CONFIG_IA32_EMULATION) &&
-		ksig->ka.sa.sa_flags & SA_IA32_ABI;
-}
-
-static inline int is_ia32_frame(struct ksignal *ksig)
-{
-	return IS_ENABLED(CONFIG_X86_32) || is_ia32_compat_frame(ksig);
-}
-
-static inline int is_x32_frame(struct ksignal *ksig)
-{
-	return IS_ENABLED(CONFIG_X86_X32_ABI) &&
-		ksig->ka.sa.sa_flags & SA_X32_ABI;
 }
 
 static int
