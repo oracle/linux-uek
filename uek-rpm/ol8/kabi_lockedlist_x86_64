@@ -244,6 +244,7 @@
 	cpufreq_quick_get
 	cpumask_local_spread
 	cpumask_next
+	cpumask_next_and
 	crc32_le
 	csum_ipv6_magic
 	current_task
@@ -553,6 +554,7 @@
 	jiffies_to_timeval
 	kallsyms_lookup_name
 	kallsyms_on_each_symbol
+	kblockd_mod_delayed_work_on
 	kern_path
 	kern_path_create
 	kernel_accept
@@ -677,6 +679,7 @@
 	nobh_write_end
 	nobh_writepage
 	node_states
+	node_to_cpumask_map
 	noop_llseek
 	notify_change
 	nr_cpu_ids
