@@ -335,8 +335,7 @@ static const struct {
 	0
 };
 
-static int
-__setup_frame(struct ksignal *ksig, struct pt_regs *regs)
+int ia32_setup_frame(struct ksignal *ksig, struct pt_regs *regs)
 {
 	sigset_t *set = sigmask_to_save();
 	struct sigframe __user *frame;
@@ -391,7 +390,7 @@ Efault:
 	return -EFAULT;
 }
 
-static int __setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
+int ia32_setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 {
 	sigset_t *set = sigmask_to_save();
 	struct rt_sigframe __user *frame;
@@ -470,7 +469,7 @@ static unsigned long frame_uc_flags(struct pt_regs *regs)
 	return flags;
 }
 
-static int __setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
+int x64_setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 {
 	sigset_t *set = sigmask_to_save();
 	struct rt_sigframe __user *frame;
@@ -570,11 +569,9 @@ int copy_siginfo_to_user32(struct compat_siginfo __user *to,
 		return x32_copy_siginfo_to_user(to, from);
 	return __copy_siginfo_to_user32(to, from);
 }
-#endif /* CONFIG_X86_X32_ABI */
 
-static int x32_setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
+int x32_setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 {
-#ifdef CONFIG_X86_X32_ABI
 	compat_sigset_t *set = (compat_sigset_t *) sigmask_to_save();
 	struct rt_sigframe_x32 __user *frame;
 	unsigned long uc_flags;
@@ -621,15 +618,14 @@ static int x32_setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 
 	regs->cs = __USER_CS;
 	regs->ss = __USER_DS;
-#endif	/* CONFIG_X86_X32_ABI */
 
 	return 0;
-#ifdef CONFIG_X86_X32_ABI
+
 Efault:
 	user_access_end();
 	return -EFAULT;
-#endif
 }
+#endif /* CONFIG_X86_X32_ABI */
 
 /*
  * Do a signal return; undo the signal stack.
@@ -771,7 +767,7 @@ setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 	} else if (is_x32_frame(ksig)) {
 		return x32_setup_rt_frame(ksig, regs);
 	} else {
-		return __setup_rt_frame(ksig, regs);
+		return x64_setup_rt_frame(ksig, regs);
 	}
 }
 
