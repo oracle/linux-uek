@@ -38,6 +38,7 @@
 #include <linux/in.h>
 #include <linux/inet.h>
 #include <linux/netdevice.h>
+#include <linux/rtnetlink.h>
 #include <rdma/rdma_cm.h>
 
 static struct kobject *rdmaip_notify_kobj;
@@ -120,15 +121,52 @@ handle_netdev_notify_peers(struct kobject *kobj, struct kobj_attribute *attr,
 	return count;
 }
 
+static ssize_t
+handle_netdev_changeaddr(struct kobject *kobj, struct kobj_attribute *attr,
+			 const char *buf, size_t count)
+{
+	const char *cp, *cp_limit;
+	char ifname[IFNAMSIZ];
+	struct net_device *ndev;
+
+	cp = buf;
+	cp_limit = buf + count;
+	while (cp < cp_limit && isspace(*cp))
+		cp++;
+
+	while (cp_limit > cp && isspace(cp_limit[-1]))
+		cp_limit--;
+
+	if (cp_limit - cp >= IFNAMSIZ)
+		return -ENAMETOOLONG;
+
+	memcpy(ifname, cp, cp_limit - cp);
+	ifname[cp_limit - cp] = 0;
+
+	ndev = dev_get_by_name(&init_net, ifname);
+	if (!ndev)
+		return -ENODEV;
+
+	rtnl_lock();
+	call_netdevice_notifiers(NETDEV_CHANGEADDR, ndev);
+	rtnl_unlock();
+	dev_put(ndev);
+
+	return count;
+}
 static struct kobj_attribute rdma_notify_addr_change_attribute =
 	__ATTR(rdma_notify_addr_change, 0200, NULL, handle_rdma_notify_addr_change);
 
 static struct kobj_attribute netdev_notify_peers_attribute =
 	__ATTR(netdev_notify_peers, 0200, NULL, handle_netdev_notify_peers);
 
+static struct kobj_attribute netdev_changeaddr_attribute =
+	__ATTR(netdev_changeaddr, 0200, NULL, handle_netdev_changeaddr);
+
 static struct attribute *rdmaip_notify_attrs[] = {
 	&rdma_notify_addr_change_attribute.attr,
 	&netdev_notify_peers_attribute.attr,
+	&netdev_changeaddr_attribute.attr,
 	NULL,
 };
 
@@ -164,4 +202,4 @@ module_init(rdmaip_notify_init);
 module_exit(rdmaip_notify_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_VERSION("2020-03-18.0");
+MODULE_VERSION("2022-06-07.0");
