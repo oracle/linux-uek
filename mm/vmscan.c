@@ -650,7 +650,7 @@ void register_shrinker_prepared(struct shrinker *shrinker)
 	down_write(&shrinker_rwsem);
 	list_add_tail(&shrinker->list, &shrinker_list);
 	shrinker->flags |= SHRINKER_REGISTERED;
-	WARN_ON_ONCE(shrinker_debugfs_add(shrinker));
+	shrinker_debugfs_add(shrinker);
 	up_write(&shrinker_rwsem);
 }
 
