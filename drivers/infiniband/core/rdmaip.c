@@ -802,6 +802,11 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	RDMAIP_DBG3("Clearing the IP on the old dev: %s ret %d\n",
 		    from_dev2, ret);
 
+	RDMAIP_DBG3("NETDEV_CHANGEADDR(%s)\n", ip_config[from_port].netdev->name);
+	rtnl_lock();
+	call_netdevice_notifiers(NETDEV_CHANGEADDR, ip_config[from_port].netdev);
+	rtnl_unlock();
+
 	/* Set the IP on new port */
 	ret = rdmaip_set_ip4(ip_config[to_port].netdev,
 			     ip_config[to_port].netdev->dev_addr, to_dev2, addr,
