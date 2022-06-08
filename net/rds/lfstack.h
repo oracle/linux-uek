@@ -55,8 +55,8 @@ static inline void lfstack_push(union lfstack *stack, struct lfstack_el *el)
 
 	while (true) {
 		el->next = stack->first;
-		old_v.first = stack->first;
-		old_v.seq   = stack->seq;
+		old_v.first = READ_ONCE(stack->first);
+		old_v.seq   = READ_ONCE(stack->seq);
 		new_v.first = el;
 		new_v.seq   = stack->seq + 1;
 		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
@@ -74,8 +74,8 @@ static inline void lfstack_push_many(union lfstack *stack, struct lfstack_el *el
 
 	while (true) {
 		el_last->next = stack->first;
-		old_v.first = stack->first;
-		old_v.seq   = stack->seq;
+		old_v.first = READ_ONCE(stack->first);
+		old_v.seq   = READ_ONCE(stack->seq);
 		new_v.first = el_first;
 		new_v.seq = stack->seq + 1;
 		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
@@ -93,11 +93,11 @@ static inline struct lfstack_el *lfstack_pop(union lfstack *stack)
 	struct lfstack_el *first;
 
 	while (true) {
-		first = stack->first;
+		first = READ_ONCE(stack->first);
 		if (!first)
 			break;
 		old_v.first = stack->first;
-		old_v.seq   = stack->seq;
+		old_v.seq   = READ_ONCE(stack->seq);
 		new_v.first = first->next;
 		new_v.seq   = stack->seq + 1;
 		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
@@ -117,7 +117,8 @@ static inline struct lfstack_el *lfstack_pop(union lfstack *stack)
 
 static inline void lfstack_link(struct lfstack_el *first, struct lfstack_el *next)
 {
-	first->next = next;
+	/* Ensure prior memory ops get executed before updating first->next */
+	smp_store_release(&first->next, next);
 }
 
 #endif
