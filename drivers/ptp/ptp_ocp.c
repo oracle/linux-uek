@@ -3771,7 +3771,6 @@ ptp_ocp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 out:
 	ptp_ocp_detach(bp);
-	pci_set_drvdata(pdev, NULL);
 out_disable:
 	pci_disable_device(pdev);
 out_free:
@@ -3787,7 +3786,6 @@ ptp_ocp_remove(struct pci_dev *pdev)
 
 	devlink_unregister(devlink);
 	ptp_ocp_detach(bp);
-	pci_set_drvdata(pdev, NULL);
 	pci_disable_device(pdev);
 
 	devlink_free(devlink);
