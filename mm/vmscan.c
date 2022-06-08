@@ -1610,12 +1610,18 @@ retry:
 		folio = lru_to_folio(page_list);
 		list_del(&folio->lru);
 
+		nr_pages = folio_nr_pages(folio);
+
+		if (folio_ref_count(folio) == 1 &&
+		    folio_ref_freeze(folio, 1)) {
+			/* folio was freed from under us. So we are done. */
+			goto free_it;
+		}
+
 		if (!folio_trylock(folio))
 			goto keep;
 
 		VM_BUG_ON_FOLIO(folio_test_active(folio), folio);
-
-		nr_pages = folio_nr_pages(folio);
 
 		/* Account the number of base pages */
 		sc->nr_scanned += nr_pages;
