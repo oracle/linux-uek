@@ -2222,6 +2222,9 @@ static int cgx_print_dmac_flt(struct seq_file *s, int lmac_id)
 		}
 	}
 
+	seq_printf(s, "\nDMAC filter drop count: %lld\n",
+		   rvu_cgx_get_dmacflt_dropped_pktcnt(cgxd, lmac_id));
+
 	return 0;
 }
 
