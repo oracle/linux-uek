@@ -48,8 +48,8 @@ static inline void lfstack_push(struct lfstack *stack, struct lfstack_el *el)
 	uintptr_t seq, nseq;
 
 	while (true) {
-		first = stack->first;
-		seq = stack->seq;
+		first = READ_ONCE(stack->first);
+		seq = READ_ONCE(stack->seq);
 		el->next = first;
 		nseq = seq + 1;
 		if (cmpxchg_double(&stack->first, &stack->seq, first, seq, el, nseq))
@@ -67,8 +67,8 @@ static inline void lfstack_push_many(struct lfstack *stack, struct lfstack_el *e
 	uintptr_t seq, nseq;
 
 	while (true) {
-		first = stack->first;
-		seq = stack->seq;
+		first = READ_ONCE(stack->first);
+		seq = READ_ONCE(stack->seq);
 		el_last->next = first;
 		nseq = seq + 1;
 		if (cmpxchg_double(&stack->first, &stack->seq, first, seq, el_first, nseq))
@@ -86,10 +86,10 @@ static inline struct lfstack_el *lfstack_pop(struct lfstack *stack)
 	uintptr_t seq, nseq;
 
 	while (true) {
-		first = stack->first;
+		first = READ_ONCE(stack->first);
 		if (!first)
 			goto out;
-		seq = stack->seq;
+		seq = READ_ONCE(stack->seq);
 		next = first->next;
 		nseq = seq + 1;
 		if (cmpxchg_double(&stack->first, &stack->seq, first, seq, next, nseq))
@@ -110,7 +110,8 @@ out:
 
 static inline void lfstack_link(struct lfstack_el *first, struct lfstack_el *next)
 {
-	first->next = next;
+	/* Ensure prior memory ops get executed before updating first->next */
+	smp_store_release(&first->next, next);
 }
 
 #endif
