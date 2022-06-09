@@ -131,10 +131,9 @@
 #define CUST_WINDOW			0xA0C
 
 #define MBW_BASE			0x240000
-#define OCTTX_NODE			"octeontx_brd"
 
 bool is_probed_once;
-long ddr_speed;
+u32 ddr_speed;
 
 struct cn10k_ddr_pmu {
 	struct pmu pmu;
@@ -720,27 +719,15 @@ static int cn10k_ddr_pmu_offline_cpu(unsigned int cpu, struct hlist_node *node)
 	return 0;
 }
 
-static int cn10k_ddr_get_speed(void)
+static int cn10k_ddr_get_speed(struct device_node *np)
 {
-	struct device_node *np = NULL;
-	const char *speed;
 	int ret;
 
-	np = of_find_node_by_name(NULL, OCTTX_NODE);
-	if (!np) {
-		pr_err("No board info available!\n");
-		return -ENODEV;
-	}
-
-	ret = of_property_read_string(np, "DDR-SPEED", &speed);
+	ret = of_property_read_u32(np, "marvell,ddr-speed", &ddr_speed);
 	if (ret) {
-		pr_err("DDR-SPEED property not found\n");
+		pr_err("marvell,ddr-speed property not found\n");
 		return ret;
 	}
-
-	ret = kstrtol(speed, 0, &ddr_speed);
-	if (ret < 0)
-		return ret;
 
 	return 0;
 }
@@ -771,7 +758,7 @@ static int cn10k_ddr_perf_probe(struct platform_device *pdev)
 						resource_size(res));
 
 	if (!is_probed_once) {
-		if (cn10k_ddr_get_speed())
+		if (cn10k_ddr_get_speed(pdev->dev.of_node))
 			pr_err("Couldn't fetch speed for %s\n",
 				pdev->name);
 		is_probed_once = true;
