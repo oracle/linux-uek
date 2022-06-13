@@ -19,7 +19,6 @@
 #include <linux/pci.h>
 #include <linux/crash_dump.h>
 #include "otx2-ghes-bert.h"
-#include "otx2-sdei-ghes.h"
 
 #define DRV_NAME	"bed-bert"
 
@@ -51,6 +50,15 @@ static int __init ghes_bed_acpi_match_resource(struct platform_device *pdev,
 		struct mrvl_bed_source *bsrc)
 {
 	struct resource *res;
+	struct acpi_table_bert *bert_tab;
+
+	acpi_status status = acpi_get_table(ACPI_SIG_BERT, 0,
+			(struct acpi_table_header **)&bert_tab);
+	if (status == AE_NOT_FOUND)
+		return -EINVAL;
+
+	if (!bert_tab)
+		return -EINVAL;
 
 	// BERT
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -60,9 +68,9 @@ static int __init ghes_bed_acpi_match_resource(struct platform_device *pdev,
 	}
 	initdbgmsg("%s Status BERT %s [%llx - %llx, %lx, %lx]\n", __func__,
 			res->name, res->start, res->end, res->flags, res->desc);
-	bsrc->bert_pa = res->start;
+	bsrc->bert_pa = res->start + bert_tab->address;
 	bsrc->bert_sz = resource_size(res);
-	initdbgmsg("BERT RING: 0x%llx/0x%llx\n", bsrc->bert_pa, bsrc->bert_sz);
+	initdbgmsg("BERT table: 0x%llx/0x%llx\n", bsrc->bert_pa, bsrc->bert_sz);
 
 	// Error Block Ring
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
@@ -72,9 +80,9 @@ static int __init ghes_bed_acpi_match_resource(struct platform_device *pdev,
 	}
 	initdbgmsg("%s Status Ring %s [%llx - %llx, %lx, %lx]\n", __func__,
 			res->name, res->start, res->end, res->flags, res->desc);
-	bsrc->block_pa = res->start;
+	bsrc->block_pa = res->start + bert_tab->address;
 	bsrc->block_sz = resource_size(res);
-	initdbgmsg("BERT RING: 0x%llx/0x%llx\n", bsrc->block_pa, bsrc->block_sz);
+	initdbgmsg("BERT raw block: 0x%llx/0x%llx\n", bsrc->block_pa, bsrc->block_sz);
 
 	return 0;
 }
@@ -121,7 +129,7 @@ static int __init ghes_bed_of_match_resource(struct mrvl_bed_source *bsrc)
 	bsrc->block_pa = (phys_addr_t)base;
 	bsrc->block_sz = (phys_addr_t)size;
 
-	initdbgmsg("BERT: 0x%llx/0x%llx  0x%llx/0x%llx\n",
+	initdbgmsg("Table: 0x%llx/0x%llx Ring: 0x%llx/0x%llx\n",
 			bsrc->bert_pa, bsrc->bert_sz, bsrc->block_pa, bsrc->block_sz);
 
 	return 0;
@@ -146,7 +154,7 @@ static int __init ghes_bed_map_resource(struct device *dev, struct mrvl_bed_sour
 			return -ENODEV;
 		}
 	}
-	initdbgmsg("%s BERT Ring block VA=0x%llx\n", __func__, (long long)bsrc->block_va);
+	initdbgmsg("%s Ring block VA=0x%llx\n", __func__, (long long)bsrc->block_va);
 
 	if (pfn_valid(PHYS_PFN(bsrc->bert_pa))) {
 		bsrc->bert_va = phys_to_virt(bsrc->bert_pa);
@@ -161,7 +169,7 @@ static int __init ghes_bed_map_resource(struct device *dev, struct mrvl_bed_sour
 			return -ENODEV;
 		}
 	}
-	initdbgmsg("%s BERT Ring block VA=0x%llx\n", __func__, (long long)bsrc->bert_va);
+	initdbgmsg("%s BERT table VA=0x%llx\n", __func__, (long long)bsrc->bert_va);
 
 
 	return 0;
@@ -202,8 +210,8 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 	struct otx2_ghes_err_ring *ring;
 	struct acpi_hest_generic_data *hest_gen_data;
 	struct bed_bert_mem_entry *bert_mem_entry;
-	struct acpi_hest_generic_status *estatus;
-	struct cper_sec_mem_err_old *mem_err;
+	struct acpi_bert_region *estatus;
+	struct cper_sec_mem_err *mem_err;
 	struct otx2_ghes_err_record *err_rec;
 	u8 *p;
 	u8 sum = 0;
@@ -246,7 +254,7 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 
 		bert_mem_entry = &bert_entries[idx];
 
-		estatus = &bert_mem_entry->estatus.hest;
+		estatus = &bert_mem_entry->bert;
 
 		estatus->raw_data_length = 0;
 		estatus->raw_data_offset = 0;
@@ -272,9 +280,9 @@ static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)
 		mem_err = &bert_mem_entry->mem_err;
 
 		if (pfn_valid(PHYS_PFN(bsrc->block_pa)))
-			memcpy(mem_err, &err_rec->u.mcc, sizeof(*mem_err));
+			memcpy(mem_err, &err_rec->cper, sizeof(*mem_err));
 		else
-			memcpy_fromio(mem_err, &err_rec->u.mcc, sizeof(*mem_err));
+			memcpy_fromio(mem_err, &err_rec->cper, sizeof(*mem_err));
 
 		/*
 		 * This simply needs the entry count to be non-zero.
@@ -300,14 +308,6 @@ static int __init ghes_bert_probe(struct platform_device *pdev)
 	struct mrvl_bed_source bed_src;
 	struct device *dev = &pdev->dev;
 	int ret = -ENODEV;
-
-#ifdef CONFIG_CRASH_DUMP
-	if (is_kdump_kernel())
-#else
-	#pragma message "CONFIG_CRASH_DUMP setting is required for this module"
-	if (true)
-#endif
-		return ret;
 
 	if (has_acpi_companion(dev)) {
 		initdbgmsg("%s ACPI\n", __func__);
