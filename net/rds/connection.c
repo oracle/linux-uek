@@ -625,6 +625,9 @@ void rds_conn_init_shutdown(struct rds_conn_path *cp)
 					      DR_DEFAULT) &&
 		    !rds_conn_path_transition(cp, RDS_CONN_ERROR,
 					      RDS_CONN_DISCONNECTING,
+					      DR_DEFAULT) &&
+		    !rds_conn_path_transition(cp, RDS_CONN_RESETTING,
+					      RDS_CONN_DISCONNECTING,
 					      DR_DEFAULT)) {
 			rds_conn_path_drop(cp, DR_INV_CONN_STATE, 0);
 			mutex_unlock(&cp->cp_cm_lock);
