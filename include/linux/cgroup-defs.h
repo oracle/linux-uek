@@ -265,7 +265,7 @@ struct css_set {
 	 * List of csets participating in the on-going migration either as
 	 * source or destination.  Protected by cgroup_mutex.
 	 */
-	struct list_head mg_preload_node;
+	UEK_KABI_REPLACE(struct list_head mg_preload_node, struct list_head mg_src_preload_node)
 	struct list_head mg_node;
 
 	/*
@@ -284,6 +284,7 @@ struct css_set {
 
 	/* For RCU-protected deletion */
 	struct rcu_head rcu_head;
+	UEK_KABI_EXTEND(struct list_head mg_dst_preload_node)
 };
 
 struct cgroup_base_stat {
