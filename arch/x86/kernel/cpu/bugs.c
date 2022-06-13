@@ -738,7 +738,7 @@ void mmio_stale_data_clear_disable(void)
 	mmio_mitigation = MMIO_MITIGATION_OFF;
 }
 
-static void __init mmio_select_mitigation(void)
+static void mmio_select_mitigation(void)
 {
 	u64 ia32_cap;
 
@@ -814,7 +814,7 @@ early_param("mmio_stale_data", mmio_stale_data_parse_cmdline);
 #undef pr_fmt
 #define pr_fmt(fmt)     "" fmt
 
-static void __init md_clear_update_mitigation(void)
+static void md_clear_update_mitigation(void)
 {
 	if (cpu_mitigations_off())
 		return;
