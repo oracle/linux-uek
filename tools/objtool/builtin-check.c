@@ -19,8 +19,13 @@
 #include <objtool/builtin.h>
 #include <objtool/objtool.h>
 
+#define ERROR(format, ...)				\
+	fprintf(stderr,					\
+		"error: objtool: " format "\n",		\
+		##__VA_ARGS__)
+
 bool no_fp, no_unreachable, retpoline, module, backtrace, uaccess, stats,
-     validate_dup, vmlinux, mcount, noinstr, backup, sls;
+     validate_dup, vmlinux, mcount, noinstr, backup, sls, unret;
 
 static const char * const check_usage[] = {
 	"objtool check [<options>] file.o",
@@ -36,6 +41,7 @@ const struct option check_options[] = {
 	OPT_BOOLEAN('f', "no-fp", &no_fp, "Skip frame pointer validation"),
 	OPT_BOOLEAN('u', "no-unreachable", &no_unreachable, "Skip 'unreachable instruction' warnings"),
 	OPT_BOOLEAN('r', "retpoline", &retpoline, "Validate retpoline assumptions"),
+	OPT_BOOLEAN(0,   "unret", &unret, "validate entry unret placement"),
 	OPT_BOOLEAN('m', "module", &module, "Indicates the object will be part of a kernel module"),
 	OPT_BOOLEAN('b', "backtrace", &backtrace, "unwind on error"),
 	OPT_BOOLEAN('a', "uaccess", &uaccess, "enable uaccess checking"),
@@ -88,6 +94,11 @@ int cmd_check(int argc, const char **argv)
 	file = objtool_open_read(objname);
 	if (!file)
 		return 1;
+
+	if (unret && !vmlinux) {
+		ERROR("--unret requires --vmlinux");
+		return 1;
+	}
 
 	ret = check(file);
 	if (ret)

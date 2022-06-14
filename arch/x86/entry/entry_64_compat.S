@@ -49,7 +49,7 @@
  * 0(%ebp) arg6
  */
 SYM_CODE_START(entry_SYSENTER_compat)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_ENTRY
 	/* Interrupts are off on entry. */
 	SWAPGS
 
@@ -177,7 +177,7 @@ SYM_CODE_END(entry_SYSENTER_compat)
  * 0(%esp) arg6
  */
 SYM_CODE_START(entry_SYSCALL_compat)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_ENTRY
 	/* Interrupts are off on entry. */
 	swapgs
 
@@ -296,7 +296,7 @@ SYM_CODE_END(entry_SYSCALL_compat)
  * ebp  arg6
  */
 SYM_CODE_START(entry_INT80_compat)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_ENTRY
 	/*
 	 * Interrupts are off on entry.
 	 */
