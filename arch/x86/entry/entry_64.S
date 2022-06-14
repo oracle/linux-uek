@@ -325,8 +325,8 @@ SYM_CODE_END(ret_from_fork)
  */
 .macro idtentry_body cfunc has_error_code:req
 
-	call push_and_clear_regs
-	UNWIND_HINT_REGS
+	PUSH_AND_CLEAR_REGS
+	ENCODE_FRAME_POINTER
 
 	/*
 	 * Call error_entry() and switch to the task stack if from userspace.
