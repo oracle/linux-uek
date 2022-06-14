@@ -1204,6 +1204,14 @@ static int add_jump_destinations(struct objtool_file *file)
 			struct symbol *sym = find_symbol_by_offset(dest_sec, dest_off);
 
 			/*
+			 * This is a special case where an alt instruction
+			 * jumps past the end of the section.  These are
+			 * handled later in handle_group_alt().
+			 */
+			if (!strcmp(insn->sec->name, ".altinstr_replacement"))
+				continue;
+
+			/*
 			 * This is a special case for zen_untrain_ret().
 			 * It jumps to __x86_return_thunk(), but objtool
 			 * can't find the thunk's starting RET
@@ -1215,14 +1223,6 @@ static int add_jump_destinations(struct objtool_file *file)
 				add_return_call(file, insn, false);
 				continue;
 			}
-
-			/*
-			 * This is a special case where an alt instruction
-			 * jumps past the end of the section.  These are
-			 * handled later in handle_group_alt().
-			 */
-			if (!strcmp(insn->sec->name, ".altinstr_replacement"))
-				continue;
 
 			WARN_FUNC("can't find jump dest instruction at %s+0x%lx",
 				  insn->sec, insn->offset, dest_sec->name,
