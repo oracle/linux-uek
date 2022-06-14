@@ -11,6 +11,7 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/types.h>
+#include <linux/jiffies.h>
 
 #include "rvu_struct.h"
 
@@ -19,7 +20,7 @@
 
 #define NPA_LF_AURA_OP_FREE0	0x20
 #define NPA_LF_AURA_OP_CNT	0x30
-#define SSO_FLUSH_RETRY_MAX	0xfff
+#define SSO_FLUSH_RETRY_MAX	0xff
 
 #if defined(CONFIG_ARM64)
 #define rvu_sso_store_pair(val0, val1, addr) ({				\
@@ -1130,6 +1131,7 @@ int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 	int hwgrp, lf, err, blkaddr, retry;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
+	unsigned long drain_tmo;
 	struct rvu_pfvf *pfvf;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
@@ -1138,8 +1140,14 @@ int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 		return SSO_AF_ERR_LF_INVALID;
 
 	retry = 0;
+	drain_tmo = jiffies + msecs_to_jiffies(SSO_FLUSH_TMO_MAX);
 	for (hwgrp = 0; hwgrp < req->hwgrps || retry; hwgrp++) {
 		if (hwgrp == req->hwgrps) {
+			if (time_after(jiffies, drain_tmo)) {
+				dev_err(rvu->dev, "Failed to drain SSO queues\n");
+				break;
+			}
+
 			hwgrp = 0;
 			retry = 0;
 		}

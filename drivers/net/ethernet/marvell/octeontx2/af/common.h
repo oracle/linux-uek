@@ -238,4 +238,7 @@ enum ndc_ctype_e {
 #define NDC_READ_TRANS 0
 #define NDC_WRITE_TRANS 1
 
+/* SSO max timeout to drain queues in ms */
+#define SSO_FLUSH_TMO_MAX 60000 /* 1 minute */
+
 #endif /* COMMON_H */
