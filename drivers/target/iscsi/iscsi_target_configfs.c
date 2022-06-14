@@ -1906,6 +1906,11 @@ static void lio_tpg_release_fabric_acl(
 	kfree(acl);
 }
 
+static int lio_tpg_shutdown_session(struct se_session *se_sess)
+{
+	return 0;
+}
+
 /*
  * Called with spin_lock_irq(struct se_portal_group->session_lock) held
  * or not held.
@@ -1996,6 +2001,7 @@ const struct target_core_fabric_ops iscsi_ops = {
 	.tpg_get_inst_index		= lio_tpg_get_inst_index,
 	.check_stop_free		= lio_check_stop_free,
 	.release_cmd			= lio_release_cmd,
+	.shutdown_session               = lio_tpg_shutdown_session,
 	.close_session			= lio_tpg_close_session,
 	.sess_get_index			= lio_sess_get_index,
 	.sess_get_initiator_sid		= lio_sess_get_initiator_sid,
