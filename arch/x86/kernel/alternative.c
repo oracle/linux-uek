@@ -113,6 +113,7 @@ static void __init_or_module add_nops(void *insns, unsigned int len)
 	}
 }
 
+extern s32 __return_sites[], __return_sites_end[];
 extern struct alt_instr __alt_instructions[], __alt_instructions_end[];
 extern s32 __smp_locks[], __smp_locks_end[];
 void text_poke_early(void *addr, const void *opcode, size_t len);
@@ -334,6 +335,72 @@ next:
 		optimize_nops(a, instr);
 	}
 }
+
+#if defined(CONFIG_RETPOLINE) && defined(CONFIG_OBJTOOL)
+
+/*
+ * Rewrite the compiler generated return thunk tail-calls.
+ *
+ * For example, convert:
+ *
+ *   JMP __x86_return_thunk
+ *
+ * into:
+ *
+ *   RET
+ */
+static int patch_return(void *addr, struct insn *insn, u8 *bytes)
+{
+	int i = 0;
+
+	if (cpu_feature_enabled(X86_FEATURE_RETHUNK))
+		return -1;
+
+	bytes[i++] = RET_INSN_OPCODE;
+
+	for (; i < insn->length;)
+		bytes[i++] = INT3_INSN_OPCODE;
+
+	return i;
+}
+
+void __init_or_module noinline apply_returns(s32 *start, s32 *end)
+{
+	s32 *s;
+
+	for (s = start; s < end; s++) {
+		void *addr = (void *)s + *s;
+		struct insn insn;
+		int len, ret;
+		u8 bytes[16];
+		u8 op1;
+
+		ret = insn_decode_kernel(&insn, addr);
+		if (WARN_ON_ONCE(ret < 0))
+			continue;
+
+		op1 = insn.opcode.bytes[0];
+		if (WARN_ON_ONCE(op1 != JMP32_INSN_OPCODE))
+			continue;
+
+		DPRINTK("return thunk at: %pS (%px) len: %d to: %pS",
+			addr, addr, insn.length,
+			addr + insn.length + insn.immediate.value);
+
+		len = patch_return(addr, &insn, bytes);
+		if (len == insn.length) {
+			DUMP_BYTES(((u8*)addr),  len, "%px: orig: ", addr);
+			DUMP_BYTES(((u8*)bytes), len, "%px: repl: ", addr);
+			text_poke_early(addr, bytes, len);
+		}
+	}
+}
+#else /* !CONFIG_RETPOLINE || !CONFIG_OBJTOOL */
+
+void __init_or_module noinline apply_retpolines(s32 *start, s32 *end) { }
+void __init_or_module noinline apply_returns(s32 *start, s32 *end) { }
+
+#endif /* CONFIG_RETPOLINE && CONFIG_OBJTOOL */
 
 #ifdef CONFIG_SMP
 static void alternatives_smp_lock(const s32 *start, const s32 *end,
@@ -641,6 +708,11 @@ void __init alternative_instructions(void)
 	 * call with the direct call.
 	 */
 	apply_paravirt(__parainstructions, __parainstructions_end);
+
+	/*
+	 * Rewrite the returns.
+	 */
+	apply_returns(__return_sites, __return_sites_end);
 
 	/*
 	 * Then patch alternatives, such that those paravirt calls that are in
