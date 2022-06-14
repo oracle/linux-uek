@@ -117,6 +117,8 @@
 	_ASM_PTR " 999b\n\t"					\
 	".popsection\n\t"
 
+extern void __x86_return_thunk(void);
+
 #ifdef CONFIG_RETPOLINE
 #ifdef CONFIG_X86_64
 
