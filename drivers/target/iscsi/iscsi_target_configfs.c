@@ -1913,7 +1913,7 @@ static void lio_tpg_release_fabric_acl(
  * Also, this function calls iscsit_inc_session_usage_count() on the
  * struct iscsi_session in question.
  */
-static int lio_tpg_shutdown_session(struct se_session *se_sess)
+static void lio_tpg_close_session(struct se_session *se_sess)
 {
 	struct iscsi_session *sess = se_sess->fabric_sess_ptr;
 	struct se_portal_group *se_tpg = &sess->tpg->tpg_se_tpg;
@@ -1925,7 +1925,7 @@ static int lio_tpg_shutdown_session(struct se_session *se_sess)
 	    (sess->time2retain_timer_flags & ISCSI_TF_EXPIRED)) {
 		spin_unlock(&sess->conn_lock);
 		spin_unlock_bh(&se_tpg->session_lock);
-		return 0;
+		return;
 	}
 	atomic_set(&sess->session_reinstatement, 1);
 	spin_unlock(&sess->conn_lock);
@@ -1934,21 +1934,6 @@ static int lio_tpg_shutdown_session(struct se_session *se_sess)
 	spin_unlock_bh(&se_tpg->session_lock);
 
 	iscsit_stop_session(sess, 1, 1);
-
-	return 1;
-}
-
-/*
- * Calls iscsit_dec_session_usage_count() as inverse of
- * lio_tpg_shutdown_session()
- */
-static void lio_tpg_close_session(struct se_session *se_sess)
-{
-	struct iscsi_session *sess = se_sess->fabric_sess_ptr;
-	/*
-	 * If the iSCSI Session for the iSCSI Initiator Node exists,
-	 * forcefully shutdown the iSCSI NEXUS.
-	 */
 	iscsit_close_session(sess);
 }
 
@@ -2007,7 +1992,6 @@ const struct target_core_fabric_ops iscsi_ops = {
 	.tpg_get_inst_index		= lio_tpg_get_inst_index,
 	.check_stop_free		= lio_check_stop_free,
 	.release_cmd			= lio_release_cmd,
-	.shutdown_session		= lio_tpg_shutdown_session,
 	.close_session			= lio_tpg_close_session,
 	.sess_get_index			= lio_sess_get_index,
 	.sess_get_initiator_sid		= lio_sess_get_initiator_sid,
