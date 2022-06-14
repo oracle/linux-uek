@@ -117,18 +117,6 @@ static unsigned int mwait_substates __initdata;
 #define flg2MWAIT(flags) (((flags) >> 24) & 0xFF)
 #define MWAIT2flg(eax) ((eax & 0xFF) << 24)
 
-static __always_inline int __intel_idle(struct cpuidle_device *dev,
-					struct cpuidle_driver *drv, int index)
-{
-	struct cpuidle_state *state = &drv->states[index];
-	unsigned long eax = flg2MWAIT(state->flags);
-	unsigned long ecx = 1; /* break on interrupt flag */
-
-	mwait_idle_with_hints(eax, ecx);
-
-	return index;
-}
-
 /**
  * intel_idle - Ask the processor to enter the given idle state.
  * @dev: cpuidle device of the target CPU.
@@ -168,7 +156,7 @@ static __cpuidle int intel_idle_ibrs(struct cpuidle_device *dev,
 	if (smt_active)
 		wrmsrl(MSR_IA32_SPEC_CTRL, 0);
 
-	ret = __intel_idle(dev, drv, index);
+	ret = intel_idle(dev, drv, index);
 
 	if (smt_active)
 		wrmsrl(MSR_IA32_SPEC_CTRL, spec_ctrl);
@@ -1812,8 +1800,9 @@ static void __init intel_idle_init_cstates_icpu(struct cpuidle_driver *drv)
 		drv->states[drv->state_count] = cpuidle_state_table[cstate];
 
 		if (cpu_feature_enabled(X86_FEATURE_KERNEL_IBRS) &&
-		    cpuidle_state_table[cstate].flags & CPUIDLE_FLAG_IBRS)
+		    cpuidle_state_table[cstate].flags & CPUIDLE_FLAG_IBRS) {
 			drv->states[drv->state_count].enter = intel_idle_ibrs;
+		}
 
 		if ((disabled_states_mask & BIT(drv->state_count)) ||
 		    ((icpu->use_acpi || force_use_acpi) &&
