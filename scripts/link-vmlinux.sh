@@ -130,7 +130,7 @@ objtool_link()
 
 	if [ -n "${CONFIG_VMLINUX_VALIDATION}" ]; then
 		objtoolopt="${objtoolopt} --noinstr"
-		if [ -n "${CONFIG_CPU_UNRET_ENTRY}" ]; then
+		if is_enabled CONFIG_RETPOLINE; then
 			objtoolopt="${objtoolopt} --unret"
 		fi
 	fi

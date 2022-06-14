@@ -19,11 +19,6 @@
 #include <objtool/builtin.h>
 #include <objtool/objtool.h>
 
-#define ERROR(format, ...)				\
-	fprintf(stderr,					\
-		"error: objtool: " format "\n",		\
-		##__VA_ARGS__)
-
 bool no_fp, no_unreachable, retpoline, module, backtrace, uaccess, stats,
      validate_dup, vmlinux, mcount, noinstr, backup, sls, unret, rethunk;
 
@@ -95,16 +90,6 @@ int cmd_check(int argc, const char **argv)
 	file = objtool_open_read(objname);
 	if (!file)
 		return 1;
-
-	if (unret && !vmlinux) {
-		ERROR("--unret requires --vmlinux");
-		return 1;
-	}
-
-	if (unret && !rethunk) {
-		ERROR("--unret requires --rethunk");
-		return 1;
-	}
 
 	ret = check(file);
 	if (ret)

@@ -1861,8 +1861,9 @@ static int read_unwind_hints(struct objtool_file *file)
 		if (hint->type == UNWIND_HINT_TYPE_REGS_PARTIAL) {
 			struct symbol *sym = find_symbol_by_offset(insn->sec, insn->offset);
 
-			if (sym && sym->bind == STB_GLOBAL)
+			if (sym && sym->bind == STB_GLOBAL) {
 				insn->entry = 1;
+			}
 		}
 
 		if (hint->type == UNWIND_HINT_TYPE_ENTRY) {
@@ -3687,13 +3688,6 @@ int check(struct objtool_file *file)
 		goto out;
 	warnings += ret;
 
-	if (!warnings) {
-		ret = validate_reachable_instructions(file);
-		if (ret < 0)
-			goto out;
-		warnings += ret;
-	}
-
 	if (unret) {
 		/*
 		 * Must be after validate_branch() and friends, it plays
@@ -3702,6 +3696,13 @@ int check(struct objtool_file *file)
 		ret = validate_unret(file);
 		if (ret < 0)
 			return ret;
+		warnings += ret;
+	}
+
+	if (!warnings) {
+		ret = validate_reachable_instructions(file);
+		if (ret < 0)
+			goto out;
 		warnings += ret;
 	}
 
