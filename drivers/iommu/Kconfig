@@ -11,6 +11,10 @@ config IOASID
 config IOMMU_API
 	bool
 
+config IOMMUFD_DRIVER
+	bool
+	default n
+
 menuconfig IOMMU_SUPPORT
 	bool "IOMMU Hardware Support"
 	depends on MMU
