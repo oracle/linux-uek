@@ -60,38 +60,59 @@ static const char mst_driver_string[] =
 
 LIST_HEAD(mst_devices);
 
-static struct pci_device_id mst_livefish_pci_table[] = { { PCI_DEVICE(
-		MST_MELLANOX_PCI_VENDOR, 0x01f6) }, /* MT27500 [ConnectX-3 Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01f8) }, /* MT27520 [ConnectX-3 Pro Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01ff) }, /* MT27520 [ConnectX-IB Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0209) }, /* MT27520 [ConnectX-4 Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020b) }, /* MT27520 [ConnectX-4Lx Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020d) }, /* MT27520 [ConnectX-5 Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020f) }, /* MT27520 [ConnectX-6 Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0212) }, /* MT27520 [ConnectX-6DX Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0216) }, /* MT27520 [ConnectX-6LX Flash Recovery] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0211) }, /* MT27520 [BlueField Flash Recovery] */
-		{ 0, } };
+static struct pci_device_id mst_livefish_pci_table[] = {
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01f6) }, /* MT27500 Family [ConnectX-3 Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01f8) }, /* MT27520 Family [ConnectX-3 Pro Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01ff) }, /* MT27600 Family [Connect-IB Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0209) }, /* MT27700 Family [ConnectX-4 Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020b) }, /* MT27710 Family [ConnectX-4 Lx Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020d) }, /* MT28800 Family [ConnectX-5 Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020f) }, /* MT28908A0 Family [ConnectX-6 Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0210) }, /* MT28908A0 Family [ConnectX-6 Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0211) }, /* MT416842 Family [BlueField SoC Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0212) }, /* MT2892 Family [ConnectX-6 Dx Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0213) }, /* MT2892 Family [ConnectX-6 Dx Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0214) }, /* MT42822 Family [BlueField-2 SoC Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0215) }, /* MT42822 Family [BlueField-2 Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0216) }, /* MT2894 Family [ConnectX-6 Lx Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0217) }, /* MT2894 Family [ConnectX-6 Lx Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0218) }, /* MT2910 Family [ConnectX-7 Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0219) }, /* MT2910 Family [ConnectX-7 Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x021a) }, /* MT43162 Family [BlueField-3 Lx SoC Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x021b) }, /* MT43162 Family [BlueField-3 Lx Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x021c) }, /* MT43244 Family [BlueField-3 SoC Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x021d) }, /* MT43244 Family [BlueField-3 Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x021e) }, /* CX8 Family [ConnectX-8 Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x021e) }, /* CX8 Family [ConnectX-8 Secure Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0220) }, /* BF4 Family Flash Recovery [BlueField-4 SoC Flash Recovery] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x021e) }, /* BF4 Family Secure Flash Recovery [BlueField-4 Secure Flash Recovery] */
+		{ 0, }
+	};
 
-static struct pci_device_id mst_bar_pci_table[] = { { PCI_DEVICE(
-		MST_MELLANOX_PCI_VENDOR, 4099) }, /* MT27600 [ConnectX-3] */
+static struct pci_device_id mst_bar_pci_table[] = {
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4099) }, /* MT 27600 [ConnectX-3] */
 		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4103) }, /* MT27600 [ConnectX-3Pro] */
-		{ 0, } };
+		{ 0, }
+	};
 
-static struct pci_device_id supported_pci_devices[] = { { PCI_DEVICE(
-		MST_MELLANOX_PCI_VENDOR, 4099) }, /* MT27600 [ConnectX-3] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4103) }, /* MT27600 [ConnectX-3Pro] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4113) }, /* MT27600 [ConnectX-IB] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4115) }, /* MT27600 [ConnectX-4] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4117) }, /* MT27600 [ConnectX-4Lx] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4119) }, /* MT27600 [ConnectX-5] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4121) }, /* MT27600 [ConnectX-5EX] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4123) }, /* MT27600 [ConnectX-6] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4125) }, /* MT27600 [ConnectX-6DX] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4127) }, /* MT27600 [ConnectX-6LX] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41682) }, /* MT27600 [BlueField] */
-		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41686) }, /* MT27600 [BlueField 2] */
-		{ 0, } };
+static struct pci_device_id supported_pci_devices[] = {
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4099) }, /* MT27500 Family [ConnectX-3] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4103) }, /* MT27520 Family [ConnectX-3Pro] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4113) }, /* MT27600 Family [ConnectX-IB] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4115) }, /* MT27620 Family [ConnectX-4] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4117) }, /* MT2763.00.l0 Family [ConnectX-4Lx] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4119) }, /* MT27800 Family [ConnectX-5] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4121) }, /* MT28800 Family [ConnectX-5EX] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4123) }, /* MT28908 Family [ConnectX-6] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4125) }, /* MT2892 Family [ConnectX-6DX] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4127) }, /* MT2894 Family [ConnectX-6LX] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4129) }, /* MT2910 Family [ConnectX-7] */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41682) }, /* MT416842 Family BlueField integrated ConnectX-5 network controller */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41686) }, /* MT42822 Family BlueField2 integrated ConnectX-6 DX network controller */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41692) }, /* MT43244 Family BlueField3 integrated ConnectX-7 network controller */
+		{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41694) }, /* BF4 Family integrated network controller */
+		{ 0, }
+	};
 
 /****************** VSEC SUPPORT ********************/
 
