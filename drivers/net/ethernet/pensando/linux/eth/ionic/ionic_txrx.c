@@ -5,6 +5,7 @@
 #include <linux/ipv6.h>
 #include <linux/if_vlan.h>
 #include <net/ip6_checksum.h>
+#include <linux/skbuff.h>
 
 #include "ionic.h"
 #include "ionic_lif.h"
@@ -167,12 +168,7 @@ static bool ionic_rx_buf_recycle(struct ionic_queue *q,
 	struct net_device *netdev = q->lif->netdev;
 	u32 size;
 
-	/* don't re-use pages allocated in low-mem condition */
-	if (page_is_pfmemalloc(buf_info->page))
-		return false;
-
-	/* don't re-use buffers from non-local numa nodes */
-	if (page_to_nid(buf_info->page) != numa_mem_id())
+	if (!dev_page_is_reusable(buf_info->page))
 		return false;
 
 	if (netdev->mtu > IONIC_PAGE_SPLIT_MAX_MTU)
@@ -457,17 +453,19 @@ void ionic_rx_fill(struct ionic_queue *q)
 	struct ionic_buf_info *buf_info;
 	struct ionic_rxq_desc tmp_desc;
 	unsigned int remain_len;
-	unsigned int align_len;
 	unsigned int frag_len;
+#if (IONIC_PAGE_ORDER > 0)
 	unsigned int nsplits;
+#endif
 	unsigned int nfrags;
 	unsigned int len;
 	unsigned int i;
 	unsigned int j;
 
 	len = netdev->mtu + ETH_HLEN + VLAN_HLEN;
-	align_len = ALIGN(len, IONIC_PAGE_SPLIT_SZ);
-	nsplits = IONIC_PAGE_SIZE / align_len;
+#if (IONIC_PAGE_ORDER > 0)
+	nsplits = IONIC_PAGE_SIZE / ALIGN(len, IONIC_PAGE_SPLIT_SZ);
+#endif
 
 	for (i = ionic_q_space_avail(q); i; i--) {
 		nfrags = 0;
@@ -604,8 +602,8 @@ static void ionic_dim_update(struct ionic_qcq *qcq, int napi_mode)
 		break;
 	}
 
-	dim_update_sample(qcq->cq.bound_intr->rearm_count,
-			  pkts, bytes, &dim_sample);
+	dim_update_sample_with_comps(qcq->cq.bound_intr->rearm_count,
+				     pkts, bytes, 0, &dim_sample);
 
 	net_dim(&qcq->dim, dim_sample);
 }
@@ -876,27 +874,37 @@ dma_fail:
 	return -EIO;
 }
 
+static void ionic_tx_desc_unmap_bufs(struct ionic_queue *q,
+				     struct ionic_desc_info *desc_info)
+{
+	struct ionic_buf_info *buf_info = desc_info->bufs;
+	struct device *dev = q->dev;
+	unsigned int i;
+
+	if (!desc_info->nbufs)
+		return;
+
+	dma_unmap_single(dev, (dma_addr_t)buf_info->dma_addr,
+			 buf_info->len, DMA_TO_DEVICE);
+	buf_info++;
+	for (i = 1; i < desc_info->nbufs; i++, buf_info++)
+		dma_unmap_page(dev, (dma_addr_t)buf_info->dma_addr,
+			       buf_info->len, DMA_TO_DEVICE);
+
+	desc_info->nbufs = 0;
+}
+
 static void ionic_tx_clean(struct ionic_queue *q,
 			   struct ionic_desc_info *desc_info,
 			   struct ionic_cq_info *cq_info,
 			   void *cb_arg)
 {
-	struct ionic_buf_info *buf_info = desc_info->bufs;
 	struct ionic_tx_stats *stats = q_to_tx_stats(q);
 	struct ionic_qcq *qcq = q_to_qcq(q);
 	struct sk_buff *skb = cb_arg;
-	struct device *dev = q->dev;
-	unsigned int i;
 	u16 qi;
 
-	if (desc_info->nbufs) {
-		dma_unmap_single(dev, (dma_addr_t)buf_info->dma_addr,
-				 buf_info->len, DMA_TO_DEVICE);
-		buf_info++;
-		for (i = 1; i < desc_info->nbufs; i++, buf_info++)
-			dma_unmap_page(dev, (dma_addr_t)buf_info->dma_addr,
-				       buf_info->len, DMA_TO_DEVICE);
-	}
+	ionic_tx_desc_unmap_bufs(q, desc_info);
 
 	if (!skb)
 		return;
@@ -1158,8 +1166,11 @@ static int ionic_tx_tso(struct ionic_queue *q, struct sk_buff *skb)
 		err = ionic_tx_tcp_inner_pseudo_csum(skb);
 	else
 		err = ionic_tx_tcp_pseudo_csum(skb);
-	if (err)
+	if (err) {
+		/* clean up mapping from ionic_tx_map_skb */
+		ionic_tx_desc_unmap_bufs(q, desc_info);
 		return err;
+	}
 
 	if (encap)
 		hdrlen = skb_inner_transport_header(skb) - skb->data +
@@ -1214,9 +1225,7 @@ static int ionic_tx_tso(struct ionic_queue *q, struct sk_buff *skb)
 		/* post descriptor */
 		ionic_tx_tso_post(q, desc, skb,
 				  desc_addr, desc_nsge, desc_len,
-				  hdrlen, mss,
-				  outer_csum,
-				  vlan_tci, has_vlan,
+				  hdrlen, mss, outer_csum, vlan_tci, has_vlan,
 				  start, done);
 		start = false;
 		/* Buffer information is stored with the first tso descriptor */
@@ -1232,8 +1241,8 @@ static int ionic_tx_tso(struct ionic_queue *q, struct sk_buff *skb)
 	return 0;
 }
 
-static int ionic_tx_calc_csum(struct ionic_queue *q, struct sk_buff *skb,
-			      struct ionic_desc_info *desc_info)
+static void ionic_tx_calc_csum(struct ionic_queue *q, struct sk_buff *skb,
+			       struct ionic_desc_info *desc_info)
 {
 	struct ionic_buf_info *buf_info = desc_info->bufs;
 #ifdef IONIC_DEBUG_STATS
@@ -1280,12 +1289,10 @@ static int ionic_tx_calc_csum(struct ionic_queue *q, struct sk_buff *skb,
 #endif
 		stats->csum++;
 #endif
-
-	return 0;
 }
 
-static int ionic_tx_calc_no_csum(struct ionic_queue *q, struct sk_buff *skb,
-				 struct ionic_desc_info *desc_info)
+static void ionic_tx_calc_no_csum(struct ionic_queue *q, struct sk_buff *skb,
+				  struct ionic_desc_info *desc_info)
 {
 	struct ionic_buf_info *buf_info = desc_info->bufs;
 #ifdef IONIC_DEBUG_STATS
@@ -1325,12 +1332,10 @@ static int ionic_tx_calc_no_csum(struct ionic_queue *q, struct sk_buff *skb,
 #ifdef IONIC_DEBUG_STATS
 	stats->csum_none++;
 #endif
-
-	return 0;
 }
 
-static int ionic_tx_skb_frags(struct ionic_queue *q, struct sk_buff *skb,
-			      struct ionic_desc_info *desc_info)
+static void ionic_tx_skb_frags(struct ionic_queue *q, struct sk_buff *skb,
+			       struct ionic_desc_info *desc_info)
 {
 	struct ionic_txq_sg_desc *sg_desc = desc_info->txq_sg_desc;
 	struct ionic_buf_info *buf_info = &desc_info->bufs[1];
@@ -1348,31 +1353,24 @@ static int ionic_tx_skb_frags(struct ionic_queue *q, struct sk_buff *skb,
 #ifdef IONIC_DEBUG_STATS
 	stats->frags += skb_shinfo(skb)->nr_frags;
 #endif
-
-	return 0;
 }
 
 static int ionic_tx(struct ionic_queue *q, struct sk_buff *skb)
 {
 	struct ionic_desc_info *desc_info = &q->info[q->head_idx];
 	struct ionic_tx_stats *stats = q_to_tx_stats(q);
-	int err;
 
 	if (unlikely(ionic_tx_map_skb(q, skb, desc_info)))
 		return -EIO;
 
 	/* set up the initial descriptor */
 	if (skb->ip_summed == CHECKSUM_PARTIAL)
-		err = ionic_tx_calc_csum(q, skb, desc_info);
+		ionic_tx_calc_csum(q, skb, desc_info);
 	else
-		err = ionic_tx_calc_no_csum(q, skb, desc_info);
-	if (err)
-		return err;
+		ionic_tx_calc_no_csum(q, skb, desc_info);
 
 	/* add frags */
-	err = ionic_tx_skb_frags(q, skb, desc_info);
-	if (err)
-		return err;
+	ionic_tx_skb_frags(q, skb, desc_info);
 
 	skb_tx_timestamp(skb);
 	stats->pkts++;

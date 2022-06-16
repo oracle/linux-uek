@@ -6717,14 +6717,26 @@ devlink_flash_update_status_notify(struct devlink __always_unused *devlink,
 #endif /* 5.7.0 */
 
 /*****************************************************************************/
-#if ((LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)) && \
-     !(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,3,0))))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0))
+
+#if ((RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,5))) || \
+     (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,3,0))))
+#define HAVE_DEVLINK_UPDATE_PARAMS
+#endif
+
 #else
 #define HAVE_DEVLINK_UPDATE_PARAMS
 #endif /* 5.10.0 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0))
+
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,5)))
+#define HAVE_DEVLINK_PREFETCH_FW
+static inline void devlink_flash_update_begin_notify(struct devlink *dl) { }
+static inline void devlink_flash_update_end_notify(struct devlink *dl) { }
+#endif
+
 #else
 #define HAVE_DEVLINK_PREFETCH_FW
 static inline void devlink_flash_update_begin_notify(struct devlink *dl) { }
@@ -6732,11 +6744,54 @@ static inline void devlink_flash_update_end_notify(struct devlink *dl) { }
 #endif /* 5.11.0 */
 
 /*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,12,0))
+#if (!RHEL_RELEASE_CODE || (RHEL_RELEASE_CODE && \
+       (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,5))))
+static inline bool dev_page_is_reusable(struct page *page)
+{
+	return likely(page_to_nid(page) == numa_mem_id() &&
+		      !page_is_pfmemalloc(page));
+}
+#endif
+#endif /* 5.12.0 */
+
+/*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,13,0))
 
 void _kc_ethtool_sprintf(u8 **data, const char *fmt, ...);
 #define ethtool_sprintf _kc_ethtool_sprintf
 #endif /* 5.13.0 */
+
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,15,0))
+
+#define ndo_eth_ioctl ndo_do_ioctl
+
+#if IS_ENABLED(CONFIG_NET_DEVLINK)
+static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
+						size_t priv_size,
+						struct device *dev)
+{
+	return devlink_alloc(ops, priv_size);
+}
+#define devlink_alloc  _kc_devlink_alloc
+#endif /* CONFIG_NET_DEVLINK */
+
+#else
+
+#define HAVE_COALESCE_EXTACK
+
+#if IS_ENABLED(CONFIG_NET_DEVLINK)
+#define HAVE_VOID_DEVLINK_REGISTER
+#endif /* CONFIG_NET_DEVLINK */
+
+#endif /* 5.15.0 */
+
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,16,0))
+#else
+#define HAVE_RINGPARAM_EXTACK
+#endif /* 5.16 */
 
 /* We don't support PTP on older RHEL kernels (needs more compat work) */
 #if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))
