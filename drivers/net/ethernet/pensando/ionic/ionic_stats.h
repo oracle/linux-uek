@@ -26,6 +26,7 @@
 #define IONIC_RX_STAT_DESC(stat_name) \
 	IONIC_STAT_DESC(struct ionic_rx_stats, stat_name)
 
+#ifdef IONIC_DEBUG_STATS
 #define IONIC_TX_Q_STAT_DESC(stat_name) \
 	IONIC_STAT_DESC(struct ionic_queue, stat_name)
 
@@ -37,6 +38,7 @@
 
 #define IONIC_NAPI_STAT_DESC(stat_name) \
 	IONIC_STAT_DESC(struct ionic_napi_stats, stat_name)
+#endif
 
 /* Interface structure for a particalar stats group */
 struct ionic_stats_group_intf {

@@ -293,7 +293,7 @@ void ionic_bus_unmap_dbpage(struct ionic *ionic, void __iomem *page)
 
 phys_addr_t ionic_bus_phys_dbpage(struct ionic *ionic, int page_num)
 {
-	return 0;
+	return ionic->idev.phy_db_pages;
 }
 
 int ionic_probe(struct platform_device *pfdev)
@@ -319,7 +319,7 @@ int ionic_probe(struct platform_device *pfdev)
 	}
 
 	err = of_reserved_mem_device_init_by_idx(dev, np, 0);
-	if (err) {
+	if (err != 0 && err != -ENODEV) {
 		dev_err(dev, "Failed to init reserved memory region\n");
 		return err;
 	}
@@ -399,6 +399,9 @@ int ionic_probe(struct platform_device *pfdev)
 		goto err_out_deinit_lifs;
 	}
 
+	mod_timer(&ionic->watchdog_timer,
+		  round_jiffies(jiffies + ionic->watchdog_period));
+
 	return 0;
 
 err_out_deinit_lifs:
@@ -409,7 +412,6 @@ err_out_free_lifs:
 err_out_free_irqs:
 	ionic_bus_free_irq_vectors(ionic);
 err_out_unmap_bars:
-	del_timer_sync(&ionic->watchdog_timer);
 	ionic_unmap_bars(ionic);
 	ionic_debugfs_del_dev(ionic);
 	mutex_destroy(&ionic->dev_cmd_lock);

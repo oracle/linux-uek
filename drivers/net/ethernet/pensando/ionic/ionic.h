@@ -14,7 +14,7 @@ struct ionic_lif;
 
 #define IONIC_DRV_NAME		"ionic"
 #define IONIC_DRV_DESCRIPTION	"Pensando Ethernet NIC Driver"
-#define IONIC_DRV_VERSION	"1.15.9.64"
+#define IONIC_DRV_VERSION	"1.15.9.65"
 
 #define PCI_VENDOR_ID_PENSANDO			0x1dd8
 
@@ -24,12 +24,14 @@ struct ionic_lif;
 
 #define DEVCMD_TIMEOUT  5
 #define SHORT_TIMEOUT   1
+#define IONIC_ADMINQ_TIME_SLICE	msecs_to_jiffies(100)
 #define MAX_ETH_EQS	64
 
 #define IONIC_PHC_UPDATE_NS	10000000000L	    /* 10s in nanoseconds */
 #define NORMAL_PPB		1000000000	    /* one billion parts per billion */
 #define SCALED_PPM		(1000000ull << 16)  /* 2^16 million parts per 2^16 million */
 
+extern bool port_init_up;
 extern unsigned int rx_copybreak;
 extern unsigned int tx_budget;
 extern unsigned int devcmd_timeout;
@@ -86,9 +88,17 @@ struct ionic {
 };
 
 int ionic_adminq_post(struct ionic_lif *lif, struct ionic_admin_ctx *ctx);
-int ionic_adminq_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx, int err);
+int ionic_adminq_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx,
+		      const int err, const bool do_msg);
 int ionic_adminq_post_wait(struct ionic_lif *lif, struct ionic_admin_ctx *ctx);
+int ionic_adminq_post_wait_nomsg(struct ionic_lif *lif, struct ionic_admin_ctx *ctx);
+void ionic_adminq_netdev_err_print(struct ionic_lif *lif, u8 opcode,
+				   u8 status, int err);
+
 int ionic_dev_cmd_wait(struct ionic *ionic, unsigned long max_wait);
+int ionic_dev_cmd_wait_nomsg(struct ionic *ionic, unsigned long max_wait);
+void ionic_dev_cmd_dev_err_print(struct ionic *ionic, u8 opcode, u8 status,
+				 int err);
 int ionic_set_dma_mask(struct ionic *ionic);
 int ionic_setup(struct ionic *ionic);
 
@@ -99,5 +109,7 @@ int ionic_reset(struct ionic *ionic);
 int ionic_port_identify(struct ionic *ionic);
 int ionic_port_init(struct ionic *ionic);
 int ionic_port_reset(struct ionic *ionic);
+
+const char *ionic_vf_attr_to_str(enum ionic_vf_attr attr);
 
 #endif /* _IONIC_H_ */

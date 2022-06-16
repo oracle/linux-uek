@@ -212,19 +212,25 @@ int ionic_api_get_dbid(void *handle, u32 *dbid, phys_addr_t *addr)
 	struct ionic_lif *lif = handle;
 	int id, dbpage_num;
 
-	mutex_lock(&lif->dbid_inuse_lock);
 
-	id = find_first_zero_bit(lif->dbid_inuse, lif->dbid_count);
-	if (id == lif->dbid_count) {
+	if (ionic_bus_dbpage_per_pid(lif->ionic)) {
+		mutex_lock(&lif->dbid_inuse_lock);
+
+		id = find_first_zero_bit(lif->dbid_inuse, lif->dbid_count);
+		if (id == lif->dbid_count) {
+			mutex_unlock(&lif->dbid_inuse_lock);
+			return -ENOMEM;
+		}
+
+		set_bit(id, lif->dbid_inuse);
+
 		mutex_unlock(&lif->dbid_inuse_lock);
-		return -ENOMEM;
+
+		dbpage_num = ionic_db_page_num(lif, id);
+	} else {
+		id = 0;
+		dbpage_num = 0;
 	}
-
-	set_bit(id, lif->dbid_inuse);
-
-	mutex_unlock(&lif->dbid_inuse_lock);
-
-	dbpage_num = ionic_db_page_num(lif, id);
 
 	*dbid = id;
 	*addr = ionic_bus_phys_dbpage(lif->ionic, dbpage_num);
@@ -237,7 +243,8 @@ void ionic_api_put_dbid(void *handle, int dbid)
 {
 	struct ionic_lif *lif = handle;
 
-	clear_bit(dbid, lif->dbid_inuse);
+	if (ionic_bus_dbpage_per_pid(lif->ionic))
+		clear_bit(dbid, lif->dbid_inuse);
 }
 EXPORT_SYMBOL_GPL(ionic_api_put_dbid);
 

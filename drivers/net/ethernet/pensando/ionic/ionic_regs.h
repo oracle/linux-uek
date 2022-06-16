@@ -134,7 +134,12 @@ enum ionic_dbell_bits {
 
 static inline void ionic_dbell_ring(u64 __iomem *db_page, int qtype, u64 val)
 {
+#if defined(CONFIG_IONIC_MNIC)
+	wmb();
+	writeq_relaxed(val, &db_page[qtype]);
+#else
 	writeq(val, &db_page[qtype]);
+#endif
 }
 
 #endif /* IONIC_REGS_H */

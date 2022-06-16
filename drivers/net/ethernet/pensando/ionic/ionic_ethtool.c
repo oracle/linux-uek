@@ -536,8 +536,15 @@ static int ionic_set_fecparam(struct net_device *netdev,
 }
 
 #endif /* ETHTOOL_FEC_NONE */
+#ifdef HAVE_COALESCE_EXTACK
+static int ionic_get_coalesce(struct net_device *netdev,
+			      struct ethtool_coalesce *coalesce,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
+#else
 static int ionic_get_coalesce(struct net_device *netdev,
 			      struct ethtool_coalesce *coalesce)
+#endif
 {
 	struct ionic_lif *lif = netdev_priv(netdev);
 
@@ -554,8 +561,15 @@ static int ionic_get_coalesce(struct net_device *netdev,
 	return 0;
 }
 
+#ifdef HAVE_COALESCE_EXTACK
+static int ionic_set_coalesce(struct net_device *netdev,
+			      struct ethtool_coalesce *coalesce,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
+#else
 static int ionic_set_coalesce(struct net_device *netdev,
 			      struct ethtool_coalesce *coalesce)
+#endif
 {
 	struct ionic_lif *lif = netdev_priv(netdev);
 	struct ionic_identity *ident;
@@ -665,8 +679,15 @@ static int ionic_set_coalesce(struct net_device *netdev,
 	return 0;
 }
 
+#ifdef HAVE_RINGPARAM_EXTACK
+static void ionic_get_ringparam(struct net_device *netdev,
+				struct ethtool_ringparam *ring,
+				struct kernel_ethtool_ringparam *kernel_ring,
+				struct netlink_ext_ack *extack)
+#else
 static void ionic_get_ringparam(struct net_device *netdev,
 				struct ethtool_ringparam *ring)
+#endif
 {
 	struct ionic_lif *lif = netdev_priv(netdev);
 
@@ -676,8 +697,15 @@ static void ionic_get_ringparam(struct net_device *netdev,
 	ring->rx_pending = lif->nrxq_descs;
 }
 
+#ifdef HAVE_RINGPARAM_EXTACK
+static int ionic_set_ringparam(struct net_device *netdev,
+			       struct ethtool_ringparam *ring,
+			       struct kernel_ethtool_ringparam *kernel_ring,
+			       struct netlink_ext_ack *extack)
+#else
 static int ionic_set_ringparam(struct net_device *netdev,
 			       struct ethtool_ringparam *ring)
+#endif
 {
 	struct ionic_lif *lif = netdev_priv(netdev);
 	struct ionic_queue_params qparam;
@@ -741,7 +769,9 @@ static int ionic_set_ringparam(struct net_device *netdev,
 		return 0;
 	}
 
+	mutex_lock(&lif->queue_lock);
 	err = ionic_reconfigure_queues(lif, &qparam);
+	mutex_unlock(&lif->queue_lock);
 	if (err)
 		netdev_info(netdev, "Ring reconfiguration failed, changes canceled: %d\n", err);
 
@@ -866,7 +896,9 @@ static int ionic_set_channels(struct net_device *netdev,
 		return 0;
 	}
 
+	mutex_lock(&lif->queue_lock);
 	err = ionic_reconfigure_queues(lif, &qparam);
+	mutex_unlock(&lif->queue_lock);
 	if (err)
 		netdev_info(netdev, "Queue reconfiguration failed, changes canceled: %d\n", err);
 
@@ -881,7 +913,7 @@ static int ionic_cmb_rings_toggle(struct ionic_lif *lif, bool cmb_req)
 	if (!(lif->qtype_info[IONIC_QTYPE_TXQ].features & IONIC_QIDENT_F_CMB) ||
 	    !(lif->qtype_info[IONIC_QTYPE_RXQ].features & IONIC_QIDENT_F_CMB) ||
 	    !lif->ionic->idev.cmb_npages) {
-		netdev_info(lif->netdev, "CMB rings supported on this device\n");
+		netdev_info(lif->netdev, "CMB rings are not supported on this device\n");
 		return -EOPNOTSUPP;
 	}
 
