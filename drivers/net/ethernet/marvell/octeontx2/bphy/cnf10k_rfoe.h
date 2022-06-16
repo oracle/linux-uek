@@ -203,4 +203,6 @@ static inline u64 cnf10k_ptp_convert_timestamp(u64 timestamp)
 {
 	return ((timestamp >> 32) * NSEC_PER_SEC) + (timestamp & 0xFFFFFFFFUL);
 }
+
+void cnf10k_rfoe_set_link_state(struct net_device *netdev, u8 state);
 #endif

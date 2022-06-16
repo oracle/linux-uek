@@ -1594,3 +1594,29 @@ err_exit:
 
 	return ret;
 }
+
+void cnf10k_rfoe_set_link_state(struct net_device *netdev, u8 state)
+{
+	struct cnf10k_rfoe_ndev_priv *priv;
+
+	priv = netdev_priv(netdev);
+
+	spin_lock(&priv->lock);
+	if (priv->link_state != state) {
+		priv->link_state = state;
+		if (state == LINK_STATE_DOWN) {
+			netdev_info(netdev, "Link DOWN\n");
+			if (netif_running(netdev)) {
+				netif_carrier_off(netdev);
+				netif_stop_queue(netdev);
+			}
+		} else {
+			netdev_info(netdev, "Link UP\n");
+			if (netif_running(netdev)) {
+				netif_carrier_on(netdev);
+				netif_start_queue(netdev);
+			}
+		}
+	}
+	spin_unlock(&priv->lock);
+}
