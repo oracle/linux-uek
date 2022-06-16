@@ -15,4 +15,9 @@ void __iomem *ionic_bus_map_dbpage(struct ionic *ionic, int page_num);
 void ionic_bus_unmap_dbpage(struct ionic *ionic, void __iomem *page);
 phys_addr_t ionic_bus_phys_dbpage(struct ionic *ionic, int page_num);
 
+static inline bool ionic_bus_dbpage_per_pid(struct ionic *ionic)
+{
+	return ionic->pdev;
+}
+
 #endif /* _IONIC_BUS_H_ */

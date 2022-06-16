@@ -18,8 +18,10 @@
 #define IONIC_ADMINQ_LENGTH	16	/* must be a power of two */
 #define IONIC_NOTIFYQ_LENGTH	64	/* must be a power of two */
 
+#ifdef IONIC_DEBUG_STATS
 #define IONIC_MAX_NUM_NAPI_CNTR		(NAPI_POLL_WEIGHT + 1)
 #define IONIC_MAX_NUM_SG_CNTR		(IONIC_TX_MAX_SG_ELEMS + 1)
+#endif
 
 #define ADD_ADDR	true
 #define DEL_ADDR	false
@@ -42,7 +44,9 @@ struct ionic_tx_stats {
 	u64 clean;
 	u64 linearize;
 	u64 crc32_csum;
+#ifdef IONIC_DEBUG_STATS
 	u64 sg_cntr[IONIC_MAX_NUM_SG_CNTR];
+#endif
 	u64 dma_map_err;
 	u64 hwstamp_valid;
 	u64 hwstamp_invalid;
@@ -53,7 +57,9 @@ struct ionic_rx_stats {
 	u64 bytes;
 	u64 csum_none;
 	u64 csum_complete;
+#ifdef IONIC_DEBUG_STATS
 	u64 buffers_posted;
+#endif
 	u64 dropped;
 	u64 vlan_stripped;
 	u64 csum_error;
@@ -71,10 +77,12 @@ struct ionic_rx_stats {
 #define IONIC_QCQ_F_NOTIFYQ		BIT(5)
 #define IONIC_QCQ_F_CMB_RINGS		BIT(6)
 
+#ifdef IONIC_DEBUG_STATS
 struct ionic_napi_stats {
 	u64 poll_count;
 	u64 work_done_cntr[IONIC_MAX_NUM_NAPI_CNTR];
 };
+#endif
 
 struct ionic_qcq {
 	union {
@@ -98,7 +106,9 @@ struct ionic_qcq {
 	struct ionic_intr_info intr;
 	struct timer_list napi_deadline;
 	struct napi_struct napi;
+#ifdef IONIC_DEBUG_STATS
 	struct ionic_napi_stats napi_stats;
+#endif
 	unsigned int flags;
 	struct ionic_qcq *napi_qcq;
 	struct dentry *dentry;
@@ -228,8 +238,6 @@ struct ionic_lif {
 	u64 rxq_features;
 	u16 rx_mode;
 	bool registered;
-	bool mc_overflow;
-	bool uc_overflow;
 	u64 hw_features;
 	unsigned int index;
 	unsigned int hw_index;
@@ -243,6 +251,8 @@ struct ionic_lif {
 	u16 lif_type;
 	unsigned int nmcast;
 	unsigned int nucast;
+	unsigned int nvlans;
+	unsigned int max_vlans;
 	char name[IONIC_LIF_NAME_MAX_SZ];
 
 	struct ionic_lif_info *info;
@@ -339,8 +349,6 @@ static inline bool ionic_use_eqs(struct ionic_lif *lif)
 	       lif->qtype_info[IONIC_QTYPE_RXQ].features & IONIC_QIDENT_F_EQ;
 }
 
-typedef void (*ionic_reset_cb)(struct ionic_lif *lif, void *arg);
-
 void ionic_lif_deferred_enqueue(struct ionic_deferred *def,
 				struct ionic_deferred_work *work);
 void ionic_link_status_check_request(struct ionic_lif *lif, bool can_sleep);
@@ -359,6 +367,7 @@ int ionic_lif_size(struct ionic *ionic);
 
 #if IS_ENABLED(CONFIG_PTP_1588_CLOCK)
 void ionic_lif_hwstamp_replay(struct ionic_lif *lif);
+void ionic_lif_hwstamp_recreate_queues(struct ionic_lif *lif);
 int ionic_lif_hwstamp_set(struct ionic_lif *lif, struct ifreq *ifr);
 int ionic_lif_hwstamp_get(struct ionic_lif *lif, struct ifreq *ifr);
 ktime_t ionic_lif_phc_ktime(struct ionic_lif *lif, u64 counter);
@@ -368,6 +377,7 @@ void ionic_lif_alloc_phc(struct ionic_lif *lif);
 void ionic_lif_free_phc(struct ionic_lif *lif);
 #else
 static inline void ionic_lif_hwstamp_replay(struct ionic_lif *lif) {}
+static inline void ionic_lif_hwstamp_recreate_queues(struct ionic_lif *lif) {}
 
 static inline int ionic_lif_hwstamp_set(struct ionic_lif *lif, struct ifreq *ifr)
 {
@@ -404,7 +414,6 @@ void ionic_intr_free(struct ionic *ionic, int index);
 void ionic_lif_rx_mode(struct ionic_lif *lif);
 int ionic_reconfigure_queues(struct ionic_lif *lif,
 			     struct ionic_queue_params *qparam);
-int ionic_reset_queues(struct ionic_lif *lif, ionic_reset_cb cb, void *arg);
 int ionic_lif_alloc(struct ionic *ionic);
 int ionic_lif_init(struct ionic_lif *lif);
 void ionic_lif_free(struct ionic_lif *lif);
@@ -416,6 +425,7 @@ int ionic_lif_addr_del(struct ionic_lif *lif, const u8 *addr);
 struct ionic_lif *ionic_netdev_lif(struct net_device *netdev);
 void ionic_device_reset(struct ionic_lif *lif);
 
+#ifdef IONIC_DEBUG_STATS
 static inline void debug_stats_txq_post(struct ionic_queue *q, bool dbell)
 {
 	struct ionic_txq_desc *desc = &q->txq[q->head_idx];
@@ -442,7 +452,6 @@ static inline void debug_stats_napi_poll(struct ionic_qcq *qcq,
 	qcq->napi_stats.work_done_cntr[work_done]++;
 }
 
-#ifdef IONIC_DEBUG_STATS
 #define DEBUG_STATS_CQE_CNT(cq)		((cq)->compl_count++)
 #define DEBUG_STATS_RX_BUFF_CNT(q)	((q)->lif->rxqstats[q->index].buffers_posted++)
 #define DEBUG_STATS_TXQ_POST(q, dbell)  debug_stats_txq_post(q, dbell)
