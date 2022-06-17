@@ -17,6 +17,7 @@
 
 #define MAX_DOM_VFS		8
 #define SDP_MAX_VFS		128
+#define SDP_MAX_RINGS		256
 /* 12 CGX PFs + max HWVFs - VFs used for domains */
 #define SDP_MAX_PORTS		(12 + 256 - MAX_DOM_VFS)
 #define NAME_SIZE		32
