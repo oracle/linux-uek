@@ -229,4 +229,9 @@ struct rfoe_rx_ind_vlanx_fwd {
 	u64 fwd			: 64;
 };
 
+struct bcn_ptp_cfg {
+	int ptp_phc_idx;
+	s64 delta;
+};
+
 #endif

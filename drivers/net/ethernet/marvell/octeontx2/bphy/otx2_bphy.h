@@ -51,6 +51,10 @@
 
 #define OTX2_BPHY_MHAB_INST		3
 
+int bcn_ptp_sync(int ptp_phc_idx);
+s64 bcn_ptp_delta(int ptp_phc_idx);
+int bcn_ptp_start(void);
+
 /* char driver private data */
 struct otx2_bphy_cdev_priv {
 	struct device			*dev;
