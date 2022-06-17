@@ -206,6 +206,7 @@
 	cpu_number
 	cpumask_local_spread
 	cpumask_next
+	cpumask_next_and
 	csum_ipv6_magic
 	current_kernel_time64
 	current_task
@@ -483,6 +484,7 @@
 	jiffies_to_msecs
 	jiffies_to_timespec64
 	jiffies_to_timeval
+	kblockd_mod_delayed_work_on
 	kern_path
 	kern_path_create
 	kernel_accept
@@ -585,6 +587,7 @@
 	nobh_write_end
 	nobh_writepage
 	node_states
+	node_to_cpumask_map
 	noop_fsync
 	notify_change
 	nr_cpu_ids
