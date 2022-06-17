@@ -2377,13 +2377,17 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	return __split_vma(mm, vma, addr, new_below);
 }
 
-static inline void munmap_sidetree(struct vm_area_struct *vma,
+static inline int munmap_sidetree(struct vm_area_struct *vma,
 				   struct ma_state *mas_detach)
 {
 	mas_set_range(mas_detach, vma->vm_start, vma->vm_end - 1);
-	mas_store(mas_detach, vma);
+	if (mas_store_gfp(mas_detach, vma, GFP_KERNEL))
+		return -ENOMEM;
+
 	if (vma->vm_flags & VM_LOCKED)
 		vma->vm_mm->locked_vm -= vma_pages(vma);
+
+	return 0;
 }
 
 /*
@@ -2407,15 +2411,12 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	struct maple_tree mt_detach;
 	int count = 0;
 	int error = -ENOMEM;
-	MA_STATE(mas_detach, &mt_detach, start, end - 1);
-	mt_init_flags(&mt_detach, MM_MT_FLAGS);
+	MA_STATE(mas_detach, &mt_detach, 0, 0);
+	mt_init_flags(&mt_detach, MT_FLAGS_LOCK_EXTERN);
 	mt_set_external_lock(&mt_detach, &mm->mmap_lock);
 
 	if (mas_preallocate(mas, vma, GFP_KERNEL))
 		return -ENOMEM;
-
-	if (mas_preallocate(&mas_detach, vma, GFP_KERNEL))
-		goto detach_alloc_fail;
 
 	mas->last = end - 1;
 	/*
@@ -2443,7 +2444,7 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		 */
 		error = __split_vma(mm, vma, start, 0);
 		if (error)
-			goto split_failed;
+			goto start_split_failed;
 
 		mas_set(mas, start);
 		vma = mas_walk(mas);
@@ -2464,25 +2465,27 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 
 			error = __split_vma(mm, next, end, 1);
 			if (error)
-				goto split_failed;
+				goto end_split_failed;
 
 			mas_set(mas, end);
 			split = mas_prev(mas, 0);
-			munmap_sidetree(split, &mas_detach);
+			if (munmap_sidetree(split, &mas_detach))
+				goto munmap_sidetree_failed;
+
 			count++;
 			if (vma == next)
 				vma = split;
 			break;
 		}
+		if (munmap_sidetree(next, &mas_detach))
+			goto munmap_sidetree_failed;
+
 		count++;
-		munmap_sidetree(next, &mas_detach);
 #ifdef CONFIG_DEBUG_VM_MAPLE_TREE
 		BUG_ON(next->vm_start < start);
 		BUG_ON(next->vm_start > end);
 #endif
 	}
-
-	mas_destroy(&mas_detach);
 
 	if (!next)
 		next = mas_next(mas, ULONG_MAX);
@@ -2544,18 +2547,18 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	/* Statistics and freeing VMAs */
 	mas_set(&mas_detach, start);
 	remove_mt(mm, &mas_detach);
-	validate_mm(mm);
 	__mt_destroy(&mt_detach);
 
 
 	validate_mm(mm);
 	return downgrade ? 1 : 0;
 
-map_count_exceeded:
-split_failed:
 userfaultfd_error:
-	mas_destroy(&mas_detach);
-detach_alloc_fail:
+munmap_sidetree_failed:
+end_split_failed:
+	__mt_destroy(&mt_detach);
+start_split_failed:
+map_count_exceeded:
 	mas_destroy(mas);
 	return error;
 }
