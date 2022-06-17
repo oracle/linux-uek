@@ -611,16 +611,18 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 		return NULL;
 	rds_ib_stats_inc(s_ib_rx_cache_get);
 
-	stack = this_cpu_ptr(&cache->percpu->stack);
+	stack = &get_cpu_var(cache->percpu->stack);
 	item = lfstack_pop(stack);
 	if (item) {
 		rds_ib_stats_inc(s_ib_rx_cache_get_percpu);
 		atomic_dec(this_cpu_ptr(&cache->percpu->count));
 		atomic64_inc(this_cpu_ptr(&cache->percpu->hit_count));
+		put_cpu_var(cache->percpu->stack);
 		return item;
 	} else {
 		atomic64_inc(this_cpu_ptr(&cache->percpu->miss_count));
 	}
+	put_cpu_var(cache->percpu->stack);
 
 	item = lfstack_pop(&cache->ready);
 	if (item) {
