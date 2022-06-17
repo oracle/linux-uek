@@ -191,10 +191,14 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 	struct octeontx_edac_mc_record rec;
 	enum hw_event_mc_err_type type;
 	struct mem_ctl_info *mci;
+	static DEFINE_RAW_SPINLOCK(edac_lock_sdei);
 	struct octeontx_edac_ghes *gsrc =
 			container_of(work, struct octeontx_edac_ghes, mc_work);
-	u32 head = gsrc->ring->head;
-	u32 tail = gsrc->ring->tail;
+	u32 head, tail;
+
+	raw_spin_lock(&edac_lock_sdei);
+	head = gsrc->ring->head;
+	tail = gsrc->ring->tail;
 
 	otx_printk(KERN_DEBUG, "%s:[%08x] %llx, tail=%d, head=%d, size=%d, sign=%x\n",
 			gsrc->name, gsrc->id, (long long)gsrc->esb_va, tail, head,
@@ -203,8 +207,10 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 	/*Ensure that head updated*/
 	rmb();
 
-	if (head == tail)
+	if (head == tail) {
+		raw_spin_unlock(&edac_lock_sdei);
 		return;
+	}
 
 	ring = &gsrc->ring->records[tail];
 	mci = gsrc->mci;
@@ -258,6 +264,8 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 
 	/*Ensure that head updated*/
 	wmb();
+
+	raw_spin_unlock(&edac_lock_sdei);
 
 	if (head != tail)
 		schedule_work(&gsrc->mc_work);
