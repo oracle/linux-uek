@@ -1128,7 +1128,7 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 	u32 mac, mac_mask;
 	u64 cfg, val, pkg_ver;
 	u64 ep_pem, valid_ep_pem_mask, npem, epf_base;
-	u32 vf, ring, epf, epvf;
+	u32 ring, func, pf, vf;
 
 	/* TODO npfs should be obtained from dts */
 	npfs_per_pem = NUM_PFS_PER_PEM;
@@ -1219,6 +1219,27 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 			epf_base++;
 		}
 		npem++;
+	}
+
+	/* assign function to a ring */
+	epf_srn = (npfs_per_pem * rppf) + pf_srn;
+	for (pf = 0; pf < npfs_per_pem; pf++) {
+		func = 0;
+		val = func | pf << 8;
+
+		for (ring = pf_srn; ring < (pf_srn + rppf); ring++)
+			writeq(val, sdp->sdp_base + SDPX_EPVF_RINGX(ring));
+
+		func = 1;
+		for (vf = 0; vf < numvf; vf++) {
+			u32 srn = epf_srn + (vf * rpvf);
+
+			val = func | pf << 8;
+			for (ring = srn; ring < (srn + rpvf); ring++)
+				writeq(val, sdp->sdp_base + SDPX_EPVF_RINGX(ring));
+			func++;
+		}
+		epf_srn += numvf * rpvf;
 	}
 }
 
