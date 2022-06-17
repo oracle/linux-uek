@@ -786,7 +786,7 @@ static int cn10k_ddr_perf_probe(struct platform_device *pdev)
 	/* Choose this cpu to collect perf data */
 	ddr_pmu->cpu = raw_smp_processor_id();
 
-	name = devm_kasprintf(ddr_pmu->dev, GFP_KERNEL, "mrvl_ddr_pmu@%llx",
+	name = devm_kasprintf(ddr_pmu->dev, GFP_KERNEL, "mrvl_ddr_pmu_%llx",
 			      res->start);
 	if (!name)
 		return -ENOMEM;
