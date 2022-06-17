@@ -69,6 +69,13 @@
 #define BCN_CAPTURE_CFG			0x10400
 #define BCN_CAPTURE_N1_N2		0x10410
 #define BCN_CAPTURE_PTP			0x10430
+#define BCN_N1_N2			0x10010
+#define BCN_SYNC_VAL			0x10020
+#define BCN_DELTA_VAL			0x10030
+#define BCN_CFG				0x10000
+#define BCN_CFG2			0x12000
+#define BCN_SYNC_EN			BIT(1)
+#define BCN_DELTA_EN			BIT(16)
 
 /* BCN_CAPTURE_CFG register definitions */
 #define CAPT_EN				BIT(0)
