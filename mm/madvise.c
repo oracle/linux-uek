@@ -195,7 +195,6 @@ success:
 static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 	unsigned long end, struct mm_walk *walk)
 {
-	pte_t *ptep;
 	struct vm_area_struct *vma = walk->private;
 	unsigned long index;
 	struct swap_iocb *splug = NULL;
@@ -208,6 +207,7 @@ static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 		swp_entry_t entry;
 		struct page *page;
 		spinlock_t *ptl;
+		pte_t *ptep;
 
 		ptep = pte_offset_map_lock(vma->vm_mm, pmd, index, &ptl);
 		pte = *ptep;
