@@ -13,7 +13,6 @@
 #define _DAMON_VADDR_TEST_H
 
 #include <kunit/test.h>
-#include "../../mm/internal.h"
 
 static void __link_vmas(struct maple_tree *mt, struct vm_area_struct *vmas,
 			ssize_t nr_vmas)
