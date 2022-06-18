@@ -2687,6 +2687,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 	khugepaged_enter_vma(vma, vma->vm_flags);
 	validate_mm(mm);
 	validate_mm_mt(mm);
+	mas_destroy(&mas);
 	return error;
 }
 #endif /* CONFIG_STACK_GROWSUP || CONFIG_IA64 */
@@ -2774,6 +2775,7 @@ int expand_downwards(struct vm_area_struct *vma,
 	anon_vma_unlock_write(vma->anon_vma);
 	khugepaged_enter_vma(vma, vma->vm_flags);
 	validate_mm(mm);
+	mas_destroy(&mas);
 	return error;
 }
 
