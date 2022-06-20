@@ -71,8 +71,13 @@ static u64 otx2_rfoe_ptp_cc_read(const struct cyclecounter *cc)
 	struct otx2_rfoe_ndev_priv *priv = container_of(cc, struct
 							otx2_rfoe_ndev_priv,
 							cycle_counter);
+	u64 nsec;
 
-	return readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+	nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		otx2_rfoe_calc_ptp_ts(priv, &nsec);
+
+	return nsec;
 }
 
 static int otx2_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
@@ -85,13 +90,7 @@ static int otx2_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
 	u64 nsec;
 
 	mutex_lock(&priv->ptp_lock);
-
-	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN) {
-		nsec = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
-		otx2_rfoe_calc_ptp_ts(priv, &nsec);
-	} else {
-		nsec = timecounter_read(&priv->time_counter);
-	}
+	nsec = timecounter_read(&priv->time_counter);
 	mutex_unlock(&priv->ptp_lock);
 
 	*ts = ns_to_timespec64(nsec);
