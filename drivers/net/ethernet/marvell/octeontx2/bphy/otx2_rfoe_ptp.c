@@ -224,6 +224,8 @@ int otx2_rfoe_ptp_init(struct otx2_rfoe_ndev_priv *priv)
 	priv->extts_config.func = PTP_PF_NONE;
 	priv->ptp_clock_info = otx2_rfoe_ptp_clock_info;
 	priv->ptp_ext_clk_rate = EXT_PTP_CLK_RATE;
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		priv->ptp_ext_clk_rate = 950000000UL;
 	snprintf(priv->ptp_clock_info.name, 16, "%s", priv->netdev->name);
 	priv->ptp_clock_info.pin_config = &priv->extts_config;
 	INIT_DELAYED_WORK(&priv->extts_work, otx2_rfoe_ptp_extts_check);
