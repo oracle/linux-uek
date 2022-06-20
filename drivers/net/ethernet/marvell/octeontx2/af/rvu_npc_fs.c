@@ -1210,7 +1210,8 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	if (npc_check_field(rvu, blkaddr, NPC_DMAC, req->intf))
 		goto process_flow;
 
-	if (is_pffunc_af(req->hdr.pcifunc)) {
+	if (is_pffunc_af(req->hdr.pcifunc) &&
+	    req->features & BIT_ULL(NPC_DMAC)) {
 		if (is_unicast_ether_addr(req->packet.dmac)) {
 			dev_err(rvu->dev,
 				"%s: mkex profile does not support ucast flow\n",
