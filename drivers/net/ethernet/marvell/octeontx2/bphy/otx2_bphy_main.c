@@ -868,7 +868,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "irq resource not found\n");
 		goto out_unmap_cpri_reg;
 	}
-	cdev_priv->gpint2_irq = platform_get_irq(pdev, 1);
+	cdev_priv->gpint2_irq = platform_get_irq_optional(pdev, 1);
 	if (cdev_priv->gpint2_irq < 0)
 		cdev_priv->gpint2_irq = 0;
 	else
