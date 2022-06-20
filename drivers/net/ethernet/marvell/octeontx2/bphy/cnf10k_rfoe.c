@@ -541,7 +541,6 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	struct cnf10k_rfoe_drv_ctx *drv_ctx;
 	u64 tstamp = 0, jdt_iova_addr, tsns;
 	int found = 0, idx, len, pkt_type;
-	unsigned int ptp_message_len = 0;
 	struct rfoe_psw_s *psw = NULL;
 	struct net_device *netdev;
 	u8 *buf_ptr, *jdt_ptr;
