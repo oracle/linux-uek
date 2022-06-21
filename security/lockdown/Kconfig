@@ -44,11 +44,4 @@ config LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY
 	 code to read confidential material held inside the kernel are
 	 disabled.
 
-config LOCK_DOWN_KERNEL_SECUREBOOT_FORCE_INTEGRITY
-	bool "Secure Boot Integrity"
-	help
-	 The kernel runs in integrity mode when Secure Boot is enabled.
-	 Lockdown level may still be raised via the kernel commandline or
-	 /sys/kernel/security/lockdown.
-
 endchoice
