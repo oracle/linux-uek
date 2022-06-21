@@ -9,6 +9,7 @@
 	__bitmap_parse
 	__bitmap_weight
 	__blk_put_request
+	__blk_run_queue
 	__blockdev_direct_IO
 	__bread_gfp
 	__break_lease
@@ -20,7 +21,9 @@
 	__dev_get_by_index
 	__dev_get_by_name
 	__dynamic_dev_dbg
+	__elv_add_request
 	__ethtool_get_settings
+	__fentry__
 	__first_cpu
 	__free_pages
 	__generic_file_write_iter
@@ -136,6 +139,7 @@
 	atomic_notifier_chain_register
 	atomic_notifier_chain_unregister
 	autoremove_wake_function
+	bd_set_size
 	bdevname
 	bdget
 	bdget_disk
@@ -151,6 +155,7 @@
 	bio_get_nr_vecs
 	bio_init
 	bio_put
+	bio_uncopy_user
 	bitmap_release_region
 	blk_alloc_queue
 	blk_cleanup_queue
@@ -163,11 +168,15 @@
 	blk_get_request
 	blk_init_queue
 	blk_make_request
+	blk_mq_init_queue
+	blk_mq_start_stopped_hw_queues
 	blk_put_queue
 	blk_put_request
 	blk_queue_bounce
 	blk_queue_bounce_limit
 	blk_queue_dma_alignment
+	blk_queue_io_min
+	blk_queue_io_opt
 	blk_queue_logical_block_size
 	blk_queue_make_request
 	blk_queue_max_hw_sectors
@@ -227,6 +236,7 @@
 	cpu_present_mask
 	cpu_sibling_map
 	cpu_tss
+	cpumask_next_and
 	create_proc_entry
 	csum_ipv6_magic
 	csum_partial
@@ -243,7 +253,6 @@
 	d_make_root
 	d_move
 	d_obtain_alias
-	d_path
 	d_path
 	d_prune_aliases
 	d_rehash
@@ -319,6 +328,8 @@
 	dump_stack
 	efi
 	elevator_change
+	elevator_exit
+	elevator_init
 	emergency_restart
 	enable_irq
 	end_page_writeback
@@ -427,6 +438,7 @@
 	ioremap_nocache
 	ioremap_wc
 	iounmap
+	iov_iter_advance
 	iov_iter_init
 	ip6_route_output
 	ip_send_check
@@ -443,6 +455,7 @@
 	jiffies_to_msecs
 	jiffies_to_timespec
 	jiffies_to_timeval
+	kblockd_schedule_delayed_work_on
 	kern_path
 	kernel_bind
 	kernel_getsockopt
@@ -602,7 +615,6 @@
 	path_get
 	path_lookup
 	path_put
-	path_put
 	pci_bus_read_config_byte
 	pci_bus_read_config_dword
 	pci_bus_read_config_word
@@ -687,12 +699,10 @@
 	register_netevent_notifier
 	register_pernet_subsys
 	register_reboot_notifier
-	register_xenstore_notifier
 	register_xenbus_watch
+	register_xenstore_notifier
 	release_sock
 	remap_pfn_range
-	remap_pfn_range
-	remove_proc_entry
 	remove_proc_entry
 	request_threaded_irq
 	revert_creds
@@ -723,12 +733,13 @@
 	scsi_remove_device
 	scsi_remove_host
 	scsi_reset_provider
+	scsicam_bios_param
 	send_sig
 	send_sig_info
-	seq_lseek 
-	seq_open 
+	seq_lseek
+	seq_open
 	seq_printf
-	seq_read 
+	seq_read
 	seq_release
 	seq_write
 	set_blocksize
@@ -887,78 +898,3 @@
 	xt_register_targets
 	xt_unregister_targets
 	yield
-	__elv_add_request
-	set_disk_ro
-	yield
-	try_module_get
-	scsi_is_sdev_device
-	blk_queue_logical_block_size
-	set_blocksize
-	iov_iter_advance
-	paravirt_ticketlocks_enabled
-	__vmalloc
-	seq_lseek
-	scsicam_bios_param
-	proc_create_data
-	bio_uncopy_user
-	blk_stop_queue
-	iov_iter_init
-	mempool_free
-	kmem_cache_alloc_trace
-	__fentry__
-	blk_fetch_request
-	mempool_create
-	elevator_init
-	__stack_chk_fail
-	blk_queue_physical_block_size
-	blk_execute_rq
-	bd_set_size
-	__put_user_4
-	pv_irq_ops
-	find_first_zero_bit
-	bio_put
-	bio_endio
-	blk_mq_start_stopped_hw_queues
-	mempool_free_slab
-	blk_sync_queue
-	warn_slowpath_null
-	elevator_exit
-	blk_queue_segment_boundary
-	current_task
-	proc_mkdir
-	mempool_alloc_slab
-	__init_waitqueue_head
-	blk_mq_init_queue
-	param_ops_string
-	__blk_run_queue
-	__list_add
-	kthread_create_on_node
-	seq_read
-	blk_start_queue
-	__preempt_count
-	vfree
-	remove_proc_entry
-	seq_printf
-	blk_queue_io_min
-	find_next_bit
-	invalidate_partition
-	scsi_is_fc_rport
-	blk_queue_bounce
-	single_release
-	single_open
-	pv_lock_ops
-	bio_alloc_bioset
-	blk_queue_io_opt
-	complete_and_exit
-	kmalloc_caches
-	cpu_tss
-	blk_init_queue
-	
-	param_ops_bool
-	
-	strncasecmp
-	capable
-	set_device_ro
-	fsync_bdev
-	__get_user_4
-	
