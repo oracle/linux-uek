@@ -13,6 +13,7 @@
 #define OTX2_CPT_DRV_NAME    "rvu_cptpf"
 #define OTX2_CPT_DRV_STRING  "Marvell RVU CPT Physical Function Driver"
 
+#define CPT_UC_RID_CN9K_B0   1
 #define CPT_UC_RID_CN10K_A   4
 #define CPT_UC_RID_CN10K_B   5
 
@@ -550,6 +551,9 @@ static ssize_t sso_pf_func_ovrd_store(struct device *dev,
 {
 	struct otx2_cptpf_dev *cptpf = dev_get_drvdata(dev);
 	u8 sso_pf_func_ovrd;
+
+	if (!(cptpf->pdev->revision == CPT_UC_RID_CN9K_B0))
+		return count;
 
 	if (kstrtou8(buf, 0, &sso_pf_func_ovrd))
 		return -EINVAL;
