@@ -4244,13 +4244,7 @@ void lru_gen_online_memcg(struct mem_cgroup *memcg)
 
 void lru_gen_offline_memcg(struct mem_cgroup *memcg)
 {
-	int nid;
-
-	for_each_node(nid) {
-		struct lruvec *lruvec = get_lruvec(memcg, nid);
-
-		lru_gen_rotate_memcg(lruvec, MEMCG_LRU_OLD);
-	}
+	lru_gen_release_memcg(memcg);
 }
 
 void lru_gen_release_memcg(struct mem_cgroup *memcg)
