@@ -30,6 +30,7 @@ struct sdhci_cdns_priv {
 	bool enhanced_strobe;
 	void (*priv_write_l)(struct sdhci_cdns_priv *priv,
                 u32 val, void __iomem *reg); /* for cadence-elba.c */
+	struct reset_control *rst_hw;
 	unsigned int nr_phy_params;
 	struct sdhci_cdns_phy_param phy_params[0];
 };

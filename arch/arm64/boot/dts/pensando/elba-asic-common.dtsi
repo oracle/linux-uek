@@ -49,6 +49,9 @@
 
 &emmc {
 	bus-width = <8>;
+	cap-mmc-hw-reset;
+	reset-names = "hw";
+	resets = <&rstc 0>;
 	status = "ok";
 };
 
@@ -81,33 +84,41 @@
 	num-cs = <4>;
 	cs-gpios = <&spics 0 0>, <&spics 1 0>, <&porta 1 0>, <&porta 7 0>;
 	status = "okay";
-	cpld@0 {
-		compatible = "pensando,cpld";
+	spi@0 {
+		compatible = "pensando,elbasr";
 		#address-cells = <1>;
-		#size-cells = <1>;
+		#size-cells = <0>;
 		spi-max-frequency = <12000000>;
 		reg = <0>;
+
+		rstc: reset-controller@0 {
+			compatible = "pensando,elbasr-reset";
+			reg = <0>;	/* CS0 */
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#reset-cells = <1>;
+		};
 	};
-	cpld@1 {
+	spi@1 {
 		compatible = "pensando,cpld";
 		#address-cells = <1>;
-		#size-cells = <1>;
+		#size-cells = <0>;
 		spi-max-frequency = <12000000>;
 		reg = <1>;
 	};
-	cpld@2 {
+	spi@2 {
 		compatible = "pensando,cpld-rd1173";
 		#address-cells = <1>;
-		#size-cells = <1>;
+		#size-cells = <0>;
 		spi-max-frequency = <12000000>;
 		reg = <2>;
 		interrupt-parent = <&porta>;
 		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 	};
-	cpld@3 {
+	spi@3 {
 		compatible = "pensando,cpld";
 		#address-cells = <1>;
-		#size-cells = <1>;
+		#size-cells = <0>;
 		spi-max-frequency = <12000000>;
 		reg = <3>;
 	};

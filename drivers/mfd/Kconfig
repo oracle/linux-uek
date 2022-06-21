@@ -837,6 +837,17 @@ config MFD_PCF50633
 	  facilities, and registers devices for the various functions
 	  so that function-specific drivers can bind to them.
 
+config MFD_PENSANDO_ELBASR
+	bool "Pensando Elba System Resource chip"
+	depends on ARCH_PENSANDO_ELBA_SOC && SPI_MASTER=y && OF
+	select REGMAP_SPI
+	select MFD_CORE
+	help
+	  Support for the Pensando Elba SoC System Resource chip using
+	  the SPI interface.  This driver provides common support for
+	  accessing the device functions to include userspace access
+	  and eMMC hardware reset control.
+
 config PCF50633_ADC
 	tristate "NXP PCF50633 ADC"
 	depends on MFD_PCF50633

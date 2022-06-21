@@ -1,8 +1,9 @@
 /*
- * Simple synchronous userspace interface to SPI devices
+ * Pensando Elba System Resource MFD Driver
  *
+ * Copyright (C) 2022 Pensando Systems, Inc.
  * Copyright (C) 2006 SWAPP
- *	Andrea Paterniani <a.paterniani@swapp-eng.it>
+ *      Andrea Paterniani <a.paterniani@swapp-eng.it>
  * Copyright (C) 2007 David Brownell (simplification, cleanup)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -14,9 +15,15 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * SPI access for Pensando Elba System Resource Chip for
+ * userspace access and emmc hardware reset with a subdevice.
+ *
+ * Adapted from spidev.c
  */
 
-#include <linux/init.h>
+#include <linux/mfd/pensando-elbasr.h>
+#include <linux/mfd/core.h>
 #include <linux/module.h>
 #include <linux/ioctl.h>
 #include <linux/fs.h>
@@ -36,6 +43,15 @@
 
 #include <linux/uaccess.h>
 
+#define ELBASR_SPI_CMD_REGRD	0x0b
+#define ELBASR_SPI_CMD_REGWR	0x02
+
+static const struct mfd_cell pensando_elbasr_subdev_info[] = {
+	{
+		.name = "pensando_elbasr_reset",
+		.of_compatible = "pensando,elbasr-reset",
+	},
+};
 
 /*
  * This supports access to SPI devices using normal userspace I/O calls.
@@ -55,7 +71,6 @@
 
 static DECLARE_BITMAP(minors, N_SPI_MINORS);
 
-
 /* Bit masks for spi_device.mode management.  Note that incorrect
  * settings for some settings can cause *lots* of trouble for other
  * devices on a shared bus:
@@ -68,43 +83,27 @@ static DECLARE_BITMAP(minors, N_SPI_MINORS);
  *
  * REVISIT should changing those flags be privileged?
  */
-#define SPI_MODE_MASK		(SPI_CPHA | SPI_CPOL | SPI_CS_HIGH \
+#define SPI_MODE_MASK           (SPI_CPHA | SPI_CPOL | SPI_CS_HIGH \
 				| SPI_LSB_FIRST | SPI_3WIRE | SPI_LOOP \
 				| SPI_NO_CS | SPI_READY | SPI_TX_DUAL \
 				| SPI_TX_QUAD | SPI_RX_DUAL | SPI_RX_QUAD)
 
-struct spidev_data {
-	dev_t			devt;
-	spinlock_t		spi_lock;
-	struct spi_device	*spi;
-	struct list_head	device_entry;
-
-	/* TX/RX buffers are NULL unless this device is open (users > 0) */
-	struct mutex		buf_lock;
-	unsigned		users;
-	u8			*tx_buffer;
-	u8			*rx_buffer;
-	u32			speed_hz;
-};
-
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 
-static unsigned bufsiz = 4096;
+static unsigned int bufsiz = 4096;
 module_param(bufsiz, uint, S_IRUGO);
 MODULE_PARM_DESC(bufsiz, "data bytes in biggest supported SPI message");
 
-/*-------------------------------------------------------------------------*/
-
 static ssize_t
-spidev_sync(struct spidev_data *spidev, struct spi_message *message)
+elbasr_spi_sync(struct elbasr_data *elbasr_spi, struct spi_message *message)
 {
 	int status;
 	struct spi_device *spi;
 
-	spin_lock_irq(&spidev->spi_lock);
-	spi = spidev->spi;
-	spin_unlock_irq(&spidev->spi_lock);
+	spin_lock_irq(&elbasr_spi->spi_lock);
+	spi = elbasr_spi->spi;
+	spin_unlock_irq(&elbasr_spi->spi_lock);
 
 	if (spi == NULL)
 		status = -ESHUTDOWN;
@@ -118,102 +117,101 @@ spidev_sync(struct spidev_data *spidev, struct spi_message *message)
 }
 
 static inline ssize_t
-spidev_sync_write(struct spidev_data *spidev, size_t len)
+elbasr_spi_sync_write(struct elbasr_data *elbasr, size_t len)
 {
 	struct spi_transfer	t = {
-			.tx_buf		= spidev->tx_buffer,
+			.tx_buf		= elbasr->tx_buffer,
 			.len		= len,
-			.speed_hz	= spidev->speed_hz,
+			.speed_hz	= elbasr->speed_hz,
 		};
 	struct spi_message	m;
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
-	return spidev_sync(spidev, &m);
+	return elbasr_spi_sync(elbasr, &m);
 }
 
 static inline ssize_t
-spidev_sync_read(struct spidev_data *spidev, size_t len)
+elbasr_spi_sync_read(struct elbasr_data *elbasr, size_t len)
 {
 	struct spi_transfer	t = {
-			.rx_buf		= spidev->rx_buffer,
+			.rx_buf		= elbasr->rx_buffer,
 			.len		= len,
-			.speed_hz	= spidev->speed_hz,
+			.speed_hz	= elbasr->speed_hz,
 		};
 	struct spi_message	m;
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
-	return spidev_sync(spidev, &m);
+	return elbasr_spi_sync(elbasr, &m);
 }
-
-/*-------------------------------------------------------------------------*/
 
 /* Read-only message with current device setup */
 static ssize_t
-spidev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+elbasr_spi_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
-	struct spidev_data	*spidev;
-	ssize_t			status = 0;
+	struct elbasr_data *elbasr;
+	ssize_t status = 0;
 
 	/* chipselect only toggles at start or end of operation */
 	if (count > bufsiz)
 		return -EMSGSIZE;
 
-	spidev = filp->private_data;
+	elbasr = filp->private_data;
 
-	mutex_lock(&spidev->buf_lock);
-	status = spidev_sync_read(spidev, count);
+	mutex_lock(&elbasr->buf_lock);
+	status = elbasr_spi_sync_read(elbasr, count);
 	if (status > 0) {
-		unsigned long	missing;
+		unsigned long missing;
 
-		missing = copy_to_user(buf, spidev->rx_buffer, status);
+		missing = copy_to_user(buf, elbasr->rx_buffer, status);
 		if (missing == status)
 			status = -EFAULT;
 		else
 			status = status - missing;
 	}
-	mutex_unlock(&spidev->buf_lock);
+	mutex_unlock(&elbasr->buf_lock);
 
 	return status;
 }
 
 /* Write-only message with current device setup */
 static ssize_t
-spidev_write(struct file *filp, const char __user *buf,
-		size_t count, loff_t *f_pos)
+elbasr_spi_write(struct file *filp, const char __user *buf,
+		 size_t count, loff_t *f_pos)
 {
-	struct spidev_data	*spidev;
-	ssize_t			status = 0;
-	unsigned long		missing;
+	struct elbasr_data *elbasr;
+	ssize_t status = 0;
+	unsigned long missing;
 
 	/* chipselect only toggles at start or end of operation */
 	if (count > bufsiz)
 		return -EMSGSIZE;
 
-	spidev = filp->private_data;
+	elbasr = filp->private_data;
 
-	mutex_lock(&spidev->buf_lock);
-	missing = copy_from_user(spidev->tx_buffer, buf, count);
+	mutex_lock(&elbasr->buf_lock);
+	missing = copy_from_user(elbasr->tx_buffer, buf, count);
 	if (missing == 0)
-		status = spidev_sync_write(spidev, count);
+		status = elbasr_spi_sync_write(elbasr, count);
 	else
 		status = -EFAULT;
-	mutex_unlock(&spidev->buf_lock);
+	mutex_unlock(&elbasr->buf_lock);
 
 	return status;
 }
 
-static int spidev_message(struct spidev_data *spidev,
-		struct spi_ioc_transfer *u_xfers, unsigned n_xfers)
+static int elbasr_spi_message(struct elbasr_data *elbasr,
+			      struct spi_ioc_transfer *u_xfers,
+			      unsigned int n_xfers)
 {
-	struct spi_message	msg;
-	struct spi_transfer	*k_xfers;
-	struct spi_transfer	*k_tmp;
+	struct spi_message msg;
+	struct spi_transfer *k_xfers;
+	struct spi_transfer *k_tmp;
 	struct spi_ioc_transfer *u_tmp;
-	unsigned		n, total, tx_total, rx_total;
-	u8			*tx_buf, *rx_buf;
-	int			status = -EFAULT;
+	unsigned int n, total, tx_total, rx_total;
+	u8 *tx_buf, *rx_buf;
+	int status = -EFAULT;
 
 	spi_message_init(&msg);
 	k_xfers = kcalloc(n_xfers, sizeof(*k_tmp), GFP_KERNEL);
@@ -224,19 +222,14 @@ static int spidev_message(struct spidev_data *spidev,
 	 * We walk the array of user-provided transfers, using each one
 	 * to initialize a kernel version of the same transfer.
 	 */
-	tx_buf = spidev->tx_buffer;
-	rx_buf = spidev->rx_buffer;
+	tx_buf = elbasr->tx_buffer;
+	rx_buf = elbasr->rx_buffer;
 	total = 0;
 	tx_total = 0;
 	rx_total = 0;
 	for (n = n_xfers, k_tmp = k_xfers, u_tmp = u_xfers;
 			n;
 			n--, k_tmp++, u_tmp++) {
-		/* Ensure that also following allocations from rx_buf/tx_buf will meet
-		 * DMA alignment requirements.
-		 */
-		unsigned int len_aligned = ALIGN(u_tmp->len, ARCH_KMALLOC_MINALIGN);
-
 		k_tmp->len = u_tmp->len;
 
 		total += k_tmp->len;
@@ -252,17 +245,17 @@ static int spidev_message(struct spidev_data *spidev,
 
 		if (u_tmp->rx_buf) {
 			/* this transfer needs space in RX bounce buffer */
-			rx_total += len_aligned;
+			rx_total += k_tmp->len;
 			if (rx_total > bufsiz) {
 				status = -EMSGSIZE;
 				goto done;
 			}
 			k_tmp->rx_buf = rx_buf;
-			rx_buf += len_aligned;
+			rx_buf += k_tmp->len;
 		}
 		if (u_tmp->tx_buf) {
 			/* this transfer needs space in TX bounce buffer */
-			tx_total += len_aligned;
+			tx_total += k_tmp->len;
 			if (tx_total > bufsiz) {
 				status = -EMSGSIZE;
 				goto done;
@@ -272,7 +265,7 @@ static int spidev_message(struct spidev_data *spidev,
 						(uintptr_t) u_tmp->tx_buf,
 					u_tmp->len))
 				goto done;
-			tx_buf += len_aligned;
+			tx_buf += k_tmp->len;
 		}
 
 		k_tmp->cs_change = !!u_tmp->cs_change;
@@ -282,36 +275,37 @@ static int spidev_message(struct spidev_data *spidev,
 		k_tmp->delay_usecs = u_tmp->delay_usecs;
 		k_tmp->speed_hz = u_tmp->speed_hz;
 		if (!k_tmp->speed_hz)
-			k_tmp->speed_hz = spidev->speed_hz;
+			k_tmp->speed_hz = elbasr->speed_hz;
+
 #ifdef VERBOSE
-		dev_dbg(&spidev->spi->dev,
+		dev_dbg(&elbasr->spi->dev,
 			"  xfer len %u %s%s%s%dbits %u usec %uHz\n",
 			u_tmp->len,
 			u_tmp->rx_buf ? "rx " : "",
 			u_tmp->tx_buf ? "tx " : "",
 			u_tmp->cs_change ? "cs " : "",
-			u_tmp->bits_per_word ? : spidev->spi->bits_per_word,
+			u_tmp->bits_per_word ? : elbasr->spi->bits_per_word,
 			u_tmp->delay_usecs,
-			u_tmp->speed_hz ? : spidev->spi->max_speed_hz);
+			u_tmp->speed_hz ? : elbasr->spi->max_speed_hz);
 #endif
 		spi_message_add_tail(k_tmp, &msg);
 	}
 
-	status = spidev_sync(spidev, &msg);
+	status = elbasr_spi_sync(elbasr, &msg);
 	if (status < 0)
 		goto done;
 
 	/* copy any rx data out of bounce buffer */
-	for (n = n_xfers, k_tmp = k_xfers, u_tmp = u_xfers;
-			n;
-			n--, k_tmp++, u_tmp++) {
+	rx_buf = elbasr->rx_buffer;
+	for (n = n_xfers, u_tmp = u_xfers; n; n--, u_tmp++) {
 		if (u_tmp->rx_buf) {
 			if (copy_to_user((u8 __user *)
-					(uintptr_t) u_tmp->rx_buf, k_tmp->rx_buf,
+					(uintptr_t) u_tmp->rx_buf, rx_buf,
 					u_tmp->len)) {
 				status = -EFAULT;
 				goto done;
 			}
+			rx_buf += u_tmp->len;
 		}
 	}
 	status = total;
@@ -322,10 +316,11 @@ done:
 }
 
 static struct spi_ioc_transfer *
-spidev_get_ioc_message(unsigned int cmd, struct spi_ioc_transfer __user *u_ioc,
-		unsigned *n_ioc)
+elbasr_spi_get_ioc_message(unsigned int cmd,
+			   struct spi_ioc_transfer __user *u_ioc,
+			   unsigned int *n_ioc)
 {
-	u32	tmp;
+	u32 tmp;
 
 	/* Check type, command number and direction */
 	if (_IOC_TYPE(cmd) != SPI_IOC_MAGIC
@@ -345,13 +340,13 @@ spidev_get_ioc_message(unsigned int cmd, struct spi_ioc_transfer __user *u_ioc,
 }
 
 static long
-spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+elbasr_spi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-	int			retval = 0;
-	struct spidev_data	*spidev;
-	struct spi_device	*spi;
-	u32			tmp;
-	unsigned		n_ioc;
+	int retval = 0;
+	struct elbasr_data *elbasr;
+	struct spi_device *spi;
+	u32 tmp;
+	unsigned int n_ioc;
 	struct spi_ioc_transfer	*ioc;
 
 	/* Check type and command number */
@@ -361,10 +356,10 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	/* guard against device removal before, or while,
 	 * we issue this ioctl.
 	 */
-	spidev = filp->private_data;
-	spin_lock_irq(&spidev->spi_lock);
-	spi = spi_dev_get(spidev->spi);
-	spin_unlock_irq(&spidev->spi_lock);
+	elbasr = filp->private_data;
+	spin_lock_irq(&elbasr->spi_lock);
+	spi = spi_dev_get(elbasr->spi);
+	spin_unlock_irq(&elbasr->spi_lock);
 
 	if (spi == NULL)
 		return -ESHUTDOWN;
@@ -375,7 +370,7 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	 *    data fields while SPI_IOC_RD_* reads them;
 	 *  - SPI_IOC_MESSAGE needs the buffer locked "normally".
 	 */
-	mutex_lock(&spidev->buf_lock);
+	mutex_lock(&elbasr->buf_lock);
 
 	switch (cmd) {
 	/* read requests */
@@ -395,7 +390,7 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		retval = put_user(spi->bits_per_word, (__u8 __user *)arg);
 		break;
 	case SPI_IOC_RD_MAX_SPEED_HZ:
-		retval = put_user(spidev->speed_hz, (__u32 __user *)arg);
+		retval = put_user(elbasr->speed_hz, (__u32 __user *)arg);
 		break;
 
 	/* write requests */
@@ -459,8 +454,8 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 			spi->max_speed_hz = tmp;
 			retval = spi_setup(spi);
-			if (retval >= 0)
-				spidev->speed_hz = tmp;
+			if (retval == 0)
+				elbasr->speed_hz = tmp;
 			else
 				dev_dbg(&spi->dev, "%d Hz (max)\n", tmp);
 			spi->max_speed_hz = save;
@@ -470,7 +465,7 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	default:
 		/* segmented and/or full-duplex I/O request */
 		/* Check message and copy into scratch area */
-		ioc = spidev_get_ioc_message(cmd,
+		ioc = elbasr_spi_get_ioc_message(cmd,
 				(struct spi_ioc_transfer __user *)arg, &n_ioc);
 		if (IS_ERR(ioc)) {
 			retval = PTR_ERR(ioc);
@@ -480,46 +475,46 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			break;	/* n_ioc is also 0 */
 
 		/* translate to spi_message, execute */
-		retval = spidev_message(spidev, ioc, n_ioc);
+		retval = elbasr_spi_message(elbasr, ioc, n_ioc);
 		kfree(ioc);
 		break;
 	}
 
-	mutex_unlock(&spidev->buf_lock);
+	mutex_unlock(&elbasr->buf_lock);
 	spi_dev_put(spi);
 	return retval;
 }
 
 #ifdef CONFIG_COMPAT
 static long
-spidev_compat_ioc_message(struct file *filp, unsigned int cmd,
-		unsigned long arg)
+elbasr_spi_compat_ioc_message(struct file *filp, unsigned int cmd,
+			      unsigned long arg)
 {
-	struct spi_ioc_transfer __user	*u_ioc;
-	int				retval = 0;
-	struct spidev_data		*spidev;
-	struct spi_device		*spi;
-	unsigned			n_ioc, n;
-	struct spi_ioc_transfer		*ioc;
+	struct spi_ioc_transfer __user *u_ioc;
+	int retval = 0;
+	struct elbasr_data *elbasr;
+	struct spi_device *spi;
+	unsigned int n_ioc, n;
+	struct spi_ioc_transfer *ioc;
 
 	u_ioc = (struct spi_ioc_transfer __user *) compat_ptr(arg);
 
 	/* guard against device removal before, or while,
 	 * we issue this ioctl.
 	 */
-	spidev = filp->private_data;
-	spin_lock_irq(&spidev->spi_lock);
-	spi = spi_dev_get(spidev->spi);
-	spin_unlock_irq(&spidev->spi_lock);
+	elbasr = filp->private_data;
+	spin_lock_irq(&elbasr->spi_lock);
+	spi = spi_dev_get(elbasr->spi);
+	spin_unlock_irq(&elbasr->spi_lock);
 
 	if (spi == NULL)
 		return -ESHUTDOWN;
 
 	/* SPI_IOC_MESSAGE needs the buffer locked "normally" */
-	mutex_lock(&spidev->buf_lock);
+	mutex_lock(&elbasr->buf_lock);
 
 	/* Check message and copy into scratch area */
-	ioc = spidev_get_ioc_message(cmd, u_ioc, &n_ioc);
+	ioc = elbasr_spi_get_ioc_message(cmd, u_ioc, &n_ioc);
 	if (IS_ERR(ioc)) {
 		retval = PTR_ERR(ioc);
 		goto done;
@@ -534,221 +529,254 @@ spidev_compat_ioc_message(struct file *filp, unsigned int cmd,
 	}
 
 	/* translate to spi_message, execute */
-	retval = spidev_message(spidev, ioc, n_ioc);
+	retval = elbasr_spi_message(elbasr, ioc, n_ioc);
 	kfree(ioc);
 
 done:
-	mutex_unlock(&spidev->buf_lock);
+	mutex_unlock(&elbasr->buf_lock);
 	spi_dev_put(spi);
 	return retval;
 }
 
 static long
-spidev_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+elbasr_spi_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	if (_IOC_TYPE(cmd) == SPI_IOC_MAGIC
 			&& _IOC_NR(cmd) == _IOC_NR(SPI_IOC_MESSAGE(0))
 			&& _IOC_DIR(cmd) == _IOC_WRITE)
-		return spidev_compat_ioc_message(filp, cmd, arg);
+		return elbasr_spi_compat_ioc_message(filp, cmd, arg);
 
-	return spidev_ioctl(filp, cmd, (unsigned long)compat_ptr(arg));
+	return elbasr_spi_ioctl(filp, cmd, (unsigned long)compat_ptr(arg));
 }
 #else
-#define spidev_compat_ioctl NULL
+#define elbasr_spi_compat_ioctl NULL
 #endif /* CONFIG_COMPAT */
 
-static int spidev_open(struct inode *inode, struct file *filp)
+static int elbasr_spi_open(struct inode *inode, struct file *filp)
 {
-	struct spidev_data	*spidev;
-	int			status = -ENXIO;
+	struct elbasr_data *elbasr;
+	int status = -ENXIO;
 
 	mutex_lock(&device_list_lock);
 
-	list_for_each_entry(spidev, &device_list, device_entry) {
-		if (spidev->devt == inode->i_rdev) {
+	list_for_each_entry(elbasr, &device_list, device_entry) {
+		if (elbasr->devt == inode->i_rdev) {
 			status = 0;
 			break;
 		}
 	}
 
 	if (status) {
-		pr_debug("spidev: nothing for minor %d\n", iminor(inode));
+		pr_debug("elbasr_spi: nothing for minor %d\n", iminor(inode));
 		goto err_find_dev;
 	}
 
-	if (!spidev->tx_buffer) {
-		spidev->tx_buffer = kmalloc(bufsiz, GFP_KERNEL);
-		if (!spidev->tx_buffer) {
-			dev_dbg(&spidev->spi->dev, "open/ENOMEM\n");
+	if (!elbasr->tx_buffer) {
+		elbasr->tx_buffer = kmalloc(bufsiz, GFP_KERNEL);
+		if (!elbasr->tx_buffer) {
 			status = -ENOMEM;
 			goto err_find_dev;
 		}
 	}
 
-	if (!spidev->rx_buffer) {
-		spidev->rx_buffer = kmalloc(bufsiz, GFP_KERNEL);
-		if (!spidev->rx_buffer) {
-			dev_dbg(&spidev->spi->dev, "open/ENOMEM\n");
+	if (!elbasr->rx_buffer) {
+		elbasr->rx_buffer = kmalloc(bufsiz, GFP_KERNEL);
+		if (!elbasr->rx_buffer) {
 			status = -ENOMEM;
 			goto err_alloc_rx_buf;
 		}
 	}
 
-	spidev->users++;
-	filp->private_data = spidev;
+	elbasr->users++;
+	filp->private_data = elbasr;
 	nonseekable_open(inode, filp);
 
 	mutex_unlock(&device_list_lock);
 	return 0;
 
 err_alloc_rx_buf:
-	kfree(spidev->tx_buffer);
-	spidev->tx_buffer = NULL;
+	kfree(elbasr->tx_buffer);
+	elbasr->tx_buffer = NULL;
 err_find_dev:
 	mutex_unlock(&device_list_lock);
 	return status;
 }
 
-static int spidev_release(struct inode *inode, struct file *filp)
+static int elbasr_spi_release(struct inode *inode, struct file *filp)
 {
-	struct spidev_data	*spidev;
-	int			dofree;
+	struct elbasr_data *elbasr;
 
 	mutex_lock(&device_list_lock);
-	spidev = filp->private_data;
+	elbasr = filp->private_data;
 	filp->private_data = NULL;
 
-	spin_lock_irq(&spidev->spi_lock);
-	/* ... after we unbound from the underlying device? */
-	dofree = (spidev->spi == NULL);
-	spin_unlock_irq(&spidev->spi_lock);
-
 	/* last close? */
-	spidev->users--;
-	if (!spidev->users) {
+	elbasr->users--;
+	if (!elbasr->users) {
+		int             dofree;
 
-		kfree(spidev->tx_buffer);
-		spidev->tx_buffer = NULL;
+		kfree(elbasr->tx_buffer);
+		elbasr->tx_buffer = NULL;
 
-		kfree(spidev->rx_buffer);
-		spidev->rx_buffer = NULL;
+		kfree(elbasr->rx_buffer);
+		elbasr->rx_buffer = NULL;
+
+		spin_lock_irq(&elbasr->spi_lock);
+		if (elbasr->spi)
+			elbasr->speed_hz = elbasr->spi->max_speed_hz;
+
+		/* ... after we unbound from the underlying device? */
+		dofree = (elbasr->spi == NULL);
+		spin_unlock_irq(&elbasr->spi_lock);
 
 		if (dofree)
-			kfree(spidev);
-		else
-			spidev->speed_hz = spidev->spi->max_speed_hz;
+			kfree(elbasr);
 	}
-#ifdef CONFIG_SPI_SLAVE
-	if (!dofree)
-		spi_slave_abort(spidev->spi);
-#endif
 	mutex_unlock(&device_list_lock);
 
 	return 0;
 }
 
-static const struct file_operations spidev_fops = {
+static const struct file_operations elbasr_spi_fops = {
 	.owner =	THIS_MODULE,
 	/* REVISIT switch to aio primitives, so that userspace
 	 * gets more complete API coverage.  It'll simplify things
 	 * too, except for the locking.
 	 */
-	.write =	spidev_write,
-	.read =		spidev_read,
-	.unlocked_ioctl = spidev_ioctl,
-	.compat_ioctl = spidev_compat_ioctl,
-	.open =		spidev_open,
-	.release =	spidev_release,
+	.write =	elbasr_spi_write,
+	.read =		elbasr_spi_read,
+	.unlocked_ioctl = elbasr_spi_ioctl,
+	.compat_ioctl = elbasr_spi_compat_ioctl,
+	.open =		elbasr_spi_open,
+	.release =	elbasr_spi_release,
 	.llseek =	no_llseek,
 };
-
-/*-------------------------------------------------------------------------*/
 
 /* The main reason to have this class is to make mdev/udev create the
  * /dev/spidevB.C character device nodes exposing our userspace API.
  * It also simplifies memory management.
  */
 
-static struct class *spidev_class;
+static struct class *elbasr_spi_class;
 
 #ifdef CONFIG_OF
-static const struct of_device_id spidev_dt_ids[] = {
-	{ .compatible = "rohm,dh2228fv" },
-	{ .compatible = "lineartechnology,ltc2488" },
-	{ .compatible = "ge,achc" },
-	{ .compatible = "semtech,sx1301" },
-	{},
+static const struct of_device_id elbasr_spi_dt_ids[] = {
+	{ .compatible = "pensando,elbasr" },
+	{ /* sentinel */ },
 };
-MODULE_DEVICE_TABLE(of, spidev_dt_ids);
+MODULE_DEVICE_TABLE(of, elbasr_spi_dt_ids);
 #endif
 
-#ifdef CONFIG_ACPI
-
-/* Dummy SPI devices not to be used in production systems */
-#define SPIDEV_ACPI_DUMMY	1
-
-static const struct acpi_device_id spidev_acpi_ids[] = {
-	/*
-	 * The ACPI SPT000* devices are only meant for development and
-	 * testing. Systems used in production should have a proper ACPI
-	 * description of the connected peripheral and they should also use
-	 * a proper driver instead of poking directly to the SPI bus.
-	 */
-	{ "SPT0001", SPIDEV_ACPI_DUMMY },
-	{ "SPT0002", SPIDEV_ACPI_DUMMY },
-	{ "SPT0003", SPIDEV_ACPI_DUMMY },
-	{},
-};
-MODULE_DEVICE_TABLE(acpi, spidev_acpi_ids);
-
-static void spidev_probe_acpi(struct spi_device *spi)
+static int
+elbasr_regs_read(void *ctx, u32 reg, u32 *val)
 {
-	const struct acpi_device_id *id;
+	struct elbasr_data *elbasr = dev_get_drvdata(ctx);
+	struct spi_message m;
+	struct spi_transfer t[2] = { { 0 } };
+	int ret;
+	u8 txbuf[3];
+	u8 rxbuf[1];
 
-	if (!has_acpi_companion(&spi->dev))
-		return;
+	spi_message_init(&m);
 
-	id = acpi_match_device(spidev_acpi_ids, &spi->dev);
-	if (WARN_ON(!id))
-		return;
+	txbuf[0] = ELBASR_SPI_CMD_REGRD;
+	txbuf[1] = reg;
+	txbuf[2] = 0x0;
+	t[0].tx_buf = (u8 *)txbuf;
+	t[0].len = 3;
 
-	if (id->driver_data == SPIDEV_ACPI_DUMMY)
-		dev_warn(&spi->dev, "do not use this driver in production systems!\n");
+	rxbuf[0] = 0x0;
+	t[1].rx_buf = rxbuf;
+	t[1].len = 1;
+
+	spi_message_add_tail(&t[0], &m);
+	spi_message_add_tail(&t[1], &m);
+
+	ret = elbasr_spi_sync(elbasr, &m);
+	if (ret == 4) {
+		// 3 Tx + 1 Rx = 4
+		*val = rxbuf[0];
+		return 0;
+	}
+	return -EIO;
 }
-#else
-static inline void spidev_probe_acpi(struct spi_device *spi) {}
-#endif
 
-/*-------------------------------------------------------------------------*/
-
-static int spidev_probe(struct spi_device *spi)
+static int
+elbasr_regs_write(void *ctx, u32 reg, u32 val)
 {
-	struct spidev_data	*spidev;
-	int			status;
-	unsigned long		minor;
+	struct elbasr_data *elbasr = dev_get_drvdata(ctx);
+	struct spi_message m;
+	struct spi_transfer t[1] = { { 0 } };
+	u8 txbuf[4];
 
-	/*
-	 * spidev should never be referenced in DT without a specific
-	 * compatible string, it is a Linux implementation thing
-	 * rather than a description of the hardware.
-	 */
-	WARN(spi->dev.of_node &&
-	     of_device_is_compatible(spi->dev.of_node, "spidev"),
-	     "%pOF: buggy DT: spidev listed directly in DT\n", spi->dev.of_node);
+	spi_message_init(&m);
+	txbuf[0] = ELBASR_SPI_CMD_REGWR;
+	txbuf[1] = reg;
+	txbuf[2] = val;
+	txbuf[3] = 0;
 
-	spidev_probe_acpi(spi);
+	t[0].tx_buf = txbuf;
+	t[0].len = 4;
+
+	spi_message_add_tail(&t[0], &m);
+
+	return elbasr_spi_sync(elbasr, &m);
+}
+
+static const struct regmap_config pensando_elbasr_regmap_config = {
+	.reg_bits = 8,
+	.val_bits = 8,
+	.cache_type = REGCACHE_NONE,
+	.reg_read = elbasr_regs_read,
+	.reg_write = elbasr_regs_write,
+	.max_register = ELBASR_MAX_REG
+};
+
+/*
+ * Setup Elba SPI access to System Resource Chip registers on CS0
+ */
+static int
+elbasr_regs_setup(struct spi_device *spi, struct elbasr_data *elbasr)
+{
+	int ret;
+
+	spi->bits_per_word = 8;
+	spi_setup(spi);
+	elbasr->elbasr_regs = devm_regmap_init(&spi->dev, NULL, spi,
+					       &pensando_elbasr_regmap_config);
+	if (IS_ERR(elbasr->elbasr_regs)) {
+		ret = PTR_ERR(elbasr->elbasr_regs);
+		dev_err(&spi->dev, "Failed to allocate register map: %d\n", ret);
+		return ret;
+	}
+
+	ret = devm_mfd_add_devices(&spi->dev, PLATFORM_DEVID_NONE,
+				   pensando_elbasr_subdev_info,
+				   ARRAY_SIZE(pensando_elbasr_subdev_info),
+				   NULL, 0, NULL);
+	if (ret)
+		dev_err(&spi->dev, "Failed to register sub-devices: %d\n", ret);
+
+	return ret;
+}
+
+static int elbasr_spi_probe(struct spi_device *spi)
+{
+	struct elbasr_data *elbasr;
+	unsigned long minor;
+	int status;
 
 	/* Allocate driver data */
-	spidev = kzalloc(sizeof(*spidev), GFP_KERNEL);
-	if (!spidev)
+	elbasr = kzalloc(sizeof(*elbasr), GFP_KERNEL);
+	if (!elbasr)
 		return -ENOMEM;
 
 	/* Initialize the driver data */
-	spidev->spi = spi;
-	spin_lock_init(&spidev->spi_lock);
-	mutex_init(&spidev->buf_lock);
+	elbasr->spi = spi;
+	spin_lock_init(&elbasr->spi_lock);
+	mutex_init(&elbasr->buf_lock);
 
-	INIT_LIST_HEAD(&spidev->device_entry);
+	INIT_LIST_HEAD(&elbasr->device_entry);
 
 	/* If we can allocate a minor number, hook up this device.
 	 * Reusing minors is fine so long as udev or mdev is working.
@@ -758,10 +786,11 @@ static int spidev_probe(struct spi_device *spi)
 	if (minor < N_SPI_MINORS) {
 		struct device *dev;
 
-		spidev->devt = MKDEV(SPIDEV_MAJOR, minor);
-		dev = device_create(spidev_class, &spi->dev, spidev->devt,
-				    spidev, "spidev%d.%d",
+		elbasr->devt = MKDEV(SPIDEV_MAJOR, minor);
+		dev = device_create(elbasr_spi_class, &spi->dev, elbasr->devt,
+				    elbasr, "spidev%d.%d",
 				    spi->master->bus_num, spi->chip_select);
+
 		status = PTR_ERR_OR_ZERO(dev);
 	} else {
 		dev_dbg(&spi->dev, "no minor number available!\n");
@@ -769,49 +798,51 @@ static int spidev_probe(struct spi_device *spi)
 	}
 	if (status == 0) {
 		set_bit(minor, minors);
-		list_add(&spidev->device_entry, &device_list);
+		list_add(&elbasr->device_entry, &device_list);
 	}
 	mutex_unlock(&device_list_lock);
 
-	spidev->speed_hz = spi->max_speed_hz;
+	elbasr->speed_hz = spi->max_speed_hz;
 
-	if (status == 0)
-		spi_set_drvdata(spi, spidev);
-	else
-		kfree(spidev);
+	if (status == 0) {
+		spi_set_drvdata(spi, elbasr);
+		if (spi->chip_select == 0)
+			elbasr_regs_setup(spi, elbasr);
+	} else {
+		kfree(elbasr);
+	}
 
 	return status;
 }
 
-static int spidev_remove(struct spi_device *spi)
+static int elbasr_spi_remove(struct spi_device *spi)
 {
-	struct spidev_data	*spidev = spi_get_drvdata(spi);
+	struct elbasr_data *elbasr = spi_get_drvdata(spi);
 
 	/* prevent new opens */
 	mutex_lock(&device_list_lock);
 	/* make sure ops on existing fds can abort cleanly */
-	spin_lock_irq(&spidev->spi_lock);
-	spidev->spi = NULL;
-	spin_unlock_irq(&spidev->spi_lock);
+	spin_lock_irq(&elbasr->spi_lock);
+	elbasr->spi = NULL;
+	spin_unlock_irq(&elbasr->spi_lock);
 
-	list_del(&spidev->device_entry);
-	device_destroy(spidev_class, spidev->devt);
-	clear_bit(MINOR(spidev->devt), minors);
-	if (spidev->users == 0)
-		kfree(spidev);
+	list_del(&elbasr->device_entry);
+	device_destroy(elbasr_spi_class, elbasr->devt);
+	clear_bit(MINOR(elbasr->devt), minors);
+	if (elbasr->users == 0)
+		kfree(elbasr);
 	mutex_unlock(&device_list_lock);
 
 	return 0;
 }
 
-static struct spi_driver spidev_spi_driver = {
+static struct spi_driver elbasr_spi_driver = {
 	.driver = {
-		.name =		"spidev",
-		.of_match_table = of_match_ptr(spidev_dt_ids),
-		.acpi_match_table = ACPI_PTR(spidev_acpi_ids),
+		.name = "elbasr_spi",
+		.of_match_table = of_match_ptr(elbasr_spi_dt_ids),
 	},
-	.probe =	spidev_probe,
-	.remove =	spidev_remove,
+	.probe = elbasr_spi_probe,
+	.remove = elbasr_spi_remove,
 
 	/* NOTE:  suspend/resume methods are not necessary here.
 	 * We don't do anything except pass the requests to/from
@@ -820,9 +851,7 @@ static struct spi_driver spidev_spi_driver = {
 	 */
 };
 
-/*-------------------------------------------------------------------------*/
-
-static int __init spidev_init(void)
+static int __init elbasr_spi_init(void)
 {
 	int status;
 
@@ -831,34 +860,35 @@ static int __init spidev_init(void)
 	 * the driver which manages those device numbers.
 	 */
 	BUILD_BUG_ON(N_SPI_MINORS > 256);
-	status = register_chrdev(SPIDEV_MAJOR, "spi", &spidev_fops);
+	status = register_chrdev(SPIDEV_MAJOR, "spi", &elbasr_spi_fops);
 	if (status < 0)
 		return status;
 
-	spidev_class = class_create(THIS_MODULE, "spidev");
-	if (IS_ERR(spidev_class)) {
-		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
-		return PTR_ERR(spidev_class);
+	/* Backward compatibility for now */
+	elbasr_spi_class = class_create(THIS_MODULE, "elbasr_spi");
+	if (IS_ERR(elbasr_spi_class)) {
+		unregister_chrdev(SPIDEV_MAJOR, elbasr_spi_driver.driver.name);
+		return PTR_ERR(elbasr_spi_class);
 	}
 
-	status = spi_register_driver(&spidev_spi_driver);
+	status = spi_register_driver(&elbasr_spi_driver);
 	if (status < 0) {
-		class_destroy(spidev_class);
-		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
+		class_destroy(elbasr_spi_class);
+		unregister_chrdev(SPIDEV_MAJOR, elbasr_spi_driver.driver.name);
 	}
 	return status;
 }
-module_init(spidev_init);
+module_init(elbasr_spi_init);
 
-static void __exit spidev_exit(void)
+static void __exit elbasr_spi_exit(void)
 {
-	spi_unregister_driver(&spidev_spi_driver);
-	class_destroy(spidev_class);
-	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
+	spi_unregister_driver(&elbasr_spi_driver);
+	class_destroy(elbasr_spi_class);
+	unregister_chrdev(SPIDEV_MAJOR, elbasr_spi_driver.driver.name);
 }
-module_exit(spidev_exit);
+module_exit(elbasr_spi_exit);
 
-MODULE_AUTHOR("Andrea Paterniani, <a.paterniani@swapp-eng.it>");
-MODULE_DESCRIPTION("User mode SPI device interface");
+MODULE_AUTHOR("Brad Larson, <brad@pensando.io>");
+MODULE_DESCRIPTION("Pensando Elba System Resource device interface");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("spi:spidev");
+MODULE_ALIAS("spi:elbasr_spi");
