@@ -322,6 +322,11 @@ void lru_note_cost(struct lruvec *lruvec, bool file,
 
 void lru_note_cost_refault(struct folio *folio)
 {
+	WARN_ON_ONCE(!rcu_read_lock_held());
+	/*
+	 * The rcu read lock is held by the caller, so we do not need to
+	 * care about the lruvec returned by folio_lruvec() being released.
+	 */
 	lru_note_cost(folio_lruvec(folio), folio_is_file_lru(folio),
 		      folio_nr_pages(folio), 0);
 }
