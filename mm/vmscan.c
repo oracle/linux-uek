@@ -409,12 +409,8 @@ void reparent_shrinker_deferred(struct mem_cgroup *memcg)
 {
 	int i, nid;
 	long nr;
-	struct mem_cgroup *parent;
+	struct mem_cgroup *parent = parent_mem_cgroup(memcg);
 	struct shrinker_info *child_info, *parent_info;
-
-	parent = parent_mem_cgroup(memcg);
-	if (!parent)
-		parent = root_mem_cgroup;
 
 	/* Prevent from concurrent shrinker_info expand */
 	down_read(&shrinker_rwsem);
