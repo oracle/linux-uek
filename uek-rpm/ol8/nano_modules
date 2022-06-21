@@ -1004,6 +1004,7 @@ kernel/net/openvswitch/vport-geneve.ko
 kernel/net/openvswitch/vport-gre.ko
 kernel/net/openvswitch/vport-vxlan.ko
 kernel/net/packet/af_packet_diag.ko
+kernel/net/psample/psample.ko
 kernel/net/rds/rds.ko
 kernel/net/rds/rds_rdma.ko
 kernel/net/rds/rds_tcp.ko
