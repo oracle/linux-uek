@@ -34,6 +34,14 @@ config RESET_BERLIN
 	help
 	  This enables the reset controller driver for Marvell Berlin SoCs.
 
+config RESET_ELBASR
+	tristate "Pensando Elba System Resource Reset"
+	depends on MFD_PENSANDO_ELBASR
+	help
+	  This option enables support for the external reset functions
+	  on the Pensando Elba System Resource Chip.  Supported functions
+	  include eMMC hardware reset.
+
 config RESET_HSDK
 	bool "Synopsys HSDK Reset Driver"
 	depends on HAS_IOMEM
