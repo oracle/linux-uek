@@ -230,7 +230,7 @@ DEFINE_STATIC_KEY_FALSE(memcg_bpf_enabled_key);
 EXPORT_SYMBOL(memcg_bpf_enabled_key);
 
 /**
- * mem_cgroup_css_from_folio - css of the memcg associated with a folio
+ * get_mem_cgroup_css_from_folio - css of the memcg associated with a folio
  * @folio: folio of interest
  *
  * If memcg is bound to the default hierarchy, css of the memcg associated
@@ -240,11 +240,15 @@ EXPORT_SYMBOL(memcg_bpf_enabled_key);
  * If memcg is bound to a traditional hierarchy, the css of root_mem_cgroup
  * is returned.
  */
-struct cgroup_subsys_state *mem_cgroup_css_from_folio(struct folio *folio)
+struct cgroup_subsys_state *get_mem_cgroup_css_from_folio(struct folio *folio)
 {
-	struct mem_cgroup *memcg = folio_memcg(folio);
+	struct mem_cgroup *memcg;
 
-	if (!memcg || !cgroup_subsys_on_dfl(memory_cgrp_subsys))
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys))
+		return &root_mem_cgroup->css;
+
+	memcg = get_mem_cgroup_from_folio(folio);
+	if (!memcg)
 		memcg = root_mem_cgroup;
 
 	return &memcg->css;
@@ -959,24 +963,6 @@ again:
 		rcu_read_unlock();
 		goto again;
 	}
-	rcu_read_unlock();
-	return memcg;
-}
-
-/**
- * get_mem_cgroup_from_folio - Obtain a reference on a given folio's memcg.
- * @folio: folio from which memcg should be extracted.
- */
-struct mem_cgroup *get_mem_cgroup_from_folio(struct folio *folio)
-{
-	struct mem_cgroup *memcg = folio_memcg(folio);
-
-	if (mem_cgroup_disabled())
-		return NULL;
-
-	rcu_read_lock();
-	if (!memcg || WARN_ON_ONCE(!css_tryget(&memcg->css)))
-		memcg = root_mem_cgroup;
 	rcu_read_unlock();
 	return memcg;
 }
@@ -3054,6 +3040,7 @@ void __memcg_slab_free_hook(struct kmem_cache *s, struct slab *slab,
 void split_page_memcg(struct page *head, int old_order, int new_order)
 {
 	struct folio *folio = page_folio(head);
+	struct mem_cgroup *memcg = get_mem_cgroup_from_folio(folio);
 	int i;
 	unsigned int old_nr = 1 << old_order;
 	unsigned int new_nr = 1 << new_order;
@@ -3067,7 +3054,9 @@ void split_page_memcg(struct page *head, int old_order, int new_order)
 	if (folio_memcg_kmem(folio))
 		obj_cgroup_get_many(__folio_objcg(folio), old_nr / new_nr - 1);
 	else
-		css_get_many(&folio_memcg(folio)->css, old_nr / new_nr - 1);
+		css_get_many(&memcg->css, old_nr / new_nr - 1);
+
+	css_put(&memcg->css);
 }
 
 unsigned long mem_cgroup_usage(struct mem_cgroup *memcg, bool swap)
@@ -3237,7 +3226,7 @@ void mem_cgroup_wb_stats(struct bdi_writeback *wb, unsigned long *pfilepages,
 void mem_cgroup_track_foreign_dirty_slowpath(struct folio *folio,
 					     struct bdi_writeback *wb)
 {
-	struct mem_cgroup *memcg = folio_memcg(folio);
+	struct mem_cgroup *memcg = get_mem_cgroup_from_folio(folio);
 	struct memcg_cgwb_frn *frn;
 	u64 now = get_jiffies_64();
 	u64 oldest_at = now;
@@ -3284,6 +3273,7 @@ void mem_cgroup_track_foreign_dirty_slowpath(struct folio *folio,
 		frn->memcg_id = wb->memcg_css->id;
 		frn->at = now;
 	}
+	css_put(&memcg->css);
 }
 
 /* issue foreign writeback flushes for recorded foreign dirtying events */
@@ -4759,7 +4749,7 @@ void mem_cgroup_replace_folio(struct folio *old, struct folio *new)
 	if (folio_memcg_charged(new))
 		return;
 
-	memcg = folio_memcg(old);
+	memcg = get_mem_cgroup_from_folio(old);
 	VM_WARN_ON_ONCE_FOLIO(!memcg, old);
 	if (!memcg)
 		return;
@@ -4774,6 +4764,7 @@ void mem_cgroup_replace_folio(struct folio *old, struct folio *new)
 	css_get(&memcg->css);
 	commit_charge(new, memcg);
 	memcg1_commit_charge(new, memcg);
+	css_put(&memcg->css); //for get_mem_cgroup_from_folio
 }
 
 /**
@@ -4800,7 +4791,7 @@ void mem_cgroup_migrate(struct folio *old, struct folio *new)
 	if (mem_cgroup_disabled())
 		return;
 
-	memcg = folio_memcg(old);
+	memcg = get_mem_cgroup_from_folio(old);
 	/*
 	 * Note that it is normal to see !memcg for a hugetlb folio.
 	 * For e.g, itt could have been allocated when memory_hugetlb_accounting
@@ -4816,6 +4807,7 @@ void mem_cgroup_migrate(struct folio *old, struct folio *new)
 	/* Warning should never happen, so don't worry about refcount non-0 */
 	WARN_ON_ONCE(folio_unqueue_deferred_split(old));
 	old->memcg_data = 0;
+	css_put(&memcg->css);
 }
 
 DEFINE_STATIC_KEY_FALSE(memcg_sockets_enabled_key);
@@ -4978,6 +4970,10 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 	if (!do_memsw_account())
 		return;
 
+	/*
+	 * Interrupts should be disabled by the caller (see the comments below),
+	 * which can serve as RCU read-side critical sections.
+	 */
 	memcg = folio_memcg(folio);
 
 	VM_WARN_ON_ONCE_FOLIO(!memcg, folio);
@@ -5030,19 +5026,21 @@ int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry)
 	struct page_counter *counter;
 	struct mem_cgroup *memcg;
 	unsigned short oldid;
+	int ret = 0;
 
 	if (do_memsw_account())
 		return 0;
 
+	rcu_read_lock();
 	memcg = folio_memcg(folio);
 
 	VM_WARN_ON_ONCE_FOLIO(!memcg, folio);
 	if (!memcg)
-		return 0;
+		goto out;
 
 	if (!entry.val) {
 		memcg_memory_event(memcg, MEMCG_SWAP_FAIL);
-		return 0;
+		goto out;
 	}
 
 	memcg = mem_cgroup_id_get_online(memcg);
@@ -5052,7 +5050,8 @@ int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry)
 		memcg_memory_event(memcg, MEMCG_SWAP_MAX);
 		memcg_memory_event(memcg, MEMCG_SWAP_FAIL);
 		mem_cgroup_id_put(memcg);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out;
 	}
 
 	/* Get references for the tail pages, too */
@@ -5061,8 +5060,10 @@ int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry)
 	oldid = swap_cgroup_record(entry, mem_cgroup_id(memcg), nr_pages);
 	VM_BUG_ON_FOLIO(oldid, folio);
 	mod_memcg_state(memcg, MEMCG_SWAP, nr_pages);
+out:
+	rcu_read_unlock();
 
-	return 0;
+	return ret;
 }
 
 /**
@@ -5107,6 +5108,7 @@ long mem_cgroup_get_nr_swap_pages(struct mem_cgroup *memcg)
 bool mem_cgroup_swap_full(struct folio *folio)
 {
 	struct mem_cgroup *memcg;
+	bool ret = false;
 
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
@@ -5115,19 +5117,24 @@ bool mem_cgroup_swap_full(struct folio *folio)
 	if (do_memsw_account())
 		return false;
 
+	rcu_read_lock();
 	memcg = folio_memcg(folio);
 	if (!memcg)
-		return false;
+		goto out;
 
 	for (; !mem_cgroup_is_root(memcg); memcg = parent_mem_cgroup(memcg)) {
 		unsigned long usage = page_counter_read(&memcg->swap);
 
 		if (usage * 2 >= READ_ONCE(memcg->swap.high) ||
-		    usage * 2 >= READ_ONCE(memcg->swap.max))
-			return true;
+		    usage * 2 >= READ_ONCE(memcg->swap.max)) {
+			ret = true;
+			goto out;
+		}
 	}
+out:
+	rcu_read_unlock();
 
-	return false;
+	return ret;
 }
 
 static int __init setup_swap_account(char *s)
