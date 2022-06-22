@@ -6899,10 +6899,8 @@ unsigned long hugetlb_mask_last_page(struct hstate *h)
 /* See description above.  Architectures can provide their own version. */
 __weak unsigned long hugetlb_mask_last_page(struct hstate *h)
 {
-	unsigned long hp_size = huge_page_size(h);
-
 #ifdef CONFIG_ARCH_WANT_HUGE_PMD_SHARE
-	if (hp_size == PMD_SIZE)
+	if (huge_page_size(h) == PMD_SIZE)
 		return PUD_SIZE - PMD_SIZE;
 #endif
 	return 0UL;
