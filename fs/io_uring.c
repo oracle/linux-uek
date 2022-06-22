@@ -774,7 +774,8 @@ static const struct io_op_def io_op_defs[] = {
 		.buffer_select		= 1,
 		.needs_async_data	= 1,
 		.async_size		= sizeof(struct io_async_rw),
-		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG,
+		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG |
+					  IO_WQ_WORK_FILES,
 	},
 	[IORING_OP_WRITEV] = {
 		.needs_file		= 1,
@@ -784,7 +785,7 @@ static const struct io_op_def io_op_defs[] = {
 		.needs_async_data	= 1,
 		.async_size		= sizeof(struct io_async_rw),
 		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG |
-						IO_WQ_WORK_FSIZE,
+					  IO_WQ_WORK_FSIZE | IO_WQ_WORK_FILES,
 	},
 	[IORING_OP_FSYNC] = {
 		.needs_file		= 1,
@@ -795,7 +796,8 @@ static const struct io_op_def io_op_defs[] = {
 		.unbound_nonreg_file	= 1,
 		.pollin			= 1,
 		.async_size		= sizeof(struct io_async_rw),
-		.work_flags		= IO_WQ_WORK_BLKCG | IO_WQ_WORK_MM,
+		.work_flags		= IO_WQ_WORK_BLKCG | IO_WQ_WORK_MM |
+					  IO_WQ_WORK_FILES,
 	},
 	[IORING_OP_WRITE_FIXED] = {
 		.needs_file		= 1,
@@ -804,7 +806,7 @@ static const struct io_op_def io_op_defs[] = {
 		.pollout		= 1,
 		.async_size		= sizeof(struct io_async_rw),
 		.work_flags		= IO_WQ_WORK_BLKCG | IO_WQ_WORK_FSIZE |
-						IO_WQ_WORK_MM,
+					  IO_WQ_WORK_MM | IO_WQ_WORK_FILES,
 	},
 	[IORING_OP_POLL_ADD] = {
 		.needs_file		= 1,
@@ -858,7 +860,7 @@ static const struct io_op_def io_op_defs[] = {
 		.pollout		= 1,
 		.needs_async_data	= 1,
 		.async_size		= sizeof(struct io_async_connect),
-		.work_flags		= IO_WQ_WORK_MM,
+		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_FS,
 	},
 	[IORING_OP_FALLOCATE] = {
 		.needs_file		= 1,
@@ -886,7 +888,8 @@ static const struct io_op_def io_op_defs[] = {
 		.pollin			= 1,
 		.buffer_select		= 1,
 		.async_size		= sizeof(struct io_async_rw),
-		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG,
+		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG |
+					  IO_WQ_WORK_FILES,
 	},
 	[IORING_OP_WRITE] = {
 		.needs_file		= 1,
@@ -895,7 +898,7 @@ static const struct io_op_def io_op_defs[] = {
 		.pollout		= 1,
 		.async_size		= sizeof(struct io_async_rw),
 		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG |
-						IO_WQ_WORK_FSIZE,
+					  IO_WQ_WORK_FSIZE | IO_WQ_WORK_FILES,
 	},
 	[IORING_OP_FADVISE] = {
 		.needs_file		= 1,
@@ -908,14 +911,16 @@ static const struct io_op_def io_op_defs[] = {
 		.needs_file		= 1,
 		.unbound_nonreg_file	= 1,
 		.pollout		= 1,
-		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG,
+		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG |
+					  IO_WQ_WORK_FS,
 	},
 	[IORING_OP_RECV] = {
 		.needs_file		= 1,
 		.unbound_nonreg_file	= 1,
 		.pollin			= 1,
 		.buffer_select		= 1,
-		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG,
+		.work_flags		= IO_WQ_WORK_MM | IO_WQ_WORK_BLKCG |
+					  IO_WQ_WORK_FS,
 	},
 	[IORING_OP_OPENAT2] = {
 		.work_flags		= IO_WQ_WORK_FILES | IO_WQ_WORK_FS |
