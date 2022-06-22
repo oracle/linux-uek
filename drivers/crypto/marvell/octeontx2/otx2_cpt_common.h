@@ -102,7 +102,10 @@ union otx2_cpt_eng_caps {
 		u64 kasumi:1;
 		u64 des:1;
 		u64 crc:1;
-		u64 reserved_14_63:50;
+		u64 mmul:1;
+		u64 reserved_15_33:19;
+		u64 pdcp_chain:1;
+		u64 reserved_35_63:29;
 	};
 };
 
