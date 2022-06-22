@@ -2440,7 +2440,8 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 
 			mas_set(mas, end);
 			split = mas_prev(mas, 0);
-			if (munmap_sidetree(split, &mas_detach))
+			error = munmap_sidetree(split, &mas_detach);
+			if (error)
 				goto munmap_sidetree_failed;
 
 			count++;
@@ -2448,7 +2449,8 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 				vma = split;
 			break;
 		}
-		if (munmap_sidetree(next, &mas_detach))
+		error = munmap_sidetree(next, &mas_detach);
+		if (error)
 			goto munmap_sidetree_failed;
 
 		count++;
