@@ -73,6 +73,9 @@ bool hugepage_vma_check(struct vm_area_struct *vma,
 			unsigned long vm_flags,
 			bool smaps)
 {
+	if (!vma->vm_mm)
+		return false;
+
 	if (!transhuge_vma_enabled(vma, vm_flags))
 		return false;
 
