@@ -22,12 +22,14 @@ static struct cpt_hw_ops otx2_hw_ops = {
 	.send_cmd = otx2_cpt_send_cmd,
 	.cpt_get_compcode = otx2_cpt_get_compcode,
 	.cpt_get_uc_compcode = otx2_cpt_get_uc_compcode,
+	.cpt_sg_info_create = otx2_sg_info_create,
 };
 
 static struct cpt_hw_ops cn10k_hw_ops = {
 	.send_cmd = cn10k_cpt_send_cmd,
 	.cpt_get_compcode = cn10k_cpt_get_compcode,
 	.cpt_get_uc_compcode = cn10k_cpt_get_uc_compcode,
+	.cpt_sg_info_create = otx2_sg_info_create,
 };
 
 void cn10k_cpt_send_cmd(union otx2_cpt_inst_s *cptinst, u32 insts_num,
@@ -89,8 +91,10 @@ int cn10k_cptvf_lmtst_init(struct otx2_cptvf_dev *cptvf)
 		cptvf->lfs.ops = &otx2_hw_ops;
 		return 0;
 	}
-
 	cptvf->lfs.ops = &cn10k_hw_ops;
+	if (test_bit(CN10KB_SG, &cptvf->cap_flag))
+		cptvf->lfs.ops->cpt_sg_info_create = cn10kb_sg_info_create;
+
 	offset = pci_resource_start(pdev, PCI_MBOX_BAR_NUM);
 	size = pci_resource_len(pdev, PCI_MBOX_BAR_NUM);
 	/* Map VF LMILINE region */
