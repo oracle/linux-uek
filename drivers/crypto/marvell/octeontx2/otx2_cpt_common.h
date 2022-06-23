@@ -29,6 +29,7 @@
 /* HW capability flags */
 #define CN10K_MBOX  0
 #define CN10K_LMTST 1
+#define CN10KB_SG   2
 
 #define BAD_OTX2_CPT_ENG_TYPE OTX2_CPT_MAX_ENG_TYPES
 
@@ -148,6 +149,16 @@ static inline bool is_dev_otx2(struct pci_dev *pdev)
 	return false;
 }
 
+static inline bool is_dev_cn10kb(struct pci_dev *pdev)
+{
+	if ((pdev->device == CN10K_CPT_PCI_PF_DEVICE_ID ||
+	    pdev->device == CN10K_CPT_PCI_VF_DEVICE_ID) &&
+	    pdev->subsystem_device == CPT_PCI_SUBSYS_DEVID_CN10K_B)
+		return true;
+
+	return false;
+}
+
 static inline void otx2_cpt_set_hw_caps(struct pci_dev *pdev,
 					unsigned long *cap_flag)
 {
@@ -155,8 +166,9 @@ static inline void otx2_cpt_set_hw_caps(struct pci_dev *pdev,
 		__set_bit(CN10K_MBOX, cap_flag);
 		__set_bit(CN10K_LMTST, cap_flag);
 	}
+	if (is_dev_cn10kb(pdev))
+		__set_bit(CN10KB_SG, cap_flag);
 }
-
 
 int otx2_cpt_send_ready_msg(struct otx2_mbox *mbox, struct pci_dev *pdev);
 int otx2_cpt_send_mbox_msg(struct otx2_mbox *mbox, struct pci_dev *pdev);
