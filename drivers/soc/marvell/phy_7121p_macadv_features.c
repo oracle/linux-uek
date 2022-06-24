@@ -65,7 +65,7 @@ static inline int _conv_arr ## _str2enum(const char *str)		\
 struct dentry *phy_mac_adv_root;
 
 #define CMD_SZ 64
-char cmd_buf[CMD_SZ];
+char macadv_cmd_buf[CMD_SZ];
 
 static struct {
 	int eth;
@@ -271,7 +271,7 @@ static int copy_user_input(const char __user *buffer,
 }
 
 
-struct arm_smccc_res mrvl_exec_smc(uint64_t buf, uint64_t size)
+static struct arm_smccc_res mrvl_exec_smc(uint64_t buf, uint64_t size)
 {
 	struct arm_smccc_res res;
 
@@ -291,14 +291,13 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 	int cmd;
 	PHY_7121_MACSEC_DIR_t dir;
 	PHY_7121_MACSEC_PKTTEST_t pkttest;
-	int i;
 
 	phy_7121_adv_cmds_t *mac_adv = (phy_7121_adv_cmds_t *)memdesc[BUF_DATA].virt;
 
-	if (copy_user_input(buffer, count, cmd_buf, CMD_SZ))
+	if (copy_user_input(buffer, count, macadv_cmd_buf, CMD_SZ))
 		return -EFAULT;
 
-	end = skip_spaces(cmd_buf);
+	end = skip_spaces(macadv_cmd_buf);
 	token = strsep(&end, " \t\n");
 	if (!token)
 		return -EINVAL;
@@ -437,7 +436,7 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 		if (!token)
 			return -EINVAL;
 
-		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_PKT_TEST token %d", __func__, token);
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_PKT_TEST token %s", __func__, token);
 
 		pkttest = macsec_pkttest_str2enum(token);
 		if (dir == -1)
@@ -470,25 +469,22 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 			phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
 
 	if (res.a0) {
-		pr_warn("MAC ADV  command failed count %d!\n", count);
+		pr_warn("MAC ADV  command failed count %d!\n", (int) count);
 		return count;
 	}
 
-	pr_info("MAC ADV  command success count %d!\n", count);
+	pr_info("MAC ADV  command success count %x\n", (int)count);
 	return count;
 }
 
 static int phy_debug_mac_sec_read(struct seq_file *s, void *unused)
 {
-	struct arm_smccc_res res;
 	phy_7121_adv_cmds_t *mac_adv = (phy_7121_adv_cmds_t *)memdesc[BUF_DATA].virt;
 
 	mac_adv->mac_adv_cmd  = PHY_MAC_ADV_MACSEC_GET;
 
 	mrvl_exec_smc(memdesc[BUF_DATA].phys,
 			sizeof(phy_7121_adv_cmds_t));
-
-	seq_printf(s, "MAC SEC status: %ld\n", res.a0);
 
 	return 0;
 }
@@ -534,10 +530,10 @@ static ssize_t phy_debug_phy_write(struct file *filp,
 	int eth;
 	int lmac;
 
-	if (copy_user_input(buffer, count, cmd_buf, CMD_SZ))
+	if (copy_user_input(buffer, count, macadv_cmd_buf, CMD_SZ))
 		return -EFAULT;
 
-	if (parse_eth_lmac(cmd_buf, &eth, &lmac))
+	if (parse_eth_lmac(macadv_cmd_buf, &eth, &lmac))
 		return -EINVAL;
 
 	phy_data.eth = eth;
