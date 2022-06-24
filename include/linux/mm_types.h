@@ -681,11 +681,11 @@ struct vma_iterator {
 	struct ma_state mas;
 };
 
-#define VMA_ITERATOR(name, mm, addr) 					\
+#define VMA_ITERATOR(name, __mm, __addr)				\
 	struct vma_iterator name = {					\
 		.mas = {						\
-			.tree = &mm->mm_mt,				\
-			.index = addr,					\
+			.tree = &(__mm)->mm_mt,				\
+			.index = __addr,				\
 			.node = MAS_START,				\
 		},							\
 	}
