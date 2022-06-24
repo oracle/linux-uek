@@ -35676,6 +35676,19 @@ static noinline void check_spanning_write(struct maple_tree *mt)
 	mtree_unlock(mt);
 	mtree_destroy(mt);
 
+	for (i = 1; i <= max; i++)
+		mtree_test_store_range(mt, i * 10, i * 10 + 5, &i);
+
+	mtree_lock(mt);
+	mas_set_range(&mas, 9, 50006); /* Will expand to 0 - ULONG_MAX */
+	mas_store_gfp(&mas, NULL, GFP_KERNEL);
+	mas_set(&mas, 1205);
+	MT_BUG_ON(mt, mas_walk(&mas) != NULL);
+	mtree_unlock(mt);
+	mt_dump(mt);
+	mt_validate(mt);
+	mtree_destroy(mt);
+
 	/* Test spanning store that requires a right cousin rebalance */
 	mt_init_flags(mt, MT_FLAGS_ALLOC_RANGE);
 	for (i = 0; i <= max; i++)
