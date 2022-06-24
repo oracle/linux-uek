@@ -448,7 +448,7 @@ static unsigned long count_vma_pages_range(struct mm_struct *mm,
 		unsigned long vm_start = max(addr, vma->vm_start);
 		unsigned long vm_end = min(end, vma->vm_end);
 
-		nr_pages += (vm_end - vm_start) / PAGE_SIZE;
+		nr_pages += PHYS_PFN(vm_end - vm_start);
 	}
 
 	return nr_pages;
