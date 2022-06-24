@@ -3062,6 +3062,7 @@ static int validate_branch(struct objtool_file *file, struct symbol *func,
 				}
 
 				insn->cfi = save_insn->cfi;
+				nr_cfi_reused++;
 			}
 
 			state.cfi = *insn->cfi;
