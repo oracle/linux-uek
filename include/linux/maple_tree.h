@@ -225,9 +225,9 @@ struct maple_tree {
  * @flags: The maple tree flags
  *
  */
-#define MTREE_INIT(name, flags) {					\
+#define MTREE_INIT(name, __flags) {					\
 	.ma_lock = __SPIN_LOCK_UNLOCKED(name.ma_lock),			\
-	.ma_flags = flags,						\
+	.ma_flags = __flags,						\
 	.ma_root = NULL,						\
 }
 
@@ -238,9 +238,9 @@ struct maple_tree {
  * @lock: The external lock
  */
 #ifdef CONFIG_LOCKDEP
-#define MTREE_INIT_EXT(name, flags, lock) {				\
-	.ma_external_lock = &(lock).dep_map,				\
-	.ma_flags = flags,						\
+#define MTREE_INIT_EXT(name, __flags, __lock) {				\
+	.ma_external_lock = &(__lock).dep_map,				\
+	.ma_flags = __flags,						\
 	.ma_root = NULL,						\
 }
 #else
