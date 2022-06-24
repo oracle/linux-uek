@@ -1514,6 +1514,13 @@ static int cgroup_remount(struct kernfs_root *kf_root, int *flags, char *data)
 		pr_warn("option changes via remount are deprecated (pid=%d comm=%s)\n",
 			task_tgid_nr(current), current->comm);
 
+	/* See cgroup_mount release_agent handling */
+	if (opts.release_agent &&
+	    ((current_user_ns() != &init_user_ns) || !capable(CAP_SYS_ADMIN))) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
+
 	added_mask = opts.subsys_mask & ~root->subsys_mask;
 	removed_mask = root->subsys_mask & ~opts.subsys_mask;
 
@@ -1856,6 +1863,16 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	 * can't create new one without subsys specification.
 	 */
 	if (!opts.subsys_mask && !opts.none) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
+
+	/*
+	 * Release agent gets called with all capabilities,
+	 * require capabilities to set release agent.
+	 */
+	if (opts.release_agent &&
+	    ((current_user_ns() != &init_user_ns) || !capable(CAP_SYS_ADMIN))) {
 		ret = -EINVAL;
 		goto out_unlock;
 	}
@@ -2512,6 +2529,14 @@ static ssize_t cgroup_release_agent_write(struct kernfs_open_file *of,
 	struct cgroup *cgrp;
 
 	BUILD_BUG_ON(sizeof(cgrp->root->release_agent_path) < PATH_MAX);
+
+	/*
+	 * Release agent gets called with all capabilities,
+	 * require capabilities to set release agent.
+	 */
+	if ((of->file->f_cred->user_ns != &init_user_ns) ||
+		!capable(CAP_SYS_ADMIN))
+			return -EPERM;
 
 	cgrp = cgroup_kn_lock_live(of->kn);
 	if (!cgrp)
