@@ -1977,7 +1977,6 @@ static inline void mab_mas_cp(struct maple_big_node *b_node,
 		slots[mt_pivots[mt]] = NULL;
 
 	i = mab_start;
-	pivots[j++] = b_node->pivot[i++];
 	do {
 		pivots[j++] = b_node->pivot[i++];
 	} while (i <= mab_end && likely(b_node->pivot[i]));
@@ -2970,7 +2969,7 @@ static int mas_spanning_rebalance(struct ma_state *mas,
 	mast->free = &free;
 	mast->destroy = &destroy;
 	l_mas.node = r_mas.node = m_mas.node = MAS_NONE;
-	if (!mas_is_root_limits(mast->orig_l) &&
+	if (!(mast->orig_l->min && mast->orig_r->max == ULONG_MAX) &&
 	    unlikely(mast->bn->b_end <= mt_min_slots[mast->bn->type]))
 		mast_spanning_rebalance(mast);
 
@@ -4004,6 +4003,9 @@ static inline int mas_wr_spanning_store(struct ma_wr_state *wr_mas)
 	if (r_mas.offset <= r_wr_mas.node_end)
 		mas_mab_cp(&r_mas, r_mas.offset, r_wr_mas.node_end,
 			   &b_node, b_node.b_end + 1);
+	else
+		b_node.b_end++;
+
 	/* Stop spanning searches by searching for just index. */
 	l_mas.index = l_mas.last = mas->index;
 
