@@ -201,10 +201,8 @@ struct rds_ib_recv_work {
 
 struct rds_ib_work_ring {
 	u32		w_nr;
-	u32		w_alloc_ptr;
-	u32		w_alloc_ctr;
-	u32		w_free_ptr;
-	atomic_t	w_free_ctr;
+	atomic64_t	w_alloc_ctr;
+	atomic64_t	w_free_ctr;
 };
 
 /*
