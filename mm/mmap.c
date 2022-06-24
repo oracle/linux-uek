@@ -1897,12 +1897,12 @@ struct vm_area_struct *find_vma_intersection(struct mm_struct *mm,
 EXPORT_SYMBOL(find_vma_intersection);
 
 /**
- * find_vma() - Find the VMA for a given address, or the next vma.
+ * find_vma() - Find the VMA for a given address, or the next VMA.
  * @mm: The mm_struct to check
  * @addr: The address
  *
- * Returns: The VMA associated with addr, or the next vma.
- * May return %NULL in the case of no vma at addr or above.
+ * Returns: The VMA associated with addr, or the next VMA.
+ * May return %NULL in the case of no VMA at addr or above.
  */
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {
@@ -1914,7 +1914,7 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 EXPORT_SYMBOL(find_vma);
 
 /**
- * find_vma_prev() - Find the VMA for a given address, or the next vma and
+ * find_vma_prev() - Find the VMA for a given address, or the next VMA and
  * set %pprev to the previous VMA, if any.
  * @mm: The mm_struct to check
  * @addr: The address
@@ -1923,8 +1923,8 @@ EXPORT_SYMBOL(find_vma);
  * Note that RCU lock is missing here since the external mmap_lock() is used
  * instead.
  *
- * Returns: The VMA associated with @addr, or the next vma.
- * May return %NULL in the case of no vma at addr or above.
+ * Returns: The VMA associated with @addr, or the next VMA.
+ * May return %NULL in the case of no VMA at addr or above.
  */
 struct vm_area_struct *
 find_vma_prev(struct mm_struct *mm, unsigned long addr,
