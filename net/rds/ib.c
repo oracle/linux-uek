@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2022 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -904,18 +904,16 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->max_send_sge = rds_ibdev->max_sge;
 		iinfo->qp_num = ic->i_qp_num;
 		iinfo->dst_qp_num = ic->i_dst_qp_num;
-		iinfo->recv_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
-		iinfo->recv_free_ctr =
-			(uint32_t)atomic_read(&ic->i_recv_ring.w_free_ctr);
+		iinfo->recv_alloc_ctr = (uint32_t)atomic64_read(&ic->i_recv_ring.w_alloc_ctr);
+		iinfo->recv_free_ctr = (uint32_t)atomic64_read(&ic->i_recv_ring.w_free_ctr);
 		iinfo->flow_ctl_post_credit =
 			IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
 		iinfo->flow_ctl_send_credit =
 			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
 		rds_ib_get_mr_info(rds_ibdev, iinfo);
 		iinfo->cache_allocs = atomic_read(&ic->i_cache_info.ci_cache_allocs);
-		iinfo->send_alloc_ctr = ic->i_send_ring.w_alloc_ctr;
-		iinfo->send_free_ctr =
-			(uint32_t)atomic_read(&ic->i_send_ring.w_free_ctr);
+		iinfo->send_alloc_ctr = (uint32_t)atomic64_read(&ic->i_send_ring.w_alloc_ctr);
+		iinfo->send_free_ctr = (uint32_t)atomic64_read(&ic->i_send_ring.w_free_ctr);
 		iinfo->send_bytes =
 			(uint64_t)atomic64_read(&conn->c_send_bytes);
 		iinfo->recv_bytes =
@@ -978,18 +976,16 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo6->max_send_sge = rds_ibdev->max_sge;
 		iinfo6->qp_num = ic->i_qp_num;
 		iinfo6->dst_qp_num = ic->i_dst_qp_num;
-		iinfo6->recv_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
-		iinfo6->recv_free_ctr =
-			(uint32_t)atomic_read(&ic->i_recv_ring.w_free_ctr);
+		iinfo6->recv_alloc_ctr = (uint32_t)atomic64_read(&ic->i_recv_ring.w_alloc_ctr);
+		iinfo6->recv_free_ctr = (uint32_t)atomic64_read(&ic->i_recv_ring.w_free_ctr);
 		iinfo6->flow_ctl_post_credit =
 			IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
 		iinfo6->flow_ctl_send_credit =
 			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
 		rds6_ib_get_mr_info(rds_ibdev, iinfo6);
 		iinfo6->cache_allocs = atomic_read(&ic->i_cache_info.ci_cache_allocs);
-		iinfo6->send_alloc_ctr = ic->i_send_ring.w_alloc_ctr;
-		iinfo6->send_free_ctr =
-			(uint32_t)atomic_read(&ic->i_send_ring.w_free_ctr);
+		iinfo6->send_alloc_ctr = (uint32_t)atomic64_read(&ic->i_send_ring.w_alloc_ctr);
+		iinfo6->send_free_ctr =	(uint32_t)atomic64_read(&ic->i_send_ring.w_free_ctr);
 		iinfo6->send_bytes =
 			(uint64_t)atomic64_read(&conn->c_send_bytes);
 		iinfo6->recv_bytes =
