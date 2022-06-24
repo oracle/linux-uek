@@ -595,7 +595,7 @@ struct rproc_subdev {
 /**
  * struct rproc_vring - remoteproc vring state
  * @va:	virtual address
- * @len: length, in bytes
+ * @num: vring size
  * @da: device address
  * @align: vring alignment
  * @notifyid: rproc-specific unique vring index
@@ -604,7 +604,7 @@ struct rproc_subdev {
  */
 struct rproc_vring {
 	void *va;
-	int len;
+	int num;
 	u32 da;
 	u32 align;
 	int notifyid;
