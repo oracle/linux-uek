@@ -358,7 +358,13 @@ static int mrvl_run_fw_update(unsigned long arg)
 	smc_desc->bus        = ioctl_desc.bus;
 	smc_desc->cs	     = ioctl_desc.cs;
 
-	res = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
+	if (ioctl_desc.user_flags == 1) {
+		smc_desc->version = UPDATE_VERSION_PREV;
+		res = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
+			    memdesc[BUF_DATA].phys,
+			    sizeof(struct smc_update_descriptor_prev));
+	} else
+		res = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
 			    memdesc[BUF_DATA].phys,
 			    sizeof(struct smc_update_descriptor));
 
