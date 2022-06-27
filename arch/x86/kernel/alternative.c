@@ -338,6 +338,7 @@ next:
 
 #if defined(CONFIG_RETPOLINE)
 
+#ifdef CONFIG_RETHUNK
 /*
  * Rewrite the compiler generated return thunk tail-calls.
  *
@@ -399,6 +400,10 @@ void __init_or_module noinline apply_returns(s32 *start, s32 *end)
 		}
 	}
 }
+#else
+void __init_or_module noinline apply_returns(s32 *start, s32 *end) { }
+#endif /* CONFIG_RETHUNK */
+
 #else /* !CONFIG_RETPOLINE */
 
 void __init_or_module noinline apply_returns(s32 *start, s32 *end) { }
