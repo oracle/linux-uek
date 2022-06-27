@@ -66,6 +66,8 @@ ENDPROC(__x86_retpoline_\reg)
  * This function name is magical and is used by -mfunction-return=thunk-extern
  * for the compiler to generate JMPs to it.
  */
+#ifdef CONFIG_RETHUNK
+
 	.section .text.__x86.return_thunk
 
 /*
@@ -130,3 +132,5 @@ SYM_CODE_END(zen_untrain_ret)
 __EXPORT_THUNK(zen_untrain_ret)
 
 EXPORT_SYMBOL(__x86_return_thunk)
+
+#endif /* CONFIG_RETHUNK */

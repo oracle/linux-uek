@@ -713,6 +713,7 @@ static void __init int3_selftest(void)
 #define RET_INSN_OPCODE		0xC3
 #define INT3_INSN_OPCODE	0xCC
 
+#ifdef CONFIG_RETHUNK
 /*
  * Rewrite the compiler generated return thunk tail-calls.
  *
@@ -769,6 +770,9 @@ void __init_or_module noinline apply_returns(s32 *start, s32 *end)
 		}
 	}
 }
+#else
+void __init_or_module noinline apply_returns(s32 *start, s32 *end) { }
+#endif /* CONFIG_RETHUNK */
 
 void __init alternative_instructions(void)
 {

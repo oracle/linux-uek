@@ -56,6 +56,7 @@
  * RET instruction (NOTE! UNTRAIN_RET includes a RET instruction)
  */
 .macro ENABLE_IBRS
+#ifdef CONFIG_CPU_IBRS_ENTRY
 	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
@@ -65,6 +66,7 @@
 .Lskip_\@:
 	 lfence
 .Ldone_\@:
+#endif
 .endm
 
 /*
@@ -72,15 +74,18 @@
  * Saves and restores (AX, CX, DX). Must be called after the last RET.
  */
 .macro DISABLE_IBRS
+#ifdef CONFIG_CPU_IBRS_ENTRY
 	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_restore)
 	POP_MSR_REGS
 .Lskip_\@:
+#endif
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
+#ifdef CONFIG_CPU_IBRS_ENTRY
 	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 
@@ -96,9 +101,11 @@
 	movl	PER_CPU_VAR(x86_spec_ctrl_priv_cpu), \save_reg
 	lfence
 .Ldone_\@:
+#endif
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
+#ifdef CONFIG_CPU_IBRS_ENTRY
 	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 
@@ -113,9 +120,11 @@
 .Lskip_\@:
 	lfence
 .Ldone_\@:
+#endif
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
+#ifdef CONFIG_CPU_IBRS_ENTRY
 	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
@@ -123,6 +132,7 @@
 .Lskip_\@:
 	 lfence
 .Ldone_\@:
+#endif
 .endm
 
 /*
@@ -296,6 +306,7 @@ static inline void update_cpu_spec_ctrl_all(void)
 		update_cpu_spec_ctrl(cpu_index);
 }
 
+#ifdef CONFIG_CPU_IBRS_ENTRY
 static inline void update_cpu_ibrs(struct cpuinfo_x86 *cpu)
 {
 	struct cpuinfo_x86 *cpu_info;
@@ -430,6 +441,37 @@ static inline void clear_ibrs_disabled(void)
 	use_ibrs &= ~SPEC_CTRL_IBRS_ADMIN_DISABLED;
 	set_ibrs_inuse();
 }
+#else
+static inline void update_cpu_ibrs(struct cpuinfo_x86 *cpu) { }
+
+static inline void update_cpu_ibrs_all(void) { }
+
+static inline void set_ibrs_inuse(void) { }
+
+static inline void clear_ibrs_inuse(void) { }
+
+static inline int check_basic_ibrs_inuse(void) { return 0; }
+
+static inline int check_enhanced_ibrs_inuse(void) { return 0; }
+
+static inline int check_ibrs_inuse(void) { return 0; }
+
+static inline int cpu_ibrs_inuse_any(void) { return 0; }
+
+static inline void set_ibrs_supported(void) { }
+
+static inline void set_ibrs_disabled(void) { }
+
+static inline void set_ibrs_enhanced(void) { }
+
+static inline bool ibrs_firmware_enabled(void) { return false; }
+
+static inline void ibrs_firmware_enable(void) { }
+
+static inline void ibrs_firmware_disable(void) { }
+
+static inline void clear_ibrs_disabled(void) { }
+#endif /* CONFIG_CPU_IBRS_ENTRY */
 
 /* indicate usage of IBPB to control execution speculation */
 DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);

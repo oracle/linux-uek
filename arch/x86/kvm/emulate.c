@@ -438,7 +438,7 @@ static int fastop(struct x86_emulate_ctxt *ctxt, fastop_t fop);
  * Depending on .config the SETcc functions look like:
  *
  * SETcc %al   [3 bytes]
- * RET | JMP __x86_return_thunk	[1,5 bytes; CONFIG_RETPOLINE]
+ * RET | JMP __x86_return_thunk	[1,5 bytes; CONFIG_RETHUNK]
  * INT3        [1 byte; CONFIG_SLS]
  *
  * Which gives possible sizes 4 or 5.  When rounded up to the

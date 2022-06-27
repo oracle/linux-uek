@@ -652,11 +652,16 @@ endif
 RETPOLINE_CFLAGS_GCC := -mindirect-branch=thunk-extern -mindirect-branch-register
 RETPOLINE_VDSO_CFLAGS_GCC := -mindirect-branch=thunk-inline -mindirect-branch-register
 RETPOLINE_CFLAGS_CLANG := -mretpoline-external-thunk
-RETPOLINE_CFLAGS_CLANG += $(call cc-option,-mfunction-return=thunk-extern)
 RETPOLINE_VDSO_CFLAGS_CLANG := -mretpoline
 RETPOLINE_CFLAGS := $(call cc-option,$(RETPOLINE_CFLAGS_GCC),$(call cc-option,$(RETPOLINE_CFLAGS_CLANG)))
-RETPOLINE_CFLAGS += $(call cc-option,-mfunction-return=thunk-extern)
 RETPOLINE_VDSO_CFLAGS := $(call cc-option,$(RETPOLINE_VDSO_CFLAGS_GCC),$(call cc-option,$(RETPOLINE_VDSO_CFLAGS_CLANG)))
+
+ifdef CONFIG_RETHUNK
+RETHUNK_CFLAGS		:= -mfunction-return=thunk-extern
+RETPOLINE_CFLAGS	+= $(RETHUNK_CFLAGS)
+RETPOLINE_CFLAGS_CLANG	+= $(RETHUNK_CFLAGS)
+endif
+
 export RETPOLINE_CFLAGS
 export RETPOLINE_VDSO_CFLAGS
 

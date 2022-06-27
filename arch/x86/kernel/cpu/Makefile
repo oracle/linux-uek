@@ -25,7 +25,7 @@ obj-y			+= bugs.o
 obj-y			+= aperfmperf.o
 obj-y			+= cpuid-deps.o
 obj-y			+= umwait.o
-obj-y			+= spec_ctrl.o
+obj-$(CONFIG_SPECULATION_MITIGATIONS)		+= spec_ctrl.o
 obj-y			+= mds_ctrl.o
 
 obj-$(CONFIG_PROC_FS)	+= proc.o

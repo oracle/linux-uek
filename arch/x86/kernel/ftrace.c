@@ -797,7 +797,7 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	 * jmp __x86_return_thunk.
 	 * Fixup the jmp for the X86_FEATURE_RETHUNK case.
 	 *
-	 * With CONFIG_RETPOLINE, ftrace_stub() starts out as
+	 * With CONFIG_RETHUNK, ftrace_stub() starts out as
 	 * jmp __x86_return_thunk, but for !X86_FEATURE_RETHUNK, the
 	 * alternatives code replaces that with ret[q].
 	 *
@@ -806,15 +806,15 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	 * file and so will not get an objtool pass. Which means, no
 	 * .return_sites section. This in-turn means no alternatives rewriting.
 	 *
-	 * So, for CONFIG_RETPOLINE, with X86_FEATURE_RETHUNK, or
+	 * So, for CONFIG_RETHUNK, with X86_FEATURE_RETHUNK, or
 	 * !X86_FEATURE_RETHUNK, ftrace_stub() is jmp __x86_return_thunk.
 	 *
 	 * The following condition could be reduced to just the second
-	 * clause: IS_ENABLED(CONFIG_RETPOLINE), but let's be explicit
+	 * clause: IS_ENABLED(CONFIG_RETHUNK), but let's be explicit
 	 * that there are two clauses, the primary and the workaround.
 	 */
 	if (cpu_feature_enabled(X86_FEATURE_RETHUNK) ||
-		IS_ENABLED(CONFIG_RETPOLINE)) {
+		IS_ENABLED(CONFIG_RETHUNK)) {
 		unsigned char *new;
 
 		BUG_ON(*((u8 *)ftrace_stub) != JMP32_INSN_OPCODE);

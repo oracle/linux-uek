@@ -78,7 +78,10 @@ objtool_link()
 			objtoolopt="${objtoolopt} --no-unreachable"
 		fi
 		if [ -n "${CONFIG_RETPOLINE}" ]; then
-			objtoolopt="${objtoolopt} --retpoline --unret"
+			objtoolopt="${objtoolopt} --retpoline"
+		fi
+		if [ -n "${CONFIG_CPU_UNRET_ENTRY}" ]; then
+			objtoolopt="${objtoolopt} --unret"
 		fi
 		if [ -n "${CONFIG_X86_SMAP}" ]; then
 			objtoolopt="${objtoolopt} --uaccess"
