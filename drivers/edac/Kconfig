@@ -526,7 +526,7 @@ config EDAC_BLUEFIELD
 
 config EDAC_OCTEONTX
 	bool "Marvell OcteonTX2 Octeon10 SoC EDAC"
-	depends on ARM_SDE_INTERFACE && ACPI_APEI_GHES
+	depends on ARM_SDE_INTERFACE
 	help
 	  Support for error detection and correction on the
 	  Marvell OcteonTX2 and Octeon10 (CN10K) SoCs.
