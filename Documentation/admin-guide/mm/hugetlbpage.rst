@@ -108,9 +108,8 @@ with a huge page size selection parameter "hugepagesz=<size>".  <size> must
 be specified in bytes with optional scale suffix [kKmMgG].  The default huge
 page size may be selected with the "default_hugepagesz=<size>" boot parameter.
 
-When CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP is set, the kernel boot command line
-parameter hugetlb_free_vmemmap is available.  This enables freeing unused
-vmemmap pages associated with each HugeTLB page.
+When CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP is set, this enables HugeTLB
+Vmemmap Optimization (HVO).
 
 When multiple huge page sizes are supported, ``/proc/sys/vm/nr_hugepages``
 indicates the current number of pre-allocated huge pages of the default size.
