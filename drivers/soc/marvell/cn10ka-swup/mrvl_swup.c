@@ -29,6 +29,9 @@
 #include <soc/marvell/octeontx/octeontx_smc.h>
 #include "mrvl_swup.h"
 
+#include <linux/timekeeping.h>
+#include <linux/ktime.h>
+
 #define TO_VERSION_DESC(x) ((struct mrvl_get_versions *)(x))
 #define TO_CLONE_DESC(x) ((struct mrvl_clone_fw *)(x))
 #define TO_UPDATE_DESC(x) ((struct mrvl_update *)(x))
@@ -55,7 +58,8 @@ static struct device dev;
 #define BUF_SIGNATURE 2
 #define BUF_READ 3
 #define BUF_LOG 4
-#define BUF_COUNT 5
+#define BUF_WORK 5
+#define BUF_COUNT 6
 static struct memory_desc memdesc[BUF_COUNT] = {
 	{0, 0, 32*1024*1024, "cpio buffer"},
 	{0, 0, 1*1024*1024,  "data buffer"},
@@ -134,6 +138,7 @@ static enum smc_version_entry_retcode mrvl_get_version(unsigned long arg, uint8_
 	struct mrvl_get_versions *user_desc;
 	struct arm_smccc_res res;
 	struct smc_version_info *swup_info = (struct smc_version_info *)memdesc[BUF_DATA].virt;
+	int spi_in_progress = 0;
 
 	user_desc = kzalloc(sizeof(*user_desc), GFP_KERNEL);
 	if (!user_desc)
@@ -154,6 +159,7 @@ static enum smc_version_entry_retcode mrvl_get_version(unsigned long arg, uint8_
 	swup_info->version      = VERSION_INFO_VERSION;
 	swup_info->bus          = user_desc->bus;
 	swup_info->cs           = user_desc->cs;
+	swup_info->timeout      = user_desc->timeout;
 
 	if (calculate_hash)
 		swup_info->version_flags |= SMC_VERSION_CHECK_VALIDATE_HASH;
@@ -166,6 +172,9 @@ static enum smc_version_entry_retcode mrvl_get_version(unsigned long arg, uint8_
 		swup_info->num_objects = SMC_MAX_OBJECTS;
 	}
 
+	if (user_desc->version_flags & MARLIN_FORCE_ASYNC)
+		swup_info->version_flags |= SMC_VERSION_ASYNC_HASH;
+
 	res = mrvl_exec_smc(PLAT_CN10K_VERIFY_FIRMWARE,
 			    memdesc[BUF_DATA].phys,
 			    sizeof(struct smc_version_info));
@@ -175,6 +184,12 @@ static enum smc_version_entry_retcode mrvl_get_version(unsigned long arg, uint8_
 		ret = res.a0;
 		goto mem_error;
 	}
+
+	do {
+		msleep(500);
+		res = mrvl_exec_smc(PLAT_CN10K_ASYNC_STATUS, 0, 0);
+		spi_in_progress = res.a0;
+	} while (spi_in_progress);
 
 	user_desc->retcode = swup_info->retcode;
 	for (i = 0; i < SMC_MAX_VERSION_ENTRIES; i++)
@@ -307,6 +322,8 @@ static int mrvl_run_fw_update(unsigned long arg)
 	struct arm_smccc_res res;
 	int spi_in_progress = 0;
 
+	ktime_t tstart, tsyncend, tend;
+
 	smc_desc = (struct smc_update_descriptor *)memdesc[BUF_DATA].virt;
 	memset(smc_desc, 0x00, sizeof(*smc_desc));
 
@@ -358,15 +375,19 @@ static int mrvl_run_fw_update(unsigned long arg)
 	smc_desc->bus        = ioctl_desc.bus;
 	smc_desc->cs	     = ioctl_desc.cs;
 
+	tstart = ktime_get();
 	if (ioctl_desc.user_flags == 1) {
 		smc_desc->version = UPDATE_VERSION_PREV;
 		res = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
 			    memdesc[BUF_DATA].phys,
 			    sizeof(struct smc_update_descriptor_prev));
-	} else
+	} else {
 		res = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
 			    memdesc[BUF_DATA].phys,
 			    sizeof(struct smc_update_descriptor));
+	}
+
+	tsyncend = ktime_get();
 
 	ioctl_desc.ret = res.a0;
 	if (copy_to_user(TO_UPDATE_DESC(arg),
@@ -378,9 +399,13 @@ static int mrvl_run_fw_update(unsigned long arg)
 
 	do {
 		msleep(500);
-		res = mrvl_exec_smc(0xc2000b0e, 0, 0);
+		res = mrvl_exec_smc(PLAT_CN10K_ASYNC_STATUS, 0, 0);
 		spi_in_progress = res.a0;
 	} while (spi_in_progress);
+
+	tend = ktime_get();
+
+	pr_info("Tsync: %lld, ttot: %lld\n", tsyncend - tstart, tend - tstart);
 
 	return ioctl_desc.ret;
 }
@@ -477,7 +502,7 @@ static int mrvl_read_flash_data(unsigned long arg)
 
 	do {
 		msleep(500);
-		res = mrvl_exec_smc(0xc2000b0e, 0, 0);
+		res = mrvl_exec_smc(PLAT_CN10K_ASYNC_STATUS, 0, 0);
 		spi_in_progress = res.a0;
 	} while (spi_in_progress);
 
