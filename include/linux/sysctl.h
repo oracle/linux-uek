@@ -227,6 +227,10 @@ static inline struct ctl_table_header *register_sysctl_table(struct ctl_table * 
 	return NULL;
 }
 
+static inline void register_sysctl_init(const char *path, struct ctl_table *table)
+{
+}
+
 static inline struct ctl_table_header *register_sysctl_paths(
 			const struct ctl_path *path, struct ctl_table *table)
 {
