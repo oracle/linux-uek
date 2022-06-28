@@ -3885,7 +3885,7 @@ static int efx_ef10_udp_tnl_set_port(struct net_device *dev,
 				     unsigned int table, unsigned int entry,
 				     struct udp_tunnel_info *ti)
 {
-	struct efx_nic *efx = netdev_priv(dev);
+	struct efx_nic *efx = efx_netdev_priv(dev);
 	struct efx_ef10_nic_data *nic_data;
 	int efx_tunnel_type, rc;
 
@@ -3945,7 +3945,7 @@ static int efx_ef10_udp_tnl_unset_port(struct net_device *dev,
 				       unsigned int table, unsigned int entry,
 				       struct udp_tunnel_info *ti)
 {
-	struct efx_nic *efx = netdev_priv(dev);
+	struct efx_nic *efx = efx_netdev_priv(dev);
 	struct efx_ef10_nic_data *nic_data;
 	int rc;
 
