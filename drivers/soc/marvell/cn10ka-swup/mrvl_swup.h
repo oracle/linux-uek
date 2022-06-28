@@ -12,7 +12,9 @@
 
 #define PLAT_OCTEONTX_SPI_SECURE_UPDATE         0xc2000b05
 #define PLAT_CN10K_VERIFY_FIRMWARE		0xc2000b0c
+#define PLAT_CN10K_ASYNC_STATUS			0xc2000b0e
 #define PLAT_CN10K_SPI_READ_FLASH		0xc2000b11
+
 
 #define VER_MAX_NAME_LENGTH	32
 #define SMC_MAX_OBJECTS		32
@@ -22,8 +24,10 @@
 #define VERIFY_LOG_SIZE		1024
 
 #define MARLIN_CHECK_PREDEFINED_OBJ (1<<0)
+#define MARLIN_FORCE_ASYNC          (1<<13)
 #define MARLIN_FORCE_CLONE	    (1<<14)
 #define MARLIN_PRINT_CONSOLE_LOGS   (1<<15)
+
 
 #define VERSION_FLAG_BACKUP	                BIT(0)
 #define VERSION_FLAG_EMMC	                BIT(1)
@@ -52,8 +56,10 @@
  */
 #define SMC_VERSION_FORCE_COPY_OBJECTS		BIT(7)
 
+#define SMC_VERSION_ASYNC_HASH		BIT(8)
+
 #define VERSION_MAGIC		0x4e535256	/** VRSN */
-#define VERSION_INFO_VERSION	0x0102	/** 1.0.0.0 */
+#define VERSION_INFO_VERSION	0x0102	       /** 1.0.0.0 */
 
 struct memory_desc {
 	void	   *virt;
@@ -324,7 +330,8 @@ struct mrvl_get_versions {
 	size_t    log_size;         /** Size of the log buffer */
 	uint16_t  version_flags;    /** Flags to specify options */
 	uint32_t  selected_objects; /** Mask of a selection of TIMs (32 max) */
-	uint64_t  reserved[5];	    /** Reserved for future growth */
+	uint64_t  timeout;
+	uint64_t  reserved[4];	    /** Reserved for future growth */
 	enum smc_version_ret	retcode;
 	struct smc_version_info_entry desc[SMC_MAX_VERSION_ENTRIES];
 } __packed;
