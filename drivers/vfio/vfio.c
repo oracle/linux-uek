@@ -1490,7 +1490,7 @@ static int vfio_group_get_device_fd(struct vfio_group *group, char *buf)
 	 * Appears to be missing by lack of need rather than
 	 * explicitly prevented.  Now there's need.
 	 */
-	filep->f_mode |= (FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
+	filep->f_mode |= (FMODE_PREAD | FMODE_PWRITE);
 
 	atomic_inc(&group->container_users);
 
