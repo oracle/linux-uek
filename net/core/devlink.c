@@ -3746,7 +3746,8 @@ static void devlink_reload_netns_change(struct devlink *devlink,
 
 static bool devlink_reload_supported(const struct devlink_ops *ops)
 {
-	return ops->reload_down && ops->reload_up;
+	return (ops->reload_down && ops->reload_up)
+	    || (ops->reload_down_new && ops->reload_up_new);
 }
 
 static void devlink_reload_failed_set(struct devlink *devlink,
@@ -3825,14 +3826,20 @@ static int devlink_reload(struct devlink *devlink, struct net *dest_net,
 
 	memcpy(remote_reload_stats, devlink->stats.remote_reload_stats,
 	       sizeof(remote_reload_stats));
-	err = devlink->ops->reload_down(devlink, !!dest_net, action, limit, extack);
+	if (devlink->ops->reload_down)
+		err = devlink->ops->reload_down(devlink, extack);
+	else
+		err = devlink->ops->reload_down_new(devlink, !!dest_net, action, limit, extack);
 	if (err)
 		return err;
 
 	if (dest_net && !net_eq(dest_net, devlink_net(devlink)))
 		devlink_reload_netns_change(devlink, dest_net);
 
-	err = devlink->ops->reload_up(devlink, action, limit, actions_performed, extack);
+	if (devlink->ops->reload_up)
+		err = devlink->ops->reload_up(devlink, extack);
+	else
+		err = devlink->ops->reload_up_new(devlink, action, limit, actions_performed, extack);
 	devlink_reload_failed_set(devlink, !!err);
 	if (err)
 		return err;
@@ -7035,8 +7042,12 @@ static int __devlink_trap_action_set(struct devlink *devlink,
 		return 0;
 	}
 
-	err = devlink->ops->trap_action_set(devlink, trap_item->trap,
-					    trap_action, extack);
+	if (devlink->ops->trap_action_set)
+		err = devlink->ops->trap_action_set(devlink, trap_item->trap,
+						    trap_action);
+	else
+		err = devlink->ops->trap_action_set_new(devlink, trap_item->trap,
+							trap_action, extack);
 	if (err)
 		return err;
 
@@ -9960,8 +9971,13 @@ static void devlink_trap_disable(struct devlink *devlink,
 	if (WARN_ON_ONCE(!trap_item))
 		return;
 
-	devlink->ops->trap_action_set(devlink, trap, DEVLINK_TRAP_ACTION_DROP,
-				      NULL);
+	if (devlink->ops->trap_action_set)
+		devlink->ops->trap_action_set(devlink, trap,
+					      DEVLINK_TRAP_ACTION_DROP);
+	else if (devlink->ops->trap_action_set_new)
+		devlink->ops->trap_action_set_new(devlink, trap,
+						  DEVLINK_TRAP_ACTION_DROP,
+						  NULL);
 	trap_item->action = DEVLINK_TRAP_ACTION_DROP;
 }
 
@@ -9980,7 +9996,7 @@ int devlink_traps_register(struct devlink *devlink,
 {
 	int i, err;
 
-	if (!devlink->ops->trap_init || !devlink->ops->trap_action_set)
+	if (!devlink->ops->trap_init || !(devlink->ops->trap_action_set || devlink->ops->trap_action_set_new))
 		return -EINVAL;
 
 	mutex_lock(&devlink->lock);

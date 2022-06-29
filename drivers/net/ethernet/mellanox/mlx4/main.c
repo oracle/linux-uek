@@ -4138,8 +4138,8 @@ static int mlx4_devlink_reload_up(struct devlink *devlink, enum devlink_reload_a
 static const struct devlink_ops mlx4_devlink_ops = {
 	.port_type_set	= mlx4_devlink_port_type_set,
 	.reload_actions = BIT(DEVLINK_RELOAD_ACTION_DRIVER_REINIT),
-	.reload_down	= mlx4_devlink_reload_down,
-	.reload_up	= mlx4_devlink_reload_up,
+	.reload_down_new= mlx4_devlink_reload_down,
+	.reload_up_new	= mlx4_devlink_reload_up,
 };
 
 static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)

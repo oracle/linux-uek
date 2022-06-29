@@ -314,11 +314,11 @@ static const struct devlink_ops mlx5_devlink_ops = {
 	.reload_actions = BIT(DEVLINK_RELOAD_ACTION_DRIVER_REINIT) |
 			  BIT(DEVLINK_RELOAD_ACTION_FW_ACTIVATE),
 	.reload_limits = BIT(DEVLINK_RELOAD_LIMIT_NO_RESET),
-	.reload_down = mlx5_devlink_reload_down,
-	.reload_up = mlx5_devlink_reload_up,
+	.reload_down_new = mlx5_devlink_reload_down,
+	.reload_up_new = mlx5_devlink_reload_up,
 	.trap_init = mlx5_devlink_trap_init,
 	.trap_fini = mlx5_devlink_trap_fini,
-	.trap_action_set = mlx5_devlink_trap_action_set,
+	.trap_action_set_new = mlx5_devlink_trap_action_set,
 };
 
 void mlx5_devlink_trap_report(struct mlx5_core_dev *dev, int trap_id, struct sk_buff *skb,

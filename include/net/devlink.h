@@ -855,21 +855,10 @@ enum devlink_trap_group_generic_id {
 	}
 
 struct devlink_ops {
-	UEK_KABI_REPLACE_UNSAFE(
 	int (*reload_down)(struct devlink *devlink,
-			   struct netlink_ext_ack *extack),
-	int (*reload_down)(struct devlink *devlink, bool netns_change,
-			   enum devlink_reload_action action,
-			   enum devlink_reload_limit limit,
-			   struct netlink_ext_ack *extack)
-	)
-	UEK_KABI_REPLACE_UNSAFE(
+			   struct netlink_ext_ack *extack);
 	int (*reload_up)(struct devlink *devlink,
-			 struct netlink_ext_ack *extack),
-	int (*reload_up)(struct devlink *devlink, enum devlink_reload_action action,
-			 enum devlink_reload_limit limit, u32 *actions_performed,
-			 struct netlink_ext_ack *extack)
-	)
+			 struct netlink_ext_ack *extack);
 	int (*port_type_set)(struct devlink_port *devlink_port,
 			     enum devlink_port_type port_type);
 	int (*port_split)(struct devlink *devlink, unsigned int port_index,
@@ -950,15 +939,9 @@ struct devlink_ops {
 	/**
 	 * @trap_action_set: Trap action set function.
 	 */
-	UEK_KABI_REPLACE_UNSAFE(
 	int (*trap_action_set)(struct devlink *devlink,
 			       const struct devlink_trap *trap,
-			       enum devlink_trap_action action),
-	int (*trap_action_set)(struct devlink *devlink,
-			       const struct devlink_trap *trap,
-			       enum devlink_trap_action action,
-			       struct netlink_ext_ack *extack)
-	)
+			       enum devlink_trap_action action);
 	/**
 	 * @trap_group_init: Trap group initialization function.
 	 *
@@ -1131,8 +1114,23 @@ struct devlink_ops {
 						    struct devlink_rate *parent,
 						    void *priv_child, void *priv_parent,
 						    struct netlink_ext_ack *extack))
+
+	/**
+	 * New modified devlink callbacks.
+	 */
 	UEK_KABI_EXTEND(unsigned long reload_actions)
 	UEK_KABI_EXTEND(unsigned long reload_limits)
+	UEK_KABI_EXTEND(int (*reload_down_new)(struct devlink *devlink, bool netns_change,
+					   enum devlink_reload_action action,
+					   enum devlink_reload_limit limit,
+					   struct netlink_ext_ack *extack))
+	UEK_KABI_EXTEND(int (*reload_up_new)(struct devlink *devlink, enum devlink_reload_action action,
+					 enum devlink_reload_limit limit, u32 *actions_performed,
+					 struct netlink_ext_ack *extack))
+	UEK_KABI_EXTEND(int (*trap_action_set_new)(struct devlink *devlink,
+					       const struct devlink_trap *trap,
+					       enum devlink_trap_action action,
+					       struct netlink_ext_ack *extack))
 };
 
 static inline void *devlink_priv(struct devlink *devlink)
