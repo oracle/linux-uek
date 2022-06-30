@@ -1178,16 +1178,13 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_CTRL, reg);
 
 	reg = sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GPIO_CTRL0);
-	if (phy->settings.drive != 0xFF) {
-		reg |= SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV_OVR_EN;
-		reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV,
-			phy->settings.drive);
-	}
-	if (phy->settings.slew != 0xFF) {
-		reg |= SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW_OVR_EN;
-		reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW,
-			phy->settings.slew);
-	}
+	reg &= ~0x77;
+	reg |= SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV_OVR_EN |
+		SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW_OVR_EN;
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_DRV,
+		phy->settings.drive);
+	reg |= FIELD_PREP(SDHCI_CDNS_SD6_PHY_GPIO_CTRL0_SLEW,
+		phy->settings.slew);
 	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GPIO_CTRL0, reg);
 
 	ret = sdhci_cdns_sd6_dll_reset(priv, false);
@@ -1572,12 +1569,12 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 	ret = of_property_read_u32(dev->of_node, "cdns,host_slew",
 				   &phy->settings.slew);
 	if (ret)
-		phy->settings.slew = 0xFF;
+		phy->settings.slew = 3;
 
 	ret = of_property_read_u32(dev->of_node, "cdns,host_drive",
 				   &phy->settings.drive);
 	if (ret)
-		phy->settings.drive = 0xFF;
+		phy->settings.drive = 2;
 
 	ret = of_property_read_u32(dev->of_node, "cdns,iocell_input_delay",
 				   &phy->d.iocell_input_delay);
