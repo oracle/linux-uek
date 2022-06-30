@@ -1037,7 +1037,7 @@ out2:
 	err = -EINVAL;
 
 out1:
-	ntfs_mark_rec_free(sbi, rno);
+	ntfs_mark_rec_free(sbi, rno, is_mft);
 
 out:
 	return err;
@@ -1232,7 +1232,7 @@ static int ni_expand_mft_list(struct ntfs_inode *ni)
 		mft_min = mft_new;
 		mi_min = mi_new;
 	} else {
-		ntfs_mark_rec_free(sbi, mft_new);
+		ntfs_mark_rec_free(sbi, mft_new, true);
 		mft_new = 0;
 		ni_remove_mi(ni, mi_new);
 	}
@@ -1315,7 +1315,7 @@ static int ni_expand_mft_list(struct ntfs_inode *ni)
 
 out:
 	if (mft_new) {
-		ntfs_mark_rec_free(sbi, mft_new);
+		ntfs_mark_rec_free(sbi, mft_new, true);
 		ni_remove_mi(ni, mi_new);
 	}
 
@@ -1577,7 +1577,7 @@ int ni_delete_all(struct ntfs_inode *ni)
 		mi->dirty = true;
 		mi_write(mi, 0);
 
-		ntfs_mark_rec_free(sbi, mi->rno);
+		ntfs_mark_rec_free(sbi, mi->rno, false);
 		ni_remove_mi(ni, mi);
 		mi_put(mi);
 		node = next;
@@ -1588,7 +1588,7 @@ int ni_delete_all(struct ntfs_inode *ni)
 	ni->mi.dirty = true;
 	err = mi_write(&ni->mi, 0);
 
-	ntfs_mark_rec_free(sbi, ni->mi.rno);
+	ntfs_mark_rec_free(sbi, ni->mi.rno, false);
 
 	return err;
 }
@@ -3292,7 +3292,7 @@ int ni_write_inode(struct inode *inode, int sync, const char *hint)
 			err = err2;
 
 		if (is_empty) {
-			ntfs_mark_rec_free(sbi, mi->rno);
+			ntfs_mark_rec_free(sbi, mi->rno, false);
 			rb_erase(node, &ni->mi_tree);
 			mi_put(mi);
 		}
