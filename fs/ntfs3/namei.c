@@ -218,7 +218,7 @@ static int ntfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
 }
 
 /*
- * ntfs_rmdir - inode_operations::rm_dir
+ * ntfs_rmdir - inode_operations::rmdir
  */
 static int ntfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
