@@ -3702,7 +3702,7 @@ static ssize_t rvu_dbg_cpt_engines_sts_write(struct file *filp,
 
 static int rvu_dbg_cpt_engines_sts_display(struct seq_file *filp, void *unused)
 {
-	u64  busy_sts[2] = {0}, free_sts[2] = {0};
+	u64  busy_sts[3] = {0}, free_sts[3] = {0};
 	struct rvu *rvu = filp->private;
 	u16  max_ses, max_ies, max_aes;
 	u32  e_min = 0, e_max = 0, e;
@@ -3741,22 +3741,35 @@ static int rvu_dbg_cpt_engines_sts_display(struct seq_file *filp, void *unused)
 	for (e = e_min; e <= e_max; e++) {
 		reg = rvu_read64(rvu, blkaddr, CPT_AF_EXEX_STS(e));
 		if (reg & 0x1) {
-			if (e < max_ses)
+			if (e < 64)
 				busy_sts[0] |= 1ULL << e;
-			else if (e >= max_ses)
-				busy_sts[1] |= 1ULL << (e - max_ses);
+			else if (e < 128)
+				busy_sts[1] |= 1ULL << (e - 64);
+			else
+				busy_sts[2] |= 1ULL << (e - 128);
 		}
 		if (reg & 0x2) {
-			if (e < max_ses)
+			if (e < 64)
 				free_sts[0] |= 1ULL << e;
-			else if (e >= max_ses)
-				free_sts[1] |= 1ULL << (e - max_ses);
+			else if (e < 128)
+				free_sts[1] |= 1ULL << (e - 64);
+			else
+				free_sts[2] |= 1ULL << (e - 128);
 		}
 	}
-	seq_printf(filp, "FREE STS : 0x%016llx  0x%016llx\n", free_sts[1],
-		   free_sts[0]);
-	seq_printf(filp, "BUSY STS : 0x%016llx  0x%016llx\n", busy_sts[1],
-		   busy_sts[0]);
+	seq_puts(filp, "FREE STS : ");
+	if (e_max > 128)
+		seq_printf(filp, "0x%016llx ", free_sts[2]);
+	if (e_max > 64)
+		seq_printf(filp, "0x%016llx ", free_sts[1]);
+	seq_printf(filp, "0x%016llx\n", free_sts[0]);
+
+	seq_puts(filp, "BUSY STS : ");
+	if (e_max > 128)
+		seq_printf(filp, "0x%016llx ", busy_sts[2]);
+	if (e_max > 64)
+		seq_printf(filp, "0x%016llx ", busy_sts[1]);
+	seq_printf(filp, "0x%016llx\n", busy_sts[0]);
 
 	return 0;
 }
