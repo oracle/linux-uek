@@ -20,7 +20,7 @@
  * Interval to flush dirty data for next CTX entry. The interval is measured
  * in increments of 10ns(interval time = CTX_FLUSH_TIMER_COUNT * 10ns).
  */
-#define CTX_FLUSH_TIMER_CNT 0xFFFFFF
+#define CTX_FLUSH_TIMER_CNT 0x2FAF0
 
 struct fw_info_t {
 	struct list_head ucodes;
