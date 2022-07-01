@@ -1993,7 +1993,7 @@ static void print_power_domains(struct i915_power_domains *power_domains,
 						     power_domains);
 	enum intel_display_power_domain domain;
 
-	drm_dbg(&i915->drm, "%s (%lu):\n", prefix, hweight64(mask));
+	drm_dbg(&i915->drm, "%s (%ld):\n", prefix, bitmap_weight(mask->bits, POWER_DOMAIN_NUM));
 	for_each_power_domain(domain, mask)
 		drm_dbg(&i915->drm, "%s use_count %d\n",
 			intel_display_power_domain_str(domain),
