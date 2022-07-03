@@ -217,7 +217,7 @@ static int dr_table_destroy_sw_owned_tbl(struct mlx5dr_table *tbl)
 					     tbl->table_type);
 }
 
-static int dr_table_create_sw_owned_tbl(struct mlx5dr_table *tbl)
+static int dr_table_create_sw_owned_tbl(struct mlx5dr_table *tbl, u16 uid)
 {
 	bool en_encap = !!(tbl->flags & MLX5_FLOW_TABLE_TUNNEL_EN_REFORMAT);
 	bool en_decap = !!(tbl->flags & MLX5_FLOW_TABLE_TUNNEL_EN_DECAP);
@@ -239,6 +239,7 @@ static int dr_table_create_sw_owned_tbl(struct mlx5dr_table *tbl)
 	ft_attr.sw_owner = true;
 	ft_attr.decap_en = en_decap;
 	ft_attr.reformat_en = en_encap;
+	ft_attr.uid = uid;
 
 	ret = mlx5dr_cmd_create_flow_table(tbl->dmn->mdev, &ft_attr,
 					   NULL, &tbl->table_id);
@@ -246,7 +247,8 @@ static int dr_table_create_sw_owned_tbl(struct mlx5dr_table *tbl)
 	return ret;
 }
 
-struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_domain *dmn, u32 level, u32 flags)
+struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_domain *dmn, u32 level,
+					 u32 flags, u16 uid)
 {
 	struct mlx5dr_table *tbl;
 	int ret;
@@ -266,7 +268,7 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_domain *dmn, u32 level, u
 	if (ret)
 		goto free_tbl;
 
-	ret = dr_table_create_sw_owned_tbl(tbl);
+	ret = dr_table_create_sw_owned_tbl(tbl, uid);
 	if (ret)
 		goto uninit_tbl;
 
