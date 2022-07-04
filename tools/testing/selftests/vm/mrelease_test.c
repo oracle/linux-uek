@@ -100,8 +100,10 @@ int main(void)
 
 	/* Test a wrong pidfd */
 	if (!syscall(__NR_process_mrelease, -1, 0) || errno != EBADF) {
+		/* perror overwrites errno, so this line must be first */
+		res = (errno == ENOSYS ? KSFT_SKIP : KSFT_FAIL);
 		perror("process_mrelease with wrong pidfd");
-		exit(errno == ENOSYS ? KSFT_SKIP : KSFT_FAIL);
+		exit(res);
 	}
 
 	/* Start the test with 1MB child memory allocation */
@@ -156,8 +158,9 @@ retry:
 	run_negative_tests(pidfd);
 
 	if (kill(pid, SIGKILL)) {
+		res = (errno == ENOSYS ? KSFT_SKIP : KSFT_FAIL);
 		perror("kill");
-		exit(errno == ENOSYS ? KSFT_SKIP : KSFT_FAIL);
+		exit(res);
 	}
 
 	success = (syscall(__NR_process_mrelease, pidfd, 0) == 0);
