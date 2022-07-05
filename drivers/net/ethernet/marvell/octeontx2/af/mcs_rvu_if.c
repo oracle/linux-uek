@@ -12,6 +12,7 @@
 
 #include "mcs.h"
 #include "rvu.h"
+#include "lmac_common.h"
 
 int rvu_mbox_handler_mcs_flowid_ena_entry(struct rvu *rvu,
 					  struct mcs_flowid_ena_dis_entry *req,
@@ -276,14 +277,48 @@ exit:
 	return rsrc_id;
 }
 
+static void rvu_mcs_set_lmac_bmap(struct rvu *rvu)
+{
+	struct mcs *mcs = mcs_get_pdata(0);
+	unsigned long lmac_bmap;
+	int cgx, lmac, port;
+
+	for (port = 0; port < mcs->hw->lmac_cnt; port++) {
+		cgx = port / rvu->hw->lmac_per_cgx;
+		lmac = port % rvu->hw->lmac_per_cgx;
+		if (!is_lmac_valid(rvu_cgx_pdata(cgx, rvu), lmac))
+			continue;
+		set_bit(port, &lmac_bmap);
+	}
+	mcs->hw->lmac_bmap = lmac_bmap;
+}
+
 int rvu_mcs_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
+	int lmac, err = 0;
+	struct mcs *mcs;
 
 	rvu->mcs_blk_cnt = mcs_get_blkcnt();
 
 	if (!rvu->mcs_blk_cnt)
 		return 0;
 
-	return mcs_set_lmac_channels(hw->cgx_chan_base);
+	err = mcs_set_lmac_channels(hw->cgx_chan_base);
+
+	if (err)
+		return err;
+
+	/* Set active lmacs */
+	rvu_mcs_set_lmac_bmap(rvu);
+
+	/* Install default tcam bypass entry */
+	mcs_install_flowid_bypass_entry(mcs);
+
+	mcs = mcs_get_pdata(0);
+
+	/* Set mcs port to operational mode */
+	for_each_set_bit(lmac, &mcs->hw->lmac_bmap, mcs->hw->lmac_cnt)
+		mcs_set_lmac_mode(mcs, lmac);
+	return 0;
 }

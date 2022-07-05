@@ -15,6 +15,11 @@
 #define MCSX_MIL_GLOBAL					0x80000ull
 #define MCSX_MIL_RX_GBL_STATUS				0x800c8ull
 #define MCSX_LINK_LMACX_CFG(a)				(0x90000ull + (a) * 0x800ull)
+#define MCSX_MCS_TOP_SLAVE_CHANNEL_CFG(a)		(0x808ull + (a) * 0x8ull)
+
+/* PEX registers */
+#define MCSX_PEX_RX_SLAVE_VLAN_CFGX(a)			(0x3b58ull + (a) * 0x8ull)
+#define MCSX_PEX_TX_SLAVE_VLAN_CFGX(a)			(0x46f8ull + (a) * 0x8ull)
 
 /* CPM RX registers */
 #define MCSX_CPM_RX_SLAVE_FLOWID_TCAM_DATAX(a, b)	(0x30740ull + (a) * 0x8ull + (b) * 0x20ull)
@@ -43,4 +48,8 @@
 #define MCSX_CPM_TX_SLAVE_SA_MAP_MEM_1X(a)		(0x3fd18ull + (a) * 0x10ull)
 #define MCSX_CPM_TX_SLAVE_SECY_MAP_MEM_1X(a)		(0x5558ull + (a) * 0x10ull)
 #define MCSX_CPM_TX_SLAVE_FLOWID_TCAM_ENA_1		0x51d18ull
+
+/* PAB */
+#define MCSX_PAB_RX_SLAVE_PORT_CFGX(a)			(0x1718ull + (a) * 0x40ull)
+#define MCSX_PAB_TX_SLAVE_PORT_CFGX(a)			(0x2930ull + (a) * 0x40ull)
 #endif
