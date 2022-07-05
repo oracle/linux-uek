@@ -182,6 +182,47 @@ void mcs_flowid_entry_write(struct mcs *mcs, u64 *data, u64 *mask, int flow_id, 
 	}
 }
 
+int mcs_install_flowid_bypass_entry(struct mcs *mcs)
+{
+	int flow_id, secy_id, reg_id;
+	struct secy_mem_map map;
+	u64 reg, plcy = 0;
+
+	/* Flow entry */
+	flow_id = mcs->hw->tcam_entries - MCS_RSRC_RSVD_CNT;
+	for (reg_id = 0; reg_id < 4; reg_id++) {
+		reg = MCSX_CPM_RX_SLAVE_FLOWID_TCAM_MASKX(reg_id, flow_id);
+		mcs_reg_write(mcs, reg, GENMASK_ULL(63, 0));
+	}
+	for (reg_id = 0; reg_id < 4; reg_id++) {
+		reg = MCSX_CPM_TX_SLAVE_FLOWID_TCAM_MASKX(reg_id, flow_id);
+		mcs_reg_write(mcs, reg, GENMASK_ULL(63, 0));
+	}
+	/* secy */
+	secy_id = mcs->hw->secy_entries - MCS_RSRC_RSVD_CNT;
+
+	/* Set validate frames to NULL and enable control port */
+	plcy = 0x7ull;
+	mcs_secy_plcy_write(mcs, plcy, secy_id, MCS_RX);
+
+	/* Enable control port and set mtu to max */
+	plcy = BIT_ULL(0) | GENMASK_ULL(43, 28);
+	mcs_secy_plcy_write(mcs, plcy, secy_id, MCS_TX);
+
+	/* Map flowid to secy */
+	map.secy = secy_id;
+	map.ctrl_pkt = 0;
+	map.flow_id = flow_id;
+	mcs_flowid_secy_map(mcs, &map, MCS_RX);
+	map.sc = secy_id;
+	mcs_flowid_secy_map(mcs, &map, MCS_TX);
+
+	/* Enable Flowid entry */
+	mcs_ena_dis_flowid_entry(mcs, flow_id, MCS_RX, true);
+	mcs_ena_dis_flowid_entry(mcs, flow_id, MCS_TX, true);
+	return 0;
+}
+
 void mcs_clear_secy_plcy(struct mcs *mcs, int secy_id, int dir)
 {
 	struct mcs_rsrc_map *map;
@@ -390,6 +431,52 @@ struct mcs *mcs_get_pdata(int mcs_id)
 	return NULL;
 }
 
+/* Set to operational mode */
+void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id)
+{
+	u64 reg;
+
+	reg = MCSX_MCS_TOP_SLAVE_CHANNEL_CFG(lmac_id * 2);
+	mcs_reg_write(mcs, reg, 0x0ull);
+}
+
+static void mcs_parser_cfg(struct mcs *mcs)
+{
+	u64 reg, val;
+
+	/* VLAN CTag */
+	val = BIT_ULL(0) | (0x8100ull & 0xFFFF) << 1 | BIT_ULL(17);
+	/* RX */
+	reg = MCSX_PEX_RX_SLAVE_VLAN_CFGX(0);
+	mcs_reg_write(mcs, reg, val);
+
+	/* TX */
+	reg = MCSX_PEX_TX_SLAVE_VLAN_CFGX(0);
+	mcs_reg_write(mcs, reg, val);
+
+	/* VLAN STag */
+	val = BIT_ULL(0) | (0x88a8ull & 0xFFFF) << 1 | BIT_ULL(18);
+	/* RX */
+	reg = MCSX_PEX_RX_SLAVE_VLAN_CFGX(1);
+	mcs_reg_write(mcs, reg, val);
+
+	/* TX */
+	reg = MCSX_PEX_TX_SLAVE_VLAN_CFGX(1);
+	mcs_reg_write(mcs, reg, val);
+}
+
+static void mcs_lmac_init(struct mcs *mcs, int lmac_id)
+{
+	u64 reg;
+
+	/* Port mode 100GB */
+	reg = MCSX_PAB_RX_SLAVE_PORT_CFGX(lmac_id);
+	mcs_reg_write(mcs, reg, BIT_ULL(1));
+
+	reg = MCSX_PAB_TX_SLAVE_PORT_CFGX(lmac_id);
+	mcs_reg_write(mcs, reg, BIT_ULL(1));
+}
+
 int mcs_set_lmac_channels(u16 base)
 {
 	struct mcs *mcs;
@@ -476,8 +563,8 @@ static void mcs_set_hw_capabilities(struct mcs *mcs)
 static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
+	int lmac, err = 0;
 	struct mcs *mcs;
-	int err = 0;
 
 	mcs = devm_kzalloc(dev, sizeof(*mcs), GFP_KERNEL);
 	if (!mcs)
@@ -533,6 +620,13 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = mcs_alloc_struct_mem(mcs, &mcs->rx);
 	if (err)
 		goto exit;
+
+	/* per port config */
+	for (lmac = 0; lmac < mcs->hw->lmac_cnt; lmac++)
+		mcs_lmac_init(mcs, lmac);
+
+	/* Parser configuration */
+	mcs_parser_cfg(mcs);
 
 	list_add(&mcs->mcs_list, &mcs_list);
 	return 0;

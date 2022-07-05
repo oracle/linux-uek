@@ -55,6 +55,7 @@ struct hwinfo {
 	u8 mcs_x2p_intf;
 	u8 lmac_cnt;
 	u8 mcs_blks;
+	unsigned long	lmac_bmap; /* bitmap of enabled mcs lmac */
 };
 
 struct mcs {
@@ -102,4 +103,6 @@ void mcs_pn_table_write(struct mcs *mcs, u8 pn_id, u64 next_pn, u8 dir);
 void mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map);
 void mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir);
 void mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map);
+int mcs_install_flowid_bypass_entry(struct mcs *mcs);
+void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id);
 #endif /* MCS_H */
