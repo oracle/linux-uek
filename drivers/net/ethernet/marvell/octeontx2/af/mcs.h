@@ -68,6 +68,8 @@ struct mcs {
 	u8			mcs_id;
 	struct mcs_ops		*mcs_ops;
 	struct list_head	mcs_list;
+	/* Lock for mcs stats */
+	struct mutex		stats_lock;
 };
 
 struct mcs_ops {
@@ -137,4 +139,6 @@ void mcs_get_port_stats(struct mcs *mcs, struct mcs_port_stats *stats, int id, i
 void mcs_get_flowid_stats(struct mcs *mcs, struct mcs_flowid_stats *stats, int id, int dir);
 void mcs_get_rx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id);
 void mcs_get_tx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id);
+void mcs_clear_stats(struct mcs *mcs, u8 type, u8 id, int dir);
+int mcs_clear_all_stats(struct mcs *mcs, u16 pcifunc, int dir);
 #endif /* MCS_H */

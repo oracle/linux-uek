@@ -250,6 +250,86 @@ void mcs_get_sc_stats(struct mcs *mcs, struct mcs_sc_stats *stats,
 	}
 }
 
+void mcs_clear_stats(struct mcs *mcs, u8 type, u8 id, int dir)
+{
+	struct mcs_flowid_stats flowid_st;
+	struct mcs_port_stats port_st;
+	struct mcs_secy_stats secy_st;
+	struct mcs_sc_stats sc_st;
+	struct mcs_sa_stats sa_st;
+	u64 reg;
+
+	if (dir == MCS_RX)
+		reg = MCSX_CSE_RX_SLAVE_CTRL;
+	else
+		reg = MCSX_CSE_TX_SLAVE_CTRL;
+
+	mcs_reg_write(mcs, reg, BIT_ULL(0));
+
+	switch (type) {
+	case MCS_FLOWID_STATS:
+		mcs_get_flowid_stats(mcs, &flowid_st, id, dir);
+		break;
+	case MCS_SECY_STATS:
+		if (dir == MCS_RX)
+			mcs_get_rx_secy_stats(mcs, &secy_st, id);
+		else
+			mcs_get_tx_secy_stats(mcs, &secy_st, id);
+		break;
+	case MCS_SC_STATS:
+		mcs_get_sc_stats(mcs, &sc_st, id, dir);
+		break;
+	case MCS_SA_STATS:
+		mcs_get_sa_stats(mcs, &sa_st, id, dir);
+		break;
+	case MCS_PORT_STATS:
+		mcs_get_port_stats(mcs, &port_st, id, dir);
+		break;
+	}
+
+	mcs_reg_write(mcs, reg, 0x0);
+}
+
+int mcs_clear_all_stats(struct mcs *mcs, u16 pcifunc, int dir)
+{
+	struct mcs_rsrc_map *map;
+	int id;
+
+	if (dir == MCS_RX)
+		map = &mcs->rx;
+	else
+		map = &mcs->tx;
+
+	/* Clear FLOWID stats */
+	for (id = 0; id < map->flow_ids.max; id++) {
+		if (map->flowid2pf_map[id] != pcifunc)
+			continue;
+		mcs_clear_stats(mcs, MCS_FLOWID_STATS, id, dir);
+	}
+
+	/* Clear SECY stats */
+	for (id = 0; id < map->secy.max; id++) {
+		if (map->secy2pf_map[id] != pcifunc)
+			continue;
+		mcs_clear_stats(mcs, MCS_SECY_STATS, id, dir);
+	}
+
+	/* Clear SC stats */
+	for (id = 0; id < map->secy.max; id++) {
+		if (map->sc2pf_map[id] != pcifunc)
+			continue;
+		mcs_clear_stats(mcs, MCS_SC_STATS, id, dir);
+	}
+
+	/* Clear SA stats */
+	for (id = 0; id < map->sa.max; id++) {
+		if (map->sa2pf_map[id] != pcifunc)
+			continue;
+		mcs_clear_stats(mcs, MCS_SA_STATS, id, dir);
+	}
+	return 0;
+}
+
 void mcs_pn_table_write(struct mcs *mcs, u8 pn_id, u64 next_pn, u8 dir)
 {
 	u64 reg;
@@ -775,6 +855,10 @@ static void mcs_global_cfg(struct mcs *mcs)
 	/* Set MCS to perform standard IEEE802.1AE macsec processing */
 	if (mcs->hw->mcs_blks == 1)
 		mcs_reg_write(mcs, MCSX_IP_MODE, BIT_ULL(3));
+
+	/* Reset TX/RX stats memory */
+	mcs_reg_write(mcs, MCSX_CSE_RX_SLAVE_STATS_CLEAR, 0x1F);
+	mcs_reg_write(mcs, MCSX_CSE_TX_SLAVE_STATS_CLEAR, 0x1F);
 }
 
 void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs)
@@ -873,6 +957,7 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	list_add(&mcs->mcs_list, &mcs_list);
 
+	mutex_init(&mcs->stats_lock);
 	return 0;
 exit:
 	pci_release_regions(pdev);
