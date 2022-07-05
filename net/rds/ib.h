@@ -453,9 +453,16 @@ struct rds_ib_device {
 	struct dentry *debugfs_dir;
 
 	struct completion	*rid_dev_rem_complete;
+
+	unsigned int            i_work_arounds;
 #ifdef DEBUG
 	struct rds_ib_device	*org_ptr;
 #endif
+};
+
+/* Bitmasks for designated work-arounds */
+enum rds_ib_dev_work_arounds {
+	RDS_IB_DEV_WA_INCORRECT_RNR_TIMER        = 1 << 0,
 };
 
 static inline int ibdev_to_node(struct ib_device *ibdev)
