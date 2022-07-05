@@ -71,4 +71,11 @@ struct mcs *mcs_get_pdata(int mcs_id);
 int mcs_get_blkcnt(void);
 int mcs_set_lmac_channels(u16 base);
 
+int mcs_alloc_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, u16 pcifunc);
+int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc);
+int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flowid, u8 *secy_id,
+		       u8 *sc_id, u8 *sa_id, u16 pcifunc, int dir);
+int mcs_free_all_rsrc(struct mcs *mcs, int dir, u16 pcifunc);
+void mcs_ena_dis_flowid_entry(struct mcs *mcs, int id, int dir, int ena);
+void mcs_ena_dis_sc_cam_entry(struct mcs *mcs, int id, int ena);
 #endif /* MCS_H */
