@@ -44,6 +44,59 @@ int mcs_get_blkcnt(void)
 	return idmax + 1;
 }
 
+static void *alloc_mem(struct mcs *mcs, int n)
+{
+	return devm_kcalloc(mcs->dev, n, sizeof(u16), GFP_KERNEL);
+}
+
+static int mcs_alloc_struct_mem(struct mcs *mcs, struct mcs_rsrc_map *res)
+{
+	struct hwinfo *hw = mcs->hw;
+	int err;
+
+	res->flowid2pf_map = alloc_mem(mcs, hw->tcam_entries);
+	if (!res->flowid2pf_map)
+		return -ENOMEM;
+
+	res->secy2pf_map = alloc_mem(mcs, hw->secy_entries);
+	if (!res->secy2pf_map)
+		return -ENOMEM;
+
+	res->sc2pf_map = alloc_mem(mcs, hw->sc_entries);
+	if (!res->sc2pf_map)
+		return -ENOMEM;
+
+	res->sa2pf_map = alloc_mem(mcs, hw->sa_entries);
+	if (!res->sa2pf_map)
+		return -ENOMEM;
+
+	res->flowid2secy_map = alloc_mem(mcs, hw->tcam_entries);
+	if (!res->flowid2secy_map)
+		return -ENOMEM;
+
+	res->flow_ids.max = hw->tcam_entries - MCS_RSRC_RSVD_CNT;
+	err = rvu_alloc_bitmap(&res->flow_ids);
+	if (err)
+		return err;
+
+	res->secy.max = hw->secy_entries - MCS_RSRC_RSVD_CNT;
+	err = rvu_alloc_bitmap(&res->secy);
+	if (err)
+		return err;
+
+	res->sc.max = hw->sc_entries;
+	err = rvu_alloc_bitmap(&res->sc);
+	if (err)
+		return err;
+
+	res->sa.max = hw->sa_entries;
+	err = rvu_alloc_bitmap(&res->sa);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 struct mcs *mcs_get_pdata(int mcs_id)
 {
 	struct mcs *mcs_dev;
@@ -188,6 +241,16 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	mcs->mcs_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
 			& MCS_ID_MASK;
+
+	/* Set mcs tx side resources */
+	err = mcs_alloc_struct_mem(mcs, &mcs->tx);
+	if (err)
+		goto exit;
+
+	/* Set mcs rx side resources */
+	err = mcs_alloc_struct_mem(mcs, &mcs->rx);
+	if (err)
+		goto exit;
 
 	list_add(&mcs->mcs_list, &mcs_list);
 	return 0;

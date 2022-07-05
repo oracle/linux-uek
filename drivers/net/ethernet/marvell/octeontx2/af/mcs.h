@@ -9,6 +9,7 @@
 #define MCS_H
 
 #include <linux/bits.h>
+#include "rvu.h"
 
 #define PCI_DEVID_CN10K_MCS		0xA096
 
@@ -16,6 +17,21 @@
 #define MCSX_LINK_LMAC_BASE_MASK	GENMASK_ULL(11, 0)
 
 #define MCS_ID_MASK			0x7
+
+/* Reserved resources for default bypass entry */
+#define MCS_RSRC_RSVD_CNT		1
+
+struct mcs_rsrc_map {
+	u16 *flowid2pf_map;
+	u16 *secy2pf_map;
+	u16 *sc2pf_map;
+	u16 *sa2pf_map;
+	u16 *flowid2secy_map;	/* bitmap flowid mapped to secy*/
+	struct rsrc_bmap	flow_ids;
+	struct rsrc_bmap	secy;
+	struct rsrc_bmap	sc;
+	struct rsrc_bmap	sa;
+};
 
 struct hwinfo {
 	u8 tcam_entries;
@@ -32,6 +48,8 @@ struct mcs {
 	struct pci_dev		*pdev;
 	struct device		*dev;
 	struct hwinfo		*hw;
+	struct mcs_rsrc_map	tx;
+	struct mcs_rsrc_map	rx;
 	u8			mcs_id;
 	struct list_head	mcs_list;
 };
