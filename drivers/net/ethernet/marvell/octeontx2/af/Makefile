@@ -13,4 +13,4 @@ rvu_af-y   := cgx.o rvu.o rvu_cgx.o rvu_npa.o rvu_nix.o \
 		  rvu_tim.o rvu_cpt.o rvu_debugfs.o rvu_npc_fs.o \
 		  ptp.o rvu_fixes.o rvu_sdp.o rvu_ree.o \
 		  rvu_cn10k.o rpm.o rvu_devlink.o rvu_switch.o \
-		  mcs.o mcs_rvu_if.o
+		  mcs.o mcs_rvu_if.o mcs_cnf10kb.o

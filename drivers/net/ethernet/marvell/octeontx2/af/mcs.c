@@ -36,7 +36,7 @@ void mcs_pn_table_write(struct mcs *mcs, u8 pn_id, u64 next_pn, u8 dir)
 	mcs_reg_write(mcs, reg, next_pn);
 }
 
-void mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map)
+void cn10kb_mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map)
 {
 	u64 reg, val;
 
@@ -55,7 +55,7 @@ void mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map)
 	mcs_reg_write(mcs, reg, val);
 }
 
-void mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map)
+void cn10kb_mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map)
 {
 	u64 val, reg;
 
@@ -118,11 +118,11 @@ void mcs_secy_plcy_write(struct mcs *mcs, u64 plcy, int secy_id, int dir)
 
 	mcs_reg_write(mcs, reg, plcy);
 
-	if (dir == MCS_RX)
+	if (mcs->hw->mcs_blks == 1 && dir == MCS_RX)
 		mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SECY_PLCY_MEM_1X(secy_id), 0x0ull);
 }
 
-void mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir)
+void cn10kb_mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir)
 {
 	u64 reg, val;
 
@@ -203,19 +203,23 @@ int mcs_install_flowid_bypass_entry(struct mcs *mcs)
 
 	/* Set validate frames to NULL and enable control port */
 	plcy = 0x7ull;
+	if (mcs->hw->mcs_blks > 1)
+		plcy = BIT_ULL(0) | 0x3ull << 4;
 	mcs_secy_plcy_write(mcs, plcy, secy_id, MCS_RX);
 
 	/* Enable control port and set mtu to max */
 	plcy = BIT_ULL(0) | GENMASK_ULL(43, 28);
+	if (mcs->hw->mcs_blks > 1)
+		plcy = BIT_ULL(0) | GENMASK_ULL(63, 48);
 	mcs_secy_plcy_write(mcs, plcy, secy_id, MCS_TX);
 
 	/* Map flowid to secy */
 	map.secy = secy_id;
 	map.ctrl_pkt = 0;
 	map.flow_id = flow_id;
-	mcs_flowid_secy_map(mcs, &map, MCS_RX);
+	mcs->mcs_ops->mcs_flowid_secy_map(mcs, &map, MCS_RX);
 	map.sc = secy_id;
-	mcs_flowid_secy_map(mcs, &map, MCS_TX);
+	mcs->mcs_ops->mcs_flowid_secy_map(mcs, &map, MCS_TX);
 
 	/* Enable Flowid entry */
 	mcs_ena_dis_flowid_entry(mcs, flow_id, MCS_RX, true);
@@ -440,7 +444,7 @@ void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id)
 	mcs_reg_write(mcs, reg, 0x0ull);
 }
 
-static void mcs_parser_cfg(struct mcs *mcs)
+void cn10kb_mcs_parser_cfg(struct mcs *mcs)
 {
 	u64 reg, val;
 
@@ -544,10 +548,11 @@ static void mcs_global_cfg(struct mcs *mcs)
 	mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
 
 	/* Set MCS to perform standard IEEE802.1AE macsec processing */
-	mcs_reg_write(mcs, MCSX_IP_MODE, BIT_ULL(3));
+	if (mcs->hw->mcs_blks == 1)
+		mcs_reg_write(mcs, MCSX_IP_MODE, BIT_ULL(3));
 }
 
-static void mcs_set_hw_capabilities(struct mcs *mcs)
+void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs)
 {
 	struct hwinfo *hw = mcs->hw;
 
@@ -559,6 +564,14 @@ static void mcs_set_hw_capabilities(struct mcs *mcs)
 	hw->mcs_x2p_intf = 5;		/* x2p clabration intf */
 	hw->mcs_blks = 1;		/* MCS blocks */
 }
+
+struct mcs_ops		cn10kb_mcs_ops	= {
+	.mcs_set_hw_capabilities	= cn10kb_mcs_set_hw_capabilities,
+	.mcs_parser_cfg			= cn10kb_mcs_parser_cfg,
+	.mcs_tx_sa_mem_map_write	= cn10kb_mcs_tx_sa_mem_map_write,
+	.mcs_rx_sa_mem_map_write	= cn10kb_mcs_rx_sa_mem_map_write,
+	.mcs_flowid_secy_map		= cn10kb_mcs_flowid_secy_map,
+};
 
 static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -598,8 +611,13 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mcs->pdev = pdev;
 	mcs->dev = &pdev->dev;
 
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B)
+		mcs->mcs_ops = &cn10kb_mcs_ops;
+	else
+		mcs->mcs_ops = cnf10kb_get_mac_ops();
+
 	/* Set hardware capabilities */
-	mcs_set_hw_capabilities(mcs);
+	mcs->mcs_ops->mcs_set_hw_capabilities(mcs);
 
 	mcs_global_cfg(mcs);
 
@@ -626,7 +644,7 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		mcs_lmac_init(mcs, lmac);
 
 	/* Parser configuration */
-	mcs_parser_cfg(mcs);
+	mcs->mcs_ops->mcs_parser_cfg(mcs);
 
 	list_add(&mcs->mcs_list, &mcs_list);
 	return 0;
