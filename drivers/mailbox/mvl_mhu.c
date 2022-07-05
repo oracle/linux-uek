@@ -28,15 +28,13 @@
 #include <linux/mailbox_controller.h>
 #include <linux/spinlock.h>
 
-#define MHU_PCHANS_NUM 1
+#define MHU_PCHANS_NUM	1
+#define BAR0		0
+#define SCP_INDEX	0x0
+#define DEV_AP0		0x2
+#define SCP_TO_AP_INTERRUPT	2
 
-#define BAR0 0
-#define SCP_INDEX    0x0
-#define DEV_AP0      0x2
-#define SCP_TO_AP_INTERRUPT 2
-#define DRV_NAME "mbox-thunderx"
-
-#define XCPX_DEVY_XCP_MBOX_LINT_OFFSET 0x000E1C00
+#define XCPX_DEVY_XCP_MBOX_LINT_OFFSET	0x000E1C00
 #define XCP_TO_DEV_XCP_MBOX_LINT(xcp_core, device_id)  \
 	(XCPX_DEVY_XCP_MBOX_LINT_OFFSET | \
 	((uint64_t)(xcp_core) << 36) | \
@@ -53,8 +51,8 @@
  * to the target!
  */
 
-#define DONT_CARE_DATA               0xFF
-#define XCPX_DEVY_XCP_MBOX_OFFSET    0x000E1000
+#define DONT_CARE_DATA			0xFF
+#define XCPX_DEVY_XCP_MBOX_OFFSET	0x000E1000
 #define XCP_TO_DEV_XCP_MBOX(xcp_core, device_id) \
 	(XCPX_DEVY_XCP_MBOX_OFFSET | \
 	((uint64_t)(xcp_core) << 36) | \
@@ -64,10 +62,10 @@
 #define AP0_TO_SCP_MBOX         XCP_TO_DEV_XCP_MBOX(SCP_INDEX, DEV_AP0)
 
 /*  Register offset: Enable interrupt from SCP to AP */
-#define XCP0_XCP_DEV0_MBOX_RINT_ENA_W1S 0x000D1C40
-#define XCP0_XCP_DEV1_MBOX_RINT_ENA_W1S 0x000D1C50
-#define XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S 0x000D1C60
-#define XCP0_XCP_DEV3_MBOX_RINT_ENA_W1S 0x000D1C70
+#define XCP0_XCP_DEV0_MBOX_RINT_ENA_W1S	0x000D1C40
+#define XCP0_XCP_DEV1_MBOX_RINT_ENA_W1S	0x000D1C50
+#define XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S	0x000D1C60
+#define XCP0_XCP_DEV3_MBOX_RINT_ENA_W1S	0x000D1C70
 
 /* Rx interrupt from SCP to Non-secure AP (linux kernel) */
 #define XCPX_XCP_DEVY_MBOX_RINT_OFFSET 0x000D1C00
@@ -79,7 +77,7 @@
 /* The interrupt status register */
 #define SCP_TO_AP0_MBOX_RINT  XCPX_XCP_DEVY_MBOX_RINT(SCP_INDEX, DEV_AP0)
 
-#define XCPX_XCP_DEVY_MBOX_RINT_OFFSET 0x000D1C00
+#define XCPX_XCP_DEVY_MBOX_RINT_OFFSET	0x000D1C00
 #define XCPX_XCP_DEVY_MBOX_RINT(xcp_core, device_id) \
 	(XCPX_XCP_DEVY_MBOX_RINT_OFFSET | \
 	((uint64_t)(xcp_core) << 36) | \
@@ -115,7 +113,7 @@ struct int_src_data_s {
 	uint64_t int_src_data;
 };
 
-/* Secures static data processed in the handler */
+/* Secures static data processed in the irq handler */
 DEFINE_SPINLOCK(mhu_irq_spinlock);
 
 /* bottom half of rx interrupt */
@@ -123,7 +121,7 @@ static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
 {
 	struct mhu *mhu = (struct mhu *)p;
 	struct int_src_data_s *data = (struct int_src_data_s *)mhu->payload;
-	u64 val, scmi_tx_cnt, avs_failure_cnt;
+	u64 val, scmi_tx_cnt;
 
 	/*
 	 * Local copy of event counters. A mismatch of received
@@ -134,7 +132,7 @@ static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
 
 	if (!mhu || !mhu->chan) {
 		/* Interrupt has been ACKED, but there's no client for data */
-		pr_err("No handle to MHU or mailbox\n");
+		pr_debug("No handle to MHU or mailbox\n");
 		return IRQ_HANDLED;
 	}
 
@@ -145,14 +143,6 @@ static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
 		mbox_chan_received_data(mhu->chan, (void *)&val);
 		/* Update the memory to prepare for next */
 		event_counter[INDEX_INT_SRC_SCMI_TX] = scmi_tx_cnt;
-	}
-
-	/* AVS failures */
-	avs_failure_cnt = readq(&data[INDEX_INT_SRC_AVS_STS].int_src_cnt);
-	if (event_counter[INDEX_INT_SRC_AVS_STS] != avs_failure_cnt) {
-		pr_err("!!! FATAL ERROR IN AVS BUS !!! FATAL ERROR IN AVS BUS !!!\n");
-		/* Update the memory to prepare for next */
-		event_counter[INDEX_INT_SRC_AVS_STS] = avs_failure_cnt;
 	}
 	spin_unlock_irq(&mhu_irq_spinlock);
 
@@ -364,7 +354,6 @@ static int mhu_pci_setup_irq(struct pci_dev *pdev)
 	return 0;
 
 irq_err:
-	/* In case of error, release the resources */
 	pci_free_irq_vectors(pdev);
 
 	return ret;
@@ -444,7 +433,7 @@ static struct pci_driver mhu_pci_driver = {
 static int __init mvl_mhu_init(void)
 {
 	/* The driver has two ways it can interface the hardware.
-	 * In case of SPI interrupt, the driver uses platform driver model.
+	 * In case of SPI interrupts, the driver uses platform driver model.
 	 * For LPI interrupts the driver uses basic PCI driver model.
 	 */
 	int ret;
@@ -463,9 +452,10 @@ static int __init mvl_mhu_init(void)
 	if (!ret) /* Success */
 		return 0;
 
-	pr_err("PCI driver can't be registered. (%d)\n", ret);
 	/* Handle errors */
+	pr_err("PCI driver can't be registered. (%d)\n", ret);
 	platform_driver_unregister(&mhu_plat_driver);
+
 	return ret;
 }
 module_init(mvl_mhu_init);
@@ -480,3 +470,4 @@ module_exit(mvl_mhu_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Marvell MHU Driver");
 MODULE_AUTHOR("Sujeet Baranwal <sbaranwal@marvell.com>");
+MODULE_AUTHOR("Wojciech Bartczak <wbartczak@marvell.com>");
