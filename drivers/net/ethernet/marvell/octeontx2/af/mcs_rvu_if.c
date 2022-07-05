@@ -14,6 +14,63 @@
 #include "rvu.h"
 #include "lmac_common.h"
 
+int rvu_mbox_handler_mcs_get_hw_info(struct rvu *rvu,
+				     struct msg_req *req,
+				     struct mcs_hw_info *rsp)
+{
+	struct mcs *mcs;
+
+	if (!rvu->mcs_blk_cnt)
+		return -ENODEV;
+
+	/* MCS resources are same across all blocks */
+	mcs = mcs_get_pdata(0);
+	rsp->num_mcs_blks = rvu->mcs_blk_cnt;
+	rsp->tcam_entries = mcs->hw->tcam_entries;
+	rsp->secy_entries = mcs->hw->secy_entries;
+	rsp->sc_entries = mcs->hw->sc_entries;
+	rsp->sa_entries = mcs->hw->sa_entries;
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_set_active_lmac(struct rvu *rvu,
+					 struct mcs_set_active_lmac *req,
+					 struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+	if (!mcs)
+		return -ENODEV;
+
+	mcs->hw->lmac_bmap = req->lmac_bmap;
+	return 0;
+}
+
+int rvu_mcs_flr_handler(struct rvu *rvu, u16 pcifunc)
+{
+	struct mcs *mcs;
+	int mcs_id;
+
+	/* CNF10K-B mcs0-6 are mapped to RPM2-8*/
+	if (rvu->mcs_blk_cnt > 1) {
+		for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
+			mcs = mcs_get_pdata(mcs_id);
+			mcs_free_all_rsrc(mcs, MCS_RX, pcifunc);
+			mcs_free_all_rsrc(mcs, MCS_TX, pcifunc);
+		}
+	} else {
+		/* CN10K-B has only one mcs block */
+		mcs = mcs_get_pdata(0);
+		mcs_free_all_rsrc(mcs, MCS_RX, pcifunc);
+		mcs_free_all_rsrc(mcs, MCS_TX, pcifunc);
+	}
+	return 0;
+}
+
 int rvu_mbox_handler_mcs_flowid_ena_entry(struct rvu *rvu,
 					  struct mcs_flowid_ena_dis_entry *req,
 					  struct msg_rsp *rsp)
@@ -52,7 +109,7 @@ int rvu_mbox_handler_mcs_rx_sc_sa_map_write(struct rvu *rvu,
 		return -EINVAL;
 
 	mcs = mcs_get_pdata(req->mcs_id);
-	mcs_rx_sa_mem_map_write(mcs, req);
+	mcs->mcs_ops->mcs_rx_sa_mem_map_write(mcs, req);
 	return 0;
 }
 
@@ -66,7 +123,7 @@ int rvu_mbox_handler_mcs_tx_sc_sa_map_write(struct rvu *rvu,
 		return -EINVAL;
 
 	mcs = mcs_get_pdata(req->mcs_id);
-	mcs_tx_sa_mem_map_write(mcs, req);
+	mcs->mcs_ops->mcs_tx_sa_mem_map_write(mcs, req);
 	return 0;
 }
 
@@ -137,7 +194,7 @@ int rvu_mbox_handler_mcs_flowid_entry_write(struct rvu *rvu,
 	map.ctrl_pkt = req->ctrl_pkt;
 	map.flow_id = req->flow_id;
 	map.sci = req->sci;
-	mcs_flowid_secy_map(mcs, &map, req->dir);
+	mcs->mcs_ops->mcs_flowid_secy_map(mcs, &map, req->dir);
 	if (req->ena)
 		mcs_ena_dis_flowid_entry(mcs, req->flow_id,
 					 req->dir, true);
@@ -296,7 +353,7 @@ static void rvu_mcs_set_lmac_bmap(struct rvu *rvu)
 int rvu_mcs_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	int lmac, err = 0;
+	int lmac, err = 0, mcs_id;
 	struct mcs *mcs;
 
 	rvu->mcs_blk_cnt = mcs_get_blkcnt();
@@ -304,21 +361,21 @@ int rvu_mcs_init(struct rvu *rvu)
 	if (!rvu->mcs_blk_cnt)
 		return 0;
 
-	err = mcs_set_lmac_channels(hw->cgx_chan_base);
+	/* Needed only for CN10K-B */
+	if (rvu->mcs_blk_cnt == 1) {
+		err = mcs_set_lmac_channels(hw->cgx_chan_base);
+		if (err)
+			return err;
+		/* Set active lmacs */
+		rvu_mcs_set_lmac_bmap(rvu);
+	}
 
-	if (err)
-		return err;
-
-	/* Set active lmacs */
-	rvu_mcs_set_lmac_bmap(rvu);
-
-	/* Install default tcam bypass entry */
-	mcs_install_flowid_bypass_entry(mcs);
-
-	mcs = mcs_get_pdata(0);
-
-	/* Set mcs port to operational mode */
-	for_each_set_bit(lmac, &mcs->hw->lmac_bmap, mcs->hw->lmac_cnt)
-		mcs_set_lmac_mode(mcs, lmac);
+	/* Install default tcam bypass entry and set port ot operational mode */
+	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
+		mcs = mcs_get_pdata(mcs_id);
+		mcs_install_flowid_bypass_entry(mcs);
+		for_each_set_bit(lmac, &mcs->hw->lmac_bmap, mcs->hw->lmac_cnt)
+			mcs_set_lmac_mode(mcs, lmac);
+	}
 	return 0;
 }

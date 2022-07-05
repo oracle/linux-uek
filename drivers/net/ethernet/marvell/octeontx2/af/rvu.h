@@ -29,6 +29,7 @@
 #define PCI_SUBSYS_DEVID_CN10K_A	       0xB900
 #define PCI_SUBSYS_DEVID_CNF10K_A	       0xBA00
 #define PCI_SUBSYS_DEVID_CNF10K_B	       0xBC00
+#define PCI_SUBSYS_DEVID_CN10K_B	       0xBD00
 
 /* PCI BAR nos */
 #define	PCI_AF_REG_BAR_NUM			0
@@ -1000,5 +1001,5 @@ void rvu_switch_update_rules(struct rvu *rvu, u16 pcifunc);
 
 /* CN10K MCS */
 int rvu_mcs_init(struct rvu *rvu);
-
+int rvu_mcs_flr_handler(struct rvu *rvu, u16 pcifunc);
 #endif /* RVU_H */
