@@ -33,6 +33,81 @@ int rvu_mbox_handler_mcs_get_hw_info(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_mcs_get_flowid_stats(struct rvu *rvu,
+					  struct mcs_stats_req *req,
+					  struct mcs_flowid_stats *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+	mcs_get_flowid_stats(mcs, rsp, req->id, req->dir);
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_get_secy_stats(struct rvu *rvu,
+					struct mcs_stats_req *req,
+					struct mcs_secy_stats *rsp)
+{	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	if (req->dir == MCS_RX)
+		mcs_get_rx_secy_stats(mcs, rsp, req->id);
+	else
+		mcs_get_tx_secy_stats(mcs, rsp, req->id);
+
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_get_sc_stats(struct rvu *rvu,
+				      struct mcs_stats_req *req,
+				      struct mcs_sc_stats *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+	mcs_get_sc_stats(mcs, rsp, req->id, req->dir);
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_get_sa_stats(struct rvu *rvu,
+				      struct mcs_stats_req *req,
+				      struct mcs_sa_stats *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+	mcs_get_sa_stats(mcs, rsp, req->id, req->dir);
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_get_port_stats(struct rvu *rvu,
+					struct mcs_stats_req *req,
+					struct mcs_port_stats *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	mcs_get_port_stats(mcs, rsp, req->id, req->dir);
+	return 0;
+}
+
 int rvu_mbox_handler_mcs_set_active_lmac(struct rvu *rvu,
 					 struct mcs_set_active_lmac *req,
 					 struct msg_rsp *rsp)
