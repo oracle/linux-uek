@@ -9,6 +9,7 @@
 
 #include <linux/of_address.h>
 #include <linux/arm_sdei.h>
+#include <acpi/acpi_io.h>
 #include <acpi/apei.h>
 #include <linux/arm-smccc.h>
 #include "edac_mc.h"
