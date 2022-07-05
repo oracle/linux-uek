@@ -132,6 +132,12 @@ static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
 	 */
 	static u64 event_counter[INDEX_INT_SRC_NONE] = {0};
 
+	if (!mhu || !mhu->chan) {
+		/* Interrupt has been ACKED, but there's no client for data */
+		pr_err("No handle to MHU or mailbox\n");
+		return IRQ_HANDLED;
+	}
+
 	spin_lock_irq(&mhu_irq_spinlock);
 	/* scmi interrupt */
 	scmi_tx_cnt = readq(&data[INDEX_INT_SRC_SCMI_TX].int_src_cnt);
@@ -190,7 +196,19 @@ static bool mhu_last_tx_done(struct mbox_chan *chan)
 	return status != 0;
 }
 
+static int mhu_startup(struct mbox_chan *chan)
+{
+	struct mhu *mhu = chan->con_priv;
+
+	/* Enable interrupts only if there is client for data */
+	writeq_relaxed(1ul, mhu->base + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
+
+	return 0;
+}
+
+
 static const struct mbox_chan_ops mhu_chan_ops = {
+	.startup = mhu_startup,
 	.send_data = mhu_send_data,
 	.last_tx_done = mhu_last_tx_done,
 };
@@ -259,8 +277,6 @@ static int mhu_plat_setup_irq(struct platform_device *pdev)
 					"mvl-mhu", mhu);
 	if (ret)
 		return ret;
-
-	writeq_relaxed(1ul, mhu->base + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
 
 	return 0;
 }
@@ -344,8 +360,6 @@ static int mhu_pci_setup_irq(struct pci_dev *pdev)
 					"mvl-mhu", mhu);
 	if (ret)
 		goto irq_err;
-
-	writeq_relaxed(1ul, mhu->base + XCP0_XCP_DEV2_MBOX_RINT_ENA_W1S);
 
 	return 0;
 
