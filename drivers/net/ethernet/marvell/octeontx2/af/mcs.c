@@ -25,6 +25,184 @@ static const struct pci_device_id mcs_id_table[] = {
 
 static LIST_HEAD(mcs_list);
 
+void mcs_pn_table_write(struct mcs *mcs, u8 pn_id, u64 next_pn, u8 dir)
+{
+	u64 reg;
+
+	if (dir == MCS_RX)
+		reg = MCSX_CPM_RX_SLAVE_SA_PN_TABLE_MEMX(pn_id);
+	else
+		reg = MCSX_CPM_TX_SLAVE_SA_PN_TABLE_MEMX(pn_id);
+	mcs_reg_write(mcs, reg, next_pn);
+}
+
+void mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map)
+{
+	u64 reg, val;
+
+	val = (map->sa_index0 & 0xFF) |
+	      (map->sa_index1 & 0xFF) << 9 |
+	      (map->rekey_ena & 0x1) << 18 |
+	      (map->sa_index0_vld & 0x1) << 19 |
+	      (map->sa_index1_vld & 0x1) << 20 |
+	      (map->tx_sa_active & 0x1) << 21 |
+	      map->sectag_sci << 22;
+	reg = MCSX_CPM_TX_SLAVE_SA_MAP_MEM_0X(map->sc_id);
+	mcs_reg_write(mcs, reg, val);
+
+	val = map->sectag_sci >> 42;
+	reg = MCSX_CPM_TX_SLAVE_SA_MAP_MEM_1X(map->sc_id);
+	mcs_reg_write(mcs, reg, val);
+}
+
+void mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map)
+{
+	u64 val, reg;
+
+	val = (map->sa_index & 0xFF) | map->sa_in_use << 9;
+
+	reg = MCSX_CPM_RX_SLAVE_SA_MAP_MEMX(map->sc_id + map->an);
+	mcs_reg_write(mcs, reg, val);
+}
+
+void mcs_sa_plcy_write(struct mcs *mcs, u64 *plcy, int sa_id, int dir)
+{
+	int reg_id;
+	u64 reg;
+
+	if (dir == MCS_RX) {
+		for (reg_id = 0; reg_id < 8; reg_id++) {
+			reg =  MCSX_CPM_RX_SLAVE_SA_PLCY_MEMX(reg_id, sa_id);
+			mcs_reg_write(mcs, reg, plcy[reg_id]);
+		}
+	} else {
+		for (reg_id = 0; reg_id < 9; reg_id++) {
+			reg =  MCSX_CPM_TX_SLAVE_SA_PLCY_MEMX(reg_id, sa_id);
+			mcs_reg_write(mcs, reg, plcy[reg_id]);
+		}
+	}
+}
+
+void mcs_ena_dis_sc_cam_entry(struct mcs *mcs, int sc_id, int ena)
+{
+	u64 reg, val;
+
+	reg = MCSX_CPM_RX_SLAVE_SC_CAM_ENA(0);
+	if (sc_id > 63)
+		reg = MCSX_CPM_RX_SLAVE_SC_CAM_ENA(1);
+
+	if (ena)
+		val = mcs_reg_read(mcs, reg) | BIT_ULL(sc_id);
+	else
+		val = mcs_reg_read(mcs, reg) & ~BIT_ULL(sc_id);
+
+	mcs_reg_write(mcs, reg, val);
+}
+
+void mcs_rx_sc_cam_write(struct mcs *mcs, u64 sci, u64 secy, int sc_id)
+{
+	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SC_CAMX(0, sc_id), sci);
+	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SC_CAMX(1, sc_id), secy);
+	/* Enable SC CAM */
+	mcs_ena_dis_sc_cam_entry(mcs, sc_id, true);
+}
+
+void mcs_secy_plcy_write(struct mcs *mcs, u64 plcy, int secy_id, int dir)
+{
+	u64 reg;
+
+	if (dir == MCS_RX)
+		reg = MCSX_CPM_RX_SLAVE_SECY_PLCY_MEM_0X(secy_id);
+	else
+		reg = MCSX_CPM_TX_SLAVE_SECY_PLCY_MEMX(secy_id);
+
+	mcs_reg_write(mcs, reg, plcy);
+
+	if (dir == MCS_RX)
+		mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SECY_PLCY_MEM_1X(secy_id), 0x0ull);
+}
+
+void mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir)
+{
+	u64 reg, val;
+
+	val = (map->secy & 0x7F) | (map->ctrl_pkt & 0x1) << 8;
+	if (dir == MCS_RX) {
+		reg = MCSX_CPM_RX_SLAVE_SECY_MAP_MEMX(map->flow_id);
+	} else {
+		val |= (map->sc & 0x7F) << 9;
+		reg = MCSX_CPM_TX_SLAVE_SECY_MAP_MEM_0X(map->flow_id);
+	}
+
+	mcs_reg_write(mcs, reg, val);
+}
+
+void mcs_ena_dis_flowid_entry(struct mcs *mcs, int flow_id, int dir, int ena)
+{
+	u64 reg, val;
+
+	if (dir == MCS_RX) {
+		reg = MCSX_CPM_RX_SLAVE_FLOWID_TCAM_ENA_0;
+		if (flow_id > 63)
+			reg = MCSX_CPM_RX_SLAVE_FLOWID_TCAM_ENA_1;
+	} else {
+		reg = MCSX_CPM_TX_SLAVE_FLOWID_TCAM_ENA_0;
+		if (flow_id > 63)
+			reg = MCSX_CPM_TX_SLAVE_FLOWID_TCAM_ENA_1;
+	}
+
+	/* Enable/Disable the tcam entry */
+	if (ena)
+		val = mcs_reg_read(mcs, reg) | BIT_ULL(flow_id);
+	else
+		val = mcs_reg_read(mcs, reg) & ~BIT_ULL(flow_id);
+
+	mcs_reg_write(mcs, reg, val);
+}
+
+void mcs_flowid_entry_write(struct mcs *mcs, u64 *data, u64 *mask, int flow_id, int dir)
+{
+	int reg_id;
+	u64 reg;
+
+	if (dir == MCS_RX) {
+		for (reg_id = 0; reg_id < 4; reg_id++) {
+			reg = MCSX_CPM_RX_SLAVE_FLOWID_TCAM_DATAX(reg_id, flow_id);
+			mcs_reg_write(mcs, reg, data[reg_id]);
+			reg = MCSX_CPM_RX_SLAVE_FLOWID_TCAM_MASKX(reg_id, flow_id);
+			mcs_reg_write(mcs, reg, mask[reg_id]);
+		}
+	} else {
+		for (reg_id = 0; reg_id < 4; reg_id++) {
+			reg = MCSX_CPM_TX_SLAVE_FLOWID_TCAM_DATAX(reg_id, flow_id);
+			mcs_reg_write(mcs, reg, data[reg_id]);
+			reg = MCSX_CPM_TX_SLAVE_FLOWID_TCAM_MASKX(reg_id, flow_id);
+			mcs_reg_write(mcs, reg, mask[reg_id]);
+		}
+	}
+}
+
+void mcs_clear_secy_plcy(struct mcs *mcs, int secy_id, int dir)
+{
+	struct mcs_rsrc_map *map;
+	int flow_id;
+
+	if (dir == MCS_RX)
+		map = &mcs->rx;
+	else
+		map = &mcs->tx;
+
+	/* Clear secy memory to zero */
+	mcs_secy_plcy_write(mcs, 0, secy_id, dir);
+
+	/* Disable the tcam entry using this secy */
+	for (flow_id = 0; flow_id < map->flow_ids.max; flow_id++) {
+		if (map->flowid2secy_map[flow_id] != secy_id)
+			continue;
+		mcs_ena_dis_flowid_entry(mcs, flow_id, dir, false);
+	}
+}
+
 int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc)
 {
 	/* Check if the rsrc_id is mapped to PF/VF */
@@ -53,6 +231,7 @@ int mcs_free_all_rsrc(struct mcs *mcs, int dir, u16 pcifunc)
 			continue;
 		mcs_free_rsrc(&map->flow_ids, map->flowid2pf_map,
 			      id, pcifunc);
+		mcs_ena_dis_flowid_entry(mcs, id, dir, false);
 	}
 
 	/* free secy entries */
@@ -61,6 +240,7 @@ int mcs_free_all_rsrc(struct mcs *mcs, int dir, u16 pcifunc)
 			continue;
 		mcs_free_rsrc(&map->secy, map->secy2pf_map,
 			      id, pcifunc);
+		mcs_clear_secy_plcy(mcs, id, dir);
 	}
 
 	/* free sc entries */
@@ -68,6 +248,10 @@ int mcs_free_all_rsrc(struct mcs *mcs, int dir, u16 pcifunc)
 		if (map->sc2pf_map[id] != pcifunc)
 			continue;
 		mcs_free_rsrc(&map->sc, map->sc2pf_map, id, pcifunc);
+
+		/* Disable SC CAM only on RX side */
+		if (dir == MCS_RX)
+			mcs_ena_dis_sc_cam_entry(mcs, id, false);
 	}
 
 	/* free sa entries */

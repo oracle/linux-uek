@@ -21,6 +21,20 @@
 /* Reserved resources for default bypass entry */
 #define MCS_RSRC_RSVD_CNT		1
 
+struct sc_mem_map {
+	u64 sci;
+	u8 secy_id;
+	u8 sc_id;
+};
+
+struct secy_mem_map {
+	u8 flow_id;
+	u8 secy;
+	u8 ctrl_pkt;
+	u8 sc;
+	u64 sci;
+};
+
 struct mcs_rsrc_map {
 	u16 *flowid2pf_map;
 	u16 *secy2pf_map;
@@ -76,6 +90,16 @@ int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc)
 int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flowid, u8 *secy_id,
 		       u8 *sc_id, u8 *sa_id, u16 pcifunc, int dir);
 int mcs_free_all_rsrc(struct mcs *mcs, int dir, u16 pcifunc);
+void mcs_clear_secy_plcy(struct mcs *mcs, int secy_id, int dir);
 void mcs_ena_dis_flowid_entry(struct mcs *mcs, int id, int dir, int ena);
 void mcs_ena_dis_sc_cam_entry(struct mcs *mcs, int id, int ena);
+void mcs_flowid_entry_write(struct mcs *mcs, u64 *data, u64 *mask, int id, int dir);
+void mcs_secy_plcy_write(struct mcs *mcs, u64 plcy, int id, int dir);
+void mcs_rx_sc_cam_write(struct mcs *mcs, u64 sci, u64 secy, int sc_id);
+void mcs_sa_plcy_write(struct mcs *mcs, u64 *plcy, int sa, int dir);
+void mcs_map_sc_to_sa(struct mcs *mcs, u64 *sa_map, int sc, int dir);
+void mcs_pn_table_write(struct mcs *mcs, u8 pn_id, u64 next_pn, u8 dir);
+void mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map);
+void mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir);
+void mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map);
 #endif /* MCS_H */
