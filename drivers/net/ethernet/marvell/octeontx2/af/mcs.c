@@ -25,23 +25,102 @@ static const struct pci_device_id mcs_id_table[] = {
 
 static LIST_HEAD(mcs_list);
 
-int mcs_get_blkcnt(void)
+int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc)
 {
-	struct mcs *mcs;
-	int idmax = -ENODEV;
+	/* Check if the rsrc_id is mapped to PF/VF */
+	if (pf_map[rsrc_id] != pcifunc)
+		return -EINVAL;
 
-	/* Check MCS block is present in hardware */
-	if (!pci_dev_present(mcs_id_table))
-		return 0;
+	rvu_free_rsrc(rsrc, rsrc_id);
+	pf_map[rsrc_id] = 0;
+	return 0;
+}
 
-	list_for_each_entry(mcs, &mcs_list, mcs_list)
-		if (mcs->mcs_id > idmax)
-			idmax = mcs->mcs_id;
+/* Free all the cam resources mapped to pf */
+int mcs_free_all_rsrc(struct mcs *mcs, int dir, u16 pcifunc)
+{
+	struct mcs_rsrc_map *map;
+	int id;
 
-	if (idmax < 0)
-		return 0;
+	if (dir == MCS_RX)
+		map = &mcs->rx;
+	else
+		map = &mcs->tx;
 
-	return idmax + 1;
+	/* free tcam entries */
+	for (id = 0; id < map->flow_ids.max; id++) {
+		if (map->flowid2pf_map[id] != pcifunc)
+			continue;
+		mcs_free_rsrc(&map->flow_ids, map->flowid2pf_map,
+			      id, pcifunc);
+	}
+
+	/* free secy entries */
+	for (id = 0; id < map->secy.max; id++) {
+		if (map->secy2pf_map[id] != pcifunc)
+			continue;
+		mcs_free_rsrc(&map->secy, map->secy2pf_map,
+			      id, pcifunc);
+	}
+
+	/* free sc entries */
+	for (id = 0; id < map->secy.max; id++) {
+		if (map->sc2pf_map[id] != pcifunc)
+			continue;
+		mcs_free_rsrc(&map->sc, map->sc2pf_map, id, pcifunc);
+	}
+
+	/* free sa entries */
+	for (id = 0; id < map->sa.max; id++) {
+		if (map->sa2pf_map[id] != pcifunc)
+			continue;
+		mcs_free_rsrc(&map->sa, map->sa2pf_map, id, pcifunc);
+	}
+	return 0;
+}
+
+int mcs_alloc_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, u16 pcifunc)
+{
+	int rsrc_id;
+
+	rsrc_id = rvu_alloc_rsrc(rsrc);
+	if (rsrc_id < 0)
+		return -ENOMEM;
+	pf_map[rsrc_id] = pcifunc;
+	return rsrc_id;
+}
+
+int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flow_id, u8 *secy_id,
+		       u8 *sc_id, u8 *sa_id, u16 pcifunc, int dir)
+{
+	struct mcs_rsrc_map *map;
+	int id;
+
+	if (dir == MCS_RX)
+		map = &mcs->rx;
+	else
+		map = &mcs->tx;
+
+	id = mcs_alloc_rsrc(&map->flow_ids, map->flowid2pf_map, pcifunc);
+	if (id < 0)
+		return -ENOMEM;
+	*flow_id = id;
+
+	id = mcs_alloc_rsrc(&map->secy, map->secy2pf_map, pcifunc);
+	if (id < 0)
+		return -ENOMEM;
+	*secy_id = id;
+
+	id = mcs_alloc_rsrc(&map->sc, map->sc2pf_map, pcifunc);
+	if (id < 0)
+		return -ENOMEM;
+	*sc_id = id;
+
+	id =  mcs_alloc_rsrc(&map->sa, map->sa2pf_map, pcifunc);
+	if (id < 0)
+		return -ENOMEM;
+	*sa_id = id;
+	return 0;
 }
 
 static void *alloc_mem(struct mcs *mcs, int n)
@@ -95,6 +174,25 @@ static int mcs_alloc_struct_mem(struct mcs *mcs, struct mcs_rsrc_map *res)
 		return err;
 
 	return 0;
+}
+
+int mcs_get_blkcnt(void)
+{
+	struct mcs *mcs;
+	int idmax = -ENODEV;
+
+	/* Check MCS block is present in hardware */
+	if (!pci_dev_present(mcs_id_table))
+		return 0;
+
+	list_for_each_entry(mcs, &mcs_list, mcs_list)
+		if (mcs->mcs_id > idmax)
+			idmax = mcs->mcs_id;
+
+	if (idmax < 0)
+		return 0;
+
+	return idmax + 1;
 }
 
 struct mcs *mcs_get_pdata(int mcs_id)
