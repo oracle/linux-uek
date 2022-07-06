@@ -250,18 +250,13 @@ out:
 static void
 rds_ib_check_rnr_timer(struct rds_ib_connection *ic)
 {
-	struct ib_device *ibdev = ic->rds_ibdev->dev;
 	struct ib_qp_init_attr qp_init_attr;
 	struct ib_qp_attr attr;
 	int nmbr_checks = 1;
 	int sts;
 
-	/* Mitigaton for a bug in CX-5, RoCE mode, where the RNR Retry
-	 * Timer is not set correctly. Currently, Oracle only uses
-	 * ethernet link-layer in CX-5, hence this simple check.
-	 */
-
-	if (rdma_port_get_link_layer(ibdev, ic->i_cm_id->port_num) != IB_LINK_LAYER_ETHERNET)
+	/* RNR Retry Timer check with firmware version */
+	if (!(ic->rds_ibdev->i_work_arounds & RDS_IB_DEV_WA_INCORRECT_RNR_TIMER))
 		return;
 
 check_again:
