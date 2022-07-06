@@ -50,6 +50,7 @@ unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
 bool prefer_frwr;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 unsigned int rds_ib_cache_gc_interval = RDS_IB_DEFAULT_CACHE_GC_INTERVAL;
+const u64 fw_ver_16_32_1010 = (((u64)16 << 32) | ((u64)32 << 16) | (u64)1010);
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -1249,6 +1250,16 @@ int rds_ib_add_one(struct ib_device *device)
 	atomic_inc(&rds_ib_devices_to_free);
 
 	rds_ibdev->dev = device;
+
+	/* RNR Retry Timer check with firmware version */
+	if (rds_ibdev->dev->attrs.vendor_id == 0x02c9 && /* IEEE OUI - Mellanox vendor ID */
+	    (rds_ibdev->dev->attrs.vendor_part_id == 0x1017 ||  /* ConnectX-5, PCIe 3.0 */
+	     rds_ibdev->dev->attrs.vendor_part_id == 0x1018 ||  /* ConnectX-5 VF */
+	     rds_ibdev->dev->attrs.vendor_part_id == 0x1019 ||  /* ConnectX-5 Ex */
+	     rds_ibdev->dev->attrs.vendor_part_id == 0x101a) && /* ConnectX-5 Ex VF */
+	    rds_ibdev->dev->attrs.fw_ver < fw_ver_16_32_1010)
+		rds_ibdev->i_work_arounds |= RDS_IB_DEV_WA_INCORRECT_RNR_TIMER;
+
 	rds_ibdev->pd = ib_alloc_pd(device, 0);
 	if (IS_ERR(rds_ibdev->pd)) {
 		error = PTR_ERR(rds_ibdev->pd);
