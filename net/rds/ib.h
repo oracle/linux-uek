@@ -493,6 +493,13 @@ struct rds_ib_device {
 
 	struct work_struct	rid_dev_rem_work;
 	struct completion	*rid_dev_rem_complete;
+
+	unsigned int            i_work_arounds;
+};
+
+/* Bitmasks for designated work-arounds */
+enum rds_ib_dev_work_arounds {
+	RDS_IB_DEV_WA_INCORRECT_RNR_TIMER        = 1 << 0,
 };
 
 #define rdsibdev_to_node(rdsibdev) ibdev_to_node(rdsibdev->dev)
