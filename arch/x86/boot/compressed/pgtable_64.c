@@ -98,6 +98,13 @@ static unsigned long find_trampoline_placement(void)
 	return bios_start - TRAMPOLINE_32BIT_SIZE;
 }
 
+static bool is_amd(void)
+{
+	return native_cpuid_ebx(0) == 0x68747541 &&
+	       native_cpuid_ecx(0) == 0x444d4163 &&
+               native_cpuid_edx(0) == 0x69746e65;
+}
+
 struct paging_config paging_prepare(void *rmode)
 {
 	struct paging_config paging_config = {};
@@ -114,10 +121,12 @@ struct paging_config paging_prepare(void *rmode)
 	 *   - if the machine supports 5-level paging:
 	 *     + CPUID leaf 7 is supported
 	 *     + the leaf has the feature bit set
+	 *   - if the processor is not AMD
 	 *
 	 * That's substitute for boot_cpu_has() in early boot code.
 	 */
 	if (IS_ENABLED(CONFIG_X86_5LEVEL) &&
+			!is_amd() &&
 			!cmdline_find_option_bool("no5lvl") &&
 			native_cpuid_eax(0) >= 7 &&
 			(native_cpuid_ecx(7) & (1 << (X86_FEATURE_LA57 & 31)))) {
