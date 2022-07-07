@@ -854,8 +854,13 @@ static void __init retbleed_select_mitigation(void)
 		break;
 
 	case RETBLEED_CMD_IBPB:
-		retbleed_mitigation = RETBLEED_MITIGATION_IBPB;
-		break;
+		if (!boot_cpu_has(X86_FEATURE_IBPB)) {
+			pr_err("WARNING: CPU does not support IBPB.\n");
+		} else {
+			retbleed_mitigation = RETBLEED_MITIGATION_IBPB;
+			break;
+		}
+		fallthrough;
 
 	case RETBLEED_CMD_AUTO:
 	default:
