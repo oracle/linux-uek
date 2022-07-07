@@ -1445,7 +1445,7 @@ static int handle_tx_rx(struct cdns_xspi_dev *cdns_xspi, void *tx_buf,
 
 	cdns_xspi_set_interrupts(cdns_xspi, true);
 
-	cdns_xspi->in_buffer = rx_buf;
+	cdns_xspi->in_buffer = rx_buf + write_len;
 	cdns_xspi->out_buffer = tx_buf + 10;
 
 	cdns_xspi_prepare_generic(cdns_xspi->cur_cs, tx_buf, write_len, glue_command, cmd_regs);
