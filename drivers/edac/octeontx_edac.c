@@ -241,7 +241,7 @@ static void octeontx_edac_mc_sdei_wq(struct work_struct *work)
 			offset_in_page(rec.cper.mem.physical_addr),
 			0, -1, -1, -1, ring->fru_text, mci->ctl_name);
 
-	if (acpi_disabled) {
+	if (acpi_disabled && IS_ENABLED(CONFIG_ACPI)) {
 		cper_estatus_print(HW_ERR, &rec.estatus);
 	} else {
 		memcpy_toio(gsrc->esb_va->gdata.fru_text, rec.gdata.fru_text,
@@ -730,7 +730,8 @@ static int __init octeontx_edac_ghes_probe(struct platform_device *pdev)
 		ret = octeontx_edac_ghes_acpi_match_resource(pdev);
 	} else {
 		otx_printk(KERN_DEBUG, "%s DeviceTree\n", __func__);
-		acpi_permanent_mmap = true;
+		if (IS_ENABLED(CONFIG_ACPI))
+			acpi_permanent_mmap = true;
 		set_bit(EFI_MEMMAP, &efi.flags);
 		ret = octeontx_edac_ghes_of_match_resource(pdev);
 	}
