@@ -1159,7 +1159,7 @@ static int __init retbleed_parse_cmdline(char *str)
 early_param("retbleed", retbleed_parse_cmdline);
 
 #define RETBLEED_UNTRAIN_MSG "WARNING: BTB untrained return thunk mitigation is only effective on AMD/Hygon!\n"
-#define RETBLEED_COMPILER_MSG "WARNING: kernel not compiled with RETPOLINE or -mfunction-return capable compiler; falling back to IBPB!\n"
+#define RETBLEED_COMPILER_MSG "WARNING: kernel not compiled with RETPOLINE or -mfunction-return capable compiler; will fall back to IBPB (if supported!)\n"
 #define RETBLEED_INTEL_MSG "WARNING: Spectre v2 mitigation leaves CPU vulnerable to RETBleed attacks, data leaks possible!\n"
 
 static void __init retbleed_select_mitigation(void)
@@ -1178,8 +1178,13 @@ static void __init retbleed_select_mitigation(void)
 		break;
 
 	case RETBLEED_CMD_IBPB:
-		retbleed_mitigation = RETBLEED_MITIGATION_IBPB;
-		break;
+		if (!boot_cpu_has(X86_FEATURE_IBPB)) {
+			pr_err("WARNING: CPU does not support IBPB.\n");
+		} else {
+			retbleed_mitigation = RETBLEED_MITIGATION_IBPB;
+			break;
+		}
+		fallthrough;
 
 	case RETBLEED_CMD_AUTO:
 	default:
@@ -1202,8 +1207,11 @@ static void __init retbleed_select_mitigation(void)
 		if (!IS_ENABLED(CONFIG_RETPOLINE) ||
 		    !IS_ENABLED(CONFIG_CC_HAS_RETURN_THUNK)) {
 			pr_err(RETBLEED_COMPILER_MSG);
-			retbleed_mitigation = RETBLEED_MITIGATION_IBPB;
-			goto retbleed_force_ibpb;
+
+			if (boot_cpu_has(X86_FEATURE_IBPB)) {
+				retbleed_mitigation = RETBLEED_MITIGATION_IBPB;
+				goto retbleed_force_ibpb;
+			}
 		}
 
 		setup_force_cpu_cap(X86_FEATURE_RETHUNK);
