@@ -7,11 +7,12 @@
 #include <linux/linkage.h>
 #include <asm/page_types.h>
 #include <asm/kexec.h>
+#include <asm/nospec-branch.h>
 #include <asm/processor-flags.h>
 
 /*
  * Must be relocatable PIC code callable as a C function, in particular
- * we must have direct 'ret' and not jump to return thunk.
+ * there must be a plain RET and not jump to return thunk.
  */
 
 #define PTR(x) (x << 2)

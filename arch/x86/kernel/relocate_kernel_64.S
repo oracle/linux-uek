@@ -14,7 +14,7 @@
 
 /*
  * Must be relocatable PIC code callable as a C function, in particular
- * we have must direct 'ret' and not jump to return thunk.
+ * there must be a plain RET and not jump to return thunk.
  */
 
 #define PTR(x) (x << 3)
