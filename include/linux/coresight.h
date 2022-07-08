@@ -281,6 +281,7 @@ static struct coresight_dev_list (var) = {				\
  * @alloc_buffer:	initialises perf's ring buffer for trace collection.
  * @free_buffer:	release memory allocated in @get_config.
  * @update_buffer:	update buffer pointers after a trace session.
+ * @kdump_sync:		Sync sink info for kdump kernel
  */
 struct coresight_ops_sink {
 	int (*enable)(struct coresight_device *csdev, u32 mode, void *data);
@@ -292,6 +293,8 @@ struct coresight_ops_sink {
 	unsigned long (*update_buffer)(struct coresight_device *csdev,
 			      struct perf_output_handle *handle,
 			      void *sink_config);
+
+	void (*kdump_sync)(void *perfbuf, void *kdump_ctxt);
 };
 
 /**
@@ -314,6 +317,7 @@ struct coresight_ops_link {
  *		to the HW.
  * @enable:	enables tracing for a source.
  * @disable:	disables tracing for a source.
+ * @kdump_sync:	Sync source info for kdump kernel
  */
 struct coresight_ops_source {
 	int (*cpu_id)(struct coresight_device *csdev);
@@ -322,6 +326,7 @@ struct coresight_ops_source {
 		      struct perf_event *event,  u32 mode);
 	void (*disable)(struct coresight_device *csdev,
 			struct perf_event *event);
+	void (*kdump_sync)(void *csdev, void *kdump_ctxt);
 };
 
 /**
