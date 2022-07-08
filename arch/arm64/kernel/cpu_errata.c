@@ -1131,6 +1131,13 @@ ssize_t cpu_show_spectre_v2(struct device *dev, struct device_attribute *attr,
 	}
 }
 
+/* Retbleed is covered by the Spectre-v2 mitigations. */
+ssize_t cpu_show_retbleed(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	return cpu_show_spectre_v2(dev, attr, buf);
+}
+
 ssize_t cpu_show_spec_store_bypass(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
