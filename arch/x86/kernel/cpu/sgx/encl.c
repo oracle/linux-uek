@@ -958,7 +958,6 @@ static int sgx_encl_get_backing(struct sgx_encl *encl, unsigned long page_index,
 		return PTR_ERR(pcmd);
 	}
 
-	backing->page_index = page_index;
 	backing->contents = contents;
 	backing->pcmd = pcmd;
 	backing->pcmd_offset = page_pcmd_off & (PAGE_SIZE - 1);
