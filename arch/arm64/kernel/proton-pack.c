@@ -151,6 +151,13 @@ ssize_t cpu_show_spectre_v2(struct device *dev, struct device_attribute *attr,
 	}
 }
 
+/* Retbleed is covered by the Spectre-v2 mitigations. */
+ssize_t cpu_show_retbleed(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	return cpu_show_spectre_v2(dev, attr, buf);
+}
+
 static enum mitigation_state spectre_v2_get_cpu_hw_mitigation_state(void)
 {
 	u64 pfr0;
