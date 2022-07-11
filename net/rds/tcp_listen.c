@@ -238,8 +238,8 @@ rst_nsk:
 	ret = 0;
 out:
 	if (ret)
-		trace_rds_tcp_accept_err(conn, cp, rs_tcp, sock->sk, reason,
-					 ret);
+		trace_rds_tcp_accept_err(conn, cp, rs_tcp,
+					 sock ? sock->sk : NULL, reason, ret);
 	else
 		trace_rds_tcp_accept(conn, cp, rs_tcp, sock->sk, "accept", ret);
 	if (rs_tcp)
