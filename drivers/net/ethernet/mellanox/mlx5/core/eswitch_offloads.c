@@ -2178,10 +2178,8 @@ out_free:
 static int esw_offloads_start(struct mlx5_eswitch *esw,
 			      struct netlink_ext_ack *extack)
 {
-	struct devlink *devlink = priv_to_devlink(esw->dev);
 	int err, err1;
 
-	devl_lock(devlink);
 	esw->mode = MLX5_ESWITCH_OFFLOADS;
 	err = mlx5_eswitch_enable_locked(esw, esw->dev->priv.sriov.num_vfs);
 	if (err) {
@@ -2203,7 +2201,6 @@ static int esw_offloads_start(struct mlx5_eswitch *esw,
 					   "Inline mode is different between vports");
 		}
 	}
-	devl_unlock(devlink);
 	return err;
 }
 
@@ -3248,10 +3245,8 @@ err_metadata:
 static int esw_offloads_stop(struct mlx5_eswitch *esw,
 			     struct netlink_ext_ack *extack)
 {
-	struct devlink *devlink = priv_to_devlink(esw->dev);
 	int err, err1;
 
-	devl_lock(devlink);
 	esw->mode = MLX5_ESWITCH_LEGACY;
 	err = mlx5_eswitch_enable_locked(esw, MLX5_ESWITCH_IGNORE_NUM_VFS);
 	if (err) {
@@ -3263,7 +3258,6 @@ static int esw_offloads_stop(struct mlx5_eswitch *esw,
 					   "Failed setting eswitch back to offloads");
 		}
 	}
-	devl_unlock(devlink);
 
 	return err;
 }
@@ -3371,15 +3365,6 @@ int mlx5_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
 	if (esw_mode_from_devlink(mode, &mlx5_mode))
 		return -EINVAL;
 
-	/* FIXME: devl_unlock() followed by devl_lock() inside driver callback
-	 * is never correct and prone to races. It's a transitional workaround,
-	 * never repeat this pattern.
-	 *
-	 * This code MUST be fixed before removing devlink_mutex as it is safe
-	 * to do only because of that mutex.
-	 */
-	devl_unlock(devlink);
-
 	mlx5_lag_disable_change(esw->dev);
 	err = mlx5_esw_try_lock(esw);
 	if (err < 0) {
@@ -3392,9 +3377,7 @@ int mlx5_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
 	if (cur_mlx5_mode == mlx5_mode)
 		goto unlock;
 
-	devl_lock(devlink);
 	mlx5_eswitch_disable_locked(esw);
-	devl_unlock(devlink);
 	if (mode == DEVLINK_ESWITCH_MODE_SWITCHDEV) {
 		if (mlx5_devlink_trap_get_num_active(esw->dev)) {
 			NL_SET_ERR_MSG_MOD(extack,
@@ -3405,9 +3388,7 @@ int mlx5_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
 		err = esw_offloads_start(esw, extack);
 	} else if (mode == DEVLINK_ESWITCH_MODE_LEGACY) {
 		err = esw_offloads_stop(esw, extack);
-		devl_lock(devlink);
 		mlx5_rescan_drivers(esw->dev);
-		devl_unlock(devlink);
 	} else {
 		err = -EINVAL;
 	}
@@ -3416,7 +3397,6 @@ unlock:
 	mlx5_esw_unlock(esw);
 enable_lag:
 	mlx5_lag_enable_change(esw->dev);
-	devl_lock(devlink);
 	return err;
 }
 
