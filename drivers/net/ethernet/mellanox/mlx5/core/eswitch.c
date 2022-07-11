@@ -1306,6 +1306,7 @@ abort:
  */
 int mlx5_eswitch_enable(struct mlx5_eswitch *esw, int num_vfs)
 {
+	struct devlink *devlink;
 	bool toggle_lag;
 	int ret;
 
@@ -1317,6 +1318,8 @@ int mlx5_eswitch_enable(struct mlx5_eswitch *esw, int num_vfs)
 	if (toggle_lag)
 		mlx5_lag_disable_change(esw->dev);
 
+	devlink = priv_to_devlink(esw->dev);
+	devl_lock(devlink);
 	down_write(&esw->mode_lock);
 	if (!mlx5_esw_is_fdb_created(esw)) {
 		ret = mlx5_eswitch_enable_locked(esw, num_vfs);
@@ -1330,6 +1333,7 @@ int mlx5_eswitch_enable(struct mlx5_eswitch *esw, int num_vfs)
 			esw->esw_funcs.num_vfs = num_vfs;
 	}
 	up_write(&esw->mode_lock);
+	devl_unlock(devlink);
 
 	if (toggle_lag)
 		mlx5_lag_enable_change(esw->dev);
