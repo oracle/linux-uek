@@ -245,6 +245,16 @@ static void emit_bpf_tail_call(u8 **pprog)
 	u8 *prog = *pprog;
 	int label1, label2, label3;
 	int cnt = 0;
+	int RETPOLINE_RAX_BPF_JIT_SIZE;
+
+	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
+		cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
+		RETPOLINE_RAX_BPF_JIT_SIZE =
+			__RETPOLINE_RAX_BPF_JIT_SIZE;
+	} else {
+		RETPOLINE_RAX_BPF_JIT_SIZE =
+			__NO_RETPOLINE_RAX_BPF_JIT_SIZE;
+	}
 
 	/*
 	 * rdi - pointer to ctx
@@ -298,12 +308,17 @@ static void emit_bpf_tail_call(u8 **pprog)
 	 * rdi == ctx (1st arg)
 	 * rax == prog->bpf_func + prologue_size
 	 */
-	RETPOLINE_RAX_BPF_JIT();
+	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
+		cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
+		RETPOLINE_RAX_BPF_JIT();
+	} else {
+		NO_RETPOLINE_RAX_BPF_JIT();
+	}
 
 	/* out: */
-	BUILD_BUG_ON(cnt - label1 != OFFSET1);
-	BUILD_BUG_ON(cnt - label2 != OFFSET2);
-	BUILD_BUG_ON(cnt - label3 != OFFSET3);
+	BUG_ON((cnt - label1) != OFFSET1);
+	BUG_ON((cnt - label2) != OFFSET2);
+	BUG_ON((cnt - label3) != OFFSET3);
 	*pprog = prog;
 }
 

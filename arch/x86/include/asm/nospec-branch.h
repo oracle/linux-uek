@@ -323,7 +323,7 @@ static inline void mds_idle_clear_cpu_buffers(void)
  * Below is used in the eBPF JIT compiler and emits the byte sequence
  * for the following assembly:
  *
- * With retpolines configured:
+ * With CPU feature retpoline (or retpoline_lfence):
  *
  *    callq do_rop
  *  spec_trap:
@@ -335,14 +335,13 @@ static inline void mds_idle_clear_cpu_buffers(void)
  *    mov %edx,(%esp) for x86_32
  *    retq
  *
- * Without retpolines configured:
+ * Without:
  *
  *    jmp *%rax for x86_64
  *    jmp *%edx for x86_32
  */
-#ifdef CONFIG_RETPOLINE
 # ifdef CONFIG_X86_64
-#  define RETPOLINE_RAX_BPF_JIT_SIZE	17
+#  define __RETPOLINE_RAX_BPF_JIT_SIZE	17
 #  define RETPOLINE_RAX_BPF_JIT()				\
 do {								\
 	EMIT1_off32(0xE8, 7);	 /* callq do_rop */		\
@@ -367,15 +366,14 @@ do {								\
 	EMIT1(0xC3);             /* ret */			\
 } while (0)
 # endif
-#else /* !CONFIG_RETPOLINE */
+
 # ifdef CONFIG_X86_64
-#  define RETPOLINE_RAX_BPF_JIT_SIZE	2
-#  define RETPOLINE_RAX_BPF_JIT()				\
+#  define __NO_RETPOLINE_RAX_BPF_JIT_SIZE	2
+#  define NO_RETPOLINE_RAX_BPF_JIT()				\
 	EMIT2(0xFF, 0xE0);       /* jmp *%rax */
 # else /* !CONFIG_X86_64 */
-#  define RETPOLINE_EDX_BPF_JIT()				\
+#  define NO_RETPOLINE_EDX_BPF_JIT()				\
 	EMIT2(0xFF, 0xE2)        /* jmp *%edx */
 # endif
-#endif
 
 #endif /* _ASM_X86_NOSPEC_BRANCH_H_ */

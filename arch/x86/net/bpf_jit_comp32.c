@@ -1362,7 +1362,12 @@ static void emit_bpf_tail_call(u8 **pprog)
 	 * eax == ctx (1st arg)
 	 * edx == prog->bpf_func + prologue_size
 	 */
-	RETPOLINE_EDX_BPF_JIT();
+	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
+		cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
+		RETPOLINE_EDX_BPF_JIT();
+	} else {
+		NO_RETPOLINE_EDX_BPF_JIT();
+	}
 
 	if (jmp_label1 == -1)
 		jmp_label1 = cnt;
