@@ -1283,7 +1283,8 @@ static void emit_epilogue(u8 **pprog, u32 stack_depth)
 static void emit_bpf_tail_call(u8 **pprog)
 {
 	u8 *prog = *pprog;
-	int cnt = 0;
+	int cnt = 0, err = 0;
+
 	const u8 *r1 = bpf2ia32[BPF_REG_1];
 	const u8 *r2 = bpf2ia32[BPF_REG_2];
 	const u8 *r3 = bpf2ia32[BPF_REG_3];
@@ -1364,9 +1365,9 @@ static void emit_bpf_tail_call(u8 **pprog)
 	 */
 	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
 		cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
-		RETPOLINE_EDX_BPF_JIT();
+		RETPOLINE_EDX_BPF_JIT(&err);
 	} else {
-		NO_RETPOLINE_EDX_BPF_JIT();
+		NO_RETPOLINE_EDX_BPF_JIT(&err);
 	}
 
 	if (jmp_label1 == -1)

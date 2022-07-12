@@ -343,8 +343,8 @@ static inline void mds_idle_clear_cpu_buffers(void)
  *    jmp *%edx for x86_32
  */
 # ifdef CONFIG_X86_64
-#  define __RETPOLINE_RAX_BPF_JIT_SIZE	17
-#  define RETPOLINE_RAX_BPF_JIT()				\
+#  define __RETPOLINE_RAX_BPF_JIT_SIZE	21
+#  define RETPOLINE_RAX_BPF_JIT(err)				\
 do {								\
 	EMIT1_off32(0xE8, 7);	 /* callq do_rop */		\
 	/* spec_trap: */					\
@@ -353,10 +353,11 @@ do {								\
 	EMIT2(0xEB, 0xF9);       /* jmp spec_trap */		\
 	/* do_rop: */						\
 	EMIT4(0x48, 0x89, 0x04, 0x24); /* mov %rax,(%rsp) */	\
-	EMIT1(0xC3);             /* retq */			\
+	/* jmp __x86_return_thunk || ret; int3; nops */		\
+	*(err) = EMIT5_return(&prog, prog);			\
 } while (0)
 # else /* !CONFIG_X86_64 */
-#  define RETPOLINE_EDX_BPF_JIT()				\
+#  define RETPOLINE_EDX_BPF_JIT(err)				\
 do {								\
 	EMIT1_off32(0xE8, 7);	 /* call do_rop */		\
 	/* spec_trap: */					\
@@ -365,16 +366,17 @@ do {								\
 	EMIT2(0xEB, 0xF9);       /* jmp spec_trap */		\
 	/* do_rop: */						\
 	EMIT3(0x89, 0x14, 0x24); /* mov %edx,(%esp) */		\
-	EMIT1(0xC3);             /* ret */			\
+	/* jmp __x86_return_thunk || ret; int3; nops */		\
+	*(err) = EMIT5_return(&prog, prog);			\
 } while (0)
 # endif
 
 # ifdef CONFIG_X86_64
 #  define __NO_RETPOLINE_RAX_BPF_JIT_SIZE	2
-#  define NO_RETPOLINE_RAX_BPF_JIT()				\
+#  define NO_RETPOLINE_RAX_BPF_JIT(err)				\
 	EMIT2(0xFF, 0xE0);       /* jmp *%rax */
 # else /* !CONFIG_X86_64 */
-#  define NO_RETPOLINE_EDX_BPF_JIT()				\
+#  define NO_RETPOLINE_EDX_BPF_JIT(err)				\
 	EMIT2(0xFF, 0xE2)        /* jmp *%edx */
 # endif
 
