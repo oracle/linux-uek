@@ -77,9 +77,9 @@
 	ANNOTATE_RETPOLINE_SAFE
 	jmp	*%\reg
 .Lretpoline_jmp_\@:
-	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *%\reg),	\
-		__stringify(jmp __x86_retpoline_\reg), X86_FEATURE_RETPOLINE,	\
-		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg; int3), X86_FEATURE_RETPOLINE_LFENCE
+	ALTERNATIVE_2 __stringify(jmp __x86_retpoline_\reg),							\
+		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg; int3), X86_FEATURE_RETPOLINE_LFENCE,	\
+		__stringify(ANNOTATE_RETPOLINE_SAFE; jmp *%\reg), ALT_NOT(X86_FEATURE_RETPOLINE)
 #else
 	jmp	*%\reg
 #endif
