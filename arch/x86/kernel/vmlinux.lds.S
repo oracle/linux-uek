@@ -296,6 +296,13 @@ SECTIONS
 		*(.altinstr_replacement)
 	}
 
+	. = ALIGN(8);
+	.return_sites : AT(ADDR(.return_sites) - LOAD_OFFSET) {
+		__return_sites = .;
+		*(.return_sites)
+		__return_sites_end = .;
+	}
+
 	/*
 	 * struct iommu_table_entry entries are injected in this section.
 	 * It is an array of IOMMUs which during run time gets sorted depending
