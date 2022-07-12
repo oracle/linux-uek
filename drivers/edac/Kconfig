@@ -525,11 +525,11 @@ config EDAC_BLUEFIELD
 	  Mellanox BlueField SoCs.
 
 config EDAC_OCTEONTX
-	bool "Marvell OcteonTX2 Octeon10 SoC EDAC"
+	bool "Marvell OcteonTX2 and CN10K SoC EDAC"
 	depends on ARM_SDE_INTERFACE
 	help
 	  Support for error detection and correction on the
-	  Marvell OcteonTX2 and Octeon10 (CN10K) SoCs.
+	  Marvell OcteonTX2 and CN10K SoCs.
 	  This driver will allow SECDED errors detected in
 	  the firmware first model and reported via SDEI callbacks.
 	  EDAC Driver report Single Bit Errors and Double Bit Errors.

@@ -63,7 +63,7 @@ static void octeontx_edac_mc_inject(struct mem_ctl_info *mci)
 
 	pvt->inject = 0;
 
-	if (MIDR_PARTNUM(read_cpuid_id()) == OCTEON10_CPU_MODEL) {
+	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL) {
 		arg[0] = OCTEON10_EDAC_INJECT;
 		arg[1] = 0xd;
 		arg[2] = pvt->address;
@@ -302,7 +302,7 @@ static void octeontx_edac_msix_init(void)
 	struct pci_dev *pdev;
 	size_t i;
 
-	if (MIDR_PARTNUM(read_cpuid_id()) == OCTEON10_CPU_MODEL)
+	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL)
 		return;
 
 	for (i = 0; i < ARRAY_SIZE(octeontx_edac_ghes_pci_tbl); i++) {
@@ -493,7 +493,7 @@ static void __init octeontx_edac_ghes_get_vector(struct octeontx_edac_driver *gh
 	struct octeontx_edac_ghes *gsrc;
 	int i = 0;
 	u32 *vec = NULL;
-	bool octeon10 = (MIDR_PARTNUM(read_cpuid_id()) == OCTEON10_CPU_MODEL);
+	bool cn10k = (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL);
 	unsigned int core = 0;
 
 	vec = kcalloc(ghes_drv->source_count, sizeof(u32 *), GFP_KERNEL);
@@ -509,9 +509,9 @@ static void __init octeontx_edac_ghes_get_vector(struct octeontx_edac_driver *gh
 		if (gsrc->id == OCTEONTX_RAS_MDC_SDEI_EVENT)
 			sprintf(gsrc->name, OCTEONTX_MDC);
 		else if (gsrc->id == OCTEONTX_RAS_MCC_SDEI_EVENT)
-			sprintf(gsrc->name, octeon10 ? OCTEONTX_DSS : OCTEONTX_MCC);
+			sprintf(gsrc->name, cn10k ? OCTEONTX_DSS : OCTEONTX_MCC);
 		else if (gsrc->id == OCTEONTX_RAS_LMC_SDEI_EVENT)
-			sprintf(gsrc->name, octeon10 ? OCTEONTX_TAD : OCTEONTX_LMC);
+			sprintf(gsrc->name, cn10k ? OCTEONTX_TAD : OCTEONTX_LMC);
 		else if (gsrc->id > OCTEONTX_RAS_LMC_SDEI_EVENT)
 			sprintf(gsrc->name, "core%d", core++);
 	}
