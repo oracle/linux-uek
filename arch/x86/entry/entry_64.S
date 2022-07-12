@@ -156,7 +156,6 @@ ENTRY(entry_SYSCALL_64)
 	movq	%rsp, PER_CPU_VAR(cpu_tss_rw + TSS_sp2)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
-	UNTRAIN_RET
 
 	/* Construct struct pt_regs on stack */
 	pushq	$__USER_DS				/* pt_regs->ss */
@@ -171,6 +170,7 @@ GLOBAL(entry_SYSCALL_64_after_hwframe)
 
 	STUFF_RSB
 	ENABLE_IBRS
+	UNTRAIN_RET
 
 	TRACE_IRQS_OFF
 
@@ -545,7 +545,6 @@ ENTRY(interrupt_entry)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdi
 	movq	%rsp, %rdi
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
-	UNTRAIN_RET
 
 	 /*
 	  * We have RDI, return address, and orig_ax on the stack on
@@ -564,6 +563,7 @@ ENTRY(interrupt_entry)
 
 	movq	(%rdi), %rdi
 	ENABLE_IBRS
+	UNTRAIN_RET
 	jmp	2f
 1:
 	FENCE_SWAPGS_KERNEL_ENTRY
@@ -1258,8 +1258,8 @@ ENTRY(paranoid_entry)
 	 * to kernel code, but with a user CR3 value.
 	 */
 	SAVE_AND_SWITCH_TO_KERNEL_CR3 scratch_reg=%rax save_reg=%r14
-	UNTRAIN_RET
 	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d /* Clobbers: %[rax,rcx,rdx] */
+	UNTRAIN_RET
 
 	/*
 	 * The above SAVE_AND_SWITCH_TO_KERNEL_CR3 macro doesn't do an
@@ -1290,6 +1290,12 @@ ENTRY(paranoid_exit)
 	testl	%ebx, %ebx			/* swapgs needed? */
 	jnz	.Lparanoid_exit_no_swapgs
 	TRACE_IRQS_IRETQ
+
+
+	/*
+	 * Must restore IBRS state before both CR3 and %GS since we need access
+	 * to the per-CPU x86_spec_ctrl_priv_cpu variable.
+	 */
 	RESTORE_IBRS_CLOBBER save_reg=%r13d
 	/* Always restore stashed CR3 value (see paranoid_entry) */
 	RESTORE_CR3	scratch_reg=%rbx save_reg=%r14
@@ -1322,8 +1328,8 @@ ENTRY(error_entry)
 	FENCE_SWAPGS_USER_ENTRY
 	/* We have user CR3.  Change to kernel CR3. */
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
-	UNTRAIN_RET
 	ENABLE_IBRS_CLOBBER
+	UNTRAIN_RET
 
 .Lerror_entry_from_usermode_after_swapgs:
 	/* Put us onto the real thread stack. */
@@ -1379,8 +1385,8 @@ ENTRY(error_entry)
 	SWAPGS
 	FENCE_SWAPGS_USER_ENTRY
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
-	UNTRAIN_RET
 	ENABLE_IBRS
+	UNTRAIN_RET
 
 	/*
 	 * Pretend that the exception came from user mode: set up pt_regs
@@ -1476,9 +1482,7 @@ ENTRY(nmi)
 	movq	%rsp, %rdx
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 	STUFF_RSB
-	ENABLE_IBRS
 	UNWIND_HINT_IRET_REGS base=%rdx offset=8
-	UNTRAIN_RET
 	pushq	5*8(%rdx)	/* pt_regs->ss */
 	pushq	4*8(%rdx)	/* pt_regs->rsp */
 	pushq	3*8(%rdx)	/* pt_regs->flags */
@@ -1488,6 +1492,9 @@ ENTRY(nmi)
 	pushq   $-1		/* pt_regs->orig_ax */
 	PUSH_AND_CLEAR_REGS rdx=(%rdx)
 	ENCODE_FRAME_POINTER
+
+	ENABLE_IBRS
+	UNTRAIN_RET
 
 	/*
 	 * At this point we no longer need to worry about stack damage

@@ -4,7 +4,6 @@
  *
  * Copyright 2000-2002 Andi Kleen, SuSE Labs.
  */
-#include "calling.h"
 #include <asm/asm-offsets.h>
 #include <asm/current.h>
 #include <asm/errno.h>
@@ -18,6 +17,8 @@
 #include <asm/spec_ctrl.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
+
+#include "calling.h"
 
 	.section .entry.text, "ax"
 
@@ -58,8 +59,6 @@ ENTRY(entry_SYSENTER_compat)
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
 	STUFF_RSB
-	UNTRAIN_RET
-	ENABLE_IBRS
 
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
@@ -111,6 +110,9 @@ ENTRY(entry_SYSENTER_compat)
 	pushq   $0			/* pt_regs->r15 = 0 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 	cld
+
+	ENABLE_IBRS
+	UNTRAIN_RET
 
 	/*
 	 * SYSENTER doesn't filter flags, so we need to clear NT and AC
@@ -215,7 +217,6 @@ ENTRY(entry_SYSCALL_compat)
 
 	/* Switch to the kernel stack */
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
-	UNTRAIN_RET
 
 	/* Construct struct pt_regs on stack */
 	pushq	$__USER32_DS		/* pt_regs->ss */
@@ -257,6 +258,7 @@ GLOBAL(entry_SYSCALL_compat_after_hwframe)
 
 	STUFF_RSB
 	ENABLE_IBRS
+	UNTRAIN_RET
 
 	/*
 	 * User mode is traced as though IRQs are on, and SYSENTER
@@ -388,8 +390,8 @@ ENTRY(entry_INT80_compat)
 	pushq	(%rdi)			/* pt_regs->di */
 .Lint80_keep_stack:
 
-	UNTRAIN_RET
 	ENABLE_IBRS
+	UNTRAIN_RET
 
 	pushq	%rsi			/* pt_regs->si */
 	xorl	%esi, %esi		/* nospec   si */

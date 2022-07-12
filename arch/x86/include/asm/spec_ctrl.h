@@ -48,6 +48,13 @@
 	wrmsr
 .endm
 
+/*
+ * IBRS kernel mitigation for Spectre_v2.
+ *
+ * Assumes full context is established (PUSH_REGS, CR3 and GS.) Clobbers flags
+ * register. Saves and restores (AX, CX, DX). Must be called before the first
+ * RET instruction (NOTE! UNTRAIN_RET includes a RET instruction)
+ */
 .macro ENABLE_IBRS
 	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
@@ -60,6 +67,10 @@
 .Ldone_\@:
 .endm
 
+/*
+ * Similar to ENABLE_IBRS, requires KERNEL GS,CR3 and clobbers rflags.
+ * Saves and restores (AX, CX, DX). Must be called after the last RET.
+ */
 .macro DISABLE_IBRS
 	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
