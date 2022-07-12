@@ -7649,7 +7649,7 @@ hwrm_func_qcaps_exit:
 
 static int bnxt_hwrm_queue_qportcfg(struct bnxt *bp);
 
-static int bnxt_hwrm_func_qcaps(struct bnxt *bp)
+int bnxt_hwrm_func_qcaps(struct bnxt *bp)
 {
 	int rc;
 
