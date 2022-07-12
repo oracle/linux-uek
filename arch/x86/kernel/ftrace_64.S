@@ -167,6 +167,10 @@ GLOBAL(ftrace_graph_call)
 /*
  * This is weak to keep gas from relaxing the jumps.
  * It is also used to copy the RET for trampolines.
+ *
+ * For CONFIG_RETPOLINE, create_trampoline() assumes RET
+ * becomes jmp __x86_return_thunk. If that changes, you
+ * probably need to fixup create_trampoline() as well.
  */
 WEAK(ftrace_stub)
 	RET

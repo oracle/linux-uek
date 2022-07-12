@@ -739,8 +739,10 @@ union ftrace_op_code_union {
 	} __attribute__((packed));
 };
 
-#define RET_SIZE		1 + IS_ENABLED(CONFIG_SLS)
+#define JMP32_INSN_OPCODE 0xE9
+#define RET_SIZE		(IS_ENABLED(CONFIG_RETPOLINE) ? 5 : 1 + IS_ENABLED(CONFIG_SLS))
 
+static unsigned char *ftrace_jmp_replace(unsigned long ip, unsigned long addr);
 static unsigned long
 create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 {
@@ -790,11 +792,46 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 
 	ip = trampoline + size;
 
-	/* The trampoline ends with ret(q) */
-	retq = (unsigned long)ftrace_stub;
-	ret = probe_kernel_read(ip, (void *)retq, RET_SIZE);
-	if (WARN_ON(ret < 0))
-		goto fail;
+	/*
+	 * ftrace_stub() is either a straight ret[q] or for X86_FEATURE_RETHUNK,
+	 * jmp __x86_return_thunk.
+	 * Fixup the jmp for the X86_FEATURE_RETHUNK case.
+	 *
+	 * With CONFIG_RETPOLINE, ftrace_stub() starts out as
+	 * jmp __x86_return_thunk, but for !X86_FEATURE_RETHUNK, the
+	 * alternatives code replaces that with ret[q].
+	 *
+	 * Turns out that the statement above, while generally true is not true
+	 * here: ftrace_64.S (where ftrace_sub() is defined) is a non standard
+	 * file and so will not get an objtool pass. Which means, no
+	 * .return_sites section. This in-turn means no alternatives rewriting.
+	 *
+	 * So, for CONFIG_RETPOLINE, with X86_FEATURE_RETHUNK, or
+	 * !X86_FEATURE_RETHUNK, ftrace_stub() is jmp __x86_return_thunk.
+	 *
+	 * The following condition could be reduced to just the second
+	 * clause: IS_ENABLED(CONFIG_RETPOLINE), but let's be explicit
+	 * that there are two clauses, the primary and the workaround.
+	 */
+	if (cpu_feature_enabled(X86_FEATURE_RETHUNK) ||
+		IS_ENABLED(CONFIG_RETPOLINE)) {
+		unsigned char *new;
+
+		BUG_ON(*((u8 *)ftrace_stub) != JMP32_INSN_OPCODE);
+		new = ftrace_jmp_replace((unsigned long) ip,
+					 (unsigned long)__x86_return_thunk);
+		memcpy(ip, new, RET_SIZE);
+	} else {
+		/*
+		 * If we are wrong about this, then we die an ugly
+		 * death anyway. So, make this a BUG_ON.
+		 */
+		BUG_ON(*((u8 *)ftrace_stub) == JMP32_INSN_OPCODE);
+		retq = (unsigned long)ftrace_stub;
+		ret = probe_kernel_read(ip, (void *)retq, RET_SIZE);
+		if (WARN_ON(ret < 0))
+			goto fail;
+	}
 
 	/*
 	 * The address of the ftrace_ops that is used for this trampoline
