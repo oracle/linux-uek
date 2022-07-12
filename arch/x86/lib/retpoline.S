@@ -61,3 +61,15 @@ ENDPROC(__x86_retpoline_\reg)
 #undef GEN
 #define GEN(reg) EXPORT_RETPOLINE(reg)
 #include <asm/GEN-for-each-reg.h>
+
+/*
+ * This function name is magical and is used by -mfunction-return=thunk-extern
+ * for the compiler to generate JMPs to it.
+ */
+ENTRY(__x86_return_thunk)
+	UNWIND_HINT_EMPTY
+	ret
+	int3
+ENDPROC(__x86_return_thunk)
+
+__EXPORT_THUNK(__x86_return_thunk)

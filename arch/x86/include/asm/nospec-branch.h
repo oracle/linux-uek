@@ -226,6 +226,8 @@ extern void x86_spec_ctrl_set(enum spec_ctrl_set_context);
 extern char __indirect_thunk_start[];
 extern char __indirect_thunk_end[];
 
+extern void __x86_return_thunk(void);
+
 DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 
