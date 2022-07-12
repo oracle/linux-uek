@@ -155,7 +155,7 @@ static void srbds_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
-/* The base value of the SPEC_CTRL MSR that always has to be preserved. */
+/* The base value of the SPEC_CTRL MSR without task-specific bits set */
 u64 x86_spec_ctrl_base;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
 
@@ -165,11 +165,29 @@ EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
  */
 u64 x86_spec_ctrl_priv;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_priv);
+
+/* The current value of the SPEC_CTRL MSR with task-specific bits set */
 DEFINE_PER_CPU(u64, x86_spec_ctrl_priv_cpu) = 0;
 EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_priv_cpu);
 
 DEFINE_PER_CPU(u64, x86_spec_ctrl_restore) = 0;
 EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
+
+ /*
+ * Keep track of the SPEC_CTRL MSR value for the current task, which may differ
+ * from x86_spec_ctrl_base due to STIBP/SSB in __speculation_ctrl_update().
+ *
+ * This shares some functionality (eliding MSR writes) with x86_spec_ctrl_set()
+ * so any changes should take that into account.
+ */
+void write_spec_ctrl_current(u64 val)
+{
+	if (this_cpu_read(x86_spec_ctrl_priv_cpu) == val)
+		return;
+
+	this_cpu_write(x86_spec_ctrl_priv_cpu, val);
+	wrmsrl(MSR_IA32_SPEC_CTRL, val);
+}
 
 /*
  * The vendor and possibly platform specific bits which can be modified in
@@ -392,7 +410,7 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 	 * And for SPEC_CTRL_INITIAL we are only called when we know
 	 * the MSR exists.
 	 */
-	wrmsrl(MSR_IA32_SPEC_CTRL, host);
+	write_spec_ctrl_current(host);
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
@@ -1905,7 +1923,7 @@ static void spectre_v2_select_mitigation(void)
 
 static void update_stibp_msr(void * __unused)
 {
-	wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+	write_spec_ctrl_current(x86_spec_ctrl_base);
 }
 
 /* Update x86_spec_ctrl_base in case SMT state changed. */
