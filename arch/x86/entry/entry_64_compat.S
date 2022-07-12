@@ -13,6 +13,7 @@
 #include <asm/segment.h>
 #include <asm/irqflags.h>
 #include <asm/asm.h>
+#include <asm/nospec-branch.h>
 #include <asm/smap.h>
 #include <asm/spec_ctrl.h>
 #include <linux/linkage.h>
@@ -57,6 +58,7 @@ ENTRY(entry_SYSENTER_compat)
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
 	STUFF_RSB
+	UNTRAIN_RET
 	ENABLE_IBRS
 
 	/*
@@ -213,6 +215,7 @@ ENTRY(entry_SYSCALL_compat)
 
 	/* Switch to the kernel stack */
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+	UNTRAIN_RET
 
 	/* Construct struct pt_regs on stack */
 	pushq	$__USER32_DS		/* pt_regs->ss */
@@ -385,6 +388,7 @@ ENTRY(entry_INT80_compat)
 	pushq	(%rdi)			/* pt_regs->di */
 .Lint80_keep_stack:
 
+	UNTRAIN_RET
 	ENABLE_IBRS
 
 	pushq	%rsi			/* pt_regs->si */

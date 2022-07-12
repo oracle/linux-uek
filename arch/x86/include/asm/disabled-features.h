@@ -67,7 +67,8 @@
 #else
 # define DISABLE_RETPOLINE	((1 << (X86_FEATURE_RETPOLINE & 31)) | \
 				 (1 << (X86_FEATURE_RETPOLINE_LFENCE & 31)) | \
-				 (1 << (X86_FEATURE_RETHUNK & 31)))
+				 (1 << (X86_FEATURE_RETHUNK & 31)) | \
+				 (1 << (X86_FEATURE_UNRET & 31)))
 #endif
 
 #ifdef CONFIG_IOMMU_SUPPORT

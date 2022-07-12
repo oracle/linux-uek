@@ -156,6 +156,7 @@ ENTRY(entry_SYSCALL_64)
 	movq	%rsp, PER_CPU_VAR(cpu_tss_rw + TSS_sp2)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+	UNTRAIN_RET
 
 	/* Construct struct pt_regs on stack */
 	pushq	$__USER_DS				/* pt_regs->ss */
@@ -544,6 +545,7 @@ ENTRY(interrupt_entry)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdi
 	movq	%rsp, %rdi
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+	UNTRAIN_RET
 
 	 /*
 	  * We have RDI, return address, and orig_ax on the stack on
@@ -757,6 +759,7 @@ native_irq_return_ldt:
 	pushq	%rdi				/* Stash user RDI */
 	SWAPGS					/* to kernel GS */
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdi	/* to kernel CR3 */
+	UNTRAIN_RET
 
 	movq	PER_CPU_VAR(espfix_waddr), %rdi
 	movq	%rax, (0*8)(%rdi)		/* user RAX */
@@ -1255,6 +1258,7 @@ ENTRY(paranoid_entry)
 	 * to kernel code, but with a user CR3 value.
 	 */
 	SAVE_AND_SWITCH_TO_KERNEL_CR3 scratch_reg=%rax save_reg=%r14
+	UNTRAIN_RET
 	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d /* Clobbers: %[rax,rcx,rdx] */
 
 	/*
@@ -1318,6 +1322,7 @@ ENTRY(error_entry)
 	FENCE_SWAPGS_USER_ENTRY
 	/* We have user CR3.  Change to kernel CR3. */
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
+	UNTRAIN_RET
 	ENABLE_IBRS_CLOBBER
 
 .Lerror_entry_from_usermode_after_swapgs:
@@ -1374,6 +1379,7 @@ ENTRY(error_entry)
 	SWAPGS
 	FENCE_SWAPGS_USER_ENTRY
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
+	UNTRAIN_RET
 	ENABLE_IBRS
 
 	/*
@@ -1472,6 +1478,7 @@ ENTRY(nmi)
 	STUFF_RSB
 	ENABLE_IBRS
 	UNWIND_HINT_IRET_REGS base=%rdx offset=8
+	UNTRAIN_RET
 	pushq	5*8(%rdx)	/* pt_regs->ss */
 	pushq	4*8(%rdx)	/* pt_regs->rsp */
 	pushq	3*8(%rdx)	/* pt_regs->flags */
