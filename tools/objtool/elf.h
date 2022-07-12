@@ -57,6 +57,7 @@ struct symbol {
 	struct symbol *pfunc, *cfunc, *alias;
 	u8 uaccess_safe      : 1;
 	u8 retpoline_thunk   : 1;
+	u8 return_thunk      : 1;
 	u8 fentry            : 1;
 };
 
