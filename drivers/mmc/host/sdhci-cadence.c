@@ -123,6 +123,10 @@
 #define	SDHCI_CDNS_SD6_PHY_DLL_SLAVE_CLK_WR_DELAY		GENMASK(15, 8)
 #define	SDHCI_CDNS_SD6_PHY_DLL_SLAVE_READ_DQS_DELAY		GENMASK(7, 0)
 
+#define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0				0x201C
+#define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG1				0x2020
+#define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG2				0x2024
+
 #define SDHCI_CDNS_SD6_PHY_CTRL					0x2080
 #define	SDHCI_CDNS_SD6_PHY_CTRL_PHONY_DQS_TIMING		GENMASK(9, 4)
 
@@ -1119,6 +1123,12 @@ void sdhci_cdns_sd6_dump(struct sdhci_cdns_priv *priv)
 			sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GPIO_CTRL0));
 	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DQ_TIMING 0x%x\n",
 			sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DQ_TIMING));
+	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0 0x%x\n",
+			sdhci_cdns_sd6_read_phy_reg(plat, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0));
+	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DLL_OBS_REG1 0x%x\n",
+			sdhci_cdns_sd6_read_phy_reg(plat, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG1));
+	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DLL_OBS_REG2 0x%x\n",
+			sdhci_cdns_sd6_read_phy_reg(plat, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG2));
 }
 #endif
 
