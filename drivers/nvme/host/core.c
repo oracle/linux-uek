@@ -4208,7 +4208,7 @@ out:
 		nvme_ns_remove(ns);
 }
 
-static void nvme_validate_or_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
+static void nvme_scan_ns(struct nvme_ctrl *ctrl, unsigned nsid)
 {
 	struct nvme_ns_ids ids = { };
 	struct nvme_id_ns_cs_indep *id;
@@ -4316,7 +4316,7 @@ static int nvme_scan_ns_list(struct nvme_ctrl *ctrl)
 
 			if (!nsid)	/* end of the list? */
 				goto out;
-			nvme_validate_or_alloc_ns(ctrl, nsid);
+			nvme_scan_ns(ctrl, nsid);
 			while (++prev < nsid)
 				nvme_ns_remove_by_nsid(ctrl, prev);
 		}
@@ -4339,7 +4339,7 @@ static void nvme_scan_ns_sequential(struct nvme_ctrl *ctrl)
 	kfree(id);
 
 	for (i = 1; i <= nn; i++)
-		nvme_validate_or_alloc_ns(ctrl, i);
+		nvme_scan_ns(ctrl, i);
 
 	nvme_remove_invalid_namespaces(ctrl, nn);
 }
