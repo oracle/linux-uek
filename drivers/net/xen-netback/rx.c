@@ -495,6 +495,7 @@ void xenvif_rx_action(struct xenvif_queue *queue)
 	__skb_queue_head_init(&completed_skbs);
 
 	while (xenvif_rx_queue_slots_available(queue) &&
+	       !skb_queue_empty(&queue->rx_queue) &&
 	       work_done < RX_BATCH_SIZE) {
 		skb = xenvif_rx_dequeue(queue);
 		xenvif_rx_skb(queue, skb);
