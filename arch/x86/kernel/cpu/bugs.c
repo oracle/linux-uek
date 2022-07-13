@@ -180,13 +180,20 @@ EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
  * This shares some functionality (eliding MSR writes) with x86_spec_ctrl_set()
  * so any changes should take that into account.
  */
-void write_spec_ctrl_current(u64 val)
+void write_spec_ctrl_current(u64 val, bool force)
 {
 	if (this_cpu_read(x86_spec_ctrl_priv_cpu) == val)
 		return;
 
 	this_cpu_write(x86_spec_ctrl_priv_cpu, val);
 	wrmsrl(MSR_IA32_SPEC_CTRL, val);
+
+	/*
+	 * With basic IBRS this MSR is written on return-to-user, unless
+	 * forced the update can be delayed until that time.
+	 */
+	if (force || !check_basic_ibrs_inuse())
+		wrmsrl(MSR_IA32_SPEC_CTRL, val);
 }
 
 /*
@@ -410,7 +417,7 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 	 * And for SPEC_CTRL_INITIAL we are only called when we know
 	 * the MSR exists.
 	 */
-	write_spec_ctrl_current(host);
+	write_spec_ctrl_current(host, true);
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
@@ -1923,7 +1930,7 @@ static void spectre_v2_select_mitigation(void)
 
 static void update_stibp_msr(void * __unused)
 {
-	write_spec_ctrl_current(x86_spec_ctrl_base);
+	write_spec_ctrl_current(x86_spec_ctrl_base, true);
 }
 
 /* Update x86_spec_ctrl_base in case SMT state changed. */

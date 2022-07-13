@@ -452,7 +452,7 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 
 	if (updmsr) {
 		this_cpu_write(x86_spec_ctrl_restore,  msr);
-		write_spec_ctrl_current(msr);
+		write_spec_ctrl_current(msr, false);
 	}
 }
 
