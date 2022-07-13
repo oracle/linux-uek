@@ -124,7 +124,7 @@ ENTRY(xen_sysret64)
  */
 
 /* Normal 64-bit system call target */
-ENTRY(xen_syscall_target)
+ENTRY(xen_entry_SYSCALL_64)
 	popq %rcx
 	popq %r11
 
@@ -137,12 +137,12 @@ ENTRY(xen_syscall_target)
 	movq $__USER_CS, 1*8(%rsp)
 
 	jmp entry_SYSCALL_64_after_hwframe
-ENDPROC(xen_syscall_target)
+ENDPROC(xen_entry_SYSCALL_64)
 
 #ifdef CONFIG_IA32_EMULATION
 
 /* 32-bit compat syscall target */
-ENTRY(xen_syscall32_target)
+ENTRY(xen_entry_SYSCALL_compat)
 	popq %rcx
 	popq %r11
 
@@ -155,25 +155,25 @@ ENTRY(xen_syscall32_target)
 	movq $__USER32_CS, 1*8(%rsp)
 
 	jmp entry_SYSCALL_compat_after_hwframe
-ENDPROC(xen_syscall32_target)
+ENDPROC(xen_entry_SYSCALL_compat)
 
 /* 32-bit compat sysenter target */
-ENTRY(xen_sysenter_target)
+ENTRY(xen_entry_SYSENTER_compat)
 	mov 0*8(%rsp), %rcx
 	mov 1*8(%rsp), %r11
 	mov 5*8(%rsp), %rsp
 	jmp entry_SYSENTER_compat
-ENDPROC(xen_sysenter_target)
+ENDPROC(xen_entry_SYSENTER_compat)
 
 #else /* !CONFIG_IA32_EMULATION */
 
-ENTRY(xen_syscall32_target)
-ENTRY(xen_sysenter_target)
+ENTRY(xen_entry_SYSCALL_compat)
+ENTRY(xen_entry_SYSENTER_compat)
 	lea 16(%rsp), %rsp	/* strip %rcx, %r11 */
 	mov $-ENOSYS, %rax
 	pushq $0
 	jmp hypercall_iret
-ENDPROC(xen_syscall32_target)
-ENDPROC(xen_sysenter_target)
+ENDPROC(xen_entry_SYSCALL_compat)
+ENDPROC(xen_entry_SYSENTER_compat)
 
 #endif	/* CONFIG_IA32_EMULATION */
