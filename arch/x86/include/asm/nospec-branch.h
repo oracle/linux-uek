@@ -292,13 +292,13 @@ do {									\
 	preempt_disable();						\
 	if (static_branch_likely(&ibrs_firmware_enabled_key))		\
 		wrmsrl(MSR_IA32_SPEC_CTRL,				\
-		       x86_spec_ctrl_base | SPEC_CTRL_IBRS);		\
+		       spec_ctrl_current() | SPEC_CTRL_IBRS);		\
 } while (0)
 
 #define firmware_restrict_branch_speculation_end()			\
 do {									\
 	if (static_branch_likely(&ibrs_firmware_enabled_key))		\
-		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);		\
+		wrmsrl(MSR_IA32_SPEC_CTRL, spec_ctrl_current());	\
 	preempt_enable();						\
 } while (0)
 
