@@ -238,6 +238,7 @@ enum spec_ctrl_set_context {
 };
 
 extern void x86_spec_ctrl_set(enum spec_ctrl_set_context);
+extern u64 spec_ctrl_current(void);
 
 extern char __indirect_thunk_start[];
 extern char __indirect_thunk_end[];

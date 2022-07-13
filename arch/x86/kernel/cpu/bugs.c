@@ -499,6 +499,12 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 }
 EXPORT_SYMBOL_GPL(x86_virt_spec_ctrl);
 
+u64 spec_ctrl_current(void)
+{
+	return this_cpu_read(x86_spec_ctrl_priv_cpu);
+}
+EXPORT_SYMBOL_GPL(spec_ctrl_current);
+
 static void x86_amd_ssb_disable(void)
 {
 	u64 msrval = x86_amd_ls_cfg_base | x86_amd_ls_cfg_ssbd_mask;
