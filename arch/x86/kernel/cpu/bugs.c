@@ -199,12 +199,6 @@ void write_spec_ctrl_current(u64 val, bool force)
 }
 
 /*
- * The vendor and possibly platform specific bits which can be modified in
- * x86_spec_ctrl_base.
- */
-static u64 x86_spec_ctrl_mask = SPEC_CTRL_IBRS;
-
-/*
  * AMD specific MSR info for Speculative Store Bypass control.
  * x86_amd_ls_cfg_ssbd_mask is initialized in identify_boot_cpu().
  */
@@ -303,10 +297,6 @@ void __ref check_bugs(void)
 	} else {
 		pr_info("FEATURE IBPB Not Present\n");
 	}
-
-	/* Allow STIBP in MSR_SPEC_CTRL if supported */
-	if (boot_cpu_has(X86_FEATURE_STIBP))
-		x86_spec_ctrl_mask |= SPEC_CTRL_STIBP;
 
 	/*
 	 * Select proper mitigation for any exposure to the Speculative Store
@@ -432,25 +422,16 @@ EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 void
 x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 {
-	u64 msrval, guestval, hostval = x86_spec_ctrl_base;
+	u64 msrval, guestval = guest_spec_ctrl, hostval = spec_ctrl_current();
 	struct thread_info *ti = current_thread_info();
 
-	/* Is MSR_SPEC_CTRL implemented ? */
 	if (ibrs_supported) {
-		/*
-		 * Restrict guest_spec_ctrl to supported values. Clear the
-		 * modifiable bits in the host base value and or the
-		 * modifiable bits from the guest value.
-		 */
 		if (cpu_ibrs_inuse_any())
 			/*
 			 * Except on IBRS we don't want to use host base value
 			 * but rather the privilege value which has IBRS set.
 			 */
 			hostval = this_cpu_read(x86_spec_ctrl_priv_cpu);
-
-		guestval = hostval & ~x86_spec_ctrl_mask;
-		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
 
 		/* SSBD controlled in MSR_SPEC_CTRL */
 		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
@@ -2268,16 +2249,6 @@ static void ssb_init(void)
 	 *  - X86_FEATURE_SSBD - CPU is able to turn off speculative store bypass
 	 *  - X86_FEATURE_SPEC_STORE_BYPASS_DISABLE - engage the mitigation
 	 */
-
-	/*
-	 * If SSBD is controlled by the SPEC_CTRL MSR, then set the proper
-	 * bit in the mask to allow guests to use the mitigation even in the
-	 * case where the host does not enable it.
-	 */
-	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
-	    boot_cpu_has(X86_FEATURE_AMD_SSBD)) {
-		x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
-	}
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
 		setup_force_cpu_cap(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE);
