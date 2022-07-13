@@ -135,4 +135,6 @@ extern void amd_iommu_domain_set_pgtable(struct protection_domain *domain,
 
 extern u64 amd_iommu_efr;
 extern u64 amd_iommu_efr2;
+
+extern bool amd_iommu_snp_en;
 #endif
