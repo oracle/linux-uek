@@ -45,6 +45,14 @@
 	UNWIND_HINT sp_reg=ORC_REG_UNDEFINED end=1
 .endm
 
+.macro UNWIND_HINT_SAVE
+      UNWIND_HINT type=UNWIND_HINT_TYPE_SAVE
+.endm
+
+.macro UNWIND_HINT_RESTORE
+      UNWIND_HINT type=UNWIND_HINT_TYPE_RESTORE
+.endm
+
 /*
  * C code has UNWIND_HINT_EMPTY defined as a string (to be used with the
  * asm() instruction) and UNWIND_HINT_EMPTY_ASM with the raw assembly code.
