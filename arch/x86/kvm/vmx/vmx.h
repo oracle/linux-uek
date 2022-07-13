@@ -8,9 +8,10 @@
 #include <asm/intel_pt.h>
 
 #include "capabilities.h"
-#include "kvm_cache_regs.h"
+#include "../kvm_cache_regs.h"
 #include "ops.h"
 #include "vmcs.h"
+#include "../cpuid.h"
 #include "run_flags.h"
 
 extern const u32 vmx_msr_index[];
