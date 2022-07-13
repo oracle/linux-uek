@@ -11,6 +11,7 @@
 #include "kvm_cache_regs.h"
 #include "ops.h"
 #include "vmcs.h"
+#include "run_flags.h"
 
 extern const u32 vmx_msr_index[];
 
@@ -353,8 +354,10 @@ void vmx_set_virtual_apic_mode(struct kvm_vcpu *vcpu);
 struct shared_msr_entry *find_msr_entry(struct vcpu_vmx *vmx, u32 msr);
 void pt_update_intercept_for_msr(struct kvm_vcpu *vcpu);
 void vmx_update_host_rsp(struct vcpu_vmx *vmx, unsigned long host_rsp);
+unsigned int __vmx_vcpu_run_flags(struct vcpu_vmx *vmx);
+bool __vmx_vcpu_run(struct vcpu_vmx *vmx, unsigned long *regs,
+		    unsigned int flags);
 int vmx_find_msr_index(struct vmx_msrs *m, u32 msr);
-bool __vmx_vcpu_run(struct vcpu_vmx *vmx, unsigned long *regs, bool launched);
 void vmx_ept_load_pdptrs(struct kvm_vcpu *vcpu);
 
 #define POSTED_INTR_ON  0
