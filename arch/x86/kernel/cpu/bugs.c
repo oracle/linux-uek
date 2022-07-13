@@ -97,6 +97,7 @@ EXPORT_SYMBOL(rsb_overwrite_key);
 static bool is_skylake_era(void);
 static void disable_ibrs_and_friends(void);
 static enum spectre_v2_mitigation spectre_v2_select_retpoline(void);
+static inline bool spectre_v2_in_ibrs_mode(enum spectre_v2_mitigation mode);
 static inline bool spectre_v2_in_eibrs_mode(enum spectre_v2_mitigation mode);
 
 int __init spectre_v2_heuristics_setup(char *p)
@@ -391,7 +392,7 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		 * is running.
 		 */
 		host = x86_spec_ctrl_base |
-		       (spectre_v2_in_eibrs_mode(spectre_v2_enabled) ?
+		       (spectre_v2_in_ibrs_mode(spectre_v2_enabled) ?
 			SPEC_CTRL_IBRS : 0);
 		break;
 	case SPEC_CTRL_IDLE_ENTER:
@@ -1431,6 +1432,13 @@ spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
 	pr_err("Unknown user space protection option (%s). Switching to AUTO select\n", arg);
 	return SPECTRE_V2_USER_CMD_AUTO;
 }
+static inline bool spectre_v2_in_ibrs_mode(enum spectre_v2_mitigation mode)
+{
+	return mode == SPECTRE_V2_IBRS ||
+	       mode == SPECTRE_V2_EIBRS ||
+	       mode == SPECTRE_V2_EIBRS_RETPOLINE ||
+	       mode == SPECTRE_V2_EIBRS_LFENCE;
+}
 
 static inline bool spectre_v2_in_eibrs_mode(enum spectre_v2_mitigation mode)
 {
@@ -1501,12 +1509,12 @@ spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 	}
 
 	/*
-	 * If no STIBP, enhanced IBRS is enabled or SMT impossible, STIBP is not
-	 * required.
+	 * If no STIBP, IBRS or enhanced IBRS is enabled, or SMT impossible,
+	 * STIBP is not required.
 	 */
 	if (!boot_cpu_has(X86_FEATURE_STIBP) ||
 	    !smt_possible ||
-	    spectre_v2_in_eibrs_mode(spectre_v2_enabled))
+	    spectre_v2_in_ibrs_mode(spectre_v2_enabled))
 		return;
 
 	/*
@@ -1625,6 +1633,24 @@ static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 		return SPECTRE_V2_CMD_AUTO;
 	}
 
+	if (cmd == SPECTRE_V2_CMD_IBRS && boot_cpu_data.x86_vendor != X86_VENDOR_INTEL) {
+		pr_err("%s selected but not Intel CPU. Switching to AUTO select\n",
+		       mitigation_options[i].option);
+		return SPECTRE_V2_CMD_AUTO;
+	}
+
+	if (cmd == SPECTRE_V2_CMD_IBRS && !boot_cpu_has(X86_FEATURE_IBRS)) {
+		pr_err("%s selected but CPU doesn't have IBRS. Switching to AUTO select\n",
+		       mitigation_options[i].option);
+		return SPECTRE_V2_CMD_AUTO;
+	}
+
+	if (cmd == SPECTRE_V2_CMD_IBRS && boot_cpu_has(X86_FEATURE_XENPV)) {
+		pr_err("%s selected but running as XenPV guest. Switching to AUTO select\n",
+		       mitigation_options[i].option);
+		return SPECTRE_V2_CMD_AUTO;
+	}
+
 	spec_v2_print_cond(mitigation_options[i].option,
 			   mitigation_options[i].secure);
 	return cmd;
@@ -1736,10 +1762,23 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	enum spectre_v2_mitigation auto_mode = SPECTRE_V2_NONE;
 
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
+	    !boot_cpu_has_bug(X86_BUG_RETBLEED) &&
 	    cmd == SPECTRE_V2_CMD_AUTO) {
 		/* CPU is not affected, nothing to do */
 		disable_ibrs_and_friends();
 		return auto_mode;
+	}
+
+	/*
+	 * If the CPU has retbleed, then choose one of the two IBRS modes.
+	 */
+	if (boot_cpu_has_bug(X86_BUG_RETBLEED) &&
+	    retbleed_cmd != RETBLEED_CMD_OFF &&
+	    boot_cpu_data.x86_vendor == X86_VENDOR_INTEL) {
+		if (boot_cpu_has(X86_FEATURE_IBRS_ENHANCED))
+			auto_mode = SPECTRE_V2_EIBRS;
+		else if (boot_cpu_has(X86_FEATURE_IBRS))
+			auto_mode = SPECTRE_V2_IBRS;
 	}
 
 	pr_info("Options: %s%s%s\n",
@@ -1848,17 +1887,17 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 	pr_info("Spectre v2 / SpectreRSB mitigation: Filling RSB on context switch\n");
 
 	/*
-	 * Retpoline means the kernel is safe because it has no indirect
-	 * branches. Enhanced IBRS protects firmware too, so, enable restricted
-	 * speculation around firmware calls only when Enhanced IBRS isn't
-	 * supported.
+	 * Retpoline protects the kernel, but doesn't protect firmware.  IBRS
+	 * and Enhanced IBRS protect firmware too, so enable IBRS around
+	 * firmware calls only when IBRS / Enhanced IBRS aren't otherwise
+	 * enabled.
 	 *
 	 * Use "mode" to check Enhanced IBRS instead of boot_cpu_has(), because
 	 * the user might select retpoline on the kernel command line and if
 	 * the CPU supports Enhanced IBRS, kernel might un-intentionally not
 	 * enable IBRS around firmware calls.
 	 */
-	if (ibrs_supported && !spectre_v2_in_eibrs_mode(mode)) {
+	if (ibrs_supported && !spectre_v2_in_ibrs_mode(mode)) {
 		ibrs_firmware_enable();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
@@ -2634,7 +2673,7 @@ static ssize_t mmio_stale_data_show_state(char *buf)
 
 static char *stibp_state(void)
 {
-	if (spectre_v2_in_eibrs_mode(spectre_v2_enabled))
+	if (spectre_v2_in_ibrs_mode(spectre_v2_enabled))
 		return "";
 
 	switch (spectre_v2_user_stibp) {
