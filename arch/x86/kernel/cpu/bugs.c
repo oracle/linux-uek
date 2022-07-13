@@ -419,6 +419,10 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
+/*
+ * NOTE: For VMX, this function is not called in the vmexit path.
+ * It uses vmx_spec_ctrl_restore_host() instead.
+ */
 void
 x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 {
