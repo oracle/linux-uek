@@ -2,7 +2,7 @@
 
 CFLAGS += -I. -I../../include -g -Og -Wall -D_LGPL_SOURCE -fsanitize=address \
 	  -fsanitize=undefined
-LDFLAGS += -fsanitize=address -fsanitize=undefined
+LDFLAGS += -fsanitize=address -fsanitize=undefined -static-libasan
 LDLIBS+= -lpthread -lurcu
 TARGETS = main idr-test multiorder xarray maple
 CORE_OFILES := xarray.o radix-tree.o idr.o linux.o test.o find_bit.o bitmap.o \
