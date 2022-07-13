@@ -35,6 +35,7 @@ struct nvme_ns_info {
 	u32 nsid;
 	__le32 anagrpid;
 	bool is_shared;
+	bool is_readonly;
 	bool is_ready;
 };
 
@@ -1451,6 +1452,7 @@ static int nvme_ns_info_from_identify(struct nvme_ctrl *ctrl,
 		return ret;
 	info->anagrpid = id->anagrpid;
 	info->is_shared = id->nmic & NVME_NS_NMIC_SHARED;
+	info->is_readonly = id->nsattr & NVME_NS_ATTR_RO;
 	info->is_ready = true;
 	if (ctrl->quirks & NVME_QUIRK_BOGUS_NID) {
 		dev_info(ctrl->device,
@@ -1486,6 +1488,7 @@ static int nvme_ns_info_from_id_cs_indep(struct nvme_ctrl *ctrl,
 	if (!ret) {
 		info->anagrpid = id->anagrpid;
 		info->is_shared = id->nmic & NVME_NS_NMIC_SHARED;
+		info->is_readonly = id->nsattr & NVME_NS_ATTR_RO;
 		info->is_ready = id->nstat & NVME_NSTAT_NRDY;
 	}
 	kfree(id);
@@ -1836,6 +1839,11 @@ static void nvme_update_disk_info(struct gendisk *disk,
 					   ns->ctrl->max_zeroes_sectors);
 }
 
+static bool nvme_ns_is_readonly(struct nvme_ns *ns, struct nvme_ns_info *info)
+{
+	return info->is_readonly || test_bit(NVME_NS_FORCE_RO, &ns->flags);
+}
+
 static inline bool nvme_first_scan(struct gendisk *disk)
 {
 	/* nvme_alloc_ns() scans the disk prior to adding it */
@@ -1901,8 +1909,7 @@ static int nvme_update_ns_info_block(struct nvme_ns *ns,
 		}
 	}
 
-	set_disk_ro(ns->disk, (id->nsattr & NVME_NS_ATTR_RO) ||
-		test_bit(NVME_NS_FORCE_RO, &ns->flags));
+	set_disk_ro(ns->disk, nvme_ns_is_readonly(ns, info));
 	set_bit(NVME_NS_READY, &ns->flags);
 	blk_mq_unfreeze_queue(ns->disk->queue);
 
@@ -1915,9 +1922,7 @@ static int nvme_update_ns_info_block(struct nvme_ns *ns,
 	if (nvme_ns_head_multipath(ns->head)) {
 		blk_mq_freeze_queue(ns->head->disk->queue);
 		nvme_update_disk_info(ns->head->disk, ns, id);
-		set_disk_ro(ns->head->disk,
-			    (id->nsattr & NVME_NS_ATTR_RO) ||
-				    test_bit(NVME_NS_FORCE_RO, &ns->flags));
+		set_disk_ro(ns->head->disk, nvme_ns_is_readonly(ns, info));
 		nvme_mpath_revalidate_paths(ns);
 		blk_stack_limits(&ns->head->disk->queue->limits,
 				 &ns->queue->limits, 0);
