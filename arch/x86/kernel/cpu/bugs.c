@@ -142,8 +142,9 @@ int __init spectre_v2_heuristics_setup(char *p)
 __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 
 static void spectre_v1_select_mitigation(void);
-static void __init retbleed_select_mitigation(void);
 static void spectre_v2_select_mitigation(void);
+static void __init retbleed_select_mitigation(void);
+static void __init spectre_v2_user_select_mitigation(void);
 static enum ssb_mitigation ssb_select_mitigation(void);
 static void ssb_init(void);
 static void l1tf_select_mitigation(void);
@@ -315,13 +316,19 @@ void __ref check_bugs(void)
 
 	/* Select the proper spectre mitigation before patching alternatives */
 	spectre_v1_select_mitigation();
+	spectre_v2_select_mitigation();
+	/*
+	 * retbleed_select_mitigation() relies on the state set by
+	 * spectre_v2_select_mitigation(); specifically it wants to know about
+	 * spectre_v2=ibrs.
+	 */
 	retbleed_select_mitigation();
 	/*
-	 * spectre_v2_select_mitigation() relies on the state set by
+	 * spectre_v2_user_select_mitigation() relies on the state set by
 	 * retbleed_select_mitigation(); specifically the STIBP selection is
 	 * forced for UNRET.
 	 */
-	spectre_v2_select_mitigation();
+	spectre_v2_user_select_mitigation();
 
 	/* Relies on the result of spectre_v2_select_mitigation. */
 	ssb_init();
@@ -1401,13 +1408,15 @@ void refresh_set_spectre_v2_enabled(void)
 		spectre_v2_enabled = SPECTRE_V2_NONE;
 }
 
+static __ro_after_init enum spectre_v2_mitigation_cmd spectre_v2_cmd;
+
 static enum spectre_v2_user_cmd
-spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
+spectre_v2_parse_user_cmdline(void)
 {
 	char arg[20];
 	int ret, i;
 
-	switch (v2_cmd) {
+	switch (spectre_v2_cmd) {
 	case SPECTRE_V2_CMD_NONE:
 		return SPECTRE_V2_USER_CMD_NONE;
 	case SPECTRE_V2_CMD_FORCE:
@@ -1448,7 +1457,7 @@ static inline bool spectre_v2_in_eibrs_mode(enum spectre_v2_mitigation mode)
 }
 
 static void
-spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
+spectre_v2_user_select_mitigation(void)
 {
 	enum spectre_v2_user_mitigation mode = SPECTRE_V2_USER_NONE;
 	bool smt_possible = IS_ENABLED(CONFIG_SMP);
@@ -1461,7 +1470,7 @@ spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 	    cpu_smt_control == CPU_SMT_NOT_SUPPORTED)
 		smt_possible = false;
 
-	cmd = spectre_v2_parse_user_cmdline(v2_cmd);
+	cmd = spectre_v2_parse_user_cmdline();
 	switch (cmd) {
 	case SPECTRE_V2_USER_CMD_NONE:
 		goto set_mode;
@@ -1903,7 +1912,7 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 	}
 
 	/* Set up IBPB and STIBP depending on the general spectre V2 command */
-	spectre_v2_user_select_mitigation(cmd);
+	spectre_v2_cmd = cmd;
 }
 
 static void spectre_v2_select_mitigation(void)
