@@ -13,6 +13,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/thread_info.h>
 #include <asm/asm.h>
+#include <asm/unwind_hints.h>
 
 #include <xen/interface/xen.h>
 
@@ -21,6 +22,7 @@
 
 .macro xen_pv_trap name
 ENTRY(xen_\name)
+	UNWIND_HINT_ENTRY
 	pop %rcx
 	pop %r11
 	jmp  \name
@@ -125,6 +127,7 @@ ENTRY(xen_sysret64)
 
 /* Normal 64-bit system call target */
 ENTRY(xen_entry_SYSCALL_64)
+	UNWIND_HINT_ENTRY
 	popq %rcx
 	popq %r11
 
@@ -143,6 +146,7 @@ ENDPROC(xen_entry_SYSCALL_64)
 
 /* 32-bit compat syscall target */
 ENTRY(xen_entry_SYSCALL_compat)
+	UNWIND_HINT_ENTRY
 	popq %rcx
 	popq %r11
 
@@ -159,6 +163,7 @@ ENDPROC(xen_entry_SYSCALL_compat)
 
 /* 32-bit compat sysenter target */
 ENTRY(xen_entry_SYSENTER_compat)
+	UNWIND_HINT_ENTRY
 	mov 0*8(%rsp), %rcx
 	mov 1*8(%rsp), %r11
 	mov 5*8(%rsp), %rsp
@@ -169,6 +174,7 @@ ENDPROC(xen_entry_SYSENTER_compat)
 
 ENTRY(xen_entry_SYSCALL_compat)
 ENTRY(xen_entry_SYSENTER_compat)
+	UNWIND_HINT_ENTRY
 	lea 16(%rsp), %rsp	/* strip %rcx, %r11 */
 	mov $-ENOSYS, %rax
 	pushq $0

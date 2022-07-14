@@ -50,6 +50,7 @@
  * 0(%ebp) arg6
  */
 ENTRY(entry_SYSENTER_compat)
+	UNWIND_HINT_ENTRY
 	/* Interrupts are off on entry. */
 	SWAPGS
 
@@ -206,6 +207,7 @@ ENDPROC(entry_SYSENTER_compat)
  * 0(%esp) arg6
  */
 ENTRY(entry_SYSCALL_compat)
+	UNWIND_HINT_ENTRY
 	/* Interrupts are off on entry. */
 	swapgs
 
@@ -354,6 +356,7 @@ END(entry_SYSCALL_compat)
  * ebp  arg6
  */
 ENTRY(entry_INT80_compat)
+	UNWIND_HINT_ENTRY
 	/*
 	 * Interrupts are off on entry.
 	 */

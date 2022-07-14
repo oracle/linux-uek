@@ -144,7 +144,7 @@ END(native_usergs_sysret64)
  */
 
 ENTRY(entry_SYSCALL_64)
-	UNWIND_HINT_EMPTY
+	UNWIND_HINT_ENTRY
 	/*
 	 * Interrupts are off on entry.
 	 * We do not frame this tiny irq-off block with TRACE_IRQS_OFF/ON,
@@ -1344,6 +1344,7 @@ ENTRY(error_entry)
 .Lerror_entry_done_lfence:
 	FENCE_SWAPGS_KERNEL_ENTRY
 .Lerror_entry_done:
+	ANNOTATE_UNRET_END
 	RET
 
 	/*

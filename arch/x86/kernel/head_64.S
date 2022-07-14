@@ -292,6 +292,7 @@ ENTRY(early_idt_handler_array)
 END(early_idt_handler_array)
 
 early_idt_handler_common:
+	ANNOTATE_UNRET_END
 	/*
 	 * The stack is the hardware frame, an error code or zero, and the
 	 * vector number.

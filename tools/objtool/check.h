@@ -45,9 +45,17 @@ struct instruction {
 	unsigned int len;
 	enum insn_type type;
 	unsigned long immediate;
-	bool dead_end, ignore, ignore_alts;
-	bool hint, save, restore;
-	bool retpoline_safe;
+
+	u16 dead_end		: 1,
+	   ignore		: 1,
+	   ignore_alts		: 1,
+	   hint			: 1,
+	   save			: 1,
+	   restore		: 1,
+	   retpoline_safe	: 1,
+	   entry		: 1;
+		/* 8 bit hole */
+
 	u8 visited;
 	u8 ret_offset;
 	struct alt_group *alt_group;
@@ -69,6 +77,11 @@ struct objtool_file {
 	struct list_head return_thunk_list;
 	bool ignore_unreachables, c_file, hints, rodata;
 };
+
+#define VISITED_BRANCH         0x01
+#define VISITED_BRANCH_UACCESS 0x02
+#define VISITED_BRANCH_MASK    0x03
+#define VISITED_ENTRY          0x04
 
 int check(const char *objname, bool orc);
 

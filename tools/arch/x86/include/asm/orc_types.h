@@ -54,6 +54,8 @@
  * aren't used in struct orc_entry due to size and complexity constraints.
  * Objtool converts them to real types when it converts the hints to orc
  * entries.
+ *
+ * UNWIND_HINT_ENTRY: machine entry without stack, SYSCALL/SYSENTER etc.
  */
 #define ORC_TYPE_CALL			0
 #define ORC_TYPE_REGS			1
@@ -61,6 +63,7 @@
 #define UNWIND_HINT_TYPE_SAVE		3
 #define UNWIND_HINT_TYPE_RESTORE	4
 #define UNWIND_HINT_TYPE_RET_OFFSET	5
+#define UNWIND_HINT_TYPE_ENTRY		6
 
 #ifndef __ASSEMBLY__
 /*
