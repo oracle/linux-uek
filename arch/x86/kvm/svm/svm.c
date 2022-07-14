@@ -2293,6 +2293,7 @@ static int task_switch_interception(struct vcpu_svm *svm)
 			kvm_clear_exception_queue(&svm->vcpu);
 			break;
 		case SVM_EXITINTINFO_TYPE_INTR:
+		case SVM_EXITINTINFO_TYPE_SOFT:
 			kvm_clear_interrupt_queue(&svm->vcpu);
 			break;
 		default:
