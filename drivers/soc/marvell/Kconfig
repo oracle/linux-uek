@@ -265,4 +265,13 @@ config MARVELL_CN10K_EINJ
           called cn10k-einj.
           Unless testing, say N here.
 
+config EFI_BOOTEFI_BUG
+       bool "Handle memory problem in the bootefi u-boot command"
+       depends on EMBEDDED && EDAC_OCTEONTX
+       default n
+       help
+         The memmap presented by u-boot bootefi command in the octeontx2
+	 firmware is inconsistent with the device tree. This causes EDAC
+	 to fail to initialize because the memory it uses looks like it
+	 is busy.
 endmenu

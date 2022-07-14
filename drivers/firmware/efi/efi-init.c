@@ -204,6 +204,26 @@ static __init void reserve_regions(void)
 		paddr = md->phys_addr;
 		npages = md->num_pages;
 
+		/*
+		 * The memmap presented by bootefi on the Marvell CN9xxx
+		 * platforms is not consistent with the memory laid out
+		 * in the device tree. In particular, one or more areas
+		 * conflict with the areas that are reserved for EDAC
+		 * and other devices in the DT. These areas can't be used,
+		 * but their presence in the "PCI mem" resource table causes
+		 * initialization of EDAC and other devices to fail.
+		 * Ignoring these areas seems to be reasonable, but for
+		 * now limiting this to this special case of using bootefi
+		 * on this particular version of u-boot.
+		 *
+		 * Since we are ignoring the EFI Runtime Services areas, we
+		 * have disabled Runtime Services in efi.c
+		 */
+		if (IS_ENABLED(CONFIG_EFI_BOOTEFI_BUG))
+			if (md->type == EFI_RESERVED_TYPE ||
+				md->type == EFI_RUNTIME_SERVICES_DATA)
+				continue;
+
 		if (efi_enabled(EFI_DBG)) {
 			char buf[64];
 
