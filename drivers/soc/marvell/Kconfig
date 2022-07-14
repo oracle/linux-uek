@@ -154,4 +154,13 @@ config MARVELL_PTM_EP
 	  To compile this as a module, choose M here. The module will be called
 	  mrvl-ptm-ep.
 
+config EFI_BOOTEFI_BUG
+       bool "Handle memory problem in the bootefi u-boot command"
+       depends on EMBEDDED && EDAC_OCTEONTX
+       default n
+       help
+         The memmap presented by u-boot bootefi command in the octeontx2
+	 firmware is inconsistent with the device tree. This causes EDAC
+	 to fail to initialize because the memory it uses looks like it
+	 is busy.
 endmenu
