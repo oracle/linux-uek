@@ -72,7 +72,7 @@ struct dma_map_ops {
 	size_t (*max_mapping_size)(struct device *dev);
 	unsigned long (*get_merge_boundary)(struct device *dev);
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, size_t (*opt_mapping_size)(void))
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
