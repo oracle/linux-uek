@@ -878,6 +878,14 @@ static const struct midr_range marvell_erratum_38545_cpus[] = {
 	MIDR_ALL_VERSIONS(MIDR_MRVL_OCTEONTX2_98XX),
 };
 
+#ifdef CONFIG_ARM64_ERRATUM_1742098
+static struct midr_range broken_aarch32_aes[] = {
+	MIDR_RANGE(MIDR_CORTEX_A57, 0, 1, 0xf, 0xf),
+	MIDR_ALL_VERSIONS(MIDR_CORTEX_A72),
+	{},
+};
+#endif
+
 const struct arm64_cpu_capabilities arm64_errata[] = {
 #ifdef CONFIG_ARM64_WORKAROUND_CLEAN_CACHE
 	{
@@ -1080,6 +1088,14 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
                ERRATA_MIDR_RANGE_LIST(cavium_erratum_36890_cpus),
                .cpu_enable = cpu_enable_trap_zva_access,
        },
+#endif
+#ifdef CONFIG_ARM64_ERRATUM_1742098
+	{
+		.desc = "ARM erratum 1742098",
+		.capability = ARM64_WORKAROUND_1742098,
+		CAP_MIDR_RANGE_LIST(broken_aarch32_aes),
+		.type = ARM64_CPUCAP_LOCAL_CPU_ERRATUM,
+	},
 #endif
 	{
 	}
