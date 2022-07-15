@@ -186,6 +186,7 @@ struct nfsd_net {
 	char			nfsd_name[UNX_MAXNODENAME+1];
 
 	atomic_t		nfs4_client_count;
+	int			nfs4_max_clients;
 };
 
 /* Simple check to find out if a given net was properly initialized */
