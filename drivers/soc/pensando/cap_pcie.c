@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019-2021, Pensando Systems Inc.
+ * Copyright (c) 2019-2022, Pensando Systems Inc.
  */
 
 #include <linux/types.h>
@@ -112,19 +112,17 @@ static int pciep_access_end(void)
 	return pi->pciep_access_error;
 }
 
-static int pciep_valid_rw(struct pcie_rw *rw)
+static int pciep_valid_pa(const uint64_t pciepa, const uint32_t size)
 {
 	struct pciedev_info *pi = &pciedev_info;
 
 	if (!pi->pcieva)
 		return -ENXIO;
-	if (rw->pciepa < pi->pcie_base ||
-	    rw->pciepa > pi->pcie_base + pi->pcie_size ||
-	    rw->size > pi->pcie_size ||
-	    rw->pciepa + rw->size > pi->pcie_base + pi->pcie_size)
+	if (pciepa < pi->pcie_base ||
+	    pciepa > pi->pcie_base + pi->pcie_size ||
+	    size > pi->pcie_size ||
+	    pciepa + size > pi->pcie_base + pi->pcie_size)
 		return -ERANGE;
-	if (rw->size != sizeof(u32))
-		return -EINVAL;
 	return 0;
 }
 
@@ -141,20 +139,19 @@ static int pciep_valid_rw(struct pcie_rw *rw)
  * event during our pcie register access and return failure to the
  * caller, but the system continues.
  */
-static long pciep_regrd(struct pcie_rw *rw)
+int pciep_regrd32(const uint64_t pciepa, uint32_t *val)
 {
 	struct pciedev_info *pi = &pciedev_info;
-	uint32_t v;
 	int r;
 
-	r = pciep_valid_rw(rw);
+	r = pciep_valid_pa(pciepa, sizeof(u32));
 	if (r)
 		return r;
 
 	spin_lock(&pi->pciep_access_lock);
-	pciep_access_begin(rw->pciepa);
+	pciep_access_begin(pciepa);
 
-	v = pcie_readl(rw->pciepa);
+	*val = pcie_readl(pciepa);
 	asm volatile("msr daifclr, #4" ::: "memory"); /* unmask async SError */
 	dsb(sy);		/* sync in-flight ld/st */
 	isb();
@@ -164,21 +161,29 @@ static long pciep_regrd(struct pcie_rw *rw)
 	if (r)
 		return -EIO;
 
-	return copy_to_user(rw->rdvalp, &v, sizeof(v));
+	return 0;
 }
+EXPORT_SYMBOL_GPL(pciep_regrd32);
 
 static long pcie_unlocked_ioctl(struct file *file,
 		unsigned int cmd, unsigned long arg)
 {
 	void __user *p = (void __user *)arg;
 	struct pcie_rw rw;
+	uint32_t val;
+	int r;
 
 	switch (cmd) {
 
 	case PCIE_PCIEP_REGRD:
 		if (copy_from_user(&rw, p, sizeof(rw)))
 			return -EFAULT;
-		return pciep_regrd(&rw);
+		if (rw.size != sizeof(u32))
+			return -EINVAL;
+		r = pciep_regrd32(rw.pciepa, &val);
+		if (r)
+			return r;
+		return copy_to_user(rw.rdvalp, &val, sizeof(val));
 
 	default:
 		return -ENOTTY;
