@@ -390,10 +390,11 @@ static void otx2_rfoe_ptp_tx_work(struct work_struct *work)
 	timestamp = readq(priv->rfoe_reg_base +
 			  RFOEX_TX_PTP_TSTMP_W0(priv->rfoe_num,
 						priv->lmac_id));
-	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN &&
+	    priv->ptp_cfg->use_ptp_alg)
 		otx2_rfoe_calc_ptp_ts(priv, &timestamp);
-
-	timestamp = timecounter_cyc2time(&priv->time_counter, timestamp);
+	else
+		timestamp = timecounter_cyc2time(&priv->time_counter, timestamp);
 
 	memset(&ts, 0, sizeof(ts));
 	ts.hwtstamp = ns_to_ktime(timestamp);
@@ -607,9 +608,11 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	}
 
 	if (priv2->rx_hw_tstamp_en) {
-		if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN &&
+		    priv->ptp_cfg->use_ptp_alg)
 			otx2_rfoe_calc_ptp_ts(priv2, &tstamp);
-		tstamp = timecounter_cyc2time(&priv2->time_counter, tstamp);
+		else
+			tstamp = timecounter_cyc2time(&priv2->time_counter, tstamp);
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tstamp);
 	}
 
