@@ -3323,11 +3323,20 @@ static int mlx5_ib_panic_handler(struct notifier_block *nb,
 				 unsigned long action, void *unused)
 {
 	struct mlx5_ib_dev *dev;
+	struct mlx5_ib_multiport_info *mpi;
 
 	list_for_each_entry(dev, &mlx5_ib_dev_list, ib_dev_list) {
 		struct pci_dev *pdev = dev->mdev->pdev;
 
 		pci_crit(pdev, "Revoke Bus_Mastership_Enable (BME)\n");
+		pci_clear_master(pdev);
+	}
+
+	/* Unbound devices are moved to the unaffiliated list */
+	list_for_each_entry(mpi, &mlx5_ib_unaffiliated_port_list, list) {
+		struct pci_dev *pdev = mpi->mdev->pdev;
+
+		pci_crit(pdev, "Revoke Bus_Mastership_Enable (BME) for unbound device\n");
 		pci_clear_master(pdev);
 	}
 
