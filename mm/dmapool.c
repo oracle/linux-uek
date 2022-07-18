@@ -21,6 +21,7 @@
 
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-map-ops.h>
 #include <linux/dmapool.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -372,7 +373,9 @@ void *dma_pool_alloc(struct dma_pool *pool, gfp_t mem_flags,
 #endif
 	spin_unlock_irqrestore(&pool->lock, flags);
 
-	if (want_init_on_alloc(mem_flags))
+	if (want_init_on_alloc(mem_flags) &&
+		!use_dev_coherent_memory(pool->dev) &&
+		get_dma_ops(pool->dev))
 		memset(retval, 0, pool->size);
 
 	return retval;
