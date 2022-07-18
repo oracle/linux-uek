@@ -2050,7 +2050,16 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 	 * the CPU supports Enhanced IBRS, kernel might un-intentionally not
 	 * enable IBRS around firmware calls.
 	 */
-	if (ibrs_supported && !spectre_v2_in_ibrs_mode(mode)) {
+	if (boot_cpu_has_bug(X86_BUG_RETBLEED) &&
+	    (boot_cpu_data.x86_vendor == X86_VENDOR_AMD ||
+	     boot_cpu_data.x86_vendor == X86_VENDOR_HYGON)) {
+
+		if (retbleed_cmd != RETBLEED_CMD_IBPB) {
+			setup_force_cpu_cap(X86_FEATURE_USE_IBPB_FW);
+			pr_info("Enabling Speculation Barrier for firmware calls\n");
+		}
+
+	} else if (ibrs_supported && !spectre_v2_in_ibrs_mode(mode)) {
 		ibrs_firmware_enable();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}

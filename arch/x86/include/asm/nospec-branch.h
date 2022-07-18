@@ -299,6 +299,9 @@ do {									\
 	if (static_branch_likely(&ibrs_firmware_enabled_key))		\
 		wrmsrl(MSR_IA32_SPEC_CTRL,				\
 		       spec_ctrl_current() | SPEC_CTRL_IBRS);		\
+									\
+	if (static_cpu_has(X86_FEATURE_USE_IBPB_FW))			\
+		wrmsrl(MSR_IA32_PRED_CMD, PRED_CMD_IBPB);		\
 } while (0)
 
 #define firmware_restrict_branch_speculation_end()			\
