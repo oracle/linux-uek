@@ -453,7 +453,8 @@ static bool is_evtinj_nmi(u32 evtinj)
 }
 
 static void nested_prepare_vmcb_control(struct vcpu_svm *svm,
-					unsigned long vmcb12_rip)
+					unsigned long vmcb12_rip,
+					unsigned long vmcb12_csbase)
 {
 	const u32 int_ctl_vmcb01_bits =
 	    V_INTR_MASKING_MASK | V_GIF_MASK | V_GIF_ENABLE_MASK;
@@ -494,7 +495,7 @@ static void nested_prepare_vmcb_control(struct vcpu_svm *svm,
 	svm->nmi_l1_to_l2 = is_evtinj_nmi(svm->vmcb->control.event_inj);
 	if (is_evtinj_soft(svm->vmcb->control.event_inj)) {
 		svm->soft_int_injected = true;
-		svm->soft_int_csbase = svm->vmcb->save.cs.base;
+		svm->soft_int_csbase = vmcb12_csbase;
 		svm->soft_int_old_rip = vmcb12_rip;
 		if (svm->nrips_enabled)
 			svm->soft_int_next_rip = svm->nested.ctl.next_rip;
@@ -536,7 +537,7 @@ int enter_svm_guest_mode(struct vcpu_svm *svm, u64 vmcb12_gpa,
 
 
 	svm->nested.vmcb12_gpa = vmcb12_gpa;
-	nested_prepare_vmcb_control(svm, vmcb12->save.rip);
+	nested_prepare_vmcb_control(svm, vmcb12->save.rip, vmcb12->save.cs.base);
 	nested_prepare_vmcb_save(svm, vmcb12);
 
 	ret = nested_svm_load_cr3(&svm->vcpu, vmcb12->save.cr3,
@@ -1305,7 +1306,7 @@ static int svm_set_nested_state(struct kvm_vcpu *vcpu,
 
 	svm->nested.vmcb12_gpa = kvm_state->hdr.svm.vmcb_pa;
 	load_nested_vmcb_control(svm, ctl);
-	nested_prepare_vmcb_control(svm, svm->vmcb->save.rip);
+	nested_prepare_vmcb_control(svm, svm->vmcb->save.rip, svm->vmcb->save.cs.base);
 
 	kvm_make_request(KVM_REQ_GET_NESTED_STATE_PAGES, vcpu);
 	ret = 0;
