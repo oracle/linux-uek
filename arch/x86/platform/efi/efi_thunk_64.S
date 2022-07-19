@@ -22,6 +22,7 @@
 #include <linux/linkage.h>
 #include <asm/page_types.h>
 #include <asm/segment.h>
+#include <asm/nospec-branch.h>
 
 	.text
 	.code64
@@ -59,7 +60,9 @@ ENTRY(efi64_thunk)
 	movq	efi_saved_sp(%rip), %rsp
 	pop	%rbx
 	pop	%rbp
-	RET
+	ANNOTATE_UNRET_SAFE
+	ret
+	int3
 ENDPROC(efi64_thunk)
 
 /*
@@ -113,14 +116,18 @@ ENTRY(__efi64_thunk)
 	shl	$32, %rax
 	or	%rcx, %rax
 1:
-	RET
+	ANNOTATE_UNRET_SAFE
+	ret
+	int3
 ENDPROC(__efi64_thunk)
 
 ENTRY(efi_exit32)
 	movq	func_rt_ptr(%rip), %rax
 	push	%rax
 	mov	%rdi, %rax
-	RET
+	ANNOTATE_UNRET_SAFE
+	ret
+	int3
 ENDPROC(efi_exit32)
 
 	.code32
