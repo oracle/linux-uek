@@ -215,24 +215,44 @@ out:
 }
 #endif
 
-static ssize_t
-ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
+static ssize_t ext4_buffered_write_iter(struct kiocb *iocb,
+						struct iov_iter *from)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
-	int o_direct = iocb->ki_flags & IOCB_DIRECT;
+	ssize_t ret;
+
+	if (iocb->ki_flags & IOCB_NOWAIT)
+		return -EOPNOTSUPP;
+
+	if (!inode_trylock(inode)) {
+		if (iocb->ki_flags & IOCB_NOWAIT)
+			return -EAGAIN;
+		inode_lock(inode);
+	}
+
+	ret = ext4_write_checks(iocb, from);
+	if (ret <= 0)
+		goto out;
+
+	ret = __generic_file_write_iter(iocb, from);
+	inode_unlock(inode);
+
+	if (ret > 0)
+		ret = generic_write_sync(iocb, ret);
+
+	return ret;
+
+out:
+	inode_unlock(inode);
+	return ret;
+}
+
+static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+	struct inode *inode = file_inode(iocb->ki_filp);
 	int unaligned_aio = 0;
 	int overwrite = 0;
 	ssize_t ret;
-
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
-		return -EIO;
-
-#ifdef CONFIG_FS_DAX
-	if (IS_DAX(inode))
-		return ext4_dax_write_iter(iocb, from);
-#endif
-	if (!o_direct && (iocb->ki_flags & IOCB_NOWAIT))
-		return -EOPNOTSUPP;
 
 	if (!inode_trylock(inode)) {
 		if (iocb->ki_flags & IOCB_NOWAIT)
@@ -249,7 +269,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	 * of partial blocks of two competing unaligned AIOs can result in data
 	 * corruption.
 	 */
-	if (o_direct && ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS) &&
+	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS) &&
 	    !is_sync_kiocb(iocb) &&
 	    ext4_unaligned_aio(inode, from, iocb->ki_pos)) {
 		unaligned_aio = 1;
@@ -258,7 +278,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	iocb->private = &overwrite;
 	/* Check whether we do a DIO overwrite or not */
-	if (o_direct && !unaligned_aio) {
+	if (!unaligned_aio) {
 		if (ext4_overwrite_io(inode, iocb->ki_pos, iov_iter_count(from))) {
 			if (ext4_should_dioread_nolock(inode))
 				overwrite = 1;
@@ -286,6 +306,25 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 out:
 	inode_unlock(inode);
 	return ret;
+}
+
+static ssize_t
+ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+	struct inode *inode = file_inode(iocb->ki_filp);
+
+	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+		return -EIO;
+
+#ifdef CONFIG_FS_DAX
+	if (IS_DAX(inode))
+		return ext4_dax_write_iter(iocb, from);
+#endif
+
+	if (iocb->ki_flags & IOCB_DIRECT)
+		return ext4_dio_write_iter(iocb, from);
+
+	return ext4_buffered_write_iter(iocb, from);
 }
 
 #ifdef CONFIG_FS_DAX
