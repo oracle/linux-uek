@@ -22,7 +22,13 @@
 #define MAX_ETH				10
 #define MAX_LMAC_PER_ETH		4
 
-int mac_debug;
+
+enum PHY_7121_MACSEC_DBG {
+	PHY_7121_MACSEC_DBG_DISABLE = 0,
+	PHY_7121_MACSEC_DBG_ENABLE,
+};
+
+enum PHY_7121_MACSEC_DBG mac_debug;
 
 #define MAC_ADV_DEBUG(fmt, arg...) \
 				do { \
@@ -88,6 +94,16 @@ enum phy_mac_adv_cmd {
 	PHY_MAC_ADV_MACSEC_GET,
 	PHY_MAC_ADV_MACSEC_PTP,
 	PHY_MAC_ADV_MACSEC_RE_KEY,
+	PHY_MAC_ADV_MACSEC_SET_PKT_NUM,
+	PHY_MAC_ADV_MACSEC_SET_SCI,
+	PHY_MAC_ADV_MACSEC_ADD_VPORT,
+	PHY_MAC_ADV_MACSEC_DEL_SA,
+	PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA,
+	PHY_MAC_ADV_MACSEC_DROPTYPE_SA,
+	PHY_MAC_ADV_MACSEC_GET_MAC_ADDR,
+	PHY_MAC_ADV_MACSEC_GET_SA_PARAMS,
+	PHY_MAC_ADV_MACSEC_DBG,
+
 	PHY_MAC_ADV_MACSEC_MAX = 100,
 
 	PHY_MAC_ADV_GEN_RCLK = 101,
@@ -108,6 +124,15 @@ static struct {
 	{PHY_MAC_ADV_MAC_GET_STATS, "mac_stats"},
 	{PHY_MAC_ADV_MACSEC_PTP, "ptp_enable"},
 	{PHY_MAC_ADV_MACSEC_RE_KEY, "rekey"},
+	{PHY_MAC_ADV_MACSEC_SET_PKT_NUM, "pktnum"},
+	{PHY_MAC_ADV_MACSEC_ADD_SA, "sa_add"},
+	{PHY_MAC_ADV_MACSEC_SET_SCI, "sci"},
+	{PHY_MAC_ADV_MACSEC_ADD_VPORT, "vport"},
+	{PHY_MAC_ADV_MACSEC_DEL_SA, "sa_del"},
+	{PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA, "sa_action"},
+	{PHY_MAC_ADV_MACSEC_GET_MAC_ADDR, "get_mac"},
+	{PHY_MAC_ADV_MACSEC_GET_SA_PARAMS, "get_sa_params"},
+	{PHY_MAC_ADV_MACSEC_DBG, "macsec_dbg"},
 };
 DEFINE_STR_2_ENUM_FUNC(mac_adv_macsec_cmds)
 
@@ -137,28 +162,28 @@ static struct {
 };
 DEFINE_STR_2_ENUM_FUNC(rclk_pin)
 
-typedef enum  PHY_7121_MACSEC_DIR {
+enum  PHY_7121_MACSEC_DIR {
 	PHY_7121_MACSEC_INGRESS = 0,
 	PHY_7121_MACSEC_EGRESS,
-} PHY_7121_MACSEC_DIR_t;
+};
 
 static struct phy_mac_adv_macsec_dir {
 	enum PHY_7121_MACSEC_DIR e;
 	const char *s;
 } macsec_dir[] = {
-	{PHY_7121_MACSEC_INGRESS, "ingress"},
-	{PHY_7121_MACSEC_EGRESS, "egress"},
+	{PHY_7121_MACSEC_INGRESS, "rx"},
+	{PHY_7121_MACSEC_EGRESS, "tx"},
 };
 DEFINE_STR_2_ENUM_FUNC(macsec_dir)
 
-typedef enum  PHY_7121_MACSEC_PKTTEST {
+enum  PHY_7121_MACSEC_PKTTEST {
 	PHY_7121_MACSEC_PKTTEST_START = 0,
 	PHY_7121_MACSEC_PKTTEST_STOP,
 	PHY_7121_MACSEC_PKTTEST_CHECK,
 	PHY_7121_MACSEC_PKTTEST_COUNTERS,
 	PHY_7121_MACSEC_PKTTEST_LPBK,
 	PHY_7121_MACSEC_PKTTEST_GEN,
-} PHY_7121_MACSEC_PKTTEST_t;
+};
 
 static struct phy_mac_adv_macsec_pkttest {
 	enum PHY_7121_MACSEC_PKTTEST e;
@@ -173,23 +198,125 @@ static struct phy_mac_adv_macsec_pkttest {
 };
 DEFINE_STR_2_ENUM_FUNC(macsec_pkttest)
 
-typedef struct mac_da {
-	PHY_7121_MACSEC_DIR_t dir;
+struct mac_da {
+	enum PHY_7121_MACSEC_DIR dir;
 	unsigned char  mac[6];
-} mac_da_t;
+};
 
-#define MACSEC_KEY_SIZE 32
+#define MACSEC_KEY_SIZE 16
+#define MACSEC_SCI_SIZE 8
 
-typedef struct key_sa {
-	PHY_7121_MACSEC_DIR_t dir;
-	unsigned char  key_size;
-	unsigned char  key[MACSEC_KEY_SIZE];
-	//unsigned char  key_ingress[MACSEC_KEY_SIZE];
-	//unsigned char  key_egress[MACSEC_KEY_SIZE];
-} key_sa_t;
+#define MAX_KEYS_PER_SA 2
+#define MAX_SA_PER_PORT 4
+
+enum PHY_7121_MACSEC_SA {
+	PHY_7121_MACSEC_SA_0 = 0,
+	PHY_7121_MACSEC_SA_1,
+	PHY_7121_MACSEC_SA_2,
+	PHY_7121_MACSEC_SA_3,
+};
+
+static struct phy_mac_adv_macsec_sa {
+	enum PHY_7121_MACSEC_SA e;
+	const char *s;
+} macsec_sa[] = {
+	{PHY_7121_MACSEC_SA_0, "sa_0"},
+	{PHY_7121_MACSEC_SA_1, "sa_1"},
+	{PHY_7121_MACSEC_SA_2, "sa_2"},
+	{PHY_7121_MACSEC_SA_3, "sa_3"},
+};
+DEFINE_STR_2_ENUM_FUNC(macsec_sa)
+
+
+enum PHY_7121_MACSEC_VPORT {
+	PHY_7121_MACSEC_VPORT_0 = 0,
+	PHY_7121_MACSEC_VPORT_1,
+};
+
+static struct phy_mac_adv_macsec_vport {
+	enum PHY_7121_MACSEC_VPORT e;
+	const char *s;
+} macsec_vport[] = {
+	{PHY_7121_MACSEC_VPORT_0, "vport_0"},
+	{PHY_7121_MACSEC_VPORT_1, "vport_1"},
+};
+DEFINE_STR_2_ENUM_FUNC(macsec_vport)
+
+struct macsec_vport_params {
+	enum PHY_7121_MACSEC_VPORT  vport_num;
+	enum PHY_7121_MACSEC_DIR dir;
+	unsigned char mac[6];
+};
+
+enum PHY_7121_MACSEC_SA_ACTIONTYPE {
+	SECY_SA_ACTION_BYPASS = 0,
+	SECY_SA_ACTION_DROP,
+	SECY_SA_ACTION_INGRESS,
+	SECY_SA_ACTION_EGRESS,
+	SECY_SA_ACTION_CRYPT_AUTH,
+};
+
+static struct phy_mac_adv_macsec_sa_actiontype {
+	enum PHY_7121_MACSEC_SA_ACTIONTYPE e;
+	const char *s;
+} macsec_sa_actiontype[] = {
+	{SECY_SA_ACTION_BYPASS, "bypass"},
+	{SECY_SA_ACTION_DROP, "drop"},
+	{SECY_SA_ACTION_INGRESS, "ingress"},
+	{SECY_SA_ACTION_EGRESS, "egress"},
+	{SECY_SA_ACTION_CRYPT_AUTH, "crypt_auth"},
+};
+DEFINE_STR_2_ENUM_FUNC(macsec_sa_actiontype)
+
+enum PHY_7121_MACSEC_SA_DROPTYPE {
+	SECY_SA_DROP_CRC_ERROR = 0,
+	SECY_SA_DROP_PKT_ERROR,
+	SECY_SA_DROP_INTERNAL,
+	SECY_SA_DROP_NONE
+};
+
+static struct phy_mac_adv_macsec_sa_droptype {
+	enum PHY_7121_MACSEC_SA_DROPTYPE e;
+	const char *s;
+} macsec_sa_droptype[] = {
+	{SECY_SA_DROP_CRC_ERROR, "crc_error"},
+	{SECY_SA_DROP_PKT_ERROR, "pkt_error"},
+	{SECY_SA_DROP_INTERNAL, "internal"},
+	{SECY_SA_DROP_NONE, "none"},
+};
+DEFINE_STR_2_ENUM_FUNC(macsec_sa_droptype)
+
+static struct phy_mac_adv_macsec_dbg {
+	enum PHY_7121_MACSEC_DBG e;
+	const char *s;
+} macsec_dbg[] = {
+	{PHY_7121_MACSEC_DBG_DISABLE, "disable"},
+	{PHY_7121_MACSEC_DBG_ENABLE, "enable"},
+};
+DEFINE_STR_2_ENUM_FUNC(macsec_dbg)
+
+struct macsec_sa_params {
+	enum PHY_7121_MACSEC_SA  sa_num;
+	enum PHY_7121_MACSEC_DIR dir;
+	uint32_t flags;
+	bool is_actiontype;
+	enum PHY_7121_MACSEC_SA_ACTIONTYPE actiontype;
+	bool is_droptype;
+	enum PHY_7121_MACSEC_SA_DROPTYPE droptype;
+	bool is_key;
+	unsigned char key[MACSEC_KEY_SIZE];
+	unsigned int key_size;
+	bool is_sci;
+	unsigned char sci[MACSEC_SCI_SIZE];
+	bool is_seq_no;
+	uint32_t seq_num_lo;
+	uint32_t seq_num_hi;
+	bool is_ethertype;
+	uint32_t ethertype;
+};
 
 typedef struct pkttest {
-	PHY_7121_MACSEC_PKTTEST_t cmd;
+	enum PHY_7121_MACSEC_PKTTEST cmd;
 } pkttest_t;
 
 typedef struct phy_gen_rclk {
@@ -198,19 +325,25 @@ typedef struct phy_gen_rclk {
 	int ratio;
 } phy_gen_rclk_t;
 
+#define MACSEC_ADV_CMD_VERS_MAJOR  0x0001
+#define MACSEC_ADV_CMD_VERS_MINOR  0x0000
+#define MACSEC_ADV_CMD_VERS  (MACSEC_ADV_CMD_VERS_MAJOR \
+				| MACSEC_ADV_CMD_VERS_MINOR)
 
-typedef struct phy_7121_adv_cmds {
+struct phy_7121_adv_cmds {
+	int mac_adv_cmd_ver;
+	int mac_adv_dbg;
 	int mac_adv_cmd;
 	int cgx_id;
 	int lmac_id;
 	unsigned short  mdio_port;
 	union {
-		key_sa_t key;
-		mac_da_t mac;
-		pkttest_t pkttest_cmd;
+		struct macsec_sa_params sa_params;
+		struct macsec_vport_params vport_params;
+		struct pkttest pkttest_cmd;
 		phy_gen_rclk_t gen_rclk;
 	} data;
-} phy_7121_adv_cmds_t;
+};
 
 /* Buffer Data */
 struct memory_desc {
@@ -284,9 +417,9 @@ static void print_key(uint8_t *key_p, unsigned int count)
 	int i;
 
 	MAC_ADV_DEBUG("\n");
-	for (i = 1; i <= count; i++) {
-		MAC_ADV_DEBUG(" 0x%x ", key_p[i-1]);
-		if (i%8 == 0)
+	for (i = 0; i < count; i++) {
+		MAC_ADV_DEBUG(" 0x%x ", key_p[i]);
+		if (i == 8)
 			MAC_ADV_DEBUG("\n");
 	}
 }
@@ -328,7 +461,8 @@ static ssize_t phy_debug_generic_write(struct file *filp,
 
 	int pin;
 
-	phy_7121_adv_cmds_t *mac_adv = (phy_7121_adv_cmds_t *)memdesc[BUF_DATA].virt;
+	struct phy_7121_adv_cmds *mac_adv =
+		(struct phy_7121_adv_cmds *)memdesc[BUF_DATA].virt;
 
 	if (copy_user_input(buffer, count, macadv_cmd_buf, CMD_SZ))
 		return -EFAULT;
@@ -344,7 +478,7 @@ static ssize_t phy_debug_generic_write(struct file *filp,
 	if (cmd == -1)
 		return -EINVAL;
 
-	memset(mac_adv, 0x00, sizeof(phy_7121_adv_cmds_t));
+	memset(mac_adv, 0x00, sizeof(struct phy_7121_adv_cmds));
 
 	mac_adv->cgx_id =  phy_data.eth;
 	mac_adv->lmac_id =  phy_data.lmac;
@@ -387,7 +521,7 @@ static ssize_t phy_debug_generic_write(struct file *filp,
 	}
 
 	arm_smccc_smc(PLAT_OCTEONTX_PHY_ADVANCE_CMDS,
-			memdesc[BUF_DATA].phys, sizeof(phy_7121_adv_cmds_t),
+			memdesc[BUF_DATA].phys, sizeof(struct phy_7121_adv_cmds),
 			phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
 
 	if (res.a0) {
@@ -414,10 +548,15 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 	char *end;
 	char *token;
 	int cmd;
-	PHY_7121_MACSEC_DIR_t dir;
-	PHY_7121_MACSEC_PKTTEST_t pkttest;
+	enum PHY_7121_MACSEC_DIR dir;
+	enum PHY_7121_MACSEC_PKTTEST pkttest;
+	enum PHY_7121_MACSEC_SA sa;
+	enum PHY_7121_MACSEC_SA_ACTIONTYPE actiontype;
+	enum PHY_7121_MACSEC_SA_DROPTYPE droptype;
+	enum PHY_7121_MACSEC_DBG macsec_dbg;
+	int status;
 
-	phy_7121_adv_cmds_t *mac_adv = (phy_7121_adv_cmds_t *)memdesc[BUF_DATA].virt;
+	struct phy_7121_adv_cmds *mac_adv = (struct phy_7121_adv_cmds *)memdesc[BUF_DATA].virt;
 
 	if (copy_user_input(buffer, count, macadv_cmd_buf, CMD_SZ))
 		return -EFAULT;
@@ -433,7 +572,11 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 	if (cmd == -1)
 		return -EINVAL;
 
-	memset(mac_adv, 0x00, sizeof(phy_7121_adv_cmds_t));
+	memset(mac_adv, 0x00, sizeof(struct phy_7121_adv_cmds));
+
+	mac_adv->mac_adv_cmd_ver = MACSEC_ADV_CMD_VERS;
+	MAC_ADV_DEBUG("\n %s mac_adv->mac_adv_cmd_ver %x", __func__,
+						mac_adv->mac_adv_cmd_ver);
 
 	mac_adv->cgx_id =  phy_data.eth;
 	mac_adv->lmac_id =  phy_data.lmac;
@@ -470,7 +613,7 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 		dir = macsec_dir_str2enum(token);
 		if (dir == -1)
 			return -EINVAL;
-		mac_adv->data.mac.dir = dir;
+		mac_adv->data.vport_params.dir = dir;
 		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_DA dir %d", __func__, dir);
 
 		end = skip_spaces(end);
@@ -478,35 +621,58 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 		if (!token)
 			return -EINVAL;
 
-		sscanf(token, "%X:%X:%X:%X:%X:%X", (unsigned int *)&mac_adv->data.mac.mac[0],
-						(unsigned int *)&mac_adv->data.mac.mac[1],
-						(unsigned int *)&mac_adv->data.mac.mac[2],
-						(unsigned int *)&mac_adv->data.mac.mac[3],
-						(unsigned int *)&mac_adv->data.mac.mac[4],
-						(unsigned int *)&mac_adv->data.mac.mac[5]);
+		status = sscanf(token, "%X:%X:%X:%X:%X:%X",
+					(unsigned int *)&mac_adv->data.vport_params.mac[0],
+					(unsigned int *)&mac_adv->data.vport_params.mac[1],
+					(unsigned int *)&mac_adv->data.vport_params.mac[2],
+					(unsigned int *)&mac_adv->data.vport_params.mac[3],
+					(unsigned int *)&mac_adv->data.vport_params.mac[4],
+					(unsigned int *)&mac_adv->data.vport_params.mac[5]);
+		if (status == -1) {
+			pr_err("\n %s ERROR  mac address not provided", __func__);
+			return -EINVAL;
+		}
 
-		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_DA"
-			" mac_adv->data.mac.mac %s", __func__, (char *)mac_adv->data.mac.mac);
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_DA mac_adv->data.mac.mac %s",
+				__func__, (char *)mac_adv->data.vport_params.mac);
 
-		if (mac_adv->data.mac.mac == 0)
+		if (mac_adv->data.vport_params.mac == 0)
 			return -EINVAL;
 
 		break;
 
 	case PHY_MAC_ADV_MACSEC_SET_KEY:
-		printk("\n %s PHY_MAC_ADV_MACSEC_SET_KEY", __func__);
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_KEY", __func__);
+
+		memset(mac_adv->data.sa_params.key, 0, MACSEC_KEY_SIZE);
 
 		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_SET_KEY;
 
 		end = skip_spaces(end);
 		token = strsep(&end, " \t\n");
-		if (!token)
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_SET_KEY 1", __func__);
 			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_KEY sa %d", __func__, sa);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_SET_KEY 3", __func__);
+			return -EINVAL;
+		}
 
 		dir = macsec_dir_str2enum(token);
 		if (dir == -1)
 			return -EINVAL;
-		mac_adv->data.key.dir = dir;
+		mac_adv->data.sa_params.dir = dir;
 
 		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_KEY dir %d", __func__, dir);
 
@@ -515,36 +681,45 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 		if (!token)
 			return -EINVAL;
 
-		sscanf(token, "%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x",
-					(unsigned int *)&mac_adv->data.key.key[0],
-					(unsigned int *)&mac_adv->data.key.key[1],
-					(unsigned int *)&mac_adv->data.key.key[2],
-					(unsigned int *)&mac_adv->data.key.key[3],
-					(unsigned int *)&mac_adv->data.key.key[4],
-					(unsigned int *)&mac_adv->data.key.key[5],
-					(unsigned int *)&mac_adv->data.key.key[6],
-					(unsigned int *)&mac_adv->data.key.key[7],
-					(unsigned int *)&mac_adv->data.key.key[8],
-					(unsigned int *)&mac_adv->data.key.key[9],
-					(unsigned int *)&mac_adv->data.key.key[10],
-					(unsigned int *)&mac_adv->data.key.key[11],
-					(unsigned int *)&mac_adv->data.key.key[12],
-					(unsigned int *)&mac_adv->data.key.key[13],
-					(unsigned int *)&mac_adv->data.key.key[14],
-					(unsigned int *)&mac_adv->data.key.key[15]);
+		MAC_ADV_DEBUG(" ++++++ %s", token);
 
-		mac_adv->data.key.key_size = strlen(token);
+		status = sscanf(token, "%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x",
+					(unsigned int *)&mac_adv->data.sa_params.key[0],
+					(unsigned int *)&mac_adv->data.sa_params.key[1],
+					(unsigned int *)&mac_adv->data.sa_params.key[2],
+					(unsigned int *)&mac_adv->data.sa_params.key[3],
+					(unsigned int *)&mac_adv->data.sa_params.key[4],
+					(unsigned int *)&mac_adv->data.sa_params.key[5],
+					(unsigned int *)&mac_adv->data.sa_params.key[6],
+					(unsigned int *)&mac_adv->data.sa_params.key[7],
+					(unsigned int *)&mac_adv->data.sa_params.key[8],
+					(unsigned int *)&mac_adv->data.sa_params.key[9],
+					(unsigned int *)&mac_adv->data.sa_params.key[10],
+					(unsigned int *)&mac_adv->data.sa_params.key[11],
+					(unsigned int *)&mac_adv->data.sa_params.key[12],
+					(unsigned int *)&mac_adv->data.sa_params.key[13],
+					(unsigned int *)&mac_adv->data.sa_params.key[14],
+					(unsigned int *)&mac_adv->data.sa_params.key[15]);
 
-		if (strlen(token) != 47)
-			printk("\nERROR Provide correct key(16) ");
-		else
-			mac_adv->data.key.key_size = 16;
+		if (status == -1) {
+			pr_err("\n %s ERROR  sci not provided", __func__);
+			return -EINVAL;
+		}
 
-		print_key(mac_adv->data.key.key, mac_adv->data.key.key_size);
+		if (strlen(token) != 47) {
+			pr_err("\nERROR Provide correct key(16) %d", (int)strlen(token));
+			return -EINVAL;
+		}
+
+		mac_adv->data.sa_params.key_size = MACSEC_KEY_SIZE;
+
+		print_key((unsigned  char *)mac_adv->data.sa_params.key,
+						mac_adv->data.sa_params.key_size);
 
 		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_KEY SIZE %d",
-					__func__, mac_adv->data.key.key_size);
+					__func__, mac_adv->data.sa_params.key_size);
 
+		mac_adv->data.sa_params.is_key = true;
 		break;
 
 	case PHY_MAC_ADV_MACSEC_RE_KEY:
@@ -584,32 +759,334 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_PTP", __func__);
 		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_PTP;
 		break;
+
+	case PHY_MAC_ADV_MACSEC_SET_SCI:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_SCI", __func__);
+
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_SET_SCI;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_SET_KEY 1", __func__);
+			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		dir = macsec_dir_str2enum(token);
+		if (dir == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.dir = dir;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_SCI dir %d", __func__, dir);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		status = sscanf(token, "%X:%X:%X:%X:%X:%X:%X:%X",
+						(unsigned int *)&mac_adv->data.sa_params.sci[0],
+						(unsigned int *)&mac_adv->data.sa_params.sci[1],
+						(unsigned int *)&mac_adv->data.sa_params.sci[2],
+						(unsigned int *)&mac_adv->data.sa_params.sci[3],
+						(unsigned int *)&mac_adv->data.sa_params.sci[4],
+						(unsigned int *)&mac_adv->data.sa_params.sci[5],
+						(unsigned int *)&mac_adv->data.sa_params.sci[6],
+						(unsigned int *)&mac_adv->data.sa_params.sci[7]);
+
+		if (status == -1) {
+			pr_err("\n %s ERROR  sci not provided", __func__);
+			return -EINVAL;
+		}
+
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_SCI mac_adv->data.sci_id.sci %s",
+						__func__, (char *)mac_adv->data.sa_params.sci);
+
+		if (mac_adv->data.sa_params.sci == 0)
+			return -EINVAL;
+
+		mac_adv->data.sa_params.is_sci = true;
+
+		break;
+
+	case PHY_MAC_ADV_MACSEC_SET_PKT_NUM:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_PKT_NUM", __func__);
+
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_SET_PKT_NUM;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_SET_KEY 1", __func__);
+			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		dir = macsec_dir_str2enum(token);
+		if (dir == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.dir = dir;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_PKT_NUM dir %d", __func__, dir);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		status = sscanf(token, "%X:%X",
+				(unsigned int *)&mac_adv->data.sa_params.seq_num_hi,
+				(unsigned int *)&mac_adv->data.sa_params.seq_num_lo);
+		if (status == -1) {
+			pr_err("\n %s ERROR seq_num_lo not provided", __func__);
+			return -EINVAL;
+		}
+
+		if (mac_adv->data.sa_params.seq_num_lo == -1)
+			return -EINVAL;
+
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_PKT_NUM num.seq_num_lo %x",
+				__func__, mac_adv->data.sa_params.seq_num_lo);
+
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_SET_PKT_NUM seq_num_hi %x",
+				__func__, mac_adv->data.sa_params.seq_num_hi);
+
+		mac_adv->data.sa_params.is_seq_no = true;
+		break;
+
+	case PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA 1",
+									__func__);
+			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA sa %d",
+								__func__, sa);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		dir = macsec_dir_str2enum(token);
+		if (dir == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.dir = dir;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA dir %d",
+								__func__, dir);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		actiontype = macsec_sa_actiontype_str2enum(token);
+		if (actiontype == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.actiontype = actiontype;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_ACTIONTYPE_SA actiontype %d",
+							__func__, actiontype);
+
+		mac_adv->data.sa_params.is_actiontype = true;
+		break;
+
+	case PHY_MAC_ADV_MACSEC_DROPTYPE_SA:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DROPTYPE_SA", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_DROPTYPE_SA;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_DROPTYPE_SA 1", __func__);
+			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DROPTYPE_SA sa %d", __func__, sa);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		dir = macsec_dir_str2enum(token);
+		if (dir == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.dir = dir;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DROPTYPE_SA dir %d", __func__, dir);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		droptype = macsec_sa_droptype_str2enum(token);
+		if (dir == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.droptype = droptype;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DROPTYPE_SA droptype %d",
+								__func__, droptype);
+
+		mac_adv->data.sa_params.is_droptype = true;
+		break;
+
+	case PHY_MAC_ADV_MACSEC_ADD_SA:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_ADD_SA", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_ADD_SA;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_ADD_SA 1", __func__);
+			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_ADD_SA sa %d", __func__, sa);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		dir = macsec_dir_str2enum(token);
+		if (dir == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.dir = dir;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_ADD_SA dir %d", __func__, dir);
+
+		break;
+
+	case PHY_MAC_ADV_MACSEC_DEL_SA:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DEL_SA", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_DEL_SA;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_DEL_SA 1", __func__);
+			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DEL_SA sa %d", __func__, sa);
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		dir = macsec_dir_str2enum(token);
+		if (dir == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.dir = dir;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DEL_SA dir %d", __func__, dir);
+		break;
+
+	case PHY_MAC_ADV_MACSEC_GET_MAC_ADDR:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_GET_MAC_ADDR", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_GET_MAC_ADDR;
+		break;
+
+	case PHY_MAC_ADV_MACSEC_GET_SA_PARAMS:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_GET_SA_PARAMS", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_GET_SA_PARAMS;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_GET_SA_PARAMS 1", __func__);
+			return -EINVAL;
+		}
+
+		sa = macsec_sa_str2enum(token);
+		if (sa == -1)
+			return -EINVAL;
+		mac_adv->data.sa_params.sa_num = sa;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_GET_SA_PARAMS sa %d", __func__, sa);
+		break;
+
+	case PHY_MAC_ADV_MACSEC_DBG:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DBG", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_MACSEC_DBG;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token) {
+			pr_err("\n %s ERROR PHY_MAC_ADV_MACSEC_DBG 1", __func__);
+			return -EINVAL;
+		}
+
+		mac_debug = macsec_dbg_str2enum(token);
+		if (macsec_dbg == -1)
+			return -EINVAL;
+		mac_adv->mac_adv_dbg = mac_debug;
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_MACSEC_DBG sa %d",
+							__func__, macsec_dbg);
+		break;
+
 	default:
 		pr_warn("MAC ADV failed for invalid command %d!\n", cmd);
 		return -EINVAL;
 	}
 
 	arm_smccc_smc(PLAT_OCTEONTX_PHY_ADVANCE_CMDS,
-			memdesc[BUF_DATA].phys, sizeof(phy_7121_adv_cmds_t),
+			memdesc[BUF_DATA].phys, sizeof(struct phy_7121_adv_cmds),
 			phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
 
 	if (res.a0) {
-		pr_warn("MAC ADV  command failed count %d!\n", (int) count);
+		pr_warn("MAC ADV  command failed count %d!\n", (int)count);
 		return count;
 	}
 
-	pr_info("MAC ADV  command success count %x\n", (int)count);
+	pr_info("MAC ADV  command success count %d!\n", (int)count);
 	return count;
 }
 
 static int phy_debug_mac_sec_read(struct seq_file *s, void *unused)
 {
-	phy_7121_adv_cmds_t *mac_adv = (phy_7121_adv_cmds_t *)memdesc[BUF_DATA].virt;
+	struct phy_7121_adv_cmds *mac_adv = (struct phy_7121_adv_cmds *)memdesc[BUF_DATA].virt;
 
 	mac_adv->mac_adv_cmd  = PHY_MAC_ADV_MACSEC_GET;
 
 	mrvl_exec_smc(memdesc[BUF_DATA].phys,
-			sizeof(phy_7121_adv_cmds_t));
+			sizeof(struct phy_7121_adv_cmds));
 
 	return 0;
 }
@@ -709,7 +1186,7 @@ static int __init phy_mac_adv_init(void)
 
 	alloc_buffers(memdesc, 1<<BUF_DATA);
 
-	mac_debug = 0;
+	mac_debug = PHY_7121_MACSEC_DBG_DISABLE;
 
 	return phy_mac_adv_setup_debugfs();
 }
