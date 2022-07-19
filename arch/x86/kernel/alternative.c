@@ -336,7 +336,7 @@ next:
 	}
 }
 
-#if defined(CONFIG_RETPOLINE) && defined(CONFIG_OBJTOOL)
+#if defined(CONFIG_RETPOLINE)
 
 /*
  * Rewrite the compiler generated return thunk tail-calls.
@@ -399,12 +399,11 @@ void __init_or_module noinline apply_returns(s32 *start, s32 *end)
 		}
 	}
 }
-#else /* !CONFIG_RETPOLINE || !CONFIG_OBJTOOL */
+#else /* !CONFIG_RETPOLINE */
 
-void __init_or_module noinline apply_retpolines(s32 *start, s32 *end) { }
 void __init_or_module noinline apply_returns(s32 *start, s32 *end) { }
 
-#endif /* CONFIG_RETPOLINE && CONFIG_OBJTOOL */
+#endif /* CONFIG_RETPOLINE */
 
 #ifdef CONFIG_SMP
 static void alternatives_smp_lock(const s32 *start, const s32 *end,
