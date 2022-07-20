@@ -29,6 +29,7 @@
 #include <linux/pagevec.h>
 #include <linux/uio.h>
 #include <linux/mman.h>
+#include <linux/backing-dev.h>
 #include "ext4.h"
 #include "ext4_jbd2.h"
 #include "xattr.h"
@@ -219,7 +220,8 @@ out:
 static ssize_t ext4_buffered_write_iter(struct kiocb *iocb,
 						struct iov_iter *from)
 {
-	struct inode *inode = file_inode(iocb->ki_filp);
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file_inode(file);
 	ssize_t ret;
 
 	if (!inode_trylock(inode)) {
@@ -232,25 +234,41 @@ static ssize_t ext4_buffered_write_iter(struct kiocb *iocb,
 	if (ret <= 0)
 		goto out;
 
-	ret = __generic_file_write_iter(iocb, from);
+	ret = file_remove_privs(file);
+	if (ret)
+		goto out;
+
+	ret = file_update_time(file);
+	if (ret)
+		goto out;
+
+	/* We can write back this queue in page reclaim */
+	current->backing_dev_info = inode_to_bdi(inode);
+	ret = generic_perform_write(file, from, iocb->ki_pos);
+	if (likely(ret > 0))
+		iocb->ki_pos += ret;
+	current->backing_dev_info = NULL;
+
+out:
 	inode_unlock(inode);
 
 	if (ret > 0)
 		ret = generic_write_sync(iocb, ret);
 
 	return ret;
-
-out:
-	inode_unlock(inode);
-	return ret;
 }
 
 static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *inode = file_inode(iocb->ki_filp);
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file_inode(file);
 	int unaligned_aio = 0;
 	int overwrite = 0;
 	ssize_t ret;
+	struct address_space *mapping = file->f_mapping;
+	ssize_t	status;
+	loff_t pos, endbyte;
+	ssize_t	err;
 
 	if (!inode_trylock(inode)) {
 		if (iocb->ki_flags & IOCB_NOWAIT)
@@ -260,7 +278,7 @@ static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	ret = ext4_write_checks(iocb, from);
 	if (ret <= 0)
-		goto out;
+		goto err_out;
 
 	/*
 	 * Unaligned direct AIO must be serialized among each other as zeroing
@@ -282,11 +300,59 @@ static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 				overwrite = 1;
 		} else if (iocb->ki_flags & IOCB_NOWAIT) {
 			ret = -EAGAIN;
-			goto out;
+			goto err_out;
 		}
 	}
 
-	ret = __generic_file_write_iter(iocb, from);
+	ret = file_remove_privs(file);
+	if (ret)
+		goto err_out;
+
+	ret = file_update_time(file);
+	if (ret)
+		goto err_out;
+
+	ret = generic_file_direct_write(iocb, from);
+	/*
+	 * If the write stopped short of completing, fall back to
+	 * buffered writes.  Some filesystems do this for writes to
+	 * holes, for example.  For DAX files, a buffered write will
+	 * not succeed (even if it did, DAX does not handle dirty
+	 * page-cache pages correctly).
+	 */
+	if (ret < 0 || !iov_iter_count(from))
+		goto out;
+
+	inode_unlock(inode);
+
+	/*direct io partial done, fallen into buffer io. */
+	pos = iocb->ki_pos;
+	status = ext4_buffered_write_iter(iocb, from);
+	if (status < 0)
+		return ret ? ret : status;
+
+	/*
+	 * We need to ensure that the page cache pages are written to
+	 * disk and invalidated to preserve the expected O_DIRECT
+	 * semantics.
+	 */
+	endbyte = pos + status - 1;
+	err = filemap_write_and_wait_range(mapping, pos, endbyte);
+	if (err == 0) {
+		iocb->ki_pos = endbyte + 1;
+		ret += status;
+		invalidate_mapping_pages(mapping,
+				pos >> PAGE_SHIFT,
+				endbyte >> PAGE_SHIFT);
+	} else {
+		/*
+		 * We don't know how much we wrote, so just return
+		 * the number of bytes which were direct-written
+		 */
+	}
+	return ret;
+
+out:
 	/*
 	 * Unaligned direct AIO must be the only IO in flight. Otherwise
 	 * overlapping aligned IO after unaligned might result in data
@@ -301,7 +367,7 @@ static ssize_t ext4_dio_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	return ret;
 
-out:
+err_out:
 	inode_unlock(inode);
 	return ret;
 }
