@@ -704,8 +704,10 @@ int register_shrinker(struct shrinker *shrinker, const char *fmt, ...)
 		return -ENOMEM;
 
 	err = __register_shrinker(shrinker);
-	if (err)
+	if (err) {
 		kfree_const(shrinker->name);
+		shrinker->name = NULL;
+	}
 	return err;
 }
 #else
