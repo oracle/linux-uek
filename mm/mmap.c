@@ -347,21 +347,21 @@ static void validate_mm_mt(struct mm_struct *mm)
 			pr_emerg("issue in %s\n", current->comm);
 			dump_stack();
 			dump_vma(vma_mt);
-			pr_emerg("mt piv: %p %lu - %lu\n", vma_mt,
+			pr_emerg("mt piv: %px %lx - %lx\n", vma_mt,
 				 mas.index, mas.last);
-			pr_emerg("mt vma: %p %lu - %lu\n", vma_mt,
+			pr_emerg("mt vma: %px %lx - %lx\n", vma_mt,
 				 vma_mt->vm_start, vma_mt->vm_end);
 
 			mt_dump(mas.tree);
 			if (vma_mt->vm_end != mas.last + 1) {
-				pr_err("vma: %p vma_mt %lu-%lu\tmt %lu-%lu\n",
+				pr_err("vma: %px vma_mt %lx-%lx\tmt %lx-%lx\n",
 						mm, vma_mt->vm_start, vma_mt->vm_end,
 						mas.index, mas.last);
 				mt_dump(mas.tree);
 			}
 			VM_BUG_ON_MM(vma_mt->vm_end != mas.last + 1, mm);
 			if (vma_mt->vm_start != mas.index) {
-				pr_err("vma: %p vma_mt %p %lu - %lu doesn't match\n",
+				pr_err("vma: %px vma_mt %px %lx - %lx doesn't match\n",
 						mm, vma_mt, vma_mt->vm_start, vma_mt->vm_end);
 				mt_dump(mas.tree);
 			}
