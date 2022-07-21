@@ -1086,7 +1086,7 @@ CONFIG_SECRETMEM=y
 #
 CONFIG_DAMON=y
 CONFIG_DAMON_VADDR=y
-# CONFIG_DAMON_PADDR is not set
+CONFIG_DAMON_PADDR=y
 CONFIG_DAMON_SYSFS=y
 # end of Data Access Monitoring
 # end of Memory Management options
