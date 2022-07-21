@@ -340,6 +340,9 @@ struct pci_dev {
 	u8		msi_cap;	/* MSI capability offset */
 	u8		msix_cap;	/* MSI-X capability offset */
 	u8		pcie_mpss:3;	/* PCIe Max Payload Size Supported */
+#ifdef CONFIG_HOTPLUG_PCI_PCIE
+	UEK_KABI_FILL_HOLE(u8 shared_pcc_and_link_slot:1) /* two "slots" sharing link/power */
+#endif
 	u8		rom_base_reg;	/* Config register controlling ROM */
 	u8		pin;		/* Interrupt pin this device uses */
 	u16		pcie_flags_reg;	/* Cached PCIe Capabilities Register */
