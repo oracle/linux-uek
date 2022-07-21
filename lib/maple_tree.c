@@ -4297,12 +4297,27 @@ static inline bool mas_wr_append(struct ma_wr_state *wr_mas)
 	return false;
 }
 
+/*
+ * mas_wr_bnode() - Slow path for a modification.
+ * @wr_mas: The write maple state
+ *
+ * This is where split, rebalance end up.
+ */
+static void mas_wr_bnode(struct ma_wr_state *wr_mas)
+{
+	struct maple_big_node b_node;
+
+	trace_ma_write(__func__, wr_mas->mas, 0, wr_mas->entry);
+	memset(&b_node, 0, sizeof(struct maple_big_node));
+	mas_store_b_node(wr_mas, &b_node, wr_mas->offset_end);
+	mas_commit_b_node(wr_mas, &b_node, wr_mas->node_end);
+}
+
 static inline void mas_wr_modify(struct ma_wr_state *wr_mas)
 {
 	unsigned char node_slots;
 	unsigned char node_size;
 	struct ma_state *mas = wr_mas->mas;
-	struct maple_big_node b_node;
 
 	/* Direct replacement */
 	if (wr_mas->r_min == mas->index && wr_mas->r_max == mas->last) {
@@ -4338,10 +4353,7 @@ static inline void mas_wr_modify(struct ma_wr_state *wr_mas)
 		return;
 
 slow_path:
-	memset(&b_node, 0, sizeof(struct maple_big_node));
-	mas_store_b_node(wr_mas, &b_node, wr_mas->offset_end);
-	trace_ma_write(__func__, mas, 0, wr_mas->entry);
-	mas_commit_b_node(wr_mas, &b_node, wr_mas->node_end);
+	mas_wr_bnode(wr_mas);
 }
 
 /*
