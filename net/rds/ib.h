@@ -59,8 +59,9 @@
 
 #define NUM_RDS_RECV_SG	(PAGE_ALIGN(RDS_MAX_FRAG_SIZE) / PAGE_SIZE)
 
-#define	RDS_IB_CQ_ERR		2
-#define	RDS_IB_NEED_SHUTDOWN	4
+#define	RDS_IB_CQ_ERR		(1 << 1)
+#define	RDS_IB_NEED_SHUTDOWN	(1 << 2)
+#define	RDS_IB_CQ_DESTROY	(1 << 3)
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
 
@@ -647,6 +648,7 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn);
 void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev);
 int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev);
 void rds_ib_reset_fastreg(struct work_struct *work);
+void set_ib_conn_flag(unsigned long nr, struct rds_ib_connection *ic);
 u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
 #if IS_ENABLED(CONFIG_IPV6)
 u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);

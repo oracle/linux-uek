@@ -87,8 +87,7 @@ static char *rds_ib_event_str(enum ib_event_type type)
 			     ARRAY_SIZE(rds_ib_event_type_strings), type);
 };
 
-static inline void
-set_ib_conn_flag(unsigned long nr, struct rds_ib_connection *ic)
+void set_ib_conn_flag(unsigned long nr, struct rds_ib_connection *ic)
 {
 	/* set_bit() does not imply a memory barrier */
 	smp_mb__before_atomic();
@@ -2022,6 +2021,9 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_cm_id *cm_id;
 
+	if (test_and_clear_bit(RDS_USER_RESET, &cp->cp_flags))
+		set_ib_conn_flag(RDS_IB_CQ_DESTROY, ic);
+
 	if (ic->i_cm_id) {
 		struct ib_device *dev = ic->i_cm_id->device;
 
@@ -2032,7 +2034,7 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
 
-		if (test_bit(RDS_IB_CQ_ERR, &ic->i_flags)) {
+		if (test_bit(RDS_IB_CQ_ERR, &ic->i_flags) || test_bit(RDS_IB_CQ_DESTROY, &ic->i_flags)) {
 			pr_info("RDS/IB: Destroy CQ: conn %p <%pI6c,%pI6c,%d> ic %p cm_id %p\n",
 				conn, &conn->c_laddr, &conn->c_faddr,
 				conn->c_tos, ic, ic->i_cm_id);
@@ -2053,6 +2055,7 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 					ic->i_rcq = NULL;
 			}
 			clear_bit(RDS_IB_CQ_ERR, &ic->i_flags);
+			clear_bit(RDS_IB_CQ_DESTROY, &ic->i_flags);
 		}
 		rds_ib_free_unmap_hdrs(dev,
 				       &ic->i_send_hdrs,
