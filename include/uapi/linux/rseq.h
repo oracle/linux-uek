@@ -11,6 +11,7 @@
  */
 
 #include <linux/types.h>
+#include <linux/uek_kabi.h>
 #include <asm/byteorder.h>
 
 enum rseq_cpu_id_state {
