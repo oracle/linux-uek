@@ -5718,6 +5718,50 @@ int mas_preallocate(struct ma_state *mas, void *entry, gfp_t gfp)
 }
 
 /*
+ * mas_destroy() - destroy a maple state.
+ * @mas: The maple state
+ *
+ * Upon completion, check the left-most node and rebalance against the node to
+ * the right if necessary.  Frees any allocated nodes associated with this maple
+ * state.
+ */
+void mas_destroy(struct ma_state *mas)
+{
+	struct maple_alloc *node;
+
+	/*
+	 * When using mas_for_each() to insert an expected number of elements,
+	 * it is possible that the number inserted is less than the expected
+	 * number.  To fix an invalid final node, a check is performed here to
+	 * rebalance the previous node with the final node.
+	 */
+	if (mas->mas_flags & MA_STATE_REBALANCE) {
+		unsigned char end;
+
+		if (mas_is_start(mas))
+			mas_start(mas);
+
+		mtree_range_walk(mas);
+		end = mas_data_end(mas) + 1;
+		if (end < mt_min_slot_count(mas->node) - 1)
+			mas_destroy_rebalance(mas, end);
+
+		mas->mas_flags &= ~MA_STATE_REBALANCE;
+	}
+	mas->mas_flags &= ~MA_STATE_BULK;
+
+	while (mas->alloc && !((unsigned long)mas->alloc & 0x1)) {
+		node = mas->alloc;
+		mas->alloc = node->slot[0];
+		if (node->node_count > 0)
+			mt_free_bulk(node->node_count,
+				     (void __rcu **)&node->slot[1]);
+		kmem_cache_free(maple_node_cache, node);
+	}
+	mas->alloc = NULL;
+}
+
+/*
  * mas_expected_entries() - Set the expected number of entries that will be inserted.
  * @mas: The maple state
  * @nr_entries: The number of expected entries.
@@ -5770,52 +5814,9 @@ int mas_expected_entries(struct ma_state *mas, unsigned long nr_entries)
 
 	ret = xa_err(mas->node);
 	mas->node = enode;
+	mas_destroy(mas);
 	return ret;
 
-}
-
-/*
- * mas_destroy() - destroy a maple state.
- * @mas: The maple state
- *
- * Upon completion, check the left-most node and rebalance against the node to
- * the right if necessary.  Frees any allocated nodes associated with this maple
- * state.
- */
-void mas_destroy(struct ma_state *mas)
-{
-	struct maple_alloc *node;
-
-	/*
-	 * When using mas_for_each() to insert an expected number of elements,
-	 * it is possible that the number inserted is less than the expected
-	 * number.  To fix an invalid final node, a check is performed here to
-	 * rebalance the previous node with the final node.
-	 */
-	if (mas->mas_flags & MA_STATE_REBALANCE) {
-		unsigned char end;
-
-		if (mas_is_start(mas))
-			mas_start(mas);
-
-		mtree_range_walk(mas);
-		end = mas_data_end(mas) + 1;
-		if (end < mt_min_slot_count(mas->node) - 1)
-			mas_destroy_rebalance(mas, end);
-
-		mas->mas_flags &= ~MA_STATE_REBALANCE;
-	}
-	mas->mas_flags &= ~MA_STATE_BULK;
-
-	while (mas->alloc && !((unsigned long)mas->alloc & 0x1)) {
-		node = mas->alloc;
-		mas->alloc = node->slot[0];
-		if (node->node_count > 0)
-			mt_free_bulk(node->node_count,
-				     (void __rcu **)&node->slot[1]);
-		kmem_cache_free(maple_node_cache, node);
-	}
-	mas->alloc = NULL;
 }
 
 /**
