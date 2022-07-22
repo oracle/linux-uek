@@ -157,6 +157,7 @@ static inline const char *conn_state_mnem(int state)
 #define RDS_SHUTDOWN_WAITING	8
 #define RDS_SHUTDOWN_WAIT1_DONE	9
 #define RDS_SHUTDOWN_PREPARE_DONE 10
+#define RDS_USER_RESET		11
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
