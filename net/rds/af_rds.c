@@ -529,11 +529,13 @@ static void rds_user_conn_paths_drop(struct rds_connection *conn)
 	if (!conn->c_trans->t_mp_capable || conn->c_npaths == 1) {
 		cp = &conn->c_path[0];
 		cp->cp_drop_source = DR_USER_RESET;
+		set_bit_mb(RDS_USER_RESET, &cp->cp_flags);
 		rds_conn_path_drop(cp, DR_USER_RESET, 0);
 	} else {
 		for (i = 0; i < RDS_MPATH_WORKERS; i++) {
 			cp = &conn->c_path[i];
 			cp->cp_drop_source = DR_USER_RESET;
+			set_bit_mb(RDS_USER_RESET, &cp->cp_flags);
 			rds_conn_path_drop(cp, DR_USER_RESET, 0);
 		}
 	}
