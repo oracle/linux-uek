@@ -118,7 +118,7 @@ void mcs_get_rx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id
 	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSECYTAGGEDCTLX(id);
 	stats->pkt_tagged_ctl_cnt = mcs_reg_read(mcs, reg);
 
-	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSECYUNTAGGEDORNOTAGX(id);
+	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSECYUNTAGGEDX(id);
 	stats->pkt_untaged_cnt = mcs_reg_read(mcs, reg);
 
 	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSECYCTLX(id);
@@ -216,7 +216,7 @@ void mcs_get_sc_stats(struct mcs *mcs, struct mcs_sc_stats *stats,
 		reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSCNOTVALIDX(id);
 		stats->pkt_notvalid_cnt = mcs_reg_read(mcs, reg);
 
-		reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSCUNCHECKEDOROKX(id);
+		reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSCUNCHECKEDX(id);
 		stats->pkt_unchecked_cnt = mcs_reg_read(mcs, reg);
 
 		if (mcs->hw->mcs_blks > 1) {
@@ -366,7 +366,7 @@ void cn10kb_mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *ma
 
 	val = (map->sa_index & 0xFF) | map->sa_in_use << 9;
 
-	reg = MCSX_CPM_RX_SLAVE_SA_MAP_MEMX(map->sc_id + map->an);
+	reg = MCSX_CPM_RX_SLAVE_SA_MAP_MEMX((4 * map->sc_id) + map->an);
 	mcs_reg_write(mcs, reg, val);
 }
 
@@ -625,7 +625,7 @@ int mcs_alloc_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, u16 pcifunc)
 }
 
 int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flow_id, u8 *secy_id,
-		       u8 *sc_id, u8 *sa_id, u16 pcifunc, int dir)
+		       u8 *sc_id, u8 *sa1_id, u8 *sa2_id, u16 pcifunc, int dir)
 {
 	struct mcs_rsrc_map *map;
 	int id;
@@ -653,7 +653,13 @@ int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flow_id, u8 *secy_id,
 	id =  mcs_alloc_rsrc(&map->sa, map->sa2pf_map, pcifunc);
 	if (id < 0)
 		return -ENOMEM;
-	*sa_id = id;
+	*sa1_id = id;
+
+	id =  mcs_alloc_rsrc(&map->sa, map->sa2pf_map, pcifunc);
+	if (id < 0)
+		return -ENOMEM;
+	*sa2_id = id;
+
 	return 0;
 }
 
@@ -740,13 +746,13 @@ struct mcs *mcs_get_pdata(int mcs_id)
 	return NULL;
 }
 
-/* Set to operational mode */
-void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id)
+/* Set lmac to bypass/operational mode */
+void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id, u8 mode)
 {
 	u64 reg;
 
 	reg = MCSX_MCS_TOP_SLAVE_CHANNEL_CFG(lmac_id * 2);
-	mcs_reg_write(mcs, reg, 0x0ull);
+	mcs_reg_write(mcs, reg, (u64)mode);
 }
 
 void cn10kb_mcs_parser_cfg(struct mcs *mcs)
@@ -778,22 +784,27 @@ static void mcs_lmac_init(struct mcs *mcs, int lmac_id)
 {
 	u64 reg;
 
-	/* Port mode 100GB */
+	/* Port mode 25GB */
 	reg = MCSX_PAB_RX_SLAVE_PORT_CFGX(lmac_id);
-	mcs_reg_write(mcs, reg, BIT_ULL(1));
+	mcs_reg_write(mcs, reg, 0);
+
+	if (mcs->hw->mcs_blks > 1) {
+		reg = MCSX_PAB_RX_SLAVE_FIFO_SKID_CFGX(lmac_id);
+		mcs_reg_write(mcs, reg, 0xe000e);
+		return;
+	}
 
 	reg = MCSX_PAB_TX_SLAVE_PORT_CFGX(lmac_id);
-	mcs_reg_write(mcs, reg, BIT_ULL(1));
+	mcs_reg_write(mcs, reg, 0);
 }
 
-int mcs_set_lmac_channels(u16 base)
+int mcs_set_lmac_channels(int mcs_id, u16 base)
 {
 	struct mcs *mcs;
 	int lmac;
 	u64 cfg;
 
-	/* Programming channels needed only for CN10K-B which as only 1 mcs block */
-	mcs = mcs_get_pdata(0);
+	mcs = mcs_get_pdata(mcs_id);
 	if (!mcs)
 		return -ENODEV;
 	for (lmac = 0; lmac < mcs->hw->lmac_cnt; lmac++) {
@@ -852,13 +863,18 @@ static void mcs_global_cfg(struct mcs *mcs)
 	val &= ~BIT_ULL(6);
 	mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
 
-	/* Set MCS to perform standard IEEE802.1AE macsec processing */
-	if (mcs->hw->mcs_blks == 1)
-		mcs_reg_write(mcs, MCSX_IP_MODE, BIT_ULL(3));
-
 	/* Reset TX/RX stats memory */
 	mcs_reg_write(mcs, MCSX_CSE_RX_SLAVE_STATS_CLEAR, 0x1F);
 	mcs_reg_write(mcs, MCSX_CSE_TX_SLAVE_STATS_CLEAR, 0x1F);
+
+	/* Set MCS to perform standard IEEE802.1AE macsec processing */
+	if (mcs->hw->mcs_blks == 1) {
+		mcs_reg_write(mcs, MCSX_IP_MODE, BIT_ULL(3));
+		return;
+	}
+
+	mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_ENTRY, 0xe4);
+	mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_LEN, 4);
 }
 
 void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs)

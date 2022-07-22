@@ -95,12 +95,12 @@ static inline u64 mcs_reg_read(struct mcs *mcs, u64 offset)
 /* MCS APIs */
 struct mcs *mcs_get_pdata(int mcs_id);
 int mcs_get_blkcnt(void);
-int mcs_set_lmac_channels(u16 base);
+int mcs_set_lmac_channels(int mcs_id, u16 base);
 
 int mcs_alloc_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, u16 pcifunc);
 int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc);
 int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flowid, u8 *secy_id,
-		       u8 *sc_id, u8 *sa_id, u16 pcifunc, int dir);
+		       u8 *sc_id, u8 *sa1_id, u8 *sa2_id, u16 pcifunc, int dir);
 int mcs_free_all_rsrc(struct mcs *mcs, int dir, u16 pcifunc);
 void mcs_clear_secy_plcy(struct mcs *mcs, int secy_id, int dir);
 void mcs_ena_dis_flowid_entry(struct mcs *mcs, int id, int dir, int ena);
@@ -115,7 +115,7 @@ void mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map);
 void mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir);
 void mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map);
 int mcs_install_flowid_bypass_entry(struct mcs *mcs);
-void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id);
+void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id, u8 mode);
 
 /* CN10K-B APIs */
 void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs);
