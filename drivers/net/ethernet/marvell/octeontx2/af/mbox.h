@@ -383,7 +383,8 @@ M(MCS_GET_SC_STATS,	0xa00e, mcs_get_sc_stats, mcs_stats_req, mcs_sc_stats)	\
 M(MCS_GET_SA_STATS,	0xa00f, mcs_get_sa_stats, mcs_stats_req, mcs_sa_stats)	\
 M(MCS_GET_PORT_STATS,	0xa010, mcs_get_port_stats, mcs_stats_req,		\
 				mcs_port_stats)					\
-M(MCS_CLEAR_STATS,	0xa011,	mcs_clear_stats, mcs_clear_stats, msg_rsp)
+M(MCS_CLEAR_STATS,	0xa011,	mcs_clear_stats, mcs_clear_stats, msg_rsp)	\
+M(MCS_SET_LMAC_MODE,	0xa013, mcs_set_lmac_mode, mcs_set_lmac_mode, msg_rsp)	\
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -2243,6 +2244,7 @@ struct mcs_set_active_lmac {
 	struct mbox_msghdr hdr;
 	u32 lmac_bmap;	/* bitmap of active lmac per mcs block */
 	u8 mcs_id;
+	u16 chan_base; /* MCS channel base */
 	u64 rsvd;
 };
 
@@ -2346,6 +2348,14 @@ struct mcs_clear_stats {
 	u8 mcs_id;
 	u8 dir;
 	u8 all;		/* All resources stats mapped to PF are cleared */
+};
+
+struct mcs_set_lmac_mode {
+	struct mbox_msghdr hdr;
+	u8 mode;	/* 1:Bypass 0:Operational */
+	u8 lmac_id;
+	u8 mcs_id;
+	u64 rsvd;
 };
 
 #endif /* MBOX_H */

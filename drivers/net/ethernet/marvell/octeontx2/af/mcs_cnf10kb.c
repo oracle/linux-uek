@@ -116,6 +116,6 @@ void cnf10kb_mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *m
 
 	val = (map->sa_index & 0x7F) | (map->sa_in_use << 7);
 
-	reg = MCSX_CPM_RX_SLAVE_SA_MAP_MEMX(map->sc_id + map->an);
+	reg = MCSX_CPM_RX_SLAVE_SA_MAP_MEMX((4 * map->sc_id) + map->an);
 	mcs_reg_write(mcs, reg, val);
 }

@@ -14,6 +14,23 @@
 #include "rvu.h"
 #include "lmac_common.h"
 
+int rvu_mbox_handler_mcs_set_lmac_mode(struct rvu *rvu,
+				       struct mcs_set_lmac_mode *req,
+				       struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	if (BIT_ULL(req->lmac_id) && mcs->hw->lmac_bmap)
+		mcs_set_lmac_mode(mcs, req->lmac_id, req->mode);
+
+	return 0;
+}
+
 int rvu_mbox_handler_mcs_get_hw_info(struct rvu *rvu,
 				     struct msg_req *req,
 				     struct mcs_hw_info *rsp)
@@ -161,6 +178,7 @@ int rvu_mbox_handler_mcs_set_active_lmac(struct rvu *rvu,
 		return -ENODEV;
 
 	mcs->hw->lmac_bmap = req->lmac_bmap;
+	mcs_set_lmac_channels(req->mcs_id, req->chan_base);
 	return 0;
 }
 
@@ -391,9 +409,9 @@ int rvu_mbox_handler_mcs_alloc_resources(struct rvu *rvu,
 					     &rsp->secy_ids[0],
 					     &rsp->sc_ids[0],
 					     &rsp->sa_ids[0],
+					     &rsp->sa_ids[1],
 					     pcifunc, req->dir);
-		if (rsrc_id < 0)
-			goto exit;
+		goto exit;
 	}
 
 	switch (req->rsrc_type) {
@@ -440,12 +458,11 @@ int rvu_mbox_handler_mcs_alloc_resources(struct rvu *rvu,
 	rsp->mcs_id = req->mcs_id;
 	rsp->all = req->all;
 
+exit:
+	if (rsrc_id < 0)
+		dev_err(rvu->dev, "Failed to allocate the mcs resources for PCIFUNC:%d\n", pcifunc);
 	mutex_unlock(&rvu->rsrc_lock);
 	return 0;
-exit:
-	dev_err(rvu->dev, "Failed to allocate the mcs resources for PCIFUNC:%d\n", pcifunc);
-	mutex_unlock(&rvu->rsrc_lock);
-	return rsrc_id;
 }
 
 static void rvu_mcs_set_lmac_bmap(struct rvu *rvu)
@@ -477,7 +494,7 @@ int rvu_mcs_init(struct rvu *rvu)
 
 	/* Needed only for CN10K-B */
 	if (rvu->mcs_blk_cnt == 1) {
-		err = mcs_set_lmac_channels(hw->cgx_chan_base);
+		err = mcs_set_lmac_channels(0, hw->cgx_chan_base);
 		if (err)
 			return err;
 		/* Set active lmacs */
@@ -489,7 +506,7 @@ int rvu_mcs_init(struct rvu *rvu)
 		mcs = mcs_get_pdata(mcs_id);
 		mcs_install_flowid_bypass_entry(mcs);
 		for_each_set_bit(lmac, &mcs->hw->lmac_bmap, mcs->hw->lmac_cnt)
-			mcs_set_lmac_mode(mcs, lmac);
+			mcs_set_lmac_mode(mcs, lmac, 0);
 	}
 	return 0;
 }
