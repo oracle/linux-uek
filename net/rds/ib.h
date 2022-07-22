@@ -83,7 +83,8 @@ enum rds_ib_conn_flags {
 	RDS_IB_NEED_SHUTDOWN,		/* 0x04 */
 	RDS_IB_SRQ_NEED_FLUSH,		/* 0x08 */
 	RDS_IB_SRQ_LAST_WQE_REACHED,	/* 0x10 */
-	RDS_IB_SRQ_CQ_FLUSHED		/* 0x20 */
+	RDS_IB_SRQ_CQ_FLUSHED,		/* 0x20 */
+	RDS_IB_CQ_DESTROY		/* 0x40 */
 };
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
@@ -731,6 +732,7 @@ void rds_ib_reset_fastreg(struct work_struct *work);
 void rds_ib_tasklet_fn_send(unsigned long data);
 void rds_ib_tasklet_fn_recv(unsigned long data);
 void rds_ib_conn_destroy_worker(struct work_struct *_work);
+void set_ib_conn_flag(unsigned long nr, struct rds_ib_connection *ic);
 u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
 #if IS_ENABLED(CONFIG_IPV6)
 u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
