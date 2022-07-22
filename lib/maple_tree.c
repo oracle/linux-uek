@@ -64,9 +64,15 @@
 
 #define MA_ROOT_PARENT 1
 
-/* Maple state flags */
+/*
+ * Maple state flags
+ * * MA_STATE_BULK		- Bulk insert mode
+ * * MA_STATE_REBALANCE		- Indicate a rebalance during bulk insert
+ * * MA_STATE_PREALLOC		- Preallocated nodes, WARN_ON allocation
+ */
 #define MA_STATE_BULK		1
 #define MA_STATE_REBALANCE	2
+#define MA_STATE_PREALLOC	4
 
 #define ma_parent_ptr(x) ((struct maple_pnode *)(x))
 #define ma_mnode_ptr(x) ((struct maple_node *)(x))
@@ -243,7 +249,7 @@ static inline bool mas_is_start(struct ma_state *mas)
 	return mas->node == MAS_START;
 }
 
-static inline bool mas_is_err(struct ma_state *mas)
+bool mas_is_err(struct ma_state *mas)
 {
 	return xa_is_err(mas->node);
 }
@@ -1215,6 +1221,12 @@ static inline void mas_alloc_nodes(struct ma_state *mas, gfp_t gfp)
 		return;
 
 	mas_set_alloc_req(mas, 0);
+	if (mas->mas_flags & MA_STATE_PREALLOC) {
+		if (allocated)
+			return;
+		WARN_ON(!allocated);
+	}
+
 	if (!allocated || mas->alloc->node_count == MAPLE_ALLOC_SLOTS - 1) {
 		node = (struct maple_alloc *)mt_alloc_one(gfp);
 		if (!node)
@@ -5706,6 +5718,7 @@ int mas_preallocate(struct ma_state *mas, void *entry, gfp_t gfp)
 	int ret;
 
 	mas_node_count_gfp(mas, 1 + mas_mt_height(mas) * 3, gfp);
+	mas->mas_flags |= MA_STATE_PREALLOC;
 	if (likely(!mas_is_err(mas)))
 		return 0;
 
@@ -5748,7 +5761,7 @@ void mas_destroy(struct ma_state *mas)
 
 		mas->mas_flags &= ~MA_STATE_REBALANCE;
 	}
-	mas->mas_flags &= ~MA_STATE_BULK;
+	mas->mas_flags &= ~(MA_STATE_BULK|MA_STATE_PREALLOC);
 
 	while (mas->alloc && !((unsigned long)mas->alloc & 0x1)) {
 		node = mas->alloc;
@@ -5799,7 +5812,6 @@ int mas_expected_entries(struct ma_state *mas, unsigned long nr_entries)
 	 * insertion of entries.
 	 */
 	nr_nodes = max(nr_entries, nr_entries * 2 + 1);
-
 	if (!mt_is_alloc(mas->tree))
 		nonleaf_cap = MAPLE_RANGE64_SLOTS - 2;
 
@@ -5807,7 +5819,11 @@ int mas_expected_entries(struct ma_state *mas, unsigned long nr_entries)
 	nr_nodes = DIV_ROUND_UP(nr_nodes, MAPLE_RANGE64_SLOTS - 1);
 	/* Internal nodes */
 	nr_nodes += DIV_ROUND_UP(nr_nodes, nonleaf_cap);
-	mas_node_count(mas, nr_nodes);
+	/* Add one for working room */
+	mas_node_count(mas, nr_nodes + 1);
+
+	/* Detect if allocations run out */
+	mas->mas_flags |= MA_STATE_PREALLOC;
 
 	if (!mas_is_err(mas))
 		return 0;
