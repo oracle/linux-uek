@@ -98,12 +98,14 @@
 	_find_first_zero_bit
 	_find_next_bit
 	_printk
+	_raw_read_lock
 	_raw_read_lock_bh
 	_raw_read_lock_irqsave
 	_raw_read_unlock_bh
 	_raw_read_unlock_irqrestore
 	_raw_spin_lock
 	_raw_spin_lock_bh
+	_raw_spin_lock_irq
 	_raw_spin_lock_irqsave
 	_raw_spin_trylock
 	_raw_spin_unlock_bh
@@ -118,6 +120,8 @@
 	alloc_chrdev_region
 	alloc_pages
 	alloc_workqueue
+	async_synchronize_full
+	async_synchronize_full_domain
 	attribute_container_find_class_device
 	autoremove_wake_function
 	bio_alloc_bioset
@@ -132,14 +136,17 @@
 	blk_mq_alloc_tag_set
 	blk_mq_end_request
 	blk_mq_free_tag_set
+	blk_mq_freeze_queue
 	blk_mq_init_queue
 	blk_mq_map_queues
 	blk_mq_pci_map_queues
+	blk_mq_run_hw_queue
 	blk_mq_run_hw_queues
 	blk_mq_start_request
 	blk_mq_stop_hw_queues
 	blk_mq_tag_to_rq
 	blk_mq_tagset_busy_iter
+	blk_mq_unfreeze_queue
 	blk_mq_unique_tag
 	blk_put_request
 	blk_queue_bounce_limit
@@ -159,8 +166,12 @@
 	blk_rq_map_user_iov
 	blk_stack_limits
 	blkdev_get_by_dev
+	blkdev_ioctl
 	blkdev_put
 	bsg_job_done
+	bus_for_each_dev
+	bus_register_notifier
+	bus_unregister_notifier
 	call_rcu
 	cancel_delayed_work
 	cancel_delayed_work_sync
@@ -191,12 +202,14 @@
 	debugfs_remove
 	default_wake_function
 	del_gendisk
+	del_timer
 	del_timer_sync
 	delayed_work_timer_fn
 	dentry_path_raw
 	destroy_workqueue
 	dev_driver_string
 	device_add_disk
+	device_create
 	device_create_file
 	device_destroy
 	device_remove_file
@@ -299,6 +312,7 @@
 	kill_fasync
 	kmalloc_caches
 	kmalloc_order_trace
+	kmem_cache_alloc
 	kmem_cache_alloc_trace
 	kmem_cache_create
 	kmem_cache_destroy
@@ -312,6 +326,7 @@
 	kthread_create_on_node
 	kthread_should_stop
 	kthread_stop
+	ktime_get
 	ktime_get_raw_ts64
 	ktime_get_real_seconds
 	ktime_get_real_ts64
@@ -357,6 +372,7 @@
 	nvme_fc_unregister_localport
 	nvme_fc_unregister_remoteport
 	page_offset_base
+	panic
 	param_array_ops
 	param_get_int
 	param_ops_bool
@@ -407,8 +423,12 @@
 	pci_unregister_driver
 	pcie_capability_clear_and_set_word
 	pcie_capability_read_word
+	percpu_ref_exit
+	percpu_ref_init
 	phys_base
 	physical_mask
+	pid_task
+	prepare_to_wait
 	prepare_to_wait_event
 	proc_create
 	proc_create_data
@@ -453,6 +473,7 @@
 	sas_remove_host
 	sas_rphy_add
 	sbitmap_weight
+	schedule
 	schedule_timeout
 	schedule_timeout_uninterruptible
 	scmd_printk
@@ -460,7 +481,9 @@
 	scsi_add_device
 	scsi_add_host_with_dma
 	scsi_block_requests
+	scsi_build_sense
 	scsi_build_sense_buffer
+	scsi_bus_type
 	scsi_change_queue_depth
 	scsi_device_get
 	scsi_device_put
@@ -487,6 +510,7 @@
 	scsi_scan_host
 	scsi_scan_target
 	scsi_unblock_requests
+	scsi_vpd_lun_id
 	scsicam_bios_param
 	scsilun_to_int
 	sdev_prefix_printk
@@ -508,6 +532,7 @@
 	sigprocmask
 	simple_read_from_buffer
 	simple_strtol
+	simple_strtoul
 	simple_strtoull
 	simple_write_to_buffer
 	single_open
@@ -568,6 +593,7 @@
 	unregister_kprobe
 	unregister_pernet_subsys
 	unregister_sysctl_table
+	up
 	up_read
 	up_write
 	usleep_range_state
