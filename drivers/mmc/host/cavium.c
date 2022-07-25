@@ -27,6 +27,8 @@
 #include <linux/time.h>
 #include <linux/iommu.h>
 #include <linux/swiotlb.h>
+#include <linux/acpi.h>
+#include <linux/property.h>
 
 #include "cavium.h"
 
@@ -2143,92 +2145,90 @@ static int cvm_mmc_init_lowlevel(struct cvm_mmc_slot *slot)
 }
 
 /**
- * Reads device tree entries for bus timings
+ * Reads device tree entries or ACPI properties for bus timings
  *
- * @param node	device tree node for the slot
+ * @param dev	the device structure for the slot
  * @param slot  the slot device
  *
  */
-static void cvm_mmc_of_parse_timings(const struct device_node *node,
+static void cvm_mmc_of_parse_timings(struct device *dev,
 				     struct cvm_mmc_slot *slot)
 {
 	int ret;
 
 	/* Provide user overrides for default output timings */
-	of_property_read_u32(node, "marvell,cmd-out-hs200-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS200]);
-	of_property_read_u32(node, "marvell,data-out-hs200-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS200]);
-	of_property_read_u32(node, "marvell,cmd-out-hs400-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS400]);
-	of_property_read_u32(node, "marvell,data-out-hs400-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS400]);
-	of_property_read_u32(node, "marvell,cmd-out-hs-sdr-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,data-out-hs-sdr-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,cmd-out-hs-ddr-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,data-out-hs-ddr-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,cmd-out-legacy-dly",
-			     &slot->cmd_out_taps_dly[MMC_TIMING_LEGACY]);
-	of_property_read_u32(node, "marvell,data-out-legacy-dly",
-			     &slot->data_out_taps_dly[MMC_TIMING_LEGACY]);
+	device_property_read_u32(dev, "marvell,cmd-out-hs200-dly",
+				 &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS200]);
+	device_property_read_u32(dev, "marvell,data-out-hs200-dly",
+				 &slot->data_out_taps_dly[MMC_TIMING_MMC_HS200]);
+	device_property_read_u32(dev, "marvell,cmd-out-hs400-dly",
+				 &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS400]);
+	device_property_read_u32(dev, "marvell,data-out-hs400-dly",
+				 &slot->data_out_taps_dly[MMC_TIMING_MMC_HS400]);
+	device_property_read_u32(dev, "marvell,cmd-out-hs-sdr-dly",
+				 &slot->cmd_out_taps_dly[MMC_TIMING_MMC_HS]);
+	device_property_read_u32(dev, "marvell,data-out-hs-sdr-dly",
+				 &slot->data_out_taps_dly[MMC_TIMING_MMC_HS]);
+	device_property_read_u32(dev, "marvell,cmd-out-hs-ddr-dly",
+				 &slot->cmd_out_taps_dly[MMC_TIMING_MMC_DDR52]);
+	device_property_read_u32(dev, "marvell,data-out-hs-ddr-dly",
+				 &slot->data_out_taps_dly[MMC_TIMING_MMC_DDR52]);
+	device_property_read_u32(dev, "marvell,cmd-out-legacy-dly",
+				 &slot->cmd_out_taps_dly[MMC_TIMING_LEGACY]);
+	device_property_read_u32(dev, "marvell,data-out-legacy-dly",
+				 &slot->data_out_taps_dly[MMC_TIMING_LEGACY]);
 	/* Modify the input timings using user inputs */
-	ret = of_property_read_u32(node, "marvell,cmd-in-hs200-dly",
-				   &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS200]);
+	ret = device_property_read_u32(dev, "marvell,cmd-in-hs200-dly",
+				       &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS200]);
 	if (!ret)
 		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS200);
-	ret = of_property_read_u32(node, "marvell,data-in-hs200-dly",
-				   &slot->data_in_taps_dly[MMC_TIMING_MMC_HS200]);
+	ret = device_property_read_u32(dev, "marvell,data-in-hs200-dly",
+				       &slot->data_in_taps_dly[MMC_TIMING_MMC_HS200]);
 	if (!ret)
 		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS200);
-	ret = of_property_read_u32(node, "marvell,cmd-in-hs400-dly",
-				   &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS400]);
+	ret = device_property_read_u32(dev, "marvell,cmd-in-hs400-dly",
+				       &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS400]);
 	if (!ret)
 		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS400);
-	ret = of_property_read_u32(node, "marvell,data-in-hs400-dly",
-				   &slot->data_in_taps_dly[MMC_TIMING_MMC_HS400]);
+	ret = device_property_read_u32(dev, "marvell,data-in-hs400-dly",
+				       &slot->data_in_taps_dly[MMC_TIMING_MMC_HS400]);
 	if (!ret)
 		slot->in_timings_ctl |= BIT(MMC_TIMING_MMC_HS400);
 
-	of_property_read_u32(node, "marvell,cmd-in-hs-sdr-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,data-in-hs-sdr-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_MMC_HS]);
-	of_property_read_u32(node, "marvell,cmd-in-hs-ddr-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,data-in-hs-ddr-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_MMC_DDR52]);
-	of_property_read_u32(node, "marvell,cmd-in-legacy-dly",
-			     &slot->cmd_in_taps_dly[MMC_TIMING_LEGACY]);
-	of_property_read_u32(node, "marvell,data-in-legacy-dly",
-			     &slot->data_in_taps_dly[MMC_TIMING_LEGACY]);
+	device_property_read_u32(dev, "marvell,cmd-in-hs-sdr-dly",
+				 &slot->cmd_in_taps_dly[MMC_TIMING_MMC_HS]);
+	device_property_read_u32(dev, "marvell,data-in-hs-sdr-dly",
+				 &slot->data_in_taps_dly[MMC_TIMING_MMC_HS]);
+	device_property_read_u32(dev, "marvell,cmd-in-hs-ddr-dly",
+				 &slot->cmd_in_taps_dly[MMC_TIMING_MMC_DDR52]);
+	device_property_read_u32(dev, "marvell,data-in-hs-ddr-dly",
+				 &slot->data_in_taps_dly[MMC_TIMING_MMC_DDR52]);
+	device_property_read_u32(dev, "marvell,cmd-in-legacy-dly",
+				 &slot->cmd_in_taps_dly[MMC_TIMING_LEGACY]);
+	device_property_read_u32(dev, "marvell,data-in-legacy-dly",
+				 &slot->data_in_taps_dly[MMC_TIMING_LEGACY]);
 }
 
 static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 {
 	u32 id, cmd_skew = 0, dat_skew = 0, bus_width = 0;
-	struct device_node *node = dev->of_node;
 	struct mmc_host *mmc = slot->mmc;
 	u32 max_frequency, current_drive, clk_slew;
 	int ret;
 
-	ret = of_property_read_u32(node, "reg", &id);
+	ret = device_property_read_u32(dev, "reg", &id);
 	if (ret) {
-		dev_err(dev, "Missing or invalid reg property on %pOF\n", node);
+		dev_err(dev, "Missing or invalid reg property\n");
 		return ret;
 	}
 
 	if (id >= CAVIUM_MAX_MMC) {
-		dev_err(dev, "Invalid reg=<%d> property on %pOF\n", id, node);
+		dev_err(dev, "Invalid reg=<%d> property\n", id);
 		return -EINVAL;
 	}
 
 	if (slot->host->slot[id]) {
-		dev_err(dev, "Duplicate reg=<%d> property on %pOF\n",
-			id, node);
+		dev_err(dev, "Duplicate reg=<%d> property\n", id);
 		return -EINVAL;
 	}
 
@@ -2248,11 +2248,11 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 		return ret;
 
 	slot->hs400_tuning_block = -1U;
-	of_property_read_u32(node, "marvell,hs400-tuning-block",
-			     &slot->hs400_tuning_block);
+	device_property_read_u32(dev, "marvell,hs400-tuning-block",
+				 &slot->hs400_tuning_block);
 	/* Set bus width from obsolete properties, if unset */
 	if (!(mmc->caps & (MMC_CAP_8_BIT_DATA | MMC_CAP_4_BIT_DATA))) {
-		of_property_read_u32(node, "cavium,bus-max-width", &bus_width);
+		device_property_read_u32(dev, "cavium,bus-max-width", &bus_width);
 		if (bus_width == 8)
 			mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_4_BIT_DATA;
 		else if (bus_width == 4)
@@ -2260,20 +2260,20 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	}
 
 	/* Configure bus timings */
-	cvm_mmc_of_parse_timings(node, slot);
+	cvm_mmc_of_parse_timings(dev, slot);
 
 	max_frequency = max_supported_frequency(slot->host);
 
 	/* Set maximum and minimum frequency */
 	if (!mmc->f_max)
-		of_property_read_u32(node, "spi-max-frequency", &mmc->f_max);
+		device_property_read_u32(dev, "spi-max-frequency", &mmc->f_max);
 	if (!mmc->f_max || mmc->f_max > max_frequency)
 		mmc->f_max = max_frequency;
 	mmc->f_min = KHZ_400;
 
 	/* Sampling register settings, period in picoseconds */
-	of_property_read_u32(node, "cavium,cmd-clk-skew", &cmd_skew);
-	of_property_read_u32(node, "cavium,dat-clk-skew", &dat_skew);
+	device_property_read_u32(dev, "cavium,cmd-clk-skew", &cmd_skew);
+	device_property_read_u32(dev, "cavium,dat-clk-skew", &dat_skew);
 	if (is_mmc_8xxx(slot->host) || is_mmc_otx2(slot->host)) {
 		slot->cmd_cnt = cmd_skew;
 		slot->data_cnt = dat_skew;
@@ -2285,13 +2285,13 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	}
 
 	/* Get current drive and clk skew */
-	ret = of_property_read_u32(node, "cavium,drv-strength", &current_drive);
+	ret = device_property_read_u32(dev, "cavium,drv-strength", &current_drive);
 	if (ret)
 		slot->drive = -1;
 	else
 		slot->drive = current_drive;
 
-	ret = of_property_read_u32(node, "cavium,clk-slew", &clk_slew);
+	ret = device_property_read_u32(dev, "cavium,clk-slew", &clk_slew);
 	if (ret)
 		slot->slew = -1;
 	else
@@ -2341,6 +2341,7 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 	ret = cvm_mmc_of_parse(dev, slot);
 	if (ret < 0)
 		goto error;
+
 	id = ret;
 
 	/* Set up host parameters */
