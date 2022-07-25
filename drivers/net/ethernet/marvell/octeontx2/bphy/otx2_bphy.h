@@ -46,6 +46,8 @@
 					     uint64_t)
 #define OTX2_IOCTL_CPRI_INTF_CFG	_IOW(OTX2_RFOE_IOCTL_BASE, 0x0B, \
 					     uint64_t)
+#define OTX2_IOCTL_PTP_CLK_SRC		_IOW(OTX2_RFOE_IOCTL_BASE, 0x0C, \
+					     struct ptp_clk_src_cfg)
 
 //#define ASIM		/* ASIM environment */
 

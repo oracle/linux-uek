@@ -13,13 +13,17 @@
 #include "bphy_netdev_comm_if.h"
 
 /* PTP register offsets */
+#define MIO_PTP_CLOCK_CFG		0x0
 #define MIO_PTP_CLOCK_HI		0x10
 #define MIO_PTP_TIMESTAMP		0x20
 #define MIO_PTP_PPS_THRESH_HI		0x58ULL
 #define MIO_PTP_CLOCK_COMP		0x18ULL
 #define MIO_PTP_CLOCK_SEC		0xD0ULL
+#define MIO_PTP_CLOCK_CFG_EXT_CLK_EN	BIT_ULL(1)
+#define MIO_PTP_CLOCK_CFG_EXT_CLK_MASK  GENMASK_ULL(7, 2)
 
 #define CYCLE_MULT			1000
+#define GIGA_HZ				1000000000LL
 
 /* max tx job entries */
 #define MAX_TX_JOB_ENTRIES		64
@@ -200,6 +204,13 @@ struct otx2_rfoe_link_event {
 struct ptp_clk_cfg {
 	int clk_freq_ghz;	/* ptp clk freq */
 	int clk_freq_div;	/* ptp clk divisor */
+};
+
+struct ptp_clk_src_cfg {
+	int clk_freq_ghz;	/* ptp clk freq */
+	int clk_freq_div;	/* ptp clk divisor */
+	int clk_input;		/* External or Internal */
+	int clk_source;		/* Clock source */
 };
 
 struct bcn_sec_offset_cfg {
