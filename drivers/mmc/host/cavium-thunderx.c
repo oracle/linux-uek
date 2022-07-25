@@ -14,6 +14,8 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/acpi.h>
+#include <linux/property.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/bitfield.h>
@@ -190,10 +192,15 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	int ret, i = 0;
 	u8 chip_id;
 	u8 rev;
+	struct fwnode_handle *fwnode_child;
+	struct acpi_device *adev;
+	bool has_acpi;
 
 	host = devm_kzalloc(dev, sizeof(*host), GFP_KERNEL);
 	if (!host)
 		return -ENOMEM;
+
+	has_acpi = has_acpi_companion(dev);
 
 	pci_set_drvdata(pdev, host);
 	ret = pcim_enable_device(pdev);
@@ -217,16 +224,17 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	host->reg_off = 0x2000;
 	host->reg_off_dma = 0x160;
 
-	host->clk = devm_clk_get(dev, NULL);
-	if (IS_ERR(host->clk)) {
-		ret = PTR_ERR(host->clk);
-		goto error;
-	}
+	if (!has_acpi) {
+		host->clk = devm_clk_get(dev, NULL);
+		if (IS_ERR(host->clk))
+			return PTR_ERR(host->clk);
 
-	ret = clk_prepare_enable(host->clk);
-	if (ret)
-		goto error;
-	host->sys_freq = clk_get_rate(host->clk);
+		ret = clk_prepare_enable(host->clk);
+		if (ret)
+			return ret;
+		host->sys_freq = clk_get_rate(host->clk);
+	} else
+		device_property_read_u32(dev, "sclk", &host->sys_freq);
 
 	spin_lock_init(&host->irq_handler_lock);
 	sema_init(&host->mmc_serializer, 1);
@@ -301,16 +309,11 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	 */
 	thunder_calibrate_mmc(host);
 
-	for_each_available_child_of_node(node, child_node) {
-		/*
-		 * mmc_of_parse and devm* require one device per slot.
-		 * Create a dummy device per slot and set the node pointer to
-		 * the slot. The easiest way to get this is using
-		 * of_platform_device_create.
-		 */
-		if (of_device_is_compatible(child_node, "mmc-slot")) {
-			host->slot_pdev[i] = of_platform_device_create(child_node, NULL,
-								       &pdev->dev);
+	if (has_acpi) {
+		device_for_each_child_node(&pdev->dev, fwnode_child) {
+			adev = to_acpi_device_node(fwnode_child);
+			host->slot_pdev[i] = acpi_create_platform_device(adev, NULL);
+
 			if (!host->slot_pdev[i])
 				continue;
 
@@ -318,11 +321,35 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 
 			ret = cvm_mmc_of_slot_probe(&host->slot_pdev[i]->dev, host);
 			if (ret) {
-				of_node_put(child_node);
+				fwnode_handle_put(fwnode_child);
 				goto error;
 			}
+			i++;
 		}
-		i++;
+	} else {
+		for_each_available_child_of_node(node, child_node) {
+			/*
+			 * mmc_of_parse and devm* require one device per slot.
+			 * Create a dummy device per slot and set the node pointer to
+			 * the slot. The easiest way to get this is using
+			 * of_platform_device_create.
+			 */
+			if (of_device_is_compatible(child_node, "mmc-slot")) {
+				host->slot_pdev[i] = of_platform_device_create(child_node, NULL,
+									       &pdev->dev);
+				if (!host->slot_pdev[i])
+					continue;
+
+				dev_info(dev, "Probing slot %d\n", i);
+
+				ret = cvm_mmc_of_slot_probe(&host->slot_pdev[i]->dev, host);
+				if (ret) {
+					of_node_put(child_node);
+					goto error;
+				}
+			}
+			i++;
+		}
 	}
 
 	dev_info(dev, "probed\n");
@@ -334,7 +361,10 @@ error:
 			cvm_mmc_of_slot_remove(host->slot[i]);
 		if (host->slot_pdev[i]) {
 			get_device(&host->slot_pdev[i]->dev);
-			of_platform_device_destroy(&host->slot_pdev[i]->dev, NULL);
+			if (has_acpi)
+				platform_device_unregister(host->slot_pdev[i]);
+			else
+				of_platform_device_destroy(&host->slot_pdev[i]->dev, NULL);
 			put_device(&host->slot_pdev[i]->dev);
 		}
 	}
