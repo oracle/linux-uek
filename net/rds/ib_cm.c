@@ -424,7 +424,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	/* Save the qp number information in the connection details. */
 	ic->i_qp_num = ic->i_cm_id->qp->qp_num;
-	ic->i_dst_qp_num = event->param.conn.qp_num;
+	if (event->param.conn.qp_num)
+		ic->i_dst_qp_num = event->param.conn.qp_num;
 
 	rds_ib_cancel_cm_watchdog(ic, "connect complete");
 
@@ -1882,6 +1883,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				       event->param.conn.initiator_depth);
 		if (err)
 			reason = "rds_ib_cm_accept failed";
+		else if (event->param.conn.qp_num)
+			ic->i_dst_qp_num = event->param.conn.qp_num;
 	}
 
 out:
