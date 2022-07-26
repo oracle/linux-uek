@@ -443,13 +443,18 @@ err_out:
 }
 
 static int
-nfqnl_mangle(void *data, int data_len, struct nf_queue_entry *e)
+nfqnl_mangle(void *data, unsigned int data_len, struct nf_queue_entry *e)
 {
 	struct sk_buff *nskb;
 	int diff;
 
 	diff = data_len - e->skb->len;
 	if (diff < 0) {
+		unsigned int min_len = skb_transport_offset(e->skb);
+
+		if (data_len < min_len)
+			return -EINVAL;
+
 		if (pskb_trim(e->skb, data_len))
 			return -ENOMEM;
 	} else if (diff > 0) {
