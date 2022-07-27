@@ -215,6 +215,7 @@ static int mrvl_clone_fw(unsigned long arg)
 	struct mrvl_clone_fw *user_desc;
 	struct arm_smccc_res res;
 	struct smc_version_info *swup_info = (struct smc_version_info *)memdesc[BUF_DATA].virt;
+	int spi_in_progress = 0;
 
 	user_desc = kzalloc(sizeof(*user_desc), GFP_KERNEL);
 	if (!user_desc)
@@ -238,6 +239,9 @@ static int mrvl_clone_fw(unsigned long arg)
 
 	if (user_desc->version_flags & MARLIN_FORCE_CLONE)
 		swup_info->version_flags |= SMC_VERSION_FORCE_COPY_OBJECTS;
+
+	if (user_desc->version_flags & MARLIN_FORCE_ASYNC)
+		swup_info->version_flags |= SMC_VERSION_ASYNC_HASH;
 
 	if (user_desc->version_flags & MARLIN_CHECK_PREDEFINED_OBJ) {
 		swup_info->version_flags |= SMC_VERSION_CHECK_SPECIFIC_OBJECTS;
@@ -274,6 +278,12 @@ static int mrvl_clone_fw(unsigned long arg)
 		ret = res.a0;
 		goto mem_error;
 	}
+
+	do {
+		msleep(500);
+		res = mrvl_exec_smc(PLAT_CN10K_ASYNC_STATUS, 0, 0);
+		spi_in_progress = res.a0;
+	} while (spi_in_progress);
 
 	user_desc->retcode = swup_info->retcode;
 	for (i = 0; i < SMC_MAX_VERSION_ENTRIES; i++)
