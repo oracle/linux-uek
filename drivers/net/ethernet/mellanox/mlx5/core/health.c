@@ -622,8 +622,14 @@ mlx5_fw_fatal_reporter_recover(struct devlink_health_reporter *reporter,
 			       struct netlink_ext_ack *extack)
 {
 	struct mlx5_core_dev *dev = devlink_health_reporter_priv(reporter);
+	struct devlink *devlink = priv_to_devlink(dev);
+	int ret;
 
-	return mlx5_health_try_recover(dev);
+	devl_lock(devlink);
+	ret = mlx5_health_try_recover(dev);
+	devl_unlock(devlink);
+
+	return ret;
 }
 
 static int
@@ -666,11 +672,13 @@ static void mlx5_fw_fatal_reporter_err_work(struct work_struct *work)
 	struct mlx5_fw_reporter_ctx fw_reporter_ctx;
 	struct mlx5_core_health *health;
 	struct mlx5_core_dev *dev;
+	struct devlink *devlink;
 	struct mlx5_priv *priv;
 
 	health = container_of(work, struct mlx5_core_health, fatal_report_work);
 	priv = container_of(health, struct mlx5_priv, health);
 	dev = container_of(priv, struct mlx5_core_dev, priv);
+	devlink = priv_to_devlink(dev);
 
 	mutex_lock(&dev->intf_state_mutex);
 	if (test_bit(MLX5_DROP_NEW_HEALTH_WORK, &health->flags)) {
@@ -681,8 +689,10 @@ static void mlx5_fw_fatal_reporter_err_work(struct work_struct *work)
 	mutex_unlock(&dev->intf_state_mutex);
 	enter_error_state(dev, false);
 	if (IS_ERR_OR_NULL(health->fw_fatal_reporter)) {
+		devl_lock(devlink);
 		if (mlx5_health_try_recover(dev))
 			mlx5_core_err(dev, "health recovery failed\n");
+		devl_unlock(devlink);
 		return;
 	}
 	fw_reporter_ctx.err_synd = health->synd;
