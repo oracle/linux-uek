@@ -686,6 +686,7 @@ EXPORT_SYMBOL(octeon_i2c_cvmx2i2c);
 void octeon_i2c_set_clock(struct octeon_i2c *i2c)
 {
 	int tclk, thp_base, inc, thp_idx, mdiv_idx, ndiv_idx, foscl, diff;
+	int mdiv_min = 2;
 	/* starting value on search for lowest diff */
 	const int huge_delta = 1000000;
 	/*
@@ -696,6 +697,7 @@ void octeon_i2c_set_clock(struct octeon_i2c *i2c)
 
 	if (octeon_i2c_is_otx2(to_pci_dev(i2c->dev))) {
 		thp = 0x3;
+		mdiv_min = 0;
 		if (i2c->twsi_freq > FREQ_400KHZ)
 			ds = 15;
 	}
@@ -704,7 +706,7 @@ void octeon_i2c_set_clock(struct octeon_i2c *i2c)
 		 * An mdiv value of less than 2 seems to not work well
 		 * with ds1337 RTCs, so we constrain it to larger values.
 		 */
-		for (mdiv_idx = 15; mdiv_idx >= 2 && delta_hz != 0; mdiv_idx--) {
+		for (mdiv_idx = 15; mdiv_idx >= mdiv_min && delta_hz != 0; mdiv_idx--) {
 			/*
 			 * For given ndiv and mdiv values check the
 			 * two closest thp values.
