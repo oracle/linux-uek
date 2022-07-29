@@ -1711,12 +1711,29 @@ static int tmc_disable_etr_sink(struct coresight_device *csdev)
 	return 0;
 }
 
+static void tmc_etr_kdump_sync(struct perf_output_handle *handle,
+			       void *sink_config,
+			       struct coresight_kdump_ctxt *ctxt)
+{
+	struct etr_perf_buffer *etr_perf = sink_config;
+
+	if (!etr_perf || !etr_perf->snapshot)
+		return;
+
+	ctxt->aux_nr_pages = etr_perf->nr_pages;
+	ctxt->aux_pages = (uint64_t)etr_perf->pages;
+	/* Assumes handle->head is incremented from offset 0 */
+	ctxt->size = handle->head;
+	ctxt->head = 0;
+}
+
 static const struct coresight_ops_sink tmc_etr_sink_ops = {
 	.enable		= tmc_enable_etr_sink,
 	.disable	= tmc_disable_etr_sink,
 	.alloc_buffer	= tmc_alloc_etr_buffer,
 	.update_buffer	= tmc_update_etr_buffer,
 	.free_buffer	= tmc_free_etr_buffer,
+	.kdump_sync	= tmc_etr_kdump_sync,
 };
 
 const struct coresight_ops tmc_etr_cs_ops = {

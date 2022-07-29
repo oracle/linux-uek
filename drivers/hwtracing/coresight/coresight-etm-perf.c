@@ -43,6 +43,7 @@ struct etm_ctxt {
 	struct etm_event_data *event_data;
 };
 
+static DEFINE_PER_CPU(struct coresight_kdump_ctxt, cs_kdump_context);
 static DEFINE_PER_CPU(struct etm_ctxt, etm_ctxt);
 static DEFINE_PER_CPU(struct coresight_device *, csdev_src);
 
@@ -762,3 +763,37 @@ void __exit etm_perf_exit(void)
 {
 	perf_pmu_unregister(&etm_pmu);
 }
+
+#if IS_ENABLED(CONFIG_CORESIGHT)
+void cpu_emergency_stop_cs_etm(void)
+{
+	void *sink_config;
+	int cpu = smp_processor_id();
+	struct etm_ctxt *ctxt = this_cpu_ptr(&etm_ctxt);
+	struct coresight_kdump_ctxt *kdump_ctxt =
+			this_cpu_ptr(&cs_kdump_context);
+	struct coresight_device *sink;
+
+	if (!ctxt->handle.event)
+		return;
+
+	sink = coresight_get_sink(etm_event_cpu_path(ctxt->event_data, cpu));
+	if (!sink)
+		return;
+	sink_config = etm_perf_sink_config(&ctxt->handle);
+	if (!sink_config)
+		return;
+	etm_event_stop(ctxt->handle.event, PERF_EF_UPDATE);
+	/* Ensure stop doesn't get reordered with context update */
+	smp_wmb();
+
+	/* Update sink buffer related info to kdump context */
+	if (!sink_ops(sink)->kdump_sync)
+		return;
+	sink_ops(sink)->kdump_sync(&ctxt->handle, sink_config, kdump_ctxt);
+
+	/* Currently we rely on static ETM configuration for decoding and
+	 * hence no metadata is synced for source
+	 */
+}
+#endif		/* IS_ENABLED(CONFIG_CORESIGHT) */

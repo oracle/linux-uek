@@ -560,12 +560,29 @@ out:
 	return to_read;
 }
 
+static void tmc_etf_kdump_sync(struct perf_output_handle *handle,
+			       void *sink_config,
+			       struct coresight_kdump_ctxt *ctxt)
+{
+	struct cs_buffers *buf = sink_config;
+
+	if (!buf || !buf->snapshot)
+		return;
+
+	ctxt->aux_nr_pages = buf->nr_pages;
+	ctxt->aux_pages = (uint64_t)buf->data_pages;
+	/* Assumes handle->head is incremented from offset 0 */
+	ctxt->size = handle->head;
+	ctxt->head = 0;
+}
+
 static const struct coresight_ops_sink tmc_etf_sink_ops = {
 	.enable		= tmc_enable_etf_sink,
 	.disable	= tmc_disable_etf_sink,
 	.alloc_buffer	= tmc_alloc_etf_buffer,
 	.free_buffer	= tmc_free_etf_buffer,
 	.update_buffer	= tmc_update_etf_buffer,
+	.kdump_sync	= tmc_etf_kdump_sync,
 };
 
 static const struct coresight_ops_link tmc_etf_link_ops = {
