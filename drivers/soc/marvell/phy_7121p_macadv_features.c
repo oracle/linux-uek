@@ -90,12 +90,14 @@ enum phy_mac_adv_cmd {
 	PHY_MAC_ADV_MACSEC_RE_KEY,
 	PHY_MAC_ADV_MACSEC_MAX = 100,
 
+	PHY_MAC_ADV_GEN_RCLK = 101,
+	PHY_MAC_ADV_GEN_MAX = 200,
 };
 
 static struct {
 	enum phy_mac_adv_cmd e;
 	const char *s;
-} mac_adv_cmds[] = {
+} mac_adv_macsec_cmds[] = {
 	{PHY_MAC_ADV_MACSEC_SET_DA, "da"},
 	{PHY_MAC_ADV_MACSEC_SET_KEY, "key"},
 	{PHY_MAC_ADV_MACSEC_ENABLE, "enable"},
@@ -107,7 +109,33 @@ static struct {
 	{PHY_MAC_ADV_MACSEC_PTP, "ptp_enable"},
 	{PHY_MAC_ADV_MACSEC_RE_KEY, "rekey"},
 };
-DEFINE_STR_2_ENUM_FUNC(mac_adv_cmds)
+DEFINE_STR_2_ENUM_FUNC(mac_adv_macsec_cmds)
+
+static struct {
+	enum phy_mac_adv_cmd e;
+	const char *s;
+} mac_adv_gen_cmds[] = {
+	{PHY_MAC_ADV_GEN_RCLK, "rclk"},
+};
+DEFINE_STR_2_ENUM_FUNC(mac_adv_gen_cmds)
+
+typedef enum {
+	PIN_CLK_OUT_SE1 = 4,
+	PIN_CLK_OUT_SE2 = 5,
+	PIN_CLK_OUT_SE3 = 6,
+	PIN_CLK_OUT_SE4 = 7,
+} PHY_7121_RCLK_PIN_t;
+
+static struct {
+	PHY_7121_RCLK_PIN_t e;
+	const char *s;
+} rclk_pin[] = {
+	{PIN_CLK_OUT_SE1, "se1"},
+	{PIN_CLK_OUT_SE2, "se2"},
+	{PIN_CLK_OUT_SE3, "se3"},
+	{PIN_CLK_OUT_SE4, "se4"},
+};
+DEFINE_STR_2_ENUM_FUNC(rclk_pin)
 
 typedef enum  PHY_7121_MACSEC_DIR {
 	PHY_7121_MACSEC_INGRESS = 0,
@@ -164,6 +192,13 @@ typedef struct pkttest {
 	PHY_7121_MACSEC_PKTTEST_t cmd;
 } pkttest_t;
 
+typedef struct phy_gen_rclk {
+	int pin;
+	int src_clk;
+	int ratio;
+} phy_gen_rclk_t;
+
+
 typedef struct phy_7121_adv_cmds {
 	int mac_adv_cmd;
 	int cgx_id;
@@ -173,6 +208,7 @@ typedef struct phy_7121_adv_cmds {
 		key_sa_t key;
 		mac_da_t mac;
 		pkttest_t pkttest_cmd;
+		phy_gen_rclk_t gen_rclk;
 	} data;
 } phy_7121_adv_cmds_t;
 
@@ -281,6 +317,95 @@ static struct arm_smccc_res mrvl_exec_smc(uint64_t buf, uint64_t size)
 	return res;
 }
 
+static ssize_t phy_debug_generic_write(struct file *filp,
+					const char __user *buffer,
+					size_t count, loff_t *ppos)
+{
+	struct arm_smccc_res res;
+	char *end;
+	char *token;
+	int cmd;
+
+	int pin;
+
+	phy_7121_adv_cmds_t *mac_adv = (phy_7121_adv_cmds_t *)memdesc[BUF_DATA].virt;
+
+	if (copy_user_input(buffer, count, macadv_cmd_buf, CMD_SZ))
+		return -EFAULT;
+
+	end = skip_spaces(macadv_cmd_buf);
+	token = strsep(&end, " \t\n");
+	if (!token)
+		return -EINVAL;
+
+	cmd = mac_adv_gen_cmds_str2enum(token);
+	MAC_ADV_DEBUG("\n %s cmd %d", __func__, cmd);
+
+	if (cmd == -1)
+		return -EINVAL;
+
+	memset(mac_adv, 0x00, sizeof(phy_7121_adv_cmds_t));
+
+	mac_adv->cgx_id =  phy_data.eth;
+	mac_adv->lmac_id =  phy_data.lmac;
+
+	switch (cmd) {
+	case PHY_MAC_ADV_GEN_RCLK:
+		MAC_ADV_DEBUG("\n %s PHY_MAC_ADV_GEN_RCLK", __func__);
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_GEN_RCLK;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		pin = rclk_pin_str2enum(token);
+		if (pin == -1)
+			return -EINVAL;
+		mac_adv->data.gen_rclk.pin = pin;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, &mac_adv->data.gen_rclk.src_clk))
+			return -EINVAL;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, &mac_adv->data.gen_rclk.ratio))
+			return -EINVAL;
+		break;
+
+	default:
+		pr_warn("MAC ADV failed for invalid command %d!\n", cmd);
+		return -EINVAL;
+	}
+
+	arm_smccc_smc(PLAT_OCTEONTX_PHY_ADVANCE_CMDS,
+			memdesc[BUF_DATA].phys, sizeof(phy_7121_adv_cmds_t),
+			phy_data.eth, phy_data.lmac, 0, 0, 0, &res);
+
+	if (res.a0) {
+		pr_warn("MAC ADV  command failed count %d!\n", (int) count);
+		return count;
+	}
+
+	pr_info("MAC ADV  command success count %x\n", (int)count);
+	return count;
+}
+
+static int phy_debug_generic_read(struct seq_file *s, void *unused)
+{
+	return 0;
+}
+DEFINE_ATTRIBUTE(phy_debug_generic);
+
+
 static ssize_t phy_debug_mac_sec_write(struct file *filp,
 					const char __user *buffer,
 					size_t count, loff_t *ppos)
@@ -302,7 +427,7 @@ static ssize_t phy_debug_mac_sec_write(struct file *filp,
 	if (!token)
 		return -EINVAL;
 
-	cmd = mac_adv_cmds_str2enum(token);
+	cmd = mac_adv_macsec_cmds_str2enum(token);
 	MAC_ADV_DEBUG("\n %s cmd %d", __func__, cmd);
 
 	if (cmd == -1)
@@ -559,6 +684,11 @@ static int phy_mac_adv_setup_debugfs(void)
 
 	dbg_file = debugfs_create_file("macsec", 0644, phy_mac_adv_root, NULL,
 				    &phy_debug_mac_sec_fops);
+	if (!dbg_file)
+		goto create_failed;
+
+	dbg_file = debugfs_create_file("generic", 0644, phy_mac_adv_root, NULL,
+				    &phy_debug_generic_fops);
 	if (!dbg_file)
 		goto create_failed;
 
