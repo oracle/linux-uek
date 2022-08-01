@@ -913,6 +913,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	}
 
 	sq->head = 0;
+	sq->cons_head = 0;
 	sq->sqe_per_sqb = (pfvf->hw.sqb_size / sq->sqe_size) - 1;
 	sq->num_sqbs = (qset->sqe_cnt + sq->sqe_per_sqb) / sq->sqe_per_sqb;
 	/* Set SQE threshold to 10% of total SQEs */
@@ -1626,7 +1627,6 @@ int otx2_nix_config_bp(struct otx2_nic *pfvf, bool enable)
 	req->chan_cnt =  pfvf->hw.rx_chan_cnt;
 	req->bpid_per_chan = 0;
 #endif
-
 
 	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
