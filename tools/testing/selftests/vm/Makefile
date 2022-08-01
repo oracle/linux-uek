@@ -152,23 +152,6 @@ endif
 
 $(OUTPUT)/mlock-random-test $(OUTPUT)/memfd_secret: LDLIBS += -lcap
 
-# HMM_EXTRA_LIBS may get set in local_config.mk, or it may be left empty.
-$(OUTPUT)/hmm-tests: LDLIBS += $(HMM_EXTRA_LIBS)
-
 $(OUTPUT)/ksm_tests: LDLIBS += -lnuma
 
 $(OUTPUT)/migration: LDLIBS += -lnuma
-
-local_config.mk local_config.h: check_config.sh
-	/bin/sh ./check_config.sh $(CC)
-
-EXTRA_CLEAN += local_config.mk local_config.h
-
-ifeq ($(HMM_EXTRA_LIBS),)
-all: warn_missing_hugelibs
-
-warn_missing_hugelibs:
-	@echo ; \
-	echo "Warning: missing libhugetlbfs support. Some HMM tests will be skipped." ; \
-	echo
-endif
