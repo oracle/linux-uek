@@ -810,7 +810,8 @@ ssize_t rvu_nix_get_tx_stall_counters(struct nix_hw *nix_hw,
 	struct nix_tx_stall *tx_stall;
 	struct rvu_block *block;
 	int blkaddr, len, lf;
-	char kbuf[2000];
+	size_t kbuflen;
+	char *kbuf;
 
 	hw = rvu->hw;
 	if (*ppos)
@@ -822,10 +823,15 @@ ssize_t rvu_nix_get_tx_stall_counters(struct nix_hw *nix_hw,
 	if (!tx_stall)
 		return -EFAULT;
 
-	len = snprintf(kbuf, sizeof(kbuf), "\n  NIX transmit stall stats\n");
-	len += snprintf(kbuf + len, sizeof(kbuf),
+	kbuf = vmalloc(2000);
+	if (!kbuf)
+		return -ENOMEM;
+
+	kbuflen = sizeof(kbuf);
+	len = snprintf(kbuf, kbuflen, "\n  NIX transmit stall stats\n");
+	len += snprintf(kbuf + len, kbuflen - len,
 			"\t\tPolled: \t\t%lld\n", tx_stall->poll_cntr);
-	len += snprintf(kbuf + len, sizeof(kbuf),
+	len += snprintf(kbuf + len, kbuflen - len,
 			"\t\tTx stall detected: \t%lld\n\n",
 			tx_stall->stalled_cntr);
 
@@ -834,7 +840,7 @@ ssize_t rvu_nix_get_tx_stall_counters(struct nix_hw *nix_hw,
 	for (lf = 0; lf < block->lf.max; lf++) {
 		if (!test_bit(lf, block->lf.bmap))
 			continue;
-		len += snprintf(kbuf + len, sizeof(kbuf),
+		len += snprintf(kbuf + len, kbuflen - len,
 				"\t\tNIXLF%d   Polled: %lld \tStalled: %lld\n",
 				lf, tx_stall->nixlf_poll_count[lf],
 				tx_stall->nixlf_stall_count[lf]);
@@ -843,10 +849,13 @@ ssize_t rvu_nix_get_tx_stall_counters(struct nix_hw *nix_hw,
 
 	if (len > 0) {
 		if (copy_to_user(buffer, kbuf, len))
-			return -EFAULT;
+			len = -EFAULT;
 	}
 
-	*ppos += len;
+	vfree(kbuf);
+	if (len > 0)
+		*ppos += len;
+
 	return len;
 }
 
