@@ -542,8 +542,8 @@ void rvu_sso_xaq_aura_write(struct rvu *rvu, int lf, u64 val)
 
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
+	bool has_lsw, has_stash;
 	u64 reg, add;
-	bool has_lsw;
 	int blkaddr;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
@@ -553,6 +553,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	/* Read hardware capabilities */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
 	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
+	has_stash = !!(reg & SSO_AF_CONST1_STASH_PRESENT);
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
@@ -612,6 +613,8 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_LS_PC(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_LIMIT(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_IU_ACCNT(lf), 0x0);
+	if (has_stash)
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_STASH(lf), 0x0);
 
 	/* The delta between the current and default thresholds
 	 * need to be returned to the SSO
@@ -1048,6 +1051,37 @@ int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
 
 	/* Configure TAQ/IAQ threhold */
 	rvu_sso_hwgrp_config_thresh(rvu, blkaddr, lf, &aq_thr);
+
+	return 0;
+}
+
+int rvu_mbox_handler_sso_grp_stash_config(struct rvu *rvu,
+					  struct sso_grp_stash_cfg *req,
+					  struct msg_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	int lf, blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
+	/* Check if stash is supported. */
+	if (!(reg & SSO_AF_CONST1_STASH_PRESENT))
+		return SSO_AF_ERR_INVALID_CFG;
+
+	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->grp);
+	if (lf < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	reg = req->ena;
+	reg |= (u64)req->offset << 8;
+	reg |= (u64)req->num_linesm1 << 4;
+
+	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_STASH(lf), reg);
 
 	return 0;
 }
