@@ -1281,6 +1281,11 @@ static irqreturn_t rvu_sso_af_err0_intr_handler(int irq, void *ptr)
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR0);
 	dev_err_ratelimited(rvu->dev, "Received SSO_AF_ERR0 irq : 0x%llx", reg);
 
+	if (reg & BIT_ULL(16)) {
+		dev_err_ratelimited(rvu->dev, "Fault when performing a stash request");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_BAD_STASH_DIGEST)
+	}
+
 	if (reg & BIT_ULL(15)) {
 		dev_err_ratelimited(rvu->dev, "Received Bad-fill-packet NCB error");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_POISON)
@@ -1345,15 +1350,69 @@ static irqreturn_t rvu_sso_af_err0_intr_handler(int irq, void *ptr)
 static irqreturn_t rvu_sso_af_err2_intr_handler(int irq, void *ptr)
 {
 	struct rvu *rvu = (struct rvu *)ptr;
-	int blkaddr;
-	u64 reg;
+	int blkaddr, ssow_blkaddr;
+	struct rvu_block *block;
+	u64 reg, reg0;
+	int i;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
 		return IRQ_NONE;
 
+	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+	if (ssow_blkaddr < 0)
+		return IRQ_NONE;
+
+	block = &rvu->hw->block[ssow_blkaddr];
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR2);
 	dev_err_ratelimited(rvu->dev, "received SSO_AF_ERR2 irq : 0x%llx", reg);
+	if (reg & BIT_ULL(0))
+		dev_err_ratelimited(rvu->dev, "Attempted access before reset was complete");
+
+	if (reg & BIT_ULL(1)) {
+		dev_err_ratelimited(rvu->dev, "SSOW_AF_LF_HWS_RST was attempted for a workslot that was not empty.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_WS_NE_DIGEST)
+	}
+
+	if (reg & BIT_ULL(2)) {
+		dev_err_ratelimited(rvu->dev, "SSOW_AF_LF_HWS_RST was attempted for a workslot that was not idle.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_WS_NI_DIGEST)
+	}
+
+	if (reg & BIT_ULL(3)) {
+		dev_err_ratelimited(rvu->dev, "SSOW_AF_LF_HWS_RST was attempted for a workslot that was still mapped to an AP.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_WS_NT_DIGEST)
+	}
+
+	if (reg & BIT_ULL(28)) {
+		dev_err_ratelimited(rvu->dev, "Workslot operation found no HWGRP PF_FUNC mapping for supplied guest group.");
+		dev_err_ratelimited(rvu->dev, "SSO_AF_UNMAP_INFO2 : 0x%llx",
+				    rvu_read64(rvu, blkaddr, SSO_AF_UNMAP_INFO2));
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_WS_GUNMAP_DIGEST)
+	}
+
+	if (reg & BIT_ULL(29)) {
+		dev_err_ratelimited(rvu->dev, "Workslot operation found HWGRP PF_FUNC map had double-hit error for supplied guest group");
+		dev_err_ratelimited(rvu->dev, "SSO_AF_UNMAP_INFO2 : 0x%llx",
+				    rvu_read64(rvu, blkaddr,
+					       SSO_AF_UNMAP_INFO2));
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_WS_GUNMAP_DIGEST)
+	}
+
+	if (reg & BIT_ULL(30)) {
+		dev_err_ratelimited(rvu->dev, "Workslot access found no HWS PF_FUNC mapping.");
+		dev_err_ratelimited(rvu->dev, "SSO_AF_UNMAP_INFO3 : 0x%llx",
+				    rvu_read64(rvu, blkaddr,
+					       SSO_AF_UNMAP_INFO3));
+	}
+
+	if (reg & BIT_ULL(31)) {
+		dev_err_ratelimited(rvu->dev, "Workslot access found HWS PF_FUNC map had double-hit error.");
+		dev_err_ratelimited(rvu->dev, "SSO_AF_UNMAP_INFO3 : 0x%llx",
+				    rvu_read64(rvu, blkaddr,
+					       SSO_AF_UNMAP_INFO3));
+	}
+
 	rvu_write64(rvu, blkaddr, SSO_AF_ERR2, reg);
 
 	return IRQ_HANDLED;
