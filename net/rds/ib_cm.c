@@ -652,6 +652,16 @@ static void rds_ib_tasklet_fn_fastreg(unsigned long data)
 	poll_fcq(rds_ibdev, rds_ibdev->fastreg_cq, rds_ibdev->fastreg_wc);
 }
 
+/* poll send completion queue and re-arm the completion queue */
+void rds_ib_tx(struct rds_ib_connection *ic)
+{
+	spin_lock_bh(&ic->i_tx_lock);
+	poll_scq(ic, ic->i_scq, ic->i_send_wc);
+	ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
+	poll_scq(ic, ic->i_scq, ic->i_send_wc);
+	spin_unlock_bh(&ic->i_tx_lock);
+}
+
 void rds_ib_tasklet_fn_send(unsigned long data)
 {
 	struct rds_ib_connection *ic = (struct rds_ib_connection *)data;
@@ -663,9 +673,7 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	if (!ic->i_scq)
 		return;
 
-	poll_scq(ic, ic->i_scq, ic->i_send_wc);
-	ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
-	poll_scq(ic, ic->i_scq, ic->i_send_wc);
+	rds_ib_tx(ic);
 
 	if (rds_conn_up(conn) &&
 	   (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
@@ -1997,7 +2005,7 @@ unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 	return (!ic->i_cm_id ||
 		test_bit(RDS_IB_CQ_ERR, &ic->i_flags) ||
 		(rds_ib_ring_empty(&ic->i_recv_ring) &&
-		 (atomic_read(&ic->i_signaled_sends) == 0) &&
+		 rds_ib_ring_empty(&ic->i_send_ring) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
 		  RDS_IB_DEFAULT_FREG_WR))) ? 0
 		: msecs_to_jiffies(1000);
@@ -2007,6 +2015,9 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	if (!rds_ib_ring_empty(&ic->i_send_ring))
+		rds_ib_tx(ic);
 
 	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
 		spin_lock_bh(&ic->i_rx_lock);
@@ -2166,7 +2177,7 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		while (!wait_event_timeout(rds_ib_ring_empty_wait,
 					   rds_ib_conn_path_shutdown_check_wait(cp) == 0,
 					   msecs_to_jiffies(1000))) {
-			/* Try to reap pending RX completions every second */
+			/* Try to reap pending RX and TX completions every second */
 			rds_ib_conn_path_shutdown_tidy_up(cp);
 		}
 	}
@@ -2195,6 +2206,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 #endif
 	atomic_set(&ic->i_signaled_sends, 0);
 	spin_lock_init(&ic->i_rx_lock);
+	spin_lock_init(&ic->i_tx_lock);
 
 	/*
 	 * rds_ib_conn_path_shutdown() waits for these to be emptied so they
