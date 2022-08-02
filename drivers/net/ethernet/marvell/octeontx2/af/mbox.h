@@ -214,6 +214,8 @@ M(SSO_HW_RELEASE_XAQ,	0x611, sso_hw_release_xaq_aura,			\
 M(SSO_CONFIG_LSW,	0x612, ssow_config_lsw,			\
 				ssow_config_lsw, msg_rsp)	\
 M(SSO_HWS_CHNG_MSHIP,   0x613, ssow_chng_mship, ssow_chng_mship, msg_rsp)\
+M(SSO_GRP_STASH_CONFIG, 0x614, sso_grp_stash_config, sso_grp_stash_cfg, \
+				msg_rsp)				\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 M(CPT_LF_ALLOC,		0xA00, cpt_lf_alloc, cpt_lf_alloc_req_msg,	\
@@ -1395,6 +1397,7 @@ enum sso_af_status {
 	SSO_AF_ERR_AF_LF_ALLOC	= -503,
 	SSO_AF_ERR_GRP_EBUSY	= -504,
 	SSO_AF_INVAL_NPA_PF_FUNC = -505,
+	SSO_AF_ERR_INVALID_CFG	= -506,
 };
 
 struct sso_lf_alloc_req {
@@ -1499,6 +1502,14 @@ struct sso_grp_qos_cfg {
 	u32 rsvd;
 	u16 taq_thr;
 	u16 iaq_thr;
+};
+
+struct sso_grp_stash_cfg {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u8 ena;
+	u8 offset:4;
+	u8 num_linesm1:4;
 };
 
 struct sso_grp_stats {
