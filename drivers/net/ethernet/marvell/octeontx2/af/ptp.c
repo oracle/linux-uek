@@ -313,6 +313,10 @@ void ptp_start(struct ptp *ptp, u64 sclk, u32 ext_clk_freq, u32 extts)
 	/* sclk is in MHz */
 	ptp->clock_rate = sclk * 1000000;
 
+	/* Program the seconds rollover value to 1 second */
+	if (is_ptp_dev_cnf10kb(ptp))
+		writeq(0x3b9aca00, ptp->reg_base + PTP_SEC_ROLLOVER);
+
 	/* Enable PTP clock */
 	clock_cfg = readq(ptp->reg_base + PTP_CLOCK_CFG);
 
@@ -330,13 +334,9 @@ void ptp_start(struct ptp *ptp, u64 sclk, u32 ext_clk_freq, u32 extts)
 		clock_cfg |= PTP_CLOCK_CFG_TSTMP_EN;
 	}
 
-	if (cn10k_ptp_errata(ptp))
-		clock_comp = ptp_calc_adjusted_comp(ptp->clock_rate);
-	else
-		clock_comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
-
-	/* Initial compensation value to start the nanosecs counter */
-	writeq(clock_comp, ptp->reg_base + PTP_CLOCK_COMP);
+	clock_cfg |= PTP_CLOCK_CFG_PTP_EN;
+	clock_cfg |= PTP_CLOCK_CFG_PPS_EN | PTP_CLOCK_CFG_PPS_INV;
+	writeq(clock_cfg, ptp->reg_base + PTP_CLOCK_CFG);
 
 	/* Set 50% duty cycle for 1Hz output */
 	writeq(0x1dcd650000000000, ptp->reg_base + PTP_PPS_HI_INCR);
@@ -354,13 +354,13 @@ void ptp_start(struct ptp *ptp, u64 sclk, u32 ext_clk_freq, u32 extts)
 		       ptp->reg_base + PTP_PPS_LO_INCR);
 	}
 
-	/* Program the seconds rollover value to 1 second */
-	if (is_ptp_dev_cnf10kb(ptp))
-		writeq(0x3b9aca00, ptp->reg_base + PTP_SEC_ROLLOVER);
+	if (cn10k_ptp_errata(ptp))
+		clock_comp = ptp_calc_adjusted_comp(ptp->clock_rate);
+	else
+		clock_comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
 
-	clock_cfg |= PTP_CLOCK_CFG_PTP_EN;
-	clock_cfg |= PTP_CLOCK_CFG_PPS_EN | PTP_CLOCK_CFG_PPS_INV;
-	writeq(clock_cfg, ptp->reg_base + PTP_CLOCK_CFG);
+	/* Initial compensation value to start the nanosecs counter */
+	writeq(clock_comp, ptp->reg_base + PTP_CLOCK_COMP);
 }
 
 static int ptp_get_tstmp(struct ptp *ptp, u64 *clk)
