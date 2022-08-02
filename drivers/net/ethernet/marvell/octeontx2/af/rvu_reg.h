@@ -511,6 +511,8 @@
 #define SSO_AF_HWGRPX_DS_PC(a)		(0x200090 | (a) << 12)
 #define SSO_AF_HWGRPX_DQ_PC(a)		(0x2000A0 | (a) << 12)
 #define SSO_AF_HWGRPX_LS_PC(a)		(0x2000C0 | (a) << 12)
+#define SSO_AF_HWGRPX_STASH(a)		(0x2000D0 | (a) << 12)
+#define SSO_AF_BAD_STASH_DIGESTX(a)	(0x2000E0 | (a) << 12)
 #define SSO_AF_HWGRPX_PAGE_CNT(a)	(0x200100 | (a) << 12)
 #define SSO_AF_IU_ACCNTX_CFG(a)		(0x50000 | (a) << 3)
 #define SSO_AF_IU_ACCNTX_RST(a)		(0x60000 | (a) << 3)
@@ -520,6 +522,12 @@
 #define SSO_AF_HWGRPX_XAQ_AURA(a)	(0x200140 | (a) << 12)
 #define SSO_AF_HWGRPX_XAQ_LIMIT(a)	(0x200220 | (a) << 12)
 #define SSO_AF_HWGRPX_IU_ACCNT(a)	(0x200230 | (a) << 12)
+
+#define SSO_AF_WS_NE_DIGESTX(a)		(0x902800 | (a) << 3)
+#define SSO_AF_WS_NI_DIGESTX(a)		(0x903000 | (a) << 3)
+#define SSO_AF_WS_NT_DIGESTX(a)		(0x903200 | (a) << 3)
+#define SSO_AF_WS_GUNMAP_DIGESTX(a)	(0x902200 | (a) << 3)
+
 #define SSO_AF_HWSX_ARB(a)		(0x400100 | (a) << 12)
 #define SSO_AF_HWSX_INV(a)		(0x400180 | (a) << 12)
 #define SSO_AF_HWSX_GMCTL(a)		(0x400200 | (a) << 12)
