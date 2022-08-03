@@ -2006,6 +2006,7 @@ unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 		test_bit(RDS_IB_CQ_ERR, &ic->i_flags) ||
 		(rds_ib_ring_empty(&ic->i_recv_ring) &&
 		 rds_ib_ring_empty(&ic->i_send_ring) &&
+		 (!test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags)) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
 		  RDS_IB_DEFAULT_FREG_WR))) ? 0
 		: msecs_to_jiffies(1000);
@@ -2016,7 +2017,8 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
-	if (!rds_ib_ring_empty(&ic->i_send_ring))
+	if (!rds_ib_ring_empty(&ic->i_send_ring) ||
+	    test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags))
 		rds_ib_tx(ic);
 
 	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
