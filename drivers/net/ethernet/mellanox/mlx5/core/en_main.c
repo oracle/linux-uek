@@ -35,6 +35,7 @@
 #include <net/vxlan.h>
 #include <net/geneve.h>
 #include <linux/bpf.h>
+#include <linux/debugfs.h>
 #include <linux/if_bridge.h>
 #include <linux/filter.h>
 #include <net/page_pool.h>
@@ -5941,6 +5942,9 @@ static int mlx5e_probe(struct auxiliary_device *adev,
 	priv->profile = profile;
 	priv->ppriv = NULL;
 
+	priv->dfs_root = debugfs_create_dir("nic",
+					    mlx5_debugfs_get_dev_root(priv->mdev));
+
 	err = mlx5e_devlink_port_register(priv);
 	if (err) {
 		mlx5_core_err(mdev, "mlx5e_devlink_port_register failed, %d\n", err);
@@ -5978,6 +5982,7 @@ err_profile_cleanup:
 err_devlink_cleanup:
 	mlx5e_devlink_port_unregister(priv);
 err_destroy_netdev:
+	debugfs_remove_recursive(priv->dfs_root);
 	mlx5e_destroy_netdev(priv);
 	return err;
 }
@@ -5992,6 +5997,7 @@ static void mlx5e_remove(struct auxiliary_device *adev)
 	mlx5e_suspend(adev, state);
 	priv->profile->cleanup(priv);
 	mlx5e_devlink_port_unregister(priv);
+	debugfs_remove_recursive(priv->dfs_root);
 	mlx5e_destroy_netdev(priv);
 }
 
