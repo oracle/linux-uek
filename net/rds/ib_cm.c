@@ -2272,7 +2272,8 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
-	if (!rds_ib_ring_empty(&ic->i_send_ring))
+	if (!rds_ib_ring_empty(&ic->i_send_ring) ||
+	    test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags))
 		rds_ib_tx(ic);
 
 	if (!rds_ib_rx_emptied(ic)) {
