@@ -854,14 +854,23 @@ static int mcs_x2p_calibration(struct mcs *mcs)
 	return err;
 }
 
-static void mcs_global_cfg(struct mcs *mcs)
+static void mcs_set_external_bypass(struct mcs *mcs, u8 bypass)
 {
 	u64 val;
 
-	/* Disable external bypass */
+	/* Set MCS to external bypass */
 	val = mcs_reg_read(mcs, MCSX_MIL_GLOBAL);
-	val &= ~BIT_ULL(6);
+	if (bypass)
+		val |= BIT_ULL(6);
+	else
+		val &= ~BIT_ULL(6);
 	mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+}
+
+static void mcs_global_cfg(struct mcs *mcs)
+{
+	/* Disable external bypass */
+	mcs_set_external_bypass(mcs, false);
 
 	/* Reset TX/RX stats memory */
 	mcs_reg_write(mcs, MCSX_CSE_RX_SLAVE_STATS_CLEAR, 0x1F);
@@ -949,7 +958,7 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Performe X2P clibration */
 	err = mcs_x2p_calibration(mcs);
 	if (err)
-		goto exit;
+		goto err_x2p;
 
 	mcs->mcs_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
 			& MCS_ID_MASK;
@@ -957,12 +966,12 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Set mcs tx side resources */
 	err = mcs_alloc_struct_mem(mcs, &mcs->tx);
 	if (err)
-		goto exit;
+		goto err_x2p;
 
 	/* Set mcs rx side resources */
 	err = mcs_alloc_struct_mem(mcs, &mcs->rx);
 	if (err)
-		goto exit;
+		goto err_x2p;
 
 	/* per port config */
 	for (lmac = 0; lmac < mcs->hw->lmac_cnt; lmac++)
@@ -975,6 +984,10 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	mutex_init(&mcs->stats_lock);
 	return 0;
+
+err_x2p:
+	/* Enable external bypass */
+	mcs_set_external_bypass(mcs, true);
 exit:
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
@@ -988,10 +1001,7 @@ static void mcs_remove(struct pci_dev *pdev)
 	u64 val;
 
 	/* Set MCS to external bypass */
-	val = mcs_reg_read(mcs, MCSX_MIL_GLOBAL);
-	val |= BIT_ULL(6);
-	mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
-
+	mcs_set_external_bypass(mcs, true);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
