@@ -559,11 +559,11 @@ void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)
 	 */
 	rvu_write64(rvu, blkaddr, NIX_AF_VWQE_TIMER, 0x3FULL);
 
-	/* Enable NIX RX stream conditional clock to
-	 * avoild double free of NPA buffers.
+	/* Enable NIX RX stream and global conditional clock to
+	 * avoild multiple free of NPA buffers.
 	 */
 	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CFG);
-	cfg |= BIT_ULL(2);
+	cfg |= BIT_ULL(1) | BIT_ULL(2);
 	rvu_write64(rvu, blkaddr, NIX_AF_CFG, cfg);
 
 	/* Enable zero CPT aura in RQM if per-LF programmable
