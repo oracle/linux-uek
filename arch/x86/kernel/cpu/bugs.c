@@ -143,8 +143,8 @@ __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 
 static void spectre_v1_select_mitigation(void);
 static void spectre_v2_select_mitigation(void);
-static void __init retbleed_select_mitigation(void);
-static void __init spectre_v2_user_select_mitigation(void);
+static void retbleed_select_mitigation(void);
+static void spectre_v2_user_select_mitigation(void);
 static enum ssb_mitigation ssb_select_mitigation(void);
 static void ssb_init(void);
 static void l1tf_select_mitigation(void);
@@ -1008,7 +1008,7 @@ enum spectre_v1_mitigation {
 	SPECTRE_V1_MITIGATION_AUTO,
 };
 
-static enum spectre_v1_mitigation spectre_v1_mitigation __ro_after_init =
+static enum spectre_v1_mitigation spectre_v1_mitigation =
 	SPECTRE_V1_MITIGATION_AUTO;
 
 static const char * const spectre_v1_strings[] = {
@@ -1118,7 +1118,11 @@ const char * const retbleed_strings[] = {
 	[RETBLEED_MITIGATION_EIBRS]	= "Mitigation: Enhanced IBRS",
 };
 
-static enum retbleed_mitigation retbleed_mitigation __ro_after_init =
+/*
+ * Not marked __ro_after_init because retbleed_select_mitigation() can set this
+ * while reloading microcode.
+ */
+static enum retbleed_mitigation retbleed_mitigation =
 	RETBLEED_MITIGATION_NONE;
 static enum retbleed_mitigation_cmd retbleed_cmd __ro_after_init =
 	RETBLEED_CMD_AUTO;
@@ -1162,7 +1166,7 @@ early_param("retbleed", retbleed_parse_cmdline);
 #define RETBLEED_COMPILER_MSG "WARNING: kernel not compiled with RETPOLINE or -mfunction-return capable compiler; will fall back to IBPB (if supported!)\n"
 #define RETBLEED_INTEL_MSG "WARNING: Spectre v2 mitigation leaves CPU vulnerable to RETBleed attacks, data leaks possible!\n"
 
-static void __init retbleed_select_mitigation(void)
+static void retbleed_select_mitigation(void)
 {
 	bool mitigate_smt = false;
 
@@ -1454,7 +1458,7 @@ void refresh_set_spectre_v2_enabled(void)
 		spectre_v2_enabled = SPECTRE_V2_NONE;
 }
 
-static __ro_after_init enum spectre_v2_mitigation_cmd spectre_v2_cmd;
+static enum spectre_v2_mitigation_cmd spectre_v2_cmd;
 
 static enum spectre_v2_user_cmd
 spectre_v2_parse_user_cmdline(void)
@@ -1722,7 +1726,7 @@ static enum spectre_v2_mitigation spectre_v2_select_retpoline(void)
 }
 
 /* Disable in-kernel use of non-RSB RET predictors */
-static void __init spec_ctrl_disable_kernel_rrsba(void)
+static void spec_ctrl_disable_kernel_rrsba(void)
 {
 	u64 ia32_cap;
 
