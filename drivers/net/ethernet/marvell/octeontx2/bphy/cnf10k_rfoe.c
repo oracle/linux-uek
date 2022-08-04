@@ -5,6 +5,7 @@
  */
 
 #include "cnf10k_rfoe.h"
+#include "otx2_bphy_debugfs.h"
 #include "cnf10k_bphy_hw.h"
 
 #define PTP_PORT               0x13F
@@ -139,6 +140,7 @@ void cnf10k_bphy_rfoe_cleanup(void)
 	for (i = 0; i < CNF10K_RFOE_MAX_INTF; i++) {
 		drv_ctx = &cnf10k_rfoe_drv_ctx[i];
 		if (drv_ctx->valid) {
+			cnf10k_rfoe_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			netif_stop_queue(netdev);
 			priv = netdev_priv(netdev);
@@ -1579,6 +1581,9 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			drv_ctx->valid = 1;
 			drv_ctx->netdev = netdev;
 			drv_ctx->ft_cfg = &priv->rx_ft_cfg[0];
+
+			/* create debugfs entry */
+			cnf10k_rfoe_debugfs_create(drv_ctx);
 		}
 	}
 
@@ -1588,6 +1593,7 @@ err_exit:
 	for (i = 0; i < CNF10K_RFOE_MAX_INTF; i++) {
 		drv_ctx = &cnf10k_rfoe_drv_ctx[i];
 		if (drv_ctx->valid) {
+			cnf10k_rfoe_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
 			cnf10k_rfoe_ptp_destroy(priv);
