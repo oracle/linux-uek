@@ -10,6 +10,7 @@
 
 #include <linux/fs.h>
 #include <linux/debugfs.h>
+#include "cnf10k_rfoe.h"
 
 #ifndef _OTX2_BPHY_DEBUGFS_H_
 #define _OTX2_BPHY_DEBUGFS_H_
@@ -27,5 +28,8 @@ void *otx2_bphy_debugfs_add_file(const char *name,
 void otx2_bphy_debugfs_remove_file(void *entry);
 
 void otx2_bphy_debugfs_exit(void);
+
+void cnf10k_rfoe_debugfs_create(struct cnf10k_rfoe_drv_ctx *ctx);
+void cnf10k_rfoe_debugfs_remove(struct cnf10k_rfoe_drv_ctx *ctx);
 
 #endif
