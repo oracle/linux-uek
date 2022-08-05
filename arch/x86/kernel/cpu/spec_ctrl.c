@@ -31,14 +31,14 @@ static void change_mitigation(enum mitigation_action action)
 	/*
 	 * Define the current state.
 	 *
-	 * IBRS firmware is enabled if either basic IBRS or retpoline is
-	 * enabled. If both basic IBRS and retpoline are disabled, then IBRS
-	 * firmware is disabled too.
+	 * IBRS firmware is enabled if retpoline is enabled, and ibrs|eibrs
+	 * is disabled. Note that with eibrs_retpoline, retpoline and ibrs
+	 * are exclusive, retpoline and eibrs can coexist.
 	 */
 
 	ibrs_used = !ibrs_disabled;
 	retpoline_used = !!retpoline_enabled();
-	ibrs_fw_used = ((ibrs_used && !eibrs_supported) || (retpoline_used && !ibrs_used));
+	ibrs_fw_used = retpoline_used && ibrs_disabled;
 
 	/*
 	 * Define the requested state.
@@ -52,7 +52,7 @@ static void change_mitigation(enum mitigation_action action)
 
 	case MITIGATION_ENABLE_IBRS:
 		ibrs_requested = true;
-		ibrs_fw_requested = !eibrs_supported;
+		ibrs_fw_requested = false;
 		retpoline_requested = false;
 		break;
 
@@ -81,9 +81,12 @@ static void change_mitigation(enum mitigation_action action)
 		 * in eibrs+retpoline mode, then writing a 0 to the
 		 * `retpoline_enabled` knob should have no effect on the current
 		 * retpoline state.
+		 *
+		 * We don't need IBRS_FW in any of these cases since we are in
+		 * one of ibrs|eibrs|eibrs+retpoline|none.
 		 */
 		ibrs_requested = ibrs_used;
-		ibrs_fw_requested = ibrs_used && !eibrs_supported;
+		ibrs_fw_requested = false;
 		retpoline_requested = ibrs_used && retpoline_used;
 		break;
 
