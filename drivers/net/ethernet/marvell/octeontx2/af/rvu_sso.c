@@ -5,6 +5,7 @@
  *
  */
 
+#include <asm/barrier.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/types.h>
@@ -507,6 +508,38 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	return 0;
 }
 
+static bool cn10k_xaq_aura_access_errata(struct rvu *rvu)
+{
+	if (is_cn10ka_a0(rvu) || is_cn10ka_a1(rvu) || is_cn10kb_a0(rvu) ||
+	    is_cn10kb_a1(rvu) || is_cnf10kb_a0(rvu))
+		return true;
+	return false;
+}
+
+void rvu_sso_xaq_aura_write(struct rvu *rvu, int lf, u64 val)
+{
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return;
+
+	if (cn10k_xaq_aura_access_errata(rvu)) {
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_BP_TEST(0));
+		/* Limit the emc.rlreq.ptr_fifo pop */
+		rvu_write64(rvu, blkaddr, SSO_AF_BP_TEST(0),
+			    (reg | BIT_ULL(62)) & ~SSO_AF_BP_TEST_CFG3_MASK);
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_BP_TEST(0));
+		dsb(sy);
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf), val);
+		rvu_write64(rvu, blkaddr, SSO_AF_BP_TEST(0),
+			    reg & ~BIT_ULL(62));
+	} else {
+		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf), val);
+	}
+}
+
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	u64 reg, add;
@@ -564,7 +597,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf),
 		    SSO_HWGRP_AW_CFG_LDWB | SSO_HWGRP_AW_CFG_LDT |
 		    SSO_HWGRP_AW_CFG_STT);
-	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf), 0x0);
+	rvu_sso_xaq_aura_write(rvu, lf, 0);
 	rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf), 0x0);
 	reg = (SSO_HWGRP_PRI_AFF_MASK << SSO_HWGRP_PRI_AFF_SHIFT) |
 	      (SSO_HWGRP_PRI_WGT_MASK << SSO_HWGRP_PRI_WGT_SHIFT) |
@@ -833,7 +866,7 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 	}
 
 	for (hwgrp = 0; hwgrp < nb_hwgrps; hwgrp++) {
-		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf), 0);
+		rvu_sso_xaq_aura_write(rvu, lf, 0);
 		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf), 0);
 	}
 	err = 0;
@@ -887,8 +920,7 @@ int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 		if (lf < 0)
 			return SSO_AF_ERR_LF_INVALID;
 
-		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf),
-			    npa_aura_id);
+		rvu_sso_xaq_aura_write(rvu, lf, npa_aura_id);
 		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf),
 			    req->npa_pf_func);
 

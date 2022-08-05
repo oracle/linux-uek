@@ -2808,7 +2808,7 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 				"[%d]Failed to free XAQs to aura[%lld]\n",
 				__LINE__, regval);
 
-		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf), 0);
+		rvu_sso_xaq_aura_write(rvu, lf, 0);
 		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf), 0);
 	}
 
