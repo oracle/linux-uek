@@ -966,6 +966,7 @@ void retpoline_enable(void);
 void retpoline_disable(void);
 bool retpoline_enabled(void);
 void refresh_set_spectre_v2_enabled(void);
+void refresh_retbleed(void);
 void microcode_check(void);
 
 enum l1tf_mitigations {

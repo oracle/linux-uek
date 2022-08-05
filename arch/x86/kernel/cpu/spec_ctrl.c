@@ -141,8 +141,10 @@ static void change_mitigation(enum mitigation_action action)
 		changes++;
 	}
 
-	if (changes > 0)
+	if (changes > 0) {
 		refresh_set_spectre_v2_enabled();
+		refresh_retbleed();
+	}
 
 	mutex_unlock(&spec_ctrl_mutex);
 }

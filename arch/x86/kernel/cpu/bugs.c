@@ -1124,6 +1124,7 @@ const char * const retbleed_strings[] = {
  */
 static enum retbleed_mitigation retbleed_mitigation =
 	RETBLEED_MITIGATION_NONE;
+static enum retbleed_mitigation retbleed_state;
 static enum retbleed_mitigation_cmd retbleed_cmd __ro_after_init =
 	RETBLEED_CMD_AUTO;
 
@@ -1261,6 +1262,10 @@ retbleed_force_ibpb:
 		}
 	}
 
+	/*
+	 * Now that it we've finalized the mitigation, cache it for dynamic use.
+	 */
+	retbleed_state = retbleed_mitigation;
 	pr_info("%s\n", retbleed_strings[retbleed_mitigation]);
 }
 
@@ -1445,6 +1450,17 @@ static void retpoline_activate(enum spectre_v2_mitigation mode)
 		disable_ibrs_and_friends();
 }
 
+void refresh_retbleed(void)
+{
+	if (retbleed_mitigation == RETBLEED_MITIGATION_IBRS ||
+	    (retbleed_mitigation == RETBLEED_MITIGATION_EIBRS)) {
+		if (check_ibrs_inuse() == 0)
+			retbleed_state = RETBLEED_MITIGATION_NONE;
+		else
+			retbleed_state = retbleed_mitigation;
+	}
+}
+
 void refresh_set_spectre_v2_enabled(void)
 {
 	if (retpoline_enabled() && check_ibrs_inuse())
@@ -1585,7 +1601,7 @@ spectre_v2_user_select_mitigation(void)
 	    boot_cpu_has(X86_FEATURE_AMD_STIBP_ALWAYS_ON))
 		mode = SPECTRE_V2_USER_STRICT_PREFERRED;
 
-	if (retbleed_mitigation == RETBLEED_MITIGATION_UNRET) {
+	if (retbleed_state == RETBLEED_MITIGATION_UNRET) {
 		if (mode != SPECTRE_V2_USER_STRICT &&
 		    mode != SPECTRE_V2_USER_STRICT_PREFERRED)
 			pr_info("Selecting STIBP always-on mode to complement retbleed mitigation'\n");
@@ -2852,20 +2868,20 @@ static ssize_t srbds_show_state(char *buf)
 
 static ssize_t retbleed_show_state(char *buf)
 {
-	if (retbleed_mitigation == RETBLEED_MITIGATION_UNRET) {
+	if (retbleed_state == RETBLEED_MITIGATION_UNRET) {
 	    if (boot_cpu_data.x86_vendor != X86_VENDOR_AMD &&
 		boot_cpu_data.x86_vendor != X86_VENDOR_HYGON)
 		    return sprintf(buf, "Vulnerable: untrained return thunk on non-Zen uarch\n");
 
 	    return sprintf(buf, "%s; SMT %s\n",
-			   retbleed_strings[retbleed_mitigation],
+			   retbleed_strings[retbleed_state],
 			   !sched_smt_active() ? "disabled" :
 			   spectre_v2_user_stibp == SPECTRE_V2_USER_STRICT ||
 			   spectre_v2_user_stibp == SPECTRE_V2_USER_STRICT_PREFERRED ?
 			   "enabled with STIBP protection" : "vulnerable");
 	}
 
-	return sprintf(buf, "%s\n", retbleed_strings[retbleed_mitigation]);
+	return sprintf(buf, "%s\n", retbleed_strings[retbleed_state]);
 }
 
 static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
