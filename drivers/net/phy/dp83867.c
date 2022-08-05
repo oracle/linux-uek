@@ -536,7 +536,7 @@ static int dp83867_of_init_io_impedance(struct phy_device *phydev)
 	cell = of_nvmem_cell_get(of_node, "io_impedance_ctrl");
 	if (IS_ERR(cell)) {
 		ret = PTR_ERR(cell);
-		if (ret != -ENOENT)
+		if (ret != -ENOENT && ret != -EOPNOTSUPP)
 			return dev_err_probe(&phydev->mdio.dev, ret,
                                              "failed to get nvmem cell io_impedance_ctrl\n");
 
