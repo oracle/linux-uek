@@ -56,6 +56,7 @@ bool is_mac_feature_supported(struct rvu *rvu, int pf, int feature)
 	return  (cgx_features_get(cgxd) & feature);
 }
 
+#define CGX_OFFSET(x)			((x) * rvu->hw->lmac_per_cgx)
 /* Returns bitmap of mapped PFs */
 static inline u64 cgxlmac_to_pfmap(struct rvu *rvu, u8 cgx_id, u8 lmac_id)
 {
@@ -73,7 +74,7 @@ int cgxlmac_to_pf(struct rvu *rvu, int cgx_id, int lmac_id)
 		return -ENODEV;
 	else
 		return find_first_bit(&pfmap,
-				      rvu->cgx_cnt_max * MAX_LMAC_PER_CGX);
+				      rvu->cgx_cnt_max * rvu->hw->lmac_per_cgx);
 }
 
 static inline u8 cgxlmac_id_to_bmap(u8 cgx_id, u8 lmac_id)
@@ -131,14 +132,14 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 	if (!cgx_cnt_max)
 		return 0;
 
-	if (cgx_cnt_max > 0xF || MAX_LMAC_PER_CGX > 0xF)
+	if (cgx_cnt_max > 0xF || rvu->hw->lmac_per_cgx > 0xF)
 		return -EINVAL;
 
 	/* Alloc map table
 	 * An additional entry is required since PF id starts from 1 and
 	 * hence entry at offset 0 is invalid.
 	 */
-	size = (cgx_cnt_max * MAX_LMAC_PER_CGX + 1) * sizeof(u8);
+	size = (cgx_cnt_max * rvu->hw->lmac_per_cgx + 1) * sizeof(u8);
 	rvu->pf2cgxlmac_map = devm_kmalloc(rvu->dev, size, GFP_KERNEL);
 	if (!rvu->pf2cgxlmac_map)
 		return -ENOMEM;
@@ -147,9 +148,10 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 	memset(rvu->pf2cgxlmac_map, 0xFF, size);
 
 	/* Reverse map table */
-	rvu->cgxlmac2pf_map = devm_kzalloc(rvu->dev,
-				  cgx_cnt_max * MAX_LMAC_PER_CGX * sizeof(u64),
-				  GFP_KERNEL);
+	rvu->cgxlmac2pf_map =
+		devm_kzalloc(rvu->dev,
+			     cgx_cnt_max * rvu->hw->lmac_per_cgx * sizeof(u64),
+			     GFP_KERNEL);
 	if (!rvu->cgxlmac2pf_map)
 		return -ENOMEM;
 
@@ -158,7 +160,7 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 		if (!rvu_cgx_pdata(cgx, rvu))
 			continue;
 		lmac_bmap = cgx_get_lmac_bmap(rvu_cgx_pdata(cgx, rvu));
-		for_each_set_bit(iter, &lmac_bmap, MAX_LMAC_PER_CGX) {
+		for_each_set_bit(iter, &lmac_bmap, rvu->hw->lmac_per_cgx) {
 			lmac = cgx_get_lmacid(rvu_cgx_pdata(cgx, rvu),
 					      iter);
 			rvu->pf2cgxlmac_map[pf] = cgxlmac_id_to_bmap(cgx, lmac);
@@ -238,7 +240,7 @@ static void cgx_notify_pfs(struct cgx_link_event *event, struct rvu *rvu)
 
 	do {
 		pfid = find_first_bit(&pfmap,
-				      rvu->cgx_cnt_max * MAX_LMAC_PER_CGX);
+				      rvu->cgx_cnt_max * rvu->hw->lmac_per_cgx);
 		clear_bit(pfid, &pfmap);
 
 		/* check if notification is enabled */
@@ -309,7 +311,7 @@ static int cgx_lmac_event_handler_init(struct rvu *rvu)
 		if (!cgxd)
 			continue;
 		lmac_bmap = cgx_get_lmac_bmap(cgxd);
-		for_each_set_bit(lmac, &lmac_bmap, MAX_LMAC_PER_CGX) {
+		for_each_set_bit(lmac, &lmac_bmap, rvu->hw->lmac_per_cgx) {
 			err = cgx_lmac_evh_register(&cb, cgxd, lmac);
 			if (err)
 				dev_err(rvu->dev,
@@ -396,7 +398,7 @@ int rvu_cgx_exit(struct rvu *rvu)
 		if (!cgxd)
 			continue;
 		lmac_bmap = cgx_get_lmac_bmap(cgxd);
-		for_each_set_bit(lmac, &lmac_bmap, MAX_LMAC_PER_CGX)
+		for_each_set_bit(lmac, &lmac_bmap, rvu->hw->lmac_per_cgx)
 			cgx_lmac_evh_unregister(cgxd, lmac);
 	}
 
