@@ -3857,6 +3857,7 @@ static int fc_parse_cgrpid(const char *buf, u64 *id)
  */
 static int fc_update_appid(const char *buf, size_t count)
 {
+	size_t orig_count = count;
 	u64 cgrp_id;
 	int appid_len = 0;
 	int cgrpid_len = 0;
@@ -3881,7 +3882,7 @@ static int fc_update_appid(const char *buf, size_t count)
 	ret = blkcg_set_fc_appid(app_id, cgrp_id, sizeof(app_id));
 	if (ret < 0)
 		return ret;
-	return count;
+	return orig_count;
 }
 
 static ssize_t fc_appid_store(struct device *dev,
