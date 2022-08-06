@@ -72,10 +72,12 @@ struct mac_ops {
 	/* RPM & CGX differs in number of Receive/transmit stats */
 	u8			rx_stats_cnt;
 	u8			tx_stats_cnt;
-	/* Unlike T106 which shares same CSR offset with CGX
-	 * T105N has different csr offset
+	/* Unlike CN10K which shares same CSR offset with CGX
+	 * CNF10KB has different csr offset
 	 */
 	u64			rxid_map_offset;
+	u8			dmac_filter_count;
+
 
 	/* Incase of RPM get number of lmacs from RPMX_CMR_RX_LMACS[LMAC_EXIST]
 	 * number of setbits in lmac_exist tells number of lmacs
@@ -152,4 +154,4 @@ struct lmac *lmac_pdata(u8 lmac_id, struct cgx *cgx);
 int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac);
 int cgx_fwi_cmd_generic(u64 req, u64 *resp, struct cgx *cgx, int lmac_id);
 bool is_lmac_valid(struct cgx *cgx, int lmac_id);
-struct mac_ops *rpm_get_mac_ops(void);
+struct mac_ops *rpm_get_mac_ops(struct cgx *cgx);
