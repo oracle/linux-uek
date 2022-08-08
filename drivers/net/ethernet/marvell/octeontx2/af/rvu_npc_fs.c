@@ -982,8 +982,19 @@ static void npc_update_rx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	action.match_id = req->match_id;
 	action.flow_key_alg = req->flow_key_alg;
 
-	if (req->op == NIX_RX_ACTION_DEFAULT && pfvf->def_ucast_rule)
-		action = pfvf->def_ucast_rule->rx_action;
+	if (req->op == NIX_RX_ACTION_DEFAULT) {
+		if (pfvf->def_ucast_rule) {
+			action = pfvf->def_ucast_rule->rx_action;
+		} else {
+			/* For profiles which do not extract DMAC, the default
+			 * unicast entry is unused. Hence modify action for the
+			 * requests which use same action as default unicast entry.
+			 */
+			*(u64 *)&action = 0;
+			 action.pf_func = target;
+			 action.op = NIX_RX_ACTIONOP_UCAST;
+		}
+	}
 
 	entry->action = *(u64 *)&action;
 
