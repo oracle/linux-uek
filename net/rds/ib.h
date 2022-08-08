@@ -455,7 +455,7 @@ struct rds_ib_device {
 	struct completion	*rid_dev_rem_complete;
 
 	unsigned int            i_work_arounds;
-#ifdef DEBUG
+#if defined(CONFIG_SLUB_DEBUG) || defined(CONFIG_DEBUG_SLAB)
 	struct rds_ib_device	*org_ptr;
 #endif
 };

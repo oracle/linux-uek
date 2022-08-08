@@ -540,7 +540,7 @@ static void rds_ib_dev_free(struct work_struct *work)
 
 	if (rds_ibdev->rid_dev_rem_complete)
 		complete(rds_ibdev->rid_dev_rem_complete);
-#ifdef DEBUG
+#if defined(CONFIG_SLUB_DEBUG) || defined(CONFIG_DEBUG_SLAB)
 	kfree(rds_ibdev->org_ptr);
 #else
 	kfree(rds_ibdev);
@@ -970,7 +970,7 @@ static void detect_link_layers(struct ib_device *ibdev)
 void rds_ib_add_one(struct ib_device *device)
 {
 	struct rds_ib_device *rds_ibdev;
-#ifdef DEBUG
+#if defined(CONFIG_SLUB_DEBUG) || defined(CONFIG_DEBUG_SLAB)
 	struct rds_ib_device *org_ibdev;
 #endif
 	struct ib_device_attr *dev_attr;
@@ -1003,7 +1003,7 @@ void rds_ib_add_one(struct ib_device *device)
 	 * nearest power-of-two doesn't work. Do it the hard way by
 	 * allocating 8 bytes too much and adjust the address.
 	 */
-#ifdef DEBUG
+#if defined(CONFIG_SLUB_DEBUG) || defined(CONFIG_DEBUG_SLAB)
 	excess_space = 8;
 	org_ibdev =
 #else
@@ -1013,7 +1013,7 @@ void rds_ib_add_one(struct ib_device *device)
 		kzalloc_node(sizeof(*rds_ibdev) + excess_space,
 			     GFP_KERNEL, ibdev_to_node(device));
 
-#ifdef DEBUG
+#if defined(CONFIG_SLUB_DEBUG) || defined(CONFIG_DEBUG_SLAB)
 	rds_ibdev = (typeof(rds_ibdev))(((uint64_t)org_ibdev + 0xFULL) & ~0xFULL);
 	rds_ibdev->org_ptr = org_ibdev;
 #endif
