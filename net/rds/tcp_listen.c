@@ -80,12 +80,7 @@ rds_tcp_accept_one_path(struct rds_connection *conn)
 					     RDS_CONN_CONNECTING, DR_DEFAULT)) {
 			return cp->cp_transport_data;
 		}
-
-		/* only proceed to the next path if all prior paths are up */
-		if (!rds_conn_path_up(cp))
-			break;
 	}
-
 	return NULL;
 }
 
