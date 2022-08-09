@@ -204,13 +204,6 @@ static void do_poweroff(void)
 static void do_reboot(void)
 {
 	shutting_down = SHUTDOWN_POWEROFF; /* ? */
-	/*
-	 * The systemd may be configured to mask ctrl-alt-del via
-	 * "systemctl mask ctrl-alt-del.target". As a result, the pv reboot
-	 * would not work. To enable C_A_D would force the reboot.
-	 */
-	C_A_D = 1;
-
 	ctrl_alt_del();
 }
 
