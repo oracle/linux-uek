@@ -1320,20 +1320,18 @@ static int identify_page_state(unsigned long pfn, struct page *p,
 	return page_action(ps, p, pfn);
 }
 
-static int try_to_split_thp_page(struct page *page, const char *msg)
+static int try_to_split_thp_page(struct page *page)
 {
-	lock_page(page);
-	if (unlikely(split_huge_page(page))) {
-		unsigned long pfn = page_to_pfn(page);
+	int ret;
 
-		unlock_page(page);
-		pr_info("%s: %#lx: thp split failed\n", msg, pfn);
-		put_page(page);
-		return -EBUSY;
-	}
+	lock_page(page);
+	ret = split_huge_page(page);
 	unlock_page(page);
 
-	return 0;
+	if (unlikely(ret))
+		put_page(page);
+
+	return ret;
 }
 
 static int memory_failure_hugetlb(unsigned long pfn, int flags)
@@ -1609,7 +1607,7 @@ int memory_failure(unsigned long pfn, int flags)
 	}
 
 	if (PageTransHuge(hpage)) {
-		if (try_to_split_thp_page(p, "Memory Failure") < 0) {
+		if (try_to_split_thp_page(p) < 0) {
 			res = -EBUSY;
 			action_result(pfn, MF_MSG_UNSPLIT_THP, MF_IGNORED);
 			goto unlock_mutex;
@@ -2142,8 +2140,11 @@ static int soft_offline_in_use_page(struct page *page, int flags)
 	struct page *hpage = compound_head(page);
 
 	if (!PageHuge(page) && PageTransHuge(hpage))
-		if (try_to_split_thp_page(page, "soft offline") < 0)
+		if (try_to_split_thp_page(page) < 0) {
+			pr_info("soft offline: %#lx: thp split failed\n",
+				page_to_pfn(page));
 			return -EBUSY;
+		}
 
 	/*
 	 * Setting MIGRATE_ISOLATE here ensures that the page will be linked
