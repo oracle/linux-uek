@@ -1544,9 +1544,8 @@ static inline bool is_longterm_pinnable_page(struct page *page)
 	if (mt == MIGRATE_CMA || mt == MIGRATE_ISOLATE)
 		return false;
 #endif
-	return !(is_device_coherent_page(page) ||
-		 is_zone_movable_page(page) ||
-		 is_zero_pfn(page_to_pfn(page)));
+	return !(is_device_coherent_page(page) || is_zone_movable_page(page)) ||
+	       is_zero_pfn(page_to_pfn(page));
 }
 #else
 static inline bool is_longterm_pinnable_page(struct page *page)
