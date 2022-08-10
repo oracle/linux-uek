@@ -1096,8 +1096,15 @@ int rvu_mbox_handler_cgx_get_aux_link_info(struct rvu *rvu, struct msg_req *req,
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 
-	memcpy(&rsp->fwdata, &rvu->fwdata->cgx_fw_data[cgx_id][lmac_id],
-	       sizeof(struct cgx_lmac_fwdata_s));
+	if (rvu->hw->lmac_per_cgx == CGX_LMACS_USX)
+		memcpy(&rsp->fwdata,
+		       &rvu->fwdata->cgx_fw_data_usx[cgx_id][lmac_id],
+		       sizeof(struct cgx_lmac_fwdata_s));
+	else
+		memcpy(&rsp->fwdata,
+		       &rvu->fwdata->cgx_fw_data[cgx_id][lmac_id],
+		       sizeof(struct cgx_lmac_fwdata_s));
+
 	return 0;
 }
 

@@ -55,6 +55,7 @@ static struct mac_ops		rpm2_mac_ops   = {
 	.dmac_filter_count =	64,
 	.get_nr_lmacs	=	rpm2_get_nr_lmacs,
 	.get_lmac_type  =       rpm_get_lmac_type,
+	.lmac_fifo_len	=	rpm2_get_lmac_fifo_len,
 	.mac_lmac_intl_lbk =    rpm_lmac_internal_loopback,
 	.mac_get_rx_stats  =	rpm_get_rx_stats,
 	.mac_get_tx_stats  =	rpm_get_tx_stats,
@@ -503,6 +504,49 @@ static int rpmusx_lmac_internal_loopback(rpm_t *rpm, int lmac_id, bool enable)
 		cfg &= ~RPM2_USX_PCS_LBK;
 	rpm_write(rpm, lmac_id, RPM2_USX_PCSX_CONTROL1, cfg);
 
+	return 0;
+}
+
+u32 rpm2_get_lmac_fifo_len(void *rpmd, int lmac_id)
+{
+	u64 hi_perf_lmac, lmac_info;
+	rpm_t *rpm = rpmd;
+	u8 num_lmacs;
+	u32 fifo_len;
+
+	lmac_info = rpm_read(rpm, 0, RPM2_CMRX_RX_LMACS);
+	/* LMACs are divided into two groups and each group
+	 * gets half of the FIFO
+	 * Group0 lmac_id range {0..3}
+	 * Group1 lmac_id range {4..7}
+	 */
+	fifo_len = rpm->mac_ops->fifo_len / 2;
+
+	if (lmac_id < 4) {
+		num_lmacs = hweight8(lmac_info & 0xF);
+		hi_perf_lmac = (lmac_info >> 8) & 0x3ULL;
+	} else {
+		num_lmacs = hweight8(lmac_info & 0xF0);
+		hi_perf_lmac = (lmac_info >> 10) & 0x3ULL;
+		hi_perf_lmac += 4;
+	}
+
+	switch (num_lmacs) {
+	case 1:
+		return fifo_len;
+	case 2:
+		return fifo_len / 2;
+	case 3:
+		/* LMAC marked as hi_perf gets half of the FIFO
+		 * and rest 1/4th
+		 */
+		if (lmac_id == hi_perf_lmac)
+			return fifo_len / 2;
+		return fifo_len / 4;
+	case 4:
+	default:
+		return fifo_len / 4;
+	}
 	return 0;
 }
 
