@@ -257,7 +257,7 @@ struct tls_context {
 	void *priv_ctx_tx;
 	void *priv_ctx_rx;
 
-	struct net_device *netdev;
+	struct net_device __rcu *netdev;
 
 	/* rw cache line */
 	struct cipher_context tx;
