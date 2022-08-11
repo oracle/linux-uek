@@ -598,11 +598,14 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 			return -EINVAL;
 		break;
 	case NIX_INTF_TYPE_SDP:
-		if ((req->chan_base + req->chan_cnt) > 255)
+		if ((req->chan_base + req->chan_cnt) > sdp_chan_cnt)
 			return -EINVAL;
 
 		/* Handle usecase of 2 SDP blocks */
-		sdp_chan_base = pfvf->rx_chan_base - NIX_CHAN_SDP_CH_START;
+		if (!hw->cap.programmable_chans)
+			sdp_chan_base = pfvf->rx_chan_base - NIX_CHAN_SDP_CH_START;
+		else
+			sdp_chan_base = pfvf->rx_chan_base - hw->sdp_chan_base;
 
 		/* Channel number allocation is based on VF id,
 		 * hence BPID follows similar scheme.
