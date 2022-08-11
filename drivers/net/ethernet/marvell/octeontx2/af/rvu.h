@@ -698,6 +698,16 @@ static inline bool is_cnf10kb_a0(struct rvu *rvu)
 	return false;
 }
 
+static inline bool is_cnf10ka_a1(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
+	    (pdev->revision & 0x0F) == 0x1)
+		return true;
+	return false;
+}
+
 static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
 {
 	/* On CNF10KA and CNF10KB silicons only two CGX blocks are connected
