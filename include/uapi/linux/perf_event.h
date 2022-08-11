@@ -256,6 +256,17 @@ enum {
 	PERF_BR_MAX,
 };
 
+/*
+ * Common branch speculation outcome classification
+ */
+enum {
+	PERF_BR_SPEC_NA			= 0,	/* Not available */
+	PERF_BR_SPEC_WRONG_PATH		= 1,	/* Speculative but on wrong path */
+	PERF_BR_NON_SPEC_CORRECT_PATH	= 2,	/* Non-speculative but on correct path */
+	PERF_BR_SPEC_CORRECT_PATH	= 3,	/* Speculative and on correct path */
+	PERF_BR_SPEC_MAX,
+};
+
 #define PERF_SAMPLE_BRANCH_PLM_ALL \
 	(PERF_SAMPLE_BRANCH_USER|\
 	 PERF_SAMPLE_BRANCH_KERNEL|\
@@ -1332,7 +1343,15 @@ union perf_mem_data_src {
  *     abort: aborting a hardware transaction
  *    cycles: cycles from last branch (or 0 if not supported)
  *      type: branch type
+ *      spec: branch speculation info (or 0 if not supported)
  */
+
+#ifdef __KERNEL__
+ /*
+  * NOTE: Preserving the KABI prevents us from adding the spec field to
+  * perf_branch_entry. Any reference to spec should be made by casting a
+  * pointer to __perf_branch_entry to the struct.
+  */
 struct perf_branch_entry {
 	__u64	from;
 	__u64	to;
@@ -1344,6 +1363,33 @@ struct perf_branch_entry {
 		type:4,     /* branch type */
 		reserved:40;
 };
+
+struct __perf_branch_entry {
+	__u64	from;
+	__u64	to;
+	__u64	mispred:1,  /* target mispredicted */
+		predicted:1,/* target predicted */
+		in_tx:1,    /* in transaction */
+		abort:1,    /* transaction abort */
+		cycles:16,  /* cycle count to last branch */
+		type:4,     /* branch type */
+		spec:2,     /* branch speculation info */
+		reserved:38;
+};
+#else /* ! __KERNEL */
+struct perf_branch_entry {
+	__u64	from;
+	__u64	to;
+	__u64	mispred:1,  /* target mispredicted */
+		predicted:1,/* target predicted */
+		in_tx:1,    /* in transaction */
+		abort:1,    /* transaction abort */
+		cycles:16,  /* cycle count to last branch */
+		type:4,     /* branch type */
+		spec:2,     /* branch speculation info */
+		reserved:38;
+};
+#endif
 
 union perf_sample_weight {
 	__u64		full;
