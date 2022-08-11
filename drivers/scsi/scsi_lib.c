@@ -315,12 +315,12 @@ void scsi_device_unbusy(struct scsi_device *sdev)
 	if (starget->can_queue > 0)
 		atomic_dec(&starget->target_busy);
 
+	spin_lock_irqsave(shost->host_lock, flags);
 	if (unlikely(scsi_host_in_recovery(shost) &&
 		     (shost->host_failed || shost->host_eh_scheduled))) {
-		spin_lock_irqsave(shost->host_lock, flags);
 		scsi_eh_wakeup(shost);
-		spin_unlock_irqrestore(shost->host_lock, flags);
 	}
+	spin_unlock_irqrestore(shost->host_lock, flags);
 
 	atomic_dec(&sdev->device_busy);
 }
@@ -1544,6 +1544,13 @@ starved:
 	spin_unlock_irq(shost->host_lock);
 out_dec:
 	atomic_dec(&shost->host_busy);
+
+        spin_lock_irq(shost->host_lock);
+        if (unlikely(scsi_host_in_recovery(shost) &&
+                        (shost->host_failed || shost->host_eh_scheduled)))
+                scsi_eh_wakeup(shost);
+        spin_unlock_irq(shost->host_lock);
+
 	return 0;
 }
 
@@ -2018,6 +2025,13 @@ static int scsi_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 out_dec_host_busy:
 	atomic_dec(&shost->host_busy);
+
+	spin_lock_irq(shost->host_lock);
+	if (unlikely(scsi_host_in_recovery(shost) &&
+		     (shost->host_failed || shost->host_eh_scheduled)))
+		scsi_eh_wakeup(shost);
+	spin_unlock_irq(shost->host_lock);
+
 out_dec_target_busy:
 	if (scsi_target(sdev)->can_queue > 0)
 		atomic_dec(&scsi_target(sdev)->target_busy);
