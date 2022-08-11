@@ -1614,12 +1614,23 @@ static int rvu_af_dl_tim_adjust_timers_set(struct devlink *devlink, u32 id,
 	return 0;
 }
 
+static bool cn10k_tim_adjust_gti_errata(struct rvu *rvu)
+{
+	if (is_cnf10ka_a1(rvu))
+		return true;
+	return false;
+}
+
 static int rvu_af_dl_tim_adjust_timer_get(struct devlink *devlink, u32 id,
 					  struct devlink_param_gset_ctx *ctx)
 {
 	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
 	struct rvu *rvu = rvu_dl->rvu;
 	u64 offset, delta;
+
+	if (id == RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI &&
+	    cn10k_tim_adjust_gti_errata(rvu))
+		return -ENXIO;
 
 	offset = rvu_af_dl_tim_param_id_to_offset(id);
 	delta = rvu_read64(rvu, BLKADDR_TIM, offset);
@@ -1637,6 +1648,10 @@ static int rvu_af_dl_tim_adjust_timer_set(struct devlink *devlink, u32 id,
 
 	if (kstrtoull(ctx->val.vstr, 10, &delta))
 		return -EINVAL;
+
+	if (id == RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI &&
+	    cn10k_tim_adjust_gti_errata(rvu))
+		return -ENXIO;
 
 	offset = rvu_af_dl_tim_param_id_to_offset(id);
 	rvu_write64(rvu, BLKADDR_TIM, offset, delta);
