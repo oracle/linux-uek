@@ -1070,8 +1070,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		}
 	}
 
-	if (bphy_pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
-		bcn_ptp_start();
+	bcn_ptp_start();
 
 	err = 0;
 	goto out;

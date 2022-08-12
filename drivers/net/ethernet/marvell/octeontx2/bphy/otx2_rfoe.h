@@ -151,6 +151,6 @@ void otx2_rfoe_ptp_destroy(struct otx2_rfoe_ndev_priv *priv);
 
 /* update carrier state */
 void otx2_rfoe_set_link_state(struct net_device *netdev, u8 state);
-int otx2_bcn_poll_reg(struct otx2_rfoe_ndev_priv *priv, u64 offset, u64 mask, bool zero);
+int otx2_bcn_poll_reg(void __iomem *bcn_reg_base, u64 offset, u64 mask, bool zero);
 
 #endif
