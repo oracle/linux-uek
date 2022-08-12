@@ -13,6 +13,7 @@
 #include "otx2_bphy_hw.h"
 #include "otx2_bphy.h"
 #include "otx2_rfoe.h"
+#include "cnf10k_rfoe.h"
 
 #define BCN_DEVICE_NAME			"bcn_ptp_sync"
 #define CLASS_NAME			"bcn_ptp_class"
@@ -25,14 +26,14 @@
 static struct class *bcn_ptp_class;
 static int major_no;
 
-int otx2_bcn_poll_reg(struct otx2_rfoe_ndev_priv *priv, u64 offset, u64 mask, bool zero)
+int otx2_bcn_poll_reg(void __iomem *bcn_reg_base, u64 offset, u64 mask, bool zero)
 {
 	unsigned long timeout = jiffies + usecs_to_jiffies(20000);
 	bool twice = false;
 	u64 reg_val;
 
 again:
-	reg_val = readq(priv->bcn_reg_base + offset);
+	reg_val = readq(bcn_reg_base + offset);
 	if (zero && !(reg_val & mask))
 		return 0;
 	if (!zero && (reg_val & mask))
@@ -55,44 +56,104 @@ again:
 
 int bcn_ptp_sync(int ptp_phc_idx)
 {
-	u64 bcn_n1_n2, bcn_cfg, ptp_clock, tsns, bcn_ns, bcn_n2_len;
+	u64 bcn_cfg2, bcn_capture_cfg, bcn_capture_n1_n2, bcn_capture_ptp, bcn_cfg_off;
+	u64 bcn_n1_n2, bcn_cfg, ptp_clock, tsns, bcn_ns, bcn_delta_val, bcn_n2_len;
+	struct cnf10k_rfoe_drv_ctx *cnf10k_drv_ctx = NULL;
+	struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
 	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 	struct otx2_rfoe_ndev_priv *priv = NULL;
+	struct timecounter *time_counter;
+	void __iomem *bcn_reg_base;
+	struct pci_dev *bphy_pdev;
 	struct net_device *netdev;
 	int idx, err, sign = 0;
+	s32 sec_bcn_offset;
 	u64 bcn_n1, bcn_n2;
 	s64 ptp_bcn_delta;
+	u64 bcn_cfg2_val;
+	bool is_otx2;
 
-	for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-		drv_ctx = &rfoe_drv_ctx[idx];
-		if (drv_ctx->valid) {
-			netdev = drv_ctx->netdev;
-			priv = netdev_priv(netdev);
-			if (ptp_clock_index(priv->ptp_clock) != ptp_phc_idx)
-				continue;
-			else
-				break;
+	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
+				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
+
+	if (bphy_pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		is_otx2 = true;
+	else
+		is_otx2 = false;
+
+	if (!is_otx2) {
+		for (idx = 0; idx < CNF10K_RFOE_MAX_INTF; idx++) {
+			cnf10k_drv_ctx = &cnf10k_rfoe_drv_ctx[idx];
+			if (cnf10k_drv_ctx->valid) {
+				netdev = cnf10k_drv_ctx->netdev;
+				cnf10k_priv = netdev_priv(netdev);
+				if (ptp_clock_index(cnf10k_priv->ptp_clock) != ptp_phc_idx)
+					continue;
+				else
+					break;
+			}
 		}
-	}
+		if (idx >= CNF10K_RFOE_MAX_INTF) {
+			pr_err("Invalid PTP PHC index\n");
+			return -ENODEV;
+		}
 
-	if (idx == RFOE_MAX_INTF) {
-		pr_err("Invalid PTP PHC index\n");
-		return -ENODEV;
-	}
+		bcn_reg_base = cnf10k_priv->bcn_reg_base;
+		time_counter = &cnf10k_priv->time_counter;
+		sec_bcn_offset = cnf10k_priv->sec_bcn_offset;
+		bcn_cfg2 = CNF10K_BCN_CFG2;
+		bcn_cfg_off = CNF10K_BCN_CFG;
+		bcn_capture_cfg = CNF10K_BCN_CAPTURE_CFG;
+		bcn_capture_n1_n2 = CNF10K_BCN_CAPTURE_N1_N2;
+		bcn_capture_ptp = CNF10K_BCN_CAPTURE_PTP;
+		bcn_delta_val = CNF10K_BCN_DELTA_VAL;
+	} else {
+		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+			drv_ctx = &rfoe_drv_ctx[idx];
+			if (drv_ctx->valid) {
+				netdev = drv_ctx->netdev;
+				priv = netdev_priv(netdev);
+				if (ptp_clock_index(priv->ptp_clock) != ptp_phc_idx)
+					continue;
+				else
+					break;
+			}
+		}
 
-	bcn_n2_len = readq(priv->bcn_reg_base + BCN_CFG2) & 0xFFFFFF;
+		if (idx == RFOE_MAX_INTF) {
+			pr_err("Invalid PTP PHC index\n");
+			return -ENODEV;
+		}
+
+		bcn_reg_base = priv->bcn_reg_base;
+		time_counter = &priv->time_counter;
+		sec_bcn_offset = priv->sec_bcn_offset;
+		bcn_cfg2 = BCN_CFG2;
+		bcn_cfg_off = BCN_CFG;
+		bcn_capture_cfg = BCN_CAPTURE_CFG;
+		bcn_capture_n1_n2 = BCN_CAPTURE_N1_N2;
+		bcn_capture_ptp = BCN_CAPTURE_PTP;
+		bcn_delta_val = BCN_DELTA_VAL;
+	}
+	bcn_cfg2_val = readq(bcn_reg_base + bcn_cfg2);
+	bcn_cfg2_val |= BCN_DELTA_WRAP_MODE | BCN_DELTA_N1_FORMULA;
+	writeq(bcn_cfg2_val, bcn_reg_base + bcn_cfg2);
+	bcn_n2_len = bcn_cfg2_val & 0xFFFFFF;
 	/* capture ptp and bcn timestamp using BCN_CAPTURE_CFG */
-	writeq(CAPT_EN | CAPT_TRIG_SW, priv->bcn_reg_base + BCN_CAPTURE_CFG);
+	writeq(CAPT_EN | CAPT_TRIG_SW, bcn_reg_base + bcn_capture_cfg);
 
-	err = otx2_bcn_poll_reg(priv, BCN_CAPTURE_CFG, CAPT_EN, true);
+	err = otx2_bcn_poll_reg(bcn_reg_base, bcn_capture_cfg, CAPT_EN, true);
 	if (err) {
 		pr_err("Timeout waiting for CAPT_EN to clear\n");
 		return err;
 	}
 
-	bcn_n1_n2 = readq(priv->bcn_reg_base + BCN_CAPTURE_N1_N2);
-	ptp_clock = readq(priv->bcn_reg_base + BCN_CAPTURE_PTP);
-	tsns = timecounter_cyc2time(&priv->time_counter, ptp_clock);
+	bcn_n1_n2 = readq(bcn_reg_base + bcn_capture_n1_n2);
+	ptp_clock = readq(bcn_reg_base + bcn_capture_ptp);
+	if (!is_otx2)
+		ptp_clock = cnf10k_ptp_convert_timestamp(ptp_clock);
+
+	tsns = timecounter_cyc2time(time_counter, ptp_clock);
 
 	/* Convert BCN timestamp to PTP timestamp in nanoseconds
 	 * BCN clock has two counters.
@@ -108,7 +169,7 @@ int bcn_ptp_sync(int ptp_phc_idx)
 	bcn_ns = (bcn_n1_n2 >> 24) * 10 * NSEC_PER_MSEC;
 	bcn_ns += (((bcn_n1_n2 & 0xFFFFFF) * 10 * NSEC_PER_MSEC) / bcn_n2_len);
 
-	ptp_bcn_delta = tsns - (UTC_GPS_EPOCH_DIFF * NSEC_PER_SEC) - bcn_ns - priv->sec_bcn_offset;
+	ptp_bcn_delta = tsns - (UTC_GPS_EPOCH_DIFF * NSEC_PER_SEC) - bcn_ns - sec_bcn_offset;
 	if (ptp_bcn_delta < 0) {
 		sign = 1;
 		ptp_bcn_delta = -ptp_bcn_delta;
@@ -128,13 +189,13 @@ int bcn_ptp_sync(int ptp_phc_idx)
 		bcn_n2 = 0xFFFFFF - bcn_n2;
 	}
 
-	writeq(bcn_n1 << 24 | (bcn_n2 & 0xFFFFFF), priv->bcn_reg_base + BCN_DELTA_VAL);
+	writeq(bcn_n1 << 24 | (bcn_n2 & 0xFFFFFF), bcn_reg_base + bcn_delta_val);
 
-	bcn_cfg = readq(priv->bcn_reg_base + BCN_CFG);
+	bcn_cfg = readq(bcn_reg_base + bcn_cfg_off);
 	bcn_cfg |= BCN_DELTA_EN;
-	writeq(bcn_cfg, priv->bcn_reg_base + BCN_CFG);
+	writeq(bcn_cfg, bcn_reg_base + bcn_cfg_off);
 
-	err = otx2_bcn_poll_reg(priv, BCN_CFG, BCN_DELTA_EN, true);
+	err = otx2_bcn_poll_reg(bcn_reg_base, bcn_cfg_off, BCN_DELTA_EN, true);
 	if (err) {
 		pr_err("Timeout waiting for BCN_DELTA_EN to clear\n");
 		return err;
@@ -145,48 +206,99 @@ int bcn_ptp_sync(int ptp_phc_idx)
 
 s64 bcn_ptp_delta(int ptp_phc_idx)
 {
+	u64 bcn_cfg2, bcn_capture_cfg, bcn_capture_n1_n2, bcn_capture_ptp_off;
 	u64 bcn_capture_ptp, bcn_n1_n2, bcn_ns, tsns, bcn_n2_len;
+	struct cnf10k_rfoe_drv_ctx *cnf10k_drv_ctx = NULL;
+	struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
 	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 	struct otx2_rfoe_ndev_priv *priv = NULL;
+	struct timecounter *time_counter;
+	void __iomem *bcn_reg_base;
 	struct net_device *netdev;
+	struct pci_dev *bphy_pdev;
+	s32 sec_bcn_offset;
 	int idx, err;
+	bool is_otx2;
 	s64 delta;
 
-	for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
-		drv_ctx = &rfoe_drv_ctx[idx];
-		if (drv_ctx->valid) {
-			netdev = drv_ctx->netdev;
-			priv = netdev_priv(netdev);
-			if (ptp_clock_index(priv->ptp_clock) != ptp_phc_idx)
-				continue;
-			else
+	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
+				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
+
+	if (bphy_pdev->subsystem_device == PCI_SUBSYS_DEVID_OCTX2_95XXN)
+		is_otx2 = true;
+	else
+		is_otx2 = false;
+
+	if (!is_otx2) {
+		for (idx = 0; idx < CNF10K_RFOE_MAX_INTF; idx++) {
+			cnf10k_drv_ctx = &cnf10k_rfoe_drv_ctx[idx];
+			if (cnf10k_drv_ctx->valid) {
+				netdev = cnf10k_drv_ctx->netdev;
+				cnf10k_priv = netdev_priv(netdev);
 				break;
+			}
 		}
+
+		if (idx >= CNF10K_RFOE_MAX_INTF) {
+			pr_err("Invalid PTP PHC index\n");
+			return -ENODEV;
+		}
+
+		bcn_reg_base = cnf10k_priv->bcn_reg_base;
+		time_counter = &cnf10k_priv->time_counter;
+		sec_bcn_offset = cnf10k_priv->sec_bcn_offset;
+		bcn_cfg2 = CNF10K_BCN_CFG2;
+		bcn_capture_cfg = CNF10K_BCN_CAPTURE_CFG;
+		bcn_capture_n1_n2 = CNF10K_BCN_CAPTURE_N1_N2;
+		bcn_capture_ptp_off = CNF10K_BCN_CAPTURE_PTP;
+	} else {
+		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+			drv_ctx = &rfoe_drv_ctx[idx];
+			if (drv_ctx->valid) {
+				netdev = drv_ctx->netdev;
+				priv = netdev_priv(netdev);
+				if (ptp_clock_index(priv->ptp_clock) != ptp_phc_idx)
+					continue;
+				else
+					break;
+			}
+		}
+
+		if (idx == RFOE_MAX_INTF) {
+			pr_err("Invalid PTP PHC index\n");
+			return -ENODEV;
+		}
+
+		bcn_reg_base = priv->bcn_reg_base;
+		time_counter = &priv->time_counter;
+		sec_bcn_offset = priv->sec_bcn_offset;
+		bcn_cfg2 = BCN_CFG2;
+		bcn_capture_cfg = BCN_CAPTURE_CFG;
+		bcn_capture_n1_n2 = BCN_CAPTURE_N1_N2;
+		bcn_capture_ptp_off = BCN_CAPTURE_PTP;
 	}
 
-	if (idx == RFOE_MAX_INTF) {
-		pr_err("Invalid PTP PHC index\n");
-		return -ENODEV;
-	}
-
-	bcn_n2_len = readq(priv->bcn_reg_base + BCN_CFG2) & 0xFFFFFF;
+	bcn_n2_len = readq(bcn_reg_base + bcn_cfg2) & 0xFFFFFF;
 	/* capture ptp and bcn timestamp using BCN_CAPTURE_CFG */
-	writeq(CAPT_EN | CAPT_TRIG_SW, priv->bcn_reg_base + BCN_CAPTURE_CFG);
+	writeq(CAPT_EN | CAPT_TRIG_SW, bcn_reg_base + bcn_capture_cfg);
 
-	err = otx2_bcn_poll_reg(priv, BCN_CAPTURE_CFG, CAPT_EN, true);
+	err = otx2_bcn_poll_reg(bcn_reg_base, bcn_capture_cfg, CAPT_EN, true);
 	if (err) {
 		pr_err("Timeout waiting for CAPT_EN to clear\n");
 		return err;
 	}
 
-	bcn_n1_n2 = readq(priv->bcn_reg_base + BCN_CAPTURE_N1_N2);
-	bcn_capture_ptp = readq(priv->bcn_reg_base + BCN_CAPTURE_PTP);
-	tsns = timecounter_cyc2time(&priv->time_counter, bcn_capture_ptp);
+	bcn_n1_n2 = readq(bcn_reg_base + bcn_capture_n1_n2);
+	bcn_capture_ptp = readq(bcn_reg_base + bcn_capture_ptp_off);
+	if (!is_otx2)
+		bcn_capture_ptp = cnf10k_ptp_convert_timestamp(bcn_capture_ptp);
+
+	tsns = timecounter_cyc2time(time_counter, bcn_capture_ptp);
 
 	bcn_ns = (bcn_n1_n2 >> 24) * 10 * NSEC_PER_MSEC;
 	bcn_ns += (((bcn_n1_n2 & 0xFFFFFF) * 10 * NSEC_PER_MSEC) / bcn_n2_len);
 
-	delta = tsns + priv->sec_bcn_offset - bcn_ns - (UTC_GPS_EPOCH_DIFF * NSEC_PER_SEC);
+	delta = tsns + sec_bcn_offset - bcn_ns - (UTC_GPS_EPOCH_DIFF * NSEC_PER_SEC);
 
 	return delta;
 }

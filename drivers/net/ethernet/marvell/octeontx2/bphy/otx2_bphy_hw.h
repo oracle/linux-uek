@@ -76,6 +76,8 @@
 #define BCN_CFG2			0x12000
 #define BCN_SYNC_EN			BIT(1)
 #define BCN_DELTA_EN			BIT(16)
+#define BCN_DELTA_N1_FORMULA		BIT(60)
+#define BCN_DELTA_WRAP_MODE		BIT(61)
 
 /* BCN_CAPTURE_CFG register definitions */
 #define CAPT_EN				BIT(0)

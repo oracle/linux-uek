@@ -43,6 +43,11 @@
 #define CNF10K_BCN_CAPTURE_CFG				0x1400U
 #define CNF10K_BCN_CAPTURE_N1_N2			0x1410U
 #define CNF10K_BCN_CAPTURE_PTP				0x1440U
+#define CNF10K_BCN_N1_N2				0xF10U
+#define CNF10K_BCN_SYNC_VAL				0xF20U
+#define CNF10K_BCN_DELTA_VAL				0xF30U
+#define CNF10K_BCN_CFG					0xF00U
+#define CNF10K_BCN_CFG2					0x2F00U
 
 /* BCN_CAPTURE_CFG register definitions */
 #define CAPT_EN					BIT(0)
