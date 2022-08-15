@@ -3327,6 +3327,16 @@ static bool __maybe_unused its_enable_quirk_hip07_161600802(void *data)
 	return true;
 }
 
+static bool __maybe_unused its_enable_quirk_mrvl_35443(void *data)
+{
+	struct its_node *its = data;
+
+	/* Erratum 35443:  20bits, alloc 8MB table size */
+	its->device_ids = 0x14;
+
+	return true;
+}
+
 static const struct gic_quirk its_quirks[] = {
 #ifdef CONFIG_CAVIUM_ERRATUM_22375
 	{
@@ -3342,6 +3352,14 @@ static const struct gic_quirk its_quirks[] = {
 		.iidr	= 0xa100034c,	/* ThunderX pass 1.x */
 		.mask	= 0xffff0fff,
 		.init	= its_enable_quirk_cavium_23144,
+	},
+#endif
+#ifdef CONFIG_MRVL_ERRATUM_35443
+	{
+		.desc	= "ITS: Marvell errata 35443",
+		.iidr	= 0xb000034c,	/* 9xx silicons */
+		.mask	= 0xf8ff0fff,
+		.init	= its_enable_quirk_mrvl_35443,
 	},
 #endif
 #ifdef CONFIG_QCOM_QDF2400_ERRATUM_0065
