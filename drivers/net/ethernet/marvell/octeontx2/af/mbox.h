@@ -387,9 +387,10 @@ M(MCS_GET_SA_STATS,	0xa00f, mcs_get_sa_stats, mcs_stats_req, mcs_sa_stats)	\
 M(MCS_GET_PORT_STATS,	0xa010, mcs_get_port_stats, mcs_stats_req,		\
 				mcs_port_stats)					\
 M(MCS_CLEAR_STATS,	0xa011,	mcs_clear_stats, mcs_clear_stats, msg_rsp)	\
+M(MCS_INTR_CFG,		0xa012, mcs_intr_cfg, mcs_intr_cfg, msg_rsp)		\
 M(MCS_SET_LMAC_MODE,	0xa013, mcs_set_lmac_mode, mcs_set_lmac_mode, msg_rsp)	\
 
-/* Messages initiated by AF (range 0xC00 - 0xDFF) */
+/* Messages initiated by AF (range 0xC00 - 0xEFF) */
 #define MBOX_UP_CGX_MESSAGES						\
 M(CGX_LINK_EVENT,	0xC00, cgx_link_event, cgx_link_info_msg, msg_rsp) \
 M(CGX_PTP_RX_INFO,	0xC01, cgx_ptp_rx_info,	cgx_ptp_rx_info_msg, msg_rsp)
@@ -397,11 +398,15 @@ M(CGX_PTP_RX_INFO,	0xC01, cgx_ptp_rx_info,	cgx_ptp_rx_info_msg, msg_rsp)
 #define MBOX_UP_CPT_MESSAGES						\
 M(CPT_INST_LMTST,	0xD00, cpt_inst_lmtst, cpt_inst_lmtst_req, msg_rsp)
 
+#define MBOX_UP_MCS_MESSAGES						\
+M(MCS_INTR_NOTIFY,	0xE00, mcs_intr_notify, mcs_intr_info, msg_rsp)
+
 enum {
 #define M(_name, _id, _1, _2, _3) MBOX_MSG_ ## _name = _id,
 MBOX_MESSAGES
 MBOX_UP_CGX_MESSAGES
 MBOX_UP_CPT_MESSAGES
+MBOX_UP_MCS_MESSAGES
 #undef M
 };
 
@@ -2379,6 +2384,30 @@ struct mcs_set_lmac_mode {
 	u8 lmac_id;
 	u8 mcs_id;
 	u64 rsvd;
+};
+
+#define MCS_CPM_RX_PN_THRESH_REACHED_INT	BIT_ULL(0)
+#define MCS_CPM_TX_PN_THRESH_REACHED_INT	BIT_ULL(1)
+
+struct mcs_intr_cfg {
+	struct mbox_msghdr hdr;
+	u64 intr_mask;		/* Interrupt enable mask */
+	u8 mcs_id;
+};
+
+struct mcs_intr_info {
+	struct mbox_msghdr hdr;
+	u64 intr_mask;
+	int sa_id;
+	u8 mcs_id;
+};
+
+/* MCS mailbox error codes
+ * Range 1201 - 1300.
+ */
+enum mcs_af_status {
+	MCS_AF_ERR_INVALID_MCSID	= -1201,
+	MCS_AF_ERR_NOT_MAPPED		= -1202,
 };
 
 #endif /* MBOX_H */
