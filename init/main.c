@@ -845,6 +845,7 @@ static void __init mm_init(void)
 	 * slab is ready so that stack_depot_init() works properly
 	 */
 	page_ext_init_flatmem_late();
+	page_ext_init_early();
 	kmemleak_init();
 	pgtable_init();
 	debug_objects_mem_init();
@@ -1605,8 +1606,10 @@ static noinline void __init kernel_init_freeable(void)
 
 	padata_init();
 	page_alloc_init_late();
-	/* Initialize page ext after all struct pages are initialized. */
-	page_ext_init();
+	/* Initialize page ext after all struct pages are initialized if
+	 * CONFIG_DEFERRED_STRUCT_PAGE_INIT is enabled
+	 */
+	page_ext_init_late();
 
 	do_basic_setup();
 

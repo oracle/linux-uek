@@ -458,7 +458,7 @@ static int __meminit page_ext_callback(struct notifier_block *self,
 	return notifier_from_errno(ret);
 }
 
-void __init page_ext_init(void)
+void __init _page_ext_init(void)
 {
 	unsigned long pfn;
 	int nid;
