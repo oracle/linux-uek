@@ -205,6 +205,15 @@
 		offset = 0xb98ull;			\
 	offset; })
 
+#define MCSX_CPM_RX_SLAVE_PN_THRESH_REACHEDX(a)	({	\
+	u64 offset;					\
+							\
+	offset = 0x23e50ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0xba0ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
 #define MCSX_CPM_RX_SLAVE_FLOWID_TCAM_ENA_1		0x30708ull
 #define MCSX_CPM_RX_SLAVE_SECY_PLCY_MEM_1X(a)		(0x246e8ull + (a) * 0x10ull)
 
@@ -754,4 +763,77 @@
 #define MCSX_CSE_TX_MEM_SLAVE_OUTPKTSEARLYPREEMPTERRX(a) (0x10eb8ull + (a) * 0x8ull)
 #define MCSX_CSE_TX_MEM_SLAVE_OUTPKTSSAENCRYPTEDX(a)	(0x21c40ull + (a) * 0x8ull)
 #define MCSX_CSE_TX_MEM_SLAVE_OUTPKTSSAPROTECTEDX(a)	(0x20c40ull + (a) * 0x8ull)
+
+#define MCSX_IP_INT ({			\
+	u64 offset;			\
+					\
+	offset = 0x80028ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0x60028ull;	\
+	offset; })
+
+#define MCSX_IP_INT_ENA_W1S ({		\
+	u64 offset;			\
+					\
+	offset = 0x80040ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0x60040ull;	\
+	offset; })
+
+#define MCSX_IP_INT_ENA_W1C ({		\
+	u64 offset;			\
+					\
+	offset = 0x80038ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0x60038ull;	\
+	offset; })
+
+#define MCSX_TOP_SLAVE_INT_SUM ({	\
+	u64 offset;			\
+					\
+	offset = 0xc20ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0xab8ull;	\
+	offset; })
+
+#define MCSX_TOP_SLAVE_INT_SUM_ENB ({	\
+	u64 offset;			\
+					\
+	offset = 0xc28ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0xac0ull;	\
+	offset; })
+
+#define MCSX_CPM_RX_SLAVE_RX_INT ({	\
+	u64 offset;			\
+					\
+	offset = 0x23c00ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0x0ad8ull;	\
+	offset; })
+
+#define MCSX_CPM_RX_SLAVE_RX_INT_ENB ({	\
+	u64 offset;			\
+					\
+	offset = 0x23c08ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0xae0ull;	\
+	offset; })
+
+#define MCSX_CPM_TX_SLAVE_TX_INT ({	\
+	u64 offset;			\
+					\
+	offset = 0x3d490ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0x54a0ull;	\
+	offset; })
+
+#define MCSX_CPM_TX_SLAVE_TX_INT_ENB ({	\
+	u64 offset;			\
+					\
+	offset = 0x3d498ull;		\
+	if (mcs->hw->mcs_blks > 1)	\
+		offset = 0x54a8ull;	\
+	offset; })
+
 #endif
