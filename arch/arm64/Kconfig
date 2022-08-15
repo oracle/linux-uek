@@ -716,6 +716,20 @@ config MRVL_ERRATUM_38545
 
 	  If unsure, say Y.
 
+config MRVL_ERRATUM_35443
+	bool "Marvell erratum 35443"
+	default y
+	help
+	Enable workaround for erratum.
+
+	This implements gicv3-its errata workaround for 9xx silicons.
+
+	erratum 35443: only alloc 8MB table size.
+
+	Fixes the ITS table size provided by TYPER register.
+
+	If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
