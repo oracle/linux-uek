@@ -995,7 +995,6 @@ static void __oom_kill_process(struct task_struct *victim, const char *message)
 	mmdrop(mm);
 	put_task_struct(victim);
 }
-#undef K
 
 /*
  * Kill provided task unless it's secured by setting
@@ -1241,17 +1240,33 @@ SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
 		goto drop_mm;
 
 	if (mmap_read_lock_killable(mm)) {
+		trace_skip_task_reaping(task->pid);
 		ret = -EINTR;
-		goto drop_mm;
+		goto read_unlock;
 	}
 	/*
 	 * Check MMF_OOM_SKIP again under mmap_read_lock protection to ensure
 	 * possible change in exit_mmap is seen
 	 */
-	if (!test_bit(MMF_OOM_SKIP, &mm->flags) && !__oom_reap_task_mm(mm))
-		ret = -EAGAIN;
-	mmap_read_unlock(mm);
+	if (test_bit(MMF_OOM_SKIP, &mm->flags)) {
+		trace_skip_task_reaping(task->pid);
+		goto read_unlock;
+	}
 
+	trace_start_task_reaping(task->pid);
+
+	if (!__oom_reap_task_mm(mm))
+		ret = -EAGAIN;
+
+	pr_debug("process_mrelease: reaped process %d (%s), now anon-rss:%lukB, file-rss:%lukB, shmem-rss:%lukB\n",
+						task_pid_nr(task), task->comm,
+						K(get_mm_counter(mm, MM_ANONPAGES)),
+						K(get_mm_counter(mm, MM_FILEPAGES)),
+						K(get_mm_counter(mm, MM_SHMEMPAGES)));
+	trace_finish_task_reaping(task->pid);
+
+read_unlock:
+	mmap_read_unlock(mm);
 drop_mm:
 	mmdrop(mm);
 put_task:
@@ -1261,3 +1276,4 @@ put_task:
 	return -ENOSYS;
 #endif /* CONFIG_MMU */
 }
+#undef K
