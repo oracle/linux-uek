@@ -64,6 +64,9 @@ static ssize_t mac_addr_store(struct mub_device *mdev, const char *buf,
 
 	ret = mub_do_smc(mdev, PLAT_OCTEONTX_MAC_MGMT_SET_ADDR,
 			 minfo.index, minfo.s.mac_addr, 0, 0, 0, 0, 0, &res);
+	if (ret)
+		return ret;
+
 	if (res.a0)
 		return -EINVAL;
 
