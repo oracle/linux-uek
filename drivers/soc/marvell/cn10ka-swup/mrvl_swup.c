@@ -398,8 +398,13 @@ static int mrvl_run_fw_update(unsigned long arg)
 	}
 
 	tsyncend = ktime_get();
+	do {
+		msleep(500);
+		res = mrvl_exec_smc(PLAT_CN10K_ASYNC_STATUS, 0, 0);
+		spi_in_progress = res.a0;
+	} while (spi_in_progress);
 
-	ioctl_desc.ret = res.a0;
+	ioctl_desc.ret = smc_desc->retcode;
 	if (copy_to_user(TO_UPDATE_DESC(arg),
 			 &ioctl_desc,
 			 sizeof(ioctl_desc))) {
@@ -407,17 +412,11 @@ static int mrvl_run_fw_update(unsigned long arg)
 		return -EFAULT;
 	}
 
-	do {
-		msleep(500);
-		res = mrvl_exec_smc(PLAT_CN10K_ASYNC_STATUS, 0, 0);
-		spi_in_progress = res.a0;
-	} while (spi_in_progress);
-
 	tend = ktime_get();
 
 	pr_info("Tsync: %lld, ttot: %lld\n", tsyncend - tstart, tend - tstart);
 
-	return ioctl_desc.ret;
+	return smc_desc->retcode;
 }
 
 static int alloc_readbuf(uint64_t rd_size)
