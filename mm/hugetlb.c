@@ -5603,6 +5603,7 @@ retry:
 		if (vma->vm_flags & VM_MAYSHARE) {
 			int err = huge_add_to_page_cache(page, mapping, idx);
 			if (err) {
+				restore_reserve_on_error(h, vma, haddr, page);
 				put_page(page);
 				if (err == -EEXIST)
 					goto retry;
