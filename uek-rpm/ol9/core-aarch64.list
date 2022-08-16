@@ -95,7 +95,6 @@ kernel/drivers/infiniband/core/ib_umad.ko
 kernel/drivers/infiniband/core/ib_uverbs.ko
 kernel/drivers/infiniband/core/iw_cm.ko
 kernel/drivers/infiniband/core/rdma_cm.ko
-kernel/drivers/infiniband/core/rdmaip_notify.ko
 kernel/drivers/infiniband/core/rdma_ucm.ko
 kernel/drivers/infiniband/hw/mlx4/mlx4_ib.ko
 kernel/drivers/infiniband/hw/mlx5/mlx5_ib.ko
@@ -343,9 +342,6 @@ kernel/net/netfilter/xt_policy.ko
 kernel/net/netfilter/xt_SECMARK.ko
 kernel/net/netfilter/xt_set.ko
 kernel/net/psample/psample.ko
-kernel/net/rds/rds.ko
-kernel/net/rds/rds_rdma.ko
-kernel/net/rds/rds_tcp.ko
 kernel/net/rfkill/rfkill.ko
 kernel/net/sched/act_gact.ko
 kernel/net/sched/act_mirred.ko
