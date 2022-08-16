@@ -75,7 +75,7 @@ static int fw_memtest_get_config(struct mub_fw_memtest_desc *desc)
 			 FWMT_OCTEONTX_MEM_TEST_CONFIG, FWMT_SO_GET,
 			 0, 0, 0, 0, 0, 0, &res);
 	if (ret)
-		return -EFAULT;
+		return ret;
 
 	if (res.a0)
 		return (int)res.a0;
@@ -108,7 +108,7 @@ static int fw_memtest_set_config(struct mub_fw_memtest_desc *desc)
 			 FWMT_OCTEONTX_MEM_TEST_CONFIG, FWMT_SO_SET,
 			 reboot, power_on, memory_length, 0, 0, 0, &res);
 	if (ret)
-		return -EFAULT;
+		return ret;
 
 	if (res.a0)
 		return (int)res.a0;

@@ -92,7 +92,7 @@ static ssize_t status_store(struct mub_device *dev, const char *buf,
 	ret = mub_do_smc(dev, PLAT_OCTEONTX_SET_AVS_STATUS, desc->status,
 			 0, 0, 0, 0, 0, 0, &res);
 	if (ret)
-		return -EFAULT;
+		return ret;
 
 	if (res.a0)
 		return -EFAULT;
