@@ -2711,8 +2711,8 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 			copied = copy_folio_to_iter(folio, offset, bytes, iter);
 
 			already_read += copied;
-			iocb->ki_pos += copied;
 			ra->prev_pos = iocb->ki_pos;
+			iocb->ki_pos += copied;
 
 			if (copied < bytes) {
 				error = -EFAULT;
