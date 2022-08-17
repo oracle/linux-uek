@@ -166,11 +166,15 @@ static void __init zone_sizes_init(unsigned long min, unsigned long max)
 	struct memblock_region *reg;
 	unsigned long zone_size[MAX_NR_ZONES], zhole_size[MAX_NR_ZONES];
 	unsigned long __maybe_unused max_dma, max_dma32;
+	unsigned int __maybe_unused dt_zone_dma_bits;
 
 	memset(zone_size, 0, sizeof(zone_size));
 
 	max_dma = max_dma32 = min;
 #ifdef CONFIG_ZONE_DMA
+	dt_zone_dma_bits = fls64(of_dma_get_max_cpu_address(NULL));
+	zone_dma_bits = min(32U, dt_zone_dma_bits);
+	arm64_dma_phys_limit = max_zone_phys(zone_dma_bits);
 	max_dma = max_dma32 = PFN_DOWN(arm64_dma_phys_limit);
 	zone_size[ZONE_DMA] = max_dma - min;
 #endif
