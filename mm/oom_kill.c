@@ -1259,10 +1259,10 @@ SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
 		ret = -EAGAIN;
 
 	pr_debug("process_mrelease: reaped process %d (%s), now anon-rss:%lukB, file-rss:%lukB, shmem-rss:%lukB\n",
-						task_pid_nr(task), task->comm,
-						K(get_mm_counter(mm, MM_ANONPAGES)),
-						K(get_mm_counter(mm, MM_FILEPAGES)),
-						K(get_mm_counter(mm, MM_SHMEMPAGES)));
+		 task_pid_nr(task), task->comm,
+		 K(get_mm_counter(mm, MM_ANONPAGES)),
+		 K(get_mm_counter(mm, MM_FILEPAGES)),
+		 K(get_mm_counter(mm, MM_SHMEMPAGES)));
 	trace_finish_task_reaping(task->pid);
 
 read_unlock:
