@@ -2230,7 +2230,8 @@ static void nfs_dentry_remove_handle_error(struct inode *dir,
 {
 	switch (error) {
 	case -ENOENT:
-		d_delete(dentry);
+		if (d_really_is_positive(dentry))
+			d_delete(dentry);
 		fallthrough;
 	case 0:
 		nfs_set_verifier(dentry, nfs_save_change_attribute(dir));
