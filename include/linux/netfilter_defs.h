@@ -4,7 +4,9 @@
 
 #include <uapi/linux/netfilter.h>
 
-/* Largest hook number + 1, see uapi/linux/netfilter_decnet.h */
+/* Largest hook number + 1, see uapi/linux/netfilter_decnet.h
+ * Leaving this set to 8 to avoid kABI breakage
+ */
 #define NF_MAX_HOOKS 8
 
 #endif

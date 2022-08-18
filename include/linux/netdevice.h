@@ -1562,7 +1562,6 @@ enum netdev_priv_flags {
  *	@tipc_ptr:	TIPC specific data
  *	@atalk_ptr:	AppleTalk link
  *	@ip_ptr:	IPv4 specific data
- *	@dn_ptr:	DECnet specific data
  *	@ip6_ptr:	IPv6 specific data
  *	@ax25_ptr:	AX.25 specific data
  *	@ieee80211_ptr:	IEEE 802.11 specific data, assign before registering
@@ -1790,7 +1789,7 @@ struct net_device {
 #endif
 	void 			*atalk_ptr;
 	struct in_device __rcu	*ip_ptr;
-	struct dn_dev __rcu     *dn_ptr;
+	UEK_KABI_DEPRECATE(struct dn_dev *, dn_ptr)
 	struct inet6_dev __rcu	*ip6_ptr;
 	void			*ax25_ptr;
 	struct wireless_dev	*ieee80211_ptr;
