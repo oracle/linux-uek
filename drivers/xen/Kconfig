@@ -2,6 +2,19 @@
 menu "Xen driver support"
 	depends on XEN
 
+config XEN_OVMAPI
+        tristate "Oracle VM guest messaging driver"
+        depends on XEN
+        default m
+        help
+          Driver for receiving and sending messages for Oracle VM.
+
+          It implements a character device for user space applications to
+          send/receive message to/from dom0.
+
+          It also implements application registration and notifications on new
+          message.
+
 config XEN_BALLOON
 	bool "Xen memory balloon driver"
 	default y
