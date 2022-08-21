@@ -1169,7 +1169,8 @@ static inline bool skb_unref(struct sk_buff *skb)
 /* UEK needs to keep this for KABI reasons */
 void kfree_skb(struct sk_buff *skb);
 
-void kfree_skb_reason(struct sk_buff *skb, enum skb_drop_reason reason);
+void __fix_address
+kfree_skb_reason(struct sk_buff *skb, enum skb_drop_reason reason);
 void skb_release_head_state(struct sk_buff *skb);
 void kfree_skb_list_reason(struct sk_buff *segs,
 			   enum skb_drop_reason reason);
