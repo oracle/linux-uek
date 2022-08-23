@@ -631,11 +631,12 @@ int rvu_mcs_init(struct rvu *rvu)
 
 	/* Install default tcam bypass entry and set port ot operational mode */
 	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
-		mcs->rvu = rvu;
 		mcs = mcs_get_pdata(mcs_id);
 		mcs_install_flowid_bypass_entry(mcs);
-		for_each_set_bit(lmac, &mcs->hw->lmac_bmap, mcs->hw->lmac_cnt)
+		for (lmac = 0; lmac < mcs->hw->lmac_cnt; lmac++)
 			mcs_set_lmac_mode(mcs, lmac, 0);
+
+		mcs->rvu = rvu;
 		/* Allocated memory for PFVF data */
 		mcs->pf = devm_kcalloc(mcs->dev, hw->total_pfs,
 				       sizeof(struct mcs_pfvf), GFP_KERNEL);
@@ -646,8 +647,8 @@ int rvu_mcs_init(struct rvu *rvu)
 				       sizeof(struct mcs_pfvf), GFP_KERNEL);
 		if (!mcs->vf)
 			return -ENOMEM;
-
 	}
+
 	/* Initialize the wq for handling mcs interrupts */
 	INIT_LIST_HEAD(&rvu->mcs_intrq_head);
 	INIT_WORK(&rvu->mcs_intr_work, mcs_intr_handler_task);
