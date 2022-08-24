@@ -193,13 +193,13 @@ static int __init ghes_bed_count_error(struct mrvl_bed_source *bsrc)
 	else
 		error_cnt = ring->size - (ring->tail - ring->head);
 
-	bsrc->error_cnt = error_cnt;
+	bsrc->error_cnt = (error_cnt > OTX2_GHES_ERR_RECS) ? OTX2_GHES_ERR_RECS : error_cnt;
 
-	initdbgmsg("BED mem @ %llx (%llx PA), %llu B, error entries %ld\n",
-		   (long long)bsrc->block_va, bsrc->block_pa,
-		   (long long)bsrc->block_sz, error_cnt);
+	initdbgmsg("BED mem @ %llx (%llx PA), %llu B, error entries %d\n",
+			(long long)bsrc->block_va, bsrc->block_pa,
+			(long long)bsrc->block_sz, bsrc->error_cnt);
 
-	return error_cnt;
+	return bsrc->error_cnt;
 }
 
 static int __init ghes_bed_fetch_errors(struct mrvl_bed_source *bsrc)

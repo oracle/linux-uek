@@ -33,6 +33,7 @@ struct bed_bert_mem_entry {
 #define OTX2_GHES_ERR_RING_SIG ((int)'M' << 24 | 'R' << 16 | 'V' << 8 | 'L')
 
 #define OTX2_GHES_ERR_REC_FRU_TEXT_LEN 32
+#define OTX2_GHES_ERR_RECS 4
 
 struct processor_error {
 	struct cper_sec_proc_arm desc;
