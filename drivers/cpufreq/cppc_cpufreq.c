@@ -667,6 +667,9 @@ static ssize_t show_freqdomain_cpus(struct cpufreq_policy *policy, char *buf)
 {
 	struct cppc_cpudata *cpu_data = policy->driver_data;
 
+	if (unlikely(!cpu_data))
+		return -EBUSY;
+
 	return cpufreq_show_cpus(cpu_data->shared_cpu_map, buf);
 }
 cpufreq_freq_attr_ro(freqdomain_cpus);
