@@ -49,6 +49,7 @@
 #include <uapi/rdma/mlx4-abi.h>
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/doorbell.h>
+#include <xen/pci.h>
 
 #include "mlx4.h"
 #include "fw.h"
@@ -3432,6 +3433,29 @@ static void mlx4_pci_disable_device(struct mlx4_dev *dev)
 	mutex_unlock(&dev->persist->pci_status_mutex);
 }
 
+static int mlx4_update_numa_node(struct notifier_block *this,
+				 unsigned long event, void *ptr)
+{
+	struct pci_dev *pdev = ptr;
+	struct mlx4_dev_persistent *persist;
+	struct mlx4_dev *dev;
+	int pxm;
+
+	persist = pci_get_drvdata(pdev);
+	dev = persist->dev;
+	pxm = dev_to_node(&pdev->dev);
+
+	dev_info(&pdev->dev, "Updating PXM to %d\n", pxm);
+
+	dev->numa_node = pxm;
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block pxm_notifier_block = {
+	.notifier_call = mlx4_update_numa_node,
+};
+
 static int mlx4_load_one(struct pci_dev *pdev, int pci_dev_data,
 			 int total_vfs, int *nvfs, struct mlx4_priv *priv,
 			 int reset_flow)
@@ -3756,6 +3780,10 @@ slave_start:
 		atomic_dec(&pf_loading);
 
 	kfree(dev_cap);
+
+	/* Update numa_node if there are changes. */
+	register_pci_pxm_handler(&pxm_notifier_block, pdev);
+
 	return 0;
 
 err_port:
@@ -4169,6 +4197,7 @@ static void mlx4_unload_one(struct pci_dev *pdev)
 	if (priv->removed)
 		return;
 
+	unregister_pci_pxm_handler(&pxm_notifier_block, pdev);
 	/* saving current ports type for further use */
 	for (i = 0; i < dev->caps.num_ports; i++) {
 		dev->persist->curr_port_type[i] = dev->caps.port_type[i + 1];
