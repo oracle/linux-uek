@@ -2087,13 +2087,13 @@ static void amd_iommu_iotlb_sync_map(struct iommu_domain *dom,
 	struct protection_domain *domain = to_pdomain(dom);
 	struct io_pgtable_ops *ops = &domain->iop.iop.ops;
 
-	if (ops->map)
+	if (ops->map_pages)
 		domain_flush_np_cache(domain, iova, size);
 }
 
-static int amd_iommu_map(struct iommu_domain *dom, unsigned long iova,
-			 phys_addr_t paddr, size_t page_size, int iommu_prot,
-			 gfp_t gfp)
+static int amd_iommu_map_pages(struct iommu_domain *dom, unsigned long iova,
+			       phys_addr_t paddr, size_t pgsize, size_t pgcount,
+			       int iommu_prot, gfp_t gfp, size_t *mapped)
 {
 	struct protection_domain *domain = to_pdomain(dom);
 	struct io_pgtable_ops *ops = &domain->iop.iop.ops;
@@ -2109,8 +2109,10 @@ static int amd_iommu_map(struct iommu_domain *dom, unsigned long iova,
 	if (iommu_prot & IOMMU_WRITE)
 		prot |= IOMMU_PROT_IW;
 
-	if (ops->map)
-		ret = ops->map(ops, iova, paddr, page_size, prot, gfp);
+	if (ops->map_pages) {
+		ret = ops->map_pages(ops, iova, paddr, pgsize,
+				     pgcount, prot, gfp, mapped);
+	}
 
 	return ret;
 }
@@ -2136,9 +2138,9 @@ static void amd_iommu_iotlb_gather_add_page(struct iommu_domain *domain,
 	iommu_iotlb_gather_add_range(gather, iova, size);
 }
 
-static size_t amd_iommu_unmap(struct iommu_domain *dom, unsigned long iova,
-			      size_t page_size,
-			      struct iommu_iotlb_gather *gather)
+static size_t amd_iommu_unmap_pages(struct iommu_domain *dom, unsigned long iova,
+				    size_t pgsize, size_t pgcount,
+				    struct iommu_iotlb_gather *gather)
 {
 	struct protection_domain *domain = to_pdomain(dom);
 	struct io_pgtable_ops *ops = &domain->iop.iop.ops;
@@ -2148,9 +2150,10 @@ static size_t amd_iommu_unmap(struct iommu_domain *dom, unsigned long iova,
 	    (domain->iop.mode == PAGE_MODE_NONE))
 		return 0;
 
-	r = (ops->unmap) ? ops->unmap(ops, iova, page_size, gather) : 0;
+	r = (ops->unmap_pages) ? ops->unmap_pages(ops, iova, pgsize, pgcount, NULL) : 0;
 
-	amd_iommu_iotlb_gather_add_page(dom, gather, iova, page_size);
+	if (r)
+		amd_iommu_iotlb_gather_add_page(dom, gather, iova, r);
 
 	return r;
 }
@@ -2370,9 +2373,9 @@ const struct iommu_ops amd_iommu_ops = {
 	.domain_free  = amd_iommu_domain_free,
 	.attach_dev = amd_iommu_attach_device,
 	.detach_dev = amd_iommu_detach_device,
-	.map = amd_iommu_map,
+	.map_pages	= amd_iommu_map_pages,
+	.unmap_pages	= amd_iommu_unmap_pages,
 	.iotlb_sync_map	= amd_iommu_iotlb_sync_map,
-	.unmap = amd_iommu_unmap,
 	.iova_to_phys = amd_iommu_iova_to_phys,
 	.probe_device = amd_iommu_probe_device,
 	.release_device = amd_iommu_release_device,
