@@ -17,6 +17,6 @@ obj-$(CONFIG_MRVL_PHY_7121P_MAC_ADV_FEATURES) += phy_7121p_macadv_features.o
 obj-$(CONFIG_MARVELL_CN10K_SERDES_DIAGNOSTICS) += cn10k_serdes_diag.o
 obj-$(CONFIG_EDAC_OCTEONTX) += octeontx2-ghes/
 obj-$(CONFIG_OCTEONTX2_PCI_CONSOLE) += octeontx2-pcicons/
-obj-$(CONFIG_MARVELL_CN10K_FWLOG) += cn10k-fwlog.o
+obj-$(CONFIG_MARVELL_FWLOG) += fwlog.o
 obj-$(CONFIG_MARVELL_CN10K_EINJ) += cn10k-einj.o
 

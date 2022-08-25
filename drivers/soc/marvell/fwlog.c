@@ -19,7 +19,7 @@
 #include <linux/of.h>
 #include <linux/of_fdt.h>
 
-#define DEFAULT_FWLOG_MEMBASE	(48 * 1024 * 1024)
+#define DEFAULT_FWLOG_MEMBASE	(60 * 1024 * 1024)
 #define DEFAULT_FWLOG_MEMSIZE	(4 * 1024 * 1024)
 
 static uint64_t fwlog_mem_base, fwlog_mem_size;
