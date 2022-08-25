@@ -3170,9 +3170,13 @@ int esw_offloads_enable(struct mlx5_eswitch *esw)
 	if (err)
 		goto err_steering_init;
 
-	/* Representor will control the vport link state */
 	mlx5_esw_for_each_vf_vport(esw, i, vport, esw->esw_funcs.num_vfs)
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+		/* Representor will control the vport link state */
 		vport->info.link_state = MLX5_VPORT_ADMIN_STATE_DOWN;
+#else
+		vport->info.link_state = MLX5_VPORT_ADMIN_STATE_AUTO;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	/* Uplink vport rep must load first. */
 	err = esw_offloads_load_rep(esw, MLX5_VPORT_UPLINK);
