@@ -40,6 +40,8 @@ struct genl_info;
  * @module: pointer to the owning module (set to THIS_MODULE)
  * @mcgrps: multicast groups used by this family
  * @n_mcgrps: number of multicast groups
+ * @resv_start_op: first operation for which reserved fields of the header
+ *	can be validated, new families should leave this field at zero
  * @mcgrp_offset: starting number of multicast group IDs in this family
  *	(private)
  * @ops: the operations supported by this family
@@ -59,6 +61,7 @@ struct genl_family {
 	u8			n_ops;
 	u8			n_small_ops;
 	u8			n_mcgrps;
+	u8			resv_start_op;
 	const struct nla_policy *policy;
 	int			(*pre_doit)(const struct genl_split_ops *ops,
 					    struct sk_buff *skb,
