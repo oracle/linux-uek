@@ -122,6 +122,9 @@ struct mac_ops {
 	int			(*mac_reset)(void *cgxd, int lmac_id);
 	u64			(*get_dmacflt_dropped_pktcnt)(void *cgxd, int lmac_id);
 
+	/* FEC stats */
+	int			(*get_fec_stats)(void *cgxd, int lmac_id,
+						 struct cgx_fec_stats_rsp *rsp);
 };
 
 struct cgx {
