@@ -29,7 +29,8 @@ config MARVELL_UB_GEN_DRIVER
 config MARVELL_AVS_RESET
 	tristate "AVS bus reset support"
 	default n
-	depends on MARVELL_UB_GEN_DRIVER && HAVE_ARM_SMCCC
+	depends on HAVE_ARM_SMCCC
+	select MARVELL_UB_GEN_DRIVER
 	help
 	  This module enable control over AVS bus reset from Linux userspace.
 	  Userspace process can signalize upcoming platform warm boot to AVS
@@ -39,7 +40,8 @@ config MARVELL_AVS_RESET
 config MARVELL_CN10K_MAC_MGMT
 	tristate "CN10K MAC management interface"
 	default n
-	depends on MARVELL_UB_GEN_DRIVER && HAVE_ARM_SMCCC
+	depends on HAVE_ARM_SMCCC
+	select MARVELL_UB_GEN_DRIVER
 	help
 	  The module provides an interface to change MAC addresses assigned
 	  to the network devices.
@@ -48,7 +50,8 @@ config MARVELL_CN10K_MAC_MGMT
 
 config MARVELL_SFP_INFO
 	bool "Marvell SFP info sysfs interface"
-	depends on MARVELL_UB_GEN_DRIVER && HAVE_ARM_SMCCC
+	depends on HAVE_ARM_SMCCC
+	select MARVELL_UB_GEN_DRIVER
 	default n
 	help
 	  Enable support for sysfs entries to dump SFP module information
@@ -58,7 +61,8 @@ config MARVELL_SFP_INFO
 
 config MARVELL_CN10K_RPRAM
 	tristate "Octeontx RPRAM configuration interface"
-	depends on MARVELL_UB_GEN_DRIVER && HAVE_ARM_SMCCC
+	depends on HAVE_ARM_SMCCC
+	select MARVELL_UB_GEN_DRIVER
 	default n
 	help
 	  The module enables configuration interface for the persistent data
@@ -69,7 +73,8 @@ config MARVELL_CN10K_RPRAM
 
 config MARVELL_CN10K_MEMTEST
 	bool "Memory POST configuration utility"
-	depends on MARVELL_UB_GEN_DRIVER && HAVE_ARM_SMCCC
+	depends on HAVE_ARM_SMCCC
+	select MARVELL_UB_GEN_DRIVER
 	default n
 	help
 	  This option enables a module that provides sysfs entries to manipulate
