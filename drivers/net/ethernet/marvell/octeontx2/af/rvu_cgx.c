@@ -601,6 +601,7 @@ int rvu_mbox_handler_cgx_fec_stats(struct rvu *rvu,
 				   struct cgx_fec_stats_rsp *rsp)
 {
 	int pf = rvu_get_pf(req->hdr.pcifunc);
+	struct mac_ops *mac_ops;
 	u8 cgx_idx, lmac;
 	void *cgxd;
 
@@ -609,7 +610,8 @@ int rvu_mbox_handler_cgx_fec_stats(struct rvu *rvu,
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_idx, &lmac);
 
 	cgxd = rvu_cgx_pdata(cgx_idx, rvu);
-	return cgx_get_fec_stats(cgxd, lmac, rsp);
+	mac_ops = get_mac_ops(cgxd);
+	return  mac_ops->get_fec_stats(cgxd, lmac, rsp);
 }
 
 int rvu_mbox_handler_cgx_stats_rst(struct rvu *rvu, struct msg_req *req,
