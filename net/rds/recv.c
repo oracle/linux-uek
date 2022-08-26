@@ -715,10 +715,12 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 		}
 		if (is_hb_ping) {
 			rds_stats_inc(s_recv_hb_ping);
+			trace_rds_heartbeat_receive_ping(conn, cp, saddr, daddr);
 			rds_recv_incoming_hb_exthdr(inc);
 			rds_send_hb(conn, 1);
 		} else if (is_hb_pong) {
 			rds_stats_inc(s_recv_hb_pong);
+			trace_rds_heartbeat_receive_pong(conn, cp, saddr, daddr);
 			rds_recv_incoming_hb_exthdr(inc);
 			WRITE_ONCE(cp->cp_hb_start, 0);
 		} else {
