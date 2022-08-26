@@ -384,6 +384,8 @@ void rds_hb_worker(struct work_struct *work)
 				/* Peer does not support (exthdr) HB.
 				 * Do not ping again until reconnect.
 				 */
+				trace_rds_heartbeat_disable(conn, &conn->c_path[0],
+							    &conn->c_laddr, &conn->c_faddr);
 				return;
 			}
 			ret = rds_send_hb(cp->cp_conn, 0);
