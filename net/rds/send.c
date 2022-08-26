@@ -2020,9 +2020,11 @@ rds_send_hb(struct rds_connection *conn, int response)
 	if (response) {
 		flags |= RDS_FLAG_HB_PONG;
 		rds_stats_inc(s_send_hb_pong);
+		trace_rds_heartbeat_send_pong(conn, &conn->c_path[0], &conn->c_laddr, &conn->c_faddr);
 	} else {
 		flags |= RDS_FLAG_HB_PING;
 		rds_stats_inc(s_send_hb_ping);
+		trace_rds_heartbeat_send_ping(conn, &conn->c_path[0], &conn->c_laddr, &conn->c_faddr);
 	}
 	flags |= RDS_FLAG_ACK_REQUIRED;
 

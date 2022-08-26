@@ -605,6 +605,88 @@ TRACE_EVENT(rds_drop_egress,
 		 __entry->reason)
 );
 
+DECLARE_EVENT_CLASS(rds_heartbeat,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(conn, cp, saddr, daddr),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = saddr ? *saddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = daddr ? *daddr : in6addr_any;
+		__entry->conn = conn;
+		__entry->cp = cp;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		/* Unused common fields */
+		__entry->lport = 0;
+		__entry->fport = 0;
+		__entry->netns_inum = 0;
+		__entry->qp_num = 0;
+		__entry->remote_qp_num = 0;
+		__entry->flags = 0;
+		__entry->err = 0;
+		__entry->cgroup = NULL;
+		__entry->cgroup_id = 0;
+		__entry->rs = NULL;
+		__entry->rm = NULL;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d>",
+		  show_transport(__entry->transport),
+		  __entry->laddr, __entry->faddr, __entry->tos)
+);
+
+DEFINE_EVENT(rds_heartbeat, rds_heartbeat_send_ping,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(conn, cp, saddr, daddr)
+);
+
+DEFINE_EVENT(rds_heartbeat, rds_heartbeat_send_pong,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(conn, cp, saddr, daddr)
+);
+
+DEFINE_EVENT(rds_heartbeat, rds_heartbeat_receive_ping,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(conn, cp, saddr, daddr)
+);
+
+DEFINE_EVENT(rds_heartbeat, rds_heartbeat_receive_pong,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(conn, cp, saddr, daddr)
+);
+
+DEFINE_EVENT(rds_heartbeat, rds_heartbeat_disable,
+
+	TP_PROTO(struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr),
+
+	TP_ARGS(conn, cp, saddr, daddr)
+);
+
 DECLARE_EVENT_CLASS(rds_ib,
 
 	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
