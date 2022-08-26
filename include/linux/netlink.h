@@ -72,6 +72,8 @@ netlink_kernel_create(struct net *net, int unit, struct netlink_kernel_cfg *cfg)
  *	%NL_SET_ERR_MSG
  * @bad_attr: attribute with error
  * @policy: policy for a bad attribute
+ * @miss_type: attribute type which was missing
+ * @miss_nest: nest missing an attribute (%NULL if missing top level attr)
  * @cookie: cookie data to return to userspace (for success)
  * @cookie_len: actual cookie data length
  * @_msg_buf: output buffer for formatted message strings - don't access
@@ -84,6 +86,8 @@ struct netlink_ext_ack {
 	u8 cookie[NETLINK_MAX_COOKIE_LEN];
 	u8 cookie_len;
 	UEK_KABI_EXTEND(char _msg_buf[NETLINK_MAX_FMTMSG_LEN])
+	UEK_KABI_EXTEND(const struct nlattr *miss_nest)
+	UEK_KABI_EXTEND(u16 miss_type)
 };
 
 /* Always use this macro, this allows later putting the
@@ -169,6 +173,15 @@ struct netlink_ext_ack {
 	__retval = !__tb[__attr];				\
 	__retval;						\
 })
+
+#define NL_SET_ERR_ATTR_MISS(extack, nest, type)  do {	\
+	struct netlink_ext_ack *__extack = (extack);	\
+							\
+	if (__extack) {					\
+		__extack->miss_nest = (nest);		\
+		__extack->miss_type = (type);		\
+	}						\
+} while (0)
 
 static inline void nl_set_extack_cookie_u64(struct netlink_ext_ack *extack,
 					    u64 cookie)
