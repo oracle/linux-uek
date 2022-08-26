@@ -584,6 +584,7 @@ struct Scsi_Host {
 
 	/* next two fields are used to bound the time spent in error handling */
 	int eh_deadline;
+	UEK_KABI_FILL_HOLE(struct kref tagset_refcnt)
 	unsigned long last_reset;
 
 
@@ -715,10 +716,14 @@ struct Scsi_Host {
 	 */
 	struct device *dma_dev;
 
+#ifndef __GENKSYMS__
+	struct completion	tagset_freed;
+#else
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
+#endif
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
 
