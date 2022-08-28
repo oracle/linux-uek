@@ -20,6 +20,18 @@
 /* global driver ctx */
 struct cnf10k_rfoe_drv_ctx cnf10k_rfoe_drv_ctx[CNF10K_RFOE_MAX_INTF];
 
+static uint8_t cnf10k_rfoe_get_ptp_ts_index(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	struct rfoe_link_tx_ptp_ring_ctl *ctrl;
+	u64 value;
+
+	value = readq(priv->rfoe_reg_base +
+		      CNF10K_RFOEX_LINK_TX_PTP_RING_CTL(priv->rfoe_num,
+							priv->lmac_id));
+	ctrl = (struct rfoe_link_tx_ptp_ring_ctl *)(&value);
+	return ctrl->tail_idx0;
+}
+
 static void cnf10k_rfoe_update_tx_drop_stats(struct cnf10k_rfoe_ndev_priv *priv,
 					     int pkt_type)
 {
@@ -371,6 +383,8 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 
 	priv->last_tx_ptp_jiffies = jiffies;
 
+	priv->ptp_ring_cfg.ptp_ring_idx = cnf10k_rfoe_get_ptp_ts_index(priv);
+
 	/* ptp timestamp entry is 128-bit in size */
 	tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
 			((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
@@ -489,11 +503,7 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	skb_tstamp_tx(priv->ptp_tx_skb, &ts);
 
 submit_next_req:
-	priv->ptp_ring_cfg.ptp_ring_idx++;
-	if (priv->ptp_ring_cfg.ptp_ring_idx >= priv->ptp_ring_cfg.ptp_ring_size)
-		priv->ptp_ring_cfg.ptp_ring_idx = 0;
-	if (priv->ptp_tx_skb &&
-	    (skb_shinfo(priv->ptp_tx_skb)->tx_flags & SKBTX_IN_PROGRESS))
+	if (priv->ptp_tx_skb)
 		dev_kfree_skb_any(priv->ptp_tx_skb);
 	priv->ptp_tx_skb = NULL;
 	clear_bit_unlock(PTP_TX_IN_PROGRESS, &priv->state);
@@ -1016,6 +1026,9 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 			psm_cmd_lo = (struct cnf10k_psm_cmd_addjob_s *)
 						&job_entry->job_cmd_lo;
 			priv->ptp_job_tag = psm_cmd_lo->jobtag;
+
+			priv->ptp_ring_cfg.ptp_ring_idx =
+				cnf10k_rfoe_get_ptp_ts_index(priv);
 
 			/* ptp timestamp entry is 128-bit in size */
 			tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
