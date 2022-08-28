@@ -129,6 +129,10 @@
 #define CNF10K_CPRIX_ETH_DL_GPKTS_CNT(a, b)		(0x458ULL | \
 							 ((unsigned long)(a) << 24) | \
 							 ((unsigned long)(b) << 11))
+#define CNF10K_RFOEX_LINK_TX_PTP_RING_CTL(a, b)		(0x1100ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+
 /* MHAB Structures */
 struct cnf10k_mhbw_jd_dma_cfg_word_0_s {
 	u64 dma_mode		: 3;
@@ -428,6 +432,28 @@ struct rfoe_tx_ptp_tstmp_s {
 	u64 tx_err		: 1;
 	u64 reserved2		: 39;
 	u64 valid		: 1;
+};
+
+struct rfoe_link_tx_ptp_ring_ctl {
+	u64 enable                : 4;
+	u64 target_mem            : 4;
+	u64 size0                 : 2;
+	u64 size1                 : 2;
+	u64 size2                 : 2;
+	u64 size3                 : 2;
+	u64 dswap0                : 2;
+	u64 dswap1                : 2;
+	u64 dswap2                : 2;
+	u64 dswap3                : 2;
+	u64 gmid0                 : 3;
+	u64 gmid1                 : 3;
+	u64 gmid2                 : 3;
+	u64 gmid3                 : 3;
+	u64 reserved_36_43        : 8;
+	u64 tail_idx0             : 5;
+	u64 tail_idx1             : 5;
+	u64 tail_idx2             : 5;
+	u64 tail_idx3             : 5;
 };
 
 #endif	/* _CNF10K_BPHY_HW_H_ */
