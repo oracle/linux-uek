@@ -72,7 +72,7 @@ config MARVELL_CN10K_RPRAM
 	  If unsure, say N here.
 
 config MARVELL_CN10K_MEMTEST
-	bool "Memory POST configuration utility"
+	tristate "Memory POST configuration utility"
 	depends on HAVE_ARM_SMCCC
 	select MARVELL_UB_GEN_DRIVER
 	default n
