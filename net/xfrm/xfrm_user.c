@@ -1517,7 +1517,7 @@ out_noput:
 	return err;
 }
 
-static int verify_policy_dir(u8 dir)
+static int verify_policy_dir(u8 dir, struct netlink_ext_ack *extack)
 {
 	switch (dir) {
 	case XFRM_POLICY_IN:
@@ -1526,6 +1526,7 @@ static int verify_policy_dir(u8 dir)
 		break;
 
 	default:
+		NL_SET_ERR_MSG(extack, "Invalid policy direction");
 		return -EINVAL;
 	}
 
@@ -1602,7 +1603,7 @@ static int verify_newpolicy_info(struct xfrm_userpolicy_info *p,
 		return -EINVAL;
 	}
 
-	ret = verify_policy_dir(p->dir);
+	ret = verify_policy_dir(p->dir, extack);
 	if (ret)
 		return ret;
 	if (p->index && (xfrm_policy_id2dir(p->index) != p->dir)) {
@@ -2138,7 +2139,7 @@ static int xfrm_get_policy(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err)
 		return err;
 
-	err = verify_policy_dir(p->dir);
+	err = verify_policy_dir(p->dir, extack);
 	if (err)
 		return err;
 
@@ -2443,7 +2444,7 @@ static int xfrm_add_pol_expire(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err)
 		return err;
 
-	err = verify_policy_dir(p->dir);
+	err = verify_policy_dir(p->dir, extack);
 	if (err)
 		return err;
 
