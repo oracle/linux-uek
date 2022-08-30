@@ -1254,7 +1254,7 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 		reg |= FIELD_PREP(SDHCI_CDNS_HRS16_WRCMD0_DLY,
 			 phy->settings.sdhc_wrcmd0_dly);
 	} else
-		reg = 0x77777777;
+		reg = 0x202;
 
 	writel(reg, priv->hrs_addr + SDHCI_CDNS_HRS16);
 
