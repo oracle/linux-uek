@@ -24,6 +24,11 @@
 
 #define SDMCLK_MAX_FREQ		200000000
 
+#define DEFAULT_CMD_DELAY		16
+#define SDHCI_CDNS_TUNE_START		0
+#define SDHCI_CDNS_TUNE_STEP		2
+#define SDHCI_CDNS_TUNE_ITERATIONS	255
+
 #define SDHCI_CDNS_HRS00			0x00
 #define SDHCI_CDNS_HRS00_SWR			BIT(0)
 
@@ -154,6 +159,10 @@
 #define SDHCI_CDNS_MAX_TUNING_LOOP	40
 
 static int cn10k_irq_workaround;
+
+static int tune_val_start = SDHCI_CDNS_TUNE_START;
+static int tune_val_step = SDHCI_CDNS_TUNE_STEP;
+static int max_tune_iter = SDHCI_CDNS_TUNE_ITERATIONS;
 
 struct sdhci_cdns_priv;
 
@@ -452,6 +461,8 @@ static void (*(init_timings[]))(struct sdhci_cdns_sd6_phy_timings*, int) = {
 	&init_uhs_sdr12, &init_uhs_sdr25, &init_uhs_sdr50,
 	&init_uhs_sdr104, &init_uhs_ddr50
 };
+
+static uint32_t read_dqs_cmd_delay, clk_wrdqs_delay, clk_wr_delay, read_dqs_delay;
 
 static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host, unsigned int timing);
 
@@ -1111,6 +1122,38 @@ void sdhci_cdns_sd6_dump(struct sdhci_cdns_priv *priv)
 }
 #endif
 
+static int sdhci_cdns_sd6_get_delay_params(struct device *dev, struct sdhci_cdns_priv *priv)
+{
+	struct sdhci_cdns_sd6_phy *phy = priv->phy;
+	int ret;
+
+	of_property_read_u32(dev->of_node, "cdns,iocell_input_delay", &phy->d.iocell_input_delay);
+	of_property_read_u32(dev->of_node, "cdns,iocell_output_delay", &phy->d.iocell_output_delay);
+	of_property_read_u32(dev->of_node, "cdns,delay_element", &phy->d.delay_element);
+	ret = of_property_read_u32(dev->of_node, "cdns,read_dqs_cmd_delay",
+					&phy->settings.cp_read_dqs_cmd_delay);
+	if (ret)
+		phy->settings.cp_read_dqs_cmd_delay = DEFAULT_CMD_DELAY;
+
+	ret = of_property_read_u32(dev->of_node, "cdns,tune_val_start", &tune_val_start);
+	if (ret)
+		tune_val_start = SDHCI_CDNS_TUNE_START;
+
+	ret = of_property_read_u32(dev->of_node, "cdns,tune_val_step", &tune_val_step);
+	if (ret)
+		tune_val_step = SDHCI_CDNS_TUNE_STEP;
+
+	ret = of_property_read_u32(dev->of_node, "cdns,max_tune_iter", &max_tune_iter);
+	if (ret)
+		max_tune_iter = SDHCI_CDNS_TUNE_ITERATIONS;
+
+	read_dqs_cmd_delay = phy->settings.cp_read_dqs_cmd_delay;
+	clk_wrdqs_delay = phy->settings.cp_clk_wrdqs_delay;
+	clk_wr_delay = phy->settings.cp_clk_wr_delay;
+	read_dqs_delay = phy->settings.cp_read_dqs_delay;
+	return 0;
+}
+
 static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 {
 	int ret;
@@ -1281,7 +1324,7 @@ static int sdhci_cdns_sd6_set_tune_val(struct sdhci_host *host,
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
 	phy->settings.hs200_tune_val = val;
-	phy->settings.cp_read_dqs_cmd_delay = val;
+	phy->settings.cp_read_dqs_cmd_delay = read_dqs_cmd_delay;
 	phy->settings.cp_read_dqs_delay = val;
 
 	return sdhci_cdns_sd6_phy_init(priv);
@@ -1610,7 +1653,7 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 		phy->mode = MMC_TIMING_MMC_HS;
 
 	/* Override dts entry for now */
-	phy->d.delay_element_org = phy->d.delay_element = 24;
+	phy->d.delay_element_org = phy->d.delay_element;
 	phy->d.iocell_input_delay = 650;
 	phy->d.iocell_output_delay = 1800;
 
@@ -1636,6 +1679,8 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 	}
 
 	priv->phy = phy;
+
+	sdhci_cdns_sd6_get_delay_params(dev, priv);
 
 	sdhci_cdns_sd6_calc_phy(phy);
 	return 0;
@@ -1685,7 +1730,7 @@ static int sdhci_cdns_execute_tuning(struct sdhci_host *host, u32 opcode)
 	int cur_streak = 0;
 	int max_streak = 0;
 	int end_of_streak = 0;
-	int i;
+	int i, midpoint;
 
 	/*
 	 * Do not execute tuning for UHS_SDR50 or UHS_DDR50.
@@ -1695,7 +1740,7 @@ static int sdhci_cdns_execute_tuning(struct sdhci_host *host, u32 opcode)
 	    host->timing != MMC_TIMING_UHS_SDR104)
 		return 0;
 
-	for (i = 0; i < SDHCI_CDNS_MAX_TUNING_LOOP; i++) {
+	for (i = tune_val_start; i <= max_tune_iter; i += tune_val_step) {
 		if (priv->cdns_data->set_tune_val(host, i) ||
 		    mmc_send_tuning(host->mmc, opcode, NULL)) { /* bad */
 			cur_streak = 0;
@@ -1704,7 +1749,12 @@ static int sdhci_cdns_execute_tuning(struct sdhci_host *host, u32 opcode)
 			if (cur_streak > max_streak) {
 				max_streak = cur_streak;
 				end_of_streak = i;
-			}
+				pr_debug("%s (%d-%d = %d)", __func__,
+					end_of_streak-((cur_streak-1)*tune_val_step),
+					end_of_streak, cur_streak);
+			} else
+				pr_debug("%s (%d-%d)", __func__,
+					i-((cur_streak-1)*tune_val_step), i);
 		}
 	}
 
@@ -1713,7 +1763,11 @@ static int sdhci_cdns_execute_tuning(struct sdhci_host *host, u32 opcode)
 		return -EIO;
 	}
 
-	return priv->cdns_data->set_tune_val(host, end_of_streak - max_streak / 2);
+	pr_debug("max_streak: %d-%d", end_of_streak-((max_streak-1)*tune_val_step), end_of_streak);
+
+	midpoint = end_of_streak - (((max_streak - 1)*tune_val_step) / 2);
+
+	return priv->cdns_data->set_tune_val(host, midpoint);
 }
 
 /*
