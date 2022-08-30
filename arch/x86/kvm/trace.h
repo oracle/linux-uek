@@ -388,11 +388,10 @@ TRACE_EVENT(kvm_inj_exception,
 		__entry->reinjected	= reinjected;
 	),
 
-	TP_printk("%s%s%s%s%s",
+	TP_printk("%s (0x%x)%s",
 		  __print_symbolic(__entry->exception, kvm_trace_sym_exc),
-		  !__entry->has_error ? "" : " (",
-		  !__entry->has_error ? "" : __print_symbolic(__entry->error_code, { }),
-		  !__entry->has_error ? "" : ")",
+		  /* FIXME: don't print error_code if not present */
+		  __entry->has_error ? __entry->error_code : 0,
 		  __entry->reinjected ? " [reinjected]" : "")
 );
 
