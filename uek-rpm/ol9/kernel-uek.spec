@@ -86,6 +86,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 #
 # standard kernel
 %define with_up        1
+# kernel-container
+%define with_container 1
 # kernel-debug
 %define with_debug     1
 # kernel-doc
@@ -250,6 +252,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 # don't build noarch kernels or headers (duh)
 %ifarch noarch
 %define with_up 0
+%define with_container 0
 %define with_compression 0
 %define with_headers 0
 %define with_bpftool 0
@@ -293,6 +296,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
+%define with_container 0
 %if %{with_64konly}
 %define with_64k_ps 1
 %define with_up 0
@@ -503,6 +507,21 @@ device drivers shipped with it are documented in these files.
 You'll want to install this package if you need a reference to the
 options that can be passed to Linux kernel modules at load time.
 
+
+%if %{with_container}
+%package -n kernel%{variant}-container
+Summary: The Linux kernel optimized for running inside a container
+Group: Development/System
+%description  -n kernel%{variant}-container
+Container kernel
+
+%package -n kernel%{variant}-container-debug
+Summary: Debug conmponents for the UEK container kernel
+Group: Development/System
+AutoReq: no
+%description  -n kernel%{variant}-container-debug
+Container kernel config file and System.map
+%endif
 
 %if %{with_headers}
 %package headers
@@ -949,6 +968,40 @@ cp_vmlinux()
   eu-strip --remove-comment -o "$2" "$1"
 }
 
+BuildContainerKernel() {
+    MakeTarget=$1
+    KernelImage=$2
+    Flavour=$3
+
+    ExtraVer="-%{release}.container"
+
+    echo BUILDING A KERNEL FOR ${Flavour} %{_target_cpu}...
+
+    perl -p -i -e "s/^EXTRAVERSION.*/EXTRAVERSION = ${ExtraVer}/" Makefile
+
+    make %{?make_opts} mrproper
+    cp configs/config-container .config
+
+    Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
+    make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
+    make %{?make_opts} CONFIG_DEBUG_SECTION_MISMATCH=y %{?_smp_mflags} ARCH=$Arch %{?sparse_mflags} || exit 1
+
+    # Install
+    KernelVer=%{kversion}-%{release}
+    KernelDir=%{buildroot}/usr/share/kata-containers
+
+    mkdir   -p ${KernelDir}
+
+    install -m 755 $KernelImage ${KernelDir}/vmlinuz-$KernelVer
+    ln -sf vmlinuz-$KernelVer ${KernelDir}/vmlinuz.container
+
+    install -m 755 vmlinux ${KernelDir}/vmlinux-$KernelVer
+    ln -sf vmlinux-$KernelVer ${KernelDir}/vmlinux.container
+
+    install -m 644 .config "${KernelDir}/config-${KernelVer}"
+    install -m 644 System.map "${KernelDir}/System.map-${KernelVer}"
+}
+
 BuildKernel() {
     MakeTarget=$1
     KernelImage=$2
@@ -1385,6 +1438,10 @@ mkdir -p $RPM_BUILD_ROOT/boot
 
 cd linux-%{version}-%{release}
 
+%if %{with_container}
+BuildContainerKernel %make_target %kernel_image container
+%endif
+
 %if %{with_debug}
 %if %{with_up}
 BuildKernel %make_target %kernel_image debug
@@ -1752,6 +1809,20 @@ fi
 %files headers
 %defattr(-,root,root)
 /usr/include/*
+%endif
+
+%if %{with_container}
+%files -n kernel%{variant}-container
+%dir /usr/share/kata-containers
+/usr/share/kata-containers/vmlinux-%{kversion}-%{release}
+/usr/share/kata-containers/vmlinux.container
+/usr/share/kata-containers/vmlinuz-%{kversion}-%{release}
+/usr/share/kata-containers/vmlinuz.container
+
+%files -n kernel%{variant}-container-debug
+%dir /usr/share/kata-containers
+/usr/share/kata-containers/config-%{kversion}-%{release}
+/usr/share/kata-containers/System.map-%{kversion}-%{release}
 %endif
 
 %if %{with_bpftool}
