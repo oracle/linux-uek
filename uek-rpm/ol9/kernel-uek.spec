@@ -462,6 +462,7 @@ Source46: filter-modules.sh
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
+Source1002: config-x86_64-container
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
 
@@ -915,6 +916,7 @@ ApplyPatch %{stable_patch_01}
 
 mkdir -p configs
 %ifarch x86_64
+	cp %{SOURCE1002} configs/config-container
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
 %endif
