@@ -397,6 +397,7 @@ BuildRequires: rsync
 BuildRequires: numactl-devel
 BuildRequires: dwarves >= 1.16
 BuildRequires: elfutils-libelf-devel
+BuildRequires: kernel-rpm-macros >= 185-11
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
