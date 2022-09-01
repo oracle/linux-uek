@@ -19,6 +19,7 @@
 #include <linux/ioctl.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
+#include <linux/pci.h>
 
 #define DEVICE_NAME	"otx-bphy-ctr"
 #define OTX_IOC_MAGIC	0xF3
@@ -30,6 +31,9 @@
  * interrupts' bitmask.
  */
 #define MAX_IRQ		64
+
+#define OTX2_BPHY_PCI_VENDOR_ID	0x177D
+#define OTX2_BPHY_PCI_DEVICE_ID	0xA089
 
 static unsigned long bphy_max_irq;
 static unsigned long bphy_irq_bmask;
@@ -258,8 +262,16 @@ static const struct file_operations fops = {
 
 static int __init otx_ctr_dev_init(void)
 {
-	struct arm_smccc_res res;
+	struct pci_dev *bphy_pdev;
 	int err = 0;
+
+	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
+				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
+	if (!bphy_pdev) {
+		pr_info("Couldn't find BPHY device %x\n",
+			OTX2_BPHY_PCI_DEVICE_ID);
+		return 0;
+	}
 
 	/* create a character device */
 	err = alloc_chrdev_region(&otx_dev, 1, 1, DEVICE_NAME);
@@ -321,6 +333,13 @@ cleanup_handler_err:
 
 static void __exit otx_ctr_dev_exit(void)
 {
+	struct pci_dev *bphy_pdev;
+
+	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
+				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
+	if (!bphy_pdev)
+		return;
+
 	device_destroy(otx_class, otx_dev);
 	class_destroy(otx_class);
 	cdev_del(otx_cdev);
