@@ -932,6 +932,8 @@ struct perf_sample_data {
 	u64				stack_user_size;
 
 	u64				phys_addr;
+
+	UEK_KABI_FILL_HOLE(u64 sample_flags)
 } ____cacheline_aligned;
 
 /* default value for data source */
@@ -945,6 +947,7 @@ static inline void perf_sample_data_init(struct perf_sample_data *data,
 					 u64 addr, u64 period)
 {
 	/* remaining struct members initialized in perf_prepare_sample() */
+	data->sample_flags = 0;
 	data->addr = addr;
 	data->raw  = NULL;
 	data->br_stack = NULL;
