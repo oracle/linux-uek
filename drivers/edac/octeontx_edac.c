@@ -50,7 +50,21 @@ static const struct of_device_id mcc_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, mcc_of_match);
 
-static struct octeontx_ghes_list ghes_list;
+static const struct of_device_id cpu_of_match[] = {
+	{.name = "core",},
+	{},
+};
+MODULE_DEVICE_TABLE(of, cpu_of_match);
+
+static const struct pci_device_id octeontx_edac_pci_tbl[] = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVICE_ID_OCTEONTX2_LMC) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVICE_ID_OCTEONTX2_MCC) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVICE_ID_OCTEONTX2_MDC) },
+	{ 0, },
+};
+
+
+static struct octeontx_ghes_list __ro_after_init ghes_list;
 
 
 #define otx_printk(level, fmt, arg...) edac_printk(level, "octeontx", fmt, ##arg)
@@ -291,7 +305,7 @@ static int octeontx_sdei_register(struct octeontx_ghes *ghes, sdei_event_callbac
 		return ret;
 	}
 
-	ghes->ring->reg = OCTEONTX_GHES_ERR_RING_SIG;
+	ghes->ring->reg = OCTEONTX_GHES_ERR_RING_SIG; //ghes->sdei_num;
 	/*Ensure that reg updated*/
 	wmb();
 
@@ -336,6 +350,15 @@ static int octeontx_device_sdei_callback(u32 event_id, struct pt_regs *regs, voi
 	return 0;
 }
 
+static int octeontx_cpu_sdei_callback(u32 event_id, struct pt_regs *regs, void *arg)
+{
+	struct octeontx_ghes *ghes = arg;
+
+	edac_queue_work(&ghes->work, msecs_to_jiffies(0));
+
+	return 0;
+}
+
 static void octeontx_edac_mc_wq(struct work_struct *work)
 {
 	struct delayed_work *dw = to_delayed_work(work);
@@ -345,7 +368,7 @@ static void octeontx_edac_mc_wq(struct work_struct *work)
 	struct octeontx_ghes_ring *ring = ghes->ring;
 	struct octeontx_ghes_ring_record rec;
 	struct cper_sec_mem_err *cper = NULL;
-	struct edac_raw_error_desc *edace = NULL;
+	struct edac_raw_error_desc *e = NULL;
 	u32 head, tail;
 
 	mutex_lock(&ghes->lock);
@@ -365,11 +388,12 @@ loop:
 
 	memcpy_fromio(&rec, &ring->records[tail], sizeof(rec));
 
-	edace = &mci->error_desc;
+	e = &mci->error_desc;
 	cper = &rec.cper.mem;
-	octeontx_edac_make_error_desc(cper, edace);
-	edace->msg = rec.msg;
-	edace->type = octeontx_edac_severity(rec.severity);
+	if (cper->validation_bits != CANARY)
+		octeontx_edac_make_error_desc(cper, e);
+	e->msg = rec.msg;
+	e->type = octeontx_edac_severity(rec.severity);
 
 	++tail;
 	if (tail >= ring->size)
@@ -378,7 +402,7 @@ loop:
 	/*Ensure that tail updated*/
 	wmb();
 
-	edac_raw_mc_handle_error(edace);
+	edac_raw_mc_handle_error(e);
 
 	if (head != tail)
 		goto loop;
@@ -449,10 +473,12 @@ loop:
 	/*Ensure that tail updated*/
 	wmb();
 
-	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
-		edac_device_handle_ue(edac_dev, 0, 0, msg);
-	else
-		edac_device_handle_ce(edac_dev, 0, 0, msg);
+	if (e->validation_bits != CANARY) {
+		if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
+			edac_device_handle_ue(edac_dev, 0, 0, msg);
+		else
+			edac_device_handle_ce(edac_dev, 0, 0, msg);
+	}
 
 	if (head != tail)
 		goto loop;
@@ -461,6 +487,123 @@ exit:
 	mutex_unlock(&ghes->lock);
 }
 
+static void octeontx_edac_cpu_wq(struct work_struct *work)
+{
+	struct delayed_work *dw = to_delayed_work(work);
+	struct octeontx_ghes *ghes = container_of(dw, struct octeontx_ghes, work);
+	struct edac_device_ctl_info *edac_dev = ghes->edac_dev;
+	struct octeontx_ghes_ring *ring = ghes->ring;
+	struct octeontx_ghes_ring_record rec;
+	struct processor_error *e = NULL;
+	struct cper_sec_proc_arm *desc = NULL;
+	struct cper_arm_err_info *info = NULL;
+	enum hw_event_mc_err_type type;
+	u32 head = 0, tail = 0;
+	char msg[SIZE] = {0};
+	int l = 0;
+	char *p = NULL;
+	int cpu = 0;
+
+	mutex_lock(&ghes->lock);
+
+loop:
+	head = ring->head;
+	tail = ring->tail;
+
+	/*Ensure that head updated*/
+	rmb();
+
+	otx_printk(KERN_DEBUG, "%s:[%08x] tail=%d, head=%d, size=%d\n",
+			ghes->name, ghes->sdei_num, tail, head, ghes->ring->size);
+
+	if (head == tail)
+		goto exit;
+
+	if (kstrtoint(&ghes->name[4], 10, &cpu) || cpu < 0 || cpu > 255)
+		cpu = 0;
+
+	memcpy_fromio(&rec, &ring->records[tail], sizeof(rec));
+	e = &rec.cper.core;
+	desc = &e->desc;
+	info = &e->info;
+
+	p = msg;
+	p[SIZE-1] = '\0';
+	l += snprintf(p, SIZE, "%s ", rec.msg);
+	if ((info->validation_bits & CPER_ARM_INFO_VALID_PHYSICAL_ADDR) && (l < SIZE))
+		l += snprintf(&p[l], SIZE - l, "paddr=0x%llx ", info->physical_fault_addr);
+	if ((info->validation_bits & CPER_ARM_INFO_VALID_VIRT_ADDR) && (l < SIZE))
+		l += snprintf(&p[l], SIZE - l, "vaddr=0x%llx ", info->virt_fault_addr);
+
+
+	if (l < SIZE)
+		p[l] = '\0';
+
+	type = octeontx_edac_severity(rec.severity);
+
+	++tail;
+	if (tail >= ring->size)
+		tail = 0;
+	ring->tail = tail;
+
+	/*Ensure that tail updated*/
+	wmb();
+
+	if (desc->validation_bits != CANARY) {
+		if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
+			edac_device_handle_ue(edac_dev, cpu, 0, msg);
+		else
+			edac_device_handle_ce(edac_dev, cpu, 0, msg);
+	}
+
+	if (head != tail)
+		goto loop;
+
+exit:
+	mutex_unlock(&ghes->lock);
+}
+
+
+static void octeontx_edac_enable_msix(struct pci_dev *pdev)
+{
+	u16 ctrl;
+
+	if ((pdev->msi_enabled) || (pdev->msix_enabled)) {
+		dev_err(&pdev->dev, "MSI(%d) or MSIX(%d) already enabled\n",
+			pdev->msi_enabled, pdev->msix_enabled);
+		return;
+	}
+
+	pdev->msix_cap = pci_find_capability(pdev, PCI_CAP_ID_MSIX);
+	if (pdev->msix_cap) {
+		pci_read_config_word(pdev, pdev->msix_cap + PCI_MSIX_FLAGS, &ctrl);
+		ctrl |= PCI_MSIX_FLAGS_ENABLE;
+		pci_write_config_word(pdev, pdev->msix_cap + PCI_MSIX_FLAGS, ctrl);
+
+		otx_printk(KERN_DEBUG, "Set MSI-X Enable for PCI dev %04d:%02d.%d\n",
+			pdev->bus->number, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
+	} else {
+		dev_err(&pdev->dev, "PCI dev %04d:%02d.%d missing MSIX capabilities\n",
+			pdev->bus->number, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
+	}
+}
+
+static void octeontx_edac_msix_init(void)
+{
+	const struct pci_device_id *pdevid;
+	struct pci_dev *pdev;
+	size_t i;
+
+	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL)
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(octeontx_edac_pci_tbl); i++) {
+		pdevid = &octeontx_edac_pci_tbl[i];
+		pdev = NULL;
+		while ((pdev = pci_get_device(pdevid->vendor, pdevid->device, pdev)))
+			octeontx_edac_enable_msix(pdev);
+	}
+}
 
 static int octeontx_ghes_of_match_resource(struct octeontx_ghes_list *list)
 {
@@ -524,6 +667,9 @@ static struct octeontx_ghes *octeontx_edac_get_ghes(const char *name)
 	struct octeontx_ghes *ghes = NULL;
 	int i = 0;
 
+	if (!name)
+		return NULL;
+
 	for (i = 0; i < ghes_list.count; i++) {
 		ghes = &ghes_list.ghes[i];
 		if (strcmp(name, ghes->name) == 0)
@@ -534,11 +680,11 @@ static struct octeontx_ghes *octeontx_edac_get_ghes(const char *name)
 }
 
 static int octeontx_edac_map_resource(struct platform_device *pdev,
-					struct octeontx_ghes **src)
+					struct octeontx_ghes **src, char *str)
 {
 	struct octeontx_ghes *ghes = NULL;
 	struct device *dev = &pdev->dev;
-	const char *name = dev->driver->of_match_table->name;
+	const char *name = str ? str : dev->driver->of_match_table->name;
 
 	ghes = octeontx_edac_get_ghes(name);
 	if (!ghes) {
@@ -633,7 +779,7 @@ static int octeontx_dss_probe(struct platform_device *pdev)
 	struct octeontx_ghes *ghes = NULL;
 	int ret = 0;
 
-	ret = octeontx_edac_map_resource(pdev, &ghes);
+	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
 	if (ret)
 		return ret;
 
@@ -703,7 +849,7 @@ static int octeontx_tad_probe(struct platform_device *pdev)
 	struct octeontx_ghes *ghes = NULL;
 	int ret = 0;
 
-	ret = octeontx_edac_map_resource(pdev, &ghes);
+	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
 	if (ret)
 		return ret;
 
@@ -717,7 +863,7 @@ static int octeontx_mdc_probe(struct platform_device *pdev)
 	struct octeontx_ghes *ghes = NULL;
 	int ret = 0;
 
-	ret = octeontx_edac_map_resource(pdev, &ghes);
+	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
 	if (ret)
 		return ret;
 
@@ -736,13 +882,75 @@ static int octeontx_mcc_probe(struct platform_device *pdev)
 	struct octeontx_ghes *ghes = NULL;
 	int ret = 0;
 
-	ret = octeontx_edac_map_resource(pdev, &ghes);
+	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
 	if (ret)
 		return ret;
 
 	ghes->ecc_cap = OCTEONTX_MCC_EINJ_CAP;
 
 	ret = octeontx_edac_mc_init(pdev, ghes);
+
+	return ret;
+}
+
+static int octeontx_cpu_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct octeontx_ghes *ghes = NULL;
+	struct edac_device_ctl_info *edac_dev = NULL;
+	char *name = (char *)dev->driver->of_match_table->name;
+	int idx = 0;
+	int ret = 0;
+	int i = 0;
+	int cores = 0;
+
+	for (i = 0; i < ghes_list.count; i++) {
+		ghes = &ghes_list.ghes[i];
+		if (!strncmp(name, ghes->name, 4))
+			cores++;
+	}
+
+	idx = edac_device_alloc_index();
+
+	edac_dev = edac_device_alloc_ctl_info(0, "cpu", cores, name, 1, 0, NULL, 0, idx);
+	if (!edac_dev)
+		return -ENOMEM;
+
+	edac_dev->dev = dev;
+	platform_set_drvdata(pdev, edac_dev);
+	edac_dev->mod_name = dev->driver->name;
+	edac_dev->ctl_name = name;
+	edac_dev->dev_name = name;
+	edac_dev->edac_check = NULL;
+
+	ret = edac_device_add_device(edac_dev);
+	if (ret)
+		goto err0;
+
+	for (i = 0; i < ghes_list.count; i++) {
+		ghes = &ghes_list.ghes[i];
+		if (strncmp(name, ghes->name, 4))
+			continue;
+
+		ret = octeontx_edac_map_resource(pdev, &ghes, ghes->name);
+		if (ret)
+			continue;
+
+		ghes->edac_dev = edac_dev;
+
+		INIT_DELAYED_WORK(&ghes->work, octeontx_edac_cpu_wq);
+		edac_stop_work(&ghes->work);
+
+		octeontx_sdei_register(ghes, octeontx_cpu_sdei_callback);
+	}
+
+	otx_printk(KERN_DEBUG, "Register %d %s\n", cores, edac_dev->ctl_name);
+
+	return 0;
+
+err0:
+	dev_err(dev, "Unable register %d\n", ret);
+	edac_device_free_ctl_info(edac_dev);
 
 	return ret;
 }
@@ -768,6 +976,27 @@ static int octeontx_mc_remove(struct platform_device *pdev)
 	octeontx_sdei_unregister(pvt->ghes);
 	edac_mc_del_mc(&pdev->dev);
 	edac_mc_free(mci);
+	platform_device_unregister(pdev);
+
+	return 0;
+}
+
+static int octeontx_cpu_remove(struct platform_device *pdev)
+{
+	struct edac_device_ctl_info *edac_dev = platform_get_drvdata(pdev);
+	struct device *dev = &pdev->dev;
+	char *name = (char *)dev->driver->of_match_table->name;
+	struct octeontx_ghes *ghes = NULL;
+	int i = 0;
+
+	for (i = 0; i < ghes_list.count; i++) {
+		ghes = &ghes_list.ghes[i];
+		if (strncmp(name, ghes->name, 4))
+			continue;
+		octeontx_sdei_unregister(ghes);
+	}
+	edac_device_del_device(&pdev->dev);
+	edac_device_free_ctl_info(edac_dev);
 	platform_device_unregister(pdev);
 
 	return 0;
@@ -809,12 +1038,22 @@ static struct platform_driver mcc_edac_drv = {
 	}
 };
 
+static struct platform_driver cpu_edac_drv = {
+	.probe = octeontx_cpu_probe,
+	.remove = octeontx_cpu_remove,
+	.driver = {
+		.name = "cpu_edac",
+		.of_match_table = cpu_of_match,
+	}
+};
+
 static int __init octeontx_edac_init(void)
 {
 	struct platform_device *mdc = NULL;
 	struct platform_device *dss = NULL;
 	struct platform_device *tad = NULL;
 	struct platform_device *mcc = NULL;
+	struct platform_device *cpu = NULL;
 	int ret = 0;
 
 	ret = octeontx_ghes_of_match_resource(&ghes_list);
@@ -841,6 +1080,15 @@ static int __init octeontx_edac_init(void)
 			platform_driver_unregister(&tad_edac_drv);
 		}
 
+		ret = platform_driver_register(&cpu_edac_drv);
+		if (!ret)
+			cpu = platform_device_register_simple(cpu_edac_drv.driver.name,
+					PLATFORM_DEVID_NONE, NULL, 0);
+		if (!ret && IS_ERR(cpu)) {
+			pr_err("Unable register %s %ld\n", cpu_edac_drv.driver.name, PTR_ERR(cpu));
+			platform_driver_unregister(&cpu_edac_drv);
+		}
+
 	} else {
 		ret = platform_driver_register(&mcc_edac_drv);
 		if (!ret)
@@ -850,6 +1098,8 @@ static int __init octeontx_edac_init(void)
 			pr_err("Unable register %s %ld\n", mcc_edac_drv.driver.name, PTR_ERR(mcc));
 			platform_driver_unregister(&mcc_edac_drv);
 		}
+
+		octeontx_edac_msix_init();
 	}
 
 	ret = platform_driver_register(&mdc_edac_drv);
@@ -875,6 +1125,7 @@ static void __exit octeontx_edac_exit(void)
 	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL) {
 		platform_driver_unregister(&dss_edac_drv);
 		platform_driver_unregister(&tad_edac_drv);
+		platform_driver_unregister(&cpu_edac_drv);
 	} else {
 		platform_driver_unregister(&mcc_edac_drv);
 	}
@@ -886,6 +1137,7 @@ static void __exit octeontx_edac_exit(void)
 module_init(octeontx_edac_init);
 module_exit(octeontx_edac_exit);
 
+MODULE_AUTHOR("Vasyl Gomonovych <vgomonovych@marvell.com>");
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION("OcteonTX2 / CN10K EDAC driver");
 MODULE_LICENSE("GPL");
