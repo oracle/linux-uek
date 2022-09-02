@@ -14,8 +14,10 @@
 
 /* PTP register offsets */
 #define MIO_PTP_CLOCK_CFG		0x0
+#define PTP_CLOCK_CFG_CKOUT_EN		BIT(24)
 #define MIO_PTP_CLOCK_HI		0x10
 #define MIO_PTP_TIMESTAMP		0x20
+#define MIO_PTP_CKOUT_THRESH_HI		0x38
 #define MIO_PTP_PPS_THRESH_HI		0x58ULL
 #define MIO_PTP_CLOCK_COMP		0x18ULL
 #define MIO_PTP_CLOCK_SEC		0xD0ULL

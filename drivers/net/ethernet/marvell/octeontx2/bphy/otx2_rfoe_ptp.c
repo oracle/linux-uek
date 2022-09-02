@@ -14,9 +14,18 @@ static int otx2_rfoe_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 							struct
 							otx2_rfoe_ndev_priv,
 							ptp_clock_info);
+	u64 offset;
 
 	mutex_lock(&priv->ptp_lock);
 	timecounter_adjtime(&priv->time_counter, delta);
+	/* Adjust the offset that is shared with the host PHC driver
+	 * whenever it is adjusted.  This offset is initialized
+	 * when the timecounter is initialized, and updated here where an
+	 * operation that adjusts the absolute value of the timecounter is
+	 * performed.
+	 */
+	offset = readq(priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
+	writeq(offset + delta, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
 	mutex_unlock(&priv->ptp_lock);
 
 	return 0;
@@ -112,6 +121,18 @@ static int otx2_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
 
 	mutex_lock(&priv->ptp_lock);
 	timecounter_init(&priv->time_counter, &priv->cycle_counter, nsec);
+	/* We need to share an offset in ns from the PTP hardware counter
+	 * and the UTC time so that the host PHC driver using the Octeon
+	 * PTP counter can get the same real time as this PTP clock
+	 * represents.  This is a combination of the timecounter fields
+	 * nsec and cycle_last, and we can use timecounter_cyc2time() to
+	 * generate this offset.
+	 * We get the time in ns of the counter value of 0.  The host will
+	 * then read the cycle counter, and add this value to the counter
+	 * to obtain the real time as maintained by this timecounter.
+	 */
+	nsec = timecounter_cyc2time(&priv->time_counter, 0);
+	writeq(nsec, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
 	mutex_unlock(&priv->ptp_lock);
 
 	return 0;
@@ -210,6 +231,7 @@ int otx2_rfoe_ptp_init(struct otx2_rfoe_ndev_priv *priv)
 {
 	struct cyclecounter *cc;
 	int err;
+	u64 tmp;
 
 	cc = &priv->cycle_counter;
 	cc->read = otx2_rfoe_ptp_cc_read;
@@ -237,6 +259,19 @@ int otx2_rfoe_ptp_init(struct otx2_rfoe_ndev_priv *priv)
 		err = PTR_ERR(priv->ptp_clock);
 		return err;
 	}
+	/* Enable PTP CKOUT, as we use the MIO_PTP_CKOUT_THRESH_HI register
+	 * to share the offset to be added to MIO_PTP_CLOCK_HI to get UTC
+	 * time in nanoseconds.  The MIO_PTP_CKOUT_THRESH_HI is updated
+	 * whenever any changes are made to the offset through the
+	 * _settime() or _adjtime() functions.
+	 *
+	 */
+	tmp = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_CFG);
+	writeq(tmp | PTP_CLOCK_CFG_CKOUT_EN,
+	       priv->ptp_reg_base + MIO_PTP_CLOCK_CFG);
+	tmp = timecounter_cyc2time(&priv->time_counter, 0);
+	writeq(tmp, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
+
 
 	mutex_init(&priv->ptp_lock);
 
