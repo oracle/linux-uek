@@ -14,6 +14,10 @@
 
 #define CN10K_CPU_MODEL			(0xd49)
 
+#define PCI_DEVICE_ID_OCTEONTX2_LMC	(0xa022)
+#define PCI_DEVICE_ID_OCTEONTX2_MCC	(0xa070)
+#define PCI_DEVICE_ID_OCTEONTX2_MDC	(0xa073)
+
 #define OCTEONTX2_EDAC_INJECT		(0xc2000c0b)
 #define CN10K_EDAC_INJECT		(0xc2000b10)
 
@@ -32,6 +36,7 @@
 #define SIZE	256
 #define EDAC_FW_REC_SIZE	32
 #define NAME_SZ	8
+#define CANARY	0xa5a5a5a5a5a5a5a5
 
 struct processor_error {
 	struct cper_sec_proc_arm desc;
@@ -70,6 +75,7 @@ struct octeontx_ghes {
 	u32 ecc_cap;
 	struct mutex lock;
 	char name[NAME_SZ];
+	struct delayed_work work;
 };
 
 struct octeontx_ghes_list {
