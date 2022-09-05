@@ -314,6 +314,7 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	struct ptp_tstamp_skb *ts_skb;
 	u16 psm_queue_id, queue_space;
 	struct sk_buff *skb = NULL;
+	unsigned int pkt_len = 0;
 	struct list_head *head;
 	unsigned long flags;
 	u64 regval;
@@ -390,21 +391,20 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 
 	/* update length and block size in jd dma cfg word */
 	jd_cfg_ptr = job_entry->jd_cfg_ptr;
-	jd_cfg_ptr->cfg3.pkt_len = skb->len;
 	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
 				job_entry->rd_dma_ptr;
-	jd_dma_cfg_word_0->block_size = (((skb->len + 15) >> 4) * 4);
 
+	pkt_len = skb->len;
 	/* Copy packet data to dma buffer */
 	if (priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
 		memcpy(job_entry->pkt_dma_addr, &tx_mem, sizeof(tx_mem));
 		memcpy(job_entry->pkt_dma_addr + sizeof(tx_mem), skb->data, skb->len);
+		pkt_len += sizeof(tx_mem);
 	} else {
 		memcpy(job_entry->pkt_dma_addr, skb->data, skb->len);
 	}
-
-	jd_cfg_ptr->cfg3.pkt_len = skb->len + sizeof(tx_mem);
-	jd_dma_cfg_word_0->block_size = (((skb->len + 15 + sizeof(tx_mem)) >> 4) * 4);
+	jd_cfg_ptr->cfg3.pkt_len = pkt_len;
+	jd_dma_cfg_word_0->block_size = (((pkt_len + 15) >> 4) * 4);
 
 	/* make sure that all memory writes are completed */
 	dma_wmb();
@@ -899,6 +899,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	struct tx_job_entry *job_entry;
 	struct ptp_tstamp_skb *ts_skb;
 	int psm_queue_id, queue_space;
+	unsigned int pkt_len = 0;
 	unsigned long flags;
 	struct ethhdr *eth;
 	int pkt_type = 0;
@@ -1040,10 +1041,8 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 
 	/* update length and block size in jd dma cfg word */
 	jd_cfg_ptr = job_entry->jd_cfg_ptr;
-	jd_cfg_ptr->cfg3.pkt_len = skb->len;
 	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
 						job_entry->rd_dma_ptr;
-	jd_dma_cfg_word_0->block_size = (((skb->len + 15) >> 4) * 4);
 
 	/* update rfoe_mode and lmac id for non-ptp (shared) psm job entry */
 	if (pkt_type != PACKET_TYPE_PTP) {
@@ -1054,18 +1053,19 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 			jd_cfg_ptr->cfg.rfoe_mode = 0;
 	}
 
+	pkt_len = skb->len;
 	/* Copy packet data to dma buffer */
 	if (pkt_type == PACKET_TYPE_PTP &&
 	    priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
 		memcpy(job_entry->pkt_dma_addr, &tx_mem, sizeof(tx_mem));
 		memcpy(job_entry->pkt_dma_addr + sizeof(tx_mem),
 		       skb->data, skb->len);
-
-		jd_cfg_ptr->cfg3.pkt_len = skb->len + sizeof(tx_mem);
-		jd_dma_cfg_word_0->block_size = (((skb->len + 15 + sizeof(tx_mem)) >> 4) * 4);
+		pkt_len += sizeof(tx_mem);
 	} else {
 		memcpy(job_entry->pkt_dma_addr, skb->data, skb->len);
 	}
+	jd_cfg_ptr->cfg3.pkt_len = pkt_len;
+	jd_dma_cfg_word_0->block_size = (((pkt_len + 15) >> 4) * 4);
 
 	/* make sure that all memory writes are completed */
 	dma_wmb();
