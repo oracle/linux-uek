@@ -1044,8 +1044,14 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "successfully registered char device, major=%d\n",
 		 MAJOR(cdev_priv->cdev.dev));
 
-	err = request_irq(cdev_priv->irq, otx2_bphy_intr_handler, 0,
-			  "otx2_bphy_int", cdev_priv);
+	if (bphy_pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A ||
+	    bphy_pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B)
+		err = request_irq(cdev_priv->irq, otx2_bphy_intr_handler, 0,
+				  "cnf10k_bphy_int", cdev_priv);
+	else
+		err = request_irq(cdev_priv->irq, otx2_bphy_intr_handler, 0,
+				  "otx2_bphy_int", cdev_priv);
+
 	if (err) {
 		dev_err(&pdev->dev, "can't assign irq %d\n", cdev_priv->irq);
 		goto out_device_destroy;
@@ -1054,7 +1060,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 	if (cdev_priv->gpint2_irq) {
 		err = request_irq(cdev_priv->gpint2_irq,
 				  cnf10k_gpint2_intr_handler, 0,
-				  "cn10k_bphy_int", cdev_priv);
+				  "cnf10k_bphy_int2", cdev_priv);
 		if (err) {
 			dev_err(&pdev->dev, "can't assign irq %d\n",
 				cdev_priv->gpint2_irq);
@@ -1110,6 +1116,8 @@ static int otx2_bphy_remove(struct platform_device *pdev)
 
 	/* free irq */
 	free_irq(cdev_priv->irq, cdev_priv);
+	if (cdev_priv->gpint2_irq)
+		free_irq(cdev_priv->gpint2_irq, cdev_priv);
 
 	/* char device cleanup */
 	device_destroy(otx2rfoe_class, cdev_priv->cdev.dev);
