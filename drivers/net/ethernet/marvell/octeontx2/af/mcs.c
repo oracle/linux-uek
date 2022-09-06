@@ -727,10 +727,101 @@ static void mcs_rx_pn_thresh_reached_handler(struct mcs *mcs)
 	}
 }
 
+static void mcs_rx_misc_intr_handler(struct mcs *mcs, u64 intr)
+{
+	struct mcs_intr_event event = {0};
+
+	event.mcs_id = mcs->mcs_id;
+	event.pcifunc = mcs->pf_map[0];
+
+	if (intr & MCS_CPM_RX_INT_SECTAG_V_EQ1)
+		event.intr_mask = MCS_CPM_RX_SECTAG_V_EQ1_INT;
+	if (intr & MCS_CPM_RX_INT_SECTAG_E_EQ0_C_EQ1)
+		event.intr_mask |= MCS_CPM_RX_SECTAG_E_EQ0_C_EQ1_INT;
+	if (intr & MCS_CPM_RX_INT_SL_GTE48)
+		event.intr_mask |= MCS_CPM_RX_SECTAG_SL_GTE48_INT;
+	if (intr & MCS_CPM_RX_INT_ES_EQ1_SC_EQ1)
+		event.intr_mask |= MCS_CPM_RX_SECTAG_ES_EQ1_SC_EQ1_INT;
+	if (intr & MCS_CPM_RX_INT_SC_EQ1_SCB_EQ1)
+		event.intr_mask |= MCS_CPM_RX_SECTAG_SC_EQ1_SCB_EQ1_INT;
+	if (intr & MCS_CPM_RX_INT_PACKET_XPN_EQ0)
+		event.intr_mask |= MCS_CPM_RX_PACKET_XPN_EQ0_INT;
+
+	mcs_add_intr_wq_entry(mcs, &event);
+}
+
+static void mcs_tx_misc_intr_handler(struct mcs *mcs, u64 intr)
+{
+	struct mcs_intr_event event = {0};
+
+	event.mcs_id = mcs->mcs_id;
+	event.pcifunc = mcs->pf_map[0];
+
+	if (intr & MCS_CPM_TX_INT_SA_NOT_VALID)
+		event.intr_mask = MCS_CPM_TX_SA_NOT_VALID_INT;
+
+	mcs_add_intr_wq_entry(mcs, &event);
+}
+
+static void mcs_bbe_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction dir)
+{
+	struct mcs_intr_event event = {0};
+	int i;
+
+	if (!(intr & MCS_BBE_INT_MASK))
+		return;
+
+	event.mcs_id = mcs->mcs_id;
+	event.pcifunc = mcs->pf_map[0];
+
+	for (i = 0; i < MCS_MAX_BBE_INT; i++) {
+		if (!(intr & BIT_ULL(i)))
+			continue;
+		/* Lower nibble denotes data fifo overflow interrupts and
+		 * upper nibble indicates policy fifo overflow interrupts.
+		 */
+		if (intr & 0xF)
+			event.intr_mask = (dir == MCS_RX) ?
+					  MCS_BBE_RX_DFIFO_OVERFLOW_INT :
+					  MCS_BBE_TX_DFIFO_OVERFLOW_INT;
+		else
+			event.intr_mask = (dir == MCS_RX) ?
+					  MCS_BBE_RX_PLFIFO_OVERFLOW_INT :
+					  MCS_BBE_RX_PLFIFO_OVERFLOW_INT;
+
+		/* Notify the lmac_id info which ran into BBE fatal error */
+		event.lmac_id = i & 0x3;
+		mcs_add_intr_wq_entry(mcs, &event);
+	}
+}
+
+static void mcs_pab_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction dir)
+{
+	struct mcs_intr_event event = {0};
+	int i;
+
+	if (!(intr & MCS_PAB_INT_MASK))
+		return;
+
+	event.mcs_id = mcs->mcs_id;
+	event.pcifunc = mcs->pf_map[0];
+
+	for (i = 0; i < MCS_MAX_PAB_INT; i++) {
+		if (!(intr & BIT_ULL(i)))
+			continue;
+		event.intr_mask = (dir == MCS_RX) ? MCS_PAB_RX_CHAN_OVERFLOW_INT :
+				  MCS_PAB_TX_CHAN_OVERFLOW_INT;
+
+		/* Notify the lmac_id info which ran into PAB fatal error */
+		event.lmac_id = i;
+		mcs_add_intr_wq_entry(mcs, &event);
+	}
+}
+
 static irqreturn_t mcs_ip_intr_handler(int irq, void *mcs_irq)
 {
 	struct mcs *mcs = (struct mcs *)mcs_irq;
-	u64 intr, cpm_intr;
+	u64 intr, cpm_intr, bbe_intr, pab_intr;
 
 	/* Disable and clear the interrupt */
 	mcs_reg_write(mcs, MCSX_IP_INT_ENA_W1C, BIT_ULL(0));
@@ -747,6 +838,11 @@ static irqreturn_t mcs_ip_intr_handler(int irq, void *mcs_irq)
 		if (cpm_intr & MCS_CPM_RX_INT_PN_THRESH_REACHED)
 			mcs_rx_pn_thresh_reached_handler(mcs);
 
+		if (cpm_intr & (MCS_CPM_RX_INT_SECTAG_V_EQ1 | MCS_CPM_RX_INT_SECTAG_E_EQ0_C_EQ1 |
+			MCS_CPM_RX_INT_SL_GTE48	| MCS_CPM_RX_INT_ES_EQ1_SC_EQ1 |
+			MCS_CPM_RX_INT_SC_EQ1_SCB_EQ1 | MCS_CPM_RX_INT_PACKET_XPN_EQ0))
+			mcs_rx_misc_intr_handler(mcs, cpm_intr);
+
 		/* Clear the interrupt */
 		mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_RX_INT, cpm_intr);
 	}
@@ -761,10 +857,53 @@ static irqreturn_t mcs_ip_intr_handler(int irq, void *mcs_irq)
 			else
 				cn10kb_mcs_tx_pn_thresh_reached_handler(mcs);
 		}
+
+		if (cpm_intr & MCS_CPM_TX_INT_SA_NOT_VALID)
+			mcs_tx_misc_intr_handler(mcs, cpm_intr);
+
 		/* Clear the interrupt */
 		mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_INT, cpm_intr);
 	}
-	/* TODO: PAB and BEE block interrupts */
+
+	/* BBE RX */
+	if (intr & MCS_BBE_RX_INT_ENA) {
+		bbe_intr = mcs_reg_read(mcs, MCSX_BBE_RX_SLAVE_BBE_INT);
+		mcs_bbe_intr_handler(mcs, bbe_intr, MCS_RX);
+
+		/* Clear the interrupt */
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_BBE_INT_INTR_RW, 0);
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_BBE_INT, bbe_intr);
+	}
+
+	/* BBE TX */
+	if (intr & MCS_BBE_TX_INT_ENA) {
+		bbe_intr = mcs_reg_read(mcs, MCSX_BBE_TX_SLAVE_BBE_INT);
+		mcs_bbe_intr_handler(mcs, bbe_intr, MCS_TX);
+
+		/* Clear the interrupt */
+		mcs_reg_write(mcs, MCSX_BBE_TX_SLAVE_BBE_INT_INTR_RW, 0);
+		mcs_reg_write(mcs, MCSX_BBE_TX_SLAVE_BBE_INT, bbe_intr);
+	}
+
+	/* PAB RX */
+	if (intr & MCS_PAB_RX_INT_ENA) {
+		pab_intr = mcs_reg_read(mcs, MCSX_PAB_RX_SLAVE_PAB_INT);
+		mcs_pab_intr_handler(mcs, pab_intr, MCS_RX);
+
+		/* Clear the interrupt */
+		mcs_reg_write(mcs, MCSX_PAB_RX_SLAVE_PAB_INT_INTR_RW, 0);
+		mcs_reg_write(mcs, MCSX_PAB_RX_SLAVE_PAB_INT, pab_intr);
+	}
+
+	/* PAB TX */
+	if (intr & MCS_PAB_TX_INT_ENA) {
+		pab_intr = mcs_reg_read(mcs, MCSX_PAB_TX_SLAVE_PAB_INT);
+		mcs_pab_intr_handler(mcs, pab_intr, MCS_TX);
+
+		/* Clear the interrupt */
+		mcs_reg_write(mcs, MCSX_PAB_TX_SLAVE_PAB_INT_INTR_RW, 0);
+		mcs_reg_write(mcs, MCSX_PAB_TX_SLAVE_PAB_INT, pab_intr);
+	}
 
 	/* Enable the interrupt */
 	mcs_reg_write(mcs, MCSX_IP_INT_ENA_W1S, BIT_ULL(0));
@@ -852,11 +991,18 @@ static int mcs_register_interrupts(struct mcs *mcs)
 
 	/* Enable CPM Rx/Tx interrupts */
 	mcs_reg_write(mcs, MCSX_TOP_SLAVE_INT_SUM_ENB,
-		      MCS_CPM_RX_INT_ENA | MCS_CPM_TX_INT_ENA);
+			MCS_CPM_RX_INT_ENA | MCS_CPM_TX_INT_ENA |
+			MCS_BBE_RX_INT_ENA | MCS_BBE_TX_INT_ENA |
+			MCS_PAB_RX_INT_ENA | MCS_PAB_TX_INT_ENA);
 
-	/* Enable PN thresh interrupt */
-	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_INT_ENB, BIT_ULL(1));
-	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_RX_INT_ENB, BIT_ULL(6));
+	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_INT_ENB, 0x7);
+	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_RX_INT_ENB, 0x7f);
+
+	mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_BBE_INT_ENB, 0xff);
+	mcs_reg_write(mcs, MCSX_BBE_TX_SLAVE_BBE_INT_ENB, 0xff);
+
+	mcs_reg_write(mcs, MCSX_PAB_RX_SLAVE_PAB_INT_ENB, 0xff);
+	mcs_reg_write(mcs, MCSX_PAB_TX_SLAVE_PAB_INT_ENB, 0xff);
 
 	mcs->tx_sa_active = alloc_mem(mcs, mcs->hw->sc_entries);
 	if (!mcs->tx_sa_active)

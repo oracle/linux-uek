@@ -63,6 +63,8 @@ int mcs_add_intr_wq_entry(struct mcs *mcs, struct mcs_intr_event *event)
 	else
 		pfvf = &mcs->pf[rvu_get_pf(pcifunc)];
 
+	event->intr_mask &= pfvf->intr_mask;
+
 	/* Check PF/VF interrupt notification is enabled */
 	if (!(pfvf->intr_mask && event->intr_mask))
 		return 0;
@@ -95,6 +97,7 @@ static int mcs_notify_pfvf(struct mcs_intr_event *event, struct rvu *rvu)
 	req->intr_mask = event->intr_mask;
 	req->sa_id = event->sa_id;
 	req->hdr.pcifunc = event->pcifunc;
+	req->lmac_id = event->lmac_id;
 	otx2_mbox_msg_send(&rvu->afpf_wq_info.mbox_up, pf);
 
 	if (err)
@@ -148,6 +151,7 @@ int rvu_mbox_handler_mcs_intr_cfg(struct rvu *rvu,
 	else
 		pfvf = &mcs->pf[rvu_get_pf(pcifunc)];
 
+	mcs->pf_map[0] = pcifunc;
 	pfvf->intr_mask = req->intr_mask;
 
 	/* Atleast 1 bit is set enable interrupts */
