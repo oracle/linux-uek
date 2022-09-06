@@ -180,6 +180,22 @@ int rvu_mbox_handler_mcs_get_hw_info(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_mcs_set_pn_threshold(struct rvu *rvu,
+					  struct mcs_set_pn_threshold *req,
+					  struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	mcs_pn_threshold_set(mcs, req);
+
+	return 0;
+}
+
 int rvu_mbox_handler_mcs_clear_stats(struct rvu *rvu,
 				     struct mcs_clear_stats *req,
 				     struct msg_rsp *rsp)

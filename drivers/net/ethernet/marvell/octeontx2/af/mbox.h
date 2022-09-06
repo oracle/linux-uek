@@ -393,6 +393,8 @@ M(MCS_GET_PORT_STATS,	0xa010, mcs_get_port_stats, mcs_stats_req,		\
 M(MCS_CLEAR_STATS,	0xa011,	mcs_clear_stats, mcs_clear_stats, msg_rsp)	\
 M(MCS_INTR_CFG,		0xa012, mcs_intr_cfg, mcs_intr_cfg, msg_rsp)		\
 M(MCS_SET_LMAC_MODE,	0xa013, mcs_set_lmac_mode, mcs_set_lmac_mode, msg_rsp)	\
+M(MCS_SET_PN_THRESHOLD, 0xa014, mcs_set_pn_threshold, mcs_set_pn_threshold,	\
+				msg_rsp)					\
 
 /* Messages initiated by AF (range 0xC00 - 0xEFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -2452,6 +2454,15 @@ struct mcs_intr_info {
 enum mcs_af_status {
 	MCS_AF_ERR_INVALID_MCSID	= -1201,
 	MCS_AF_ERR_NOT_MAPPED		= -1202,
+};
+
+struct mcs_set_pn_threshold {
+	struct mbox_msghdr hdr;
+	u64 threshold;
+	u8 xpn; /* '1' for setting xpn threshold */
+	u8 mcs_id;
+	u8 dir;
+	u64 rsvd;
 };
 
 #endif /* MBOX_H */

@@ -1054,6 +1054,18 @@ void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id, u8 mode)
 	mcs_reg_write(mcs, reg, (u64)mode);
 }
 
+void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn)
+{
+	u64 reg;
+
+	if (pn->dir == MCS_RX)
+		reg = pn->xpn ? MCSX_CPM_RX_SLAVE_XPN_THRESHOLD : MCSX_CPM_RX_SLAVE_PN_THRESHOLD;
+	else
+		reg = pn->xpn ? MCSX_CPM_TX_SLAVE_XPN_THRESHOLD : MCSX_CPM_TX_SLAVE_PN_THRESHOLD;
+
+	mcs_reg_write(mcs, reg, pn->threshold);
+}
+
 void cn10kb_mcs_parser_cfg(struct mcs *mcs)
 {
 	u64 reg, val;

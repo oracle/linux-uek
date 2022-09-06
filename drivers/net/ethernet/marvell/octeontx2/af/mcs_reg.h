@@ -293,6 +293,14 @@
 	offset += (a) * 0x8ull;				\
 	offset; })
 
+#define MCSX_CPM_RX_SLAVE_XPN_THRESHOLD	({		\
+	u64 offset;					\
+							\
+	offset = 0x23e40ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0xb90ull;			\
+	offset; })
+
 #define MCSX_CPM_RX_SLAVE_PN_THRESHOLD	({		\
 	u64 offset;					\
 							\
@@ -390,6 +398,14 @@
 	if (mcs->hw->mcs_blks > 1)			\
 		offset = 0xa3a0ull;			\
 	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_CPM_TX_SLAVE_XPN_THRESHOLD ({		\
+	u64 offset;					\
+							\
+	offset = 0x3e4b0ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x5528ull;			\
 	offset; })
 
 #define MCSX_CPM_TX_SLAVE_PN_THRESHOLD ({		\
