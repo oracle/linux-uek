@@ -553,6 +553,141 @@ void mcs_clear_secy_plcy(struct mcs *mcs, int secy_id, int dir)
 	}
 }
 
+int mcs_alloc_ctrlpktrule(struct rsrc_bmap *rsrc, u16 *pf_map, u16 offset, u16 pcifunc)
+{
+	int rsrc_id;
+
+	if (!rsrc->bmap)
+		return -EINVAL;
+
+	rsrc_id = bitmap_find_next_zero_area(rsrc->bmap, rsrc->max, offset, 1, 0);
+	if (rsrc_id >= rsrc->max)
+		return -ENOSPC;
+
+	bitmap_set(rsrc->bmap, rsrc_id, 1);
+	pf_map[rsrc_id] = pcifunc;
+
+	return rsrc_id;
+}
+
+int mcs_free_ctrlpktrule(struct mcs *mcs, struct mcs_free_ctrl_pkt_rule_req *req)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	struct mcs_rsrc_map *map;
+	u64 dis, reg;
+	int id, rc;
+
+	reg = (req->dir == MCS_RX) ? MCSX_PEX_RX_SLAVE_RULE_ENABLE : MCSX_PEX_TX_SLAVE_RULE_ENABLE;
+	map = (req->dir == MCS_RX) ? &mcs->rx : &mcs->tx;
+
+	if (req->all) {
+		for (id = 0; id < map->ctrlpktrule.max; id++) {
+			if (map->ctrlpktrule2pf_map[id] != pcifunc)
+				continue;
+			mcs_free_rsrc(&map->ctrlpktrule, map->ctrlpktrule2pf_map, id, pcifunc);
+			dis = mcs_reg_read(mcs, reg);
+			dis &= ~BIT_ULL(id);
+			mcs_reg_write(mcs, reg, dis);
+		}
+		return 0;
+	}
+
+	rc = mcs_free_rsrc(&map->ctrlpktrule, map->ctrlpktrule2pf_map, req->rule_idx, pcifunc);
+	dis = mcs_reg_read(mcs, reg);
+	dis &= ~BIT_ULL(req->rule_idx);
+	mcs_reg_write(mcs, reg, dis);
+
+	return rc;
+}
+
+int mcs_ctrlpktrule_write(struct mcs *mcs, struct mcs_ctrl_pkt_rule_write_req *req)
+{
+	u64 reg, enb;
+	u64 idx;
+
+	switch (req->rule_type) {
+	case MCS_CTRL_PKT_RULE_TYPE_ETH:
+		req->data0 &= GENMASK(15, 0);
+		if (req->data0 != ETH_P_PAE)
+			return -EINVAL;
+
+		idx = req->rule_idx - MCS_CTRLPKT_ETYPE_RULE_OFFSET;
+		reg = (req->dir == MCS_RX) ? MCSX_PEX_RX_SLAVE_RULE_ETYPE_CFGX(idx) :
+		      MCSX_PEX_TX_SLAVE_RULE_ETYPE_CFGX(idx);
+
+		mcs_reg_write(mcs, reg, req->data0);
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_DA:
+		if (!(req->data0 & BIT_ULL(40)))
+			return -EINVAL;
+
+		idx = req->rule_idx - MCS_CTRLPKT_DA_RULE_OFFSET;
+		reg = (req->dir == MCS_RX) ? MCSX_PEX_RX_SLAVE_RULE_DAX(idx) :
+		      MCSX_PEX_TX_SLAVE_RULE_DAX(idx);
+
+		mcs_reg_write(mcs, reg, req->data0 & GENMASK_ULL(47, 0));
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_RANGE:
+		if (!(req->data0 & BIT_ULL(40)) || !(req->data1 & BIT_ULL(40)))
+			return -EINVAL;
+
+		idx = req->rule_idx - MCS_CTRLPKT_DA_RANGE_RULE_OFFSET;
+		if (req->dir == MCS_RX) {
+			reg = MCSX_PEX_RX_SLAVE_RULE_DA_RANGE_MINX(idx);
+			mcs_reg_write(mcs, reg, req->data0 & GENMASK_ULL(47, 0));
+			reg = MCSX_PEX_RX_SLAVE_RULE_DA_RANGE_MAXX(idx);
+			mcs_reg_write(mcs, reg, req->data1 & GENMASK_ULL(47, 0));
+		} else {
+			reg = MCSX_PEX_TX_SLAVE_RULE_DA_RANGE_MINX(idx);
+			mcs_reg_write(mcs, reg, req->data0 & GENMASK_ULL(47, 0));
+			reg = MCSX_PEX_TX_SLAVE_RULE_DA_RANGE_MAXX(idx);
+			mcs_reg_write(mcs, reg, req->data1 & GENMASK_ULL(47, 0));
+		}
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_COMBO:
+		req->data2 &= GENMASK(15, 0);
+		if (req->data2 != ETH_P_PAE || !(req->data0 & BIT_ULL(40)) ||
+		    !(req->data1 & BIT_ULL(40)))
+			return -EINVAL;
+
+		idx = req->rule_idx - MCS_CTRLPKT_COMBO_RULE_OFFSET;
+		if (req->dir == MCS_RX) {
+			reg = MCSX_PEX_RX_SLAVE_RULE_COMBO_MINX(idx);
+			mcs_reg_write(mcs, reg, req->data0 & GENMASK_ULL(47, 0));
+			reg = MCSX_PEX_RX_SLAVE_RULE_COMBO_MAXX(idx);
+			mcs_reg_write(mcs, reg, req->data1 & GENMASK_ULL(47, 0));
+			reg = MCSX_PEX_RX_SLAVE_RULE_COMBO_ETX(idx);
+			mcs_reg_write(mcs, reg, req->data2);
+		} else {
+			reg = MCSX_PEX_TX_SLAVE_RULE_COMBO_MINX(idx);
+			mcs_reg_write(mcs, reg, req->data0 & GENMASK_ULL(47, 0));
+			reg = MCSX_PEX_TX_SLAVE_RULE_COMBO_MAXX(idx);
+			mcs_reg_write(mcs, reg, req->data1 & GENMASK_ULL(47, 0));
+			reg = MCSX_PEX_TX_SLAVE_RULE_COMBO_ETX(idx);
+			mcs_reg_write(mcs, reg, req->data2);
+		}
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_MAC:
+		if (!(req->data0 & BIT_ULL(40)))
+			return -EINVAL;
+
+		idx = req->rule_idx - MCS_CTRLPKT_MAC_EN_RULE_OFFSET;
+		reg = (req->dir == MCS_RX) ? MCSX_PEX_RX_SLAVE_RULE_MAC :
+		      MCSX_PEX_TX_SLAVE_RULE_MAC;
+
+		mcs_reg_write(mcs, reg, req->data0 & GENMASK_ULL(47, 0));
+		break;
+	}
+
+	reg = (req->dir == MCS_RX) ? MCSX_PEX_RX_SLAVE_RULE_ENABLE : MCSX_PEX_TX_SLAVE_RULE_ENABLE;
+
+	enb = mcs_reg_read(mcs, reg);
+	enb |= BIT_ULL(req->rule_idx);
+	mcs_reg_write(mcs, reg, enb);
+
+	return 0;
+}
+
 int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc)
 {
 	/* Check if the rsrc_id is mapped to PF/VF */
@@ -940,6 +1075,10 @@ static int mcs_alloc_struct_mem(struct mcs *mcs, struct mcs_rsrc_map *res)
 	if (!res->flowid2secy_map)
 		return -ENOMEM;
 
+	res->ctrlpktrule2pf_map = alloc_mem(mcs, MCS_MAX_CTRLPKT_RULES);
+	if (!res->ctrlpktrule2pf_map)
+		return -ENOMEM;
+
 	res->flow_ids.max = hw->tcam_entries - MCS_RSRC_RSVD_CNT;
 	err = rvu_alloc_bitmap(&res->flow_ids);
 	if (err)
@@ -957,6 +1096,11 @@ static int mcs_alloc_struct_mem(struct mcs *mcs, struct mcs_rsrc_map *res)
 
 	res->sa.max = hw->sa_entries;
 	err = rvu_alloc_bitmap(&res->sa);
+	if (err)
+		return err;
+
+	res->ctrlpktrule.max = MCS_MAX_CTRLPKT_RULES;
+	err = rvu_alloc_bitmap(&res->ctrlpktrule);
 	if (err)
 		return err;
 
