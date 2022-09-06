@@ -122,9 +122,18 @@ static int octeon_irq_force_ciu_mapping(struct irq_domain *domain,
 					int irq, int line, int bit)
 {
 	int r;
+	struct device_node *of_node;
+	int ret;
 
 	r = irq_alloc_desc_at(irq, 0);
 	WARN_ON(r < 0);
+
+	of_node = irq_domain_get_of_node(domain);
+	if (!of_node)
+		return -EINVAL;
+	ret = irq_alloc_desc_at(irq, of_node_to_nid(of_node));
+	if (ret < 0)
+		return ret;
 
 	return irq_domain_associate(domain, irq, line << 6 | bit);
 }
