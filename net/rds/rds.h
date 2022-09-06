@@ -855,8 +855,8 @@ struct rds_sock {
 	 * update arrived.
 	 */
 	spinlock_t		rs_lock;
-	uint64_t		rs_cong_mask;
-	uint64_t		rs_cong_notify;
+	atomic64_t		rs_cong_mask;
+	atomic64_t		rs_cong_notify;
 	struct list_head	rs_cong_list;
 	unsigned long		rs_cong_track;
 	/* currently used for failed RDMAs */
