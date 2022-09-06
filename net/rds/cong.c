@@ -306,11 +306,20 @@ void rds_cong_remove_conn(struct rds_connection *conn)
 
 int rds_cong_get_maps(struct rds_connection *conn)
 {
+	int hash_inx;
+
 	conn->c_lcong = rds_cong_from_addr(&conn->c_laddr);
 	conn->c_fcong = rds_cong_from_addr(&conn->c_faddr);
 
 	if (!(conn->c_lcong && conn->c_fcong))
 		return -ENOMEM;
+
+	hash_inx = jhash_3words(conn->c_laddr.s6_addr32[0],
+				conn->c_laddr.s6_addr32[1] ^ conn->c_laddr.s6_addr32[2],
+				conn->c_laddr.s6_addr32[3] ^ conn->c_tos,
+				JHASH_INITVAL) & (RDS_NMBR_WAITQ - 1);
+
+	conn->c_fcong->m_wait_queue_ptr = rds_poll_waitq + hash_inx;
 
 	return 0;
 }
@@ -347,8 +356,8 @@ void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 	atomic_inc(&rds_cong_generation);
 	if (waitqueue_active(&map->m_waitq))
 		wake_up(&map->m_waitq);
-	if (waitqueue_active(&rds_poll_waitq))
-		wake_up_all(&rds_poll_waitq);
+	if (waitqueue_active(map->m_wait_queue_ptr))
+		wake_up_all(map->m_wait_queue_ptr);
 
 	if (!portmask || list_empty(&rds_cong_monitor->rc_monitor))
 		return;
