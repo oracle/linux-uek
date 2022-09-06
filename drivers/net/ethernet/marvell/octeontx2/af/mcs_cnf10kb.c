@@ -94,18 +94,18 @@ void cnf10kb_mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *m
 	reg = MCSX_CPM_TX_SLAVE_SA_MAP_MEM_0X(map->sc_id);
 	mcs_reg_write(mcs, reg, val);
 
-	if (map->rekey_ena) {
-		reg = MCSX_CPM_TX_SLAVE_AUTO_REKEY_ENABLE_0;
-		val = mcs_reg_read(mcs, reg);
+	reg = MCSX_CPM_TX_SLAVE_AUTO_REKEY_ENABLE_0;
+	val = mcs_reg_read(mcs, reg);
+
+	if (map->rekey_ena)
 		val |= BIT_ULL(map->sc_id);
-		mcs_reg_write(mcs, reg, val);
-	}
+	else
+		val &= ~BIT_ULL(map->sc_id);
 
-	if (map->sa_index0_vld)
-		mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_SA_INDEX0_VLDX(map->sc_id), BIT_ULL(0));
+	mcs_reg_write(mcs, reg, val);
 
-	if (map->sa_index1_vld)
-		mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_SA_INDEX1_VLDX(map->sc_id), BIT_ULL(0));
+	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_SA_INDEX0_VLDX(map->sc_id), map->sa_index0_vld);
+	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_SA_INDEX1_VLDX(map->sc_id), map->sa_index1_vld);
 
 	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_SA_ACTIVEX(map->sc_id), map->tx_sa_active);
 }
@@ -136,7 +136,7 @@ void cnf10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs)
 	sc_bmap = &mcs->tx.sc;
 
 	event.mcs_id = mcs->mcs_id;
-	event.intr_mask = MCS_CPM_TX_INT_PN_THRESH_REACHED;
+	event.intr_mask = MCS_CPM_TX_PN_THRESH_REACHED_INT;
 
 	rekey_ena = mcs_reg_read(mcs, MCSX_CPM_TX_SLAVE_AUTO_REKEY_ENABLE_0);
 

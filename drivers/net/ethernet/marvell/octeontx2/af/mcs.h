@@ -17,6 +17,7 @@
 #define MCSX_LINK_LMAC_BASE_MASK	GENMASK_ULL(11, 0)
 
 #define MCS_ID_MASK			0x7
+#define MCS_MAX_PFS                     128
 
 /* Reserved resources for default bypass entry */
 #define MCS_RSRC_RSVD_CNT		1
@@ -34,14 +35,29 @@ enum mcs_int_vec_e {
 	MCS_INT_VEC_CNT			= 0x14,
 };
 
-#define MCS_BEE_RX_INT_ENA	BIT_ULL(0)
-#define MCS_BEE_TX_INT_ENA	BIT_ULL(1)
+#define MCS_MAX_BBE_INT 8
+#define MCS_BBE_INT_MASK 0xFF
+
+#define MCS_MAX_PAB_INT 4
+#define MCS_PAB_INT_MASK 0xF
+
+#define MCS_BBE_RX_INT_ENA	BIT_ULL(0)
+#define MCS_BBE_TX_INT_ENA	BIT_ULL(1)
 #define MCS_CPM_RX_INT_ENA	BIT_ULL(2)
 #define MCS_CPM_TX_INT_ENA	BIT_ULL(3)
 #define MCS_PAB_RX_INT_ENA	BIT_ULL(4)
 #define MCS_PAB_TX_INT_ENA	BIT_ULL(5)
 
+#define MCS_CPM_TX_INT_PACKET_XPN_EQ0		BIT_ULL(0)
 #define MCS_CPM_TX_INT_PN_THRESH_REACHED	BIT_ULL(1)
+#define MCS_CPM_TX_INT_SA_NOT_VALID		BIT_ULL(2)
+
+#define MCS_CPM_RX_INT_SECTAG_V_EQ1		BIT_ULL(0)
+#define MCS_CPM_RX_INT_SECTAG_E_EQ0_C_EQ1	BIT_ULL(1)
+#define MCS_CPM_RX_INT_SL_GTE48			BIT_ULL(2)
+#define MCS_CPM_RX_INT_ES_EQ1_SC_EQ1		BIT_ULL(3)
+#define MCS_CPM_RX_INT_SC_EQ1_SCB_EQ1		BIT_ULL(4)
+#define MCS_CPM_RX_INT_PACKET_XPN_EQ0		BIT_ULL(5)
 #define MCS_CPM_RX_INT_PN_THRESH_REACHED	BIT_ULL(6)
 
 struct mcs_pfvf {
@@ -54,6 +70,7 @@ struct mcs_intr_event {
 	u64 intr_mask;
 	u64 sa_id;
 	u8 mcs_id;
+	u8 lmac_id;
 };
 
 struct mcs_intrq_entry {
@@ -105,6 +122,7 @@ struct mcs {
 	struct hwinfo		*hw;
 	struct mcs_rsrc_map	tx;
 	struct mcs_rsrc_map	rx;
+	u16                     pf_map[MCS_MAX_PFS]; /* List of PCIFUNC mapped to MCS */
 	u8			mcs_id;
 	struct mcs_ops		*mcs_ops;
 	struct list_head	mcs_list;
