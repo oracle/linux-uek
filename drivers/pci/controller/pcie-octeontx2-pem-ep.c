@@ -42,6 +42,10 @@
 #define PEM_BAR4_INDEX_SIZE	(4 * 1024 * 1024)
 #define PEM_BAR4_INDEX_MEM	(64 * 1024 * 1024)
 
+/* Some indexes have specific non-memory uses */
+#define PEM_BAR4_INDEX_PTP	14
+#define MIO_PTP_BASE_ADDR	0x807000000f00
+
 #define	UIO_PERST_VERSION	"0.1"
 
 struct mv_pem_ep {
@@ -129,6 +133,7 @@ static int pem_ep_bar_setup(struct mv_pem_ep *pem_ep)
 {
 	phys_addr_t pa;
 	int idx;
+	uint64_t val;
 
 	pem_ep->va = devm_kzalloc(pem_ep->dev, PEM_BAR4_INDEX_MEM, GFP_KERNEL);
 	if (!pem_ep->va)
@@ -137,7 +142,6 @@ static int pem_ep_bar_setup(struct mv_pem_ep *pem_ep)
 	pa = virt_to_phys(pem_ep->va);
 	for (idx = PEM_BAR4_INDEX_START; idx < PEM_BAR4_INDEX_END; idx++) {
 		phys_addr_t addr;
-		uint64_t val;
 		int i;
 
 		/* Each index in BAR4 points to a 4MB region */
@@ -149,6 +153,13 @@ static int pem_ep_bar_setup(struct mv_pem_ep *pem_ep)
 		val |= PEM_BAR4_INDEX_ADDR_V;
 		pem_ep_reg_write(pem_ep, PEM_BAR4_INDEX(idx), val);
 	}
+	/* Set up mapping used by host PHC driver, which needs access to
+	 * PTP registers on Octeon.  This overrides the generic memory
+	 * mapping for this index done above.
+	 */
+	val = PEM_BAR4_INDEX_ADDR_IDX(MIO_PTP_BASE_ADDR >> 22);
+	val |= PEM_BAR4_INDEX_ADDR_V;
+	pem_ep_reg_write(pem_ep, PEM_BAR4_INDEX(PEM_BAR4_INDEX_PTP), val);
 
 	/* Clear the PEMX_DIS_PORT[DIS_PORT] */
 	pem_ep_reg_write(pem_ep, PEM_DIS_PORT, 1);
