@@ -114,11 +114,9 @@ static void rds_cong_notify_worker(struct work_struct *work)
 
 	read_lock_irqsave(&rds_cong_monitor->rc_monitor_lock, flags);
 	list_for_each_entry(rs, &rds_cong_monitor->rc_monitor, rs_cong_list) {
-		spin_lock(&rs->rs_lock);
-		rs->rs_cong_notify |= (rs->rs_cong_mask & portmask);
-		rs->rs_cong_mask &= ~portmask;
-		spin_unlock(&rs->rs_lock);
-		if (rs->rs_cong_notify) {
+		atomic64_or(atomic64_read(&rs->rs_cong_mask) & portmask, &rs->rs_cong_notify);
+		atomic64_and(~portmask, &rs->rs_cong_mask);
+		if (atomic64_read(&rs->rs_cong_notify)) {
 			trace_rds_cong_notify(rs, rs->rs_conn,
 					      rs->rs_conn ?
 					      &rs->rs_conn->c_path[0] :
@@ -462,13 +460,7 @@ int rds_cong_wait(struct rds_cong_map *map, __be16 port, int nonblock,
 		return 0;
 	if (nonblock) {
 		if (rs && rs->rs_cong_monitor) {
-			unsigned long flags;
-
-			/* It would have been nice to have an atomic set_bit on
-			 * a uint64_t. */
-			spin_lock_irqsave(&rs->rs_lock, flags);
-			rs->rs_cong_mask |= RDS_CONG_MONITOR_MASK(ntohs(port));
-			spin_unlock_irqrestore(&rs->rs_lock, flags);
+			atomic64_or(RDS_CONG_MONITOR_MASK(ntohs(port)), &rs->rs_cong_mask);
 
 			/* Test again - a congestion update may have arrived in
 			 * the meantime. */
