@@ -37,6 +37,7 @@
 #define CNF10K_RFOE_MAX_FSIZE		9212 /* max frame size excluding FCS */
 #define CNF10K_RFOE_MAX_MTU		(CNF10K_RFOE_MAX_FSIZE - VLAN_ETH_HLEN)
 
+#define PCI_SUBSYS_DEVID_CNF10K_A			0xBA00
 #define PCI_SUBSYS_DEVID_CNF10K_B			0xBC00
 /* BCN register offsets and definitions */
 #define CNF10K_BCN_CAPTURE_CFG				0x1400U
