@@ -162,7 +162,7 @@ EXPORT_SYMBOL(rds_str_array);
 static DEFINE_SPINLOCK(rds_sock_lock);
 static unsigned long rds_sock_count;
 static LIST_HEAD(rds_sock_list);
-DECLARE_WAIT_QUEUE_HEAD(rds_poll_waitq);
+struct wait_queue_head rds_poll_waitq[RDS_NMBR_WAITQ];
 
 /* kmem cache slab for struct rds_buf_info */
 static struct kmem_cache *rds_rs_buf_info_slab;
@@ -352,7 +352,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	poll_wait(file, sk_sleep(sk), wait);
 
 	if (rs->rs_seen_congestion)
-		poll_wait(file, &rds_poll_waitq, wait);
+		poll_wait(file, rs->rs_conn->c_fcong->m_wait_queue_ptr, wait);
 
 	read_lock_irqsave(&rs->rs_recv_lock, flags);
 	if (!rs->rs_cong_monitor) {
@@ -1431,6 +1431,10 @@ u32 rds_gen_num;
 static int __init rds_init(void)
 {
 	int ret;
+	int i;
+
+	for (i = 0; i < RDS_NMBR_WAITQ; ++i)
+		init_waitqueue_head(rds_poll_waitq + i);
 
 	rds_rt_debug_tp_enable();
 
