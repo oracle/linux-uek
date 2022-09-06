@@ -179,6 +179,7 @@ void mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir);
 void mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map);
 int mcs_install_flowid_bypass_entry(struct mcs *mcs);
 void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id, u8 mode);
+void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn);
 
 /* CN10K-B APIs */
 void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs);
