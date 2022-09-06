@@ -613,6 +613,101 @@ exit:
 	return 0;
 }
 
+int rvu_mbox_handler_mcs_alloc_ctrl_pkt_rule(struct rvu *rvu,
+					     struct mcs_alloc_ctrl_pkt_rule_req *req,
+					     struct mcs_alloc_ctrl_pkt_rule_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	struct mcs_rsrc_map *map;
+	struct mcs *mcs;
+	int rsrc_id;
+	u16 offset;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	map = (req->dir == MCS_RX) ? &mcs->rx : &mcs->tx;
+
+	mutex_lock(&rvu->rsrc_lock);
+
+	switch (req->rule_type) {
+	case MCS_CTRL_PKT_RULE_TYPE_ETH:
+		offset = MCS_CTRLPKT_ETYPE_RULE_OFFSET;
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_DA:
+		offset = MCS_CTRLPKT_DA_RULE_OFFSET;
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_RANGE:
+		offset = MCS_CTRLPKT_DA_RANGE_RULE_OFFSET;
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_COMBO:
+		offset = MCS_CTRLPKT_COMBO_RULE_OFFSET;
+		break;
+	case MCS_CTRL_PKT_RULE_TYPE_MAC:
+		offset = MCS_CTRLPKT_MAC_EN_RULE_OFFSET;
+		break;
+	}
+
+	rsrc_id = mcs_alloc_ctrlpktrule(&map->ctrlpktrule, map->ctrlpktrule2pf_map, offset,
+					pcifunc);
+	if (rsrc_id < 0)
+		goto exit;
+
+	rsp->rule_idx = rsrc_id;
+	rsp->rule_type = req->rule_type;
+	rsp->dir = req->dir;
+	rsp->mcs_id = req->mcs_id;
+
+	mutex_unlock(&rvu->rsrc_lock);
+	return 0;
+exit:
+	if (rsrc_id < 0)
+		dev_err(rvu->dev, "Failed to allocate the mcs ctrl pkt rule for PCIFUNC:%d\n",
+			pcifunc);
+	mutex_unlock(&rvu->rsrc_lock);
+	return rsrc_id;
+}
+
+int rvu_mbox_handler_mcs_free_ctrl_pkt_rule(struct rvu *rvu,
+					    struct mcs_free_ctrl_pkt_rule_req *req,
+					    struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+	int rc;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	mutex_lock(&rvu->rsrc_lock);
+
+	rc = mcs_free_ctrlpktrule(mcs, req);
+
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return rc;
+}
+
+int rvu_mbox_handler_mcs_ctrl_pkt_rule_write(struct rvu *rvu,
+					     struct mcs_ctrl_pkt_rule_write_req *req,
+					     struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+	int rc;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	rc = mcs_ctrlpktrule_write(mcs, req);
+
+	return rc;
+}
+
 static void rvu_mcs_set_lmac_bmap(struct rvu *rvu)
 {
 	struct mcs *mcs = mcs_get_pdata(0);
