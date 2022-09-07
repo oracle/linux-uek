@@ -82,8 +82,8 @@ rvu_mbox_handler_set_sdp_chan_info(struct rvu *rvu,
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
 
 	memcpy(pfvf->sdp_info, &req->info, sizeof(struct sdp_node_info));
-	dev_info(rvu->dev, "AF: SDP%d max_vfs %d num_pf_rings %d pf_srn %d\n",
-		 req->info.node_id, req->info.max_vfs, req->info.num_pf_rings,
+	dev_info(rvu->dev, "AF: SDP%d max_rvu_vfs %d num_pf_rings %d pf_srn %d\n",
+		 req->info.node_id, req->info.max_rvu_vfs, req->info.num_pf_rings,
 		 req->info.pf_srn);
 	return 0;
 }
