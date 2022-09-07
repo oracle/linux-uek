@@ -1161,7 +1161,8 @@ void otx2_sq_free_sqbs(struct otx2_nic *pfvf)
 			dma_unmap_page_attrs(pfvf->dev, iova, hw->sqb_size,
 					     DMA_FROM_DEVICE,
 					     DMA_ATTR_SKIP_CPU_SYNC);
-			put_page(virt_to_page(phys_to_virt(pa)));
+			if (page_ref_count(virt_to_page(phys_to_virt(pa))))
+				put_page(virt_to_page(phys_to_virt(pa)));
 		}
 		sq->sqb_count = 0;
 	}
@@ -1194,7 +1195,8 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 			dma_unmap_page_attrs(pfvf->dev, iova, size,
 					     DMA_FROM_DEVICE,
 					     DMA_ATTR_SKIP_CPU_SYNC);
-			put_page(virt_to_page(phys_to_virt(pa)));
+			if (page_ref_count(virt_to_page(phys_to_virt(pa))))
+				put_page(virt_to_page(phys_to_virt(pa)));
 			iova = otx2_aura_allocptr(pfvf, pool_id);
 		}
 	}
