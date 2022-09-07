@@ -2105,11 +2105,11 @@ struct ree_rule_db_get_rsp_msg {
 struct sdp_node_info {
 	/* Node to which this PF belons to */
 	u8 node_id;
-	u8 max_vfs;
+	u8 max_rvu_vfs;
 	u8 num_pf_rings;
 	u8 pf_srn;
-#define SDP_MAX_VFS	128
-	u8 vf_rings[SDP_MAX_VFS];
+#define RVU_SDP_MAX_VFS	128
+	u8 vf_rings[RVU_SDP_MAX_VFS];
 };
 
 struct sdp_chan_info_msg {

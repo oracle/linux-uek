@@ -16,7 +16,7 @@
 #include "mbox.h"
 
 #define MAX_DOM_VFS		8
-#define SDP_MAX_VFS		128
+#define RVU_SDP_MAX_VFS		128
 #define SDP_MAX_RINGS		256
 /* 12 CGX PFs + max HWVFs - VFs used for domains */
 #define SDP_MAX_PORTS		(12 + 256 - MAX_DOM_VFS)
@@ -65,7 +65,6 @@
 #define MAC_MASK_98XX			0x1
 #define MAC_MASK_CN10K			0x1
 #define MAX_PFS_PER_PEM			8
-#define NUM_PFS_PER_PEM			1
 
 /* 96xx only PEM0 and PEM2 have SDP */
 #define VALID_EP_PEMS_MASK_96XX		0x5
@@ -138,6 +137,12 @@ struct rvu_vf {
 	bool			got_flr;
 };
 
+struct sdp_epf_info {
+	u8	start_vf_idx;
+	u8	num_sdp_vfs;
+	u8	num_sdp_vf_rings;
+};
+
 struct sdp_dev {
 	struct list_head	list;
 	struct mutex		lock;
@@ -157,6 +162,10 @@ struct sdp_dev {
 	int			pf;
 	u8			valid_ep_pem_mask;
 	u8			mac_mask;
+	u8			num_sdp_pfs;
+	u8			num_sdp_pf_rings;
+#define SDP_MAX_EPFS	16
+	struct sdp_epf_info	epf[SDP_MAX_EPFS];
 
 	struct sdp_node_info info;
 	struct otx2_mbox	pfvf_mbox; /* MBOXes for VF => PF channel */

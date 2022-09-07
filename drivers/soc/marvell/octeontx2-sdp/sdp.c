@@ -192,6 +192,7 @@ static void sdp_afpf_mbox_handler(struct work_struct *work)
 	struct free_rsrcs_rsp *rsp;
 	int offset, i, vf_id, size;
 	struct mbox_hdr *rsp_hdr;
+	int is_pf, pf;
 	struct sdp_dev *sdp;
 	struct rvu_vf *vf;
 
@@ -225,13 +226,26 @@ static void sdp_afpf_mbox_handler(struct work_struct *work)
 		}
 
 		vf_id = (msg->pcifunc & RVU_PFVF_FUNC_MASK);
+		is_pf = 0;
 
 		if (msg->id == MBOX_MSG_NIX_LF_ALLOC) {
 			alloc_rsp = (struct nix_lf_alloc_rsp *)msg;
-			if (vf_id == 1)
-				alloc_rsp->rx_chan_cnt = sdp->info.vf_rings[0];
+			if (vf_id < (sdp->num_sdp_pfs + 1)) {
+				is_pf = 1;
+				pf = vf_id - 1;
+			} else {
+				for (pf = 0; pf < sdp->num_sdp_pfs; pf++) {
+					if (vf_id < (sdp->epf[pf].start_vf_idx +
+						     sdp->epf[pf].num_sdp_vfs + 1))
+						break;
+				}
+			}
+
+			if (is_pf)
+				alloc_rsp->rx_chan_cnt = sdp->num_sdp_pf_rings;
 			else
-				alloc_rsp->rx_chan_cnt = sdp->info.vf_rings[1];
+				alloc_rsp->rx_chan_cnt = sdp->epf[pf].num_sdp_vf_rings;
+
 			alloc_rsp->tx_chan_cnt = alloc_rsp->rx_chan_cnt;
 		}
 
@@ -920,13 +934,15 @@ static int sdp_check_pf_usable(struct sdp_dev *sdp)
 }
 
 static int sdp_parse_rinfo(struct pci_dev *pdev,
-			   struct sdp_node_info *info)
+			   struct sdp_dev *sdp)
 {
-	u32 vf_ring_cnts, vf_rings;
+	struct sdp_node_info *info = &sdp->info;
 	struct device_node *dev;
+	int len, idx, cnt = 0;
 	struct device *sdev;
+	u32 val, num_val;
 	const void *ptr;
-	int len, vfid;
+	int num_vfs;
 
 	sdev = &pdev->dev;
 	dev = of_find_node_by_name(NULL, "rvu-sdp");
@@ -945,20 +961,101 @@ static int sdp_parse_rinfo(struct pci_dev *pdev,
 		dev_err(sdev, "SDP DTS: Wrong field length: num-rvu-vfs\n");
 		return -EINVAL;
 	}
-	info->max_vfs =  be32_to_cpup((u32 *)ptr);
+	info->max_rvu_vfs =  be32_to_cpup((u32 *)ptr);
 
-	if (info->max_vfs > pci_sriov_get_totalvfs(pdev)) {
+	if (info->max_rvu_vfs > pci_sriov_get_totalvfs(pdev)) {
 		dev_err(sdev, "SDP DTS: Invalid field value: num-rvu-vfs\n");
 		return -EINVAL;
 	}
 
-	ptr = of_get_property(dev, "num-pf-rings", &len);
+	/* Get number of SDP PFs */
+	ptr = of_get_property(dev, "num-sdp-pfs", &len);
 	if (ptr == NULL) {
-		dev_err(sdev, "SDP DTS: Failed to get num-pf-rings\n");
+		dev_err(sdev, "SDP DTS: Failed to get num-sdp-pfs\n");
+		return -EINVAL;
+	}
+
+	if (len != sizeof(u32)) {
+		dev_err(sdev, "SDP DTS: Wrong field length: num-sdp-pfs\n");
+		return -EINVAL;
+	}
+	sdp->num_sdp_pfs = be32_to_cpup((u32 *)ptr);
+	num_vfs = sdp->num_sdp_pfs;
+
+	/* Get number of SDP VFs per PF */
+	ptr = of_get_property(dev, "num-sdp-vfs", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-sdp-vfs\n");
+		return -EINVAL;
+	}
+
+	num_val = len / sizeof(u32);
+	if (num_val > sdp->num_sdp_pfs) {
+		dev_err(sdev, "error PF count %d is more than supported %d\n",
+			num_val, sdp->num_sdp_pfs);
+		return -EINVAL;
+	}
+
+	for (idx = 0; idx < sdp->num_sdp_pfs; idx++) {
+		of_property_read_u32_index(dev, "num-sdp-vfs", idx, &val);
+
+		if (val > 128) {
+			dev_err(sdev, "Error: Max SDP VFs %d > 128\n", val);
+			return -EINVAL;
+		}
+		sdp->epf[idx].num_sdp_vfs = val;
+		sdp->epf[idx].start_vf_idx = sdp->num_sdp_pfs + cnt;
+		cnt += val;
+		num_vfs += val;
+	}
+
+	if (info->max_rvu_vfs < num_vfs) {
+		dev_err(sdev, "Error: Max RVU VFs(%d) is less than required SDP VFs(%d)",
+			info->max_rvu_vfs, num_vfs);
+	}
+
+	/* Do not have more than num_vfs of RVU VFs */
+	info->max_rvu_vfs = num_vfs;
+
+	/* Get number of rings per PF */
+	ptr = of_get_property(dev, "num-sdp-pf-rings", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-sdp-pf-rings\n");
+		return -EINVAL;
+	}
+
+	sdp->num_sdp_pf_rings = be32_to_cpup((u32 *)ptr);
+
+
+	/* Get number of rings per VF */
+	ptr = of_get_property(dev, "num-sdp-vf-rings", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-sdp-vf-rings\n");
+		return -EINVAL;
+	}
+
+	num_val = len / sizeof(u32);
+	if (num_val > sdp->num_sdp_pfs) {
+		dev_err(sdev, "Error: VF ring index count %d > %d\n",
+			num_val, sdp->num_sdp_pfs);
+		return -EINVAL;
+	}
+
+	for (idx = 0; idx < sdp->num_sdp_pfs; idx++) {
+		of_property_read_u32_index(dev, "num-sdp-vf-rings", idx, &val);
+
+		sdp->epf[idx].num_sdp_vf_rings = val;
+	}
+
+
+	/* Get PF rings for RVU SDP PF */
+	ptr = of_get_property(dev, "num-rvu-pf-rings", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-rvu-pf-rings\n");
 		return -EINVAL;
 	}
 	if (len != sizeof(u32)) {
-		dev_err(sdev, "SDP DTS: Wrong field length: num-pf-rings\n");
+		dev_err(sdev, "SDP DTS: Wrong field length: num-rvu-pf-rings\n");
 		return -EINVAL;
 	}
 	info->num_pf_rings = be32_to_cpup((u32 *)ptr);
@@ -974,37 +1071,13 @@ static int sdp_parse_rinfo(struct pci_dev *pdev,
 	}
 	info->pf_srn = be32_to_cpup((u32 *)ptr);
 
-	ptr = of_get_property(dev, "num-vf-rings", &len);
-	if (ptr == NULL) {
-		dev_err(sdev, "SDP DTS: Failed to get num-vf-rings\n");
-		return -EINVAL;
+	dev_info(sdev, "num_pfs:%d, rings_per_pf:%d\n", sdp->num_sdp_pfs, sdp->num_sdp_pf_rings);
+	for (idx = 0; idx < sdp->num_sdp_pfs; idx++) {
+		dev_info(sdev, "PF%d num_vfs: %d, rings_per_vf: %d\n",
+			 idx, sdp->epf[idx].num_sdp_vfs, sdp->epf[idx].num_sdp_vf_rings);
 	}
 
-	vf_ring_cnts = len / sizeof(u32);
-	if (vf_ring_cnts > info->max_vfs) {
-		dev_err(sdev, "SDP DTS: Wrong field length: num-vf-rings\n");
-		return -EINVAL;
-	}
-
-	for (vfid = 0; vfid < info->max_vfs; vfid++) {
-		if (vfid < vf_ring_cnts) {
-			if (of_property_read_u32_index(dev, "num-vf-rings",
-					vfid, &vf_rings)) {
-				dev_err(sdev, "SDP DTS: Failed to get vf ring count\n");
-				return -EINVAL;
-			}
-			info->vf_rings[vfid] = vf_rings;
-		} else {
-			/*
-			 * Rest of the VFs use the same last ring count
-			 * specified
-			 */
-			info->vf_rings[vfid] = info->vf_rings[vf_ring_cnts - 1];
-		}
-	}
-	dev_info(sdev, "pf start ring number:%d num_pf_rings:%d max_vfs:%d vf_ring_cnts:%d\n",
-		 info->pf_srn, info->num_pf_rings, info->max_vfs, vf_ring_cnts);
-
+	dev_info(sdev, "rvu sdp pf rings:%d\n", info->num_pf_rings);
 	return 0;
 }
 
@@ -1017,7 +1090,7 @@ static ssize_t sdp_vf0_rings_show(struct device *dev,
 
 	pdev = to_pci_dev(dev);
 	sdp = pci_get_drvdata(pdev);
-	return sprintf(buf, "%d", sdp->info.vf_rings[0]);
+	return sprintf(buf, "%d", sdp->num_sdp_pf_rings);
 }
 static DEVICE_ATTR_RO(sdp_vf0_rings);
 
@@ -1030,7 +1103,7 @@ static ssize_t sdp_vfx_rings_show(struct device *dev,
 
 	pdev = to_pci_dev(dev);
 	sdp = pci_get_drvdata(pdev);
-	return sprintf(buf, "%d", sdp->info.vf_rings[1]);
+	return sprintf(buf, "%d", sdp->epf[0].num_sdp_vf_rings);
 }
 static DEVICE_ATTR_RO(sdp_vfx_rings);
 
@@ -1123,25 +1196,36 @@ static int send_chan_info(struct sdp_dev *sdp, struct sdp_node_info *info)
 
 static void program_sdp_rinfo(struct sdp_dev *sdp)
 {
-	u32 rppf, rpvf, numvf, pf_srn, npfs, npfs_per_pem, epf_srn;
+	u32 npfs, rppf, epf_srn, pf_srn;
+	u32 rpvf[SDP_MAX_EPFS], numvf[SDP_MAX_EPFS];
 	void __iomem *addr;
 	u32 mac, mac_mask;
 	u64 cfg, val, pkg_ver;
 	u64 ep_pem, valid_ep_pem_mask, npem, epf_base;
 	u32 ring, func, pf, vf;
 
-	/* TODO npfs should be obtained from dts */
-	npfs_per_pem = NUM_PFS_PER_PEM;
+	npfs = sdp->num_sdp_pfs;
+	rppf = sdp->num_sdp_pf_rings;
 
-	/* PF doesn't have any rings */
-	rppf = sdp->info.vf_rings[0];
-	rpvf = sdp->info.vf_rings[1];
-	numvf = sdp->info.max_vfs - 1;
+	for (pf = 0; pf < npfs; pf++) {
+		numvf[pf] = sdp->epf[pf].num_sdp_vfs;
+		rpvf[pf] = sdp->epf[pf].num_sdp_vf_rings;
+	}
+
+	/* populate total rings into vf_rings[] */
+	pf = 0;
+	for (vf = 0; vf < sdp->info.max_rvu_vfs; vf++) {
+		if (vf == (sdp->epf[pf].start_vf_idx + numvf[pf]))
+			pf++;
+
+		if (vf < npfs)
+			sdp->info.vf_rings[vf] = sdp->num_sdp_pf_rings;
+		else
+			sdp->info.vf_rings[vf] = sdp->epf[pf].num_sdp_vf_rings;
+
+	}
 
 	pf_srn = sdp->info.pf_srn;
-
-	dev_info(&sdp->pdev->dev, "rppf:%u rpvf:%u numvf:%u pf_srn:%u\n", rppf,
-		 rpvf, numvf, pf_srn);
 
 	mac_mask = MAC_MASK_96XX;
 	valid_ep_pem_mask = VALID_EP_PEMS_MASK_93XX;
@@ -1198,32 +1282,32 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 		    PCI_SUBSYS_DEVID_98XX)
 			val = (((u64)rppf << RPPF_BIT_96XX) |
 			       ((u64)pf_srn << PF_SRN_BIT_96XX) |
-			       ((u64)npfs_per_pem << NPFS_BIT_96XX));
+			       ((u64)npfs << NPFS_BIT_96XX));
 		else
 			val = (((u64)rppf << RPPF_BIT_98XX) |
 			       ((u64)pf_srn << PF_SRN_BIT_98XX) |
-			       ((u64)npfs_per_pem << NPFS_BIT_98XX));
+			       ((u64)npfs << NPFS_BIT_98XX));
 		mac = ep_pem & mac_mask;
 		writeq(val, sdp->sdp_base + SDPX_MACX_PF_RING_CTL(mac));
 
-		epf_srn = (npfs_per_pem * rppf) + pf_srn;
-		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
-			val = (((u64)numvf << RINFO_NUMVF_BIT) |
-			       ((u64)rpvf << RINFO_RPVF_BIT) |
+		epf_srn = (npfs * rppf) + pf_srn;
+		for (pf = 0; pf < npfs; pf++) {
+			val = (((u64)numvf[pf] << RINFO_NUMVF_BIT) |
+			       ((u64)rpvf[pf] << RINFO_RPVF_BIT) |
 			       ((u64)(epf_srn) << RINFO_SRN_BIT));
 			writeq(val,
 			       sdp->sdp_base +
 			       SDPX_EPFX_RINFO((epf_base +
 						(npem * MAX_PFS_PER_PEM))));
-			epf_srn += numvf * rpvf;
+			epf_srn += numvf[pf] * rpvf[pf];
 			epf_base++;
 		}
 		npem++;
 	}
 
 	/* assign function to a ring */
-	epf_srn = (npfs_per_pem * rppf) + pf_srn;
-	for (pf = 0; pf < npfs_per_pem; pf++) {
+	epf_srn = (npfs * rppf) + pf_srn;
+	for (pf = 0; pf < npfs; pf++) {
 		func = 0;
 		val = func | pf << 8;
 
@@ -1231,27 +1315,25 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 			writeq(val, sdp->sdp_base + SDPX_EPVF_RINGX(ring));
 
 		func = 1;
-		for (vf = 0; vf < numvf; vf++) {
-			u32 srn = epf_srn + (vf * rpvf);
+		for (vf = 0; vf < numvf[pf]; vf++) {
+			u32 srn = epf_srn + (vf * rpvf[pf]);
 
 			val = func | pf << 8;
-			for (ring = srn; ring < (srn + rpvf); ring++)
+			for (ring = srn; ring < (srn + rpvf[pf]); ring++)
 				writeq(val, sdp->sdp_base + SDPX_EPVF_RINGX(ring));
 			func++;
 		}
-		epf_srn += numvf * rpvf;
+		epf_srn += numvf[pf] * rpvf[pf];
+		pf_srn += rppf;
 	}
 }
 
 static void set_firmware_ready(struct sdp_dev *sdp)
 {
-	u32 npfs, npfs_per_pem;
 	void __iomem *addr;
 	u64 ep_pem, val;
 	u64 cfg;
 
-	/* TODO npfs should be obtained from dts */
-	npfs_per_pem = NUM_PFS_PER_PEM;
 	for (ep_pem = 0; ep_pem < MAX_PEMS; ep_pem++) {
 		if (!(sdp->valid_ep_pem_mask & (1ul << ep_pem)))
 			continue;
@@ -1264,23 +1346,20 @@ static void set_firmware_ready(struct sdp_dev *sdp)
 		     PEMX_CFG_HOSTMD_BIT_MASK))
 			continue;
 		/* found the PEM in endpoint mode */
-		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
-			/* Config space access different between otx2 and cn10k */
-			if (is_cn10k_sdp(sdp)) {
-				addr  = ioremap(PEMX_PFX_CSX_PFCFGX(ep_pem,
-								    npfs,
-								    PCIEEP_VSECST_CTL),
-						8);
-				/* 8 byte mapping needed, both 32 bit addresses used */
-				writel(FW_STATUS_READY, addr);
-			} else {
-				addr  = ioremap(PEMX_CFG_WR(ep_pem), 8);
-				val = ((FW_STATUS_READY << PEMX_CFG_WR_DATA) |
-				       (npfs << PEMX_CFG_WR_PF) |
-				       (1 << 15) |
-				       (PCIEEP_VSECST_CTL << PEMX_CFG_WR_REG));
-				writeq(val, addr);
-			}
+		/* Config space access different between otx2 and cn10k */
+		if (is_cn10k_sdp(sdp)) {
+			addr  = ioremap(PEMX_PFX_CSX_PFCFGX(ep_pem,
+							    0,
+							    PCIEEP_VSECST_CTL),
+					8);
+			/* 8 byte mapping needed, both 32 bit addresses used */
+			writel(FW_STATUS_READY, addr);
+		} else {
+			addr  = ioremap(PEMX_CFG_WR(ep_pem), 8);
+			val = ((FW_STATUS_READY << PEMX_CFG_WR_DATA) |
+			       (1 << 15) |
+			       (PCIEEP_VSECST_CTL << PEMX_CFG_WR_REG));
+			writeq(val, addr);
 		}
 	}
 }
@@ -1413,7 +1492,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		writeq(regval, sdp->sdp_base + SDPX_LINK_CFG);
 	}
 
-	err = sdp_parse_rinfo(pdev, &sdp->info);
+	err = sdp_parse_rinfo(pdev, sdp);
 	if (err) {
 		err = -EINVAL;
 		goto get_rinfo_failed;
@@ -1426,13 +1505,13 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	 */
 	sdp->info.pf_srn = inst ? 128 : sdp->info.pf_srn;
 
+	program_sdp_rinfo(sdp);
+
 	err = send_chan_info(sdp, &sdp->info);
 	if (err) {
 		err = -EINVAL;
 		goto get_rinfo_failed;
 	}
-
-	program_sdp_rinfo(sdp);
 
 	/* Water mark for backpressuring NIX Tx when enabled */
 	writeq(SDP_OUT_BP_WMARK, sdp->sdp_base + SDPX_OUT_WMARK);
@@ -1446,7 +1525,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		err = -ENODEV;
 		dev_info(&sdp->pdev->dev, "Sysfs init failed\n");
 	}
-	sdp_sriov_configure(sdp->pdev, sdp->info.max_vfs);
+	sdp_sriov_configure(sdp->pdev, sdp->info.max_rvu_vfs);
 	set_firmware_ready(sdp);
 
 	spin_lock(&sdp_lst_lock);
@@ -1648,8 +1727,8 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 		    "Virtual Functions are already enabled on this device\n");
 		return -EINVAL;
 	}
-	if (num_vfs > SDP_MAX_VFS)
-		num_vfs = SDP_MAX_VFS;
+	if (num_vfs > RVU_SDP_MAX_VFS)
+		num_vfs = RVU_SDP_MAX_VFS;
 
 	sdp = pci_get_drvdata(pdev);
 
