@@ -315,3 +315,4 @@ module_exit(fw_memtest_exit);
 MODULE_DESCRIPTION("Marvell CN10K memory test config. utility");
 MODULE_AUTHOR("Wojciech Bartczak <wbartczak@marvell.com>");
 MODULE_LICENSE("GPL");
+MODULE_SOFTDEP("pre: mub_gen");
