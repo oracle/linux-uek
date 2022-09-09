@@ -1101,10 +1101,13 @@ static void __destroy_compound_gigantic_page(struct page *page,
 {
 	int i;
 	int nr_pages = 1 << order;
-	struct page *p = page + 1;
+	struct page *p;
 
 	atomic_set(compound_mapcount_ptr(page), 0);
-	for (i = 1; i < nr_pages; i++, p = mem_map_next(p, page, i)) {
+
+	for (i = 1; i < nr_pages; i++) {
+		p = nth_page(page, i);
+		p->mapping = NULL;
 		clear_compound_head(p);
 		if (!demote)
 			set_page_refcounted(p);
@@ -1352,7 +1355,7 @@ static void add_hugetlb_page(struct hstate *h, struct page *page,
 static void __update_and_free_page(struct hstate *h, struct page *page)
 {
 	int i;
-	struct page *subpage = page;
+	struct page *subpage;
 
 	if (hstate_is_gigantic(h) && !gigantic_page_runtime_supported())
 		return;
@@ -1369,8 +1372,8 @@ static void __update_and_free_page(struct hstate *h, struct page *page)
 		return;
 	}
 
-	for (i = 0; i < pages_per_huge_page(h);
-	     i++, subpage = mem_map_next(subpage, page, i)) {
+	for (i = 0; i < pages_per_huge_page(h); i++) {
+		subpage = nth_page(page, i);
 		subpage->flags &= ~(1 << PG_locked | 1 << PG_error |
 				1 << PG_referenced | 1 << PG_dirty |
 				1 << PG_active | 1 << PG_private |
@@ -1566,13 +1569,15 @@ static bool __prep_compound_gigantic_page(struct page *page, unsigned int order,
 {
 	int i, j;
 	int nr_pages = 1 << order;
-	struct page *p = page + 1;
+	struct page *p;
 
 	/* we rely on prep_new_huge_page to set the destructor */
 	set_compound_order(page, order);
 	__ClearPageReserved(page);
 	__SetPageHead(page);
-	for (i = 1; i < nr_pages; i++, p = mem_map_next(p, page, i)) {
+	for (i = 1; i < nr_pages; i++) {
+		p = nth_page(page, i);
+
 		/*
 		 * For gigantic hugepages allocated through bootmem at
 		 * boot, it's safer to be consistent with the not-gigantic
@@ -1618,14 +1623,16 @@ static bool __prep_compound_gigantic_page(struct page *page, unsigned int order,
 
 out_error:
 	/* undo tail page modifications made above */
-	p = page + 1;
-	for (j = 1; j < i; j++, p = mem_map_next(p, page, j)) {
+	for (j = 1; j < i; j++) {
+		p = nth_page(page, j);
 		clear_compound_head(p);
 		set_page_refcounted(p);
 	}
 	/* need to clear PG_reserved on remaining tail pages  */
-	for (; j < nr_pages; j++, p = mem_map_next(p, page, j))
+	for (; j < nr_pages; j++) {
+		p = nth_page(page, j);
 		__ClearPageReserved(p);
+	}
 	set_compound_order(page, 0);
 	__ClearPageHead(page);
 	return false;
@@ -5367,7 +5374,7 @@ long follow_hugetlb_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		}
 same_page:
 		if (pages) {
-			pages[i] = mem_map_offset(page, pfn_offset);
+			pages[i] = nth_page(page, pfn_offset);
 			get_page(pages[i]);
 		}
 
