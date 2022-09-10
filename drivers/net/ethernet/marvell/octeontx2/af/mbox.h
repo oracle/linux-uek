@@ -1478,6 +1478,7 @@ enum ptp_op {
 	PTP_OP_GET_CLOCK = 1,
 	PTP_OP_GET_TSTMP = 2,
 	PTP_OP_SET_THRESH = 3,
+	PTP_OP_EXTTS_ON = 4,
 };
 
 struct ptp_req {
@@ -1485,6 +1486,7 @@ struct ptp_req {
 	u8 op;
 	s64 scaled_ppm;
 	u64 thresh;
+	int extts_on;
 };
 
 struct ptp_rsp {
