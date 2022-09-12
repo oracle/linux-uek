@@ -107,6 +107,7 @@ enum phy_mac_adv_cmd {
 	PHY_MAC_ADV_MACSEC_MAX = 100,
 
 	PHY_MAC_ADV_GEN_RCLK = 101,
+	PHY_MAC_ADV_GEN_PTP_TC_NOENC = 102,
 	PHY_MAC_ADV_GEN_MAX = 200,
 };
 
@@ -141,6 +142,7 @@ static struct {
 	const char *s;
 } mac_adv_gen_cmds[] = {
 	{PHY_MAC_ADV_GEN_RCLK, "rclk"},
+	{PHY_MAC_ADV_GEN_PTP_TC_NOENC, "tc-noenc"},
 };
 DEFINE_STR_2_ENUM_FUNC(mac_adv_gen_cmds)
 
@@ -325,11 +327,18 @@ typedef struct phy_gen_rclk {
 	int ratio;
 } phy_gen_rclk_t;
 
+typedef struct phy_ptp_tc {
+	int pd_ingr_line;
+	int pd_egr_line;
+	int pd_ingr_host;
+	int pd_egr_host;
+	int ptp_ref_clk;
+} phy_ptp_tc_t;
+
 #define MACSEC_ADV_CMD_VERS_MAJOR  0x0001
 #define MACSEC_ADV_CMD_VERS_MINOR  0x0000
 #define MACSEC_ADV_CMD_VERS  (MACSEC_ADV_CMD_VERS_MAJOR \
 				| MACSEC_ADV_CMD_VERS_MINOR)
-
 struct phy_7121_adv_cmds {
 	int mac_adv_cmd_ver;
 	int mac_adv_dbg;
@@ -342,6 +351,7 @@ struct phy_7121_adv_cmds {
 		struct macsec_vport_params vport_params;
 		struct pkttest pkttest_cmd;
 		phy_gen_rclk_t gen_rclk;
+		phy_ptp_tc_t ptp_tc;
 	} data;
 };
 
@@ -480,6 +490,10 @@ static ssize_t phy_debug_generic_write(struct file *filp,
 
 	memset(mac_adv, 0x00, sizeof(struct phy_7121_adv_cmds));
 
+	mac_adv->mac_adv_cmd_ver = MACSEC_ADV_CMD_VERS;
+	MAC_ADV_DEBUG("\n %s mac_adv->mac_adv_cmd_ver %x", __func__,
+						mac_adv->mac_adv_cmd_ver);
+
 	mac_adv->cgx_id =  phy_data.eth;
 	mac_adv->lmac_id =  phy_data.lmac;
 
@@ -514,7 +528,49 @@ static ssize_t phy_debug_generic_write(struct file *filp,
 		if (kstrtouint(token, 10, &mac_adv->data.gen_rclk.ratio))
 			return -EINVAL;
 		break;
+	case PHY_MAC_ADV_GEN_PTP_TC_NOENC:
+		mac_adv->mac_adv_cmd = PHY_MAC_ADV_GEN_PTP_TC_NOENC;
 
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, &mac_adv->data.ptp_tc.pd_ingr_line))
+			return -EINVAL;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, &mac_adv->data.ptp_tc.pd_egr_line))
+			return -EINVAL;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, &mac_adv->data.ptp_tc.pd_ingr_host))
+			return -EINVAL;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, &mac_adv->data.ptp_tc.pd_egr_host))
+			return -EINVAL;
+
+		end = skip_spaces(end);
+		token = strsep(&end, " \t\n");
+		if (!token)
+			return -EINVAL;
+
+		if (kstrtouint(token, 10, &mac_adv->data.ptp_tc.ptp_ref_clk))
+			return -EINVAL;
+		break;
 	default:
 		pr_warn("MAC ADV failed for invalid command %d!\n", cmd);
 		return -EINVAL;
