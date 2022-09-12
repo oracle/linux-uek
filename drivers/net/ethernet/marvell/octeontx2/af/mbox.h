@@ -402,6 +402,7 @@ M(MCS_FREE_CTRL_PKT_RULE, 0xa016, mcs_free_ctrl_pkt_rule,			\
 				  mcs_free_ctrl_pkt_rule_req, msg_rsp)		\
 M(MCS_CTRL_PKT_RULE_WRITE, 0xa017, mcs_ctrl_pkt_rule_write,			\
 				   mcs_ctrl_pkt_rule_write_req, msg_rsp)	\
+M(MCS_PORT_RESET, 0xa018, mcs_port_reset, mcs_port_reset_req, msg_rsp)		\
 
 /* Messages initiated by AF (range 0xC00 - 0xEFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -2230,6 +2231,14 @@ struct mcs_secy_plcy_write_req {
 	u8 secy_id;
 	u8 mcs_id;
 	u8 dir;
+	u64 rsvd;
+};
+
+struct mcs_port_reset_req {
+	struct mbox_msghdr hdr;
+	u8 reset;
+	u8 mcs_id;
+	u8 port_id;
 	u64 rsvd;
 };
 

@@ -203,6 +203,7 @@ void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn);
 int mcs_alloc_ctrlpktrule(struct rsrc_bmap *rsrc, u16 *pf_map, u16 offset, u16 pcifunc);
 int mcs_free_ctrlpktrule(struct mcs *mcs, struct mcs_free_ctrl_pkt_rule_req *req);
 int mcs_ctrlpktrule_write(struct mcs *mcs, struct mcs_ctrl_pkt_rule_write_req *req);
+void mcs_reset_port(struct mcs *mcs, u8 port_id, u8 reset);
 
 /* CN10K-B APIs */
 void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs);
