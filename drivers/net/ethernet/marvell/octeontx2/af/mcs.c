@@ -688,6 +688,13 @@ int mcs_ctrlpktrule_write(struct mcs *mcs, struct mcs_ctrl_pkt_rule_write_req *r
 	return 0;
 }
 
+void mcs_reset_port(struct mcs *mcs, u8 port_id, u8 reset)
+{
+	u64 reg = MCSX_MCS_TOP_SLAVE_PORT_RESET(port_id);
+
+	mcs_reg_write(mcs, reg, reset & 0x1);
+}
+
 int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc)
 {
 	/* Check if the rsrc_id is mapped to PF/VF */
