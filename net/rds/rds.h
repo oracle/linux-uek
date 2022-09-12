@@ -227,6 +227,7 @@ enum rds_conn_drop_src {
 	/* TCP */
 	DR_TCP_STATE_CLOSE,
 	DR_TCP_SEND_FAIL,
+	DR_TCP_STATE_ACCEPT_CLOSED,
 };
 
 enum rds_hb_state {
