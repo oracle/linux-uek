@@ -1243,6 +1243,7 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_ACTIVE_BOND_FAILBACK]	= "active bonding failback",
 	[DR_TCP_STATE_CLOSE]		= "sk_state to TCP_CLOSE",
 	[DR_TCP_SEND_FAIL]		= "tcp_send failure",
+	[DR_TCP_STATE_ACCEPT_CLOSED]	= "accept with TCP_CLOSE_WAIT",
 };
 
 char *conn_drop_reason_str(enum rds_conn_drop_src reason)

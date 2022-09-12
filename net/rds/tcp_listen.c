@@ -321,6 +321,20 @@ int rds_tcp_accept_one(struct rds_tcp_net *rtn)
 		wake_up(&cp->cp_up_waitq);
 		reason = "conn connecting";
 	}
+
+	/* Since "rds_tcp_set_callbacks" happens this late
+	 * the connection may already have been closed without
+	 * "rds_tcp_state_change" doing its due dilligence.
+	 *
+	 * If that's the case, we simply drop the path,
+	 * knowing that "rds_tcp_conn_path_shutdown" will
+	 * dequeue pending messages.
+	 */
+	if (new_sock->sk->sk_state == TCP_CLOSE_WAIT ||
+	    new_sock->sk->sk_state == TCP_LAST_ACK ||
+	    new_sock->sk->sk_state == TCP_CLOSE)
+		rds_conn_path_drop(cp, DR_TCP_STATE_ACCEPT_CLOSED, 0);
+
 	new_sock = NULL;
 	ret = 0;
 	if (conn->c_npaths == 0)
