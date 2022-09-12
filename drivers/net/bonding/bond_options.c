@@ -40,6 +40,8 @@ static int bond_option_arp_validate_set(struct bonding *bond,
 					const struct bond_opt_value *newval);
 static int bond_option_arp_all_targets_set(struct bonding *bond,
 					   const struct bond_opt_value *newval);
+static int bond_option_arp_allslaves_set(struct bonding *bond,
+					   const struct bond_opt_value *newval);
 static int bond_option_prio_set(struct bonding *bond,
 				const struct bond_opt_value *newval);
 static int bond_option_primary_set(struct bonding *bond,
@@ -230,6 +232,12 @@ static const struct bond_opt_value bond_missed_max_tbl[] = {
 	{ "maxval",	255,	BOND_VALFLAG_MAX},
 	{ "default",	2,	BOND_VALFLAG_DEFAULT},
 	{ NULL,		-1,	0},
+};
+
+static const struct bond_opt_value bond_arp_allslaves_tbl[] = {
+	{ "off", 0,  BOND_VALFLAG_DEFAULT},
+	{ "on",  1,  0},
+	{ NULL,  -1, 0}
 };
 
 static const struct bond_option bond_opts[BOND_OPT_LAST] = {
@@ -496,6 +504,15 @@ static const struct bond_option bond_opts[BOND_OPT_LAST] = {
 		.desc = "Delay between each peer notification on failover event, in milliseconds",
 		.values = bond_peer_notif_delay_tbl,
 		.set = bond_option_peer_notif_delay_set
+	},
+	[BOND_OPT_ARP_ALLSLAVES] = {
+		.id = BOND_OPT_ARP_ALLSLAVES,
+		.name = "arp_allslaves",
+		.desc = "arp monitor all slaves",
+		.unsuppmodes = BIT(BOND_MODE_8023AD) | BIT(BOND_MODE_TLB) |
+			       BIT(BOND_MODE_ALB),
+		.values = bond_arp_allslaves_tbl,
+		.set = bond_option_arp_allslaves_set
 	}
 };
 
@@ -1692,3 +1709,14 @@ static int bond_option_ad_user_port_key_set(struct bonding *bond,
 	bond->params.ad_user_port_key = newval->value;
 	return 0;
 }
+
+static int bond_option_arp_allslaves_set(struct bonding *bond,
+				   const struct bond_opt_value *newval)
+{
+	netdev_dbg(bond->dev, "Setting arp_allslaves to %llu\n",
+		    newval->value);
+	bond->params.arp_allslaves = newval->value;
+
+	return 0;
+}
+
