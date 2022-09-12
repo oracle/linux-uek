@@ -73,8 +73,16 @@ void rds_tcp_state_change(struct sock *sk)
 			wake_up(&cp->cp_up_waitq);
 		}
 		break;
+	case TCP_CLOSING:
+	case TCP_TIME_WAIT:
+		if (wq_has_sleeper(&tc->t_recv_done_waitq))
+			wake_up(&tc->t_recv_done_waitq);
+		break;
 	case TCP_CLOSE_WAIT:
+	case TCP_LAST_ACK:
 	case TCP_CLOSE:
+		if (wq_has_sleeper(&tc->t_recv_done_waitq))
+			wake_up(&tc->t_recv_done_waitq);
 		rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE, 0);
 	default:
 		break;
@@ -235,6 +243,7 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 {
 	struct rds_tcp_connection *tc = cp->cp_transport_data;
 	struct socket *sock;
+	unsigned int rounds;
 
 	mutex_lock(&tc->t_conn_path_lock);
 	sock = tc->t_sock;
@@ -245,8 +254,44 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 	if (sock) {
 		if (cp->cp_conn->c_destroy_in_prog)
 			rds_tcp_set_linger(sock);
-		sock->ops->shutdown(sock, RCV_SHUTDOWN | SEND_SHUTDOWN);
+
+		sock->ops->shutdown(sock, SHUT_WR);
+
+		/* after sending FIN,
+		 * wait until we processed all incoming messages
+		 * and we're sure that there won't be any more:
+		 * i.e. state CLOSING, TIME_WAIT, CLOSE_WAIT,
+		 * LAST_ACK, or CLOSE (RFC 793).
+		 *
+		 * Give up waiting after 5 seconds and allow messages
+		 * to theoretically get dropped, if the TCP transition
+		 * didn't happen.
+		 */
+		rounds = 0;
+		do {
+			/* we need to ensure messages are dequeued here
+			 * since "rds_recv_worker" only dispatches messages
+			 * while the connection is still in RDS_CONN_UP
+			 * and there is no guarantee that "rds_tcp_data_ready"
+			 * was called nor that "sk_data_ready" still points to it.
+			 */
+			rds_tcp_recv_path(cp);
+		} while (!wait_event_timeout(tc->t_recv_done_waitq,
+					     (sock->sk->sk_state == TCP_CLOSING ||
+					      sock->sk->sk_state == TCP_TIME_WAIT ||
+					      sock->sk->sk_state == TCP_CLOSE_WAIT ||
+					      sock->sk->sk_state == TCP_LAST_ACK ||
+					      sock->sk->sk_state == TCP_CLOSE) &&
+					     skb_queue_empty_lockless(&sock->sk->sk_receive_queue),
+					     msecs_to_jiffies(100)) &&
+			 ++rounds < 50);
+
 		lock_sock(sock->sk);
+
+		/* discard messages that the peer received already */
+		tc->t_last_seen_una = rds_tcp_snd_una(tc);
+		rds_send_path_drop_acked(cp, rds_tcp_snd_una(tc), rds_tcp_is_acked);
+
 		rds_tcp_restore_callbacks(sock, tc); /* tc->tc_sock = NULL */
 
 		release_sock(sock->sk);
