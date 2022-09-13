@@ -443,6 +443,8 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		while ((readq(bcn_reg_base + bcn_capture_off) & CAPT_EN))
 			cpu_relax();
 		ptp0_ns = readq(bcn_reg_base + bcn_capture_ptp_off);
+		if (CHIP_CNF10K(cdev->hw_version))
+			ptp0_ns = cnf10k_ptp_convert_timestamp(ptp0_ns);
 		regval = readq(bcn_reg_base + bcn_capture_n1_n2_off);
 		bcn_n1 = (regval >> 24) & 0xFFFFFFFFFF;
 		bcn_n2 = regval & 0xFFFFFF;
