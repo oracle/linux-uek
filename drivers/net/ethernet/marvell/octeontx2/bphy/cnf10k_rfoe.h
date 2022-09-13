@@ -191,6 +191,7 @@ void cnf10k_rfoe_disable_intf(int rfoe_num);
 void cnf10k_rfoe_set_ethtool_ops(struct net_device *netdev);
 
 /* ptp */
+void cnf10k_rfoe_calc_ptp_ts(struct cnf10k_rfoe_ndev_priv *priv, u64 *ts);
 int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv *priv);
 void cnf10k_rfoe_ptp_destroy(struct cnf10k_rfoe_ndev_priv *priv);
 
