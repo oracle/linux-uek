@@ -1459,7 +1459,7 @@ struct ssow_chng_mship {
 struct sso_grp_qos_cfg {
 	struct mbox_msghdr hdr;
 	u16 grp;
-	u32 xaq_limit;
+	u32 rsvd;
 	u16 taq_thr;
 	u16 iaq_thr;
 };
