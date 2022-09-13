@@ -1025,9 +1025,6 @@ int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
 	if (regval)
 		return SSO_AF_ERR_GRP_EBUSY;
 
-	/* Configure XAQ threhold */
-	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_LIMIT(lf), req->xaq_limit);
-
 	/* Set TAQ threhold */
 	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf));
 	grp_rsvd = regval & SSO_HWGRP_TAQ_RSVD_THR_MASK;
