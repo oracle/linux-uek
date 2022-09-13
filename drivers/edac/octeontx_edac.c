@@ -95,17 +95,37 @@ static ssize_t reg##_store(struct device *dev,			\
 	return 0;						\
 }
 
+#define TEMPLATE_DEV_SHOW(reg)					\
+static ssize_t dev_##reg##_show(struct edac_device_ctl_info *dev,\
+		char *data)					\
+{								\
+	struct octeontx_edac_pvt *pvt = dev->pvt_info;		\
+	return sprintf(data, "0x%016llx\n", (u64)pvt->reg);	\
+}
+
+#define TEMPLATE_DEV_STORE(reg)					\
+static ssize_t dev_##reg##_store(struct edac_device_ctl_info *dev,\
+		const char *data, size_t count)			\
+{								\
+	struct octeontx_edac_pvt *pvt = dev->pvt_info;		\
+	if (isdigit(*data)) {					\
+		if (!kstrtoul(data, 0, &pvt->reg))		\
+			return count;				\
+	}							\
+	return 0;						\
+}
+
+
 static const u64 einj_val = 0x5555555555555555;
 static u64 einj_fn(void)
 {
 	return einj_val;
 }
 
-static void octeontx_edac_mc_inject_error(struct mem_ctl_info *mci)
+static void octeontx_edac_mc_inject_error(struct octeontx_edac_pvt *pvt)
 {
 	struct arm_smccc_res res;
 	unsigned long arg[8] = {0};
-	struct octeontx_edac_pvt *pvt = mci->pvt_info;
 	bool read = false;
 	bool call = false;
 	u64 val = einj_val;
@@ -157,14 +177,9 @@ static void octeontx_edac_mc_inject_error(struct mem_ctl_info *mci)
 			__func__, arg[0], arg[1], arg[2], arg[3], res.a0);
 }
 
-
-static ssize_t inject_store(struct device *dev,
-		struct device_attribute *attr,
+static ssize_t inject(struct octeontx_edac_pvt *pvt,
 		const char *data, size_t count)
 {
-	struct mem_ctl_info *mci = to_mci(dev);
-	struct octeontx_edac_pvt *pvt = mci->pvt_info;
-
 	if (!(pvt->error_type & pvt->ghes->ecc_cap))
 		return count;
 
@@ -179,15 +194,41 @@ static ssize_t inject_store(struct device *dev,
 
 	pvt->inject = 0;
 
-	octeontx_edac_mc_inject_error(mci);
+	octeontx_edac_mc_inject_error(pvt);
 
 	return count;
 }
+
+
+static ssize_t inject_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *data, size_t count)
+{
+	struct mem_ctl_info *mci = to_mci(dev);
+	struct octeontx_edac_pvt *pvt = mci->pvt_info;
+
+	return inject(pvt, data, count);
+}
+
+static ssize_t dev_inject_store(struct edac_device_ctl_info *dev,
+		const char *data, size_t count)
+{
+	struct octeontx_edac_pvt *pvt = dev->pvt_info;
+
+	return inject(pvt, data, count);
+}
+
 
 TEMPLATE_SHOW(address);
 TEMPLATE_STORE(address);
 TEMPLATE_SHOW(error_type);
 TEMPLATE_STORE(error_type);
+
+TEMPLATE_DEV_SHOW(address);
+TEMPLATE_DEV_STORE(address);
+TEMPLATE_DEV_SHOW(error_type);
+TEMPLATE_DEV_STORE(error_type);
+
 
 static DEVICE_ATTR_WO(inject);
 static DEVICE_ATTR_RW(error_type);
@@ -202,6 +243,47 @@ static struct attribute *octeontx_dev_attrs[] = {
 
 ATTRIBUTE_GROUPS(octeontx_dev);
 
+static struct edac_dev_sysfs_attribute octeontx_dev_sysfs_attr[] = {
+	{
+		.attr = {
+		.name = "inject",
+		.mode = (0200)
+		},
+		.store = dev_inject_store
+	},
+	{
+		.attr = {
+		.name = "error_type",
+		.mode = (0644)
+		},
+		.show = dev_error_type_show,
+		.store = dev_error_type_store
+	},
+	{
+		.attr = {
+			.name = "address",
+			.mode = (0644)
+		},
+		.show = dev_address_show,
+		.store = dev_address_store},
+	{
+		.attr = {.name = NULL}
+	}
+};
+
+
+static void octeontx_edac_dev_attributes(struct edac_device_ctl_info *edac_dev)
+{
+	struct octeontx_edac_pvt *pvt;
+
+	pvt = edac_dev->pvt_info;
+
+	edac_dev->sysfs_attributes = octeontx_dev_sysfs_attr;
+
+	pvt->inject = 0;
+	pvt->error_type = 0;
+	pvt->address = 0;
+}
 
 static enum hw_event_mc_err_type octeontx_edac_severity(int cper_sev)
 {
@@ -243,15 +325,17 @@ static void octeontx_edac_make_error_desc(struct cper_sec_mem_err *mem_err,
 		struct edac_raw_error_desc *e)
 {
 	char *p;
+	char *end;
 
 	memset(e, 0, sizeof(*e));
 	e->error_count = 1;
-	e->grain = 1;
-	e->top_layer = -1;
-	e->mid_layer = -1;
-	e->low_layer = -1;
-	e->syndrome = 0;
+	e->grain       = 1;
+	e->top_layer   = -1;
+	e->mid_layer   = -1;
+	e->low_layer   = -1;
+	e->syndrome    = 0;
 
+	e->other_detail = mem_err_types[0];
 	if (mem_err->validation_bits & CPER_MEM_VALID_ERROR_TYPE)
 		e->other_detail = mem_err_types[mem_err->error_type];
 
@@ -261,32 +345,37 @@ static void octeontx_edac_make_error_desc(struct cper_sec_mem_err *mem_err,
 	}
 
 	p = e->location;
+	end = p + sizeof(e->location);
+	if (mem_err->validation_bits & CPER_MEM_VALID_ERROR_TYPE)
+		p += snprintf(p, end - p, "%s ", mem_err_types[mem_err->error_type]);
 	if (mem_err->validation_bits & CPER_MEM_VALID_ERROR_STATUS)
-		p += sprintf(p, "status:0x%llx ", mem_err->error_status);
+		p += snprintf(p, end - p, "status:0x%llx ", mem_err->error_status);
+	if (mem_err->validation_bits & CPER_MEM_VALID_PA)
+		p += snprintf(p, end - p, "addr: 0x%llx ", mem_err->physical_addr);
 	if (mem_err->validation_bits & CPER_MEM_VALID_NODE)
-		p += sprintf(p, "node:%d ", mem_err->node);
+		p += snprintf(p, end - p, "node:%d ", mem_err->node);
 	if (mem_err->validation_bits & CPER_MEM_VALID_CARD)
-		p += sprintf(p, "card:%d ", mem_err->card);
+		p += snprintf(p, end - p, "card:%d ", mem_err->card);
 	if (mem_err->validation_bits & CPER_MEM_VALID_MODULE)
-		p += sprintf(p, "module:%d ", mem_err->module);
+		p += snprintf(p, end - p, "module:%d ", mem_err->module);
 	if (mem_err->validation_bits & CPER_MEM_VALID_RANK_NUMBER)
-		p += sprintf(p, "rank:%d ", mem_err->rank);
+		p += snprintf(p, end - p, "rank:%d ", mem_err->rank);
 	if (mem_err->validation_bits & CPER_MEM_VALID_BANK)
-		p += sprintf(p, "bank:%d ", mem_err->bank);
+		p += snprintf(p, end - p, "bank:%d ", mem_err->bank);
+	if (mem_err->validation_bits & CPER_MEM_VALID_DEVICE)
+		p += snprintf(p, end - p, "device:%d ", mem_err->device);
 	if (mem_err->validation_bits & CPER_MEM_VALID_ROW)
-		p += sprintf(p, "row:%d ", mem_err->row);
+		p += snprintf(p, end - p, "row:%d ", mem_err->row);
 	if (mem_err->validation_bits & CPER_MEM_VALID_COLUMN)
-		p += sprintf(p, "col:%d ", mem_err->column);
+		p += snprintf(p, end - p, "col:%d ", mem_err->column);
 	if (mem_err->validation_bits & CPER_MEM_VALID_BIT_POSITION)
-		p += sprintf(p, "bit_pos:%d ", mem_err->bit_pos);
+		p += snprintf(p, end - p, "bit_pos:%d ", mem_err->bit_pos);
 	if (mem_err->validation_bits & CPER_MEM_VALID_REQUESTOR_ID)
-		p += sprintf(p, "requestorID: 0x%llx ", mem_err->requestor_id);
+		p += snprintf(p, end - p, "requestorID: 0x%llx ", mem_err->requestor_id);
 	if (mem_err->validation_bits & CPER_MEM_VALID_RESPONDER_ID)
-		p += sprintf(p, "responderID: 0x%llx ", mem_err->responder_id);
+		p += snprintf(p, end - p, "responderID: 0x%llx ", mem_err->responder_id);
 	if (mem_err->validation_bits & CPER_MEM_VALID_TARGET_ID)
-		p += sprintf(p, "targetID: 0x%llx ", mem_err->responder_id);
-	if (p > e->location)
-		*(p - 1) = '\0';
+		p += snprintf(p, end - p, "targetID: 0x%llx ", mem_err->target_id);
 }
 
 static int octeontx_sdei_register(struct octeontx_ghes *ghes, sdei_event_callback *cb)
@@ -389,11 +478,11 @@ loop:
 	memcpy_fromio(&rec, &ring->records[tail], sizeof(rec));
 
 	e = &mci->error_desc;
+	memset(e, 0, sizeof(*e));
 	cper = &rec.cper.mem;
-	if (cper->validation_bits != CANARY)
-		octeontx_edac_make_error_desc(cper, e);
-	e->msg = rec.msg;
+	octeontx_edac_make_error_desc(cper, e);
 	e->type = octeontx_edac_severity(rec.severity);
+	e->msg = rec.msg;
 
 	++tail;
 	if (tail >= ring->size)
@@ -817,10 +906,11 @@ static int octeontx_edac_device_init(struct platform_device *pdev,
 	pvt->ghes = ghes;
 	ghes->edac_dev = edac_dev;
 
-	if (edac_device_add_device(edac_dev)) {
-		dev_err(dev, "Unable register\n");
+	if (ghes->ecc_cap)
+		octeontx_edac_dev_attributes(edac_dev);
+
+	if (edac_device_add_device(edac_dev))
 		goto err0;
-	}
 
 	INIT_DELAYED_WORK(&edac_dev->work, octeontx_edac_device_wq);
 	edac_stop_work(&edac_dev->work);
@@ -1114,7 +1204,10 @@ static int __init octeontx_edac_init(void)
 	return 0;
 
 exit0:
-	pr_err("%s failed 0x%x\n", __func__, ret);
+	if (ret == -ENODEV)
+		return ret;
+
+	pr_err("%s failed %d\n", __func__, ret);
 	kfree(ghes_list.ghes);
 
 	return ret;
