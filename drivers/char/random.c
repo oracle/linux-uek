@@ -535,7 +535,8 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter, bool fips_enabled_re
 {
 	u32 chacha_state[CHACHA_STATE_WORDS];
 	u8 block[CHACHA_BLOCK_SIZE];
-	size_t ret = 0, copied, rc;
+	size_t ret = 0, copied;
+	int  rc;
 
 	if (unlikely(!iov_iter_count(iter)))
 		return 0;
