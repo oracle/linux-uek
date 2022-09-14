@@ -229,9 +229,22 @@ int rvu_mbox_handler_mcs_get_flowid_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
+	/* In CNF10K-B, before reading the statistics,
+	 * MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP needs to be set
+	 * to get accurate statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, true);
+
 	mutex_lock(&mcs->stats_lock);
 	mcs_get_flowid_stats(mcs, rsp, req->id, req->dir);
 	mutex_unlock(&mcs->stats_lock);
+
+	/* Clear MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP after reading
+	 * the statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, false);
 
 	return 0;
 }
@@ -246,6 +259,13 @@ int rvu_mbox_handler_mcs_get_secy_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
+	/* In CNF10K-B, before reading the statistics,
+	 * MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP needs to be set
+	 * to get accurate statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, true);
+
 	mutex_lock(&mcs->stats_lock);
 
 	if (req->dir == MCS_RX)
@@ -254,6 +274,13 @@ int rvu_mbox_handler_mcs_get_secy_stats(struct rvu *rvu,
 		mcs_get_tx_secy_stats(mcs, rsp, req->id);
 
 	mutex_unlock(&mcs->stats_lock);
+
+	/* Clear MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP after reading
+	 * the statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, false);
+
 	return 0;
 }
 
@@ -268,9 +295,23 @@ int rvu_mbox_handler_mcs_get_sc_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
+	/* In CNF10K-B, before reading the statistics,
+	 * MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP needs to be set
+	 * to get accurate statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, true);
+
 	mutex_lock(&mcs->stats_lock);
 	mcs_get_sc_stats(mcs, rsp, req->id, req->dir);
 	mutex_unlock(&mcs->stats_lock);
+
+	/* Clear MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP after reading
+	 * the statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, false);
+
 	return 0;
 }
 
@@ -285,9 +326,22 @@ int rvu_mbox_handler_mcs_get_sa_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
+	/* In CNF10K-B, before reading the statistics,
+	 * MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP needs to be set
+	 * to get accurate statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, true);
+
 	mutex_lock(&mcs->stats_lock);
 	mcs_get_sa_stats(mcs, rsp, req->id, req->dir);
 	mutex_unlock(&mcs->stats_lock);
+
+	/* Clear MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP after reading
+	 * the statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, false);
 
 	return 0;
 }
@@ -303,9 +357,22 @@ int rvu_mbox_handler_mcs_get_port_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
+	/* In CNF10K-B, before reading the statistics,
+	 * MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP needs to be set
+	 * to get accurate statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, true);
+
 	mutex_lock(&mcs->stats_lock);
 	mcs_get_port_stats(mcs, rsp, req->id, req->dir);
 	mutex_unlock(&mcs->stats_lock);
+
+	/* Clear MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP after reading
+	 * the statistics
+	 */
+	if (mcs->hw->mcs_blks > 1)
+		mcs_set_force_clk_en(mcs, false);
 
 	return 0;
 }

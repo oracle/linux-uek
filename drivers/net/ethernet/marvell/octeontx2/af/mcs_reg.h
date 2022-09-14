@@ -81,6 +81,14 @@
 		offset = 0x600c8ull;			\
 	offset; })
 
+#define MCSX_MIL_IP_GBL_STATUS ({			\
+	u64 offset;					\
+							\
+	offset = 0x800d0ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x600d0ull;			\
+	offset; })
+
 /* PAB */
 #define MCSX_PAB_RX_SLAVE_PORT_CFGX(a) ({	\
 	u64 offset;				\

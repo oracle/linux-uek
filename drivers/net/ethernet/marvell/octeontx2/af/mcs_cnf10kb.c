@@ -160,3 +160,29 @@ void cnf10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs)
 		mcs_add_intr_wq_entry(mcs, &event);
 	}
 }
+
+int mcs_set_force_clk_en(struct mcs *mcs, bool set)
+{
+	unsigned long timeout = jiffies + usecs_to_jiffies(2000);
+	u64 val;
+
+	val = mcs_reg_read(mcs, MCSX_MIL_GLOBAL);
+
+	if (set) {
+		val |= BIT_ULL(4);
+		mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+
+		/* Poll till mcsx_mil_ip_gbl_status.mcs_ip_stats_ready value is 1 */
+		while (!(mcs_reg_read(mcs, MCSX_MIL_IP_GBL_STATUS) & BIT_ULL(0))) {
+			if (time_after(jiffies, timeout)) {
+				dev_err(mcs->dev, "MCS set force clk enable failed\n");
+				break;
+			}
+		}
+	} else {
+		val &= ~BIT_ULL(4);
+		mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+	}
+
+	return 0;
+}
