@@ -239,6 +239,7 @@ void mcs_get_rx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id
 void mcs_get_tx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id);
 void mcs_clear_stats(struct mcs *mcs, u8 type, u8 id, int dir);
 int mcs_clear_all_stats(struct mcs *mcs, u16 pcifunc, int dir);
+int mcs_set_force_clk_en(struct mcs *mcs, bool set);
 
 int mcs_add_intr_wq_entry(struct mcs *mcs, struct mcs_intr_event *event);
 #endif /* MCS_H */
