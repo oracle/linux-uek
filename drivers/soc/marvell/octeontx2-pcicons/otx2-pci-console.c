@@ -703,8 +703,10 @@ int octeontx_console_output_truncate(struct octeontx_pcie_console *console,
 /*
  * Low-level octeontx console write function.
  *
- * NOTE: this may NOT sleep, as it is called by the TTY 'write()' API.
- *
+ * NOTE:
+ * - this may NOT sleep, as it is called by the TTY 'write()' API.
+ * - avoid using printk() or equivalent here as ultimately this handler will be called,
+ *   resulting in surprise recursion and deadlock.
  */
 static unsigned
 octeontx_console_write(struct device *dev, const char *buf, unsigned int len,
@@ -768,8 +770,7 @@ octeontx_console_write(struct device *dev, const char *buf, unsigned int len,
 			if (wr_len < 0) {
 				if (wait_usecs >=
 				    PCI_CONS_HOST_WAIT_TIMEOUT_USECS) {
-					dev_err_once(dev,
-						     "Timeout awaiting host\n");
+					trace_printk("Timeout awaiting host\n");
 					break;
 				}
 				/* We cannot sleep, we have acquired the lock */
@@ -780,13 +781,12 @@ octeontx_console_write(struct device *dev, const char *buf, unsigned int len,
 				wr_len = octeontx_console_output_truncate(
 						ring_descr, wr_len);
 				if (wr_len != 0) {
-					dev_err(dev,
-						"output buffer truncate error\n");
+					trace_printk("output buffer truncate error\n");
 					break;
 				}
 			}
 		} else {
-			dev_err_once(dev, "output buffer error\n");
+			trace_printk("output buffer error\n");
 			break;
 		}
 	}
