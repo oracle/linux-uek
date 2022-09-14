@@ -715,8 +715,9 @@ octeontx_console_write(struct device *dev, const char *buf, unsigned int len,
 	int srclen, avail, wr_len, written;
 	unsigned int wait_usecs;
 	u32 sz, rd_idx, wr_idx;
+	unsigned long irq_flags;
 
-	spin_lock(excl_lock);
+	spin_lock_irqsave(excl_lock, irq_flags);
 
 	sz = le32_to_cpu(readl(&ring_descr->output_buf_size));
 	src = buf;
@@ -790,7 +791,7 @@ octeontx_console_write(struct device *dev, const char *buf, unsigned int len,
 		}
 	}
 
-	spin_unlock(excl_lock);
+	spin_unlock_irqrestore(excl_lock, irq_flags);
 
 	return written;
 }
