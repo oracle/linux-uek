@@ -334,6 +334,8 @@ int rds_tcp_accept_one(struct rds_tcp_net *rtn)
 	    new_sock->sk->sk_state == TCP_LAST_ACK ||
 	    new_sock->sk->sk_state == TCP_CLOSE)
 		rds_conn_path_drop(cp, DR_TCP_STATE_ACCEPT_CLOSED, 0);
+	else
+		rds_cond_queue_recv_work(cp, 0);
 
 	new_sock = NULL;
 	ret = 0;
