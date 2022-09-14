@@ -920,6 +920,7 @@ kernel/net/netfilter/nfnetlink_log.ko
 kernel/net/netfilter/nfnetlink_osf.ko
 kernel/net/netfilter/nfnetlink_queue.ko
 kernel/net/netfilter/nf_synproxy_core.ko
+kernel/net/netfilter/nft_chain_nat.ko
 kernel/net/netfilter/nft_compat.ko
 kernel/net/netfilter/nft_counter.ko
 kernel/net/netfilter/nft_ct.ko
