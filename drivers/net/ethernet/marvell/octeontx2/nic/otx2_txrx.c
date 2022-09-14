@@ -1069,18 +1069,17 @@ static void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
 
 	if (unlikely(!skb_shinfo(skb)->gso_size &&
 		     (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP))) {
-		if (unlikely(pfvf->flags & OTX2_FLAG_PTP_ONESTEP_SYNC)) {
-			if (otx2_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
-				origin_tstamp = (struct ptpv2_tstamp *)
-						((u8 *)skb->data + ptp_offset +
-						 PTP_SYNC_SEC_OFFSET);
-				ts = ns_to_timespec64(pfvf->ptp->tstamp);
-				origin_tstamp->seconds_msb = ntohs((ts.tv_sec >> 32) & 0xffff);
-				origin_tstamp->seconds_lsb = ntohl(ts.tv_sec & 0xffffffff);
-				origin_tstamp->nanoseconds = ntohl(ts.tv_nsec);
-				/* Point to correction field in PTP packet */
-				ptp_offset += 8;
-			}
+		if (unlikely(pfvf->flags & OTX2_FLAG_PTP_ONESTEP_SYNC &&
+			     otx2_ptp_is_sync(skb, &ptp_offset, &udp_csum))) {
+			origin_tstamp = (struct ptpv2_tstamp *)
+					((u8 *)skb->data + ptp_offset +
+					 PTP_SYNC_SEC_OFFSET);
+			ts = ns_to_timespec64(pfvf->ptp->tstamp);
+			origin_tstamp->seconds_msb = ntohs((ts.tv_sec >> 32) & 0xffff);
+			origin_tstamp->seconds_lsb = ntohl(ts.tv_sec & 0xffffffff);
+			origin_tstamp->nanoseconds = ntohl(ts.tv_nsec);
+			/* Point to correction field in PTP packet */
+			ptp_offset += 8;
 		} else {
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 		}
