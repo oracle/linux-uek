@@ -106,7 +106,7 @@ void cnf10k_bphy_intr_handler(struct otx2_bphy_cdev_priv *cdev_priv, u32 status)
 			intr_mask = CNF10K_RFOE_TX_PTP_INTR_MASK(priv->rfoe_num,
 								 priv->lmac_id,
 						cdev_priv->num_rfoe_lmac);
-			if ((status & intr_mask) && priv->ptp_tx_skb)
+			if (status & intr_mask)
 				schedule_work(&priv->ptp_tx_work);
 		}
 	}
@@ -316,7 +316,6 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
 	struct cnf10k_tx_action_s tx_mem;
-	int ptp_offset = 0, udp_csum = 0;
 	struct tx_job_queue_cfg *job_cfg;
 	struct tx_job_entry *job_entry;
 	struct ptp_tstamp_skb *ts_skb;
@@ -388,11 +387,6 @@ static void cnf10k_rfoe_ptp_submit_work(struct work_struct *work)
 		  job_entry->job_cmd_lo, job_entry->job_cmd_hi,
 		  job_entry->jd_iova_addr);
 
-	if (priv->ptp_onestep_sync &&
-	    cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum))
-		cnf10k_rfoe_prepare_onestep_ptp_header(priv, &tx_mem, skb,
-						       ptp_offset, udp_csum);
-
 	priv->ptp_tx_skb = skb;
 	psm_cmd_lo = (struct cnf10k_psm_cmd_addjob_s *)&job_entry->job_cmd_lo;
 	priv->ptp_job_tag = psm_cmd_lo->jobtag;
@@ -447,11 +441,14 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	if (!priv->ptp_tx_skb) {
 		netif_err(priv, tx_done, priv->netdev,
 			  "ptp tx skb not found, something wrong!\n");
-		goto submit_next_req;
+		return;
 	}
 
-	if (!(skb_shinfo(priv->ptp_tx_skb)->tx_flags & SKBTX_IN_PROGRESS))
+	if (!(skb_shinfo(priv->ptp_tx_skb)->tx_flags & SKBTX_IN_PROGRESS)) {
+		netif_err(priv, tx_done, priv->netdev,
+			  "ptp tx skb SKBTX_IN_PROGRESS not set\n");
 		goto submit_next_req;
+	}
 
 	/* make sure that all memory writes by rfoe are completed */
 	dma_rmb();
@@ -999,7 +996,6 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 
 	/* hw timestamp */
 	if (unlikely(pkt_type == PACKET_TYPE_PTP)) {
-		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 		/* check if one-step is enabled */
 		if (priv->ptp_onestep_sync &&
 		    cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
@@ -1007,9 +1003,13 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 							       &tx_mem, skb,
 							       ptp_offset,
 							       udp_csum);
-			skb_shinfo(skb)->tx_flags &= ~SKBTX_IN_PROGRESS;
+			/* reset UDP hdr checksum as there is no checksum offload */
+			if (udp_csum)
+				udp_hdr(skb)->check = 0;
+			goto ptp_one_step_out;
 		}
 
+		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 		if (list_empty(&priv->ptp_skb_list.list) &&
 		    !test_and_set_bit_lock(PTP_TX_IN_PROGRESS, &priv->state)) {
 			priv->ptp_tx_skb = skb;
@@ -1027,6 +1027,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 			if (priv->ptp_skb_list.count >= max_ptp_req) {
 				netif_err(priv, tx_err, netdev,
 					  "ptp list full, dropping pkt\n");
+				skb_shinfo(skb)->tx_flags &= ~SKBTX_IN_PROGRESS;
 				cnf10k_rfoe_update_tx_drop_stats(priv, PACKET_TYPE_PTP);
 				goto exit;
 			}
@@ -1047,6 +1048,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 		}
 	}
 
+ptp_one_step_out:
 	/* sw timestamp */
 	skb_tx_timestamp(skb);
 
@@ -1101,8 +1103,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	if (job_cfg->q_idx == job_cfg->num_entries)
 		job_cfg->q_idx = 0;
 exit:
-	if (!(priv->tx_hw_tstamp_en &&
-	      skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS))
+	if (!(skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS))
 		dev_kfree_skb_any(skb);
 
 	spin_unlock_irqrestore(&job_cfg->lock, flags);
