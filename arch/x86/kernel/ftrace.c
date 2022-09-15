@@ -819,7 +819,7 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 
 		BUG_ON(*((u8 *)ftrace_stub) != JMP32_INSN_OPCODE);
 		new = ftrace_jmp_replace((unsigned long) ip,
-					 (unsigned long)__x86_return_thunk);
+					 (unsigned long)x86_return_thunk);
 		memcpy(ip, new, RET_SIZE);
 	} else {
 		/*

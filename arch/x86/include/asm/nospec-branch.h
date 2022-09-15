@@ -334,6 +334,8 @@ extern void entry_ibpb(void);
 extern void clear_bhb_loop(void);
 #endif
 
+extern void (*x86_return_thunk)(void);
+
 DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 

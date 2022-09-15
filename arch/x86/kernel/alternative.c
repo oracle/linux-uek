@@ -725,6 +725,7 @@ static void __init int3_selftest(void)
 #define JMP32_INSN_OPCODE	0xE9
 #define RET_INSN_OPCODE		0xC3
 #define INT3_INSN_OPCODE	0xCC
+#define JMP32_INSN_SIZE		5
 
 #ifdef CONFIG_RETHUNK
 /*
@@ -742,10 +743,23 @@ static int patch_return(void *addr, struct insn *insn, u8 *bytes)
 {
 	int i = 0;
 
-	if (cpu_feature_enabled(X86_FEATURE_RETHUNK))
-		return -1;
+        /* Patch the custom return thunks... */
+        if (cpu_feature_enabled(X86_FEATURE_RETHUNK)) {
+		struct {
+			u8 opcode;
+			s32 disp;
+		} __attribute__((packed)) *poke_insn = (void *)bytes;
 
-	bytes[i++] = RET_INSN_OPCODE;
+		if (x86_return_thunk == __x86_return_thunk)
+			return -1;
+
+		poke_insn->opcode = JMP32_INSN_OPCODE;
+		poke_insn->disp = (long)x86_return_thunk - (long)(addr + JMP32_INSN_SIZE);
+		i = JMP32_INSN_SIZE;
+	} else {
+		/* ... or patch them out if not needed. */
+		bytes[i++] = RET_INSN_OPCODE;
+	}
 
 	for (; i < insn->length;)
 		bytes[i++] = INT3_INSN_OPCODE;
