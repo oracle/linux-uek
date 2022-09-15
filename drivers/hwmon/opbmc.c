@@ -16,10 +16,12 @@
 #define OPBMC_IO_BAR		0xFD110000
 #define OPBMC_PAD_CFG_GPP_A0	0x400
 #define OPBMC_PAD_OFFSET	0x0c
+#define OPBMC_GPP_PAGE_ADDR	0xFED81500  /* size 0x400 */
+#define OPBMC_GPP_ADDR		0xFED81514
 
 static struct platform_device *opbmc_pdev;
 
-static const struct dmi_system_id oracle_pilot_bmc_table[] __initconst = {
+static const struct dmi_system_id oracle_pilot_bmc_table[] = {
 	{
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
@@ -41,7 +43,47 @@ static const struct dmi_system_id oracle_pilot_bmc_table[] __initconst = {
 	{}
 };
 
-static int reset_sp(void)
+static const struct dmi_system_id oracle_AST2600_bmc_table[] = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ORACLE SERVER E5"),
+		},
+	},
+	{}
+};
+
+static int reset_sp_ast2600(void)
+{
+	void __iomem *mem;
+	u8 resetbyte;
+	int rc = 0;
+
+	if (!request_mem_region(OPBMC_GPP_PAGE_ADDR, 0x400, MODULE_NAME)) {
+		pr_err("Oracle ILOM reset: Cannot reserve memory region.\n");
+		rc = -ENXIO;
+		goto err_mem;
+	}
+
+	mem = ioremap(OPBMC_GPP_PAGE_ADDR, 0x400);
+	if (!mem) {
+		rc = -ENXIO;
+		goto err_mem;
+	}
+
+	resetbyte = ioread8(mem + 0x16);
+	iowrite8(resetbyte | 0x40, mem + 0x16);
+	udelay(90);
+	iowrite8(resetbyte ^ 0x40, mem + 0x16);
+
+	iounmap(mem);
+	pr_info_ratelimited("Oracle ILOM reset\n");
+err_mem:
+	release_mem_region(OPBMC_GPP_PAGE_ADDR, 0x400);
+	return rc;
+}
+
+static int reset_sp_pilot(void)
 {
 	void __iomem *mem;
 	u32 padbar;
@@ -96,8 +138,14 @@ static ssize_t reset_bmc(struct kobject *kobj, struct kobj_attribute *attr,
 	if (kstrtos32(buf, 0, &val))
 		return -EINVAL;
 
-	if (val == 1)
-		err = reset_sp();
+	if (val == 1) {
+		if (dmi_check_system(oracle_pilot_bmc_table))
+			err = reset_sp_pilot();
+		else if (dmi_check_system(oracle_AST2600_bmc_table))
+			err = reset_sp_ast2600();
+		else
+			pr_err("Platform not identified\n");
+	}
 
 	if (err)
 		return err;
@@ -141,7 +189,8 @@ static int opbmc_probe(void)
 
 	int err;
 
-	if (!dmi_check_system(oracle_pilot_bmc_table))
+	if ((dmi_check_system(oracle_pilot_bmc_table) +
+	     dmi_check_system(oracle_AST2600_bmc_table)) != 1)
 		return -ENODEV;
 
 	opbmc_pdev = platform_device_alloc(MODULE_NAME, -1);
@@ -196,5 +245,5 @@ module_exit(opbmc_exit);
 
 MODULE_AUTHOR("Eric Snowberg <eric.snowberg@oracle.com>");
 MODULE_DESCRIPTION("Oracle Pilot BMC");
-MODULE_VERSION("1.0");
+MODULE_VERSION("2.0");
 MODULE_LICENSE("GPL");
