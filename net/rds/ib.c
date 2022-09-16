@@ -274,7 +274,7 @@ static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
 	lfstack_init(&cache->ready);
 	atomic64_set(&cache->hit_count, 0);
 	atomic64_set(&cache->miss_count, 0);
-
+	set_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
 	return 0;
 }
 
@@ -282,7 +282,7 @@ static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 {
 	struct rds_ib_cache_head *head;
 	int cpu;
-
+	clear_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
 	for_each_possible_cpu(cpu) {
 		head = per_cpu_ptr(cache->percpu, cpu);
 		lfstack_free(&head->stack);
@@ -325,7 +325,7 @@ out:
 	return ret;
 }
 
-static inline void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz)
+void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz)
 {
 	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
 
@@ -359,6 +359,7 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 	struct lfstack_el *cache_item;
 	struct rds_page_frag *frag;
 
+	clear_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
 	for_each_possible_cpu(cpu) {
 		rds_ib_free_frag_cache_one(cache, cache_sz, cpu);
 		head = per_cpu_ptr(cache->percpu, cpu);
@@ -373,7 +374,7 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 	free_percpu(cache->percpu);
 }
 
-static inline void rds_ib_free_one_inc(struct rds_ib_incoming *inc)
+void rds_ib_free_one_inc(struct rds_ib_incoming *inc)
 {
 	inc->ii_cache_entry.next = 0;
 	WARN_ON(!list_empty(&inc->ii_frags));
@@ -401,6 +402,7 @@ static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
 	struct lfstack_el *cache_item;
 	struct rds_ib_incoming *inc;
 
+	clear_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
 	for_each_possible_cpu(cpu) {
 		rds_ib_free_inc_cache_one(cache, cpu);
 		head = per_cpu_ptr(cache->percpu, cpu);
