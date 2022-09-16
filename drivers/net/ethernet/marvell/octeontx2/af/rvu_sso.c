@@ -370,8 +370,8 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
-	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, reg);
-	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, reg);
+	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, reg);
+	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, reg);
 
 	/* Ignore all interrupts */
 	rvu_write64(rvu, ssow_blkaddr,
@@ -504,8 +504,8 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x1);
 	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(ssow_lf), 0x2, true);
 
-	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0);
-	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0);
+	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0);
+	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0);
 
 	return 0;
 }
@@ -559,7 +559,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
-	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, reg);
+	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, reg);
 
 	rvu_write64(rvu, blkaddr,
 		    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_INT_THR), 0x0);
@@ -574,7 +574,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_INT_ENA_W1C),
 		    SSO_LF_GGRP_INT_MASK);
 
-	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0x0);
+	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0x0);
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_UNMAP_INFO);
 	if ((reg & 0xFFF) == pcifunc)
@@ -674,7 +674,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	/* Enable BAR2 alias access. */
 	reg = BIT_ULL(16) | pcifunc;
-	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, reg);
+	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, reg);
 
 	/* Ignore all interrupts */
 	rvu_write64(rvu, ssow_blkaddr,
@@ -739,7 +739,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 			    0x0);
 	}
 
-	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0x0);
+	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0x0);
 
 	return 0;
 }
@@ -845,7 +845,7 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 			return SSO_AF_INVAL_NPA_PF_FUNC;
 
 		reg = BIT_ULL(16) | npa_pcifunc;
-		rvu_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, reg);
+		rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, reg);
 		aura = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
 	}
 
@@ -877,7 +877,8 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 	err = 0;
 fail:
 	if (npa_pcifunc)
-		rvu_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, 0x0);
+		rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, 0x0);
+
 	return err;
 }
 
