@@ -1573,9 +1573,8 @@ static bool __prep_compound_gigantic_page(struct page *page, unsigned int order,
 
 	/* we rely on prep_new_huge_page to set the destructor */
 	set_compound_order(page, order);
-	__ClearPageReserved(page);
 	__SetPageHead(page);
-	for (i = 1; i < nr_pages; i++) {
+	for (i = 0; i < nr_pages; i++) {
 		p = nth_page(page, i);
 
 		/*
@@ -1616,16 +1615,18 @@ static bool __prep_compound_gigantic_page(struct page *page, unsigned int order,
 		} else {
 			VM_BUG_ON_PAGE(page_count(p), p);
 		}
-		set_compound_head(p, page);
+		if (i != 0)
+			set_compound_head(p, page);
 	}
 	atomic_set(compound_mapcount_ptr(page), -1);
 	return true;
 
 out_error:
-	/* undo tail page modifications made above */
-	for (j = 1; j < i; j++) {
+	/* undo page modifications made above */
+	for (j = 0; j < i; j++) {
 		p = nth_page(page, j);
-		clear_compound_head(p);
+		if (j != 0)
+			clear_compound_head(p);
 		set_page_refcounted(p);
 	}
 	/* need to clear PG_reserved on remaining tail pages  */
@@ -1697,6 +1698,7 @@ static struct page *alloc_buddy_huge_page(struct hstate *h,
 	int order = huge_page_order(h);
 	struct page *page;
 	bool alloc_try_hard = true;
+	bool retry = true;
 
 	/*
 	 * By default we always try hard to allocate the page with
@@ -1712,7 +1714,21 @@ static struct page *alloc_buddy_huge_page(struct hstate *h,
 		gfp_mask |= __GFP_RETRY_MAYFAIL;
 	if (nid == NUMA_NO_NODE)
 		nid = numa_mem_id();
+retry:
 	page = __alloc_pages_nodemask(gfp_mask, order, nid, nmask);
+
+	/* Freeze head page */
+	if (page && !page_ref_freeze(page, 1)) {
+		__free_pages(page, order);
+		if (retry) {	/* retry once */
+			retry = false;
+			goto retry;
+		}
+		/* WOW!  twice in a row. */
+		pr_warn("HugeTLB head page unexpected inflated ref count\n");
+		page = NULL;
+	}
+
 	if (page)
 		__count_vm_event(HTLB_BUDDY_PGALLOC);
 	else
@@ -1740,6 +1756,9 @@ static struct page *alloc_buddy_huge_page(struct hstate *h,
 /*
  * Common helper to allocate a fresh hugetlb page. All specific allocators
  * should use this function to get new hugetlb pages
+ *
+ * Note that returned page is 'frozen':  ref count of head page and all tail
+ * pages is zero.
  */
 static struct page *alloc_fresh_huge_page(struct hstate *h,
 		gfp_t gfp_mask, int nid, nodemask_t *nmask,
@@ -1797,7 +1816,7 @@ static int alloc_pool_huge_page(struct hstate *h, nodemask_t *nodes_allowed,
 	if (!page)
 		return 0;
 
-	put_page(page); /* free it into the hugepage allocator */
+	free_huge_page(page); /* free it into the hugepage allocator */
 
 	return 1;
 }
@@ -1957,10 +1976,9 @@ int dissolve_free_huge_pages(unsigned long start_pfn, unsigned long end_pfn)
  * Allocates a fresh surplus page from the page allocator.
  */
 static struct page *alloc_surplus_huge_page(struct hstate *h, gfp_t gfp_mask,
-		int nid, nodemask_t *nmask, bool zero_ref)
+						int nid, nodemask_t *nmask)
 {
 	struct page *page = NULL;
-	bool retry = false;
 
 	if (hstate_is_gigantic(h))
 		return NULL;
@@ -1970,7 +1988,6 @@ static struct page *alloc_surplus_huge_page(struct hstate *h, gfp_t gfp_mask,
 		goto out_unlock;
 	spin_unlock_irq(&hugetlb_lock);
 
-retry:
 	page = alloc_fresh_huge_page(h, gfp_mask, nid, nmask, NULL);
 	if (!page)
 		return NULL;
@@ -1986,32 +2003,8 @@ retry:
 	if (h->surplus_huge_pages >= h->nr_overcommit_huge_pages) {
 		SetHPageTemporary(page);
 		spin_unlock_irq(&hugetlb_lock);
-		put_page(page);
+		free_huge_page(page);
 		return NULL;
-	}
-
-	if (zero_ref) {
-		/*
-		 * Caller requires a page with zero ref count.
-		 * We will drop ref count here.  If someone else is holding
-		 * a ref, the page will be freed when they drop it.  Abuse
-		 * temporary page flag to accomplish this.
-		 */
-		SetHPageTemporary(page);
-		if (!put_page_testzero(page)) {
-			/*
-			 * Unexpected inflated ref count on freshly allocated
-			 * huge.  Retry once.
-			 */
-			pr_info("HugeTLB unexpected inflated ref count on freshly allocated page\n");
-			spin_unlock_irq(&hugetlb_lock);
-			if (retry)
-				return NULL;
-
-			retry = true;
-			goto retry;
-		}
-		ClearHPageTemporary(page);
 	}
 
 	h->surplus_huge_pages++;
@@ -2034,6 +2027,9 @@ struct page *alloc_migrate_huge_page(struct hstate *h, gfp_t gfp_mask,
 	page = alloc_fresh_huge_page(h, gfp_mask, nid, nmask, NULL);
 	if (!page)
 		return NULL;
+
+	/* fresh huge pages are frozen */
+	set_page_refcounted(page);
 
 	/*
 	 * We do not account these pages as surplus because they are only
@@ -2058,7 +2054,7 @@ struct page *alloc_buddy_huge_page_with_mpol(struct hstate *h,
 	nodemask_t *nodemask;
 
 	nid = huge_node(vma, addr, gfp_mask, &mpol, &nodemask);
-	page = alloc_surplus_huge_page(h, gfp_mask, nid, nodemask, false);
+	page = alloc_surplus_huge_page(h, gfp_mask, nid, nodemask);
 	mpol_cond_put(mpol);
 
 	return page;
@@ -2150,7 +2146,7 @@ retry:
 	spin_unlock_irq(&hugetlb_lock);
 	for (i = 0; i < needed; i++) {
 		page = alloc_surplus_huge_page(h, htlb_alloc_mask(h),
-				NUMA_NO_NODE, NULL, true);
+				NUMA_NO_NODE, NULL);
 		if (!page) {
 			alloc_ok = false;
 			break;
@@ -2433,7 +2429,6 @@ static int alloc_and_dissolve_huge_page(struct hstate *h, struct page *old_page,
 {
 	gfp_t gfp_mask = htlb_alloc_mask(h) | __GFP_THISNODE;
 	int nid = page_to_nid(old_page);
-	bool alloc_retry = false;
 	struct page *new_page;
 	int ret = 0;
 
@@ -2444,30 +2439,9 @@ static int alloc_and_dissolve_huge_page(struct hstate *h, struct page *old_page,
 	 * the pool.  This simplifies and let us do most of the processing
 	 * under the lock.
 	 */
-alloc_retry:
 	new_page = alloc_buddy_huge_page(h, gfp_mask, nid, NULL, NULL);
 	if (!new_page)
 		return -ENOMEM;
-	/*
-	 * If all goes well, this page will be directly added to the free
-	 * list in the pool.  For this the ref count needs to be zero.
-	 * Attempt to drop now, and retry once if needed.  It is VERY
-	 * unlikely there is another ref on the page.
-	 *
-	 * If someone else has a reference to the page, it will be freed
-	 * when they drop their ref.  Abuse temporary page flag to accomplish
-	 * this.  Retry once if there is an inflated ref count.
-	 */
-	SetHPageTemporary(new_page);
-	if (!put_page_testzero(new_page)) {
-		if (alloc_retry)
-			return -EBUSY;
-
-		alloc_retry = true;
-		goto alloc_retry;
-	}
-	ClearHPageTemporary(new_page);
-
 	__prep_new_huge_page(h, new_page);
 
 retry:
@@ -2637,6 +2611,7 @@ struct page *alloc_huge_page(struct vm_area_struct *vma,
 			h->resv_huge_pages--;
 		}
 		list_move(&page->lru, &h->hugepage_activelist);
+		set_page_refcounted(page);
 		/* Fall through */
 	}
 	hugetlb_cgroup_commit_charge(idx, pages_per_huge_page(h), h_cg, page);
@@ -2722,7 +2697,7 @@ static void __init gather_bootmem_prealloc(void)
 		if (prep_compound_gigantic_page(page, huge_page_order(h))) {
 			WARN_ON(PageReserved(page));
 			prep_new_huge_page(h, page, page_to_nid(page));
-			put_page(page); /* add to the hugepage allocator */
+			free_huge_page(page); /* add to the hugepage allocator */
 		} else {
 			/* VERY unlikely inflated ref count on a tail page */
 			free_gigantic_page(page, huge_page_order(h));
@@ -3097,9 +3072,8 @@ static int demote_free_huge_page(struct hstate *h, struct page *page)
 		else
 			prep_compound_page(subpage, target_hstate->order);
 		set_page_private(subpage, 0);
-		set_page_refcounted(subpage);
 		prep_new_huge_page(target_hstate, subpage, nid);
-		put_page(subpage);
+		free_huge_page(subpage);
 	}
 	mutex_unlock(&target_hstate->resize_lock);
 
