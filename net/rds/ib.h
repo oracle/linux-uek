@@ -120,12 +120,16 @@ struct rds_ib_cache_head {
 	atomic64_t		gc_count;
 };
 
+enum rds_ib_cache_flags {
+	RDS_IB_CACHE_INITIALIZED,
+};
+
 struct rds_ib_refill_cache {
 	struct rds_ib_cache_head __percpu	*percpu;
 	union lfstack				ready;
 	atomic64_t				hit_count;
 	atomic64_t				miss_count;
-
+	unsigned long				initialized;
 };
 
 struct rds_ib_conn_priv_cmn {
@@ -658,6 +662,8 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
 struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
 void rds_ib_nodev_connect(void);
+void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz);
+void rds_ib_free_one_inc(struct rds_ib_incoming *inc);
 extern struct ib_client rds_ib_client;
 
 extern unsigned int rds_ib_fmr_1m_pool_size;
