@@ -124,7 +124,7 @@ void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent)
 	}
 }
 /* fwd decl */
-static void rds_ib_recv_cache_put(int cpu,
+static bool rds_ib_recv_cache_put(int cpu,
 				  struct lfstack_el *new_item_first,
 				  struct lfstack_el *new_item_last,
 				  struct rds_ib_refill_cache *cache,
@@ -135,16 +135,19 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			     struct rds_page_frag *frag)
 {
-	rds_ib_recv_cache_put(ic->i_irq_local_cpu,
-			      &frag->f_cache_entry,
-			      &frag->f_cache_entry,
-			      frag->rds_ibdev->i_cache_frags +
-			      ic->i_frag_cache_inx,
-			      1);
 
-	atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
-	rds_ib_stats_inc(s_ib_recv_nmb_added_to_cache);
-	rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+	if (rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+				  &frag->f_cache_entry,
+				  &frag->f_cache_entry,
+				  frag->rds_ibdev->i_cache_frags +
+				  ic->i_frag_cache_inx,
+				  1)) {
+		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+		rds_ib_stats_inc(s_ib_recv_nmb_added_to_cache);
+		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+	} else {
+		rds_ib_free_one_frag(frag, ic->i_frag_sz);
+	}
 }
 
 static int sg_total_lens(struct scatterlist *sg)
@@ -176,6 +179,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 		if (sg_total_lens(frag->f_sg) != ic->i_frag_sz) {
 			rds_ib_recv_free_frag(frag, sg_total_lens(frag->f_sg) / PAGE_SIZE);
 			kmem_cache_free(rds_ib_frag_slab, frag);
+			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 			continue;
 		} else {
 			list_del_init(&frag->f_item);
@@ -195,21 +199,31 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	}
 	rdsdebug("first_frag %p frag %p p_frag %p count %d inc %p\n", first_frag, p_frag, frag, count, inc);
 	if (first_frag)
-		rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+		if (!rds_ib_recv_cache_put(ic->i_irq_local_cpu,
 				      &first_frag->f_cache_entry,
 				      &p_frag->f_cache_entry,
 				      first_frag->rds_ibdev->i_cache_frags +
 				      ic->i_frag_cache_inx,
-				      count);
+					   count)) {
+			struct lfstack_el *el = &first_frag->f_cache_entry;
+
+			while (el) {
+				frag = container_of(el, struct rds_page_frag, f_cache_entry);
+				rds_ib_free_one_frag(frag, ic->i_frag_sz);
+				el = lfstack_next(el);
+			}
+		}
 
 	WARN_ON(!list_empty(&ibinc->ii_frags));
 
 	rdsdebug("freeing ibinc %p inc %p\n", ibinc, inc);
-	rds_ib_recv_cache_put(ic->i_irq_local_cpu,
-			      &ibinc->ii_cache_entry,
-			      &ibinc->ii_cache_entry,
-			      &ibinc->rds_ibdev->i_cache_incs,
-			      1);
+
+	if (!rds_ib_recv_cache_put(ic->i_irq_local_cpu,
+				   &ibinc->ii_cache_entry,
+				   &ibinc->ii_cache_entry,
+				   &ibinc->rds_ibdev->i_cache_incs,
+				   1))
+		rds_ib_free_one_inc(ibinc);
 }
 
 static void rds_ib_recv_clear_one(struct rds_ib_connection *ic,
@@ -676,7 +690,7 @@ release_out:
  * First, we put the memory on a percpu list. When this reaches a certain size,
  * we put the memory on  an intermediate non-percpu list.
  */
-static void rds_ib_recv_cache_put(int cpu,
+static bool rds_ib_recv_cache_put(int cpu,
 				  struct lfstack_el *new_item_first,
 				  struct lfstack_el *new_item_last,
 				  struct rds_ib_refill_cache *cache,
@@ -684,8 +698,9 @@ static void rds_ib_recv_cache_put(int cpu,
 {
 	struct rds_ib_cache_head *head;
 
-	if (!cache->percpu)
-		return;
+	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized) || !cache->percpu) {
+		return false;
+	}
 	if (cpu != NR_CPUS) {
 		head = per_cpu_ptr(cache->percpu, cpu);
 
@@ -694,11 +709,12 @@ static void rds_ib_recv_cache_put(int cpu,
 
 			atomic_add(count, &head->count);
 			lfstack_push_many(stack, new_item_first, new_item_last);
-			return;
+			return true;
 		}
 	}
 
 	lfstack_push_many(&cache->ready, new_item_first, new_item_last);
+	return true;
 }
 
 static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache)
@@ -706,7 +722,7 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 	struct lfstack_el *item;
 	union lfstack *stack;
 
-	if (!cache->percpu)
+	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized) || !cache->percpu)
 		return NULL;
 	rds_ib_stats_inc(s_ib_rx_cache_get);
 
