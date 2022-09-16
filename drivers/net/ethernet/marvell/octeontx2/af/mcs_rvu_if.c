@@ -44,7 +44,7 @@ int rvu_mbox_handler_mcs_set_lmac_mode(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
-	if (BIT_ULL(req->lmac_id) && mcs->hw->lmac_bmap)
+	if (BIT_ULL(req->lmac_id) & mcs->hw->lmac_bmap)
 		mcs_set_lmac_mode(mcs, req->lmac_id, req->mode);
 
 	return 0;
@@ -719,6 +719,57 @@ int rvu_mbox_handler_mcs_port_reset(struct rvu *rvu, struct mcs_port_reset_req *
 	mcs = mcs_get_pdata(req->mcs_id);
 
 	mcs_reset_port(mcs, req->port_id, req->reset);
+
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_port_cfg_set(struct rvu *rvu, struct mcs_port_cfg_set_req *req,
+				      struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	if (mcs->hw->lmac_cnt <= req->port_id || !(mcs->hw->lmac_bmap & BIT_ULL(req->port_id)))
+		return -EINVAL;
+
+	mcs_set_port_cfg(mcs, req);
+
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_port_cfg_get(struct rvu *rvu, struct mcs_port_cfg_get_req *req,
+				      struct mcs_port_cfg_get_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	if (mcs->hw->lmac_cnt <= req->port_id || !(mcs->hw->lmac_bmap & BIT_ULL(req->port_id)))
+		return -EINVAL;
+
+	mcs_get_port_cfg(mcs, req, rsp);
+
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_custom_tag_cfg_get(struct rvu *rvu, struct mcs_custom_tag_cfg_get_req *req,
+					    struct mcs_custom_tag_cfg_get_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return -EINVAL;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	mcs_get_custom_tag_cfg(mcs, req, rsp);
 
 	return 0;
 }
