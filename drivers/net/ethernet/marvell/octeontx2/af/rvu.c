@@ -2763,7 +2763,7 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 		return;
 
 	regval = BIT_ULL(16) | pcifunc;
-	rvu_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, regval);
+	rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, regval);
 
 	sso_block = &rvu->hw->block[blkaddr];
 	retry = 0;
@@ -2826,6 +2826,7 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 		pcifunc_arr[match_cnt] = sso_pcifunc;
 		match_cnt++;
 	}
+	rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, 0);
 
 	detach.partial = true;
 	detach.sso   = true;

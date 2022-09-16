@@ -1013,13 +1013,15 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf, int s
 	if (is_cpt_pf(rvu, pcifunc) || is_cpt_vf(rvu, pcifunc))
 		cpt_rxc_teardown(rvu, blkaddr);
 
+	mutex_lock(&rvu->rsrc_lock);
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
-	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, reg);
+	rvu_bar2_sel_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, reg);
 
 	cpt_lf_disable_iqueue(rvu, blkaddr, slot);
 
-	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, 0);
+	rvu_bar2_sel_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, 0);
+	mutex_unlock(&rvu->rsrc_lock);
 
 	return 0;
 }
@@ -1154,7 +1156,7 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
-	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, reg);
+	rvu_bar2_sel_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, reg);
 
 	for (i = 0; i < max_ctx_entries; i++) {
 		cam_data = rvu_read64(rvu, blkaddr, CPT_AF_CTX_CAM_DATA(i));
@@ -1167,7 +1169,7 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 				    reg);
 		}
 	}
-	rvu_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, 0);
+	rvu_bar2_sel_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, 0);
 
 unlock:
 	mutex_unlock(&rvu->rsrc_lock);
