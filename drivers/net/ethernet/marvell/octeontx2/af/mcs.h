@@ -53,6 +53,10 @@ enum mcs_int_vec_e {
 	MCS_INT_VEC_CNT			= 0x14,
 };
 
+#define MCS_PORT_MODE_MASK 0x3
+#define MCS_PORT_FIFO_SKID_MASK 0x3F
+#define MCS_MAX_CUSTOM_TAGS 0x8
+
 #define MCS_MAX_BBE_INT 8
 #define MCS_BBE_INT_MASK 0xFF
 
@@ -204,6 +208,11 @@ int mcs_alloc_ctrlpktrule(struct rsrc_bmap *rsrc, u16 *pf_map, u16 offset, u16 p
 int mcs_free_ctrlpktrule(struct mcs *mcs, struct mcs_free_ctrl_pkt_rule_req *req);
 int mcs_ctrlpktrule_write(struct mcs *mcs, struct mcs_ctrl_pkt_rule_write_req *req);
 void mcs_reset_port(struct mcs *mcs, u8 port_id, u8 reset);
+void mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req);
+void mcs_get_port_cfg(struct mcs *mcs, struct mcs_port_cfg_get_req *req,
+		      struct mcs_port_cfg_get_rsp *rsp);
+void mcs_get_custom_tag_cfg(struct mcs *mcs, struct mcs_custom_tag_cfg_get_req *req,
+			    struct mcs_custom_tag_cfg_get_rsp *rsp);
 
 /* CN10K-B APIs */
 void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs);

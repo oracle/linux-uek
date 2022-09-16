@@ -167,7 +167,7 @@
 #define MCSX_PAB_RX_SLAVE_PAB_INT_INTR_RW ({	\
 	u64 offset;			\
 					\
-	offset = 0x16f8ull;		\
+	offset = 0x1708ull;		\
 	if (mcs->hw->mcs_blks > 1)	\
 		offset = 0x278ull;	\
 	offset; })
@@ -427,6 +427,17 @@
 /* PEX registers */
 #define MCSX_PEX_RX_SLAVE_VLAN_CFGX(a)		(0x3b58ull + (a) * 0x8ull)
 #define MCSX_PEX_TX_SLAVE_VLAN_CFGX(a)		(0x46f8ull + (a) * 0x8ull)
+
+#define MCSX_PEX_TX_SLAVE_CUSTOM_TAG_REL_MODE_SEL(a)	(0x788ull + (a) * 0x8ull)
+#define MCSX_PEX_TX_SLAVE_PORT_CONFIG(a)		(0x4738ull + (a) * 0x8ull)
+
+#define MCSX_PEX_RX_SLAVE_PEX_CONFIGURATION ({		\
+	u64 offset;					\
+							\
+	offset = 0x3b50ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x4c0ull;			\
+	offset; })
 
 #define MCSX_PEX_RX_SLAVE_RULE_ETYPE_CFGX(a) ({	\
 	u64 offset;					\
