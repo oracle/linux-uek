@@ -121,4 +121,9 @@ static inline void lfstack_link(struct lfstack_el *first, struct lfstack_el *nex
 	smp_store_release(&first->next, next);
 }
 
+static inline struct lfstack_el *lfstack_next(struct lfstack_el *el)
+{
+	return READ_ONCE(el->next);
+}
+
 #endif
