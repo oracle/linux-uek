@@ -940,7 +940,7 @@ static int bitmap_pos_to_ord(const unsigned long *buf, unsigned int pos, unsigne
 	if (pos >= nbits || !test_bit(pos, buf))
 		return -1;
 
-	return __bitmap_weight(buf, pos);
+	return bitmap_weight(buf, pos);
 }
 
 /**
