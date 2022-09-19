@@ -190,6 +190,8 @@ int rds_send_xmit(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_message *rm = cp->cp_xmit_rm;
+	struct rds_conn_path *cp0 = conn->c_path;
+	struct rds_message *rm0;
 	unsigned long flags;
 	unsigned int tmp;
 	struct scatterlist *sg;
@@ -336,6 +338,47 @@ restart:
 			 */
 			if (batch_count >= send_batch_count)
 				goto over_batch;
+
+			if (cp->cp_index > 0) {
+				/* make sure cp_index#0 caught up during fan-out
+				 * in order to avoid lane races
+				 */
+
+				spin_lock_irqsave(&cp0->cp_lock, flags);
+
+				/* the oldest / first message in the retransmit queue
+				 * has to be at or beyond c_cp0_mprds_catchup_tx_seq
+				 */
+				if (!list_empty(&cp0->cp_send_queue)) {
+					rm0 = list_entry(cp0->cp_retrans.next,
+							 struct rds_message,
+							 m_conn_item);
+					if (be64_to_cpu(rm0->m_inc.i_hdr.h_sequence) < conn->c_cp0_mprds_catchup_tx_seq) {
+						/* the retransmit queue of cp_index#0 has not quite caught up yet */
+						spin_unlock_irqrestore(&cp0->cp_lock, flags);
+						rds_stats_inc(s_mprds_catchup_tx0_retries);
+						goto over_batch;
+					}
+				}
+
+				/* the oldest / first message of the send queue
+				 * has to be at or beyond c_cp0_mprds_catchup_tx_seq
+				 */
+				rm0 = cp0->cp_xmit_rm;
+				if (!rm0 && !list_empty(&cp0->cp_send_queue))
+					rm0 = list_entry(cp0->cp_send_queue.next,
+							 struct rds_message,
+							 m_conn_item);
+				if (rm0 &&
+				    be64_to_cpu(rm0->m_inc.i_hdr.h_sequence) < conn->c_cp0_mprds_catchup_tx_seq) {
+					/* the send queue of cp_index#0 has not quite caught up yet */
+					spin_unlock_irqrestore(&cp0->cp_lock, flags);
+					rds_stats_inc(s_mprds_catchup_tx0_retries);
+					goto over_batch;
+				}
+
+				spin_unlock_irqrestore(&cp0->cp_lock, flags);
+			}
 
 			spin_lock_irqsave(&cp->cp_lock, flags);
 
@@ -1309,41 +1352,6 @@ static inline int rds_rdma_bytes(struct msghdr *msg, size_t *rdma_bytes)
 	return 0;
 }
 
-static int rds_send_mprds_hash(struct rds_sock *rs, struct rds_connection *conn)
-{
-	struct rds_conn_path *cp;
-	int hash;
-
-	if (conn->c_npaths == 0)
-		hash = RDS_MPATH_HASH(rs, RDS_MPATH_WORKERS);
-	else
-		hash = RDS_MPATH_HASH(rs, conn->c_npaths);
-	cp = &conn->c_path[hash];
-	if (!conn->c_npaths && rds_conn_path_down(cp)) {
-		/* The underlying connection is not up yet.  Need to wait
-		 * until it is up to be sure that the non-zero c_path can be
-		 * used.  But if we are interrupted, we have to use the zero
-		 * c_path in case the connection ends up being non-MP capable.
-		 */
-		if (conn->c_npaths == 0)
-			if (wait_event_interruptible(conn->c_hs_waitq,
-						     conn->c_npaths != 0))
-				return 0;
-		if (conn->c_npaths == 1)
-			hash = 0;
-
-		/* Wait until the chosen path is up.  If it is interrupted,
-		 * just return as this is an optimization to make sure that
-		 * the message is sent.
-		 */
-		cp = &conn->c_path[hash];
-		if (rds_conn_path_down(cp))
-			wait_event_interruptible(cp->cp_up_waitq,
-						 !rds_conn_path_down(cp));
-	}
-	return hash;
-}
-
 int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 {
 	struct sock *sk = sock->sk;
@@ -1619,7 +1627,10 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 							      0);
 				rds_send_hs_ping(conn, 0);
 			}
-			cpath = &conn->c_path[rds_send_mprds_hash(rs, conn)];
+			/* Use c_path[0] until we learn that
+			 * the peer supports more (c_npaths > 1)
+			 */
+			cpath = &conn->c_path[RDS_MPATH_HASH(rs, conn->c_npaths ? : 1)];
 		} else {
 			cpath = &conn->c_path[0];
 		}
