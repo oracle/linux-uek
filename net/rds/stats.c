@@ -92,6 +92,7 @@ static char *rds_stat_names[] = {
 	"page_allocs",
 	"page_frees",
 	"page_gets",
+	"mprds_catchup_tx0_retries",
 };
 
 void rds_stats_info_copy(struct rds_info_iterator *iter,
