@@ -391,6 +391,8 @@ struct rds_connection {
 
 	atomic_t		c_dr_sock_cancel_refs;
 	struct delayed_work	c_dr_sock_cancel_w;
+
+	u64			c_cp0_mprds_catchup_tx_seq;
 };
 
 static inline
@@ -1016,6 +1018,7 @@ struct rds_statistics {
 	uint64_t	s_page_allocs;
 	uint64_t	s_page_frees;
 	uint64_t	s_page_gets;
+	uint64_t	s_mprds_catchup_tx0_retries;
 };
 
 /* af_rds.c */
