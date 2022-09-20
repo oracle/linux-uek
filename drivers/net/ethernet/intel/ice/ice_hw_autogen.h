@@ -86,6 +86,15 @@
 #define QRXFLXP_CNTXT_RXDID_PRIO_S		8
 #define QRXFLXP_CNTXT_RXDID_PRIO_M		ICE_M(0x7, 8)
 #define QRXFLXP_CNTXT_TS_M			BIT(11)
+#define GL_FWSTS                                0x00083048 /* Reset Source: POR */
+#define GL_FWSTS_FWS0B_S                        0
+#define GL_FWSTS_FWS0B_M                        ICE_M(0xFF, 0)
+#define GL_FWSTS_FWROWD_S                       8
+#define GL_FWSTS_FWROWD_M                       BIT(8)
+#define GL_FWSTS_FWRI_S                         9
+#define GL_FWSTS_FWRI_M                         BIT(9)
+#define GL_FWSTS_FWS1B_S                        16
+#define GL_FWSTS_FWS1B_M                        ICE_M(0xFF, 16)
 #define GLGEN_CLKSTAT_SRC_PSM_CLK_SRC_S		4
 #define GLGEN_CLKSTAT_SRC_PSM_CLK_SRC_M		ICE_M(0x3, 4)
 #define GLGEN_CLKSTAT_SRC			0x000B826C
@@ -370,5 +379,22 @@
 #define VFINT_DYN_CTLN(_i)			(0x00003800 + ((_i) * 4))
 #define VFINT_DYN_CTLN_CLEARPBA_M		BIT(1)
 #define PRTRPB_RDPC				0x000AC260
+
+#define GL_HIDA(_i)			(0x00082000 + ((_i) * 4))
+#define GL_HIBA(_i)			(0x00081000 + ((_i) * 4))
+#define GL_HICR				0x00082040
+#define GL_HICR_EN			0x00082044
+#define GLGEN_CSR_DEBUG_C		0x00075750
+#define GLNVM_GENS			0x000B6100
+#define GLNVM_FLA			0x000B6108
+#define GL_HIDA_MAX_INDEX		15
+#define GL_HIBA_MAX_INDEX		1023
+
+#define GL_MNG_FWSM			0x000B6134 /* Reset Source: POR */
+
+#define GLPCI_LBARCTRL			0x0009DE74 /* Reset Source: POR */
+
+#define GL_MNG_DEF_DEVID		0x000B611C
+
 
 #endif /* _ICE_HW_AUTOGEN_H_ */
