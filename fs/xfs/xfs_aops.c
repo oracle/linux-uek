@@ -404,8 +404,9 @@ xfs_end_bio(
 	}
 }
 
+/* caller locks xfs_ilock(ip, XFS_ILOCK_SHARED); */
 STATIC int
-xfs_map_blocks(
+xfs_map_blocks_locked(
 	struct inode		*inode,
 	loff_t			offset,
 	struct xfs_bmbt_irec	*imap,
@@ -439,7 +440,6 @@ xfs_map_blocks(
 	if (type == XFS_IO_UNWRITTEN)
 		bmapi_flags |= XFS_BMAPI_IGSTATE;
 
-	xfs_ilock(ip, XFS_ILOCK_SHARED);
 	ASSERT(ip->i_d.di_format != XFS_DINODE_FMT_BTREE ||
 	       (ip->i_df.if_flags & XFS_IFEXTENTS));
 	ASSERT(offset <= mp->m_super->s_maxbytes);
@@ -457,17 +457,21 @@ xfs_map_blocks(
 	 */
 	if (nimaps && type == XFS_IO_OVERWRITE)
 		xfs_reflink_trim_irec_to_next_cow(ip, offset_fsb, imap);
-	xfs_iunlock(ip, XFS_ILOCK_SHARED);
 
 	if (error)
 		return error;
 
 	if (type == XFS_IO_DELALLOC &&
 	    (!nimaps || isnullstartblock(imap->br_startblock))) {
+		xfs_iunlock(ip, XFS_ILOCK_SHARED);
 		error = xfs_iomap_write_allocate(ip, XFS_DATA_FORK, offset,
 				imap);
+		xfs_ilock(ip, XFS_ILOCK_SHARED);
 		if (!error)
 			trace_xfs_map_blocks_alloc(ip, offset, count, type, imap);
+		/* extents in CoW/Data forks may changed, lookup again. */
+		if (0 == error)
+			error = -EAGAIN;
 		return error;
 	}
 
@@ -872,8 +876,9 @@ out_invalidate:
 	return;
 }
 
+/* caller locks xfs_ilock(ip, XFS_ILOCK_SHARED) */
 static int
-xfs_map_cow(
+xfs_map_cow_locked(
 	struct xfs_writepage_ctx *wpc,
 	struct inode		*inode,
 	loff_t			offset,
@@ -895,12 +900,11 @@ xfs_map_cow(
 		}
 	}
 
+retry:
 	/*
 	 * Else we need to check if there is a COW mapping at this offset.
 	 */
-	xfs_ilock(ip, XFS_ILOCK_SHARED);
 	is_cow = xfs_reflink_find_cow_mapping(ip, offset, &imap);
-	xfs_iunlock(ip, XFS_ILOCK_SHARED);
 
 	if (!is_cow)
 		return 0;
@@ -910,10 +914,13 @@ xfs_map_cow(
 	 * allocate real space for it now.
 	 */
 	if (isnullstartblock(imap.br_startblock)) {
+		xfs_iunlock(ip, XFS_ILOCK_SHARED);
 		error = xfs_iomap_write_allocate(ip, XFS_COW_FORK, offset,
 				&imap);
+		xfs_ilock(ip, XFS_ILOCK_SHARED);
 		if (error)
 			return error;
+		goto retry;
 	}
 
 	wpc->io_type = *new_type = XFS_IO_COW;
@@ -954,10 +961,13 @@ xfs_writepage_map(
 	int			error = 0;
 	int			count = 0;
 	int			uptodate = 1;
-	unsigned int		new_type;
+	unsigned int		new_type, new_type_saved;
+	struct xfs_inode	*ip;
+	int			nr_retried;
 
 	bh = head = page_buffers(page);
 	offset = page_offset(page);
+	ip = XFS_I(inode);
 	do {
 		if (offset >= end_offset)
 			break;
@@ -994,10 +1004,26 @@ xfs_writepage_map(
 			continue;
 		}
 
+		new_type_saved = new_type;
+		nr_retried = 0;
+		xfs_ilock(ip, XFS_ILOCK_SHARED);
+
+/*
+ * when block allocation happened (XFS_ILOCK released and taken again),
+ * we retry the lookups in CoW and Data forks to get new mapping
+ */
+retry:
+		nr_retried++;
+		if (nr_retried > 5)
+			pr_err_ratelimited("retried %d times in xfs_writepage_map, page=%p\n", nr_retried, page);
+
+		new_type = new_type_saved;
 		if (xfs_is_reflink_inode(XFS_I(inode))) {
-			error = xfs_map_cow(wpc, inode, offset, &new_type);
-			if (error)
+			error = xfs_map_cow_locked(wpc, inode, offset, &new_type);
+			if (error) {
+				xfs_iunlock(ip, XFS_ILOCK_SHARED);
 				goto out;
+			}
 		}
 
 		if (wpc->io_type != new_type) {
@@ -1009,13 +1035,22 @@ xfs_writepage_map(
 			wpc->imap_valid = xfs_imap_valid(inode, &wpc->imap,
 							 offset);
 		if (!wpc->imap_valid) {
-			error = xfs_map_blocks(inode, offset, &wpc->imap,
+			error = xfs_map_blocks_locked(inode, offset, &wpc->imap,
 					     wpc->io_type);
-			if (error)
+			if (error == -EAGAIN) {
+				/* XFS_ILOCK relased and taken again for block allocation */
+				error = 0;
+				goto retry;
+			}
+			if (error) {
+				xfs_iunlock(ip, XFS_ILOCK_SHARED);
 				goto out;
+			}
 			wpc->imap_valid = xfs_imap_valid(inode, &wpc->imap,
 							 offset);
 		}
+		xfs_iunlock(ip, XFS_ILOCK_SHARED);
+
 		if (wpc->imap_valid) {
 			lock_buffer(bh);
 			if (wpc->io_type != XFS_IO_OVERWRITE)
