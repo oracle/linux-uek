@@ -327,6 +327,7 @@ static int pci_console_nexus_probe(struct platform_device *pdev)
 	bool registered;
 	int ret;
 
+	BUILD_BUG_ON(offsetof(struct octeontx_pcie_console_nexus, in_use) != 64);
 	BUILD_BUG_ON(offsetof(struct octeontx_pcie_console_nexus, console_addr)
 		     != 128);
 
