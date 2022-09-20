@@ -438,9 +438,52 @@ int rpm_get_tx_stats(void *rpmd, int lmac_id, int idx, u64 *tx_stat)
 	return 0;
 }
 
-int rpm_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp)
+int rpm_get_fec_stats(void *rpmd, int lmac_id, struct cgx_fec_stats_rsp *rsp)
 {
-	/* FEC stats not yet implemented, just return for now */
+	u64 val_lo, val_hi;
+	rpm_t *rpm = rpmd;
+	u64 cfg;
+
+	if (!is_lmac_valid(rpm, lmac_id))
+		return -ENODEV;
+
+	if (rpm->lmac_idmap[lmac_id]->link_info.fec == OTX2_FEC_NONE)
+		return 0;
+
+	if (rpm->lmac_idmap[lmac_id]->link_info.fec == OTX2_FEC_BASER) {
+		val_lo = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_VL0_CCW_LO);
+		val_hi = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_CW_HI);
+		rsp->fec_corr_blks = (val_hi << 32 | val_lo);
+
+		val_lo = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_VL0_NCCW_LO);
+		val_hi = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_CW_HI);
+		rsp->fec_uncorr_blks = (val_hi << 32 | val_lo);
+
+		/* 50G uses 2 Physical serdes lines */
+		if (rpm->lmac_idmap[lmac_id]->link_info.lmac_type_id == LMAC_MODE_50G_R) {
+			val_lo = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_VL1_CCW_LO);
+			val_hi = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_CW_HI);
+			rsp->fec_corr_blks += (val_hi << 32 | val_lo);
+
+			val_lo = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_VL1_NCCW_LO);
+			val_hi = rpm_read(rpm, lmac_id, RPMX_MTI_FCFECX_CW_HI);
+			rsp->fec_uncorr_blks += (val_hi << 32 | val_lo);
+		}
+	} else {
+		/* enable RS-FEC capture */
+		cfg = rpm_read(rpm, 0, RPMX_MTI_STAT_STATN_CONTROL);
+		cfg |= RPMX_RSFEC_RX_CAPTURE | BIT(lmac_id);
+		rpm_write(rpm, 0, RPMX_MTI_STAT_STATN_CONTROL, cfg);
+
+		val_lo = rpm_read(rpm, 0, RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_2);
+		val_hi = rpm_read(rpm, 0, RPMX_MTI_STAT_DATA_HI_CDC);
+		rsp->fec_corr_blks = (val_hi << 32 | val_lo);
+
+		val_lo = rpm_read(rpm, 0, RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_3);
+		val_hi = rpm_read(rpm, 0, RPMX_MTI_STAT_DATA_HI_CDC);
+		rsp->fec_uncorr_blks = (val_hi << 32 | val_lo);
+	}
+
 	return 0;
 }
 
