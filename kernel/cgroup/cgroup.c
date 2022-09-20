@@ -2377,47 +2377,6 @@ int task_cgroup_path(struct task_struct *task, char *buf, size_t buflen)
 EXPORT_SYMBOL_GPL(task_cgroup_path);
 
 /**
- * cgroup_attach_lock - Lock for ->attach()
- * @lock_threadgroup: whether to down_write cgroup_threadgroup_rwsem
- *
- * cgroup migration sometimes needs to stabilize threadgroups against forks and
- * exits by write-locking cgroup_threadgroup_rwsem. However, some ->attach()
- * implementations (e.g. cpuset), also need to disable CPU hotplug.
- * Unfortunately, letting ->attach() operations acquire cpus_read_lock() can
- * lead to deadlocks.
- *
- * Bringing up a CPU may involve creating and destroying tasks which requires
- * read-locking threadgroup_rwsem, so threadgroup_rwsem nests inside
- * cpus_read_lock(). If we call an ->attach() which acquires the cpus lock while
- * write-locking threadgroup_rwsem, the locking order is reversed and we end up
- * waiting for an on-going CPU hotplug operation which in turn is waiting for
- * the threadgroup_rwsem to be released to create new tasks. For more details:
- *
- *   http://lkml.kernel.org/r/20220711174629.uehfmqegcwn2lqzu@wubuntu
- *
- * Resolve the situation by always acquiring cpus_read_lock() before optionally
- * write-locking cgroup_threadgroup_rwsem. This allows ->attach() to assume that
- * CPU hotplug is disabled on entry.
- */
-static void cgroup_attach_lock(bool lock_threadgroup)
-{
-	cpus_read_lock();
-	if (lock_threadgroup)
-		percpu_down_write(&cgroup_threadgroup_rwsem);
-}
-
-/**
- * cgroup_attach_unlock - Undo cgroup_attach_lock()
- * @lock_threadgroup: whether to up_write cgroup_threadgroup_rwsem
- */
-static void cgroup_attach_unlock(bool lock_threadgroup)
-{
-	if (lock_threadgroup)
-		percpu_up_write(&cgroup_threadgroup_rwsem);
-	cpus_read_unlock();
-}
-
-/**
  * cgroup_migrate_add_task - add a migration target task to a migration context
  * @task: target task
  * @mgctx: target migration context
@@ -2898,6 +2857,7 @@ int cgroup_attach_task(struct cgroup *dst_cgrp, struct task_struct *leader,
 }
 
 struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup)
+	__acquires(&cgroup_threadgroup_rwsem)
 {
 	struct task_struct *tsk;
 	pid_t pid;
@@ -2905,7 +2865,7 @@ struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup)
 	if (kstrtoint(strstrip(buf), 0, &pid) || pid < 0)
 		return ERR_PTR(-EINVAL);
 
-	cgroup_attach_lock(true);
+	percpu_down_write(&cgroup_threadgroup_rwsem);
 
 	rcu_read_lock();
 	if (pid) {
@@ -2936,13 +2896,14 @@ struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup)
 	goto out_unlock_rcu;
 
 out_unlock_threadgroup:
-	cgroup_attach_unlock(true);
+	percpu_up_write(&cgroup_threadgroup_rwsem);
 out_unlock_rcu:
 	rcu_read_unlock();
 	return tsk;
 }
 
 void cgroup_procs_write_finish(struct task_struct *task)
+	__releases(&cgroup_threadgroup_rwsem)
 {
 	struct cgroup_subsys *ss;
 	int ssid;
@@ -2950,8 +2911,7 @@ void cgroup_procs_write_finish(struct task_struct *task)
 	/* release reference from cgroup_procs_write_start() */
 	put_task_struct(task);
 
-	cgroup_attach_unlock(true);
-
+	percpu_up_write(&cgroup_threadgroup_rwsem);
 	for_each_subsys(ss, ssid)
 		if (ss->post_attach)
 			ss->post_attach();
@@ -3041,7 +3001,7 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 	ret = cgroup_migrate_execute(&mgctx);
 out_finish:
 	cgroup_migrate_finish(&mgctx);
-	cgroup_attach_unlock(true);
+	percpu_up_write(&cgroup_threadgroup_rwsem);
 	return ret;
 }
 
