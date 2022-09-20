@@ -65,7 +65,7 @@ static int arm_smcc_get_soc_id(u32 *soc_id_version, u32 *soc_id_rev)
 		return -EOPNOTSUPP;
 
 	switch (psci_ops.conduit) {
-	case PSCI_CONDUIT_HVC:
+	case SMCCC_CONDUIT_HVC:
 		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_SOC_ID, &res);
 		if ((int)res.a0 < 0)
@@ -84,7 +84,7 @@ static int arm_smcc_get_soc_id(u32 *soc_id_version, u32 *soc_id_rev)
 		*soc_id_rev = res.a0;
 		break;
 
-	case PSCI_CONDUIT_SMC:
+	case SMCCC_CONDUIT_SMC:
 		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_SOC_ID, &res);
 		if ((int)res.a0 < 0)
@@ -347,7 +347,7 @@ static int detect_harden_bp_fw(void)
 		return -1;
 
 	switch (psci_ops.conduit) {
-	case PSCI_CONDUIT_HVC:
+	case SMCCC_CONDUIT_HVC:
 		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_WORKAROUND_1, &res);
 		switch ((int)res.a0) {
@@ -365,7 +365,7 @@ static int detect_harden_bp_fw(void)
 		}
 		break;
 
-	case PSCI_CONDUIT_SMC:
+	case SMCCC_CONDUIT_SMC:
 		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_WORKAROUND_1, &res);
 		switch ((int)res.a0) {
@@ -440,10 +440,10 @@ void __init arm64_update_smccc_conduit(struct alt_instr *alt,
 	BUG_ON(nr_inst != 1);
 
 	switch (psci_ops.conduit) {
-	case PSCI_CONDUIT_HVC:
+	case SMCCC_CONDUIT_HVC:
 		insn = aarch64_insn_get_hvc_value();
 		break;
-	case PSCI_CONDUIT_SMC:
+	case SMCCC_CONDUIT_SMC:
 		insn = aarch64_insn_get_smc_value();
 		break;
 	default:
@@ -483,11 +483,11 @@ void arm64_set_ssbd_mitigation(bool state)
 	}
 
 	switch (psci_ops.conduit) {
-	case PSCI_CONDUIT_HVC:
+	case SMCCC_CONDUIT_HVC:
 		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_WORKAROUND_2, state, NULL);
 		break;
 
-	case PSCI_CONDUIT_SMC:
+	case SMCCC_CONDUIT_SMC:
 		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_WORKAROUND_2, state, NULL);
 		break;
 
@@ -529,12 +529,12 @@ static bool has_ssbd_mitigation(const struct arm64_cpu_capabilities *entry,
 	}
 
 	switch (psci_ops.conduit) {
-	case PSCI_CONDUIT_HVC:
+	case SMCCC_CONDUIT_HVC:
 		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_WORKAROUND_2, &res);
 		break;
 
-	case PSCI_CONDUIT_SMC:
+	case SMCCC_CONDUIT_SMC:
 		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_WORKAROUND_2, &res);
 		break;
@@ -1393,12 +1393,12 @@ static enum mitigation_state spectre_bhb_get_cpu_fw_mitigation_state(void)
 		return SPECTRE_VULNERABLE;
 
 	switch (psci_ops.conduit) {
-	case PSCI_CONDUIT_HVC:
+	case SMCCC_CONDUIT_HVC:
 		arm_smccc_1_1_hvc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_WORKAROUND_3, &res);
 		break;
 
-	case PSCI_CONDUIT_SMC:
+	case SMCCC_CONDUIT_SMC:
 		arm_smccc_1_1_smc(ARM_SMCCC_ARCH_FEATURES_FUNC_ID,
 				  ARM_SMCCC_ARCH_WORKAROUND_3, &res);
 		break;
