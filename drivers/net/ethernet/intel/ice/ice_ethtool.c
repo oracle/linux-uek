@@ -263,13 +263,43 @@ ice_get_eeprom(struct net_device *netdev, struct ethtool_eeprom *eeprom,
 	enum ice_status status;
 	struct device *dev;
 	int ret = 0;
+	u32 magic;
 	u8 *buf;
 
 	dev = ice_pf_to_dev(pf);
 
-	eeprom->magic = hw->vendor_id | (hw->device_id << 16);
-	netdev_dbg(netdev, "GEEPROM cmd 0x%08x, offset 0x%08x, len 0x%08x\n",
-		   eeprom->cmd, eeprom->offset, eeprom->len);
+	magic = hw->vendor_id | (hw->device_id << 16);
+
+	if (eeprom->magic && eeprom->magic != magic) {
+		struct ice_nvm_access_cmd *nvm;
+		union ice_nvm_access_data *data;
+
+		nvm = (struct ice_nvm_access_cmd *)eeprom;
+		data = (union ice_nvm_access_data *)bytes;
+
+		netdev_dbg(netdev, "GEEPROM config 0x%08x, offset 0x%08x, data_size 0x%08x\n",
+			   nvm->config, nvm->offset, nvm->data_size);
+
+		status = ice_handle_nvm_access(hw, nvm, data);
+
+		ice_debug_array(hw, ICE_DBG_NVM, 16, 1, (u8 *)data,
+				nvm->data_size);
+
+		if (status) {
+			int err = ice_status_to_errno(status);
+
+			netdev_err(netdev, "NVM read offset 0x%x failed with status %s, error %d\n",
+				   nvm->offset, ice_stat_str(status), err);
+
+			return err;
+		}
+
+		return 0;
+	}
+
+	eeprom->magic = magic;
+	netdev_dbg(netdev, "GEEPROM offset 0x%08x, len 0x%08x\n",
+		   eeprom->offset, eeprom->len);
 
 	buf = kzalloc(eeprom->len, GFP_KERNEL);
 	if (!buf)
@@ -277,7 +307,7 @@ ice_get_eeprom(struct net_device *netdev, struct ethtool_eeprom *eeprom,
 
 	status = ice_acquire_nvm(hw, ICE_RES_READ);
 	if (status) {
-		dev_err(dev, "ice_acquire_nvm failed, err %s aq_err %s\n",
+		dev_err(dev, "ice_acquire_nvm failed: %s %s\n",
 			ice_stat_str(status),
 			ice_aq_str(hw->adminq.sq_last_status));
 		ret = -EIO;
@@ -287,7 +317,7 @@ ice_get_eeprom(struct net_device *netdev, struct ethtool_eeprom *eeprom,
 	status = ice_read_flat_nvm(hw, eeprom->offset, &eeprom->len, buf,
 				   false);
 	if (status) {
-		dev_err(dev, "ice_read_flat_nvm failed, err %s aq_err %s\n",
+		dev_err(dev, "ice_read_flat_nvm failed: %s %s\n",
 			ice_stat_str(status),
 			ice_aq_str(hw->adminq.sq_last_status));
 		ret = -EIO;
@@ -300,6 +330,47 @@ release:
 out:
 	kfree(buf);
 	return ret;
+}
+
+static int
+ice_set_eeprom(struct net_device *netdev, struct ethtool_eeprom *eeprom,
+	       u8 *bytes)
+{
+	struct ice_netdev_priv *np = netdev_priv(netdev);
+	struct ice_hw *hw = &np->vsi->back->hw;
+	struct ice_pf *pf = np->vsi->back;
+	union ice_nvm_access_data *data;
+	struct ice_nvm_access_cmd *nvm;
+	enum ice_status status = 0;
+	int err = 0;
+	u32 magic;
+
+	/* normal ethtool set_eeprom is not supported */
+	nvm = (struct ice_nvm_access_cmd *)eeprom;
+	data = (union ice_nvm_access_data *)bytes;
+	magic = hw->vendor_id | (hw->device_id << 16);
+
+	netdev_dbg(netdev, "SEEPROM cmd 0x%08x, config 0x%08x, offset 0x%08x, data_size 0x%08x\n",
+		   nvm->command, nvm->config, nvm->offset, nvm->data_size);
+	ice_debug_array(hw, ICE_DBG_NVM, 16, 1, (u8 *)data, nvm->data_size);
+
+	if (eeprom->magic == magic)
+		err = -EOPNOTSUPP;
+	/* check for NVM access method */
+	else if (!eeprom->magic || (eeprom->magic >> 16) != hw->device_id)
+		err = -EINVAL;
+	else if (ice_is_reset_in_progress(pf->state))
+		err = -EBUSY;
+	else
+	status = ice_handle_nvm_access(hw, nvm, data);
+
+	if (status) {
+		err = ice_status_to_errno(status);
+		netdev_err(netdev, "NVM write offset 0x%x failed with status %s, error %d\n",
+			   nvm->offset, ice_stat_str(status), err);
+	}
+
+	return err;
 }
 
 /**
@@ -4009,6 +4080,7 @@ static const struct ethtool_ops ice_ethtool_ops = {
 	.get_link		= ethtool_op_get_link,
 	.get_eeprom_len		= ice_get_eeprom_len,
 	.get_eeprom		= ice_get_eeprom,
+	.set_eeprom             = ice_set_eeprom,
 	.get_coalesce		= ice_get_coalesce,
 	.set_coalesce		= ice_set_coalesce,
 	.get_strings		= ice_get_strings,
@@ -4052,6 +4124,7 @@ static const struct ethtool_ops ice_ethtool_safe_mode_ops = {
 	.get_link		= ethtool_op_get_link,
 	.get_eeprom_len		= ice_get_eeprom_len,
 	.get_eeprom		= ice_get_eeprom,
+	.set_eeprom             = ice_set_eeprom,
 	.get_strings		= ice_get_strings,
 	.get_ethtool_stats	= ice_get_ethtool_stats,
 	.get_sset_count		= ice_get_sset_count,
