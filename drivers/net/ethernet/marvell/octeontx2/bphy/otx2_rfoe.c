@@ -1719,6 +1719,7 @@ static void otx2_rfoe_debugfs_create(struct otx2_rfoe_drv_ctx *ctx)
 						  otx2_rfoe_debugfs_reader);
 	otx2_debugfs_add_jdt_ring_file(ctx);
 	otx2_debugfs_add_tstamp_ring_file(ctx);
+	otx2_debugfs_add_rpm_stats_file(ctx);
 }
 
 static void otx2_rfoe_debugfs_remove(struct otx2_rfoe_drv_ctx *ctx)

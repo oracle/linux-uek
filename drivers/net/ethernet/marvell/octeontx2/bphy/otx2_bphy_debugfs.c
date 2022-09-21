@@ -19,6 +19,155 @@
 #include "otx2_bphy_hw.h"
 
 #define OTX2_BPHY_DEBUGFS_MODE 0400
+#define RPM_CSR_BASE_ADDR		0x87E0E0000000
+#define RPM_CFG_BAR_RSRC_LEN		0x7FFFFF
+#define RPMX_MTI_STAT_RX_STAT_PAGES_COUNTERX 0x12000
+#define RPMX_MTI_STAT_TX_STAT_PAGES_COUNTERX 0x13000
+#define RPMX_MTI_STAT_DATA_HI_CDC            0x10038
+#define CGXX_CMRX_RX_STAT0		0x070
+#define CGXX_CMRX_TX_STAT0		0x700
+
+enum {
+	CGX_STAT0,
+	CGX_STAT1,
+	CGX_STAT2,
+	CGX_STAT3,
+	CGX_STAT4,
+	CGX_STAT5,
+	CGX_STAT6,
+	CGX_STAT7,
+	CGX_STAT8,
+	CGX_STAT9,
+	CGX_STAT10,
+	CGX_STAT11,
+	CGX_STAT12,
+	CGX_STAT13,
+	CGX_STAT14,
+	CGX_STAT15,
+	CGX_STAT16,
+	CGX_STAT17,
+	CGX_STAT18,
+};
+
+static char *cgx_rx_stats_fields[] = {
+	[CGX_STAT0]	= "Received packets",
+	[CGX_STAT1]	= "Octets of received packets",
+	[CGX_STAT2]	= "Received PAUSE packets",
+	[CGX_STAT3]	= "Received PAUSE and control packets",
+	[CGX_STAT4]	= "Filtered DMAC0 (NIX-bound) packets",
+	[CGX_STAT5]	= "Filtered DMAC0 (NIX-bound) octets",
+	[CGX_STAT6]	= "Packets dropped due to RX FIFO full",
+	[CGX_STAT7]	= "Octets dropped due to RX FIFO full",
+	[CGX_STAT8]	= "Error packets",
+	[CGX_STAT9]	= "Filtered DMAC1 (NCSI-bound) packets",
+	[CGX_STAT10]	= "Filtered DMAC1 (NCSI-bound) octets",
+	[CGX_STAT11]	= "NCSI-bound packets dropped",
+	[CGX_STAT12]	= "NCSI-bound octets dropped",
+};
+
+static char *cgx_tx_stats_fields[] = {
+	[CGX_STAT0]	= "Packets dropped due to excessive collisions",
+	[CGX_STAT1]	= "Packets dropped due to excessive deferral",
+	[CGX_STAT2]	= "Multiple collisions before successful transmission",
+	[CGX_STAT3]	= "Single collisions before successful transmission",
+	[CGX_STAT4]	= "Total octets sent on the interface",
+	[CGX_STAT5]	= "Total frames sent on the interface",
+	[CGX_STAT6]	= "Packets sent with an octet count < 64",
+	[CGX_STAT7]	= "Packets sent with an octet count == 64",
+	[CGX_STAT8]	= "Packets sent with an octet count of 65-127",
+	[CGX_STAT9]	= "Packets sent with an octet count of 128-255",
+	[CGX_STAT10]	= "Packets sent with an octet count of 256-511",
+	[CGX_STAT11]	= "Packets sent with an octet count of 512-1023",
+	[CGX_STAT12]	= "Packets sent with an octet count of 1024-1518",
+	[CGX_STAT13]	= "Packets sent with an octet count of > 1518",
+	[CGX_STAT14]	= "Packets sent to a broadcast DMAC",
+	[CGX_STAT15]	= "Packets sent to the multicast DMAC",
+	[CGX_STAT16]	= "Transmit underflow and were truncated",
+	[CGX_STAT17]	= "Control/PAUSE packets sent",
+};
+
+static char *rpm_rx_stats_fields[] = {
+	"Octets of received packets",
+	"Octets of received packets with out error",
+	"Received packets with alignment errors",
+	"Control/PAUSE packets received",
+	"Packets received with Frame too long Errors",
+	"Packets received with a1nrange length Errors",
+	"Received packets",
+	"Packets received with FrameCheckSequenceErrors",
+	"Packets received with VLAN header",
+	"Error packets",
+	"Packets received with unicast DMAC",
+	"Packets received with multicast DMAC",
+	"Packets received with broadcast DMAC",
+	"Dropped packets",
+	"Total frames received on interface",
+	"Packets received with an octet count < 64",
+	"Packets received with an octet count == 64",
+	"Packets received with an octet count of 65-127",
+	"Packets received with an octet count of 128-255",
+	"Packets received with an octet count of 256-511",
+	"Packets received with an octet count of 512-1023",
+	"Packets received with an octet count of 1024-1518",
+	"Packets received with an octet count of > 1518",
+	"Oversized Packets",
+	"Jabber Packets",
+	"Fragmented Packets",
+	"CBFC(class based flow control) pause frames received for class 0",
+	"CBFC pause frames received for class 1",
+	"CBFC pause frames received for class 2",
+	"CBFC pause frames received for class 3",
+	"CBFC pause frames received for class 4",
+	"CBFC pause frames received for class 5",
+	"CBFC pause frames received for class 6",
+	"CBFC pause frames received for class 7",
+	"CBFC pause frames received for class 8",
+	"CBFC pause frames received for class 9",
+	"CBFC pause frames received for class 10",
+	"CBFC pause frames received for class 11",
+	"CBFC pause frames received for class 12",
+	"CBFC pause frames received for class 13",
+	"CBFC pause frames received for class 14",
+	"CBFC pause frames received for class 15",
+	"MAC control packets received",
+};
+
+static char *rpm_tx_stats_fields[] = {
+	"Total octets sent on the interface",
+	"Total octets transmitted OK",
+	"Control/Pause frames sent",
+	"Total frames transmitted OK",
+	"Total frames sent with VLAN header",
+	"Error Packets",
+	"Packets sent to unicast DMAC",
+	"Packets sent to the multicast DMAC",
+	"Packets sent to a broadcast DMAC",
+	"Packets sent with an octet count == 64",
+	"Packets sent with an octet count of 65-127",
+	"Packets sent with an octet count of 128-255",
+	"Packets sent with an octet count of 256-511",
+	"Packets sent with an octet count of 512-1023",
+	"Packets sent with an octet count of 1024-1518",
+	"Packets sent with an octet count of > 1518",
+	"CBFC(class based flow control) pause frames transmitted for class 0",
+	"CBFC pause frames transmitted for class 1",
+	"CBFC pause frames transmitted for class 2",
+	"CBFC pause frames transmitted for class 3",
+	"CBFC pause frames transmitted for class 4",
+	"CBFC pause frames transmitted for class 5",
+	"CBFC pause frames transmitted for class 6",
+	"CBFC pause frames transmitted for class 7",
+	"CBFC pause frames transmitted for class 8",
+	"CBFC pause frames transmitted for class 9",
+	"CBFC pause frames transmitted for class 10",
+	"CBFC pause frames transmitted for class 11",
+	"CBFC pause frames transmitted for class 12",
+	"CBFC pause frames transmitted for class 13",
+	"CBFC pause frames transmitted for class 14",
+	"CBFC pause frames transmitted for class 15",
+	"MAC control packets sent",
+	"Total frames sent on the interface"
+};
 
 struct otx2_bphy_debugfs_reader_info {
 	atomic_t			refcnt;
@@ -65,6 +214,129 @@ void __init otx2_bphy_debugfs_init(void)
 		is_otx2 = false;
 	else
 		is_otx2 = true;
+}
+
+static u64 rfoe_dbg_rpm_get_tx_stats(void __iomem *reg_base, int lmac_id, int idx,
+				     u8 tx_stats_cnt)
+{
+	u64 val_lo, val_hi;
+
+	if (!is_otx2) {
+		/* Update idx to point per lmac Rx statistics page */
+		idx += lmac_id * tx_stats_cnt;
+		val_lo = ioread64(reg_base + RPMX_MTI_STAT_TX_STAT_PAGES_COUNTERX + (idx * 8));
+		val_hi = ioread64(reg_base + RPMX_MTI_STAT_DATA_HI_CDC);
+		return (val_hi << 32 | val_lo);
+	} else {
+		return ioread64(reg_base + (lmac_id << 18) + CGXX_CMRX_TX_STAT0 + (idx * 8));
+	}
+}
+
+static u64 rfoe_dbg_rpm_get_rx_stats(void __iomem *reg_base, int lmac_id, int idx,
+				     u8 rx_stats_cnt)
+{
+	u64 val_lo, val_hi;
+
+	if (!is_otx2) {
+		/* Update idx to point per lmac Rx statistics page */
+		idx += lmac_id * rx_stats_cnt;
+		val_lo = ioread64(reg_base + RPMX_MTI_STAT_RX_STAT_PAGES_COUNTERX + (idx * 8));
+		val_hi = ioread64(reg_base + RPMX_MTI_STAT_DATA_HI_CDC);
+		return (val_hi << 32 | val_lo);
+	} else {
+		return ioread64(reg_base + (lmac_id << 18) + CGXX_CMRX_RX_STAT0 + (idx * 8));
+	}
+}
+
+static int otx2_rfoe_dbg_read_rpm_stats(struct seq_file *filp, void *unused)
+{
+	int stat, rx_stats_cnt, tx_stats_cnt;
+	u64 rpm_base_addr, rx_stat, tx_stat;
+	struct cnf10k_rfoe_ndev_priv *priv;
+	struct cnf10k_rfoe_drv_ctx *ctx;
+	void __iomem *rpm_reg_base;
+	u8 rpm_id, lmac_id;
+
+	ctx = filp->private;
+	priv = netdev_priv(ctx->netdev);
+	lmac_id = priv->lmac_id;
+
+	if (is_otx2) {
+		rx_stats_cnt = 9;
+		tx_stats_cnt = 18;
+		rpm_id = priv->rfoe_num + 1;
+	} else {
+		rx_stats_cnt = 43;
+		tx_stats_cnt = 34;
+		rpm_id = priv->rfoe_num + 2;
+	}
+
+	rpm_base_addr = (RPM_CSR_BASE_ADDR | (rpm_id << 24));
+	rpm_reg_base = ioremap(rpm_base_addr, RPM_CFG_BAR_RSRC_LEN);
+
+	/* Rx stats */
+	stat = 0;
+	seq_puts(filp, "\n======= RX_STATS======\n\n");
+	while (stat < rx_stats_cnt) {
+		rx_stat = rfoe_dbg_rpm_get_rx_stats(rpm_reg_base, lmac_id, stat, rx_stats_cnt);
+		if (is_otx2)
+			seq_printf(filp, "%s: %llu\n", cgx_rx_stats_fields[stat],
+				   rx_stat);
+		else
+			seq_printf(filp, "%s: %llu\n", rpm_rx_stats_fields[stat],
+				   rx_stat);
+		stat++;
+	}
+
+	/* Tx stats */
+	stat = 0;
+	seq_puts(filp, "\n======= TX_STATS======\n\n");
+	while (stat < tx_stats_cnt) {
+		tx_stat = rfoe_dbg_rpm_get_tx_stats(rpm_reg_base, lmac_id, stat, tx_stats_cnt);
+
+		if (is_otx2)
+			seq_printf(filp, "%s: %llu\n", cgx_tx_stats_fields[stat],
+				   tx_stat);
+		else
+			seq_printf(filp, "%s: %llu\n", rpm_tx_stats_fields[stat],
+				   tx_stat);
+		stat++;
+	}
+
+	iounmap(rpm_reg_base);
+
+	return 0;
+}
+
+static int otx2_rfoe_dbg_open_rpm_stats(struct inode *inode, struct file *file)
+{
+	return single_open(file, otx2_rfoe_dbg_read_rpm_stats, inode->i_private);
+}
+
+static const struct file_operations otx2_rfoe_dbg_rpm_stats_fops = {
+	.owner = THIS_MODULE,
+	.open =	otx2_rfoe_dbg_open_rpm_stats,
+	.read = seq_read,
+};
+
+void otx2_debugfs_add_rpm_stats_file(void *priv)
+{
+	struct cnf10k_rfoe_drv_ctx *cnf10k_ctx;
+	struct otx2_rfoe_drv_ctx *ctx;
+	struct dentry *root;
+	char entry[10];
+
+	if (is_otx2) {
+		strcpy(entry, "cgx_stats");
+		ctx = (struct otx2_rfoe_drv_ctx *)priv;
+		root = ctx->root;
+		debugfs_create_file(entry, 0444, root, ctx, &otx2_rfoe_dbg_rpm_stats_fops);
+	} else {
+		strcpy(entry, "rpm_stats");
+		cnf10k_ctx = (struct cnf10k_rfoe_drv_ctx *)priv;
+		root = cnf10k_ctx->root;
+		debugfs_create_file(entry, 0444, root, cnf10k_ctx, &otx2_rfoe_dbg_rpm_stats_fops);
+	}
 }
 
 static int otx2_rfoe_dbg_read_ptp_tstamp_ring(struct seq_file *filp, void *unused)

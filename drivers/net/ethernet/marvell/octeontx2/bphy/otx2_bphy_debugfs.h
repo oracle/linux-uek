@@ -17,6 +17,7 @@
 
 void otx2_debugfs_add_jdt_ring_file(void *priv);
 void otx2_debugfs_add_tstamp_ring_file(void *priv);
+void otx2_debugfs_add_rpm_stats_file(void *priv);
 typedef void (*otx2_bphy_debugfs_reader)(char *buffer, size_t buffer_size,
 					 void *priv);
 
