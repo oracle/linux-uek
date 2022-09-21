@@ -446,9 +446,6 @@ static int aq_mdo_add_secy(struct macsec_context *ctx)
 	u32 txsc_idx;
 	int ret = 0;
 
-	if (ctx->prepare)
-		return 0;
-
 	if (secy->xpn)
 		return -EOPNOTSUPP;
 
@@ -481,9 +478,6 @@ static int aq_mdo_upd_secy(struct macsec_context *ctx)
 	const struct macsec_secy *secy = ctx->secy;
 	int txsc_idx;
 	int ret = 0;
-
-	if (ctx->prepare)
-		return 0;
 
 	txsc_idx = aq_get_txsc_idx_from_secy(nic->macsec_cfg, secy);
 	if (txsc_idx < 0)
@@ -589,9 +583,6 @@ static int aq_mdo_add_txsa(struct macsec_context *ctx)
 	int txsc_idx;
 	int ret = 0;
 
-	if (ctx->prepare)
-		return 0;
-
 	txsc_idx = aq_get_txsc_idx_from_secy(cfg, secy);
 	if (txsc_idx < 0)
 		return -EINVAL;
@@ -618,9 +609,6 @@ static int aq_mdo_upd_txsa(struct macsec_context *ctx)
 	struct aq_macsec_txsc *aq_txsc;
 	int txsc_idx;
 	int ret = 0;
-
-	if (ctx->prepare)
-		return 0;
 
 	txsc_idx = aq_get_txsc_idx_from_secy(cfg, secy);
 	if (txsc_idx < 0)
@@ -668,9 +656,6 @@ static int aq_mdo_del_txsa(struct macsec_context *ctx)
 	struct aq_macsec_cfg *cfg = nic->macsec_cfg;
 	int txsc_idx;
 	int ret = 0;
-
-	if (ctx->prepare)
-		return 0;
 
 	txsc_idx = aq_get_txsc_idx_from_secy(cfg, ctx->secy);
 	if (txsc_idx < 0)
@@ -765,9 +750,6 @@ static int aq_mdo_add_rxsc(struct macsec_context *ctx)
 	u32 rxsc_idx;
 	int ret = 0;
 
-	if (ctx->prepare)
-		return 0;
-
 	if (hweight32(cfg->rxsc_idx_busy) >= rxsc_idx_max)
 		return -ENOSPC;
 
@@ -796,9 +778,6 @@ static int aq_mdo_upd_rxsc(struct macsec_context *ctx)
 	struct aq_nic_s *nic = macsec_netdev_priv(ctx->netdev);
 	int rxsc_idx;
 	int ret = 0;
-
-	if (ctx->prepare)
-		return 0;
 
 	rxsc_idx = aq_get_rxsc_idx_from_rxsc(nic->macsec_cfg, ctx->rx_sc);
 	if (rxsc_idx < 0)
@@ -863,9 +842,6 @@ static int aq_mdo_del_rxsc(struct macsec_context *ctx)
 	enum aq_clear_type clear_type = AQ_CLEAR_SW;
 	int rxsc_idx;
 	int ret = 0;
-
-	if (ctx->prepare)
-		return 0;
 
 	rxsc_idx = aq_get_rxsc_idx_from_rxsc(nic->macsec_cfg, ctx->rx_sc);
 	if (rxsc_idx < 0)
@@ -937,9 +913,6 @@ static int aq_mdo_add_rxsa(struct macsec_context *ctx)
 	int rxsc_idx;
 	int ret = 0;
 
-	if (ctx->prepare)
-		return 0;
-
 	rxsc_idx = aq_get_rxsc_idx_from_rxsc(nic->macsec_cfg, rx_sc);
 	if (rxsc_idx < 0)
 		return -EINVAL;
@@ -966,9 +939,6 @@ static int aq_mdo_upd_rxsa(struct macsec_context *ctx)
 	const struct macsec_secy *secy = ctx->secy;
 	int rxsc_idx;
 	int ret = 0;
-
-	if (ctx->prepare)
-		return 0;
 
 	rxsc_idx = aq_get_rxsc_idx_from_rxsc(cfg, rx_sc);
 	if (rxsc_idx < 0)
@@ -1018,9 +988,6 @@ static int aq_mdo_del_rxsa(struct macsec_context *ctx)
 	int rxsc_idx;
 	int ret = 0;
 
-	if (ctx->prepare)
-		return 0;
-
 	rxsc_idx = aq_get_rxsc_idx_from_rxsc(cfg, rx_sc);
 	if (rxsc_idx < 0)
 		return -EINVAL;
@@ -1059,9 +1026,6 @@ static int aq_mdo_get_tx_sc_stats(struct macsec_context *ctx)
 	struct aq_macsec_txsc *aq_txsc;
 	int txsc_idx;
 
-	if (ctx->prepare)
-		return 0;
-
 	txsc_idx = aq_get_txsc_idx_from_secy(nic->macsec_cfg, ctx->secy);
 	if (txsc_idx < 0)
 		return -ENOENT;
@@ -1091,9 +1055,6 @@ static int aq_mdo_get_tx_sa_stats(struct macsec_context *ctx)
 	int txsc_idx;
 	u32 next_pn;
 	int ret;
-
-	if (ctx->prepare)
-		return 0;
 
 	txsc_idx = aq_get_txsc_idx_from_secy(cfg, ctx->secy);
 	if (txsc_idx < 0)
@@ -1132,9 +1093,6 @@ static int aq_mdo_get_rx_sc_stats(struct macsec_context *ctx)
 	int rxsc_idx;
 	int ret = 0;
 	int i;
-
-	if (ctx->prepare)
-		return 0;
 
 	rxsc_idx = aq_get_rxsc_idx_from_rxsc(cfg, ctx->rx_sc);
 	if (rxsc_idx < 0)
@@ -1181,9 +1139,6 @@ static int aq_mdo_get_rx_sa_stats(struct macsec_context *ctx)
 	int rxsc_idx;
 	u32 next_pn;
 	int ret;
-
-	if (ctx->prepare)
-		return 0;
 
 	rxsc_idx = aq_get_rxsc_idx_from_rxsc(cfg, ctx->rx_sc);
 	if (rxsc_idx < 0)
