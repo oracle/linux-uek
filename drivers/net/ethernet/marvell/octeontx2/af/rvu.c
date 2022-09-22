@@ -844,6 +844,18 @@ lbkvf:
 	}
 }
 
+static void rvu_setup_pfvf_aggr_lvl_rr_prio(struct rvu *rvu)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_pfvf *pfvf;
+	int pf;
+
+	for (pf = 0; pf < hw->total_pfs; pf++) {
+		pfvf = &rvu->pf[pf];
+		pfvf->tl1_rr_prio = TXSCH_TL1_DFLT_RR_PRIO;
+	}
+}
+
 static int rvu_fwdata_init(struct rvu *rvu)
 {
 	u64 fwdbase;
@@ -1209,6 +1221,9 @@ cpt:
 
 	/* Assign MACs for CGX mapped functions */
 	rvu_setup_pfvf_macaddress(rvu);
+
+	/* Assign aggr level RR Priority */
+	rvu_setup_pfvf_aggr_lvl_rr_prio(rvu);
 
 	err = rvu_npa_init(rvu);
 	if (err) {

@@ -142,7 +142,7 @@ enum nix_scheduler {
 
 #define TXSCH_RR_QTM_MAX		((1 << 24) - 1)
 #define TXSCH_TL1_DFLT_RR_QTM		TXSCH_RR_QTM_MAX
-#define TXSCH_TL1_DFLT_RR_PRIO		(0x9ull)
+#define TXSCH_TL1_DFLT_RR_PRIO		(0x7ull)
 #define CN10K_MAX_DWRR_WEIGHT          16384 /* Weight is 14bit on CN10K */
 
 /* Don't change the order as on CN10K (except CN10KB)

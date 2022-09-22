@@ -307,6 +307,7 @@ struct rvu_pfvf {
 	u64     lmt_map_ent_w1; /*Preseving the word1 of lmtst map table entry*/
 	unsigned long flags;
 	struct  sdp_node_info *sdp_info;
+	u8	tl1_rr_prio; /* RR PRIORITY set by PF */
 };
 
 enum rvu_pfvf_flags {
