@@ -653,18 +653,7 @@ static struct pci_driver mlx5vf_pci_driver = {
 	.err_handler = &mlx5vf_err_handlers,
 };
 
-static void __exit mlx5vf_pci_cleanup(void)
-{
-	pci_unregister_driver(&mlx5vf_pci_driver);
-}
-
-static int __init mlx5vf_pci_init(void)
-{
-	return pci_register_driver(&mlx5vf_pci_driver);
-}
-
-module_init(mlx5vf_pci_init);
-module_exit(mlx5vf_pci_cleanup);
+module_pci_driver(mlx5vf_pci_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Max Gurtovoy <mgurtovoy@nvidia.com>");
