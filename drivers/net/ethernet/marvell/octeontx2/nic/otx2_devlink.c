@@ -190,12 +190,87 @@ static int otx2_dl_serdes_link_get(struct devlink *devlink, u32 id,
 	return 0;
 }
 
+static int otx2_dl_tl1_rr_prio_validate(struct devlink *devlink, u32 id,
+					union devlink_param_value val,
+					struct netlink_ext_ack *extack)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pf = otx2_dl->pfvf;
+
+	if (is_otx2_vf(pf->pcifunc)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "TL1RR PRIORITY setting not allowed on VFs");
+		return -EOPNOTSUPP;
+	}
+
+	if (pci_num_vf(pf->pdev)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "TL1RR PRIORITY setting not allowed as VFs are already attached");
+		return -EOPNOTSUPP;
+	}
+
+	if (val.vu8 > 7) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Valid priority range 0 - 7");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int otx2_dl_tl1_rr_prio_get(struct devlink *devlink, u32 id,
+				   struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	ctx->val.vu8 = pfvf->hw.txschq_aggr_lvl_rr_prio;
+
+	return 0;
+}
+
+static int otx2_dl_tl1_rr_prio_set(struct devlink *devlink, u32 id,
+				   struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+	struct nix_tl1_rr_prio_req *req;
+	bool if_up;
+	int err;
+
+	if_up = netif_running(pfvf->netdev);
+
+	/* send mailbox to AF */
+	mutex_lock(&pfvf->mbox.lock);
+
+	req = otx2_mbox_alloc_msg_nix_tl1_rr_prio(&pfvf->mbox);
+	if (!req) {
+		mutex_unlock(&pfvf->mbox.lock);
+		return -ENOMEM;
+	}
+
+	req->tl1_rr_prio = ctx->val.vu8;
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	mutex_unlock(&pfvf->mbox.lock);
+
+	/* Reconfigure TL1/TL2 DWRR PRIORITY */
+	if (!err && if_up) {
+		otx2_stop(pfvf->netdev);
+		err = otx2_open(pfvf->netdev);
+		if (!err)
+			pfvf->hw.txschq_aggr_lvl_rr_prio = ctx->val.vu8;
+	}
+
+	return err;
+}
+
 enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
 	OTX2_DEVLINK_PARAM_ID_MCAM_COUNT,
 	OTX2_DEVLINK_PARAM_ID_CQE_SIZE,
 	OTX2_DEVLINK_PARAM_ID_RBUF_SIZE,
 	OTX2_DEVLINK_PARAM_ID_SERDES_LINK,
+	OTX2_DEVLINK_PARAM_ID_TL1_RR_PRIO,
 };
 
 static const struct devlink_param otx2_dl_params[] = {
@@ -219,6 +294,11 @@ static const struct devlink_param otx2_dl_params[] = {
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     otx2_dl_serdes_link_get, otx2_dl_serdes_link_set,
 			     NULL),
+	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_TL1_RR_PRIO,
+			     "tl1_rr_prio", DEVLINK_PARAM_TYPE_U8,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     otx2_dl_tl1_rr_prio_get, otx2_dl_tl1_rr_prio_set,
+			     otx2_dl_tl1_rr_prio_validate),
 };
 
 /* Devlink OPs */
