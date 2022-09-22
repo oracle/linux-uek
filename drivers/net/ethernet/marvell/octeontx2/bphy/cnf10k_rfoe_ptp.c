@@ -221,6 +221,7 @@ static void cnf10k_rfoe_ptp_extts_check(struct work_struct *work)
 	mutex_lock(&priv->ptp_lock);
 	tstmp = readq(priv->ptp_reg_base + MIO_PTP_TIMESTAMP);
 	mutex_unlock(&priv->ptp_lock);
+	tstmp = cnf10k_ptp_convert_timestamp(tstmp);
 
 	if (tstmp != priv->last_extts) {
 		event.type = PTP_CLOCK_EXTTS;
