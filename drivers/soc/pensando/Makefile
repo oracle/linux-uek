@@ -1,6 +1,11 @@
 #
 # Pensando SoC drivers
 #
+#
+# To prevent gcc 10 from replacing functions with memset and memcpy
+#
+CFLAGS_kpcimgr.o := $(call cc-option,-fno-tree-loop-distribute-patterns) 
+
 obj-y += cap_soc.o
 obj-y += kpcimgr.o kpcimgr_sysfs.o
 
