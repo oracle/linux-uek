@@ -1116,7 +1116,6 @@ static int mcs_alloc_struct_mem(struct mcs *mcs, struct mcs_rsrc_map *res)
 
 static int mcs_register_interrupts(struct mcs *mcs)
 {
-	char irq_name[NAME_SIZE];
 	int ret = 0;
 
 	mcs->num_vec = pci_msix_vec_count(mcs->pdev);
@@ -1129,9 +1128,8 @@ static int mcs_register_interrupts(struct mcs *mcs)
 		return ret;
 	}
 
-	snprintf(irq_name, NAME_SIZE, "MCS%d_IP", mcs->mcs_id);
 	ret = request_irq(pci_irq_vector(mcs->pdev, MCS_INT_VEC_IP),
-			  mcs_ip_intr_handler, 0, irq_name, mcs);
+			  mcs_ip_intr_handler, 0, "MCS_IP", mcs);
 	if (ret) {
 		dev_err(mcs->dev, "MCS IP irq registration failed\n");
 		goto exit;
