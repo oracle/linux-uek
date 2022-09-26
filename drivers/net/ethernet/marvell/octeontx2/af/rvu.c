@@ -762,6 +762,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 
 	rvu_reset_msix(rvu);
 	mutex_destroy(&rvu->rsrc_lock);
+	mutex_destroy(&rvu->alias_lock);
 }
 
 static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
@@ -1089,6 +1090,7 @@ cpt:
 	}
 
 	mutex_init(&rvu->rsrc_lock);
+	mutex_init(&rvu->alias_lock);
 
 	rvu_fwdata_init(rvu);
 

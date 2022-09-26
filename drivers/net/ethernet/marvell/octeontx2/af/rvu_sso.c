@@ -368,6 +368,7 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	if (ssow_lf < 0)
 		return -ENODEV;
 
+	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
 	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, reg);
@@ -465,8 +466,13 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		cq_ds_cnt &= SSO_LF_GGRP_INT_CNT_MASK;
 	}
 
-	if (aq_cnt || cq_ds_cnt || ds_cnt)
+	if (aq_cnt || cq_ds_cnt || ds_cnt) {
+		rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0);
+		rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0);
+
+		mutex_unlock(&rvu->alias_lock);
 		return -EAGAIN;
+	}
 
 	/* Due to the Errata 35432, SSO doesn't release the partially consumed
 	 * TAQ buffer used by HWGRP when HWGRP is reset. Use SW routine to
@@ -506,6 +512,8 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0);
 	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0);
+
+	mutex_unlock(&rvu->alias_lock);
 
 	return 0;
 }
@@ -557,6 +565,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
 	has_stash = !!(reg & SSO_AF_CONST1_STASH_PRESENT);
 
+	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
 	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, reg);
@@ -575,6 +584,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		    SSO_LF_GGRP_INT_MASK);
 
 	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0x0);
+	mutex_unlock(&rvu->alias_lock);
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_UNMAP_INFO);
 	if ((reg & 0xFFF) == pcifunc)
@@ -672,6 +682,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
 	has_prefetch = !!(reg & SSO_AF_CONST1_PRF_PRESENT);
 
+	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 alias access. */
 	reg = BIT_ULL(16) | pcifunc;
 	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, reg);
@@ -740,6 +751,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	}
 
 	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0x0);
+	mutex_unlock(&rvu->alias_lock);
 
 	return 0;
 }
@@ -844,6 +856,7 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 		if (blkaddr < 0)
 			return SSO_AF_INVAL_NPA_PF_FUNC;
 
+		mutex_lock(&rvu->alias_lock);
 		reg = BIT_ULL(16) | npa_pcifunc;
 		rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, reg);
 		aura = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
@@ -876,8 +889,10 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 	}
 	err = 0;
 fail:
-	if (npa_pcifunc)
+	if (npa_pcifunc) {
 		rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, 0x0);
+		mutex_unlock(&rvu->alias_lock);
+	}
 
 	return err;
 }
