@@ -521,6 +521,7 @@ struct rvu {
 	struct rvu_pfvf		*hwvf;
 	struct rvu_limits	pf_limits;
 	struct mutex		rsrc_lock; /* Serialize resource alloc/free */
+	struct mutex		alias_lock; /* Serialize bar2 alias access */
 	int			vfs; /* Number of VFs attached to RVU */
 	int			nix_blkaddr[MAX_NIX_BLKS];
 
@@ -618,6 +619,8 @@ static inline void rvu_bar2_sel_write64(struct rvu *rvu, u64 block, u64 offset, 
 	 */
 	rvu_write64(rvu, block, offset, val);
 	rvu_read64(rvu, block, offset);
+	/* Barrier to ensure read completes before accessing LF registers */
+	mb();
 }
 
 /* Silicon revisions */
