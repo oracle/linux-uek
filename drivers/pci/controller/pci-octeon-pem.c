@@ -16,6 +16,8 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 
+#include "../hotplug/pciehp.h"
+
 #define DRV_NAME	"octeon-pem"
 #define DRV_VERSION	"1.0"
 
@@ -44,6 +46,16 @@ struct pem_ctlr {
 	struct work_struct	recover_rc_work;
 };
 
+static struct pcie_device *to_pciehp_dev(struct pci_dev *dev)
+{
+	struct device *device;
+
+	device = pcie_port_find_device(dev, PCIE_PORT_SERVICE_HP);
+	if (!device)
+		return NULL;
+	return to_pcie_device(device);
+}
+
 static void pem_recover_rc_link(struct work_struct *ws)
 {
 	struct pem_ctlr *pem = container_of(ws, struct pem_ctlr,
@@ -51,6 +63,7 @@ static void pem_recover_rc_link(struct work_struct *ws)
 	struct pci_dev *pem_dev = pem->pdev;
 	struct pci_dev *root_port;
 	struct pci_bus *bus;
+	struct controller *ctrl;
 	int rc_domain, timeout = 100;
 	u64 pem_reg, dtx_reg;
 
@@ -61,6 +74,30 @@ static void pem_recover_rc_link(struct work_struct *ws)
 		dev_err(&pem_dev->dev, "failed to get root port\n");
 		return;
 	}
+
+	dev_dbg(&pem_dev->dev, "PEM%d rcvr work\n", pem->index);
+
+	/* Check if HP interrupt thread is in progress
+	 * and wait for it to complete
+	 */
+	ctrl = get_service_data(to_pciehp_dev(root_port));
+	if (ctrl->ist_running) {
+		wait_event(ctrl->requester, !ctrl->ist_running);
+		dev_dbg(&pem_dev->dev, "PEM%d HP Ist done\n", pem->index);
+	}
+
+	/* Disable hot-plug interrupt
+	 * Removal and rescan below would setup again.
+	 */
+	pcie_disable_interrupt(ctrl);
+	dev_dbg(&pem_dev->dev, "PEM%d Disable interrupt\n", pem->index);
+
+	pci_lock_rescan_remove();
+
+	/* Clean-up device and RC bridge */
+	pci_stop_and_remove_bus_device(root_port);
+
+	pci_unlock_rescan_remove();
 
 	/* Due to hardware issue, sometimes link-down event may not go
 	 * through cleanly and put LTSSM in to un-desired state inside PEM.
@@ -82,7 +119,7 @@ static void pem_recover_rc_link(struct work_struct *ws)
 	dtx_reg &= BIT_ULL(13);
 	pem_reg &= (BIT_ULL(1) | BIT_ULL(0));
 
-	if (!dtx_reg && (pem_reg & 0x3)) {
+	if (!dtx_reg && (pem_reg == 0x3)) {
 		pem_reg = readq(pem->base + ON_OFFSET);
 		pem_reg &= ~(BIT_ULL(0));
 		writeq(pem_reg, pem->base + ON_OFFSET);
@@ -108,9 +145,6 @@ static void pem_recover_rc_link(struct work_struct *ws)
 	}
 
 	pci_lock_rescan_remove();
-
-	/* Clean-up device and RC bridge */
-	pci_stop_and_remove_bus_device(root_port);
 
 	/*
 	 * Hardware resets and initializes config space of RC bridge
