@@ -1021,7 +1021,6 @@
 #define LBK_CONST			(0x10ull)
 #define LBK_LINK_CFG_P2X		(0x400ull)
 #define LBK_LINK_CFG_X2P		(0x408ull)
-#define LBK_CH_PKIND(a, b)		(0x200ull | (a) << 24 | (b) << 3)
 #define LBK_CONST_CHANS			GENMASK_ULL(47, 32)
 #define LBK_CONST_DST			GENMASK_ULL(31, 28)
 #define LBK_CONST_SRC			GENMASK_ULL(27, 24)
