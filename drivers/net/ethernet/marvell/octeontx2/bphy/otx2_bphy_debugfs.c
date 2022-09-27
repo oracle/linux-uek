@@ -16,6 +16,7 @@
 #include "otx2_bphy.h"
 #include "otx2_rfoe.h"
 #include "cnf10k_rfoe.h"
+#include "otx2_bphy_hw.h"
 
 #define OTX2_BPHY_DEBUGFS_MODE 0400
 
@@ -64,6 +65,79 @@ void __init otx2_bphy_debugfs_init(void)
 		is_otx2 = false;
 	else
 		is_otx2 = true;
+}
+
+static int otx2_rfoe_dbg_read_ptp_tstamp_ring(struct seq_file *filp, void *unused)
+{
+	struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
+	struct cnf10k_rfoe_drv_ctx *cnf10k_ctx;
+	struct otx2_rfoe_ndev_priv *otx2_priv;
+	struct otx2_rfoe_drv_ctx *otx2_ctx;
+	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
+	void __iomem *ptp_ring_base;
+	u64 tstmp_w1, tstmp_w0;
+	u8 idx, ring_size;
+	u64 *ptp_tstamp;
+
+	seq_puts(filp, "Ring ID\t TSTAMP_W0\t\tTSTAMP_W1\n");
+	if (is_otx2) {
+		otx2_ctx = filp->private;
+		otx2_priv = netdev_priv(otx2_ctx->netdev);
+		idx = 0;
+		tstmp_w1 = readq(otx2_priv->rfoe_reg_base +
+				 RFOEX_TX_PTP_TSTMP_W1(otx2_priv->rfoe_num,
+						       otx2_priv->lmac_id));
+		tstmp_w0 = readq(otx2_priv->rfoe_reg_base +
+				 RFOEX_TX_PTP_TSTMP_W0(otx2_priv->rfoe_num,
+						       otx2_priv->lmac_id));
+		seq_printf(filp, "%d\t0x%llx\t\t0x%llx\n", idx, tstmp_w0, tstmp_w1);
+	} else {
+		cnf10k_ctx = filp->private;
+		cnf10k_priv = netdev_priv(cnf10k_ctx->netdev);
+		ring_size = cnf10k_priv->ptp_ring_cfg.ptp_ring_size;
+		ptp_ring_base = cnf10k_priv->ptp_ring_cfg.ptp_ring_base;
+		for (idx = 0; idx < ring_size; idx++) {
+			tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
+					((u8 *)ptp_ring_base +
+					(16 * idx));
+			ptp_tstamp = (u64 *)tx_tstmp;
+			seq_printf(filp, "%d\t0x%llx\t\t0x%llx\n", idx, *ptp_tstamp,
+				   *(ptp_tstamp + 1));
+		}
+	}
+
+	return 0;
+}
+
+static int otx2_rfoe_dbg_open_ptp_tstamp_ring(struct inode *inode, struct file *file)
+{
+	return single_open(file, otx2_rfoe_dbg_read_ptp_tstamp_ring, inode->i_private);
+}
+
+static const struct file_operations otx2_rfoe_dbg_tstamp_ring_fops = {
+	.owner = THIS_MODULE,
+	.open =	otx2_rfoe_dbg_open_ptp_tstamp_ring,
+	.read = seq_read,
+};
+
+void otx2_debugfs_add_tstamp_ring_file(void *priv)
+{
+	struct cnf10k_rfoe_drv_ctx *cnf10k_ctx;
+	struct otx2_rfoe_drv_ctx *ctx;
+	struct dentry *root;
+	char entry[10];
+
+	strcpy(entry, "ptp_ring");
+
+	if (is_otx2) {
+		ctx = (struct otx2_rfoe_drv_ctx *)priv;
+		root = ctx->root;
+		debugfs_create_file(entry, 0444, root, ctx, &otx2_rfoe_dbg_tstamp_ring_fops);
+	} else {
+		cnf10k_ctx = (struct cnf10k_rfoe_drv_ctx *)priv;
+		root = cnf10k_ctx->root;
+		debugfs_create_file(entry, 0444, root, cnf10k_ctx, &otx2_rfoe_dbg_tstamp_ring_fops);
+	}
 }
 
 static void otx2_rfoe_dbg_dump_jdt_ring(struct seq_file *filp, struct tx_job_queue_cfg *job_cfg,
