@@ -1710,7 +1710,11 @@ static void otx2_rfoe_debugfs_create(struct otx2_rfoe_drv_ctx *ctx)
 {
 	size_t buffer_size = otx2_rfoe_debugfs_get_buffer_size();
 
-	ctx->debugfs = otx2_bphy_debugfs_add_file(ctx->netdev->name,
+	ctx->root = otx2_bphy_debugfs_add_dir(ctx->netdev->name);
+	if (!ctx->root)
+		return;
+
+	ctx->debugfs = otx2_bphy_debugfs_add_file("ptp_jiffies_counter",
 						  buffer_size, ctx,
 						  otx2_rfoe_debugfs_reader);
 }

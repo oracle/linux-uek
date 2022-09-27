@@ -20,6 +20,7 @@ typedef void (*otx2_bphy_debugfs_reader)(char *buffer, size_t buffer_size,
 
 void otx2_bphy_debugfs_init(void);
 
+void *otx2_bphy_debugfs_add_dir(const char *name);
 void *otx2_bphy_debugfs_add_file(const char *name,
 				 size_t buffer_size,
 				 void *priv,

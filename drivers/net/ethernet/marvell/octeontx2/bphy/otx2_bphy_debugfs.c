@@ -14,6 +14,8 @@
 
 #include "otx2_bphy_debugfs.h"
 #include "otx2_bphy.h"
+#include "otx2_rfoe.h"
+#include "cnf10k_rfoe.h"
 
 #define OTX2_BPHY_DEBUGFS_MODE 0400
 
@@ -28,6 +30,7 @@ struct otx2_bphy_debugfs_reader_info {
 
 static struct dentry *otx2_bphy_debugfs;
 
+static bool is_otx2;
 static int otx2_bphy_debugfs_open(struct inode *inode, struct file *file);
 
 static int otx2_bphy_debugfs_release(struct inode *inode, struct file *file);
@@ -44,9 +47,41 @@ static const struct file_operations otx2_bphy_debugfs_foper = {
 
 void __init otx2_bphy_debugfs_init(void)
 {
+	struct pci_dev *bphy_pdev;
+
 	otx2_bphy_debugfs = debugfs_create_dir(DRV_NAME, NULL);
 	if (!otx2_bphy_debugfs)
 		pr_info("%s: debugfs is not enabled\n", DRV_NAME);
+
+	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
+				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
+
+	if (!bphy_pdev)
+		return;
+
+	if (bphy_pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A ||
+	    bphy_pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B)
+		is_otx2 = false;
+	else
+		is_otx2 = true;
+}
+
+void *otx2_bphy_debugfs_add_dir(const char *name)
+{
+	struct dentry *root = NULL;
+
+	if (!otx2_bphy_debugfs) {
+		pr_info("%s: debugfs not enabled, ignoring %s\n", DRV_NAME,
+			name);
+		goto out;
+	}
+
+	root = debugfs_create_dir(name, otx2_bphy_debugfs);
+	if (!root)
+		pr_info("%s: debugfs dir is not created %s\n", DRV_NAME, name);
+
+out:
+	return root;
 }
 
 void *otx2_bphy_debugfs_add_file(const char *name,
@@ -55,9 +90,23 @@ void *otx2_bphy_debugfs_add_file(const char *name,
 				 otx2_bphy_debugfs_reader reader)
 {
 	struct otx2_bphy_debugfs_reader_info *info = NULL;
+	struct cnf10k_rfoe_drv_ctx *cnf10k_ctx;
+	struct otx2_rfoe_drv_ctx *ctx;
 	size_t total_size = 0;
+	struct dentry *root;
+	bool is_cpri;
 
-	if (!otx2_bphy_debugfs) {
+	is_cpri = (strncmp(name, "cpri", 4) ? false : true);
+
+	if (is_otx2) {
+		ctx = (struct otx2_rfoe_drv_ctx *)priv;
+		root = ctx->root;
+	} else {
+		cnf10k_ctx = (struct cnf10k_rfoe_drv_ctx *)priv;
+		root = cnf10k_ctx->root;
+	}
+
+	if (!root && !is_cpri) {
 		pr_info("%s: debugfs not enabled, ignoring %s\n", DRV_NAME,
 			name);
 		goto out;
@@ -78,9 +127,14 @@ void *otx2_bphy_debugfs_add_file(const char *name,
 
 	atomic_set(&info->refcnt, 0);
 
-	info->entry = debugfs_create_file(name, OTX2_BPHY_DEBUGFS_MODE,
-					  otx2_bphy_debugfs, info,
-					  &otx2_bphy_debugfs_foper);
+	if (is_cpri)
+		info->entry = debugfs_create_file(name, OTX2_BPHY_DEBUGFS_MODE,
+						  otx2_bphy_debugfs, info,
+						  &otx2_bphy_debugfs_foper);
+	else
+		info->entry = debugfs_create_file(name, OTX2_BPHY_DEBUGFS_MODE,
+						  root, info,
+						  &otx2_bphy_debugfs_foper);
 
 	if (!info->entry) {
 		pr_err("%s: debugfs failed to add file %s\n", DRV_NAME, name);

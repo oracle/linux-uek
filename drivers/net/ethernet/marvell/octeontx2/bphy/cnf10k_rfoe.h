@@ -62,6 +62,7 @@ struct cnf10k_rfoe_drv_ctx {
 	u8				valid;
 	struct net_device               *netdev;
 	struct cnf10k_rx_ft_cfg		*ft_cfg;
+	struct dentry			*root;
 	void				*debugfs;
 };
 
