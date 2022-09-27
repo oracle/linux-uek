@@ -47,6 +47,7 @@ struct otx2_rfoe_drv_ctx {
 	int				valid;
 	struct net_device               *netdev;
 	struct rx_ft_cfg		*ft_cfg;
+	struct dentry			*root;
 	int				tx_gpint_bit;
 	void				*debugfs;
 };
