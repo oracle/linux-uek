@@ -66,6 +66,117 @@ void __init otx2_bphy_debugfs_init(void)
 		is_otx2 = true;
 }
 
+static void otx2_rfoe_dbg_dump_jdt_ring(struct seq_file *filp, struct tx_job_queue_cfg *job_cfg,
+					void *priv)
+{
+	struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
+	struct otx2_rfoe_ndev_priv *otx2_priv;
+	struct tx_job_entry *job_entry;
+	u64 jd_cfg_iova, iova;
+	int idx;
+
+	if (is_otx2)
+		otx2_priv = (struct otx2_rfoe_ndev_priv *)priv;
+	else
+		cnf10k_priv = (struct cnf10k_rfoe_ndev_priv *)priv;
+
+	for (idx = 0; idx < job_cfg->num_entries; idx++) {
+		job_entry = &job_cfg->job_entries[idx];
+		iova = job_entry->jd_iova_addr;
+
+		if (is_otx2)
+			job_entry->jd_ptr = otx2_iova_to_virt(otx2_priv->iommu_domain, iova);
+		else
+			job_entry->jd_ptr = otx2_iova_to_virt(cnf10k_priv->iommu_domain, iova);
+
+		seq_printf(filp, "Ring idx:\t%d\n", idx);
+		seq_printf(filp, "Contents of JD Header:\t0x%llx\n", *(u64 *)(job_entry->jd_ptr));
+		jd_cfg_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
+
+		if (is_otx2)
+			job_entry->jd_cfg_ptr = otx2_iova_to_virt(otx2_priv->iommu_domain,
+								  jd_cfg_iova);
+		else
+			job_entry->jd_cfg_ptr = otx2_iova_to_virt(cnf10k_priv->iommu_domain,
+								  jd_cfg_iova);
+
+		seq_puts(filp, "Contents of JD CFG pointer\n");
+		seq_printf(filp, "AB_SLOT_CFG0:\t0x%llx\n", *(u64 *)((u8 *)job_entry->jd_cfg_ptr));
+		seq_printf(filp, "AB_SLOT_CFG1:\t0x%llx\n",
+			   *(u64 *)((u8 *)job_entry->jd_cfg_ptr + 8));
+		seq_printf(filp, "AB_SLOT_CFG2:\t0x%llx\n",
+			   *(u64 *)((u8 *)job_entry->jd_cfg_ptr + 16));
+		seq_printf(filp, "AB_SLOT_CFG3:\t0x%llx\n",
+			   *(u64 *)((u8 *)job_entry->jd_cfg_ptr + 24));
+		seq_puts(filp, "Contents of RD DMA pointer\n");
+		seq_printf(filp, "0x%llx\t0x%llx\n", *(u64 *)((u8 *)job_entry->rd_dma_ptr),
+			   *(u64 *)(((u8 *)job_entry->rd_dma_ptr + 8)));
+	}
+}
+
+static int otx2_rfoe_dbg_read_jdt_ring(struct seq_file *filp, void *unused)
+{
+	struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
+	struct cnf10k_rfoe_drv_ctx *cnf10k_ctx;
+	struct otx2_rfoe_ndev_priv *otx2_priv;
+	struct otx2_rfoe_drv_ctx *otx2_ctx;
+	struct tx_job_queue_cfg *job_cfg;
+
+	seq_puts(filp, "============== PTP JD Ring=================\n");
+	if (is_otx2) {
+		otx2_ctx = filp->private;
+		otx2_priv = netdev_priv(otx2_ctx->netdev);
+		job_cfg = &otx2_priv->tx_ptp_job_cfg;
+		otx2_rfoe_dbg_dump_jdt_ring(filp, job_cfg, otx2_priv);
+	} else {
+		cnf10k_ctx = filp->private;
+		cnf10k_priv = netdev_priv(cnf10k_ctx->netdev);
+		job_cfg = &cnf10k_priv->tx_ptp_job_cfg;
+		otx2_rfoe_dbg_dump_jdt_ring(filp, job_cfg, cnf10k_priv);
+	}
+
+	seq_puts(filp, "============== OTH/ECPRI JD Ring =================\n");
+	if (is_otx2) {
+		job_cfg = &otx2_priv->rfoe_common->tx_oth_job_cfg;
+		otx2_rfoe_dbg_dump_jdt_ring(filp, job_cfg, otx2_priv);
+	} else {
+		job_cfg = &cnf10k_priv->rfoe_common->tx_oth_job_cfg;
+		otx2_rfoe_dbg_dump_jdt_ring(filp, job_cfg, cnf10k_priv);
+	}
+
+	return 0;
+}
+
+static int otx2_rfoe_dbg_open_jdt_ring(struct inode *inode, struct file *file)
+{
+	return single_open(file, otx2_rfoe_dbg_read_jdt_ring, inode->i_private);
+}
+
+static const struct file_operations otx2_rfoe_dbg_jdt_ring_fops = {
+	.owner = THIS_MODULE,
+	.open =	otx2_rfoe_dbg_open_jdt_ring,
+	.read = seq_read,
+};
+
+void otx2_debugfs_add_jdt_ring_file(void *priv)
+{
+	struct cnf10k_rfoe_drv_ctx *cnf10k_ctx;
+	struct otx2_rfoe_drv_ctx *ctx;
+	struct dentry *root;
+	char entry[10];
+
+	strcpy(entry, "jdt_ring");
+	if (is_otx2) {
+		ctx = (struct otx2_rfoe_drv_ctx *)priv;
+		root = ctx->root;
+		debugfs_create_file(entry, 0444, root, ctx, &otx2_rfoe_dbg_jdt_ring_fops);
+	} else {
+		cnf10k_ctx = (struct cnf10k_rfoe_drv_ctx *)priv;
+		root = cnf10k_ctx->root;
+		debugfs_create_file(entry, 0444, root, cnf10k_ctx, &otx2_rfoe_dbg_jdt_ring_fops);
+	}
+}
+
 void *otx2_bphy_debugfs_add_dir(const char *name)
 {
 	struct dentry *root = NULL;

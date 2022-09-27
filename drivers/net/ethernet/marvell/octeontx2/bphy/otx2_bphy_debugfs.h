@@ -15,6 +15,7 @@
 #ifndef _OTX2_BPHY_DEBUGFS_H_
 #define _OTX2_BPHY_DEBUGFS_H_
 
+void otx2_debugfs_add_jdt_ring_file(void *priv);
 typedef void (*otx2_bphy_debugfs_reader)(char *buffer, size_t buffer_size,
 					 void *priv);
 

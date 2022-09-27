@@ -120,6 +120,8 @@ void cnf10k_rfoe_debugfs_create(struct cnf10k_rfoe_drv_ctx *ctx)
 	ctx->debugfs = otx2_bphy_debugfs_add_file("ptp_jiffies_counter",
 						  buffer_size, ctx,
 						  cnf10k_rfoe_debugfs_reader);
+
+	otx2_debugfs_add_jdt_ring_file(ctx);
 }
 
 void cnf10k_rfoe_debugfs_remove(struct cnf10k_rfoe_drv_ctx *ctx)
