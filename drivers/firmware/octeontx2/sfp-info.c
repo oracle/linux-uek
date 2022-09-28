@@ -204,20 +204,6 @@ static int __init sfp_info_init(void)
 	struct arm_smccc_res res;
 	struct mub_device *mdev;
 
-	arm_smccc_smc(PLAT_OCTEONTX_GET_FWDATA_BASE, 0, 0,
-		0, 0, 0, 0, 0, &res);
-
-	if (res.a0 != SMCCC_RET_SUCCESS)
-		return -ENOMEM;
-
-	fwdata_size = res.a2;
-
-	sfp_info_data.fwdata_base =
-		ioremap_wc(res.a1, fwdata_size);
-
-	if (!sfp_info_data.fwdata_base)
-		return -ENOMEM;
-
 	sfp_info_data.eth = 0;
 	sfp_info_data.lmac = 0;
 	sfp_info_data.ptype = ETH_LMAC;
@@ -227,9 +213,25 @@ static int __init sfp_info_init(void)
 				    MUB_SOC_TYPE_10X |
 				    MUB_SOC_TYPE_9X,
 				    sfp_info_groups);
-	if (IS_ERR(mdev)) {
-		iounmap(sfp_info_data.fwdata_base);
+	if (IS_ERR(mdev))
 		return PTR_ERR(mdev);
+
+	arm_smccc_smc(PLAT_OCTEONTX_GET_FWDATA_BASE, 0, 0,
+		0, 0, 0, 0, 0, &res);
+
+	if (res.a0 != SMCCC_RET_SUCCESS) {
+		mub_device_unregister(sfp_info_data.mdev);
+		return -ENOMEM;
+	}
+
+	fwdata_size = res.a2;
+
+	sfp_info_data.fwdata_base =
+		ioremap_wc(res.a1, fwdata_size);
+
+	if (!sfp_info_data.fwdata_base) {
+		mub_device_unregister(sfp_info_data.mdev);
+		return -ENOMEM;
 	}
 
 	mub_set_data(mdev, &sfp_info_data);
