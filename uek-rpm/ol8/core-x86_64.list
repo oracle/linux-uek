@@ -74,7 +74,6 @@ kernel/drivers/ata/ata_piix.ko
 kernel/drivers/ata/libahci.ko
 kernel/drivers/ata/libata.ko
 kernel/drivers/ata/pata_acpi.ko
-kernel/drivers/block/floppy.ko
 kernel/drivers/block/loop.ko
 kernel/drivers/block/nbd.ko
 kernel/drivers/block/virtio_blk.ko
