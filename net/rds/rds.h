@@ -294,8 +294,6 @@ struct rds_conn_path {
 	time64_t                cp_hb_start;
 	enum rds_hb_state	cp_hb_state;
 
-	unsigned int		cp_rdsinfo_pending;
-
 	enum rds_conn_drop_src	cp_drop_source;
 
 	unsigned char		cp_acl_init;

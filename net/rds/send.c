@@ -1685,12 +1685,6 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		goto out;
 	}
 
-	if (cpath->cp_rdsinfo_pending) {
-		ret = -EAGAIN;
-		reason = "rdsinfo pending";
-		goto out;
-	}
-
 	while (!rds_send_queue_rm(rs, conn, cpath, rm, rs->rs_bound_port,
 				  dport, &queued, bufi)) {
 		rds_stats_inc(s_send_queue_full);
