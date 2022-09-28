@@ -34,6 +34,8 @@ void get_random_bytes(void *buf, int nbytes); /* Satisfy KABI */
 void get_random_bytes(void *buf, size_t len);
 #endif
 size_t __must_check get_random_bytes_arch(void *buf, size_t len);
+u8 get_random_u8(void);
+u16 get_random_u16(void);
 u32 get_random_u32(void);
 u64 get_random_u64(void);
 static inline unsigned int get_random_int(void)
