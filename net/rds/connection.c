@@ -803,9 +803,7 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 				else
 					list = &cp->cp_retrans;
 
-				cp->cp_rdsinfo_pending = 1;
 				spin_lock_irqsave(&cp->cp_lock, flags);
-
 				/* XXX too lazy to maintain counts.. */
 				list_for_each_entry(rm, list, m_conn_item) {
 					total++;
@@ -816,8 +814,6 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 								 &conn->c_faddr,
 								 0, isv6);
 				}
-
-				cp->cp_rdsinfo_pending = 0;
 				spin_unlock_irqrestore(&cp->cp_lock, flags);
 			}
 		}
