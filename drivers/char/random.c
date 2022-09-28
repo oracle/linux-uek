@@ -693,6 +693,8 @@ EXPORT_SYMBOL(get_random_ ##type);
 
 DEFINE_BATCHED_ENTROPY(u64)
 DEFINE_BATCHED_ENTROPY(u32)
+DEFINE_BATCHED_ENTROPY(u16)
+DEFINE_BATCHED_ENTROPY(u8)
 
 /*
  * This function will use the architecture-specific hardware random
