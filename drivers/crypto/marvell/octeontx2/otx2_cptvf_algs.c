@@ -27,8 +27,6 @@
 #define AES_GCM_IV_OFFSET 8
 #define CONTROL_WORD_LEN 8
 #define KEY2_OFFSET 48
-#define DMA_MODE_FLAG(dma_mode) \
-	(((dma_mode) == OTX2_CPT_DMA_MODE_SG) ? (1 << 7) : 0)
 
 /* Truncated SHA digest size */
 #define SHA1_TRUNC_DIGEST_SIZE 12
@@ -76,6 +74,11 @@ static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
 	put_cpu();
 
 	return 0;
+}
+
+int otx2_cpt_dev_get(struct pci_dev **pdev, int *cpu_num)
+{
+	return get_se_device(pdev, cpu_num);
 }
 
 static inline int validate_hmac_cipher_null(struct otx2_cpt_req_info *cpt_req)
@@ -366,6 +369,7 @@ static inline int cpt_enc_dec(struct skcipher_request *req, u32 enc)
 	/* Clear control words */
 	rctx->ctrl_word.flags = 0;
 	rctx->fctx.enc.enc_ctrl.u = 0;
+	memset(&rctx->cpt_req.req, 0, sizeof(struct otx2_cptvf_request));
 
 	status = create_input_list(req, enc, enc_iv_len);
 	if (status)
@@ -1294,6 +1298,7 @@ static int cpt_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	/* Clear control words */
 	rctx->ctrl_word.flags = 0;
 	rctx->fctx.enc.enc_ctrl.u = 0;
+	memset(&rctx->cpt_req.req, 0, sizeof(struct otx2_cptvf_request));
 
 	req_info->callback = otx2_cpt_aead_callback;
 	req_info->areq = &req->base;
@@ -1661,13 +1666,20 @@ static inline int cpt_register_algs(void)
 
 	err = crypto_register_aeads(otx2_cpt_aeads,
 				    ARRAY_SIZE(otx2_cpt_aeads));
-	if (err) {
-		crypto_unregister_skciphers(otx2_cpt_skciphers,
-					    ARRAY_SIZE(otx2_cpt_skciphers));
-		return err;
-	}
+	if (err)
+		goto unregister_skciphers;
 
+	err = otx2_cpt_register_hmac_hash_algs();
+	if (err)
+		goto unregister_aeads;
 	return 0;
+
+unregister_aeads:
+	crypto_unregister_aeads(otx2_cpt_aeads, ARRAY_SIZE(otx2_cpt_aeads));
+unregister_skciphers:
+	crypto_unregister_skciphers(otx2_cpt_skciphers,
+				    ARRAY_SIZE(otx2_cpt_skciphers));
+	return err;
 }
 
 static inline void cpt_unregister_algs(void)
@@ -1675,6 +1687,7 @@ static inline void cpt_unregister_algs(void)
 	crypto_unregister_skciphers(otx2_cpt_skciphers,
 				    ARRAY_SIZE(otx2_cpt_skciphers));
 	crypto_unregister_aeads(otx2_cpt_aeads, ARRAY_SIZE(otx2_cpt_aeads));
+	otx2_cpt_unregister_hmac_hash_algs();
 }
 
 static int compare_func(const void *lptr, const void *rptr)
