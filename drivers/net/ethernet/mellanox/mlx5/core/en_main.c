@@ -72,25 +72,24 @@ static bool expose_pf_phys_port_name = true;
 module_param(expose_pf_phys_port_name, bool, 0444);
 MODULE_PARM_DESC(expose_pf_phys_port_name, "1 - expose phys_port_name suffix on PF netdev (default), 0 - backward compatible naming with previous UEK release");
 
-bool mlx5e_check_fragmented_striding_rq_cap(struct mlx5_core_dev *mdev)
+bool mlx5e_check_fragmented_striding_rq_cap(struct mlx5_core_dev *mdev, u8 page_shift)
 {
-	bool striding_rq_umr, inline_umr;
-	u16 max_wqebbs;
-	u16 umr_wqebbs;
+	u16 umr_wqebbs, max_wqebbs;
+	bool striding_rq_umr;
 
 	striding_rq_umr = MLX5_CAP_GEN(mdev, striding_rq) && MLX5_CAP_GEN(mdev, umr_ptr_rlky) &&
 			  MLX5_CAP_ETH(mdev, reg_umr_sq);
-	max_wqebbs = mlx5e_get_max_sq_aligned_wqebbs(mdev);
-	umr_wqebbs = mlx5e_mpwrq_umr_wqebbs(MLX5_MPWRQ_PAGES_PER_WQE);
-	inline_umr = umr_wqebbs <= max_wqebbs;
 	if (!striding_rq_umr)
 		return false;
-	if (!inline_umr) {
-		mlx5_core_warn(mdev, "Cannot support Striding RQ: UMR WQE size (%u) exceeds maximum supported (%u).\n",
-			       umr_wqebbs * MLX5_SEND_WQE_BB,
-			       max_wqebbs * MLX5_SEND_WQE_BB);
+
+	umr_wqebbs = mlx5e_mpwrq_umr_wqebbs(mdev, page_shift);
+	max_wqebbs = mlx5e_get_max_sq_aligned_wqebbs(mdev);
+	/* Sanity check; should never happen, because mlx5e_mpwrq_umr_wqebbs is
+	 * calculated from mlx5e_get_max_sq_aligned_wqebbs.
+	 */
+	if (WARN_ON(umr_wqebbs > max_wqebbs))
 		return false;
-	}
+
 	return true;
 }
 
@@ -215,7 +214,7 @@ static inline void mlx5e_build_umr_wqe(struct mlx5e_rq *rq,
 	struct mlx5_wqe_umr_ctrl_seg *ucseg = &wqe->uctrl;
 	u8 ds_cnt;
 
-	ds_cnt = DIV_ROUND_UP(mlx5e_mpwrq_umr_wqe_sz(rq->mpwqe.pages_per_wqe),
+	ds_cnt = DIV_ROUND_UP(mlx5e_mpwrq_umr_wqe_sz(rq->mdev, rq->mpwqe.page_shift),
 			      MLX5_SEND_WQE_DS);
 
 	cseg->qpn_ds    = cpu_to_be32((sq->sqn << MLX5_WQE_CTRL_QPN_SHIFT) |
@@ -596,13 +595,16 @@ static int mlx5e_alloc_rq(struct mlx5e_params *params,
 
 		wq_sz = mlx5_wq_ll_get_size(&rq->mpwqe.wq);
 
-		rq->mpwqe.page_shift = PAGE_SHIFT;
-		rq->mpwqe.pages_per_wqe = MLX5_MPWRQ_PAGES_PER_WQE;
-		rq->mpwqe.umr_wqebbs = mlx5e_mpwrq_umr_wqebbs(rq->mpwqe.pages_per_wqe);
-		rq->mpwqe.mtts_per_wqe = MLX5E_REQUIRED_WQE_MTTS;
+		rq->mpwqe.page_shift = mlx5e_mpwrq_page_shift(mdev, xsk);
+		rq->mpwqe.pages_per_wqe =
+			mlx5e_mpwrq_pages_per_wqe(mdev, rq->mpwqe.page_shift);
+		rq->mpwqe.umr_wqebbs =
+			mlx5e_mpwrq_umr_wqebbs(mdev, rq->mpwqe.page_shift);
+		rq->mpwqe.mtts_per_wqe =
+			mlx5e_mpwrq_mtts_per_wqe(mdev, rq->mpwqe.page_shift);
 
 		pool_size = rq->mpwqe.pages_per_wqe <<
-			mlx5e_mpwqe_get_log_rq_size(params, xsk);
+			mlx5e_mpwqe_get_log_rq_size(mdev, params, xsk);
 
 		rq->mpwqe.log_stride_sz = mlx5e_mpwqe_get_log_stride_size(mdev, params, xsk);
 		rq->mpwqe.num_strides =
@@ -4015,14 +4017,16 @@ static bool mlx5e_xsk_validate_mtu(struct net_device *netdev,
 	return true;
 }
 
-static bool mlx5e_params_validate_xdp(struct net_device *netdev, struct mlx5e_params *params)
+static bool mlx5e_params_validate_xdp(struct net_device *netdev,
+				      struct mlx5_core_dev *mdev,
+				      struct mlx5e_params *params)
 {
 	bool is_linear;
 
 	/* No XSK params: AF_XDP can't be enabled yet at the point of setting
 	 * the XDP program.
 	 */
-	is_linear = mlx5e_rx_is_linear_skb(params, NULL);
+	is_linear = mlx5e_rx_is_linear_skb(mdev, params, NULL);
 
 #ifdef WITH_XDP_FRAGS
 	if (!is_linear && params->rq_wq_type != MLX5_WQ_TYPE_CYCLIC) {
@@ -4064,7 +4068,8 @@ int mlx5e_change_mtu(struct net_device *netdev, int new_mtu,
 	if (err)
 		goto out;
 
-	if (new_params.xdp_prog && !mlx5e_params_validate_xdp(netdev, &new_params)) {
+	if (new_params.xdp_prog && !mlx5e_params_validate_xdp(netdev, priv->mdev,
+							      &new_params)) {
 		err = -EINVAL;
 		goto out;
 	}
@@ -4084,8 +4089,8 @@ int mlx5e_change_mtu(struct net_device *netdev, int new_mtu,
 		bool is_linear_old = mlx5e_rx_mpwqe_is_linear_skb(priv->mdev, params, NULL);
 		bool is_linear_new = mlx5e_rx_mpwqe_is_linear_skb(priv->mdev,
 								  &new_params, NULL);
-		u8 sz_old = mlx5e_mpwqe_get_log_rq_size(params, NULL);
-		u8 sz_new = mlx5e_mpwqe_get_log_rq_size(&new_params, NULL);
+		u8 sz_old = mlx5e_mpwqe_get_log_rq_size(priv->mdev, params, NULL);
+		u8 sz_new = mlx5e_mpwqe_get_log_rq_size(priv->mdev, &new_params, NULL);
 
 		/* Always reset in linear mode - hw_mtu is used in data path.
 		 * Check that the mode was non-linear and didn't change.
@@ -4543,7 +4548,7 @@ static int mlx5e_xdp_allowed(struct mlx5e_priv *priv, struct bpf_prog *prog)
 	new_params = priv->channels.params;
 	new_params.xdp_prog = prog;
 
-	if (!mlx5e_params_validate_xdp(netdev, &new_params))
+	if (!mlx5e_params_validate_xdp(netdev, priv->mdev, &new_params))
 		return -EINVAL;
 
 	return 0;
@@ -4926,7 +4931,7 @@ static void mlx5e_build_nic_netdev(struct net_device *netdev)
 	if (!!MLX5_CAP_ETH(mdev, lro_cap) &&
 	    !MLX5_CAP_ETH(mdev, tunnel_lro_vxlan) &&
 	    !MLX5_CAP_ETH(mdev, tunnel_lro_gre) &&
-	    mlx5e_check_fragmented_striding_rq_cap(mdev))
+	    mlx5e_check_fragmented_striding_rq_cap(mdev, PAGE_SHIFT))
 		netdev->vlan_features    |= NETIF_F_LRO;
 
 	netdev->hw_features       = netdev->vlan_features;
