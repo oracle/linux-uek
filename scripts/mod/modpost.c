@@ -347,10 +347,12 @@ static struct symbol *sym_add_exported(const char *name, struct module *mod,
 {
 	struct symbol *s = find_symbol(name);
 
-	if (s && (!external_module || s->module->is_vmlinux || s->module == mod)) {
+	if (s && !external_module) {
+	    if (s->module->is_vmlinux || s->module == mod) {
 		error("%s: '%s' exported twice. Previous export was in %s%s\n",
 		      mod->name, name, s->module->name,
 		      s->module->is_vmlinux ? "" : ".ko");
+	    }
 	}
 
 	s = alloc_symbol(name);
