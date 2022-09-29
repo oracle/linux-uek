@@ -294,6 +294,7 @@ static const struct ptp_clock_info cnf10k_rfoe_ptp_clock_info = {
 int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv  *priv)
 {
 	struct cyclecounter *cc;
+	u64 rx_cfg;
 	int err;
 
 	cc = &priv->cycle_counter;
@@ -323,6 +324,10 @@ int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv  *priv)
 		return err;
 	}
 
+	/* Enable FORCE_COND_CLK_EN */
+	rx_cfg = readq(priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
+	rx_cfg |= FORCE_COND_CLK_EN;
+	writeq(rx_cfg, priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
 	mutex_init(&priv->ptp_lock);
 
 	return 0;

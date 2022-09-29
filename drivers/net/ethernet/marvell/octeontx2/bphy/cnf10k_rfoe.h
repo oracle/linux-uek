@@ -31,6 +31,8 @@
 #define CNF10K_RFOE_RX_INTR_MASK(a)		(RFOE_RX_INTR_EN << \
 						 CNF10K_RFOE_RX_INTR_SHIFT(a))
 #define CNF10K_RFOE_TX_PTP_INTR_MASK(a, b, n)	(1UL << ((a) * (n) + (b)))
+#define CNF10K_RFOEX_RX_CFG(a)			(0x808 + ((a) << 24))
+#define FORCE_COND_CLK_EN			BIT(0)
 
 #define CNF10K_RFOE_MAX_INTF			14
 
