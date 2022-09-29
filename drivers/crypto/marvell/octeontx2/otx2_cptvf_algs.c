@@ -21,8 +21,10 @@
 
 /* Size of salt in AES GCM mode */
 #define AES_GCM_SALT_SIZE 4
+/* Size of IV in RFC4106 AES GCM mode */
+#define AES_RFC4106_GCM_IV_SIZE 8
 /* Size of IV in AES GCM mode */
-#define AES_GCM_IV_SIZE 8
+#define AES_GCM_IV_SIZE 12
 /* Size of ICV (Integrity Check Value) in AES GCM mode */
 #define AES_GCM_ICV_SIZE 16
 /* Offset of IV in AES GCM mode */
@@ -705,8 +707,19 @@ static int otx2_cpt_aead_ecb_null_sha512_init(struct crypto_aead *tfm)
 	return cpt_aead_init(tfm, OTX2_CPT_CIPHER_NULL, OTX2_CPT_SHA512);
 }
 
+static int otx2_cpt_aead_rfc4106_gcm_aes_init(struct crypto_aead *tfm)
+{
+	struct otx2_cpt_aead_ctx *ctx = crypto_aead_ctx(tfm);
+
+	ctx->is_rfc4106_gcm = true;
+	return cpt_aead_init(tfm, OTX2_CPT_AES_GCM, OTX2_CPT_MAC_NULL);
+}
+
 static int otx2_cpt_aead_gcm_aes_init(struct crypto_aead *tfm)
 {
+	struct otx2_cpt_aead_ctx *ctx = crypto_aead_ctx(tfm);
+
+	ctx->is_rfc4106_gcm = false;
 	return cpt_aead_init(tfm, OTX2_CPT_AES_GCM, OTX2_CPT_MAC_NULL);
 }
 
@@ -732,7 +745,9 @@ static int otx2_cpt_aead_gcm_set_authsize(struct crypto_aead *tfm,
 {
 	struct otx2_cpt_aead_ctx *ctx = crypto_aead_ctx(tfm);
 
-	if (crypto_rfc4106_check_authsize(authsize))
+	if (ctx->is_rfc4106_gcm && crypto_rfc4106_check_authsize(authsize))
+		return -EINVAL;
+	else if (crypto_gcm_check_authsize(authsize))
 		return -EINVAL;
 
 	tfm->authsize = authsize;
@@ -1007,9 +1022,9 @@ static int otx2_cpt_aead_ecb_null_sha_setkey(struct crypto_aead *cipher,
 	return 0;
 }
 
-static int otx2_cpt_aead_gcm_aes_setkey(struct crypto_aead *cipher,
-					const unsigned char *key,
-					unsigned int keylen)
+static int otx2_cpt_aead_rfc4106_gcm_aes_setkey(struct crypto_aead *cipher,
+						const unsigned char *key,
+						unsigned int keylen)
 {
 	struct otx2_cpt_aead_ctx *ctx = crypto_aead_ctx(cipher);
 
@@ -1036,6 +1051,36 @@ static int otx2_cpt_aead_gcm_aes_setkey(struct crypto_aead *cipher,
 	}
 
 	/* Store encryption key and salt */
+	memcpy(ctx->key, key, keylen);
+
+	return crypto_aead_setkey(ctx->fbk_cipher, key, keylen);
+}
+
+static int otx2_cpt_aead_gcm_aes_setkey(struct crypto_aead *cipher,
+					const unsigned char *key,
+					unsigned int keylen)
+{
+	struct otx2_cpt_aead_ctx *ctx = crypto_aead_ctx(cipher);
+
+	switch (keylen) {
+	case AES_KEYSIZE_128:
+		ctx->key_type = OTX2_CPT_AES_128_BIT;
+		ctx->enc_key_len = AES_KEYSIZE_128;
+		break;
+	case AES_KEYSIZE_192:
+		ctx->key_type = OTX2_CPT_AES_192_BIT;
+		ctx->enc_key_len = AES_KEYSIZE_192;
+		break;
+	case AES_KEYSIZE_256:
+		ctx->key_type = OTX2_CPT_AES_256_BIT;
+		ctx->enc_key_len = AES_KEYSIZE_256;
+		break;
+	default:
+		/* Invalid key and salt length */
+		return -EINVAL;
+	}
+
+	/* Store encryption key */
 	memcpy(ctx->key, key, keylen);
 
 	return crypto_aead_setkey(ctx->fbk_cipher, key, keylen);
@@ -1076,17 +1121,24 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 		break;
 
 	case OTX2_CPT_AES_GCM:
-		if (crypto_ipsec_check_assoclen(req->assoclen))
+		if (ctx->is_rfc4106_gcm && crypto_ipsec_check_assoclen(req->assoclen))
+			return -EINVAL;
+		else if (req->assoclen > 512)
 			return -EINVAL;
 
-		fctx->enc.enc_ctrl.e.iv_source = OTX2_CPT_FROM_DPTR;
 		/* Copy encryption key to context */
 		memcpy(fctx->enc.encr_key, ctx->key, ctx->enc_key_len);
-		/* Copy salt to context */
-		memcpy(fctx->enc.encr_iv, ctx->key + ctx->enc_key_len,
-		       AES_GCM_SALT_SIZE);
-
-		rctx->ctrl_word.e.iv_offset = req->assoclen - AES_GCM_IV_OFFSET;
+		if (ctx->is_rfc4106_gcm) {
+			fctx->enc.enc_ctrl.e.iv_source = OTX2_CPT_FROM_DPTR;
+			/* Copy salt to context */
+			memcpy(fctx->enc.encr_iv, ctx->key + ctx->enc_key_len,
+			       AES_GCM_SALT_SIZE);
+			rctx->ctrl_word.e.iv_offset = req->assoclen - AES_GCM_IV_OFFSET;
+		} else {
+			fctx->enc.enc_ctrl.e.iv_source = OTX2_CPT_FROM_CPTR;
+			/* Copy IV to context */
+			memcpy(fctx->enc.encr_iv, req->iv, crypto_aead_ivsize(tfm));
+		}
 		break;
 
 	default:
@@ -1644,6 +1696,25 @@ static struct aead_alg otx2_cpt_aeads[] = { {
 	.base = {
 		.cra_name = "rfc4106(gcm(aes))",
 		.cra_driver_name = "cpt_rfc4106_gcm_aes",
+		.cra_blocksize = 1,
+		.cra_flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_NEED_FALLBACK,
+		.cra_ctxsize = sizeof(struct otx2_cpt_aead_ctx),
+		.cra_priority = 4001,
+		.cra_alignmask = 0,
+		.cra_module = THIS_MODULE,
+	},
+	.init = otx2_cpt_aead_rfc4106_gcm_aes_init,
+	.exit = otx2_cpt_aead_exit,
+	.setkey = otx2_cpt_aead_rfc4106_gcm_aes_setkey,
+	.setauthsize = otx2_cpt_aead_gcm_set_authsize,
+	.encrypt = otx2_cpt_aead_encrypt,
+	.decrypt = otx2_cpt_aead_decrypt,
+	.ivsize = AES_RFC4106_GCM_IV_SIZE,
+	.maxauthsize = AES_GCM_ICV_SIZE,
+}, {
+	.base = {
+		.cra_name = "gcm(aes)",
+		.cra_driver_name = "cpt_gcm_aes",
 		.cra_blocksize = 1,
 		.cra_flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_NEED_FALLBACK,
 		.cra_ctxsize = sizeof(struct otx2_cpt_aead_ctx),
