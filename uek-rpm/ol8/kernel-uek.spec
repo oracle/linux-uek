@@ -1314,7 +1314,7 @@ BuildKernel() {
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/weak-updates
     # first copy everything
     cp --parents `find  -type f -name "Makefile*" -o -name "Kconfig*"` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
-    if grep -q '^CONFIG_STACK_VALIDATION=y' .config ; then
+    if grep -q '^CONFIG_OBJTOOL=y' .config ; then
       cp --parents `find tools/objtool -type f -executable` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     fi
     if [ ! -e Module.symvers ]; then
