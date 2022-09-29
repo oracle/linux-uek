@@ -174,6 +174,7 @@ struct otx2_cpt_aead_ctx {
 	u8 key_type;
 	u8 is_trunc_hmac;
 	u8 enc_align_len;
+	bool is_rfc4106_gcm;
 };
 int otx2_cpt_crypto_init(struct pci_dev *pdev, struct module *mod,
 			 int num_queues, int num_devices);
