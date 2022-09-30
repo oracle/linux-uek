@@ -1417,11 +1417,13 @@ BuildKernel() {
     cd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     ln -s $asmdir asm
     cd -
-    # Make sure the Makefile and version.h have a matching timestamp so that
-    # external modules can be built
-    touch -r $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/Makefile $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/generated/uapi/linux/version.h
-    # Copy .config to include/config/auto.conf so "make prepare" is unnecessary.
-    cp $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/.config $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/config/auto.conf
+
+    # Make sure the Makefile, version.h, and auto.conf have a matching
+    # timestamp so that external modules can be built
+    touch -r $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/Makefile \
+        $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/generated/uapi/linux/version.h \
+        $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/config/auto.conf
+
     cd ..
 
     #
