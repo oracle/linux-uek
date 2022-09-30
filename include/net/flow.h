@@ -58,10 +58,12 @@ union flowi_uli {
 		__u8	code;
 	} icmpt;
 
+#ifdef __GENKSYMS__
 	struct {
-		__le16	dport;
-		__le16	sport;
+		__le16  dport;
+		__le16  sport;
 	} dnports;
+#endif
 
 	__be32		gre_key;
 
@@ -166,27 +168,26 @@ struct flowi6 {
 	UEK_KABI_RESERVE(2)
 } __attribute__((__aligned__(BITS_PER_LONG/8)));
 
+#ifdef __GENKSYMS__
+/* UEK to keep from having KABI isues we keep 
+ * a struct define
+ */
 struct flowidn {
-	struct flowi_common	__fl_common;
-#define flowidn_oif		__fl_common.flowic_oif
-#define flowidn_iif		__fl_common.flowic_iif
-#define flowidn_mark		__fl_common.flowic_mark
-#define flowidn_scope		__fl_common.flowic_scope
-#define flowidn_proto		__fl_common.flowic_proto
-#define flowidn_flags		__fl_common.flowic_flags
-	__le16			daddr;
-	__le16			saddr;
-	union flowi_uli		uli;
-#define fld_sport		uli.ports.sport
-#define fld_dport		uli.ports.dport
+	struct flowi_common     __fl_common;
+	__le16                  daddr;
+        __le16                  saddr;
+        union flowi_uli         uli;
 } __attribute__((__aligned__(BITS_PER_LONG/8)));
+#endif
 
 struct flowi {
 	union {
 		struct flowi_common	__fl_common;
 		struct flowi4		ip4;
 		struct flowi6		ip6;
+#ifdef __GENKSYMS__
 		struct flowidn		dn;
+#endif
 	} u;
 #define flowi_oif	u.__fl_common.flowic_oif
 #define flowi_iif	u.__fl_common.flowic_iif
@@ -219,11 +220,6 @@ static inline struct flowi *flowi6_to_flowi(struct flowi6 *fl6)
 static inline struct flowi_common *flowi6_to_flowi_common(struct flowi6 *fl6)
 {
 	return &(fl6->__fl_common);
-}
-
-static inline struct flowi *flowidn_to_flowi(struct flowidn *fldn)
-{
-	return container_of(fldn, struct flowi, u.dn);
 }
 
 __u32 __get_hash_from_flowi6(const struct flowi6 *fl6, struct flow_keys *keys);
