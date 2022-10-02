@@ -1106,7 +1106,7 @@ static void mlx5_cleanup_once(struct mlx5_core_dev *dev)
 	mlx5_devcom_unregister_device(dev->priv.devcom);
 }
 
-static int mlx5_function_setup(struct mlx5_core_dev *dev, u64 timeout)
+static int mlx5_function_setup(struct mlx5_core_dev *dev, bool boot, u64 timeout)
 {
 	int err;
 
@@ -1144,10 +1144,12 @@ static int mlx5_function_setup(struct mlx5_core_dev *dev, u64 timeout)
 
 	mlx5_cmd_set_state(dev, MLX5_CMDIF_STATE_UP);
 
+	mlx5_start_health_poll(dev);
+
 	err = mlx5_core_enable_hca(dev, 0);
 	if (err) {
 		mlx5_core_err(dev, "enable hca failed\n");
-		goto err_cmd_cleanup;
+		goto stop_health_poll;
 	}
 
 	err = mlx5_core_set_issi(dev);
@@ -1199,8 +1201,7 @@ static int mlx5_function_setup(struct mlx5_core_dev *dev, u64 timeout)
 		mlx5_core_err(dev, "query hca failed\n");
 		goto reclaim_boot_pages;
 	}
-
-	mlx5_start_health_poll(dev);
+	mlx5_start_health_fw_log_up(dev);
 
 	return 0;
 
@@ -1208,6 +1209,8 @@ reclaim_boot_pages:
 	mlx5_reclaim_startup_pages(dev);
 err_disable_hca:
 	mlx5_core_disable_hca(dev, 0);
+stop_health_poll:
+	mlx5_stop_health_poll(dev, boot);
 err_cmd_cleanup:
 	mlx5_cmd_set_state(dev, MLX5_CMDIF_STATE_DOWN);
 	mlx5_cmd_cleanup(dev);
@@ -1219,7 +1222,6 @@ static int mlx5_function_teardown(struct mlx5_core_dev *dev, bool boot)
 {
 	int err;
 
-	mlx5_stop_health_poll(dev, boot);
 	err = mlx5_cmd_teardown_hca(dev);
 	if (err) {
 		mlx5_core_err(dev, "tear_down_hca failed, skip cleanup\n");
@@ -1227,6 +1229,7 @@ static int mlx5_function_teardown(struct mlx5_core_dev *dev, bool boot)
 	}
 	mlx5_reclaim_startup_pages(dev);
 	mlx5_core_disable_hca(dev, 0);
+	mlx5_stop_health_poll(dev, boot);
 	mlx5_cmd_set_state(dev, MLX5_CMDIF_STATE_DOWN);
 	mlx5_cmd_cleanup(dev);
 
@@ -1376,7 +1379,7 @@ int mlx5_init_one(struct mlx5_core_dev *dev)
 	mutex_lock(&dev->intf_state_mutex);
 	dev->state = MLX5_DEVICE_STATE_UP;
 
-	err = mlx5_function_setup(dev, mlx5_tout_ms(dev, FW_PRE_INIT_TIMEOUT));
+	err = mlx5_function_setup(dev, true, mlx5_tout_ms(dev, FW_PRE_INIT_TIMEOUT));
 	if (err)
 		goto err_function;
 
@@ -1464,7 +1467,7 @@ int mlx5_load_one_devl_locked(struct mlx5_core_dev *dev, bool recovery)
 		timeout = mlx5_tout_ms(dev, FW_PRE_INIT_ON_RECOVERY_TIMEOUT);
 	else
 		timeout = mlx5_tout_ms(dev, FW_PRE_INIT_TIMEOUT);
-	err = mlx5_function_setup(dev, timeout);
+	err = mlx5_function_setup(dev, false, timeout);
 	if (err)
 		goto err_function;
 
