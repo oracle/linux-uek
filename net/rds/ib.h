@@ -78,13 +78,9 @@ static inline void clear_bit_mb(long nr, unsigned long *flags)
 }
 
 enum rds_ib_conn_flags {
-	RDS_IB_CLEAN_CACHE,		/* 0x01 */
-	RDS_IB_CQ_ERR,			/* 0x02 */
-	RDS_IB_NEED_SHUTDOWN,		/* 0x04 */
-	RDS_IB_SRQ_NEED_FLUSH,		/* 0x08 */
-	RDS_IB_SRQ_LAST_WQE_REACHED,	/* 0x10 */
-	RDS_IB_SRQ_CQ_FLUSHED,		/* 0x20 */
-	RDS_IB_CQ_DESTROY		/* 0x40 */
+	RDS_IB_CQ_ERR,			/* 0x01 */
+	RDS_IB_NEED_SHUTDOWN,		/* 0x02 */
+	RDS_IB_CQ_DESTROY		/* 0x04 */
 };
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
@@ -130,15 +126,6 @@ struct rds_ib_refill_cache {
 	atomic64_t				hit_count;
 	atomic64_t				miss_count;
 
-};
-
-struct rds_ib_cache_info {
-	u16			ci_frag_sz;	/* IB fragment size */
-	u8			ci_frag_pages;
-	u16			ci_frag_cache_inx;
-	uint			ci_irq_local_cpu;
-	atomic_t                ci_cache_allocs;
-	struct rds_transport	*ci_trans;
 };
 
 struct rds_ib_conn_priv_cmn {
@@ -196,8 +183,8 @@ struct rds_ib_recv_work {
 	struct rds_page_frag	*r_frag;
 	struct ib_recv_wr	r_wr;
 	struct ib_sge		r_sge[RDS_IB_MAX_SGE];
-	unsigned long		r_posted;
-	struct lfstack_el	r_stack_entry;
+	struct rds_ib_connection	*r_ic;
+	int				r_posted;
 };
 
 struct rds_ib_work_ring {
@@ -346,8 +333,11 @@ struct rds_ib_connection {
 
 	/* Protocol version specific information */
 	unsigned int		i_flowctl:1;	/* enable/disable flow ctl */
-	struct rds_ib_cache_info i_cache_info;
+	u16			i_frag_sz;	/* IB fragment size */
+	u16			i_frag_cache_sz;
+	u8			i_frag_pages;
 	unsigned long		i_flags;
+	u16			i_frag_cache_inx;
 	u16			i_hca_sge;
 
 	/* Batched completions */
@@ -356,6 +346,8 @@ struct rds_ib_connection {
 	/* Wake up receiver once in a while */
 	unsigned int		i_unsolicited_wrs;
 	u8                      i_sl;
+
+	atomic_t                i_cache_allocs;
 
 	struct completion       i_last_wqe_complete;
 
@@ -370,6 +362,7 @@ struct rds_ib_connection {
 	spinlock_t              i_rx_lock;
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
+	uint			i_irq_local_cpu;
 
 	/* For handling delayed release of device related resource. */
 	struct mutex		i_delayed_free_lock;
@@ -404,28 +397,18 @@ struct rds_ib_ipaddr {
 	struct rcu_head		rcu_head;
 };
 
-enum rds_ib_srq_flags {
-	RDS_SRQ_REFILL,		/* 0x01 */
-};
-
-#define RDS_SRQ_NMBR_STACKS 8 /* must be 2^n */
 struct rds_ib_srq {
 	struct rds_ib_device       *rds_ibdev;
 	struct ib_srq              *s_srq;
 	struct ib_event_handler    s_event_handler;
 	struct rds_ib_recv_work    *s_recvs;
 	u32                        s_n_wr;
-	struct rds_header          **s_recv_hdrs;
-	dma_addr_t                 *s_recv_hdrs_dma;
-	struct scatterlist         *s_recv_hdrs_sg;
+	struct rds_header          *s_recv_hdrs;
+	u64                        s_recv_hdrs_dma;
 	atomic_t                   s_num_posted;
-	unsigned long              s_flags;
+	unsigned long              s_refill_gate;
 	struct delayed_work        s_refill_w;
 	struct delayed_work        s_rearm_w;
-	atomic_t		   s_refill_ix;
-	atomic_t		   s_release_ix;
-	struct rds_ib_cache_info   s_cache_info;
-	union lfstack		   s_stack[RDS_SRQ_NMBR_STACKS];
 };
 
 
@@ -451,7 +434,6 @@ enum {
 };
 
 #define RDS_FRAG_CACHE_ENTRIES (ilog2(RDS_MAX_FRAG_SIZE / PAGE_SIZE) + 1)
-#define NMBR_QOS 256
 
 /* Each RDMA device maintains a list of RDS sockets associated with it.  The
  * following struct is used to represent this association.  This struct is
@@ -500,14 +482,7 @@ struct rds_ib_device {
 	unsigned int		max_initiator_depth;
 	unsigned int		max_responder_resources;
 	spinlock_t		spinlock;	/* protect the above */
-	atomic_t		refcount;
-	struct work_struct	free_work;
-	struct rds_ib_srq       *srqs[NMBR_QOS];
-	/* Several QOS connections may invoke rds_ib_srq_get
-	 * concurrently, hence we need protection for rds_ib_srq_get
-	 */
-	struct mutex            srq_get_lock;
-
+	struct rds_ib_srq       *srq;
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
@@ -574,16 +549,6 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_rx_refill_from_cq;
 	uint64_t	s_ib_rx_refill_from_thread;
 	uint64_t	s_ib_rx_refill_lock_taken;
-	uint64_t	s_ib_srq_refill_from_cm;
-	uint64_t	s_ib_srq_refill_from_rx;
-	uint64_t	s_ib_srq_refill_from_event;
-	uint64_t	s_ib_srq_limit_reached_event;
-	uint64_t        s_ib_srq_refills;
-	uint64_t        s_ib_srq_empty_refills;
-	uint64_t        s_ib_srq_entries_refilled;
-	uint64_t	s_ib_srq_entries_from_stacks;
-	uint64_t        s_ib_srq_jiffies_refilled;
-	uint64_t	s_ib_srq_jiffies_from_stacks;
 	uint64_t        s_ib_rx_alloc_limit;
 	uint64_t        s_ib_rx_total_frags;
 	uint64_t        s_ib_rx_total_incs;
@@ -618,6 +583,9 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_rdma_flush_mr_pool_avoided;
 	uint64_t	s_ib_atomic_cswp;
 	uint64_t	s_ib_atomic_fadd;
+	uint64_t        s_ib_srq_lows;
+	uint64_t        s_ib_srq_refills;
+	uint64_t        s_ib_srq_empty_refills;
 	uint64_t	s_ib_recv_added_to_cache;
 	uint64_t	s_ib_recv_removed_from_cache;
 	uint64_t	s_ib_recv_nmb_added_to_cache;
@@ -739,19 +707,7 @@ u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
 #if IS_ENABLED(CONFIG_IPV6)
 u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
 #endif
-void rds_ib_free_unmap_hdrs(struct ib_device *dev,
-			    struct rds_header ***_hdrs,
-			    dma_addr_t **_dma,
-			    struct scatterlist **_sg,
-			    const int n,
-			    enum dma_data_direction direction);
-int rds_ib_alloc_map_hdrs(struct ib_device *dev,
-			  struct rds_header ***_hdrs,
-			  dma_addr_t **_dma,
-			  struct scatterlist **_sg,
-			  char **reason,
-			  const int n,
-			  enum dma_data_direction direction);
+
 /* ib_rdma.c */
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
@@ -797,16 +753,19 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			    struct ib_wc *wc,
 			    struct rds_ib_ack_state *state);
 void rds_ib_recv_tasklet_fn(unsigned long data);
-void rds_ib_recv_init_ring(struct rds_ib_connection *ic, struct rds_ib_srq *srq);
+void rds_ib_recv_init_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_clear_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_init_ack(struct rds_ib_connection *ic);
 void rds_ib_attempt_ack(struct rds_ib_connection *ic);
 void rds_ib_ack_send_complete(struct rds_ib_connection *ic);
 u64 rds_ib_piggyb_ack(struct rds_ib_connection *ic);
-void rds_ib_srq_refill(struct rds_ib_srq *srq, bool prefill, gfp_t gfp, bool use_worker);
+void rds_ib_srq_refill(struct work_struct *work);
+int rds_ib_srq_prefill_ring(struct rds_ib_device *rds_ibdev);
 void rds_ib_srq_rearm(struct work_struct *work);
 void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq, int ack_required);
-struct rds_ib_srq *rds_ib_srq_get(struct rds_ib_device *rds_ibdev, struct rds_connection *conn);
+void rds_ib_srq_process_recv(struct rds_connection *conn,
+			     struct rds_ib_recv_work *recv, u32 data_len,
+			     struct rds_ib_ack_state *state);
 static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 {
 	return test_and_set_bit(RDS_RECV_REFILL, &conn->c_flags) == 0;
@@ -826,18 +785,6 @@ static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 	}							\
 } while (false)
 
-/* The goal here is to just make sure that someone, somewhere
- * is posting buffers.  If we can't get the refill lock,
- * let them do their thing
- */
-#define RDS_IB_SRQ_REFILL(srq, prefill, gfp, where, use_worker) do {	\
-	struct rds_ib_srq *s = (srq);					\
-	int np = atomic_read(&s->s_num_posted);				\
-	if (np < rds_ib_srq_hwm_refill) {				\
-		rds_ib_stats_inc(where);				\
-		rds_ib_srq_refill(s, prefill, gfp, use_worker);		\
-	}								\
-} while (false)
 /* ib_ring.c */
 void rds_ib_ring_init(struct rds_ib_work_ring *ring, u32 nr);
 void rds_ib_ring_resize(struct rds_ib_work_ring *ring, u32 nr);
