@@ -968,36 +968,6 @@ DEFINE_EVENT(rds_ib, rds_rdma_cm_event_handler_err,
 
 );
 
-DEFINE_EVENT(rds_ib, rds_ib_srqs_create_one_err,
-
-	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
-		 struct rds_connection *conn, struct rds_ib_connection *ic,
-		 char *reason, int err),
-
-	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
-
-);
-
-DEFINE_EVENT(rds_ib, rds_ib_srq_get_err,
-
-	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
-		 struct rds_connection *conn, struct rds_ib_connection *ic,
-		 char *reason, int err),
-
-	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
-
-);
-
-DEFINE_EVENT(rds_ib, rds_ib_srqs_destroy_one_err,
-
-	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
-		 struct rds_connection *conn, struct rds_ib_connection *ic,
-		 char *reason, int err),
-
-	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
-
-);
-
 DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 
 	TP_PROTO(struct rds_ib_device *rds_ibdev, struct rds_connection *conn,

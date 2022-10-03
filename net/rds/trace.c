@@ -71,6 +71,3 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_listen);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_listen_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_shutdown);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_free_cache_one);
-EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_srqs_create_one_err);
-EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_srq_get_err);
-EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_srqs_destroy_one_err);
