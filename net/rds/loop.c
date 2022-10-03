@@ -77,7 +77,7 @@ static int rds_loop_xmit(struct rds_connection *conn, struct rds_message *rm,
 	 * that uses local/remote struct fields of i_conn to
 	 * imply sending/receiving side needs care!
 	 */
-	rds_inc_init(&rm->m_inc, conn, NULL, &conn->c_laddr);
+	rds_inc_init(&rm->m_inc, conn, &conn->c_laddr);
 	/* For the embedded inc. Matching put is in loop_inc_free() */
 
 	rds_message_addref(rm);
