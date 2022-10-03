@@ -71,16 +71,14 @@ rds_recv_ok(struct net *net, struct sock *sk, struct sk_buff *skb)
 }
 
 void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
-		  struct rds_ib_cache_info *ci, struct in6_addr *saddr)
+		  struct in6_addr *saddr)
 {
 	int i;
 
 	atomic_set(&inc->i_refcount, 1);
 	INIT_LIST_HEAD(&inc->i_item);
 	inc->i_conn = conn;
-	inc->i_cache_info = ci;
-	if (saddr)
-		inc->i_saddr = *saddr;
+	inc->i_saddr = *saddr;
 	inc->i_usercopy.rdma_cookie = 0;
 	inc->i_oconn = NULL;
 	inc->i_skb   = NULL;
@@ -135,10 +133,8 @@ void rds_inc_put(struct rds_incoming *inc)
 			kfree_skb(inc->i_skb);
 			inc->i_skb = NULL;
 		}
-		if (inc->i_conn)
-			inc->i_conn->c_trans->inc_free(inc);
-		else
-			inc->i_cache_info->ci_trans->inc_free(inc);
+
+		inc->i_conn->c_trans->inc_free(inc);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_inc_put);
