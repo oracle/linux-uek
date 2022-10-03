@@ -609,7 +609,10 @@ static void rds_ib_dev_free(struct work_struct *work)
 	bool last_to_free;
 	int allocated;
 
-	rds_ib_srq_exit(rds_ibdev);
+	if (rds_ibdev->srq) {
+		rds_ib_srq_exit(rds_ibdev);
+		kfree(rds_ibdev->srq);
+	}
 	rds_ib_free_caches(rds_ibdev);
 
 	if (rds_ibdev->mr_8k_pool)
@@ -889,7 +892,7 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 	if (ic) {
 		iinfo->tos = conn->c_tos;
 		iinfo->sl = ic->i_sl;
-		iinfo->frag = ic->i_cache_info.ci_frag_sz;
+		iinfo->frag = ic->i_frag_sz;
 	}
 
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
@@ -911,7 +914,7 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->flow_ctl_send_credit =
 			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
 		rds_ib_get_mr_info(rds_ibdev, iinfo);
-		iinfo->cache_allocs = atomic_read(&ic->i_cache_info.ci_cache_allocs);
+		iinfo->cache_allocs = atomic_read(&ic->i_cache_allocs);
 		iinfo->send_alloc_ctr = (uint32_t)atomic64_read(&ic->i_send_ring.w_alloc_ctr);
 		iinfo->send_free_ctr = (uint32_t)atomic64_read(&ic->i_send_ring.w_free_ctr);
 		iinfo->send_bytes =
@@ -961,7 +964,7 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 	if (ic) {
 		iinfo6->tos = conn->c_tos;
 		iinfo6->sl = ic->i_sl;
-		iinfo6->frag = ic->i_cache_info.ci_frag_sz;
+		iinfo6->frag = ic->i_frag_sz;
 	}
 
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
@@ -983,7 +986,7 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo6->flow_ctl_send_credit =
 			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
 		rds6_ib_get_mr_info(rds_ibdev, iinfo6);
-		iinfo6->cache_allocs = atomic_read(&ic->i_cache_info.ci_cache_allocs);
+		iinfo6->cache_allocs = atomic_read(&ic->i_cache_allocs);
 		iinfo6->send_alloc_ctr = (uint32_t)atomic64_read(&ic->i_send_ring.w_alloc_ctr);
 		iinfo6->send_free_ctr =	(uint32_t)atomic64_read(&ic->i_send_ring.w_free_ctr);
 		iinfo6->send_bytes =
@@ -1417,8 +1420,6 @@ int rds_ib_init(void)
 #if IS_ENABLED(CONFIG_IPV6)
 	rds_info_register_func(RDS6_INFO_IB_CONNECTIONS, rds6_ib_ic_info);
 #endif
-	pr_err("RDS/IB: Shared Receive Queues are  %s\n",
-	       rds_ib_srq_enabled ? "enabled" : "disabled");
 
 	/* Register with RDMA framework at last.  Once registered, upcall
 	 * can be made so everything should be set up first.
