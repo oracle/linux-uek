@@ -430,22 +430,6 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 	struct thread_info *ti = current_thread_info();
 
 	if (ibrs_supported) {
-		if (cpu_ibrs_inuse_any())
-			/*
-			 * Except on IBRS we don't want to use host base value
-			 * but rather the privilege value which has IBRS set.
-			 */
-			hostval = this_cpu_read(x86_spec_ctrl_priv_cpu);
-
-		/* SSBD controlled in MSR_SPEC_CTRL */
-		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
-		    boot_cpu_has(X86_FEATURE_AMD_SSBD))
-			hostval |= ssbd_tif_to_spec_ctrl(ti->flags);
-
-		/* Conditional STIBP enabled? */
-		if (static_branch_unlikely(&switch_to_cond_stibp))
-			hostval |= stibp_tif_to_spec_ctrl(ti->flags);
-
 		if (hostval != guestval || check_basic_ibrs_inuse()) {
 			msrval = setguest ? guestval : hostval;
 			wrmsrl(MSR_IA32_SPEC_CTRL, msrval);
