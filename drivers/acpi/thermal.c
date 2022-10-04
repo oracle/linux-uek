@@ -258,7 +258,7 @@ do {	\
 
 static int acpi_thermal_trips_update(struct acpi_thermal *tz, int flag)
 {
-	acpi_status status = AE_OK;
+	acpi_status status;
 	unsigned long long tmp;
 	struct acpi_handle_list devices;
 	int valid = 0;
@@ -616,8 +616,9 @@ static int thermal_get_crit_temp(struct thermal_zone_device *thermal,
 					tz->trips.critical.temperature,
 					tz->kelvin_offset);
 		return 0;
-	} else
-		return -EINVAL;
+	}
+
+	return -EINVAL;
 }
 
 static int thermal_get_trend(struct thermal_zone_device *thermal,
@@ -937,7 +938,7 @@ static void acpi_thermal_aml_dependency_fix(struct acpi_thermal *tz)
 
 static int acpi_thermal_get_info(struct acpi_thermal *tz)
 {
-	int result = 0;
+	int result;
 
 	if (!tz)
 		return -EINVAL;
@@ -1014,8 +1015,8 @@ static void acpi_thermal_check_fn(struct work_struct *work)
 
 static int acpi_thermal_add(struct acpi_device *device)
 {
-	int result = 0;
-	struct acpi_thermal *tz = NULL;
+	struct acpi_thermal *tz;
+	int result;
 
 	if (!device)
 		return -EINVAL;
@@ -1056,7 +1057,7 @@ end:
 
 static int acpi_thermal_remove(struct acpi_device *device)
 {
-	struct acpi_thermal *tz = NULL;
+	struct acpi_thermal *tz;
 
 	if (!device || !acpi_driver_data(device))
 		return -EINVAL;
@@ -1185,7 +1186,7 @@ static const struct dmi_system_id thermal_dmi_table[] __initconst = {
 
 static int __init acpi_thermal_init(void)
 {
-	int result = 0;
+	int result;
 
 	dmi_check_system(thermal_dmi_table);
 
@@ -1212,8 +1213,6 @@ static void __exit acpi_thermal_exit(void)
 {
 	acpi_bus_unregister_driver(&acpi_thermal_driver);
 	destroy_workqueue(acpi_thermal_pm_queue);
-
-	return;
 }
 
 module_init(acpi_thermal_init);
