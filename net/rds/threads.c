@@ -158,7 +158,14 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	}
 
 	cp->cp_reconnect_jiffies = 0;
-	set_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued);
+	/* Congestion map gets sent everytime a connection is re-established.
+	 * Here, we are making sure that the congestion map gets sent on
+	 * connection path zero. To avoid congestion map corruption, when it
+	 * is sent via multiple paths.
+	 */
+	if (!cp->cp_index)
+		set_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued);
+
 	rds_clear_queued_send_work_bit(cp);
 	rds_cond_queue_send_work(cp, 0);
 	rds_clear_queued_recv_work_bit(cp);
