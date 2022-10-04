@@ -271,10 +271,12 @@ restart:
 
 		/*
 		 * If between sending messages, we can send a pending
-		 * congestion map update.
+		 * congestion map update. Congestion map should be sent only
+		 * over connection path zero, to avoid congestion map
+		 * corruption.
 		 */
 		if (!rm && test_bit(RCMQ_BITOFF_CONGU_PENDING,
-				    &conn->c_map_queued)) {
+				    &conn->c_map_queued) && !cp->cp_index) {
 			rm = rds_cong_update_alloc(conn);
 			if (IS_ERR(rm)) {
 				pr_warn_ratelimited("RDS: Congestion update allocation deferred: conn %p<%pI6c, %pI6c, %d>\n",
