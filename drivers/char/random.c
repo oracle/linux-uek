@@ -80,8 +80,11 @@
  *********************************************************************/
 
 static DEFINE_MUTEX(drbg_random_lock);
+static DEFINE_MUTEX(drbg_reseeded_lock);
 static struct crypto_rng *drbg_random;
+static struct crypto_rng *drbg_reseeded;
 
+static bool is_drbg_reset;
 static int fips_random;
 static int __init set_fips_random(char *str)
 {
@@ -487,7 +490,48 @@ unlock:
 	return ret;
 }
 
-static ssize_t get_random_bytes_user(struct iov_iter *iter)
+static int init_drbg_reseeded(void)
+{
+	struct crypto_rng *drbg;
+	int ret;
+
+	mutex_lock(&drbg_reseeded_lock);
+	if (!drbg_reseeded) {
+		drbg = crypto_alloc_rng("drbg_nopr_ctr_aes256", 0, 0);
+		if (IS_ERR(drbg)) {
+			pr_err("drbg_reseeded: could not allocate DRBG handle\n");
+			ret = PTR_ERR(drbg);
+			goto unlock;
+		}
+
+		ret = crypto_rng_reset(drbg, NULL, 0);
+		if (ret) {
+			pr_err("drbg_reseeded: failed to reset rng\n");
+			crypto_free_rng(drbg);
+			goto unlock;
+		}
+		is_drbg_reset = true;
+
+		pr_notice("drbg_reseeded: initialization done\n");
+		drbg_reseeded = drbg;
+	}
+
+	ret = 0;
+unlock:
+	mutex_unlock(&drbg_reseeded_lock);
+
+	return ret;
+}
+
+static int drbg_reseed(struct crypto_rng *drbg)
+{
+	if (!is_drbg_reset)
+		return crypto_rng_alg(drbg)->seed(drbg, NULL, 0);
+	is_drbg_reset = false;
+	return 0;
+}
+
+static ssize_t get_random_bytes_user(struct iov_iter *iter, bool fips_enabled_reseed)
 {
 	u32 chacha_state[CHACHA_STATE_WORDS];
 	u8 block[CHACHA_BLOCK_SIZE];
@@ -513,7 +557,24 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter)
 	}
 
 	for (;;) {
-		if (fips_enabled || fips_random) {
+		if (fips_enabled && fips_enabled_reseed) {
+			if (!drbg_reseeded && init_drbg_reseeded() != 0) {
+				if (fips_enabled)
+					panic("drbg_reseeded init failed\n");
+				pr_warn("drbg_reseeded: init failed\n");
+				continue;
+			}
+			rc = drbg_reseed(drbg_reseeded);
+			if (rc < 0) {
+				ret = rc;
+				goto out;
+			}
+			rc = crypto_rng_get_bytes(drbg_reseeded, block, sizeof(block));
+			if (rc < 0) {
+				ret = rc;
+				goto out;
+			}
+		} else if (fips_enabled || fips_random) {
 			if (!drbg_random && init_drbg_random() != 0) {
 				if (fips_enabled)
 					panic("drbg_random init failed\n");
@@ -1454,6 +1515,7 @@ SYSCALL_DEFINE3(getrandom, char __user *, ubuf, size_t, len, unsigned int, flags
 {
 	struct iov_iter iter;
 	int ret;
+	bool fips_enabled_reseed = false;
 
 	if (flags & ~(GRND_NONBLOCK | GRND_RANDOM | GRND_INSECURE))
 		return -EINVAL;
@@ -1464,6 +1526,9 @@ SYSCALL_DEFINE3(getrandom, char __user *, ubuf, size_t, len, unsigned int, flags
 	 */
 	if ((flags & (GRND_INSECURE | GRND_RANDOM)) == (GRND_INSECURE | GRND_RANDOM))
 		return -EINVAL;
+
+	if (flags & GRND_RANDOM)
+		fips_enabled_reseed = fips_enabled;
 
 	if (!crng_ready() && !(flags & GRND_INSECURE)) {
 		if (flags & GRND_NONBLOCK)
@@ -1476,7 +1541,7 @@ SYSCALL_DEFINE3(getrandom, char __user *, ubuf, size_t, len, unsigned int, flags
 	ret = import_ubuf(ITER_DEST, ubuf, len, &iter);
 	if (unlikely(ret))
 		return ret;
-	return get_random_bytes_user(&iter);
+	return get_random_bytes_user(&iter, fips_enabled_reseed);
 }
 
 static __poll_t random_poll(struct file *file, poll_table *wait)
@@ -1521,6 +1586,7 @@ static ssize_t random_write_iter(struct kiocb *kiocb, struct iov_iter *iter)
 static ssize_t urandom_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
 {
 	static int maxwarn = 10;
+	bool fips_enabled_reseed = (kiocb->ki_flags & O_SYNC) ? fips_enabled : false;
 
 	/*
 	 * Opportunistically attempt to initialize the RNG on platforms that
@@ -1539,12 +1605,13 @@ static ssize_t urandom_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
 		}
 	}
 
-	return get_random_bytes_user(iter);
+	return get_random_bytes_user(iter, fips_enabled_reseed);
 }
 
 static ssize_t random_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
 {
 	int ret;
+	bool fips_enabled_reseed = (kiocb->ki_flags & O_SYNC) ? fips_enabled : false;
 
 	if (!crng_ready() &&
 	    ((kiocb->ki_flags & (IOCB_NOWAIT | IOCB_NOIO)) ||
@@ -1554,7 +1621,7 @@ static ssize_t random_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
 	ret = wait_for_random_bytes();
 	if (ret != 0)
 		return ret;
-	return get_random_bytes_user(iter);
+	return get_random_bytes_user(iter, fips_enabled_reseed);
 }
 
 static long random_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
