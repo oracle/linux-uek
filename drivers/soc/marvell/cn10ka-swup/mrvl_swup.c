@@ -329,7 +329,7 @@ static int mrvl_run_fw_update(unsigned long arg)
 {
 	struct mrvl_update ioctl_desc = {0};
 	struct smc_update_descriptor *smc_desc;
-	struct arm_smccc_res res;
+	struct arm_smccc_res res, res_update;
 	int spi_in_progress = 0;
 
 	ktime_t tstart, tsyncend, tend;
@@ -385,14 +385,17 @@ static int mrvl_run_fw_update(unsigned long arg)
 	smc_desc->bus        = ioctl_desc.bus;
 	smc_desc->cs	     = ioctl_desc.cs;
 
+	/* Use full async update*/
+	smc_desc->retcode = 0x01;
+
 	tstart = ktime_get();
 	if (ioctl_desc.user_flags == 1) {
 		smc_desc->version = UPDATE_VERSION_PREV;
-		res = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
+		res_update = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
 			    memdesc[BUF_DATA].phys,
 			    sizeof(struct smc_update_descriptor_prev));
 	} else {
-		res = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
+		res_update = mrvl_exec_smc(PLAT_OCTEONTX_SPI_SECURE_UPDATE,
 			    memdesc[BUF_DATA].phys,
 			    sizeof(struct smc_update_descriptor));
 	}
@@ -404,7 +407,20 @@ static int mrvl_run_fw_update(unsigned long arg)
 		spi_in_progress = res.a0;
 	} while (spi_in_progress);
 
-	ioctl_desc.ret = smc_desc->retcode;
+	/* Detect if ATF will use async operations
+	 * ATF without full async support won't modify
+	 * smc_desc->retcode field
+	 */
+
+	if (smc_desc->retcode == 0x01) {
+		pr_info("ATF - partial async enabled\n");
+		ioctl_desc.ret = res_update.a1;
+	} else {
+		pr_info("ATF - full async enabled\n");
+		ioctl_desc.ret = smc_desc->retcode;
+	}
+
+
 	if (copy_to_user(TO_UPDATE_DESC(arg),
 			 &ioctl_desc,
 			 sizeof(ioctl_desc))) {
@@ -416,7 +432,7 @@ static int mrvl_run_fw_update(unsigned long arg)
 
 	pr_info("Tsync: %lld, ttot: %lld\n", tsyncend - tstart, tend - tstart);
 
-	return smc_desc->retcode;
+	return ioctl_desc.ret;
 }
 
 static int alloc_readbuf(uint64_t rd_size)
