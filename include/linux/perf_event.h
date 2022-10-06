@@ -734,13 +734,16 @@ struct perf_event {
 	struct fasync_struct		*fasync;
 
 	/* delayed work for NMIs and such */
-	int				pending_wakeup;
-	int				pending_kill;
-	int				pending_disable;
+	UEK_KABI_RENAME(int pending_wakeup, unsigned int pending_wakeup);
+	UEK_KABI_RENAME(int pending_kill, unsigned int pending_kill);
+	UEK_KABI_RENAME(int pending_disable, unsigned int pending_disable);
+	UEK_KABI_FILL_HOLE(unsigned int	pending_sigtrap)
 	unsigned long			pending_addr;	/* SIGTRAP */
-	struct irq_work			pending;
+	UEK_KABI_RENAME(struct irq_work pending, struct irq_work pending_irq);
 
 	atomic_t			event_limit;
+
+	UEK_KABI_FILL_HOLE(unsigned int	pending_work)
 
 	/* address range filters */
 	struct perf_addr_filters_head	addr_filters;
@@ -782,6 +785,7 @@ struct perf_event {
 	void *security;
 #endif
 	struct list_head		sb_list;
+	UEK_KABI_EXTEND(struct callback_head pending_task)
 #endif /* CONFIG_PERF_EVENTS */
 };
 
@@ -852,6 +856,14 @@ struct perf_event_context {
 #endif
 	void				*task_ctx_data; /* pmu specific data */
 	struct rcu_head			rcu_head;
+
+	/*
+	 * Sum (event->pending_sigtrap + event->pending_work)
+	 *
+	 * The SIGTRAP is targeted at ctx->task, as such it won't do changing
+	 * that until the signal is delivered.
+	 */
+	UEK_KABI_EXTEND(local_t		nr_pending)
 };
 
 /*
