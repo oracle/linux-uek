@@ -235,7 +235,10 @@ s64 bcn_ptp_delta(int ptp_phc_idx)
 			if (cnf10k_drv_ctx->valid) {
 				netdev = cnf10k_drv_ctx->netdev;
 				cnf10k_priv = netdev_priv(netdev);
-				break;
+				if (ptp_clock_index(cnf10k_priv->ptp_clock) != ptp_phc_idx)
+					continue;
+				else
+					break;
 			}
 		}
 
