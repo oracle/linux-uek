@@ -1,6 +1,7 @@
 hugepage-mmap
 hugepage-mremap
 hugepage-shm
+hugepage-vmemmap
 map_hugetlb
 map_populate
 thuge-gen
