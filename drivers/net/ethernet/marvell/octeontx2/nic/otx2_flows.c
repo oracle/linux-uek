@@ -20,7 +20,7 @@ struct otx2_flow {
 	struct ethtool_rx_flow_spec flow_spec;
 	struct list_head list;
 	u32 location;
-	u16 entry;
+	u32 entry;
 	bool is_vf;
 	u8 rss_ctx_id;
 #define DMAC_FILTER_RULE		BIT(0)
@@ -234,6 +234,9 @@ static int otx2_mcam_entry_init(struct otx2_nic *pfvf)
 	return 0;
 }
 
+/* TODO : revisit on size */
+#define OTX2_DMAC_FLTR_BITMAP_SZ (4 * 2048 + 32)
+
 int otx2vf_mcam_flow_init(struct otx2_nic *pfvf)
 {
 	struct otx2_flow_config *flow_cfg;
@@ -242,6 +245,12 @@ int otx2vf_mcam_flow_init(struct otx2_nic *pfvf)
 				      sizeof(struct otx2_flow_config),
 				      GFP_KERNEL);
 	if (!pfvf->flow_cfg)
+		return -ENOMEM;
+
+	pfvf->flow_cfg->dmacflt_bmap = devm_kcalloc(pfvf->dev,
+						    BITS_TO_LONGS(OTX2_DMAC_FLTR_BITMAP_SZ),
+						    sizeof(long), GFP_KERNEL);
+	if (!pfvf->flow_cfg->dmacflt_bmap)
 		return -ENOMEM;
 
 	flow_cfg = pfvf->flow_cfg;
@@ -259,6 +268,12 @@ int otx2_mcam_flow_init(struct otx2_nic *pf)
 	pf->flow_cfg = devm_kzalloc(pf->dev, sizeof(struct otx2_flow_config),
 				    GFP_KERNEL);
 	if (!pf->flow_cfg)
+		return -ENOMEM;
+
+	pf->flow_cfg->dmacflt_bmap = devm_kcalloc(pf->dev,
+						  BITS_TO_LONGS(OTX2_DMAC_FLTR_BITMAP_SZ),
+						  sizeof(long), GFP_KERNEL);
+	if (!pf->flow_cfg->dmacflt_bmap)
 		return -ENOMEM;
 
 	INIT_LIST_HEAD(&pf->flow_cfg->flow_list);
@@ -287,7 +302,7 @@ int otx2_mcam_flow_init(struct otx2_nic *pf)
 		return 0;
 
 	pf->flow_cfg->bmap_to_dmacindex =
-			devm_kzalloc(pf->dev, sizeof(u8) *
+			devm_kzalloc(pf->dev, sizeof(u32) *
 				     pf->flow_cfg->dmacflt_max_flows,
 				     GFP_KERNEL);
 
@@ -358,7 +373,7 @@ int otx2_add_macfilter(struct net_device *netdev, const u8 *mac)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
 
-	if (bitmap_weight(&pf->flow_cfg->dmacflt_bmap,
+	if (!bitmap_empty(pf->flow_cfg->dmacflt_bmap,
 			  pf->flow_cfg->dmacflt_max_flows))
 		netdev_warn(netdev,
 			    "Add %pM to CGX/RPM DMAC filters list as well\n",
@@ -441,7 +456,7 @@ int otx2_get_maxflows(struct otx2_flow_config *flow_cfg)
 		return 0;
 
 	if (flow_cfg->nr_flows == flow_cfg->max_flows ||
-	    bitmap_weight(&flow_cfg->dmacflt_bmap,
+	    !bitmap_empty(flow_cfg->dmacflt_bmap,
 			  flow_cfg->dmacflt_max_flows))
 		return flow_cfg->max_flows + flow_cfg->dmacflt_max_flows;
 	else
@@ -1051,7 +1066,7 @@ static int otx2_add_flow_with_pfmac(struct otx2_nic *pfvf,
 
 	otx2_add_flow_to_list(pfvf, pf_mac);
 	pfvf->flow_cfg->nr_flows++;
-	set_bit(0, &pfvf->flow_cfg->dmacflt_bmap);
+	set_bit(0, pfvf->flow_cfg->dmacflt_bmap);
 
 	return 0;
 }
@@ -1105,7 +1120,7 @@ int otx2_add_flow(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc)
 			return otx2_dmacflt_update(pfvf, eth_hdr->h_dest,
 						   flow->entry);
 
-		if (bitmap_full(&flow_cfg->dmacflt_bmap,
+		if (bitmap_full(flow_cfg->dmacflt_bmap,
 				flow_cfg->dmacflt_max_flows)) {
 			netdev_warn(pfvf->netdev,
 				    "Can't insert the rule %d as max allowed dmac filters are %d\n",
@@ -1119,17 +1134,17 @@ int otx2_add_flow(struct otx2_nic *pfvf, struct ethtool_rxnfc *nfc)
 		}
 
 		/* Install PF mac address to DMAC filter list */
-		if (!test_bit(0, &flow_cfg->dmacflt_bmap))
+		if (!test_bit(0, flow_cfg->dmacflt_bmap))
 			otx2_add_flow_with_pfmac(pfvf, flow);
 
 		flow->rule_type |= DMAC_FILTER_RULE;
-		flow->entry = find_first_zero_bit(&flow_cfg->dmacflt_bmap,
+		flow->entry = find_first_zero_bit(flow_cfg->dmacflt_bmap,
 						  flow_cfg->dmacflt_max_flows);
 		fsp->location = flow_cfg->max_flows + flow->entry;
 		flow->flow_spec.location = fsp->location;
 		flow->location = fsp->location;
 
-		set_bit(flow->entry, &flow_cfg->dmacflt_bmap);
+		set_bit(flow->entry, flow_cfg->dmacflt_bmap);
 		otx2_dmacflt_add(pfvf, eth_hdr->h_dest, flow->entry);
 
 	} else {
@@ -1195,11 +1210,12 @@ static void otx2_update_rem_pfmac(struct otx2_nic *pfvf, int req)
 			if (req == DMAC_ADDR_DEL) {
 				otx2_dmacflt_remove(pfvf, eth_hdr->h_dest,
 						    0);
-				clear_bit(0, &pfvf->flow_cfg->dmacflt_bmap);
+				clear_bit(0, pfvf->flow_cfg->dmacflt_bmap);
 				found = true;
 			} else {
 				ether_addr_copy(eth_hdr->h_dest,
 						pfvf->netdev->dev_addr);
+
 				otx2_dmacflt_update(pfvf, eth_hdr->h_dest, 0);
 			}
 			break;
@@ -1235,12 +1251,12 @@ int otx2_remove_flow(struct otx2_nic *pfvf, u32 location)
 
 		err = otx2_dmacflt_remove(pfvf, eth_hdr->h_dest,
 					  flow->entry);
-		clear_bit(flow->entry, &flow_cfg->dmacflt_bmap);
+		clear_bit(flow->entry, flow_cfg->dmacflt_bmap);
 		/* If all dmac filters are removed delete macfilter with
 		 * interface mac address and configure CGX/RPM block in
 		 * promiscuous mode
 		 */
-		if (bitmap_weight(&flow_cfg->dmacflt_bmap,
+		if (bitmap_weight(flow_cfg->dmacflt_bmap,
 				  flow_cfg->dmacflt_max_flows) == 1)
 			otx2_update_rem_pfmac(pfvf, DMAC_ADDR_DEL);
 	} else {
