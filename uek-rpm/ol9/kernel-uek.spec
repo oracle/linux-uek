@@ -479,7 +479,7 @@ BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 # Override find_provides to use a script that provides "kernel(symbol) = hash".
 # Pass path of the RPM temp dir containing kabideps to find-provides script.
 %global _use_internal_dependency_generator 0
-%define __find_provides %_sourcedir/find-provides %{_tmppath}
+%define __find_provides %_sourcedir/find-provides %{_buildroot}
 %define __find_requires /usr/lib/rpm/redhat/find-requires kernel
 %endif
 
@@ -1126,8 +1126,8 @@ BuildKernel() {
     if [ -e $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour ]; then
        cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/kabi_lockedlist
     fi
-    rm -f %{_tmppath}/kernel-$KernelVer-kabideps
-    %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
+    rm -f $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
+    %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
     # Create symbol type data which can be used to introspect kABI breakages
     python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
