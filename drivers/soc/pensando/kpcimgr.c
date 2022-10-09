@@ -130,39 +130,39 @@ void kpcimgr_stop_running(void)
  *
  * Only tail is modified here, and the event handler only
  * modifies head, so theoretically no race can exist between
- * queue insertion/removal. The spinlocks here are only to
+ * queue insertion/removal. The mutex is here only to
  * cover the case of multiple readers.
  */
 static ssize_t
 read_kpcimgr(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 {
+	static DEFINE_MUTEX(evq_lock);
 	kstate_t *ks = get_kstate();
 	char localmem[EVENT_SIZE];
 	ssize_t n = 0;
+	int tail;
 
-	spin_lock(&kpcimgr_lock);
-	while (nbytes >= EVENT_SIZE) {
-		/* is queue empty? */
-		if (ks->evq_head == ks->evq_tail)
-			break;
+	mutex_lock(&evq_lock);
+	tail = ks->evq_tail;
 
+	while (nbytes >= EVENT_SIZE && ks->evq_head != tail) {
 		/*
 		 * intermediate copy since we cannot prevent copy_to_user
 		 * from doing cache operations
 		 */
-		kpci_memcpy(localmem,
-			    (void *)ks->evq[ks->evq_tail], EVENT_SIZE);
+		kpci_memcpy(localmem, (void *)ks->evq[tail], EVENT_SIZE);
 
 		if (copy_to_user(buf + n, localmem, EVENT_SIZE)) {
-			spin_unlock(&kpcimgr_lock);
+			mutex_unlock(&evq_lock);
 			return -EFAULT;
 		}
 
-		ks->evq_tail = (ks->evq_tail + 1) % EVENT_QUEUE_LENGTH;
+		tail = (tail + 1) % EVENT_QUEUE_LENGTH;
 		n = n + EVENT_SIZE;
 		nbytes = nbytes - EVENT_SIZE;
 	}
-	spin_unlock(&kpcimgr_lock);
+	ks->evq_tail = tail;
+	mutex_unlock(&evq_lock);
 
 	return n;
 }
