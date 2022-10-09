@@ -142,13 +142,14 @@ static int pciep_valid_pa(const uint64_t pciepa, const uint32_t size)
 int pciep_regrd32(const uint64_t pciepa, uint32_t *val)
 {
 	struct pciedev_info *pi = &pciedev_info;
+	unsigned long flags;
 	int r;
 
 	r = pciep_valid_pa(pciepa, sizeof(u32));
 	if (r)
 		return r;
 
-	spin_lock(&pi->pciep_access_lock);
+	spin_lock_irqsave(&pi->pciep_access_lock, flags);
 	pciep_access_begin(pciepa);
 
 	*val = pcie_readl(pciepa);
@@ -157,7 +158,7 @@ int pciep_regrd32(const uint64_t pciepa, uint32_t *val)
 	isb();
 
 	r = pciep_access_end();
-	spin_unlock(&pi->pciep_access_lock);
+	spin_unlock_irqrestore(&pi->pciep_access_lock, flags);
 	if (r)
 		return -EIO;
 
