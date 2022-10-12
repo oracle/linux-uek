@@ -124,6 +124,9 @@ static int rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 {
 	u64 regval;
 
+	if (!is_rvu_otx2(rvu))
+		tim_cn10k_clear_intvl(rvu, lf);
+
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
 	if ((regval & TIM_AF_RINGX_CTL1_ENA) == 0)
 		return TIM_AF_RING_ALREADY_DISABLED;
@@ -139,8 +142,6 @@ static int rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 	 */
 	rvu_poll_reg(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf),
 			TIM_AF_RINGX_CTL1_RCF_BUSY, true);
-	if (!is_rvu_otx2(rvu))
-		tim_cn10k_clear_intvl(rvu, lf);
 
 	return 0;
 }
