@@ -197,6 +197,7 @@
 	clear_page_orig
 	clear_page_rep
 	complete
+	complete_all
 	complete_and_exit
 	consume_skb
 	copy_user_enhanced_fast_string

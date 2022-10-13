@@ -196,6 +196,7 @@
 0x0925493f	clear_page_orig	vmlinux	EXPORT_SYMBOL_GPL
 0x23b4e0d7	clear_page_rep	vmlinux	EXPORT_SYMBOL_GPL
 0x1e872385	complete	vmlinux	EXPORT_SYMBOL
+0xb34bb160	complete_all	vmlinux	EXPORT_SYMBOL
 0x8c46022e	complete_and_exit	vmlinux	EXPORT_SYMBOL
 0x34b8c8a7	consume_skb	vmlinux	EXPORT_SYMBOL
 0x60b40fd8	copy_user_enhanced_fast_string	vmlinux	EXPORT_SYMBOL
