@@ -97,6 +97,12 @@
 #  define dbgmsg(dev, ...) (void)(dev)
 #endif // CONFIG_OCTEONTX2_PCI_CONSOLE_DEBUG
 
+#ifdef CONFIG_OCTEONTX2_PCI_CONSOLE_TRACE
+#define otx2_trace trace_printk
+#else
+static inline void otx2_trace(const char *fmt, ...) { }
+#endif // CONFIG_OCTEONTX2_PCI_CONSOLE_TRACE
+
 static u32 max_consoles = 1;
 module_param(max_consoles, uint, 0644);
 MODULE_PARM_DESC(max_consoles, "Maximum console count to support");
@@ -771,7 +777,7 @@ octeontx_console_write(struct device *dev, const char *buf, unsigned int len,
 			if (wr_len < 0) {
 				if (wait_usecs >=
 				    PCI_CONS_HOST_WAIT_TIMEOUT_USECS) {
-					trace_printk("Timeout awaiting host\n");
+					otx2_trace("Timeout awaiting host\n");
 					break;
 				}
 				/* We cannot sleep, we have acquired the lock */
@@ -782,12 +788,12 @@ octeontx_console_write(struct device *dev, const char *buf, unsigned int len,
 				wr_len = octeontx_console_output_truncate(
 						ring_descr, wr_len);
 				if (wr_len != 0) {
-					trace_printk("output buffer truncate error\n");
+					otx2_trace("output buffer truncate error\n");
 					break;
 				}
 			}
 		} else {
-			trace_printk("output buffer error\n");
+			otx2_trace("output buffer error\n");
 			break;
 		}
 	}

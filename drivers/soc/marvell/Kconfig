@@ -120,6 +120,19 @@ config OCTEONTX2_PCI_CONSOLE_DEBUG
 
 	  If you are unsure about this, say N here.
 
+config OCTEONTX2_PCI_CONSOLE_TRACE
+	bool "OcteonTX2 PCI Endpoint console driver trace messages"
+	depends on OCTEONTX2_PCI_CONSOLE
+	depends on DYNAMIC_FTRACE
+	help
+	  Say Y here if you want the OcteonTX2 PCI console driver
+	  to write verbose debug messages to the dynamic ftrace infrastructure.
+	  Select this if you are having a problem with the OcteonTX2 PCI console
+	  and want to see more details of the parts that are not debuggable
+	  with traditional prints coming from OCTEONTX2_PCI_CONSOLE_DEBUG.
+
+	  If you are unsure about this, say N here.
+
 config GTI_WATCHDOG
 	tristate "GTI Watchdog driver"
 	depends on ARM64
