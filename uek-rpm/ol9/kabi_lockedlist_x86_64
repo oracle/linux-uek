@@ -183,6 +183,7 @@
 	class_destroy
 	close_fd
 	complete
+	complete_all
 	complete_and_exit
 	cpu_info
 	cpu_khz
@@ -614,6 +615,7 @@
 	vsnprintf
 	vsprintf
 	vzalloc
+	wait_for_completion
 	wait_for_completion_io_timeout
 	wait_for_completion_timeout
 	wake_up_process
