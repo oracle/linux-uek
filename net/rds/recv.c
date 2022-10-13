@@ -263,42 +263,6 @@ static void rds_recv_incoming_hb_exthdr(struct rds_incoming *inc)
 	}
 }
 
-static void rds_conn_peer_gen_update(struct rds_connection *conn,
-				     u32 peer_gen_num)
-{
-	int i;
-	struct rds_message *rm, *tmp;
-	unsigned long flags;
-	int flushed;
-
-	WARN_ON(conn->c_trans->t_type != RDS_TRANS_TCP);
-	if (peer_gen_num != 0) {
-		if (conn->c_peer_gen_num != 0 &&
-		    peer_gen_num != conn->c_peer_gen_num) {
-			for (i = 0; i < RDS_MPATH_WORKERS; i++) {
-				struct rds_conn_path *cp;
-
-				cp = &conn->c_path[i];
-				spin_lock_irqsave(&cp->cp_lock, flags);
-				cp->cp_next_tx_seq = 1;
-				cp->cp_next_rx_seq = 0;
-				flushed = 0;
-				list_for_each_entry_safe(rm, tmp,
-							 &cp->cp_retrans,
-							 m_conn_item) {
-					rds_set_rm_flag_bit(rm, RDS_MSG_FLUSH);
-					flushed++;
-				}
-				spin_unlock_irqrestore(&cp->cp_lock, flags);
-				pr_info("%s:%d flushed %d\n",
-					__FILE__, __LINE__, flushed);
-			}
-		}
-		conn->c_peer_gen_num = peer_gen_num;
-		pr_info("peer gen num %x\n", peer_gen_num);
-	}
-}
-
 static void rds_recv_hs_exthdrs(struct rds_header *hdr,
 				struct rds_connection *conn)
 {
@@ -306,11 +270,9 @@ static void rds_recv_hs_exthdrs(struct rds_header *hdr,
 	union {
 		struct rds_ext_header_version version;
 		__be16 rds_npaths;
-		__be32 rds_gen_num;
 		u8     dummy;
 	} buffer;
 	bool new_with_sport_idx = false;
-	u32 new_peer_gen_num = 0;
 	int new_npaths;
 
 	new_npaths = conn->c_npaths;
@@ -325,9 +287,6 @@ static void rds_recv_hs_exthdrs(struct rds_header *hdr,
 		case RDS_EXTHDR_NPATHS:
 			new_npaths = min_t(int, RDS_MPATH_WORKERS,
 					   be16_to_cpu(buffer.rds_npaths));
-			break;
-		case RDS_EXTHDR_GEN_NUM:
-			new_peer_gen_num = be32_to_cpu(buffer.rds_gen_num);
 			break;
 		case RDS_EXTHDR_SPORT_IDX:
 			new_with_sport_idx = true;
@@ -356,7 +315,6 @@ static void rds_recv_hs_exthdrs(struct rds_header *hdr,
 	conn->c_npaths = max_t(int, new_npaths, 1);
 
 	conn->c_ping_triggered = 0;
-	rds_conn_peer_gen_update(conn, new_peer_gen_num);
 
 	if (conn->c_npaths > 1 &&
 	    conn->c_trans->conn_slots_available)
