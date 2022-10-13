@@ -41,7 +41,6 @@ static unsigned int	rds_exthdr_size[] = {
 [RDS_EXTHDR_RDMA_DEST]	= sizeof(struct rds_ext_header_rdma_dest),
 [RDS_EXTHDR_RDMA_BYTES] = sizeof(struct rds_ext_header_rdma_bytes),
 [RDS_EXTHDR_NPATHS]     = sizeof(u16),
-[RDS_EXTHDR_GEN_NUM]    = sizeof(u32),
 [RDS_EXTHDR_CAP_BITS]   = sizeof(struct rds_ext_header_cap_bits),
 [RDS_EXTHDR_SPORT_IDX]  = 1,
 };
