@@ -378,9 +378,6 @@ struct rds_connection {
 	struct list_head	c_laddr_node;
 	struct hlist_node	c_faddr_node;
 
-	u32			c_my_gen_num;
-	u32			c_peer_gen_num;
-
 	/* for rds_conn_ha_changed_task */
 	struct rds_conn_ha_changed_work c_ha_changed;
 
@@ -499,7 +496,6 @@ struct rds_ext_header_rdma_bytes {
 };
 
 #define RDS_EXTHDR_NPATHS	5
-#define RDS_EXTHDR_GEN_NUM	6
 #define RDS_EXTHDR_SPORT_IDX	8
 
 #define __RDS_EXTHDR_MAX	16 /* for now */
@@ -1067,7 +1063,6 @@ void rds_cong_exit(void);
 struct rds_message *rds_cong_update_alloc(struct rds_connection *conn);
 
 /* conn.c */
-extern u32 rds_gen_num;
 int rds_conn_init(void);
 void rds_conn_exit(void);
 struct rds_connection *rds_conn_create(struct net *net,
