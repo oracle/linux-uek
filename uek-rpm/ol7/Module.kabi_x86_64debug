@@ -229,6 +229,7 @@
 0x32a020f5	clear_inode	vmlinux	EXPORT_SYMBOL	
 0x2305a311	clear_page_dirty_for_io	vmlinux	EXPORT_SYMBOL	
 0x2d7db564	complete	vmlinux	EXPORT_SYMBOL	
+0x61d7d5b7	complete_all	vmlinux	EXPORT_SYMBOL
 0x002504a2	complete_and_exit	vmlinux	EXPORT_SYMBOL	
 0x26f184de	consume_skb	vmlinux	EXPORT_SYMBOL	
 0x21271fd0	copy_user_enhanced_fast_string	vmlinux	EXPORT_SYMBOL	

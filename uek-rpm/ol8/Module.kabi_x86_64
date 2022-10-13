@@ -228,6 +228,7 @@
 0x18acccc1	clear_inode	vmlinux	EXPORT_SYMBOL	
 0xbeee5b17	clear_page_dirty_for_io	vmlinux	EXPORT_SYMBOL	
 0x29361773	complete	vmlinux	EXPORT_SYMBOL	
+0xfd94814e	complete_all	vmlinux	EXPORT_SYMBOL
 0x8133c67d	complete_and_exit	vmlinux	EXPORT_SYMBOL	
 0x5ca79562	consume_skb	vmlinux	EXPORT_SYMBOL	
 0x21271fd0	copy_user_enhanced_fast_string	vmlinux	EXPORT_SYMBOL	
