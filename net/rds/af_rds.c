@@ -1426,8 +1426,6 @@ static void __exit rds_exit(void)
 
 module_exit(rds_exit);
 
-u32 rds_gen_num;
-
 static int __init rds_init(void)
 {
 	int ret;
@@ -1445,8 +1443,6 @@ static int __init rds_init(void)
 		ret = -ENOMEM;
 		goto out;
 	}
-
-	net_get_random_once(&rds_gen_num, sizeof(rds_gen_num));
 
 	rds_bind_lock_init();
 
