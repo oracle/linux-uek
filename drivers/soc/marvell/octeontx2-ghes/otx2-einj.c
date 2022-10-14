@@ -7,8 +7,6 @@
 #include <linux/module.h>
 #include <linux/arm-smccc.h>
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 /*
  * All DRAM/cache controller hardware is handled by ATF on these platforms
  * and not visible to Non-Secure OS kernel.

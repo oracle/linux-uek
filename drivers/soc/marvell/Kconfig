@@ -227,9 +227,8 @@ config MARVELL_CPSS
 	  We want these for the T98
 
 config OCTEONTX2_GHES_BERT
-	bool "OcteonTX2 GHES Boot Error Record Table (BERT) support"
-	depends on EDAC_OCTEONTX
-	default y
+	bool "OcteonTX2 GHES Boot Error Record support"
+	depends on ARM64
 	help
 	  Select this option to enable reporting of fatal Marvell GHES
 	  errors on subsequent Linux boot.  Normally, fatal errors will
@@ -260,8 +259,8 @@ config MARVELL_FWLOG
 	  option is available only for CN10K and t9x platforms.
 
 config OCTEONTX2_EINJ
-        tristate "OcteonTX2 EDAC ECC Injection"
-        depends on EDAC_OCTEONTX
+        tristate "OcteonTX2 ECC Injection"
+	depends on ARM64
         help
           Provides support for error injection to OcteonTX2
           memory controllers (LMC) and cache blocks.
@@ -274,7 +273,7 @@ config OCTEONTX2_EINJ
 
 config MARVELL_CN10K_EINJ
         tristate "CN10K ECC Injection"
-        depends on EDAC_OCTEONTX
+	depends on ARM64
         help
           Provides support for error injection to CN10K
           Pseudo-fault Generation processor error,
