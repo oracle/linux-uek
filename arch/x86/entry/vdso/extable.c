@@ -13,7 +13,7 @@ bool fixup_vdso_exception(struct pt_regs *regs, int trapnr,
 			  unsigned long error_code, unsigned long fault_addr)
 {
 	const struct vdso_image *image = current->mm->context.vdso_image;
-	const struct vdso_image_ext *image_ext;
+	const struct vdso_image_ext *image_ext = NULL;
 	const struct vdso_exception_table_entry *extable;
 	unsigned int nr_entries, i;
 	unsigned long base;
