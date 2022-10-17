@@ -13,6 +13,7 @@
 #include <linux/platform_device.h>
 
 #define MODULE_NAME		"opbmc"
+#define OPBMC_MSG_PREFIX	"Oracle ILOM"
 #define OPBMC_IO_BAR		0xFD110000
 #define OPBMC_PAD_CFG_GPP_A0	0x400
 #define OPBMC_PAD_OFFSET	0x0c
@@ -60,7 +61,7 @@ static int reset_sp_ast2600(void)
 	int rc = 0;
 
 	if (!request_mem_region(OPBMC_GPP_PAGE_ADDR, 0x400, MODULE_NAME)) {
-		pr_err("Oracle ILOM reset: Cannot reserve memory region.\n");
+		pr_err(MODULE_NAME ": Cannot reserve memory region.\n");
 		rc = -ENXIO;
 		goto err_mem;
 	}
@@ -77,7 +78,8 @@ static int reset_sp_ast2600(void)
 	iowrite8(resetbyte ^ 0x40, mem + 0x16);
 
 	iounmap(mem);
-	pr_info_ratelimited("Oracle ILOM reset\n");
+	pr_info_ratelimited(OPBMC_MSG_PREFIX " reset.\n");
+
 err_mem:
 	release_mem_region(OPBMC_GPP_PAGE_ADDR, 0x400);
 	return rc;
@@ -91,7 +93,7 @@ static int reset_sp_pilot(void)
 	u8 val;
 
 	if (!request_mem_region(OPBMC_IO_BAR, 0x1000, MODULE_NAME)) {
-		pr_err("Invalid region\n");
+		pr_err(MODULE_NAME ": Invalid region\n");
 		rc = -ENXIO;
 		return rc;
 	}
@@ -106,7 +108,8 @@ static int reset_sp_pilot(void)
 	padbar = ioread32(mem + OPBMC_PAD_OFFSET);
 
 	if (padbar != OPBMC_PAD_CFG_GPP_A0) {
-		pr_err("PADBAR %08x not as expected: %08x\n",
+		pr_err(MODULE_NAME
+			": PADBAR %08x not as expected: %08x\n",
 			padbar, OPBMC_PAD_CFG_GPP_A0);
 		rc = -EINVAL;
 		goto err;
@@ -120,7 +123,7 @@ static int reset_sp_pilot(void)
 	udelay(60);
 	val = ioread8(mem + OPBMC_PAD_CFG_GPP_A0);
 	iowrite8(val & 0xFE, mem + OPBMC_PAD_CFG_GPP_A0);
-	pr_info_ratelimited("Oracle ILOM reset\n");
+	pr_info_ratelimited(OPBMC_MSG_PREFIX " reset.\n");
 
 err:
 	iounmap(mem);
@@ -144,7 +147,7 @@ static ssize_t reset_bmc(struct kobject *kobj, struct kobj_attribute *attr,
 		else if (dmi_check_system(oracle_AST2600_bmc_table))
 			err = reset_sp_ast2600();
 		else
-			pr_err("Platform not identified\n");
+			pr_err(MODULE_NAME ": Platform not identified\n");
 	}
 
 	if (err)
