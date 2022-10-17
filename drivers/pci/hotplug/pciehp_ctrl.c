@@ -49,6 +49,23 @@ static void set_slot_off(struct controller *ctrl)
 			      PCI_EXP_SLTCTL_ATTN_IND_ON);
 }
 
+static int set_slot_on(struct controller *ctrl)
+{
+	int retval = 0;
+
+	if (POWER_CTRL(ctrl)) {
+		/* Power on slot */
+		retval = pciehp_power_on_slot(ctrl);
+		if (retval)
+			return retval;
+	}
+
+	pciehp_set_indicators(ctrl, PCI_EXP_SLTCTL_PWR_IND_BLINK,
+			      INDICATOR_NOOP);
+
+	return retval;
+}
+
 /**
  * board_added - Called after a board has been added to the system.
  * @ctrl: PCIe hotplug controller where board is added
@@ -61,15 +78,10 @@ static int board_added(struct controller *ctrl)
 	int retval = 0;
 	struct pci_bus *parent = ctrl->pcie->port->subordinate;
 
-	if (POWER_CTRL(ctrl)) {
-		/* Power on slot */
-		retval = pciehp_power_on_slot(ctrl);
-		if (retval)
-			return retval;
-	}
 
-	pciehp_set_indicators(ctrl, PCI_EXP_SLTCTL_PWR_IND_BLINK,
-			      INDICATOR_NOOP);
+	retval = set_slot_on(ctrl);
+	if (retval)
+		goto err_exit;
 
 	/* Check link training status */
 	retval = pciehp_check_link_status(ctrl);
@@ -130,7 +142,8 @@ static void remove_board(struct controller *ctrl, bool safe_removal)
 }
 
 static int pciehp_enable_slot(struct controller *ctrl);
-static int pciehp_disable_slot(struct controller *ctrl, bool safe_removal);
+static int pciehp_disable_slot(struct controller *ctrl, bool safe_removal,
+				bool force_removal);
 
 void pciehp_request(struct controller *ctrl, int action)
 {
@@ -220,7 +233,7 @@ void pciehp_handle_disable_request(struct controller *ctrl)
 	ctrl->state = POWEROFF_STATE;
 	mutex_unlock(&ctrl->state_lock);
 
-	ctrl->request_result = pciehp_disable_slot(ctrl, SAFE_REMOVAL);
+	ctrl->request_result = pciehp_disable_slot(ctrl, SAFE_REMOVAL, false);
 }
 
 void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
@@ -245,7 +258,7 @@ void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
 		if (events & PCI_EXP_SLTSTA_PDC)
 			ctrl_info(ctrl, "Slot(%s): Card not present\n",
 				  slot_name(ctrl));
-		pciehp_disable_slot(ctrl, SURPRISE_REMOVAL);
+		pciehp_disable_slot(ctrl, SURPRISE_REMOVAL, false);
 		break;
 	default:
 		mutex_unlock(&ctrl->state_lock);
@@ -334,11 +347,15 @@ static int pciehp_enable_slot(struct controller *ctrl)
 	return ret;
 }
 
-static int __pciehp_disable_slot(struct controller *ctrl, bool safe_removal)
+static int __pciehp_disable_slot(struct controller *ctrl, bool safe_removal,
+					bool force_removal)
 {
 	u8 getstatus = 0;
 
-	if (POWER_CTRL(ctrl)) {
+	/* If we are forcing a removal due to a hung PCIe device, we have
+	 * already powered off the slot to disable the device
+	 */
+	if (!force_removal && POWER_CTRL(ctrl)) {
 		pciehp_get_power_status(ctrl, &getstatus);
 		if (!getstatus) {
 			ctrl_info(ctrl, "Slot(%s): Already disabled\n",
@@ -351,12 +368,13 @@ static int __pciehp_disable_slot(struct controller *ctrl, bool safe_removal)
 	return 0;
 }
 
-static int pciehp_disable_slot(struct controller *ctrl, bool safe_removal)
+static int pciehp_disable_slot(struct controller *ctrl, bool safe_removal,
+					bool force_removal)
 {
 	int ret;
 
 	pm_runtime_get_sync(&ctrl->pcie->port->dev);
-	ret = __pciehp_disable_slot(ctrl, safe_removal);
+	ret = __pciehp_disable_slot(ctrl, safe_removal, force_removal);
 	pm_runtime_put(&ctrl->pcie->port->dev);
 
 	mutex_lock(&ctrl->state_lock);
@@ -364,6 +382,66 @@ static int pciehp_disable_slot(struct controller *ctrl, bool safe_removal)
 	mutex_unlock(&ctrl->state_lock);
 
 	return ret;
+}
+
+/* In the instances where a PCIe device just stuck, we want to just power off
+ * the device and cleanly remove driver structures that are allocated to it.
+ * We cannot use the orderly shutdown API (slots/power) because most drivers
+ * assume the device to be functional and attempt to send controller commands
+ * to the device acerbating the problem.
+ */
+int pciehp_force_power_slot(struct hotplug_slot *p_slot, int value)
+{
+	struct controller *ctrl = to_ctrl(p_slot);
+	struct pci_dev *bridge = ctrl->pcie->port;
+	struct pci_bus *parent = bridge->subordinate;
+	u32 mask;
+	struct pci_dev *dev;
+	int retval = 0;
+
+	switch (value) {
+	case 1:
+		return -EINVAL;
+	case 0:
+		/* Assuming just one device per slot */
+		dev = pci_get_slot(parent, PCI_DEVFN(0, 0));
+
+		if (!dev) {
+			ctrl_err(ctrl, "No device found\n");
+			return -ENODEV;
+		}
+
+		ctrl_info(ctrl, "Device %04x:%02x:00, masking CTO in AER UC Mask\n",
+			pci_domain_nr(parent), parent->number);
+
+		/* Mask CTOs since we don't want any outstanding commands to
+		 * the device causing potentially fatal AER events. Restore
+		 * the mask register once slot is powerered off
+		 */
+		mask = pci_aer_mask_cto(dev);
+		ctrl_info(ctrl, "Device %04x:%02x:00, Powering off slot\n",
+			pci_domain_nr(parent), parent->number);
+		set_slot_off(ctrl);
+		ctrl_info(ctrl, "Device %04x:%02x:00, restoring AER UC mask\n",
+			pci_domain_nr(parent), parent->number);
+		pci_aer_restore_cto(dev, mask);
+
+		/* Now disable the slot. We make it look like a surprise
+		 * removal because we want the driver to remove callbacks to
+		 * treat the device as not accessible (which it is!). We
+		 * also want to ignore assumptions about slot being powered
+		 * off
+		 */
+		(void)pciehp_disable_slot(ctrl, SURPRISE_REMOVAL, true);
+
+		break;
+	default:
+		ctrl_err(ctrl, "Slot(%s) : Invalid forcepower value 0x%x\n",
+			slot_name(ctrl), value);
+		retval = -EINVAL;
+	}
+
+	return  retval;
 }
 
 int pciehp_sysfs_enable_slot(struct hotplug_slot *hotplug_slot)

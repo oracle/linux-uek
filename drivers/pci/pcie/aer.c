@@ -34,6 +34,7 @@
 
 #include "../pci.h"
 #include "portdrv.h"
+#include "../hotplug/pciehp.h"
 
 #define AER_ERROR_SOURCES_MAX		128
 
@@ -340,6 +341,33 @@ void pci_save_aer_state(struct pci_dev *dev)
 	pci_read_config_dword(dev, aer + PCI_ERR_CAP, cap++);
 	if (pcie_cap_has_rtctl(dev))
 		pci_read_config_dword(dev, aer + PCI_ERR_ROOT_COMMAND, cap++);
+}
+
+u32 pci_aer_mask_cto(struct pci_dev *dev)
+{
+	int pos;
+	u32 mask;
+	u32 orig_mask;
+
+	pos = dev->aer_cap;
+	if (!pos)
+		return 0;  // no harm done if we OR 0 with orig mask
+
+	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_MASK, &orig_mask);
+	mask = orig_mask |  PCI_ERR_UNC_COMP_TIME;
+	pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_MASK, mask);
+	return orig_mask;
+}
+
+void pci_aer_restore_cto(struct pci_dev *dev, u32 mask)
+{
+	int pos;
+
+	pos = dev->aer_cap;
+	if (!pos)
+		return;
+
+	pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_MASK, mask);
 }
 
 void pci_restore_aer_state(struct pci_dev *dev)
