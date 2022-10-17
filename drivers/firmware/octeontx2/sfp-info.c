@@ -216,6 +216,8 @@ static int __init sfp_info_init(void)
 	if (IS_ERR(mdev))
 		return PTR_ERR(mdev);
 
+	sfp_info_data.mdev = mdev;
+
 	arm_smccc_smc(PLAT_OCTEONTX_GET_FWDATA_BASE, 0, 0,
 		0, 0, 0, 0, 0, &res);
 
@@ -235,7 +237,6 @@ static int __init sfp_info_init(void)
 	}
 
 	mub_set_data(mdev, &sfp_info_data);
-	sfp_info_data.mdev = mdev;
 	return ret;
 }
 module_init(sfp_info_init);
