@@ -64,6 +64,7 @@ static int init_slot(struct controller *ctrl)
 	ops->get_power_status = get_power_status;
 	ops->get_adapter_status = get_adapter_status;
 	ops->reset_slot = pciehp_reset_slot;
+	ops->force_power_slot = pciehp_force_power_slot;
 	if (MRL_SENS(ctrl))
 		ops->get_latch_status = get_latch_status;
 	if (ATTN_LED(ctrl)) {
