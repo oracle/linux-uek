@@ -167,36 +167,22 @@ static int otx2_rfoe_ptp_clk_src_cfg(struct otx2_bphy_cdev_priv *cdev,
 			if (cnf10k_drv_ctx->valid) {
 				netdev = cnf10k_drv_ctx->netdev;
 				cnf10k_priv = netdev_priv(netdev);
-				break;
+				cnf10k_priv->ptp_ext_clk_rate = ptp_ext_clk_rate;
 			}
 		}
 
-		if (idx >= cdev->tot_rfoe_intf) {
-			dev_err(cdev->dev, "drv ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-
 		ptp_reg_base = cnf10k_priv->ptp_reg_base;
-		cnf10k_priv->ptp_ext_clk_rate = ptp_ext_clk_rate;
 	} else {
 		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
 			drv_ctx = &rfoe_drv_ctx[idx];
 			if (drv_ctx->valid) {
 				netdev = drv_ctx->netdev;
 				priv = netdev_priv(netdev);
-				break;
+				priv->ptp_ext_clk_rate = ptp_ext_clk_rate;
 			}
 		}
 
-		if (idx >= RFOE_MAX_INTF) {
-			dev_err(cdev->dev, "drv ctx not found\n");
-			ret = -EINVAL;
-			goto out;
-		}
-
 		ptp_reg_base = priv->ptp_reg_base;
-		priv->ptp_ext_clk_rate = ptp_ext_clk_rate;
 	}
 
 	cfg = readq(ptp_reg_base + MIO_PTP_CLOCK_CFG);
@@ -211,7 +197,7 @@ static int otx2_rfoe_ptp_clk_src_cfg(struct otx2_bphy_cdev_priv *cdev,
 	writeq(cfg, ptp_reg_base + MIO_PTP_CLOCK_CFG);
 	cfg = ((u64)1000000000ull << 32) / ptp_ext_clk_rate;
 	writeq(cfg, ptp_reg_base + MIO_PTP_CLOCK_COMP);
-out:
+
 	return ret;
 }
 
