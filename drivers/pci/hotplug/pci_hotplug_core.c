@@ -107,6 +107,49 @@ static struct pci_slot_attribute hotplug_slot_attr_power = {
 	.store = power_write_file
 };
 
+static ssize_t force_power_write_file(struct pci_slot *pci_slot,
+				      const char *buf, size_t count)
+{
+	struct hotplug_slot *slot = pci_slot->hotplug;
+	unsigned long lpower;
+	u8 power;
+	int retval = 0;
+
+	lpower = simple_strtoul(buf, NULL, 10);
+	power = (u8)(lpower & 0xff);
+	dbg("forcepower = %d\n", power);
+
+	if (!try_module_get(slot->owner)) {
+		retval = -ENODEV;
+		goto exit;
+	}
+	switch (power) {
+	case 0:
+		if (slot->ops->force_power_slot)
+			retval = slot->ops->force_power_slot(slot, 0);
+		break;
+
+	case 1:
+		if (slot->ops->force_power_slot)
+			retval = slot->ops->force_power_slot(slot, 1);
+		break;
+	default:
+		err("Illegal value specified for forcepower\n");
+		retval = -EINVAL;
+	}
+	module_put(slot->owner);
+
+exit:
+	if (retval)
+		return retval;
+	return count;
+}
+
+static struct pci_slot_attribute hotplug_slot_attr_force_power = {
+	.attr = {.name = "forcepower", .mode = S_IFREG | S_IRUGO | S_IWUSR},
+	.store = force_power_write_file
+};
+
 static ssize_t attention_read_file(struct pci_slot *pci_slot, char *buf)
 {
 	int retval;
@@ -214,6 +257,17 @@ static bool has_power_file(struct hotplug_slot *slot)
 	return false;
 }
 
+static bool has_force_power_file(struct hotplug_slot *slot)
+{
+	if ((!slot) || (!slot->ops))
+		return false;
+
+	if (slot->ops->force_power_slot)
+		return true;
+
+	return false;
+}
+
 static bool has_attention_file(struct hotplug_slot *slot)
 {
 	if ((slot->ops->set_attention_status) ||
@@ -256,6 +310,13 @@ static int fs_add_slot(struct hotplug_slot *slot, struct pci_slot *pci_slot)
 			dev_err(&pci_slot->bus->dev,
 				"Error creating sysfs link (%d)\n", retval);
 		kobject_put(kobj);
+	}
+
+	if (has_force_power_file(slot)) {
+		retval = sysfs_create_file(&pci_slot->kobj,
+					   &hotplug_slot_attr_force_power.attr);
+		if (retval)
+			goto exit_force_power;
 	}
 
 	if (has_power_file(slot)) {
@@ -310,6 +371,9 @@ exit_attention:
 	if (has_power_file(slot))
 		sysfs_remove_file(&pci_slot->kobj, &hotplug_slot_attr_power.attr);
 exit_power:
+	if (has_force_power_file(slot))
+		sysfs_remove_file(&pci_slot->kobj, &hotplug_slot_attr_force_power.attr);
+exit_force_power:
 	sysfs_remove_link(&pci_slot->kobj, "module");
 exit:
 	return retval;
@@ -317,6 +381,9 @@ exit:
 
 static void fs_remove_slot(struct hotplug_slot *slot, struct pci_slot *pci_slot)
 {
+	if (has_force_power_file(slot))
+		sysfs_remove_file(&pci_slot->kobj, &hotplug_slot_attr_force_power.attr);
+
 	if (has_power_file(slot))
 		sysfs_remove_file(&pci_slot->kobj, &hotplug_slot_attr_power.attr);
 
