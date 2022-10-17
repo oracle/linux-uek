@@ -42,6 +42,8 @@ struct otx2_cptvf_request {
 	union otx2_cpt_opcode opcode;
 	dma_addr_t cptr_dma;
 	void *cptr;
+	dma_addr_t dptr_dma;
+	void *dptr;
 };
 
 /*
@@ -142,6 +144,7 @@ struct otx2_cpt_inst_info {
 	dma_addr_t dptr_baddr;
 	dma_addr_t rptr_baddr;
 	dma_addr_t comp_baddr;
+	dma_addr_t dma_baddr;
 	unsigned long time_in;
 	u32 dlen;
 	u32 dma_len;
@@ -177,8 +180,8 @@ static inline void otx2_cpt_info_destroy(struct pci_dev *pdev,
 	struct otx2_cpt_req_info *req;
 	int i;
 
-	if (info->dptr_baddr)
-		dma_unmap_single(&pdev->dev, info->dptr_baddr,
+	if (info->dma_baddr)
+		dma_unmap_single(&pdev->dev, info->dma_baddr,
 				 info->dma_len, DMA_BIDIRECTIONAL);
 
 	if (info->req) {
@@ -391,6 +394,7 @@ static inline struct otx2_cpt_inst_info *cn10kb_sg_info_create(struct pci_dev *p
 		dev_err(&pdev->dev, "DMA Mapping failed for cpt req\n");
 		goto destroy_info;
 	}
+	info->dma_baddr = info->dptr_baddr;
 	info->rptr_baddr = info->dptr_baddr + g_len;
 	/*
 	 * Get buffer for union otx2_cpt_res_s response
@@ -467,6 +471,7 @@ static inline struct otx2_cpt_inst_info *otx2_sg_info_create(struct pci_dev *pde
 		dev_err(&pdev->dev, "DMA Mapping failed for cpt req\n");
 		goto destroy_info;
 	}
+	info->dma_baddr = info->dptr_baddr;
 	/*
 	 * Get buffer for union otx2_cpt_res_s response
 	 * structure and its physical address
@@ -481,6 +486,42 @@ destroy_info:
 	return NULL;
 }
 
+static inline struct otx2_cpt_inst_info *otx2_cpt_info_create(struct pci_dev *pdev,
+					      struct otx2_cpt_req_info *req,
+					      gfp_t gfp)
+{
+	int align = OTX2_CPT_DMA_MINALIGN;
+	struct otx2_cpt_inst_info *info;
+	u32 total_mem_len;
+	u32 info_len;
+
+	info_len = ALIGN(sizeof(*info), align);
+	total_mem_len = info_len + sizeof(union otx2_cpt_res_s);
+
+	info = kzalloc(total_mem_len, gfp);
+	if (unlikely(!info))
+		return NULL;
+
+	info->in_buffer = req->req.dptr;
+	info->dptr_baddr = req->req.dptr_dma;
+	info->rptr_baddr = req->req.dptr_dma;
+
+	info->completion_addr = (u8 *)info + info_len;
+	info->dma_len = total_mem_len - info_len;
+	info->dma_baddr = dma_map_single(&pdev->dev, info->completion_addr,
+					 info->dma_len, DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(&pdev->dev, info->dma_baddr))) {
+		dev_err(&pdev->dev, "DMA Mapping failed for cpt req\n");
+		goto destroy_info;
+	}
+	info->comp_baddr = info->dma_baddr;
+
+	return info;
+
+destroy_info:
+	otx2_cpt_info_destroy(pdev, info);
+	return NULL;
+}
 struct otx2_cptlf_wqe;
 int otx2_cpt_do_request(struct pci_dev *pdev, struct otx2_cpt_req_info *req,
 			int cpu_num);

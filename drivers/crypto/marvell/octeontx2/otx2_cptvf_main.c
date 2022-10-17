@@ -262,7 +262,6 @@ static int cptvf_lf_init(struct otx2_cptvf_dev *cptvf)
 	struct otx2_cptlfs_info *lfs = &cptvf->lfs;
 	struct device *dev = &cptvf->pdev->dev;
 	int ret, lfs_num;
-	u8 eng_grp_msk;
 
 	/* Get engine group number for symmetric crypto */
 	cptvf->lfs.kcrypto_eng_grp_num = OTX2_CPT_INVALID_CRYPTO_ENG_GRP;
@@ -275,7 +274,6 @@ static int cptvf_lf_init(struct otx2_cptvf_dev *cptvf)
 		ret = -ENOENT;
 		return ret;
 	}
-	eng_grp_msk = 1 << cptvf->lfs.kcrypto_eng_grp_num;
 
 	ret = otx2_cptvf_send_kvf_limits_msg(cptvf);
 	if (ret)
@@ -284,9 +282,10 @@ static int cptvf_lf_init(struct otx2_cptvf_dev *cptvf)
 	lfs_num = cptvf->lfs.kvf_limits ? cptvf->lfs.kvf_limits :
 		  num_online_cpus();
 
+	pr_info("lfs_num: %d\n", lfs_num);
 	otx2_cptlf_set_dev_info(lfs, cptvf->pdev, cptvf->reg_base,
 				&cptvf->pfvf_mbox, cptvf->blkaddr);
-	ret = otx2_cptlf_init(lfs, eng_grp_msk, OTX2_CPT_QUEUE_HI_PRIO,
+	ret = otx2_cptlf_init(lfs, 0xF, OTX2_CPT_QUEUE_HI_PRIO,
 			      lfs_num);
 	if (ret)
 		return ret;

@@ -28,6 +28,7 @@ enum otx2_cpt_major_opcodes {
 	OTX2_CPT_MAJOR_OP_MISC = 0x01,
 	OTX2_CPT_MAJOR_OP_FC   = 0x33,
 	OTX2_CPT_MAJOR_OP_HMAC = 0x35,
+	OTX2_CPT_MAJOR_OP_PKCS_ENC = 0x03,
 };
 
 enum otx2_cpt_cipher_type {
@@ -179,5 +180,7 @@ int otx2_cpt_crypto_init(struct pci_dev *pdev, struct module *mod,
 void otx2_cpt_crypto_exit(struct pci_dev *pdev, struct module *mod);
 int otx2_cpt_register_hmac_hash_algs(void);
 void otx2_cpt_unregister_hmac_hash_algs(void);
+int otx2_cpt_register_asym_algs(void);
+void otx2_cpt_unregister_asym_algs(void);
 int otx2_cpt_dev_get(struct pci_dev **pdev, int *cpu_num);
 #endif /* __OTX2_CPT_ALGS_H */

@@ -1672,8 +1672,14 @@ static inline int cpt_register_algs(void)
 	err = otx2_cpt_register_hmac_hash_algs();
 	if (err)
 		goto unregister_aeads;
+
+	err = otx2_cpt_register_asym_algs();
+	if (err)
+		goto unregister_hashes;
 	return 0;
 
+unregister_hashes:
+	otx2_cpt_unregister_hmac_hash_algs();
 unregister_aeads:
 	crypto_unregister_aeads(otx2_cpt_aeads, ARRAY_SIZE(otx2_cpt_aeads));
 unregister_skciphers:
@@ -1688,6 +1694,7 @@ static inline void cpt_unregister_algs(void)
 				    ARRAY_SIZE(otx2_cpt_skciphers));
 	crypto_unregister_aeads(otx2_cpt_aeads, ARRAY_SIZE(otx2_cpt_aeads));
 	otx2_cpt_unregister_hmac_hash_algs();
+	otx2_cpt_unregister_asym_algs();
 }
 
 static int compare_func(const void *lptr, const void *rptr)
