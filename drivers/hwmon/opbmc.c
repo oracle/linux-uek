@@ -72,10 +72,32 @@ static int reset_sp_ast2600(void)
 		goto err_mem;
 	}
 
+	/* If the reset bit is active, reset it, as well as the status bit. */
 	resetbyte = ioread8(mem + 0x16);
+	if (resetbyte & 0x40) {
+		pr_info_ratelimited(OPBMC_MSG_PREFIX
+			" reset bit set already (%02X).\n", resetbyte);
+		iowrite8(resetbyte & ~0x41, mem + 0x16);
+		resetbyte = ioread8(mem + 0x16);
+		/* Shorter or no delay is unreliable. */
+		udelay(20);
+	}
+
+	/* Set the reset bit and read it back. */
 	iowrite8(resetbyte | 0x40, mem + 0x16);
-	udelay(90);
+	resetbyte = ioread8(mem + 0x16);
+
+	/* Minimal measured peak length is 18us for a loaded SP.
+	 * Using 3x more to be sure.
+	 */
+	udelay(60);
+
+	/* Reset bit off. */
 	iowrite8(resetbyte ^ 0x40, mem + 0x16);
+	resetbyte = ioread8(mem + 0x16);
+	if (resetbyte & 0x40)
+		pr_notice_ratelimited(OPBMC_MSG_PREFIX
+			" reset bit left set (%02X).\n", resetbyte);
 
 	iounmap(mem);
 	pr_info_ratelimited(OPBMC_MSG_PREFIX " reset.\n");
