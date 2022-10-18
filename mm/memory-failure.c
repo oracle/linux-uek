@@ -844,6 +844,7 @@ static int me_huge_page(struct page_state *ps, struct page *p)
 	int res = 0;
 	struct page *hpage = compound_head(p);
 	struct address_space *mapping;
+	bool extra_pins = false;
 
 	if (!PageHuge(hpage))
 		return MF_DELAYED;
@@ -851,6 +852,8 @@ static int me_huge_page(struct page_state *ps, struct page *p)
 	mapping = page_mapping(hpage);
 	if (mapping) {
 		res = truncate_error_page(hpage, page_to_pfn(p), mapping);
+		/* The page is kept in page cache. */
+		extra_pins = true;
 	} else {
 		unlock_page(hpage);
 		/*
@@ -865,7 +868,7 @@ static int me_huge_page(struct page_state *ps, struct page *p)
 		lock_page(hpage);
 	}
 
-	if (has_extra_refcount(ps, p, false))
+	if (has_extra_refcount(ps, p, extra_pins))
 		res = MF_FAILED;
 
 	return res;
