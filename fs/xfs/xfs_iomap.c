@@ -1024,33 +1024,26 @@ xfs_file_iomap_begin(
 	}
 
 	if ((flags & (IOMAP_WRITE | IOMAP_ZERO)) && xfs_is_reflink_inode(ip)) {
-		struct xfs_bmbt_irec    orig = imap;
-
-		/*
-		 * A reflinked inode will result in CoW alloc.
-		 * FIXME: It could still overwrite on unshared extents
-		 * and not need allocation.
-		 */
-		if (flags & IOMAP_NOWAIT) {
-			error = -EAGAIN;
-			goto out_unlock;
+		if (flags & IOMAP_DIRECT) {
+			/*
+			 * A reflinked inode will result in CoW alloc.
+			 * FIXME: It could still overwrite on unshared extents
+			 * and not need allocation.
+			 */
+			if (flags & IOMAP_NOWAIT) {
+				error = -EAGAIN;
+				goto out_unlock;
+			}
+			/* may drop and re-acquire the ilock */
+			error = xfs_reflink_allocate_cow(ip, &imap, &shared,
+					&lockmode);
+			if (error)
+				goto out_unlock;
+		} else {
+			error = xfs_reflink_reserve_cow(ip, &imap, &shared);
+			if (error)
+				goto out_unlock;
 		}
-		/* may drop and re-acquire the ilock */
-		error = xfs_reflink_allocate_cow(ip, &imap, &shared,
-				&lockmode, flags);
-		if (error)
-			goto out_unlock;
-
-		/*
-		 * For buffered writes we need to report the address of the
-		 * previous block (if there was any) so that the higher level
-		 * write code can perform read-modify-write operations.  For
-		 * direct I/O code, which must be block aligned we need to
-		 * report the newly allocated address.
-		 */
-		if (!(flags & IOMAP_DIRECT) &&
-		    orig.br_startblock != HOLESTARTBLOCK)
-			imap = orig;
 
 		end_fsb = imap.br_startoff + imap.br_blockcount;
 		length = XFS_FSB_TO_B(mp, end_fsb) - offset;
