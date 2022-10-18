@@ -10,6 +10,7 @@
 #include <net/tso.h>
 #include <linux/bpf.h>
 #include <linux/bpf_trace.h>
+#include <net/ip6_checksum.h>
 
 #include "otx2_reg.h"
 #include "otx2_common.h"
@@ -1062,9 +1063,13 @@ static bool otx2_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
 static void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
 			      struct otx2_snd_queue *sq, int *offset)
 {
+	struct ethhdr	*eth = (struct ethhdr *)(skb->data);
 	struct ptpv2_tstamp *origin_tstamp;
 	int ptp_offset = 0, udp_csum = 0;
+	struct udphdr *uh = udp_hdr(skb);
+	unsigned int udphoff;
 	struct timespec64 ts;
+	__wsum skb_csum;
 	u64 iova;
 
 	if (unlikely(!skb_shinfo(skb)->gso_size &&
@@ -1080,6 +1085,27 @@ static void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
 			origin_tstamp->nanoseconds = ntohl(ts.tv_nsec);
 			/* Point to correction field in PTP packet */
 			ptp_offset += 8;
+
+			/* When user disables hw checksum, stack calculates the csum,
+			 * but it does not cover ptp timestamp which is added later.
+			 * Recalculate the checksum manually considering the timestamp.
+			 */
+			if (skb->ip_summed != CHECKSUM_PARTIAL && uh->check != 0) {
+				udphoff = skb_transport_offset(skb);
+				uh->check = 0;
+				skb_csum = skb_checksum(skb, udphoff, skb->len - udphoff, 0);
+				if (eth->h_proto == ntohs(ETH_P_IPV6))
+					uh->check = csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
+								    &ipv6_hdr(skb)->daddr,
+								    skb->len - udphoff,
+								    ipv6_hdr(skb)->nexthdr,
+								    skb_csum);
+				else
+					uh->check = csum_tcpudp_magic(ip_hdr(skb)->saddr,
+								      ip_hdr(skb)->daddr,
+								      skb->len - udphoff,
+								      IPPROTO_UDP, skb_csum);
+			}
 		} else {
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 		}
