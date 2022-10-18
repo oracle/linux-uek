@@ -7,6 +7,8 @@
 #include "cnf10k_rfoe.h"
 #include "otx2_bphy_debugfs.h"
 #include "cnf10k_bphy_hw.h"
+#include <net/checksum.h>
+#include <net/ip6_checksum.h>
 
 #define PTP_PORT               0x13F
 /* Original timestamp offset starts at 34 byte in PTP Sync packet and its
@@ -917,18 +919,21 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
 	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
 	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
+	int ptp_offset = 0, udp_csum = 0, offset;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
 	struct cnf10k_tx_action_s tx_mem;
-	int ptp_offset = 0, udp_csum = 0;
 	struct tx_job_queue_cfg *job_cfg;
 	struct tx_job_entry *job_entry;
 	struct ptp_tstamp_skb *ts_skb;
 	int psm_queue_id, queue_space;
 	unsigned int pkt_len = 0;
+	struct ipv6hdr *iph6;
 	unsigned long flags;
 	struct ethhdr *eth;
+	struct iphdr *iph;
 	int pkt_type = 0;
 
+	eth = (struct ethhdr *)skb->data;
 	if (priv->tx_hw_tstamp_en &&
 	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
 		job_cfg = &priv->tx_ptp_job_cfg;
@@ -937,7 +942,6 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	} else {
 		job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
 		pkt_type = PACKET_TYPE_OTHER;
-		eth = (struct ethhdr *)skb->data;
 		if (htons(eth->h_proto) == ETH_P_ECPRI)
 			pkt_type = PACKET_TYPE_ECPRI;
 	}
@@ -1013,9 +1017,30 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 							       &tx_mem, skb,
 							       ptp_offset,
 							       udp_csum);
-			/* reset UDP hdr checksum as there is no checksum offload */
-			if (udp_csum)
+			/* recalculate UDP hdr checksum as RFOE block has no checksum
+			 * offload support and checksum field is left with stale data
+			 */
+			if (udp_csum) {
 				udp_hdr(skb)->check = 0;
+				offset = skb_transport_offset(skb);
+				udp_csum = skb_checksum(skb, offset, skb->len - offset, 0);
+				if (htons(eth->h_proto) == ETH_P_IP) {
+					iph = ip_hdr(skb);
+					udp_hdr(skb)->check = csum_tcpudp_magic(iph->saddr,
+										iph->daddr,
+										skb->len - offset,
+										iph->protocol,
+										udp_csum);
+				} else {
+					iph6 = ipv6_hdr(skb);
+					udp_hdr(skb)->check = csum_ipv6_magic(&iph6->saddr,
+									      &iph6->daddr,
+									      skb->len - offset,
+									      iph6->nexthdr,
+									      udp_csum);
+				}
+			}
+
 			goto ptp_one_step_out;
 		}
 
