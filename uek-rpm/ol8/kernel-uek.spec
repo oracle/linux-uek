@@ -234,7 +234,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 
 %if %{with_vdso_install}
 # These arches install vdso/ directories.
-%define vdso_arches %{all_x86} x86_64
+%define vdso_arches %{all_x86} x86_64 aarch64
 %endif
 
 # Overrides for generic default options
@@ -1079,7 +1079,7 @@ BuildKernel() {
 %ifarch %{vdso_arches}
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
 %endif
-%ifarch %{vdso_arches} aarch64
+%ifarch %{vdso_arches}
 %ifnarch noarch
 # build tools/perf:
     if [ -d tools/perf ]; then
