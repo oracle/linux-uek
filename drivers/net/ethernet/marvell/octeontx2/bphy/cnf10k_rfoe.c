@@ -19,6 +19,12 @@
 #define PTP_SYNC_SEC_OFFSET    34
 #define PTP_SYNC_NSEC_OFFSET   40
 
+#define BPHY_NDEV_NUM_TXQ	2
+#define BPHY_NDEV_NUM_RXQ	1
+
+#define PTP_QUEUE_ID		0
+#define OTH_QUEUE_ID		1
+
 /* global driver ctx */
 struct cnf10k_rfoe_drv_ctx cnf10k_rfoe_drv_ctx[CNF10K_RFOE_MAX_INTF];
 
@@ -156,7 +162,7 @@ void cnf10k_bphy_rfoe_cleanup(void)
 		if (drv_ctx->valid) {
 			cnf10k_rfoe_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
-			netif_stop_queue(netdev);
+			netif_tx_stop_all_queues(netdev);
 			priv = netdev_priv(netdev);
 			--(priv->ptp_cfg->refcnt);
 			if (!priv->ptp_cfg->refcnt) {
@@ -514,35 +520,38 @@ static void cnf10k_rfoe_tx_timer_cb(struct timer_list *t)
 {
 	struct cnf10k_rfoe_ndev_priv *priv =
 			container_of(t, struct cnf10k_rfoe_ndev_priv, tx_timer);
-	u16 psm_queue_id, queue_space, queue_wakeup = 0;
+	u16 psm_queue_id, queue_space;
+	struct netdev_queue *txq;
+	u8 schedule_mask = 0;
 	u64 regval;
 
-	/* check psm queue space for both ptp and oth packets */
-	if (netif_queue_stopped(priv->netdev)) {
-		queue_wakeup = 1;
+	txq = netdev_get_tx_queue(priv->netdev, PTP_QUEUE_ID);
+	if (txq && netif_tx_queue_stopped(txq)) {
 		/* check ptp psm queue space */
 		psm_queue_id = priv->tx_ptp_job_cfg.psm_queue_id;
 		regval = readq(priv->psm_reg_base +
 			       PSM_QUEUE_SPACE(psm_queue_id));
-		queue_space = regval & 0x7FFF;
-		if (queue_space < 1) {
-			queue_wakeup &= ~1;
-			goto out_wakeup;
-		}
+		queue_space = regval & 0xFFFF;
+		if (queue_space > 1)
+			netif_tx_wake_queue(txq);
+		else
+			schedule_mask = 1 << PTP_QUEUE_ID;
+	}
 
+	txq = netdev_get_tx_queue(priv->netdev, OTH_QUEUE_ID);
+	if (txq && netif_tx_queue_stopped(txq)) {
 		/* check other psm queue space */
 		psm_queue_id = priv->rfoe_common->tx_oth_job_cfg.psm_queue_id;
 		regval = readq(priv->psm_reg_base +
 			       PSM_QUEUE_SPACE(psm_queue_id));
-		queue_space = regval & 0x7FFF;
-		if (queue_space < 1)
-			queue_wakeup &= ~1;
+		queue_space = regval & 0xFFFF;
+		if (queue_space > 1)
+			netif_tx_wake_queue(txq);
+		else
+			schedule_mask |= (1 << OTH_QUEUE_ID);
 	}
 
-out_wakeup:
-	if (queue_wakeup)
-		netif_wake_queue(priv->netdev);
-	else
+	if (schedule_mask)
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 }
 
@@ -939,7 +948,7 @@ static int cnf10k_rfoe_check_psm_queue_space(struct cnf10k_rfoe_ndev_priv *priv,
 	int queue_space;
 
 	queue_space = readq(priv->psm_reg_base +
-			    PSM_QUEUE_SPACE(psm_queue_id)) & 0x7FFF;
+			    PSM_QUEUE_SPACE(psm_queue_id)) & 0xFFFF;
 
 	if (queue_space < 1)
 		return 1;
@@ -1031,12 +1040,15 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 	struct tx_job_entry *job_entry;
 	int pkt_type = PACKET_TYPE_PTP;
 	struct ptp_tstamp_skb *ts_skb;
+	struct netdev_queue *txq;
 	unsigned int pkt_len = 0;
 	unsigned long flags;
 	int psm_queue_id;
 
 	job_cfg = &priv->tx_ptp_job_cfg;
 	memset(&tx_mem, 0, sizeof(tx_mem));
+
+	txq = netdev_get_tx_queue(netdev, skb_get_queue_mapping(skb));
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
@@ -1057,7 +1069,7 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 		netif_err(priv, tx_err, netdev,
 			  "no space in psm queue %d, dropping pkt\n",
 			   psm_queue_id);
-		netif_stop_queue(netdev);
+		netif_tx_stop_queue(txq);
 		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
@@ -1173,22 +1185,25 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 					      struct net_device *netdev)
 {
 	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
+	int qidx = skb_get_queue_mapping(skb);
 	struct tx_job_queue_cfg *job_cfg;
 	struct tx_job_entry *job_entry;
 	int psm_queue_id, pkt_type = 0;
+	struct netdev_queue *txq;
 	unsigned int pkt_len = 0;
 	unsigned long flags;
 	struct ethhdr *eth;
 
-	eth = (struct ethhdr *)skb->data;
-	if (priv->tx_hw_tstamp_en &&
-	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
+	if (skb_get_queue_mapping(skb) == PTP_QUEUE_ID)
 		return cnf10k_rfoe_ptp_xmit(skb, netdev);
 
+	eth = (struct ethhdr *)skb->data;
 	job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
 	pkt_type = PACKET_TYPE_OTHER;
 	if (htons(eth->h_proto) == ETH_P_ECPRI)
 		pkt_type = PACKET_TYPE_ECPRI;
+
+	txq = netdev_get_tx_queue(netdev, qidx);
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
@@ -1209,7 +1224,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 		netif_err(priv, tx_err, netdev,
 			  "no space in psm queue %d, dropping pkt\n",
 			   psm_queue_id);
-		netif_stop_queue(netdev);
+		netif_tx_stop_queue(txq);
 		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
@@ -1272,7 +1287,7 @@ static int cnf10k_rfoe_eth_open(struct net_device *netdev)
 	priv->ptp_tx_skb = NULL;
 
 	netif_carrier_on(netdev);
-	netif_start_queue(netdev);
+	netif_tx_start_all_queues(netdev);
 
 	clear_bit(RFOE_INTF_DOWN, &priv->state);
 	priv->link_state = 1;
@@ -1289,7 +1304,7 @@ static int cnf10k_rfoe_eth_stop(struct net_device *netdev)
 
 	set_bit(RFOE_INTF_DOWN, &priv->state);
 
-	netif_stop_queue(netdev);
+	netif_tx_stop_all_queues(netdev);
 	netif_carrier_off(netdev);
 	priv->link_state = 0;
 
@@ -1393,6 +1408,23 @@ static int cnf10k_rfoe_vlan_rx_kill(struct net_device *netdev, __be16 proto,
 	return cnf10k_rfoe_vlan_rx_configure(netdev, vid, false);
 }
 
+static u16 cnf10k_rfoe_select_queue(struct net_device *netdev,
+				    struct sk_buff *skb,
+				    struct net_device *sb_dev)
+{
+	/* Pick queue 0 for PTP packets and 1 for other packets.
+	 * Out of two hardware PSM queues used by an RFOE, PTP packets
+	 * are submitted to one queue and others are submitted to another queue.
+	 * Without this netdev queue selection, stopping one netdev queue by
+	 * netif_stop_queue stops both ptp and other packet jobs.
+	 * Hence use separate netdev queues.
+	 */
+	if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
+		return PTP_QUEUE_ID;
+	else
+		return OTH_QUEUE_ID;
+}
+
 static const struct net_device_ops cnf10k_rfoe_netdev_ops = {
 	.ndo_init		= cnf10k_rfoe_init,
 	.ndo_open		= cnf10k_rfoe_eth_open,
@@ -1405,6 +1437,7 @@ static const struct net_device_ops cnf10k_rfoe_netdev_ops = {
 	.ndo_get_stats64	= cnf10k_rfoe_get_stats64,
 	.ndo_vlan_rx_add_vid	= cnf10k_rfoe_vlan_rx_add,
 	.ndo_vlan_rx_kill_vid	= cnf10k_rfoe_vlan_rx_kill,
+	.ndo_select_queue	= cnf10k_rfoe_select_queue,
 };
 
 static void cnf10k_rfoe_dump_rx_ft_cfg(struct cnf10k_rfoe_ndev_priv *priv)
@@ -1576,7 +1609,8 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 					i, lmac);
 				continue;
 			}
-			netdev = alloc_etherdev(sizeof(*priv));
+			netdev = alloc_etherdev_mqs(sizeof(*priv), BPHY_NDEV_NUM_TXQ,
+						    BPHY_NDEV_NUM_RXQ);
 			if (!netdev) {
 				dev_err(cdev->dev,
 					"error allocating net device\n");
@@ -1710,7 +1744,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 				netdev->name);
 
 			netif_carrier_off(netdev);
-			netif_stop_queue(netdev);
+			netif_tx_stop_all_queues(netdev);
 			set_bit(RFOE_INTF_DOWN, &priv->state);
 			priv->link_state = 0;
 
@@ -1770,13 +1804,13 @@ void cnf10k_rfoe_set_link_state(struct net_device *netdev, u8 state)
 			netdev_info(netdev, "Link DOWN\n");
 			if (netif_running(netdev)) {
 				netif_carrier_off(netdev);
-				netif_stop_queue(netdev);
+				netif_tx_stop_all_queues(netdev);
 			}
 		} else {
 			netdev_info(netdev, "Link UP\n");
 			if (netif_running(netdev)) {
 				netif_carrier_on(netdev);
-				netif_start_queue(netdev);
+				netif_tx_start_all_queues(netdev);
 			}
 		}
 	}
