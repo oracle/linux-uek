@@ -505,8 +505,12 @@ static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 	    conn->c_trans->conn_has_alt_conn(conn))
 		reconnect = true;
 
-	if (reconnect)
+	if (reconnect) {
+		if (conn->c_trans->t_mp_capable &&
+		    cp->cp_index == 0)
+			rds_send_hs_ping(conn, 0);
 		rds_queue_reconnect(cp, false);
+	}
 
 	rds_clear_shutdown_pending_work_bit(cp);
 
@@ -514,7 +518,7 @@ static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 		complete(cp->cp_shutdown_final);
 
 	if (conn->c_trans->conn_slots_available)
-		conn->c_trans->conn_slots_available(conn);
+		conn->c_trans->conn_slots_available(conn, false);
 }
 
 static void rds_conn_shutdown_check_wait(struct work_struct *work)
@@ -1242,6 +1246,7 @@ static char *conn_drop_reasons[] = {
 	[DR_TCP_STATE_CLOSE]		= "sk_state to TCP_CLOSE",
 	[DR_TCP_SEND_FAIL]		= "tcp_send failure",
 	[DR_TCP_STATE_ACCEPT_CLOSED]	= "accept with TCP_CLOSE_WAIT",
+	[DR_TCP_INVALID_SLOT0]		= "invalid initial slot#0 assignment",
 };
 
 char *conn_drop_reason_str(enum rds_conn_drop_src reason)
