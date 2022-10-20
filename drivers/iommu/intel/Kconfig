@@ -74,7 +74,7 @@ config INTEL_IOMMU_BROKEN_GFX_WA
 	  option is removed in the 2.6.32 kernel.
 
 config INTEL_IOMMU_FLOPPY_WA
-	def_bool y
+	def_bool n
 	depends on X86
 	help
 	  Floppy disk drivers are known to bypass DMA API calls
