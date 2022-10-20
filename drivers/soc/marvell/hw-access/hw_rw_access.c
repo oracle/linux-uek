@@ -94,6 +94,8 @@ const struct hw_csr_lookup_tbl lkp_tbl[] = {
 	{ 0x840200000000, 0x2000000, 32, 36, 129, 25, 0xFFFFFF },
 	/* RST */
 	{ 0x87E006000000, 0x10000,   1,  0,  1,   0,  0xFFFF },
+	/* MCS */
+	{ 0x87E080000000, 0xFF0008,  7,  24,  1,  0,  0xFFFFFF },
 	/* RPM */
 	{ 0x87E0E0000000, 0x900000,  5,  24, 1,   0,  0xFFFFFF },
 	/* NCB */
