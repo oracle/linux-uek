@@ -69,7 +69,7 @@ config INTEL_IOMMU_DEFAULT_ON
 	  be enabled by passing intel_iommu=on to the kernel.
 
 config INTEL_IOMMU_FLOPPY_WA
-	def_bool y
+	def_bool n
 	depends on X86 && BLK_DEV_FD
 	help
 	  Floppy disk drivers are known to bypass DMA API calls
