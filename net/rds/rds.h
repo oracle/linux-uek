@@ -228,6 +228,7 @@ enum rds_conn_drop_src {
 	DR_TCP_STATE_CLOSE,
 	DR_TCP_SEND_FAIL,
 	DR_TCP_STATE_ACCEPT_CLOSED,
+	DR_TCP_INVALID_SLOT0,
 };
 
 enum rds_hb_state {
@@ -765,7 +766,7 @@ struct rds_transport {
 	int (*conn_alloc)(struct rds_connection *conn, gfp_t gfp);
 	void (*conn_free)(void *data);
 	bool (*conn_has_alt_conn)(struct rds_connection *conn);
-	void (*conn_slots_available)(struct rds_connection *conn);
+	void (*conn_slots_available)(struct rds_connection *conn, bool fan_out);
 	void (*conn_path_reset)(struct rds_conn_path *cp, unsigned flags);
 	int (*conn_path_connect)(struct rds_conn_path *cp);
 	void (*conn_path_shutdown_prepare)(struct rds_conn_path *cp);
