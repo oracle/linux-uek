@@ -1913,6 +1913,12 @@ int set_memory_np(unsigned long addr, int numpages)
 	return change_page_attr_clear(&addr, numpages, __pgprot(_PAGE_PRESENT), 0);
 }
 
+int set_memory_present(unsigned long *addr, int numpages)
+{
+	return change_page_attr_set(addr, numpages, __pgprot(_PAGE_PRESENT), 0);
+}
+EXPORT_SYMBOL_GPL(set_memory_present);
+
 int set_memory_np_noalias(unsigned long addr, int numpages)
 {
 	int cpa_flags = CPA_NO_CHECK_ALIAS;
