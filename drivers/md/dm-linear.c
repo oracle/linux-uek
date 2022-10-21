@@ -164,7 +164,8 @@ static int linear_iterate_devices(struct dm_target *ti,
 
 #if IS_ENABLED(CONFIG_DAX_DRIVER)
 static long linear_dax_direct_access(struct dm_target *ti, pgoff_t pgoff,
-		long nr_pages, void **kaddr, pfn_t *pfn)
+		long nr_pages, enum dax_access_mode mode, void **kaddr,
+		pfn_t *pfn)
 {
 	long ret;
 	struct linear_c *lc = ti->private;
@@ -176,7 +177,7 @@ static long linear_dax_direct_access(struct dm_target *ti, pgoff_t pgoff,
 	ret = bdev_dax_pgoff(bdev, dev_sector, nr_pages * PAGE_SIZE, &pgoff);
 	if (ret)
 		return ret;
-	return dax_direct_access(dax_dev, pgoff, nr_pages, kaddr, pfn);
+	return dax_direct_access(dax_dev, pgoff, nr_pages, mode, kaddr, pfn);
 }
 
 static size_t linear_dax_copy_from_iter(struct dm_target *ti, pgoff_t pgoff,
