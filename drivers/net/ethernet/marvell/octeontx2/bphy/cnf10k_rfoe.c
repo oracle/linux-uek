@@ -660,9 +660,9 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tsns);
 	}
 
-	netif_receive_skb(skb);
-
 	cnf10k_rfoe_update_rx_stats(priv2, pkt_type, skb->len);
+
+	netif_receive_skb(skb);
 }
 
 static int cnf10k_rfoe_process_rx_flow(struct cnf10k_rfoe_ndev_priv *priv,

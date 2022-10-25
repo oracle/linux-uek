@@ -632,8 +632,6 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tstamp);
 	}
 
-	netif_receive_skb(skb);
-
 	/* update stats */
 	if (pkt_type == PACKET_TYPE_PTP) {
 		priv2->stats.ptp_rx_packets++;
@@ -646,6 +644,8 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		priv2->last_rx_jiffies = jiffies;
 	}
 	priv2->stats.rx_bytes += skb->len;
+
+	netif_receive_skb(skb);
 }
 
 static int otx2_rfoe_process_rx_flow(struct otx2_rfoe_ndev_priv *priv,
