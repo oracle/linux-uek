@@ -52,10 +52,25 @@
 #define CNF10K_BCN_CFG2					0x2F00U
 
 /* BCN_CAPTURE_CFG register definitions */
-#define CAPT_EN					BIT(0)
-#define CAPT_TRIG_SW				(3UL << 8)
+#define CAPT_EN						BIT(0)
+#define CAPT_TRIG_SW					(3UL << 8)
+
+/* CNF10KB MIO PTP registers */
+#define MIO_PTP_FRNS_TIMESTAMP				0xE0U
+#define MIO_PTP_NXT_ROLLOVER_SET			0xE8U
+#define MIO_PTP_CURR_ROLLOVER_SET			0xF0U
+#define MIO_PTP_NANO_TIMESTAMP				0xF8U
+#define MIO_PTP_SEC_TIMESTAMP				0x100U
 
 #define BPHY_NDEV_TX_1S_PTP_EN_FLAG			BIT(0)
+
+#define MIO_PTP_CFG_TSTMP_SET_MASK			GENMASK_ULL(28, 26)
+/* PTP atomic update enum */
+enum atomic_opcode {
+	ATOMIC_SET = 1,
+	ATOMIC_INC = 3,
+	ATOMIC_DEC = 4
+};
 
 /* global driver context */
 struct cnf10k_rfoe_drv_ctx {
@@ -162,6 +177,7 @@ struct cnf10k_rfoe_ndev_priv {
 	struct ptp_pin_desc		extts_config;
 	struct cyclecounter		cycle_counter;
 	struct timecounter		time_counter;
+	bool				use_sw_timecounter;
 	/* ptp lock */
 	struct mutex			ptp_lock;
 	u8				mac_addr[ETH_ALEN];

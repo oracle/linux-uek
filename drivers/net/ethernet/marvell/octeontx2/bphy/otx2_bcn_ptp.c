@@ -62,6 +62,7 @@ int bcn_ptp_sync(int ptp_phc_idx)
 	struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
 	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 	struct otx2_rfoe_ndev_priv *priv = NULL;
+	bool is_otx2, use_sw_timecounter = true;
 	struct timecounter *time_counter;
 	void __iomem *bcn_reg_base;
 	struct pci_dev *bphy_pdev;
@@ -71,7 +72,6 @@ int bcn_ptp_sync(int ptp_phc_idx)
 	u64 bcn_n1, bcn_n2;
 	s64 ptp_bcn_delta;
 	u64 bcn_cfg2_val;
-	bool is_otx2;
 
 	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
 				   OTX2_BPHY_PCI_DEVICE_ID, NULL);
@@ -107,6 +107,7 @@ int bcn_ptp_sync(int ptp_phc_idx)
 		bcn_capture_n1_n2 = CNF10K_BCN_CAPTURE_N1_N2;
 		bcn_capture_ptp = CNF10K_BCN_CAPTURE_PTP;
 		bcn_delta_val = CNF10K_BCN_DELTA_VAL;
+		use_sw_timecounter = cnf10k_priv->use_sw_timecounter;
 	} else {
 		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
 			drv_ctx = &rfoe_drv_ctx[idx];
@@ -153,7 +154,9 @@ int bcn_ptp_sync(int ptp_phc_idx)
 	if (!is_otx2)
 		ptp_clock = cnf10k_ptp_convert_timestamp(ptp_clock);
 
-	tsns = timecounter_cyc2time(time_counter, ptp_clock);
+	tsns = ptp_clock;
+	if (use_sw_timecounter)
+		tsns = timecounter_cyc2time(time_counter, ptp_clock);
 
 	/* Convert BCN timestamp to PTP timestamp in nanoseconds
 	 * BCN clock has two counters.
@@ -212,13 +215,13 @@ s64 bcn_ptp_delta(int ptp_phc_idx)
 	struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
 	struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
 	struct otx2_rfoe_ndev_priv *priv = NULL;
+	bool is_otx2, use_sw_timecounter = true;
 	struct timecounter *time_counter;
 	void __iomem *bcn_reg_base;
 	struct net_device *netdev;
 	struct pci_dev *bphy_pdev;
 	s32 sec_bcn_offset;
 	int idx, err;
-	bool is_otx2;
 	s64 delta;
 
 	bphy_pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
@@ -254,6 +257,7 @@ s64 bcn_ptp_delta(int ptp_phc_idx)
 		bcn_capture_cfg = CNF10K_BCN_CAPTURE_CFG;
 		bcn_capture_n1_n2 = CNF10K_BCN_CAPTURE_N1_N2;
 		bcn_capture_ptp_off = CNF10K_BCN_CAPTURE_PTP;
+		use_sw_timecounter = cnf10k_priv->use_sw_timecounter;
 	} else {
 		for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
 			drv_ctx = &rfoe_drv_ctx[idx];
@@ -296,7 +300,9 @@ s64 bcn_ptp_delta(int ptp_phc_idx)
 	if (!is_otx2)
 		bcn_capture_ptp = cnf10k_ptp_convert_timestamp(bcn_capture_ptp);
 
-	tsns = timecounter_cyc2time(time_counter, bcn_capture_ptp);
+	tsns = bcn_capture_ptp;
+	if (use_sw_timecounter)
+		tsns = timecounter_cyc2time(time_counter, bcn_capture_ptp);
 
 	bcn_ns = (bcn_n1_n2 >> 24) * 10 * NSEC_PER_MSEC;
 	bcn_ns += (((bcn_n1_n2 & 0xFFFFFF) * 10 * NSEC_PER_MSEC) / bcn_n2_len);
