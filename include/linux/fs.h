@@ -2829,6 +2829,7 @@ extern int buffer_migrate_page(struct address_space *,
 #endif
 
 extern int setattr_prepare(struct dentry *, struct iattr *);
+extern int inode_change_ok(const struct inode *, struct iattr *);
 extern int inode_newsize_ok(const struct inode *, loff_t offset);
 extern void setattr_copy(struct inode *inode, const struct iattr *attr);
 

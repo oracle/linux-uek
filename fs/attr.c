@@ -17,6 +17,29 @@
 #include <linux/ima.h>
 
 /**
+ * inode_change_ok - check if attribute changes to an inode are allowed
+ * @inode:	inode to check
+ * @attr:	attributes to change
+ *
+ * Check if we are allowed to change the attributes contained in @attr
+ * in the given inode.  This includes the normal unix access permission
+ * checks, as well as checks for rlimits and others.
+ *
+ * Should be called as the first thing in ->setattr implementations,
+ * possibly after taking additional locks.
+ * 
+ * this is wrapper function to call setattr_prepare
+ *
+ */
+int inode_change_ok(const struct inode *inode, struct iattr *attr)
+{
+	struct dentry *dentry;
+
+	dentry = container_of(inode,struct dentry,d_inode);
+	return setattr_prepare(dentry,attr);
+}
+
+/**
  * setattr_prepare - check if attribute changes to a dentry are allowed
  * @dentry:	dentry to check
  * @attr:	attributes to change
@@ -93,6 +116,7 @@ kill_priv:
 	return 0;
 }
 EXPORT_SYMBOL(setattr_prepare);
+EXPORT_SYMBOL(inode_change_ok);
 
 /**
  * inode_newsize_ok - may this inode be truncated to a given size
