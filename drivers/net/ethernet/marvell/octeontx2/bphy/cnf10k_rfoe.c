@@ -297,13 +297,12 @@ static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv 
 	u64 tstamp, tsns;
 
 	tstamp = cnf10k_rfoe_read_ptp_clock(priv);
-	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B &&
-	    priv->ptp_cfg->use_ptp_alg) {
-		tsns = tstamp;
-		cnf10k_rfoe_calc_ptp_ts(priv, &tsns);
-	} else {
+	tsns = tstamp;
+	if (priv->use_sw_timecounter)
 		cnf10k_rfoe_ptp_tstamp2time(priv, tstamp, &tsns);
-	}
+	else if (priv->ptp_cfg->use_ptp_alg)
+		cnf10k_rfoe_calc_ptp_ts(priv, &tsns);
+
 	ts = ns_to_timespec64(tsns);
 
 	origin_tstamp = (struct ptpv2_tstamp *)((u8 *)skb->data + ptp_offset +
@@ -492,13 +491,11 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	}
 	/* update timestamp value in skb */
 	timestamp = cnf10k_ptp_convert_timestamp(tx_tstmp->ptp_timestamp);
-	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B &&
-	    priv->ptp_cfg->use_ptp_alg) {
-		cnf10k_rfoe_calc_ptp_ts(priv, &timestamp);
-		tsns = timestamp;
-	} else {
+	tsns = timestamp;
+	if (priv->use_sw_timecounter)
 		cnf10k_rfoe_ptp_tstamp2time(priv, timestamp, &tsns);
-	}
+	else if (priv->ptp_cfg->use_ptp_alg)
+		cnf10k_rfoe_calc_ptp_ts(priv, &tsns);
 
 	memset(&ts, 0, sizeof(ts));
 	ts.hwtstamp = ns_to_ktime(tsns);
@@ -652,13 +649,12 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	if (priv2->rx_hw_tstamp_en) {
 		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
 		tstamp = cnf10k_ptp_convert_timestamp(tstamp);
-		if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B &&
-		    priv->ptp_cfg->use_ptp_alg) {
-			cnf10k_rfoe_calc_ptp_ts(priv2, &tstamp);
-			tsns = tstamp;
-		} else {
-			cnf10k_rfoe_ptp_tstamp2time(priv2, tstamp, &tsns);
-		}
+		tsns = tstamp;
+		if (priv->use_sw_timecounter)
+			cnf10k_rfoe_ptp_tstamp2time(priv, tstamp, &tsns);
+		else if (priv->ptp_cfg->use_ptp_alg)
+			cnf10k_rfoe_calc_ptp_ts(priv, &tsns);
+
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tsns);
 	}
 
