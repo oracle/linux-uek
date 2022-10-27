@@ -282,7 +282,6 @@ static int cptvf_lf_init(struct otx2_cptvf_dev *cptvf)
 	lfs_num = cptvf->lfs.kvf_limits ? cptvf->lfs.kvf_limits :
 		  num_online_cpus();
 
-	pr_info("lfs_num: %d\n", lfs_num);
 	otx2_cptlf_set_dev_info(lfs, cptvf->pdev, cptvf->reg_base,
 				&cptvf->pfvf_mbox, cptvf->blkaddr);
 	ret = otx2_cptlf_init(lfs, 0xF, OTX2_CPT_QUEUE_HI_PRIO,
