@@ -53,7 +53,7 @@
 
 #define OTX2_BPHY_MHAB_INST		3
 
-int bcn_ptp_sync(int ptp_phc_idx);
+int bcn_ptp_sync(int ptp_phc_idx, s32 sec_bcn_offset_slave, u64 *ptp_offset);
 s64 bcn_ptp_delta(int ptp_phc_idx);
 int bcn_ptp_start(void);
 
