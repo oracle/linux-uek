@@ -256,6 +256,8 @@ struct rfoe_rx_ind_vlanx_fwd {
 struct bcn_ptp_cfg {
 	int ptp_phc_idx;
 	s64 delta;
+	s32 sec_bcn_offset_slave;
+	u64 ptp_offset;
 };
 
 #endif

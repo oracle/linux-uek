@@ -121,6 +121,7 @@ struct otx2_rfoe_ndev_priv {
 	u8				mac_addr[ETH_ALEN];
 	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
+	s32				sec_bcn_offset_slave;
 	int				if_type;
 	u8				link_state;
 	unsigned long			last_tx_jiffies;

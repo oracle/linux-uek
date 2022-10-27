@@ -184,6 +184,7 @@ struct cnf10k_rfoe_ndev_priv {
 	u8				mac_addr[ETH_ALEN];
 	struct ptp_bcn_off_cfg		*ptp_cfg;
 	s32				sec_bcn_offset;
+	s32				sec_bcn_offset_slave;
 	u8				link_state;
 	unsigned long			last_tx_ptp_jiffies;
 	unsigned long			last_rx_ptp_jiffies;
