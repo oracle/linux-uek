@@ -1735,6 +1735,10 @@ struct flow_msg {
 	u8 tc;
 	__be16 sport;
 	__be16 dport;
+	union {
+		u8 ip_flag;
+		u8 next_header;
+	};
 };
 
 struct npc_install_flow_req {
