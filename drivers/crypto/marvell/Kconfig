@@ -44,9 +44,11 @@ config CRYPTO_DEV_OCTEONTX2_CPT
 	depends on NET_VENDOR_MARVELL
 	select OCTEONTX2_MBOX
 	select CRYPTO_DEV_MARVELL
+	select CRYPTO_AKCIPHER
 	select CRYPTO_SKCIPHER
 	select CRYPTO_HASH
 	select CRYPTO_AEAD
+	select CRYPTO_RSA
 	select NET_DEVLINK
 	help
 		This driver allows you to utilize the Marvell Cryptographic
