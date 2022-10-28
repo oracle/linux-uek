@@ -8206,6 +8206,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/memory-controllers/nuvoton,npcm-memory-controller.yaml
 F:	drivers/edac/npcm_edac.c
 
+EDAC-OCTEONTX
+M:	Vasyl Gomonovych <vgomonovych@marvell.com>
+M:	Piyush Malgujar <pmalgujar@marvell.com>
+S:	Maintained
+F:	drivers/edac/octeontx_edac.c
+
 EDAC-PASEMI
 M:	Egor Martovetsky <egor@pasemi.com>
 L:	linux-edac@vger.kernel.org
