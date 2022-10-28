@@ -530,7 +530,7 @@ config EDAC_OCTEONTX
 	help
 	  Support for error detection and correction on the
 	  Marvell OcteonTX2 and CN10K SoCs.
-	  This driver will allow SECDED errors detected in
+	  This driver will allow SECDED errors notify and report in
 	  the firmware first model and reported via SDEI callbacks.
 	  EDAC Driver report Single Bit Errors and Double Bit Errors.
 
