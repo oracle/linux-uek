@@ -179,7 +179,7 @@ static int __init fwlog_dev_init(void)
 				if (size == 0ULL)
 					size = DEFAULT_FWLOG_MEMSIZE;
 
-				fwlog_mem_size = size / 1024 / 1024;
+				fwlog_mem_size = size;
 			}
 		}
 	}
