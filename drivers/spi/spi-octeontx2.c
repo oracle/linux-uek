@@ -12,6 +12,9 @@
 #include <linux/pci.h>
 #include <linux/property.h>
 #include <linux/spi/spi.h>
+#ifdef CONFIG_ACPI
+#include <linux/spi/spi-mem.h>
+#endif
 
 #include "spi-octeontx2.h"
 
@@ -234,6 +237,80 @@ err:
 	return status;
 }
 
+#ifdef CONFIG_ACPI
+
+static int octeontx2_spi_exec_op(struct spi_mem *mem,
+				 const struct spi_mem_op *op)
+{
+	return -ENOTSUPP;
+}
+
+static bool octeontx2_spi_supports_op(struct spi_mem *mem,
+				      const struct spi_mem_op *op)
+{
+	struct spi_device *spi = mem->spi;
+	const union acpi_object *obj;
+	struct acpi_device *adev;
+
+	adev = ACPI_COMPANION(&spi->dev);
+
+	if (!acpi_dev_get_property(adev, "spi-tx-bus-width", ACPI_TYPE_INTEGER,
+				   &obj)) {
+		switch (obj->integer.value) {
+		case 1:
+			break;
+		case 2:
+			spi->mode |= SPI_TX_DUAL;
+			break;
+		case 4:
+			spi->mode |= SPI_TX_QUAD;
+			break;
+		case 8:
+			spi->mode |= SPI_TX_OCTAL;
+			break;
+		default:
+			dev_warn(&spi->dev,
+				 "spi-tx-bus-width %lld not supported\n",
+				 obj->integer.value);
+			break;
+		}
+	}
+
+	if (!acpi_dev_get_property(adev, "spi-rx-bus-width", ACPI_TYPE_INTEGER,
+				   &obj)) {
+		switch (obj->integer.value) {
+		case 1:
+			break;
+		case 2:
+			spi->mode |= SPI_RX_DUAL;
+			break;
+		case 4:
+			spi->mode |= SPI_RX_QUAD;
+			break;
+		case 8:
+			spi->mode |= SPI_RX_OCTAL;
+			break;
+		default:
+			dev_warn(&spi->dev,
+				 "spi-rx-bus-width %lld not supported\n",
+				 obj->integer.value);
+			break;
+		}
+	}
+
+	if (!spi_mem_default_supports_op(mem, op))
+		return false;
+
+	return true;
+}
+
+static const struct spi_controller_mem_ops octeontx2_spi_mem_ops = {
+	.supports_op = octeontx2_spi_supports_op,
+	.exec_op = octeontx2_spi_exec_op
+};
+
+#endif
+
 static int octeontx2_spi_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *ent)
 {
@@ -321,6 +398,9 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 	master->max_speed_hz = OCTEONTX2_SPI_MAX_CLOCK_HZ;
 	master->dev.of_node = pdev->dev.of_node;
 	master->dev.fwnode = pdev->dev.fwnode;
+	#ifdef CONFIG_ACPI
+		master->mem_ops = &octeontx2_spi_mem_ops;
+	#endif
 
 	pci_set_drvdata(pdev, master);
 
