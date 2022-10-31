@@ -514,38 +514,35 @@ static void cnf10k_rfoe_tx_timer_cb(struct timer_list *t)
 {
 	struct cnf10k_rfoe_ndev_priv *priv =
 			container_of(t, struct cnf10k_rfoe_ndev_priv, tx_timer);
-	u16 psm_queue_id, queue_space;
-	int reschedule = 0;
+	u16 psm_queue_id, queue_space, queue_wakeup = 0;
 	u64 regval;
 
 	/* check psm queue space for both ptp and oth packets */
 	if (netif_queue_stopped(priv->netdev)) {
+		queue_wakeup = 1;
+		/* check ptp psm queue space */
 		psm_queue_id = priv->tx_ptp_job_cfg.psm_queue_id;
-		// check queue space
 		regval = readq(priv->psm_reg_base +
-						PSM_QUEUE_SPACE(psm_queue_id));
+			       PSM_QUEUE_SPACE(psm_queue_id));
 		queue_space = regval & 0x7FFF;
-		if (queue_space > 1) {
-			netif_wake_queue(priv->netdev);
-			reschedule = 0;
-		} else {
-			reschedule = 1;
+		if (queue_space < 1) {
+			queue_wakeup &= ~1;
+			goto out_wakeup;
 		}
 
+		/* check other psm queue space */
 		psm_queue_id = priv->rfoe_common->tx_oth_job_cfg.psm_queue_id;
-		// check queue space
 		regval = readq(priv->psm_reg_base +
-						PSM_QUEUE_SPACE(psm_queue_id));
+			       PSM_QUEUE_SPACE(psm_queue_id));
 		queue_space = regval & 0x7FFF;
-		if (queue_space > 1) {
-			netif_wake_queue(priv->netdev);
-			reschedule = 0;
-		} else {
-			reschedule = 1;
-		}
+		if (queue_space < 1)
+			queue_wakeup &= ~1;
 	}
 
-	if (reschedule)
+out_wakeup:
+	if (queue_wakeup)
+		netif_wake_queue(priv->netdev);
+	else
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 }
 
@@ -907,6 +904,20 @@ static int cnf10k_rfoe_ioctl(struct net_device *netdev, struct ifreq *req,
 	}
 }
 
+static int cnf10k_rfoe_check_psm_queue_space(struct cnf10k_rfoe_ndev_priv *priv,
+					     int psm_queue_id)
+{
+	int queue_space;
+
+	queue_space = readq(priv->psm_reg_base +
+			    PSM_QUEUE_SPACE(psm_queue_id)) & 0x7FFF;
+
+	if (queue_space < 1)
+		return 1;
+
+	return 0;
+}
+
 /* netdev xmit */
 static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 					      struct net_device *netdev)
@@ -920,14 +931,13 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	struct cnf10k_tx_action_s tx_mem;
 	struct tx_job_queue_cfg *job_cfg;
 	struct tx_job_entry *job_entry;
+	int psm_queue_id, pkt_type = 0;
 	struct ptp_tstamp_skb *ts_skb;
-	int psm_queue_id, queue_space;
 	unsigned int pkt_len = 0;
 	struct ipv6hdr *iph6;
 	unsigned long flags;
 	struct ethhdr *eth;
 	struct iphdr *iph;
-	int pkt_type = 0;
 
 	eth = (struct ethhdr *)skb->data;
 	if (priv->tx_hw_tstamp_en &&
@@ -980,18 +990,15 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 		  readq(priv->psm_reg_base + PSM_QUEUE_SPACE(psm_queue_id)));
 
 	/* check psm queue space available */
-	queue_space = readq(priv->psm_reg_base +
-			    PSM_QUEUE_SPACE(psm_queue_id)) & 0x7FFF;
-	if (queue_space < 1 && pkt_type != PACKET_TYPE_PTP) {
+	if (cnf10k_rfoe_check_psm_queue_space(priv, psm_queue_id)) {
 		netif_err(priv, tx_err, netdev,
 			  "no space in psm queue %d, dropping pkt\n",
 			   psm_queue_id);
 		netif_stop_queue(netdev);
-		dev_kfree_skb_any(skb);
 		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
-		return NETDEV_TX_OK;
+		return NETDEV_TX_BUSY;
 	}
 
 	/* get the tx job entry */
