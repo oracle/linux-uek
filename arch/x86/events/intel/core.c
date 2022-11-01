@@ -5148,6 +5148,19 @@ static struct attribute *intel_pmu_attrs[] = {
 };
 
 static umode_t
+td_is_visible(struct kobject *kobj, struct attribute *attr, int i)
+{
+	/*
+	 * Hide the perf metrics topdown events
+	 * if the slots is not enumerated.
+	 */
+	if (x86_pmu.num_topdown_events)
+		return (x86_pmu.intel_ctrl & INTEL_PMC_MSK_FIXED_SLOTS) ? attr->mode : 0;
+
+	return attr->mode;
+}
+
+static umode_t
 tsx_is_visible(struct kobject *kobj, struct attribute *attr, int i)
 {
 	return boot_cpu_has(X86_FEATURE_RTM) ? attr->mode : 0;
@@ -5182,6 +5195,7 @@ default_is_visible(struct kobject *kobj, struct attribute *attr, int i)
 
 static struct attribute_group group_events_td  = {
 	.name = "events",
+	.is_visible = td_is_visible,
 };
 
 static struct attribute_group group_events_mem = {
@@ -5334,6 +5348,23 @@ static inline int hybrid_find_supported_cpu(struct x86_hybrid_pmu *pmu)
 	return (cpu >= nr_cpu_ids) ? -1 : cpu;
 }
 
+static umode_t hybrid_td_is_visible(struct kobject *kobj,
+					struct attribute *attr, int i)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct x86_hybrid_pmu *pmu =
+		 container_of(dev_get_drvdata(dev), struct x86_hybrid_pmu, pmu);
+
+	if (!is_attr_for_this_pmu(kobj, attr))
+		return 0;
+
+	/* Only check the big core which supports perf metrics */
+	if (pmu->cpu_type == hybrid_big)
+		return (pmu->intel_ctrl & INTEL_PMC_MSK_FIXED_SLOTS) ? attr->mode : 0;
+
+	return attr->mode;
+}
+
 static umode_t hybrid_tsx_is_visible(struct kobject *kobj,
 				     struct attribute *attr, int i)
 {
@@ -5360,7 +5391,7 @@ static umode_t hybrid_format_is_visible(struct kobject *kobj,
 
 static struct attribute_group hybrid_group_events_td  = {
 	.name		= "events",
-	.is_visible	= hybrid_events_is_visible,
+	.is_visible	= hybrid_td_is_visible,
 };
 
 static struct attribute_group hybrid_group_events_mem = {
