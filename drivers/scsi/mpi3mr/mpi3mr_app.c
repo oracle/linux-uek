@@ -1688,7 +1688,7 @@ logging_level_store(struct device *dev,
 static DEVICE_ATTR(logging_level, 0644,
 	logging_level_show, logging_level_store);
 /**
- * adapter_state_show - SysFS callback for adapter state show
+ * adp_state_show - SysFS callback for adapter state show
  * @dev: class device
  * @attr: Device attributes
  * @buf: Buffer to copy
