@@ -8,6 +8,49 @@
 
 #define EXT_PTP_CLK_RATE		(1000 * 1000000) /* Ext PTP clk rate */
 
+enum {
+	CNF10K_RFOE_HOST_OFFSET_INIT = 1,
+	CNF10K_RFOE_HOST_OFFSET_ADJ,
+};
+
+static void cnf10k_rfoe_update_host_offset(struct cnf10k_rfoe_ndev_priv *priv,
+					   u8 op, s64 delta)
+{
+	u64 nsec = 0, offset;
+
+	if (op == CNF10K_RFOE_HOST_OFFSET_INIT) {
+		/* No need to update host offset when sw timecounter is not used */
+		if (!priv->use_sw_timecounter) {
+			writeq(0, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
+			return;
+		}
+		/* We need to share an offset in ns from the PTP hardware counter
+		 * and the UTC time so that the host PHC driver using the Octeon
+		 * PTP counter can get the same real time as this PTP clock
+		 * represents.  This is a combination of the timecounter fields
+		 * nsec and cycle_last, and we can use timecounter_cyc2time() to
+		 * generate this offset.
+		 * We get the time in ns of the counter value of 0.  The host will
+		 * then read the cycle counter, and add this value to the counter
+		 * to obtain the real time as maintained by this timecounter.
+		 */
+		nsec = timecounter_cyc2time(&priv->time_counter, 0);
+		writeq(nsec, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
+	} else if (op == CNF10K_RFOE_HOST_OFFSET_ADJ) {
+		/* No need to update host offset when sw timecounter is not used */
+		if (!priv->use_sw_timecounter)
+			return;
+		/* Adjust the offset that is shared with the host PHC driver
+		 * whenever it is adjusted.  This offset is initialized
+		 * when the timecounter is initialized, and updated here where an
+		 * operation that adjusts the absolute value of the timecounter is
+		 * performed.
+		 */
+		offset = readq(priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
+		writeq(offset + delta, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
+	}
+}
+
 static void cnf10k_rfoe_ptp_atomic_update(struct cnf10k_rfoe_ndev_priv *priv, u64 timestamp)
 {
 	u64 regval, curr_rollover_set, nxt_rollover_set;
@@ -76,6 +119,7 @@ static int cnf10k_rfoe_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 		timecounter_adjtime(&priv->time_counter, delta);
 	else
 		cnf10k_rfoe_update_ptp_clock(priv, delta);
+	cnf10k_rfoe_update_host_offset(priv, CNF10K_RFOE_HOST_OFFSET_ADJ, delta);
 	mutex_unlock(&priv->ptp_lock);
 
 	return 0;
@@ -257,6 +301,7 @@ static int cnf10k_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
 		timecounter_init(&priv->time_counter, &priv->cycle_counter, nsec);
 	else
 		cnf10k_rfoe_ptp_atomic_update(priv, nsec);
+	cnf10k_rfoe_update_host_offset(priv, CNF10K_RFOE_HOST_OFFSET_INIT, 0);
 	mutex_unlock(&priv->ptp_lock);
 
 	return 0;
@@ -360,6 +405,7 @@ int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv *priv)
 	struct cyclecounter *cc;
 	u64 rx_cfg;
 	int err;
+	u64 tmp;
 
 	if (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B)
 		priv->use_sw_timecounter = 0;
@@ -393,6 +439,18 @@ int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv *priv)
 		err = PTR_ERR(priv->ptp_clock);
 		return err;
 	}
+
+	/* Enable PTP CKOUT, as we use the MIO_PTP_CKOUT_THRESH_HI register
+	 * to share the offset to be added to MIO_PTP_CLOCK_HI to get UTC
+	 * time in nanoseconds.  The MIO_PTP_CKOUT_THRESH_HI is updated
+	 * whenever any changes are made to the offset through the
+	 * _settime() or _adjtime() functions.
+	 *
+	 */
+	tmp = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_CFG);
+	writeq(tmp | PTP_CLOCK_CFG_CKOUT_EN,
+	       priv->ptp_reg_base + MIO_PTP_CLOCK_CFG);
+	cnf10k_rfoe_update_host_offset(priv, CNF10K_RFOE_HOST_OFFSET_INIT, 0);
 
 	/* Enable FORCE_COND_CLK_EN */
 	rx_cfg = readq(priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
