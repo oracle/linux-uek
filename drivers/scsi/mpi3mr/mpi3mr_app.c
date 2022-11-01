@@ -1732,3 +1732,109 @@ struct device_attribute *mpi3mr_host_attrs[] = {
 	&dev_attr_adp_state,
 	NULL,
 };
+
+/**
+ * sas_address_show - SysFS callback for dev SASaddress display
+ * @dev: class device
+ * @attr: Device attributes
+ * @buf: Buffer to copy
+ *
+ * Return: snprintf() return after copying SAS address of the
+ * specific SAS/SATA end device.
+ */
+static ssize_t
+sas_address_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct scsi_device *sdev = to_scsi_device(dev);
+	struct mpi3mr_sdev_priv_data *sdev_priv_data;
+	struct mpi3mr_stgt_priv_data *tgt_priv_data;
+	struct mpi3mr_tgt_dev *tgtdev;
+
+	sdev_priv_data = sdev->hostdata;
+	if (!sdev_priv_data)
+		return 0;
+
+	tgt_priv_data = sdev_priv_data->tgt_priv_data;
+	if (!tgt_priv_data)
+		return 0;
+	tgtdev = tgt_priv_data->tgt_dev;
+	if (!tgtdev || tgtdev->dev_type != MPI3_DEVICE_DEVFORM_SAS_SATA)
+		return 0;
+	return snprintf(buf, PAGE_SIZE, "0x%016llx\n",
+	    (unsigned long long)tgtdev->dev_spec.sas_sata_inf.sas_address);
+}
+
+static DEVICE_ATTR_RO(sas_address);
+
+/**
+ * device_handle_show - SysFS callback for device handle display
+ * @dev: class device
+ * @attr: Device attributes
+ * @buf: Buffer to copy
+ *
+ * Return: snprintf() return after copying firmware internal
+ * device handle of the specific device.
+ */
+static ssize_t
+device_handle_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct scsi_device *sdev = to_scsi_device(dev);
+	struct mpi3mr_sdev_priv_data *sdev_priv_data;
+	struct mpi3mr_stgt_priv_data *tgt_priv_data;
+	struct mpi3mr_tgt_dev *tgtdev;
+
+	sdev_priv_data = sdev->hostdata;
+	if (!sdev_priv_data)
+		return 0;
+
+	tgt_priv_data = sdev_priv_data->tgt_priv_data;
+	if (!tgt_priv_data)
+		return 0;
+	tgtdev = tgt_priv_data->tgt_dev;
+	if (!tgtdev)
+		return 0;
+	return snprintf(buf, PAGE_SIZE, "0x%04x\n", tgtdev->dev_handle);
+}
+
+static DEVICE_ATTR_RO(device_handle);
+
+/**
+ * persistent_id_show - SysFS callback for persisten ID display
+ * @dev: class device
+ * @attr: Device attributes
+ * @buf: Buffer to copy
+ *
+ * Return: snprintf() return after copying persistent ID of the
+ * of the specific device.
+ */
+static ssize_t
+persistent_id_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct scsi_device *sdev = to_scsi_device(dev);
+	struct mpi3mr_sdev_priv_data *sdev_priv_data;
+	struct mpi3mr_stgt_priv_data *tgt_priv_data;
+	struct mpi3mr_tgt_dev *tgtdev;
+
+	sdev_priv_data = sdev->hostdata;
+	if (!sdev_priv_data)
+		return 0;
+
+	tgt_priv_data = sdev_priv_data->tgt_priv_data;
+	if (!tgt_priv_data)
+		return 0;
+	tgtdev = tgt_priv_data->tgt_dev;
+	if (!tgtdev)
+		return 0;
+	return snprintf(buf, PAGE_SIZE, "%d\n", tgtdev->perst_id);
+}
+static DEVICE_ATTR_RO(persistent_id);
+
+struct device_attribute *mpi3mr_dev_attrs[] = {
+	&dev_attr_sas_address,
+	&dev_attr_device_handle,
+	&dev_attr_persistent_id,
+	NULL,
+};

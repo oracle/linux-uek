@@ -1070,6 +1070,7 @@ void mpi3mr_check_rh_fault_ioc(struct mpi3mr_ioc *mrioc, u32 reason_code);
 int mpi3mr_process_op_reply_q(struct mpi3mr_ioc *mrioc,
 	struct op_reply_qinfo *op_reply_q);
 extern struct device_attribute *mpi3mr_host_attrs[];
+extern struct device_attribute *mpi3mr_dev_attrs[];
 int mpi3mr_blk_mq_poll(struct Scsi_Host *shost, unsigned int queue_num);
 void mpi3mr_bsg_init(struct mpi3mr_ioc *mrioc);
 void mpi3mr_bsg_exit(struct mpi3mr_ioc *mrioc);
