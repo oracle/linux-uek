@@ -3111,26 +3111,63 @@ static void mlx5_ib_remove_panic_notifier(struct mlx5_ib_dev *dev, u8 port_num)
 }
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
-static int mlx5_add_netdev_notifier(struct mlx5_ib_dev *dev, u32 port_num)
+static void mlx5_netdev_notifier_register(struct mlx5_roce *roce,
+					  struct net_device *netdev)
 {
 	int err;
 
-	dev->port[port_num].roce.nb.notifier_call = mlx5_netdev_event;
-	err = register_netdevice_notifier(&dev->port[port_num].roce.nb);
-	if (err) {
-		dev->port[port_num].roce.nb.notifier_call = NULL;
-		return err;
-	}
-
-	return 0;
+	if (roce->tracking_netdev)
+		return;
+	roce->tracking_netdev = netdev;
+	roce->nb.notifier_call = mlx5_netdev_event;
+	err = register_netdevice_notifier_dev_net(netdev, &roce->nb, &roce->nn);
+	WARN_ON(err);
 }
 
-static void mlx5_remove_netdev_notifier(struct mlx5_ib_dev *dev, u32 port_num)
+static void mlx5_netdev_notifier_unregister(struct mlx5_roce *roce)
 {
-	if (dev->port[port_num].roce.nb.notifier_call) {
-		unregister_netdevice_notifier(&dev->port[port_num].roce.nb);
-		dev->port[port_num].roce.nb.notifier_call = NULL;
+	if (!roce->tracking_netdev)
+		return;
+	unregister_netdevice_notifier_dev_net(roce->tracking_netdev, &roce->nb,
+					      &roce->nn);
+	roce->tracking_netdev = NULL;
+}
+
+static int mlx5e_mdev_notifier_event(struct notifier_block *nb,
+				     unsigned long event, void *data)
+{
+	struct mlx5_roce *roce = container_of(nb, struct mlx5_roce, mdev_nb);
+	struct net_device *netdev = data;
+
+	switch (event) {
+	case MLX5_DRIVER_EVENT_UPLINK_NETDEV:
+		if (netdev)
+			mlx5_netdev_notifier_register(roce, netdev);
+		else
+			mlx5_netdev_notifier_unregister(roce);
+		break;
+	default:
+		return NOTIFY_DONE;
 	}
+
+	return NOTIFY_OK;
+}
+
+static void mlx5_mdev_netdev_track(struct mlx5_ib_dev *dev, u32 port_num)
+{
+	struct mlx5_roce *roce = &dev->port[port_num].roce;
+
+	roce->mdev_nb.notifier_call = mlx5e_mdev_notifier_event;
+	mlx5_blocking_notifier_register(dev->mdev, &roce->mdev_nb);
+	mlx5_core_uplink_netdev_event_replay(dev->mdev);
+}
+
+static void mlx5_mdev_netdev_untrack(struct mlx5_ib_dev *dev, u32 port_num)
+{
+	struct mlx5_roce *roce = &dev->port[port_num].roce;
+
+	mlx5_blocking_notifier_unregister(dev->mdev, &roce->mdev_nb);
+	mlx5_netdev_notifier_unregister(roce);
 }
 
 static int mlx5_enable_eth(struct mlx5_ib_dev *dev)
@@ -3251,7 +3288,7 @@ static void mlx5_ib_unbind_slave_port(struct mlx5_ib_dev *ibdev,
 	if (mpi->mdev_events.notifier_call)
 		mlx5_notifier_unregister(mpi->mdev, &mpi->mdev_events);
 	mpi->mdev_events.notifier_call = NULL;
-	mlx5_remove_netdev_notifier(ibdev, port_num);
+	mlx5_mdev_netdev_untrack(ibdev, port_num);
 	spin_lock(&port->mp.mpi_lock);
 
 	comps = mpi->mdev_refcnt;
@@ -3309,12 +3346,7 @@ static bool mlx5_ib_bind_slave_port(struct mlx5_ib_dev *ibdev,
 	if (err)
 		goto unbind;
 
-	err = mlx5_add_netdev_notifier(ibdev, port_num);
-	if (err) {
-		mlx5_ib_err(ibdev, "failed adding netdev notifier for port %u\n",
-			    port_num + 1);
-		goto unbind;
-	}
+	mlx5_mdev_netdev_track(ibdev, port_num);
 
 	mpi->mdev_events.notifier_call = mlx5_ib_event_slave_port;
 	mlx5_notifier_register(mpi->mdev, &mpi->mdev_events);
@@ -4034,9 +4066,7 @@ static int mlx5_ib_roce_init(struct mlx5_ib_dev *dev)
 		port_num = mlx5_core_native_port_num(dev->mdev) - 1;
 
 		/* Register only for native ports */
-		err = mlx5_add_netdev_notifier(dev, port_num);
-		if (err)
-			return err;
+		mlx5_mdev_netdev_track(dev, port_num);
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 		err = mlx5_ib_add_panic_notifier(dev, port_num);
@@ -4058,7 +4088,7 @@ err_unregister_panic_handler:
 	mlx5_ib_remove_panic_notifier(dev, port_num);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 cleanup:
-	mlx5_remove_netdev_notifier(dev, port_num);
+	mlx5_mdev_netdev_untrack(dev, port_num);
 	return err;
 }
 
@@ -4079,7 +4109,7 @@ static void mlx5_ib_roce_cleanup(struct mlx5_ib_dev *dev)
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 		mlx5_ib_remove_panic_notifier(dev, port_num);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
-		mlx5_remove_netdev_notifier(dev, port_num);
+		mlx5_mdev_netdev_untrack(dev, port_num);
 	}
 }
 
