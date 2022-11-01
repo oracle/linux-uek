@@ -905,6 +905,33 @@ static int cnf10k_rfoe_ioctl(struct net_device *netdev, struct ifreq *req,
 	}
 }
 
+static void cnf10k_rfoe_compute_udp_csum(struct sk_buff *skb)
+{
+	struct ipv6hdr *iph6;
+	__wsum udp_csum = 0;
+	struct iphdr *iph;
+	int offset;
+
+	udp_hdr(skb)->check = 0;
+	offset = skb_transport_offset(skb);
+	udp_csum = skb_checksum(skb, offset, skb->len - offset, 0);
+	if (eth_hdr(skb)->h_proto == htons(ETH_P_IP)) {
+		iph = ip_hdr(skb);
+		udp_hdr(skb)->check = csum_tcpudp_magic(iph->saddr,
+							iph->daddr,
+							skb->len - offset,
+							iph->protocol,
+							udp_csum);
+	} else if (eth_hdr(skb)->h_proto == htons(ETH_P_IPV6)) {
+		iph6 = ipv6_hdr(skb);
+		udp_hdr(skb)->check = csum_ipv6_magic(&iph6->saddr,
+						      &iph6->daddr,
+						      skb->len - offset,
+						      iph6->nexthdr,
+						      udp_csum);
+	}
+}
+
 static int cnf10k_rfoe_check_psm_queue_space(struct cnf10k_rfoe_ndev_priv *priv,
 					     int psm_queue_id)
 {
@@ -927,18 +954,16 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
 	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
 	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
-	int ptp_offset = 0, udp_csum = 0, offset;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
+	int ptp_offset = 0, udp_csum = 0;
 	struct cnf10k_tx_action_s tx_mem;
 	struct tx_job_queue_cfg *job_cfg;
 	struct tx_job_entry *job_entry;
 	int psm_queue_id, pkt_type = 0;
 	struct ptp_tstamp_skb *ts_skb;
 	unsigned int pkt_len = 0;
-	struct ipv6hdr *iph6;
 	unsigned long flags;
 	struct ethhdr *eth;
-	struct iphdr *iph;
 
 	eth = (struct ethhdr *)skb->data;
 	if (priv->tx_hw_tstamp_en &&
@@ -1015,36 +1040,18 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	/* hw timestamp */
 	if (unlikely(pkt_type == PACKET_TYPE_PTP)) {
 		/* check if one-step is enabled */
-		if (priv->ptp_onestep_sync &&
-		    cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
-			cnf10k_rfoe_prepare_onestep_ptp_header(priv,
-							       &tx_mem, skb,
-							       ptp_offset,
-							       udp_csum);
-			/* recalculate UDP hdr checksum as RFOE block has no checksum
-			 * offload support and checksum field is left with stale data
-			 */
-			if (udp_csum) {
-				udp_hdr(skb)->check = 0;
-				offset = skb_transport_offset(skb);
-				udp_csum = skb_checksum(skb, offset, skb->len - offset, 0);
-				if (htons(eth->h_proto) == ETH_P_IP) {
-					iph = ip_hdr(skb);
-					udp_hdr(skb)->check = csum_tcpudp_magic(iph->saddr,
-										iph->daddr,
-										skb->len - offset,
-										iph->protocol,
-										udp_csum);
-				} else {
-					iph6 = ipv6_hdr(skb);
-					udp_hdr(skb)->check = csum_ipv6_magic(&iph6->saddr,
-									      &iph6->daddr,
-									      skb->len - offset,
-									      iph6->nexthdr,
-									      udp_csum);
-				}
+		if (priv->ptp_onestep_sync) {
+			if (cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
+				cnf10k_rfoe_prepare_onestep_ptp_header(priv,
+								       &tx_mem, skb,
+								       ptp_offset,
+								       udp_csum);
+				/* recalculate UDP hdr checksum as RFOE block has no checksum
+				 * offload support and checksum field is left with stale data
+				 */
+				if (udp_csum)
+					cnf10k_rfoe_compute_udp_csum(skb);
 			}
-
 			goto ptp_one_step_out;
 		}
 
