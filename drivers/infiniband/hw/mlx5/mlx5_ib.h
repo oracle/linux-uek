@@ -59,6 +59,10 @@ pr_err("%s:%s:%d:(pid %d): " format, (dev)->ib_dev.name, __func__,	\
 pr_warn("%s:%s:%d:(pid %d): " format, (dev)->ib_dev.name, __func__,	\
 	__LINE__, current->pid, ##arg)
 
+#define mlx5_ib_log(lvl, _dev, format, arg...)                                 \
+	dev_printk(lvl, &(_dev)->ib_dev.dev,  "%s:%d:(pid %d): " format,       \
+		   __func__, __LINE__, current->pid, ##arg)
+
 #define field_avail(type, fld, sz) (offsetof(type, fld) +		\
 				    sizeof(((type *)0)->fld) <= (sz))
 #define MLX5_IB_DEFAULT_UIDX 0xffffff
