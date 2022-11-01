@@ -5073,6 +5073,19 @@ static struct attribute *intel_pmu_attrs[] = {
 };
 
 static umode_t
+td_is_visible(struct kobject *kobj, struct attribute *attr, int i)
+{
+	/*
+	 * Hide the perf metrics topdown events
+	 * if the slots is not enumerated.
+	 */
+	if (x86_pmu.num_topdown_events)
+		return (x86_pmu.intel_ctrl & INTEL_PMC_MSK_FIXED_SLOTS) ? attr->mode : 0;
+
+	return attr->mode;
+}
+
+static umode_t
 tsx_is_visible(struct kobject *kobj, struct attribute *attr, int i)
 {
 	return boot_cpu_has(X86_FEATURE_RTM) ? attr->mode : 0;
@@ -5107,6 +5120,7 @@ default_is_visible(struct kobject *kobj, struct attribute *attr, int i)
 
 static struct attribute_group group_events_td  = {
 	.name = "events",
+	.is_visible = td_is_visible,
 };
 
 static struct attribute_group group_events_mem = {
