@@ -461,7 +461,7 @@ mpi3mr_get_reply_desc(struct op_reply_qinfo *op_reply_q, u32 reply_ci)
 	return reply_desc;
 }
 
-static int mpi3mr_process_op_reply_q(struct mpi3mr_ioc *mrioc,
+int mpi3mr_process_op_reply_q(struct mpi3mr_ioc *mrioc,
 	struct mpi3mr_intr_info *intr_info)
 {
 	struct op_reply_qinfo *op_reply_q = intr_info->op_reply_q;
