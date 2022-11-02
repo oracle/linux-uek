@@ -3765,7 +3765,6 @@ const struct net_device_ops nfp_net_netdev_ops = {
 	.ndo_features_check	= nfp_net_features_check,
 	.ndo_get_phys_port_name	= nfp_net_get_phys_port_name,
 	.ndo_bpf		= nfp_net_xdp,
-	.ndo_get_devlink_port	= nfp_devlink_get_devlink_port,
 };
 
 static int nfp_udp_tunnel_sync(struct net_device *netdev, unsigned int table)
