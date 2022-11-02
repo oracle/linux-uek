@@ -569,13 +569,6 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	pkt_type = ft_cfg->pkt_type;
 
 	psw = (struct rfoe_psw_s *)buf_ptr;
-	if (psw->mac_err_sts || psw->mcs_err_sts) {
-		net_warn_ratelimited("%s: psw mac_err_sts = 0x%x, mcs_err_sts=0x%x\n",
-				     priv->netdev->name,
-				     psw->mac_err_sts,
-				     psw->mcs_err_sts);
-		return;
-	}
 	if (psw->pkt_type == CNF10K_ECPRI) {
 		jdt_iova_addr = (u64)psw->jd_ptr;
 		ecpri_psw_w2 = (struct rfoe_psw_w2_ecpri_s *)
@@ -596,17 +589,6 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		len = psw->pkt_len;
 	}
 
-	buf_ptr += (ft_cfg->pkt_offset * 16);
-
-	if (unlikely(netif_msg_pktdata(priv))) {
-		net_info_ratelimited("%s: %s: Rx: rfoe=%d lmac=%d mbt_buf_idx=%d\n",
-				     priv->netdev->name, __func__, priv->rfoe_num,
-				     lmac_id, mbt_buf_idx);
-		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
-		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
-			       buf_ptr, len, true);
-	}
-
 	for (idx = 0; idx < CNF10K_RFOE_MAX_INTF; idx++) {
 		drv_ctx = &cnf10k_rfoe_drv_ctx[idx];
 		if (drv_ctx->valid && drv_ctx->rfoe_num == priv->rfoe_num &&
@@ -623,6 +605,15 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		return;
 	}
 
+	if (psw->mac_err_sts || psw->mcs_err_sts) {
+		net_warn_ratelimited("%s: psw mac_err_sts = 0x%x, mcs_err_sts=0x%x\n",
+				     priv->netdev->name,
+				     psw->mac_err_sts,
+				     psw->mcs_err_sts);
+		cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
+		return;
+	}
+
 	/* drop the packet if interface is down */
 	if (unlikely(!netif_carrier_ok(netdev))) {
 		netif_err(priv2, rx_err, netdev,
@@ -631,6 +622,16 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 			  priv2->lmac_id);
 		cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
 		return;
+	}
+
+	buf_ptr += (ft_cfg->pkt_offset * 16);
+	if (unlikely(netif_msg_pktdata(priv))) {
+		net_info_ratelimited("%s: %s: Rx: rfoe=%d lmac=%d mbt_buf_idx=%d\n",
+				     priv->netdev->name, __func__, priv->rfoe_num,
+				     lmac_id, mbt_buf_idx);
+		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
+		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
+			       buf_ptr, len, true);
 	}
 
 	skb = netdev_alloc_skb_ip_align(netdev, len);
