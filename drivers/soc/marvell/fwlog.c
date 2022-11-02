@@ -35,7 +35,6 @@ struct fw_logbuf_header {
 
 static ssize_t fwlogs_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
-	ssize_t ret = 0;
 	char *rdbuf;
 	int rdlen;
 	struct fw_logbuf_header *fwlog_hdr = (struct fw_logbuf_header *) fwlog_mem;
@@ -55,7 +54,7 @@ static ssize_t fwlogs_read(struct file *file, char __user *buf, size_t count, lo
 			return 0;
 
 		/* adjust the bytes left to read */
-		if ((char *)(fwlog_hdr->fwlog_ptr + *ppos) == fwlog_hdr->fwlog_end)
+		if ((fwlog_hdr->fwlog_ptr + *ppos) == fwlog_hdr->fwlog_end)
 			rdbuf = fwlog_buf;
 		else
 			rdbuf = (char *)(fwlog_buf +
