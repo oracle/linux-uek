@@ -1715,6 +1715,7 @@ int ocelot_probe_port(struct ocelot *ocelot, int port, struct regmap *target,
 	if (err)
 		goto out;
 
+	SET_NETDEV_DEVLINK_PORT(dev, &ocelot->devlink_ports[port]);
 	err = register_netdev(dev);
 	if (err) {
 		dev_err(ocelot->dev, "register_netdev failed\n");

@@ -1031,12 +1031,7 @@ int ice_devlink_create_pf_port(struct ice_pf *pf)
  */
 void ice_devlink_destroy_pf_port(struct ice_pf *pf)
 {
-	struct devlink_port *devlink_port;
-
-	devlink_port = &pf->devlink_port;
-
-	devlink_port_type_clear(devlink_port);
-	devlink_port_unregister(devlink_port);
+	devlink_port_unregister(&pf->devlink_port);
 }
 
 /**
@@ -1092,12 +1087,7 @@ int ice_devlink_create_vf_port(struct ice_vf *vf)
  */
 void ice_devlink_destroy_vf_port(struct ice_vf *vf)
 {
-	struct devlink_port *devlink_port;
-
-	devlink_port = &vf->devlink_port;
-
-	devlink_port_type_clear(devlink_port);
-	devlink_port_unregister(devlink_port);
+	devlink_port_unregister(&vf->devlink_port);
 }
 
 #define ICE_DEVLINK_READ_BLK_SIZE (1024 * 1024)
