@@ -32,6 +32,7 @@
 #define ID_SHIFT		36
 #define DOMAIN_OFFSET		0x3
 #define ON_OFFSET		0xE0
+#define RST_SOFT_PERST_OFFSET	0x298
 #define RST_INT_OFFSET		0x300
 #define RST_INT_ENA_W1C_OFFSET	0x310
 #define RST_INT_ENA_W1S_OFFSET	0x318
@@ -99,49 +100,21 @@ static void pem_recover_rc_link(struct work_struct *ws)
 
 	pci_unlock_rescan_remove();
 
-	/* Due to hardware issue, sometimes link-down event may not go
-	 * through cleanly and put LTSSM in to un-desired state inside PEM.
-	 * Toggling PEMON(bit 0) in PEM_ON register should reset
-	 * PEM state and setup correctly.
-	 */
-	dtx_reg = 0x000500;
-	writeq(dtx_reg, pem->dtx_base + DTX_PEM_SEL(0));
-	dtx_reg = 0xfffffffff;
-	writeq(dtx_reg, pem->dtx_base + DTX_PEM_ENA(0));
+	udelay(100);
 
-	dtx_reg = readq(pem->dtx_base + DTX_PEM_DAT(0));
+	writeq(0x0, pem->base + RST_SOFT_PERST_OFFSET);
 
-	writeq(0x0, pem->dtx_base + DTX_PEM_SEL(0));
-	writeq(0x0, pem->dtx_base + DTX_PEM_ENA(0));
-
-	pem_reg = readq(pem->base + ON_OFFSET);
-
-	dtx_reg &= BIT_ULL(13);
-	pem_reg &= (BIT_ULL(1) | BIT_ULL(0));
-
-	if (!dtx_reg && (pem_reg == 0x3)) {
+	while (timeout--) {
+		/* Check for PEM_OOR to be set */
 		pem_reg = readq(pem->base + ON_OFFSET);
-		pem_reg &= ~(BIT_ULL(0));
-		writeq(pem_reg, pem->base + ON_OFFSET);
-
-		udelay(10);
-
-		pem_reg = readq(pem->base + ON_OFFSET);
-		pem_reg |= BIT_ULL(0);
-		writeq(pem_reg, pem->base + ON_OFFSET);
-
-		while (timeout--) {
-			/* Check for PEM_OOR to be set */
-			pem_reg = readq(pem->base + ON_OFFSET);
-			if (pem_reg & BIT(1))
-				break;
-			udelay(1000);
-		}
-		if (!timeout) {
-			dev_warn(&pem_dev->dev,
-				 "PEM failed to get out of reset\n");
-			return;
-		}
+		if (pem_reg & BIT(1))
+			break;
+		udelay(1000);
+	}
+	if (!timeout) {
+		dev_warn(&pem_dev->dev,
+			 "PEM failed to get out of reset\n");
+		return;
 	}
 
 	pci_lock_rescan_remove();
