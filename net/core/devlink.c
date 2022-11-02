@@ -12516,14 +12516,6 @@ free_msg:
 	nlmsg_free(msg);
 }
 
-static struct devlink_port *netdev_to_devlink_port(struct net_device *dev)
-{
-	if (!dev->netdev_ops->ndo_get_devlink_port)
-		return NULL;
-
-	return dev->netdev_ops->ndo_get_devlink_port(dev);
-}
-
 void devlink_compat_running_version(struct devlink *devlink,
 				    char *buf, size_t len)
 {
@@ -12569,7 +12561,7 @@ int devlink_compat_phys_port_name_get(struct net_device *dev,
 	 */
 	ASSERT_RTNL();
 
-	devlink_port = netdev_to_devlink_port(dev);
+	devlink_port = dev->devlink_port;
 	if (!devlink_port)
 		return -EOPNOTSUPP;
 
@@ -12585,7 +12577,7 @@ int devlink_compat_switch_id_get(struct net_device *dev,
 	 * devlink_port instance cannot disappear in the middle. No need to take
 	 * any devlink lock as only permanent values are accessed.
 	 */
-	devlink_port = netdev_to_devlink_port(dev);
+	devlink_port = dev->devlink_port;
 	if (!devlink_port || !devlink_port->switch_port)
 		return -EOPNOTSUPP;
 
