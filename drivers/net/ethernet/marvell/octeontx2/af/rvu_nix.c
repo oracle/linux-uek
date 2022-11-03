@@ -1649,6 +1649,9 @@ int rvu_mbox_handler_nix_lf_free(struct rvu *rvu, struct nix_lf_free_req *req,
 	else
 		rvu_npc_free_mcam_entries(rvu, pcifunc, nixlf);
 
+	/* Reset SPI to SA index table */
+	rvu_nix_free_spi_to_sa_table(rvu, pcifunc);
+
 	/* Free any tx vtag def entries used by this NIX LF */
 	if (!(req->flags & NIX_LF_DONT_FREE_TX_VTAG))
 		nix_free_tx_vtag_entries(rvu, pcifunc);
@@ -4886,6 +4889,9 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 	nix_interface_deinit(rvu, pcifunc, nixlf);
 	nix_rx_sync(rvu, blkaddr);
 	nix_txschq_free(rvu, pcifunc);
+
+	/* Reset SPI to SA index table */
+	rvu_nix_free_spi_to_sa_table(rvu, pcifunc);
 
 	clear_bit(NIXLF_INITIALIZED, &pfvf->flags);
 
