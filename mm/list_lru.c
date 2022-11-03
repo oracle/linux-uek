@@ -409,8 +409,7 @@ static int memcg_init_list_lru_node(struct list_lru_node *nlru)
 	struct list_lru_memcg *memcg_lrus;
 	int size = memcg_nr_cache_ids;
 
-	memcg_lrus = kvmalloc(sizeof(*memcg_lrus) +
-			      size * sizeof(void *), GFP_KERNEL);
+	memcg_lrus = kvmalloc(struct_size(memcg_lrus, lru, size), GFP_KERNEL);
 	if (!memcg_lrus)
 		return -ENOMEM;
 
@@ -444,7 +443,7 @@ static int memcg_update_list_lru_node(struct list_lru_node *nlru,
 
 	old = rcu_dereference_protected(nlru->memcg_lrus,
 					lockdep_is_held(&list_lrus_mutex));
-	new = kvmalloc(sizeof(*new) + new_size * sizeof(void *), GFP_KERNEL);
+	new = kvmalloc(struct_size(new, lru, new_size), GFP_KERNEL);
 	if (!new)
 		return -ENOMEM;
 
@@ -453,7 +452,7 @@ static int memcg_update_list_lru_node(struct list_lru_node *nlru,
 		return -ENOMEM;
 	}
 
-	memcpy(&new->lru, &old->lru, old_size * sizeof(void *));
+	memcpy(&new->lru, &old->lru, flex_array_size(new, lru, old_size));
 
 	/*
 	 * The locking below allows readers that hold nlru->lock avoid taking
