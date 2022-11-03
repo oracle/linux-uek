@@ -21,6 +21,7 @@
 #include <linux/vmstat.h>
 #include <linux/writeback.h>
 #include <linux/page-flags.h>
+#include <linux/uek_kabi.h>
 
 struct mem_cgroup;
 struct obj_cgroup;
@@ -180,6 +181,12 @@ struct mem_cgroup_thresholds {
 	struct mem_cgroup_threshold_ary *spare;
 };
 
+/*
+ * This structure is obsolete and deleted by the upstream commit
+ * e80216d9f1f5 ("mm: memcontrol: remove the kmem states"). It's
+ * still there to support the KABI breakage, in
+ * struct mem_cgroup::enum memcg_kmem_state kmem_state.
+ */
 enum memcg_kmem_state {
 	KMEM_NONE,
 	KMEM_ALLOCATED,
@@ -318,7 +325,7 @@ struct mem_cgroup {
 
 #ifdef CONFIG_MEMCG_KMEM
 	int kmemcg_id;
-	enum memcg_kmem_state kmem_state;
+	UEK_KABI_DEPRECATE(enum memcg_kmem_state, kmem_state)
 	struct obj_cgroup __rcu *objcg;
 	/* list of inherited objcgs, protected by objcg_lock */
 	struct list_head objcg_list;
