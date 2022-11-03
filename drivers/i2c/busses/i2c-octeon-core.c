@@ -72,7 +72,7 @@ static int octeon_i2c_wait(struct octeon_i2c *i2c)
 		do {
 			if (time_left--)
 				__udelay(1);
-		} while (!octeon_i2c_test_iflg(i2c));
+		} while (!octeon_i2c_test_iflg(i2c) && time_left);
 	}
 	if (i2c->broken_irq_check && !time_left &&
 	    octeon_i2c_test_iflg(i2c)) {
