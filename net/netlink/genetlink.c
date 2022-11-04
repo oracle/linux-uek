@@ -166,6 +166,51 @@ static int genl_get_cmd(u32 cmd, const struct genl_family *family,
 	return genl_get_cmd_small(cmd, family, op);
 }
 
+static void
+genl_cmd_full_to_split(struct genl_split_ops *op,
+		       const struct genl_family *family,
+		       const struct genl_ops *full, u8 flags)
+{
+	if (flags & GENL_CMD_CAP_DUMP) {
+		op->start	= full->start;
+		op->dumpit	= full->dumpit;
+		op->done	= full->done;
+	} else {
+		op->pre_doit	= family->pre_doit;
+		op->doit	= full->doit;
+		op->post_doit	= family->post_doit;
+	}
+
+	op->policy		= full->policy;
+	op->maxattr		= full->maxattr;
+
+	op->cmd			= full->cmd;
+	op->internal_flags	= full->internal_flags;
+	op->flags		= full->flags;
+	op->validate		= full->validate;
+
+	/* Make sure flags include the GENL_CMD_CAP_DO / GENL_CMD_CAP_DUMP */
+	op->flags		|= flags;
+}
+
+static int
+genl_get_cmd_split(u32 cmd, u8 flags, const struct genl_family *family,
+		   struct genl_split_ops *op)
+{
+	struct genl_ops full;
+	int err;
+
+	err = genl_get_cmd(cmd, family, &full);
+	if (err) {
+		memset(op, 0, sizeof(*op));
+		return err;
+	}
+
+	genl_cmd_full_to_split(op, family, &full, flags);
+
+	return 0;
+}
+
 static void genl_get_cmd_by_index(unsigned int i,
 				  const struct genl_family *family,
 				  struct genl_ops *op)
@@ -519,7 +564,7 @@ static struct nlattr **
 genl_family_rcv_msg_attrs_parse(const struct genl_family *family,
 				struct nlmsghdr *nlh,
 				struct netlink_ext_ack *extack,
-				const struct genl_ops *ops,
+				const struct genl_split_ops *ops,
 				int hdrlen,
 				enum genl_validate_flags no_strict_flag)
 {
@@ -555,18 +600,19 @@ struct genl_start_context {
 	const struct genl_family *family;
 	struct nlmsghdr *nlh;
 	struct netlink_ext_ack *extack;
-	const struct genl_ops *ops;
+	const struct genl_split_ops *ops;
 	int hdrlen;
 };
 
 static int genl_start(struct netlink_callback *cb)
 {
 	struct genl_start_context *ctx = cb->data;
-	const struct genl_ops *ops = ctx->ops;
+	const struct genl_split_ops *ops;
 	struct genl_dumpit_info *info;
 	struct nlattr **attrs = NULL;
 	int rc = 0;
 
+	ops = ctx->ops;
 	if (ops->validate & GENL_DONT_VALIDATE_DUMP)
 		goto no_attrs;
 
@@ -608,7 +654,7 @@ no_attrs:
 
 static int genl_lock_dumpit(struct sk_buff *skb, struct netlink_callback *cb)
 {
-	const struct genl_ops *ops = &genl_dumpit_info(cb)->op;
+	const struct genl_split_ops *ops = &genl_dumpit_info(cb)->op;
 	int rc;
 
 	genl_lock();
@@ -620,7 +666,7 @@ static int genl_lock_dumpit(struct sk_buff *skb, struct netlink_callback *cb)
 static int genl_lock_done(struct netlink_callback *cb)
 {
 	const struct genl_dumpit_info *info = genl_dumpit_info(cb);
-	const struct genl_ops *ops = &info->op;
+	const struct genl_split_ops *ops = &info->op;
 	int rc = 0;
 
 	if (ops->done) {
@@ -636,7 +682,7 @@ static int genl_lock_done(struct netlink_callback *cb)
 static int genl_parallel_done(struct netlink_callback *cb)
 {
 	const struct genl_dumpit_info *info = genl_dumpit_info(cb);
-	const struct genl_ops *ops = &info->op;
+	const struct genl_split_ops *ops = &info->op;
 	int rc = 0;
 
 	if (ops->done)
@@ -650,7 +696,7 @@ static int genl_family_rcv_msg_dumpit(const struct genl_family *family,
 				      struct sk_buff *skb,
 				      struct nlmsghdr *nlh,
 				      struct netlink_ext_ack *extack,
-				      const struct genl_ops *ops,
+				      const struct genl_split_ops *ops,
 				      int hdrlen, struct net *net)
 {
 	struct genl_start_context ctx;
@@ -696,7 +742,7 @@ static int genl_family_rcv_msg_doit(const struct genl_family *family,
 				    struct sk_buff *skb,
 				    struct nlmsghdr *nlh,
 				    struct netlink_ext_ack *extack,
-				    const struct genl_ops *ops,
+				    const struct genl_split_ops *ops,
 				    int hdrlen, struct net *net)
 {
 	struct nlattr **attrbuf;
@@ -722,16 +768,16 @@ static int genl_family_rcv_msg_doit(const struct genl_family *family,
 	genl_info_net_set(&info, net);
 	memset(&info.user_ptr, 0, sizeof(info.user_ptr));
 
-	if (family->pre_doit) {
-		err = family->pre_doit(ops, skb, &info);
+	if (ops->pre_doit) {
+		err = ops->pre_doit(ops, skb, &info);
 		if (err)
 			goto out;
 	}
 
 	err = ops->doit(skb, &info);
 
-	if (family->post_doit)
-		family->post_doit(ops, skb, &info);
+	if (ops->post_doit)
+		ops->post_doit(ops, skb, &info);
 
 out:
 	genl_family_rcv_msg_attrs_free(attrbuf);
@@ -746,8 +792,9 @@ static int genl_family_rcv_msg(const struct genl_family *family,
 {
 	struct net *net = sock_net(skb->sk);
 	struct genlmsghdr *hdr = nlmsg_data(nlh);
-	struct genl_ops op;
+	struct genl_split_ops op;
 	int hdrlen;
+	u8 flags;
 
 	/* this family doesn't exist in this netns */
 	if (!family->netnsok && !net_eq(net, &init_net))
@@ -757,7 +804,9 @@ static int genl_family_rcv_msg(const struct genl_family *family,
 	if (nlh->nlmsg_len < nlmsg_msg_size(hdrlen))
 		return -EINVAL;
 
-	if (genl_get_cmd(hdr->cmd, family, &op))
+	flags = (nlh->nlmsg_flags & NLM_F_DUMP) == NLM_F_DUMP ?
+		GENL_CMD_CAP_DUMP : GENL_CMD_CAP_DO;
+	if (genl_get_cmd_split(hdr->cmd, flags, family, &op))
 		return -EOPNOTSUPP;
 
 	if ((op.flags & GENL_ADMIN_PERM) &&
@@ -768,7 +817,7 @@ static int genl_family_rcv_msg(const struct genl_family *family,
 	    !netlink_ns_capable(skb, net->user_ns, CAP_NET_ADMIN))
 		return -EPERM;
 
-	if ((nlh->nlmsg_flags & NLM_F_DUMP) == NLM_F_DUMP)
+	if (flags & GENL_CMD_CAP_DUMP)
 		return genl_family_rcv_msg_dumpit(family, skb, nlh, extack,
 						  &op, hdrlen, net);
 	else
