@@ -940,7 +940,7 @@ struct mpi3mr_ioc {
 
 	u16 op_reply_q_offset;
 
-	struct device *bsg_dev;
+	struct device bsg_dev;
 	struct request_queue *bsg_queue;
 	u8 stop_bsgs;
 	u8 *logdata_buf;
