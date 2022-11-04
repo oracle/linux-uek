@@ -730,7 +730,10 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		if (ic->i_flowctl) {
 			rds_ib_send_grab_credits(ic, 0, &posted, 1);
 			adv_credits += posted;
-			BUG_ON(adv_credits > 255);
+			if (adv_credits > RDS_MAX_ADV_CREDIT) {
+				rds_ib_advertise_credits(conn, adv_credits - RDS_MAX_ADV_CREDIT);
+				adv_credits = RDS_MAX_ADV_CREDIT;
+			}
 		}
 	}
 
