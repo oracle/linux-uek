@@ -1055,6 +1055,7 @@ void mpi3mr_print_fault_info(struct mpi3mr_ioc *mrioc);
 int mpi3mr_process_op_reply_q(struct mpi3mr_ioc *mrioc,
 	struct mpi3mr_intr_info *intr_info);
 extern struct device_attribute *mpi3mr_host_attrs[];
+extern struct device_attribute *mpi3mr_dev_attrs[];
 void mpi3mr_bsg_init(struct mpi3mr_ioc *mrioc);
 void mpi3mr_bsg_exit(struct mpi3mr_ioc *mrioc);
 int mpi3mr_issue_tm(struct mpi3mr_ioc *mrioc, u8 tm_type,

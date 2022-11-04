@@ -4119,6 +4119,7 @@ static struct scsi_host_template mpi3mr_driver_template = {
 	.cmd_per_lun			= MPI3MR_MAX_CMDS_LUN,
 	.max_segment_size		= 0xffffffff,
 	.shost_attrs			= mpi3mr_host_attrs,
+	.sdev_attrs			= mpi3mr_dev_attrs,
 	.track_queue_depth		= 1,
 	.cmd_size			= sizeof(struct scmd_priv),
 };
