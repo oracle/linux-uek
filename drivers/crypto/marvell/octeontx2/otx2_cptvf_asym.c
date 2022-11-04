@@ -3,6 +3,8 @@
 
 #include <crypto/akcipher.h>
 #include <crypto/ecdh.h>
+#include <crypto/rng.h>
+#include <crypto/ecc_curve.h>
 #include <crypto/internal/akcipher.h>
 #include <crypto/internal/kpp.h>
 #include <crypto/internal/rsa.h>
@@ -18,6 +20,16 @@
 #define CPT_UC_RSA_PKCS_BT1 0
 #define CPT_UC_RSA_PKCS_BT2 1
 
+/* due to nist p521  */
+#define CPT_ECC_MAX_KSZ     66
+
+/* size in bytes of the n prime */
+#define CPT_ECC_NIST_P192_N_SIZE  24
+#define CPT_ECC_NIST_P256_N_SIZE  32
+#define CPT_ECC_NIST_P384_N_SIZE  48
+
+#define CPT_UC_ECDH_INPUT_PARAMS_NUM  6
+
 struct cpt_rsa_ctx {
 	char *pubkey;
 	char *prikey;
@@ -29,10 +41,21 @@ struct cpt_rsa_ctx {
 	bool pkcs1;
 };
 
+struct cpt_ecdh_ctx {
+	/* low address: x->y->k->p->a->b */
+	unsigned char *c;
+	u32 curve_id;
+	u32 curve_sz;
+	u16 dlen;
+};
+
 struct cpt_asym_ctx {
 	unsigned int key_sz;
 	struct device *dev;
-	struct cpt_rsa_ctx rsa;
+	union {
+		struct cpt_rsa_ctx rsa;
+		struct cpt_ecdh_ctx ecdh;
+	};
 };
 
 struct cpt_asym_req_ctx {
@@ -102,10 +125,43 @@ free:
 		areq->complete(areq, status);
 }
 
-static int cpt_asym_enqueue(struct akcipher_request *req)
+static void cpt_ecdh_callback(int status, void *arg1, void *arg2)
 {
-	struct cpt_asym_req_ctx *rctx = akcipher_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
+	struct otx2_cpt_inst_info *inst_info = arg2;
+	struct crypto_async_request *areq = arg1;
+	struct otx2_cpt_req_info *req_info;
+	struct otx2_cptvf_request *req;
+	struct cpt_asym_req_ctx *rctx;
+	struct kpp_request *kpp_req;
+	struct cpt_asym_ctx *ctx;
+	struct pci_dev *pdev;
+	char *dst;
+
+	if (inst_info) {
+		req_info = inst_info->req;
+		req = &req_info->req;
+		kpp_req = container_of(areq, struct kpp_request, base);
+		rctx = kpp_request_ctx(kpp_req);
+		pdev = inst_info->pdev;
+		ctx = rctx->ctx;
+
+		dst = sg_virt(kpp_req->dst);
+		memcpy(dst, req->dptr, ctx->ecdh.curve_sz << 1);
+
+		dma_unmap_single(&pdev->dev, req->dptr_dma, req->dlen,
+				 DMA_BIDIRECTIONAL);
+		if (kpp_req->src)
+			kfree(req->dptr);
+		otx2_cpt_info_destroy(pdev, inst_info);
+	}
+	if (areq)
+		areq->complete(areq, status);
+}
+
+
+static int cpt_asym_enqueue(struct crypto_async_request *areq,
+			    struct otx2_cpt_req_info *req_info)
+{
 	struct pci_dev *pdev;
 	int cpu_num, ret;
 
@@ -114,8 +170,7 @@ static int cpt_asym_enqueue(struct akcipher_request *req)
 		return ret;
 
 	req_info->ctrl.s.grp = CPT_EGRP_AE;
-	req_info->callback = cpt_rsa_callback;
-	req_info->areq = &req->base;
+	req_info->areq = areq;
 	/*
 	 * We perform an asynchronous send and once
 	 * the request is completed the driver would
@@ -236,8 +291,9 @@ static int cpt_rsa_enc(struct akcipher_request *req, bool private)
 	memcpy(dptr, key, key_len);
 	scatterwalk_map_and_copy(dptr + key_len, req->src, 0, req->src_len, 0);
 	req_info->req.dptr = dptr;
+	req_info->callback = cpt_rsa_callback;
 
-	return cpt_asym_enqueue(req);
+	return cpt_asym_enqueue(&req->base, req_info);
 }
 
 static int cpt_rsa_public_dec(struct cpt_asym_ctx *ctx, struct otx2_cpt_req_info *req_info,
@@ -340,8 +396,9 @@ static int cpt_rsa_dec(struct akcipher_request *req, bool private)
 	scatterwalk_map_and_copy(dptr + key_len, req->src, 0, req->src_len, 0);
 	req_info->req.dlen = dlen;
 	req_info->req.dptr = dptr;
+	req_info->callback = cpt_rsa_callback;
 
-	return cpt_asym_enqueue(req);
+	return cpt_asym_enqueue(&req->base, req_info);
 }
 
 static int cpt_rsa_sign(struct akcipher_request *req)
@@ -649,6 +706,335 @@ static void cpt_rsa_exit_tfm(struct crypto_akcipher *tfm)
 	cpt_rsa_ctx_clear(ctx);
 }
 
+static u32 cpt_ecdh_curvesz_get(u32 id)
+{
+	switch (id) {
+	case ECC_CURVE_NIST_P192:
+		return CPT_ECC_NIST_P192_N_SIZE;
+	case ECC_CURVE_NIST_P256:
+		return CPT_ECC_NIST_P256_N_SIZE;
+	case ECC_CURVE_NIST_P384:
+		return CPT_ECC_NIST_P384_N_SIZE;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+static u32 cpt_uc_prime_length_get(u32 id)
+{
+	switch (id) {
+	case ECC_CURVE_NIST_P192:
+		return 0;
+	case ECC_CURVE_NIST_P256:
+		return 2;
+	case ECC_CURVE_NIST_P384:
+		return 3;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+static void cpt_key_to_big_end(u8 *data, int len)
+{
+	int i, j;
+
+	for (i = 0; i < len / 2; i++) {
+		j = len - i - 1;
+		swap(data[j], data[i]);
+	}
+}
+
+static bool cpt_key_is_zero(char *key, u32 key_sz)
+{
+	int i;
+
+	for (i = 0; i < key_sz; i++)
+		if (key[i])
+			return false;
+
+	return true;
+}
+
+static void fill_curve_param(void *addr, u64 *param, u32 cur_sz, u8 ndigits)
+{
+	unsigned int sz = cur_sz - (ndigits - 1) * sizeof(u64);
+	u8 i = 0;
+
+	while (i < ndigits - 1) {
+		memcpy(addr + sizeof(u64) * i, &param[i], sizeof(u64));
+		i++;
+	}
+	memcpy(addr + sizeof(u64) * i, &param[ndigits - 1], sz);
+	cpt_key_to_big_end((u8 *)addr, cur_sz);
+}
+
+static int cpt_ecdh_curve_fill(struct cpt_asym_ctx *ctx, struct ecdh *params,
+			       u32 cur_sz)
+{
+	const struct ecc_curve *curve = ecc_get_curve(ctx->ecdh.curve_id);
+	char *n, *x, *y, *p, *a, *b, *key;
+	void *c = ctx->ecdh.c;
+
+	if (unlikely(!curve))
+		return -EINVAL;
+
+	n = kzalloc(cur_sz, GFP_KERNEL);
+	if (!n)
+		return -ENOMEM;
+
+	fill_curve_param(n, curve->n, cur_sz, curve->g.ndigits);
+	if (params->key_size == cur_sz && memcmp(params->key, n, cur_sz) >= 0) {
+		kfree(n);
+		return -EINVAL;
+	}
+
+	x = c;
+	y = c + cur_sz;
+	key = y + cur_sz;
+	p = key + round_up(params->key_size, 8);
+	a = p + cur_sz;
+	b = a + cur_sz;
+	fill_curve_param(x, curve->g.x, cur_sz, curve->g.ndigits);
+	fill_curve_param(y, curve->g.y, cur_sz, curve->g.ndigits);
+	fill_curve_param(p, curve->p, cur_sz, curve->g.ndigits);
+	fill_curve_param(a, curve->a, cur_sz, curve->g.ndigits);
+	fill_curve_param(b, curve->b, cur_sz, curve->g.ndigits);
+
+	memcpy(key, params->key, params->key_size);
+	kfree(n);
+
+	return 0;
+}
+
+static int cpt_ecdh_param_set(struct cpt_asym_ctx *ctx, struct ecdh *params)
+{
+	struct device *dev = ctx->dev;
+	u32 curve_sz;
+	int ret;
+
+	curve_sz = cpt_ecdh_curvesz_get(ctx->ecdh.curve_id);
+	if (!curve_sz || params->key_size > curve_sz)
+		return -EINVAL;
+
+	ctx->key_sz = params->key_size;
+	ctx->ecdh.curve_sz = round_up(curve_sz, 8);
+	ctx->ecdh.dlen = ctx->ecdh.curve_sz * (CPT_UC_ECDH_INPUT_PARAMS_NUM - 1) +
+			 round_up(ctx->key_sz, 8);
+
+	if (!ctx->ecdh.c) {
+		ctx->ecdh.c = kzalloc(curve_sz * CPT_UC_ECDH_INPUT_PARAMS_NUM,
+				      GFP_KERNEL);
+		if (!ctx->ecdh.c)
+			return -ENOMEM;
+	}
+	ret = cpt_ecdh_curve_fill(ctx, params, curve_sz);
+	if (ret) {
+		dev_err(dev, "failed to fill curve_param, ret = %d!\n", ret);
+		kfree(ctx->ecdh.c);
+		ctx->ecdh.c = NULL;
+		return ret;
+	}
+	return 0;
+}
+
+static int cpt_ecdh_privkey_gen(struct cpt_asym_ctx *ctx, struct ecdh *params)
+{
+	struct device *dev = ctx->dev;
+	int ret;
+
+	ret = crypto_get_default_rng();
+	if (ret) {
+		dev_err(dev, "failed to get default rng, ret = %d!\n", ret);
+		return ret;
+	}
+
+	ret = crypto_rng_get_bytes(crypto_default_rng, (u8 *)params->key,
+				   params->key_size);
+	crypto_put_default_rng();
+	if (ret)
+		dev_err(dev, "failed to get rng, ret = %d!\n", ret);
+
+	return ret;
+}
+
+static int cpt_ecdh_set_secret(struct crypto_kpp *tfm, const void *buf,
+			       unsigned int len)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+	struct device *dev = ctx->dev;
+	char key[CPT_ECC_MAX_KSZ];
+	struct ecdh params;
+	int ret;
+
+	if (crypto_ecdh_decode_key(buf, len, &params) < 0) {
+		dev_err(dev, "failed to decode ecdh key!\n");
+		return -EINVAL;
+	}
+	/* Use stdrng to generate private key */
+	if (!params.key || !params.key_size) {
+		params.key = key;
+		params.key_size = cpt_ecdh_curvesz_get(ctx->ecdh.curve_id);
+		ret = cpt_ecdh_privkey_gen(ctx, &params);
+		if (ret)
+			return ret;
+	}
+	if (cpt_key_is_zero(params.key, params.key_size)) {
+		dev_err(dev, "Invalid ECDH secret!\n");
+		return -EINVAL;
+	}
+	ret = cpt_ecdh_param_set(ctx, &params);
+	if (ret < 0) {
+		dev_err(dev, "failed to set param, ret = %d!\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int cpt_ecdh_update_input(struct cpt_asym_req_ctx *rctx,
+				 struct scatterlist *src, u32 len)
+{
+	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
+	struct cpt_asym_ctx *ctx = rctx->ctx;
+	u32 cur_sz = ctx->ecdh.curve_sz;
+	u32 dlen, tmpshift;
+	int shift, key_off;
+	u8 *dptr;
+
+	/* Src_data include gx and gy. */
+	shift = cur_sz - (len >> 1);
+	if (unlikely(shift < 0))
+		return -EINVAL;
+
+	dlen = cur_sz * CPT_UC_ECDH_INPUT_PARAMS_NUM;
+	dptr = kzalloc(dlen, GFP_KERNEL);
+	if (unlikely(!dptr))
+		return -ENOMEM;
+
+	req_info->req.dptr_dma = dma_map_single(ctx->dev, dptr, ctx->ecdh.dlen,
+						DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(ctx->dev, req_info->req.dptr_dma))) {
+		dev_err(ctx->dev, "DMA mapping failed for dptr\n");
+		kfree(dptr);
+		return -EIO;
+	}
+	req_info->req.dptr = dptr;
+	tmpshift = cur_sz << 1;
+	scatterwalk_map_and_copy(dptr + tmpshift, src, 0, len, 0);
+	memcpy(dptr + shift, dptr + tmpshift, len >> 1);
+	memcpy(dptr + cur_sz + shift, dptr + tmpshift + (len >> 1), len >> 1);
+	/* Copy remaining params from ctx (set in cpt_ecdh_set_secret) */
+	key_off = cur_sz << 1;
+	memcpy(dptr + key_off, ctx->ecdh.c + key_off, ctx->ecdh.dlen - key_off);
+
+	return 0;
+}
+
+static int cpt_ecdh_compute_value(struct kpp_request *req)
+{
+	struct cpt_asym_req_ctx *rctx = kpp_request_ctx(req);
+	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
+	struct crypto_kpp *tfm = crypto_kpp_reqtfm(req);
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+	struct device *dev = ctx->dev;
+	int ret;
+
+	if (req->dst_len < ctx->ecdh.curve_sz << 1) {
+		req->dst_len = ctx->ecdh.curve_sz << 1;
+		return -EINVAL;
+	}
+	rctx->ctx = ctx;
+	if (req->src) {
+		ret = cpt_ecdh_update_input(rctx, req->src, req->src_len);
+		if (unlikely(ret)) {
+			dev_err(dev, "failed to update input data, ret = %d!\n", ret);
+			return ret;
+		}
+	} else {
+		req_info->req.dptr_dma = dma_map_single(dev, ctx->ecdh.c, ctx->ecdh.dlen,
+							DMA_BIDIRECTIONAL);
+		if (unlikely(dma_mapping_error(dev, req_info->req.dptr_dma))) {
+			dev_err(ctx->dev, "DMA mapping failed for dptr\n");
+			return -EIO;
+		}
+		req_info->req.dptr = ctx->ecdh.c;
+	}
+	req_info->req.dlen = ctx->ecdh.dlen;
+
+	req_info->ctrl.s.dma_mode = OTX2_CPT_DMA_MODE_DIRECT;
+	req_info->ctrl.s.se_req = 0;
+	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_ECC | (1 << 6);
+	req_info->req.opcode.s.minor = 3;
+	req_info->is_trunc_hmac = 0;
+	req_info->callback = cpt_ecdh_callback;
+
+	req_info->req.param1 = cpt_uc_prime_length_get(ctx->ecdh.curve_id);
+	req_info->req.param2 = ctx->key_sz;
+
+	return cpt_asym_enqueue(&req->base, req_info);
+}
+
+static unsigned int cpt_ecdh_max_size(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	/* max size is the public key size, include x and y */
+	return ctx->ecdh.curve_sz << 1;
+}
+
+static int cpt_ecdh_ctx_init(struct cpt_asym_ctx *ctx)
+{
+	struct pci_dev *pdev;
+	int ret, cpu_num;
+
+	ctx->key_sz = 0;
+	ret = otx2_cpt_dev_get(&pdev, &cpu_num);
+	if (ret)
+		return ret;
+
+	ctx->dev = &pdev->dev;
+
+	return 0;
+}
+
+static int cpt_ecdh_nist_p192_init_tfm(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	ctx->ecdh.curve_id = ECC_CURVE_NIST_P192;
+
+	return cpt_ecdh_ctx_init(ctx);
+}
+
+static int cpt_ecdh_nist_p256_init_tfm(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	ctx->ecdh.curve_id = ECC_CURVE_NIST_P256;
+
+	return cpt_ecdh_ctx_init(ctx);
+}
+
+static int cpt_ecdh_nist_p384_init_tfm(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	ctx->ecdh.curve_id = ECC_CURVE_NIST_P384;
+
+	return cpt_ecdh_ctx_init(ctx);
+}
+
+static void cpt_ecdh_exit_tfm(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	kfree(ctx->ecdh.c);
+}
+
 static struct akcipher_alg cpt_rsa_algs[] = {
 {
 	.encrypt = cpt_rsa_encrypt,
@@ -688,6 +1074,55 @@ static struct akcipher_alg cpt_rsa_algs[] = {
 },
 };
 
+static struct kpp_alg cpt_ecdh_curves[] = {
+	{
+		.set_secret = cpt_ecdh_set_secret,
+		.generate_public_key = cpt_ecdh_compute_value,
+		.compute_shared_secret = cpt_ecdh_compute_value,
+		.max_size = cpt_ecdh_max_size,
+		.init = cpt_ecdh_nist_p192_init_tfm,
+		.exit = cpt_ecdh_exit_tfm,
+		.reqsize = sizeof(struct cpt_asym_req_ctx),
+		.base = {
+			.cra_ctxsize = sizeof(struct cpt_asym_ctx),
+			.cra_priority = 4001,
+			.cra_name = "ecdh-nist-p192",
+			.cra_driver_name = "cpt-ecdh-nist-p192",
+			.cra_module = THIS_MODULE,
+		},
+	}, {
+		.set_secret = cpt_ecdh_set_secret,
+		.generate_public_key = cpt_ecdh_compute_value,
+		.compute_shared_secret = cpt_ecdh_compute_value,
+		.max_size = cpt_ecdh_max_size,
+		.init = cpt_ecdh_nist_p256_init_tfm,
+		.exit = cpt_ecdh_exit_tfm,
+		.reqsize = sizeof(struct cpt_asym_req_ctx),
+		.base = {
+			.cra_ctxsize = sizeof(struct cpt_asym_ctx),
+			.cra_priority = 4001,
+			.cra_name = "ecdh-nist-p256",
+			.cra_driver_name = "cpt-ecdh-nist-p256",
+			.cra_module = THIS_MODULE,
+		},
+	}, {
+		.set_secret = cpt_ecdh_set_secret,
+		.generate_public_key = cpt_ecdh_compute_value,
+		.compute_shared_secret = cpt_ecdh_compute_value,
+		.max_size = cpt_ecdh_max_size,
+		.init = cpt_ecdh_nist_p384_init_tfm,
+		.exit = cpt_ecdh_exit_tfm,
+		.reqsize = sizeof(struct cpt_asym_req_ctx),
+		.base = {
+			.cra_ctxsize = sizeof(struct cpt_asym_ctx),
+			.cra_priority = 4001,
+			.cra_name = "ecdh-nist-p384",
+			.cra_driver_name = "cpt-ecdh-nist-p384",
+			.cra_module = THIS_MODULE,
+		},
+	}
+};
+
 int otx2_cpt_register_asym_algs(void)
 {
 	int i, ret;
@@ -696,10 +1131,25 @@ int otx2_cpt_register_asym_algs(void)
 		cpt_rsa_algs[i].base.cra_flags = 0;
 		ret = crypto_register_akcipher(&cpt_rsa_algs[i]);
 		if (ret)
-			return ret;
+			goto unreg_rsa;
+	}
+	for (i = 0; i < ARRAY_SIZE(cpt_ecdh_curves); i++) {
+		ret = crypto_register_kpp(&cpt_ecdh_curves[i]);
+		if (ret)
+			goto unreg_kpp;
 	}
 
 	return 0;
+
+unreg_kpp:
+	for (--i; i >= 0; --i)
+		crypto_unregister_kpp(&cpt_ecdh_curves[i]);
+	i = ARRAY_SIZE(cpt_rsa_algs);
+unreg_rsa:
+	for (--i; i >= 0; --i)
+		crypto_unregister_akcipher(&cpt_rsa_algs[i]);
+
+	return ret;
 }
 
 void otx2_cpt_unregister_asym_algs(void)
@@ -708,4 +1158,7 @@ void otx2_cpt_unregister_asym_algs(void)
 
 	for (i = 0; i < ARRAY_SIZE(cpt_rsa_algs); i++)
 		crypto_unregister_akcipher(&cpt_rsa_algs[i]);
+
+	for (i = 0; i < ARRAY_SIZE(cpt_ecdh_curves); i++)
+		crypto_unregister_kpp(&cpt_ecdh_curves[i]);
 }
