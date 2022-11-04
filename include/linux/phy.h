@@ -588,6 +588,7 @@ struct macsec_ops;
  * @mii_ts: Pointer to time stamper callbacks
  * @lock:  Mutex for serialization access to PHY
  * @state_queue: Work queue for state machine
+ * @link_down_events: Number of times link was lost
  * @shared: Pointer to private data shared by phys in one package
  * @priv: Pointer to driver private data
  *
@@ -711,7 +712,7 @@ struct phy_device {
 	const struct macsec_ops *macsec_ops;
 #endif
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, unsigned int link_down_events)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 };
