@@ -410,8 +410,8 @@ void rds_conn_net_set(struct rds_connection *conn, struct net *net)
 #define RDS_FLAG_HB_PONG		0x10
 #define RDS_FLAG_ANY_HB			(RDS_FLAG_HB_PING | RDS_FLAG_HB_PONG)
 #define RDS_FLAG_EXTHDR_EXTENSION	0x20
-#define RDS_MAX_ADV_CREDIT		127
 #define RDS_FLAG_EXTHDR_CAP_BITS_HB	BIT(0)
+#define RDS_MAX_ADV_CREDIT		255
 
 /* RDS_FLAG_PROBE_PORT is the reserved sport used for sending a ping
  * probe to exchange control information before establishing a connection.
