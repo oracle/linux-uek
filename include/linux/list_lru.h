@@ -33,21 +33,19 @@ struct list_lru_one {
 	long			nr_items;
 };
 
-struct list_lru_per_memcg {
-	struct rcu_head		rcu;
-	/* array of per cgroup per node lists, indexed by node id */
-	struct list_lru_one	node[];
-};
-
-/*
- * This structure is obsolete, retaining it for the KABI breakage,
- * the original structure using it:
- * struct list_lru_node::struct list_lru_memcg __rcu * memcg_lrus
- * this structure member is deprecated using UEK_KABI_DEPRECATE().
- */
 struct list_lru_memcg {
 	struct rcu_head		rcu;
+#ifndef __GENKSYMS__
+	/* array of per cgroup per node lists, indexed by node id */
+	struct list_lru_one	node[];
+#else
+	/*
+	 * UEK_KABI_REPLACE(), does'nt like flexiable arrays. So, use
+	 * ifdef gaurd to keep KABI happy. Remember, the member lru
+	 * is inaccessible.
+	 */
 	struct list_lru_one	*lru[];
+#endif
 };
 
 struct list_lru_node {
