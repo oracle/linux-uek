@@ -27,6 +27,7 @@
 #include <linux/fs.h>
 #ifndef __GENKSYMS__
 #include <linux/blk-mq.h>
+#include <linux/llist.h>
 #endif
 
 /* percpu_counter batch for blkg_[rw]stats, per-cpu drift doesn't matter */
@@ -67,7 +68,10 @@ struct blkcg {
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct list_head		cgwb_list;
 #endif
-	UEK_KABI_RESERVE(1)
+	/*
+	 * List of updated percpu blkg_iostat_set's since the last flush.
+	 */
+	UEK_KABI_USE(1, struct llist_head __percpu      *lhead)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
@@ -82,6 +86,10 @@ struct blkg_iostat_set {
 	struct u64_stats_sync		sync;
 	struct blkg_iostat		cur;
 	struct blkg_iostat		last;
+
+	UEK_KABI_EXTEND(struct blkcg_gq		*blkg)
+	UEK_KABI_EXTEND(struct llist_node	lnode)
+	UEK_KABI_EXTEND(int	lqueued)
 };
 
 /*
