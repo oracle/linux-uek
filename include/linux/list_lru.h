@@ -11,6 +11,7 @@
 #include <linux/list.h>
 #include <linux/nodemask.h>
 #include <linux/shrinker.h>
+#include <linux/xarray.h>
 
 struct mem_cgroup;
 
@@ -38,18 +39,15 @@ struct list_lru_per_memcg {
 	struct list_lru_one	node[];
 };
 
+/*
+ * This structure is obsolete, retaining it for the KABI breakage,
+ * the original structure using it:
+ * struct list_lru_node::struct list_lru_memcg __rcu * memcg_lrus
+ * this structure member is deprecated using UEK_KABI_DEPRECATE().
+ */
 struct list_lru_memcg {
-	struct rcu_head			rcu;
-#ifndef __GENKSYMS__
-	/* array of per cgroup lists, indexed by memcg_cache_id */
-	struct list_lru_per_memcg __rcu	*mlru[];
-#else
-	/*
-	 * Currently there are no UEK_*() macros that operate on flexible arrays.
-	 * Because of this, use __GENKSYMS__.
-	 */
-	struct list_lru_one *lru[];
-#endif
+	struct rcu_head		rcu;
+	struct list_lru_one	*lru[];
 };
 
 struct list_lru_node {
@@ -73,10 +71,7 @@ struct list_lru_node {
 struct list_lru_ext {
 	struct list_lru_node		*node;
 #ifdef CONFIG_MEMCG_KMEM
-	/* protects ->mlrus->mlru[i] */
-	spinlock_t			lock;
-	/* for cgroup aware lrus points to per cgroup lists, otherwise NULL */
-	struct list_lru_memcg __rcu	*mlrus;
+	struct xarray			xa;
 #endif
 };
 
@@ -102,7 +97,6 @@ int __list_lru_init(struct list_lru *lru, bool memcg_aware,
 
 int memcg_list_lru_alloc(struct mem_cgroup *memcg, struct list_lru *lru,
 			 gfp_t gfp);
-int memcg_update_all_list_lrus(int num_memcgs);
 void memcg_reparent_list_lrus(struct mem_cgroup *memcg, struct mem_cgroup *parent);
 
 /**
