@@ -120,7 +120,13 @@ static __init int iommu_setup(char *p)
 		return -EINVAL;
 
 	while (*p) {
-		if (!strncmp(p, "off", 3))
+		if (!strncmp(p, "off", 3)) {
+			if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD)
+				pr_warn("iommu=off ignored on AMD. Use iommu=forceoff if you really mean it\n");
+			else
+				no_iommu = 1;
+		}
+		if (!strncmp(p, "forceoff", 8))
 			no_iommu = 1;
 		/* gart_parse_options has more force support */
 		if (!strncmp(p, "force", 5))
