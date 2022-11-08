@@ -552,6 +552,7 @@ static void release_refill(struct rds_connection *conn)
 void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	bool deduct_one_credit = prefill && !ic->i_active_side;
 	struct rds_ib_recv_work *recv;
 	const struct ib_recv_wr *failed_wr;
 	unsigned int posted = 0;
@@ -638,6 +639,15 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 			 * For the time being, incremental cnt << 4 is used.
 			 */
 			if (flowctl_credits == flow_cntl_log2_cnt) {
+				/* We deduct one credit on the passive
+				 * side in order to accommodate for
+				 * the initial credit sent by the
+				 * active side.
+				 */
+				if (deduct_one_credit) {
+					--flowctl_credits;
+					deduct_one_credit = false;
+				}
 				rds_ib_advertise_credits(conn, flowctl_credits);
 				flow_cntl_log2_cnt <<= 4;
 				flowctl_credits = 0;
@@ -655,8 +665,12 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 	ring_empty = rds_ib_ring_empty(&ic->i_recv_ring);
 
 	/* We're doing flow control - update the window. */
-	if (ic->i_flowctl && flowctl_credits)
+	if (flowctl_credits) {
+		/* If fewer than flow_cntl_log2_cnt were posted, we must deduct here */
+		if (deduct_one_credit)
+			--flowctl_credits;
 		rds_ib_advertise_credits(conn, flowctl_credits);
+	}
 
 	if (ret)
 		rds_ib_ring_unalloc(&ic->i_recv_ring, 1);
