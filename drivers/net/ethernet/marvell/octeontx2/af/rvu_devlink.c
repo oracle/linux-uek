@@ -1381,6 +1381,7 @@ enum rvu_af_dl_param_id {
 	RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI,
 	RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_PTP,
 	RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_BTS,
+	RVU_AF_DEVLINK_PARAM_ID_NPC_MCAM_ZONE_PERCENT,
 	RVU_AF_DEVLINK_PARAM_ID_NPC_EXACT_FEATURE_DISABLE,
 };
 
@@ -1730,6 +1731,65 @@ static int rvu_af_npc_exact_feature_validate(struct devlink *devlink, u32 id,
 	return -EFAULT;
 }
 
+static int rvu_af_dl_npc_mcam_high_zone_percent_get(struct devlink *devlink, u32 id,
+						    struct devlink_param_gset_ctx *ctx)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	struct npc_mcam *mcam;
+	u32 percent;
+
+	mcam = &rvu->hw->mcam;
+	percent = (mcam->hprio_count * 100) / mcam->bmap_entries;
+	ctx->val.vu8 = (u8)percent;
+
+	return 0;
+}
+
+static int rvu_af_dl_npc_mcam_high_zone_percent_set(struct devlink *devlink, u32 id,
+						    struct devlink_param_gset_ctx *ctx)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	struct npc_mcam *mcam;
+	u32 percent;
+
+	percent = ctx->val.vu8;
+	mcam = &rvu->hw->mcam;
+	mcam->hprio_count = (mcam->bmap_entries * percent) / 100;
+	mcam->hprio_end = mcam->hprio_count;
+
+	return 0;
+}
+
+static int rvu_af_dl_npc_mcam_high_zone_percent_validate(struct devlink *devlink, u32 id,
+							 union devlink_param_value val,
+							 struct netlink_ext_ack *extack)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	struct npc_mcam *mcam;
+
+	/* The high prio zone must be in the range of 1/8 to 3/4 of total mcam space */
+	if (val.vu8 < 12 || val.vu8 > 75) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "mcam high zone percent must be between 15% to 75%");
+		return -EINVAL;
+	}
+
+	/* Do not allow user to modify the high priority zone entries while mcam entries
+	 * have already been assigned.
+	 */
+	mcam = &rvu->hw->mcam;
+	if (mcam->bmap_fcnt < mcam->bmap_entries) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "mcam entries have already been assigned, can't resize");
+		return -EPERM;
+	}
+
+	return 0;
+}
+
 static const struct devlink_param rvu_af_dl_params[] = {
 	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_DWRR_MTU,
 			     "dwrr_mtu", DEVLINK_PARAM_TYPE_U32,
@@ -1812,6 +1872,12 @@ static const struct devlink_param rvu_af_dl_params[] = {
 			     rvu_af_dl_tim_adjust_timer_get,
 			     rvu_af_dl_tim_adjust_timer_set,
 			     rvu_af_dl_tim_adjust_timer_validate),
+	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_NPC_MCAM_ZONE_PERCENT,
+			     "npc_mcam_high_zone_percent", DEVLINK_PARAM_TYPE_U8,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     rvu_af_dl_npc_mcam_high_zone_percent_get,
+			     rvu_af_dl_npc_mcam_high_zone_percent_set,
+			     rvu_af_dl_npc_mcam_high_zone_percent_validate),
 	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_NPC_EXACT_FEATURE_DISABLE,
 			     "npc_exact_feature_disable", DEVLINK_PARAM_TYPE_STRING,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
