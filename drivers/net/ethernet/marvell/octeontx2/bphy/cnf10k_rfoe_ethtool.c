@@ -25,8 +25,19 @@ static const char ethtool_stat_strings[][ETH_GSTRING_LEN] = {
 	"ptp_tx_hwtstamp_failures",
 	"EthIfInFrames",
 	"EthIfInOctets",
+	"EthIfInErrDropFrames",
+	"EthIfInFullDropFrames",
+	"EthIfInEcpriErrDropFrames",
+	"EthIfInFtDropFrames",
+	"EthIfInFdSosDropFrames",
+	"EthIfInOrderinfoFail",
+	"EthIfInDmaFrames",
+	"EthIfInDmaOctets",
+	"EthIfInDmaComplete",
+	"EthIfInRxVlanFwd",
 	"EthIfOutFrames",
 	"EthIfOutOctets",
+	"EthIfOutDropFrames",
 	"EthIfInUnknownVlan",
 };
 
@@ -61,12 +72,43 @@ static void cnf10k_rfoe_update_lmac_stats(struct cnf10k_rfoe_ndev_priv *priv)
 	stats->EthIfInOctets = readq(priv->rfoe_reg_base +
 				     CNF10K_RFOEX_RX_RPM_OCTS_STAT(priv->rfoe_num,
 								   priv->lmac_id));
+	stats->ethifinerrdropframes = readq(priv->rfoe_reg_base +
+					    CNF10K_RFOEX_RX_PKT_ERR_DROP_STAT(priv->rfoe_num));
+	stats->ethifinfulldropframes = readq(priv->rfoe_reg_base +
+					     CNF10K_RFOEX_RX_FULL_DROP_STATX(priv->rfoe_num,
+									     priv->lmac_id));
+	stats->ethifinecprierrdropframes =
+				readq(priv->rfoe_reg_base +
+				      CNF10K_RFOEX_RX_ECPRI_ERR_DROP_STAT(priv->rfoe_num,
+									  priv->lmac_id));
+	stats->ethifinftdropframes = readq(priv->rfoe_reg_base +
+					   CNF10K_RFOEX_RX_FT_ENABLE_DROP_STAT(priv->rfoe_num));
+	stats->ethifinfdsosdropframes = readq(priv->rfoe_reg_base +
+					      CNF10K_RFOEX_RX_FD_SOS_DROP_STAT(priv->rfoe_num));
+	stats->ethifinorderinfofail = readq(priv->rfoe_reg_base +
+					    CNF10K_RFOEX_RX_ORDERINFO_FAIL_STAT(priv->rfoe_num));
+	stats->ethifindmaframes = readq(priv->rfoe_reg_base +
+					CNF10K_RFOEX_RX_DMA_PKT_STAT(priv->rfoe_num,
+								     priv->lmac_id));
+	stats->ethifindmaoctets = readq(priv->rfoe_reg_base +
+					CNF10K_RFOEX_RX_DMA_OCTS_STAT(priv->rfoe_num,
+								      priv->lmac_id));
+	stats->ethifindmacomplete = readq(priv->rfoe_reg_base +
+					  CNF10K_RFOEX_RX_DMA_COMPLETE_STAT(priv->rfoe_num,
+									    priv->lmac_id));
+	stats->ethifinrxvlanfwd = readq(priv->rfoe_reg_base +
+					CNF10K_RFOEX_RX_VLAN_FWD_STAT(priv->rfoe_num,
+								      priv->lmac_id));
 	stats->EthIfOutFrames = readq(priv->rfoe_reg_base +
 				      CNF10K_RFOEX_TX_PKT_STAT(priv->rfoe_num,
 							       priv->lmac_id));
 	stats->EthIfOutOctets = readq(priv->rfoe_reg_base +
 				      CNF10K_RFOEX_TX_OCTS_STAT(priv->rfoe_num,
 								priv->lmac_id));
+	stats->ethifoutdropframes =
+				readq(priv->rfoe_reg_base +
+				      CNF10K_RFOEX_TX_PKT_DROP_STAT(priv->rfoe_num,
+								    priv->lmac_id));
 	stats->EthIfInUnknownVlan =
 				readq(priv->rfoe_reg_base +
 				      CNF10K_RFOEX_RX_VLAN_DROP_STAT(priv->rfoe_num,

@@ -64,6 +64,35 @@
 #define CNF10K_RFOEX_RX_RPM_OCTS_STAT(a, b)		(0x15E0ULL | \
 							 (((unsigned long)(a) << 24)) | \
 							 ((b) << 3))
+#define CNF10K_RFOEX_RX_PKT_ERR_DROP_STAT(a)		(0x1538ULL | \
+							 (((unsigned long)(a) << 24)))
+#define CNF10K_RFOEX_RX_FULL_DROP_STATX(a, b)		(0x1620ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_FT_ENABLE_DROP_STAT(a)		(0x1528ULL | \
+							 (((unsigned long)(a) << 24)))
+#define CNF10K_RFOEX_RX_FD_SOS_DROP_STAT(a)		(0x1530ULL | \
+							 (((unsigned long)(a) << 24)))
+#define CNF10K_RFOEX_RX_ORDERINFO_FAIL_STAT(a)		(0x1540ULL | \
+							 (((unsigned long)(a) << 24)))
+#define CNF10K_RFOEX_RX_DMA_PKT_STAT(a, b)		(0x1560ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_DMA_OCTS_STAT(a, b)		(0x1580ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_DMA_COMPLETE_STAT(a, b)		(0x15A0ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_VLAN_FWD_STAT(a, b)		(0x8C0ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_TX_PKT_DROP_STAT(a, b)		(0x760ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
+#define CNF10K_RFOEX_RX_ECPRI_ERR_DROP_STAT(a, b)	(0x1600ULL | \
+							 (((unsigned long)(a) << 24)) | \
+							 ((b) << 3))
 
 /* CPRI register offsets */
 #define CNF10K_CPRIX_RXD_GMII_UL_CBUF_CFG1(a)		(0x1000ULL | \

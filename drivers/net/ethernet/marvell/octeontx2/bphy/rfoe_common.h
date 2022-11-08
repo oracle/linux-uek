@@ -142,8 +142,19 @@ struct otx2_rfoe_stats {
 	/* per LMAC stats */
 	u64 EthIfInFrames;
 	u64 EthIfInOctets;
+	u64 ethifinerrdropframes;
+	u64 ethifinfulldropframes;
+	u64 ethifinecprierrdropframes;
+	u64 ethifinftdropframes;
+	u64 ethifinfdsosdropframes;
+	u64 ethifinorderinfofail;
+	u64 ethifindmaframes;
+	u64 ethifindmaoctets;
+	u64 ethifindmacomplete;
+	u64 ethifinrxvlanfwd;
 	u64 EthIfOutFrames;
 	u64 EthIfOutOctets;
+	u64 ethifoutdropframes;
 	u64 EthIfInUnknownVlan;
 
 	/* stats update lock */

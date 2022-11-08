@@ -64,6 +64,32 @@
 #define RFOEX_RX_CGX_OCTS_STAT(a, b)	(0x15E0ULL | \
 					 (((unsigned long)(a) << 36)) | \
 					 ((b) << 3))
+#define RFOEX_RX_DMA_PKT_STATX(a, b)	(0x1560ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_RX_DMA_OCTS_STATX(a, b)	(0x1580ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_RX_DMA_COMPLETE_STATX(a, b)	(0x15A0ULL | \
+						 (((unsigned long)(a) << 36)) | \
+						 ((b) << 3))
+#define RFOEX_RX_PKT_ERR_DROP_STAT(a)	(0x1538ULL | \
+					 ((unsigned long)(a) << 36))
+#define RFOEX_RX_FT_ENABLE_DROP_STAT(a)	(0x1528ULL | \
+					 ((unsigned long)(a) << 36))
+#define RFOEX_RX_FD_SOS_DROP_STAT(a)	(0x1530ULL | \
+					 ((unsigned long)(a) << 36))
+#define RFOEX_RX_ORDERINFO_FAIL_STAT(a)	(0x1540ULL | \
+					 ((unsigned long)(a) << 36))
+#define RFOEX_RX_VLAN_FWD_STATX(a, b)	(0x8C0ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_TX_PKT_DROP_STATX(a, b)	(0x760ULL | \
+					 (((unsigned long)(a) << 36)) | \
+					 ((b) << 3))
+#define RFOEX_RX_ECPRI_ERR_DROP_STATX(a, b)	(0x1600ULL | \
+						 (((unsigned long)(a) << 36)) | \
+						 ((b) << 3))
 
 /* BCN register offsets and definitions */
 #define BCN_CAPTURE_CFG			0x10400
