@@ -1279,62 +1279,62 @@ static irqreturn_t rvu_sso_af_err0_intr_handler(int irq, void *ptr)
 
 	block = &rvu->hw->block[blkaddr];
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR0);
-	dev_err(rvu->dev, "Received SSO_AF_ERR0 irq : 0x%llx", reg);
+	dev_err_ratelimited(rvu->dev, "Received SSO_AF_ERR0 irq : 0x%llx", reg);
 
 	if (reg & BIT_ULL(15)) {
-		dev_err(rvu->dev, "Received Bad-fill-packet NCB error");
+		dev_err_ratelimited(rvu->dev, "Received Bad-fill-packet NCB error");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_POISON)
 	}
 
 	if (reg & BIT_ULL(14)) {
-		dev_err(rvu->dev, "An FLR was initiated, but SSO_LF_GGRP_AQ_CNT[AQ_CNT] != 0");
+		dev_err_ratelimited(rvu->dev, "An FLR was initiated, but SSO_LF_GGRP_AQ_CNT[AQ_CNT] != 0");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_FLR_AQ_DIGEST)
 	}
 
 	if (reg & BIT_ULL(13)) {
-		dev_err(rvu->dev, "Add work dropped due to XAQ pointers not yet initialized.");
+		dev_err_ratelimited(rvu->dev, "Add work dropped due to XAQ pointers not yet initialized.");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_XAQDIS_DIGEST)
 	}
 
 	if (reg & (0xF << 9)) {
-		dev_err(rvu->dev, "PF_FUNC mapping error.");
-		dev_err(rvu->dev, "SSO_AF_UNMAP_INFO : 0x%llx",
-			rvu_read64(rvu, blkaddr, SSO_AF_UNMAP_INFO));
+		dev_err_ratelimited(rvu->dev, "PF_FUNC mapping error.");
+		dev_err_ratelimited(rvu->dev, "SSO_AF_UNMAP_INFO : 0x%llx",
+				    rvu_read64(rvu, blkaddr, SSO_AF_UNMAP_INFO));
 	}
 
 	if (reg & BIT_ULL(8)) {
-		dev_err(rvu->dev, "Add work dropped due to QTL being disabled, 0x0");
+		dev_err_ratelimited(rvu->dev, "Add work dropped due to QTL being disabled, 0x0");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_QCTLDIS_DIGEST)
 	}
 
 	if (reg & BIT_ULL(7)) {
-		dev_err(rvu->dev, "Add work dropped due to WQP being 0x0");
+		dev_err_ratelimited(rvu->dev, "Add work dropped due to WQP being 0x0");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_WQP0_DIGEST)
 	}
 
 	if (reg & BIT_ULL(6))
-		dev_err(rvu->dev, "Add work dropped due to 64 bit write");
+		dev_err_ratelimited(rvu->dev, "Add work dropped due to 64 bit write");
 
 	if (reg & BIT_ULL(5))
-		dev_err(rvu->dev, "Set when received add work with tag type is specified as EMPTY");
+		dev_err_ratelimited(rvu->dev, "Set when received add work with tag type is specified as EMPTY");
 
 	if (reg & BIT_ULL(4)) {
-		dev_err(rvu->dev, "Add work to disabled hardware group. An ADDWQ was received and dropped to a hardware group with SSO_AF_HWGRP(0..255)_IAQ_THR[RSVD_THR] = 0.");
+		dev_err_ratelimited(rvu->dev, "Add work to disabled hardware group. An ADDWQ was received and dropped to a hardware group with SSO_AF_HWGRP(0..255)_IAQ_THR[RSVD_THR] = 0.");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_GRPDIS_DIGEST)
 	}
 
 	if (reg & BIT_ULL(3)) {
-		dev_err(rvu->dev, "Bad-fill-packet NCB error");
+		dev_err_ratelimited(rvu->dev, "Bad-fill-packet NCB error");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_BFPN_DIGEST)
 	}
 
 	if (reg & BIT_ULL(2)) {
-		dev_err(rvu->dev, "Bad-fill-packet error.");
+		dev_err_ratelimited(rvu->dev, "Bad-fill-packet error.");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_BFP_DIGEST)
 	}
 
 	if (reg & BIT_ULL(1)) {
-		dev_err(rvu->dev, "The NPA returned an error indication");
+		dev_err_ratelimited(rvu->dev, "The NPA returned an error indication");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_NPA_DIGEST)
 	}
 
@@ -1353,7 +1353,7 @@ static irqreturn_t rvu_sso_af_err2_intr_handler(int irq, void *ptr)
 		return IRQ_NONE;
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR2);
-	dev_err(rvu->dev, "received SSO_AF_ERR2 irq : 0x%llx", reg);
+	dev_err_ratelimited(rvu->dev, "received SSO_AF_ERR2 irq : 0x%llx", reg);
 	rvu_write64(rvu, blkaddr, SSO_AF_ERR2, reg);
 
 	return IRQ_HANDLED;
@@ -1373,7 +1373,7 @@ static irqreturn_t rvu_sso_af_ras_intr_handler(int irq, void *ptr)
 	block = &rvu->hw->block[blkaddr];
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_RAS);
-	dev_err(rvu->dev, "received SSO_AF_RAS irq : 0x%llx", reg);
+	dev_err_ratelimited(rvu->dev, "received SSO_AF_RAS irq : 0x%llx", reg);
 	rvu_write64(rvu, blkaddr, SSO_AF_RAS, reg);
 	SSO_AF_INT_DIGEST_PRNT(SSO_AF_POISON)
 
