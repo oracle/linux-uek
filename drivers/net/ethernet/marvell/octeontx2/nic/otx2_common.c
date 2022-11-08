@@ -671,6 +671,13 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl, int prio, bool txschq_for
 		req->reg[2] = NIX_AF_MDQX_SCHEDULE(schq);
 		req->regval[2] =  dwrr_val;
 	} else if (lvl == NIX_TXSCH_LVL_TL4) {
+		int sdp_channel = hw->tx_chan_base + prio;
+
+		/* For SDP, TL4 is the last level used, so we always just
+		 * want 1 queue configured after that.
+		 */
+		if (is_otx2_sdpvf(pfvf->pdev))
+			prio = 0;
 		parent = schq_list[NIX_TXSCH_LVL_TL3][prio];
 		req->reg[0] = NIX_AF_TL4X_PARENT(schq);
 		req->regval[0] = (u64)parent << 16;
@@ -680,7 +687,7 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl, int prio, bool txschq_for
 		if (is_otx2_sdpvf(pfvf->pdev)) {
 			req->num_regs++;
 			req->reg[2] = NIX_AF_TL4X_SDP_LINK_CFG(schq);
-			req->regval[2] = BIT_ULL(12);
+			req->regval[2] = BIT_ULL(12) | BIT_ULL(13) | (sdp_channel & 0xff);
 		}
 	} else if (lvl == NIX_TXSCH_LVL_TL3) {
 		parent = schq_list[NIX_TXSCH_LVL_TL2][prio];
@@ -765,6 +772,7 @@ EXPORT_SYMBOL(otx2_smq_flush);
 
 int otx2_txsch_alloc(struct otx2_nic *pfvf)
 {
+	int chan_cnt = pfvf->hw.tx_chan_cnt;
 	struct nix_txsch_alloc_req *req;
 	struct nix_txsch_alloc_rsp *rsp;
 	int lvl, schq, rc;
@@ -777,6 +785,15 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 	/* Request one schq per level */
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
 		req->schq[lvl] = 1;
+
+	if (is_otx2_sdpvf(pfvf->pdev) && chan_cnt > 1) {
+		/* For SDP, backpressure is asserted at TL4,
+		 * so single scheduler queue at higher levels suffice.
+		 */
+		req->schq[NIX_TXSCH_LVL_SMQ] = chan_cnt;
+		req->schq[NIX_TXSCH_LVL_TL4] = chan_cnt;
+	}
+
 	rc = otx2_sync_mbox_msg(&pfvf->mbox);
 	if (rc)
 		return rc;
@@ -787,10 +804,12 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 		return PTR_ERR(rsp);
 
 	/* Setup transmit scheduler list */
-	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
+	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
+		pfvf->hw.txschq_cnt[lvl] = rsp->schq[lvl];
 		for (schq = 0; schq < rsp->schq[lvl]; schq++)
 			pfvf->hw.txschq_list[lvl][schq] =
 				rsp->schq_list[lvl][schq];
+	}
 
 	pfvf->hw.txschq_link_cfg_lvl = rsp->link_cfg_lvl;
 	pfvf->hw.txschq_aggr_lvl_rr_prio = rsp->aggr_lvl_rr_prio;
@@ -831,12 +850,15 @@ EXPORT_SYMBOL(otx2_txschq_free_one);
 
 void otx2_txschq_stop(struct otx2_nic *pfvf)
 {
-	int lvl, schq;
+	int lvl, schq, idx;
 
 	/* free non QOS TLx nodes */
-	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
-		otx2_txschq_free_one(pfvf, lvl,
-				     pfvf->hw.txschq_list[lvl][0]);
+	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
+		for (idx = 0; idx < pfvf->hw.txschq_cnt[lvl]; idx++) {
+			otx2_txschq_free_one(pfvf, lvl,
+					     pfvf->hw.txschq_list[lvl][idx]);
+		}
+	}
 
 	/* Clear the txschq list */
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
