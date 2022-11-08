@@ -213,6 +213,21 @@ static int rsassa_pkcs1_sign(struct crypto_sig *tfm,
 	return ctx->key_size;
 }
 
+static int rsassa_pkcs1_sign_fips(struct crypto_sig *tfm,
+			     const void *src, unsigned int slen,
+			     void *dst, unsigned int dlen)
+{
+	int err;
+
+	err = rsassa_pkcs1_sign(tfm, src, slen, dst, dlen);
+	if (err)
+		return err;
+
+	crypto_tfm_set_flags(&tfm->base, CRYPTO_TFM_FIPS_COMPLIANCE);
+
+	return 0;
+}
+
 static int rsassa_pkcs1_verify(struct crypto_sig *tfm,
 			       const void *src, unsigned int slen,
 			       const void *digest, unsigned int dlen)
@@ -412,7 +427,7 @@ static int rsassa_pkcs1_create(struct crypto_template *tmpl, struct rtattr **tb)
 	inst->alg.init = rsassa_pkcs1_init_tfm;
 	inst->alg.exit = rsassa_pkcs1_exit_tfm;
 
-	inst->alg.sign = rsassa_pkcs1_sign;
+	inst->alg.sign = rsassa_pkcs1_sign_fips;
 	inst->alg.verify = rsassa_pkcs1_verify;
 	inst->alg.key_size = rsassa_pkcs1_key_size;
 	inst->alg.set_pub_key = rsassa_pkcs1_set_pub_key;
