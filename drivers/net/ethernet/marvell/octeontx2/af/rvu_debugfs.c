@@ -265,11 +265,11 @@ static int rvu_dbg_mcs_sa_stats_display(struct seq_file *filp, void *unused, int
 	int sa_id;
 
 	if (dir == MCS_TX) {
-		mutex_lock(&mcs->stats_lock);
 		map = &mcs->tx.sa;
-		seq_puts(filp, "\n TX SA stats\n");
-		mcs_get_sa_stats(mcs, &stats, sa_id, MCS_TX);
+		mutex_lock(&mcs->stats_lock);
 		for_each_set_bit(sa_id, map->bmap, mcs->hw->sa_entries) {
+			seq_puts(filp, "\n TX SA stats\n");
+			mcs_get_sa_stats(mcs, &stats, sa_id, MCS_TX);
 			seq_printf(filp, "sa%d: Pkts encrypted: %lld\n", sa_id,
 				   stats.pkt_encrypt_cnt);
 

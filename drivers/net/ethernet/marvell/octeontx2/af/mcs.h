@@ -2,7 +2,6 @@
 /* Marvell CN10K MCS driver
  *
  * Copyright (C) 2022 Marvell.
- *
  */
 
 #ifndef MCS_H
@@ -18,6 +17,10 @@
 
 #define MCS_ID_MASK			0x7
 #define MCS_MAX_PFS                     128
+
+#define MCS_PORT_MODE_MASK		0x3
+#define MCS_PORT_FIFO_SKID_MASK		0x3F
+#define MCS_MAX_CUSTOM_TAGS		0x8
 
 #define MCS_CTRLPKT_ETYPE_RULE_MAX	8
 #define MCS_CTRLPKT_DA_RULE_MAX		8
@@ -53,22 +56,18 @@ enum mcs_int_vec_e {
 	MCS_INT_VEC_CNT			= 0x14,
 };
 
-#define MCS_PORT_MODE_MASK 0x3
-#define MCS_PORT_FIFO_SKID_MASK 0x3F
-#define MCS_MAX_CUSTOM_TAGS 0x8
+#define MCS_MAX_BBE_INT			8ULL
+#define MCS_BBE_INT_MASK		0xFFULL
 
-#define MCS_MAX_BBE_INT 8
-#define MCS_BBE_INT_MASK 0xFF
+#define MCS_MAX_PAB_INT			4ULL
+#define MCS_PAB_INT_MASK		0xFULL
 
-#define MCS_MAX_PAB_INT 4
-#define MCS_PAB_INT_MASK 0xF
-
-#define MCS_BBE_RX_INT_ENA	BIT_ULL(0)
-#define MCS_BBE_TX_INT_ENA	BIT_ULL(1)
-#define MCS_CPM_RX_INT_ENA	BIT_ULL(2)
-#define MCS_CPM_TX_INT_ENA	BIT_ULL(3)
-#define MCS_PAB_RX_INT_ENA	BIT_ULL(4)
-#define MCS_PAB_TX_INT_ENA	BIT_ULL(5)
+#define MCS_BBE_RX_INT_ENA		BIT_ULL(0)
+#define MCS_BBE_TX_INT_ENA		BIT_ULL(1)
+#define MCS_CPM_RX_INT_ENA		BIT_ULL(2)
+#define MCS_CPM_TX_INT_ENA		BIT_ULL(3)
+#define MCS_PAB_RX_INT_ENA		BIT_ULL(4)
+#define MCS_PAB_TX_INT_ENA		BIT_ULL(5)
 
 #define MCS_CPM_TX_INT_PACKET_XPN_EQ0		BIT_ULL(0)
 #define MCS_CPM_TX_INT_PN_THRESH_REACHED	BIT_ULL(1)
@@ -82,9 +81,16 @@ enum mcs_int_vec_e {
 #define MCS_CPM_RX_INT_PACKET_XPN_EQ0		BIT_ULL(5)
 #define MCS_CPM_RX_INT_PN_THRESH_REACHED	BIT_ULL(6)
 
+#define MCS_CPM_RX_INT_ALL	(MCS_CPM_RX_INT_SECTAG_V_EQ1 |		\
+				 MCS_CPM_RX_INT_SECTAG_E_EQ0_C_EQ1 |    \
+				 MCS_CPM_RX_INT_SL_GTE48 |		\
+				 MCS_CPM_RX_INT_ES_EQ1_SC_EQ1 |		\
+				 MCS_CPM_RX_INT_SC_EQ1_SCB_EQ1 |	\
+				 MCS_CPM_RX_INT_PACKET_XPN_EQ0 |	\
+				 MCS_CPM_RX_INT_PN_THRESH_REACHED)
+
 struct mcs_pfvf {
 	u64 intr_mask;	/* Enabled Interrupt mask */
-	u8 intr_ena;	/* set if atleast 1 interrupt is enabled */
 };
 
 struct mcs_intr_event {
@@ -98,12 +104,6 @@ struct mcs_intr_event {
 struct mcs_intrq_entry {
 	struct list_head node;
 	struct mcs_intr_event intr_event;
-};
-
-struct sc_mem_map {
-	u64 sci;
-	u8 secy_id;
-	u8 sc_id;
 };
 
 struct secy_mem_map {
@@ -183,7 +183,6 @@ static inline u64 mcs_reg_read(struct mcs *mcs, u64 offset)
 struct mcs *mcs_get_pdata(int mcs_id);
 int mcs_get_blkcnt(void);
 int mcs_set_lmac_channels(int mcs_id, u16 base);
-
 int mcs_alloc_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, u16 pcifunc);
 int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc);
 int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flowid, u8 *secy_id,
@@ -201,18 +200,18 @@ void mcs_pn_table_write(struct mcs *mcs, u8 pn_id, u64 next_pn, u8 dir);
 void mcs_tx_sa_mem_map_write(struct mcs *mcs, struct mcs_tx_sc_sa_map *map);
 void mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int dir);
 void mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map);
+void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn);
 int mcs_install_flowid_bypass_entry(struct mcs *mcs);
 void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id, u8 mode);
-void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn);
-int mcs_alloc_ctrlpktrule(struct rsrc_bmap *rsrc, u16 *pf_map, u16 offset, u16 pcifunc);
-int mcs_free_ctrlpktrule(struct mcs *mcs, struct mcs_free_ctrl_pkt_rule_req *req);
-int mcs_ctrlpktrule_write(struct mcs *mcs, struct mcs_ctrl_pkt_rule_write_req *req);
 void mcs_reset_port(struct mcs *mcs, u8 port_id, u8 reset);
 void mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req);
 void mcs_get_port_cfg(struct mcs *mcs, struct mcs_port_cfg_get_req *req,
 		      struct mcs_port_cfg_get_rsp *rsp);
 void mcs_get_custom_tag_cfg(struct mcs *mcs, struct mcs_custom_tag_cfg_get_req *req,
 			    struct mcs_custom_tag_cfg_get_rsp *rsp);
+int mcs_alloc_ctrlpktrule(struct rsrc_bmap *rsrc, u16 *pf_map, u16 offset, u16 pcifunc);
+int mcs_free_ctrlpktrule(struct mcs *mcs, struct mcs_free_ctrl_pkt_rule_req *req);
+int mcs_ctrlpktrule_write(struct mcs *mcs, struct mcs_ctrl_pkt_rule_write_req *req);
 
 /* CN10K-B APIs */
 void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs);
@@ -229,6 +228,7 @@ void cnf10kb_mcs_flowid_secy_map(struct mcs *mcs, struct secy_mem_map *map, int 
 void cnf10kb_mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *map);
 void cnf10kb_mcs_parser_cfg(struct mcs *mcs);
 void cnf10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs);
+void cnf10kb_mcs_tx_pn_wrapped_handler(struct mcs *mcs);
 
 /* Stats APIs */
 void mcs_get_sc_stats(struct mcs *mcs, struct mcs_sc_stats *stats, int id, int dir);
@@ -242,4 +242,5 @@ int mcs_clear_all_stats(struct mcs *mcs, u16 pcifunc, int dir);
 int mcs_set_force_clk_en(struct mcs *mcs, bool set);
 
 int mcs_add_intr_wq_entry(struct mcs *mcs, struct mcs_intr_event *event);
+
 #endif /* MCS_H */

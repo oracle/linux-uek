@@ -419,8 +419,8 @@ M(MCS_PORT_CFG_SET, 0xa019, mcs_port_cfg_set, mcs_port_cfg_set_req, msg_rsp)	\
 M(MCS_PORT_CFG_GET, 0xa020, mcs_port_cfg_get, mcs_port_cfg_get_req,		\
 				mcs_port_cfg_get_rsp)				\
 M(MCS_CUSTOM_TAG_CFG_GET, 0xa021, mcs_custom_tag_cfg_get,			\
-					mcs_custom_tag_cfg_get_req,		\
-					mcs_custom_tag_cfg_get_rsp)		\
+				  mcs_custom_tag_cfg_get_req,		\
+				  mcs_custom_tag_cfg_get_rsp)		\
 
 
 /* Messages initiated by AF (range 0xC00 - 0xEFF) */
@@ -2322,14 +2322,6 @@ struct mcs_secy_plcy_write_req {
 	u64 rsvd;
 };
 
-struct mcs_port_reset_req {
-	struct mbox_msghdr hdr;
-	u8 reset;
-	u8 mcs_id;
-	u8 port_id;
-	u64 rsvd;
-};
-
 /* RX SC_CAM mapping */
 struct mcs_rx_sc_cam_write_req {
 	struct mbox_msghdr hdr;
@@ -2407,6 +2399,132 @@ struct mcs_set_active_lmac {
 	u32 lmac_bmap;	/* bitmap of active lmac per mcs block */
 	u8 mcs_id;
 	u16 chan_base; /* MCS channel base */
+	u64 rsvd;
+};
+
+struct mcs_set_lmac_mode {
+	struct mbox_msghdr hdr;
+	u8 mode;	/* 1:Bypass 0:Operational */
+	u8 lmac_id;
+	u8 mcs_id;
+	u64 rsvd;
+};
+
+struct mcs_port_reset_req {
+	struct mbox_msghdr hdr;
+	u8 reset;
+	u8 mcs_id;
+	u8 port_id;
+	u64 rsvd;
+};
+
+struct mcs_port_cfg_set_req {
+	struct mbox_msghdr hdr;
+	u8 cstm_tag_rel_mode_sel;
+	u8 custom_hdr_enb;
+	u8 fifo_skid;
+	u8 port_mode;
+	u8 port_id;
+	u8 mcs_id;
+	u64 rsvd;
+};
+
+struct mcs_port_cfg_get_req {
+	struct mbox_msghdr hdr;
+	u8 port_id;
+	u8 mcs_id;
+	u64 rsvd;
+};
+
+struct mcs_port_cfg_get_rsp {
+	struct mbox_msghdr hdr;
+	u8 cstm_tag_rel_mode_sel;
+	u8 custom_hdr_enb;
+	u8 fifo_skid;
+	u8 port_mode;
+	u8 port_id;
+	u8 mcs_id;
+	u64 rsvd;
+};
+
+struct mcs_custom_tag_cfg_get_req {
+	struct mbox_msghdr hdr;
+	u8 mcs_id;
+	u8 dir;
+	u64 rsvd;
+};
+
+struct mcs_custom_tag_cfg_get_rsp {
+	struct mbox_msghdr hdr;
+	u16 cstm_etype[8];
+	u8 cstm_indx[8];
+	u8 cstm_etype_en;
+	u8 mcs_id;
+	u8 dir;
+	u64 rsvd;
+};
+
+/* MCS mailbox error codes
+ * Range 1201 - 1300.
+ */
+enum mcs_af_status {
+	MCS_AF_ERR_INVALID_MCSID	= -1201,
+	MCS_AF_ERR_NOT_MAPPED		= -1202,
+};
+
+struct mcs_set_pn_threshold {
+	struct mbox_msghdr hdr;
+	u64 threshold;
+	u8 xpn; /* '1' for setting xpn threshold */
+	u8 mcs_id;
+	u8 dir;
+	u64 rsvd;
+};
+
+enum mcs_ctrl_pkt_rulew_type {
+	MCS_CTRL_PKT_RULE_TYPE_ETH,
+	MCS_CTRL_PKT_RULE_TYPE_DA,
+	MCS_CTRL_PKT_RULE_TYPE_RANGE,
+	MCS_CTRL_PKT_RULE_TYPE_COMBO,
+	MCS_CTRL_PKT_RULE_TYPE_MAC,
+};
+
+struct mcs_alloc_ctrl_pkt_rule_req {
+	struct mbox_msghdr hdr;
+	u8 rule_type;
+	u8 mcs_id;	/* MCS block ID	*/
+	u8 dir;		/* Macsec ingress or egress side */
+	u64 rsvd;
+};
+
+struct mcs_alloc_ctrl_pkt_rule_rsp {
+	struct mbox_msghdr hdr;
+	u8 rule_idx;
+	u8 rule_type;
+	u8 mcs_id;
+	u8 dir;
+	u64 rsvd;
+};
+
+struct mcs_free_ctrl_pkt_rule_req {
+	struct mbox_msghdr hdr;
+	u8 rule_idx;
+	u8 rule_type;
+	u8 mcs_id;
+	u8 dir;
+	u8 all;
+	u64 rsvd;
+};
+
+struct mcs_ctrl_pkt_rule_write_req {
+	struct mbox_msghdr hdr;
+	u64 data0;
+	u64 data1;
+	u64 data2;
+	u8 rule_idx;
+	u8 rule_type;
+	u8 mcs_id;
+	u8 dir;
 	u64 rsvd;
 };
 
@@ -2512,14 +2630,8 @@ struct mcs_clear_stats {
 	u8 all;		/* All resources stats mapped to PF are cleared */
 };
 
-struct mcs_set_lmac_mode {
+struct mcs_intr_cfg {
 	struct mbox_msghdr hdr;
-	u8 mode;	/* 1:Bypass 0:Operational */
-	u8 lmac_id;
-	u8 mcs_id;
-	u64 rsvd;
-};
-
 #define MCS_CPM_RX_SECTAG_V_EQ1_INT BIT_ULL(0)
 #define MCS_CPM_RX_SECTAG_E_EQ0_C_EQ1_INT BIT_ULL(1)
 #define MCS_CPM_RX_SECTAG_SL_GTE48_INT BIT_ULL(2)
@@ -2536,9 +2648,6 @@ struct mcs_set_lmac_mode {
 #define MCS_BBE_TX_PLFIFO_OVERFLOW_INT BIT_ULL(13)
 #define MCS_PAB_RX_CHAN_OVERFLOW_INT BIT_ULL(14)
 #define MCS_PAB_TX_CHAN_OVERFLOW_INT BIT_ULL(15)
-
-struct mcs_intr_cfg {
-	struct mbox_msghdr hdr;
 	u64 intr_mask;		/* Interrupt enable mask */
 	u8 mcs_id;
 };
@@ -2549,116 +2658,6 @@ struct mcs_intr_info {
 	int sa_id;
 	u8 mcs_id;
 	u8 lmac_id;
-	u64 rsvd;
-};
-
-/* MCS mailbox error codes
- * Range 1201 - 1300.
- */
-enum mcs_af_status {
-	MCS_AF_ERR_INVALID_MCSID	= -1201,
-	MCS_AF_ERR_NOT_MAPPED		= -1202,
-};
-
-struct mcs_set_pn_threshold {
-	struct mbox_msghdr hdr;
-	u64 threshold;
-	u8 xpn; /* '1' for setting xpn threshold */
-	u8 mcs_id;
-	u8 dir;
-	u64 rsvd;
-};
-
-enum mcs_ctrl_pkt_rulew_type {
-	MCS_CTRL_PKT_RULE_TYPE_ETH,
-	MCS_CTRL_PKT_RULE_TYPE_DA,
-	MCS_CTRL_PKT_RULE_TYPE_RANGE,
-	MCS_CTRL_PKT_RULE_TYPE_COMBO,
-	MCS_CTRL_PKT_RULE_TYPE_MAC,
-};
-
-struct mcs_alloc_ctrl_pkt_rule_req {
-	struct mbox_msghdr hdr;
-	u8 rule_type;
-	u8 mcs_id;	/* MCS block ID	*/
-	u8 dir;		/* Macsec ingress or egress side */
-	u64 rsvd;
-};
-
-struct mcs_alloc_ctrl_pkt_rule_rsp {
-	struct mbox_msghdr hdr;
-	u8 rule_idx;
-	u8 rule_type;
-	u8 mcs_id;
-	u8 dir;
-	u64 rsvd;
-};
-
-struct mcs_free_ctrl_pkt_rule_req {
-	struct mbox_msghdr hdr;
-	u8 rule_idx;
-	u8 rule_type;
-	u8 mcs_id;
-	u8 dir;
-	u8 all;
-	u64 rsvd;
-};
-
-struct mcs_ctrl_pkt_rule_write_req {
-	struct mbox_msghdr hdr;
-	u64 data0;
-	u64 data1;
-	u64 data2;
-	u8 rule_idx;
-	u8 rule_type;
-	u8 mcs_id;
-	u8 dir;
-	u64 rsvd;
-};
-
-struct mcs_port_cfg_set_req {
-	struct mbox_msghdr hdr;
-	u8 cstm_tag_rel_mode_sel;
-	u8 custom_hdr_enb;
-	u8 fifo_skid;
-	u8 port_mode;
-	u8 port_id;
-	u8 mcs_id;
-	u64 rsvd;
-};
-
-struct mcs_port_cfg_get_req {
-	struct mbox_msghdr hdr;
-	u8 port_id;
-	u8 mcs_id;
-	u64 rsvd;
-};
-
-struct mcs_port_cfg_get_rsp {
-	struct mbox_msghdr hdr;
-	u8 cstm_tag_rel_mode_sel;
-	u8 custom_hdr_enb;
-	u8 fifo_skid;
-	u8 port_mode;
-	u8 port_id;
-	u8 mcs_id;
-	u64 rsvd;
-};
-
-struct mcs_custom_tag_cfg_get_req {
-	struct mbox_msghdr hdr;
-	u8 mcs_id;
-	u8 dir;
-	u64 rsvd;
-};
-
-struct mcs_custom_tag_cfg_get_rsp {
-	struct mbox_msghdr hdr;
-	u16 cstm_etype[8];
-	u8 cstm_indx[8];
-	u8 cstm_etype_en;
-	u8 mcs_id;
-	u8 dir;
 	u64 rsvd;
 };
 

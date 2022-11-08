@@ -2,7 +2,6 @@
 /* Marvell MCS driver
  *
  * Copyright (C) 2022 Marvell.
- *
  */
 
 #ifndef MCS_REG_H
@@ -21,14 +20,6 @@
 	offset += (a) * 0x8ull;				\
 	offset; })
 
-#define MCSX_MCS_TOP_SLAVE_PORT_CFG(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x608ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0xa48ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
 
 #define MCSX_MCS_TOP_SLAVE_CHANNEL_CFG(a) ({		\
 	u64 offset;					\
@@ -100,6 +91,183 @@
 	offset; })
 
 #define MCSX_PAB_TX_SLAVE_PORT_CFGX(a)			(0x2930ull + (a) * 0x40ull)
+
+/* PEX registers */
+#define MCSX_PEX_RX_SLAVE_VLAN_CFGX(a)		(0x3b58ull + (a) * 0x8ull)
+#define MCSX_PEX_TX_SLAVE_VLAN_CFGX(a)		(0x46f8ull + (a) * 0x8ull)
+#define MCSX_PEX_TX_SLAVE_CUSTOM_TAG_REL_MODE_SEL(a)	(0x788ull + (a) * 0x8ull)
+#define MCSX_PEX_TX_SLAVE_PORT_CONFIG(a)		(0x4738ull + (a) * 0x8ull)
+#define MCSX_PEX_RX_SLAVE_RULE_ETYPE_CFGX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x3fc0ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x558ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_DAX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4000ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x598ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_DA_RANGE_MINX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4040ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x5d8ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_DA_RANGE_MAXX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4048ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x5e0ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_COMBO_MINX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4080ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x648ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_COMBO_MAXX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4088ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x650ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_COMBO_ETX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4090ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x658ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_MAC ({	\
+	u64 offset;					\
+							\
+	offset = 0x40e0ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x6d8ull;			\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_RULE_ENABLE ({	\
+	u64 offset;					\
+							\
+	offset = 0x40e8ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x6e0ull;			\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_ETYPE_CFGX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4b60ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x7d8ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_DAX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4ba0ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x818ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_DA_RANGE_MINX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4be0ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x858ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_DA_RANGE_MAXX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4be8ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x860ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_COMBO_MINX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4c20ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x8c8ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_COMBO_MAXX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4c28ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x8d0ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_COMBO_ETX(a) ({	\
+	u64 offset;					\
+							\
+	offset = 0x4c30ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x8d8ull;			\
+	offset += (a) * 0x8ull;				\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_MAC ({	\
+	u64 offset;					\
+							\
+	offset = 0x4c80ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x958ull;			\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_RULE_ENABLE ({	\
+	u64 offset;					\
+							\
+	offset = 0x4c88ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x960ull;			\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_PEX_CONFIGURATION ({		\
+	u64 offset;					\
+							\
+	offset = 0x3b50ull;				\
+	if (mcs->hw->mcs_blks > 1)			\
+		offset = 0x4c0ull;			\
+	offset; })
+
+/* CNF10K-B */
+#define MCSX_PEX_RX_SLAVE_CUSTOM_TAGX(a)	(0x4c8ull + (a) * 0x8ull)
+#define MCSX_PEX_TX_SLAVE_CUSTOM_TAGX(a)	(0x748ull + (a) * 0x8ull)
+#define MCSX_PEX_RX_SLAVE_ETYPE_ENABLE		0x6e8ull
+#define MCSX_PEX_TX_SLAVE_ETYPE_ENABLE		0x968ull
 
 /* BEE */
 #define MCSX_BBE_RX_SLAVE_PADDING_CTL			0xe08ull
@@ -175,7 +343,7 @@
 #define MCSX_PAB_RX_SLAVE_PAB_INT_INTR_RW ({	\
 	u64 offset;			\
 					\
-	offset = 0x1708ull;		\
+	offset = 0x16f8ull;		\
 	if (mcs->hw->mcs_blks > 1)	\
 		offset = 0x278ull;	\
 	offset; })
@@ -432,186 +600,7 @@
 #define MCSX_CPM_TX_SLAVE_SA_INDEX1_VLDX(a)		(0x5f50 + (a) * 0x8ull)
 #define MCSX_CPM_TX_SLAVE_AUTO_REKEY_ENABLE_0		0x5500ull
 
-/* PEX registers */
-#define MCSX_PEX_RX_SLAVE_VLAN_CFGX(a)		(0x3b58ull + (a) * 0x8ull)
-#define MCSX_PEX_TX_SLAVE_VLAN_CFGX(a)		(0x46f8ull + (a) * 0x8ull)
-
-#define MCSX_PEX_TX_SLAVE_CUSTOM_TAG_REL_MODE_SEL(a)	(0x788ull + (a) * 0x8ull)
-#define MCSX_PEX_TX_SLAVE_PORT_CONFIG(a)		(0x4738ull + (a) * 0x8ull)
-
-#define MCSX_PEX_RX_SLAVE_PEX_CONFIGURATION ({		\
-	u64 offset;					\
-							\
-	offset = 0x3b50ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x4c0ull;			\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_ETYPE_CFGX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x3fc0ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x558ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_DAX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4000ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x598ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_DA_RANGE_MINX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4040ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x5d8ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_DA_RANGE_MAXX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4048ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x5e0ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_COMBO_MINX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4080ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x648ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_COMBO_MAXX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4088ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x650ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_COMBO_ETX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4090ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x658ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_MAC ({	\
-	u64 offset;					\
-							\
-	offset = 0x40e0ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x6d8ull;			\
-	offset; })
-
-#define MCSX_PEX_RX_SLAVE_RULE_ENABLE ({	\
-	u64 offset;					\
-							\
-	offset = 0x40e8ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x6e0ull;			\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_ETYPE_CFGX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4b60ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x7d8ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_DAX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4ba0ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x818ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_DA_RANGE_MINX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4be0ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x858ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_DA_RANGE_MAXX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4be8ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x860ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_COMBO_MINX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4c20ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x8c8ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_COMBO_MAXX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4c28ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x8d0ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_COMBO_ETX(a) ({	\
-	u64 offset;					\
-							\
-	offset = 0x4c30ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x8d8ull;			\
-	offset += (a) * 0x8ull;				\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_MAC ({	\
-	u64 offset;					\
-							\
-	offset = 0x4c80ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x958ull;			\
-	offset; })
-
-#define MCSX_PEX_TX_SLAVE_RULE_ENABLE ({	\
-	u64 offset;					\
-							\
-	offset = 0x4c88ull;				\
-	if (mcs->hw->mcs_blks > 1)			\
-		offset = 0x960ull;			\
-	offset; })
-
-/* CNF10K-B */
-#define MCSX_PEX_RX_SLAVE_CUSTOM_TAGX(a)	(0x4c8ull + (a) * 0x8ull)
-#define MCSX_PEX_TX_SLAVE_CUSTOM_TAGX(a)	(0x748ull + (a) * 0x8ull)
-#define MCSX_PEX_RX_SLAVE_ETYPE_ENABLE		0x6e8ull
-#define MCSX_PEX_TX_SLAVE_ETYPE_ENABLE		0x968ull
-
-/* CES */
+/* CSE */
 #define MCSX_CSE_RX_MEM_SLAVE_IFINCTLBCPKTSX(a) ({	\
 	u64 offset;					\
 							\

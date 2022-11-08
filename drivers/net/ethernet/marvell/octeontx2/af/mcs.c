@@ -2,7 +2,6 @@
 /* Marvell MCS driver
  *
  * Copyright (C) 2022 Marvell.
- *
  */
 
 #include <linux/bitfield.h>
@@ -688,13 +687,6 @@ int mcs_ctrlpktrule_write(struct mcs *mcs, struct mcs_ctrl_pkt_rule_write_req *r
 	return 0;
 }
 
-void mcs_reset_port(struct mcs *mcs, u8 port_id, u8 reset)
-{
-	u64 reg = MCSX_MCS_TOP_SLAVE_PORT_RESET(port_id);
-
-	mcs_reg_write(mcs, reg, reset & 0x1);
-}
-
 int mcs_free_rsrc(struct rsrc_bmap *rsrc, u16 *pf_map, int rsrc_id, u16 pcifunc)
 {
 	/* Check if the rsrc_id is mapped to PF/VF */
@@ -805,9 +797,36 @@ int mcs_alloc_all_rsrc(struct mcs *mcs, u8 *flow_id, u8 *secy_id,
 	return 0;
 }
 
+static void cn10kb_mcs_tx_pn_wrapped_handler(struct mcs *mcs)
+{
+	struct mcs_intr_event event = { 0 };
+	struct rsrc_bmap *sc_bmap;
+	u64 val;
+	int sc;
+
+	sc_bmap = &mcs->tx.sc;
+
+	event.mcs_id = mcs->mcs_id;
+	event.intr_mask = MCS_CPM_TX_PACKET_XPN_EQ0_INT;
+
+	for_each_set_bit(sc, sc_bmap->bmap, mcs->hw->sc_entries) {
+		val = mcs_reg_read(mcs, MCSX_CPM_TX_SLAVE_SA_MAP_MEM_0X(sc));
+
+		if (mcs->tx_sa_active[sc])
+			/* SA_index1 was used and got expired */
+			event.sa_id = (val >> 9) & 0xFF;
+		else
+			/* SA_index0 was used and got expired */
+			event.sa_id = val & 0xFF;
+
+		event.pcifunc = mcs->tx.sa2pf_map[event.sa_id];
+		mcs_add_intr_wq_entry(mcs, &event);
+	}
+}
+
 static void cn10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs)
 {
-	struct mcs_intr_event event;
+	struct mcs_intr_event event = { 0 };
 	struct rsrc_bmap *sc_bmap;
 	u64 val, status;
 	int sc;
@@ -815,11 +834,11 @@ static void cn10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs)
 	sc_bmap = &mcs->tx.sc;
 
 	event.mcs_id = mcs->mcs_id;
-	event.intr_mask = MCS_CPM_TX_INT_PN_THRESH_REACHED;
+	event.intr_mask = MCS_CPM_TX_PN_THRESH_REACHED_INT;
 
-	/* TX SA interrupt is raised only if autoreky is enabled.
-	 * MCS_CPM_TX_SLAVE_SA_MAP_MEM_0X[sc].tx_sa_active bit get toggled if
-	 * one of two SAs mapped to SC gets expired. If tx_sa_active=0 imples
+	/* TX SA interrupt is raised only if autorekey is enabled.
+	 * MCS_CPM_TX_SLAVE_SA_MAP_MEM_0X[sc].tx_sa_active bit gets toggled if
+	 * one of two SAs mapped to SC gets expired. If tx_sa_active=0 implies
 	 * SA in SA_index1 got expired else SA in SA_index0 got expired.
 	 */
 	for_each_set_bit(sc, sc_bmap->bmap, mcs->hw->sc_entries) {
@@ -846,7 +865,7 @@ static void cn10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs)
 
 static void mcs_rx_pn_thresh_reached_handler(struct mcs *mcs)
 {
-	struct mcs_intr_event event;
+	struct mcs_intr_event event = { 0 };
 	int sa, reg;
 	u64 intr;
 
@@ -871,7 +890,7 @@ static void mcs_rx_pn_thresh_reached_handler(struct mcs *mcs)
 
 static void mcs_rx_misc_intr_handler(struct mcs *mcs, u64 intr)
 {
-	struct mcs_intr_event event = {0};
+	struct mcs_intr_event event = { 0 };
 
 	event.mcs_id = mcs->mcs_id;
 	event.pcifunc = mcs->pf_map[0];
@@ -894,20 +913,22 @@ static void mcs_rx_misc_intr_handler(struct mcs *mcs, u64 intr)
 
 static void mcs_tx_misc_intr_handler(struct mcs *mcs, u64 intr)
 {
-	struct mcs_intr_event event = {0};
+	struct mcs_intr_event event = { 0 };
+
+	if (!(intr & MCS_CPM_TX_INT_SA_NOT_VALID))
+		return;
 
 	event.mcs_id = mcs->mcs_id;
 	event.pcifunc = mcs->pf_map[0];
 
-	if (intr & MCS_CPM_TX_INT_SA_NOT_VALID)
-		event.intr_mask = MCS_CPM_TX_SA_NOT_VALID_INT;
+	event.intr_mask = MCS_CPM_TX_SA_NOT_VALID_INT;
 
 	mcs_add_intr_wq_entry(mcs, &event);
 }
 
 static void mcs_bbe_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction dir)
 {
-	struct mcs_intr_event event = {0};
+	struct mcs_intr_event event = { 0 };
 	int i;
 
 	if (!(intr & MCS_BBE_INT_MASK))
@@ -919,10 +940,11 @@ static void mcs_bbe_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction d
 	for (i = 0; i < MCS_MAX_BBE_INT; i++) {
 		if (!(intr & BIT_ULL(i)))
 			continue;
+
 		/* Lower nibble denotes data fifo overflow interrupts and
 		 * upper nibble indicates policy fifo overflow interrupts.
 		 */
-		if (intr & 0xF)
+		if (intr & 0xFULL)
 			event.intr_mask = (dir == MCS_RX) ?
 					  MCS_BBE_RX_DFIFO_OVERFLOW_INT :
 					  MCS_BBE_TX_DFIFO_OVERFLOW_INT;
@@ -932,14 +954,14 @@ static void mcs_bbe_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction d
 					  MCS_BBE_RX_PLFIFO_OVERFLOW_INT;
 
 		/* Notify the lmac_id info which ran into BBE fatal error */
-		event.lmac_id = i & 0x3;
+		event.lmac_id = i & 0x3ULL;
 		mcs_add_intr_wq_entry(mcs, &event);
 	}
 }
 
 static void mcs_pab_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction dir)
 {
-	struct mcs_intr_event event = {0};
+	struct mcs_intr_event event = { 0 };
 	int i;
 
 	if (!(intr & MCS_PAB_INT_MASK))
@@ -951,6 +973,7 @@ static void mcs_pab_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction d
 	for (i = 0; i < MCS_MAX_PAB_INT; i++) {
 		if (!(intr & BIT_ULL(i)))
 			continue;
+
 		event.intr_mask = (dir == MCS_RX) ? MCS_PAB_RX_CHAN_OVERFLOW_INT :
 				  MCS_PAB_TX_CHAN_OVERFLOW_INT;
 
@@ -980,9 +1003,7 @@ static irqreturn_t mcs_ip_intr_handler(int irq, void *mcs_irq)
 		if (cpm_intr & MCS_CPM_RX_INT_PN_THRESH_REACHED)
 			mcs_rx_pn_thresh_reached_handler(mcs);
 
-		if (cpm_intr & (MCS_CPM_RX_INT_SECTAG_V_EQ1 | MCS_CPM_RX_INT_SECTAG_E_EQ0_C_EQ1 |
-			MCS_CPM_RX_INT_SL_GTE48	| MCS_CPM_RX_INT_ES_EQ1_SC_EQ1 |
-			MCS_CPM_RX_INT_SC_EQ1_SCB_EQ1 | MCS_CPM_RX_INT_PACKET_XPN_EQ0))
+		if (cpm_intr & MCS_CPM_RX_INT_ALL)
 			mcs_rx_misc_intr_handler(mcs, cpm_intr);
 
 		/* Clear the interrupt */
@@ -1003,6 +1024,12 @@ static irqreturn_t mcs_ip_intr_handler(int irq, void *mcs_irq)
 		if (cpm_intr & MCS_CPM_TX_INT_SA_NOT_VALID)
 			mcs_tx_misc_intr_handler(mcs, cpm_intr);
 
+		if (cpm_intr & MCS_CPM_TX_INT_PACKET_XPN_EQ0) {
+			if (mcs->hw->mcs_blks > 1)
+				cnf10kb_mcs_tx_pn_wrapped_handler(mcs);
+			else
+				cn10kb_mcs_tx_pn_wrapped_handler(mcs);
+		}
 		/* Clear the interrupt */
 		mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_INT, cpm_intr);
 	}
@@ -1049,6 +1076,7 @@ static irqreturn_t mcs_ip_intr_handler(int irq, void *mcs_irq)
 
 	/* Enable the interrupt */
 	mcs_reg_write(mcs, MCSX_IP_INT_ENA_W1S, BIT_ULL(0));
+
 	return IRQ_HANDLED;
 }
 
@@ -1140,12 +1168,12 @@ static int mcs_register_interrupts(struct mcs *mcs)
 
 	/* Enable CPM Rx/Tx interrupts */
 	mcs_reg_write(mcs, MCSX_TOP_SLAVE_INT_SUM_ENB,
-			MCS_CPM_RX_INT_ENA | MCS_CPM_TX_INT_ENA |
-			MCS_BBE_RX_INT_ENA | MCS_BBE_TX_INT_ENA |
-			MCS_PAB_RX_INT_ENA | MCS_PAB_TX_INT_ENA);
+		      MCS_CPM_RX_INT_ENA | MCS_CPM_TX_INT_ENA |
+		      MCS_BBE_RX_INT_ENA | MCS_BBE_TX_INT_ENA |
+		      MCS_PAB_RX_INT_ENA | MCS_PAB_TX_INT_ENA);
 
-	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_INT_ENB, 0x7);
-	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_RX_INT_ENB, 0x7f);
+	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_INT_ENB, 0x7ULL);
+	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_RX_INT_ENB, 0x7FULL);
 
 	mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_BBE_INT_ENB, 0xff);
 	mcs_reg_write(mcs, MCSX_BBE_TX_SLAVE_BBE_INT_ENB, 0xff);
@@ -1192,27 +1220,6 @@ struct mcs *mcs_get_pdata(int mcs_id)
 			return mcs_dev;
 	}
 	return NULL;
-}
-
-/* Set lmac to bypass/operational mode */
-void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id, u8 mode)
-{
-	u64 reg;
-
-	reg = MCSX_MCS_TOP_SLAVE_CHANNEL_CFG(lmac_id * 2);
-	mcs_reg_write(mcs, reg, (u64)mode);
-}
-
-void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn)
-{
-	u64 reg;
-
-	if (pn->dir == MCS_RX)
-		reg = pn->xpn ? MCSX_CPM_RX_SLAVE_XPN_THRESHOLD : MCSX_CPM_RX_SLAVE_PN_THRESHOLD;
-	else
-		reg = pn->xpn ? MCSX_CPM_TX_SLAVE_XPN_THRESHOLD : MCSX_CPM_TX_SLAVE_PN_THRESHOLD;
-
-	mcs_reg_write(mcs, reg, pn->threshold);
 }
 
 void mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req)
@@ -1311,6 +1318,34 @@ void mcs_get_custom_tag_cfg(struct mcs *mcs, struct mcs_custom_tag_cfg_get_req *
 
 	rsp->mcs_id = req->mcs_id;
 	rsp->dir = req->dir;
+}
+
+void mcs_reset_port(struct mcs *mcs, u8 port_id, u8 reset)
+{
+	u64 reg = MCSX_MCS_TOP_SLAVE_PORT_RESET(port_id);
+
+	mcs_reg_write(mcs, reg, reset & 0x1);
+}
+
+/* Set lmac to bypass/operational mode */
+void mcs_set_lmac_mode(struct mcs *mcs, int lmac_id, u8 mode)
+{
+	u64 reg;
+
+	reg = MCSX_MCS_TOP_SLAVE_CHANNEL_CFG(lmac_id * 2);
+	mcs_reg_write(mcs, reg, (u64)mode);
+}
+
+void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn)
+{
+	u64 reg;
+
+	if (pn->dir == MCS_RX)
+		reg = pn->xpn ? MCSX_CPM_RX_SLAVE_XPN_THRESHOLD : MCSX_CPM_RX_SLAVE_PN_THRESHOLD;
+	else
+		reg = pn->xpn ? MCSX_CPM_TX_SLAVE_XPN_THRESHOLD : MCSX_CPM_TX_SLAVE_PN_THRESHOLD;
+
+	mcs_reg_write(mcs, reg, pn->threshold);
 }
 
 void cn10kb_mcs_parser_cfg(struct mcs *mcs)
@@ -1457,7 +1492,7 @@ void cn10kb_mcs_set_hw_capabilities(struct mcs *mcs)
 	hw->mcs_blks = 1;		/* MCS blocks */
 }
 
-struct mcs_ops		cn10kb_mcs_ops	= {
+static struct mcs_ops cn10kb_mcs_ops = {
 	.mcs_set_hw_capabilities	= cn10kb_mcs_set_hw_capabilities,
 	.mcs_parser_cfg			= cn10kb_mcs_parser_cfg,
 	.mcs_tx_sa_mem_map_write	= cn10kb_mcs_tx_sa_mem_map_write,
@@ -1513,7 +1548,7 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	mcs_global_cfg(mcs);
 
-	/* Performe X2P clibration */
+	/* Perform X2P clibration */
 	err = mcs_x2p_calibration(mcs);
 	if (err)
 		goto err_x2p;
@@ -1543,8 +1578,8 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto exit;
 
 	list_add(&mcs->mcs_list, &mcs_list);
-
 	mutex_init(&mcs->stats_lock);
+
 	return 0;
 
 err_x2p:

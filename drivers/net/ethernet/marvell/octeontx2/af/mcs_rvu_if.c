@@ -2,7 +2,6 @@
 /* Marvell CN10K MCS driver
  *
  * Copyright (C) 2022 Marvell.
- *
  */
 
 #include <linux/types.h>
@@ -98,8 +97,9 @@ static int mcs_notify_pfvf(struct mcs_intr_event *event, struct rvu *rvu)
 	req->sa_id = event->sa_id;
 	req->hdr.pcifunc = event->pcifunc;
 	req->lmac_id = event->lmac_id;
-	otx2_mbox_msg_send(&rvu->afpf_wq_info.mbox_up, pf);
 
+	otx2_mbox_msg_send(&rvu->afpf_wq_info.mbox_up, pf);
+	err = otx2_mbox_wait_for_rsp(&rvu->afpf_wq_info.mbox_up, pf);
 	if (err)
 		dev_warn(rvu->dev, "MCS notification to pf %d failed\n", pf);
 
@@ -154,10 +154,6 @@ int rvu_mbox_handler_mcs_intr_cfg(struct rvu *rvu,
 	mcs->pf_map[0] = pcifunc;
 	pfvf->intr_mask = req->intr_mask;
 
-	/* Atleast 1 bit is set enable interrupts */
-	if (pfvf->intr_mask)
-		pfvf->intr_ena = 1;
-
 	return 0;
 }
 
@@ -180,18 +176,17 @@ int rvu_mbox_handler_mcs_get_hw_info(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_mcs_set_pn_threshold(struct rvu *rvu,
-					  struct mcs_set_pn_threshold *req,
-					  struct msg_rsp *rsp)
+int rvu_mbox_handler_mcs_port_reset(struct rvu *rvu, struct mcs_port_reset_req *req,
+				    struct msg_rsp *rsp)
 {
 	struct mcs *mcs;
 
 	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
+		return MCS_AF_ERR_INVALID_MCSID;
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
-	mcs_pn_threshold_set(mcs, req);
+	mcs_reset_port(mcs, req->port_id, req->reset);
 
 	return 0;
 }
@@ -395,6 +390,57 @@ int rvu_mbox_handler_mcs_set_active_lmac(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_mcs_port_cfg_set(struct rvu *rvu, struct mcs_port_cfg_set_req *req,
+				      struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return MCS_AF_ERR_INVALID_MCSID;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	if (mcs->hw->lmac_cnt <= req->port_id || !(mcs->hw->lmac_bmap & BIT_ULL(req->port_id)))
+		return -EINVAL;
+
+	mcs_set_port_cfg(mcs, req);
+
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_port_cfg_get(struct rvu *rvu, struct mcs_port_cfg_get_req *req,
+				      struct mcs_port_cfg_get_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return MCS_AF_ERR_INVALID_MCSID;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	if (mcs->hw->lmac_cnt <= req->port_id || !(mcs->hw->lmac_bmap & BIT_ULL(req->port_id)))
+		return -EINVAL;
+
+	mcs_get_port_cfg(mcs, req, rsp);
+
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_custom_tag_cfg_get(struct rvu *rvu, struct mcs_custom_tag_cfg_get_req *req,
+					    struct mcs_custom_tag_cfg_get_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return MCS_AF_ERR_INVALID_MCSID;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	mcs_get_custom_tag_cfg(mcs, req, rsp);
+
+	return 0;
+}
+
 int rvu_mcs_flr_handler(struct rvu *rvu, u16 pcifunc)
 {
 	struct mcs *mcs;
@@ -441,6 +487,22 @@ int rvu_mbox_handler_mcs_pn_table_write(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 	mcs_pn_table_write(mcs, req->pn_id, req->next_pn, req->dir);
+	return 0;
+}
+
+int rvu_mbox_handler_mcs_set_pn_threshold(struct rvu *rvu,
+					  struct mcs_set_pn_threshold *req,
+					  struct msg_rsp *rsp)
+{
+	struct mcs *mcs;
+
+	if (req->mcs_id >= rvu->mcs_blk_cnt)
+		return MCS_AF_ERR_INVALID_MCSID;
+
+	mcs = mcs_get_pdata(req->mcs_id);
+
+	mcs_pn_threshold_set(mcs, req);
+
 	return 0;
 }
 
@@ -691,7 +753,7 @@ int rvu_mbox_handler_mcs_alloc_ctrl_pkt_rule(struct rvu *rvu,
 	u16 offset;
 
 	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
+		return MCS_AF_ERR_INVALID_MCSID;
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
@@ -745,7 +807,7 @@ int rvu_mbox_handler_mcs_free_ctrl_pkt_rule(struct rvu *rvu,
 	int rc;
 
 	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
+		return MCS_AF_ERR_INVALID_MCSID;
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
@@ -766,79 +828,13 @@ int rvu_mbox_handler_mcs_ctrl_pkt_rule_write(struct rvu *rvu,
 	int rc;
 
 	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
+		return MCS_AF_ERR_INVALID_MCSID;
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
 	rc = mcs_ctrlpktrule_write(mcs, req);
 
 	return rc;
-}
-
-int rvu_mbox_handler_mcs_port_reset(struct rvu *rvu, struct mcs_port_reset_req *req,
-				    struct msg_rsp *rsp)
-{
-	struct mcs *mcs;
-
-	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
-
-	mcs = mcs_get_pdata(req->mcs_id);
-
-	mcs_reset_port(mcs, req->port_id, req->reset);
-
-	return 0;
-}
-
-int rvu_mbox_handler_mcs_port_cfg_set(struct rvu *rvu, struct mcs_port_cfg_set_req *req,
-				      struct msg_rsp *rsp)
-{
-	struct mcs *mcs;
-
-	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
-
-	mcs = mcs_get_pdata(req->mcs_id);
-
-	if (mcs->hw->lmac_cnt <= req->port_id || !(mcs->hw->lmac_bmap & BIT_ULL(req->port_id)))
-		return -EINVAL;
-
-	mcs_set_port_cfg(mcs, req);
-
-	return 0;
-}
-
-int rvu_mbox_handler_mcs_port_cfg_get(struct rvu *rvu, struct mcs_port_cfg_get_req *req,
-				      struct mcs_port_cfg_get_rsp *rsp)
-{
-	struct mcs *mcs;
-
-	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
-
-	mcs = mcs_get_pdata(req->mcs_id);
-
-	if (mcs->hw->lmac_cnt <= req->port_id || !(mcs->hw->lmac_bmap & BIT_ULL(req->port_id)))
-		return -EINVAL;
-
-	mcs_get_port_cfg(mcs, req, rsp);
-
-	return 0;
-}
-
-int rvu_mbox_handler_mcs_custom_tag_cfg_get(struct rvu *rvu, struct mcs_custom_tag_cfg_get_req *req,
-					    struct mcs_custom_tag_cfg_get_rsp *rsp)
-{
-	struct mcs *mcs;
-
-	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return -EINVAL;
-
-	mcs = mcs_get_pdata(req->mcs_id);
-
-	mcs_get_custom_tag_cfg(mcs, req, rsp);
-
-	return 0;
 }
 
 static void rvu_mcs_set_lmac_bmap(struct rvu *rvu)
@@ -877,7 +873,7 @@ int rvu_mcs_init(struct rvu *rvu)
 		rvu_mcs_set_lmac_bmap(rvu);
 	}
 
-	/* Install default tcam bypass entry and set port ot operational mode */
+	/* Install default tcam bypass entry and set port to operational mode */
 	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
 		mcs = mcs_get_pdata(mcs_id);
 		mcs_install_flowid_bypass_entry(mcs);
@@ -885,6 +881,7 @@ int rvu_mcs_init(struct rvu *rvu)
 			mcs_set_lmac_mode(mcs, lmac, 0);
 
 		mcs->rvu = rvu;
+
 		/* Allocated memory for PFVF data */
 		mcs->pf = devm_kcalloc(mcs->dev, hw->total_pfs,
 				       sizeof(struct mcs_pfvf), GFP_KERNEL);
@@ -902,9 +899,10 @@ int rvu_mcs_init(struct rvu *rvu)
 	INIT_WORK(&rvu->mcs_intr_work, mcs_intr_handler_task);
 	rvu->mcs_intr_wq = alloc_workqueue("mcs_intr_wq", 0, 0);
 	if (!rvu->mcs_intr_wq) {
-		dev_err(rvu->dev, "mcs alloc workqueue failed");
+		dev_err(rvu->dev, "mcs alloc workqueue failed\n");
 		return -ENOMEM;
 	}
+
 	return err;
 }
 

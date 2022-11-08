@@ -2,13 +2,12 @@
 /* Marvell MCS driver
  *
  * Copyright (C) 2022 Marvell.
- *
  */
 
 #include "mcs.h"
 #include "mcs_reg.h"
 
-static struct mcs_ops		cnf10kb_mcs_ops   = {
+static struct mcs_ops cnf10kb_mcs_ops   = {
 	.mcs_set_hw_capabilities	= cnf10kb_mcs_set_hw_capabilities,
 	.mcs_parser_cfg			= cnf10kb_mcs_parser_cfg,
 	.mcs_tx_sa_mem_map_write	= cnf10kb_mcs_tx_sa_mem_map_write,
@@ -120,9 +119,35 @@ void cnf10kb_mcs_rx_sa_mem_map_write(struct mcs *mcs, struct mcs_rx_sc_sa_map *m
 	mcs_reg_write(mcs, reg, val);
 }
 
-/* TX SA interrupt is raised only if autoreky is enabled.
- * MCS_CPM_TX_SLAVE_SA_MAP_MEM_0X[sc].tx_sa_active bit get toggled if
- * one of two SAs mapped to SC gets expired. If tx_sa_active=0 imples
+int mcs_set_force_clk_en(struct mcs *mcs, bool set)
+{
+	unsigned long timeout = jiffies + usecs_to_jiffies(2000);
+	u64 val;
+
+	val = mcs_reg_read(mcs, MCSX_MIL_GLOBAL);
+
+	if (set) {
+		val |= BIT_ULL(4);
+		mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+
+		/* Poll till mcsx_mil_ip_gbl_status.mcs_ip_stats_ready value is 1 */
+		while (!(mcs_reg_read(mcs, MCSX_MIL_IP_GBL_STATUS) & BIT_ULL(0))) {
+			if (time_after(jiffies, timeout)) {
+				dev_err(mcs->dev, "MCS set force clk enable failed\n");
+				break;
+			}
+		}
+	} else {
+		val &= ~BIT_ULL(4);
+		mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+	}
+
+	return 0;
+}
+
+/* TX SA interrupt is raised only if autorekey is enabled.
+ * MCS_CPM_TX_SLAVE_SA_MAP_MEM_0X[sc].tx_sa_active bit gets toggled if
+ * one of two SAs mapped to SC gets expired. If tx_sa_active=0 implies
  * SA in SA_index1 got expired else SA in SA_index0 got expired.
  */
 void cnf10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs)
@@ -161,28 +186,29 @@ void cnf10kb_mcs_tx_pn_thresh_reached_handler(struct mcs *mcs)
 	}
 }
 
-int mcs_set_force_clk_en(struct mcs *mcs, bool set)
+void cnf10kb_mcs_tx_pn_wrapped_handler(struct mcs *mcs)
 {
-	unsigned long timeout = jiffies + usecs_to_jiffies(2000);
+	struct mcs_intr_event event = { 0 };
+	struct rsrc_bmap *sc_bmap;
 	u64 val;
+	int sc;
 
-	val = mcs_reg_read(mcs, MCSX_MIL_GLOBAL);
+	sc_bmap = &mcs->tx.sc;
 
-	if (set) {
-		val |= BIT_ULL(4);
-		mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+	event.mcs_id = mcs->mcs_id;
+	event.intr_mask = MCS_CPM_TX_PACKET_XPN_EQ0_INT;
 
-		/* Poll till mcsx_mil_ip_gbl_status.mcs_ip_stats_ready value is 1 */
-		while (!(mcs_reg_read(mcs, MCSX_MIL_IP_GBL_STATUS) & BIT_ULL(0))) {
-			if (time_after(jiffies, timeout)) {
-				dev_err(mcs->dev, "MCS set force clk enable failed\n");
-				break;
-			}
-		}
-	} else {
-		val &= ~BIT_ULL(4);
-		mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+	for_each_set_bit(sc, sc_bmap->bmap, mcs->hw->sc_entries) {
+		val = mcs_reg_read(mcs, MCSX_CPM_TX_SLAVE_SA_MAP_MEM_0X(sc));
+
+		if (mcs->tx_sa_active[sc])
+			/* SA_index1 was used and got expired */
+			event.sa_id = (val >> 7) & 0x7F;
+		else
+			/* SA_index0 was used and got expired */
+			event.sa_id = val & 0x7F;
+
+		event.pcifunc = mcs->tx.sa2pf_map[event.sa_id];
+		mcs_add_intr_wq_entry(mcs, &event);
 	}
-
-	return 0;
 }
