@@ -394,6 +394,20 @@ static int pkcs1pad_decrypt(struct akcipher_request *req)
 	return err;
 }
 
+static int pkcs1pad_decrypt_fips(struct akcipher_request *req)
+{
+	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
+	int err;
+
+	err = pkcs1pad_decrypt(req);
+	if (err)
+		return err;
+
+	crypto_tfm_set_flags(&tfm->base, CRYPTO_TFM_FIPS_COMPLIANCE);
+
+	return 0;
+}
+
 static int pkcs1pad_sign(struct akcipher_request *req)
 {
 	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
@@ -449,6 +463,20 @@ static int pkcs1pad_sign(struct akcipher_request *req)
 		return pkcs1pad_encrypt_sign_complete(req, err);
 
 	return err;
+}
+
+static int pkcs1pad_sign_fips(struct akcipher_request *req)
+{
+	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
+	int err;
+
+	err = pkcs1pad_sign(req);
+	if (err)
+		return err;
+
+	crypto_tfm_set_flags(&tfm->base, CRYPTO_TFM_FIPS_COMPLIANCE);
+
+	return 0;
 }
 
 static int pkcs1pad_verify_complete(struct akcipher_request *req, int err)
@@ -688,8 +716,8 @@ static int pkcs1pad_create(struct crypto_template *tmpl, struct rtattr **tb)
 	inst->alg.exit = pkcs1pad_exit_tfm;
 
 	inst->alg.encrypt = pkcs1pad_encrypt;
-	inst->alg.decrypt = pkcs1pad_decrypt;
-	inst->alg.sign = pkcs1pad_sign;
+	inst->alg.decrypt = pkcs1pad_decrypt_fips;
+	inst->alg.sign = pkcs1pad_sign_fips;
 	inst->alg.verify = pkcs1pad_verify;
 	inst->alg.set_pub_key = pkcs1pad_set_pub_key;
 	inst->alg.set_priv_key = pkcs1pad_set_priv_key;
