@@ -459,9 +459,9 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 		min_t(u32, rds_ibdev->max_responder_resources, max_responder_resources);
 	conn_param->initiator_depth =
 		min_t(u32, rds_ibdev->max_initiator_depth, max_initiator_depth);
-	conn_param->retry_count =
-		min_t(unsigned int, rds_ib_retry_count, rds_ib_rnr_retry_count);
-	conn_param->rnr_retry_count = rds_ib_rnr_retry_count;
+	/* As per IBTA, the following two counters are three bits wide */
+	conn_param->retry_count = min_t(unsigned int, rds_ib_retry_count, 7);
+	conn_param->rnr_retry_count = min_t(unsigned int, rds_ib_rnr_retry_count, 7);
 
 	if (dp) {
 		memset(dp, 0, sizeof(*dp));
