@@ -26,6 +26,42 @@
 #define RPMX_MTI_STAT_DATA_HI_CDC            0x10038
 #define CGXX_CMRX_RX_STAT0		0x070
 #define CGXX_CMRX_TX_STAT0		0x700
+#define RPMX_EXT_MTI_GLOBAL_FEC_CONTROL			0x50008
+#define RPMX_EXT_MTI_GLOBAL_FEC_CONTROL_KP_MODE_IN	GENMASK_ULL(27, 24)
+#define RPMX_EXT_MTI_GLOBAL_FEC_CONTROL_FEC91_ENA	GENMASK_ULL(19, 16)
+#define RPMX_EXT_MTI_GLOBAL_FEC_CONTROL_FEC_ENA		GENMASK_ULL(3, 0)
+#define RPMX_EXT_MTI_PORTX_STATUS(a)			(0x51008 |\
+							 ((a) * 0x100))
+#define RPMX_EXT_MTI_PORTX_STATUS_MAC_RES_SPEED		GENMASK_ULL(12, 5)
+
+/* FEC stats */
+#define RPMX_MTI_STAT_STATN_CONTROL			0x10018
+#define RPMX_MTI_STAT_DATA_HI_CDC			0x10038
+#define RPMX_RSFEC_RX_CAPTURE				BIT_ULL(27)
+#define RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_2		0x40050
+#define RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_3		0x40058
+#define RPMX_MTI_FCFECX_VL0_CCW_LO(a)			(0x38618 + ((a) * 0x40))
+#define RPMX_MTI_FCFECX_VL0_NCCW_LO(a)			(0x38620 + ((a) * 0x40))
+#define RPMX_MTI_FCFECX_VL1_CCW_LO(a)			(0x38628 + ((a) * 0x40))
+#define RPMX_MTI_FCFECX_VL1_NCCW_LO(a)			(0x38630 + ((a) * 0x40))
+#define RPMX_MTI_FCFECX_CW_HI(a)			(0x38638 + ((a) * 0x40))
+
+enum fec_type {
+	OTX2_FEC_NONE,
+	OTX2_FEC_BASER,
+	OTX2_FEC_RS,
+};
+
+enum LMAC_TYPE {
+	LMAC_MODE_10M_R		= 1,
+	LMAC_MODE_100M_R	= 2,
+	LMAC_MODE_1G_2G_R	= 3,
+	LMAC_MODE_10G_25G_R	= 6,
+	LMAC_MODE_40G_R		= 7,
+	LMAC_MODE_50G_R		= 8,
+	LMAC_MODE_100G_R	= 9,
+	LMAC_MODE_RESET		= 0xFF,
+};
 
 enum {
 	CGX_STAT0,
@@ -248,10 +284,67 @@ static u64 rfoe_dbg_rpm_get_rx_stats(void __iomem *reg_base, int lmac_id, int id
 	}
 }
 
+static void rfoe_dbg_rpm_get_fec_stats(void __iomem *reg_base, int lmac_id,
+				       u64 *fec_corr_blks, u64 *fec_uncorr_blks)
+{
+	u64 val_lo, val_hi, cfg;
+	int fec_mode, lmac_mode;
+
+	cfg = ioread64(reg_base + RPMX_EXT_MTI_GLOBAL_FEC_CONTROL);
+	if (cfg & RPMX_EXT_MTI_GLOBAL_FEC_CONTROL_FEC91_ENA ||
+	    cfg & RPMX_EXT_MTI_GLOBAL_FEC_CONTROL_KP_MODE_IN)
+		fec_mode = OTX2_FEC_RS;
+	else if (cfg & RPMX_EXT_MTI_GLOBAL_FEC_CONTROL_FEC_ENA)
+		fec_mode = OTX2_FEC_BASER;
+	else
+		fec_mode = OTX2_FEC_NONE;
+
+	cfg = ioread64(reg_base + RPMX_EXT_MTI_PORTX_STATUS(lmac_id));
+	lmac_mode = ((cfg & RPMX_EXT_MTI_PORTX_STATUS_MAC_RES_SPEED) >> 5);
+
+	if (fec_mode == OTX2_FEC_NONE) {
+		*fec_corr_blks = 0;
+		*fec_uncorr_blks = 0;
+	} else if (fec_mode == OTX2_FEC_BASER) {
+		val_lo = ioread64(reg_base + RPMX_MTI_FCFECX_VL0_CCW_LO(lmac_id));
+		val_hi = ioread64(reg_base + RPMX_MTI_FCFECX_CW_HI(lmac_id));
+		*fec_corr_blks = (val_hi << 16 | val_lo);
+
+		val_lo = ioread64(reg_base + RPMX_MTI_FCFECX_VL0_NCCW_LO(lmac_id));
+		val_hi = ioread64(reg_base + RPMX_MTI_FCFECX_CW_HI(lmac_id));
+		*fec_uncorr_blks = (val_hi << 16 | val_lo);
+
+		/* 50G uses 2 Physical serdes lines */
+		if (lmac_mode == LMAC_MODE_50G_R) {
+			val_lo = ioread64(reg_base + RPMX_MTI_FCFECX_VL1_CCW_LO(lmac_id));
+			val_hi = ioread64(reg_base + RPMX_MTI_FCFECX_CW_HI(lmac_id));
+			*fec_corr_blks += (val_hi << 16 | val_lo);
+
+			val_lo = ioread64(reg_base + RPMX_MTI_FCFECX_VL1_NCCW_LO(lmac_id));
+			val_hi = ioread64(reg_base + RPMX_MTI_FCFECX_CW_HI(lmac_id));
+			*fec_uncorr_blks += (val_hi << 16 | val_lo);
+		}
+	} else {
+		/* enable RS-FEC capture */
+		cfg = ioread64(reg_base + RPMX_MTI_STAT_STATN_CONTROL);
+		cfg |= RPMX_RSFEC_RX_CAPTURE | BIT(lmac_id);
+		iowrite64(cfg, reg_base + RPMX_MTI_STAT_STATN_CONTROL);
+
+		val_lo = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_2);
+		val_hi = ioread64(reg_base + RPMX_MTI_STAT_DATA_HI_CDC);
+		*fec_corr_blks = (val_hi << 32 | val_lo);
+
+		val_lo = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_3);
+		val_hi = ioread64(reg_base + RPMX_MTI_STAT_DATA_HI_CDC);
+		*fec_uncorr_blks = (val_hi << 32 | val_lo);
+	}
+}
+
 static int otx2_rfoe_dbg_read_rpm_stats(struct seq_file *filp, void *unused)
 {
 	int stat, rx_stats_cnt, tx_stats_cnt;
 	u64 rpm_base_addr, rx_stat, tx_stat;
+	u64 fec_corr_blks, fec_uncorr_blks;
 	struct cnf10k_rfoe_ndev_priv *priv;
 	struct cnf10k_rfoe_drv_ctx *ctx;
 	void __iomem *rpm_reg_base;
@@ -301,6 +394,13 @@ static int otx2_rfoe_dbg_read_rpm_stats(struct seq_file *filp, void *unused)
 			seq_printf(filp, "%s: %llu\n", rpm_tx_stats_fields[stat],
 				   tx_stat);
 		stat++;
+	}
+
+	if (!is_otx2) {
+		rfoe_dbg_rpm_get_fec_stats(rpm_reg_base, lmac_id, &fec_corr_blks,
+					   &fec_uncorr_blks);
+		seq_printf(filp, "Fec Corrected Errors: %llu\n", fec_corr_blks);
+		seq_printf(filp, "Fec Uncorrected Errors: %llu\n", fec_uncorr_blks);
 	}
 
 	iounmap(rpm_reg_base);
