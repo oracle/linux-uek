@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
+/* Marvell RVU Admin Function driver
  *
- * Copyright (C) 2018 Marvell International Ltd.
+ * Copyright (C) 2018 Marvell.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <asm/barrier.h>
@@ -41,8 +38,9 @@
 #else
 #define rvu_sso_store_pair(val0, val1, addr)				\
 	do {								\
-		*(uint64_t *)addr = val0;			\
-		*(uint64_t *)(((uint8_t *)addr) + 8) = val1;	\
+		u64 *addr1 = (void *)addr;				\
+		*addr1 = val0;						\
+		*(u64 *)(((u8 *)addr1) + 8) = val1;			\
 	} while (0)
 
 #define rvu_sso_ldadd(result, incr, ptr)				\
@@ -167,7 +165,7 @@ static void rvu_sso_ggrp_taq_flush(struct rvu *rvu, u16 pcifunc, int lf,
 	nix_lf = NULL;
 	nix_lf_cnt = rvu_sso_disable_aw_src(rvu, &nix_lf,
 					    rvu_get_blkaddr(rvu, BLKTYPE_NIX,
-							    0),
+							    pcifunc),
 					    NIX_AF_LF_SSO_PF_FUNC_SHIFT,
 					    NIX_AF_LF_CFG_SHIFT, pcifunc,
 					    NIX_AF_LFX_CFG(0));
@@ -255,7 +253,7 @@ get_work:
 
 	/* restore all sources of work. */
 	rvu_sso_enable_aw_src(rvu, nix_lf_cnt, rvu_get_blkaddr(rvu, BLKTYPE_NIX,
-							       0),
+							       pcifunc),
 			      NIX_AF_LFX_CFG(0), nix_lf, pcifunc,
 			      NIX_AF_LF_SSO_PF_FUNC_SHIFT,
 			      NIX_AF_LF_CFG_SHIFT);
@@ -478,7 +476,7 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	 * TAQ buffer used by HWGRP when HWGRP is reset. Use SW routine to
 	 * drain it manually.
 	 */
-	if (is_rvu_9xxx_A0(rvu))
+	if (is_rvu_96xx_B0(rvu))
 		rvu_sso_ggrp_taq_flush(rvu, pcifunc, lf, slot, ssow_lf, blkaddr,
 				       ssow_blkaddr);
 
@@ -1284,7 +1282,7 @@ int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu,
 	block = &hw->block[blkaddr];
 
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
-					block->type);
+					block->addr);
 	if (!num_lfs)
 		return SSOW_AF_ERR_LF_INVALID;
 
