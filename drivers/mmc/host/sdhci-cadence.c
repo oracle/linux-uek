@@ -1124,11 +1124,11 @@ void sdhci_cdns_sd6_dump(struct sdhci_cdns_priv *priv)
 	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DQ_TIMING 0x%x\n",
 			sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DQ_TIMING));
 	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0 0x%x\n",
-			sdhci_cdns_sd6_read_phy_reg(plat, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0));
+			sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0));
 	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DLL_OBS_REG1 0x%x\n",
-			sdhci_cdns_sd6_read_phy_reg(plat, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG1));
+			sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG1));
 	DEBUG_DRV("SDHCI_CDNS_SD6_PHY_DLL_OBS_REG2 0x%x\n",
-			sdhci_cdns_sd6_read_phy_reg(plat, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG2));
+			sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG2));
 }
 #endif
 
