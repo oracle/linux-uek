@@ -32,10 +32,23 @@ struct list_lru_one {
 	long			nr_items;
 };
 
+struct list_lru_per_memcg {
+	/* array of per cgroup per node lists, indexed by node id */
+	struct list_lru_one	node[0];
+};
+
 struct list_lru_memcg {
-	struct rcu_head		rcu;
+	struct rcu_head			rcu;
+#ifndef __GENKSYMS__
 	/* array of per cgroup lists, indexed by memcg_cache_id */
-	struct list_lru_one	*lru[];
+	struct list_lru_per_memcg	*mlru[];
+#else
+	/*
+	 * Currently there are no UEK_*() macros that operate on flexible arrays.
+	 * Because of this, use __GENKSYMS__.
+	 */
+	struct list_lru_one *lru[];
+#endif
 };
 
 struct list_lru_node {
@@ -45,13 +58,27 @@ struct list_lru_node {
 	struct list_lru_one	lru;
 #ifdef CONFIG_MEMCG_KMEM
 	/* for cgroup aware lrus points to per cgroup lists, otherwise NULL */
-	struct list_lru_memcg	__rcu *memcg_lrus;
+	UEK_KABI_DEPRECATE(struct list_lru_memcg __rcu *, memcg_lrus)
 #endif
-	long nr_items;
+	long			nr_items;
 } ____cacheline_aligned_in_smp;
 
+/*
+ * This struct is an extension of struct list_lru. It replaces
+ * struct list_lru::node and append struct list_lru *node to this
+ * struct and all new members those are added to struct list_lru
+ * will get added here.
+ */
+struct list_lru_ext {
+	struct list_lru_node		*node;
+#ifdef CONFIG_MEMCG_KMEM
+	/* for cgroup aware lrus points to per cgroup lists, otherwise NULL */
+	struct list_lru_memcg __rcu	*mlrus;
+#endif
+};
+
 struct list_lru {
-	struct list_lru_node	*node;
+	UEK_KABI_REPLACE(struct list_lru_node *node, struct list_lru_ext *ext)
 #ifdef CONFIG_MEMCG_KMEM
 	struct list_head	list;
 	int			shrinker_id;
