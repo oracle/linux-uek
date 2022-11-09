@@ -5113,14 +5113,12 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "ecdh-nist-p256",
 		.test = alg_test_kpp,
-		.fips_allowed = 1,
 		.suite = {
 			.kpp = __VECS(ecdh_p256_tv_template)
 		}
 	}, {
 		.alg = "ecdh-nist-p384",
 		.test = alg_test_kpp,
-		.fips_allowed = 1,
 		.suite = {
 			.kpp = __VECS(ecdh_p384_tv_template)
 		}
