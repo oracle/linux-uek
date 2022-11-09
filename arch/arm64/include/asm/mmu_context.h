@@ -252,6 +252,12 @@ void arm64_mm_context_put(struct mm_struct *mm);
 
 #include <asm-generic/mmu_context.h>
 
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+int lock_context(struct mm_struct *mm, int index);
+int unlock_context_by_index(int index);
+bool unlock_context_by_mm(struct mm_struct *mm);
+#endif
+
 #endif /* !__ASSEMBLY__ */
 
 #endif /* !__ASM_MMU_CONTEXT_H */
