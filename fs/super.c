@@ -289,8 +289,8 @@ static void __put_super(struct super_block *s)
 {
 	if (!--s->s_count) {
 		list_del_init(&s->s_list);
-		WARN_ON(s->s_dentry_lru.node);
-		WARN_ON(s->s_inode_lru.node);
+		WARN_ON(s->s_dentry_lru.ext);
+		WARN_ON(s->s_inode_lru.ext);
 		WARN_ON(!list_empty(&s->s_mounts));
 		security_sb_free(s);
 		fscrypt_destroy_keyring(s);
