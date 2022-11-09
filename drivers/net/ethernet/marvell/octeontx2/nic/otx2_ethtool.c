@@ -734,6 +734,12 @@ static int otx2_get_rxnfc(struct net_device *dev,
 	struct otx2_nic *pfvf = netdev_priv(dev);
 	int ret = -EOPNOTSUPP;
 
+	if (otx2_tc_flower_rule_cnt(pfvf)) {
+		netdev_err(pfvf->netdev,
+			   "Can't enable NTUPLE when TC flower offload is active, disable TC rules and retry\n");
+		return -EINVAL;
+	}
+
 	switch (nfc->cmd) {
 	case ETHTOOL_GRXRINGS:
 		nfc->data = pfvf->hw.rx_queues;
