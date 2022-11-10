@@ -346,7 +346,7 @@ void rds_hb_worker(struct work_struct *work)
 				WRITE_ONCE(cp->cp_hb_state, HB_PONG_RCVD);
 				/* Pseudo random from 50% to 150% of interval */
 				delay = msecs_to_jiffies(rds_sysctl_conn_hb_interval * 1000 / 2) +
-					msecs_to_jiffies(prandom_u32() % rds_sysctl_conn_hb_interval * 1000);
+					msecs_to_jiffies(get_random_u32() % rds_sysctl_conn_hb_interval * 1000);
 			} else if (now - READ_ONCE(cp->cp_hb_start) > rds_sysctl_conn_hb_timeout) {
 				rds_conn_path_drop(cp, DR_HB_TIMEOUT, 0);
 				return;
