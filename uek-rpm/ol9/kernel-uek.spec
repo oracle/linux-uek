@@ -307,7 +307,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
-%define with_container 0
 %if %{with_64konly}
 %define with_64k_ps 1
 %define with_up 0
