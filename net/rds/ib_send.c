@@ -438,7 +438,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 int rds_ib_send_grab_credits(struct rds_ib_connection *ic,
 			     u32 wanted, u32 *adv_credits, int need_posted)
 {
-	unsigned int avail, posted, got = 0, advertise;
+	unsigned int avail, posted, got, advertise;
 	int oldval, newval;
 
 	*adv_credits = 0;
