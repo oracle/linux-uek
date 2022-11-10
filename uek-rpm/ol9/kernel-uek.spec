@@ -481,6 +481,7 @@ Source1001: config-x86_64-debug
 Source1002: config-x86_64-container
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
+Source1009: config-aarch64-container
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -966,6 +967,7 @@ mkdir -p configs
 %endif
 
 %ifarch aarch64
+	cp %{SOURCE1009} configs/config-container
 	cp %{SOURCE1008} configs/config-debug
 	cp %{SOURCE1007} configs/config
 %endif
