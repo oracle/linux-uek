@@ -112,6 +112,8 @@ modname-multi = $(sort $(foreach m,$(multi-obj-ym),\
 __modname = $(or $(modname-multi),$(basetarget))
 
 modname = $(subst $(space),:,$(__modname))
+modname-objs = $($(modname)-objs) $($(modname)-y) $($(modname)-Y)
+modname-objs-prefixed = $(sort $(strip $(addprefix $(obj)/, $(modname-objs))))
 modfile = $(addprefix $(obj)/,$(__modname))
 
 # target with $(obj)/ and its suffix stripped
@@ -125,7 +127,8 @@ name-fix = $(call stringify,$(call name-fix-token,$1))
 basename_flags = -DKBUILD_BASENAME=$(call name-fix,$(basetarget))
 modname_flags  = -DKBUILD_MODNAME=$(call name-fix,$(modname)) \
 		 -D__KBUILD_MODNAME=kmod_$(call name-fix-token,$(modname))
-modfile_flags  = -DKBUILD_MODFILE=$(call stringify,$(modfile))
+modfile_flags  = -DKBUILD_MODFILE=$(call stringify,$(modfile)) \
+                 -DKBUILD_MODOBJS=$(call stringify,$(modfile).o:$(subst $(space),|,$(modname-objs-prefixed)))
 
 _c_flags       = $(filter-out $(CFLAGS_REMOVE_$(target-stem).o), \
                      $(filter-out $(ccflags-remove-y), \
