@@ -17,6 +17,11 @@ modules.builtin
 This file lists all modules that are built into the kernel. This is used
 by modprobe to not fail when trying to load something builtin.
 
+modules.builtin.objs
+-----------------------
+This file contains object mapping of modules that are built into the kernel
+to their corresponding object files used to build the module.
+
 modules.builtin.modinfo
 -----------------------
 This file contains modinfo from all modules that are built into the kernel.
