@@ -10188,7 +10188,7 @@ static int devlink_netdevice_event(struct notifier_block *nb,
 		 * we take into account netdev pointer appearing in this
 		 * namespace.
 		 */
-		__devlink_port_type_set(devlink_port, DEVLINK_PORT_TYPE_ETH,
+		__devlink_port_type_set(devlink_port, devlink_port->type,
 					netdev);
 		break;
 	case NETDEV_UNREGISTER:
@@ -10196,7 +10196,7 @@ static int devlink_netdevice_event(struct notifier_block *nb,
 		 * also during net namespace change so we need to clear
 		 * pointer to netdev that is going to another net namespace.
 		 */
-		__devlink_port_type_set(devlink_port, DEVLINK_PORT_TYPE_ETH,
+		__devlink_port_type_set(devlink_port, devlink_port->type,
 					NULL);
 		break;
 	case NETDEV_PRE_UNINIT:
