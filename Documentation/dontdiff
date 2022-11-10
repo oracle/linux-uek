@@ -179,7 +179,7 @@ mkutf8data
 modpost
 modules-only.symvers
 modules.builtin
-modules.builtin.modinfo
+modules.builtin.*
 modules.nsdeps
 modules.order
 modversions.h*
