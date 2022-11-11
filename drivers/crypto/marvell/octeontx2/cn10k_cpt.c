@@ -41,7 +41,7 @@ void cn10k_cpt_send_cmd(union otx2_cpt_inst_s *cptinst, u32 insts_num,
 
 	/* tar_addr<6:4> = Size of first LMTST - 1 in units of 128b. */
 	tar_addr |= (__force u64)lf->ioreg |
-		     (((OTX2_CPT_INST_SIZE/16) - 1) & 0x7) << 4;
+		    (((OTX2_CPT_INST_SIZE/16) - 1) & 0x7) << 4;
 	/*
 	 * Make sure memory areas pointed in CPT_INST_S
 	 * are flushed before the instruction is sent to CPT

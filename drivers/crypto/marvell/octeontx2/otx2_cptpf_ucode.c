@@ -1248,7 +1248,6 @@ int otx2_cpt_create_eng_grps(struct otx2_cptpf_dev *cptpf,
 	 */
 	otx2_cpt_write_af_reg(&cptpf->afpf_mbox, pdev, CPT_AF_CTX_FLUSH_TIMER,
 			      CTX_FLUSH_TIMER_CNT, BLKADDR_CPT0);
-
 	/*
 	 * Set CPT_AF_DIAG[FLT_DIS], as a workaround for HW errata, when
 	 * CPT_AF_DIAG[FLT_DIS] = 0 and a CPT engine access to LLC/DRAM
@@ -1507,9 +1506,9 @@ int otx2_cpt_discover_eng_capabilities(struct otx2_cptpf_dev *cptpf)
 	if (ret)
 		goto delete_grps;
 
-	otx2_cptlf_set_dev_info(&cptpf->lfs, cptpf->pdev, cptpf->reg_base,
+	otx2_cptlf_set_dev_info(lfs, cptpf->pdev, cptpf->reg_base,
 				&cptpf->afpf_mbox, BLKADDR_CPT0);
-	ret = otx2_cptlf_init(&cptpf->lfs, OTX2_CPT_ALL_ENG_GRPS_MASK,
+	ret = otx2_cptlf_init(lfs, OTX2_CPT_ALL_ENG_GRPS_MASK,
 			      OTX2_CPT_QUEUE_HI_PRIO, 1);
 	if (ret)
 		goto delete_grps;
@@ -1573,8 +1572,8 @@ delete_grps:
 int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 				   struct devlink_param_gset_ctx *ctx)
 {
-	struct otx2_cpt_uc_info_t *uc_info[OTX2_CPT_MAX_ETYPES_PER_GRP] = {  };
-	struct otx2_cpt_engines engs[OTX2_CPT_MAX_ETYPES_PER_GRP] = { {0} };
+	struct otx2_cpt_engines engs[OTX2_CPT_MAX_ETYPES_PER_GRP] = { { 0 } };
+	struct otx2_cpt_uc_info_t *uc_info[OTX2_CPT_MAX_ETYPES_PER_GRP] = {};
 	struct otx2_cpt_eng_grps *eng_grps = &cptpf->eng_grps;
 	char *ucode_filename[OTX2_CPT_MAX_ETYPES_PER_GRP];
 	char tmp_buf[OTX2_CPT_NAME_LENGTH] = { 0 };
@@ -1590,7 +1589,7 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 		return -EINVAL;
 	}
 	err_msg = "Invalid engine group format";
-	strlcpy(tmp_buf, ctx->val.vstr, strlen(ctx->val.vstr) + 1);
+	strscpy(tmp_buf, ctx->val.vstr, strlen(ctx->val.vstr) + 1);
 	start = tmp_buf;
 
 	has_se = has_ie = has_ae = false;
@@ -1607,10 +1606,9 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 			if (has_se || ucode_idx)
 				goto err_print;
 			tmp = strsep(&val, ":");
-			if (tmp != NULL)
-				tmp = strim(tmp);
-			else
+			if (!tmp)
 				goto err_print;
+			tmp = strim(tmp);
 			if (!val)
 				goto err_print;
 			if (strlen(tmp) != 2)
@@ -1623,10 +1621,9 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 			if (has_ae || ucode_idx)
 				goto err_print;
 			tmp = strsep(&val, ":");
-			if (tmp != NULL)
-				tmp = strim(tmp);
-			else
+			if (!tmp)
 				goto err_print;
+			tmp = strim(tmp);
 			if (!val)
 				goto err_print;
 			if (strlen(tmp) != 2)
@@ -1639,10 +1636,9 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 			if (has_ie || ucode_idx)
 				goto err_print;
 			tmp = strsep(&val, ":");
-			if (tmp != NULL)
-				tmp = strim(tmp);
-			else
+			if (!tmp)
 				goto err_print;
+			tmp = strim(tmp);
 			if (!val)
 				goto err_print;
 			if (strlen(tmp) != 2)
@@ -1677,8 +1673,7 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 	if (grp_idx > 1) {
 		if ((engs[0].type + engs[1].type) !=
 		    (OTX2_CPT_SE_TYPES + OTX2_CPT_IE_TYPES)) {
-			err_msg =
-			"Only combination of SE+IE engines is allowed";
+			err_msg = "Only combination of SE+IE engines is allowed";
 			goto err_print;
 		}
 		/* Keep SE engines at zero index */
@@ -1696,8 +1691,7 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 
 	ret = load_fw(dev, &fw_info, ucode_filename[0], eng_grps->rid);
 	if (ret) {
-		dev_err(dev, "Unable to load firmware %s\n",
-			ucode_filename[0]);
+		dev_err(dev, "Unable to load firmware %s\n", ucode_filename[0]);
 		goto err_unlock;
 	}
 	if (ucode_idx > 1) {
@@ -1725,7 +1719,7 @@ int otx2_cpt_dl_custom_egrp_create(struct otx2_cptpf_dev *cptpf,
 		}
 	}
 	ret = create_engine_group(dev, eng_grps, engs, grp_idx,
-				  (void **) uc_info, 1);
+				  (void **)uc_info, 1);
 
 release_fw:
 	cpt_ucode_release_fw(&fw_info);
@@ -1761,8 +1755,7 @@ int otx2_cpt_dl_custom_egrp_delete(struct otx2_cptpf_dev *cptpf,
 		return -EINVAL;
 	}
 	if (!eng_grps->grp[egrp].is_enabled) {
-		dev_err(dev, "Error engine_group%d is not configured",
-			egrp);
+		dev_err(dev, "Error engine_group%d is not configured", egrp);
 		return -EINVAL;
 	}
 	mutex_lock(&eng_grps->lock);
@@ -1776,8 +1769,8 @@ err_print:
 	return -EINVAL;
 }
 
-static void get_engs_info(struct otx2_cpt_eng_grp_info *eng_grp,
-			  char *buf, int size, int idx)
+static void get_engs_info(struct otx2_cpt_eng_grp_info *eng_grp, char *buf,
+			  int size, int idx)
 {
 	struct otx2_cpt_engs_rsvd *mirrored_engs = NULL;
 	struct otx2_cpt_engs_rsvd *engs;
@@ -1788,30 +1781,30 @@ static void get_engs_info(struct otx2_cpt_eng_grp_info *eng_grp,
 		engs = &eng_grp->engs[i];
 		if (!engs->type)
 			continue;
-		if (idx != -1 &&
-		    idx != i)
+		if (idx != -1 && idx != i)
 			continue;
 
 		if (eng_grp->mirror.is_ena)
 			mirrored_engs = find_engines_by_type(
-					&eng_grp->g->grp[eng_grp->mirror.idx],
-					engs->type);
-		if (i > 0 &&
-		    idx == -1) {
+				&eng_grp->g->grp[eng_grp->mirror.idx],
+				engs->type);
+		if (i > 0 && idx == -1) {
 			len = strlen(buf);
-			scnprintf(buf+len, size-len, ", ");
+			scnprintf(buf + len, size - len, ", ");
 		}
 
 		len = strlen(buf);
-		scnprintf(buf+len, size-len, "%d %s ", mirrored_engs ?
-			  engs->count + mirrored_engs->count : engs->count,
+		scnprintf(buf + len, size - len, "%d %s ",
+			  mirrored_engs ? engs->count + mirrored_engs->count :
+					  engs->count,
 			  get_eng_type_str(engs->type));
 		if (mirrored_engs) {
 			len = strlen(buf);
-			scnprintf(buf+len, size-len,
+			scnprintf(buf + len, size - len,
 				  "(%d shared with engine_group%d) ",
-				  engs->count <= 0 ? engs->count +
-				  mirrored_engs->count : mirrored_engs->count,
+				  engs->count <= 0 ?
+					  engs->count + mirrored_engs->count :
+					  mirrored_engs->count,
 				  eng_grp->mirror.idx);
 		}
 	}
@@ -1827,26 +1820,25 @@ void otx2_cpt_print_uc_dbg_info(struct otx2_cptpf_dev *cptpf)
 	int i, j;
 
 	pr_debug("Engine groups global info");
-	pr_debug("max SE %d, max IE %d, max AE %d",
-		 eng_grps->avail.max_se_cnt, eng_grps->avail.max_ie_cnt,
-		 eng_grps->avail.max_ae_cnt);
+	pr_debug("max SE %d, max IE %d, max AE %d", eng_grps->avail.max_se_cnt,
+		 eng_grps->avail.max_ie_cnt, eng_grps->avail.max_ae_cnt);
 	pr_debug("free SE %d", eng_grps->avail.se_cnt);
 	pr_debug("free IE %d", eng_grps->avail.ie_cnt);
 	pr_debug("free AE %d", eng_grps->avail.ae_cnt);
 
 	for (i = 0; i < OTX2_CPT_MAX_ENGINE_GROUPS; i++) {
 		grp = &eng_grps->grp[i];
-		pr_debug("engine_group%d, state %s", i, grp->is_enabled ?
-			 "enabled" : "disabled");
+		pr_debug("engine_group%d, state %s", i,
+			 grp->is_enabled ? "enabled" : "disabled");
 		if (grp->is_enabled) {
 			mirrored_grp = &eng_grps->grp[grp->mirror.idx];
 			pr_debug("Ucode0 filename %s, version %s",
 				 grp->mirror.is_ena ?
-				 mirrored_grp->ucode[0].filename :
-				 grp->ucode[0].filename,
+					 mirrored_grp->ucode[0].filename :
+					 grp->ucode[0].filename,
 				 grp->mirror.is_ena ?
-				 mirrored_grp->ucode[0].ver_str :
-				 grp->ucode[0].ver_str);
+					 mirrored_grp->ucode[0].ver_str :
+					 grp->ucode[0].ver_str);
 			if (is_2nd_ucode_used(grp))
 				pr_debug("Ucode1 filename %s, version %s",
 					 grp->ucode[1].filename,

@@ -2,8 +2,8 @@
  * Copyright (C) 2018 Marvell.
  */
 
-#ifndef	__OTX2_CPT_DEVLINK_H
-#define	__OTX2_CPT_DEVLINK_H
+#ifndef __OTX2_CPT_DEVLINK_H
+#define __OTX2_CPT_DEVLINK_H
 
 #include "otx2_cpt_common.h"
 #include "otx2_cptpf.h"

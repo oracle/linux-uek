@@ -17,68 +17,6 @@
 #define CPT_UC_RID_CN10K_A   4
 #define CPT_UC_RID_CN10K_B   5
 
-static void cptpf_enable_vf_flr_me_intrs(struct otx2_cptpf_dev *cptpf,
-					 int numvfs)
-{
-	/* Clear FLR interrupt if any */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(0),
-			 INTR_MASK(numvfs));
-
-	/* Enable VF FLR interrupts */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFFLR_INT_ENA_W1SX(0), INTR_MASK(numvfs));
-	/* Clear ME interrupt if any */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFME_INTX(0),
-			 INTR_MASK(numvfs));
-	/* Enable VF ME interrupts */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFME_INT_ENA_W1SX(0), INTR_MASK(numvfs));
-
-	if (numvfs <= 64)
-		return;
-
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(1),
-			 INTR_MASK(numvfs - 64));
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFFLR_INT_ENA_W1SX(1), INTR_MASK(numvfs - 64));
-
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFME_INTX(1),
-			 INTR_MASK(numvfs - 64));
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFME_INT_ENA_W1SX(1), INTR_MASK(numvfs - 64));
-}
-
-static void cptpf_disable_vf_flr_me_intrs(struct otx2_cptpf_dev *cptpf,
-					  int numvfs)
-{
-	int vector;
-
-	/* Disable VF FLR interrupts */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFFLR_INT_ENA_W1CX(0), INTR_MASK(numvfs));
-	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFFLR0);
-	free_irq(vector, cptpf);
-
-	/* Disable VF ME interrupts */
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFME_INT_ENA_W1CX(0), INTR_MASK(numvfs));
-	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFME0);
-	free_irq(vector, cptpf);
-
-	if (numvfs <= 64)
-		return;
-
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFFLR_INT_ENA_W1CX(1), INTR_MASK(numvfs - 64));
-	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFFLR1);
-	free_irq(vector, cptpf);
-
-	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFME_INT_ENA_W1CX(1), INTR_MASK(numvfs - 64));
-	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFME1);
-	free_irq(vector, cptpf);
-}
-
 static void cptpf_enable_vfpf_mbox_intr(struct otx2_cptpf_dev *cptpf,
 					int num_vfs)
 {
@@ -106,19 +44,18 @@ static void cptpf_enable_vfpf_mbox_intr(struct otx2_cptpf_dev *cptpf,
 }
 
 static void cptpf_disable_vfpf_mbox_intr(struct otx2_cptpf_dev *cptpf,
-					  int num_vfs)
+					 int num_vfs)
 {
 	int vector;
 
 	/* Disable VF-PF interrupts */
 	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFPF_MBOX_INT_ENA_W1CX(0), ~0x0ULL);
+			 RVU_PF_VFPF_MBOX_INT_ENA_W1CX(0), ~0ULL);
 	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFPF_MBOX_INT_ENA_W1CX(1), ~0x0ULL);
-
+			 RVU_PF_VFPF_MBOX_INT_ENA_W1CX(1), ~0ULL);
 	/* Clear any pending interrupts */
 	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			 RVU_PF_VFPF_MBOX_INTX(0), ~0x0ULL);
+			 RVU_PF_VFPF_MBOX_INTX(0), ~0ULL);
 
 	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFPF_MBOX0);
 	free_irq(vector, cptpf);
@@ -129,6 +66,68 @@ static void cptpf_disable_vfpf_mbox_intr(struct otx2_cptpf_dev *cptpf,
 		vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFPF_MBOX1);
 		free_irq(vector, cptpf);
 	}
+}
+
+static void cptpf_enable_vf_flr_me_intrs(struct otx2_cptpf_dev *cptpf,
+					 int num_vfs)
+{
+	/* Clear FLR interrupt if any */
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(0),
+			 INTR_MASK(num_vfs));
+
+	/* Enable VF FLR interrupts */
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFFLR_INT_ENA_W1SX(0), INTR_MASK(num_vfs));
+	/* Clear ME interrupt if any */
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFME_INTX(0),
+			 INTR_MASK(num_vfs));
+	/* Enable VF ME interrupts */
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFME_INT_ENA_W1SX(0), INTR_MASK(num_vfs));
+
+	if (num_vfs <= 64)
+		return;
+
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(1),
+			 INTR_MASK(num_vfs - 64));
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFFLR_INT_ENA_W1SX(1), INTR_MASK(num_vfs - 64));
+
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0, RVU_PF_VFME_INTX(1),
+			 INTR_MASK(num_vfs - 64));
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFME_INT_ENA_W1SX(1), INTR_MASK(num_vfs - 64));
+}
+
+static void cptpf_disable_vf_flr_me_intrs(struct otx2_cptpf_dev *cptpf,
+				       int num_vfs)
+{
+	int vector;
+
+	/* Disable VF FLR interrupts */
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFFLR_INT_ENA_W1CX(0), INTR_MASK(num_vfs));
+	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFFLR0);
+	free_irq(vector, cptpf);
+
+	/* Disable VF ME interrupts */
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFME_INT_ENA_W1CX(0), INTR_MASK(num_vfs));
+	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFME0);
+	free_irq(vector, cptpf);
+
+	if (num_vfs <= 64)
+		return;
+
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFFLR_INT_ENA_W1CX(1), INTR_MASK(num_vfs - 64));
+	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFFLR1);
+	free_irq(vector, cptpf);
+
+	otx2_cpt_write64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_VFME_INT_ENA_W1CX(1), INTR_MASK(num_vfs - 64));
+	vector = pci_irq_vector(cptpf->pdev, RVU_PF_INT_VEC_VFME1);
+	free_irq(vector, cptpf);
 }
 
 static void cptpf_flr_wq_handler(struct work_struct *work)
@@ -349,12 +348,67 @@ static int cptpf_flr_wq_init(struct otx2_cptpf_dev *cptpf, int num_vfs)
 		cptpf->flr_work[vf].pf = cptpf;
 		INIT_WORK(&cptpf->flr_work[vf].work, cptpf_flr_wq_handler);
 	}
-
 	return 0;
 
 destroy_wq:
 	destroy_workqueue(cptpf->flr_wq);
 	return -ENOMEM;
+}
+
+static int cptpf_vfpf_mbox_init(struct otx2_cptpf_dev *cptpf, int num_vfs)
+{
+	struct device *dev = &cptpf->pdev->dev;
+	u64 vfpf_mbox_base;
+	int err, i;
+
+	cptpf->vfpf_mbox_wq = alloc_workqueue("cpt_vfpf_mailbox",
+					      WQ_UNBOUND | WQ_HIGHPRI |
+					      WQ_MEM_RECLAIM, 1);
+	if (!cptpf->vfpf_mbox_wq)
+		return -ENOMEM;
+
+	/* Map VF-PF mailbox memory */
+	if (test_bit(CN10K_MBOX, &cptpf->cap_flag))
+		vfpf_mbox_base = readq(cptpf->reg_base + RVU_PF_VF_MBOX_ADDR);
+	else
+		vfpf_mbox_base = readq(cptpf->reg_base + RVU_PF_VF_BAR4_ADDR);
+
+	if (!vfpf_mbox_base) {
+		dev_err(dev, "VF-PF mailbox address not configured\n");
+		err = -ENOMEM;
+		goto free_wqe;
+	}
+	cptpf->vfpf_mbox_base = devm_ioremap_wc(dev, vfpf_mbox_base,
+						MBOX_SIZE * cptpf->max_vfs);
+	if (!cptpf->vfpf_mbox_base) {
+		dev_err(dev, "Mapping of VF-PF mailbox address failed\n");
+		err = -ENOMEM;
+		goto free_wqe;
+	}
+	err = otx2_mbox_init(&cptpf->vfpf_mbox, cptpf->vfpf_mbox_base,
+			     cptpf->pdev, cptpf->reg_base, MBOX_DIR_PFVF,
+			     num_vfs);
+	if (err)
+		goto free_wqe;
+
+	for (i = 0; i < num_vfs; i++) {
+		cptpf->vf[i].vf_id = i;
+		cptpf->vf[i].cptpf = cptpf;
+		cptpf->vf[i].intr_idx = i % 64;
+		INIT_WORK(&cptpf->vf[i].vfpf_mbox_work,
+			  otx2_cptpf_vfpf_mbox_handler);
+	}
+	return 0;
+
+free_wqe:
+	destroy_workqueue(cptpf->vfpf_mbox_wq);
+	return err;
+}
+
+static void cptpf_vfpf_mbox_destroy(struct otx2_cptpf_dev *cptpf)
+{
+	destroy_workqueue(cptpf->vfpf_mbox_wq);
+	otx2_mbox_destroy(&cptpf->vfpf_mbox);
 }
 
 static void cptpf_disable_afpf_mbox_intr(struct otx2_cptpf_dev *cptpf)
@@ -448,97 +502,6 @@ static void cptpf_afpf_mbox_destroy(struct otx2_cptpf_dev *cptpf)
 	otx2_mbox_destroy(&cptpf->afpf_mbox_up);
 }
 
-static int cptpf_vfpf_mbox_init(struct otx2_cptpf_dev *cptpf, int numvfs)
-{
-	struct device *dev = &cptpf->pdev->dev;
-	u64 vfpf_mbox_base;
-	int err, i;
-
-	cptpf->vfpf_mbox_wq = alloc_workqueue("cpt_vfpf_mailbox",
-					      WQ_UNBOUND | WQ_HIGHPRI |
-					      WQ_MEM_RECLAIM, 1);
-	if (!cptpf->vfpf_mbox_wq)
-		return -ENOMEM;
-
-	/* Map VF-PF mailbox memory */
-	if (test_bit(CN10K_MBOX, &cptpf->cap_flag))
-		vfpf_mbox_base = readq(cptpf->reg_base + RVU_PF_VF_MBOX_ADDR);
-	else
-		vfpf_mbox_base = readq(cptpf->reg_base + RVU_PF_VF_BAR4_ADDR);
-
-	if (!vfpf_mbox_base) {
-		dev_err(dev, "VF-PF mailbox address not configured\n");
-		err = -ENOMEM;
-		goto free_wqe;
-	}
-	cptpf->vfpf_mbox_base = devm_ioremap_wc(dev, vfpf_mbox_base,
-						MBOX_SIZE * cptpf->max_vfs);
-	if (!cptpf->vfpf_mbox_base) {
-		dev_err(dev, "Mapping of VF-PF mailbox address failed\n");
-		err = -ENOMEM;
-		goto free_wqe;
-	}
-	err = otx2_mbox_init(&cptpf->vfpf_mbox, cptpf->vfpf_mbox_base,
-			     cptpf->pdev, cptpf->reg_base, MBOX_DIR_PFVF,
-			     numvfs);
-	if (err)
-		goto free_wqe;
-
-	for (i = 0; i < numvfs; i++) {
-		cptpf->vf[i].vf_id = i;
-		cptpf->vf[i].cptpf = cptpf;
-		cptpf->vf[i].intr_idx = i % 64;
-		INIT_WORK(&cptpf->vf[i].vfpf_mbox_work,
-			  otx2_cptpf_vfpf_mbox_handler);
-	}
-	return 0;
-
-free_wqe:
-	destroy_workqueue(cptpf->vfpf_mbox_wq);
-	return err;
-}
-
-static void cptpf_vfpf_mbox_destroy(struct otx2_cptpf_dev *cptpf)
-{
-	destroy_workqueue(cptpf->vfpf_mbox_wq);
-	otx2_mbox_destroy(&cptpf->vfpf_mbox);
-}
-
-static void cptpf_check_block_implemented(struct otx2_cptpf_dev *cptpf)
-{
-	u64 cfg;
-
-	cfg = otx2_cpt_read64(cptpf->reg_base, BLKADDR_RVUM, 0,
-			      RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_CPT1));
-	if (cfg & BIT_ULL(11))
-		cptpf->has_cpt1 = true;
-}
-
-static int cptpf_device_init(struct otx2_cptpf_dev *cptpf)
-{
-	union otx2_cptx_af_constants1 af_cnsts1 = {0};
-	int ret = 0;
-
-	/* check if 'implemented' bit is set for block BLKADDR_CPT1 */
-	cptpf_check_block_implemented(cptpf);
-
-	/* Get number of SE, IE and AE engines */
-	ret = otx2_cpt_read_af_reg(&cptpf->afpf_mbox, cptpf->pdev,
-				   CPT_AF_CONSTANTS1, &af_cnsts1.u,
-				   BLKADDR_CPT0);
-	if (ret)
-		return ret;
-
-	cptpf->eng_grps.avail.max_se_cnt = af_cnsts1.s.se;
-	cptpf->eng_grps.avail.max_ie_cnt = af_cnsts1.s.ie;
-	cptpf->eng_grps.avail.max_ae_cnt = af_cnsts1.s.ae;
-
-	/* Disable all cores */
-	ret = otx2_cpt_disable_all_cores(cptpf);
-
-	return ret;
-}
-
 static ssize_t sso_pf_func_ovrd_show(struct device *dev,
 				     struct device_attribute *attr, char *buf)
 {
@@ -579,12 +542,11 @@ static ssize_t kvf_limits_store(struct device *dev,
 {
 	struct otx2_cptpf_dev *cptpf = dev_get_drvdata(dev);
 	int lfs_num;
+	int ret;
 
-	if (kstrtoint(buf, 0, &lfs_num)) {
-		dev_err(dev, "lfs count %d must be in range [1 - %d]\n",
-			lfs_num, num_online_cpus());
-		return -EINVAL;
-	}
+	ret = kstrtoint(buf, 0, &lfs_num);
+	if (ret)
+		return ret;
 	if (lfs_num < 1 || lfs_num > num_online_cpus()) {
 		dev_err(dev, "lfs count %d must be in range [1 - %d]\n",
 			lfs_num, num_online_cpus());
@@ -647,6 +609,41 @@ static int cptpf_get_rid(struct pci_dev *pdev, struct otx2_cptpf_dev *cptpf)
 		}
 	}
 	return 0;
+}
+
+static void cptpf_check_block_implemented(struct otx2_cptpf_dev *cptpf)
+{
+	u64 cfg;
+
+	cfg = otx2_cpt_read64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			      RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_CPT1));
+	if (cfg & BIT_ULL(11))
+		cptpf->has_cpt1 = true;
+}
+
+static int cptpf_device_init(struct otx2_cptpf_dev *cptpf)
+{
+	union otx2_cptx_af_constants1 af_cnsts1 = {0};
+	int ret = 0;
+
+	/* check if 'implemented' bit is set for block BLKADDR_CPT1 */
+	cptpf_check_block_implemented(cptpf);
+
+	/* Get number of SE, IE and AE engines */
+	ret = otx2_cpt_read_af_reg(&cptpf->afpf_mbox, cptpf->pdev,
+				   CPT_AF_CONSTANTS1, &af_cnsts1.u,
+				   BLKADDR_CPT0);
+	if (ret)
+		return ret;
+
+	cptpf->eng_grps.avail.max_se_cnt = af_cnsts1.s.se;
+	cptpf->eng_grps.avail.max_ie_cnt = af_cnsts1.s.ie;
+	cptpf->eng_grps.avail.max_ae_cnt = af_cnsts1.s.ae;
+
+	/* Disable all cores */
+	ret = otx2_cpt_disable_all_cores(cptpf);
+
+	return ret;
 }
 
 static int cptpf_sriov_disable(struct pci_dev *pdev)
@@ -730,7 +727,6 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 {
 	struct device *dev = &pdev->dev;
 	struct otx2_cptpf_dev *cptpf;
-	void __iomem * const *iomap;
 	int err;
 
 	cptpf = devm_kzalloc(dev, sizeof(*cptpf), GFP_KERNEL);
@@ -759,13 +755,7 @@ static int otx2_cptpf_probe(struct pci_dev *pdev,
 	pci_set_drvdata(pdev, cptpf);
 	cptpf->pdev = pdev;
 
-	iomap = pcim_iomap_table(pdev);
-	if (!iomap) {
-		dev_err(dev, "Failed to get iomap table\n");
-		err = -ENODEV;
-		goto clear_drvdata;
-	}
-	cptpf->reg_base = iomap[PCI_PF_REG_BAR_NUM];
+	cptpf->reg_base = pcim_iomap_table(pdev)[PCI_PF_REG_BAR_NUM];
 
 	/* Check if AF driver is up, otherwise defer probe */
 	err = cpt_is_pf_usable(cptpf);

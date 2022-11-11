@@ -57,7 +57,7 @@ struct otx2_cptpf_dev {
 	u8 max_vfs;		/* Maximum number of VFs supported by CPT */
 	u8 enabled_vfs;		/* Number of enabled VFs */
 	u8 sso_pf_func_ovrd;	/* SSO PF_FUNC override bit */
-	u8 kvf_limits;		/* Kernel VF limits */
+	u8 kvf_limits;		/* Kernel crypto limits */
 	bool has_cpt1;
 	u8 rsrc_req_blkaddr;
 
@@ -70,8 +70,5 @@ void otx2_cptpf_afpf_mbox_handler(struct work_struct *work);
 void otx2_cptpf_afpf_mbox_up_handler(struct work_struct *work);
 irqreturn_t otx2_cptpf_vfpf_mbox_intr(int irq, void *arg);
 void otx2_cptpf_vfpf_mbox_handler(struct work_struct *work);
-int otx2_cptpf_lf_init(struct otx2_cptpf_dev *cptpf, u8 eng_grp_mask,
-		       int pri, int lfs_num);
-void otx2_cptpf_lf_cleanup(struct otx2_cptlfs_info *lfs);
 
 #endif /* __OTX2_CPTPF_H */

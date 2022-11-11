@@ -1700,33 +1700,17 @@ static struct aead_alg otx2_cpt_aeads[] = { {
 	.maxauthsize = AES_GCM_ICV_SIZE,
 } };
 
-static inline int is_any_alg_used(void)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(otx2_cpt_skciphers); i++)
-		if (refcount_read(&otx2_cpt_skciphers[i].base.cra_refcnt) != 1)
-			return true;
-	for (i = 0; i < ARRAY_SIZE(otx2_cpt_aeads); i++)
-		if (refcount_read(&otx2_cpt_aeads[i].base.cra_refcnt) != 1)
-			return true;
-	return false;
-}
-
 static inline int cpt_register_algs(void)
 {
 	int i, err = 0;
 
-	if (!IS_ENABLED(CONFIG_DM_CRYPT)) {
-		for (i = 0; i < ARRAY_SIZE(otx2_cpt_skciphers); i++)
-			otx2_cpt_skciphers[i].base.cra_flags &=
-							~CRYPTO_ALG_DEAD;
+	for (i = 0; i < ARRAY_SIZE(otx2_cpt_skciphers); i++)
+		otx2_cpt_skciphers[i].base.cra_flags &= ~CRYPTO_ALG_DEAD;
 
-		err = crypto_register_skciphers(otx2_cpt_skciphers,
-						ARRAY_SIZE(otx2_cpt_skciphers));
-		if (err)
-			return err;
-	}
+	err = crypto_register_skciphers(otx2_cpt_skciphers,
+					ARRAY_SIZE(otx2_cpt_skciphers));
+	if (err)
+		return err;
 
 	for (i = 0; i < ARRAY_SIZE(otx2_cpt_aeads); i++)
 		otx2_cpt_aeads[i].base.cra_flags &= ~CRYPTO_ALG_DEAD;
@@ -1843,8 +1827,7 @@ void otx2_cpt_crypto_exit(struct pci_dev *pdev, struct module *mod)
 		dev_err(&pdev->dev, "%s device not found\n", __func__);
 		goto unlock;
 	}
-	if (atomic_dec_and_test(&se_devices.count) &&
-	    !is_any_alg_used()) {
+	if (atomic_dec_and_test(&se_devices.count)) {
 		cpt_unregister_algs();
 		module_put(mod);
 		is_crypto_registered = false;
