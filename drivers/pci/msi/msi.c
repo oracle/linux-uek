@@ -737,7 +737,7 @@ static int __pci_enable_msix(struct pci_dev *dev, struct msix_entry *entries,
 	return msix_capability_init(dev, entries, nvec, affd);
 }
 
-static void pci_msix_shutdown(struct pci_dev *dev)
+void pci_msix_shutdown(struct pci_dev *dev)
 {
 	struct msi_desc *desc;
 
@@ -758,18 +758,6 @@ static void pci_msix_shutdown(struct pci_dev *dev)
 	dev->msix_enabled = 0;
 	pcibios_alloc_irq(dev);
 }
-
-void pci_disable_msix(struct pci_dev *dev)
-{
-	if (!pci_msi_enable || !dev || !dev->msix_enabled)
-		return;
-
-	msi_lock_descs(&dev->dev);
-	pci_msix_shutdown(dev);
-	pci_free_msi_irqs(dev);
-	msi_unlock_descs(&dev->dev);
-}
-EXPORT_SYMBOL(pci_disable_msix);
 
 int __pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec,
 			   struct irq_affinity *affd)
@@ -868,6 +856,7 @@ int __pci_enable_msix_range(struct pci_dev *dev,
 }
 
 EXPORT_SYMBOL(pci_enable_msix_range);
+EXPORT_SYMBOL(pci_disable_msix);
 EXPORT_SYMBOL(pci_alloc_irq_vectors_affinity);
 EXPORT_SYMBOL(pci_irq_vector);
 EXPORT_SYMBOL(pci_free_irq_vectors);
