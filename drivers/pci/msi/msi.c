@@ -890,18 +890,6 @@ int __pci_enable_msix_range(struct pci_dev *dev,
 EXPORT_SYMBOL(pci_enable_msix_range);
 EXPORT_SYMBOL(pci_alloc_irq_vectors_affinity);
 EXPORT_SYMBOL(pci_irq_vector);
-
-/**
- * pci_free_irq_vectors - free previously allocated IRQs for a device
- * @dev:		PCI device to operate on
- *
- * Undoes the allocations and enabling in pci_alloc_irq_vectors().
- */
-void pci_free_irq_vectors(struct pci_dev *dev)
-{
-	pci_disable_msix(dev);
-	pci_disable_msi(dev);
-}
 EXPORT_SYMBOL(pci_free_irq_vectors);
 
 /**
