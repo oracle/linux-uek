@@ -1031,3 +1031,10 @@ config MMC_SDHCI_AM654
 	  If you have a controller with this interface, say Y or M here.
 
 	  If unsure, say N.
+
+config MMC_SDHCI_TIMEOUT
+	int "Timeout for MMC_SDHCI command and data"
+	default 10
+	depends on MMC_SDHCI
+	help
+	  Default timeout value for command and data.
