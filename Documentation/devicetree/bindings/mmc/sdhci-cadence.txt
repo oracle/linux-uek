@@ -67,6 +67,22 @@ The approximate delay value will be
   used in HS400 / HS400_ES speed modes.
   Valid range = [0:0x7F].
 
+SD6 controller parameters:
+- cdns,iocell_input_delay:
+  Delay in ps across the input IO cells
+- cdns,iocell_output_delay:
+  Delay in ps across the output IO cells
+- cdns,delay_element:
+  Delay element in ps used for calculating phy timings
+- cdns,read_dqs_cmd_delay:
+  Command delay used in HS200 tuning
+- cdns,tune_val_start:
+  Staring value of data delay used in HS200 tuning
+- cdns,tune_val_step:
+  Incremental value of data delay used in HS200 tuning
+- cdns,max_tune_iter:
+  Maximum number of iterations to complete the HS200 tuning process.
+
 Example:
 	emmc: sdhci@5a000000 {
 		compatible = "socionext,uniphier-sd4hc", "cdns,sd4hc";
