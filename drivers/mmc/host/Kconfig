@@ -1096,3 +1096,10 @@ config MMC_OWL
 
 config MMC_SDHCI_EXTERNAL_DMA
 	bool
+
+config MMC_SDHCI_TIMEOUT
+	int "Timeout for MMC_SDHCI command and data"
+	default 10
+	depends on MMC_SDHCI
+	help
+	  Default timeout value for command and data.

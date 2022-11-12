@@ -1684,7 +1684,7 @@ static bool sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 	else if (!cmd->data && cmd->busy_timeout > 9000)
 		timeout += DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
 	else
-		timeout += 10 * HZ;
+		timeout += CONFIG_MMC_SDHCI_TIMEOUT * HZ;
 	sdhci_mod_timer(host, cmd->mrq, timeout);
 
 	if (host->use_external_dma)
