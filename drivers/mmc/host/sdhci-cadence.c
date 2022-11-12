@@ -25,9 +25,9 @@
 #define SDMCLK_MAX_FREQ		200000000
 
 #define DEFAULT_CMD_DELAY		16
-#define SDHCI_CDNS_TUNE_START		0
-#define SDHCI_CDNS_TUNE_STEP		2
-#define SDHCI_CDNS_TUNE_ITERATIONS	255
+#define SDHCI_CDNS_TUNE_START		16
+#define SDHCI_CDNS_TUNE_STEP		6
+#define SDHCI_CDNS_TUNE_ITERATIONS	40
 
 #define SDHCI_CDNS_HRS00			0x00
 #define SDHCI_CDNS_HRS00_SWR			BIT(0)
@@ -1740,7 +1740,7 @@ static int sdhci_cdns_execute_tuning(struct sdhci_host *host, u32 opcode)
 	int cur_streak = 0;
 	int max_streak = 0;
 	int end_of_streak = 0;
-	int i, midpoint;
+	int i, midpoint, iter = 0;
 
 	/*
 	 * Do not execute tuning for UHS_SDR50 or UHS_DDR50.
@@ -1750,7 +1750,7 @@ static int sdhci_cdns_execute_tuning(struct sdhci_host *host, u32 opcode)
 	    host->timing != MMC_TIMING_UHS_SDR104)
 		return 0;
 
-	for (i = tune_val_start; i <= max_tune_iter; i += tune_val_step) {
+	for (i = tune_val_start; iter < max_tune_iter; iter++, i += tune_val_step) {
 		if (priv->cdns_data->set_tune_val(host, i) ||
 		    mmc_send_tuning(host->mmc, opcode, NULL)) { /* bad */
 			cur_streak = 0;
