@@ -466,6 +466,9 @@ int rvu_check_txsch_policy(struct rvu *rvu, struct nix_txsch_alloc_req *req,
 		return -ENODEV;
 
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
+		if (is_sdp_pfvf(pcifunc) && lvl != NIX_TXSCH_LVL_TL4)
+			continue;
+
 		txsch = &nix_hw->txsch[lvl];
 		req_schq = req->schq_contig[lvl] + req->schq[lvl];
 
@@ -696,8 +699,8 @@ static void rvu_set_default_limits(struct rvu *rvu)
 				break;
 			rvu->pf_limits.smq->a[i].val = nsmq;
 			rvu->pf_limits.tl4->a[i].val = ntl4;
-			rvu->pf_limits.tl3->a[i].val = ntl3;
-			rvu->pf_limits.tl2->a[i].val = ntl2;
+			rvu->pf_limits.tl3->a[i].val = 0;
+			rvu->pf_limits.tl2->a[i].val = 0;
 			break;
 		}
 	}
