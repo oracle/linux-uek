@@ -251,6 +251,8 @@ static int mrvl_clone_fw(unsigned long arg)
 		swup_info->num_objects = SMC_MAX_OBJECTS;
 	}
 
+	if (user_desc->version_flags & MARLIN_SKIP_FAIL_CLONE_CHECK)
+		swup_info->version_flags |= SMC_VERSION_SKIP_FAIL_CHECK;
 
 	switch (user_desc->clone_op) {
 	case CLONE_SPI:
