@@ -14,6 +14,7 @@
 #include <linux/sizes.h>
 #include <linux/rhashtable.h>
 #include <linux/trace_events.h>
+#include <linux/tracepoint-defs.h>
 
 #include "info.h"
 
@@ -505,9 +506,24 @@ struct rds_ext_header_rdma_bytes {
 struct rds_ext_header_cap_bits {
 	__be32		h_cap_bits;
 };
-#define RDS_EXTHDR_SPORT_IDX	8
 
-#define __RDS_EXTHDR_MAX	16 /* for now */
+#define RDS_EXTHDR_SPORT_IDX	8
+#define RDS_EXTHDR_CSUM		9
+struct rds_ext_header_rdma_csum {
+	__be32  h_rdma_csum_val;
+	bool    h_rdma_csum_enabled;
+};
+
+struct rds_csum {
+	union {
+		__wsum	csum;
+		u32	raw;
+	} csum_val;
+	bool csum_enabled;
+};
+
+/* Remember to update __RDS_EXTHDR_MAX when new extension headers are added */
+#define __RDS_EXTHDR_MAX	RDS_EXTHDR_CSUM
 #define RDS_RX_MAX_TRACES	(RDS_MSG_RX_DGRAM_TRACE_MAX + 1)
 #define	RDS_MSG_RX_HDR		0
 #define	RDS_MSG_RX_START	1
@@ -535,6 +551,7 @@ struct rds_incoming {
 
 	struct rds_inc_usercopy i_usercopy;
 	u64			i_rx_lat_trace[RDS_RX_MAX_TRACES];
+	struct rds_csum		i_payload_csum;
 };
 
 struct rds_mr {
@@ -703,6 +720,7 @@ struct rds_message {
 	};
 
 	struct rds_conn_path *m_conn_path;
+	struct rds_csum m_payload_csum;
 };
 
 /*
@@ -978,6 +996,11 @@ struct rds_statistics {
 	uint64_t	s_recv_delayed_retry;
 	uint64_t	s_recv_ack_required;
 	uint64_t	s_recv_rdma_bytes;
+	uint64_t	s_recv_payload_bad_checksum;
+	uint64_t	s_recv_payload_csums_ib;
+	uint64_t	s_recv_payload_csums_loopback;
+	uint64_t	s_recv_payload_csums_tcp;
+	uint64_t	s_recv_payload_csums_ignored;
 	uint64_t	s_recv_ping;
 	uint64_t	s_recv_pong;
 	uint64_t	s_recv_hb_ping;
@@ -1001,6 +1024,7 @@ struct rds_statistics {
 	uint64_t	s_send_hb_pong;
 	uint64_t	s_send_mprds_ping;
 	uint64_t	s_send_mprds_pong;
+	uint64_t	s_send_payload_csums_added;
 	uint64_t	s_page_remainder_hit;
 	uint64_t	s_page_remainder_miss;
 	uint64_t	s_copy_to_user;
@@ -1369,6 +1393,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		int msg_flags);
 void rds_clear_recv_queue(struct rds_sock *rs);
+void do_rds_receive_csum_err(struct rds_incoming *inc, u32 csum_calc);
 int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msg);
 void rds_inc_info_copy(struct rds_incoming *inc,
 		       struct rds_info_iterator *iter,
@@ -1462,6 +1487,7 @@ extern unsigned int  rds_sysctl_shutdown_trace_end_time;
 extern unsigned int  rds_sysctl_conn_hb_timeout;
 extern unsigned int  rds_sysctl_conn_hb_interval;
 extern unsigned long rds_sysctl_dr_sock_cancel_jiffies;
+extern unsigned int  rds_sysctl_enable_payload_csums;
 
 /* threads.c */
 int rds_threads_init(void);
@@ -1514,6 +1540,96 @@ static inline
 struct rds_conn_path *rds_conn_to_path(struct rds_connection *conn, struct rds_incoming *inc)
 {
 	return conn->c_trans->t_mp_capable ? inc->i_conn_path : conn->c_path + 0;
+}
+
+static inline size_t
+rds_csum_and_copy_page_from_iter(struct page *page, size_t offset, size_t bytes,
+				 struct rds_csum *csump, struct iov_iter *i)
+{
+	/* modified from copy_page_from_iter() */
+
+	size_t res = 0;
+	__wsum *wsump = &csump->csum_val.csum;
+
+	page += offset / PAGE_SIZE; // first subpage
+	offset %= PAGE_SIZE;
+
+	while (1) {
+		void *kaddr = kmap_atomic(page);
+		size_t n = min(bytes, (size_t)PAGE_SIZE - offset);
+
+		n = csum_and_copy_from_iter(kaddr + offset, n, wsump, i);
+		kunmap_atomic(kaddr);
+		res += n;
+		bytes -= n;
+
+		if (!bytes || !n)
+			break;
+
+		offset += n;
+
+		if (offset == PAGE_SIZE) {
+			page++;
+			offset = 0;
+		}
+	}
+
+	return res;
+}
+
+static inline size_t
+rds_csum_and_copy_page_to_iter(struct page *page, size_t offset, size_t bytes,
+			       struct rds_csum *csump, struct iov_iter *i)
+{
+	/* modified from copy_page_to_iter() */
+
+	size_t res = 0;
+	struct csum_state csdata = { .csum = csump->csum_val.csum };
+
+	if (unlikely(iov_iter_is_pipe(i))) {
+		pr_err_ratelimited("rds: rds_csum_and_copy_page_to_iter() "
+				   "called with iov_iter pipe\n");
+		return 0;
+	}
+
+	page += offset / PAGE_SIZE; // first subpage
+	offset %= PAGE_SIZE;
+
+	while (1) {
+		void *kaddr = kmap_atomic(page);
+		size_t n = min(bytes, (size_t)PAGE_SIZE - offset);
+
+		n = csum_and_copy_to_iter(kaddr + offset, n, &csdata, i);
+		kunmap_atomic(kaddr);
+		res += n;
+		bytes -= n;
+
+		if (!bytes || !n)
+			break;
+
+		offset += n;
+
+		if (offset == PAGE_SIZE) {
+			page++;
+			offset = 0;
+		}
+	}
+
+	csump->csum_val.csum = csdata.csum;
+	return res;
+}
+
+extern struct tracepoint __tracepoint_rds_receive_csum_err;
+
+static inline void
+rds_check_csum(struct rds_incoming *inc, struct rds_csum *csump)
+{
+	if (unlikely(inc->i_payload_csum.csum_val.raw != csump->csum_val.raw)) {
+		rds_stats_inc(s_recv_payload_bad_checksum);
+
+		if (unlikely(static_key_false(&(__tracepoint_rds_receive_csum_err).key)))
+			do_rds_receive_csum_err(inc, csump->csum_val.raw);
+	}
 }
 
 #endif
