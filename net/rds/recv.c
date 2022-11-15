@@ -84,6 +84,8 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 	inc->i_skb   = NULL;
 	inc->i_usercopy.rx_tstamp.tv_sec = 0;
 	inc->i_usercopy.rx_tstamp.tv_usec = 0;
+	inc->i_payload_csum.csum_val.raw = 0;
+	inc->i_payload_csum.csum_enabled = false;
 
 	for (i = 0; i < RDS_RX_MAX_TRACES; i++)
 		inc->i_rx_lat_trace[i] = 0;
@@ -105,6 +107,8 @@ void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *cp,
 	inc->i_skb   = NULL;
 	inc->i_usercopy.rx_tstamp.tv_sec = 0;
 	inc->i_usercopy.rx_tstamp.tv_usec = 0;
+	inc->i_payload_csum.csum_val.raw = 0;
+	inc->i_payload_csum.csum_enabled = false;
 
 	for (i = 0; i < RDS_RX_MAX_TRACES; i++)
 		inc->i_rx_lat_trace[i] = 0;
@@ -207,6 +211,7 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 		struct rds_ext_header_rdma rdma;
 		struct rds_ext_header_rdma_dest rdma_dest;
 		struct rds_ext_header_cap_bits cap_bits;
+		struct rds_ext_header_rdma_csum rdma_csum;
 	} buffer;
 
 	while (1) {
@@ -226,6 +231,20 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 			inc->i_usercopy.rdma_cookie = rds_rdma_make_cookie(
 					be32_to_cpu(buffer.rdma_dest.h_rdma_rkey),
 					be32_to_cpu(buffer.rdma_dest.h_rdma_offset));
+
+			break;
+
+		case RDS_EXTHDR_CSUM:
+			if (unlikely(rds_sysctl_enable_payload_csums)) {
+				inc->i_payload_csum.csum_enabled =
+					buffer.rdma_csum.h_rdma_csum_enabled;
+				inc->i_payload_csum.csum_val.raw =
+					be32_to_cpu(buffer.rdma_csum.h_rdma_csum_val);
+			} else {
+				inc->i_payload_csum.csum_enabled = false;
+				inc->i_payload_csum.csum_val.raw = 0;
+				rds_stats_inc(s_recv_payload_csums_ignored);
+			}
 
 			break;
 		}
@@ -293,8 +312,8 @@ static void rds_recv_hs_exthdrs(struct rds_header *hdr,
 			new_with_sport_idx = true;
 			break;
 		default:
-			pr_warn_ratelimited("ignoring unknown exthdr type "
-					     "0x%x\n", type);
+			pr_warn_ratelimited("rds: ignoring unknown exthdr "
+					    "(type 0x%x, len %u)\n", type, len);
 		}
 	}
 
@@ -321,8 +340,7 @@ static void rds_recv_hs_exthdrs(struct rds_header *hdr,
 
 	conn->c_ping_triggered = 0;
 
-	if (conn->c_npaths > 1 &&
-	    conn->c_trans->conn_slots_available)
+	if (conn->c_npaths > 1 && conn->c_trans->conn_slots_available)
 		conn->c_trans->conn_slots_available(conn, fan_out);
 }
 
@@ -1144,6 +1162,16 @@ void rds_clear_recv_queue(struct rds_sock *rs)
 	}
 	write_unlock_irqrestore(&rs->rs_recv_lock, flags);
 }
+
+/* wrapper for call to tracepoint in case of RDS receive checksum error */
+void do_rds_receive_csum_err(struct rds_incoming *inc, u32 csum_calc)
+{
+	struct rds_message *rm = container_of(inc, struct rds_message, m_inc);
+
+	trace_rds_receive_csum_err(inc, rm->m_rs, inc->i_conn, inc->i_conn_path,
+				   &inc->i_saddr, &rm->m_daddr, csum_calc);
+}
+EXPORT_SYMBOL(do_rds_receive_csum_err);
 
 /*
  * inc->i_saddr isn't used here because it is only set in the receive
