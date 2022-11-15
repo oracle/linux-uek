@@ -57,11 +57,28 @@ void rds_tcp_inc_free(struct rds_incoming *inc)
 	kmem_cache_free(rds_tcp_incoming_slab, tinc);
 }
 
+static size_t
+rds_csum_copy_to_iter(const void *addr, size_t bytes, void *data,
+		      struct iov_iter *i)
+{
+	struct rds_csum *csump = (struct rds_csum *)data;
+	struct rds_csum_state csdata = { .csum = csump->csum_val.csum };
+	size_t n;
+
+	n = rds_csum_and_copy_to_iter(addr, bytes, &csdata, i);
+
+	if (n == bytes)
+		csump->csum_val.csum = csdata.csum;
+
+	return n;
+}
+
 /*
  * this is pretty lame, but, whatever.
  */
 int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
+	struct rds_csum rc;
 	struct rds_tcp_incoming *tinc;
 	struct sk_buff *skb;
 	unsigned long to_copy, skb_off;
@@ -74,12 +91,27 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 
 	skb_queue_walk(&tinc->ti_skb_list, skb) {
 		skb_off = 0;
+
 		while (skb_off < skb->len) {
 			to_copy = iov_iter_count(to);
 			to_copy = min(to_copy, skb->len - skb_off);
 
-			if (skb_copy_datagram_iter(skb, skb_off, to, to_copy))
-				return -EFAULT;
+			if (likely(!inc->i_payload_csum.csum_enabled)) {
+				/* no checksum */
+				if (skb_copy_datagram_iter(skb, skb_off, to,
+							   to_copy))
+					ret = -EFAULT;
+			} else {
+				/* full packet wsum checksum */
+				if (skb_callback_datagram_iter(skb, skb_off, to,
+							       to_copy, false,
+							       rds_csum_copy_to_iter,
+							       &rc))
+					ret = -EFAULT;
+			}
+
+			if (ret < 0)
+				return ret;
 
 			rds_stats_add(s_copy_to_user, to_copy);
 			ret += to_copy;
@@ -90,6 +122,11 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		}
 	}
 out:
+	if (unlikely(inc->i_payload_csum.csum_enabled) && ret) {
+		rds_stats_inc(s_recv_payload_csums_tcp);
+		rds_check_csum(inc, &rc);
+	}
+
 	return ret;
 }
 
