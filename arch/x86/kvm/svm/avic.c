@@ -28,16 +28,15 @@
 #include "svm.h"
 
 /* AVIC GATAG is encoded using VM and VCPU IDs */
-#define AVIC_VCPU_ID_BITS		8
-#define AVIC_VCPU_ID_MASK		((1 << AVIC_VCPU_ID_BITS) - 1)
+#define AVIC_VCPU_ID_MASK		((1 << AVIC_PHYSICAL_MAX_INDEX_BITS) - 1)
 
-#define AVIC_VM_ID_BITS			24
+#define AVIC_VM_ID_BITS                 (32 - AVIC_PHYSICAL_MAX_INDEX_BITS)
 #define AVIC_VM_ID_NR			(1 << AVIC_VM_ID_BITS)
 #define AVIC_VM_ID_MASK			((1 << AVIC_VM_ID_BITS) - 1)
 
-#define AVIC_GATAG(x, y)		(((x & AVIC_VM_ID_MASK) << AVIC_VCPU_ID_BITS) | \
+#define AVIC_GATAG(x, y)		(((x & AVIC_VM_ID_MASK) << AVIC_PHYSICAL_MAX_INDEX_BITS) | \
 						(y & AVIC_VCPU_ID_MASK))
-#define AVIC_GATAG_TO_VMID(x)		((x >> AVIC_VCPU_ID_BITS) & AVIC_VM_ID_MASK)
+#define AVIC_GATAG_TO_VMID(x)		((x >> AVIC_PHYSICAL_MAX_INDEX_BITS) & AVIC_VM_ID_MASK)
 #define AVIC_GATAG_TO_VCPUID(x)		(x & AVIC_VCPU_ID_MASK)
 
 static bool force_avic;
