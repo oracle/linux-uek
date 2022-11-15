@@ -395,6 +395,57 @@ TRACE_EVENT(rds_receive,
 		  __entry->rx_jiffies, __entry->forward)
 );
 
+TRACE_EVENT(rds_receive_csum_err,
+
+	TP_PROTO(struct rds_incoming *inc, struct rds_sock *rs,
+		 struct rds_connection *conn, struct rds_conn_path *cp,
+		 struct in6_addr *saddr, struct in6_addr *daddr,
+		 u32 csum_calc),
+
+	TP_ARGS(inc, rs, conn, cp, saddr, daddr, csum_calc),
+
+	TP_STRUCT__entry(
+		RDS_TRACE_COMMON_FIELDS
+		__field(__u64, seq)
+		__field(__u64, next_rx_seq)
+		__field(bool, forward)
+		__field(__u32, len)
+		__field(unsigned long, rx_jiffies)
+		__field(u32, csum_rcvd)
+		__field(u32, csum_calc)
+	),
+
+	TP_fast_assign(
+		struct in6_addr *in6;
+
+		in6 = (struct in6_addr *)__entry->faddr;
+		*in6 = saddr ? *saddr : in6addr_any;
+		in6 = (struct in6_addr *)__entry->laddr;
+		*in6 = daddr ? *daddr : in6addr_any;
+		__entry->tos = conn ? conn->c_tos : 0;
+		__entry->transport = conn ? conn->c_trans->t_type :
+					    RDS_TRANS_NONE;
+		__entry->fport = be16_to_cpu(inc->i_hdr.h_sport);
+		__entry->lport = be16_to_cpu(inc->i_hdr.h_dport);
+		__entry->flags = inc->i_hdr.h_flags;
+		__entry->seq = be64_to_cpu(inc->i_hdr.h_sequence);
+		__entry->next_rx_seq = cp ? cp->cp_next_rx_seq : 0;
+		__entry->forward = !cp;
+		__entry->len = be32_to_cpu(inc->i_hdr.h_len);
+		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
+		__entry->csum_rcvd = inc->i_payload_csum.csum_val.raw;
+		__entry->csum_calc = csum_calc;
+	),
+
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu forward %d: csum rcvd [0x%x] != calc [0x%x]",
+		  show_transport(__entry->transport),
+		  __entry->faddr, __entry->laddr, __entry->tos,
+		  __entry->next_rx_seq, __entry->seq, __entry->len,
+		  __entry->fport, __entry->lport, __entry->flags,
+		  __entry->rx_jiffies, __entry->forward, __entry->csum_rcvd,
+		  __entry->csum_calc)
+);
+
 TRACE_EVENT(rds_drop_ingress,
 
 	TP_PROTO(struct rds_incoming *inc, struct rds_sock *rs,
