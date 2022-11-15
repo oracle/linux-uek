@@ -289,6 +289,17 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define asmarch x86
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
+%if %{with_container}
+#
+# With binutils >= 2.36 the PVH ELF Note does not function as expected
+# due to new .note.gnu.property ELF sections being added by default by
+# the assembler.  These .notes are not needed for the kernel so add
+# the -mx86-used-note=no switch for the assembler to turn them off
+# so that the PVH .note section is created in the location expected
+# by the bootloader.
+#
+%define container_cflags	-Wa,-mx86-used-note=no %CONFIG_DEBUG_SECTION_MISMATCH=y
+%endif
 %endif
 
 %ifarch %{arm}
@@ -1006,7 +1017,7 @@ BuildContainerKernel() {
 
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
-    make %{?make_opts} CONFIG_DEBUG_SECTION_MISMATCH=y %{?_smp_mflags} ARCH=$Arch %{?sparse_mflags} || exit 1
+    make %{?make_opts} %{?container_cflags} %{?_smp_mflags} ARCH=$Arch %{?sparse_mflags} || exit 1
 
     # Install
     KernelVer=%{kversion}-%{release}
