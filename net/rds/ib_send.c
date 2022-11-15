@@ -801,7 +801,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		/*
 		 * Always signal the last one if we're stopping due to flow control.
 		 */
-		if (ic->i_flowctl && flow_controlled && i == (work_alloc - 1))
+		if (flow_controlled && i == (work_alloc - 1))
 			rds_ib_set_wr_send_flags(ic, send,
 						 FLAGS_FORCE_SEND_SIGNALED |
 						 FLAGS_FORCE_SEND_SOLICITED);
@@ -812,7 +812,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		rdsdebug("send %p wr %p num_sge %u next %p\n", send,
 			 &send->s_wr, send->s_wr.num_sge, send->s_wr.next);
 
-		if (ic->i_flowctl && adv_credits) {
+		if (adv_credits) {
 			struct rds_header *hdr = ic->i_send_hdrs[pos];
 
 			/* add credit and redo the header checksum */
@@ -859,7 +859,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc - i);
 		work_alloc = i;
 	}
-	if (ic->i_flowctl && i < credit_alloc)
+	if (i < credit_alloc)
 		rds_ib_send_add_credits(conn, credit_alloc - i);
 
 	if (nr_sig)
