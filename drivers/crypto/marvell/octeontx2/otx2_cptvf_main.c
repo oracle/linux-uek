@@ -10,6 +10,10 @@
 
 #define OTX2_CPTVF_DRV_NAME "rvu_cptvf"
 
+static unsigned int cpt_block_num;
+module_param(cpt_block_num, uint, 0644);
+MODULE_PARM_DESC(cpt_block_num, "cpt block number (0=CPT0 1=CPT1, default 0)");
+
 static void cptvf_enable_pfvf_mbox_intrs(struct otx2_cptvf_dev *cptvf)
 {
 	/* Clear interrupt if any */
@@ -385,7 +389,7 @@ static int otx2_cptvf_probe(struct pci_dev *pdev,
 	if (ret)
 		goto destroy_pfvf_mbox;
 
-	cptvf->blkaddr = BLKADDR_CPT0;
+	cptvf->blkaddr = (cpt_block_num == 0) ? BLKADDR_CPT0 : BLKADDR_CPT1;
 
 	cptvf_hw_ops_get(cptvf);
 

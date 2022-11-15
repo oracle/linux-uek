@@ -107,6 +107,9 @@ static void process_pfvf_mbox_mbox_msg(struct otx2_cptvf_dev *cptvf,
 		rsp_msix = (struct msix_offset_rsp *) msg;
 		for (i = 0; i < rsp_msix->cptlfs; i++)
 			lfs->lf[i].msix_offset = rsp_msix->cptlf_msixoff[i];
+
+		for (i = 0; i < rsp_msix->cpt1_lfs; i++)
+			lfs->lf[i].msix_offset = rsp_msix->cpt1_lf_msixoff[i];
 		break;
 	case MBOX_MSG_CPT_RD_WR_REGISTER:
 		rsp_reg = (struct cpt_rd_wr_reg_msg *) msg;
