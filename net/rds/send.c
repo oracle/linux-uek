@@ -1737,6 +1737,20 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	if (!dport)
 		rds_stats_inc(s_send_ping);
+	else if (unlikely(rm->m_payload_csum.csum_enabled)) {
+		struct rds_ext_header_rdma_csum r_csum;
+		u32 csum_raw;
+
+		r_csum.h_rdma_csum_enabled = true;
+		csum_raw = rm->m_payload_csum.csum_val.raw;
+
+		r_csum.h_rdma_csum_val = cpu_to_be32(csum_raw);
+
+		rds_message_add_extension(&rm->m_inc.i_hdr,
+					  RDS_EXTHDR_CSUM, &r_csum);
+
+		rds_stats_inc(s_send_payload_csums_added);
+	}
 
 	ret = rds_send_xmit(cpath);
 	if (ret == -ENOMEM || ret == -EAGAIN || ret == -EBUSY)
