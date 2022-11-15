@@ -1210,7 +1210,7 @@ static int copy_from_buffer(void *dst, unsigned int offset, unsigned int size,
  * Converts from the UABI format into the kernel internal hardware
  * dependent format.
  *
- * This function ultimately has two different callers with distinct PKRU
+ * This function ultimately has three different callers with distinct PKRU
  * behavior.
  * 1.	When called from sigreturn the PKRU register will be restored from
  *	@fpstate via an XRSTOR. Correctly copying the UABI format buffer to
@@ -1219,9 +1219,8 @@ static int copy_from_buffer(void *dst, unsigned int offset, unsigned int size,
  *	it is harmless.
  * 2.	When called from ptrace the PKRU register will be restored from the
  *	thread_struct's pkru field. A pointer to that is passed in @pkru.
- *	The kernel will restore it manually, so the XRSTOR behavior that resets
- *	the PKRU register to the hardware init value (0) if the corresponding
- *	xfeatures bit is not set is emulated here.
+ * 3.	When called from KVM the PKRU register will be restored from the vcpu's
+ *	pkru field. A pointer to that is passed in @pkru.
  */
 static int copy_uabi_to_xstate(struct fpstate *fpstate, const void *kbuf,
 			       const void __user *ubuf, u32 *pkru)
@@ -1278,8 +1277,7 @@ static int copy_uabi_to_xstate(struct fpstate *fpstate, const void *kbuf,
 
 		xpkru = __raw_xsave_addr(xsave, XFEATURE_PKRU);
 		*pkru = xpkru->pkru;
-	} else
-		*pkru = 0;
+	}
 
 	/*
 	 * The state that came in from userspace was user-state only.
