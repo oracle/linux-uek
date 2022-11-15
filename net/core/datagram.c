@@ -518,6 +518,30 @@ int skb_copy_and_hash_datagram_iter(const struct sk_buff *skb, int offset,
 }
 EXPORT_SYMBOL(skb_copy_and_hash_datagram_iter);
 
+/**
+ * skb_callback_datagram_iter - Provide a generic mechanism for a routine to
+ *    specify their own callback to copy datagram data to an iovec iterator
+ *    and perform whatever other processing they may desire. The callback
+ *    must return a size_t denoting the number of bytes copied to the iter.
+ *    @skb: buffer to copy
+ *    @offset: offset in the buffer to start copying from
+ *    @to: iovec iterator to copy to
+ *    @len: amount of data to copy from buffer to iovec
+ *    @fault_short: true if a short copy should cause a return of -EFAULT
+ *    @cb: provided callback to copy data and perform other processing
+ *    @data: additional caller-supplied parameter to pass to callback
+ */
+int skb_callback_datagram_iter(const struct sk_buff *skb, int offset,
+			       struct iov_iter *to, int len,
+			       bool fault_short,
+			       size_t (*cb)(const void *, size_t, void *,
+					    struct iov_iter *),
+			       void *data)
+{
+	return __skb_datagram_iter(skb, offset, to, len, fault_short, cb, data);
+}
+EXPORT_SYMBOL(skb_callback_datagram_iter);
+
 static size_t simple_copy_to_iter(const void *addr, size_t bytes,
 		void *data __always_unused, struct iov_iter *i)
 {

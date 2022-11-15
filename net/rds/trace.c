@@ -18,6 +18,7 @@
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_receive);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_receive_csum_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_drop_ingress);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_drop_egress);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_send_ping);
