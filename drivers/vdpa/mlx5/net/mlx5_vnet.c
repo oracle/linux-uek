@@ -2701,8 +2701,9 @@ static int mlx5_vdpa_dev_add(struct vdpa_mgmt_dev *v_mdev, const char *name,
 	if (err)
 		goto err_mtu;
 
-	if (unlikely(default_mtu) && default_mtu != mtu) {
-		err = mlx5_modify_nic_vport_mtu(mdev, default_mtu + MLX5V_ETH_HARD_MTU);
+	if (unlikely(default_mtu) && default_mtu != mtu &&
+	    !add_config->mask & BIT_ULL(VDPA_ATTR_DEV_NET_CFG_MTU)) {
+		err = config_func_mtu(mdev, default_mtu);
 		if (err) {
 			mlx5_vdpa_warn(&ndev->mvdev,
 				       "changed to default mtu %d failed\n",
@@ -2783,7 +2784,7 @@ err_mpfs:
 		mlx5_mpfs_del_mac(pfmdev, config->mac);
 err_mtu:
 	if (saved_mtu)
-		mlx5_modify_nic_vport_mtu(mdev, saved_mtu + MLX5V_ETH_HARD_MTU);
+		config_func_mtu(mdev, saved_mtu);
 	mutex_destroy(&ndev->reslock);
 err_alloc:
 	put_device(&mvdev->vdev.dev);
