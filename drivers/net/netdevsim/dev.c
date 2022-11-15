@@ -1674,6 +1674,7 @@ void nsim_drv_remove(struct nsim_bus_dev *nsim_bus_dev)
 	devl_resources_unregister(devlink);
 	devl_unregister(devlink);
 	kfree(nsim_dev->vfconfigs);
+	kfree(nsim_dev->fa_cookie);
 	devl_unlock(devlink);
 	devlink_free(devlink);
 	dev_set_drvdata(&nsim_bus_dev->dev, NULL);
