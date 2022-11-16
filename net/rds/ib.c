@@ -421,7 +421,7 @@ static void rds_ib_free_caches(struct rds_ib_device *rds_ibdev)
 {
 	int i;
 
-	cancel_delayed_work(&rds_ibdev->i_cache_gc_work);
+	cancel_delayed_work_sync(&rds_ibdev->i_cache_gc_work);
 	rds_ib_free_inc_cache(&rds_ibdev->i_cache_incs);
 	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++)
 		rds_ib_free_frag_cache(rds_ibdev->i_cache_frags + i, PAGE_SIZE << i);
