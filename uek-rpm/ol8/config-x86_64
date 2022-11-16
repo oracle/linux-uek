@@ -3676,7 +3676,7 @@ CONFIG_IEEE802154_FAKELB=m
 #
 # Wireless WAN
 #
-# CONFIG_WWAN is not set
+CONFIG_WWAN=m
 # end of Wireless WAN
 
 CONFIG_XEN_NETDEV_FRONTEND=m
@@ -4228,7 +4228,7 @@ CONFIG_SPI_MASTER=y
 # CONFIG_SPI_XCOMM is not set
 # CONFIG_SPI_XILINX is not set
 # CONFIG_SPI_ZYNQMP_GQSPI is not set
-# CONFIG_SPI_AMD is not set
+CONFIG_SPI_AMD=m
 
 #
 # SPI Multiplexer support
@@ -8381,7 +8381,7 @@ CONFIG_INTEL_RAPL=m
 CONFIG_RAS=y
 CONFIG_RAS_CEC=y
 # CONFIG_RAS_CEC_DEBUG is not set
-# CONFIG_USB4 is not set
+CONFIG_USB4=m
 
 #
 # Android
