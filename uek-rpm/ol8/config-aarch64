@@ -3675,7 +3675,7 @@ CONFIG_IEEE802154_ADF7242=m
 #
 # Wireless WAN
 #
-# CONFIG_WWAN is not set
+CONFIG_WWAN=m
 # end of Wireless WAN
 
 # CONFIG_VMXNET3 is not set
@@ -4294,7 +4294,7 @@ CONFIG_SPI_THUNDERX=m
 # CONFIG_SPI_XILINX is not set
 CONFIG_SPI_XLP=m
 # CONFIG_SPI_ZYNQMP_GQSPI is not set
-# CONFIG_SPI_AMD is not set
+CONFIG_SPI_AMD=m
 
 #
 # SPI Multiplexer support
@@ -9390,7 +9390,7 @@ CONFIG_ARM_DMC620_PMU=m
 # end of Performance monitor support
 
 CONFIG_RAS=y
-# CONFIG_USB4 is not set
+CONFIG_USB4=m
 
 #
 # Android
