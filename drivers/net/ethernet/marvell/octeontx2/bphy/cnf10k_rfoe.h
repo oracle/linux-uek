@@ -63,6 +63,7 @@
 #define MIO_PTP_SEC_TIMESTAMP				0x100U
 
 #define BPHY_NDEV_TX_1S_PTP_EN_FLAG			BIT(0)
+#define DELAY_REQUEST_MSG_ID				0x1
 
 #define MIO_PTP_CFG_TSTMP_SET_MASK			GENMASK_ULL(28, 26)
 /* PTP atomic update enum */
