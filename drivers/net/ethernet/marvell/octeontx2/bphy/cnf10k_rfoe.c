@@ -1052,7 +1052,9 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 				if (udp_csum)
 					cnf10k_rfoe_compute_udp_csum(skb);
 			}
-			goto ptp_one_step_out;
+
+			if ((*(skb->data + ptp_offset) & 0xF) != DELAY_REQUEST_MSG_ID)
+				goto ptp_one_step_out;
 		}
 
 		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
