@@ -33,6 +33,7 @@ static void octeontx2_spi_wait_ready(struct octeontx2_spi *p)
 	union mpix_sts mpi_sts;
 	unsigned int loops = 0;
 
+	mpi_sts.u64 = 0; /* Prevents infinite loop */
 	do {
 		if (loops++)
 			__delay(500);
@@ -331,10 +332,11 @@ static void octeontx2_spi_remove(struct pci_dev *pdev)
 
 	p = spi_master_get_devdata(master);
 
-	clk_disable_unprepare(p->clk);
 	/* Put everything in a known state. */
-	if (p)
+	if (p) {
+		clk_disable_unprepare(p->clk);
 		writeq(0, p->register_base + OCTEONTX2_SPI_CFG(p));
+	}
 
 	pci_disable_device(pdev);
 	spi_master_put(master);
