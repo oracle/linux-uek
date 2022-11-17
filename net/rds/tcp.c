@@ -456,7 +456,6 @@ struct rds_transport rds_tcp_transport = {
 	.conn_path_shutdown	= rds_tcp_conn_path_shutdown,
 	.inc_copy_to_user	= rds_tcp_inc_copy_to_user,
 	.inc_free		= rds_tcp_inc_free,
-	.skb_local              = rds_skb_local,
 	.stats_info_copy	= rds_tcp_stats_info_copy,
 	.t_owner		= THIS_MODULE,
 	.t_name			= "tcp",
