@@ -629,6 +629,10 @@ static int ib_uverbs_share_pd(struct uverbs_attr_bundle *attrs)
 	pd->shpd  = shpd;
 	atomic_set(&pd->usecnt, 0);
 
+	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
+	rdma_restrack_set_name(&pd->res, NULL);
+	rdma_restrack_add(&pd->res);
+
 	/* initialize uobj and return pd_handle */
 	uobj->object = pd;
 
