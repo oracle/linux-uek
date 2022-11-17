@@ -409,6 +409,11 @@ xfs_iget_cache_hit(
 			goto out_error;
 		}
 
+		if (!xfs_ilock_nowait(ip, XFS_ILOCK_EXCL)) {
+	                error = -EAGAIN;
+			goto out_error;
+		}
+
 		/*
 		 * We need to set XFS_IRECLAIM to prevent xfs_reclaim_inode
 		 * from stomping over us while we recycle the inode.  We can't
@@ -421,6 +426,7 @@ xfs_iget_cache_hit(
 		rcu_read_unlock();
 
 		error = xfs_reinit_inode(mp, inode);
+		xfs_iunlock(ip, XFS_ILOCK_EXCL);
 		if (error) {
 			bool wake;
 			/*
