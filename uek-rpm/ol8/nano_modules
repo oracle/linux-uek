@@ -101,7 +101,6 @@ kernel/drivers/block/null_blk.ko
 kernel/drivers/block/virtio_blk.ko
 kernel/drivers/block/xen-blkback/xen-blkback.ko
 kernel/drivers/block/xen-blkfront.ko
-kernel/drivers/xen/ovmapi.ko
 kernel/drivers/block/zram/zram.ko
 kernel/drivers/cdrom/cdrom.ko
 kernel/drivers/char/hangcheck-timer.ko
@@ -279,9 +278,9 @@ kernel/drivers/infiniband/core/ib_umad.ko
 kernel/drivers/infiniband/core/ib_uverbs.ko
 kernel/drivers/infiniband/core/iw_cm.ko
 kernel/drivers/infiniband/core/rdma_cm.ko
+kernel/drivers/infiniband/core/rdmaip_notify.ko
 kernel/drivers/infiniband/core/rdma_ucm.ko
 kernel/drivers/infiniband/core/resilient_rdmaip.ko
-kernel/drivers/infiniband/core/rdmaip_notify.ko
 kernel/drivers/infiniband/hw/mlx4/mlx4_ib.ko
 kernel/drivers/infiniband/hw/mlx5/mlx5_ib.ko
 kernel/drivers/infiniband/hw/mthca/ib_mthca.ko
@@ -313,6 +312,7 @@ kernel/drivers/md/dm-bufio.ko
 kernel/drivers/md/dm-cache.ko
 kernel/drivers/md/dm-crypt.ko
 kernel/drivers/md/dm-delay.ko
+kernel/drivers/md/dm-dust.ko
 kernel/drivers/md/dm-era.ko
 kernel/drivers/md/dm-flakey.ko
 kernel/drivers/md/dm-log.ko
@@ -330,7 +330,6 @@ kernel/drivers/md/dm-snapshot.ko
 kernel/drivers/md/dm-switch.ko
 kernel/drivers/md/dm-thin-pool.ko
 kernel/drivers/md/dm-zero.ko
-kernel/drivers/md/dm-dust.ko
 kernel/drivers/md/faulty.ko
 kernel/drivers/md/linear.ko
 kernel/drivers/md/md-cluster.ko
@@ -402,12 +401,12 @@ kernel/drivers/nvme/host/nvme-core.ko
 kernel/drivers/nvme/host/nvme-fabrics.ko
 kernel/drivers/nvme/host/nvme-fc.ko
 kernel/drivers/nvme/host/nvme.ko
-kernel/drivers/nvme/host/nvme-tcp.ko
 kernel/drivers/nvme/host/nvme-rdma.ko
+kernel/drivers/nvme/host/nvme-tcp.ko
 kernel/drivers/nvme/target/nvmet-fc.ko
 kernel/drivers/nvme/target/nvmet.ko
-kernel/drivers/nvme/target/nvmet-tcp.ko
 kernel/drivers/nvme/target/nvmet-rdma.ko
+kernel/drivers/nvme/target/nvmet-tcp.ko
 kernel/drivers/parport/parport.ko
 kernel/drivers/pci/controller/pci-hyperv-intf.ko
 kernel/drivers/pci/controller/vmd.ko
@@ -583,11 +582,11 @@ kernel/drivers/vfio/mdev/mdev.ko
 kernel/drivers/vfio/mdev/vfio_mdev.ko
 kernel/drivers/vfio/pci/vfio-pci.ko
 kernel/drivers/vfio/vfio_virqfd.ko
+kernel/drivers/vhost/vhost_iotlb.ko
 kernel/drivers/vhost/vhost.ko
 kernel/drivers/vhost/vhost_net.ko
 kernel/drivers/vhost/vhost_scsi.ko
 kernel/drivers/vhost/vhost_vsock.ko
-kernel/drivers/vhost/vhost_iotlb.ko
 kernel/drivers/video/backlight/lcd.ko
 kernel/drivers/video/backlight/platform_lcd.ko
 kernel/drivers/video/fbdev/aty/aty128fb.ko
@@ -634,6 +633,7 @@ kernel/drivers/watchdog/w83877f_wdt.ko
 kernel/drivers/watchdog/w83977f_wdt.ko
 kernel/drivers/watchdog/wdt_pci.ko
 kernel/drivers/watchdog/xen_wdt.ko
+kernel/drivers/xen/ovmapi.ko
 kernel/drivers/xen/xen-acpi-processor.ko
 kernel/drivers/xen/xen-evtchn.ko
 kernel/drivers/xen/xenfs/xenfs.ko
@@ -968,6 +968,7 @@ kernel/net/netfilter/xt_limit.ko
 kernel/net/netfilter/xt_LOG.ko
 kernel/net/netfilter/xt_mac.ko
 kernel/net/netfilter/xt_mark.ko
+kernel/net/netfilter/xt_MASQUERADE.ko
 kernel/net/netfilter/xt_multiport.ko
 kernel/net/netfilter/xt_nat.ko
 kernel/net/netfilter/xt_NETMAP.ko
