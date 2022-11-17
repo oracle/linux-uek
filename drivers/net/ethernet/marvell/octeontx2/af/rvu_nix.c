@@ -483,15 +483,47 @@ static void nix_interface_deinit(struct rvu *rvu, u16 pcifunc, u8 nixlf)
 	rvu_cgx_disable_dmac_entries(rvu, pcifunc);
 }
 
+#define NIX_BPIDS_PER_LMAC	8
+#define NIX_BPIDS_PER_CPT	1
+static int nix_setup_bpids(struct rvu *rvu, struct nix_hw *hw, int blkaddr)
+{
+	struct nix_bp *bp = &hw->bp;
+	int err, max_bpids;
+	u64 cfg;
+
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST1);
+	max_bpids = (cfg >> 12) & 0xFFF;
+
+	/* Reserve the BPIds for CGX and SDP */
+	bp->cgx_bpid_cnt = rvu->hw->cgx_links * NIX_BPIDS_PER_LMAC;
+	bp->sdp_bpid_cnt = rvu->hw->sdp_links * (cfg & 0xFFF);
+	bp->free_pool_base = bp->cgx_bpid_cnt + bp->sdp_bpid_cnt +
+			     NIX_BPIDS_PER_CPT;
+	bp->bpids.max = max_bpids - bp->free_pool_base;
+
+	err = rvu_alloc_bitmap(&bp->bpids);
+	if (err)
+		return err;
+
+	bp->fn_map = devm_kcalloc(rvu->dev, bp->bpids.max,
+				  sizeof(u16), GFP_KERNEL);
+	if (!bp->fn_map)
+		return -ENOMEM;
+
+	return 0;
+}
+
 static int nix_bp_disable(struct rvu *rvu,
 			  struct nix_bp_cfg_req *req,
 			  struct msg_rsp *rsp, bool cpt_link)
 {
 	u16 pcifunc = req->hdr.pcifunc;
+	int blkaddr, pf, type, err;
 	struct rvu_pfvf *pfvf;
-	int blkaddr, pf, type;
+	struct nix_hw *nix_hw;
 	u16 chan_base, chan;
-	u16 chan_v;
+	struct nix_bp *bp;
+	u16 chan_v, bpid;
 	u64 cfg;
 
 	pf = rvu_get_pf(pcifunc);
@@ -499,12 +531,21 @@ static int nix_bp_disable(struct rvu *rvu,
 	if (!is_pf_cgxmapped(rvu, pf) && type != NIX_INTF_TYPE_LBK)
 		return 0;
 
+	if (is_sdp_pfvf(pcifunc))
+		type = NIX_INTF_TYPE_SDP;
+
 	if (cpt_link && !rvu->hw->cpt_links)
 		return 0;
 
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (cpt_link)
+		type = NIX_INTF_TYPE_CPT;
 
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	err = nix_get_struct_ptrs(rvu, pcifunc, &nix_hw, &blkaddr);
+	if (err)
+		return err;
+
+	bp = &nix_hw->bp;
 	chan_base = pfvf->rx_chan_base + req->chan_base;
 	for (chan = chan_base; chan < (chan_base + req->chan_cnt); chan++) {
 		/* CPT channel for a given link channel is always
@@ -518,6 +559,15 @@ static int nix_bp_disable(struct rvu *rvu,
 		cfg = rvu_read64(rvu, blkaddr, NIX_AF_RX_CHANX_CFG(chan_v));
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_CHANX_CFG(chan_v),
 			    cfg & ~BIT_ULL(16));
+
+		if (type == NIX_INTF_TYPE_LBK) {
+			bpid = cfg & GENMASK(0, 8);
+			rvu_free_rsrc(&bp->bpids, bpid - bp->free_pool_base);
+			for (bpid = 0; bpid < bp->bpids.max; bpid++) {
+				if (bp->fn_map[bpid] == pcifunc)
+					bp->fn_map[bpid] = 0;
+			}
+		}
 	}
 	return 0;
 }
@@ -539,26 +589,20 @@ int rvu_mbox_handler_nix_cpt_bp_disable(struct rvu *rvu,
 static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 			    int type, int chan_id)
 {
-	int bpid, blkaddr, lmac_chan_cnt, sdp_chan_cnt, vf, sdp_chan_base;
-	u16 cgx_bpid_cnt, lbk_bpid_cnt, sdp_bpid_cnt;
+	int bpid, blkaddr, vf, sdp_chan_base, err;
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_pfvf *pfvf;
+	struct nix_hw *nix_hw;
 	u8 cgx_id, lmac_id;
-	u64 cfg;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, req->hdr.pcifunc);
-	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST);
-	lmac_chan_cnt = cfg & 0xFF;
-
-	cgx_bpid_cnt = hw->cgx_links * lmac_chan_cnt;
-	lbk_bpid_cnt = hw->lbk_links * ((cfg >> 16) & 0xFF);
-
-	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST1);
-	sdp_chan_cnt = cfg & 0xFFF;
-	sdp_bpid_cnt = hw->sdp_links * sdp_chan_cnt;
+	struct nix_bp *bp;
 
 	pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
 
+	err = nix_get_struct_ptrs(rvu, req->hdr.pcifunc, &nix_hw, &blkaddr);
+	if (err)
+		return err;
+
+	bp = &nix_hw->bp;
 	/* Backpressure IDs range division
 	 * CGX channles are mapped to (0 - 191) BPIDs
 	 * LBK channles are mapped to (192 - 255) BPIDs
@@ -571,36 +615,33 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 	 */
 	switch (type) {
 	case NIX_INTF_TYPE_CGX:
-		if ((req->chan_base + req->chan_cnt) > 16)
-			return -EINVAL;
+		if ((req->chan_base + req->chan_cnt) > NIX_BPIDS_PER_LMAC)
+			return NIX_AF_ERR_INVALID_BPID_REQ;
+
 		rvu_get_cgx_lmac_id(pfvf->cgx_lmac, &cgx_id, &lmac_id);
 		/* Assign bpid based on cgx, lmac and chan id */
-		bpid = (cgx_id * hw->lmac_per_cgx * lmac_chan_cnt) +
-			(lmac_id * lmac_chan_cnt) + req->chan_base;
+		bpid = (cgx_id * hw->lmac_per_cgx * NIX_BPIDS_PER_LMAC) +
+			(lmac_id * NIX_BPIDS_PER_LMAC) + req->chan_base;
 
 		if (req->bpid_per_chan)
 			bpid += chan_id;
-		if (bpid > cgx_bpid_cnt)
-			return -EINVAL;
+		if (bpid > bp->cgx_bpid_cnt)
+			return NIX_AF_ERR_INVALID_BPID;
 		break;
-
+	case NIX_INTF_TYPE_CPT:
+		bpid = bp->cgx_bpid_cnt + bp->sdp_bpid_cnt;
+		break;
 	case NIX_INTF_TYPE_LBK:
-		if ((req->chan_base + req->chan_cnt) > 1)
-			return -EINVAL;
-		/* Channel number allocation is based on VF id,
-		 * hence BPID follows similar scheme.
-		 */
-		vf = (req->hdr.pcifunc & RVU_PFVF_FUNC_MASK) - 1;
-
-		bpid = cgx_bpid_cnt + req->chan_base + vf;
-		if (req->bpid_per_chan)
-			bpid += chan_id;
-		if (bpid > (cgx_bpid_cnt + lbk_bpid_cnt))
-			return -EINVAL;
+		/* Alloc bpid from the free pool */
+		bpid = rvu_alloc_rsrc(&bp->bpids);
+		if (bpid < 0)
+			return NIX_AF_ERR_INVALID_BPID;
+		bp->fn_map[bpid] = req->hdr.pcifunc;
+		bpid += bp->free_pool_base;
 		break;
 	case NIX_INTF_TYPE_SDP:
-		if ((req->chan_base + req->chan_cnt) > sdp_chan_cnt)
-			return -EINVAL;
+		if ((req->chan_base + req->chan_cnt) > bp->sdp_bpid_cnt)
+			return NIX_AF_ERR_INVALID_BPID_REQ;
 
 		/* Handle usecase of 2 SDP blocks */
 		if (!hw->cap.programmable_chans)
@@ -613,13 +654,13 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 		 */
 		vf = (req->hdr.pcifunc & RVU_PFVF_FUNC_MASK) - 1;
 
-		bpid = sdp_bpid_cnt + req->chan_base + sdp_chan_base + vf;
+		bpid = bp->cgx_bpid_cnt + req->chan_base + sdp_chan_base + vf;
 
 		if (req->bpid_per_chan)
 			bpid += chan_id;
 
-		if (bpid > (cgx_bpid_cnt + lbk_bpid_cnt + sdp_bpid_cnt))
-			return -EINVAL;
+		if (bpid > (bp->cgx_bpid_cnt + bp->sdp_bpid_cnt))
+			return NIX_AF_ERR_INVALID_BPID;
 		break;
 	default:
 		return -EINVAL;
@@ -652,6 +693,9 @@ static int nix_bp_enable(struct rvu *rvu,
 
 	if (cpt_link && !rvu->hw->cpt_links)
 		return 0;
+
+	if (cpt_link)
+		type = NIX_INTF_TYPE_CPT;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
@@ -4614,6 +4658,10 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 			return err;
 
 		err = nix_setup_txvlan(rvu, nix_hw);
+		if (err)
+			return err;
+
+		err = nix_setup_bpids(rvu, nix_hw, blkaddr);
 		if (err)
 			return err;
 

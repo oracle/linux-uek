@@ -916,6 +916,8 @@ enum nix_af_status {
 	NIX_AF_ERR_LINK_CREDITS  = -431,
 	NIX_AF_ERR_RQ_CPT_MASK  = -432,
 	NIX_AF_ERR_TL1_RR_PRIO_PERM_DENIED  = -433,
+	NIX_AF_ERR_INVALID_BPID		= -434,
+	NIX_AF_ERR_INVALID_BPID_REQ	= -435,
 };
 
 /* For NIX RX vtag action  */
