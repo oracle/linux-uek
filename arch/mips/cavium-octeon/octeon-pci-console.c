@@ -254,8 +254,6 @@ void octeon_pci_console_init(const char *arg)
 static void octeon_pci_console_read_poll(struct timer_list *t)
 {
 	struct octeon_pci_console  *opc = from_timer(opc, t, poll_timer);
-	struct tty_driver *driver = container_of((void **)opc, struct tty_driver, driver_state);
-	struct tty_struct *tty = container_of((struct tty_driver **)driver, struct tty_struct, driver);
 
 	int nr;
 	u32 s = opc->rings->buf_size;
@@ -285,12 +283,12 @@ static void octeon_pci_console_read_poll(struct timer_list *t)
 #else /*  __BIG_ENDIAN */
 		buf = opc->input_ring + r;
 #endif
-		nr = tty_insert_flip_string(tty->port, buf, n);
+		nr = tty_insert_flip_string(&opc->tty_port, buf, n);
 		if (!nr)
 			break;
 		r = (r + nr) % s;
 		a -= nr;
-		tty_flip_buffer_push(tty->port);
+		tty_flip_buffer_push(&opc->tty_port);
 	}
 	opc->rings->input_read_index = r;
 	wmb();
