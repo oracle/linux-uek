@@ -646,7 +646,6 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			flow_controlled = 1;
 		}
 		if (work_alloc == 0) {
-			rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 			rds_ib_stats_inc(s_ib_tx_throttle);
 			reason = "no credits available";
 			ret = -ENOMEM;
