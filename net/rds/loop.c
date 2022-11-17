@@ -162,27 +162,6 @@ static void rds_loop_conn_path_shutdown(struct rds_conn_path *cp)
 {
 }
 
-static int rds_message_skb_local(struct sk_buff *skb)
-{
-	struct rds_nf_hdr *dst, *org;
-
-	/* pull out the headers */
-	dst = rds_nf_hdr_dst(skb);
-	org = rds_nf_hdr_org(skb);
-
-	/* assuming original and dest are exactly the same then it's our own node */
-	if (ipv6_addr_equal(&dst->daddr, &org->daddr) &&
-	    ipv6_addr_equal(&dst->saddr, &org->saddr) &&
-	    dst->sport == org->sport && dst->dport == org->dport) {
-		return 1;
-	}
-	/* otherwise, the sport/dport have likely swapped so consider
-	 * it a different node */
-	else {
-		return 0;
-	}
-}
-
 void rds_loop_exit(void)
 {
 	struct rds_loop_connection *lc, *_lc;
@@ -214,8 +193,6 @@ struct rds_transport rds_loop_transport = {
 	.conn_path_connect	= rds_loop_conn_path_connect,
 	.conn_path_shutdown	= rds_loop_conn_path_shutdown,
 	.inc_copy_to_user	= rds_message_inc_copy_to_user,
-	.inc_to_skb	        = rds_message_inc_to_skb,
-	.skb_local              = rds_message_skb_local,
 	.inc_free		= rds_loop_inc_free,
 	.t_name			= "loopback",
 	.t_conn_count		= ATOMIC_INIT(0),
