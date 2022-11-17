@@ -57,6 +57,7 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 	int len, rem;
 	int i;
 	void __iomem *wbuf_ptr = p->register_base + OCTEONTX2_SPI_WBUF(p);
+	void __iomem *rx_ptr = wbuf_ptr;
 
 	mode = spi->mode;
 	cpha = mode & SPI_CPHA;
@@ -117,6 +118,10 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 	rx_buf = xfer->rx_buf;
 	len = xfer->len;
 
+	/* Except T96 A0, use rcvdx register for x1 uni-directional mode */
+	if (!mpi_cfg.s.iomode && p->rcvd_present)
+		rx_ptr = p->register_base + OCTEONTX2_SPI_RCVD(p);
+
 	while (len > OCTEONTX2_SPI_MAX_BYTES) {
 		if (tx_buf) {
 			/* 8 bytes per iteration */
@@ -138,7 +143,9 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 		if (rx_buf) {
 			/* 8 bytes per iteration */
 			for (i = 0; i < OCTEONTX2_SPI_MAX_BYTES / 8; i++) {
-				u64 v = readq(wbuf_ptr + (8 * i));
+				u64 v;
+
+				v = readq(rx_ptr + (8 * i));
 				*(uint64_t *)rx_buf = v;
 				rx_buf += 8;
 			}
@@ -179,13 +186,13 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 		u64 v;
 		/* 8 bytes per iteration */
 		for (i = 0; i < len / 8; i++) {
-			v = readq(wbuf_ptr + (8 * i));
+			v = readq(rx_ptr + (8 * i));
 			*(uint64_t *)rx_buf = v;
 			rx_buf += 8;
 		}
 		/* remaining <8 bytes */
 		if (rem) {
-			v = readq(wbuf_ptr + (8 * i));
+			v = readq(rx_ptr + (8 * i));
 			memcpy(rx_buf, &v, rem);
 			rx_buf += rem;
 		}
@@ -229,6 +236,7 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 	struct device *dev = &pdev->dev;
 	struct spi_master *master;
 	struct octeontx2_spi *p;
+	union mpix_sts mpi_sts;
 	int ret = -ENOENT;
 
 	/* may need to hunt for devtree entry */
@@ -267,7 +275,11 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 	p->regs.status = 0x1008;
 	p->regs.xmit = 0x1018;
 	p->regs.wbuf = 0x1800;
+	p->regs.rcvd = 0x2800;
 	p->last_cfg = 0x0;
+
+	mpi_sts.u64 = readq(p->register_base + OCTEONTX2_SPI_STS(p));
+	p->rcvd_present = mpi_sts.u64 & 0x4 ? true : false;
 
 	/* FIXME: need a proper clocksource object for SCLK */
 	p->clk = devm_clk_get(dev, NULL);
