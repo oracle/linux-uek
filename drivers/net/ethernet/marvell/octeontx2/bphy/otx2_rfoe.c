@@ -491,16 +491,6 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 			  RFOEX_RX_IND_MBT_SEG_STATE(priv->rfoe_num));
 	spin_unlock(&cdev_priv->mbt_lock);
 
-	if ((mbt_state >> 16 & 0xf) != 0) {
-		pr_err("rx pkt error: mbt_buf_idx=%d, err=%d\n",
-		       mbt_buf_idx, (u8)(mbt_state >> 16 & 0xf));
-		return;
-	}
-	if (mbt_state >> 20 & 0x1) {
-		pr_err("rx dma error: mbt_buf_idx=%d\n", mbt_buf_idx);
-		return;
-	}
-
 	buf_ptr = (u8 *)ft_cfg->mbt_virt_addr +
 				(ft_cfg->buf_size * mbt_buf_idx);
 
@@ -548,28 +538,12 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		tstamp = ecpri_psw1->ptp_timestamp;
 	}
 
-	netif_dbg(priv, rx_status, priv->netdev,
-		  "Rx: rfoe=%d lmac=%d mbt_buf_idx=%d psw0(w0)=0x%llx psw0(w1)=0x%llx psw1(w0)=0x%llx psw1(w1)=0x%llx jd:iova=0x%llx\n",
-		  priv->rfoe_num, lmac_id, mbt_buf_idx,
-		  *(u64 *)buf_ptr, *((u64 *)buf_ptr + 1),
-		  *((u64 *)buf_ptr + 2), *((u64 *)buf_ptr + 3),
-		  jdt_iova_addr);
-
 	/* read jd ptr from psw */
 	jdt_ptr = otx2_iova_to_virt(priv->iommu_domain, jdt_iova_addr);
 	jd_dma_cfg_word_0 = (struct mhbw_jd_dma_cfg_word_0_s *)
 			((u8 *)jdt_ptr + ft_cfg->jd_rd_offset);
 	len = (jd_dma_cfg_word_0->block_size) << 2;
 	netif_dbg(priv, rx_status, priv->netdev, "jd rd_dma len = %d\n", len);
-
-	if (unlikely(netif_msg_pktdata(priv))) {
-		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
-		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
-			       buf_ptr, len, true);
-	}
-
-	buf_ptr += (ft_cfg->pkt_offset * 16);
-	len -= (ft_cfg->pkt_offset * 16);
 
 	for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
 		drv_ctx = &rfoe_drv_ctx[idx];
@@ -587,30 +561,46 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		return;
 	}
 
+	if ((mbt_state >> 16 & 0xf) != 0) {
+		pr_err("rx pkt error: mbt_buf_idx=%d, err=%d\n",
+		       mbt_buf_idx, (u8)(mbt_state >> 16 & 0xf));
+		goto drop_pkt;
+	}
+
+	if (mbt_state >> 20 & 0x1) {
+		pr_err("rx dma error: mbt_buf_idx=%d\n", mbt_buf_idx);
+		goto drop_pkt;
+	}
+
 	/* drop the packet if interface is down */
 	if (unlikely(!netif_carrier_ok(netdev))) {
 		netif_err(priv2, rx_err, netdev,
 			  "%s {rfoe%d lmac%d} link down, drop pkt\n",
 			  netdev->name, priv2->rfoe_num,
 			  priv2->lmac_id);
-		/* update stats */
-		if (pkt_type == PACKET_TYPE_PTP) {
-			priv2->stats.ptp_rx_dropped++;
-			priv2->last_rx_ptp_dropped_jiffies = jiffies;
-		} else if (pkt_type == PACKET_TYPE_ECPRI) {
-			priv2->stats.ecpri_rx_dropped++;
-			priv2->last_rx_dropped_jiffies = jiffies;
-		} else {
-			priv2->stats.rx_dropped++;
-			priv2->last_rx_dropped_jiffies = jiffies;
-		}
-		return;
+		goto drop_pkt;
 	}
+
+	netif_dbg(priv, rx_status, priv->netdev,
+		  "Rx: rfoe=%d lmac=%d mbt_buf_idx=%d psw0(w0)=0x%llx psw0(w1)=0x%llx psw1(w0)=0x%llx psw1(w1)=0x%llx jd:iova=0x%llx\n",
+		  priv->rfoe_num, lmac_id, mbt_buf_idx,
+		  *(u64 *)buf_ptr, *((u64 *)buf_ptr + 1),
+		  *((u64 *)buf_ptr + 2), *((u64 *)buf_ptr + 3),
+		  jdt_iova_addr);
+
+	if (unlikely(netif_msg_pktdata(priv))) {
+		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
+		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
+			       buf_ptr, len, true);
+	}
+
+	buf_ptr += (ft_cfg->pkt_offset * 16);
+	len -= (ft_cfg->pkt_offset * 16);
 
 	skb = netdev_alloc_skb_ip_align(netdev, len);
 	if (!skb) {
 		netif_err(priv2, rx_err, netdev, "Rx: alloc skb failed\n");
-		return;
+		goto drop_pkt;
 	}
 
 	memcpy(skb->data, buf_ptr, len);
@@ -646,6 +636,20 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 	priv2->stats.rx_bytes += skb->len;
 
 	netif_receive_skb(skb);
+	return;
+
+drop_pkt:
+	/* update stats */
+	if (pkt_type == PACKET_TYPE_PTP) {
+		priv2->stats.ptp_rx_dropped++;
+		priv2->last_rx_ptp_dropped_jiffies = jiffies;
+	} else if (pkt_type == PACKET_TYPE_ECPRI) {
+		priv2->stats.ecpri_rx_dropped++;
+		priv2->last_rx_dropped_jiffies = jiffies;
+	} else {
+		priv2->stats.rx_dropped++;
+		priv2->last_rx_dropped_jiffies = jiffies;
+	}
 }
 
 static int otx2_rfoe_process_rx_flow(struct otx2_rfoe_ndev_priv *priv,
