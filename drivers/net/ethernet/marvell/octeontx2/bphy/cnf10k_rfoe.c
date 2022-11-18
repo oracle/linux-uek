@@ -637,6 +637,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	skb = netdev_alloc_skb_ip_align(netdev, len);
 	if (!skb) {
 		netif_err(priv2, rx_err, netdev, "Rx: alloc skb failed\n");
+		cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
 		return;
 	}
 
