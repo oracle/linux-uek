@@ -69,7 +69,8 @@
 	 * This is only accessed by the of_scan_flat_dt() function in
 	 * early boot. Putting this up here avoids an unneeded
 	 * additional scan of the whole FDT. This is carved out of
-	 * memory allocated for the pciemgr component.
+	 * memory allocated for the pciemgr component. The reserved
+	 * address should be F70000 plus the kpcimgr SHMEM base.
 	 */
 	oracle {
 		linux,mem-reserve = <0x0 0xc5F70000>;

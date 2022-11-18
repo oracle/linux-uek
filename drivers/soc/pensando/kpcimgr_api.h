@@ -33,7 +33,11 @@
 #define K_ENTRY_HOLDING_PEN 4
 #define K_ENTRY_INDIRECT_INTR 5
 #define K_ENTRY_NOTIFY_INTR 6
-#define K_NUM_ENTRIES 7
+#define K_ENTRY_INIT_FN 7
+#define K_ENTRY_CMD_READ 8
+#define K_ENTRY_CMD_WRITE 9
+#define K_ENTRY_GET_VERSION 10
+#define K_NUM_ENTRIES 16
 
 struct kpcimgr_entry_points_t {
 	int expected_mgr_version;
@@ -51,6 +55,9 @@ struct kpcimgr_entry_points_t {
 /* event queue sizing */
 #define EVENT_QUEUE_LENGTH 1024
 #define EVENT_SIZE 128
+
+/* max command size for sysfs cmd node */
+#define CMD_SIZE 4096
 
 /* max number of memory ranges from device tree */
 #define NUM_MEMRANGES 32
@@ -98,8 +105,7 @@ struct kpcimgr_state_t {
 	int ncalls;
 	int ind_intr, not_intr, event_intr;
 
-	/* offsets into relocated library code */
-	int code_offsets[K_NUM_ENTRIES];
+	int unused1[7];	/* was version=2 code_offsets[], keep evq* compat */
 
 	/* Event queue handling */
 	int evq_head, evq_tail;
@@ -109,6 +115,9 @@ struct kpcimgr_state_t {
 	void *mod;
 	int msg_idx;
 	int cfgval;
+
+	/* offsets into relocated library code */
+	int code_offsets[K_NUM_ENTRIES];
 };
 
 typedef struct kpcimgr_state_t kstate_t;
@@ -131,7 +140,7 @@ _Static_assert(sizeof(kstate_t) < SHMEM_KSTATE_SIZE,
 #define KPCIMGR_DEV "/dev/kpcimgr"
 #define KPCIMGR_NAME "kpcimgr"
 #define PFX KPCIMGR_NAME ": "
-#define KPCIMGR_KERNEL_VERSION 1
+#define KPCIMGR_KERNEL_VERSION 3
 
 #ifdef __KERNEL__
 int kpcimgr_module_register(struct module *mod,
@@ -142,6 +151,7 @@ void kpcimgr_sysfs_setup(struct platform_device *pfdev);
 void *kpci_memcpy(void *dst, const void *src, size_t n);
 void wake_up_event_queue(void);
 int aarch64_insn_read(void *addr, u32 *insnp);
+extern spinlock_t kpcimgr_lock;
 
 #define reset_stats(k) \
 	kpci_memset((void *)&(k)->trace_data[0][0], 0, sizeof((k)->trace_data))

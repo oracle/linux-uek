@@ -137,6 +137,48 @@ static ssize_t mgr_version_show(struct device *dev,
 	return sprintf(buf, "%d\n", KPCIMGR_KERNEL_VERSION);
 }
 
+static ssize_t command_read(struct file *file, struct kobject *kobj,
+			    struct bin_attribute *attr, char *out,
+			    loff_t off, size_t count)
+{
+	int (*cmd_read)(kstate_t *, char *, loff_t, size_t, int *);
+	kstate_t *ks = get_kstate();
+	int ret, success = 0;
+	unsigned long flags;
+
+	if (!ks->valid)
+		return -ENODEV;
+	cmd_read = ks->code_base + ks->code_offsets[K_ENTRY_CMD_READ];
+	spin_lock_irqsave(&kpcimgr_lock, flags);
+	ret = cmd_read(ks, out, off, count, &success);
+	spin_unlock_irqrestore(&kpcimgr_lock, flags);
+	if (success)
+		return ret;
+	else
+		return 0;
+}
+
+static ssize_t command_write(struct file *filp, struct kobject *kobj,
+			     struct bin_attribute *bin_attr, char *buf,
+			     loff_t off, size_t count)
+{
+	int (*cmd_write)(kstate_t *, const char *, loff_t, size_t, int *);
+	kstate_t *ks = get_kstate();
+	int ret, success = 0;
+	unsigned long flags;
+
+	if (!ks->valid)
+		return -ENODEV;
+	cmd_write = ks->code_base + ks->code_offsets[K_ENTRY_CMD_WRITE];
+	spin_lock_irqsave(&kpcimgr_lock, flags);
+	ret = cmd_write(ks, buf, off, count, &success);
+	spin_unlock_irqrestore(&kpcimgr_lock, flags);
+	if (success)
+		return ret;
+	else
+		return count;
+}
+
 /* event queue peek */
 static ssize_t event_queue_read(struct file *file, struct kobject *kobj,
 				struct bin_attribute *attr, char *out,
@@ -193,6 +235,7 @@ static DEVICE_ATTR_RO(mgr_version);
 static DEVICE_INT_ATTR(active_port, 0644, kpcimgr_active_port);
 static BIN_ATTR_RO(kstate, sizeof(kstate_t));
 static BIN_ATTR_RW(event_queue, EVENT_SIZE);
+static BIN_ATTR_RW(command, CMD_SIZE);
 
 static struct attribute *dev_attrs[] = {
 	&dev_attr_valid.attr,
@@ -207,6 +250,7 @@ static struct attribute *dev_attrs[] = {
 static struct bin_attribute *dev_bin_attrs[] = {
 	&bin_attr_kstate,
 	&bin_attr_event_queue,
+	&bin_attr_command,
 	NULL,
 };
 

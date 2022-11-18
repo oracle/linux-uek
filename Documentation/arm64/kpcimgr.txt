@@ -141,9 +141,10 @@ The switch from an old code module to the new one is extremely fast.
 If we are currently running, then stop and invalidate state. Then the
 old code module is released and pointers are switched over to the new
 module.  The offsets of all the pciesvc library entry points are
-saved, and the set_init_state() hook is called, where various
-initialization operations can be done. Restore valid with the magic
-number, and finally resume running if we were running before.
+saved, and the module's init function is called. The module's version
+entry point is also called, which gives the module a way to convey its
+own version string to kpcimgr. Finally, we restore valid with the magic
+number, and resume running if we were running before.
 
 There is a module parameter "relocate" which causes an immediate
 relocation to temporary (vmalloc) memory. This is mainly for testing
@@ -179,7 +180,9 @@ kstate - read-only, gives a copy of the kpcimgr kstate structure
 
 active_port - R/W access to internal active_port value
 
-
+command - R/W binary data to/from pciesvc, which provides a way
+ for user land utilities (i.e. pciemgrd) to initiate action in
+ the kernel side pciesvc library
 
 Execution during normal (virtual) mode
 

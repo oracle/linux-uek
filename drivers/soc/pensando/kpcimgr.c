@@ -73,7 +73,7 @@ void *kpci_memcpy(void *dst, const void *src, size_t n)
  */
 void kpcimgr_normal_poll(void)
 {
-	static void (*poll_fn)(kstate_t *, int, int);
+	void (*poll_fn)(kstate_t *, int, int);
 	kstate_t *ks = get_kstate();
 	unsigned long flags;
 
@@ -328,24 +328,28 @@ int kpcimgr_module_register(struct module *mod,
 	void *code_end = ep->code_end;
 	kstate_t *ks = get_kstate();
 	unsigned long start_addr, iflags;
+	void (*init_fn)(kstate_t *ks);
+	void (*version_fn)(char **);
+	char *mod_buildtime;
 	int i, was_running;
 
 	start_addr = (unsigned long)mod->core_layout.base;
 
 	if (ep->expected_mgr_version != KPCIMGR_KERNEL_VERSION) {
-		pr_err("KPCIMGR: module expects kernel version %d, incompatible with version %d\n",
-		       ep->expected_mgr_version, KPCIMGR_KERNEL_VERSION);
+		pr_info("KPCIMGR: '%s' expects kernel version %d, incompatible with version %d\n",
+			mod->name, ep->expected_mgr_version, KPCIMGR_KERNEL_VERSION);
 		return -EINVAL;
 	}
 
-	if (contains_external_refs(mod, code_end))
+	if (contains_external_refs(mod, code_end)) {
+		pr_err("KPCIMGR: relocation failed for '%s'\n", mod->name);
 		return -ENXIO;
+	}
 
-	pr_info("KPCIMGR: start=%lx, end=%lx, size=%d\n", start_addr,
-		start_addr + mod->core_layout.size, mod->core_layout.size);
-
-	if (mod->core_layout.size > KSTATE_CODE_SIZE)
+	if (mod->core_layout.size > KSTATE_CODE_SIZE) {
+		pr_err("KPCIMGR: module '%s' too large\n", mod->name);
 		return -EFBIG;
+	}
 
 	was_running = ks->running;
 	if (was_running) {
@@ -386,6 +390,17 @@ int kpcimgr_module_register(struct module *mod,
 	for (i = 0; i < K_NUM_ENTRIES; i++)
 		ks->code_offsets[i] = (unsigned long)ep->entry_point[i]
 			- start_addr;
+
+	init_fn = ks->code_base + ks->code_offsets[K_ENTRY_INIT_FN];
+	init_fn(ks);
+
+	version_fn = ks->code_base + ks->code_offsets[K_ENTRY_GET_VERSION];
+	mod_buildtime = "";
+	version_fn(&mod_buildtime);
+
+	pr_info("KPCIMGR: module '%s: %s', start=%lx, end=%lx, size=%d\n",
+		mod->name, mod_buildtime, start_addr,
+		start_addr + mod->core_layout.size, mod->core_layout.size);
 
 	set_init_state(ks);
 	ks->valid = KSTATE_MAGIC;
@@ -567,7 +582,7 @@ static int map_resources(struct platform_device *pfdev)
  */
 static irqreturn_t kpcimgr_indirect_intr(int irq, void *arg)
 {
-	static int (*intr_fn)(kstate_t *, int);
+	int (*intr_fn)(kstate_t *, int);
 	kstate_t *ks = (kstate_t *)arg;
 	int port, r = 0;
 
@@ -591,7 +606,7 @@ static irqreturn_t kpcimgr_indirect_intr(int irq, void *arg)
  */
 static irqreturn_t kpcimgr_notify_intr(int irq, void *arg)
 {
-	static int (*intr_fn)(kstate_t *, int);
+	int (*intr_fn)(kstate_t *, int);
 	kstate_t *ks = (kstate_t *)arg;
 	int port, r = 0;
 
