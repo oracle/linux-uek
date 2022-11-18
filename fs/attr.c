@@ -16,36 +16,15 @@
 #include <linux/evm.h>
 #include <linux/ima.h>
 
+
 /**
- * inode_change_ok - check if attribute changes to an inode are allowed
+ * setattr_prepare_inode - check if attribute changes to a dentry are allowed
  * @inode:	inode to check
- * @attr:	attributes to change
- *
- * Check if we are allowed to change the attributes contained in @attr
- * in the given inode.  This includes the normal unix access permission
- * checks, as well as checks for rlimits and others.
- *
- * Should be called as the first thing in ->setattr implementations,
- * possibly after taking additional locks.
- * 
- * this is wrapper function to call setattr_prepare
- *
- */
-int inode_change_ok(const struct inode *inode, struct iattr *attr)
-{
-	struct dentry *dentry;
-
-	dentry = container_of(inode,struct dentry,d_inode);
-	return setattr_prepare(dentry,attr);
-}
-
-/**
- * setattr_prepare - check if attribute changes to a dentry are allowed
  * @dentry:	dentry to check
  * @attr:	attributes to change
  *
  * Check if we are allowed to change the attributes contained in @attr
- * in the given dentry.  This includes the normal unix access permission
+ * in the given dentry/inode.  This includes the normal unix access permission
  * checks, as well as checks for rlimits and others. The function also clears
  * SGID bit from mode if user is not allowed to set it. Also file capabilities
  * and IMA extended attributes are cleared if ATTR_KILL_PRIV is set.
@@ -53,10 +32,14 @@ int inode_change_ok(const struct inode *inode, struct iattr *attr)
  * Should be called as the first thing in ->setattr implementations,
  * possibly after taking additional locks.
  */
-int setattr_prepare(struct dentry *dentry, struct iattr *attr)
+static int setattr_prepare_inode(const struct inode *inode, struct dentry *dentry, struct iattr *attr)
 {
-	struct inode *inode = d_inode(dentry);
 	unsigned int ia_valid = attr->ia_valid;
+
+	/* assign inode for valid dentry otherwise inode coming from inode_change_ok */
+	if(dentry) {
+		inode = d_inode(dentry);
+	}
 
 	/*
 	 * First check size constraints.  These can't be overriden using
@@ -105,7 +88,7 @@ int setattr_prepare(struct dentry *dentry, struct iattr *attr)
 
 kill_priv:
 	/* User has permission for the change */
-	if (ia_valid & ATTR_KILL_PRIV) {
+	if (ia_valid & ATTR_KILL_PRIV && dentry) {
 		int error;
 
 		error = security_inode_killpriv(dentry);
@@ -115,6 +98,48 @@ kill_priv:
 
 	return 0;
 }
+
+/**
+ * inode_change_ok - check if attribute changes to an inode are allowed
+ * @inode:	inode to check
+ * @attr:	attributes to change
+ *
+ * Check if we are allowed to change the attributes contained in @attr
+ * in the given inode.  This includes the normal unix access permission
+ * checks, as well as checks for rlimits and others.
+ *
+ * Should be called as the first thing in ->setattr implementations,
+ * possibly after taking additional locks.
+ * 
+ * this is wrapper function to call setattr_prepare_inode with valid inode and dentry as NULL
+ *
+ */
+int inode_change_ok(const struct inode *inode, struct iattr *attr)
+{
+	return setattr_prepare_inode(inode, NULL, attr);
+}
+
+/*
+ * setattr_prepare - check if attribute changes to a dentry are allowed
+ * @dentry:	dentry to check
+ * @attr:	attributes to change
+ *
+ * Check if we are allowed to change the attributes contained in @attr
+ * in the given dentry.  This includes the normal unix access permission
+ * checks, as well as checks for rlimits and others. The function also clears
+ * SGID bit from mode if user is not allowed to set it. Also file capabilities
+ * and IMA extended attributes are cleared if ATTR_KILL_PRIV is set.
+ *
+ * Should be called as the first thing in ->setattr implementations,
+ * possibly after taking additional locks.
+ *
+ * this is wrapper function to call setattr_prepare_inode with valid dentry and inode as NULL
+ */
+int setattr_prepare(struct dentry *dentry, struct iattr *attr)
+{
+	return setattr_prepare_inode(NULL, dentry, attr);
+}
+
 EXPORT_SYMBOL(setattr_prepare);
 EXPORT_SYMBOL(inode_change_ok);
 
