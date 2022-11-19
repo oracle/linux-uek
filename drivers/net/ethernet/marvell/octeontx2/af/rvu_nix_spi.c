@@ -64,14 +64,13 @@ int rvu_mbox_handler_nix_spi_to_sa_delete(struct rvu *rvu,
 					  struct nix_spi_to_sa_delete_req *req,
 					  struct msg_rsp *rsp)
 {
-	struct rvu_pfvf *pfvf, *parent_pf;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
 	int lfidx, lfid;
 	int blkaddr;
+	int ret = 0;
 	u64 wvalue;
 	u64 wkey;
-	int ret = 0;
 
 	if (!hw->cap.spi_to_sas)
 		return NIX_AF_ERR_PARAM;
@@ -81,8 +80,6 @@ int rvu_mbox_handler_nix_spi_to_sa_delete(struct rvu *rvu,
 		goto exit;
 	}
 
-	parent_pf = &rvu->pf[rvu_get_pf(pcifunc)];
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	lfidx = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
 	if (lfidx < 0) {
