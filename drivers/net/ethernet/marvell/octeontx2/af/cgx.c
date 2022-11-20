@@ -2106,6 +2106,16 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_release_regions;
 	}
 
+
+	cgx->cgx_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
+		& CGX_ID_MASK;
+
+	 /* Skip probe if CGX is not mapped to NIX */
+	if (!is_cgx_mapped_to_nix(pdev->subsystem_device, cgx->cgx_id)) {
+		dev_notice(dev, "CGX %d not mapped to NIX, skipping probe\n", cgx->cgx_id);
+		goto err_release_regions;
+	}
+
 	cgx->lmac_count = cgx->mac_ops->get_nr_lmacs(cgx);
 	if (!cgx->lmac_count) {
 		dev_notice(dev, "CGX %d LMAC count is zero, skipping probe\n", cgx->cgx_id);
@@ -2121,8 +2131,6 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_release_regions;
 	}
 
-	cgx->cgx_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
-		& CGX_ID_MASK;
 
 	/* init wq for processing linkup requests */
 	INIT_WORK(&cgx->cgx_cmd_work, cgx_lmac_linkup_work);
