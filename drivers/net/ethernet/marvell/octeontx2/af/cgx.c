@@ -508,7 +508,7 @@ int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind)
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
 
-	*pkind = cgx_read(cgx, lmac_id, CGXX_CMRX_RX_ID_MAP);
+	*pkind = cgx_read(cgx, lmac_id, cgx->mac_ops->rxid_map_offset);
 	*pkind = *pkind & 0x3F;
 	return 0;
 }
