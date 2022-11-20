@@ -548,7 +548,7 @@ out_unlock:
 
 static DEFINE_PER_CPU(int, wakeup_nest);
 
-static void ep_poll_safewake(wait_queue_head_t *wq)
+static void ep_poll_safewake(wait_queue_head_t *wq, unsigned pollflags)
 {
 	unsigned long flags;
 	int subclass;
@@ -558,7 +558,7 @@ static void ep_poll_safewake(wait_queue_head_t *wq)
 	subclass = __this_cpu_read(wakeup_nest);
 	spin_lock_nested(&wq->lock, subclass + 1);
 	__this_cpu_inc(wakeup_nest);
-	wake_up_locked_poll(wq, POLLIN);
+	wake_up_locked_poll(wq, POLLIN | pollflags);
 	__this_cpu_dec(wakeup_nest);
 	spin_unlock(&wq->lock);
 	local_irq_restore(flags);
@@ -567,9 +567,9 @@ static void ep_poll_safewake(wait_queue_head_t *wq)
 
 #else
 
-static void ep_poll_safewake(wait_queue_head_t *wq)
+static void ep_poll_safewake(wait_queue_head_t *wq, unsigned pollflags)
 {
-	wake_up_poll(wq, EPOLLIN);
+	wake_up_poll(wq, EPOLLIN | pollflags);
 }
 
 #endif
@@ -746,7 +746,7 @@ static __poll_t ep_scan_ready_list(struct eventpoll *ep,
 
 	/* We have to call this outside the lock */
 	if (pwake)
-		ep_poll_safewake(&ep->poll_wait);
+		ep_poll_safewake(&ep->poll_wait, 0);
 
 	return res;
 }
@@ -806,7 +806,7 @@ static void ep_free(struct eventpoll *ep)
 
 	/* We need to release all tasks waiting for these file */
 	if (waitqueue_active(&ep->poll_wait))
-		ep_poll_safewake(&ep->poll_wait);
+		ep_poll_safewake(&ep->poll_wait, 0);
 
 	/*
 	 * We need to lock this because we could be hit by
@@ -1275,7 +1275,7 @@ out_unlock:
 
 	/* We have to call this outside the lock */
 	if (pwake)
-		ep_poll_safewake(&ep->poll_wait);
+		ep_poll_safewake(&ep->poll_wait, pollflags & EPOLL_URING_WAKE);
 
 	if (!(epi->event.events & EPOLLEXCLUSIVE))
 		ewake = 1;
@@ -1594,7 +1594,7 @@ static int ep_insert(struct eventpoll *ep, const struct epoll_event *event,
 
 	/* We have to call this outside the lock */
 	if (pwake)
-		ep_poll_safewake(&ep->poll_wait);
+		ep_poll_safewake(&ep->poll_wait, 0);
 
 	return 0;
 
@@ -1697,7 +1697,7 @@ static int ep_modify(struct eventpoll *ep, struct epitem *epi,
 
 	/* We have to call this outside the lock */
 	if (pwake)
-		ep_poll_safewake(&ep->poll_wait);
+		ep_poll_safewake(&ep->poll_wait, 0);
 
 	return 0;
 }
