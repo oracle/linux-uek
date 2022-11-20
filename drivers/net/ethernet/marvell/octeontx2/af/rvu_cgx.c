@@ -825,6 +825,23 @@ int rvu_mbox_handler_cgx_promisc_disable(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
+static void cgx_notify_up_ptp_info(struct rvu *rvu, int pf, bool enable)
+{
+	struct cgx_ptp_rx_info_msg *msg;
+	int err;
+
+	/* Send mbox message to PF */
+	msg = otx2_mbox_alloc_msg_cgx_ptp_rx_info(rvu, pf);
+	if (!msg)
+		dev_err(rvu->dev, "failed to alloc message\n");
+
+	msg->ptp_en = enable;
+	otx2_mbox_msg_send(&rvu->afpf_wq_info.mbox_up, pf);
+	err = otx2_mbox_wait_for_rsp(&rvu->afpf_wq_info.mbox_up, pf);
+	if (err)
+		dev_err(rvu->dev, "ptp notification to pf %d failed\n", pf);
+}
+
 static int rvu_cgx_ptp_rx_cfg(struct rvu *rvu, u16 pcifunc, bool enable)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
@@ -841,6 +858,8 @@ static int rvu_cgx_ptp_rx_cfg(struct rvu *rvu, u16 pcifunc, bool enable)
 	 */
 	if (!is_pf_cgxmapped(rvu, pf))
 		return -EPERM;
+
+	cgx_notify_up_ptp_info(rvu, pf, enable);
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
@@ -1291,6 +1310,8 @@ int rvu_cgx_prio_flow_ctrl_cfg(struct rvu *rvu, u16 pcifunc, u8 tx_pause,
 	if (!is_pf_cgxmapped(rvu, pf))
 		return -ENODEV;
 
+	cgx_notify_up_ptp_info(rvu, pf, true);
+
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
 	mac_ops = get_mac_ops(cgxd);
@@ -1328,6 +1349,7 @@ int rvu_mbox_handler_cgx_prio_flow_ctrl_cfg(struct rvu *rvu,
 	 */
 	if (!is_pf_cgxmapped(rvu, pf))
 		return -ENODEV;
+
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);

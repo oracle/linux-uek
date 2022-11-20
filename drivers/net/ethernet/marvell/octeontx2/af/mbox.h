@@ -415,7 +415,8 @@ M(MCS_CUSTOM_TAG_CFG_GET, 0xa021, mcs_custom_tag_cfg_get,			\
 
 /* Messages initiated by AF (range 0xC00 - 0xEFF) */
 #define MBOX_UP_CGX_MESSAGES						\
-M(CGX_LINK_EVENT,	0xC00, cgx_link_event, cgx_link_info_msg, msg_rsp)
+M(CGX_LINK_EVENT,	0xC00, cgx_link_event, cgx_link_info_msg, msg_rsp) \
+M(CGX_PTP_RX_INFO,	0xC01, cgx_ptp_rx_info,	cgx_ptp_rx_info_msg, msg_rsp)
 
 #define MBOX_UP_CPT_MESSAGES						\
 M(CPT_INST_LMTST,	0xD00, cpt_inst_lmtst, cpt_inst_lmtst_req, msg_rsp)
@@ -627,6 +628,11 @@ struct cgx_link_user_info {
 struct cgx_link_info_msg {
 	struct mbox_msghdr hdr;
 	struct cgx_link_user_info link_info;
+};
+
+struct cgx_ptp_rx_info_msg {
+	struct mbox_msghdr hdr;
+	u8 ptp_en;
 };
 
 struct cgx_pause_frm_cfg {
