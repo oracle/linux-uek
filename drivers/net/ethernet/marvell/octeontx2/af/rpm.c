@@ -39,6 +39,7 @@ static struct mac_ops		rpm_mac_ops   = {
 	.mac_get_pfc_frm_cfg   =        rpm_lmac_get_pfc_frm_cfg,
 	.mac_reset   =			rpm_lmac_reset,
 	.mac_stats_reset		 =	  rpm_stats_reset,
+	.get_dmacflt_dropped_pktcnt      =        rpm_get_dmacflt_dropped_pktcnt,
 };
 
 static struct mac_ops		rpm2_mac_ops   = {
@@ -458,6 +459,16 @@ int rpm_stats_reset(void *rpmd, int lmac_id)
 	rpm_write(rpm, 0, RPMX_MTI_STAT_STATN_CONTROL, cfg);
 
 	return 0;
+}
+
+u64 rpm_get_dmacflt_dropped_pktcnt(void *rpmd, int lmac_id)
+{
+	rpm_t *rpm = rpmd;
+
+	if (!is_lmac_valid(rpm, lmac_id))
+		return 0;
+
+	return rpm_read(rpm, lmac_id, RPMX_CMRX_RX_STAT2);
 }
 
 u8 rpm_get_lmac_type(void *rpmd, int lmac_id)

@@ -714,6 +714,16 @@ u64 cgx_features_get(void *cgxd)
 	return ((struct cgx *)cgxd)->hw_features;
 }
 
+u64 cgx_get_dmacflt_dropped_pktcnt(void *cgxd, int lmac_id)
+{
+	struct cgx *cgx = cgxd;
+
+	if (!is_lmac_valid(cgx, lmac_id))
+		return 0;
+
+	return cgx_read(cgx, lmac_id, CGXX_CMRX_RX_STAT4);
+}
+
 int cgx_stats_reset(void *cgxd, int lmac_id)
 {
 	struct cgx *cgx = cgxd;
@@ -2062,6 +2072,7 @@ static struct mac_ops	cgx_mac_ops    = {
 	.mac_get_pfc_frm_cfg   =        cgx_lmac_get_pfc_frm_cfg,
 	.mac_reset   =			cgx_lmac_reset,
 	.mac_stats_reset       =	cgx_stats_reset,
+	.get_dmacflt_dropped_pktcnt =	cgx_get_dmacflt_dropped_pktcnt,
 };
 
 static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)

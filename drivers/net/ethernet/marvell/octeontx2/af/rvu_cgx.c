@@ -1445,3 +1445,18 @@ bool rvu_cgx_is_pkind_config_permitted(struct rvu *rvu, u16 pcifunc)
 
 	return rc;
 }
+
+u64 rvu_cgx_get_dmacflt_dropped_pktcnt(void *cgxd, int lmac_id)
+{
+	struct mac_ops *mac_ops;
+
+	if (!cgxd)
+		return 0;
+
+	mac_ops = get_mac_ops(cgxd);
+
+	if (!mac_ops->lmac_fifo_len)
+		return 0;
+
+	return mac_ops->get_dmacflt_dropped_pktcnt(cgxd, lmac_id);
+}
