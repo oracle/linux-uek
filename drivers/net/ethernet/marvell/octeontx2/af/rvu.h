@@ -687,6 +687,12 @@ static inline bool is_rvu_95xx_A0(struct rvu *rvu)
 
 static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
 {
+	/* On CNF10KA and CNF10KB silicons only two CGX blocks are connected
+	 * to NIX.
+	 */
+	if (id == PCI_SUBSYS_DEVID_CNF10K_A || id == PCI_SUBSYS_DEVID_CNF10K_B)
+		return cgx_id <= 1;
+
 	return !(cgx_id && (id == PCI_SUBSYS_DEVID_95XX ||
 			    id == PCI_SUBSYS_DEVID_LOKI));
 }

@@ -51,6 +51,8 @@ bool is_mac_feature_supported(struct rvu *rvu, int pf, int feature)
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
+	if (!cgxd)
+		return 0;
 
 	return  (cgx_features_get(cgxd) & feature);
 }
@@ -687,11 +689,12 @@ int rvu_mbox_handler_cgx_mac_addr_set(struct rvu *rvu,
 	struct rvu_pfvf *pfvf;
 	u8 cgx_id, lmac_id;
 
-	if (!is_cgx_config_permitted(rvu, req->hdr.pcifunc))
-		return -EPERM;
+	if (!is_pf_cgxmapped(rvu, pf))
+		return LMAC_AF_ERR_PF_NOT_MAPPED;
 
 	if (rvu_npc_exact_has_match_table(rvu))
 		return rvu_npc_exact_mac_addr_set(rvu, req, rsp);
+
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 
