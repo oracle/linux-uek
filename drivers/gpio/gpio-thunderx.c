@@ -344,7 +344,7 @@ static int thunderx_gpio_irq_set_type(struct irq_data *d,
 		irq_set_handler_locked(d, handle_fasteoi_ack_irq);
 		bit_cfg |= GPIO_BIT_CFG_INT_TYPE;
 	} else {
-		irq_set_handler_locked(d, handle_fasteoi_mask_irq);
+		irq_set_handler_locked(d, handle_level_irq);
 	}
 
 	if (flow_type & (IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_LEVEL_LOW)) {
