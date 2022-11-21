@@ -426,6 +426,31 @@ static void *thunderx_gpio_populate_parent_alloc_info(struct gpio_chip *chip,
 	return info;
 }
 
+static void thunderx_gpio_pinsel(struct device *dev,
+				 struct thunderx_gpio *txgpio)
+{
+	struct device_node *node;
+	const __be32 *pinsel;
+	int npins, rlen, i;
+	u32 pin, sel;
+
+	node = dev_of_node(dev);
+	if (!node)
+		return;
+
+	pinsel = of_get_property(node, "pin-cfg", &rlen);
+	if (!pinsel || rlen % 2)
+		return;
+	npins = rlen / sizeof(__be32) / 2;
+
+	for (i = 0; i < npins; i++) {
+		pin = of_read_number(pinsel++, 1);
+		sel = of_read_number(pinsel++, 1);
+		dev_info(dev, "Set GPIO pin %d CFG register to %x\n", pin, sel);
+		writeq(sel, txgpio->register_base + bit_cfg_reg(pin));
+	}
+}
+
 static int thunderx_gpio_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *id)
 {
@@ -565,6 +590,10 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 
 	dev_info(dev, "ThunderX GPIO: %d lines with base %d.\n",
 		 ngpio, chip->base);
+
+	/* Configure default functions of GPIO pins */
+	thunderx_gpio_pinsel(dev, txgpio);
+
 	return 0;
 out:
 	pci_set_drvdata(pdev, NULL);
