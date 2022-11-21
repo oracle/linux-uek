@@ -908,7 +908,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto free_cdev_priv;
 	}
-	bphy_reg_base = ioremap_nocache(res->start, resource_size(res));
+	bphy_reg_base = ioremap(res->start, resource_size(res));
 	if (IS_ERR(bphy_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap bphy registers\n");
 		err = PTR_ERR(bphy_reg_base);
@@ -921,7 +921,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto out_unmap_bphy_reg;
 	}
-	psm_reg_base = ioremap_nocache(res->start, resource_size(res));
+	psm_reg_base = ioremap(res->start, resource_size(res));
 	if (IS_ERR(psm_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap psm registers\n");
 		err = PTR_ERR(psm_reg_base);
@@ -934,7 +934,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto out_unmap_psm_reg;
 	}
-	rfoe_reg_base = ioremap_nocache(res->start, resource_size(res));
+	rfoe_reg_base = ioremap(res->start, resource_size(res));
 	if (IS_ERR(rfoe_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap rfoe registers\n");
 		err = PTR_ERR(rfoe_reg_base);
@@ -947,7 +947,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto out_unmap_rfoe_reg;
 	}
-	bcn_reg_base = ioremap_nocache(res->start, resource_size(res));
+	bcn_reg_base = ioremap(res->start, resource_size(res));
 	if (IS_ERR(bcn_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap bcn registers\n");
 		err = PTR_ERR(bcn_reg_base);
@@ -960,7 +960,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto out_unmap_bcn_reg;
 	}
-	ptp_reg_base = ioremap_nocache(res->start, resource_size(res));
+	ptp_reg_base = ioremap(res->start, resource_size(res));
 	if (IS_ERR(ptp_reg_base)) {
 		dev_err(&pdev->dev, "failed to ioremap ptp registers\n");
 		err = PTR_ERR(ptp_reg_base);
@@ -972,7 +972,7 @@ static int otx2_bphy_probe(struct platform_device *pdev)
 		cpri_reg_base = NULL;
 	} else {
 		dev_info(&pdev->dev, "cpri mem resource found\n");
-		cpri_reg_base = ioremap_nocache(res->start, resource_size(res));
+		cpri_reg_base = ioremap(res->start, resource_size(res));
 		if (IS_ERR(cpri_reg_base)) {
 			dev_err(&pdev->dev, "failed to ioremap cpri registers\n");
 			err = PTR_ERR(cpri_reg_base);
