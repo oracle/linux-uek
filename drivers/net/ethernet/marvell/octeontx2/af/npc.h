@@ -177,6 +177,9 @@ enum npc_pkind_type {
 
 enum npc_interface_type {
 	NPC_INTF_MODE_DEF,
+	NPC_INTF_MODE_EDSA,
+	NPC_INTF_MODE_HIGIG,
+	NPC_INTF_MODE_FDSA,
 };
 
 /* list of known and supported fields in packet header and
@@ -211,6 +214,7 @@ enum key_fields {
 	NPC_SPORT_SCTP,
 	NPC_DPORT_SCTP,
 	NPC_IPSEC_SPI,
+	NPC_FDSA_VAL,
 	NPC_MPLS1_LBTCBOS,
 	NPC_MPLS1_TTL,
 	NPC_MPLS2_LBTCBOS,
