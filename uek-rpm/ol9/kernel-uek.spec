@@ -694,7 +694,7 @@ Provides: %{variant_name}-modules-extra-%{_target_cpu} = %{version}-%{release}%{
 Provides: %{variant_name}-modules-extra = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(kernel-uek-modules)\
 Provides: %{variant_name}-modules-extra-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-extra\
