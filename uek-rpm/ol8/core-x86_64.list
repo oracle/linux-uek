@@ -114,6 +114,7 @@ kernel/drivers/gpu/drm/drm_vram_helper.ko
 kernel/drivers/gpu/drm/mgag200/mgag200.ko
 kernel/drivers/gpu/drm/tiny/bochs.ko
 kernel/drivers/gpu/drm/ttm/ttm.ko
+kernel/drivers/gpu/drm/vboxvideo/vboxvideo.ko
 kernel/drivers/gpu/drm/virtio/virtio-gpu.ko
 kernel/drivers/hwmon/coretemp.ko
 kernel/drivers/hwmon/i5500_temp.ko
@@ -278,6 +279,7 @@ kernel/drivers/video/fbdev/core/fb_sys_fops.ko
 kernel/drivers/video/fbdev/core/syscopyarea.ko
 kernel/drivers/video/fbdev/core/sysfillrect.ko
 kernel/drivers/video/fbdev/core/sysimgblt.ko
+kernel/drivers/virt/vboxguest/vboxguest.ko
 kernel/drivers/virtio/virtio_balloon.ko
 kernel/drivers/virtio/virtio_dma_buf.ko
 kernel/drivers/virtio/virtio_input.ko
@@ -325,6 +327,7 @@ kernel/fs/overlayfs/overlay.ko
 kernel/fs/smbfs_common/cifs_arc4.ko
 kernel/fs/smbfs_common/cifs_md4.ko
 kernel/fs/squashfs/squashfs.ko
+kernel/fs/vboxsf/vboxsf.ko
 kernel/fs/xfs/xfs.ko
 kernel/lib/crypto/libarc4.ko
 kernel/lib/crypto/libdes.ko
