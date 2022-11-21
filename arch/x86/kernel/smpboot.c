@@ -908,7 +908,7 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle)
 		 */
 		boot_error = -1;
 		timeout = jiffies + 10*HZ;
-		while (time_before(jiffies, timeout)) {
+		while (true) {
 			if (cpumask_test_cpu(cpu, cpu_initialized_mask)) {
 				/*
 				 * Tell AP to proceed with initialization
@@ -917,6 +917,10 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle)
 				boot_error = 0;
 				break;
 			}
+
+			if (time_after_eq(jiffies, timeout))
+				break;
+
 			udelay(100);
 			schedule();
 		}
