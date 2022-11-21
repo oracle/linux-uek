@@ -529,7 +529,7 @@ int cgx_get_pkind(void *cgxd, u8 lmac_id, int *pkind)
 {
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	*pkind = cgx_read(cgx, lmac_id, cgx->mac_ops->rxid_map_offset);
@@ -975,7 +975,7 @@ int cgx_lmac_enadis_pause_frm(void *cgxd, int lmac_id,
 {
 	struct cgx *cgx = cgxd;
 
-	if (!cgx || lmac_id >= cgx->lmac_count)
+	if (!is_lmac_valid(cgx, lmac_id))
 		return -ENODEV;
 
 	if (is_higig2_enabled(cgxd, lmac_id))
