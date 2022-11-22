@@ -24,6 +24,7 @@
 #define VERIFY_LOG_SIZE		1024
 
 #define MARLIN_CHECK_PREDEFINED_OBJ		(1<<0)
+#define MARLIN_SKIP_EBF_ERASE			(1<<11)
 #define MARLIN_SKIP_FAIL_CLONE_CHECK	(1<<12)
 #define MARLIN_FORCE_ASYNC				(1<<13)
 #define MARLIN_FORCE_CLONE				(1<<14)
@@ -66,6 +67,11 @@
  * Set this to skip failed images, instead of faili whole clone operation
  */
 #define SMC_VERSION_SKIP_FAIL_CHECK		BIT(9)
+
+/**
+ * Set this to skip failed images, instead of faili whole clone operation
+ */
+#define SMC_VERSION_ERASE_EBF_CONFIG	BIT(10)
 
 #define VERSION_MAGIC		0x4e535256	/** VRSN */
 #define VERSION_INFO_VERSION	0x0102	       /** 1.0.0.0 */
