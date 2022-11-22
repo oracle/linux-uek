@@ -2826,7 +2826,7 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 		}
 
 		regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
-		rvu_sso_deinit_xaq_aura(rvu, sso_pcifunc, pcifunc, regval, lf);
+		rvu_sso_deinit_xaq_aura(rvu, blkaddr, npa_blkaddr, regval, lf);
 	}
 
 	for (lf = 0; lf < sso_block->lf.max; lf++) {
