@@ -1358,6 +1358,8 @@ struct nix_inline_ipsec_cfg {
 		u8 cpt_slot;
 	} inst_qsel;
 	u8 enable;
+	u16 bpid;
+	u32 credit_th;
 };
 
 /* Per NIX LF inline IPSec configuration */
