@@ -50,20 +50,16 @@ static ssize_t fwlogs_read(struct file *file, char __user *buf, size_t count, lo
 		if (*ppos >= (fwlog_hdr->fwlog_end - fwlog_hdr->fwlog_base))
 			return 0;
 
-		rdlen = fwlog_hdr->fwlog_end - fwlog_hdr->fwlog_base - *ppos;
-		if (rdlen <= 0)
-			return 0;
-
 		/* adjust the bytes left to read */
-		if ((char *)(fwlog_hdr->fwlog_ptr + *ppos) == fwlog_hdr->fwlog_end)
-			rdbuf = fwlog_buf;
+		if (fwlog_hdr->fwlog_ptr + *ppos >= fwlog_hdr->fwlog_end)
+			rdbuf = fwlog_buf + fwlog_hdr->fwlog_ptr + *ppos - fwlog_hdr->fwlog_end;
 		else
 			rdbuf = (char *)(fwlog_buf +
 					(fwlog_hdr->fwlog_ptr - fwlog_hdr->fwlog_base) +
 					*ppos);
 
-		if ((u64)(*ppos + rdlen) > (fwlog_hdr->fwlog_end - fwlog_hdr->fwlog_base))
-			rdlen = fwlog_hdr->fwlog_end - (fwlog_hdr->fwlog_ptr + *ppos);
+		rdlen = fwlog_hdr->fwlog_end - fwlog_hdr->fwlog_base -
+				max(rdbuf - fwlog_buf, *ppos);
 	}
 
 	count = min_t(size_t, count, rdlen);
