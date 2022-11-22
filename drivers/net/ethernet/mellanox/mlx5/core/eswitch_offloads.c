@@ -2539,8 +2539,11 @@ static void __unload_reps_all_vport(struct mlx5_eswitch *esw, u8 rep_type)
 	struct mlx5_eswitch_rep *rep;
 	unsigned long i;
 
-	mlx5_esw_for_each_rep(esw, i, rep)
+	mlx5_esw_for_each_rep(esw, i, rep) {
+		down_write(&esw->mode_lock);
 		__esw_offloads_unload_rep(esw, rep, rep_type);
+		up_write(&esw->mode_lock);
+	}
 }
 
 static int mlx5_esw_offloads_rep_load(struct mlx5_eswitch *esw, u16 vport_num)
