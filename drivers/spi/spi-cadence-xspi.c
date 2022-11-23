@@ -194,6 +194,9 @@
 		((op)->data.dir == SPI_MEM_DATA_IN) ? \
 		CDNS_XSPI_STIG_CMD_DIR_READ : CDNS_XSPI_STIG_CMD_DIR_WRITE))
 
+#define CDNS_XSPI_POLL_TIMEOUT_US	1000
+#define CDNS_XSPI_POLL_DELAY_US	10
+
 enum cdns_xspi_stig_instr_type {
 	CDNS_XSPI_STIG_INSTR_TYPE_0,
 	CDNS_XSPI_STIG_INSTR_TYPE_1,
@@ -297,6 +300,9 @@ static void cdns_xspi_set_interrupts(struct cdns_xspi_dev *cdns_xspi,
 {
 	u32 intr_enable;
 
+	if (!cdns_xspi->irq)
+		return;
+
 	intr_enable = readl(cdns_xspi->iobase + CDNS_XSPI_INTR_ENABLE_REG);
 	if (enabled)
 		intr_enable |= CDNS_XSPI_INTR_MASK;
@@ -349,6 +355,28 @@ static void cdns_xspi_sdma_handle(struct cdns_xspi_dev *cdns_xspi)
 	}
 }
 
+bool cdns_xspi_stig_ready(struct cdns_xspi_dev *cdns_xspi)
+{
+	u32 ctrl_stat;
+
+	return readl_relaxed_poll_timeout
+		(cdns_xspi->iobase + CDNS_XSPI_CTRL_STATUS_REG,
+		ctrl_stat,
+		((ctrl_stat & BIT(3)) == 0),
+		CDNS_XSPI_POLL_DELAY_US, CDNS_XSPI_POLL_TIMEOUT_US);
+}
+
+bool cdns_xspi_sdma_ready(struct cdns_xspi_dev *cdns_xspi)
+{
+	u32 ctrl_stat;
+
+	return readl_relaxed_poll_timeout
+		(cdns_xspi->iobase + CDNS_XSPI_INTR_STATUS_REG,
+		ctrl_stat,
+		(ctrl_stat & CDNS_XSPI_SDMA_TRIGGER),
+		CDNS_XSPI_POLL_DELAY_US, CDNS_XSPI_POLL_TIMEOUT_US);
+}
+
 static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 				       const struct spi_mem_op *op,
 				       bool data_phase)
@@ -395,16 +423,26 @@ static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 
 		cdns_xspi_trigger_command(cdns_xspi, cmd_regs);
 
-		wait_for_completion(&cdns_xspi->sdma_complete);
-		if (cdns_xspi->sdma_error) {
-			cdns_xspi_set_interrupts(cdns_xspi, false);
-			return -EIO;
+		if (cdns_xspi->irq) {
+			wait_for_completion(&cdns_xspi->sdma_complete);
+			if (cdns_xspi->sdma_error) {
+				cdns_xspi_set_interrupts(cdns_xspi, false);
+				return -EIO;
+			}
+		} else {
+			if (cdns_xspi_sdma_ready(cdns_xspi))
+				return -EIO;
 		}
 		cdns_xspi_sdma_handle(cdns_xspi);
 	}
 
-	wait_for_completion(&cdns_xspi->cmd_complete);
-	cdns_xspi_set_interrupts(cdns_xspi, false);
+	if (cdns_xspi->irq) {
+		wait_for_completion(&cdns_xspi->cmd_complete);
+		cdns_xspi_set_interrupts(cdns_xspi, false);
+	} else {
+		if (cdns_xspi_stig_ready(cdns_xspi))
+			return -EIO;
+	}
 
 	cmd_status = cdns_xspi_check_command_status(cdns_xspi);
 	if (cmd_status)
@@ -590,13 +628,15 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 
 	cdns_xspi->irq = platform_get_irq(pdev, 0);
 	if (cdns_xspi->irq < 0)
-		return -ENXIO;
+		cdns_xspi->irq = 0;
 
-	ret = devm_request_irq(dev, cdns_xspi->irq, cdns_xspi_irq_handler,
-			       IRQF_SHARED, pdev->name, cdns_xspi);
-	if (ret) {
-		dev_err(dev, "Failed to request IRQ: %d\n", cdns_xspi->irq);
-		return ret;
+	if (cdns_xspi->irq) {
+		ret = devm_request_irq(dev, cdns_xspi->irq, cdns_xspi_irq_handler,
+				IRQF_SHARED, pdev->name, cdns_xspi);
+		if (ret) {
+			dev_err(dev, "Failed to request IRQ: %d\n", cdns_xspi->irq);
+			return ret;
+		}
 	}
 
 	cdns_xspi_print_phy_config(cdns_xspi);
