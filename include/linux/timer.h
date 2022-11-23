@@ -188,12 +188,21 @@ extern int timer_reduce(struct timer_list *timer, unsigned long expires);
 extern void add_timer(struct timer_list *timer);
 
 extern int try_to_del_timer_sync(struct timer_list *timer);
+extern int del_timer_sync(struct timer_list *timer);
 
-#if defined(CONFIG_SMP) || defined(CONFIG_PREEMPT_RT)
-  extern int del_timer_sync(struct timer_list *timer);
-#else
-# define del_timer_sync(t)		del_timer(t)
-#endif
+/**
+ * timer_delete_sync - wrapper function of del_timer_sync
+ * @timer: The timer to be deleted
+ * 
+ * del_timer_sync is kABI protected, but upstream renames it to
+ * timer_delete_sync. To avoid kABI issue and align with upstream,
+ * keep del_timer_sync, and use timer_delete_sync as a wrapper 
+ * function of del_timer_sync.
+ */
+static inline int timer_delete_sync(struct timer_list *timer)
+{
+	return del_timer_sync(timer);
+}
 
 #define del_singleshot_timer_sync(t) del_timer_sync(t)
 
