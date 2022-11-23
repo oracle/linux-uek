@@ -71,8 +71,11 @@
 #define CGX_GMP_GMI_RXX_FRM_CTL_CTL_BCK	BIT_ULL(3)
 #define CGX_GMP_GMI_RXX_FRM_CTL_PTP_MODE BIT_ULL(12)
 #define CGXX_SMUX_TX_CTL		0x20178
+#define CGXX_SMUX_TX_CTL_HIGIG_EN	BIT_ULL(8)
 #define CGXX_SMUX_TX_PAUSE_PKT_TIME	0x20110
 #define CGXX_SMUX_TX_PAUSE_PKT_INTERVAL	0x20120
+#define CGXX_SMUX_TX_PAUSE_PKT_HG2_INTRA_EN	BIT_ULL(32)
+#define HG2_INTRA_INTERVAL		GENMASK_ULL(31, 16)
 #define CGXX_SMUX_SMAC                        0x20108
 #define CGXX_SMUX_CBFC_CTL                    0x20218
 #define CGXX_SMUX_CBFC_CTL_RX_EN             BIT_ULL(0)
@@ -86,6 +89,9 @@
 #define CGXX_CMR_RX_OVR_BP		0x130
 #define CGX_CMR_RX_OVR_BP_EN(X)		BIT_ULL(((X) + 8))
 #define CGX_CMR_RX_OVR_BP_BP(X)		BIT_ULL(((X) + 4))
+#define CGXX_SMUX_HG2_CONTROL		0x20210
+#define CGXX_SMUX_HG2_CONTROL_TX_ENABLE		BIT_ULL(18)
+#define CGXX_SMUX_HG2_CONTROL_RX_ENABLE		BIT_ULL(17)
 
 #define CGX_COMMAND_REG			CGXX_SCRATCH1_REG
 #define CGX_EVENT_REG			CGXX_SCRATCH0_REG
@@ -157,10 +163,11 @@ int cgx_get_link_info(void *cgxd, int lmac_id,
 		      struct cgx_link_user_info *linfo);
 int cgx_lmac_linkup_start(void *cgxd);
 int cgx_get_fwdata_base(u64 *base);
-int cgx_lmac_get_pause_frm(void *cgxd, int lmac_id,
-			   u8 *tx_pause, u8 *rx_pause);
-int cgx_lmac_set_pause_frm(void *cgxd, int lmac_id,
-			   u8 tx_pause, u8 rx_pause);
+int cgx_lmac_get_pause_frm_status(void *cgxd, int lmac_id,
+				  u8 *tx_pause, u8 *rx_pause);
+int cgx_lmac_enadis_pause_frm(void *cgxd, int lmac_id,
+			      u8 tx_pause, u8 rx_pause);
+void cgx_lmac_pause_frm_config(void *cgxd, int lmac_id, bool enable);
 void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable);
 int cgx_set_link_state(void *cgxd, int lmac_id, bool enable);
 int cgx_set_phy_mod_type(int mod, void *cgxd, int lmac_id);
@@ -169,6 +176,8 @@ u8 cgx_lmac_get_p2x(int cgx_id, int lmac_id);
 int cgx_set_fec(u64 fec, int cgx_id, int lmac_id);
 int cgx_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp);
 int cgx_get_phy_fec_stats(void *cgxd, int lmac_id);
+void cgx_lmac_enadis_higig2(void *cgxd, int lmac_id, bool enable);
+bool is_higig2_enabled(void *cgxd, int lmac_id);
 int cgx_set_link_mode(void *cgxd, struct cgx_set_link_mode_args args,
 		      int cgx_id, int lmac_id);
 u64 cgx_features_get(void *cgxd);

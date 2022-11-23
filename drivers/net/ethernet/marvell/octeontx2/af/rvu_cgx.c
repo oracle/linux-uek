@@ -454,6 +454,36 @@ void rvu_cgx_enadis_rx_bp(struct rvu *rvu, int pf, bool enable)
 		mac_ops->mac_enadis_rx_pause_fwding(cgxd, lmac_id, false);
 }
 
+void rvu_cgx_enadis_higig2(struct rvu *rvu, int pf, bool enable)
+{
+	u8 cgx_id, lmac_id;
+	void *cgxd;
+
+	if (!is_pf_cgxmapped(rvu, pf))
+		return;
+
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+	cgxd = rvu_cgx_pdata(cgx_id, rvu);
+	cgx_lmac_enadis_higig2(cgxd, lmac_id, enable);
+}
+
+bool rvu_cgx_is_higig2_enabled(struct rvu *rvu, int pf)
+{
+	u8 cgx_id, lmac_id;
+	void *cgxd;
+
+	if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_HIGIG2))
+		return 0;
+
+	if (!is_pf_cgxmapped(rvu, pf))
+		return false;
+
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+	cgxd = rvu_cgx_pdata(cgx_id, rvu);
+
+	return is_higig2_enabled(cgxd, lmac_id);
+}
+
 int rvu_cgx_config_rxtx(struct rvu *rvu, u16 pcifunc, bool start)
 {
 	int pf = rvu_get_pf(pcifunc);
@@ -837,8 +867,14 @@ static int rvu_cgx_ptp_rx_cfg(struct rvu *rvu, u16 pcifunc, bool enable)
 int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
 				       struct msg_rsp *rsp)
 {
-	if (!is_pf_cgxmapped(rvu, rvu_get_pf(req->hdr.pcifunc)))
+	int pf = rvu_get_pf(req->hdr.pcifunc);
+
+	if (!is_pf_cgxmapped(rvu, pf))
 		return -EPERM;
+
+	/* Silicon does not support enabling time stamp in higig mode */
+	if (rvu_cgx_is_higig2_enabled(rvu, pf))
+		return NIX_AF_ERR_PTP_CONFIG_FAIL;
 
 	return rvu_cgx_ptp_rx_cfg(rvu, req->hdr.pcifunc, true);
 }
