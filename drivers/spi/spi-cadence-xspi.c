@@ -264,7 +264,7 @@ struct dentry *mrvl_spi_debug_root;
 
 #define SPI_NOT_CLAIMED				0x00
 #define SPI_AP_NS_OWN				0x02
-#define CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1	0x208c
+#define CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1	0x8c
 #define SPI_LOCK_TIMEOUT			100
 #define	SPI_LOCK_CHECK_TIMEOUT			10
 #define SPI_LOCK_SLEEP_DURATION_MS		10
@@ -339,13 +339,13 @@ const int cdns_xspi_clk_div_list[] = {
 
 static int unlock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
 {
-	if (readl(cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1) == SPI_AP_NS_OWN) {
+	if (readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1) == SPI_AP_NS_OWN) {
 		writel(SPI_NOT_CLAIMED,
-		       cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
+		       cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
 		return 0;
 	}
 	pr_err("Trying to unlock NOT locked bus: %d!\n",
-		readl(cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1));
+		readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1));
 
 	return -1;
 }
@@ -356,10 +356,10 @@ static int lock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
 	int timeout = SPI_LOCK_TIMEOUT; //10 second timeout
 
 	while (timeout-- >= 0) {
-		val = readl(cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
+		val = readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
 		if (val == SPI_NOT_CLAIMED || val == SPI_AP_NS_OWN) {
 			writel(SPI_AP_NS_OWN,
-			       cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
+			       cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
 			break;
 		}
 		mdelay(SPI_LOCK_SLEEP_DURATION_MS);
@@ -370,7 +370,7 @@ static int lock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
 
 	timeout = SPI_LOCK_CHECK_TIMEOUT;
 	while (timeout-- >= 0) {
-		if (readl(cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1) !=
+		if (readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1) !=
 			  SPI_AP_NS_OWN)
 			break;
 	}
@@ -382,7 +382,7 @@ static int lock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
 
 fail:
 	pr_err("Flash arbitration failed, lock is owned by: %d\n",
-		readl(cdns_xspi->iobase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1));
+		readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1));
 	return -1;
 }
 
