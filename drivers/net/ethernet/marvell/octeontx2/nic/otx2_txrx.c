@@ -1066,7 +1066,6 @@ static void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
 	struct ethhdr	*eth = (struct ethhdr *)(skb->data);
 	struct ptpv2_tstamp *origin_tstamp;
 	int ptp_offset = 0, udp_csum = 0;
-	struct udphdr *uh = udp_hdr(skb);
 	unsigned int udphoff;
 	struct timespec64 ts;
 	__wsum skb_csum;
@@ -1090,21 +1089,27 @@ static void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
 			 * but it does not cover ptp timestamp which is added later.
 			 * Recalculate the checksum manually considering the timestamp.
 			 */
-			if (skb->ip_summed != CHECKSUM_PARTIAL && uh->check != 0) {
-				udphoff = skb_transport_offset(skb);
-				uh->check = 0;
-				skb_csum = skb_checksum(skb, udphoff, skb->len - udphoff, 0);
-				if (eth->h_proto == ntohs(ETH_P_IPV6))
-					uh->check = csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
-								    &ipv6_hdr(skb)->daddr,
-								    skb->len - udphoff,
-								    ipv6_hdr(skb)->nexthdr,
-								    skb_csum);
-				else
-					uh->check = csum_tcpudp_magic(ip_hdr(skb)->saddr,
-								      ip_hdr(skb)->daddr,
-								      skb->len - udphoff,
-								      IPPROTO_UDP, skb_csum);
+			if (udp_csum) {
+				struct udphdr *uh = udp_hdr(skb);
+
+				if (skb->ip_summed != CHECKSUM_PARTIAL && uh->check != 0) {
+					udphoff = skb_transport_offset(skb);
+					uh->check = 0;
+					skb_csum = skb_checksum(skb, udphoff, skb->len - udphoff,
+								0);
+					if (eth->h_proto == ntohs(ETH_P_IPV6))
+						uh->check = csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
+									    &ipv6_hdr(skb)->daddr,
+									    skb->len - udphoff,
+									    ipv6_hdr(skb)->nexthdr,
+									    skb_csum);
+					else
+						uh->check = csum_tcpudp_magic(ip_hdr(skb)->saddr,
+									      ip_hdr(skb)->daddr,
+									      skb->len - udphoff,
+									      IPPROTO_UDP,
+									      skb_csum);
+				}
 			}
 		} else {
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
