@@ -325,7 +325,9 @@ struct nix_bp {
 	u16 cgx_bpid_cnt;
 	u16 sdp_bpid_cnt;
 	u16 free_pool_base;
-	u16  *fn_map; /* pcifunc mapping */
+	u16 *fn_map; /* pcifunc mapping */
+	u8 *intf_map;  /* interface type map */
+	u8 *ref_cnt;
 };
 
 struct nix_txsch {
@@ -1002,6 +1004,7 @@ u32 convert_dwrr_mtu_to_bytes(u8 dwrr_mtu);
 u32 convert_bytes_to_dwrr_mtu(u32 bytes);
 void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr, u16 pcifunc,
 			struct nix_txsch *txsch, bool enable);
+void rvu_nix_flr_free_bpids(struct rvu *rvu, u16 pcifunc);
 
 /* NPC APIs */
 void rvu_npc_freemem(struct rvu *rvu);
