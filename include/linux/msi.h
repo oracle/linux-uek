@@ -126,6 +126,38 @@ struct pci_msi_desc {
 	};
 };
 
+/**
+ * union msi_domain_cookie - Opaque MSI domain specific data
+ * @value:	u64 value store
+ * @ptr:	Pointer to domain specific data
+ * @iobase:	Domain specific IOmem pointer
+ *
+ * The content of this data is implementation defined and used by the MSI
+ * domain to store domain specific information which is requried for
+ * interrupt chip callbacks.
+ */
+union msi_domain_cookie {
+	u64	value;
+	void	*ptr;
+	void	__iomem *iobase;
+};
+
+/**
+ * struct msi_desc_data - Generic MSI descriptor data
+ * @dcookie:	Cookie for MSI domain specific data which is required
+ *		for irq_chip callbacks
+ * @icookie:	Cookie for the MSI interrupt instance provided by
+ *		the usage site to the allocation function
+ *
+ * The content of this data is implementation defined, e.g. PCI/IMS
+ * implementations define the meaning of the data. The MSI core ignores
+ * this data completely.
+ */
+struct msi_desc_data {
+	union msi_domain_cookie		dcookie;
+	union msi_instance_cookie	icookie;
+};
+
 #define MSI_MAX_INDEX		((unsigned int)USHRT_MAX)
 
 /**
@@ -168,6 +200,7 @@ struct ti_sci_inta_msi_desc {
  *
  * @msi_index:	Index of the msi descriptor
  * @pci:	PCI specific msi descriptor data
+ * @data:	Generic MSI descriptor data
  */
 struct msi_desc {
 	/* Shared device/bus type independent data */
@@ -186,7 +219,6 @@ struct msi_desc {
 	void *write_msi_msg_data;
 
 	union {
-	UEK_KABI_REPLACE(
 		struct {
 			union {
 				u32 msi_mask;
@@ -206,12 +238,17 @@ struct msi_desc {
 				u8	mask_pos;
 				void __iomem *mask_base;
 			};
-		}, struct pci_msi_desc		pci)
+		};
 
 		struct platform_msi_desc        platform;
 		struct fsl_mc_msi_desc		fsl_mc;
 		struct ti_sci_inta_msi_desc	inta;
 	};
+
+	UEK_KABI_EXTEND(union {
+		struct pci_msi_desc	pci;
+		struct msi_desc_data	data;
+	})
 
 #ifdef CONFIG_SYSFS
 	 UEK_KABI_EXTEND(struct device_attribute *sysfs_attrs)
