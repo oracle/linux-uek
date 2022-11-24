@@ -67,18 +67,8 @@ u32 rds_frwr_ibmr_gc_time = 1000;
 
 /* Default funky FRWR ibmr quarantine time to give to device, in msec. */
 u32 rds_frwr_ibmr_qrtn_time = 300000;
-/*
- * This sysctl does nothing.
- *
- * Backwards compatibility with RDS 3.0 wire protocol
- * disables initial FC credit exchange.
- * If it's ever possible to drop 3.0 support,
- * setting this to 1 and moving init/refill of send/recv
- * rings from ib_cm_connect_complete() back into ib_setup_qp()
- * will cause credits to be added before protocol negotiation.
- */
 
-unsigned int rds_ib_sysctl_flow_control = 0;
+unsigned int rds_ib_sysctl_flow_control = 1;
 unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu; /* = 0 */
 
 /* Min/max from IBTA spec C9-140 */
