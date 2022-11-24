@@ -1185,11 +1185,14 @@ static int cnf10k_rfoe_eth_open(struct net_device *netdev)
 
 	priv->ptp_tx_skb = NULL;
 
-	netif_carrier_on(netdev);
-	netif_start_queue(netdev);
-
+	spin_lock(&priv->lock);
 	clear_bit(RFOE_INTF_DOWN, &priv->state);
-	priv->link_state = 1;
+
+	if (priv->link_state == LINK_STATE_UP) {
+		netif_carrier_on(netdev);
+		netif_start_queue(netdev);
+	}
+	spin_unlock(&priv->lock);
 
 	return 0;
 }
@@ -1201,11 +1204,12 @@ static int cnf10k_rfoe_eth_stop(struct net_device *netdev)
 	struct ptp_tstamp_skb *ts_skb, *ts_skb2;
 	int idx;
 
+	spin_lock(&priv->lock);
 	set_bit(RFOE_INTF_DOWN, &priv->state);
 
 	netif_stop_queue(netdev);
 	netif_carrier_off(netdev);
-	priv->link_state = 0;
+	spin_unlock(&priv->lock);
 
 	for (idx = 0; idx < PACKET_TYPE_MAX; idx++) {
 		if (!(priv->pkt_type_mask & (1U << idx)))
@@ -1626,7 +1630,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			netif_carrier_off(netdev);
 			netif_stop_queue(netdev);
 			set_bit(RFOE_INTF_DOWN, &priv->state);
-			priv->link_state = 0;
+			priv->link_state = LINK_STATE_UP;
 
 			/* initialize global ctx */
 			drv_ctx = &cnf10k_rfoe_drv_ctx[intf_idx];
