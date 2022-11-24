@@ -133,6 +133,9 @@ struct irq_domain_chip_generic;
  * @gc:		Pointer to a list of generic chips. There is a helper function for
  *		setting up one or more generic chips for interrupt controllers
  *		drivers using the generic chip library which uses this pointer.
+ * @dev:	Pointer to the device which instantiated the irqdomain
+ *		With per device irq domains this is not necessarily the same
+ *		as @pm_dev.
  * @pm_dev:	Pointer to a device that can be utilized for power management
  *		purposes related to the irq domain.
  * @parent:	Pointer to parent irq_domain to support hierarchy irq_domains
@@ -162,7 +165,7 @@ struct irq_domain {
 
 	UEK_KABI_USE(1, struct device *pm_dev)
 	UEK_KABI_USE(2, const struct msi_parent_ops     *msi_parent_ops)
-	UEK_KABI_RESERVE(3)
+	UEK_KABI_USE(3, struct device *dev)
 	UEK_KABI_RESERVE(4)
 
 	/* reverse map data. The linear map gets appended to the irq_domain */
