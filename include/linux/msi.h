@@ -74,7 +74,6 @@ struct msi_msg {
 
 extern int pci_msi_ignore_mask;
 /* Helper functions */
-struct irq_data;
 struct msi_desc;
 struct pci_dev;
 struct platform_msi_priv_data;
@@ -496,6 +495,23 @@ struct msi_domain_info {
 	const char			*handler_name;
 	void				*data;
 };
+
+#ifndef __GENKSYMS__
+#include <linux/irq.h>
+/**
+ * struct msi_domain_template - Template for MSI device domains
+ * @name:	Storage for the resulting name. Filled in by the core.
+ * @chip:	Interrupt chip for this domain
+ * @ops:	MSI domain ops
+ * @info:	MSI domain info data
+ */
+struct msi_domain_template {
+	char			name[48];
+	struct irq_chip		chip;
+	struct msi_domain_ops	ops;
+	struct msi_domain_info	info;
+};
+#endif
 
 /*
  * Flags for msi_domain_info
