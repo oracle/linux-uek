@@ -3981,6 +3981,7 @@ retry:
 		else
 			BUG_ON(ret < 0);
 	}
+	return ret;
 }
 
 /**
