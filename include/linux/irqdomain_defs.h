@@ -24,6 +24,7 @@ enum irq_domain_bus_token {
 #ifndef __GENKSYMS__
 	DOMAIN_BUS_PCI_DEVICE_MSI,
 	DOMAIN_BUS_PCI_DEVICE_MSIX,
+	DOMAIN_BUS_DMAR,
 #endif
 };
 
