@@ -600,6 +600,10 @@ void kvm_set_cpu_caps(void)
 		F(AVX_IFMA)
 	);
 
+	kvm_cpu_cap_init_kvm_defined(CPUID_7_1_EDX,
+		F(AVX_VNNI_INT8)
+	);
+
 	kvm_cpu_cap_init_kvm_defined(CPUID_7_2_EDX,
 		F(INTEL_PSFD) | F(IPRED_CTRL) | F(RRSBA_CTRL) | F(DDPD_U) |
 		F(BHI_CTRL) | F(MCDT_NO)
@@ -860,9 +864,9 @@ static inline int __do_cpuid_func(struct kvm_cpuid_array *array, u32 function)
 				goto out;
 
 			cpuid_entry_override(entry, CPUID_7_1_EAX);
+			cpuid_entry_override(entry, CPUID_7_1_EDX);
 			entry->ebx = 0;
 			entry->ecx = 0;
-			entry->edx = 0;
 		}
 		if (max_idx >= 2) {
 			entry = do_host_cpuid(array, function, 2);
