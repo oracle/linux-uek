@@ -866,6 +866,8 @@ int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
 	/* This flag is required to clean up CGX conf if app gets killed */
 	pfvf->hw_rx_tstamp_en = true;
 
+	/* Inform MCS about 8B RX header */
+	rvu_mcs_ptp_cfg(rvu, cgx_id, lmac_id, true);
 	return 0;
 }
 
@@ -899,6 +901,7 @@ int rvu_mbox_handler_cgx_ptp_rx_disable(struct rvu *rvu, struct msg_req *req,
 
 	pfvf->hw_rx_tstamp_en = false;
 
+	rvu_mcs_ptp_cfg(rvu, cgx_id, lmac_id, false);
 	return 0;
 }
 
