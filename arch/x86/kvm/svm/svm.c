@@ -3613,7 +3613,6 @@ bool svm_nmi_blocked(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 	struct vmcb *vmcb = svm->vmcb;
-	bool ret;
 
 	if (!gif_set(svm))
 		return true;
@@ -3621,10 +3620,8 @@ bool svm_nmi_blocked(struct kvm_vcpu *vcpu)
 	if (is_guest_mode(vcpu) && nested_exit_on_nmi(svm))
 		return false;
 
-	ret = (vmcb->control.int_state & SVM_INTERRUPT_SHADOW_MASK) ||
-	      (vcpu->arch.hflags & HF_NMI_MASK);
-
-	return ret;
+	return (vmcb->control.int_state & SVM_INTERRUPT_SHADOW_MASK) ||
+	       (vcpu->arch.hflags & HF_NMI_MASK);
 }
 
 static int svm_nmi_allowed(struct kvm_vcpu *vcpu, bool for_injection)
