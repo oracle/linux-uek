@@ -266,7 +266,7 @@ void __ref check_bugs(void)
 	 * have unknown values. AMD64_LS_CFG MSR is cached in the early AMD
 	 * init code as it is not enumerated and depends on the family.
 	 */
-	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
+	if (cpu_feature_enabled(X86_FEATURE_MSR_SPEC_CTRL)) {
 		pr_info_once("FEATURE SPEC_CTRL Present%s\n",
 			     xen_pv_domain() ? " but ignored (Xen)" : "");
 		if (!xen_pv_domain()) {
@@ -279,11 +279,14 @@ void __ref check_bugs(void)
 		}
 
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
-		if (x86_spec_ctrl_base & (SPEC_CTRL_IBRS | SPEC_CTRL_SSBD)) {
-			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS and/or "
-				"SSBD set during boot, clearing it.", x86_spec_ctrl_base);
-			x86_spec_ctrl_base &= ~(SPEC_CTRL_IBRS | SPEC_CTRL_SSBD);
-		}
+
+		/*
+		 * Previously running kernel (kexec), may have some controls
+		 * turned ON. Clear them and let the mitigations setup below
+		 * rediscover them based on configuration.
+		 */
+		x86_spec_ctrl_base &= ~SPEC_CTRL_MITIGATIONS_MASK;
+
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 		update_cpu_spec_ctrl_all();
 	} else {
