@@ -1334,7 +1334,7 @@ static int sdhci_cdns_sd6_set_tune_val(struct sdhci_host *host,
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 
 	phy->settings.hs200_tune_val = val;
-	phy->settings.cp_read_dqs_cmd_delay = val;
+	phy->settings.cp_read_dqs_cmd_delay = read_dqs_cmd_delay;
 	phy->settings.cp_read_dqs_delay = val;
 
 	return sdhci_cdns_sd6_phy_init(priv);
