@@ -264,6 +264,7 @@
 #define NIX_AF_RX_LINKX_CFG(a)		(0x0540 | (a) << 16)
 #define NIX_AF_RX_SW_SYNC		(0x0550)
 #define NIX_AF_RX_SW_SYNC_DONE		(0x0560)
+#define NIX_AF_RQM_ECO			(0x05A0)
 #define NIX_AF_SEB_ECO			(0x0600)
 #define NIX_AF_SEB_TEST_BP		(0x0610)
 #define NIX_AF_NORM_TX_FIFO_STATUS	(0x0620)

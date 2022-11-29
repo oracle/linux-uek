@@ -545,7 +545,7 @@ void rvu_program_channels(struct rvu *rvu)
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)
 {
 	int blkaddr = nix_hw->blkaddr;
-	u64 cfg;
+	u64 cfg, val;
 
 	/* Set AF vWQE timer interval to a LF configurable range of
 	 * 6.4us to 1.632ms.
@@ -558,6 +558,16 @@ void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)
 	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CFG);
 	cfg |= BIT_ULL(1) | BIT_ULL(2);
 	rvu_write64(rvu, blkaddr, NIX_AF_CFG, cfg);
+
+	/* Enable zero CPT aura in RQM if per-LF programmable
+	 * config doesn't exist. RQM method doesn't exist on A0.
+	 */
+	val = rvu_read64(rvu, blkaddr, NIX_AF_CONST);
+	if (!(val & BIT_ULL(62)) && is_cn10ka_a1(rvu)) {
+		cfg = rvu_read64(rvu, blkaddr, NIX_AF_RQM_ECO);
+		cfg |= BIT_ULL(63);
+		rvu_write64(rvu, blkaddr, NIX_AF_RQM_ECO, cfg);
+	}
 }
 
 void rvu_apr_block_cn10k_init(struct rvu *rvu)
