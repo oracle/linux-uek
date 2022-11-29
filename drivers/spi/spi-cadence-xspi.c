@@ -317,6 +317,7 @@ struct cdns_xspi_dev {
 	bool revision_supported;
 #endif
 	enum cdns_xspi_sdma_size read_size;
+	int current_clock;
 };
 
 const int cdns_xspi_clk_div_list[] = {
@@ -837,6 +838,9 @@ static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 		goto fail;
 	}
 
+	//Make sure xSPI is working with correct speed
+	cdns_xspi_setup_clock(cdns_xspi, cdns_xspi->current_clock);
+
 	writel(FIELD_PREP(CDNS_XSPI_CTRL_WORK_MODE, CDNS_XSPI_WORK_MODE_STIG),
 	       cdns_xspi->iobase + CDNS_XSPI_CTRL_CONFIG_REG);
 
@@ -1078,7 +1082,8 @@ static int cdns_xspi_setup(struct spi_device *spi_dev)
 {
 	struct cdns_xspi_dev *cdns_xspi = spi_master_get_devdata(spi_dev->master);
 
-	cdns_xspi_setup_clock(cdns_xspi, spi_dev->max_speed_hz);
+	cdns_xspi->current_clock = spi_dev->max_speed_hz;
+	cdns_xspi_setup_clock(cdns_xspi, cdns_xspi->current_clock);
 
 	return 0;
 }
@@ -1419,7 +1424,8 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 		}
 	}
 
-	cdns_xspi_setup_clock(cdns_xspi, 25000000);
+	cdns_xspi->current_clock = 25000000;
+	cdns_xspi_setup_clock(cdns_xspi, cdns_xspi->current_clock);
 	cdns_xspi_configure_phy(cdns_xspi);
 
 	cdns_xspi_print_phy_config(cdns_xspi);
