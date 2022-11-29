@@ -3978,8 +3978,6 @@ retry:
 		ret = -EUCLEAN;
 		if(epd.bio)
 			bio_endio(epd.bio,ret);
-		else
-			BUG_ON(ret < 0);
 	}
 	return ret;
 }
