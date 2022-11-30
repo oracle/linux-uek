@@ -175,14 +175,21 @@ EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_priv_cpu);
 DEFINE_PER_CPU(u64, x86_spec_ctrl_restore) = 0;
 EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
 
- /*
+/* Update SPEC_CTRL MSR and its cached copy unconditionally */
+static void update_spec_ctrl(u64 val)
+{
+	this_cpu_write(x86_spec_ctrl_priv_cpu, val);
+	wrmsrl(MSR_IA32_SPEC_CTRL, val);
+}
+
+/*
  * Keep track of the SPEC_CTRL MSR value for the current task, which may differ
  * from x86_spec_ctrl_base due to STIBP/SSB in __speculation_ctrl_update().
  *
  * This shares some functionality (eliding MSR writes) with x86_spec_ctrl_set()
  * so any changes should take that into account.
  */
-void write_spec_ctrl_current(u64 val, bool force)
+void update_spec_ctrl_cond(u64 val)
 {
 	if (this_cpu_read(x86_spec_ctrl_priv_cpu) == val)
 		return;
@@ -193,7 +200,7 @@ void write_spec_ctrl_current(u64 val, bool force)
 	 * With basic IBRS this MSR is written on return-to-user, unless
 	 * forced the update can be delayed until that time.
 	 */
-	if (force || !check_basic_ibrs_inuse())
+	if (!check_basic_ibrs_inuse())
 		wrmsrl(MSR_IA32_SPEC_CTRL, val);
 }
 
@@ -399,7 +406,7 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		 * Note that SPEC_CTRL_INITIAL is only called when we
 		 * know the MSR exists.
 		 */
-		write_spec_ctrl_current(host, true);
+		update_spec_ctrl(host);
 		return;
 	case SPEC_CTRL_IDLE_ENTER:
 		/*
@@ -1763,7 +1770,7 @@ static void spec_ctrl_disable_kernel_rrsba(void)
 
 	if (ia32_cap & ARCH_CAP_RRSBA) {
 		x86_spec_ctrl_base |= SPEC_CTRL_RRSBA_DIS_S;
-		write_spec_ctrl_current(x86_spec_ctrl_base, true);
+		update_spec_ctrl(x86_spec_ctrl_base);
 	}
 }
 
@@ -2162,7 +2169,7 @@ static void spectre_v2_select_mitigation(void)
 static void update_stibp_msr(void * __unused)
 {
 	u64 val = spec_ctrl_current() | (x86_spec_ctrl_base & SPEC_CTRL_STIBP);
-	write_spec_ctrl_current(val, true);
+	update_spec_ctrl(val);
 }
 
 /* Update x86_spec_ctrl_base in case SMT state changed. */
