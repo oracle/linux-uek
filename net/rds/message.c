@@ -329,12 +329,12 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
 		to_copy = min_t(unsigned long, iov_iter_count(from),
 				sg->length - sg_off);
 
-		rds_stats_add(s_copy_from_user, to_copy);
 		nbytes = copy_page_from_iter(sg_page(sg), sg->offset + sg_off,
 					     to_copy, from);
 		if (nbytes != to_copy)
 			return -EFAULT;
 
+		rds_stats_add(s_copy_from_user, to_copy);
 		sg_off += to_copy;
 
 		if (sg_off == sg->length)
@@ -368,12 +368,12 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 				sg->length - vec_off);
 		to_copy = min_t(unsigned long, to_copy, len - copied);
 
-		rds_stats_add(s_copy_to_user, to_copy);
 		ret = copy_page_to_iter(sg_page(sg), sg->offset + vec_off,
 					to_copy, to);
 		if (ret != to_copy)
 			return -EFAULT;
 
+		rds_stats_add(s_copy_to_user, to_copy);
 		atomic64_add(to_copy, &conn->c_recv_bytes);
 		vec_off += to_copy;
 		copied += to_copy;
