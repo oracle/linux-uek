@@ -774,7 +774,6 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		to_copy = min_t(unsigned long, to_copy, len - copied);
 
 		/* XXX needs + offset for multiple recvs per page */
-		rds_stats_add(s_copy_to_user, to_copy);
 		ret = copy_page_to_iter(sg_page(sg),
 					sg->offset + frag_off,
 					to_copy,
@@ -782,6 +781,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		if (ret != to_copy)
 			return -EFAULT;
 
+		rds_stats_add(s_copy_to_user, to_copy);
 		atomic64_add(to_copy, &conn->c_recv_bytes);
 		frag_off += to_copy;
 		copied += to_copy;
