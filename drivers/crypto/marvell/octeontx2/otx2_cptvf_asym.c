@@ -250,7 +250,7 @@ static int cpt_rsa_enc(struct akcipher_request *req, bool private)
 
 	pr_debug("%s: req->src_len: %u req->dst_len: %u\n", __func__, req->src_len, req->dst_len);
 	/* HW expects src length to be less than modulus length - 11. */
-	if (req->src_len > (ctx->key_sz - 11))
+	if (ctx->rsa.pkcs1 && (req->src_len > (ctx->key_sz - 11)))
 		return -EINVAL;
 
 	if (req->dst_len < ctx->key_sz) {
@@ -947,6 +947,7 @@ static int cpt_ecdh_compute_value(struct kpp_request *req)
 		req->dst_len = ctx->ecdh.curve_sz << 1;
 		return -EINVAL;
 	}
+	memset(req_info, 0, sizeof(*req_info));
 	rctx->ctx = ctx;
 	if (req->src) {
 		ret = cpt_ecdh_update_input(rctx, req->src, req->src_len);
