@@ -28,9 +28,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 
 %define distro_build 0
 
-# Sign modules on x86.  Make sure the config files match this setting if more
+# Sign modules on x86 and aarch64.  Make sure the config files match this setting if more
 # architectures are added.
-%ifarch x86_64
+%ifarch x86_64 aarch64
 %global signkernel 1
 %else
 %global signkernel 0
@@ -467,6 +467,7 @@ Source20: x86_energy_perf_policy
 Source21: securebootca.cer
 Source22: secureboot.cer
 Source23: turbostat
+Source24: secureboot_aarch64.cer
 Source43: generate_bls_conf.sh
 Source44: core-x86_64.list
 Source45: core-aarch64.list
@@ -492,6 +493,14 @@ Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
 Source202: kabi_lockedlist_aarch64debug
 Source203: kabi_lockedlist_aarch64
+
+%ifarch x86_64
+%define sb_cer %{SOURCE22}
+%endif
+
+%ifarch aarch64
+%define sb_cer %{SOURCE24}
+%endif
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
@@ -1105,7 +1114,7 @@ BuildKernel() {
     fi
 %if %{signkernel}
     # Sign the image if we're using EFI
-    %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot
+    %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{sb_cer} -n oraclesecureboot
     mv $KernelImage.signed $KernelImage
 %endif
     $CopyKernel $KernelImage \
@@ -1444,7 +1453,7 @@ BuildKernel() {
 
     # UEFI Secure Boot cert, which can verify kernel signature
     mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
-    install -m 0644 %{SOURCE22} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
+    install -m 0644 %{sb_cer} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
 }
 
 ###
