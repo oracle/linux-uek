@@ -1278,8 +1278,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	if (conn->c_trans->conn_path_reset) {
 		unsigned flags = RDS_CONN_PATH_RESET_WATCHDOG;
 
-		if (reason == DR_IB_ADDR_CHANGE || reason == DR_IB_PEER_ADDR_CHANGE ||
-		    reason == DR_IB_DISCONNECTED_EVENT)
+		if (reason == DR_IB_ADDR_CHANGE || reason == DR_IB_PEER_ADDR_CHANGE)
 			flags |= RDS_CONN_PATH_RESET_ALT_CONN;
 
 		conn->c_trans->conn_path_reset(cp, flags);
