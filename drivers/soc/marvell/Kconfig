@@ -1,0 +1,21 @@
+#
+# MARVELL SoC drivers
+#
+
+menu "Marvell SoC drivers"
+
+config MARVELL_FWLOG
+	tristate "firmware log interface"
+	depends on ARM64
+	help
+	  Provides interface to read firmware boot logs. Firmware bootlogs are saved
+	  in memory that is accessible from kernel. Enabling this option allows the
+	  user to dump the firmware boot logs.
+
+	  Firmware needs to build with `RECORD_FWLOG=1` to see the boot logs and
+	  U-boot config `CONFIG_FWLOG_TTYMEM` is also required to have this feature
+	  validated from linux.
+
+	  Say Y here if you want to dump the firmware boot logs from linux shell. This
+	  option is available only for Octeon10 and OcteonTX2 platforms.
+endmenu
