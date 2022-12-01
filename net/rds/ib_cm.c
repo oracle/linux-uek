@@ -1341,8 +1341,10 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				    ic->i_send_ring.w_nr,
 				    NMBR_SEND_HDR_PAGES,
 				    DMA_TO_DEVICE);
-	if (ret)
+	if (ret) {
+		reason = "alloc and map send hdrs failed";
 		goto recvs_out;
+	}
 
 	ret = rds_ib_alloc_map_hdrs(dev,
 				    &ic->i_recv_hdrs,
@@ -1352,19 +1354,31 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				    ic->i_recv_ring.w_nr,
 				    NMBR_RECV_HDR_PAGES,
 				    DMA_FROM_DEVICE);
-	if (ret)
+	if (ret) {
+		reason = "alloc and map recv hdrs failed";
 		goto send_hdrs_out;
+	}
 
 	/* Everything is set up, add the conn now so that connection
 	 * establishment has the dev.
 	 */
 	ret = rds_ib_add_conn(rds_ibdev, conn);
-	if (ret)
+	if (ret) {
 		reason = "ib_add_conn failed";
+		goto recv_hdrs_out;
+	}
 
 	rdsdebug("conn %p pd %p mr %p cq %p\n", conn, ic->i_pd, ic->i_mr, ic->i_rcq);
 
 	goto out;
+
+recv_hdrs_out:
+	rds_ib_free_unmap_hdrs(dev,
+			       &ic->i_recv_hdrs,
+			       &ic->i_recv_hdrs_dma,
+			       &ic->i_recv_hdrs_sg,
+			       NMBR_RECV_HDR_PAGES,
+			       DMA_FROM_DEVICE);
 
 send_hdrs_out:
 	rds_ib_free_unmap_hdrs(dev,
