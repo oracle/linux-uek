@@ -1088,7 +1088,7 @@ struct xfrmdev_ops {
 	UEK_KABI_USE(1, int	(*xdo_dev_policy_add) (struct xfrm_policy *x))
 	UEK_KABI_USE(2, void	(*xdo_dev_policy_delete) (struct xfrm_policy *x))
 	UEK_KABI_USE(3, void	(*xdo_dev_policy_free) (struct xfrm_policy *x))
-	UEK_KABI_RESERVE(4)
+	UEK_KABI_USE(4, void	(*xdo_dev_state_update_curlft) (struct xfrm_state *x))
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
