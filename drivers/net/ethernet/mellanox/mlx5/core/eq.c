@@ -22,6 +22,7 @@
 #include "oracle_ext.h"
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 #include "devlink.h"
+#include "en_accel/ipsec.h"
 
 enum {
 	MLX5_EQE_OWNER_INIT_VAL	= 0x1,
@@ -586,6 +587,10 @@ static void gather_async_events_mask(struct mlx5_core_dev *dev, u64 mask[4])
 
 	if (MLX5_CAP_MACSEC(dev, log_max_macsec_offload))
 		async_event_mask |= (1ull << MLX5_EVENT_TYPE_OBJECT_CHANGE);
+
+	if (mlx5_ipsec_device_caps(dev) & MLX5_IPSEC_CAP_PACKET_OFFLOAD)
+		async_event_mask |=
+			(1ull << MLX5_EVENT_TYPE_OBJECT_CHANGE);
 
 	mask[0] = async_event_mask;
 
