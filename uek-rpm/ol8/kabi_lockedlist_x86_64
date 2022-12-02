@@ -1,7 +1,12 @@
 [ol8_x86_64_whitelist]
+	I_BDEV
 	__alloc_percpu
 	__bitmap_weight
 	__blk_alloc_disk
+	__blk_mq_alloc_disk
+	__bread_gfp
+	__break_lease
+	__brelse
 	__check_object_size
 	__class_create
 	__cond_resched
@@ -9,42 +14,64 @@
 	__cpu_active_mask
 	__cpu_online_mask
 	__cpu_possible_mask
+	__cpu_present_mask
+	__cpuhp_remove_state
+	__cpuhp_setup_state
 	__fdget
 	__fentry__
 	__free_pages
+	__generic_file_write_iter
 	__get_free_pages
 	__get_task_comm
 	__get_user_4
 	__init_rwsem
 	__init_swait_queue_head
 	__init_waitqueue_head
+	__insert_inode_hash
 	__ipv6_addr_type
 	__kmalloc
 	__kmalloc_node
 	__list_add_valid
 	__list_del_entry_valid
 	__local_bh_enable_ip
+	__lock_page
+	__mark_inode_dirty
+	__mmap_lock_do_trace_acquire_returned
+	__mmap_lock_do_trace_released
+	__mmap_lock_do_trace_start_locking
 	__module_get
 	__msecs_to_jiffies
 	__mutex_init
 	__node_distance
 	__num_online_cpus
+	__pagevec_release
 	__pci_register_driver
 	__per_cpu_offset
 	__preempt_count
 	__put_cred
 	__put_net
+	__put_page
 	__put_task_struct
 	__put_user_4
 	__put_user_8
 	__register_blkdev
 	__register_chrdev
+	__remove_inode_hash
 	__root_device_register
 	__scsi_iterate_devices
+	__set_page_dirty_buffers
+	__set_page_dirty_nobuffers
 	__stack_chk_fail
+	__tasklet_hi_schedule
+	__test_set_page_writeback
+	__tracepoint_mmap_lock_acquire_returned
+	__tracepoint_mmap_lock_released
+	__tracepoint_mmap_lock_start_locking
 	__unregister_chrdev
 	__uv_cpu_info
 	__uv_hub_info_list
+	__vfs_getxattr
+	__vfs_removexattr
 	__vmalloc
 	__wake_up
 	__warn_printk
@@ -116,7 +143,9 @@
 	_raw_write_unlock_irqrestore
 	_totalram_pages
 	add_timer
+	add_to_page_cache_locked
 	add_wait_queue
+	address_space_init_once
 	alloc_chrdev_region
 	alloc_pages
 	alloc_workqueue
@@ -124,25 +153,37 @@
 	async_synchronize_full_domain
 	attribute_container_find_class_device
 	autoremove_wake_function
+	bdev_check_media_change
+	bdevname
+	bio_add_page
 	bio_alloc_bioset
 	bio_endio
+	bio_init
+	bio_integrity_add_page
+	bio_integrity_alloc
 	bio_integrity_prep
 	bio_put
+	blk_cleanup_disk
 	blk_cleanup_queue
 	blk_execute_rq
+	blk_finish_plug
 	blk_get_request
+	blk_integrity_compare
 	blk_integrity_register
 	blk_mq_alloc_request
 	blk_mq_alloc_tag_set
+	blk_mq_complete_request
 	blk_mq_end_request
 	blk_mq_free_tag_set
 	blk_mq_freeze_queue
 	blk_mq_init_queue
+	blk_mq_kick_requeue_list
 	blk_mq_map_queues
 	blk_mq_pci_map_queues
 	blk_mq_run_hw_queue
 	blk_mq_run_hw_queues
 	blk_mq_start_request
+	blk_mq_start_stopped_hw_queues
 	blk_mq_stop_hw_queues
 	blk_mq_tag_to_rq
 	blk_mq_tagset_busy_iter
@@ -164,10 +205,15 @@
 	blk_rq_map_kern
 	blk_rq_map_user
 	blk_rq_map_user_iov
+	blk_set_default_limits
 	blk_stack_limits
+	blk_start_plug
 	blkdev_get_by_dev
+	blkdev_get_by_path
 	blkdev_ioctl
+	blkdev_issue_discard
 	blkdev_put
+	boot_cpu_data
 	bsg_job_done
 	bus_for_each_dev
 	bus_register_notifier
@@ -181,10 +227,15 @@
 	cdev_del
 	cdev_init
 	class_destroy
+	clear_inode
+	clear_page_dirty_for_io
 	close_fd
 	complete
 	complete_all
 	complete_and_exit
+	copy_user_enhanced_fast_string
+	copy_user_generic_string
+	copy_user_generic_unrolled
 	cpu_info
 	cpu_khz
 	cpu_number
@@ -194,7 +245,21 @@
 	crc32_le
 	current_task
 	current_work
+	d_add
+	d_alloc
+	d_drop
+	d_find_alias
+	d_instantiate
+	d_invalidate
+	d_lookup
+	d_make_root
+	d_move
+	d_obtain_alias
 	d_path
+	d_prune_aliases
+	d_set_d_op
+	d_splice_alias
+	deactivate_locked_super
 	debugfs_create_dir
 	debugfs_create_file
 	debugfs_create_u32
@@ -206,6 +271,7 @@
 	del_timer
 	del_timer_sync
 	delayed_work_timer_fn
+	dentry_open
 	dentry_path_raw
 	destroy_workqueue
 	dev_driver_string
@@ -215,6 +281,8 @@
 	device_destroy
 	device_remove_file
 	device_reprobe
+	devmap_managed_key
+	dget_parent
 	disable_irq_nosync
 	dma_alloc_attrs
 	dma_free_attrs
@@ -234,11 +302,16 @@
 	down
 	down_interruptible
 	down_read
+	down_read_trylock
 	down_write
+	down_write_trylock
+	dput
+	drop_nlink
 	dump_stack
 	elfcorehdr_addr
 	emergency_restart
 	enable_irq
+	end_page_writeback
 	fasync_helper
 	fc_attach_transport
 	fc_block_scsi_eh
@@ -251,22 +324,45 @@
 	fc_remove_host
 	fget
 	fget_raw
+	fiemap_fill_next_extent
+	fiemap_prep
+	filemap_fault
+	filemap_fdatawait_range
+	filemap_fdatawrite
+	filemap_fdatawrite_range
+	filemap_flush
+	filemap_write_and_wait_range
 	filp_close
 	filp_open
+	find_vma
 	find_vpid
 	finish_wait
 	fixed_size_llseek
+	flush_signals
 	flush_workqueue
 	follow_down_one
 	for_each_kernel_tracepoint
 	fortify_panic
 	fput
+	free_buffer_head
 	free_irq
 	free_pages
 	free_percpu
+	from_kgid
 	from_kuid
 	fs_bio_set
 	fsync_bdev
+	full_name_hash
+	generic_file_direct_write
+	generic_file_llseek
+	generic_file_mmap
+	generic_file_open
+	generic_file_read_iter
+	generic_file_splice_read
+	generic_file_write_iter
+	generic_fillattr
+	generic_permission
+	generic_write_checks
 	get_device
 	get_net_ns_by_pid
 	get_pid_task
@@ -274,19 +370,38 @@
 	get_task_cred
 	get_task_mm
 	get_task_pid
+	get_user_pages
+	grab_cache_page_write_begin
+	iget5_locked
+	igrab
 	import_iovec
 	in4_pton
+	in_group_p
+	inc_nlink
 	inet_addr_type
 	init_net
+	init_special_inode
 	init_task
 	init_timer_key
 	init_wait_entry
+	inode_init_once
+	inode_newsize_ok
+	inode_permission
 	int_to_scsilun
 	invalidate_bdev
+	invalidate_inode_buffers
+	invalidate_mapping_pages
+	io_schedule
 	ioread32
 	ioread8
 	ioremap
 	iounmap
+	iov_iter_advance
+	iov_iter_bvec
+	iov_iter_get_pages
+	iov_iter_init
+	iov_iter_kvec
+	iov_iter_npages
 	iowrite32
 	iput
 	ipv6_ext_hdr
@@ -300,22 +415,29 @@
 	irq_set_affinity_hint
 	is_uv_system
 	is_vmalloc_addr
+	iter_file_splice_write
+	iterate_dir
 	jiffies
 	jiffies_to_msecs
 	jiffies_to_timespec64
 	kern_path
+	kernel_accept
 	kernel_getsockname
 	kernel_read
 	kernel_recvmsg
 	kernel_sendmsg
+	kernel_write
 	kfree
 	kfree_skb
+	kill_anon_super
+	kill_block_super
 	kill_fasync
 	kmalloc_caches
 	kmalloc_order_trace
 	kmem_cache_alloc
 	kmem_cache_alloc_trace
 	kmem_cache_create
+	kmem_cache_create_usercopy
 	kmem_cache_destroy
 	kmem_cache_free
 	kmsg_dump_get_buffer
@@ -328,6 +450,8 @@
 	kthread_should_stop
 	kthread_stop
 	ktime_get
+	ktime_get_coarse_real_ts64
+	ktime_get_coarse_ts64
 	ktime_get_raw_ts64
 	ktime_get_real_seconds
 	ktime_get_real_ts64
@@ -335,7 +459,16 @@
 	ktime_get_with_offset
 	kvfree
 	kvmalloc_node
+	lock_rename
 	lock_sock_nested
+	lockref_get
+	locks_init_lock
+	locks_lock_inode_wait
+	lookup_one_len
+	lru_cache_add
+	make_kgid
+	make_kuid
+	match_token
 	memcmp
 	memcpy
 	memcpy_fromio
@@ -353,18 +486,30 @@
 	misc_deregister
 	misc_register
 	mmput
+	mntget
+	mntput
 	mod_timer
 	module_put
+	mount_bdev
+	mpage_readpage
+	mpage_writepages
 	msleep
+	msleep_interruptible
 	mutex_is_locked
 	mutex_lock
 	mutex_lock_interruptible
 	mutex_trylock
 	mutex_unlock
+	new_inode
 	nf_register_net_hook
 	nf_unregister_net_hook
+	nobh_truncate_page
+	nobh_write_begin
+	nobh_write_end
+	nobh_writepage
 	node_states
 	node_to_cpumask_map
+	notify_change
 	nr_cpu_ids
 	numa_node
 	nvme_fc_register_localport
@@ -372,7 +517,9 @@
 	nvme_fc_set_remoteport_devloss
 	nvme_fc_unregister_localport
 	nvme_fc_unregister_remoteport
+	override_creds
 	page_offset_base
+	pagevec_lookup_range_tag
 	panic
 	param_array_ops
 	param_get_int
@@ -429,12 +576,18 @@
 	phys_base
 	physical_mask
 	pid_task
+	posix_lock_file
+	posix_test_lock
+	prepare_creds
+	prepare_kernel_cred
 	prepare_to_wait
 	prepare_to_wait_event
+	prepare_to_wait_exclusive
 	proc_create
 	proc_create_data
 	proc_dointvec_minmax
 	proc_mkdir
+	put_devmap_managed_page
 	put_disk
 	put_pid
 	pv_ops
@@ -444,16 +597,21 @@
 	raid_class_release
 	rcu_barrier
 	rcu_read_unlock_strict
+	read_cache_page
 	recalc_sigpending
+	redirty_page_for_writepage
 	refcount_warn_saturate
+	register_filesystem
 	register_kprobe
 	register_pernet_subsys
 	register_sysctl_table
+	release_pages
 	release_sock
 	remove_proc_entry
 	remove_wait_queue
 	request_threaded_irq
 	reset_devices
+	revert_creds
 	root_device_unregister
 	round_jiffies
 	sas_attach_transport
@@ -473,6 +631,7 @@
 	sas_release_transport
 	sas_remove_host
 	sas_rphy_add
+	sb_set_blocksize
 	sbitmap_weight
 	schedule
 	schedule_timeout
@@ -515,6 +674,8 @@
 	scsicam_bios_param
 	scsilun_to_int
 	sdev_prefix_printk
+	security_inode_init_security
+	send_sig
 	seq_lseek
 	seq_open
 	seq_printf
@@ -522,13 +683,19 @@
 	seq_puts
 	seq_read
 	seq_release
+	set_anon_super
 	set_blocksize
 	set_capacity
 	set_disk_ro
+	set_nlink
 	set_normalized_timespec64
+	set_page_dirty
+	set_user_nice
+	setattr_prepare
 	sg_copy_from_buffer
 	sg_copy_to_buffer
 	sg_next
+	sget
 	si_meminfo
 	sigprocmask
 	simple_read_from_buffer
@@ -545,6 +712,7 @@
 	sock_create_kern
 	sock_no_linger
 	sock_release
+	sock_setsockopt
 	sockfd_lookup
 	sort
 	sprint_symbol
@@ -569,8 +737,11 @@
 	strrchr
 	strscpy
 	strsep
+	strspn
 	strstr
+	submit_bio
 	submit_bio_noacct
+	super_setup_bdi
 	synchronize_irq
 	synchronize_rcu
 	sys_tz
@@ -578,19 +749,31 @@
 	sysfs_remove_bin_file
 	system_state
 	system_wq
+	tag_pages_for_writeback
 	task_cgroup_path
+	tasklet_init
 	tcp_prot
 	tcp_sock_set_nodelay
 	tcp_sock_set_quickack
 	this_cpu_off
 	time64_to_tm
+	touch_atime
 	trace_clock_local
 	tracepoint_probe_register
 	tracepoint_probe_unregister
+	truncate_inode_pages
+	truncate_inode_pages_range
+	truncate_pagecache
+	truncate_setsize
 	try_module_get
 	udp_prot
+	unlock_new_inode
+	unlock_page
+	unlock_rename
+	unmap_mapping_range
 	unregister_blkdev
 	unregister_chrdev_region
+	unregister_filesystem
 	unregister_kprobe
 	unregister_pernet_subsys
 	unregister_sysctl_table
@@ -609,8 +792,25 @@
 	uv_get_hubless_system
 	uv_possible_blades
 	vfree
+	vfs_create
+	vfs_fsync
+	vfs_get_link
+	vfs_getattr
+	vfs_iter_read
+	vfs_iter_write
+	vfs_link
+	vfs_llseek
+	vfs_mkdir
+	vfs_mknod
+	vfs_rename
+	vfs_rmdir
+	vfs_symlink
+	vfs_unlink
 	vmalloc
+	vmalloc_base
+	vmalloc_to_page
 	vmemmap_base
+	vprintk
 	vscnprintf
 	vsnprintf
 	vsprintf
@@ -618,6 +818,8 @@
 	wait_for_completion
 	wait_for_completion_io_timeout
 	wait_for_completion_timeout
+	wait_on_page_bit
 	wake_up_process
+	write_inode_now
 	xa_destroy
 	yield
