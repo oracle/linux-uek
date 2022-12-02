@@ -133,11 +133,6 @@ static inline bool __init arch_get_random_long_early(unsigned long *v)
 }
 #endif
 
-#ifdef CONFIG_SMP
-int random_prepare_cpu(unsigned int cpu);
-int random_online_cpu(unsigned int cpu);
-#endif
-
 #ifndef MODULE
 extern const struct file_operations random_fops, urandom_fops;
 #endif
