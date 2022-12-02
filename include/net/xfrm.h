@@ -134,15 +134,23 @@ enum {
 	XFRM_DEV_OFFLOAD_OUT,
 };
 
+enum {
+	XFRM_DEV_OFFLOAD_UNSPECIFIED,
+	XFRM_DEV_OFFLOAD_CRYPTO,
+	XFRM_DEV_OFFLOAD_PACKET,
+};
+
 struct xfrm_state_offload {
 	struct net_device	*dev;
 	struct net_device	*real_dev;
 	unsigned long		offload_handle;
 	unsigned int		num_exthdrs;
-	u8			flags;
+	u8                      flags;
+	UEK_KABI_FILL_HOLE(u8	type : 2)
+	UEK_KABI_FILL_HOLE(u8   dir : 2)
 
 	UEK_KABI_USE(1, netdevice_tracker	dev_tracker)
-	UEK_KABI_USE(2, u8			dir : 2)
+	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 };
