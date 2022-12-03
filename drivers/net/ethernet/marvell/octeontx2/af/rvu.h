@@ -431,6 +431,7 @@ struct hw_cap {
 	bool	second_cpt_pass;
 	bool	npc_hash_extract; /* Hash extract enabled ? */
 	bool	npc_exact_match_enabled; /* Exact match supported ? */
+	u16     spi_to_sas; /* Num of SPI to SA index */
 };
 
 struct rvu_hwinfo {
@@ -798,6 +799,17 @@ static inline bool is_cnf10kb_a0(struct rvu *rvu)
 	return false;
 }
 
+static inline bool is_rvu_nix_spi_to_sa_en(struct rvu *rvu)
+{
+	u64 npc_const2;
+
+	npc_const2 = rvu_read64(rvu, BLKADDR_NIX0, NPC_AF_CONST2);
+	if ((npc_const2 >> 48) & 0xffff)
+		return true;
+
+	return false;
+}
+
 static inline u16 rvu_nix_chan_cgx(struct rvu *rvu, u8 cgxid,
 				   u8 lmacid, u8 chan)
 {
@@ -999,6 +1011,7 @@ int nix_get_struct_ptrs(struct rvu *rvu, u16 pcifunc,
 			struct nix_hw **nix_hw, int *blkaddr);
 int rvu_nix_setup_ratelimit_aggr(struct rvu *rvu, u16 pcifunc,
 				 u16 rq_idx, u16 match_id);
+int rvu_nix_free_spi_to_sa_table(struct rvu *rvu, uint16_t pcifunc);
 int nix_aq_context_read(struct rvu *rvu, struct nix_hw *nix_hw,
 			struct nix_cn10k_aq_enq_req *aq_req,
 			struct nix_cn10k_aq_enq_rsp *aq_rsp,
