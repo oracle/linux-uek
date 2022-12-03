@@ -140,12 +140,15 @@ void pci_disable_msix(struct pci_dev *dev)
  * @min_vecs: minimum required number of vectors (must be >= 1)
  * @max_vecs: maximum desired number of vectors
  * @flags:    One or more of:
- *            %PCI_IRQ_MSIX      Allow trying MSI-X vector allocations
- *            %PCI_IRQ_MSI       Allow trying MSI vector allocations
- *            %PCI_IRQ_LEGACY    Allow trying legacy INTx interrupts, if
- *                               and only if @min_vecs == 1
- *            %PCI_IRQ_AFFINITY  Auto-manage IRQs affinity by spreading
- *                               the vectors around available CPUs
+ *
+ *            * %PCI_IRQ_MSIX      Allow trying MSI-X vector allocations
+ *            * %PCI_IRQ_MSI       Allow trying MSI vector allocations
+ *
+ *            * %PCI_IRQ_LEGACY    Allow trying legacy INTx interrupts, if
+ *              and only if @min_vecs == 1
+ *
+ *            * %PCI_IRQ_AFFINITY  Auto-manage IRQs affinity by spreading
+ *              the vectors around available CPUs
  *
  * Allocate up to @max_vecs interrupt vectors on device. MSI-X irq
  * vector allocation has a higher precedence over plain MSI, which has a
@@ -229,10 +232,11 @@ int pci_alloc_irq_vectors_affinity(struct pci_dev *dev, unsigned int min_vecs,
  * pci_irq_vector() - Get Linux IRQ number of a device interrupt vector
  * @dev: the PCI device to operate on
  * @nr:  device-relative interrupt vector index (0-based); has different
- *       meanings, depending on interrupt mode
- *         MSI-X        the index in the MSI-X vector table
- *         MSI          the index of the enabled MSI vectors
- *         INTx         must be 0
+ *       meanings, depending on interrupt mode:
+ *
+ *         * MSI-X     the index in the MSI-X vector table
+ *         * MSI       the index of the enabled MSI vectors
+ *         * INTx      must be 0
  *
  * Return: the Linux IRQ number, or -EINVAL if @nr is out of range
  */
@@ -251,10 +255,11 @@ int pci_irq_vector(struct pci_dev *dev, unsigned int nr)
  * pci_irq_get_affinity() - Get a device interrupt vector affinity
  * @dev: the PCI device to operate on
  * @nr:  device-relative interrupt vector index (0-based); has different
- *       meanings, depending on interrupt mode
- *         MSI-X        the index in the MSI-X vector table
- *         MSI          the index of the enabled MSI vectors
- *         INTx         must be 0
+ *       meanings, depending on interrupt mode:
+ *
+ *         * MSI-X     the index in the MSI-X vector table
+ *         * MSI       the index of the enabled MSI vectors
+ *         * INTx      must be 0
  *
  * Return: MSI/MSI-X vector affinity, NULL if @nr is out of range or if
  * the MSI(-X) vector was allocated without explicit affinity
