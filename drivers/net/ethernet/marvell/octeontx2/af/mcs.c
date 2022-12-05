@@ -1237,6 +1237,17 @@ void mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req)
 	mcs_reg_write(mcs, MCSX_PAB_RX_SLAVE_PORT_CFGX(req->port_id),
 		      req->port_mode & MCS_PORT_MODE_MASK);
 
+	if (req->port_mode == 2) { /* 100G */
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_ENTRY, 0);
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_LEN, 1);
+	} else if (req->port_mode == 1) { /* 50G */
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_ENTRY, 0x8);
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_LEN, 2);
+	} else { /* <= 25G */
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_ENTRY, 0xe4);
+		mcs_reg_write(mcs, MCSX_BBE_RX_SLAVE_CAL_LEN, 4);
+	}
+
 	req->cstm_tag_rel_mode_sel &= 0x3;
 
 	if (mcs->hw->mcs_blks > 1) {
