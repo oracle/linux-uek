@@ -22,11 +22,6 @@ enum hmac_minor_op {
 	HMAC_FINISH
 };
 
-struct cpt_hmac_req_ctx {
-	struct otx2_cpt_req_info cpt_req;
-	u8 digest[HASH_MAX_DIGESTSIZE];
-};
-
 struct cpt_hmac_ctx {
 	u8 key[CPT_HMAC_KEY_SIZE_MAX];
 	u32 key_len;
@@ -34,6 +29,11 @@ struct cpt_hmac_ctx {
 	dma_addr_t cptr_dma;
 	u32 digest_size;
 	u8 hash_type;
+};
+
+struct cpt_hmac_req_ctx {
+	u8 digest[HASH_MAX_DIGESTSIZE];
+	struct cpt_hmac_ctx *ctx;
 };
 
 static void cpt_hash_callback(int status, void *arg1, void *arg2)
@@ -44,21 +44,27 @@ static void cpt_hash_callback(int status, void *arg1, void *arg2)
 	struct otx2_cpt_req_info *req_info;
 	struct ahash_request *ahash_req;
 	struct otx2_cptvf_request *req;
+	struct cpt_hmac_req_ctx *rctx;
+	struct cpt_hmac_ctx *ctx;
 
 	if (inst_info) {
 		req_info = inst_info->req;
 		req = &req_info->req;
 		ahash_req = container_of(areq, struct ahash_request, base);
-		if (req->opcode.s.minor == HMAC_FINISH && req->cptr_dma) {
+		rctx = ahash_request_ctx(ahash_req);
+		ctx = rctx->ctx;
+		if (req->opcode.s.minor == HMAC_FINISH) {
 			dma_unmap_single(&pdev->dev, req->cptr_dma, CPT_HMAC_CTX_SIZE,
+					 DMA_BIDIRECTIONAL);
+			dma_unmap_single(&pdev->dev, req->dptr_dma, ctx->digest_size,
 					 DMA_BIDIRECTIONAL);
 			kfree(req->cptr);
 		}
 		if (req->opcode.s.minor == HMAC_FINISH || req->opcode.s.minor == HMAC_FULL) {
 			if (!status)
-				memcpy(ahash_req->result, req_info->out[0].vptr,
-				       req_info->out[0].size);
+				memcpy(ahash_req->result, rctx->digest, ctx->digest_size);
 		}
+		kfree(req_info);
 		otx2_cpt_info_destroy(pdev, inst_info);
 	}
 
@@ -66,12 +72,9 @@ static void cpt_hash_callback(int status, void *arg1, void *arg2)
 		areq->complete(areq, status);
 }
 
-static inline void create_hmac_ctx_hdr(struct ahash_request *req, struct cpt_hmac_ctx *ctx,
+static inline void create_hmac_ctx_hdr(struct otx2_cpt_req_info *req_info, struct cpt_hmac_ctx *ctx,
 				       int minor_op, u32 *argcnt)
 {
-	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
-
 	req_info->ctrl.s.dma_mode = OTX2_CPT_DMA_MODE_SG;
 	req_info->ctrl.s.se_req = 1;
 	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_HMAC |
@@ -95,10 +98,9 @@ static inline void create_hmac_ctx_hdr(struct ahash_request *req, struct cpt_hma
 	req_info->req.opcode.s.minor = minor_op;
 }
 
-static inline void update_input_data(struct ahash_request *req, u32 *argcnt)
+static inline void update_input_data(struct ahash_request *req, struct otx2_cpt_req_info *req_info,
+				     u32 *argcnt)
 {
-	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
 	struct scatterlist *inp_sg = req->src;
 	u32 nbytes = req->nbytes;
 
@@ -117,23 +119,20 @@ static inline void update_input_data(struct ahash_request *req, u32 *argcnt)
 	}
 }
 
-static inline void update_output_data(struct ahash_request *req)
+static inline void update_output_data(struct ahash_request *req, struct otx2_cpt_req_info *req_info)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
 
 	req_info->out[0].vptr = rctx->digest;
 	req_info->out[0].size = ctx->digest_size;
 	req_info->out_cnt = 1;
 }
 
-static inline int cpt_hmac_enqueue(struct ahash_request *req, struct pci_dev *pdev,
-				   int cpu_num)
+static inline int cpt_hmac_enqueue(struct ahash_request *req, struct otx2_cpt_req_info *req_info,
+				   struct pci_dev *pdev, int cpu_num)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
-	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
 
 	req_info->ctrl.s.grp = otx2_cpt_get_kcrypto_eng_grp_num(pdev);
 	req_info->callback = cpt_hash_callback;
@@ -152,8 +151,8 @@ static int cpt_hmac_sha_init(struct ahash_request *req)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
 	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct otx2_cpt_req_info *req_info;
 	struct pci_dev *pdev;
 	int ret, cpu_num;
 	u32 argcnt = 0;
@@ -161,17 +160,6 @@ static int cpt_hmac_sha_init(struct ahash_request *req)
 	ret = otx2_cpt_dev_get(&pdev, &cpu_num);
 	if (ret)
 		return ret;
-
-	ctx->cptr = kmalloc(CPT_HMAC_CTX_SIZE, GFP_KERNEL);
-	if (ctx->cptr == NULL)
-		return -ENOMEM;
-	ctx->cptr_dma = dma_map_single(&pdev->dev, ctx->cptr, CPT_HMAC_CTX_SIZE,
-				       DMA_BIDIRECTIONAL);
-	if (unlikely(dma_mapping_error(&pdev->dev, ctx->cptr_dma))) {
-		dev_err(&pdev->dev, "DMA mapping failed for cptr\n");
-		kfree(ctx->cptr);
-		return -EIO;
-	}
 
 	switch (crypto_ahash_digestsize(tfm)) {
 	case SHA1_DIGEST_SIZE:
@@ -185,27 +173,47 @@ static int cpt_hmac_sha_init(struct ahash_request *req)
 	default:
 		return -EINVAL;
 	}
+	ctx->cptr = kmalloc(CPT_HMAC_CTX_SIZE, GFP_ATOMIC);
+	if (ctx->cptr == NULL)
+		return -ENOMEM;
 
-	create_hmac_ctx_hdr(req, ctx, HMAC_START, &argcnt);
-	update_input_data(req, &argcnt);
+	req_info = kzalloc(sizeof(*req_info), GFP_KERNEL);
+	if (req_info == NULL) {
+		ret = -ENOMEM;
+		goto cptr_free;
+	}
+	ctx->cptr_dma = dma_map_single(&pdev->dev, ctx->cptr, CPT_HMAC_CTX_SIZE,
+				       DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(&pdev->dev, ctx->cptr_dma))) {
+		dev_err(&pdev->dev, "DMA mapping failed for cptr\n");
+		ret = -EIO;
+		goto req_info_free;
+	}
+	rctx->ctx = ctx;
+
+	create_hmac_ctx_hdr(req_info, ctx, HMAC_START, &argcnt);
+	update_input_data(req, req_info, &argcnt);
 	req_info->in_cnt = argcnt;
+	update_output_data(req, req_info);
 
-	/*
-	 * Microcode expects Scatter list count to be non zero,
-	 * so add a pointer with zero length.
-	 */
-	req_info->out[0].vptr = rctx->digest;
-	req_info->out[0].size = 0;
-	req_info->out_cnt = 1;
+	ret = cpt_hmac_enqueue(req, req_info, pdev, cpu_num);
+	if (ret != -EINPROGRESS && ret != -EBUSY)
+		goto req_info_free;
 
-	return cpt_hmac_enqueue(req, pdev, cpu_num);
+	return ret;
+
+req_info_free:
+	kfree(req_info);
+cptr_free:
+	kfree(ctx->cptr);
+	return ret;
 }
 
 static int cpt_hmac_sha_update(struct ahash_request *req)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
+	struct otx2_cpt_req_info *req_info;
 	struct pci_dev *pdev;
 	int ret, cpu_num;
 	u32 argcnt = 0;
@@ -220,27 +228,36 @@ static int cpt_hmac_sha_update(struct ahash_request *req)
 	}
 	if (req->nbytes > OTX2_CPT_MAX_REQ_SIZE)
 		return -EINVAL;
-	create_hmac_ctx_hdr(req, ctx, HMAC_UPDATE, &argcnt);
-	update_input_data(req, &argcnt);
-	req_info->in_cnt = argcnt;
-	/*
-	 * Microcode expects Scatter list count to be non zero,
-	 * so add a pointer with zero length.
-	 */
-	req_info->out[0].vptr = rctx->digest;
-	req_info->out[0].size = 0;
-	req_info->out_cnt = 1;
 
-	return cpt_hmac_enqueue(req, pdev, cpu_num);
+	req_info = kzalloc(sizeof(*req_info), GFP_KERNEL);
+	if (req_info == NULL)
+		return -ENOMEM;
+
+	rctx->ctx = ctx;
+	create_hmac_ctx_hdr(req_info, ctx, HMAC_UPDATE, &argcnt);
+	update_input_data(req, req_info, &argcnt);
+	req_info->in_cnt = argcnt;
+	update_output_data(req, req_info);
+
+	ret = cpt_hmac_enqueue(req, req_info, pdev, cpu_num);
+	if (ret != -EINPROGRESS && ret != -EBUSY)
+		goto req_info_free;
+
+	return ret;
+
+req_info_free:
+	kfree(req_info);
+	return ret;
 }
 
 static int cpt_hmac_sha_final(struct ahash_request *req)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
+	struct otx2_cpt_req_info *req_info;
 	struct pci_dev *pdev;
-	int ret, cpu_num, i;
+	dma_addr_t dptr_dma;
+	int ret, cpu_num;
 	u32 argcnt = 0;
 
 	ret = otx2_cpt_dev_get(&pdev, &cpu_num);
@@ -251,22 +268,45 @@ static int cpt_hmac_sha_final(struct ahash_request *req)
 		dev_err(&pdev->dev, "Unknown HMAC context\n");
 		return -EINVAL;
 	}
-	create_hmac_ctx_hdr(req, ctx, HMAC_FINISH, &argcnt);
-	update_input_data(req, &argcnt);
-	for (i = 0; i < argcnt; i++)
-		req_info->in[i].size = 0;
-	req_info->in_cnt = argcnt;
-	update_output_data(req);
+	req_info = kzalloc(sizeof(*req_info), GFP_KERNEL);
+	if (req_info == NULL)
+		return -ENOMEM;
 
-	return cpt_hmac_enqueue(req, pdev, cpu_num);
+	rctx->ctx = ctx;
+	create_hmac_ctx_hdr(req_info, ctx, HMAC_FINISH, &argcnt);
+
+	req_info->ctrl.s.dma_mode = OTX2_CPT_DMA_MODE_DIRECT;
+	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_HMAC | (1 << 6);
+	req_info->req.dlen = 0;
+	dptr_dma = dma_map_single(&pdev->dev, rctx->digest, ctx->digest_size,
+				  DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(&pdev->dev, dptr_dma))) {
+		dev_err(&pdev->dev, "DMA mapping failed for dptr\n");
+		ret = -EIO;
+		goto req_info_free;
+	}
+	req_info->req.dptr_dma = dptr_dma;
+
+	ret = cpt_hmac_enqueue(req, req_info, pdev, cpu_num);
+	if (ret != -EINPROGRESS && ret != -EBUSY)
+		goto dptr_unmap;
+
+	return ret;
+
+dptr_unmap:
+	dma_unmap_single(&pdev->dev, dptr_dma, ctx->digest_size,
+			 DMA_BIDIRECTIONAL);
+req_info_free:
+	kfree(req_info);
+	return ret;
 }
 
 static int cpt_hmac_sha_digest(struct ahash_request *req)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 	struct cpt_hmac_req_ctx *rctx = ahash_request_ctx(req);
-	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
 	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct otx2_cpt_req_info *req_info;
 	struct pci_dev *pdev;
 	int ret, cpu_num;
 	u32 argcnt = 0;
@@ -289,20 +329,32 @@ static int cpt_hmac_sha_digest(struct ahash_request *req)
 	}
 	if (req->nbytes > OTX2_CPT_MAX_REQ_SIZE)
 		return -EINVAL;
-	create_hmac_ctx_hdr(req, ctx, HMAC_FULL, &argcnt);
-	update_input_data(req, &argcnt);
-	req_info->in_cnt = argcnt;
-	update_output_data(req);
 
-	return cpt_hmac_enqueue(req, pdev, cpu_num);
+	req_info = kzalloc(sizeof(*req_info), GFP_KERNEL);
+	if (req_info == NULL)
+		return -ENOMEM;
+
+	rctx->ctx = ctx;
+	create_hmac_ctx_hdr(req_info, ctx, HMAC_FULL, &argcnt);
+	update_input_data(req, req_info, &argcnt);
+	req_info->in_cnt = argcnt;
+	update_output_data(req, req_info);
+
+	ret = cpt_hmac_enqueue(req, req_info, pdev, cpu_num);
+	if (ret != -EINPROGRESS && ret != -EBUSY)
+		goto req_info_free;
+
+	return ret;
+
+req_info_free:
+	kfree(req_info);
+	return ret;
 }
 
 static int cpt_hmac_sha_setkey(struct crypto_ahash *tfm, const u8 *key,
 				unsigned int keylen)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(crypto_ahash_tfm(tfm));
-
-	memset(ctx, 0, sizeof(*ctx));
 
 	memcpy(ctx->key, key, keylen);
 	ctx->key_len = keylen;
@@ -331,6 +383,9 @@ static int cpt_hmac_sha_import(struct ahash_request *req, const void *in)
 
 static int cpt_hmac_sha_cra_init(struct crypto_tfm *tfm)
 {
+	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(tfm);
+
+	memset(ctx, 0, sizeof(*ctx));
 	crypto_ahash_set_reqsize(__crypto_ahash_cast(tfm),
 				 sizeof(struct cpt_hmac_req_ctx));
 	return 0;
