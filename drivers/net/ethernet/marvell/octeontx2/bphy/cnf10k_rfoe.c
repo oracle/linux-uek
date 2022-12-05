@@ -561,10 +561,10 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		tstamp = be64_to_cpu(*(__be64 *)&psw->ptp_timestamp);
 		tstamp = cnf10k_ptp_convert_timestamp(tstamp);
 		tsns = tstamp;
-		if (priv->use_sw_timecounter)
-			cnf10k_rfoe_ptp_tstamp2time(priv, tstamp, &tsns);
-		else if (priv->ptp_cfg->use_ptp_alg)
-			cnf10k_rfoe_calc_ptp_ts(priv, &tsns);
+		if (priv2->use_sw_timecounter)
+			cnf10k_rfoe_ptp_tstamp2time(priv2, tstamp, &tsns);
+		else if (priv2->ptp_cfg->use_ptp_alg)
+			cnf10k_rfoe_calc_ptp_ts(priv2, &tsns);
 
 		skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tsns);
 	}
