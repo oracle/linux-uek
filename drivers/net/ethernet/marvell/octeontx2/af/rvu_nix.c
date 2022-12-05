@@ -6654,3 +6654,30 @@ int rvu_mbox_handler_nix_lf_inline_rq_cfg(struct rvu *rvu,
 			  req->ipsec_cfg1.spb_cpt_enable);
 	return 0;
 }
+
+int rvu_mbox_handler_nix_set_vlan_tpid(struct rvu *rvu,
+				       struct nix_set_vlan_tpid *req,
+				       struct msg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	int nixlf, err, blkaddr;
+	u64 cfg;
+
+	err = nix_get_nixlf(rvu, pcifunc, &nixlf, &blkaddr);
+	if (err)
+		return err;
+
+	if (req->vlan_type != NIX_VLAN_TYPE_OUTER &&
+	    req->vlan_type != NIX_VLAN_TYPE_INNER)
+		return NIX_AF_ERR_PARAM;
+
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_TX_CFG(nixlf));
+
+	if (req->vlan_type == NIX_VLAN_TYPE_OUTER)
+		cfg = (cfg & ~GENMASK_ULL(15, 0)) | req->tpid;
+	else
+		cfg = (cfg & ~GENMASK_ULL(31, 16)) | ((u64)req->tpid << 16);
+
+	rvu_write64(rvu, blkaddr, NIX_AF_LFX_TX_CFG(nixlf), cfg);
+	return 0;
+}

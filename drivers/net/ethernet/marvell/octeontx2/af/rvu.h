@@ -1040,6 +1040,9 @@ u32 convert_bytes_to_dwrr_mtu(u32 bytes);
 void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr, u16 pcifunc,
 			struct nix_txsch *txsch, bool enable);
 void rvu_nix_mcast_flr_free_entries(struct rvu *rvu, u16 pcifunc);
+int rvu_mbox_handler_nix_set_vlan_tpid(struct rvu *rvu,
+				       struct nix_set_vlan_tpid *req,
+				       struct msg_rsp *rsp);
 int rvu_nix_mcast_get_mce_index(struct rvu *rvu, u16 pcifunc,
 				u32 mcast_grp_idx);
 int rvu_nix_mcast_update_mcam_entry(struct rvu *rvu, u16 pcifunc,
