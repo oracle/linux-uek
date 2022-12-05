@@ -15,6 +15,7 @@
 #include "rvu_devlink.h"
 #include "common.h"
 #include "mbox.h"
+#include "mcs_fips_mbox.h"
 #include "npc.h"
 #include "rvu_reg.h"
 #include "ptp.h"
@@ -966,6 +967,7 @@ static inline bool is_cgx_vf(struct rvu *rvu, u16 pcifunc)
 #define M(_name, _id, fn_name, req, rsp)				\
 int rvu_mbox_handler_ ## fn_name(struct rvu *, struct req *, struct rsp *);
 MBOX_MESSAGES
+MBOX_MCS_FIPS_MESSAGES
 #undef M
 
 int rvu_cgx_init(struct rvu *rvu);
