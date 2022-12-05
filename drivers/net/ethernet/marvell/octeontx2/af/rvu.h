@@ -244,6 +244,17 @@ struct tim_rsrc {
 	enum tim_ring_interval *ring_intvls;
 };
 
+struct ree_rsrc {
+	struct qmem	*graph_ctx;	/* Graph base address - used by HW */
+	struct qmem	*prefix_ctx;	/* Prefix blocks - used by HW */
+	void		**ruledb;	/* ROF file from application */
+	u8		*ruledbi;	/* Incremental checksum instructions */
+	u32		aq_head;	/* AF AQ head address */
+	u32		ruledb_len;	/* Length of ruledb */
+	u32		ruledbi_len;	/* Length of ruledbi */
+	u8		ruledb_blocks;	/* Number of blocks pointed by ruledb */
+};
+
 /* Structure for per RVU func info ie PF/VF */
 struct rvu_pfvf {
 	bool		npalf; /* Only one NPALF per RVU_FUNC */
@@ -253,6 +264,8 @@ struct rvu_pfvf {
 	u16		cptlfs;
 	u16		timlfs;
 	u16		cpt1_lfs;
+	u16		ree0_lfs;
+	u16		ree1_lfs;
 	u8		cgx_lmac;
 	u8		sso_uniq_ident;
 
@@ -466,6 +479,7 @@ struct rvu_hwinfo {
 	struct npc_exact_table *table;
 	struct sso_rsrc  sso;
 	struct tim_rsrc  tim;
+	struct ree_rsrc *ree;
 };
 
 struct mbox_wq_info {
@@ -1135,6 +1149,12 @@ void rvu_apr_block_cn10k_init(struct rvu *rvu);
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
+
+/* REE APIs */
+int rvu_ree_init(struct rvu *rvu);
+void rvu_ree_freemem(struct rvu *rvu);
+int rvu_ree_register_interrupts(struct rvu *rvu);
+void rvu_ree_unregister_interrupts(struct rvu *rvu);
 
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
