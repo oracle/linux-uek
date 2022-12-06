@@ -13,7 +13,13 @@
 #include "otx2_cpt_reqmgr.h"
 
 #define CPT_HMAC_KEY_SIZE_MAX  1024
-#define CPT_HMAC_CTX_SIZE      (34 * 8)
+/*
+ * Maximux context size mentioned in microcode document
+ * plus HW context size.
+ */
+#define CPT_HW_CTX_WORD_SIZE   8
+#define CPT_HMAC_UC_CTX_SIZE   (34 * 8)
+#define CPT_HMAC_CTX_SIZE      (CPT_HW_CTX_WORD_SIZE + CPT_HMAC_UC_CTX_SIZE)
 
 enum hmac_minor_op {
 	HMAC_FULL = 0,
@@ -29,6 +35,9 @@ struct cpt_hmac_ctx {
 	dma_addr_t cptr_dma;
 	u32 digest_size;
 	u8 hash_type;
+	u8 hw_ctx_sz;
+	struct pci_dev *pdev;
+	struct cn10k_cpt_errata_ctx er_ctx;
 };
 
 struct cpt_hmac_req_ctx {
@@ -46,6 +55,8 @@ static void cpt_hash_callback(int status, void *arg1, void *arg2)
 	struct otx2_cptvf_request *req;
 	struct cpt_hmac_req_ctx *rctx;
 	struct cpt_hmac_ctx *ctx;
+	u64 cptr_dma;
+	u8 minor_op;
 
 	if (inst_info) {
 		req_info = inst_info->req;
@@ -53,14 +64,21 @@ static void cpt_hash_callback(int status, void *arg1, void *arg2)
 		ahash_req = container_of(areq, struct ahash_request, base);
 		rctx = ahash_request_ctx(ahash_req);
 		ctx = rctx->ctx;
-		if (req->opcode.s.minor == HMAC_FINISH) {
-			dma_unmap_single(&pdev->dev, req->cptr_dma, CPT_HMAC_CTX_SIZE,
+		cptr_dma = (u64)req->cptr_dma & ~(BIT_ULL(60));
+		minor_op = req->opcode.s.minor;
+
+		if (minor_op == HMAC_FINISH) {
+			if (is_dev_cn10ka(pdev))
+				cn10k_cpt_ctx_flush(pdev, cptr_dma, true);
+
+			dma_unmap_single(&pdev->dev, cptr_dma, CPT_HMAC_CTX_SIZE,
 					 DMA_BIDIRECTIONAL);
 			dma_unmap_single(&pdev->dev, req->dptr_dma, ctx->digest_size,
 					 DMA_BIDIRECTIONAL);
 			kfree(req->cptr);
+			ctx->cptr = NULL;
 		}
-		if (req->opcode.s.minor == HMAC_FINISH || req->opcode.s.minor == HMAC_FULL) {
+		if (minor_op == HMAC_FINISH || minor_op == HMAC_FULL) {
 			if (!status)
 				memcpy(ahash_req->result, rctx->digest, ctx->digest_size);
 		}
@@ -83,6 +101,9 @@ static inline void create_hmac_ctx_hdr(struct otx2_cpt_req_info *req_info, struc
 
 	switch (minor_op) {
 	case HMAC_FULL:
+		req_info->req.cptr_dma = ctx->er_ctx.cptr_dma;
+		req_info->req.cptr = ctx->er_ctx.hw_ctx;
+		fallthrough;
 	case HMAC_START:
 		req_info->req.param1 = ctx->key_len;
 		req_info->in[*argcnt].vptr = ctx->key;
@@ -94,6 +115,14 @@ static inline void create_hmac_ctx_hdr(struct otx2_cpt_req_info *req_info, struc
 		req_info->req.param1 = 0;
 		break;
 	}
+	if (minor_op != HMAC_FULL) {
+		req_info->req.cptr = ctx->cptr;
+		if (is_dev_cn10ka(ctx->pdev))
+			req_info->req.cptr_dma = ctx->cptr_dma | BIT_ULL(60);
+		else
+			req_info->req.cptr_dma = ctx->cptr_dma;
+	}
+
 	req_info->req.param2 = ctx->hash_type << 8;
 	req_info->req.opcode.s.minor = minor_op;
 }
@@ -132,13 +161,9 @@ static inline void update_output_data(struct ahash_request *req, struct otx2_cpt
 static inline int cpt_hmac_enqueue(struct ahash_request *req, struct otx2_cpt_req_info *req_info,
 				   struct pci_dev *pdev, int cpu_num)
 {
-	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
-
 	req_info->ctrl.s.grp = otx2_cpt_get_kcrypto_eng_grp_num(pdev);
 	req_info->callback = cpt_hash_callback;
 	req_info->areq = &req->base;
-	req_info->req.cptr = ctx->cptr;
-	req_info->req.cptr_dma = ctx->cptr_dma;
 	/*
 	 * We perform an asynchronous send and once
 	 * the request is completed the driver would
@@ -195,6 +220,11 @@ static int cpt_hmac_sha_init(struct ahash_request *req)
 	update_input_data(req, req_info, &argcnt);
 	req_info->in_cnt = argcnt;
 	update_output_data(req, req_info);
+
+	if (is_dev_cn10ka(pdev)) {
+		cn10k_cpt_hw_ctx_set(ctx->cptr, CPT_HMAC_CTX_SIZE >> 7);
+		ctx->hw_ctx_sz = CPT_HW_CTX_WORD_SIZE;
+	}
 
 	ret = cpt_hmac_enqueue(req, req_info, pdev, cpu_num);
 	if (ret != -EINPROGRESS && ret != -EBUSY)
@@ -367,7 +397,8 @@ static int cpt_hmac_sha_export(struct ahash_request *req, void *out)
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 
 	if (ctx->cptr)
-		memcpy(out, ctx->cptr, CPT_HMAC_CTX_SIZE);
+		memcpy(out, ctx->cptr + ctx->hw_ctx_sz, CPT_HMAC_UC_CTX_SIZE);
+
 	return 0;
 }
 
@@ -376,7 +407,7 @@ static int cpt_hmac_sha_import(struct ahash_request *req, const void *in)
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 
 	if (ctx->cptr)
-		memcpy(ctx->cptr, in, CPT_HMAC_CTX_SIZE);
+		memcpy(ctx->cptr + ctx->hw_ctx_sz, in, CPT_HMAC_UC_CTX_SIZE);
 
 	return 0;
 }
@@ -384,11 +415,26 @@ static int cpt_hmac_sha_import(struct ahash_request *req, const void *in)
 static int cpt_hmac_sha_cra_init(struct crypto_tfm *tfm)
 {
 	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(tfm);
+	struct pci_dev *pdev;
+	int ret, cpu_num;
 
 	memset(ctx, 0, sizeof(*ctx));
+
+	ret = otx2_cpt_dev_get(&pdev, &cpu_num);
+	if (ret)
+		return ret;
+
+	ctx->pdev = pdev;
 	crypto_ahash_set_reqsize(__crypto_ahash_cast(tfm),
 				 sizeof(struct cpt_hmac_req_ctx));
-	return 0;
+	return cn10k_cpt_hw_ctx_init(pdev, &ctx->er_ctx);
+}
+
+static void cpt_hmac_sha_cra_exit(struct crypto_tfm *tfm)
+{
+	struct cpt_hmac_ctx *ctx = crypto_tfm_ctx(tfm);
+
+	cn10k_cpt_hw_ctx_clear(ctx->pdev, &ctx->er_ctx);
 }
 
 static struct ahash_alg cpt_hmac_algs[] = {
@@ -402,7 +448,7 @@ static struct ahash_alg cpt_hmac_algs[] = {
 	.import		= cpt_hmac_sha_import,
 	.halg = {
 		.digestsize	= SHA1_DIGEST_SIZE,
-		.statesize	= CPT_HMAC_CTX_SIZE,
+		.statesize	= CPT_HMAC_UC_CTX_SIZE,
 		.base	= {
 			.cra_name		= "hmac(sha1)",
 			.cra_driver_name	= "cpt-hmac-sha1",
@@ -413,6 +459,7 @@ static struct ahash_alg cpt_hmac_algs[] = {
 			.cra_alignmask		= 0,
 			.cra_module		= THIS_MODULE,
 			.cra_init		= cpt_hmac_sha_cra_init,
+			.cra_exit		= cpt_hmac_sha_cra_exit,
 		}
 	}
 },
@@ -426,7 +473,7 @@ static struct ahash_alg cpt_hmac_algs[] = {
 	.import		= cpt_hmac_sha_import,
 	.halg = {
 		.digestsize	= SHA256_DIGEST_SIZE,
-		.statesize	= CPT_HMAC_CTX_SIZE,
+		.statesize	= CPT_HMAC_UC_CTX_SIZE,
 		.base	= {
 			.cra_name		= "hmac(sha256)",
 			.cra_driver_name	= "cpt-hmac-sha256",
@@ -437,6 +484,7 @@ static struct ahash_alg cpt_hmac_algs[] = {
 			.cra_alignmask		= 0,
 			.cra_module		= THIS_MODULE,
 			.cra_init		= cpt_hmac_sha_cra_init,
+			.cra_exit		= cpt_hmac_sha_cra_exit,
 		}
 	}
 },

@@ -52,10 +52,12 @@ struct cpt_ecdh_ctx {
 struct cpt_asym_ctx {
 	unsigned int key_sz;
 	struct device *dev;
+	struct pci_dev *pdev;
 	union {
 		struct cpt_rsa_ctx rsa;
 		struct cpt_ecdh_ctx ecdh;
 	};
+	struct cn10k_cpt_errata_ctx er_ctx;
 };
 
 struct cpt_asym_req_ctx {
@@ -293,6 +295,9 @@ static int cpt_rsa_enc(struct akcipher_request *req, bool private)
 	req_info->req.dptr = dptr;
 	req_info->callback = cpt_rsa_callback;
 
+	req_info->req.cptr = ctx->er_ctx.hw_ctx;
+	req_info->req.cptr_dma = ctx->er_ctx.cptr_dma;
+
 	return cpt_asym_enqueue(&req->base, req_info);
 }
 
@@ -397,6 +402,9 @@ static int cpt_rsa_dec(struct akcipher_request *req, bool private)
 	req_info->req.dlen = dlen;
 	req_info->req.dptr = dptr;
 	req_info->callback = cpt_rsa_callback;
+
+	req_info->req.cptr = ctx->er_ctx.hw_ctx;
+	req_info->req.cptr_dma = ctx->er_ctx.cptr_dma;
 
 	return cpt_asym_enqueue(&req->base, req_info);
 }
@@ -678,8 +686,9 @@ static int cpt_rsa_init_tfm(struct crypto_akcipher *tfm)
 		return ret;
 
 	ctx->dev = &pdev->dev;
+	ctx->pdev = pdev;
 
-	return 0;
+	return cn10k_cpt_hw_ctx_init(pdev, &ctx->er_ctx);
 }
 
 static int cpt_rsa_pkcs1_init_tfm(struct crypto_akcipher *tfm)
@@ -695,8 +704,9 @@ static int cpt_rsa_pkcs1_init_tfm(struct crypto_akcipher *tfm)
 		return ret;
 
 	ctx->dev = &pdev->dev;
+	ctx->pdev = pdev;
 
-	return 0;
+	return cn10k_cpt_hw_ctx_init(pdev, &ctx->er_ctx);
 }
 
 static void cpt_rsa_exit_tfm(struct crypto_akcipher *tfm)
@@ -704,6 +714,7 @@ static void cpt_rsa_exit_tfm(struct crypto_akcipher *tfm)
 	struct cpt_asym_ctx *ctx = akcipher_tfm_ctx(tfm);
 
 	cpt_rsa_ctx_clear(ctx);
+	cn10k_cpt_hw_ctx_clear(ctx->pdev, &ctx->er_ctx);
 }
 
 static u32 cpt_ecdh_curvesz_get(u32 id)
@@ -976,6 +987,9 @@ static int cpt_ecdh_compute_value(struct kpp_request *req)
 	req_info->req.param1 = cpt_uc_prime_length_get(ctx->ecdh.curve_id);
 	req_info->req.param2 = ctx->key_sz;
 
+	req_info->req.cptr = ctx->er_ctx.hw_ctx;
+	req_info->req.cptr_dma = ctx->er_ctx.cptr_dma;
+
 	return cpt_asym_enqueue(&req->base, req_info);
 }
 
@@ -998,8 +1012,9 @@ static int cpt_ecdh_ctx_init(struct cpt_asym_ctx *ctx)
 		return ret;
 
 	ctx->dev = &pdev->dev;
+	ctx->pdev = pdev;
 
-	return 0;
+	return cn10k_cpt_hw_ctx_init(pdev, &ctx->er_ctx);
 }
 
 static int cpt_ecdh_nist_p192_init_tfm(struct crypto_kpp *tfm)
@@ -1034,6 +1049,7 @@ static void cpt_ecdh_exit_tfm(struct crypto_kpp *tfm)
 	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
 
 	kfree(ctx->ecdh.c);
+	cn10k_cpt_hw_ctx_clear(ctx->pdev, &ctx->er_ctx);
 }
 
 static struct akcipher_alg cpt_rsa_algs[] = {
