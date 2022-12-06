@@ -57,18 +57,36 @@ _mlx5vf_free_page_tracker_resources(struct mlx5vf_pci_core_device *mvdev);
 
 int mlx5vf_cmd_suspend_vhca(struct mlx5vf_pci_core_device *mvdev, u16 op_mod)
 {
+	struct mlx5_vf_migration_file *migf = mvdev->saving_migf;
 	u32 out[MLX5_ST_SZ_DW(suspend_vhca_out)] = {};
 	u32 in[MLX5_ST_SZ_DW(suspend_vhca_in)] = {};
+	int err;
 
 	lockdep_assert_held(&mvdev->state_mutex);
 	if (mvdev->mdev_detach)
 		return -ENOTCONN;
 
+	/*
+	 * In case PRE_COPY is used, saving_migf is exposed while the device is
+	 * running. Make sure to run only once there is no active save command.
+	 * Running both in parallel, might end-up with a failure in the save
+	 * command once it will try to turn on 'tracking' on a suspended device.
+	 */
+	if (migf) {
+		err = wait_for_completion_interruptible(&migf->save_comp);
+		if (err)
+			return err;
+	}
+
 	MLX5_SET(suspend_vhca_in, in, opcode, MLX5_CMD_OP_SUSPEND_VHCA);
 	MLX5_SET(suspend_vhca_in, in, vhca_id, mvdev->vhca_id);
 	MLX5_SET(suspend_vhca_in, in, op_mod, op_mod);
 
-	return mlx5_cmd_exec_inout(mvdev->mdev, suspend_vhca, in, out);
+	err = mlx5_cmd_exec_inout(mvdev->mdev, suspend_vhca, in, out);
+	if (migf)
+		complete(&migf->save_comp);
+
+	return err;
 }
 
 int mlx5vf_cmd_resume_vhca(struct mlx5vf_pci_core_device *mvdev, u16 op_mod)
@@ -88,7 +106,7 @@ int mlx5vf_cmd_resume_vhca(struct mlx5vf_pci_core_device *mvdev, u16 op_mod)
 }
 
 int mlx5vf_cmd_query_vhca_migration_state(struct mlx5vf_pci_core_device *mvdev,
-					  size_t *state_size)
+					  size_t *state_size, u8 query_flags)
 {
 	u32 out[MLX5_ST_SZ_DW(query_vhca_migration_state_out)] = {};
 	u32 in[MLX5_ST_SZ_DW(query_vhca_migration_state_in)] = {};
@@ -102,6 +120,8 @@ int mlx5vf_cmd_query_vhca_migration_state(struct mlx5vf_pci_core_device *mvdev,
 		 MLX5_CMD_OP_QUERY_VHCA_MIGRATION_STATE);
 	MLX5_SET(query_vhca_migration_state_in, in, vhca_id, mvdev->vhca_id);
 	MLX5_SET(query_vhca_migration_state_in, in, op_mod, 0);
+	MLX5_SET(query_vhca_migration_state_in, in, incremental,
+		 query_flags & MLX5VF_QUERY_INC);
 
 	ret = mlx5_cmd_exec_inout(mvdev->mdev, query_vhca_migration_state, in,
 				  out);
@@ -395,6 +415,56 @@ end:
 	return ERR_PTR(ret);
 }
 
+void mlx5vf_put_data_buffer(struct mlx5_vhca_data_buffer *buf)
+{
+	spin_lock_irq(&buf->migf->list_lock);
+	list_add_tail(&buf->buf_elm, &buf->migf->avail_list);
+	spin_unlock_irq(&buf->migf->list_lock);
+}
+
+struct mlx5_vhca_data_buffer *
+mlx5vf_get_data_buffer(struct mlx5_vf_migration_file *migf,
+		       size_t length, enum dma_data_direction dma_dir)
+{
+	struct mlx5_vhca_data_buffer *buf, *temp_buf;
+	struct list_head free_list;
+
+	lockdep_assert_held(&migf->mvdev->state_mutex);
+	if (migf->mvdev->mdev_detach)
+		return ERR_PTR(-ENOTCONN);
+
+	INIT_LIST_HEAD(&free_list);
+
+	spin_lock_irq(&migf->list_lock);
+	list_for_each_entry_safe(buf, temp_buf, &migf->avail_list, buf_elm) {
+		if (buf->dma_dir == dma_dir) {
+			list_del_init(&buf->buf_elm);
+			if (buf->allocated_length >= length) {
+				spin_unlock_irq(&migf->list_lock);
+				goto found;
+			}
+			/*
+			 * Prevent holding redundant buffers. Put in a free
+			 * list and call at the end not under the spin lock
+			 * (&migf->list_lock) to mlx5vf_free_data_buffer which
+			 * might sleep.
+			 */
+			list_add(&buf->buf_elm, &free_list);
+		}
+	}
+	spin_unlock_irq(&migf->list_lock);
+	buf = mlx5vf_alloc_data_buffer(migf, length, dma_dir);
+
+found:
+	while ((temp_buf = list_first_entry_or_null(&free_list,
+				struct mlx5_vhca_data_buffer, buf_elm))) {
+		list_del(&temp_buf->buf_elm);
+		mlx5vf_free_data_buffer(temp_buf);
+	}
+
+	return buf;
+}
+
 void mlx5vf_mig_file_cleanup_cb(struct work_struct *_work)
 {
 	struct mlx5vf_async_data *async_data = container_of(_work,
@@ -404,7 +474,7 @@ void mlx5vf_mig_file_cleanup_cb(struct work_struct *_work)
 
 	mutex_lock(&migf->lock);
 	if (async_data->status) {
-		migf->buf = async_data->buf;
+		mlx5vf_put_data_buffer(async_data->buf);
 		migf->state = MLX5_MIGF_STATE_ERROR;
 		wake_up_interruptible(&migf->poll_wait);
 	}
@@ -422,15 +492,19 @@ static void mlx5vf_save_callback(int status, struct mlx5_async_work *context)
 			struct mlx5_vf_migration_file, async_data);
 
 	if (!status) {
+		size_t image_size;
 		unsigned long flags;
 
-		async_data->buf->length =
-			MLX5_GET(save_vhca_state_out, async_data->out,
-				 actual_image_size);
+		image_size = MLX5_GET(save_vhca_state_out, async_data->out,
+				      actual_image_size);
+		async_data->buf->length = image_size;
+		async_data->buf->start_pos = migf->max_pos;
+		migf->max_pos += async_data->buf->length;
 		spin_lock_irqsave(&migf->list_lock, flags);
 		list_add_tail(&async_data->buf->buf_elm, &migf->buf_list);
 		spin_unlock_irqrestore(&migf->list_lock, flags);
-		migf->state = MLX5_MIGF_STATE_COMPLETE;
+		if (async_data->last_chunk)
+			migf->state = MLX5_MIGF_STATE_COMPLETE;
 		wake_up_interruptible(&migf->poll_wait);
 	}
 
@@ -444,7 +518,8 @@ static void mlx5vf_save_callback(int status, struct mlx5_async_work *context)
 
 int mlx5vf_cmd_save_vhca_state(struct mlx5vf_pci_core_device *mvdev,
 			       struct mlx5_vf_migration_file *migf,
-			       struct mlx5_vhca_data_buffer *buf)
+			       struct mlx5_vhca_data_buffer *buf, bool inc,
+			       bool track)
 {
 	u32 out_size = MLX5_ST_SZ_BYTES(save_vhca_state_out);
 	u32 in[MLX5_ST_SZ_DW(save_vhca_state_in)] = {};
@@ -465,9 +540,12 @@ int mlx5vf_cmd_save_vhca_state(struct mlx5vf_pci_core_device *mvdev,
 	MLX5_SET(save_vhca_state_in, in, vhca_id, mvdev->vhca_id);
 	MLX5_SET(save_vhca_state_in, in, mkey, buf->mkey);
 	MLX5_SET(save_vhca_state_in, in, size, buf->allocated_length);
+	MLX5_SET(save_vhca_state_in, in, incremental, inc);
+	MLX5_SET(save_vhca_state_in, in, set_track, track);
 
 	async_data = &migf->async_data;
 	async_data->buf = buf;
+	async_data->last_chunk = !track;
 	async_data->out = kvzalloc(out_size, GFP_KERNEL);
 	if (!async_data->out) {
 		err = -ENOMEM;
@@ -549,6 +627,8 @@ void mlx5fv_cmd_clean_migf_resources(struct mlx5_vf_migration_file *migf)
 		mlx5vf_free_data_buffer(migf->buf);
 		migf->buf = NULL;
 	}
+
+	list_splice(&migf->avail_list, &migf->buf_list);
 
 	while ((entry = list_first_entry_or_null(&migf->buf_list,
 				struct mlx5_vhca_data_buffer, buf_elm))) {
