@@ -17,8 +17,8 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 
-#define DEVICE_NAME			"csr_access"
-#define CLASS_NAME			"csr_access_class"
+#define DEVICE_NAME			"hw_access"
+#define CLASS_NAME			"hw_access_class"
 /* Smallest start physical address of all HW devices */
 #define REG_PHYS_BASEADDR		0x802000000000
 /* Last physical address - First phsycial address + 1 will be the
@@ -40,7 +40,7 @@ struct hw_reg_cfg {
 static struct class *hw_reg_class;
 static int majorNumber;
 
-static int csr_access_open(struct inode *inode, struct file *filp)
+static int hw_access_open(struct inode *inode, struct file *filp)
 {
 	void __iomem *reg_base = NULL;
 	int err;
@@ -57,7 +57,7 @@ static int csr_access_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static long csr_access_ioctl(struct file *filp, unsigned int cmd,
+static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 			   unsigned long arg)
 {
 	void __iomem *regbase = filp->private_data;
@@ -128,7 +128,7 @@ static long csr_access_ioctl(struct file *filp, unsigned int cmd,
 	}
 }
 
-static int csr_access_release(struct inode *inode, struct file *filp)
+static int hw_access_release(struct inode *inode, struct file *filp)
 {
 	iounmap(filp->private_data);
 	filp->private_data = NULL;
@@ -137,12 +137,12 @@ static int csr_access_release(struct inode *inode, struct file *filp)
 }
 
 static const struct file_operations mmap_fops = {
-	.open = csr_access_open,
-	.unlocked_ioctl = csr_access_ioctl,
-	.release = csr_access_release,
+	.open = hw_access_open,
+	.unlocked_ioctl = hw_access_ioctl,
+	.release = hw_access_release,
 };
 
-static int __init csr_access_module_init(void)
+static int __init hw_access_module_init(void)
 {
 	static struct device *hw_reg_device;
 
@@ -171,14 +171,14 @@ static int __init csr_access_module_init(void)
 	return 0;
 }
 
-static void __exit csr_access_module_exit(void)
+static void __exit hw_access_module_exit(void)
 {
 	device_destroy(hw_reg_class, MKDEV(majorNumber, 0));
 	class_destroy(hw_reg_class);
 	unregister_chrdev(majorNumber, DEVICE_NAME);
 }
 
-module_init(csr_access_module_init);
-module_exit(csr_access_module_exit);
+module_init(hw_access_module_init);
+module_exit(hw_access_module_exit);
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_LICENSE("GPL v2");
