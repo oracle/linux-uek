@@ -4,6 +4,12 @@
 
 menu "Marvell SoC drivers"
 
+config HW_CSR_ACCESS
+	tristate "Access HW Device Config Space Registers"
+	help
+	  provides an interface which enables user space utility to read from or to write
+	  to HW Device Config Space Registers.
+
 config MARVELL_FWLOG
 	tristate "firmware log interface"
 	depends on ARM64
