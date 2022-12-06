@@ -63,7 +63,7 @@ static struct pmbus_driver_info tps53679_info = {
 		PMBUS_HAVE_IOUT | PMBUS_HAVE_STATUS_IOUT |
 		PMBUS_HAVE_TEMP | PMBUS_HAVE_STATUS_TEMP |
 		PMBUS_HAVE_POUT,
-	.func[1] = PMBUS_HAVE_VIN | PMBUS_HAVE_VOUT | PMBUS_HAVE_STATUS_VOUT |
+	.func[1] = PMBUS_HAVE_VOUT | PMBUS_HAVE_STATUS_VOUT |
 		PMBUS_HAVE_IOUT | PMBUS_HAVE_STATUS_IOUT |
 		PMBUS_HAVE_TEMP | PMBUS_HAVE_STATUS_TEMP |
 		PMBUS_HAVE_POUT,
@@ -84,6 +84,7 @@ static int tps53679_probe(struct i2c_client *client,
 }
 
 static const struct i2c_device_id tps53679_id[] = {
+	{"tps53659", 0},
 	{"tps53679", 0},
 	{}
 };
@@ -91,6 +92,7 @@ static const struct i2c_device_id tps53679_id[] = {
 MODULE_DEVICE_TABLE(i2c, tps53679_id);
 
 static const struct of_device_id __maybe_unused tps53679_of_match[] = {
+	{.compatible = "ti,tps53659"},
 	{.compatible = "ti,tps53679"},
 	{}
 };
