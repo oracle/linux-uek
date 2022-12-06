@@ -27,9 +27,6 @@
 /* Subsystem Device ID */
 #define PCI_SUBSYS_DEVID_98XX                  0xB100
 #define PCI_SUBSYS_DEVID_96XX                  0xB200
-#define PCI_SUBSYS_DEVID_95XX_RVU              0xB200
-#define PCI_SUBSYS_DEVID_95XX                  0xB300
-#define PCI_SUBSYS_DEVID_LOKI                  0xB400
 #define PCI_SUBSYS_DEVID_CN10K_A	       0xB900
 #define PCI_SUBSYS_DEVID_CNF10K_A	       0xBA00
 #define PCI_SUBSYS_DEVID_CNF10K_B              0xBC00
@@ -696,39 +693,17 @@ static inline bool is_rvu_96xx_B0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
-	return ((pdev->revision == 0x00) || (pdev->revision == 0x01)) &&
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
+	return (pdev->revision == 0x00) || (pdev->revision == 0x01);
 }
 
 static inline bool is_rvu_95xx_A0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
-	return ((pdev->revision == 0x10) || (pdev->revision == 0x11)) &&
-	        (pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX_RVU);
+	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
 }
 
-static inline bool is_cnf10ka_a1(struct rvu *rvu)
-{
-	struct pci_dev *pdev = rvu->pdev;
 
-	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
-	    (pdev->revision & 0x0F) == 0x1)
-		return true;
-	return false;
-}
-
-static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
-{
-	/* On CNF10KA and CNF10KB silicons only two CGX blocks are connected
-	 * to NIX.
-	 */
-	if (id == PCI_SUBSYS_DEVID_CNF10K_A || id == PCI_SUBSYS_DEVID_CNF10K_B)
-		return cgx_id <= 1;
-
-	return !(cgx_id && (id == PCI_SUBSYS_DEVID_95XX ||
-			    id == PCI_SUBSYS_DEVID_LOKI));
-}
 
 
 /* REVID for PCIe devices.
@@ -761,17 +736,6 @@ static inline bool is_cnf10ka_a0(struct rvu *rvu)
 	    (pdev->revision & 0x0F) == 0x0)
 		return true;
 	return false;
-}
-
-static inline bool is_rvu_npc_hash_extract_en(struct rvu *rvu)
-{
-	u64 npc_const3;
-
-	npc_const3 = rvu_read64(rvu, BLKADDR_NPC, NPC_AF_CONST3);
-	if (!(npc_const3 & BIT_ULL(62)))
-		return false;
-
-	return true;
 }
 
 static inline bool is_cn10ka_a0(struct rvu *rvu)
@@ -822,6 +786,40 @@ static inline bool is_cnf10kb_a0(struct rvu *rvu)
 	    (pdev->revision & 0x0F) == 0x0)
 		return true;
 	return false;
+}
+
+static inline bool is_cnf10ka_a1(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
+	    (pdev->revision & 0x0F) == 0x1)
+		return true;
+	return false;
+}
+
+static inline bool is_cgx_mapped_to_nix(unsigned short id, u8 cgx_id)
+{
+	/* On CNF10KA and CNF10KB silicons only two CGX blocks are connected
+	 * to NIX.
+	 */
+	if (id == PCI_SUBSYS_DEVID_CNF10K_A || id == PCI_SUBSYS_DEVID_CNF10K_B)
+		return cgx_id <= 1;
+
+	return !(cgx_id && !(id == PCI_SUBSYS_DEVID_96XX ||
+			     id == PCI_SUBSYS_DEVID_98XX ||
+			     id == PCI_SUBSYS_DEVID_CN10K_A));
+}
+
+static inline bool is_rvu_npc_hash_extract_en(struct rvu *rvu)
+{
+	u64 npc_const3;
+
+	npc_const3 = rvu_read64(rvu, BLKADDR_NPC, NPC_AF_CONST3);
+	if (!(npc_const3 & BIT_ULL(62)))
+		return false;
+
+	return true;
 }
 
 static inline bool is_rvu_nix_spi_to_sa_en(struct rvu *rvu)
