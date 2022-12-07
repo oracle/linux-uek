@@ -78,6 +78,7 @@
 #include <linux/ptrace.h>
 #include <linux/vmalloc.h>
 #include <linux/sched/sysctl.h>
+#include <linux/padata.h>
 
 #include <trace/events/kmem.h>
 
@@ -1812,6 +1813,88 @@ void unmap_page_range(struct mmu_gather *tlb,
 	tlb_end_vma(tlb, vma);
 }
 
+#ifdef CONFIG_PADATA
+
+struct unmap_page_range_args {
+	struct mmu_gather *tlb;
+	struct vm_area_struct *vma;
+	struct zap_details *details;
+	unsigned long start;
+	unsigned long end;
+};
+
+static int unmap_page_range_chunk(unsigned long addr, unsigned long end,
+				  void *arg)
+{
+	struct unmap_page_range_args *args = arg;
+	struct mmu_gather *tlb = args->tlb;
+	struct vm_area_struct *vma = args->vma;
+	struct zap_details *details = args->details;
+	struct mm_struct *mm = tlb->mm;
+	struct mmu_gather local_tlb;
+	bool use_local_gather = false;
+
+	/*
+	 * The mmu gather API is not designed to operate on a single
+	 * mmu_gather in parallel. Use a local mmu_gather when multi-
+	 * threaded and avoid the additional overhead when not.
+	 */
+	if (addr != args->start || end != args->end) {
+		tlb = &local_tlb;
+		use_local_gather = true;
+	}
+
+	if (use_local_gather)
+		tlb_gather_mmu_fullmm(tlb, mm);
+
+	unmap_page_range(tlb, vma, addr, end, details);
+
+	if (use_local_gather)
+		tlb_finish_mmu(tlb);
+
+	return 0;
+}
+
+static void unmap_page_range_mt(struct mmu_gather *tlb,
+			 struct vm_area_struct *vma,
+			 unsigned long addr, unsigned long end,
+			 struct zap_details *details)
+{
+	struct unmap_page_range_args args = { tlb, vma, details, addr, end };
+	struct padata_mt_job job = {
+		.thread_fn   = unmap_page_range_chunk,
+		.fn_arg      = &args,
+		.start       = addr,
+		.size        = end - addr,
+		.align       = PMD_SIZE,
+		.min_chunk   = max(1ul << 27, PMD_SIZE),
+		.max_threads = 8,
+	};
+
+	BUG_ON(addr >= end);
+
+	/*
+	 * Assumptions made below about VM_EXEC_KEEP VMAs only hold true
+	 * if the entire address space is being unmapped.
+	 */
+	if (!tlb->fullmm) {
+		unmap_page_range(tlb, vma, addr, end, details);
+		return;
+	}
+
+	/*
+	 * Pages in VMAs being preserved will have an additional reference
+	 * due to the mappings having been copied prior to unmapping the full
+	 * address space. Since lock contention due to freeing pages will not
+	 * be an issue, use additional threads to unmap them.
+	 */
+	if (vma->vm_flags & VM_EXEC_KEEP)
+		job.max_threads = 16;
+
+	padata_do_multithreaded(&job);
+}
+
+#endif /* CONFIG_PADATA */
 
 static void unmap_single_vma(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long start_addr,
@@ -1852,6 +1935,14 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 				__unmap_hugepage_range(tlb, vma, start, end,
 							     NULL, zap_flags);
 			}
+#ifdef CONFIG_PADATA
+		/*
+		 * Only possibly use multiple threads to unmap when the
+		 * entire address space is being unmapped.
+		 */
+		} else if (tlb->fullmm && (vma_is_anonymous(vma) || vma_is_shmem(vma))) {
+			unmap_page_range_mt(tlb, vma, start, end, details);
+#endif
 		} else
 			unmap_page_range(tlb, vma, start, end, details);
 	}
