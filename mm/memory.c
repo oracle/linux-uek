@@ -1427,6 +1427,66 @@ copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 	return ret;
 }
 
+#ifdef CONFIG_PADATA
+
+struct copy_page_range_args {
+	struct vm_area_struct *dst_vma;
+	struct vm_area_struct *src_vma;
+};
+
+static int copy_page_range_chunk(unsigned long addr,
+				 unsigned long end, void *arg)
+{
+	struct copy_page_range_args *args = arg;
+	struct vm_area_struct *dst_vma = args->dst_vma;
+	struct vm_area_struct *src_vma = args->src_vma;
+	struct mm_struct *dst_mm = dst_vma->vm_mm;
+	struct mm_struct *src_mm = src_vma->vm_mm;
+	pgd_t *src_pgd, *dst_pgd;
+	unsigned long next;
+	int ret = 0;
+
+	dst_pgd = pgd_offset(dst_mm, addr);
+	src_pgd = pgd_offset(src_mm, addr);
+
+	do {
+		next = pgd_addr_end(addr, end);
+		if (pgd_none_or_clear_bad(src_pgd))
+			continue;
+		if (unlikely(copy_p4d_range(dst_vma, src_vma, dst_pgd, src_pgd,
+					    addr, next))) {
+			ret = -ENOMEM;
+			break;
+		}
+	} while (dst_pgd++, src_pgd++, addr = next, addr != end);
+
+	return ret;
+}
+
+/*
+ * A stripped down version of copy_page_range() used to copy a VMA as part
+ * of preserving it across exec. Multithreading via padata is used to speed
+ * up the copying of very large VMAs.
+ */
+int copy_page_range_mt(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
+{
+	struct copy_page_range_args args = { dst_vma, src_vma };
+	struct padata_mt_job job = {
+		.thread_fn   = copy_page_range_chunk,
+		.fn_arg      = &args,
+		.start       = src_vma->vm_start,
+		.size        = src_vma->vm_end - src_vma->vm_start,
+		.align       = PMD_SIZE,
+		.min_chunk   = max(1ul << 27, PMD_SIZE),
+		.max_threads = 16,
+	};
+
+	BUG_ON(!(src_vma->vm_flags & VM_EXEC_KEEP));
+
+	return padata_do_multithreaded(&job);
+}
+#endif /* CONFIG_PADATA */
+
 /* Whether we should zap all COWed (private) pages too */
 static inline bool should_zap_cows(struct zap_details *details)
 {
