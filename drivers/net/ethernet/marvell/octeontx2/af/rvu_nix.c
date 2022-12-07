@@ -2411,11 +2411,8 @@ static int nix_smq_flush(struct rvu *rvu, int blkaddr,
 	if (!is_rvu_otx2(rvu)) {
 		/* Skip SMQ flush if pkt count is zero */
 		cfg = rvu_read64(rvu, blkaddr, NIX_AF_MDQX_IN_MD_COUNT(smq));
-		if (!cfg) {
-			/* mimic Hardware action */
-			rvu_write64(rvu, blkaddr, NIX_AF_SMQX_CFG(smq), 0);
+		if (!cfg)
 			return 0;
-		}
 	}
 
 	/* enable cgx tx if disabled */
@@ -2486,7 +2483,6 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 			nix_reset_tx_linkcfg(rvu, blkaddr, lvl, schq);
 			nix_clear_tx_xoff(rvu, blkaddr, lvl, schq);
 			nix_reset_tx_shaping(rvu, blkaddr, nixlf, lvl, schq);
-			nix_reset_tx_schedule(rvu, blkaddr, lvl, schq);
 		}
 	}
 	nix_clear_tx_xoff(rvu, blkaddr, NIX_TXSCH_LVL_TL1,
@@ -2525,6 +2521,7 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 		for (schq = 0; schq < txsch->schq.max; schq++) {
 			if (TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) != pcifunc)
 				continue;
+			nix_reset_tx_schedule(rvu, blkaddr, lvl, schq);
 			rvu_free_rsrc(&txsch->schq, schq);
 			txsch->pfvf_map[schq] = TXSCH_MAP(0, NIX_TXSCHQ_FREE);
 		}
@@ -2584,7 +2581,6 @@ static int nix_txschq_free_one(struct rvu *rvu,
 
 	nix_reset_tx_linkcfg(rvu, blkaddr, lvl, schq);
 	nix_reset_tx_shaping(rvu, blkaddr, nixlf, lvl, schq);
-	nix_reset_tx_schedule(rvu, blkaddr, lvl, schq);
 
 	/* Flush if it is a SMQ. Onus of disabling
 	 * TL2/3 queue links before SMQ flush is on user
@@ -2595,6 +2591,7 @@ static int nix_txschq_free_one(struct rvu *rvu,
 		goto err;
 	}
 
+	nix_reset_tx_schedule(rvu, blkaddr, lvl, schq);
 	/* Free the resource */
 	rvu_free_rsrc(&txsch->schq, schq);
 	txsch->pfvf_map[schq] = TXSCH_MAP(0, NIX_TXSCHQ_FREE);
