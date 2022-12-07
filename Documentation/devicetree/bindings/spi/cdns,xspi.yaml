@@ -37,6 +37,10 @@ properties:
   interrupts:
     maxItems: 1
 
+  cdns,read-size:
+    items:
+      - description: size of single SDMA read operation
+
 required:
   - compatible
   - reg
@@ -60,6 +64,7 @@ examples:
             reg-names = "io", "sdma", "aux";
             interrupts = <0 90 IRQ_TYPE_LEVEL_HIGH>;
             interrupt-parent = <&gic>;
+            cdns,read-size=<0>;
 
             flash@0 {
                 compatible = "jedec,spi-nor";
