@@ -386,7 +386,7 @@ BuildRequires: gcc-toolset-11-annobin
 BuildRequires: gcc-toolset-11-annobin-plugin-gcc
 BuildRequires: gcc-toolset-11-binutils
 BuildRequires: gcc-toolset-11-binutils-devel
-BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
+BuildRequires: redhat-rpm-config >= 130-1, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
 BuildRequires: gcc-toolset-11-elfutils-libelf-devel
 BuildRequires: python3, python3-devel
@@ -1435,7 +1435,7 @@ BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
 %global bpftool_make \
-  make %{?make_opts} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
+  make %{?make_opts} EXTRA_CFLAGS="${RPM_OPT_FLAGS//redhat-annobin-cc1/redhat-annobin-select-annobin-built-plugin}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
 %if %{with_bpftool}
 pushd tools/bpf/bpftool
 %{bpftool_make}
