@@ -571,15 +571,6 @@ int x509_process_extension(void *context, size_t hdrlen,
 		return 0;
 	}
 
-	if (ctx->last_oid == OID_basicConstraints) {
-		if (v[0] != (ASN1_CONS_BIT | ASN1_SEQ))
-			return -EBADMSG;
-		if (v[1] != vlen - 2)
-			return -EBADMSG;
-		if (v[1] != 0 && v[2] == ASN1_BOOL && v[3] == 1)
-			ctx->cert->pub->key_is_ca = true;
-	}
-
 	return 0;
 }
 
