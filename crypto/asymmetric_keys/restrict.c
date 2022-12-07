@@ -108,49 +108,6 @@ int restrict_link_by_signature(struct key *dest_keyring,
 	return ret;
 }
 
-/**
- * restrict_link_by_ca - Restrict additions to a ring of CA keys
- * @dest_keyring: Keyring being linked to.
- * @type: The type of key being added.
- * @payload: The payload of the new key.
- * @trust_keyring: Unused.
- *
- * Check if the new certificate is a CA. If it is a CA, then mark the new
- * certificate as being ok to link.
- *
- * Returns 0 if the new certificate was accepted, -ENOKEY if the
- * certificate is not a CA. -ENOPKG if the signature uses unsupported
- * crypto, or some other error if there is a matching certificate but
- * the signature check cannot be performed.
- */
-int restrict_link_by_ca(struct key *dest_keyring,
-			const struct key_type *type,
-			const union key_payload *payload,
-			struct key *trust_keyring)
-{
-	const struct public_key_signature *sig;
-	const struct public_key *pkey;
-
-	if (type != &key_type_asymmetric)
-		return -EOPNOTSUPP;
-
-	sig = payload->data[asym_auth];
-	if (!sig)
-		return -ENOPKG;
-
-	if (!sig->auth_ids[0] && !sig->auth_ids[1])
-		return -ENOKEY;
-
-	pkey = payload->data[asym_crypto];
-	if (!pkey)
-		return -ENOPKG;
-
-	if (!pkey->key_is_ca)
-		return -ENOKEY;
-
-	return public_key_verify_signature(pkey, sig);
-}
-
 static bool match_either_id(const struct asymmetric_key_ids *pair,
 			    const struct asymmetric_key_id *single)
 {
