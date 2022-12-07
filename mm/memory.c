@@ -1465,7 +1465,8 @@ static int copy_page_range_chunk(unsigned long addr, unsigned long end,
 
 /*
  * A stripped down version of copy_page_range() used to copy an anonymous VMA
- * as part of preserving it across exec.
+ * as part of preserving it across exec. Multithreading via padata is used to
+ * speed up the copying of very large VMAs.
  */
 int
 copy_page_range_exec(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
@@ -1473,9 +1474,24 @@ copy_page_range_exec(struct vm_area_struct *dst_vma, struct vm_area_struct *src_
 	struct copy_page_range_args args = { dst_vma, src_vma };
 	struct mm_struct *src_mm = src_vma->vm_mm;
 	int ret;
+#ifdef CONFIG_PADATA
+	struct padata_mt_job job = {
+		.thread_fn   = copy_page_range_chunk,
+		.fn_arg      = &args,
+		.start       = src_vma->vm_start,
+		.size        = src_vma->vm_end - src_vma->vm_start,
+		.align       = PMD_SIZE,
+		.min_chunk   = max(1ul << 27, PMD_SIZE),
+		.max_threads = 16,
+	};
+#endif
 
 	raw_write_seqcount_begin(&src_mm->write_protect_seq);
+#ifdef CONFIG_PADATA
+	ret = padata_do_multithreaded(&job);
+#else
 	ret = copy_page_range_chunk(src_vma->vm_start, src_vma->vm_end, &args);
+#endif
 	raw_write_seqcount_end(&src_mm->write_protect_seq);
 
 	return ret;
