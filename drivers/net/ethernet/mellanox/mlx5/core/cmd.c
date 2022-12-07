@@ -778,7 +778,11 @@ static int mlx5_cmd_check(struct mlx5_core_dev *dev, void *in, void *out)
 	op_mod = MLX5_GET(mbox_in, in, op_mod);
 	uid    = MLX5_GET(mbox_in, in, uid);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (!uid && opcode != MLX5_CMD_OP_DESTROY_MKEY && opcode != MLX5_CMD_OP_CREATE_UCTX)
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	if (!uid && opcode != MLX5_CMD_OP_DESTROY_MKEY)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		mlx5_core_err_rl(dev,
 			"%s(0x%x) op_mod(0x%x) failed, status %s(0x%x), syndrome (0x%x)\n",
 			mlx5_command_str(opcode), opcode, op_mod,
