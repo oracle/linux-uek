@@ -26,7 +26,6 @@ struct public_key {
 	void *params;
 	u32 paramlen;
 	bool key_is_private;
-	bool key_is_ca;
 	const char *id_type;
 	const char *pkey_algo;
 };
