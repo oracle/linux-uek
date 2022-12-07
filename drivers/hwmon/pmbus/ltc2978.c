@@ -600,7 +600,7 @@ static int ltc2978_get_id(struct i2c_client *client)
 		return ltc3886;
 	else if (chip_id == LTC3887_ID)
 		return ltc3887;
-	else if (chip_id == LTC3888_ID)
+	else if (chip_id == LTC3888_ID || chip_id == LTC3888_ID_D1)
 		return ltc3888;
 	else if (chip_id == LTM2987_ID_A || chip_id == LTM2987_ID_B)
 		return ltm2987;
