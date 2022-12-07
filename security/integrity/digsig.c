@@ -34,11 +34,7 @@ static const char * const keyring_name[INTEGRITY_KEYRING_MAX] = {
 };
 
 #ifdef CONFIG_IMA_KEYRINGS_PERMIT_SIGNED_BY_BUILTIN_OR_SECONDARY
-#ifdef CONFIG_INTEGRITY_MACHINE_KEYRING
-#define restrict_link_to_ima restrict_link_by_builtin_secondary_and_machine
-#else
 #define restrict_link_to_ima restrict_link_by_builtin_and_secondary_trusted
-#endif
 #else
 #define restrict_link_to_ima restrict_link_by_builtin_trusted
 #endif
