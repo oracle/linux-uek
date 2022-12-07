@@ -2067,8 +2067,11 @@ int vma_dup(struct vm_area_struct *old_vma, struct mm_struct *mm)
 	 */
 	__vm_flags_mod(old_vma, 0, VM_ACCOUNT);
 
+#ifdef CONFIG_PADATA
+	ret = copy_page_range_mt(vma, old_vma);
+#else
 	ret = copy_page_range(vma, old_vma);
-
+#endif
 	vm_flags_clear(vma, VM_EXEC_KEEP);
 
 	return ret;
