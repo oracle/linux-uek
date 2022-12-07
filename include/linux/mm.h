@@ -2412,6 +2412,10 @@ void free_pgd_range(struct mmu_gather *tlb, unsigned long addr,
 		unsigned long end, unsigned long floor, unsigned long ceiling);
 int
 copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma);
+#ifdef CONFIG_PADATA
+int copy_page_range_mt(struct vm_area_struct *dst_vma,
+			struct vm_area_struct *src_vma);
+#endif
 int follow_pte(struct mm_struct *mm, unsigned long address,
 	       pte_t **ptepp, spinlock_t **ptlp);
 int follow_pfn(struct vm_area_struct *vma, unsigned long address,
