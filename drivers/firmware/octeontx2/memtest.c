@@ -41,9 +41,10 @@ enum fw_memtest_test_type {
 
 /* Test descriptor, keeps most important settings for the tests */
 struct mub_fw_memtest_desc {
-	uint32_t memory_length; /* Expressed in megabytes */
-	uint32_t reboot;
-	uint32_t power_on;
+	u32 reboot_mem_length; /* Expressed in megabytes */
+	u32 reboot;
+	u32 power_on;
+	u32 poweron_mem_length; /* Expressed in megabytes */
 
 	spinlock_t lock; /* Keep data in sync */
 	struct mub_device *device;
@@ -83,11 +84,14 @@ static int fw_memtest_get_config(struct mub_fw_memtest_desc *desc)
 	spin_lock(&desc->lock);
 	desc->reboot = (uint32_t)res.a1;
 	desc->power_on = (uint32_t)res.a2;
-	desc->memory_length = (uint32_t)res.a3;
+	desc->reboot_mem_length = lower_32_bits(res.a3);
+	desc->poweron_mem_length = upper_32_bits(res.a3);
 	spin_unlock(&desc->lock);
 
-	pr_debug("Values are reboot: %u, power_on: %u, memory_length: %u KB\n",
-		 desc->reboot, desc->power_on, desc->memory_length);
+	pr_debug("Values are reboot: %u, reboot_mem_length: %u KB\n",
+		 desc->reboot, desc->reboot_mem_length);
+	pr_debug("Values are power_on: %u, poweron_mem_length: %u KB\n",
+		 desc->power_on, desc->poweron_mem_length);
 
 	return 0;
 }
@@ -95,26 +99,32 @@ static int fw_memtest_get_config(struct mub_fw_memtest_desc *desc)
 static int fw_memtest_set_config(struct mub_fw_memtest_desc *desc)
 {
 	struct arm_smccc_res res;
-	uint32_t reboot, power_on, memory_length;
+	unsigned long mem_length;
+	u32 reboot, power_on;
 	int ret;
 
 	spin_lock(&desc->lock);
 	reboot = desc->reboot;
 	power_on = desc->power_on;
-	memory_length = desc->memory_length;
+	mem_length = desc->poweron_mem_length;
+	mem_length <<= 32;
+	mem_length |=  desc->reboot_mem_length;
 	spin_unlock(&desc->lock);
 
 	ret = mub_do_smc(desc->device,
 			 FWMT_OCTEONTX_MEM_TEST_CONFIG, FWMT_SO_SET,
-			 reboot, power_on, memory_length, 0, 0, 0, &res);
+			 reboot, power_on, mem_length, 0, 0, 0, &res);
 	if (ret)
 		return ret;
 
 	if (res.a0)
 		return (int)res.a0;
 
-	pr_debug("New values are reboot: %u, power_on: %u, memory_length: %u KB\n",
-		 reboot, power_on, memory_length);
+	pr_debug("New Values are reboot: %u, reboot_mem_length: %u KB\n",
+		 reboot, lower_32_bits(mem_length));
+	pr_debug("New Values are power_on: %u, poweron_mem_length: %u KB\n",
+		 power_on, upper_32_bits(mem_length));
+
 	return 0;
 }
 
@@ -217,16 +227,16 @@ static ssize_t poweron_store(struct mub_device *dev, const char *buf,
 }
 MUB_ATTR_RW(power_on, poweron_show, poweron_store);
 
-static ssize_t mem_length_show(struct mub_device *dev, char *buf)
+static ssize_t reboot_mem_length_show(struct mub_device *dev, char *buf)
 {
 	struct mub_fw_memtest_desc *desc =
 		(struct mub_fw_memtest_desc *)mub_get_data(dev);
 
-	return sysfs_emit(buf, "%u MB\n", desc->memory_length);
+	return sysfs_emit(buf, "%u MB\n", desc->reboot_mem_length);
 }
 
-static ssize_t mem_length_store(struct mub_device *dev, const char *buf,
-				size_t count)
+static ssize_t reboot_mem_length_store(struct mub_device *dev, const char *buf,
+				       size_t count)
 {
 	struct mub_fw_memtest_desc *desc =
 		(struct mub_fw_memtest_desc *)mub_get_data(dev);
@@ -238,7 +248,7 @@ static ssize_t mem_length_store(struct mub_device *dev, const char *buf,
 		return ret;
 
 	spin_lock(&desc->lock);
-	desc->memory_length = (uint32_t)(v & 0xffffffff); /* No overflow */
+	desc->reboot_mem_length = (uint32_t)(v & 0xffffffff); /* No overflow */
 	spin_unlock(&desc->lock);
 
 	ret = fw_memtest_set_config(desc);
@@ -248,16 +258,54 @@ static ssize_t mem_length_store(struct mub_device *dev, const char *buf,
 		return ret;
 	}
 
-	pr_debug("memory_length: %u MB\n", desc->memory_length);
+	pr_debug("memory_length: %u MB\n", desc->reboot_mem_length);
 
 	return count;
 }
-MUB_ATTR_RW(mem_length, mem_length_show, mem_length_store);
+MUB_ATTR_RW(reboot_mem_length, reboot_mem_length_show, reboot_mem_length_store);
+
+static ssize_t poweron_mem_length_show(struct mub_device *dev, char *buf)
+{
+	struct mub_fw_memtest_desc *desc =
+		(struct mub_fw_memtest_desc *)mub_get_data(dev);
+
+	return sysfs_emit(buf, "%u MB\n", desc->poweron_mem_length);
+}
+
+static ssize_t poweron_mem_length_store(struct mub_device *dev, const char *buf,
+					size_t count)
+{
+	struct mub_fw_memtest_desc *desc =
+		(struct mub_fw_memtest_desc *)mub_get_data(dev);
+	unsigned long v;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &v);
+	if (ret < 0)
+		return ret;
+
+	spin_lock(&desc->lock);
+	desc->poweron_mem_length = (uint32_t)(v & 0xffffffff); /* No overflow */
+	spin_unlock(&desc->lock);
+
+	ret = fw_memtest_set_config(desc);
+	if (ret) {
+		pr_warn("Firmware can't set memory test configuration. (%d)\n",
+			ret);
+		return ret;
+	}
+
+	pr_debug("memory_length: %u MB\n", desc->poweron_mem_length);
+
+	return count;
+}
+MUB_ATTR_RW(poweron_mem_length, poweron_mem_length_show, poweron_mem_length_store);
 
 static struct attribute *fw_memtest_attrs[] = {
 	MUB_TO_ATTR(reboot),
 	MUB_TO_ATTR(power_on),
-	MUB_TO_ATTR(mem_length),
+	MUB_TO_ATTR(reboot_mem_length),
+	MUB_TO_ATTR(poweron_mem_length),
 	NULL,
 };
 
