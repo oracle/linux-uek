@@ -269,6 +269,9 @@ extern int sysctl_tcp_early_retrans;
 extern int sysctl_tcp_recovery;
 #define TCP_RACK_LOSS_DETECTION  0x1 /* Use RACK to detect losses */
 
+extern int sysctl_tcp_delack_max;
+extern int sysctl_tcp_delack_min;
+
 extern int sysctl_tcp_limit_output_bytes;
 extern int sysctl_tcp_challenge_ack_limit;
 extern int sysctl_tcp_min_tso_segs;
@@ -384,7 +387,7 @@ static inline void tcp_dec_quickack_mode(struct sock *sk,
 		if (pkts >= icsk->icsk_ack.quick) {
 			icsk->icsk_ack.quick = 0;
 			/* Leaving quickack mode we deflate ATO. */
-			icsk->icsk_ack.ato   = TCP_ATO_MIN;
+			icsk->icsk_ack.ato   = sysctl_tcp_delack_min;
 		} else
 			icsk->icsk_ack.quick -= pkts;
 	}

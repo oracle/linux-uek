@@ -2488,7 +2488,7 @@ bool tcp_schedule_loss_probe(struct sock *sk, bool advancing_rto)
 	if (tp->srtt_us) {
 		timeout = usecs_to_jiffies(tp->srtt_us >> 2);
 		if (tp->packets_out == 1)
-			timeout += TCP_RTO_MIN;
+			timeout += sysctl_tcp_delack_max;
 		else
 			timeout += TCP_TIMEOUT_MIN;
 	} else {
@@ -3617,13 +3617,13 @@ void tcp_send_delayed_ack(struct sock *sk)
 	int ato = icsk->icsk_ack.ato;
 	unsigned long timeout;
 
-	if (ato > TCP_DELACK_MIN) {
+	if (ato > sysctl_tcp_delack_min) {
 		const struct tcp_sock *tp = tcp_sk(sk);
 		int max_ato = HZ / 2;
 
 		if (icsk->icsk_ack.pingpong ||
 		    (icsk->icsk_ack.pending & ICSK_ACK_PUSHED))
-			max_ato = TCP_DELACK_MAX;
+			max_ato = sysctl_tcp_delack_max;
 
 		/* Slow path, intersegment interval is "high". */
 
@@ -3633,7 +3633,7 @@ void tcp_send_delayed_ack(struct sock *sk)
 		 */
 		if (tp->srtt_us) {
 			int rtt = max_t(int, usecs_to_jiffies(tp->srtt_us >> 3),
-					TCP_DELACK_MIN);
+					sysctl_tcp_delack_min);
 
 			if (rtt < max_ato)
 				max_ato = rtt;
@@ -3681,9 +3681,9 @@ void __tcp_send_ack(struct sock *sk, u32 rcv_nxt)
 			 sk_gfp_mask(sk, GFP_ATOMIC | __GFP_NOWARN));
 	if (unlikely(!buff)) {
 		inet_csk_schedule_ack(sk);
-		inet_csk(sk)->icsk_ack.ato = TCP_ATO_MIN;
+		inet_csk(sk)->icsk_ack.ato = sysctl_tcp_delack_min;
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
-					  TCP_DELACK_MAX, TCP_RTO_MAX);
+					  sysctl_tcp_delack_max, TCP_RTO_MAX);
 		return;
 	}
 
