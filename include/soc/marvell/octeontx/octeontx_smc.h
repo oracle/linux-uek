@@ -52,6 +52,17 @@ static inline int octeontx_soc_check_smc(void)
 	return 0;
 }
 
+static inline bool is_soc_cn9x(void)
+{
+	u32 partnum;
+
+	partnum = MIDR_PARTNUM(read_cpuid_id());
+
+	if ((partnum & 0xbf) || (partnum & 0xaf))
+		return true;
+	return false;
+}
+
 static inline bool is_soc_cn10kx(void)
 {
 	if (MIDR_PARTNUM(read_cpuid_id()) == CPU_MODEL_CN10KX_PART)
