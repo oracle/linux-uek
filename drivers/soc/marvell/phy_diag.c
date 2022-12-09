@@ -13,8 +13,8 @@
 #include <linux/string.h>
 #include <linux/time.h>
 #include <linux/uaccess.h>
+#include <soc/marvell/octeontx/octeontx_smc.h>
 
-#define ARM_SMC_SVC_UID			0xc200ff01
 
 #define PLAT_OCTEONTX_PHY_DBG_PRBS	0xc2000e00
 #define PLAT_OCTEONTX_PHY_LOOPBACK	0xc2000e01
@@ -58,14 +58,6 @@ static inline int _conv_arr ## _str2enum(const char *str)		\
 }
 
 struct dentry *phy_dbgfs_root;
-
-/* This is expected OcteonTX response for SVC UID command */
-static const int octeontx_svc_uuid[] = {
-	0x6ff498cf,
-	0x5a4e9cfa,
-	0x2f2a3aa4,
-	0x5945b105,
-};
 
 #define CMD_SZ 64
 char cmd_buf[CMD_SZ];
@@ -642,17 +634,9 @@ create_failed:
 
 static int __init phy_dbg_init(void)
 {
-	struct arm_smccc_res res;
-
-	/*
-	 * Compare response for standard SVC_UID commandi with OcteonTX UUID.
-	 * Continue only if it is OcteonTX.
-	 */
-	arm_smccc_smc(ARM_SMC_SVC_UID, 0, 0, 0, 0, 0, 0, 0, &res);
-	if (res.a0 != octeontx_svc_uuid[0] || res.a1 != octeontx_svc_uuid[1] ||
-	    res.a2 != octeontx_svc_uuid[2] || res.a3 != octeontx_svc_uuid[3]) {
-		pr_info("UIID SVC doesn't match OcteonTX. No serdes cmds.\n");
-		return -1;
+	if (octeontx_soc_check_smc() < 0) {
+		pr_info("PHY diagnostics: Not supported\n");
+		return -EPERM;
 	}
 
 	return phy_dbg_setup_debugfs();
