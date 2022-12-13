@@ -556,6 +556,37 @@ void rds6_ib_get_mr_info(struct rds_ib_device *rds_ibdev,
 }
 #endif
 
+static void __rds_ib_teardown_mr(struct rds_ib_mr *ibmr)
+{
+	struct rds_ib_device *rds_ibdev = ibmr->device;
+
+	if (ibmr->sg_dma_len) {
+		ib_dma_unmap_sg(rds_ibdev->dev,
+				ibmr->sg, ibmr->sg_len,
+				DMA_BIDIRECTIONAL);
+		ibmr->sg_dma_len = 0;
+	}
+
+	/* Release the s/g list */
+	if (ibmr->sg_len) {
+		unsigned int i;
+
+		for (i = 0; i < ibmr->sg_len; ++i) {
+			struct page *page = sg_page(&ibmr->sg[i]);
+
+			/* FIXME we need a way to tell a r/w MR
+			 * from a r/o MR */
+			WARN_ON_ONCE(!page->mapping && irqs_disabled());
+			set_page_dirty(page);
+			unpin_user_page(page);
+		}
+		kfree(ibmr->sg);
+
+		ibmr->sg = NULL;
+		ibmr->sg_len = 0;
+	}
+}
+
 void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 {
 	struct rds_ib_mr *ibmr;
@@ -574,6 +605,11 @@ void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 		list_del_init(&ibmr->pool_list);
 		if (ibmr->rs)
 			rds_rdma_drop_keys(ibmr->rs);
+		if (pool->use_fastreg) {
+			__rds_ib_teardown_mr(ibmr);
+			if (ibmr->mr)
+				ib_dereg_mr(ibmr->mr);
+		}
 	}
 
 	if (pool->use_fastreg) {
@@ -802,37 +838,6 @@ void rds_ib_sync_mr(void *trans_private, int direction)
 		ib_dma_sync_sg_for_device(rds_ibdev->dev, ibmr->sg,
 			ibmr->sg_dma_len, DMA_BIDIRECTIONAL);
 		break;
-	}
-}
-
-static void __rds_ib_teardown_mr(struct rds_ib_mr *ibmr)
-{
-	struct rds_ib_device *rds_ibdev = ibmr->device;
-
-	if (ibmr->sg_dma_len) {
-		ib_dma_unmap_sg(rds_ibdev->dev,
-				ibmr->sg, ibmr->sg_len,
-				DMA_BIDIRECTIONAL);
-		ibmr->sg_dma_len = 0;
-	}
-
-	/* Release the s/g list */
-	if (ibmr->sg_len) {
-		unsigned int i;
-
-		for (i = 0; i < ibmr->sg_len; ++i) {
-			struct page *page = sg_page(&ibmr->sg[i]);
-
-			/* FIXME we need a way to tell a r/w MR
-			 * from a r/o MR */
-			WARN_ON_ONCE(!page->mapping && irqs_disabled());
-			set_page_dirty(page);
-			unpin_user_page(page);
-		}
-		kfree(ibmr->sg);
-
-		ibmr->sg = NULL;
-		ibmr->sg_len = 0;
 	}
 }
 
