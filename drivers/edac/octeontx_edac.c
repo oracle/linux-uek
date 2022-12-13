@@ -421,10 +421,10 @@ static void octeontx_edac_mc_wq(struct work_struct *work)
 	struct octeontx_edac *ghes = pvt->ghes;
 	struct octeontx_ghes_ring *ring = ghes->ring;
 	struct octeontx_ghes_record rec;
-	struct edac_raw_error_desc *e = NULL;
 	enum hw_event_mc_err_type type;
 	u32 head = 0;
 	u32 tail = 0;
+	char msg[SIZE];
 
 	mutex_lock(&ghes->lock);
 
@@ -442,18 +442,7 @@ loop:
 
 	type = octeontx_edac_severity(rec.error_severity);
 
-	e = &mci->error_desc;
-	memset(e, 0, sizeof(*e));
-	e->error_count = 1;
-	e->grain       = 1;
-	e->top_layer   = -1;
-	e->mid_layer   = -1;
-	e->low_layer   = -1;
-	e->msg         = rec.msg;
-	e->page_frame_number = rec.mem.physical_addr >> PAGE_SHIFT;
-	e->offset_in_page = rec.mem.physical_addr & ~PAGE_MASK;
-
-	octeontx_edac_make_error_desc(&rec.mem, e->location, sizeof(e->location));
+	octeontx_edac_make_error_desc(&rec.mem, msg, sizeof(msg));
 
 	++tail;
 	ring->tail = tail % ring->size;
@@ -461,7 +450,9 @@ loop:
 	/*Ensure that tail updated*/
 	wmb();
 
-	edac_raw_mc_handle_error(e);
+	edac_mc_handle_error(type, mci, 1, PHYS_PFN(rec.mem.physical_addr),
+			offset_in_page(rec.mem.physical_addr),
+			0, -1, -1, -1, rec.msg, msg);
 
 	if (head != tail)
 		goto loop;
