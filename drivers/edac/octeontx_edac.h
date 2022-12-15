@@ -9,8 +9,6 @@
 
 #define OCTEONTX2_RING_SIG ((int)'M' << 24 | 'R' << 16 | 'V' << 8 | 'L')
 
-#define CN10K_CPU_MODEL			(0xd49)
-
 #define PCI_DEVICE_ID_OCTEONTX2_LMC	(0xa022)
 #define PCI_DEVICE_ID_OCTEONTX2_MCC	(0xa070)
 #define PCI_DEVICE_ID_OCTEONTX2_MDC	(0xa073)

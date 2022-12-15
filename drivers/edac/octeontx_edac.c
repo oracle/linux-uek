@@ -7,9 +7,23 @@
 #include <linux/of_address.h>
 #include <linux/arm_sdei.h>
 #include <linux/arm-smccc.h>
+#include <linux/sys_soc.h>
 #include "edac_module.h"
 #include "octeontx_edac.h"
 
+static const struct soc_device_attribute cn10_socinfo[] = {
+	/* cn10ka */
+	{.soc_id = "jep106:0369:00b9", .revision = "0x00000000",},
+	{.soc_id = "jep106:0369:00b9", .revision = "0x00000001",},
+	/* cn10kb */
+	{.soc_id = "jep106:0369:00bd",},
+	/* cnf10ka */
+	{.soc_id = "jep106:0369:00ba", .revision = "0x00000000",},
+	{.soc_id = "jep106:0369:00ba", .revision = "0x00000001",},
+	/* cnf10kb */
+	{.soc_id = "jep106:0369:00bc",},
+	{},
+};
 
 static const struct of_device_id octeontx_edac_ghes_of_match[] = {
 	{.compatible = "marvell,sdei-ghes",},
@@ -123,7 +137,7 @@ static void octeontx_edac_inject_error(struct octeontx_edac_pvt *pvt)
 	u64 val = einj_val;
 	unsigned long error_type = pvt->error_type & 0x0000FFFF;
 
-	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL) {
+	if (soc_device_match(cn10_socinfo)) {
 		arg[0] = CN10K_EDAC_INJECT;
 		arg[1] = 0xd;
 		arg[2] = pvt->address;
@@ -615,7 +629,7 @@ static void octeontx_edac_msix_init(void)
 	struct pci_dev *pdev;
 	size_t i;
 
-	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL)
+	if (soc_device_match(cn10_socinfo))
 		return;
 
 	for (i = 0; i < ARRAY_SIZE(octeontx_edac_pci_tbl); i++) {
@@ -893,7 +907,7 @@ static int octeontx_mdc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL)
+	if (soc_device_match(cn10_socinfo))
 		ghes->ecc_cap = 0;
 	else
 		ghes->ecc_cap = OCTEONTX2_MDC_EINJ_CAP;
@@ -1088,7 +1102,7 @@ static int __init octeontx_edac_init(void)
 	if (ret)
 		goto exit0;
 
-	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL) {
+	if (soc_device_match(cn10_socinfo)) {
 
 		ret = platform_driver_register(&dss_edac_drv);
 		if (!ret)
@@ -1151,7 +1165,7 @@ exit0:
 
 static void __exit octeontx_edac_exit(void)
 {
-	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL) {
+	if (soc_device_match(cn10_socinfo)) {
 		platform_driver_unregister(&dss_edac_drv);
 		platform_driver_unregister(&tad_edac_drv);
 		platform_driver_unregister(&cpu_edac_drv);
@@ -1163,7 +1177,7 @@ static void __exit octeontx_edac_exit(void)
 }
 
 
-module_init(octeontx_edac_init);
+late_initcall(octeontx_edac_init);
 module_exit(octeontx_edac_exit);
 
 MODULE_AUTHOR("Vasyl Gomonovych <vgomonovych@marvell.com>");
