@@ -1019,35 +1019,24 @@ static void cnf10k_rfoe_submit_job(struct cnf10k_rfoe_ndev_priv *priv,
 	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
 }
 
-/* netdev xmit */
-static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
-					      struct net_device *netdev)
+static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
+					struct net_device *netdev)
 {
 	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
 	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
-	int ptp_offset = 0, udp_csum = 0;
 	struct cnf10k_tx_action_s tx_mem;
 	struct tx_job_queue_cfg *job_cfg;
+	int ptp_offset = 0, udp_csum = 0;
 	struct tx_job_entry *job_entry;
-	int psm_queue_id, pkt_type = 0;
+	int pkt_type = PACKET_TYPE_PTP;
 	struct ptp_tstamp_skb *ts_skb;
 	unsigned int pkt_len = 0;
 	unsigned long flags;
-	struct ethhdr *eth;
+	int psm_queue_id;
 
-	eth = (struct ethhdr *)skb->data;
-	if (priv->tx_hw_tstamp_en &&
-	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
-		job_cfg = &priv->tx_ptp_job_cfg;
-		pkt_type = PACKET_TYPE_PTP;
-		memset(&tx_mem, 0, sizeof(tx_mem));
-	} else {
-		job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
-		pkt_type = PACKET_TYPE_OTHER;
-		if (htons(eth->h_proto) == ETH_P_ECPRI)
-			pkt_type = PACKET_TYPE_ECPRI;
-	}
+	job_cfg = &priv->tx_ptp_job_cfg;
+	memset(&tx_mem, 0, sizeof(tx_mem));
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
@@ -1079,72 +1068,6 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	job_entry = (struct tx_job_entry *)
 				&job_cfg->job_entries[job_cfg->q_idx];
 
-	/* hw timestamp */
-	if (unlikely(pkt_type == PACKET_TYPE_PTP)) {
-		/* check if one-step is enabled */
-		if (priv->ptp_onestep_sync) {
-			if (cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
-				cnf10k_rfoe_prepare_onestep_ptp_header(priv,
-								       &tx_mem, skb,
-								       ptp_offset,
-								       udp_csum);
-				/* recalculate UDP hdr checksum as RFOE block has no checksum
-				 * offload support and checksum field is left with stale data
-				 */
-				if (udp_csum)
-					cnf10k_rfoe_compute_udp_csum(skb);
-			}
-
-			if ((*(skb->data + ptp_offset) & 0xF) != DELAY_REQUEST_MSG_ID)
-				goto ptp_one_step_out;
-		}
-
-		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
-		if (list_empty(&priv->ptp_skb_list.list) &&
-		    !test_and_set_bit_lock(PTP_TX_IN_PROGRESS, &priv->state)) {
-			priv->ptp_tx_skb = skb;
-			psm_cmd_lo = (struct cnf10k_psm_cmd_addjob_s *)
-						&job_entry->job_cmd_lo;
-			priv->ptp_job_tag = psm_cmd_lo->jobtag;
-
-			priv->ptp_ring_cfg.ptp_ring_idx =
-				cnf10k_rfoe_get_ptp_ts_index(priv);
-
-			/* ptp timestamp entry is 128-bit in size */
-			tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
-				   ((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
-				    (16 * priv->ptp_ring_cfg.ptp_ring_idx));
-			memset(tx_tstmp, 0, sizeof(struct rfoe_tx_ptp_tstmp_s));
-		} else {
-			/* check ptp queue count */
-			if (priv->ptp_skb_list.count >= max_ptp_req) {
-				netif_err(priv, tx_err, netdev,
-					  "ptp list full, dropping pkt\n");
-				skb_shinfo(skb)->tx_flags &= ~SKBTX_IN_PROGRESS;
-				cnf10k_rfoe_update_tx_drop_stats(priv, PACKET_TYPE_PTP);
-				goto exit;
-			}
-			/* allocate and add ptp req to queue */
-			ts_skb = kmalloc(sizeof(*ts_skb), GFP_ATOMIC);
-			if (!ts_skb) {
-				cnf10k_rfoe_update_tx_drop_stats(priv, PACKET_TYPE_PTP);
-				goto exit;
-			}
-			ts_skb->skb = skb;
-			list_add_tail(&ts_skb->list, &priv->ptp_skb_list.list);
-			priv->ptp_skb_list.count++;
-			cnf10k_rfoe_update_tx_stats(priv, PACKET_TYPE_PTP,
-						    skb->len);
-			/* sw timestamp */
-			skb_tx_timestamp(skb);
-			goto exit;	/* submit the packet later */
-		}
-	}
-
-ptp_one_step_out:
-	/* sw timestamp */
-	skb_tx_timestamp(skb);
-
 	if (unlikely(netif_msg_pktdata(priv))) {
 		netdev_printk(KERN_DEBUG, priv->netdev, "Tx: skb %pS len=%d\n",
 			      skb, skb->len);
@@ -1152,29 +1075,83 @@ ptp_one_step_out:
 			       skb->data, skb->len, true);
 	}
 
+	/* check if one-step is enabled */
+	if (priv->ptp_onestep_sync) {
+		if (cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
+			cnf10k_rfoe_prepare_onestep_ptp_header(priv,
+							       &tx_mem, skb,
+							       ptp_offset,
+							       udp_csum);
+			/* recalculate UDP hdr checksum as RFOE block has no checksum
+			 * offload support and checksum field is left with stale data
+			 */
+			if (udp_csum)
+				cnf10k_rfoe_compute_udp_csum(skb);
+		}
 
+		if ((*(skb->data + ptp_offset) & 0xF) != DELAY_REQUEST_MSG_ID)
+			goto ptp_one_step_out;
+	}
+
+	skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+	if (list_empty(&priv->ptp_skb_list.list) &&
+	    !test_and_set_bit_lock(PTP_TX_IN_PROGRESS, &priv->state)) {
+		priv->ptp_tx_skb = skb;
+		psm_cmd_lo = (struct cnf10k_psm_cmd_addjob_s *)
+					&job_entry->job_cmd_lo;
+		priv->ptp_job_tag = psm_cmd_lo->jobtag;
+
+		priv->ptp_ring_cfg.ptp_ring_idx =
+			cnf10k_rfoe_get_ptp_ts_index(priv);
+
+		/* ptp timestamp entry is 128-bit in size */
+		tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
+			   ((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
+			    (16 * priv->ptp_ring_cfg.ptp_ring_idx));
+		memset(tx_tstmp, 0, sizeof(struct rfoe_tx_ptp_tstmp_s));
+	} else {
+		/* check ptp queue count */
+		if (priv->ptp_skb_list.count >= max_ptp_req) {
+			netif_err(priv, tx_err, netdev,
+				  "ptp list full, dropping pkt\n");
+			skb_shinfo(skb)->tx_flags &= ~SKBTX_IN_PROGRESS;
+			cnf10k_rfoe_update_tx_drop_stats(priv, PACKET_TYPE_PTP);
+			goto exit;
+		}
+		/* allocate and add ptp req to queue */
+		ts_skb = kmalloc(sizeof(*ts_skb), GFP_ATOMIC);
+		if (!ts_skb) {
+			cnf10k_rfoe_update_tx_drop_stats(priv, PACKET_TYPE_PTP);
+			goto exit;
+		}
+		ts_skb->skb = skb;
+		list_add_tail(&ts_skb->list, &priv->ptp_skb_list.list);
+		priv->ptp_skb_list.count++;
+		cnf10k_rfoe_update_tx_stats(priv, PACKET_TYPE_PTP,
+					    skb->len);
+		/* sw timestamp */
+		skb_tx_timestamp(skb);
+		goto exit;	/* submit the packet later */
+	}
+
+ptp_one_step_out:
+	/* sw timestamp */
+	skb_tx_timestamp(skb);
 
 	pkt_len = skb->len;
+
 	/* Copy packet data to dma buffer */
-	if (pkt_type == PACKET_TYPE_PTP &&
-	    priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
+	if (priv->ndev_flags & BPHY_NDEV_TX_1S_PTP_EN_FLAG) {
 		memcpy(job_entry->pkt_dma_addr, &tx_mem, sizeof(tx_mem));
 		memcpy(job_entry->pkt_dma_addr + sizeof(tx_mem),
 		       skb->data, skb->len);
 		pkt_len += sizeof(tx_mem);
 	} else {
-		memcpy(job_entry->pkt_dma_addr, skb->data, skb->len);
+		memcpy(job_entry->pkt_dma_addr, skb->data, pkt_len);
 	}
 
-	/* update rfoe_mode and lmac id for non-ptp (shared) psm job entry */
-	if (pkt_type != PACKET_TYPE_PTP) {
-		cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx,
-				       psm_queue_id, pkt_len, true,
-				       pkt_type == PACKET_TYPE_ECPRI ? 1 : 0);
-	} else {
-		cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx,
-				       psm_queue_id, pkt_len, false, 0);
-	}
+	cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx, psm_queue_id,
+			       pkt_len, false, 0);
 
 	cnf10k_rfoe_update_tx_stats(priv, pkt_type, skb->len);
 
@@ -1185,6 +1162,88 @@ ptp_one_step_out:
 exit:
 	if (!(skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS))
 		dev_kfree_skb_any(skb);
+
+	spin_unlock_irqrestore(&job_cfg->lock, flags);
+
+	return NETDEV_TX_OK;
+}
+
+/* netdev xmit */
+static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
+					      struct net_device *netdev)
+{
+	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
+	struct tx_job_queue_cfg *job_cfg;
+	struct tx_job_entry *job_entry;
+	int psm_queue_id, pkt_type = 0;
+	unsigned int pkt_len = 0;
+	unsigned long flags;
+	struct ethhdr *eth;
+
+	eth = (struct ethhdr *)skb->data;
+	if (priv->tx_hw_tstamp_en &&
+	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
+		return cnf10k_rfoe_ptp_xmit(skb, netdev);
+
+	job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
+	pkt_type = PACKET_TYPE_OTHER;
+	if (htons(eth->h_proto) == ETH_P_ECPRI)
+		pkt_type = PACKET_TYPE_ECPRI;
+
+	spin_lock_irqsave(&job_cfg->lock, flags);
+
+	if (cnf10k_rfoe_check_update_tx_stats(priv, pkt_type))
+		goto exit;
+
+	/* get psm queue number */
+	psm_queue_id = job_cfg->psm_queue_id;
+	netif_dbg(priv, tx_queued, priv->netdev,
+		  "psm: queue(%d): cfg=0x%llx ptr=0x%llx space=0x%llx\n",
+		  psm_queue_id,
+		  readq(priv->psm_reg_base + PSM_QUEUE_CFG(psm_queue_id)),
+		  readq(priv->psm_reg_base + PSM_QUEUE_PTR(psm_queue_id)),
+		  readq(priv->psm_reg_base + PSM_QUEUE_SPACE(psm_queue_id)));
+
+	/* check psm queue space available */
+	if (cnf10k_rfoe_check_psm_queue_space(priv, psm_queue_id)) {
+		netif_err(priv, tx_err, netdev,
+			  "no space in psm queue %d, dropping pkt\n",
+			   psm_queue_id);
+		netif_stop_queue(netdev);
+		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
+		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
+		spin_unlock_irqrestore(&job_cfg->lock, flags);
+		return NETDEV_TX_BUSY;
+	}
+
+	/* get the tx job entry */
+	job_entry = (struct tx_job_entry *)
+				&job_cfg->job_entries[job_cfg->q_idx];
+
+	if (unlikely(netif_msg_pktdata(priv))) {
+		netdev_printk(KERN_DEBUG, priv->netdev, "Tx: skb %pS len=%d\n",
+			      skb, skb->len);
+		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
+			       skb->data, skb->len, true);
+	}
+
+	pkt_len = skb->len;
+
+	/* Copy packet data to dma buffer */
+	memcpy(job_entry->pkt_dma_addr, skb->data, skb->len);
+
+	cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx, psm_queue_id,
+			       pkt_len, true,
+			       pkt_type == PACKET_TYPE_ECPRI ? 1 : 0);
+
+	cnf10k_rfoe_update_tx_stats(priv, pkt_type, skb->len);
+
+	/* increment queue index */
+	job_cfg->q_idx++;
+	if (job_cfg->q_idx == job_cfg->num_entries)
+		job_cfg->q_idx = 0;
+exit:
+	dev_kfree_skb_any(skb);
 
 	spin_unlock_irqrestore(&job_cfg->lock, flags);
 
