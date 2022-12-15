@@ -48,4 +48,15 @@ config OCTEONTX2_GHES_BERT
 	  reset the system.  Enabling support here will allow such errors
 	  to be reported when Linux is started again.
 
+config OCTEONTX2_EINJ
+	tristate "OcteonTX2 ECC Injection"
+	help
+	  Provides support for error injection to OcteonTX2
+	  memory controllers (LMC) and cache blocks.
+	  This facilitates testing of the memory controller RAS features and
+	  is intended to be used by test personnel when conducting system tests.
+	  To compile this as a module, choose M here. The module will be
+	  called otx2-einj.
+	  Unless testing, say N here.
+
 endmenu
