@@ -415,6 +415,7 @@ kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mbox_msr.ko
 kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mbox_pci.ko
 kernel/drivers/platform/x86/intel_speed_select_if/isst_if_mmio.ko
 kernel/drivers/platform/x86/wmi.ko
+kernel/drivers/ptp/ptp_kvm.ko
 kernel/drivers/regulator/fixed.ko
 kernel/drivers/regulator/lp3971.ko
 kernel/drivers/regulator/max1586.ko
