@@ -982,13 +982,48 @@ err:
 	return -EINVAL;
 }
 
+static void cnf10k_rfoe_submit_job(struct cnf10k_rfoe_ndev_priv *priv,
+				   struct tx_job_entry *job_entry, int job_index,
+				   int psm_queue_id, unsigned int pkt_len,
+				   bool update_lmac, u8 rfoe_mode)
+{
+	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
+	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
+
+	netif_dbg(priv, tx_queued, priv->netdev,
+		  "rfoe=%d lmac=%d psm_queue=%d tx_job_entry %d job_cmd_lo=0x%llx job_cmd_high=0x%llx jd_iova_addr=0x%llx\n",
+		  priv->rfoe_num, priv->lmac_id, psm_queue_id, job_index,
+		  job_entry->job_cmd_lo, job_entry->job_cmd_hi,
+		  job_entry->jd_iova_addr);
+
+	/* update length and block size in jd dma cfg word */
+	jd_cfg_ptr = job_entry->jd_cfg_ptr;
+	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
+						job_entry->rd_dma_ptr;
+
+	if (update_lmac) {
+		jd_cfg_ptr->cfg3.lmacid = priv->lmac_id & 0x3;
+		jd_cfg_ptr->cfg.rfoe_mode = rfoe_mode;
+	}
+
+	jd_cfg_ptr->cfg3.pkt_len = pkt_len;
+	jd_dma_cfg_word_0->block_size = (((pkt_len + 15) >> 4) * 4);
+
+	/* make sure that all memory writes are completed */
+	dma_wmb();
+
+	/* submit PSM job */
+	writeq(job_entry->job_cmd_lo,
+	       priv->psm_reg_base + PSM_QUEUE_CMD_LO(psm_queue_id));
+	writeq(job_entry->job_cmd_hi,
+	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
+}
+
 /* netdev xmit */
 static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 					      struct net_device *netdev)
 {
-	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
 	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
-	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
 	struct cnf10k_psm_cmd_addjob_s *psm_cmd_lo;
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
 	int ptp_offset = 0, udp_csum = 0;
@@ -1043,12 +1078,6 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	/* get the tx job entry */
 	job_entry = (struct tx_job_entry *)
 				&job_cfg->job_entries[job_cfg->q_idx];
-
-	netif_dbg(priv, tx_queued, priv->netdev,
-		  "rfoe=%d lmac=%d psm_queue=%d tx_job_entry %d job_cmd_lo=0x%llx job_cmd_high=0x%llx jd_iova_addr=0x%llx\n",
-		  priv->rfoe_num, priv->lmac_id, psm_queue_id, job_cfg->q_idx,
-		  job_entry->job_cmd_lo, job_entry->job_cmd_hi,
-		  job_entry->jd_iova_addr);
 
 	/* hw timestamp */
 	if (unlikely(pkt_type == PACKET_TYPE_PTP)) {
@@ -1123,19 +1152,7 @@ ptp_one_step_out:
 			       skb->data, skb->len, true);
 	}
 
-	/* update length and block size in jd dma cfg word */
-	jd_cfg_ptr = job_entry->jd_cfg_ptr;
-	jd_dma_cfg_word_0 = (struct cnf10k_mhbw_jd_dma_cfg_word_0_s *)
-						job_entry->rd_dma_ptr;
 
-	/* update rfoe_mode and lmac id for non-ptp (shared) psm job entry */
-	if (pkt_type != PACKET_TYPE_PTP) {
-		jd_cfg_ptr->cfg3.lmacid = priv->lmac_id & 0x3;
-		if (pkt_type == PACKET_TYPE_ECPRI)
-			jd_cfg_ptr->cfg.rfoe_mode = 1;
-		else
-			jd_cfg_ptr->cfg.rfoe_mode = 0;
-	}
 
 	pkt_len = skb->len;
 	/* Copy packet data to dma buffer */
@@ -1148,17 +1165,16 @@ ptp_one_step_out:
 	} else {
 		memcpy(job_entry->pkt_dma_addr, skb->data, skb->len);
 	}
-	jd_cfg_ptr->cfg3.pkt_len = pkt_len;
-	jd_dma_cfg_word_0->block_size = (((pkt_len + 15) >> 4) * 4);
 
-	/* make sure that all memory writes are completed */
-	dma_wmb();
-
-	/* submit PSM job */
-	writeq(job_entry->job_cmd_lo,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_LO(psm_queue_id));
-	writeq(job_entry->job_cmd_hi,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
+	/* update rfoe_mode and lmac id for non-ptp (shared) psm job entry */
+	if (pkt_type != PACKET_TYPE_PTP) {
+		cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx,
+				       psm_queue_id, pkt_len, true,
+				       pkt_type == PACKET_TYPE_ECPRI ? 1 : 0);
+	} else {
+		cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx,
+				       psm_queue_id, pkt_len, false, 0);
+	}
 
 	cnf10k_rfoe_update_tx_stats(priv, pkt_type, skb->len);
 
