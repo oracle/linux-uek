@@ -222,6 +222,7 @@ kernel/drivers/platform/x86/mxm-wmi.ko
 kernel/drivers/platform/x86/wmi.ko
 kernel/drivers/powercap/intel_rapl_common.ko
 kernel/drivers/powercap/intel_rapl_msr.ko
+kernel/drivers/ptp/ptp_kvm.ko
 kernel/drivers/scsi/be2iscsi/be2iscsi.ko
 kernel/drivers/scsi/bnx2i/bnx2i.ko
 kernel/drivers/scsi/ch.ko
@@ -279,7 +280,6 @@ kernel/drivers/video/fbdev/core/fb_sys_fops.ko
 kernel/drivers/video/fbdev/core/syscopyarea.ko
 kernel/drivers/video/fbdev/core/sysfillrect.ko
 kernel/drivers/video/fbdev/core/sysimgblt.ko
-kernel/drivers/virt/vboxguest/vboxguest.ko
 kernel/drivers/virtio/virtio_balloon.ko
 kernel/drivers/virtio/virtio_dma_buf.ko
 kernel/drivers/virtio/virtio_input.ko
@@ -287,6 +287,7 @@ kernel/drivers/virtio/virtio_pci.ko
 kernel/drivers/virtio/virtio_pci_legacy_dev.ko
 kernel/drivers/virtio/virtio_pci_modern_dev.ko
 kernel/drivers/virtio/virtio_vdpa.ko
+kernel/drivers/virt/vboxguest/vboxguest.ko
 kernel/drivers/watchdog/iTCO_vendor_support.ko
 kernel/drivers/watchdog/iTCO_wdt.ko
 kernel/drivers/xen/xen-acpi-processor.ko
