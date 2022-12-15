@@ -947,6 +947,41 @@ static int cnf10k_rfoe_check_psm_queue_space(struct cnf10k_rfoe_ndev_priv *priv,
 	return 0;
 }
 
+static int cnf10k_rfoe_check_update_tx_stats(struct cnf10k_rfoe_ndev_priv *priv,
+					     int pkt_type)
+{
+	struct net_device *netdev = priv->netdev;
+
+	if (unlikely(priv->if_type != IF_TYPE_ETHERNET)) {
+		netif_err(priv, tx_queued, netdev,
+			  "%s {rfoe%d lmac%d} invalid intf mode, drop pkt\n",
+			  netdev->name, priv->rfoe_num, priv->lmac_id);
+		goto err;
+	}
+
+	if (unlikely(!netif_carrier_ok(netdev))) {
+		netif_err(priv, tx_err, netdev,
+			  "%s {rfoe%d lmac%d} link down, drop pkt\n",
+			  netdev->name, priv->rfoe_num,
+			  priv->lmac_id);
+		goto err;
+	}
+
+	if (unlikely(!(priv->pkt_type_mask & (1U << pkt_type)))) {
+		netif_err(priv, tx_queued, netdev,
+			  "%s {rfoe%d lmac%d} pkt not supported, drop pkt\n",
+			  netdev->name, priv->rfoe_num,
+			  priv->lmac_id);
+		goto err;
+	}
+
+	return 0;
+
+err:
+	cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
+	return -EINVAL;
+}
+
 /* netdev xmit */
 static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 					      struct net_device *netdev)
@@ -981,31 +1016,8 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
-	if (unlikely(priv->if_type != IF_TYPE_ETHERNET)) {
-		netif_err(priv, tx_queued, netdev,
-			  "%s {rfoe%d lmac%d} invalid intf mode, drop pkt\n",
-			  netdev->name, priv->rfoe_num, priv->lmac_id);
-		cnf10k_rfoe_update_tx_drop_stats(priv, PACKET_TYPE_OTHER);
+	if (cnf10k_rfoe_check_update_tx_stats(priv, pkt_type))
 		goto exit;
-	}
-
-	if (unlikely(!netif_carrier_ok(netdev))) {
-		netif_err(priv, tx_err, netdev,
-			  "%s {rfoe%d lmac%d} link down, drop pkt\n",
-			  netdev->name, priv->rfoe_num,
-			  priv->lmac_id);
-		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
-		goto exit;
-	}
-
-	if (unlikely(!(priv->pkt_type_mask & (1U << pkt_type)))) {
-		netif_err(priv, tx_queued, netdev,
-			  "%s {rfoe%d lmac%d} pkt not supported, drop pkt\n",
-			  netdev->name, priv->rfoe_num,
-			  priv->lmac_id);
-		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
-		goto exit;
-	}
 
 	/* get psm queue number */
 	psm_queue_id = job_cfg->psm_queue_id;
