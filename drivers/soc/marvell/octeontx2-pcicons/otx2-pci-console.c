@@ -569,7 +569,36 @@ static int octeontx_console_de_init(struct device *dev,
 				    struct pci_console *pci_cons, int index,
 				    u64 cons_addr, u64 cons_size)
 {
+	struct octeontx_pcie_console __iomem *ring_descr;
+	unsigned long wait_jiffies;
+	u32 wr_idx, rd_idx;
+
 	dbgmsg(dev, "%s: entry\n", __func__);
+
+	ring_descr = pci_cons->ring_descr;
+
+	if (ring_descr && ring_descr->host_console_connected) {
+		/* wait for connected host to read all console output data */
+#		define PCICONS_FLUSH_WAIT_MS 100
+
+		wait_jiffies = jiffies +
+			       msecs_to_jiffies(PCICONS_FLUSH_WAIT_MS);
+
+		do {
+			wr_idx = le32_to_cpu(
+					readl(&ring_descr->output_write_index)
+					);
+			rd_idx = le32_to_cpu(
+					readl(&ring_descr->output_read_index)
+					);
+			if (rd_idx == wr_idx)
+				break;
+		} while (time_is_after_jiffies(wait_jiffies));
+	} else if (ring_descr) {
+		/* flush console output data if host NOT connected */
+		wr_idx = le32_to_cpu(readl(&ring_descr->output_write_index));
+		writel(cpu_to_le32(wr_idx), &ring_descr->output_read_index);
+	}
 
 	if (pci_cons->input_ring) {
 		iounmap(pci_cons->input_ring);
@@ -1101,6 +1130,7 @@ static int pci_console_de_init(struct platform_device *pdev)
 	octeontx_console_de_init(dev, pci_cons, cons_num, 0, 0);
 
 	if (pci_cons->octeontx_console_acquired) {
+		/* release the console */
 		old_use_mask = new_use_mask = 0;
 		if (!octeontx_console_acquire(pci_cons->nexus_desc,
 				     cons_num, false, &old_use_mask,
@@ -1165,6 +1195,8 @@ static void pci_console_shutdown(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 
 	dbgmsg(dev, "%s: entry\n", __func__);
+
+	pci_console_de_init(pdev);
 }
 
 static int pci_console_remove(struct platform_device *pdev)
@@ -1173,8 +1205,6 @@ static int pci_console_remove(struct platform_device *pdev)
 	struct pci_console *pci_cons = platform_get_drvdata(pdev);
 
 	dbgmsg(dev, "%s: entry\n", __func__);
-
-	pci_console_de_init(pdev);
 
 	devm_kfree(dev, pci_cons);
 
@@ -1305,7 +1335,7 @@ static void pci_console_dev_tty_close(struct tty_struct *tty,
 
 	if (--pci_cons->tty.open_count == 0) {
 		dbgmsg(dev, "Deleting timer...\n");
-		del_timer(&pci_cons->tty.poll_timer);
+		del_timer_sync(&pci_cons->tty.poll_timer);
 	}
 }
 
