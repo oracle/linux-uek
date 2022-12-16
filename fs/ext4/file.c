@@ -96,6 +96,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	struct mutex *aio_mutex = NULL;
 	struct blk_plug plug;
 	int o_direct = iocb->ki_flags & IOCB_DIRECT;
+	int unaligned_aio = 0;
 	int overwrite = 0;
 	ssize_t ret;
 
@@ -108,6 +109,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	    !is_sync_kiocb(iocb) &&
 	    (iocb->ki_flags & IOCB_APPEND ||
 	     ext4_unaligned_aio(inode, from, iocb->ki_pos))) {
+		unaligned_aio = 1;
 		aio_mutex = ext4_aio_mutex(inode);
 		mutex_lock(aio_mutex);
 		ext4_unwritten_wait(inode);
@@ -169,6 +171,13 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	}
 
 	ret = __generic_file_write_iter(iocb, from);
+	/*
+	 * Unaligned direct AIO must be the only IO in flight. Otherwise
+	 * overlapping aligned IO after unaligned might result in data
+	 * corruption.
+	 */
+	if (ret == -EIOCBQUEUED && unaligned_aio)
+		ext4_unwritten_wait(inode);
 	mutex_unlock(&inode->i_mutex);
 
 	if (ret > 0) {
