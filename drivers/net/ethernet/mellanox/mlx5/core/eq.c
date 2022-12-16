@@ -42,6 +42,9 @@
 #include "fpga/core.h"
 #include "eswitch.h"
 #include "diag/fw_tracer.h"
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#include "oracle_ext.h"
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 enum {
 	MLX5_EQE_SIZE		= sizeof(struct mlx5_eqe),
@@ -417,6 +420,11 @@ static irqreturn_t mlx5_eq_int(int irq, void *eq_ptr)
 		 * checked the ownership bit.
 		 */
 		dma_rmb();
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		if (unlikely(mlx5_core_verify_eqe_flag))
+			verify_eqe(eq, eqe);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 		mlx5_core_dbg(eq->dev, "eqn %d, eqe type %s\n",
 			      eq->eqn, eqe_type_str(eqe->type));

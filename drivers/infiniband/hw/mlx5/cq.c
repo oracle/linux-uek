@@ -35,7 +35,9 @@
 #include <rdma/ib_user_verbs.h>
 #include <rdma/ib_cache.h>
 #include "mlx5_ib.h"
-
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#include "oracle_ext.h"
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 static void mlx5_ib_cq_comp(struct mlx5_core_cq *cq)
 {
 	struct ib_cq *ibcq = &to_mibcq(cq)->ibcq;
@@ -540,6 +542,11 @@ repoll:
 		return -EAGAIN;
 
 	cqe64 = (cq->mcq.cqe_sz == 64) ? cqe : cqe + 64;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (unlikely(mlx5_ib_verify_cqe_flag))
+		verify_cqe(cqe64, cq);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	++cq->mcq.cons_index;
 
