@@ -37,21 +37,25 @@
 #define PEM_BAR4_INDEX_CA		BIT_ULL(3)
 #define PEM_BAR4_INDEX_ADDR_IDX(x)	((x) << 4)
 
+#define PEM_BAR4_NUM_INDEX	8
 #define PEM_BAR4_INDEX_START	8
-#define PEM_BAR4_INDEX_END	16
+#define PEM_BAR4_INDEX_END	13
 #define PEM_BAR4_INDEX_SIZE	(4 * 1024 * 1024)
-#define PEM_BAR4_INDEX_MEM	(64 * 1024 * 1024)
+#define PEM_BAR4_INDEX_MEM	((PEM_BAR4_INDEX_END - PEM_BAR4_INDEX_START + 1) \
+				 * PEM_BAR4_INDEX_SIZE)
 
 /* Some indexes have specific non-memory uses */
 #define PEM_BAR4_INDEX_PTP	14
 #define MIO_PTP_BASE_ADDR	0x807000000f00
+
+#define PEM_BAR4_INDEX_RSVD1	15
 
 #define	UIO_PERST_VERSION	"0.1"
 
 struct mv_pem_ep {
 	struct device	*dev;
 	void __iomem	*base;
-	void		*va;
+	void		*va[PEM_BAR4_NUM_INDEX];
 	struct uio_info	uio_rst_int_perst;
 };
 
@@ -131,21 +135,27 @@ err_exit:
 
 static int pem_ep_bar_setup(struct mv_pem_ep *pem_ep)
 {
+	unsigned long order, page;
 	phys_addr_t pa;
-	int idx;
 	uint64_t val;
+	int idx;
 
-	pem_ep->va = devm_kzalloc(pem_ep->dev, PEM_BAR4_INDEX_MEM, GFP_KERNEL);
-	if (!pem_ep->va)
-		return -ENOMEM;
+	order = get_order(PEM_BAR4_INDEX_SIZE);
 
-	pa = virt_to_phys(pem_ep->va);
-	for (idx = PEM_BAR4_INDEX_START; idx < PEM_BAR4_INDEX_END; idx++) {
+	for (idx = PEM_BAR4_INDEX_START; idx < PEM_BAR4_INDEX_END + 1; idx++) {
 		phys_addr_t addr;
 		int i;
 
 		/* Each index in BAR4 points to a 4MB region */
 		i = idx - PEM_BAR4_INDEX_START;
+
+		page = __get_free_pages(GFP_KERNEL, order);
+		memset((char *)page, 0, PAGE_SIZE << order);
+		pem_ep->va[i] = (void *)page;
+		if (!pem_ep->va[i])
+			return -ENOMEM;
+
+		pa = virt_to_phys(pem_ep->va[i]);
 		addr = pa + (i * PEM_BAR4_INDEX_SIZE);
 
 		/* IOVA 52:22 is used by hardware */
@@ -172,7 +182,7 @@ static int pem_ep_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct mv_pem_ep *pem_ep;
 	struct resource *res;
-	int ret = 0;
+	int i, ret = 0;
 
 	pem_ep = devm_kzalloc(dev, sizeof(*pem_ep), GFP_KERNEL);
 	if (!pem_ep)
@@ -190,7 +200,7 @@ static int pem_ep_probe(struct platform_device *pdev)
 
 	ret = pem_ep_bar_setup(pem_ep);
 	if (ret < 0) {
-		dev_err(dev, "Error setting up EP BAR\n");
+		dev_err(dev, "Error setting up EP BAR ret=%d\n", ret);
 		goto err_exit;
 	}
 
@@ -198,13 +208,17 @@ static int pem_ep_probe(struct platform_device *pdev)
 	ret = register_perst_uio_dev(pdev, pem_ep);
 	if (ret < 0) {
 		dev_err(dev, "Error registering UIO PERST device\n");
-		goto err_exit;
+		goto err_bar_setup;
 	}
 
 	return 0;
 
+err_bar_setup:
+	for (i = 0; i < PEM_BAR4_NUM_INDEX; i++) {
+		if (pem_ep->va[i])
+			free_pages((unsigned long)pem_ep->va[i], get_order(PEM_BAR4_INDEX_SIZE));
+	}
 err_exit:
-	devm_kfree(pem_ep->dev, pem_ep->va);
 	devm_kfree(dev, pem_ep);
 	return ret;
 }
@@ -213,10 +227,15 @@ static int pem_ep_remove(struct platform_device *pdev)
 {
 	struct mv_pem_ep *pem_ep = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
+	int i;
 
 	pr_info("Removing %s driver\n", PEM_EP_DRV_NAME);
 
-	devm_kfree(pem_ep->dev, pem_ep->va);
+	for (i = 0; i < PEM_BAR4_NUM_INDEX; i++) {
+		if (pem_ep->va[i])
+			free_pages((unsigned long)pem_ep->va[i], get_order(PEM_BAR4_INDEX_SIZE));
+	}
+
 	uio_unregister_device(&pem_ep->uio_rst_int_perst);
 	devm_kfree(dev, pem_ep);
 
