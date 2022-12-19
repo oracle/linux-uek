@@ -325,7 +325,8 @@ static int __init fw_memtest_init(void)
 
 	desc = &test_desc;
 	desc->device = mub_device_register("memtest",
-					   MUB_SOC_TYPE_10X | MUB_SOC_TYPE_ASIM,
+					   MUB_SOC_TYPE_9X | MUB_SOC_TYPE_10X |
+					   MUB_SOC_TYPE_ASIM,
 					   fw_memtest_attr_groups);
 	if (IS_ERR_OR_NULL(desc->device)) {
 		if (!desc->device)

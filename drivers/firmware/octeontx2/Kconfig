@@ -71,7 +71,7 @@ config MARVELL_CN10K_RPRAM
 	  Only Octeon 10x platform are supported by this module.
 	  If unsure, say N here.
 
-config MARVELL_CN10K_MEMTEST
+config MARVELL_MEMTEST
 	tristate "Memory POST configuration utility"
 	depends on HAVE_ARM_SMCCC
 	select MARVELL_UB_GEN_DRIVER
@@ -79,7 +79,7 @@ config MARVELL_CN10K_MEMTEST
 	help
 	  This option enables a module that provides sysfs entries to manipulate
 	  configuration of the power-on self test for memory executed
-	  at warm and cold boot. Driver works only with CN10KX platforms.
+	  at warm and cold boot.
 	  If unsure, say N here.
 
 endif # MARVELL_UB
