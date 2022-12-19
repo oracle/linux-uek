@@ -2791,8 +2791,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	memset(&qp_attr, 0, sizeof(qp_attr));
 	qp_attr.qp_state	= IB_QPS_INIT;
 	qp_attr.pkey_index	= 0;
-	qp_attr.qp_access_flags	= IB_ACCESS_REMOTE_READ |
-				  IB_ACCESS_REMOTE_WRITE;
+	qp_attr.qp_access_flags	= 0; /* Local Read is default */
 	qp_attr.port_num	= RDS_IB_DEFAULT_FREG_PORT_NUM;
 
 	ret = ib_modify_qp(rds_ibdev->fastreg_qp, &qp_attr, IB_QP_STATE	|
@@ -2859,7 +2858,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	qp_attr.timeout		= 14;
 	qp_attr.retry_cnt	= 6;
 	qp_attr.rnr_retry	= 6;
-	qp_attr.max_rd_atomic	= 1;
+	qp_attr.max_rd_atomic	= 0;
 
 	ret = ib_modify_qp(rds_ibdev->fastreg_qp, &qp_attr, IB_QP_STATE	|
 						IB_QP_TIMEOUT		|
