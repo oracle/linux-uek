@@ -51,6 +51,22 @@ static int dpi_dma_engine_get_num(void)
 	return DPI_MAX_ENGINES;
 }
 
+static int dpi_wqe_cs_offset(struct dpipf *dpi, u8 offset)
+{
+	u64 reg = 0ULL;
+
+	spin_lock(&dpi->vf_lock);
+	reg = dpi_reg_read(dpi, DPI_DMA_CONTROL);
+	reg &= ~DPI_DMA_CONTROL_WQECSDIS;
+	reg |= DPI_DMA_CONTROL_ZBWCSEN;
+	reg |= DPI_DMA_CONTROL_WQECSMODE1;
+	reg |= DPI_DMA_CONTROL_WQECSOFF(offset);
+	dpi_reg_write(dpi, DPI_DMA_CONTROL, reg);
+	spin_unlock(&dpi->vf_lock);
+
+	return 0;
+}
+
 static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 {
 	int engine = 0;
@@ -423,6 +439,8 @@ static int queue_config(struct dpipf *dpi, struct dpipf_vf *dpivf,
 		dpivf->vf_config.sso_pf_func = msg->s.sso_pf_func;
 		dpivf->vf_config.npa_pf_func = msg->s.npa_pf_func;
 		dpi_queue_init(dpi, dpivf, msg->s.vfid);
+		if (msg->s.wqecs)
+			dpi_wqe_cs_offset(dpi, msg->s.wqecsoff);
 		dpivf->setup_done = true;
 		break;
 	case DPI_QUEUE_CLOSE:
