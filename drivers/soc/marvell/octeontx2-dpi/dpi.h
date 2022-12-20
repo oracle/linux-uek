@@ -94,7 +94,9 @@
 #define DPI_DMA_CONTROL_O_ADD1			(0x1ULL << 19)
 #define DPI_DMA_CONTROL_LDWB			(0x1ULL << 32)
 #define DPI_DMA_CONTROL_NCB_TAG_DIS		(0x1ULL << 34)
+#define DPI_DMA_CONTROL_WQECSMODE1		(0x1ULL << 37)
 #define DPI_DMA_CONTROL_ZBWCSEN			(0x1ULL << 39)
+#define DPI_DMA_CONTROL_WQECSOFF(offset)	(((uint64_t)offset) << 40)
 #define DPI_DMA_CONTROL_WQECSDIS		(0x1ULL << 47)
 #define DPI_DMA_CONTROL_UIO_DIS			(0x1ULL << 55)
 #define DPI_DMA_CONTROL_PKT_EN			(0x1ULL << 56)
@@ -324,6 +326,10 @@ union dpi_mbox_message_t {
 		uint64_t sso_pf_func    :16;
 		/* NPA PF function */
 		uint64_t npa_pf_func    :16;
+		/* Work queue completion status enable */
+		uint64_t wqecs		:1;
+		/* Work queue completion status byte offset */
+		uint64_t wqecsoff	:7;
 	} s;
 };
 
