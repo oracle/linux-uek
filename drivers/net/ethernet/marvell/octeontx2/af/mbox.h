@@ -377,6 +377,9 @@ M(NIX_SPI_TO_SA_ADD,    0x8026, nix_spi_to_sa_add, nix_spi_to_sa_add_req,   \
 				nix_spi_to_sa_add_rsp)                      \
 M(NIX_SPI_TO_SA_DELETE, 0x8027, nix_spi_to_sa_delete, nix_spi_to_sa_delete_req,   \
 				msg_rsp)                                        \
+M(NIX_ALLOC_BPIDS,	0x8028,	nix_alloc_bpids, nix_alloc_bpid_req, nix_bpids)	\
+M(NIX_FREE_BPIDS,	0x8029, nix_free_bpids, nix_bpids, msg_rsp)		\
+M(NIX_RX_CHAN_CFG,	0x802a, nix_rx_chan_cfg, nix_rx_chan_cfg, nix_rx_chan_cfg)	\
 M(NIX_MCAST_GRP_CREATE,	0x802b, nix_mcast_grp_create, nix_mcast_grp_create_req,	\
 				nix_mcast_grp_create_rsp)			\
 M(NIX_MCAST_GRP_DESTROY, 0x802c, nix_mcast_grp_destroy, nix_mcast_grp_destroy_req,	\
@@ -1416,6 +1419,29 @@ struct nix_mcast_grp_update_req {
 struct nix_mcast_grp_update_rsp {
 	struct mbox_msghdr hdr;
 	u32 mce_start_index;
+};
+
+struct nix_alloc_bpid_req {
+	struct mbox_msghdr hdr;
+	u8 bpid_cnt;
+	u8 type;
+	u64 rsvd;
+};
+
+struct nix_bpids {
+	struct mbox_msghdr hdr;
+	u8 bpid_cnt;
+	u16 bpids[8];
+	u64 rsvd;
+};
+
+struct nix_rx_chan_cfg {
+	struct mbox_msghdr hdr;
+	u8 type;	/* Interface type(CGX/CPT/LBK) */
+	u8 read;
+	u16 chan;	/* RX channel to be configured */
+	u64 val;	/* NIX_AF_RX_CHAN_CFG value */
+	u64 rsvd;
 };
 
 /* Global NIX inline IPSec configuration */
