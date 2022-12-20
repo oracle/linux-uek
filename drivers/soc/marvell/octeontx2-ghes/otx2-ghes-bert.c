@@ -313,7 +313,7 @@ static int __init ghes_bert_init(void)
 	blk = (void __iomem *)(((uint8_t *)bed_src.estatus_va));
 	memset_io(blk, 0, len);
 
-	kzfree(buff);
+	kfree(buff);
 
 	return 0;
 }
