@@ -73,7 +73,7 @@ struct otx2_cpt_ucode_hdr {
 };
 
 struct otx2_cpt_ucode {
-	u8 ver_str[OTX2_CPT_UCODE_VER_STR_SZ];/*
+	u8 ver_str[OTX2_CPT_UCODE_VER_STR_SZ + 1];/*
 					       * ucode version in readable
 					       * format
 					       */
