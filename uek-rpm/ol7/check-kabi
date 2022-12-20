@@ -24,7 +24,7 @@ __license__ = "GPL"
 import getopt
 import os
 import re
-import sha
+import hashlib
 import string
 import sys
 
@@ -42,7 +42,9 @@ def load_symvers(symvers,filename):
 			break
 		if in_line == "\n":
 			continue
-		checksum,symbol,directory,type = string.split(in_line)
+
+		l = string.split(in_line)
+		symbol = l[1]
 
 		symvers[symbol] = in_line[0:-1]
 
@@ -66,13 +68,25 @@ def check_kabi(symvers,kabi):
 
 	fail=0
 	warn=0
+	typeerr=0
 	changed_symbols=[]
 	moved_symbols=[]
+	retyped_symbols=[]
 
 	for symbol in kabi:
 		abi_hash,abi_sym,abi_dir,abi_type = string.split(kabi[symbol])
 		if symvers.has_key(symbol):
-			sym_hash,sym_sym,sym_dir,sym_type = string.split(symvers[symbol])
+			l = string.split(symvers[symbol])
+
+			sym_hash = l[0]
+
+			if len(l) == 4:
+				sym_dir = l[2]
+				sym_type = l[3]
+			else:
+				sym_dir = l[3]
+				sym_type = l[4]
+
 			if abi_hash != sym_hash:
 				fail=1
 				changed_symbols.append(symbol)
@@ -81,12 +95,28 @@ def check_kabi(symvers,kabi):
 				warn=1
 				moved_symbols.append(symbol)
 
+			if abi_type != sym_type:
+				typeerr=1
+				retyped_symbols.append(symbol)
+		else:
+			fail=1
+			changed_symbols.append(symbol)
+
 	if fail:
 		print "*** ERROR - ABI BREAKAGE WAS DETECTED ***"
 		print ""
 		print "The following symbols have been changed (this will cause an ABI breakage):"
 		print ""
 		for symbol in changed_symbols:
+			print symbol
+		print ""
+
+	if typeerr:
+		print "*** ERROR - SYMBOL LICENSE HAS CHANGED ***"
+		print ""
+		print "The usage license for the following symbols has changed (this will cause an ABI breakage):"
+		print ""
+		for symbol in retyped_symbols:
 			print symbol
 		print ""
 
@@ -100,7 +130,7 @@ def check_kabi(symvers,kabi):
 			print symbol
 		print ""
 
-	if fail:
+	if fail or typeerr:
 		sys.exit(1)
 	else:
 		sys.exit(0)
