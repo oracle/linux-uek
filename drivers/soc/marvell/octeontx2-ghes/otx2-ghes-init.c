@@ -40,7 +40,7 @@ static void __init otx2_enable_msix(struct pci_dev *pdev)
 			pdev->bus->number, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
 }
 
-static void __init otx2_msix_init(void)
+static int __init otx2_msix_init(void)
 {
 	const struct pci_device_id *pdevid;
 	struct pci_dev *pdev;
@@ -52,6 +52,8 @@ static void __init otx2_msix_init(void)
 		while ((pdev = pci_get_device(pdevid->vendor, pdevid->device, pdev)))
 			otx2_enable_msix(pdev);
 	}
+
+	return 0;
 }
 
 device_initcall(otx2_msix_init);
