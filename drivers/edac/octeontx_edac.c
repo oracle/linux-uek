@@ -1101,7 +1101,7 @@ static int __init octeontx_edac_init(void)
 	ret = octeontx_ghes_of_match_resource(&ghes_list);
 	if (ret)
 		goto exit0;
-
+	sdei_init();
 	if (soc_device_match(cn10_socinfo)) {
 
 		ret = platform_driver_register(&dss_edac_drv);
