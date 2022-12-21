@@ -870,6 +870,12 @@ u8 spectre_bhb_loop_affected(int scope)
 		static const struct midr_range spectre_bhb_k8_list[] = {
 			MIDR_ALL_VERSIONS(MIDR_CORTEX_A72),
 			MIDR_ALL_VERSIONS(MIDR_CORTEX_A57),
+                        MIDR_ALL_VERSIONS(MIDR_OCTX2_98XX),
+                        MIDR_ALL_VERSIONS(MIDR_OCTX2_96XX),
+                        MIDR_ALL_VERSIONS(MIDR_OCTX2_95XX),
+                        MIDR_ALL_VERSIONS(MIDR_OCTX2_95XXN),
+                        MIDR_ALL_VERSIONS(MIDR_OCTX2_95XXMM),
+                        MIDR_ALL_VERSIONS(MIDR_OCTX2_95XXO),
 			{},
 		};
 
