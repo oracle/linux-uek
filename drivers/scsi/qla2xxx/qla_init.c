@@ -9682,6 +9682,13 @@ struct qla_qpair *qla2xxx_create_qpair(struct scsi_qla_host *vha, int qos,
 			goto fail_mempool;
 		}
 
+		if (qla_create_buf_pool(vha, qpair)) {
+			ql_log(ql_log_warn, vha, 0xd036,
+			    "Failed to initialize buf pool for qpair %d\n",
+			    qpair->id);
+			goto fail_bufpool;
+		}
+
 		/* Mark as online */
 		qpair->online = 1;
 
@@ -9697,7 +9704,10 @@ struct qla_qpair *qla2xxx_create_qpair(struct scsi_qla_host *vha, int qos,
 	}
 	return qpair;
 
+fail_bufpool:
+	mempool_destroy(qpair->srb_mempool);
 fail_mempool:
+	qla25xx_delete_req_que(vha, qpair->req);
 fail_req:
 	qla25xx_delete_rsp_que(vha, qpair->rsp);
 fail_rsp:
@@ -9722,6 +9732,8 @@ int qla2xxx_delete_qpair(struct scsi_qla_host *vha, struct qla_qpair *qpair)
 	struct qla_hw_data *ha = qpair->hw;
 
 	qpair->delete_in_progress = 1;
+
+	qla_free_buf_pool(qpair);
 
 	ret = qla25xx_delete_req_que(vha, qpair->req);
 	if (ret != QLA_SUCCESS)
