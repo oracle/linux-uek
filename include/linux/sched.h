@@ -1295,7 +1295,8 @@ struct task_struct {
 	UEK_KABI_RESERVE(6)
 #endif
 
-	UEK_KABI_RESERVE(7)
+	/* PF_IO_WORKER */
+	UEK_KABI_USE(7, void *pf_io_worker)
 	UEK_KABI_RESERVE(8)
 
 	/*
