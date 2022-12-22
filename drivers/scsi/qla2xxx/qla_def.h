@@ -3745,7 +3745,10 @@ struct  qla_buf_pool {
 	u16 num_bufs;
 	u16 num_active;
 	u16 max_used;
-	u16 reserved;
+	u16 num_alloc;
+	u16 prev_max;
+	u16 pad;
+	uint32_t take_snapshot:1;
 	unsigned long *buf_map;
 	void **buf_array;
 	dma_addr_t *dma_array;
@@ -4888,6 +4891,7 @@ typedef struct scsi_qla_host {
 #define LOOP_READY	5
 #define LOOP_DEAD	6
 
+	unsigned long   buf_expired;
 	unsigned long   relogin_jif;
 	unsigned long   dpc_flags;
 #define RESET_MARKER_NEEDED	0	/* Send marker to ISP. */
