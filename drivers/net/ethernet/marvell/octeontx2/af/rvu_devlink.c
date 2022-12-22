@@ -1996,12 +1996,17 @@ void rvu_unregister_dl(struct rvu *rvu)
 {
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
 	struct devlink *dl = rvu_dl->dl;
+	size_t size;
 
 	if (!dl)
 		return;
 
-	devlink_params_unregister(dl, rvu_af_dl_params,
-				  ARRAY_SIZE(rvu_af_dl_params));
+	/* Unregister exact match devlink only for CN10K-B */
+	size = ARRAY_SIZE(rvu_af_dl_params);
+	if (!rvu_npc_exact_has_match_table(rvu))
+		size -= 1;
+
+	devlink_params_unregister(dl, rvu_af_dl_params, size);
 	rvu_health_reporters_destroy(rvu);
 	devlink_unregister(dl);
 	devlink_free(dl);
