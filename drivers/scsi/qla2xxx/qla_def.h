@@ -3948,7 +3948,6 @@ struct qlt_hw_data {
 	__le32 __iomem *atio_q_out;
 
 	const struct qla_tgt_func_tmpl *tgt_ops;
-	struct qla_tgt_vp_map *tgt_vp_map;
 
 	int saved_set;
 	__le16	saved_exchange_count;
@@ -4772,6 +4771,7 @@ struct qla_hw_data {
 	spinlock_t sadb_lock;	/* protects list */
 	struct els_reject elsrej;
 	u8 edif_post_stop_cnt_down;
+	struct qla_vp_map *vp_map;
 };
 
 #define RX_ELS_SIZE (roundup(sizeof(struct enode) + ELS_MAX_PAYLOAD, SMP_CACHE_BYTES))
@@ -5073,7 +5073,7 @@ struct qla27xx_image_status {
 #define SET_AL_PA	2
 #define RESET_VP_IDX	3
 #define RESET_AL_PA	4
-struct qla_tgt_vp_map {
+struct qla_vp_map {
 	uint8_t	idx;
 	scsi_qla_host_t *vha;
 };
