@@ -2498,7 +2498,6 @@ struct ct_sns_desc {
 
 enum discovery_state {
 	DSC_DELETED,
-	DSC_GNN_ID,
 	DSC_GNL,
 	DSC_LOGIN_PEND,
 	DSC_LOGIN_FAILED,
@@ -2712,7 +2711,6 @@ extern const char *const port_state_str[5];
 
 static const char * const port_dstate_str[] = {
 	"DELETED",
-	"GNN_ID",
 	"GNL",
 	"LOGIN_PEND",
 	"LOGIN_FAILED",
@@ -3505,7 +3503,6 @@ enum qla_work_type {
 	QLA_EVT_GPNFT,
 	QLA_EVT_GPNFT_DONE,
 	QLA_EVT_GNNFT_DONE,
-	QLA_EVT_GNNID,
 	QLA_EVT_GFPNID,
 	QLA_EVT_SP_RETRY,
 	QLA_EVT_IIDMA,
