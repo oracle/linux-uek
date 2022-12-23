@@ -1501,7 +1501,8 @@ static int otx2_get_rbuf_size(struct otx2_nic *pf, int mtu)
 	 * memory = frame_size + headroom * 6;
 	 * each receive buffer size = memory / 6;
 	 */
-	frame_size = mtu + OTX2_ETH_HLEN + OTX2_HW_TIMESTAMP_LEN;
+	frame_size = mtu + OTX2_ETH_HLEN + OTX2_HW_TIMESTAMP_LEN +
+		     pf->addl_mtu + pf->xtra_hdr;
 	total_size = frame_size + OTX2_HEAD_ROOM * 6;
 	rbuf_size = total_size / 6;
 
@@ -1966,6 +1967,9 @@ int otx2_open(struct net_device *netdev)
 	if (pf->linfo.link_up && !(pf->pcifunc & RVU_PFVF_FUNC_MASK))
 		otx2_handle_link_event(pf);
 
+	/* Set NPC parsing mode */
+	otx2_set_npc_parse_mode(pf, false);
+
 	/* Install DMAC Filters */
 	if (pf->flags & OTX2_FLAG_DMACFLTR_SUPPORT)
 		otx2_dmacflt_reinstall_flows(pf);
@@ -2316,6 +2320,15 @@ int otx2_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr)
 	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
 		return -EFAULT;
 
+	/* reserved for future extensions */
+	if (config.flags)
+		return -EINVAL;
+
+	if (OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+		netdev_info(netdev, "Can't support PTP HW timestamping when switch features are enabled\n");
+		return -EOPNOTSUPP;
+	}
+
 	switch (config.tx_type) {
 	case HWTSTAMP_TX_OFF:
 		if (pfvf->flags & OTX2_FLAG_PTP_ONESTEP_SYNC)
@@ -2442,8 +2455,8 @@ static int otx2_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 	return ret;
 }
 
-static int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
-			       __be16 proto)
+int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
+			__be16 proto)
 {
 	struct otx2_flow_config *flow_cfg = pf->flow_cfg;
 	struct nix_vtag_config_rsp *vtag_rsp;
@@ -2502,6 +2515,8 @@ static int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
 			flow_cfg->def_ent[flow_cfg->vf_vlan_offset + idx];
 		err = otx2_sync_mbox_msg(&pf->mbox);
 
+		if (!(pf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR))
+			memset(&config->rule, 0, sizeof(config->rule));
 		goto out;
 	}
 
@@ -2575,6 +2590,10 @@ static int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
 	req->set_cntr = 1;
 
 	err = otx2_sync_mbox_msg(&pf->mbox);
+	/* Update these values to reinstall the vfvlan rule */
+	config->rule.vlan	= vlan;
+	config->rule.proto	= proto;
+	config->rule.qos	= qos;
 out:
 	config->vlan = vlan;
 	mutex_unlock(&pf->mbox.lock);
@@ -2601,6 +2620,9 @@ static int otx2_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos,
 		return -EPROTONOSUPPORT;
 
 	if (!(pf->flags & OTX2_FLAG_VF_VLAN_SUPPORT))
+		return -EOPNOTSUPP;
+
+	if (pf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR)
 		return -EOPNOTSUPP;
 
 	return otx2_do_set_vf_vlan(pf, vf, vlan, qos, proto);
@@ -3114,6 +3136,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Enable link notifications */
 	otx2_cgx_config_linkevents(pf, true);
 
+	/* Set interface mode as Default */
+	pf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
+
 #ifdef CONFIG_DCB
 	err = otx2_dcbnl_set_ops(netdev);
 	if (err)
@@ -3329,6 +3354,7 @@ static void otx2_remove(struct pci_dev *pdev)
 		otx2_config_priority_flow_ctrl(pf);
 	}
 #endif
+	otx2_set_npc_parse_mode(pf, true);
 	cancel_work_sync(&pf->reset_task);
 	/* Disable link notifications */
 	otx2_cgx_config_linkevents(pf, false);

@@ -282,6 +282,13 @@ struct otx2_hw {
 	struct otx2_lmt_info	__percpu *lmt_info;
 };
 
+
+struct vfvlan {
+	u16 vlan;
+	u16 proto;
+	u8 qos;
+};
+
 enum vfperm {
 	OTX2_RESET_VF_PERM,
 	OTX2_TRUSTED_VF,
@@ -295,6 +302,7 @@ struct otx2_vf_config {
 	u8 mac[ETH_ALEN];
 	u16 vlan;
 	int tx_vtag_idx;
+	struct vfvlan rule;
 	bool trusted;
 };
 
@@ -449,6 +457,7 @@ struct otx2_nic {
 	struct net_device	*netdev;
 	struct dev_hw_ops	*hw_ops;
 	void			*iommu_domain;
+	u16			xtra_hdr;
 	u16			tx_max_pktlen;
 	u16			rbsize; /* Receive buffer size */
 
@@ -506,6 +515,30 @@ struct otx2_nic {
 	/* Ethtool stuff */
 	u32			msg_enable;
 
+#define OTX2_PRIV_FLAG_PAM4			BIT(0)
+#define OTX2_PRIV_FLAG_EDSA_HDR			BIT(1)
+#define OTX2_PRIV_FLAG_HIGIG2_HDR		BIT(2)
+#define OTX2_PRIV_FLAG_FDSA_HDR			BIT(3)
+#define OTX2_INTF_MOD_MASK			GENMASK(3, 1)
+#define OTX2_PRIV_FLAG_DEF_MODE			BIT(4)
+#define OTX2_IS_EDSA_ENABLED(flags)		((flags) &              \
+						 OTX2_PRIV_FLAG_EDSA_HDR)
+#define OTX2_IS_HIGIG2_ENABLED(flags)		((flags) &              \
+						 OTX2_PRIV_FLAG_HIGIG2_HDR)
+#define OTX2_IS_DEF_MODE_ENABLED(flags)		((flags) &              \
+						 OTX2_PRIV_FLAG_DEF_MODE)
+#define OTX2_IS_INTFMOD_SET(flags)		hweight32((flags) & OTX2_INTF_MOD_MASK)
+
+	u32		        ethtool_flags;
+
+	/* extended DSA and EDSA  header lengths are 8/16 bytes
+	 * so take max length 16 bytes here
+	 */
+#define OTX2_EDSA_HDR_LEN			16
+#define OTX2_HIGIG2_HDR_LEN			16
+#define OTX2_HW_TIMESTAMP_LEN			8
+#define OTX2_FDSA_HDR_LEN			4
+	u32			addl_mtu;
 	/* Block address of NIX either BLKADDR_NIX0 or BLKADDR_NIX1 */
 	int			nix_blkaddr;
 	/* LMTST Lines info */
@@ -1046,6 +1079,7 @@ int otx2_open(struct net_device *netdev);
 int otx2_stop(struct net_device *netdev);
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues);
+int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind);
 int otx2_ioctl(struct net_device *netdev, struct ifreq *req, int cmd);
 int otx2_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr);
 
@@ -1068,7 +1102,10 @@ void otx2_rss_ctx_flow_del(struct otx2_nic *pfvf, int ctx_id);
 int otx2_del_macfilter(struct net_device *netdev, const u8 *mac);
 int otx2_add_macfilter(struct net_device *netdev, const u8 *mac);
 int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable);
+int otx2_enable_vf_vlan(struct otx2_nic *pf);
 int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf);
+int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos,
+			u16 proto);
 bool otx2_xdp_sq_append_pkt(struct otx2_nic *pfvf, u64 iova, int len, u16 qidx);
 u16 otx2_get_max_mtu(struct otx2_nic *pfvf);
 int otx2_handle_ntuple_tc_features(struct net_device *netdev,

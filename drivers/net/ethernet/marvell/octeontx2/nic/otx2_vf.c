@@ -717,6 +717,9 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_shutdown_tc;
 
+	/* Set interface mode as Default */
+	vf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
+
 #ifdef CONFIG_DCB
 	err = otx2_dcbnl_set_ops(netdev);
 	if (err)

@@ -19,6 +19,13 @@
 #define DRV_NAME	"rvu-nicpf"
 #define DRV_VF_NAME	"rvu-nicvf"
 
+static const char otx2_priv_flags_strings[][ETH_GSTRING_LEN] = {
+	"pam4",
+	"edsa",
+	"higig2",
+	"fdsa",
+};
+
 struct otx2_stat {
 	char name[ETH_GSTRING_LEN];
 	unsigned int index;
@@ -111,6 +118,13 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	int stats;
+
+	if (sset == ETH_SS_PRIV_FLAGS) {
+		memcpy(data, otx2_priv_flags_strings,
+		       ARRAY_SIZE(otx2_priv_flags_strings) * ETH_GSTRING_LEN);
+		return;
+	}
+
 
 	if (sset != ETH_SS_STATS)
 		return;
@@ -256,6 +270,10 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	int qstats_count, mac_stats = 0;
 
+	if (sset == ETH_SS_PRIV_FLAGS)
+		return ARRAY_SIZE(otx2_priv_flags_strings);
+
+
 	if (sset != ETH_SS_STATS)
 		return -EINVAL;
 
@@ -266,7 +284,7 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 	otx2_update_lmac_fec_stats(pfvf);
 
 	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
-	       mac_stats + OTX2_FEC_STATS_CNT + 1;
+		mac_stats + OTX2_FEC_STATS_CNT + 1;
 }
 
 /* Get no of queues device supports and current queue count */
@@ -1157,31 +1175,31 @@ static void otx2_get_link_mode_info(u64 link_mode_bmap,
 		ETHTOOL_LINK_MODE_10000baseSR_Full_BIT,
 		ETHTOOL_LINK_MODE_10000baseLR_Full_BIT,
 		ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
-		0,
+		ETHTOOL_LINK_MODE_20000baseMLD2_Full_BIT,
 		ETHTOOL_LINK_MODE_25000baseSR_Full_BIT,
-		0,
-		0,
+		ETHTOOL_LINK_MODE_10000baseR_FEC_BIT,
+		ETHTOOL_LINK_MODE_20000baseKR2_Full_BIT,
 		ETHTOOL_LINK_MODE_25000baseCR_Full_BIT,
 		ETHTOOL_LINK_MODE_25000baseKR_Full_BIT,
 		ETHTOOL_LINK_MODE_40000baseSR4_Full_BIT,
 		ETHTOOL_LINK_MODE_40000baseLR4_Full_BIT,
 		ETHTOOL_LINK_MODE_40000baseCR4_Full_BIT,
 		ETHTOOL_LINK_MODE_40000baseKR4_Full_BIT,
-		0,
-		ETHTOOL_LINK_MODE_50000baseSR_Full_BIT,
-		0,
-		ETHTOOL_LINK_MODE_50000baseLR_ER_FR_Full_BIT,
-		ETHTOOL_LINK_MODE_50000baseCR_Full_BIT,
-		ETHTOOL_LINK_MODE_50000baseKR_Full_BIT,
-		0,
+		ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseSR2_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseDR_Full_BIT,
+		ETHTOOL_LINK_MODE_56000baseKR4_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseCR2_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseKR2_Full_BIT,
+		ETHTOOL_LINK_MODE_10000baseLRM_Full_BIT,
 		ETHTOOL_LINK_MODE_100000baseSR4_Full_BIT,
 		ETHTOOL_LINK_MODE_100000baseLR4_ER4_Full_BIT,
 		ETHTOOL_LINK_MODE_100000baseCR4_Full_BIT,
 		ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT,
-		ETHTOOL_LINK_MODE_50000baseSR2_Full_BIT,
-		ETHTOOL_LINK_MODE_50000baseDR_Full_BIT,
-		ETHTOOL_LINK_MODE_50000baseCR2_Full_BIT,
-		ETHTOOL_LINK_MODE_50000baseKR2_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseSR_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseLR_ER_FR_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseCR_Full_BIT,
+		ETHTOOL_LINK_MODE_50000baseKR_Full_BIT,
 		ETHTOOL_LINK_MODE_100000baseSR2_Full_BIT,
 		ETHTOOL_LINK_MODE_100000baseLR2_ER2_FR2_Full_BIT,
 		ETHTOOL_LINK_MODE_100000baseCR2_Full_BIT,
@@ -1289,6 +1307,7 @@ static void otx2_get_advertised_mode(const struct ethtool_link_ksettings *cmd,
 		*mode = bit_pos;
 }
 
+#define OTX2_OVERWRITE_DEF 1
 static int otx2_set_link_ksettings(struct net_device *netdev,
 				   const struct ethtool_link_ksettings *cmd)
 {
@@ -1322,18 +1341,260 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 		goto end;
 	}
 
-	req->args.speed = cmd->base.speed;
-	/* firmware expects 1 for half duplex and 0 for full duplex
-	 * hence inverting
-	 */
-	req->args.duplex = cmd->base.duplex ^ 0x1;
-	req->args.an = cmd->base.autoneg;
+	if (cmd->base.phy_address == OTX2_OVERWRITE_DEF) {
+		req->args.speed = cmd->base.speed;
+		/* firmware expects 1 for half duplex and 0 for full duplex
+		 * hence inverting
+		 */
+		req->args.duplex = cmd->base.duplex ^ 0x1;
+		req->args.an = cmd->base.autoneg;
+	} else {
+		req->args.speed = SPEED_UNKNOWN;
+		req->args.duplex = DUPLEX_UNKNOWN;
+		req->args.an = AUTONEG_UNKNOWN;
+	}
+
 	otx2_get_advertised_mode(cmd, &req->args.mode);
 
 	err = otx2_sync_mbox_msg(&pf->mbox);
 end:
 	mutex_unlock(&mbox->lock);
 	return err;
+}
+
+static u32 otx2_get_priv_flags(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+
+	rsp = otx2_get_fwdata(pfvf);
+
+	if (IS_ERR(rsp)) {
+		pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_PAM4;
+	} else {
+		if (rsp->fwdata.phy.misc.mod_type)
+			pfvf->ethtool_flags |= OTX2_PRIV_FLAG_PAM4;
+		else
+			pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_PAM4;
+	}
+
+	return pfvf->ethtool_flags;
+}
+
+static int otx2_set_phy_mod_type(struct net_device *netdev, bool enable)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_phy_mod_type *req;
+	struct cgx_fw_data *fwd;
+	int rc = -EAGAIN;
+
+	fwd = otx2_get_fwdata(pfvf);
+	if (IS_ERR(fwd))
+		return -EAGAIN;
+
+	/* ret here if phy does not support this feature */
+	if (!fwd->fwdata.phy.misc.can_change_mod_type)
+		return -EOPNOTSUPP;
+
+	mutex_lock(&pfvf->mbox.lock);
+	req = otx2_mbox_alloc_msg_cgx_set_phy_mod_type(&pfvf->mbox);
+	if (!req)
+		goto end;
+
+	req->mod = enable;
+
+	if (!otx2_sync_mbox_msg(&pfvf->mbox))
+		rc = 0;
+end:
+	mutex_unlock(&pfvf->mbox.lock);
+	return rc;
+}
+
+int otx2_set_npc_parse_mode(struct otx2_nic *pfvf, bool unbind)
+{
+	struct npc_set_pkind *req;
+	u32 interface_mode = 0;
+	int rc = -EAGAIN;
+
+	if (OTX2_IS_DEF_MODE_ENABLED(pfvf->ethtool_flags))
+		return 0;
+
+	mutex_lock(&pfvf->mbox.lock);
+	req = otx2_mbox_alloc_msg_npc_set_pkind(&pfvf->mbox);
+	if (!req)
+		goto end;
+
+	if (unbind) {
+		req->mode = OTX2_PRIV_FLAGS_DEFAULT;
+		interface_mode = OTX2_PRIV_FLAG_DEF_MODE;
+	} else if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags)) {
+		req->mode = OTX2_PRIV_FLAGS_HIGIG;
+		interface_mode = OTX2_PRIV_FLAG_HIGIG2_HDR;
+	} else if (OTX2_IS_EDSA_ENABLED(pfvf->ethtool_flags))   {
+		req->mode = OTX2_PRIV_FLAGS_EDSA;
+		interface_mode = OTX2_PRIV_FLAG_EDSA_HDR;
+	} else if (pfvf->ethtool_flags & OTX2_PRIV_FLAG_FDSA_HDR) {
+		req->mode = OTX2_PRIV_FLAGS_FDSA;
+		interface_mode = OTX2_PRIV_FLAG_FDSA_HDR;
+	} else {
+		req->mode = OTX2_PRIV_FLAGS_DEFAULT;
+		interface_mode = OTX2_PRIV_FLAG_DEF_MODE;
+	}
+
+	req->dir  = PKIND_RX;
+
+	/* req AF to change pkind on both the dir */
+	if (req->mode == OTX2_PRIV_FLAGS_HIGIG ||
+	    req->mode == OTX2_PRIV_FLAGS_DEFAULT)
+		req->dir |= PKIND_TX;
+
+	if (!otx2_sync_mbox_msg(&pfvf->mbox))
+		rc = 0;
+	else
+		pfvf->ethtool_flags &= ~interface_mode;
+end:
+	mutex_unlock(&pfvf->mbox.lock);
+	return rc;
+}
+
+static int otx2_enable_addl_header(struct net_device *netdev, int bitpos,
+				   u32 len, bool enable)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	bool if_up = netif_running(netdev);
+
+	if (enable) {
+		pfvf->ethtool_flags |= BIT(bitpos);
+		pfvf->ethtool_flags &= ~OTX2_PRIV_FLAG_DEF_MODE;
+	} else {
+		pfvf->ethtool_flags &= ~BIT(bitpos);
+		len = 0;
+	}
+
+	if (if_up)
+		otx2_stop(netdev);
+
+	/* Update max FRS so that additional hdrs are considered */
+	pfvf->addl_mtu = len;
+
+	/* Incase HIGIG2 mode is set packet will have 16 bytes of
+	 * extra header at start of packet which stack does not need.
+	 */
+	if (OTX2_IS_HIGIG2_ENABLED(pfvf->ethtool_flags))
+		pfvf->xtra_hdr = 16;
+	else
+		pfvf->xtra_hdr = 0;
+
+	/* NPC parse mode will be updated here */
+	if (if_up) {
+		otx2_open(netdev);
+
+		if (!enable)
+			pfvf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
+	}
+
+	return 0;
+}
+
+/* This function disables vfvlan rules upon enabling
+ * fdsa and vice versa
+ */
+static void otx2_endis_vfvlan_rules(struct otx2_nic *pfvf, bool enable)
+{
+	struct vfvlan *rule;
+	int vf;
+
+	for (vf = 0; vf < pci_num_vf(pfvf->pdev); vf++) {
+		/* pass vlan as 0 to disable rule */
+		if (enable) {
+			otx2_do_set_vf_vlan(pfvf, vf, 0, 0, 0);
+		} else {
+			rule = &pfvf->vf_configs[vf].rule;
+			otx2_do_set_vf_vlan(pfvf, vf, rule->vlan, rule->qos,
+					    rule->proto);
+		}
+	}
+}
+
+static int otx2_set_priv_flags(struct net_device *netdev, u32 new_flags)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	bool enable = false;
+	int bitnr, rc = 0;
+	u32 chg_flags;
+
+	/* Get latest PAM4 settings */
+	otx2_get_priv_flags(netdev);
+
+	chg_flags =  new_flags ^ pfvf->ethtool_flags;
+	if (!chg_flags)
+		return 0;
+
+	/* Some are mutually exclusive, so allow only change at a time */
+	if (hweight32(chg_flags) != 1)
+		return -EINVAL;
+
+	bitnr = ffs(chg_flags) - 1;
+	if (new_flags & BIT(bitnr))
+		enable = true;
+
+	if ((BIT(bitnr) != OTX2_PRIV_FLAG_PAM4) && (pfvf->flags & OTX2_FLAG_RX_TSTAMP_ENABLED)) {
+		netdev_info(netdev, "Can't enable requested mode when PTP HW timestamping is ON\n");
+		return -EINVAL;
+	}
+
+	switch (BIT(bitnr)) {
+	case OTX2_PRIV_FLAG_PAM4:
+		rc = otx2_set_phy_mod_type(netdev, enable);
+		break;
+	case OTX2_PRIV_FLAG_EDSA_HDR:
+		/* HIGIG & EDSA  are mutual exclusive */
+		if (enable && OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+			netdev_info(netdev,
+				    "Disable mutually exclusive modes higig2/fdsa\n");
+			return -EINVAL;
+		}
+		return otx2_enable_addl_header(netdev, bitnr,
+					       OTX2_EDSA_HDR_LEN, enable);
+		break;
+	case OTX2_PRIV_FLAG_HIGIG2_HDR:
+		if (test_bit(CN10K_RPM, &pfvf->hw.cap_flag))
+			return -EOPNOTSUPP;
+
+		if (enable && OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+			netdev_info(netdev,
+				    "Disable mutually exclusive modes edsa/fdsa\n");
+			return -EINVAL;
+		}
+		return otx2_enable_addl_header(netdev, bitnr,
+					       OTX2_HIGIG2_HDR_LEN, enable);
+		break;
+	case OTX2_PRIV_FLAG_FDSA_HDR:
+		if (enable && OTX2_IS_INTFMOD_SET(pfvf->ethtool_flags)) {
+			netdev_info(netdev,
+				    "Disable mutually exclusive modes edsa/higig2\n");
+			return -EINVAL;
+		}
+		otx2_enable_addl_header(netdev, bitnr,
+					OTX2_FDSA_HDR_LEN, enable);
+		if (enable)
+			netdev_warn(netdev,
+				    "Disabling VF VLAN rules as FDSA & VFVLAN are mutual exclusive\n");
+		otx2_endis_vfvlan_rules(pfvf, enable);
+		break;
+	default:
+		break;
+	}
+
+	/* save the change */
+	if (!rc) {
+		if (enable)
+			pfvf->ethtool_flags |= BIT(bitnr);
+		else
+			pfvf->ethtool_flags &= ~BIT(bitnr);
+	}
+
+	return rc;
 }
 
 static const struct ethtool_ops otx2_ethtool_ops = {
@@ -1372,6 +1633,8 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.set_link_ksettings     = otx2_set_link_ksettings,
 	.get_module_info	= otx2_get_module_info,
 	.get_module_eeprom	= otx2_get_module_eeprom,
+	.get_priv_flags		= otx2_get_priv_flags,
+	.set_priv_flags		= otx2_set_priv_flags,
 };
 
 void otx2_set_ethtool_ops(struct net_device *netdev)

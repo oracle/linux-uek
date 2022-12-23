@@ -805,6 +805,7 @@ struct npc_set_pkind {
 #define OTX2_PRIV_FLAGS_DEFAULT  BIT_ULL(0)
 #define OTX2_PRIV_FLAGS_EDSA     BIT_ULL(1)
 #define OTX2_PRIV_FLAGS_HIGIG    BIT_ULL(2)
+#define OTX2_PRIV_FLAGS_FDSA     BIT_ULL(3)
 #define OTX2_PRIV_FLAGS_CUSTOM   BIT_ULL(63)
 	u64 mode;
 #define PKIND_TX		BIT_ULL(0)
