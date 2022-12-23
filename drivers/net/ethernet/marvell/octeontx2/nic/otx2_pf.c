@@ -1474,6 +1474,7 @@ static void otx2_free_sq_res(struct otx2_nic *pf)
 		qmem_free(pf->dev, sq->tso_hdrs);
 		kfree(sq->sg);
 		kfree(sq->sqb_ptrs);
+		qmem_free(pf->dev, sq->timestamps);
 	}
 }
 
@@ -2002,6 +2003,7 @@ err_free_cints:
 	vec = pci_irq_vector(pf->pdev,
 			     pf->hw.nix_msixoff + NIX_LF_QINT_VEC_START);
 	otx2_write64(pf, NIX_LF_QINTX_ENA_W1C(0), BIT_ULL(0));
+	synchronize_irq(vec);
 	free_irq(vec, pf);
 err_disable_napi:
 	otx2_disable_napi(pf);
@@ -2047,6 +2049,7 @@ int otx2_stop(struct net_device *netdev)
 	vec = pci_irq_vector(pf->pdev,
 			     pf->hw.nix_msixoff + NIX_LF_QINT_VEC_START);
 	otx2_write64(pf, NIX_LF_QINTX_ENA_W1C(0), BIT_ULL(0));
+	synchronize_irq(vec);
 	free_irq(vec, pf);
 
 	/* Cleanup CQ NAPI and IRQ */
@@ -3033,7 +3036,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	err = otx2_realloc_msix_vectors(pf);
 	if (err)
-		goto err_detach_rsrc;
+		goto err_mbox_destroy;
 
 	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
 	if (err)
@@ -3101,7 +3104,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	netdev->hw_features |= NETIF_F_LOOPBACK | NETIF_F_RXALL;
 
 	netif_set_tso_max_segs(netdev, OTX2_MAX_GSO_SEGS);
-	netdev->watchdog_timeo = OTX2_TX_TIMEOUT;
+	netdev->watchdog_timeo = netdev->watchdog_timeo ?
+				 netdev->watchdog_timeo : OTX2_TX_TIMEOUT;
 
 	netdev->netdev_ops = &otx2_netdev_ops;
 
@@ -3174,6 +3178,7 @@ err_disable_mbox_intr:
 	otx2_disable_mbox_intr(pf);
 err_mbox_destroy:
 	otx2_pfaf_mbox_destroy(pf);
+	otx2_pfvf_mbox_destroy(pf);
 err_free_irq_vectors:
 	pci_free_irq_vectors(hw->pdev);
 err_free_netdev:
