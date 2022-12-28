@@ -29,8 +29,7 @@ struct mlx5_irq {
 	char name[MLX5_MAX_IRQ_NAME];
 	struct mlx5_irq_pool *pool;
 	int refcount;
-	u32 index;
-	int irqn;
+	struct msi_map map;
 };
 
 struct mlx5_irq_table {
@@ -130,15 +129,15 @@ static void mlx5_system_free_irq(struct mlx5_irq *irq)
 	 * before calling it. This is why there is asymmetry with set_rmap
 	 * which should be called after alloc_irq but before request_irq.
 	 */
-	irq_set_affinity_hint(irq->irqn, NULL);
-	free_irq(irq->irqn, &irq->nh);
+	irq_update_affinity_hint(irq->map.virq, NULL);
+	free_irq(irq->map.virq, &irq->nh);
 }
 
 static void irq_release(struct mlx5_irq *irq)
 {
 	struct mlx5_irq_pool *pool = irq->pool;
 
-	xa_erase(&pool->irqs, irq->index);
+	xa_erase(&pool->irqs, irq->map.index);
 	mlx5_system_free_irq(irq);
 	free_cpumask_var(irq->mask);
 	kfree(irq);
@@ -222,7 +221,7 @@ struct mlx5_irq *mlx5_irq_alloc(struct mlx5_irq_pool *pool, int i,
 	irq = kzalloc(sizeof(*irq), GFP_KERNEL);
 	if (!irq)
 		return ERR_PTR(-ENOMEM);
-	irq->irqn = pci_irq_vector(dev->pdev, i);
+	irq->map.virq = pci_irq_vector(dev->pdev, i);
 	if (!mlx5_irq_pool_is_sf_pool(pool))
 		irq_set_name(pool, name, i);
 	else
@@ -230,7 +229,7 @@ struct mlx5_irq *mlx5_irq_alloc(struct mlx5_irq_pool *pool, int i,
 	ATOMIC_INIT_NOTIFIER_HEAD(&irq->nh);
 	snprintf(irq->name, MLX5_MAX_IRQ_NAME,
 		 "%s@pci:%s", name, pci_name(dev->pdev));
-	err = request_irq(irq->irqn, irq_int_handler, 0, irq->name,
+	err = request_irq(irq->map.virq, irq_int_handler, 0, irq->name,
 			  &irq->nh);
 	if (err) {
 		mlx5_core_err(dev, "Failed to request irq. err = %d\n", err);
@@ -243,23 +242,23 @@ struct mlx5_irq *mlx5_irq_alloc(struct mlx5_irq_pool *pool, int i,
 	}
 	if (affinity) {
 		cpumask_copy(irq->mask, affinity);
-		irq_set_affinity_hint(irq->irqn, irq->mask);
+		irq_set_affinity_and_hint(irq->map.virq, irq->mask);
 	}
 	irq->pool = pool;
 	irq->refcount = 1;
-	irq->index = i;
-	err = xa_err(xa_store(&pool->irqs, irq->index, irq, GFP_KERNEL));
+	irq->map.index = i;
+	err = xa_err(xa_store(&pool->irqs, irq->map.index, irq, GFP_KERNEL));
 	if (err) {
 		mlx5_core_err(dev, "Failed to alloc xa entry for irq(%u). err = %d\n",
-			      irq->index, err);
+			      irq->map.index, err);
 		goto err_xa;
 	}
 	return irq;
 err_xa:
-	irq_set_affinity_hint(irq->irqn, NULL);
+	irq_update_affinity_hint(irq->map.virq, NULL);
 	free_cpumask_var(irq->mask);
 err_cpumask:
-	free_irq(irq->irqn, &irq->nh);
+	free_irq(irq->map.virq, &irq->nh);
 err_req_irq:
 	kfree(irq);
 	return ERR_PTR(err);
@@ -297,7 +296,7 @@ struct cpumask *mlx5_irq_get_affinity_mask(struct mlx5_irq *irq)
 
 int mlx5_irq_get_index(struct mlx5_irq *irq)
 {
-	return irq->index;
+	return irq->map.index;
 }
 
 /* irq_pool API */
@@ -369,7 +368,7 @@ static void mlx5_irqs_release(struct mlx5_irq **irqs, int nirqs)
 	int i;
 
 	for (i = 0; i < nirqs; i++) {
-		synchronize_irq(irqs[i]->irqn);
+		synchronize_irq(irqs[i]->map.virq);
 		mlx5_irq_put(irqs[i]);
 	}
 }
@@ -438,7 +437,7 @@ struct mlx5_irq *mlx5_irq_request(struct mlx5_core_dev *dev, u16 vecidx,
 	if (IS_ERR(irq))
 		return irq;
 	mlx5_core_dbg(dev, "irq %u mapped to cpu %*pbl, %u EQs on this irq\n",
-		      irq->irqn, cpumask_pr_args(affinity),
+		      irq->map.virq, cpumask_pr_args(affinity),
 		      irq->refcount / MLX5_EQ_REFS_PER_IRQ);
 	return irq;
 }
