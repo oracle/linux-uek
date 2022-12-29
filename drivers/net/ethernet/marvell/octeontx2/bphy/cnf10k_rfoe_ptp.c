@@ -584,6 +584,7 @@ int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv *priv)
 
 void cnf10k_rfoe_ptp_destroy(struct cnf10k_rfoe_ndev_priv *priv)
 {
+	cancel_delayed_work_sync(&priv->extts_work);
 	ptp_clock_unregister(priv->ptp_clock);
 	priv->ptp_clock = NULL;
 }
