@@ -280,6 +280,7 @@ int otx2_rfoe_ptp_init(struct otx2_rfoe_ndev_priv *priv)
 
 void otx2_rfoe_ptp_destroy(struct otx2_rfoe_ndev_priv *priv)
 {
+	cancel_delayed_work_sync(&priv->extts_work);
 	ptp_clock_unregister(priv->ptp_clock);
 	priv->ptp_clock = NULL;
 }
