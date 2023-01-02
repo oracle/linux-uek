@@ -1245,7 +1245,6 @@ svc_process_common(struct svc_rqst *rqstp, struct kvec *resv)
 	svc_putnl(resv, RPC_REPLY);
 	reply_statp = resv->iov_base + resv->iov_len;
 
-	svcxdr_init_decode(rqstp);
 	p = xdr_inline_decode(&rqstp->rq_arg_stream, XDR_UNIT * 4);
 	if (unlikely(!p))
 		goto err_short_len;
@@ -1422,9 +1421,8 @@ err_bad:
 int
 svc_process(struct svc_rqst *rqstp)
 {
-	struct kvec		*argv = &rqstp->rq_arg.head[0];
 	struct kvec		*resv = &rqstp->rq_res.head[0];
-	__be32			dir;
+	__be32 *p;
 
 #if IS_ENABLED(CONFIG_FAIL_SUNRPC)
 	if (!fail_sunrpc.ignore_server_disconnect &&
@@ -1447,16 +1445,21 @@ svc_process(struct svc_rqst *rqstp)
 	rqstp->rq_res.tail[0].iov_base = NULL;
 	rqstp->rq_res.tail[0].iov_len = 0;
 
-	dir = svc_getu32(argv);
-	if (dir != rpc_call)
+	svcxdr_init_decode(rqstp);
+	p = xdr_inline_decode(&rqstp->rq_arg_stream, XDR_UNIT * 2);
+	if (unlikely(!p))
+		goto out_drop;
+	rqstp->rq_xid = *p++;
+	if (unlikely(*p != rpc_call))
 		goto out_baddir;
+
 	if (!svc_process_common(rqstp, resv))
 		goto out_drop;
 	return svc_send(rqstp);
 
 out_baddir:
 	svc_printk(rqstp, "bad direction 0x%08x, dropping request\n",
-		   be32_to_cpu(dir));
+		   be32_to_cpu(*p));
 	rqstp->rq_server->sv_stats->rpcbadfmt++;
 out_drop:
 	svc_drop(rqstp);
@@ -1473,7 +1476,6 @@ int
 bc_svc_process(struct svc_serv *serv, struct rpc_rqst *req,
 	       struct svc_rqst *rqstp)
 {
-	struct kvec	*argv = &rqstp->rq_arg.head[0];
 	struct kvec	*resv = &rqstp->rq_res.head[0];
 	struct rpc_task *task;
 	int proc_error;
@@ -1508,12 +1510,16 @@ bc_svc_process(struct svc_serv *serv, struct rpc_rqst *req,
 	/* reset result send buffer "put" position */
 	resv->iov_len = 0;
 
+	svcxdr_init_decode(rqstp);
+
 	/*
-	 * Skip the next two words because they've already been
-	 * processed in the transport
+	 * Skip the XID and calldir fields because they've already
+	 * been processed by the caller.
 	 */
-	svc_getu32(argv);	/* XID */
-	svc_getnl(argv);	/* CALLDIR */
+	if (!xdr_inline_decode(&rqstp->rq_arg_stream, XDR_UNIT * 2)) {
+		error = -EINVAL;
+		goto out;
+	}
 
 	/* Parse and execute the bc call */
 	proc_error = svc_process_common(rqstp, resv);
