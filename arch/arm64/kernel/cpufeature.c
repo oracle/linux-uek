@@ -1371,6 +1371,7 @@ static int __init aarch32_el0_sysfs_init(void)
 }
 device_initcall(aarch32_el0_sysfs_init);
 
+#if 0
 static bool has_32bit_el0(const struct arm64_cpu_capabilities *entry, int scope)
 {
 	if (!has_cpuid_feature(entry, scope))
@@ -1381,6 +1382,7 @@ static bool has_32bit_el0(const struct arm64_cpu_capabilities *entry, int scope)
 
 	return true;
 }
+#endif
 
 static bool has_useable_gicv3_cpuif(const struct arm64_cpu_capabilities *entry, int scope)
 {
@@ -2028,6 +2030,7 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.matches = runs_at_el2,
 		.cpu_enable = cpu_copy_el2regs,
 	},
+#if 0	/* To preserve KABI, needed to steal a slot from cpucaps */
 	{
 		.capability = ARM64_HAS_32BIT_EL0_DO_NOT_USE,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
@@ -2038,6 +2041,7 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.field_width = 4,
 		.min_field_value = ID_AA64PFR0_ELx_32BIT_64BIT,
 	},
+#endif
 #ifdef CONFIG_KVM
 	{
 		.desc = "32-bit EL1 Support",
