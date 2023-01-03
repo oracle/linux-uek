@@ -373,6 +373,7 @@ M(NIX_READ_INLINE_IPSEC_CFG, 0x8023, nix_read_inline_ipsec_cfg,		\
 M(NIX_LF_INLINE_RQ_CFG, 0x8024, nix_lf_inline_rq_cfg,		\
 				nix_rq_cpt_field_mask_cfg_req,  \
 				msg_rsp)	\
+M(NIX_TL1_RR_PRIO,	0x8025, nix_tl1_rr_prio, nix_tl1_rr_prio_req, msg_rsp) \
 M(NIX_SPI_TO_SA_ADD,    0x8026, nix_spi_to_sa_add, nix_spi_to_sa_add_req,   \
 				nix_spi_to_sa_add_rsp)                      \
 M(NIX_SPI_TO_SA_DELETE, 0x8027, nix_spi_to_sa_delete, nix_spi_to_sa_delete_req,   \
@@ -936,6 +937,7 @@ enum nix_af_status {
 	NIX_AF_ERR_AQ_CTX_RETRY_WRITE  = -430,
 	NIX_AF_ERR_LINK_CREDITS  = -431,
 	NIX_AF_ERR_RQ_CPT_MASK  = -432,
+	NIX_AF_ERR_TL1_RR_PRIO_PERM_DENIED  = -433,
 	NIX_AF_ERR_INVALID_BPID		= -434,
 	NIX_AF_ERR_INVALID_BPID_REQ	= -435,
 	NIX_AF_ERR_INVALID_MCAST_GRP	= -436,
@@ -1673,6 +1675,11 @@ struct sso_hws_stats {
 	struct mbox_msghdr hdr;
 	u16 hws;
 	u64 arbitration;
+};
+
+struct nix_tl1_rr_prio_req {
+	struct mbox_msghdr hdr;
+	u8 tl1_rr_prio;
 };
 
 /* NPC mbox message structs */
