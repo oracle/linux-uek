@@ -10,6 +10,6 @@
  */
 ENTRY(__iowrite32_copy)
 	movl %edx,%ecx
-	rep movsd
+	rep movsl
 	RET
 ENDPROC(__iowrite32_copy)
