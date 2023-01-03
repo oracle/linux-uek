@@ -11,6 +11,7 @@
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/uaccess.h>
+#include <linux/delay.h>
 
 #include <clocksource/arm_arch_timer.h>
 #include <asm/arch_timer.h>
@@ -51,6 +52,34 @@ static void kvm_arm_timer_write(struct kvm_vcpu *vcpu,
 static u64 kvm_arm_timer_read(struct kvm_vcpu *vcpu,
 			      struct arch_timer_context *timer,
 			      enum kvm_arch_timer_regs treg);
+
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+static DEFINE_STATIC_KEY_FALSE(timer_errata_38627);
+
+/* Workaround is to ensure maximum 2us of time gap between timer expiry
+ * and timer programming which can de-assert timer interrupt.
+ * Time calculation below is based on 100MHz as timer frequency is fixed
+ * to 100MHz on all affected parts.
+ */
+static void apply_mrvl_erratum_38627(enum kvm_arch_timers index)
+{
+
+	int32_t tval;
+
+	if (index == TIMER_VTIMER)
+		tval = read_sysreg(cntv_tval_el0);
+	else
+		tval = read_sysreg(cntp_tval_el0);
+
+	/* Timer already expired, wait for (2 - expired time)us */
+	if ((tval > -200) && (tval < 0))
+		udelay(2 + tval/100);
+
+	/* Timer is about to expire, wait for 2us + time to expire */
+	if (tval >= 0 && tval < 200)
+		udelay(3 + tval/100);
+}
+#endif
 
 u32 timer_get_ctl(struct arch_timer_context *ctxt)
 {
@@ -441,6 +470,10 @@ static void timer_save_state(struct arch_timer_context *ctx)
 		timer_set_ctl(ctx, read_sysreg_el0(SYS_CNTV_CTL));
 		timer_set_cval(ctx, read_sysreg_el0(SYS_CNTV_CVAL));
 
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+		if (static_branch_likely(&timer_errata_38627))
+			apply_mrvl_erratum_38627(index);
+#endif
 		/* Disable the timer */
 		write_sysreg_el0(0, SYS_CNTV_CTL);
 		isb();
@@ -450,6 +483,10 @@ static void timer_save_state(struct arch_timer_context *ctx)
 		timer_set_ctl(ctx, read_sysreg_el0(SYS_CNTP_CTL));
 		timer_set_cval(ctx, read_sysreg_el0(SYS_CNTP_CVAL));
 
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+		if (static_branch_likely(&timer_errata_38627))
+			apply_mrvl_erratum_38627(index);
+#endif
 		/* Disable the timer */
 		write_sysreg_el0(0, SYS_CNTP_CTL);
 		isb();
@@ -1169,6 +1206,11 @@ int kvm_timer_hyp_init(bool has_gic)
 		err = -ENODEV;
 		goto out_free_irq;
 	}
+
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+	if (cpus_have_const_cap(ARM64_WORKAROUND_MRVL_38627))
+		static_branch_enable(&timer_errata_38627);
+#endif
 
 	cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
 			  "kvm/arm/timer:starting", kvm_timer_starting_cpu,
