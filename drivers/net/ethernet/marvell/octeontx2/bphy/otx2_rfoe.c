@@ -464,6 +464,14 @@ out:
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 }
 
+static void otx2_rfoe_dump_psw(struct otx2_rfoe_ndev_priv *priv, u8 *buf_ptr)
+{
+	netdev_err(priv->netdev,
+		   "psw0(w0)=0x%llx psw0(w1)=0x%llx psw1(w0)=0x%llx psw1(w1)=0x%llx\n",
+		   *(u64 *)buf_ptr, *((u64 *)buf_ptr + 1),
+		   *((u64 *)buf_ptr + 2), *((u64 *)buf_ptr + 3));
+}
+
 static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 				     struct rx_ft_cfg *ft_cfg, int mbt_buf_idx)
 {
@@ -493,6 +501,8 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 
 	buf_ptr = (u8 *)ft_cfg->mbt_virt_addr +
 				(ft_cfg->buf_size * mbt_buf_idx);
+
+	dma_rmb();
 
 	pkt_type = ft_cfg->pkt_type;
 #ifdef ASIM
@@ -536,6 +546,12 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		jdt_iova_addr = (u64)ecpri_psw0->jd_ptr;
 		ecpri_psw1 = (struct rfoe_ecpri_psw1_s *)(buf_ptr + 16);
 		tstamp = ecpri_psw1->ptp_timestamp;
+	}
+
+	if (unlikely(!jdt_iova_addr)) {
+		netdev_err(priv->netdev, "JD_PTR was null at mbt_buf_idx %d\n", mbt_buf_idx);
+		otx2_rfoe_dump_psw(priv, buf_ptr);
+		return;
 	}
 
 	/* read jd ptr from psw */

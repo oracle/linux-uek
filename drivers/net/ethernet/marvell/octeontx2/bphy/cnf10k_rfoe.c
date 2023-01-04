@@ -437,6 +437,14 @@ static void cnf10k_rfoe_tx_timer_cb(struct timer_list *t)
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 }
 
+static void cnf10k_rfoe_dump_psw(struct cnf10k_rfoe_ndev_priv *priv, u8 *buf_ptr)
+{
+	int i;
+
+	for (i = 0; i < 8; i++)
+		netdev_err(priv->netdev, "psw(w%d)=0x%llx\n", i, *((u64 *)buf_ptr + i));
+}
+
 static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 				       struct cnf10k_rx_ft_cfg *ft_cfg,
 				       int mbt_buf_idx)
@@ -456,12 +464,19 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 
 	buf_ptr = (u8 *)ft_cfg->mbt_virt_addr +
 				(ft_cfg->buf_size * mbt_buf_idx);
+	dma_rmb();
 
 	pkt_type = ft_cfg->pkt_type;
 
 	psw = (struct rfoe_psw_s *)buf_ptr;
 	if (psw->pkt_type == CNF10K_ECPRI) {
 		jdt_iova_addr = (u64)psw->jd_ptr;
+		if (unlikely(!jdt_iova_addr)) {
+			netdev_err(priv->netdev, "JD_PTR was null at mbt_buf_idx %d\n",
+				   mbt_buf_idx);
+			cnf10k_rfoe_dump_psw(priv, buf_ptr);
+			return;
+		}
 		ecpri_psw_w2 = (struct rfoe_psw_w2_ecpri_s *)
 					&psw->proto_sts_word;
 		lmac_id = ecpri_psw_w2->lmac_id;
@@ -478,6 +493,12 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		rfoe_psw_w2 = (struct rfoe_psw_w2_roe_s *)&psw->proto_sts_word;
 		lmac_id = rfoe_psw_w2->lmac_id;
 		len = psw->pkt_len;
+		if (unlikely(!len)) {
+			netdev_err(priv->netdev, "packet length was zero at mbt_buf_idx %d\n",
+				   mbt_buf_idx);
+			cnf10k_rfoe_dump_psw(priv, buf_ptr);
+			return;
+		}
 	}
 
 	for (idx = 0; idx < CNF10K_RFOE_MAX_INTF; idx++) {
