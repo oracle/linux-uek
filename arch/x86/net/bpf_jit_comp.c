@@ -9,7 +9,6 @@
 #include <linux/filter.h>
 #include <linux/if_vlan.h>
 #include <linux/bpf.h>
-#include <asm/nops.h>
 
 #include <asm/set_memory.h>
 #include <asm/nospec-branch.h>
@@ -43,8 +42,6 @@ static u8 *emit_code(u8 *ptr, u32 bytes, unsigned int len)
 	do { EMIT3(b1, b2, b3); EMIT(off, 4); } while (0)
 #define EMIT4_off32(b1, b2, b3, b4, off) \
 	do { EMIT4(b1, b2, b3, b4); EMIT(off, 4); } while (0)
-#define EMIT5_return(prog, ip)	\
-	({ int ret = emit_return(prog, ip); cnt += 5; ret; })
 
 static bool is_imm8(int value)
 {
@@ -229,55 +226,6 @@ static void emit_prologue(u8 **pprog, u32 stack_depth, bool ebpf_from_cbpf)
 	*pprog = prog;
 }
 
-#define X86_PATCH_SIZE              5
-static int emit_patch(u8 **pprog, void *func, void *ip, u8 opcode)
-{
-	u8 *prog = *pprog;
-	s64 offset;
-	int cnt = 0;
-
-	offset = func - (ip + X86_PATCH_SIZE);
-	if (!is_simm32(offset)) {
-		pr_err("Target call %p is out of range\n", func);
-		return -ERANGE;
-	}
-	EMIT1_off32(opcode, offset);
-	*pprog = prog;
-	return 0;
-}
-
-static int emit_jump(u8 **pprog, void *func, void *ip)
-{
-	return emit_patch(pprog, func, ip, 0xE9);
-}
-
-static int emit_return(u8 **pprog, u8 *ip)
-{
-	u8 *prog = *pprog;
-	int cnt = 0, err = 0;
-
-	if (cpu_feature_enabled(X86_FEATURE_RETHUNK)) {
-		err = emit_jump(&prog, &__x86_return_thunk, ip);
-	} else {
-		/*
-		 * Emit 5 bytes to make sure both sides are balanced. We
-		 * depend on this via RETPOLINE_RAX_BPF_JIT_SIZE.
-		 */
-
-		EMIT1(0xC3);		/* ret */
-		if (IS_ENABLED(CONFIG_SLS)) {
-			EMIT1(0xCC);	/* int3 */
-			EMIT3(0x66, 0x90, 0x90); /* nop3 */
-		} else {
-			EMIT4(0x66, 0x90, 0x66, 0x90); /* nop2; nop2 */
-		}
-	}
-
-	*pprog = prog;
-
-	return err;
-}
-
 /*
  * Generate the following code:
  *
@@ -292,11 +240,11 @@ static int emit_return(u8 **pprog, u8 *ip)
  *   goto *(prog->bpf_func + prologue_size);
  * out:
  */
-static int emit_bpf_tail_call(u8 **pprog)
+static void emit_bpf_tail_call(u8 **pprog)
 {
 	u8 *prog = *pprog;
 	int label1, label2, label3;
-	int cnt = 0, err = 0;
+	int cnt = 0;
 	int RETPOLINE_RAX_BPF_JIT_SIZE;
 
 	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
@@ -362,20 +310,16 @@ static int emit_bpf_tail_call(u8 **pprog)
 	 */
 	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
 		cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
-		RETPOLINE_RAX_BPF_JIT(&err);
+		RETPOLINE_RAX_BPF_JIT();
 	} else {
-		NO_RETPOLINE_RAX_BPF_JIT(&err);
+		NO_RETPOLINE_RAX_BPF_JIT();
 	}
 
 	/* out: */
-	if (!err) {
-		BUG_ON((cnt - label1) != OFFSET1);
-		BUG_ON((cnt - label2) != OFFSET2);
-		BUG_ON((cnt - label3) != OFFSET3);
-		*pprog = prog;
-	}
-
-	return err;
+	BUG_ON((cnt - label1) != OFFSET1);
+	BUG_ON((cnt - label2) != OFFSET2);
+	BUG_ON((cnt - label3) != OFFSET3);
+	*pprog = prog;
 }
 
 static void emit_mov_imm32(u8 **pprog, bool sign_propagate,
@@ -927,8 +871,7 @@ xadd:			if (is_imm8(insn->off))
 			break;
 
 		case BPF_JMP | BPF_TAIL_CALL:
-			if (emit_bpf_tail_call(&prog))
-				return -EINVAL;
+			emit_bpf_tail_call(&prog);
 			break;
 
 			/* cond jump */
@@ -1108,8 +1051,7 @@ emit_jmp:
 			EMIT2(0x41, 0x5D);   /* pop r13 */
 			EMIT1(0x5B);         /* pop rbx */
 			EMIT1(0xC9);         /* leave */
-			if (EMIT5_return(&prog, image + addrs[i - 1] + (prog - temp)))
-				return -EINVAL;
+			EMIT1(0xC3);         /* ret */
 			break;
 
 		default:
