@@ -619,15 +619,15 @@ static inline void pgdat_set_deferred_range(pg_data_t *pgdat)
 	pgdat->first_deferred_pfn = ULONG_MAX;
 }
 
-/* Returns true if the struct page for the pfn is uninitialised */
-static inline bool __meminit early_page_uninitialised(unsigned long pfn)
+/* Returns true if the struct page for the pfn is initialised */
+static inline bool __meminit early_page_initialised(unsigned long pfn)
 {
 	int nid = early_pfn_to_nid(pfn);
 
 	if (node_online(nid) && pfn >= NODE_DATA(nid)->first_deferred_pfn)
-		return true;
+		return false;
 
-	return false;
+	return true;
 }
 
 /*
@@ -672,7 +672,7 @@ static void __meminit init_reserved_page(unsigned long pfn)
 	pg_data_t *pgdat;
 	int nid, zid;
 
-	if (!early_page_uninitialised(pfn))
+	if (early_page_initialised(pfn))
 		return;
 
 	nid = early_pfn_to_nid(pfn);
@@ -689,9 +689,9 @@ static void __meminit init_reserved_page(unsigned long pfn)
 #else
 static inline void pgdat_set_deferred_range(pg_data_t *pgdat) {}
 
-static inline bool early_page_uninitialised(unsigned long pfn)
+static inline bool early_page_initialised(unsigned long pfn)
 {
-	return false;
+	return true;
 }
 
 static inline bool defer_init(int nid, unsigned long pfn, unsigned long end_pfn)
@@ -2454,7 +2454,7 @@ void __init set_dma_reserve(unsigned long new_dma_reserve)
 void __init memblock_free_pages(struct page *page, unsigned long pfn,
 							unsigned int order)
 {
-	if (early_page_uninitialised(pfn))
+	if (!early_page_initialised(pfn))
 		return;
 	__free_pages_core(page, order);
 }
