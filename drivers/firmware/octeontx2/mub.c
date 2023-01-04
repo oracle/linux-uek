@@ -2,7 +2,7 @@
 /*
  * Marvell Utility Bus driver.
  *
- * Copyright (C) 2022 Marvell International Ltd.
+ * Copyright (C) 2022 Marvell.
  */
 
 #define pr_fmt(fmt)	"mub: " fmt

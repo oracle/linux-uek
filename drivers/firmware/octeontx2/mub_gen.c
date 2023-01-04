@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Marvell Utility Bus driver.
- * Copyright (C) 2022 Marvell International Ltd.
+ * Copyright (C) 2022 Marvell.
  *
  */
 
@@ -61,9 +61,10 @@ static struct mub_driver mub_gen_driver = {
 
 static int __init mub_gen_init(void)
 {
-	int ret;
+	int ret, value;
 
-	if (!octeontx_soc_check_smc()) {
+	value = octeontx_soc_check_smc();
+	if (value !=0 && value !=2) {
 		pr_err("Firmware is not compatible with MUB\n");
 		return -ENOTSUPP;
 	}
