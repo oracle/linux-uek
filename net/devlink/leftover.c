@@ -1310,17 +1310,9 @@ static int devlink_nl_cmd_get_dumpit(struct sk_buff *msg,
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink *devlink;
-	unsigned long index;
-	int idx = 0;
 	int err;
 
-	devlinks_xa_for_each_registered_get(sock_net(msg->sk), index, devlink) {
-		if (idx < state->idx) {
-			idx++;
-			devlink_put(devlink);
-			continue;
-		}
-
+	devlink_dump_for_each_instance_get(msg, state, devlink) {
 		devl_lock(devlink);
 		err = devlink_nl_fill(msg, devlink, DEVLINK_CMD_NEW,
 				      NETLINK_CB(cb->skb).portid,
@@ -1330,10 +1322,8 @@ static int devlink_nl_cmd_get_dumpit(struct sk_buff *msg,
 
 		if (err)
 			goto out;
-		idx++;
 	}
 out:
-	state->idx = idx;
 	return msg->len;
 }
 
@@ -4803,13 +4793,13 @@ static int devlink_nl_cmd_selftests_get_dumpit(struct sk_buff *msg,
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink *devlink;
-	unsigned long index;
-	int idx = 0;
 	int err = 0;
 
-	devlinks_xa_for_each_registered_get(sock_net(msg->sk), index, devlink) {
-		if (idx < state->idx || !devlink->ops->selftest_check)
-			goto inc;
+	devlink_dump_for_each_instance_get(msg, state, devlink) {
+		if (!devlink->ops->selftest_check) {
+			devlink_put(devlink);
+			continue;
+		}
 
 		devl_lock(devlink);
 		err = devlink_nl_selftests_fill(msg, devlink,
@@ -4821,15 +4811,13 @@ static int devlink_nl_cmd_selftests_get_dumpit(struct sk_buff *msg,
 			devlink_put(devlink);
 			break;
 		}
-inc:
-		idx++;
+
 		devlink_put(devlink);
 	}
 
 	if (err != -EMSGSIZE)
 		return err;
 
-	state->idx = idx;
 	return msg->len;
 }
 
@@ -6680,14 +6668,9 @@ static int devlink_nl_cmd_info_get_dumpit(struct sk_buff *msg,
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink *devlink;
-	unsigned long index;
-	int idx = 0;
 	int err = 0;
 
-	devlinks_xa_for_each_registered_get(sock_net(msg->sk), index, devlink) {
-		if (idx < state->idx)
-			goto inc;
-
+	devlink_dump_for_each_instance_get(msg, state, devlink) {
 		devl_lock(devlink);
 		err = devlink_nl_info_fill(msg, devlink, DEVLINK_CMD_INFO_GET,
 					   NETLINK_CB(cb->skb).portid,
@@ -6700,15 +6683,12 @@ static int devlink_nl_cmd_info_get_dumpit(struct sk_buff *msg,
 			devlink_put(devlink);
 			break;
 		}
-inc:
-		idx++;
 		devlink_put(devlink);
 	}
 
 	if (err != -EMSGSIZE)
 		return err;
 
-	state->idx = idx;
 	return msg->len;
 }
 
