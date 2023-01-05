@@ -5983,9 +5983,8 @@ static int devlink_nl_cmd_region_get_devlink_dumpit(struct sk_buff *msg,
 	struct devlink_region *region;
 	struct devlink_port *port;
 	unsigned long port_index;
-	int err = 0;
+	int err;
 
-	devl_lock(devlink);
 	list_for_each_entry(region, &devlink->region_list, list) {
 		if (*idx < start) {
 			(*idx)++;
@@ -5997,7 +5996,7 @@ static int devlink_nl_cmd_region_get_devlink_dumpit(struct sk_buff *msg,
 					     cb->nlh->nlmsg_seq,
 					     NLM_F_MULTI, region);
 		if (err)
-			goto out;
+			return err;
 		(*idx)++;
 	}
 
@@ -6005,12 +6004,10 @@ static int devlink_nl_cmd_region_get_devlink_dumpit(struct sk_buff *msg,
 		err = devlink_nl_cmd_region_get_port_dumpit(msg, cb, port, idx,
 							    start);
 		if (err)
-			goto out;
+			return err;
 	}
 
-out:
-	devl_unlock(devlink);
-	return err;
+	return 0;
 }
 
 static int devlink_nl_cmd_region_get_dumpit(struct sk_buff *msg,
@@ -6023,8 +6020,10 @@ static int devlink_nl_cmd_region_get_dumpit(struct sk_buff *msg,
 	devlink_dump_for_each_instance_get(msg, state, devlink) {
 		int idx = 0;
 
+		devl_lock(devlink);
 		err = devlink_nl_cmd_region_get_devlink_dumpit(msg, cb, devlink,
 							       &idx, state->idx);
+		devl_unlock(devlink);
 		devlink_put(devlink);
 		if (err) {
 			state->idx = idx;
