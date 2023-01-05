@@ -453,10 +453,12 @@ int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv *priv)
 	cnf10k_rfoe_update_host_offset(priv, CNF10K_RFOE_HOST_OFFSET_INIT, 0);
 
 	/* Enable FORCE_COND_CLK_EN */
-	rx_cfg = readq(priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
-	rx_cfg |= FORCE_COND_CLK_EN;
-	writeq(rx_cfg, priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
-	mutex_init(&priv->ptp_lock);
+	if (is_cnf10ka_a0(priv) || is_cnf10ka_a1(priv) || is_cnf10kb_a0(priv)) {
+		rx_cfg = readq(priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
+		rx_cfg |= FORCE_COND_CLK_EN;
+		writeq(rx_cfg, priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
+		mutex_init(&priv->ptp_lock);
+	}
 
 	return 0;
 }

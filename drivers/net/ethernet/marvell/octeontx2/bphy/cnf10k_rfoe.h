@@ -235,4 +235,38 @@ static inline u64 cnf10k_ptp_convert_timestamp(u64 timestamp)
 }
 
 void cnf10k_rfoe_set_link_state(struct net_device *netdev, u8 state);
+
+static inline bool is_cnf10ka_a0(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	struct pci_dev *pdev = priv->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
+	    (pdev->revision & 0x0F) == 0x0)
+		return true;
+
+	return false;
+}
+
+static inline bool is_cnf10ka_a1(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	struct pci_dev *pdev = priv->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
+	    (pdev->revision & 0x0F) == 0x1)
+		return true;
+
+	return false;
+}
+
+static inline bool is_cnf10kb_a0(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	struct pci_dev *pdev = priv->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B &&
+	    (pdev->revision & 0x0F) == 0x0)
+		return true;
+
+	return false;
+}
+
 #endif
