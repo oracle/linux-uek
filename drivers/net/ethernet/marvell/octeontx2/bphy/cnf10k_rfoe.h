@@ -18,6 +18,7 @@
 #include <linux/ptp_clock_kernel.h>
 #include <linux/if_vlan.h>
 #include <net/ip.h>
+#include <linux/timecounter.h>
 
 #include "rfoe_common.h"
 #include "otx2_bphy.h"

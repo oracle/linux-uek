@@ -537,6 +537,13 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 		priv2 = NULL;
 		cpri_cfg = &cfg[i].cpri_if_cfg;
 		for (lmac = 0; lmac < OTX2_BPHY_CPRI_MAX_LMAC; lmac++) {
+			intf_idx = (i * 4) + lmac;
+			if (intf_idx >= OTX2_BPHY_CPRI_MAX_INTF) {
+				dev_dbg(cdev->dev,
+					"cpri%d lmac%d doesn't exist, skipping intf cfg\n",
+					i, lmac);
+				continue;
+			}
 			if (!(cpri_cfg->active_lane_mask & (1 << lmac)))
 				continue;
 			netdev =
@@ -599,7 +606,6 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			if (!priv2)
 				priv2 = priv;
 
-			intf_idx = (i * 4) + lmac;
 			snprintf(netdev->name, sizeof(netdev->name),
 				 "cpri%d", intf_idx);
 			netdev->netdev_ops = &otx2_cpri_netdev_ops;

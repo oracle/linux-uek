@@ -1421,6 +1421,10 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	struct rx_ft_cfg *ft_cfg;
 	u8 pkt_type_mask;
 
+	cdev->num_rfoe_mhab = 3;
+	cdev->num_rfoe_lmac = 4;
+	cdev->tot_rfoe_intf = 10; /* 2 rfoe x 4 lmac + 1 rfoe x 2 lmac */
+
 	ptp_cfg = kzalloc(sizeof(*ptp_cfg), GFP_KERNEL);
 	if (!ptp_cfg)
 		return -ENOMEM;
@@ -1429,16 +1433,23 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	ptp_cfg->clk_cfg.clk_freq_div = PTP_CLK_FREQ_DIV;
 	spin_lock_init(&ptp_cfg->lock);
 
-	for (i = 0; i < MAX_RFOE_INTF; i++) {
+	for (i = 0; i < cdev->num_rfoe_mhab; i++) {
 		priv2 = NULL;
 		rfoe_cfg = &cfg[i].rfoe_if_cfg;
 		pkt_type_mask = rfoe_cfg->pkt_type_mask;
-		for (lmac = 0; lmac < MAX_LMAC_PER_RFOE; lmac++) {
+		for (lmac = 0; lmac < cdev->num_rfoe_lmac; lmac++) {
+			intf_idx = (i * cdev->num_rfoe_lmac) + lmac;
+			if (intf_idx >= cdev->tot_rfoe_intf) {
+				dev_dbg(cdev->dev,
+					"rfoe%d lmac%d doesn't exist, skipping intf cfg\n",
+					i, lmac);
+				continue;
+			}
 			if_cfg = &rfoe_cfg->if_cfg[lmac];
 			/* check if lmac is valid */
 			if (!if_cfg->lmac_info.is_valid) {
 				dev_dbg(cdev->dev,
-					"rfoe%d lmac%d invalid\n", i, lmac);
+					"rfoe%d lmac%d invalid intf cfg, skipping\n", i, lmac);
 				continue;
 			}
 			netdev =
@@ -1539,7 +1550,6 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			if (!priv2)
 				priv2 = priv;
 
-			intf_idx = (i * 4) + lmac;
 			snprintf(netdev->name, sizeof(netdev->name),
 				 "rfoe%d", intf_idx);
 			netdev->netdev_ops = &otx2_rfoe_netdev_ops;

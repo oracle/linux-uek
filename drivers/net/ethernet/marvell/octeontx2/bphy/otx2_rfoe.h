@@ -21,6 +21,7 @@
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/if_vlan.h>
+#include <linux/timecounter.h>
 
 #include "otx2_bphy.h"
 #include "rfoe_common.h"
