@@ -537,6 +537,8 @@ void rvu_nix_flr_free_bpids(struct rvu *rvu, u16 pcifunc)
 		return;
 
 	bp = &nix_hw->bp;
+
+	mutex_lock(&rvu->rsrc_lock);
 	for (bpid = 0; bpid < bp->bpids.max; bpid++) {
 		if (bp->fn_map[bpid] == pcifunc) {
 			bp->ref_cnt[bpid]--;
@@ -546,6 +548,7 @@ void rvu_nix_flr_free_bpids(struct rvu *rvu, u16 pcifunc)
 			bp->fn_map[bpid] = 0;
 		}
 	}
+	mutex_unlock(&rvu->rsrc_lock);
 }
 
 int rvu_mbox_handler_nix_rx_chan_cfg(struct rvu *rvu,
@@ -593,7 +596,8 @@ int rvu_mbox_handler_nix_alloc_bpids(struct rvu *rvu,
 	 * application. Find the bpid is it already allocate or
 	 * allocate a new one.
 	 */
-	if (req->type > NIX_INTF_TYPE_CPT) {
+	mutex_lock(&rvu->rsrc_lock);
+	if (req->type > NIX_INTF_TYPE_CPT || req->type == NIX_INTF_TYPE_LBK) {
 		for (bpid = 0; bpid < bp->bpids.max; bpid++) {
 			if (bp->intf_map[bpid] == req->type) {
 				rsp->bpids[cnt] = bpid + bp->free_pool_base;
@@ -603,19 +607,21 @@ int rvu_mbox_handler_nix_alloc_bpids(struct rvu *rvu,
 			}
 		}
 		if (rsp->bpid_cnt)
-			return 0;
+			goto exit;
 	}
 
 	for (cnt = 0; cnt < req->bpid_cnt; cnt++) {
 		bpid = rvu_alloc_rsrc(&bp->bpids);
 		if (bpid < 0)
-			return 0;
+			goto exit;
 		rsp->bpids[cnt] = bpid + bp->free_pool_base;
 		bp->intf_map[bpid] = req->type;
 		bp->fn_map[bpid] = pcifunc;
 		bp->ref_cnt[bpid]++;
 		rsp->bpid_cnt++;
 	}
+exit:
+	mutex_unlock(&rvu->rsrc_lock);
 	return 0;
 }
 
@@ -634,6 +640,7 @@ int rvu_mbox_handler_nix_free_bpids(struct rvu *rvu,
 		return err;
 
 	bp = &nix_hw->bp;
+	mutex_lock(&rvu->rsrc_lock);
 	for (cnt = 0; cnt < req->bpid_cnt; cnt++) {
 		bpid = req->bpids[cnt] - bp->free_pool_base;
 		bp->ref_cnt[bpid]--;
@@ -645,6 +652,7 @@ int rvu_mbox_handler_nix_free_bpids(struct rvu *rvu,
 				bp->fn_map[id] = 0;
 		}
 	}
+	mutex_unlock(&rvu->rsrc_lock);
 	return 0;
 }
 
@@ -696,12 +704,16 @@ static int nix_bp_disable(struct rvu *rvu,
 			    cfg & ~BIT_ULL(16));
 
 		if (type == NIX_INTF_TYPE_LBK) {
-			bpid = cfg & GENMASK(0, 8);
+			bpid = cfg & GENMASK(8, 0);
+			mutex_lock(&rvu->rsrc_lock);
 			rvu_free_rsrc(&bp->bpids, bpid - bp->free_pool_base);
 			for (bpid = 0; bpid < bp->bpids.max; bpid++) {
-				if (bp->fn_map[bpid] == pcifunc)
+				if (bp->fn_map[bpid] == pcifunc) {
 					bp->fn_map[bpid] = 0;
+					bp->ref_cnt[bpid] = 0;
+				}
 			}
+			mutex_unlock(&rvu->rsrc_lock);
 		}
 	}
 	return 0;
@@ -768,12 +780,16 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 		break;
 	case NIX_INTF_TYPE_LBK:
 		/* Alloc bpid from the free pool */
+		mutex_lock(&rvu->rsrc_lock);
 		bpid = rvu_alloc_rsrc(&bp->bpids);
-		if (bpid < 0)
+		if (bpid < 0) {
+			mutex_unlock(&rvu->rsrc_lock);
 			return NIX_AF_ERR_INVALID_BPID;
+		}
 		bp->fn_map[bpid] = req->hdr.pcifunc;
 		bp->ref_cnt[bpid]++;
 		bpid += bp->free_pool_base;
+		mutex_unlock(&rvu->rsrc_lock);
 		break;
 	case NIX_INTF_TYPE_SDP:
 		if ((req->chan_base + req->chan_cnt) > bp->sdp_bpid_cnt)
@@ -811,9 +827,9 @@ static int nix_bp_enable(struct rvu *rvu,
 {
 	int blkaddr, pf, type, chan_id = 0;
 	u16 pcifunc = req->hdr.pcifunc;
+	s16 bpid, bpid_base = -1;
 	struct rvu_pfvf *pfvf;
 	u16 chan_base, chan;
-	s16 bpid, bpid_base;
 	u16 chan_v;
 	u64 cfg;
 
@@ -836,15 +852,16 @@ static int nix_bp_enable(struct rvu *rvu,
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 
-	bpid_base = rvu_nix_get_bpid(rvu, req, type, chan_id);
 	chan_base = pfvf->rx_chan_base + req->chan_base;
-	bpid = bpid_base;
 
 	for (chan = chan_base; chan < (chan_base + req->chan_cnt); chan++) {
+		bpid = rvu_nix_get_bpid(rvu, req, type, chan_id);
 		if (bpid < 0) {
 			dev_warn(rvu->dev, "Fail to enable backpressure\n");
 			return -EINVAL;
 		}
+		if (bpid_base < 0)
+			bpid_base = bpid;
 
 		/* CPT channel for a given link channel is always
 		 * assumed to be BIT(11) set in link channel.
@@ -860,7 +877,6 @@ static int nix_bp_enable(struct rvu *rvu,
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_CHANX_CFG(chan_v),
 			    cfg | (bpid & GENMASK_ULL(8, 0)) | BIT_ULL(16));
 		chan_id++;
-		bpid = rvu_nix_get_bpid(rvu, req, type, chan_id);
 	}
 
 	for (chan = 0; chan < req->chan_cnt; chan++) {
