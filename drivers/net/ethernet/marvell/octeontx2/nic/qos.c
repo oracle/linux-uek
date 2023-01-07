@@ -91,7 +91,7 @@ static void otx2_config_sched_shaping(struct otx2_nic *pfvf,
 	otx2_qos_get_regaddr(node, cfg, *num_regs);
 
 	/* configure parent txschq */
-	cfg->regval[*num_regs] = node->parent->schq << 16;
+	cfg->regval[*num_regs] = (u64)node->parent->schq << 16;
 	(*num_regs)++;
 
 	/* configure prio/quantum */
@@ -110,7 +110,7 @@ static void otx2_config_sched_shaping(struct otx2_nic *pfvf,
 		quantum = node->quantum ?
 			  node->quantum : pfvf->tx_max_pktlen;
 		rr_weight = otx2_qos_quantum_to_dwrr_weight(pfvf, quantum);
-		cfg->regval[*num_regs] = node->parent->child_dwrr_prio << 24 |
+		cfg->regval[*num_regs] = (u64)node->parent->child_dwrr_prio << 24 |
 					 rr_weight;
 	}
 	(*num_regs)++;
