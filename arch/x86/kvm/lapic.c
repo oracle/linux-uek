@@ -1447,12 +1447,9 @@ static inline struct kvm_lapic *to_lapic(struct kvm_io_device *dev)
 #define APIC_REGS_MASK(first, count) \
 	(APIC_REG_MASK(first) * ((1ull << (count)) - 1))
 
-int kvm_lapic_reg_read(struct kvm_lapic *apic, u32 offset, int len,
-		void *data)
+u64 kvm_lapic_readable_reg_mask(struct kvm_lapic *apic)
 {
-	unsigned char alignment = offset & 0xf;
-	u32 result;
-	/* this bitmask has a bit cleared for each reserved register */
+	/* Leave bits '0' for reserved and write-only registers. */
 	u64 valid_reg_mask =
 		APIC_REG_MASK(APIC_ID) |
 		APIC_REG_MASK(APIC_LVR) |
@@ -1475,22 +1472,33 @@ int kvm_lapic_reg_read(struct kvm_lapic *apic, u32 offset, int len,
 		APIC_REG_MASK(APIC_TMCCT) |
 		APIC_REG_MASK(APIC_TDCR);
 
-	/*
-	 * ARBPRI, DFR, and ICR2 are not valid in x2APIC mode.  WARN if KVM
-	 * reads ICR in x2APIC mode as it's an 8-byte register in x2APIC and
-	 * needs to be manually handled by the caller.
-	 */
+	/* ARBPRI, DFR, and ICR2 are not valid in x2APIC mode. */
 	if (!apic_x2apic_mode(apic))
 		valid_reg_mask |= APIC_REG_MASK(APIC_ARBPRI) |
 				  APIC_REG_MASK(APIC_DFR) |
 				  APIC_REG_MASK(APIC_ICR2);
-	else
-		WARN_ON_ONCE(offset == APIC_ICR);
+
+	return valid_reg_mask;
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_readable_reg_mask);
+
+int kvm_lapic_reg_read(struct kvm_lapic *apic, u32 offset, int len,
+			      void *data)
+{
+	unsigned char alignment = offset & 0xf;
+	u32 result;
+
+	/*
+	 * WARN if KVM reads ICR in x2APIC mode, as it's an 8-byte register in
+	 * x2APIC and needs to be manually handled by the caller.
+	 */
+	WARN_ON_ONCE(apic_x2apic_mode(apic) && offset == APIC_ICR);
 
 	if (alignment + len > 4)
 		return 1;
 
-	if (offset > 0x3f0 || !(valid_reg_mask & APIC_REG_MASK(offset)))
+	if (offset > 0x3f0 ||
+	    !(kvm_lapic_readable_reg_mask(apic) & APIC_REG_MASK(offset)))
 		return 1;
 
 	result = __apic_read(apic, offset & ~0xf);
