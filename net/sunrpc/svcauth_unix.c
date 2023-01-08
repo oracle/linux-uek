@@ -784,6 +784,8 @@ svcauth_null_accept(struct svc_rqst *rqstp)
 	if (xdr_stream_encode_opaque_auth(&rqstp->rq_res_stream,
 					  RPC_AUTH_NULL, NULL, 0) < 0)
 		return SVC_CLOSE;
+	if (!svcxdr_set_accept_stat(rqstp))
+		return SVC_CLOSE;
 
 	rqstp->rq_cred.cr_flavor = RPC_AUTH_NULL;
 	return SVC_OK;
@@ -875,6 +877,8 @@ svcauth_tls_accept(struct svc_rqst *rqstp)
 						  RPC_AUTH_NULL, NULL, 0) < 0)
 			return SVC_CLOSE;
 	}
+	if (!svcxdr_set_accept_stat(rqstp))
+		return SVC_CLOSE;
 
 	rqstp->rq_cred.cr_flavor = RPC_AUTH_TLS;
 	return SVC_OK;
@@ -968,6 +972,8 @@ svcauth_unix_accept(struct svc_rqst *rqstp)
 
 	if (xdr_stream_encode_opaque_auth(&rqstp->rq_res_stream,
 					  RPC_AUTH_NULL, NULL, 0) < 0)
+		return SVC_CLOSE;
+	if (!svcxdr_set_accept_stat(rqstp))
 		return SVC_CLOSE;
 
 	rqstp->rq_cred.cr_flavor = RPC_AUTH_UNIX;
