@@ -813,51 +813,73 @@ void mlx5_eq_update_ci(struct mlx5_eq *eq, u32 cc, bool arm)
 }
 EXPORT_SYMBOL(mlx5_eq_update_ci);
 
+static void comp_irqs_release_pci(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eq_table *table = dev->priv.eq_table;
+
+	mlx5_irqs_release_vectors(table->comp_irqs, table->num_comp_eqs);
+}
+
+static int comp_irqs_request_pci(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eq_table *table = dev->priv.eq_table;
+	int ncomp_eqs;
+	u16 *cpus;
+	int ret;
+	int i;
+
+	ncomp_eqs = table->num_comp_eqs;
+	cpus = kcalloc(ncomp_eqs, sizeof(*cpus), GFP_KERNEL);
+	if (!cpus)
+		ret = -ENOMEM;
+	for (i = 0; i < ncomp_eqs; i++)
+		cpus[i] = cpumask_local_spread(i, dev->priv.numa_node);
+	ret = mlx5_irqs_request_vectors(dev, cpus, ncomp_eqs, table->comp_irqs);
+	kfree(cpus);
+	return ret;
+}
+
+static void comp_irqs_release_sf(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eq_table *table = dev->priv.eq_table;
+
+	mlx5_irq_affinity_irqs_release(dev, table->comp_irqs, table->num_comp_eqs);
+}
+
+static int comp_irqs_request_sf(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eq_table *table = dev->priv.eq_table;
+	int ncomp_eqs = table->num_comp_eqs;
+
+	return mlx5_irq_affinity_irqs_request_auto(dev, ncomp_eqs, table->comp_irqs);
+}
+
 static void comp_irqs_release(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 
-	if (mlx5_core_is_sf(dev))
-		mlx5_irq_affinity_irqs_release(dev, table->comp_irqs, table->num_comp_eqs);
-	else
-		mlx5_irqs_release_vectors(table->comp_irqs, table->num_comp_eqs);
+	mlx5_core_is_sf(dev) ? comp_irqs_release_sf(dev) :
+			       comp_irqs_release_pci(dev);
+
 	kfree(table->comp_irqs);
 }
 
 static int comp_irqs_request(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
-	int ncomp_eqs = table->num_comp_eqs;
-	u16 *cpus;
+	int ncomp_eqs;
 	int ret;
-	int i;
 
 	ncomp_eqs = table->num_comp_eqs;
 	table->comp_irqs = kcalloc(ncomp_eqs, sizeof(*table->comp_irqs), GFP_KERNEL);
 	if (!table->comp_irqs)
 		return -ENOMEM;
-	if (mlx5_core_is_sf(dev)) {
-		ret = mlx5_irq_affinity_irqs_request_auto(dev, ncomp_eqs, table->comp_irqs);
-		if (ret < 0)
-			goto free_irqs;
-		return ret;
-	}
 
-	cpus = kcalloc(ncomp_eqs, sizeof(*cpus), GFP_KERNEL);
-	if (!cpus) {
-		ret = -ENOMEM;
-		goto free_irqs;
-	}
-	for (i = 0; i < ncomp_eqs; i++)
-		cpus[i] = cpumask_local_spread(i, dev->priv.numa_node);
-	ret = mlx5_irqs_request_vectors(dev, cpus, ncomp_eqs, table->comp_irqs);
-	kfree(cpus);
+	ret = mlx5_core_is_sf(dev) ? comp_irqs_request_sf(dev) :
+				     comp_irqs_request_pci(dev);
 	if (ret < 0)
-		goto free_irqs;
-	return ret;
+		kfree(table->comp_irqs);
 
-free_irqs:
-	kfree(table->comp_irqs);
 	return ret;
 }
 
