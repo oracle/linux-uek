@@ -812,7 +812,8 @@ config CAVIUM_ERRATUM_27456
 
 config CAVIUM_ERRATUM_30115
 	bool "Cavium erratum 30115: Guest may disable interrupts in host"
-	default y
+	depends on BROKEN
+	default n
 	help
 	  On ThunderX T88 pass 1.x through 2.2, T81 pass 1.0 through
 	  1.2, and T83 Pass 1.0, KVM guest execution may disable
