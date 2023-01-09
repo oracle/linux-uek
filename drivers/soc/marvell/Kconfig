@@ -104,4 +104,16 @@ config OCTEONTX_INFO
 	provides procfs interface to board information like board name, board revision
 	mac addresses, board serial number and more. These are boards housing Marvell
 	OcteonTX family chipsets.
+
+config OCTEONTX2_SDP_PF
+	tristate "OcteonTX2 SDP PF driver"
+	depends on ARM64 && PCI && OCTEONTX2_AF && OCTEONTX2_MBOX
+	default y
+	help
+	  This driver configures the SDP RVU PF when OcteonTx is in PCIe EndPoint
+	  mode. It sets up the SDP rings  and the VFs to be used in packet transfer
+	  using the NIX block.
+
+	  To compile this as a module choose M here.
+
 endmenu
