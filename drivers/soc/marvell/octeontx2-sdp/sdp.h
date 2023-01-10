@@ -28,7 +28,8 @@
 #define SDP_BASE(a)		(0x86E080000000ull | a << 36)
 #define SDP_REG_SIZE		0x42000000
 
-#define SDPX_OUT_BP_ENX_W1S(a)  (0x80280ull | a << 4)
+#define SDPX_OUT_WMARK		(0x40060000ull)
+#define SDPX_OUT_BP_ENX_W1S(a)  (0x40080280ull | a << 4)
 #define SDPX_GBL_CONTROL	(0x40080200ull)
 
 #define SDPX_EPFX_RINFO(a)		(0x205f0ull | a << 25)

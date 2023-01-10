@@ -31,7 +31,7 @@
 #define PCI_CFG_REG_BAR_NUM	2
 #define MBOX_BAR_NUM		4
 
-#define SDP_PPAIR_THOLD 0x400
+#define SDP_OUT_BP_WMARK	0x100
 
 static spinlock_t sdp_lst_lock;
 LIST_HEAD(sdp_dev_lst_head);
@@ -352,12 +352,12 @@ handle_vf_req(struct sdp_dev *sdp, struct rvu_vf *vf, struct mbox_msghdr *req,
 		err = forward_to_mbox(sdp, &sdp->afpf_mbox, 0, req, size, "AF");
 		break;
 	case MBOX_MSG_NIX_LF_ALLOC:
-		chan_base = sdp->chan_base + sdp->info.num_pf_rings;
+		chan_base = 0;
 		for (vf_id = 0; vf_id < vf->vf_id; vf_id++)
 			chan_base += sdp->info.vf_rings[vf_id];
 		chan_cnt = sdp->info.vf_rings[vf->vf_id];
 		for (chan_idx = 0; chan_idx < chan_cnt; chan_idx++) {
-			chan_diff = chan_base + chan_idx - sdp->chan_base;
+			chan_diff = chan_base + chan_idx;
 			reg_off = 0;
 			while (chan_diff > 63) {
 				reg_off += 1;
@@ -1653,6 +1653,9 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		err = -EINVAL;
 		goto get_rinfo_failed;
 	}
+
+	/* Water mark for backpressuring NIX Tx when enabled */
+	writeq(SDP_OUT_BP_WMARK, sdp->sdp_base + SDPX_OUT_WMARK);
 
 	regval = readq(sdp->sdp_base + SDPX_GBL_CONTROL);
 	regval |= (1 << 2); /* BPFLR_D disable clearing BP in FLR */
