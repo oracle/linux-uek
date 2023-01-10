@@ -21,6 +21,9 @@
 #include "pci_irq.h"
 #include "devlink.h"
 #include "en_accel/ipsec.h"
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#include "oracle_ext.h"
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 enum {
 	MLX5_EQE_OWNER_INIT_VAL	= 0x1,
@@ -129,6 +132,11 @@ static int mlx5_eq_comp_int(struct notifier_block *nb,
 		dma_rmb();
 		/* Assume (eqe->type) is always MLX5_EVENT_TYPE_COMP */
 		cqn = be32_to_cpu(eqe->data.comp.cqn) & 0xffffff;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		if (unlikely(mlx5_core_verify_eqe_flag))
+			verify_eqe(eq, eqe);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 		cq = mlx5_eq_cq_get(eq, cqn);
 		if (likely(cq)) {
