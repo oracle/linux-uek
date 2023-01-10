@@ -1168,6 +1168,239 @@ static int sdp_sriov_configure(struct pci_dev *pdev, int num_vfs)
 		return __sriov_enable(pdev, num_vfs);
 }
 
+static int sdp_parse_rinfo(struct pci_dev *pdev,
+			   struct sdp_node_info *info)
+{
+	u32 vf_ring_cnts, vf_rings;
+	struct device_node *dev;
+	struct device *sdev;
+	const void *ptr;
+	int len, vfid;
+
+	sdev = &pdev->dev;
+	dev = of_find_node_by_name(NULL, "rvu-sdp");
+	if (dev == NULL) {
+		dev_err(sdev, "can't find FDT dev %s\n", "rvu-sdp");
+		return -EINVAL;
+	}
+
+	ptr = of_get_property(dev, "num-rvu-vfs", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-rvu-vfs\n");
+		return -EINVAL;
+	}
+
+	if (len != sizeof(u32)) {
+		dev_err(sdev, "SDP DTS: Wrong field length: num-rvu-vfs\n");
+		return -EINVAL;
+	}
+	info->max_vfs =  be32_to_cpup((u32 *)ptr);
+
+	if (info->max_vfs > pci_sriov_get_totalvfs(pdev)) {
+		dev_err(sdev, "SDP DTS: Invalid field value: num-rvu-vfs\n");
+		return -EINVAL;
+	}
+
+	ptr = of_get_property(dev, "num-pf-rings", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-pf-rings\n");
+		return -EINVAL;
+	}
+	if (len != sizeof(u32)) {
+		dev_err(sdev, "SDP DTS: Wrong field length: num-pf-rings\n");
+		return -EINVAL;
+	}
+	info->num_pf_rings = be32_to_cpup((u32 *)ptr);
+
+	ptr = of_get_property(dev, "pf-srn", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get pf-srn\n");
+		return -EINVAL;
+	}
+	if (len != sizeof(u32)) {
+		dev_err(sdev, "SDP DTS: Wrong field length: pf-srn\n");
+		return -EINVAL;
+	}
+	info->pf_srn = be32_to_cpup((u32 *)ptr);
+
+	ptr = of_get_property(dev, "num-vf-rings", &len);
+	if (ptr == NULL) {
+		dev_err(sdev, "SDP DTS: Failed to get num-vf-rings\n");
+		return -EINVAL;
+	}
+
+	vf_ring_cnts = len / sizeof(u32);
+	if (vf_ring_cnts > info->max_vfs) {
+		dev_err(sdev, "SDP DTS: Wrong field length: num-vf-rings\n");
+		return -EINVAL;
+	}
+
+	for (vfid = 0; vfid < info->max_vfs; vfid++) {
+		if (vfid < vf_ring_cnts) {
+			if (of_property_read_u32_index(dev, "num-vf-rings",
+					vfid, &vf_rings)) {
+				dev_err(sdev, "SDP DTS: Failed to get vf ring count\n");
+				return -EINVAL;
+			}
+			info->vf_rings[vfid] = vf_rings;
+		} else {
+			/*
+			 * Rest of the VFs use the same last ring count
+			 * specified
+			 */
+			info->vf_rings[vfid] = info->vf_rings[vf_ring_cnts - 1];
+		}
+	}
+	dev_info(sdev, "pf start ring number:%d num_pf_rings:%d max_vfs:%d vf_ring_cnts:%d\n",
+		 info->pf_srn, info->num_pf_rings, info->max_vfs, vf_ring_cnts);
+
+	return 0;
+}
+
+static int get_chan_info(struct sdp_dev *sdp)
+{
+	struct sdp_get_chan_info_msg *rsp;
+	struct msg_req *req;
+	int res = 0;
+
+	req = (struct msg_req *) otx2_mbox_alloc_msg(&sdp->afpf_mbox, 0, sizeof(*req));
+	if (req == NULL) {
+		dev_err(&sdp->pdev->dev, "RVU Mbox failed to alloc\n");
+		return -EFAULT;
+	}
+	req->hdr.id = MBOX_MSG_GET_SDP_CHAN_INFO;
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;
+	req->hdr.pcifunc = RVU_PFFUNC(sdp->pf, 0);
+
+	otx2_mbox_msg_send(&sdp->afpf_mbox, 0);
+	res = otx2_mbox_wait_for_rsp(&sdp->afpf_mbox, 0);
+	if (res == -EIO)
+		dev_err(&sdp->pdev->dev, "RVU AF Mbox timeout\n");
+	else if (res) {
+		dev_err(&sdp->pdev->dev, "RVU Mbox error: %d\n", res);
+		res = -EFAULT;
+	}
+	rsp = (struct sdp_get_chan_info_msg *)otx2_mbox_get_rsp(&sdp->afpf_mbox, 0,
+								&req->hdr);
+	sdp->chan_base = rsp->chan_base;
+	sdp->num_chan = rsp->num_chan;
+
+	return res;
+}
+
+static int send_chan_info(struct sdp_dev *sdp, struct sdp_node_info *info)
+{
+	struct sdp_chan_info_msg *cinfo;
+	int res = 0;
+
+	cinfo = (struct sdp_chan_info_msg *)
+		otx2_mbox_alloc_msg(&sdp->afpf_mbox, 0, sizeof(*cinfo));
+	if (cinfo == NULL) {
+		dev_err(&sdp->pdev->dev, "RVU MBOX failed to get message.\n");
+		return -EFAULT;
+	}
+	cinfo->hdr.id = MBOX_MSG_SET_SDP_CHAN_INFO;
+	cinfo->hdr.sig = OTX2_MBOX_REQ_SIG;
+	cinfo->hdr.pcifunc = RVU_PFFUNC(sdp->pf, 0);
+
+	memcpy(&cinfo->info, info, sizeof(struct sdp_node_info));
+	otx2_mbox_msg_send(&sdp->afpf_mbox, 0);
+	res = otx2_mbox_wait_for_rsp(&sdp->afpf_mbox, 0);
+	if (res == -EIO) {
+		dev_err(&sdp->pdev->dev, "RVU AF MBOX timeout.\n");
+	} else if (res) {
+		dev_err(&sdp->pdev->dev, "RVU MBOX error: %d.\n", res);
+		res = -EFAULT;
+	}
+
+	return res;
+}
+
+static void program_sdp_rinfo(struct sdp_dev *sdp)
+{
+	u32 rppf, rpvf, numvf, pf_srn, npfs, npfs_per_pem;
+	void __iomem *addr;
+	u32 mac, mac_mask;
+	u64 cfg, val, pkg_ver;
+	u64 ep_pem, valid_ep_pem_mask, npem, epf_base;
+
+	/* PF doesn't have any rings */
+	rppf = sdp->info.vf_rings[0];
+	rpvf = sdp->info.vf_rings[1];
+	numvf = sdp->info.max_vfs - 1;
+	pf_srn = sdp->info.pf_srn;
+
+	dev_info(&sdp->pdev->dev, "rppf:%u rpvf:%u numvf:%u pf_srn:%u\n", rppf,
+		 rpvf, numvf, pf_srn);
+
+	/* TODO: add support for 10K  */
+	mac_mask = MAC_MASK_96XX;
+	switch (sdp->pdev->subsystem_device) {
+	case PCI_SUBSYS_DEVID_96XX:
+		valid_ep_pem_mask = VALID_EP_PEMS_MASK_96XX;
+		addr = ioremap(GPIO_PKG_VER, 8);
+		pkg_ver = readq(addr);
+		iounmap(addr);
+		if (pkg_ver == CN93XXN_PKG)
+			valid_ep_pem_mask = VALID_EP_PEMS_MASK_93XX;
+		break;
+	case PCI_SUBSYS_DEVID_95XXO:
+	case PCI_SUBSYS_DEVID_95XXN:
+		valid_ep_pem_mask = VALID_EP_PEMS_MASK_95XX;
+		break;
+	case PCI_SUBSYS_DEVID_98XX:
+		if (sdp->info.node_id == 0)
+			valid_ep_pem_mask = VALID_EP_PEMS_MASK_98XX_SDP0;
+		else
+			valid_ep_pem_mask = VALID_EP_PEMS_MASK_98XX_SDP1;
+		mac_mask = MAC_MASK_98XX;
+		break;
+	default:
+		dev_err(&sdp->pdev->dev, "Failed to set SDP ring info: unsupported platform\n");
+		break;
+	}
+
+#define NUM_PFS_PER_PEM	1
+	/* TODO npfs should be obtained from dts */
+	npfs_per_pem = NUM_PFS_PER_PEM;
+	npem = 0;
+	for (ep_pem = 0; ep_pem < MAX_PEMS; ep_pem++) {
+		if (!(valid_ep_pem_mask & (1ul << ep_pem)))
+			continue;
+		addr  = ioremap(PEMX_CFG(ep_pem), 8);
+		cfg = readq(addr);
+		iounmap(addr);
+		if ((!((cfg >> PEMX_CFG_LANES_BIT_POS) &
+		       PEMX_CFG_LANES_BIT_MASK)) ||
+		    ((cfg >> PEMX_CFG_HOSTMD_BIT_POS) &
+		     PEMX_CFG_HOSTMD_BIT_MASK))
+			continue;
+		/* found the PEM in endpoint mode */
+		epf_base = 0;
+		for (npfs = 0; npfs < npfs_per_pem; npfs++) {
+			val = (((u64)numvf << RINFO_NUMVF_BIT) |
+			       ((u64)rpvf << RINFO_RPVF_BIT) |
+			       ((u64)(pf_srn + rppf) << RINFO_SRN_BIT));
+			writeq(val, sdp->sdp_base + SDPX_EPFX_RINFO((epf_base +
+								     (npem * MAX_PFS_PER_PEM))));
+
+			if (sdp->pdev->subsystem_device != PCI_SUBSYS_DEVID_98XX)
+				val = (((u64)rppf << RPPF_BIT_96XX) |
+				       ((u64)pf_srn << PF_SRN_BIT_96XX) |
+				       ((u64)npfs_per_pem << NPFS_BIT_96XX));
+			else
+				val = (((u64)rppf << RPPF_BIT_98XX) |
+				       ((u64)pf_srn << PF_SRN_BIT_98XX) |
+				       ((u64)npfs_per_pem << NPFS_BIT_98XX));
+			mac = ep_pem & mac_mask;
+			writeq(val, sdp->sdp_base + SDPX_MACX_PF_RING_CTL(mac));
+			pf_srn += rppf + (rpvf * numvf);
+			epf_base++;
+		}
+		npem++;
+	}
+
+}
 
 static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -1278,6 +1511,35 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto get_pcifunc_failed;
 	}
 
+	err = get_chan_info(sdp);
+	if (err) {
+		dev_err(&pdev->dev, "SDP get channel info failed\n");
+		goto get_chan_info_failed;
+	}
+
+	dev_info(&sdp->pdev->dev, "SDP chan base: 0x%x, num chan: 0x%x\n",
+		 sdp->chan_base, sdp->num_chan);
+
+	err = sdp_parse_rinfo(pdev, &sdp->info);
+	if (err) {
+		err = -EINVAL;
+		goto get_rinfo_failed;
+	}
+
+	sdp->info.node_id = inst;
+
+	/*
+	 * For 98xx there are 2xSDPs so start the PF ring from 128 for SDP1
+	 */
+	sdp->info.pf_srn = inst ? 128 : sdp->info.pf_srn;
+
+	program_sdp_rinfo(sdp);
+	err = send_chan_info(sdp, &sdp->info);
+	if (err) {
+		err = -EINVAL;
+		goto get_rinfo_failed;
+	}
+
 	regval = readq(sdp->sdp_base + SDPX_GBL_CONTROL);
 	regval |= (1 << 2); /* BPFLR_D disable clearing BP in FLR */
 	writeq(regval, sdp->sdp_base + SDPX_GBL_CONTROL);
@@ -1290,6 +1552,8 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	return 0;
 
+get_chan_info_failed:
+get_rinfo_failed:
 get_pcifunc_failed:
 	disable_af_mbox_int(pdev);
 reg_flr_irq_failed:

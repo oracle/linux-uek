@@ -30,6 +30,52 @@
 #define SDPX_OUT_BP_ENX_W1S(a)  (0x80280ull | a << 4)
 #define SDPX_GBL_CONTROL	(0x40080200ull)
 
+#define SDPX_EPFX_RINFO(a)		(0x205f0ull | a << 25)
+#define SDPX_EPVF_RINGX(a)		(0x26000ull | a << 4)
+#define RINFO_NUMVF_BIT			48
+#define RINFO_RPVF_BIT			32
+#define RINFO_SRN_BIT			0
+
+#define SDPX_MACX_PF_RING_CTL(a)	(0x2c000ull | a << 4)
+#define RPPF_BIT_96XX			16
+#define RPPF_BIT_98XX			32
+#define PF_SRN_BIT_96XX			8
+#define PF_SRN_BIT_98XX			0
+#define NPFS_BIT_96XX			0
+#define NPFS_BIT_98XX			48
+
+#define MAX_PEMS			4
+#define MAC_MASK_96XX			0x3
+#define MAC_MASK_98XX			0x1
+#define MAC_MASK_CN10K			0x1
+#define MAX_PFS_PER_PEM			8
+
+/* 96xx only PEM0 and PEM2 have SDP */
+#define VALID_EP_PEMS_MASK_96XX		0x5
+/* 95xx only PEM0 has SDP  */
+#define VALID_EP_PEMS_MASK_95XX		0x1
+/* 93xx only PEM0 has SDP */
+#define VALID_EP_PEMS_MASK_93XX		0x1
+
+/* 98xx only PEM0 and PEM1 for SDP0 */
+#define VALID_EP_PEMS_MASK_98XX_SDP0	0x3
+/* 98xx only PEM2 and PEM3 for SDP1 */
+#define VALID_EP_PEMS_MASK_98XX_SDP1	0xc
+
+#define VALID_EP_PEMS_MASK_106XX	0x1
+
+#define PEMX_CFG(a)			(0x8E00000000D8ull | a << 36)
+#define PEMX_CFG_HOSTMD_BIT_MASK	0x1
+#define PEMX_CFG_HOSTMD_BIT_POS		0
+#define PEMX_CFG_LANES_BIT_MASK		0x3
+#define PEMX_CFG_LANES_BIT_POS		1
+
+#define GPIO_PKG_VER			(0x803000001610ull)
+#define CN93XXN_PKG			5
+
+#define PCI_SUBSYS_DEVID_95XXN                 0xB400
+#define PCI_SUBSYS_DEVID_95XXO                 0xB600
+
 struct sdp_dev {
 	struct list_head	list;
 	struct mutex		lock;
