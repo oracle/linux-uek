@@ -615,6 +615,202 @@ static int sdp_check_pf_usable(struct sdp_dev *sdp)
 	return 0;
 }
 
+static void __handle_vf_flr(struct sdp_dev *sdp, struct rvu_vf *vf_ptr)
+{
+	if (vf_ptr->in_use) {
+		/* Using the same MBOX workqueue here, so that we can
+		 * synchronize with other VF->PF messages being forwarded to
+		 * AF
+		 */
+		vf_ptr->got_flr = true;
+		queue_work(sdp->pfvf_mbox_wq, &vf_ptr->pfvf_flr_work);
+	} else
+		sdp_write64(sdp, BLKADDR_RVUM, 0,
+			   RVU_PF_VFTRPENDX(vf_ptr->vf_id / 64),
+			   BIT_ULL(vf_ptr->intr_idx));
+}
+
+static irqreturn_t sdp_pf_vf_flr_intr(int irq, void *arg)
+{
+	struct sdp_dev *sdp = (struct sdp_dev *)arg;
+	struct rvu_vf *vf_ptr;
+	int vf, i;
+	u64 intr;
+
+	/* Check which VF FLR has been raised and process accordingly */
+	for (i = 0; i < 2; i++) {
+		/* Read the interrupt bits */
+		intr = sdp_read64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(i));
+
+		for (vf = i * 64; vf < sdp->num_vfs; vf++) {
+			vf_ptr = &sdp->vf_info[vf];
+			if (intr & (1ULL << vf_ptr->intr_idx)) {
+				/* Clear the interrupts */
+				sdp_write64(sdp, BLKADDR_RVUM, 0,
+					   RVU_PF_VFFLR_INTX(i),
+					   BIT_ULL(vf_ptr->intr_idx));
+				__handle_vf_flr(sdp, vf_ptr);
+			}
+		}
+	}
+
+	return IRQ_HANDLED;
+}
+
+static int sdp_register_flr_irq(struct pci_dev *pdev)
+{
+	struct sdp_dev *sdp;
+	int err, vec, i;
+
+	sdp = pci_get_drvdata(pdev);
+
+	/* Register for VF FLR interrupts
+	 * There are 2 vectors starting at index 0x0
+	 */
+	for (vec = RVU_PF_INT_VEC_VFFLR0, i = 0;
+	     vec + i <= RVU_PF_INT_VEC_VFFLR1; i++) {
+		sprintf(&sdp->irq_names[(vec + i) * NAME_SIZE],
+			"SDP_PF%02d_VF_FLR%d", pdev->bus->number, i);
+		err = request_irq(pci_irq_vector(pdev, vec + i),
+				  sdp_pf_vf_flr_intr, 0,
+				  &sdp->irq_names[(vec + i) * NAME_SIZE], sdp);
+		if (err) {
+			dev_err(&pdev->dev,
+				"request_irq() failed for PFVF FLR intr %d\n",
+				vec);
+			goto reg_fail;
+		}
+		sdp->irq_allocated[vec + i] = true;
+	}
+
+	return 0;
+
+reg_fail:
+
+	return err;
+}
+
+static void enable_vf_flr_int(struct pci_dev *pdev)
+{
+	struct sdp_dev *sdp;
+	int ena_bits, idx;
+
+	sdp = pci_get_drvdata(pdev);
+
+	/* Clear any pending interrupts */
+	for (idx = 0; idx  < 2; idx++) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(idx),
+			    ~0x0ULL);
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(idx),
+			    ~0x0ULL);
+	}
+
+	/* Enable for FLR interrupts for VFs */
+	if (sdp->num_vfs > 64) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(0),
+			    GENMASK_ULL(63, 0));
+		ena_bits = (sdp->num_vfs - 64) - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(1),
+			   GENMASK_ULL(ena_bits, 0));
+	} else {
+		ena_bits = sdp->num_vfs - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1SX(0),
+			    GENMASK_ULL(ena_bits, 0));
+	}
+}
+
+static int send_flr_msg(struct otx2_mbox *mbox, int dev_id, int pcifunc)
+{
+	struct msg_req *req;
+
+	req = (struct msg_req *)
+		otx2_mbox_alloc_msg(mbox, dev_id, sizeof(*req));
+	if (req == NULL)
+		return -ENOMEM;
+
+	req->hdr.pcifunc = pcifunc;
+	req->hdr.id = MBOX_MSG_VF_FLR;
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;
+
+	otx2_mbox_msg_send(mbox, 0);
+
+	return 0;
+}
+
+static void sdp_send_flr_msg(struct sdp_dev *sdp, struct rvu_vf *vf)
+{
+	int res, pcifunc;
+
+	pcifunc = (vf->sdp->pf << RVU_PFVF_PF_SHIFT) |
+		((vf->vf_id + 1) & RVU_PFVF_FUNC_MASK);
+
+	if (send_flr_msg(&sdp->afpf_mbox, 0, pcifunc) != 0) {
+		dev_err(&sdp->pdev->dev, "Sending FLR to AF failed\n");
+		return;
+	}
+
+	res = otx2_mbox_wait_for_rsp(&sdp->afpf_mbox, 0);
+	if (res == -EIO) {
+		dev_err(&sdp->pdev->dev, "RVU AF MBOX timeout.\n");
+	} else if (res) {
+		dev_err(&sdp->pdev->dev,
+			"RVU MBOX error: %d.\n", res);
+	}
+}
+
+static void sdp_pfvf_flr_handler(struct work_struct *work)
+{
+	struct rvu_vf *vf = container_of(work, struct rvu_vf, pfvf_flr_work);
+	struct sdp_dev *sdp = vf->sdp;
+	struct otx2_mbox *mbox;
+
+	mbox = &sdp->pfvf_mbox;
+
+	sdp_send_flr_msg(sdp, vf);
+
+	/* Disable interrupts from AF and wait for any pending
+	 * responses to be handled for this VF and then reset the
+	 * mailbox
+	 */
+	disable_af_mbox_int(sdp->pdev);
+	flush_workqueue(sdp->afpf_mbox_wq);
+	otx2_mbox_reset(mbox, vf->vf_id);
+	vf->in_use = false;
+	vf->got_flr = false;
+	enable_af_mbox_int(sdp->pdev);
+	sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(vf->vf_id / 64),
+		   BIT_ULL(vf->intr_idx));
+}
+
+static void disable_vf_flr_int(struct pci_dev *pdev)
+{
+	struct sdp_dev *sdp;
+	int ena_bits, idx;
+
+	sdp = pci_get_drvdata(pdev);
+
+	/* Clear any pending interrupts */
+	for (idx = 0; idx  < 2; idx++) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFTRPENDX(idx),
+			    ~0x0ULL);
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INTX(idx),
+			    ~0x0ULL);
+	}
+
+	/* Disable the FLR interrupts for VFs */
+	if (sdp->num_vfs > 64) {
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1CX(0),
+			    GENMASK_ULL(63, 0));
+		ena_bits = (sdp->num_vfs - 64) - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1CX(1),
+			   GENMASK_ULL(ena_bits, 0));
+	} else {
+		ena_bits = sdp->num_vfs - 1;
+		sdp_write64(sdp, BLKADDR_RVUM, 0, RVU_PF_VFFLR_INT_ENA_W1CX(0),
+			    GENMASK_ULL(ena_bits, 0));
+	}
+}
+
 static int sdp_alloc_irqs(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp;
@@ -817,6 +1013,7 @@ static int __sriov_disable(struct pci_dev *pdev)
 		return -EPERM;
 	}
 
+	disable_vf_flr_int(pdev);
 	disable_vf_mbox_int(pdev);
 
 	if (sdp->pfvf_mbox_wq) {
@@ -930,9 +1127,11 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 		vf_ptr->intr_idx = vf % 64;
 		INIT_WORK(&vf_ptr->mbox_wrk, sdp_pfvf_mbox_handler);
 		INIT_WORK(&vf_ptr->mbox_wrk_up, sdp_pfvf_mbox_handler_up);
+		INIT_WORK(&vf_ptr->pfvf_flr_work, sdp_pfvf_flr_handler);
 	}
 
 	enable_vf_mbox_int(pdev);
+	enable_vf_flr_int(pdev);
 
 	err = pci_enable_sriov(pdev, num_vfs);
 	if (err) {
@@ -943,6 +1142,7 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 	return num_vfs;
 
 err_enable_sriov:
+	disable_vf_flr_int(pdev);
 	disable_vf_mbox_int(pdev);
 err_workqueue_alloc:
 	destroy_workqueue(sdp->pfvf_mbox_wq);
@@ -1062,6 +1262,13 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto reg_mbox_irq_failed;
 	}
 
+	if (sdp_register_flr_irq(pdev) != 0) {
+		dev_err(&pdev->dev,
+			"Unable to allocate FLR Interrupt vectors\n");
+		err = -ENODEV;
+		goto reg_flr_irq_failed;
+	}
+
 	enable_af_mbox_int(pdev);
 
 	if (sdp_get_pcifunc(sdp)) {
@@ -1085,6 +1292,7 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 get_pcifunc_failed:
 	disable_af_mbox_int(pdev);
+reg_flr_irq_failed:
 	sdp_afpf_mbox_term(pdev);
 reg_mbox_irq_failed:
 	sdp_free_irqs(pdev);
