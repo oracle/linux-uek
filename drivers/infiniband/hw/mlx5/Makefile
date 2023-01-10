@@ -19,6 +19,7 @@ mlx5_ib-y := ah.o \
 	     restrack.o \
 	     srq.o \
 	     srq_cmd.o \
+	     oracle_ext.o\
 	     wr.o
 
 mlx5_ib-$(CONFIG_INFINIBAND_ON_DEMAND_PAGING) += odp.o
