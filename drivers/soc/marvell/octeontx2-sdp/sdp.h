@@ -15,6 +15,7 @@
 #include <linux/pci.h>
 #include "mbox.h"
 
+#define RVU_SDP_MAX_VFS		128
 #define RVU_PFVF_PF_SHIFT	10
 #define RVU_PFVF_PF_MASK	0x3F
 #define RVU_PFVF_FUNC_SHIFT	0
@@ -76,6 +77,12 @@
 #define PCI_SUBSYS_DEVID_95XXN                 0xB400
 #define PCI_SUBSYS_DEVID_95XXO                 0xB600
 
+struct sdp_epf_info {
+	u8      start_vf_idx;
+	u8      num_sdp_vfs;
+	u8      num_sdp_vf_rings;
+};
+
 struct sdp_dev {
 	struct list_head	list;
 	struct mutex		lock;
@@ -95,6 +102,12 @@ struct sdp_dev {
 	int			pf;
 	u8			valid_ep_pem_mask;
 	u8			mac_mask;
+	u8                      num_sdp_pfs;
+	u8                      num_sdp_pf_rings;
+#define SDP_MAX_EPFS   16
+	struct sdp_epf_info     epf[SDP_MAX_EPFS];
+	struct sdp_node_info info;
+
 	struct otx2_mbox	pfvf_mbox; /* MBOXes for VF => PF channel */
 	struct otx2_mbox	pfvf_mbox_up; /* MBOXes for PF => VF channel */
 	struct otx2_mbox	afpf_mbox; /* MBOX for PF => AF channel */
@@ -103,7 +116,6 @@ struct sdp_dev {
 	struct work_struct	mbox_wrk_up;
 	struct workqueue_struct	*afpf_mbox_wq; /* MBOX handler */
 	struct workqueue_struct	*pfvf_mbox_wq; /* VF MBOX handler */
-	struct sdp_node_info info;
 	struct rvu_vf		*vf_info;
 	struct free_rsrcs_rsp	limits; /* Maximum limits for all VFs */
 };
