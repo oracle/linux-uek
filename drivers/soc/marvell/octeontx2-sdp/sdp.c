@@ -47,6 +47,14 @@ static u64 sdp_read64(struct sdp_dev *rvu, u64 b, u64 s, u64 o)
 	return readq(rvu->bar2 + ((b << 20) | (s << 12) | o));
 }
 
+static inline bool is_cn10k_sdp(struct sdp_dev *sdp)
+{
+	if (sdp->pdev->subsystem_device >= PCI_SUBSYS_DEVID_CN10K_A)
+		return 1;
+
+	return 0;
+}
+
 static void enable_af_mbox_int(struct pci_dev *pdev)
 {
 	struct sdp_dev *sdp;
@@ -1085,11 +1093,16 @@ static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 
 	sdp->num_vfs = num_vfs;
 
-	/*
-	 * Map PF-VF mailbox memory.
+
+	/* Map PF-VF mailbox memory.
+	 * On CN10K platform, PF <-> VF mailbox region follows after
+	 * PF <-> AF mailbox region.
 	 */
-	pf_vf_mbox_base = readq((void __iomem *)((u64)sdp->bar2 +
-						 RVU_PF_VF_BAR4_ADDR));
+	if (is_cn10k_sdp(sdp))
+		pf_vf_mbox_base = pci_resource_start(pdev, PCI_MBOX_BAR_NUM) + MBOX_SIZE;
+	else
+		pf_vf_mbox_base = readq((void __iomem *)((u64)sdp->bar2 +
+							 RVU_PF_VF_BAR4_ADDR));
 
 	if (!pf_vf_mbox_base) {
 		dev_err(&pdev->dev, "PF-VF Mailbox address not configured\n");
@@ -1445,6 +1458,12 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 			valid_ep_pem_mask = VALID_EP_PEMS_MASK_98XX_SDP1;
 		mac_mask = MAC_MASK_98XX;
 		break;
+	case PCI_SUBSYS_DEVID_CN10K_A:
+	case PCI_SUBSYS_DEVID_CNF10K_A:
+	case PCI_SUBSYS_DEVID_CNF10K_B:
+		valid_ep_pem_mask = VALID_EP_PEMS_MASK_106XX;
+		mac_mask = MAC_MASK_CN10K;
+		break;
 	default:
 		dev_err(&sdp->pdev->dev, "Failed to set SDP ring info: unsupported platform\n");
 		break;
@@ -1633,6 +1652,13 @@ static int sdp_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	dev_info(&sdp->pdev->dev, "SDP chan base: 0x%x, num chan: 0x%x\n",
 		 sdp->chan_base, sdp->num_chan);
+
+	/* From cn10k onwards the SDP channel configuration is programmable */
+	if (is_cn10k_sdp(sdp)) {
+		regval = sdp->chan_base;
+		regval |= ilog2(sdp->num_chan) << 16;
+		writeq(regval, sdp->sdp_base + SDPX_LINK_CFG);
+	}
 
 	err = sdp_parse_rinfo(pdev, sdp);
 	if (err) {

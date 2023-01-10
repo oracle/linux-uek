@@ -29,10 +29,17 @@
 #define SDP_REG_SIZE		0x42000000
 
 #define SDPX_OUT_WMARK		(0x40060000ull)
+#define SDPX_LINK_CFG		(0x40080180ull)
 #define SDPX_OUT_BP_ENX_W1S(a)  (0x40080280ull | a << 4)
 #define SDPX_GBL_CONTROL	(0x40080200ull)
 
-#define SDPX_EPFX_RINFO(a)		(0x205f0ull | a << 25)
+#define SDPX_EPFX_RINFO(a) ({					\
+		u64 offset;					\
+		offset = (0x205f0ull | a << 25);		\
+		if (is_cn10k_sdp(sdp))				\
+			offset = (0x209f0ull | a << 25);	\
+		offset; })
+
 #define SDPX_EPVF_RINGX(a)		(0x26000ull | a << 4)
 #define RINFO_NUMVF_BIT			48
 #define RINFO_RPVF_BIT			32
