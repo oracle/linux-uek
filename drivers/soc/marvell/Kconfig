@@ -116,4 +116,13 @@ config OCTEONTX2_SDP_PF
 
 	  To compile this as a module choose M here.
 
+config OCTEONTX2_DPI_PF
+	tristate "OcteonTX2 DPI-DMA PF driver"
+	depends on ARM64 && PCI
+	help
+	  Select this option to enable DPI PF driver support.
+	  DPI (DMA packet interface) provides DMA support for MAC.
+	  This driver intializes DPI PF device and enables VFs for supporting
+	  different types of DMA transfers.
+
 endmenu
