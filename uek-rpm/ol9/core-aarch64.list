@@ -272,6 +272,7 @@ kernel/net/bridge/netfilter/ebtable_broute.ko
 kernel/net/bridge/netfilter/ebtable_filter.ko
 kernel/net/bridge/netfilter/ebtable_nat.ko
 kernel/net/bridge/netfilter/ebtables.ko
+kernel/net/bridge/netfilter/nft_reject_bridge.ko
 kernel/net/core/failover.ko
 kernel/net/core/pktgen.ko
 kernel/net/dns_resolver/dns_resolver.ko
@@ -293,6 +294,7 @@ kernel/net/ipv4/netfilter/ipt_REJECT.ko
 kernel/net/ipv4/netfilter/nf_defrag_ipv4.ko
 kernel/net/ipv4/netfilter/nf_reject_ipv4.ko
 kernel/net/ipv4/netfilter/nft_fib_ipv4.ko
+kernel/net/ipv4/netfilter/nft_reject_ipv4.ko
 kernel/net/ipv4/tunnel4.ko
 kernel/net/ipv4/xfrm4_tunnel.ko
 kernel/net/ipv6/ah6.ko
@@ -312,6 +314,7 @@ kernel/net/ipv6/netfilter/ip6t_rpfilter.ko
 kernel/net/ipv6/netfilter/nf_defrag_ipv6.ko
 kernel/net/ipv6/netfilter/nf_reject_ipv6.ko
 kernel/net/ipv6/netfilter/nft_fib_ipv6.ko
+kernel/net/ipv6/netfilter/nft_reject_ipv6.ko
 kernel/net/ipv6/tunnel6.ko
 kernel/net/ipv6/xfrm6_tunnel.ko
 kernel/net/key/af_key.ko
@@ -332,6 +335,7 @@ kernel/net/netfilter/nft_fib.ko
 kernel/net/netfilter/nft_objref.ko
 kernel/net/netfilter/nft_reject_inet.ko
 kernel/net/netfilter/nft_reject.ko
+kernel/net/netfilter/nft_reject_netdev.ko
 kernel/net/netfilter/xt_addrtype.ko
 kernel/net/netfilter/xt_CHECKSUM.ko
 kernel/net/netfilter/xt_comment.ko
