@@ -31,6 +31,9 @@ import sys
 true = 1
 false = 0
 
+SYMBOLS_WARN_NOT_FAIL=[ 'kernel_stack', 'ip6_route_output' ]
+
+
 def load_symvers(symvers,filename):
 	"""Load a Module.symvers file."""
 
@@ -98,6 +101,9 @@ def check_kabi(symvers,kabi):
 			if abi_type != sym_type:
 				typeerr=1
 				retyped_symbols.append(symbol)
+		elif symbol in SYMBOLS_WARN_NOT_FAIL:
+			warn=1
+			changed_symbols.append(symbol)
 		else:
 			fail=1
 			changed_symbols.append(symbol)
@@ -108,7 +114,11 @@ def check_kabi(symvers,kabi):
 		print "The following symbols have been changed (this will cause an ABI breakage):"
 		print ""
 		for symbol in changed_symbols:
-			print symbol
+		    if symbol in SYMBOLS_WARN_NOT_FAIL:
+                #do not print symbol
+			    print ""
+		    else:
+			    print symbol
 		print ""
 
 	if typeerr:
@@ -122,6 +132,8 @@ def check_kabi(symvers,kabi):
 
 	if warn:
 		print "*** WARNING - ABI SYMBOLS MOVED ***"
+		print ""
+		print "ignoring already known ABI breakages for kernel_stack and ip6_route_output "
 		print ""
 		print "The following symbols moved (typically caused by moving a symbol from being"
 		print "provided by the kernel vmlinux out to a loadable module):"
