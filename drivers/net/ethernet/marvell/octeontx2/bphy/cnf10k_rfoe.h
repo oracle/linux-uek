@@ -171,8 +171,6 @@ struct cnf10k_rfoe_ndev_priv {
 	struct timer_list		tx_timer;
 	unsigned long			state;
 	struct work_struct		ptp_tx_work;
-	struct work_struct		ptp_queue_work;
-	struct ptp_tx_skb_list		ptp_skb_list;
 	struct ptp_clock		*ptp_clock;
 	struct ptp_clock_info		ptp_clock_info;
 	struct delayed_work		extts_work;

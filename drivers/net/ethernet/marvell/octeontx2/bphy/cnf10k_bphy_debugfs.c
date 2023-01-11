@@ -11,7 +11,6 @@
 static const char *cnf10k_rfoe_debugfs_get_formatter(void)
 {
 	static const char *buffer_format = "ptp-tx-in-progress: %u\n"
-					   "queued-ptp-reqs: %u\n"
 					   "queue-stopped: %u\n"
 					   "state-up: %u\n"
 					   "last-tx-jiffies: %lu\n"
@@ -34,7 +33,6 @@ static void cnf10k_rfoe_debugfs_reader(char *buffer, size_t count, void *priv)
 	u16 other_tx_psm_space, ptp_tx_psm_space, queue_id;
 	struct cnf10k_rfoe_ndev_priv *netdev;
 	struct cnf10k_rfoe_drv_ctx *ctx;
-	unsigned int queued_ptp_reqs;
 	u8 queue_stopped, state_up;
 	u8 ptp_tx_in_progress;
 	const char *formatter;
@@ -43,7 +41,6 @@ static void cnf10k_rfoe_debugfs_reader(char *buffer, size_t count, void *priv)
 	ctx = priv;
 	netdev = netdev_priv(ctx->netdev);
 	ptp_tx_in_progress = test_bit(PTP_TX_IN_PROGRESS, &netdev->state);
-	queued_ptp_reqs = netdev->ptp_skb_list.count;
 	queue_stopped = netif_queue_stopped(ctx->netdev);
 	state_up = netdev->link_state;
 	formatter = cnf10k_rfoe_debugfs_get_formatter();
@@ -60,7 +57,6 @@ static void cnf10k_rfoe_debugfs_reader(char *buffer, size_t count, void *priv)
 
 	snprintf(buffer, count, formatter,
 		 ptp_tx_in_progress,
-		 queued_ptp_reqs,
 		 queue_stopped,
 		 state_up,
 		 netdev->last_tx_jiffies,
