@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
+#include <dt-bindings/reset/amd,pensando-elba-reset.h>
+
 &ahb_clk {
 	clock-frequency = <400000000>;
 };
@@ -38,6 +40,9 @@
 
 &emmc {
 	bus-width = <8>;
+	cap-mmc-hw-reset;
+	reset-names = "hw";
+	resets = <&rstc EMMC_HW_RESET>;
 	status = "ok";
 };
 
@@ -73,37 +78,37 @@
 	cs-gpios = <0>, <0>,
 		<&porta 1 GPIO_ACTIVE_LOW>, <&porta 7 GPIO_ACTIVE_LOW>;
 	status = "okay";
-	spi0_cs0@0 {
-		compatible = "pensando,cpld";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		spi-max-frequency = <12000000>;
+	spi@0 {
+		compatible = "amd,pensando-elbasr", "simple-mfd";
 		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		spi-max-frequency = <12000000>;
+
+		rstc: reset-controller@0 {
+			compatible = "amd,pensando-elbasr-reset";
+			reg = <0>;
+			#reset-cells = <1>;
+		};
 	};
 
-	spi0_cs1@1 {
-		compatible = "pensando,cpld";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		spi-max-frequency = <12000000>;
+	spi@1 {
+		compatible = "amd,pensando-elbasr", "simple-mfd";
 		reg = <1>;
+		spi-max-frequency = <12000000>;
 	};
 
-	spi0_cs2@2 {
+	spi@2 {
 		compatible = "pensando,cpld-rd1173";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		spi-max-frequency = <12000000>;
 		reg = <2>;
+		spi-max-frequency = <12000000>;
 		interrupt-parent = <&porta>;
 		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 	};
 
-	spi0_cs3@3 {
-		compatible = "pensando,cpld";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		spi-max-frequency = <12000000>;
+	spi@3 {
+		compatible = "amd,pensando-elbasr", "simple-mfd";
 		reg = <3>;
+		spi-max-frequency = <12000000>;
 	};
 };

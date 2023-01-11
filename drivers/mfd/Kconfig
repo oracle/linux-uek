@@ -958,6 +958,20 @@ config UCB1400_CORE
 	  To compile this driver as a module, choose M here: the
 	  module will be called ucb1400_core.
 
+config MFD_PENSANDO_ELBASR
+	bool "AMD Pensando Elba System Resource chip"
+	depends on SPI_MASTER=y
+	depends on (ARCH_PENSANDO && OF) || COMPILE_TEST
+	select REGMAP_SPI
+	select MFD_CORE
+	select MFD_SYSCON
+	help
+	  Support for the AMD Pensando Elba SoC System Resource chip using the
+	  SPI interface.  This driver provides userspace access to four device
+	  functions to include CS0 device registers, CS1 smbus interface for
+	  FRU and board peripherals, CS2 dual Lattice I2C masters for
+	  transceiver management, and CS3 flash for firmware update.
+
 config MFD_PM8XXX
 	tristate "Qualcomm PM8xxx PMIC chips driver"
 	depends on (ARM || HEXAGON || COMPILE_TEST)

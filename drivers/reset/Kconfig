@@ -49,6 +49,15 @@ config RESET_BRCMSTB
 	  This enables the reset controller driver for Broadcom STB SoCs using
 	  a SUN_TOP_CTRL_SW_INIT style controller.
 
+config RESET_ELBASR
+	tristate "Pensando Elba System Resource reset controller"
+	depends on MFD_PENSANDO_ELBASR || COMPILE_TEST
+	help
+	  This option enables support for the external reset functions
+	  on the Pensando Elba System Resource Chip.  Reset control
+	  of peripherals is accessed over SPI to the system resource
+	  chip device registers using CS0.
+
 config RESET_HSDK
 	bool "Synopsys HSDK Reset Driver"
 	depends on HAS_IOMEM
