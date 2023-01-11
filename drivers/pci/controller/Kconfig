@@ -203,6 +203,16 @@ config PCI_HOST_THUNDER_ECAM
 	help
 	  Say Y here if you want ECAM support for CN88XX-Pass-1.x Cavium Thunder SoCs.
 
+config PCIE_MARVELL_CNXK_EP
+	tristate "Marvell CNXK PEM EP driver"
+	depends on ARM64 && UIO
+	help
+	  This driver configures the PEM when OcteonTx2 and CN10K SoCs are  in PCIe
+	  EndPoint mode. Also it programs the indexed BAR4 regions for mailbox
+	  communication with host.
+
+	  To compile this as a module choose M here.
+
 config PCIE_ROCKCHIP
 	bool
 	depends on PCI
