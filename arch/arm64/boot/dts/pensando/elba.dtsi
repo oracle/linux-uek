@@ -298,5 +298,28 @@
 				0x0 0xc5000000 0x0 0x00F00000>;	/* SHMEM */
 			/* SHMEM must agree with oracle { linux,mem-reserve } */
 		};
+		sbus@307c24a8 {
+			compatible = "pensando,sbus";
+			sbus-ring-num = <0>;
+			reg = <0x0 0x307c24a8 0x0 0x8>;		/* SBUS0 REG */
+		};
+
+		sbus@307c24b8 {
+			compatible = "pensando,sbus";
+			sbus-ring-num = <1>;
+			reg = <0x0 0x307c24b8 0x0 0x8>;		/* SBUS1 REG */
+		};
+
+		sbus@307c24c8 {
+			compatible = "pensando,sbus";
+			sbus-ring-num = <2>;
+			reg = <0x0 0x307c24c8 0x0 0x8>;		/* SBUS2 REG */
+		};
+
+		sbus@6f242134 {
+			compatible = "pensando,sbus";
+			sbus-ring-num = <3>;
+			reg = <0x0 0x6f242134 0x0 0x8>;		/* SBUS3 REG */
+		};
 	};
 };

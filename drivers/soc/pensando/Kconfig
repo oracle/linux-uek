@@ -49,6 +49,13 @@ config PENSANDO_SOC_BSM_ENABLE
 	help
 	  Re-enable the BSM on kernel startup
 
+config PENSANDO_SOC_SBUS
+	tristate "Pensando sbus read/write driver"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC sbus read/write driver
+
 endmenu
 
 endif
