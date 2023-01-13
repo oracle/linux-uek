@@ -107,7 +107,7 @@ static int ecdh_compute_value(struct kpp_request *req)
 			public_key_pct = kmalloc(public_key_sz, GFP_KERNEL);
 			if (!public_key_pct) {
 				ret = -ENOMEM;
-				goto free_all;
+				goto panic_on_fail;
 			}
 
 			ret = ecc_make_pub_key(ctx->curve_id, ctx->ndigits,
@@ -115,18 +115,18 @@ static int ecdh_compute_value(struct kpp_request *req)
 					       public_key_pct);
 			if (ret < 0) {
 				kfree(public_key_pct);
-				goto free_all;
+				goto panic_on_fail;
 			}
 
 			ret = 0;
-			if (memcmp(public_key, public_key_pct, public_key_sz))
+			if (memcmp(public_key, public_key_pct, public_key_sz)) {
 				ret = -EINVAL;
+				kfree(public_key_pct);
+				goto panic_on_fail;
+			}
 			kfree(public_key_pct);
 		}
 	}
-
-	if (ret < 0)
-		goto free_all;
 
 	/* might want less than we've got */
 	nbytes = min_t(size_t, nbytes, req->dst_len);
@@ -142,6 +142,11 @@ free_all:
 free_pubkey:
 	kfree(public_key);
 	return ret;
+panic_on_fail:
+	kfree_sensitive(shared_secret);
+	kfree(public_key);
+	fips_fail_notify();
+	panic("ecdh: failed to verify pair-wise consistency test (PCT)");
 }
 
 static unsigned int ecdh_max_size(struct crypto_kpp *tfm)
