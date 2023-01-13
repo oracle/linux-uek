@@ -4392,7 +4392,7 @@ int amd_iommu_activate_guest_mode(void *data)
 	u64 valid;
 
 	if (!AMD_IOMMU_GUEST_IR_VAPIC(amd_iommu_guest_ir) ||
-	    !entry || entry->lo.fields_vapic.guest_mode)
+	    !entry)
 		return 0;
 
 	valid = entry->lo.fields_vapic.valid;
