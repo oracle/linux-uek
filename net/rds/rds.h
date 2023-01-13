@@ -500,6 +500,7 @@ struct rds_ext_header_rdma_bytes {
 };
 
 #define RDS_EXTHDR_NPATHS	5
+#define RDS_EXTHDR_GEN_NUM	6
 #define RDS_EXTHDR_CAP_BITS	7
 struct rds_ext_header_cap_bits {
 	__be32			h_cap_bits;
