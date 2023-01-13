@@ -274,10 +274,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define kernel_image arch/x86/boot/bzImage
 %endif
 
+# Default kABI checker value. This is set for aarch64 and x86_64.
+%define with_kabichk 0
+
 %ifarch x86_64
 %define asmarch x86
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
+%define with_kabichk 1
 %if %{with_container}
 #
 # With binutils >= 2.36 the PVH ELF Note does not function as expected
@@ -312,11 +316,18 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_headers 0
 %define with_perf 0
 %define with_bpftool 0
+%define with_kabichk 0
 %else
 %define with_headers 1
 %define with_perf 1
 %define with_bpftool 1
+%define with_kabichk 1
 %endif
+%endif
+
+# Don't run kABI checker for 64k
+%if %{with_64k_ps}
+%define with_kabichk 0
 %endif
 
 # To temporarily exclude an architecture from being built, add it to
@@ -1068,8 +1079,11 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
+%if %{with_kabichk}
     make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
-
+%else
+    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+%endif
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
 %ifarch %{arm} aarch64
@@ -1200,6 +1214,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
     # Create symbol type data which can be used to introspect kABI breakages
+%if %{with_kabichk}
     python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
     echo "**** kABI checking is enabled in kernel SPEC file for %{_target_cpu}. ****"
@@ -1226,6 +1241,7 @@ BuildKernel() {
        echo "**** NOTE: Cannot find reference Module.kabi file. ****"
        exit 1
     fi
+%endif
 
     # then drop all but the needed Makefiles/Kconfig files
     rm -rf $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/scripts
