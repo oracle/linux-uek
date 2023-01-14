@@ -2,7 +2,7 @@
 /*
  * Lattice RD1173 SPI to I2C bus interface driver
  *
- * Copyright (C) 2020 Pensando Systems, Inc.
+ * Copyright (C) 2020-2022 Pensando Systems, Inc.
  */
 
 #include <linux/gpio/consumer.h>
@@ -185,6 +185,67 @@ static const struct attribute_group i2c_attr_group = {
 	.attrs = i2c_attrs,
 };
 
+#define rd1173_show_simple(field, name, format_string, cast)		\
+static ssize_t								\
+show_##name(struct device *dev, struct device_attribute *attr,		\
+	    char *buf)							\
+{									\
+	struct spi_device *spi = to_spi_device(dev);			\
+	struct rd1173dev *rd1173dev = spi_get_drvdata(spi);		\
+	unsigned int val;						\
+									\
+	regmap_read(rd1173dev->regmap, field, &val);			\
+	return snprintf(buf, 20, format_string, cast val);		\
+}
+
+#define rd1173_store_simple(field, name, base)				\
+static ssize_t								\
+store_##name(struct device *dev, struct device_attribute *attr,		\
+	     const char *buf, size_t count)				\
+{									\
+	struct spi_device *spi = to_spi_device(dev);			\
+	struct rd1173dev *rd1173dev = spi_get_drvdata(spi);		\
+	unsigned long val;						\
+	int ret;							\
+									\
+	ret = kstrtoul(buf, base, &val);				\
+	if (ret) return ret;						\
+	regmap_write(rd1173dev->regmap, field, (unsigned int)val);	\
+	return count;							\
+}
+
+#define rd1173_attr_show(field, name, format_string, type)		\
+	rd1173_show_simple(field, name, format_string, (type))		\
+static DEVICE_ATTR(name, 0444, show_##name, NULL)
+
+#define rd1173_attr_rw(field, name, format_string, type)		\
+	rd1173_show_simple(field, name, format_string, (type))		\
+	rd1173_store_simple(field, name, 0)				\
+static DEVICE_ATTR(name, 0644, show_##name, store_##name)
+
+rd1173_attr_rw(RD1173_I2C0_CONFIG_REG, i2c0_cfg, "0x%02x\n", u32);
+rd1173_attr_rw(RD1173_I2C1_CONFIG_REG, i2c1_cfg, "0x%02x\n", u32);
+rd1173_attr_show(RD1173_I2C0_MODE_REG, i2c0_mode, "0x%02x\n", u32);
+rd1173_attr_show(RD1173_I2C1_MODE_REG, i2c1_mode, "0x%02x\n", u32);
+rd1173_attr_show(RD1173_I2C0_CMD_STAT_REG, i2c0_cmdstat, "0x%02x\n", u32);
+rd1173_attr_show(RD1173_I2C1_CMD_STAT_REG, i2c1_cmdstat, "0x%02x\n", u32);
+rd1173_attr_show(RD1173_FIFO_STATUS_REG, i2c_fifo_status, "0x%02x\n", u32);
+
+static struct attribute *rd1173_attrs[] = {
+	&dev_attr_i2c0_cfg.attr,
+	&dev_attr_i2c1_cfg.attr,
+	&dev_attr_i2c0_mode.attr,
+	&dev_attr_i2c1_mode.attr,
+	&dev_attr_i2c0_cmdstat.attr,
+	&dev_attr_i2c1_cmdstat.attr,
+	&dev_attr_i2c_fifo_status.attr,
+	NULL,
+};
+
+static const struct attribute_group rd1173_attr_group = {
+	.attrs = rd1173_attrs,
+};
+
 static bool rd1173_writeable_reg(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
@@ -313,6 +374,9 @@ static int rd1173_reset(struct rd1173_i2c_adapter *i2c)
 		    RD1173_CONFIG_ABORT;
 	int enable = RD1173_MODE_TX_IE | RD1173_MODE_RX_IE;
 	int rc;
+
+	dev_dbg(dev, "rd1173 i2c%d reset, cmdstat 0x%x\n",
+		i2c->i2c_adap.nr - 1, i2c->state);
 
 	/* Assert reset */
 	rc = regmap_update_bits(i2c->rd1173dev->regmap,
@@ -478,57 +542,32 @@ static void update_i2c_stats(struct rd1173_i2c_adapter *i2c, int readop)
 		    i2c->offset + RD1173_CMD_STAT_REG,
 		    &i2c->state);
 
-	switch (i2c->state) {
-	case RD1173_STAT_TS:
-		if (i2c->i2c_master) {
-			if (readop)
-				stats->i2c1_rx_complete++;
-			else
-				stats->i2c1_tx_complete++;
-		} else {
-			if (readop)
-				stats->i2c0_rx_complete++;
-			else
-				stats->i2c0_tx_complete++;
-		}
-		break;
-	case RD1173_STAT_I2C_BUSY:
+	if (i2c->state & RD1173_STAT_TS) {
 		if (i2c->i2c_master)
-			stats->i2c1_busy++;
+			readop ? stats->i2c1_rx_complete++ :
+				 stats->i2c1_tx_complete++;
 		else
-			stats->i2c0_busy++;
-		break;
-	case RD1173_STAT_NO_ANS:
-		if (i2c->i2c_master)
-			stats->i2c1_no_answer++;
-		else
-			stats->i2c0_no_answer++;
-		break;
-	case RD1173_STAT_NO_ACK:
-		if (i2c->i2c_master)
-			stats->i2c1_no_ack++;
-		else
-			stats->i2c0_no_ack++;
-		break;
-	case RD1173_STAT_TX_ERR:
-		if (i2c->i2c_master)
-			stats->i2c1_tx_error++;
-		else
-			stats->i2c0_tx_error++;
-		break;
-	case RD1173_STAT_RX_ERR:
-		if (i2c->i2c_master)
-			stats->i2c1_rx_error++;
-		else
-			stats->i2c0_rx_error++;
-		break;
-	case RD1173_STAT_ABORT_ACK:
-		if (i2c->i2c_master)
-			stats->i2c1_abort_ack++;
-		else
-			stats->i2c0_abort_ack++;
-		break;
+			readop ? stats->i2c0_rx_complete++ :
+				 stats->i2c0_tx_complete++;
 	}
+	if (i2c->state & RD1173_STAT_I2C_BUSY)
+		i2c->i2c_master ? stats->i2c1_busy++ :
+				  stats->i2c0_busy++;
+	if (i2c->state & RD1173_STAT_NO_ANS)
+		i2c->i2c_master ? stats->i2c1_no_answer++ :
+				  stats->i2c0_no_answer++;
+	if (i2c->state & RD1173_STAT_NO_ACK)
+		i2c->i2c_master ? stats->i2c1_no_ack++ :
+				  stats->i2c0_no_ack++;
+	if (i2c->state & RD1173_STAT_TX_ERR)
+		i2c->i2c_master ? stats->i2c1_tx_error++ :
+				  stats->i2c0_tx_error++;
+	if (i2c->state & RD1173_STAT_RX_ERR)
+		i2c->i2c_master ? stats->i2c1_rx_error++ :
+				  stats->i2c0_rx_error++;
+	if (i2c->state & RD1173_STAT_ABORT_ACK)
+		i2c->i2c_master ? stats->i2c1_abort_ack++ :
+				  stats->i2c0_abort_ack++;
 }
 
 /**
@@ -566,8 +605,9 @@ static int rd1173_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg *msgs, int n
 			if (msgs[i].len > max_len)
 				return -EOPNOTSUPP;
 		}
-		dev_dbg(dev, "msgs[%d]: addr 0x%x flags 0x%x len %d\n",
-			i, msgs[i].addr, msgs[i].flags, msgs[i].len);
+		dev_dbg(dev, "i2c%d msgs[%d]: addr 0x%x flags 0x%x len %d\n",
+			i2c->i2c_adap.nr - 1, i, msgs[i].addr, msgs[i].flags,
+			msgs[i].len);
 	}
 
 	if (mutex_lock_interruptible(&i2c->rd1173dev->xfer_active))
@@ -592,15 +632,26 @@ static int rd1173_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg *msgs, int n
 			else
 				cnt = bytes_remaining;
 
-			if (msgs[i].flags & I2C_M_RD)
+			if (msgs[i].flags & I2C_M_RD) {
+				dev_dbg(dev, "i2c%d read addr 0x%x len %d\n",
+					i2c->i2c_adap.nr - 1, msgs[i].addr,
+					msgs[i].len);
 				rc = rd1173_read(i2c, &msgs[i], cnt);
-			else
+			} else {
+				dev_dbg(dev, "i2c%d write addr 0x%x len %d\n",
+					i2c->i2c_adap.nr - 1, msgs[i].addr,
+					msgs[i].len);
 				rc = rd1173_write(i2c, &msgs[i], cnt);
+			}
 
 			rc = wait_for_completion_timeout(&i2c->rd1173dev->completion,
-				i2c->i2c_adap.timeout);
+							 i2c->i2c_adap.timeout);
 
 			update_i2c_stats(i2c, msgs[i].flags & I2C_M_RD);
+
+			if (!rc && i2c->state != RD1173_STAT_TS)
+				dev_dbg(dev, "i2c%d cmdstat 0x%02x\n",
+					i2c->i2c_adap.nr - 1, i2c->state);
 
 			if (!rc || i2c->state != RD1173_STAT_TS)
 				goto done;
@@ -626,6 +677,7 @@ done:
 		rc = num;        /* transfer complete */
 		break;
 	case RD1173_STAT_I2C_BUSY:
+		rd1173_reset(i2c);
 		rc = -EAGAIN;
 		break;
 	case RD1173_STAT_NO_ANS:
@@ -747,7 +799,11 @@ static int rd1173_probe(struct spi_device *spi)
 
 	rc = sysfs_create_group(&spi->dev.kobj, &i2c_attr_group);
 	if (rc)
-		dev_warn(&spi->dev, "failed to create sysfs files\n");
+		dev_warn(&spi->dev, "failed to create i2c sysfs files\n");
+
+	rc = sysfs_create_group(&spi->dev.kobj, &rd1173_attr_group);
+	if (rc)
+		dev_warn(&spi->dev, "failed to create rd1173 sysfs files\n");
 
 	return 0;
 }
