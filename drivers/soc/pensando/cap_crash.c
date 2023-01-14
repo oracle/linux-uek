@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019-2021, Pensando Systems Inc.
+ * Copyright (c) 2019-2022, Pensando Systems Inc.
  */
 
 #include <linux/io.h>
@@ -10,6 +10,7 @@
 #include <linux/time.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
+#include "cap_reboot.h"
 
 #define PCRASH_NAME	"pensando-crash"
 
@@ -60,14 +61,15 @@ static int cap_panic_callback(struct notifier_block *nb,
 			       unsigned long reason, void *arg)
 {
 	struct timespec64 ts;
-	struct tm broken;
+	struct tm tm;
 
 	ktime_get_real_ts64(&ts);
-	time64_to_tm(ts.tv_sec, 0, &broken);
-	pr_info("Panic on %d/%d/%ld::%d:%d:%d:%03ld\n",
-	       broken.tm_mon + 1, broken.tm_mday, broken.tm_year + 1900,
-	       broken.tm_hour, broken.tm_min, broken.tm_sec,
-	       ts.tv_nsec / 1000);
+	time64_to_tm(ts.tv_sec, 0, &tm);
+	pr_info("Panic at Boot #%lu %04ld-%02d-%02d %02d:%02d:%02d.%06ld\n",
+		cap_boot_count(),
+		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec,
+		ts.tv_nsec / 1000);
 	return NOTIFY_DONE;
 }
 
