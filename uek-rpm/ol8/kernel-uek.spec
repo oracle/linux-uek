@@ -124,17 +124,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define doc_build_fail true
 %endif
 
-# Control whether we perform a compat. check against published ABI.
-%define with_kabichk 0
-
-# Collect Symtypes files with with_kabicollect. with_kabicollect is
-# required for with_kabichk to give detailed ABI breakage diagnostics.
-%ifarch x86_64
-%define with_kabicollect 1
-%else
-%define with_kabicollect 0
-%endif
-
 # .BTF section must stay in modules
 %define _find_debuginfo_opt_btf --keep-section .BTF
 %define _find_debuginfo_opts %{_find_debuginfo_opt_btf}
@@ -494,12 +483,18 @@ Source1008: config-aarch64-debug
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
-Source27: Symtypes.kabi_x86_64debug
-Source28: Symtypes.kabi_x86_64
-Source29: kabi
+Source27: Module.kabi_aarch64debug
+Source28: Module.kabi_aarch64
+Source29: Symtypes.kabi_x86_64debug
+Source30: Symtypes.kabi_x86_64
+Source31: Symtypes.kabi_aarch64debug
+Source32: Symtypes.kabi_aarch64
+Source33: kabi
 
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
+Source202: kabi_lockedlist_aarch64debug
+Source203: kabi_lockedlist_aarch64
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
@@ -1087,11 +1082,11 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
-%if %{with_kabicollect}
-    make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
-%else
-    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
-%endif
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
+       make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+    else
+       make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+    fi
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
 %ifarch %{arm} aarch64
@@ -1217,39 +1212,37 @@ BuildKernel() {
     rm -f %{_tmppath}/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
-    # Create symbol type data which can be used to introspect kABI breakages
-%if %{with_kabicollect}
-    python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
-%endif
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
+       # Create symbol type data which can be used to introspect kABI breakages
+       python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
-%if %{with_kabichk}
-    echo "**** kABI checking is enabled in kernel SPEC file for %{_target_cpu}. ****"
-    chmod 0755 $RPM_SOURCE_DIR/check-kabi
-    if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour ]; then
-       cp $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Module.kabi
-       cp $RPM_SOURCE_DIR/Symtypes.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Symtypes.kabi
-       cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/kabi_lockedlist
-       if ! $RPM_SOURCE_DIR/check-kabi -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers ; then
-           python3 $RPM_SOURCE_DIR/kabi compare --no-print-symbols \
-               $RPM_BUILD_ROOT/Symtypes.kabi Symtypes.build
-           exit 1
+       echo "**** kABI checking is enabled in kernel SPEC file for %{_target_cpu}. ****"
+       chmod 0755 $RPM_SOURCE_DIR/check-kabi
+       if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour ]; then
+          cp $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Module.kabi
+          cp $RPM_SOURCE_DIR/Symtypes.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Symtypes.kabi
+          cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/kabi_lockedlist
+          if ! $RPM_SOURCE_DIR/check-kabi -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers ; then
+              python3 $RPM_SOURCE_DIR/kabi compare --no-print-symbols \
+                  $RPM_BUILD_ROOT/Symtypes.kabi Symtypes.build
+              exit 1
+          fi
+          # Smoke tests verify that the kABI definitions are internally consistent:
+          # they contain the exact same set of symbols and symbol versions.
+          python3 $RPM_SOURCE_DIR/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi \
+                                             -t $RPM_BUILD_ROOT/Symtypes.kabi \
+                                             -l $RPM_BUILD_ROOT/kabi_lockedlist || exit 1
+          # For now, don't keep these around
+          rm $RPM_BUILD_ROOT/Module.kabi
+          rm $RPM_BUILD_ROOT/Symtypes.kabi
+          rm $RPM_BUILD_ROOT/kabi_lockedlist
+       else
+          echo "**** NOTE: Cannot find reference Module.kabi file. ****"
+          exit 1
        fi
-       # Smoke tests verify that the kABI definitions are internally consistent:
-       # they contain the exact same set of symbols and symbol versions.
-       python3 $RPM_SOURCE_DIR/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi \
-                                          -t $RPM_BUILD_ROOT/Symtypes.kabi \
-                                          -l $RPM_BUILD_ROOT/kabi_lockedlist || exit 1
-       # For now, don't keep these around
-       rm $RPM_BUILD_ROOT/Module.kabi
-       rm $RPM_BUILD_ROOT/Symtypes.kabi
-       rm $RPM_BUILD_ROOT/kabi_lockedlist
     else
-       echo "**** NOTE: Cannot find reference Module.kabi file. ****"
-       exit 1
+       echo "**** kABI checking is NOT enabled in kernel SPEC file for %{_target_cpu}. ****"
     fi
-%else
-    echo "**** kABI checking is NOT enabled in kernel SPEC file for %{_target_cpu}. ****"
-%endif
 
     # then drop all but the needed Makefiles/Kconfig files
     rm -rf $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/Documentation
