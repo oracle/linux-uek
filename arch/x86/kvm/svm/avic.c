@@ -42,6 +42,10 @@
 static bool force_avic;
 module_param_unsafe(force_avic, bool, 0444);
 
+/* UEK-only: Override default 'amd_iommu_intr=vapic' setting */
+static bool iommu_avic = true;
+module_param(iommu_avic, bool, 0644);
+
 /* Note:
  * This hash table is used to map VM_ID to a struct kvm_svm,
  * when handling AMD IOMMU GALOG notification to schedule in
@@ -888,6 +892,17 @@ get_pi_vcpu_info(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 	if (!kvm_intr_is_single_vcpu(kvm, &irq, &vcpu) ||
 	    !kvm_irq_is_postable(&irq)) {
 		pr_debug("SVM: %s: use legacy intr remap mode for irq %u\n",
+			 __func__, irq.vector);
+		return -1;
+	}
+
+	/*
+	 * The setting of the AMD IOMMU has precedence (via
+	 * kvm_irq_is_postable()), and @iommu_avic overrides that setting.
+	 * IOMMU AVIC is enabled by default.
+	 */
+	if (!iommu_avic) {
+		pr_debug("SVM: %s: GA intr mode disabled for irq %u\n",
 			 __func__, irq.vector);
 		return -1;
 	}
