@@ -809,7 +809,7 @@ struct auth_ops svcauth_null = {
 	.name		= "null",
 	.owner		= THIS_MODULE,
 	.flavour	= RPC_AUTH_NULL,
-	.accept 	= svcauth_null_accept,
+	.accept		= svcauth_null_accept,
 	.release	= svcauth_null_release,
 	.set_client	= svcauth_unix_set_client,
 };
@@ -888,7 +888,7 @@ struct auth_ops svcauth_tls = {
 	.name		= "tls",
 	.owner		= THIS_MODULE,
 	.flavour	= RPC_AUTH_TLS,
-	.accept 	= svcauth_tls_accept,
+	.accept		= svcauth_tls_accept,
 	.release	= svcauth_null_release,
 	.set_client	= svcauth_unix_set_client,
 };
@@ -1004,7 +1004,7 @@ struct auth_ops svcauth_unix = {
 	.name		= "unix",
 	.owner		= THIS_MODULE,
 	.flavour	= RPC_AUTH_UNIX,
-	.accept 	= svcauth_unix_accept,
+	.accept		= svcauth_unix_accept,
 	.release	= svcauth_unix_release,
 	.domain_release	= svcauth_unix_domain_release,
 	.set_client	= svcauth_unix_set_client,
