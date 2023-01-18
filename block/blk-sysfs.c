@@ -278,7 +278,6 @@ queue_store_##name(struct request_queue *q, const char *page, size_t count) \
 
 QUEUE_SYSFS_BIT_FNS(nonrot, NONROT, 1);
 QUEUE_SYSFS_BIT_FNS(random, ADD_RANDOM, 0);
-QUEUE_SYSFS_BIT_FNS(iostats, IO_STAT, 0);
 #undef QUEUE_SYSFS_BIT_FNS
 
 static ssize_t queue_zoned_show(struct request_queue *q, char *page)
@@ -329,6 +328,41 @@ static ssize_t queue_rq_affinity_show(struct request_queue *q, char *page)
 	bool force = test_bit(QUEUE_FLAG_SAME_FORCE, &q->queue_flags);
 
 	return queue_var_show(set << force, page);
+}
+
+static ssize_t queue_iostats_show(struct request_queue *q, char *page)
+{
+       bool iostat = blk_queue_io_stat(q);
+       bool precise_iostat = blk_queue_precise_io_stat(q);
+
+       return queue_var_show(iostat << precise_iostat, page);
+}
+
+static ssize_t queue_iostats_store(struct request_queue *q, const char *page,
+                                  size_t count)
+{
+        unsigned long val;
+        ssize_t ret = -EINVAL;
+
+        ret = queue_var_store(&val, page, count);
+
+        if (ret < 0)
+                return ret;
+
+        if (val == 2) {
+                blk_queue_flag_set(QUEUE_FLAG_IO_STAT, q);
+                blk_queue_flag_set(QUEUE_FLAG_PRECISE_IO_STAT, q);
+        }
+        else if (val == 1) {
+                blk_queue_flag_set(QUEUE_FLAG_IO_STAT, q);
+                blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+        }
+        else if (val == 0) {
+                blk_queue_flag_clear(QUEUE_FLAG_IO_STAT, q);
+                blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+        }
+
+        return ret;
 }
 
 static ssize_t
@@ -669,8 +703,8 @@ static struct queue_sysfs_entry queue_rq_affinity_entry = {
 
 static struct queue_sysfs_entry queue_iostats_entry = {
 	.attr = {.name = "iostats", .mode = 0644 },
-	.show = queue_show_iostats,
-	.store = queue_store_iostats,
+	.show = queue_iostats_show,
+	.store = queue_iostats_store,
 };
 
 static struct queue_sysfs_entry queue_random_entry = {

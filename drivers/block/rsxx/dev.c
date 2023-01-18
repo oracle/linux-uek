@@ -167,7 +167,7 @@ static blk_qc_t rsxx_make_request(struct request_queue *q, struct bio *bio)
 	bio_meta->bio = bio;
 	atomic_set(&bio_meta->error, 0);
 	atomic_set(&bio_meta->pending_dmas, 0);
-	bio_meta->start_time = jiffies;
+	bio_meta->start_time = blk_get_iostat_ticks(q);
 
 	if (!unlikely(card->halt))
 		disk_stats_start(card, bio);

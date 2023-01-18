@@ -408,7 +408,7 @@ static inline bool nd_iostat_start(struct bio *bio, unsigned long *start)
 	if (!blk_queue_io_stat(disk->queue))
 		return false;
 
-	*start = jiffies;
+	*start = blk_get_iostat_ticks(disk->queue);
 	generic_start_io_acct(disk->queue, bio_op(bio), bio_sectors(bio),
 			      &disk->part0);
 	return true;

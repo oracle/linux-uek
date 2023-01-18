@@ -1620,7 +1620,7 @@ blk_qc_t drbd_make_request(struct request_queue *q, struct bio *bio)
 
 	blk_queue_split(q, &bio);
 
-	start_jif = jiffies;
+	start_jif = blk_get_iostat_ticks(q);
 
 	/*
 	 * what we "blindly" assume:
