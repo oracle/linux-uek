@@ -1511,9 +1511,9 @@ static void zram_bio_discard(struct zram *zram, u32 index,
 static int zram_bvec_rw(struct zram *zram, struct bio_vec *bvec, u32 index,
 			int offset, unsigned int op, struct bio *bio)
 {
-	unsigned long start_time = jiffies;
 	struct request_queue *q = zram->disk->queue;
 	int ret;
+	unsigned long start_time = blk_get_iostat_ticks(q);
 
 	generic_start_io_acct(q, op, bvec->bv_len >> SECTOR_SHIFT,
 			&zram->disk->part0);

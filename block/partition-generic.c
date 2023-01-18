@@ -24,7 +24,7 @@
 #ifdef CONFIG_BLK_DEV_MD
 extern void md_autodetect_dev(dev_t dev);
 #endif
- 
+
 /*
  * disk_name() is used by partition check code and the genhd driver.
  * It formats the devicename of the indicated disk into
@@ -122,9 +122,14 @@ ssize_t part_stat_show(struct device *dev,
 	struct request_queue *q = part_to_disk(p)->queue;
 	struct disk_stats stat;
 	unsigned int inflight;
+	unsigned long stat_ioticks;
 
 	part_stat_read_all(p, &stat);
 	inflight = part_in_flight(q, p);
+
+	stat_ioticks = (blk_queue_precise_io_stat(q) ?
+			((stat.io_ticks << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC) :
+			jiffies_to_msecs(stat.io_ticks));
 
 	return sprintf(buf,
 		"%8lu %8lu %8llu %8u "
@@ -141,7 +146,7 @@ ssize_t part_stat_show(struct device *dev,
 		(unsigned long long)stat.sectors[STAT_WRITE],
 		(unsigned int)div_u64(stat.nsecs[STAT_WRITE], NSEC_PER_MSEC),
 		inflight,
-		jiffies_to_msecs(stat.io_ticks),
+		(unsigned int)stat_ioticks,
 		jiffies_to_msecs(stat.time_in_queue),
 		stat.ios[STAT_DISCARD],
 		stat.merges[STAT_DISCARD],

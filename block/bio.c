@@ -1779,7 +1779,7 @@ void generic_start_io_acct(struct request_queue *q, int op,
 
 	part_stat_lock();
 
-	update_io_ticks(part, jiffies, false);
+	update_io_ticks(part, blk_get_iostat_ticks(q), false);
 	part_stat_inc(part, ios[sgrp]);
 	part_stat_add(part, sectors[sgrp], sectors);
 	part_inc_in_flight(q, part, op_is_write(op));
@@ -1791,15 +1791,20 @@ EXPORT_SYMBOL(generic_start_io_acct);
 void generic_end_io_acct(struct request_queue *q, int req_op,
 			 struct hd_struct *part, unsigned long start_time)
 {
-	unsigned long now = jiffies;
+	unsigned long now = blk_get_iostat_ticks(q);
 	unsigned long duration = now - start_time;
 	const int sgrp = op_stat_group(req_op);
+	unsigned long duration_ns;
+
+	duration_ns = blk_queue_precise_io_stat(q) ?
+		(now - start_time) << IOSTAT_PRECISE_SHIFT :
+		jiffies_to_nsecs(now - start_time);
 
 	part_stat_lock();
 
 	update_io_ticks(part, now, true);
-	part_stat_add(part, nsecs[sgrp], jiffies_to_nsecs(duration));
-	part_stat_add(part, time_in_queue, duration);
+	part_stat_add(part, nsecs[sgrp], duration_ns);
+	part_stat_add(part, time_in_queue, duration_ns / NSEC_PER_MSEC);
 	part_dec_in_flight(q, part, op_is_write(req_op));
 
 	part_stat_unlock();

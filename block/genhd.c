@@ -1437,6 +1437,8 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	char buf[BDEVNAME_SIZE];
 	unsigned int inflight;
 	struct disk_stats stat;
+	struct request_queue *q;
+	unsigned long stat_ioticks;
 
 	/*
 	if (&disk_to_dev(gp)->kobj.entry == block_class.devices.next)
@@ -1450,6 +1452,11 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	while ((hd = disk_part_iter_next(&piter))) {
 		part_stat_read_all(hd, &stat);
 		inflight = part_in_flight(gp->queue, hd);
+
+		q = part_to_disk(hd)->queue;
+		stat_ioticks = (blk_queue_precise_io_stat(q) ?
+				((stat.io_ticks << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC) :
+				jiffies_to_msecs(stat.io_ticks));
 
 		seq_printf(seqf, "%4d %7d %s "
 			   "%lu %lu %lu %u "
@@ -1469,7 +1476,7 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 			   (unsigned int)div_u64(stat.nsecs[STAT_WRITE],
 							NSEC_PER_MSEC),
 			   inflight,
-			   jiffies_to_msecs(stat.io_ticks),
+			   (unsigned int)stat_ioticks,
 			   jiffies_to_msecs(stat.time_in_queue),
 			   stat.ios[STAT_DISCARD],
 			   stat.merges[STAT_DISCARD],
@@ -2095,6 +2102,9 @@ static const struct kernel_param_ops disk_events_dfl_poll_msecs_param_ops = {
 
 module_param_cb(events_dfl_poll_msecs, &disk_events_dfl_poll_msecs_param_ops,
 		&disk_events_dfl_poll_msecs, 0644);
+
+bool default_global_precise_iostats = false;
+EXPORT_SYMBOL_GPL(default_global_precise_iostats);
 
 /*
  * disk_{alloc|add|del|release}_events - initialize and destroy disk_events.

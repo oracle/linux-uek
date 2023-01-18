@@ -60,6 +60,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(block_unplug);
 
 DEFINE_IDA(blk_queue_ida);
 
+extern bool default_global_precise_iostats;
 /*
  * For queue allocation
  */
@@ -80,6 +81,19 @@ void blk_queue_flag_set(unsigned int flag, struct request_queue *q)
 	set_bit(flag, &q->queue_flags);
 }
 EXPORT_SYMBOL(blk_queue_flag_set);
+
+/*
+ * Get the time based upon the available granularity for io accounting
+ * If the resolution mode is set to precise (2) i.e
+ * (/sys/block/<device>/queue/iostats = 2), then this will return time
+ * in nano-seconds else this will return time in jiffies
+ */
+unsigned long blk_get_iostat_ticks(struct request_queue *q)
+{
+       return (blk_queue_precise_io_stat(q) ?
+		       (ktime_get_ns() >> IOSTAT_PRECISE_SHIFT): jiffies);
+}
+EXPORT_SYMBOL_GPL(blk_get_iostat_ticks);
 
 /**
  * blk_queue_flag_clear - atomically clear a queue flag
@@ -506,6 +520,15 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
 	q->backing_dev_info->capabilities = BDI_CAP_CGROUP_WRITEBACK;
 	q->backing_dev_info->name = "block";
 	q->node = node_id;
+
+	if (default_global_precise_iostats) {
+		blk_queue_flag_set(QUEUE_FLAG_IO_STAT, q);
+		blk_queue_flag_set(QUEUE_FLAG_PRECISE_IO_STAT, q);
+	}
+	else {
+		blk_queue_flag_set(QUEUE_FLAG_IO_STAT, q);
+		blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+	}
 
 	timer_setup(&q->backing_dev_info->laptop_mode_wb_timer,
 		    laptop_mode_timer_fn, 0);
@@ -1354,7 +1377,7 @@ void blk_account_io_done(struct request *req, u64 now)
 		part_stat_lock();
 		part = req->part;
 
-		update_io_ticks(part, jiffies, true);
+		update_io_ticks(part, blk_get_iostat_ticks(req->q), true);
 		part_stat_inc(part, ios[sgrp]);
 		part_stat_add(part, nsecs[sgrp], now - req->start_time_ns);
 		part_stat_add(part, time_in_queue, nsecs_to_jiffies64(now - req->start_time_ns));
@@ -1396,7 +1419,7 @@ void blk_account_io_start(struct request *rq, bool new_io)
 		rq->part = part;
 	}
 
-	update_io_ticks(part, jiffies, false);
+	update_io_ticks(part, blk_get_iostat_ticks(rq->q), false);
 
 	part_stat_unlock();
 }
@@ -1808,6 +1831,8 @@ void blk_finish_plug(struct blk_plug *plug)
 }
 EXPORT_SYMBOL(blk_finish_plug);
 
+extern struct static_key_false wake_affine_idle_pull;
+
 int __init blk_dev_init(void)
 {
 	BUILD_BUG_ON(REQ_OP_LAST >= (1 << REQ_OP_BITS));
@@ -1828,6 +1853,8 @@ int __init blk_dev_init(void)
 #ifdef CONFIG_DEBUG_FS
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
 #endif
+	if (static_branch_unlikely(&wake_affine_idle_pull))
+		default_global_precise_iostats = true;
 
 	return 0;
 }

@@ -716,12 +716,17 @@ static inline struct search *search_alloc(struct bio *bio,
 					  struct bcache_device *d)
 {
 	struct search *s;
+	struct cached_dev *dc;
+	struct request_queue *q;
 
 	s = mempool_alloc(&d->c->search, GFP_NOIO);
 
 	closure_init(&s->cl, NULL);
 	do_bio_hook(s, bio, request_endio);
 	atomic_inc(&d->c->search_inflight);
+
+	dc = container_of(d, struct cached_dev, disk);
+	q = bdev_get_queue(dc->bdev);
 
 	s->orig_bio		= bio;
 	s->cache_miss		= NULL;
@@ -730,7 +735,7 @@ static inline struct search *search_alloc(struct bio *bio,
 	s->recoverable		= 1;
 	s->write		= op_is_write(bio_op(bio));
 	s->read_dirty_data	= 0;
-	s->start_time		= jiffies;
+	s->start_time		= blk_get_iostat_ticks(q);
 
 	s->iop.c		= d->c;
 	s->iop.bio		= NULL;
@@ -1100,6 +1105,7 @@ static void detached_dev_do_request(struct bcache_device *d, struct bio *bio)
 {
 	struct detached_dev_io_private *ddip;
 	struct cached_dev *dc = container_of(d, struct cached_dev, disk);
+	struct request_queue *q = bdev_get_queue(dc->bdev);
 
 	/*
 	 * no need to call closure_get(&dc->disk.cl),
@@ -1114,7 +1120,7 @@ static void detached_dev_do_request(struct bcache_device *d, struct bio *bio)
 	}
 
 	ddip->d = d;
-	ddip->start_time = jiffies;
+	ddip->start_time = blk_get_iostat_ticks(q);
 	ddip->bi_end_io = bio->bi_end_io;
 	ddip->bi_private = bio->bi_private;
 	bio->bi_end_io = detached_dev_end_io;

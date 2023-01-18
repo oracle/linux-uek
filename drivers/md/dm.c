@@ -665,7 +665,7 @@ static void start_io_acct(struct dm_io *io)
 	struct mapped_device *md = io->md;
 	struct bio *bio = io->orig_bio;
 
-	io->start_time = jiffies;
+	io->start_time = blk_get_iostat_ticks(md->queue);
 
 	generic_start_io_acct(md->queue, bio_op(bio), bio_sectors(bio),
 			      &dm_disk(md)->part0);
@@ -679,7 +679,15 @@ static void start_io_acct(struct dm_io *io)
 static void end_io_acct(struct mapped_device *md, struct bio *bio,
 			unsigned long start_time, struct dm_stats_aux *stats_aux)
 {
-	unsigned long duration = jiffies - start_time;
+	unsigned long duration;
+	unsigned long now;
+
+	now = blk_get_iostat_ticks(md->queue);
+
+	if (blk_queue_precise_io_stat(md->queue))
+		duration = (((now - start_time) << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC);
+	else
+		duration = now - start_time;
 
 	if (unlikely(dm_stats_used(&md->stats)))
 		dm_stats_account_io(&md->stats, bio_data_dir(bio),
