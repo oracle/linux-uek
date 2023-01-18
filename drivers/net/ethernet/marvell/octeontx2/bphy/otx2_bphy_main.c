@@ -649,7 +649,7 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 					break;
 			}
 			if (idx < max_interfaces) {
-				netdev = cnf10k_cpri_drv_ctx->netdev;
+				netdev = cnf10k_drv_ctx->netdev;
 				cnf10k_cpri_set_link_state(netdev,
 							   cfg.link_state);
 			}
