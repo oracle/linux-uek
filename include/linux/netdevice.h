@@ -74,6 +74,7 @@ struct udp_tunnel_nic_info;
 struct udp_tunnel_nic;
 struct bpf_prog;
 struct xdp_buff;
+struct xdp_md;
 
 void synchronize_net(void);
 void netdev_set_default_ethtool_ops(struct net_device *dev,
@@ -1682,6 +1683,11 @@ struct net_device_ops {
 	UEK_KABI_RESERVE(8)
 };
 
+struct xdp_metadata_ops {
+	int	(*xmo_rx_timestamp)(const struct xdp_md *ctx, u64 *timestamp);
+	int	(*xmo_rx_hash)(const struct xdp_md *ctx, u32 *hash);
+};
+
 /**
  * enum netdev_priv_flags - &struct net_device priv_flags
  *
@@ -1864,6 +1870,7 @@ enum netdev_ml_priv_type {
  *
  *	@netdev_ops:	Includes several pointers to callbacks,
  *			if one wants to override the ndo_*() functions
+ *	@xdp_metadata_ops:	Includes pointers to XDP metadata callbacks.
  *	@ethtool_ops:	Management operations
  *	@l3mdev_ops:	Layer 3 master device operations
  *	@ndisc_ops:	Includes callbacks for different IPv6 neighbour
@@ -2404,7 +2411,7 @@ struct net_device {
 	UEK_KABI_USE(1, struct rtnl_hw_stats64  *offload_xstats_l3)
 	UEK_KABI_USE(2, struct devlink_port	*devlink_port)
 	UEK_KABI_USE(3, struct net_device_core_stats __percpu *core_stats)
-	UEK_KABI_RESERVE(4)
+	UEK_KABI_USE(4, const struct xdp_metadata_ops *xdp_metadata_ops)
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
