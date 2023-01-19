@@ -3304,7 +3304,7 @@ static inline void init_schedstats(void) {}
 
 DEFINE_STATIC_KEY_FALSE(do_vcpu_preemption_chk);
 DEFINE_STATIC_KEY_FALSE(wake_affine_idle_pull);
-
+EXPORT_SYMBOL_GPL(wake_affine_idle_pull);
 static int __init setup_sched_uek(char *str)
 {
 	int ret = 0;
