@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2024 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -37,6 +37,7 @@
 #include <net/inet_common.h>
 #include <linux/debugfs.h>
 #include <linux/uek.h>
+#include <linux/kernel.h>
 
 #include "trace.h"
 
@@ -651,7 +652,7 @@ static void rds_ib_dev_free(struct work_struct *work)
 	}
 	last_to_free = atomic_dec_and_test(&rds_ib_devices_to_free);
 	allocated = atomic_read(&rds_ib_allocation);
-	if (WARN_ON(last_to_free && allocated)) {
+	if (system_state <= SYSTEM_RUNNING && WARN_ON(last_to_free && allocated)) {
 		pr_info("%s rds_ib_allocations %d\n", __func__, allocated);
 		rds_stats_print(__func__);
 		rds_ib_stats_print(__func__);
