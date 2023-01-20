@@ -440,6 +440,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_tools 0
 %define with_up 0
 %define with_kdump 1
+%define with_dtrace 0
 %endif
 
 # if requested, only build emb kernel
