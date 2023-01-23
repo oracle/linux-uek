@@ -1069,6 +1069,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 				    __func__, __LINE__, ret);
 		goto out;
 	}
+	rds_ib_stats_inc(s_ib_frwr_invalidates);
 
 	wait_for_completion(&ibmr->wr_comp);
  out:
@@ -1487,6 +1488,10 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 				    __func__, __LINE__, ret);
 		goto out;
 	}
+
+	if (first_wr == &inv_wr)
+		rds_ib_stats_inc(s_ib_frwr_invalidates);
+	rds_ib_stats_inc(s_ib_frwr_registrations);
 
 	wait_for_completion(&ibmr->wr_comp);
 	if (ibmr->fr_state == MR_IS_STALE) {
