@@ -1316,7 +1316,7 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 			ibmr->free_time = get_jiffies_64();
 			atomic_dec(&pool->item_count);
 			xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->drop_list);
-		} else if (clean_all) {
+		} else if (pool->condemned) {
 			cnt++;
 			rds_ib_free_ibmr(ibmr);
 		}
@@ -1326,7 +1326,7 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 	/* add it back to clean list for re-use if not given to device.
 	 * also maintain LIFO behavior of clean_list.
 	 */
-	if (!clean_all && !list_empty(&free_list)) {
+	if (!pool->condemned && !list_empty(&free_list)) {
 		spin_lock_irqsave(&pool->clean_lock, flags);
 		list_splice(&free_list, &pool->clean_list);
 		spin_unlock_irqrestore(&pool->clean_lock, flags);
@@ -1480,10 +1480,12 @@ void rds_ib_flush_mrs(void)
 	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
 
 		if (rds_ibdev->mr_8k_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 0, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool,
+					     rds_ibdev->mr_8k_pool->use_fastreg, NULL);
 
 		if (rds_ibdev->mr_1m_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 0, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool,
+					     rds_ibdev->mr_8k_pool->use_fastreg, NULL);
 	}
 	up_read(&rds_ib_devices_lock);
 }
