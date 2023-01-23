@@ -58,8 +58,10 @@ static inline bool is_soc_cn9x(void)
 
 	partnum = MIDR_PARTNUM(read_cpuid_id());
 
-	if ((partnum & 0xbf) || (partnum & 0xaf))
+	/* checking partnum between cn9xx and cn8xx series */
+	if (!((partnum & 0xF0) ^ (0xb0)) || !((partnum & 0xFF) ^ (0xaf)))
 		return true;
+
 	return false;
 }
 
