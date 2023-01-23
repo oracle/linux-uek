@@ -610,6 +610,8 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_yield_accepting;
 	uint64_t	s_ib_yield_success;
 	uint64_t	s_ib_cm_watchdog_triggered;
+	uint64_t        s_ib_frwr_registrations;
+	uint64_t        s_ib_frwr_invalidates;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
