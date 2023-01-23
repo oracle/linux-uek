@@ -135,10 +135,14 @@ static u64 sbsa_gwdt_reg_read(struct sbsa_gwdt *gwdt)
 
 static void sbsa_gwdt_reg_write(u64 val, struct sbsa_gwdt *gwdt)
 {
-	if (gwdt->version == 0)
-		writel((u32)val, gwdt->control_base + SBSA_GWDT_WOR);
-	else
+	if (gwdt->version == 0) {
+		if (val > UINT_MAX)
+			writel(UINT_MAX, gwdt->control_base + SBSA_GWDT_WOR);
+		else
+			writel((u32)val, gwdt->control_base + SBSA_GWDT_WOR);
+	} else {
 		lo_hi_writeq(val, gwdt->control_base + SBSA_GWDT_WOR);
+	}
 }
 
 /*
