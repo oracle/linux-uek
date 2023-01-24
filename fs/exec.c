@@ -971,15 +971,18 @@ EXPORT_SYMBOL(read_code);
 static int vma_dup_some(struct mm_struct *old_mm, struct mm_struct *new_mm)
 {
 	struct vm_area_struct *vma;
-	int ret;
+	int ret = 0;
 
+	mmap_read_lock_nested(new_mm, SINGLE_DEPTH_NESTING);
 	for (vma = old_mm->mmap; vma; vma = vma->vm_next)
 		if (vma->vm_flags & VM_EXEC_KEEP) {
 			ret = vma_dup(vma, new_mm);
 			if (ret)
-				return ret;
+				break;
 		}
-	return 0;
+
+	mmap_read_unlock(new_mm);
+	return ret;
 }
 
 /*
