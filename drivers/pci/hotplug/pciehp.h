@@ -149,9 +149,13 @@ struct controller {
  *	hotplug port was inaccessible when the interrupt occurred, requiring
  *	that the IRQ handler is rerun by the IRQ thread after it has made the
  *	hotplug port accessible by runtime resuming its parents to D0
+ * %IGNORE_EVENTS: Ignore all HP events. Used when we force power off to a slot
+ *	via pciehp_force_power_slot. This could cause link state change which
+ *	we want to ignore
  */
 #define DISABLE_SLOT		(1 << 16)
 #define RERUN_ISR		(1 << 17)
+#define IGNORE_EVENTS		(1 << 18)
 
 #define ATTN_BUTTN(ctrl)	((ctrl)->slot_cap & PCI_EXP_SLTCAP_ABP)
 #define POWER_CTRL(ctrl)	((ctrl)->slot_cap & PCI_EXP_SLTCAP_PCP)
