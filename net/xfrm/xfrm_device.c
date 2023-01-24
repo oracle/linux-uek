@@ -281,7 +281,7 @@ int xfrm_dev_state_add(struct net *net, struct xfrm_state *x,
 		dst_release(dst);
 	}
 
-	if (!dev->xfrmdev_ops || !dev->xfrmdev_ops->xdo_dev_state_add) {
+	if (!dev->xfrmdev_ops || !(dev->xfrmdev_ops->xdo_dev_state_add || dev->xfrmdev_ops->xdo_dev_state_add_new)) {
 		xso->dev = NULL;
 		dev_put(dev);
 		return (is_packet_offload) ? -EINVAL : 0;
@@ -309,7 +309,10 @@ int xfrm_dev_state_add(struct net *net, struct xfrm_state *x,
 	else
 		xso->type = XFRM_DEV_OFFLOAD_CRYPTO;
 
-	err = dev->xfrmdev_ops->xdo_dev_state_add(x);
+	if (dev->xfrmdev_ops->xdo_dev_state_add)
+		err = dev->xfrmdev_ops->xdo_dev_state_add(x);
+	else
+		err = dev->xfrmdev_ops->xdo_dev_state_add_new(x, extack);
 	if (err) {
 		xso->dev = NULL;
 		xso->dir = 0;
@@ -326,7 +329,8 @@ int xfrm_dev_state_add(struct net *net, struct xfrm_state *x,
 		 */
 		WARN_ON(err == -EOPNOTSUPP && is_packet_offload);
 		if (err != -EOPNOTSUPP || is_packet_offload) {
-			NL_SET_ERR_MSG(extack, "Device failed to offload this state");
+			if (dev->xfrmdev_ops->xdo_dev_state_add)
+				NL_SET_ERR_MSG(extack, "Device failed to offload this state");
 			return err;
 		}
 	}
@@ -487,7 +491,7 @@ static int xfrm_api_check(struct net_device *dev)
 
 	if ((dev->features & NETIF_F_HW_ESP) &&
 	    (!(dev->xfrmdev_ops &&
-	       dev->xfrmdev_ops->xdo_dev_state_add &&
+	       (dev->xfrmdev_ops->xdo_dev_state_add || dev->xfrmdev_ops->xdo_dev_state_add_new) &&
 	       dev->xfrmdev_ops->xdo_dev_state_delete)))
 		return NOTIFY_BAD;
 #else
