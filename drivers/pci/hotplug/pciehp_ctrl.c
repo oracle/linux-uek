@@ -420,7 +420,20 @@ int pciehp_force_power_slot(struct hotplug_slot *p_slot, int value)
 		mask = pci_aer_mask_cto(dev);
 		ctrl_info(ctrl, "Device %04x:%02x:00, Powering off slot\n",
 			pci_domain_nr(parent), parent->number);
+
+		/* Ignore any HP events that are caused as a result of forced
+		 * power off (such as DLLSC, etc). Once powered off, the
+		 * device can be unconfigured
+		 */
+		atomic_or(IGNORE_EVENTS, &ctrl->pending_events);
+
 		set_slot_off(ctrl);
+
+		/* Clear the flag. If we get to this point, power is off and
+		 * there's no need for this flag to be enabled
+		 */
+		atomic_and(~IGNORE_EVENTS, &ctrl->pending_events);
+
 		ctrl_info(ctrl, "Device %04x:%02x:00, restoring AER UC mask\n",
 			pci_domain_nr(parent), parent->number);
 		pci_aer_restore_cto(dev, mask);
