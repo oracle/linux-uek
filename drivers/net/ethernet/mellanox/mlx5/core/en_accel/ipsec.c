@@ -298,7 +298,8 @@ static void _update_xfrm_state(struct work_struct *work)
 	mlx5_accel_esp_modify_xfrm(sa_entry, &modify_work->attrs);
 }
 
-static int mlx5e_xfrm_add_state(struct xfrm_state *x)
+static int mlx5e_xfrm_add_state(struct xfrm_state *x,
+				struct netlink_ext_ack *extack)
 {
 	struct mlx5e_ipsec_sa_entry *sa_entry = NULL;
 	struct net_device *netdev = x->xso.real_dev;
@@ -597,7 +598,7 @@ static void mlx5e_xfrm_free_policy(struct xfrm_policy *x)
 }
 
 static const struct xfrmdev_ops mlx5e_ipsec_xfrmdev_ops = {
-	.xdo_dev_state_add	= mlx5e_xfrm_add_state,
+	.xdo_dev_state_add_new	= mlx5e_xfrm_add_state,
 	.xdo_dev_state_delete	= mlx5e_xfrm_del_state,
 	.xdo_dev_state_free	= mlx5e_xfrm_free_state,
 	.xdo_dev_offload_ok	= mlx5e_ipsec_offload_ok,
@@ -605,7 +606,7 @@ static const struct xfrmdev_ops mlx5e_ipsec_xfrmdev_ops = {
 };
 
 static const struct xfrmdev_ops mlx5e_ipsec_packet_xfrmdev_ops = {
-	.xdo_dev_state_add	= mlx5e_xfrm_add_state,
+	.xdo_dev_state_add_new	= mlx5e_xfrm_add_state,
 	.xdo_dev_state_delete	= mlx5e_xfrm_del_state,
 	.xdo_dev_state_free	= mlx5e_xfrm_free_state,
 	.xdo_dev_offload_ok	= mlx5e_ipsec_offload_ok,

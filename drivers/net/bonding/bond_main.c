@@ -416,8 +416,10 @@ static int bond_vlan_rx_kill_vid(struct net_device *bond_dev,
 /**
  * bond_ipsec_add_sa - program device with a security association
  * @xs: pointer to transformer state struct
+ * @extack: extack point to fill failure reason
  **/
-static int bond_ipsec_add_sa(struct xfrm_state *xs)
+static int bond_ipsec_add_sa(struct xfrm_state *xs,
+			     struct netlink_ext_ack *extack)
 {
 	struct net_device *bond_dev = xs->xso.dev;
 	struct bond_ipsec *ipsec;
@@ -437,7 +439,7 @@ static int bond_ipsec_add_sa(struct xfrm_state *xs)
 	}
 
 	if (!slave->dev->xfrmdev_ops ||
-	    !slave->dev->xfrmdev_ops->xdo_dev_state_add ||
+	    !(slave->dev->xfrmdev_ops->xdo_dev_state_add || slave->dev->xfrmdev_ops->xdo_dev_state_add_new) ||
 	    netif_is_bond_master(slave->dev)) {
 		slave_warn(bond_dev, slave->dev, "Slave does not support ipsec offload\n");
 		rcu_read_unlock();
@@ -451,7 +453,10 @@ static int bond_ipsec_add_sa(struct xfrm_state *xs)
 	}
 	xs->xso.real_dev = slave->dev;
 
-	err = slave->dev->xfrmdev_ops->xdo_dev_state_add(xs);
+	if (slave->dev->xfrmdev_ops->xdo_dev_state_add)
+		err = slave->dev->xfrmdev_ops->xdo_dev_state_add(xs);
+	else
+		err = slave->dev->xfrmdev_ops->xdo_dev_state_add_new(xs, extack);
 	if (!err) {
 		ipsec->xs = xs;
 		INIT_LIST_HEAD(&ipsec->list);
@@ -470,6 +475,7 @@ static void bond_ipsec_add_sa_all(struct bonding *bond)
 	struct net_device *bond_dev = bond->dev;
 	struct bond_ipsec *ipsec;
 	struct slave *slave;
+	int err;
 
 	rcu_read_lock();
 	slave = rcu_dereference(bond->curr_active_slave);
@@ -477,7 +483,7 @@ static void bond_ipsec_add_sa_all(struct bonding *bond)
 		goto out;
 
 	if (!slave->dev->xfrmdev_ops ||
-	    !slave->dev->xfrmdev_ops->xdo_dev_state_add ||
+	    !(slave->dev->xfrmdev_ops->xdo_dev_state_add || slave->dev->xfrmdev_ops->xdo_dev_state_add_new) ||
 	    netif_is_bond_master(slave->dev)) {
 		spin_lock_bh(&bond->ipsec_lock);
 		if (!list_empty(&bond->ipsec_list))
@@ -491,7 +497,11 @@ static void bond_ipsec_add_sa_all(struct bonding *bond)
 	spin_lock_bh(&bond->ipsec_lock);
 	list_for_each_entry(ipsec, &bond->ipsec_list, list) {
 		ipsec->xs->xso.real_dev = slave->dev;
-		if (slave->dev->xfrmdev_ops->xdo_dev_state_add(ipsec->xs)) {
+		if (slave->dev->xfrmdev_ops->xdo_dev_state_add)
+			err = slave->dev->xfrmdev_ops->xdo_dev_state_add(ipsec->xs);
+		else
+			err = slave->dev->xfrmdev_ops->xdo_dev_state_add_new(ipsec->xs, NULL);
+		if (err) {
 			slave_warn(bond_dev, slave->dev, "%s: failed to add SA\n", __func__);
 			ipsec->xs->xso.real_dev = NULL;
 		}
@@ -623,7 +633,7 @@ out:
 }
 
 static const struct xfrmdev_ops bond_xfrmdev_ops = {
-	.xdo_dev_state_add = bond_ipsec_add_sa,
+	.xdo_dev_state_add_new = bond_ipsec_add_sa,
 	.xdo_dev_state_delete = bond_ipsec_del_sa,
 	.xdo_dev_offload_ok = bond_ipsec_offload_ok,
 };
