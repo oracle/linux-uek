@@ -661,6 +661,15 @@ static irqreturn_t pciehp_ist(int irq, void *dev_id)
 		goto out;
 	}
 
+	/* Ignore all events if this is set */
+	if (events & IGNORE_EVENTS) {
+		ctrl_dbg(ctrl, "Slot(%s): ignoring events (%#06x)\n",
+			slot_name(ctrl), events);
+		ret = IRQ_HANDLED;
+		goto out;
+	}
+
+
 	/* Check Attention Button Pressed */
 	if (events & PCI_EXP_SLTSTA_ABP) {
 		ctrl_info(ctrl, "Slot(%s): Attention button pressed\n",
