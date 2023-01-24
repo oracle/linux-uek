@@ -4705,9 +4705,9 @@
 			retpoline,amd     - alias for retpoline,lfence
 			ibrs		  - Use IBRS (if microcode is available).
 					    otherwise will fallback to lfence
-			eibrs		  - enhanced IBRS
-			eibrs,retpoline   - enhanced IBRS + Retpolines
-			eibrs,lfence      - enhanced IBRS + LFENCE
+			eibrs		  - Enhanced/Auto IBRS
+			eibrs,retpoline   - Enhanced/Auto IBRS + Retpolines
+			eibrs,lfence      - Enhanced/Auto IBRS + LFENCE
 
 			Not specifying this option is equivalent to
 			spectre_v2=auto.

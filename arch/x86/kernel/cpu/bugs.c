@@ -1703,9 +1703,9 @@ static const char * const spectre_v2_strings[] = {
 	[SPECTRE_V2_RETPOLINE]			= "Mitigation: Retpolines",
 	[SPECTRE_V2_LFENCE]			= "Mitigation: LFENCE",
 	[SPECTRE_V2_IBRS]			= "Mitigation: Basic IBRS",
-	[SPECTRE_V2_EIBRS]			= "Mitigation: Enhanced IBRS",
-	[SPECTRE_V2_EIBRS_LFENCE]		= "Mitigation: Enhanced IBRS + LFENCE",
-	[SPECTRE_V2_EIBRS_RETPOLINE]		= "Mitigation: Enhanced IBRS + Retpolines",
+	[SPECTRE_V2_EIBRS]			= "Mitigation: Enhanced / Automatic IBRS",
+	[SPECTRE_V2_EIBRS_LFENCE]		= "Mitigation: Enhanced / Automatic IBRS + LFENCE",
+	[SPECTRE_V2_EIBRS_RETPOLINE]		= "Mitigation: Enhanced / Automatic IBRS + Retpolines",
 };
 
 static const struct {
@@ -1779,7 +1779,7 @@ static enum spectre_v2_mitigation_cmd spectre_v2_parse_cmdline(void)
 	     cmd == SPECTRE_V2_CMD_EIBRS_LFENCE ||
 	     cmd == SPECTRE_V2_CMD_EIBRS_RETPOLINE) &&
 	    !boot_cpu_has(X86_FEATURE_IBRS_ENHANCED)) {
-		pr_err("%s selected but CPU doesn't have eIBRS. Switching to AUTO select\n",
+		pr_err("%s selected but CPU doesn't have Enhanced or Automatic IBRS. Switching to AUTO select\n",
 		       mitigation_options[i].option);
 		return SPECTRE_V2_CMD_AUTO;
 	}
@@ -2175,9 +2175,12 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 		bhi_select_mitigation();
 
 	if (spectre_v2_in_eibrs_mode(spectre_v2_enabled)) {
-		/* If enhanced IBRS mode is selected, enable it in all cpus */
-		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-			x86_spec_ctrl_base | SPEC_CTRL_IBRS);
+		if (boot_cpu_has(X86_FEATURE_AUTOIBRS))
+			msr_set_bit(MSR_EFER, _EFER_AUTOIBRS);
+		else
+			/* If enhanced IBRS mode is selected, enable it in all cpus */
+			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+				x86_spec_ctrl_base | SPEC_CTRL_IBRS);
 	}
 
 	/*
@@ -2226,8 +2229,8 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 	/*
 	 * Retpoline protects the kernel, but doesn't protect firmware.  IBRS
 	 * and Enhanced IBRS protect firmware too, so enable IBRS around
-	 * firmware calls only when IBRS / Enhanced IBRS aren't otherwise
-	 * enabled.
+	 * firmware calls only when IBRS / Enhanced / Automatic IBRS aren't
+	 * otherwise enabled.
 	 *
 	 * Use "mode" to check Enhanced IBRS instead of boot_cpu_has(), because
 	 * the user might select retpoline on the kernel command line and if
