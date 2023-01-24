@@ -118,6 +118,13 @@ static inline void mmap_read_lock(struct mm_struct *mm)
 	__mmap_lock_trace_acquire_returned(mm, false, true);
 }
 
+static inline void mmap_read_lock_nested(struct mm_struct *mm, int subclass)
+{
+	__mmap_lock_trace_start_locking(mm, false);
+	down_read_nested(&mm->mmap_lock, subclass);
+	__mmap_lock_trace_acquire_returned(mm, false, true);
+}
+
 static inline int mmap_read_lock_killable(struct mm_struct *mm)
 {
 	int ret;
