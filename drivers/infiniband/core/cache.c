@@ -398,6 +398,17 @@ static void del_gid(struct ib_device *ib_dev, u32 port,
 	 */
 	if (!rdma_protocol_roce(ib_dev, port))
 		table->data_vec[ix] = NULL;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/*
+	 * If sched_uek=wakeidle (which identifies it as Exadata) revert
+	 * back to UEK5 behavior which is to set this to NULL regardless
+	 * of it being IB or RoCE.
+	 */
+	if (static_key_enabled(&on_exadata))
+		table->data_vec[ix] = NULL;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	write_unlock_irq(&table->rwlock);
 
 	if (rdma_cap_roce_gid_table(ib_dev, port))
