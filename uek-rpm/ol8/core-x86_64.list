@@ -426,9 +426,11 @@ kernel/net/netfilter/xt_SECMARK.ko
 kernel/net/netfilter/xt_set.ko
 kernel/net/psample/psample.ko
 kernel/net/rfkill/rfkill.ko
+kernel/net/sched/act_bpf.ko
 kernel/net/sched/act_gact.ko
 kernel/net/sched/act_mirred.ko
 kernel/net/sched/act_vlan.ko
+kernel/net/sched/cls_bpf.ko
 kernel/net/sched/cls_flower.ko
 kernel/net/sched/cls_u32.ko
 kernel/net/sched/sch_fq_codel.ko
