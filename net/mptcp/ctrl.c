@@ -85,7 +85,11 @@ const char *mptcp_get_scheduler(const struct net *net)
 
 static void mptcp_pernet_set_defaults(struct mptcp_pernet *pernet)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	pernet->mptcp_enabled = 0;
+#else
 	pernet->mptcp_enabled = 1;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	pernet->add_addr_timeout = TCP_RTO_MAX;
 	pernet->close_timeout = TCP_TIMEWAIT_LEN;
 	pernet->checksum_enabled = 0;
@@ -155,7 +159,11 @@ static struct ctl_table mptcp_sysctl_table[] = {
 	{
 		.procname = "enabled",
 		.maxlen = sizeof(u8),
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		.mode = 0444,
+#else
 		.mode = 0644,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		/* users with CAP_NET_ADMIN or root (not and) can change this
 		 * value, same as other sysctl or the 'net' tree.
 		 */
