@@ -340,7 +340,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 			rds_ib_stats_inc(s_ib_tx_stalled);
 
 		if (send->s_op) {
-			if (send->s_op == rm->m_final_op) {
+			if (send->s_op == rm->m_final_op || wc->status != IB_WC_SUCCESS) {
 				/* If anyone waited for this message to get flushed out, wake
 				 * them up now */
 				rds_message_unmapped(rm);
