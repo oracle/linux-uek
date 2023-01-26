@@ -886,6 +886,7 @@ copy_present_page(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma
 		  struct page **prealloc, pte_t pte, struct page *page)
 {
 	struct page *new_page;
+	bool is_exec_keep = dst_vma->vm_flags & VM_EXEC_KEEP ? true : false;
 
 	/*
 	 * What we want to do is to check whether this page may
@@ -900,7 +901,7 @@ copy_present_page(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma
 	 * the page count. That might give false positives for
 	 * for pinning, but it will work correctly.
 	 */
-	if (likely(!page_needs_cow_for_dma(src_vma, page)))
+	if (likely(!page_needs_cow_for_dma(src_vma, page)) || is_exec_keep)
 		return 1;
 
 	new_page = *prealloc;
