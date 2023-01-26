@@ -4,6 +4,7 @@
 #define AMD_IOMMU_H
 
 int __init add_special_device(u8 type, u8 id, u16 *devid, bool cmd_line);
+void __init disable_vapic(void);
 
 #ifdef CONFIG_DMI
 void amd_iommu_apply_ivrs_quirks(void);
