@@ -160,6 +160,7 @@ static inline struct amd_iommu *get_amd_iommu_from_dev_data(struct iommu_dev_dat
 bool translation_pre_enabled(struct amd_iommu *iommu);
 bool amd_iommu_is_attach_deferred(struct device *dev);
 int __init add_special_device(u8 type, u8 id, u32 *devid, bool cmd_line);
+void __init disable_vapic(void);
 
 #ifdef CONFIG_DMI
 void amd_iommu_apply_ivrs_quirks(void);
