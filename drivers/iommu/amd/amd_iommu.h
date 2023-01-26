@@ -121,6 +121,7 @@ extern bool amd_iommu_is_attach_deferred(struct iommu_domain *domain,
 					 struct device *dev);
 extern int __init add_special_device(u8 type, u8 id, u16 *devid,
 				     bool cmd_line);
+extern void __init disable_vapic(void);
 
 #ifdef CONFIG_DMI
 void amd_iommu_apply_ivrs_quirks(void);
