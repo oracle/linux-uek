@@ -1215,6 +1215,11 @@ int __init add_special_device(u8 type, u8 id, u32 *devid, bool cmd_line)
 	return 0;
 }
 
+void __init disable_vapic(void)
+{
+	amd_iommu_guest_ir = AMD_IOMMU_GUEST_IR_LEGACY_GA;
+}
+
 static int __init add_acpi_hid_device(u8 *hid, u8 *uid, u32 *devid,
 				      bool cmd_line)
 {
