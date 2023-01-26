@@ -10749,7 +10749,7 @@ static void devlink_param_unregister(struct devlink *devlink,
 }
 
 /**
- *	devlink_params_register - register configuration parameters
+ *	devl_params_register - register configuration parameters
  *
  *	@devlink: devlink
  *	@params: configuration parameters array
@@ -10757,12 +10757,14 @@ static void devlink_param_unregister(struct devlink *devlink,
  *
  *	Register the configuration parameters supported by the driver.
  */
-int devlink_params_register(struct devlink *devlink,
-			    const struct devlink_param *params,
-			    size_t params_count)
+int devl_params_register(struct devlink *devlink,
+			 const struct devlink_param *params,
+			 size_t params_count)
 {
 	const struct devlink_param *param = params;
 	int i, err;
+
+	lockdep_assert_held(&devlink->lock);
 
 	for (i = 0; i < params_count; i++, param++) {
 		err = devlink_param_register(devlink, param);
@@ -10779,29 +10781,54 @@ rollback:
 		devlink_param_unregister(devlink, param);
 	return err;
 }
+EXPORT_SYMBOL_GPL(devl_params_register);
+
+int devlink_params_register(struct devlink *devlink,
+			    const struct devlink_param *params,
+			    size_t params_count)
+{
+	int err;
+
+	devl_lock(devlink);
+	err = devl_params_register(devlink, params, params_count);
+	devl_unlock(devlink);
+	return err;
+}
 EXPORT_SYMBOL_GPL(devlink_params_register);
 
 /**
- *	devlink_params_unregister - unregister configuration parameters
+ *	devl_params_unregister - unregister configuration parameters
  *	@devlink: devlink
  *	@params: configuration parameters to unregister
  *	@params_count: number of parameters provided
  */
-void devlink_params_unregister(struct devlink *devlink,
-			       const struct devlink_param *params,
-			       size_t params_count)
+void devl_params_unregister(struct devlink *devlink,
+			    const struct devlink_param *params,
+			    size_t params_count)
 {
 	const struct devlink_param *param = params;
 	int i;
 
+	lockdep_assert_held(&devlink->lock);
+
 	for (i = 0; i < params_count; i++, param++)
 		devlink_param_unregister(devlink, param);
+}
+EXPORT_SYMBOL_GPL(devl_params_unregister);
+
+void devlink_params_unregister(struct devlink *devlink,
+			       const struct devlink_param *params,
+			       size_t params_count)
+{
+	devl_lock(devlink);
+	devl_params_unregister(devlink, params, params_count);
+	devl_unlock(devlink);
 }
 EXPORT_SYMBOL_GPL(devlink_params_unregister);
 
 /**
- *	devlink_param_driverinit_value_get - get configuration parameter
- *					     value for driver initializing
+ *	devl_param_driverinit_value_get - get configuration parameter
+ *					  value for driver initializing
  *
  *	@devlink: devlink
  *	@param_id: parameter ID
@@ -10810,10 +10837,12 @@ EXPORT_SYMBOL_GPL(devlink_params_unregister);
  *	This function should be used by the driver to get driverinit
  *	configuration for initialization after reload command.
  */
-int devlink_param_driverinit_value_get(struct devlink *devlink, u32 param_id,
-				       union devlink_param_value *init_val)
+int devl_param_driverinit_value_get(struct devlink *devlink, u32 param_id,
+				    union devlink_param_value *init_val)
 {
 	struct devlink_param_item *param_item;
+
+	lockdep_assert_held(&devlink->lock);
 
 	if (WARN_ON(!devlink_reload_supported(devlink->ops)))
 		return -EOPNOTSUPP;
@@ -10836,12 +10865,12 @@ int devlink_param_driverinit_value_get(struct devlink *devlink, u32 param_id,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(devlink_param_driverinit_value_get);
+EXPORT_SYMBOL_GPL(devl_param_driverinit_value_get);
 
 /**
- *	devlink_param_driverinit_value_set - set value of configuration
- *					     parameter for driverinit
- *					     configuration mode
+ *	devl_param_driverinit_value_set - set value of configuration
+ *					  parameter for driverinit
+ *					  configuration mode
  *
  *	@devlink: devlink
  *	@param_id: parameter ID
@@ -10850,8 +10879,8 @@ EXPORT_SYMBOL_GPL(devlink_param_driverinit_value_get);
  *	This function should be used by the driver to set driverinit
  *	configuration mode default value.
  */
-void devlink_param_driverinit_value_set(struct devlink *devlink, u32 param_id,
-					union devlink_param_value init_val)
+void devl_param_driverinit_value_set(struct devlink *devlink, u32 param_id,
+				     union devlink_param_value init_val)
 {
 	struct devlink_param_item *param_item;
 
@@ -10871,12 +10900,12 @@ void devlink_param_driverinit_value_set(struct devlink *devlink, u32 param_id,
 
 	devlink_param_notify(devlink, 0, param_item, DEVLINK_CMD_PARAM_NEW);
 }
-EXPORT_SYMBOL_GPL(devlink_param_driverinit_value_set);
+EXPORT_SYMBOL_GPL(devl_param_driverinit_value_set);
 
 /**
- *	devlink_param_value_changed - notify devlink on a parameter's value
- *				      change. Should be called by the driver
- *				      right after the change.
+ *	devl_param_value_changed - notify devlink on a parameter's value
+ *				   change. Should be called by the driver
+ *				   right after the change.
  *
  *	@devlink: devlink
  *	@param_id: parameter ID
@@ -10885,7 +10914,7 @@ EXPORT_SYMBOL_GPL(devlink_param_driverinit_value_set);
  *	change, excluding driverinit configuration mode.
  *	For driverinit configuration mode driver should use the function
  */
-void devlink_param_value_changed(struct devlink *devlink, u32 param_id)
+void devl_param_value_changed(struct devlink *devlink, u32 param_id)
 {
 	struct devlink_param_item *param_item;
 
@@ -10894,7 +10923,7 @@ void devlink_param_value_changed(struct devlink *devlink, u32 param_id)
 
 	devlink_param_notify(devlink, 0, param_item, DEVLINK_CMD_PARAM_NEW);
 }
-EXPORT_SYMBOL_GPL(devlink_param_value_changed);
+EXPORT_SYMBOL_GPL(devl_param_value_changed);
 
 /**
  * devl_region_create - create a new address region
