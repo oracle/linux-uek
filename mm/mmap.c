@@ -3476,10 +3476,11 @@ int vma_dup(struct vm_area_struct *old_vma, struct mm_struct *mm)
 
 	/*
 	 * Clear functionality that should not carry over to the new
-	 * process.any memory locking, userfaultfd, and preservation over
-	 * exec flags.
+	 * process. Note that VM_EXEC_KEEP is cleared later to allow
+	 * code called by copy_page_range to infer that the copying is
+	 * for preserving over exec and not for process forking.
 	 */
-	vma->vm_flags &= ~(VM_LOCKED|VM_LOCKONFAULT|VM_UFFD_MISSING|VM_UFFD_WP|VM_EXEC_KEEP);
+	vma->vm_flags &= ~(VM_LOCKED|VM_LOCKONFAULT|VM_UFFD_MISSING|VM_UFFD_WP);
 	vma->vm_userfaultfd_ctx = NULL_VM_UFFD_CTX;
 
 	__insert_vm_struct(mm, vma);
@@ -3494,6 +3495,9 @@ int vma_dup(struct vm_area_struct *old_vma, struct mm_struct *mm)
 	old_vma->vm_flags &= ~VM_ACCOUNT;
 
 	ret = copy_page_range(vma, old_vma);
+
+	vma->vm_flags &= ~VM_EXEC_KEEP;
+
 	return ret;
 
 fail_nomem_anon_vma_fork:
