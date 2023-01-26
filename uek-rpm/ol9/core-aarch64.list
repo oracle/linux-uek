@@ -187,6 +187,7 @@ kernel/drivers/net/ethernet/mellanox/mlx4/mlx4_core.ko
 kernel/drivers/net/ethernet/mellanox/mlx4/mlx4_en.ko
 kernel/drivers/net/ethernet/mellanox/mlx5/core/mlx5_core.ko
 kernel/drivers/net/ethernet/mellanox/mlxfw/mlxfw.ko
+kernel/drivers/net/ethernet/pensando/ionic/ionic.ko
 kernel/drivers/net/geneve.ko
 kernel/drivers/net/ipvlan/ipvlan.ko
 kernel/drivers/net/macsec.ko
@@ -510,6 +511,7 @@ kernel/net/netfilter/nf_conntrack_snmp.ko
 kernel/net/netfilter/nf_conntrack_tftp.ko
 kernel/net/netfilter/nf_dup_netdev.ko
 kernel/net/netfilter/nf_flow_table.ko
+kernel/net/netfilter/nf_flow_table_inet.ko
 kernel/net/netfilter/nf_log_syslog.ko
 kernel/net/netfilter/nf_nat_amanda.ko
 kernel/net/netfilter/nf_nat_ftp.ko
@@ -534,6 +536,7 @@ kernel/net/netfilter/nft_dup_netdev.ko
 kernel/net/netfilter/nft_fib_inet.ko
 kernel/net/netfilter/nft_fib.ko
 kernel/net/netfilter/nft_fib_netdev.ko
+kernel/net/netfilter/nft_flow_offload.ko
 kernel/net/netfilter/nft_fwd_netdev.ko
 kernel/net/netfilter/nft_hash.ko
 kernel/net/netfilter/nft_limit.ko
@@ -549,7 +552,11 @@ kernel/net/netfilter/nft_redir.ko
 kernel/net/netfilter/nft_reject_inet.ko
 kernel/net/netfilter/nft_reject.ko
 kernel/net/netfilter/nft_reject_netdev.ko
+kernel/net/netfilter/nft_socket.ko
+kernel/net/netfilter/nft_synproxy.ko
+kernel/net/netfilter/nft_tproxy.ko
 kernel/net/netfilter/nft_tunnel.ko
+kernel/net/netfilter/nft_xfrm.ko
 kernel/net/netfilter/xt_addrtype.ko
 kernel/net/netfilter/xt_AUDIT.ko
 kernel/net/netfilter/xt_bpf.ko
