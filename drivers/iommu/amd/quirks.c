@@ -98,8 +98,20 @@ static const struct dmi_system_id ivrs_quirks[] __initconst = {
 	{}
 };
 
+static const struct dmi_system_id avic_quirks[] __initconst = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ORACLE SERVER E4"),
+		},
+	},
+	{}
+};
+
 void __init amd_iommu_apply_ivrs_quirks(void)
 {
 	dmi_check_system(ivrs_quirks);
+	if (dmi_check_system(avic_quirks))
+		disable_vapic();
 }
 #endif
