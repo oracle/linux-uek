@@ -194,6 +194,12 @@ struct cnf10k_rfoe_ndev_priv {
 	u64				last_extts;
 	u64				thresh;
 
+	struct hrtimer			hrtimer;
+	ktime_t				last_ts;
+	u32				clock_rate;
+	u32				clock_period;
+	u8				ptp_errata;
+
 	struct otx2_rfoe_stats		stats;
 } ____cacheline_aligned_in_smp;
 

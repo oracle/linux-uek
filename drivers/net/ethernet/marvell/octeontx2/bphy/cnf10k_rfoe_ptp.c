@@ -357,6 +357,101 @@ static void cnf10k_rfoe_ptp_extts_check(struct work_struct *work)
 	schedule_delayed_work(&priv->extts_work, msecs_to_jiffies(200));
 }
 
+static enum hrtimer_restart ptp_reset_thresh(struct hrtimer *hrtimer)
+{
+	struct cnf10k_rfoe_ndev_priv *priv = container_of(hrtimer,
+							  struct cnf10k_rfoe_ndev_priv, hrtimer);
+	ktime_t curr_ts = ktime_get();
+	ktime_t delta_ns, period_ns;
+	u64 ptp_clock_hi;
+
+	/* calculate the elapsed time since last restart */
+	delta_ns = ktime_to_ns(ktime_sub(curr_ts, priv->last_ts));
+
+	/* if the ptp clock value has crossed 0.5 seconds,
+	 * its too late to update pps threshold value, so
+	 * update threshold after 1 second.
+	 */
+	ptp_clock_hi = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+	if (ptp_clock_hi > 500000000) {
+		period_ns = ktime_set(0, (NSEC_PER_SEC + 100 - ptp_clock_hi));
+	} else {
+		writeq(500000000, priv->ptp_reg_base + MIO_PTP_PPS_THRESH_HI);
+		period_ns = ktime_set(0, (NSEC_PER_SEC + 100 - delta_ns));
+	}
+
+	hrtimer_forward_now(hrtimer, period_ns);
+	priv->last_ts = curr_ts;
+
+	return HRTIMER_RESTART;
+}
+
+static void ptp_hrtimer_start(struct cnf10k_rfoe_ndev_priv *priv, ktime_t start_ns)
+{
+	ktime_t period_ns;
+
+	period_ns = ktime_set(0, (NSEC_PER_SEC + 100 - start_ns));
+	hrtimer_start(&priv->hrtimer, period_ns, HRTIMER_MODE_REL);
+	priv->last_ts = ktime_get();
+}
+
+static int ptp_config_hrtimer(struct cnf10k_rfoe_ndev_priv *priv, int on)
+{
+	u64 ptp_clock_hi;
+
+	if (on) {
+		ptp_clock_hi = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_HI);
+		ptp_hrtimer_start(priv, (ktime_t)ptp_clock_hi);
+	} else {
+		if (hrtimer_active(&priv->hrtimer))
+			hrtimer_cancel(&priv->hrtimer);
+	}
+
+	return 0;
+}
+
+static int ptp_pps_on(struct cnf10k_rfoe_ndev_priv *priv, int on)
+{
+	u64 clock_cfg;
+
+	clock_cfg = readq(priv->ptp_reg_base + MIO_PTP_CLOCK_CFG);
+
+	if (on) {
+		clock_cfg |= PTP_CLOCK_CFG_PPS_EN | PTP_CLOCK_CFG_PPS_INV;
+		writeq(clock_cfg, priv->ptp_reg_base + MIO_PTP_CLOCK_CFG);
+
+		writeq(0, priv->ptp_reg_base + MIO_PTP_PPS_THRESH_HI);
+		writeq(0, priv->ptp_reg_base + MIO_PTP_PPS_THRESH_LO);
+
+		/* Set 50% duty cycle for 1Hz output */
+		writeq(0x1dcd650000000000, priv->ptp_reg_base + MIO_PTP_PPS_HI_INCR);
+		writeq(0x1dcd650000000000, priv->ptp_reg_base + MIO_PTP_PPS_LO_INCR);
+
+	} else {
+		clock_cfg &= ~(PTP_CLOCK_CFG_PPS_EN | PTP_CLOCK_CFG_PPS_INV);
+		writeq(clock_cfg, priv->ptp_reg_base + MIO_PTP_CLOCK_CFG);
+	}
+
+	if (on && priv->ptp_errata) {
+		/* The ptp_clock_hi rollsover to zero once clock cycle before it
+		 * reaches one second boundary. so, program the pps_lo_incr in
+		 * such a way that the pps threshold value comparison at one
+		 * second boundary will succeed and pps edge changes. After each
+		 * one second boundary, the hrtimer handler will be invoked and
+		 * reprograms the pps threshold value.
+		 */
+		priv->clock_rate = 1000 * 1000000; //sclk to 1000
+		priv->clock_period = NSEC_PER_SEC / priv->clock_rate;
+		writeq((0x1dcd6500ULL - priv->clock_period) << 32,
+		       priv->ptp_reg_base + MIO_PTP_PPS_LO_INCR);
+	}
+
+	if (priv->ptp_errata)
+		ptp_config_hrtimer(priv, on);
+
+	return 0;
+}
+
 static int cnf10k_rfoe_ptp_enable(struct ptp_clock_info *ptp_info,
 				  struct ptp_clock_request *rq, int on)
 {
@@ -378,6 +473,26 @@ static int cnf10k_rfoe_ptp_enable(struct ptp_clock_info *ptp_info,
 		else
 			cancel_delayed_work_sync(&priv->extts_work);
 		return 0;
+	case PTP_CLK_REQ_PEROUT:
+		if (rq->perout.flags)
+			return -EOPNOTSUPP;
+
+		if (rq->perout.index >= ptp_info->n_pins)
+			return -EINVAL;
+		if (on) {
+			if (rq->perout.period.sec == 1 &&
+			    rq->perout.period.nsec == 0) {
+				ptp_pps_on(priv, on);
+			} else {
+				netdev_info(priv->netdev, "PTP_CLK_REQ_PEROUT error unsupported period values\n");
+				return -EOPNOTSUPP;
+			}
+
+		} else {
+			ptp_pps_on(priv, on);
+		}
+
+		return 0;
 	default:
 		break;
 	}
@@ -390,6 +505,7 @@ static const struct ptp_clock_info cnf10k_rfoe_ptp_clock_info = {
 	.name		= "CNF10K RFOE PTP",
 	.max_adj        = 1000000000ull,
 	.n_ext_ts       = 1,
+	.n_per_out      = 1,
 	.n_pins         = 1,
 	.pps            = 0,
 	.adjfine	= cnf10k_rfoe_ptp_adjfine,
@@ -459,6 +575,9 @@ int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv *priv)
 		writeq(rx_cfg, priv->rfoe_reg_base + CNF10K_RFOEX_RX_CFG(priv->rfoe_num));
 		mutex_init(&priv->ptp_lock);
 	}
+
+	hrtimer_init(&priv->hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	priv->hrtimer.function = ptp_reset_thresh;
 
 	return 0;
 }

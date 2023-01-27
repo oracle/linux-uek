@@ -1410,6 +1410,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	struct cnf10k_rx_ft_cfg *ft_cfg;
 	struct ptp_bcn_off_cfg *ptp_cfg;
 	struct net_device *netdev;
+	u8 ptp_errata = false;
 	u8 pkt_type_mask;
 
 	cdev->hw_version = cfg->hw_params.chip_ver;
@@ -1423,6 +1424,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 		cdev->num_rfoe_mhab = 2;
 		cdev->num_rfoe_lmac = 4;
 		cdev->tot_rfoe_intf = 8;
+		ptp_errata = true;
 	} else {
 		dev_err(cdev->dev, "unsupported chip version\n");
 		return -EINVAL;
@@ -1510,6 +1512,7 @@ int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			priv->bcn_reg_base = bcn_reg_base;
 			priv->ptp_reg_base = ptp_reg_base;
 			priv->ptp_cfg = ptp_cfg;
+			priv->ptp_errata = ptp_errata;
 			++(priv->ptp_cfg->refcnt);
 
 			/* Initialise PTP TX work queue */
