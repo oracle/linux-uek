@@ -5465,7 +5465,6 @@ static int wake_wide(struct task_struct *p)
 	return 1;
 }
 
-extern struct static_key_false on_exadata;
 /*
  * The purpose of wake_affine() is to quickly determine on which CPU we can run
  * soonest. For the purpose of speed we only consider the waking and previous

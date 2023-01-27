@@ -23,6 +23,7 @@
 #include <linux/error-injection.h>
 #include <linux/tracepoint-defs.h>
 #include <linux/srcu.h>
+#include <linux/uek.h>
 
 #include <linux/percpu.h>
 #include <asm/module.h>
