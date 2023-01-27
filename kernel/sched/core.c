@@ -4364,7 +4364,6 @@ int sysctl_schedstats(struct ctl_table *table, int write, void *buffer,
 #endif /* CONFIG_PROC_SYSCTL */
 #endif /* CONFIG_SCHEDSTATS */
 
-DEFINE_STATIC_KEY_FALSE(do_vcpu_preemption_chk);
 DEFINE_STATIC_KEY_FALSE(wake_affine_idle_pull);
 EXPORT_SYMBOL_GPL(wake_affine_idle_pull);
 static int __init setup_sched_uek(char *str)
@@ -4379,9 +4378,6 @@ static int __init setup_sched_uek(char *str)
 			continue;
 		if (strcmp(p, "wakeidle") == 0) {
 			static_branch_enable(&wake_affine_idle_pull);
-			ret = 1;
-		} else if (strcmp(p, "preempt") == 0) {
-			static_branch_enable(&do_vcpu_preemption_chk);
 			ret = 1;
 		}
 	}
@@ -7129,7 +7125,7 @@ int available_idle_cpu(int cpu)
 	if (!idle_cpu(cpu))
 		return 0;
 
-	if (sched_feat(VCPU_IDLE_PREEMPTION_CHK) || static_branch_unlikely(&do_vcpu_preemption_chk)) {
+	if (sched_feat(VCPU_IDLE_PREEMPTION_CHK)) {
 		if (vcpu_is_preempted(cpu))
 			return 0;
 	}
