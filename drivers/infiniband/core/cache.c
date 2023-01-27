@@ -370,8 +370,6 @@ static int add_roce_gid(struct ib_gid_table_entry *entry)
 	return 0;
 }
 
-extern struct static_key_false on_exadata;
-
 /**
  * del_gid - Delete GID table entry
  *

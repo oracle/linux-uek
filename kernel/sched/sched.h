@@ -68,6 +68,7 @@
 #include <linux/syscalls.h>
 #include <linux/task_work.h>
 #include <linux/tsacct_kern.h>
+#include <linux/uek.h>
 
 #include <asm/tlb.h>
 
