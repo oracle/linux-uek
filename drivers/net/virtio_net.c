@@ -2035,8 +2035,6 @@ static void virtnet_clean_affinity(struct virtnet_info *vi)
 	}
 }
 
-extern struct static_key_false on_exadata;
-
 static void virtnet_set_affinity(struct virtnet_info *vi)
 {
 	cpumask_var_t mask;
