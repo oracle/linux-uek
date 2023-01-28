@@ -90,6 +90,7 @@ struct disk_stats {
 	unsigned long ios[NR_STAT_GROUPS];
 	unsigned long merges[NR_STAT_GROUPS];
 	unsigned long io_ticks;
+	/* this is not used any more, just make kabi happy. */
 	unsigned long time_in_queue;
 	local_t in_flight[2];
 };
