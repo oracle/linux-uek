@@ -15,13 +15,15 @@ static const struct soc_device_attribute cn10_socinfo[] = {
 	/* cn10ka */
 	{.soc_id = "jep106:0369:00b9", .revision = "0x00000000",},
 	{.soc_id = "jep106:0369:00b9", .revision = "0x00000001",},
+	{.soc_id = "jep106:0369:00b9", .revision = "0x00000008",},
 	/* cn10kb */
 	{.soc_id = "jep106:0369:00bd",},
 	/* cnf10ka */
 	{.soc_id = "jep106:0369:00ba", .revision = "0x00000000",},
 	{.soc_id = "jep106:0369:00ba", .revision = "0x00000001",},
 	/* cnf10kb */
-	{.soc_id = "jep106:0369:00bc",},
+	{.soc_id = "jep106:0369:00bc", .revision = "0x00000000",},
+	{.soc_id = "jep106:0369:00bc", .revision = "0x00000008",},
 	{},
 };
 
