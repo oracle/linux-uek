@@ -390,7 +390,14 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		host = x86_spec_ctrl_base |
 		       (spectre_v2_in_ibrs_mode(spectre_v2_enabled) ?
 			SPEC_CTRL_IBRS : 0);
-		break;
+
+		/*
+		 * Write the SPEC_CTRL MSR and keep track of its value.
+		 * Note that SPEC_CTRL_INITIAL is only called when we
+		 * know the MSR exists.
+		 */
+		write_spec_ctrl_current(host, true);
+		return;
 	case SPEC_CTRL_IDLE_ENTER:
 		/*
 		 * If IBRS/SSBD are in use, disable them to avoid performance impact
@@ -407,14 +414,17 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 	}
 
 	/*
+	 * Idle enter updates the SPEC_CTRL MSR to avoid performance
+	 * impact during the idle. Idle exit restores the original
+	 * SPEC_CTRL MSR value. In both cases, x86_spec_ctrl_priv_cpu
+	 * shouldn't be updated, so wrmsrl is directly used.
+	 *
 	 * Note that when MSR_IA32_SPEC_CTRL is not available both
 	 * per_cpu(x86_spec_ctrl_priv_cpu ) and x86_spec_ctrl_base
 	 * are zero. Therefore we don't need to explicitly check for
 	 * MSR presence.
-	 * And for SPEC_CTRL_INITIAL we are only called when we know
-	 * the MSR exists.
 	 */
-	write_spec_ctrl_current(host, true);
+	wrmsrl(MSR_IA32_SPEC_CTRL, host);
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
