@@ -384,6 +384,7 @@ static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 		tc->t_tinc = NULL;
 		tc->t_tinc_hdr_rem = sizeof(struct rds_header);
 		tc->t_tinc_data_rem = 0;
+		INIT_WORK(&tc->t_fan_out_w, rds_tcp_fan_out_w);
 		init_waitqueue_head(&tc->t_recv_done_waitq);
 
 		/* Once set, they will never change until the conn is dead. */
@@ -404,6 +405,8 @@ static void rds_tcp_conn_free(void *arg)
 	struct rds_tcp_connection *tc = arg;
 	unsigned long flags;
 	rdsdebug("freeing tc %p\n", tc);
+
+	cancel_work_sync(&tc->t_fan_out_w);
 
 	spin_lock_irqsave(&rds_tcp_conn_lock, flags);
 	list_del(&tc->t_tcp_node);
