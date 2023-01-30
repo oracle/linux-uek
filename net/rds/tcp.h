@@ -44,11 +44,7 @@ struct rds_tcp_connection {
 	size_t			t_tinc_hdr_rem;
 	size_t			t_tinc_data_rem;
 
-	/* XXX error report? */
-	struct work_struct	t_conn_w;
-	struct work_struct	t_send_w;
-	struct work_struct	t_down_w;
-	struct work_struct	t_recv_w;
+	struct work_struct	t_fan_out_w;
 
 	/* for info exporting only */
 	struct list_head	t_list_item;
@@ -91,6 +87,7 @@ void rds_tcp_state_change(struct sock *sk);
 struct socket *rds_tcp_listen_init(struct net *net, bool isv6);
 void rds_tcp_listen_stop(struct socket *sock, struct work_struct *acceptor);
 void rds_tcp_listen_data_ready(struct sock *sk);
+void rds_tcp_fan_out_w(struct work_struct *work);
 void rds_tcp_conn_slots_available(struct rds_connection *conn, bool fan_out);
 int rds_tcp_accept_one(struct rds_tcp_net *rtn);
 int rds_tcp_keepalive(struct socket *sock);
