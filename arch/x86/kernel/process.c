@@ -451,7 +451,13 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 	}
 
 	if (updmsr) {
+		/*
+		 * For basic IBRS, the IBRS bit shouldn't be set on
+		 * exit (restore), but it should be set on entry.
+		 */
 		this_cpu_write(x86_spec_ctrl_restore,  msr);
+		if (check_basic_ibrs_inuse())
+			msr |= SPEC_CTRL_IBRS;
 		write_spec_ctrl_current(msr, false);
 	}
 }
