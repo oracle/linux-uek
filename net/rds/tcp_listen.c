@@ -68,7 +68,7 @@ rds_tcp_get_peer_sport(struct socket *sock)
 	} saddr;
 	int sport;
 
-	if (kernel_getpeername(sock, &saddr.addr) == 0) {
+	if (kernel_getpeername(sock, &saddr.addr) >= 0) {
 		switch (saddr.addr.sa_family) {
 		case AF_INET:
 			sport = ntohs(saddr.sin.sin_port);
@@ -128,28 +128,20 @@ void rds_tcp_set_linger(struct socket *sock)
 	sock_no_linger(sock->sk);
 }
 
-void rds_tcp_conn_slots_available(struct rds_connection *conn, bool fan_out)
+void rds_tcp_fan_out_w(struct work_struct *work)
 {
-	struct rds_tcp_connection *tc;
-	struct rds_tcp_net *rtn;
-	struct socket *sock;
+        struct rds_tcp_connection *tc = container_of(work,
+						     struct rds_tcp_connection,
+						     t_fan_out_w);
+	struct rds_connection *conn = tc->t_cpath->cp_conn;
+	struct rds_tcp_net *rtn = tc->t_rtn;
+	struct socket *sock = tc->t_sock;
 	int sport, npaths;
-
-	smp_rmb();
-	if (conn->c_destroy_in_prog)
-		return;
-
-	tc = conn->c_path->cp_transport_data;
-	rtn = tc->t_rtn;
-	if (!rtn)
-		return;
-
-	sock = tc->t_sock;
 
 	/* During fan-out, check that the connection we already
 	 * accepted in slot#0 carried the proper source port modulo.
 	 */
-	if (fan_out && conn->c_with_sport_idx && sock &&
+	if (conn->c_with_sport_idx && sock &&
 	    rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) > 0) {
 		/* cp->cp_index is encoded in lowest bits of source-port */
 		sport = rds_tcp_get_peer_sport(sock);
@@ -171,6 +163,36 @@ void rds_tcp_conn_slots_available(struct rds_connection *conn, bool fan_out)
 	 * the -ENOBUFS case in "rds_tcp_accept_one".
 	 */
 	rds_tcp_accept_work(rtn);
+}
+
+void rds_tcp_conn_slots_available(struct rds_connection *conn, bool fan_out)
+{
+	struct rds_conn_path *cp0;
+	struct rds_tcp_connection *tc;
+	struct rds_tcp_net *rtn;
+
+	smp_rmb();
+	if (conn->c_destroy_in_prog)
+		return;
+
+	cp0 = conn->c_path;
+	tc = cp0->cp_transport_data;
+	rtn = tc->t_rtn;
+
+	if (fan_out)
+		/* Delegate fan-out to a background worker in order
+		 * to allow "kernel_getpeername" to acquire a lock
+		 * on the socket.
+		 * The socket is already locked in this context
+		 * by either "rds_tcp_recv_path" or "tcp_v{4,6}_rcv",
+		 * depending on the origin of the dequeue-request.
+		 */
+		queue_work(cp0->cp_wq, &tc->t_fan_out_w);
+	else
+		/* Fan-out either already happened or is unnecessary.
+		 * Just go ahead and attempt to accept more connections
+		 */
+		rds_tcp_accept_work(rtn);
 }
 
 int rds_tcp_accept_one(struct rds_tcp_net *rtn)
