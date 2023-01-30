@@ -188,7 +188,6 @@ void write_spec_ctrl_current(u64 val, bool force)
 		return;
 
 	this_cpu_write(x86_spec_ctrl_priv_cpu, val);
-	wrmsrl(MSR_IA32_SPEC_CTRL, val);
 
 	/*
 	 * With basic IBRS this MSR is written on return-to-user, unless
