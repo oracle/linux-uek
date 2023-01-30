@@ -245,6 +245,8 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 	struct socket *sock;
 	unsigned int rounds;
 
+	cancel_work_sync(&tc->t_fan_out_w);
+
 	mutex_lock(&tc->t_conn_path_lock);
 	sock = tc->t_sock;
 
