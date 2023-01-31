@@ -4364,26 +4364,6 @@ int sysctl_schedstats(struct ctl_table *table, int write, void *buffer,
 #endif /* CONFIG_PROC_SYSCTL */
 #endif /* CONFIG_SCHEDSTATS */
 
-static int __init setup_sched_uek(char *str)
-{
-	int ret = 0;
-	char *p = NULL;
-
-	if (!str)
-		goto out;
-	while ((p = strsep(&str, ",")) != NULL) {
-		if (!*p)
-			continue;
-		if (strcmp(p, "wakeidle") == 0) {
-			static_branch_enable(&on_exadata);
-			ret = 1;
-		}
-	}
-out:
-	return ret;
-}
-__setup("sched_uek=", setup_sched_uek);
-
 /*
  * fork()/clone()-time setup:
  */
