@@ -1415,9 +1415,13 @@ static int rvu_af_dl_tim_adjust_timers_set(struct devlink *devlink, u32 id,
 	return 0;
 }
 
-static bool cn10k_tim_adjust_gti_errata(struct rvu *rvu)
+static bool cn10k_tim_adjust_gti_errata(struct pci_dev *pdev)
 {
-	if (is_cnf10ka_a1(rvu))
+	if ((pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
+	     (pdev->revision & 0x0F) >= 0x1) ||
+	    (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A &&
+	     (pdev->revision & 0x0F) >= 0x4) ||
+	    pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B)
 		return true;
 	return false;
 }
@@ -1430,7 +1434,7 @@ static int rvu_af_dl_tim_adjust_timer_get(struct devlink *devlink, u32 id,
 	u64 offset, delta;
 
 	if (id == RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI &&
-	    cn10k_tim_adjust_gti_errata(rvu))
+	    cn10k_tim_adjust_gti_errata(rvu->pdev))
 		return -ENXIO;
 
 	offset = rvu_af_dl_tim_param_id_to_offset(id);
@@ -1451,7 +1455,7 @@ static int rvu_af_dl_tim_adjust_timer_set(struct devlink *devlink, u32 id,
 		return -EINVAL;
 
 	if (id == RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI &&
-	    cn10k_tim_adjust_gti_errata(rvu))
+	    cn10k_tim_adjust_gti_errata(rvu->pdev))
 		return -ENXIO;
 
 	offset = rvu_af_dl_tim_param_id_to_offset(id);
