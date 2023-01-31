@@ -1227,7 +1227,7 @@ devlink_nl_cmd_rate_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_rate_get = {
+const struct devlink_cmd devl_gen_rate_get = {
 	.dump_one		= devlink_nl_cmd_rate_get_dump_one,
 };
 
@@ -1294,7 +1294,7 @@ devlink_nl_cmd_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 			       cb->nlh->nlmsg_seq, NLM_F_MULTI);
 }
 
-const struct devlink_gen_cmd devl_gen_inst = {
+const struct devlink_cmd devl_gen_inst = {
 	.dump_one		= devlink_nl_cmd_get_dump_one,
 };
 
@@ -1350,7 +1350,7 @@ devlink_nl_cmd_port_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_port = {
+const struct devlink_cmd devl_gen_port = {
 	.dump_one		= devlink_nl_cmd_port_get_dump_one,
 };
 
@@ -2072,7 +2072,7 @@ static int devlink_nl_cmd_linecard_get_dump_one(struct sk_buff *msg,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_linecard = {
+const struct devlink_cmd devl_gen_linecard = {
 	.dump_one		= devlink_nl_cmd_linecard_get_dump_one,
 };
 
@@ -2327,7 +2327,7 @@ devlink_nl_cmd_sb_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_sb = {
+const struct devlink_cmd devl_gen_sb = {
 	.dump_one		= devlink_nl_cmd_sb_get_dump_one,
 };
 
@@ -2465,7 +2465,7 @@ devlink_nl_cmd_sb_pool_get_dump_one(struct sk_buff *msg,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_sb_pool = {
+const struct devlink_cmd devl_gen_sb_pool = {
 	.dump_one		= devlink_nl_cmd_sb_pool_get_dump_one,
 };
 
@@ -2673,7 +2673,7 @@ devlink_nl_cmd_sb_port_pool_get_dump_one(struct sk_buff *msg,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_sb_port_pool = {
+const struct devlink_cmd devl_gen_sb_port_pool = {
 	.dump_one		= devlink_nl_cmd_sb_port_pool_get_dump_one,
 };
 
@@ -2908,7 +2908,7 @@ devlink_nl_cmd_sb_tc_pool_bind_get_dump_one(struct sk_buff *msg,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_sb_tc_pool_bind = {
+const struct devlink_cmd devl_gen_sb_tc_pool_bind = {
 	.dump_one		= devlink_nl_cmd_sb_tc_pool_bind_get_dump_one,
 };
 
@@ -4717,7 +4717,7 @@ devlink_nl_cmd_selftests_get_dump_one(struct sk_buff *msg,
 					 cb->extack);
 }
 
-const struct devlink_gen_cmd devl_gen_selftests = {
+const struct devlink_cmd devl_gen_selftests = {
 	.dump_one		= devlink_nl_cmd_selftests_get_dump_one,
 };
 
@@ -5205,7 +5205,7 @@ devlink_nl_cmd_param_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_param = {
+const struct devlink_cmd devl_gen_param = {
 	.dump_one		= devlink_nl_cmd_param_get_dump_one,
 };
 
@@ -5912,7 +5912,7 @@ devlink_nl_cmd_region_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 	return 0;
 }
 
-const struct devlink_gen_cmd devl_gen_region = {
+const struct devlink_cmd devl_gen_region = {
 	.dump_one		= devlink_nl_cmd_region_get_dump_one,
 };
 
@@ -6559,7 +6559,7 @@ devlink_nl_cmd_info_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_info = {
+const struct devlink_cmd devl_gen_info = {
 	.dump_one		= devlink_nl_cmd_info_get_dump_one,
 };
 
@@ -7727,7 +7727,7 @@ devlink_nl_cmd_health_reporter_get_dump_one(struct sk_buff *msg,
 	return 0;
 }
 
-const struct devlink_gen_cmd devl_gen_health_reporter = {
+const struct devlink_cmd devl_gen_health_reporter = {
 	.dump_one		= devlink_nl_cmd_health_reporter_get_dump_one,
 };
 
@@ -8245,7 +8245,7 @@ devlink_nl_cmd_trap_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_trap = {
+const struct devlink_cmd devl_gen_trap = {
 	.dump_one		= devlink_nl_cmd_trap_get_dump_one,
 };
 
@@ -8458,7 +8458,7 @@ devlink_nl_cmd_trap_group_get_dump_one(struct sk_buff *msg,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_trap_group = {
+const struct devlink_cmd devl_gen_trap_group = {
 	.dump_one		= devlink_nl_cmd_trap_group_get_dump_one,
 };
 
@@ -8751,7 +8751,7 @@ devlink_nl_cmd_trap_policer_get_dump_one(struct sk_buff *msg,
 	return err;
 }
 
-const struct devlink_gen_cmd devl_gen_trap_policer = {
+const struct devlink_cmd devl_gen_trap_policer = {
 	.dump_one		= devlink_nl_cmd_trap_policer_get_dump_one,
 };
 
