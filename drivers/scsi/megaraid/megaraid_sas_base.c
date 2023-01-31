@@ -3745,7 +3745,7 @@ megasas_complete_cmd(struct megasas_instance *instance, struct megasas_cmd *cmd,
 				fusion->fast_path_io = 0;
 			}
 
-			if (instance->adapter_type >= INVADER_SERIES)
+			if (instance->adapter_type >= VENTURA_SERIES)
 				megasas_set_ld_removed_by_fw(instance);
 
 			megasas_sync_map_info(instance);
