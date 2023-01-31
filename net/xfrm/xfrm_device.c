@@ -329,8 +329,7 @@ int xfrm_dev_state_add(struct net *net, struct xfrm_state *x,
 		 */
 		WARN_ON(err == -EOPNOTSUPP && is_packet_offload);
 		if (err != -EOPNOTSUPP || is_packet_offload) {
-			if (dev->xfrmdev_ops->xdo_dev_state_add)
-				NL_SET_ERR_MSG(extack, "Device failed to offload this state");
+			NL_SET_ERR_MSG_WEAK(extack, "Device failed to offload this state");
 			return err;
 		}
 	}
@@ -394,6 +393,7 @@ int xfrm_dev_policy_add(struct net *net, struct xfrm_policy *xp,
 		xdo->type = XFRM_DEV_OFFLOAD_UNSPECIFIED;
 		xdo->dir = 0;
 		netdev_put(dev, &xdo->dev_tracker);
+		NL_SET_ERR_MSG_WEAK(extack, "Device failed to offload this policy");
 		return err;
 	}
 
