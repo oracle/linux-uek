@@ -337,7 +337,6 @@ kernel/net/netfilter/nft_ct.ko
 kernel/net/netfilter/nft_fib_inet.ko
 kernel/net/netfilter/nft_fib.ko
 kernel/net/netfilter/nft_flow_offload.ko
-kernel/net/netfilter/nft_objref.ko
 kernel/net/netfilter/nft_reject_inet.ko
 kernel/net/netfilter/nft_reject.ko
 kernel/net/netfilter/nft_reject_netdev.ko
