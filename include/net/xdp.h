@@ -8,6 +8,7 @@
 
 #include <linux/skbuff.h> /* skb_shared_info */
 #include <linux/bitfield.h>
+#include <uapi/linux/netdev.h>
 
 /**
  * DOC: XDP RX-queue information
@@ -43,6 +44,8 @@ enum xdp_mem_type {
 	MEM_TYPE_XSK_BUFF_POOL,
 	MEM_TYPE_MAX,
 };
+
+typedef u32 xdp_features_t;
 
 /* XDP flags for ndo_xdp_xmit */
 #define XDP_XMIT_FLUSH		(1U << 0)	/* doorbell signal consumer */
