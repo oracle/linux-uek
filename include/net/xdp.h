@@ -460,9 +460,21 @@ enum xdp_rss_hash_type {
 #ifdef CONFIG_NET
 u32 bpf_xdp_metadata_kfunc_id(int id);
 bool bpf_dev_bound_kfunc_id(u32 btf_id);
+void xdp_features_set_redirect_target(struct net_device *dev, bool support_sg);
+void xdp_features_clear_redirect_target(struct net_device *dev);
 #else
 static inline u32 bpf_xdp_metadata_kfunc_id(int id) { return 0; }
 static inline bool bpf_dev_bound_kfunc_id(u32 btf_id) { return false; }
+
+static inline void
+xdp_features_set_redirect_target(struct net_device *dev, bool support_sg)
+{
+}
+
+static inline void
+xdp_features_clear_redirect_target(struct net_device *dev)
+{
+}
 #endif
 
 #endif /* __LINUX_NET_XDP_H__ */
