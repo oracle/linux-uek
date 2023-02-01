@@ -3081,6 +3081,7 @@ static void target_tmr_work(struct work_struct *work)
 	cmd->se_tfo->queue_tm_rsp(cmd);
 
 check_stop:
+	transport_lun_remove_cmd(cmd);
 	transport_cmd_check_stop_to_fabric(cmd);
 }
 
