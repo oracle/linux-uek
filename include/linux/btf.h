@@ -75,6 +75,14 @@ const struct btf_type *btf_type_id_size(const struct btf *btf,
 					u32 *ret_size);
 
 /*
+ * Tag marking a kernel function as a kfunc. This is meant to minimize the
+ * amount of copy-paste that kfunc authors have to include for correctness so
+ * as to avoid issues such as the compiler inlining or eliding either a static
+ * kfunc, or a global kfunc in an LTO build.
+ */
+#define __bpf_kfunc __used noinline
+
+/*
  * Options to control show behaviour.
  *	- BTF_SHOW_COMPACT: no formatting around type information
  *	- BTF_SHOW_NONAME: no struct/union member names/types
