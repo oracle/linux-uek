@@ -237,7 +237,7 @@
 #define NIX_AF_RX_DEF_OSCTP		(0x0290)
 #define NIX_AF_RX_DEF_CST_APAD0		(0x0298)
 #define NIX_AF_RX_DEF_ISCTP		(0x02A0)
-#define NIX_AF_RX_DEF_IPSECX		(0x02B0)
+#define NIX_AF_RX_DEF_IPSECX(a)		(0x02B0ull | (uint64_t)(a) << 3)
 #define NIX_AF_RX_DEF_CST_APAD1		(0x02A8)
 #define NIX_AF_RX_DEF_IIP4_DSCP		(0x02E0)
 #define NIX_AF_RX_DEF_OIP4_DSCP		(0x02E8)

@@ -5181,6 +5181,19 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 
 		/* Enable Channel backpressure */
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_CFG, BIT_ULL(0));
+		if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
+			/* Config IPSec headers identification */
+			rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IPSECX(0),
+				    (ltdefs->rx_ipsec[0].lid << 8) |
+				    (ltdefs->rx_ipsec[0].ltype_match << 4) |
+				    ltdefs->rx_ipsec[0].ltype_mask);
+
+			rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IPSECX(1),
+				    (ltdefs->rx_ipsec[1].spi_offset << 12) |
+				    (ltdefs->rx_ipsec[1].lid << 8) |
+				    (ltdefs->rx_ipsec[1].ltype_match << 4) |
+				    ltdefs->rx_ipsec[1].ltype_mask);
+		}
 	}
 	return 0;
 }
@@ -5466,6 +5479,15 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 		if (err)
 			dev_err(rvu->dev,
 				"CPT ctx flush failed with error: %d\n", err);
+	}
+	if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
+		/* reset the configuration related to inline ipsec */
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG0(nixlf),
+			    0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf),
+			    0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_SA_BASE(nixlf),
+			    0x0);
 	}
 }
 
