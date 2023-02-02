@@ -19,7 +19,7 @@
 #include <linux/uio_driver.h>
 #include <linux/miscdevice.h>
 
-#define PEM_EP_DRV_NAME		"octeontx2-pem-ep"
+#define PEM_EP_DRV_NAME		"marvell-cnxk-ep"
 
 #define PEM_DIS_PORT		0x50ull
 #define PEM_CFG                 0x00D8ull
