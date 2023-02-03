@@ -6485,7 +6485,9 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 	}
 #endif
 again:
-	retval = __set_cpus_allowed_ptr(p, new_mask, true);
+	retval = exadata_check_allowed(p, new_mask);
+	if (!retval)
+		retval = __set_cpus_allowed_ptr(p, new_mask, true);
 
 	if (!retval) {
 		cpuset_cpus_allowed(p, cpus_allowed);
