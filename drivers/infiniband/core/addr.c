@@ -335,11 +335,17 @@ static int dst_fetch_ha(const struct dst_entry *dst,
 		return -ENODATA;
 
 	if (!(n->nud_state & NUD_VALID)) {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		neigh_event_send(n, NULL);
+#endif
 		ret = -ENODATA;
 	} else {
 		neigh_ha_snapshot(dev_addr->dst_dev_addr, n, dst->dev);
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	neigh_event_send(n, NULL);
+#endif
 
 	neigh_release(n);
 
