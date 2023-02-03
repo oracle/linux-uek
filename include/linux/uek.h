@@ -10,6 +10,14 @@
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 DECLARE_STATIC_KEY_FALSE(on_exadata);
+extern int exadata_check_allowed(struct task_struct *p,
+				 const struct cpumask *new_mask);
+#else
+static int inline exadata_check_allowed(struct task_struct *p,
+					const struct cpumask *new_mask)
+{
+	return 0;
+}
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #endif /* __UEK_H__ */

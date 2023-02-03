@@ -6,6 +6,8 @@
 #include <linux/dmi.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/sched.h>
+#include <linux/sched/isolation.h>
 #include <linux/slab.h>
 
 #define UEK_MISC_VER  "0.1"
@@ -37,6 +39,31 @@ static int __init uek_params(char *str)
 	return 1;
 }
 __setup("uek=", uek_params);
+
+int exadata_check_allowed(struct task_struct *p, const struct cpumask *new_mask)
+{
+	/* Both isolcpus and uek=exadata MUST be set. */
+	if (!static_key_enabled(&housekeeping_overridden))
+		return 0;
+
+	if (!static_key_enabled(&on_exadata))
+		return 0;
+
+	/* Kernel threads are OK. */
+	if (p->flags & PF_KTHREAD)
+		return 0;
+
+	/*
+	 * User-space tasks cannot be on CPUs on the isolcpus=.
+	 *
+	 * N.B. The housekeeping_cpumask is the inverse of isolcpus=
+	 */
+	if (cpumask_intersects(new_mask, housekeeping_cpumask(HK_FLAG_DOMAIN)))
+		return 0;
+
+	return -EINVAL;
+};
+EXPORT_SYMBOL_GPL(exadata_check_allowed);
 
 static int detect_exadata_dmi(char **reason)
 {
