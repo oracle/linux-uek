@@ -361,7 +361,9 @@ static int dst_fetch_ha(struct dst_entry *dst, struct rdma_dev_addr *dev_addr,
 	}
 	read_unlock_bh(&n->lock);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (ret)
+#endif
 		neigh_event_send(n, NULL);
 
 	neigh_release(n);
