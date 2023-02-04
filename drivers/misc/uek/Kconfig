@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0+
+#
+
+config UEK_MISC
+	bool "Misc UEK out-of-tree support"
+	default y
+	help
+	  This option allows to self-optimize the kernel for Oracle
+	  systems.
