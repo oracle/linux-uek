@@ -1830,7 +1830,7 @@ void blk_finish_plug(struct blk_plug *plug)
 }
 EXPORT_SYMBOL(blk_finish_plug);
 
-extern struct static_key_false wake_affine_idle_pull;
+extern struct static_key_false on_exadata;
 
 int __init blk_dev_init(void)
 {
@@ -1852,7 +1852,7 @@ int __init blk_dev_init(void)
 #ifdef CONFIG_DEBUG_FS
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
 #endif
-	if (static_branch_unlikely(&wake_affine_idle_pull))
+	if (static_branch_unlikely(&on_exadata))
 		default_global_precise_iostats = true;
 
 	return 0;
