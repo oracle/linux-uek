@@ -32,6 +32,8 @@
 #include <linux/percpu.h>
 #include <asm/module.h>
 
+#include <linux/uek.h>
+
 #define MODULE_NAME_LEN MAX_PARAM_PREFIX_LEN
 
 struct modversion_info {
