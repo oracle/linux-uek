@@ -3302,8 +3302,6 @@ int sysctl_schedstats(struct ctl_table *table, int write,
 static inline void init_schedstats(void) {}
 #endif /* CONFIG_SCHEDSTATS */
 
-DEFINE_STATIC_KEY_FALSE(on_exadata);
-EXPORT_SYMBOL_GPL(on_exadata);
 static int __init setup_sched_uek(char *str)
 {
 	int ret = 0;
