@@ -4364,8 +4364,8 @@ int sysctl_schedstats(struct ctl_table *table, int write, void *buffer,
 #endif /* CONFIG_PROC_SYSCTL */
 #endif /* CONFIG_SCHEDSTATS */
 
-DEFINE_STATIC_KEY_FALSE(wake_affine_idle_pull);
-EXPORT_SYMBOL_GPL(wake_affine_idle_pull);
+DEFINE_STATIC_KEY_FALSE(on_exadata);
+EXPORT_SYMBOL_GPL(on_exadata);
 static int __init setup_sched_uek(char *str)
 {
 	int ret = 0;
@@ -4377,7 +4377,7 @@ static int __init setup_sched_uek(char *str)
 		if (!*p)
 			continue;
 		if (strcmp(p, "wakeidle") == 0) {
-			static_branch_enable(&wake_affine_idle_pull);
+			static_branch_enable(&on_exadata);
 			ret = 1;
 		}
 	}

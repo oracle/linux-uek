@@ -6040,7 +6040,7 @@ static int wake_wide(struct task_struct *p)
 	return 1;
 }
 
-extern struct static_key_false wake_affine_idle_pull;
+extern struct static_key_false on_exadata;
 /*
  * The purpose of wake_affine() is to quickly determine on which CPU we can run
  * soonest. For the purpose of speed we only consider the waking and previous
@@ -6069,7 +6069,7 @@ wake_affine_idle(int this_cpu, int prev_cpu, int sync)
 	 * on one CPU.
 	 */
 	if (available_idle_cpu(this_cpu)) {
-		if (static_branch_unlikely(&wake_affine_idle_pull))
+		if (static_branch_unlikely(&on_exadata))
 			return this_cpu;
 		else if (cpus_share_cache(this_cpu, prev_cpu))
 			return available_idle_cpu(prev_cpu) ? prev_cpu : this_cpu;

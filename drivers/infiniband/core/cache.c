@@ -370,7 +370,7 @@ static int add_roce_gid(struct ib_gid_table_entry *entry)
 	return 0;
 }
 
-extern struct static_key_false wake_affine_idle_pull;
+extern struct static_key_false on_exadata;
 
 /**
  * del_gid - Delete GID table entry
@@ -407,7 +407,7 @@ static void del_gid(struct ib_device *ib_dev, u32 port,
 	 * back to UEK5 behavior which is to set this to NULL regardless
 	 * of it being IB or RoCE.
 	 */
-	if (static_key_enabled(&wake_affine_idle_pull))
+	if (static_key_enabled(&on_exadata))
 		table->data_vec[ix] = NULL;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
