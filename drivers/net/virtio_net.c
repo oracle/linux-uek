@@ -2035,7 +2035,7 @@ static void virtnet_clean_affinity(struct virtnet_info *vi)
 	}
 }
 
-extern struct static_key_false wake_affine_idle_pull;
+extern struct static_key_false on_exadata;
 
 static void virtnet_set_affinity(struct virtnet_info *vi)
 {
@@ -2072,7 +2072,7 @@ static void virtnet_set_affinity(struct virtnet_info *vi)
 		 * If sched_uek=wakeidle is used then  revert back to prior
 		 * behavior.
 		 */
-		if (!static_branch_unlikely(&wake_affine_idle_pull))
+		if (!static_key_enabled(&on_exadata))
 			__netif_set_xps_queue(vi->dev, cpumask_bits(mask), i, false);
 		cpumask_clear(mask);
 	}
