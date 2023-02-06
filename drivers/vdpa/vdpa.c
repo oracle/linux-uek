@@ -650,9 +650,12 @@ static int vdpa_nl_cmd_dev_add_set_doit(struct sk_buff *skb, struct genl_info *i
 		err = PTR_ERR(mdev);
 		goto err;
 	}
+
 	if ((config.mask & mdev->config_attr_mask) != config.mask) {
+		pr_warn_ratelimited("vdpa: provided attributes 0x%llx are not supported",
+				    config.mask & ~mdev->config_attr_mask);
 		NL_SET_ERR_MSG_MOD(info->extack,
-				   "All provided attributes are not supported");
+				   "Some provided attributes are not supported");
 		err = -EOPNOTSUPP;
 		goto err;
 	}
