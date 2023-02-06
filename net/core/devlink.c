@@ -9930,7 +9930,7 @@ struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 		goto err_xa_alloc;
 
 	devlink->netdevice_nb.notifier_call = devlink_netdevice_event;
-	ret = register_netdevice_notifier_net(net, &devlink->netdevice_nb);
+	ret = register_netdevice_notifier(&devlink->netdevice_nb);
 	if (ret)
 		goto err_register_netdevice_notifier;
 
@@ -10119,8 +10119,7 @@ void devlink_free(struct devlink *devlink)
 
 	xa_destroy(&devlink->snapshot_ids);
 
-	WARN_ON_ONCE(unregister_netdevice_notifier_net(devlink_net(devlink),
-						       &devlink->netdevice_nb));
+	WARN_ON_ONCE(unregister_netdevice_notifier(&devlink->netdevice_nb));
 
 	xa_erase(&devlinks, devlink->index);
 
@@ -10448,6 +10447,8 @@ static int devlink_netdevice_event(struct notifier_block *nb,
 		break;
 	case NETDEV_REGISTER:
 	case NETDEV_CHANGENAME:
+		if (devlink_net(devlink) != dev_net(netdev))
+			return NOTIFY_OK;
 		/* Set the netdev on top of previously set type. Note this
 		 * event happens also during net namespace change so here
 		 * we take into account netdev pointer appearing in this
@@ -10457,6 +10458,8 @@ static int devlink_netdevice_event(struct notifier_block *nb,
 					netdev);
 		break;
 	case NETDEV_UNREGISTER:
+		if (devlink_net(devlink) != dev_net(netdev))
+			return NOTIFY_OK;
 		/* Clear netdev pointer, but not the type. This event happens
 		 * also during net namespace change so we need to clear
 		 * pointer to netdev that is going to another net namespace.
