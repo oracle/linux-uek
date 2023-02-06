@@ -3620,9 +3620,12 @@ static int read_sso_pc(struct rvu *rvu)
 	pr_info("SSO Work-Slot active cycles		%lld\n", reg);
 	pr_info("\n");
 
-	reg = rvu_read64(rvu, blkaddr, SSO_AF_NOS_CNT) & 0x1FFF;
-	pr_info("SSO work-queue entries on the no-schedule list	%lld\n", reg);
-	pr_info("\n");
+	if (is_rvu_otx2(rvu)) {
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_NOS_CNT) & 0x1FFF;
+		pr_info("SSO work-queue entries on the no-schedule list	%lld\n",
+			reg);
+		pr_info("\n");
+	}
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_AW_READ_ARB);
 	pr_info("SSO XAQ reads outstanding		%lld\n",
