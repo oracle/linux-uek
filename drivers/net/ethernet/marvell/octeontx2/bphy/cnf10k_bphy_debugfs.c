@@ -126,4 +126,6 @@ void cnf10k_rfoe_debugfs_remove(struct cnf10k_rfoe_drv_ctx *ctx)
 {
 	if (ctx->debugfs)
 		otx2_bphy_debugfs_remove_file(ctx->debugfs);
+
+	debugfs_remove_recursive(ctx->root);
 }

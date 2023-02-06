@@ -1756,6 +1756,8 @@ static void otx2_rfoe_debugfs_remove(struct otx2_rfoe_drv_ctx *ctx)
 {
 	if (ctx->debugfs)
 		otx2_bphy_debugfs_remove_file(ctx->debugfs);
+
+	debugfs_remove_recursive(ctx->root);
 }
 
 void otx2_rfoe_set_link_state(struct net_device *netdev, u8 state)
