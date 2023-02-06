@@ -1425,6 +1425,10 @@ void free_pgd_range(struct mmu_gather *tlb, unsigned long addr,
 		unsigned long end, unsigned long floor, unsigned long ceiling);
 int copy_page_range(struct mm_struct *dst, struct mm_struct *src,
 			struct vm_area_struct *vma);
+#ifdef CONFIG_KTASK
+int copy_page_range_mt(struct mm_struct *dst, struct mm_struct *src,
+			struct vm_area_struct *vma);
+#endif
 void unmap_mapping_range(struct address_space *mapping,
 		loff_t const holebegin, loff_t const holelen, int even_cows);
 int follow_pte_pmd(struct mm_struct *mm, unsigned long address,

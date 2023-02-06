@@ -1047,6 +1047,80 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	return ret;
 }
 
+#ifdef CONFIG_KTASK
+
+struct copy_page_range_args {
+	struct mm_struct *dst_mm;
+	struct mm_struct *src_mm;
+	struct vm_area_struct *vma;
+};
+
+static int copy_page_range_chunk(unsigned long addr,
+				 unsigned long end, void *arg)
+{
+	struct copy_page_range_args *args = arg;
+	struct mm_struct *dst_mm = args->dst_mm;
+	struct mm_struct *src_mm = args->src_mm;
+	struct vm_area_struct *vma = args->vma;
+	pgd_t *src_pgd, *dst_pgd;
+	unsigned long next;
+	int ret = 0;
+
+	dst_pgd = pgd_offset(dst_mm, addr);
+	src_pgd = pgd_offset(src_mm, addr);
+
+	do {
+		next = pgd_addr_end(addr, end);
+		if (pgd_none_or_clear_bad(src_pgd))
+			continue;
+		if (unlikely(copy_p4d_range(dst_mm, src_mm, dst_pgd, src_pgd,
+					    vma, addr, next))) {
+			ret = -ENOMEM;
+			break;
+		}
+	} while (dst_pgd++, src_pgd++, addr = next, addr != end);
+
+	return ret;
+}
+
+/*
+ * A stripped down version of copy_page_range() used to copy a VMA as part
+ * of preserving it across exec. Multithreading via ktask is used to speed
+ * up the copying of very large VMAs.
+ */
+int copy_page_range_mt(struct mm_struct *dst_mm, struct mm_struct *src_mm,
+		struct vm_area_struct *vma)
+{
+	struct copy_page_range_args args = { dst_mm, src_mm, vma };
+	size_t min_chunk = roundup(KTASK_MEM_CHUNK, PMD_SIZE);
+	DEFINE_KTASK_CTL(ctl, copy_page_range_chunk, &args, min_chunk);
+	size_t size = vma->vm_end - vma->vm_start;
+	unsigned long start = vma->vm_start;
+
+	BUG_ON(!(vma->vm_flags & VM_EXEC_KEEP));
+
+	/*
+	 * The work handed to ktask must be aligned to ensure that ktask
+	 * splits the work up on PMD_SIZE aligned boundaries because
+	 * copy_pmd_range() will fail if a PMD huge page straddles two
+	 * chunks.
+	 */
+	if (!IS_ALIGNED(start, PMD_SIZE) && size > min_chunk) {
+		unsigned long end = ALIGN(start, PMD_SIZE);
+		int ret;
+
+		ret = copy_page_range_chunk(start, end, &args);
+		if (ret)
+			return ret;
+		start = end;
+		size = vma->vm_end - start;
+	}
+
+	return ktask_run((void *)start, size, &ctl);
+}
+
+#endif
+
 /* Whether we should zap all COWed (private) pages too */
 static inline bool should_zap_cows(struct zap_details *details)
 {
