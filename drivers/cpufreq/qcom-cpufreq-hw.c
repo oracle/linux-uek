@@ -621,7 +621,9 @@ static int qcom_cpufreq_hw_driver_probe(struct platform_device *pdev)
 
 static int qcom_cpufreq_hw_driver_remove(struct platform_device *pdev)
 {
-	return cpufreq_unregister_driver(&cpufreq_qcom_hw_driver);
+	cpufreq_unregister_driver(&cpufreq_qcom_hw_driver);
+
+	return 0;
 }
 
 static struct platform_driver qcom_cpufreq_hw_driver = {
