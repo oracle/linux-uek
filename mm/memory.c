@@ -70,6 +70,7 @@
 #include <linux/userfaultfd_k.h>
 #include <linux/dax.h>
 #include <linux/oom.h>
+#include <linux/ktask.h>
 
 #include <asm/io.h>
 #include <asm/mmu_context.h>
@@ -1292,6 +1293,76 @@ void unmap_page_range(struct mmu_gather *tlb,
 	tlb_end_vma(tlb, vma);
 }
 
+#ifdef CONFIG_KTASK
+
+struct unmap_page_range_args {
+	struct mmu_gather *tlb;
+	struct vm_area_struct *vma;
+	struct zap_details *details;
+	unsigned long start;
+	unsigned long end;
+};
+
+static int unmap_page_range_chunk(unsigned long addr, unsigned long end,
+				  void *arg)
+{
+	struct unmap_page_range_args *args = arg;
+	struct mmu_gather *tlb = args->tlb;
+	struct vm_area_struct *vma = args->vma;
+	struct zap_details *details = args->details;
+	struct mm_struct *mm = tlb->mm;
+	struct mmu_gather local_tlb;
+	bool use_local_gather = false;
+
+	/*
+	 * The mmu gather API is not designed to operate on a single
+	 * mmu_gather in parallel. Use a local mmu_gather when multi-
+	 * threaded and avoid the additional overhead when not.
+	 */
+	if (addr != args->start || end != args->end) {
+		tlb = &local_tlb;
+		use_local_gather = true;
+	}
+
+	if (use_local_gather)
+		tlb_gather_mmu(tlb, mm, 0, -1);
+
+	unmap_page_range(tlb, vma, addr, end, details);
+
+	if (use_local_gather)
+		tlb_finish_mmu(tlb, 0, -1);
+
+	return 0;
+}
+
+static void unmap_page_range_mt(struct mmu_gather *tlb,
+			struct vm_area_struct *vma,
+			unsigned long addr, unsigned long end,
+			struct zap_details *details)
+{
+	struct unmap_page_range_args args = { tlb, vma, details, addr, end };
+	size_t min_chunk = roundup(KTASK_MEM_CHUNK, PMD_SIZE);
+	DEFINE_KTASK_CTL(ctl, unmap_page_range_chunk, &args, min_chunk);
+	size_t size = end - addr;
+
+	BUG_ON(addr >= end);
+
+	/*
+	 * Start the work handed to ktask on a PMD_SIZE aligned boundary to
+	 * ensure any PMD huge pages are not split unnecessarily.
+	 */
+	if (!IS_ALIGNED(addr, PMD_SIZE) && size > min_chunk) {
+		unsigned long eaddr = ALIGN(addr, PMD_SIZE);
+
+		unmap_page_range(tlb, vma, addr, eaddr, details);
+		args.start = addr = eaddr;
+		size = end - eaddr;
+	}
+
+	ktask_run((void *)addr, size, &ctl);
+}
+
+#endif /* CONFIG_KTASK */
 
 static void unmap_single_vma(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long start_addr,
@@ -1331,6 +1402,14 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 				__unmap_hugepage_range_final(tlb, vma, start, end, NULL);
 				i_mmap_unlock_write(vma->vm_file->f_mapping);
 			}
+#ifdef CONFIG_KTASK
+		/*
+		 * Only possibly use multiple threads to unmap when the
+		 * entire address space is being unmapped.
+		 */
+		} else if (tlb->fullmm && (vma_is_anonymous(vma) || vma_is_shmem(vma))) {
+			unmap_page_range_mt(tlb, vma, start, end, details);
+#endif
 		} else
 			unmap_page_range(tlb, vma, start, end, details);
 	}
