@@ -123,7 +123,6 @@ mISDN_dsp.ko
 mkiss.ko
 mptfc.ko
 mt76-connac-lib.ko
-mt7921e.ko
 mxl-gpy.ko
 nci.ko
 ncpfs.ko
