@@ -95,6 +95,15 @@
 #define MLNX_HANDLE_GET_MFG_INFO    0x8200000F
 #define MLNX_HANDLE_LOCK_MFG_INFO   0x82000011
 
+/*
+ * SMC function IDs to set and get the large ICM carveout size
+ * stored in the eeprom.
+ */
+#define MLNX_HANDLE_SET_ICM_INFO    0x82000012
+#define MLNX_HANDLE_GET_ICM_INFO    0x82000013
+
+#define MAX_ICM_BUFFER_SIZE 10
+
 /* SMC function IDs for SiP Service queries */
 #define MLNX_SIP_SVC_CALL_COUNT		0x8200ff00
 #define MLNX_SIP_SVC_UID		0x8200ff01
