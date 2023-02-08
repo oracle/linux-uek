@@ -19,7 +19,7 @@
 
 #include "mlxbf-pmc.h"
 
-#define DRIVER_VERSION		2.2
+#define DRIVER_VERSION		2.3
 
 static struct mlxbf_pmc_context *pmc;
 
@@ -562,7 +562,7 @@ int mlxbf_read_event(int blk_num, uint32_t cnt_num, bool is_l3,
 		     uint64_t *result)
 {
 	uint32_t perfcfg_offset, perfval_offset;
-	uint64_t perfmon_cfg, perfevt, perfctl;
+	uint64_t perfmon_cfg, perfevt;
 
 	if (cnt_num >= pmc->block[blk_num].counters)
 		return -EINVAL;
@@ -572,26 +572,6 @@ int mlxbf_read_event(int blk_num, uint32_t cnt_num, bool is_l3,
 
 	perfcfg_offset = cnt_num * 8;
 	perfval_offset = perfcfg_offset + pmc->block[blk_num].counters * 8;
-
-	/* Set counter in "read" mode */
-	perfmon_cfg = 0;
-	perfmon_cfg |= FIELD_PREP(MLXBF_GEN_PERFMON_CONFIG__ADDR,
-				  MLXBF_PERFCTL);
-	perfmon_cfg |= FIELD_PREP(MLXBF_GEN_PERFMON_CONFIG__STROBE, 1);
-	perfmon_cfg |= FIELD_PREP(MLXBF_GEN_PERFMON_CONFIG__WR_R_B, 0);
-
-	if (mlxbf_pmc_writeq(perfmon_cfg,
-		       pmc->block[blk_num].mmio_base + perfcfg_offset))
-		return -EFAULT;
-
-	/* Check if the counter is enabled */
-
-	if (mlxbf_pmc_readq(&perfctl,
-		      pmc->block[blk_num].mmio_base + perfval_offset))
-		return -EFAULT;
-
-	if (FIELD_GET(MLXBF_GEN_PERFCTL__EN0, perfctl) == 0)
-		return -EINVAL;
 
 	/* Set counter in "read" mode */
 	perfmon_cfg = 0;
@@ -812,10 +792,10 @@ static ssize_t mlxbf_print_event_list(struct kobject *ko,
 	buf[0] = '\0';
 	while (events[i].evt_name != NULL) {
 		size += snprintf(e_info,
-				sizeof(e_info),
-				"%x: %s\n",
-				events[i].evt_num,
-				events[i].evt_name);
+				 sizeof(e_info),
+				 "%x: %s\n",
+				 events[i].evt_num,
+				 events[i].evt_name);
 		if (size >= PAGE_SIZE)
 			break;
 		strcat(buf, e_info);
