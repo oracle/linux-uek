@@ -1,10 +1,21 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0 or BSD-3-Clause
 /*
- * Copyright (c) 2019, Mellanox Technologies. All rights reserved.
+ *  Copyright (C) 2020 Mellanox Technologies.  All rights reserved.
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License v2.0 as published by
+ *  the Free Software Foundation.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
  */
 
 #ifndef __MLXBF_BOOTCTL_H__
 #define __MLXBF_BOOTCTL_H__
+
+/* BlueField-specific SMC function IDs */
 
 /*
  * Request that the on-chip watchdog be enabled, or disabled, after
@@ -14,14 +25,14 @@
  * will not be enabled after the next soft reset. Non-zero errors are
  * returned as documented below.
  */
-#define MLXBF_BOOTCTL_SET_POST_RESET_WDOG	0x82000000
+#define MLNX_SET_POST_RESET_WDOG	0x82000000
 
 /*
  * Query the status which has been requested for the on-chip watchdog
  * after the next chip soft reset. Returns the interval as set by
- * MLXBF_BOOTCTL_SET_POST_RESET_WDOG.
+ * MLNX_SET_POST_RESET_WDOG.
  */
-#define MLXBF_BOOTCTL_GET_POST_RESET_WDOG	0x82000001
+#define MLNX_GET_POST_RESET_WDOG	0x82000001
 
 /*
  * Request that a specific boot action be taken at the next soft
@@ -32,72 +43,77 @@
  * invoked. See below for the available MLNX_BOOT_xxx parameter
  * values. Non-zero errors are returned as documented below.
  */
-#define MLXBF_BOOTCTL_SET_RESET_ACTION		0x82000002
+#define MLNX_SET_RESET_ACTION		0x82000002
 
 /*
  * Return the specific boot action which will be taken at the next
  * soft reset. Returns the reset action (see below for the parameter
- * values for MLXBF_BOOTCTL_SET_RESET_ACTION).
+ * values for MLNX_SET_RESET_ACTION).
  */
-#define MLXBF_BOOTCTL_GET_RESET_ACTION		0x82000003
+#define MLNX_GET_RESET_ACTION		0x82000003
 
 /*
  * Request that a specific boot action be taken at the soft reset
  * after the next soft reset. For a specified valid boot mode, the
  * effect of this call is identical to that of invoking
- * MLXBF_BOOTCTL_SET_RESET_ACTION after the next chip soft reset; in
+ * MLNX_SET_RESET_ACTION after the next chip soft reset; in
  * particular, after that reset, the action for the now next reset can
- * be queried with MLXBF_BOOTCTL_GET_RESET_ACTION and modified with
- * MLXBF_BOOTCTL_SET_RESET_ACTION. You may also specify the parameter as
+ * be queried with MLNX_GET_RESET_ACTION and modified with
+ * MLNX_SET_RESET_ACTION. You may also specify the parameter as
  * MLNX_BOOT_NONE, which is equivalent to specifying that no call to
- * MLXBF_BOOTCTL_SET_RESET_ACTION be taken after the next chip soft reset.
+ * MLNX_SET_RESET_ACTION be taken after the next chip soft reset.
  * This call does not affect the action to be taken at the next soft
  * reset. Non-zero errors are returned as documented below.
  */
-#define MLXBF_BOOTCTL_SET_SECOND_RESET_ACTION	0x82000004
+#define MLNX_SET_SECOND_RESET_ACTION	0x82000004
 
 /*
  * Return the specific boot action which will be taken at the soft
  * reset after the next soft reset; this will be one of the valid
- * actions for MLXBF_BOOTCTL_SET_SECOND_RESET_ACTION.
+ * actions for MLNX_SET_SECOND_RESET_ACTION.
  */
-#define MLXBF_BOOTCTL_GET_SECOND_RESET_ACTION	0x82000005
+#define MLNX_GET_SECOND_RESET_ACTION	0x82000005
 
 /*
  * Return the fuse status of the current chip. The caller should specify
  * with the second argument if the state of the lifecycle fuses or the
  * version of secure boot fuse keys left should be returned.
  */
-#define MLXBF_BOOTCTL_GET_TBB_FUSE_STATUS	0x82000006
+#define MLNX_GET_TBB_FUSE_STATUS	0x82000006
 
-/* Reset eMMC by programming the RST_N register. */
-#define MLXBF_BOOTCTL_SET_EMMC_RST_N		0x82000007
+/*
+ * Initiate Firmware Reset via TYU. This might be invoked during the reset
+ * flow in isolation mode.
+ */
+#define MLNX_HANDLE_FW_RESET            0x8200000D
 
-#define MLXBF_BOOTCTL_GET_DIMM_INFO		0x82000008
+/*
+ * SMC function IDs to set, get and reset the manufacturing information
+ * stored within the eeprom.
+ */
+#define MLNX_HANDLE_SET_MFG_INFO    0x8200000E
+#define MLNX_HANDLE_GET_MFG_INFO    0x8200000F
+#define MLNX_HANDLE_LOCK_MFG_INFO   0x82000011
 
 /* SMC function IDs for SiP Service queries */
-#define MLXBF_BOOTCTL_SIP_SVC_CALL_COUNT	0x8200ff00
-#define MLXBF_BOOTCTL_SIP_SVC_UID		0x8200ff01
-#define MLXBF_BOOTCTL_SIP_SVC_VERSION		0x8200ff03
-
-/* ARM Standard Service Calls version numbers */
-#define MLXBF_BOOTCTL_SVC_VERSION_MAJOR		0x0
-#define MLXBF_BOOTCTL_SVC_VERSION_MINOR		0x2
+#define MLNX_SIP_SVC_CALL_COUNT		0x8200ff00
+#define MLNX_SIP_SVC_UID		0x8200ff01
+#define MLNX_SIP_SVC_VERSION		0x8200ff03
 
 /* Number of svc calls defined. */
-#define MLXBF_BOOTCTL_NUM_SVC_CALLS 12
+#define MLNX_NUM_SVC_CALLS 16
 
-/* Valid reset actions for MLXBF_BOOTCTL_SET_RESET_ACTION. */
-#define MLXBF_BOOTCTL_EXTERNAL	0 /* Not boot from eMMC */
-#define MLXBF_BOOTCTL_EMMC	1 /* From primary eMMC boot partition */
-#define MLNX_BOOTCTL_SWAP_EMMC	2 /* Swap eMMC boot partitions and reboot */
-#define MLXBF_BOOTCTL_EMMC_LEGACY	3 /* From primary eMMC in legacy mode */
+/* Valid reset actions for MLNX_SET_RESET_ACTION. */
+#define MLNX_BOOT_EXTERNAL	0 /* Do not boot from eMMC */
+#define MLNX_BOOT_EMMC		1 /* Boot from primary eMMC boot partition */
+#define MLNX_BOOT_SWAP_EMMC	2 /* Swap eMMC boot partitions and reboot */
+#define MLNX_BOOT_EMMC_LEGACY	3 /* Boot from primary eMMC in legacy mode */
 
 /* Valid arguments for requesting the fuse status. */
-#define MLXBF_BOOTCTL_FUSE_STATUS_LIFECYCLE	0 /* Return lifecycle status. */
-#define MLXBF_BOOTCTL_FUSE_STATUS_KEYS	1 /* Return secure boot key status */
+#define MLNX_FUSE_STATUS_LIFECYCLE	0 /* Return the lifecycle status. */
+#define MLNX_FUSE_STATUS_KEYS		1 /* Return secure boot key status */
 
-/* Additional value to disable the MLXBF_BOOTCTL_SET_SECOND_RESET_ACTION. */
-#define MLXBF_BOOTCTL_NONE	0x7fffffff /* Don't change next boot action */
+/* Additional parameter value to disable the MLNX_SET_SECOND_RESET_ACTION. */
+#define MLNX_BOOT_NONE		0x7fffffff /* Don't change next boot action */
 
 #endif /* __MLXBF_BOOTCTL_H__ */
