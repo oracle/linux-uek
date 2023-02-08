@@ -681,7 +681,7 @@ static ssize_t mlxbf_counter_read(struct kobject *ko,
 	} else
 		return -EINVAL;
 
-	return sprintf(buf, "0x%llx\n", value);
+	return snprintf(buf, PAGE_SIZE, "0x%llx\n", value);
 }
 
 /* Store function for "counter" sysfs files */
@@ -758,7 +758,7 @@ static ssize_t mlxbf_event_find(struct kobject *ko,
 
 	evt_name = mlxbf_pmc_get_event_name((char *)ko->name, evt_num);
 
-	return sprintf(buf, "0x%llx: %s\n", evt_num, evt_name);
+	return snprintf(buf, PAGE_SIZE, "0x%llx: %s\n", evt_num, evt_name);
 }
 
 /* Store function for "event" sysfs files */
@@ -811,9 +811,12 @@ static ssize_t mlxbf_print_event_list(struct kobject *ko,
 
 	buf[0] = '\0';
 	while (events[i].evt_name != NULL) {
-		size += sprintf(e_info, "%x: %s\n", events[i].evt_num,
-			events[i].evt_name);
-		if (size > PAGE_SIZE)
+		size += snprintf(e_info,
+				sizeof(e_info),
+				"%x: %s\n",
+				events[i].evt_num,
+				events[i].evt_name);
+		if (size >= PAGE_SIZE)
 			break;
 		strcat(buf, e_info);
 		ret = size;
@@ -840,7 +843,7 @@ static ssize_t mlxbf_show_counter_state(struct kobject *ko,
 
 	value = FIELD_GET(MLXBF_L3C_PERF_CNT_CFG__EN, perfcnt_cfg);
 
-	return sprintf(buf, "%d\n", value);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 /* Store function for "enable" sysfs files - only for l3cache */
