@@ -186,6 +186,7 @@ struct mlxbf_pmc_events mlxbf_smgen_events[] = {
 };
 
 struct mlxbf_pmc_events mlxbf1_trio_events[] = {
+{0x00, "DISABLE"},
 {0xa0, "TPIO_DATA_BEAT"},
 {0xa1, "TDMA_DATA_BEAT"},
 {0xa2, "MAP_DATA_BEAT"},
@@ -210,6 +211,7 @@ struct mlxbf_pmc_events mlxbf1_trio_events[] = {
 };
 
 struct mlxbf_pmc_events mlxbf2_trio_events[] = {
+{0x00, "DISABLE"},
 {0xa0, "TPIO_DATA_BEAT"},
 {0xa1, "TDMA_DATA_BEAT"},
 {0xa2, "MAP_DATA_BEAT"},
@@ -243,6 +245,7 @@ struct mlxbf_pmc_events mlxbf2_trio_events[] = {
 };
 
 struct mlxbf_pmc_events mlxbf_ecc_events[] = {
+{0x00, "DISABLE"},
 {0x100, "ECC_SINGLE_ERROR_CNT"},
 {0x104, "ECC_DOUBLE_ERROR_CNT"},
 {0x114, "SERR_INJ"},
@@ -256,6 +259,7 @@ struct mlxbf_pmc_events mlxbf_ecc_events[] = {
 };
 
 struct mlxbf_pmc_events mlxbf_mss_events[] = {
+{0x00, "DISABLE"},
 {0xc0, "RXREQ_MSS"},
 {0xc1, "RXDAT_MSS"},
 {0xc2, "TXRSP_MSS"},
@@ -264,6 +268,7 @@ struct mlxbf_pmc_events mlxbf_mss_events[] = {
 };
 
 struct mlxbf_pmc_events mlxbf_hnf_events[] = {
+{0x00, "DISABLE"},
 {0x45, "HNF_REQUESTS"},
 {0x46, "HNF_REJECTS"},
 {0x47, "ALL_BUSY"},
@@ -323,6 +328,7 @@ struct mlxbf_pmc_events mlxbf_hnf_events[] = {
 };
 
 struct mlxbf_pmc_events mlxbf2_hnfnet_events[] = {
+{0x00, "DISABLE"},
 {0x12, "CDN_REQ"},
 {0x13, "DDN_REQ"},
 {0x14, "NDN_REQ"},
