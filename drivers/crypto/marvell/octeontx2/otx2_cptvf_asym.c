@@ -1094,6 +1094,8 @@ int otx2_cpt_register_asym_algs(void)
 	if (ret)
 		goto unreg_rsa;
 
+	return 0;
+
 unreg_rsa:
 	for (--i; i >= 0; --i)
 		crypto_unregister_akcipher(&cpt_rsa_algs[i]);
