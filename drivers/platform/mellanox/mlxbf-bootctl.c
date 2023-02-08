@@ -104,6 +104,7 @@ enum {
 
 /* This mutex is used to serialize MFG write and lock operations. */
 static DEFINE_MUTEX(mfg_ops_lock);
+static DEFINE_MUTEX(icm_ops_lock);
 
 #define MLNX_MFG_OOB_MAC_LEN         ETH_ALEN
 #define MLNX_MFG_OPN_VAL_LEN         24
@@ -379,6 +380,43 @@ static ssize_t oob_mac_store(struct device_driver *drv, const char *buf,
 	arm_smccc_smc(MLNX_HANDLE_SET_MFG_INFO, MLNX_MFG_TYPE_OOB_MAC,
 		  MLNX_MFG_OOB_MAC_LEN, mac_addr, 0, 0, 0, 0, &res);
 	mutex_unlock(&mfg_ops_lock);
+
+	return res.a0 ? -EPERM : count;
+}
+
+static ssize_t large_icm_show(struct device_driver *drv, char *buf)
+{
+	char icm_str[MAX_ICM_BUFFER_SIZE] = { 0 };
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MLNX_HANDLE_GET_ICM_INFO, 0, 0, 0, 0,
+		      0, 0, 0, &res);
+	if (res.a0)
+		return -EPERM;
+
+	sprintf(icm_str, "0x%lx", res.a1);
+
+	return snprintf(buf, sizeof(icm_str), "%s", icm_str);
+}
+
+static ssize_t large_icm_store(struct device_driver *drv, const char *buf,
+			     size_t count)
+{
+	struct arm_smccc_res res;
+	unsigned long icm_data;
+	int err;
+
+	err = kstrtoul(buf, 16, &icm_data);
+	if (err)
+		return err;
+
+	if (((icm_data != 0) && (icm_data < 0x80)) ||
+	    (icm_data > 0x100000) || (icm_data % 128))
+		return -EPERM;
+
+	mutex_lock(&icm_ops_lock);
+	arm_smccc_smc(MLNX_HANDLE_SET_ICM_INFO, icm_data, 0, 0, 0, 0, 0, 0, &res);
+	mutex_unlock(&icm_ops_lock);
 
 	return res.a0 ? -EPERM : count;
 }
@@ -1170,6 +1208,7 @@ static DRIVER_ATTR_RW(uuid);
 static DRIVER_ATTR_RW(rev);
 static DRIVER_ATTR_WO(mfg_lock);
 static DRIVER_ATTR_RW(rsh_log);
+static DRIVER_ATTR_RW(large_icm);
 
 static struct attribute *mbc_dev_attrs[] = {
 	&driver_attr_post_reset_wdog.attr,
@@ -1187,6 +1226,7 @@ static struct attribute *mbc_dev_attrs[] = {
 	&driver_attr_rev.attr,
 	&driver_attr_mfg_lock.attr,
 	&driver_attr_rsh_log.attr,
+	&driver_attr_large_icm.attr,
 	NULL
 };
 
