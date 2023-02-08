@@ -243,17 +243,32 @@ struct mlxbf_pmc_events *mlxbf_pmc_event_list(char *blk)
 			break;
 		}
 	else if (strstr(blk, "mss"))
-		events = mlxbf_mss_events;
+		switch (pmc->event_set) {
+		case MLNX_EVENT_SET_BF1:
+		case MLNX_EVENT_SET_BF2:
+			events = mlxbf_mss_events;
+			break;
+		case MLNX_EVENT_SET_BF3:
+			events = mlxbf3_mss_events;
+			break;
+		default:
+			events = NULL;
+			break;
+		}
 	else if (strstr(blk, "ecc"))
 		events = mlxbf_ecc_events;
 	else if (strstr(blk, "pcie"))
 		events = mlxbf_pcie_events;
 	else if (strstr(blk, "l3cache"))
 		events = mlxbf_l3cache_events;
-        else if (strstr(blk, "gic"))
+	else if (strstr(blk, "gic"))
 		events = mlxbf_smgen_events;
-        else if (strstr(blk, "smmu"))
+	else if (strstr(blk, "smmu"))
 		events = mlxbf_smgen_events;
+	else if (strstr(blk, "llt_miss"))
+		events = mlxbf3_llt_miss_events;
+	else if (strstr(blk, "llt"))
+		events = mlxbf3_llt_events;
 	else
 		events = NULL;
 
@@ -378,6 +393,46 @@ int mlxbf_program_l3_counter(int blk_num, uint32_t cnt_num, uint32_t evt)
 	return mlxbf_pmc_writel(*wordaddr, pmcaddr);
 }
 
+/* Method to handle crspace counter programming */
+int mlxbf_program_crspace_counter(int blk_num, uint32_t cnt_num, uint32_t evt)
+{
+	int reg_num, ret;
+	uint32_t word;
+	void *addr;
+
+	reg_num = (cnt_num / 2);
+	addr = pmc->block[blk_num].mmio_base + (reg_num * 4);
+
+	ret = mlxbf_pmc_readl(&word, addr);
+	if (ret)
+		return ret;
+
+	switch(cnt_num % 2) {
+	case 0:
+		word &= ~MLXBF_CRSPACE_PERFSEL0;
+		word |= FIELD_PREP(MLXBF_CRSPACE_PERFSEL0, evt);
+		break;
+	case 1:
+		word &= ~MLXBF_CRSPACE_PERFSEL1;
+		word |= FIELD_PREP(MLXBF_CRSPACE_PERFSEL1, evt);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return mlxbf_pmc_writel(word, addr);
+}
+
+int mlxbf_clear_crspace_counter(int blk_num, uint32_t cnt_num)
+{
+	void *addr;
+
+	addr = pmc->block[blk_num].mmio_base + MLXBF_CRSPACE_PERFMON_VAL0 +
+		(cnt_num * 4);
+
+	return mlxbf_pmc_writel(0x0, addr);
+}
+
 /* Method to program a counter to monitor an event */
 int mlxbf_program_counter(int blk_num, uint32_t cnt_num, uint32_t evt,
 			  bool is_l3)
@@ -389,6 +444,9 @@ int mlxbf_program_counter(int blk_num, uint32_t cnt_num, uint32_t evt,
 
 	if (is_l3)
 		return mlxbf_program_l3_counter(blk_num, cnt_num, evt);
+
+	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE)
+		return mlxbf_program_crspace_counter(blk_num, cnt_num, evt);
 
 	/* Configure the counter */
 	perfctl = 0;
@@ -467,6 +525,22 @@ int mlxbf_read_l3_counter(int blk_num, uint32_t cnt_num, uint64_t *result)
 	return 0;
 }
 
+/* Method to handle crspace counter reads */
+int mlxbf_read_crspace_counter(int blk_num, uint32_t cnt_num, uint64_t *result)
+{
+	uint32_t value;
+	int status = 0;
+
+	status = mlxbf_pmc_readl(&value, pmc->block[blk_num].mmio_base +
+		MLXBF_CRSPACE_PERFMON_VAL0 + (cnt_num * 4));
+	if (status)
+		return status;
+
+	*result = value;
+
+	return 0;
+}
+
 /* Method to read the counter value */
 int mlxbf_read_counter(int blk_num, uint32_t cnt_num, bool is_l3,
 		       uint64_t *result)
@@ -480,6 +554,9 @@ int mlxbf_read_counter(int blk_num, uint32_t cnt_num, bool is_l3,
 
 	if (is_l3)
 		return mlxbf_read_l3_counter(blk_num, cnt_num, result);
+
+	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE)
+		return mlxbf_read_crspace_counter(blk_num, cnt_num, result);
 
 	perfcfg_offset = cnt_num * 8;
 	perfval_offset = perfcfg_offset + pmc->block[blk_num].counters * 8;
@@ -557,6 +634,34 @@ int mlxbf_read_l3_event(int blk_num, uint32_t cnt_num, uint64_t *result)
 	return 0;
 }
 
+int mlxbf_read_crspace_event(int blk_num, uint32_t cnt_num, uint64_t *result)
+{
+	uint32_t word, evt;
+	int reg_num, ret;
+	void *addr;
+
+	reg_num = (cnt_num / 2);
+	addr = pmc->block[blk_num].mmio_base + (reg_num * 4);
+
+	ret = mlxbf_pmc_readl(&word, addr);
+	if (ret)
+		return ret;
+
+	switch(cnt_num % 2) {
+	case 0:
+		evt = FIELD_GET(MLXBF_CRSPACE_PERFSEL0, word);
+		break;
+	case 1:
+		evt = FIELD_GET(MLXBF_CRSPACE_PERFSEL1, word);
+		break;
+	default:
+		return -EINVAL;
+	}
+	*result = evt;
+
+	return 0;
+}
+
 /* Method to find the event currently being monitored by a counter */
 int mlxbf_read_event(int blk_num, uint32_t cnt_num, bool is_l3,
 		     uint64_t *result)
@@ -569,6 +674,10 @@ int mlxbf_read_event(int blk_num, uint32_t cnt_num, bool is_l3,
 
 	if (is_l3)
 		return mlxbf_read_l3_event(blk_num, cnt_num, result);
+
+	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE)
+		return mlxbf_read_crspace_event(blk_num, cnt_num, result);
+
 
 	perfcfg_offset = cnt_num * 8;
 	perfval_offset = perfcfg_offset + pmc->block[blk_num].counters * 8;
@@ -645,7 +754,8 @@ static ssize_t mlxbf_counter_read(struct kobject *ko,
 	if (strstr(ko->name, "l3cache"))
 		is_l3 = true;
 
-	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_COUNTER) {
+	if ((pmc->block[blk_num].type == MLXBF_PERFTYPE_COUNTER) ||
+	    (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE)) {
 		err = sscanf(attr->attr.name, "counter%d", &cnt_num);
 		if (err < 0)
 			return -EINVAL;
@@ -706,6 +816,11 @@ static ssize_t mlxbf_counter_clear(struct kobject *ko,
 		err = mlxbf_write_reg(blk_num, offset, data);
 		if (err < 0)
 			return -EINVAL;
+	} else if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE) {
+		err = sscanf(attr->attr.name, "counter%d", &cnt_num);
+		if (err < 0)
+			return -EINVAL;
+		err = mlxbf_clear_crspace_counter(blk_num, cnt_num);
 	} else
 		return -EINVAL;
 
@@ -738,7 +853,8 @@ static ssize_t mlxbf_event_find(struct kobject *ko,
 
 	evt_name = mlxbf_pmc_get_event_name((char *)ko->name, evt_num);
 
-	return snprintf(buf, PAGE_SIZE, "0x%llx: %s\n", evt_num, evt_name);
+	return snprintf(buf, PAGE_SIZE,
+			"0x%llx: %s\n", evt_num, evt_name);
 }
 
 /* Store function for "event" sysfs files */
@@ -806,32 +922,41 @@ static ssize_t mlxbf_print_event_list(struct kobject *ko,
 	return ret;
 }
 
-/* Show function for "enable" sysfs files - only for l3cache */
+/* Show function for "enable" sysfs files - only for l3cache and crspace */
 static ssize_t mlxbf_show_counter_state(struct kobject *ko,
 					struct kobj_attribute *attr, char *buf)
 {
-	uint32_t perfcnt_cfg;
-	int blk_num, value;
+	uint32_t perfcnt_cfg, word;
+	int blk_num, value, err;
 
 	blk_num = mlxbf_pmc_get_block_num(ko->name);
 	if (blk_num < 0)
 		return -EINVAL;
 
-	if (mlxbf_pmc_readl(&perfcnt_cfg,
-		      pmc->block[blk_num].mmio_base + MLXBF_L3C_PERF_CNT_CFG))
-		return -EINVAL;
+	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE) {
+		err = mlxbf_pmc_readl(&word, pmc->block[blk_num].mmio_base +
+			MLXBF_CRSPACE_PERFMON_CTL);
+		if (err)
+			return -EINVAL;
+		value = FIELD_GET(MLXBF_CRSPACE_PERFMON_EN, word);
+	} else {
+		if (mlxbf_pmc_readl(&perfcnt_cfg, pmc->block[blk_num].mmio_base
+						 + MLXBF_L3C_PERF_CNT_CFG))
+			return -EINVAL;
 
-	value = FIELD_GET(MLXBF_L3C_PERF_CNT_CFG__EN, perfcnt_cfg);
+		value = FIELD_GET(MLXBF_L3C_PERF_CNT_CFG__EN, perfcnt_cfg);
+	}
 
 	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
-/* Store function for "enable" sysfs files - only for l3cache */
+/* Store function for "enable" sysfs files - only for l3cache and crspace */
 static ssize_t mlxbf_enable_counters(struct kobject *ko,
 				     struct kobj_attribute *attr,
 				     const char *buf, size_t count)
 {
 	int err, en, blk_num;
+	uint32_t word;
 
 	blk_num = mlxbf_pmc_get_block_num(ko->name);
 	if (blk_num < 0)
@@ -840,20 +965,32 @@ static ssize_t mlxbf_enable_counters(struct kobject *ko,
 	err = sscanf(buf, "%x\n", &en);
 	if (err < 0)
 		return err;
-
-	if (en == 0) {
-		err = mlxbf_config_l3_counters(blk_num, false, false);
+	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE) {
+		err = mlxbf_pmc_readl(&word, pmc->block[blk_num].mmio_base +
+			MLXBF_CRSPACE_PERFMON_CTL);
 		if (err)
-			return err;
-	} else if (en == 1) {
-		err = mlxbf_config_l3_counters(blk_num, false, true);
-		if (err)
-			return err;
-		err = mlxbf_config_l3_counters(blk_num, true, false);
-		if (err)
-			return err;
-	} else
-		return -EINVAL;
+			return -EINVAL;
+		word &= ~MLXBF_CRSPACE_PERFMON_EN;
+		word |= FIELD_PREP(MLXBF_CRSPACE_PERFMON_EN, en);
+		if (en)
+			word |= FIELD_PREP(MLXBF_CRSPACE_PERFMON_CLR, 1);
+		mlxbf_pmc_writel(word, pmc->block[blk_num].mmio_base +
+			MLXBF_CRSPACE_PERFMON_CTL);
+	} else {
+		if (en == 0) {
+			err = mlxbf_config_l3_counters(blk_num, false, false);
+			if (err)
+				return err;
+		} else if (en == 1) {
+			err = mlxbf_config_l3_counters(blk_num, false, true);
+			if (err)
+				return err;
+			err = mlxbf_config_l3_counters(blk_num, true, false);
+			if (err)
+				return err;
+		} else
+			return -EINVAL;
+	}
 
 	return count;
 }
@@ -871,7 +1008,8 @@ int mlxbf_pmc_create_sysfs(struct device *dev, struct kobject *ko, int blk_num)
 		return -EFAULT;
 	}
 
-	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_COUNTER) {
+	if ((pmc->block[blk_num].type == MLXBF_PERFTYPE_COUNTER) ||
+	    (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE)) {
 		pmc->block[blk_num].attr_event_list.attr.mode = 0444;
 		pmc->block[blk_num].attr_event_list.show =
 			mlxbf_print_event_list;
@@ -888,7 +1026,8 @@ int mlxbf_pmc_create_sysfs(struct device *dev, struct kobject *ko, int blk_num)
 			return err;
 		}
 
-		if (strstr(pmc->block_name[blk_num], "l3cache")) {
+		if ((strstr(pmc->block_name[blk_num], "l3cache")) ||
+		    (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE)) {
 			pmc->block[blk_num].attr_enable.attr.mode =
 				0644;
 			pmc->block[blk_num].attr_enable.show =
@@ -1092,6 +1231,8 @@ static int mlxbf_pmc_probe(struct platform_device *pdev)
 		pmc->event_set = MLNX_EVENT_SET_BF1;
 	else if (strcmp(hid, "MLNXBFD1") == 0)
 		pmc->event_set = MLNX_EVENT_SET_BF2;
+	else if (strcmp(hid, "MLNXBFD2") == 0)
+		pmc->event_set = MLNX_EVENT_SET_BF3;
 	else {
 		dev_err(dev, "Invalid device ID %s\n", hid);
 		err = -ENODEV;
@@ -1115,13 +1256,23 @@ static int mlxbf_pmc_probe(struct platform_device *pdev)
 	}
 
 	if (device_property_read_u32(dev, "tile_num", &pmc->tile_count)) {
-		dev_err(dev, "Number of tiles undefined\n");
-		err = -EINVAL;
-		goto error;
+		if (device_property_read_u8(dev, "llt_enable",
+					     &pmc->llt_enable)) {
+			dev_err(dev, "Number of tiles/LLTs undefined\n");
+			err = -EINVAL;
+			goto error;
+		}
+		if (device_property_read_u8(dev, "mss_enable",
+					     &pmc->mss_enable)) {
+			dev_err(dev, "Number of tiles/MSSs undefined\n");
+			err = -EINVAL;
+			goto error;
+		}
 	}
 
 	/* Map the Performance Counters from the varios blocks */
 	for (i = 0; i < pmc->total_blocks; ++i) {
+		/* Check if block number is within tile_count */
 		if (strstr(pmc->block_name[i], "tile")) {
 			int tile_num;
 
@@ -1132,6 +1283,44 @@ static int mlxbf_pmc_probe(struct platform_device *pdev)
 			if (tile_num >= pmc->tile_count)
 				continue;
 		}
+
+		/* Create sysfs directories only for enabled MSS blocks */
+		if (strstr(pmc->block_name[i], "mss") &&
+		    pmc->event_set == MLNX_EVENT_SET_BF3) {
+			int mss_num;
+
+			ret = sscanf(pmc->block_name[i], "mss%d", &mss_num);
+			if (ret < 0) {
+				err = -EINVAL;
+				goto error;
+			}
+			if (!((pmc->mss_enable >> mss_num) & 0x1))
+				continue;
+		}
+
+		/* Create sysfs directories only for enabled LLTs */
+		if (strstr(pmc->block_name[i], "llt_miss")) {
+			int llt_num;
+
+			ret = sscanf(pmc->block_name[i], "llt_miss%d", &llt_num);
+			if (ret < 0) {
+				err = -EINVAL;
+				goto error;
+			}
+			if (!((pmc->llt_enable >> llt_num) & 0x1))
+				continue;
+		} else if (strstr(pmc->block_name[i], "llt")) {
+			int llt_num;
+
+			ret = sscanf(pmc->block_name[i], "llt%d", &llt_num);
+			if (ret < 0) {
+				err = -EINVAL;
+				goto error;
+			}
+			if (!((pmc->llt_enable >> llt_num) & 0x1))
+				continue;
+		}
+
 		err = device_property_read_u64_array(dev, pmc->block_name[i],
 			info, 4);
 		if (err) {
@@ -1213,6 +1402,7 @@ static int mlxbf_pmc_remove(struct platform_device *pdev)
 static const struct acpi_device_id pmc_acpi_ids[] = {
 	{"MLNXBFD0", 0},
 	{"MLNXBFD1", 0},
+	{"MLNXBFD2", 0},
 	{},
 };
 
