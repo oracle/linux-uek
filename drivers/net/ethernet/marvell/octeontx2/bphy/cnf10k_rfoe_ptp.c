@@ -119,7 +119,7 @@ static int cnf10k_rfoe_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 		timecounter_adjtime(&priv->time_counter, delta);
 	else
 		cnf10k_rfoe_update_ptp_clock(priv, delta);
-	cnf10k_rfoe_update_host_offset(priv, CNF10K_RFOE_HOST_OFFSET_ADJ, delta);
+	cnf10k_rfoe_update_host_offset(priv, CNF10K_RFOE_HOST_OFFSET_INIT, 0);
 	mutex_unlock(&priv->ptp_lock);
 
 	return 0;
