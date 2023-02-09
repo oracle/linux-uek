@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: GPL-2.0 or BSD-3-Clause
+/*
+ *  Nvidia Bluefield power and thermal debugfs driver
+ *  This driver provides a debugfs interface for systems management
+ *  software to monitor power and thermal actions.
+ *
+ *  Copyright (C) 2023 NVIDIA Corporation.  All rights reserved.
+ *  This Software is licensed under one of the following licenses:
+ *
+ * 1) under the terms of the "Common Public License 1.0" a copy of which is
+ *    available from the Open Source Initiative, see
+ *    http://www.opensource.org/licenses/cpl.php.
+ *
+ * 2) under the terms of the "The BSD License" a copy of which is
+ *    available from the Open Source Initiative, see
+ *    http://www.opensource.org/licenses/bsd-license.php.
+ *
+ * 3) under the terms of the "GNU General Public License (GPL) Version 2" a
+ *    copy of which is available from the Open Source Initiative, see
+ *    http://www.opensource.org/licenses/gpl-license.php.
+ *
+ * Licensee has the right to choose one of the above licenses.
+ *
+ * Redistributions of source code must retain the above copyright
+ * notice and one of the license notices.
+ *
+ * Redistributions in binary form must reproduce both the above copyright
+ * notice, one of the license notices in the documentation
+ * and/or other materials provided with the distribution.
+ */
+
+#include <linux/kernel.h>
+#include <linux/debugfs.h>
+#include <linux/module.h>
+#include <linux/arm-smccc.h>
+
+/* SMC IDs */
+#define MLNX_PTM_GET_VR0_POWER		0x82000101
+#define MLNX_PTM_GET_VR1_POWER		0x82000102
+#define MLNX_PTM_GET_THROTTLE_STATE	0x82000103
+#define MLNX_PTM_GET_DDR_THLD		0x82000104
+#define MLNX_PTM_GET_STATUS_REG		0x82000105
+#define MLNX_PTM_GET_PTHROTTLE          0x82000106
+#define MLNX_PTM_GET_TTHROTTLE          0x82000107
+#define MLNX_PTM_GET_MAX_TEMP           0x82000108
+#define MLNX_PTM_GET_PWR_EVT_CNT	0x82000109
+#define MLNX_PTM_GET_TEMP_EVT_CNT	0x8200010A
+
+#define MLNX_POWER_ERROR		300
+
+struct dentry *monitors;
+
+static int smc_call1(unsigned int smc_op, int smc_arg)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(smc_op, smc_arg, 0, 0, 0, 0, 0, 0, &res);
+
+	return res.a0;
+}
+
+#define smc_call0(smc_op) smc_call1(smc_op, 0)
+
+static int throttling_state_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_THROTTLE_STATE);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(throttling_state_fops,
+			throttling_state_show, NULL, "%llu\n");
+
+static int pthrottling_state_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_PTHROTTLE);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(pthrottling_state_fops,
+			pthrottling_state_show, NULL, "%llu\n");
+
+static int tthrottling_state_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_TTHROTTLE);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(tthrottling_state_fops,
+			tthrottling_state_show, NULL, "%llu\n");
+
+static int core_temp_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_MAX_TEMP);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(core_temp_fops,
+			core_temp_show, NULL, "%lld\n");
+
+static int pwr_evt_counter_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_PWR_EVT_CNT);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(pwr_evt_counter_fops,
+			pwr_evt_counter_show, NULL, "%llu\n");
+
+static int temp_evt_counter_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_TEMP_EVT_CNT);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(temp_evt_counter_fops,
+			temp_evt_counter_show, NULL, "%llu\n");
+
+static int vr0_power_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_VR0_POWER);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(vr0_power_fops, vr0_power_show, NULL, "%llu\n");
+
+static int vr1_power_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_VR1_POWER);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(vr1_power_fops, vr1_power_show, NULL, "%llu\n");
+
+static int total_power_show(void *data, u64 *val)
+{
+	u64 v0, v1;
+
+	v0 = smc_call0(MLNX_PTM_GET_VR0_POWER);
+	if (v0 > MLNX_POWER_ERROR)
+		v0 = 0;
+	v1 = smc_call0(MLNX_PTM_GET_VR1_POWER);
+	if (v1 > MLNX_POWER_ERROR)
+		v1 = 0;
+	*val = (v0 + v1);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(total_power_fops, total_power_show, NULL, "%llu\n");
+
+static int ddr_thld_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_DDR_THLD);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(ddr_thld_fops, ddr_thld_show, NULL, "%llu\n");
+
+static int error_status_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_STATUS_REG);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(error_status_fops,
+			error_status_show, NULL, "%llu\n");
+
+
+static int __init mlxbf_ptm_init(void)
+{
+	struct dentry *ptm_root, *status;
+
+	ptm_root = debugfs_lookup("mlxbf-ptm", NULL);
+	if (!ptm_root)
+		ptm_root = debugfs_create_dir("mlxbf-ptm", NULL);
+
+	monitors = debugfs_create_dir("monitors", ptm_root);
+	status = debugfs_create_dir("status", monitors);
+
+	debugfs_create_file("vr0_power", S_IRUGO, status, NULL,
+			    &vr0_power_fops);
+	debugfs_create_file("vr1_power", S_IRUGO, status, NULL,
+			    &vr1_power_fops);
+	debugfs_create_file("total_power", S_IRUGO, status, NULL,
+			    &total_power_fops);
+	debugfs_create_file("ddr_temp", S_IRUGO, status,
+			    NULL, &ddr_thld_fops);
+	debugfs_create_file("core_temp", S_IRUGO, status,
+			    NULL, &core_temp_fops);
+	debugfs_create_file("power_throttling_event_count", S_IRUGO, status,
+			    NULL, &pwr_evt_counter_fops);
+	debugfs_create_file("thermal_throttling_event_count", S_IRUGO, status,
+			    NULL, &temp_evt_counter_fops);
+	debugfs_create_file("throttling_state", S_IRUGO, status,
+			    NULL, &throttling_state_fops);
+	debugfs_create_file("power_throttling_state", S_IRUGO, status,
+			    NULL, &pthrottling_state_fops);
+	debugfs_create_file("thermal_throttling_state", S_IRUGO, status,
+			    NULL, &tthrottling_state_fops);
+	debugfs_create_file("error_state", S_IRUGO, status,
+			    NULL, &error_status_fops);
+
+	return 0;
+}
+
+static void __exit mlxbf_ptm_exit(void)
+{
+	debugfs_remove_recursive(monitors);
+}
+
+module_init(mlxbf_ptm_init);
+module_exit(mlxbf_ptm_exit);
+
+MODULE_AUTHOR("Jitendra Lanka <jlanka@nvidia.com>");
+MODULE_DESCRIPTION("Nvidia Bluefield power and thermal debugfs driver");
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_VERSION("1.0");
