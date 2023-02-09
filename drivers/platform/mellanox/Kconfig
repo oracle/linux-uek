@@ -78,6 +78,16 @@ config MLXBF_PMC
 	  to performance monitoring counters within various blocks in the
 	  Mellanox BlueField SoC via a sysfs interface.
 
+config MLXBF_PTM
+        tristate "BlueField Power and Thermal Management debugfs interface"
+        depends on ARM64
+        depends on DEBUG_FS
+        help
+          If you say yes to this option, support will added for the
+          mlxbf-ptm driver.  This driver provides debugfs interface
+          to userspace with information related to power and thermal
+          management of the Bluefield device.
+
 config NVSW_SN2201
 	tristate "Nvidia SN2201 platform driver support"
 	depends on REGMAP
