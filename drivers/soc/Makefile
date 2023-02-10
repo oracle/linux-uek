@@ -6,7 +6,6 @@
 obj-$(CONFIG_ARCH_ACTIONS)	+= actions/
 obj-$(CONFIG_SOC_ASPEED)	+= aspeed/
 obj-$(CONFIG_ARCH_AT91)		+= atmel/
-obj-y				+= marvell/
 obj-y				+= bcm/
 obj-$(CONFIG_ARCH_DOVE)		+= dove/
 obj-$(CONFIG_MACH_DOVE)		+= dove/
@@ -17,7 +16,7 @@ obj-$(CONFIG_ARCH_IXP4XX)	+= ixp4xx/
 obj-$(CONFIG_SOC_XWAY)		+= lantiq/
 obj-y				+= mediatek/
 obj-y				+= amlogic/
-obj-y 				+= marvell/
+obj-$(CONFIG_ARM64)		+= marvell/
 obj-$(CONFIG_ARCH_PENSANDO)	+= pensando/
 obj-y				+= qcom/
 obj-y				+= renesas/
