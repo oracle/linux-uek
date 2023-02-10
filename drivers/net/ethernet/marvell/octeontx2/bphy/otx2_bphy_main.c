@@ -336,13 +336,21 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		}
 
 		spin_lock_irqsave(&cdev->mbt_lock, flags);
-		writeq(cfg.rx_ind_idx, (rfoe_reg_base +
-		       RFOEX_RX_INDIRECT_INDEX_OFFSET(cfg.rfoe_num)));
+
+		if (CHIP_CNF10K(cdev->hw_version))
+			writeq(cfg.rx_ind_idx, (rfoe_reg_base +
+			       CNF10K_RFOEX_RX_INDIRECT_INDEX_OFFSET(cfg.rfoe_num)));
+		else
+			writeq(cfg.rx_ind_idx, (rfoe_reg_base +
+			       RFOEX_RX_INDIRECT_INDEX_OFFSET(cfg.rfoe_num)));
+
 		if (cfg.dir == OTX2_RFOE_RX_IND_READ)
 			cfg.regval = readq(rfoe_reg_base + cfg.regoff);
 		else
 			writeq(cfg.regval, rfoe_reg_base + cfg.regoff);
+
 		spin_unlock_irqrestore(&cdev->mbt_lock, flags);
+
 		if (copy_to_user((void __user *)(unsigned long)arg, &cfg,
 				 sizeof(struct otx2_rfoe_rx_ind_cfg))) {
 			dev_err(cdev->dev, "copy to user fault\n");
