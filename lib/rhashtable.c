@@ -137,26 +137,9 @@ static void nested_bucket_table_free(const struct bucket_table *tbl)
 
 static void bucket_table_free(const struct bucket_table *tbl)
 {
-	struct rhash_head __rcu **pprev;
-	struct rhash_head *he;
-	int i;
-
-	if (tbl->nest) {
+	if (tbl->nest)
 		nested_bucket_table_free(tbl);
-		pr_err("RHASHTABLE: nested bucket_table freed %p\n", tbl);
-	} else {
-		/* assert the buckets which was already rehashed to future tables contain
-		 * no entries
-		 */
-		for (i = 0; i < tbl->rehash; i++) {
-			pprev = rht_bucket_var((struct bucket_table *)tbl, i);
-			rht_for_each_continue(he, *pprev, tbl, i) {
-				pr_err("RHASHTABLE: freeing bucket_table which contains entries in rehashed buckets!! %p %d\n",
-					tbl, i);
-				break;
-			}
-		}
-	}
+
 	kvfree(tbl->locks);
 	kvfree(tbl);
 }

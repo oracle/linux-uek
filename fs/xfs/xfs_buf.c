@@ -647,17 +647,9 @@ _xfs_buf_find(
 	if (new_bp) {
 		/* the buffer keeps the perag reference until it is freed */
 		new_bp->b_pag = pag;
-		bp = rhashtable_lookup_get_insert_fast(&pag->pag_buf_hash,
-					&new_bp->b_rhash_head,
-					xfs_buf_hash_params);
-		if (IS_ERR(bp)) { /* error happened */
-			pr_err("XFS: inserting buf to hash failed %ld\n", PTR_ERR(bp));
-		} else if (bp) { /* buf found, unexpectedly */
-			pr_err("XFS: buf not found by lookup but found by insert "
-			"pag = %p, bp = %p\n", pag, bp);
-			atomic_inc(&bp->b_hold);
-			goto found;
-		}
+		rhashtable_insert_fast(&pag->pag_buf_hash,
+				       &new_bp->b_rhash_head,
+				       xfs_buf_hash_params);
 		spin_unlock(&pag->pag_buf_lock);
 	} else {
 		XFS_STATS_INC(btp->bt_mount, xb_miss_locked);
@@ -1085,11 +1077,8 @@ xfs_buf_rele(
 		}
 
 		ASSERT(!(bp->b_flags & _XBF_DELWRI_Q));
-		if (rhashtable_remove_fast(&pag->pag_buf_hash, &bp->b_rhash_head,
-				       xfs_buf_hash_params)) {
-			pr_err("XFS: buf not found in hash when remove, pag %p bp %p\n",
-				pag, bp);
-		};
+		rhashtable_remove_fast(&pag->pag_buf_hash, &bp->b_rhash_head,
+				       xfs_buf_hash_params);
 		spin_unlock(&pag->pag_buf_lock);
 		xfs_perag_put(pag);
 		freebuf = true;
