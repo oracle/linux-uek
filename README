@@ -1,18 +1,15 @@
-Linux kernel
-============
+UEK: Oracle's Unbreakable Enterprise Kernel
+============================================
 
-There are several guides for kernel developers and users. These guides can
-be rendered in a number of formats, like HTML and PDF. Please read
-Documentation/admin-guide/README.rst first.
+The Unbreakable Enterprise Kernel (UEK) is a Linux kernel built by Oracle and
+supported via Oracle Linux support. Its focus is performance, stability, and
+minimal backports by tracking the mainline source code as closely as is
+practical. UEK is well-tested and used to run Oracle's Engineered Systems,
+Oracle Cloud Infrastructure, and large enterprise deployments for
+Oracle customers.
 
-In order to build the documentation, use ``make htmldocs`` or
-``make pdfdocs``.  The formatted documentation can also be read online at:
+To read more about Linux kernel development at Oracle,
+see: https://blogs.oracle.com/linuxkernel
 
-    https://www.kernel.org/doc/html/latest/
-
-There are various text files in the Documentation/ subdirectory,
-several of them using the reStructuredText markup notation.
-
-Please read the Documentation/process/changes.rst file, as it contains the
-requirements for building and running the kernel, and information about
-the problems which may result by upgrading your kernel.
+The original README for the Linux kernel along with a other useful
+documentation can be found at Documentation/admin-guide/README.rst
