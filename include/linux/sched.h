@@ -1065,7 +1065,7 @@ struct task_struct {
 	struct sysv_sem			sysvsem;
 	struct sysv_shm			sysvshm;
 #endif
-#ifdef CONFIG_DETECT_HUNG_TASK
+#if defined(CONFIG_DETECT_HUNG_TASK) && !defined(CONFIG_ARM64)
 	unsigned long			last_switch_count;
 	unsigned long			last_switch_time;
 #endif
@@ -1474,8 +1474,13 @@ struct task_struct {
 #else
 	UEK_KABI_RESERVE(1)
 #endif
+#if defined(CONFIG_DETECT_HUNG_TASK) && defined(CONFIG_ARM64)
+	UEK_KABI_USE(2, unsigned long last_switch_count)
+	UEK_KABI_USE(3, unsigned long last_switch_time)
+#else
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
+#endif
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
