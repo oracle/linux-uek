@@ -296,6 +296,7 @@ static int mlx5e_rq_alloc_mpwqe_info(struct mlx5e_rq *rq, int node)
 {
 	int wq_sz = mlx5_wq_ll_get_size(&rq->mpwqe.wq);
 	size_t alloc_size;
+	int i;
 
 	alloc_size = array_size(wq_sz, struct_size(rq->mpwqe.info,
 						   alloc_units.frag_pages,
@@ -304,6 +305,15 @@ static int mlx5e_rq_alloc_mpwqe_info(struct mlx5e_rq *rq, int node)
 	rq->mpwqe.info = kvzalloc_node(alloc_size, GFP_KERNEL, node);
 	if (!rq->mpwqe.info)
 		return -ENOMEM;
+
+	/* For deferred page release (release right before alloc), make sure
+	 * that on first round release is not called.
+	 */
+	for (i = 0; i < wq_sz; i++) {
+		struct mlx5e_mpw_info *wi = mlx5e_get_mpw_info(rq, i);
+
+		bitmap_fill(wi->skip_release_bitmap, rq->mpwqe.pages_per_wqe);
+	}
 
 	mlx5e_build_umr_wqe(rq, rq->icosq, &rq->mpwqe.umr_wqe);
 
@@ -1116,7 +1126,7 @@ int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq, int wait_time)
 	return -ETIMEDOUT;
 }
 
-void mlx5e_free_rx_in_progress_descs(struct mlx5e_rq *rq)
+void mlx5e_free_rx_missing_descs(struct mlx5e_rq *rq)
 {
 	struct mlx5_wq_ll *wq;
 	u16 head;
@@ -1128,8 +1138,12 @@ void mlx5e_free_rx_in_progress_descs(struct mlx5e_rq *rq)
 	wq = &rq->mpwqe.wq;
 	head = wq->head;
 
-	/* Outstanding UMR WQEs (in progress) start at wq->head */
-	for (i = 0; i < rq->mpwqe.umr_in_progress; i++) {
+	/* Release WQEs that are in missing state: they have been
+	 * popped from the list after completion but were not freed
+	 * due to deferred release.
+	 * Also free the linked-list reserved entry, hence the "+ 1".
+	 */
+	for (i = 0; i < mlx5_wq_ll_missing(wq) + 1; i++) {
 		rq->dealloc_wqe(rq, head);
 		head = mlx5_wq_ll_get_wqe_next_ix(wq, head);
 	}
@@ -1156,7 +1170,7 @@ void mlx5e_free_rx_descs(struct mlx5e_rq *rq)
 	if (rq->wq_type == MLX5_WQ_TYPE_LINKED_LIST_STRIDING_RQ) {
 		struct mlx5_wq_ll *wq = &rq->mpwqe.wq;
 
-		mlx5e_free_rx_in_progress_descs(rq);
+		mlx5e_free_rx_missing_descs(rq);
 
 		while (!mlx5_wq_ll_is_empty(wq)) {
 			struct mlx5e_rx_wqe_ll *wqe;
