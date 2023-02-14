@@ -913,6 +913,10 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 				pkt->gtpc_teid = fsp->h_ext.data[1];
 				pmask->gtpc_teid = fsp->m_ext.data[1];
 				req->features |= BIT_ULL(NPC_GTPC_TEID);
+			} else {
+				netdev_err(pfvf->netdev,
+					   "Need both src and dst ports as GTP-U/C\n");
+				return -EINVAL;
 			}
 		}
 
