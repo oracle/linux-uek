@@ -117,6 +117,9 @@ MODULE_PARM_DESC(nowayout,
 		 "Watchdog cannot be stopped once started (default="
 		 __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
 
+static int panicnotify;
+module_param(panicnotify, int, 0);
+MODULE_PARM_DESC(panicnotify, "after kernel panic, do: 0 = don't stop wd(*)  1 = stop wd");
 /*
  * Arm Base System Architecture 1.0 introduces watchdog v1 which
  * increases the length watchdog offset register to 48 bits.
@@ -311,6 +314,9 @@ static int sbsa_gwdt_probe(struct platform_device *pdev)
 	}
 	if (status & SBSA_GWDT_WCS_EN)
 		set_bit(WDOG_HW_RUNNING, &wdd->status);
+
+	if (!nowayout && panicnotify)
+		watchdog_stop_on_panic(wdd);
 
 	if (action) {
 		irq = platform_get_irq(pdev, 0);
