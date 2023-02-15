@@ -108,6 +108,7 @@ struct watchdog_device {
 	struct notifier_block reboot_nb;
 	struct notifier_block restart_nb;
 	struct notifier_block pm_nb;
+	struct notifier_block panic_nb;
 	void *driver_data;
 	struct watchdog_core_data *wd_data;
 	unsigned long status;
@@ -118,6 +119,7 @@ struct watchdog_device {
 #define WDOG_HW_RUNNING		3	/* True if HW watchdog running */
 #define WDOG_STOP_ON_UNREGISTER	4	/* Should be stopped on unregister */
 #define WDOG_NO_PING_ON_SUSPEND	5	/* Ping worker should be stopped on suspend */
+#define WDOG_STOP_ON_PANIC	6	/* Should be stopped on panic for loading kdump kernels */
 	struct list_head deferred;
 };
 
@@ -144,6 +146,12 @@ static inline void watchdog_set_nowayout(struct watchdog_device *wdd, bool noway
 {
 	if (nowayout)
 		set_bit(WDOG_NO_WAY_OUT, &wdd->status);
+}
+
+/* Use the following function to stop the watchdog on panic */
+static inline void watchdog_stop_on_panic(struct watchdog_device *wdd)
+{
+	set_bit(WDOG_STOP_ON_PANIC, &wdd->status);
 }
 
 /* Use the following function to stop the watchdog on reboot */
