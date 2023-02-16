@@ -893,10 +893,12 @@ lpfc_cmpl_els_flogi_nport(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp,
 		if (rc)
 			vport->fc_myDID = PT2PT_LocalID;
 
-		/* Decrement ndlp reference count indicating that ndlp can be
-		 * safely released when other references to it are done.
+		/* If not registered with a transport, decrement ndlp reference
+		 * count indicating that ndlp can be safely released when other
+		 * references are removed.
 		 */
-		lpfc_nlp_put(ndlp);
+		if (!(ndlp->fc4_xpt_flags & (SCSI_XPT_REGD | NVME_XPT_REGD)))
+			lpfc_nlp_put(ndlp);
 
 		ndlp = lpfc_findnode_did(vport, PT2PT_RemoteID);
 		if (!ndlp) {
@@ -933,11 +935,12 @@ lpfc_cmpl_els_flogi_nport(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp,
 			goto fail;
 		}
 	} else {
-		/* This side will wait for the PLOGI, decrement ndlp reference
-		 * count indicating that ndlp can be released when other
-		 * references to it are done.
+		/* This side will wait for the PLOGI. If not registered with
+		 * a transport, decrement node reference count indicating that
+		 * ndlp can be released when other references are removed.
 		 */
-		lpfc_nlp_put(ndlp);
+		if (!(ndlp->fc4_xpt_flags & (SCSI_XPT_REGD | NVME_XPT_REGD)))
+			lpfc_nlp_put(ndlp);
 
 		/* Start discovery - this should just do CLEAR_LA */
 		lpfc_disc_start(vport);
@@ -989,7 +992,8 @@ lpfc_cmpl_els_flogi(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 		/* One additional decrement on node reference count to
 		 * trigger the release of the node
 		 */
-		lpfc_nlp_put(ndlp);
+		if (!(ndlp->fc4_xpt_flags & SCSI_XPT_REGD))
+			lpfc_nlp_put(ndlp);
 		goto out;
 	}
 
@@ -1367,6 +1371,11 @@ lpfc_issue_els_flogi(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp,
 
 	/* Check for a deferred FLOGI ACC condition */
 	if (phba->defer_flogi_acc_flag) {
+		/* lookup ndlp for received FLOGI */
+		ndlp = lpfc_findnode_did(vport, 0);
+		if (!ndlp)
+			return 0;
+
 		did = vport->fc_myDID;
 		vport->fc_myDID = Fabric_DID;
 
@@ -1389,6 +1398,11 @@ lpfc_issue_els_flogi(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp,
 		phba->defer_flogi_acc_flag = false;
 
 		vport->fc_myDID = did;
+
+		/* Decrement ndlp reference count to indicate the node can be
+		 * released when other references are removed.
+		 */
+		lpfc_nlp_put(ndlp);
 	}
 
 	return 0;
@@ -8933,6 +8947,9 @@ lpfc_els_unsol_buffer(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 		}
 
 		lpfc_els_rcv_flogi(vport, elsiocb, ndlp);
+		/* retain node if our response is deferred */
+		if (phba->defer_flogi_acc_flag)
+			break;
 		if (newnode)
 			lpfc_disc_state_machine(vport, ndlp, NULL,
 					NLP_EVT_DEVICE_RM);
