@@ -144,6 +144,25 @@ void rds_queue_delayed_work_on(struct rds_conn_path *cp,
 }
 EXPORT_SYMBOL_GPL(rds_queue_delayed_work_on);
 
+void rds_mod_delayed_work(struct rds_conn_path *cp,
+			  struct workqueue_struct *wq,
+			  struct delayed_work *dwork,
+			  unsigned long delay,
+			  char *reason)
+{
+	int cpu;
+
+	trace_rds_queue_work(cp ? cp->cp_conn : NULL, cp, wq, &dwork->work,
+			     delay, reason);
+
+	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
+		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, false);
+		mod_delayed_work_on(cpu, wq, dwork, delay);
+	} else
+		mod_delayed_work(wq, dwork, delay);
+}
+EXPORT_SYMBOL_GPL(rds_mod_delayed_work);
+
 void rds_queue_cancel_work(struct rds_conn_path *cp,
 			   struct delayed_work *dwork, char *reason)
 {
@@ -243,11 +262,9 @@ void rds_queue_reconnect(struct rds_conn_path *cp, bool immediate)
 					       rds_sysctl_reconnect_max_jiffies);
 }
 
-void rds_connect_worker(struct work_struct *work)
+static void rds_connect_worker(struct rds_conn_path *cp,
+			       struct work_struct *work)
 {
-	struct rds_conn_path *cp = container_of(work,
-						struct rds_conn_path,
-						cp_conn_w.work);
 	struct rds_connection *conn = cp->cp_conn;
 	int ret;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
@@ -425,11 +442,9 @@ void rds_hb_worker(struct work_struct *work)
 	}
 }
 
-void rds_shutdown_worker(struct work_struct *work)
+static void rds_shutdown_worker(struct rds_conn_path *cp,
+				struct work_struct *work)
 {
-	struct rds_conn_path *cp = container_of(work,
-						struct rds_conn_path,
-						cp_down_w);
 	time64_t now = ktime_get_real_seconds();
 	bool is_tcp = cp->cp_conn->c_trans->t_type == RDS_TRANS_TCP;
 	struct rds_connection *conn = cp->cp_conn;
@@ -449,6 +464,25 @@ void rds_shutdown_worker(struct work_struct *work)
 			conn_drop_reason_str(cp->cp_drop_source));
 
 	rds_conn_init_shutdown(cp);
+}
+
+void rds_up_or_down_worker(struct work_struct *work)
+{
+	struct rds_conn_path *cp = container_of(work,
+						struct rds_conn_path,
+						cp_up_or_down_w.work);
+
+	/* shutdown-work always takes precedence over reconnect-work */
+	if (test_bit(RDS_SHUTDOWN_WORK_QUEUED, &cp->cp_flags)) {
+		/* reconnect is always re-scheduled in
+		 * rds_conn_shutdown_final(), if necessary
+		 */
+		rds_clear_reconnect_pending_work_bit(cp);
+
+		rds_shutdown_worker(cp, work);
+	} else if (test_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
+		rds_connect_worker(cp, work);
+	}
 }
 
 void rds_threads_exit(void)

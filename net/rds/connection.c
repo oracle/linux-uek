@@ -46,6 +46,9 @@
 
 #define RDS_CONN_FADDR_HASH_ENTRIES 256
 
+static bool rds_wq_strictly_ordered = true;
+module_param(rds_wq_strictly_ordered, bool, 0644);
+
 /* converting this to RCU is a chore for another day.. */
 static DEFINE_SPINLOCK(rds_conn_lock);
 static struct hlist_head rds_conn_hash[RDS_CONNECTION_HASH_ENTRIES];
@@ -215,9 +218,8 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 
 	INIT_DELAYED_WORK(&cp->cp_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&cp->cp_recv_w, rds_recv_worker);
-	INIT_DELAYED_WORK(&cp->cp_conn_w, rds_connect_worker);
 	INIT_DELAYED_WORK(&cp->cp_hb_w, rds_hb_worker);
-	INIT_WORK(&cp->cp_down_w, rds_shutdown_worker);
+	INIT_DELAYED_WORK(&cp->cp_up_or_down_w, rds_up_or_down_worker);
 	INIT_DELAYED_WORK(&cp->cp_down_wait_w, rds_conn_shutdown_check_wait);
 	mutex_init(&cp->cp_cm_lock);
 	atomic_set(&cp->cp_rdma_map_pending, 0);
@@ -358,7 +360,12 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		__rds_conn_path_init(conn, cp, is_outgoing);
 		cp->cp_index = i;
 
-		cp->cp_wq = alloc_ordered_workqueue("krds_cp_wq#%d/%d", 0,
+		if (rds_wq_strictly_ordered)
+			cp->cp_wq = alloc_ordered_workqueue("krds_cp_wq#%d/%d", 0,
+							    atomic_read(&conn->c_trans->t_conn_count), i);
+		else
+			cp->cp_wq = alloc_workqueue("krds_cp_wq#%d/%d", 0,
+						    RDS_CP_WQ_MAX_ACTIVE,
 						    atomic_read(&conn->c_trans->t_conn_count), i);
 		if (!cp->cp_wq) {
 			while (--i >= 0) {
@@ -493,7 +500,6 @@ static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 	 * Otherwise, the reconnect is always triggered by the active peer.
 	 */
 
-	rds_queue_cancel_work(cp, &cp->cp_conn_w, "final shutdown");
 	rds_clear_reconnect_pending_work_bit(cp);
 
 	rcu_read_lock();
@@ -682,7 +688,7 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 
 	cp->cp_shutdown_final = &shutdown_final;
 	rds_conn_path_drop(cp, DR_CONN_DESTROY, 0);
-	rds_queue_flush_work(cp, &cp->cp_down_w, "conn path destroy down work");
+	flush_delayed_work(&cp->cp_up_or_down_w);
 	wait_for_completion(&shutdown_final);
 
 	/* tear down queued messages */
