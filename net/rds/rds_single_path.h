@@ -21,8 +21,7 @@
 #define c_reconnect_jiffies	c_path[0].cp_reconnect_jiffies
 #define c_send_w		c_path[0].cp_send_w
 #define c_recv_w		c_path[0].cp_recv_w
-#define c_conn_w		c_path[0].cp_conn_w
-#define c_down_w		c_path[0].cp_down_w
+#define c_up_or_down_w		c_path[0].cp_up_or_down_w
 #define c_down_wait_w		c_path[0].cp_down_wait_w
 #define c_cm_lock		c_path[0].cp_cm_lock
 #define c_waitq			c_path[0].cp_waitq
