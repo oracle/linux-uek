@@ -1050,7 +1050,7 @@ static int do_replace_finish(struct net *net, struct ebt_replace *repl,
 			  repl->name, AF_BRIDGE, repl->nentries);
 	}
 #endif
-	return ret;
+	return 0;
 
 free_unlock:
 	mutex_unlock(&ebt_mutex);
