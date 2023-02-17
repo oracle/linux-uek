@@ -394,6 +394,10 @@ struct tcf_proto_ops {
 
 	struct module		*owner;
 	int			flags;
+
+	UEK_KABI_EXTEND(struct tcf_exts *
+			(*get_exts)(const struct tcf_proto *tp, u32 handle))
+
 };
 
 /* Classifiers setting TCF_PROTO_OPS_DOIT_UNLOCKED in tcf_proto_ops->flags
