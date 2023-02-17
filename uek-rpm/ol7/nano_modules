@@ -126,6 +126,7 @@ kernel/drivers/cpufreq/pcc-cpufreq.ko
 kernel/drivers/crypto/ccp/ccp.ko
 kernel/drivers/dax/device_dax.ko
 kernel/drivers/dax/kmem.ko
+kernel/drivers/dax/pmem/dax_pmem_compat.ko
 kernel/drivers/dax/pmem/dax_pmem_core.ko
 kernel/drivers/dax/pmem/dax_pmem.ko
 kernel/drivers/dca/dca.ko
