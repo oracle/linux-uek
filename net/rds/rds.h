@@ -107,6 +107,8 @@ enum {
 #define RDS_CONG_MAP_PAGES	(PAGE_ALIGN(RDS_CONG_MAP_BYTES) / RDS_CONG_PAGE_SIZE)
 #define RDS_CONG_MAP_PAGE_BITS	(RDS_CONG_PAGE_SIZE * 8)
 
+#define RDS_CP_WQ_MAX_ACTIVE	4
+
 struct rds_cong_map {
 	struct rb_node		m_rb_node;
 	struct in6_addr		m_addr;
@@ -266,9 +268,8 @@ struct rds_conn_path {
 	unsigned long		cp_reconnect_jiffies;
 	struct delayed_work	cp_send_w;
 	struct delayed_work	cp_recv_w;
-	struct delayed_work	cp_conn_w;
 	struct delayed_work     cp_hb_w;
-	struct work_struct	cp_down_w;
+	struct delayed_work	cp_up_or_down_w;
 	struct delayed_work	cp_down_wait_w;
 	struct mutex		cp_cm_lock;	/* protect cp_state & cm */
 	wait_queue_head_t	cp_waitq;
@@ -1133,6 +1134,10 @@ void rds_queue_delayed_work_on(struct rds_conn_path *cp, int cpu,
 			       struct workqueue_struct *wq,
 			       struct delayed_work *dwork,
 			       unsigned long delay, char *reason);
+void rds_mod_delayed_work(struct rds_conn_path *cp,
+			  struct workqueue_struct *wq,
+			  struct delayed_work *dwork,
+			  unsigned long delay, char *reason);
 
 static inline void rds_conn_path_state_change(struct rds_conn_path *cp,
 					      int new, int reason, int err)
@@ -1146,8 +1151,8 @@ static inline void rds_conn_path_state_change(struct rds_conn_path *cp,
 static inline void rds_cond_queue_shutdown_work(struct rds_conn_path *cp)
 {
 	if (!test_and_set_bit(RDS_SHUTDOWN_WORK_QUEUED, &cp->cp_flags))
-		rds_queue_work(cp, cp->cp_wq, &cp->cp_down_w,
-			       "queue shutdown work");
+		rds_mod_delayed_work(cp, cp->cp_wq, &cp->cp_up_or_down_w,
+				     0, "queue shutdown work");
 }
 
 static inline void rds_clear_shutdown_pending_work_bit(struct rds_conn_path *cp)
@@ -1162,11 +1167,12 @@ static inline void rds_clear_shutdown_pending_work_bit(struct rds_conn_path *cp)
 static inline bool rds_cond_queue_reconnect_work(struct rds_conn_path *cp, unsigned long delay)
 {
 	if (!test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
-		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_conn_w, delay,
-				       "reconnect work");
+		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_up_or_down_w,
+				       delay, "reconnect work");
 		return true;
-	} else
+	} else {
 		return false;
+	}
 }
 
 static inline void
@@ -1462,8 +1468,7 @@ int rds_threads_init(void);
 void rds_threads_exit(void);
 extern struct workqueue_struct *rds_wq;
 void rds_queue_reconnect(struct rds_conn_path *cp, bool immediate);
-void rds_connect_worker(struct work_struct *);
-void rds_shutdown_worker(struct work_struct *);
+void rds_up_or_down_worker(struct work_struct *);
 void rds_send_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
 void rds_hb_worker(struct work_struct *);
