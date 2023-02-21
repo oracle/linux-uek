@@ -5306,8 +5306,10 @@ int mlx5e_tc_nic_init(struct mlx5e_priv *priv)
 	mlx5e_tc_debugfs_init(tc, mlx5e_fs_get_debugfs_root(priv->fs));
 
 	tc->action_stats_handle = mlx5e_tc_act_stats_create();
-	if (IS_ERR(tc->action_stats_handle))
+	if (IS_ERR(tc->action_stats_handle)) {
+		err = PTR_ERR(tc->action_stats_handle);
 		goto err_act_stats;
+	}
 
 	return 0;
 
@@ -5442,8 +5444,10 @@ int mlx5e_tc_esw_init(struct mlx5_rep_uplink_priv *uplink_priv)
 	}
 
 	uplink_priv->action_stats_handle = mlx5e_tc_act_stats_create();
-	if (IS_ERR(uplink_priv->action_stats_handle))
+	if (IS_ERR(uplink_priv->action_stats_handle)) {
+		err = PTR_ERR(uplink_priv->action_stats_handle);
 		goto err_action_counter;
+	}
 
 	return 0;
 
