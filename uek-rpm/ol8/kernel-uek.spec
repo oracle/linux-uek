@@ -87,7 +87,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 # standard kernel
 %define with_up        1
 # kernel-container
-%define with_container 0
+%define with_container 1
 # kernel-debug
 %define with_debug     1
 # kernel-doc
