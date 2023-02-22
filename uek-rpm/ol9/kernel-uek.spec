@@ -290,7 +290,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 # so that the PVH .note section is created in the location expected
 # by the bootloader.
 #
-%define container_cflags	-Wa,-mx86-used-note=no %CONFIG_DEBUG_SECTION_MISMATCH=y
+%define container_cflags	EXTRA_CFLAGS="-Wa,-mx86-used-note=no" %CONFIG_DEBUG_SECTION_MISMATCH=y
 %endif
 %endif
 
