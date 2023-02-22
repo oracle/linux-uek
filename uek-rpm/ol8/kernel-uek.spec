@@ -148,17 +148,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define with_kabicollect 0
 %endif
 
-%define fancy_debuginfo 0
-
 # .BTF section must stay in modules
-%define _find_debuginfo_opt_btf --keep-section .BTF
-
-%if %{fancy_debuginfo}
-BuildRequires: rpm-build >= 4.4.2.1-4
-%define _find_debuginfo_opts --strict-build-id %{_find_debuginfo_opt_btf}
-%else
-%define _find_debuginfo_opts %{_find_debuginfo_opt_btf}
-%endif
+%define _find_debuginfo_opts --keep-section .BTF
 
 # Additional options for user-friendly one-off kernel building:
 #
@@ -1242,18 +1233,6 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 %define sparse_mflags	C=1
 %endif
 
-%if %{fancy_debuginfo}
-# This override tweaks the kernel makefiles so that we run debugedit on an
-# object before embedding it.  When we later run find-debuginfo.sh, it will
-# run debugedit again.  The edits it does change the build ID bits embedded
-# in the stripped object, but repeating debugedit is a no-op.  We do it
-# beforehand to get the proper final build ID bits into the embedded image.
-# This affects the vDSO images in vmlinux, and the vmlinux image in bzImage.
-export AFTER_LINK=\
-'sh -xc "/usr/lib/rpm/debugedit -b $$RPM_BUILD_DIR -d /usr/src/debug \
-				-i $@ > $@.id"'
-%endif
-
 cp_vmlinux()
 {
   eu-strip --remove-comment -o "$2" "$1"
@@ -1547,15 +1526,6 @@ fi
     # Copy .config to include/config/auto.conf so "make prepare" is unnecessary.
     cp $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/.config $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/config/auto.conf
     cd ..
-
-%if %{fancy_debuginfo}
-    if test -s vmlinux.id; then
-      cp vmlinux.id $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/vmlinux.id
-    else
-      echo >&2 "*** ERROR *** no vmlinux build ID! ***"
-      exit 1
-    fi
-%endif
 
     #
     # save the vmlinux file for kernel debugging into the kernel-debuginfo rpm
@@ -2186,20 +2156,14 @@ fi
 /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 %if %{with_debuginfo}\
 %ifnarch noarch\
-%if %{fancy_debuginfo}\
-%{expand:%%files -f debuginfo%{?2}.list -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
-%else\
 %{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}-debuginfo}\
-%endif\
 %defattr(-,root,root)\
-%if !%{fancy_debuginfo}\
 %if "%{elf_image_install_path}" != ""\
 %{debuginfodir}/%{elf_image_install_path}/*-%{KVERREL}%{?2:.%{2}}.debug\
 %endif\
 %{debuginfodir}/lib/modules/%{KVERREL}%{?2:.%{2}}\
 %{debuginfodir}/usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 # % {debuginfodir}/usr/bin/%{KVERREL}%{?2:.%{2}}\
-%endif\
 %endif\
 %endif\
 %endif\
