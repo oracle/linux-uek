@@ -1,0 +1,60 @@
+--- find-debuginfo.sh.orig	2023-02-23 11:40:20.687232176 -0800
++++ find-debuginfo.sh	2023-02-23 11:47:05.707142294 -0800
+@@ -2,7 +2,7 @@
+ #find-debuginfo.sh - automagically generate debug info and file list
+ #for inclusion in an rpm spec file.
+ #
+-# Usage: find-debuginfo.sh [--strict-build-id] [-g] [-r] [-m]
++# Usage: find-debuginfo.sh [--strict-build-id] [-g] [-r] [-m] [-n TOOL]
+ #	 		   [-o debugfiles.list]
+ #			   [--run-dwz] [--dwz-low-mem-die-limit N]
+ #			   [--dwz-max-die-limit N]
+@@ -13,6 +13,8 @@
+ # The --strict-build-id flag says to exit with failure status if
+ # any ELF binary processed fails to contain a build-id note.
+ # The -r flag says to use eu-strip --reloc-debug-sections.
++# The -n flag says to not recompute the build-id, and requires that TOOL
++# be the path to the "editbuildid" tool.
+ #
+ # A single -o switch before any -l or -p switches simply renames
+ # the primary output file from debugfiles.list to something else.
+@@ -41,6 +43,10 @@
+ # Barf on missing build IDs.
+ strict=false
+ 
++# Do not recompute build IDs
++no_recompute_build_id=false
++editbuildid=
++
+ # DWZ parameters.
+ run_dwz=false
+ dwz_low_mem_die_limit=
+@@ -74,6 +80,11 @@
+   -m)
+     include_minidebug=true
+     ;;
++  -n)
++    no_recompute_build_id=true
++    editbuildid=$2
++    shift
++    ;;
+   -o)
+     if [ -z "${lists[$nout]}" -a -z "${ptns[$nout]}" ]; then
+       out=$2
+@@ -302,8 +313,16 @@
+   [ -f "${debugfn}" ] && return
+ 
+   echo "extracting debug info from $f"
++  old_id=
++  if [ "$no_recompute_build_id" = "true" ]; then
++    old_id=$($editbuildid -p "$f") || exit
++  fi
+   id=$(/usr/lib/rpm/debugedit -b "$RPM_BUILD_DIR" -d /usr/src/debug \
+ 			      -i -l "$SOURCEFILE" "$f") || exit
++  if [ "$no_recompute_build_id" = "true" ]; then
++    $editbuildid -n "$old_id" "$f" || exit
++    id=$old_id
++  fi
+   if [ -z "$id" ]; then
+     echo >&2 "*** ${strict_error}: No build ID note found in $f"
+     $strict && exit 2
