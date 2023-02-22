@@ -1436,8 +1436,8 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 
 	pf_srn = sdp->info.pf_srn;
 
-	/* TODO: add support for 10K  */
 	mac_mask = MAC_MASK_96XX;
+	valid_ep_pem_mask = VALID_EP_PEMS_MASK_93XX;
 	switch (sdp->pdev->subsystem_device) {
 	case PCI_SUBSYS_DEVID_96XX:
 		valid_ep_pem_mask = VALID_EP_PEMS_MASK_96XX;
@@ -1501,9 +1501,9 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 
 		epf_srn = (npfs * rppf) + pf_srn;
 		for (pf = 0; pf < npfs; pf++) {
-			val = (((u64)numvf << RINFO_NUMVF_BIT) |
-			       ((u64)rpvf << RINFO_RPVF_BIT) |
-			       ((u64)(pf_srn + rppf) << RINFO_SRN_BIT));
+			val = (((u64)numvf[pf] << RINFO_NUMVF_BIT) |
+			       ((u64)rpvf[pf] << RINFO_RPVF_BIT) |
+			       ((u64)(epf_srn) << RINFO_SRN_BIT));
 			writeq(val, sdp->sdp_base +
 			       SDPX_EPFX_RINFO((epf_base + (npem * MAX_PFS_PER_PEM))));
 			epf_srn += numvf[pf] * rpvf[pf];
