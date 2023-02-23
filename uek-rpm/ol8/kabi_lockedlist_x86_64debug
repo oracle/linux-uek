@@ -72,6 +72,7 @@
 	__uv_hub_info_list
 	__vfs_getxattr
 	__vfs_removexattr
+	__virt_addr_valid
 	__vmalloc
 	__wake_up
 	__warn_printk
@@ -266,6 +267,7 @@
 	debugfs_create_u64
 	debugfs_create_u8
 	debugfs_remove
+	default_llseek
 	default_wake_function
 	del_gendisk
 	del_timer
@@ -299,6 +301,7 @@
 	dma_unmap_sg_attrs
 	dmi_get_system_info
 	do_exit
+	done_path_create
 	down
 	down_interruptible
 	down_read
@@ -310,6 +313,7 @@
 	dump_stack
 	elfcorehdr_addr
 	emergency_restart
+	empty_zero_page
 	enable_irq
 	end_page_writeback
 	fasync_helper
@@ -348,6 +352,7 @@
 	free_irq
 	free_pages
 	free_percpu
+	freeze_bdev
 	from_kgid
 	from_kuid
 	fs_bio_set
@@ -421,6 +426,7 @@
 	jiffies_to_msecs
 	jiffies_to_timespec64
 	kern_path
+	kern_path_create
 	kernel_accept
 	kernel_getsockname
 	kernel_read
@@ -500,6 +506,7 @@
 	mutex_lock_nested
 	mutex_trylock
 	mutex_unlock
+	names_cachep
 	new_inode
 	nf_register_net_hook
 	nf_unregister_net_hook
@@ -604,9 +611,11 @@
 	register_filesystem
 	register_kprobe
 	register_pernet_subsys
+	register_reboot_notifier
 	register_sysctl_table
 	release_pages
 	release_sock
+	remap_pfn_range
 	remove_proc_entry
 	remove_wait_queue
 	request_threaded_irq
@@ -755,6 +764,7 @@
 	tcp_prot
 	tcp_sock_set_nodelay
 	tcp_sock_set_quickack
+	thaw_bdev
 	this_cpu_off
 	time64_to_tm
 	touch_atime
@@ -776,6 +786,7 @@
 	unregister_filesystem
 	unregister_kprobe
 	unregister_pernet_subsys
+	unregister_reboot_notifier
 	unregister_sysctl_table
 	up
 	up_read
@@ -794,6 +805,7 @@
 	vfree
 	vfs_create
 	vfs_fsync
+	vfs_fsync_range
 	vfs_get_link
 	vfs_getattr
 	vfs_iter_read
@@ -806,6 +818,8 @@
 	vfs_rmdir
 	vfs_symlink
 	vfs_unlink
+	vm_mmap
+	vm_munmap
 	vmalloc
 	vmalloc_base
 	vmalloc_to_page
@@ -816,6 +830,7 @@
 	vsprintf
 	vzalloc
 	wait_for_completion
+	wait_for_completion_interruptible
 	wait_for_completion_io_timeout
 	wait_for_completion_timeout
 	wait_on_page_bit
