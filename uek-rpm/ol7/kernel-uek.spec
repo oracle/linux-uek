@@ -134,8 +134,12 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # Control whether we build the hmac for fips mode.
 %define with_fips      %{?_without_fips:      0} %{?!_without_fips:      1}
 
-# .BTF section must stay in modules
-%define debuginfo_args --keep-section .BTF
+# These options are passed to find-debuginfo.sh.u
+# --keep-section .BTF: .BTF section must stay in modules
+# --strict-build-id  : ensure all ELF files have build IDs. This is similar to
+#                    : the OL8 _missing_build_ids_terminate_build macro
+# -n TOOL            : do not modify build IDs. Pass in the path to editbuildid
+%define debuginfo_args --keep-section .BTF --strict-build-id -n uek-rpm/tools/editbuildid/editbuildid
 
 # Additional options for user-friendly one-off kernel building:
 #
@@ -700,6 +704,7 @@ source210: tcindex-disable.conf
 Source300: find-debuginfo.sh.ol7.diff
 Source301: find-debuginfo.sh.parallel.diff
 Source302: find-debuginfo.sh.keep.diff
+Source303: find-debuginfo.sh.norecompute.diff
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -1289,7 +1294,8 @@ ApplyPatch %{stable_patch_01}
 cp %_sourcedir/find-debuginfo.sh %{_builddir} && \
     patch %{_builddir}/find-debuginfo.sh %{SOURCE300} && \
     patch %{_builddir}/find-debuginfo.sh %{SOURCE301} && \
-    patch %{_builddir}/find-debuginfo.sh %{SOURCE302}
+    patch %{_builddir}/find-debuginfo.sh %{SOURCE302} && \
+    patch %{_builddir}/find-debuginfo.sh %{SOURCE303}
 chmod +x %{_builddir}/find-debuginfo.sh
 
 # only deal with configs if we are going to build for the arch
@@ -1750,6 +1756,8 @@ BuildKernel %make_target %kernel_image 4kdebug
 %if %{with_embedded}
 BuildKernel %make_target %kernel_image emb
 %endif
+
+make -C uek-rpm/tools/editbuildid
 
 %global perf_make \
   make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS}" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix}
