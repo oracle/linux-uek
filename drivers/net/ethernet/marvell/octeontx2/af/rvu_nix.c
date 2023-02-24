@@ -4737,7 +4737,7 @@ int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 	if (!req->sdp_link && req->maxlen > max_mtu)
 		return NIX_AF_ERR_FRS_INVALID;
 
-	if (req->update_minlen && req->minlen < NIC_HW_MIN_FRS)
+	if (req->update_minlen && req->minlen < (req->sdp_link ? SDP_HW_MIN_FRS : NIC_HW_MIN_FRS))
 		return NIX_AF_ERR_FRS_INVALID;
 
 	/* Check if config is for SDP link */
@@ -4851,7 +4851,7 @@ static void nix_link_config(struct rvu *rvu, int blkaddr,
 	if (hw->sdp_links) {
 		link = hw->cgx_links + hw->lbk_links;
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_LINKX_CFG(link),
-			    SDP_HW_MAX_FRS << 16 | NIC_HW_MIN_FRS);
+			    SDP_HW_MAX_FRS << 16 | SDP_HW_MIN_FRS);
 	}
 
 	/* Set CPT link i.e second pass config */
