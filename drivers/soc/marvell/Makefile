@@ -8,3 +8,4 @@ obj-$(CONFIG_MARVELL_FWLOG) += fwlog.o
 obj-$(CONFIG_MVMDIO_UIO) += mvmdio_uio.o
 obj-$(CONFIG_MRVL_PHY_DIAGNOSTICS) += phy_diag.o
 obj-$(CONFIG_OCTEONTX_INFO) += octeontx_info.o
+obj-y		+= ptm-ep/

@@ -127,4 +127,13 @@ config OCTEONTX2_DPI_PF
 	  This driver intializes DPI PF device and enables VFs for supporting
 	  different types of DMA transfers.
 
+config MARVELL_PTM_EP
+	tristate "Marvell PCIe PTM EP"
+	help
+	  Provides PTM requestor(EP) support. The driver provides interface for
+	  triggering and capturing time.
+
+	  To compile this as a module, choose M here. The module will be called
+	  mrvl-ptm-ep.
+
 endmenu
