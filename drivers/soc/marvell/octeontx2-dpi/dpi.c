@@ -429,6 +429,29 @@ static int dpi_sriov_configure(struct pci_dev *pdev, int numvfs)
 	return ret;
 }
 
+static ssize_t dpi_device_config_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct dpipf *dpi = pci_get_drvdata(pdev);
+	int vf_idx;
+
+	for (vf_idx = 0; vf_idx < dpi->total_vfs; vf_idx++) {
+		struct dpipf_vf *dpivf = &dpi->vf[vf_idx];
+
+		if (!dpivf->setup_done)
+			continue;
+		sprintf(buf + strlen(buf),
+			"VF:%d command buffer size:%d aura:%d",
+			vf_idx, dpivf->vf_config.csize, dpivf->vf_config.aura);
+		sprintf(buf + strlen(buf),
+			"sso_pf_func:%x npa_pf_func:%x\n",
+			dpivf->vf_config.sso_pf_func,
+			dpivf->vf_config.npa_pf_func);
+	}
+	return strlen(buf);
+}
+
 static int queue_config(struct dpipf *dpi, struct dpipf_vf *dpivf,
 						union dpi_mbox_message_t *msg)
 {
@@ -472,6 +495,31 @@ static int dpi_queue_config(struct pci_dev *pfdev,
 
 	return queue_config(dpi, dpivf, msg);
 }
+
+static ssize_t dpi_device_config_store(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	union dpi_mbox_message_t mbox_msg = {.u[0] = 0ULL, .u[1] = 0ULL};
+	struct dpipf *dpi = pci_get_drvdata(pdev);
+	struct dpipf_vf *dpivf;
+
+	memcpy(&mbox_msg, buf, count);
+	if (mbox_msg.s.vfid > dpi->total_vfs) {
+		dev_err(dev, "Invalid vfid:%d\n", mbox_msg.s.vfid);
+		return -1;
+	}
+	dpivf = &dpi->vf[mbox_msg.s.vfid];
+
+	if (queue_config(dpi, dpivf, &mbox_msg) < 0)
+		return -1;
+
+	return sizeof(mbox_msg);
+}
+
+static DEVICE_ATTR_RW(dpi_device_config);
+
 static int dpi_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
@@ -520,8 +568,18 @@ static int dpi_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_dpi_fini;
 	}
 
+	err = device_create_file(dev, &dev_attr_dpi_device_config);
+	if (err) {
+		dev_err(dev, "DPI: Failed to create sysfs entry for driver\n");
+		goto err_free_irq;
+	}
+
+	spin_lock_init(&dpi->vf_lock);
+
 	return 0;
 
+err_free_irq:
+	dpi_irq_free(dpi);
 err_dpi_fini:
 	dpi_fini(dpi);
 err_release_regions:
@@ -538,6 +596,7 @@ static void dpi_remove(struct pci_dev *pdev)
 	struct device *dev = &pdev->dev;
 	struct dpipf *dpi = pci_get_drvdata(pdev);
 
+	device_remove_file(dev, &dev_attr_dpi_device_config);
 	dpi_irq_free(dpi);
 	dpi_fini(dpi);
 	dpi_sriov_configure(pdev, 0);
