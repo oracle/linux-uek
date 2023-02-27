@@ -1174,6 +1174,8 @@ tracing_prog_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 #ifdef CONFIG_NET
 	case BPF_FUNC_skb_output:
 		return &bpf_skb_output_proto;
+	case BPF_FUNC_skc_to_tcp6_sock:
+		return &bpf_skc_to_tcp6_sock_proto;
 #endif
 	default:
 		return raw_tp_prog_func_proto(func_id, prog);

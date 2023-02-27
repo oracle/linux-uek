@@ -388,6 +388,26 @@ static bool btf_type_is_resolve_source_only(const struct btf_type *t)
 	       btf_type_is_datasec(t);
 }
 
+s32 btf_find_by_name_kind(const struct btf *btf, const char *name, u8 kind)
+{
+	const struct btf_type *t;
+	const char *tname;
+	u32 i, total;
+
+	total = btf->nr_types;
+	for (i = 1; i < total; i++) {
+		t = btf_type_by_id(btf, i);
+		if (BTF_INFO_KIND(t->info) != kind)
+			continue;
+
+		tname = btf_name_by_offset(btf, t->name_off);
+		if (!strcmp(tname, name))
+			return i;
+	}
+
+	return -ENOENT;
+}
+
 /* What types need to be resolved?
  *
  * btf_type_is_modifier() is an obvious one.
@@ -3480,6 +3500,8 @@ struct btf *btf_parse_vmlinux(void)
 	err = btf_check_all_metas(env);
 	if (err)
 		goto errout;
+
+	init_btf_sock_ids(btf);
 
 	btf_verifier_env_free(env);
 	refcount_set(&btf->refcnt, 1);

@@ -2888,6 +2888,12 @@ union bpf_attr {
  *		calculation.
  *	Return
  *		Requested value, or 0, if flags are not recognized.
+ *
+ * struct tcp6_sock *bpf_skc_to_tcp6_sock(void *sk)
+ *	Description
+ *		Dynamically cast a *sk* pointer to a *tcp6_sock* pointer.
+ *	Return
+ *		*sk* if casting is valid, or NULL otherwise.
  */
 #ifndef __GENKSYMS__
 #define __BPF_FUNC_MAPPER(FN)		\
@@ -3025,7 +3031,9 @@ union bpf_attr {
 	FN(ringbuf_reserve),		\
 	FN(ringbuf_submit),		\
 	FN(ringbuf_discard),		\
-	FN(ringbuf_query),
+	FN(ringbuf_query),		\
+	FN(unused20),			\
+	FN(skc_to_tcp6_sock),
 #else
 #define __BPF_FUNC_MAPPER(FN)		\
 	FN(unspec),			\

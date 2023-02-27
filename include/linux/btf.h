@@ -7,6 +7,8 @@
 #include <linux/types.h>
 #include <uapi/linux/btf.h>
 
+#define BTF_TYPE_EMIT(type) ((void)(type *)0)
+
 struct btf;
 struct btf_member;
 struct btf_type;
@@ -53,6 +55,7 @@ bool btf_member_is_reg_int(const struct btf *btf, const struct btf_type *s,
 			   u32 expected_offset, u32 expected_size);
 int btf_find_spin_lock(const struct btf *btf, const struct btf_type *t);
 bool btf_type_is_void(const struct btf_type *t);
+s32 btf_find_by_name_kind(const struct btf *btf, const char *name, u8 kind);
 
 static inline bool btf_type_is_ptr(const struct btf_type *t)
 {
