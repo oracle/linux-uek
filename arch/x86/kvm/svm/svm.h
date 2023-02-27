@@ -43,6 +43,7 @@ enum avic_modes {
 };
 
 extern enum avic_modes avic_mode;
+extern bool vnmi;
 
 /*
  * Clean bits in VMCB.
@@ -458,6 +459,27 @@ static inline bool gif_set(struct vcpu_svm *svm)
 		return !!(vmcb->control.int_ctl & V_GIF_MASK);
 	else
 		return svm->guest_gif;
+}
+
+static inline struct vmcb *get_vnmi_vmcb_l1(struct vcpu_svm *svm)
+{
+	if (!vnmi)
+		return NULL;
+
+	if (is_guest_mode(&svm->vcpu))
+		return NULL;
+	else
+		return svm->vmcb01.ptr;
+}
+
+static inline bool is_vnmi_enabled(struct vcpu_svm *svm)
+{
+	struct vmcb *vmcb = get_vnmi_vmcb_l1(svm);
+
+	if (vmcb)
+		return !!(vmcb->control.int_ctl & V_NMI_ENABLE_MASK);
+	else
+		return false;
 }
 
 /* svm.c */
