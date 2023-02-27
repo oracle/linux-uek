@@ -202,6 +202,7 @@
 #define CDNS_XSPI_CLK_CTRL_AUX_REG	0x2020
 #define CDNS_XSPI_CLK_ENABLE		BIT(0)
 #define CDNS_XSPI_CLK_DIV		GENMASK(4, 1)
+#define CDNS_XSPI_XFER_SUPPORTED	BIT(7)
 
 /* Clock macros */
 #define CDNS_XSPI_CLOCK_IO_HZ 800000000
@@ -234,6 +235,20 @@
 /* MSI-X clear interrupt register */
 #define CDNS_XSPI_SPIX_INTR_AUX				0x2000
 #define CDNS_MSIX_CLEAR_IRQ					0x01
+
+#define SPIX_XFER_FUNC_CTRL 0x8210
+#define SPIX_XFER_FUNC_CTRL_READ_DATA(i) (0x8000 + 8 * (i))
+
+#define XFER_SOFT_RESET		BIT(11)
+#define XFER_CS_N_HOLD		GENMASK(9, 6)
+#define XFER_RECEIVE_ENABLE	BIT(4)
+#define XFER_FUNC_ENABLE	BIT(3)
+#define XFER_CLK_CAPTURE_POL	BIT(2)
+#define XFER_CLK_DRIVE_POL	BIT(1)
+#define XFER_FUNC_START		BIT(0)
+
+#define XFER_QWORD_COUNT 32
+#define XFER_QWORD_BYTECOUNT 8
 
 #endif
 
@@ -280,6 +295,11 @@ struct cdns_xspi_dev {
 
 	u8 hw_num_banks;
 	enum cdns_xspi_sdma_size read_size;
+
+#if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
+	bool xfer_in_progress;
+	int current_xfer_qword;
+#endif
 };
 
 #if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
@@ -825,6 +845,206 @@ static int cdns_xspi_setup(struct spi_device *spi_dev)
 
 	return 0;
 }
+
+static bool cdns_xspi_is_xfer_supported(struct cdns_xspi_dev *cdns_xspi)
+{
+	u32 clk_reg = readl(cdns_xspi->auxbase + CDNS_XSPI_CLK_CTRL_AUX_REG);
+
+	if (clk_reg & CDNS_XSPI_XFER_SUPPORTED)
+		return true;
+
+	return false;
+}
+
+static int cdns_xspi_prepare_generic(int cs, const void *dout, int len, int glue, u32 *cmd_regs)
+{
+	u8 *data = (u8 *)dout;
+	int i;
+	int data_counter = 0;
+
+	memset(cmd_regs, 0x00, 6*4);
+
+	if (len > 7) {
+		for (i = (len >= 10 ? 2 : len - 8); i >= 0 ; i--)
+			cmd_regs[3] |= data[data_counter++] << (8*i);
+	}
+	if (len > 3) {
+		for (i = (len >= 7 ? 3 : len - 4); i >= 0; i--)
+			cmd_regs[2] |= data[data_counter++] << (8*i);
+	}
+	for (i = (len >= 3 ? 2 : len - 1); i >= 0 ; i--)
+		cmd_regs[1] |= data[data_counter++] << (8 + 8*i);
+
+	cmd_regs[1] |= 96;
+	cmd_regs[3] |= len << 24;
+	cmd_regs[4] |= cs << 12;
+
+	if (glue == 1)
+		cmd_regs[4] |= 1 << 28;
+
+	return 0;
+}
+
+unsigned char reverse_bits(unsigned char num)
+{
+	unsigned int count = sizeof(num) * 8 - 1;
+	unsigned int reverse_num = num;
+
+	num >>= 1;
+	while (num) {
+		reverse_num <<= 1;
+		reverse_num |= num & 1;
+		num >>= 1;
+		count--;
+	}
+	reverse_num <<= count;
+	return reverse_num;
+}
+
+static void cdns_xspi_read_single_qword(struct cdns_xspi_dev *cdns_xspi, u8 **buffer)
+{
+	u64 d = readq(cdns_xspi->iobase +
+		      SPIX_XFER_FUNC_CTRL_READ_DATA(cdns_xspi->current_xfer_qword));
+	u8 *ptr = (u8 *)&d;
+	int k;
+
+	for (k = 0; k < 8; k++) {
+		u8 val = reverse_bits((ptr[k]));
+		**buffer = val;
+		*buffer = *buffer + 1;
+	}
+
+	cdns_xspi->current_xfer_qword++;
+	cdns_xspi->current_xfer_qword %= XFER_QWORD_COUNT;
+}
+
+static void cdns_xspi_finish_read(struct cdns_xspi_dev *cdns_xspi, u8 **buffer, u32 data_count)
+{
+	u64 d = readq(cdns_xspi->iobase +
+		      SPIX_XFER_FUNC_CTRL_READ_DATA(cdns_xspi->current_xfer_qword));
+	u8 *ptr = (u8 *)&d;
+	int k;
+
+	for (k = 0; k < data_count % XFER_QWORD_BYTECOUNT; k++) {
+		u8 val = reverse_bits((ptr[k]));
+		**buffer = val;
+		*buffer = *buffer + 1;
+	}
+
+	cdns_xspi->current_xfer_qword++;
+	cdns_xspi->current_xfer_qword %= XFER_QWORD_COUNT;
+}
+
+static int cdns_xspi_prepare_transfer(int cs, int dir, int len, u32 *cmd_regs)
+{
+	memset(cmd_regs, 0x00, 6*4);
+
+	cmd_regs[1] |= 127;
+	cmd_regs[2] |= len << 16;
+	cmd_regs[4] |= dir << 4; //dir = 0 read, dir =1 write
+	cmd_regs[4] |= cs << 12;
+
+	return 0;
+}
+
+int cdns_xspi_transfer_one_message(struct spi_controller *master,
+					   struct spi_message *m)
+{
+	struct cdns_xspi_dev *cdns_xspi = spi_master_get_devdata(master);
+	struct spi_device *spi = m->spi;
+	struct spi_transfer *t = NULL;
+
+	const int max_len = XFER_QWORD_BYTECOUNT * XFER_QWORD_COUNT;
+	int current_cycle_count;
+	int cs = spi->chip_select;
+	int cs_change = 0;
+
+	/* Enable xfer state machine */
+	if (!cdns_xspi->xfer_in_progress) {
+		u32 xfer_control = readl(cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+
+		cdns_xspi->current_xfer_qword = 0;
+		cdns_xspi->xfer_in_progress = true;
+		xfer_control |= (XFER_RECEIVE_ENABLE |
+				 XFER_CLK_CAPTURE_POL |
+				 XFER_FUNC_START |
+				 XFER_SOFT_RESET |
+				 FIELD_PREP(XFER_CS_N_HOLD, (1 << cs)));
+		xfer_control &= ~(XFER_FUNC_ENABLE | XFER_CLK_DRIVE_POL);
+		writel(xfer_control, cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+	}
+
+	list_for_each_entry(t, &m->transfers, transfer_list) {
+		u8 *txd = (u8 *) t->tx_buf;
+		u8 *rxd = (u8 *) t->rx_buf;
+		u8 data[10];
+		u32 cmd_regs[6];
+
+		if (!txd)
+			txd = data;
+
+		cdns_xspi->in_buffer = txd + 1;
+		cdns_xspi->out_buffer = txd + 1;
+
+		while (t->len) {
+
+			current_cycle_count = t->len > max_len ? max_len : t->len;
+
+			if (current_cycle_count < 10) {
+				cdns_xspi_prepare_generic(cs, txd, current_cycle_count,
+							  false, cmd_regs);
+				cdns_xspi_trigger_command(cdns_xspi, cmd_regs);
+				if (cdns_xspi_stig_ready(cdns_xspi))
+					return -EIO;
+			} else {
+				cdns_xspi_prepare_generic(cs, txd, 1, true, cmd_regs);
+				cdns_xspi_trigger_command(cdns_xspi, cmd_regs);
+				cdns_xspi_prepare_transfer(cs, 1, current_cycle_count - 1,
+							   cmd_regs);
+				cdns_xspi_trigger_command(cdns_xspi, cmd_regs);
+				if (cdns_xspi_sdma_ready(cdns_xspi))
+					return -EIO;
+				cdns_xspi_sdma_handle(cdns_xspi);
+				if (cdns_xspi_stig_ready(cdns_xspi))
+					return -EIO;
+
+				cdns_xspi->in_buffer += current_cycle_count;
+				cdns_xspi->out_buffer += current_cycle_count;
+			}
+
+			if (rxd) {
+				int j;
+
+				for (j = 0; j < current_cycle_count / 8; j++)
+					cdns_xspi_read_single_qword(cdns_xspi, &rxd);
+				cdns_xspi_finish_read(cdns_xspi, &rxd, current_cycle_count);
+			} else {
+				cdns_xspi->current_xfer_qword += current_cycle_count /
+								 XFER_QWORD_BYTECOUNT;
+				if (current_cycle_count % XFER_QWORD_BYTECOUNT)
+					cdns_xspi->current_xfer_qword++;
+
+				cdns_xspi->current_xfer_qword %= XFER_QWORD_COUNT;
+			}
+			cs_change = t->cs_change;
+			t->len -= current_cycle_count;
+		}
+	}
+
+	if (!cs_change) {
+		u32 xfer_control = readl(cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+
+		xfer_control &= ~(XFER_RECEIVE_ENABLE |
+				  XFER_SOFT_RESET);
+		writel(xfer_control, cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+		cdns_xspi->xfer_in_progress = false;
+	}
+
+	m->status = 0;
+	spi_finalize_current_message(master);
+
+	return 0;
+}
 #endif
 
 
@@ -900,6 +1120,9 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 #if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
 	cdns_xspi_setup_clock(cdns_xspi, MRVL_DEFAULT_CLK);
 	cdns_xspi_configure_phy(cdns_xspi);
+
+	if (cdns_xspi_is_xfer_supported(cdns_xspi))
+		master->transfer_one_message = cdns_xspi_transfer_one_message;
 #endif
 
 	cdns_xspi_print_phy_config(cdns_xspi);
