@@ -195,6 +195,7 @@ struct vcpu_svm {
 	/* cached guest cpuid flags for faster access */
 	bool nrips_enabled	: 1;
 	bool vgif_enabled	: 1;
+	bool vnmi_enabled	: 1;
 
 	u32 ldr_reg;
 	u32 dfr_reg;
@@ -459,6 +460,12 @@ static inline bool gif_set(struct vcpu_svm *svm)
 		return !!(vmcb->control.int_ctl & V_GIF_MASK);
 	else
 		return svm->guest_gif;
+}
+
+static inline bool nested_vnmi_enabled(struct vcpu_svm *svm)
+{
+	return svm->vnmi_enabled &&
+	       (svm->nested.ctl.int_ctl & V_NMI_ENABLE_MASK);
 }
 
 static inline struct vmcb *get_vnmi_vmcb_l1(struct vcpu_svm *svm)
