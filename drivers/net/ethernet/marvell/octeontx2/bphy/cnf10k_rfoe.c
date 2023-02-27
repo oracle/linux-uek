@@ -768,7 +768,7 @@ static int cnf10k_rfoe_config_hwtstamp(struct net_device *netdev,
 		break;
 	case HWTSTAMP_TX_ONESTEP_SYNC:
 		priv->ptp_onestep_sync = 1;
-		/* fall through */
+		fallthrough;
 	case HWTSTAMP_TX_ON:
 		priv->tx_hw_tstamp_en = 1;
 		break;
@@ -1303,7 +1303,7 @@ static const struct net_device_ops cnf10k_rfoe_netdev_ops = {
 	.ndo_stop		= cnf10k_rfoe_eth_stop,
 	.ndo_start_xmit		= cnf10k_rfoe_eth_start_xmit,
 	.ndo_change_mtu		= cnf10k_change_mtu,
-	.ndo_do_ioctl		= cnf10k_rfoe_ioctl,
+	.ndo_eth_ioctl		= cnf10k_rfoe_ioctl,
 	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_get_stats64	= cnf10k_rfoe_get_stats64,
