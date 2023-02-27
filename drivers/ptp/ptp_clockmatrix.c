@@ -22,10 +22,13 @@
 #include "ptp_private.h"
 #include "ptp_clockmatrix.h"
 
+#define DRV_NAME	"ptp_clockmatrix"
+#define DRV_VERSION	"1.1"
+
 MODULE_DESCRIPTION("Driver for IDT ClockMatrix(TM) family");
 MODULE_AUTHOR("Richard Cochran <richardcochran@gmail.com>");
 MODULE_AUTHOR("IDT support-1588 <IDT-support-1588@lm.renesas.com>");
-MODULE_VERSION("1.0");
+MODULE_VERSION(DRV_VERSION);
 MODULE_LICENSE("GPL");
 
 /*
@@ -2417,6 +2420,8 @@ static int idtcm_probe(struct platform_device *pdev)
 	struct idtcm *idtcm;
 	int err;
 	u8 i;
+
+	dev_info(&pdev->dev, "%s version is %s\n", DRV_NAME, DRV_VERSION);
 
 	idtcm = devm_kzalloc(&pdev->dev, sizeof(struct idtcm), GFP_KERNEL);
 
