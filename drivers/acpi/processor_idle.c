@@ -23,6 +23,7 @@
 #include <linux/perf_event.h>
 #include <acpi/processor.h>
 #include <linux/context_tracking.h>
+#include <xen/xen.h>
 
 /*
  * Include the apic definitions for x86 to have the APIC timer related defines
@@ -477,6 +478,15 @@ static int acpi_processor_get_cstate_info(struct acpi_processor *pr)
 	acpi_processor_get_power_info_default(pr);
 
 	pr->power.count = acpi_processor_power_verify(pr);
+
+	/*
+	 * Xen hypervisor HVM vcpu offline code required to disable interrupt
+	 * before hlt, but acpi_idle enabled interrupt before hlt.
+	 *
+	 * Disable acpi_idle for Xen HVM guest to workaroud it.
+	 */
+	if (xen_hvm_domain())
+		return 0;
 
 	/*
 	 * if one state of type C2 or C3 is available, mark this
