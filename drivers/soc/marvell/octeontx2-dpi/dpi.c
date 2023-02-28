@@ -72,12 +72,45 @@ static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	int engine = 0;
 	int queue = vf;
 	u64 reg = 0ULL;
+	int cnt = 0xFFFFF;
 	u32 aura = dpivf->vf_config.aura;
 	u16 buf_size = dpivf->vf_config.csize;
 	u16 sso_pf_func = dpivf->vf_config.sso_pf_func;
 	u16 npa_pf_func = dpivf->vf_config.npa_pf_func;
 
 	spin_lock(&dpi->vf_lock);
+
+	if (!is_cn10k_dpi(dpi)) {
+		/* IDs are already configured while creating the domains.
+		 * No need to configure here.
+		 */
+		for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
+			/* Dont configure the queues for PKT engines */
+			if (engine >= 4)
+				break;
+
+			reg = 0;
+			reg = dpi_reg_read(dpi, DPI_DMA_ENGX_EN(engine));
+			reg &= DPI_DMA_ENG_EN_QEN((~(1 << queue)));
+			dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), reg);
+		}
+	}
+
+	dpi_reg_write(dpi, DPI_DMAX_QRST(queue), 0x1ULL);
+
+	while (cnt) {
+		reg = dpi_reg_read(dpi, DPI_DMAX_QRST(queue));
+		--cnt;
+		if (!(reg & 0x1))
+			break;
+	}
+
+	if (reg & 0x1)
+		dev_err(&dpi->pdev->dev, "Queue reset failed\n");
+
+	dpi_reg_write(dpi, DPI_DMAX_IDS2(queue), 0ULL);
+	dpi_reg_write(dpi, DPI_DMAX_IDS(queue), 0ULL);
+
 	reg = DPI_DMA_IBUFF_CSIZE_CSIZE((u64)(buf_size / 8));
 	if (is_cn10k_dpi(dpi))
 		reg |= DPI_DMA_IBUFF_CSIZE_NPA_FREE;
@@ -123,15 +156,17 @@ static int dpi_queue_fini(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	u16 buf_size = dpivf->vf_config.csize;
 
 	spin_lock(&dpi->vf_lock);
-	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
-		/* Don't configure the queues for PKT engines */
-		if (engine >= 4)
-			break;
+	if (!is_cn10k_dpi(dpi)) {
+		for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
+			/* Don't configure the queues for PKT engines */
+			if (engine >= 4)
+				break;
 
-		reg = 0;
-		reg = dpi_reg_read(dpi, DPI_DMA_ENGX_EN(engine));
-		reg &= DPI_DMA_ENG_EN_QEN((~(1 << queue)));
-		dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), reg);
+			reg = 0;
+			reg = dpi_reg_read(dpi, DPI_DMA_ENGX_EN(engine));
+			reg &= DPI_DMA_ENG_EN_QEN((~(1 << queue)));
+			dpi_reg_write(dpi, DPI_DMA_ENGX_EN(engine), reg);
+		}
 	}
 
 	dpi_reg_write(dpi, DPI_DMAX_QRST(queue), 0x1ULL);
