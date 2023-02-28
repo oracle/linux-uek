@@ -115,6 +115,7 @@ struct rd1173dev {
 	struct i2c_stats stats;
 	struct mutex xfer_active;
 	struct completion completion;
+	int active_port;
 };
 
 enum chiptype {
@@ -276,36 +277,30 @@ static irqreturn_t rd1173_irq_handler(int this_irq, void *data)
 	struct rd1173dev *rd1173dev = data;
 	struct rd1173_i2c_adapter *i2c0 = &rd1173dev->i2c_adap[0];
 	struct rd1173_i2c_adapter *i2c1 = &rd1173dev->i2c_adap[1];
-	struct rd1173_i2c_adapter *i2c;
-	int state;
 	int rc;
 
-	/* Check both masters */
-	rc = regmap_read(rd1173dev->regmap,
-			 i2c0->offset + RD1173_CMD_STAT_REG,
-			 &i2c0->state);
-	if (rc)
-		return IRQ_NONE;
+	if (rd1173dev->active_port == 1) {
+		rc = regmap_read(rd1173dev->regmap,
+				 i2c0->offset + RD1173_CMD_STAT_REG,
+				 &i2c0->state);
+		if (rc)
+			return IRQ_NONE;
 
-	rc = regmap_read(rd1173dev->regmap,
-			 i2c1->offset + RD1173_CMD_STAT_REG,
-			 &i2c1->state);
-	if (rc)
-		return IRQ_NONE;
+		if (i2c0->state & RD1173_STAT_TS) {
+			complete(&i2c0->rd1173dev->completion);
+			return IRQ_HANDLED;
+		}
+	} else if (rd1173dev->active_port == 2) {
+		rc = regmap_read(rd1173dev->regmap,
+				 i2c1->offset + RD1173_CMD_STAT_REG,
+				 &i2c1->state);
+		if (rc)
+			return IRQ_NONE;
 
-	if (i2c0->state) {
-		i2c = i2c0;
-		state = i2c0->state;
-	} else if (i2c1->state) {
-		i2c = i2c1;
-		state = i2c1->state;
-	} else {
-		return IRQ_NONE;
-	}
-
-	if (state == RD1173_STAT_TS) {
-		complete(&i2c->rd1173dev->completion);
-		return IRQ_HANDLED;
+		if (i2c1->state & RD1173_STAT_TS) {
+			complete(&i2c1->rd1173dev->completion);
+			return IRQ_HANDLED;
+		}
 	}
 	return IRQ_NONE;
 }
@@ -614,6 +609,7 @@ static int rd1173_xfer(struct i2c_adapter *i2c_adap, struct i2c_msg *msgs, int n
 		return -ERESTARTSYS;
 
 	reinit_completion(&i2c->rd1173dev->completion);
+	i2c->rd1173dev->active_port = i2c->i2c_adap.nr;
 
 	for (i = 0; i < num; i++) {
 		rd1173_fifo_clear(i2c);
@@ -695,6 +691,7 @@ done:
 		rc = -EAGAIN;
 	}
 
+	i2c->rd1173dev->active_port = 0;
 	mutex_unlock(&i2c->rd1173dev->xfer_active);
 	return rc;
 }
