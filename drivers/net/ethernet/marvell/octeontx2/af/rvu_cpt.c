@@ -1075,14 +1075,21 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf, int s
 static int cpt_inline_inb_lf_cmd_send(struct rvu *rvu, int blkaddr,
 				      int nix_blkaddr)
 {
-	int cpt_pf_num = rvu->cpt_pf_num;
+	int cpt_pf_num = rvu->cpt_pf_num, num_lfs;
 	struct cpt_inst_lmtst_req *req;
 	dma_addr_t res_daddr;
 	int timeout = 3000;
+	u16 pcifunc;
 	u8 cpt_idx;
 	u64 *inst;
 	u16 *res;
 	int rc;
+
+	pcifunc = (cpt_pf_num & RVU_PFVF_PF_MASK) << RVU_PFVF_PF_SHIFT;
+	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
+					blkaddr);
+	if (num_lfs == 0)
+		return 0;
 
 	res = kzalloc(CPT_RES_LEN, GFP_KERNEL);
 	if (!res)
@@ -1192,10 +1199,8 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
 					blkaddr);
-	if (num_lfs == 0) {
-		dev_warn(rvu->dev, "CPT LF is not configured\n");
+	if (num_lfs == 0)
 		goto unlock;
-	}
 
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
