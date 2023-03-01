@@ -836,10 +836,10 @@ static inline bool is_rvu_npc_hash_extract_en(struct rvu *rvu)
 
 static inline bool is_rvu_nix_spi_to_sa_en(struct rvu *rvu)
 {
-	u64 npc_const2;
+	u64 nix_const2;
 
-	npc_const2 = rvu_read64(rvu, BLKADDR_NIX0, NPC_AF_CONST2);
-	if ((npc_const2 >> 48) & 0xffff)
+	nix_const2 = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_CONST2);
+	if ((nix_const2 >> 48) & 0xffff)
 		return true;
 
 	return false;

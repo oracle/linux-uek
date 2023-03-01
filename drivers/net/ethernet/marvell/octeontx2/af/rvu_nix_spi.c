@@ -49,7 +49,7 @@ static void  nix_spi_to_sa_index_table_update(struct rvu *rvu,
 	u64 wkey;
 
 	wkey = (req->spi_index | ((u64)req->match_id << 32) |
-		((u64)lfidx < 48) | ((u64)req->valid << 55));
+		(((u64)lfidx) << 48) | ((u64)req->valid << 55));
 	rvu_write64(rvu, blkaddr, NIX_AF_SPI_TO_SA_KEYX_WAYX(index, way),
 		    wkey);
 	wvalue = (req->sa_index & 0xFFFFFFFF);
@@ -204,7 +204,7 @@ int rvu_nix_free_spi_to_sa_table(struct rvu *rvu, uint16_t pcifunc)
 		return NIX_AF_ERR_AF_LF_INVALID;
 
 	mutex_lock(&rvu->rsrc_lock);
-	for (index = 0; index < hw->cap.spi_to_sas; index++) {
+	for (index = 0; index < hw->cap.spi_to_sas / 4; index++) {
 		for (way = 0; way < 4; way++) {
 			key = rvu_read64(rvu, blkaddr,
 					 NIX_AF_SPI_TO_SA_KEYX_WAYX(index,
