@@ -2710,8 +2710,10 @@ void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev)
 	 */
 	WARN_ON(atomic_read(&rds_ibdev->fastreg_wrs) != RDS_IB_DEFAULT_FREG_WR);
 
-	cancel_work_sync(&rds_ibdev->fastreg_w);
-	tasklet_kill(&rds_ibdev->fastreg_tasklet);
+	if (rds_ibdev->rid_tasklet_work_initialized) {
+		cancel_work_sync(&rds_ibdev->fastreg_w);
+		tasklet_kill(&rds_ibdev->fastreg_tasklet);
+	}
 
 	if (rds_ibdev->fastreg_qp) {
 		/* Destroy qp */
@@ -2876,6 +2878,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 
 	INIT_WORK(&rds_ibdev->fastreg_w, rds_ib_cq_comp_handler_fastreg_w);
 	atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
+	rds_ibdev->rid_tasklet_work_initialized = true;
 
 clean_up:
 	if (reason)
