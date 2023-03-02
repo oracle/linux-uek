@@ -490,6 +490,7 @@ struct rds_ib_device {
 	bool			use_fastreg:1;
 	bool			rid_mod_unload:1;
 	bool			rid_dev_rem:1;
+	bool			rid_tasklet_work_initialized:1;
 
 	int			fastreg_cq_vector;
 	struct ib_cq		*fastreg_cq;
