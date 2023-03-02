@@ -487,7 +487,10 @@ struct rds_ib_device {
 	struct ib_pd		*pd;
 	struct workqueue_struct	*rid_dev_wq; /* Device work queue */
 
-	bool			use_fastreg;
+	bool			use_fastreg:1;
+	bool			rid_mod_unload:1;
+	bool			rid_dev_rem:1;
+
 	int			fastreg_cq_vector;
 	struct ib_cq		*fastreg_cq;
 	struct ib_wc            fastreg_wc[RDS_WC_MAX];
@@ -535,9 +538,6 @@ struct rds_ib_device {
 
 	struct list_head	rid_rs_list;	/* Device socket list */
 	spinlock_t		rid_rs_list_lock;
-
-	bool			rid_mod_unload;
-	bool			rid_dev_rem;
 
 	struct work_struct	rid_dev_rem_work;
 	struct completion	*rid_dev_rem_complete;
