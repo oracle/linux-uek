@@ -22,6 +22,7 @@
 #endif
 
 #define RO_EXCEPTION_TABLE_ALIGN	16
+#define RUNTIME_DISCARD_EXIT
 
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/asm-offsets.h>
