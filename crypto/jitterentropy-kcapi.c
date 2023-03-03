@@ -145,7 +145,11 @@ static int jent_kcapi_random(struct crypto_rng *tfm,
 	spin_lock(&rng->jent_lock);
 
 	/* Return a permanent error in case we had too many resets in a row. */
-	if (rng->reset_cnt > (1<<10)) {
+	if (rng->reset_cnt > 2) {
+		 if (fips_enabled) {
+			fips_fail_notify();
+			panic("jitterentropy: health test failed for Jitter RNG in fips mode");
+		}
 		ret = -EFAULT;
 		goto out;
 	}
