@@ -1851,6 +1851,13 @@ static int do_test(const char *alg, u32 type, u32 mask, int m, u32 num_mb)
 		ret = min(ret, tcrypt_test("cbc(aria)"));
 		ret = min(ret, tcrypt_test("ctr(aria)"));
 		break;
+	case 193:
+		ret += tcrypt_test("ffdhe2048(dh)");
+		ret += tcrypt_test("ffdhe3072(dh)");
+		ret += tcrypt_test("ffdhe4096(dh)");
+		ret += tcrypt_test("ffdhe6144(dh)");
+		ret += tcrypt_test("ffdhe8192(dh)");
+		break;
 	case 200:
 		test_cipher_speed("ecb(aes)", ENCRYPT, sec, NULL, 0,
 				speed_template_16_24_32);
