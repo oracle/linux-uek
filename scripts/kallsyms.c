@@ -408,6 +408,7 @@ static bool is_ignored_symbol(const char *name, char type)
 		"kallsyms_modules",
 		"kallsyms_module_names",
 		"kallsyms_module_names_len",
+		"kallsyms_seqs_of_names",
 		/* Exclude linker generated symbols which vary between passes */
 		"_SDA_BASE_",		/* ppc */
 		"_SDA2_BASE_",		/* ppc */
