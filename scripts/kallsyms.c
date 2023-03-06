@@ -360,6 +360,7 @@ static int symbol_valid(struct sym_entry *s)
 		"kallsyms_markers",
 		"kallsyms_token_table",
 		"kallsyms_token_index",
+		"kallsyms_seqs_of_names",
 		"kallsyms_symbol_modules",
 		"kallsyms_modules",
 
