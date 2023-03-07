@@ -463,6 +463,9 @@ static int init_drbg_random(void)
 	struct crypto_rng *drbg;
 	int ret;
 
+	if (drbg_random)
+		return 0;
+
 	mutex_lock(&drbg_random_lock);
 	if (!drbg_random) {
 		drbg = crypto_alloc_rng("drbg_nopr_ctr_aes256", 0, 0);
@@ -494,6 +497,9 @@ static int init_drbg_reseeded(void)
 {
 	struct crypto_rng *drbg;
 	int ret;
+
+	if (drbg_reseeded)
+		return 0;
 
 	mutex_lock(&drbg_reseeded_lock);
 	if (!drbg_reseeded) {
@@ -570,7 +576,8 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter, bool fips_enabled_re
 				ret = rc;
 				goto out;
 			}
-			rc = crypto_rng_get_bytes(drbg_reseeded, block, sizeof(block));
+			BUILD_BUG_ON(CHACHA_BLOCK_SIZE < 32);
+			rc = crypto_rng_get_bytes(drbg_reseeded, block, 32);
 			if (rc < 0) {
 				ret = rc;
 				goto out;
@@ -594,8 +601,12 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter, bool fips_enabled_re
 			if (unlikely(chacha_state[12] == 0))
 				++chacha_state[13];
 		}
+		/* drbg_reseeded can only return 32 */
+		if (fips_enabled && fips_enabled_reseed)
+			copied = copy_to_iter(block, 32, iter);
+		else
+			copied = copy_to_iter(block, sizeof(block), iter);
 
-		copied = copy_to_iter(block, sizeof(block), iter);
 		ret += copied;
 		if (!iov_iter_count(iter) || copied != sizeof(block))
 			break;
