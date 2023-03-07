@@ -2078,12 +2078,12 @@ out:
 					       rds_ibdev,
 					       conn, ic, reason, err);
 
+	if (ic)
+		up_read(&ic->i_cm_id_free_lock);
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
 		rdma_reject(cm_id, &err, sizeof(int));
-	if (ic)
-		up_read(&ic->i_cm_id_free_lock);
 
 	return destroy;
 }
