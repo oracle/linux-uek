@@ -31,7 +31,6 @@
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 #include <linux/ctype.h>
-#include <linux/aer.h>
 #include <linux/slab.h>
 #include <linux/firmware.h>
 #include <linux/miscdevice.h>
