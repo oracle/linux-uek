@@ -102,6 +102,8 @@
 #include <linux/kernel.h>
 #include <linux/jiffies.h>
 
+#define JENT_OVERSAMPLING	(64 / 8)	/* Oversample one more Jitter RNG block */
+
 /***************************************************************
  * Backend cipher definitions available to DRBG
  ***************************************************************/
@@ -1133,7 +1135,7 @@ static int drbg_seed(struct drbg_state *drbg, struct drbg_string *pers,
 		     bool reseed)
 {
 	int ret;
-	unsigned char entropy[((32 + 16) * 2)];
+	unsigned char entropy[((32 + 16) * 2) + JENT_OVERSAMPLING];
 	unsigned int entropylen = drbg_sec_strength(drbg->core->flags);
 	struct drbg_string data1;
 	LIST_HEAD(seedlist);
@@ -1183,7 +1185,7 @@ static int drbg_seed(struct drbg_state *drbg, struct drbg_string *pers,
 			 */
 			ret = crypto_rng_get_bytes(drbg->jent,
 						   entropy + entropylen,
-						   entropylen);
+						   entropylen + JENT_OVERSAMPLING);
 			if (fips_enabled && ret) {
 				pr_devel("DRBG: jent failed with %d\n", ret);
 
@@ -1205,9 +1207,9 @@ static int drbg_seed(struct drbg_state *drbg, struct drbg_string *pers,
 					goto out;
 			}
 
-			drbg_string_fill(&data1, entropy, entropylen * 2);
+			drbg_string_fill(&data1, entropy, entropylen * 2 + JENT_OVERSAMPLING);
 			pr_devel("DRBG: (re)seeding with %u bytes of entropy\n",
-				 entropylen * 2);
+				 entropylen * 2 + JENT_OVERSAMPLING);
 		}
 	}
 	list_add_tail(&data1.list, &seedlist);
@@ -1230,7 +1232,7 @@ static int drbg_seed(struct drbg_state *drbg, struct drbg_string *pers,
 	ret = __drbg_seed(drbg, &seedlist, reseed, new_seed_state);
 
 out:
-	memzero_explicit(entropy, entropylen * 2);
+	memzero_explicit(entropy, entropylen * 2 + JENT_OVERSAMPLING);
 
 	return ret;
 }
