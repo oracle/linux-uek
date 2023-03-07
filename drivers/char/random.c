@@ -452,9 +452,12 @@ static int init_drbg_random(void)
 	struct crypto_rng *drbg;
 	int ret;
 
+	if (drbg_random)
+		return 0;
+
 	mutex_lock(&drbg_random_lock);
 	if (!drbg_random) {
-		drbg = crypto_alloc_rng("drbg_nopr_ctr_aes256", 0, 0);
+		drbg = crypto_alloc_rng("drbg_nopr_hmac_sha512", 0, 0);
 		if (IS_ERR(drbg)) {
 			pr_err("drbg_random: could not allocate DRBG handle\n");
 			ret = PTR_ERR(drbg);
@@ -484,9 +487,12 @@ static int init_drbg_reseeded(void)
 	struct crypto_rng *drbg;
 	int ret;
 
+	if (drbg_reseeded)
+		return 0;
+
 	mutex_lock(&drbg_reseeded_lock);
 	if (!drbg_reseeded) {
-		drbg = crypto_alloc_rng("drbg_nopr_ctr_aes256", 0, 0);
+		drbg = crypto_alloc_rng("drbg_nopr_hmac_sha512", 0, 0);
 		if (IS_ERR(drbg)) {
 			pr_err("drbg_reseeded: could not allocate DRBG handle\n");
 			ret = PTR_ERR(drbg);
@@ -525,6 +531,8 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter, bool fips_enabled_re
 	struct chacha_state chacha_state;
 	u8 block[CHACHA_BLOCK_SIZE];
 	size_t ret = 0, copied;
+	const size_t block_len = fips_enabled && fips_enabled_reseed ?
+				 32 : sizeof(block);
 	int  rc;
 
 	if (unlikely(!iov_iter_count(iter)))
@@ -555,12 +563,14 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter, bool fips_enabled_re
 				pr_warn("drbg_reseeded: init failed\n");
 				continue;
 			}
+
+			BUILD_BUG_ON(CHACHA_BLOCK_SIZE < 32);
+			mutex_lock(&drbg_reseeded_lock);
 			rc = drbg_reseed(drbg_reseeded);
-			if (rc < 0) {
-				ret = rc;
-				goto out;
-			}
-			rc = crypto_rng_get_bytes(drbg_reseeded, block, sizeof(block));
+			if (!rc)
+				rc = crypto_rng_get_bytes(drbg_reseeded, block,
+							  block_len);
+			mutex_unlock(&drbg_reseeded_lock);
 			if (rc < 0) {
 				ret = rc;
 				goto out;
@@ -584,10 +594,9 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter, bool fips_enabled_re
 			if (unlikely(chacha_state.x[12] == 0))
 				++chacha_state.x[13];
 		}
-
-		copied = copy_to_iter(block, sizeof(block), iter);
+		copied = copy_to_iter(block, block_len, iter);
 		ret += copied;
-		if (!iov_iter_count(iter) || copied != sizeof(block))
+		if (!iov_iter_count(iter) || copied != block_len)
 			break;
 
 		BUILD_BUG_ON(PAGE_SIZE % sizeof(block) != 0);

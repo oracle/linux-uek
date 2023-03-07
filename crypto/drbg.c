@@ -102,6 +102,7 @@
 
 /* Security strength in bytes */
 #define DRBG_SEC_STRENGTH	(SHA512_DIGEST_SIZE / 2)
+#define JENT_OVERSAMPLING	(64 / 8)	/* Oversample one more Jitter RNG block */
 
 /*
  * Maximum number of requests before reseeding is forced.
@@ -230,7 +231,7 @@ static int drbg_seed(struct drbg_state *drbg, const u8 *pers, size_t pers_len,
 	__must_hold(&drbg->drbg_mutex)
 {
 	int ret;
-	u8 entropy_buf[(32 + 16) * 2];
+	u8 entropy_buf[(32 + 16) * 2 + JENT_OVERSAMPLING];
 	size_t entropylen;
 	const u8 *entropy;
 
@@ -274,7 +275,7 @@ static int drbg_seed(struct drbg_state *drbg, const u8 *pers, size_t pers_len,
 			 */
 			ret = crypto_rng_get_bytes(drbg->jent,
 						   &entropy_buf[entropylen],
-						   entropylen);
+						   entropylen + JENT_OVERSAMPLING);
 			if (fips_enabled && ret) {
 				pr_devel("DRBG: jent failed with %d\n", ret);
 
@@ -296,7 +297,7 @@ static int drbg_seed(struct drbg_state *drbg, const u8 *pers, size_t pers_len,
 					goto out;
 			}
 
-			entropylen *= 2;
+			entropylen = entropylen * 2 + JENT_OVERSAMPLING;
 			pr_devel("DRBG: (re)seeding with %zu bytes of entropy\n",
 				 entropylen);
 		}
