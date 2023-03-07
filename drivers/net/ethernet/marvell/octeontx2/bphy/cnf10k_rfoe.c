@@ -324,7 +324,25 @@ static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv 
 	tx_mem->step_type = 1;
 }
 
-#define OTX2_RFOE_PTP_TSTMP_POLL_CNT	100
+#define OTX2_RFOE_PTP_TSTMP_POLL_CNT	20
+
+static void cnf10k_rfoe_dump_ts_ring(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
+	u64 *ptp_tstamp;
+	u8 i;
+
+	pr_info("PTP ring entries dump:\n");
+
+	for (i = 0; i < priv->ptp_ring_cfg.ptp_ring_size; i++) {
+		tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
+			   ((u8 __force *)priv->ptp_ring_cfg.ptp_ring_base +
+			    (16 * i));
+		ptp_tstamp = (u64 *)tx_tstmp;
+		pr_info("entry = %u, tx_tstmp_w0 = 0x%llx tx_tstmp_w1 = 0x%llx\n",
+			i, *ptp_tstamp, *(ptp_tstamp + 1));
+	}
+}
 
 /* ptp interrupt processing bottom half */
 static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
@@ -336,7 +354,8 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	struct skb_shared_hwtstamps ts;
 	struct netdev_queue *txq;
 	u64 timestamp, tsns;
-	u16 jobid;
+	u64 *ptp_tstamp;
+	int cnt;
 
 	txq = netdev_get_tx_queue(priv->netdev, PTP_QUEUE_ID);
 
@@ -352,30 +371,37 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 		goto submit_next_req;
 	}
 
-	/* make sure that all memory writes by rfoe are completed */
-	dma_rmb();
-
 	/* ptp timestamp entry is 128-bit in size */
 	tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
-			((u8 *)priv->ptp_ring_cfg.ptp_ring_base +
-			(16 * priv->ptp_ring_cfg.ptp_ring_idx));
+		   ((u8 __force *)priv->ptp_ring_cfg.ptp_ring_base +
+		    (16 * priv->ptp_ring_cfg.ptp_ring_idx));
 
-	/* match job id */
-	jobid = tx_tstmp->jobid;
-	if (jobid != priv->ptp_job_tag) {
-		netif_err(priv, tx_done, priv->netdev,
-			  "ptp job id doesn't match, job_id=0x%x skb->job_tag=0x%x\n",
-			  jobid, priv->ptp_job_tag);
-		priv->stats.tx_hwtstamp_failures++;
-		goto submit_next_req;
+	/* poll for match job id */
+	for (cnt = 0; cnt < OTX2_RFOE_PTP_TSTMP_POLL_CNT; cnt++) {
+		/* make sure that all memory writes by rfoe are completed */
+		dma_rmb();
+		if (tx_tstmp->jobid == priv->ptp_job_tag)
+			break;
+		usleep_range(5, 10);
+	}
+
+	if (cnt >= OTX2_RFOE_PTP_TSTMP_POLL_CNT) {
+		netdev_err(priv->netdev,
+			   "ptp job id doesn't match @ idx=%d: job_id=0x%x skb->job_tag=0x%x\n",
+			   priv->ptp_ring_cfg.ptp_ring_idx, tx_tstmp->jobid, priv->ptp_job_tag);
+		if (netif_msg_tx_queued(priv))
+			cnf10k_rfoe_dump_ts_ring(priv);
+		goto tx_tstmp_error;
 	}
 
 	if (tx_tstmp->drop || tx_tstmp->tx_err) {
-		netif_err(priv, tx_done, priv->netdev,
-			  "ptp tx timstamp error\n");
-		priv->stats.tx_hwtstamp_failures++;
-		goto submit_next_req;
+		ptp_tstamp = (u64 *)tx_tstmp;
+		netdev_err(priv->netdev,
+			   "ptp timstamp error @ idx=%d: tstmp_w0=0x%llx tstmp_w1=0x%llx\n",
+			   priv->ptp_ring_cfg.ptp_ring_idx, *ptp_tstamp, *(ptp_tstamp + 1));
+		goto tx_tstmp_error;
 	}
+
 	/* update timestamp value in skb */
 	timestamp = cnf10k_ptp_convert_timestamp(tx_tstmp->ptp_timestamp);
 	tsns = timestamp;
@@ -388,6 +414,10 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	ts.hwtstamp = ns_to_ktime(tsns);
 	skb_tstamp_tx(priv->ptp_tx_skb, &ts);
 
+	goto submit_next_req;
+
+tx_tstmp_error:
+	priv->stats.tx_hwtstamp_failures++;
 submit_next_req:
 	if (priv->ptp_tx_skb)
 		dev_kfree_skb_any(priv->ptp_tx_skb);
