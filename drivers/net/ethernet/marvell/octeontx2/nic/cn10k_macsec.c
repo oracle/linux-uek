@@ -745,61 +745,6 @@ fail:
 	return ret;
 }
 
-static int cn10k_mcs_sa_stats(struct otx2_nic *pfvf, u8 hw_sa_id,
-			      struct mcs_sa_stats *rsp_p,
-			      enum mcs_direction dir, bool clear)
-{
-	struct mcs_clear_stats *clear_req;
-	struct mbox *mbox = &pfvf->mbox;
-	struct mcs_stats_req *req;
-	struct mcs_sa_stats *rsp;
-	int ret;
-
-	mutex_lock(&mbox->lock);
-
-	req = otx2_mbox_alloc_msg_mcs_get_sa_stats(mbox);
-	if (!req) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	req->id = hw_sa_id;
-	req->dir = dir;
-
-	if (!clear)
-		goto send_msg;
-
-	clear_req = otx2_mbox_alloc_msg_mcs_clear_stats(mbox);
-	if (!clear_req) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-	clear_req->id = hw_sa_id;
-	clear_req->dir = dir;
-	clear_req->type = MCS_RSRC_TYPE_SA;
-
-send_msg:
-	ret = otx2_sync_mbox_msg(mbox);
-	if (ret)
-		goto fail;
-
-	rsp = (struct mcs_sa_stats *)otx2_mbox_get_rsp(&pfvf->mbox.mbox,
-						       0, &req->hdr);
-	if (IS_ERR(rsp)) {
-		ret = PTR_ERR(rsp);
-		goto fail;
-	}
-
-	memcpy(rsp_p, rsp, sizeof(*rsp_p));
-
-	mutex_unlock(&mbox->lock);
-
-	return 0;
-fail:
-	mutex_unlock(&mbox->lock);
-	return ret;
-}
-
 static int cn10k_mcs_sc_stats(struct otx2_nic *pfvf, u8 hw_sc_id,
 			      struct mcs_sc_stats *rsp_p,
 			      enum mcs_direction dir, bool clear)
@@ -1623,29 +1568,6 @@ static int cn10k_mdo_get_tx_sc_stats(struct macsec_context *ctx)
 	return 0;
 }
 
-static int cn10k_mdo_get_tx_sa_stats(struct macsec_context *ctx)
-{
-	struct otx2_nic *pfvf = macsec_netdev_priv(ctx->netdev);
-	struct cn10k_mcs_cfg *cfg = pfvf->macsec_cfg;
-	struct mcs_sa_stats rsp = { 0 };
-	u8 sa_num = ctx->sa.assoc_num;
-	struct cn10k_mcs_txsc *txsc;
-
-	txsc = cn10k_mcs_get_txsc(cfg, ctx->secy);
-	if (!txsc)
-		return -ENOENT;
-
-	if (sa_num >= CN10K_MCS_SA_PER_SC)
-		return -EOPNOTSUPP;
-
-	cn10k_mcs_sa_stats(pfvf, txsc->hw_sa_id[sa_num], &rsp, MCS_TX, false);
-
-	ctx->stats.tx_sa_stats->OutPktsProtected = rsp.pkt_protected_cnt;
-	ctx->stats.tx_sa_stats->OutPktsEncrypted = rsp.pkt_encrypt_cnt;
-
-	return 0;
-}
-
 static int cn10k_mdo_get_rx_sc_stats(struct macsec_context *ctx)
 {
 	struct otx2_nic *pfvf = macsec_netdev_priv(ctx->netdev);
@@ -1688,33 +1610,6 @@ static int cn10k_mdo_get_rx_sc_stats(struct macsec_context *ctx)
 	return 0;
 }
 
-static int cn10k_mdo_get_rx_sa_stats(struct macsec_context *ctx)
-{
-	struct otx2_nic *pfvf = macsec_netdev_priv(ctx->netdev);
-	struct macsec_rx_sc *sw_rx_sc = ctx->sa.rx_sa->sc;
-	struct cn10k_mcs_cfg *cfg = pfvf->macsec_cfg;
-	struct mcs_sa_stats rsp = { 0 };
-	u8 sa_num = ctx->sa.assoc_num;
-	struct cn10k_mcs_rxsc *rxsc;
-
-	rxsc = cn10k_mcs_get_rxsc(cfg, ctx->secy, sw_rx_sc);
-	if (!rxsc)
-		return -ENOENT;
-
-	if (sa_num >= CN10K_MCS_SA_PER_SC)
-		return -EOPNOTSUPP;
-
-	cn10k_mcs_sa_stats(pfvf, rxsc->hw_sa_id[sa_num], &rsp, MCS_RX, false);
-
-	ctx->stats.rx_sa_stats->InPktsOK = rsp.pkt_ok_cnt;
-	ctx->stats.rx_sa_stats->InPktsInvalid = rsp.pkt_invalid_cnt;
-	ctx->stats.rx_sa_stats->InPktsNotValid = rsp.pkt_notvalid_cnt;
-	ctx->stats.rx_sa_stats->InPktsNotUsingSA = rsp.pkt_nosaerror_cnt;
-	ctx->stats.rx_sa_stats->InPktsUnusedSA = rsp.pkt_nosa_cnt;
-
-	return 0;
-}
-
 static const struct macsec_ops cn10k_mcs_ops = {
 	.mdo_dev_open = cn10k_mdo_open,
 	.mdo_dev_stop = cn10k_mdo_stop,
@@ -1732,9 +1627,7 @@ static const struct macsec_ops cn10k_mcs_ops = {
 	.mdo_del_txsa = cn10k_mdo_del_txsa,
 	.mdo_get_dev_stats = cn10k_mdo_get_dev_stats,
 	.mdo_get_tx_sc_stats = cn10k_mdo_get_tx_sc_stats,
-	.mdo_get_tx_sa_stats = cn10k_mdo_get_tx_sa_stats,
 	.mdo_get_rx_sc_stats = cn10k_mdo_get_rx_sc_stats,
-	.mdo_get_rx_sa_stats = cn10k_mdo_get_rx_sa_stats,
 };
 
 void cn10k_handle_mcs_event(struct otx2_nic *pfvf, struct mcs_intr_info *event)

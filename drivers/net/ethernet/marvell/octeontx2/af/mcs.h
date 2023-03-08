@@ -232,7 +232,6 @@ void cnf10kb_mcs_pab_intr_handler(struct mcs *mcs, u64 intr, enum mcs_direction 
 
 /* Stats APIs */
 void mcs_get_sc_stats(struct mcs *mcs, struct mcs_sc_stats *stats, int id, int dir);
-void mcs_get_sa_stats(struct mcs *mcs, struct mcs_sa_stats *stats, int id, int dir);
 void mcs_get_port_stats(struct mcs *mcs, struct mcs_port_stats *stats, int id, int dir);
 void mcs_get_flowid_stats(struct mcs *mcs, struct mcs_flowid_stats *stats, int id, int dir);
 void mcs_get_rx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id);

@@ -416,7 +416,6 @@ M(MCS_GET_FLOWID_STATS, 0xa00c, mcs_get_flowid_stats, mcs_stats_req,		\
 M(MCS_GET_SECY_STATS,	0xa00d, mcs_get_secy_stats, mcs_stats_req,		\
 				mcs_secy_stats)					\
 M(MCS_GET_SC_STATS,	0xa00e, mcs_get_sc_stats, mcs_stats_req, mcs_sc_stats)	\
-M(MCS_GET_SA_STATS,	0xa00f, mcs_get_sa_stats, mcs_stats_req, mcs_sa_stats)	\
 M(MCS_GET_PORT_STATS,	0xa010, mcs_get_port_stats, mcs_stats_req,		\
 				mcs_port_stats)					\
 M(MCS_CLEAR_STATS,	0xa011,	mcs_clear_stats, mcs_clear_stats, msg_rsp)	\
@@ -2737,21 +2736,6 @@ struct mcs_port_stats {
 	u64 parser_err_cnt;
 	u64 preempt_err_cnt;  /* CNF10K-B */
 	u64 sectag_insert_err_cnt;
-	u64 rsvd[4];
-};
-
-/* Only for CN10K-B */
-struct mcs_sa_stats {
-	struct mbox_msghdr hdr;
-	/* RX */
-	u64 pkt_invalid_cnt;
-	u64 pkt_nosaerror_cnt;
-	u64 pkt_notvalid_cnt;
-	u64 pkt_ok_cnt;
-	u64 pkt_nosa_cnt;
-	/* TX */
-	u64 pkt_encrypt_cnt;
-	u64 pkt_protected_cnt;
 	u64 rsvd[4];
 };
 

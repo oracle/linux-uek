@@ -263,59 +263,6 @@ static int rvu_dbg_mcs_tx_port_stats_display(struct seq_file *filp, void *unused
 
 RVU_DEBUG_SEQ_FOPS(mcs_tx_port_stats, mcs_tx_port_stats_display, NULL);
 
-static int rvu_dbg_mcs_sa_stats_display(struct seq_file *filp, void *unused, int dir)
-{
-	struct mcs *mcs = filp->private;
-	struct mcs_sa_stats stats;
-	struct rsrc_bmap *map;
-	int sa_id;
-
-	if (dir == MCS_TX) {
-		map = &mcs->tx.sa;
-		mutex_lock(&mcs->stats_lock);
-		for_each_set_bit(sa_id, map->bmap, mcs->hw->sa_entries) {
-			seq_puts(filp, "\n TX SA stats\n");
-			mcs_get_sa_stats(mcs, &stats, sa_id, MCS_TX);
-			seq_printf(filp, "sa%d: Pkts encrypted: %lld\n", sa_id,
-				   stats.pkt_encrypt_cnt);
-
-			seq_printf(filp, "sa%d: Pkts protected: %lld\n", sa_id,
-				   stats.pkt_protected_cnt);
-		}
-		mutex_unlock(&mcs->stats_lock);
-		return 0;
-	}
-
-	/* RX stats */
-	map = &mcs->rx.sa;
-	mutex_lock(&mcs->stats_lock);
-	for_each_set_bit(sa_id, map->bmap, mcs->hw->sa_entries) {
-		seq_puts(filp, "\n RX SA stats\n");
-		mcs_get_sa_stats(mcs, &stats, sa_id, MCS_RX);
-		seq_printf(filp, "sa%d: Invalid pkts: %lld\n", sa_id, stats.pkt_invalid_cnt);
-		seq_printf(filp, "sa%d: Pkts no sa error: %lld\n", sa_id, stats.pkt_nosaerror_cnt);
-		seq_printf(filp, "sa%d: Pkts not valid: %lld\n", sa_id, stats.pkt_notvalid_cnt);
-		seq_printf(filp, "sa%d: Pkts ok: %lld\n", sa_id, stats.pkt_ok_cnt);
-		seq_printf(filp, "sa%d: Pkts no sa: %lld\n", sa_id, stats.pkt_nosa_cnt);
-	}
-	mutex_unlock(&mcs->stats_lock);
-	return 0;
-}
-
-static int rvu_dbg_mcs_rx_sa_stats_display(struct seq_file *filp, void *unused)
-{
-	return rvu_dbg_mcs_sa_stats_display(filp, unused, MCS_RX);
-}
-
-RVU_DEBUG_SEQ_FOPS(mcs_rx_sa_stats, mcs_rx_sa_stats_display, NULL);
-
-static int rvu_dbg_mcs_tx_sa_stats_display(struct seq_file *filp, void *unused)
-{
-	return rvu_dbg_mcs_sa_stats_display(filp, unused, MCS_TX);
-}
-
-RVU_DEBUG_SEQ_FOPS(mcs_tx_sa_stats, mcs_tx_sa_stats_display, NULL);
-
 static int rvu_dbg_mcs_tx_sc_stats_display(struct seq_file *filp, void *unused)
 {
 	struct mcs *mcs = filp->private;
@@ -332,13 +279,6 @@ static int rvu_dbg_mcs_tx_sc_stats_display(struct seq_file *filp, void *unused)
 		seq_printf(filp, "\n=======sc%d======\n\n", sc_id);
 		seq_printf(filp, "sc%d: Pkts encrypted: %lld\n", sc_id, stats.pkt_encrypt_cnt);
 		seq_printf(filp, "sc%d: Pkts protected: %lld\n", sc_id, stats.pkt_protected_cnt);
-
-		if (mcs->hw->mcs_blks == 1) {
-			seq_printf(filp, "sc%d: Octets encrypted: %lld\n", sc_id,
-				   stats.octet_encrypt_cnt);
-			seq_printf(filp, "sc%d: Octets protected: %lld\n", sc_id,
-				   stats.octet_protected_cnt);
-		}
 	}
 	mutex_unlock(&mcs->stats_lock);
 	return 0;
@@ -369,12 +309,6 @@ static int rvu_dbg_mcs_rx_sc_stats_display(struct seq_file *filp, void *unused)
 		if (mcs->hw->mcs_blks > 1) {
 			seq_printf(filp, "sc%d: Delay pkts: %lld\n", sc_id, stats.pkt_delay_cnt);
 			seq_printf(filp, "sc%d: Pkts ok: %lld\n", sc_id, stats.pkt_ok_cnt);
-		}
-		if (mcs->hw->mcs_blks == 1) {
-			seq_printf(filp, "sc%d: Octets decrypted: %lld\n", sc_id,
-				   stats.octet_decrypt_cnt);
-			seq_printf(filp, "sc%d: Octets validated: %lld\n", sc_id,
-				   stats.octet_validate_cnt);
 		}
 	}
 	mutex_unlock(&mcs->stats_lock);
@@ -545,9 +479,6 @@ static void rvu_dbg_mcs_init(struct rvu *rvu)
 		debugfs_create_file("sc", 0600, rvu->rvu_dbg.mcs_rx, mcs,
 				    &rvu_dbg_mcs_rx_sc_stats_fops);
 
-		debugfs_create_file("sa", 0600, rvu->rvu_dbg.mcs_rx, mcs,
-				    &rvu_dbg_mcs_rx_sa_stats_fops);
-
 		debugfs_create_file("port", 0600, rvu->rvu_dbg.mcs_rx, mcs,
 				    &rvu_dbg_mcs_rx_port_stats_fops);
 
@@ -561,9 +492,6 @@ static void rvu_dbg_mcs_init(struct rvu *rvu)
 
 		debugfs_create_file("sc", 0600, rvu->rvu_dbg.mcs_tx, mcs,
 				    &rvu_dbg_mcs_tx_sc_stats_fops);
-
-		debugfs_create_file("sa", 0600, rvu->rvu_dbg.mcs_tx, mcs,
-				    &rvu_dbg_mcs_tx_sa_stats_fops);
 
 		debugfs_create_file("port", 0600, rvu->rvu_dbg.mcs_tx, mcs,
 				    &rvu_dbg_mcs_tx_port_stats_fops);

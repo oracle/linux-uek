@@ -338,30 +338,6 @@ int rvu_mbox_handler_mcs_get_sc_stats(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_mcs_get_sa_stats(struct rvu *rvu,
-				      struct mcs_stats_req *req,
-				      struct mcs_sa_stats *rsp)
-{
-	struct mcs *mcs;
-
-	if (req->mcs_id >= rvu->mcs_blk_cnt)
-		return MCS_AF_ERR_INVALID_MCSID;
-
-	mcs = mcs_get_pdata(req->mcs_id);
-
-	if (mcs->hw->mcs_blks > 1)
-		mcs_set_force_clk_en(mcs, true);
-
-	mutex_lock(&mcs->stats_lock);
-	mcs_get_sa_stats(mcs, rsp, req->id, req->dir);
-	mutex_unlock(&mcs->stats_lock);
-
-	if (mcs->hw->mcs_blks > 1)
-		mcs_set_force_clk_en(mcs, false);
-
-	return 0;
-}
-
 int rvu_mbox_handler_mcs_get_port_stats(struct rvu *rvu,
 					struct mcs_stats_req *req,
 					struct mcs_port_stats *rsp)
