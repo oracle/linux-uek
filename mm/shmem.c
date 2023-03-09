@@ -117,9 +117,11 @@ struct shmem_options {
 	umode_t mode;
 	int huge;
 	int seen;
+	bool noswap;
 #define SHMEM_SEEN_BLOCKS 1
 #define SHMEM_SEEN_INODES 2
 #define SHMEM_SEEN_HUGE 4
+#define SHMEM_SEEN_NOSWAP 16
 };
 
 #ifdef CONFIG_TMPFS
@@ -1298,6 +1300,7 @@ int shmem_unuse(unsigned int type, bool frontswap,
 static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 {
 	struct shmem_inode_info *info;
+	struct shmem_sb_info *sbinfo;
 	struct address_space *mapping;
 	struct inode *inode;
 	swp_entry_t swap;
@@ -1309,6 +1312,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	index = page->index;
 	inode = mapping->host;
 	info = SHMEM_I(inode);
+	sbinfo = SHMEM_SB(inode->i_sb);
 	if (info->flags & VM_LOCKED)
 		goto redirty;
 	if (!total_swap_pages)
@@ -1325,6 +1329,9 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 		WARN_ON_ONCE(1);	/* Still happens? Tell us about it! */
 		goto redirty;
 	}
+
+	if (sbinfo->noswap)
+		goto redirty;
 
 	/*
 	 * This is somewhat ridiculous, but without plumbing a SWAP_MAP_FALLOC
@@ -2281,6 +2288,8 @@ static struct inode *shmem_get_inode(struct super_block *sb, const struct inode 
 		info->flags = flags & VM_NORESERVE;
 		INIT_LIST_HEAD(&info->shrinklist);
 		INIT_LIST_HEAD(&info->swaplist);
+		if (sbinfo->noswap)
+			mapping_set_unevictable(inode->i_mapping);
 		simple_xattrs_init(&info->xattrs);
 		cache_no_acl(inode);
 
@@ -3436,6 +3445,7 @@ enum shmem_param {
 	Opt_nr_inodes,
 	Opt_size,
 	Opt_uid,
+	Opt_noswap,
 };
 
 static const struct fs_parameter_spec shmem_param_specs[] = {
@@ -3447,6 +3457,7 @@ static const struct fs_parameter_spec shmem_param_specs[] = {
 	fsparam_string("nr_inodes",	Opt_nr_inodes),
 	fsparam_string("size",		Opt_size),
 	fsparam_u32   ("uid",		Opt_uid),
+	fsparam_flag  ("noswap",	Opt_noswap),
 	{}
 };
 
@@ -3552,6 +3563,10 @@ static int shmem_parse_one(struct fs_context *fc, struct fs_parameter *param)
 			break;
 		}
 		goto unsupported_parameter;
+	case Opt_noswap:
+		ctx->noswap = true;
+		ctx->seen |= SHMEM_SEEN_NOSWAP;
+		break;
 	}
 	return 0;
 
@@ -3643,6 +3658,15 @@ static int shmem_reconfigure(struct fs_context *fc)
 		}
 	}
 
+	if ((ctx->seen & SHMEM_SEEN_NOSWAP) && ctx->noswap && !sbinfo->noswap) {
+		err = "Cannot disable swap on remount";
+		goto out;
+	}
+	if (!(ctx->seen & SHMEM_SEEN_NOSWAP) && !ctx->noswap && sbinfo->noswap) {
+		err = "Cannot enable swap on remount if it was disabled on first mount";
+		goto out;
+	}
+
 	if (ctx->seen & SHMEM_SEEN_HUGE)
 		sbinfo->huge = ctx->huge;
 	if (ctx->seen & SHMEM_SEEN_BLOCKS)
@@ -3660,6 +3684,10 @@ static int shmem_reconfigure(struct fs_context *fc)
 		sbinfo->mpol = ctx->mpol;	/* transfers initial ref */
 		ctx->mpol = NULL;
 	}
+
+	if (ctx->noswap)
+		sbinfo->noswap = true;
+
 	spin_unlock(&sbinfo->stat_lock);
 	return 0;
 out:
@@ -3690,6 +3718,8 @@ static int shmem_show_options(struct seq_file *seq, struct dentry *root)
 		seq_printf(seq, ",huge=%s", shmem_format_huge(sbinfo->huge));
 #endif
 	shmem_show_mpol(seq, sbinfo->mpol);
+	if (sbinfo->noswap)
+		seq_printf(seq, ",noswap");
 	return 0;
 }
 
@@ -3731,6 +3761,7 @@ static int shmem_fill_super(struct super_block *sb, struct fs_context *fc)
 			ctx->blocks = shmem_default_max_blocks();
 		if (!(ctx->seen & SHMEM_SEEN_INODES))
 			ctx->inodes = shmem_default_max_inodes();
+		sbinfo->noswap = ctx->noswap;
 	} else {
 		sb->s_flags |= SB_NOUSER;
 	}
