@@ -345,9 +345,9 @@ int kernfs_get_tree(struct fs_context *fc)
 		}
 		sb->s_flags |= SB_ACTIVE;
 
-		down_write(&kernfs_rwsem);
+		down_write(&kernfs_supers_rwsem);
 		list_add(&info->node, &info->root->supers);
-		up_write(&kernfs_rwsem);
+		up_write(&kernfs_supers_rwsem);
 	}
 
 	fc->root = dget(sb->s_root);
@@ -373,9 +373,9 @@ void kernfs_kill_sb(struct super_block *sb)
 {
 	struct kernfs_super_info *info = kernfs_info(sb);
 
-	down_write(&kernfs_rwsem);
+	down_write(&kernfs_supers_rwsem);
 	list_del(&info->node);
-	up_write(&kernfs_rwsem);
+	up_write(&kernfs_supers_rwsem);
 
 	/*
 	 * Remove the superblock from fs_supers/s_instances
