@@ -19,6 +19,7 @@
 
 DECLARE_RWSEM(kernfs_rwsem);
 DECLARE_RWSEM(kernfs_iattr_rwsem);
+DECLARE_RWSEM(kernfs_supers_rwsem);
 static DEFINE_SPINLOCK(kernfs_rename_lock);	/* kn->parent and ->name */
 /*
  * Don't use rename_lock to piggy back on pr_cont_buf. We don't want to

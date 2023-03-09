@@ -119,6 +119,7 @@ int __kernfs_setattr(struct kernfs_node *kn, const struct iattr *iattr);
  */
 extern struct rw_semaphore kernfs_rwsem;
 extern struct rw_semaphore kernfs_iattr_rwsem;
+extern struct rw_semaphore kernfs_supers_rwsem;
 extern const struct dentry_operations kernfs_dops;
 extern const struct file_operations kernfs_dir_fops;
 extern const struct inode_operations kernfs_dir_iops;
