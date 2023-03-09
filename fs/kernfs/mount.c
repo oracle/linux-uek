@@ -343,9 +343,9 @@ struct dentry *kernfs_mount_ns(struct file_system_type *fs_type, int flags,
 		}
 		sb->s_flags |= MS_ACTIVE;
 
-		down_write(&kernfs_rwsem);
+		down_write(&kernfs_supers_rwsem);
 		list_add(&info->node, &root->supers);
-		up_write(&kernfs_rwsem);
+		up_write(&kernfs_supers_rwsem);
 	}
 
 	return dget(sb->s_root);
@@ -363,9 +363,9 @@ void kernfs_kill_sb(struct super_block *sb)
 {
 	struct kernfs_super_info *info = kernfs_info(sb);
 
-	down_write(&kernfs_rwsem);
+	down_write(&kernfs_supers_rwsem);
 	list_del(&info->node);
-	up_write(&kernfs_rwsem);
+	up_write(&kernfs_supers_rwsem);
 
 	/*
 	 * Remove the superblock from fs_supers/s_instances

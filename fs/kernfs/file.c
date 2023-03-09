@@ -951,8 +951,7 @@ repeat:
 	rcu_read_unlock();
 
 	/* kick fsnotify */
-	down_write(&kernfs_rwsem);
-
+	down_read(&kernfs_supers_rwsem);
 	list_for_each_entry(info, &kernfs_root(kn)->supers, node) {
 		struct kernfs_node *parent;
 		struct inode *inode;
@@ -986,7 +985,7 @@ repeat:
 		iput(inode);
 	}
 
-	up_write(&kernfs_rwsem);
+	up_read(&kernfs_supers_rwsem);
 	kernfs_put(kn);
 	goto repeat;
 }
