@@ -1343,9 +1343,9 @@ int shmem_unuse(unsigned int type, bool frontswap,
  */
 static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 {
-	struct shmem_inode_info *info;
-	struct address_space *mapping;
-	struct inode *inode;
+	struct address_space *mapping = page->mapping;
+	struct inode *inode = mapping->host;
+	struct shmem_inode_info *info = SHMEM_I(inode);
 	swp_entry_t swap;
 	pgoff_t index;
 
@@ -1362,10 +1362,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 		ClearPageDirty(page);
 	}
 
-	mapping = page->mapping;
 	index = page->index;
-	inode = mapping->host;
-	info = SHMEM_I(inode);
 	if (info->flags & VM_LOCKED)
 		goto redirty;
 	if (!total_swap_pages)
