@@ -1362,7 +1362,6 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 		ClearPageDirty(page);
 	}
 
-	BUG_ON(!PageLocked(page));
 	mapping = page->mapping;
 	index = page->index;
 	inode = mapping->host;
