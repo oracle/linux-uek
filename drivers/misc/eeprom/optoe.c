@@ -630,7 +630,25 @@ static ssize_t optoe_page_legal(struct optoe_data *optoe,
 			return status;  /* error out (no module?) */
 
 		if (optoe->dev_class == ONE_ADDR) {
-			not_pageable = QSFP_NOT_PAGEABLE;
+			u8 idRegVal;
+
+			status = optoe_eeprom_read(optoe, client, &idRegVal,
+					OPTOE_ID_REG, 1);
+			if (status < 0)
+				return status;  /* error out (no module?) */
+
+			/*
+			 * For QSFP28 with CMIS optic, if userspace has dev_class as ONE_ADDR,
+			 * the driver looks at the incorrect bit to find if it is pageable.
+			 * Below check ensures we read the appropriate bit for such QSFP28 CMIS
+			 * compliant optics with dev_class as ONE_ADDR
+			 * The ID values below are based on the SFF-8024 spec (Page 0, byte 0)
+			 * for CMIS optics
+			 */
+			if (idRegVal == 0x18 || idRegVal == 0x19 || idRegVal == 0x1e)
+				not_pageable = CMIS_NOT_PAGEABLE;
+			else
+				not_pageable = QSFP_NOT_PAGEABLE;
 		} else {
 			not_pageable = CMIS_NOT_PAGEABLE;
 		}
