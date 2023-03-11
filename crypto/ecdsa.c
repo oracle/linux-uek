@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <crypto/internal/akcipher.h>
 #include <crypto/internal/ecc.h>
+#include <crypto/internal/ecdsa.h>
 #include <crypto/akcipher.h>
 #include <crypto/ecdh.h>
 #include <crypto/rng.h>
@@ -28,12 +29,6 @@ struct ecc_ctx {
 	u64 x[ECC_MAX_DIGITS]; /* pub key x and y coordinates */
 	u64 y[ECC_MAX_DIGITS];
 	struct ecc_point pub_key;
-};
-
-struct ecdsa_signature_ctx {
-	const struct ecc_curve *curve;
-	u64 r[ECC_MAX_DIGITS];
-	u64 s[ECC_MAX_DIGITS];
 };
 
 /*
@@ -74,8 +69,7 @@ static int ecdsa_get_signature_rs(u64 *dest, size_t hdrlen, unsigned char tag,
 	}
 
 	memcpy(&rs[-diff], d, vlen);
-
-	ecc_swap_digits((u64 *)rs, dest, ndigits);
+	memcpy(dest, rs, keylen);
 
 	return 0;
 }
@@ -97,6 +91,13 @@ int ecdsa_get_signature_s(void *context, size_t hdrlen, unsigned char tag,
 	return ecdsa_get_signature_rs(sig->s, hdrlen, tag, value, vlen,
 				      sig->curve->g.ndigits);
 }
+
+int ecdsa_parse_signature(struct ecdsa_signature_ctx *sig_ctx, void *sig,
+			  unsigned int sig_len)
+{
+	return asn1_ber_decoder(&ecdsasignature_decoder, sig_ctx, sig, sig_len);
+}
+EXPORT_SYMBOL_GPL(ecdsa_parse_signature);
 
 static int _ecdsa_verify(struct ecc_ctx *ctx, const u64 *hash, const u64 *r, const u64 *s)
 {
@@ -145,12 +146,14 @@ static int ecdsa_verify(struct akcipher_request *req)
 {
 	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
 	struct ecc_ctx *ctx = akcipher_tfm_ctx(tfm);
-	size_t keylen = ctx->curve->g.ndigits * sizeof(u64);
+	u8 ndigits = ctx->curve->g.ndigits;
+	size_t keylen = ndigits * sizeof(u64);
 	struct ecdsa_signature_ctx sig_ctx = {
 		.curve = ctx->curve,
 	};
 	u8 rawhash[ECC_MAX_BYTES];
 	u64 hash[ECC_MAX_DIGITS];
+	u64 sig[ECC_MAX_DIGITS];
 	unsigned char *buffer;
 	ssize_t diff;
 	int ret;
@@ -170,6 +173,10 @@ static int ecdsa_verify(struct akcipher_request *req)
 			       buffer, req->src_len);
 	if (ret < 0)
 		goto error;
+	ecc_swap_digits(sig_ctx.r, sig, ndigits);
+	memcpy(sig_ctx.r, sig, keylen);
+	ecc_swap_digits(sig_ctx.s, sig, ndigits);
+	memcpy(sig_ctx.s, sig, keylen);
 
 	/* if the hash is shorter then we will add leading zeros to fit to ndigits */
 	diff = keylen - req->dst_len;
