@@ -223,12 +223,12 @@ static ssize_t bind_store(struct device_driver *drv, const char *buf,
 }
 static DRIVER_ATTR_IGNORE_LOCKDEP(bind, 0200, NULL, bind_store);
 
-static ssize_t drivers_autoprobe_show(struct bus_type *bus, char *buf)
+static ssize_t drivers_autoprobe_show(const struct bus_type *bus, char *buf)
 {
 	return sysfs_emit(buf, "%d\n", bus->p->drivers_autoprobe);
 }
 
-static ssize_t drivers_autoprobe_store(struct bus_type *bus,
+static ssize_t drivers_autoprobe_store(const struct bus_type *bus,
 				       const char *buf, size_t count)
 {
 	if (buf[0] == '0')
@@ -238,13 +238,13 @@ static ssize_t drivers_autoprobe_store(struct bus_type *bus,
 	return count;
 }
 
-static ssize_t drivers_probe_store(struct bus_type *bus,
+static ssize_t drivers_probe_store(const struct bus_type *bus,
 				   const char *buf, size_t count)
 {
 	struct device *dev;
 	int err = -EINVAL;
 
-	dev = bus_find_device_by_name(bus, NULL, buf);
+	dev = bus_find_device_by_name((struct bus_type *)bus, NULL, buf);
 	if (!dev)
 		return -ENODEV;
 	if (bus_rescan_devices_helper(dev, NULL) == 0)
@@ -755,7 +755,7 @@ static void klist_devices_put(struct klist_node *n)
 	put_device(dev);
 }
 
-static ssize_t bus_uevent_store(struct bus_type *bus,
+static ssize_t bus_uevent_store(const struct bus_type *bus,
 				const char *buf, size_t count)
 {
 	int rc;

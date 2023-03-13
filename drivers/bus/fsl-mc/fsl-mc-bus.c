@@ -230,7 +230,7 @@ exit:
 	return 0;
 }
 
-static ssize_t rescan_store(struct bus_type *bus,
+static ssize_t rescan_store(const struct bus_type *bus,
 			    const char *buf, size_t count)
 {
 	unsigned long val;
@@ -283,7 +283,7 @@ exit:
 	return 0;
 }
 
-static ssize_t autorescan_store(struct bus_type *bus,
+static ssize_t autorescan_store(const struct bus_type *bus,
 				const char *buf, size_t count)
 {
 	bus_for_each_dev(bus, NULL, (void *)buf, fsl_mc_bus_set_autorescan);
@@ -291,7 +291,7 @@ static ssize_t autorescan_store(struct bus_type *bus,
 	return count;
 }
 
-static ssize_t autorescan_show(struct bus_type *bus, char *buf)
+static ssize_t autorescan_show(const struct bus_type *bus, char *buf)
 {
 	bus_for_each_dev(bus, NULL, (void *)buf, fsl_mc_bus_get_autorescan);
 	return strlen(buf);
