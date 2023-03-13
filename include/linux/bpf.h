@@ -29,6 +29,7 @@ struct seq_file;
 struct btf;
 struct btf_type;
 struct kobject;
+struct exception_table_entry;
 
 extern struct idr btf_idr;
 extern spinlock_t btf_idr_lock;
@@ -453,6 +454,8 @@ struct bpf_prog_aux {
 		struct work_struct work;
 		struct rcu_head	rcu;
 	};
+	UEK_KABI_EXTEND(u32 num_exentries)
+	UEK_KABI_EXTEND(struct exception_table_entry *extable)
 };
 
 struct bpf_array {
