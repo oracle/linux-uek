@@ -263,7 +263,7 @@ static char *ibmebus_chomp(const char *in, size_t count)
 	return out;
 }
 
-static ssize_t probe_store(struct bus_type *bus, const char *buf, size_t count)
+static ssize_t probe_store(const struct bus_type *bus, const char *buf, size_t count)
 {
 	struct device_node *dn = NULL;
 	struct device *dev;
@@ -301,7 +301,7 @@ out:
 }
 static BUS_ATTR_WO(probe);
 
-static ssize_t remove_store(struct bus_type *bus, const char *buf, size_t count)
+static ssize_t remove_store(const struct bus_type *bus, const char *buf, size_t count)
 {
 	struct device *dev;
 	char *path;
