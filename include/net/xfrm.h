@@ -142,6 +142,10 @@ enum {
 	XFRM_DEV_OFFLOAD_PACKET,
 };
 
+enum {
+	XFRM_DEV_OFFLOAD_FLAG_ACQ = 1,
+};
+
 struct xfrm_state_offload {
 	struct net_device	*dev;
 	struct net_device	*real_dev;
