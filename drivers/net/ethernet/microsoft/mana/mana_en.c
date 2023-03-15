@@ -154,6 +154,7 @@ netdev_tx_t mana_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct mana_txq *txq;
 	struct mana_cq *cq;
 	int err, len;
+	u16 ihs;
 
 	if (unlikely(!apc->port_is_up))
 		goto tx_drop;
@@ -164,6 +165,7 @@ netdev_tx_t mana_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	txq = &apc->tx_qp[txq_idx].txq;
 	gdma_sq = txq->gdma_sq;
 	cq = &apc->tx_qp[txq_idx].tx_cq;
+	tx_stats = &txq->stats;
 
 	pkg.tx_oob.s_oob.vcq_num = cq->gdma_id;
 	pkg.tx_oob.s_oob.vsq_frame = txq->vsq_frame;
@@ -185,10 +187,17 @@ netdev_tx_t mana_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	pkg.tx_oob.s_oob.pkt_fmt = pkt_fmt;
 
-	if (pkt_fmt == MANA_SHORT_PKT_FMT)
+	if (pkt_fmt == MANA_SHORT_PKT_FMT) {
 		pkg.wqe_req.inline_oob_size = sizeof(struct mana_tx_short_oob);
-	else
+		u64_stats_update_begin(&tx_stats->syncp);
+		tx_stats->short_pkt_fmt++;
+		u64_stats_update_end(&tx_stats->syncp);
+	} else {
 		pkg.wqe_req.inline_oob_size = sizeof(struct mana_tx_oob);
+		u64_stats_update_begin(&tx_stats->syncp);
+		tx_stats->long_pkt_fmt++;
+		u64_stats_update_end(&tx_stats->syncp);
+	}
 
 	pkg.wqe_req.inline_oob_data = &pkg.tx_oob;
 	pkg.wqe_req.flags = 0;
@@ -238,8 +247,34 @@ netdev_tx_t mana_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 						 &ipv6_hdr(skb)->daddr, 0,
 						 IPPROTO_TCP, 0);
 		}
+
+		if (skb->encapsulation) {
+			ihs = skb_inner_tcp_all_headers(skb);
+			u64_stats_update_begin(&tx_stats->syncp);
+			tx_stats->tso_inner_packets++;
+			tx_stats->tso_inner_bytes += skb->len - ihs;
+			u64_stats_update_end(&tx_stats->syncp);
+		} else {
+			if (skb_shinfo(skb)->gso_type & SKB_GSO_UDP_L4) {
+				ihs = skb_transport_offset(skb) + sizeof(struct udphdr);
+			} else {
+				ihs = skb_tcp_all_headers(skb);
+				if (ipv6_has_hopopt_jumbo(skb))
+					ihs -= sizeof(struct hop_jumbo_hdr);
+			}
+
+			u64_stats_update_begin(&tx_stats->syncp);
+			tx_stats->tso_packets++;
+			tx_stats->tso_bytes += skb->len - ihs;
+			u64_stats_update_end(&tx_stats->syncp);
+		}
+
 	} else if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		csum_type = mana_checksum_info(skb);
+
+		u64_stats_update_begin(&tx_stats->syncp);
+		tx_stats->csum_partial++;
+		u64_stats_update_end(&tx_stats->syncp);
 
 		if (csum_type == IPPROTO_TCP) {
 			pkg.tx_oob.s_oob.is_outer_ipv4 = ipv4;
@@ -260,8 +295,12 @@ netdev_tx_t mana_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		}
 	}
 
-	if (mana_map_skb(skb, apc, &pkg))
+	if (mana_map_skb(skb, apc, &pkg)) {
+		u64_stats_update_begin(&tx_stats->syncp);
+		tx_stats->mana_map_err++;
+		u64_stats_update_end(&tx_stats->syncp);
 		goto free_sgl_ptr;
+	}
 
 	skb_queue_tail(&txq->pending_skbs, skb);
 
@@ -1044,6 +1083,8 @@ static void mana_poll_tx_cq(struct mana_cq *cq)
 	if (comp_read < 1)
 		return;
 
+	apc->eth_stats.tx_cqes = comp_read;
+
 	for (i = 0; i < comp_read; i++) {
 		struct mana_tx_comp_oob *cqe_oob;
 
@@ -1070,6 +1111,7 @@ static void mana_poll_tx_cq(struct mana_cq *cq)
 		case CQE_TX_VLAN_TAGGING_VIOLATION:
 			WARN_ONCE(1, "TX: CQE error %d: ignored.\n",
 				  cqe_oob->cqe_hdr.cqe_type);
+			apc->eth_stats.tx_cqe_err++;
 			break;
 
 		default:
@@ -1078,6 +1120,7 @@ static void mana_poll_tx_cq(struct mana_cq *cq)
 			 */
 			WARN_ONCE(1, "TX: Unexpected CQE type %d: HW BUG?\n",
 				  cqe_oob->cqe_hdr.cqe_type);
+			apc->eth_stats.tx_cqe_unknown_type++;
 			return;
 		}
 
@@ -1124,6 +1167,8 @@ static void mana_poll_tx_cq(struct mana_cq *cq)
 		WARN_ON_ONCE(1);
 
 	cq->work_done = pkt_transmitted;
+
+	apc->eth_stats.tx_cqes -= pkt_transmitted;
 }
 
 static void mana_post_pkt_rxq(struct mana_rxq *rxq)
@@ -1264,11 +1309,14 @@ static void mana_process_rx_cqe(struct mana_rxq *rxq, struct mana_cq *cq,
 	struct gdma_context *gc = rxq->gdma_rq->gdma_dev->gdma_context;
 	struct net_device *ndev = rxq->ndev;
 	struct mana_recv_buf_oob *rxbuf_oob;
+	struct mana_port_context *apc;
 	struct device *dev = gc->dev;
 	void *new_buf, *old_buf;
 	struct page *new_page;
 	u32 curr, pktlen;
 	dma_addr_t da;
+
+	apc = netdev_priv(ndev);
 
 	switch (oob->cqe_hdr.cqe_type) {
 	case CQE_RX_OKAY:
@@ -1282,6 +1330,7 @@ static void mana_process_rx_cqe(struct mana_rxq *rxq, struct mana_cq *cq,
 
 	case CQE_RX_COALESCED_4:
 		netdev_err(ndev, "RX coalescing is unsupported\n");
+		apc->eth_stats.rx_coalesced_err++;
 		return;
 
 	case CQE_RX_OBJECT_FENCE:
@@ -1291,6 +1340,7 @@ static void mana_process_rx_cqe(struct mana_rxq *rxq, struct mana_cq *cq,
 	default:
 		netdev_err(ndev, "Unknown RX CQE type = %d\n",
 			   oob->cqe_hdr.cqe_type);
+		apc->eth_stats.rx_cqe_unknown_type++;
 		return;
 	}
 
@@ -1353,11 +1403,15 @@ static void mana_poll_rx_cq(struct mana_cq *cq)
 {
 	struct gdma_comp *comp = cq->gdma_comp_buf;
 	struct mana_rxq *rxq = cq->rxq;
+	struct mana_port_context *apc;
 	int comp_read, i;
+
+	apc = netdev_priv(rxq->ndev);
 
 	comp_read = mana_gd_poll_cq(cq->gdma_cq, comp, CQE_POLLING_BUFFER);
 	WARN_ON_ONCE(comp_read > CQE_POLLING_BUFFER);
 
+	apc->eth_stats.rx_cqes = comp_read;
 	rxq->xdp_flush = false;
 
 	for (i = 0; i < comp_read; i++) {
@@ -1369,6 +1423,8 @@ static void mana_poll_rx_cq(struct mana_cq *cq)
 			return;
 
 		mana_process_rx_cqe(rxq, cq, &comp[i]);
+
+		apc->eth_stats.rx_cqes--;
 	}
 
 	if (comp_read > 0) {
