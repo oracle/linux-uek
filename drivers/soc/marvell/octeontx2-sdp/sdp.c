@@ -1459,6 +1459,7 @@ static void program_sdp_rinfo(struct sdp_dev *sdp)
 		mac_mask = MAC_MASK_98XX;
 		break;
 	case PCI_SUBSYS_DEVID_CN10K_A:
+	case PCI_SUBSYS_DEVID_CN10K_B:
 	case PCI_SUBSYS_DEVID_CNF10K_A:
 	case PCI_SUBSYS_DEVID_CNF10K_B:
 		valid_ep_pem_mask = VALID_EP_PEMS_MASK_106XX;
