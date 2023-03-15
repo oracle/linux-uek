@@ -389,7 +389,8 @@ class SpecFamily(SpecElement):
     def resolve(self):
         self.resolve_up(super())
 
-        for elem in self.yaml['definitions']:
+        definitions = self.yaml.get('definitions', [])
+        for elem in definitions:
             if elem['type'] == 'enum' or elem['type'] == 'flags':
                 self.consts[elem['name']] = self.new_enum(elem)
             else:
