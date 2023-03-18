@@ -46,7 +46,7 @@
 
 #define RDS_CONN_FADDR_HASH_ENTRIES 256
 
-static bool rds_wq_strictly_ordered = true;
+static bool rds_wq_strictly_ordered;
 module_param(rds_wq_strictly_ordered, bool, 0644);
 
 /* converting this to RCU is a chore for another day.. */
