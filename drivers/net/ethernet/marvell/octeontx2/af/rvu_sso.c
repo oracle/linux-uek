@@ -561,7 +561,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	/* Read hardware capabilities */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
 	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
-	has_stash = !!(reg & SSO_AF_CONST1_STASH_PRESENT);
+	has_stash = !!(reg & SSO_AF_CONST1_HW_FLR);
 
 	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 ALIAS for this pcifunc. */
@@ -668,8 +668,8 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
+	bool has_prefetch, has_lsw, has_hw_flr;
 	struct sso_rsrc *sso = &rvu->hw->sso;
-	bool has_prefetch, has_lsw;
 	int blkaddr, ssow_blkaddr;
 	u64 reg, grpmsk;
 
@@ -685,6 +685,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
 	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
 	has_prefetch = !!(reg & SSO_AF_CONST1_PRF_PRESENT);
+	has_hw_flr = !!(reg & SSO_AF_CONST1_HW_FLR);
 
 	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 alias access. */
@@ -699,13 +700,18 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_INT),
 		    SSOW_LF_GWS_INT_MASK);
 
-	if (has_lsw)
-		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(lf), 0x0);
-
 	/* Make sure that all the in-flights are complete before invalidate. */
 	mb();
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x1);
 	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x2, true);
+
+	/* Skip steps already performed by HW FLR */
+	if (has_hw_flr)
+		goto skip_hw_flr_steps;
+
+	if (has_lsw)
+		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_LSW_CFG(lf), 0x0);
+
 	/* HRM 14.13.4 (3) */
 	/* Wait till waitw/desched completes. */
 	rvu_poll_reg(rvu, ssow_blkaddr,
@@ -735,12 +741,14 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	if (has_prefetch)
 		rvu_ssow_clean_prefetch(rvu, pcifunc, slot);
 
-	rvu_write64(rvu, ssow_blkaddr,
-		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM), 0x0);
-
 	/* set SAI_INVAL bit */
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x1);
 	rvu_poll_reg(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x2, true);
+
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM), 0x0);
+
+skip_hw_flr_steps:
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_ARB(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_GMCTL(lf), 0x0);
 
@@ -1089,7 +1097,7 @@ int rvu_mbox_handler_sso_grp_stash_config(struct rvu *rvu,
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
 	/* Check if stash is supported. */
-	if (!(reg & SSO_AF_CONST1_STASH_PRESENT))
+	if (!(reg & SSO_AF_CONST1_HW_FLR))
 		return SSO_AF_ERR_INVALID_CFG;
 
 	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->grp);
