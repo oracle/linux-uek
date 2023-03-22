@@ -154,27 +154,27 @@ static int __init mlxbf_ptm_init(void)
 	monitors = debugfs_create_dir("monitors", ptm_root);
 	status = debugfs_create_dir("status", monitors);
 
-	debugfs_create_file("vr0_power", S_IRUGO, status, NULL,
+	debugfs_create_file("vr0_power", 0444, status, NULL,
 			    &vr0_power_fops);
-	debugfs_create_file("vr1_power", S_IRUGO, status, NULL,
+	debugfs_create_file("vr1_power", 0444, status, NULL,
 			    &vr1_power_fops);
-	debugfs_create_file("total_power", S_IRUGO, status, NULL,
+	debugfs_create_file("total_power", 0444, status, NULL,
 			    &total_power_fops);
-	debugfs_create_file("ddr_temp", S_IRUGO, status,
+	debugfs_create_file("ddr_temp", 0444, status,
 			    NULL, &ddr_thld_fops);
-	debugfs_create_file("core_temp", S_IRUGO, status,
+	debugfs_create_file("core_temp", 0444, status,
 			    NULL, &core_temp_fops);
-	debugfs_create_file("power_throttling_event_count", S_IRUGO, status,
+	debugfs_create_file("power_throttling_event_count", 0444, status,
 			    NULL, &pwr_evt_counter_fops);
-	debugfs_create_file("thermal_throttling_event_count", S_IRUGO, status,
+	debugfs_create_file("thermal_throttling_event_count", 0444, status,
 			    NULL, &temp_evt_counter_fops);
-	debugfs_create_file("throttling_state", S_IRUGO, status,
+	debugfs_create_file("throttling_state", 0444, status,
 			    NULL, &throttling_state_fops);
-	debugfs_create_file("power_throttling_state", S_IRUGO, status,
+	debugfs_create_file("power_throttling_state", 0444, status,
 			    NULL, &pthrottling_state_fops);
-	debugfs_create_file("thermal_throttling_state", S_IRUGO, status,
+	debugfs_create_file("thermal_throttling_state", 0444, status,
 			    NULL, &tthrottling_state_fops);
-	debugfs_create_file("error_state", S_IRUGO, status,
+	debugfs_create_file("error_state", 0444, status,
 			    NULL, &error_status_fops);
 
 	return 0;
