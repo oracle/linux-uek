@@ -227,4 +227,4 @@ module_exit(mlxbf_ptm_exit);
 MODULE_AUTHOR("Jitendra Lanka <jlanka@nvidia.com>");
 MODULE_DESCRIPTION("Nvidia Bluefield power and thermal debugfs driver");
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_VERSION("1.0");
+MODULE_VERSION("1.1");
