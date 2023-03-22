@@ -1,13 +1,16 @@
 #! /bin/bash
 #
-# Called as filter-modules.sh <core-listfile> <all-modules-listfile>
+# Called as filter-modules.sh <core-listfile> <all-modules-listfile> \
+#               <builtin-modules-listfile>
 
 # This script filters the modules into the kernel-uek-core and kernel-uek-modules
 # subpackages. It uses core.list file to create list file for kernel-uek-modules rpm.
 
 corelist=$1
 modlist=$2
+builtinlist=$3
 > ${modlist}.tmp
+> ${corelist}.tmp
 
 cat $modlist | while read mod
 do
@@ -22,9 +25,18 @@ do
         fi
 done
 
-# Make sure all modules listed in core.list is currently built.
+# Make sure all modules listed in core.list is currently built. Also, exclude
+# built-in modules from loadable ones as they are already baked into the kernel.
 cat $corelist | while read mod
 do
+        grep -q -e "$mod" $builtinlist
+        if [ $? -eq 0 ]
+        then
+                continue
+        fi
+
+        echo "$mod" >> ${corelist}.tmp
+
         grep -q -e "$mod" $modlist
         if [ $? -ne 0 ]
         then
@@ -32,10 +44,11 @@ do
         fi
 done
 
+
 # Verify all the modules are added either in core or in modules rpm.
 # If the count don't match, fail the build.
 ALL=$(wc -l $modlist | awk '{print $1}')
-CORE=$(wc -l $corelist | awk '{print $1}')
+CORE=$(wc -l ${corelist}.tmp | awk '{print $1}')
 MOD=$(wc -l ${modlist}.tmp | awk '{print $1}')
 SUM=$((CORE + MOD))
 
@@ -46,4 +59,5 @@ then
 fi
 
 mv ${modlist}.tmp ${modlist}
+mv ${corelist}.tmp ${corelist}
 exit 0

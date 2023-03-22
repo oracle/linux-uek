@@ -1508,7 +1508,10 @@ BuildKernel() {
     # Append full path to the beginning of each line.
     sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
 
-    ./filter-modules.sh core.list modules.list
+    cp lib/modules/$KernelVer/modules.builtin built-in-mods.list
+    sed -i "s/^/lib\/modules\/$KernelVer\//" built-in-mods.list
+
+    ./filter-modules.sh core.list modules.list built-in-mods.list
     rm filter-modules.sh
 
     # Run depmod on the resulting module tree and make sure it isn't broken
@@ -1545,6 +1548,7 @@ BuildKernel() {
     rm -f $RPM_BUILD_ROOT/modules.list
     rm -f $RPM_BUILD_ROOT/module-dirs.list
     rm -f $RPM_BUILD_ROOT/mod-extra.list
+    rm -f $RPM_BUILD_ROOT/built-in-mods.list
 
 %if %{signmodules}
     cp certs/signing_key.pem certs/signing_key.pem.sign${Flavour:+.${Flavour}}
