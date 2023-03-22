@@ -23,6 +23,9 @@
 #define MLNX_PTM_GET_MAX_TEMP           0x82000108
 #define MLNX_PTM_GET_PWR_EVT_CNT	0x82000109
 #define MLNX_PTM_GET_TEMP_EVT_CNT	0x8200010A
+#define MLNX_PTM_GET_POWER_ENVELOPE     0x8200010B
+#define MLNX_PTM_GET_ATX_PWR_STATE      0x8200010C
+#define MLNX_PTM_GET_CUR_PPROFILE       0x8200010D
 
 #define MLNX_POWER_ERROR		300
 
@@ -142,6 +145,33 @@ static int error_status_show(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(error_status_fops,
 			error_status_show, NULL, "%llu\n");
 
+static int power_envelope_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_POWER_ENVELOPE);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(power_envelope_fops,
+			power_envelope_show, NULL, "%llu\n");
+
+static int atx_status_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_ATX_PWR_STATE);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(atx_status_fops,
+			atx_status_show, NULL, "%lld\n");
+
+static int current_pprofile_show(void *data, u64 *val)
+{
+	*val = smc_call0(MLNX_PTM_GET_CUR_PPROFILE);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(current_pprofile_fops,
+			current_pprofile_show, NULL, "%llu\n");
+
 
 static int __init mlxbf_ptm_init(void)
 {
@@ -176,6 +206,12 @@ static int __init mlxbf_ptm_init(void)
 			    NULL, &tthrottling_state_fops);
 	debugfs_create_file("error_state", 0444, status,
 			    NULL, &error_status_fops);
+	debugfs_create_file("power_envelope", 0444, status,
+			    NULL, &power_envelope_fops);
+	debugfs_create_file("atx_power_available", 0444, status,
+			    NULL, &atx_status_fops);
+	debugfs_create_file("active_power_profile", 0444, status,
+			    NULL, &current_pprofile_fops);
 
 	return 0;
 }
