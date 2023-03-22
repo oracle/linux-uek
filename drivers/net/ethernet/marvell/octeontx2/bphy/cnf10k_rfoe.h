@@ -42,6 +42,7 @@
 
 #define PCI_SUBSYS_DEVID_CNF10K_A			0xBA00
 #define PCI_SUBSYS_DEVID_CNF10K_B			0xBC00
+#define PCI_SUBSYS_DEVID_CN10K_A			0xB900
 /* BCN register offsets and definitions */
 #define CNF10K_BCN_CAPTURE_CFG				0x1400U
 #define CNF10K_BCN_CAPTURE_N1_N2			0x1410U
@@ -233,9 +234,33 @@ u64 cnf10k_rfoe_read_ptp_clock(struct cnf10k_rfoe_ndev_priv *priv);
 int cnf10k_rfoe_ptp_tstamp2time(struct cnf10k_rfoe_ndev_priv *priv, u64 tstamp,
 				u64 *tsns);
 
+static inline bool is_ptp_dev_cnf10kb(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	return (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B) ? true : false;
+}
+
+static inline bool is_ptp_dev_cnf10ka(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	return (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A) ? true : false;
+}
+
+static inline bool is_ptp_dev_cn10ka(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	return (priv->pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A) ? true : false;
+}
+
 static inline u64 cnf10k_ptp_convert_timestamp(u64 timestamp)
 {
 	return ((timestamp >> 32) * NSEC_PER_SEC) + (timestamp & 0xFFFFFFFFUL);
+}
+
+static inline u64 cnf10k_ptp_convert_ext_timestamp(struct cnf10k_rfoe_ndev_priv *priv,
+						   u64 timestamp)
+{
+	if (is_ptp_dev_cn10ka(priv) || is_ptp_dev_cnf10ka(priv))
+		return ((timestamp >> 32) * NSEC_PER_SEC) + (timestamp & 0xFFFFFFFFUL);
+
+	return timestamp;
 }
 
 void cnf10k_rfoe_set_link_state(struct net_device *netdev, u8 state);
