@@ -336,9 +336,9 @@ static int __irq_build_affinity_masks(unsigned int startvec,
  *	1) spread present CPU on these vectors
  *	2) spread other possible CPUs on these vectors
  */
-static int irq_build_affinity_masks(unsigned int startvec, unsigned int numvecs,
-				    unsigned int firstvec,
-				    struct irq_affinity_desc *masks)
+int irq_build_affinity_masks(unsigned int startvec, unsigned int numvecs,
+			     unsigned int firstvec,
+			     struct irq_affinity_desc *masks)
 {
 	unsigned int curvec = startvec, nr_present = 0, nr_others = 0;
 	cpumask_var_t *node_to_cpumask;
@@ -399,6 +399,7 @@ static int irq_build_affinity_masks(unsigned int startvec, unsigned int numvecs,
 	free_cpumask_var(nmsk);
 	return ret < 0 ? ret : 0;
 }
+EXPORT_SYMBOL_GPL(irq_build_affinity_masks);
 
 static void default_calc_sets(struct irq_affinity *affd, unsigned int affvecs)
 {
