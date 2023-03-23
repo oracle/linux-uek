@@ -465,6 +465,9 @@ static void rds_ib_cache_gc_worker(struct work_struct *work)
 
 		if (++rds_ibdev->i_cache_gc_cpu >= num_possible_cpus())
 			rds_ibdev->i_cache_gc_cpu = 0;
+
+		/* resched for waiters in non-preempt kernel */
+		cond_resched();
 	}
 
 	rds_queue_delayed_work(NULL, rds_aux_wq, &rds_ibdev->i_cache_gc_work,
