@@ -621,7 +621,7 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware-core > 999:20211203-999.10.gitb0e898fb.el9\
+Requires(pre): linux-firmware-core >= 999:20230315-999.18.gitc761dbe8.el9\
 Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
@@ -725,7 +725,7 @@ Provides: %{variant_name}-modules = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(kernel-uek-modules)\
 Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: linux-firmware > 999:20211203-999.10.gitb0e898fb.el9\
+Requires: linux-firmware >= 999:20230315-999.18.gitc761dbe8.el9\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules\
