@@ -565,7 +565,7 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
 %if 0%{!?-e:1}\
-Requires(pre): linux-firmware >= 999:20200124-999.4.git1eb2408c\
+Requires(pre): linux-firmware >= 999:20230315-999.18.gitc761dbe8\
 %endif\
 Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
