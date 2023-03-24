@@ -19,18 +19,6 @@
 #include "ecprivkey.asn1.h"
 #include "ecdsasignature.asn1.h"
 
-struct ecc_ctx {
-	unsigned int curve_id;
-	const struct ecc_curve *curve;
-	bool key_set;
-	bool is_private;
-
-	u64 d[ECC_MAX_DIGITS]; /* priv key big integer */
-	u64 x[ECC_MAX_DIGITS]; /* pub key x and y coordinates */
-	u64 y[ECC_MAX_DIGITS];
-	struct ecc_point pub_key;
-};
-
 /*
  * Get the r and s components of a signature from the X509 certificate.
  */
@@ -299,15 +287,14 @@ static int rfc6979_gen_k(struct ecc_ctx *ctx, struct crypto_rng *rng, u64 *k)
 	return 0;
 }
 
-/* scratch buffer should be at least ECC_MAX_BYTES */
-static int asn1_encode_signature_sg(struct akcipher_request *req,
-				    struct ecdsa_signature_ctx *sig_ctx,
-				    u8 *scratch)
+int ecdsa_asn1_encode_signature_sg(struct akcipher_request *req,
+				   struct ecdsa_signature_ctx *sig_ctx)
 {
 	unsigned int ndigits = sig_ctx->curve->g.ndigits;
 	unsigned int r_bits = vli_num_bits(sig_ctx->r, ndigits);
 	unsigned int s_bits = vli_num_bits(sig_ctx->s, ndigits);
 	struct sg_mapping_iter miter;
+	u8 scratch[ECC_MAX_BYTES];
 	unsigned int nents;
 	u8 *buf, *p;
 	size_t needed = 2; /* tag and len for the top ASN1 sequence */
@@ -384,6 +371,7 @@ static int asn1_encode_signature_sg(struct akcipher_request *req,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(ecdsa_asn1_encode_signature_sg);
 
 static int ecdsa_sign(struct akcipher_request *req)
 {
@@ -427,7 +415,7 @@ static int ecdsa_sign(struct akcipher_request *req)
 	} while (ret == -EAGAIN);
 	memzero_explicit(rawhash_k, sizeof(rawhash_k));
 
-	ret = asn1_encode_signature_sg(req, &sig_ctx, rawhash_k);
+	ret = ecdsa_asn1_encode_signature_sg(req, &sig_ctx);
 
 alloc_rng:
 	crypto_free_rng(rng);
@@ -503,6 +491,25 @@ static int ecdsa_set_pub_key(struct crypto_akcipher *tfm, const void *key, unsig
 	return ret;
 }
 
+int ecc_get_pub_key(void *context, size_t hdrlen, unsigned char tag,
+		     const void *value, size_t vlen)
+{
+	struct ecc_ctx *ctx = context;
+	const char *d = value;
+	const u64 *digits = (const u64 *)&d[2];
+	unsigned int ndigits;
+
+	/* we only accept uncompressed format indicated by '4' */
+	if (d[1] != 4)
+		return -EINVAL;
+
+	ndigits = ctx->curve->g.ndigits;
+	memcpy(ctx->pub_key.x, digits, ndigits * sizeof(u64));
+	memcpy(ctx->pub_key.y, &digits[ndigits], ndigits * sizeof(u64));
+
+	return 0;
+}
+
 int ecc_get_priv_key(void *context, size_t hdrlen, unsigned char tag,
 		     const void *value, size_t vlen)
 {
@@ -537,9 +544,9 @@ int ecc_get_priv_key(void *context, size_t hdrlen, unsigned char tag,
 
 	memcpy(&priv[-diff], d, vlen);
 
-	ecc_swap_digits((u64 *)priv, ctx->d, ctx->curve->g.ndigits);
+	memcpy(ctx->d, priv, dlen);
 	memzero_explicit(priv, sizeof(priv));
-	return ecc_is_key_valid(ctx->curve_id, ctx->curve->g.ndigits, ctx->d, dlen);
+	return 0;
 }
 
 int ecc_get_priv_params(void *context, size_t hdrlen, unsigned char tag,
@@ -572,10 +579,18 @@ int ecc_get_priv_version(void *context, size_t hdrlen, unsigned char tag,
 	return -EINVAL;
 }
 
+int ecdsa_parse_privkey(struct ecc_ctx *ctx, const void *key, unsigned int key_len)
+{
+	return asn1_ber_decoder(&ecprivkey_decoder, ctx, key, key_len);
+}
+EXPORT_SYMBOL_GPL(ecdsa_parse_privkey);
+
 static int ecdsa_set_priv_key(struct crypto_akcipher *tfm, const void *key,
 			      unsigned int keylen)
 {
 	struct ecc_ctx *ctx = akcipher_tfm_ctx(tfm);
+	size_t dlen = ctx->curve->g.ndigits * sizeof(u64);
+	u8 priv[ECC_MAX_BYTES];
 	int ret;
 
 	ret = ecdsa_ecc_ctx_reset(ctx);
@@ -583,6 +598,12 @@ static int ecdsa_set_priv_key(struct crypto_akcipher *tfm, const void *key,
 		return ret;
 
 	ret = asn1_ber_decoder(&ecprivkey_decoder, ctx, key, keylen);
+	if (ret)
+		return ret;
+
+	ecc_swap_digits(ctx->d, (u64 *)priv, ctx->curve->g.ndigits);
+	memcpy(ctx->d, priv, dlen);
+	ret = ecc_is_key_valid(ctx->curve_id, ctx->curve->g.ndigits, ctx->d, dlen);
 	if (ret)
 		return ret;
 
