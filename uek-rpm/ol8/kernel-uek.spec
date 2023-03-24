@@ -122,6 +122,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
 
+%define build_kernel_modules 1
+
 %if %{with_verbose}
 %define make_opts V=1
 %else
@@ -822,8 +824,10 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %{expand:%%kernel_meta_package %{-o:%{-o}} %{?1:%{1}}}\
 %endif\
 %{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
+%if %{build_kernel_modules}\
 %{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
+%endif\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
 
@@ -1111,6 +1115,10 @@ BuildKernel() {
     Flavour=$3
     InstallName=${4:-vmlinuz}
 
+%if %{build_kernel_modules}
+    MakeTarget=$MakeTarget modules
+%endif
+
     # Pick the right config file for the kernel we're building
     Config=kernel-%{version}-%{_target_cpu}${Flavour:+-${Flavour}}.config
     DevelDir=/usr/src/kernels/%{KVERREL}${Flavour:+.${Flavour}}
@@ -1182,9 +1190,11 @@ BuildKernel() {
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
+%if %{build_kernel_modules}
     cp Module.symvers Module.symvers.save
     make -k %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
     mv -f Module.symvers.save Module.symvers
+%endif
 
     # Start installing the results
 %if %{with_debuginfo}
@@ -1222,7 +1232,9 @@ BuildKernel() {
     cp $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz.hmac
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
+%if %{build_kernel_modules}
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
+%endif
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
@@ -1415,6 +1427,7 @@ BuildKernel() {
 %endif
     rm -f Symtypes.build
 
+%if %{build_kernel_modules}
     find $RPM_BUILD_ROOT/lib/modules/$KernelVer -name "*.ko" -type f > modnames
 
     # mark modules executable so that strip-to-file can strip them
@@ -1508,7 +1521,7 @@ BuildKernel() {
     # Append full path to the beginning of each line.
     sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
 
-    cp lib/modules/$KernelVer/modules.builtin built-in-mods.list
+    cp $RPM_BUILD_DIR/kernel-%{version}/linux-%{version}-%{release}/modules.builtin built-in-mods.list
     sed -i "s/^/lib\/modules\/$KernelVer\//" built-in-mods.list
 
     ./filter-modules.sh core.list modules.list built-in-mods.list
@@ -1540,8 +1553,8 @@ BuildKernel() {
     # Also add in the dir entries
     sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list > ${modlistVariant}-modules.list
     sed -e 's/^lib*/%dir \/lib/' %{?zipsed} $RPM_BUILD_ROOT/module-dirs.list > ${modlistVariant}-core.list
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/core.list >> ${modlistVariant}-core.list
     sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/mod-extra.list >> ${modlistVariant}-modules-extra.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/core.list >> ${modlistVariant}-core.list
 
     # Cleanup
     rm -f $RPM_BUILD_ROOT/core.list
@@ -1549,6 +1562,7 @@ BuildKernel() {
     rm -f $RPM_BUILD_ROOT/module-dirs.list
     rm -f $RPM_BUILD_ROOT/mod-extra.list
     rm -f $RPM_BUILD_ROOT/built-in-mods.list
+%endif
 
 %if %{signmodules}
     cp certs/signing_key.pem certs/signing_key.pem.sign${Flavour:+.${Flavour}}
@@ -1854,8 +1868,10 @@ fi\
 #
 %define kernel_variant_post(ov:r:) \
 %{expand:%%kernel_devel_post %{-o:-o} %{?-v:%{?-v*}}}\
+%if %{build_kernel_modules}\
 %{expand:%%kernel_modules_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} %{?-v:%{?-v*}}}\
+%endif\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
@@ -2088,7 +2104,11 @@ fi
 %if %{1}\
 %define variant_name kernel%{?variant}%{?2:%{!-o:-}%{2}}\
 %{expand:%%files -n %{variant_name}}\
+%if %{build_kernel_modules}\
 %{expand:%%files -f %{variant_name}-core.list -n %{variant_name}-core}\
+%dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
+%endif\
 %defattr(-,root,root)\
 %dir /etc/modprobe.d\
 %config(noreplace) /etc/modprobe.d/tcindex-disable.conf\
@@ -2103,8 +2123,6 @@ fi
 %ghost /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
-%dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
@@ -2114,7 +2132,6 @@ fi
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
 %endif\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/libexec/perf-core.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
@@ -2129,9 +2146,12 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
+%if %{build_kernel_modules}\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 %{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
 %config(noreplace) /etc/modprobe.d/*-blacklist.conf\
+%endif\
 %{expand:%%files -n %{variant_name}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
