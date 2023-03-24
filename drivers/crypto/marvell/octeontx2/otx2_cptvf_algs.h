@@ -28,6 +28,7 @@ enum otx2_cpt_request_type {
 enum otx2_cpt_major_opcodes {
 	OTX2_CPT_MAJOR_OP_MISC = 0x01,
 	OTX2_CPT_MAJOR_OP_FC   = 0x33,
+	OTX2_CPT_MAJOR_OP_HASH = 0x34,
 	OTX2_CPT_MAJOR_OP_HMAC = 0x35,
 	OTX2_CPT_MAJOR_OP_MOD_EXP = 0x03,
 	OTX2_CPT_MAJOR_OP_ECDSA = 0x04,
