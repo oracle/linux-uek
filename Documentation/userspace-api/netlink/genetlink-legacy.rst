@@ -84,6 +84,20 @@ Legacy families can define C structures both to be used as the contents
 of an attribute and as a fixed message header. The plan is to define
 the structs in ``definitions`` and link the appropriate attrs.
 
+C Arrays
+--------
+
+Legacy families also use ``binary`` attributes to encapsulate C arrays. The
+``sub-type`` is used to identify the type of scalar to extract.
+
+.. code-block:: yaml
+
+  attributes:
+    -
+      name: ports
+      type: binary
+      sub-type: u32
+
 Multi-message DO
 ----------------
 
