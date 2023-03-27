@@ -170,6 +170,7 @@ kernel/drivers/misc/pvpanic/pvpanic.ko
 kernel/drivers/misc/pvpanic/pvpanic-mmio.ko
 kernel/drivers/net/bonding/bonding.ko
 kernel/drivers/net/dummy.ko
+kernel/drivers/net/ethernet/amazon/ena/ena.ko
 kernel/drivers/net/ethernet/broadcom/bnxt/bnxt_en.ko
 kernel/drivers/net/ethernet/broadcom/cnic.ko
 kernel/drivers/net/ethernet/chelsio/cxgb3/cxgb3.ko
