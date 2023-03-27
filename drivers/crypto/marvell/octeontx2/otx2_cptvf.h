@@ -8,6 +8,15 @@
 #include "mbox.h"
 #include "otx2_cptlf.h"
 
+#define CPT_AE_EC_ID_MAX	8
+
+struct cpt_ae_fpm_tbl {
+	uint8_t *fpm_virt;
+	dma_addr_t fpm_dma_addr;
+	size_t dma_len;
+	uint64_t fpm_iova[CPT_AE_EC_ID_MAX];
+};
+
 struct otx2_cptvf_dev {
 	void __iomem *reg_base;		/* Register start address */
 	void __iomem *pfvf_mbox_base;	/* PF-VF mbox start address */
@@ -19,6 +28,8 @@ struct otx2_cptvf_dev {
 	struct otx2_mbox	pfvf_mbox;
 	struct work_struct	pfvf_mbox_work;
 	struct workqueue_struct *pfvf_mbox_wq;
+	struct cpt_ae_fpm_tbl fpm_tbl;
+
 	int blkaddr;
 	void *bbuf_base;
 	unsigned long cap_flag;

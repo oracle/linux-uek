@@ -18,6 +18,7 @@
 #include "otx2_cptvf_algs.h"
 #include "otx2_cpt_reqmgr.h"
 #include "cn10k_cpt.h"
+#include "cpt_asym.h"
 
 /* Size of salt in AES GCM mode */
 #define AES_GCM_SALT_SIZE 4
@@ -1803,9 +1804,14 @@ static void swap_func(void *lptr, void *rptr, int size)
 int otx2_cpt_crypto_init(struct pci_dev *pdev, struct module *mod,
 			 int num_queues, int num_devices)
 {
-	int ret = 0;
-	int count;
+	struct otx2_cptvf_dev *cptvf = pci_get_drvdata(pdev);
+	int ret, count;
 
+	ret = cpt_ae_fpm_tbl_get(pdev, &cptvf->fpm_tbl);
+	if (ret) {
+		dev_err(&pdev->dev, "Couldn't get AE fpm table\n");
+		return ret;
+	}
 	mutex_lock(&mutex);
 	count = atomic_read(&se_devices.count);
 	if (count >= OTX2_CPT_MAX_LFS_NUM) {
@@ -1831,13 +1837,18 @@ int otx2_cpt_crypto_init(struct pci_dev *pdev, struct module *mod,
 	sort(se_devices.desc, count, sizeof(struct cpt_device_desc),
 	     compare_func, swap_func);
 
+	mutex_unlock(&mutex);
+	return 0;
+
 unlock:
 	mutex_unlock(&mutex);
+	cpt_ae_fpm_tbl_free(pdev, &cptvf->fpm_tbl);
 	return ret;
 }
 
 void otx2_cpt_crypto_exit(struct pci_dev *pdev, struct module *mod)
 {
+	struct otx2_cptvf_dev *cptvf = pci_get_drvdata(pdev);
 	struct cpt_device_table *dev_tbl;
 	bool dev_found = false;
 	int i, j, count;
@@ -1867,4 +1878,5 @@ void otx2_cpt_crypto_exit(struct pci_dev *pdev, struct module *mod)
 
 unlock:
 	mutex_unlock(&mutex);
+	cpt_ae_fpm_tbl_free(pdev, &cptvf->fpm_tbl);
 }

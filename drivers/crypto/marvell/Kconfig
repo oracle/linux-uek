@@ -49,6 +49,7 @@ config CRYPTO_DEV_OCTEONTX2_CPT
 	select CRYPTO_HASH
 	select CRYPTO_AEAD
 	select CRYPTO_RSA
+	select CRYPTO_ECDSA
 	select CRYPTO_ECDH
 	select NET_DEVLINK
 	help
