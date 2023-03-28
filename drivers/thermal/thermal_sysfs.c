@@ -863,8 +863,6 @@ static void cooling_device_stats_setup(struct thermal_cooling_device *cdev)
 	unsigned long states = cdev->max_state + 1;
 	int var;
 
-	lockdep_assert_held(&cdev->lock);
-
 	var = sizeof(*stats);
 	var += sizeof(*stats->time_in_state) * states;
 	var += sizeof(*stats->trans_table) * states * states;
@@ -890,8 +888,6 @@ out:
 
 static void cooling_device_stats_destroy(struct thermal_cooling_device *cdev)
 {
-	lockdep_assert_held(&cdev->lock);
-
 	kfree(cdev->stats);
 	cdev->stats = NULL;
 }
@@ -918,6 +914,8 @@ void thermal_cooling_device_destroy_sysfs(struct thermal_cooling_device *cdev)
 
 void thermal_cooling_device_stats_reinit(struct thermal_cooling_device *cdev)
 {
+	lockdep_assert_held(&cdev->lock);
+
 	cooling_device_stats_destroy(cdev);
 	cooling_device_stats_setup(cdev);
 }
