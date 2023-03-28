@@ -1292,7 +1292,7 @@ static void set_mod_args(struct cgx_set_link_mode_args *args,
 				  CGX_MODE_MAX);
 	args->mode = mode;
 	mode_baseidx = cgx_mode - 41;
-	if (mode_baseidx > 0) {
+	if (mode_baseidx >= 0) {
 		args->mode_baseidx = 1;
 		args->mode = BIT_ULL(mode_baseidx);
 	}
@@ -1441,6 +1441,42 @@ static void otx2_map_ethtool_link_modes(u64 bitmask,
 	case  ETHTOOL_LINK_MODE_56000baseSR4_Full_BIT:
 		set_mod_args(args, 25000, 0, 1,
 			     BIT_ULL(CGX_MODE_25GBASE_KR_C_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_2500baseX_Full_BIT:
+		set_mod_args(args, 2500, 0, 1,
+			     BIT_ULL(ETH_MODE_2500_BASEX_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_5000baseT_Full_BIT:
+		set_mod_args(args, 5000, 0, 1,
+			     BIT_ULL(ETH_MODE_5000_BASEX_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_100baseT1_Full_BIT:
+		set_mod_args(args, 1000, 0, 1,
+			     BIT_ULL(ETH_MODE_O_USGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_1000baseT1_Full_BIT:
+		set_mod_args(args, 1000, 0, 1,
+			     BIT_ULL(ETH_MODE_Q_USGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_2500baseT_Full_BIT:
+		set_mod_args(args, 2500, 0, 1,
+			     BIT_ULL(ETH_MODE_2_5G_USXGMII_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseCR4_Full_BIT:
+		set_mod_args(args, 5000, 0, 1,
+			     BIT_ULL(ETH_MODE_5G_USXGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_10000baseCR_Full_BIT:
+		set_mod_args(args, 10000, 0, 1,
+			     BIT_ULL(ETH_MODE_10G_SXGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_10000baseER_Full_BIT:
+		set_mod_args(args, 5000, 0, 1,
+			     BIT_ULL(ETH_MODE_10G_DXGMII_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseDR4_Full_BIT:
+		set_mod_args(args, 2500, 0, 1,
+			     BIT_ULL(ETH_MODE_10G_QXGMII_BIT));
 		break;
 	default:
 		set_mod_args(args, 0, 1, 0, BIT_ULL(CGX_MODE_MAX));
