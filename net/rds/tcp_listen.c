@@ -178,6 +178,8 @@ void rds_tcp_conn_slots_available(struct rds_connection *conn, bool fan_out)
 	cp0 = conn->c_path;
 	tc = cp0->cp_transport_data;
 	rtn = tc->t_rtn;
+	if (!rtn)
+		return;
 
 	if (fan_out)
 		/* Delegate fan-out to a background worker in order
