@@ -86,7 +86,7 @@ unsigned long rds_sysctl_dr_sock_cancel_jiffies;
 static int rds_sysctl_pf_rds = PF_RDS;
 static int rds_sysctl_sol_rds = SOL_RDS;
 
-unsigned int rds_sysctl_enable_payload_csums;
+unsigned int rds_sysctl_enable_payload_csum;
 
 static struct ctl_table rds_sysctl_rds_table[] = {
 	{
@@ -198,9 +198,9 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
 	},
 	{
-		.procname       = "enable_payload_csums",
-		.data           = &rds_sysctl_enable_payload_csums,
-		.maxlen         = sizeof(rds_sysctl_enable_payload_csums),
+		.procname       = "enable_payload_csum",
+		.data           = &rds_sysctl_enable_payload_csum,
+		.maxlen         = sizeof(rds_sysctl_enable_payload_csum),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
 	},
