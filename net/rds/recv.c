@@ -193,7 +193,7 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 			break;
 
 		case RDS_EXTHDR_CSUM:
-			if (unlikely(rds_sysctl_enable_payload_csums)) {
+			if (unlikely(rds_sysctl_enable_payload_csum)) {
 				inc->i_payload_csum.csum_enabled =
 					buffer.rdma_csum.h_rdma_csum_enabled;
 				inc->i_payload_csum.csum_val.raw =
@@ -201,7 +201,7 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 			} else {
 				inc->i_payload_csum.csum_enabled = false;
 				inc->i_payload_csum.csum_val.raw = 0;
-				rds_stats_inc(s_recv_payload_csums_ignored);
+				rds_stats_inc(s_recv_payload_csum_ignored);
 			}
 
 			break;
@@ -856,7 +856,7 @@ void rds_clear_recv_queue(struct rds_sock *rs)
 	write_unlock_irqrestore(&rs->rs_recv_lock, flags);
 }
 
-/* wrapper for call to tracepoint in case of RDS receive checksum error */
+/* C wrapper for call to tracepoint in case of RDS receive checksum error */
 void do_rds_receive_csum_err(struct rds_incoming *inc, u32 csum_calc)
 {
 	struct rds_message *rm = container_of(inc, struct rds_message, m_inc);
