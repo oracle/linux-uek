@@ -1792,7 +1792,6 @@ void generic_end_io_acct(struct request_queue *q, int req_op,
 			 struct hd_struct *part, unsigned long start_time)
 {
 	unsigned long now = blk_get_iostat_ticks(q);
-	unsigned long duration = now - start_time;
 	const int sgrp = op_stat_group(req_op);
 	unsigned long duration_ns;
 
