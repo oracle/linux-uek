@@ -105,6 +105,7 @@ enum {
 /* This mutex is used to serialize MFG write and lock operations. */
 static DEFINE_MUTEX(mfg_ops_lock);
 static DEFINE_MUTEX(icm_ops_lock);
+static DEFINE_MUTEX(os_up_lock);
 
 #define MLNX_MFG_OOB_MAC_LEN         ETH_ALEN
 #define MLNX_MFG_OPN_VAL_LEN         24
@@ -747,6 +748,26 @@ static ssize_t mfg_lock_store(struct device_driver *drv, const char *buf,
 	return count;
 }
 
+static ssize_t os_up_store(struct device_driver *drv, const char *buf,
+			      size_t count)
+{
+	unsigned long val;
+	int err;
+
+	err = kstrtoul(buf, 10, &val);
+	if (err)
+		return err;
+
+	if (val != 1)
+		return -EINVAL;
+
+	mutex_lock(&os_up_lock);
+	smc_call0(MLNX_HANDLE_OS_UP);
+	mutex_unlock(&os_up_lock);
+
+	return count;
+}
+
 /* Log header format. */
 #define RSH_LOG_TYPE_SHIFT	56
 #define RSH_LOG_LEN_SHIFT	48
@@ -1209,6 +1230,7 @@ static DRIVER_ATTR_RW(rev);
 static DRIVER_ATTR_WO(mfg_lock);
 static DRIVER_ATTR_RW(rsh_log);
 static DRIVER_ATTR_RW(large_icm);
+static DRIVER_ATTR_WO(os_up);
 
 static struct attribute *mbc_dev_attrs[] = {
 	&driver_attr_post_reset_wdog.attr,
@@ -1227,6 +1249,7 @@ static struct attribute *mbc_dev_attrs[] = {
 	&driver_attr_mfg_lock.attr,
 	&driver_attr_rsh_log.attr,
 	&driver_attr_large_icm.attr,
+	&driver_attr_os_up.attr,
 	NULL
 };
 
