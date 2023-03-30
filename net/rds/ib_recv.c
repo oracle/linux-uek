@@ -766,7 +766,7 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
-	struct rds_csum rc;
+	struct rds_csum csum;
 	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
 	struct rds_connection *conn = inc->i_conn;
 	struct rds_ib_incoming *ibinc;
@@ -791,15 +791,11 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		/* XXX needs + offset for multiple recvs per page */
 		if (likely(!inc->i_payload_csum.csum_enabled)) {
 			/* no checksum */
-			ret = copy_page_to_iter(sg_page(sg),
-						sg->offset + frag_off, to_copy,
-						to);
+			ret = copy_page_to_iter(sg_page(sg), sg->offset + frag_off, to_copy, to);
 		} else {
 			/* calculate full packet wsum checksum */
-			ret = rds_csum_and_copy_page_to_iter(sg_page(sg),
-							     sg->offset +
-							     frag_off,
-							     to_copy, &rc, to);
+			ret = rds_csum_and_copy_page_to_iter(sg_page(sg), sg->offset + frag_off,
+							     to_copy, &csum, to);
 		}
 
 		if (ret != to_copy)
@@ -831,8 +827,8 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	}
 
 	if (unlikely(inc->i_payload_csum.csum_enabled) && copied) {
-		rds_stats_inc(s_recv_payload_csums_ib);
-		rds_check_csum(inc, &rc);
+		rds_stats_inc(s_recv_payload_csum_ib);
+		rds_check_csum(inc, &csum);
 	}
 
 	return copied;
