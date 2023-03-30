@@ -995,10 +995,10 @@ struct rds_statistics {
 	uint64_t	s_recv_ack_required;
 	uint64_t	s_recv_rdma_bytes;
 	uint64_t	s_recv_payload_bad_checksum;
-	uint64_t	s_recv_payload_csums_ib;
-	uint64_t	s_recv_payload_csums_loopback;
-	uint64_t	s_recv_payload_csums_tcp;
-	uint64_t	s_recv_payload_csums_ignored;
+	uint64_t	s_recv_payload_csum_ib;
+	uint64_t	s_recv_payload_csum_loopback;
+	uint64_t	s_recv_payload_csum_tcp;
+	uint64_t	s_recv_payload_csum_ignored;
 	uint64_t	s_recv_ping;
 	uint64_t	s_recv_pong;
 	uint64_t	s_recv_hb_ping;
@@ -1022,7 +1022,7 @@ struct rds_statistics {
 	uint64_t	s_send_hb_pong;
 	uint64_t	s_send_mprds_ping;
 	uint64_t	s_send_mprds_pong;
-	uint64_t	s_send_payload_csums_added;
+	uint64_t	s_send_payload_csum_added;
 	uint64_t	s_page_remainder_hit;
 	uint64_t	s_page_remainder_miss;
 	uint64_t	s_copy_to_user;
@@ -1478,7 +1478,7 @@ extern unsigned int  rds_sysctl_shutdown_trace_end_time;
 extern unsigned int  rds_sysctl_conn_hb_timeout;
 extern unsigned int  rds_sysctl_conn_hb_interval;
 extern unsigned long rds_sysctl_dr_sock_cancel_jiffies;
-extern unsigned int  rds_sysctl_enable_payload_csums;
+extern unsigned int  rds_sysctl_enable_payload_csum;
 
 /* threads.c */
 int rds_threads_init(void);
@@ -1547,10 +1547,10 @@ struct rds_csum_state {
  */
 static inline size_t
 rds_csum_and_copy_page_from_iter(struct page *page, size_t offset, size_t bytes,
-				 struct rds_csum *csump, struct iov_iter *i)
+				 struct rds_csum *csum, struct iov_iter *i)
 {
 	size_t res = 0;
-	__wsum *wsump = &csump->csum_val.csum;
+	__wsum *wsump = &csum->csum_val.csum;
 
 	page += offset / PAGE_SIZE; // first subpage
 	offset %= PAGE_SIZE;
@@ -1676,11 +1676,11 @@ size_t rds_csum_and_copy_to_iter(const void *addr, size_t bytes, void *_csstate,
  */
 static __always_inline
 size_t rds_csum_and_copy_page_to_iter(struct page *page, size_t offset,
-				      size_t bytes, struct rds_csum *csump,
+				      size_t bytes, struct rds_csum *csum,
 				      struct iov_iter *i)
 {
 	size_t res = 0;
-	struct rds_csum_state csdata = { .csum = csump->csum_val.csum };
+	struct rds_csum_state csdata = { .csum = csum->csum_val.csum };
 
 	if (WARN_ON_ONCE(i->data_source))
 		return 0;
@@ -1702,7 +1702,7 @@ size_t rds_csum_and_copy_page_to_iter(struct page *page, size_t offset,
 		bytes -= n;
 
 		if (!bytes) {
-			csump->csum_val.csum = csdata.csum;
+			csum->csum_val.csum = csdata.csum;
 			break;
 		}
 
@@ -1726,13 +1726,13 @@ size_t rds_csum_and_copy_page_to_iter(struct page *page, size_t offset,
 DECLARE_TRACEPOINT(rds_receive_csum_err);
 
 static __always_inline
-void rds_check_csum(struct rds_incoming *inc, struct rds_csum *csump)
+void rds_check_csum(struct rds_incoming *inc, struct rds_csum *csum)
 {
-	if (unlikely(inc->i_payload_csum.csum_val.raw != csump->csum_val.raw)) {
+	if (unlikely(inc->i_payload_csum.csum_val.raw != csum->csum_val.raw)) {
 		rds_stats_inc(s_recv_payload_bad_checksum);
 
 		if (unlikely(tracepoint_enabled(rds_receive_csum_err)))
-			do_rds_receive_csum_err(inc, csump->csum_val.raw);
+			do_rds_receive_csum_err(inc, csum->csum_val.raw);
 	}
 }
 

@@ -61,24 +61,128 @@ static size_t
 rds_csum_copy_to_iter(const void *addr, size_t bytes, void *data,
 		      struct iov_iter *i)
 {
-	struct rds_csum *csump = (struct rds_csum *)data;
-	struct rds_csum_state csdata = { .csum = csump->csum_val.csum };
+	struct rds_csum *csum = (struct rds_csum *)data;
+	struct rds_csum_state csdata = { .csum = csum->csum_val.csum };
 	size_t n;
 
 	n = rds_csum_and_copy_to_iter(addr, bytes, &csdata, i);
 
 	if (n == bytes)
-		csump->csum_val.csum = csdata.csum;
+		csum->csum_val.csum = csdata.csum;
 
 	return n;
 }
+
+/* RDS checksum version of __skb_datagram_iter()
+ *
+ * This code is based upon __skb_datagram_iter() from net/core/datagram.c, but
+ * that routine is declared as a static int, so it is unavailable to be called
+ * from routines in other source files.
+ *
+ * Modifications to what is currently generic code from upstream could be made,
+ * but it would result in a long-term maintenance burden. Instead, copy its
+ * functionality to a local routine within the RDS source tree.
+ *
+ * The functionality is largely the same, except there is no need to generalize
+ * for a passed callback function via a function pointer and therefore code to
+ * optimize for an indirect call that can never occur is unneeded.
+ */
+static int
+rds_skb_datagram_iter(const struct sk_buff *skb, int offset, struct iov_iter *to, int len,
+		      bool fault_short, void *data)
+{
+	int start = skb_headlen(skb);
+	int i, copy = start - offset, start_off = offset, n;
+	struct sk_buff *frag_iter;
+
+	/* Copy header. */
+	if (copy > 0) {
+		if (copy > len)
+			copy = len;
+		n = rds_csum_copy_to_iter(skb->data + offset, copy, data, to);
+		offset += n;
+		if (n != copy)
+			goto short_copy;
+		len -= copy;
+		if (!len)
+			return 0;
+	}
+
+	/* Copy paged appendix. Hmm... why does this look so complicated? */
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		int end;
+		const skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+
+		WARN_ON(start > offset + len);
+
+		end = start + skb_frag_size(frag);
+		copy = end - offset;
+		if (copy > 0) {
+			struct page *page = skb_frag_page(frag);
+			u8 *vaddr = kmap_local_page(page);
+
+			if (copy > len)
+				copy = len;
+			n = rds_csum_copy_to_iter(vaddr + skb_frag_off(frag) + offset - start, copy,
+						  data, to);
+			kunmap_local(vaddr);
+			offset += n;
+			if (n != copy)
+				goto short_copy;
+			len -= copy;
+			if (!len)
+				return 0;
+		}
+		start = end;
+	}
+
+	skb_walk_frags(skb, frag_iter) {
+		int end;
+
+		WARN_ON(start > offset + len);
+
+		end = start + frag_iter->len;
+		copy = end - offset;
+		if (copy > 0) {
+			if (copy > len)
+				copy = len;
+			if (rds_skb_datagram_iter(frag_iter, offset - start, to, copy, fault_short,
+						  data))
+				goto fault;
+			len -= copy;
+			if (!len)
+				return 0;
+			offset += copy;
+		}
+		start = end;
+	}
+	if (!len)
+		return 0;
+
+	/* This is not really a user copy fault, but rather someone
+	 * gave us a bogus length on the skb.  We should probably
+	 * print a warning here as it may indicate a kernel bug.
+	 */
+
+fault:
+	iov_iter_revert(to, offset - start_off);
+	return -EFAULT;
+
+short_copy:
+	if (fault_short || iov_iter_count(to))
+		goto fault;
+
+	return 0;
+}
+
+/* end of RDS checksum version of __skb_datagram_iter() */
 
 /*
  * this is pretty lame, but, whatever.
  */
 int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
-	struct rds_csum rc;
+	struct rds_csum csum;
 	struct rds_tcp_incoming *tinc;
 	struct sk_buff *skb;
 	unsigned long to_copy, skb_off;
@@ -98,15 +202,11 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 
 			if (likely(!inc->i_payload_csum.csum_enabled)) {
 				/* no checksum */
-				if (skb_copy_datagram_iter(skb, skb_off, to,
-							   to_copy))
+				if (skb_copy_datagram_iter(skb, skb_off, to, to_copy))
 					ret = -EFAULT;
 			} else {
 				/* full packet wsum checksum */
-				if (skb_callback_datagram_iter(skb, skb_off, to,
-							       to_copy, false,
-							       rds_csum_copy_to_iter,
-							       &rc))
+				if (rds_skb_datagram_iter(skb, skb_off, to, to_copy, false, &csum))
 					ret = -EFAULT;
 			}
 
@@ -123,8 +223,8 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	}
 out:
 	if (unlikely(inc->i_payload_csum.csum_enabled) && ret) {
-		rds_stats_inc(s_recv_payload_csums_tcp);
-		rds_check_csum(inc, &rc);
+		rds_stats_inc(s_recv_payload_csum_tcp);
+		rds_check_csum(inc, &csum);
 	}
 
 	return ret;
