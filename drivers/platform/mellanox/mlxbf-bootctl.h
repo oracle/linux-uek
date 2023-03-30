@@ -102,6 +102,11 @@
 #define MLNX_HANDLE_SET_ICM_INFO    0x82000012
 #define MLNX_HANDLE_GET_ICM_INFO    0x82000013
 
+/*
+ * SMC function ID to set the ARM boot state to up
+ */
+#define MLNX_HANDLE_OS_UP    0x82000014
+
 #define MAX_ICM_BUFFER_SIZE 10
 
 /* SMC function IDs for SiP Service queries */
