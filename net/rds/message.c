@@ -140,10 +140,8 @@ static int rds_find_next_ext_space(struct rds_header *hdr, unsigned int len,
 
 		type = hdr->h_exthdr[ind];
 
-		ext_len = (type <= __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] :
-			   0;
-		WARN_ONCE(!ext_len, "Unknown ext hdr type (%d)\n", type);
-		if (!ext_len)
+		ext_len = (type <= __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
+		if (WARN_ONCE(!ext_len, "Unknown ext hdr type (%d)\n", type))
 			return -EINVAL;
 
 		/* ind points to a valid ext hdr with known length */
@@ -203,13 +201,13 @@ int rds_message_next_extension(struct rds_header *hdr,
 	 * length is implied by the extension type. */
 	ext_type = src[offset++];
 
-	/* Unknown exthdr type */
-	WARN_ONCE(ext_type > __RDS_EXTHDR_MAX,
-		  "rds: received extension msg type (%u) > MAX (%u)\n",
-		  ext_type, __RDS_EXTHDR_MAX);
-
-	if (ext_type == RDS_EXTHDR_NONE || ext_type > __RDS_EXTHDR_MAX)
+	if (ext_type == RDS_EXTHDR_NONE || ext_type > __RDS_EXTHDR_MAX) {
+		WARN_ONCE(ext_type > __RDS_EXTHDR_MAX,
+			  "rds: received extension msg type (%u) > MAX (%u)\n",
+			  ext_type, __RDS_EXTHDR_MAX);
 		goto none;
+	}
+
 	ext_len = rds_exthdr_size[ext_type];
 	if (offset + ext_len > RDS_HEADER_EXT_SPACE)
 		goto none;
@@ -311,7 +309,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 	int ret = 0;
 
 	rm->m_inc.i_hdr.h_len = cpu_to_be32(iov_iter_count(from));
-	rm->m_payload_csum.csum_enabled = !!rds_sysctl_enable_payload_csums;
+	rm->m_payload_csum.csum_enabled = !!rds_sysctl_enable_payload_csum;
 
 	/*
 	 * now allocate and copy in the data payload.
@@ -334,16 +332,12 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 
 		if (likely(!rm->m_payload_csum.csum_enabled)) {
 			/* no checksum */
-			nbytes = copy_page_from_iter(sg_page(sg),
-						     sg->offset + sg_off,
-						     to_copy, from);
+			nbytes = copy_page_from_iter(sg_page(sg), sg->offset + sg_off, to_copy,
+						     from);
 		} else {
 			/* calculate full packet wsum checksum */
-			nbytes = rds_csum_and_copy_page_from_iter(sg_page(sg),
-								  sg->offset +
-								  sg_off,
-								  to_copy,
-								  &rm->m_payload_csum,
+			nbytes = rds_csum_and_copy_page_from_iter(sg_page(sg), sg->offset + sg_off,
+								  to_copy, &rm->m_payload_csum,
 								  from);
 		}
 
@@ -362,7 +356,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 
 int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
-	struct rds_csum rc;
+	struct rds_csum csum;
 	struct rds_connection *conn;
 	struct rds_message *rm;
 	struct scatterlist *sg;
@@ -387,15 +381,11 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 
 		if (likely(!inc->i_payload_csum.csum_enabled)) {
 			/* no checksum */
-			ret = copy_page_to_iter(sg_page(sg),
-						sg->offset + vec_off, to_copy,
-						to);
+			ret = copy_page_to_iter(sg_page(sg), sg->offset + vec_off, to_copy, to);
 		} else {
 			/* calculate full packet wsum checksum */
-			ret = rds_csum_and_copy_page_to_iter(sg_page(sg),
-							     sg->offset +
-							     vec_off,
-							     to_copy, &rc, to);
+			ret = rds_csum_and_copy_page_to_iter(sg_page(sg), sg->offset + vec_off,
+							     to_copy, &csum, to);
 		}
 
 		if (ret != to_copy)
@@ -413,8 +403,8 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	}
 
 	if (unlikely(inc->i_payload_csum.csum_enabled) && copied) {
-		rds_stats_inc(s_recv_payload_csums_loopback);
-		rds_check_csum(inc, &rc);
+		rds_stats_inc(s_recv_payload_csum_loopback);
+		rds_check_csum(inc, &csum);
 	}
 
 	return copied;
