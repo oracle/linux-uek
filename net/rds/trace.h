@@ -408,7 +408,6 @@ TRACE_EVENT(rds_receive_csum_err,
 		RDS_TRACE_COMMON_FIELDS
 		__field(__u64, seq)
 		__field(__u64, next_rx_seq)
-		__field(bool, forward)
 		__field(__u32, len)
 		__field(unsigned long, rx_jiffies)
 		__field(u32, csum_rcvd)
@@ -430,20 +429,18 @@ TRACE_EVENT(rds_receive_csum_err,
 		__entry->flags = inc->i_hdr.h_flags;
 		__entry->seq = be64_to_cpu(inc->i_hdr.h_sequence);
 		__entry->next_rx_seq = cp ? cp->cp_next_rx_seq : 0;
-		__entry->forward = !cp;
 		__entry->len = be32_to_cpu(inc->i_hdr.h_len);
 		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
 		__entry->csum_rcvd = inc->i_payload_csum.csum_val.raw;
 		__entry->csum_calc = csum_calc;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu forward %d: csum rcvd [0x%x] != calc [0x%x]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu: csum rcvd [0x%x] != calc [0x%x]",
 		  show_transport(__entry->transport),
 		  __entry->faddr, __entry->laddr, __entry->tos,
 		  __entry->next_rx_seq, __entry->seq, __entry->len,
 		  __entry->fport, __entry->lport, __entry->flags,
-		  __entry->rx_jiffies, __entry->forward, __entry->csum_rcvd,
-		  __entry->csum_calc)
+		  __entry->rx_jiffies, __entry->csum_rcvd, __entry->csum_calc)
 );
 
 TRACE_EVENT(rds_drop_ingress,
