@@ -473,7 +473,6 @@ kernel/net/ipv4/netfilter/iptable_raw.ko
 kernel/net/ipv4/netfilter/iptable_security.ko
 kernel/net/ipv4/netfilter/ip_tables.ko
 kernel/net/ipv4/netfilter/ipt_ah.ko
-kernel/net/ipv4/netfilter/ipt_CLUSTERIP.ko
 kernel/net/ipv4/netfilter/ipt_ECN.ko
 kernel/net/ipv4/netfilter/ipt_REJECT.ko
 kernel/net/ipv4/netfilter/ipt_rpfilter.ko
@@ -727,9 +726,6 @@ kernel/net/sched/cls_flow.ko
 kernel/net/sched/cls_fw.ko
 kernel/net/sched/cls_matchall.ko
 kernel/net/sched/cls_route.ko
-kernel/net/sched/cls_rsvp6.ko
-kernel/net/sched/cls_rsvp.ko
-kernel/net/sched/cls_tcindex.ko
 kernel/net/sched/cls_u32.ko
 kernel/net/sched/em_cmp.ko
 kernel/net/sched/em_ipset.ko
