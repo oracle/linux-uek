@@ -647,6 +647,30 @@ static bool too_many_isolated(struct zone *zone)
 	return isolated > (inactive + active) / 2;
 }
 
+/*
+ * Check if this base page should be skipped from isolation because
+ * it is pinned.
+ */
+static inline bool is_pinned_page(struct page *page)
+{
+	unsigned long extra_refs;
+
+	/* Private pages can be migrated */
+	if (PagePrivate(page))
+		return false;
+
+	/* file-backed page can have extra ref from page cache */
+	extra_refs = !!page_mapping(page);
+
+	/*
+	 * This is admittedly racy check but good enough to determine
+	 * if a page should be isolated
+	 */
+	if ((page_count(page) - extra_refs) > page_mapcount(page))
+		return true;
+	return false;
+}
+
 /**
  * isolate_migratepages_block() - isolate all migrate-able pages within
  *				  a single pageblock
@@ -808,12 +832,10 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		}
 
 		/*
-		 * Migration will fail if an anonymous page is pinned in memory,
-		 * so avoid taking lru_lock and isolating it unnecessarily in an
-		 * admittedly racy check.
+		 * Migration will fail if a page is pinned in memory, so
+		 * avoid taking lru_lock and isolating it unnecessarily
 		 */
-		if (!page_mapping(page) &&
-		    page_count(page) > page_mapcount(page))
+		if (is_pinned_page(page))
 			goto isolate_fail;
 
 		/*
