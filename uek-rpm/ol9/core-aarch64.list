@@ -662,6 +662,7 @@ kernel/net/sched/sch_hfsc.ko
 kernel/net/sched/sch_hhf.ko
 kernel/net/sched/sch_htb.ko
 kernel/net/sched/sch_ingress.ko
+kernel/net/sched/sch_mqprio_lib.ko
 kernel/net/sched/sch_pie.ko
 kernel/net/sched/sch_plug.ko
 kernel/net/sched/sch_prio.ko
