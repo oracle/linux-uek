@@ -44,9 +44,7 @@ kernel/crypto/cryptd.ko
 kernel/crypto/crypto_engine.ko
 kernel/crypto/crypto_user.ko
 kernel/crypto/des_generic.ko
-kernel/crypto/ecc.ko
 kernel/crypto/ecdh_generic.ko
-kernel/crypto/ecdsa_generic.ko
 kernel/crypto/essiv.ko
 kernel/crypto/fcrypt.ko
 kernel/crypto/khazad.ko
