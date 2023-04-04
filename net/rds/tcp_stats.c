@@ -46,6 +46,7 @@ static char *rds_tcp_stat_names[] = {
 	"tcp_sndbuf_full",
 	"tcp_connect_raced",
 	"tcp_listen_closed_stale",
+	"tcp_ka_timeout",
 };
 
 unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
