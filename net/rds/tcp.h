@@ -62,6 +62,7 @@ struct rds_tcp_statistics {
 	uint64_t	s_tcp_sndbuf_full;
 	uint64_t	s_tcp_connect_raced;
 	uint64_t	s_tcp_listen_closed_stale;
+	uint64_t        s_tcp_ka_timeout;
 };
 
 /* tcp.c */
