@@ -44,6 +44,8 @@ void rds_tcp_state_change(struct sock *sk)
 	void (*state_change)(struct sock *sk);
 	struct rds_conn_path *cp;
 	struct rds_tcp_connection *tc;
+	struct inet_connection_sock *icsk = inet_csk(sk);
+	struct tcp_sock *tsock = tcp_sk(sk);
 
 	read_lock(&sk->sk_callback_lock);
 	cp = sk->sk_user_data;
@@ -54,7 +56,8 @@ void rds_tcp_state_change(struct sock *sk)
 	tc = cp->cp_transport_data;
 	state_change = tc->t_orig_state_change;
 
-	trace_rds_tcp_state_change(cp->cp_conn, cp, tc, sk, "state change", 0);
+	trace_rds_tcp_state_change(cp->cp_conn, cp, tc, sk, "state change",
+				   sk->sk_err);
 
 	switch (sk->sk_state) {
 	/* ignore connecting sockets as they make progress */
@@ -83,7 +86,15 @@ void rds_tcp_state_change(struct sock *sk)
 	case TCP_CLOSE:
 		if (wq_has_sleeper(&tc->t_recv_done_waitq))
 			wake_up(&tc->t_recv_done_waitq);
-		rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE, 0);
+		if (sk->sk_err == ETIMEDOUT &&
+		    icsk->icsk_probes_out >= keepalive_probes(tsock)) {
+			rds_tcp_stats_inc(s_tcp_ka_timeout);
+			rds_conn_path_drop(cp,
+					   DR_TCP_STATE_CLOSE_KA_TIMEOUT, 0);
+		} else {
+			rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE, 0);
+		}
+
 	default:
 		break;
 	}
