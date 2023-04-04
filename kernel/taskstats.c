@@ -592,6 +592,8 @@ static struct taskstats *taskstats_tgid_alloc(struct task_struct *tsk)
 		stats = stats_new;
 		if (stats)
 			sig->stats->counts = counts;
+		else /* In unlikely event of stats being NULL */
+			kmem_cache_free(taskstats_counts_cache, counts);
 		stats_new = NULL;
 		counts = NULL;
 	}

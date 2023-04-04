@@ -14,12 +14,17 @@
 
 #ifdef CONFIG_TASKSTATS
 extern struct kmem_cache *taskstats_cache;
+extern struct kmem_cache *taskstats_counts_cache;
 extern struct mutex taskstats_exit_mutex;
 
 static inline void taskstats_tgid_free(struct signal_struct *sig)
 {
-	if (sig->stats)
+	if (sig->stats) {
+		if (sig->stats->counts)
+			kmem_cache_free(taskstats_counts_cache,
+					sig->stats->counts);
 		kmem_cache_free(taskstats_cache, sig->stats);
+	}
 }
 
 extern void taskstats_exit(struct task_struct *, int group_dead);
