@@ -1250,6 +1250,7 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_LOOPBACK_CONN_DROP]	= "corresponding loopback conn drop",
 	[DR_IB_ACTIVE_BOND_FAILBACK]	= "active bonding failback",
 	[DR_TCP_STATE_CLOSE]		= "sk_state to TCP_CLOSE",
+	[DR_TCP_STATE_CLOSE_KA_TIMEOUT] = "TCP_CLOSE - keepalive timeout",
 	[DR_TCP_SEND_FAIL]		= "tcp_send failure",
 	[DR_TCP_STATE_ACCEPT_CLOSED]	= "accept with TCP_CLOSE_WAIT",
 	[DR_TCP_INVALID_SLOT0]		= "invalid initial slot#0 assignment",
