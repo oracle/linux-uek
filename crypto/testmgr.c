@@ -5092,12 +5092,14 @@ static const struct alg_test_desc alg_test_descs[] = {
 		}
 	}, {
 		.alg = "ecdh-nist-p256",
+		.fips_allowed = 1,
 		.test = alg_test_kpp,
 		.suite = {
 			.kpp = __VECS(ecdh_p256_tv_template)
 		}
 	}, {
 		.alg = "ecdh-nist-p384",
+		.fips_allowed = 1,
 		.test = alg_test_kpp,
 		.suite = {
 			.kpp = __VECS(ecdh_p384_tv_template)
@@ -5110,6 +5112,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 		}
 	}, {
 		.alg = "ecdsa-nist-p256",
+		.fips_allowed = 1,
 		.test = alg_test_akcipher,
 		.fips_allowed = 1,
 		.suite = {
@@ -5117,6 +5120,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 		}
 	}, {
 		.alg = "ecdsa-nist-p384",
+		.fips_allowed = 1,
 		.test = alg_test_akcipher,
 		.fips_allowed = 1,
 		.suite = {
