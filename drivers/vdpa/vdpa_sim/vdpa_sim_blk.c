@@ -11,7 +11,6 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
-#include <linux/sched.h>
 #include <linux/blkdev.h>
 #include <linux/vringh.h>
 #include <linux/vdpa.h>
@@ -194,9 +193,9 @@ static bool vdpasim_blk_handle_req(struct vdpasim *vdpasim,
 	return true;
 }
 
-static void vdpasim_blk_work(struct work_struct *work)
+static void vdpasim_blk_work(struct vdpasim *vdpasim)
 {
-	struct vdpasim *vdpasim = container_of(work, struct vdpasim, work);
+	bool reschedule = false;
 	int i;
 
 	spin_lock(&vdpasim->lock);
@@ -225,6 +224,9 @@ static void vdpasim_blk_work(struct work_struct *work)
 	}
 out:
 	spin_unlock(&vdpasim->lock);
+
+	if (reschedule)
+		vdpasim_schedule_work(vdpasim);
 }
 
 static void vdpasim_blk_get_config(struct vdpasim *vdpasim, void *config)
