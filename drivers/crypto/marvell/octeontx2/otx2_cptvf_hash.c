@@ -3,6 +3,7 @@
 
 #include <crypto/sha1.h>
 #include <crypto/sha2.h>
+#include <crypto/md5.h>
 #include <crypto/scatterwalk.h>
 #include <crypto/internal/hash.h>
 #include <linux/rtnetlink.h>
@@ -239,6 +240,10 @@ static int cpt_hmac_sha_init(struct ahash_request *req)
 		ctx->hash_type = OTX2_CPT_SHA512;
 		ctx->digest_size = SHA512_DIGEST_SIZE;
 		break;
+	case MD5_DIGEST_SIZE:
+		ctx->hash_type = OTX2_CPT_MD5;
+		ctx->digest_size = MD5_DIGEST_SIZE;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -341,7 +346,7 @@ static int cpt_hmac_sha_update(struct ahash_request *req)
 			create_hmac_ctx_hdr(req_info, ctx, HMAC_UPDATE, &argcnt,
 					    OTX2_CPT_DMA_MODE_DIRECT);
 		else
-			create_hash_ctx_hdr(req_info, ctx, HMAC_START, &argcnt,
+			create_hash_ctx_hdr(req_info, ctx, HMAC_UPDATE, &argcnt,
 					    OTX2_CPT_DMA_MODE_DIRECT);
 		req_info->req.dlen = 0;
 		dptr_dma = dma_map_single(&pdev->dev, rctx->digest, ctx->digest_size,
@@ -455,6 +460,10 @@ static int cpt_hmac_sha_digest(struct ahash_request *req)
 	case SHA512_DIGEST_SIZE:
 		ctx->hash_type = OTX2_CPT_SHA512;
 		ctx->digest_size = SHA512_DIGEST_SIZE;
+		break;
+	case MD5_DIGEST_SIZE:
+		ctx->hash_type = OTX2_CPT_MD5;
+		ctx->digest_size = MD5_DIGEST_SIZE;
 		break;
 	default:
 		return -EINVAL;
@@ -775,6 +784,55 @@ static struct ahash_alg cpt_hmac_algs[] = {
 			.cra_alignmask		= 0,
 			.cra_module		= THIS_MODULE,
 			.cra_init		= cpt_hash_cra_init,
+			.cra_exit		= cpt_hmac_sha_cra_exit,
+		}
+	}
+},
+{
+	.init		= cpt_hmac_sha_init,
+	.update		= cpt_hmac_sha_update,
+	.final		= cpt_hmac_sha_final,
+	.digest		= cpt_hmac_sha_digest,
+	.export		= cpt_hmac_sha_export,
+	.import		= cpt_hmac_sha_import,
+	.halg = {
+		.digestsize	= MD5_DIGEST_SIZE,
+		.statesize	= CPT_HMAC_UC_CTX_SIZE,
+		.base	= {
+			.cra_name		= "md5",
+			.cra_driver_name	= "cpt-md5",
+			.cra_priority		= 4001,
+			.cra_flags		= CRYPTO_ALG_ASYNC,
+			.cra_blocksize		= SHA1_BLOCK_SIZE,
+			.cra_ctxsize		= sizeof(struct cpt_hmac_ctx),
+			.cra_alignmask		= 3,
+			.cra_module		= THIS_MODULE,
+			.cra_init		= cpt_hash_cra_init,
+			.cra_exit		= cpt_hmac_sha_cra_exit,
+		}
+	}
+},
+{
+	.init		= cpt_hmac_sha_init,
+	.update		= cpt_hmac_sha_update,
+	.final		= cpt_hmac_sha_final,
+	.digest		= cpt_hmac_sha_digest,
+	.setkey		= cpt_hmac_sha_setkey,
+	.export		= cpt_hmac_sha_export,
+	.import		= cpt_hmac_sha_import,
+	.halg = {
+		.digestsize	= MD5_DIGEST_SIZE,
+		.statesize	= CPT_HMAC_UC_CTX_SIZE,
+		.base	= {
+			.cra_name		= "hmac(md5)",
+			.cra_driver_name	= "cpt-hmac-md5",
+			.cra_priority		= 4001,
+			.cra_flags		= CRYPTO_ALG_ASYNC,
+			.cra_blocksize		= MD5_HMAC_BLOCK_SIZE,
+			.cra_ctxsize		= sizeof(struct cpt_hmac_ctx),
+			.cra_alignmask		= 3,
+			.cra_module		= THIS_MODULE,
+			.cra_init		= cpt_hmac_sha_cra_init,
 			.cra_exit		= cpt_hmac_sha_cra_exit,
 		}
 	}
