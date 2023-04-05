@@ -344,6 +344,14 @@ static void cnf10k_rfoe_ptp_extts_check(struct work_struct *work)
 			event.timestamp = timecounter_cyc2time(&priv->time_counter, tstmp);
 		ptp_clock_event(priv->ptp_clock, &event);
 		priv->last_extts = tstmp;
+		/* Don't modify PPS threshold registers when SW timecounter is not used since
+		 * PTP timestamp is entirely maintained in HW registers and the PPS threshold
+		 * comparison (after adjtime) aligns the PPS output edge to master.
+		 * Modifying PPS threshold registers makes the software workaround for PPS errata
+		 * ineffective.
+		 */
+		if (priv->ptp_errata || !priv->use_sw_timecounter)
+			goto resched;
 
 		new_thresh = tstmp % 500000000;
 		if (priv->thresh != new_thresh) {
@@ -354,6 +362,7 @@ static void cnf10k_rfoe_ptp_extts_check(struct work_struct *work)
 			priv->thresh = new_thresh;
 		}
 	}
+resched:
 	schedule_delayed_work(&priv->extts_work, msecs_to_jiffies(200));
 }
 
