@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/reset.h>
 #include <linux/sizes.h>
 
@@ -73,6 +74,22 @@ struct dwcmshc_priv {
 	int vendor_specific_area1; /* P_VENDOR_SPECIFIC_AREA reg */
 	void *priv; /* pointer to SoC private stuff */
 };
+
+/* Last jiffies when entering idle state */
+static uint64_t idle_last_jiffies;
+
+/* Total jiffies in idle state */
+static uint64_t idle_total_jiffies;
+
+/* Total idle time */
+static int idle_time;
+module_param(idle_time, int, 0444);
+MODULE_PARM_DESC(idle_time, "idle time (seconds)");
+
+/* The current idle state */
+static int idle_state;
+module_param(idle_state, int, 0444);
+MODULE_PARM_DESC(idle_state, "idle state (0: not idle, 1: idle)");
 
 /*
  * If DMA addr spans 128MB boundary, we split the DMA transfer into two
@@ -454,8 +471,10 @@ static int dwcmshc_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_ACPI
-	if (pltfm_data == &sdhci_dwcmshc_bf3_pdata)
+	if (pltfm_data == &sdhci_dwcmshc_bf3_pdata) {
 		sdhci_enable_v4_mode(host);
+		pm_runtime_enable(dev);
+	}
 #endif
 
 	host->mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY;
@@ -549,7 +568,90 @@ static int dwcmshc_resume(struct device *dev)
 }
 #endif
 
-static SIMPLE_DEV_PM_OPS(dwcmshc_pmops, dwcmshc_suspend, dwcmshc_resume);
+#ifdef CONFIG_PM
+
+#ifdef CONFIG_ACPI
+static void dwcmshc_enable_card_clk(struct sdhci_host *host)
+{
+	u16 ctrl;
+
+	ctrl = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	ctrl |= SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, ctrl, SDHCI_CLOCK_CONTROL);
+}
+
+static void dwcmshc_disable_card_clk(struct sdhci_host *host)
+{
+	u16 ctrl;
+
+	ctrl = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	ctrl &= ~SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, ctrl, SDHCI_CLOCK_CONTROL);
+}
+#endif
+
+static int dwcmshc_runtime_suspend(struct device *dev)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	const struct sdhci_pltfm_data *pltfm_data;
+	int ret = 0;
+
+	pltfm_data = device_get_match_data(dev);
+	if (!pltfm_data)
+		return -ENODEV;
+
+#ifdef CONFIG_ACPI
+	if (pltfm_data == &sdhci_dwcmshc_bf3_pdata) {
+		ret = sdhci_runtime_suspend_host(host);
+		if (!ret) {
+			dwcmshc_disable_card_clk(host);
+
+			if (!idle_state) {
+				idle_state = 1;
+				idle_last_jiffies = jiffies;
+			}
+		}
+	}
+#endif
+
+	return ret;
+}
+
+static int dwcmshc_runtime_resume(struct device *dev)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	const struct sdhci_pltfm_data *pltfm_data;
+	int ret = 0;
+
+	pltfm_data = device_get_match_data(dev);
+	if (!pltfm_data)
+		return -ENODEV;
+
+#ifdef CONFIG_ACPI
+	if (pltfm_data == &sdhci_dwcmshc_bf3_pdata) {
+		dwcmshc_enable_card_clk(host);
+
+		if (idle_state) {
+			idle_state = 0;
+			idle_total_jiffies = jiffies - idle_last_jiffies;
+			idle_time += jiffies_to_msecs(
+					idle_total_jiffies) / 1000;
+		}
+
+		ret = sdhci_runtime_resume_host(host, 0);
+	}
+#endif
+
+	return ret;
+}
+
+#endif
+
+static const struct dev_pm_ops dwcmshc_pmops = {
+	SET_SYSTEM_SLEEP_PM_OPS(dwcmshc_suspend, dwcmshc_resume)
+	SET_RUNTIME_PM_OPS(dwcmshc_runtime_suspend,
+			dwcmshc_runtime_resume, NULL)
+};
 
 static struct platform_driver sdhci_dwcmshc_driver = {
 	.driver	= {
