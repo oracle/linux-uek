@@ -6842,7 +6842,7 @@ int nix_inline_rq_mask_alloc(struct rvu *rvu,
 					      NIX_AF_RX_RQX_MASKX(idx, rq_idx));
 			reg_set  = rvu_read64(rvu, blkaddr,
 					      NIX_AF_RX_RQX_SETX(idx, rq_idx));
-			if (reg_mask != req->rq_ctx_word_mask[rq_idx] &&
+			if (reg_mask != req->rq_ctx_word_mask[rq_idx] ||
 			    reg_set != req->rq_ctx_word_set[rq_idx])
 				break;
 		}
