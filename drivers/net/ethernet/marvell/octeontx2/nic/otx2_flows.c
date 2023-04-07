@@ -900,26 +900,18 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 		case UDP_V6_FLOW:
 		case TCP_V4_FLOW:
 		case TCP_V6_FLOW:
-			if ((ntohs(pkt->dport) == GTPU_PORT) && (ntohs(pkt->sport) == GTPU_PORT)) {
+			if (ntohs(pkt->dport) == GTPU_PORT) {
 				/* Check for GTP-U packets */
 				skip_user_def = true;
 				pkt->gtpu_teid = fsp->h_ext.data[1];
 				pmask->gtpu_teid = fsp->m_ext.data[1];
 				req->features |= BIT_ULL(NPC_GTPU_TEID);
-			} else if ((ntohs(pkt->dport) == GTPC_PORT) &&
-				   (ntohs(pkt->sport) == GTPC_PORT)) {
+			} else if (ntohs(pkt->dport) == GTPC_PORT) {
 				/* Check for GTP-C packets */
 				skip_user_def = true;
 				pkt->gtpc_teid = fsp->h_ext.data[1];
 				pmask->gtpc_teid = fsp->m_ext.data[1];
 				req->features |= BIT_ULL(NPC_GTPC_TEID);
-			} else if ((ntohs(pkt->dport) == GTPU_PORT) ||
-				   (ntohs(pkt->sport) == GTPU_PORT) ||
-				   (ntohs(pkt->dport) == GTPC_PORT) ||
-				   (ntohs(pkt->sport) == GTPC_PORT)) {
-				netdev_err(pfvf->netdev,
-					   "Need both src and dst ports as GTP-U/C\n");
-				return -EINVAL;
 			}
 		}
 
