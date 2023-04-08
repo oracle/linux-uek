@@ -24,6 +24,9 @@ config HAVE_FUNCTION_GRAPH_TRACER
 	help
 	  See Documentation/trace/ftrace-design.txt
 
+config HAVE_FUNCTION_GRAPH_RETVAL
+	bool
+
 config HAVE_DYNAMIC_FTRACE
 	bool
 	help
@@ -159,6 +162,17 @@ config FUNCTION_GRAPH_TRACER
 	  the return value. This is done by setting the current return
 	  address on the current task structure into a stack of calls.
 
+config FUNCTION_GRAPH_RETVAL
+	bool "Kernel Function Graph Return Value"
+	depends on HAVE_FUNCTION_GRAPH_RETVAL
+	depends on FUNCTION_GRAPH_TRACER
+	default n
+	help
+	  Support recording and printing the function return value when
+	  using function graph tracer. It can be helpful to locate functions
+	  that return errors. This feature is off by default, and you can
+	  enable it via the trace option funcgraph-retval.
+	  See Documentation/trace/ftrace.rst
 
 config IRQSOFF_TRACER
 	bool "Interrupts-off Latency Tracer"
