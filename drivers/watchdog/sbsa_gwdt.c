@@ -40,6 +40,7 @@
  * is half of that in the single stage mode.
  */
 
+#include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/interrupt.h>
@@ -90,6 +91,7 @@ struct sbsa_gwdt {
 	int			version;
 	void __iomem		*refresh_base;
 	void __iomem		*control_base;
+	struct clk		*sclk;
 };
 
 #define DEFAULT_TIMEOUT		10 /* seconds */
@@ -262,6 +264,39 @@ static const struct watchdog_ops sbsa_gwdt_ops = {
 	.get_timeleft	= sbsa_gwdt_get_timeleft,
 };
 
+static void sbsa_clk_disable_unprepare(void *data)
+{
+	clk_disable_unprepare(data);
+}
+
+static int get_sbsa_clkfrq(struct platform_device *pdev, struct sbsa_gwdt *gwdt)
+{
+	int err;
+
+	gwdt->sclk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(gwdt->sclk))
+		return PTR_ERR(gwdt->sclk);
+
+	err = clk_prepare_enable(gwdt->sclk);
+	if (err)
+		return err;
+
+	err = devm_add_action_or_reset(&pdev->dev,
+				       sbsa_clk_disable_unprepare, gwdt->sclk);
+	if (err)
+		goto err_exit;
+
+	gwdt->clk = clk_get_rate(gwdt->sclk);
+	if (!gwdt->clk)
+		return -EINVAL;
+
+	return 0;
+
+err_exit:
+	clk_disable_unprepare(gwdt->sclk);
+	return err;
+}
+
 static int sbsa_gwdt_probe(struct platform_device *pdev)
 {
 	void __iomem *rf_base, *cf_base;
@@ -289,7 +324,11 @@ static int sbsa_gwdt_probe(struct platform_device *pdev)
 	 * Generic timer. We don't need to check it, because if it returns "0",
 	 * system would panic in very early stage.
 	 */
-	gwdt->clk = arch_timer_get_cntfrq();
+	if (!get_sbsa_clkfrq(pdev, gwdt))
+		dev_info(dev, "Using Clock data from device node.\n");
+	else
+		gwdt->clk = arch_timer_get_cntfrq();
+
 	gwdt->refresh_base = rf_base;
 	gwdt->control_base = cf_base;
 
