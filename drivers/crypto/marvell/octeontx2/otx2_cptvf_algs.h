@@ -44,7 +44,8 @@ enum otx2_cpt_cipher_type {
 	OTX2_CPT_AES_CFB  = 0x5,
 	OTX2_CPT_AES_CTR  = 0x6,
 	OTX2_CPT_AES_GCM  = 0x7,
-	OTX2_CPT_AES_XTS  = 0x8
+	OTX2_CPT_AES_XTS  = 0x8,
+	OTX2_CPT_AES_CCM  = 0xA
 };
 
 enum otx2_cpt_mac_type {

@@ -280,6 +280,8 @@ static int cpt_process_ccode(struct otx2_cptlfs_info *lfs,
 				"Request failed with software error code 0x%x\n",
 				cpt_status->s.uc_compcode);
 			otx2_cpt_dump_sg_list(pdev, info->req);
+			if (uc_ccode == 0x4C)
+				*res_code = -EBADMSG;
 			break;
 		}
 		/* Request has been processed with success */

@@ -86,6 +86,16 @@ int otx2_cpt_dev_get(struct pci_dev **pdev, int *cpu_num)
 	return get_se_device(pdev, cpu_num);
 }
 
+/* taken from crypto/ccm.c */
+static inline int crypto_ccm_check_iv(const u8 *iv)
+{
+	/* 2 <= L <= 8, so 1 <= L' <= 7. */
+	if (iv[0] < 1 || iv[0] > 7)
+		return -EINVAL;
+
+	return 0;
+}
+
 static inline int validate_hmac_cipher_null(struct otx2_cpt_req_info *cpt_req)
 {
 	struct otx2_cpt_req_ctx *rctx;
@@ -650,6 +660,7 @@ static int cpt_aead_init(struct crypto_aead *atfm, u8 cipher_type, u8 mac_type)
 		ctx->enc_align_len = 8;
 		break;
 	case OTX2_CPT_AES_GCM:
+	case OTX2_CPT_AES_CCM:
 	case OTX2_CPT_CIPHER_NULL:
 		ctx->enc_align_len = 1;
 		break;
@@ -724,6 +735,11 @@ static int otx2_cpt_aead_gcm_aes_init(struct crypto_aead *tfm)
 	return cpt_aead_init(tfm, OTX2_CPT_AES_GCM, OTX2_CPT_MAC_NULL);
 }
 
+static int otx2_cpt_aead_ccm_aes_init(struct crypto_aead *tfm)
+{
+	return cpt_aead_init(tfm, OTX2_CPT_AES_CCM, OTX2_CPT_MAC_NULL);
+}
+
 static void otx2_cpt_aead_exit(struct crypto_aead *tfm)
 {
 	struct otx2_cpt_aead_ctx *ctx = crypto_aead_ctx(tfm);
@@ -750,6 +766,32 @@ static int otx2_cpt_aead_gcm_set_authsize(struct crypto_aead *tfm,
 		return -EINVAL;
 	else if (crypto_gcm_check_authsize(authsize))
 		return -EINVAL;
+
+	tfm->authsize = authsize;
+	/* Set authsize for fallback case */
+	if (ctx->fbk_cipher)
+		ctx->fbk_cipher->authsize = authsize;
+
+	return 0;
+}
+
+static int otx2_cpt_aead_ccm_set_authsize(struct crypto_aead *tfm,
+					  unsigned int authsize)
+{
+	struct otx2_cpt_aead_ctx *ctx = crypto_aead_ctx(tfm);
+
+	switch (authsize) {
+	case 4:
+	case 6:
+	case 8:
+	case 10:
+	case 12:
+	case 14:
+	case 16:
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	tfm->authsize = authsize;
 	/* Set authsize for fallback case */
@@ -1096,7 +1138,8 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
 	struct otx2_cpt_fc_ctx *fctx = &rctx->fctx;
 	int mac_len = crypto_aead_authsize(tfm);
-	int ds;
+	u8 minor_op = 0;
+	int ds, rc;
 
 	rctx->ctrl_word.e.enc_data_offset = req->assoclen;
 
@@ -1142,6 +1185,22 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 		}
 		break;
 
+	case OTX2_CPT_AES_CCM:
+		rc = crypto_ccm_check_iv(req->iv);
+		if (rc)
+			return rc;
+		if (req->assoclen > 1024)
+			return -EINVAL;
+
+		/* Copy encryption key to context */
+		memcpy(fctx->enc.encr_key, ctx->key, ctx->enc_key_len);
+		fctx->enc.enc_ctrl.e.iv_source = OTX2_CPT_FROM_CPTR;
+		/* Copy IV to context */
+		memcpy(fctx->enc.encr_iv, req->iv, crypto_aead_ivsize(tfm));
+		/* 16-byte IV */
+		minor_op = 1 << 5;
+		break;
+
 	default:
 		/* Unknown cipher type */
 		return -EINVAL;
@@ -1153,11 +1212,11 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_FC |
 				 DMA_MODE_FLAG(OTX2_CPT_DMA_MODE_SG);
 	if (enc) {
-		req_info->req.opcode.s.minor = 2;
+		req_info->req.opcode.s.minor = 2 | minor_op;
 		req_info->req.param1 = req->cryptlen;
 		req_info->req.param2 = req->cryptlen + req->assoclen;
 	} else {
-		req_info->req.opcode.s.minor = 3;
+		req_info->req.opcode.s.minor = 3 | minor_op;
 		req_info->req.param1 = req->cryptlen - mac_len;
 		req_info->req.param2 = req->cryptlen + req->assoclen - mac_len;
 	}
@@ -1215,7 +1274,8 @@ static inline int create_aead_input_list(struct aead_request *req, u32 enc)
 	struct otx2_cpt_req_ctx *rctx = aead_request_ctx(req);
 	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
 	u32 inputlen =  req->cryptlen + req->assoclen;
-	u32 status, argcnt = 0;
+	u32 argcnt = 0;
+	int status;
 
 	status = create_aead_ctx_hdr(req, enc, &argcnt);
 	if (status)
@@ -1731,6 +1791,25 @@ static struct aead_alg otx2_cpt_aeads[] = { {
 	.decrypt = otx2_cpt_aead_decrypt,
 	.ivsize = AES_GCM_IV_SIZE,
 	.maxauthsize = AES_GCM_ICV_SIZE,
+}, {
+	.base = {
+		.cra_name = "ccm(aes)",
+		.cra_driver_name = "cpt_ccm_aes",
+		.cra_blocksize = 1,
+		.cra_flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_NEED_FALLBACK,
+		.cra_ctxsize = sizeof(struct otx2_cpt_aead_ctx),
+		.cra_priority = 4001,
+		.cra_alignmask = 0,
+		.cra_module = THIS_MODULE,
+	},
+	.init = otx2_cpt_aead_ccm_aes_init,
+	.exit = otx2_cpt_aead_exit,
+	.setkey = otx2_cpt_aead_gcm_aes_setkey,
+	.setauthsize = otx2_cpt_aead_ccm_set_authsize,
+	.encrypt = otx2_cpt_aead_encrypt,
+	.decrypt = otx2_cpt_aead_decrypt,
+	.ivsize = AES_BLOCK_SIZE,
+	.maxauthsize = AES_BLOCK_SIZE,
 } };
 
 static inline int cpt_register_algs(void)
