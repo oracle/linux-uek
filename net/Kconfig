@@ -250,6 +250,7 @@ source "net/bridge/netfilter/Kconfig"
 endif
 
 source "net/sctp/Kconfig"
+source "net/rds/Kconfig"
 source "net/tipc/Kconfig"
 source "net/atm/Kconfig"
 source "net/l2tp/Kconfig"
