@@ -700,6 +700,9 @@ kernel/net/nsh/nsh.ko
 kernel/net/psample/psample.ko
 kernel/net/qrtr/qrtr.ko
 kernel/net/qrtr/qrtr-mhi.ko
+kernel/net/rds/rds.ko
+kernel/net/rds/rds_rdma.ko
+kernel/net/rds/rds_tcp.ko
 kernel/net/rfkill/rfkill.ko
 kernel/net/sched/act_bpf.ko
 kernel/net/sched/act_connmark.ko
