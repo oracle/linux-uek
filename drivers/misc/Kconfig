@@ -479,6 +479,15 @@ config MARVELL_OTX_BPHY_CTR
 	  The purpose of this is to handle some BPHY Interrupts in
 	  user space directly without kernel's intervention.
 
+config RSMU
+	tristate "Renesas Synchronization Management Unit (SMU)"
+	depends on MFD_RSMU_I2C || MFD_RSMU_SPI
+	help
+	  This option enables support for Renesas SMU, such as Clockmatrix and
+	  82P33XXX series. It will be used by Renesas PTP Clock Manager for
+	  Linux (pcm4l) software to provide support to GNSS assisted partial
+	  timing support (APTS) and other networking timing functions.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

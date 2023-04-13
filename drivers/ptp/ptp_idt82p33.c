@@ -485,7 +485,6 @@ static int _idt82p33_adjtime_internal_triggered(struct idt82p33_channel *channel
 	char buf[TOD_BYTE_COUNT];
 	struct timespec64 ts;
 	const u8 delay_ns = 32;
-	s32 remainder;
 	s64 ns;
 	int err;
 
@@ -496,7 +495,7 @@ static int _idt82p33_adjtime_internal_triggered(struct idt82p33_channel *channel
 
 	if (ts.tv_nsec > (NSEC_PER_SEC - 5 * NSEC_PER_MSEC)) {
 		/*  Too close to miss next trigger, so skip it */
-		mdelay(6);
+		udelay(5 * USEC_PER_MSEC + 100);
 		ns = (ts.tv_sec + 2) * NSEC_PER_SEC + delta_ns + delay_ns;
 	} else
 		ns = (ts.tv_sec + 1) * NSEC_PER_SEC + delta_ns + delay_ns;
@@ -512,8 +511,7 @@ static int _idt82p33_adjtime_internal_triggered(struct idt82p33_channel *channel
 		return err;
 
 	/* Schedule to implement the workaround in one second */
-	(void)div_s64_rem(delta_ns, NSEC_PER_SEC, &remainder);
-	if (remainder != 0)
+	if (delta_ns % NSEC_PER_SEC != 0)
 		schedule_delayed_work(&channel->adjtime_work, HZ);
 
 	return idt82p33_set_tod_trigger(channel, HW_TOD_TRIG_SEL_TOD_PPS, true);
@@ -575,8 +573,8 @@ static int _idt82p33_adjfine(struct idt82p33_channel *channel, long scaled_ppm)
 /* ppb = scaled_ppm * 125 / 2^13 */
 static s32 idt82p33_ddco_scaled_ppm(long current_ppm, s32 ddco_ppb)
 {
-	s64 scaled_ppm = div_s64(((s64)ddco_ppb << 13), 125);
-	s64 max_scaled_ppm = div_s64(((s64)DCO_MAX_PPB << 13), 125);
+	s64 scaled_ppm = (ddco_ppb << 13) / 125;
+	s64 max_scaled_ppm = (DCO_MAX_PPB << 13) / 125;
 
 	current_ppm += scaled_ppm;
 
