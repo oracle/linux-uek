@@ -811,6 +811,8 @@ struct mlx5_core_dev {
 	u64			num_block_ipsec;
 #ifdef CONFIG_MLX5_MACSEC
 	struct mlx5_macsec_fs *macsec_fs;
+	/* MACsec notifier chain to sync MACsec core and IB database */
+	struct blocking_notifier_head macsec_nh;
 #endif
 };
 
