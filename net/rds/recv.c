@@ -37,6 +37,7 @@
 #include <linux/netfilter.h>
 #include <linux/time.h>
 #include <linux/rds.h>
+#include <linux/sched/clock.h>
 
 #include "rds.h"
 #include "loop.h"
