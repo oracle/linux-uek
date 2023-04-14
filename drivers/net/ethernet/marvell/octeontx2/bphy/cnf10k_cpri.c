@@ -156,7 +156,7 @@ static int cnf10k_cpri_process_rx_pkts(struct cnf10k_cpri_ndev_priv *priv,
 	}
 
 	while (likely((processed_pkts < budget) && (processed_pkts < count))) {
-		pkt_buf = (u8 *)ul_cfg->cbuf_virt_addr +
+		pkt_buf = (u8 __force *)ul_cfg->cbuf_virt_addr +
 			  (CNF10K_BPHY_CPRI_PKT_BUF_SIZE * ul_cfg->sw_rd_ptr);
 		wqe = (struct cpri_pkt_ul_wqe_hdr *)pkt_buf;
 		netdev = cnf10k_cpri_get_netdev(wqe->mhab_id, wqe->lane_id);
@@ -411,7 +411,7 @@ static netdev_tx_t cnf10k_cpri_eth_start_xmit(struct sk_buff *skb,
 			       skb->data, skb->len, true);
 	}
 
-	buf_ptr = (u8 *)dl_cfg->cbuf_virt_addr +
+	buf_ptr = (u8 __force *)dl_cfg->cbuf_virt_addr +
 		  (CNF10K_BPHY_CPRI_PKT_BUF_SIZE * dl_cfg->sw_wr_ptr);
 	wqe = (struct cpri_pkt_dl_wqe_hdr *)buf_ptr;
 	wqe->mhab_id = priv->cpri_num;

@@ -206,9 +206,9 @@ struct cnf10k_rfoe_ndev_priv {
 
 /* PTPv2 originTimestamp structure */
 struct ptpv2_tstamp {
-	u16 seconds_msb; /* 16 bits + */
-	u32 seconds_lsb; /* 32 bits = 48 bits*/
-	u32 nanoseconds;
+	__be16 seconds_msb; /* 16 bits + */
+	__be32 seconds_lsb; /* 32 bits = 48 bits*/
+	__be32 nanoseconds;
 } __packed;
 
 void cnf10k_rfoe_rx_napi_schedule(int rfoe_num, u32 status);

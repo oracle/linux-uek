@@ -470,7 +470,7 @@ static int otx2_rfoe_dbg_read_ptp_tstamp_ring(struct seq_file *filp, void *unuse
 		ptp_ring_base = cnf10k_priv->ptp_ring_cfg.ptp_ring_base;
 		for (idx = 0; idx < ring_size; idx++) {
 			tx_tstmp = (struct rfoe_tx_ptp_tstmp_s *)
-					((u8 *)ptp_ring_base +
+					((u8 __force *)ptp_ring_base +
 					(16 * idx));
 			ptp_tstamp = (u64 *)tx_tstmp;
 			seq_printf(filp, "%d\t0x%llx\t\t0x%llx\n", idx, *ptp_tstamp,
@@ -536,8 +536,9 @@ static void otx2_rfoe_dbg_dump_jdt_ring(struct seq_file *filp, struct tx_job_que
 			job_entry->jd_ptr = otx2_iova_to_virt(cnf10k_priv->iommu_domain, iova);
 
 		seq_printf(filp, "Ring idx:\t%d\n", idx);
-		seq_printf(filp, "Contents of JD Header:\t0x%llx\n", *(u64 *)(job_entry->jd_ptr));
-		jd_cfg_iova = *(u64 *)((u8 *)job_entry->jd_ptr + 8);
+		seq_printf(filp, "Contents of JD Header:\t0x%llx\n",
+			   *(u64 __force *)(job_entry->jd_ptr));
+		jd_cfg_iova = *(u64 *)((u8 __force *)job_entry->jd_ptr + 8);
 
 		if (is_otx2)
 			job_entry->jd_cfg_ptr = otx2_iova_to_virt(otx2_priv->iommu_domain,
@@ -547,16 +548,18 @@ static void otx2_rfoe_dbg_dump_jdt_ring(struct seq_file *filp, struct tx_job_que
 								  jd_cfg_iova);
 
 		seq_puts(filp, "Contents of JD CFG pointer\n");
-		seq_printf(filp, "AB_SLOT_CFG0:\t0x%llx\n", *(u64 *)((u8 *)job_entry->jd_cfg_ptr));
+		seq_printf(filp, "AB_SLOT_CFG0:\t0x%llx\n",
+			   *(u64 *)((u8 __force *)job_entry->jd_cfg_ptr));
 		seq_printf(filp, "AB_SLOT_CFG1:\t0x%llx\n",
-			   *(u64 *)((u8 *)job_entry->jd_cfg_ptr + 8));
+			   *(u64 *)((u8 __force *)job_entry->jd_cfg_ptr + 8));
 		seq_printf(filp, "AB_SLOT_CFG2:\t0x%llx\n",
-			   *(u64 *)((u8 *)job_entry->jd_cfg_ptr + 16));
+			   *(u64 *)((u8 __force *)job_entry->jd_cfg_ptr + 16));
 		seq_printf(filp, "AB_SLOT_CFG3:\t0x%llx\n",
-			   *(u64 *)((u8 *)job_entry->jd_cfg_ptr + 24));
+			   *(u64 *)((u8 __force *)job_entry->jd_cfg_ptr + 24));
 		seq_puts(filp, "Contents of RD DMA pointer\n");
-		seq_printf(filp, "0x%llx\t0x%llx\n", *(u64 *)((u8 *)job_entry->rd_dma_ptr),
-			   *(u64 *)(((u8 *)job_entry->rd_dma_ptr + 8)));
+		seq_printf(filp, "0x%llx\t0x%llx\n",
+			   *(u64 *)((u8 __force *)job_entry->rd_dma_ptr),
+			   *(u64 *)(((u8 __force *)job_entry->rd_dma_ptr + 8)));
 	}
 }
 

@@ -75,9 +75,9 @@ struct cpri_pkt_ul_wqe_hdr {
 };
 
 /* iova to kernel virtual addr */
-static inline void *otx2_iova_to_virt(struct iommu_domain *domain, u64 iova)
+static inline void __iomem *otx2_iova_to_virt(struct iommu_domain *domain, u64 iova)
 {
-	return phys_to_virt(iommu_iova_to_phys(domain, iova));
+	return (void __iomem *)phys_to_virt(iommu_iova_to_phys(domain, iova));
 }
 
 #endif
