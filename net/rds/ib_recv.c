@@ -34,6 +34,7 @@
 #include <linux/vmalloc.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
+#include <linux/sched/clock.h>
 #include <rdma/rdma_cm.h>
 
 #include "trace.h"
