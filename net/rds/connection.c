@@ -1253,6 +1253,8 @@ static char *conn_drop_reasons[] = {
 	[DR_TCP_SEND_FAIL]		= "tcp_send failure",
 	[DR_TCP_STATE_ACCEPT_CLOSED]	= "accept with TCP_CLOSE_WAIT",
 	[DR_TCP_INVALID_SLOT0]		= "invalid initial slot#0 assignment",
+	[DR_TCP_STATE_DISCONNECT_ADDR_CMP]
+					= "force rds/tcp smaller ip-address connect"
 };
 
 char *conn_drop_reason_str(enum rds_conn_drop_src reason)
