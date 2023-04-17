@@ -66,8 +66,8 @@ void rds_tcp_state_change(struct sock *sk)
 				 &cp->cp_conn->c_faddr) >= 0 &&
 		    rds_conn_path_transition(cp, RDS_CONN_CONNECTING,
 					     RDS_CONN_ERROR,
-					     DR_TCP_STATE_CLOSE)) {
-			rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE, 0);
+					     DR_TCP_STATE_DISCONNECT_ADDR_CMP)) {
+			rds_conn_path_drop(cp, DR_TCP_STATE_DISCONNECT_ADDR_CMP, 0);
 		} else {
 			rds_connect_path_complete(cp, RDS_CONN_CONNECTING);
 			wake_up(&cp->cp_up_waitq);
