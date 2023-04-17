@@ -236,6 +236,7 @@ enum rds_conn_drop_src {
 	DR_TCP_SEND_FAIL,
 	DR_TCP_STATE_ACCEPT_CLOSED,
 	DR_TCP_INVALID_SLOT0,
+	DR_TCP_STATE_DISCONNECT_ADDR_CMP,
 };
 
 enum rds_hb_state {
