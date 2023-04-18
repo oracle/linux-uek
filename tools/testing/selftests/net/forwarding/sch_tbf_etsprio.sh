@@ -29,6 +29,10 @@ tbf_test()
 	tc qdisc del dev $swp2 root
 }
 
+if type -t sch_tbf_pre_hook >/dev/null; then
+	sch_tbf_pre_hook
+fi
+
 trap cleanup EXIT
 
 setup_prepare
