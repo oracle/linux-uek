@@ -683,8 +683,6 @@ extern struct workqueue_struct *rds_evt_wq;
 extern struct rds_transport rds_ib_transport;
 extern int rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
-void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
-int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
 
 struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
@@ -801,6 +799,8 @@ void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq, int ack_required);
 void rds_ib_srq_process_recv(struct rds_connection *conn,
 			     struct rds_ib_recv_work *recv, u32 data_len,
 			     struct rds_ib_ack_state *state);
+int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
+void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
 static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 {
 	return test_and_set_bit(RDS_RECV_REFILL, &conn->c_flags) == 0;
