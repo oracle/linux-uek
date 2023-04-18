@@ -1683,21 +1683,24 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 
 	pr_warn("RDS/IB: SRQ support is experimental\n");
 
-	rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
+	rds_ibdev->srq = kzalloc(sizeof(*rds_ibdev->srq), GFP_KERNEL);
 	if (!rds_ibdev->srq) {
 		pr_warn("RDS: allocating srq failed\n");
 		return 1;
 	}
 
+	INIT_DELAYED_WORK(&rds_ibdev->srq->s_refill_w, rds_ib_srq_refill);
+	INIT_DELAYED_WORK(&rds_ibdev->srq->s_rearm_w, rds_ib_srq_rearm);
+
 	rds_ibdev->srq->rds_ibdev = rds_ibdev;
 
 	rds_ibdev->srq->s_n_wr =  rds_ib_srq_max_wr - 1;
-	rds_ibdev->srq->s_srq = ib_create_srq(rds_ibdev->pd,
-				&srq_init_attr);
+	rds_ibdev->srq->s_srq = ib_create_srq(rds_ibdev->pd, &srq_init_attr);
 
 	if (IS_ERR(rds_ibdev->srq->s_srq)) {
 		printk(KERN_WARNING "RDS: ib_create_srq failed %ld\n",
 		       PTR_ERR(rds_ibdev->srq->s_srq));
+		rds_ibdev->srq->s_srq = NULL;
 		return 1;
 	}
 
@@ -1739,10 +1742,6 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 	if (rds_ib_srq_prefill_ring(rds_ibdev))
 		return 1;
 
-	INIT_DELAYED_WORK(&rds_ibdev->srq->s_refill_w, rds_ib_srq_refill);
-
-	INIT_DELAYED_WORK(&rds_ibdev->srq->s_rearm_w, rds_ib_srq_rearm);
-
 	rds_queue_delayed_work(NULL, rds_ibdev->rid_dev_wq,
 			       &rds_ibdev->srq->s_rearm_w, 0,
 			       "srq rearm");
@@ -1755,8 +1754,10 @@ void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 	cancel_delayed_work_sync(&rds_ibdev->srq->s_rearm_w);
 	cancel_delayed_work_sync(&rds_ibdev->srq->s_refill_w);
 
-	ib_destroy_srq(rds_ibdev->srq->s_srq);
-	rds_ibdev->srq->s_srq = NULL;
+	if (rds_ibdev->srq->s_srq) {
+		ib_destroy_srq(rds_ibdev->srq->s_srq);
+		rds_ibdev->srq->s_srq = NULL;
+	}
 
 	if (rds_ibdev->srq->s_recv_hdrs) {
 		ib_dma_unmap_single(rds_ibdev->dev,
@@ -1765,9 +1766,12 @@ void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 				    sizeof(struct rds_header),
 				    DMA_BIDIRECTIONAL);
 		kfree(rds_ibdev->srq->s_recv_hdrs);
+		rds_ibdev->srq->s_recv_hdrs = NULL;
 	}
 
-	rds_ib_srq_clear_ring(rds_ibdev);
-	vfree(rds_ibdev->srq->s_recvs);
-	rds_ibdev->srq->s_recvs = NULL;
+	if (rds_ibdev->srq->s_recvs) {
+		rds_ib_srq_clear_ring(rds_ibdev);
+		vfree(rds_ibdev->srq->s_recvs);
+		rds_ibdev->srq->s_recvs = NULL;
+	}
 }
