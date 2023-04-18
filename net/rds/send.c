@@ -1609,6 +1609,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		if (IS_ERR(conn)) {
 			ret = PTR_ERR(conn);
 			reason = "conn creation error";
+			conn = NULL;
 			goto out;
 		}
 		if (conn->c_trans->t_mp_capable) {
