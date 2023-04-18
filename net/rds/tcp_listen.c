@@ -301,6 +301,7 @@ int rds_tcp_accept_one(struct rds_tcp_net *rtn)
 	if (IS_ERR(conn)) {
 		reason = "conn creation failed";
 		ret = PTR_ERR(conn);
+		conn = NULL;
 		goto out;
 	}
 
