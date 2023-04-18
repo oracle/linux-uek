@@ -14,81 +14,81 @@
 #include <linux/types.h>
 
 /* RFOE MHAB register offsets */
-#define RFOEX_RX_CTL(a)				(0x0818ULL | \
+#define RFOEX_RX_CTL(a)				(0x0818ULL + \
 						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_VLANX_CFG(a, b)		(0x0870ULL | \
-						 ((unsigned long)(a) << 36) | \
+#define RFOEX_RX_VLANX_CFG(a, b)		(0x0870ULL + \
+						 ((unsigned long)(a) << 36) + \
 						 ((b) << 3))
-#define RFOEX_RX_INDIRECT_INDEX_OFFSET(a)	(0x13F8ULL | \
+#define RFOEX_RX_INDIRECT_INDEX_OFFSET(a)	(0x13F8ULL + \
 						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_FTX_CFG(a, b)	(0x1400ULL | \
-					 (((unsigned long)(a) << 36)) + \
-					 ((b) << 3))
-#define RFOEX_RX_IND_MBT_CFG(a)			(0x1420ULL | \
-						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_MBT_ADDR(a)		(0x1428ULL | \
-						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_MBT_SEG_STATE(a)		(0x1430ULL | \
-						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_VLANX_FWD(a, b)		(0x14D0ULL | \
-						 ((unsigned long)(a) << 36) | \
+#define RFOEX_RX_IND_FTX_CFG(a, b)		(0x1400ULL + \
+						 (((unsigned long)(a) << 36)) + \
 						 ((b) << 3))
-#define RFOEX_RX_IND_JDT_CFG0(a)		(0x1440ULL | \
+#define RFOEX_RX_IND_MBT_CFG(a)			(0x1420ULL + \
 						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_JDT_CFG1(a)		(0x1448ULL | \
+#define RFOEX_RX_IND_MBT_ADDR(a)		(0x1428ULL + \
 						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_JDT_PTR(a)			(0x1450ULL | \
+#define RFOEX_RX_IND_MBT_SEG_STATE(a)		(0x1430ULL + \
 						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_JDT_STATE(a)		(0x1478ULL | \
-						 ((unsigned long)(a) << 36))
-#define RFOEX_RX_IND_ECPRI_FT_CFG(a)		(0x14C0ULL | \
-						 ((unsigned long)(a) << 36))
-#define RFOEX_TX_PTP_TSTMP_W0(a, b)	(0x7A0ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_TX_PTP_TSTMP_W1(a, b)	(0x7C0ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_TX_PKT_STAT(a, b)		(0x720ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_TX_OCTS_STAT(a, b)	(0x740ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_RX_VLAN_DROP_STAT(a, b)	(0x8A0ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_RX_CGX_PKT_STAT(a, b)	(0x15C0ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_RX_CGX_OCTS_STAT(a, b)	(0x15E0ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_RX_DMA_PKT_STATX(a, b)	(0x1560ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_RX_DMA_OCTS_STATX(a, b)	(0x1580ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_RX_DMA_COMPLETE_STATX(a, b)	(0x15A0ULL | \
-						 (((unsigned long)(a) << 36)) | \
+#define RFOEX_RX_IND_VLANX_FWD(a, b)		(0x14D0ULL + \
+						 ((unsigned long)(a) << 36) + \
 						 ((b) << 3))
-#define RFOEX_RX_PKT_ERR_DROP_STAT(a)	(0x1538ULL | \
-					 ((unsigned long)(a) << 36))
-#define RFOEX_RX_FT_ENABLE_DROP_STAT(a)	(0x1528ULL | \
-					 ((unsigned long)(a) << 36))
-#define RFOEX_RX_FD_SOS_DROP_STAT(a)	(0x1530ULL | \
-					 ((unsigned long)(a) << 36))
-#define RFOEX_RX_ORDERINFO_FAIL_STAT(a)	(0x1540ULL | \
-					 ((unsigned long)(a) << 36))
-#define RFOEX_RX_VLAN_FWD_STATX(a, b)	(0x8C0ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_TX_PKT_DROP_STATX(a, b)	(0x760ULL | \
-					 (((unsigned long)(a) << 36)) | \
-					 ((b) << 3))
-#define RFOEX_RX_ECPRI_ERR_DROP_STATX(a, b)	(0x1600ULL | \
-						 (((unsigned long)(a) << 36)) | \
+#define RFOEX_RX_IND_JDT_CFG0(a)		(0x1440ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_IND_JDT_CFG1(a)		(0x1448ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_IND_JDT_PTR(a)			(0x1450ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_IND_JDT_STATE(a)		(0x1478ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_IND_ECPRI_FT_CFG(a)		(0x14C0ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_TX_PTP_TSTMP_W0(a, b)		(0x7A0ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_TX_PTP_TSTMP_W1(a, b)		(0x7C0ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_TX_PKT_STAT(a, b)			(0x720ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_TX_OCTS_STAT(a, b)		(0x740ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_VLAN_DROP_STAT(a, b)		(0x8A0ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_CGX_PKT_STAT(a, b)		(0x15C0ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_CGX_OCTS_STAT(a, b)		(0x15E0ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_DMA_PKT_STATX(a, b)		(0x1560ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_DMA_OCTS_STATX(a, b)		(0x1580ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_DMA_COMPLETE_STATX(a, b)	(0x15A0ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_PKT_ERR_DROP_STAT(a)		(0x1538ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_FT_ENABLE_DROP_STAT(a)		(0x1528ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_FD_SOS_DROP_STAT(a)		(0x1530ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_ORDERINFO_FAIL_STAT(a)		(0x1540ULL + \
+						 ((unsigned long)(a) << 36))
+#define RFOEX_RX_VLAN_FWD_STATX(a, b)		(0x8C0ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_TX_PKT_DROP_STATX(a, b)		(0x760ULL + \
+						 (((unsigned long)(a) << 36)) + \
+						 ((b) << 3))
+#define RFOEX_RX_ECPRI_ERR_DROP_STATX(a, b)	(0x1600ULL + \
+						 (((unsigned long)(a) << 36)) + \
 						 ((b) << 3))
 
 /* BCN register offsets and definitions */
