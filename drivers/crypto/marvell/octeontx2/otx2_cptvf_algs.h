@@ -17,6 +17,8 @@
 			       OTX2_CPT_MAX_HASH_KEY_SIZE)
 #define DMA_MODE_FLAG(dma_mode) \
 	(((dma_mode) == OTX2_CPT_DMA_MODE_SG) ? (1 << 7) : 0)
+#define OUTPUT_MODE_FLAG(mode) \
+	(((mode) == OTX2_CPT_OUT_MODE_INPLACE) ? (1 << 6) : 0)
 
 enum otx2_cpt_request_type {
 	OTX2_CPT_ENC_DEC_REQ            = 0x1,

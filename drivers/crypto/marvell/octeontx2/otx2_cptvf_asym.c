@@ -111,6 +111,33 @@ static void cpt_ecdh_callback(int status, void *arg1, void *arg2)
 		areq->complete(areq, status);
 }
 
+static void cpt_dh_callback(int status, void *arg1, void *arg2)
+{
+	struct otx2_cpt_inst_info *inst_info = arg2;
+	struct crypto_async_request *areq = arg1;
+	struct otx2_cpt_req_info *req_info;
+	struct otx2_cptvf_request *req;
+	struct kpp_request *kpp_req;
+	struct pci_dev *pdev;
+
+	if (inst_info) {
+		req_info = inst_info->req;
+		req = &req_info->req;
+		kpp_req = container_of(areq, struct kpp_request, base);
+		pdev = inst_info->pdev;
+
+		dma_unmap_single(&pdev->dev, req->dptr_dma, req->dlen,
+				 DMA_BIDIRECTIONAL);
+		dma_unmap_single(&pdev->dev, req->rptr_dma, kpp_req->dst_len,
+				 DMA_BIDIRECTIONAL);
+		if (kpp_req->src)
+			kfree(req->dptr);
+		otx2_cpt_info_destroy(pdev, inst_info);
+	}
+	if (areq)
+		areq->complete(areq, status);
+}
+
 static void cpt_rsa_drop_leading_zeros(const char **ptr, size_t *len)
 {
 	while (!**ptr && *len) {
@@ -932,6 +959,177 @@ static void cpt_ecdh_exit_tfm(struct crypto_kpp *tfm)
 	cn10k_cpt_hw_ctx_clear(ctx->pdev, &ctx->er_ctx);
 }
 
+static int cpt_dh_set_params(struct cpt_asym_ctx *ctx, struct dh *params)
+{
+	u32 sz;
+
+	if (params->p_size < 17 || params->p_size > 1024)
+		return -EINVAL;
+
+	ctx->key_sz = params->p_size;
+	ctx->dh.xa_sz = params->key_size;
+	sz = ctx->key_sz + ctx->dh.xa_sz + params->g_size;
+	ctx->dh.dlen = sz;
+
+	ctx->dh.xa_p = kmalloc(sz, GFP_KERNEL);
+	if (!ctx->dh.xa_p)
+		return -ENOMEM;
+
+	memcpy(ctx->dh.xa_p, params->p, ctx->key_sz);
+	memcpy(ctx->dh.xa_p + ctx->key_sz, params->key, params->key_size);
+	memcpy(ctx->dh.xa_p + ctx->key_sz + params->key_size, params->g, params->g_size);
+
+	return 0;
+}
+
+static void cpt_dh_clear_ctx(struct cpt_asym_ctx *ctx)
+{
+	unsigned int sz = ctx->key_sz;
+
+	if (ctx->dh.xa_p) {
+		memzero_explicit(ctx->dh.xa_p, sz);
+		kfree(ctx->dh.xa_p);
+		ctx->dh.xa_p = NULL;
+	}
+}
+
+static int cpt_dh_set_secret(struct crypto_kpp *tfm, const void *buf,
+			     unsigned int len)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+	struct dh params;
+	int ret;
+
+	if (crypto_dh_decode_key(buf, len, &params) < 0)
+		return -EINVAL;
+
+	/* Free old secret if any */
+	cpt_dh_clear_ctx(ctx);
+
+	ret = cpt_dh_set_params(ctx, &params);
+	if (ret < 0)
+		goto clear_ctx;
+
+	return 0;
+
+clear_ctx:
+	cpt_dh_clear_ctx(ctx);
+	return ret;
+}
+
+static int cpt_dh_update_input(struct cpt_asym_req_ctx *rctx, struct scatterlist *src,
+			       u32 len)
+{
+	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
+	struct cpt_asym_ctx *ctx = rctx->ctx;
+	u32 dlen, xa_p_len;
+	u8 *dptr;
+
+	xa_p_len = ctx->dh.xa_sz  + ctx->key_sz;
+	dlen = xa_p_len + len;
+	dptr = kmalloc(dlen, GFP_KERNEL);
+	if (unlikely(!dptr))
+		return -ENOMEM;
+
+	req_info->req.dptr_dma = dma_map_single(ctx->dev, dptr, dlen,
+						DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(ctx->dev, req_info->req.dptr_dma))) {
+		dev_err(ctx->dev, "DMA mapping failed for dptr\n");
+		kfree(dptr);
+		return -EIO;
+	}
+	req_info->req.dptr = dptr;
+	scatterwalk_map_and_copy(dptr + xa_p_len, src, 0, len, 0);
+	/* Copy remaining params from ctx (set in cpt_dh_set_secret) */
+	memcpy(dptr, ctx->dh.xa_p, xa_p_len);
+	ctx->dh.dlen = dlen;
+
+	return 0;
+}
+
+static int cpt_dh_compute_value(struct kpp_request *req)
+{
+	struct cpt_asym_req_ctx *rctx = kpp_request_ctx(req);
+	struct otx2_cpt_req_info *req_info = &rctx->cpt_req;
+	struct crypto_kpp *tfm = crypto_kpp_reqtfm(req);
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+	struct device *dev = ctx->dev;
+	int ret;
+
+	if (req->dst_len < ctx->key_sz)
+		return -EOVERFLOW;
+
+	memset(req_info, 0, sizeof(*req_info));
+	rctx->ctx = ctx;
+
+	req_info->req.rptr_dma = dma_map_single(dev, sg_virt(req->dst), req->dst_len,
+						DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(dev, req_info->req.rptr_dma))) {
+		dev_err(ctx->dev, "DMA mapping failed for rptr\n");
+		return -EIO;
+	}
+	if (req->src) {
+		ret = cpt_dh_update_input(rctx, req->src, req->src_len);
+		if (unlikely(ret)) {
+			dev_err(dev, "failed to update input data, ret = %d!\n", ret);
+			goto rptr_unmap;
+		}
+	} else {
+		req_info->req.dptr_dma = dma_map_single(dev, ctx->dh.xa_p, ctx->dh.dlen,
+							DMA_BIDIRECTIONAL);
+		if (unlikely(dma_mapping_error(dev, req_info->req.dptr_dma))) {
+			dev_err(ctx->dev, "DMA mapping failed for dptr\n");
+			ret = -EIO;
+			goto rptr_unmap;
+		}
+		req_info->req.dptr = ctx->dh.xa_p;
+	}
+	req_info->req.dlen = ctx->dh.dlen;
+
+	req_info->ctrl.s.dma_mode = OTX2_CPT_DMA_MODE_DIRECT;
+	req_info->ctrl.s.se_req = 0;
+	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_MOD_EXP;
+	req_info->req.opcode.s.minor = 1;
+	req_info->is_trunc_hmac = 0;
+	req_info->callback = cpt_dh_callback;
+
+	req_info->req.param1 = ctx->key_sz;
+	req_info->req.param2 = ctx->dh.xa_sz;
+
+	req_info->req.cptr = ctx->er_ctx.hw_ctx;
+	req_info->req.cptr_dma = ctx->er_ctx.cptr_dma;
+
+	return cpt_asym_enqueue(&req->base, req_info);
+
+rptr_unmap:
+	dma_unmap_single(dev, req_info->req.rptr_dma, req->dst_len,
+			 DMA_BIDIRECTIONAL);
+	return ret;
+}
+
+static unsigned int cpt_dh_max_size(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	return ctx->key_sz;
+}
+
+static int cpt_dh_init_tfm(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	return cpt_ecdh_ctx_init(ctx);
+}
+
+static void cpt_dh_exit_tfm(struct crypto_kpp *tfm)
+{
+	struct cpt_asym_ctx *ctx = kpp_tfm_ctx(tfm);
+
+	kfree(ctx->dh.xa_p);
+	ctx->dh.xa_p = NULL;
+	cn10k_cpt_hw_ctx_clear(ctx->pdev, &ctx->er_ctx);
+}
+
 static struct akcipher_alg cpt_rsa_algs[] = {
 {
 	.encrypt = cpt_rsa_encrypt,
@@ -1020,6 +1218,23 @@ static struct kpp_alg cpt_ecdh_curves[] = {
 	}
 };
 
+static struct kpp_alg cpt_dh = {
+	.set_secret = cpt_dh_set_secret,
+	.generate_public_key = cpt_dh_compute_value,
+	.compute_shared_secret = cpt_dh_compute_value,
+	.max_size = cpt_dh_max_size,
+	.init = cpt_dh_init_tfm,
+	.exit = cpt_dh_exit_tfm,
+	.reqsize = sizeof(struct cpt_asym_req_ctx),
+	.base = {
+		.cra_ctxsize = sizeof(struct cpt_asym_ctx),
+		.cra_priority = 4001,
+		.cra_name = "dh",
+		.cra_driver_name = "cpt-dh",
+		.cra_module = THIS_MODULE,
+	},
+};
+
 int otx2_cpt_register_asym_algs(void)
 {
 	int i, ret;
@@ -1033,16 +1248,21 @@ int otx2_cpt_register_asym_algs(void)
 	for (i = 0; i < ARRAY_SIZE(cpt_ecdh_curves); i++) {
 		ret = crypto_register_kpp(&cpt_ecdh_curves[i]);
 		if (ret)
-			goto unreg_kpp;
+			goto unreg_ecdh;
 	}
+	ret = crypto_register_kpp(&cpt_dh);
+	if (ret)
+		goto unreg_ecdh;
+
 	ret = cpt_register_ecdsa();
 	if (ret)
-		goto unreg_kpp;
-
+		goto unreg_dh;
 
 	return 0;
 
-unreg_kpp:
+unreg_dh:
+	crypto_unregister_kpp(&cpt_dh);
+unreg_ecdh:
 	for (--i; i >= 0; --i)
 		crypto_unregister_kpp(&cpt_ecdh_curves[i]);
 	i = ARRAY_SIZE(cpt_rsa_algs);
@@ -1062,5 +1282,6 @@ void otx2_cpt_unregister_asym_algs(void)
 
 	for (i = 0; i < ARRAY_SIZE(cpt_ecdh_curves); i++)
 		crypto_unregister_kpp(&cpt_ecdh_curves[i]);
+	crypto_unregister_kpp(&cpt_dh);
 	cpt_unregister_ecdsa();
 }

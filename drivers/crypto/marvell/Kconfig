@@ -51,6 +51,8 @@ config CRYPTO_DEV_OCTEONTX2_CPT
 	select CRYPTO_RSA
 	select CRYPTO_ECDSA
 	select CRYPTO_ECDH
+	select CRYPTO_DH
+	select CRYPTO_DEV_MARVELL
 	select NET_DEVLINK
 	help
 		This driver allows you to utilize the Marvell Cryptographic

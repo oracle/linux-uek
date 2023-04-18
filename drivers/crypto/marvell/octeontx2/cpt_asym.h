@@ -7,6 +7,7 @@
 
 #include <crypto/akcipher.h>
 #include <crypto/ecdh.h>
+#include <crypto/dh.h>
 #include <crypto/rng.h>
 #include <crypto/ecc_curve.h>
 #include <crypto/internal/akcipher.h>
@@ -50,6 +51,20 @@ struct cpt_ecdh_ctx {
 	u16 dlen;
 };
 
+struct cpt_dh_ctx {
+	/*
+	 * If base is g we compute the public key
+	 *	ya = g^xa mod p; [RFC2631 sec 2.1.1]
+	 * else if base if the counterpart public key we
+	 * compute the shared secret
+	 *	ZZ = yb^xa mod p; [RFC2631 sec 2.1.1]
+	 */
+	char *xa_p;
+	dma_addr_t dma_xa_p;
+	u16 xa_sz;
+	u16 dlen;
+};
+
 struct cpt_asym_ctx {
 	u32 key_sz;
 	u32 max_dst_len;
@@ -59,6 +74,7 @@ struct cpt_asym_ctx {
 		struct cpt_rsa_ctx rsa;
 		struct cpt_ecdh_ctx ecdh;
 		struct ecc_ctx ecdsa;
+		struct cpt_dh_ctx dh;
 	};
 	struct cn10k_cpt_errata_ctx er_ctx;
 };
