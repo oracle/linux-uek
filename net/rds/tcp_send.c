@@ -164,7 +164,7 @@ out:
 					"returned %d, "
 					"disconnecting and reconnecting\n",
 					&conn->c_faddr, cp->cp_index, ret);
-				rds_conn_path_drop(cp, DR_TCP_STATE_CLOSE, 0);
+				rds_conn_path_drop(cp, DR_TCP_SEND_FAIL, ret);
 			}
 		}
 	}
