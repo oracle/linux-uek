@@ -333,6 +333,11 @@ int kpcimgr_module_register(struct module *mod,
 	char *mod_buildtime;
 	int i, was_running;
 
+	if (ks == NULL) {
+		pr_info("KPCIMGR: failure to start\n");
+		return -ENODEV;
+	}
+
 	start_addr = (unsigned long)mod->core_layout.base;
 
 	if (ep->expected_mgr_version != KPCIMGR_KERNEL_VERSION) {
