@@ -32,7 +32,6 @@
 #include <linux/irqdomain.h>
 #include <linux/percpu.h>
 #include <linux/iova.h>
-#include <linux/crash_dump.h>
 #include <asm/irq_remapping.h>
 #include <asm/io_apic.h>
 #include <asm/apic.h>
@@ -50,7 +49,6 @@
 #define CMD_SET_TYPE(cmd, t) ((cmd)->data[1] |= ((t) << 28))
 
 #define LOOP_TIMEOUT	100000
-#define LOOP_TIMEOUT_KDUMP 2000000
 
 /* IO virtual address start page frame number */
 #define IOVA_START_PFN		(1)
@@ -1003,11 +1001,6 @@ static void build_inv_irt(struct iommu_cmd *cmd, u16 devid)
 	CMD_SET_TYPE(cmd, CMD_INV_IRT);
 }
 
-static unsigned int iommu_cmd_timeout(void)
-{
-	return (is_kdump_kernel()) ? LOOP_TIMEOUT_KDUMP : LOOP_TIMEOUT;
-}
-
 /*
  * Writes the command to the IOMMUs command buffer and informs the
  * hardware about the new command.
@@ -1026,10 +1019,8 @@ again:
 	if (left <= 0x20) {
 		/* Skip udelay() the first time around */
 		if (count++) {
-			if (count == iommu_cmd_timeout()) {
+			if (count == LOOP_TIMEOUT) {
 				pr_err("Command buffer timeout\n");
-				if (is_kdump_kernel())
-					panic("AMD-Vi: Cannot timeout on kdump kernel");
 				return -EIO;
 			}
 
