@@ -491,7 +491,7 @@ struct mm_struct {
 		unsigned long total_vm;	   /* Total pages mapped */
 		unsigned long locked_vm;   /* Pages that have PG_mlocked set */
 		atomic64_t    pinned_vm;   /* Refcount permanently increased */
-		unsigned long driver_pinned_vm; /* Refcount increased by a driver */
+		UEK_KABI_DEPRECATE(unsigned long, driver_pinned_vm)
 		unsigned long data_vm;	   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
 		unsigned long exec_vm;	   /* VM_EXEC & ~VM_WRITE & ~VM_STACK */
 		unsigned long stack_vm;	   /* VM_STACK */
