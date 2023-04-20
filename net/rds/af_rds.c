@@ -714,7 +714,6 @@ static int rds_recv_track_latency(struct rds_sock *rs, sockptr_t optval,
 	return 0;
 }
 
-
 static int rds_setsockopt(struct socket *sock, int level, int optname,
 			  sockptr_t optval, unsigned int optlen)
 {
@@ -775,6 +774,9 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 	case SO_RDS_MSG_RXPATH_LATENCY:
 		ret = rds_recv_track_latency(rs, optval, optlen);
 		break;
+	case SO_RDS_INQ:
+		ret = rds_set_bool_option(&rs->rs_inq, optval, optlen);
+		break;
 	default:
 		ret = -ENOPROTOOPT;
 	}
@@ -823,6 +825,17 @@ static int rds_getsockopt(struct socket *sock, int level, int optname,
 		if (put_user(trans, (int __user *)optval) ||
 		    put_user(sizeof(int), optlen))
 			ret = -EFAULT;
+		else
+			ret = 0;
+		break;
+	case SO_RDS_INQ:
+		if (len < sizeof(int)) {
+			ret = -EINVAL;
+			break;
+		}
+		if (put_user(rs->rs_inq, (int __user *)optval) ||
+		    put_user(sizeof(int), optlen))
+			ret = -EINVAL;
 		else
 			ret = 0;
 		break;
