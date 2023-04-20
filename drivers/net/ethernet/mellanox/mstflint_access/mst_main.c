@@ -598,8 +598,10 @@ static int mst_release(struct inode* inode, struct file* file)
         goto out;
     }
 
-    slot_mask = ~(1 << (md->connectx_wa_slot_p1 - 1));
-    dev->connectx_wa_slots &= slot_mask;
+    if (md->connectx_wa_slot_p1 != 0) {
+        slot_mask = ~(1 << (md->connectx_wa_slot_p1 - 1));
+        dev->connectx_wa_slots &= slot_mask;
+    }
 
     /*
      * mst_info("CONNECTX_WA: Released slot %u. Current slots: %02x\n",
