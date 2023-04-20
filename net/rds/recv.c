@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -704,6 +704,17 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 
 		ret = put_cmsg(msg, SOL_RDS, RDS_CMSG_RXPATH_LATENCY,
 				sizeof(t), &t);
+		if (ret)
+			goto out;
+	}
+
+	if (rs->rs_inq) {
+		unsigned long flags;
+
+		read_lock_irqsave(&rs->rs_recv_lock, flags);
+		ret = put_cmsg(msg, SOL_RDS, RDS_CMSG_INQ,
+			       sizeof(rs->rs_rcv_bytes), &rs->rs_rcv_bytes);
+		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
 		if (ret)
 			goto out;
 	}
