@@ -705,7 +705,7 @@ void native_machine_shutdown(void)
 #endif
 
 #ifdef CONFIG_X86_64
-	x86_platform.iommu_shutdown(0);
+	x86_platform.iommu_shutdown();
 #endif
 }
 
