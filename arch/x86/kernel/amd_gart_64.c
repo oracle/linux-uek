@@ -682,7 +682,7 @@ static const struct dma_map_ops gart_dma_ops = {
 	.free_pages			= dma_direct_free_pages,
 };
 
-static void gart_iommu_shutdown(int panic)
+static void gart_iommu_shutdown(void)
 {
 	struct pci_dev *dev;
 	int i;
