@@ -1162,12 +1162,14 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 			memcpy(fctx->hmac.e.ipad, ctx->ipad, ds);
 		if (ctx->opad)
 			memcpy(fctx->hmac.e.opad, ctx->opad, ds);
+		fctx->enc.enc_ctrl.e.enc_cipher = ctx->cipher_type;
+		fctx->enc.enc_ctrl.e.mac_type = ctx->mac_type;
 		break;
 
 	case OTX2_CPT_AES_GCM:
 		if (ctx->is_rfc4106_gcm && crypto_ipsec_check_assoclen(req->assoclen))
 			return -EINVAL;
-		else if (req->assoclen > 512)
+		else if (req->cryptlen && req->assoclen > 512)
 			return -EINVAL;
 
 		/* Copy encryption key to context */
@@ -1182,6 +1184,13 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 			fctx->enc.enc_ctrl.e.iv_source = OTX2_CPT_FROM_CPTR;
 			/* Copy IV to context */
 			memcpy(fctx->enc.encr_iv, req->iv, crypto_aead_ivsize(tfm));
+		}
+		if (ctx->is_rfc4106_gcm || req->cryptlen) {
+			fctx->enc.enc_ctrl.e.enc_cipher = ctx->cipher_type;
+			fctx->enc.enc_ctrl.e.mac_type = ctx->mac_type;
+		} else {
+			fctx->enc.enc_ctrl.e.enc_cipher = OTX2_CPT_CIPHER_NULL;
+			fctx->enc.enc_ctrl.e.mac_type = OTX2_CPT_GMAC;
 		}
 		break;
 
@@ -1199,6 +1208,8 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 		memcpy(fctx->enc.encr_iv, req->iv, crypto_aead_ivsize(tfm));
 		/* 16-byte IV */
 		minor_op = 1 << 5;
+		fctx->enc.enc_ctrl.e.enc_cipher = ctx->cipher_type;
+		fctx->enc.enc_ctrl.e.mac_type = ctx->mac_type;
 		break;
 
 	default:
@@ -1221,9 +1232,7 @@ static inline int create_aead_ctx_hdr(struct aead_request *req, u32 enc,
 		req_info->req.param2 = req->cryptlen + req->assoclen - mac_len;
 	}
 
-	fctx->enc.enc_ctrl.e.enc_cipher = ctx->cipher_type;
 	fctx->enc.enc_ctrl.e.aes_key = ctx->key_type;
-	fctx->enc.enc_ctrl.e.mac_type = ctx->mac_type;
 	fctx->enc.enc_ctrl.e.mac_len = mac_len;
 	cpu_to_be64s(&fctx->enc.enc_ctrl.u);
 
