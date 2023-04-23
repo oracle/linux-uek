@@ -1626,7 +1626,7 @@ int mlx5_eswitch_init(struct mlx5_core_dev *dev)
 	struct mlx5_eswitch *esw;
 	int err;
 
-	if (!MLX5_VPORT_MANAGER(dev))
+	if (!MLX5_VPORT_MANAGER(dev) && !MLX5_ESWITCH_MANAGER(dev))
 		return 0;
 
 	esw = kzalloc(sizeof(*esw), GFP_KERNEL);
@@ -1696,7 +1696,7 @@ abort:
 
 void mlx5_eswitch_cleanup(struct mlx5_eswitch *esw)
 {
-	if (!esw || !MLX5_VPORT_MANAGER(esw->dev))
+	if (!esw)
 		return;
 
 	esw_info(esw->dev, "cleanup\n");
