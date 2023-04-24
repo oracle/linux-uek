@@ -1232,7 +1232,8 @@ int rvu_cpt_init(struct rvu *rvu)
 
 	/* Retrieve CPT PF number */
 	rvu->cpt_pf_num = get_cpt_pf_num(rvu);
-	if (!is_rvu_otx2(rvu) && !is_cn10ka_a0(rvu) && !is_cn10ka_a1(rvu)) {
+	if (is_block_implemented(rvu->hw, BLKADDR_CPT0) &&
+	    (!is_rvu_otx2(rvu) && !is_cn10ka_a0(rvu) && !is_cn10ka_a1(rvu))) {
 		/* Set CPT_AF_RXC_CFG1:max_rxc_icb_cnt to 0xc0 to not effect
 		 * inline inbound peak performance
 		 */
