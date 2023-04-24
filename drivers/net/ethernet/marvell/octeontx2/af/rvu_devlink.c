@@ -1419,6 +1419,8 @@ static bool cn10k_tim_adjust_gti_errata(struct pci_dev *pdev)
 {
 	if ((pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
 	     (pdev->revision & 0x0F) >= 0x1) ||
+	    (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B &&
+	     (pdev->revision & 0x0F) >= 0x4) ||
 	    (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A &&
 	     (pdev->revision & 0x0F) >= 0x4) ||
 	    pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B)
