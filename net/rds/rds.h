@@ -860,6 +860,7 @@ struct rds_transport {
 	int (*recv_path)(struct rds_conn_path *cp);
 	int (*inc_copy_to_user)(struct rds_sock *rs, struct rds_incoming *inc,
 				struct iov_iter *to);
+	bool (*recv_need_bufs)(struct rds_conn_path *cp);
 	void (*inc_free)(struct rds_incoming *inc);
 
 	int (*cm_handle_connect)(struct rdma_cm_id *cm_id,
