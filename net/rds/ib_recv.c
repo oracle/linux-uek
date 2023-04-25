@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1584,6 +1584,26 @@ int rds_ib_recv_path(struct rds_conn_path *cp)
 	}
 
 	return ret;
+}
+
+bool rds_ib_recv_need_bufs(struct rds_conn_path *cp)
+{
+	struct rds_connection *conn = cp->cp_conn;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	switch (rds_ib_sysctl_refill_from_send) {
+	case RDS_IB_TX_REFILL_NEVER:
+		return false;
+	case RDS_IB_TX_REFILL_LOW:
+		return rds_ib_ring_low(&ic->i_recv_ring);
+	case RDS_IB_TX_REFILL_MID:
+		return rds_ib_ring_mid(&ic->i_recv_ring);
+	case RDS_IB_TX_REFILL_ALWAYS:
+		return true;
+	}
+
+	/* Not reached */
+	return true;
 }
 
 int rds_ib_recv_init(void)
