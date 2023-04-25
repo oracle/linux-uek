@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -102,6 +102,10 @@ unsigned rds_ib_sysctl_yield_after_ms = 2000;
 unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
 
 int rds_ib_sysctl_check_conn_addrs = 1;
+
+unsigned int rds_ib_sysctl_refill_from_send = RDS_IB_TX_REFILL_MID;
+static unsigned int rds_ib_sysctl_refill_from_send_min = RDS_IB_TX_REFILL_NEVER;
+static unsigned int rds_ib_sysctl_refill_from_send_max = RDS_IB_TX_REFILL_ALWAYS;
 
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
@@ -218,6 +222,15 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen		= sizeof(rds_ib_sysctl_check_conn_addrs),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname       = "refill_from_send",
+		.data           = &rds_ib_sysctl_refill_from_send,
+		.maxlen         = sizeof(rds_ib_sysctl_refill_from_send),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec_minmax,
+		.extra1         = &rds_ib_sysctl_refill_from_send_min,
+		.extra2         = &rds_ib_sysctl_refill_from_send_max,
 	},
 };
 

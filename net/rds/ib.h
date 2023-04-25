@@ -552,6 +552,13 @@ enum rds_ib_dev_work_arounds {
 	RDS_IB_DEV_WA_INCORRECT_RNR_TIMER        = 1 << 0,
 };
 
+enum rds_ib_refill_from_tx_strategy {
+	RDS_IB_TX_REFILL_NEVER,
+	RDS_IB_TX_REFILL_LOW,
+	RDS_IB_TX_REFILL_MID,
+	RDS_IB_TX_REFILL_ALWAYS,
+};
+
 #define rdsibdev_to_node(rdsibdev) ibdev_to_node(rdsibdev->dev)
 
 /* bits for i_ack_flags */
@@ -777,6 +784,7 @@ extern atomic_t rds_ib_allocation;
 int rds_ib_recv_init(void);
 void rds_ib_recv_exit(void);
 int rds_ib_recv_path(struct rds_conn_path *cp);
+bool rds_ib_recv_need_bufs(struct rds_conn_path *cp);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic, gfp_t gfp);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic);
@@ -886,5 +894,6 @@ extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
 extern int rds_ib_sysctl_check_conn_addrs;
+extern unsigned int rds_ib_sysctl_refill_from_send;
 
 #endif
