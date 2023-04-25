@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -217,6 +217,10 @@ restart:
 					       -EBUSY);
 		rds_stats_inc(conn->c_stats, s_send_lock_contention);
 		ret = -EBUSY;
+
+		/* If we cannot send, may be refill the recv queue instead? */
+		if (conn->c_trans->t_type == RDS_TRANS_IB && conn->c_trans->recv_need_bufs(cp))
+			conn->c_trans->recv_path(cp);
 		goto out;
 	}
 
