@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2022 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1538,6 +1538,7 @@ struct rds_transport rds_ib_transport = {
 	.xmit_rdma		= rds_ib_xmit_rdma,
 	.xmit_atomic		= rds_ib_xmit_atomic,
 	.recv_path		= rds_ib_recv_path,
+	.recv_need_bufs         = rds_ib_recv_need_bufs,
 	.conn_alloc		= rds_ib_conn_alloc,
 	.conn_free		= rds_ib_conn_free,
 	.conn_preferred_cpu	= rds_ib_conn_preferred_cpu,
