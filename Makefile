@@ -1383,14 +1383,16 @@ endif
 	done
 
 ctf: vmlinux.ctfa
-PHONY += ctf
+ctf-nano: vmlinux-nano.ctfa
+PHONY += ctf ctf-nano
 
 # Making CTF needs the builtin files unless out-of-tree.
 ifeq ($(KBUILD_EXTMOD),)
-vmlinux.ctfa: modules_thick.builtin objects.builtin
+vmlinux.ctfa vmlinux-nano.ctfa: modules_thick.builtin objects.builtin
 endif
-vmlinux.ctfa:
-	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal vmlinux.ctfa
+vmlinux.ctfa vmlinux-nano.ctfa:
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal $@
+
 else
 PHONY += objects.builtin
 objects.builtin:
