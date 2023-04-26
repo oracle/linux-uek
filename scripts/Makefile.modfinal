@@ -58,7 +58,11 @@ ifdef CONFIG_CTF
 # is then catted and its contents used as prerequisites by this rule.
 #
 # We write the names of the object files to be scanned for CTF content into a
-# file, then use that, to avoid hitting command-line length limits.
+# file, then use that, to avoid hitting command-line length limits.  Module
+# names can have all modules not named in the CTF_FILELIST filtered out:
+# this requires a bit of fiddling because the toolchain CTF splits the CTF into
+# separate files with names derived from that of the module, and we have to
+# transform the names back before filtering, then re-transform them again.
 
 ifdef CONFIG_CTF_USING_BINUTILS
 CTF_ARCHIVE := scripts/ctf/ctfarchive
@@ -72,14 +76,24 @@ ifeq ($(KBUILD_EXTMOD),)
 ifdef CONFIG_CTF_USING_BINUTILS
 separate-ctf := t
 module-ctf-flags := --remove-section .ctf
-ctf-modules := $(shell find . -name '*.ko.ctf' -print)
+ctf-modules-full := $(shell find . -name '*.ko.ctf' -print | sed 's,\.ctf$$,,')
 else
-ctf-modules := $(shell find . -name '*.ko' -print)
+ctf-modules-full := $(shell find . -name '*.ko' -print)
+endif
+ifeq ($(CTF_FILELIST),)
+ctf-modules-reduced := $(ctf-modules-full)
+else
+ctf-modules-reduced := $(filter $(shell cat $(CTF_FILELIST)),$(ctf-modules-full))
+endif
+ifdef CONFIG_CTF_USING_BINUTILS
+ctf-modules := $(addsuffix .ctf,$(ctf-modules-reduced))
+else
+ctf-modules := $(ctf-modules-reduced)
 endif
 ctf-dir :=
 ctf-dir-mk :=
 quiet_cmd_ctf = CTFA
-      cmd_ctf = $(CTF_ARCHIVE) vmlinux.ctfa $(srctree) objects.builtin modules_thick.builtin $(srctree)/scripts/ctf/member.blacklist $(ctf-filelist)
+      cmd_ctf = $(CTF_ARCHIVE) $@ $(srctree) objects.builtin modules_thick.builtin $(srctree)/scripts/ctf/member.blacklist $(ctf-filelist)
 ctf-builtins := objects.builtin
 ctf-builtins-prereq := $(ctf-builtins)
 ctf-filelist := .ctf.filelist
@@ -133,8 +147,9 @@ $(ctf-filelist): $(ctf-filelist-raw)
 
 ifeq ($(KBUILD_EXTMOD),)
 # The CTF depends on the output CTF file list, and that depends
-# on the .ko files for the modules.
-vmlinux.ctfa: $(ctf-filelist)
+# on the .ko files for the modules.  Any file ending in .ctfa
+# will do.
+$(filter %.ctfa,$(MAKECMDGOALS)): %.ctfa: $(ctf-filelist)
 	$(call if_changed,ctf)
 else
 
