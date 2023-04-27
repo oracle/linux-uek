@@ -533,6 +533,7 @@ otx2_qos_sw_create_leaf_node(struct otx2_nic *pfvf,
 	err = otx2_qos_add_child_node(parent, node);
 	if (err) {
 		mutex_unlock(&pfvf->qos.qos_lock);
+		kfree(node);
 		return ERR_PTR(err);
 	}
 	mutex_unlock(&pfvf->qos.qos_lock);
