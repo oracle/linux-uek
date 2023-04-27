@@ -48,39 +48,34 @@ int setattr_should_drop_sgid(struct user_namespace *mnt_userns,
 	return 0;
 }
 
-/**
- * setattr_should_drop_suidgid - determine whether the set{g,u}id bit needs to
- *                               be dropped
- * @mnt_userns:	user namespace of the mount @inode was found from
- * @inode:	inode to check
+/*
+ * The logic we want is
  *
- * This function determines whether the set{g,u}id bits need to be removed.
- * If the setuid bit needs to be removed ATTR_KILL_SUID is returned. If the
- * setgid bit needs to be removed ATTR_KILL_SGID is returned. If both
- * set{g,u}id bits need to be removed the corresponding mask of both flags is
- * returned.
- *
- * Return: A mask of ATTR_KILL_S{G,U}ID indicating which - if any - setid bits
- * to remove, 0 otherwise.
+ *	if suid or (sgid and xgrp)
+ *		remove privs
  */
-int setattr_should_drop_suidgid(struct user_namespace *mnt_userns,
-				struct inode *inode)
+int should_remove_suid(struct dentry *dentry)
 {
-	umode_t mode = inode->i_mode;
+	umode_t mode = d_inode(dentry)->i_mode;
 	int kill = 0;
 
 	/* suid always must be killed */
 	if (unlikely(mode & S_ISUID))
 		kill = ATTR_KILL_SUID;
 
-	kill |= setattr_should_drop_sgid(mnt_userns, inode);
+	/*
+	 * sgid without any exec bits is just a mandatory locking mark; leave
+	 * it alone.  If some exec bits are set, it's a real sgid; kill it.
+	 */
+	if (unlikely((mode & S_ISGID) && (mode & S_IXGRP)))
+		kill |= ATTR_KILL_SGID;
 
 	if (unlikely(kill && !capable(CAP_FSETID) && S_ISREG(mode)))
 		return kill;
 
 	return 0;
 }
-EXPORT_SYMBOL(setattr_should_drop_suidgid);
+EXPORT_SYMBOL(should_remove_suid);
 
 /**
  * chown_ok - verify permissions to chown inode
@@ -445,7 +440,7 @@ int notify_change(struct user_namespace *mnt_userns, struct dentry *dentry,
 		}
 	}
 	if (ia_valid & ATTR_KILL_SGID) {
-		if (mode & S_ISGID) {
+		if ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP)) {
 			if (!(ia_valid & ATTR_MODE)) {
 				ia_valid = attr->ia_valid |= ATTR_MODE;
 				attr->ia_mode = inode->i_mode;
