@@ -1760,8 +1760,8 @@ program_kpu:
 				rvu->kpu_prfl_addr = NULL;
 			} else {
 				kfree(rvu->kpu_fwdata);
+				rvu->kpu_fwdata = NULL;
 			}
-			rvu->kpu_fwdata = NULL;
 			rvu->kpu_fwdata_sz = 0;
 			if (retry_fwdb) {
 				retry_fwdb = false;

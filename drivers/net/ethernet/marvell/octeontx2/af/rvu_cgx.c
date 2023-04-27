@@ -482,6 +482,8 @@ bool rvu_cgx_is_higig2_enabled(struct rvu *rvu, int pf)
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
+	if (!cgxd)
+		return false;
 
 	return is_higig2_enabled(cgxd, lmac_id);
 }

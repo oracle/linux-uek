@@ -484,6 +484,9 @@ static void otx2_pfvf_mbox_handler(struct work_struct *work)
 	return;
 
 inval_msg:
+	if (!msg)
+		return;
+
 	otx2_reply_invalid_msg(mbox, vf_idx, 0, msg->id);
 	otx2_mbox_msg_send(mbox, vf_idx);
 }
