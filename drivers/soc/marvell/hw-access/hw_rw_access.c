@@ -241,8 +241,10 @@ static int hw_access_open(struct inode *inode, struct file *filp)
 
 	priv_data->map = kzalloc(ARRAY_SIZE(lkp_tbl) * MAX_ALPHA * MAX_BETA *
 				 sizeof(struct hw_csr_mapping), GFP_KERNEL);
-	if (!priv_data->map)
+	if (!priv_data->map) {
+		kfree(priv_data);
 		return -ENOMEM;
+	}
 
 	priv_data->pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
 					 PCI_DEVID_OCTEONTX2_RVU_AF, NULL);

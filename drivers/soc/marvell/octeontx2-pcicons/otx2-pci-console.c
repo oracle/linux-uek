@@ -691,7 +691,7 @@ int octeontx_console_output_truncate(struct octeontx_pcie_console *console,
 {
 	u64 old_val;
 	u64 new_val;
-	size_t bytes_avail;
+	int bytes_avail;
 	const u32 out_buf_size = le32_to_cpu(readl(&console->output_buf_size));
 	u32 out_wr_idx, out_rd_idx;
 	int ret;
@@ -708,7 +708,7 @@ int octeontx_console_output_truncate(struct octeontx_pcie_console *console,
 	if (bytes_avail < 0)
 		return bytes_avail;
 	/* Not enough space */
-	if (bytes_to_clear > bytes_avail)
+	if (bytes_to_clear > (size_t)bytes_avail)
 		return bytes_avail;
 
 	out_rd_idx = (out_rd_idx + bytes_to_clear) % out_buf_size;

@@ -51,16 +51,17 @@ static void cpt_hash_callback(int status, void *arg1, void *arg2)
 {
 	struct otx2_cpt_inst_info *inst_info = arg2;
 	struct crypto_async_request *areq = arg1;
-	struct pci_dev *pdev = inst_info->pdev;
 	struct otx2_cpt_req_info *req_info;
 	struct ahash_request *ahash_req;
 	struct otx2_cptvf_request *req;
 	struct cpt_hmac_req_ctx *rctx;
 	struct cpt_hmac_ctx *ctx;
+	struct pci_dev *pdev;
 	u64 cptr_dma;
 	u8 minor_op;
 
 	if (inst_info) {
+		pdev = inst_info->pdev;
 		req_info = inst_info->req;
 		req = &req_info->req;
 		ahash_req = container_of(areq, struct ahash_request, base);
