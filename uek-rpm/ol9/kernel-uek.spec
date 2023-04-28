@@ -124,6 +124,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define doc_build_fail true
 %endif
 
+# This is used to enable/disable kABI checking.
+%define with_kabichk 0
+
 # .BTF section must stay in modules
 %define _find_debuginfo_opt_btf --keep-section .BTF
 %define _find_debuginfo_opts %{_find_debuginfo_opt_btf}
@@ -1207,6 +1210,7 @@ BuildKernel() {
     rm -f $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
+%if %{with_kabichk}
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
@@ -1238,6 +1242,9 @@ BuildKernel() {
     else
        echo "**** kABI checking is NOT enabled in kernel SPEC file for %{_target_cpu}. ****"
     fi
+%else
+    echo "**** kABI checking is NOT enabled in kernel SPEC file for %{_target_cpu}. ****"
+%endif
 
     # then drop all but the needed Makefiles/Kconfig files
     rm -rf $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/scripts
@@ -1297,9 +1304,9 @@ BuildKernel() {
     mkdir -p $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer
     cp vmlinux $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer
     # also include Symtypes.build for kABI maintenance
-    gzip -c9 < Symtypes.build > $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer/Symtypes.build.gz
+    [ -f Symtypes.build ] && gzip -c9 < Symtypes.build > $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer/Symtypes.build.gz
 %endif
-    rm Symtypes.build
+    rm -f Symtypes.build
 
     find $RPM_BUILD_ROOT/lib/modules/$KernelVer -name "*.ko" -type f > modnames
 
