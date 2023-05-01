@@ -467,6 +467,11 @@ struct perf_event_attr {
 	 * siginfo_t::si_perf_data, e.g. to permit user to identify the event.
 	 */
 	__u64	sig_data;
+
+	unsigned long uek_reserved1;
+	unsigned long uek_reserved2;
+	unsigned long uek_reserved3;
+	unsigned long uek_reserved4;
 };
 
 /*
