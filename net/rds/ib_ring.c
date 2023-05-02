@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2022, Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -128,6 +128,11 @@ int rds_ib_ring_empty(struct rds_ib_work_ring *ring)
 int rds_ib_ring_low(struct rds_ib_work_ring *ring)
 {
 	return __rds_ib_ring_used(ring) <= (ring->w_nr >> 2);
+}
+
+int rds_ib_ring_mid(struct rds_ib_work_ring *ring)
+{
+	return __rds_ib_ring_used(ring) <= ((ring->w_nr >> 2) + (ring->w_nr >> 3));
 }
 
 /*
