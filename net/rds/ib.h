@@ -830,6 +830,7 @@ void rds_ib_ring_free(struct rds_ib_work_ring *ring, u32 val);
 void rds_ib_ring_unalloc(struct rds_ib_work_ring *ring, u32 val);
 int rds_ib_ring_empty(struct rds_ib_work_ring *ring);
 int rds_ib_ring_low(struct rds_ib_work_ring *ring);
+int rds_ib_ring_mid(struct rds_ib_work_ring *ring);
 u32 rds_ib_ring_oldest(struct rds_ib_work_ring *ring);
 u32 rds_ib_ring_completed(struct rds_ib_work_ring *ring, u32 wr_id, u32 oldest);
 extern wait_queue_head_t rds_ib_ring_empty_wait;
