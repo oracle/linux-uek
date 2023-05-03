@@ -3043,7 +3043,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	err = otx2_realloc_msix_vectors(pf);
 	if (err)
-		goto err_mbox_destroy;
+		goto err_detach_rsrc;
 
 	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
 	if (err)
