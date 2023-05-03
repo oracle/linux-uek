@@ -187,6 +187,7 @@ static void rvu_nix_unregister_interrupts(struct rvu *rvu)
 {
 	struct rvu_devlink *rvu_dl = rvu->rvu_dl;
 	int offs, i, blkaddr;
+	int vec;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
 	if (blkaddr < 0)
@@ -201,17 +202,13 @@ static void rvu_nix_unregister_interrupts(struct rvu *rvu)
 	rvu_write64(rvu, blkaddr, NIX_AF_ERR_INT_ENA_W1C, ~0ULL);
 	rvu_write64(rvu, blkaddr, NIX_AF_RAS_ENA_W1C, ~0ULL);
 
-	if (rvu->irq_allocated[offs + NIX_AF_INT_VEC_RVU]) {
-		free_irq(pci_irq_vector(rvu->pdev, offs + NIX_AF_INT_VEC_RVU),
-			 rvu_dl);
-		rvu->irq_allocated[offs + NIX_AF_INT_VEC_RVU] = false;
-	}
-
-	for (i = NIX_AF_INT_VEC_AF_ERR; i < NIX_AF_INT_VEC_CNT; i++)
-		if (rvu->irq_allocated[offs + i]) {
-			free_irq(pci_irq_vector(rvu->pdev, offs + i), rvu_dl);
-			rvu->irq_allocated[offs + i] = false;
+	for (i = NIX_AF_INT_VEC_RVU; i < NIX_AF_INT_VEC_CNT; i++) {
+		vec = offs + i;
+		if (rvu->irq_allocated[vec]) {
+			free_irq(pci_irq_vector(rvu->pdev, vec), rvu_dl);
+			rvu->irq_allocated[vec] = false;
 		}
+	}
 }
 
 static int rvu_nix_register_interrupts(struct rvu *rvu)
