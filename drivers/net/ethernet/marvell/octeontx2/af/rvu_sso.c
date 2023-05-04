@@ -301,6 +301,9 @@ static void rvu_ssow_clean_prefetch(struct rvu *rvu, u16 pcifunc, int slot)
 	u16 ssow_lf;
 
 	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+	if (ssow_blkaddr == -ENODEV)
+		return;
+
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 
 	ssow_lf = rvu_get_lf(rvu, &hw->block[ssow_blkaddr], pcifunc, slot);
@@ -862,6 +865,7 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
 	npa_pcifunc = reg & 0xFFFF;
 	npa_blkaddr = 0;
+	aura = 0;
 
 	if (npa_pcifunc) {
 		npa_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, npa_pcifunc);

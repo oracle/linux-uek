@@ -1558,7 +1558,7 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 				otx2_rfoe_fill_tx_job_entries(priv, tx_cfg,
 							      tx_info,
 							      num_entries);
-			} else {
+			} else if (priv2) {
 				/* share rfoe_common data */
 				priv->rfoe_common = priv2->rfoe_common;
 				++(priv->rfoe_common->refcnt);
