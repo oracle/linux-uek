@@ -890,6 +890,9 @@ static struct svc_xprt *svc_tcp_accept(struct svc_xprt *xprt)
 		trace_svcsock_accept_err(xprt, serv->sv_name, err);
 		return NULL;
 	}
+	if (IS_ERR(sock_alloc_file(newsock, O_NONBLOCK, NULL)))
+		return NULL;
+
 	set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
 
 	err = kernel_getpeername(newsock, sin);
@@ -930,7 +933,7 @@ static struct svc_xprt *svc_tcp_accept(struct svc_xprt *xprt)
 	return &newsvsk->sk_xprt;
 
 failed:
-	sock_release(newsock);
+	sockfd_put(newsock);
 	return NULL;
 }
 
@@ -1426,7 +1429,6 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 						struct socket *sock,
 						int flags)
 {
-	struct file	*filp = NULL;
 	struct svc_sock	*svsk;
 	struct sock	*inet;
 	int		pmap_register = !(flags & SVC_SOCK_ANONYMOUS);
@@ -1434,14 +1436,6 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 	svsk = kzalloc(sizeof(*svsk), GFP_KERNEL);
 	if (!svsk)
 		return ERR_PTR(-ENOMEM);
-
-	if (!sock->file) {
-		filp = sock_alloc_file(sock, O_NONBLOCK, NULL);
-		if (IS_ERR(filp)) {
-			kfree(svsk);
-			return ERR_CAST(filp);
-		}
-	}
 
 	inet = sock->sk;
 
@@ -1452,8 +1446,6 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 				     inet->sk_protocol,
 				     ntohs(inet_sk(inet)->inet_sport));
 		if (err < 0) {
-			if (filp)
-				fput(filp);
 			kfree(svsk);
 			return ERR_PTR(err);
 		}
