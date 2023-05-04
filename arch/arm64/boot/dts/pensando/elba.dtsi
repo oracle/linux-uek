@@ -256,6 +256,8 @@
 			cdns,phy-input-delay-legacy = <0x4>;
 			cdns,phy-input-delay-sd-uhs-sdr50 = <0x6>;
 			cdns,phy-input-delay-sd-uhs-ddr50 = <0x16>;
+			cdns,phy-dll-delay-sdclk = <0>;
+			cdns,phy-dll-delay-sdclk-hsmmc = <0>;
 			cdns,mmc-ddr-1_8v;
 			status = "disabled";
 		};
