@@ -627,7 +627,6 @@ kernel/net/netfilter/xt_TRACE.ko
 kernel/net/netfilter/xt_u32.ko
 kernel/net/nsh/nsh.ko
 kernel/net/psample/psample.ko
-kernel/net/qrtr/ns.ko
 kernel/net/qrtr/qrtr.ko
 kernel/net/qrtr/qrtr-mhi.ko
 kernel/net/rds/rds.ko
