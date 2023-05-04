@@ -883,12 +883,19 @@ mlx5r_cache_create_ent_locked(struct mlx5_ib_dev *dev,
 		else
 			order = order_base_2(rb_key.ndescs) - 2;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		if ((dev->mdev->profile.mask & MLX5_PROF_MASK_MR_CACHE) &&
 		    !dev->is_rep && mlx5_core_is_pf(dev->mdev) &&
 		    mlx5r_umr_can_load_pas(dev, 0))
 			ent->limit = dev->mdev->profile.mr_cache[order].limit;
 		else
 			ent->limit = 0;
+#else
+		if (mlx5_core_is_pf(dev->mdev) || mlx5_core_is_vf(dev->mdev))
+			ent->limit = dev->mdev->profile.mr_cache[order].limit;
+		else
+			ent->limit = 0;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 		mlx5_mkey_cache_debugfs_add_ent(dev, ent);
 	} else {
