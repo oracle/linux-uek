@@ -756,6 +756,7 @@ static int octeontx_edac_mc_init(struct platform_device *pdev,
 	struct octeontx_edac_pvt *pvt = NULL;
 	struct mem_ctl_info *mci = NULL;
 	struct edac_mc_layer layers[1] = {0};
+	struct dimm_info *dimm;
 	int ret = 0;
 	int idx = 0;
 
@@ -785,6 +786,9 @@ static int octeontx_edac_mc_init(struct platform_device *pdev,
 	mci->edac_check = NULL;
 	pvt->ghes = ghes;
 	ghes->mci = mci;
+
+	dimm = edac_get_dimm(mci, 0, 0, 0);
+	dimm->grain = 1;
 
 	ret = edac_mc_add_mc_with_groups(mci, ghes->ecc_cap ? octeontx_dev_groups : NULL);
 	if (ret)
