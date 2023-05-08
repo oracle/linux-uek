@@ -296,6 +296,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 {
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_send_work *send;
+	int payload_len = -1;
 	u32 completed;
 	u32 oldest;
 	u32 i = 0;
@@ -340,6 +341,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 			rds_ib_stats_inc(s_ib_tx_stalled);
 
 		if (send->s_op) {
+			payload_len = be32_to_cpu(rm->m_inc.i_hdr.h_len);
 			if (send->s_op == rm->m_final_op || wc->status != IB_WC_SUCCESS) {
 				/* If anyone waited for this message to get flushed out, wake
 				 * them up now */
@@ -384,9 +386,11 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 		/* Flush errors are normal while draining the QP */
 		if (!(wc->status == IB_WC_WR_FLUSH_ERR ||
 		    wc->status == IB_WC_RETRY_EXC_ERR))
-			pr_warn("RDS/IB: send completion <%pI6c,%pI6c,%d> status %u vendor_err 0x%x, disconnecting and reconnecting\n",
+			pr_warn("RDS/IB: send completion <%pI6c,%pI6c,%d> status %u vendor_err 0x%x trans_time=%lu ms, payload_len=%d, disconnecting and reconnecting\n",
 				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
-				wc->status, wc->vendor_err);
+				wc->status, wc->vendor_err,
+				(((jiffies - send->s_queued) * 1000) / HZ),
+				payload_len);
 		rds_conn_drop(conn, DR_IB_SEND_COMP_ERR, wc->status);
 	}
 }
