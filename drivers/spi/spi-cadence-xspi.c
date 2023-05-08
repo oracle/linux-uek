@@ -868,9 +868,7 @@ static irqreturn_t cdns_xspi_irq_handler(int this_irq, void *dev)
 
 static int cdns_xspi_of_get_plat_data(struct platform_device *pdev)
 {
-	struct device_node *node_prop = pdev->dev.of_node;
 	struct fwnode_handle *fwnode_child;
-	struct device_node *node_child;
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct cdns_xspi_dev *cdns_xspi = spi_master_get_devdata(master);
 	unsigned int cs;
