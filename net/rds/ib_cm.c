@@ -395,6 +395,9 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	rds_ib_cancel_cm_watchdog(ic, "connect complete");
 
+	if (rds_ib_sysctl_ring_mid_permille == 750 && rds_ib_sysctl_max_recv_wr == 1024)
+		rds_ib_sysctl_ring_mid_permille = 375;
+
 	rds_connect_complete(conn);
 
 	atomic64_set(&ic->i_connecting_ts, ktime_get());
