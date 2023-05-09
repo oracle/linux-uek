@@ -36,6 +36,7 @@
 #include <net/addrconf.h>
 #include <net/inet_common.h>
 #include <linux/debugfs.h>
+#include <linux/uek.h>
 
 #include "trace.h"
 
@@ -1376,6 +1377,11 @@ int rds_ib_add_one(struct ib_device *device)
 	rds_ib_nodev_connect();
 
 	ib_rds_create_debugfs_cache_hit(rds_ibdev);
+
+	/* Tuning for BM machines */
+	if (!uek_runs_in_kvm())
+		rds_ib_sysctl_ring_mid_permille = 750;
+
 	goto free_attr;
 
 put_dev:
