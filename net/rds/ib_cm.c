@@ -1018,7 +1018,7 @@ static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 to
 				l3_cpu_mask_p = &cache_p->info_list[3].shared_cpu_map;
 		}
 	}
- 
+
         mutex_lock(&rds_ibdev->vector_load_lock);
 
 	index = 0;
@@ -2078,12 +2078,12 @@ out:
 					       rds_ibdev,
 					       conn, ic, reason, err);
 
-	if (ic)
-		up_read(&ic->i_cm_id_free_lock);
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
 		rdma_reject(cm_id, &err, sizeof(int));
+	if (ic)
+		up_read(&ic->i_cm_id_free_lock);
 
 	return destroy;
 }
