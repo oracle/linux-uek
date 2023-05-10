@@ -107,6 +107,22 @@ static inline void softleaf_entry_wait_on_locked(softleaf_t entry, spinlock_t *p
 
 #endif /* CONFIG_MIGRATION */
 
+static inline
+int folio_expected_refs(struct address_space *mapping,
+		struct folio *folio)
+{
+	int refs = 1;
+
+	if (!mapping)
+		return refs;
+
+	refs += folio_nr_pages(folio);
+	if (folio_test_private(folio))
+		refs++;
+
+	return refs;
+}
+
 #ifdef CONFIG_NUMA_BALANCING
 int migrate_misplaced_folio_prepare(struct folio *folio,
 		struct vm_area_struct *vma, int node);
