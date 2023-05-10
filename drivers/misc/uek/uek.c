@@ -7,8 +7,12 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/kvm_para.h>
+#ifdef CONFIG_ARM64
+#include <asm/virt.h>
+#endif
 
-#define UEK_MISC_VER  "0.1"
+#define UEK_MISC_VER  "0.2"
 
 MODULE_AUTHOR("Konrad Rzeszutek Wilk <konrad.wilk@oracle.com>");
 MODULE_DESCRIPTION("uek");
@@ -111,3 +115,17 @@ enable:
 }
 
 core_initcall(uek_misc_init);
+
+bool uek_runs_in_kvm(void)
+{
+	/*
+	 * ARM64 returns false for kvm_para_available(), but on ARM64
+	 * we can utilize is_hyp_mode_available() instead.
+	 */
+#ifdef CONFIG_ARM64
+	return !is_hyp_mode_available();
+#else
+	return kvm_para_available();
+#endif
+}
+EXPORT_SYMBOL_GPL(uek_runs_in_kvm);
