@@ -821,6 +821,42 @@ static bool too_many_isolated(struct compact_control *cc)
 	return too_many;
 }
 
+/*
+ * Check if this base page should be skipped from isolation because
+ * it has extra refcounts that will prevent it from being migrated.
+ * This code is inspired by similar code in migrate_vma_check_page(),
+ * can_split_folio() and folio_migrate_mapping()
+ */
+static inline bool page_has_extra_refs(struct page *page,
+					struct address_space *mapping)
+{
+	unsigned long extra_refs;
+	struct folio *folio;
+
+	/*
+	 * Skip this check for pages in ZONE_MOVABLE or MIGRATE_CMA
+	 * pages that can not be long term pinned
+	 */
+	if (is_zone_movable_page(page) || is_migrate_cma_page(page))
+		return false;
+
+	folio = page_folio(page);
+
+	/*
+	 * caller holds a ref already from get_page_unless_zero()
+	 * which is accounted for in folio_expected_refs()
+	 */
+	extra_refs = folio_expected_refs(mapping, folio);
+
+	/*
+	 * This is an admittedly racy check but good enough to determine
+	 * if a page is pinned and can not be migrated
+	 */
+	if ((folio_ref_count(folio) - extra_refs) > folio_mapcount(folio))
+		return true;
+	return false;
+}
+
 /**
  * skip_isolation_on_order() - determine when to skip folio isolation based on
  *			       folio order and compaction target order
@@ -1110,12 +1146,12 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			goto isolate_fail;
 
 		/*
-		 * Migration will fail if an anonymous page is pinned in memory,
-		 * so avoid taking lru_lock and isolating it unnecessarily in an
-		 * admittedly racy check.
+		 * Migration will fail if a page has extra refcounts
+		 * from long term pinning preventing it from migrating,
+		 * so avoid taking lru_lock and isolating it unnecessarily.
 		 */
 		mapping = folio_mapping(folio);
-		if (!mapping && (folio_ref_count(folio) - 1) > folio_mapcount(folio))
+		if (!cc->alloc_contig && page_has_extra_refs(page, mapping))
 			goto isolate_fail_put;
 
 		/*
