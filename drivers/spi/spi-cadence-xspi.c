@@ -253,6 +253,12 @@
 #define XFER_QWORD_COUNT 32
 #define XFER_QWORD_BYTECOUNT 8
 
+#define SPI_NOT_CLAIMED				0x00
+#define SPI_AP_NS_OWN				0x02
+#define CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1	0x8c
+#define SPI_LOCK_TIMEOUT			100
+#define	SPI_LOCK_CHECK_TIMEOUT			10
+#define SPI_LOCK_SLEEP_DURATION_MS		10
 #endif
 
 enum cdns_xspi_stig_instr_type {
@@ -326,6 +332,54 @@ const int cdns_xspi_clk_div_list[] = {
 	128,	//0xD = Divide by 128. SPI clock is 6.25 MHz.
 	-1	//End of list
 };
+static int unlock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
+{
+	if (readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1) == SPI_AP_NS_OWN) {
+		writel(SPI_NOT_CLAIMED,
+		       cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
+		return 0;
+	}
+	pr_err("Trying to unlock NOT locked bus: %d!\n",
+		readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1));
+
+	return -1;
+}
+
+static int lock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
+{
+	uint32_t val = 0;
+	int timeout = SPI_LOCK_TIMEOUT; //10 second timeout
+
+	while (timeout-- >= 0) {
+		val = readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
+		if (val == SPI_NOT_CLAIMED || val == SPI_AP_NS_OWN) {
+			writel(SPI_AP_NS_OWN,
+			       cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
+			break;
+		}
+		mdelay(SPI_LOCK_SLEEP_DURATION_MS);
+	}
+
+	if (timeout <= 0)
+		goto fail;
+
+	timeout = SPI_LOCK_CHECK_TIMEOUT;
+	while (timeout-- >= 0) {
+		if (readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1) !=
+			  SPI_AP_NS_OWN)
+			break;
+	}
+
+	if (timeout > 0)
+		goto fail;
+
+	return 0;
+
+fail:
+	pr_err("Flash arbitration failed, lock is owned by: %d\n",
+		readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1));
+	return -1;
+}
 
 static bool cdns_xspi_reset_dll(struct cdns_xspi_dev *cdns_xspi)
 {
@@ -641,12 +695,20 @@ static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 {
 	u32 cmd_regs[6];
 	u32 cmd_status;
-	int ret;
+	int ret = 0;
 	int dummybytes = op->dummy.nbytes;
 
-	ret = cdns_xspi_wait_for_controller_idle(cdns_xspi);
-	if (ret < 0)
+#if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
+	if (lock_spi_bus(cdns_xspi) != 0) {
+		pr_err("Failed to lock SPI bus\n");
 		return -EIO;
+	}
+#endif
+	ret = cdns_xspi_wait_for_controller_idle(cdns_xspi);
+	if (ret < 0) {
+		ret = -EIO;
+		goto fail;
+	}
 
 	writel(FIELD_PREP(CDNS_XSPI_CTRL_WORK_MODE, CDNS_XSPI_WORK_MODE_STIG),
 	       cdns_xspi->iobase + CDNS_XSPI_CTRL_CONFIG_REG);
@@ -685,11 +747,14 @@ static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 			wait_for_completion(&cdns_xspi->sdma_complete);
 			if (cdns_xspi->sdma_error) {
 				cdns_xspi_set_interrupts(cdns_xspi, false);
-				return -EIO;
+				ret = -EIO;
+				goto fail;
 			}
 		} else {
-			if (cdns_xspi_sdma_ready(cdns_xspi, pstore_sleep))
-				return -EIO;
+			if (cdns_xspi_sdma_ready(cdns_xspi, pstore_sleep)) {
+				ret = -EIO;
+				goto fail;
+			}
 		}
 		cdns_xspi_sdma_handle(cdns_xspi);
 	}
@@ -698,15 +763,23 @@ static int cdns_xspi_send_stig_command(struct cdns_xspi_dev *cdns_xspi,
 		wait_for_completion(&cdns_xspi->cmd_complete);
 		cdns_xspi_set_interrupts(cdns_xspi, false);
 	} else {
-		if (cdns_xspi_stig_ready(cdns_xspi, pstore_sleep))
-			return -EIO;
+		if (cdns_xspi_stig_ready(cdns_xspi, pstore_sleep)) {
+			ret = -EIO;
+			goto fail;
+		}
 	}
 
 	cmd_status = cdns_xspi_check_command_status(cdns_xspi);
-	if (cmd_status)
-		return -EPROTO;
+	if (cmd_status) {
+		ret = -EPROTO;
+		goto fail;
+	}
 
-	return 0;
+fail:
+#if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
+	unlock_spi_bus(cdns_xspi);
+#endif
+	return ret;
 }
 
 static int cdns_xspi_mem_op(struct cdns_xspi_dev *cdns_xspi,
