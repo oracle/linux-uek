@@ -127,12 +127,12 @@ int rds_ib_ring_empty(struct rds_ib_work_ring *ring)
 
 int rds_ib_ring_low(struct rds_ib_work_ring *ring)
 {
-	return __rds_ib_ring_used(ring) <= (ring->w_nr >> 2);
+	return __rds_ib_ring_used(ring) <= ring->w_nr * rds_ib_sysctl_ring_low_permille / 1000;
 }
 
 int rds_ib_ring_mid(struct rds_ib_work_ring *ring)
 {
-	return __rds_ib_ring_used(ring) <= ((ring->w_nr >> 2) + (ring->w_nr >> 3));
+	return __rds_ib_ring_used(ring) <= ring->w_nr * rds_ib_sysctl_ring_mid_permille / 1000;
 }
 
 /*
