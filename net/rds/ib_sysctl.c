@@ -107,6 +107,14 @@ unsigned int rds_ib_sysctl_refill_from_send = RDS_IB_TX_REFILL_MID;
 static unsigned int rds_ib_sysctl_refill_from_send_min = RDS_IB_TX_REFILL_NEVER;
 static unsigned int rds_ib_sysctl_refill_from_send_max = RDS_IB_TX_REFILL_ALWAYS;
 
+unsigned int rds_ib_sysctl_ring_low_permille = 250;
+static unsigned int rds_ib_sysctl_ring_low_permille_min = 1;
+static unsigned int rds_ib_sysctl_ring_low_permille_max = 1000;
+
+unsigned int rds_ib_sysctl_ring_mid_permille = 375;
+static unsigned int rds_ib_sysctl_ring_mid_permille_min = 1;
+static unsigned int rds_ib_sysctl_ring_mid_permille_max = 1000;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -231,6 +239,24 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.proc_handler   = proc_douintvec_minmax,
 		.extra1         = &rds_ib_sysctl_refill_from_send_min,
 		.extra2         = &rds_ib_sysctl_refill_from_send_max,
+	},
+	{
+		.procname       = "ring_low_permille",
+		.data           = &rds_ib_sysctl_ring_low_permille,
+		.maxlen         = sizeof(rds_ib_sysctl_ring_low_permille),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec_minmax,
+		.extra1         = &rds_ib_sysctl_ring_low_permille_min,
+		.extra2         = &rds_ib_sysctl_ring_low_permille_max,
+	},
+	{
+		.procname       = "ring_mid_permille",
+		.data           = &rds_ib_sysctl_ring_mid_permille,
+		.maxlen         = sizeof(rds_ib_sysctl_ring_mid_permille),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec_minmax,
+		.extra1         = &rds_ib_sysctl_ring_mid_permille_min,
+		.extra2         = &rds_ib_sysctl_ring_mid_permille_max,
 	},
 };
 
