@@ -373,6 +373,7 @@ void rds_hb_worker(struct work_struct *work)
 						struct rds_conn_path,
 						cp_hb_w.work);
 	time64_t now = ktime_get_real_seconds();
+	time64_t cp_hb_start = READ_ONCE(cp->cp_hb_start);
 	unsigned long delay = HZ;
 	int ret;
 	struct rds_connection *conn = cp->cp_conn;
@@ -387,12 +388,12 @@ void rds_hb_worker(struct work_struct *work)
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
 		switch (READ_ONCE(cp->cp_hb_state)) {
 		case HB_PING_SENT:
-			if (!READ_ONCE(cp->cp_hb_start)) {
+			if (!cp_hb_start) {
 				WRITE_ONCE(cp->cp_hb_state, HB_PONG_RCVD);
 				/* Pseudo random from 50% to 150% of interval */
 				delay = msecs_to_jiffies(rds_sysctl_conn_hb_interval * 1000 / 2) +
 					msecs_to_jiffies(get_random_u32() % rds_sysctl_conn_hb_interval * 1000);
-			} else if ((now - READ_ONCE(cp->cp_hb_start) > rds_sysctl_conn_hb_timeout) &&
+			} else if ((now - cp_hb_start > rds_sysctl_conn_hb_timeout) &&
 				    conn->c_is_hb_enabled) {
 				/* Drop the conn only if both sides are (exthdr) HB capable */
 				rds_conn_path_drop(cp, DR_HB_TIMEOUT, 0);
