@@ -14,7 +14,7 @@ struct ionic_lif;
 
 #define IONIC_DRV_NAME		"ionic"
 #define IONIC_DRV_DESCRIPTION	"Pensando Ethernet NIC Driver"
-#define IONIC_DRV_VERSION	"22.11.1-001"
+#define IONIC_DRV_VERSION	"23.04.1-001"
 
 #define PCI_VENDOR_ID_PENSANDO			0x1dd8
 
@@ -22,10 +22,10 @@ struct ionic_lif;
 #define PCI_DEVICE_ID_PENSANDO_IONIC_ETH_VF	0x1003
 #define PCI_DEVICE_ID_PENSANDO_IONIC_ETH_MGMT	0x1004
 
-#define DEVCMD_TIMEOUT  5
+#define DEVCMD_TOUT_DEF 5
+#define DEVCMD_TIMEOUT  devcmd_timeout
 #define SHORT_TIMEOUT   1
 #define IONIC_ADMINQ_TIME_SLICE	msecs_to_jiffies(100)
-#define MAX_ETH_EQS	64
 
 #define IONIC_PHC_UPDATE_NS	10000000000L	    /* 10s in nanoseconds */
 #define NORMAL_PPB		1000000000	    /* one billion parts per billion */
@@ -62,13 +62,11 @@ struct ionic {
 	struct ionic_identity ident;
 	bool is_mgmt_nic;
 	struct ionic_lif *lif;
-	struct ionic_eq **eqs;
 	unsigned int nnqs_per_lif;
 	unsigned int nrdma_eqs_per_lif;
 	unsigned int ntxqs_per_lif;
 	unsigned int nrxqs_per_lif;
 	unsigned int nlifs;
-	unsigned int neth_eqs;
 	DECLARE_BITMAP(lifbits, IONIC_LIFS_MAX);
 	DECLARE_BITMAP(ethbits, IONIC_LIFS_MAX);
 	unsigned int nintrs;
@@ -110,7 +108,5 @@ int ionic_reset(struct ionic *ionic);
 int ionic_port_identify(struct ionic *ionic);
 int ionic_port_init(struct ionic *ionic);
 int ionic_port_reset(struct ionic *ionic);
-
-const char *ionic_vf_attr_to_str(enum ionic_vf_attr attr);
 
 #endif /* _IONIC_H_ */

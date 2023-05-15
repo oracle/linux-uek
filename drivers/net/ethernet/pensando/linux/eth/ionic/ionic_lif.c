@@ -36,6 +36,7 @@ static const u8 ionic_qtype_versions[IONIC_QTYPE_MAX] = {
 static void ionic_link_status_check(struct ionic_lif *lif);
 static void ionic_lif_handle_fw_down(struct ionic_lif *lif);
 static void ionic_lif_handle_fw_up(struct ionic_lif *lif);
+static void ionic_lif_set_netdev_info(struct ionic_lif *lif);
 
 static void ionic_txrx_deinit(struct ionic_lif *lif);
 static int ionic_txrx_init(struct ionic_lif *lif);
@@ -44,7 +45,6 @@ static int ionic_open(struct net_device *netdev);
 static void ionic_stop_queues(struct ionic_lif *lif);
 static int ionic_stop(struct net_device *netdev);
 static void ionic_lif_queue_identify(struct ionic_lif *lif);
-static void ionic_lif_set_netdev_info(struct ionic_lif *lif);
 
 static void ionic_dim_work(struct work_struct *work)
 {
@@ -213,7 +213,7 @@ static void ionic_napi_deadline(struct timer_list *timer)
 	napi_schedule(&qcq->napi);
 }
 
-static irqreturn_t ionic_napi_isr(int irq, void *data)
+static irqreturn_t ionic_isr(int irq, void *data)
 {
 	struct napi_struct *napi = data;
 
@@ -222,7 +222,7 @@ static irqreturn_t ionic_napi_isr(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int ionic_request_napi_irq(struct ionic_lif *lif, struct ionic_qcq *qcq)
+static int ionic_request_irq(struct ionic_lif *lif, struct ionic_qcq *qcq)
 {
 	struct ionic_intr_info *intr = &qcq->intr;
 	struct device *dev = lif->ionic->dev;
@@ -237,7 +237,7 @@ static int ionic_request_napi_irq(struct ionic_lif *lif, struct ionic_qcq *qcq)
 	snprintf(intr->name, sizeof(intr->name),
 		 "%s-%s-%s", IONIC_DRV_NAME, name, q->name);
 
-	return devm_request_irq(dev, intr->vector, ionic_napi_isr,
+	return devm_request_irq(dev, intr->vector, ionic_isr,
 				0, intr->name, &qcq->napi);
 }
 
@@ -299,14 +299,7 @@ static int ionic_qcq_enable(struct ionic_qcq *qcq)
 	if (qcq->napi.poll)
 		napi_enable(&qcq->napi);
 
-	if (lif->ionic->neth_eqs) {
-		qcq->armed = true;
-		ionic_dbell_ring(lif->kern_dbpage,
-				 qcq->q.hw_type,
-				 IONIC_DBELL_RING_1 |
-				 IONIC_DBELL_QID(qcq->q.hw_index) |
-				 qcq->cq.tail_idx);
-	} else if (qcq->flags & IONIC_QCQ_F_INTR) {
+	if (qcq->flags & IONIC_QCQ_F_INTR) {
 		irq_set_affinity_hint(qcq->intr.vector,
 				      &qcq->intr.affinity_mask);
 		ionic_intr_mask(idev->intr_ctrl, qcq->intr.index,
@@ -522,7 +515,7 @@ static int ionic_alloc_qcq_interrupt(struct ionic_lif *lif, struct ionic_qcq *qc
 	ionic_intr_mask_assert(lif->ionic->idev.intr_ctrl, qcq->intr.index,
 			       IONIC_INTR_MASK_SET);
 
-	err = ionic_request_napi_irq(lif, qcq);
+	err = ionic_request_irq(lif, qcq);
 	if (err) {
 		netdev_warn(lif->netdev, "irq request failed %d\n", err);
 		goto err_out_free_intr;
@@ -589,11 +582,15 @@ static int ionic_qcq_alloc(struct ionic_lif *lif, unsigned int type,
 	new->q.dev = dev;
 	new->flags = flags;
 
-	new->q.info = vzalloc(num_descs * sizeof(*new->q.info));
+	new->q.info = vzalloc_node(num_descs * sizeof(*new->q.info),
+				   dev_to_node(dev));
 	if (!new->q.info) {
-		netdev_err(lif->netdev, "Cannot allocate queue info\n");
-		err = -ENOMEM;
-		goto err_out_free_qcq;
+		new->q.info = vzalloc(num_descs * sizeof(*new->q.info));
+		if (!new->q.info) {
+			netdev_err(lif->netdev, "Cannot allocate queue info\n");
+			err = -ENOMEM;
+			goto err_out_free_qcq;
+		}
 	}
 
 	new->q.type = type;
@@ -610,11 +607,16 @@ static int ionic_qcq_alloc(struct ionic_lif *lif, unsigned int type,
 	if (err)
 		goto err_out;
 
-	new->cq.info = vzalloc(num_descs * sizeof(*new->cq.info));
+	new->cq.info = vzalloc_node(num_descs * sizeof(*new->cq.info),
+				    dev_to_node(dev));
 	if (!new->cq.info) {
-		netdev_err(lif->netdev, "Cannot allocate completion queue info\n");
-		err = -ENOMEM;
-		goto err_out_free_irq;
+		new->cq.info = vzalloc(num_descs * sizeof(*new->cq.info));
+		if (!new->cq.info) {
+			netdev_err(lif->netdev,
+				   "Cannot allocate completion queue info\n");
+			err = -ENOMEM;
+			goto err_out_free_irq;
+		}
 	}
 
 	err = ionic_cq_init(lif, &new->cq, &new->intr, num_descs, cq_desc_size);
@@ -624,11 +626,17 @@ static int ionic_qcq_alloc(struct ionic_lif *lif, unsigned int type,
 	}
 
 	if (flags & IONIC_QCQ_F_NOTIFYQ) {
-		/* q & cq need to be contiguous in case of notifyq */
-		new->q_size = PAGE_SIZE + ALIGN(num_descs * desc_size, PAGE_SIZE) +
-						ALIGN(num_descs * cq_desc_size, PAGE_SIZE);
-		new->q_base = dma_alloc_coherent(dev, new->q_size + new->cq_size,
-						&new->q_base_pa, GFP_KERNEL);
+		int q_size;
+
+		/* q & cq need to be contiguous in NotifyQ, so alloc it all in q
+		 * and don't alloc qc.  We leave new->qc_size and new->qc_base
+		 * as 0 to be sure we don't try to free it later.
+		 */
+		q_size = ALIGN(num_descs * desc_size, PAGE_SIZE);
+		new->q_size = PAGE_SIZE + q_size +
+			      ALIGN(num_descs * cq_desc_size, PAGE_SIZE);
+		new->q_base = dma_alloc_coherent(dev, new->q_size,
+						 &new->q_base_pa, GFP_KERNEL);
 		if (!new->q_base) {
 			netdev_err(lif->netdev, "Cannot allocate qcq DMA memory\n");
 			err = -ENOMEM;
@@ -638,10 +646,8 @@ static int ionic_qcq_alloc(struct ionic_lif *lif, unsigned int type,
 		q_base_pa = ALIGN(new->q_base_pa, PAGE_SIZE);
 		ionic_q_map(&new->q, q_base, q_base_pa);
 
-		cq_base = PTR_ALIGN(q_base +
-			ALIGN(num_descs * desc_size, PAGE_SIZE), PAGE_SIZE);
-		cq_base_pa = ALIGN(new->q_base_pa +
-			ALIGN(num_descs * desc_size, PAGE_SIZE), PAGE_SIZE);
+		cq_base = PTR_ALIGN(q_base + q_size, PAGE_SIZE);
+		cq_base_pa = ALIGN(new->q_base_pa + q_size, PAGE_SIZE);
 		ionic_cq_map(&new->cq, cq_base, cq_base_pa);
 		ionic_cq_bind(&new->cq, &new->q);
 	} else {
@@ -801,25 +807,12 @@ err_out:
 	return err;
 }
 
-static inline int ionic_choose_eq(struct ionic_lif *lif, int q_index)
-{
-	unsigned int abs_q;
-
-	if (lif->index)
-		abs_q = (lif->ionic->nrxqs_per_lif + lif->index);
-	else
-		abs_q = q_index;
-
-	return abs_q % lif->ionic->neth_eqs;
-}
-
 static void ionic_qcq_sanitize(struct ionic_qcq *qcq)
 {
 	qcq->q.tail_idx = 0;
 	qcq->q.head_idx = 0;
 	qcq->cq.tail_idx = 0;
 	qcq->cq.done_color = 1;
-
 	memset(qcq->q_base, 0, qcq->q_size);
 	if (qcq->cmb_q_base)
 		memset_io(qcq->cmb_q_base, 0, qcq->cmb_q_size);
@@ -840,6 +833,9 @@ static int ionic_lif_txq_init(struct ionic_lif *lif, struct ionic_qcq *qcq)
 			.type = q->type,
 			.ver = lif->qtype_info[q->type].version,
 			.index = cpu_to_le32(q->index),
+			.flags = cpu_to_le16(IONIC_QINIT_F_IRQ |
+					     IONIC_QINIT_F_SG),
+			.intr_index = cpu_to_le16(qcq->intr.index),
 			.pid = cpu_to_le16(q->pid),
 			.ring_size = ilog2(q->num_descs),
 			.ring_base = cpu_to_le64(q->base_pa),
@@ -849,23 +845,6 @@ static int ionic_lif_txq_init(struct ionic_lif *lif, struct ionic_qcq *qcq)
 		},
 	};
 	int err;
-
-	if (lif->ionic->neth_eqs &&
-	    lif->qtype_info[q->type].features & IONIC_QIDENT_F_EQ) {
-		unsigned int eq_index = ionic_choose_eq(lif, q->index);
-
-		ctx.cmd.q_init.flags = cpu_to_le16(IONIC_QINIT_F_EQ |
-						   IONIC_QINIT_F_SG);
-		ctx.cmd.q_init.intr_index = cpu_to_le16(eq_index);
-	} else {
-		unsigned int intr_index;
-
-		intr_index = qcq->intr.index;
-
-		ctx.cmd.q_init.flags = cpu_to_le16(IONIC_QINIT_F_IRQ |
-						   IONIC_QINIT_F_SG);
-		ctx.cmd.q_init.intr_index = cpu_to_le16(intr_index);
-	}
 
 	if (qcq->flags & IONIC_QCQ_F_CMB_RINGS) {
 		ctx.cmd.q_init.flags |= cpu_to_le16(IONIC_QINIT_F_CMB);
@@ -922,6 +901,9 @@ static int ionic_lif_rxq_init(struct ionic_lif *lif, struct ionic_qcq *qcq)
 			.type = q->type,
 			.ver = lif->qtype_info[q->type].version,
 			.index = cpu_to_le32(q->index),
+			.flags = cpu_to_le16(IONIC_QINIT_F_IRQ |
+					     IONIC_QINIT_F_SG),
+			.intr_index = cpu_to_le16(cq->bound_intr->index),
 			.pid = cpu_to_le16(q->pid),
 			.ring_size = ilog2(q->num_descs),
 			.ring_base = cpu_to_le64(q->base_pa),
@@ -931,19 +913,6 @@ static int ionic_lif_rxq_init(struct ionic_lif *lif, struct ionic_qcq *qcq)
 		},
 	};
 	int err;
-
-	if (lif->ionic->neth_eqs &&
-	    lif->qtype_info[q->type].features & IONIC_QIDENT_F_EQ) {
-		unsigned int eq_index = ionic_choose_eq(lif, q->index);
-
-		ctx.cmd.q_init.flags = cpu_to_le16(IONIC_QINIT_F_EQ |
-						   IONIC_QINIT_F_SG);
-		ctx.cmd.q_init.intr_index = cpu_to_le16(eq_index);
-	} else {
-		ctx.cmd.q_init.flags = cpu_to_le16(IONIC_QINIT_F_IRQ |
-						   IONIC_QINIT_F_SG);
-		ctx.cmd.q_init.intr_index = cpu_to_le16(cq->bound_intr->index);
-	}
 
 	if (qcq->flags & IONIC_QCQ_F_CMB_RINGS) {
 		ctx.cmd.q_init.flags |= cpu_to_le16(IONIC_QINIT_F_CMB);
@@ -1847,17 +1816,17 @@ static int ionic_program_mac(struct ionic_lif *lif, u8 *mac)
 	 * doesn't actually change the mac and doesn't return an error, so we
 	 * do the get attr to verify whether or not the set actually happened
 	 */
-	if (ether_addr_equal(get_mac, mac))
-		return 0;
+	if (!ether_addr_equal(get_mac, mac))
+		return 1;
 
-	return 1;
+	return 0;
 }
 
 static int ionic_set_mac_address(struct net_device *netdev, void *sa)
 {
 	struct ionic_lif *lif = netdev_priv(netdev);
-	struct sockaddr  *addr = sa;
-	u8  *mac;
+	struct sockaddr *addr = sa;
+	u8 *mac;
 	int err;
 
 	mac = (u8 *)addr->sa_data;
@@ -1870,7 +1839,7 @@ static int ionic_set_mac_address(struct net_device *netdev, void *sa)
 		return err;
 
 	if (err > 0)
-		netdev_dbg(netdev, "%s:SET and GET ATTR Mac is not equal-due to old FW running\n",
+		netdev_dbg(netdev, "%s: SET and GET ATTR Mac is not equal-due to old FW running\n",
 			   __func__);
 
 	err = eth_prepare_mac_addr_change(netdev, addr);
@@ -1966,8 +1935,6 @@ static void ionic_tx_timeout_work(struct work_struct *ws)
 
 	if (test_bit(IONIC_LIF_F_FW_RESET, lif->state))
 		return;
-
-	// TODO: queue specific reset
 
 	/* if we were stopped before this scheduled job was launched,
 	 * don't bother the queues as they are already stopped.
@@ -2216,12 +2183,10 @@ static int ionic_txrx_alloc(struct ionic_lif *lif)
 
 	flags = IONIC_QCQ_F_TX_STATS | IONIC_QCQ_F_SG;
 
-	if (test_bit(IONIC_LIF_F_CMB_RINGS, lif->state))
+	if (test_bit(IONIC_LIF_F_CMB_TX_RINGS, lif->state))
 		flags |= IONIC_QCQ_F_CMB_RINGS;
 
-	if (test_bit(IONIC_LIF_F_SPLIT_INTR, lif->state) &&
-	    !(lif->ionic->neth_eqs &&
-	      lif->qtype_info[IONIC_QTYPE_TXQ].features & IONIC_QIDENT_F_EQ))
+	if (test_bit(IONIC_LIF_F_SPLIT_INTR, lif->state))
 		flags |= IONIC_QCQ_F_INTR;
 
 	for (i = 0; i < lif->nxqs; i++) {
@@ -2242,11 +2207,9 @@ static int ionic_txrx_alloc(struct ionic_lif *lif)
 		ionic_debugfs_add_qcq(lif, lif->txqcqs[i]);
 	}
 
-	flags = IONIC_QCQ_F_RX_STATS | IONIC_QCQ_F_SG;
-	if (!ionic_use_eqs(lif))
-		flags |= IONIC_QCQ_F_INTR;
+	flags = IONIC_QCQ_F_RX_STATS | IONIC_QCQ_F_SG | IONIC_QCQ_F_INTR;
 
-	if (test_bit(IONIC_LIF_F_CMB_RINGS, lif->state))
+	if (test_bit(IONIC_LIF_F_CMB_RX_RINGS, lif->state))
 		flags |= IONIC_QCQ_F_CMB_RINGS;
 
 	num_desc = lif->nrxq_descs;
@@ -2266,17 +2229,15 @@ static int ionic_txrx_alloc(struct ionic_lif *lif)
 
 		lif->rxqcqs[i]->q.features = lif->rxq_features;
 
-		if (flags & IONIC_QCQ_F_INTR) {
-			ionic_intr_coal_init(lif->ionic->idev.intr_ctrl,
-					     lif->rxqcqs[i]->intr.index,
-					     lif->rx_coalesce_hw);
-			if (test_bit(IONIC_LIF_F_RX_DIM_INTR, lif->state))
-				lif->rxqcqs[i]->intr.dim_coal_hw = lif->rx_coalesce_hw;
+		ionic_intr_coal_init(lif->ionic->idev.intr_ctrl,
+				     lif->rxqcqs[i]->intr.index,
+				     lif->rx_coalesce_hw);
+		if (test_bit(IONIC_LIF_F_RX_DIM_INTR, lif->state))
+			lif->rxqcqs[i]->intr.dim_coal_hw = lif->rx_coalesce_hw;
 
-			if (!test_bit(IONIC_LIF_F_SPLIT_INTR, lif->state))
-				ionic_link_qcq_interrupts(lif->rxqcqs[i],
-							  lif->txqcqs[i]);
-		}
+		if (!test_bit(IONIC_LIF_F_SPLIT_INTR, lif->state))
+			ionic_link_qcq_interrupts(lif->rxqcqs[i],
+						  lif->txqcqs[i]);
 
 		ionic_debugfs_add_qcq(lif, lif->rxqcqs[i]);
 	}
@@ -2398,7 +2359,6 @@ static int ionic_start_queues(struct ionic_lif *lif)
 		clear_bit(IONIC_LIF_F_UP, lif->state);
 		return err;
 	}
-
 	netif_tx_wake_all_queues(lif->netdev);
 
 	return 0;
@@ -2408,12 +2368,6 @@ static int ionic_open(struct net_device *netdev)
 {
 	struct ionic_lif *lif = netdev_priv(netdev);
 	int err;
-
-	if (test_bit(IONIC_LIF_F_UP, lif->state)) {
-		dev_dbg(lif->ionic->dev, "%s: %s called when state=UP\n",
-			__func__, lif->name);
-		return 0;
-	}
 
 	/* If recovering from a broken state, clear the bit and we'll try again */
 	if (test_and_clear_bit(IONIC_LIF_F_BROKEN, lif->state))
@@ -2500,82 +2454,11 @@ static int ionic_eth_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd
 	}
 }
 
-static int ionic_get_fw_vf_config(struct ionic *ionic, int vf, struct ionic_vf *vfdata)
-{
-	struct ionic_vf_getattr_comp comp = { 0 };
-	int err;
-	u8 attr;
-
-	attr = IONIC_VF_ATTR_VLAN;
-	err = ionic_dev_cmd_vf_getattr(ionic, vf, attr, &comp);
-	if (err && comp.status != IONIC_RC_ENOSUPP)
-		goto err_out;
-	if (!err)
-		vfdata->vlanid = comp.vlanid;
-
-	attr = IONIC_VF_ATTR_SPOOFCHK;
-	err = ionic_dev_cmd_vf_getattr(ionic, vf, attr, &comp);
-	if (err && comp.status != IONIC_RC_ENOSUPP)
-		goto err_out;
-	if (!err)
-		vfdata->spoofchk = comp.spoofchk;
-
-	attr = IONIC_VF_ATTR_LINKSTATE;
-	err = ionic_dev_cmd_vf_getattr(ionic, vf, attr, &comp);
-	if (err && comp.status != IONIC_RC_ENOSUPP)
-		goto err_out;
-	if (!err) {
-		switch (comp.linkstate) {
-		case IONIC_VF_LINK_STATUS_UP:
-			vfdata->linkstate = IFLA_VF_LINK_STATE_ENABLE;
-			break;
-		case IONIC_VF_LINK_STATUS_DOWN:
-			vfdata->linkstate = IFLA_VF_LINK_STATE_DISABLE;
-			break;
-		case IONIC_VF_LINK_STATUS_AUTO:
-			vfdata->linkstate = IFLA_VF_LINK_STATE_AUTO;
-			break;
-		default:
-			dev_warn(ionic->dev, "Unexpected link state %u\n", comp.linkstate);
-			break;
-		}
-	}
-
-	attr = IONIC_VF_ATTR_RATE;
-	err = ionic_dev_cmd_vf_getattr(ionic, vf, attr, &comp);
-	if (err && comp.status != IONIC_RC_ENOSUPP)
-		goto err_out;
-	if (!err)
-		vfdata->maxrate = comp.maxrate;
-
-	attr = IONIC_VF_ATTR_TRUST;
-	err = ionic_dev_cmd_vf_getattr(ionic, vf, attr, &comp);
-	if (err && comp.status != IONIC_RC_ENOSUPP)
-		goto err_out;
-	if (!err)
-		vfdata->trusted = comp.trust;
-
-	attr = IONIC_VF_ATTR_MAC;
-	err = ionic_dev_cmd_vf_getattr(ionic, vf, attr, &comp);
-	if (err && comp.status != IONIC_RC_ENOSUPP)
-		goto err_out;
-	if (!err)
-		ether_addr_copy(vfdata->macaddr, comp.macaddr);
-
-err_out:
-	if (err)
-		dev_err(ionic->dev, "Failed to get %s for VF %d\n",
-			ionic_vf_attr_to_str(attr), vf);
-
-	return err;
-}
-
 static int ionic_get_vf_config(struct net_device *netdev,
 			       int vf, struct ifla_vf_info *ivf)
 {
 	struct ionic_lif *lif = netdev_priv(netdev);
 	struct ionic *ionic = lif->ionic;
-	struct ionic_vf vfdata = { 0 };
 	int ret = 0;
 
 	if (!netif_device_present(netdev))
@@ -2586,18 +2469,16 @@ static int ionic_get_vf_config(struct net_device *netdev,
 	if (vf >= pci_num_vf(ionic->pdev) || !ionic->vfs) {
 		ret = -EINVAL;
 	} else {
-		ivf->vf = vf;
-		ivf->qos = 0;
+		struct ionic_vf *vfdata = &ionic->vfs[vf];
 
-		ret = ionic_get_fw_vf_config(ionic, vf, &vfdata);
-		if (!ret) {
-			ivf->vlan         = le16_to_cpu(vfdata.vlanid);
-			ivf->spoofchk     = vfdata.spoofchk;
-			ivf->linkstate    = vfdata.linkstate;
-			ivf->max_tx_rate  = le32_to_cpu(vfdata.maxrate);
-			ivf->trusted      = vfdata.trusted;
-			ether_addr_copy(ivf->mac, vfdata.macaddr);
-		}
+		ivf->vf		  = vf;
+		ivf->qos	  = 0;
+		ivf->vlan         = le16_to_cpu(vfdata->vlanid);
+		ivf->spoofchk     = vfdata->spoofchk;
+		ivf->linkstate    = vfdata->linkstate;
+		ivf->max_tx_rate  = le32_to_cpu(vfdata->maxrate);
+		ivf->trusted      = vfdata->trusted;
+		ether_addr_copy(ivf->mac, vfdata->macaddr);
 	}
 
 	up_read(&ionic->vf_op_lock);
@@ -2757,7 +2638,6 @@ static int ionic_set_vf_spoofchk(struct net_device *netdev, int vf, bool set)
 	struct ionic_vf_setattr_cmd vfc = { .attr = IONIC_VF_ATTR_SPOOFCHK };
 	struct ionic_lif *lif = netdev_priv(netdev);
 	struct ionic *ionic = lif->ionic;
-	u8 data = set;  /* convert to u8 for config */
 	int ret;
 
 	if (!netif_device_present(netdev))
@@ -2774,7 +2654,7 @@ static int ionic_set_vf_spoofchk(struct net_device *netdev, int vf, bool set)
 
 		ret = ionic_set_vf_config(ionic, vf, &vfc);
 		if (!ret)
-			ionic->vfs[vf].spoofchk = data;
+			ionic->vfs[vf].spoofchk = set;
 	}
 
 	up_write(&ionic->vf_op_lock);
@@ -2787,7 +2667,6 @@ static int ionic_set_vf_trust(struct net_device *netdev, int vf, bool set)
 	struct ionic_vf_setattr_cmd vfc = { .attr = IONIC_VF_ATTR_TRUST };
 	struct ionic_lif *lif = netdev_priv(netdev);
 	struct ionic *ionic = lif->ionic;
-	u8 data = set;  /* convert to u8 for config */
 	int ret;
 
 	if (!netif_device_present(netdev))
@@ -2804,7 +2683,7 @@ static int ionic_set_vf_trust(struct net_device *netdev, int vf, bool set)
 
 		ret = ionic_set_vf_config(ionic, vf, &vfc);
 		if (!ret)
-			ionic->vfs[vf].trusted = data;
+			ionic->vfs[vf].trusted = set;
 	}
 
 	up_write(&ionic->vf_op_lock);
@@ -2817,18 +2696,18 @@ static int ionic_set_vf_link_state(struct net_device *netdev, int vf, int set)
 	struct ionic_vf_setattr_cmd vfc = { .attr = IONIC_VF_ATTR_LINKSTATE };
 	struct ionic_lif *lif = netdev_priv(netdev);
 	struct ionic *ionic = lif->ionic;
-	u8 data;
+	u8 vfls;
 	int ret;
 
 	switch (set) {
 	case IFLA_VF_LINK_STATE_ENABLE:
-		data = IONIC_VF_LINK_STATUS_UP;
+		vfls = IONIC_VF_LINK_STATUS_UP;
 		break;
 	case IFLA_VF_LINK_STATE_DISABLE:
-		data = IONIC_VF_LINK_STATUS_DOWN;
+		vfls = IONIC_VF_LINK_STATUS_DOWN;
 		break;
 	case IFLA_VF_LINK_STATE_AUTO:
-		data = IONIC_VF_LINK_STATUS_AUTO;
+		vfls = IONIC_VF_LINK_STATUS_AUTO;
 		break;
 	default:
 		return -EINVAL;
@@ -2842,7 +2721,7 @@ static int ionic_set_vf_link_state(struct net_device *netdev, int vf, int set)
 	if (vf >= pci_num_vf(ionic->pdev) || !ionic->vfs) {
 		ret = -EINVAL;
 	} else {
-		vfc.linkstate = data;
+		vfc.linkstate = vfls;
 		dev_dbg(ionic->dev, "%s: vf %d linkstate %d\n",
 			__func__, vf, vfc.linkstate);
 
@@ -2873,49 +2752,49 @@ static void ionic_vf_attr_replay(struct ionic_lif *lif)
 		if (v->stats_pa) {
 			vfc.attr = IONIC_VF_ATTR_STATSADDR;
 			vfc.stats_pa = cpu_to_le64(v->stats_pa);
-			(void)ionic_set_vf_config(ionic, i, &vfc);
+			ionic_set_vf_config(ionic, i, &vfc);
 			vfc.stats_pa = 0;
 		}
 
 		if (!is_zero_ether_addr(v->macaddr)) {
 			vfc.attr = IONIC_VF_ATTR_MAC;
 			ether_addr_copy(vfc.macaddr, v->macaddr);
-			(void)ionic_set_vf_config(ionic, i, &vfc);
+			ionic_set_vf_config(ionic, i, &vfc);
 			eth_zero_addr(vfc.macaddr);
 		}
 
 		if (v->vlanid) {
 			vfc.attr = IONIC_VF_ATTR_VLAN;
 			vfc.vlanid = v->vlanid;
-			(void)ionic_set_vf_config(ionic, i, &vfc);
+			ionic_set_vf_config(ionic, i, &vfc);
 			vfc.vlanid = 0;
 		}
 
 		if (v->maxrate) {
 			vfc.attr = IONIC_VF_ATTR_RATE;
 			vfc.maxrate = v->maxrate;
-			(void)ionic_set_vf_config(ionic, i, &vfc);
+			ionic_set_vf_config(ionic, i, &vfc);
 			vfc.maxrate = 0;
 		}
 
 		if (v->spoofchk) {
 			vfc.attr = IONIC_VF_ATTR_SPOOFCHK;
 			vfc.spoofchk = v->spoofchk;
-			(void)ionic_set_vf_config(ionic, i, &vfc);
+			ionic_set_vf_config(ionic, i, &vfc);
 			vfc.spoofchk = 0;
 		}
 
 		if (v->trusted) {
 			vfc.attr = IONIC_VF_ATTR_TRUST;
 			vfc.trust = v->trusted;
-			(void)ionic_set_vf_config(ionic, i, &vfc);
+			ionic_set_vf_config(ionic, i, &vfc);
 			vfc.trust = 0;
 		}
 
 		if (v->linkstate) {
 			vfc.attr = IONIC_VF_ATTR_LINKSTATE;
 			vfc.linkstate = v->linkstate;
-			(void)ionic_set_vf_config(ionic, i, &vfc);
+			ionic_set_vf_config(ionic, i, &vfc);
 			vfc.linkstate = 0;
 		}
 	}
@@ -3095,7 +2974,8 @@ int ionic_reconfigure_queues(struct ionic_lif *lif,
 	int err = 0;
 
 	/* Are we changing q params while CMB is on */
-	if (test_bit(IONIC_LIF_F_CMB_RINGS, lif->state) && qparam->cmb_enabled)
+	if ((test_bit(IONIC_LIF_F_CMB_TX_RINGS, lif->state) && qparam->cmb_tx) ||
+	    (test_bit(IONIC_LIF_F_CMB_RX_RINGS, lif->state) && qparam->cmb_rx))
 		return ionic_cmb_reconfig(lif, qparam);
 
 	/* allocate temporary qcq arrays to hold new queue structs */
@@ -3140,6 +3020,8 @@ int ionic_reconfigure_queues(struct ionic_lif *lif,
 				err = ionic_qcq_alloc(lif, IONIC_QTYPE_TXQ, i, "tx", flags,
 						      4, desc_sz, comp_sz, sg_desc_sz,
 						      lif->kern_pid, &lif->txqcqs[i]);
+				if (err)
+					goto err_out;
 			}
 
 			flags = lif->txqcqs[i]->flags & ~IONIC_QCQ_F_INTR;
@@ -3167,6 +3049,8 @@ int ionic_reconfigure_queues(struct ionic_lif *lif,
 				err = ionic_qcq_alloc(lif, IONIC_QTYPE_RXQ, i, "rx", flags,
 						      4, desc_sz, comp_sz, sg_desc_sz,
 						      lif->kern_pid, &lif->rxqcqs[i]);
+				if (err)
+					goto err_out;
 			}
 
 			flags = lif->rxqcqs[i]->flags & ~IONIC_QCQ_F_INTR;
@@ -3474,7 +3358,7 @@ static void ionic_lif_reset(struct ionic_lif *lif)
 
 	mutex_lock(&lif->ionic->dev_cmd_lock);
 	ionic_dev_cmd_lif_reset(idev, lif->index);
-	ionic_dev_cmd_wait(lif->ionic, devcmd_timeout);
+	ionic_dev_cmd_wait(lif->ionic, DEVCMD_TIMEOUT);
 	mutex_unlock(&lif->ionic->dev_cmd_lock);
 }
 
@@ -3643,9 +3527,6 @@ void ionic_lif_deinit(struct ionic_lif *lif)
 			ionic_lif_rss_deinit(lif);
 	}
 
-	ionic_eqs_deinit(lif->ionic);
-	ionic_eqs_free(lif->ionic);
-
 	napi_disable(&lif->adminqcq->napi);
 	ionic_lif_qcq_deinit(lif, lif->notifyqcq);
 	ionic_lif_qcq_deinit(lif, lif->adminqcq);
@@ -3670,7 +3551,7 @@ static int ionic_lif_adminq_init(struct ionic_lif *lif)
 
 	mutex_lock(&lif->ionic->dev_cmd_lock);
 	ionic_dev_cmd_adminq_init(idev, qcq, lif->index, qcq->intr.index);
-	err = ionic_dev_cmd_wait(lif->ionic, devcmd_timeout);
+	err = ionic_dev_cmd_wait(lif->ionic, DEVCMD_TIMEOUT);
 	ionic_dev_cmd_comp(idev, (union ionic_dev_cmd_comp *)&comp);
 	mutex_unlock(&lif->ionic->dev_cmd_lock);
 	if (err) {
@@ -3766,7 +3647,7 @@ static int ionic_station_set(struct ionic_lif *lif)
 			.attr = IONIC_LIF_ATTR_MAC,
 		},
 	};
-	u8  mac_address[ETH_ALEN];
+	u8 mac_address[ETH_ALEN];
 	struct sockaddr addr;
 	int err;
 
@@ -3787,7 +3668,7 @@ static int ionic_station_set(struct ionic_lif *lif)
 			return err;
 
 		if (err > 0) {
-			netdev_dbg(netdev, "%s:SET/GET ATTR Mac is not same-due to old FW running\n",
+			netdev_dbg(netdev, "%s:SET/GET ATTR Mac are not same-due to old FW running\n",
 				   __func__);
 			return 0;
 		}
@@ -3799,8 +3680,7 @@ static int ionic_station_set(struct ionic_lif *lif)
 		 * likely here again after a fw-upgrade reset.  We need to be
 		 * sure the netdev mac is in our filter list.
 		 */
-		if (!ether_addr_equal(mac_address,
-				      netdev->dev_addr))
+		if (!ether_addr_equal(mac_address, netdev->dev_addr))
 			ionic_lif_addr_add(lif, netdev->dev_addr);
 	} else {
 		/* Update the netdev mac with the device's mac */
@@ -3833,7 +3713,7 @@ int ionic_lif_init(struct ionic_lif *lif)
 
 	mutex_lock(&lif->ionic->dev_cmd_lock);
 	ionic_dev_cmd_lif_init(idev, lif->index, lif->info_pa);
-	err = ionic_dev_cmd_wait(lif->ionic, devcmd_timeout);
+	err = ionic_dev_cmd_wait(lif->ionic, DEVCMD_TIMEOUT);
 	ionic_dev_cmd_comp(idev, (union ionic_dev_cmd_comp *)&comp);
 	mutex_unlock(&lif->ionic->dev_cmd_lock);
 	if (err)
@@ -3867,21 +3747,6 @@ int ionic_lif_init(struct ionic_lif *lif)
 		dev_err(dev, "Cannot map dbpage, aborting\n");
 		err = -ENOMEM;
 		goto err_out_free_dbid;
-	}
-
-	if (lif->ionic->neth_eqs) {
-		err = ionic_eqs_alloc(lif->ionic);
-		if (err) {
-			dev_err(dev, "Cannot allocate EQs: %d\n", err);
-			lif->ionic->neth_eqs = 0;
-		} else {
-			err = ionic_eqs_init(lif->ionic);
-			if (err) {
-				dev_err(dev, "Cannot init EQs: %d\n", err);
-				ionic_eqs_free(lif->ionic);
-				lif->ionic->neth_eqs = 0;
-			}
-		}
 	}
 
 	err = ionic_lif_adminq_init(lif);
@@ -3921,8 +3786,6 @@ err_out_notifyq_deinit:
 	ionic_lif_qcq_deinit(lif, lif->notifyqcq);
 err_out_adminq_deinit:
 	ionic_lif_qcq_deinit(lif, lif->adminqcq);
-	ionic_eqs_deinit(lif->ionic);
-	ionic_eqs_free(lif->ionic);
 	ionic_lif_reset(lif);
 	ionic_bus_unmap_dbpage(lif->ionic, lif->kern_dbpage);
 	lif->kern_dbpage = NULL;
@@ -4055,7 +3918,7 @@ static void ionic_lif_queue_identify(struct ionic_lif *lif)
 		mutex_lock(&ionic->dev_cmd_lock);
 		ionic_dev_cmd_queue_identify(idev, lif->lif_type, qtype,
 					     ionic_qtype_versions[qtype]);
-		err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
+		err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
 		if (!err) {
 			qti->version   = ioread8(&q_ident->version);
 			qti->supported = ioread8(&q_ident->supported);
@@ -4097,21 +3960,6 @@ static void ionic_lif_queue_identify(struct ionic_lif *lif)
 		dev_dbg(ionic->dev, " qtype[%d].sg_desc_stride = %d\n",
 			qtype, qti->sg_desc_stride);
 	}
-
-	/* Make sure that EQ support is disabled if not all the
-	 * bits are in place.
-	 *
-	 * This is to support internal testing with intermediate FW
-	 * versions, especially with testing FW upgrade, and shouldn't
-	 * be needed in released versions.
-	 */
-	if ((lif->qtype_info[IONIC_QTYPE_RXQ].features & IONIC_QIDENT_F_EQ) !=
-	    (lif->qtype_info[IONIC_QTYPE_TXQ].features & IONIC_QIDENT_F_EQ)) {
-		dev_warn(ionic->dev, "EQ version bugfix\n");
-		lif->qtype_info[IONIC_QTYPE_RXQ].features &= ~IONIC_QIDENT_F_EQ;
-		lif->qtype_info[IONIC_QTYPE_TXQ].features &= ~IONIC_QIDENT_F_EQ;
-		ionic->neth_eqs = 0;
-	}
 }
 
 int ionic_lif_identify(struct ionic *ionic, u8 lif_type,
@@ -4125,7 +3973,7 @@ int ionic_lif_identify(struct ionic *ionic, u8 lif_type,
 
 	mutex_lock(&ionic->dev_cmd_lock);
 	ionic_dev_cmd_lif_identify(idev, lif_type, IONIC_IDENTITY_VERSION_1);
-	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
+	err = ionic_dev_cmd_wait(ionic, DEVCMD_TIMEOUT);
 	memcpy_fromio(lid, &idev->dev_cmd_regs->data, sz);
 	mutex_unlock(&ionic->dev_cmd_lock);
 	if (err)
@@ -4161,29 +4009,20 @@ int ionic_lif_identify(struct ionic *ionic, u8 lif_type,
 int ionic_lif_size(struct ionic *ionic)
 {
 	struct ionic_identity *ident = &ionic->ident;
+	unsigned int nintrs, dev_nintrs;
 	unsigned int nrdma_eqs_per_lif;
 	union ionic_lif_config *lc;
 	unsigned int ntxqs_per_lif;
 	unsigned int nrxqs_per_lif;
 	unsigned int nnqs_per_lif;
-	unsigned int dev_neth_eqs;
-	unsigned int dev_nintrs;
 	unsigned int min_intrs;
 	unsigned int nrdma_eqs;
-	unsigned int neth_eqs;
-	unsigned int nintrs;
 	unsigned int nxqs;
 	int err;
 
 	/* retrieve basic values from FW */
 	lc = &ident->lif.eth.config;
 	dev_nintrs = le32_to_cpu(ident->dev.nintrs);
-
-	if (ionic->is_mgmt_nic)
-		dev_neth_eqs = 0;
-	else
-		dev_neth_eqs = le32_to_cpu(ident->dev.eq_count);
-	dev_neth_eqs = min_t(int, dev_neth_eqs, MAX_ETH_EQS);
 
 	nrdma_eqs_per_lif = le32_to_cpu(ident->lif.rdma.eq_qtype.qid_count);
 	nnqs_per_lif = le32_to_cpu(lc->queue_count[IONIC_QTYPE_NOTIFYQ]);
@@ -4209,9 +4048,6 @@ int ionic_lif_size(struct ionic *ionic)
 	 * One way of managing this is that when the interrupt count gets
 	 * out of hand we cut down on the number of things that need
 	 * interrupts until we get down to what we can get from the OS.
-	 *
-	 * Another way of managing this is by using a smaller number of
-	 * EventQueues on which we can multiplex interrupt events.
 	 */
 
 	/* reserve last queue id for hardware timestamping */
@@ -4228,21 +4064,14 @@ int ionic_lif_size(struct ionic *ionic)
 	nxqs = min(ntxqs_per_lif, nrxqs_per_lif);
 	nxqs = min(nxqs, num_online_cpus());
 	nrdma_eqs = min(nrdma_eqs_per_lif, num_online_cpus());
-	neth_eqs = min(dev_neth_eqs, num_online_cpus());
 
-	/* EventQueue interrupt usage: (if eq_count != 0)
-	 *    1 aq intr + n EQs + m RDMA
-	 *
-	 * Default interrupt usage:
-	 *         lif0 has n TxRx queues and 1 Adminq
-	 *    (1 aq interrupt + n TxRx queue interrupts)
-	 *    + whatever's left is for RDMA queues
+	/* interrupt usage:
+	 *    1 for master lif adminq/notifyq
+	 *    1 for each CPU for master lif TxRx queue pairs
+	 *    whatever's left is for RDMA queues
 	 */
 try_again:
-	if (neth_eqs)
-		nintrs = 1 + neth_eqs + nrdma_eqs;
-	else
-		nintrs = 1 + nxqs + nrdma_eqs;
+	nintrs = 1 + nxqs + nrdma_eqs;
 	min_intrs = 2;  /* adminq + 1 TxRx queue pair */
 
 	if (nintrs > dev_nintrs)
@@ -4266,7 +4095,6 @@ try_again:
 	ionic->nrxqs_per_lif = nxqs;
 	ionic->nintrs = nintrs;
 	ionic->nlifs = 1;
-	ionic->neth_eqs = neth_eqs;
 
 	ionic_debugfs_add_sizes(ionic);
 
@@ -4286,11 +4114,6 @@ try_fewer:
 		nrdma_eqs >>= 1;
 		goto try_again;
 	}
-	/* Cut Eth EQs in half */
-	if (neth_eqs > 1) {
-		neth_eqs >>= 1;
-		goto try_again;
-	}
 	/* Cut number of TxRx queuepairs */
 	if (nxqs > 1) {
 		nxqs >>= 1;
@@ -4306,6 +4129,15 @@ void ionic_device_reset(struct ionic_lif *lif)
 	int err;
 
 	dev_info(ionic->dev, "Device reset starting\n");
+
+	/* Stop the timer first so it can't re-schedule more work, but note
+	 * that there is a small chance the device could send an
+	 * IONIC_EVENT_RESET, which could cause another work item to be
+	 * scheduled and render these del/cancel calls useless (i.e. don't mix
+	 * device triggered resets with userspace triggered resets).
+	 */
+	del_timer_sync(&ionic->watchdog_timer);
+	cancel_work_sync(&lif->deferred.work);
 
 	mutex_lock(&lif->queue_lock);
 	ionic_stop_queues_reconfig(lif);
@@ -4353,6 +4185,7 @@ void ionic_device_reset(struct ionic_lif *lif)
 	mutex_unlock(&lif->queue_lock);
 
 	netif_device_attach(lif->netdev);
+	mod_timer(&ionic->watchdog_timer, jiffies + 1);
 
 	dev_info(ionic->dev, "Device reset done\n");
 	return;

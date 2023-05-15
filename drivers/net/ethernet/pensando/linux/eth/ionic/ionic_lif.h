@@ -185,7 +185,8 @@ enum ionic_lif_state_flags {
 	IONIC_LIF_F_BROKEN,
 	IONIC_LIF_F_TX_DIM_INTR,
 	IONIC_LIF_F_RX_DIM_INTR,
-	IONIC_LIF_F_CMB_RINGS,
+	IONIC_LIF_F_CMB_TX_RINGS,
+	IONIC_LIF_F_CMB_RX_RINGS,
 
 	/* leave this as last */
 	IONIC_LIF_F_STATE_SIZE
@@ -319,7 +320,8 @@ struct ionic_queue_params {
 	unsigned int nrxq_descs;
 	u64 rxq_features;
 	bool intr_split;
-	bool cmb_enabled;
+	bool cmb_tx;
+	bool cmb_rx;
 };
 
 static inline void ionic_init_queue_params(struct ionic_lif *lif,
@@ -330,7 +332,8 @@ static inline void ionic_init_queue_params(struct ionic_lif *lif,
 	qparam->nrxq_descs = lif->nrxq_descs;
 	qparam->rxq_features = lif->rxq_features;
 	qparam->intr_split = test_bit(IONIC_LIF_F_SPLIT_INTR, lif->state);
-	qparam->cmb_enabled = test_bit(IONIC_LIF_F_CMB_RINGS, lif->state);
+	qparam->cmb_tx = test_bit(IONIC_LIF_F_CMB_TX_RINGS, lif->state);
+	qparam->cmb_rx = test_bit(IONIC_LIF_F_CMB_RX_RINGS, lif->state);
 }
 
 static inline void ionic_set_queue_params(struct ionic_lif *lif,
@@ -346,10 +349,15 @@ static inline void ionic_set_queue_params(struct ionic_lif *lif,
 	else
 		clear_bit(IONIC_LIF_F_SPLIT_INTR, lif->state);
 
-	if (qparam->cmb_enabled)
-		set_bit(IONIC_LIF_F_CMB_RINGS, lif->state);
+	if (qparam->cmb_tx)
+		set_bit(IONIC_LIF_F_CMB_TX_RINGS, lif->state);
 	else
-		clear_bit(IONIC_LIF_F_CMB_RINGS, lif->state);
+		clear_bit(IONIC_LIF_F_CMB_TX_RINGS, lif->state);
+
+	if (qparam->cmb_rx)
+		set_bit(IONIC_LIF_F_CMB_RX_RINGS, lif->state);
+	else
+		clear_bit(IONIC_LIF_F_CMB_RX_RINGS, lif->state);
 }
 
 static inline u32 ionic_coal_usec_to_hw(struct ionic *ionic, u32 usecs)
@@ -372,12 +380,6 @@ static inline bool ionic_is_pf(struct ionic *ionic)
 {
 	return ionic->pdev &&
 	       ionic->pdev->device == PCI_DEVICE_ID_PENSANDO_IONIC_ETH_PF;
-}
-
-static inline bool ionic_use_eqs(struct ionic_lif *lif)
-{
-	return lif->ionic->neth_eqs &&
-	       lif->qtype_info[IONIC_QTYPE_RXQ].features & IONIC_QIDENT_F_EQ;
 }
 
 void ionic_lif_deferred_enqueue(struct ionic_deferred *def,
