@@ -6767,13 +6767,14 @@ void _kc_ethtool_sprintf(u8 **data, const char *fmt, ...);
 #if (!RHEL_RELEASE_CODE || (RHEL_RELEASE_CODE && \
        (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,0))))
 
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_VERSION(8, 6) == RHEL_RELEASE_CODE))
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_VERSION(8, 6) <= RHEL_RELEASE_CODE))
 #define HAVE_COALESCE_EXTACK
 #endif
 
 #define ndo_eth_ioctl ndo_do_ioctl
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
+#if !RHEL_RELEASE_CODE || (RHEL_RELEASE_VERSION(8, 7) > RHEL_RELEASE_CODE)
 static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
 						size_t priv_size,
 						struct device *dev)
@@ -6781,9 +6782,16 @@ static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
 	return devlink_alloc(ops, priv_size);
 }
 #define devlink_alloc  _kc_devlink_alloc
+#else
+#define HAVE_VOID_DEVLINK_REGISTER
+#endif
 #endif /* CONFIG_NET_DEVLINK */
 
 #else
+
+#if RHEL_RELEASE_CODE && RHEL_RELEASE_VERSION(9, 0) < RHEL_RELEASE_CODE
+#define HAVE_COALESCE_EXTACK
+#endif
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 #define HAVE_VOID_DEVLINK_REGISTER
@@ -6803,6 +6811,12 @@ static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
 
 /*****************************************************************************/
 #if (KERNEL_VERSION(5, 17, 0) > LINUX_VERSION_CODE)
+
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_VERSION(8, 7) <= RHEL_RELEASE_CODE && \
+			   RHEL_RELEASE_VERSION(9, 0) != RHEL_RELEASE_CODE))
+#define HAVE_RINGPARAM_EXTACK
+#endif
+
 #else
 #define HAVE_RINGPARAM_EXTACK
 #endif /* 5.17 */
@@ -6834,6 +6848,19 @@ static inline int skb_inner_tcp_all_headers(const struct sk_buff *skb)
 
 #else
 #endif /* 6.1 */
+
+/*****************************************************************************/
+#if (KERNEL_VERSION(6, 2, 0) > LINUX_VERSION_CODE)
+#define SET_NETDEV_DEVLINK_PORT(dev, port)   devlink_port_type_eth_set(port, dev)
+#else
+#define devlink_info_driver_name_put(x, y)  0
+#endif /* 6.2 */
+
+/*****************************************************************************/
+#if (KERNEL_VERSION(6, 3, 0) > LINUX_VERSION_CODE)
+#else
+#define HAVE_RX_PUSH
+#endif /* 6.3 */
 
 /* We don't support PTP on older RHEL kernels (needs more compat work) */
 #if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))

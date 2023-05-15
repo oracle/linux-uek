@@ -604,7 +604,7 @@ void ionic_rx_fill(struct ionic_queue *q)
 						 IONIC_RXQ_DESC_OPCODE_SIMPLE;
 		desc_info->nbufs = nfrags;
 
-		/* commit descriptor contents in one shot */
+		/* commit CMB descriptor contents in one shot */
 		if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
 			memcpy_toio(desc_info->cmb_desc, desc, q->desc_size);
 
@@ -679,7 +679,6 @@ static void ionic_dim_update(struct ionic_qcq *qcq, int napi_mode)
 
 	net_dim(&qcq->dim, dim_sample);
 }
-
 int ionic_tx_napi(struct napi_struct *napi, int budget)
 {
 	struct ionic_qcq *qcq = napi_to_qcq(napi);
@@ -688,7 +687,6 @@ int ionic_tx_napi(struct napi_struct *napi, int budget)
 	struct ionic_lif *lif;
 	u32 work_done = 0;
 	u32 flags = 0;
-	u64 dbr;
 
 	lif = cq->bound_q->lif;
 	idev = &lif->ionic->idev;
@@ -697,28 +695,16 @@ int ionic_tx_napi(struct napi_struct *napi, int budget)
 				     ionic_tx_service, NULL, NULL);
 
 	if (work_done < budget && napi_complete_done(napi, work_done)) {
+		ionic_dim_update(qcq, IONIC_LIF_F_TX_DIM_INTR);
 		flags |= IONIC_INTR_CRED_UNMASK;
 		cq->bound_intr->rearm_count++;
 	}
 
 	if (work_done || flags) {
 		flags |= IONIC_INTR_CRED_RESET_COALESCE;
-		if (!lif->ionic->neth_eqs) {
-			if (flags & IONIC_INTR_CRED_UNMASK)
-				ionic_dim_update(qcq, IONIC_LIF_F_TX_DIM_INTR);
-			ionic_intr_credits(idev->intr_ctrl,
-					   cq->bound_intr->index,
-					   work_done, flags);
-		} else {
-			if (!qcq->armed) {
-				qcq->armed = true;
-				dbr = IONIC_DBELL_RING_1 |
-				      IONIC_DBELL_QID(qcq->q.hw_index);
-				ionic_dbell_ring(lif->kern_dbpage,
-						 qcq->q.hw_type,
-						 dbr | qcq->cq.tail_idx);
-			}
-		}
+		ionic_intr_credits(idev->intr_ctrl,
+				   cq->bound_intr->index,
+				   work_done, flags);
 	}
 
 	if (!work_done && ionic_txq_poke_doorbell(&qcq->q))
@@ -737,7 +723,6 @@ int ionic_rx_napi(struct napi_struct *napi, int budget)
 	struct ionic_lif *lif;
 	u32 work_done = 0;
 	u32 flags = 0;
-	u64 dbr;
 
 	lif = cq->bound_q->lif;
 	idev = &lif->ionic->idev;
@@ -748,28 +733,16 @@ int ionic_rx_napi(struct napi_struct *napi, int budget)
 	ionic_rx_fill(cq->bound_q);
 
 	if (work_done < budget && napi_complete_done(napi, work_done)) {
+		ionic_dim_update(qcq, IONIC_LIF_F_RX_DIM_INTR);
 		flags |= IONIC_INTR_CRED_UNMASK;
 		cq->bound_intr->rearm_count++;
 	}
 
 	if (work_done || flags) {
 		flags |= IONIC_INTR_CRED_RESET_COALESCE;
-		if (!lif->ionic->neth_eqs) {
-			if (flags & IONIC_INTR_CRED_UNMASK)
-				ionic_dim_update(qcq, IONIC_LIF_F_RX_DIM_INTR);
-			ionic_intr_credits(idev->intr_ctrl,
-					   cq->bound_intr->index,
-					   work_done, flags);
-		} else {
-			if (!qcq->armed) {
-				qcq->armed = true;
-				dbr = IONIC_DBELL_RING_1 |
-				      IONIC_DBELL_QID(qcq->q.hw_index);
-				ionic_dbell_ring(lif->kern_dbpage,
-						 qcq->q.hw_type,
-						 dbr | qcq->cq.tail_idx);
-			}
-		}
+		ionic_intr_credits(idev->intr_ctrl,
+				   cq->bound_intr->index,
+				   work_done, flags);
 	}
 
 	if (!work_done && ionic_rxq_poke_doorbell(&qcq->q))
@@ -785,13 +758,13 @@ int ionic_txrx_napi(struct napi_struct *napi, int budget)
 	struct ionic_qcq *rxqcq = napi_to_qcq(napi);
 	struct ionic_cq *rxcq = napi_to_cq(napi);
 	unsigned int qi = rxcq->bound_q->index;
+	struct ionic_qcq *txqcq;
 	struct ionic_dev *idev;
 	struct ionic_lif *lif;
-	struct ionic_qcq *txqcq;
 	struct ionic_cq *txcq;
 	bool resched = false;
-	u32 tx_work_done = 0;
 	u32 rx_work_done = 0;
+	u32 tx_work_done = 0;
 	u32 flags = 0;
 
 	lif = rxcq->bound_q->lif;
@@ -808,38 +781,15 @@ int ionic_txrx_napi(struct napi_struct *napi, int budget)
 	ionic_rx_fill(rxcq->bound_q);
 
 	if (rx_work_done < budget && napi_complete_done(napi, rx_work_done)) {
+		ionic_dim_update(rxqcq, 0);
 		flags |= IONIC_INTR_CRED_UNMASK;
 		rxcq->bound_intr->rearm_count++;
 	}
 
 	if (rx_work_done || flags) {
 		flags |= IONIC_INTR_CRED_RESET_COALESCE;
-		if (!lif->ionic->neth_eqs) {
-			if (flags & IONIC_INTR_CRED_UNMASK)
-				ionic_dim_update(rxqcq, 0);
-			ionic_intr_credits(idev->intr_ctrl,
-					   rxcq->bound_intr->index,
-					   tx_work_done + rx_work_done, flags);
-		} else {
-			u64 dbr;
-
-			if (!rxqcq->armed) {
-				rxqcq->armed = true;
-				dbr = IONIC_DBELL_RING_1 |
-				      IONIC_DBELL_QID(rxqcq->q.hw_index);
-				ionic_dbell_ring(lif->kern_dbpage,
-						 rxqcq->q.hw_type,
-						 dbr | rxqcq->cq.tail_idx);
-			}
-			if (!txqcq->armed) {
-				txqcq->armed = true;
-				dbr = IONIC_DBELL_RING_1 |
-				      IONIC_DBELL_QID(txqcq->q.hw_index);
-				ionic_dbell_ring(lif->kern_dbpage,
-						 txqcq->q.hw_type,
-						 dbr | txqcq->cq.tail_idx);
-			}
-		}
+		ionic_intr_credits(idev->intr_ctrl, rxcq->bound_intr->index,
+				   tx_work_done + rx_work_done, flags);
 	}
 
 	DEBUG_STATS_NAPI_POLL(rxqcq, rx_work_done);
@@ -1059,7 +1009,7 @@ void ionic_tx_flush(struct ionic_cq *cq)
 	work_done = ionic_cq_service(cq, cq->num_descs,
 				     ionic_tx_service, NULL, NULL);
 
-	if (work_done && !cq->lif->ionic->neth_eqs)
+	if (work_done)
 		ionic_intr_credits(idev->intr_ctrl, cq->bound_intr->index,
 				   work_done, IONIC_INTR_CRED_RESET_COALESCE);
 }
@@ -1163,7 +1113,7 @@ static void ionic_tx_tso_post(struct ionic_queue *q,
 	desc->hdr_len = cpu_to_le16(hdrlen);
 	desc->mss = cpu_to_le16(mss);
 
-	/* commit descriptor contents in one shot */
+	/* commit CMB descriptor contents in one shot */
 	if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
 		memcpy_toio(desc_info->cmb_desc, desc, q->desc_size);
 
@@ -1318,11 +1268,11 @@ static int ionic_tx_tso(struct ionic_queue *q, struct sk_buff *skb)
 static void ionic_tx_calc_csum(struct ionic_queue *q, struct sk_buff *skb,
 			       struct ionic_desc_info *desc_info)
 {
+	struct ionic_txq_desc *desc = desc_info->txq_desc;
 	struct ionic_buf_info *buf_info = desc_info->bufs;
 #ifdef IONIC_DEBUG_STATS
 	struct ionic_tx_stats *stats = q_to_tx_stats(q);
 #endif
-	struct ionic_txq_desc *desc = desc_info->desc;
 	bool has_vlan;
 	u8 flags = 0;
 	bool encap;
@@ -1348,7 +1298,7 @@ static void ionic_tx_calc_csum(struct ionic_queue *q, struct sk_buff *skb,
 	desc->csum_start = cpu_to_le16(skb_checksum_start_offset(skb));
 	desc->csum_offset = cpu_to_le16(skb->csum_offset);
 
-	/* commit descriptor contents in one shot */
+	/* commit CMB descriptor contents in one shot */
 	if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
 		memcpy_toio(desc_info->cmb_desc, desc, q->desc_size);
 
@@ -1392,8 +1342,10 @@ static void ionic_tx_calc_no_csum(struct ionic_queue *q, struct sk_buff *skb,
 		stats->vlan_inserted++;
 #endif
 	}
+	desc->csum_start = 0;
+	desc->csum_offset = 0;
 
-	/* commit descriptor contents in one shot */
+	/* commit CMB descriptor contents in one shot */
 	if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
 		memcpy_toio(desc_info->cmb_desc, desc, q->desc_size);
 
