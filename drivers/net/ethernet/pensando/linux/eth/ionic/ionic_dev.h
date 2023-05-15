@@ -188,8 +188,7 @@ typedef void (*ionic_desc_cb)(struct ionic_queue *q,
 
 #define IONIC_PAGE_ORDER			0
 #define IONIC_PAGE_SIZE				(PAGE_SIZE << IONIC_PAGE_ORDER)
-#define IONIC_PAGE_SPLIT_SZ			(PAGE_SIZE / 2)
-#define IONIC_PAGE_SPLIT_MAX_MTU		1900
+#define IONIC_PAGE_SPLIT_SZ			(PAGE_SIZE / 4)
 #define IONIC_PAGE_GFP_MASK			(GFP_ATOMIC | __GFP_NOWARN |\
 	__GFP_COMP | __GFP_MEMALLOC)
 
@@ -198,10 +197,15 @@ struct ionic_buf_info {
 	dma_addr_t dma_addr;
 	u32 page_offset;
 	u32 len;
-#if (IONIC_PAGE_ORDER > 0)
-	u32 pagecnt_bias;
-#endif
 };
+
+#define IONIC_PAGE_CACHE_SIZE          2048
+
+struct ionic_page_cache {
+	u32 head;
+	u32 tail;
+	struct ionic_buf_info ring[IONIC_PAGE_CACHE_SIZE];
+} ____cacheline_aligned_in_smp;
 
 #define IONIC_MAX_FRAGS			(1 + IONIC_TX_MAX_SG_ELEMS_V1)
 
@@ -212,6 +216,7 @@ struct ionic_desc_info {
 		struct ionic_rxq_desc *rxq_desc;
 		struct ionic_admin_cmd *adminq_desc;
 	};
+	void __iomem *cmb_desc;
 	union {
 		void *sg_desc;
 		struct ionic_txq_sg_desc *txq_sg_desc;
@@ -257,16 +262,19 @@ struct ionic_queue {
 		struct ionic_rxq_desc *rxq;
 		struct ionic_admin_cmd *adminq;
 	};
+	void __iomem *cmb_base;
 	union {
 		void *sg_base;
 		struct ionic_txq_sg_desc *txq_sgl;
 		struct ionic_rxq_sg_desc *rxq_sgl;
 	};
 	dma_addr_t base_pa;	/* must be page aligned */
+	dma_addr_t cmb_base_pa;
 	dma_addr_t sg_base_pa;	/* must be page aligned */
 	unsigned int desc_size;
 	unsigned int sg_desc_size;
 	unsigned int pid;
+	struct ionic_page_cache page_cache;
 	char name[IONIC_QUEUE_NAME_MAX_SZ];
 } ____cacheline_aligned_in_smp;
 
@@ -373,6 +381,8 @@ int ionic_set_vf_config(struct ionic *ionic, int vf,
 			struct ionic_vf_setattr_cmd *vfc);
 int ionic_dev_cmd_vf_getattr(struct ionic *ionic, int vf, u8 attr,
 			     struct ionic_vf_getattr_comp *comp);
+void ionic_vf_start(struct ionic *ionic, int vf);
+
 void ionic_dev_cmd_queue_identify(struct ionic_dev *idev,
 				  u16 lif_type, u8 qtype, u8 qver);
 void ionic_dev_cmd_lif_identify(struct ionic_dev *idev, u8 type, u8 ver);
@@ -408,6 +418,7 @@ int ionic_q_init(struct ionic_lif *lif, struct ionic_dev *idev,
 		 unsigned int num_descs, size_t desc_size,
 		 size_t sg_desc_size, unsigned int pid);
 void ionic_q_map(struct ionic_queue *q, void *base, dma_addr_t base_pa);
+void ionic_q_cmb_map(struct ionic_queue *q, void __iomem *base, dma_addr_t base_pa);
 void ionic_q_sg_map(struct ionic_queue *q, void *base, dma_addr_t base_pa);
 void ionic_q_post(struct ionic_queue *q, bool ring_doorbell, ionic_desc_cb cb,
 		  void *cb_arg);

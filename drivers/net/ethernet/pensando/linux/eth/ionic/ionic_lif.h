@@ -67,6 +67,14 @@ struct ionic_rx_stats {
 	u64 alloc_err;
 	u64 hwstamp_valid;
 	u64 hwstamp_invalid;
+	u64 cache_full;
+	u64 cache_empty;
+	u64 cache_busy;
+	u64 cache_get;
+	u64 cache_put;
+	u64 buf_reused;
+	u64 buf_exhausted;
+	u64 buf_not_reusable;
 };
 
 #define IONIC_QCQ_F_INITED		BIT(0)
@@ -85,10 +93,7 @@ struct ionic_napi_stats {
 #endif
 
 struct ionic_qcq {
-	union {
-		void *q_base;
-		void __iomem *cmb_q_base;
-	};
+	void *q_base;
 	dma_addr_t q_base_pa;	/* might not be page aligned */
 	u32 q_size;
 	u32 cq_size;
@@ -97,6 +102,9 @@ struct ionic_qcq {
 	void *sg_base;
 	dma_addr_t sg_base_pa;	/* might not be page aligned */
 	u32 sg_size;
+	void __iomem *cmb_q_base;
+	phys_addr_t cmb_q_base_pa;
+	u32 cmb_q_size;
 	u32 cmb_pgid;
 	u32 cmb_order;
 	bool armed;
@@ -309,8 +317,9 @@ struct ionic_queue_params {
 	unsigned int nxqs;
 	unsigned int ntxq_descs;
 	unsigned int nrxq_descs;
-	bool intr_split;
 	u64 rxq_features;
+	bool intr_split;
+	bool cmb_enabled;
 };
 
 static inline void ionic_init_queue_params(struct ionic_lif *lif,
@@ -319,8 +328,28 @@ static inline void ionic_init_queue_params(struct ionic_lif *lif,
 	qparam->nxqs = lif->nxqs;
 	qparam->ntxq_descs = lif->ntxq_descs;
 	qparam->nrxq_descs = lif->nrxq_descs;
-	qparam->intr_split = test_bit(IONIC_LIF_F_SPLIT_INTR, lif->state);
 	qparam->rxq_features = lif->rxq_features;
+	qparam->intr_split = test_bit(IONIC_LIF_F_SPLIT_INTR, lif->state);
+	qparam->cmb_enabled = test_bit(IONIC_LIF_F_CMB_RINGS, lif->state);
+}
+
+static inline void ionic_set_queue_params(struct ionic_lif *lif,
+					  struct ionic_queue_params *qparam)
+{
+	lif->nxqs = qparam->nxqs;
+	lif->ntxq_descs = qparam->ntxq_descs;
+	lif->nrxq_descs = qparam->nrxq_descs;
+	lif->rxq_features = qparam->rxq_features;
+
+	if (qparam->intr_split)
+		set_bit(IONIC_LIF_F_SPLIT_INTR, lif->state);
+	else
+		clear_bit(IONIC_LIF_F_SPLIT_INTR, lif->state);
+
+	if (qparam->cmb_enabled)
+		set_bit(IONIC_LIF_F_CMB_RINGS, lif->state);
+	else
+		clear_bit(IONIC_LIF_F_CMB_RINGS, lif->state);
 }
 
 static inline u32 ionic_coal_usec_to_hw(struct ionic *ionic, u32 usecs)

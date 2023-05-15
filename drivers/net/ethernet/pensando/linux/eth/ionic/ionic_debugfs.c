@@ -6,6 +6,7 @@
 #include "ionic.h"
 #include "ionic_bus.h"
 #include "ionic_lif.h"
+#include "ionic_ethtool.h"
 #include "ionic_debugfs.h"
 #include "kcompat.h"
 
@@ -120,6 +121,7 @@ static int identity_show(struct seq_file *seq, void *v)
 		   ioread8(&idev->dev_info_regs->fw_status));
 	seq_printf(seq, "fw_heartbeat:     0x%x\n",
 		   ioread32(&idev->dev_info_regs->fw_heartbeat));
+	seq_printf(seq, "cmb_pages:        0x%x\n", ionic_cmb_pages_in_use(ionic->lif));
 
 	seq_printf(seq, "nlifs:            %d\n", ident->dev.nlifs);
 	seq_printf(seq, "nintrs:           %d\n", ident->dev.nintrs);

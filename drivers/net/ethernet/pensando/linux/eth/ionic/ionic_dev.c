@@ -526,6 +526,28 @@ int ionic_dev_cmd_vf_getattr(struct ionic *ionic, int vf, u8 attr,
 	return err;
 }
 
+void ionic_vf_start(struct ionic *ionic, int vf)
+{
+#ifdef IONIC_DEV_IDENTITY_VERSION_2
+	union ionic_dev_cmd cmd = {
+		.vf_ctrl.opcode = IONIC_CMD_VF_CTRL,
+	};
+
+	if (!(ionic->ident.dev.capabilities & IONIC_DEV_CAP_VF_CTRL))
+		return;
+
+	if (vf == -1) {
+		cmd.vf_ctrl.ctrl_opcode = IONIC_VF_CTRL_START_ALL;
+	} else {
+		cmd.vf_ctrl.ctrl_opcode = IONIC_VF_CTRL_START;
+		cmd.vf_ctrl.vf_index = cpu_to_le16(vf);
+	}
+
+	ionic_dev_cmd_go(&ionic->idev, &cmd);
+	(void)ionic_dev_cmd_wait(ionic, devcmd_timeout);
+#endif
+}
+
 /* LIF commands */
 void ionic_dev_cmd_queue_identify(struct ionic_dev *idev,
 				  u16 lif_type, u8 qtype, u8 qver)
@@ -1080,6 +1102,18 @@ void ionic_q_map(struct ionic_queue *q, void *base, dma_addr_t base_pa)
 
 	for (i = 0, cur = q->info; i < q->num_descs; i++, cur++)
 		cur->desc = base + (i * q->desc_size);
+}
+
+void ionic_q_cmb_map(struct ionic_queue *q, void __iomem *base, dma_addr_t base_pa)
+{
+	struct ionic_desc_info *cur;
+	unsigned int i;
+
+	q->cmb_base = base;
+	q->cmb_base_pa = base_pa;
+
+	for (i = 0, cur = q->info; i < q->num_descs; i++, cur++)
+		cur->cmb_desc = base + (i * q->desc_size);
 }
 
 void ionic_q_sg_map(struct ionic_queue *q, void *base, dma_addr_t base_pa)

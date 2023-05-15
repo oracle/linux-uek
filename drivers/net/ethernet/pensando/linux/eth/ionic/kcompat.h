@@ -6807,6 +6807,34 @@ static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
 #define HAVE_RINGPARAM_EXTACK
 #endif /* 5.17 */
 
+/*****************************************************************************/
+#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
+static inline int skb_tcp_all_headers(const struct sk_buff *skb)
+{
+	return skb_transport_offset(skb) + tcp_hdrlen(skb);
+}
+
+static inline int skb_inner_tcp_all_headers(const struct sk_buff *skb)
+{
+	return skb_inner_transport_offset(skb) + inner_tcp_hdrlen(skb);
+}
+
+#else
+#endif /* 6.0 */
+
+/*****************************************************************************/
+#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+
+#if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7, 0) && defined(netif_napi_add))
+#undef netif_napi_add
+#define netif_napi_add(a, b, c)  _netif_napi_add((a), (b), (c), NAPI_POLL_WEIGHT)
+#else
+#define netif_napi_add(a, b, c)  netif_napi_add((a), (b), (c), NAPI_POLL_WEIGHT)
+#endif
+
+#else
+#endif /* 6.1 */
+
 /* We don't support PTP on older RHEL kernels (needs more compat work) */
 #if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))
 #undef CONFIG_PTP_1588_CLOCK
