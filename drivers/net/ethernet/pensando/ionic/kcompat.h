@@ -6764,6 +6764,12 @@ void _kc_ethtool_sprintf(u8 **data, const char *fmt, ...);
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,15,0))
+#if (!RHEL_RELEASE_CODE || (RHEL_RELEASE_CODE && \
+       (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,0))))
+
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_VERSION(8, 6) == RHEL_RELEASE_CODE))
+#define HAVE_COALESCE_EXTACK
+#endif
 
 #define ndo_eth_ioctl ndo_do_ioctl
 
@@ -6779,6 +6785,14 @@ static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
 
 #else
 
+#if IS_ENABLED(CONFIG_NET_DEVLINK)
+#define HAVE_VOID_DEVLINK_REGISTER
+#endif /* CONFIG_NET_DEVLINK */
+
+#endif /* not RH or RH < 9.0 */
+
+#else
+
 #define HAVE_COALESCE_EXTACK
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
@@ -6788,10 +6802,10 @@ static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
 #endif /* 5.15.0 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,16,0))
+#if (KERNEL_VERSION(5, 17, 0) > LINUX_VERSION_CODE)
 #else
 #define HAVE_RINGPARAM_EXTACK
-#endif /* 5.16 */
+#endif /* 5.17 */
 
 /* We don't support PTP on older RHEL kernels (needs more compat work) */
 #if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))

@@ -175,12 +175,16 @@ static int mdev_uio_pdrv_genirq_probe(struct platform_device *pdev)
 	priv->pdev = pdev;
 
 	if (!uioinfo->irq) {
+#if (KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE)
 		ret = platform_get_irq(pdev, 0);
+#else
+		ret = platform_get_irq_optional(pdev, 0);
+#endif
 		uioinfo->irq = ret;
 		if (ret == -ENXIO && pdev->dev.of_node)
 			uioinfo->irq = UIO_IRQ_NONE;
 		else if (ret < 0) {
-			dev_err(&pdev->dev, "failed to get IRQ\n");
+			dev_err(&pdev->dev, "failed to get IRQ: %d\n", ret);
 			return ret;
 		}
 	}
@@ -424,6 +428,17 @@ static long mdev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		}
 		dev_info(mdev_device, "Creating %s %s\n",
 			 req.name, req.is_uio_dev ? "(UIO)" : "");
+
+		/* scan the list to see if it already exists,
+		 * and if so, quietly ignore this request
+		 */
+		list_for_each_entry(mdev, &mdev_list, node) {
+			if (mdev->pdev &&
+			    !strncmp(mdev->pdev->name, req.name, MDEV_NAME_LEN))
+				return 0;
+		}
+
+		/* find the first useful empty slot */
 		list_for_each_entry(mdev, &mdev_list, node) {
 			if (mdev->pdev || !mdev_ioctl_matches(mdev, cmd))
 				continue;

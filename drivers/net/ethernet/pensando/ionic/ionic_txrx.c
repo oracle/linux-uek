@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #include <linux/ip.h>
 #include <linux/ipv6.h>
@@ -63,11 +63,10 @@ bool ionic_rxq_poke_doorbell(struct ionic_queue *q)
 {
 	unsigned long now, then, dif;
 
-	// no lock, called from rx napi or txrx napi, nothing else can fill
+	/* no lock, called from rx napi or txrx napi, nothing else can fill */
 
-	if (q->tail_idx == q->head_idx) {
+	if (q->tail_idx == q->head_idx)
 		return false;
-	}
 
 	now = READ_ONCE(jiffies);
 	then = q->dbell_jiffies;
@@ -533,8 +532,7 @@ void ionic_rx_fill(struct ionic_queue *q)
 
 		/* commit descriptor contents in one shot */
 		if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
-			memcpy_toio((void volatile __iomem *)desc_info->desc,
-				    &tmp_desc, sizeof(tmp_desc));
+			memcpy_toio(desc_info->desc, &tmp_desc, sizeof(tmp_desc));
 		else
 			memcpy(desc_info->desc, &tmp_desc, sizeof(tmp_desc));
 
@@ -1101,8 +1099,7 @@ static void ionic_tx_tso_post(struct ionic_queue *q,
 
 	/* commit descriptor contents in one shot */
 	if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
-		memcpy_toio((void volatile __iomem *)desc,
-			    &tmp_desc, sizeof(tmp_desc));
+		memcpy_toio(desc, &tmp_desc, sizeof(tmp_desc));
 	else
 		memcpy(desc, &tmp_desc, sizeof(tmp_desc));
 
@@ -1276,8 +1273,7 @@ static void ionic_tx_calc_csum(struct ionic_queue *q, struct sk_buff *skb,
 
 	/* commit descriptor contents in one shot */
 	if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
-		memcpy_toio((void volatile __iomem *)desc_info->desc,
-			    &tmp_desc, sizeof(tmp_desc));
+		memcpy_toio(desc_info->desc, &tmp_desc, sizeof(tmp_desc));
 	else
 		memcpy(desc_info->desc, &tmp_desc, sizeof(tmp_desc));
 
@@ -1324,8 +1320,7 @@ static void ionic_tx_calc_no_csum(struct ionic_queue *q, struct sk_buff *skb,
 
 	/* commit descriptor contents in one shot */
 	if (q_to_qcq(q)->flags & IONIC_QCQ_F_CMB_RINGS)
-		memcpy_toio((void volatile __iomem *)desc_info->desc,
-			    &tmp_desc, sizeof(tmp_desc));
+		memcpy_toio(desc_info->desc, &tmp_desc, sizeof(tmp_desc));
 	else
 		memcpy(desc_info->desc, &tmp_desc, sizeof(tmp_desc));
 

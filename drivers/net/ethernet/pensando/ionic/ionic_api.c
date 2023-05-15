@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright (c) 2017 - 2021 Pensando Systems, Inc. All rights reserved. */
+/* Copyright (c) 2017 - 2022 Pensando Systems, Inc. All rights reserved. */
 
 #include <linux/kernel.h>
 
@@ -216,6 +216,11 @@ int ionic_api_get_dbid(void *handle, u32 *dbid, phys_addr_t *addr)
 	if (ionic_bus_dbpage_per_pid(lif->ionic)) {
 		mutex_lock(&lif->dbid_inuse_lock);
 
+		if (!lif->dbid_inuse) {
+			mutex_unlock(&lif->dbid_inuse_lock);
+			return -EINVAL;
+		}
+
 		id = find_first_zero_bit(lif->dbid_inuse, lif->dbid_count);
 		if (id == lif->dbid_count) {
 			mutex_unlock(&lif->dbid_inuse_lock);
@@ -243,8 +248,12 @@ void ionic_api_put_dbid(void *handle, int dbid)
 {
 	struct ionic_lif *lif = handle;
 
-	if (ionic_bus_dbpage_per_pid(lif->ionic))
-		clear_bit(dbid, lif->dbid_inuse);
+	if (ionic_bus_dbpage_per_pid(lif->ionic)) {
+		mutex_lock(&lif->dbid_inuse_lock);
+		if (lif->dbid_inuse)
+			clear_bit(dbid, lif->dbid_inuse);
+		mutex_unlock(&lif->dbid_inuse_lock);
+	}
 }
 EXPORT_SYMBOL_GPL(ionic_api_put_dbid);
 

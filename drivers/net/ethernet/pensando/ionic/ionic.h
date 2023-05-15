@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #ifndef _IONIC_H_
 #define _IONIC_H_
@@ -14,7 +14,7 @@ struct ionic_lif;
 
 #define IONIC_DRV_NAME		"ionic"
 #define IONIC_DRV_DESCRIPTION	"Pensando Ethernet NIC Driver"
-#define IONIC_DRV_VERSION	"1.15.9.65"
+#define IONIC_DRV_VERSION	"1.15.9.100"
 
 #define PCI_VENDOR_ID_PENSANDO			0x1dd8
 
