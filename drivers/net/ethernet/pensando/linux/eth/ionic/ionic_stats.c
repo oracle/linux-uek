@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #include <linux/kernel.h>
 #include <linux/mutex.h>
@@ -287,11 +287,10 @@ static u64 ionic_sw_stats_get_count(struct ionic_lif *lif)
 
 	total += IONIC_NUM_LIF_STATS;
 
-	if (lif->ionic->is_mgmt_nic) {
+	if (lif->ionic->is_mgmt_nic)
 		total += IONIC_NUM_MGMT_PORT_STATS;
-	} else {
+	else
 		total += IONIC_NUM_PORT_STATS;
-	}
 
 	if (lif->hwstamp_txq)
 		tx_queues += 1;

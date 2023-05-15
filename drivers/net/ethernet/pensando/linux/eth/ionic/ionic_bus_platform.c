@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #include <linux/module.h>
 #include <linux/netdevice.h>
@@ -44,7 +44,7 @@ static void ionic_intr_msixcfg(struct device *mnic_dev,
 			       const int intr, const u64 msgaddr,
 			       const u32 msgdata, const int vctrl)
 {
-	volatile void *pa = ionic_intr_msixcfg_addr(mnic_dev, intr);
+	void *pa = ionic_intr_msixcfg_addr(mnic_dev, intr);
 
 	writeq(msgaddr, (pa + offsetof(struct ionic_intr_msixcfg, msgaddr)));
 	writel(msgdata, (pa + offsetof(struct ionic_intr_msixcfg, msgdata)));
@@ -58,7 +58,7 @@ static void ionic_intr_msixcfg(struct device *mnic_dev,
  * when the first device is unregistered, when other devices may still be using
  * it.  ionic_shared_resource just maintains a refcount for mapping a shared
  * resource for use by multiple ionic devices.
-*/
+ */
 struct ionic_shared_resource {
 	struct mutex lock;
 	void __iomem *base;

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #ifndef _IONIC_LIF_H_
 #define _IONIC_LIF_H_
@@ -276,6 +276,8 @@ struct ionic_lif {
 
 	/* TODO: Make this a list if more than one child is supported */
 	struct ionic_lif_cfg child_lif_cfg;
+
+	u64 n_txrx_alloc;
 
 	struct dentry *dentry;
 };

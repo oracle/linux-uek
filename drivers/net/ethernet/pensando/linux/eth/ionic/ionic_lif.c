@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #include <linux/netdevice.h>
 #include <linux/dynamic_debug.h>
@@ -8,6 +8,7 @@
 #include <linux/pci.h>
 #include <linux/cpumask.h>
 #include <linux/crash_dump.h>
+#include <linux/vmalloc.h>
 
 #include "ionic.h"
 #include "ionic_bus.h"
@@ -434,11 +435,11 @@ static void ionic_qcq_free(struct ionic_lif *lif, struct ionic_qcq *qcq)
 	ionic_qcq_intr_free(lif, qcq);
 
 	if (qcq->cq.info) {
-		devm_kfree(dev, qcq->cq.info);
+		vfree(qcq->cq.info);
 		qcq->cq.info = NULL;
 	}
 	if (qcq->q.info) {
-		devm_kfree(dev, qcq->q.info);
+		vfree(qcq->q.info);
 		qcq->q.info = NULL;
 	}
 }
@@ -588,8 +589,7 @@ static int ionic_qcq_alloc(struct ionic_lif *lif, unsigned int type,
 	new->q.dev = dev;
 	new->flags = flags;
 
-	new->q.info = devm_kcalloc(dev, num_descs, sizeof(*new->q.info),
-				   GFP_KERNEL);
+	new->q.info = vzalloc(num_descs * sizeof(*new->q.info));
 	if (!new->q.info) {
 		netdev_err(lif->netdev, "Cannot allocate queue info\n");
 		err = -ENOMEM;
@@ -610,8 +610,7 @@ static int ionic_qcq_alloc(struct ionic_lif *lif, unsigned int type,
 	if (err)
 		goto err_out;
 
-	new->cq.info = devm_kcalloc(dev, num_descs, sizeof(*new->cq.info),
-				    GFP_KERNEL);
+	new->cq.info = vzalloc(num_descs * sizeof(*new->cq.info));
 	if (!new->cq.info) {
 		netdev_err(lif->netdev, "Cannot allocate completion queue info\n");
 		err = -ENOMEM;
@@ -733,14 +732,14 @@ err_out_free_q:
 		dma_free_coherent(dev, new->q_size, new->q_base, new->q_base_pa);
 	}
 err_out_free_cq_info:
-	devm_kfree(dev, new->cq.info);
+	vfree(new->cq.info);
 err_out_free_irq:
 	if (flags & IONIC_QCQ_F_INTR) {
 		devm_free_irq(dev, new->intr.vector, &new->napi);
 		ionic_intr_free(lif->ionic, new->intr.index);
 	}
 err_out_free_q_info:
-	devm_kfree(dev, new->q.info);
+	vfree(new->q.info);
 err_out_free_qcq:
 	devm_kfree(dev, new);
 err_out:
@@ -2192,6 +2191,8 @@ static int ionic_txrx_alloc(struct ionic_lif *lif)
 		ionic_debugfs_add_qcq(lif, lif->rxqcqs[i]);
 	}
 
+	lif->n_txrx_alloc++;
+
 	return 0;
 
 err_out:
@@ -2537,7 +2538,7 @@ static int ionic_get_vf_stats(struct net_device *netdev, int vf,
 		vf_stats->tx_bytes   = le64_to_cpu(vs->tx_ucast_bytes);
 		vf_stats->broadcast  = le64_to_cpu(vs->rx_bcast_packets);
 		vf_stats->multicast  = le64_to_cpu(vs->rx_mcast_packets);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,16,0))
+#if (KERNEL_VERSION(4, 16, 0) < LINUX_VERSION_CODE)
 		vf_stats->rx_dropped = le64_to_cpu(vs->rx_ucast_drop_packets) +
 				       le64_to_cpu(vs->rx_mcast_drop_packets) +
 				       le64_to_cpu(vs->rx_bcast_drop_packets);
@@ -2584,9 +2585,9 @@ static int ionic_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 
 #if (RHEL_RELEASE_CODE == 0 || \
      defined(HAVE_RHEL7_NETDEV_OPS_EXT_NDO_SET_VF_VLAN) || \
-     RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,0))
+     RHEL_RELEASE_VERSION(8, 0) < RHEL_RELEASE_CODE)
 
-#if (RHEL_RELEASE_CODE == 0 && LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0))
+#if (RHEL_RELEASE_CODE == 0 && KERNEL_VERSION(4, 9, 0) >= LINUX_VERSION_CODE)
 static int ionic_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 #else
 static int ionic_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan,
@@ -3299,6 +3300,9 @@ static void ionic_lif_handle_fw_up(struct ionic_lif *lif)
 
 	mutex_lock(&lif->queue_lock);
 
+	if (test_and_clear_bit(IONIC_LIF_F_BROKEN, lif->state))
+		dev_info(ionic->dev, "FW Up: clearing broken state\n");
+
 	err = ionic_qcqs_alloc(lif);
 	if (err)
 		goto err_unlock;
@@ -3346,6 +3350,14 @@ err_out:
 	dev_err(ionic->dev, "FW Up: LIFs restart failed - err %d\n", err);
 }
 
+static void ionic_lif_dbid_inuse_free(struct ionic_lif *lif)
+{
+	mutex_lock(&lif->dbid_inuse_lock);
+	bitmap_free(lif->dbid_inuse);
+	lif->dbid_inuse = NULL;
+	mutex_unlock(&lif->dbid_inuse_lock);
+}
+
 void ionic_lif_free(struct ionic_lif *lif)
 {
 	struct device *dev = lif->ionic->dev;
@@ -3372,8 +3384,7 @@ void ionic_lif_free(struct ionic_lif *lif)
 	/* unmap doorbell page */
 	ionic_bus_unmap_dbpage(lif->ionic, lif->kern_dbpage);
 	lif->kern_dbpage = NULL;
-	kfree(lif->dbid_inuse);
-	lif->dbid_inuse = NULL;
+	ionic_lif_dbid_inuse_free(lif);
 
 	mutex_destroy(&lif->config_lock);
 	mutex_destroy(&lif->queue_lock);
@@ -3403,6 +3414,8 @@ void ionic_lif_deinit(struct ionic_lif *lif)
 	napi_disable(&lif->adminqcq->napi);
 	ionic_lif_qcq_deinit(lif, lif->notifyqcq);
 	ionic_lif_qcq_deinit(lif, lif->adminqcq);
+
+	ionic_lif_dbid_inuse_free(lif);
 
 	ionic_lif_reset(lif);
 }
@@ -3585,14 +3598,17 @@ int ionic_lif_init(struct ionic_lif *lif)
 		return -EINVAL;
 	}
 
+	mutex_lock(&lif->dbid_inuse_lock);
 	lif->dbid_inuse = bitmap_zalloc(lif->dbid_count, GFP_KERNEL);
 	if (!lif->dbid_inuse) {
 		dev_err(dev, "Failed alloc doorbell id bitmap, aborting\n");
+		mutex_unlock(&lif->dbid_inuse_lock);
 		return -ENOMEM;
 	}
 
 	/* first doorbell id reserved for kernel (dbid aka pid == zero) */
 	set_bit(0, lif->dbid_inuse);
+	mutex_unlock(&lif->dbid_inuse_lock);
 	lif->kern_pid = 0;
 
 	dbpage_num = ionic_db_page_num(lif, lif->kern_pid);
@@ -3661,8 +3677,7 @@ err_out_adminq_deinit:
 	ionic_bus_unmap_dbpage(lif->ionic, lif->kern_dbpage);
 	lif->kern_dbpage = NULL;
 err_out_free_dbid:
-	kfree(lif->dbid_inuse);
-	lif->dbid_inuse = NULL;
+	ionic_lif_dbid_inuse_free(lif);
 
 	return err;
 }
@@ -3682,7 +3697,7 @@ static void ionic_lif_set_netdev_info(struct ionic_lif *lif)
 		},
 	};
 
-	strlcpy(ctx.cmd.lif_setattr.name, lif->netdev->name,
+	strscpy(ctx.cmd.lif_setattr.name, lif->netdev->name,
 		sizeof(ctx.cmd.lif_setattr.name));
 
 	ionic_adminq_post_wait(lif, &ctx);

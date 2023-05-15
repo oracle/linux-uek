@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #include <linux/netdevice.h>
 
@@ -233,7 +233,7 @@ void ionic_debugfs_add_qcq(struct ionic_lif *lif, struct ionic_qcq *qcq)
 	debugfs_create_x32("cmb_order", 0400, qcq_dentry, &qcq->cmb_order);
 	debugfs_create_x32("cmb_pgid", 0400, qcq_dentry, &qcq->cmb_pgid);
 
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,0)))
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_VERSION(7, 0) < RHEL_RELEASE_CODE))
 	debugfs_create_u8("armed", 0400, qcq_dentry, (u8 *)&qcq->armed);
 #else
 	debugfs_create_bool("armed", 0400, qcq_dentry, &qcq->armed);
@@ -331,7 +331,7 @@ void ionic_debugfs_add_qcq(struct ionic_lif *lif, struct ionic_qcq *qcq)
 	debugfs_create_u32("num_descs", 0400, cq_dentry, &cq->num_descs);
 	debugfs_create_u32("desc_size", 0400, cq_dentry, &cq->desc_size);
 
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,0)))
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_VERSION(7, 0) < RHEL_RELEASE_CODE))
 	debugfs_create_u8("done_color", 0400, cq_dentry, (u8 *)&cq->done_color);
 #else
 	debugfs_create_bool("done_color", 0400, cq_dentry, &cq->done_color);
@@ -425,7 +425,7 @@ static int lif_identity_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "eq-count:          %d\n",
 		   lid->eth.config.queue_count[IONIC_QTYPE_EQ]);
 
-	seq_printf(seq, "\n");
+	seq_puts(seq, "\n");
 
 	seq_printf(seq, "rdma_version:        0x%x\n", lid->rdma.version);
 	seq_printf(seq, "rdma_qp_opcodes:     %d\n", lid->rdma.qp_opcodes);
@@ -504,6 +504,16 @@ static int lif_filters_show(struct seq_file *seq, void *v)
 }
 DEFINE_SHOW_ATTRIBUTE(lif_filters);
 
+static int lif_n_txrx_alloc_show(struct seq_file *seq, void *v)
+{
+	struct ionic_lif *lif = seq->private;
+
+	seq_printf(seq, "%llu\n", lif->n_txrx_alloc);
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(lif_n_txrx_alloc);
+
 void ionic_debugfs_add_lif(struct ionic_lif *lif)
 {
 	struct dentry *lif_dentry;
@@ -521,6 +531,8 @@ void ionic_debugfs_add_lif(struct ionic_lif *lif)
 			    lif, &lif_state_fops);
 	debugfs_create_file("filters", 0400, lif->dentry,
 			    lif, &lif_filters_fops);
+	debugfs_create_file("txrx_alloc", 0400, lif->dentry,
+			    lif, &lif_n_txrx_alloc_fops);
 }
 
 void ionic_debugfs_del_lif(struct ionic_lif *lif)

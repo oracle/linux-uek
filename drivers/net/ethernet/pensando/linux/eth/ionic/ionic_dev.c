@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2017 - 2021 Pensando Systems, Inc */
+/* Copyright(c) 2017 - 2022 Pensando Systems, Inc */
 
 #include <linux/kernel.h>
 #include <linux/types.h>
@@ -239,9 +239,16 @@ do_check_time:
 		}
 	}
 
+	dev_dbg(ionic->dev, "fw_status 0x%02x ready %d idev->ready %d last_hb 0x%x state 0x%02lx\n",
+		fw_status, fw_status_ready, idev->fw_status_ready,
+		idev->last_fw_hb, lif->state[0]);
+
 	/* is this a transition? */
-	if (fw_status_ready != idev->fw_status_ready) {
+	if (fw_status_ready != idev->fw_status_ready &&
+	    !test_bit(IONIC_LIF_F_FW_STOPPING, lif->state)) {
 		bool trigger = false;
+
+		idev->fw_status_ready = fw_status_ready;
 
 		if (!fw_status_ready && lif &&
 		    !test_bit(IONIC_LIF_F_FW_RESET, lif->state) &&
@@ -261,8 +268,6 @@ do_check_time:
 		if (trigger) {
 			struct ionic_deferred_work *work;
 
-			idev->fw_status_ready = fw_status_ready;
-
 			work = kzalloc(sizeof(*work), GFP_ATOMIC);
 			if (work) {
 				work->type = IONIC_DW_TYPE_LIF_RESET;
@@ -276,7 +281,7 @@ do_check_time:
 		return -ENXIO;
 
 	/* Because of some variability in the actual FW heartbeat, we
-	 * wait longer than the the current devcmd_timeout before checking
+	 * wait longer than the current devcmd_timeout before checking
 	 * again, but never less than 5 seconds.
 	 */
 	last_check_time = idev->last_hb_time;
