@@ -12,12 +12,16 @@
 #define IONIC_CHECK_CMD_LENGTH(X)
 #define IONIC_CHECK_COMP_LENGTH(X)
 #define IONIC_CHECK_CMD_DATA_LENGTH(X)
+#define IONIC_CHECK_OPROM_LENGTH(X)
+#define IONIC_CHECK_DEV_INFO_REGS_LENGTH(X)
 #else
 #define IONIC_SIZE_CHECK(type, N, X)		enum ionic_static_assert_enum_##X \
 		{ ionic_static_assert_##X = (N) / (sizeof(type X) == (N)) }
 #define IONIC_CHECK_CMD_LENGTH(X)		IONIC_SIZE_CHECK(struct, 64, X)
 #define IONIC_CHECK_COMP_LENGTH(X)  		IONIC_SIZE_CHECK(struct, 16, X)
 #define IONIC_CHECK_CMD_DATA_LENGTH(X)      	IONIC_SIZE_CHECK(union, 1912, X)
+#define IONIC_CHECK_OPROM_LENGTH(X)		IONIC_SIZE_CHECK(struct, 32, X)
+#define IONIC_CHECK_DEV_INFO_REGS_LENGTH(X)     IONIC_SIZE_CHECK(union, 2048, X)
 #endif
 
 /**
@@ -32,6 +36,7 @@ enum ionic_cmd_opcode {
 	IONIC_CMD_RESET				= 3,
 	IONIC_CMD_GETATTR			= 4,
 	IONIC_CMD_SETATTR			= 5,
+	IONIC_CMD_DEBUG				= 6,
 
 	/* Port commands */
 	IONIC_CMD_PORT_IDENTIFY			= 10,
@@ -66,6 +71,10 @@ enum ionic_cmd_opcode {
 	/* SR/IOV commands */
 	IONIC_CMD_VF_GETATTR			= 60,
 	IONIC_CMD_VF_SETATTR			= 61,
+	IONIC_CMD_VF_CTRL			= 62,
+
+	/* UPT command */
+	IONIC_CMD_UPT_MESSAGE			= 100,
 
 	/* UEFI HII commands */
 	IONIC_CMD_HII_IDENTIFY			= 235,
@@ -126,6 +135,32 @@ enum ionic_notifyq_opcode {
 	IONIC_EVENT_LOG			= 4,
 	IONIC_EVENT_XCVR		= 5,
 };
+
+/**
+ * struct ionic_upt_cmd - command format for all UPT commands
+ * @opcode:         Opcode for the command
+ * @vf_index:       VF Index.
+ * @upt_cmd_data:   UPT specific command bytes
+ */
+
+struct ionic_upt_cmd {
+       u8         opcode;
+       u8         rsvd;
+       __le16     vf_index;
+       u8         rsvd1[4];
+       u8         upt_cmd_data[56];
+};
+IONIC_CHECK_CMD_LENGTH(ionic_upt_cmd);
+
+/**
+ * struct ionic_upt_comp - UPT command completion.
+ * @status:     Status of the command (enum ionic_status_code)
+ */
+struct ionic_upt_comp {
+       u8         status;
+       u8         rsvd[15];
+};
+IONIC_CHECK_COMP_LENGTH(ionic_upt_comp);
 
 /**
  * struct ionic_admin_cmd - General admin command format
@@ -219,6 +254,8 @@ struct ionic_dev_reset_comp {
 };
 
 #define IONIC_IDENTITY_VERSION_1	1
+#define IONIC_DEV_IDENTITY_VERSION_1	IONIC_IDENTITY_VERSION_1
+#define IONIC_DEV_IDENTITY_VERSION_2	(IONIC_DEV_IDENTITY_VERSION_1 + 1)
 
 /**
  * struct ionic_dev_identify_cmd - Driver/device identify command
@@ -241,6 +278,31 @@ struct ionic_dev_identify_comp {
 	u8 ver;
 	u8 rsvd[14];
 };
+
+enum ionic_debug_type {
+	IONIC_DEBUG_TYPE_MSG   = 1,
+};
+/**
+ * struct ionic_dev_debug_cmd - Driver/device debug command
+ * @opcode:  opcode
+ * @type:    debug_type (enum ionic_debug_type)
+ */
+struct ionic_dev_debug_cmd {
+	u8 opcode;
+	u8 debug_type;
+	u8 rsvd[62];
+};
+IONIC_CHECK_CMD_LENGTH(ionic_dev_debug_cmd);
+
+/**
+ * struct ionic_dev_debug_comp - Driver/device debug command completion
+ * @status: Status of the command (enum ionic_status_code)
+ */
+struct ionic_dev_debug_comp {
+	u8 status;
+	u8 rsvd[15];
+};
+IONIC_CHECK_COMP_LENGTH(ionic_dev_debug_comp);
 
 enum ionic_os_type {
 	IONIC_OS_TYPE_LINUX   = 1,
@@ -273,6 +335,14 @@ union ionic_drv_identity {
 };
 
 /**
+ * enum ionic_dev_capability - Device capabilities
+ * @IONIC_DEV_CAP_VF_CTRL:     Device supports VF ctrl operations
+ */
+enum ionic_dev_capability {
+	IONIC_DEV_CAP_VF_CTRL        = BIT(0),
+};
+
+/**
  * union ionic_dev_identity - device identity information
  * @version:          Version of device identify
  * @type:             Identify type (0 for now)
@@ -292,6 +362,7 @@ union ionic_drv_identity {
  * @hwstamp_mask:     Bitmask for subtraction of hardware tick values.
  * @hwstamp_mult:     Hardware tick to nanosecond multiplier.
  * @hwstamp_shift:    Hardware tick to nanosecond divisor (power of two).
+ * @capabilities:     Device capabilities
  */
 union ionic_dev_identity {
 	struct {
@@ -309,6 +380,7 @@ union ionic_dev_identity {
 		__le64 hwstamp_mask;
 		__le32 hwstamp_mult;
 		__le32 hwstamp_shift;
+		__le64 capabilities;
 	};
 	__le32 words[478];
 };
@@ -318,6 +390,8 @@ enum ionic_lif_type {
 	IONIC_LIF_TYPE_MACVLAN = 1,
 	IONIC_LIF_TYPE_NETQUEUE = 2,
 };
+
+#define IONIC_LIF_IDENTITY_VERSION_1	IONIC_DEV_IDENTITY_VERSION_1
 
 /**
  * struct ionic_lif_identify_cmd - LIF identify command
@@ -419,7 +493,7 @@ enum ionic_rxq_feature {
  * @IONIC_TXQ_F_HWSTAMP:   Queue supports Hardware Timestamping
  */
 enum ionic_txq_feature {
-	IONIC_TXQ_F_HWSTAMP		= BIT(16),
+	IONIC_TXQ_F_HWSTAMP		= BIT_ULL(16),
 };
 
 /**
@@ -2055,6 +2129,36 @@ struct ionic_vf_getattr_comp {
 	u8     color;
 };
 
+enum ionic_vf_ctrl_opcode {
+	IONIC_VF_CTRL_START_ALL	= 0,
+	IONIC_VF_CTRL_START 	= 1,
+};
+
+/**
+ * struct ionic_vf_ctrl - VF control command
+ * @opcode:         Opcode for the command
+ * @vf_index:       VF Index. It is unused if op START_ALL is used.
+ * @ctrl_opcode:    VF control operation type
+ */
+
+struct ionic_vf_ctrl_cmd {
+	u8	opcode;
+	u8	ctrl_opcode;
+	__le16	vf_index;
+	u8	rsvd1[60];
+};
+IONIC_CHECK_CMD_LENGTH(ionic_vf_ctrl_cmd);
+
+/**
+ * struct ionic_vf_ctrl_comp - VF_CTRL command completion.
+ * @status:     Status of the command (enum ionic_status_code)
+ */
+struct ionic_vf_ctrl_comp {
+	u8	status;
+	u8      rsvd[15];
+};
+IONIC_CHECK_COMP_LENGTH(ionic_vf_ctrl_comp);
+
 /**
  * struct ionic_qos_identify_cmd - QoS identify command
  * @opcode:  opcode
@@ -2277,6 +2381,14 @@ enum ionic_fw_control_oper {
 	IONIC_FW_ACTIVATE_ASYNC		= 5,
 	IONIC_FW_ACTIVATE_STATUS	= 6,
 	IONIC_FW_UPDATE_CLEANUP		= 7,
+	IONIC_FW_GET_BOOT           = 8,
+};
+
+enum ionic_fw_slot {
+    IONIC_FW_SLOT_INVALID   = 0,
+    IONIC_FW_SLOT_A         = 1,
+    IONIC_FW_SLOT_B         = 2,
+    IONIC_FW_SLOT_GOLD      = 3,
 };
 
 /**
@@ -3101,6 +3213,7 @@ union ionic_dev_cmd {
 	struct ionic_dev_reset_cmd reset;
 	struct ionic_dev_getattr_cmd getattr;
 	struct ionic_dev_setattr_cmd setattr;
+	struct ionic_dev_debug_cmd debug;
 
 	struct ionic_port_identify_cmd port_identify;
 	struct ionic_port_init_cmd port_init;
@@ -3110,6 +3223,7 @@ union ionic_dev_cmd {
 
 	struct ionic_vf_setattr_cmd vf_setattr;
 	struct ionic_vf_getattr_cmd vf_getattr;
+	struct ionic_vf_ctrl_cmd vf_ctrl;
 
 	struct ionic_lif_identify_cmd lif_identify;
 	struct ionic_lif_init_cmd lif_init;
@@ -3132,6 +3246,8 @@ union ionic_dev_cmd {
 	struct ionic_hii_setattr_cmd hii_setattr;
 	struct ionic_hii_getattr_cmd hii_getattr;
 	struct ionic_hii_reset_cmd hii_reset;
+
+	struct ionic_upt_cmd upt_cmd;
 };
 
 union ionic_dev_cmd_comp {
@@ -3145,6 +3261,7 @@ union ionic_dev_cmd_comp {
 	struct ionic_dev_reset_comp reset;
 	struct ionic_dev_getattr_comp getattr;
 	struct ionic_dev_setattr_comp setattr;
+	struct ionic_dev_debug_comp debug;
 
 	struct ionic_port_identify_comp port_identify;
 	struct ionic_port_init_comp port_init;
@@ -3154,6 +3271,7 @@ union ionic_dev_cmd_comp {
 
 	struct ionic_vf_setattr_comp vf_setattr;
 	struct ionic_vf_getattr_comp vf_getattr;
+	struct ionic_vf_ctrl_comp vf_ctrl;
 
 	struct ionic_lif_identify_comp lif_identify;
 	struct ionic_lif_init_comp lif_init;
@@ -3174,7 +3292,21 @@ union ionic_dev_cmd_comp {
 	struct ionic_hii_setattr_comp hii_setattr;
 	struct ionic_hii_getattr_comp hii_getattr;
 	struct ionic_hii_reset_comp hii_reset;
+
+	struct ionic_upt_comp upt_comp;
 };
+
+/**
+ * struct ionic_oprom_regs - Oprom debug/enable and bmp registers
+ * @oprom_log_level: Variables indicates whether Oprom log to be printed or not
+ * @oprom_reserved : Reserved for future use and make it as 32 byte alignment of oprom_regs.
+ */
+#define IONIC_DEVINFO_OPROM_RESERVED   31
+struct ionic_oprom_regs {
+	u8    oprom_log_level;
+	u8    oprom_reserved[IONIC_DEVINFO_OPROM_RESERVED];
+};
+IONIC_CHECK_OPROM_LENGTH(ionic_oprom_regs);
 
 /**
  * struct ionic_hwstamp_regs - Hardware current timestamp registers
@@ -3198,6 +3330,7 @@ struct ionic_hwstamp_regs {
  * @fw_heartbeat:    Firmware heartbeat counter
  * @serial_num:      Serial number
  * @fw_version:      Firmware version
+ * @oprom_regs:      oprom_regs to store oprom debug enable/disable and bmp
  * @hwstamp_regs:    Hardware current timestamp registers
  */
 union ionic_dev_info_regs {
@@ -3214,11 +3347,13 @@ union ionic_dev_info_regs {
 		u32    fw_heartbeat;
 		char   fw_version[IONIC_DEVINFO_FWVERS_BUFLEN];
 		char   serial_num[IONIC_DEVINFO_SERIAL_BUFLEN];
-		u8     rsvd_pad1024[948];
+		struct ionic_oprom_regs oprom_regs;
+		u8     rsvd_pad1024[916];
 		struct ionic_hwstamp_regs hwstamp;
 	};
 	u32 words[512];
 };
+IONIC_CHECK_DEV_INFO_REGS_LENGTH(ionic_dev_info_regs);
 
 /**
  * union ionic_dev_cmd_regs - Device command register format (read-write)
@@ -3423,6 +3558,13 @@ union ionic_notifyq_comp {
 	struct ionic_reset_event reset;
 	struct ionic_heartbeat_event heartbeat;
 	struct ionic_log_event log;
+};
+union ionic_debug_msg {
+	struct {
+		char string[128];
+		u8   rsvd[128];
+	};
+	__le32 words[64];
 };
 
 /**

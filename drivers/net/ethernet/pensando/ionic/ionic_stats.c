@@ -185,6 +185,14 @@ static const struct ionic_stat_desc ionic_rx_stats_desc[] = {
 	IONIC_RX_STAT_DESC(hwstamp_valid),
 	IONIC_RX_STAT_DESC(hwstamp_invalid),
 	IONIC_RX_STAT_DESC(dropped),
+	IONIC_RX_STAT_DESC(cache_full),
+	IONIC_RX_STAT_DESC(cache_empty),
+	IONIC_RX_STAT_DESC(cache_busy),
+	IONIC_RX_STAT_DESC(cache_get),
+	IONIC_RX_STAT_DESC(cache_put),
+	IONIC_RX_STAT_DESC(buf_exhausted),
+	IONIC_RX_STAT_DESC(buf_not_reusable),
+	IONIC_RX_STAT_DESC(buf_reused),
 };
 
 #ifdef IONIC_DEBUG_STATS

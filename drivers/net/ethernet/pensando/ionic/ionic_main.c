@@ -27,6 +27,10 @@ unsigned int rx_copybreak = IONIC_RX_COPYBREAK_DEFAULT;
 module_param(rx_copybreak, uint, 0600);
 MODULE_PARM_DESC(rx_copybreak, "Maximum size of packet that is copied to a bounce buffer on RX");
 
+unsigned int rx_fill_threshold = IONIC_RX_FILL_THRESHOLD;
+module_param(rx_fill_threshold, uint, 0600);
+MODULE_PARM_DESC(rx_fill_threshold, "Minimum number of buffers to fill");
+
 unsigned int tx_budget = IONIC_TX_BUDGET_DEFAULT;
 module_param(tx_budget, uint, 0600);
 MODULE_PARM_DESC(tx_budget, "Number of tx completions to process per NAPI poll");
@@ -534,8 +538,8 @@ try_again:
 				ionic_opcode_to_str(opcode), opcode,
 				ionic_error_to_str(err), err);
 
-			msleep(1000);
 			iowrite32(0, &idev->dev_cmd_regs->done);
+			msleep(1000);
 			iowrite32(1, &idev->dev_cmd_regs->doorbell);
 			goto try_again;
 		}
@@ -546,6 +550,8 @@ try_again:
 
 		return ionic_error_to_errno(err);
 	}
+
+	ionic_dev_cmd_clean(ionic);
 
 	return 0;
 }
@@ -615,7 +621,11 @@ int ionic_identify(struct ionic *ionic)
 	sz = min(sizeof(ident->drv), sizeof(idev->dev_cmd_regs->data));
 	memcpy_toio(&idev->dev_cmd_regs->data, &ident->drv, sz);
 
+#if defined(IONIC_DEV_IDENTITY_VERSION_2)
+	ionic_dev_cmd_identify(idev, IONIC_DEV_IDENTITY_VERSION_2);
+#else
 	ionic_dev_cmd_identify(idev, IONIC_IDENTITY_VERSION_1);
+#endif
 	err = ionic_dev_cmd_wait(ionic, devcmd_timeout);
 	if (!err) {
 		sz = min(sizeof(ident->dev), sizeof(idev->dev_cmd_regs->data));
