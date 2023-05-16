@@ -279,8 +279,11 @@ extern const struct file_operations relay_file_operations;
 
 #ifdef CONFIG_RELAY
 int relay_prepare_cpu(unsigned int cpu);
+extern const struct rchan_callbacks *relay_get_cb(struct inode *inode,
+				 const struct file_operations *fops);
 #else
 #define relay_prepare_cpu     NULL
+#define relay_get_cb(inode, fops)	NULL
 #endif
 
 #endif /* _LINUX_RELAY_H */
