@@ -1074,6 +1074,22 @@ static ssize_t relay_file_read(struct file *filp,
 }
 
 
+const struct rchan_callbacks *relay_get_cb(struct inode *inode,
+				 const struct file_operations *fops)
+{
+	struct rchan_buf *buf;
+
+	/* Not a relay file */
+	if (fops != &relay_file_operations)
+		return NULL;
+	buf = (struct rchan_buf *)inode->i_private;
+	if (buf && buf->chan)
+		return buf->chan->cb;
+	else
+		return NULL;
+}
+EXPORT_SYMBOL_GPL(relay_get_cb);
+
 const struct file_operations relay_file_operations = {
 	.open		= relay_file_open,
 	.poll		= relay_file_poll,
