@@ -21,6 +21,9 @@
 #include <linux/pm_runtime.h>
 #include <linux/poll.h>
 #include <linux/security.h>
+#ifndef __GENKSYMS__
+#include <linux/blktrace_api.h>
+#endif
 
 #include "internal.h"
 
@@ -234,6 +237,12 @@ EXPORT_SYMBOL_GPL(debugfs_leave_cancellation);
  * Only permit access to world-readable files when the kernel is locked down.
  * We also need to exclude any file that has ways to write or alter it as root
  * can bypass the permissions check.
+ * Exception:
+ * blktrace trace files are per-cpu relay files that are used by kernel to
+ * export IO metadata(IO events, type, target disk, offset and len etc.) to
+ * userspace, no data from IO itself will be exported. These trace files have
+ * permission 0400, but mmap is supported, so they are blocked by lockdown.
+ * Skip lockdown for these files to allow blktrace work in lockdown mode.
  */
 static int debugfs_locked_down(struct inode *inode,
 			       struct file *filp,
@@ -244,6 +253,9 @@ static int debugfs_locked_down(struct inode *inode,
 	    !real_fops->unlocked_ioctl &&
 	    !real_fops->compat_ioctl &&
 	    !real_fops->mmap)
+		return 0;
+
+	if (blk_trace_is_tracefile(inode, real_fops))
 		return 0;
 
 	if (security_locked_down(LOCKDOWN_DEBUGFS))
