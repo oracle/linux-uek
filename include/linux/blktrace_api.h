@@ -79,6 +79,8 @@ extern int blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 			   char __user *arg);
 extern int blk_trace_startstop(struct request_queue *q, int start);
 extern int blk_trace_remove(struct request_queue *q);
+extern bool blk_trace_is_tracefile(struct inode *inode,
+                                const struct file_operations *fops);
 
 #else /* !CONFIG_BLK_DEV_IO_TRACE */
 # define blk_trace_ioctl(bdev, cmd, arg)		(-ENOTTY)
@@ -89,6 +91,7 @@ extern int blk_trace_remove(struct request_queue *q);
 # define blk_add_trace_msg(q, fmt, ...)			do { } while (0)
 # define blk_add_cgroup_trace_msg(q, cg, fmt, ...)	do { } while (0)
 # define blk_trace_note_message_enabled(q)		(false)
+# define blk_trace_is_tracefile(inode, fops)   (false)
 
 static inline int blk_trace_remove(struct request_queue *q)
 {
