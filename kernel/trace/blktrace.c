@@ -642,6 +642,13 @@ int blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 }
 EXPORT_SYMBOL_GPL(blk_trace_setup);
 
+bool blk_trace_is_tracefile(struct inode *inode,
+				 const struct file_operations *fops)
+{
+	return relay_get_cb(inode, fops) == &blk_relay_callbacks;
+}
+EXPORT_SYMBOL_GPL(blk_trace_is_tracefile);
+
 #if defined(CONFIG_COMPAT) && defined(CONFIG_X86_64)
 static int compat_blk_trace_setup(struct request_queue *q, char *name,
 				  dev_t dev, struct block_device *bdev,
