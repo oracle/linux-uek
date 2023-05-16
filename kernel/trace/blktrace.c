@@ -638,6 +638,13 @@ static int __blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	return 0;
 }
 
+bool blk_trace_is_tracefile(struct inode *inode,
+				 const struct file_operations *fops)
+{
+	return relay_get_cb(inode, fops) == &blk_relay_callbacks;
+}
+EXPORT_SYMBOL_GPL(blk_trace_is_tracefile);
+
 int blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 		    struct block_device *bdev,
 		    char __user *arg)
