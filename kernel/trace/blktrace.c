@@ -760,6 +760,13 @@ static void blk_trace_setup_finalize(struct request_queue *q,
 	get_probe_ref();
 }
 
+bool blk_trace_is_tracefile(struct inode *inode,
+				 const struct file_operations *fops)
+{
+	return relay_get_cb(inode, fops) == &blk_relay_callbacks;
+}
+EXPORT_SYMBOL_GPL(blk_trace_is_tracefile);
+
 int blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 		    struct block_device *bdev,
 		    char __user *arg)
