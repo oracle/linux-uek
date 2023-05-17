@@ -497,6 +497,8 @@ Source201: kabi_lockedlist_x86_64
 Source202: kabi_lockedlist_aarch64debug
 Source203: kabi_lockedlist_aarch64
 
+Source210: tcindex-blacklist.conf
+
 %ifarch x86_64
 %define sb_cer %{SOURCE22}
 %endif
@@ -1462,6 +1464,9 @@ BuildKernel() {
     # UEFI Secure Boot cert, which can verify kernel signature
     mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
     install -m 0644 %{sb_cer} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
+
+    # Copy tcindex blacklist file to build root etc/modprobe.d directory.
+    install -m 0644 -D %{SOURCE210} $RPM_BUILD_ROOT/etc/modprobe.d/tcindex-blacklist.conf
 }
 
 ###
@@ -1908,6 +1913,8 @@ fi
 %{expand:%%files -n %{variant_name}}\
 %{expand:%%files -f %{variant_name}-core.list -n %{variant_name}-core}\
 %defattr(-,root,root)\
+%dir /etc/modprobe.d\
+%config(noreplace) /etc/modprobe.d/tcindex-blacklist.conf\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz.hmac \
