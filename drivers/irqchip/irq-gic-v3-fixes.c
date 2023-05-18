@@ -31,7 +31,7 @@ enum ipi_msg_type {
 struct gic_ipi_track {
 	atomic_t tx_count;
 	atomic_t rx_count;
-	spinlock_t lock;
+	raw_spinlock_t lock;
 };
 
 static struct gic_ipi_track gic_ipitrack[NR_CPUS][NR_IPIS];
@@ -79,7 +79,7 @@ void gic_write_sgi1r_retry(int dest_cpu, int irq, u64 val)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&gic_ipitrack[dest_cpu][irq].lock, flags);
+	raw_spin_lock_irqsave(&gic_ipitrack[dest_cpu][irq].lock, flags);
 	wmb(); /* Ensure lock is acquired before we generate an IPI */
 retry:
 	gic_write_sgi1r(val);
@@ -95,7 +95,7 @@ retry:
 	wmb(); /* Ensure the write is completed before we start again */
 	goto retry;
 out:
-	spin_unlock_irqrestore(&gic_ipitrack[dest_cpu][irq].lock, flags);
+	raw_spin_unlock_irqrestore(&gic_ipitrack[dest_cpu][irq].lock, flags);
 }
 
 static bool __maybe_unused gicv3_enable_quirk_otx(void *data)
@@ -107,7 +107,7 @@ static bool __maybe_unused gicv3_enable_quirk_otx(void *data)
 	/* Initialize necessary lock */
 	for_each_possible_cpu(cpu)
 		for (ipi = 0; ipi < NR_IPIS; ipi++)
-			spin_lock_init(&gic_ipitrack[cpu][ipi].lock);
+			raw_spin_lock_init(&gic_ipitrack[cpu][ipi].lock);
 
 	return true;
 }
