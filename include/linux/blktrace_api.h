@@ -83,6 +83,9 @@ extern void blk_trace_remove_sysfs(struct device *dev);
 extern int blk_trace_init_sysfs(struct device *dev);
 
 extern struct attribute_group blk_trace_attr_group;
+extern bool blk_trace_is_tracefile(struct inode *inode,
+				 const struct file_operations *fops);
+
 
 #else /* !CONFIG_BLK_DEV_IO_TRACE */
 # define blk_trace_ioctl(bdev, cmd, arg)		(-ENOTTY)
@@ -99,6 +102,7 @@ static inline int blk_trace_init_sysfs(struct device *dev)
 {
 	return 0;
 }
+# define blk_trace_is_tracefile(inode, fops)	(false)
 
 #endif /* CONFIG_BLK_DEV_IO_TRACE */
 
