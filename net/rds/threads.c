@@ -372,7 +372,7 @@ void rds_hb_worker(struct work_struct *work)
 	struct rds_conn_path *cp = container_of(work,
 						struct rds_conn_path,
 						cp_hb_w.work);
-	time64_t now = ktime_get_real_seconds();
+	time64_t now = ktime_get_seconds();
 	time64_t cp_hb_start = READ_ONCE(cp->cp_hb_start);
 	unsigned long delay = HZ;
 	int ret;
