@@ -662,6 +662,8 @@ Source29: kabi
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
 
+Source210: tcindex-blacklist.conf
+
 Source300: find-debuginfo.sh.ol7.diff
 Source301: find-debuginfo.sh.parallel.diff
 
@@ -1673,6 +1675,8 @@ fi
     mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
     install -m 0644 %{SOURCE22} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
 
+    # Copy tcindex blacklist file to build root etc/modprobe.d directory.
+    install -m 0644 -D %{SOURCE210} $RPM_BUILD_ROOT/etc/modprobe.d/tcindex-blacklist.conf
 }
 
 ###
@@ -2279,6 +2283,8 @@ fi
 %if %{1}\
 %{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}}\
 %defattr(-,root,root)\
+%dir /etc/modprobe.d\
+%config(noreplace) /etc/modprobe.d/tcindex-blacklist.conf\
 /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 %if %{with_fips} \
 /%{image_install_path}/.vmlinuz-%{KVERREL}%{?2:.%{2}}.hmac \
