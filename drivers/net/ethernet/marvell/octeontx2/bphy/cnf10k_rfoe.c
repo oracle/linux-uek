@@ -547,13 +547,16 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		return;
 	}
 
-	if (psw->mac_err_sts || psw->mcs_err_sts) {
-		net_warn_ratelimited("%s: psw mac_err_sts = 0x%x, mcs_err_sts=0x%x\n",
-				     priv->netdev->name,
-				     psw->mac_err_sts,
-				     psw->mcs_err_sts);
-		cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
-		return;
+	if (unlikely(psw->mac_err_sts || psw->mcs_err_sts)) {
+		if (netif_msg_rx_err(priv2))
+			net_warn_ratelimited("%s: psw mac_err_sts = 0x%x, mcs_err_sts=0x%x\n",
+					     priv2->netdev->name,
+					     psw->mac_err_sts,
+					     psw->mcs_err_sts);
+		if (psw->mac_err_sts) {
+			cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
+			return;
+		}
 	}
 
 	/* drop the packet if interface is down */
