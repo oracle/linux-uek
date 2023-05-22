@@ -349,7 +349,7 @@ restart:
 				/* the oldest / first message in the retransmit queue
 				 * has to be at or beyond c_cp0_mprds_catchup_tx_seq
 				 */
-				if (!list_empty(&cp0->cp_send_queue)) {
+				if (!list_empty(&cp0->cp_retrans)) {
 					rm0 = list_entry(cp0->cp_retrans.next,
 							 struct rds_message,
 							 m_conn_item);
