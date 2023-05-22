@@ -2893,9 +2893,8 @@ err_out:
 	return err;
 }
 
-void mlx5_esw_offloads_devcom_init(struct mlx5_eswitch *esw)
+void mlx5_esw_offloads_devcom_init(struct mlx5_eswitch *esw, u64 key)
 {
-	u64 guid;
 	int i;
 
 	for (i = 0; i < MLX5_MAX_PORTS; i++)
@@ -2909,12 +2908,10 @@ void mlx5_esw_offloads_devcom_init(struct mlx5_eswitch *esw)
 		return;
 
 	xa_init(&esw->paired);
-	guid = mlx5_query_nic_system_image_guid(esw->dev);
-
 	esw->num_peers = 0;
 	esw->devcom = mlx5_devcom_register_component(esw->dev->priv.devc,
 						     MLX5_DEVCOM_ESW_OFFLOADS,
-						     guid,
+						     key,
 						     mlx5_esw_offloads_devcom_event,
 						     esw);
 	if (IS_ERR_OR_NULL(esw->devcom))
