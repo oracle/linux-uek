@@ -505,6 +505,9 @@ tcindex_set_parms(struct net *net, struct tcf_proto *tp, unsigned long base,
 			if (cf->key == (u16)handle)
 				break;
 
+		if (unlikely(!cf))
+			goto errout_alloc;
+
 		f->next = cf->next;
 
 		cf = rcu_replace_pointer(*fp, f, 1);
