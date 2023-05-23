@@ -20,8 +20,11 @@
 /* This is the maximum number of descriptor rings supported by the QDMA */
 #define EFX_EF100_MAX_DMAQ_SIZE 16384UL
 
-static void ef100_ethtool_get_ringparam(struct net_device *net_dev,
-					struct ethtool_ringparam *ring)
+static void
+ef100_ethtool_get_ringparam(struct net_device *net_dev,
+			    struct ethtool_ringparam *ring,
+			    struct kernel_ethtool_ringparam *kernel_ring,
+			    struct netlink_ext_ack *extack)
 {
 	struct efx_nic *efx = netdev_priv(net_dev);
 
@@ -45,7 +48,7 @@ const struct ethtool_ops ef100_ethtool_ops = {
 	.get_link_ksettings	= efx_ethtool_get_link_ksettings,
 	.set_link_ksettings	= efx_ethtool_set_link_ksettings,
 	.get_link		= ethtool_op_get_link,
-	.get_ringparam		= ef100_ethtool_get_ringparam,
+	.get_ringparam_new		= ef100_ethtool_get_ringparam,
 	.get_fecparam		= efx_ethtool_get_fecparam,
 	.set_fecparam		= efx_ethtool_set_fecparam,
 	.get_ethtool_stats	= efx_ethtool_get_stats,
