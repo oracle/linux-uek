@@ -419,6 +419,8 @@ void rds_hb_worker(struct work_struct *work)
 							    &conn->c_laddr, &conn->c_faddr);
 				return;
 			}
+
+			WRITE_ONCE(cp->cp_hb_start, now);
 			ret = rds_send_hb(cp->cp_conn, 0);
 
 			if (ret) {
@@ -432,7 +434,6 @@ void rds_hb_worker(struct work_struct *work)
 			if (conn->c_is_first_hb_ping)
 				conn->c_is_first_hb_ping = 0;
 
-			WRITE_ONCE(cp->cp_hb_start, now);
 			WRITE_ONCE(cp->cp_hb_state, HB_PING_SENT);
 			break;
 		}
