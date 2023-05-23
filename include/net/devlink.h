@@ -1496,8 +1496,6 @@ struct devlink_ops {
 	 * attributes
 	 *
 	 * Notes:
-	 *	- Called without devlink instance lock being held. Drivers must
-	 *	  implement own means of synchronization
 	 *	- On success, drivers must register a port with devlink core
 	 *
 	 * Return: 0 on success, negative value otherwise.
@@ -1515,8 +1513,6 @@ struct devlink_ops {
 	 * to delete a previously created port function
 	 *
 	 * Notes:
-	 *	- Called without devlink instance lock being held. Drivers must
-	 *	  implement own means of synchronization
 	 *	- On success, drivers must unregister the corresponding devlink
 	 *	  port
 	 *
