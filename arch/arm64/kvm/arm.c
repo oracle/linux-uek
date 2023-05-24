@@ -132,6 +132,8 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
 {
 	int i;
 
+	bitmap_free(kvm->arch.pmu_filter);
+
 	kvm_vgic_destroy(kvm);
 
 	free_percpu(kvm->arch.last_vcpu_ran);
