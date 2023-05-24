@@ -1089,7 +1089,7 @@ static void nvme_update_formats(struct nvme_ctrl *ctrl, u32 *effects)
 	up_read(&ctrl->namespaces_rwsem);
 }
 
-static void nvme_passthru_end(struct nvme_ctrl *ctrl, u32 effects)
+void nvme_passthru_end(struct nvme_ctrl *ctrl, u32 effects, struct nvme_command *cmd, int status)
 {
 	/*
 	 * Revalidate LBA changes prior to unfreezing. This is necessary to
@@ -1112,18 +1112,18 @@ static void nvme_passthru_end(struct nvme_ctrl *ctrl, u32 effects)
 		flush_work(&ctrl->scan_work);
 	}
 }
+EXPORT_SYMBOL_NS_GPL(nvme_passthru_end, NVME_TARGET_PASSTHRU);
 
-void nvme_execute_passthru_rq(struct request *rq)
+void nvme_execute_passthru_rq(struct request *rq, u32 *effects)
 {
 	struct nvme_command *cmd = nvme_req(rq)->cmd;
 	struct nvme_ctrl *ctrl = nvme_req(rq)->ctrl;
 	struct nvme_ns *ns = rq->q->queuedata;
 	struct gendisk *disk = ns ? ns->disk : NULL;
-	u32 effects;
 
-	effects = nvme_passthru_start(ctrl, ns, cmd->common.opcode);
+	*effects = nvme_passthru_start(ctrl, ns, cmd->common.opcode);
+
 	blk_execute_rq(rq->q, disk, rq, 0);
-	nvme_passthru_end(ctrl, effects);
 }
 EXPORT_SYMBOL_NS_GPL(nvme_execute_passthru_rq, NVME_TARGET_PASSTHRU);
 
@@ -1132,12 +1132,14 @@ static int nvme_submit_user_cmd(struct request_queue *q,
 		unsigned bufflen, void __user *meta_buffer, unsigned meta_len,
 		u32 meta_seed, u64 *result, unsigned timeout)
 {
+	struct nvme_ctrl *ctrl;
 	bool write = nvme_is_write(cmd);
 	struct nvme_ns *ns = q->queuedata;
 	struct gendisk *disk = ns ? ns->disk : NULL;
 	struct request *req;
 	struct bio *bio = NULL;
 	void *meta = NULL;
+	u32 effects;
 	int ret;
 
 	req = nvme_alloc_request(q, cmd, 0, NVME_QID_ANY);
@@ -1165,11 +1167,14 @@ static int nvme_submit_user_cmd(struct request_queue *q,
 		}
 	}
 
-	nvme_execute_passthru_rq(req);
+	ctrl = nvme_req(req)->ctrl;
+
+	nvme_execute_passthru_rq(req, &effects);
+	ret = nvme_req(req)->status;
+
 	if (nvme_req(req)->flags & NVME_REQ_CANCELLED)
 		ret = -EINTR;
-	else
-		ret = nvme_req(req)->status;
+
 	if (result)
 		*result = le64_to_cpu(nvme_req(req)->result.u64);
 	if (meta && !ret && !write) {
@@ -1182,6 +1187,10 @@ static int nvme_submit_user_cmd(struct request_queue *q,
 		blk_rq_unmap_user(bio);
  out:
 	blk_mq_free_request(req);
+
+	if (effects)
+		nvme_passthru_end(ctrl, effects, cmd, ret);
+
 	return ret;
 }
 
