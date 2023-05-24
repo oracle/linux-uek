@@ -83,6 +83,8 @@ struct kvm_arch {
 
 	/* Mandated version of PSCI */
 	u32 psci_version;
+
+	unsigned int pmuver;
 };
 
 #define KVM_NR_MEM_OBJS     40
