@@ -1866,13 +1866,13 @@ out:
 	return ret;
 }
 
-int
+void
 rds_send_hb(struct rds_connection *conn, int response)
 {
 	u8 flags = 0;
 
 	if (conn->c_trans->t_type == RDS_TRANS_TCP)
-		return 0;
+		return;
 
 	if (response) {
 		flags |= RDS_FLAG_HB_PONG;
@@ -1886,8 +1886,6 @@ rds_send_hb(struct rds_connection *conn, int response)
 	flags |= RDS_FLAG_ACK_REQUIRED;
 
 	rds_send_probe(&conn->c_path[0], 0, 0, flags);
-
-	return 0;
 }
 
 int
