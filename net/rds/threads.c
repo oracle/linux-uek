@@ -375,7 +375,6 @@ void rds_hb_worker(struct work_struct *work)
 	time64_t now = ktime_get_seconds();
 	time64_t cp_hb_start = READ_ONCE(cp->cp_hb_start);
 	unsigned long delay = HZ;
-	int ret;
 	struct rds_connection *conn = cp->cp_conn;
 
 	trace_rds_queue_worker(cp->cp_conn, cp, cp->cp_wq, work, 0,
@@ -422,20 +421,12 @@ void rds_hb_worker(struct work_struct *work)
 			}
 
 			WRITE_ONCE(cp->cp_hb_start, now);
-			ret = rds_send_hb(cp->cp_conn, 0);
-
-			if (ret) {
-				/* rds_send_hb() will call rds_send_probe();
-				 * if the latter fails, drop-out trace events
-				 * will occur.
-				 */
-				return;
-			}
+			WRITE_ONCE(cp->cp_hb_state, HB_PING_SENT);
+			rds_send_hb(cp->cp_conn, 0);
 
 			if (conn->c_is_first_hb_ping)
 				conn->c_is_first_hb_ping = 0;
 
-			WRITE_ONCE(cp->cp_hb_state, HB_PING_SENT);
 			break;
 		}
 
