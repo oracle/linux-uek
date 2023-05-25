@@ -1414,7 +1414,7 @@ void rds_send_path_drop_acked(struct rds_conn_path *cp, u64 ack,
 void rds_send_remove_from_sock(struct list_head *messages, int status);
 void rds_send_hs_ping(struct rds_connection *conn, int cp_index);
 int rds_send_pong(struct rds_conn_path *cp, __be16 dport);
-int rds_send_hb(struct rds_connection *conn, int response);
+void rds_send_hb(struct rds_connection *conn, int response);
 struct rds_message *rds_send_get_message(struct rds_connection *,
 					 struct rm_rdma_op *);
 
