@@ -711,8 +711,6 @@ static const struct devlink_ops ice_devlink_ops = {
 	/* The ice driver currently does not support driver reinit */
 	.reload_down = ice_devlink_reload_empr_start,
 	.reload_up = ice_devlink_reload_empr_finish,
-	.port_split = ice_devlink_port_split,
-	.port_unsplit = ice_devlink_port_unsplit,
 	.eswitch_mode_get = ice_eswitch_mode_get,
 	.eswitch_mode_set = ice_eswitch_mode_set,
 	.info_get = ice_devlink_info_get,
@@ -952,6 +950,8 @@ ice_devlink_set_port_split_options(struct ice_pf *pf,
 }
 
 static const struct devlink_port_ops ice_devlink_port_ops = {
+	.port_split = ice_devlink_port_split,
+	.port_unsplit = ice_devlink_port_unsplit,
 };
 
 /**
