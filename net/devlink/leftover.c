@@ -690,8 +690,7 @@ static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 	return 0;
 }
 
-static int devlink_port_fn_hw_addr_fill(const struct devlink_ops *ops,
-					struct devlink_port *port,
+static int devlink_port_fn_hw_addr_fill(struct devlink_port *port,
 					struct sk_buff *msg,
 					struct netlink_ext_ack *extack,
 					bool *msg_updated)
@@ -700,10 +699,10 @@ static int devlink_port_fn_hw_addr_fill(const struct devlink_ops *ops,
 	int hw_addr_len;
 	int err;
 
-	if (!ops->port_function_hw_addr_get)
+	if (!port->ops->port_fn_hw_addr_get)
 		return 0;
 
-	err = ops->port_function_hw_addr_get(port, hw_addr, &hw_addr_len,
+	err = port->ops->port_fn_hw_addr_get(port, hw_addr, &hw_addr_len,
 					     extack);
 	if (err) {
 		if (err == -EOPNOTSUPP)
@@ -875,8 +874,7 @@ devlink_nl_port_function_attrs_put(struct sk_buff *msg, struct devlink_port *por
 		return -EMSGSIZE;
 
 	ops = port->devlink->ops;
-	err = devlink_port_fn_hw_addr_fill(ops, port, msg, extack,
-					   &msg_updated);
+	err = devlink_port_fn_hw_addr_fill(port, msg, extack, &msg_updated);
 	if (err)
 		goto out;
 	err = devlink_port_fn_caps_fill(ops, port, msg, extack,
@@ -1153,7 +1151,6 @@ static int devlink_port_function_hw_addr_set(struct devlink_port *port,
 					     const struct nlattr *attr,
 					     struct netlink_ext_ack *extack)
 {
-	const struct devlink_ops *ops = port->devlink->ops;
 	const u8 *hw_addr;
 	int hw_addr_len;
 
@@ -1174,7 +1171,7 @@ static int devlink_port_function_hw_addr_set(struct devlink_port *port,
 		}
 	}
 
-	return ops->port_function_hw_addr_set(port, hw_addr, hw_addr_len,
+	return port->ops->port_fn_hw_addr_set(port, hw_addr, hw_addr_len,
 					      extack);
 }
 
@@ -1198,7 +1195,7 @@ static int devlink_port_function_validate(struct devlink_port *devlink_port,
 	struct nlattr *attr;
 
 	if (tb[DEVLINK_PORT_FUNCTION_ATTR_HW_ADDR] &&
-	    !ops->port_function_hw_addr_set) {
+	    !devlink_port->ops->port_fn_hw_addr_set) {
 		NL_SET_ERR_MSG_ATTR(extack, tb[DEVLINK_PORT_FUNCTION_ATTR_HW_ADDR],
 				    "Port doesn't support function attributes");
 		return -EOPNOTSUPP;
