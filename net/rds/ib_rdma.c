@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -33,6 +33,7 @@
 #include <linux/kernel.h>
 #include <linux/rculist.h>
 #include <linux/irq.h>
+#include <linux/topology.h>
 
 #include "trace.h"
 
@@ -497,6 +498,26 @@ int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
 	return 0;
 }
 
+static int rds_ib_find_sibling(int cpu)
+{
+	int i;
+
+	if (IS_ENABLED(CONFIG_ARM64)) {
+#ifdef CONFIG_SCHED_CLUSTER
+		for_each_cpu(i, topology_cluster_cpumask(cpu))
+#else
+		for_each_cpu_wrap(i, topology_sibling_cpumask(cpu), cpu)
+#endif
+			if (i != cpu)
+				return i;
+	} else {
+		for_each_cpu(i, topology_sibling_cpumask(cpu))
+			if (i != cpu)
+				return i;
+	}
+	return WORK_CPU_UNBOUND;
+}
+
 int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 		    struct rds_connection *conn)
 {
@@ -511,6 +532,8 @@ int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 
 	rds_ib_alloc_preferred_cpu(&ic->i_preferred_recv_cpu,
 				   rds_ibdev, ic->i_rcq_vector);
+
+	ic->i_preferred_recv_sibling = rds_ib_find_sibling(ic->i_preferred_recv_cpu);
 
 	/* conn was previously on the nodev_conns_list */
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
