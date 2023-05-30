@@ -4242,28 +4242,20 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 	return load_module(&info, uargs, 0);
 }
 
-SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
+static int init_module_from_file(struct file *f, const char __user * uargs, int flags)
 {
 	struct load_info info = { };
-	void *hdr = NULL;
-	int err;
+	void *buf = NULL;
+	int len;
 
-	err = may_init_module();
-	if (err)
-		return err;
+	if (!f || !(f->f_mode & FMODE_READ))
+		return -EBADF;
 
-	pr_debug("finit_module: fd=%d, uargs=%p, flags=%i\n", fd, uargs, flags);
-
-	if (flags & ~(MODULE_INIT_IGNORE_MODVERSIONS
-		      |MODULE_INIT_IGNORE_VERMAGIC))
-		return -EINVAL;
-
-	err = kernel_read_file_from_fd(fd, 0, &hdr, INT_MAX, NULL,
-				       READING_MODULE);
-	if (err < 0)
-		return err;
-	info.hdr = hdr;
-	info.len = err;
+	len = kernel_read_file(f, 0, &buf, INT_MAX, NULL, READING_MODULE);
+	if (len < 0)
+		return len;
+	info.hdr = buf;
+	info.len = len;
 
 	return load_module(&info, uargs, flags);
 }
@@ -4588,6 +4580,27 @@ static void cfi_cleanup(struct module *mod)
 
 /* Maximum number of characters written by module_flags() */
 #define MODULE_FLAGS_BUF_SIZE (TAINT_FLAGS_COUNT + 4)
+
+SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
+{
+	int err;
+	struct fd f;
+
+	err = may_init_module();
+	if (err)
+		return err;
+
+	pr_debug("finit_module: fd=%d, uargs=%p, flags=%i\n", fd, uargs, flags);
+
+	if (flags & ~(MODULE_INIT_IGNORE_MODVERSIONS
+		      |MODULE_INIT_IGNORE_VERMAGIC))
+		return -EINVAL;
+
+	f = fdget(fd);
+	err = init_module_from_file(f.file, uargs, flags);
+	fdput(f);
+	return err;
+}
 
 /* Keep in sync with MODULE_FLAGS_BUF_SIZE !!! */
 static char *module_flags(struct module *mod, char *buf)
