@@ -1171,9 +1171,21 @@ static void amd_iommu_flush_irt_all(struct amd_iommu *iommu)
 {
 	u32 devid;
 
+	if (iommu->irtcachedis_enabled)
+		return;
+
 	for (devid = 0; devid <= MAX_DEV_TABLE_ENTRIES; devid++)
 		iommu_flush_irt(iommu, devid);
 
+	iommu_completion_wait(iommu);
+}
+
+static void iommu_flush_irt_and_complete(struct amd_iommu *iommu, u16 devid)
+{
+	if (iommu->irtcachedis_enabled)
+		return;
+
+	iommu_flush_irt(iommu, devid);
 	iommu_completion_wait(iommu);
 }
 
@@ -3884,8 +3896,7 @@ static int modify_irte_ga(u16 devid, int index, struct irte_ga *irte)
 
 	raw_spin_unlock_irqrestore(&table->lock, flags);
 
-	iommu_flush_irt(iommu, devid);
-	iommu_completion_wait(iommu);
+	iommu_flush_irt_and_complete(iommu, devid);
 
 	return 0;
 }
@@ -3908,8 +3919,7 @@ static int modify_irte(u16 devid, int index, union irte *irte)
 	table->table[index] = irte->val;
 	raw_spin_unlock_irqrestore(&table->lock, flags);
 
-	iommu_flush_irt(iommu, devid);
-	iommu_completion_wait(iommu);
+	iommu_flush_irt_and_complete(iommu, devid);
 
 	return 0;
 }
@@ -3932,8 +3942,7 @@ static void free_irte(u16 devid, int index)
 	iommu->irte_ops->clear_allocated(table, index);
 	raw_spin_unlock_irqrestore(&table->lock, flags);
 
-	iommu_flush_irt(iommu, devid);
-	iommu_completion_wait(iommu);
+	iommu_flush_irt_and_complete(iommu, devid);
 }
 
 static void irte_prepare(void *entry,
