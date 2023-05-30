@@ -140,7 +140,7 @@ static void mlx5_system_free_irq(struct mlx5_irq *irq)
 	irq_update_affinity_hint(irq->map.virq, NULL);
 #ifdef CONFIG_RFS_ACCEL
 	rmap = mlx5_eq_table_get_rmap(pool->dev);
-	if (rmap && irq->map.index)
+	if (rmap)
 		irq_cpu_rmap_remove(rmap, irq->map.virq);
 #endif
 
