@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -2283,7 +2283,7 @@ int rds_ib_conn_preferred_cpu(struct rds_connection *conn, bool in_send_path)
 	if (!ic)
 		return WORK_CPU_UNBOUND;
 
-	return in_send_path ? ic->i_preferred_send_cpu : ic->i_preferred_recv_cpu;
+	return in_send_path ? ic->i_preferred_send_cpu : ic->i_preferred_recv_sibling;
 }
 
 bool rds_ib_conn_has_alt_conn(struct rds_connection *conn)
