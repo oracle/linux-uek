@@ -172,7 +172,11 @@ struct pneigh_entry {
 	possible_net_t		net;
 	struct net_device	*dev;
 	u8			flags;
-	u8			key[0];
+#ifdef __GENKSYMS__
+	u8 			key[0];
+#else
+	u32 		key[];
+#endif
 };
 
 /*
