@@ -629,7 +629,6 @@ Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
 Requires: numactl-libs\
-Requires: libdnf >= 0.63.0-5.0.2\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 Conflicts: shim-x64 <= 15.3-1.0.5.el9\
