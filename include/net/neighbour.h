@@ -178,7 +178,11 @@ struct pneigh_entry {
 	struct net_device	*dev;
 	u8			flags;
 	u8			protocol;
+#ifndef __GENKSYMS__
+	u32			key[];
+#else
 	u8			key[];
+#endif
 };
 
 /*
