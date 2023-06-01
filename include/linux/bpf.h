@@ -315,6 +315,7 @@ enum bpf_reg_type {
 	PTR_TO_MEM,		 /* reg points to valid memory region */
 	PTR_TO_MEM_OR_NULL,	 /* reg points to valid memory region or NULL */
 	PTR_TO_BTF_ID,		 /* reg points to kernel struct */
+	PTR_TO_BTF_ID_OR_NULL,	 /* reg points to kernel struct or NULL */
 #endif
 };
 
@@ -473,6 +474,7 @@ struct bpf_prog_aux {
 	UEK_KABI_EXTEND(const struct btf_type *attach_func_proto)
         /* function name for valid attach_btf_id */
         UEK_KABI_EXTEND(const char *attach_func_name)
+	UEK_KABI_EXTEND(bool btf_id_or_null_non0_off)
 };
 
 struct bpf_array {

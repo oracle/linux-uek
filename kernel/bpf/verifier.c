@@ -356,7 +356,8 @@ static bool reg_type_may_be_null(enum bpf_reg_type type)
 	       type == PTR_TO_SOCKET_OR_NULL ||
 	       type == PTR_TO_SOCK_COMMON_OR_NULL ||
 	       type == PTR_TO_TCP_SOCK_OR_NULL ||
-	       type == PTR_TO_MEM_OR_NULL;
+	       type == PTR_TO_MEM_OR_NULL ||
+	       type == PTR_TO_BTF_ID_OR_NULL;
 }
 
 static bool reg_may_point_to_spin_lock(const struct bpf_reg_state *reg)
@@ -429,6 +430,7 @@ static const char * const reg_type_str[] = {
 	[PTR_TO_MEM]		= "mem",
 	[PTR_TO_MEM_OR_NULL]	= "mem_or_null",
 	[PTR_TO_BTF_ID]		= "ptr_",
+	[PTR_TO_BTF_ID_OR_NULL]	= "ptr_or_null_",
 };
 
 static char slot_type_char[] = {
@@ -489,7 +491,7 @@ static void print_verifier_state(struct bpf_verifier_env *env,
 			/* reg->off should be 0 for SCALAR_VALUE */
 			verbose(env, "%lld", reg->var_off.value + reg->off);
 		} else {
-			if (t == PTR_TO_BTF_ID)
+			if (t == PTR_TO_BTF_ID || t == PTR_TO_BTF_ID_OR_NULL)
 				verbose(env, "%s", kernel_type_name(reg->btf_id));
 			verbose(env, "(id=%d", reg->id);
 			if (reg_type_may_be_refcounted_or_null(t))
@@ -1906,6 +1908,8 @@ static bool is_spillable_regtype(enum bpf_reg_type type)
 	case PTR_TO_TCP_SOCK:
 	case PTR_TO_TCP_SOCK_OR_NULL:
 	case PTR_TO_XDP_SOCK:
+	case PTR_TO_BTF_ID:
+	case PTR_TO_BTF_ID_OR_NULL:
 		return true;
 	default:
 		return false;
@@ -2427,7 +2431,7 @@ static int check_ctx_access(struct bpf_verifier_env *env, int insn_idx, int off,
 		 */
 		*reg_type = info.reg_type;
 
-		if (*reg_type == PTR_TO_BTF_ID)
+		if (*reg_type == PTR_TO_BTF_ID || *reg_type == PTR_TO_BTF_ID_OR_NULL)
 			*btf_id = info.btf_id;
 		else
 			env->insn_aux_data[insn_idx].ctx_field_size = info.ctx_field_size;
@@ -3022,7 +3026,8 @@ static int check_mem_access(struct bpf_verifier_env *env, int insn_idx, u32 regn
 				 * a sub-register.
 				 */
 				regs[value_regno].subreg_def = DEF_NOT_SUBREG;
-				if (reg_type == PTR_TO_BTF_ID)
+				if (reg_type == PTR_TO_BTF_ID ||
+				    reg_type == PTR_TO_BTF_ID_OR_NULL)
 					regs[value_regno].btf_id = btf_id;
 			}
 			regs[value_regno].type = reg_type;
@@ -6137,6 +6142,8 @@ static void mark_ptr_or_null_reg(struct bpf_func_state *state,
 			reg->type = PTR_TO_TCP_SOCK;
 		} else if (reg->type == PTR_TO_MEM_OR_NULL) {
 			reg->type = PTR_TO_MEM;
+		} else if (reg->type == PTR_TO_BTF_ID_OR_NULL) {
+			reg->type = PTR_TO_BTF_ID;
 		}
 		if (is_null) {
 			/* We don't need id and ref_obj_id from this point
@@ -7959,6 +7966,7 @@ static bool reg_type_mismatch_ok(enum bpf_reg_type type)
 	case PTR_TO_TCP_SOCK_OR_NULL:
 	case PTR_TO_XDP_SOCK:
 	case PTR_TO_BTF_ID:
+	case PTR_TO_BTF_ID_OR_NULL:
 		return false;
 	default:
 		return true;

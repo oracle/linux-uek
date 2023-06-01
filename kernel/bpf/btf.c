@@ -3548,7 +3548,11 @@ bool btf_ctx_access(int off, int size, enum bpf_access_type type,
 		return true;
 
 	/* this is a pointer to another type */
-	info->reg_type = PTR_TO_BTF_ID;
+	if (off != 0 && prog->aux->btf_id_or_null_non0_off)
+		info->reg_type = PTR_TO_BTF_ID_OR_NULL;
+	else
+		info->reg_type = PTR_TO_BTF_ID;
+
 	info->btf_id = t->type;
 
 	t = btf_type_by_id(btf_vmlinux, t->type);
