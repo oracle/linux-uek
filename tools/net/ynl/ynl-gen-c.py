@@ -896,11 +896,12 @@ class RenderInfo:
         self.op_mode = op_mode
 
         # 'do' and 'dump' response parsing is identical
-        if op_mode != 'do' and 'dump' in op and 'do' in op and 'reply' in op['do'] and \
-           op["do"]["reply"] == op["dump"]["reply"]:
-            self.type_consistent = True
-        else:
-            self.type_consistent = op_mode == 'event'
+        self.type_consistent = True
+        if op_mode != 'do' and 'dump' in op and 'do' in op:
+            if ('reply' in op['do']) != ('reply' in op["dump"]):
+                self.type_consistent = False
+            elif 'reply' in op['do'] and op["do"]["reply"] != op["dump"]["reply"]:
+                self.type_consistent = False
 
         self.attr_set = attr_set
         if not self.attr_set:
@@ -2242,7 +2243,7 @@ def main():
                     ri = RenderInfo(cw, parsed, args.mode, op, op_name, 'notify')
                     has_ntf = True
                     if not ri.type_consistent:
-                        raise Exception('Only notifications with consistent types supported')
+                        raise Exception(f'Only notifications with consistent types supported ({op.name})')
                     print_wrapped_type(ri)
 
                 if 'event' in op:
@@ -2301,7 +2302,7 @@ def main():
                     ri = RenderInfo(cw, parsed, args.mode, op, op_name, 'notify')
                     has_ntf = True
                     if not ri.type_consistent:
-                        raise Exception('Only notifications with consistent types supported')
+                        raise Exception(f'Only notifications with consistent types supported ({op.name})')
                     print_ntf_type_free(ri)
 
                 if 'event' in op:
