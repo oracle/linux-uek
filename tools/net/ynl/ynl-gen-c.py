@@ -943,9 +943,10 @@ class CodeWriter:
     def _is_cond(cls, line):
         return line.startswith('if') or line.startswith('while') or line.startswith('for')
 
-    def p(self, line, add_ind=0):
+    def p(self, line, add_ind=0, eat_nl=False):
         if self._nl:
-            self._out.write('\n')
+            if not eat_nl:
+                self._out.write('\n')
             self._nl = False
         ind = self._ind
         if line[-1] == ':':
@@ -970,7 +971,7 @@ class CodeWriter:
         if line and line[0] not in {';', ','}:
             line = ' ' + line
         self._ind -= 1
-        self.p('}' + line)
+        self.p('}' + line, eat_nl=True)
 
     def write_doc_line(self, doc, indent=True):
         words = doc.split()
