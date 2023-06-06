@@ -487,7 +487,7 @@ class TypeMultiAttr(Type):
             raise Exception(f"Sub-type {self.attr['type']} not supported yet")
 
     def _attr_get(self, ri, var):
-        return f'{var}->n_{self.c_name}++;', None, None
+        return f'n_{self.c_name}++;', None, None
 
     def attr_put(self, ri, var):
         if self.attr['type'] in scalars:
@@ -1305,6 +1305,11 @@ def _multi_parse(ri, struct, init_lines, local_vars):
         local_vars.append('struct ynl_parse_arg parg;')
         init_lines.append('parg.ys = yarg->ys;')
 
+    all_multi = array_nests | multi_attrs
+
+    for anest in sorted(all_multi):
+        local_vars.append(f"unsigned int n_{struct[anest].c_name} = 0;")
+
     ri.cw.block_start()
     ri.cw.write_func_lvar(local_vars)
 
@@ -1314,6 +1319,11 @@ def _multi_parse(ri, struct, init_lines, local_vars):
 
     for arg in struct.inherited:
         ri.cw.p(f'dst->{arg} = {arg};')
+
+    for anest in sorted(all_multi):
+        aspec = struct[anest]
+        ri.cw.p(f"if (dst->{aspec.c_name})")
+        ri.cw.p(f'return ynl_error_parse(yarg, "attribute already present ({struct.attr_set.name}.{aspec.name})");')
 
     ri.cw.nl()
     ri.cw.block_start(line=iter_line)
@@ -1330,8 +1340,9 @@ def _multi_parse(ri, struct, init_lines, local_vars):
     for anest in sorted(array_nests):
         aspec = struct[anest]
 
-        ri.cw.block_start(line=f"if (dst->n_{aspec.c_name})")
-        ri.cw.p(f"dst->{aspec.c_name} = calloc(dst->n_{aspec.c_name}, sizeof(*dst->{aspec.c_name}));")
+        ri.cw.block_start(line=f"if (n_{aspec.c_name})")
+        ri.cw.p(f"dst->{aspec.c_name} = calloc({aspec.c_name}, sizeof(*dst->{aspec.c_name}));")
+        ri.cw.p(f"dst->n_{aspec.c_name} = n_{aspec.c_name};")
         ri.cw.p('i = 0;')
         ri.cw.p(f"parg.rsp_policy = &{aspec.nested_render_name}_nest;")
         ri.cw.block_start(line=f"mnl_attr_for_each_nested(attr, attr_{aspec.c_name})")
@@ -1345,8 +1356,9 @@ def _multi_parse(ri, struct, init_lines, local_vars):
 
     for anest in sorted(multi_attrs):
         aspec = struct[anest]
-        ri.cw.block_start(line=f"if (dst->n_{aspec.c_name})")
-        ri.cw.p(f"dst->{aspec.c_name} = calloc(dst->n_{aspec.c_name}, sizeof(*dst->{aspec.c_name}));")
+        ri.cw.block_start(line=f"if (n_{aspec.c_name})")
+        ri.cw.p(f"dst->{aspec.c_name} = calloc(n_{aspec.c_name}, sizeof(*dst->{aspec.c_name}));")
+        ri.cw.p(f"dst->n_{aspec.c_name} = n_{aspec.c_name};")
         ri.cw.p('i = 0;')
         if 'nested-attributes' in aspec:
             ri.cw.p(f"parg.rsp_policy = &{aspec.nested_render_name}_nest;")
