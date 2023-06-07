@@ -1856,3 +1856,68 @@ int rvu_mbox_handler_npc_get_field_status(struct rvu *rvu,
 
 	return 0;
 }
+
+int rvu_mbox_handler_npc_mcam_get_hit_status(struct rvu *rvu,
+					     struct npc_mcam_get_hit_status_req *req,
+					     struct npc_mcam_get_hit_status_rsp *rsp)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	u8 mcam_entry_per_hit_counter = 16;
+	u8 bank_inc, bank_start, bank_end;
+	u8 hit_start, hit_end;
+	u8 bank, arr_idx;
+	u64 val, bitmap;
+	u32 start, end;
+	int blkaddr;
+	bool clear;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return NPC_MCAM_INVALID_REQ;
+
+	if (is_cn10ka_a0(rvu) || is_cn10ka_a1(rvu) ||
+	    is_cnf10kb_a0(rvu) || is_cnf10ka_a1(rvu))
+		mcam_entry_per_hit_counter = 64;
+
+	bank_inc = 1;
+	start = req->mcam_id_start;
+	end = req->mcam_id_end;
+	bank_start = npc_get_bank(mcam, start);
+	bank_end = npc_get_bank(mcam, end);
+	if (bank_start < 0 || bank_start > 3 ||
+	    bank_end < 0 || bank_end > 3)
+		return NPC_MCAM_INVALID_REQ;
+
+	arr_idx = start / mcam_entry_per_hit_counter;
+	hit_start = (start % mcam->banksize) / mcam_entry_per_hit_counter;
+	hit_end = (end % mcam->banksize) / mcam_entry_per_hit_counter;
+	clear = req->clear;
+	if (mcam->keysize == NPC_MCAM_KEY_X2)
+		bank_inc = 2;
+
+	bank = bank_start;
+	while (bank <= bank_end) {
+		for (; hit_start < mcam_entry_per_hit_counter; hit_start++) {
+			if (bank == bank_end && hit_start > hit_end)
+				return 0;
+
+			bitmap = req->mcam_ids[arr_idx];
+			if (bitmap) {
+				val = rvu_read64(rvu, blkaddr,
+						 NPC_AF_MCAM_BANKX_HITX(bank, hit_start));
+				rsp->mcam_hit_status[arr_idx] = val & bitmap;
+				if (clear)
+					rvu_write64(rvu, blkaddr,
+						    NPC_AF_MCAM_BANKX_HITX(bank, hit_start),
+						    bitmap);
+			}
+
+			arr_idx++;
+		}
+
+		hit_start = 0;
+		bank += bank_inc;
+	}
+
+	return 0;
+}

@@ -313,6 +313,9 @@ M(NPC_GET_FIELD_HASH_INFO, 0x6013, npc_get_field_hash_info,                     
 M(NPC_GET_FIELD_STATUS, 0x6014, npc_get_field_status,                     \
 				   npc_get_field_status_req,              \
 				   npc_get_field_status_rsp)              \
+M(NPC_MCAM_GET_HIT_STATUS, 0x6015, npc_mcam_get_hit_status,                     \
+				   npc_mcam_get_hit_status_req,              \
+				   npc_mcam_get_hit_status_rsp)              \
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -2005,6 +2008,32 @@ struct npc_get_field_hash_info_rsp {
 	u64 hash_ctrl[NPC_MAX_INTF][NPC_MAX_HASH];
 };
 
+struct npc_get_field_status_req {
+	struct mbox_msghdr hdr;
+	u8 intf;
+	u8 field;
+};
+
+struct npc_get_field_status_rsp {
+	struct mbox_msghdr hdr;
+	u8 enable;
+};
+
+struct npc_mcam_get_hit_status_req {
+	struct mbox_msghdr hdr;
+	bool clear;
+	u8 reserved[3];
+	u32 mcam_id_start;
+	u32 mcam_id_end;
+#define MCAM_ARR_SIZE 256
+	u64  mcam_ids[MCAM_ARR_SIZE];
+};
+
+struct npc_mcam_get_hit_status_rsp {
+	struct mbox_msghdr hdr;
+	u64 mcam_hit_status[MCAM_ARR_SIZE];
+};
+
 enum tim_clk_srcs {
 	TIM_CLK_SRCS_TENNS	= 0,
 	TIM_CLK_SRCS_GPIO	= 1,
@@ -2101,17 +2130,6 @@ struct ptp_rsp {
 	struct mbox_msghdr hdr;
 	u64 clk;
 	u64 tsc;
-};
-
-struct npc_get_field_status_req {
-	struct mbox_msghdr hdr;
-	u8 intf;
-	u8 field;
-};
-
-struct npc_get_field_status_rsp {
-	struct mbox_msghdr hdr;
-	u8 enable;
 };
 
 struct set_vf_perm  {

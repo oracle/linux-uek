@@ -858,7 +858,6 @@
 #define NPC_AF_INTFX_MISS_STAT_ACT(a)	(0x1880040 + (a) * 0x8)
 #define NPC_AF_INTFX_MISS_ACT(a)	(0x1a00000 | (a) << 4)
 #define NPC_AF_INTFX_MISS_TAG_ACT(a)	(0x1b00008 | (a) << 4)
-#define NPC_AF_MCAM_BANKX_HITX(a, b)	(0x1c80000 | (a) << 8 | (b) << 4)
 #define NPC_AF_LKUP_CTL			(0x2000000)
 #define NPC_AF_LKUP_DATAX(a)		(0x2000200 | (a) << 4)
 #define NPC_AF_LKUP_RESULTX(a)		(0x2000400 | (a) << 4)
@@ -880,6 +879,14 @@
 #define NPC_AF_INTFX_EXACT_SECRET0(a)	(0xE00 | (a) << 3)
 #define NPC_AF_INTFX_EXACT_SECRET1(a)	(0xE20 | (a) << 3)
 #define NPC_AF_INTFX_EXACT_SECRET2(a)	(0xE40 | (a) << 3)
+
+#define NPC_AF_MCAM_BANKX_HITX(a, b) ({				\
+	u64 offset;						\
+								\
+	offset = (0x1c80000 | (a) << 8 | (b) << 4);		\
+	if (rvu->hw->npc_ext_set)				\
+		offset = (0x8000070 | (a) << 22 | (b) << 8);	\
+	offset; })						\
 
 #define NPC_AF_MCAMEX_BANKX_CAMX_INTF(a, b, c) ({			   \
 	u64 offset;							   \
