@@ -1,7 +1,7 @@
 /*
  * uek_abi.h - Oracle kabi abstraction header
  *
- * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2023, Oracle and/or its affiliates.
  *
  * This file is released under the GPLv2 license.
  * See the file COPYING for more details.
@@ -42,6 +42,11 @@
  * the kabi checker (mainly for UEK_KABI_EXTEND, but applied to all macros for
  * uniformity).
  * NOTE NOTE NOTE
+ *
+ * UEK_KABI_DEPRECATE_ENUM
+ * 	 Mark the element in enum as deprecated and make it unusable by modules while
+ *   preserving kABI checksums.
+ *
  */
 #ifdef __GENKSYMS__
 
@@ -52,6 +57,8 @@
 #define UEK_KABI_EXTEND(_new)
 #define UEK_KABI_FILL_HOLE(_new)
 #define UEK_KABI_RENAME(_orig, _new)		_orig
+
+# define _UEK_KABI_DEPRECATE_ENUM(_orig) _orig
 
 #else
 
@@ -86,6 +93,8 @@
 #define UEK_KABI_FILL_HOLE(_new)		_new;
 #define UEK_KABI_RENAME(_orig, _new)		_new
 
+# define _UEK_KABI_DEPRECATE_ENUM(_orig) uek_reserved_##_orig
+
 #endif /* __GENKSYMS__ */
 
 /* colon added wrappers for the UEK_KABI_REPLACE macros */
@@ -116,5 +125,7 @@
 	UEK_KABI_REPLACE(_UEK_KABI_RESERVED(n), struct{ _new1; _new2; })
 #define UEK_KABI_USE2_P(n, _new1, _new2) \
 	UEK_KABI_REPLACE(_UEK_KABI_RESERVED_P(n), struct{ _new1; _new2;})
+
+#define UEK_KABI_DEPRECATE_ENUM(_orig) _UEK_KABI_DEPRECATE_ENUM(_orig),
 
 #endif /* _LINUX_UEK_KABI_H */
