@@ -3,6 +3,8 @@
 %global __spec_install_pre %{___build_pre}
 
 # Errors in specfile are causing builds to fail. Adding workarounds.
+# (This is also needed for vmlinux-nano.ctfa, which is plucked directly
+# out of the buildroot by rpmrebuild and never goes into an RPM.)
 %define _unpackaged_files_terminate_build       0
 %define _missing_doc_files_terminate_build      0
 
@@ -690,6 +692,8 @@ Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-mips64-embedded
 Source1013: config-mips64-embedded-kdump
+
+Source1500: nano_modules
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -1429,6 +1433,10 @@ BuildKernel() {
     if [ "$Flavour" != "emb" ] ; then
         cp Module.symvers Module.symvers.save
         make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+        if [ -e %{SOURCE1500} ]; then
+            sed 's,^kernel,.,' < %{SOURCE1500} > ctf_nano_modules
+            make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf-nano CTF_FILELIST=ctf_nano_modules %{?sparse_mflags} || exit 1
+        fi
         mv -f Module.symvers.save Module.symvers
     fi
 %endif
@@ -1465,6 +1473,11 @@ BuildKernel() {
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
     make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
+%if %{with_dtrace}
+    if [ -e %{SOURCE1500} -a "$Flavour" != "emb" ]; then
+        install -m 644 vmlinux-nano.ctfa $RPM_BUILD_ROOT/lib/modules/$KernelVer/kernel/vmlinux-nano.ctfa
+    fi
+%endif
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
@@ -2357,6 +2370,7 @@ fi
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+%exclude /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux-nano.ctfa\
 %if %{with_dtrace} && "%{2}" != "emb"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 %endif\
