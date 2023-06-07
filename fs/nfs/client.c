@@ -184,7 +184,7 @@ struct nfs_client *nfs_alloc_client(const struct nfs_client_initdata *cl_init)
 
 	clp->cl_principal = "*";
 	nfs_fscache_get_client_cookie(clp);
-
+	clp->cl_xprtsec = cl_init->xprtsec;
 	return clp;
 
 error_cleanup:
@@ -328,6 +328,10 @@ again:
                             !rpc_clnt_xprt_switch_has_addr(clp->cl_rpcclient,
 							   sap))
 				continue;
+
+		/* Match the xprt security policy */
+		if (clp->cl_xprtsec.policy != data->xprtsec.policy)
+			continue;
 
 		refcount_inc(&clp->cl_count);
 		return clp;
@@ -680,6 +684,9 @@ static int nfs_init_server(struct nfs_server *server,
 		.cred = server->cred,
 		.nconnect = ctx->nfs_server.nconnect,
 		.init_flags = (1UL << NFS_CS_REUSEPORT),
+		.xprtsec = {
+			.policy = RPC_XPRTSEC_NONE,
+		},
 	};
 	struct nfs_client *clp;
 	int error;
