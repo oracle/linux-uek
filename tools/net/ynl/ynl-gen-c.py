@@ -827,7 +827,7 @@ class Family(SpecFamily):
                 }
 
     def _load_root_sets(self):
-        for op_name, op in self.ops.items():
+        for op_name, op in self.msgs.items():
             if 'attribute-set' not in op:
                 continue
 
@@ -838,6 +838,8 @@ class Family(SpecFamily):
                     req_attrs.update(set(op[op_mode]['request']['attributes']))
                 if op_mode in op and 'reply' in op[op_mode]:
                     rsp_attrs.update(set(op[op_mode]['reply']['attributes']))
+            if 'event' in op:
+                rsp_attrs.update(set(op['event']['attributes']))
 
             if op['attribute-set'] not in self.root_sets:
                 self.root_sets[op['attribute-set']] = {'request': req_attrs, 'reply': rsp_attrs}
@@ -2190,10 +2192,13 @@ def render_user_family(family, cw, prototype):
     if family.ntfs:
         cw.block_start(line=f"static const struct ynl_ntf_info {family['name']}_ntf_info[] = ")
         for ntf_op_name, ntf_op in family.ntfs.items():
-            if 'notify' not in ntf_op:
-                continue
-            op = family.ops[ntf_op['notify']]
-            ri = RenderInfo(cw, family, "user", op, op.name, "notify")
+            if 'notify' in ntf_op:
+                op = family.ops[ntf_op['notify']]
+                ri = RenderInfo(cw, family, "user", op, op.name, "notify")
+            elif 'event' in ntf_op:
+                ri = RenderInfo(cw, family, "user", ntf_op, ntf_op_name, "event")
+            else:
+                raise Exception('Invalid notification ' + ntf_op_name)
             _render_user_ntf_entry(ri, ntf_op)
         for op_name, op in family.ops.items():
             if 'event' not in op:
@@ -2421,6 +2426,7 @@ def main():
                         raise Exception(f'Only notifications with consistent types supported ({op.name})')
                     print_wrapped_type(ri)
 
+            for op_name, op in parsed.ntfs.items():
                 if 'event' in op:
                     ri = RenderInfo(cw, parsed, args.mode, op, op_name, 'event')
                     cw.p(f"/* {op.enum_name} - event */")
@@ -2482,6 +2488,7 @@ def main():
                         raise Exception(f'Only notifications with consistent types supported ({op.name})')
                     print_ntf_type_free(ri)
 
+            for op_name, op in parsed.ntfs.items():
                 if 'event' in op:
                     cw.p(f"/* {op.enum_name} - event */")
 
