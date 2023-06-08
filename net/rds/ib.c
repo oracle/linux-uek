@@ -335,6 +335,7 @@ void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz)
 	rds_ib_recv_free_frag(frag, cache_frag_pages);
 	atomic_sub(cache_frag_pages, &rds_ib_allocation);
 	kmem_cache_free(rds_ib_frag_slab, frag);
+	rds_ib_stats_dec(s_ib_rx_total_frags);
 	rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
 	rds_ib_stats_add(s_ib_recv_removed_from_cache, cache_sz);
 }
