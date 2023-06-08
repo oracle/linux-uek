@@ -82,7 +82,7 @@ kernel/drivers/ata/pata_acpi.ko
 kernel/drivers/block/loop.ko
 kernel/drivers/block/nbd.ko
 kernel/drivers/block/virtio_blk.ko
-kernel/drivers/bus/mhi/core/mhi.ko
+kernel/drivers/bus/mhi/host/mhi.ko
 kernel/drivers/char/hw_random/virtio-rng.ko
 kernel/drivers/char/ipmi/ipmi_devintf.ko
 kernel/drivers/char/ipmi/ipmi_msghandler.ko

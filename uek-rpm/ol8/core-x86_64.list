@@ -107,7 +107,7 @@ kernel/drivers/block/nbd.ko
 kernel/drivers/block/virtio_blk.ko
 kernel/drivers/block/xen-blkback/xen-blkback.ko
 kernel/drivers/block/xen-blkfront.ko
-kernel/drivers/bus/mhi/core/mhi.ko
+kernel/drivers/bus/mhi/host/mhi.ko
 kernel/drivers/cdrom/cdrom.ko
 kernel/drivers/char/hw_random/virtio-rng.ko
 kernel/drivers/char/ipmi/ipmi_devintf.ko
