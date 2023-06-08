@@ -367,7 +367,7 @@ class SpecFamily(SpecElement):
     def _dictify_ops_directional(self):
         req_val = rsp_val = 1
         for elem in self.yaml['operations']['list']:
-            if 'notify' in elem:
+            if 'notify' in elem or 'event' in elem:
                 if 'value' in elem:
                     rsp_val = elem['value']
                 req_val_next = req_val
