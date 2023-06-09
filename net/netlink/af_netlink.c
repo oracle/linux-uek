@@ -2374,7 +2374,9 @@ int __netlink_dump_start(struct sock *ssk, struct sk_buff *skb,
 	cb->strict_check = !!(nlk2->flags & NETLINK_F_STRICT_CHK);
 
 	if (control->start) {
+		cb->extack = control->extack;
 		ret = control->start(cb);
+		cb->extack = NULL;
 		if (ret)
 			goto error_put;
 	}
