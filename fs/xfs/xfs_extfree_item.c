@@ -603,13 +603,15 @@ xfs_efi_item_recover(
 	struct xfs_extent		*extp;
 	int				i;
 	int				error = 0;
+	int				nr_ext;
 
+	nr_ext = efip->efi_format.efi_nextents;
 	/*
 	 * First check the validity of the extents described by the
 	 * EFI.  If any are bad, then assume that all are bad and
 	 * just toss the EFI.
 	 */
-	for (i = 0; i < efip->efi_format.efi_nextents; i++) {
+	for (i = 0; i < nr_ext; i++) {
 		if (!xfs_efi_validate_ext(mp,
 					&efip->efi_format.efi_extents[i])) {
 			XFS_CORRUPTION_ERROR(__func__, XFS_ERRLEVEL_LOW, mp,
@@ -622,21 +624,47 @@ xfs_efi_item_recover(
 	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_itruncate, 0, 0, 0, &tp);
 	if (error)
 		return error;
-	efdp = xfs_trans_get_efd(tp, efip, efip->efi_format.efi_nextents);
 
-	for (i = 0; i < efip->efi_format.efi_nextents; i++) {
-		extp = &efip->efi_format.efi_extents[i];
+	if (nr_ext == 1) {
+		efdp = xfs_trans_get_efd(tp, efip, nr_ext);
+		extp = &efip->efi_format.efi_extents[0];
 		error = xfs_trans_free_extent(tp, efdp, extp->ext_start,
-					      extp->ext_len,
-					      &XFS_RMAP_OINFO_ANY_OWNER, false);
-		if (error == -EFSCORRUPTED)
-			XFS_CORRUPTION_ERROR(__func__, XFS_ERRLEVEL_LOW, mp,
-					extp, sizeof(*extp));
+				extp->ext_len, &XFS_RMAP_OINFO_ANY_OWNER,
+				false);
 		if (error)
 			goto abort_error;
-
+		return xfs_defer_ops_capture_and_commit(tp, NULL,
+			capture_list);
 	}
 
+	/*
+	 * Log recovery stage, we need to split a EFI into new EFIs if the
+	 * original EFI includes more than one extents. Check the change of
+	 * XFS_EFI_MAX_FAST_EXTENTS for the reason.
+	 * For the original EFI, the process is
+	 * 1. Create and log new EFIs each covering one extent from the
+	 *    original EFI.
+	 * 2. Don't free extent with the original EFI.
+	 * 3. Make sure the log EFD are in the same transaction with the new
+	 *    EFIs.
+	 */
+	efdp = xfs_trans_get_efd(tp, efip, nr_ext);
+	set_bit(XFS_LI_DIRTY, &efdp->efd_item.li_flags);
+	tp->t_flags |= XFS_TRANS_DIRTY;
+	efdp->efd_next_extent = nr_ext;
+	for (i = 0; i < nr_ext; i++)
+		efdp->efd_format.efd_extents[i] =
+			efip->efi_format.efi_extents[i];
+
+	/*
+	 * Add defered oprations for the new EFIs, they are then processed in
+	 * xfs_defer_ops_capture_and_commit().
+	 */
+	for (i = 0; i < nr_ext; i++) {
+		extp = &efip->efi_format.efi_extents[i];
+		__xfs_bmap_add_free(tp, extp->ext_start, extp->ext_len,
+					&XFS_RMAP_OINFO_ANY_OWNER, false);
+	}
 	return xfs_defer_ops_capture_and_commit(tp, NULL, capture_list);
 
 abort_error:
