@@ -77,6 +77,27 @@ static inline void __activate_traps_fpsimd32(struct kvm_vcpu *vcpu)
 	}
 }
 
+static inline bool __hfgxtr_traps_required(void)
+{
+	return false;
+}
+
+static inline void __activate_traps_hfgxtr(void)
+{
+	u64 r_clr = 0, w_clr = 0, r_set = 0, w_set = 0;
+
+	sysreg_clear_set_s(SYS_HFGRTR_EL2, r_clr, r_set);
+	sysreg_clear_set_s(SYS_HFGWTR_EL2, w_clr, w_set);
+}
+
+static inline void __deactivate_traps_hfgxtr(void)
+{
+	u64 r_clr = 0, w_clr = 0, r_set = 0, w_set = 0;
+
+	sysreg_clear_set_s(SYS_HFGRTR_EL2, r_clr, r_set);
+	sysreg_clear_set_s(SYS_HFGWTR_EL2, w_clr, w_set);
+}
+
 static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 {
 	/* Trap on AArch32 cp15 c15 (impdef sysregs) accesses (EL1 or EL0) */
@@ -95,6 +116,9 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.mdcr_el2_host = read_sysreg(mdcr_el2);
 	write_sysreg(vcpu->arch.mdcr_el2, mdcr_el2);
+
+	if (__hfgxtr_traps_required())
+		__activate_traps_hfgxtr();
 }
 
 static inline void __deactivate_traps_common(struct kvm_vcpu *vcpu)
@@ -104,6 +128,9 @@ static inline void __deactivate_traps_common(struct kvm_vcpu *vcpu)
 	write_sysreg(0, hstr_el2);
 	if (kvm_arm_support_pmu_v3())
 		write_sysreg(0, pmuserenr_el0);
+
+	if (__hfgxtr_traps_required())
+		__deactivate_traps_hfgxtr();
 }
 
 static inline void ___activate_traps(struct kvm_vcpu *vcpu)
