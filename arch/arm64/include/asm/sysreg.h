@@ -1205,6 +1205,10 @@
 #define ICH_VTR_A3V_SHIFT	21
 #define ICH_VTR_A3V_MASK	(1 << ICH_VTR_A3V_SHIFT)
 
+/* HFG[WR]TR_EL2 bit definitions */
+#define HFGxTR_EL2_TCR_EL1_SHIFT   32
+#define HFGxTR_EL2_TCR_EL1_MASK    (1ULL << HFGxTR_EL2_TCR_EL1_SHIFT)
+
 #define ARM64_FEATURE_FIELD_BITS	4
 
 /* Create a mask for the feature bits of the specified feature. */
