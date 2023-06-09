@@ -1180,15 +1180,6 @@ static void amd_iommu_flush_irt_all(struct amd_iommu *iommu)
 	iommu_completion_wait(iommu);
 }
 
-static void iommu_flush_irt_and_complete(struct amd_iommu *iommu, u16 devid)
-{
-	if (iommu->irtcachedis_enabled)
-		return;
-
-	iommu_flush_irt(iommu, devid);
-	iommu_completion_wait(iommu);
-}
-
 void iommu_flush_all_caches(struct amd_iommu *iommu)
 {
 	if (iommu_feature(iommu, FEATURE_IA)) {
@@ -3669,6 +3660,15 @@ EXPORT_SYMBOL(amd_iommu_device_info);
 
 static struct irq_chip amd_ir_chip;
 static DEFINE_SPINLOCK(iommu_table_lock);
+
+static void iommu_flush_irt_and_complete(struct amd_iommu *iommu, u16 devid)
+{
+	if (iommu->irtcachedis_enabled)
+		return;
+
+	iommu_flush_irt(iommu, devid);
+	iommu_completion_wait(iommu);
+}
 
 static void set_dte_irq_entry(u16 devid, struct irq_remap_table *table)
 {
