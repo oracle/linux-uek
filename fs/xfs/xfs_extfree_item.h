@@ -25,8 +25,15 @@ struct kmem_zone;
 
 /*
  * Max number of extents in fast allocation path.
+ *
+ * At IO time, make sure an EFI contains only one extent. Transaction rolling
+ * in xfs_defer_finish() would commit the busy blocks for previous EFIs. By
+ * that we avoid holding busy extents (for previously extents in the same EFI)
+ * in current transaction when allocating blocks for AGFL where we could be
+ * otherwise stuck waiting the busy extents held by current transaction to be
+ * flushed (thus a deadlock).
  */
-#define	XFS_EFI_MAX_FAST_EXTENTS	16
+#define	XFS_EFI_MAX_FAST_EXTENTS	1
 
 /*
  * Define EFI flag bits. Manipulated by set/clear/test_bit operators.
