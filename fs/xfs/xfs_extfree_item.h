@@ -107,5 +107,7 @@ void			xfs_efi_release(struct xfs_efi_log_item *);
 
 int			xfs_efi_recover(struct xfs_mount *mp,
 					struct xfs_efi_log_item *efip);
+void			xfs_extent_free_log_item(struct xfs_trans *tp,
+				void *intent, struct list_head *item);
 
 #endif	/* __XFS_EXTFREE_ITEM_H__ */
