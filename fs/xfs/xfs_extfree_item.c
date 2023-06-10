@@ -29,6 +29,8 @@
 #include "xfs_log.h"
 #include "xfs_btree.h"
 #include "xfs_rmap.h"
+#include "xfs_shared.h"
+#include "xfs_bmap.h"
 
 
 kmem_zone_t	*xfs_efi_zone;
@@ -507,7 +509,13 @@ xfs_efi_recover(
 	xfs_extent_t		*extp;
 	xfs_fsblock_t		startblock_fsb;
 	struct xfs_owner_info	oinfo;
+	int			nr_ext;
+	struct xfs_efi_log_item	**new_efis;
+	struct xfs_efi_log_item *new_efip;
+	struct xfs_efd_log_item *new_efdp;
+	struct xfs_extent_free_item free;
 
+	nr_ext = efip->efi_format.efi_nextents;
 	ASSERT(!test_bit(XFS_EFI_RECOVERED, &efip->efi_flags));
 
 	/*
@@ -515,7 +523,7 @@ xfs_efi_recover(
 	 * EFI.  If any are bad, then assume that all are bad and
 	 * just toss the EFI.
 	 */
-	for (i = 0; i < efip->efi_format.efi_nextents; i++) {
+	for (i = 0; i < nr_ext; i++) {
 		extp = &efip->efi_format.efi_extents[i];
 		startblock_fsb = XFS_BB_TO_FSB(mp,
 				   XFS_FSB_TO_DADDR(mp, extp->ext_start));
@@ -536,21 +544,81 @@ xfs_efi_recover(
 	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_itruncate, 0, 0, 0, &tp);
 	if (error)
 		return error;
-	efdp = xfs_trans_get_efd(tp, efip, efip->efi_format.efi_nextents);
 
 	xfs_rmap_any_owner_update(&oinfo);
-	for (i = 0; i < efip->efi_format.efi_nextents; i++) {
-		extp = &efip->efi_format.efi_extents[i];
+	if (nr_ext == 1) {
+		efdp = xfs_trans_get_efd(tp, efip, nr_ext);
+
+		extp = &efip->efi_format.efi_extents[0];
 		error = xfs_trans_free_extent(tp, efdp, extp->ext_start,
 					      extp->ext_len, &oinfo);
 		if (error)
 			goto abort_error;
-
+		set_bit(XFS_EFI_RECOVERED, &efip->efi_flags);
+		return xfs_trans_commit(tp);
 	}
 
+	/*
+	 * Log recovery stage, we need to split a EFI into new EFIs if the
+	 * original EFI includes more than one extents. Check the change of
+	 * XFS_EFI_MAX_FAST_EXTENTS for the reason.
+	 * For the original EFI, the process is
+	 * 1. Create and log new EFIs each covering one extent from the
+	 *    original EFI.
+	 * 2. Don't free extent with the original EFI.
+	 * 3. Log EFD for the original EFI together with new EFIs in same
+	 *    transaction.
+	 * The original extents are freed with the new EFIs.
+	 */
+	new_efis = kmem_zalloc(sizeof(*new_efis) * nr_ext, 0);
+	if (!new_efis) {
+		error = -ENOMEM;
+		goto abort_error;
+	}
+
+	for (i = 0; i < nr_ext; i++) {
+		new_efip = xfs_efi_init(mp, 1);
+		extp = &efip->efi_format.efi_extents[i];
+		free.xefi_startblock = extp->ext_start;
+		free.xefi_blockcount = extp->ext_len;
+		xfs_trans_add_item(tp, &new_efip->efi_item);
+		xfs_extent_free_log_item(tp, new_efip, &free.xefi_list);
+		new_efis[i] = new_efip;
+	}
+
+	/*
+	 * The new EFIs are in transaction now, add original EFD with
+	 * full extents.
+	 */
+	efdp = xfs_trans_get_efd(tp, efip, efip->efi_format.efi_nextents);
+	efdp->efd_item.li_desc->lid_flags |= XFS_LID_DIRTY;
+	efdp->efd_next_extent = nr_ext;
+	for (i = 0; i < nr_ext; i++)
+		efdp->efd_format.efd_extents[i] =
+			efip->efi_format.efi_extents[i];
 	set_bit(XFS_EFI_RECOVERED, &efip->efi_flags);
-	error = xfs_trans_commit(tp);
-	return error;
+
+	/*
+	 * Now process the new EFIs.
+	 * Current transaction is a new one, there are no defered
+	 * works attached. It's safe to use the following first
+	 * xfs_trans_roll() to commit it.
+	 */
+	for (i = 0; i < nr_ext; i++) {
+		new_efip = new_efis[i];
+		new_efdp = xfs_trans_get_efd(tp, new_efip, 1);
+		extp = &new_efip->efi_format.efi_extents[0];
+		error = xfs_trans_free_extent(tp, new_efdp,
+			extp->ext_start, extp->ext_len, &oinfo);
+		if (!error)
+			error = xfs_trans_roll(&tp);
+		if (error) {
+			kmem_free(new_efis);
+			goto abort_error;
+		}
+	}
+	kmem_free(new_efis);
+	return xfs_trans_commit(tp);
 
 abort_error:
 	xfs_trans_cancel(tp);

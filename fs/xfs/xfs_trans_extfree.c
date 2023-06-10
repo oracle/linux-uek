@@ -141,7 +141,7 @@ xfs_extent_free_create_intent(
 }
 
 /* Log a free extent to the intent item. */
-STATIC void
+void
 xfs_extent_free_log_item(
 	struct xfs_trans		*tp,
 	void				*intent,
