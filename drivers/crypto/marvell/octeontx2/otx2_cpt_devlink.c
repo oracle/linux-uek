@@ -35,13 +35,12 @@ static int otx2_cpt_dl_max_rxc_icb_cnt(struct devlink *dl, u32 id,
 	struct otx2_cpt_devlink *cpt_dl = devlink_priv(dl);
 	struct otx2_cptpf_dev *cptpf = cpt_dl->cptpf;
 	struct pci_dev *pdev = cptpf->pdev;
-	u64 reg_val;
+	u64 reg_val = 0;
 
-	if (cpt_feature_rxc_icb_cnt(pdev)) {
-		otx2_cpt_read_af_reg(&cptpf->afpf_mbox, pdev, CPT_AF_RXC_CFG1, &reg_val,
-				     BLKADDR_CPT0);
-		dev_info(&pdev->dev, "rxc_icb_cnt: %llx\n", (reg_val >> 32) & 0x1FF);
-	}
+	otx2_cpt_read_af_reg(&cptpf->afpf_mbox, pdev, CPT_AF_RXC_CFG1, &reg_val,
+			     BLKADDR_CPT0);
+	ctx->val.vu16 = (reg_val >> 32) & 0x1FF;
+
 	return 0;
 }
 
