@@ -841,7 +841,7 @@ nfp_net_tls_tx(struct nfp_net_dp *dp, struct nfp_net_r_vector *r_vec,
 
 	if (likely(!dp->ktls_tx))
 		return skb;
-	if (!skb->sk || !tls_is_sk_tx_device_offloaded(skb->sk))
+	if (!tls_is_skb_tx_device_offloaded(skb))
 		return skb;
 
 	datalen = skb->len - skb_tcp_all_headers(skb);
@@ -909,7 +909,7 @@ static void nfp_net_tls_tx_undo(struct sk_buff *skb, u64 tls_handle)
 
 	if (!tls_handle)
 		return;
-	if (WARN_ON_ONCE(!skb->sk || !tls_is_sk_tx_device_offloaded(skb->sk)))
+	if (WARN_ON_ONCE(!tls_is_skb_tx_device_offloaded(skb)))
 		return;
 
 	datalen = skb->len - skb_tcp_all_headers(skb);
