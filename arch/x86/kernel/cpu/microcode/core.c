@@ -671,7 +671,7 @@ static ssize_t reload_store(struct device *dev,
 
 	mutex_lock(&microcode_mutex);
 	ret = microcode_reload_late();
-	check_bugs();
+	cpu_select_mitigations();
 	update_percpu_mitigations();
 	mutex_unlock(&microcode_mutex);
 

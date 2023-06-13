@@ -4,7 +4,6 @@
 
 #include <asm/processor.h>
 
-extern void check_bugs(void);
 extern void update_percpu_mitigations(void);
 
 #if defined(CONFIG_CPU_SUP_INTEL)
