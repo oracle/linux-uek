@@ -114,7 +114,7 @@ static ssize_t ext4_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	if (!iov_iter_count(to))
@@ -662,7 +662,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 #ifdef CONFIG_FS_DAX
@@ -760,10 +760,9 @@ static const struct vm_operations_struct ext4_file_vm_ops = {
 static int ext4_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct inode *inode = file->f_mapping->host;
-	struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);
-	struct dax_device *dax_dev = sbi->s_daxdev;
+	struct dax_device *dax_dev = EXT4_SB(inode->i_sb)->s_daxdev;
 
-	if (unlikely(ext4_forced_shutdown(sbi)))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	/*
@@ -839,7 +838,7 @@ static int ext4_file_open(struct inode *inode, struct file *filp)
 {
 	int ret;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	ret = ext4_sample_last_mounted(inode->i_sb, filp->f_path.mnt);

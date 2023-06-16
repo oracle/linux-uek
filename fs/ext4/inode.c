@@ -1164,7 +1164,7 @@ static int ext4_write_begin(struct file *file, struct address_space *mapping,
 	pgoff_t index;
 	unsigned from, to;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	trace_ext4_write_begin(inode, pos, len, flags);
@@ -2003,7 +2003,7 @@ static int ext4_writepage(struct page *page,
 	struct ext4_io_submit io_submit;
 	bool keep_towrite = false;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb)))) {
+	if (unlikely(ext4_forced_shutdown(inode->i_sb))) {
 		inode->i_mapping->a_ops->invalidatepage(page, 0, PAGE_SIZE);
 		unlock_page(page);
 		return -EIO;
@@ -2462,7 +2462,7 @@ static int mpage_map_and_submit_extent(handle_t *handle,
 		if (err < 0) {
 			struct super_block *sb = inode->i_sb;
 
-			if (ext4_forced_shutdown(EXT4_SB(sb)) ||
+			if (ext4_forced_shutdown(sb) ||
 			    ext4_test_mount_flag(sb, EXT4_MF_FS_ABORTED))
 				goto invalidate_dirty_pages;
 			/*
@@ -2683,7 +2683,7 @@ static int ext4_writepages(struct address_space *mapping,
 	struct blk_plug plug;
 	bool give_up_on_write = false;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	percpu_down_read(&sbi->s_writepages_rwsem);
@@ -2712,7 +2712,7 @@ static int ext4_writepages(struct address_space *mapping,
 	 * *never* be called, so if that ever happens, we would want
 	 * the stack trace.
 	 */
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(mapping->host->i_sb)) ||
+	if (unlikely(ext4_forced_shutdown(mapping->host->i_sb) ||
 		     ext4_test_mount_flag(inode->i_sb, EXT4_MF_FS_ABORTED))) {
 		ret = -EROFS;
 		goto out_writepages;
@@ -2908,7 +2908,7 @@ static int ext4_dax_writepages(struct address_space *mapping,
 	struct inode *inode = mapping->host;
 	struct ext4_sb_info *sbi = EXT4_SB(mapping->host->i_sb);
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	percpu_down_read(&sbi->s_writepages_rwsem);
@@ -2964,7 +2964,7 @@ static int ext4_da_write_begin(struct file *file, struct address_space *mapping,
 	pgoff_t index;
 	struct inode *inode = mapping->host;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	index = pos >> PAGE_SHIFT;
@@ -5297,7 +5297,7 @@ int ext4_write_inode(struct inode *inode, struct writeback_control *wbc)
 	    sb_rdonly(inode->i_sb))
 		return 0;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	if (EXT4_SB(inode->i_sb)->s_journal) {
@@ -5420,7 +5420,7 @@ int ext4_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 	int orphan = 0;
 	const unsigned int ia_valid = attr->ia_valid;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	if (unlikely(IS_IMMUTABLE(inode)))
@@ -5804,7 +5804,7 @@ int ext4_mark_iloc_dirty(handle_t *handle,
 {
 	int err = 0;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb)))) {
+	if (unlikely(ext4_forced_shutdown(inode->i_sb))) {
 		put_bh(iloc->bh);
 		return -EIO;
 	}
@@ -5838,7 +5838,7 @@ ext4_reserve_inode_write(handle_t *handle, struct inode *inode,
 {
 	int err;
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
+	if (unlikely(ext4_forced_shutdown(inode->i_sb)))
 		return -EIO;
 
 	err = ext4_get_inode_loc(inode, iloc);

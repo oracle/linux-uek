@@ -821,7 +821,7 @@ static int ext4_shutdown(struct super_block *sb, unsigned long arg)
 	if (flags > EXT4_GOING_FLAGS_NOLOGFLUSH)
 		return -EINVAL;
 
-	if (ext4_forced_shutdown(sbi))
+	if (ext4_forced_shutdown(sb))
 		return 0;
 
 	ext4_msg(sb, KERN_ALERT, "shut down requested (%d)", flags);
