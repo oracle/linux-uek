@@ -16,10 +16,10 @@ This repository hosts source code for UEK versions which are in development and 
 
 | UEK Release and Tag | Linux Kernel version | Release Status | Target Arch | Target Userspace Distribution(s) |
 |--------------------|-----------------------------|----------------------|-----------------|--------------------------------------------|
-| [`uek7/u1`](https://github.com/oracle/linux-uek/tree/uek7/u1)<br/>[`v5.15.0-102.110.5`](https://github.com/oracle/linux-uek/tree/v5.15.0-102.110.5) | v5.15 | Production | `x86_64`, `aarch64` | Oracle Linux 8, Oracle Linux 9 |
-| [`uek6/u3`](https://github.com/oracle/linux-uek/tree/uek6/u3)<br/>[`v5.4.17-2136.320.5`](https://github.com/oracle/linux-uek/tree/v5.4.17-2136.320.5) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
-| [`uek5/u5`](https://github.com/oracle/linux-uek/tree/uek5/u5)<br/>[`v4.14.35-2047.526.2`](https://github.com/oracle/linux-uek/tree/v4.14.35-2047.526.2) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
-| [`uek4/qu7`](https://github.com/oracle/linux-uek/tree/uek4/qu7)<br/>[`v4.1.12-124.75.3`](https://github.com/oracle/linux-uek/tree/v4.1.12-124.75.3) | v4.1 | Production | `x86_64`, `SPARC` | Oracle Linux 6, Oracle Linux 7 |
+| [`uek7/u1`](https://github.com/oracle/linux-uek/tree/uek7/u1)<br/>[`v5.15.0-103.114.2`](https://github.com/oracle/linux-uek/tree/v5.15.0-103.114.2) | v5.15 | Production | `x86_64`, `aarch64` | Oracle Linux 8, Oracle Linux 9 |
+| [`uek6/u3`](https://github.com/oracle/linux-uek/tree/uek6/u3)<br/>[`v5.4.17-2136.321.1`](https://github.com/oracle/linux-uek/tree/v5.4.17-2136.321.1) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
+| [`uek5/u5`](https://github.com/oracle/linux-uek/tree/uek5/u5)<br/>[`v4.14.35-2047.527.1`](https://github.com/oracle/linux-uek/tree/v4.14.35-2047.527.1) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
+| [`uek4/qu7`](https://github.com/oracle/linux-uek/tree/uek4/qu7)<br/>[`v4.1.12-124.76.1`](https://github.com/oracle/linux-uek/tree/v4.1.12-124.76.1) | v4.1 | Production | `x86_64`, `SPARC` | Oracle Linux 6, Oracle Linux 7 |
 
 Building from this repository requires [libdtrace-ctf](https://github.com/oracle/libdtrace-ctf/) in addition to standard kernel build tools.
 
