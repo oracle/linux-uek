@@ -634,8 +634,8 @@ over_batch:
 		smp_mb();
 		raced = send_gen != READ_ONCE(cp->cp_send_gen);
 
-		if ((test_bit(RCMQ_BITOFF_CONGU_PENDING,
-			      &conn->c_map_queued) ||
+		if (((test_bit(RCMQ_BITOFF_CONGU_PENDING,
+			       &conn->c_map_queued) && !cp->cp_index) ||
 		     !list_empty(&cp->cp_send_queue)) && !raced) {
 			if (batch_count < send_batch_count)
 				goto restart;
