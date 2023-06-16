@@ -154,8 +154,8 @@ static int otx2_set_matchall_egress_rate(struct otx2_nic *nic,
 	struct nix_txschq_config *req;
 	int txschq, err;
 
-	/* All SQs share the same TL4, so pick the first scheduler */
-	txschq = hw->txschq_list[NIX_TXSCH_LVL_TL4][0];
+	/* All SQs (Normal, PFC) share the same TL2, so pick the first scheduler */
+	txschq = hw->txschq_list[NIX_TXSCH_LVL_TL2][0];
 
 	mutex_lock(&nic->mbox.lock);
 	req = otx2_mbox_alloc_msg_nix_txschq_cfg(&nic->mbox);
@@ -164,9 +164,9 @@ static int otx2_set_matchall_egress_rate(struct otx2_nic *nic,
 		return -ENOMEM;
 	}
 
-	req->lvl = NIX_TXSCH_LVL_TL4;
+	req->lvl = NIX_TXSCH_LVL_TL2;
 	req->num_regs = 1;
-	req->reg[0] = NIX_AF_TL4X_PIR(txschq);
+	req->reg[0] = NIX_AF_TL2X_PIR(txschq);
 	req->regval[0] = otx2_get_txschq_rate_regval(nic, maxrate, burst);
 
 	err = otx2_sync_mbox_msg(&nic->mbox);
