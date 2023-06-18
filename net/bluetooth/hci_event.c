@@ -2373,6 +2373,9 @@ static void hci_cs_disconnect(struct hci_dev *hdev, u8 status)
 			hci_req_reenable_advertising(hdev);
 		}
 
+		/* Inform sockets conn is gone before we delete it */
+		hci_disconn_cfm(conn, HCI_ERROR_UNSPECIFIED);
+
 		/* If the disconnection failed for any reason, the upper layer
 		 * does not retry to disconnect in current implementation.
 		 * Hence, we need to do some basic cleanup here and re-enable
