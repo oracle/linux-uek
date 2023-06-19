@@ -50,7 +50,7 @@ enum {
 static_assert(MLX5_EQ_POLLING_BUDGET <= MLX5_NUM_SPARE_EQE);
 
 struct mlx5_eq_table {
-	struct list_head        comp_eqs_list;
+	struct xarray           comp_eqs;
 	struct mlx5_eq_async    pages_eq;
 	struct mlx5_eq_async    cmd_eq;
 	struct mlx5_eq_async    async_eq;
@@ -464,6 +464,7 @@ int mlx5_eq_table_init(struct mlx5_core_dev *dev)
 
 	eq_table->irq_table = mlx5_irq_table_get(dev);
 	cpumask_clear(&eq_table->used_cpus);
+	xa_init(&eq_table->comp_eqs);
 	xa_init(&eq_table->comp_irqs);
 	eq_table->curr_comp_eqs = 0;
 	return 0;
@@ -475,6 +476,7 @@ void mlx5_eq_table_cleanup(struct mlx5_core_dev *dev)
 
 	mlx5_eq_debugfs_cleanup(dev);
 	xa_destroy(&table->comp_irqs);
+	xa_destroy(&table->comp_eqs);
 	kvfree(table);
 }
 
@@ -944,12 +946,12 @@ static void free_rmap(struct mlx5_core_dev *mdev) {}
 static void destroy_comp_eqs(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
-	struct mlx5_eq_comp *eq, *n;
+	struct mlx5_eq_comp *eq;
 	struct mlx5_irq *irq;
 	unsigned long index;
 
-	list_for_each_entry_safe(eq, n, &table->comp_eqs_list, list) {
-		list_del(&eq->list);
+	xa_for_each(&table->comp_eqs, index, eq) {
+		xa_erase(&table->comp_eqs, index);
 		mlx5_eq_disable(dev, &eq->core, &eq->irq_nb);
 		if (destroy_unmap_eq(dev, &eq->core))
 			mlx5_core_warn(dev, "failed to destroy comp EQ 0x%x\n",
@@ -1004,7 +1006,6 @@ static int create_comp_eqs(struct mlx5_core_dev *dev)
 		goto err_irqs_req;
 
 	table->max_comp_eqs = vecidx;
-	INIT_LIST_HEAD(&table->comp_eqs_list);
 	nent = comp_eq_depth_devlink_param_get(dev);
 
 	xa_for_each(&table->comp_irqs, index, irq)
@@ -1038,13 +1039,16 @@ static int create_comp_eqs(struct mlx5_core_dev *dev)
 		}
 
 		mlx5_core_dbg(dev, "allocated completion EQN %d\n", eq->core.eqn);
-		/* add tail, to keep the list ordered, for mlx5_vector2eqn to work */
-		list_add_tail(&eq->list, &table->comp_eqs_list);
+		err = xa_err(xa_store(&table->comp_eqs, index, eq, GFP_KERNEL));
+		if (err)
+			goto disable_eq;
 		table->curr_comp_eqs++;
 	}
 
 	return 0;
 
+disable_eq:
+	mlx5_eq_disable(dev, &eq->core, &eq->irq_nb);
 clean_eq:
 	kfree(eq);
 clean:
@@ -1059,21 +1063,16 @@ static int vector2eqnirqn(struct mlx5_core_dev *dev, int vector, int *eqn,
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 	struct mlx5_eq_comp *eq;
-	int err = -ENOENT;
-	int i = 0;
 
-	list_for_each_entry(eq, &table->comp_eqs_list, list) {
-		if (i++ == vector) {
-			if (irqn)
-				*irqn = eq->core.irqn;
-			if (eqn)
-				*eqn = eq->core.eqn;
-			err = 0;
-			break;
-		}
-	}
+	eq = xa_load(&table->comp_eqs, vector);
+	if (!eq)
+		return -ENOENT;
 
-	return err;
+	if (irqn)
+		*irqn = eq->core.irqn;
+	if (eqn)
+		*eqn = eq->core.eqn;
+	return 0;
 }
 
 int mlx5_vector2eqn(struct mlx5_core_dev *dev, int vector, int *eqn)
@@ -1098,12 +1097,10 @@ mlx5_comp_irq_get_affinity_mask(struct mlx5_core_dev *dev, int vector)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 	struct mlx5_eq_comp *eq;
-	int i = 0;
 
-	list_for_each_entry(eq, &table->comp_eqs_list, list) {
-		if (i++ == vector)
-			return mlx5_irq_get_affinity_mask(eq->core.irq);
-	}
+	eq = xa_load(&table->comp_eqs, vector);
+	if (eq)
+		return mlx5_irq_get_affinity_mask(eq->core.irq);
 
 	WARN_ON_ONCE(1);
 	return NULL;
@@ -1121,8 +1118,9 @@ struct mlx5_eq_comp *mlx5_eqn2comp_eq(struct mlx5_core_dev *dev, int eqn)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 	struct mlx5_eq_comp *eq;
+	unsigned long index;
 
-	list_for_each_entry(eq, &table->comp_eqs_list, list) {
+	xa_for_each(&table->comp_eqs, index, eq) {
 		if (eq->core.eqn == eqn)
 			return eq;
 	}
