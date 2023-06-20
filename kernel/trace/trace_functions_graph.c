@@ -250,6 +250,9 @@ ftrace_pop_return_trace(struct ftrace_graph_ret *trace, unsigned long *ret,
 	trace->depth = index;
 }
 
+/* fgraph_ret_regs is not defined without CONFIG_FUNCTION_GRAPH_RETVAL */
+struct fgraph_ret_regs;
+
 /*
  * Send the trace to the ring-buffer.
  * @return the original return address.
