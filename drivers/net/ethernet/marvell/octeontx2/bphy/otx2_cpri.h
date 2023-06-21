@@ -130,6 +130,8 @@ struct otx2_cpri_ndev_priv {
 	unsigned long			last_tx_dropped_jiffies;
 	unsigned long			last_rx_dropped_jiffies;
 	bool				gp_int_disabled;
+	int				tx_burst_pkts;
+	struct work_struct		tx_burst_work;
 };
 
 int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,

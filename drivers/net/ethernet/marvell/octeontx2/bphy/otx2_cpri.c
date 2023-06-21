@@ -115,6 +115,7 @@ void otx2_bphy_cpri_cleanup(void)
 			otx2_cpri_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
+			cancel_work_sync(&priv->tx_burst_work);
 			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
 			--(priv->cpri_common->refcnt);
@@ -345,6 +346,23 @@ static int otx2_cpri_ioctl(struct net_device *netdev, struct ifreq *req,
 	return -EOPNOTSUPP;
 }
 
+static void otx2_cpri_tx_burst_work(struct work_struct *work)
+{
+	struct otx2_cpri_ndev_priv *priv =
+			container_of(work, struct otx2_cpri_ndev_priv, tx_burst_work);
+	struct dl_cbuf_cfg *dl_cfg = &priv->cpri_common->dl_cfg;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dl_cfg->lock, flags);
+	if (priv->tx_burst_pkts >= 1) {
+		udelay(25);
+		priv->tx_burst_pkts = 0;
+		if (netif_queue_stopped(priv->netdev))
+			netif_wake_queue(priv->netdev);
+	}
+	spin_unlock_irqrestore(&dl_cfg->lock, flags);
+}
+
 /* netdev xmit */
 static netdev_tx_t otx2_cpri_eth_start_xmit(struct sk_buff *skb,
 					    struct net_device *netdev)
@@ -376,6 +394,13 @@ static netdev_tx_t otx2_cpri_eth_start_xmit(struct sk_buff *skb,
 		priv->stats.tx_dropped++;
 		priv->last_tx_dropped_jiffies = jiffies;
 		goto exit;
+	}
+
+	if (priv->tx_burst_pkts >= 1) {
+		spin_unlock_irqrestore(&dl_cfg->lock, flags);
+		netif_stop_queue(priv->netdev);
+		schedule_work(&priv->tx_burst_work);
+		return NETDEV_TX_BUSY;
 	}
 
 	/* Read CPRI(0..2)_TXD_GMII_DL_WR_DOORBELL to become 0 */
@@ -426,6 +451,9 @@ static netdev_tx_t otx2_cpri_eth_start_xmit(struct sk_buff *skb,
 	dl_cfg->sw_wr_ptr++;
 	if (dl_cfg->sw_wr_ptr == dl_cfg->num_entries)
 		dl_cfg->sw_wr_ptr = 0;
+
+	/* increment burst pkt count */
+	priv->tx_burst_pkts++;
 
 	priv->last_tx_jiffies = jiffies;
 exit:
@@ -601,6 +629,7 @@ int otx2_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 
 			netif_napi_add(priv->netdev, &priv->napi,
 				       otx2_cpri_napi_poll, NAPI_POLL_WEIGHT);
+			INIT_WORK(&priv->tx_burst_work, otx2_cpri_tx_burst_work);
 
 			/* keep last (cpri + lmac) priv structure */
 			if (!priv2)
@@ -651,6 +680,7 @@ err_exit:
 			otx2_cpri_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
+			cancel_work_sync(&priv->tx_burst_work);
 			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
 			--(priv->cpri_common->refcnt);
