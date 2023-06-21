@@ -227,6 +227,7 @@ void cnf10k_rfoe_set_ethtool_ops(struct net_device *netdev);
 void cnf10k_rfoe_calc_ptp_ts(struct cnf10k_rfoe_ndev_priv *priv, u64 *ts);
 int cnf10k_rfoe_ptp_init(struct cnf10k_rfoe_ndev_priv *priv);
 void cnf10k_rfoe_ptp_destroy(struct cnf10k_rfoe_ndev_priv *priv);
+int cnf10k_rfoe_ptp_reset_sw_phc(struct cnf10k_rfoe_ndev_priv *priv);
 
 void cnf10k_bphy_intr_handler(struct otx2_bphy_cdev_priv *cdev_priv,
 			      u32 status);

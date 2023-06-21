@@ -108,16 +108,10 @@ static int otx2_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
 	return 0;
 }
 
-static int otx2_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
-				 const struct timespec64 *ts)
+static void __otx2_rfoe_ptp_settime(struct otx2_rfoe_ndev_priv *priv,
+				    const struct timespec64 *ts)
 {
-	struct otx2_rfoe_ndev_priv *priv = container_of(ptp_info,
-							struct
-							otx2_rfoe_ndev_priv,
-							ptp_clock_info);
-	u64 nsec;
-
-	nsec = timespec64_to_ns(ts);
+	u64 nsec = timespec64_to_ns(ts);
 
 	mutex_lock(&priv->ptp_lock);
 	timecounter_init(&priv->time_counter, &priv->cycle_counter, nsec);
@@ -134,6 +128,16 @@ static int otx2_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
 	nsec = timecounter_cyc2time(&priv->time_counter, 0);
 	writeq(nsec, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
 	mutex_unlock(&priv->ptp_lock);
+}
+
+static int otx2_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
+				 const struct timespec64 *ts)
+{
+	struct otx2_rfoe_ndev_priv *priv = container_of(ptp_info,
+							struct
+							otx2_rfoe_ndev_priv,
+							ptp_clock_info);
+	__otx2_rfoe_ptp_settime(priv, ts);
 
 	return 0;
 }
@@ -210,6 +214,20 @@ static int otx2_rfoe_ptp_enable(struct ptp_clock_info *ptp_info,
 		break;
 	}
 	return -EOPNOTSUPP;
+}
+
+int otx2_rfoe_ptp_reset_sw_phc(struct otx2_rfoe_ndev_priv *priv)
+{
+	struct timespec64 ts;
+
+	if (IS_ERR_OR_NULL(priv->ptp_clock))
+		return -EINVAL;
+
+	ts.tv_sec = 0;
+	ts.tv_nsec = 0;
+	__otx2_rfoe_ptp_settime(priv, &ts);
+
+	return 0;
 }
 
 static const struct ptp_clock_info otx2_rfoe_ptp_clock_info = {

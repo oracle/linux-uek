@@ -285,16 +285,10 @@ static int cnf10k_rfoe_ptp_gettime(struct ptp_clock_info *ptp_info,
 	return 0;
 }
 
-static int cnf10k_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
-				   const struct timespec64 *ts)
+static void __cnf10k_rfoe_ptp_settime(struct cnf10k_rfoe_ndev_priv *priv,
+				      const struct timespec64 *ts)
 {
-	struct cnf10k_rfoe_ndev_priv *priv = container_of(ptp_info,
-							  struct
-							  cnf10k_rfoe_ndev_priv,
-							  ptp_clock_info);
-	u64 nsec;
-
-	nsec = timespec64_to_ns(ts);
+	u64 nsec = timespec64_to_ns(ts);
 
 	mutex_lock(&priv->ptp_lock);
 	if (priv->use_sw_timecounter)
@@ -303,6 +297,16 @@ static int cnf10k_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
 		cnf10k_rfoe_ptp_atomic_update(priv, nsec);
 	cnf10k_rfoe_update_host_offset(priv, CNF10K_RFOE_HOST_OFFSET_INIT, 0);
 	mutex_unlock(&priv->ptp_lock);
+}
+
+static int cnf10k_rfoe_ptp_settime(struct ptp_clock_info *ptp_info,
+				   const struct timespec64 *ts)
+{
+	struct cnf10k_rfoe_ndev_priv *priv = container_of(ptp_info,
+							  struct
+							  cnf10k_rfoe_ndev_priv,
+							  ptp_clock_info);
+	__cnf10k_rfoe_ptp_settime(priv, ts);
 
 	return 0;
 }
@@ -507,6 +511,23 @@ static int cnf10k_rfoe_ptp_enable(struct ptp_clock_info *ptp_info,
 	}
 
 	return -EOPNOTSUPP;
+}
+
+int cnf10k_rfoe_ptp_reset_sw_phc(struct cnf10k_rfoe_ndev_priv *priv)
+{
+	struct timespec64 ts;
+
+	if (!priv->use_sw_timecounter)
+		return -EINVAL;
+
+	if (IS_ERR_OR_NULL(priv->ptp_clock))
+		return -EINVAL;
+
+	ts.tv_sec = 0;
+	ts.tv_nsec = 0;
+	__cnf10k_rfoe_ptp_settime(priv, &ts);
+
+	return 0;
 }
 
 static const struct ptp_clock_info cnf10k_rfoe_ptp_clock_info = {

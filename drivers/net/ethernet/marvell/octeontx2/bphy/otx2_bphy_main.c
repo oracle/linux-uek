@@ -813,6 +813,43 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		ret = 0;
 		goto out;
 	}
+	case OTX2_IOCTL_PTP_SW_PHC_RESET:
+	{
+		struct cnf10k_rfoe_drv_ctx *cnf10k_drv_ctx = NULL;
+		struct cnf10k_rfoe_ndev_priv *cnf10k_priv;
+		struct otx2_rfoe_drv_ctx *drv_ctx = NULL;
+		struct otx2_rfoe_ndev_priv *priv;
+		struct net_device *netdev;
+		int idx;
+
+		if (!cdev->odp_intf_cfg) {
+			dev_info(cdev->dev, "odp interface cfg is not done\n");
+			ret = -EBUSY;
+			goto out;
+		}
+
+		if (CHIP_CNF10K(cdev->hw_version)) {
+			for (idx = 0; idx < CNF10K_RFOE_MAX_INTF; idx++) {
+				cnf10k_drv_ctx = &cnf10k_rfoe_drv_ctx[idx];
+				if (cnf10k_drv_ctx->valid) {
+					netdev = cnf10k_drv_ctx->netdev;
+					cnf10k_priv = netdev_priv(netdev);
+					cnf10k_rfoe_ptp_reset_sw_phc(cnf10k_priv);
+				}
+			}
+		} else {
+			for (idx = 0; idx < RFOE_MAX_INTF; idx++) {
+				drv_ctx = &rfoe_drv_ctx[idx];
+				if (drv_ctx->valid) {
+					netdev = drv_ctx->netdev;
+					priv = netdev_priv(netdev);
+					otx2_rfoe_ptp_reset_sw_phc(priv);
+				}
+			}
+		}
+		ret = 0;
+		goto out;
+	}
 	default:
 	{
 		dev_info(cdev->dev, "ioctl: no match\n");

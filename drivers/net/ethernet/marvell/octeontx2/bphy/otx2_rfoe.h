@@ -151,6 +151,7 @@ void otx2_rfoe_set_ethtool_ops(struct net_device *netdev);
 void otx2_rfoe_calc_ptp_ts(struct otx2_rfoe_ndev_priv *priv, u64 *ts);
 int otx2_rfoe_ptp_init(struct otx2_rfoe_ndev_priv *priv);
 void otx2_rfoe_ptp_destroy(struct otx2_rfoe_ndev_priv *priv);
+int otx2_rfoe_ptp_reset_sw_phc(struct otx2_rfoe_ndev_priv *priv);
 
 /* update carrier state */
 void otx2_rfoe_set_link_state(struct net_device *netdev, u8 state);
