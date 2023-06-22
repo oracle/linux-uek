@@ -611,6 +611,7 @@ struct arm_smmu_s1_cfg {
 	struct arm_smmu_ctx_desc_cfg	cdcfg;
 	struct arm_smmu_ctx_desc	cd;
 	u8				s1fmt;
+	u8				s1dss;
 	u8				s1cdmax;
 };
 

@@ -1439,7 +1439,8 @@ static void arm_smmu_write_strtab_ent(struct arm_smmu_master *master, u32 sid,
 
 		BUG_ON(ste_live);
 		dst[1] = cpu_to_le64(
-			 FIELD_PREP(STRTAB_STE_1_S1DSS, STRTAB_STE_1_S1DSS_SSID0) |
+			 FIELD_PREP(STRTAB_STE_1_S1DSS, s1_cfg->s1dss) |
+			 FIELD_PREP(STRTAB_STE_1_SHCFG, STRTAB_STE_1_SHCFG_INCOMING) |
 			 FIELD_PREP(STRTAB_STE_1_S1CIR, STRTAB_STE_1_S1C_CACHE_WBRA) |
 			 FIELD_PREP(STRTAB_STE_1_S1COR, STRTAB_STE_1_S1C_CACHE_WBRA) |
 			 FIELD_PREP(STRTAB_STE_1_S1CSH, ARM_SMMU_SH_ISH) |
@@ -2208,6 +2209,10 @@ static int arm_smmu_domain_finalise_s1(struct arm_smmu_domain *smmu_domain,
 		goto out_unlock;
 
 	cfg->s1cdmax = master->ssid_bits;
+	if (smmu_domain->domain.type == IOMMU_DOMAIN_IDENTITY)
+		cfg->s1dss = STRTAB_STE_1_S1DSS_BYPASS;
+	else
+		cfg->s1dss = STRTAB_STE_1_S1DSS_SSID0;
 
 	smmu_domain->stall_enabled = master->stall_enabled;
 
@@ -2287,7 +2292,11 @@ static int arm_smmu_domain_finalise(struct iommu_domain *domain,
 	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
 	struct arm_smmu_device *smmu = smmu_domain->smmu;
 
-	if (domain->type == IOMMU_DOMAIN_IDENTITY) {
+	/*
+	 * A master with a pasid capability might need a CD table, so only set
+	 * ARM_SMMU_DOMAIN_BYPASS if IOMMU_DOMAIN_IDENTITY and non-pasid master
+	 */
+	if (domain->type == IOMMU_DOMAIN_IDENTITY && !master->ssid_bits) {
 		smmu_domain->stage = ARM_SMMU_DOMAIN_BYPASS;
 		return 0;
 	}
