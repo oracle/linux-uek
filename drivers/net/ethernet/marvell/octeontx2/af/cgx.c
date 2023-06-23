@@ -1054,9 +1054,6 @@ int cgx_lmac_pfc_config(void *cgxd, int lmac_id, u8 tx_pause,
 
 	/* Write source MAC address which will be filled into PFC packet */
 	cfg = cgx_lmac_addr_get(cgx->cgx_id, lmac_id);
-	if (!cfg)
-		return -ENODEV;
-
 	cgx_write(cgx, lmac_id, CGXX_SMUX_SMAC, cfg);
 
 	return 0;
