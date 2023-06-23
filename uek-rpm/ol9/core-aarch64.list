@@ -213,6 +213,7 @@ kernel/drivers/nvme/host/nvme-fabrics.ko
 kernel/drivers/nvme/host/nvme-fc.ko
 kernel/drivers/nvme/host/nvme.ko
 kernel/drivers/nvme/host/nvme-tcp.ko
+kernel/drivers/nvme/common/nvme-common.ko
 kernel/drivers/nvme/target/nvmet.ko
 kernel/drivers/nvme/target/nvmet-tcp.ko
 kernel/drivers/perf/arm_dmc620_pmu.ko
