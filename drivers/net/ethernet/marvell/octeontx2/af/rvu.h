@@ -455,6 +455,7 @@ struct hw_cap {
 	bool	npc_hash_extract; /* Hash extract enabled ? */
 	bool	npc_exact_match_enabled; /* Exact match supported ? */
 	u16     spi_to_sas; /* Num of SPI to SA index */
+	bool    cpt_rxc;   /* Is CPT-RXC supported */
 };
 
 struct rvu_hwinfo {
@@ -786,6 +787,15 @@ static inline bool is_cn10kb_a1(struct rvu *rvu)
 
 	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B &&
 	    (pdev->revision & 0x0F) == 0x1)
+		return true;
+	return false;
+}
+
+static inline bool is_cn10kb(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B)
 		return true;
 	return false;
 }
