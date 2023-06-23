@@ -1471,7 +1471,6 @@ nmi_restore:
 	iretq
 SYM_CODE_END(asm_exc_nmi)
 
-#ifndef CONFIG_IA32_EMULATION
 /*
  * This handles SYSCALL from 32-bit code.  There is no way to program
  * MSRs to fully disable 32-bit SYSCALL.
@@ -1482,7 +1481,6 @@ SYM_CODE_START(entry_SYSCALL32_ignore)
 	CLEAR_CPU_BUFFERS
 	sysretl
 SYM_CODE_END(entry_SYSCALL32_ignore)
-#endif
 
 .pushsection .text, "ax"
 SYM_CODE_START(rewind_stack_and_make_dead)
