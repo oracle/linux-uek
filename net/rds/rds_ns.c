@@ -33,6 +33,7 @@
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 #include "rds.h"
+#include "loop.h"
 
 static int rds_netid;
 
@@ -70,11 +71,18 @@ static __net_init int rds_init_net(struct net *net)
 	if (ret)
 		goto err_conn;
 
-	ret =  rds_cong_net_init(rns);
+	ret = rds_cong_net_init(rns);
 	if (ret)
 		goto err_cong;
 
+	ret = rds_loop_net_init(rns);
+	if (ret)
+		goto err_loop;
+
 	return 0;
+
+err_loop:
+	rds_cong_net_exit(rns);
 
 err_cong:
 	rds_conn_tbl_net_exit(rns);
@@ -95,8 +103,10 @@ static void rds_exit_net(struct net *net)
 {
 	struct rds_net *rns = rds_ns(net);
 
+	rds_loop_net_exit(rns);
 	rds_bind_tbl_net_exit(rns);
 	rds_cong_net_exit(rns);
+	rds_conn_tbl_net_exit(rns);
 	rds_stats_net_exit(net);
 	mutex_destroy(&rns->rns_sock_lock);
 	mutex_destroy(&rns->rns_mod_mutex);
