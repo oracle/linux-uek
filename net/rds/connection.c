@@ -1193,8 +1193,6 @@ int rds_conn_init(void)
 
 void rds_conn_exit(void)
 {
-	rds_loop_exit();
-
 	kmem_cache_destroy(rds_conn_slab);
 
 	rds_info_deregister_func(RDS_INFO_CONNECTIONS, rds_conn_info);
