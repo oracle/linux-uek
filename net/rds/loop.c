@@ -38,9 +38,6 @@
 #include "loop.h"
 #include "rds_single_path.h"
 
-static DEFINE_SPINLOCK(loop_conns_lock);
-static LIST_HEAD(loop_conns);
-
 /*
  * This 'loopback' transport is a special case for flows that originate
  * and terminate on the same machine.
@@ -112,6 +109,7 @@ static int rds_loop_recv_path(struct rds_conn_path *cp)
 struct rds_loop_connection {
 	struct list_head loop_node;
 	struct rds_connection *conn;
+	struct rds_net	*rns;
 };
 
 /*
@@ -132,10 +130,11 @@ static int rds_loop_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	INIT_LIST_HEAD(&lc->loop_node);
 	lc->conn = conn;
 	conn->c_transport_data = lc;
+	lc->rns = conn->c_rns;
 
-	spin_lock_irqsave(&loop_conns_lock, flags);
-	list_add_tail(&lc->loop_node, &loop_conns);
-	spin_unlock_irqrestore(&loop_conns_lock, flags);
+	spin_lock_irqsave(&lc->rns->rns_loop_conns_lock, flags);
+	list_add_tail(&lc->loop_node, &lc->rns->rns_loop_conns);
+	spin_unlock_irqrestore(&lc->rns->rns_loop_conns_lock, flags);
 
 	return 0;
 }
@@ -146,9 +145,9 @@ static void rds_loop_conn_free(void *arg)
 	unsigned long flags;
 
 	rdsdebug("lc %p\n", lc);
-	spin_lock_irqsave(&loop_conns_lock, flags);
+	spin_lock_irqsave(&lc->rns->rns_loop_conns_lock, flags);
 	list_del(&lc->loop_node);
-	spin_unlock_irqrestore(&loop_conns_lock, flags);
+	spin_unlock_irqrestore(&lc->rns->rns_loop_conns_lock, flags);
 	kfree(lc);
 }
 
@@ -162,16 +161,23 @@ static void rds_loop_conn_path_shutdown(struct rds_conn_path *cp)
 {
 }
 
-void rds_loop_exit(void)
+int rds_loop_net_init(struct rds_net *rns)
+{
+	spin_lock_init(&rns->rns_loop_conns_lock);
+	INIT_LIST_HEAD(&rns->rns_loop_conns);
+	return 0;
+}
+
+void rds_loop_net_exit(struct rds_net *rns)
 {
 	struct rds_loop_connection *lc, *_lc;
 	LIST_HEAD(tmp_list);
 
 	/* avoid calling conn_destroy with irqs off */
-	spin_lock_irq(&loop_conns_lock);
-	list_splice(&loop_conns, &tmp_list);
-	INIT_LIST_HEAD(&loop_conns);
-	spin_unlock_irq(&loop_conns_lock);
+	spin_lock_irq(&rns->rns_loop_conns_lock);
+	list_splice(&rns->rns_loop_conns, &tmp_list);
+	INIT_LIST_HEAD(&rns->rns_loop_conns);
+	spin_unlock_irq(&rns->rns_loop_conns_lock);
 
 	list_for_each_entry_safe(lc, _lc, &tmp_list, loop_node) {
 		WARN_ON(lc->conn->c_passive);
