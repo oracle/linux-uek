@@ -260,12 +260,6 @@ static bool vhost_worker_queue(struct vhost_worker *worker,
 	return true;
 }
 
-bool vhost_work_queue(struct vhost_dev *dev, struct vhost_work *work)
-{
-	return vhost_worker_queue(dev->worker, work);
-}
-EXPORT_SYMBOL_GPL(vhost_work_queue);
-
 bool vhost_vq_work_queue(struct vhost_virtqueue *vq, struct vhost_work *work)
 {
 	return vhost_worker_queue(vq->worker, work);
@@ -557,14 +551,14 @@ static void vhost_attach_cgroups_work(struct vhost_work *work)
 	s->ret = cgroup_attach_task_all(s->owner, current);
 }
 
-static int vhost_attach_cgroups(struct vhost_dev *dev)
+static int vhost_attach_cgroups(struct vhost_worker *worker)
 {
 	struct vhost_attach_cgroups_struct attach;
 
 	attach.owner = current;
 	vhost_work_init(&attach.work, vhost_attach_cgroups_work);
-	vhost_work_queue(dev, &attach.work);
-	vhost_dev_flush(dev);
+	vhost_worker_queue(worker, &attach.work);
+	vhost_worker_flush(worker);
 	return attach.ret;
 }
 
@@ -648,7 +642,7 @@ static struct vhost_worker *vhost_worker_create(struct vhost_dev *dev)
 
 	wake_up_process(task); /* avoid contributing to loadavg */
 
-	if (vhost_attach_cgroups(dev))
+	if (vhost_attach_cgroups(worker))
 		goto stop_worker;
 
 	return worker;
