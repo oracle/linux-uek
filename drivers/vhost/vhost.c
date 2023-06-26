@@ -240,21 +240,23 @@ void vhost_dev_flush(struct vhost_dev *dev)
 {
 	struct vhost_flush_struct flush;
 
-	if (dev->worker) {
-		init_completion(&flush.wait_event);
-		vhost_work_init(&flush.work, vhost_flush_work);
+	init_completion(&flush.wait_event);
+	vhost_work_init(&flush.work, vhost_flush_work);
 
-		vhost_work_queue(dev, &flush.work);
+	if (vhost_work_queue(dev, &flush.work))
 		wait_for_completion(&flush.wait_event);
-	}
 }
 EXPORT_SYMBOL_GPL(vhost_dev_flush);
 
-void vhost_work_queue(struct vhost_dev *dev, struct vhost_work *work)
+bool vhost_work_queue(struct vhost_dev *dev, struct vhost_work *work)
 {
 	if (!dev->worker)
-		return;
-
+		return false;
+	/*
+	 * vsock can queue while we do a VHOST_SET_OWNER, so we have a smp_wmb
+	 * when setting up the worker. We don't have a smp_rmb here because
+	 * test_and_set_bit gives us a mb already.
+	 */
 	if (!test_and_set_bit(VHOST_WORK_QUEUED, &work->flags)) {
 		/* We can only add the work to the list after we're
 		 * sure it was not in the list.
@@ -263,13 +265,15 @@ void vhost_work_queue(struct vhost_dev *dev, struct vhost_work *work)
 		llist_add(&work->node, &dev->worker->work_list);
 		wake_up_process(dev->worker->task);
 	}
+
+	return true;
 }
 EXPORT_SYMBOL_GPL(vhost_work_queue);
 
 /* A lockless hint for busy polling code to exit the loop */
 bool vhost_has_work(struct vhost_dev *dev)
 {
-	return dev->worker && !llist_empty(&dev->worker->work_list);
+	return !llist_empty(&dev->worker->work_list);
 }
 EXPORT_SYMBOL_GPL(vhost_has_work);
 
@@ -582,10 +586,10 @@ static void vhost_worker_free(struct vhost_dev *dev)
 	if (!worker)
 		return;
 
-	dev->worker = NULL;
-	WARN_ON(!llist_empty(&worker->work_list));
+	WARN_ON(!llist_empty(&dev->worker->work_list));
 	kthread_stop(worker->task);
-	kfree(worker);
+	kfree(dev->worker);
+	dev->worker = NULL;
 }
 
 static int vhost_worker_create(struct vhost_dev *dev)
@@ -598,10 +602,7 @@ static int vhost_worker_create(struct vhost_dev *dev)
 	if (!worker)
 		return -ENOMEM;
 
-	dev->worker = worker;
 	worker->dev = dev;
-	worker->kcov_handle = kcov_common_handle();
-	init_llist_head(&worker->work_list);
 
 	task = kthread_create(vhost_worker, worker, "vhost-%d", current->pid);
 	if (IS_ERR(task)) {
@@ -612,7 +613,16 @@ static int vhost_worker_create(struct vhost_dev *dev)
 	if (inherit_cs_cookie)
 		sched_cs_copy(current, task);
 
+	init_llist_head(&worker->work_list);
+	worker->kcov_handle = kcov_common_handle();
 	worker->task = task;
+	/*
+	 * vsock can already try to queue so make sure llist and task are both
+	 * set before vhost_work_queue sees dev->worker is set.
+	 */
+	smp_wmb();
+	dev->worker = worker;
+
 	wake_up_process(task); /* avoid contributing to loadavg */
 
 	ret = vhost_attach_cgroups(dev);
