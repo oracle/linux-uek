@@ -1278,8 +1278,9 @@ static const struct x86_cpu_id cpu_vuln_blacklist[] = {
 
 	VULNBL_AMD(0x15, RETBLEED),
 	VULNBL_AMD(0x16, RETBLEED),
-	VULNBL_AMD(0x17, RETBLEED | SMT_RSB),
+	VULNBL_AMD(0x17, RETBLEED | SMT_RSB | SRSO),
 	VULNBL_HYGON(0x18, RETBLEED | SMT_RSB),
+	VULNBL_AMD(0x19, SRSO),
 	{}
 };
 
@@ -1439,6 +1440,9 @@ void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 	if (cpu_matches(cpu_vuln_blacklist, GDS) && !(ia32_cap & ARCH_CAP_GDS_NO) &&
 	    boot_cpu_has(X86_FEATURE_AVX))
 		setup_force_cpu_bug(X86_BUG_GDS);
+
+	if (cpu_matches(cpu_vuln_blacklist, SRSO))
+		setup_force_cpu_bug(X86_BUG_SRSO);
 
 	if (cpu_matches(cpu_vuln_whitelist, NO_MELTDOWN))
 		return;
