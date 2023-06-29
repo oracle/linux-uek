@@ -382,7 +382,7 @@ static int lock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
 	uint32_t val = 0;
 	int timeout = SPI_LOCK_TIMEOUT; //10 second timeout
 
-	while (timeout-- >= 0) {
+	while (timeout >= 0) {
 		val = readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1);
 		if (val == SPI_NOT_CLAIMED || val == SPI_AP_NS_OWN) {
 			writel(SPI_AP_NS_OWN,
@@ -390,19 +390,21 @@ static int lock_spi_bus(struct cdns_xspi_dev *cdns_xspi)
 			break;
 		}
 		mdelay(SPI_LOCK_SLEEP_DURATION_MS);
+		timeout--;
 	}
 
-	if (timeout <= 0)
+	if (timeout < 0)
 		goto fail;
 
 	timeout = SPI_LOCK_CHECK_TIMEOUT;
-	while (timeout-- >= 0) {
+	while (timeout >= 0) {
 		if (readl(cdns_xspi->auxbase + CDNS_XSPI_PHY_CTB_RFILE_PHY_GPIO_CTRL_1) !=
 			  SPI_AP_NS_OWN)
 			break;
+		timeout--;
 	}
 
-	if (timeout > 0)
+	if (timeout != -1)
 		goto fail;
 
 	return 0;
