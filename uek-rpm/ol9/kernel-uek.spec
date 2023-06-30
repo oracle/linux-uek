@@ -310,6 +310,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %if %{with_64konly}
 %define with_64k_ps 1
 %define with_up 0
+%define with_container 0
 %define with_debug 0
 %define with_headers 0
 %define with_perf 0
