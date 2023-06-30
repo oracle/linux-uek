@@ -376,7 +376,7 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long stack_start,
 	 */
 	fpsimd_flush_task_state(p);
 
-	if (likely(!(p->flags & PF_KTHREAD))) {
+	if (likely(!(p->flags & (PF_KTHREAD | PF_IO_WORKER)))) {
 		*childregs = *current_pt_regs();
 		childregs->regs[0] = 0;
 
@@ -463,7 +463,7 @@ static void ssbs_thread_switch(struct task_struct *next)
 	 * Nothing to do for kernel threads, but 'regs' may be junk
 	 * (e.g. idle task) so check the flags and bail early.
 	 */
-	if (unlikely(next->flags & PF_KTHREAD))
+	if (unlikely(next->flags & (PF_KTHREAD | PF_IO_WORKER)))
 		return;
 
 	/*
