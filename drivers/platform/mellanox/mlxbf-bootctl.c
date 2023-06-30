@@ -387,17 +387,16 @@ static ssize_t oob_mac_store(struct device_driver *drv, const char *buf,
 
 static ssize_t large_icm_show(struct device_driver *drv, char *buf)
 {
-	char icm_str[MAX_ICM_BUFFER_SIZE] = { 0 };
 	struct arm_smccc_res res;
 
+	mutex_lock(&icm_ops_lock);
 	arm_smccc_smc(MLNX_HANDLE_GET_ICM_INFO, 0, 0, 0, 0,
 		      0, 0, 0, &res);
+	mutex_unlock(&icm_ops_lock);
 	if (res.a0)
 		return -EPERM;
 
-	sprintf(icm_str, "0x%lx", res.a1);
-
-	return snprintf(buf, sizeof(icm_str), "%s", icm_str);
+	return snprintf(buf, PAGE_SIZE, "0x%lx", res.a1);
 }
 
 static ssize_t large_icm_store(struct device_driver *drv, const char *buf,
