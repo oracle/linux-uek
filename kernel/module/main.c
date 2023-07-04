@@ -4284,7 +4284,7 @@ static bool idempotent(struct idempotent *u, const void *cookie)
  * remove everybody - which includes ourselves - fill in the return
  * value, and then complete the operation.
  */
-static void idempotent_complete(struct idempotent *u, int ret)
+static int idempotent_complete(struct idempotent *u, int ret)
 {
 	const void *cookie = u->cookie;
 	int hash = hash_ptr(cookie, IDEM_HASH_BITS);
@@ -4301,22 +4301,14 @@ static void idempotent_complete(struct idempotent *u, int ret)
 		complete(&pos->complete);
 	}
 	spin_unlock(&idem_lock);
+	return ret;
 }
 
 static int init_module_from_file(struct file *f, const char __user * uargs, int flags)
 {
-	struct idempotent idem;
 	struct load_info info = { };
 	void *buf = NULL;
-	int len, ret;
-
-	if (!f || !(f->f_mode & FMODE_READ))
-		return -EBADF;
-
-	if (idempotent(&idem, file_inode(f))) {
-		wait_for_completion(&idem.complete);
-		return idem.ret;
-	}
+	int len;
 
 	len = kernel_read_file(f, 0, &buf, INT_MAX, NULL, READING_MODULE);
 	if (len < 0)
@@ -4324,9 +4316,25 @@ static int init_module_from_file(struct file *f, const char __user * uargs, int 
 	info.hdr = buf;
 	info.len = len;
 
-	ret = load_module(&info, uargs, flags);
-	idempotent_complete(&idem, ret);
-	return ret;
+	return load_module(&info, uargs, flags);
+}
+
+static int idempotent_init_module(struct file *f, const char __user * uargs, int flags)
+{
+	struct idempotent idem;
+
+	if (!f || !(f->f_mode & FMODE_READ))
+		return -EBADF;
+
+	/* See if somebody else is doing the operation? */
+	if (idempotent(&idem, file_inode(f))) {
+		wait_for_completion(&idem.complete);
+		return idem.ret;
+	}
+
+	/* Otherwise, we'll do it and complete others */
+	return idempotent_complete(&idem,
+		init_module_from_file(f, uargs, flags));
 }
 
 static inline int within(unsigned long addr, void *start, unsigned long size)
@@ -4666,7 +4674,7 @@ SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
 		return -EINVAL;
 
 	f = fdget(fd);
-	err = init_module_from_file(f.file, uargs, flags);
+	err = idempotent_init_module(f.file, uargs, flags);
 	fdput(f);
 	return err;
 }
