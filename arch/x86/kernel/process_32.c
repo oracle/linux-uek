@@ -134,7 +134,7 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long sp,
 	p->thread.sp0 = (unsigned long) (childregs+1);
 	memset(p->thread.ptrace_bps, 0, sizeof(p->thread.ptrace_bps));
 
-	if (unlikely(p->flags & (PF_KTHREAD | PF_IO_WORKER))) {
+	if (unlikely(p->flags & PF_KTHREAD)) {
 		/* kernel thread */
 		memset(childregs, 0, sizeof(struct pt_regs));
 		frame->bx = sp;		/* function */
@@ -149,6 +149,25 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long sp,
 		childregs->sp = sp;
 
 	task_user_gs(p) = get_user_gs(current_pt_regs());
+
+	if (unlikely(p->flags & PF_IO_WORKER)) {
+		/*
+		 * An IO thread is a user space thread, but it doesn't
+		 * return to ret_after_fork().
+		 *
+		 * In order to indicate that to tools like gdb,
+		 * we reset the stack and instruction pointers.
+		 *
+		 * It does the same kernel frame setup to return to a kernel
+		 * function that a kernel thread does.
+		 */
+		childregs->sp = 0;
+		childregs->ip = 0;
+		frame->bx = sp;		/* function */
+		frame->di = arg;
+		p->thread.io_bitmap_ptr = NULL;
+		return 0;
+	}
 
 	p->thread.io_bitmap_ptr = NULL;
 	tsk = current;
