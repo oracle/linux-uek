@@ -282,6 +282,7 @@ kernel/drivers/platform/x86/mxm-wmi.ko
 kernel/drivers/platform/x86/wmi.ko
 kernel/drivers/powercap/intel_rapl_common.ko
 kernel/drivers/powercap/intel_rapl_msr.ko
+kernel/drivers/ptp/ptp_kvm.ko
 kernel/drivers/scsi/be2iscsi/be2iscsi.ko
 kernel/drivers/scsi/bnx2i/bnx2i.ko
 kernel/drivers/scsi/ch.ko
