@@ -1409,9 +1409,34 @@ static inline void destroy_compound_gigantic_page(struct page *page,
 						unsigned int order) { }
 #endif
 
+static inline void __clear_hugetlb_destructor(struct hstate *h, struct page *head)
+{
+	lockdep_assert_held(&hugetlb_lock);
+
+	/*
+	 * Very subtle
+	 *
+	 * For non-gigantic pages set the destructor to the normal compound
+	 * page dtor.  This is needed in case someone takes an additional
+	 * temporary ref to the page, and freeing is delayed until they drop
+	 * their reference.
+	 *
+	 * For gigantic pages set the destructor to the null dtor.  This
+	 * destructor will never be called.  Before freeing the gigantic
+	 * page destroy_compound_gigantic_page will turn the compound page
+	 * into a simple group of pages.  After this the destructor does not
+	 */
+	if (hstate_is_gigantic(h))
+		set_compound_page_dtor(head, NULL_COMPOUND_DTOR);
+	else
+		set_compound_page_dtor(head, COMPOUND_PAGE_DTOR);
+}
+
 /*
- * Remove hugetlb page from lists, and update dtor so that page appears
- * as just a compound page.
+ * Remove hugetlb page from lists.
+ * If vmemmap exists for the page, update dtor so that the page appears
+ * as just a compound page. Otherwise, wait until after allocating vmemmap
+ * to update dtor.
  *
  * A reference is held on the page, except in the case of demote.
  *
@@ -1442,31 +1467,19 @@ static void __remove_hugetlb_page(struct hstate *h, struct page *page,
 	}
 
 	/*
-	 * Very subtle
-	 *
-	 * For non-gigantic pages set the destructor to the normal compound
-	 * page dtor.  This is needed in case someone takes an additional
-	 * temporary ref to the page, and freeing is delayed until they drop
-	 * their reference.
-	 *
-	 * For gigantic pages set the destructor to the null dtor.  This
-	 * destructor will never be called.  Before freeing the gigantic
-	 * page destroy_compound_gigantic_page will turn the compound page
-	 * into a simple group of pages.  After this the destructor does not
-	 * apply.
-	 *
-	 * This handles the case where more than one ref is held when and
-	 * after update_and_free_page is called.
-	 *
+	 * We can only clear the hugetlb destructor after allocating vmemmap
+	 * pages.  Otherwise, someone (memory error handling) may try to write
+	 * to tail struct pages.
+	 */
+	if (!HPageVmemmapOptimized(page))
+		__clear_hugetlb_destructor(h, page);
+
+	/*
 	 * In the case of demote we do not ref count the page as it will soon
 	 * be turned into a page of smaller size.
 	 */
 	if (!demote)
 		set_page_refcounted(page);
-	if (hstate_is_gigantic(h))
-		set_compound_page_dtor(page, NULL_COMPOUND_DTOR);
-	else
-		set_compound_page_dtor(page, COMPOUND_PAGE_DTOR);
 
 	h->nr_huge_pages--;
 	h->nr_huge_pages_node[nid]--;
@@ -1530,6 +1543,7 @@ static void __update_and_free_page(struct hstate *h, struct page *page)
 {
 	int i;
 	struct page *subpage = page;
+	bool clear_dtor = HPageVmemmapOptimized(page);
 
 	if (hstate_is_gigantic(h) && !gigantic_page_runtime_supported())
 		return;
@@ -1544,6 +1558,16 @@ static void __update_and_free_page(struct hstate *h, struct page *page)
 		add_hugetlb_page(h, page, true);
 		spin_unlock_irq(&hugetlb_lock);
 		return;
+	}
+
+	/*
+	 * If vmemmap pages were allocated above, then we need to clear the
+	 * hugetlb destructor under the hugetlb lock.
+	 */
+	if (clear_dtor) {
+		spin_lock_irq(&hugetlb_lock);
+		__clear_hugetlb_destructor(h, page);
+		spin_unlock_irq(&hugetlb_lock);
 	}
 
 	for (i = 0; i < pages_per_huge_page(h);
