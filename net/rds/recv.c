@@ -716,10 +716,12 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 
 	if (rs->rs_inq) {
 		unsigned long flags;
+		int rcv_bytes;
 
 		read_lock_irqsave(&rs->rs_recv_lock, flags);
+		rcv_bytes = rs->rs_rcv_bytes;
 		ret = put_cmsg(msg, SOL_RDS, RDS_CMSG_INQ,
-			       sizeof(rs->rs_rcv_bytes), &rs->rs_rcv_bytes);
+			       sizeof(rcv_bytes), &rcv_bytes);
 		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
 		if (ret)
 			goto out;
