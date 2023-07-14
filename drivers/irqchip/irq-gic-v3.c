@@ -238,9 +238,11 @@ static void gic_redist_wait_for_rwp(void)
 
 static u64 __maybe_unused gic_read_iar(void)
 {
+#ifdef CONFIG_CAVIUM_ERRATUM_23154
 	if (cpus_have_const_cap(ARM64_WORKAROUND_CAVIUM_23154))
 		return gic_read_iar_cavium_thunderx();
 	else
+#endif
 		return gic_read_iar_common();
 }
 #endif
