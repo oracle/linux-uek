@@ -60,11 +60,17 @@
  */
 #define SDHCI_CDNS_MAX_TUNING_LOOP	40
 
+struct sdhci_cdns_priv;
+
 struct sdhci_cdns_sd4_phy_param {
 	u8 addr;
 	u8 data;
 };
 
+struct sdhci_cdns_sd4_phy {
+	unsigned int nr_phy_params;
+	struct sdhci_cdns_sd4_phy_param phy_params[];
+};
 struct sdhci_cdns_priv {
 	void __iomem *hrs_addr;
 	void __iomem *ctl_addr;	/* write control */
@@ -73,8 +79,8 @@ struct sdhci_cdns_priv {
 	void (*priv_write_l)(struct sdhci_cdns_priv *priv, u32 val,
 			     void __iomem *reg);
 	struct reset_control *rst_hw;
-	unsigned int nr_phy_params;
-	struct sdhci_cdns_sd4_phy_param phy_params[];
+	const struct sdhci_cdns_drv_data *cdns_data;
+	void *phy;
 };
 
 struct sdhci_cdns_sd4_phy_cfg {
@@ -84,6 +90,8 @@ struct sdhci_cdns_sd4_phy_cfg {
 
 struct sdhci_cdns_drv_data {
 	int (*init)(struct platform_device *pdev);
+	int (*phy_init)(struct sdhci_cdns_priv *priv);
+	int (*phy_probe)(struct platform_device *pdev, struct sdhci_cdns_priv *priv);
 	const struct sdhci_pltfm_data pltfm_data;
 };
 
@@ -155,9 +163,9 @@ static unsigned int sdhci_cdns_sd4_phy_param_count(struct device_node *np)
 }
 
 static void sdhci_cdns_sd4_phy_param_parse(struct device_node *np,
-					   struct sdhci_cdns_priv *priv)
+					   struct sdhci_cdns_sd4_phy *phy)
 {
-	struct sdhci_cdns_sd4_phy_param *p = priv->phy_params;
+	struct sdhci_cdns_sd4_phy_param *p = phy->phy_params;
 	u32 val;
 	int ret, i;
 
@@ -176,10 +184,11 @@ static void sdhci_cdns_sd4_phy_param_parse(struct device_node *np,
 static int sdhci_cdns_sd4_phy_init(struct sdhci_cdns_priv *priv)
 {
 	int ret, i;
+	struct sdhci_cdns_sd4_phy *phy = priv->phy;
 
-	for (i = 0; i < priv->nr_phy_params; i++) {
-		ret = sdhci_cdns_sd4_write_phy_reg(priv, priv->phy_params[i].addr,
-						   priv->phy_params[i].data);
+	for (i = 0; i < phy->nr_phy_params; i++) {
+		ret = sdhci_cdns_sd4_write_phy_reg(priv, phy->phy_params[i].addr,
+						   phy->phy_params[i].data);
 		if (ret)
 			return ret;
 	}
@@ -220,6 +229,27 @@ static u32 sdhci_cdns_get_emmc_mode(struct sdhci_cdns_priv *priv)
 
 	tmp = readl(priv->hrs_addr + SDHCI_CDNS_HRS06);
 	return FIELD_GET(SDHCI_CDNS_HRS06_MODE, tmp);
+}
+
+static int sdhci_cdns_sd4_phy_probe(struct platform_device *pdev,
+				    struct sdhci_cdns_priv *priv)
+{
+	unsigned int nr_phy_params;
+	struct sdhci_cdns_sd4_phy *phy;
+	struct device *dev = &pdev->dev;
+
+	nr_phy_params = sdhci_cdns_sd4_phy_param_count(dev->of_node);
+	phy = devm_kzalloc(dev, struct_size(phy, phy_params, nr_phy_params),
+			   GFP_KERNEL);
+	if (!phy)
+		return -ENOMEM;
+
+	phy->nr_phy_params = nr_phy_params;
+
+	sdhci_cdns_sd4_phy_param_parse(dev->of_node, phy);
+	priv->phy = phy;
+
+	return 0;
 }
 
 static int sdhci_cdns_sd4_set_tune_val(struct sdhci_host *host, unsigned int val)
@@ -421,6 +451,8 @@ static const struct sdhci_ops sdhci_cdns_sd4_ops = {
 };
 
 static const struct sdhci_cdns_drv_data sdhci_cdns_uniphier_drv_data = {
+	.phy_init = sdhci_cdns_sd4_phy_init,
+	.phy_probe = sdhci_cdns_sd4_phy_probe,
 	.pltfm_data = {
 	.ops = &sdhci_cdns_sd4_ops,
 		.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
@@ -429,12 +461,16 @@ static const struct sdhci_cdns_drv_data sdhci_cdns_uniphier_drv_data = {
 
 static const struct sdhci_cdns_drv_data sdhci_elba_drv_data = {
 	.init = elba_drv_init,
+	.phy_init = sdhci_cdns_sd4_phy_init,
+	.phy_probe = sdhci_cdns_sd4_phy_probe,
 	.pltfm_data = {
 		.ops = &sdhci_elba_ops,
 	},
 };
 
 static const struct sdhci_cdns_drv_data sdhci_cdns_sd4_drv_data = {
+	.phy_init = sdhci_cdns_sd4_phy_init,
+	.phy_probe = sdhci_cdns_sd4_phy_probe,
 	.pltfm_data = {
 		.ops = &sdhci_cdns_sd4_ops,
 	},
@@ -483,7 +519,6 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	struct sdhci_pltfm_host *pltfm_host;
 	struct sdhci_cdns_priv *priv;
 	struct clk *clk;
-	unsigned int nr_phy_params;
 	int ret;
 	struct device *dev = &pdev->dev;
 	static const u16 version = SDHCI_SPEC_400 << SDHCI_SPEC_VER_SHIFT;
@@ -497,12 +532,12 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 		return ret;
 
 	data = of_device_get_match_data(dev);
-	if (!data)
-		data = &sdhci_cdns_sd4_drv_data;
+	if (!data) {
+		ret = -EINVAL;
+		goto disable_clk;
+	}
 
-	nr_phy_params = sdhci_cdns_sd4_phy_param_count(dev->of_node);
-	host = sdhci_pltfm_init(pdev, &data->pltfm_data,
-				struct_size(priv, phy_params, nr_phy_params));
+	host = sdhci_pltfm_init(pdev, &data->pltfm_data, sizeof(*priv));
 	if (IS_ERR(host)) {
 		ret = PTR_ERR(host);
 		goto disable_clk;
@@ -512,9 +547,9 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	pltfm_host->clk = clk;
 
 	priv = sdhci_pltfm_priv(pltfm_host);
-	priv->nr_phy_params = nr_phy_params;
 	priv->hrs_addr = host->ioaddr;
 	priv->enhanced_strobe = false;
+	priv->cdns_data = data;
 	host->ioaddr += SDHCI_CDNS_SRS_BASE;
 	host->mmc_host_ops.hs400_enhanced_strobe =
 				sdhci_cdns_hs400_enhanced_strobe;
@@ -534,9 +569,11 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	if (ret)
 		goto free;
 
-	sdhci_cdns_sd4_phy_param_parse(dev->of_node, priv);
+	ret = data->phy_probe(pdev, priv);
+	if (ret)
+		goto free;
 
-	ret = sdhci_cdns_sd4_phy_init(priv);
+	ret = priv->cdns_data->phy_init(priv);
 	if (ret)
 		goto free;
 
@@ -576,7 +613,7 @@ static int sdhci_cdns_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	ret = sdhci_cdns_sd4_phy_init(priv);
+	ret = priv->cdns_data->phy_init(priv);
 	if (ret)
 		goto disable_clk;
 
@@ -606,7 +643,10 @@ static const struct of_device_id sdhci_cdns_match[] = {
 		.compatible = "pensando,elba-emmc",
 		.data = &sdhci_elba_drv_data
 	},
-	{ .compatible = "cdns,sd4hc" },
+	{
+		.compatible = "cdns,sd4hc",
+		.data = &sdhci_cdns_sd4_drv_data,
+	},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, sdhci_cdns_match);
