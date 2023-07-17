@@ -4,7 +4,7 @@
 $id: http://devicetree.org/schemas/mmc/cdns,sdhci.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Cadence SD/SDIO/eMMC Host Controller (SD4HC)
+title: Cadence SD/SDIO/eMMC Host Controller (SD4HC, SD6HC)
 
 maintainers:
   - Masahiro Yamada <yamada.masahiro@socionext.com>
@@ -15,10 +15,16 @@ allOf:
 
 properties:
   compatible:
-    items:
-      - enum:
-          - socionext,uniphier-sd4hc
-      - const: cdns,sd4hc
+    oneOf:
+      - items:
+          - enum:
+              - amd,pensando-elba-sd4hc
+              - microchip,mpfs-sd4hc
+              - socionext,uniphier-sd4hc
+          - const: cdns,sd4hc
+
+      - items:
+          - const: marvell,cdns-sd6hc
 
   reg:
     maxItems: 1
@@ -116,6 +122,40 @@ required:
   - reg
   - interrupts
   - clocks
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: marvell,cdns-sd6hc
+
+    then:
+      properties:
+        marvell,iocell-input-delay-ps:
+          description: Delay in ps across the input IO cells
+
+        marvell,iocell-output-delay-ps:
+          description: Delay in ps across the output IO cells
+
+        marvell,delay-element-ps:
+          description: Delay element in ps used for calculating phy timings
+
+        marvell,read-dqs-cmd-delay-ps:
+          description: Command delay used in HS200 tuning
+
+        marvell,tune-val-start-ps:
+          description: Staring value of data delay used in HS200 tuning
+
+        marvell,tune-val-step-ps:
+          description: Incremental value of data delay used in HS200 tuning
+
+      required:
+        - marvell,iocell-input-delay-ps
+        - marvell,iocell-output-delay-ps
+        - marvell,delay-element-ps
+        - marvell,read-dqs-cmd-delay-ps
+        - marvell,tune-val-start-ps
+        - marvell,tune-val-step-ps
 
 unevaluatedProperties: false
 
