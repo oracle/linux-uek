@@ -4177,28 +4177,25 @@ static int nf_tables_check_loops(const struct nft_ctx *ctx,
 	return 0;
 }
 
-/**
- *	nft_parse_register - parse a register value from a netlink attribute
- *
- *	@attr: netlink attribute
- *
- *	Parse and translate a register value from a netlink attribute.
- *	Registers used to be 128 bit wide, these register numbers will be
- *	mapped to the corresponding 32 bit register numbers.
- */
-unsigned int nft_parse_register(const struct nlattr *attr)
+int nft_parse_register_with_error(const struct nlattr *attr, u32 *preg)
 {
 	unsigned int reg;
 
 	reg = ntohl(nla_get_be32(attr));
 	switch (reg) {
 	case NFT_REG_VERDICT...NFT_REG_4:
-		return reg * NFT_REG_SIZE / NFT_REG32_SIZE;
+		*preg = reg * NFT_REG_SIZE / NFT_REG32_SIZE;
+        break;
+    case NFT_REG32_00...NFT_REG32_15:
+        *preg = reg + NFT_REG_SIZE / NFT_REG32_SIZE - NFT_REG32_00;
+        break;
 	default:
-		return reg + NFT_REG_SIZE / NFT_REG32_SIZE - NFT_REG32_00;
+        return -ERANGE;
 	}
+
+    return 0;
 }
-EXPORT_SYMBOL_GPL(nft_parse_register);
+EXPORT_SYMBOL_GPL(nft_parse_register_with_error);
 
 /**
  *	nft_dump_register - dump a register value to a netlink attribute

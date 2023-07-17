@@ -11,6 +11,15 @@
 #include <net/netlink.h>
 
 #define NFT_JUMP_STACK_SIZE	16
+#define nft_parse_register(attr) \
+  ({ \
+    int _err; \
+    u32 _preg = 0; \
+    _err = nft_parse_register_with_error(attr, &_preg); \
+    if (_err < 0) \
+      return _err; \
+    _preg; \
+  })
 
 struct nft_pktinfo {
 	struct sk_buff			*skb;
@@ -128,7 +137,7 @@ static inline enum nft_registers nft_type_to_reg(enum nft_data_types type)
 	return type == NFT_DATA_VERDICT ? NFT_REG_VERDICT : NFT_REG_1 * NFT_REG_SIZE / NFT_REG32_SIZE;
 }
 
-unsigned int nft_parse_register(const struct nlattr *attr);
+int nft_parse_register_with_error(const struct nlattr *attr, u32 *preg);
 int nft_dump_register(struct sk_buff *skb, unsigned int attr, unsigned int reg);
 
 int nft_validate_register_load(enum nft_registers reg, unsigned int len);
