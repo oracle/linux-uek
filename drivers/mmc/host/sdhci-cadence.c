@@ -449,6 +449,59 @@ static u32 read_dqs_cmd_delay, clk_wrdqs_delay, clk_wr_delay, read_dqs_delay;
 
 static u32 sdhci_cdns_sd6_get_mode(struct sdhci_host *host, unsigned int timing);
 
+static u32 sdhci_cdns_sd6_readl(struct sdhci_host *host, int reg)
+{
+	return readl(host->ioaddr + reg);
+}
+
+static void sdhci_cdns_sd6_writel(struct sdhci_host *host, u32 val, int reg)
+{
+	writel(val, host->ioaddr + reg);
+}
+
+static u16 sdhci_cdns_sd6_readw(struct sdhci_host *host, int reg)
+{
+	u32 val, regoff;
+
+	regoff = reg & ~3;
+
+	val = readl(host->ioaddr + regoff);
+	if ((reg & 0x3) == 0)
+		return (val & 0xFFFF);
+	else
+		return ((val >> 16) & 0xFFFF);
+}
+
+static void sdhci_cdns_sd6_writew(struct sdhci_host *host, u16 val, int reg)
+{
+	writew(val, host->ioaddr + reg);
+}
+
+static u8 sdhci_cdns_sd6_readb(struct sdhci_host *host, int reg)
+{
+	u32 val, regoff;
+
+	regoff = reg & ~3;
+
+	val = readl(host->ioaddr + regoff);
+	switch (reg & 3) {
+	case 0:
+		return (val & 0xFF);
+	case 1:
+		return ((val >> 8) & 0xFF);
+	case 2:
+		return ((val >> 16) & 0xFF);
+	case 3:
+		return ((val >> 24) & 0xFF);
+	}
+	return 0;
+}
+
+static void sdhci_cdns_sd6_writeb(struct sdhci_host *host, u8 val, int reg)
+{
+	writeb(val, host->ioaddr + reg);
+}
+
 static int sdhci_cdns_sd6_phy_lock_dll(struct sdhci_cdns_sd6_phy *phy)
 {
 	u32 delay_element = phy->d.delay_element_org;
@@ -1667,6 +1720,12 @@ static const struct sdhci_ops sdhci_cdns_sd4_ops = {
 };
 
 static const struct sdhci_ops sdhci_cdns_sd6_ops = {
+	.read_l = sdhci_cdns_sd6_readl,
+	.write_l = sdhci_cdns_sd6_writel,
+	.read_w = sdhci_cdns_sd6_readw,
+	.write_w = sdhci_cdns_sd6_writew,
+	.read_b = sdhci_cdns_sd6_readb,
+	.write_b = sdhci_cdns_sd6_writeb,
 	.get_max_clock = sdhci_cdns_get_max_clock,
 	.set_clock = sdhci_cdns_sd6_set_clock,
 	.get_timeout_clock = sdhci_cdns_get_timeout_clock,
