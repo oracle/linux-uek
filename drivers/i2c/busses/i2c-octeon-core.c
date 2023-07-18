@@ -263,7 +263,7 @@ static int octeon_i2c_check_status(struct octeon_i2c *i2c, int final_read)
 		/* Set BUS_MON_RST to reset bus monitor */
 		mode |= BUS_MON_RST_MASK;
 		octeon_i2c_writeq_flush(mode, i2c->twsi_base + OCTEON_REG_MODE(i2c));
-		return -EIO;
+		return octeon_i2c_recovery(i2c) ? -EIO : -EAGAIN;
 	default:
 		dev_err(i2c->dev, "unhandled state: %d\n", stat);
 		return -EIO;
