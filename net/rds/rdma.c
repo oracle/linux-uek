@@ -162,7 +162,7 @@ static int rds_pin_pages(unsigned long user_addr, unsigned int nr_pages,
 
 	mmgrab(mm);
 	down_read(&mm->mmap_lock);
-	ret = pin_user_pages(user_addr, nr_pages, gup_flags, pages, NULL);
+	ret = pin_user_pages(user_addr, nr_pages, gup_flags, pages);
 
 	if (ret >= 0 && (unsigned) ret < nr_pages) {
 		unpin_user_pages(pages, ret);
