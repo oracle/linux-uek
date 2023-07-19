@@ -35,6 +35,7 @@ struct octeontx_ghes_record {
 	};
 	u32 error_severity;
 	char msg[32];
+	u64 syndrome;
 };
 
 struct octeontx_ghes_ring {

@@ -468,7 +468,7 @@ loop:
 
 	edac_mc_handle_error(type, mci, 1, PHYS_PFN(rec.mem.physical_addr),
 			offset_in_page(rec.mem.physical_addr),
-			0, -1, -1, -1, rec.msg, msg);
+			rec.syndrome, -1, -1, -1, rec.msg, msg);
 
 	if (head != tail)
 		goto loop;
