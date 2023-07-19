@@ -424,9 +424,10 @@ int rds_message_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
 		sg   = &rm->data.op_sg[i];
 
 		/* save off all the sg pieces to the skb frags we are creating */
-		skb_frag_size_set(frag, sg->length);
-		skb_frag_off_set(frag, sg->offset);
-		__skb_frag_set_page(frag, sg_page(sg));
+		skb_frag_fill_page_desc(frag,
+					sg_page(sg),
+					sg->offset,
+					sg->length);
 
 		/* AA: do we need to bump up the page reference too */
 		/* get_page(frag->page); */
