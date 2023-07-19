@@ -1516,9 +1516,10 @@ int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
 		/* one to one mapping of frags to sg structures */
 		frag = &skb_shinfo(skb)->frags[i];
 		/* save off all the sg pieces to the skb frags we are creating */
-		skb_frag_size_set(frag, sg->length);
-		skb_frag_off_set(frag, sg->offset);
-		__skb_frag_set_page(frag, sg_page(sg));
+		skb_frag_fill_page_desc(frag,
+					sg_page(sg),
+					sg->offset,
+					sg->length);
 
 		/* AA:  do we need to bump up the page reference */
 		/* get_page(frag->page); */
