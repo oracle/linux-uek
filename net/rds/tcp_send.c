@@ -127,12 +127,12 @@ int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
 		iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, &bvec, 1,
 			      rm->data.op_sg[sg].length - off);
 		ret = sock_sendmsg(tc->t_sock, &msg);
-		rdsdebug("tcp sendpage %p:%u:%u ret %d\n", (void *)sg_page(&rm->data.op_sg[sg]),
+		rdsdebug("tcp sock_sendmsg %p:%u:%u ret %d\n", (void *)sg_page(&rm->data.op_sg[sg]),
 			 rm->data.op_sg[sg].offset + off, rm->data.op_sg[sg].length - off,
 			 ret);
 		if (ret <= 0) {
 			if (ret < 0)
-				reason = "sendpage err";
+				reason = "sock_sendmsg err";
 			break;
 		}
 
