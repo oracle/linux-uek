@@ -346,6 +346,7 @@ kernel/drivers/virtio/virtio_vdpa.ko
 kernel/drivers/virt/vboxguest/vboxguest.ko
 kernel/drivers/watchdog/iTCO_vendor_support.ko
 kernel/drivers/watchdog/iTCO_wdt.ko
+kernel/drivers/xen/ovmapi.ko
 kernel/drivers/xen/xen-acpi-processor.ko
 kernel/drivers/xen/xen-evtchn.ko
 kernel/drivers/xen/xenfs/xenfs.ko
