@@ -63,7 +63,6 @@ kernel/crypto/poly1305_generic.ko
 kernel/crypto/rmd160.ko
 kernel/crypto/seed.ko
 kernel/crypto/serpent_generic.ko
-kernel/crypto/sha3_generic.ko
 kernel/crypto/tcrypt.ko
 kernel/crypto/tea.ko
 kernel/crypto/twofish_common.ko
@@ -266,10 +265,6 @@ kernel/drivers/vhost/vhost_scsi.ko
 kernel/drivers/vhost/vhost_vdpa.ko
 kernel/drivers/vhost/vhost_vsock.ko
 kernel/drivers/vhost/vringh.ko
-kernel/drivers/video/fbdev/core/fb_sys_fops.ko
-kernel/drivers/video/fbdev/core/syscopyarea.ko
-kernel/drivers/video/fbdev/core/sysfillrect.ko
-kernel/drivers/video/fbdev/core/sysimgblt.ko
 kernel/drivers/virtio/virtio_balloon.ko
 kernel/drivers/virtio/virtio_dma_buf.ko
 kernel/drivers/virtio/virtio_input.ko
