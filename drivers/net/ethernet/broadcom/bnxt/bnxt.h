@@ -1001,6 +1001,7 @@ struct bnxt_napi {
 					  int);
 	int			tx_pkts;
 	u8			events;
+	u8			tx_fault:1;
 
 	u32			flags;
 #define BNXT_NAPI_FLAG_XDP	0x1
@@ -2193,6 +2194,8 @@ int bnxt_get_avail_msix(struct bnxt *bp, int num);
 int bnxt_reserve_rings(struct bnxt *bp, bool irq_re_init);
 void bnxt_tx_disable(struct bnxt *bp);
 void bnxt_tx_enable(struct bnxt *bp);
+void bnxt_sched_reset_txr(struct bnxt *bp, struct bnxt_tx_ring_info *txr,
+			  int idx);
 int bnxt_hwrm_set_pause(struct bnxt *);
 int bnxt_hwrm_set_link_setting(struct bnxt *, bool, bool);
 int bnxt_hwrm_alloc_wol_fltr(struct bnxt *bp);

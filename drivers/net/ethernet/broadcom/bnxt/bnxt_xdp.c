@@ -92,8 +92,12 @@ void bnxt_tx_int_xdp(struct bnxt *bp, struct bnxt_napi *bnapi, int nr_pkts)
 			tx_buf->action = 0;
 			tx_buf->xdpf = NULL;
 		} else if (tx_buf->action == XDP_TX) {
+			tx_buf->action = 0;
 			rx_doorbell_needed = true;
 			last_tx_cons = tx_cons;
+		} else {
+			bnxt_sched_reset_txr(bp, txr, i);
+			return;
 		}
 		tx_cons = NEXT_TX(tx_cons);
 	}
