@@ -222,6 +222,9 @@ void __split_huge_pud(struct vm_area_struct *vma, pud_t *pud,
 
 int hugepage_madvise(struct vm_area_struct *vma, unsigned long *vm_flags,
 		     int advice);
+void hugepage_scan_file(struct vm_fault *vmf, struct file *file,
+		pgoff_t offset);
+bool hugepage_vma_check(struct vm_area_struct *vma, unsigned long vm_flags);
 void vma_adjust_trans_huge(struct vm_area_struct *vma, unsigned long start,
 			   unsigned long end, long adjust_next);
 spinlock_t *__pmd_trans_huge_lock(pmd_t *pmd, struct vm_area_struct *vma);
