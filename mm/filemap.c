@@ -2943,13 +2943,13 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
  * that.  If we didn't pin a file then we return NULL.  The file that is
  * returned needs to be fput()'ed when we're done with it.
  */
-static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
+static struct file *do_sync_mmap_readahead(struct vm_fault *vmf,
+				struct file *fpin)
 {
 	struct file *file = vmf->vma->vm_file;
 	struct file_ra_state *ra = &file->f_ra;
 	struct address_space *mapping = file->f_mapping;
 	DEFINE_READAHEAD(ractl, file, ra, mapping, vmf->pgoff);
-	struct file *fpin = NULL;
 	unsigned int mmap_miss;
 
 	/* If we don't want any read-ahead, don't bother */
@@ -2994,12 +2994,12 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
  * was pinned if we have to drop the mmap_lock in order to do IO.
  */
 static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
-					    struct page *page)
+					    struct page *page,
+					    struct file *fpin)
 {
 	struct file *file = vmf->vma->vm_file;
 	struct file_ra_state *ra = &file->f_ra;
 	struct address_space *mapping = file->f_mapping;
-	struct file *fpin = NULL;
 	unsigned int mmap_miss;
 	pgoff_t offset = vmf->pgoff;
 
@@ -3016,6 +3016,38 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 	}
 	return fpin;
 }
+
+/*
+ * Check if given vma at offset is eligible for THP.
+ * Only candidates are vmas of regular files mapped executable.
+ */
+static inline bool check_vma_thp_eligible(struct vm_area_struct *vma,
+		struct page *page, pgoff_t offset, pgoff_t *thpoff)
+{
+	unsigned long hstart;
+
+	/* check if current page is already THP */
+	if (page != NULL && PageTransCompound(page))
+		return false;
+	if (!vma->vm_file)
+		return false;
+	if (shmem_file(vma->vm_file))
+		return false;
+	if (vma_is_dax(vma))
+		return false;
+	if (!(vma->vm_flags & VM_HUGEPAGE) ||
+			!hugepage_vma_check(vma, vma->vm_flags))
+		return false;
+
+	hstart = vma->vm_start + ((offset - vma->vm_pgoff) << PAGE_SHIFT);
+	hstart = hstart & HPAGE_PMD_MASK;
+	if (hstart < vma->vm_start || (hstart + HPAGE_PMD_SIZE) > vma->vm_end)
+		return false;
+	if (thpoff)
+		*thpoff = linear_page_index(vma, hstart);
+	return true;
+}
+
 
 /**
  * filemap_fault - read in file data for page fault handling
@@ -3048,26 +3080,49 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
 	pgoff_t offset = vmf->pgoff;
-	pgoff_t max_off;
+	pgoff_t max_off, thpoff;
 	struct page *page;
 	vm_fault_t ret = 0;
 	bool mapping_locked = false;
+	bool triedhuge = false;
 
 	max_off = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
 	if (unlikely(offset >= max_off))
 		return VM_FAULT_SIGBUS;
 
+retry_getpage:
 	/*
 	 * Do we have something in the page cache already?
 	 */
 	page = find_get_page(mapping, offset);
+
+	/* Try to create a THP page if applicable */
+	if (!triedhuge && !(vmf->flags & FAULT_FLAG_TRIED) &&
+		check_vma_thp_eligible(vmf->vma, page, offset, &thpoff) &&
+		(fpin = maybe_unlock_mmap_for_io(vmf, fpin)) != NULL) {
+
+		if (likely(page))
+			put_page(page);
+
+		/*
+		 * grab inode lock to serialize and improve chances of
+		 * THP conversion.
+		 */
+		inode_lock(inode);
+		hugepage_scan_file(vmf, file, thpoff);
+		inode_unlock(inode);
+		triedhuge = true;
+		goto retry_getpage;
+        }
+
 	if (likely(page)) {
 		/*
 		 * We found the page, so try async readahead before waiting for
 		 * the lock.
 		 */
-		if (!(vmf->flags & FAULT_FLAG_TRIED))
-			fpin = do_async_mmap_readahead(vmf, page);
+		if (!(vmf->flags & FAULT_FLAG_TRIED) &&
+				!PageTransCompound(page))
+			fpin = do_async_mmap_readahead(vmf, page, fpin);
 		if (unlikely(!PageUptodate(page))) {
 			filemap_invalidate_lock_shared(mapping);
 			mapping_locked = true;
@@ -3077,7 +3132,7 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vmf->vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
-		fpin = do_sync_mmap_readahead(vmf);
+		fpin = do_sync_mmap_readahead(vmf, fpin);
 retry_find:
 		/*
 		 * See comment in filemap_create_page() why we need
@@ -3308,6 +3363,14 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 
 	if (filemap_map_pmd(vmf, head)) {
 		ret = VM_FAULT_NOPAGE;
+		goto out;
+	}
+
+	/* Attempt to create THP if eligible */
+	if (!(vmf->flags & FAULT_FLAG_TRIED) &&
+		 check_vma_thp_eligible(vma, NULL, vmf->pgoff, NULL)) {
+		unlock_page(head);
+		put_page(head);
 		goto out;
 	}
 
