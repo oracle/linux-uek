@@ -439,8 +439,7 @@ static inline int khugepaged_test_exit(struct mm_struct *mm)
 	return atomic_read(&mm->mm_users) == 0;
 }
 
-static bool hugepage_vma_check(struct vm_area_struct *vma,
-			       unsigned long vm_flags)
+bool hugepage_vma_check(struct vm_area_struct *vma, unsigned long vm_flags)
 {
 	if (!transhuge_vma_enabled(vma, vm_flags))
 		return false;
@@ -1660,6 +1659,7 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
  * @start: collapse start address
  * @hpage: new allocated huge page for collapse
  * @node: appointed node the new huge page allocate from
+ * @is_khugepaged: if true called by khugepaged else called during pagefault
  *
  * Basic scheme is simple, details are more complex:
  *  - allocate and lock a new huge page;
@@ -1678,7 +1678,8 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
  */
 static void collapse_file(struct mm_struct *mm,
 		struct file *file, pgoff_t start,
-		struct page **hpage, int node)
+		struct page **hpage, int node,
+		bool is_khugepaged)
 {
 	struct address_space *mapping = file->f_mapping;
 	gfp_t gfp;
@@ -1694,7 +1695,11 @@ static void collapse_file(struct mm_struct *mm,
 	VM_BUG_ON(start & (HPAGE_PMD_NR - 1));
 
 	/* Only allocate from the target node */
-	gfp = alloc_hugepage_khugepaged_gfpmask() | __GFP_THISNODE;
+	if (is_khugepaged)
+		gfp = alloc_hugepage_khugepaged_gfpmask() | __GFP_THISNODE;
+	else
+		gfp = GFP_TRANSHUGE_LIGHT | __GFP_THISNODE;
+
 
 	new_page = khugepaged_alloc_page(hpage, gfp, node);
 	if (!new_page) {
@@ -1815,8 +1820,26 @@ static void collapse_file(struct mm_struct *mm,
 				get_page(page);
 				xas_unlock_irq(&xas);
 			} else {
-				result = SCAN_PAGE_LOCK;
-				goto xa_locked;
+				if (!is_khugepaged) {
+					/*
+					 * trylock_page() can fail due to
+					 * concurrent access. To improve
+					 * chances of THP creation, try a
+					 * blocking call. After the page
+					 * lock is acquired, state of the
+					 * page(Dirty or wrieback) is
+					 * checked again below.
+					 */
+					xas_unlock_irq(&xas);
+					page = find_lock_page(mapping, index);
+					if (unlikely(page == NULL)) {
+						result = SCAN_FAIL;
+						goto xa_unlocked;
+					}
+				} else {
+					result = SCAN_PAGE_LOCK;
+					goto xa_locked;
+				}
 			}
 		}
 
@@ -1843,6 +1866,16 @@ static void collapse_file(struct mm_struct *mm,
 
 		if (page_mapping(page) != mapping) {
 			result = SCAN_TRUNCATED;
+			goto out_unlock;
+		}
+
+		/*
+		 * limit the overhead associated with invalidating mappings and
+		 * page table tear down, abort collapse if mapcount is large.
+		 */
+		if (!is_khugepaged && page_mapcount(page) >
+				 khugepaged_max_ptes_shared) {
+			result = SCAN_EXCEED_SHARED_PTE;
 			goto out_unlock;
 		}
 
@@ -2097,13 +2130,25 @@ static void khugepaged_scan_file(struct mm_struct *mm,
 			result = SCAN_EXCEED_NONE_PTE;
 		} else {
 			node = khugepaged_find_target_node();
-			collapse_file(mm, file, start, hpage, node);
+			collapse_file(mm, file, start, hpage, node, true);
 		}
 	}
 
 	/* TODO: tracepoints */
 }
+
+void hugepage_scan_file(struct vm_fault *vmf, struct file *file, pgoff_t thpoff)
+{
+	struct page *hpage = NULL;
+	collapse_file(vmf->vma->vm_mm, file, thpoff, &hpage,
+				numa_node_id(), false);
+	if (!IS_ERR_OR_NULL(hpage))
+		put_page(hpage);
+}
 #else
+void hugepage_scan_file(struct vm_fault *vmf, struct file *file, pgoff_t thpoff)
+{
+}
 static void khugepaged_scan_file(struct mm_struct *mm,
 		struct file *file, pgoff_t start, struct page **hpage)
 {
