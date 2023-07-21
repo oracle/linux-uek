@@ -77,6 +77,7 @@ kernel/drivers/acpi/acpi_ipmi.ko
 kernel/drivers/acpi/acpi_tad.ko
 kernel/drivers/acpi/apei/einj.ko
 kernel/drivers/acpi/button.ko
+kernel/drivers/acpi/nfit/nfit.ko
 kernel/drivers/ata/ata_generic.ko
 kernel/drivers/ata/pata_acpi.ko
 kernel/drivers/block/loop.ko
