@@ -6,6 +6,8 @@
 
 #include <linux/pci.h>
 
+#define CN10K_CPU_MODEL			(0xd49)
+
 #define PCI_DEVICE_ID_OCTEONTX2_LMC	(0xa022)
 #define PCI_DEVICE_ID_OCTEONTX2_MCC	(0xa070)
 #define PCI_DEVICE_ID_OCTEONTX2_MDC	(0xa073)
@@ -45,6 +47,9 @@ static int __init otx2_msix_init(void)
 	const struct pci_device_id *pdevid;
 	struct pci_dev *pdev;
 	size_t i;
+
+	if (MIDR_PARTNUM(read_cpuid_id()) == CN10K_CPU_MODEL)
+		return -ENODEV;
 
 	for (i = 0; i < ARRAY_SIZE(otx2_pci_tbl); i++) {
 		pdevid = &otx2_pci_tbl[i];
