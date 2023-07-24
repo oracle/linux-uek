@@ -1009,6 +1009,15 @@ cp_vmlinux()
   eu-strip --remove-comment -o "$2" "$1"
 }
 
+# adapted from scripts/subarch.incl
+Arch=$(echo %{_target_cpu} | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
+				 -e s/sun4u/sparc64/ \
+				 -e s/arm.*/arm/ -e s/sa110/arm/ \
+				 -e s/s390x/s390/ \
+				 -e s/ppc.*/powerpc/ -e s/mips.*/mips/ \
+				 -e s/sh[234].*/sh/ -e s/aarch64.*/arm64/ \
+				 -e s/riscv.*/riscv/ -e s/loongarch.*/loongarch/)
+
 BuildContainerKernel() {
     MakeTarget=$1
     KernelImage=$2
@@ -1023,7 +1032,6 @@ BuildContainerKernel() {
     make %{?make_opts} mrproper
     cp configs/config-container .config
 
-    Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
     make %{?make_opts} %{?container_cflags} %{?_smp_mflags} ARCH=$Arch %{?sparse_mflags} || exit 1
 
@@ -1092,7 +1100,6 @@ BuildKernel() {
 	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
     fi
 
-    Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
