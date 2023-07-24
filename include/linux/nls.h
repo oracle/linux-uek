@@ -3,6 +3,7 @@
 #define _LINUX_NLS_H
 
 #include <linux/init.h>
+#include <linux/uek_kabi.h>
 
 /* Unicode has changed over the years.  Unicode code points no longer
  * fit into 16 bits; as of Unicode 5 valid code points range from 0
@@ -47,7 +48,11 @@ enum utf16_endian {
 /* nls_base.c */
 extern int __register_nls(struct nls_table *, struct module *);
 extern int unregister_nls(struct nls_table *);
+#ifdef __GENKSYMS__
 extern struct nls_table *load_nls(char *);
+#else
+extern struct nls_table *load_nls(const char *charset);
+#endif
 extern void unload_nls(struct nls_table *);
 extern struct nls_table *load_nls_default(void);
 #define register_nls(nls) __register_nls((nls), THIS_MODULE)
