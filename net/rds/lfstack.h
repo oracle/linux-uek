@@ -9,24 +9,31 @@
 #else
 #include <linux/llist.h>
 #endif
-#ifdef LFSTACK_LOCKFREE
-struct lfstack {
-	__aligned_largest struct lfstack_el *first;
-	uintptr_t seq;
-};
-#else
-#include <linux/llist.h>
-struct lfstack {
-	struct lfstack_el *first;
-	spinlock_t lfs_lock;	/* protect stack pops */
-};
-#endif
 
 struct lfstack_el {
 	struct lfstack_el *next;
 };
 
-static inline void lfstack_init(struct lfstack *stack)
+#ifdef LFSTACK_LOCKFREE
+union lfstack {
+	u128 full;
+	struct  {
+		__aligned_largest struct lfstack_el *first;
+		uintptr_t seq;
+	};
+};
+
+#else
+#include <linux/llist.h>
+union  lfstack {
+	struct {
+		struct lfstack_el *first;
+		spinlock_t lfs_lock;	/* protect stack pops */
+	};
+};
+#endif
+
+static inline void lfstack_init(union lfstack *stack)
 {
 #ifdef LFSTACK_LOCKFREE
 	stack->first = NULL;
@@ -37,22 +44,22 @@ static inline void lfstack_init(struct lfstack *stack)
 #endif
 }
 
-static inline void lfstack_free(struct lfstack *stack)
+static inline void lfstack_free(union lfstack *stack)
 {
 }
 
-static inline void lfstack_push(struct lfstack *stack, struct lfstack_el *el)
+static inline void lfstack_push(union lfstack *stack, struct lfstack_el *el)
 {
 #ifdef LFSTACK_LOCKFREE
-	struct lfstack_el *first;
-	uintptr_t seq, nseq;
+	union lfstack old_v, new_v;
 
 	while (true) {
-		first = stack->first;
-		seq = stack->seq;
-		el->next = first;
-		nseq = seq + 1;
-		if (cmpxchg_double(&stack->first, &stack->seq, first, seq, el, nseq))
+		el->next = stack->first;
+		old_v.first = stack->first;
+		old_v.seq   = stack->seq;
+		new_v.first = el;
+		new_v.seq   = stack->seq + 1;
+		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
 			break;
 	}
 #else
@@ -60,18 +67,18 @@ static inline void lfstack_push(struct lfstack *stack, struct lfstack_el *el)
 #endif
 }
 
-static inline void lfstack_push_many(struct lfstack *stack, struct lfstack_el *el_first, struct lfstack_el *el_last)
+static inline void lfstack_push_many(union lfstack *stack, struct lfstack_el *el_first, struct lfstack_el *el_last)
 {
 #ifdef LFSTACK_LOCKFREE
-	struct lfstack_el *first;
-	uintptr_t seq, nseq;
+	union lfstack old_v, new_v;
 
 	while (true) {
-		first = stack->first;
-		seq = stack->seq;
-		el_last->next = first;
-		nseq = seq + 1;
-		if (cmpxchg_double(&stack->first, &stack->seq, first, seq, el_first, nseq))
+		el_last->next = stack->first;
+		old_v.first = stack->first;
+		old_v.seq   = stack->seq;
+		new_v.first = el_first;
+		new_v.seq = stack->seq + 1;
+		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
 			break;
 	}
 #else
@@ -79,23 +86,23 @@ static inline void lfstack_push_many(struct lfstack *stack, struct lfstack_el *e
 #endif
 }
 
-static inline struct lfstack_el *lfstack_pop(struct lfstack *stack)
+static inline struct lfstack_el *lfstack_pop(union lfstack *stack)
 {
 #ifdef LFSTACK_LOCKFREE
-	struct lfstack_el *first, *next;
-	uintptr_t seq, nseq;
+	union lfstack old_v, new_v;
+	struct lfstack_el *first;
 
 	while (true) {
 		first = stack->first;
 		if (!first)
-			goto out;
-		seq = stack->seq;
-		next = first->next;
-		nseq = seq + 1;
-		if (cmpxchg_double(&stack->first, &stack->seq, first, seq, next, nseq))
-			goto out;
+			break;
+		old_v.first = stack->first;
+		old_v.seq   = stack->seq;
+		new_v.first = first->next;
+		new_v.seq   = stack->seq + 1;
+		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
+			break;
 	}
-out:
 	return first;
 #else
 	struct lfstack_el *el;
