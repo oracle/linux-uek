@@ -89,7 +89,7 @@ struct rds_ib_incoming {
 };
 
 struct rds_ib_cache_head {
-	struct lfstack		stack;
+	union lfstack		stack;
 	atomic_t		count;
 	atomic64_t		hit_count;
 	atomic64_t		miss_count;
@@ -98,7 +98,7 @@ struct rds_ib_cache_head {
 
 struct rds_ib_refill_cache {
 	struct rds_ib_cache_head __percpu	*percpu;
-	struct lfstack				ready;
+	union lfstack				ready;
 	atomic64_t				hit_count;
 	atomic64_t				miss_count;
 
