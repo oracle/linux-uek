@@ -690,7 +690,7 @@ static void rds_ib_recv_cache_put(int cpu,
 		head = per_cpu_ptr(cache->percpu, cpu);
 
 		if (atomic_read(&head->count)  < rds_ib_cache_max_percpu) {
-			struct lfstack *stack = &head->stack;
+			union lfstack *stack = &head->stack;
 
 			atomic_add(count, &head->count);
 			lfstack_push_many(stack, new_item_first, new_item_last);
@@ -704,7 +704,7 @@ static void rds_ib_recv_cache_put(int cpu,
 static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache)
 {
 	struct lfstack_el *item;
-	struct lfstack *stack;
+	union lfstack *stack;
 
 	if (!cache->percpu)
 		return NULL;
