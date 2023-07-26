@@ -442,8 +442,19 @@ i2c_dw_read(struct dw_i2c_dev *dev)
 
 			*buf = dw_readl(dev, DW_IC_DATA_CMD);
 			/* Ensure length byte is a valid value */
-			if (flags & I2C_M_RECV_LEN &&
-				*buf <= I2C_SMBUS_BLOCK_MAX && *buf > 0) {
+			if (flags & I2C_M_RECV_LEN) {
+				/*
+				 * if IC_EMPTYFIFO_HOLD_MASTER_EN is set, which cannot be
+				 * detected from the registers, the controller can be
+				 * disabled if the STOP bit is set. But it is only set
+				 * after receiving block data response length in
+				 * I2C_FUNC_SMBUS_BLOCK_DATA case. That needs to read
+				 * another byte with STOP bit set when the block data
+				 * response length is invalid to complete the transaction.
+				 */
+				if (*buf == 0 || *buf > I2C_SMBUS_BLOCK_MAX)
+					*buf = 1;
+
 				len = i2c_dw_recv_len(dev, *buf);
 			}
 			buf++;
