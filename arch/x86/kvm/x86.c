@@ -9348,9 +9348,13 @@ static int inject_pending_event(struct kvm_vcpu *vcpu, bool *req_immediate_exit)
 		if (r < 0)
 			goto out;
 		if (r) {
-			kvm_queue_interrupt(vcpu, kvm_cpu_get_interrupt(vcpu), false);
-			static_call(kvm_x86_inject_irq)(vcpu, false);
-			WARN_ON(static_call(kvm_x86_interrupt_allowed)(vcpu, true) < 0);
+			int irq = kvm_cpu_get_interrupt(vcpu);
+
+			if (!WARN_ON_ONCE(irq == -1)) {
+				kvm_queue_interrupt(vcpu, irq, false);
+				static_call(kvm_x86_inject_irq)(vcpu, false);
+				WARN_ON(static_call(kvm_x86_interrupt_allowed)(vcpu, true) < 0);
+			}
 		}
 		if (kvm_cpu_has_injectable_intr(vcpu))
 			static_call(kvm_x86_enable_irq_window)(vcpu);
