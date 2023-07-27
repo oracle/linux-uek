@@ -21,6 +21,9 @@
 #include "resources.h"
 #include "../mlxfw/mlxfw.h"
 
+#define netdev_hold dev_hold_track
+#define netdev_put dev_put_track
+
 enum mlxsw_core_resource_id {
 	MLXSW_CORE_RESOURCE_PORTS = 1,
 	MLXSW_CORE_RESOURCE_MAX,
