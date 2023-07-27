@@ -495,6 +495,8 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 			}
 			rds_inc_addref(inc);
 			list_add_tail(&inc->i_item, &rs->rs_recv_queue);
+			/* New entry to receive queue, increment pending */
+			rs->rs_recv_pending++;
 			inc->i_rx_lat_trace[RDS_MSG_RX_END] = local_clock();
 			__rds_wake_sk_sleep(sk);
 		}
@@ -554,6 +556,8 @@ static int rds_still_queued(struct rds_sock *rs, struct rds_incoming *inc,
 					      -be32_to_cpu(inc->i_hdr.h_len),
 					      inc->i_hdr.h_dport);
 			list_del_init(&inc->i_item);
+			/* Pulled a pending entry, decrement the count */
+			rs->rs_recv_pending--;
 			rds_inc_put(inc);
 		}
 	}
@@ -711,13 +715,13 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 
 	if (rs->rs_inq) {
 		unsigned long flags;
-		int rcv_bytes;
+		int r_count;
 
 		read_lock_irqsave(&rs->rs_recv_lock, flags);
-		rcv_bytes = rs->rs_rcv_bytes;
-		ret = put_cmsg(msg, SOL_RDS, RDS_CMSG_INQ,
-			       sizeof(rcv_bytes), &rcv_bytes);
+		r_count = rs->rs_recv_pending;
 		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
+		ret = put_cmsg(msg, SOL_RDS, RDS_CMSG_INQ,
+			       sizeof(r_count), &r_count);
 		if (ret)
 			goto out;
 	}
@@ -864,6 +868,8 @@ void rds_clear_recv_queue(struct rds_sock *rs)
 				      -be32_to_cpu(inc->i_hdr.h_len),
 				      inc->i_hdr.h_dport);
 		list_del_init(&inc->i_item);
+		/* Entry deleted, decrement the counter */
+		rs->rs_recv_pending--;
 		rds_inc_put(inc);
 	}
 	write_unlock_irqrestore(&rs->rs_recv_lock, flags);
