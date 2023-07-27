@@ -906,6 +906,11 @@ struct rds_sock {
 	rwlock_t		rs_recv_lock;
 	int			rs_rcv_bytes;
 	struct list_head	rs_recv_queue;
+	/*
+	 * rs_recv_pending actively counts the yet-to-be-processed
+	 * entried in the rs_recv_queue queue
+	 */
+	int			rs_recv_pending;
 
 	/* just for stats reporting */
 	struct list_head	rs_item;
