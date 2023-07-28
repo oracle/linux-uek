@@ -58,12 +58,14 @@ static int nvme_submit_user_cmd(struct request_queue *q,
 		unsigned bufflen, void __user *meta_buffer, unsigned meta_len,
 		u32 meta_seed, u64 *result, unsigned timeout, bool vec)
 {
+	struct nvme_ctrl *ctrl;
 	bool write = nvme_is_write(cmd);
 	struct nvme_ns *ns = q->queuedata;
 	struct block_device *bdev = ns ? ns->disk->part0 : NULL;
 	struct request *req;
 	struct bio *bio = NULL;
 	void *meta = NULL;
+	u32 effects;
 	int ret;
 
 	req = blk_mq_alloc_request(q, nvme_req_op(cmd), 0);
@@ -108,7 +110,9 @@ static int nvme_submit_user_cmd(struct request_queue *q,
 		}
 	}
 
-	ret = nvme_execute_passthru_rq(req);
+	ctrl = nvme_req(req)->ctrl;
+
+	ret = nvme_execute_passthru_rq(req, &effects);
 	if (result)
 		*result = le64_to_cpu(nvme_req(req)->result.u64);
 	if (meta && !ret && !write) {
@@ -121,6 +125,10 @@ static int nvme_submit_user_cmd(struct request_queue *q,
 		blk_rq_unmap_user(bio);
  out:
 	blk_mq_free_request(req);
+
+	if (effects)
+		nvme_passthru_end(ctrl, effects, cmd, ret);
+
 	return ret;
 }
 
