@@ -1772,6 +1772,60 @@ out:
 #endif
 }
 
+/*
+ * When mapping a range over over one or more reserved va vmas the
+ * range must be entirely contained within a reserved va vma or a
+ * contiguous set of reserved va vmas.
+ * This limitation is imposed to ensure that if mmap_region() fails
+ * after unmapping existing mappings that it will install a
+ * reserved va placeholder vma no larger than previous existing
+ * reserved va vma(s). It also ensures that mmap_region() need only
+ * check if the first existing vma in the range is reserved in order
+ * to suppress the reinstall of placeholder vma(s) when unmapping
+ * the existing mappings.
+ */
+static int check_rsvd_range(struct mm_struct *mm, unsigned long addr,
+			    unsigned long end)
+{
+#if VM_RSVD_VA
+	struct vm_area_struct *vma;
+	unsigned long last_vma_end;
+	bool is_rsvd = false;
+
+	vma = find_vma_intersection(mm, addr, end);
+	if (!vma)
+		return 0;
+
+	if (vma->vm_flags & VM_RSVD_VA)
+		is_rsvd = true;
+
+	if (is_rsvd && vma->vm_start > addr)
+		return 1;
+
+	last_vma_end = vma->vm_end;
+
+	for (vma = vma->vm_next; vma; vma = vma->vm_next) {
+		bool next_is_rsvd;
+
+		if (vma->vm_start >= end)
+			break;
+
+		next_is_rsvd = vma->vm_flags & VM_RSVD_VA;
+		if (is_rsvd ^ next_is_rsvd)
+			return 1;
+
+		if (is_rsvd && last_vma_end != vma->vm_start)
+			return 1;
+
+		last_vma_end = vma->vm_end;
+	}
+
+	if (is_rsvd && end > last_vma_end)
+		return 1;
+#endif
+	return 0;
+}
+
 unsigned long mmap_region(struct file *file, unsigned long addr,
 		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
 		struct list_head *uf)
@@ -1797,6 +1851,9 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 					(len >> PAGE_SHIFT) - nr_pages))
 			return -ENOMEM;
 	}
+
+	if ((vm_flags & MAP_FIXED) && check_rsvd_range(mm, addr, addr + len))
+		return -EINVAL;
 
 	/* Clear old maps */
 	while (find_vma_links(mm, addr, addr + len, &prev, &rb_link,
