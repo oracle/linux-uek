@@ -883,5 +883,6 @@ extern u32 rds_frwr_ibmr_gc_time;
 extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
+extern int rds_ib_sysctl_check_conn_addrs;
 
 #endif
