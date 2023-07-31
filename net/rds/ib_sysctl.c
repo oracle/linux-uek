@@ -101,6 +101,8 @@ unsigned rds_ib_sysctl_yield_after_ms = 2000;
 
 unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
 
+int rds_ib_sysctl_check_conn_addrs = 1;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -209,6 +211,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(rds_ib_sysctl_cm_watchdog_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname	= "check_conn_addrs",
+		.data		= &rds_ib_sysctl_check_conn_addrs,
+		.maxlen		= sizeof(rds_ib_sysctl_check_conn_addrs),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
 	},
 };
 

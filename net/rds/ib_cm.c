@@ -1913,6 +1913,34 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				goto out;
 			}
 		}
+		if (rds_ib_sysctl_check_conn_addrs) {
+			if (cm_id->route.addr.src_addr.ss_family != AF_INET6) {
+				pr_info_ratelimited("RDS/IB: Unexpected src_addr family (seen=%d, expected=%d)\n",
+						    cm_id->route.addr.src_addr.ss_family, AF_INET6);
+				goto out;
+			}
+			if (memcmp(daddr6,
+				   &((struct sockaddr_in6 *)&cm_id->route.addr.src_addr)->sin6_addr,
+				   sizeof(struct in6_addr)) != 0) {
+				pr_info_ratelimited("RDS/IB: Inconsistent daddr (received=%pI6c, expected=%pI6c)\n",
+						    daddr6,
+						    &((struct sockaddr_in6 *)&cm_id->route.addr.src_addr)->sin6_addr);
+				goto out;
+			}
+			if (cm_id->route.addr.dst_addr.ss_family != AF_INET6) {
+				pr_info_ratelimited("RDS/IB: Unexpected dst_addr family (seen=%d, expected=%d)\n",
+						    cm_id->route.addr.dst_addr.ss_family, AF_INET6);
+				goto out;
+			}
+			if (memcmp(saddr6,
+				   &((struct sockaddr_in6 *)&cm_id->route.addr.dst_addr)->sin6_addr,
+				   sizeof(struct in6_addr)) != 0) {
+				pr_info_ratelimited("RDS/IB: Inconsistent saddr (received=%pI6c, expected=%pI6c)\n",
+						    saddr6,
+						    &((struct sockaddr_in6 *)&cm_id->route.addr.dst_addr)->sin6_addr);
+				goto out;
+			}
+		}
 #else
 		reason = "IPv6 not supported";
 		err = -EOPNOTSUPP;
@@ -1924,6 +1952,30 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		ipv6_addr_set_v4mapped(dp->ricp_v4.dp_daddr, &d_mapped_addr);
 		saddr6 = &s_mapped_addr;
 		daddr6 = &d_mapped_addr;
+		if (rds_ib_sysctl_check_conn_addrs) {
+			if (cm_id->route.addr.src_addr.ss_family != AF_INET) {
+				pr_info_ratelimited("RDS/IB: Unexpected src_addr family (seen=%d, expected=%d)\n",
+						    cm_id->route.addr.src_addr.ss_family, AF_INET);
+				goto out;
+			}
+			if (dp->ricp_v4.dp_daddr != ((struct sockaddr_in *)&cm_id->route.addr.src_addr)->sin_addr.s_addr) {
+				pr_info_ratelimited("RDS/IB: Inconsistent daddr (received=%pI4, expected=%pI4)\n",
+						    &dp->ricp_v4.dp_daddr,
+						    &((struct sockaddr_in *)&cm_id->route.addr.src_addr)->sin_addr.s_addr);
+				goto out;
+			}
+			if (cm_id->route.addr.dst_addr.ss_family != AF_INET) {
+				pr_info_ratelimited("RDS/IB: Unexpected src_addr family (seen=%d, expected=%d)\n",
+						    cm_id->route.addr.dst_addr.ss_family, AF_INET);
+				goto out;
+			}
+			if (dp->ricp_v4.dp_saddr != ((struct sockaddr_in *)&cm_id->route.addr.dst_addr)->sin_addr.s_addr) {
+				pr_info_ratelimited("RDS/IB: Inconsistent saddr (received=%pI4, expected=%pI4)\n",
+						    &dp->ricp_v4.dp_saddr,
+						    &((struct sockaddr_in *)&cm_id->route.addr.dst_addr)->sin_addr.s_addr);
+				goto out;
+			}
+		}
 	}
 
 #ifdef CONFIG_RDS_ACL
