@@ -15,6 +15,7 @@
 #include <asm/smp.h>
 #include <asm/pci-direct.h>
 #include <asm/delay.h>
+#include <asm/cpufeature.h>
 
 #ifdef CONFIG_X86_64
 # include <asm/mmconfig.h>
@@ -930,7 +931,7 @@ static void init_amd_zn(struct cpuinfo_x86 *c)
 {
 	set_cpu_cap(c, X86_FEATURE_ZEN);
 
-	set_cpu_cap(c, X86_FEATURE_NT_GOOD);
+	setup_force_cpu_cap(X86_FEATURE_NT_GOOD);
 
 	/*
 	 * Fix erratum 1076: CPB feature bit not being set in CPUID.

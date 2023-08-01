@@ -674,9 +674,9 @@ static void init_intel(struct cpuinfo_x86 *c)
 	if (c->x86 == 6)
 		set_cpu_cap(c, X86_FEATURE_REP_GOOD);
 	if (c->x86 == 6 && c->x86_model == INTEL_FAM6_BROADWELL_X)
-		set_cpu_cap(c, X86_FEATURE_NT_GOOD);
+		setup_force_cpu_cap(X86_FEATURE_NT_GOOD);
 	if (c->x86 == 6 && ((c->x86_model == INTEL_FAM6_ICELAKE_X)))
-		set_cpu_cap(c, X86_FEATURE_NT_GOOD);
+		setup_force_cpu_cap(X86_FEATURE_NT_GOOD);
 #else
 	/*
 	 * Names for the Pentium II/Celeron processors
