@@ -734,7 +734,6 @@ kernel/net/sched/em_u32.ko
 kernel/net/sched/sch_cake.ko
 kernel/net/sched/sch_codel.ko
 kernel/net/sched/sch_etf.ko
-kernel/net/sched/sch_fq_codel.ko
 kernel/net/sched/sch_fq.ko
 kernel/net/sched/sch_hfsc.ko
 kernel/net/sched/sch_hhf.ko
