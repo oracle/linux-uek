@@ -449,4 +449,12 @@
 #define X86_BUG_SMT_RSB			X86_BUG(29) /* CPU is vulnerable to Cross-Thread Return Address Predictions */
 #define X86_BUG_GDS			X86_BUG(30) /* CPU is affected by Gather Data Sampling */
 
+/*
+ * All the bits are exhausted in the first u32 containing the x86 bugs vector.
+ * This has been extended in mainline to a second u32 via commit
+ * 0e52740ffd10 ("x86/bugs: Increase the x86 bugs vector size to two u32s")
+ * but is not feasible in UEK without breaking the KABI so instead values at
+ * the start of the vector, that are only used by 32-bit kernels, will be re-used.
+ */
+#define X86_BUG_DIV0			X86_BUG(0) /* AMD DIV0 speculation bug (X86_BUG_F00F) */
 #endif /* _ASM_X86_CPUFEATURES_H */
