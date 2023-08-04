@@ -730,7 +730,7 @@ Source29: kabi
 Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
 
-source210: tcindex-install-disable.conf
+source210: tcindex-disable.conf
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -1617,8 +1617,8 @@ fi
     mkdir -p $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer
     install -m 0644 %{SOURCE22} $RPM_BUILD_ROOT%{_datadir}/doc/kernel-keys/$KernelVer/kernel-signing.cer
 
-    # Copy tcindex-install-disable file to build root etc/modprobe.d directory.
-    install -m 0644 -D %{SOURCE210} $RPM_BUILD_ROOT/etc/modprobe.d/tcindex-install-disable.conf
+    # Copy tcindex-disable file to build root etc/modprobe.d directory.
+    install -m 0644 -D %{SOURCE210} $RPM_BUILD_ROOT/etc/modprobe.d/tcindex-disable.conf
 }
 
 ###
@@ -2120,7 +2120,7 @@ fi
 %{expand:%%files -n kernel%{?variant}%{?2:%{!-o:-}%{2}}}\
 %defattr(-,root,root)\
 %dir /etc/modprobe.d\
-%config(noreplace) /etc/modprobe.d/tcindex-install-disable.conf\
+%config(noreplace) /etc/modprobe.d/tcindex-disable.conf\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz.hmac \
