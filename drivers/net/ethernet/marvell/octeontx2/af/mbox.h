@@ -1476,6 +1476,7 @@ struct flow_msg {
 		u8 ip_flag;
 		u8 next_header;
 	};
+	__be16 vlan_itci;
 };
 
 struct npc_install_flow_req {
