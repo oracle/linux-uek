@@ -76,6 +76,10 @@ static const int amd_zenbleed[] =
 			   AMD_MODEL_RANGE(0x17, 0x90, 0x0, 0x91, 0xf),
 			   AMD_MODEL_RANGE(0x17, 0xa0, 0x0, 0xaf, 0xf));
 
+static const int amd_div0[] =
+	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x17, 0x00, 0x0, 0x2f, 0xf),
+			   AMD_MODEL_RANGE(0x17, 0x50, 0x0, 0x5f, 0xf));
+
 /*
  * #1215: IBS (Instruction Based Sampling) Counter Valid Value May be
  * Incorrect After Exit From Core C6 (CC6) State
@@ -1136,6 +1140,13 @@ static void init_amd(struct cpuinfo_x86 *c)
 	check_null_seg_clears_base(c);
 
 	zenbleed_check(c);
+
+	/* KABI: ensure can re-use X86_BUG_F00F for X86_BUG_DIV0 in the bug vector */
+	BUILD_BUG_ON(IS_ENABLED(CONFIG_X86_F00F_BUG));
+	if (cpu_has_amd_erratum(c, amd_div0)) {
+		pr_notice_once("AMD Zen1 DIV0 bug detected. Disable SMT for full protection.\n");
+		setup_force_cpu_bug(X86_BUG_DIV0);
+	}
 }
 
 #ifdef CONFIG_X86_32
@@ -1295,4 +1306,14 @@ static void zenbleed_check_cpu(void *unused)
 void amd_check_microcode(void)
 {
 	on_each_cpu(zenbleed_check_cpu, NULL, 1);
+}
+
+/*
+ * Issue a DIV 0/1 insn to clear any division data from previous DIV
+ * operations.
+ */
+void noinstr amd_clear_divider(void)
+{
+	asm volatile(ALTERNATIVE("", "div %2\n\t", X86_BUG_DIV0)
+		     :: "a" (0), "d" (0), "r" (1));
 }
