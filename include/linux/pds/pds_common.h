@@ -34,10 +34,12 @@ enum pds_core_vif_types {
 
 #define PDS_DEV_TYPE_CORE_STR	"Core"
 #define PDS_DEV_TYPE_VDPA_STR	"vDPA"
-#define PDS_DEV_TYPE_VFIO_STR	"VFio"
+#define PDS_DEV_TYPE_VFIO_STR	"vfio"
 #define PDS_DEV_TYPE_ETH_STR	"Eth"
 #define PDS_DEV_TYPE_RDMA_STR	"RDMA"
 #define PDS_DEV_TYPE_LM_STR	"LM"
+
+#define PDS_VFIO_LM_DEV_NAME	PDS_CORE_DRV_NAME "." PDS_DEV_TYPE_LM_STR "." PDS_DEV_TYPE_VFIO_STR
 
 #define PDS_CORE_IFNAMSIZ		16
 
