@@ -60,9 +60,11 @@ enum pds_core_logical_qtype {
 	PDS_CORE_QTYPE_MAX     = 16   /* don't change - used in struct size */
 };
 
+struct pdsc;
+
 int pdsc_register_notify(struct notifier_block *nb);
 void pdsc_unregister_notify(struct notifier_block *nb);
 void *pdsc_get_pf_struct(struct pci_dev *vf_pdev);
-int pds_client_register(struct pci_dev *pf_pdev, char *devname);
-int pds_client_unregister(struct pci_dev *pf_pdev, u16 client_id);
+int pds_client_register(struct pdsc *pf, char *devname);
+int pds_client_unregister(struct pdsc *pf, u16 client_id);
 #endif /* _PDS_COMMON_H_ */
