@@ -751,6 +751,7 @@ cfg_test()
 __fwd_test_host_ip()
 {
 	local grp=$1; shift
+	local dmac=$1; shift
 	local src=$1; shift
 	local mode=$1; shift
 	local name
@@ -773,27 +774,27 @@ __fwd_test_host_ip()
 	# Packet should only be flooded to multicast router ports when there is
 	# no matching MDB entry. The bridge is not configured as a multicast
 	# router port.
-	$MZ $mode $h1.10 -c 1 -p 128 -A $src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $src -B $grp -t udp -q
 	tc_check_packets "dev br0 ingress" 1 0
 	check_err $? "Packet locally received after flood"
 
 	# Install a regular port group entry and expect the packet to not be
 	# locally received.
 	bridge mdb add dev br0 port $swp2 grp $grp temp vid 10
-	$MZ $mode $h1.10 -c 1 -p 128 -A $src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $src -B $grp -t udp -q
 	tc_check_packets "dev br0 ingress" 1 0
 	check_err $? "Packet locally received after installing a regular entry"
 
 	# Add a host entry and expect the packet to be locally received.
 	bridge mdb add dev br0 port br0 grp $grp temp vid 10
-	$MZ $mode $h1.10 -c 1 -p 128 -A $src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $src -B $grp -t udp -q
 	tc_check_packets "dev br0 ingress" 1 1
 	check_err $? "Packet not locally received after adding a host entry"
 
 	# Remove the host entry and expect the packet to not be locally
 	# received.
 	bridge mdb del dev br0 port br0 grp $grp vid 10
-	$MZ $mode $h1.10 -c 1 -p 128 -A $src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $src -B $grp -t udp -q
 	tc_check_packets "dev br0 ingress" 1 1
 	check_err $? "Packet locally received after removing a host entry"
 
@@ -806,8 +807,8 @@ __fwd_test_host_ip()
 
 fwd_test_host_ip()
 {
-	__fwd_test_host_ip "239.1.1.1" "192.0.2.1" "-4"
-	__fwd_test_host_ip "ff0e::1" "2001:db8:1::1" "-6"
+	__fwd_test_host_ip "239.1.1.1" "01:00:5e:01:01:01" "192.0.2.1" "-4"
+	__fwd_test_host_ip "ff0e::1" "33:33:00:00:00:01" "2001:db8:1::1" "-6"
 }
 
 fwd_test_host_l2()
@@ -867,6 +868,7 @@ fwd_test_host()
 __fwd_test_port_ip()
 {
 	local grp=$1; shift
+	local dmac=$1; shift
 	local valid_src=$1; shift
 	local invalid_src=$1; shift
 	local mode=$1; shift
@@ -900,43 +902,43 @@ __fwd_test_port_ip()
 		vlan_ethtype $eth_type vlan_id 10 dst_ip $grp \
 		src_ip $invalid_src action drop
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $valid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $valid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 1 0
 	check_err $? "Packet from valid source received on H2 before adding entry"
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 2 0
 	check_err $? "Packet from invalid source received on H2 before adding entry"
 
 	bridge mdb add dev br0 port $swp2 grp $grp vid 10 \
 		filter_mode $filter_mode source_list $src_list
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $valid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $valid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 1 1
 	check_err $? "Packet from valid source not received on H2 after adding entry"
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 2 0
 	check_err $? "Packet from invalid source received on H2 after adding entry"
 
 	bridge mdb replace dev br0 port $swp2 grp $grp vid 10 \
 		filter_mode exclude
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $valid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $valid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 1 2
 	check_err $? "Packet from valid source not received on H2 after allowing all sources"
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 2 1
 	check_err $? "Packet from invalid source not received on H2 after allowing all sources"
 
 	bridge mdb del dev br0 port $swp2 grp $grp vid 10
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $valid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $valid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 1 2
 	check_err $? "Packet from valid source received on H2 after deleting entry"
 
-	$MZ $mode $h1.10 -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
+	$MZ $mode $h1.10 -a own -b $dmac -c 1 -p 128 -A $invalid_src -B $grp -t udp -q
 	tc_check_packets "dev $h2 ingress" 2 1
 	check_err $? "Packet from invalid source received on H2 after deleting entry"
 
@@ -948,11 +950,11 @@ __fwd_test_port_ip()
 
 fwd_test_port_ip()
 {
-	__fwd_test_port_ip "239.1.1.1" "192.0.2.1" "192.0.2.2" "-4" "exclude"
-	__fwd_test_port_ip "ff0e::1" "2001:db8:1::1" "2001:db8:1::2" "-6" \
+	__fwd_test_port_ip "239.1.1.1" "01:00:5e:01:01:01" "192.0.2.1" "192.0.2.2" "-4" "exclude"
+	__fwd_test_port_ip "ff0e::1" "33:33:00:00:00:01" "2001:db8:1::1" "2001:db8:1::2" "-6" \
 		"exclude"
-	__fwd_test_port_ip "239.1.1.1" "192.0.2.1" "192.0.2.2" "-4" "include"
-	__fwd_test_port_ip "ff0e::1" "2001:db8:1::1" "2001:db8:1::2" "-6" \
+	__fwd_test_port_ip "239.1.1.1" "01:00:5e:01:01:01" "192.0.2.1" "192.0.2.2" "-4" "include"
+	__fwd_test_port_ip "ff0e::1" "33:33:00:00:00:01" "2001:db8:1::1" "2001:db8:1::2" "-6" \
 		"include"
 }
 
@@ -1028,7 +1030,7 @@ ctrl_igmpv3_is_in_test()
 		filter_mode include source_list 192.0.2.1
 
 	# IS_IN ( 192.0.2.2 )
-	$MZ $h1.10 -c 1 -A 192.0.2.1 -B 239.1.1.1 \
+	$MZ $h1.10 -c 1 -a own -b 01:00:5e:01:01:01 -A 192.0.2.1 -B 239.1.1.1 \
 		-t ip proto=2,p=$(igmpv3_is_in_get 239.1.1.1 192.0.2.2) -q
 
 	bridge -d mdb show dev br0 vid 10 | grep 239.1.1.1 | grep -q 192.0.2.2
@@ -1041,7 +1043,7 @@ ctrl_igmpv3_is_in_test()
 		filter_mode include source_list 192.0.2.1
 
 	# IS_IN ( 192.0.2.2 )
-	$MZ $h1.10 -c 1 -A 192.0.2.1 -B 239.1.1.1 \
+	$MZ $h1.10 -a own -b 01:00:5e:01:01:01 -c 1 -A 192.0.2.1 -B 239.1.1.1 \
 		-t ip proto=2,p=$(igmpv3_is_in_get 239.1.1.1 192.0.2.2) -q
 
 	bridge -d mdb show dev br0 vid 10 | grep 239.1.1.1 | grep -v "src" | \
@@ -1068,7 +1070,7 @@ ctrl_mldv2_is_in_test()
 
 	# IS_IN ( 2001:db8:1::2 )
 	local p=$(mldv2_is_in_get fe80::1 ff0e::1 2001:db8:1::2)
-	$MZ -6 $h1.10 -c 1 -A fe80::1 -B ff0e::1 \
+	$MZ -6 $h1.10 -a own -b 33:33:00:00:00:01 -c 1 -A fe80::1 -B ff0e::1 \
 		-t ip hop=1,next=0,p="$p" -q
 
 	bridge -d mdb show dev br0 vid 10 | grep ff0e::1 | \
@@ -1082,7 +1084,7 @@ ctrl_mldv2_is_in_test()
 		filter_mode include source_list 2001:db8:1::1
 
 	# IS_IN ( 2001:db8:1::2 )
-	$MZ -6 $h1.10 -c 1 -A fe80::1 -B ff0e::1 \
+	$MZ -6 $h1.10 -a own -b 33:33:00:00:00:01 -c 1 -A fe80::1 -B ff0e::1 \
 		-t ip hop=1,next=0,p="$p" -q
 
 	bridge -d mdb show dev br0 vid 10 | grep ff0e::1 | grep -v "src" | \
