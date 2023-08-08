@@ -1241,8 +1241,10 @@ static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 #define RETBLEED	BIT(3)
 /* CPU is affected by SMT (cross-thread) return predictions */
 #define SMT_RSB		BIT(4)
+/* CPU is affected by SRSO */
+#define SRSO		BIT(5)
 /* CPU is affected by GDS */
-#define GDS		BIT(5)
+#define GDS		BIT(6)
 
 static const struct x86_cpu_id cpu_vuln_blacklist[] = {
 	VULNBL_INTEL_STEPPINGS(IVYBRIDGE,	X86_STEPPING_ANY,		SRBDS),
