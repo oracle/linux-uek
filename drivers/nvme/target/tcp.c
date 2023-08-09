@@ -340,7 +340,7 @@ static void nvmet_tcp_build_pdu_iovec(struct nvmet_tcp_cmd *cmd)
 		}
 
 		iov->bv_page = sg_page(sg);
-		iov->bv_len = sg->length;
+		iov->bv_len = iov_len;
 		iov->bv_offset = sg->offset + sg_offset;
 
 		length -= iov_len;
