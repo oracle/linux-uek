@@ -14,6 +14,7 @@
 #include <asm/mmu.h>
 #include <asm/mpspec.h>
 #include <asm/x86_init.h>
+#include <asm/irq_vectors.h>
 
 #ifdef CONFIG_ACPI_APEI
 # include <asm/pgtable_types.h>
@@ -30,6 +31,7 @@ extern int acpi_skip_timer_override;
 extern int acpi_use_timer_override;
 extern int acpi_fix_pin2_polarity;
 extern int acpi_disable_cmcff;
+extern bool acpi_int_src_ovr[NR_IRQS_LEGACY];
 
 extern u8 acpi_sci_flags;
 extern u32 acpi_sci_override_gsi;
