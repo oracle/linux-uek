@@ -489,7 +489,7 @@ static int gve_setup_device_resources(struct gve_priv *priv)
 		goto abort_with_stats_report;
 	}
 
-	if (priv->queue_format == GVE_DQO_RDA_FORMAT) {
+	if (!gve_is_gqi(priv)) {
 		priv->ptype_lut_dqo = kvzalloc(sizeof(*priv->ptype_lut_dqo),
 					       GFP_KERNEL);
 		if (!priv->ptype_lut_dqo) {
@@ -892,25 +892,35 @@ free_pages:
 static int gve_alloc_qpls(struct gve_priv *priv)
 {
 	int num_qpls = gve_num_tx_qpls(priv) + gve_num_rx_qpls(priv);
+	int page_count;
 	int i, j;
 	int err;
 
-	if (num_qpls == 0)
+	/* Raw addressing means no QPLs */
+	if (!gve_is_qpl(priv))
 		return 0;
 
 	priv->qpls = kvcalloc(num_qpls, sizeof(*priv->qpls), GFP_KERNEL);
 	if (!priv->qpls)
 		return -ENOMEM;
 
+	page_count = priv->tx_pages_per_qpl;
 	for (i = 0; i < gve_num_tx_qpls(priv); i++) {
 		err = gve_alloc_queue_page_list(priv, i,
-						priv->tx_pages_per_qpl);
+						page_count);
 		if (err)
 			goto free_qpls;
 	}
+
+	/* For GQI_QPL number of pages allocated have 1:1 relationship with
+	 * number of descriptors. For DQO, number of pages required are
+	 * more than descriptors (because of out of order completions).
+	 */
+	page_count = priv->queue_format == GVE_GQI_QPL_FORMAT ?
+		priv->rx_data_slot_cnt : priv->rx_pages_per_qpl;
 	for (; i < num_qpls; i++) {
 		err = gve_alloc_queue_page_list(priv, i,
-						priv->rx_data_slot_cnt);
+						page_count);
 		if (err)
 			goto free_qpls;
 	}
