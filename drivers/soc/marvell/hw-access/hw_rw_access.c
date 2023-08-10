@@ -92,6 +92,8 @@ const struct hw_csr_lookup_tbl lkp_tbl[] = {
 	{ 0x840000000000, 0xa000000, 32, 28, 1,   0,  0xFFFFFFF },
 	/* RVU BAR2 */
 	{ 0x840200000000, 0x2000000, 32, 36, 129, 25, 0xFFFFFF },
+	/* DPI VF BAR0 */
+	{ 0x86E200000000, 0x100000, 1, 0, 32, 20, 0xFFFFF},
 	/* RST */
 	{ 0x87E006000000, 0x10000,   1,  0,  1,   0,  0xFFFF },
 	/* MCS */
