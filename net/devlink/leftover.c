@@ -997,7 +997,7 @@ static void devlink_rate_notify(struct devlink_rate *devlink_rate,
 
 static int
 devlink_nl_rate_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
-			     struct netlink_callback *cb)
+			     struct netlink_callback *cb, int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_rate *devlink_rate;
@@ -1013,8 +1013,7 @@ devlink_nl_rate_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 			continue;
 		}
 		err = devlink_nl_rate_fill(msg, devlink_rate, cmd, id,
-					   cb->nlh->nlmsg_seq,
-					   NLM_F_MULTI, NULL);
+					   cb->nlh->nlmsg_seq, flags, NULL);
 		if (err) {
 			state->idx = idx;
 			break;
@@ -1091,7 +1090,7 @@ int devlink_nl_port_get_doit(struct sk_buff *skb, struct genl_info *info)
 
 static int
 devlink_nl_port_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
-			     struct netlink_callback *cb)
+			     struct netlink_callback *cb, int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_port *devlink_port;
@@ -1102,8 +1101,8 @@ devlink_nl_port_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 		err = devlink_nl_port_fill(msg, devlink_port,
 					   DEVLINK_CMD_NEW,
 					   NETLINK_CB(cb->skb).portid,
-					   cb->nlh->nlmsg_seq,
-					   NLM_F_MULTI, cb->extack);
+					   cb->nlh->nlmsg_seq, flags,
+					   cb->extack);
 		if (err) {
 			state->idx = port_index;
 			break;
@@ -1791,7 +1790,8 @@ int devlink_nl_linecard_get_doit(struct sk_buff *skb, struct genl_info *info)
 
 static int devlink_nl_linecard_get_dump_one(struct sk_buff *msg,
 					    struct devlink *devlink,
-					    struct netlink_callback *cb)
+					    struct netlink_callback *cb,
+					    int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_linecard *linecard;
@@ -1807,8 +1807,7 @@ static int devlink_nl_linecard_get_dump_one(struct sk_buff *msg,
 		err = devlink_nl_linecard_fill(msg, devlink, linecard,
 					       DEVLINK_CMD_LINECARD_NEW,
 					       NETLINK_CB(cb->skb).portid,
-					       cb->nlh->nlmsg_seq,
-					       NLM_F_MULTI,
+					       cb->nlh->nlmsg_seq, flags,
 					       cb->extack);
 		mutex_unlock(&linecard->state_lock);
 		if (err) {
@@ -2055,7 +2054,7 @@ int devlink_nl_sb_get_doit(struct sk_buff *skb, struct genl_info *info)
 
 static int
 devlink_nl_sb_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
-			   struct netlink_callback *cb)
+			   struct netlink_callback *cb, int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_sb *devlink_sb;
@@ -2070,8 +2069,7 @@ devlink_nl_sb_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 		err = devlink_nl_sb_fill(msg, devlink, devlink_sb,
 					 DEVLINK_CMD_SB_NEW,
 					 NETLINK_CB(cb->skb).portid,
-					 cb->nlh->nlmsg_seq,
-					 NLM_F_MULTI);
+					 cb->nlh->nlmsg_seq, flags);
 		if (err) {
 			state->idx = idx;
 			break;
@@ -2168,7 +2166,7 @@ int devlink_nl_sb_pool_get_doit(struct sk_buff *skb, struct genl_info *info)
 static int __sb_pool_get_dumpit(struct sk_buff *msg, int start, int *p_idx,
 				struct devlink *devlink,
 				struct devlink_sb *devlink_sb,
-				u32 portid, u32 seq)
+				u32 portid, u32 seq, int flags)
 {
 	u16 pool_count = devlink_sb_pool_count(devlink_sb);
 	u16 pool_index;
@@ -2183,7 +2181,7 @@ static int __sb_pool_get_dumpit(struct sk_buff *msg, int start, int *p_idx,
 					      devlink_sb,
 					      pool_index,
 					      DEVLINK_CMD_SB_POOL_NEW,
-					      portid, seq, NLM_F_MULTI);
+					      portid, seq, flags);
 		if (err)
 			return err;
 		(*p_idx)++;
@@ -2193,7 +2191,7 @@ static int __sb_pool_get_dumpit(struct sk_buff *msg, int start, int *p_idx,
 
 static int
 devlink_nl_sb_pool_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
-				struct netlink_callback *cb)
+				struct netlink_callback *cb, int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_sb *devlink_sb;
@@ -2207,7 +2205,7 @@ devlink_nl_sb_pool_get_dump_one(struct sk_buff *msg, struct devlink *devlink,
 		err = __sb_pool_get_dumpit(msg, state->idx, &idx,
 					   devlink, devlink_sb,
 					   NETLINK_CB(cb->skb).portid,
-					   cb->nlh->nlmsg_seq);
+					   cb->nlh->nlmsg_seq, flags);
 		if (err == -EOPNOTSUPP) {
 			err = 0;
 		} else if (err) {
@@ -2371,7 +2369,7 @@ int devlink_nl_sb_port_pool_get_doit(struct sk_buff *skb,
 static int __sb_port_pool_get_dumpit(struct sk_buff *msg, int start, int *p_idx,
 				     struct devlink *devlink,
 				     struct devlink_sb *devlink_sb,
-				     u32 portid, u32 seq)
+				     u32 portid, u32 seq, int flags)
 {
 	struct devlink_port *devlink_port;
 	u16 pool_count = devlink_sb_pool_count(devlink_sb);
@@ -2390,8 +2388,7 @@ static int __sb_port_pool_get_dumpit(struct sk_buff *msg, int start, int *p_idx,
 							   devlink_sb,
 							   pool_index,
 							   DEVLINK_CMD_SB_PORT_POOL_NEW,
-							   portid, seq,
-							   NLM_F_MULTI);
+							   portid, seq, flags);
 			if (err)
 				return err;
 			(*p_idx)++;
@@ -2403,7 +2400,7 @@ static int __sb_port_pool_get_dumpit(struct sk_buff *msg, int start, int *p_idx,
 static int
 devlink_nl_sb_port_pool_get_dump_one(struct sk_buff *msg,
 				     struct devlink *devlink,
-				     struct netlink_callback *cb)
+				     struct netlink_callback *cb, int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_sb *devlink_sb;
@@ -2417,7 +2414,7 @@ devlink_nl_sb_port_pool_get_dump_one(struct sk_buff *msg,
 		err = __sb_port_pool_get_dumpit(msg, state->idx, &idx,
 						devlink, devlink_sb,
 						NETLINK_CB(cb->skb).portid,
-						cb->nlh->nlmsg_seq);
+						cb->nlh->nlmsg_seq, flags);
 		if (err == -EOPNOTSUPP) {
 			err = 0;
 		} else if (err) {
@@ -2589,7 +2586,7 @@ static int __sb_tc_pool_bind_get_dumpit(struct sk_buff *msg,
 					int start, int *p_idx,
 					struct devlink *devlink,
 					struct devlink_sb *devlink_sb,
-					u32 portid, u32 seq)
+					u32 portid, u32 seq, int flags)
 {
 	struct devlink_port *devlink_port;
 	unsigned long port_index;
@@ -2610,7 +2607,7 @@ static int __sb_tc_pool_bind_get_dumpit(struct sk_buff *msg,
 							      DEVLINK_SB_POOL_TYPE_INGRESS,
 							      DEVLINK_CMD_SB_TC_POOL_BIND_NEW,
 							      portid, seq,
-							      NLM_F_MULTI);
+							      flags);
 			if (err)
 				return err;
 			(*p_idx)++;
@@ -2628,7 +2625,7 @@ static int __sb_tc_pool_bind_get_dumpit(struct sk_buff *msg,
 							      DEVLINK_SB_POOL_TYPE_EGRESS,
 							      DEVLINK_CMD_SB_TC_POOL_BIND_NEW,
 							      portid, seq,
-							      NLM_F_MULTI);
+							      flags);
 			if (err)
 				return err;
 			(*p_idx)++;
@@ -2639,7 +2636,8 @@ static int __sb_tc_pool_bind_get_dumpit(struct sk_buff *msg,
 
 static int devlink_nl_sb_tc_pool_bind_get_dump_one(struct sk_buff *msg,
 						   struct devlink *devlink,
-						   struct netlink_callback *cb)
+						   struct netlink_callback *cb,
+						   int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_sb *devlink_sb;
@@ -2653,7 +2651,7 @@ static int devlink_nl_sb_tc_pool_bind_get_dump_one(struct sk_buff *msg,
 		err = __sb_tc_pool_bind_get_dumpit(msg, state->idx, &idx,
 						   devlink, devlink_sb,
 						   NETLINK_CB(cb->skb).portid,
-						   cb->nlh->nlmsg_seq);
+						   cb->nlh->nlmsg_seq, flags);
 		if (err == -EOPNOTSUPP) {
 			err = 0;
 		} else if (err) {
@@ -4120,7 +4118,8 @@ static void devlink_param_notify(struct devlink *devlink,
 
 static int devlink_nl_param_get_dump_one(struct sk_buff *msg,
 					 struct devlink *devlink,
-					 struct netlink_callback *cb)
+					 struct netlink_callback *cb,
+					 int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_param_item *param_item;
@@ -4131,8 +4130,7 @@ static int devlink_nl_param_get_dump_one(struct sk_buff *msg,
 		err = devlink_nl_param_fill(msg, devlink, 0, param_item,
 					    DEVLINK_CMD_PARAM_GET,
 					    NETLINK_CB(cb->skb).portid,
-					    cb->nlh->nlmsg_seq,
-					    NLM_F_MULTI);
+					    cb->nlh->nlmsg_seq, flags);
 		if (err == -EOPNOTSUPP) {
 			err = 0;
 		} else if (err) {
@@ -4783,8 +4781,7 @@ int devlink_nl_region_get_doit(struct sk_buff *skb, struct genl_info *info)
 static int devlink_nl_cmd_region_get_port_dumpit(struct sk_buff *msg,
 						 struct netlink_callback *cb,
 						 struct devlink_port *port,
-						 int *idx,
-						 int start)
+						 int *idx, int start, int flags)
 {
 	struct devlink_region *region;
 	int err = 0;
@@ -4798,7 +4795,7 @@ static int devlink_nl_cmd_region_get_port_dumpit(struct sk_buff *msg,
 					     DEVLINK_CMD_REGION_GET,
 					     NETLINK_CB(cb->skb).portid,
 					     cb->nlh->nlmsg_seq,
-					     NLM_F_MULTI, region);
+					     flags, region);
 		if (err)
 			goto out;
 		(*idx)++;
@@ -4810,7 +4807,8 @@ out:
 
 static int devlink_nl_region_get_dump_one(struct sk_buff *msg,
 					  struct devlink *devlink,
-					  struct netlink_callback *cb)
+					  struct netlink_callback *cb,
+					  int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_region *region;
@@ -4827,8 +4825,8 @@ static int devlink_nl_region_get_dump_one(struct sk_buff *msg,
 		err = devlink_nl_region_fill(msg, devlink,
 					     DEVLINK_CMD_REGION_GET,
 					     NETLINK_CB(cb->skb).portid,
-					     cb->nlh->nlmsg_seq,
-					     NLM_F_MULTI, region);
+					     cb->nlh->nlmsg_seq, flags,
+					     region);
 		if (err) {
 			state->idx = idx;
 			return err;
@@ -4838,7 +4836,7 @@ static int devlink_nl_region_get_dump_one(struct sk_buff *msg,
 
 	xa_for_each(&devlink->ports, port_index, port) {
 		err = devlink_nl_cmd_region_get_port_dumpit(msg, cb, port, &idx,
-							    state->idx);
+							    state->idx, flags);
 		if (err) {
 			state->idx = idx;
 			return err;
@@ -5634,7 +5632,7 @@ err_trap_fill:
 
 static int devlink_nl_trap_get_dump_one(struct sk_buff *msg,
 					struct devlink *devlink,
-					struct netlink_callback *cb)
+					struct netlink_callback *cb, int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_trap_item *trap_item;
@@ -5649,8 +5647,7 @@ static int devlink_nl_trap_get_dump_one(struct sk_buff *msg,
 		err = devlink_nl_trap_fill(msg, devlink, trap_item,
 					   DEVLINK_CMD_TRAP_NEW,
 					   NETLINK_CB(cb->skb).portid,
-					   cb->nlh->nlmsg_seq,
-					   NLM_F_MULTI);
+					   cb->nlh->nlmsg_seq, flags);
 		if (err) {
 			state->idx = idx;
 			break;
@@ -5845,7 +5842,8 @@ err_trap_group_fill:
 
 static int devlink_nl_trap_group_get_dump_one(struct sk_buff *msg,
 					      struct devlink *devlink,
-					      struct netlink_callback *cb)
+					      struct netlink_callback *cb,
+					      int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_trap_group_item *group_item;
@@ -5861,8 +5859,7 @@ static int devlink_nl_trap_group_get_dump_one(struct sk_buff *msg,
 		err = devlink_nl_trap_group_fill(msg, devlink, group_item,
 						 DEVLINK_CMD_TRAP_GROUP_NEW,
 						 NETLINK_CB(cb->skb).portid,
-						 cb->nlh->nlmsg_seq,
-						 NLM_F_MULTI);
+						 cb->nlh->nlmsg_seq, flags);
 		if (err) {
 			state->idx = idx;
 			break;
@@ -6140,7 +6137,8 @@ err_trap_policer_fill:
 
 static int devlink_nl_trap_policer_get_dump_one(struct sk_buff *msg,
 						struct devlink *devlink,
-						struct netlink_callback *cb)
+						struct netlink_callback *cb,
+						int flags)
 {
 	struct devlink_nl_dump_state *state = devlink_dump_state(cb);
 	struct devlink_trap_policer_item *policer_item;
@@ -6155,8 +6153,7 @@ static int devlink_nl_trap_policer_get_dump_one(struct sk_buff *msg,
 		err = devlink_nl_trap_policer_fill(msg, devlink, policer_item,
 						   DEVLINK_CMD_TRAP_POLICER_NEW,
 						   NETLINK_CB(cb->skb).portid,
-						   cb->nlh->nlmsg_seq,
-						   NLM_F_MULTI);
+						   cb->nlh->nlmsg_seq, flags);
 		if (err) {
 			state->idx = idx;
 			break;
