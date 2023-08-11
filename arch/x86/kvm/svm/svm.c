@@ -3574,6 +3574,8 @@ static fastpath_t svm_vcpu_run(struct kvm_vcpu *vcpu)
 
 	sd = per_cpu(svm_data, vcpu->cpu);
 
+	amd_clear_divider();
+
 	__svm_vcpu_run(svm->vmcb_pa, (unsigned long *)&svm->vcpu.arch.regs);
 
 	vmload(__sme_page_pa(sd->save_area));
