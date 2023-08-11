@@ -6242,27 +6242,13 @@ static int devlink_nl_cmd_trap_policer_set_doit(struct sk_buff *skb,
 	return devlink_trap_policer_set(devlink, policer_item, info);
 }
 
-const struct genl_small_ops devlink_nl_small_ops[54] = {
-	{
-		.cmd = DEVLINK_CMD_PORT_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_port_get_doit,
-		.dumpit = devlink_nl_port_get_dumpit,
-		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
-		/* can be retrieved by unprivileged users */
-	},
+const struct genl_small_ops devlink_nl_small_ops[40] = {
 	{
 		.cmd = DEVLINK_CMD_PORT_SET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.doit = devlink_nl_cmd_port_set_doit,
 		.flags = GENL_ADMIN_PERM,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
-	},
-	{
-		.cmd = DEVLINK_CMD_RATE_GET,
-		.doit = devlink_nl_rate_get_doit,
-		.dumpit = devlink_nl_rate_get_dumpit,
-		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = DEVLINK_CMD_RATE_SET,
@@ -6304,30 +6290,11 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 		.flags = GENL_ADMIN_PERM,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
 	},
-	{
-		.cmd = DEVLINK_CMD_LINECARD_GET,
-		.doit = devlink_nl_linecard_get_doit,
-		.dumpit = devlink_nl_linecard_get_dumpit,
-		/* can be retrieved by unprivileged users */
-	},
+
 	{
 		.cmd = DEVLINK_CMD_LINECARD_SET,
 		.doit = devlink_nl_cmd_linecard_set_doit,
 		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = DEVLINK_CMD_SB_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_sb_get_doit,
-		.dumpit = devlink_nl_sb_get_dumpit,
-		/* can be retrieved by unprivileged users */
-	},
-	{
-		.cmd = DEVLINK_CMD_SB_POOL_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_sb_pool_get_doit,
-		.dumpit = devlink_nl_sb_pool_get_dumpit,
-		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = DEVLINK_CMD_SB_POOL_SET,
@@ -6336,27 +6303,11 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 		.flags = GENL_ADMIN_PERM,
 	},
 	{
-		.cmd = DEVLINK_CMD_SB_PORT_POOL_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_sb_port_pool_get_doit,
-		.dumpit = devlink_nl_sb_port_pool_get_dumpit,
-		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
-		/* can be retrieved by unprivileged users */
-	},
-	{
 		.cmd = DEVLINK_CMD_SB_PORT_POOL_SET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.doit = devlink_nl_cmd_sb_port_pool_set_doit,
 		.flags = GENL_ADMIN_PERM,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
-	},
-	{
-		.cmd = DEVLINK_CMD_SB_TC_POOL_BIND_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_sb_tc_pool_bind_get_doit,
-		.dumpit = devlink_nl_sb_tc_pool_bind_get_dumpit,
-		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
-		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = DEVLINK_CMD_SB_TC_POOL_BIND_SET,
@@ -6432,13 +6383,6 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 		.flags = GENL_ADMIN_PERM,
 	},
 	{
-		.cmd = DEVLINK_CMD_PARAM_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_param_get_doit,
-		.dumpit = devlink_nl_param_get_dumpit,
-		/* can be retrieved by unprivileged users */
-	},
-	{
 		.cmd = DEVLINK_CMD_PARAM_SET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.doit = devlink_nl_cmd_param_set_doit,
@@ -6460,13 +6404,6 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
 	},
 	{
-		.cmd = DEVLINK_CMD_REGION_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_region_get_doit,
-		.dumpit = devlink_nl_region_get_dumpit,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
 		.cmd = DEVLINK_CMD_REGION_NEW,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.doit = devlink_nl_cmd_region_new,
@@ -6484,14 +6421,6 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 			    GENL_DONT_VALIDATE_DUMP_STRICT,
 		.dumpit = devlink_nl_cmd_region_read_dumpit,
 		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = DEVLINK_CMD_HEALTH_REPORTER_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_health_reporter_get_doit,
-		.dumpit = devlink_nl_health_reporter_get_dumpit,
-		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK_OR_PORT,
-		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = DEVLINK_CMD_HEALTH_REPORTER_SET,
@@ -6542,21 +6471,9 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 		.flags = GENL_ADMIN_PERM,
 	},
 	{
-		.cmd = DEVLINK_CMD_TRAP_GET,
-		.doit = devlink_nl_trap_get_doit,
-		.dumpit = devlink_nl_trap_get_dumpit,
-		/* can be retrieved by unprivileged users */
-	},
-	{
 		.cmd = DEVLINK_CMD_TRAP_SET,
 		.doit = devlink_nl_cmd_trap_set_doit,
 		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = DEVLINK_CMD_TRAP_GROUP_GET,
-		.doit = devlink_nl_trap_group_get_doit,
-		.dumpit = devlink_nl_trap_group_get_dumpit,
-		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = DEVLINK_CMD_TRAP_GROUP_SET,
@@ -6564,21 +6481,9 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 		.flags = GENL_ADMIN_PERM,
 	},
 	{
-		.cmd = DEVLINK_CMD_TRAP_POLICER_GET,
-		.doit = devlink_nl_trap_policer_get_doit,
-		.dumpit = devlink_nl_trap_policer_get_dumpit,
-		/* can be retrieved by unprivileged users */
-	},
-	{
 		.cmd = DEVLINK_CMD_TRAP_POLICER_SET,
 		.doit = devlink_nl_cmd_trap_policer_set_doit,
 		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = DEVLINK_CMD_SELFTESTS_GET,
-		.doit = devlink_nl_selftests_get_doit,
-		.dumpit = devlink_nl_selftests_get_dumpit,
-		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = DEVLINK_CMD_SELFTESTS_RUN,
