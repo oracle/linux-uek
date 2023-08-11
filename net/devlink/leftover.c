@@ -1029,8 +1029,7 @@ const struct devlink_cmd devl_cmd_rate_get = {
 	.dump_one		= devlink_nl_cmd_rate_get_dump_one,
 };
 
-static int devlink_nl_cmd_rate_get_doit(struct sk_buff *skb,
-					struct genl_info *info)
+int devlink_nl_rate_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct devlink_rate *devlink_rate;
@@ -1068,8 +1067,7 @@ devlink_rate_is_parent_node(struct devlink_rate *devlink_rate,
 	return false;
 }
 
-static int devlink_nl_cmd_port_get_doit(struct sk_buff *skb,
-					struct genl_info *info)
+int devlink_nl_port_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink_port *devlink_port = info->user_ptr[1];
 	struct sk_buff *msg;
@@ -1760,8 +1758,7 @@ static void devlink_linecard_notify(struct devlink_linecard *linecard,
 				msg, 0, DEVLINK_MCGRP_CONFIG, GFP_KERNEL);
 }
 
-static int devlink_nl_cmd_linecard_get_doit(struct sk_buff *skb,
-					    struct genl_info *info)
+int devlink_nl_linecard_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct devlink_linecard *linecard;
@@ -2026,8 +2023,7 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static int devlink_nl_cmd_sb_get_doit(struct sk_buff *skb,
-				      struct genl_info *info)
+int devlink_nl_sb_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct devlink_sb *devlink_sb;
@@ -2129,8 +2125,7 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static int devlink_nl_cmd_sb_pool_get_doit(struct sk_buff *skb,
-					   struct genl_info *info)
+int devlink_nl_sb_pool_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct devlink_sb *devlink_sb;
@@ -2329,8 +2324,8 @@ sb_occ_get_failure:
 	return err;
 }
 
-static int devlink_nl_cmd_sb_port_pool_get_doit(struct sk_buff *skb,
-						struct genl_info *info)
+int devlink_nl_sb_port_pool_get_doit(struct sk_buff *skb,
+				     struct genl_info *info)
 {
 	struct devlink_port *devlink_port = info->user_ptr[1];
 	struct devlink *devlink = devlink_port->devlink;
@@ -2538,8 +2533,8 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static int devlink_nl_cmd_sb_tc_pool_bind_get_doit(struct sk_buff *skb,
-						   struct genl_info *info)
+int devlink_nl_sb_tc_pool_bind_get_doit(struct sk_buff *skb,
+					struct genl_info *info)
 {
 	struct devlink_port *devlink_port = info->user_ptr[1];
 	struct devlink *devlink = devlink_port->devlink;
@@ -4230,8 +4225,8 @@ devlink_param_get_from_info(struct xarray *params, struct genl_info *info)
 	return devlink_param_find_by_name(params, param_name);
 }
 
-static int devlink_nl_cmd_param_get_doit(struct sk_buff *skb,
-					 struct genl_info *info)
+int devlink_nl_param_get_doit(struct sk_buff *skb,
+			      struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct devlink_param_item *param_item;
@@ -4728,8 +4723,7 @@ static void devlink_region_snapshot_del(struct devlink_region *region,
 	kfree(snapshot);
 }
 
-static int devlink_nl_cmd_region_get_doit(struct sk_buff *skb,
-					  struct genl_info *info)
+int devlink_nl_region_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct devlink_port *port = NULL;
@@ -5590,8 +5584,7 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static int devlink_nl_cmd_trap_get_doit(struct sk_buff *skb,
-					struct genl_info *info)
+int devlink_nl_trap_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct netlink_ext_ack *extack = info->extack;
 	struct devlink *devlink = info->user_ptr[0];
@@ -5801,8 +5794,7 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static int devlink_nl_cmd_trap_group_get_doit(struct sk_buff *skb,
-					      struct genl_info *info)
+int devlink_nl_trap_group_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct netlink_ext_ack *extack = info->extack;
 	struct devlink *devlink = info->user_ptr[0];
@@ -6095,8 +6087,8 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static int devlink_nl_cmd_trap_policer_get_doit(struct sk_buff *skb,
-						struct genl_info *info)
+int devlink_nl_trap_policer_get_doit(struct sk_buff *skb,
+				     struct genl_info *info)
 {
 	struct devlink_trap_policer_item *policer_item;
 	struct netlink_ext_ack *extack = info->extack;
@@ -6240,7 +6232,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	{
 		.cmd = DEVLINK_CMD_PORT_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_port_get_doit,
+		.doit = devlink_nl_port_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
 		/* can be retrieved by unprivileged users */
@@ -6254,7 +6246,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	},
 	{
 		.cmd = DEVLINK_CMD_RATE_GET,
-		.doit = devlink_nl_cmd_rate_get_doit,
+		.doit = devlink_nl_rate_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
@@ -6300,7 +6292,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	},
 	{
 		.cmd = DEVLINK_CMD_LINECARD_GET,
-		.doit = devlink_nl_cmd_linecard_get_doit,
+		.doit = devlink_nl_linecard_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
@@ -6312,14 +6304,14 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	{
 		.cmd = DEVLINK_CMD_SB_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_sb_get_doit,
+		.doit = devlink_nl_sb_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = DEVLINK_CMD_SB_POOL_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_sb_pool_get_doit,
+		.doit = devlink_nl_sb_pool_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
@@ -6332,7 +6324,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	{
 		.cmd = DEVLINK_CMD_SB_PORT_POOL_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_sb_port_pool_get_doit,
+		.doit = devlink_nl_sb_port_pool_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
 		/* can be retrieved by unprivileged users */
@@ -6347,7 +6339,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	{
 		.cmd = DEVLINK_CMD_SB_TC_POOL_BIND_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_sb_tc_pool_bind_get_doit,
+		.doit = devlink_nl_sb_tc_pool_bind_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
 		/* can be retrieved by unprivileged users */
@@ -6428,7 +6420,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	{
 		.cmd = DEVLINK_CMD_PARAM_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_param_get_doit,
+		.doit = devlink_nl_param_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
@@ -6456,7 +6448,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	{
 		.cmd = DEVLINK_CMD_REGION_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_region_get_doit,
+		.doit = devlink_nl_region_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		.flags = GENL_ADMIN_PERM,
 	},
@@ -6482,7 +6474,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	{
 		.cmd = DEVLINK_CMD_HEALTH_REPORTER_GET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_health_reporter_get_doit,
+		.doit = devlink_nl_health_reporter_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK_OR_PORT,
 		/* can be retrieved by unprivileged users */
@@ -6537,7 +6529,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	},
 	{
 		.cmd = DEVLINK_CMD_TRAP_GET,
-		.doit = devlink_nl_cmd_trap_get_doit,
+		.doit = devlink_nl_trap_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
@@ -6548,7 +6540,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	},
 	{
 		.cmd = DEVLINK_CMD_TRAP_GROUP_GET,
-		.doit = devlink_nl_cmd_trap_group_get_doit,
+		.doit = devlink_nl_trap_group_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
@@ -6559,7 +6551,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	},
 	{
 		.cmd = DEVLINK_CMD_TRAP_POLICER_GET,
-		.doit = devlink_nl_cmd_trap_policer_get_doit,
+		.doit = devlink_nl_trap_policer_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
@@ -6570,7 +6562,7 @@ const struct genl_small_ops devlink_nl_small_ops[54] = {
 	},
 	{
 		.cmd = DEVLINK_CMD_SELFTESTS_GET,
-		.doit = devlink_nl_cmd_selftests_get_doit,
+		.doit = devlink_nl_selftests_get_doit,
 		.dumpit = devlink_nl_instance_iter_dumpit,
 		/* can be retrieved by unprivileged users */
 	},
