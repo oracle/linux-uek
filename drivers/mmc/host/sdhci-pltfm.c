@@ -16,6 +16,7 @@
  * Inspired by sdhci-pci.c, by Pierre Ossman
  */
 
+#include <linux/acpi.h>
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/property.h>
@@ -193,12 +194,17 @@ EXPORT_SYMBOL_GPL(sdhci_pltfm_register);
 
 int sdhci_pltfm_unregister(struct platform_device *pdev)
 {
+	bool has_acpi;
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	int dead = (readl(host->ioaddr + SDHCI_INT_STATUS) == 0xffffffff);
+	struct device *dev = &pdev->dev;
+
+	has_acpi = has_acpi_companion(dev);
 
 	sdhci_remove_host(host, dead);
-	clk_disable_unprepare(pltfm_host->clk);
+	if (!has_acpi)
+		clk_disable_unprepare(pltfm_host->clk);
 	sdhci_pltfm_free(pdev);
 
 	return 0;
@@ -210,7 +216,10 @@ int sdhci_pltfm_suspend(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	bool has_acpi;
 	int ret;
+
+	has_acpi = has_acpi_companion(dev);
 
 	if (host->tuning_mode != SDHCI_TUNING_MODE_3)
 		mmc_retune_needed(host->mmc);
@@ -219,7 +228,8 @@ int sdhci_pltfm_suspend(struct device *dev)
 	if (ret)
 		return ret;
 
-	clk_disable_unprepare(pltfm_host->clk);
+	if (!has_acpi)
+		clk_disable_unprepare(pltfm_host->clk);
 
 	return 0;
 }
