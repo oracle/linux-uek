@@ -594,6 +594,8 @@ static bool cdns_xspi_setup_clock(struct cdns_xspi_dev *cdns_xspi, int requested
 	clk_reg = readl(cdns_xspi->auxbase + CDNS_XSPI_CLK_CTRL_AUX_REG);
 
 	if (FIELD_GET(CDNS_XSPI_CLK_DIV, clk_reg) != i) {
+		clk_reg &= ~CDNS_XSPI_CLK_ENABLE;
+		writel(clk_reg, cdns_xspi->auxbase + CDNS_XSPI_CLK_CTRL_AUX_REG);
 		clk_reg &= ~CDNS_XSPI_CLK_DIV;
 		clk_reg |= FIELD_PREP(CDNS_XSPI_CLK_DIV, i);
 		clk_reg |= CDNS_XSPI_CLK_ENABLE;
