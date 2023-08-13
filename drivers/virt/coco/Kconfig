@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Confidential computing related collateral
+#
+source "drivers/virt/coco/sev-guest/Kconfig"
