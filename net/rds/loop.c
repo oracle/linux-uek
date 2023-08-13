@@ -201,5 +201,7 @@ struct rds_transport rds_loop_transport = {
 	.inc_copy_to_user	= rds_message_inc_copy_to_user,
 	.inc_free		= rds_loop_inc_free,
 	.t_name			= "loopback",
+	/* Make sure this transport is not associated with RDS_TRANS_IB (0) */
+	.t_type			= RDS_TRANS_NONE,
 	.t_conn_count		= ATOMIC_INIT(0),
 };
