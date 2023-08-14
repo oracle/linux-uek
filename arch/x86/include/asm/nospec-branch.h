@@ -305,7 +305,12 @@ extern u64 spec_ctrl_current(void);
 extern char __indirect_thunk_start[];
 extern char __indirect_thunk_end[];
 
+#ifdef CONFIG_RETHUNK
 extern void __x86_return_thunk(void);
+#else
+static inline void __x86_return_thunk(void) {}
+#endif
+
 extern void zen_untrain_ret(void);
 extern void srso_untrain_ret(void);
 extern void srso_untrain_ret_alias(void);
