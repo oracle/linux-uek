@@ -96,6 +96,7 @@ struct genl_family {
  * struct genl_info - receiving information
  * @snd_seq: sending sequence number
  * @snd_portid: netlink portid of sender
+ * @family: generic netlink family
  * @nlhdr: netlink message header
  * @genlhdr: generic netlink message header
  * @attrs: netlink attributes
@@ -106,6 +107,7 @@ struct genl_family {
 struct genl_info {
 	u32			snd_seq;
 	u32			snd_portid;
+	const struct genl_family *family;
 	const struct nlmsghdr *	nlhdr;
 	struct genlmsghdr *	genlhdr;
 	struct nlattr **	attrs;
@@ -255,13 +257,11 @@ struct genl_split_ops {
 
 /**
  * struct genl_dumpit_info - info that is available during dumpit op call
- * @family: generic netlink family - for internal genl code usage
  * @op: generic netlink ops - for internal genl code usage
  * @attrs: netlink attributes
  * @info: struct genl_info describing the request
  */
 struct genl_dumpit_info {
-	const struct genl_family *family;
 	struct genl_split_ops op;
 	struct genl_info info;
 };
