@@ -1090,8 +1090,8 @@ static int nix_aq_enqueue_wait(struct rvu *rvu, struct rvu_block *block,
 {
 	struct admin_queue *aq = block->aq;
 	struct nix_aq_res_s *result;
+	u64 reg, head, intr;
 	int timeout = 1000;
-	u64 reg, head;
 	int ret;
 
 	result = (struct nix_aq_res_s *)aq->res->base;
@@ -1109,11 +1109,16 @@ static int nix_aq_enqueue_wait(struct rvu *rvu, struct rvu_block *block,
 	/* Ring the doorbell and wait for result */
 	rvu_write64(rvu, block->addr, NIX_AF_AQ_DOOR, 1);
 	while (result->compcode == NIX_AQ_COMP_NOTDONE) {
+		intr = rvu_read64(rvu, block->addr, NIX_AF_ERR_INT);
 		cpu_relax();
 		udelay(1);
 		timeout--;
-		if (!timeout)
+		if (!timeout) {
+			dev_err_ratelimited(rvu->dev,
+					    "%s wait timeout reg=0x%llx intr=0x%llx\n",
+					    __func__, reg, intr);
 			return -EBUSY;
+		}
 	}
 
 	if (result->compcode != NIX_AQ_COMP_GOOD) {
