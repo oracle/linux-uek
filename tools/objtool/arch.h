@@ -85,5 +85,6 @@ unsigned long arch_dest_reloc_offset(int addend);
 
 bool arch_is_retpoline(struct symbol *sym);
 bool arch_is_rethunk(struct symbol *sym);
+bool arch_is_embedded_insn(struct symbol *sym);
 
 #endif /* _ARCH_H */
