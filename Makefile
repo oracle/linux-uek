@@ -5,7 +5,7 @@ SUBLEVEL = 35
 EXTRAVERSION =
 NAME = Petit Gorille
 
-#LTS version v4.14.321
+#LTS version v4.14.322
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
