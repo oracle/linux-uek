@@ -1699,13 +1699,17 @@ int otx2_init_hw_resources(struct otx2_nic *pf)
 	mutex_lock(&mbox->lock);
 	/* NPA init */
 	err = otx2_config_npa(pf);
-	if (err)
+	if (err) {
+		dev_err(pf->dev, "Failed to configure NPA\n");
 		goto exit;
+	}
 
 	/* NIX init */
 	err = otx2_config_nix(pf);
-	if (err)
+	if (err) {
+		dev_err(pf->dev, "Failed to configure NIX\n");
 		goto err_free_npa_lf;
+	}
 
 	/* Default disable backpressure on NIX-CPT */
 	otx2_nix_cpt_config_bp(pf, false);
@@ -1717,18 +1721,21 @@ int otx2_init_hw_resources(struct otx2_nic *pf)
 	/* Init Auras and pools used by NIX RQ, for free buffer ptrs */
 	err = otx2_rq_aura_pool_init(pf);
 	if (err) {
+		dev_err(pf->dev, "Failed configure RQ Aura\n");
 		mutex_unlock(&mbox->lock);
 		goto err_free_nix_lf;
 	}
 	/* Init Auras and pools used by NIX SQ, for queueing SQEs */
 	err = otx2_sq_aura_pool_init(pf);
 	if (err) {
+		dev_err(pf->dev, "Failed to configure SQ Aura\n");
 		mutex_unlock(&mbox->lock);
 		goto err_free_rq_ptrs;
 	}
 
 	err = otx2_txsch_alloc(pf);
 	if (err) {
+		dev_err(pf->dev, "Failed to allocate TXSCH\n");
 		mutex_unlock(&mbox->lock);
 		goto err_free_sq_ptrs;
 	}
@@ -1737,6 +1744,7 @@ int otx2_init_hw_resources(struct otx2_nic *pf)
 	if (pf->pfc_en) {
 		err = otx2_pfc_txschq_alloc(pf);
 		if (err) {
+			dev_err(pf->dev, "Failed to allocate PFC TXSCH\n");
 			mutex_unlock(&mbox->lock);
 			goto err_free_sq_ptrs;
 		}
@@ -1745,6 +1753,7 @@ int otx2_init_hw_resources(struct otx2_nic *pf)
 
 	err = otx2_config_nix_queues(pf);
 	if (err) {
+		dev_err(pf->dev, "Failed to config NIX queues\n");
 		mutex_unlock(&mbox->lock);
 		goto err_free_txsch;
 	}
@@ -1773,6 +1782,7 @@ int otx2_init_hw_resources(struct otx2_nic *pf)
 	if (pf->pfc_en) {
 		err = otx2_pfc_txschq_config(pf);
 		if (err) {
+			dev_err(pf->dev, "Failed to config PFC TXSCH\n");
 			mutex_unlock(&mbox->lock);
 			goto err_free_ipsec_queues;
 		}
@@ -2093,16 +2103,20 @@ int otx2_open(struct net_device *netdev)
 
 	/* Set maximum frame size allowed in HW */
 	err = otx2_hw_set_mtu(pf, netdev->mtu);
-	if (err)
+	if (err) {
+		dev_err(pf->dev, "Failed to set HW MTU\n");
 		goto err_disable_napi;
+	}
 
 	/* Setup segmentation algorithms, if failed, clear offload capability */
 	otx2_setup_segmentation(pf);
 
 	/* Initialize RSS */
 	err = otx2_rss_init(pf);
-	if (err)
+	if (err) {
+		dev_err(pf->dev, "Failed to config RSS\n");
 		goto err_disable_napi;
+	}
 
 	/* Register Queue IRQ handlers */
 	vec = pf->hw.nix_msixoff + NIX_LF_QINT_VEC_START;
