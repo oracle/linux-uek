@@ -36,6 +36,7 @@
 #include <linux/kernel.h>
 #include <linux/in.h>
 #include <linux/ipv6.h>
+#include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/version.h>
 #include <linux/random.h>
@@ -78,6 +79,11 @@ struct rt_debug_tp {
 	int flag;
 	const char *tps[10];
 };
+
+/* Protecting the non-reentrant list handling in connection reset when
+ * destination address is zero
+ */
+DEFINE_MUTEX(conn_reset_zero_dest);
 
 /* Map from RDS_RTD_ flag to replacement tracepoints. */
 static struct rt_debug_tp rt_debug_tp_map[] = {
@@ -554,14 +560,18 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 		pr_info("RDS: Reset ALL conns for Source %pI4\n",
 			 &reset.src.s_addr);
 
+		mutex_lock(&conn_reset_zero_dest);
 		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
 				    &src6, &s_addr_conns);
-		if (list_empty(&s_addr_conns))
+		if (list_empty(&s_addr_conns)) {
+			mutex_unlock(&conn_reset_zero_dest);
 			goto done;
+		}
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
 			if (conn)
 				rds_user_conn_paths_drop(conn);
+		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
 
@@ -602,14 +612,18 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 		pr_info("RDS: Reset ALL conns for Source %pI6c\n",
 			&reset.src);
 
+		mutex_lock(&conn_reset_zero_dest);
 		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
 				    &reset.src, &s_addr_conns);
-		if (list_empty(&s_addr_conns))
+		if (list_empty(&s_addr_conns)) {
+			mutex_unlock(&conn_reset_zero_dest);
 			goto done;
+		}
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
 			if (conn)
 				rds_user_conn_paths_drop(conn);
+		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
 
