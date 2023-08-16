@@ -36,6 +36,7 @@
 #include <linux/kernel.h>
 #include <linux/in.h>
 #include <linux/ipv6.h>
+#include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/version.h>
 #include <linux/random.h>
@@ -79,6 +80,11 @@ static DEFINE_SPINLOCK(rds_sock_lock);
 static unsigned long rds_sock_count;
 static LIST_HEAD(rds_sock_list);
 DECLARE_WAIT_QUEUE_HEAD(rds_poll_waitq);
+
+/* Protecting the non-reentrant list handling in connection reset when
+ * destination address is zero
+ */
+DEFINE_MUTEX(conn_reset_zero_dest);
 
 /*
  * This is called as the final descriptor referencing this socket is closed.
@@ -427,14 +433,18 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 		pr_info("RDS: Reset ALL conns for Source %pI4\n",
 			 &reset.src.s_addr);
 
+		mutex_lock(&conn_reset_zero_dest);
 		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
 				    &src6, &s_addr_conns);
-		if (list_empty(&s_addr_conns))
+		if (list_empty(&s_addr_conns)) {
+			mutex_unlock(&conn_reset_zero_dest);
 			goto done;
+		}
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
 			if (conn)
 				rds_conn_drop(conn, DR_USER_RESET);
+		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
 
@@ -474,14 +484,18 @@ static int rds6_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 		pr_info("RDS: Reset ALL conns for Source %pI6c\n",
 			&reset.src);
 
+		mutex_lock(&conn_reset_zero_dest);
 		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
 				    &reset.src, &s_addr_conns);
-		if (list_empty(&s_addr_conns))
+		if (list_empty(&s_addr_conns)) {
+			mutex_unlock(&conn_reset_zero_dest);
 			goto done;
+		}
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
 			if (conn)
 				rds_user_conn_paths_drop(conn, 1);
+		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
 
