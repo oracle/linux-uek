@@ -736,11 +736,16 @@ iblock_execute_rw(struct se_cmd *cmd, struct scatterlist *sgl, u32 sgl_nents,
 	if (data_direction == DMA_TO_DEVICE) {
 		struct iblock_dev *ib_dev = IBLOCK_DEV(dev);
 		struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+
+		/*
+		 * Set bits to indicate WRITE_ODIRECT so we are not throttled
+		 * by WBT.
+		 */
+		opf = REQ_OP_WRITE | REQ_SYNC | REQ_IDLE;
 		/*
 		 * Force writethrough using REQ_FUA if a volatile write cache
 		 * is not enabled, or if initiator set the Force Unit Access bit.
 		 */
-		opf = REQ_OP_WRITE;
 		miter_dir = SG_MITER_TO_SG;
 		if (test_bit(QUEUE_FLAG_FUA, &q->queue_flags)) {
 			if (cmd->se_cmd_flags & SCF_FUA)
