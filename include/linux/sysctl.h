@@ -40,7 +40,8 @@ struct ctl_dir;
 /* Keep the same order as in fs/proc/proc_sysctl.c */
 #define SYSCTL_ZERO	((void *)&sysctl_vals[0])
 #define SYSCTL_ONE	((void *)&sysctl_vals[1])
-#define SYSCTL_INT_MAX	((void *)&sysctl_vals[2])
+#define SYSCTL_TWO	((void *)&sysctl_vals[2])
+#define SYSCTL_INT_MAX	((void *)&sysctl_vals[3])
 
 extern const int sysctl_vals[];
 
