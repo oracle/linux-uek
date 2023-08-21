@@ -10,16 +10,20 @@
 	__brelse
 	__check_object_size
 	__cond_resched
+	__const_udelay
+	__cpu_online_mask
 	__cpu_possible_mask
 	__cpu_present_mask
 	__cpuhp_remove_state
 	__cpuhp_setup_state
+	__fdget
 	__generic_file_write_iter
 	__init_rwsem
 	__init_swait_queue_head
 	__init_waitqueue_head
 	__insert_inode_hash
 	__kmalloc
+	__list_add_valid
 	__list_del_entry_valid
 	__lock_page
 	__mark_inode_dirty
@@ -28,20 +32,24 @@
 	__mmap_lock_do_trace_start_locking
 	__module_get
 	__msecs_to_jiffies
+	__mutex_init
 	__num_online_cpus
 	__pagevec_release
 	__per_cpu_offset
 	__put_cred
 	__put_page
 	__register_blkdev
+	__register_chrdev
 	__remove_inode_hash
 	__set_page_dirty_nobuffers
 	__stack_chk_fail
+	__sw_hweight64
 	__tasklet_hi_schedule
 	__test_set_page_writeback
 	__tracepoint_mmap_lock_acquire_returned
 	__tracepoint_mmap_lock_released
 	__tracepoint_mmap_lock_start_locking
+	__unregister_chrdev
 	__vmalloc
 	__wake_up
 	__warn_printk
@@ -70,13 +78,16 @@
 	blk_mq_end_request
 	blk_mq_free_tag_set
 	blk_mq_kick_requeue_list
+	blk_mq_requeue_request
 	blk_mq_start_request
 	blk_mq_start_stopped_hw_queues
+	blk_mq_stop_hw_queues
 	blk_queue_bounce_limit
 	blk_queue_flag_clear
 	blk_queue_flag_set
 	blk_queue_logical_block_size
 	blk_queue_max_hw_sectors
+	blk_queue_max_segments
 	blk_queue_physical_block_size
 	blk_set_default_limits
 	blk_stack_limits
@@ -85,6 +96,7 @@
 	blkdev_get_by_path
 	blkdev_issue_discard
 	blkdev_put
+	call_usermodehelper
 	capable
 	clear_inode
 	clear_page_dirty_for_io
@@ -94,6 +106,7 @@
 	cpu_hwcaps
 	cpu_number
 	cpumask_next
+	cpumask_next_and
 	crypto_sha1_finup
 	d_add
 	d_alloc
@@ -114,6 +127,8 @@
 	dentry_open
 	device_add_disk
 	dget_parent
+	disk_end_io_acct
+	disk_start_io_acct
 	down
 	down_read
 	down_read_trylock
@@ -180,6 +195,8 @@
 	jiffies
 	jiffies_to_msecs
 	jiffies_to_timespec64
+	jiffies_to_usecs
+	kblockd_mod_delayed_work_on
 	kern_path
 	kernel_accept
 	kernel_read
@@ -196,6 +213,8 @@
 	kmem_cache_destroy
 	kmem_cache_free
 	kthread_create_on_node
+	kthread_should_stop
+	kthread_stop
 	ktime_get_coarse_real_ts64
 	ktime_get_coarse_ts64
 	ktime_get_real_ts64
@@ -210,6 +229,7 @@
 	match_token
 	memcmp
 	memcpy
+	memdup_user
 	memmove
 	memset
 	mntget
@@ -222,11 +242,15 @@
 	mpage_writepages
 	msleep
 	msleep_interruptible
+	mutex_lock
+	mutex_unlock
 	new_inode
 	nobh_truncate_page
 	nobh_write_begin
 	nobh_write_end
 	nobh_writepage
+	node_states
+	node_to_cpumask_map
 	nr_cpu_ids
 	numa_node
 	override_creds
@@ -249,7 +273,9 @@
 	proc_create
 	proc_mkdir
 	put_disk
+	queued_read_lock_slowpath
 	queued_spin_lock_slowpath
+	queued_write_lock_slowpath
 	redirty_page_for_writepage
 	register_filesystem
 	release_pages
@@ -268,6 +294,7 @@
 	set_page_dirty
 	set_user_nice
 	setattr_prepare
+	sha256
 	sha256_final
 	sha256_update
 	sigprocmask
@@ -307,6 +334,8 @@
 	up
 	up_read
 	up_write
+	usleep_range_state
+	vabits_actual
 	vfree
 	vfs_fsync
 	vfs_getattr
@@ -314,10 +343,14 @@
 	vfs_iter_write
 	vfs_llseek
 	vfs_rename
+	vmalloc_node
 	vmalloc_to_page
+	vprintk
 	vscnprintf
 	vsnprintf
 	vsprintf
+	vzalloc
+	vzalloc_node
 	wait_for_completion
 	wait_on_page_bit
 	wake_up_process
