@@ -138,6 +138,7 @@
 	_raw_spin_trylock
 	_raw_spin_unlock_bh
 	_raw_spin_unlock_irqrestore
+	_raw_write_lock
 	_raw_write_lock_bh
 	_raw_write_lock_irqsave
 	_raw_write_unlock_bh
@@ -181,6 +182,7 @@
 	blk_mq_kick_requeue_list
 	blk_mq_map_queues
 	blk_mq_pci_map_queues
+	blk_mq_requeue_request
 	blk_mq_run_hw_queue
 	blk_mq_run_hw_queues
 	blk_mq_start_request
@@ -220,6 +222,7 @@
 	bus_register_notifier
 	bus_unregister_notifier
 	call_rcu
+	call_usermodehelper
 	cancel_delayed_work
 	cancel_delayed_work_sync
 	cancel_work_sync
@@ -286,6 +289,8 @@
 	devmap_managed_key
 	dget_parent
 	disable_irq_nosync
+	disk_end_io_acct
+	disk_start_io_acct
 	dma_alloc_attrs
 	dma_free_attrs
 	dma_get_required_mask
@@ -425,6 +430,8 @@
 	jiffies
 	jiffies_to_msecs
 	jiffies_to_timespec64
+	jiffies_to_usecs
+	kblockd_mod_delayed_work_on
 	kern_path
 	kern_path_create
 	kernel_accept
@@ -479,6 +486,7 @@
 	memcpy
 	memcpy_fromio
 	memcpy_toio
+	memdup_user
 	memmove
 	memory_read_from_buffer
 	mempool_alloc
@@ -822,6 +830,7 @@
 	vm_munmap
 	vmalloc
 	vmalloc_base
+	vmalloc_node
 	vmalloc_to_page
 	vmemmap_base
 	vprintk
@@ -829,6 +838,7 @@
 	vsnprintf
 	vsprintf
 	vzalloc
+	vzalloc_node
 	wait_for_completion
 	wait_for_completion_interruptible
 	wait_for_completion_io_timeout
