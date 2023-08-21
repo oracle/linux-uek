@@ -3556,6 +3556,10 @@ static int mlx4_load_one(struct pci_dev *pdev, int pci_dev_data,
 	INIT_LIST_HEAD(&priv->ctx_list);
 	spin_lock_init(&priv->ctx_lock);
 
+	err = mlx4_adev_init(dev);
+	if (err)
+		return err;
+
 	ATOMIC_INIT_NOTIFIER_HEAD(&priv->event_nh);
 
 	mutex_init(&priv->port_mutex);
@@ -3582,10 +3586,11 @@ static int mlx4_load_one(struct pci_dev *pdev, int pci_dev_data,
 		err = mlx4_get_ownership(dev);
 		if (err) {
 			if (err < 0)
-				return err;
+				goto err_adev;
 			else {
 				mlx4_warn(dev, "Multiple PFs not yet supported - Skipping PF\n");
-				return -EINVAL;
+				err = -EINVAL;
+				goto err_adev;
 			}
 		}
 
@@ -3937,6 +3942,9 @@ err_sriov:
 		mlx4_free_ownership(dev);
 
 	kfree(dev_cap);
+
+err_adev:
+	mlx4_adev_cleanup(dev);
 	return err;
 }
 
@@ -4317,6 +4325,8 @@ static void mlx4_unload_one(struct pci_dev *pdev)
 
 	mlx4_slave_destroy_special_qp_cap(dev);
 	kfree(dev->dev_vfs);
+
+	mlx4_adev_cleanup(dev);
 
 	mlx4_clean_dev(dev);
 	priv->pci_dev_data = pci_dev_data;
@@ -4704,6 +4714,9 @@ static int __init mlx4_verify_params(void)
 static int __init mlx4_init(void)
 {
 	int ret;
+
+	WARN_ONCE(strcmp(MLX4_ADEV_NAME, KBUILD_MODNAME),
+		  "mlx4_core name not in sync with kernel module name");
 
 	if (mlx4_verify_params())
 		return -EINVAL;
