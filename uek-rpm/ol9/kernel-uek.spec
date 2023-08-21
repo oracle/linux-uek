@@ -1018,8 +1018,8 @@ BuildContainerKernel() {
     make %{?make_opts} mrproper
     cp configs/config-container .config
 
-    make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
-    make %{?make_opts} %{?container_cflags} %{?_smp_mflags} ARCH=$Arch %{?sparse_mflags} || exit 1
+    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
+    make %{?make_opts} %{?container_cflags} %{?_smp_mflags} ARCH=$Arch %{?_kernel_cc} %{?sparse_mflags} || exit 1
 
     # Install
     KernelVer=%{kversion}-%{release}
@@ -1087,7 +1087,7 @@ BuildKernel() {
     fi
 
     echo USING ARCH=$Arch
-    make %{?make_opts} ARCH=$Arch olddefconfig > /dev/null
+    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
        make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
@@ -1096,7 +1096,7 @@ BuildKernel() {
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
 %ifarch %{arm} aarch64
-    make %{?make_opts} ARCH=$Arch dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
+    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
     cp -r $RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer $RPM_BUILD_ROOT/lib/modules/$KernelVer/dtb
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
