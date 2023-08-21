@@ -33,6 +33,7 @@
 #ifndef MLX4_DEVICE_H
 #define MLX4_DEVICE_H
 
+#include <linux/auxiliary_bus.h>
 #include <linux/if_ether.h>
 #include <linux/pci.h>
 #include <linux/completion.h>
@@ -897,6 +898,12 @@ struct mlx4_dev {
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	spinlock_t              eq_accounting_lock;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
+};
+
+struct mlx4_adev {
+	struct auxiliary_device adev;
+	struct mlx4_dev *mdev;
+	int idx;
 };
 
 struct mlx4_clock_params {
