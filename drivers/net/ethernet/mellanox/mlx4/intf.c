@@ -64,11 +64,29 @@ static bool is_eth_supported(struct mlx4_dev *dev)
 	return false;
 }
 
+static bool is_ib_supported(struct mlx4_dev *dev)
+{
+#ifdef __STDC_VERSION__
+	for (int port = 1; port <= dev->caps.num_ports; port++)
+#else
+	int port;
+	for (port = 1; port <= dev->caps.num_ports; port++)
+#endif
+		if (dev->caps.port_type[port] == MLX4_PORT_TYPE_IB)
+			return true;
+
+	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_IBOE)
+		return true;
+
+	return false;
+}
+
 static const struct mlx4_adev_device {
 	const char *suffix;
 	bool (*is_supported)(struct mlx4_dev *dev);
 } mlx4_adev_devices[] = {
 	{ "eth", is_eth_supported },
+	{ "ib", is_ib_supported },
 };
 
 int mlx4_adev_init(struct mlx4_dev *dev)
