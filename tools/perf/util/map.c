@@ -16,6 +16,8 @@
 #include "thread.h"
 #include "vdso.h"
 
+bool include_sysv_lookup;
+
 static inline int is_android_lib(const char *filename)
 {
 	return strstarts(filename, "/data/app-lib/") ||
