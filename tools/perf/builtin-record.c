@@ -49,6 +49,7 @@
 #include "util/pmu.h"
 #include "util/pmus.h"
 #include "util/clockid.h"
+#include "util/map.h"
 #include "util/off_cpu.h"
 #include "util/bpf-filter.h"
 #include "asm/bug.h"
@@ -3417,6 +3418,8 @@ static struct option __record_options[] = {
 		     &record_parse_callchain_opt),
 	OPT_INCR('v', "verbose", &verbose,
 		    "be more verbose (show counter open errors, etc)"),
+	OPT_BOOLEAN('l', "sysv-lookup", &include_sysv_lookup,
+		    "do symbol lookup in SYSV memory"),
 	OPT_BOOLEAN('q', "quiet", &quiet, "don't print any warnings or messages"),
 	OPT_BOOLEAN('s', "stat", &record.opts.inherit_stat,
 		    "per thread counts"),
