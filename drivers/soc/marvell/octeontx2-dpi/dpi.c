@@ -469,7 +469,8 @@ static ssize_t dpi_device_config_show(struct device *dev,
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct dpipf *dpi = pci_get_drvdata(pdev);
-	int vf_idx;
+	u64 reg_val = 0;
+	int vf_idx, i;
 
 	for (vf_idx = 0; vf_idx < dpi->total_vfs; vf_idx++) {
 		struct dpipf_vf *dpivf = &dpi->vf[vf_idx];
@@ -484,6 +485,43 @@ static ssize_t dpi_device_config_show(struct device *dev,
 			dpivf->vf_config.sso_pf_func,
 			dpivf->vf_config.npa_pf_func);
 	}
+	for (i = 0; i < DPI_MAX_REQQ_INT; i++) {
+		reg_val = dpi_reg_read(dpi, DPI_REQQX_INT(i));
+		sprintf(buf + strlen(buf), "DPI_REQQ%d_INT: 0x%016llx\n", i, reg_val);
+		reg_val = dpi_reg_read(dpi, DPI_DMAX_REQBANK0(i));
+		sprintf(buf + strlen(buf), "DPI_DMA%d_REQBANK0: 0x%016llx\n", i, reg_val);
+		reg_val = dpi_reg_read(dpi, DPI_DMAX_REQBANK1(i));
+		sprintf(buf + strlen(buf), "DPI_DMA%d_REQBANK1: 0x%016llx\n", i, reg_val);
+		reg_val = dpi_reg_read(dpi, DPI_DMAX_ERR_RSP_STATUS(i));
+		sprintf(buf + strlen(buf), "DPI_DMA%d_ERR_RSP_STATUS: 0x%016llx\n", i, reg_val);
+	}
+	reg_val = dpi_reg_read(dpi, DPI_REQ_ERR_RSP);
+	sprintf(buf + strlen(buf), "DPI_REQ_ERR_RSP: 0x%016llx\n", reg_val);
+	reg_val = dpi_reg_read(dpi, DPI_PKT_ERR_RSP);
+	sprintf(buf + strlen(buf), "DPI_PKT_ERR_RSP: 0x%016llx\n", reg_val);
+	reg_val = dpi_reg_read(dpi, DPI_EBUS_PORTX_ERR(0));
+	sprintf(buf + strlen(buf), "DPI_EBUS_PORT0_ERR: 0x%016llx\n", reg_val);
+	reg_val = dpi_reg_read(dpi, DPI_EBUS_PORTX_ERR(1));
+	sprintf(buf + strlen(buf), "DPI_EBUS_PORT1_ERR: 0x%016llx\n", reg_val);
+	reg_val = dpi_reg_read(dpi, DPI_EBUS_PORTX_ERR_INFO(0));
+	sprintf(buf + strlen(buf), "DPI_EBUS_PORT0_ERR_INFO: 0x%016llx\n", reg_val);
+	reg_val = dpi_reg_read(dpi, DPI_EBUS_PORTX_ERR_INFO(1));
+	sprintf(buf + strlen(buf), "DPI_EBUS_PORT1_ERR_INFO: 0x%016llx\n", reg_val);
+	for (i = 0; i < DPI_EPFX_MAX_CNT; i++) {
+		reg_val = dpi_reg_read(dpi, DPI_EPFX_DMA_VF_LINTX(i, 0));
+		sprintf(buf + strlen(buf), "DPI_EPF%d_DMA_VF_LINT0: 0x%016llx\n", i, reg_val);
+		reg_val = dpi_reg_read(dpi, DPI_EPFX_PP_VF_LINTX(i, 0));
+		sprintf(buf + strlen(buf), "DPI_EPF%d_PP_VF_LINT0: 0x%016llx\n", i, reg_val);
+		reg_val = dpi_reg_read(dpi, DPI_EPFX_MISC_LINTX(i));
+		sprintf(buf + strlen(buf), "DPI_EPF%d_MISC_LINT: 0x%016llx\n", i, reg_val);
+		if (is_cn10k_dpi(dpi))
+			continue;
+		reg_val = dpi_reg_read(dpi, DPI_EPFX_DMA_VF_LINTX(i, 1));
+		sprintf(buf + strlen(buf), "DPI_EPF%d_DMA_VF_LINT1: 0x%016llx\n", i, reg_val);
+		reg_val = dpi_reg_read(dpi, DPI_EPFX_PP_VF_LINTX(i, 1));
+		sprintf(buf + strlen(buf), "DPI_EPF%d_PP_VF_LINT1: 0x%016llx\n", i, reg_val);
+	}
+
 	return strlen(buf);
 }
 
