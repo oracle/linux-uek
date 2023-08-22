@@ -890,6 +890,7 @@ config I2C_MULTI_INSTANTIATE
 
 config MLX_PLATFORM
 	tristate "Mellanox Technologies platform support"
+	depends on ACPI
 	depends on I2C
 	select REGMAP
 	help
