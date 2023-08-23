@@ -4408,7 +4408,9 @@ enum skb_ext_id {
 	SKB_EXT_SEC_PATH,
 #endif
 #if IS_ENABLED(CONFIG_NET_TC_SKB_EXT)
+#ifndef __GENKSYMS__
 	TC_SKB_EXT,
+#endif
 #endif
 #if IS_ENABLED(CONFIG_MPTCP)
 	SKB_EXT_MPTCP,
