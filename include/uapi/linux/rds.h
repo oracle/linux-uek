@@ -45,7 +45,6 @@
 #ifdef __KERNEL__
 #include <net/sock.h>
 #else
-#include <time.h>
 #include <limits.h>
 #endif
 
