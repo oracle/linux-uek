@@ -916,6 +916,9 @@ static void neigh_timer_handler(unsigned long arg)
 			next = now + NEIGH_VAR(neigh->parms, RETRANS_TIME);
 		}
 	} else {
+		if (!neigh->parms)
+			goto out;
+
 		/* NUD_PROBE|NUD_INCOMPLETE */
 		next = now + NEIGH_VAR(neigh->parms, RETRANS_TIME);
 	}

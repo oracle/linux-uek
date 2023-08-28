@@ -2019,6 +2019,16 @@ static void ib_mad_recv_done_handler(struct ib_mad_port_private *port_priv,
 	int ret = IB_MAD_RESULT_SUCCESS;
 
 	mad_list = (struct ib_mad_list_head *)(unsigned long)wc->wr_id;
+	if (unlikely(!mad_list->mad_queue)){
+		/* There are several bugs are related with "mad_queue NULL".
+		 * Before the bugs occur, there are some hardware errors. And
+		 * the mad packets are cancelled and mad queues are cleaned.
+		 * So this will not make data missing. This can avoid "ACCESS
+		 * NULL" error.*/
+		WARN_ONCE(1,
+			"MAD queue cleanup detected while handling incoming MAD packet.");
+		return;
+	}
 	qp_info = mad_list->mad_queue->qp_info;
 	dequeue_mad(mad_list);
 
