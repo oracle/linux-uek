@@ -2020,10 +2020,9 @@ __le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
 		/* for checksum of struct ext4_group_desc do the rest...*/
 		if ((sbi->s_es->s_feature_incompat &
 		     cpu_to_le32(EXT4_FEATURE_INCOMPAT_64BIT)) &&
-		    offset < le16_to_cpu(sbi->s_es->s_desc_size))
+		     offset < sbi->s_desc_size)
 			crc = crc16(crc, (__u8 *)gdp + offset,
-				    le16_to_cpu(sbi->s_es->s_desc_size) -
-					offset);
+					sbi->s_desc_size - offset);
 	}
 
 	return cpu_to_le16(crc);
