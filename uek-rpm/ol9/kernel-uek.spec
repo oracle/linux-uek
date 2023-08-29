@@ -627,7 +627,7 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5.el9\
+Requires: linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5.el9\
 Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
