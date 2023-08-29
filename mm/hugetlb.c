@@ -1377,7 +1377,12 @@ static void __update_and_free_page(struct hstate *h, struct page *page)
 	if (hstate_is_gigantic(h) && !gigantic_page_runtime_supported())
 		return;
 
-	if (hugetlb_vmemmap_restore(h, page)) {
+	/*
+	 * If page is not vmemmap optimized (!clear_dtor), then the page
+	 * is no longer identified as a hugetlb page.  hugetlb_vmemmap_restore
+	 * can only be passed hugetlb pages and will BUG otherwise.
+	 */
+	if (clear_dtor && hugetlb_vmemmap_restore(h, page)) {
 		spin_lock_irq(&hugetlb_lock);
 		/*
 		 * If we cannot allocate vmemmap pages, just refuse to free the
@@ -1576,9 +1581,9 @@ static void __prep_account_new_huge_page(struct hstate *h, int nid)
 
 static void __prep_new_huge_page(struct hstate *h, struct page *page)
 {
+	set_compound_page_dtor(page, HUGETLB_PAGE_DTOR);
 	hugetlb_vmemmap_optimize(h, page);
 	INIT_LIST_HEAD(&page->lru);
-	set_compound_page_dtor(page, HUGETLB_PAGE_DTOR);
 	hugetlb_set_page_subpool(page, NULL);
 	set_hugetlb_cgroup(page, NULL);
 }
@@ -3068,13 +3073,21 @@ static int demote_free_huge_page(struct hstate *h, struct page *page)
 	remove_hugetlb_page_for_demote(h, page, false);
 	spin_unlock_irq(&hugetlb_lock);
 
-	rc = hugetlb_vmemmap_restore(h, page);
-	if (rc) {
-		/* Allocation of vmemmmap failed, we can not demote page */
-		spin_lock_irq(&hugetlb_lock);
-		set_page_refcounted(page);
-		add_hugetlb_page(h, page, false);
-		return rc;
+	/*
+	 * If vmemmap already existed for page, the remove routine above would
+	 * have cleared the hugetlb dtor.  Hence the page is technically
+	 * no longer a hugetlb hugetlb.  hugetlb_vmemmap_restore can only be
+	 * passed hugetlb pages and will BUG otherwise.
+	 */
+	if (PageHuge(page)) {
+		rc = hugetlb_vmemmap_restore(h, page);
+		if (rc) {
+			/* Allocation of vmemmmap failed, we can not demote page */
+			spin_lock_irq(&hugetlb_lock);
+			set_page_refcounted(page);
+			add_hugetlb_page(h, page, false);
+			return rc;
+		}
 	}
 
 	/*
