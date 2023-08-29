@@ -1382,9 +1382,10 @@ static int pci_scan_bridge_extend(struct pci_bus *bus, struct pci_dev *dev,
 		 * To workaround this issue perform a read of primary bus
 		 * register after the write which allows write to go
 		 * through only for this bridge.
+		 * Some other devices like PLX switch show similar issue
+		 * at lower speeds so add this read for all devices.
 		 */
-		if (dev->vendor == PCI_VENDOR_ID_CAVIUM && dev->device == 0xa02d)
-			pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
+		pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
 
 		if (!is_cardbus) {
 			child->bridge_ctl = bctl;
