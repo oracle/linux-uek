@@ -990,6 +990,21 @@ int iocb_bio_iopoll(struct kiocb *kiocb, struct io_comp_batch *iob,
 }
 EXPORT_SYMBOL_GPL(iocb_bio_iopoll);
 
+/*
+ * Get the time based upon the available granularity for io accounting
+ * If the resolution mode is set to precise (2) i.e
+ * (/sys/block/<device>/queue/iostats = 2), then this will return time
+ * in nanosecond else this will return time in jiffies
+ */
+unsigned long blk_get_iostat_ticks(struct request_queue *q)
+{
+	if (blk_queue_precise_io_stat(q))
+		return (ktime_get_ns() >> IOSTAT_PRECISE_SHIFT);
+	else
+		return jiffies;
+}
+EXPORT_SYMBOL_GPL(blk_get_iostat_ticks);
+
 void update_io_ticks(struct block_device *part, unsigned long now, bool end)
 {
 	unsigned long stamp;
@@ -1026,22 +1041,32 @@ EXPORT_SYMBOL(bdev_start_io_acct);
  */
 unsigned long bio_start_io_acct(struct bio *bio)
 {
-	return bdev_start_io_acct(bio->bi_bdev, bio_op(bio), jiffies);
+	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
+
+	return bdev_start_io_acct(bio->bi_bdev, bio_op(bio),
+				blk_get_iostat_ticks(q));
+
 }
 EXPORT_SYMBOL_GPL(bio_start_io_acct);
 
 void bdev_end_io_acct(struct block_device *bdev, enum req_op op,
 		      unsigned int sectors, unsigned long start_time)
 {
+	struct request_queue *q = bdev_get_queue(bdev);
+	unsigned long now = blk_get_iostat_ticks(q);
 	const int sgrp = op_stat_group(op);
-	unsigned long now = READ_ONCE(jiffies);
 	unsigned long duration = now - start_time;
+	unsigned long duration_ns;
+
+	duration_ns = blk_queue_precise_io_stat(q) ?
+			(duration) << IOSTAT_PRECISE_SHIFT :
+			jiffies_to_nsecs(duration);
 
 	part_stat_lock();
 	update_io_ticks(bdev, now, true);
 	part_stat_inc(bdev, ios[sgrp]);
 	part_stat_add(bdev, sectors[sgrp], sectors);
-	part_stat_add(bdev, nsecs[sgrp], jiffies_to_nsecs(duration));
+	part_stat_add(bdev, nsecs[sgrp], duration_ns);
 	part_stat_local_dec(bdev, in_flight[op_is_write(op)]);
 	part_stat_unlock();
 }
@@ -1258,6 +1283,9 @@ int __init blk_dev_init(void)
 	blk_requestq_cachep = KMEM_CACHE(request_queue, SLAB_PANIC);
 
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
+
+	if (static_branch_unlikely(&on_exadata))
+		blk_set_default_global_precise_iostats(true);
 
 	return 0;
 }
