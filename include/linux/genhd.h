@@ -279,6 +279,7 @@ struct gendisk *__blk_alloc_disk(int node, struct lock_class_key *lkclass);
 	__blk_alloc_disk(node_id, &__key);				\
 })
 void blk_cleanup_disk(struct gendisk *disk);
+void reset_disk_time_stamp(struct gendisk *disk);
 
 int __register_blkdev(unsigned int major, const char *name,
 		void (*probe)(dev_t devt));

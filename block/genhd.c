@@ -97,6 +97,19 @@ bool set_capacity_and_notify(struct gendisk *disk, sector_t size)
 }
 EXPORT_SYMBOL_GPL(set_capacity_and_notify);
 
+void reset_disk_time_stamp(struct gendisk *disk)
+{
+        struct block_device *part;
+	unsigned long idx;
+
+	rcu_read_lock();
+	xa_for_each(&disk->part_tbl, idx, part) {
+                 part->bd_stamp = blk_get_iostat_ticks(disk->queue);
+        }
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(reset_disk_time_stamp);
+
 /*
  * Format the device name of the indicated block device into the supplied buffer
  * and return a pointer to that same buffer for convenience.
@@ -910,8 +923,13 @@ ssize_t part_stat_show(struct device *dev,
 	struct request_queue *q = bdev->bd_disk->queue;
 	struct disk_stats stat;
 	unsigned int inflight;
+	unsigned long stat_ioticks;
 
 	part_stat_read_all(bdev, &stat);
+	stat_ioticks = (blk_queue_precise_io_stat(q) ?
+			((stat.io_ticks << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC) :
+			jiffies_to_msecs(stat.io_ticks));
+
 	if (queue_is_mq(q))
 		inflight = blk_mq_in_flight(q, bdev);
 	else
@@ -933,7 +951,7 @@ ssize_t part_stat_show(struct device *dev,
 		(unsigned long long)stat.sectors[STAT_WRITE],
 		(unsigned int)div_u64(stat.nsecs[STAT_WRITE], NSEC_PER_MSEC),
 		inflight,
-		jiffies_to_msecs(stat.io_ticks),
+		(unsigned int)stat_ioticks,
 		(unsigned int)div_u64(stat.nsecs[STAT_READ] +
 				      stat.nsecs[STAT_WRITE] +
 				      stat.nsecs[STAT_DISCARD] +
@@ -1159,6 +1177,8 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	unsigned int inflight;
 	struct disk_stats stat;
 	unsigned long idx;
+	struct request_queue *q;
+	unsigned long stat_ioticks;
 
 	/*
 	if (&disk_to_dev(gp)->kobj.entry == block_class.devices.next)
@@ -1172,7 +1192,11 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	xa_for_each(&gp->part_tbl, idx, hd) {
 		if (bdev_is_partition(hd) && !bdev_nr_sectors(hd))
 			continue;
+		q = bdev_get_queue(hd);
 		part_stat_read_all(hd, &stat);
+		stat_ioticks = (blk_queue_precise_io_stat(q) ?
+				((stat.io_ticks << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC) :
+				jiffies_to_msecs(stat.io_ticks));
 		if (queue_is_mq(gp->queue))
 			inflight = blk_mq_in_flight(gp->queue, hd);
 		else
@@ -1197,7 +1221,7 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 			   (unsigned int)div_u64(stat.nsecs[STAT_WRITE],
 							NSEC_PER_MSEC),
 			   inflight,
-			   jiffies_to_msecs(stat.io_ticks),
+			   (unsigned int)stat_ioticks,
 			   (unsigned int)div_u64(stat.nsecs[STAT_READ] +
 						 stat.nsecs[STAT_WRITE] +
 						 stat.nsecs[STAT_DISCARD] +

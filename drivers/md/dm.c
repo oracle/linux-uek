@@ -478,8 +478,12 @@ u64 dm_start_time_ns_from_clone(struct bio *bio)
 {
 	struct dm_target_io *tio = container_of(bio, struct dm_target_io, clone);
 	struct dm_io *io = tio->io;
+	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
+	u64 start_time_ns = (blk_queue_precise_io_stat(q) ?
+				io->start_time << IOSTAT_PRECISE_SHIFT :
+				jiffies_to_nsecs(io->start_time));
 
-	return jiffies_to_nsecs(io->start_time);
+	return start_time_ns;
 }
 EXPORT_SYMBOL_GPL(dm_start_time_ns_from_clone);
 
@@ -493,6 +497,7 @@ static void dm_io_acct(bool end, struct mapped_device *md, struct bio *bio,
 {
 	bool is_flush_with_data;
 	unsigned int bi_size;
+	unsigned long start_time_jif;
 
 	/* If REQ_PREFLUSH set save any payload but do not account it */
 	is_flush_with_data = bio_is_flush_with_data(bio);
@@ -506,10 +511,14 @@ static void dm_io_acct(bool end, struct mapped_device *md, struct bio *bio,
 	else
 		bio_end_io_acct(bio, start_time);
 
+	start_time_jif = blk_queue_precise_io_stat(md->queue) ?
+		((start_time) << (IOSTAT_PRECISE_SHIFT / NSEC_PER_MSEC)) :
+			 start_time;
+
 	if (unlikely(dm_stats_used(&md->stats)))
 		dm_stats_account_io(&md->stats, bio_data_dir(bio),
 				    bio->bi_iter.bi_sector, bio_sectors(bio),
-				    end, start_time, stats_aux);
+				    end, start_time_jif, stats_aux);
 
 	/* Restore bio's payload so it does get accounted upon requeue */
 	if (is_flush_with_data)
@@ -550,7 +559,7 @@ static struct dm_io *alloc_io(struct mapped_device *md, struct bio *bio)
 	io->md = md;
 	spin_lock_init(&io->endio_lock);
 
-	io->start_time = jiffies;
+	io->start_time = blk_get_iostat_ticks(md->queue);
 
 	dm_stats_record_start(&md->stats, &io->stats_aux);
 

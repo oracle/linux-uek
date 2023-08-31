@@ -555,6 +555,14 @@ struct request_queue *blk_alloc_queue(int node_id)
 
 	q->node = node_id;
 
+	blk_queue_flag_set(QUEUE_FLAG_IO_STAT, q);
+	if (blk_get_default_global_precise_iostats()) {
+		blk_queue_flag_set(QUEUE_FLAG_PRECISE_IO_STAT, q);
+	}
+	else {
+		blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+	}
+
 	atomic_set(&q->nr_active_requests_shared_sbitmap, 0);
 
 	timer_setup(&q->timeout, blk_rq_timed_out_timer, 0);
@@ -1226,6 +1234,21 @@ unsigned int blk_rq_err_bytes(const struct request *rq)
 }
 EXPORT_SYMBOL_GPL(blk_rq_err_bytes);
 
+/*
+ * Get the time based upon the available granularity for io accounting
+ * If the resolution mode is set to precise (2) i.e
+ * (/sys/block/<device>/queue/iostats = 2), then this will return time
+ * in nanoseconds else this will return time in jiffies
+ */
+unsigned long blk_get_iostat_ticks(struct request_queue *q)
+{
+	if (blk_queue_precise_io_stat(q))
+		return (ktime_get_ns() >> IOSTAT_PRECISE_SHIFT);
+	else
+		return jiffies;
+}
+EXPORT_SYMBOL_GPL(blk_get_iostat_ticks);
+
 static void update_io_ticks(struct block_device *part, unsigned long now,
 		bool end)
 {
@@ -1265,7 +1288,7 @@ void blk_account_io_done(struct request *req, u64 now)
 		const int sgrp = op_stat_group(req_op(req));
 
 		part_stat_lock();
-		update_io_ticks(req->part, jiffies, true);
+		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), true);
 		part_stat_inc(req->part, ios[sgrp]);
 		part_stat_add(req->part, nsecs[sgrp], now - req->start_time_ns);
 		part_stat_unlock();
@@ -1284,7 +1307,7 @@ void blk_account_io_start(struct request *rq)
 		rq->part = rq->rq_disk->part0;
 
 	part_stat_lock();
-	update_io_ticks(rq->part, jiffies, false);
+	update_io_ticks(rq->part, blk_get_iostat_ticks(rq->q), false);
 	part_stat_unlock();
 }
 
@@ -1324,28 +1347,38 @@ EXPORT_SYMBOL_GPL(bio_start_io_acct_time);
  */
 unsigned long bio_start_io_acct(struct bio *bio)
 {
+	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
+
 	return __part_start_io_acct(bio->bi_bdev, bio_sectors(bio),
-				    bio_op(bio), jiffies);
+				    bio_op(bio),
+				    blk_get_iostat_ticks(q));
 }
 EXPORT_SYMBOL_GPL(bio_start_io_acct);
 
 unsigned long disk_start_io_acct(struct gendisk *disk, unsigned int sectors,
 				 unsigned int op)
 {
-	return __part_start_io_acct(disk->part0, sectors, op, jiffies);
+	return __part_start_io_acct(disk->part0, sectors, op,
+			blk_get_iostat_ticks(disk->queue));
 }
 EXPORT_SYMBOL(disk_start_io_acct);
 
 static void __part_end_io_acct(struct block_device *part, unsigned int op,
 			       unsigned long start_time)
 {
+	struct request_queue *q = bdev_get_queue(part);
+	unsigned long now = blk_get_iostat_ticks(q);
 	const int sgrp = op_stat_group(op);
-	unsigned long now = READ_ONCE(jiffies);
-	unsigned long duration = now - start_time;
+	unsigned long  duration = now - start_time;
+	unsigned long duration_ns;
+
+	duration_ns = blk_queue_precise_io_stat(q) ?
+		(duration) << IOSTAT_PRECISE_SHIFT :
+		jiffies_to_nsecs(duration);
 
 	part_stat_lock();
 	update_io_ticks(part, now, true);
-	part_stat_add(part, nsecs[sgrp], jiffies_to_nsecs(duration));
+	part_stat_add(part, nsecs[sgrp], duration_ns);
 	part_stat_local_dec(part, in_flight[op_is_write(op)]);
 	part_stat_unlock();
 }
@@ -1792,6 +1825,9 @@ int __init blk_dev_init(void)
 			sizeof(struct request_queue), 0, SLAB_PANIC, NULL);
 
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
+
+	if (static_branch_unlikely(&on_exadata))
+		blk_set_default_global_precise_iostats(true);
 
 	return 0;
 }

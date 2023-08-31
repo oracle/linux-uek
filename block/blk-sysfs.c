@@ -301,7 +301,6 @@ queue_##name##_store(struct request_queue *q, const char *page, size_t count) \
 
 QUEUE_SYSFS_BIT_FNS(nonrot, NONROT, 1);
 QUEUE_SYSFS_BIT_FNS(random, ADD_RANDOM, 0);
-QUEUE_SYSFS_BIT_FNS(iostats, IO_STAT, 0);
 QUEUE_SYSFS_BIT_FNS(stable_writes, STABLE_WRITES, 0);
 #undef QUEUE_SYSFS_BIT_FNS
 
@@ -353,6 +352,73 @@ static ssize_t queue_nomerges_store(struct request_queue *q, const char *page,
 		blk_queue_flag_set(QUEUE_FLAG_NOMERGES, q);
 	else if (nm)
 		blk_queue_flag_set(QUEUE_FLAG_NOXMERGES, q);
+
+	return ret;
+}
+
+static ssize_t queue_iostats_show(struct request_queue *q, char *page)
+{
+	int val;
+
+	if (blk_queue_io_stat(q)) {
+		if (blk_queue_precise_io_stat(q))
+			val = 2;
+		else
+			val = 1;
+	}
+	else
+		val = 0;
+
+	return queue_var_show(val, page);
+}
+
+static ssize_t queue_iostats_store(struct request_queue *q, const char *page,
+                                  size_t count)
+{
+	unsigned long val;
+	ssize_t ret = -EINVAL;
+
+	ret = queue_var_store(&val, page, count);
+
+	if (ret < 0)
+		return ret;
+
+	if (val == 2) {
+		if (test_bit(QUEUE_FLAG_PRECISE_IO_STAT, &(q)->queue_flags))
+			return ret;
+		blk_queue_flag_set(QUEUE_FLAG_IO_STAT, q);
+		blk_queue_flag_set(QUEUE_FLAG_PRECISE_IO_STAT, q);
+
+		if (q->disk)
+			reset_disk_time_stamp(q->disk);
+		else
+			return -EINVAL;
+	}
+	else if (val == 1) {
+		if (test_bit(QUEUE_FLAG_PRECISE_IO_STAT, &(q)->queue_flags))
+			blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+		else if (test_bit(QUEUE_FLAG_IO_STAT, &(q)->queue_flags))
+			return ret;
+		else
+			blk_queue_flag_set(QUEUE_FLAG_IO_STAT, q);
+
+		if (q->disk)
+			reset_disk_time_stamp(q->disk);
+		else
+			return -EINVAL;
+	}
+	else if (val == 0) {
+		if (!test_bit(QUEUE_FLAG_IO_STAT, &(q)->queue_flags))
+			return ret;
+
+		blk_queue_flag_clear(QUEUE_FLAG_IO_STAT, q);
+		blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+
+		if (q->disk)
+			reset_disk_time_stamp(q->disk);
+		else
+			return -EINVAL;
+	}
 
 	return ret;
 }
