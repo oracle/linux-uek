@@ -987,7 +987,7 @@ static inline void blk_account_io_done(struct request *req, u64 now)
 		const int sgrp = op_stat_group(req_op(req));
 
 		part_stat_lock();
-		update_io_ticks(req->part, jiffies, true);
+		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), true);
 		part_stat_inc(req->part, ios[sgrp]);
 		part_stat_add(req->part, nsecs[sgrp], now - req->start_time_ns);
 		part_stat_local_dec(req->part,
@@ -1013,7 +1013,7 @@ static inline void blk_account_io_start(struct request *req)
 			req->part = req->q->disk->part0;
 
 		part_stat_lock();
-		update_io_ticks(req->part, jiffies, false);
+		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), false);
 		part_stat_local_inc(req->part,
 				    in_flight[op_is_write(req_op(req))]);
 		part_stat_unlock();
@@ -4147,13 +4147,20 @@ struct request_queue *blk_mq_alloc_queue(struct blk_mq_tag_set *set,
 
 	if (!lim)
 		lim = &default_lim;
+
 	lim->features |= BLK_FEAT_IO_STAT | BLK_FEAT_NOWAIT;
+
+
 	if (blk_mq_can_poll(set))
 		lim->features |= BLK_FEAT_POLL;
 
 	q = blk_alloc_queue(lim, set->numa_node);
 	if (IS_ERR(q))
 		return q;
+	if (blk_get_default_global_precise_iostats())
+		blk_queue_flag_set(QUEUE_FLAG_PRECISE_IO_STAT, q);
+	else
+		blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
 	q->queuedata = queuedata;
 	ret = blk_mq_init_allocated_queue(set, q);
 	if (ret) {
