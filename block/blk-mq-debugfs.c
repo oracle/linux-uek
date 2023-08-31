@@ -106,6 +106,7 @@ static const char *const blk_queue_flag_name[] = {
 	QUEUE_FLAG_NAME(NOWAIT),
 	QUEUE_FLAG_NAME(SQ_SCHED),
 	QUEUE_FLAG_NAME(SKIP_TAGSET_QUIESCE),
+	QUEUE_FLAG_NAME(PRECISE_IO_STAT),
 };
 #undef QUEUE_FLAG_NAME
 
