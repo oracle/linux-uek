@@ -484,7 +484,15 @@ out:
 
 u64 dm_start_time_ns_from_clone(struct bio *bio)
 {
-	return jiffies_to_nsecs(clone_to_tio(bio)->io->start_time);
+	struct dm_target_io *tio = container_of(bio, struct dm_target_io, clone);
+	struct dm_io *io = tio->io;
+	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
+
+	u64 start_time_ns = (blk_queue_precise_io_stat(q) ?
+				io->start_time << IOSTAT_PRECISE_SHIFT :
+				jiffies_to_nsecs(io->start_time));
+
+	return start_time_ns;
 }
 EXPORT_SYMBOL_GPL(dm_start_time_ns_from_clone);
 
@@ -509,6 +517,8 @@ static inline unsigned int dm_io_sectors(struct dm_io *io, struct bio *bio)
 static void dm_io_acct(struct dm_io *io, bool end)
 {
 	struct bio *bio = io->orig_bio;
+	struct mapped_device *md = io->md;
+	unsigned long start_time_jif;
 
 	if (dm_io_flagged(io, DM_IO_BLK_STAT)) {
 		if (!end)
@@ -519,6 +529,10 @@ static void dm_io_acct(struct dm_io *io, bool end)
 					 dm_io_sectors(io, bio),
 					 io->start_time);
 	}
+
+	start_time_jif = blk_queue_precise_io_stat(md->queue) ?
+				(((io->start_time << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC)) :
+				io->start_time;
 
 	if (static_branch_unlikely(&stats_enabled) &&
 	    unlikely(dm_stats_used(&io->md->stats))) {
@@ -531,7 +545,7 @@ static void dm_io_acct(struct dm_io *io, bool end)
 
 		dm_stats_account_io(&io->md->stats, bio_data_dir(bio),
 				    sector, dm_io_sectors(io, bio),
-				    end, io->start_time, &io->stats_aux);
+				    end, start_time_jif, &io->stats_aux);
 	}
 }
 
@@ -595,7 +609,7 @@ static struct dm_io *alloc_io(struct mapped_device *md, struct bio *bio, gfp_t g
 	io->orig_bio = bio;
 	io->md = md;
 	spin_lock_init(&io->lock);
-	io->start_time = jiffies;
+	io->start_time = blk_get_iostat_ticks(md->queue);
 	io->flags = 0;
 	if (blk_queue_io_stat(md->queue))
 		dm_io_set_flag(io, DM_IO_BLK_STAT);

@@ -97,6 +97,15 @@ static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, 
 {
 	/* change anything here, fixup header below! */
 	unsigned int s = req->rq_state;
+	unsigned long start_time;
+	unsigned long start_msecs;
+	struct request_queue *q = req->device->rq_queue;
+
+	start_msecs = ((req->start_jif << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC);
+
+	start_time = (blk_queue_precise_io_stat(q) ?
+			msecs_to_jiffies(start_msecs) :
+			req->start_jif);
 
 #define RQ_HDR_1 "epoch\tsector\tsize\trw"
 	seq_printf(m, "0x%x\t%llu\t%u\t%s",
@@ -105,7 +114,7 @@ static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, 
 		(s & RQ_WRITE) ? "W" : "R");
 
 #define RQ_HDR_2 "\tstart\tin AL\tsubmit"
-	seq_printf(m, "\t%d", jiffies_to_msecs(now - req->start_jif));
+	seq_printf(m, "\t%d", jiffies_to_msecs(now - start_time));
 	seq_print_age_or_dash(m, s & RQ_IN_ACT_LOG, now - req->in_actlog_jif);
 	seq_print_age_or_dash(m, s & RQ_LOCAL_PENDING, now - req->pre_submit_jif);
 
@@ -157,6 +166,7 @@ static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *r
 {
 	struct drbd_device *device;
 	unsigned int i;
+	unsigned long start_msecs;
 
 	seq_puts(m, "minor\tvnr\tage\t#waiting\n");
 	rcu_read_lock();
@@ -170,8 +180,12 @@ static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *r
 				struct drbd_request, req_pending_master_completion);
 			/* if the oldest request does not wait for the activity log
 			 * it is not interesting for us here */
-			if (req && !(req->rq_state & RQ_IN_ACT_LOG))
-				jif = req->start_jif;
+			if (req && !(req->rq_state & RQ_IN_ACT_LOG)) {
+				start_msecs = ((req->start_jif << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC);
+				jif = (blk_queue_precise_io_stat(device->rq_queue) ?
+						msecs_to_jiffies(start_msecs) :
+						req->start_jif);
+			}
 			else
 				req = NULL;
 			spin_unlock_irq(&device->resource->req_lock);
