@@ -994,7 +994,7 @@ static inline void blk_account_io_done(struct request *req, u64 now)
 		const int sgrp = op_stat_group(req_op(req));
 
 		part_stat_lock();
-		update_io_ticks(req->part, jiffies, true);
+		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), true);
 		part_stat_inc(req->part, ios[sgrp]);
 		part_stat_add(req->part, nsecs[sgrp], now - req->start_time_ns);
 		part_stat_unlock();
@@ -1018,7 +1018,7 @@ static inline void blk_account_io_start(struct request *req)
 			req->part = req->q->disk->part0;
 
 		part_stat_lock();
-		update_io_ticks(req->part, jiffies, false);
+		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), false);
 		part_stat_unlock();
 	}
 }
