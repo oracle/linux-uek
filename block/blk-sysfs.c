@@ -246,7 +246,6 @@ static ssize_t queue_##_name##_store(struct gendisk *disk,		\
 
 QUEUE_SYSFS_FEATURE(rotational, BLK_FEAT_ROTATIONAL)
 QUEUE_SYSFS_FEATURE(add_random, BLK_FEAT_ADD_RANDOM)
-QUEUE_SYSFS_FEATURE(iostats, BLK_FEAT_IO_STAT)
 QUEUE_SYSFS_FEATURE(stable_writes, BLK_FEAT_STABLE_WRITES);
 
 #define QUEUE_SYSFS_FEATURE_SHOW(_name, _feature)			\
@@ -293,6 +292,76 @@ static ssize_t queue_nomerges_store(struct gendisk *disk, const char *page,
 		blk_queue_flag_set(QUEUE_FLAG_NOMERGES, disk->queue);
 	else if (nm)
 		blk_queue_flag_set(QUEUE_FLAG_NOXMERGES, disk->queue);
+
+	return ret;
+}
+
+static ssize_t queue_iostats_show(struct gendisk *disk, char *page)
+{
+	int val;
+
+	if (blk_queue_io_stat(disk->queue)) {
+		if (blk_queue_precise_io_stat(disk->queue))
+			val = 2;
+		else
+			val = 1;
+	}
+	else {
+		val = 0;
+	}
+
+	return queue_var_show(val, page);
+}
+
+static ssize_t queue_iostats_store(struct gendisk *disk, const char *page,
+					size_t count)
+{
+	unsigned long val;
+	ssize_t ret = -EINVAL;
+	struct request_queue *q = disk->queue;
+
+	ret = queue_var_store(&val, page, count);
+
+	if (ret < 0)
+		return ret;
+
+	if (val == 2) {
+		if (blk_queue_precise_io_stat(q))
+			return ret;
+		if(!blk_queue_io_stat(q)) {
+			q->limits.features |= BLK_FEAT_IO_STAT;
+		}
+		blk_queue_flag_set(QUEUE_FLAG_PRECISE_IO_STAT, q);
+
+		if (q->disk)
+			reset_disk_time_stamp(q->disk);
+		else
+			return -EINVAL;
+	} else if (val == 1) {
+		if (blk_queue_precise_io_stat(q))
+			blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+		else if (blk_queue_io_stat(q))
+			return ret;
+		else
+			q->limits.features |= BLK_FEAT_IO_STAT;
+
+		if (q->disk)
+                       reset_disk_time_stamp(q->disk);
+		else
+			return -EINVAL;
+	} else if (val == 0) {
+		if (!blk_queue_io_stat(q))
+			return ret;
+
+		q->limits.features |= ~BLK_FEAT_IO_STAT;
+		if (blk_queue_precise_io_stat(q))
+			blk_queue_flag_clear(QUEUE_FLAG_PRECISE_IO_STAT, q);
+
+		if (q->disk)
+			reset_disk_time_stamp(q->disk);
+		else
+			return -EINVAL;
+	}
 
 	return ret;
 }
