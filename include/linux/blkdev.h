@@ -45,6 +45,9 @@ extern const struct device_type disk_type;
 extern const struct device_type part_type;
 extern const struct class block_class;
 
+#define IOSTAT_PRECISE_SHIFT 13
+static bool default_global_precise_iostats;
+
 /*
  * Maximum number of blkcg policies allowed to be registered concurrently.
  * Defined here to simplify include dependency.
@@ -550,6 +553,7 @@ struct request_queue {
 #define QUEUE_FLAG_NOWAIT       29	/* device supports NOWAIT */
 #define QUEUE_FLAG_SQ_SCHED     30	/* single queue style io dispatch */
 #define QUEUE_FLAG_SKIP_TAGSET_QUIESCE	31 /* quiesce_tagset skip the queue*/
+#define QUEUE_FLAG_PRECISE_IO_STAT 32   /* To enable precise io accounting */
 
 #define QUEUE_FLAG_MQ_DEFAULT	((1UL << QUEUE_FLAG_IO_STAT) |		\
 				 (1UL << QUEUE_FLAG_SAME_COMP) |	\
@@ -558,6 +562,7 @@ struct request_queue {
 void blk_queue_flag_set(unsigned int flag, struct request_queue *q);
 void blk_queue_flag_clear(unsigned int flag, struct request_queue *q);
 bool blk_queue_flag_test_and_set(unsigned int flag, struct request_queue *q);
+unsigned long blk_get_iostat_ticks(struct request_queue *q);
 
 #define blk_queue_stopped(q)	test_bit(QUEUE_FLAG_STOPPED, &(q)->queue_flags)
 #define blk_queue_dying(q)	test_bit(QUEUE_FLAG_DYING, &(q)->queue_flags)
@@ -569,6 +574,8 @@ bool blk_queue_flag_test_and_set(unsigned int flag, struct request_queue *q);
 #define blk_queue_stable_writes(q) \
 	test_bit(QUEUE_FLAG_STABLE_WRITES, &(q)->queue_flags)
 #define blk_queue_io_stat(q)	test_bit(QUEUE_FLAG_IO_STAT, &(q)->queue_flags)
+#define blk_queue_precise_io_stat(q)   \
+	test_bit(QUEUE_FLAG_PRECISE_IO_STAT, &(q)->queue_flags)
 #define blk_queue_add_random(q)	test_bit(QUEUE_FLAG_ADD_RANDOM, &(q)->queue_flags)
 #define blk_queue_zone_resetall(q)	\
 	test_bit(QUEUE_FLAG_ZONE_RESETALL, &(q)->queue_flags)
@@ -788,6 +795,7 @@ int bdev_disk_changed(struct gendisk *disk, bool invalidate);
 void put_disk(struct gendisk *disk);
 struct gendisk *__blk_alloc_disk(struct queue_limits *lim, int node,
 		struct lock_class_key *lkclass);
+void reset_disk_time_stamp(struct gendisk *disk);
 
 /**
  * blk_alloc_disk - allocate a gendisk structure
@@ -1458,6 +1466,16 @@ extern int blkdev_compat_ptr_ioctl(struct block_device *, blk_mode_t,
 #else
 #define blkdev_compat_ptr_ioctl NULL
 #endif
+
+static inline bool blk_get_default_global_precise_iostats(void)
+{
+	return default_global_precise_iostats;
+}
+
+static inline void blk_set_default_global_precise_iostats(bool val)
+{
+	default_global_precise_iostats = val;
+}
 
 static inline void blk_wake_io_task(struct task_struct *waiter)
 {
