@@ -97,6 +97,19 @@ bool set_capacity_and_notify(struct gendisk *disk, sector_t size)
 }
 EXPORT_SYMBOL_GPL(set_capacity_and_notify);
 
+void reset_disk_time_stamp(struct gendisk *disk)
+{
+	struct block_device *part;
+	unsigned long idx;
+
+	rcu_read_lock();
+	xa_for_each(&disk->part_tbl, idx, part) {
+		part->bd_stamp = blk_get_iostat_ticks(disk->queue);
+	}
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(reset_disk_time_stamp);
+
 static void part_stat_read_all(struct block_device *part,
 		struct disk_stats *stat)
 {
@@ -976,16 +989,23 @@ ssize_t part_stat_show(struct device *dev,
 		       struct device_attribute *attr, char *buf)
 {
 	struct block_device *bdev = dev_to_bdev(dev);
+	struct request_queue *q = bdev_get_queue(bdev);
 	struct disk_stats stat;
 	unsigned int inflight;
+	unsigned long stat_ioticks;
 
 	inflight = part_in_flight(bdev);
 	if (inflight) {
 		part_stat_lock();
-		update_io_ticks(bdev, jiffies, true);
+		update_io_ticks(bdev, blk_get_iostat_ticks(q), true);
 		part_stat_unlock();
 	}
 	part_stat_read_all(bdev, &stat);
+
+	stat_ioticks = (blk_queue_precise_io_stat(q) ?
+			((stat.io_ticks << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC) :
+			jiffies_to_msecs(stat.io_ticks));
+
 	return sysfs_emit(buf,
 		"%8lu %8lu %8llu %8u "
 		"%8lu %8lu %8llu %8u "
@@ -1002,7 +1022,7 @@ ssize_t part_stat_show(struct device *dev,
 		(unsigned long long)stat.sectors[STAT_WRITE],
 		(unsigned int)div_u64(stat.nsecs[STAT_WRITE], NSEC_PER_MSEC),
 		inflight,
-		jiffies_to_msecs(stat.io_ticks),
+		(unsigned int)stat_ioticks,
 		(unsigned int)div_u64(stat.nsecs[STAT_READ] +
 				      stat.nsecs[STAT_WRITE] +
 				      stat.nsecs[STAT_DISCARD] +
@@ -1267,6 +1287,8 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	unsigned int inflight;
 	struct disk_stats stat;
 	unsigned long idx;
+	struct request_queue *q;
+	unsigned long stat_ioticks;
 
 	/*
 	if (&disk_to_dev(gp)->kobj.entry == block_class.devices.next)
@@ -1282,12 +1304,18 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 			continue;
 
 		inflight = part_in_flight(hd);
+		q = bdev_get_queue(hd);
 		if (inflight) {
 			part_stat_lock();
-			update_io_ticks(hd, jiffies, true);
+			update_io_ticks(hd, blk_get_iostat_ticks(q), true);
 			part_stat_unlock();
 		}
 		part_stat_read_all(hd, &stat);
+
+		stat_ioticks = (blk_queue_precise_io_stat(q) ?
+				((stat.io_ticks << IOSTAT_PRECISE_SHIFT) / NSEC_PER_MSEC) :
+				jiffies_to_msecs(stat.io_ticks));
+
 		seq_put_decimal_ull_width(seqf, "",  MAJOR(hd->bd_dev), 4);
 		seq_put_decimal_ull_width(seqf, " ", MINOR(hd->bd_dev), 7);
 		seq_printf(seqf, " %pg", hd);
@@ -1302,7 +1330,7 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 		seq_put_decimal_ull(seqf, " ", (unsigned int)div_u64(stat.nsecs[STAT_WRITE],
 								     NSEC_PER_MSEC));
 		seq_put_decimal_ull(seqf, " ", inflight);
-		seq_put_decimal_ull(seqf, " ", jiffies_to_msecs(stat.io_ticks));
+		seq_put_decimal_ull(seqf, " ", stat_ioticks);
 		seq_put_decimal_ull(seqf, " ", (unsigned int)div_u64(stat.nsecs[STAT_READ] +
 								     stat.nsecs[STAT_WRITE] +
 								     stat.nsecs[STAT_DISCARD] +
