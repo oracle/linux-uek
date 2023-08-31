@@ -506,7 +506,11 @@ void rds_rdma_free_op(struct rm_rdma_op *ro)
 		/* Mark page dirty if it was possibly modified, which
 		 * is the case for a RDMA_READ which copies from remote
 		 * to local memory */
-		unpin_user_pages_dirty_lock(&page, 1, !ro->op_write);
+		if (!ro->op_write) {
+			WARN_ON_ONCE(!page->mapping && irqs_disabled());
+			set_page_dirty(page);
+		}
+		unpin_user_page(page);
 	}
 
 	kfree(ro->op_notifier);
@@ -521,7 +525,8 @@ void rds_atomic_free_op(struct rm_atomic_op *ao)
 	/* Mark page dirty if it was possibly modified, which
 	 * is the case for a RDMA_READ which copies from remote
 	 * to local memory */
-	unpin_user_pages_dirty_lock(&page, 1, true);
+	set_page_dirty(page);
+	unpin_user_page(page);
 
 	kfree(ao->op_notifier);
 	ao->op_notifier = NULL;
