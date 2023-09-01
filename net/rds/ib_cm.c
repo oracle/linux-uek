@@ -748,7 +748,8 @@ static void poll_scq(struct rds_ib_connection *ic, struct ib_cq *cq,
 
 static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 		     struct ib_wc *wcs,
-		     struct rds_ib_ack_state *ack_state)
+		     struct rds_ib_ack_state *ack_state,
+		     struct list_head *inc_stash)
 {
 	int nr, i;
 	struct ib_wc *wc;
@@ -769,7 +770,7 @@ static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 			rdsdebug("wc wr_id 0x%llx status %u byte_len %u imm_data %u\n",
 				 (unsigned long long)wc->wr_id, wc->status,
 				 wc->byte_len, be32_to_cpu(wc->ex.imm_data));
-			rds_ib_recv_cqe_handler(ic, wc, ack_state);
+			rds_ib_recv_cqe_handler(ic, wc, ack_state, inc_stash);
 		}
 
 		if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT)
@@ -856,6 +857,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 {
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_ack_state ack_state;
+	LIST_HEAD(inc_stash);
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
@@ -866,9 +868,11 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	memset(&ack_state, 0, sizeof(ack_state));
 
 	ic->i_rx_poll_cq = 0;
-	poll_rcq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
+	poll_rcq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state, &inc_stash);
 	ib_req_notify_cq(ic->i_rcq, IB_CQ_SOLICITED);
-	poll_rcq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
+	poll_rcq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state, &inc_stash);
+
+	rds_ib_process_recv_stash(conn, &ack_state, &inc_stash);
 
 	if (ack_state.ack_next_valid)
 		rds_ib_set_ack(ic, ack_state.ack_next, ack_state.ack_required);
