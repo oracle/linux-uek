@@ -217,6 +217,7 @@ vcs_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	 */
 	console_lock();
 
+	attr = (currcons & 128);
 	ret = -EINVAL;
 	if (pos < 0)
 		goto unlock_out;
