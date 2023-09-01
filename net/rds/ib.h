@@ -117,6 +117,7 @@ struct rds_page_frag {
 
 struct rds_ib_incoming {
 	struct list_head	ii_frags;
+	struct list_head	ii_stashed;
 	struct lfstack_el	ii_cache_entry;
 	struct rds_incoming	ii_inc;
 	struct rds_ib_device	*rds_ibdev;
@@ -759,7 +760,8 @@ int rds_ib_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 			    struct iov_iter *to);
 void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			    struct ib_wc *wc,
-			    struct rds_ib_ack_state *state);
+			    struct rds_ib_ack_state *state,
+			    struct list_head *inc_stash);
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_clear_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_init_ack(struct rds_ib_connection *ic);
@@ -826,6 +828,11 @@ DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 				    unsigned int avail);
 void rds_ib_stats_print(const char *where);
+
+/* ib_recv.c */
+void rds_ib_process_recv_stash(struct rds_connection *conn,
+			       struct rds_ib_ack_state *state,
+			       struct list_head *inc_stash);
 
 /* ib_sysctl.c */
 int rds_ib_sysctl_init(void);

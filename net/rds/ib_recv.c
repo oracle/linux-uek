@@ -385,7 +385,6 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 	bool deduct_one_credit = prefill && !ic->i_active_side;
 	struct rds_ib_recv_work *recv;
 	const struct ib_recv_wr *failed_wr;
-	unsigned int posted = 0;
 	struct scatterlist *sg = NULL;
 	unsigned int flowctl_credits = 0;
 	/* For the time being, 16 seems to be a good starting number to
@@ -394,27 +393,15 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 	unsigned int flow_cntl_log2_cnt = 16;
 	int ret = 0;
 	int i = 0;
-	int can_wait = !!(gfp & __GFP_DIRECT_RECLAIM);
 	int must_wake = 0;
 	int ring_low = 0;
-	int ring_empty = 0;
 	u32 pos;
-
-	ring_low = rds_ib_ring_low(&ic->i_recv_ring);
-	ring_empty = rds_ib_ring_empty(&ic->i_recv_ring);
 
 	/* If we ever end up with a really empty receive ring, we're
 	 * in deep trouble, as the sender will definitely see RNR
 	 * timeouts. */
-	if (ring_empty)
+	if (rds_ib_ring_empty(&ic->i_recv_ring))
 		rds_ib_stats_inc(s_ib_rx_ring_empty);
-
-	/*
-	 * if we're called from the tasklet, can_wait will be zero.  We only
-	 * want to refill if we're getting low in this case
-	 */
-	if (!ring_low && !can_wait)
-		goto release_out;
 
 	while ((prefill || rds_conn_up(conn))
 			&& rds_ib_ring_alloc(&ic->i_recv_ring, 1, &pos)) {
@@ -454,7 +441,6 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 
 		rds_ib_stats_add(s_ib_frag_pages_in_ib_recv_queue, ic->i_frag_pages);
 
-		posted++;
 		if (ic->i_flowctl) {
 			flowctl_credits++;
 			/* Decide whether to send an update to the peer now.
@@ -485,16 +471,10 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 				flowctl_credits = 0;
 			}
 		}
-
-		if ((posted > 128 && need_resched()) || posted > 8192) {
-			must_wake = 1;
-			break;
-		}
 	}
 
-	/* read ring_low and ring_empty before we drop our lock */
+	/* read ring_low before we drop our lock */
 	ring_low = rds_ib_ring_low(&ic->i_recv_ring);
-	ring_empty = rds_ib_ring_empty(&ic->i_recv_ring);
 
 	/* We're doing flow control - update the window. */
 	if (flowctl_credits) {
@@ -507,25 +487,10 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 	if (ret)
 		rds_ib_ring_unalloc(&ic->i_recv_ring, 1);
 
-release_out:
 	release_refill(conn);
 
-	/* if we're called from the softirq handler, we'll be GFP_NOWAIT.
-	 * in this case the ring being low is going to lead to more interrupts
-	 * and we can safely let the softirq code take care of it unless the
-	 * ring is completely empty.
-	 *
-	 * if we're called from krdsd, we'll be GFP_KERNEL.  In this case
-	 * we might have raced with the softirq code while we had the refill
-	 * lock held.  Use rds_ib_ring_low() instead of ring_empty to decide
-	 * if we should requeue.
-	 */
-	if (rds_conn_up(conn) &&
-	   (must_wake || (can_wait && ring_low) ||
-	    rds_ib_ring_empty(&ic->i_recv_ring)))
-		rds_cond_queue_recv_work(conn->c_path + 0, 1);
-	if (can_wait)
-		cond_resched();
+	if (rds_conn_up(conn) && (must_wake || ring_low))
+		rds_cond_queue_recv_work(conn->c_path, 0);
 }
 
 /*
@@ -971,7 +936,8 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 
 static void rds_ib_process_recv(struct rds_connection *conn,
 				struct rds_ib_recv_work *recv, u32 data_len,
-				struct rds_ib_ack_state *state)
+				struct rds_ib_ack_state *state,
+				struct list_head *inc_stash)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_incoming *ibinc = ic->i_ibinc;
@@ -1093,6 +1059,20 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		ic->i_recv_data_rem = 0;
 		ic->i_ibinc = NULL;
 
+		list_add_tail(&ibinc->ii_stashed, inc_stash);
+	}
+}
+
+void rds_ib_process_recv_stash(struct rds_connection *conn,
+			       struct rds_ib_ack_state *state,
+			       struct list_head *inc_stash)
+{
+	struct rds_ib_incoming *ibinc, *tmp;
+	struct rds_header *hdr;
+
+	list_for_each_entry_safe(ibinc, tmp, inc_stash, ii_stashed) {
+		hdr = &ibinc->ii_inc.i_hdr;
+
 		if (ibinc->ii_inc.i_hdr.h_flags == RDS_FLAG_CONG_BITMAP) {
 			rds_ib_cong_recv(conn, ibinc);
 		} else {
@@ -1116,7 +1096,8 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 
 void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			     struct ib_wc *wc,
-			     struct rds_ib_ack_state *state)
+			     struct rds_ib_ack_state *state,
+			     struct list_head *inc_stash)
 {
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_recv_work *recv;
@@ -1134,7 +1115,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	ib_dma_unmap_sg(ic->i_cm_id->device, recv->r_frag->f_sg, ic->i_frag_pages, DMA_FROM_DEVICE);
 
 	if (wc->status == IB_WC_SUCCESS) {
-		rds_ib_process_recv(conn, recv, wc->byte_len, state);
+		rds_ib_process_recv(conn, recv, wc->byte_len, state, inc_stash);
 	} else {
 		trace_rds_drop_ingress(NULL, NULL, conn, NULL,
 				       &conn->c_faddr, &conn->c_laddr,
