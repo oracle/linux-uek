@@ -50,8 +50,8 @@
 #define DPI_MAX_VFS			32
 
 /****************  Macros for register modification ************/
-#define DPI_DMA_IBUFF_CSIZE_CSIZE(x)		((x) & 0x1fff)
-#define DPI_DMA_IBUFF_CSIZE_GET_CSIZE(x)	((x) & 0x1fff)
+#define DPI_DMA_IBUFF_CSIZE_CSIZE(x)		((x) & 0x3fff)
+#define DPI_DMA_IBUFF_CSIZE_GET_CSIZE(x)	((x) & 0x3fff)
 
 #define DPI_DMA_IBUFF_CSIZE_NPA_FREE		(1 << 16)
 
@@ -373,6 +373,7 @@ struct dpipf {
 #define DPI_QUEUE_CLOSE 0x2
 #define DPI_REG_DUMP    0x3
 #define DPI_GET_REG_CFG 0x4
+#define DPI_QUEUE_OPEN_V2 0x5
 
 union dpi_mbox_message_t {
 	uint64_t u[2];

@@ -78,7 +78,7 @@ static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	u64 reg = 0ULL;
 	int cnt = 0xFFFFF;
 	u32 aura = dpivf->vf_config.aura;
-	u16 buf_size = dpivf->vf_config.csize;
+	u16 csize = dpivf->vf_config.csize;
 	u16 sso_pf_func = dpivf->vf_config.sso_pf_func;
 	u16 npa_pf_func = dpivf->vf_config.npa_pf_func;
 
@@ -115,7 +115,7 @@ static int dpi_queue_init(struct dpipf *dpi, struct dpipf_vf *dpivf, u8 vf)
 	dpi_reg_write(dpi, DPI_DMAX_IDS2(queue), 0ULL);
 	dpi_reg_write(dpi, DPI_DMAX_IDS(queue), 0ULL);
 
-	reg = DPI_DMA_IBUFF_CSIZE_CSIZE((u64)(buf_size / 8));
+	reg = DPI_DMA_IBUFF_CSIZE_CSIZE(csize);
 	if (is_cn10k_dpi(dpi))
 		reg |= DPI_DMA_IBUFF_CSIZE_NPA_FREE;
 	dpi_reg_write(dpi, DPI_DMAX_IBUFF_CSIZE(queue), reg);
@@ -531,6 +531,16 @@ static int queue_config(struct dpipf *dpi, struct dpipf_vf *dpivf,
 {
 	switch (msg->s.cmd) {
 	case DPI_QUEUE_OPEN:
+		dpivf->vf_config.aura = msg->s.aura;
+		dpivf->vf_config.csize = msg->s.csize / 8;
+		dpivf->vf_config.sso_pf_func = msg->s.sso_pf_func;
+		dpivf->vf_config.npa_pf_func = msg->s.npa_pf_func;
+		dpi_queue_init(dpi, dpivf, msg->s.vfid);
+		if (msg->s.wqecs)
+			dpi_wqe_cs_offset(dpi, msg->s.wqecsoff);
+		dpivf->setup_done = true;
+		break;
+	case DPI_QUEUE_OPEN_V2:
 		dpivf->vf_config.aura = msg->s.aura;
 		dpivf->vf_config.csize = msg->s.csize;
 		dpivf->vf_config.sso_pf_func = msg->s.sso_pf_func;
