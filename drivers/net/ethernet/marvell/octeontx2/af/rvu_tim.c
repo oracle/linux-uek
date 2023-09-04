@@ -452,6 +452,46 @@ int rvu_mbox_handler_tim_disable_ring(struct rvu *rvu,
 	return rvu_tim_disable_lf(rvu, lf, blkaddr);
 }
 
+int rvu_mbox_handler_tim_capture_counters(struct rvu *rvu, struct msg_req *req,
+					  struct tim_capture_rsp *rsp)
+{
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
+	if (blkaddr < 0)
+		return TIM_AF_LF_INVALID;
+
+	if (is_rvu_otx2(rvu))
+		return TIM_AF_LF_INVALID;
+
+	rvu_write64(rvu, blkaddr, TIM_AF_CAPTURE_TIMERS, 0x0);
+	rvu_write64(rvu, blkaddr, TIM_AF_CAPTURE_TIMERS, 0x1);
+	rsp->counter[TIM_CLK_SRCS_TENNS] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_TENNS);
+	rsp->counter[TIM_CLK_SRCS_GPIO] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_GPIOS);
+	rsp->counter[TIM_CLK_SRCS_GTI] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_GTI);
+	rsp->counter[TIM_CLK_SRCS_PTP] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_PTP);
+	rsp->counter[TIM_CLK_SRCS_SYNCE] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_SYNCE);
+	rsp->counter[TIM_CLK_SRCS_BTS] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_BTS);
+	rsp->counter[TIM_CLK_SRCS_EXT_MIO] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_EXT_MIO);
+	rsp->counter[TIM_CLK_SRCS_EXT_GTI] =
+		rvu_read64(rvu, blkaddr, TIM_AF_CAPTURE_EXT_GTI);
+	rvu_write64(rvu, blkaddr, TIM_AF_CAPTURE_TIMERS, 0x0);
+
+	if (rvu_tim_ptp_has_errata(rvu->pdev))
+		rsp->counter[TIM_CLK_SRCS_PTP] =
+			rvu_tim_ptp_rollover_errata_fix(rvu,
+							rsp->counter[TIM_CLK_SRCS_PTP]);
+
+	return 0;
+}
+
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	int blkaddr;
