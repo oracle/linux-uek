@@ -57,6 +57,8 @@ static char *abort_sources[] = {
 		"slave lost the bus while transmitting data to a remote master",
 	[ABRT_SLAVE_RD_INTX] =
 		"incorrect slave-transmitter mode configuration",
+	[ABRT_SDA_STUCK_AT_LOW] =
+		"sda line stuck low",
 };
 
 static int dw_reg_read(void *context, unsigned int reg, unsigned int *val)
