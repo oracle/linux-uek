@@ -46,6 +46,7 @@ int nft_redir_init(const struct nft_ctx *ctx,
 	struct nft_redir *priv = nft_expr_priv(expr);
 	unsigned int plen;
 	int err;
+	u32 dreg = 0;
 
 	err = nft_redir_validate(ctx, expr, NULL);
 	if (err < 0)
@@ -53,16 +54,20 @@ int nft_redir_init(const struct nft_ctx *ctx,
 
 	plen = FIELD_SIZEOF(struct nf_nat_range, min_addr.all);
 	if (tb[NFTA_REDIR_REG_PROTO_MIN]) {
-		priv->sreg_proto_min =
-			nft_parse_register(tb[NFTA_REDIR_REG_PROTO_MIN]);
+		err = nft_parse_register_with_error(tb[NFTA_REDIR_REG_PROTO_MIN], &dreg);
+		if (err < 0)
+			return err;
+		priv->sreg_proto_min = dreg;
 
 		err = nft_validate_register_load(priv->sreg_proto_min, plen);
 		if (err < 0)
 			return err;
 
 		if (tb[NFTA_REDIR_REG_PROTO_MAX]) {
-			priv->sreg_proto_max =
-				nft_parse_register(tb[NFTA_REDIR_REG_PROTO_MAX]);
+			err = nft_parse_register_with_error(tb[NFTA_REDIR_REG_PROTO_MAX], &dreg);
+			if (err < 0)
+				return err;
+			priv->sreg_proto_max = dreg;
 
 			err = nft_validate_register_load(priv->sreg_proto_max,
 							 plen);

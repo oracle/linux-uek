@@ -54,6 +54,8 @@ static int nft_meta_bridge_get_init(const struct nft_ctx *ctx,
 {
 	struct nft_meta *priv = nft_expr_priv(expr);
 	unsigned int len;
+	int err = 0;
+	u32 dreg = 0;
 
 	priv->key = ntohl(nla_get_be32(tb[NFTA_META_KEY]));
 	switch (priv->key) {
@@ -65,7 +67,10 @@ static int nft_meta_bridge_get_init(const struct nft_ctx *ctx,
 		return nft_meta_get_init(ctx, expr, tb);
 	}
 
-	priv->dreg = nft_parse_register(tb[NFTA_META_DREG]);
+	err = nft_parse_register_with_error(tb[NFTA_META_DREG], &dreg);
+	if (err < 0)
+		return err;
+	priv->dreg = dreg;
 	return nft_validate_register_store(ctx, priv->dreg, NULL,
 					   NFT_DATA_VALUE, len);
 }

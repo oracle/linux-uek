@@ -59,6 +59,8 @@ static int nft_exthdr_init(const struct nft_ctx *ctx,
 			   const struct nlattr * const tb[])
 {
 	struct nft_exthdr *priv = nft_expr_priv(expr);
+	int err = 0;
+	u32 dreg = 0;
 
 	if (tb[NFTA_EXTHDR_DREG] == NULL ||
 	    tb[NFTA_EXTHDR_TYPE] == NULL ||
@@ -69,7 +71,10 @@ static int nft_exthdr_init(const struct nft_ctx *ctx,
 	priv->type   = nla_get_u8(tb[NFTA_EXTHDR_TYPE]);
 	priv->offset = ntohl(nla_get_be32(tb[NFTA_EXTHDR_OFFSET]));
 	priv->len    = ntohl(nla_get_be32(tb[NFTA_EXTHDR_LEN]));
-	priv->dreg   = nft_parse_register(tb[NFTA_EXTHDR_DREG]);
+	err = nft_parse_register_with_error(tb[NFTA_EXTHDR_DREG], &dreg);
+	if (err < 0)
+		return err;
+	priv->dreg = dreg;
 
 	return nft_validate_register_store(ctx, priv->dreg, NULL,
 					   NFT_DATA_VALUE, priv->len);

@@ -219,6 +219,8 @@ int nft_meta_get_init(const struct nft_ctx *ctx,
 {
 	struct nft_meta *priv = nft_expr_priv(expr);
 	unsigned int len;
+	int err = 0;
+	u32 dreg = 0;
 
 	priv->key = ntohl(nla_get_be32(tb[NFTA_META_KEY]));
 	switch (priv->key) {
@@ -257,7 +259,10 @@ int nft_meta_get_init(const struct nft_ctx *ctx,
 		return -EOPNOTSUPP;
 	}
 
-	priv->dreg = nft_parse_register(tb[NFTA_META_DREG]);
+	err = nft_parse_register_with_error(tb[NFTA_META_DREG], &dreg);
+	if (err < 0)
+		return err;
+	priv->dreg = dreg;
 	return nft_validate_register_store(ctx, priv->dreg, NULL,
 					   NFT_DATA_VALUE, len);
 }
@@ -270,6 +275,7 @@ int nft_meta_set_init(const struct nft_ctx *ctx,
 	struct nft_meta *priv = nft_expr_priv(expr);
 	unsigned int len;
 	int err;
+	u32 dreg = 0;
 
 	priv->key = ntohl(nla_get_be32(tb[NFTA_META_KEY]));
 	switch (priv->key) {
@@ -284,7 +290,10 @@ int nft_meta_set_init(const struct nft_ctx *ctx,
 		return -EOPNOTSUPP;
 	}
 
-	priv->sreg = nft_parse_register(tb[NFTA_META_SREG]);
+	err = nft_parse_register_with_error(tb[NFTA_META_SREG], &dreg);
+	if (err < 0)
+		return err;
+	priv->sreg = dreg;
 	err = nft_validate_register_load(priv->sreg, len);
 	if (err < 0)
 		return err;

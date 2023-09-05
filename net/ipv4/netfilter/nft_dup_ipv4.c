@@ -39,17 +39,25 @@ static int nft_dup_ipv4_init(const struct nft_ctx *ctx,
 {
 	struct nft_dup_ipv4 *priv = nft_expr_priv(expr);
 	int err;
+	u32 dreg = 0;
 
 	if (tb[NFTA_DUP_SREG_ADDR] == NULL)
 		return -EINVAL;
 
-	priv->sreg_addr = nft_parse_register(tb[NFTA_DUP_SREG_ADDR]);
+	err = nft_parse_register_with_error(tb[NFTA_DUP_SREG_ADDR],
+					    &dreg);
+	if (err < 0)
+		return err;
+	priv->sreg_addr = dreg;
 	err = nft_validate_register_load(priv->sreg_addr, sizeof(struct in_addr));
 	if (err < 0)
 		return err;
 
 	if (tb[NFTA_DUP_SREG_DEV] != NULL) {
-		priv->sreg_dev = nft_parse_register(tb[NFTA_DUP_SREG_DEV]);
+		err = nft_parse_register_with_error(tb[NFTA_DUP_SREG_DEV], &dreg);
+		if (err < 0)
+			return err;
+		priv->sreg_dev = dreg;
 		return nft_validate_register_load(priv->sreg_dev, sizeof(int));
 	}
 	return 0;

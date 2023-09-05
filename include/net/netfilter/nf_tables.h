@@ -11,15 +11,6 @@
 #include <net/netlink.h>
 
 #define NFT_JUMP_STACK_SIZE	16
-#define nft_parse_register(attr) \
-  ({ \
-    int _err; \
-    u32 _preg = 0; \
-    _err = nft_parse_register_with_error(attr, &_preg); \
-    if (_err < 0) \
-      return _err; \
-    _preg; \
-  })
 
 struct nft_pktinfo {
 	struct sk_buff			*skb;

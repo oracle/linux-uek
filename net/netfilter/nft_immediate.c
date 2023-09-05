@@ -44,6 +44,7 @@ static int nft_immediate_init(const struct nft_ctx *ctx,
 	struct nft_immediate_expr *priv = nft_expr_priv(expr);
 	struct nft_data_desc desc;
 	int err;
+	u32 dreg = 0;
 
 	if (tb[NFTA_IMMEDIATE_DREG] == NULL ||
 	    tb[NFTA_IMMEDIATE_DATA] == NULL)
@@ -55,7 +56,10 @@ static int nft_immediate_init(const struct nft_ctx *ctx,
 		return err;
 	priv->dlen = desc.len;
 
-	priv->dreg = nft_parse_register(tb[NFTA_IMMEDIATE_DREG]);
+	err = nft_parse_register_with_error(tb[NFTA_IMMEDIATE_DREG], &dreg);
+	if (err < 0)
+		goto err1;
+	priv->dreg = dreg;
 	err = nft_validate_register_store(ctx, priv->dreg, &priv->data,
 					  desc.type, desc.len);
 	if (err < 0)

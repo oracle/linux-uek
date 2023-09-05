@@ -56,6 +56,7 @@ static int nft_lookup_init(const struct nft_ctx *ctx,
 	struct nft_lookup *priv = nft_expr_priv(expr);
 	struct nft_set *set;
 	int err;
+	u32 dreg = 0;
 
 	if (tb[NFTA_LOOKUP_SET] == NULL ||
 	    tb[NFTA_LOOKUP_SREG] == NULL)
@@ -74,7 +75,10 @@ static int nft_lookup_init(const struct nft_ctx *ctx,
 	if (set->flags & NFT_SET_EVAL)
 		return -EOPNOTSUPP;
 
-	priv->sreg = nft_parse_register(tb[NFTA_LOOKUP_SREG]);
+	err = nft_parse_register_with_error(tb[NFTA_LOOKUP_SREG], &dreg);
+	if (err < 0)
+		return err;
+	priv->sreg = dreg;
 	err = nft_validate_register_load(priv->sreg, set->klen);
 	if (err < 0)
 		return err;
@@ -83,7 +87,10 @@ static int nft_lookup_init(const struct nft_ctx *ctx,
 		if (!(set->flags & NFT_SET_MAP))
 			return -EINVAL;
 
-		priv->dreg = nft_parse_register(tb[NFTA_LOOKUP_DREG]);
+		err = nft_parse_register_with_error(tb[NFTA_LOOKUP_DREG], &dreg);
+		if (err < 0)
+			return err;
+		priv->dreg = dreg;
 		err = nft_validate_register_store(ctx, priv->dreg, NULL,
 						  set->dtype, set->dlen);
 		if (err < 0)

@@ -105,6 +105,7 @@ static int nft_dynset_init(const struct nft_ctx *ctx,
 	struct nft_set *set;
 	u64 timeout;
 	int err;
+	u32 dreg = 0;
 
 	if (tb[NFTA_DYNSET_SET_NAME] == NULL ||
 	    tb[NFTA_DYNSET_OP] == NULL ||
@@ -142,7 +143,10 @@ static int nft_dynset_init(const struct nft_ctx *ctx,
 		timeout = be64_to_cpu(nla_get_be64(tb[NFTA_DYNSET_TIMEOUT]));
 	}
 
-	priv->sreg_key = nft_parse_register(tb[NFTA_DYNSET_SREG_KEY]);
+	err = nft_parse_register_with_error(tb[NFTA_DYNSET_SREG_KEY], &dreg);
+	if (err < 0)
+		return err;
+	priv->sreg_key = dreg;
 	err = nft_validate_register_load(priv->sreg_key, set->klen);;
 	if (err < 0)
 		return err;
@@ -153,7 +157,11 @@ static int nft_dynset_init(const struct nft_ctx *ctx,
 		if (set->dtype == NFT_DATA_VERDICT)
 			return -EOPNOTSUPP;
 
-		priv->sreg_data = nft_parse_register(tb[NFTA_DYNSET_SREG_DATA]);
+		err = nft_parse_register_with_error(tb[NFTA_DYNSET_SREG_DATA],
+				&dreg);
+		if (err < 0)
+			return err;
+		priv->sreg_data = dreg;
 		err = nft_validate_register_load(priv->sreg_data, set->dlen);
 		if (err < 0)
 			return err;

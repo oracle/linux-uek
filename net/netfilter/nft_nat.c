@@ -121,6 +121,7 @@ static int nft_nat_init(const struct nft_ctx *ctx, const struct nft_expr *expr,
 	unsigned int alen, plen;
 	u32 family;
 	int err;
+	u32 dreg = 0;
 
 	if (tb[NFTA_NAT_TYPE] == NULL ||
 	    (tb[NFTA_NAT_REG_ADDR_MIN] == NULL &&
@@ -162,15 +163,20 @@ static int nft_nat_init(const struct nft_ctx *ctx, const struct nft_expr *expr,
 	priv->family = family;
 
 	if (tb[NFTA_NAT_REG_ADDR_MIN]) {
-		priv->sreg_addr_min =
-			nft_parse_register(tb[NFTA_NAT_REG_ADDR_MIN]);
+		err = nft_parse_register_with_error(tb[NFTA_NAT_REG_ADDR_MIN],
+				&dreg);
+		if (err < 0)
+			return err;
+		priv->sreg_addr_min = dreg;
 		err = nft_validate_register_load(priv->sreg_addr_min, alen);
 		if (err < 0)
 			return err;
 
 		if (tb[NFTA_NAT_REG_ADDR_MAX]) {
-			priv->sreg_addr_max =
-				nft_parse_register(tb[NFTA_NAT_REG_ADDR_MAX]);
+			err = nft_parse_register_with_error(tb[NFTA_NAT_REG_ADDR_MAX], &dreg);
+			if (err < 0)
+				return err;
+			priv->sreg_addr_max = dreg;
 
 			err = nft_validate_register_load(priv->sreg_addr_max,
 							 alen);
@@ -183,16 +189,20 @@ static int nft_nat_init(const struct nft_ctx *ctx, const struct nft_expr *expr,
 
 	plen = FIELD_SIZEOF(struct nf_nat_range, min_addr.all);
 	if (tb[NFTA_NAT_REG_PROTO_MIN]) {
-		priv->sreg_proto_min =
-			nft_parse_register(tb[NFTA_NAT_REG_PROTO_MIN]);
+		err = nft_parse_register_with_error(tb[NFTA_NAT_REG_PROTO_MIN], &dreg);
+		if (err < 0)
+			return err;
+		priv->sreg_proto_min = dreg;
 
 		err = nft_validate_register_load(priv->sreg_proto_min, plen);
 		if (err < 0)
 			return err;
 
 		if (tb[NFTA_NAT_REG_PROTO_MAX]) {
-			priv->sreg_proto_max =
-				nft_parse_register(tb[NFTA_NAT_REG_PROTO_MAX]);
+			err = nft_parse_register_with_error(tb[NFTA_NAT_REG_PROTO_MAX], &dreg);
+			if (err < 0)
+				return err;
+			priv->sreg_proto_max = dreg;
 
 			err = nft_validate_register_load(priv->sreg_proto_max,
 							 plen);
