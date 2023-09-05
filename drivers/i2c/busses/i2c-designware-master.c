@@ -37,6 +37,45 @@ static void i2c_dw_configure_fifo_master(struct dw_i2c_dev *dev)
 	regmap_write(dev->map, DW_IC_CON, dev->master_cfg);
 }
 
+static int i2c_dw_issue_bus_clear(struct dw_i2c_dev *dev)
+{
+	u32 ic_status, ic_enable;
+	unsigned long timeout;
+
+	dev_info(dev->dev, "sda stuck; trying to recover\n");
+	regmap_write(dev->map, DW_IC_INTR_MASK, 0);
+	regmap_read(dev->map, DW_IC_ENABLE, &ic_enable);
+	regmap_write(dev->map, DW_IC_ENABLE,
+			ic_enable | DW_IC_SDA_STUCK_RECOVERY_ENABLE);
+
+	/*
+	 * Poll, waiting for recovery to be done. This may take up to 9 SCL
+	 * clocks and a STOP bit, though presumably the device will signal
+	 * completion in less time if it recovers sooner. There are apparently
+	 * cases where the recovery doesn't finish, so we have a timeout
+	 * in the loop.
+	 */
+	timeout = jiffies + msecs_to_jiffies(50);
+	while (!time_after(jiffies, timeout)) {
+		regmap_read(dev->map, DW_IC_ENABLE, &ic_enable);
+		if (!(ic_enable & DW_IC_SDA_STUCK_RECOVERY_ENABLE))
+			break;
+		usleep_range(1000, 2000);
+	}
+	regmap_read(dev->map, DW_IC_ENABLE, &ic_enable);
+	if (ic_enable & DW_IC_SDA_STUCK_RECOVERY_ENABLE) {
+		dev_err(dev->dev, "sda stuck recovery timed out\n");
+		return -EIO;
+	}
+	regmap_read(dev->map, DW_IC_STATUS, &ic_status);
+	if ((ic_status & DW_IC_STATUS_SDA_STUCK_NOT_RECOVERED) != 0) {
+		dev_err(dev->dev, "sda stuck recovery failed\n");
+		return -EIO;
+	}
+	dev_info(dev->dev, "sda stuck recovery successful\n");
+	return -EAGAIN;		/* -EAGAIN to auto-retry */
+}
+
 static int i2c_dw_set_timings_master(struct dw_i2c_dev *dev)
 {
 	u32 comp_param1;
@@ -637,6 +676,14 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		goto done;
 	}
 
+	/* Look for a stuck bus */
+	if (dev->cmd_err == DW_IC_ERR_TX_ABRT &&
+		(dev->abort_source & DW_IC_TX_ABRT_SDA_STUCK_AT_LOW)) {
+		ret = i2c_dw_issue_bus_clear(dev);
+		i2c_dw_init_master(dev);
+		goto done;
+	}
+
 	/*
 	 * We must disable the adapter before returning and signaling the end
 	 * of the current transfer. Otherwise the hardware might continue
@@ -861,6 +908,39 @@ static void i2c_dw_unprepare_recovery(struct i2c_adapter *adap)
 	i2c_dw_init_master(dev);
 }
 
+static int i2c_dw_probe_bus_clear_feature(struct dw_i2c_dev *dev)
+{
+	u32 con, timeout;
+	int ret;
+
+	/* only use controller bus_clear if the sda timeout is specified */
+	if (!dev->sda_timeout_ms)
+		return 0;
+
+	ret = i2c_dw_acquire_lock(dev);
+	if (ret)
+		return ret;
+
+	/*
+	 * Probe the availability of the BUS_CLEAR_FEATURE by setting the
+	 * bit in IC_CON.  If the bit reads back set, then the feature is
+	 * available, otherwise it is not.
+	 */
+	regmap_write(dev->map, DW_IC_CON, DW_IC_CON_BUS_CLEAR_FEATURE_CTL);
+	regmap_read(dev->map, DW_IC_CON, &con);
+	if (!(con & DW_IC_CON_BUS_CLEAR_FEATURE_CTL))
+		goto out;
+	dev_info(dev->dev, "running with controller bus clear recovery mode!");
+	timeout = i2c_dw_clk_rate(dev) * dev->sda_timeout_ms; /* clk in kHz */
+	regmap_write(dev->map, DW_IC_SDA_STUCK_AT_LOW, timeout);
+	dev->master_cfg |= DW_IC_CON_BUS_CLEAR_FEATURE_CTL;
+out:
+	regmap_write(dev->map, DW_IC_CON, dev->master_cfg);
+	i2c_dw_release_lock(dev);
+
+	return 0;
+}
+
 static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 {
 	struct i2c_bus_recovery_info *rinfo = &dev->rinfo;
@@ -868,8 +948,11 @@ static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 	struct gpio_desc *gpio;
 
 	gpio = devm_gpiod_get_optional(dev->dev, "scl", GPIOD_OUT_HIGH);
-	if (IS_ERR_OR_NULL(gpio))
-		return PTR_ERR_OR_ZERO(gpio);
+	if (IS_ERR_OR_NULL(gpio)) {
+		if (IS_ERR(gpio))
+			return PTR_ERR(gpio);
+		return i2c_dw_probe_bus_clear_feature(dev);
+	}
 
 	rinfo->scl_gpiod = gpio;
 
