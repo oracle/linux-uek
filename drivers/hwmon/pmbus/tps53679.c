@@ -16,7 +16,7 @@
 #include "pmbus.h"
 
 enum chips {
-	tps53647, tps53667, tps53676, tps53679, tps53681, tps53688
+	tps53647, tps53659, tps53667, tps53676, tps53679, tps53681, tps53688
 };
 
 #define TPS53647_PAGE_NUM		1
@@ -252,6 +252,11 @@ static int tps53679_probe(struct i2c_client *client)
 	case tps53676:
 		info->identify = tps53676_identify;
 		break;
+	case tps53659:
+		info->pages = TPS53679_PAGE_NUM;
+		info->identify = tps53679_identify;
+		info->func[0] |= PMBUS_HAVE_PIN;
+		break;
 	case tps53679:
 	case tps53688:
 		info->pages = TPS53679_PAGE_NUM;
@@ -274,6 +279,7 @@ static const struct i2c_device_id tps53679_id[] = {
 	{"bmr474", tps53676},
 	{"tps53647", tps53647},
 	{"tps53667", tps53667},
+	{"tps53659", tps53659},
 	{"tps53676", tps53676},
 	{"tps53679", tps53679},
 	{"tps53681", tps53681},
@@ -286,6 +292,7 @@ MODULE_DEVICE_TABLE(i2c, tps53679_id);
 static const struct of_device_id __maybe_unused tps53679_of_match[] = {
 	{.compatible = "ti,tps53647", .data = (void *)tps53647},
 	{.compatible = "ti,tps53667", .data = (void *)tps53667},
+	{.compatible = "ti,tps53659", .data = (void *)tps53659},
 	{.compatible = "ti,tps53676", .data = (void *)tps53676},
 	{.compatible = "ti,tps53679", .data = (void *)tps53679},
 	{.compatible = "ti,tps53681", .data = (void *)tps53681},
