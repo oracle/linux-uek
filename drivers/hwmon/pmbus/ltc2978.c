@@ -23,7 +23,8 @@ enum chips {
 	/* Managers */
 	ltc2972, ltc2974, ltc2975, ltc2977, ltc2978, ltc2979, ltc2980,
 	/* Controllers */
-	ltc3880, ltc3882, ltc3883, ltc3884, ltc3886, ltc3887, ltc3889, ltc7880,
+	ltc3880, ltc3882, ltc3883, ltc3884, ltc3886, ltc3887, ltc3888, ltc3889,
+	ltc7880,
 	/* Modules */
 	ltm2987, ltm4664, ltm4675, ltm4676, ltm4677, ltm4678, ltm4680, ltm4686,
 	ltm4700,
@@ -53,6 +54,8 @@ enum chips {
 /* LTC3883, LTC3884, LTC3886, LTC3889 and LTC7880 only */
 #define LTC3883_MFR_IIN_PEAK		0xe1
 
+/* LTC3888 only */
+#define LTC3888_MFR_TOTAL_IOUT		0xe1
 
 /* LTC2975 only */
 #define LTC2975_MFR_IIN_PEAK		0xc4
@@ -79,6 +82,8 @@ enum chips {
 #define LTC3884_ID			0x4C00
 #define LTC3886_ID			0x4600
 #define LTC3887_ID			0x4700
+#define LTC3888_ID			0x4800
+#define LTC3888_ID_D1			0x4880	/* Dash 1 */
 #define LTM2987_ID_A			0x8010	/* A/B for two die IDs */
 #define LTM2987_ID_B			0x8020
 #define LTC3889_ID			0x4900
@@ -456,6 +461,26 @@ static int ltc3883_read_word_data(struct i2c_client *client, int page,
 	return ret;
 }
 
+static int ltc3888_read_word_data(struct i2c_client *client, int page,
+				  int phase, int reg)
+{
+	const struct pmbus_driver_info *info = pmbus_get_driver_info(client);
+	struct ltc2978_data *data = to_ltc2978_data(info);
+	int ret;
+
+	switch (reg) {
+	case PMBUS_VIRT_READ_IOUT_AVG:
+		ret = ltc_read_word_data(client, page, 0xff,
+					 LTC3888_MFR_TOTAL_IOUT);
+		data->iout_max[page] = lin11_to_val(ret);
+		break;
+	default:
+		ret = ltc3880_read_word_data(client, page, phase, reg);
+		break;
+	}
+	return ret;
+}
+
 static int ltc2978_clear_peaks(struct ltc2978_data *data,
 			       struct i2c_client *client, int page)
 {
@@ -535,6 +560,7 @@ static const struct i2c_device_id ltc2978_id[] = {
 	{"ltc3884", ltc3884},
 	{"ltc3886", ltc3886},
 	{"ltc3887", ltc3887},
+	{"ltc3888", ltc3888},
 	{"ltc3889", ltc3889},
 	{"ltc7880", ltc7880},
 	{"ltm2987", ltm2987},
@@ -621,6 +647,8 @@ static int ltc2978_get_id(struct i2c_client *client)
 		return ltc3886;
 	else if (chip_id == LTC3887_ID)
 		return ltc3887;
+	else if (chip_id == LTC3888_ID || chip_id == LTC3888_ID_D1)
+		return ltc3888;
 	else if (chip_id == LTC3889_ID)
 		return ltc3889;
 	else if (chip_id == LTC7880_ID)
@@ -821,6 +849,18 @@ static int ltc2978_probe(struct i2c_client *client)
 		  | PMBUS_HAVE_POUT
 		  | PMBUS_HAVE_TEMP | PMBUS_HAVE_STATUS_TEMP;
 		break;
+	case ltc3888:
+		data->features |= FEAT_CLEAR_PEAKS | FEAT_NEEDS_POLLING;
+		info->read_word_data = ltc3888_read_word_data;
+		info->pages = LTC3880_NUM_PAGES;
+		info->func[0] = PMBUS_HAVE_STATUS_VOUT | PMBUS_HAVE_STATUS_IOUT
+		  | PMBUS_HAVE_STATUS_INPUT | PMBUS_HAVE_STATUS_TEMP
+		  | PMBUS_HAVE_VIN | PMBUS_HAVE_VOUT | PMBUS_HAVE_IOUT
+		  | PMBUS_HAVE_TEMP | PMBUS_HAVE_TEMP2;
+		info->func[1] = PMBUS_HAVE_STATUS_VOUT | PMBUS_HAVE_STATUS_IOUT
+		  | PMBUS_HAVE_STATUS_TEMP | PMBUS_HAVE_VOUT | PMBUS_HAVE_IOUT
+		  | PMBUS_HAVE_TEMP;
+		break;
 	default:
 		return -ENODEV;
 	}
@@ -853,6 +893,7 @@ static const struct of_device_id ltc2978_of_match[] = {
 	{ .compatible = "lltc,ltc3884" },
 	{ .compatible = "lltc,ltc3886" },
 	{ .compatible = "lltc,ltc3887" },
+	{ .compatible = "lltc,ltc3888" },
 	{ .compatible = "lltc,ltc3889" },
 	{ .compatible = "lltc,ltc7880" },
 	{ .compatible = "lltc,ltm2987" },
