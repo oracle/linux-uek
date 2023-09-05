@@ -295,6 +295,7 @@ igmp_scount(struct ip_mc_list *pmc, int type, int gdeleted, int sdeleted)
 }
 
 #define igmp_skb_size(skb) (*(unsigned int *)((skb)->cb))
+#define IP_MAX_MTU	0xFFFFU
 
 static struct sk_buff *igmpv3_newpack(struct net_device *dev, int size)
 {
@@ -304,6 +305,8 @@ static struct sk_buff *igmpv3_newpack(struct net_device *dev, int size)
 	struct igmpv3_report *pig;
 	struct net *net = dev_net(dev);
 	struct flowi4 fl4;
+
+	size = min(size, IP_MAX_MTU);
 
 	while (1) {
 		skb = alloc_skb(size + LL_ALLOCATED_SPACE(dev),
