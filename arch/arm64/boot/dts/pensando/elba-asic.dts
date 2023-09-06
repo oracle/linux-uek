@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0
+
+/dts-v1/;
+
+/ {
+	model = "Elba ASIC Board";
+	compatible = "pensando,elba";
+
+	aliases {
+		serial0 = &uart0;
+		spi0 = &spi0;
+		spi1 = &qspi;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+#include "elba.dtsi"
+#include "elba-16core.dtsi"
+#include "elba-16core-spin-table.dtsi"
+#include "elba-asic-common.dtsi"
