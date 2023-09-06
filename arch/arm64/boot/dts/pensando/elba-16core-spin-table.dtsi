@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: GPL-2.0
+
+&cpu0 {
+	enable-method = "spin-table";
+};
+&cpu1 {
+	enable-method = "spin-table";
+};
+&cpu2 {
+	enable-method = "spin-table";
+};
+&cpu3 {
+	enable-method = "spin-table";
+};
+&cpu4 {
+	enable-method = "spin-table";
+};
+&cpu5 {
+	enable-method = "spin-table";
+};
+&cpu6 {
+	enable-method = "spin-table";
+};
+&cpu7 {
+	enable-method = "spin-table";
+};
+&cpu8 {
+	enable-method = "spin-table";
+};
+&cpu9 {
+	enable-method = "spin-table";
+};
+&cpu10 {
+	enable-method = "spin-table";
+};
+&cpu11 {
+	enable-method = "spin-table";
+};
+&cpu12 {
+	enable-method = "spin-table";
+};
+&cpu13 {
+	enable-method = "spin-table";
+};
+&cpu14 {
+	enable-method = "spin-table";
+};
+&cpu15 {
+	enable-method = "spin-table";
+};
