@@ -20,6 +20,7 @@ subdir-y += marvell
 subdir-y += mediatek
 subdir-y += microchip
 subdir-y += nvidia
+subdir-y += pensando
 subdir-y += qcom
 subdir-y += realtek
 subdir-y += renesas
