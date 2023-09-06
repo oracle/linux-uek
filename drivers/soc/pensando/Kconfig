@@ -1,0 +1,13 @@
+if ARCH_PENSANDO
+
+menu "Pensando SoC drivers"
+
+config ARCH_PENSANDO_ELBA_SOC
+	bool "Elba SoC"
+	default y
+	help
+	  Support for the Pensando Elba SoC
+
+endmenu
+
+endif
