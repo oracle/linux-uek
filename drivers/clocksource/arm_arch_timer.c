@@ -28,6 +28,7 @@
 #include <linux/acpi.h>
 #include <linux/arm-smccc.h>
 #include <linux/ptp_kvm.h>
+#include <linux/delay.h>
 
 #include <asm/arch_timer.h>
 #include <asm/virt.h>
@@ -95,6 +96,8 @@ static enum vdso_clock_mode vdso_default = VDSO_CLOCKMODE_NONE;
 
 static cpumask_t evtstrm_available = CPU_MASK_NONE;
 static bool evtstrm_enable __ro_after_init = IS_ENABLED(CONFIG_ARM_ARCH_TIMER_EVTSTREAM);
+static __always_inline void set_next_event(const int access, unsigned long evt,
+					   struct clock_event_device *clk);
 
 static int __init early_evtstrm_cfg(char *buf)
 {
@@ -453,6 +456,51 @@ static __maybe_unused int erratum_set_next_event_phys(unsigned long evt,
 	return 0;
 }
 
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+/* Workaround is to ensure maximum 2us of time gap between timer expiry
+ * and timer programming which can de-assert timer interrupt.
+ * Time calculation below is based on 100MHz as timer frequency is fixed
+ * to 100MHz on all affected parts.
+ */
+static __always_inline
+void erratum_38627_set_next_event(const int access, unsigned long evt,
+				  struct clock_event_device *clk)
+{
+	int32_t tval;
+
+	if (access == ARCH_TIMER_PHYS_ACCESS)
+		tval = read_sysreg(cntp_tval_el0);
+	else
+		tval = read_sysreg(cntv_tval_el0);
+
+	/* Timer already expired, wait for (2 - expired time)us */
+	if ((tval > -200) && (tval < 0))
+		udelay(2 + tval/100);
+
+	/* Timer is about to expire, wait for 2us + time to expire */
+	if (tval >= 0 && tval < 200)
+		udelay(3 + tval/100);
+
+	set_next_event(access, evt, clk);
+}
+
+static __maybe_unused
+int erratum_38627_set_next_event_tval_virt(unsigned long evt,
+					   struct clock_event_device *clk)
+{
+	erratum_38627_set_next_event(ARCH_TIMER_VIRT_ACCESS, evt, clk);
+	return 0;
+}
+
+static __maybe_unused
+int erratum_38627_set_next_event_tval_phys(unsigned long evt,
+					   struct clock_event_device *clk)
+{
+	erratum_38627_set_next_event(ARCH_TIMER_PHYS_ACCESS, evt, clk);
+	return 0;
+}
+#endif
+
 static const struct arch_timer_erratum_workaround ool_workarounds[] = {
 #ifdef CONFIG_FSL_ERRATUM_A008585
 	{
@@ -494,6 +542,15 @@ static const struct arch_timer_erratum_workaround ool_workarounds[] = {
 		.read_cntvct_el0 = arm64_858921_read_cntvct_el0,
 		.set_next_event_phys = erratum_set_next_event_phys,
 		.set_next_event_virt = erratum_set_next_event_virt,
+	},
+#endif
+#ifdef CONFIG_MARVELL_ERRATUM_38627
+	{
+		.match_type = ate_match_local_cap_id,
+		.id = (void *)ARM64_WORKAROUND_MRVL_38627,
+		.desc = "Marvell erratum 38627",
+		.set_next_event_phys = erratum_38627_set_next_event_tval_phys,
+		.set_next_event_virt = erratum_38627_set_next_event_tval_virt,
 	},
 #endif
 #ifdef CONFIG_SUN50I_ERRATUM_UNKNOWN1
