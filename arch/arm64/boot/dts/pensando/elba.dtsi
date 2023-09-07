@@ -183,6 +183,12 @@
 			};
 		};
 
+		edac: edac@30500000 {
+			compatible = "pensando,elba-edac-mc";
+			reg = <0x0 0x30500000 0x0 0x100000>;
+			status = "disabled"; /* not available on HAPS */
+		};
+
 		emmc: mmc@30440000 {
 			compatible = "pensando,elba-emmc", "cdns,sd4hc";
 			clocks = <&emmc_clk>;
