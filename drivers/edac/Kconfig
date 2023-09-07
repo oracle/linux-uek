@@ -540,4 +540,11 @@ config EDAC_DMC520
 	  Support for error detection and correction on the
 	  SoCs with ARM DMC-520 DRAM controller.
 
+config EDAC_ELBA
+	tristate "Pensando Elba Memory ECC"
+	depends on ARCH_PENSANDO_ELBA_SOC
+	help
+	  Support for error detection and correction on the
+	  Pensando Elba SoC.
+
 endif # EDAC
