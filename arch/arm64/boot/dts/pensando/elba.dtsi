@@ -55,6 +55,11 @@
 		name = "uio_penmsi";
 	};
 
+	rstcause {
+		compatible = "pensando,rstcause";
+		pensando,causeregs = <&mssoc 0x2084>;
+	};
+
 	capmem {
 		compatible = "pensando,capmem";
 	};
