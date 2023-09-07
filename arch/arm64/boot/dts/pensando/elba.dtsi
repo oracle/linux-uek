@@ -187,6 +187,22 @@
 			};
 		};
 
+		/*
+		 * Until we  know the interrupt domain following this, we
+		 * are forced to use this is the place where interrupts from
+		 * PCI converge. In the ideal case, we use one domain higher,
+		 * where the PCI-ness has been shed.
+		 */
+		pxc0_intr: interrupt-controller@20102200 {
+			compatible = "pensando,soc-ictlr-csrintr";
+			interrupt-controller;
+			reg = <0x0 0x20102200 0x0 0x4>;
+			#interrupt-cells = <3>;
+			interrupt-parent = <&gic>;
+			interrupts = <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "pxc0_intr";
+		};
+
 		edac: edac@30500000 {
 			compatible = "pensando,elba-edac-mc";
 			reg = <0x0 0x30500000 0x0 0x100000>;
