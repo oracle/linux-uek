@@ -1,0 +1,71 @@
+/ {
+	dma-coherent;
+
+	mnet0: mnet0 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x0>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet1: mnet1 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x1>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet2: mnet2 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x2>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet3: mnet3 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x3>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet4: mnet4 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x4>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet5: mnet5 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x5>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet6: mnet6 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x6>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet7: mnet7 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x7>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet8: mnet8 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x8>;
+		memory-region = <&mnet_reserved>;
+	};
+	mnet9: mnet9 {
+		compatible = "pensando,mnet";
+		msi-parent = <&its 0x9>;
+		memory-region = <&mnet_reserved>;
+	};
+
+	mcrypt0: mcrypt0 {
+		compatible = "pensando,mcrypt";
+		msi-parent = <&its 0xb>;
+	};
+	mcrypt1: mcrypt1 {
+		compatible = "pensando,mcrypt";
+		msi-parent = <&its 0xc>;
+	};
+	mcrypt2: mcrypt2 {
+		compatible = "pensando,mcrypt";
+		msi-parent = <&its 0xd>;
+	};
+	mcrypt3: mcrypt3 {
+		compatible = "pensando,mcrypt";
+		msi-parent = <&its 0xe>;
+	};
+};
