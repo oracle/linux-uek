@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: GPL-2.0
+
+&cpu0 {
+	enable-method = "psci";
+};
+&cpu1 {
+	enable-method = "psci";
+};
+&cpu2 {
+	enable-method = "psci";
+};
+&cpu3 {
+	enable-method = "psci";
+};
+&cpu4 {
+	enable-method = "psci";
+};
+&cpu5 {
+	enable-method = "psci";
+};
+&cpu6 {
+	enable-method = "psci";
+};
+&cpu7 {
+	enable-method = "psci";
+};
+&cpu8 {
+	enable-method = "psci";
+};
+&cpu9 {
+	enable-method = "psci";
+};
+&cpu10 {
+	enable-method = "psci";
+};
+&cpu11 {
+	enable-method = "psci";
+};
+&cpu12 {
+	enable-method = "psci";
+};
+&cpu13 {
+	enable-method = "psci";
+};
+&cpu14 {
+	enable-method = "psci";
+};
+&cpu15 {
+	enable-method = "psci";
+};
+
+/ {
+	psci {
+		compatible = "arm,psci-0.2";
+		method = "smc";
+	};
+};
