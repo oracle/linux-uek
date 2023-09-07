@@ -77,6 +77,9 @@ unsigned int rds_sysctl_min_conn_hb_interval = 10;
 unsigned int rds_sysctl_max_conn_hb_interval = 600;
 unsigned int rds_sysctl_conn_hb_interval = 60;
 
+/* Reap a dropped connection after n seconds. 0 to disable reaping. */
+unsigned int rds_sysctl_conn_reap_after_drop_secs;
+
 /* Upper bound to how long "rds_send_drop_to"
  * (and therefore "RDS_CANCEL_SENT_TO") waits for messages to be unmapped.
  */
@@ -213,6 +216,13 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = proc_douintvec_minmax,
 		.extra1		= &rds_sysctl_min_conn_hb_interval,
 		.extra2		= &rds_sysctl_max_conn_hb_interval,
+	},
+	{
+		.procname	= "conn_reap_after_drop_secs",
+		.data		= &rds_sysctl_conn_reap_after_drop_secs,
+		.maxlen		= sizeof(rds_sysctl_conn_reap_after_drop_secs),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec,
 	},
 	{
 		.procname       = "dr_sock_cancel_delay_ms",
