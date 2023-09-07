@@ -22,3 +22,5 @@
 #include "elba-16core-spin-table.dtsi"
 #include "elba-asic-common.dtsi"
 #include "elba-flash-parts.dtsi"
+#include "elba-asic-memory.dtsi"
+#include "elba-mdev.dtsi"
