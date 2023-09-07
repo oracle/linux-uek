@@ -49,6 +49,12 @@ config PENSANDO_SOC_BSM_ENABLE
 	help
 	  Re-enable the BSM on kernel startup
 
+config PENSANDO_SOC_PENFW
+	bool "Pensando penfw driver"
+	default n
+	help
+	  Driver module to interface secure boot config
+
 config PENSANDO_SOC_SBUS
 	tristate "Pensando sbus read/write driver"
 	depends on OF
