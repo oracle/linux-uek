@@ -427,8 +427,7 @@ int mlxbf_clear_crspace_counter(int blk_num, uint32_t cnt_num)
 {
 	void *addr;
 
-	addr = pmc->block[blk_num].mmio_base +
-		MLXBF_CRSPACE_PERFMON_VAL0(pmc->block[blk_num].counters) +
+	addr = pmc->block[blk_num].mmio_base + MLXBF_CRSPACE_PERFMON_VAL0 +
 		(cnt_num * 4);
 
 	return mlxbf_pmc_writel(0x0, addr);
@@ -533,8 +532,7 @@ int mlxbf_read_crspace_counter(int blk_num, uint32_t cnt_num, uint64_t *result)
 	int status = 0;
 
 	status = mlxbf_pmc_readl(&value, pmc->block[blk_num].mmio_base +
-		MLXBF_CRSPACE_PERFMON_VAL0(pmc->block[blk_num].counters) +
-		(cnt_num * 4));
+		MLXBF_CRSPACE_PERFMON_VAL0 + (cnt_num * 4));
 	if (status)
 		return status;
 
@@ -937,7 +935,7 @@ static ssize_t mlxbf_show_counter_state(struct kobject *ko,
 
 	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE) {
 		err = mlxbf_pmc_readl(&word, pmc->block[blk_num].mmio_base +
-			MLXBF_CRSPACE_PERFMON_CTL(pmc->block[blk_num].counters));
+			MLXBF_CRSPACE_PERFMON_CTL);
 		if (err)
 			return -EINVAL;
 		value = FIELD_GET(MLXBF_CRSPACE_PERFMON_EN, word);
@@ -969,7 +967,7 @@ static ssize_t mlxbf_enable_counters(struct kobject *ko,
 		return err;
 	if (pmc->block[blk_num].type == MLXBF_PERFTYPE_CRSPACE) {
 		err = mlxbf_pmc_readl(&word, pmc->block[blk_num].mmio_base +
-			MLXBF_CRSPACE_PERFMON_CTL(pmc->block[blk_num].counters));
+			MLXBF_CRSPACE_PERFMON_CTL);
 		if (err)
 			return -EINVAL;
 		word &= ~MLXBF_CRSPACE_PERFMON_EN;
@@ -977,7 +975,7 @@ static ssize_t mlxbf_enable_counters(struct kobject *ko,
 		if (en)
 			word |= FIELD_PREP(MLXBF_CRSPACE_PERFMON_CLR, 1);
 		mlxbf_pmc_writel(word, pmc->block[blk_num].mmio_base +
-			MLXBF_CRSPACE_PERFMON_CTL(pmc->block[blk_num].counters));
+			MLXBF_CRSPACE_PERFMON_CTL);
 	} else {
 		if (en == 0) {
 			err = mlxbf_config_l3_counters(blk_num, false, false);
