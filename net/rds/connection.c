@@ -1506,6 +1506,16 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	}
 
 	rds_cond_queue_shutdown_work(cp);
+
+	/* Auto-reap dropped connections after non-zero sysctl seconds.
+	 * Only reap via cp0 as all possible c_paths have the same conn.
+	 * Ideally we would use a monotonic ktime_get_seconds() for comparison
+	 * here, but cp->cp_reconnect_start is based on CLOCK_REALTIME.
+	 */
+	if (rds_sysctl_conn_reap_after_drop_secs && (cp == &conn->c_path[0]) &&
+	    (now - cp->cp_reconnect_start >= rds_sysctl_conn_reap_after_drop_secs)) {
+		rds_conn_reap(conn);
+	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_drop);
 
