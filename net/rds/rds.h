@@ -1645,6 +1645,7 @@ extern unsigned int  rds_sysctl_shutdown_trace_end_time;
 extern unsigned int  rds_sysctl_conn_hb_timeout;
 extern unsigned int  rds_sysctl_conn_hb_interval;
 extern unsigned int  rds_sysctl_conn_user_reap_enable;
+extern unsigned int  rds_sysctl_conn_reap_after_drop_secs;
 extern unsigned long rds_sysctl_dr_sock_cancel_jiffies;
 extern unsigned int  rds_sysctl_enable_payload_csum;
 extern unsigned int  rds_sysctl_cfu_cache_cap;
