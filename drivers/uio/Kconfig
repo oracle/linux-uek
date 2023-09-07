@@ -125,6 +125,39 @@ config UIO_FSL_ELBC_GPCM_NETX5152
 	  Information about this hardware can be found at:
 	  http://www.hilscher.com/netx
 
+config UIO_PCIEMAC
+	tristate "Include PCI MAC status driver"
+	default "y"
+	select UIO_PENGIC
+	depends on ARCH_PENSANDO_ELBA_SOC
+	help
+	  Driver that allows handling of ring2 on Pensando Capri systems. It
+	  is useful for having a userspace driver that can handle GIC 17
+	  interrupts.
+
+	  If you compile this as a module, it will be called uio_pciemac.
+
+config UIO_PENMSI1
+	tristate "Driver 1 for MSI"
+	default "y"
+	select UIO_PENMSI
+	depends on ARCH_PENSANDO_ELBA_SOC
+	help
+	  Driver that allows obtaining MSI data and handling MSI interrupts
+	  in userspace.
+
+	  If you compile this as a module, it will be called uio_pengmsi1.
+
+config UIO_PENGIC
+	tristate
+	depends on ARCH_PENSANDO
+	default n
+
+config UIO_PENMSI
+	tristate
+	depends on ARCH_PENSANDO
+	default n
+
 config UIO_PRUSS
 	tristate "Texas Instruments PRUSS driver"
 	select GENERIC_ALLOCATOR

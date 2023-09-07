@@ -49,6 +49,12 @@
 				IRQ_TYPE_LEVEL_LOW)>;
 	};
 
+	/* Common UIO device for MSI drivers */
+	uio_penmsi {
+		compatible = "pensando,uio_penmsi";
+		name = "uio_penmsi";
+	};
+
 	capmem {
 		compatible = "pensando,capmem";
 	};
@@ -166,6 +172,14 @@
 			reg-io-width = <4>;
 		};
 
+		/* MSI UIO device 1 */
+		uio_penmsi1@520000 {
+			compatible = "pensando,uio_penmsi1";
+			reg = <0x0 0x520000 0x0 0x10000>;
+			msi-parent = <&its 0xa>;
+			num-interrupts = <16>;  /* # MSI interrupts to get */
+		};
+
 		gic: interrupt-controller@800000 {
 			compatible = "arm,gic-v3";
 			#interrupt-cells = <3>;
@@ -201,6 +215,22 @@
 			interrupt-parent = <&gic>;
 			interrupts = <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "pxc0_intr";
+		};
+
+		/* UIO device using interrupt line PCIEMAC */
+		pciemac@20102200 {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			#interrupt-cells = <3>;
+
+			compatible = "pensando,uio_pciemac";
+			register-type = "csr-interrupt";
+			interrupt-parent = <&pxc0_intr>;
+			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
+			reg = <0x0 0x20102200 0x0 0x10>; /* pxc0_intr */
+
+			enable_csr_paddr = <0x0 0x20102200 0x0 0x10>;
+			enable_mask = <(1 << 0)>;
 		};
 
 		edac: edac@30500000 {
