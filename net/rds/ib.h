@@ -783,6 +783,7 @@ static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 		__rds_ib_recv_refill(c, prefill, gfp);		\
 	} else {						\
 		rds_ib_stats_inc(s_ib_rx_refill_lock_taken);	\
+		rds_cond_queue_recv_work(conn->c_path, 0);	\
 	}							\
 } while (false)
 
