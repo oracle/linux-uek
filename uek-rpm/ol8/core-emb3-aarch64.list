@@ -638,7 +638,6 @@ kernel/net/netfilter/xt_TPROXY.ko
 kernel/net/netfilter/xt_TRACE.ko
 kernel/net/netfilter/xt_u32.ko
 kernel/net/nsh/nsh.ko
-kernel/drivers/platform/mellanox/mlxbf-ptm.ko
 kernel/drivers/platform/mellanox/mlxbf-tmfifo.ko
 kernel/drivers/platform/mellanox/mlxbf-bootctl.ko
 kernel/drivers/platform/mellanox/mlxbf-pmc.ko
