@@ -1,0 +1,16 @@
+
+/ {
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		ranges;
+
+		mnet_reserved: mnet_dma_region {
+			compatible = "shared-dma-pool";
+			no-map;
+			size = <0x0 0x6000000>;
+			alignment = <0x0 0x1000>;
+		};
+	};
+};
