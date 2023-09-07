@@ -15,6 +15,19 @@ config PENSANDO_SOC_CAPMEM
 	help
 	  Support for the Pensando SoC memory driver
 
+config PENSANDO_SOC_BSM
+	bool "Pensando SoC Boot State Machine"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC boot state machine driver
+
+config PENSANDO_SOC_BSM_ENABLE
+	bool "Enable the Boot State Machine in the kernel"
+        depends on PENSANDO_SOC_BSM
+	help
+	  Re-enable the BSM on kernel startup
+
 endmenu
 
 endif
