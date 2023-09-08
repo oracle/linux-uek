@@ -8,6 +8,7 @@
 #include <linux/rhashtable-types.h>
 #include <linux/xfrm.h>
 #include <net/dst_ops.h>
+#include <linux/uek_kabi.h>
 
 struct ctl_table_header;
 
@@ -49,6 +50,7 @@ struct netns_xfrm {
 	struct list_head	policy_all;
 	struct hlist_head	*policy_byidx;
 	unsigned int		policy_idx_hmask;
+	UEK_KABI_FILL_HOLE(unsigned int idx_generator)
 	struct hlist_head	policy_inexact[XFRM_POLICY_MAX];
 	struct xfrm_policy_hash	policy_bydst[XFRM_POLICY_MAX];
 	unsigned int		policy_count[XFRM_POLICY_MAX * 2];
