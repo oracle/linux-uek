@@ -85,7 +85,7 @@ struct netns_xfrm {
 	spinlock_t xfrm_policy_lock;
 	struct mutex xfrm_cfg_mutex;
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, unsigned int	idx_generator)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
