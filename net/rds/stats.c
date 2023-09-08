@@ -147,7 +147,7 @@ static void rds_stats_info(struct socket *sock, unsigned int len,
 		goto trans;
 	}
 
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		src = (uint64_t *)&(per_cpu(rds_stats, cpu));
 		sum = (uint64_t *)&stats;
 		for (i = 0; i < sizeof(stats) / sizeof(uint64_t); i++)
@@ -184,7 +184,7 @@ void rds_stats_print(const char *where)
 	int cpu;
 	size_t nstats = sizeof(stats) / sizeof(uint64_t);
 
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		src = (uint64_t *)&(per_cpu(rds_stats, cpu));
 		sum = (uint64_t *)&stats;
 		for (i = 0; i < nstats; i++)
