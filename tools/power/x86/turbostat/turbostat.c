@@ -5246,6 +5246,7 @@ unsigned int intel_model_duplicates(unsigned int model)
 		return INTEL_FAM6_ICELAKE_X;
 
 	case INTEL_FAM6_EMERALDRAPIDS_X:
+	case INTEL_FAM6_GRANITERAPIDS_X:
 		return INTEL_FAM6_SAPPHIRERAPIDS_X;
 	}
 	return model;
