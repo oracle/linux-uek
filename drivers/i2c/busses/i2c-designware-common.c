@@ -218,7 +218,27 @@ int i2c_dw_set_sda_hold(struct dw_i2c_dev *dev)
 
 void __i2c_dw_disable(struct dw_i2c_dev *dev)
 {
+	u32 raw_intr_stat;
+	u32 enable;
 	int timeout = 100;
+
+	raw_intr_stat = dw_readl(dev, DW_IC_RAW_INTR_STAT);
+	if (raw_intr_stat & DW_IC_INTR_MST_ON_HOLD) {
+		enable = dw_readl(dev, DW_IC_ENABLE);
+		dw_writel(dev, enable | DW_IC_ENABLE_ABORT, DW_IC_ENABLE);
+
+		while (timeout--) {
+			enable = dw_readl(dev, DW_IC_ENABLE);
+			if (!(enable & DW_IC_ENABLE_ABORT))
+				break;
+			usleep_range(10, 20);
+		}
+
+		if (enable & DW_IC_ENABLE_ABORT)
+			dev_err(dev->dev, "timeout while trying to abort current transfer\n");
+	}
+
+	timeout = 100;
 
 	do {
 		__i2c_dw_disable_nowait(dev);
