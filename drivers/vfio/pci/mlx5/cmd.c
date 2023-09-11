@@ -529,7 +529,8 @@ void mlx5vf_mig_file_cleanup_cb(struct work_struct *_work)
 		mlx5vf_put_data_buffer(async_data->buf);
 		if (async_data->header_buf)
 			mlx5vf_put_data_buffer(async_data->header_buf);
-		if (async_data->status == MLX5_CMD_STAT_BAD_RES_STATE_ERR)
+		if (!async_data->stop_copy_chunk &&
+		    async_data->status == MLX5_CMD_STAT_BAD_RES_STATE_ERR)
 			migf->state = MLX5_MIGF_STATE_PRE_COPY_ERROR;
 		else
 			migf->state = MLX5_MIGF_STATE_ERROR;
@@ -579,7 +580,7 @@ static void mlx5vf_save_callback(int status, struct mlx5_async_work *context)
 		size_t image_size;
 		unsigned long flags;
 		bool initial_pre_copy = migf->state != MLX5_MIGF_STATE_PRE_COPY &&
-				!async_data->last_chunk;
+				!async_data->stop_copy_chunk;
 
 		image_size = MLX5_GET(save_vhca_state_out, async_data->out,
 				      actual_image_size);
@@ -597,7 +598,7 @@ static void mlx5vf_save_callback(int status, struct mlx5_async_work *context)
 		spin_unlock_irqrestore(&migf->list_lock, flags);
 		if (initial_pre_copy)
 			migf->pre_copy_initial_bytes += image_size;
-		migf->state = async_data->last_chunk ?
+		migf->state = async_data->stop_copy_chunk ?
 			MLX5_MIGF_STATE_COMPLETE : MLX5_MIGF_STATE_PRE_COPY;
 		wake_up_interruptible(&migf->poll_wait);
 		mlx5vf_save_callback_complete(migf, async_data);
@@ -649,7 +650,7 @@ int mlx5vf_cmd_save_vhca_state(struct mlx5vf_pci_core_device *mvdev,
 
 	async_data = &migf->async_data;
 	async_data->buf = buf;
-	async_data->last_chunk = !track;
+	async_data->stop_copy_chunk = !track;
 	async_data->out = kvzalloc(out_size, GFP_KERNEL);
 	if (!async_data->out) {
 		err = -ENOMEM;
@@ -657,7 +658,7 @@ int mlx5vf_cmd_save_vhca_state(struct mlx5vf_pci_core_device *mvdev,
 	}
 
 	if (MLX5VF_PRE_COPY_SUPP(mvdev)) {
-		if (async_data->last_chunk && migf->buf_header) {
+		if (async_data->stop_copy_chunk && migf->buf_header) {
 			header_buf = migf->buf_header;
 			migf->buf_header = NULL;
 		} else {
@@ -670,8 +671,8 @@ int mlx5vf_cmd_save_vhca_state(struct mlx5vf_pci_core_device *mvdev,
 		}
 	}
 
-	if (async_data->last_chunk)
-		migf->state = MLX5_MIGF_STATE_SAVE_LAST;
+	if (async_data->stop_copy_chunk)
+		migf->state = MLX5_MIGF_STATE_SAVE_STOP_COPY_CHUNK;
 
 	async_data->header_buf = header_buf;
 	get_file(migf->filp);
