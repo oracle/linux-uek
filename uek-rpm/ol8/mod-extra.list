@@ -118,6 +118,7 @@ ma600-sir.ko
 magellan.ko
 mcp2120-sir.ko
 mcp251xfd.ko
+meson_dw_mipi_dsi.ko
 mISDN_core.ko
 mISDN_dsp.ko
 mkiss.ko
