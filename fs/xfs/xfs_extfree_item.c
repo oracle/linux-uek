@@ -22,6 +22,7 @@
 #include "xfs_bmap.h"
 #include "xfs_trace.h"
 #include "xfs_error.h"
+#include "xfs_log_recover.h"
 
 kmem_zone_t	*xfs_efi_zone;
 kmem_zone_t	*xfs_efd_zone;
@@ -594,6 +595,7 @@ xfs_efi_recover(
 
 	nr_ext = efip->efi_format.efi_nextents;
 	ASSERT(!test_bit(XFS_EFI_RECOVERED, &efip->efi_flags));
+	struct xfs_trans_res		resv;
 
 	/*
 	 * First check the validity of the extents described by the
@@ -618,7 +620,8 @@ xfs_efi_recover(
 		}
 	}
 
-	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_itruncate, 0, 0, 0, &tp);
+	resv = xlog_recover_resv(&M_RES(mp)->tr_itruncate);
+	error = xfs_trans_alloc(mp, &resv, 0, 0, 0, &tp);
 	if (error)
 		return error;
 
