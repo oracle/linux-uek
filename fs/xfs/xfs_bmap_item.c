@@ -36,6 +36,7 @@
 #include "xfs_trace.h"
 #include "xfs_bmap_btree.h"
 #include "xfs_trans_space.h"
+#include "xfs_log_recover.h"
 
 
 kmem_zone_t	*xfs_bui_zone;
@@ -403,6 +404,7 @@ xfs_bui_recover(
 	enum xfs_bmap_intent_type	type;
 	int				whichfork;
 	xfs_exntst_t			state;
+	struct xfs_trans_res		resv;
 	struct xfs_trans		*tp;
 	struct xfs_inode		*ip = NULL;
 	struct xfs_bmbt_irec		irec;
@@ -450,7 +452,9 @@ xfs_bui_recover(
 		return -EIO;
 	}
 
-	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_itruncate,
+	/* Allocate transaction and do the work. */
+	resv = xlog_recover_resv(&M_RES(mp)->tr_itruncate);
+	error = xfs_trans_alloc(mp, &resv,
 			XFS_EXTENTADD_SPACE_RES(mp, XFS_DATA_FORK), 0, 0, &tp);
 	if (error)
 		return error;
