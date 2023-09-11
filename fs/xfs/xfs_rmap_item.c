@@ -32,6 +32,8 @@
 #include "xfs_rmap_item.h"
 #include "xfs_log.h"
 #include "xfs_rmap.h"
+#include "xfs_log_recover.h"
+#include "xfs_shared.h"
 
 
 kmem_zone_t	*xfs_rui_zone;
@@ -423,6 +425,7 @@ xfs_rui_recover(
 	struct xfs_map_extent		*rmap;
 	xfs_fsblock_t			startblock_fsb;
 	bool				op_ok;
+	struct xfs_trans_res		resv;
 	struct xfs_rud_log_item		*rudp;
 	enum xfs_rmap_intent_type	type;
 	int				whichfork;
@@ -471,8 +474,9 @@ xfs_rui_recover(
 		}
 	}
 
-	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_itruncate,
-			mp->m_rmap_maxlevels, 0, XFS_TRANS_RESERVE, &tp);
+	resv = xlog_recover_resv(&M_RES(mp)->tr_itruncate);
+	error = xfs_trans_alloc(mp, &resv, mp->m_rmap_maxlevels, 0,
+			XFS_TRANS_RESERVE, &tp);
 	if (error)
 		return error;
 	rudp = xfs_trans_get_rud(tp, ruip);
