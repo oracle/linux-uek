@@ -28,6 +28,10 @@ static int mrrs = 128;
 module_param(mrrs, int, 0644);
 MODULE_PARM_DESC(mrrs, "Maximum read request size, Supported sizes are 128, 256, 512 and 1024 bytes");
 
+static unsigned long eng_fifo_buf = 0x101008080808;
+module_param(eng_fifo_buf, ulong, 0644);
+MODULE_PARM_DESC(eng_fifo_buf, "Per engine buffer size. Each byte corresponds to engine number");
+
 static inline bool is_cn10k_dpi(struct dpipf *dpi)
 {
 	if (dpi->pdev->subsystem_device >= PCI_SUBDEVID_OCTEONTX3_DPI_PF)
@@ -194,13 +198,10 @@ static int dpi_init(struct dpipf *dpi)
 	int engine = 0, port = 0;
 	u8 mrrs_val, mps_val;
 	u64 reg = 0ULL;
+	uint8_t *eng_buf = (uint8_t *)&eng_fifo_buf;
 
 	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
-		if (engine == 4 || engine == 5)
-			reg = DPI_ENG_BUF_BLKS(16);
-		else
-			reg = DPI_ENG_BUF_BLKS(8);
-
+		reg = DPI_ENG_BUF_BLKS(eng_buf[engine & 0x7]);
 		dpi_reg_write(dpi, DPI_ENGX_BUF(engine), reg);
 
 		/* Here qmap for the engines are set to 0.
