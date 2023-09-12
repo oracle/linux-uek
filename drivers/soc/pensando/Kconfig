@@ -15,6 +15,13 @@ config PENSANDO_SOC_CAPMEM
 	help
 	  Support for the Pensando SoC memory driver
 
+config PENSANDO_SOC_CRASH
+	tristate "Pensando crash driver"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC crash driver
+
 config PENSANDO_SOC_BSM
 	bool "Pensando SoC Boot State Machine"
 	depends on OF
