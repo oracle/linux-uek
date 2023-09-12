@@ -1119,6 +1119,10 @@ BuildKernel() {
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
+    cp Module.symvers Module.symvers.save
+    make -k %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
+    mv -f Module.symvers.save Module.symvers
+
     # Start installing the results
 %if %{with_debuginfo}
     mkdir -p $RPM_BUILD_ROOT%{debuginfodir}/boot
@@ -1156,6 +1160,7 @@ BuildKernel() {
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
     %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
+    %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT ctf_install KERNELRELEASE=$KernelVer
     # check if the modules are being signed
 
 %if %{with_gcov}
@@ -2139,6 +2144,7 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.packages\
 %{expand:%%files -f %{variant_name}-modules-core.list -n %{variant_name}-modules-core}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
