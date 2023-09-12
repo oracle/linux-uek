@@ -106,3 +106,11 @@
 		};
 	};
 };
+
+&soc {
+	panicdump@740b0000 {
+		compatible = "pensando,capri-crash";
+		pensando,crash-ctrl = <&qspi>;
+		reg = <0x0 0x740b0000 0x0 0x20000>;
+	};
+};
