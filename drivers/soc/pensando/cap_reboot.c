@@ -2,7 +2,7 @@
 /*
  * Pensando reboot control via sysfs
  *
- * Copyright (c) 2020-2021, Pensando Systems Inc.
+ * Copyright (c) 2020-2022, Pensando Systems Inc.
  */
 
 #include <linux/string.h>
@@ -18,12 +18,22 @@
  */
 static int panic_reboot;	/* default=0, no reboot */
 
+/* value of system "boot_count" for panic logging */
+static unsigned long boot_count;
+
 bool cap_panic_reboot(void)
 {
 	if (panic_reboot)
 		return true;
 	return false;
 }
+EXPORT_SYMBOL_GPL(cap_panic_reboot);
+
+unsigned long cap_boot_count(void)
+{
+	return boot_count;
+}
+EXPORT_SYMBOL_GPL(cap_boot_count);
 
 extern struct kobject *pensando_fw_kobj_get(void);
 struct kobject *reboot_kobj;
@@ -45,11 +55,32 @@ static ssize_t panic_reboot_store(struct kobject *kobj,
 	return count;
 }
 
+static ssize_t boot_count_show(struct kobject *kobj,
+			       struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", boot_count);
+}
+
+static ssize_t boot_count_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+
+	ret = kstrtoul(buf, 0, &boot_count);
+	if (ret)
+		return ret;
+	return count;
+}
+
 static struct kobj_attribute panic_reboot_attribute =
-	__ATTR(panic_reboot, 0664, panic_reboot_show, panic_reboot_store);
+	__ATTR(panic_reboot, 0644, panic_reboot_show, panic_reboot_store);
+static struct kobj_attribute boot_count_attribute =
+	__ATTR(boot_count, 0644, boot_count_show, boot_count_store);
 
 static struct attribute *attrs[] = {
 	&panic_reboot_attribute.attr,
+	&boot_count_attribute.attr,
 	NULL,
 };
 

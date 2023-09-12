@@ -12,6 +12,7 @@
 #include <linux/panic_notifier.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include "cap_reboot.h"
 
 #define PCRASH_NAME	"pensando-crash"
 
@@ -114,7 +115,8 @@ static int cap_panic_callback(struct notifier_block *nb,
 
 	ktime_get_real_ts64(&ts);
 	time64_to_tm(ts.tv_sec, 0, &tm);
-	pr_info("Panic on %04ld-%02d-%02d %02d:%02d:%02d.%06ld\n",
+	pr_info("Panic at Boot #%lu %04ld-%02d-%02d %02d:%02d:%02d.%06ld\n",
+		cap_boot_count(),
 		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, tm.tm_sec,
 		ts.tv_nsec / 1000);
